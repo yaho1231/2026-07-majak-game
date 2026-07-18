@@ -1,0 +1,564 @@
+/**
+ * FlowController — 국 진행의 동기 상태 기계.
+ *
+ * 자동 페이즈(sys.*)를 진행하다가 플레이어 결정이 필요하면 멈추고
+ * 프롬프트를 돌려준다. 프롬프트는 ActionDef.validate에서 유도된다 —
+ * 합법인 선택지만 나열되고, submit 시 다시 검증된다 (Server Authority).
+ *
+ * reaction 해소 우선순위: 론(들) > 펑 > 치 > 패스. 트리플론은 유산국.
+ *
+ * 설계: docs/11_GAME_FLOW.md §2
+ */
+
+import type { GameEngine } from "../../engine/GameEngine.js";
+import type { PlayerId } from "../../engine/zones/Zone.js";
+import { WALL, discardsZone } from "../../engine/zones/Zone.js";
+import { sameKind, kindKey } from "../tiles/Tile.js";
+import type { TileId, TileKind } from "../tiles/Tile.js";
+import { winningKinds } from "../scoring/waits.js";
+import { ROUND_SETTLED } from "./flowEvents.js";
+import type { RoundSettledPayload } from "./flowEvents.js";
+import type { SettleWinRequest } from "./standardActions.js";
+import {
+  SYSTEM_PLAYER,
+  handIdsOf,
+  handKindsOf,
+  kindOf,
+  meldCountOf,
+  nextSeat,
+  playerAtSeat,
+  playerOf,
+  scoringOptionsOf,
+} from "./helpers.js";
+
+export interface ActionOption {
+  type: string;
+  payload: unknown;
+}
+
+export interface DecisionPrompt {
+  player: PlayerId;
+  options: ActionOption[];
+}
+
+export type FlowStatus =
+  | { kind: "awaiting"; prompts: DecisionPrompt[] }
+  | { kind: "roundOver"; outcome: "win" | "draw" | "abort" };
+
+const PASS: ActionOption = { type: "pass", payload: {} };
+
+export class FlowController {
+  private pending = new Map<PlayerId, ActionOption[]>();
+  private decisions = new Map<PlayerId, ActionOption>();
+
+  constructor(private readonly engine: GameEngine) {}
+
+  /** setup부터 자동 진행. 첫 결정 지점(또는 즉시 종국)을 돌려준다 */
+  begin(): FlowStatus {
+    return this.runAuto();
+  }
+
+  isPending(player: PlayerId): boolean {
+    return this.pending.has(player) && !this.decisions.has(player);
+  }
+
+  submit(player: PlayerId, option: ActionOption): FlowStatus {
+    const offered = this.pending.get(player);
+    if (offered === undefined) throw new Error(`No pending decision for ${player}`);
+    if (this.decisions.has(player)) throw new Error(`${player} already decided`);
+    const key = JSON.stringify(option);
+    if (!offered.some((o) => JSON.stringify(o) === key)) {
+      throw new Error(`Option was not offered to ${player}: ${key}`);
+    }
+    this.decisions.set(player, option);
+    if (this.decisions.size < this.pending.size) {
+      return {
+        kind: "awaiting",
+        prompts: [...this.pending.entries()]
+          .filter(([id]) => !this.decisions.has(id))
+          .map(([id, options]) => ({ player: id, options })),
+      };
+    }
+    return this.resolve();
+  }
+
+  // ─────────────────────────── 내부 ───────────────────────────
+
+  private sys(type: string, payload: unknown = {}): void {
+    const result = this.engine.submit({ player: SYSTEM_PLAYER, type, payload });
+    if (!result.ok) {
+      throw new Error(`System action ${type} failed: ${result.reason}`);
+    }
+  }
+
+  private validateOk(player: PlayerId, type: string, payload: unknown): boolean {
+    const def = this.engine.actions.get(type);
+    if (def === undefined) return false;
+    return (
+      def.validate(
+        { player, type, payload },
+        { state: this.engine.state, rules: this.engine.rules },
+      ) === null
+    );
+  }
+
+  private runAuto(): FlowStatus {
+    for (;;) {
+      const state = this.engine.state;
+      const phase = state.round.phase;
+
+      // 도중유국 자동판정 — 반드시 turn.draw 페이즈에서만 검사한다.
+      // (1) 표준 룰 타이밍: 사깡산료·사풍연타는 해당 버림이 론 없이 통과한 뒤 성립
+      //     (4번째 깡의 창깡·영상개화 기회, 4번째 풍패의 론 기회를 보존)
+      // (2) round.over 페이즈에서 재발동해 settleAbort가 무한 반복되는 것을 방지
+      if (
+        phase === "turn.draw" &&
+        state.round.kanCount === 4 &&
+        new Set(state.round.kanCallers).size >= 2
+      ) {
+        this.sys("sys.settleAbort");
+        continue;
+      }
+
+      if (phase === "turn.draw" && state.round.firstTurn && this.isFourWindAbort()) {
+        this.sys("sys.settleAbort");
+        continue;
+      }
+
+      let riichiCount = 0;
+      for (const p of state.players) {
+        if (state.round.byPlayer[p.id]?.riichi != null) riichiCount++;
+      }
+      if (riichiCount === 4 && phase === "turn.draw") {
+        this.sys("sys.settleAbort"); // 사가리치
+        continue;
+      }
+
+      if (phase === "setup") {
+        this.sys("sys.startRound");
+        continue;
+      }
+      if (phase === "turn.draw") {
+        if ((state.zones[WALL]?.tileIds.length ?? 0) === 0) {
+          this.sys("sys.settleDraw");
+        } else {
+          this.sys("sys.draw");
+        }
+        continue;
+      }
+      if (phase === "turn.act") {
+        return this.awaitDecisions([this.turnPrompt()]);
+      }
+      if (phase === "reaction") {
+        const prompts = this.reactionPrompts();
+        if (prompts.length === 0) {
+          // 프롬프트 없이 지나가도 대기패가 흘러간 플레이어는 일시 후리텐
+          // (역 없음·후리텐 등으로 론 옵션이 제시되지 않은 경우 포함 — 표준 룰)
+          this.markPassFuriten();
+          if (state.round.chankan !== null) {
+            this.flipKanDoraBeforeRinshan();
+            this.sys("sys.drawRinshan");
+          } else {
+            this.sys("sys.advanceTurn"); // 전원 자동 패스
+          }
+          continue;
+        }
+        return this.awaitDecisions(prompts);
+      }
+      if (phase === "round.over") {
+        return { kind: "roundOver", outcome: this.lastOutcome() };
+      }
+      throw new Error(`FlowController: unhandled phase "${phase}"`);
+    }
+  }
+
+  private awaitDecisions(prompts: DecisionPrompt[]): FlowStatus {
+    this.pending = new Map(prompts.map((p) => [p.player, p.options]));
+    this.decisions = new Map();
+    return { kind: "awaiting", prompts };
+  }
+
+  private lastOutcome(): "win" | "draw" | "abort" {
+    for (let i = this.engine.eventLog.length - 1; i >= 0; i--) {
+      const event = this.engine.eventLog[i];
+      if (event?.type === ROUND_SETTLED) {
+        return (event.payload as RoundSettledPayload).outcome;
+      }
+    }
+    throw new Error("round.over without RoundSettled event");
+  }
+
+  private turnPrompt(): DecisionPrompt {
+    const state = this.engine.state;
+    const player = playerAtSeat(state, state.round.turnSeat).id;
+    const options: ActionOption[] = [];
+    // 같은 종류 4장 안깡은 손패 4장을 각각 순회하며 4번 밀어넣히던 중복을 종류당 1개로 막는다
+    const ankanKindsSeen = new Set<string>();
+    for (const tileId of handIdsOf(state, player)) {
+      if (this.validateOk(player, "discard", { tileId })) {
+        options.push({ type: "discard", payload: { tileId } });
+      }
+      if (this.validateOk(player, "riichi", { tileId })) {
+        options.push({ type: "riichi", payload: { tileId } });
+      }
+
+      const hand = handIdsOf(state, player);
+
+      // 안깡 (ankan) — 같은 종류는 한 번만 제시 (서로 다른 종류의 안깡 2개는 각각 유지)
+      const sameTiles = hand.filter(t => sameKind(kindOf(state, t), kindOf(state, tileId)));
+      if (sameTiles.length === 4) {
+        const key = kindKey(kindOf(state, tileId));
+        if (!ankanKindsSeen.has(key) && this.validateOk(player, "ankan", { tileIds: sameTiles })) {
+          ankanKindsSeen.add(key);
+          options.push({ type: "ankan", payload: { tileIds: sameTiles } });
+        }
+      }
+      
+      // 소명깡 (shouminkan)
+      for (const m of state.round.byPlayer[player]?.melds ?? []) {
+        if (m.kind === "pon" && m.tileIds.length === 3) {
+          const tk = kindOf(state, m.tileIds[0]!);
+          if (sameKind(kindOf(state, tileId), tk)) {
+             if (this.validateOk(player, "shouminkan", { tileId, targetMeldTileId: m.tileIds[0]! })) {
+               options.push({ type: "shouminkan", payload: { tileId, targetMeldTileId: m.tileIds[0]! } });
+             }
+          }
+        }
+      }
+    }
+    if (this.validateOk(player, "win", {})) {
+      options.push({ type: "win", payload: {} });
+    }
+    if (this.validateOk(player, "kyushuKyuhai", {})) {
+      options.push({ type: "kyushuKyuhai", payload: {} });
+    }
+    // 증강이 등록한 추가 턴 액션 (validate로 다시 걸러 합법인 것만 제시)
+    for (const provider of this.engine.turnOptionProviders) {
+      for (const cand of provider(state, player)) {
+        if (this.validateOk(player, cand.type, cand.payload)) {
+          options.push({ type: cand.type, payload: cand.payload });
+        }
+      }
+    }
+    if (options.length === 0) {
+      throw new Error(`Turn player ${player} has no legal actions`);
+    }
+    return { player, options };
+  }
+
+  private reactionPrompts(): DecisionPrompt[] {
+    const state = this.engine.state;
+    const last = state.round.lastDiscard;
+    const prompts: DecisionPrompt[] = [];
+
+    if (last === null && state.round.chankan !== null) {
+      for (const p of state.players) {
+        if (p.id === state.round.chankan.player) continue;
+        if (this.validateOk(p.id, "win", {})) {
+          prompts.push({ player: p.id, options: [{ type: "win", payload: {} }, PASS] });
+        }
+      }
+      return prompts;
+    }
+    if (last === null) return prompts;
+
+    const discardKind = kindOf(state, last.tileId);
+
+    for (const p of state.players) {
+      if (p.id === last.player) continue;
+      const options: ActionOption[] = [];
+
+      if (this.validateOk(p.id, "win", {})) {
+        options.push({ type: "win", payload: {} });
+      }
+
+      const matching = handIdsOf(state, p.id).filter((t) =>
+        sameKind(kindOf(state, t), discardKind),
+      );
+      if (matching.length >= 2) {
+        // 적도라 사용 여부가 다른 조합을 각각 제시한다 (적5를 손에 남길 선택권)
+        const isRed = (t: TileId): boolean => state.tiles[t]?.attrs.red === true;
+        const norms = matching.filter((t) => !isRed(t));
+        const reds = matching.filter(isRed);
+        const combos: [TileId, TileId][] = [];
+        if (norms.length >= 2) combos.push([norms[0]!, norms[1]!]);
+        if (norms.length >= 1 && reds.length >= 1) combos.push([norms[0]!, reds[0]!]);
+        if (reds.length >= 2) combos.push([reds[0]!, reds[1]!]);
+        for (const tileIds of combos) {
+          const payload = { tileIds };
+          if (this.validateOk(p.id, "pon", payload)) {
+            options.push({ type: "pon", payload });
+          }
+        }
+      }
+      if (matching.length >= 3) {
+        const payload = { tileIds: [matching[0]!, matching[1]!, matching[2]!] as [TileId, TileId, TileId] };
+        if (this.validateOk(p.id, "minkan", payload)) {
+          options.push({ type: "minkan", payload });
+        }
+      }
+
+      for (const payload of this.chiCandidates(p.id, discardKind)) {
+        if (this.validateOk(p.id, "chi", payload)) {
+          options.push({ type: "chi", payload });
+        }
+      }
+
+      // 증강이 등록한 리액션 확장 후보 (울어 국사 등) — validate로 합법인 것만
+      for (const provider of this.engine.reactionOptionProviders) {
+        for (const cand of provider(state, p.id, last)) {
+          if (this.validateOk(p.id, cand.type, cand.payload)) {
+            options.push({ type: cand.type, payload: cand.payload });
+          }
+        }
+      }
+
+      if (options.length > 0) {
+        options.push(PASS);
+        prompts.push({ player: p.id, options });
+      }
+    }
+    return prompts;
+  }
+
+  private chiCandidates(
+    player: PlayerId,
+    called: TileKind,
+  ): { tileIds: [TileId, TileId] }[] {
+    const state = this.engine.state;
+    const wrap =
+      scoringOptionsOf(state, this.engine.rules, player).wrapRuns === true;
+    const norm = (r: number): number =>
+      wrap ? ((((r - 1) % 9) + 9) % 9) + 1 : r;
+    // 같은 kind라도 적도라 여부가 다르면 별개 후보로 제시 (적5 온존 선택권)
+    const isRed = (t: TileId): boolean => state.tiles[t]?.attrs.red === true;
+    const findIds = (kind: TileKind, exclude?: TileId): TileId[] => {
+      const ids = handIdsOf(state, player).filter(
+        (t) => t !== exclude && sameKind(kindOf(state, t), kind),
+      );
+      const normal = ids.find((t) => !isRed(t));
+      const red = ids.find(isRed);
+      return [
+        ...(normal !== undefined ? [normal] : []),
+        ...(red !== undefined ? [red] : []),
+      ];
+    };
+    const shapes: [number, number][] = [
+      [norm(called.rank - 2), norm(called.rank - 1)],
+      [norm(called.rank - 1), norm(called.rank + 1)],
+      [norm(called.rank + 1), norm(called.rank + 2)],
+    ];
+    const out: { tileIds: [TileId, TileId] }[] = [];
+    const seen = new Set<string>();
+    for (const [r1, r2] of shapes) {
+      if (r1 < 1 || r2 > 9) continue;
+      const key = `${r1}:${r2}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      for (const a of findIds({ suit: called.suit, rank: r1 })) {
+        for (const b of findIds({ suit: called.suit, rank: r2 }, a)) {
+          out.push({ tileIds: [a, b] });
+        }
+      }
+    }
+    return out;
+  }
+
+  private resolve(): FlowStatus {
+    const state = this.engine.state;
+    const phase = state.round.phase;
+    const decisions = new Map(this.decisions);
+    this.pending = new Map();
+    this.decisions = new Map();
+
+    if (phase === "turn.act") {
+      const [entry] = decisions;
+      if (entry === undefined) throw new Error("No decision to resolve");
+      const [player, option] = entry;
+      if (option.type === "win") {
+        const tileId = state.round.lastDrawnTile as TileId;
+        this.submitPlayer(player, option);
+        const wins: SettleWinRequest = {
+          wins: [{ winner: player, from: null, tileId, winType: "tsumo" }],
+        };
+        this.sys("sys.settleWin", wins);
+      } else if (option.type === "kyushuKyuhai") {
+        this.submitPlayer(player, option);
+        this.sys("sys.settleAbort");
+      } else {
+        this.submitPlayer(player, option);
+        if (option.type === "discard" || option.type === "riichi") {
+          this.flipPendingDoraAfterDiscard();
+        }
+      }
+      return this.runAuto();
+    }
+
+    // reaction: 론(들) > 펑/깡 > 치 > 패스
+    const last = state.round.lastDiscard;
+    let targetPlayer: PlayerId;
+    let targetTileId: TileId;
+    let isShouminkan = false;
+
+    if (last === null) {
+      isShouminkan = true;
+      targetPlayer = state.round.chankan!.player;
+      targetTileId = state.round.chankan!.tileId;
+    } else {
+      targetPlayer = last.player;
+      targetTileId = last.tileId;
+    }
+
+    const discarderSeat = playerOf(state, targetPlayer).seat;
+    const n = state.players.length;
+    const direction = this.engine.rules.resolve<number>("turn.direction", {
+      state,
+    });
+    const seatDist = (id: PlayerId): number =>
+      (((playerOf(state, id).seat - discarderSeat) * direction) % n + n) % n;
+
+    const winners = [...decisions.entries()]
+      .filter(([, o]) => o.type === "win")
+      .map(([id]) => id)
+      .sort((a, b) => seatDist(a) - seatDist(b));
+
+    // 아무도 화료하지 않았다면, 이 패가 대기패였던 전원에게 일시 후리텐
+    // (리치 중이면 영구). 프롬프트를 받지 못한 사람도 포함한다 — 표준 룰.
+    if (winners.length === 0) this.markPassFuriten();
+
+    if (winners.length >= 3) {
+      this.sys("sys.settleAbort"); // 삼가화 (Sanchaho)
+      return this.runAuto();
+    }
+    if (winners.length > 0) {
+      for (const winner of winners) {
+        this.submitPlayer(winner, { type: "win", payload: {} });
+      }
+      const wins: SettleWinRequest = {
+        wins: winners.map((winner) => ({
+          winner,
+          from: targetPlayer,
+          tileId: targetTileId,
+          winType: "ron" as const,
+        })),
+      };
+      this.sys("sys.settleWin", wins);
+      return this.runAuto();
+    }
+
+    // 부로 우선순위: 깡/펑 > 원격 치(call.chi.fromAnyone 보유자) > 일반 치
+    const chis = [...decisions.entries()].filter(([, o]) => o.type === "chi");
+    const remoteChi = chis.find(([id]) =>
+      this.engine.rules.resolve<boolean>("call.chi.fromAnyone", {
+        playerId: id,
+        state,
+      }),
+    );
+    // 증강이 등록한 커스텀 리액션 콜(울어 국사 등) — 표준 타입이 아닌 것.
+    // 엔진은 특정 액션명을 알 필요 없이 펑과 치 사이 우선순위로 처리한다.
+    const STANDARD_REACTIONS = new Set(["win", "pass", "chi", "pon", "minkan"]);
+    const customCall = [...decisions.entries()].find(
+      ([, o]) => !STANDARD_REACTIONS.has(o.type),
+    );
+    const call =
+      [...decisions.entries()].find(([, o]) => o.type === "minkan") ??
+      [...decisions.entries()].find(([, o]) => o.type === "pon") ??
+      customCall ??
+      remoteChi ??
+      chis[0];
+    
+    if (call !== undefined) {
+      this.submitPlayer(call[0], call[1]);
+      if (call[1].type === "minkan") {
+        this.flipKanDoraBeforeRinshan();
+        this.sys("sys.drawRinshan");
+      }
+      return this.runAuto();
+    }
+
+    if (isShouminkan) {
+      // 창깡 실패 -> 영상 쯔모로 넘어감
+      this.flipKanDoraBeforeRinshan();
+      this.sys("sys.drawRinshan");
+    } else {
+      this.sys("sys.advanceTurn");
+    }
+    
+    return this.runAuto();
+  }
+
+  private isFourWindAbort(): boolean {
+    const state = this.engine.state;
+    const firstDiscards = state.players.map((p) => {
+      const ids = state.zones[discardsZone(p.id)]?.tileIds ?? [];
+      return ids.length === 1 ? kindOf(state, ids[0] as TileId) : null;
+    });
+    if (firstDiscards.some((k) => k === null)) return false;
+    const first = firstDiscards[0];
+    return (
+      first?.suit === "wind" &&
+      firstDiscards.every((k) => k !== null && sameKind(k, first))
+    );
+  }
+
+  private submitPlayer(player: PlayerId, option: ActionOption): void {
+    const result = this.engine.submit({
+      player,
+      type: option.type,
+      payload: option.payload,
+    });
+    if (!result.ok) {
+      throw new Error(
+        `Accepted decision failed in engine: ${option.type} by ${player} — ${result.reason}`,
+      );
+    }
+  }
+
+  private kanDoraTiming(): "beforeRinshan" | "afterDiscard" {
+    return this.engine.rules.resolve<"beforeRinshan" | "afterDiscard">(
+      "dora.kanTiming",
+    );
+  }
+
+  private flipKanDoraBeforeRinshan(): void {
+    if (this.kanDoraTiming() === "beforeRinshan") {
+      this.sys("sys.flipDora");
+    }
+  }
+
+  private flipPendingDoraAfterDiscard(): void {
+    if (this.kanDoraTiming() !== "afterDiscard") return;
+    while (this.engine.state.round.pendingDora > 0) {
+      this.sys("sys.flipDora");
+    }
+  }
+
+  /**
+   * 지금 지나가는 패(버림 또는 가깡패)가 대기패였던 모든 플레이어를
+   * 일시 후리텐(리치 중이면 영구)으로 마킹한다. 론 옵션이 제시되지 않았던
+   * 사람(역 없음·이미 후리텐)도 포함한다 — 표준 룰의 동순내 후리텐.
+   */
+  private markPassFuriten(): void {
+    const state = this.engine.state;
+    const target = state.round.lastDiscard ?? state.round.chankan;
+    if (target === null) return;
+    const targetKind = kindOf(state, target.tileId);
+    for (const p of state.players) {
+      if (p.id === target.player) continue;
+      const waits = winningKinds(
+        handKindsOf(state, p.id),
+        meldCountOf(state, p.id),
+        undefined,
+        scoringOptionsOf(state, this.engine.rules, p.id),
+      );
+      if (!waits.some((w) => sameKind(w, targetKind))) continue;
+      this.sys("sys.markFuriten", {
+        player: p.id,
+        permanent: state.round.byPlayer[p.id]?.riichi != null,
+      });
+    }
+  }
+}
+
+/** 다음 자리 계산이 필요할 때를 위한 재수출 (서버·봇 편의) */
+export { nextSeat };
