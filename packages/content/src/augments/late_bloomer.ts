@@ -1,41 +1,74 @@
 /**
- * 대기만성 (late_bloomer, prism).
- * 남4국부터(서입 연장 포함) 국 정산에서 자신이 얻는 점수가 3배가 된다.
- * 잃는 점수(방총·지불)는 그대로 — 종반에만 만개하는 본인 전용 부스터.
- * 게임 전체에 걸쳐 버텨야 의미가 있으므로 게임 시작 드래프트에서만 등장한다.
+ * 대기만성 (late_bloomer, prism) — 반장전 전용.
  *
- * 구현: jackpot과 같은 ROUND_SETTLED 인터셉터로, 다른 증강 보너스까지 모두
- * 반영된 최종 delta[holder]가 양수일 때만 3배로 만든다. "지금 정산되는 국"은
- * 리듀서 적용 전 상태(ic.state.round)로 판정한다 — payload의 국 정보는
- * 다음 국 설정값이므로 쓰지 않는다. 상대 delta는 건드리지 않으므로
- * 늘어난 점수는 판(뱅크)에서 온다 (jackpot·보너스 계열과 같은 방식).
+ * 52차 개편: "후반부터 획득 점수 3배"라는 보이지 않는 정산 배율을 **규칙 두 개**로 바꿨다.
+ * 남4국(서입 연장 포함)에 들어서는 순간 만개해서, 그 이후로는
+ *   - 후리텐을 무시하고 론할 수 있고(`win.furiten.enabled` = false)
+ *   - 역이 없어도 화료할 수 있다(`win.requiresYaku` = false)
+ * 즉 철벽과 무형화료를 한꺼번에 얻는다. 점수 배율은 1도 없다 — 규칙이 보상이다.
+ *
+ * 구현:
+ * - 두 규칙 모두 `rules.addModifier`로 **state를 보고 동적으로** 켠다.
+ *   (setHolderRule은 상시 고정이라 후반 조건을 표현할 수 없다.)
+ *   rctx.state는 undefined일 수 있으므로 반드시 방어한다.
+ * - 만개하는 순간이 보이도록 ROUND_STARTED 리액션에서 전원 공개 뷰 채널에 실는다.
+ * - 게임 전체를 버텨야 의미가 있으므로 게임 시작 드래프트 전용·반장전 전용은 유지.
  */
 
-import { ROUND_SETTLED, defineAugment } from "@majak/core";
-import type { AugmentDef, RoundSettledPayload } from "@majak/core";
+import { ROUND_STARTED, augmentDataSet, defineAugment } from "@majak/core";
+import type { AugmentDef, GameState } from "@majak/core";
+import { stringOf, viewKey } from "../util.js";
+
+const ID = "late_bloomer";
+
+/** 지금이 만개 구간인가 — 남4국 이후 또는 서입(장≥3) */
+function inBloom(state: GameState | undefined): boolean {
+  if (state === undefined) return false;
+  const r = state.round;
+  return (r.prevalentWind === 2 && r.roundNumber >= 4) || r.prevalentWind >= 3;
+}
 
 export const lateBloomer: AugmentDef = defineAugment({
-  id: "late_bloomer",
+  id: ID,
   tier: "prism",
+  category: "shape",
   name: "대기만성",
   description:
-    "남4국부터 정산에서 당신이 얻는 점수가 3배가 된다. 끝까지 버텨라 — 마지막에 가장 강해진다. (게임 시작 드래프트에서만 등장)",
+    "(상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장) 남4국(서입 연장 포함)에 들어서면 만개한다 — 그 이후로는 후리텐을 무시하고 론할 수 있고, 역이 없어도 화료할 수 있다.",
   draftStages: ["gameStart"],
+  // 남4국 템포는 반장전 전용 — 동풍전에는 동4국판(late_bloomer_east)이 대신 나온다.
+  modes: ["hanchan"],
+  detail:
+    "(상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장) 남4국(서입 연장 포함)에 들어서는 순간 만개해, 그 이후의 모든 국에서 후리텐이 적용되지 않고 역 없이도 화료할 수 있다. 점수 배율은 붙지 않으며 만개 사실은 전원에게 공개된다. 만개 전까지는 아무 효과도 없다.",
   install(ctx) {
     const { holder } = ctx;
-    ctx.interceptor(ROUND_SETTLED, (event, ic) => {
-      // 적용 전 상태 = 지금 정산되는 국. 남4국 이후 또는 서입(연장)이면 발동
-      const r = ic.state.round;
-      const lateGame =
-        (r.prevalentWind === 2 && r.roundNumber >= 4) || r.prevalentWind >= 3;
-      if (!lateGame) return event;
-      const p = event.payload as RoundSettledPayload;
-      const d = p.deltas[holder] ?? 0;
-      if (d <= 0) return event; // 잃는 점수는 3배가 되지 않는다
-      return {
-        type: event.type,
-        payload: { ...p, deltas: { ...p.deltas, [holder]: d * 3 } },
-      };
+    const vKey = viewKey("*", `${ID}:${holder}`);
+
+    // 만개 구간에서만 후리텐 해제 (보유자 한정)
+    ctx.engine.rules.addModifier<boolean>("win.furiten.enabled", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        return inBloom(rctx.state as GameState | undefined) ? false : cur;
+      },
+    });
+
+    // 만개 구간에서만 무형화료 (보유자 한정)
+    ctx.engine.rules.addModifier<boolean>("win.requiresYaku", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        return inBloom(rctx.state as GameState | undefined) ? false : cur;
+      },
+    });
+
+    // 후반에 들어서는 그 순간이 테이블에 보이게 — 전원 공개
+    ctx.reaction(ROUND_STARTED, (_event, rc) => {
+      if (!inBloom(rc.state)) return;
+      if (stringOf(rc.state, vKey) === "만개") return; // 이미 켜져 있으면 조용히
+      rc.emit(augmentDataSet(vKey, "만개"));
     });
   },
 });

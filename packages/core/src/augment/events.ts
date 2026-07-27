@@ -16,8 +16,10 @@ import type { TileAttrs, TileId, TileKind } from "../mahjong/tiles/Tile.js";
 
 export const SCORE_CHANGED = "ScoreChanged";
 export const AUGMENT_DRAFTED = "AugmentDrafted";
+export const AUGMENT_OFFERED = "AugmentOffered";
 export const AUGMENT_DATA_SET = "AugmentDataSet";
 export const TILE_KIND_CHANGED = "TileKindChanged";
+export const AUGMENT_DISARMED = "AugmentDisarmed";
 
 export interface ScoreChangedPayload {
   player: PlayerId;
@@ -31,9 +33,46 @@ export interface AugmentDraftedPayload {
   augmentId: string;
 }
 
+/**
+ * 드래프트에서 한 플레이어에게 제시된 3지선다(오퍼). 픽률(offered 대비 picked)
+ * 통계용으로 로그에 남긴다. 게임 상태는 바꾸지 않는(no-op reducer) 순수
+ * 정보 이벤트이며, 시드에서 결정적으로 재현되므로 리플레이·재개에서도 동일하다.
+ */
+export interface AugmentOfferedPayload {
+  player: PlayerId;
+  augmentIds: string[];
+}
+
 export interface AugmentDataSetPayload {
   key: string;
   value: unknown;
+}
+
+/**
+ * 증강 하나가 무장해제로 잠기는 순간 (무장해제 증강이 낸다).
+ *
+ * **왜 별도 이벤트인가** — 무장해제는 규칙·효과·액티브 버튼을 전부 잠그지만,
+ * 그 증강이 **이미 만들어 놓은 물리적 상태**(진짜 용의 16장 배패처럼)는 되돌리지
+ * 못한다. 규칙만 꺼지면 "손패 17장인데 화료형은 14장"이라는 성립 불가능한 손이 남는다.
+ *
+ * 그래서 잠그기 **직전에** 이 이벤트를 먼저 낸다. 대상 증강은 이 이벤트에 반응해
+ * 자기가 바꿔 놓은 상태를 스스로 원상복구한다(진짜 용 → 손패 3장을 패산으로 반납).
+ * 아직 DISARMED_SOURCES_KEY에 들어가기 전이라 대상 증강의 Reaction이 정상 작동한다 —
+ * **순서가 계약이다**(무장해제의 toEvents가 이 이벤트를 목록 갱신보다 먼저 둔다).
+ */
+export interface AugmentDisarmedPayload {
+  /** 잠기는 증강의 보유자 */
+  target: PlayerId;
+  augmentId: string;
+  /** 잠기는 인스턴스 id (augmentInstanceId(target, augmentId)) */
+  source: string;
+}
+
+/** 증강 무장해제 통보 (상태를 바꾸지 않는 순수 신호 — 되돌리기는 대상 증강이 emit한다) */
+export function augmentDisarmed(
+  payload: AugmentDisarmedPayload,
+): ProposedEvent<typeof AUGMENT_DISARMED, AugmentDisarmedPayload> {
+  return { type: AUGMENT_DISARMED, payload };
 }
 
 /** 패의 종류·속성 변경 (수패 통일, 아카도라 부여 등 — Issue 002의 실전 활용) */
@@ -85,6 +124,16 @@ export function draftDoneKey(stage: string, player: PlayerId): string {
 }
 
 /**
+ * 특정 증강이 '어느 드래프트 스테이지에서 획득됐는지'를 담는 상태 키.
+ * 정식 픽에서만 기록된다(markStage 있는 경우). 스택형 증강이 두 번째 드래프트로
+ * 늦게 들어와 축적할 국이 적을 때 보강 여부를 결정하는 데 쓴다 — install 시점의
+ * 클로저가 아니라 상태에서 읽어야 리플레이·재개(rebuildAugments)에서 결정적이다.
+ */
+export function augmentStageKey(player: PlayerId, augmentId: string): string {
+  return `augment:stage:${player}:${augmentId}`;
+}
+
+/**
  * 드래프트 픽.
  * payload.markStage가 있으면(정식 픽) 그 스테이지 완료 플래그도 함께 기록한다 —
  * 진행 상태를 보유 증강 '수'로 세지 않게 해 도박사(한 턴에 2개 획득)에도 견고하다.
@@ -110,10 +159,26 @@ const draftPickAction: ActionDef<{ augmentId: string; markStage?: string }> = {
     if (req.payload.markStage !== undefined) {
       events.push(
         augmentDataSet(draftDoneKey(req.payload.markStage, req.player), true),
+        // 이 증강이 어느 스테이지에서 왔는지도 상태에 남긴다 (스택형 2번째-픽 보강 판정용)
+        augmentDataSet(
+          augmentStageKey(req.player, req.payload.augmentId),
+          req.payload.markStage,
+        ),
       );
     }
     return events;
   },
+};
+
+/**
+ * 드래프트 오퍼 기록. 상태를 바꾸지 않고 AUGMENT_OFFERED 이벤트만 로그에 남긴다
+ * (통계 전용). DraftController.recordOffer가 픽보다 먼저, 고정 순서로 제출한다.
+ */
+const draftOfferAction: ActionDef<AugmentOfferedPayload> = {
+  type: "draftOffer",
+  validate: (req, { state }) =>
+    state.players.some((p) => p.id === req.player) ? null : "unknown player",
+  toEvents: (req) => [{ type: AUGMENT_OFFERED, payload: req.payload }],
 };
 
 /**
@@ -143,6 +208,12 @@ export function registerAugmentSupport(engine: GameEngine): void {
     };
   });
 
+  // 오퍼는 순수 정보 이벤트 — 상태를 바꾸지 않는다 (통계 소비 전용).
+  engine.reducers.register(AUGMENT_OFFERED, (state) => state);
+
+  // 무장해제 통보도 순수 신호다 — 실제 되돌리기는 대상 증강의 Reaction이 emit한다.
+  engine.reducers.register(AUGMENT_DISARMED, (state) => state);
+
   engine.reducers.register(AUGMENT_DATA_SET, (state, event) => {
     const p = event.payload as AugmentDataSetPayload;
     return { ...state, augmentData: { ...state.augmentData, [p.key]: p.value } };
@@ -168,9 +239,7 @@ export function registerAugmentSupport(engine: GameEngine): void {
   });
 
   engine.actions.register(draftPickAction);
+  engine.actions.register(draftOfferAction);
 
-  engine.rules.define("augment.draft.weight.silver", 60);
-  engine.rules.define("augment.draft.weight.gold", 30);
-  engine.rules.define("augment.draft.weight.prism", 10);
   engine.rules.define("augment.draft.choices", 3);
 }

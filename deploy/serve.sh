@@ -43,7 +43,18 @@ bash "$ROOT/scripts/majak.sh" "$CMD"
 
 if { [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; }; then
   if [ -n "${PUBLIC_HOST:-}" ]; then
-    echo "🌐 공개 주소:  http://${PUBLIC_HOST}:${PORT_SHOW}"
-    echo "   (공유기에서 ${PORT_SHOW} 포트를 이 맥으로 포워딩해야 외부에서 접속됩니다)"
+    if [ -n "${TRUST_PROXY:-}" ]; then
+      # 리버스 프록시(Cloudflare Tunnel·nginx) 뒤 — TLS는 프록시가 종단하고
+      # 서버는 로컬 평문 포트만 연다. 포트포워딩이 필요 없다.
+      echo "🌐 공개 주소:  https://${PUBLIC_HOST}"
+      echo "   (리버스 프록시 경유 — TRUST_PROXY=${TRUST_PROXY}. 포트포워딩 불필요)"
+      if [ "${HOST:-}" != "127.0.0.1" ]; then
+        echo "   ⚠ HOST가 127.0.0.1이 아닙니다 — 평문 포트 ${PORT_SHOW}이 외부에 직접 노출될 수 있습니다."
+      fi
+    else
+      echo "🌐 공개 주소:  http://${PUBLIC_HOST}:${PORT_SHOW}"
+      echo "   (공유기에서 ${PORT_SHOW} 포트를 이 맥으로 포워딩해야 외부에서 접속됩니다)"
+      echo "   ⚠ 평문 HTTP입니다 — 공개 배포는 리버스 프록시로 TLS(wss) 종단을 권장합니다."
+    fi
   fi
 fi

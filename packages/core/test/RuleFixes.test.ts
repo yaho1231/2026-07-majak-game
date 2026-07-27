@@ -1,6 +1,6 @@
 /**
  * RuleFixes — 19d차 로직 감사에서 수정한 규칙들의 회귀 테스트.
- * (후리텐 이력 유지 / 리치봉 반환 / 깡 상한·하저 부로 금지 /
+ * (후리텐 이력 유지 / 리치봉 반환 / 깡 상한·하저 후로 금지 /
  *  왕패 보충·도라 인덱스 안정 / 구종구패 시점 / 유국 무한루프 방지)
  */
 
@@ -14,8 +14,10 @@ import {
   TILE_DISCARDED,
   WALL,
   createStandardGame,
+  doraIndicatorIndex,
   isFuriten,
   kindKey,
+  rinshanRemaining,
 } from "../src/index.js";
 import type { GameState, RoundSettledPayload, TileId } from "../src/index.js";
 
@@ -36,7 +38,7 @@ function turnPlayerOf(state: GameState): string {
 }
 
 describe("후리텐 — 버림 이력 기반", () => {
-  it("버림패가 부로로 강에서 사라져도 후리텐이 유지된다", () => {
+  it("버림패가 후로로 바닥에서 사라져도 후리텐이 유지된다", () => {
     const game = dealtGame();
     const state = game.engine.state;
     const discarder = turnPlayerOf(state);
@@ -51,7 +53,7 @@ describe("후리텐 — 버림 이력 기반", () => {
     } as never);
     expect(s.round.byPlayer[discarder]!.discardedKinds).toContain(kindKey(kind));
 
-    // 다른 플레이어가 그 패를 펑으로 가져간다 → 강에서 사라짐
+    // 다른 플레이어가 그 패를 펑으로 가져간다 → 바닥에서 사라짐
     const caller = s.players.find((p) => p.id !== discarder)!.id;
     const callerHand = s.zones[`hand:${caller}`]!.tileIds.slice(0, 2) as TileId[];
     s = game.engine.reducers.dispatch(s, {
@@ -70,7 +72,7 @@ describe("후리텐 — 버림 이력 기반", () => {
     expect(s.round.byPlayer[discarder]!.discardedKinds).toContain(kindKey(kind));
   });
 
-  it("부로한 사람의 일시 후리텐은 해소된다", () => {
+  it("후로한 사람의 일시 후리텐은 해소된다", () => {
     const game = dealtGame();
     let s = game.engine.state;
     const discarder = turnPlayerOf(s);
@@ -119,7 +121,7 @@ describe("깡 — 상한·왕패 보충·도라 인덱스", () => {
     expect(err).toBe("kan limit reached");
   });
 
-  it("패산이 비면 펑·치·깡이 전부 거부된다 (하저 부로 금지)", () => {
+  it("패산이 비면 펑·치·깡이 전부 거부된다 (하저 후로 금지)", () => {
     const game = dealtGame();
     const s0 = game.engine.state;
     const player = turnPlayerOf(s0);
@@ -148,15 +150,18 @@ describe("깡 — 상한·왕패 보충·도라 인덱스", () => {
     expect(kanErr).toBe("cannot kan with empty wall");
   });
 
-  it("영상 쯔모 시 왕패가 14장으로 보충되고 도라 표시패 인덱스가 유지된다", () => {
+  // 2026-07-26 사용자 확정: 깡의 영상 쯔모는 **보충하지 않는다**(07 §2).
+  // 왕패가 한 장씩 줄고, 표시패는 밀리지 않은 채 배열 인덱스만 당겨진다.
+  it("영상 쯔모는 왕패를 소모한다 — 보충 없이 줄고, 표시패는 밀리지 않는다", () => {
     const game = dealtGame();
     let s = game.engine.state;
     const player = turnPlayerOf(s);
-    const deadBefore = s.zones[DEAD_WALL]!.tileIds;
+    const deadBefore = [...s.zones[DEAD_WALL]!.tileIds];
     const indicator = s.round.doraIndicators[0]!;
-    expect(deadBefore.indexOf(indicator)).toBe(4); // FIRST_DORA_INDEX
+    expect(deadBefore.indexOf(indicator)).toBe(4); // FIRST_DORA_INDEX (배패 시점)
+    expect(rinshanRemaining(s)).toBe(4);
 
-    const wallLast = s.zones[WALL]!.tileIds.at(-1)!;
+    const wallBefore = [...s.zones[WALL]!.tileIds];
     const rinshanTile = deadBefore[0]!;
     s = game.engine.reducers.dispatch(s, {
       type: "TileDrawn",
@@ -165,10 +170,55 @@ describe("깡 — 상한·왕패 보충·도라 인덱스", () => {
     } as never);
 
     const deadAfter = s.zones[DEAD_WALL]!.tileIds;
-    expect(deadAfter).toHaveLength(14); // 보충됨
-    expect(deadAfter[0]).toBe(wallLast); // 패산 마지막 패가 왕패 앞으로
-    expect(deadAfter.indexOf(indicator)).toBe(4); // 표시패 절대 인덱스 불변
-    expect(s.zones[WALL]!.tileIds).not.toContain(wallLast);
+    expect(deadAfter).toHaveLength(13); // 보충하지 않는다 — 한 장 줄어든다
+    expect(deadAfter).toEqual(deadBefore.slice(1)); // 맨 앞 영상패만 빠지고 나머지는 그대로
+    expect(rinshanRemaining(s)).toBe(3);
+    expect(s.zones[WALL]!.tileIds).toEqual(wallBefore); // 패산은 건드리지 않는다
+
+    // 표시패는 같은 물리 패 그대로 — 절대 인덱스만 4 → 3으로 당겨졌다
+    expect(deadAfter.indexOf(indicator)).toBe(3);
+    expect(deadAfter[doraIndicatorIndex(s, 0)]).toBe(indicator);
+    // 다음 깡의 표시패도 원래 자리(6)의 그 패를 가리킨다
+    expect(deadAfter[doraIndicatorIndex(s, 1)]).toBe(deadBefore[6]);
+  });
+});
+
+describe("멘젠 — 안깡은 닫힌 손을 깨지 않는다", () => {
+  function riichiValidateWithMeld(meldKind: string): string | null {
+    const game = dealtGame();
+    const s0 = game.engine.state;
+    const player = turnPlayerOf(s0);
+    const hand = s0.zones[`hand:${player}`]!.tileIds as TileId[];
+    const state: GameState = {
+      ...s0,
+      round: {
+        ...s0.round,
+        phase: "turn.act",
+        byPlayer: {
+          ...s0.round.byPlayer,
+          [player]: {
+            ...s0.round.byPlayer[player]!,
+            melds: [{ kind: meldKind, tileIds: hand.slice(0, 4) }],
+          },
+        },
+      },
+    } as never;
+    return game.engine.actions.get("riichi")!.validate(
+      { player, type: "riichi", payload: { tileId: hand[0] } },
+      { state, rules: game.engine.rules },
+    );
+  }
+
+  it("안깡(kan_closed)만 있으면 '닫힌 손' 게이트를 통과한다", () => {
+    // 텐파이·점수 등 다른 조건으로 거부될 수는 있어도,
+    // 멘젠(닫힌 손) 사유로는 막히면 안 된다.
+    expect(riichiValidateWithMeld("kan_closed")).not.toBe(
+      "riichi requires a closed hand",
+    );
+  });
+
+  it("노출 멜드(pon)가 있으면 리치가 닫힌 손 사유로 거부된다", () => {
+    expect(riichiValidateWithMeld("pon")).toBe("riichi requires a closed hand");
   });
 });
 

@@ -13,6 +13,12 @@ import type { WebSocket } from "ws";
 import { RoomManager } from "../src/RoomManager.js";
 import { StatsStore } from "../src/StatsStore.js";
 import { SiteDb } from "../src/SiteDb.js";
+import { createEmptyStats } from "@majak/core/stats/PlayerStats.js";
+
+/** 테스트용 빈 원시 통계 (필드 오버라이드로 시나리오 구성). */
+function emptyRaw(): ReturnType<typeof createEmptyStats> {
+  return createEmptyStats();
+}
 
 class FakeSocket {
   readyState = 1; // OPEN
@@ -124,7 +130,7 @@ async function connectAndRegister(
   sock.clientSend({
     type: "register",
     username,
-    password: "pw1234",
+    password: "pw123456",
     ...(opts.adminCode !== undefined ? { adminCode: opts.adminCode } : {}),
   });
   await sock.waitFor((m) => m.type === "authOk" || m.type === "error");
@@ -181,21 +187,21 @@ describe("인증", () => {
     // 코드 없이 가입 시도 → 거부
     const noCode = new FakeSocket();
     h.rm.handleConnection(noCode.asWs());
-    noCode.clientSend({ type: "register", username: "Nobody", password: "pw1234" });
+    noCode.clientSend({ type: "register", username: "Nobody", password: "pw123456" });
     await noCode.waitFor((m) => m.type === "authOk" || m.type === "error");
     expect(noCode.last("error")?.code).toBe("SIGNUP_CODE_REQUIRED");
 
     // 틀린 코드 → 거부
     const wrong = new FakeSocket();
     h.rm.handleConnection(wrong.asWs());
-    wrong.clientSend({ type: "register", username: "Wrong", password: "pw1234", signupCode: "nope" });
+    wrong.clientSend({ type: "register", username: "Wrong", password: "pw123456", signupCode: "nope" });
     await wrong.waitFor((m) => m.type === "authOk" || m.type === "error");
     expect(wrong.last("error")?.code).toBe("SIGNUP_CODE_REQUIRED");
 
     // 올바른 코드 → 가입 성공
     const ok = new FakeSocket();
     h.rm.handleConnection(ok.asWs());
-    ok.clientSend({ type: "register", username: "Invited", password: "pw1234", signupCode: "letmein" });
+    ok.clientSend({ type: "register", username: "Invited", password: "pw123456", signupCode: "letmein" });
     await ok.waitFor((m) => m.type === "authOk" || m.type === "error");
     expect(ok.last("authOk")?.username).toBe("Invited");
   });
@@ -224,7 +230,7 @@ describe("인증", () => {
     await connectAndRegister(h, "Bob");
     const fail = await connectAndLogin(h, "Bob", "wrong");
     expect(fail.last("error")?.code).toBe("LOGIN_FAILED");
-    const ok = await connectAndLogin(h, "Bob", "pw1234");
+    const ok = await connectAndLogin(h, "Bob", "pw123456");
     expect(ok.last("authOk")?.username).toBe("Bob");
   });
 
@@ -249,7 +255,7 @@ describe("인증", () => {
     const h = await newHarness();
     const sock = new FakeSocket();
     h.rm.handleConnection(sock.asWs());
-    // 존재하지 않는 계정 로그인은 scrypt 없이 즉시 실패 — 레이트리밋만 검증
+    // 존재하지 않는 계정 로그인도 동일한 scrypt 비용을 치른다(타이밍 균일화) — 레이트리밋만 검증
     let limited = false;
     for (let i = 0; i < 20; i++) {
       sock.sent.length = 0;
@@ -276,7 +282,7 @@ describe("세션 만료", () => {
   it("TTL이 지난 세션 토큰은 tokenLogin에서 거부된다", async () => {
     const db = new SiteDb(":memory:", 40); // 40ms TTL
     dbs.push(db);
-    const r = await db.register("Eph", "pw1234");
+    const r = await db.register("Eph", "pw123456");
     const token = r.sessionToken!;
     expect(db.loginByToken(token)?.username).toBe("Eph"); // 갓 발급 → 유효
     await new Promise((res) => setTimeout(res, 60));
@@ -294,7 +300,7 @@ describe("세션 만료", () => {
 
     const first = new FakeSocket();
     rm.handleConnection(first.asWs());
-    first.clientSend({ type: "register", username: "Eph2", password: "pw1234" });
+    first.clientSend({ type: "register", username: "Eph2", password: "pw123456" });
     await first.waitFor((m) => m.type === "authOk");
     const token = first.last("authOk").sessionToken;
 
@@ -350,7 +356,7 @@ describe("방 생성·참가 (코드)", () => {
     const host = await connectAndRegister(h, "Host");
     host.clientSend({ type: "createRoom" });
     const code = host.last("roomCreated").code;
-    const dup = await connectAndLogin(h, "Host", "pw1234");
+    const dup = await connectAndLogin(h, "Host", "pw123456");
     dup.clientSend({ type: "joinRoom", code });
     expect(dup.last("error")?.code).toBe("DUPLICATE_JOIN");
   });
@@ -391,7 +397,8 @@ describe("게임 완주·기록", () => {
       const ranks = over.rankings.map((r: any) => r.rank).sort();
       expect(ranks).toEqual([1, 2, 3, 4]);
       for (const r of over.rankings as any[]) {
-        expect(r.score).toBe(r.rawScore - 30000 + r.uma * 1000 + r.oka * 1000);
+        // 제로섬 기준점은 원점(startScore 25000), 오카 0 (순수 우마).
+        expect(r.score).toBe(r.rawScore - 25000 + r.uma * 1000 + r.oka * 1000);
       }
 
       await sock.waitFor((m) => m.type === "stats");
@@ -596,4 +603,103 @@ describe("관리자 관전", () => {
     },
     60_000,
   );
+});
+
+describe("전체 통계·계정 관리 (32)", () => {
+  it("leaderboard: 비관리자는 닉네임이 지워진 익명 집계만, 관리자는 닉네임 포함 + 게임 수 내림차순 정렬 + 삭제된 계정 유령 통계는 제외", async () => {
+    const h = await newHarness();
+    // 통계 저장소에 사람 통계를 심는다 (게임 완주 없이 직접).
+    // "Ghost"는 계정이 없는(삭제된) 닉네임 — 리더보드에서 걸러져야 한다.
+    await h.store.record([
+      { nickname: "Ann", raw: { ...emptyRaw(), roundsPlayed: 10, wins: 4, games: 2, placementSum: 3, placements: [1, 1, 0, 0] } },
+      { nickname: "Bob", raw: { ...emptyRaw(), roundsPlayed: 6, wins: 1, games: 1, placementSum: 4, placements: [0, 0, 0, 1] } },
+      { nickname: "Ghost", raw: { ...emptyRaw(), roundsPlayed: 99, wins: 50, games: 20, placementSum: 20, placements: [20, 0, 0, 0] } },
+    ]);
+    await connectAndRegister(h, "Bob"); // 실제 계정으로 등록
+    const sock = await connectAndRegister(h, "Ann");
+    sock.clientSend({ type: "leaderboard" });
+    await sock.waitFor((m) => m.type === "leaderboard");
+    const lb = sock.last("leaderboard");
+    // 비관리자: 신원(닉네임)은 지워지고 익명 집계만 온다 (증강 메타용)
+    expect(lb.entries.map((e: any) => e.nickname)).toEqual(["", ""]);
+    // Ghost(계정 없음)는 제외돼 2건, 게임 수 내림차순 정렬 (Ann 2판 > Bob 1판)
+    expect(lb.entries).toHaveLength(2);
+    expect(lb.entries[0].stats.winRate).toBeCloseTo(0.4);
+
+    // 관리자: 닉네임이 그대로 온다
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "leaderboard" });
+    await admin.waitFor((m) => m.type === "leaderboard");
+    expect(admin.last("leaderboard").entries.map((e: any) => e.nickname)).toEqual(["Ann", "Bob"]);
+  });
+
+  it("adminUsers: 관리자만 계정 목록을 받고, 일반 사용자는 FORBIDDEN", async () => {
+    const h = await newHarness();
+    await connectAndRegister(h, "Alice");
+    const pleb = await connectAndRegister(h, "Pleb");
+    pleb.clientSend({ type: "adminUsers" });
+    expect(pleb.last("error")?.code).toBe("FORBIDDEN");
+
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "adminUsers" });
+    await admin.waitFor((m) => m.type === "adminUsers");
+    const list = admin.last("adminUsers");
+    const names = list.users.map((u: any) => u.username);
+    expect(names).toEqual(expect.arrayContaining(["Alice", "Pleb", "Boss"]));
+    expect(list.users.find((u: any) => u.username === "Boss").isAdmin).toBe(true);
+  });
+
+  it("adminDeleteUser: 관리자가 계정을 삭제하면 목록·통계·로그인이 사라진다", async () => {
+    const h = await newHarness();
+    await h.store.record([
+      { nickname: "Victim", raw: { ...emptyRaw(), roundsPlayed: 3, games: 1, placements: [0, 0, 0, 1] } },
+    ]);
+    await connectAndRegister(h, "Victim");
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+
+    admin.clientSend({ type: "adminUsers" });
+    await admin.waitFor((m) => m.type === "adminUsers");
+    const victimId = admin.last("adminUsers").users.find((u: any) => u.username === "Victim").id;
+
+    admin.clientSend({ type: "adminDeleteUser", userId: victimId });
+    // 삭제 후 갱신된 목록·리더보드가 되돌아온다 (통계 삭제 완료 후)
+    await admin.waitFor((m) => m.type === "leaderboard");
+    const after = admin.last("adminUsers");
+    expect(after.users.some((u: any) => u.username === "Victim")).toBe(false);
+    // 누적 통계에서도 제거된다
+    expect(admin.last("leaderboard").entries.some((e: any) => e.nickname === "Victim")).toBe(false);
+    expect(h.store.get("Victim")).toBeNull();
+    // 삭제된 계정으로는 더 이상 로그인할 수 없다
+    const relog = await connectAndLogin(h, "Victim", "pw123456");
+    expect(relog.last("authOk")).toBeUndefined();
+    expect(relog.last("error")).toBeDefined();
+  });
+
+  it("adminDeleteUser: 관리자 본인 계정은 삭제할 수 없다", async () => {
+    const h = await newHarness();
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "adminUsers" });
+    await admin.waitFor((m) => m.type === "adminUsers");
+    const selfId = admin.last("adminUsers").users.find((u: any) => u.username === "Boss").id;
+    admin.clientSend({ type: "adminDeleteUser", userId: selfId });
+    expect(admin.last("error")?.code).toBe("CANNOT_DELETE_SELF");
+  });
+
+  it("replayList: 관리자는 자신이 참가하지 않은 게임 리플레이도 목록에 받는다", async () => {
+    const h = await newHarness();
+    // 사람 1 + 봇 3 게임을 완주시켜 리플레이 1건을 만든다
+    const player = await connectAndRegister(h, "Grinder", { autoRespond: true });
+    player.clientSend({ type: "createRoom" });
+    await player.waitFor((m) => m.type === "roomCreated");
+    for (let i = 0; i < 3; i++) player.clientSend({ type: "addBot" });
+    player.clientSend({ type: "startGame" });
+    await player.waitFor((m) => m.type === "gameOver", 40_000);
+    await player.waitFor((m) => m.type === "stats", 40_000);
+
+    // 관리자는 게임에 참가하지 않았지만 전체 리플레이를 본다
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "replayList" });
+    await admin.waitFor((m) => m.type === "replayList");
+    expect(admin.last("replayList").games.length).toBeGreaterThanOrEqual(1);
+  }, 50_000);
 });

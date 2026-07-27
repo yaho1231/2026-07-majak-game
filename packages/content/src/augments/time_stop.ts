@@ -1,0 +1,140 @@
+/**
+ * 시간 정지 (time_stop, prism).
+ * 2국당 1회, 자신의 턴에 선언하면 그 국에서 자신의 쯔모+버림을 한 번 더 한다
+ * (같은 자리로 턴이 되돌아와 연속 2턴). 시간을 멈춰 한 번 더 움직이는 반칙.
+ *
+ * 구현 (코어 수정 없이 TURN_PASSED 인터셉터로):
+ * - 선언 액션 time_stop_use는 자기 턴(turn.act)에 charge가 남아 있을 때만 제시된다.
+ *   누르면 armed 플래그를 세우고 이번 2국 창(window)을 소진 기록한다(버림은 그대로 진행).
+ * - 자신의 버림이 아무에게도 울리지 않고 지나가면 FlowController가 sys.advanceTurn →
+ *   TURN_PASSED(nextSeat=다음 자리)를 낸다. armed이고 방금 버린 사람이 보유자면
+ *   인터셉터가 nextSeat를 보유자 자리로 되돌린다 → 보유자가 곧바로 다시 쯔모(추가 턴).
+ * - 되돌린 직후 리액션에서 armed을 해제한다(무한 루프 방지). 다른 사람이 울어서
+ *   TURN_PASSED가 보유자 버림이 아니면 armed은 유지돼 다음 자기 버림에 발동된다.
+ *
+ * charge 창: 절대 국 순번 ordinal=(장-1)*n+(국번-1), window=floor(ordinal/2).
+ * 같은 window에서는 한 번만(2국당 1회). 미사용 sentinel과 구분하려 window+1로 저장.
+ */
+
+import {
+  TURN_PASSED,
+  augmentDataSet,
+  defineAugment,
+  playerAtSeat,
+} from "@majak/core";
+import type {
+  ActionDef,
+  AugmentDef,
+  GameState,
+  PlayerId,
+} from "@majak/core";
+import { counterOf, flagOf, viewKey } from "../util.js";
+
+const ID = "time_stop";
+const ACTION = "time_stop_use";
+const armedKey = (h: PlayerId): string => `${ID}:armed:${h}`;
+/** 마지막으로 소진한 window(+1). 0=미사용. */
+const usedWindowKey = (h: PlayerId): string => `${ID}:window:${h}`;
+
+const seatOf = (state: GameState, h: PlayerId): number | undefined =>
+  state.players.find((p) => p.id === h)?.seat;
+
+/** 지금 국의 2국-charge 창 (0부터, 두 국이 하나의 창을 공유) */
+function windowOf(state: GameState): number {
+  const n = state.players.length;
+  const r = state.round;
+  const ordinal = (r.prevalentWind - 1) * n + (r.roundNumber - 1);
+  return Math.floor(ordinal / 2);
+}
+
+/** 이번 창의 charge가 아직 남아 있는가 */
+function chargeAvailable(state: GameState, h: PlayerId): boolean {
+  return counterOf(state, usedWindowKey(h)) !== windowOf(state) + 1;
+}
+
+// 액션은 전원 공용(엔진에 한 번만 등록)이라 특정 보유자를 클로저로 잡지 않는다.
+// 행위자가 보유자인지·자기 턴인지·charge가 남았는지를 validate로 판별한다
+// (single_path_contract의 공용 선언 액션과 동일한 패턴 — 다인 보유 안전).
+const useAction: ActionDef<Record<string, never>> = {
+  type: ACTION,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined || !player.augments.includes(ID)) {
+      return "no time_stop augment";
+    }
+    if (state.round.phase !== "turn.act") return "not in act phase";
+    if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
+      return "not your turn";
+    }
+    if (flagOf(state, armedKey(req.player))) return "already armed this turn";
+    if (!chargeAvailable(state, req.player)) return "no charge this window";
+    return null;
+  },
+  toEvents: (req, { state }) => [
+    augmentDataSet(armedKey(req.player), true),
+    augmentDataSet(usedWindowKey(req.player), windowOf(state) + 1),
+    augmentDataSet(viewKey(req.player, `${ID}:armed`), true),
+  ],
+};
+
+export const timeStop: AugmentDef = defineAugment({
+  id: ID,
+  tier: "prism",
+  category: "disrupt",
+  name: "시간 정지",
+  description:
+    "(2국에 1회) 자기 순에 선언하면 그 국에서 쯔모와 버림을 한 번 더 진행한다(연속 2순).",
+  detail:
+    "(2국에 1회) 자기 순에 선언하고 그 순의 버림이 아무에게도 울리지 않으면, 순서가 넘어가지 않고 곧바로 한 번 더 쯔모하고 버린다. 버림이 울리면 발동이 다음 자기 순으로 미뤄질 뿐 소멸하지는 않는다.",
+  // 봇: 텐파이일 때 선언한다 — 추가 턴(쯔모)이 곧바로 화료 기회 배증으로 이어진다.
+  //     (charge가 없거나 이미 선언했으면 옵션이 제시되지 않아 자동으로 건너뛴다.)
+  bot: {
+    choose({ options, tenpai }) {
+      if (!tenpai) return null;
+      return options.find((o) => o.type === ACTION) ?? null;
+    },
+  },
+  install(ctx) {
+    const { engine, holder } = ctx;
+
+    if (!engine.actions.has(ACTION)) {
+      engine.actions.register(useAction);
+    }
+
+    // 자기 턴에 charge가 있으면 선언 옵션 제시
+    ctx.holderTurnOptions((state) => {
+      if (state.round.phase !== "turn.act") return [];
+      if (playerAtSeat(state, state.round.turnSeat).id !== holder) return [];
+      if (flagOf(state, armedKey(holder))) return []; // 이미 이번 턴 선언함
+      if (!chargeAvailable(state, holder)) return [];
+      return [{ type: ACTION, payload: {} }];
+    });
+
+    // 보유자의 버림이 지나갈 때 다음 자리를 보유자로 되돌린다 (추가 턴)
+    ctx.interceptor(TURN_PASSED, (event, ic) => {
+      const state = ic.state;
+      if (!flagOf(state, armedKey(holder))) return event;
+      if (state.round.lastDiscard?.player !== holder) return event; // 남이 운 경우 유지
+      const seat = seatOf(state, holder);
+      if (seat === undefined) return event;
+      const payload = event.payload as { nextSeat: number };
+      return { type: event.type, payload: { ...payload, nextSeat: seat } };
+    });
+
+    // 되돌림이 실제로 적용됐으면 armed 해제 (리듀서 적용 후 turnSeat=보유자 확인)
+    ctx.reaction(TURN_PASSED, (event, rc) => {
+      void event;
+      const state = rc.state;
+      if (!flagOf(state, armedKey(holder))) return;
+      const seat = seatOf(state, holder);
+      if (
+        seat !== undefined &&
+        state.round.lastDiscard?.player === holder &&
+        state.round.turnSeat === seat
+      ) {
+        rc.emit(augmentDataSet(armedKey(holder), false));
+        rc.emit(augmentDataSet(viewKey(holder, `${ID}:armed`), false));
+      }
+    });
+  },
+});

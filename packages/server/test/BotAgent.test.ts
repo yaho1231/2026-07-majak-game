@@ -79,13 +79,13 @@ describe("BotAgent — 실게임에서 리치·화료가 발생한다", () => {
     "봇이 역을 만들 수 있을 때 후로(펑·치)를 하고, 그 열린 손으로 화료도 한다",
     async () => {
       let callCount = 0;
-      let openWin = 0; // 부로가 있는 손의 화료
+      let openWin = 0; // 후로가 있는 손의 화료
 
       for (const seed of [5, 17, 41, 88, 123]) {
         const agents = ["p0", "p1", "p2", "p3"].map(
           (id, i) => new BotAgent(id, undefined, seed * 100 + i),
         );
-        // 국마다 부로 여부 추적 (플레이어별)
+        // 국마다 후로 여부 추적 (플레이어별)
         const opened = new Set<string>();
         const cfg: Partial<HanchanConfig> = {
           ...DEFAULT_HANCHAN_CONFIG,

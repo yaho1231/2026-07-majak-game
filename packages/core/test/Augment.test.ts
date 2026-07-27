@@ -23,7 +23,6 @@ import { AugmentRegistry } from "../src/augment/AugmentRegistry.js";
 import { defineAugment, installAugment } from "../src/augment/Augment.js";
 import { DraftController, rebuildAugments } from "../src/augment/DraftController.js";
 import { standardAugments } from "../src/augment/standardAugments.js";
-import { SCORE_CHANGED } from "../src/augment/events.js";
 
 function h(spec: string): TileKind[] {
   const out: TileKind[] = [];
@@ -179,6 +178,7 @@ describe("defineAugment", () => {
       defineAugment({
         id: "Bad Id",
         tier: "silver",
+        category: "etc",
         name: "x",
         description: "y",
         install: () => {},
@@ -187,49 +187,39 @@ describe("defineAugment", () => {
   });
 });
 
-describe("AugmentRegistry.rollChoices", () => {
+describe("AugmentRegistry.rollUniform", () => {
   const catalog = new AugmentRegistry();
   catalog.addAll(standardAugments);
-  const even = { silver: 1, gold: 1, prism: 1 };
 
   it("서로 다른 count개를 뽑고, 같은 시드면 같은 결과 (결정성)", () => {
-    const a = catalog.rollChoices(new Prng(5), even, 3).map((d) => d.id);
-    const b = catalog.rollChoices(new Prng(5), even, 3).map((d) => d.id);
+    const a = catalog.rollUniform(new Prng(5), 3).map((d) => d.id);
+    const b = catalog.rollUniform(new Prng(5), 3).map((d) => d.id);
     expect(a).toEqual(b);
     expect(new Set(a).size).toBe(3);
   });
 
-  it("가중치 0인 등급은 절대 나오지 않는다", () => {
+  it("등급과 무관하게 카탈로그 전체에서 뽑는다 (52차 등급 폐기)", () => {
+    const seen = new Set<string>();
     for (let seed = 0; seed < 50; seed++) {
-      const picks = catalog.rollChoices(
-        new Prng(seed),
-        { silver: 1, gold: 1, prism: 0 },
-        3,
-      );
-      expect(picks.every((d) => d.tier !== "prism")).toBe(true);
+      for (const d of catalog.rollUniform(new Prng(seed), 3)) seen.add(d.tier);
     }
+    // 표준 카탈로그에는 gold·prism이 섞여 있고, 등급으로 걸러지지 않는다
+    expect(seen.size).toBeGreaterThan(1);
   });
 
   it("exclude된 증강은 제외된다", () => {
-    const picks = catalog.rollChoices(new Prng(9), even, 5, new Set(["cheap_riichi"]));
-    expect(picks.some((d) => d.id === "cheap_riichi")).toBe(false);
+    const picks = catalog.rollUniform(new Prng(9), 5, new Set(["iron_wall"]));
+    expect(picks.some((d) => d.id === "iron_wall")).toBe(false);
   });
 
   it("카탈로그가 부족하면 있는 만큼만 반환", () => {
     const small = new AugmentRegistry();
     small.add(standardAugments[0] as (typeof standardAugments)[number]);
-    expect(small.rollChoices(new Prng(1), even, 3)).toHaveLength(1);
+    expect(small.rollUniform(new Prng(1), 3)).toHaveLength(1);
   });
 });
 
 describe("증강 효과 — Rule Modifier", () => {
-  it("cheap_riichi: 보유자만 리치 비용 500, 나머지는 1000", () => {
-    const game = createStandardGame({ seed: 1 });
-    installAugment(game.engine, standardAugments[0] as never, "p0");
-    expect(game.engine.rules.resolve<number>("riichi.cost", { playerId: "p0" })).toBe(500);
-    expect(game.engine.rules.resolve<number>("riichi.cost", { playerId: "p1" })).toBe(1000);
-  });
-
   it("iron_wall: 후리텐이어도 보유자는 론 가능", () => {
     const state = craft({
       hands: {
@@ -250,10 +240,10 @@ describe("증강 효과 — Rule Modifier", () => {
     expect(winValidate(game, "p0")).toBeNull();
   });
 
-  it("open_riichi: 부로한 손으로도 리치 검증을 통과", () => {
+  it("open_riichi: 후로한 손으로도 리치 검증을 통과", () => {
     const state = craft({
       hands: { p0: "234m345s678s9m9m1s", p1: "*", p2: "*", p3: "*" },
-      melds: { p0: [{ kind: "pon", spec: "222p" }] }, // 부로 1개
+      melds: { p0: [{ kind: "pon", spec: "222p" }] }, // 후로 1개
       phase: "turn.act",
       turnSeat: 0,
       drawnLastFor: "p0",
@@ -266,7 +256,7 @@ describe("증강 효과 — Rule Modifier", () => {
     expect(def?.validate(req, ctx)).toBe("riichi requires a closed hand");
 
     installAugment(game.engine, standardAugments.find((a) => a.id === "open_riichi") as never, "p0");
-    // 부로 제약은 통과 (다른 조건은 손패 구성에 따름 — 최소한 closed 사유는 사라진다)
+    // 후로 제약은 통과 (다른 조건은 손패 구성에 따름 — 최소한 closed 사유는 사라진다)
     expect(def?.validate({ ...req }, { state: game.engine.state, rules: game.engine.rules })).not.toBe(
       "riichi requires a closed hand",
     );
@@ -290,86 +280,6 @@ describe("증강 효과 — Rule Modifier", () => {
 
     installAugment(game.engine, standardAugments.find((a) => a.id === "yakuless_win") as never, "p0");
     expect(winValidate(game, "p0")).toBeNull();
-  });
-});
-
-describe("증강 효과 — Effect Reaction / Interceptor", () => {
-  it("tsumo_bonus: 쯔모 화료 시 ScoreChanged +1000이 방출되고 점수에 반영", () => {
-    // p0(친) 멘젠쯔모 화료: 234m 345p 456s 678s 22s (14장 완성형, 마지막 2s를 쯔모로 간주)
-    const state = craft({
-      hands: { p0: "234m345p456s678s22s", p1: "*", p2: "*", p3: "*" },
-      phase: "turn.act",
-      turnSeat: 0,
-      drawnLastFor: "p0",
-    });
-    const game = createStandardGameFromState(state);
-    installAugment(game.engine, standardAugments.find((a) => a.id === "tsumo_bonus") as never, "p0");
-
-    const flow = new FlowController(game.engine);
-    let status = flow.begin();
-    if (status.kind !== "awaiting") throw new Error("expected awaiting");
-    // 6s 쯔모 화료 (win 옵션 존재)
-    const winOption = status.prompts[0]?.options.find((o) => o.type === "win");
-    expect(winOption).toBeDefined();
-    const before = game.engine.state.players[0]?.score ?? 0;
-    status = flow.submit("p0", winOption as { type: string; payload: unknown });
-
-    expect(status).toEqual({ kind: "roundOver", outcome: "win" });
-    const bonus = game.engine.eventLog.find(
-      (e) => e.type === SCORE_CHANGED && (e.payload as { reason?: string }).reason === "tsumo_bonus",
-    );
-    expect(bonus).toBeDefined();
-    // 화료 이득 + 보너스 1000이 모두 반영 (증가폭 ≥ 1000)
-    expect((game.engine.state.players[0]?.score ?? 0) - before).toBeGreaterThanOrEqual(1000);
-  });
-
-  it("vengeance: 방총 실점이 절반, 화료자 이득도 같은 만큼 감소 (점수 보존)", () => {
-    // p0가 p1의 5s 단기 론(탕야오)에 방총. p0가 vengeance 보유
-    const state = craft({
-      hands: {
-        p0: "129m258p369s124z5s", // 5s 버릴 친
-        p1: "234m345p345s678s5s", // 5s 단기 탕야오
-        p2: "147m147p11z22z33z4z",
-        p3: "369m369p369s12z3z",
-      },
-      phase: "turn.act",
-      turnSeat: 0,
-      drawnLastFor: "p0",
-    });
-    const baseline = createStandardGameFromState(state);
-    const withAug = createStandardGameFromState(structuredClone(state));
-    installAugment(withAug.engine, standardAugments.find((a) => a.id === "vengeance") as never, "p0");
-
-    const runRon = (game: ReturnType<typeof createStandardGameFromState>) => {
-      const flow = new FlowController(game.engine);
-      let status = flow.begin();
-      if (status.kind !== "awaiting") throw new Error("expected awaiting");
-      const fiveSou = game.engine.state.zones[handZone("p0")]?.tileIds.find(
-        (t) => kindKey(game.engine.state.tiles[t]?.kind as TileKind) === "sou5",
-      );
-      status = flow.submit("p0", { type: "discard", payload: { tileId: fiveSou } });
-      if (status.kind !== "awaiting") throw new Error("expected reaction");
-      for (const prompt of status.prompts) {
-        if (prompt.player === "p1") continue;
-        status = flow.submit(prompt.player, { type: "pass", payload: {} });
-      }
-      status = flow.submit("p1", { type: "win", payload: {} });
-      return game;
-    };
-
-    runRon(baseline);
-    runRon(withAug);
-
-    const baseP0 = baseline.engine.state.players[0]?.score ?? 0;
-    const augP0 = withAug.engine.state.players[0]?.score ?? 0;
-    const baseLoss = 25000 - baseP0;
-    const augLoss = 25000 - augP0;
-    expect(augLoss).toBeLessThan(baseLoss); // 실점 감소
-    expect(augLoss).toBeGreaterThan(0);
-    // 점수 보존: 합계 100000 유지
-    const total = withAug.engine.state.players.reduce((s, p) => s + p.score, 0) +
-      withAug.engine.state.round.riichiPot;
-    expect(total).toBe(100000);
   });
 });
 
@@ -481,19 +391,28 @@ describe("증강 효과 — 새 프롬프트 액션 (discard_recall)", () => {
 });
 
 describe("DraftController — 개인별 3지선다", () => {
-  it("roll은 한 등급에서 결정적으로 제시하고(전원 동일 등급), pick이 상태·효과를 반영한다", () => {
-    const game = createStandardGame({ seed: 77 });
+  /** 등급 통일을 검증하려면 등급당 3개 이상인 카탈로그가 필요하다 (표준 4종으론 부족) */
+  const fillers = (["silver", "gold", "prism"] as const).flatMap((tier) =>
+    [0, 1, 2, 3].map((i) =>
+      defineAugment({
+        id: `filler_${tier}_${i}`,
+        tier,
+        category: "etc",
+        name: `f${i}`,
+        description: "-",
+        install: () => {},
+      }),
+    ),
+  );
+
+  it("roll은 카탈로그 전체에서 결정적으로 제시하고, pick이 상태·효과를 반영한다", () => {
+    const game = createStandardGame({ seed: 77, extraAugments: fillers });
     const draft = new DraftController(game.engine, game.augments);
 
     const choices = draft.roll("gameStart", "p0");
-    // 표준 카탈로그는 등급당 2~3개 — 뽑힌 등급 안에서 최대 3개
-    expect(choices.length).toBeGreaterThan(0);
-    expect(choices.length).toBeLessThanOrEqual(3);
-    // 등급 통일: 이 증강턴 제시는 모두 같은 등급이고, tierForStage와 일치
-    const tier = draft.tierForStage("gameStart");
-    expect(choices.every((d) => d.tier === tier)).toBe(true);
-    // 모든 플레이어가 같은 등급을 받는다
-    expect(draft.roll("gameStart", "p1").every((d) => d.tier === tier)).toBe(true);
+    expect(choices).toHaveLength(3);
+    // 52차 등급 폐기: 등급 통일 없이 카탈로그 전체 균등 — 플레이어마다 다른 3장
+    expect(new Set(choices.map((d) => d.id)).size).toBe(3);
     expect(draft.roll("gameStart", "p0").map((d) => d.id)).toEqual(
       choices.map((d) => d.id),
     ); // 결정적
@@ -501,6 +420,21 @@ describe("DraftController — 개인별 3지선다", () => {
     const pickId = choices[0]?.id as string;
     draft.pick("gameStart", "p0", pickId);
     expect(game.engine.state.players[0]?.augments).toEqual([pickId]);
+  });
+
+  it("뽑힌 등급이 고갈돼도 다른 등급에서 보충한다 — 빈 드래프트는 없다", () => {
+    // 표준 카탈로그는 gold 1 / prism 3 / silver 0 — 어느 등급이 뽑혀도 3개를 못 채운다
+    const game = createStandardGame({ seed: 77 });
+    const draft = new DraftController(game.engine, game.augments);
+    for (const player of ["p0", "p1", "p2", "p3"] as PlayerId[]) {
+      const choices = draft.roll("gameStart", player);
+      expect(choices.length).toBeGreaterThan(0);
+      expect(new Set(choices.map((d) => d.id)).size).toBe(choices.length);
+    }
+    // 보충 경로도 결정적이어야 한다 (리플레이 안전)
+    expect(draft.roll("gameStart", "p0").map((d) => d.id)).toEqual(
+      draft.roll("gameStart", "p0").map((d) => d.id),
+    );
   });
 
   it("제시되지 않은 증강 픽은 거부된다", () => {
@@ -513,21 +447,192 @@ describe("DraftController — 개인별 3지선다", () => {
     }
   });
 
-  it("픽 후 실제 효과가 작동한다 (cheap_riichi를 강제로 픽)", () => {
+  it("픽 후 실제 효과가 작동한다 (iron_wall을 강제로 픽)", () => {
     const game = createStandardGame({ seed: 5 });
-    // 시드를 바꿔가며 cheap_riichi가 p0에게 제시되는 게임을 찾는다
+    // 시드를 바꿔가며 iron_wall이 p0에게 제시되는 게임을 찾는다
     let found = game;
     let seed = 5;
     while (!new DraftController(found.engine, found.augments)
       .roll("gameStart", "p0")
-      .some((d) => d.id === "cheap_riichi")) {
+      .some((d) => d.id === "iron_wall")) {
       seed += 1;
       found = createStandardGame({ seed });
-      if (seed > 200) throw new Error("cheap_riichi never offered");
+      if (seed > 200) throw new Error("iron_wall never offered");
     }
     const draft = new DraftController(found.engine, found.augments);
-    draft.pick("gameStart", "p0", "cheap_riichi");
-    expect(found.engine.rules.resolve<number>("riichi.cost", { playerId: "p0" })).toBe(500);
+    draft.pick("gameStart", "p0", "iron_wall");
+    expect(found.engine.rules.resolve<boolean>("win.furiten.enabled", { playerId: "p0" })).toBe(false);
+  });
+});
+
+describe("DraftController — 상호 배제(conflicts)", () => {
+  // A는 B를 conflicts로 선언한다. B는 아무것도 선언하지 않는다 (대칭 검증용).
+  const augA = defineAugment({
+    id: "conflict_a",
+    tier: "prism",
+    category: "etc",
+    name: "A",
+    description: "-",
+    conflicts: ["conflict_b"],
+    install: () => {},
+  });
+  const augB = defineAugment({
+    id: "conflict_b",
+    tier: "prism",
+    category: "etc",
+    name: "B",
+    description: "-",
+    install: () => {},
+  });
+  const augC = defineAugment({
+    id: "conflict_c",
+    tier: "prism",
+    category: "etc",
+    name: "C",
+    description: "-",
+    install: () => {},
+  });
+
+  function setup(): { game: ReturnType<typeof createStandardGame>; draft: DraftController } {
+    const game = createStandardGame({ seed: 3 });
+    const catalog = new AugmentRegistry();
+    catalog.addAll([augA, augB, augC]); // 정확히 3종 → choices=3이면 배제 없인 셋 다 제시
+    return { game, draft: new DraftController(game.engine, catalog) };
+  }
+
+  function give(game: ReturnType<typeof createStandardGame>, player: PlayerId, id: string): void {
+    const r = game.engine.submit({ player, type: "draftPick", payload: { augmentId: id } });
+    expect(r.ok).toBe(true);
+  }
+
+  it("A를 보유하면 conflicts인 B가 제시되지 않는다 (보유분 A도 제외)", () => {
+    const { game, draft } = setup();
+    give(game, "p0", "conflict_a");
+    const ids = draft.roll("gameStart", "p0").map((d) => d.id);
+    expect(ids).not.toContain("conflict_b");
+    expect(ids).not.toContain("conflict_a");
+    expect(ids).toContain("conflict_c");
+  });
+
+  it("역방향도 대칭으로 막힌다 — B를 보유하면 (B가 선언 안 해도) A가 제시되지 않는다", () => {
+    const { game, draft } = setup();
+    give(game, "p1", "conflict_b");
+    const ids = draft.roll("gameStart", "p1").map((d) => d.id);
+    expect(ids).not.toContain("conflict_a");
+    expect(ids).toContain("conflict_c");
+  });
+
+  it("무관한 플레이어에겐 여전히 전부 제시된다", () => {
+    const { game, draft } = setup();
+    give(game, "p0", "conflict_a");
+    const ids = draft.roll("gameStart", "p2").map((d) => d.id);
+    expect(new Set(ids)).toEqual(new Set(["conflict_a", "conflict_b", "conflict_c"]));
+  });
+});
+
+
+describe("DraftController — 다양성 (좌석별 후보 칸 · 중복 금지)", () => {
+  /** 좌석 칸(4 × 12) + 보충 여유를 감당할 만큼 큰 카탈로그 */
+  const bigCatalog = Array.from({ length: 120 }, (_, i) =>
+    defineAugment({
+      id: `div_${i}`,
+      tier: "prism",
+      category: "etc",
+      name: `d${i}`,
+      description: "-",
+      install: () => {},
+    }),
+  );
+
+  function bigGame(seed: number): ReturnType<typeof createStandardGame> {
+    return createStandardGame({ seed, extraAugments: bigCatalog });
+  }
+
+  const PLAYERS: PlayerId[] = ["p0", "p1", "p2", "p3"];
+
+  it("같은 스테이지에서 네 명의 제시가 서로 하나도 겹치지 않는다", () => {
+    for (const seed of [1, 7, 42, 99, 2026]) {
+      const game = bigGame(seed);
+      const draft = new DraftController(game.engine, game.augments);
+      const all: string[] = [];
+      for (const player of PLAYERS) {
+        const ids = draft.roll("gameStart", player).map((d) => d.id);
+        expect(ids).toHaveLength(3);
+        all.push(...ids);
+      }
+      // 12장 전부 서로 다르다 = 좌석 간 겹침 0
+      expect(new Set(all).size).toBe(all.length);
+    }
+  });
+
+  it("두 번째 드래프트도 좌석 간 겹치지 않고, 이미 보유한 증강은 아무에게도 다시 안 나온다", () => {
+    const game = bigGame(7);
+    const draft = new DraftController(game.engine, game.augments);
+    // 1차 드래프트: 전원 첫 번째 후보를 픽
+    const picked: string[] = [];
+    for (const player of PLAYERS) {
+      const first = draft.roll("gameStart", player)[0]?.id as string;
+      draft.pick("gameStart", player, first);
+      picked.push(first);
+    }
+
+    const all: string[] = [];
+    for (const player of PLAYERS) {
+      const ids = draft.roll("southEntry", player).map((d) => d.id);
+      expect(ids).toHaveLength(3);
+      // 남이 가진 것도, 내가 가진 것도 다시 나오지 않는다
+      for (const id of ids) expect(picked).not.toContain(id);
+      all.push(...ids);
+    }
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("스테이지 도중 남이 픽해도 내 후보는 흔들리지 않는다 (pick 검증의 전제)", () => {
+    const game = bigGame(42);
+    const draft = new DraftController(game.engine, game.augments);
+    const before = draft.roll("gameStart", "p3").map((d) => d.id);
+
+    // p0·p1·p2가 먼저 픽한 뒤에도 p3에게 제시되는 3장은 그대로여야 한다.
+    // (흔들리면 pick의 "제시된 것인가" 검증이 깨져 정상 픽이 거부된다)
+    for (const player of ["p0", "p1", "p2"] as PlayerId[]) {
+      draft.pick("gameStart", player, draft.roll("gameStart", player)[0]?.id as string);
+    }
+    expect(draft.roll("gameStart", "p3").map((d) => d.id)).toEqual(before);
+    // 실제로 픽도 통과한다
+    expect(() => draft.pick("gameStart", "p3", before[0] as string)).not.toThrow();
+  });
+
+  it("결정적 — 같은 시드면 몇 번 호출해도 같은 결과", () => {
+    const a = bigGame(2026);
+    const b = bigGame(2026);
+    const da = new DraftController(a.engine, a.augments);
+    const db = new DraftController(b.engine, b.augments);
+    for (const player of PLAYERS) {
+      const ids = da.roll("gameStart", player).map((d) => d.id);
+      expect(da.roll("gameStart", player).map((d) => d.id)).toEqual(ids);
+      expect(db.roll("gameStart", player).map((d) => d.id)).toEqual(ids);
+    }
+  });
+
+  it("시드가 다르면 칸 경계도 달라진다 — 같은 좌석이 늘 같은 후보를 받지 않는다", () => {
+    const s1 = new DraftController(bigGame(1).engine, bigGame(1).augments)
+      .roll("gameStart", "p0")
+      .map((d) => d.id);
+    const s2 = new DraftController(bigGame(2).engine, bigGame(2).augments)
+      .roll("gameStart", "p0")
+      .map((d) => d.id);
+    expect(s1).not.toEqual(s2);
+  });
+
+  it("카탈로그가 작으면 기존 전역 추첨으로 돌아간다 — 빈 드래프트는 없다", () => {
+    // 표준 4종만: 좌석 칸을 못 나눈다 → 겹침은 허용하되 반드시 뽑히긴 한다
+    const game = createStandardGame({ seed: 77 });
+    const draft = new DraftController(game.engine, game.augments);
+    for (const player of PLAYERS) {
+      const choices = draft.roll("gameStart", player);
+      expect(choices.length).toBeGreaterThan(0);
+      expect(new Set(choices.map((d) => d.id)).size).toBe(choices.length);
+    }
   });
 });
 

@@ -6,6 +6,7 @@
 import {
   DEAD_WALL,
   WALL,
+  calculateScore,
   createInitialGameState,
   createZone,
   discardsZone,
@@ -19,7 +20,31 @@ import type {
   PlayerId,
   TileId,
   TileKind,
+  WinInfo,
 } from "@majak/core";
+
+/**
+ * 확정 보상 "+N판"이 실제로 얹어 주는 뱅크 점수 —
+ * `src/util.ts`의 winPointsWithExtraHan과 같은 계산이다.
+ * (2026-07-26: 증강 확정 보상 단위를 점수 → 판수로 통일하면서 추가)
+ */
+export function hanBonusPoints(
+  state: GameState,
+  winner: PlayerId,
+  info: WinInfo,
+  extraHan: number,
+): number {
+  const isDealer =
+    state.players.find((p) => p.seat === state.round.dealerSeat)?.id === winner;
+  const boosted = calculateScore({
+    han: info.han + extraHan,
+    fu: info.fu,
+    yakumanCount: info.yakumanCount,
+    isDealer,
+    winType: info.winType,
+  }).total;
+  return Math.max(0, boosted - info.points);
+}
 
 /** "234m55z" 표기 → TileKind[] (z: 1~4=풍, 5~7=삼원) */
 export function h(spec: string): TileKind[] {

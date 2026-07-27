@@ -1,17 +1,21 @@
 /**
  * 승부수 (last_stand, gold).
- * 이번 국 1회, 패산 마지막 10장에서 자기 턴에 리치를 취소할 수 있다.
+ * 이번 국 1회, 리치 중이라면 자기 턴에 **언제든** 리치를 취소할 수 있다.
  * 취소하면 리치봉(공탁 낸 점수)을 돌려받는다. 매 국 시작 시 사용 횟수가 초기화된다.
+ *
+ * 설계: docs/16_AUGMENT_REDESIGN.md §1b D (52차 버프)
+ * 이전엔 "패산 10장 이하 + 리치 중"이라는 이중 조건이라 대부분의 국에 아무 일도
+ * 일어나지 않았다. 패산 조건을 삭제해 리치를 건 순간부터 언제든 물러설 수 있게 했다 —
+ * 억제는 "국당 1회"라는 횟수뿐이다.
  *
  * 구현:
  * - 커스텀 이벤트 RiichiCanceled + 리듀서(리치 해제·리치봉 환급)를 게임당 1회 등록.
- * - 액션 cancel_riichi(자기 턴·리치 중·패산≤10·미사용) → RiichiCanceled + 사용 플래그.
+ * - 액션 cancel_riichi(자기 턴·리치 중·미사용) → RiichiCanceled + 사용 플래그.
  * - holderTurnOptions로 취소 선택지를 노출, ROUND_STARTED에서 사용 플래그 초기화.
  */
 
 import {
   ROUND_STARTED,
-  WALL,
   augmentDataSet,
   defineAugment,
   playerAtSeat,
@@ -42,9 +46,6 @@ const cancelRiichiAction: ActionDef<Record<string, never>> = {
       return "not your turn";
     }
     if (state.round.byPlayer[req.player]?.riichi == null) return "not in riichi";
-    if ((state.zones[WALL]?.tileIds.length ?? 0) > 10) {
-      return "wall not in last 10";
-    }
     return null;
   },
   toEvents: (req, { state, rules }) => {
@@ -65,9 +66,12 @@ const cancelRiichiAction: ActionDef<Record<string, never>> = {
 export const lastStand: AugmentDef = defineAugment({
   id: "last_stand",
   tier: "gold",
+  category: "defense",
   name: "승부수",
   description:
-    "이번 국에 한 번, 패산이 10장 이하로 남은 자기 턴에 자신의 리치를 취소할 수 있다. 취소하면 낸 리치봉을 돌려받고 자유롭게 버릴 수 있다. 매 국 시작 시 사용 횟수가 초기화된다.",
+    "(매 국 1회) 리치 중이라면 자기 순에 언제든 자신의 리치를 취소할 수 있다. 취소하면 냈던 리치봉을 돌려받고 다시 자유롭게 버릴 수 있다.",
+  detail:
+    "(매 국 1회) 리치를 건 뒤 아무 때나, 자기 순이면 자신의 리치를 취소한다. 냈던 리치봉을 돌려받고 리치 후리텐도 풀려 다시 자유롭게 버릴 수 있다. 패산이 얼마나 남았든 상관없으며, 사용 횟수는 매 국 시작 시 초기화된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -110,4 +114,6 @@ export const lastStand: AugmentDef = defineAugment({
         : [],
     );
   },
+  // 봇 정책 없음 — 리치 취소는 순전히 폴드(방총 회피) 수단인데, 봇은 위험을 읽어
+  // 접지 않는다. 확정 가치인 리치를 언제 물릴지는 단순 규칙으로 판단할 수 없다.
 });

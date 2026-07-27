@@ -55,7 +55,8 @@ describe("이어하기 (resume) — 리플레이 재구성", () => {
         expect(rankings).toHaveLength(4);
         expect([...rankings.map((r) => r.rank)].sort()).toEqual([1, 2, 3, 4]);
         for (const r of rankings) {
-          expect(r.score).toBe(r.rawScore - 30000 + r.uma * 1000 + r.oka * 1000);
+          // 제로섬 기준점은 원점(startScore 25000), 오카 0 (순수 우마).
+          expect(r.score).toBe(r.rawScore - 25000 + r.uma * 1000 + r.oka * 1000);
         }
 
         // (2) 재개 무결성 — 과거(partial) + 새 이벤트를 합쳐 재구성하면

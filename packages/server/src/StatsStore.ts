@@ -73,6 +73,14 @@ export class StatsStore {
     await this.save();
   }
 
+  /** 닉네임의 누적 통계를 삭제하고 저장한다 (계정 삭제 시 호출). */
+  async remove(nickname: string): Promise<void> {
+    if (!this.loaded) await this.load();
+    if (this.data.players[nickname] === undefined) return;
+    delete this.data.players[nickname];
+    await this.save();
+  }
+
   /** 현재 상태를 원자적으로(임시 파일 → rename) 파일에 쓴다. */
   private save(): Promise<void> {
     const snapshot = JSON.stringify(this.data, null, 2);

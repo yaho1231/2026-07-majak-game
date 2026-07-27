@@ -1,0 +1,225 @@
+/**
+ * 파혼 (meld_dissolve, prism) — "이미 맺은 후로를 없던 일로 되돌린다".
+ *
+ * 국당 1회, 자기 턴에 자신의 후로(치·펑) 하나를 해체해 손으로 되돌린다.
+ * "한 번 운 패는 못 무른다"는 상식을 정면으로 부순다 — 성급하게 펑·치한 손을
+ * 되감아 다시 멘젠으로 세운다.
+ *
+ * 부수는 상식: 후로는 되돌릴 수 없는 확정 — 파혼은 그 계약을 파기한다.
+ *
+ * 도파민 순간: 바닥에 깔려 있던 후로 세 장이 흩어진다. 두 장이 손으로 돌아오고
+ * 남이 버렸던 한 장은 그 사람의 무덤(버림패)으로 되돌아간다. 후로가 하나뿐이었다면
+ * 그 순간 손은 다시 멘젠 — 리치가 열린다.
+ *
+ * 타일 정합(설계의 핵심):
+ * - 후로의 3장 = 손에서 낸 2장 + 남의 버림에서 가져온 1장(calledTileId).
+ * - 손에서 낸 2장(tileIds − calledTileId) → 보유자의 손패로 복귀(+2).
+ * - 가져온 1장(calledTileId) → 원래 버린 사람(calledFrom)의 버림패 더미로 복귀.
+ * - 후로는 meldsZone과 round.byPlayer[holder].melds 양쪽에서 제거된다.
+ * - **패산 보충(핵심 수정 2026-07-25)**: 후로 3장 중 가져온 1장이 강으로 나가므로,
+ *   해체하면 보유자의 순 손패가 자기 턴 기준 14→13으로 한 장 모자라 버림을 못 한다.
+ *   그래서 해체 직후 **패산 앞 1장을 보충 쯔모**(lastDrawnTile로 세팅)해 14장을 회복한다.
+ *   결정적(난수 미사용)이라 리플레이 안전. 패산이 비면 발동을 막는다(validate).
+ * - 순 결과: 손패 복귀 +2, 후로 소멸, 패산에서 +1 보충. 멘젠 여부는 melds에서 파생되므로
+ *   마지막 후로가 사라지면 멘젠이 자연 복구된다. 강으로 나간 1장 + 패산에서 온 1장이
+ *   상쇄돼 게임 전체 타일 수는 불변이다.
+ * - 깡(kan_*)은 대상 외 — 깡 정합(가깡·안깡·도라 표시)은 이 증강의 범위를 벗어난다.
+ *
+ * 구현: zones와 byPlayer.melds를 동시에 재구성해야 하므로 augmentDataSet만으로는
+ * 안 되고 커스텀 이벤트 + 리듀서를 쓴다(CALL_MADE를 역으로 되감는다). 결정적이라
+ * 리플레이 안전(prng 불필요). 리미트는 국당 1회(roundKey 스코프), 페널티 없음.
+ * 해체 사실은 전원에게 공개된다 — 상대는 후리텐·안전패 판정을 다시 해야 한다
+ * (되돌아온 손패로 대기가 바뀌고, 무덤으로 돌아간 패가 다시 위험패가 될 수 있다).
+ *
+ * 테스트 하네스 주의: craft의 melds는 calledTileId/calledFrom를 채우지 않는다.
+ * 그래서 toEvents는 calledTileId가 없으면 tileIds의 마지막 장을 가져온 패로 보고,
+ * calledFrom이 없으면 보유자가 아닌 첫 상대의 강으로 되돌린다(정합만 맞으면 무해).
+ * 실제 게임의 후로는 CALL_MADE가 둘 다 채우므로 이 폴백은 테스트 편의일 뿐이다.
+ */
+
+import {
+  WALL,
+  augmentDataSet,
+  defineAugment,
+  discardsZone,
+  handZone,
+  kindKey,
+  kindOf,
+  meldsZone,
+  moveTiles,
+  playerAtSeat,
+} from "@majak/core";
+import type {
+  ActionDef,
+  AugmentDef,
+  GameState,
+  Meld,
+  PlayerId,
+  TileId,
+} from "@majak/core";
+import { flagOf, roundKey, viewKey } from "../util.js";
+
+const ID = "meld_dissolve";
+const ACTION = "dissolve_meld";
+const EVENT = "MeldDissolved";
+
+/** 국당 1회 사용 플래그 (roundKey 스코프) */
+const usedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:used:${roundKey(state)}:${h}`;
+
+/** 치·펑(후로 3장)만 해체 대상 — 깡은 제외 */
+function isDissolvable(meld: Meld | undefined): boolean {
+  if (meld === undefined) return false;
+  return (meld.kind === "pon" || meld.kind === "chi") && meld.tileIds.length === 3;
+}
+
+interface MeldDissolvePayload {
+  holder: PlayerId;
+  meldIndex: number;
+  /** 손으로 되돌리는 2장 (tileIds − calledTileId) */
+  handContributed: TileId[];
+  /** 원래 버림에서 가져온 1장 → 버린 사람의 강으로 복귀 */
+  calledTileId: TileId;
+  /** calledTileId를 되돌릴 대상(원 버린 사람) */
+  calledFrom: PlayerId;
+}
+
+/** 후로에서 '가져온 패'와 '손에서 낸 2장'을 해석한다(폴백 포함) */
+function resolveMeld(
+  state: GameState,
+  holder: PlayerId,
+  meld: Meld,
+): { handContributed: TileId[]; calledTileId: TileId; calledFrom: PlayerId } {
+  const calledTileId =
+    meld.calledTileId ?? (meld.tileIds[meld.tileIds.length - 1] as TileId);
+  const handContributed = meld.tileIds.filter((id) => id !== calledTileId);
+  const calledFrom =
+    meld.calledFrom ??
+    (state.players.find((p) => p.id !== holder)?.id as PlayerId);
+  return { handContributed, calledTileId, calledFrom };
+}
+
+const dissolveAction: ActionDef<{ meldIndex: number }> = {
+  type: ACTION,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined) return "unknown player";
+    if (!player.augments.includes(ID)) return "no meld_dissolve augment";
+    if (state.round.phase !== "turn.act") return "not in act phase";
+    if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
+      return "not your turn";
+    }
+    if (flagOf(state, usedKey(state, req.player))) return "already used this round";
+    const melds = state.round.byPlayer[req.player]?.melds ?? [];
+    const meld = melds[req.payload.meldIndex];
+    if (!isDissolvable(meld)) return "no dissolvable pon/chi meld at that index";
+    // 해체로 손패가 한 장 비므로 패산에서 보충한다 — 패산이 비면 발동 불가
+    if ((state.zones[WALL]?.tileIds.length ?? 0) === 0) {
+      return "wall empty, cannot dissolve";
+    }
+    return null;
+  },
+  toEvents: (req, { state }) => {
+    const meld = state.round.byPlayer[req.player]?.melds[
+      req.payload.meldIndex
+    ] as Meld;
+    const { handContributed, calledTileId, calledFrom } = resolveMeld(
+      state,
+      req.player,
+      meld,
+    );
+    return [
+      {
+        type: EVENT,
+        payload: {
+          holder: req.player,
+          meldIndex: req.payload.meldIndex,
+          handContributed,
+          calledTileId,
+          calledFrom,
+        } satisfies MeldDissolvePayload,
+      },
+    ];
+  },
+};
+
+export const meldDissolve: AugmentDef = defineAugment({
+  id: ID,
+  tier: "prism",
+  category: "call",
+  name: "파혼",
+  description:
+    "(매 국 1회) 자기 순에 자신의 후로(치·펑) 하나를 해체해 손으로 되돌린다. 유일한 후로였다면 멘젠이 복구되어 다시 리치할 수 있다.",
+  detail:
+    "(매 국 1회) 자기 순에 자신의 치·펑 하나를 골라 해체한다. 손에서 냈던 2장은 손패로 돌아오고 남에게서 가져왔던 1장은 그 사람의 버림패 더미로 되돌아가며, 부족한 한 장은 패산에서 보충되어 손패 장수가 정확히 맞는다. 후로가 하나뿐이었다면 그 순간 손이 다시 멘젠이 되어 리치를 걸 수 있다. 해체는 전원에게 공개된다. 깡은 대상이 아니고 패산이 비면 발동할 수 없다.",
+  install(ctx) {
+    const { engine, holder } = ctx;
+
+    if (!engine.actions.has(ACTION)) {
+      engine.actions.register(dissolveAction);
+      engine.reducers.register(EVENT, (state, event) => {
+        const p = event.payload as MeldDissolvePayload;
+        // ① 손에서 냈던 2장을 손패로 복귀
+        let zones = moveTiles(
+          state.zones,
+          meldsZone(p.holder),
+          handZone(p.holder),
+          p.handContributed,
+        );
+        // ② 가져온 1장을 원래 버린 사람의 강(버림패)으로 복귀
+        zones = moveTiles(zones, meldsZone(p.holder), discardsZone(p.calledFrom), [
+          p.calledTileId,
+        ]);
+        // ③ byPlayer[holder].melds에서 해당 후로 제거 (멘젠은 melds에서 파생 → 자연 복구)
+        const byPlayer = Object.fromEntries(
+          Object.entries(state.round.byPlayer).map(([id, rs]) => [
+            id,
+            id === p.holder
+              ? { ...rs, melds: rs.melds.filter((_, i) => i !== p.meldIndex) }
+              : rs,
+          ]),
+        );
+        // ④ 멘쯔 해체로 순 손패가 한 장 비어 버림을 못 하므로 패산 앞 1장을 보충한다.
+        //    (해체한 3장 중 가져온 1장이 강으로 나가 손패 총량이 하나 줄어든 것을 채운다.)
+        //    결정적(난수 미사용) — 뽑은 패를 lastDrawnTile로 세워 그대로 버릴 수 있게 한다.
+        const drawn = zones[WALL]?.tileIds[0];
+        let lastDrawnTile = state.round.lastDrawnTile;
+        if (drawn !== undefined) {
+          zones = moveTiles(zones, WALL, handZone(p.holder), [drawn]);
+          lastDrawnTile = drawn;
+        }
+        return {
+          ...state,
+          zones,
+          round: { ...state.round, byPlayer, lastDrawnTile },
+          augmentData: {
+            ...state.augmentData,
+            [usedKey(state, p.holder)]: true,
+            // 전원 공개 — 상대가 후리텐·안전패를 다시 판정하도록
+            [viewKey("*", `${ID}:${p.holder}`)]: {
+              meldIndex: p.meldIndex,
+              returned: p.handContributed.map((id) => kindKey(kindOf(state, id))),
+              toPond: kindKey(kindOf(state, p.calledTileId)),
+              calledFrom: p.calledFrom,
+            },
+          },
+        };
+      });
+    }
+
+    // 아직 안 썼으면, 해체 가능한 치·펑 후로마다 후보 하나씩 낸다
+    ctx.holderTurnOptions((state) => {
+      if (flagOf(state, usedKey(state, holder))) return [];
+      if (state.round.phase !== "turn.act") return [];
+      if (playerAtSeat(state, state.round.turnSeat).id !== holder) return [];
+      const melds = state.round.byPlayer[holder]?.melds ?? [];
+      const out: { type: string; payload: { meldIndex: number } }[] = [];
+      melds.forEach((m, i) => {
+        if (isDissolvable(m)) out.push({ type: ACTION, payload: { meldIndex: i } });
+      });
+      return out;
+    });
+  },
+  // 봇 정책 없음 — 자기 후로를 되돌리는 건 템포 손해다. 봇은 역을 노리고 의도적으로만
+  // 후로하므로, 그걸 언제 무를지(멘젠 복구가 이득인지)는 단순 규칙으로 판단할 수 없다.
+});

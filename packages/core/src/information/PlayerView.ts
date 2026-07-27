@@ -15,21 +15,34 @@ import type { PlayerId, ZoneId } from "../engine/zones/Zone.js";
 import { kindKey } from "../mahjong/tiles/Tile.js";
 import type { TileAttrs, TileId, TileKind } from "../mahjong/tiles/Tile.js";
 import { winningKinds } from "../mahjong/scoring/waits.js";
-import { scoringOptionsOf } from "../mahjong/flow/helpers.js";
+import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
+import { scoringOptionsOf, tenpaiNoYaku, yakulessWaits } from "../mahjong/flow/helpers.js";
+import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
 import { discardsZone, handZone, meldsZone } from "../engine/zones/Zone.js";
 
 // ─────────────────────────── 가시성 타입 ───────────────────────────
 
 /**
  * Zone의 패 공개 여부.
- * - `public`     : 전원 공개 (버림패, 멜드, 도라 표시패)
+ * - `public`     : 전원 공개 (버림패, 후로, 도라 표시패)
  * - `owner`      : 소유자만 공개 (손패)
  * - `hidden`     : 전원 비공개 (패산, 왕패)
  * - `count_only` : 장수만 공개, 내용 비공개
- * - `{mode:"peek",count}` : 앞에서 N장만 공개, 나머지는 장수만
+ * - `{mode:"peek",count}` : N장만 공개, 나머지는 장수만
  *   (엿보기 증강 — Modifier가 viewer/zoneOwner 문맥으로 조건부 반환)
+ *   pick 생략/"front"=앞 N장, "back"=뒤 N장, "random"=무작위 N장
+ *   (random은 손패가 안 바뀌면 같은 패로 고정)
+ *
+ * `"back"`은 패산처럼 **양쪽 끝이 서로 다른 의미**인 Zone을 위한 것이다 —
+ * 패산은 index 0이 다음에 뽑을 패고 최후미가 '맨 밑'(밑장빼기가 보는 자리,
+ * 미래를 보는 자가 패를 밀어 넣는 자리)이다. 뷰는 매번 상태에서 다시 계산되므로
+ * 다른 증강이 밑에 패를 넣으면 창이 그대로 따라 밀린다(스냅샷이 아니다).
  */
-export type PeekVisibility = { mode: "peek"; count: number };
+export type PeekVisibility = {
+  mode: "peek";
+  count: number;
+  pick?: "front" | "back" | "random";
+};
 export type VisibilityRule =
   | "public"
   | "owner"
@@ -75,7 +88,7 @@ export interface PublicTileView {
 }
 
 /**
- * 공개 멜드(부로) 표현. 치/펑/깡 구성과 어느 방향에서 가져왔는지까지
+ * 공개 후로 표현. 치/펑/깡 구성과 어느 방향에서 가져왔는지까지
  * 실제 마작에서 전원에게 공개되는 정보만 담는다.
  */
 export interface MeldView {
@@ -101,14 +114,33 @@ export interface PlayerRoundView {
   furiten?: boolean;
   /** 후리텐 사유 (본인 뷰에서만 포함) */
   furitenReasons?: FuritenReason[];
-  /** 멜드(부로) 수 — melds Zone 장수로 계산 가능하지만 편의용 */
+  /**
+   * 형식텐파이(역없음) — 텐파이지만 어떤 오름패로도 역이 없어 화료할 수 없는 상태.
+   * 본인 뷰에서만, 그리고 yaku 레지스트리가 주어졌을 때만 채워진다.
+   * 열린 손 전용(멘젠 손은 리치·멘젠쯔모로 역을 만들 수 있어 해당 없음).
+   */
+  noYaku?: boolean;
+  /**
+   * 대기패 중 **역이 없어 론이 성립하지 않는** 종류(kindKey 목록). 본인 뷰 전용.
+   * 오름패 표시가 "기다리면 먹을 수 있다"로 읽히는 오해를 막는다 —
+   * 이 목록에 든 패는 화면에서 "역없음"으로 구분해 그린다.
+   * 리치 중이면 리치가 역이 되므로 자연히 비어 있다.
+   */
+  noYakuWaits?: string[];
+  /**
+   * 봉인되어 버릴 수 없는 패 종류(kindKey 목록) — discard.blockedKinds 규칙의
+   * 해석 결과. 본인 뷰(관전자는 전원 뷰)에서만 포함. 클라이언트가 봉인 패에
+   * 자물쇠 표시를 그리는 용도 (봉인 여부는 클릭해 보면 드러나므로 숨길 정보가 아니다).
+   */
+  sealedKinds?: string[];
+  /** 후로 수 — melds Zone 장수로 계산 가능하지만 편의용 */
   meldCount: number;
   /**
-   * 멜드 상세 (치/펑/깡 묶음·호출 방향). melds Zone이 이 뷰어에게
+   * 후로 상세 (치/펑/깡 묶음·호출 방향). melds Zone이 이 뷰어에게
    * 공개(hiddenCount=0)일 때만 채워지고, 아니면 빈 배열.
    */
   melds: MeldView[];
-  /** 리치 선언패의 discards 내 인덱스 (강에서 눕혀 그리는 용도, 공개) */
+  /** 리치 선언패의 discards 내 인덱스 (바닥에서 눕혀 그리는 용도, 공개) */
   riichiTileIndex?: number;
 }
 
@@ -135,7 +167,7 @@ export interface RoundView {
    */
   myDrawnTile: TileId | null;
   /**
-   * 화료 정산 후 우라도라 표시패 (평소 null).
+   * 화료 정산 후 뒷도라 표시패 (평소 null).
    * RoundSettled 이후 서버가 뷰를 재생성할 때 채운다.
    */
   uraDoraIndicators: TileId[] | null;
@@ -160,6 +192,19 @@ export interface PlayerView {
    * 예: 오름패 엿보기 결과, 지정역 공개 등.
    */
   augmentView: Record<string, unknown>;
+  /**
+   * 이 뷰어에게 적용되는 화료형 분해 옵션 (`scoringOptionsOf`의 결과).
+   *
+   * 증강이 화료형 자체를 바꾸면(진짜 용 = 5멘쯔, 무너진 국경 = 무늬 무시 슌쯔,
+   * 끝없는 윤회 = 순환 슌쯔 …) **대기 계산도 같이 바뀌어야 한다.** 그런데 봇 정책과
+   * 클라이언트는 GameState도 RuleRegistry도 못 보므로 `scoringOptionsOf`를 부를 수 없어,
+   * 예전엔 전부 표준 4멘쯔로 대기를 계산했다 — 진짜 용 보유자의 봇이 자기 대기를
+   * 못 읽던 원인이다(60차).
+   *
+   * `winningKinds(kinds, meldCount, undefined, view.scoringOptions)`처럼 그대로 넘기면 된다.
+   * `scoringOptionsOf`는 `sequenceSuits`(Set)를 채우지 않으므로 JSON 직렬화에 안전하다.
+   */
+  scoringOptions: DecomposeOptions;
 }
 
 // ─────────────────────────── 표준 가시성 규칙 등록 ───────────────────────────
@@ -177,6 +222,12 @@ export function defineVisibilityRules(rules: RuleRegistry): void {
   rules.define<VisibilityRule>("visibility.melds", "public");
   rules.define<VisibilityRule>("visibility.wall", "hidden");
   rules.define<VisibilityRule>("visibility.deadWall", "hidden");
+  /**
+   * 이 뷰어에게 도라 표시패를 감춘다 (가려진 도라). playerId = **보는 사람**.
+   * true면 그 뷰어의 PlayerView에서 도라 표시패가 빠져 뒷면으로 렌더된다.
+   * 보유자는 자기 규칙만 false로 두고 타인에게만 true가 걸리게 Modifier를 짠다.
+   */
+  rules.define<boolean>("visibility.doraIndicators.hidden", false);
 }
 
 // ─────────────────────────── 핵심: buildPlayerView ───────────────────────────
@@ -186,7 +237,7 @@ export function defineVisibilityRules(rules: RuleRegistry): void {
  *
  * - SPECTATOR_ID를 viewerId로 넘기면 모든 Zone이 public으로 처리된다.
  * - 규칙에 정의되지 않은 kind의 Zone은 "hidden" 으로 폴백한다 (안전 기본값).
- * - 우라도라 인디케이터는 호출자가 uraDoraIndicators를 직접 전달한다
+ * - 뒷도라 인디케이터는 호출자가 uraDoraIndicators를 직접 전달한다
  *   (RoundSettled 시점에만 서버가 채운다).
  */
 export function buildPlayerView(
@@ -194,8 +245,10 @@ export function buildPlayerView(
   viewerId: PlayerId,
   rules: RuleRegistry,
   options?: {
-    /** 화료 정산 직후 우라도라 표시패를 함께 전달 */
+    /** 화료 정산 직후 뒷도라 표시패를 함께 전달 */
     uraDoraIndicators?: TileId[];
+    /** 역 레지스트리 — 주면 본인 뷰에 형식텐파이(역없음) 여부를 채운다 */
+    yaku?: YakuRegistry;
   },
 ): PlayerView {
   const isSpectator = viewerId === SPECTATOR_ID;
@@ -244,8 +297,9 @@ export function buildPlayerView(
     state,
     rules,
     options?.uraDoraIndicators ?? null,
-    // 멜드 상세는 melds Zone이 이 뷰어에게 전부 공개일 때만 노출
+    // 후로 상세는 melds Zone이 이 뷰어에게 전부 공개일 때만 노출
     (pid) => zones[meldsZone(pid)]?.hiddenCount === 0,
+    options?.yaku,
   );
 
   const visibleTileIds = collectVisibleTileIds(zones, round);
@@ -277,7 +331,34 @@ export function buildPlayerView(
     }
   }
 
-  return { playerId: viewerId, tiles, zones, players, round, augmentView };
+  // ── 실제 패 공개 채널 (revealTiles:*) ──
+  // augmentView에 `revealTiles:{tag}` = TileId[] 로 실린 항목은, 그 특정 패들의
+  // 메타데이터를 이 뷰어의 tiles에 포함시켜 클라이언트가 '진짜 패'로 그릴 수 있게 한다.
+  // 명시된 tile id만 노출하므로 상대 손패 Zone 전체가 새지 않는다.
+  // (첫 사용처: 봉인술사가 상대 손패의 봉인된 실제 패를 보유자에게 보여준다.)
+  for (const [key, value] of Object.entries(augmentView)) {
+    if (!key.startsWith("revealTiles:") || !Array.isArray(value)) continue;
+    for (const id of value as unknown[]) {
+      if (typeof id !== "number" || tiles[id] !== undefined) continue;
+      const tile = state.tiles[id];
+      if (tile !== undefined) {
+        tiles[id] = { id, kind: tile.kind, attrs: tile.attrs };
+      }
+    }
+  }
+
+  return {
+    playerId: viewerId,
+    tiles,
+    zones,
+    players,
+    round,
+    augmentView,
+    // 화료형 변형(진짜 용 5멘쯔 등)을 봇·클라이언트의 대기 계산에도 전달한다.
+    // 관전자는 특정 플레이어가 아니므로 표준 옵션으로 둔다.
+    scoringOptions:
+      viewerId === SPECTATOR_ID ? {} : scoringOptionsOf(state, rules, viewerId),
+  };
 }
 
 // ─────────────────────────── 내부 헬퍼 ───────────────────────────
@@ -311,11 +392,19 @@ function applyVisibility(
   visibility: VisibilityRule,
 ): { tileIds: TileId[]; hiddenCount: number } {
   if (typeof visibility === "object") {
-    // peek: 소유자는 전체, 타인은 앞 N장만
+    // peek: 소유자는 전체, 타인은 N장만
     if (owner === viewerId) {
       return { tileIds: [...tileIds], hiddenCount: 0 };
     }
-    const shown = tileIds.slice(0, Math.max(0, visibility.count));
+    const count = Math.max(0, Math.min(visibility.count, tileIds.length));
+    // "back"은 배열 순서를 그대로 유지한 채 **뒤 N장**을 준다 —
+    // 패산이라면 마지막 원소가 '맨 밑장'(다음 밑장빼기로 나올 패)이다.
+    const shown =
+      visibility.pick === "random"
+        ? peekRandom(tileIds, count)
+        : visibility.pick === "back"
+          ? tileIds.slice(tileIds.length - count)
+          : tileIds.slice(0, count);
     return { tileIds: shown, hiddenCount: tileIds.length - shown.length };
   }
   switch (visibility) {
@@ -336,6 +425,34 @@ function applyVisibility(
   }
 }
 
+/**
+ * 무작위 peek — tile id 집합에서 결정적으로 count장을 고른다.
+ * 시드를 정렬된 tile id 집합으로 잡아, 손패(패 id 다중집합)가 그대로면
+ * 매 렌더마다 같은 패가 뽑힌다(리렌더로 더 많은 패가 새는 것을 방지).
+ * 손패가 바뀌면(쯔모·버림) 뽑히는 패도 자연히 바뀐다. 반환은 원래 순서.
+ */
+function peekRandom(tileIds: readonly TileId[], count: number): TileId[] {
+  if (count >= tileIds.length) return [...tileIds];
+  // FNV-1a로 정렬된 id 집합을 해시해 시드 생성
+  let seed = 2166136261 >>> 0;
+  for (const id of [...tileIds].sort((a, b) => a - b)) {
+    seed = Math.imul(seed ^ (id >>> 0), 16777619) >>> 0;
+  }
+  const rng = (): number => {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const idx = tileIds.map((_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [idx[i]!, idx[j]!] = [idx[j]!, idx[i]!];
+  }
+  const chosen = idx.slice(0, count).sort((a, b) => a - b);
+  return chosen.map((i) => tileIds[i]!);
+}
+
 function buildRoundView(
   round: RoundState,
   playerIds: PlayerId[],
@@ -344,6 +461,7 @@ function buildRoundView(
   rules: RuleRegistry,
   uraDoraIndicators: TileId[] | null,
   meldsVisible: (pid: PlayerId) => boolean,
+  yaku?: YakuRegistry,
 ): RoundView {
   const byPlayer: Record<PlayerId, PlayerRoundView> = {};
   for (const pid of playerIds) {
@@ -369,8 +487,20 @@ function buildRoundView(
     const riichiIndex =
       pr.riichi !== null ? { riichiTileIndex: pr.riichi.discardIndex } : {};
 
+    // 봉인된 패 종류 — 본인(관전자는 전원)에게만 노출. 규칙 미정의 상태(비표준 게임) 폴백 [].
+    const sealedKinds =
+      (pid === viewerId || viewerId === SPECTATOR_ID) &&
+      rules.has("discard.blockedKinds")
+        ? [...new Set(rules.resolve<string[]>("discard.blockedKinds", { playerId: pid, state }))]
+        : [];
+    const sealed = sealedKinds.length > 0 ? { sealedKinds } : {};
+
     if (pid === viewerId) {
       const furitenReasons = buildFuritenReasons(state, pid, pr, rules);
+      // 형식텐파이(역없음)는 yaku 레지스트리가 주어졌을 때만 계산 (열린 손 전용)
+      const noYaku = yaku !== undefined && tenpaiNoYaku(state, pid, rules, yaku);
+      // 역이 없어 론이 안 되는 대기패 종류 — "오름패인데 왜 못 먹지?"를 미리 알려 준다
+      const noYakuWaits = yaku !== undefined ? yakulessWaits(state, pid, rules, yaku) : [];
       // 본인 뷰: 전체 정보 공개
       byPlayer[pid] = {
         riichiDeclared,
@@ -378,18 +508,29 @@ function buildRoundView(
         ippatsu: pr.riichi?.ippatsu ?? false,
         furiten: furitenReasons.length > 0,
         furitenReasons,
+        ...(noYaku ? { noYaku: true } : {}),
+        ...(noYakuWaits.length > 0 ? { noYakuWaits } : {}),
         meldCount,
         melds,
         ...riichiIndex,
+        ...sealed,
       };
     } else {
+      // 스텔스 리치 — 이 사람의 리치는 타인에게 보이지 않는다(본인·관전자는 그대로).
+      // 타인에게 새는 리치 신호는 이 셋뿐이므로 셋을 함께 가린다.
+      const hidden =
+        viewerId !== SPECTATOR_ID &&
+        riichiDeclared &&
+        rules.has("riichi.hidden") &&
+        rules.resolve<boolean>("riichi.hidden", { playerId: pid, state });
       // 타인 뷰: 리치 선언 여부·더블 여부만 공개
       byPlayer[pid] = {
-        riichiDeclared,
-        doubleRiichi,
+        riichiDeclared: hidden ? false : riichiDeclared,
+        doubleRiichi: hidden ? false : doubleRiichi,
         meldCount,
         melds,
-        ...riichiIndex,
+        ...(hidden ? {} : riichiIndex),
+        ...sealed,
       };
     }
   }
@@ -415,7 +556,16 @@ function buildRoundView(
     direction: rules.has("turn.direction")
       ? rules.resolve<number>("turn.direction", { state })
       : 1,
-    doraIndicators: [...round.doraIndicators],
+    // 가려진 도라: 이 뷰어에게 도라 표시패를 감춘다(빈 배열 → collectVisibleTileIds가
+    // 자동으로 뒷면 처리). 보유자·관전자는 자기 규칙이 false라 그대로 본다.
+    doraIndicators:
+      viewerId !== SPECTATOR_ID &&
+      rules.resolve<boolean>("visibility.doraIndicators.hidden", {
+        playerId: viewerId,
+        state,
+      })
+        ? []
+        : [...round.doraIndicators],
     lastDiscard: round.lastDiscard
       ? { player: round.lastDiscard.player, tileId: round.lastDiscard.tileId }
       : null,
@@ -459,7 +609,7 @@ function hasDiscardFuriten(
   rules: RuleRegistry,
 ): boolean {
   if (pr.furiten) return true;
-  // 버림 '이력'(discardedKinds) 기준 — 부로로 강에서 사라진 패도 후리텐 유지
+  // 버림 '이력'(discardedKinds) 기준 — 후로로 바닥에서 사라진 패도 후리텐 유지
   const discarded = pr.discardedKinds;
   if (discarded.length === 0) return false;
   const handKinds = (state.zones[handZone(player)]?.tileIds ?? []).map((id) => {

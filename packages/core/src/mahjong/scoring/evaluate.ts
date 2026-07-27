@@ -124,7 +124,11 @@ export function evaluateWin(
       if (hasRealYaku) {
         const kinds = fullKinds(ctx);
         doraHan = countDora(kinds, ctx.doraKinds ?? []);
-        uraHan = ctx.riichi !== null ? countDora(kinds, ctx.uraDoraKinds ?? []) : 0;
+        // 뒷도라는 원래 리치한 손만의 보상이다 — uraAlways(숨은 칼날)가 그 문을 연다
+        uraHan =
+          ctx.riichi !== null || ctx.uraAlways === true
+            ? countDora(kinds, ctx.uraDoraKinds ?? [])
+            : 0;
         redHan = ctx.redCount ?? 0;
       }
       candidate = {

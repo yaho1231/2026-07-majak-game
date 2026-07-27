@@ -14,7 +14,7 @@ export interface YakuDef {
   name: string;
   /** 멘젠 판수 */
   closedHan: number;
-  /** 부로 시 판수. null = 부로 시 성립 불가 */
+  /** 후로 시 판수. null = 후로 시 성립 불가 */
   openHan: number | null;
   isYakuman?: boolean;
   /**

@@ -1,5 +1,9 @@
 /**
- * late_bloomer (대기만성) 테스트 — 남4국부터 획득 점수 3배 + 드래프트 스테이지 제한.
+ * late_bloomer (대기만성) 테스트 — 후반 진입 시 규칙 획득 + 드래프트 스테이지 제한.
+ *
+ * 52차(2026-07-22, docs/16 §1b B): "획득 점수 3배"라는 보이지 않는 배율을 걷어내고,
+ * 후반(남4국 이후·서입)에 **후리텐 무시 + 역 없이 화료**라는 규칙 두 개를 얻는 것으로 바꿨다.
+ * 그래서 이 파일의 단언도 정산 배율이 아니라 **규칙 값**을 본다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -75,26 +79,55 @@ function settleDeltas(state: GameState): { base: number; aug: number } {
   };
 }
 
+/** 그 상태에서 보유자에게 만개 규칙 두 개가 켜졌는지 */
+function bloomedRules(state: GameState): { furiten: boolean; needYaku: boolean } {
+  const game = createStandardGameFromState(structuredClone(state));
+  installAugment(game.engine, lateBloomer, "p0");
+  const ctx = { playerId: "p0", state: game.engine.state };
+  return {
+    furiten: game.engine.rules.resolve<boolean>("win.furiten.enabled", ctx),
+    needYaku: game.engine.rules.resolve<boolean>("win.requiresYaku", ctx),
+  };
+}
+
 describe("late_bloomer (대기만성)", () => {
-  it("남4국 화료 시 획득 delta가 정확히 3배가 된다", () => {
-    const { base, aug } = settleDeltas(atRound(craftTanyaoTsumo(), 2, 4));
-    expect(base).toBeGreaterThan(0);
-    expect(aug).toBe(base * 3);
+  it("남4국에 만개하면 후리텐 무시·역 없음 화료 두 규칙을 얻는다", () => {
+    const rules = bloomedRules(atRound(craftTanyaoTsumo(), 2, 4));
+    expect(rules.furiten).toBe(false);
+    expect(rules.needYaku).toBe(false);
   });
 
-  it("동1국에서는 효과가 없다 (delta 동일)", () => {
-    const { base, aug } = settleDeltas(atRound(craftTanyaoTsumo(), 1, 1));
+  it("동1국에서는 아무 규칙도 얻지 않는다 (표준 그대로)", () => {
+    const rules = bloomedRules(atRound(craftTanyaoTsumo(), 1, 1));
+    expect(rules.furiten).toBe(true);
+    expect(rules.needYaku).toBe(true);
+  });
+
+  it("서입(연장, prevalentWind=3)에서도 만개한다", () => {
+    const rules = bloomedRules(atRound(craftTanyaoTsumo(), 3, 1));
+    expect(rules.furiten).toBe(false);
+    expect(rules.needYaku).toBe(false);
+  });
+
+  it("만개해도 보유자에게만 적용된다 (상대는 표준 그대로)", () => {
+    const state = atRound(craftTanyaoTsumo(), 2, 4);
+    const game = createStandardGameFromState(structuredClone(state));
+    installAugment(game.engine, lateBloomer, "p0");
+    expect(
+      game.engine.rules.resolve("win.furiten.enabled", { playerId: "p1", state: game.engine.state }),
+    ).toBe(true);
+    expect(
+      game.engine.rules.resolve("win.requiresYaku", { playerId: "p1", state: game.engine.state }),
+    ).toBe(true);
+  });
+
+  it("획득 점수에는 더 이상 배율이 붙지 않는다 (52차: 배율 폐지)", () => {
+    const { base, aug } = settleDeltas(atRound(craftTanyaoTsumo(), 2, 4));
     expect(base).toBeGreaterThan(0);
     expect(aug).toBe(base);
   });
 
-  it("서입(연장, prevalentWind=3)에서도 3배가 적용된다", () => {
-    const { base, aug } = settleDeltas(atRound(craftTanyaoTsumo(), 3, 1));
-    expect(base).toBeGreaterThan(0);
-    expect(aug).toBe(base * 3);
-  });
-
-  it("잃는 점수는 3배가 되지 않는다 (남4국에 방총당해도 delta 그대로)", () => {
+  it("잃는 점수도 그대로다 (남4국에 방총당해도 delta 동일)", () => {
     // p1이 5s 대기 탕야오, p0의 버림패 5s로 론 — p0은 지불자
     const raw = craft({
       hands: {

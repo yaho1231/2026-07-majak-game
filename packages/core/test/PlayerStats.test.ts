@@ -13,6 +13,7 @@ import {
   KAN_DECLARED,
   ROUND_SETTLED,
 } from "../src/mahjong/flow/flowEvents.js";
+import { AUGMENT_OFFERED, AUGMENT_DRAFTED } from "../src/augment/events.js";
 import type {
   TileDiscardedPayload,
   CallMadePayload,
@@ -105,7 +106,7 @@ describe("StatsTracker — 국 단위 집계", () => {
     expect(t.get("p0")!.riichiRounds).toBe(1);
   });
 
-  it("안깡은 후로에 포함되지 않고, 명깡·가깡은 포함된다", () => {
+  it("안깡은 후로에 포함되지 않고, 대명깡·가깡은 포함된다", () => {
     const t = new StatsTracker(P);
     t.consume({ type: ROUND_STARTED });
     t.consume(kan("p0", "kan_closed"));
@@ -224,5 +225,59 @@ describe("mergeStats — career 누적", () => {
     expect(m.placementSum).toBe(6);
     // 입력 불변
     expect(a.roundsPlayed).toBe(5);
+  });
+});
+
+function offer(player: PlayerId, augmentIds: string[]): { type: string; payload: unknown } {
+  return { type: AUGMENT_OFFERED, payload: { player, augmentIds } };
+}
+
+function drafted(player: PlayerId, augmentId: string): { type: string; payload: unknown } {
+  return { type: AUGMENT_DRAFTED, payload: { player, augmentId } };
+}
+
+describe("StatsTracker — 증강 통계", () => {
+  it("오퍼는 offered, 오퍼 안의 픽은 picked로 계상된다", () => {
+    const t = new StatsTracker(P);
+    t.consume(offer("p0", ["a", "b", "c"]));
+    t.consume(drafted("p0", "b")); // 오퍼 중 하나를 픽
+    const s = t.get("p0")!;
+    expect(s.augments["a"]!.offered).toBe(1);
+    expect(s.augments["b"]!.offered).toBe(1);
+    expect(s.augments["b"]!.picked).toBe(1);
+    expect(s.augments["a"]!.picked).toBe(0); // gold
+  });
+
+  it("오퍼에 없던 획득은 picked에 안 들어가지만 보유로는 잡힌다", () => {
+    const t = new StatsTracker(P);
+    t.consume(offer("p0", ["a", "b", "c"]));
+    t.consume(drafted("p0", "a")); // 정식 픽
+    t.consume(drafted("p0", "z")); // 도박사 지급 (오퍼에 없음)
+    t.consume(settle()); // 유국 1국
+    t.recordGameEnd([{ playerId: "p0", rank: 1 }]);
+    const s = t.get("p0")!;
+    expect(s.augments["a"]!.picked).toBe(1);
+    expect(s.augments["z"]!.picked).toBe(0); // 지급은 픽 아님 // silver 픽 1회만
+    // 보유 증강 둘 다 이 판 순위(1위) 귀속
+    expect(s.augments["a"]!.games).toBe(1);
+    expect(s.augments["a"]!.placements).toEqual([1, 0, 0, 0]);
+    expect(s.augments["z"]!.games).toBe(1);
+    expect(s.augments["z"]!.placements).toEqual([1, 0, 0, 0]);
+  });
+
+  it("게임 종료 시 보유 증강에 최종 순위가 귀속되고 career 병합된다", () => {
+    const t = new StatsTracker(P);
+    t.consume(offer("p0", ["a"]));
+    t.consume(drafted("p0", "a"));
+    t.recordGameEnd([{ playerId: "p0", rank: 3 }]);
+    const g1 = t.get("p0")!;
+    expect(g1.augments["a"]!.placementSum).toBe(3); // prism
+
+    // 두 판 병합: placementSum·games·placements가 합산된다
+    const merged = mergeStats(g1, g1);
+    expect(merged.augments["a"]!.games).toBe(2);
+    expect(merged.augments["a"]!.placementSum).toBe(6);
+    // 입력 불변 (깊은 복사)
+    expect(g1.augments["a"]!.games).toBe(1);
   });
 });

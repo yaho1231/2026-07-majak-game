@@ -1,96 +1,109 @@
 /**
- * standardAugments — 첫 증강 7종. 등록 API가 엔진 수정 없이 작동함을 실증한다.
+ * standardAugments — 표준 증강 4종. 등록 API가 엔진 수정 없이 작동함을 실증한다.
  *
  * 각 증강은 서로 다른 등록 지점을 쓴다:
- *   Rule Modifier(4) / Effect Reaction(1) / Effect Interceptor(1) / 새 프롬프트 액션(1).
+ *   Rule Modifier(3) / 새 프롬프트 액션(1).
  *
- * 설계: docs/10_AUGMENT_SYSTEM.md §5
+ * 2026-07-22 (48차) 도파민 리디자인: 순수 패시브 점수 보너스였던 3종을 삭제했다 —
+ * 가벼운 선언(cheap_riichi, Rule Modifier)·쯔모의 기쁨(tsumo_bonus, Effect Reaction)·
+ * 설욕(vengeance, Effect Interceptor). 삭제된 두 등록 지점(Reaction·Interceptor)은
+ * 콘텐츠 팩이 이미 대량으로 실증하고 있어 여기서 표본을 유지할 이유가 없다.
+ *
+ * 설계: docs/10_AUGMENT_SYSTEM.md §5 · 판정 근거: docs/16_AUGMENT_REDESIGN.md §1
  */
 
 import type { GameState } from "../engine/state/GameState.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import { discardsZone, handZone, moveTiles } from "../engine/zones/Zone.js";
-import type { TileId } from "../mahjong/tiles/Tile.js";
+import type { TileId, TileKind } from "../mahjong/tiles/Tile.js";
 import type { ActionDef } from "../engine/actions/ActionRegistry.js";
+import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
+import type { RoundSettledPayload, WinInfo } from "../mahjong/flow/flowEvents.js";
 import {
-  ROUND_SETTLED,
-  WIN_DECLARED,
-} from "../mahjong/flow/flowEvents.js";
-import type {
-  RoundSettledPayload,
-  WinDeclaredPayload,
-} from "../mahjong/flow/flowEvents.js";
+  isFuriten,
+  openMeldCountOf,
+  playerAtSeat,
+  scoringOptionsOf,
+} from "../mahjong/flow/helpers.js";
+import { calculateScore } from "../mahjong/scoring/score.js";
 import { defineAugment } from "./Augment.js";
-import type { AugmentDef } from "./Augment.js";
-import { scoreChanged } from "./events.js";
+import type { AugmentContext, AugmentDef } from "./Augment.js";
+import type { PlayerView } from "../information/PlayerView.js";
 
-const roundDown100 = (n: number): number => Math.floor(n / 100) * 100;
+/**
+ * 보유자가 화료한 국의 정산에 **보너스 판수**를 얹는다
+ * (content util의 addWinHanBonus와 같은 구조 — 그쪽이 규약의 단일 진실이다).
+ *
+ * 지급 자체는 "+N판으로 다시 계산한 점수 − 실제 점수"만큼의 **뱅크 점수**라,
+ * 판이 올랐어도 상대가 더 내지는 않는다 — 무페널티 원칙.
+ * 승자의 실제 부수·역만·오야 여부를 그대로 쓰므로 만관/하네만 상한도 정확히 반영된다.
+ *
+ * 52차(2026-07-22): "조용한 규칙 완화"(docs/16 §1b E)로 판정된 표준 증강 3종에 쓴다.
+ * 발동은 이미 눈에 보이는데 보상이 안 보이던 것들이라, 확정 보상으로 마감을 붙였다.
+ * (§0 노잼 조항의 예외가 아니라 "보이는 발동 + 확정 보상"의 조합이다.)
+ *
+ * 2026-07-26: 확정 보상 단위를 점수 → **판수**로 통일했다
+ * (구 +2000 → 2판 · +4500 → 3판 · +6000 → 4판. docs/17 §3.4).
+ */
+function addWinHanBonus(
+  ctx: AugmentContext,
+  han: (state: GameState, info: WinInfo) => number,
+): void {
+  ctx.interceptor(ROUND_SETTLED, (event, ic) => {
+    const p = event.payload as RoundSettledPayload;
+    if (p.outcome !== "win") return event;
+    const info = (p.winInfos ?? []).find((w) => w.winner === ctx.holder);
+    if (info === undefined) return event;
+    const extraHan = Math.max(0, Math.round(han(ic.state, info)));
+    if (extraHan === 0) return event;
+    const isDealer =
+      playerAtSeat(ic.state, ic.state.round.dealerSeat).id === ctx.holder;
+    const boosted = calculateScore({
+      han: info.han + extraHan,
+      fu: info.fu,
+      yakumanCount: info.yakumanCount,
+      isDealer,
+      winType: info.winType,
+    }).total;
+    const bonus = Math.max(0, boosted - info.points);
+    if (bonus === 0) return event;
+    return {
+      type: event.type,
+      payload: {
+        ...p,
+        deltas: { ...p.deltas, [ctx.holder]: (p.deltas[ctx.holder] ?? 0) + bonus },
+      },
+    };
+  });
+}
 
-export const cheapRiichi = defineAugment({
-  id: "cheap_riichi",
-  tier: "silver",
-  name: "가벼운 선언",
-  description: "리치 비용이 500점이 된다.",
-  install(ctx) {
-    ctx.setHolderRule("riichi.cost", 500);
-  },
-});
-
-export const tsumoBonus = defineAugment({
-  id: "tsumo_bonus",
-  tier: "silver",
-  name: "쯔모의 기쁨",
-  description: "쯔모로 화료하면 1000점을 추가로 얻는다.",
-  install(ctx) {
-    ctx.reaction(WIN_DECLARED, (event, rc) => {
-      const p = event.payload as WinDeclaredPayload;
-      if (p.winner === ctx.holder && p.winType === "tsumo") {
-        rc.emit(scoreChanged(ctx.holder, 1000, "tsumo_bonus"));
-      }
-    });
-  },
-});
+/** 표준 리치의 판수 — 개문선언은 이것과의 차이만 얹는다 */
+const STANDARD_RIICHI_HAN = 1;
+/** 개문선언: 후로 리치를 몇 판으로 취급하는가 (2026-07-26 사용자 확정) */
+const OPEN_RIICHI_HAN = 2;
+/** 무형화료: 역 0개 화료를 몇 판으로 취급하는가 */
+const YAKULESS_HAN = 2;
 
 export const ironWall = defineAugment({
   id: "iron_wall",
   tier: "gold",
+  category: "shape",
   name: "철벽",
-  description: "후리텐을 무시하고 론할 수 있다.",
+  description:
+    "(상시) 후리텐을 무시하고 론할 수 있다. 실제로 후리텐인 채 잡아내면 +3판을 얻는다.",
+  detail:
+    "(상시) 자신이 이미 버린 패로도 론할 수 있어 후리텐이라는 개념이 사라진다. 실제로 후리텐 상태에서 론으로 잡아낸 화료에서는 +3판을 얻는다. 후리텐이 아닌 평범한 론에는 아무것도 얹히지 않는다.",
   install(ctx) {
     ctx.setHolderRule("win.furiten.enabled", false);
-  },
-});
-
-export const vengeance = defineAugment({
-  id: "vengeance",
-  tier: "gold",
-  name: "설욕",
-  description: "방총으로 잃는 점수가 절반이 된다 (그만큼 화료자 이득도 준다).",
-  install(ctx) {
-    ctx.interceptor(ROUND_SETTLED, (event) => {
-      const p = event.payload as RoundSettledPayload;
-      if (p.outcome !== "win") return event;
-      const loss = p.deltas[ctx.holder] ?? 0;
-      if (loss >= 0) return event;
-
-      const refund = roundDown100(-loss / 2);
-      if (refund <= 0) return event;
-
-      // 최대 이득자(화료자)의 이득을 같은 만큼 줄여 점수 보존
-      let winner: PlayerId | null = null;
-      let best = 0;
-      for (const [id, delta] of Object.entries(p.deltas)) {
-        if (delta > best) {
-          best = delta;
-          winner = id;
-        }
-      }
-      if (winner === null) return event;
-
-      const deltas = { ...p.deltas };
-      deltas[ctx.holder] = (deltas[ctx.holder] ?? 0) + refund;
-      deltas[winner] = (deltas[winner] ?? 0) - refund;
-      return { type: event.type, payload: { ...p, deltas } };
+    // 후리텐 상황 자체가 드물어 "대부분의 국에 아무 일도 안 일어난다"는 판정(docs/16 §1b D).
+    // 발동 빈도는 규칙상 못 올리므로, 실제로 후리텐 론이 터진 그 순간에 보상을 붙여
+    // "내가 버린 패로 잡았다"는 사건을 정산에서도 확실히 마감한다.
+    addWinHanBonus(ctx, (state, info) => {
+      if (info.winType !== "ron") return 0;
+      // 정산 전 상태이므로 버림 이력·대기가 그대로 남아 있다.
+      // isFuriten은 규칙과 무관하게 이력만 보므로, 철벽으로 뚫은 경우를 정확히 집어낸다.
+      const opts = scoringOptionsOf(state, ctx.engine.rules, ctx.holder);
+      return isFuriten(state, ctx.holder, opts, ctx.engine.rules) ? 3 : 0;
     });
   },
 });
@@ -98,20 +111,40 @@ export const vengeance = defineAugment({
 export const openRiichi = defineAugment({
   id: "open_riichi",
   tier: "prism",
+  category: "riichi",
   name: "개문선언",
-  description: "부로한 손으로도 리치를 선언할 수 있다.",
+  description:
+    "(상시) 후로한 손으로도 리치를 선언할 수 있다. 후로한 채 리치로 화료하면 그 리치를 2판으로 취급한다.",
+  detail:
+    "(상시) 리치의 멘젠 조건이 사라져 치·펑·깡으로 손을 연 뒤에도 리치를 선언할 수 있다. 후로한 상태로 리치를 걸어 화료하면 그 리치를 2판으로 취급한다. 원래부터 되는 멘젠 리치에는 아무것도 얹히지 않는다.",
   install(ctx) {
     ctx.setHolderRule("riichi.requiresClosed", false);
+    // 조용한 규칙 완화 — 울어 놓고 리치봉을 내미는 장면은 보이는데 보상이 없었다.
+    // 표기는 "리치를 2판으로 취급" — 표준 리치 1판과의 차이(+1판)만 얹는다.
+    addWinHanBonus(ctx, (state, info) => {
+      const rs = state.round.byPlayer[ctx.holder];
+      if (rs?.riichi == null) return 0;
+      // 멘젠 리치는 원래 되는 것이므로, 이 증강이 실제로 열어 준 경우(후로 상태)만 준다.
+      return openMeldCountOf(state, ctx.holder) > 0 ? OPEN_RIICHI_HAN - STANDARD_RIICHI_HAN : 0;
+    });
   },
 });
 
 export const yakulessWin = defineAugment({
   id: "yakuless_win",
   tier: "prism",
+  category: "shape",
   name: "무형화료",
-  description: "역이 없어도 화료할 수 있다.",
+  description:
+    "(상시) 머리 1개와 몸통 4개가 완성된다면 역이 없이도 화료가 가능하다. 역이 없이 화료하면 그 화료를 2판으로 취급한다.",
+  detail:
+    "(상시) 화료에 역이 필요하다는 조건이 사라진다. 머리 1개와 몸통 4개(4멘쯔)로 손이 완성되면 역이 하나도 없어도 그대로 화료할 수 있고, 실제로 역 0개로 오른 화료는 2판으로 취급된다. 역이 있는 손에는 아무것도 얹히지 않는다.",
   install(ctx) {
     ctx.setHolderRule("win.requiresYaku", false);
+    // 역 없는 손은 싸구려라 폭발력이 중간급이라는 판정(docs/16 §1b E).
+    // 이 증강이 실제로 성립시킨 화료(역 0개)에만 확정 보상을 붙인다.
+    // 역이 0개면 판수도 0이므로, +2판이 곧 "이 화료를 2판으로 취급"이다.
+    addWinHanBonus(ctx, (_state, info) => (info.yaku.length === 0 ? YAKULESS_HAN : 0));
   },
 });
 
@@ -158,6 +191,36 @@ const recallAction: ActionDef<{ recallTileId: TileId }> = {
   ],
 };
 
+
+/**
+ * 뷰에서 이 패가 손패에 "쓸모 있는가" — 같은 패가 또 있거나(짝) 슌쯔 이웃(±1·±2)이 있다.
+ * 회수(discard_recall) 봇 정책이 쯔모패와 바닥패의 가치를 비교하는 데 쓴다.
+ */
+function usefulInHand(handKinds: TileKind[], k: TileKind): boolean {
+  return handKinds.some(
+    (x) =>
+      (x.suit === k.suit && x.rank === k.rank) ||
+      (x.suit === k.suit &&
+        (k.suit === "man" || k.suit === "pin" || k.suit === "sou") &&
+        Math.abs(x.rank - k.rank) <= 2),
+  );
+}
+
+/** 뷰 기준 홀더의 감춰진 손패 kind 목록 (쯔모패는 exclude로 뺄 수 있다) */
+function viewHandKinds(
+  view: PlayerView,
+  holder: PlayerId,
+  exclude?: TileId | null,
+): TileKind[] {
+  const out: TileKind[] = [];
+  for (const id of view.zones[handZone(holder)]?.tileIds ?? []) {
+    if (exclude !== undefined && exclude !== null && id === exclude) continue;
+    const k = view.tiles[id]?.kind;
+    if (k !== undefined) out.push(k);
+  }
+  return out;
+}
+
 /**
  * 회수 (버림패 회수) — 차터의 대표 예시.
  * 새 플레이어 액션을 "엔진 수정 없이" 프롬프트에 노출하는 것을 실증한다.
@@ -167,8 +230,34 @@ const recallAction: ActionDef<{ recallTileId: TileId }> = {
 export const discardRecall = defineAugment({
   id: "discard_recall",
   tier: "prism",
+  category: "hand",
   name: "회수",
-  description: "매 국 한 번, 쯔모한 패를 버리고 자신의 버림패 중 하나를 골라 손으로 되가져온다.",
+  description:
+    "(매 국 1회) 자기 순에 쯔모한 패를 내 바닥으로 내보내고, 자신의 과거 버림패 중 하나를 골라 손으로 되가져온다.",
+  detail:
+    "(매 국 1회) 자기 순에 방금 쯔모한 패를 내 바닥으로 내보내고 그 대신 내가 예전에 버린 패 하나를 손으로 되가져온다. 나가고 들어오는 장수가 1:1이라 손패 수는 그대로이며, 되가져온 뒤 정상적으로 버림을 이어간다.",
+  /**
+   * 봇: **쯔모패가 쓸모없고**(짝도 이웃도 없음) 내 바닥에 손을 진전시키는 패가 있을 때만
+   * 회수한다. 회수는 매 국 1회뿐이라 아무 때나 쓰면 정작 필요한 순간에 없다.
+   */
+  bot: {
+    choose({ options, view, holder }) {
+      const mine = options.filter((o) => o.type === "recall");
+      if (mine.length === 0) return null;
+      const drawn = view.round.myDrawnTile;
+      if (drawn === null) return null;
+      const drawnKind = view.tiles[drawn]?.kind;
+      if (drawnKind === undefined) return null;
+      const handKinds = viewHandKinds(view, holder, drawn);
+      if (usefulInHand(handKinds, drawnKind)) return null; // 쯔모패가 이미 쓸모 있다
+      for (const o of mine) {
+        const tileId = (o.payload as { recallTileId?: TileId }).recallTileId;
+        const k = tileId !== undefined ? view.tiles[tileId]?.kind : undefined;
+        if (k !== undefined && usefulInHand(handKinds, k)) return o;
+      }
+      return null;
+    },
+  },
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -209,10 +298,7 @@ export const discardRecall = defineAugment({
 });
 
 export const standardAugments: AugmentDef[] = [
-  cheapRiichi,
-  tsumoBonus,
   ironWall,
-  vengeance,
   openRiichi,
   yakulessWin,
   discardRecall,

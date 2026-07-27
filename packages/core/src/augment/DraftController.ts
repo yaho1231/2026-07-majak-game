@@ -5,6 +5,14 @@
  * 게임 진행용 PRNG를 소비하지 않으며, 언제든 재계산 가능하다.
  * 상태를 바꾸는 것은 오직 픽(AugmentDrafted)이다.
  *
+ * **다양성(2026-07-26)**: 한 게임에 증강이 최대한 골고루 나오게 두 겹을 건다.
+ * ① 스테이지마다 제시 가능한 풀을 좌석별 **서로 소인 후보 칸**으로 갈라 —
+ *    같은 스테이지에 두 사람에게 같은 증강이 제시되지 않는다(`cellFor`).
+ * ② 누가 이미 보유한 증강은 아무에게도 다시 제시하지 않는다 —
+ *    한 게임에 같은 증강을 둘이 갖는 일이 없다(`heldByOthers`).
+ * 두 장치 모두 **결정적**이며, 스테이지 도중 남이 픽해도 내 후보가 흔들리지 않는다
+ * (근거는 `cellFor` 주석 — `pick`의 "제시된 것인가" 검증이 여기에 의존한다).
+ *
  * 설계: docs/10_AUGMENT_SYSTEM.md §3~4
  */
 
@@ -12,14 +20,16 @@ import { Prng } from "../engine/random/Prng.js";
 import type { GameEngine } from "../engine/GameEngine.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import { installAugment } from "./Augment.js";
-import type { AugmentDef, AugmentExtras, AugmentTier } from "./Augment.js";
+import type { AugmentDef, AugmentExtras } from "./Augment.js";
 import { AugmentRegistry } from "./AugmentRegistry.js";
-import type { TierWeights } from "./AugmentRegistry.js";
 
-const TIER_ORDER: AugmentTier[] = ["silver", "gold", "prism"];
-
-/** 드래프트 스테이지 (게임 시작 / 남장 진입) */
-export type DraftStage = "gameStart" | "southEntry";
+/**
+ * 드래프트 스테이지.
+ * - gameStart: 게임 시작(동1국 진입) — 두 모드 공통.
+ * - southEntry: 남장 진입(남1국) — 반장전 전용.
+ * - eastThird: 동3국 진입 — 동풍전 전용.
+ */
+export type DraftStage = "gameStart" | "southEntry" | "eastThird";
 
 function hashString(s: string): number {
   let h = 2166136261;
@@ -37,61 +47,155 @@ export class DraftController {
     private readonly extras: AugmentExtras = {},
   ) {}
 
-  private weights(): TierWeights {
-    return {
-      silver: this.engine.rules.resolve<number>("augment.draft.weight.silver"),
-      gold: this.engine.rules.resolve<number>("augment.draft.weight.gold"),
-      prism: this.engine.rules.resolve<number>("augment.draft.weight.prism"),
-    };
+  /** 현재 게임 모드 (없으면 반장전 폴백) */
+  private mode(): import("../engine/state/GameState.js").GameMode {
+    return this.engine.state.config.mode ?? "hanchan";
+  }
+
+  /** 이 증강이 현재 스테이지·모드에서 제시 가능한지 (보유 여부와 무관) */
+  private offerable(def: AugmentDef, stage: DraftStage): boolean {
+    if (def.draftStages !== undefined && !def.draftStages.includes(stage)) {
+      return false;
+    }
+    if (def.modes !== undefined && !def.modes.includes(this.mode())) {
+      return false;
+    }
+    return true;
   }
 
   /**
-   * 이 증강턴에 (전원 공통으로) 제시할 등급을 확률로 하나 고른다.
-   * 시드에 player를 넣지 않아 모든 플레이어가 같은 등급을 받고, 리플레이에서도 재현된다.
+   * 이 스테이지·플레이어에게 제외할 증강 id
+   * (보유 ∪ 스테이지/모드 부적합 ∪ 보유 증강과 상호 배제(conflicts) 관계).
    */
-  tierForStage(stage: DraftStage): AugmentTier {
-    const w = this.weights();
-    const candidates = TIER_ORDER.filter(
-      (t) => w[t] > 0 && this.catalog.byTier(t).length > 0,
-    );
-    if (candidates.length === 0) return "silver";
-    const seed = (this.engine.state.config.seed ^ hashString(`tier:${stage}`)) >>> 0;
-    const prng = new Prng(seed);
-    const total = candidates.reduce((s, t) => s + w[t], 0);
-    let roll = prng.next() * total;
-    for (const t of candidates) {
-      roll -= w[t];
-      if (roll < 0) return t;
-    }
-    return candidates[candidates.length - 1] as AugmentTier;
-  }
-
-  /** 이 스테이지·플레이어에게 제외할 증강 id (보유 ∪ 스테이지 부적합) */
   private excludeFor(stage: DraftStage, player: PlayerId): Set<string> {
     const state = this.engine.state;
-    const exclude = new Set(
-      state.players.find((p) => p.id === player)?.augments ?? [],
-    );
+    const held = state.players.find((p) => p.id === player)?.augments ?? [];
+    const heldSet = new Set(held);
+    const exclude = new Set<string>(held);
+
+    // 보유 증강이 금지하는 상대 id (H.conflicts) — 상호 배제의 한 방향.
+    const forbiddenByHeld = new Set<string>();
+    for (const id of held) {
+      for (const c of this.catalog.get(id)?.conflicts ?? []) {
+        forbiddenByHeld.add(c);
+      }
+    }
+
     for (const def of this.catalog.all()) {
-      if (def.draftStages !== undefined && !def.draftStages.includes(stage)) {
+      if (!this.offerable(def, stage)) {
+        exclude.add(def.id);
+        continue;
+      }
+      // 상호 배제: 보유 증강이 def를 금지하거나(H.conflicts ∋ def),
+      // def가 보유 증강을 금지하면(def.conflicts ∩ 보유) 둘 다 제외한다 — 관계는 대칭.
+      if (
+        forbiddenByHeld.has(def.id) ||
+        (def.conflicts ?? []).some((c) => heldSet.has(c))
+      ) {
         exclude.add(def.id);
       }
     }
     return exclude;
   }
 
+  /** 다른 플레이어가 이미 보유한 증강 id (한 게임에 같은 증강이 둘 있지 않게) */
+  private heldByOthers(player: PlayerId): Set<string> {
+    const out = new Set<string>();
+    for (const p of this.engine.state.players) {
+      if (p.id === player) continue;
+      for (const id of p.augments) out.add(id);
+    }
+    return out;
+  }
+
+  /**
+   * 이 스테이지의 **좌석별 후보 칸(cell)** — 좌석마다 서로 겹치지 않는 후보 묶음.
+   *
+   * 한 게임에서 증강이 최대한 다양하게 나오도록, 스테이지가 열릴 때 제시 가능한 풀을
+   * (시드 ⊕ 스테이지)로 섞어 좌석 순서대로 **서로 소인 구간**으로 나눠 준다. 각 좌석은
+   * 자기 칸에서만 뽑으므로 **같은 스테이지에 두 사람에게 같은 증강이 제시되는 일이 없다.**
+   *
+   * 결정성·안정성이 이 설계의 핵심이다:
+   * - 칸 계산에 쓰는 것은 `offerable`(draftStages·modes)뿐이다 — **국 중에 변하지 않는다.**
+   *   보유 증강 같은 가변 상태를 칸 계산에 넣으면, 스테이지 도중 누가 픽할 때마다 남의
+   *   후보가 흔들려 `pick`의 "제시된 것인가" 검증이 깨진다.
+   * - 칸이 서로 소이므로 **다른 사람이 이번 스테이지에 픽한 증강은 내 칸에 애초에 없다.**
+   *   그래서 `heldByOthers` 제외를 칸에 적용해도 내 후보는 흔들리지 않는다.
+   *
+   * 카탈로그가 좌석 수를 감당할 만큼 크지 않으면 `null`을 돌려 **기존 전역 균등 추첨**으로
+   * 돌아간다(작은 테스트 카탈로그·극단적 모드 필터). 그때는 겹침을 보장하지 못한다.
+   */
+  private cellFor(stage: DraftStage, player: PlayerId): AugmentDef[] | null {
+    const state = this.engine.state;
+    const seats = state.players.length;
+    const seatIdx = state.players.findIndex((p) => p.id === player);
+    if (seatIdx < 0 || seats <= 1) return null;
+
+    const count = this.engine.rules.resolve<number>("augment.draft.choices");
+    // 칸 크기는 제시 수의 4배(최소 12) — 보유·상호 배제로 몇 개가 빠져도 3개를 못 채울 일이
+    // 없을 만큼의 여유다. 칸 밖에는 보충용 나머지가 최소 count개 남아야 한다.
+    const cellSize = Math.max(count * 4, 12);
+    const pool = this.catalog.all().filter((d) => this.offerable(d, stage));
+    if (pool.length < seats * cellSize + count) return null; // 카탈로그가 작다 → 기존 방식
+
+    // (시드 ⊕ 스테이지)로 결정적 셔플 — 플레이어에 의존하지 않는다(칸 경계가 흔들리면 안 된다).
+    const prng = new Prng(
+      (state.config.seed ^ hashString(`cells:${stage}`)) >>> 0,
+    );
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = prng.int(i + 1);
+      [pool[i], pool[j]] = [pool[j] as AugmentDef, pool[i] as AugmentDef];
+    }
+    return pool.slice(seatIdx * cellSize, (seatIdx + 1) * cellSize);
+  }
+
   /**
    * 이 플레이어에게 제시할 3개. 결정적이므로 몇 번 호출해도 같은 결과.
-   * 등급은 이 증강턴 공통(tierForStage)이고, 그 등급 안에서 플레이어별로 다른 카드를 뽑는다.
+   *
+   * 2026-07-22 (52차) 등급 폐기: 등급 통일·가중치를 걷어내고 **균등 비복원**으로 단순화했다.
+   *
+   * 2026-07-26 다양성: 좌석별 후보 칸(`cellFor`)에서 뽑아 **같은 스테이지에 다른 사람과
+   * 겹치지 않게** 하고, 이미 **누가 보유한 증강은 아무에게도 다시 제시하지 않는다**
+   * (한 게임에 같은 증강이 둘 있지 않게).
    */
   roll(stage: DraftStage, player: PlayerId): AugmentDef[] {
     const state = this.engine.state;
     const exclude = this.excludeFor(stage, player);
-    const tier = this.tierForStage(stage);
     const seed = (state.config.seed ^ hashString(`${stage}:${player}`)) >>> 0;
     const prng = new Prng(seed);
     const count = this.engine.rules.resolve<number>("augment.draft.choices");
-    return this.catalog.rollFromTier(prng, tier, count, exclude);
+
+    const cell = this.cellFor(stage, player);
+    if (cell === null) return this.catalog.rollUniform(prng, count, exclude);
+
+    // 내 칸에서 뽑는다 — 기존 제외 + 남이 이미 가진 것(게임 내 중복 금지).
+    const banned = new Set([...exclude, ...this.heldByOthers(player)]);
+    const chosen = AugmentRegistry.rollFrom(prng, count, cell, banned);
+    if (chosen.length >= count) return chosen;
+
+    // 칸이 말라붙은 극단적 경우에만 칸 밖에서 보충한다. 여기서는 **남의 보유분을 제외하지
+    // 않는다** — 남이 이번 스테이지에 픽할 때마다 결과가 바뀌면 pick 검증이 깨지기 때문이다.
+    const picked = new Set(chosen.map((d) => d.id));
+    const rest = this.catalog
+      .all()
+      .filter((d) => !exclude.has(d.id) && !picked.has(d.id));
+    return [
+      ...chosen,
+      ...AugmentRegistry.rollFrom(prng, count - chosen.length, rest),
+    ];
+  }
+
+  /**
+   * 제시(오퍼)를 로그에 기록한다 — 픽률·등급 분포 통계 전용(상태 불변).
+   * 픽보다 먼저, 고정 순서로 호출해야 리플레이 이벤트 순서가 결정적이다.
+   */
+  recordOffer(_stage: DraftStage, player: PlayerId, offered: AugmentDef[]): void {
+    const result = this.engine.submit({
+      player,
+      type: "draftOffer",
+      payload: { player, augmentIds: offered.map((d) => d.id) },
+    });
+    if (!result.ok) throw new Error(`draftOffer failed: ${result.reason}`);
   }
 
   /** 픽 확정: 제시된 것 중 하나여야 하며, 상태 갱신 후 설치까지 한다 */
@@ -112,48 +216,8 @@ export class DraftController {
     if (!result.ok) throw new Error(`draftPick failed: ${result.reason}`);
 
     installAugment(this.engine, def, player, this.extras);
-    this.grantChain(stage, player, def, this.ownedIds(player));
   }
 
-  private ownedIds(player: PlayerId): Set<string> {
-    return new Set(
-      this.engine.state.players.find((p) => p.id === player)?.augments ?? [],
-    );
-  }
-
-  /**
-   * 도박사 계열 지급 — def.grantsRandomTier가 있으면 그 등급의 무작위 증강 1개를
-   * 추가로 지급(픽·설치)한다. 지급된 증강이 또 지급 속성을 가지면 연쇄한다.
-   * 지급은 markStage 없이 기록되어 스테이지 완료 플래그를 건드리지 않는다.
-   */
-  private grantChain(
-    stage: DraftStage,
-    player: PlayerId,
-    def: AugmentDef,
-    owned: Set<string>,
-  ): void {
-    const tier = def.grantsRandomTier;
-    if (tier === undefined) return;
-    const exclude = new Set(owned);
-    for (const d of this.catalog.all()) {
-      if (d.draftStages !== undefined && !d.draftStages.includes(stage)) {
-        exclude.add(d.id);
-      }
-    }
-    const seed =
-      (this.engine.state.config.seed ^ hashString(`grant:${stage}:${player}:${def.id}`)) >>> 0;
-    const rolled = this.catalog.rollFromTier(new Prng(seed), tier, 1, exclude)[0];
-    if (rolled === undefined) return; // 풀 고갈 — 아무것도 지급하지 않음
-    const result = this.engine.submit({
-      player,
-      type: "draftPick",
-      payload: { augmentId: rolled.id },
-    });
-    if (!result.ok) throw new Error(`grant draftPick failed: ${result.reason}`);
-    installAugment(this.engine, rolled, player, this.extras);
-    owned.add(rolled.id);
-    this.grantChain(stage, player, rolled, owned);
-  }
 }
 
 /** 게임 재구성·리플레이용: state.augments에 있는 모든 증강을 재설치한다 */

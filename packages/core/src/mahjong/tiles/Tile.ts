@@ -36,6 +36,13 @@ export interface TileAttrs {
    * 원래 4장 한도를 넘을 수 있으므로 클라이언트가 다른 이펙트로 구분해 표시한다.
    */
   conjured?: boolean;
+  /**
+   * 증강이 부여한 적도라의 **소유자**(PlayerId). 이 값이 있으면 채점에서
+   * 그 사람이 화료할 때만 적도라로 센다 — 물들인 패를 버려서 상대가 울어 가도
+   * 상대에게는 이득이 되지 않는다. 패산에서 나온 진짜 적도라는 이 값이 없다.
+   * (소비 지점: `buildWinContext`의 redCount 계산)
+   */
+  redFor?: string;
   [key: string]: unknown;
 }
 

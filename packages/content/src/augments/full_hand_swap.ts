@@ -1,9 +1,21 @@
 /**
- * full_hand_swap (통째로 바꾸기) — 게임당 1회, 국의 첫 순(turnCount<=1)에
- * 상대와 손패 전체(쯔모패 제외 13장)를 맞바꾼다.
+ * full_hand_swap (통째로 바꾸기) — 게임당 2회, 국의 첫 순(turnCount<=1)에
+ * 상대의 손패를 **통째로 강탈**한다.
+ *
+ * 2026-07-22 (48차 재설계, 사용자 확정): 맞교환 → **일방적 강탈**.
+ *   ① 상대의 손패 전체가 내 손으로 온다.
+ *   ② 내 손패(쯔모패 제외)는 상대가 아니라 **패산 맨 밑으로** 들어간다.
+ *   ③ 상대는 패산 위에서 같은 장수를 새로 받는다.
+ * 예전 맞교환은 내 배패가 상대에게 넘어가 **상대를 강화**할 수 있었다 —
+ * 무페널티 원칙(10_AUGMENT_SYSTEM §0)에 어긋나므로 그 경로를 끊었다.
+ *
+ * 패 수지: 내 13장이 패산에 들어가고 상대가 패산에서 13장을 받으므로 패산 총량은 불변.
+ * 내 패는 배열 끝(맨 밑)에 들어가고 상대는 앞에서 받으므로, 상대가 방금 빼앗긴
+ * 자기 패를 그대로 돌려받는 일은 없다.
  */
 
 import {
+  WALL,
   augmentDataSet,
   defineAugment,
   handIdsOf,
@@ -18,29 +30,42 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
+import { counterOf, sameHandSize, viewKey } from "../util.js";
+import { handIsWeak, handKindsOf } from "./botHelpers.js";
 
 const ID = "full_hand_swap";
 const ACTION = "hand_swap";
+/** 게임당 사용 가능 횟수 */
+const MAX_USES = 2;
 /** 이 증강이 만들어내는 이벤트 — id에서 파생시켜 충돌 방지 */
 const FULL_HAND_SWAP_PERFORMED = "FullHandSwapPerformed";
+/** 게임 단위 사용 횟수 카운터 키 */
 const usedKey = (player: PlayerId): string => `${ID}:used:${player}`;
 
 interface FullHandSwapPayload {
   holder: PlayerId;
   target: PlayerId;
-  /** 보유자 → 상대에게 넘어가는 손패 (쯔모패 제외) */
-  give: TileId[];
-  /** 상대 → 보유자에게 넘어오는 손패 전체 */
-  take: TileId[];
+  /** 보유자 → 패산 맨 밑으로 들어가는 손패 (쯔모패 제외) */
+  toWall: TileId[];
+  /** 상대 → 보유자에게 통째로 넘어오는 손패 */
+  steal: TileId[];
+  /** 패산 위에서 상대에게 새로 지급되는 패 (steal과 같은 장수) */
+  refill: TileId[];
 }
+
+// 배패 장수(deal.handSize)가 다른 상대는 강탈할 수 없다 — 진짜 용(16장) 등.
+// 판정은 util.sameHandSize 한 곳으로 통일한다(사본이 갈라져 가드가 빠지는 것을 방지).
+
+const wallLen = (state: GameState): number =>
+  state.zones[WALL]?.tileIds.length ?? 0;
 
 const handSwapAction: ActionDef<{ target: PlayerId }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined) return "unknown player";
     if (!player.augments.includes(ID)) return "no full_hand_swap augment";
-    if (state.augmentData[usedKey(req.player)] === true) {
+    if (counterOf(state, usedKey(req.player)) >= MAX_USES) {
       return "hand_swap already used";
     }
     if (state.round.phase !== "turn.act") return "not in act phase";
@@ -54,15 +79,25 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
     if (state.round.byPlayer[target.id]?.riichi != null) {
       return "target is in riichi";
     }
+    if (!sameHandSize(rules, state, req.player, target.id)) {
+      return "hand sizes differ";
+    }
+    // 상대에게 지급할 보충패가 패산에 있어야 한다
+    if (wallLen(state) < handIdsOf(state, target.id).length) {
+      return "not enough wall tiles";
+    }
     return null;
   },
   toEvents: (req, { state }) => {
     const drawn = state.round.lastDrawnTile;
+    const steal = [...handIdsOf(state, req.payload.target)];
     const payload: FullHandSwapPayload = {
       holder: req.player,
       target: req.payload.target,
-      give: handIdsOf(state, req.player).filter((id) => id !== drawn),
-      take: [...handIdsOf(state, req.payload.target)],
+      toWall: handIdsOf(state, req.player).filter((id) => id !== drawn),
+      steal,
+      // 내 패는 배열 끝에 붙으므로 앞쪽 N장은 그대로다 (validate가 길이를 보장)
+      refill: (state.zones[WALL]?.tileIds ?? []).slice(0, steal.length),
     };
     return [{ type: FULL_HAND_SWAP_PERFORMED, payload }];
   },
@@ -71,9 +106,12 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
 export const fullHandSwap: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
+  category: "hand",
   name: "통째로 바꾸기",
   description:
-    "게임당 1회, 국의 첫 순에 상대를 지정해 손패 전체(쯔모패 제외)를 통째로 맞바꾼다.",
+    "(게임 내 2회) 국의 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패(쯔모패 제외)는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다.",
+  detail:
+    "(게임 내 2회) 국의 첫 순에 상대 한 명을 지정해 그 손패를 통째로 가져온다. 교환이 아니라 강탈이라 내 손패(쯔모패 제외)는 상대가 아니라 패산 맨 밑으로 들어가고, 상대는 패산 위에서 같은 장수를 새로 받는다. 내 배패가 상대를 강화하는 일은 없다. 리치한 상대와 손패 장수가 다른 상대는 지정할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -81,17 +119,21 @@ export const fullHandSwap: AugmentDef = defineAugment({
     if (!engine.reducers.has(FULL_HAND_SWAP_PERFORMED)) {
       engine.reducers.register(FULL_HAND_SWAP_PERFORMED, (state, event) => {
         const p = event.payload as FullHandSwapPayload;
-        let zones = moveTiles(
-          state.zones,
-          handZone(p.holder),
-          handZone(p.target),
-          p.give,
-        );
-        zones = moveTiles(zones, handZone(p.target), handZone(p.holder), p.take);
+        // ① 내 손패를 패산 맨 밑(배열 끝)으로 — 상대에게 넘어가지 않는다
+        let zones = moveTiles(state.zones, handZone(p.holder), WALL, p.toWall);
+        // ② 상대 손패를 통째로 내 손으로
+        zones = moveTiles(zones, handZone(p.target), handZone(p.holder), p.steal);
+        // ③ 상대는 패산 위에서 같은 장수를 새로 받는다 (①에서 넣은 내 패는 맨 밑이라 안 걸린다)
+        zones = moveTiles(zones, WALL, handZone(p.target), p.refill);
         const next: GameState = {
           ...state,
           zones,
-          augmentData: { ...state.augmentData, [usedKey(p.holder)]: true },
+          augmentData: {
+            ...state.augmentData,
+            [usedKey(p.holder)]: counterOf(state, usedKey(p.holder)) + 1,
+            // 누구를 털었는지 전원 공개 (Rule #4 대응의 전제)
+            [viewKey("*", `${ID}:${p.holder}`)]: p.target,
+          },
         };
         return next;
       });
@@ -100,11 +142,26 @@ export const fullHandSwap: AugmentDef = defineAugment({
       engine.actions.register(handSwapAction);
     }
 
-    // 보유자 턴에 상대마다 후보 노출 — 합법성은 validate가 최종 판정
+    // 보유자 턴에 상대마다 후보 노출 — 합법성은 validate가 최종 판정.
+    // 배패 장수가 다른 상대(진짜 용 등)는 애초에 후보에서 제외한다.
     ctx.holderTurnOptions((state) =>
       state.players
-        .filter((p) => p.id !== holder)
+        .filter(
+          (p) =>
+            p.id !== holder &&
+            sameHandSize(engine.rules, state, holder, p.id),
+        )
         .map((p) => ({ type: ACTION, payload: { target: p.id } })),
     );
+  },
+  // 내 손이 명백히 나쁠 때만 상대 손을 통째로 강탈한다. 상대 손 속은 볼 수 없으므로
+  // 대상은 무작위로 고른다(누구를 뺏어도 내 쓰레기 손보다는 기대값이 높다).
+  bot: {
+    choose({ options, view, holder, tenpai, rng }) {
+      if (!handIsWeak(handKindsOf(view, holder), tenpai)) return null;
+      const mine = options.filter((o) => o.type === ACTION);
+      if (mine.length === 0) return null;
+      return mine[rng.int(mine.length)] ?? mine[0] ?? null;
+    },
   },
 });

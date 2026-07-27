@@ -1,0 +1,124 @@
+/**
+ * 삼원의 의지 (three_dragons_will) — 7장 대삼원.
+ *  1. 삼원패 2커쯔 + 나머지 1장이면 발동해 부족분을 잡패에서 물질화한다(손패 장수 불변).
+ *  2. 그 결과 세 삼원 커쯔가 실제로 서서 대삼원(역만)이 표준 채점으로 성립한다.
+ *  3. 조건 미충족(커쯔 1개·나머지 0장)·리치 중은 거부된다.
+ */
+
+import { describe, expect, it } from "vitest";
+import {
+  buildWinContext,
+  createStandardGameFromState,
+  evaluateWin,
+  handIdsOf,
+  installAugment,
+  kindKey,
+  kindOf,
+} from "@majak/core";
+import type { GameState, PlayerId, TileId } from "@majak/core";
+import { craft } from "./helpers.js";
+import { threeDragonsWill } from "../src/augments/three_dragons_will.js";
+
+/** kindKey = `${suit}${rank}` — 중(dragon3) */
+const CHUN = kindKey({ suit: "dragon", rank: 3 });
+
+function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
+  return {
+    ...state,
+    players: state.players.map((p) =>
+      p.id === player ? { ...p, augments: [...ids] } : p,
+    ),
+  };
+}
+
+/**
+ * p0: 백3(5z5z5z) + 발3(6z6z6z) + 중1(7z) + 123m + 잡패 4장(9m·1p·5p·9s).
+ * = 3+3+1+3+4 = 14장. 중 2장을 잡패에서 채우면 대삼원 사정권.
+ */
+function scene(hand: string, riichi = false): GameState {
+  const base = craft({
+    hands: { p0: hand, p1: "*", p2: "*", p3: "*" },
+    phase: "turn.act",
+    turnSeat: 0,
+    drawnLastFor: "p0",
+  });
+  const s = withAug(base, "p0", ["three_dragons_will"]);
+  if (!riichi) return s;
+  return {
+    ...s,
+    round: {
+      ...s.round,
+      byPlayer: {
+        ...s.round.byPlayer,
+        p0: { ...s.round.byPlayer["p0"]!, riichi: { double: false, ippatsu: false, discardIndex: 0 } },
+      },
+    },
+  };
+}
+
+function setup(state: GameState) {
+  const game = createStandardGameFromState(state);
+  installAugment(game.engine, threeDragonsWill, "p0", { yaku: game.yaku });
+  return game;
+}
+
+function handKeys(game: ReturnType<typeof setup>): string[] {
+  const st = game.engine.state;
+  return handIdsOf(st, "p0").map((id) => kindKey(kindOf(st, id)));
+}
+
+describe("삼원의 의지 (three_dragons_will)", () => {
+  it("삼원패 2커쯔 + 중 1장이면 잡패 2장이 중으로 물질화한다 (장수 불변)", () => {
+    const game = setup(scene("555z666z7z123m9m1p5p9s"));
+    const before = handKeys(game).length;
+
+    const r = game.engine.submit({ player: "p0", type: "dragons_will", payload: {} });
+    expect(r.ok).toBe(true);
+
+    const after = handKeys(game);
+    expect(after.length).toBe(before); // 손패 장수 불변
+    // 중이 3장이 됐다
+    expect(after.filter((k) => k === CHUN).length).toBe(3);
+    // 생성된 두 장은 conjured
+    const st = game.engine.state;
+    const conjured = handIdsOf(st, "p0").filter(
+      (id) => kindKey(kindOf(st, id)) === CHUN && st.tiles[id]?.attrs?.conjured === true,
+    );
+    expect(conjured.length).toBe(2);
+    expect(st.augmentData["three_dragons_will:uses:p0"]).toBe(1);
+  });
+
+  it("발동 후 대삼원(역만)이 표준 채점으로 성립한다", () => {
+    // 백3 발3 중1 + 123m(멘쯔) + 9p9p(머리) + 고립 자패 2장(東·南).
+    // 고립 자패가 가장 쓸모없으므로 재료로 뽑혀 중으로 바뀐다 →
+    // 발동 후: 백3 발3 중3 + 123m + 9p9p = 4멘쯔 + 머리(14장) 화료형.
+    const game = setup(scene("555z666z7z123m9p9p1z2z"));
+    const r = game.engine.submit({ player: "p0", type: "dragons_will", payload: {} });
+    expect(r.ok).toBe(true);
+
+    const st = game.engine.state;
+    const winTile = handIdsOf(st, "p0").at(-1) as TileId;
+    const ctx = buildWinContext(st, "p0", "tsumo", winTile, { rules: game.engine.rules });
+    const result = evaluateWin(ctx, game.yaku);
+    expect(result?.ok).toBe(true);
+    // 대삼원이 붙었다
+    expect(result?.yaku.some((y) => y.id === "daisangen")).toBe(true);
+    expect((result?.yakumanCount ?? 0)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("삼원패 커쯔가 하나뿐이면 발동할 수 없다", () => {
+    const game = setup(scene("555z66z7z123m456m9m1p"));
+    expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(false);
+  });
+
+  it("나머지 한 종류를 하나도 안 쥐었으면 발동할 수 없다", () => {
+    // 백3 발3 + 중 0장
+    const game = setup(scene("555z666z123m456m9m1p"));
+    expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(false);
+  });
+
+  it("리치 중에는 발동할 수 없다", () => {
+    const game = setup(scene("555z666z7z123m9m1p5p9s", true));
+    expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(false);
+  });
+});

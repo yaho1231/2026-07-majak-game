@@ -35,7 +35,7 @@ visibility.<zoneKind>.<owner>  → VisibilityRule   # 소유자 한정 오버라
 
 ```ts
 type VisibilityRule =
-  | "public"           // 전원 공개 (버림패, 멜드, 도라 표시패)
+  | "public"           // 전원 공개 (버림패, 후로, 도라 표시패)
   | "owner"            // 소유자만 공개 (손패)
   | "hidden"           // 전원 비공개 (패산, 왕패)
   | "count_only"       // 장수만 공개, 내용 비공개 (손패의 뒷면 표시용)
@@ -47,7 +47,7 @@ type VisibilityRule =
 |------------|------------|------|
 | `hand`     | `owner`    | 손패는 본인만 |
 | `discards` | `public`   | 버림패는 전원 공개 |
-| `melds`    | `public`   | 부로패는 전원 공개 |
+| `melds`    | `public`   | 후로패는 전원 공개 |
 | `wall`     | `hidden`   | 패산은 비공개 |
 | `deadWall` | `hidden`   | 왕패는 비공개 |
 
@@ -119,7 +119,11 @@ interface PlayerRoundView {
   ippatsu?: boolean;         // 본인만 알 수 있음
   furiten?: boolean;         // 본인만 알 수 있음
   furitenReasons?: ("discard" | "temporary" | "riichi")[]; // 본인만 알 수 있음
-  meldCount: number;         // 멜드 수 (공개 — melds Zone에서 계산 가능하지만 편의용)
+  meldCount: number;         // 후로 수 (공개 — melds Zone에서 계산 가능하지만 편의용)
+  sealedKinds?: string[];    // 봉인되어 버릴 수 없는 kindKey 목록 — 본인(관전자는 전원)만.
+                             // discard.blockedKinds 규칙의 해석 결과 (봉인술사 등).
+                             // 클릭해 보면 어차피 드러나는 정보라 본인에게는 숨기지 않는다
+                             // (클라가 🔒 표시·클릭 안내·봉인 배너에 사용).
 }
 ```
 
@@ -195,12 +199,27 @@ buildPlayerView(state, "__spectator", rules)
 관전자 뷰에서는 모든 Zone의 가시성을 `public`으로 해석한다.
 별도 코드 없이 `visibility.hand` → `public`인 RuleRegistry를 넘기면 된다.
 
+## 6.1 증강 테스트 시점 전환 (2026-07-25 추가)
+
+증강 테스트(샌드박스)에서 관리자는 **다른 좌석 시점으로 뷰를 갈아 볼 수 있다** —
+"내가 쓴 능력이 상대에게 어떻게 보이는가"를 그 상대의 가시성 필터 그대로 확인하기 위해서다.
+같은 `buildPlayerView`에 `viewerId`만 바꿔 넘기면 되므로 엔진·규칙 수정이 전혀 없다.
+
+- `PlayerAgent.viewSeatOverride?(): PlayerId | null` — 뷰 브로드캐스트 시 이 좌석 대신
+  볼 좌석(또는 `SPECTATOR_ID` = 전체 공개)을 돌려준다. `HanchanController.broadcastViews`와
+  `resendViewTo`가 `agent.viewSeatOverride?.() ?? agent.id`를 `buildPlayerView`의 viewerId로 쓴다.
+  형식텐파이(noYaku) 같은 '본인 뷰' 정보도 **관찰 대상 좌석 기준**으로 채워져 그 좌석의 실제 화면을 재현한다.
+- 클라이언트→서버 `sandboxViewAs { seat }`(관리자·샌드박스 전용) → `HumanAgent.setViewSeat`가
+  override를 세팅하고 `resendViewTo`가 다음 상태 변화를 기다리지 않고 즉시 새 시점 뷰를 보낸다.
+- **관찰 전용**: 결정(`decide`)은 언제나 본인 좌석으로 처리된다. 클라이언트는 `sandbox.seat`(실제 좌석)과
+  `view.playerId`(현재 보는 좌석)를 비교해, 다르면 조작 UI를 숨기고 "관찰 중" 배너 + "내 차례" 복귀 안내를 띄운다.
+
 ---
 
-# 7. 우라도라 처리
+# 7. 뒷도라 처리
 
-우라도라는 화료 시 공개한다. deadWall은 평소 `hidden`이나,
-화료 정산(RoundSettled) 이후에는 우라도라 표시패만 RoundView에 별도 필드로 담는다.
+뒷도라는 화료 시 공개한다. deadWall은 평소 `hidden`이나,
+화료 정산(RoundSettled) 이후에는 뒷도라 표시패만 RoundView에 별도 필드로 담는다.
 
 ```ts
 interface RoundView {
@@ -216,18 +235,21 @@ interface RoundView {
 
 ## peek 가시성
 
-`VisibilityRule`에 객체 값 `{ mode: "peek", count: N }`이 추가되었다.
-소유자에게는 전체, 타인에게는 **앞에서 N장만** 공개하고 나머지는 장수만 보인다.
-가시성 규칙 resolve 시 문맥에 `zoneOwner`(존 주인)와 `state`가 함께 전달되므로,
-Modifier가 "보는 사람이 보유자이고 남의 손패일 때만 peek" 같은 조건을 걸 수 있다.
+`VisibilityRule`에 객체 값 `{ mode: "peek", count: N, pick?: "front" | "random" }`이 추가되었다.
+소유자에게는 전체, 타인에게는 **N장만** 공개하고 나머지는 장수만 보인다.
+`pick` 생략/`"front"`=앞 N장, `"random"`=무작위 N장(손패 tile id 집합을 시드로 잡아
+손패가 그대로면 매 렌더 같은 패가 뽑혀, 리렌더로 더 많은 패가 새지 않는다. 쯔모·버림으로
+손패가 바뀌면 자연히 다시 뽑힌다). 가시성 규칙 resolve 시 문맥에 `zoneOwner`(존 주인)와
+`state`가 함께 전달되므로, Modifier가 "보는 사람이 보유자이고 남의 손패일 때만 peek" 같은
+조건을 걸 수 있다.
 
 ```ts
-// 투시(xray_hand): 상대 손패 앞 3장 공개
+// 투시(xray_hand): 상대 손패 무작위 3장 공개
 engine.rules.addModifier("visibility.hand", {
   source, layer,
   apply: (cur, ctx) =>
     ctx.playerId === holder && ctx.zoneOwner !== holder
-      ? { mode: "peek", count: 3 }
+      ? { mode: "peek", count: 3, pick: "random" }
       : cur,
 });
 ```

@@ -1,23 +1,24 @@
 /**
  * 기생충 (parasite, prism) — 자기 턴에 상대 한 명에게 기생한다 (게임당 1회 지정).
- * 숙주가 정산에서 얻는 점수의 절반(100점 단위)을 대신 받고, 잃는 점수의 절반을
- * 대신 잃는다. 숙주가 화료하거나 론을 맞으면 기생 대상이 숙주의 다음 차례
+ * 숙주가 정산에서 얻는 점수의 절반(100점 단위)을 대신 받는다. 숙주가 잃는 국에는
+ * 아무 영향이 없다. 숙주가 화료하거나 론을 맞으면 기생 대상이 숙주의 다음 차례
  * 플레이어로 옮겨간다 (그게 보유자 자신이면 한 자리 더 건너뜀).
  *
  * 구현 메모:
  * - 지정은 augmentData "parasite:target:{holder}"에 대상만 저장하고
  *   viewKey("*", ...)로 전원에게 공개한다. 기생은 해제되지 않고 옮겨갈 뿐이므로
  *   대상 키의 존재 자체가 "게임당 1회" 사용 플래그다 (별도 used 키 불필요).
- * - ROUND_SETTLED Interceptor에서 숙주 delta의 절반을 보유자에게 이전한다.
- *   숙주에게서 뺀 만큼 그대로 보유자에게 더하므로 정산 합계(제로섬)가 보존된다.
+ * - ROUND_SETTLED Interceptor에서 숙주 delta가 양수일 때만 그 절반을 보유자에게
+ *   이전한다. 숙주에게서 뺀 만큼 그대로 보유자에게 더하므로 정산 합계(제로섬)가 보존된다.
  * - ROUND_SETTLED Reaction에서 숙주의 화료·방총을 감지해 대상을 이동한다.
  */
 
 import {
-  ROUND_SETTLED,
   augmentDataSet,
   defineAugment,
   playerAtSeat,
+  ROUND_SETTLED,
+  SETTLE_STAGE,
 } from "@majak/core";
 import type {
   ActionDef,
@@ -25,7 +26,11 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { stringOf, viewKey } from "../util.js";
+import {
+  settleInterceptor,
+  stringOf,
+  viewKey,
+} from "../util.js";
 
 /** 기생 대상 키: 지정 후엔 항상 PlayerId (이동만 하고 해제되지 않는다) */
 const targetKey = (holder: PlayerId): string => `parasite:target:${holder}`;
@@ -61,9 +66,12 @@ const parasiteAttachAction: ActionDef<{ target: PlayerId }> = {
 export const parasite: AugmentDef = defineAugment({
   id: "parasite",
   tier: "prism",
+  category: "disrupt",
   name: "기생충",
   description:
-    "자기 턴에 상대 한 명에게 기생한다(게임당 1회 지정). 숙주가 정산에서 얻는 점수의 절반을 대신 받고, 잃는 점수의 절반을 대신 잃는다. 숙주가 화료하거나 론을 맞으면 기생 대상이 다음 차례 플레이어로 옮겨간다.",
+    "(게임 내 1회) 자기 순에 상대 한 명에게 기생한다. 숙주가 정산에서 얻는 점수의 절반을 대신 가져오며, 숙주가 화료하거나 론을 맞으면 기생 대상이 다음 차례 플레이어로 옮겨간다.",
+  detail:
+    "(게임 내 1회) 자기 순에 상대 한 명을 공개 지정해 기생한다. 숙주가 정산에서 얻는 점수의 절반(100점 단위)을 대신 가져오며, 숙주가 잃는 국에는 아무 영향이 없고 테이블 총점도 변하지 않는다. 숙주가 화료하거나 론을 맞으면 기생 대상이 그다음 차례 플레이어로 옮겨간다(자기 자리면 한 자리 더 건너뛴다). 기생은 해제되지 않고 옮겨 다니므로 지정 자체는 한 번뿐이다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -74,12 +82,15 @@ export const parasite: AugmentDef = defineAugment({
 
     // 정산 가로채기 — 숙주 증감의 절반(100점 단위)을 보유자에게 이전한다.
     // 숙주에게서 뺀 share를 그대로 보유자에게 더하므로 deltas 합계는 불변.
-    ctx.interceptor(ROUND_SETTLED, (event, ic) => {
+    // 정산 단계: Transfer — 숙주 획득의 절반 강탈 — 최종 획득 기준.
+    settleInterceptor(ctx, SETTLE_STAGE.Transfer, (event, ic) => {
       const host = stringOf(ic.state, targetKey(holder));
       if (host === null) return event;
       const p = event.payload as RoundSettledPayload;
       const d = p.deltas[host] ?? 0;
       if (d === 0) return event;
+      // 48차 무페널티: 숙주가 잃을 때는 함께 잃지 않는다 — 이득만 빨아먹는다
+      if (d <= 0) return event;
       const share = Math.round(d / 200) * 100;
       if (share === 0) return event;
       const deltas = {
@@ -116,5 +127,26 @@ export const parasite: AugmentDef = defineAugment({
         .filter((p) => p.id !== holder)
         .map((p) => ({ type: "parasite_attach", payload: { target: p.id } }));
     });
+  },
+  // 숙주가 버는 점수의 절반을 나눠 받는다(숙주가 화료할수록 이득) — 가장 점수가 높은
+  // 상대(리드 중이라 계속 벌 가능성이 큰 쪽)에 기생한다. 없으면 첫 상대.
+  bot: {
+    choose({ options, view, holder }) {
+      const mine = options.filter((o) => o.type === "parasite_attach");
+      if (mine.length === 0) return null;
+      const scoreOf = new Map<string, number>();
+      for (const p of view.players) if (p.id !== holder) scoreOf.set(p.id, p.score);
+      let best = mine[0] ?? null;
+      let bestScore = -Infinity;
+      for (const o of mine) {
+        const target = (o.payload as { target?: string }).target;
+        const s = target === undefined ? -Infinity : (scoreOf.get(target) ?? -Infinity);
+        if (s > bestScore) {
+          bestScore = s;
+          best = o;
+        }
+      }
+      return best;
+    },
   },
 });

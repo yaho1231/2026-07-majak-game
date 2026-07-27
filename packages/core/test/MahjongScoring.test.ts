@@ -59,11 +59,11 @@ describe("decompose", () => {
     expect(d[0]?.pair).toEqual(t("5z"));
   });
 
-  it("111222333m은 암각×3과 순자×3 두 해석이 나온다", () => {
+  it("111222333m은 암각×3과 슌쯔×3 두 해석이 나온다", () => {
     const d = decompose(h("111222333m456p99s"), 0);
     expect(d).toHaveLength(2);
     const types = d.map((x) => x.sets.filter((s) => s.type === "run").length).sort();
-    expect(types).toEqual([1, 4]); // 456p만 순자 vs 123m×3+456p
+    expect(types).toEqual([1, 4]); // 456p만 슌쯔 vs 123m×3+456p
   });
 
   it("치토이·국사·불완성형", () => {
@@ -72,7 +72,7 @@ describe("decompose", () => {
     expect(decompose(h("123m456p789s1245s3z"), 0)).toHaveLength(0);
   });
 
-  it("부로 수만큼 손패 멘쯔 요구가 줄어든다", () => {
+  it("후로 수만큼 손패 멘쯔 요구가 줄어든다", () => {
     // 펑 1개 → 손패는 3멘쯔 + 작두 = 11장
     expect(decompose(h("123m456p789s55z"), 1)).toHaveLength(1);
   });
@@ -108,7 +108,7 @@ describe("evaluateWin — 일반 역", () => {
     expect(r?.fu).toBe(20);
   });
 
-  it("역패(중) 부로: 1판 30부", () => {
+  it("역패(중) 후로: 1판 30부", () => {
     const melds: MeldInfo[] = [{ kind: "pon", tiles: h("777z") }];
     const r = evaluateWin(
       ctxOf({ hand: h("234m567p345s99s"), winningTile: t("3s"), melds }),
@@ -119,7 +119,7 @@ describe("evaluateWin — 일반 역", () => {
     expect(r?.fu).toBe(30); // 20 + 명각(중) 4 → 24 → 올림 30
   });
 
-  it("리치+일발+쯔모+핑후+탕야오, 우라 2 + 적도라 1 = 8판", () => {
+  it("리치+일발+쯔모+핑후+탕야오, 뒷도라 2 + 적도라 1 = 8판", () => {
     const r = evaluateWin(
       ctxOf({
         hand: h("234m345p456s678s22s"),
@@ -156,7 +156,7 @@ describe("evaluateWin — 일반 역", () => {
     expect(r?.fu).toBe(30); // 멘젠 론
   });
 
-  it("혼일색(부로)+자풍+일기통관", () => {
+  it("혼일색(후로)+자풍+일기통관", () => {
     const melds: MeldInfo[] = [{ kind: "pon", tiles: h("222z") }];
     const r = evaluateWin(
       ctxOf({ hand: h("123m456m789m55z"), winningTile: t("9m"), melds }),

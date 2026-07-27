@@ -1,5 +1,5 @@
 /**
- * information 그룹 증강 테스트 — 투시·영상 정찰·안개 강·역만 방어술.
+ * information 그룹 증강 테스트 — 투시·영상 정찰·안개 바닥·역만 방어술.
  */
 
 import { describe, expect, it } from "vitest";
@@ -11,10 +11,21 @@ import {
   discardsZone,
   handZone,
   installAugment,
+  kindKey,
+  kindOf,
+  uraIndicatorIds,
 } from "@majak/core";
-import type { PlayerId, PlayerView, TileId, ZoneView } from "@majak/core";
+import type {
+  FlowStatus,
+  GameState,
+  PlayerId,
+  PlayerView,
+  TileId,
+  ZoneView,
+} from "@majak/core";
 import { craft } from "./helpers.js";
 import { xrayHand } from "../src/augments/xray_hand.js";
+import { uraPeek } from "../src/augments/ura_peek.js";
 import { rinshanPreview } from "../src/augments/rinshan_preview.js";
 import { hiddenRiver } from "../src/augments/hidden_river.js";
 import { yakumanShield } from "../src/augments/yakuman_shield.js";
@@ -28,28 +39,36 @@ function zoneOf(view: PlayerView, zoneId: string): ZoneView {
 
 describe("xray_hand — 투시", () => {
   function setup() {
-    const state = craft({
+    const base = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
       turnSeat: 0,
     });
+    // 액티브 액션 validate가 player.augments를 확인하므로 보유 증강으로 등록한다
+    const state: GameState = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === "p0" ? { ...p, augments: [...p.augments, "xray_hand"] } : p,
+      ),
+    };
     const game = createStandardGameFromState(state);
     installAugment(game.engine, xrayHand, "p0", { yaku: game.yaku });
     return game;
   }
 
-  it("보유자 뷰: 상대 손패 앞 3장 공개 + hiddenCount 10", () => {
+  it("발동 후 보유자 뷰: 상대 세 명의 손패가 전부 공개된다 (hiddenCount 0)", () => {
     const game = setup();
+    // 액티브 재설계 — 자기 턴에 발동해야 그 국 동안 공개된다
+    const res = game.engine.submit({ player: "p0", type: "xray_reveal", payload: {} });
+    expect(res.ok).toBe(true);
     const st = game.engine.state;
     const view = buildPlayerView(st, "p0", game.engine.rules);
 
     for (const opp of ["p1", "p2", "p3"] as PlayerId[]) {
       const zone = zoneOf(view, handZone(opp));
-      expect(zone.tileIds).toEqual(
-        (st.zones[handZone(opp)]?.tileIds ?? []).slice(0, 3),
-      );
-      expect(zone.tileIds).toHaveLength(3);
-      expect(zone.hiddenCount).toBe(10);
+      const full = st.zones[handZone(opp)]?.tileIds ?? [];
+      expect(zone.tileIds).toEqual(full);
+      expect(zone.hiddenCount).toBe(0);
       // 공개된 패는 메타데이터(kind)도 함께 온다
       for (const id of zone.tileIds) expect(view.tiles[id]).toBeDefined();
     }
@@ -83,17 +102,18 @@ describe("rinshan_preview — 영상 정찰", () => {
     return game;
   }
 
-  it("보유자 뷰: 왕패 앞 4장(영상패) 공개, 나머지는 장수만", () => {
+  it("보유자 뷰: 다음 영상패(왕패 맨 앞 1장) 공개, 나머지는 장수만", () => {
     const game = setup();
     const st = game.engine.state;
     const view = buildPlayerView(st, "p0", game.engine.rules);
     const zone = zoneOf(view, DEAD_WALL);
 
+    // sys.drawRinshan은 항상 deadWall[0]을 뽑으므로 맨 앞 1장만이 정확한 다음 영상패다.
     expect(zone.tileIds).toEqual(
-      (st.zones[DEAD_WALL]?.tileIds ?? []).slice(0, 4),
+      (st.zones[DEAD_WALL]?.tileIds ?? []).slice(0, 1),
     );
-    expect(zone.tileIds).toHaveLength(4);
-    expect(zone.hiddenCount).toBe(10); // 왕패 14장 중 4장만 공개
+    expect(zone.tileIds).toHaveLength(1);
+    expect(zone.hiddenCount).toBe(13); // 왕패 14장 중 1장만 공개
     for (const id of zone.tileIds) expect(view.tiles[id]).toBeDefined();
   });
 
@@ -106,8 +126,10 @@ describe("rinshan_preview — 영상 정찰", () => {
   });
 });
 
-describe("hidden_river — 안개 강", () => {
-  function setup() {
+describe("hidden_river — 안개 바닥", () => {
+  // 52차 후속(사용자 피드백): 상시 패시브 → **게임당 1회 선언하는 액티브**.
+  // 선언(declare_fog) 전에는 바닥이 정상적으로 보이므로, 테스트도 선언 상태를 만들어야 한다.
+  function setup(declared = true) {
     const state = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
       discards: { p0: "1z2z", p1: "9m" },
@@ -115,38 +137,119 @@ describe("hidden_river — 안개 강", () => {
       turnSeat: 0,
       lastDiscard: { player: "p0", spec: "5s" },
     });
-    const game = createStandardGameFromState(state);
+    const game = createStandardGameFromState(
+      declared
+        ? { ...state, augmentData: { ...state.augmentData, "hidden_river:fog:p0": true } }
+        : state,
+    );
     installAugment(game.engine, hiddenRiver, "p0", { yaku: game.yaku });
     return game;
   }
 
-  it("타인 뷰: 보유자의 강은 장수만 보이고, 마지막 버림패는 반응 판정용으로 보인다", () => {
+  it("선언하기 전에는 바닥이 정상적으로 보인다", () => {
+    const game = setup(false);
+    const view = buildPlayerView(game.engine.state, "p1", game.engine.rules);
+    const river = zoneOf(view, discardsZone("p0"));
+    expect(river.tileIds.length).toBeGreaterThan(0);
+    expect(river.hiddenCount).toBe(0);
+  });
+
+  it("타인 뷰: 네 사람 모두의 바닥이 가려지고, 마지막 버림패만 반응 판정용으로 보인다", () => {
     const game = setup();
     const st = game.engine.state;
     const view = buildPlayerView(st, "p1", game.engine.rules);
 
-    // 보유자(p0)의 강: 내용 비공개, 장수(3장)만
+    // 보유자(p0)의 바닥: 내용 비공개, 장수(3장)만
     const river = zoneOf(view, discardsZone("p0"));
     expect(river.tileIds).toHaveLength(0);
     expect(river.hiddenCount).toBe(3);
 
-    // 마지막 버림패는 lastDiscard 채널로 노출 (론·부로 판정 가능)
+    // 마지막 버림패는 lastDiscard 채널로 노출 (론·후로 판정 가능)
     const lastId = st.round.lastDiscard?.tileId as TileId;
     expect(view.round.lastDiscard?.tileId).toBe(lastId);
     expect(view.tiles[lastId]).toBeDefined();
 
-    // 다른 플레이어(p1)의 강은 기존대로 공개
-    const otherRiver = zoneOf(view, discardsZone("p1"));
-    expect(otherRiver.tileIds).toHaveLength(1);
-    expect(otherRiver.hiddenCount).toBe(0);
+    // 자기 바닥(p1)조차 가려진다 — 안개는 테이블 전체에 낀다
+    const ownRiver = zoneOf(view, discardsZone("p1"));
+    expect(ownRiver.tileIds).toHaveLength(0);
+    expect(ownRiver.hiddenCount).toBe(1);
   });
 
-  it("보유자 본인 뷰: 자기 강은 그대로 전체 공개", () => {
+  it("보유자 본인 뷰: 네 사람의 바닥이 전부 그대로 보인다", () => {
     const game = setup();
     const view = buildPlayerView(game.engine.state, "p0", game.engine.rules);
-    const river = zoneOf(view, discardsZone("p0"));
-    expect(river.tileIds).toHaveLength(3);
-    expect(river.hiddenCount).toBe(0);
+    const mine = zoneOf(view, discardsZone("p0"));
+    expect(mine.tileIds).toHaveLength(3);
+    expect(mine.hiddenCount).toBe(0);
+    const theirs = zoneOf(view, discardsZone("p1"));
+    expect(theirs.tileIds).toHaveLength(1);
+    expect(theirs.hiddenCount).toBe(0);
+  });
+});
+
+describe("ura_peek — 이면투시", () => {
+  const URA_VIEW_KEY = "view:p0:ura";
+
+  function setup() {
+    const state = craft({
+      hands: { p0: "1111m456m789m123p", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = createStandardGameFromState({
+      ...state,
+      players: state.players.map((p) =>
+        p.id === "p0" ? { ...p, augments: [...p.augments, "ura_peek"] } : p,
+      ),
+    });
+    installAugment(game.engine, uraPeek, "p0", { yaku: game.yaku });
+    return game;
+  }
+
+  /** 직전 status에서 p0의 안깡(1만 4장) 옵션을 찾아 그대로 제출한다 */
+  function ankan(flow: FlowController, status: FlowStatus): void {
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status.prompts.find((pr) => pr.player === "p0");
+    const option = prompt?.options.find((o) => o.type === "ankan");
+    if (option === undefined) throw new Error("ankan option not offered");
+    flow.submit("p0", option);
+  }
+
+  const uraKinds = (game: ReturnType<typeof createStandardGameFromState>) =>
+    uraIndicatorIds(game.engine.state).map((id) =>
+      kindKey(kindOf(game.engine.state, id)),
+    );
+
+  it("발동 후 깡으로 도라가 늘면 새 뒷도라도 함께 보인다", () => {
+    const game = setup();
+    const flow = new FlowController(game.engine);
+    flow.begin();
+
+    const afterPeek = flow.submit("p0", {
+      type: "ura_peek_reveal",
+      payload: {},
+    });
+    const first = game.engine.state.augmentData[URA_VIEW_KEY];
+    expect(first).toEqual(uraKinds(game));
+    expect(first).toHaveLength(1);
+
+    // 안깡 → 새 도라 표시패가 뒤집힌다
+    ankan(flow, afterPeek);
+    expect(game.engine.state.round.doraIndicators).toHaveLength(2);
+
+    // 새로 생긴 뒷도라까지 보유자 뷰 채널에 반영된다
+    const after = game.engine.state.augmentData[URA_VIEW_KEY];
+    expect(after).toEqual(uraKinds(game));
+    expect(after).toHaveLength(2);
+  });
+
+  it("발동하지 않았다면 깡이 나도 아무것도 보이지 않는다", () => {
+    const game = setup();
+    const flow = new FlowController(game.engine);
+    ankan(flow, flow.begin());
+    expect(game.engine.state.round.doraIndicators).toHaveLength(2);
+    expect(game.engine.state.augmentData[URA_VIEW_KEY]).toBeUndefined();
   });
 });
 

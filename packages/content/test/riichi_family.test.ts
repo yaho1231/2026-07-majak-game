@@ -13,6 +13,7 @@ import {
   installAugment,
   kindKey,
   kindOf,
+  winHandKindsOf,
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
@@ -108,20 +109,20 @@ describe("riichi_upgrade (이중 선언)", () => {
     ).toBe(0);
   });
 
-  it("자연 더블리치 조건이면 +1판 플래그, 국이 끝나면 해제된다", () => {
+  it("자연 더블리치 조건이면 트리플리치 +2판(=4판) 플래그, 국이 끝나면 해제된다", () => {
     const game = createStandardGameFromState(craftRiichiState(true));
     installAugment(game.engine, riichiUpgrade, "p0", { yaku: game.yaku });
     declareRiichi(game);
 
     expect(game.engine.state.round.byPlayer["p0"]?.riichi?.double).toBe(true);
     expect(game.engine.state.augmentData["riichi_upgrade:triple:p0"]).toBe(true);
-    // 보유자에게만 +1판
+    // 보유자에게만 +2판 — 더블리치 2판과 합쳐 트리플리치 4판(2026-07-26 밸런스)
     const resolveExtra = (playerId: PlayerId): number =>
       game.engine.rules.resolve<number>("score.extraHan", {
         playerId,
         state: game.engine.state,
       });
-    expect(resolveExtra("p0")).toBe(1);
+    expect(resolveExtra("p0")).toBe(2);
     expect(resolveExtra("p1")).toBe(0);
 
     // 국 종료(ROUND_SETTLED) 시 플래그 해제
@@ -153,10 +154,7 @@ describe("free_riichi_discard (자유 선언)", () => {
     return withRiichi(s, "p0");
   }
 
-  const counterKey = (state: GameState): string =>
-    `free_riichi_discard:used:${roundKey(state)}:p0`;
-
-  it("대기가 보존되는 패만 허용된다 (validate)", () => {
+  it("리치 후에는 쯔모패가 아닌 손패를 대기 보존 검사 없이 아무거나 버릴 수 있다", () => {
     const game = createStandardGameFromState(craftFreeState());
     installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
     const def = game.engine.actions.get("free_discard");
@@ -166,22 +164,21 @@ describe("free_riichi_discard (자유 선언)", () => {
     const otherTwoMan = handTilesOfKind(game, "p0", "man2").find(
       (id) => id !== drawn,
     ) as TileId;
+    // 4s를 버리면 예전에는 대기가 변한다고 거부됐지만, 이제는 허용된다
     const fourSou = handTilesOfKind(game, "p0", "sou4")[0] as TileId;
 
-    // 같은 종류(2m) → 대기 보존 → 허용
     expect(
       def?.validate(
         { player: "p0", type: "free_discard", payload: { tileId: otherTwoMan } },
         ctx,
       ),
     ).toBeNull();
-    // 4s를 버리면 대기가 {5s}로 변함 → 거부
     expect(
       def?.validate(
         { player: "p0", type: "free_discard", payload: { tileId: fourSou } },
         ctx,
       ),
-    ).toBe("discard would change waits");
+    ).toBeNull();
     // 쯔모패 자체는 일반 버림을 쓰라고 거부
     expect(
       def?.validate(
@@ -191,7 +188,7 @@ describe("free_riichi_discard (자유 선언)", () => {
     ).toBe("drawn tile must use the normal discard");
   });
 
-  it("프롬프트에 후보가 노출되고, 실행 시 점수 변화 없이 버려지며 카운터가 는다", () => {
+  it("프롬프트에 쯔모패를 제외한 손패 전부가 후보로 노출되고, 실행 시 점수 변화 없이 버려진다", () => {
     const game = createStandardGameFromState(craftFreeState());
     installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
 
@@ -202,8 +199,8 @@ describe("free_riichi_discard (자유 선언)", () => {
     const frees = (prompt?.options ?? []).filter(
       (o) => o.type === "free_discard",
     );
-    // 손의 2m 두 장만 합법 (나머지는 대기가 변해 걸러진다)
-    expect(frees).toHaveLength(2);
+    // 쯔모패를 제외한 손패 13장 전부가 후보 (대기 보존 필터 없음)
+    expect(frees).toHaveLength(13);
     // 리치 중이므로 일반 버림은 쯔모패 하나뿐
     expect(
       (prompt?.options ?? []).filter((o) => o.type === "discard"),
@@ -225,31 +222,9 @@ describe("free_riichi_discard (자유 선언)", () => {
     expect(st.round.byPlayer["p0"]?.riichi).not.toBeNull();
     expect(st.round.riichiPot).toBe(0);
     expect(st.players.find((p) => p.id === "p0")?.score).toBe(25000);
-    // 국 단위 사용 카운터 +1
-    expect(st.augmentData[counterKey(st)]).toBe(1);
   });
 
-  it("국당 3회를 소진하면 거부되고, 리치 중이 아니어도 거부된다", () => {
-    const spent = craftFreeState();
-    const spentState: GameState = {
-      ...spent,
-      augmentData: { [counterKey(spent)]: 3 },
-    };
-    const game = createStandardGameFromState(spentState);
-    installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
-    const def = game.engine.actions.get("free_discard");
-    const drawn = game.engine.state.round.lastDrawnTile as TileId;
-    const otherTwoMan = handTilesOfKind(game, "p0", "man2").find(
-      (id) => id !== drawn,
-    ) as TileId;
-    expect(
-      def?.validate(
-        { player: "p0", type: "free_discard", payload: { tileId: otherTwoMan } },
-        { state: game.engine.state, rules: game.engine.rules },
-      ),
-    ).toBe("free discard exhausted this round");
-
-    // 리치 중이 아닌 보유자는 사용 불가
+  it("리치 중이 아니면 거부된다", () => {
     let noRiichi = craft({
       hands: { p0: "22m345p345s678s45s2m", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
@@ -257,18 +232,84 @@ describe("free_riichi_discard (자유 선언)", () => {
       drawnLastFor: "p0",
     });
     noRiichi = withAugments(noRiichi, "p0", ["free_riichi_discard"]);
-    const game2 = createStandardGameFromState(noRiichi);
-    installAugment(game2.engine, freeRiichiDiscard, "p0", { yaku: game2.yaku });
-    const drawn2 = game2.engine.state.round.lastDrawnTile as TileId;
-    const other2 = handTilesOfKind(game2, "p0", "man2").find(
-      (id) => id !== drawn2,
+    const game = createStandardGameFromState(noRiichi);
+    installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
+    const drawn = game.engine.state.round.lastDrawnTile as TileId;
+    const other = handTilesOfKind(game, "p0", "man2").find(
+      (id) => id !== drawn,
     ) as TileId;
     expect(
-      game2.engine.actions.get("free_discard")?.validate(
-        { player: "p0", type: "free_discard", payload: { tileId: other2 } },
-        { state: game2.engine.state, rules: game2.engine.rules },
+      game.engine.actions.get("free_discard")?.validate(
+        { player: "p0", type: "free_discard", payload: { tileId: other } },
+        { state: game.engine.state, rules: game.engine.rules },
       ),
     ).toBe("not in riichi");
+  });
+
+  it("리치 선언 시 손패가 스냅샷으로 저장되고 대기가 뷰 채널로 노출된다", () => {
+    // 실제 리치 액션을 태워 TILE_DISCARDED(riichi:true) 반응으로 스냅샷을 만든다
+    let s = craft({
+      hands: { p0: "22m345p345s678s45s2m", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    s = withAugments(s, "p0", ["free_riichi_discard"]);
+    const game = createStandardGameFromState(s);
+    installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
+
+    const drawn = game.engine.state.round.lastDrawnTile as TileId;
+    const r = game.engine.submit({
+      player: "p0",
+      type: "riichi",
+      payload: { tileId: drawn },
+    });
+    expect(r.ok).toBe(true);
+
+    const st = game.engine.state;
+    const snap = st.augmentData[`free_riichi_discard:snap:${roundKey(st)}:p0`];
+    expect(Array.isArray(snap)).toBe(true);
+    expect(snap as TileId[]).toHaveLength(13);
+    // 스냅샷은 리치 버림 직후의 실제 손패와 일치한다
+    expect([...(snap as TileId[])].sort((a, b) => a - b)).toEqual(
+      [...(st.zones[handZone("p0")]?.tileIds ?? [])].sort((a, b) => a - b),
+    );
+    // 대기(오름패)가 보유자 전용 뷰 채널로 노출된다
+    const waits = st.augmentData[viewKey("p0", "free_declare_waits:p0")];
+    expect(Array.isArray(waits)).toBe(true);
+    expect((waits as string[]).sort()).toEqual(["sou3", "sou6", "sou9"]);
+  });
+
+  it("스냅샷이 있으면 대기·화료 판정은 물리 손패가 아니라 스냅샷으로 고정된다", () => {
+    // 물리 손패(p0)와 다른 타일 id를 스냅샷으로 심어, 판정이 스냅샷을 쓰는지 확인한다.
+    let s = craft({
+      hands: {
+        p0: "19m19p19s1234567z", // 물리 손패 (국사형, 텐파이 아님)
+        p1: "234m234p234s2255z", // 스냅샷으로 쓸 손패
+        p2: "*",
+        p3: "*",
+      },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    s = withAugments(s, "p0", ["free_riichi_discard"]);
+    s = withRiichi(s, "p0");
+    const snapIds = [...(s.zones[handZone("p1")]?.tileIds ?? [])];
+    s = { ...s, augmentData: { [`free_riichi_discard:snap:${roundKey(s)}:p0`]: snapIds } };
+    const game = createStandardGameFromState(s);
+    installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
+
+    // winHandKindsOf(p0)가 물리 손패가 아니라 스냅샷(p1의 손패) kind를 돌려준다
+    const frozen = winHandKindsOf(game.engine.state, game.engine.rules, "p0")
+      .map(kindKey)
+      .sort();
+    const snapKinds = snapIds.map((id) => kindKey(kindOf(game.engine.state, id))).sort();
+    const physicalKinds = (game.engine.state.zones[handZone("p0")]?.tileIds ?? [])
+      .map((id) => kindKey(kindOf(game.engine.state, id)))
+      .sort();
+    expect(frozen).toEqual(snapKinds);
+    expect(frozen).not.toEqual(physicalKinds);
   });
 });
 
@@ -292,7 +333,7 @@ describe("peek_riichi_waits (선언 간파)", () => {
     return withRiichi(s, "p1");
   }
 
-  it("리치 중인 상대만 지정할 수 있고, 실행 시 1000점 지불·대기 공개·1회 제한", () => {
+  it("리치 중인 상대만 지정할 수 있고, 실행은 무료·대기 공개·국당 1회 (48차 무페널티 / 2026-07-26 국당 1회)", () => {
     const game = createStandardGameFromState(craftPeekState());
     installAugment(game.engine, peekRiichiWaits, "p0", { yaku: game.yaku });
     const def = game.engine.actions.get("peek_waits");
@@ -315,21 +356,19 @@ describe("peek_riichi_waits (선언 간파)", () => {
     const peeks = (prompt?.options ?? []).filter((o) => o.type === "peek_waits");
     expect(peeks).toEqual([{ type: "peek_waits", payload: { target: "p1" } }]);
 
-    // 실행: 보유자 -1000 → 대상 +1000, 보유자 뷰에 대기 기록
+    // 실행: 점수 이동 없음(예전엔 보유자 -1000 → 대상 +1000), 보유자 뷰에 대기 기록
     const after = flow.submit("p0", peeks[0] as { type: string; payload: unknown });
     const st = game.engine.state;
-    expect(st.players.find((p) => p.id === "p0")?.score).toBe(24000);
-    expect(st.players.find((p) => p.id === "p1")?.score).toBe(26000);
+    expect(st.players.find((p) => p.id === "p0")?.score).toBe(25000);
+    expect(st.players.find((p) => p.id === "p1")?.score).toBe(25000);
     expect(st.augmentData[viewKey("p0", "waits:p1")]).toEqual([
       "sou2",
       "sou5",
       "sou8",
     ]);
-    expect(
-      st.augmentData[`peek_riichi_waits:used:${roundKey(st)}:p0:p1`],
-    ).toBe(true);
+    expect(st.augmentData[`peek_riichi_waits:used:${roundKey(st)}:p0`]).toBe(true);
 
-    // 턴은 이어지고 (같은 turn.act), 같은 상대는 다시 간파할 수 없다
+    // 턴은 이어지고 (같은 turn.act), 그 국엔 더 이상 간파할 수 없다 (국당 1회)
     expect(st.round.phase).toBe("turn.act");
     if (after.kind !== "awaiting") throw new Error("expected awaiting");
     const reprompt = after.prompts.find((p) => p.player === "p0");
@@ -341,10 +380,10 @@ describe("peek_riichi_waits (선언 간파)", () => {
         { player: "p0", type: "peek_waits", payload: { target: "p1" } },
         { state: game.engine.state, rules: game.engine.rules },
       ),
-    ).toBe("already peeked this player this round");
+    ).toBe("already peeked this round");
   });
 
-  it("점수가 1000점 미만이면 사용할 수 없다", () => {
+  it("점수가 바닥이어도 사용할 수 있다 — 비용이 없다 (48차 무페널티)", () => {
     const base = craftPeekState();
     const poor: GameState = {
       ...base,
@@ -359,7 +398,7 @@ describe("peek_riichi_waits (선언 간파)", () => {
         { player: "p0", type: "peek_waits", payload: { target: "p1" } },
         { state: game.engine.state, rules: game.engine.rules },
       ),
-    ).toBe("not enough points");
+    ).toBeNull();
   });
 
   it("간파한 오름패는 새 국이 시작되면 사라진다 (국을 넘겨 남지 않는다)", () => {

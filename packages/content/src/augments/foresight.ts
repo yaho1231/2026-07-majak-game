@@ -1,0 +1,263 @@
+/**
+ * 예지 (foresight, prism) — "다음 한 바퀴를 내가 설계한다".
+ *
+ * 2026-07-25 재설계(사용자 지시): **상시 공개 → 발동 시 공개 + 드래그 순서지정.**
+ * - 이전엔 패산 앞 4장이 보유자에게 상시 보였다. 이제는 **발동해야** 그 순간의 앞 4장이
+ *   보유자에게 공개된다(발동 = 공개, 취소 불가).
+ * - 공개된 4장을 드래그로 재배열한다. 4장은 하가·대면·상가·**나**의 다음 쯔모이며,
+ *   4번째가 내 쯔모다(클라이언트가 강조).
+ * - 발동만 하고 순서를 바꾸지 않으면(턴 시간 종료 포함) **그대로**(항등) 둔 것으로 친다 —
+ *   발동 자체가 이미 소진이라, 재배열은 선택이다.
+ *
+ * 발동한 국에 화료하면 +2판. 발동 후 2순 동안 재발동 비활성(쿨다운).
+ *
+ * 액션 두 개로 나눈다:
+ * - `foresight_reveal {}` : 앞 4장의 kind를 보유자 전용 채널(view:{h}:foresight_peek)에 싣고,
+ *   소진·쿨다운·"이번 턴 공개" 마커를 세운다. 패산은 아직 바꾸지 않는다.
+ * - `foresight_order { order }` : 공개한 그 턴에 한해, order(0~3 순열, 항등 허용)대로 패산 앞
+ *   4장을 재배열한다. 재배열 후 공개 채널을 새 순서로 갱신하고 "이번 턴 공개" 마커를 지운다.
+ *
+ * 리듀서는 WALL Zone의 앞 4장만 바꿔 끼우는 불변 갱신(나머지 패산은 그대로).
+ * 쿨다운·소진은 국(roundKey) 스코프라 국이 바뀌면 자동 만료.
+ */
+
+import {
+  WALL,
+  augmentDataSet,
+  defineAugment,
+  kindKey,
+  kindOf,
+  playerAtSeat,
+} from "@majak/core";
+import type {
+  ActionDef,
+  AugmentDef,
+  GameState,
+  PlayerId,
+  TileId,
+} from "@majak/core";
+import { addWinHanBonus, flagOf, roundKey, viewKey } from "../util.js";
+
+const ID = "foresight";
+const REVEAL = "foresight_reveal";
+const ORDER = "foresight_order";
+const EVENT = "ForesightReordered";
+/** 미리 보고 재배열하는 패산 앞 장수 */
+const PEEK = 4;
+/** 사용 후 비활성 순 수 */
+const COOLDOWN_TURNS = 2;
+/** 발동한 국에 화료하면 받는 추가 점수 */
+const WIN_BONUS_HAN = 2; // 구 +4500점 → 3판 → 2판 (2026-07-26 판수 통일·재조정)
+
+/** 이번 국에 발동했는가 (점수 보너스 게이팅, roundKey 스코프) */
+const usedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:used:${roundKey(state)}:${h}`;
+/** 마지막 발동 순(turnCount) — 쿨다운 기준 (roundKey 스코프) */
+const lastTurnKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:turn:${roundKey(state)}:${h}`;
+/** '이번 턴에 공개했고 아직 재배열 안 함' 마커 = 공개 시점의 turnCount (roundKey 스코프) */
+const revealTurnKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:reveal:${roundKey(state)}:${h}`;
+/** 공개된 앞 4장 kind를 담는 보유자 전용 채널 */
+const peekViewKey = (h: PlayerId): string => viewKey(h, "foresight_peek");
+
+/** 패산 앞 PEEK장의 tileId (부족하면 짧은 배열) */
+function frontIds(state: GameState): TileId[] {
+  return (state.zones[WALL]?.tileIds ?? []).slice(0, PEEK);
+}
+
+/** 0~n-1의 모든 순열 (재배열 후보 생성용) */
+function permutations(n: number): number[][] {
+  if (n <= 1) return [[0]];
+  const out: number[][] = [];
+  const rec = (rest: number[], acc: number[]): void => {
+    if (rest.length === 0) {
+      out.push([...acc]);
+      return;
+    }
+    for (let i = 0; i < rest.length; i++) {
+      const next = [...rest];
+      const [picked] = next.splice(i, 1);
+      rec(next, [...acc, picked as number]);
+    }
+  };
+  rec(
+    Array.from({ length: n }, (_v, i) => i),
+    [],
+  );
+  return out;
+}
+
+/** 재배열 후보 = 0~3의 모든 순열(항등 포함 — 드래그가 제자리로 끝나도 제출 가능) */
+const ALL_ORDERS: number[][] = permutations(PEEK);
+
+/** order가 0~PEEK-1의 순열인가 (항등도 허용 — '그대로 두기') */
+function isValidOrder(order: unknown): order is number[] {
+  if (!Array.isArray(order) || order.length !== PEEK) return false;
+  const seen = new Set<number>();
+  for (const v of order) {
+    if (!Number.isInteger(v) || (v as number) < 0 || (v as number) >= PEEK) {
+      return false;
+    }
+    seen.add(v as number);
+  }
+  return seen.size === PEEK;
+}
+
+/** 남은 쿨다운 순 수 (0이면 발동 가능) */
+function cooldownLeft(state: GameState, h: PlayerId): number {
+  const last = state.augmentData[lastTurnKey(state, h)];
+  if (typeof last !== "number") return 0;
+  return Math.max(0, COOLDOWN_TURNS - (state.round.turnCount - last));
+}
+
+/** 이번 턴에 공개했고 아직 재배열하지 않았는가 */
+function revealedThisTurn(state: GameState, h: PlayerId): boolean {
+  return state.augmentData[revealTurnKey(state, h)] === state.round.turnCount;
+}
+
+function isMyTurn(state: GameState, h: PlayerId): boolean {
+  return (
+    state.round.phase === "turn.act" &&
+    playerAtSeat(state, state.round.turnSeat).id === h
+  );
+}
+
+/** 지금 공개 발동이 가능한가 */
+function canReveal(state: GameState, h: PlayerId): boolean {
+  if (!isMyTurn(state, h)) return false;
+  if (frontIds(state).length < PEEK) return false;
+  if (cooldownLeft(state, h) > 0) return false;
+  if (revealedThisTurn(state, h)) return false; // 이미 이번 턴에 공개함
+  return true;
+}
+
+// ── ① 공개(발동) — 앞 4장을 보유자에게 열고 소진·쿨다운을 세운다 (패산 불변) ──
+const revealAction: ActionDef<Record<string, never>> = {
+  type: REVEAL,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined || !player.augments.includes(ID)) {
+      return "no foresight augment";
+    }
+    if (!isMyTurn(state, req.player)) return "not your turn";
+    if (frontIds(state).length < PEEK) return "not enough wall tiles";
+    if (cooldownLeft(state, req.player) > 0) return "on cooldown";
+    if (revealedThisTurn(state, req.player)) return "already revealed this turn";
+    return null;
+  },
+  toEvents: (req, { state }) => {
+    const kinds = frontIds(state).map((id) => kindKey(kindOf(state, id)));
+    const tc = state.round.turnCount;
+    return [
+      augmentDataSet(peekViewKey(req.player), kinds),
+      augmentDataSet(usedKey(state, req.player), true),
+      augmentDataSet(lastTurnKey(state, req.player), tc),
+      augmentDataSet(revealTurnKey(state, req.player), tc),
+      // 발동 사실만 전원 공개 (무엇을 봤는지는 보유자만 안다)
+      augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
+        round: roundKey(state),
+        turnCount: tc,
+      }),
+    ];
+  },
+};
+
+// ── ② 재배열 — 공개한 그 턴에 한해, order대로 앞 4장을 갈아 끼운다 ──
+const orderAction: ActionDef<{ order: number[] }> = {
+  type: ORDER,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined || !player.augments.includes(ID)) {
+      return "no foresight augment";
+    }
+    if (!isMyTurn(state, req.player)) return "not your turn";
+    if (!revealedThisTurn(state, req.player)) return "reveal first";
+    if (frontIds(state).length < PEEK) return "not enough wall tiles";
+    if (!isValidOrder(req.payload.order)) return "invalid order";
+    return null;
+  },
+  toEvents: (req) => [
+    { type: EVENT, payload: { holder: req.player, order: [...req.payload.order] } },
+  ],
+};
+
+interface ForesightOrderPayload {
+  holder: PlayerId;
+  order: number[];
+}
+
+export const foresight: AugmentDef = defineAugment({
+  id: ID,
+  tier: "prism",
+  category: "info",
+  name: "예지",
+  description:
+    "(2순에 1회) 자기 순에 발동하면 그 순간 패산 다음 4장이 나에게만 공개되고(발동=공개, 취소 불가), 드래그로 순서를 바꿔 다음 한 바퀴를 설계한다. 발동한 국에 화료하면 +2판을 얻는다.",
+  detail:
+    "(2순에 1회) 자기 순에 발동하면 패산 앞 4장이 나에게만 공개된다. 이 4장은 하가·대면·상가·나의 다음 쯔모이며 네 번째가 내 쯔모다. 드래그로 순서를 바꿔 다시 배치할 수 있고, 바꾸지 않거나 순 시간이 지나면 그대로 확정된다. 발동 자체가 이미 소진이라 취소할 수 없으며, 발동 후 2순 동안은 다시 발동할 수 없고 국이 바뀌면 초기화된다. 무엇을 보고 어떻게 섞었는지는 나만 알고 상대에게는 발동 사실만 보인다. 발동한 국에 화료하면 +2판을 얻는다.",
+  install(ctx) {
+    const { engine, holder } = ctx;
+
+    if (!engine.actions.has(REVEAL)) {
+      engine.actions.register(revealAction);
+      engine.actions.register(orderAction);
+      engine.reducers.register(EVENT, (state, event) => {
+        const p = event.payload as ForesightOrderPayload;
+        const zone = state.zones[WALL];
+        if (zone === undefined) throw new Error("foresight: no wall zone");
+        const front = zone.tileIds.slice(0, PEEK);
+        if (front.length < PEEK) return state;
+        // order[i] = 새 i번째 자리에 올 기존 인덱스
+        const reordered = p.order.map((i) => front[i] as TileId);
+        const rest = zone.tileIds.slice(PEEK);
+        const newKinds = reordered.map((id) => kindKey(kindOf(state, id)));
+        return {
+          ...state,
+          zones: {
+            ...state.zones,
+            [WALL]: { ...zone, tileIds: [...reordered, ...rest] },
+          },
+          augmentData: {
+            ...state.augmentData,
+            // 공개 채널을 새 순서로 갱신 (재배열한 대로 보인다)
+            [peekViewKey(p.holder)]: newKinds,
+            // 재배열 완료 — 이번 턴 재배열 마커를 지운다 (한 번만)
+            [revealTurnKey(state, p.holder)]: -1,
+          },
+        };
+      });
+    }
+
+    // 보유자 턴 후보:
+    //  - 아직 이번 턴 공개 전이면 발동(공개) 후보 하나.
+    //  - 이미 공개했으면(재배열 대기) 0~3 모든 순열을 재배열 후보로 낸다 — 클라 드래그
+    //    모달이 사용자가 만든 순서에 맞는 후보를 골라 제출한다(항등 포함 = '그대로 두기').
+    ctx.holderTurnOptions((state) => {
+      if (canReveal(state, holder)) return [{ type: REVEAL, payload: {} }];
+      if (revealedThisTurn(state, holder) && frontIds(state).length >= PEEK) {
+        return ALL_ORDERS.map((order) => ({ type: ORDER, payload: { order: [...order] } }));
+      }
+      return [];
+    });
+
+    // 발동한 국에 화료하면 +2판
+    addWinHanBonus(ctx, (state) =>
+      flagOf(state, usedKey(state, holder)) ? WIN_BONUS_HAN : 0,
+    );
+  },
+  /**
+   * 봇: **공개(reveal)까지만** 한다. 재배열(order)은 상대 손 정보 없이 판단할 수 없어
+   * 손대지 않고(항등) 넘기지만, 공개 자체가 다음 한 바퀴의 쯔모를 알려 주고
+   * 발동 국 화료에 +2판을 얻으므로 순이득이다. 이른 소모만 피하도록 중반에 연다.
+   * (2026-07-26: 정책이 아예 없어 제시 30회에 발동 0회였다.)
+   */
+  bot: {
+    choose({ options, view, holder }) {
+      const opt = options.find((o) => o.type === REVEAL);
+      if (opt === undefined) return null;
+      const myDiscards = view.zones[`discards:${holder}`]?.tileIds.length ?? 0;
+      return myDiscards >= 3 ? opt : null;
+    },
+  },
+});

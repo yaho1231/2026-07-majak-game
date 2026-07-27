@@ -150,7 +150,7 @@ Layer:  Base(0) < Silver(100) < Gold(200) < Prism(300) < System(1000)
 
 ## 5.2 Zone — "패가 있는 공간"의 일반화
 
-패산, 손패, 버림패, 부로, 왕패를 전부 **Zone**이라는 동일한 개념으로 다룬다.
+패산, 손패, 버림패, 후로, 왕패를 전부 **Zone**이라는 동일한 개념으로 다룬다.
 
 ```
 wall / deadWall / hand[p] / melds[p] / discards[p] / (증강이 만든 커스텀 Zone)
@@ -179,7 +179,8 @@ interface PlayerAgent {
 ```
 
 - 사람 = WebSocket 세션에 연결된 HumanAgent (시간 초과 시 기본 행동).
-- 봇 = 같은 인터페이스를 구현한 BotAgent (MVP: 유효한 수 중 규칙 기반 선택).
+- 봇 = 같은 인터페이스를 구현한 BotAgent (규칙 기반: 화료 우선 → 액티브 증강 → 역 후로 → 리치 → 버림).
+  액티브 증강 발동은 각 증강 파일의 `AugmentDef.bot` 정책에 위임한다 (10 §6, 콜로케이트).
 - 엔진은 상대가 사람인지 봇인지 **모른다.** 혼자서 봇 3명과 테스트 플레이 가능.
 
 ## 5.5 Augment System — 증강 하나의 해부도

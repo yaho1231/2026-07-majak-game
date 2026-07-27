@@ -17,6 +17,10 @@ export interface RuleContext {
   state?: unknown;
   /** 가시성 규칙 해석 시 대상 Zone의 소유자 (viewer는 playerId) */
   zoneOwner?: string;
+  /** 화료 문맥 규칙 해석 시 이번 화료의 종류 (buildWinContext가 채운다) */
+  winType?: "tsumo" | "ron";
+  /** 화료 문맥 규칙 해석 시 손이 멘젠인가 (안깡은 멘젠 유지) */
+  isClosed?: boolean;
 }
 
 /** 등급이 높은 증강이 나중에 적용된다 (= 최종 발언권). System은 엔진 안전장치 전용. */
@@ -51,6 +55,17 @@ export class RuleRegistry {
   private readonly base = new Map<RuleKey, unknown>();
   private readonly modifiers = new Map<RuleKey, StoredModifier[]>();
   private nextSeq = 0;
+  /**
+   * source(증강 인스턴스) 게이트 — 무장해제용. false를 돌려주는 source의 Modifier는
+   * 합성에서 제외된다(문맥별). null(기본)이면 전부 적용해 종전 동작과 완전히 동일하다.
+   * GameEngine이 state.augmentData의 비활성 목록을 읽어 설정한다(리플레이 안전).
+   */
+  private sourceGate: ((source: string, ctx: RuleContext) => boolean) | null = null;
+
+  /** 무장해제 게이트를 설정한다 (GameEngine 전용). null이면 게이팅 없음. */
+  setSourceGate(gate: ((source: string, ctx: RuleContext) => boolean) | null): void {
+    this.sourceGate = gate;
+  }
 
   /** 기본값 정의. 이미 정의된 규칙을 다시 정의하는 것은 버그이므로 즉시 실패한다. */
   define<T>(key: RuleKey, baseValue: T): void {
@@ -106,6 +121,8 @@ export class RuleRegistry {
         (a, b) => a.layer - b.layer || a.priority - b.priority || a.seq - b.seq,
       );
       for (const mod of sorted) {
+        // 무장해제로 비활성화된 source의 Modifier는 건너뛴다 (게이트 없으면 전부 적용)
+        if (this.sourceGate !== null && !this.sourceGate(mod.source, ctx)) continue;
         value = mod.apply(value, ctx);
       }
     }

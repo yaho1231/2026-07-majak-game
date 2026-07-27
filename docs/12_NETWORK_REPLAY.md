@@ -46,6 +46,10 @@ type ClientMessage =
   | { type: "addBot" } | { type: "removeBot"; playerId } // 봇 채우기 (방장)
   | { type: "startGame" }                          // 게임 시작 (방장, canStart)
   | { type: "statsRequest" }                       // 누적 통계 재전송 요청
+  // ── 증강 테스트 (49, 관리자 전용 — 상세는 docs/15 §5c) ──
+  | { type: "sandboxStart"; mode?: GameMode }      // 봇3 + 드래프트 없는 시험 게임
+  | { type: "sandboxGrant"; augmentId: string; target?: PlayerId }  // 즉시 획득
+  | { type: "sandboxReset"; augments?: Record<PlayerId, string[]>; mode?: GameMode }
 ```
 
 ## 서버 → 클라이언트
@@ -66,6 +70,8 @@ type ServerMessage =
   // ── 대기실·통계 (14, 상세는 docs/14_LOBBY_STATS.md) ──
   | { type: "lobby";  roomId; hostId; youId; canStart; players: LobbyPlayerEntry[] }
   | { type: "stats";  game?: StatsEntry[]; career: StatsEntry[] }
+  // ── 증강 테스트 (49) — 판이 시작·재시작될 때마다 (관리자에게만) ──
+  | { type: "sandbox"; code: string; mode: GameMode; augments: Record<PlayerId, string[]> }
 ```
 
 > 대기실(방장·준비·봇 채우기)과 통계 수집/영속화 상세는 **docs/14_LOBBY_STATS.md**.

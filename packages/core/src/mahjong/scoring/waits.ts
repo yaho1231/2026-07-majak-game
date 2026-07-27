@@ -13,7 +13,7 @@ import { isWinningShape } from "./decompose.js";
 import type { DecomposeOptions } from "./decompose.js";
 
 /**
- * @param hand13 화료패를 제외한 손패 (13 - 3×부로 수 장)
+ * @param hand13 화료패를 제외한 손패 (13 - 3×후로 수 장)
  * @param opts 분해 옵션 (하위 호환: ReadonlySet<Suit>는 sequenceSuits로 해석)
  * @returns 화료할 수 있는 kind 목록 (중복 없음)
  */

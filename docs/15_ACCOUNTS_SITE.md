@@ -55,12 +55,35 @@ Version: 1.0 (2026-07-16, 20차)
 ## §4 리플레이·통계
 
 - 게임 종료 시 `games`/`game_players`에 코드·리플레이 경로·참가자·순위 기록.
-- `replayList` → 본인이 참가한 게임 목록. `replayGet{gameId}` → JSONL 라인
-  전체 전송. **본인 참가 게임 또는 관리자만** 열람 가능.
+- `replayList` → 목록 전송. **일반 사용자는 본인 참가 게임만**(`listGamesFor`),
+  **관리자는 모든 게임**(`listAllGames`, 최신순) 을 받는다(32차). `replayGet{gameId}`
+  → JSONL 라인 전체 전송, **본인 참가 게임 또는 관리자만** 열람 가능.
+  홈 화면은 관리자에게 이 카드를 "모든 리플레이"로 표기한다.
 - 클라이언트 재구성: 서버 ReplayReader와 동일 절차를
   `client/src/replayRebuild.ts`가 수행 (createInitialGameState → Reducer
   순차 적용, AugmentDrafted 시 install). 관전자 시점 뷰 + 스크럽/재생/국 점프.
 - 통계는 기존 StatsStore(닉네임 키 = 계정) 유지. `statsRequest`는 본인 것만.
+- **전체 플레이어 통계(리더보드, 32차)**: `leaderboard` → StatsStore.all()을
+  deriveStats 후 게임 수 내림차순(동률 시 평균 순위 오름차순)으로 전송.
+  **닉네임별 성적은 관리자 전용(47차)** — 비관리자에게는 서버가 각 항목의
+  `nickname`을 빈 문자열로 지워(익명 집계) 보내고, 클라도 "전체 플레이어 통계"
+  카드를 관리자에게만 렌더한다. 요청 자체를 막지 않는 이유는 **증강 메타·도감
+  전체 통계가 이 데이터의 익명 집계**이기 때문(누구나 계속 볼 수 있어야 함) —
+  신원만 제거한다. 클라 `aggregateAugments`는 `nickname === ""`을 익명으로 보고
+  '증강 장인' 후보에서 제외한다. 관리자 화면은 표(판수·평균순위·1위율·화료율·
+  방총률, 본인 행 하이라이트)로 렌더한다. authOk·refreshHome·새로고침에서 요청.
+- **증강 도감(Codex) 페이지**: 홈 "📖 증강 도감" 버튼 → 전체화면 도감(App.tsx `CodexScreen`).
+  카탈로그 전체(표준+콘텐츠 74종)를 등급별 그리드로 브라우징하고, 카드/행 클릭 시 상세
+  오버레이(증강별 `detail` 상세 설명 + 등장 시점·모드·연쇄 지급 배지 + **내 통계 · 서버 전체
+  통계** 나란히)를 연다. "전체 통계" 탭은 모든 증강을 내 판·평균순위 / 서버 표본·픽률·평균순위·
+  1위율로 정렬·필터할 수 있는 표다. 카탈로그(`AugmentCatalogEntry`)에 `detail`·`draftStages`·
+  `modes`·`grantsRandomTier`를 실어 전달하며, 통계는 career + leaderboard에서 클라이언트가
+  파생한다(서버 증강 집계 엔드포인트 없음 — 14 §2). 로그인한 누구나 열람 가능.
+- **유령 통계 필터(33b)**: stats.json은 닉네임 키라 계정을 삭제해도 예전 통계가
+  파일에 남을 수 있다(과거 삭제분·통계 미정리). `sendLeaderboard`는 `db.listUsers()`의
+  현재 계정 닉네임 집합으로 필터해 **존재하는 계정만** 리더보드에 넣는다 → 삭제가
+  stats 파일 정리 타이밍과 무관하게 즉시 반영된다(계정 삭제 후에도 리더보드에서
+  안 사라지던 버그 수정).
 
 ## §5 관리자 관전
 
@@ -70,6 +93,69 @@ Version: 1.0 (2026-07-16, 20차)
   수신. 중도 합류 시 현재 뷰 즉시 전송.
 - 게임 종료·크래시 시 `spectateEnded` 전송 + 관전 상태 정리.
 - 전부 관리자 전용 (isAdmin 게이트).
+
+## §5b 관리자 계정 관리 (32차)
+
+- `adminUsers` → 전체 계정 목록(`SiteDb.listUsers`): id·username·isAdmin·가입시각·
+  참가 게임 수. `adminDeleteUser{userId}` → 계정 삭제. 둘 다 **관리자 전용**(FORBIDDEN 게이트).
+- 삭제(`SiteDb.deleteUser`)는 한 트랜잭션(BEGIN/COMMIT, 실패 시 ROLLBACK)에서
+  세션 삭제 → `game_players.user_id`를 NULL로(게임 기록·다른 참가자 리플레이는 보존)
+  → users 삭제. 삭제된 username을 반환해 RoomManager가 **StatsStore.remove**로
+  누적 통계(닉네임 키)까지 정리한다(비동기 remove 완료 후 리더보드 재전송).
+- **본인 계정은 삭제 불가**(`CANNOT_DELETE_SELF`) — 마지막 관리자 자물쇠·실수 방지.
+  클라이언트도 본인 행의 삭제 버튼을 비활성화하고, 삭제 전 confirm으로 재확인한다.
+- 삭제 성공 시 서버가 갱신된 `adminUsers` + `leaderboard`를 되돌려준다.
+- 홈 화면 "플레이어 관리" 카드(관리자 전용)가 목록·삭제 버튼을 렌더한다.
+
+## §5b2 관리자 증강 파워 티어표 (2026-07-26)
+
+홈의 **"📊 증강 파워 티어표"** 카드(관리자 전용) → 전체화면 `TierScreen`.
+드롭 확률 조정을 위한 **순수 파워 티어**(타점·속도·무대응·빈도)를 본다 — 도감의 재미 등급과 별개다.
+
+- 프로토콜: `adminAugmentTiers` → `adminAugmentTiers{entries, order, labels, weights}`
+  (**관리자 전용**, FORBIDDEN 게이트).
+- **실시간의 뜻**: 서버가 매 요청마다 **살아 있는 카탈로그(`buildAugmentCatalog`) × `powerTier.ts`** 를
+  조인한다. 티어를 안 매긴 신규 증강은 `tier: null`로 내려가 화면에 **"미분류"** 로 붉게 뜨고,
+  카탈로그에서 사라진 id는 애초에 전송되지 않는다 → 표가 코드보다 뒤처지지 않는다.
+- 정렬은 티어 내림차순 → 같은 티어면 총점 내림차순, 미분류는 맨 뒤.
+- 데이터 원본은 `packages/core/src/augment/powerTier.ts`(단일 진실), 사람이 읽는 사본은
+  `docs/20_AUGMENT_POWER_TIER.md`.
+- 클라이언트: 티어별 그룹 / 전체 표 두 가지 보기 + 이름·id·사유 검색. 각 행에 축 점수·총점·
+  드롭 가중치·한 줄 사유.
+- 회귀 테스트: `packages/server/test/AugmentTiers.test.ts`(권한·전량 조인·미분류 0·정렬·수치 일치).
+
+## §5c 증강 테스트 — 샌드박스 (49차)
+
+관리자가 구현된 증강을 직접 골라 즉시 획득하고 시험하는 1인 전용 게임.
+
+- 프로토콜(전부 **관리자 전용**, FORBIDDEN 게이트):
+  - `sandboxStart{mode?}` → 관리자 1 + 봇 3의 방을 만들고 **드래프트 없이**
+    (`draftSchedules: []`) 즉시 시작. 응답으로 `sandbox{code, mode, augments}` +
+    `catalog` + `view`가 온다.
+  - `sandboxGrant{augmentId, target?}` → 진행 중인 판에서 그 자리에 증강 설치
+    (`HanchanController.grantAugment`). target 생략 시 본인, 지정하면 봇에게도 준다.
+  - `sandboxReset{augments?, mode?}` → 지금 판을 버리고 **좌석별 사전 지급 목록**으로
+    새 판을 시작한다. `augments` 생략·`{}` = 증강 없는 백지 초기화.
+- 초기화가 "증강 개별 제거"가 아니라 **판 교체**인 이유: install은 rules/effects/
+  actions/turnOptions에 등록하는 부수효과라 완전한 되돌리기가 없다. 엔진을 새로 만드는
+  쪽이 잔재 없는 초기화다. 교체는 `controller.requestAbort()` →
+  `onGameAborted`(sandboxRestarting 분기) → `restartSandbox` 순으로 일어나며,
+  이 경로는 `gameAborted`를 보내지 않아 클라이언트가 홈으로 튕기지 않는다.
+  봇은 새 인스턴스로 교체하고 사람 좌석은 `HumanAgent.resetForNewGame()`으로
+  지난 판의 대기 결정·타이머를 버린다.
+- 사전 지급(`HanchanConfig.presetAugments`)은 **첫 국 배패 전**에 드래프트와 같은
+  경로(draftPick 액션 + installAugment)로 설치된다 → 배패·국 시작에 개입하는 증강도
+  1국부터 온전히 작동한다. 국 도중 `sandboxGrant`는 이번 국의 지난 시점을 되돌리지
+  못하므로, 패널이 "새 판"으로 처음부터 확인하도록 안내한다.
+- **기록을 남기지 않는다**: 리플레이 파일(writer 자체를 안 만듦)·게임 인덱스
+  (`recordGame`)·누적 통계(`finishStats`) 모두 건너뛴다. 시험용 판이 도감·리더보드의
+  근거 데이터를 오염시키지 않게 하기 위함이다. 방은 `liveGames` 목록에서도 빠지고,
+  방 주인의 재접속 외의 `joinRoom`은 `ROOM_NOT_FOUND`(존재 자체를 감춤)로 응답한다.
+- 클라이언트: 홈의 "🧪 증강 테스트" 카드(관리자 전용, 모드 선택 + 시작) → 게임 화면
+  좌상단 `🧪 증강` 버튼 → `SandboxPanel`(카탈로그 전량 목록·등급 필터·검색·대상 좌석
+  선택·＋로 즉시 획득·도감 상세·새 판/초기화). `sandbox` 메시지를 받으면 이전 판의
+  프롬프트·결과창·순위·연출을 모두 정리한다.
+- 회귀 테스트: `packages/server/test/Sandbox.test.ts` (권한·시작·지급·초기화·기록 없음).
 
 ## §6 연출 (actionFx)
 
@@ -148,9 +234,42 @@ PORT=3001 npm run dev -w @majak/server   # 개발: tsx로 실행
   독점하지 못하게 했다. `RoomManager`의 register/login은 이제 async라 floating
   `.catch`로 처리된다.
 - **남은 하드닝 (권장, 미조치)**: 관리자 코드 비교는 `===`(비 상수시간)이나 48비트
-  서버 비밀이라 네트워크 지터상 실효 위험 낮음. 존재하지 않는 계정 로그인은
-  scrypt를 건너뛰어 즉시 실패하므로(가입 시점에 이미 닉네임 중복이 노출되는 것과
-  동일 수준의) 미세한 사용자 열거 타이밍 오라클이 있으나, 레이트리밋으로 완화됨.
+  서버 비밀이라 네트워크 지터상 실효 위험 낮음. (사용자 열거 타이밍 오라클은 8b차에서
+  더미 scrypt로 균일화함.)
+
+## §8b 공개 배포 하드닝 (21차 — 평문 포트포워딩 노출 재검토)
+
+TLS 없는 포트포워딩 공개 배포를 전제로 다중 관점(인증·접근제어·전송·DoS·클라이언트)
+재감사 후 아래를 반영했다. 인젝션은 재확인 결과 이상 없음(SQL 전부 파라미터 바인딩).
+
+- **온라인 무차별 대입 (인증 레이트리밋 우회 → 수정)**: 기존 `authAttempts`는
+  **연결 단위**라 공격자가 매 시도마다 새 WS 연결을 열면 무제한 시도할 수 있었다.
+  **IP 기준 슬라이딩 윈도우**(`AUTH_IP_WINDOW_MS` 60초 창 `AUTH_IP_MAX_ATTEMPTS`=30회)를
+  추가하고 `tokenLogin`도 레이트리밋을 통과하게 했다. IP는 핸드셰이크의
+  `req.socket.remoteAddress`에서 얻으며 **X-Forwarded-For는 신뢰하지 않는다**(신뢰 프록시
+  부재 시 스푸핑 가능). 루프백/로컬(테스트 포함)은 스로틀 예외.
+- **비밀번호 정책 (약함 → 강화)**: 최소 길이 4→8자, 숫자 전용(PIN)·닉네임 포함 비밀번호
+  거부(`SiteDb.register`). 로그인은 기존 계정 호환을 위해 길이 미검사 유지.
+- **사용자 열거 타이밍 (완화)**: 존재하지 않는 계정 로그인도 더미 salt로 scrypt를 수행해
+  응답 시간을 균일화(`SiteDb.login`).
+- **연결·자원 상한 (DoS → 수정)**: 전체 동시 연결(`MAX_CONNECTIONS`=300)·IP당 동시
+  연결(`MAX_CONNECTIONS_PER_IP`=16) 상한, **연결당 메시지 토큰 버킷**(용량 80·40/s)으로
+  leaderboard/replay/action 폭주가 이벤트 루프를 마비시키지 못하게 함. **동시 scrypt 상한**
+  (`MAX_SCRYPT_CONCURRENCY`=4)으로 인증 폭주가 libuv 스레드풀을 독점해 진행 중 게임의
+  리플레이 fs I/O를 굶기지 못하게 함. 세션은 사용자당 최신 10개만 유지(무한 증식 방지).
+- **삭제 계정 권한 잔존 (→ 수정)**: `conn.user`는 인증 시 1회 캐시되어 재검증되지 않으므로,
+  관리자가 계정을 삭제하면 그 사용자의 열린 소켓을 `evictUser`로 강제 로그아웃(대기실/관전
+  정리 후 소켓 close)한다.
+- **정적 서버 보안 헤더 (→ 추가)**: `Content-Security-Policy`(React 인라인 스타일 때문에
+  `style-src 'unsafe-inline'` 포함), `X-Frame-Options: DENY`, `X-Content-Type-Options:
+  nosniff`, `Referrer-Policy: no-referrer`. 경로 검증도 `startsWith(CLIENT_DIST + sep)`로
+  형제 디렉터리 프리픽스 우회까지 차단.
+- **전송 보안 (여전히 미해결 — 배포 조치 필요)**: 평문 http/ws는 비밀번호·세션 토큰·관리자
+  코드가 도청·능동 주입에 노출된다. **가장 중요한 잔여 위험**. 리버스 프록시(캐디/Cloudflare
+  Tunnel)로 TLS(wss) 종단 + Node를 `HOST=127.0.0.1`로 바인드 + 443만 포워딩해야 근본 해결.
+  클라이언트는 https 오리진이면 자동으로 wss를 쓴다(코드 변경 불필요). 전환 후 세션 토큰·
+  관리자 코드 재발급 권장. `SIGNUP_CODE`는 사용자 결정으로 "majak" 유지(추측 쉬운 게이트지만
+  친구 그룹 용도 + IP 레이트리밋으로 무단 대량가입은 완화됨) — 강한 랜덤값 권장은 유효.
 
 ## §9 세션 만료 · 게임 포기 (20c차 반영)
 
@@ -183,7 +302,7 @@ PORT=3001 npm run dev -w @majak/server   # 개발: tsx로 실행
   토스트로 알린다(재입장 시도였는지는 `activeRoomRef` 생존으로 판정).
 - 검증: 실서버+브라우저 — 서버 강제 종료 시 재연결 배너 표시·백오프 재시도,
   서버 복구 시 토큰 재인증(재로그인 없이 홈 복귀)·게임 소멸 시 graceful 홈,
-  진행 중 게임에 재접속 시 손패·강·정보 패널 완전 복원(×69→×66, 부재 중 진행분
+  진행 중 게임에 재접속 시 손패·바닥·정보 패널 완전 복원(×69→×66, 부재 중 진행분
   반영)을 확인.
 
 ## §11 남은 일 (알려진 한계)
