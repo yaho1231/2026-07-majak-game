@@ -4,5 +4,11 @@ replays/
 *.log
 .DS_Store
 .majak/
+# TypeScript 증분 빌드 산출물
+*.tsbuildinfo
+# Claude Code 로컬 작업 디렉터리(워크트리 등)
+.claude/
+# BGM 원본(수십 MB). 배포 시 packages/client/public/에 별도 배치한다.
+*.mp3
 # 배포 설정(비밀 — SIGNUP_CODE 등). deploy/majak.env.example만 커밋한다.
 deploy/majak.env

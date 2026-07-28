@@ -8,6 +8,7 @@
  */
 
 import type { GameEngine } from "../engine/GameEngine.js";
+import { isSourceDisarmed } from "../engine/GameEngine.js";
 import type { GameState } from "../engine/state/GameState.js";
 import type {
   Interceptor,
@@ -15,15 +16,116 @@ import type {
 } from "../engine/effects/EffectRegistry.js";
 import { RuleLayer } from "../engine/rules/RuleRegistry.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
+import type { GameMode } from "../engine/state/GameState.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
+import type { PlayerView } from "../information/PlayerView.js";
 
 export type AugmentTier = "silver" | "gold" | "prism";
+
+/**
+ * 증강 계열 — "이 증강은 무엇을 하는 물건인가"의 단일 축.
+ *
+ * 등급(tier)이 폐기된 뒤 증강의 유일한 시각 분류다. 드래프트 카드·이름표 pill·
+ * 발동 컷인 색(`--fx-color`)이 전부 이 값 하나로 갈린다(docs/19 §4.1).
+ * 클라이언트가 id로 추측하던 것을 증강 정의로 끌어올린 값이라, 새 증강은
+ * 계열을 **반드시 자기 파일에 선언**한다(빠뜨리면 타입 에러 + 커버리지 테스트 실패).
+ *
+ * - `scoring`  점수·판수·배수를 키우거나 남의 점수를 가져온다
+ * - `info`     남이 못 보는 것을 보거나, 남에게서 정보를 가린다
+ * - `hand`     내 손패를 직접 바꾼다(교환·변형·생성)
+ * - `shape`    화료형·역 성립 규칙 자체를 넓힌다(분해 규칙·후리텐·무역 화료)
+ * - `call`     치·펑·깡의 규칙을 넓히거나 되돌린다
+ * - `riichi`   리치의 조건·보상·해제를 건드린다
+ * - `defense`  방총·실점·벌점을 막는다
+ * - `disrupt`  상대를 지목해 방해하거나 흐름(턴·순서·자리)을 틀어놓는다
+ * - `etc`      위 어디에도 안 붙는 메타 능력(증강 자체를 다루는 것 등)
+ */
+export type AugmentCategory =
+  | "scoring"
+  | "info"
+  | "hand"
+  | "shape"
+  | "call"
+  | "riichi"
+  | "defense"
+  | "disrupt"
+  | "etc";
+
+export const AUGMENT_CATEGORIES: readonly AugmentCategory[] = [
+  "scoring",
+  "info",
+  "hand",
+  "shape",
+  "call",
+  "riichi",
+  "defense",
+  "disrupt",
+  "etc",
+];
+
+// ─────────────────────────── 봇 정책 (액티브 증강 사용) ───────────────────────────
+
+/** 프롬프트에 제시되는 액션 후보 (FlowController.ActionOption과 동형 — 순환 참조 회피용 구조 타입) */
+export interface BotAugmentOption {
+  type: string;
+  payload: unknown;
+}
+
+/** 봇 정책이 쓰는 결정론 난수 (BotAgent가 시드 PRNG로 제공) */
+export interface BotRng {
+  /** 0 이상 n 미만 정수 */
+  int(n: number): number;
+  /** 0 이상 1 미만 실수 */
+  float(): number;
+}
+
+/** 봇이 액티브 증강 발동을 판단할 때 받는 문맥 */
+export interface BotDecisionContext {
+  /** 봇(보유자)의 현재 뷰 */
+  view: PlayerView;
+  /** 이번 프롬프트에 제시된 전체 옵션 (이 증강 소유 타입만 골라 봐야 한다) */
+  options: readonly BotAugmentOption[];
+  /** 봇 자신의 id */
+  holder: PlayerId;
+  /** 결정론 난수 (같은 상황이면 같은 선택) */
+  rng: BotRng;
+  /** 보유자가 텐파이인지 (BotAgent가 계산해 제공) */
+  tenpai: boolean;
+}
+
+/**
+ * 봇이 이 증강의 액티브 액션을 '언제' 발동할지 판단하는 정책 (선택).
+ * 정의하면 BotAgent가 매 결정마다 choose를 호출한다. 없으면 봇은 이 증강을 쓰지 않는다.
+ *
+ * choose는 발동할 옵션(반드시 ctx.options 중 하나와 동형)을 돌려주거나, 발동하지 않으면 null.
+ * 이 증강이 소유한 액션 타입만 골라야 하며(다른 옵션은 무시), 발동은 그 증강에
+ * 명백히 유리하고 자해 위험이 낮을 때만 하는 것을 원칙으로 한다.
+ */
+export interface AugmentBotPolicy {
+  choose(ctx: BotDecisionContext): BotAugmentOption | null;
+}
 
 export const TIER_LAYER: Record<AugmentTier, RuleLayer> = {
   silver: RuleLayer.Silver,
   gold: RuleLayer.Gold,
   prism: RuleLayer.Prism,
 };
+
+/**
+ * 훅 등록 시 합성 순서를 직접 지정하는 옵션.
+ *
+ * 기본값은 `layer = 증강의 tier`, `priority = 0`이다 — 그러면 실행 순서가 tier와
+ * **드래프트 픽 순서**에 끌려간다. 여러 증강이 같은 이벤트를 이어서 고쳐 쓰는 경우
+ * (특히 ROUND_SETTLED의 deltas) 그 순서가 곧 결과이므로 명시해야 한다.
+ * 정산 인터셉터는 직접 쓰지 말고 `settleInterceptor`(content/util) 헬퍼를 쓴다 —
+ * 단계 정의는 `settleStages.ts`가 단일 진실이다.
+ */
+export interface EffectOptions {
+  /** 합성 레이어. 생략하면 증강의 tier에서 나온 layer */
+  layer?: RuleLayer;
+  /** 같은 layer 내 세부 순서 (작을수록 먼저). 생략 시 0 */
+  priority?: number;
+}
 
 /** install이 받는 도구 상자. 뒤에서 전부 source=instanceId로 등록된다 */
 export interface AugmentContext {
@@ -40,9 +142,13 @@ export interface AugmentContext {
   /** 보유자에게만 규칙 값을 고정한다 (다른 플레이어는 원래 값) */
   setHolderRule(rule: string, value: unknown): void;
   /** 이벤트 후 반응 (새 이벤트 방출) */
-  reaction(on: string, react: Reaction<GameState>): void;
+  reaction(on: string, react: Reaction<GameState>, opts?: EffectOptions): void;
   /** 이벤트를 수정·취소·대체 */
-  interceptor(on: string, intercept: Interceptor<GameState>): void;
+  interceptor(
+    on: string,
+    intercept: Interceptor<GameState>,
+    opts?: EffectOptions,
+  ): void;
   /**
    * 보유자의 턴에 추가 선택지를 프롬프트에 노출한다.
    * build는 후보 목록을 만들고, FlowController가 각 후보를 validate로 걸러 제시한다.
@@ -56,21 +162,46 @@ export interface AugmentContext {
 export interface AugmentDef {
   id: string;
   tier: AugmentTier;
+  /** 계열 — 표시·연출 분류의 단일 진실. AugmentCategory 주석 참고 */
+  category: AugmentCategory;
   name: string;
   description: string;
+  /**
+   * 증강 도감(Codex)에 노출되는 상세 설명. 한 줄 요약인 description과 달리
+   * 작동 원리·전략 팁·주의점을 자유 서술한다(여러 문단 허용, 표시용). 생략 가능 —
+   * 엔진/드래프트 로직은 이 필드를 읽지 않는다. 카탈로그를 통해 클라이언트에만 전달된다.
+   */
+  detail?: string;
   /**
    * 이 증강이 제시될 수 있는 드래프트 스테이지 제한.
    * 생략하면 모든 스테이지에서 제시된다. (예: 게임 전체에 걸쳐 성장해야
    * 의미가 있는 증강은 ["gameStart"]로 제한한다)
    */
-  draftStages?: readonly ("gameStart" | "southEntry")[];
+  draftStages?: readonly ("gameStart" | "southEntry" | "eastThird")[];
   /**
-   * 드래프트 픽 시 이 등급의 무작위 증강을 하나 함께 지급한다 (도박사 계열).
-   * 지급은 DraftController.pick에서 처리되어 state.players[].augments에 기록되므로
-   * 리플레이·재개에서 재추첨 없이 복원된다. install은 부수효과가 없어야 한다.
-   * 지급된 증강이 또 grantsRandomTier를 가지면 연쇄된다(도박사→전문 도박사→프리즘).
+   * 이 증강이 제시될 수 있는 게임 모드 제한.
+   * 생략하면 모든 모드에서 제시된다. 게임 진행 길이(장 수)에 의존하는 템포 증강은
+   * 모드별로 다른 변형이 필요하므로, 반장전 전용은 ["hanchan"], 동풍전 전용은
+   * ["tonpuu"]로 잠근다. (같은 이름·다른 id의 변형을 각 모드에 하나씩 둔다)
    */
-  grantsRandomTier?: AugmentTier;
+  modes?: readonly GameMode[];
+  /**
+   * 이 증강과 **동시에 보유할 수 없는** 증강 id 목록 (상호 배제).
+   * 드래프트에서, 한쪽을 이미 가진 플레이어에겐 다른 쪽을 제시하지 않는다.
+   * 관계는 **대칭**이다 — 한쪽에만 선언해도 양방향 모두 배제된다
+   * (DraftController.excludeFor가 두 방향을 함께 본다).
+   *
+   * 용례: 화료형·손패 장수를 통째로 바꾸는 증강이 다른 특수형을 무력화하거나
+   * 소프트락시킬 때. 예: 진짜 용(5멘쯔·17장)은 국사·치토이·구련(14장/4멘쯔 전제)을
+   * 전부 죽이므로 그 증강들을 conflicts로 잠근다.
+   */
+  conflicts?: readonly string[];
+  /**
+   * 봇(AI)이 이 증강의 액티브 액션을 상황에 맞게 발동하는 정책 (선택).
+   * 생략하면 봇은 이 증강을 드래프트에서 뽑아도 게임 중 발동하지 않는다.
+   * 정책은 순수 함수여야 한다(부수효과 금지) — BotAgent가 뷰만 넘겨 판단을 위임한다.
+   */
+  bot?: AugmentBotPolicy;
   install(ctx: AugmentContext): void;
 }
 
@@ -82,6 +213,9 @@ export function defineAugment(def: AugmentDef): AugmentDef {
   }
   if (!(def.tier in TIER_LAYER)) {
     throw new Error(`Unknown augment tier: ${def.tier}`);
+  }
+  if (!AUGMENT_CATEGORIES.includes(def.category)) {
+    throw new Error(`Unknown augment category: ${def.category} (${def.id})`);
   }
   return def;
 }
@@ -117,16 +251,32 @@ export function installAugment(
         apply: (current, c) => (c.playerId === holder ? value : current),
       });
     },
-    reaction(on, react) {
-      engine.effects.register({ source: instanceId, layer, on, react });
+    reaction(on, react, opts) {
+      engine.effects.register({
+        source: instanceId,
+        layer: opts?.layer ?? layer,
+        on,
+        react,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+      });
     },
-    interceptor(on, intercept) {
-      engine.effects.register({ source: instanceId, layer, on, intercept });
+    interceptor(on, intercept, opts) {
+      engine.effects.register({
+        source: instanceId,
+        layer: opts?.layer ?? layer,
+        on,
+        intercept,
+        ...(opts?.priority !== undefined ? { priority: opts.priority } : {}),
+      });
     },
     holderTurnOptions(build) {
-      engine.registerTurnOptions((state, player) =>
-        player === holder ? build(state) : [],
-      );
+      engine.registerTurnOptions((state, player) => {
+        if (player !== holder) return [];
+        // 무장해제: 잠긴 증강은 액티브 버튼도 사라진다. FlowController가 제시되지
+        // 않은 옵션의 submit을 거부하므로, 여기서 후보를 비우면 액션도 함께 막힌다.
+        if (isSourceDisarmed(state, instanceId)) return [];
+        return build(state);
+      });
     },
   };
   def.install(ctx);

@@ -16,6 +16,7 @@ import {
 } from "../mahjong/flow/standardGame.js";
 import type { StandardGame, StandardGameOptions } from "../mahjong/flow/standardGame.js";
 import { DraftController, rebuildAugments } from "../augment/DraftController.js";
+import { installAugment } from "../augment/Augment.js";
 import { draftDoneKey } from "../augment/events.js";
 import { SPECTATOR_ID, buildPlayerView } from "../information/PlayerView.js";
 import type { PlayerView, PublicTileView } from "../information/PlayerView.js";
@@ -24,7 +25,7 @@ import type { PlayerId } from "../engine/zones/Zone.js";
 import type { TileId } from "../mahjong/tiles/Tile.js";
 import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
 import type { RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
-import { uraIndicatorIds } from "../mahjong/flow/helpers.js";
+import { uraIndicatorIds, winHandIdsOf } from "../mahjong/flow/helpers.js";
 import type { PlayerAgent } from "./PlayerAgent.js";
 import type {
   RankingEntry,
@@ -36,6 +37,13 @@ import type {
 // ─────────────────────────── 반장전 설정 ───────────────────────────
 
 export interface HanchanConfig {
+  /**
+   * 게임 모드 (기본 hanchan=반장전). tonpuu=동풍전.
+   * state.config.mode로 관통되어 증강 모드 필터에 쓰인다.
+   * maxWind·westEntry·draftSchedules는 이 값과 별개로 명시해야 한다
+   * (hanchanConfigForMode 헬퍼가 모드에 맞는 한 벌을 만들어 준다).
+   */
+  mode: import("../engine/state/GameState.js").GameMode;
   /** 시작 점수 (기본 25000) */
   startScore: number;
   /** 반환점 (기본 30000) — 오카 계산 기준 */
@@ -46,9 +54,14 @@ export interface HanchanConfig {
   maxWind: number;
   /** 서입 허용 (기본 true) */
   westEntry: boolean;
-  /** 우마 점수 [2위에게, 1위에게] (기본 [10, 20]) */
+  /**
+   * 아가리야메(+텐파이야메) 허용 (기본 true, 생략 시 켜짐).
+   * 최종 국(오라스)에서 오야가 연장(화료 또는 유국 텐파이)하고 단독 1위이면 그대로 종국.
+   */
+  agariYame?: boolean;
+  /** 우마 점수 [2위에게, 1위에게] (기본 [5, 15] → 1위+15·2위+5·3위-5·4위-15) */
   uma: [number, number];
-  /** 오카: 반환점 초과분(25000→30000 = 5000 × 4플레이어 = 20000) */
+  /** 오카: 1위 보너스(k단위). 0이면 오카 없음(순수 우마 제로섬). */
   oka: number;
   /** 드래프트 스케줄 (비어있으면 드래프트 없음) */
   draftSchedules?: DraftStage[];
@@ -59,6 +72,12 @@ export interface HanchanConfig {
   /** 콘텐츠 팩 증강 카탈로그 (@majak/content 등) */
   extraAugments?: readonly import("../augment/Augment.js").AugmentDef[];
   /**
+   * 게임 시작 전에 좌석별로 미리 지급할 증강 id (증강 테스트용).
+   * 첫 국 배패 전에 드래프트와 같은 경로로 설치되므로, 배패·국 시작에 개입하는
+   * 증강도 1국부터 온전히 작동한다. 카탈로그에 없는 id는 무시한다.
+   */
+  presetAugments?: Record<PlayerId, readonly string[]>;
+  /**
    * 국 종료 후 다음 국 시작까지의 대기(ms). 결과 화면을 볼 시간을 준다.
    * 기본 0 (테스트·봇 게임은 지연 없음). 실서버가 사람 게임에서 설정한다.
    */
@@ -66,17 +85,96 @@ export interface HanchanConfig {
 }
 
 export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
+  mode: "hanchan",
   startScore: 25000,
   returnScore: 30000,
   dobi: true,
   maxWind: 2,
   westEntry: true,
-  uma: [10, 20],
-  oka: 20,
+  agariYame: true,
+  uma: [5, 15],
+  oka: 0,
   draftSchedules: ["gameStart", "southEntry"],
   seed: Date.now(),
   redFivesPerSuit: 1,
   interRoundDelayMs: 0,
+};
+
+/**
+ * 게임 모드에 맞는 진행 설정 한 벌(장 수·서입·드래프트 스케줄)을 만든다.
+ * 호출부(서버 startGame)는 이 결과에 seed·extraAugments 등을 합쳐 넘긴다.
+ * - hanchan: 동+남 2장, 남입 후 서장 서든데스, 드래프트 gameStart+southEntry.
+ * - tonpuu: 동 1장, 동4국 후 남장 서든데스(남입), 드래프트 gameStart+eastThird(동3국 진입).
+ *   서든데스는 maxWind+1장(반장=서장, 동풍=남장)까지: 국 정산마다 1위가 반환점 이상이면
+ *   즉시 종료, 아니면 다음 국 진행, 그 장 4국까지 가면 무조건 종료 (shouldEnd 참고).
+ */
+export function hanchanConfigForMode(
+  mode: import("../engine/state/GameState.js").GameMode,
+): Pick<HanchanConfig, "mode" | "maxWind" | "westEntry" | "draftSchedules"> {
+  if (mode === "tonpuu") {
+    return {
+      mode,
+      maxWind: 1,
+      westEntry: true, // 동4국 후 30000 미달이면 남장 서든데스(남입) — 반장전 서입과 대칭
+      draftSchedules: ["gameStart", "eastThird"],
+    };
+  }
+  return {
+    mode,
+    maxWind: 2,
+    westEntry: true,
+    draftSchedules: ["gameStart", "southEntry"],
+  };
+}
+
+/**
+ * 아가리야메(+텐파이야메) 종국 판정 (순수 함수 — 테스트 용이).
+ *
+ * 최종 국(오라스 — maxWind의 마지막 국: 반장=남4·동풍=동4)에서 오야가 연장(렌짱)하고
+ * 단독 1위이면 true. 렌짱은 정산 후 장풍·국번이 그대로인 것(오야 유지)으로 판정하며,
+ * 오야 화료(아가리야메)와 유국 오야 텐파이(텐파이야메)를 모두 포괄한다.
+ *
+ * @param agariYame  false면 항상 미적용. 생략/true면 적용.
+ * @param maxWind    최대 장풍 수 (반장=2, 동풍=1)
+ * @param played     정산 전(방금 둔 국)의 장풍·국번·오야 자리
+ * @param post       정산 후 장풍·국번 + 자리별 점수
+ */
+export function agariYameTriggers(
+  agariYame: boolean | undefined,
+  maxWind: number,
+  played: { wind: number; roundNumber: number; dealerSeat: number },
+  post: {
+    prevalentWind: number;
+    roundNumber: number;
+    players: { seat: number; score: number }[];
+  },
+): boolean {
+  if (agariYame === false) return false;
+  const lastRoundNumber = post.players.length; // 각 장의 마지막 국 (4인=4국)
+  if (played.wind !== maxWind || played.roundNumber !== lastRoundNumber) return false;
+  // 정산 후 장풍·국번이 그대로면 오야 연장(화료 또는 텐파이야메)
+  const renchan =
+    post.prevalentWind === played.wind && post.roundNumber === played.roundNumber;
+  if (!renchan) return false;
+  // 오야가 단독 1위인가
+  const dealer = post.players.find((p) => p.seat === played.dealerSeat);
+  if (dealer === undefined) return false;
+  const top = Math.max(...post.players.map((p) => p.score));
+  return dealer.score === top && post.players.filter((p) => p.score === top).length === 1;
+}
+
+/**
+ * 중반 드래프트 스테이지별 진입 조건.
+ * ROUND_SETTLED 리듀서가 이미 다음 국의 장풍·국 번호를 올린 뒤 검사하므로,
+ * "막 다음 국으로 넘어가는 시점"의 round 상태로 판정한다.
+ * - southEntry(반장전): 남1국 진입 (prevalentWind=2, roundNumber=1)
+ * - eastThird(동풍전): 동3국 진입 (prevalentWind=1, roundNumber=3)
+ */
+const MID_DRAFT_TRIGGER: Partial<
+  Record<DraftStage, (r: GameState["round"]) => boolean>
+> = {
+  southEntry: (r) => r.prevalentWind === 2 && r.roundNumber === 1,
+  eastThird: (r) => r.prevalentWind === 1 && r.roundNumber === 3,
 };
 
 // ─────────────────────────── 이벤트 콜백 ───────────────────────────
@@ -186,6 +284,7 @@ export class HanchanController {
       seed: this.config.seed,
       playerIds,
       playerMeta,
+      mode: this.config.mode,
       startScore: this.config.startScore,
       redFivesPerSuit: this.config.redFivesPerSuit ?? 1,
       ...(this.config.extraAugments !== undefined
@@ -200,6 +299,9 @@ export class HanchanController {
 
     // 증강 카탈로그 전송 (클라이언트가 id→이름·등급을 알게 되는 시점)
     this.sendCatalog(game);
+
+    // 사전 지급 증강 (증강 테스트) — 배패 전에 설치해 1국부터 그대로 작동하게 한다
+    this.installPreset(game);
 
     // ── 게임 시작 드래프트 ──
     // 반드시 첫 뷰를 먼저 보낸다 — 클라이언트는 게임 테이블에 입장한 뒤
@@ -227,8 +329,9 @@ export class HanchanController {
 
     // 완료된 드래프트 스테이지 복원 — 스테이지 완료 플래그가 전원에게 찍혀 있으면 완료.
     // (보유 증강 수로 세면 도박사가 한 턴에 2개를 줘 잘못 판정된다.)
+    // 스케줄은 모드에 따라 다르므로(반장=southEntry, 동풍=eastThird) config에서 읽는다.
     const ids = [...this.agents.keys()];
-    for (const stage of ["gameStart", "southEntry"] as const) {
+    for (const stage of this.config.draftSchedules ?? []) {
       if (ids.every((id) => game.engine.state.augmentData[draftDoneKey(stage, id)] === true)) {
         this.draftedStages.add(stage);
       }
@@ -250,18 +353,72 @@ export class HanchanController {
     return this.runLoop(game, 0);
   }
 
-  /** 증강 카탈로그를 전 참가자·관전자에게 보낸다 (id→이름·등급) */
+  /** 증강 카탈로그를 전 참가자·관전자에게 보낸다 (id→이름·등급·상세) */
   private sendCatalog(game: StandardGame): void {
     this.catalogMsg = {
       type: "catalog",
+      // 표시용 부가 필드(도감 상세·획득 시점·모드 제한)까지 함께 보낸다 —
+      // 클라이언트 카탈로그는 이 메시지로 통째로 교체되므로, 빼면 게임 중에만
+      // 도감 정보가 사라진다(증강 테스트 패널이 상세를 못 읽는 원인).
       augments: game.augments.all().map((a) => ({
         id: a.id,
         tier: a.tier,
+        category: a.category,
         name: a.name,
         description: a.description,
+        ...(a.detail !== undefined ? { detail: a.detail } : {}),
+        ...(a.draftStages !== undefined ? { draftStages: a.draftStages } : {}),
+        ...(a.modes !== undefined ? { modes: a.modes } : {}),
       })),
     };
     this.notifyAll(this.catalogMsg);
+  }
+
+  // ─────────────────────────── 증강 직접 지급 (테스트) ───────────────────────────
+
+  /**
+   * 진행 중인 게임에서 증강 1개를 즉시 획득시킨다 (증강 테스트 전용).
+   * 드래프트와 같은 경로(draftPick 액션 + install)를 타므로 상태·뷰·리플레이가
+   * 정상 획득과 동일하게 남는다. 다만 스테이지 완료 플래그는 찍지 않는다.
+   *
+   * 주의: 국 도중에 설치되면 배패·국 시작 시점에 개입하는 증강(패 변형 등)은
+   * 이번 국에 이미 지난 시점을 되돌리지 못한다 — 다음 국부터 온전히 작동한다.
+   */
+  grantAugment(player: PlayerId, augmentId: string): { ok: boolean; reason?: string } {
+    const game = this.game;
+    if (game === null) return { ok: false, reason: "game not started" };
+    const reason = this.applyAugment(game, player, augmentId);
+    if (reason !== null) return { ok: false, reason };
+    this.broadcastViews(game);
+    return { ok: true };
+  }
+
+  /** 설정된 사전 지급 증강을 설치한다. 알 수 없는 id·중복은 조용히 건너뛴다. */
+  private installPreset(game: StandardGame): void {
+    const preset = this.config.presetAugments;
+    if (preset === undefined) return;
+    for (const [player, ids] of Object.entries(preset)) {
+      if (!this.agents.has(player as PlayerId)) continue;
+      for (const id of ids) this.applyAugment(game, player as PlayerId, id);
+    }
+  }
+
+  /** 증강 1개를 상태에 기록하고 설치한다. 성공하면 null, 실패하면 사유. */
+  private applyAugment(
+    game: StandardGame,
+    player: PlayerId,
+    augmentId: string,
+  ): string | null {
+    const def = game.augments.get(augmentId);
+    if (def === undefined) return `unknown augment: ${augmentId}`;
+    const res = game.engine.submit({
+      player,
+      type: "draftPick",
+      payload: { augmentId },
+    });
+    if (!res.ok) return res.reason;
+    installAugment(game.engine, def, player, { yaku: game.yaku });
+    return null;
   }
 
   /** 국 루프 — run()과 resume()이 공유한다. 현재 상태에서 종국까지 진행. */
@@ -272,13 +429,20 @@ export class HanchanController {
       this.events.onRoundStart?.(game, roundIndex);
       this.broadcastViews(game);
 
+      // 아가리야메 판정용 — 정산 전(지금 둘 국)의 장풍·국번·오야 자리를 기억한다.
+      const playedRound = {
+        wind: game.engine.state.round.prevalentWind,
+        roundNumber: game.engine.state.round.roundNumber,
+        dealerSeat: game.engine.state.round.dealerSeat,
+      };
+
       const outcome = await this.runRound(game);
       if (this.aborted) return this.finishAborted();
       this.flushEvents(game); // 국 진행 이벤트를 리플레이 로그로
       this.events.onRoundEnd?.(game, outcome, roundIndex);
 
       roundIndex++;
-      // 정산 후 뷰 전송 — 화료면 우라도라까지 공개
+      // 정산 후 뷰 전송 — 화료면 뒷도라까지 공개
       const ura = outcome === "win" ? uraIndicatorIds(game.engine.state) : [];
       this.broadcastViews(game, ura);
       this.notifyRoundOver(game, outcome, ura);
@@ -292,23 +456,28 @@ export class HanchanController {
         if (bankrupt) break;
       }
 
-      // 남장 진입 체크 (드래프트) — 스테이지당 1회만.
-      // 남1국 연장(본장)으로 라운드 번호가 유지돼도 재추첨하지 않는다.
-      const state = game.engine.state;
-      if (
-        state.round.prevalentWind === 2 &&
-        state.round.roundNumber === 1 &&
-        this.config.draftSchedules?.includes("southEntry") &&
-        !this.draftedStages.has("southEntry")
-      ) {
-        await this.runDraft(game, "southEntry");
-        this.flushEvents(game);
-        // 드래프트 대기 중 무효가 들어오면 다음 국을 시작하지 않고 즉시 종료
-        if (this.aborted) return this.finishAborted();
+      // 중반 드래프트 진입 체크 (드래프트) — 스테이지당 1회만.
+      // 반장전=남1국 진입(southEntry), 동풍전=동3국 진입(eastThird). 연장(본장)으로
+      // 라운드 번호가 유지돼도 재추첨하지 않는다(draftedStages 가드).
+      const round = game.engine.state.round;
+      for (const stage of this.config.draftSchedules ?? []) {
+        const trigger = MID_DRAFT_TRIGGER[stage];
+        if (trigger !== undefined && !this.draftedStages.has(stage) && trigger(round)) {
+          await this.runDraft(game, stage);
+          this.flushEvents(game);
+          // 드래프트 대기 중 무효가 들어오면 다음 국을 시작하지 않고 즉시 종료
+          if (this.aborted) return this.finishAborted();
+          break;
+        }
       }
 
-      // 종료 조건 판정
-      if (this.shouldEnd(game.engine.state)) break;
+      // 종료 조건 판정 (일반 종국 또는 아가리야메)
+      if (
+        this.shouldEnd(game.engine.state, game.engine.rules) ||
+        this.isAgariYame(game.engine.state, playedRound)
+      ) {
+        break;
+      }
 
       // 다음 국 시작
       const res = game.engine.submit({
@@ -321,7 +490,7 @@ export class HanchanController {
     }
 
     this.flushEvents(game); // 안전: 남은 이벤트 방출
-    const rankings = this.calcRankings(game.engine.state);
+    const rankings = this.calcRankings(game.engine.state, game.engine.rules);
     this.events.onGameOver?.(rankings);
     return rankings;
   }
@@ -391,13 +560,22 @@ export class HanchanController {
       (agent) => game.engine.state.augmentData[draftDoneKey(stage, agent.id)] !== true,
     );
 
-    // 전원에게 '동시에' 오퍼를 보내고 응답을 병렬로 기다린다 (순차 대기 X). roll은 아래 map이
-    // 첫 await 전에 동기로 실행되므로 어떤 픽보다도 먼저 모든 오퍼가 나간다. runRound과 동일하게
+    // 오퍼(3지선다)를 픽보다 먼저, 고정 에이전트 순서로 로그에 남긴다.
+    // AUGMENT_OFFERED는 상태 불변 정보 이벤트라 픽률·등급 통계 전용이며, 시드에서
+    // 결정적으로 재현되므로 리플레이·재개에서도 순서·내용이 동일하다.
+    const offered = new Map<string, ReturnType<typeof draft.roll>>();
+    for (const agent of pending) {
+      const choices = draft.roll(stage, agent.id);
+      offered.set(agent.id, choices);
+      draft.recordOffer(stage, agent.id, choices);
+    }
+
+    // 전원에게 '동시에' 오퍼를 보내고 응답을 병렬로 기다린다 (순차 대기 X). runRound과 동일하게
     // abortSignal과 레이스 — 드래프트 대기 중 무효 투표가 와도 30초 타임아웃까지 멈추지 않게 한다.
     const raced = await Promise.race([
       Promise.all(
         pending.map(async (agent) => {
-          const choices = draft.roll(stage, agent.id);
+          const choices = offered.get(agent.id) ?? draft.roll(stage, agent.id);
           const pickedId = await agent.decideDraft(stage, choices);
           return { player: agent.id, pickedId };
         }),
@@ -445,18 +623,39 @@ export class HanchanController {
   private broadcastViews(game: StandardGame, uraDoraIndicators?: TileId[]): void {
     const state = game.engine.state;
     const rules = game.engine.rules;
-    const uraOpt =
-      uraDoraIndicators !== undefined && uraDoraIndicators.length > 0
+    const viewOpt = {
+      yaku: game.yaku, // 본인 뷰 형식텐파이(역없음) 계산용
+      ...(uraDoraIndicators !== undefined && uraDoraIndicators.length > 0
         ? { uraDoraIndicators }
-        : undefined;
+        : {}),
+    };
     for (const agent of this.agents.values()) {
-      agent.sendView(buildPlayerView(state, agent.id, rules, uraOpt));
+      // 증강 테스트 시점 전환: override가 있으면 그 좌석 시점으로 뷰를 만든다.
+      // 형식텐파이(noYaku) 등 '본인 뷰' 정보는 관찰 대상 좌석 기준으로 채워져,
+      // 그 좌석이 실제로 보는 화면을 그대로 재현한다.
+      const viewerId = agent.viewSeatOverride?.() ?? agent.id;
+      agent.sendView(buildPlayerView(state, viewerId, rules, viewOpt));
     }
-    // 관전자 — 전체 공개 시점 (한 번만 만들어 공유)
+    // 관전자 — 전체 공개 시점 (한 번만 만들어 공유). 형식텐파이는 본인 뷰 전용이라 불필요.
     if (this.spectators.size > 0) {
-      const specView = buildPlayerView(state, SPECTATOR_ID, rules, uraOpt);
+      const specView = buildPlayerView(state, SPECTATOR_ID, rules, viewOpt);
       for (const s of this.spectators.values()) s.sendView(specView);
     }
+  }
+
+  /**
+   * 한 에이전트에게 현재 상태의 뷰를 즉시 다시 보낸다 (증강 테스트 시점 전환용).
+   * viewSeatOverride를 방금 바꾼 직후, 다음 상태 변화를 기다리지 않고 새 시점을
+   * 바로 반영하기 위해 RoomManager가 호출한다. 게임이 없으면 아무 것도 하지 않는다.
+   */
+  resendViewTo(agentId: PlayerId): void {
+    if (this.game === null) return;
+    const agent = this.agents.get(agentId);
+    if (agent === undefined) return;
+    const state = this.game.engine.state;
+    const rules = this.game.engine.rules;
+    const viewerId = agent.viewSeatOverride?.() ?? agent.id;
+    agent.sendView(buildPlayerView(state, viewerId, rules, { yaku: this.game.yaku }));
   }
 
   private notifyAll(msg: ServerMessage): void {
@@ -486,7 +685,7 @@ export class HanchanController {
     this.spectators.delete(id);
   }
 
-  /** 국 결과 상세(역·판·부·점수 변동·우라도라)를 전 플레이어에게 전송 */
+  /** 국 결과 상세(역·판·부·점수 변동·뒷도라)를 전 플레이어에게 전송 */
   private notifyRoundOver(
     game: StandardGame,
     outcome: "win" | "draw" | "abort",
@@ -515,13 +714,18 @@ export class HanchanController {
     for (const id of ura) includeTile(id);
     for (const info of settle.winInfos ?? []) includeTile(info.winningTileId);
 
-    // 화료자 손패 공개 (실제 마작처럼 결과 화면에서 오른 손을 보여준다)
+    // 화료자 손패 공개 (실제 마작처럼 결과 화면에서 오른 손을 보여준다).
+    // 자유 선언이면 실제 손패가 아니라 리치 스냅샷(hand.winTileIds)을 보여준다 —
+    // "화료 시 패의 모습은 첫 리치 때의 손패". 쯔모패는 스냅샷/손패에서 제외한 뒤
+    // 화료패를 한 번만 얹어 쯔모·론 모두 13장+화료패 형태로 통일한다.
     const revealedHands: RoundOverMessage["revealedHands"] = {};
     for (const info of settle.winInfos ?? []) {
-      const handIds = state.zones[`hand:${info.winner}`]?.tileIds ?? [];
+      const concealedIds = winHandIdsOf(state, game.engine.rules, info.winner).filter(
+        (id) => id !== info.winningTileId,
+      );
       const hand = [
-        ...handIds.map(tileView),
-        ...(info.winType === "ron" ? [tileView(info.winningTileId)] : []),
+        ...concealedIds.map(tileView),
+        tileView(info.winningTileId),
       ].filter((v): v is PublicTileView => v !== null);
       const melds = (state.round.byPlayer[info.winner]?.melds ?? []).map((m) => ({
         kind: m.kind as string,
@@ -554,7 +758,21 @@ export class HanchanController {
    * - 서입 불허이면 남장 4국 후 무조건 종료
    * - 서입 허용 시 남장 후 1위가 returnScore 미만이면 서장(wind=3) 1국 추가, 이후 종료
    */
-  private shouldEnd(state: GameState): boolean {
+  private shouldEnd(
+    state: GameState,
+    rules: import("../engine/rules/RuleRegistry.js").RuleRegistry,
+  ): boolean {
+    // 즉시 우승 조건 (천하통일 등) — 어떤 플레이어든 자기 문턱 점수를 넘으면
+    // 남은 국과 무관하게 게임을 종료한다. 문턱은 보유자 전용 규칙(기본 0 = 비활성).
+    // 정산 직후 호출되므로 점수가 문턱을 넘은 국의 끝에서 곧바로 걸린다.
+    for (const p of state.players) {
+      const threshold = rules.resolve<number>("match.instantWinScore", {
+        playerId: p.id,
+        state,
+      });
+      if (threshold > 0 && p.score >= threshold) return true;
+    }
+
     // 주의: RoundSettled reducer가 이미 다음 국의 장풍을 적용한 뒤 호출된다.
     // 남4 종료 직후 state.prevalentWind는 3(서1 예정)이다.
     const wind = state.round.prevalentWind;
@@ -573,16 +791,49 @@ export class HanchanController {
     return topScore >= this.config.returnScore;
   }
 
+  /**
+   * 아가리야메(+텐파이야메) 판정. 호출 시점: RoundSettled 적용 직후.
+   *
+   * 최종 국(오라스 — 반장=남4국, 동풍=동4국, 즉 maxWind의 마지막 국)에서
+   * 오야가 연장(렌짱)하고 단독 1위이면 그대로 게임을 종료한다. 연장은 오야 화료
+   * (아가리야메) 또는 유국 시 오야 텐파이(텐파이야메)로 발생하며, 둘 다 대상이다.
+   * 오야 특권으로 게임을 끝내 무한 연장·불필요한 서입을 막는다.
+   *
+   * 렌짱은 정산 후 장풍·국번이 그대로인 것으로 판정한다(오야 유지 시 국이 안 넘어감).
+   * 서입 연장국(wind>maxWind)은 반환점 도달로 이미 종료 판정되므로 제외한다.
+   */
+  private isAgariYame(
+    state: GameState,
+    played: { wind: number; roundNumber: number; dealerSeat: number },
+  ): boolean {
+    return agariYameTriggers(this.config.agariYame, this.config.maxWind, played, {
+      prevalentWind: state.round.prevalentWind,
+      roundNumber: state.round.roundNumber,
+      players: state.players.map((p) => ({ seat: p.seat, score: p.score })),
+    });
+  }
+
   // ─────────────────────────── 최종 정산 ───────────────────────────
 
-  private calcRankings(state: GameState): RankingEntry[] {
-    const sorted = [...state.players].sort((a, b) => b.score - a.score);
-    const { uma, oka, returnScore } = this.config;
+  private calcRankings(
+    state: GameState,
+    rules?: import("../engine/rules/RuleRegistry.js").RuleRegistry,
+  ): RankingEntry[] {
+    // 게임 종료 시 최종 점수 보정 (계약 위약금·가불 상환 등 — score.finalAdjust)
+    const finalScore = (p: GameState["players"][number]): number =>
+      rules === undefined
+        ? p.score
+        : p.score + rules.resolve<number>("score.finalAdjust", { playerId: p.id, state });
+
+    const sorted = [...state.players].sort((a, b) => finalScore(b) - finalScore(a));
+    const { uma, oka, startScore } = this.config;
 
     // 우마 배열: [4위 패널티, 3위 패널티, 2위 보너스, 1위 보너스]
     const umaArr = [-uma[1], -uma[0], uma[0], uma[1]];
 
-    // 오카: 반환점 초과분 → 1위에게 모두 (01_GAME_RULES §1)
+    // 오카: 1위 보너스(k단위). 0이면 오카 없음. (01_GAME_RULES §1)
+    // 주의: 제로섬 기준점은 원점(startScore)이다. 오카를 쓰려면 기준점을 반환점으로
+    // 되돌리고 oka=(반환점−원점)×4/1000 로 맞춰야 총점이 제로섬을 유지한다.
     const okaScore = oka;
 
     // 반장 종료 시 남은 리치봉(공탁)은 1위가 획득 (01_GAME_RULES §9)
@@ -592,14 +843,14 @@ export class HanchanController {
       const rank = (i + 1) as 1 | 2 | 3 | 4;
       const umaValue = umaArr[3 - i] ?? 0; // 배열 역순
       const okaValue = rank === 1 ? okaScore : 0;
-      const raw = p.score + (rank === 1 ? leftoverPot : 0);
+      const raw = finalScore(p) + (rank === 1 ? leftoverPot : 0);
       const agent = this.agents.get(p.id);
       return {
         playerId: p.id,
         nickname: agent?.nickname ?? p.id,
         isBot: agent?.isBot ?? false,
-        // 최종 순위 점수 = (최종 점수 − 반환점) + 우마 (+1위 오카) — 제로섬
-        score: raw - returnScore + umaValue * 1000 + okaValue * 1000,
+        // 최종 순위 점수 = (최종 점수 − 원점) + 우마 (+1위 오카) — 제로섬
+        score: raw - startScore + umaValue * 1000 + okaValue * 1000,
         rawScore: raw,
         uma: umaValue,
         oka: okaValue,

@@ -1,6 +1,6 @@
 /**
- * die_hard (죽기살기) 테스트 — 게임당 1회, 정산으로 점수가 0 미만이 되면
- * 부족분을 환급받아 정확히 0에서 멈춘다 (도비 방지).
+ * die_hard (죽기살기) 테스트 — 게임당 1회, 정산으로 점수가 0 아래로 떨어지면
+ * 내려간 만큼이 그대로 플러스로 뒤집힌다 (−8000 → +8000).
  */
 
 import { describe, expect, it } from "vitest";
@@ -19,7 +19,7 @@ import { craft } from "./helpers.js";
 import { dieHard } from "../src/augments/die_hard.js";
 
 const SYS = "__system";
-const USED_KEY = "die_hard:used:p0";
+const USES_KEY = "die_hard:uses:p0";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -71,17 +71,22 @@ function bonusEvent(game: Game, reason: string): ScoreChangedPayload | undefined
 }
 
 describe("die_hard (죽기살기)", () => {
-  it("지불이 점수를 초과하면 정확히 0에서 멈추고 사용 플래그가 남는다", () => {
+  it("마이너스로 내려간 만큼이 그대로 플러스가 되고 사용 플래그가 남는다", () => {
     // p0 점수 1000 < 론 지불(탕야오 멘젠 론 ≥ 1300) → 증강 없으면 음수
+    const plain = createStandardGameFromState(craftRonSetup(1000));
+    runRonSettle(plain);
+    const sunk = scoreOf(plain, "p0"); // 증강 없을 때의 음수 점수
+
     const game = createStandardGameFromState(craftRonSetup(1000));
     installAugment(game.engine, dieHard, "p0");
     runRonSettle(game);
 
-    expect(scoreOf(game, "p0")).toBe(0); // 정확히 0 — 도비(0 미만) 회피
-    expect(game.engine.state.augmentData[USED_KEY]).toBe(true);
+    expect(sunk).toBeLessThan(0);
+    expect(scoreOf(game, "p0")).toBe(-sunk); // 부호가 뒤집힌다
+    expect(game.engine.state.augmentData[USES_KEY]).toBe(1);
     const refund = bonusEvent(game, "die_hard");
     expect(refund?.player).toBe("p0");
-    expect(refund?.delta).toBeGreaterThan(0); // 부족분만큼 환급
+    expect(refund?.delta).toBe(-2 * sunk);
   });
 
   it("증강이 없으면 같은 상황에서 점수가 음수가 된다 (대조군)", () => {
@@ -94,7 +99,7 @@ describe("die_hard (죽기살기)", () => {
     const base = craftRonSetup(1000);
     const spent: GameState = {
       ...base,
-      augmentData: { ...base.augmentData, [USED_KEY]: true },
+      augmentData: { ...base.augmentData, [USES_KEY]: 2 },
     };
     const game = createStandardGameFromState(spent);
     installAugment(game.engine, dieHard, "p0");
@@ -111,7 +116,7 @@ describe("die_hard (죽기살기)", () => {
     runRonSettle(game);
 
     expect(scoreOf(game, "p0")).toBeGreaterThan(0);
-    expect(game.engine.state.augmentData[USED_KEY]).toBeUndefined(); // 플래그 소모 없음
+    expect(game.engine.state.augmentData[USES_KEY]).toBeUndefined(); // 카운터 소모 없음
     expect(bonusEvent(game, "die_hard")).toBeUndefined();
   });
 });

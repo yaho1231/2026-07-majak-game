@@ -16,6 +16,7 @@ import {
 import type { PlayerId, RoundSettledPayload, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
 import { trueDragon } from "../src/augments/true_dragon.js";
+import { seatSwap } from "../src/augments/seat_swap.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -130,5 +131,55 @@ describe("true_dragon (진짜 용)", () => {
     expect(info?.extraHan).toBe(3);
     // 멘젠쯔모 1판 + 추가 3판 이상
     expect(info?.han ?? 0).toBeGreaterThanOrEqual(4);
+  });
+
+  it("드래프트 상호 배제: 진짜 용은 14장/4멘쯔 전제 특수형 증강과 conflicts로 잠긴다", () => {
+    // decompose가 치토이·국사를 totalSets===4 && hand===14에서만 열거하므로
+    // 진짜 용(5멘쯔·17장)과 함께 있으면 죽거나(픽 낭비) 소프트락(우는 국사)이 된다.
+    const locked = [
+      "open_kokushi",
+      "giant_god",
+      "royal_kokushi",
+      "async_chiitoi",
+      "mixed_nine_gates",
+      "void_kan",
+    ];
+    for (const id of locked) expect(trueDragon.conflicts).toContain(id);
+  });
+
+  it("자리 바꿈 가드: 배패 장수가 다른 진짜 용(16장)은 손패 교환 대상이 될 수 없다", () => {
+    // seat_swap은 손패를 통째로 맞바꾼다 — 장수가 다르면 양쪽 손이 화료 불능이 되므로
+    // sameHandSize 가드로 막는다. (다른 플레이어가 진짜 용을 보유하는 교차 케이스)
+    const base = craft({
+      hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const state = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === "p0"
+          ? { ...p, augments: ["seat_swap"] }
+          : p.id === "p1"
+            ? { ...p, augments: ["true_dragon"] }
+            : p,
+      ),
+      round: { ...base.round, firstTurn: true },
+    };
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, seatSwap, "p0", { yaku: game.yaku });
+    installAugment(game.engine, trueDragon, "p1", { yaku: game.yaku });
+
+    const def = game.engine.actions.get("seat_swap");
+    if (def === undefined) throw new Error("no seat_swap action");
+    const validate = (target: PlayerId): string | null =>
+      def.validate(
+        { player: "p0", type: "seat_swap", payload: { target } },
+        { state: game.engine.state, rules: game.engine.rules },
+      );
+
+    expect(validate("p1")).toBe("hand sizes differ"); // 진짜 용 = 16장 → 거부
+    expect(validate("p2")).toBeNull(); // 표준 상대 = 13장 → 교환 가능
   });
 });

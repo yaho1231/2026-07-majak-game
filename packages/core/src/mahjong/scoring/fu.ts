@@ -49,7 +49,7 @@ export function calculateFu(
     fu += 2;
   }
 
-  // 부로 핑후형 론 보정: 가산이 하나도 없으면 30부 취급
+  // 후로 핑후형 론 보정: 가산이 하나도 없으면 30부 취급
   if (!variant.isClosed && fu === 20) fu = 30;
 
   return roundUp10(fu);

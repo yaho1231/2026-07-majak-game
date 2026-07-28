@@ -37,7 +37,7 @@ export type TurnOptionProvider = (
 ) => ActionCandidate[];
 
 /**
- * 리액션(부로) 프롬프트 확장 — 다른 사람의 버림패에 반응하는 후보를 낸다.
+ * 리액션(후로) 프롬프트 확장 — 다른 사람의 버림패에 반응하는 후보를 낸다.
  * discard는 반응 대상(버린 사람·패). 반환 후보는 FlowController가 validate로 거른다.
  */
 export type ReactionOptionProvider = (
@@ -64,6 +64,24 @@ export type SubmitResult =
   | { ok: true; events: GameEvent[]; canceled: CanceledEvent[] }
   | { ok: false; reason: string };
 
+/**
+ * 무장해제로 이번 국 비활성화된 증강 인스턴스(source) 목록 — state.augmentData에 담긴다
+ * (리플레이 안전). 무장해제 증강이 대상 국 시작 시 채우고 국 종료 시 비운다.
+ */
+export const DISARMED_SOURCES_KEY = "engine:disarmed";
+
+/**
+ * source가 이번 국 무장해제로 비활성화됐는가. 목록이 비면 즉시 false(핫패스 무할당).
+ *
+ * 규칙 Modifier·Interceptor·Reaction뿐 아니라 **액티브 버튼(holderTurnOptions)** 도
+ * 이 판정으로 잠긴다 — installAugment가 후보 생성을 이 함수로 감싼다.
+ * "규칙형 증강만 잠기고 액션형은 멀쩡하다"던 예전 한계를 없앤 지점이다.
+ */
+export function isSourceDisarmed(state: GameState, source: string): boolean {
+  const v = state.augmentData[DISARMED_SOURCES_KEY];
+  return Array.isArray(v) && v.length > 0 && (v as string[]).includes(source);
+}
+
 export class GameEngine {
   readonly rules: RuleRegistry;
   readonly effects: EffectRegistry<GameState>;
@@ -85,8 +103,17 @@ export class GameEngine {
     this.processor = new EventProcessor<GameState>(
       this.effects,
       (state, event) => this.reducers.dispatch(state, event),
-      options.processor ?? {},
+      {
+        ...(options.processor ?? {}),
+        // 무장해제: 비활성 source의 Interceptor·Reaction을 건너뛴다 (비면 no-op)
+        isSourceEnabled: (source, state) => !isSourceDisarmed(state, source),
+      },
     );
+    // 무장해제: 비활성 source의 Rule Modifier를 합성에서 제외 (state가 있는 resolve에 한함)
+    this.rules.setSourceGate((source, ctx) => {
+      const st = ctx.state as GameState | undefined;
+      return st === undefined || !isSourceDisarmed(st, source);
+    });
     if (options.log !== undefined) this.log.push(...options.log);
   }
 
@@ -104,7 +131,7 @@ export class GameEngine {
     return this.turnProviders;
   }
 
-  /** 증강이 리액션(부로) 프롬프트 확장을 등록한다 (콘텐츠 등록 지점) */
+  /** 증강이 리액션(후로) 프롬프트 확장을 등록한다 (콘텐츠 등록 지점) */
   registerReactionOptions(provider: ReactionOptionProvider): void {
     this.reactionProviders.push(provider);
   }

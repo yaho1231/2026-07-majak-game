@@ -191,7 +191,7 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
     expect(augmented.engine.state.augmentData[VIEW_KEY]).toBe("p2");
   });
 
-  it("숙주가 쯔모 지불로 잃으면 손실 절반을 대신 잃고, 대상은 이동하지 않는다", () => {
+  it("숙주가 잃을 때는 함께 잃지 않는다 — 대상도 이동하지 않는다 (48차 무페널티)", () => {
     // p2가 쯔모 화료 → 숙주 p1은 지불자
     const base = craftTsumoBy("p2");
     const baseline = createStandardGameFromState(structuredClone(base));
@@ -205,10 +205,10 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
 
     const baseD = lastSettled(baseline).deltas;
     const augD = lastSettled(augmented).deltas;
-    const share = Math.round((baseD["p1"] ?? 0) / 200) * 100;
-    expect(share).toBeLessThan(0); // 숙주 손실의 절반
-    expect(augD["p1"]).toBe((baseD["p1"] ?? 0) - share); // 손실 절반으로 경감
-    expect(augD["p0"]).toBe((baseD["p0"] ?? 0) + share); // 보유자가 대신 잃는다
+    // 48차 무페널티: 숙주가 잃을 때는 함께 잃지 않는다 — 정산이 그대로다
+    expect(baseD["p1"] ?? 0).toBeLessThan(0);
+    expect(augD["p1"]).toBe(baseD["p1"]);
+    expect(augD["p0"]).toBe(baseD["p0"]);
     expect(sumOf(augD)).toBe(sumOf(baseD));
 
     // 숙주가 화료도 방총도 아니므로 대상은 그대로
@@ -216,7 +216,7 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
     expect(augmented.engine.state.augmentData[VIEW_KEY]).toBe("p1");
   });
 
-  it("숙주가 론을 맞으면 손실을 분담하고 대상이 다음 자리로 이동한다", () => {
+  it("숙주가 론을 맞아도 손실은 분담하지 않고, 대상만 다음 자리로 이동한다", () => {
     // p1이 5s를 버렸고 p2가 그 5s로 론 (234m345p345s678s + 55s)
     const base = craft({
       hands: { p0: "*", p1: "*", p2: "234m345p345s678s5s", p3: "*" },
@@ -245,10 +245,10 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
 
     const baseD = lastSettled(baseline).deltas;
     const augD = lastSettled(augmented).deltas;
-    const share = Math.round((baseD["p1"] ?? 0) / 200) * 100;
-    expect(share).toBeLessThan(0);
-    expect(augD["p1"]).toBe((baseD["p1"] ?? 0) - share);
-    expect(augD["p0"]).toBe((baseD["p0"] ?? 0) + share);
+    // 48차 무페널티: 숙주의 손실은 분담하지 않는다 (이득만 뜯어온다)
+    expect(baseD["p1"] ?? 0).toBeLessThan(0);
+    expect(augD["p1"]).toBe(baseD["p1"]);
+    expect(augD["p0"]).toBe(baseD["p0"]);
     expect(sumOf(augD)).toBe(sumOf(baseD));
 
     // 론을 맞았으므로 대상이 숙주(p1)의 다음 자리 p2로 옮겨간다

@@ -58,6 +58,15 @@ export interface GameRecord {
   players: GamePlayerRecord[];
 }
 
+export interface AdminUserRow {
+  id: number;
+  username: string;
+  isAdmin: boolean;
+  createdAt: string;
+  /** 참가한(봇 아닌) 게임 수 */
+  games: number;
+}
+
 export interface GameSummaryRow {
   gameId: number;
   code: string;
@@ -76,6 +85,15 @@ const RESERVED_NAMES = new Set([
 
 /** 기본 세션 수명 30일 — 이후 tokenLogin이 거부된다 (재로그인 필요). */
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** 사용자당 유지할 최대 세션 수 — 초과 시 오래된 세션부터 정리(무한 증식 방지). */
+const MAX_SESSIONS_PER_USER = 10;
+
+/**
+ * 사용자 열거 타이밍 오라클 완화용 더미 salt. 존재하지 않는 계정으로 로그인해도
+ * 실제 계정과 동일한 scrypt 비용을 치르게 해, 응답 시간으로 계정 유무를 구분하지 못하게 한다.
+ */
+const DUMMY_SALT = "00000000000000000000000000000000";
 
 export class SiteDb {
   private readonly db: DatabaseSyncT;
@@ -148,8 +166,15 @@ export class SiteDb {
     if (/^bot_/i.test(username) || RESERVED_NAMES.has(username.toLowerCase())) {
       return { ok: false, error: "사용할 수 없는 닉네임입니다" };
     }
-    if (typeof password !== "string" || password.length < 4 || password.length > 72) {
-      return { ok: false, error: "비밀번호는 4자 이상이어야 합니다" };
+    if (typeof password !== "string" || password.length < 8 || password.length > 72) {
+      return { ok: false, error: "비밀번호는 8자 이상이어야 합니다" };
+    }
+    // 온라인 무차별 대입 완화 — 숫자로만 이루어진(PIN) 비밀번호와 닉네임을 포함한 비밀번호를 거부한다.
+    if (/^\d+$/.test(password)) {
+      return { ok: false, error: "숫자로만 이루어진 비밀번호는 사용할 수 없습니다" };
+    }
+    if (username.length >= 4 && password.toLowerCase().includes(username.toLowerCase())) {
+      return { ok: false, error: "비밀번호에 닉네임을 포함할 수 없습니다" };
     }
     const exists = this.db
       .prepare("SELECT id FROM users WHERE username = ?")
@@ -177,14 +202,18 @@ export class SiteDb {
   }
 
   async login(username: string, password: string): Promise<AuthResult> {
+    const pw = typeof password === "string" ? password : "";
     const row = this.db
       .prepare("SELECT id, username, pass_salt, pass_hash, is_admin FROM users WHERE username = ?")
       .get(username) as
       | { id: number; username: string; pass_salt: string; pass_hash: string; is_admin: number }
       | undefined;
-    if (row === undefined) return { ok: false, error: "닉네임 또는 비밀번호가 올바르지 않습니다" };
-    if (typeof password !== "string") return { ok: false, error: "닉네임 또는 비밀번호가 올바르지 않습니다" };
-    const hash = await scryptAsync(password, row.pass_salt, 64);
+    if (row === undefined) {
+      // 사용자 열거 타이밍 오라클 완화 — 계정이 없어도 동일한 scrypt 비용을 치르고 실패한다.
+      await scryptAsync(pw, DUMMY_SALT, 64);
+      return { ok: false, error: "닉네임 또는 비밀번호가 올바르지 않습니다" };
+    }
+    const hash = await scryptAsync(pw, row.pass_salt, 64);
     const stored = Buffer.from(row.pass_hash, "hex");
     if (hash.length !== stored.length || !timingSafeEqual(hash, stored)) {
       return { ok: false, error: "닉네임 또는 비밀번호가 올바르지 않습니다" };
@@ -220,7 +249,60 @@ export class SiteDb {
     this.db
       .prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)")
       .run(token, userId, new Date().toISOString());
+    // 세션 무한 증식 방지 — 사용자당 최신 MAX_SESSIONS_PER_USER개만 남기고 오래된 세션을 정리한다.
+    this.db
+      .prepare(
+        `DELETE FROM sessions WHERE user_id = ? AND token NOT IN (
+           SELECT token FROM sessions WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
+         )`,
+      )
+      .run(userId, userId, MAX_SESSIONS_PER_USER);
     return token;
+  }
+
+  // ─────────────────────────── 계정 관리 (관리자) ───────────────────────────
+
+  /** 전체 계정 목록 (관리자용) — 가입순, 참가 게임 수 포함. */
+  listUsers(): AdminUserRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT u.id, u.username, u.is_admin, u.created_at,
+           (SELECT COUNT(DISTINCT gp.game_id) FROM game_players gp WHERE gp.user_id = u.id) AS games
+         FROM users u ORDER BY u.id ASC`,
+      )
+      .all() as { id: number; username: string; is_admin: number; created_at: string; games: number }[];
+    return rows.map((r) => ({
+      id: r.id,
+      username: r.username,
+      isAdmin: r.is_admin === 1,
+      createdAt: r.created_at,
+      games: Number(r.games),
+    }));
+  }
+
+  /**
+   * 계정 삭제 (관리자용) — 세션을 지우고 게임 기록은 익명(user_id=NULL)으로
+   * 남긴다(다른 참가자의 리플레이·순위를 훼손하지 않기 위함). 삭제된 username을
+   * 반환해 호출자가 통계 저장소(닉네임 키)도 함께 정리할 수 있게 한다.
+   */
+  deleteUser(userId: number): { ok: boolean; username?: string; error?: string } {
+    if (!Number.isInteger(userId)) return { ok: false, error: "잘못된 사용자 ID입니다" };
+    const row = this.db
+      .prepare("SELECT username FROM users WHERE id = ?")
+      .get(userId) as { username: string } | undefined;
+    if (row === undefined) return { ok: false, error: "존재하지 않는 계정입니다" };
+    // 세션·게임참조·계정을 원자적으로 정리 (한 단계라도 실패하면 전부 롤백)
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+      this.db.prepare("UPDATE game_players SET user_id = NULL WHERE user_id = ?").run(userId);
+      this.db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    return { ok: true, username: row.username };
   }
 
   userByName(username: string): UserRow | null {
@@ -259,6 +341,14 @@ export class SiteDb {
          WHERE gp.user_id = ? ORDER BY g.id DESC LIMIT ?`,
       )
       .all(userId, limit) as { id: number; code: string; ended_at: string; replay_path: string }[];
+    return games.map((g) => this.hydrate(g));
+  }
+
+  /** 모든 게임 목록 (최신순, 최대 limit) — 관리자 리플레이 조회용. */
+  listAllGames(limit = 200): GameSummaryRow[] {
+    const games = this.db
+      .prepare("SELECT id, code, ended_at, replay_path FROM games ORDER BY id DESC LIMIT ?")
+      .all(limit) as { id: number; code: string; ended_at: string; replay_path: string }[];
     return games.map((g) => this.hydrate(g));
   }
 

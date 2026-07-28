@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Prng } from "../src/engine/random/Prng.js";
 import { RuleLayer } from "../src/engine/rules/RuleRegistry.js";
-import { createInitialGameState } from "../src/engine/state/GameState.js";
+import {
+  createInitialGameState,
+  doraIndicatorIndex,
+  rinshanRemaining,
+} from "../src/engine/state/GameState.js";
 import type { GameState } from "../src/engine/state/GameState.js";
 import {
   DEAD_WALL,
@@ -14,6 +18,7 @@ import {
 import type { PlayerId } from "../src/engine/zones/Zone.js";
 import { kindKey } from "../src/mahjong/tiles/Tile.js";
 import type { TileId, TileKind } from "../src/mahjong/tiles/Tile.js";
+import { SYSTEM_PLAYER } from "../src/mahjong/flow/helpers.js";
 import { FlowController } from "../src/mahjong/flow/FlowController.js";
 import type { FlowStatus } from "../src/mahjong/flow/FlowController.js";
 import {
@@ -461,7 +466,75 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
     expect(s.zones[handZone("p0")]?.tileIds).toHaveLength(11); // 14 - 4(깡) + 1(영상쯔모)
   });
 
-  it("깡 도라 타이밍: afterDiscard 룰이면 깡 후 버림 뒤에 신도라가 열린다", () => {
+  it("깡은 영상패를 소모한다 — 왕패를 보충하지 않고, 도라 표시패는 밀리지 않는다", () => {
+    const state = craft({
+      hands: {
+        p0: "7777z258p369s34z55z", // 7z 4장 안깡
+        p1: JUNK1,
+        p2: JUNK2,
+        p3: JUNK3,
+      },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = createStandardGameFromState(state);
+    const before = game.engine.state;
+    const deadBefore = [...(before.zones[DEAD_WALL]?.tileIds ?? [])];
+    const wallBefore = before.zones[WALL]?.tileIds.length ?? 0;
+    expect(deadBefore).toHaveLength(14);
+    expect(rinshanRemaining(before)).toBe(4);
+
+    const flow = new FlowController(game.engine);
+    let status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const ankanOption = status.prompts[0]?.options.find((o) => o.type === "ankan");
+    status = flow.submit("p0", ankanOption as { type: string; payload: unknown });
+
+    const s = game.engine.state;
+    // 영상패 1장이 빠지고 **보충되지 않는다** — 패산은 그대로다
+    expect(s.zones[DEAD_WALL]?.tileIds).toHaveLength(13);
+    expect(rinshanRemaining(s)).toBe(3);
+    expect(s.zones[WALL]?.tileIds).toHaveLength(wallBefore);
+    // 맨 앞 영상패(deadBefore[0])만 사라지고 나머지는 순서 그대로 남는다
+    expect(s.zones[DEAD_WALL]?.tileIds).toEqual(deadBefore.slice(1));
+    // 도라 표시패는 밀리지 않는다 — 1번째는 원래 자리(4), 2번째는 원래 자리(6)의 그 패
+    expect(s.round.doraIndicators[0]).toBe(deadBefore[4]);
+    expect(s.zones[DEAD_WALL]?.tileIds[doraIndicatorIndex(s, 1)]).toBe(deadBefore[6]);
+  });
+
+  it("깡 4회를 채우면 영상패가 바닥나 sys.drawRinshan이 거부된다", () => {
+    const state = craft({
+      hands: { p0: "7777z258p369s34z55z", p1: JUNK1, p2: JUNK2, p3: JUNK3 },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = createStandardGameFromState(state);
+    // 영상패 4장을 다 뽑은 상태를 직접 만든다 (왕패 10장 = 표시패 블록만 남음)
+    const dead = [...(game.engine.state.zones[DEAD_WALL]?.tileIds ?? [])];
+    const shrunk: GameState = {
+      ...game.engine.state,
+      round: { ...game.engine.state.round, phase: "turn.draw" },
+      zones: {
+        ...game.engine.state.zones,
+        [DEAD_WALL]: {
+          ...game.engine.state.zones[DEAD_WALL]!,
+          tileIds: dead.slice(4),
+        },
+      },
+    };
+    expect(rinshanRemaining(shrunk)).toBe(0);
+    // 표시패 자리는 여전히 같은 물리 패를 가리킨다 (앞이 4장 빠져 인덱스만 당겨졌다)
+    expect(shrunk.zones[DEAD_WALL]?.tileIds[doraIndicatorIndex(shrunk, 0)]).toBe(dead[4]);
+    const err = game.engine.actions.get("sys.drawRinshan")!.validate(
+      { player: SYSTEM_PLAYER, type: "sys.drawRinshan", payload: {} },
+      { state: shrunk, rules: game.engine.rules },
+    );
+    expect(err).toBe("no rinshan tiles left");
+  });
+
+  it("깡 도라 타이밍: afterDiscard 룰이면 깡 후 버림 뒤에 새로운 도라가 열린다", () => {
     const state = craft({
       hands: {
         p0: "7777z258p369s34z55z",

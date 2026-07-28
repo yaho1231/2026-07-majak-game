@@ -70,22 +70,46 @@ interface Zone {
 | `deadWall` | deadWall | §3 참조 | 도라 표시패만 공개 |
 | `hand:p{n}` | hand | 정렬은 클라이언트 표현일 뿐, 서버는 무순서 취급 | 본인만 |
 | `discards:p{n}` | discards | 버린 순서 (후리텐·리치 선언패 판정) | 전원 |
-| `melds:p{n}` | melds | 부로한 순서 | 전원 |
+| `melds:p{n}` | melds | 후로한 순서 | 전원 |
 
 - 가시성은 Zone에 저장하지 않는다. `visibility.<zone kind>` Rule이며
   Information Layer(09)가 조회한다. "패산 공개" 증강 = `visibility.wall`에 Modifier 하나.
 - Prism 증강의 **커스텀 Zone**은 Zone 하나를 등록하고 가시성 Rule을 정의하면 끝이다.
   엔진은 Zone 목록을 열거할 뿐, 표준 Zone과 커스텀 Zone을 구분하지 않는다.
 
-## deadWall 내부 규약 (14장)
+## deadWall 내부 규약 (시작 14장 = 영상패 4 + 표시패 블록 10)
+
+국 시작 시점의 배치:
 
 | 인덱스 | 역할 |
 |--------|------|
 | 0~3 | 영상패 (깡 보충패, 0부터 사용) |
 | 4, 6, 8, 10, 12 | 도라 표시패 (4가 첫 표시패, 깡마다 다음 인덱스 공개) |
-| 5, 7, 9, 11, 13 | 우라도라 표시패 (바로 앞 도라 표시패와 짝) |
+| 5, 7, 9, 11, 13 | 뒷도라 표시패 (바로 앞 도라 표시패와 짝) |
 
-깡 발생 시 패산 마지막 패 1장이 deadWall로 이동해 14장을 유지한다 — 이것도 Zone 이동 연산이다.
+### ⚠ 영상패는 소모된다 — 인덱스를 상수로 세지 말 것 (2026-07-26 사용자 확정)
+
+깡으로 영상패를 뽑으면 **보충하지 않는다.** 그 자리는 비고 왕패는 14 → 13 → … → 10장으로
+줄어든다(깡 4회가 상한이므로 10장 밑으로는 안 간다). 예전에는 패산 마지막 패를 deadWall
+앞으로 밀어 넣어 14장을 유지했는데, 실제 리치마작은 영상패를 소모한다.
+
+**표시패는 밀리지 않는다.** 도라·뒷도라 블록은 **언제나 deadWall의 마지막 10장**이므로,
+앞이 비어도 같은 물리 패가 그대로 표시패이고 배열 인덱스만 그만큼 당겨진다. 따라서
+표시패 자리는 상수(4·6·8·10·12)가 아니라 **뒤에서부터** 세야 한다:
+
+```ts
+rinshanRemaining(state)        // 남은 영상패 = deadWall.length - 10
+doraIndicatorIndex(state, k)   // k번째 도라 표시패 = deadWall.length - 10 + k*2
+                               // 뒷도라는 그 +1
+```
+
+두 함수 모두 `engine/state/GameState.ts`에 있고 core가 export한다. deadWall을 인덱스로
+다루는 코드(영상패 선택 증강, 왕패 교환 증강, 클라이언트 자리 라벨)는 전부 이걸 쓴다.
+`FIRST_DORA_INDEX`는 **배패 시점 계산 전용**이다.
+
+예외는 **북풍 상인(`north_trader`)의 북빼기** 하나다 — 영상패를 뽑되 패산 최후미 한 장으로
+그 자리를 되채워 왕패 장수도 남은 영상패 수도 그대로다. 깡 횟수를 쓰지 않고 영상 쯔모만
+가져오는 것이 이 증강의 정체다.
 
 ---
 
@@ -102,7 +126,8 @@ moveTiles(zones, from, to, tileIds, insertAt?)  // 순수 함수, 새 zones를 �
 | 쯔모 | `wall[0]` → `hand:p` |
 | 버림 | `hand:p` → `discards:p` (맨 뒤에 추가) |
 | 펑/치 | `discards:상대` 마지막 패 + `hand:p` 2장 → `melds:p` |
-| 영상패 쯔모 | `deadWall[0~3]` → `hand:p`, 이어서 `wall` 마지막 → `deadWall` |
+| 영상패 쯔모 (깡) | `deadWall[0]` → `hand:p` (보충 없음 — deadWall이 한 장 줄어든다) |
+| 북빼기 (north_trader) | `deadWall[0]` → `hand:p`, 이어서 `wall` 마지막 → `deadWall[0]` |
 | 버림패 회수 (Gold 증강) | `discards:p` → `hand:p` |
 | 커스텀 Zone 증강 | 등록한 Zone ↔ 기존 Zone |
 
@@ -113,14 +138,14 @@ moveTiles(zones, from, to, tileIds, insertAt?)  // 순수 함수, 새 zones를 �
 
 ---
 
-# 4. 멜드(부로 묶음)의 이중 표현
+# 4. 후로 묶음의 이중 표현
 
-- **물리적 위치**: 부로된 패들은 `melds:p` Zone에 있다 (Tile System 관심사).
+- **물리적 위치**: 후로된 패들은 `melds:p` Zone에 있다 (Tile System 관심사).
 - **의미**: 어떤 패들이 하나의 묶음인지, 누구에게서 울었는지는
   `PlayerRoundState.melds`(03_GAME_STATE)의 Meld 메타데이터가 담는다.
 
 Zone은 "패가 어디 있는가"만 알고, 게임 의미는 GameState의 도메인 데이터가 안다.
-이 분리 덕에 "멜드를 해체하는" 증강도 Zone 이동 + 메타데이터 수정으로 표현 가능하다.
+이 분리 덕에 "후로를 해체하는" 증강도 Zone 이동 + 메타데이터 수정으로 표현 가능하다.
 
 ---
 

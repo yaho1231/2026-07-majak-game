@@ -1,31 +1,107 @@
 /**
- * 투시 (xray_hand) — 상대들의 손패 앞 3장을 항상 볼 수 있다.
+ * 투시 (xray_hand) — 액티브. 발동한 국 내내 상대 세 명의 손패가 전부 나에게만 보인다.
  *
- * visibility.hand 규칙에 Modifier를 얹어, "보유자가 타인의 손패 Zone을
- * 보는" 시점에만 {mode:"peek",count:3}을 돌려준다. 그 외(타인끼리·본인
- * 손패)는 기존 값을 그대로 유지하므로 다른 가시성 증강과도 합성된다.
+ * 재설계(2026-07-25, 사용자 지시): 이전엔 게임 내내 상시 공개되는 순수 패시브였다.
+ * 이제 **매치당 사용 횟수**(동풍전 1·반장전 2회)를 쓰는 액티브가 됐다 — 자기 턴에
+ * 버튼으로 발동하면 **그 국이 끝날 때까지** 상대 세 명의 손패가 전부 나에게만 열린다.
+ * 언제 켜느냐가 선택이 된다(결정적 국을 골라 쓴다). 발동은 전원에게 공개돼 상대가 수비를
+ * 조일 수 있다.
+ *
+ * 구현:
+ * - 액션 `xray_reveal {}`: turn.act·자기 턴·사용 횟수 남음·그 국 미발동일 때.
+ *   발동 시 국 스코프 활성 플래그(roundKey)와 매치 스코프 사용 카운터(uses)를 함께 쓴다.
+ * - `visibility.hand` 모디파이어: 뷰어=보유자, 존 주인=타인이고 **그 국의 활성 플래그가
+ *   켜져 있을 때만** "public"을 돌려준다. 그 외에는 기존 값을 유지해 다른 가시성 증강과
+ *   합성된다. 활성 플래그는 roundKey 스코프라 국이 바뀌면 자연 만료된다.
  */
 
-import { defineAugment } from "@majak/core";
-import type { AugmentDef, VisibilityRule } from "@majak/core";
+import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
+import type {
+  ActionDef,
+  AugmentDef,
+  GameState,
+  PlayerId,
+  VisibilityRule,
+} from "@majak/core";
+import { counterOf, flagOf, matchUses, roundKey, viewKey } from "../util.js";
+
+const ID = "xray_hand";
+const ACTION = "xray_reveal";
+
+/** 이 국에 투시를 발동했는가 (국 스코프 — 국이 바뀌면 자연 만료) */
+const activeKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:active:${roundKey(state)}:${h}`;
+/** 매치당 사용 횟수 카운터 (게임 단위 — roundKey 없음). 동풍전 1·반장전 2회. */
+const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
+
+const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
+  counterOf(state, usesKey(h)) < matchUses(state);
+
+/** 자기 턴(turn.act)이고, 사용 횟수가 남았고, 그 국에 아직 발동하지 않았으면 발동 가능 */
+function canReveal(state: GameState, holder: PlayerId): boolean {
+  if (state.round.phase !== "turn.act") return false;
+  if (playerAtSeat(state, state.round.turnSeat).id !== holder) return false;
+  if (!hasUsesLeft(state, holder)) return false;
+  if (flagOf(state, activeKey(state, holder))) return false; // 이미 이 국에 켰다
+  return true;
+}
+
+const xrayAction: ActionDef<Record<string, never>> = {
+  type: ACTION,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined || !player.augments.includes(ID)) {
+      return "no xray_hand augment";
+    }
+    if (!canReveal(state, req.player)) return "cannot reveal now";
+    return null;
+  },
+  toEvents: (req, { state }) => [
+    // 이 국 활성화 + 매치 사용 횟수 +1
+    augmentDataSet(activeKey(state, req.player), true),
+    augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+    // 발동 사실은 전원 공개 — 상대가 수비를 조일 수 있게
+    augmentDataSet(viewKey("*", `${ID}:${req.player}`), true),
+  ],
+};
 
 export const xrayHand: AugmentDef = defineAugment({
-  id: "xray_hand",
+  id: ID,
   tier: "gold",
+  category: "info",
   name: "투시",
-  description: "상대들의 손패 앞 3장을 항상 볼 수 있다.",
+  description:
+    "(동풍전 1회 · 반장전 2회) 자기 순에 발동하면 그 국이 끝날 때까지 상대 세 명의 손패가 전부 나에게만 보인다.",
+  detail:
+    "(동풍전 1회 · 반장전 2회) 자기 순에 버튼으로 발동하면 그 국이 끝날 때까지 상대 세 명의 손패가 배패부터 마지막 쯔모까지 전부 나에게만 공개된다. 켠 사실은 전원에게 공개된다.",
+  // 봇: 순수 정보 이득이라 자해가 없다 — 옵션이 뜨면 곧바로 발동한다.
+  bot: {
+    choose({ options }) {
+      return options.find((o) => o.type === ACTION) ?? null;
+    },
+  },
   install(ctx) {
-    const { holder } = ctx;
+    const { engine, holder } = ctx;
+
+    // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
+    if (!engine.actions.has(ACTION)) engine.actions.register(xrayAction);
+
+    // 뷰어가 보유자이고, 존 주인이 타인이고, 그 국에 투시를 켰을 때만 손패 전체 공개
     ctx.engine.rules.addModifier<VisibilityRule>("visibility.hand", {
       source: ctx.instanceId,
       layer: ctx.layer,
-      // 뷰어가 보유자이고, 존 주인이 타인일 때만 앞 3장 엿보기
-      apply: (cur, rctx) =>
-        rctx.playerId === holder &&
-        rctx.zoneOwner !== undefined &&
-        rctx.zoneOwner !== holder
-          ? { mode: "peek", count: 3 }
-          : cur,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        if (rctx.zoneOwner === undefined || rctx.zoneOwner === holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        return flagOf(state, activeKey(state, holder)) ? "public" : cur;
+      },
     });
+
+    // 아직 사용 횟수가 남았으면 보유자 턴에 발동 후보를 낸다
+    ctx.holderTurnOptions((state) =>
+      canReveal(state, holder) ? [{ type: ACTION, payload: {} }] : [],
+    );
   },
 });

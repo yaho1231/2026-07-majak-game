@@ -43,7 +43,7 @@ interface GameState {
 | 게임 단위 (PlayerState) | 국 단위 (RoundState) |
 |--------------------------|-----------------------|
 | 점수 | 리치 선언·일발·후리텐 |
-| 보유 증강 (**전원 공개** — 2026-07-15 확정) | 멜드 목록 |
+| 보유 증강 (**전원 공개** — 2026-07-15 확정) | 후로 목록 |
 | 자리(seat) | 도라 표시패, 현재 턴·순·페이즈 |
 
 ```ts
@@ -71,7 +71,7 @@ interface RoundState {
   kanCount: number;                       // 사깡유국 판정용
   kanCallers: PlayerId[];                 // 깡 선언자 이력
   firstTurn: boolean;                     // 구종구패·사풍연타 판정용
-  goAroundBroken: boolean;                // 첫 바퀴 부로 여부 — 더블리치 판정 (11에서 추가)
+  goAroundBroken: boolean;                // 첫 바퀴 후로 여부 — 더블리치 판정 (11에서 추가)
   byPlayer: Record<PlayerId, PlayerRoundState>;
 }
 

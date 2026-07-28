@@ -158,6 +158,16 @@ export function reconstructGame(
     const event = JSON.parse(line) as GameEvent;
     state = tmp.engine.reducers.dispatch(state, event);
     state = { ...state, lastEventSeq: event.seq };
+    // ⚠ readReplay와 같은 규약: 증강은 자기 이벤트 타입의 Reducer를 install에서
+    // 등록한다(CounterStruck·RecallPerformed 등). 드래프트되는 순간 설치하지 않으면
+    // 이후 그 증강이 만든 이벤트에서 "No reducer registered"로 재구성이 통째로 죽는다.
+    if (event.type === AUGMENT_DRAFTED) {
+      const p = event.payload as { player: PlayerId; augmentId: string };
+      const def = tmp.augments.get(p.augmentId);
+      if (def !== undefined) {
+        installAugment(tmp.engine, def, p.player, { yaku: tmp.yaku });
+      }
+    }
     events.push(event);
   }
 

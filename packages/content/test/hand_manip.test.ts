@@ -6,10 +6,10 @@
 import { describe, expect, it } from "vitest";
 import {
   FlowController,
-  Prng,
   SYSTEM_PLAYER,
   TILE_KIND_CHANGED,
-  createStandardGame,
+  WALL,
+  buildPlayerView,
   createStandardGameFromState,
   handIdsOf,
   handZone,
@@ -19,10 +19,12 @@ import {
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
+import { roundKey, viewKey } from "../src/util.js";
 import { suitUnify } from "../src/augments/suit_unify.js";
 import { redFiveTouch } from "../src/augments/red_five_touch.js";
 import { handSwap3 } from "../src/augments/hand_swap3.js";
 import { fullHandSwap } from "../src/augments/full_hand_swap.js";
+import { trueDragon } from "../src/augments/true_dragon.js";
 
 /** 크래프트 상태에 보유 증강을 직접 주입한다 (드래프트 이벤트 생략) */
 function withAugments(
@@ -38,35 +40,57 @@ function withAugments(
   };
 }
 
-function sysStart(game: ReturnType<typeof createStandardGame>): void {
-  const r = game.engine.submit({
-    player: SYSTEM_PLAYER,
-    type: "sys.startRound",
-    payload: {},
-  });
-  if (!r.ok) throw new Error(r.reason);
-}
-
 // ─────────────────────────── suit_unify ───────────────────────────
 
 describe("suit_unify — 단색 세계", () => {
-  it("보유자만 혼일색·청일색이 봉인된다", () => {
-    const game = createStandardGame({ seed: 3 });
+  /** 동1국·자기 첫 턴(아직 안 버림) 상태의 p0 손패를 만든다 */
+  function craftFirstHand(discards?: string): GameState {
+    return withAugments(
+      craft({
+        hands: { p0: "123m456m789p123s99p", p1: "*", p2: "*", p3: "*" },
+        ...(discards !== undefined ? { discards: { p0: discards } } : {}),
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
+        seed: 11,
+      }),
+      "p0",
+      ["suit_unify"],
+    );
+  }
+
+  it("발동 전후 어느 쪽도 역을 봉인하지 않는다 — 청일색까지 그대로 (48차)", () => {
+    const game = createStandardGameFromState(craftFirstHand());
     installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
-    const forHolder = game.engine.rules.resolve<string[]>("win.blockedYaku", {
-      playerId: "p0",
-    });
-    expect(forHolder).toContain("honitsu");
-    expect(forHolder).toContain("chinitsu");
-    expect(
-      game.engine.rules.resolve<string[]>("win.blockedYaku", { playerId: "p1" }),
-    ).toEqual([]);
+    const resolveFor = (pid: PlayerId): string[] =>
+      game.engine.rules.resolve<string[]>("win.blockedYaku", {
+        playerId: pid,
+        state: game.engine.state,
+      });
+
+    expect(resolveFor("p0")).not.toContain("chinitsu");
+
+    const res = game.engine.submit({ player: "p0", type: "mono_world", payload: { suit: "pin" } });
+    expect(res.ok).toBe(true);
+
+    // 리미트는 횟수(게임당 1회)뿐 — 통일해 준 색으로 청일색을 그대로 노릴 수 있다
+    expect(resolveFor("p0")).toEqual([]);
+    expect(resolveFor("p1")).toEqual([]);
   });
 
-  it("첫 국 시작 시 손패 수패가 무작위 한 종류로 통일되고 전원에게 공개된다", () => {
-    const game = createStandardGame({ seed: 11 });
+  it("첫 패를 받은 자기 턴에 버튼으로 발동하면 수패가 무작위 한 종류로 통일되고 전원 공개된다", () => {
+    const game = createStandardGameFromState(craftFirstHand());
     installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
-    sysStart(game);
+
+    // 자기 턴 프롬프트에 발동 버튼이 뜬다
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status.prompts.find((p) => p.player === "p0")!;
+    const option = prompt.options.find((o) => o.type === "mono_world");
+    expect(option).toBeDefined();
+
+    flow.submit("p0", option as { type: string; payload: unknown });
 
     const state = game.engine.state;
     const suit = state.augmentData["view:*:suit_unify:p0"];
@@ -77,7 +101,6 @@ describe("suit_unify — 단색 세계", () => {
       const kind = kindOf(state, id);
       if (isNumberSuit(kind)) {
         expect(kind.suit).toBe(suit);
-        // 색이 바뀐(생성된) 패는 원본과 구분되게 conjured 속성을 갖는다
         expect(state.tiles[id]?.attrs.conjured).toBe(true);
       }
     }
@@ -90,27 +113,30 @@ describe("suit_unify — 단색 세계", () => {
       changeEvent?.payload as { changes: { tileId: TileId }[] }
     ).changes;
     for (const c of changes) expect(hand).toContain(c.tileId);
-    // 완료 플래그
-    expect(state.augmentData["suit_unify:done:p0"]).toBe(true);
+    // 사용 카운터
+    expect(state.augmentData["suit_unify:uses:p0"]).toBe(1);
   });
 
-  it("두 번째 국에는 다시 발동하지 않는다 (게임당 1회)", () => {
-    const game = createStandardGame({ seed: 11 });
-    installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
-    sysStart(game);
-    // 유산국 처리 후 다음 국 시작
-    const abort = game.engine.submit({
-      player: SYSTEM_PLAYER,
-      type: "sys.settleAbort",
-      payload: {},
+  it("동풍전 1회만·첫 패에만 발동한다", () => {
+    // 발동 → 사용 카운터 → 재사용 거부 (동풍전이라 1회)
+    const first0 = craftFirstHand();
+    const game = createStandardGameFromState({
+      ...first0,
+      config: { ...first0.config, mode: "tonpuu" },
     });
-    expect(abort.ok).toBe(true);
-    sysStart(game);
+    installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
+    const first = game.engine.submit({ player: "p0", type: "mono_world", payload: { suit: "pin" } });
+    expect(first.ok).toBe(true);
+    const again = game.engine.submit({ player: "p0", type: "mono_world", payload: { suit: "pin" } });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.reason).toBe("already used");
 
-    const changeCount = game.engine.eventLog.filter(
-      (e) => e.type === TILE_KIND_CHANGED,
-    ).length;
-    expect(changeCount).toBe(1); // 첫 국의 1회뿐
+    // 이미 한 번 버린 뒤(첫 패가 아님)엔 발동할 수 없다
+    const g2 = createStandardGameFromState(craftFirstHand("1z"));
+    installAugment(g2.engine, suitUnify, "p0", { yaku: g2.yaku });
+    const late = g2.engine.submit({ player: "p0", type: "mono_world", payload: { suit: "pin" } });
+    expect(late.ok).toBe(false);
+    if (!late.ok) expect(late.reason).toBe("only on the first hand");
   });
 });
 
@@ -128,7 +154,8 @@ describe("red_five_touch — 붉은 손길", () => {
     return withAugments(s, "p0", ["red_five_touch"]);
   }
 
-  it("자기 턴 프롬프트에 노출되고, 손패의 모든 5가 적도라가 된다 (게임당 1회)", () => {
+  // 52차(docs/16 §1b B): 5 고정 → 1~9 중 지정. payload가 {} → { rank }로 바뀌었다.
+  it("자기 턴 프롬프트에 노출되고, 지정한 숫자가 전부 적도라가 된다 (게임당 1회)", () => {
     const game = createStandardGameFromState(craftRedState());
     installAugment(game.engine, redFiveTouch, "p0", { yaku: game.yaku });
 
@@ -147,7 +174,13 @@ describe("red_five_touch — 붉은 손길", () => {
     const status = flow.begin();
     if (status.kind !== "awaiting") throw new Error("expected awaiting");
     const prompt = status.prompts.find((p) => p.player === "p0")!;
-    const option = prompt.options.find((o) => o.type === "red_touch");
+    // 손패에 실제로 있는 랭크만 후보로 나온다 (1·2·3·4·5·6·7·8·9 중 이 손에 있는 것)
+    const rankOptions = prompt.options.filter((o) => o.type === "red_touch");
+    expect(rankOptions.length).toBeGreaterThan(0);
+    const ranks = rankOptions.map((o) => (o.payload as { rank: number }).rank);
+    expect(ranks).toContain(5);
+    expect(ranks).not.toContain(0);
+    const option = rankOptions.find((o) => (o.payload as { rank: number }).rank === 5);
     expect(option).toBeDefined();
 
     const next = flow.submit("p0", option as { type: string; payload: unknown });
@@ -162,11 +195,30 @@ describe("red_five_touch — 붉은 손길", () => {
     expect(reprompt.options.some((o) => o.type === "red_touch")).toBe(false);
     expect(reprompt.options.some((o) => o.type === "discard")).toBe(true);
     // 재사용 거부
-    const again = game.engine.submit({ player: "p0", type: "red_touch", payload: {} });
+    const again = game.engine.submit({ player: "p0", type: "red_touch", payload: { rank: 3 } });
     expect(again.ok).toBe(false);
   });
 
-  it("손패에 5가 없으면 쓸 수 없다", () => {
+  it("5가 아닌 숫자도 지정할 수 있다 (52차: 아무 숫자나)", () => {
+    const game = createStandardGameFromState(craftRedState());
+    installAugment(game.engine, redFiveTouch, "p0", { yaku: game.yaku });
+    const countRed = (state: GameState, rank: number): number =>
+      handIdsOf(state, "p0").filter((id) => {
+        const kind = kindOf(state, id);
+        return (
+          isNumberSuit(kind) && kind.rank === rank && state.tiles[id]?.attrs.red === true
+        );
+      }).length;
+    // 1은 손패에 1장(1m)뿐이고 원래 적도라가 아니다
+    expect(countRed(game.engine.state, 1)).toBe(0);
+    const r = game.engine.submit({ player: "p0", type: "red_touch", payload: { rank: 1 } });
+    expect(r.ok).toBe(true);
+    expect(countRed(game.engine.state, 1)).toBeGreaterThan(0);
+    // 5는 건드리지 않았으므로 원래대로 3장
+    expect(countRed(game.engine.state, 5)).toBe(3);
+  });
+
+  it("손패에 그 숫자가 없으면 쓸 수 없다", () => {
     const s = withAugments(
       craft({
         hands: { p0: "123m678m789m12312p", p1: "*", p2: "*", p3: "*" },
@@ -179,15 +231,15 @@ describe("red_five_touch — 붉은 손길", () => {
     );
     const game = createStandardGameFromState(s);
     installAugment(game.engine, redFiveTouch, "p0", { yaku: game.yaku });
-    const result = game.engine.submit({ player: "p0", type: "red_touch", payload: {} });
+    // 이 손(123m678m789m12312p)에는 5가 한 장도 없다
+    const result = game.engine.submit({ player: "p0", type: "red_touch", payload: { rank: 5 } });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("no fives in hand");
   });
 });
 
 // ─────────────────────────── hand_swap3 ───────────────────────────
 
-describe("hand_swap3 — 3장 강탈", () => {
+describe("hand_swap3 — 등가교환", () => {
   function craftSwapState(seed = 1): GameState {
     const s = craft({
       hands: {
@@ -204,7 +256,44 @@ describe("hand_swap3 — 3장 강탈", () => {
     return withAugments(s, "p0", ["hand_swap3"]);
   }
 
-  it("무작위 3장씩 교환되고 게임당 1회만 가능하다", () => {
+  /** 국 단위 상태 키 (구현이 roundKey를 키에 섞는다) */
+  const targetKeyOf = (s: GameState): string =>
+    `hand_swap3:target:${roundKey(s)}:p0`;
+  const leftKeyOf = (s: GameState): string =>
+    `hand_swap3:left:${roundKey(s)}:p0`;
+  const giveKeyOf = (s: GameState): string =>
+    `hand_swap3:give:${roundKey(s)}:p0`;
+  const revealKeyOf = (target: PlayerId): string =>
+    viewKey("p0", `revealTiles:${target}`);
+
+  type Game = ReturnType<typeof createStandardGameFromState>;
+
+  /** 오름차순 3장 (제시 옵션과 JSON 완전일치해야 하므로 정렬이 필수) */
+  const triple = (ids: readonly TileId[], from = 0): TileId[] =>
+    [...ids].sort((a, b) => a - b).slice(from, from + 3);
+
+  /** 지정 액션 제출 */
+  function aim(game: Game, target: PlayerId) {
+    return game.engine.submit({ player: "p0", type: "swap3", payload: { target } });
+  }
+  /** 넘길 내 3장 선택 */
+  function give(game: Game, gives: TileId[]) {
+    return game.engine.submit({
+      player: "p0",
+      type: "swap3_give",
+      payload: { gives },
+    });
+  }
+  /** 가져올 상대 3장 선택 (여기서 실제 교환) */
+  function take(game: Game, takes: TileId[]) {
+    return game.engine.submit({
+      player: "p0",
+      type: "swap3_take",
+      payload: { takes },
+    });
+  }
+
+  it("상대를 지정해도 손패는 전혀 움직이지 않고, 상대 손패가 나에게만 공개된다", () => {
     const game = createStandardGameFromState(craftSwapState());
     installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
 
@@ -212,70 +301,191 @@ describe("hand_swap3 — 3장 강탈", () => {
     const p0Before = [...(before.zones[handZone("p0")]?.tileIds ?? [])];
     const p1Before = [...(before.zones[handZone("p1")]?.tileIds ?? [])];
     const prngBefore = before.prngState;
+    const drawnBefore = before.round.lastDrawnTile;
 
-    const result = game.engine.submit({
-      player: "p0",
-      type: "swap3",
-      payload: { target: "p1" },
-    });
-    expect(result.ok).toBe(true);
+    expect(aim(game, "p1").ok).toBe(true);
 
     const state = game.engine.state;
-    const p0After = state.zones[handZone("p0")]?.tileIds ?? [];
-    const p1After = state.zones[handZone("p1")]?.tileIds ?? [];
-    // 장수 보존
-    expect(p0After).toHaveLength(p0Before.length);
-    expect(p1After).toHaveLength(p1Before.length);
-    // 정확히 3장씩 이동
-    const given = p0Before.filter((id) => p1After.includes(id));
-    const taken = p1Before.filter((id) => p0After.includes(id));
-    expect(given).toHaveLength(3);
-    expect(taken).toHaveLength(3);
-    // 쯔모패 참조는 항상 보유자 손 안의 패를 가리킨다
-    expect(p0After).toContain(state.round.lastDrawnTile);
-    // 난수 소비 반영 + 사용 플래그
-    expect(state.prngState).not.toBe(prngBefore);
-    expect(state.augmentData["hand_swap3:used:p0"]).toBe(true);
-    // 재사용 거부
-    const again = game.engine.submit({
-      player: "p0",
-      type: "swap3",
-      payload: { target: "p2" },
-    });
-    expect(again.ok).toBe(false);
+    // 손패는 양쪽 다 그대로 (중간 상태에서 장수가 깨지지 않는다)
+    expect([...(state.zones[handZone("p0")]?.tileIds ?? [])]).toEqual(p0Before);
+    expect([...(state.zones[handZone("p1")]?.tileIds ?? [])]).toEqual(p1Before);
+    expect(state.round.lastDrawnTile).toBe(drawnBefore);
+    // 무작위를 전혀 쓰지 않는다
+    expect(state.prngState).toBe(prngBefore);
+    // 게임 사용 1회 소비 + 이번 국 지정·3:3 교환 1회
+    expect(state.augmentData["hand_swap3:used:p0"]).toBe(1);
+    expect(state.augmentData[targetKeyOf(state)]).toBe("p1");
+    expect(state.augmentData[leftKeyOf(state)]).toBe(1);
+    expect(state.augmentData[giveKeyOf(state)]).toEqual([]);
+    // 대상의 실제 손패가 보유자 전용 채널로 공개된다
+    expect(state.augmentData[revealKeyOf("p1")]).toEqual(p1Before);
+
+    // 보유자 뷰에는 상대 손패가 '진짜 패'로 실리고, 제3자 뷰에는 없다
+    const holderView = buildPlayerView(state, "p0", game.engine.rules);
+    for (const id of p1Before) expect(holderView.tiles[id]).toBeDefined();
+    const otherView = buildPlayerView(state, "p2", game.engine.rules);
+    for (const id of p1Before) expect(otherView.tiles[id]).toBeUndefined();
+
+    // 지정 후 프롬프트는 '넘길 내 3장' 조합으로 바뀐다 (C(14,3) = 364)
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status.prompts.find((p) => p.player === "p0")!;
+    const giveOptions = prompt.options.filter((o) => o.type === "swap3_give");
+    expect(giveOptions).toHaveLength(364);
+    expect(prompt.options.some((o) => o.type === "swap3")).toBe(false);
+    expect(prompt.options.some((o) => o.type === "swap3_take")).toBe(false);
   });
 
-  it("쯔모패를 넘겼으면 받아온 마지막 패가 쯔모패가 된다", () => {
-    // toEvents와 같은 방식으로 난수를 미리 재현해, 쯔모패가 give에 포함되는 시드를 찾는다
-    let found: { state: GameState; take: TileId[] } | null = null;
-    for (let seed = 1; seed <= 100 && found === null; seed++) {
-      const state = craftSwapState(seed);
-      const drawn = state.round.lastDrawnTile as TileId;
-      const prng = new Prng(0);
-      prng.setState(state.prngState);
-      const give = prng
-        .shuffle([...(state.zones[handZone("p0")]?.tileIds ?? [])])
-        .slice(0, 3);
-      const take = prng
-        .shuffle([...(state.zones[handZone("p1")]?.tileIds ?? [])])
-        .slice(0, 3);
-      if (give.includes(drawn)) found = { state, take };
-    }
-    if (found === null) throw new Error("no seed gives away the drawn tile");
-
-    const game = createStandardGameFromState(found.state);
+  it("내 3장 → 상대 3장 두 단계로 여섯 장이 한 번에 자리를 바꾼다", () => {
+    const game = createStandardGameFromState(craftSwapState());
     installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
-    const result = game.engine.submit({
-      player: "p0",
-      type: "swap3",
-      payload: { target: "p1" },
-    });
-    expect(result.ok).toBe(true);
-    // 쯔모패가 손을 떠났으므로 take의 마지막 패로 교체된다
-    expect(game.engine.state.round.lastDrawnTile).toBe(found.take[2]);
-    expect(
-      game.engine.state.zones[handZone("p0")]?.tileIds ?? [],
-    ).toContain(game.engine.state.round.lastDrawnTile);
+    expect(aim(game, "p1").ok).toBe(true);
+
+    const size0 = handIdsOf(game.engine.state, "p0").length;
+    const size1 = handIdsOf(game.engine.state, "p1").length;
+    const gives = triple(handIdsOf(game.engine.state, "p0"));
+    const takes = triple(handIdsOf(game.engine.state, "p1"));
+
+    // 1단계: 넘길 3장 선택 — 아직 아무 패도 움직이지 않는다
+    expect(give(game, gives).ok).toBe(true);
+    expect(handIdsOf(game.engine.state, "p0")).toHaveLength(size0);
+    expect(game.engine.state.augmentData[giveKeyOf(game.engine.state)]).toEqual(gives);
+
+    // 이 시점 프롬프트는 '가져올 상대 3장' 조합 (C(13,3) = 286)
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status.prompts.find((p) => p.player === "p0")!;
+    expect(prompt.options.filter((o) => o.type === "swap3_take")).toHaveLength(286);
+    expect(prompt.options.some((o) => o.type === "swap3_give")).toBe(false);
+
+    // 2단계: 가져올 3장 선택 → 그 자리에서 교환
+    const prng = game.engine.state.prngState;
+    expect(take(game, takes).ok).toBe(true);
+
+    const after = game.engine.state;
+    for (const id of takes) expect(handIdsOf(after, "p0")).toContain(id);
+    for (const id of gives) expect(handIdsOf(after, "p0")).not.toContain(id);
+    for (const id of gives) expect(handIdsOf(after, "p1")).toContain(id);
+    for (const id of takes) expect(handIdsOf(after, "p1")).not.toContain(id);
+    // 장수는 양쪽 다 보존
+    expect(handIdsOf(after, "p0")).toHaveLength(size0);
+    expect(handIdsOf(after, "p1")).toHaveLength(size1);
+    // 교환 횟수 소진 + 대기 중인 선택 비움 + 공개 채널 갱신
+    expect(after.augmentData[leftKeyOf(after)]).toBe(0);
+    expect(after.augmentData[giveKeyOf(after)]).toEqual([]);
+    expect(after.augmentData[revealKeyOf("p1")]).toEqual([...handIdsOf(after, "p1")]);
+    // 무작위는 여전히 쓰지 않는다
+    expect(after.prngState).toBe(prng);
+
+    // 같은 국에는 두 번째 교환이 없다 (52차 후속: 사용자 피드백으로 국당 1회 제한)
+    const again = give(game, triple(handIdsOf(after, "p0")));
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.reason).toBe("already swapped this round");
+  });
+
+  it("내 손패·상대 손패에 없는 패는 고를 수 없고, 지정 전에는 교환할 수 없다", () => {
+    const game = createStandardGameFromState(craftSwapState());
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+    const p0 = [...handIdsOf(game.engine.state, "p0")];
+    const p1 = [...handIdsOf(game.engine.state, "p1")];
+    const p2 = [...handIdsOf(game.engine.state, "p2")];
+
+    // 지정 전 선택 거부
+    const early = give(game, triple(p0));
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.reason).toBe("no target designated");
+
+    expect(aim(game, "p1").ok).toBe(true);
+
+    // gives가 내 손패가 아니면 거부
+    const notMine = give(game, triple(p1));
+    expect(notMine.ok).toBe(false);
+    if (!notMine.ok) expect(notMine.reason).toBe("give tile not in hand");
+
+    // 3장을 고르기 전에는 가져올 수 없다
+    const tooEarly = take(game, triple(p1));
+    expect(tooEarly.ok).toBe(false);
+    if (!tooEarly.ok) expect(tooEarly.reason).toBe("choose your three tiles first");
+
+    expect(give(game, triple(p0)).ok).toBe(true);
+
+    // takes가 지정한 상대의 손패가 아니면 거부 (다른 상대의 패)
+    const notTheirs = take(game, triple(p2));
+    expect(notTheirs.ok).toBe(false);
+    if (!notTheirs.ok) expect(notTheirs.reason).toBe("take tile not in target hand");
+
+    // 자기 자신은 지정할 수 없다
+    const selfAim = aim(game, "p0");
+    expect(selfAim.ok).toBe(false);
+    if (!selfAim.ok) expect(selfAim.reason).toBe("cannot target yourself");
+  });
+
+  it("쯔모패를 넘기면 받아온 패가 새 쯔모패가 된다", () => {
+    const game = createStandardGameFromState(craftSwapState());
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+    expect(aim(game, "p1").ok).toBe(true);
+
+    const drawn = game.engine.state.round.lastDrawnTile as TileId;
+    const myHand = handIdsOf(game.engine.state, "p0");
+    const gives = [...new Set([drawn, ...myHand])]
+      .slice(0, 3)
+      .sort((a, b) => a - b);
+    const takes = triple(handIdsOf(game.engine.state, "p1"));
+    expect(gives).toContain(drawn);
+
+    expect(give(game, gives).ok).toBe(true);
+    expect(take(game, takes).ok).toBe(true);
+
+    const state = game.engine.state;
+    // 쯔모패가 손을 떠났으므로 받아온 패가 새 쯔모패 — 버림·리치 흐름이 이어진다
+    expect(takes).toContain(state.round.lastDrawnTile as TileId);
+    expect(handIdsOf(state, "p0")).toContain(state.round.lastDrawnTile);
+    expect(handIdsOf(state, "p1")).toContain(drawn);
+  });
+
+  it("교환을 쓴 국에는 다시 지정할 수 없고, 국이 바뀌면 남은 횟수로 다시 쓴다", () => {
+    const game = createStandardGameFromState(craftSwapState());
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+
+    expect(aim(game, "p1").ok).toBe(true);
+    expect(game.engine.state.augmentData["hand_swap3:used:p0"]).toBe(1);
+    expect(give(game, triple(handIdsOf(game.engine.state, "p0"))).ok).toBe(true);
+    expect(take(game, triple(handIdsOf(game.engine.state, "p1"))).ok).toBe(true);
+
+    // 52차 후속(사용자 피드백): **교환을 쓴 국에는 재사용 불가** —
+    // 프롬프트에서 지정 후보가 사라지고 직접 제출도 거부된다.
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status.prompts.find((p) => p.player === "p0")!;
+    expect(prompt.options.some((o) => o.type === "swap3")).toBe(false);
+    expect(prompt.options.some((o) => o.type === "swap3_give")).toBe(false);
+    expect(prompt.options.some((o) => o.type === "swap3_take")).toBe(false);
+    expect(aim(game, "p2").ok).toBe(false);
+
+    // 국이 바뀌면(국 단위 플래그가 만료되면) 남은 지정 횟수로 다시 쓸 수 있다.
+    // 국 전환은 honba를 올린 상태로 게임을 다시 세워 재현한다(roundKey가 달라진다).
+    const nextRound = (g: typeof game): typeof game => {
+      const st = g.engine.state;
+      const g2 = createStandardGameFromState({
+        ...st,
+        round: { ...st.round, honba: st.round.honba + 1 },
+      });
+      installAugment(g2.engine, handSwap3, "p0", { yaku: g2.yaku });
+      return g2;
+    };
+
+    const game2 = nextRound(game);
+    expect(aim(game2, "p2").ok).toBe(true);
+    expect(game2.engine.state.augmentData["hand_swap3:used:p0"]).toBe(2);
+
+    // 게임당 2회 — 세 번째 지정은 국이 바뀌어도 거부된다
+    const game3 = nextRound(game2);
+    const third = aim(game3, "p3");
+    expect(third.ok).toBe(false);
+    if (!third.ok) expect(third.reason).toBe("swap3 already used");
   });
 
   it("리치 중인 상대는 지정할 수 없다", () => {
@@ -293,11 +503,8 @@ describe("hand_swap3 — 3장 강탈", () => {
     };
     const game = createStandardGameFromState(state);
     installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
-    const result = game.engine.submit({
-      player: "p0",
-      type: "swap3",
-      payload: { target: "p1" },
-    });
+
+    const result = aim(game, "p1");
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("target is in riichi");
     // 프롬프트에서도 리치 상대는 후보에서 걸러진다
@@ -309,6 +516,67 @@ describe("hand_swap3 — 3장 강탈", () => {
       .filter((o) => o.type === "swap3")
       .map((o) => (o.payload as { target: PlayerId }).target);
     expect(targets.sort()).toEqual(["p2", "p3"]);
+  });
+
+  it("지정한 상대가 리치를 걸면 남은 교환도 그 자리에서 멈춘다", () => {
+    const base = craftSwapState();
+    const rs = base.round.byPlayer["p1"]!;
+    // 이미 지정하고 넘길 3장까지 골라 둔 상태에서 대상이 리치를 건 상황
+    const gives = [...(base.zones[handZone("p0")]?.tileIds ?? [])]
+      .sort((a, b) => a - b)
+      .slice(0, 3);
+    const state: GameState = {
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p1: { ...rs, riichi: { double: false, ippatsu: false, discardIndex: 0 } },
+        },
+      },
+      augmentData: {
+        ...base.augmentData,
+        [targetKeyOf(base)]: "p1",
+        [leftKeyOf(base)]: 1,
+        [giveKeyOf(base)]: gives,
+      },
+    };
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+
+    const blocked = take(
+      game,
+      triple(handIdsOf(game.engine.state, "p1")),
+    );
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.reason).toBe("target is in riichi");
+    // 손패는 그대로 (교환이 일어나지 않았다)
+    expect(handIdsOf(game.engine.state, "p0")).toEqual(handIdsOf(state, "p0"));
+    expect(handIdsOf(game.engine.state, "p1")).toEqual(handIdsOf(state, "p1"));
+  });
+
+  it("국이 넘어가면 지정·공개가 사라진다 (다음 국 배패가 새지 않는다)", () => {
+    const game = createStandardGameFromState(craftSwapState());
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+    expect(aim(game, "p1").ok).toBe(true);
+    expect(game.engine.state.augmentData[revealKeyOf("p1")]).not.toEqual([]);
+
+    const before = game.engine.state;
+    // 국을 끝내고 다음 국을 연다
+    for (const type of ["sys.settleAbort", "sys.startRound"]) {
+      const res = game.engine.submit({ player: SYSTEM_PLAYER, type, payload: {} });
+      expect(res.ok).toBe(true);
+    }
+
+    const state = game.engine.state;
+    // 공개 채널은 비워지고, 국 단위 키(지정·잔여 교환)는 새 국에서 조회되지 않는다
+    expect(state.augmentData[revealKeyOf("p1")]).toEqual([]);
+    expect(state.augmentData[targetKeyOf(state)]).toBeUndefined();
+    expect(state.augmentData[leftKeyOf(state)]).toBeUndefined();
+    // 게임 단위 사용 횟수는 국을 넘어 유지된다
+    expect(state.augmentData["hand_swap3:used:p0"]).toBe(1);
+    // (이전 국 키는 남아 있어도 새 국 조회에 걸리지 않는다)
+    expect(state.augmentData[targetKeyOf(before)]).toBe("p1");
   });
 });
 
@@ -330,7 +598,7 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
     return withAugments(s, "p0", ["full_hand_swap"]);
   }
 
-  it("첫 순에 손패 전체(쯔모패 제외)를 상대와 맞바꾼다 (게임당 1회)", () => {
+  it("첫 순에 상대 손패를 통째로 강탈한다 — 내 패는 패산 맨 밑으로 (게임당 2회)", () => {
     const game = createStandardGameFromState(craftFullSwapState());
     installAugment(game.engine, fullHandSwap, "p0", { yaku: game.yaku });
 
@@ -338,6 +606,8 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
     const drawn = before.round.lastDrawnTile as TileId;
     const p0Before = [...(before.zones[handZone("p0")]?.tileIds ?? [])];
     const p1Before = [...(before.zones[handZone("p1")]?.tileIds ?? [])];
+    const wallBefore = [...(before.zones[WALL]?.tileIds ?? [])];
+    const myGiven = p0Before.filter((id) => id !== drawn);
 
     const result = game.engine.submit({
       player: "p0",
@@ -348,22 +618,66 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
 
     const state = game.engine.state;
     const p0After = [...(state.zones[handZone("p0")]?.tileIds ?? [])].sort((a, b) => a - b);
-    const p1After = [...(state.zones[handZone("p1")]?.tileIds ?? [])].sort((a, b) => a - b);
-    // 내 손 = 상대의 13장 + 내 쯔모패 / 상대 손 = 내 13장 (쯔모패 제외)
+    const p1After = [...(state.zones[handZone("p1")]?.tileIds ?? [])];
+    const wallAfter = [...(state.zones[WALL]?.tileIds ?? [])];
+
+    // 내 손 = 강탈한 상대의 13장 + 내 쯔모패
     expect(p0After).toEqual([...p1Before, drawn].sort((a, b) => a - b));
-    expect(p1After).toEqual(
-      p0Before.filter((id) => id !== drawn).sort((a, b) => a - b),
-    );
+    // 48차 강탈: 내 패는 상대가 아니라 패산 맨 밑으로 들어간다
+    expect(wallAfter.slice(-myGiven.length)).toEqual(myGiven);
+    for (const id of myGiven) expect(p1After).not.toContain(id);
+    // 상대는 패산 위에서 같은 장수를 새로 받는다 (빼앗긴 자기 패를 되받지 않는다)
+    expect(p1After).toEqual(wallBefore.slice(0, p1Before.length));
+    expect(p1After).toHaveLength(p1Before.length);
+    // 패산 총량 불변 — 내 13장이 들어가고 상대가 13장을 받아 상쇄된다
+    expect(wallAfter).toHaveLength(wallBefore.length);
     // 쯔모패는 그대로 내 손에 남아 버림 흐름이 이어진다
     expect(state.round.lastDrawnTile).toBe(drawn);
-    expect(state.augmentData["full_hand_swap:used:p0"]).toBe(true);
-    // 재사용 거부
-    const again = game.engine.submit({
+    expect(state.augmentData["full_hand_swap:used:p0"]).toBe(1);
+    // 누구를 털었는지 전원 공개
+    expect(state.augmentData["view:*:full_hand_swap:p0"]).toBe("p1");
+    // 2회째도 가능 (다른 상대와)
+    const second = game.engine.submit({
       player: "p0",
       type: "hand_swap",
       payload: { target: "p2" },
     });
+    expect(second.ok).toBe(true);
+    expect(game.engine.state.augmentData["full_hand_swap:used:p0"]).toBe(2);
+    // 3회째는 거부 (게임당 2회)
+    const again = game.engine.submit({
+      player: "p0",
+      type: "hand_swap",
+      payload: { target: "p3" },
+    });
     expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.reason).toBe("hand_swap already used");
+  });
+
+  it("배패 장수가 다른 상대(진짜 용)는 강탈할 수 없다", () => {
+    // p1이 진짜 용(배패 16장) 보유 — p0(13장)과 손패 장수가 달라 통째로 가져오면
+    // 손패 수/화료형 규칙이 플레이어에 고정돼 있어 버림·화료 판정이 깨진다.
+    const game = createStandardGameFromState(craftFullSwapState());
+    installAugment(game.engine, fullHandSwap, "p0", { yaku: game.yaku });
+    installAugment(game.engine, trueDragon, "p1", { yaku: game.yaku });
+
+    const result = game.engine.submit({
+      player: "p0",
+      type: "hand_swap",
+      payload: { target: "p1" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("hand sizes differ");
+
+    // 프롬프트 후보에서도 진짜 용 상대(p1)는 걸러지고, 같은 장수인 p2·p3만 남는다
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status.prompts.find((p) => p.player === "p0")!;
+    const targets = prompt.options
+      .filter((o) => o.type === "hand_swap")
+      .map((o) => (o.payload as { target: PlayerId }).target);
+    expect(targets.sort()).toEqual(["p2", "p3"]);
   });
 
   it("첫 순(turnCount<=1)이 지나면 쓸 수 없다", () => {

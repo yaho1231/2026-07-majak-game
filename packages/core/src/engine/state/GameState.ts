@@ -28,12 +28,22 @@ export interface PlayerMeta {
   isBot: boolean;
 }
 
+/**
+ * 게임 모드 — 진행 길이(장 수)와 증강 템포를 결정한다.
+ * - hanchan(반장전): 동+남 2장(기본 남4국까지). 드래프트 gameStart+southEntry.
+ * - tonpuu(동풍전): 동 1장(기본 동4국까지). 드래프트 gameStart+eastThird.
+ * 생략 시(구 리플레이·테스트) hanchan으로 폴백한다.
+ */
+export type GameMode = "hanchan" | "tonpuu";
+
 export interface GameConfig {
   seed: number;
   /** 자리 순서 고정, [0] = 기가(최초 동가) */
   playerIds: PlayerId[];
   /** seat 식별자→표시 정보. 없으면(구 리플레이·테스트) id·비봇으로 폴백. */
   playerMeta?: Record<PlayerId, PlayerMeta>;
+  /** 게임 모드. 없으면 hanchan(반장전)으로 폴백. 증강 모드 필터·템포 판정에 쓰인다. */
+  mode?: GameMode;
 }
 
 export interface RiichiState {
@@ -44,11 +54,16 @@ export interface RiichiState {
 }
 
 export interface Meld {
-  /** kokushi_pon = 울어 국사 전용 특수 부로(서로 다른 요구패 3장) */
+  /** kokushi_pon = 울어 국사 전용 특수 후로(서로 다른 요구패 3장) */
   kind: "chi" | "pon" | "kan_open" | "kan_added" | "kan_closed" | "kokushi_pon";
   tileIds: TileId[];
   calledFrom?: PlayerId;
   calledTileId?: TileId;
+  /**
+   * 멘젠(닫힌 손) 유지 후로 (묵계) — 이 후로는 눈에 보이게 눕지만 멘젠 판정에서는
+   * 안깡(kan_closed)처럼 손을 열지 않는다. 리치·멘젠쯔모·멘젠 론 부수가 그대로 살아 있다.
+   */
+  silent?: boolean;
 }
 
 export interface PlayerRoundState {
@@ -62,7 +77,7 @@ export interface PlayerRoundState {
   melds: Meld[];
   /**
    * 이번 국 자신이 버린 패의 kindKey 이력 (버림 시점 스냅샷, 순서 보존).
-   * 버림패가 부로로 강에서 사라져도 후리텐 판정은 이 이력을 쓴다 (표준 룰).
+   * 버림패가 후로로 바닥에서 사라져도 후리텐 판정은 이 이력을 쓴다 (표준 룰).
    */
   discardedKinds: string[];
 }
@@ -96,7 +111,7 @@ export interface RoundState {
   phase: string;
   /** 공개된 도라 표시패. deadWall 인덱스 규약은 docs/07 §2 */
   doraIndicators: TileId[];
-  /** 마지막 버림 (reaction 대상). 부로·턴 진행 시 갱신 */
+  /** 마지막 버림 (reaction 대상). 후로·턴 진행 시 갱신 */
   lastDiscard: { player: PlayerId; tileId: TileId } | null;
   /** 이번 턴 쯔모패 (쯔모 화료·리치 후 버림 제한용) */
   lastDrawnTile: TileId | null;
@@ -108,11 +123,11 @@ export interface RoundState {
   kanCount: number;
   /** 깡을 선언한 플레이어 목록 */
   kanCallers: PlayerId[];
-  /** 첫 순위 유지 여부 (구종구패, 사풍연타 판정용. 부로/깡 발생 시 false) */
+  /** 첫 순위 유지 여부 (구종구패, 사풍연타 판정용. 후로/깡 발생 시 false) */
   firstTurn: boolean;
   /** 깡 후 버림 시 공개할 도라 갯수 예약 */
   pendingDora: number;
-  /** 첫 바퀴가 부로로 깨졌는가 (더블리치 판정) */
+  /** 첫 바퀴가 후로로 깨졌는가 (더블리치 판정) */
   goAroundBroken: boolean;
   byPlayer: Record<PlayerId, PlayerRoundState>;
 }
@@ -121,6 +136,12 @@ export interface GameState {
   config: GameConfig;
   prngState: number;
   players: PlayerState[];
+  /**
+   * 이 게임의 적도라 수 (수패 5의 몇 번째 사본까지). 국 시작 시 tiles를
+   * 원본 표준 세트로 되돌리는 데 쓴다 — 증강의 패 변형(kind·conjured 등)이
+   * 다음 국으로 새지 않게 한다. createInitialGameState가 고정한다.
+   */
+  redFivesPerSuit: number;
   tiles: Record<TileId, Tile>;
   zones: Zones;
   round: RoundState;
@@ -139,11 +160,44 @@ export interface InitialStateOptions {
   redFivesPerSuit: number;
 }
 
-/** deadWall 크기 (영상패 4 + 도라/우라 표시패 10). docs/07 §2 */
+/** deadWall 크기 (영상패 4 + 도라/뒷도라 표시패 10). docs/07 §2 */
 export const DEAD_WALL_SIZE = 14;
-/** 첫 도라 표시패의 deadWall 인덱스 */
-export const FIRST_DORA_INDEX = 4;
+/** 도라·뒷도라 표시패 블록의 장수 — 도라 5장과 뒷도라 5장이 교대로 붙어 있다 */
+export const INDICATOR_BLOCK_SIZE = 10;
+/**
+ * 국 시작 시점 첫 도라 표시패의 deadWall 인덱스.
+ *
+ * ⚠ **고정 상수로 쓰지 말 것.** 깡으로 영상패를 뽑으면 왕패 앞이 한 장씩 비어
+ * (보충하지 않는다 — 2026-07-26 사용자 확정) 뒤의 인덱스가 그만큼 당겨진다.
+ * 지금 인덱스는 `doraIndicatorIndex()`로 구하고, 이 상수는 배패 시점 계산에만 쓴다.
+ */
+export const FIRST_DORA_INDEX = DEAD_WALL_SIZE - INDICATOR_BLOCK_SIZE;
 export const HAND_START_SIZE = 13;
+
+/**
+ * 아직 남아 있는 **영상패** 장수.
+ *
+ * 왕패는 앞쪽 영상패 블록 + 뒤쪽 표시패 블록(항상 10장)으로 이뤄진다.
+ * 깡으로 영상패를 뽑으면 앞이 한 장씩 줄어들 뿐 보충되지 않으므로,
+ * 남은 영상패 = 왕패 전체 − 표시패 블록이다. 깡은 4회가 상한이라 0 밑으로는 안 간다.
+ * (북풍 상인의 북빼기는 뽑은 자리를 패산 최후미로 되채우므로 이 값이 줄지 않는다.)
+ */
+export function rinshanRemaining(state: GameState): number {
+  const len = state.zones[DEAD_WALL]?.tileIds.length ?? 0;
+  return Math.max(0, len - INDICATOR_BLOCK_SIZE);
+}
+
+/**
+ * k번째(0-based) 도라 표시패가 **지금** 왕패 배열의 몇 번째에 있는가.
+ *
+ * 표시패 블록은 늘 왕패의 마지막 10장이다 — 앞의 영상패가 비어도 표시패는 밀리지 않고
+ * 배열 인덱스만 그만큼 당겨진다. 그래서 절대 상수(4·6·8·10·12)가 아니라
+ * **뒤에서부터** 센다. 뒷도라 표시패는 바로 그 오른쪽(+1)이다(07 §2).
+ */
+export function doraIndicatorIndex(state: GameState, k: number): number {
+  const len = state.zones[DEAD_WALL]?.tileIds.length ?? 0;
+  return len - INDICATOR_BLOCK_SIZE + k * 2;
+}
 
 function freshPlayerRoundState(): PlayerRoundState {
   return {
@@ -203,6 +257,7 @@ export function createInitialGameState(
       nickname: config.playerMeta?.[id]?.nickname ?? id,
       isBot: config.playerMeta?.[id]?.isBot ?? false,
     })),
+    redFivesPerSuit: options.redFivesPerSuit,
     tiles,
     zones,
     round: {
@@ -251,7 +306,16 @@ export function setupRound(
   const prng = new Prng(0);
   prng.setState(state.prngState);
 
-  const allTileIds = Object.keys(state.tiles)
+  // 패를 원본 표준 세트로 되돌린다 — 지난 국에서 증강이 바꾼 kind·attrs
+  // (색 통일·conjured 보라 이펙트·적도라 부여 등)가 다음 국으로 새지 않게 한다.
+  // 패 id는 게임 내내 재사용되므로, 리셋하지 않으면 능력을 쓰지 않은 국에도
+  // 변형이 남는다. (redFivesPerSuit는 게임 생성 시 고정 → 리플레이 결정성 유지)
+  const tiles: Record<TileId, Tile> = {};
+  for (const tile of buildStandardTileSet({ redFivesPerSuit: state.redFivesPerSuit })) {
+    tiles[tile.id] = tile;
+  }
+
+  const allTileIds = Object.keys(tiles)
     .map(Number)
     .sort((a, b) => a - b);
   const shuffled = prng.shuffle(allTileIds);
@@ -290,6 +354,7 @@ export function setupRound(
   return {
     ...state,
     prngState: prng.getState(),
+    tiles,
     zones,
     round: {
       ...state.round,

@@ -1,20 +1,22 @@
 /**
  * 우는 국사무쌍 (open_kokushi, prism) — 서로 다른 요구패 3장을 '퐁'해 국사를 완성한다.
  *
- * 특수 부로(kokushi_pon): 다음 묶음 중 하나를 이루도록, 버려진 요구패 1장 + 손패 2장을
+ * 특수 후로(kokushi_pon): 다음 묶음 중 하나를 이루도록, 버려진 요구패 1장 + 손패 2장을
  * 퐁할 수 있다.
  *   · 1만-1통-1삭   · 9만-9통-9삭   · 백-발-중(삼원)   · 동남서북 중 서로 다른 3패
  * 이 특수 퐁을 하면 손이 열려 국사(kokushi) 외의 형태로는 화료할 수 없게 되고,
  * 머리(작두)는 반드시 울지 않은 손패로 만들어야 한다. 퐁 횟수 제한은 없다.
- * 이렇게 완성한 국사는 역만이 아니라 3판이 된다.
+ * (분해 차단은 scoringOptionsOf가 kokushiOnly로 넘긴다 — 안 막으면 남은 손패가
+ *  표준형 텐파이로 잡혀 "69삭 양면"이 오름패가 된다.)
+ * 이렇게 완성한 국사도 정식 역만(13판)이다.
  *
  * 구현:
- * - scoring.kokushiMeldAssist(보유자 전용)로 분해 단계에 kokushi_pon 부로의 3종을
+ * - scoring.kokushiMeldAssist(보유자 전용)로 분해 단계에 kokushi_pon 후로의 3종을
  *   국사 덮개로 넘긴다(helpers.scoringOptionsOf + decompose가 처리).
  * - 리액션 확장 훅(engine.registerReactionOptions)으로 버림패에 대한 kokushi_pon 후보를
  *   낸다. FlowController가 커스텀 콜로 펑과 치 사이 우선순위로 처리한다.
- * - kokushi_pon 액션은 CALL_MADE(meldKind:"kokushi_pon")로 특수 부로를 만든다.
- * - 8판 역만 → 3판 커스텀 역 kokushi_open. 퐁 개수 제한 없음.
+ * - kokushi_pon 액션은 CALL_MADE(meldKind:"kokushi_pon")로 특수 후로를 만든다.
+ * - 커스텀 역 kokushi_open(13판 역만)으로 채점. 퐁 개수 제한 없음.
  */
 
 import {
@@ -33,6 +35,8 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
+
+import { handKindsOf } from "./botHelpers.js";
 
 const ID = "open_kokushi";
 const ACTION = "kokushi_pon";
@@ -130,13 +134,36 @@ const kokushiPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
 export const openKokushi: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
+  category: "call",
   name: "우는 국사무쌍",
   description:
-    "서로 다른 요구패 3장(1만1통1삭·9만9통9삭·백발중·동남서북 중 3패)을 퐁해 국사를 완성할 수 있다. 이 특수 퐁을 하면 국사로만 화료할 수 있고 머리는 울지 않은 패라야 한다. 완성 시 역만이 아니라 3판.",
+    "(상시) 서로 다른 요구패 3장(1만1통1삭 · 9만9통9삭 · 백발중 · 동남서북 중 3패)을 퐁해 국사를 완성할 수 있다. 완성하면 정식 역만(13판)이다.",
+  detail:
+    "(상시) 상대가 버린 요구패 1장과 손패의 요구패 2장을 합쳐, 서로 다른 요구패 3장(1만1통1삭 / 9만9통9삭 / 백발중 / 동남서북 중 3패)을 하나의 묶음으로 퐁할 수 있다. 퐁 횟수 제한은 없고 완성 시 정식 역만 13판이다. 단, 이 특수 퐁을 한 번이라도 하면 손이 열려 국사무쌍 외의 형태로는 화료할 수 없게 되고 머리(작두)는 반드시 울지 않은 손패로 만들어야 한다.",
+  /**
+   * 봇: 이 콜을 한 번이라도 하면 **국사로만 화료**할 수 있게 손이 잠긴다. 그래서
+   * ① 이미 우는 국사 묶음이 있으면(되돌릴 수 없으니) 계속 밀고,
+   * ② 아직 없으면 손패의 서로 다른 요구패가 8종 이상일 때만 뛰어든다.
+   * 잡손으로 부르면 그 국을 통째로 버리는 셈이라 문턱을 높게 잡았다.
+   */
+  bot: {
+    choose({ options, view, holder }) {
+      const opt = options.find((o) => o.type === ACTION);
+      if (opt === undefined) return null;
+      const committed = (view.round.byPlayer[holder]?.melds ?? []).some(
+        (m) => m.kind === "kokushi_pon",
+      );
+      if (committed) return opt;
+      const orphanKinds = new Set(
+        handKindsOf(view, holder).filter(isOrphan).map(kindKey),
+      );
+      return orphanKinds.size >= 8 ? opt : null;
+    },
+  },
   install(ctx) {
     const { engine, holder } = ctx;
 
-    // 보유자만 국사 분해에 kokushi_pon 부로를 인정한다 (helpers/decompose가 읽음)
+    // 보유자만 국사 분해에 kokushi_pon 후로를 인정한다 (helpers/decompose가 읽음)
     ctx.setHolderRule("scoring.kokushiMeldAssist", true);
 
     // 액션은 게임당 한 번만 등록 (여러 보유자가 있어도 안전)
@@ -144,7 +171,7 @@ export const openKokushi: AugmentDef = defineAugment({
       engine.actions.register(kokushiPonAction);
     }
 
-    // 리액션(부로) 프롬프트에 kokushi_pon 후보 노출 — 합법성은 validate가 최종 판정
+    // 리액션(후로) 프롬프트에 kokushi_pon 후보 노출 — 합법성은 validate가 최종 판정
     engine.registerReactionOptions((state, player, discard) => {
       if (player !== holder) return [];
       const dk = kindOf(state, discard.tileId);
@@ -170,16 +197,18 @@ export const openKokushi: AugmentDef = defineAugment({
       return out;
     });
 
-    // 부로 국사 = 3판짜리 커스텀 역 (역만 아님). 게임(YakuRegistry)당 1회 등록.
+    // 48차 무페널티: "울면 역만이 아니라 4판" 강등을 삭제했다 — 울어서 만든 국사도
+    // 진짜 역만이다. 게임(YakuRegistry)당 1회 등록.
     const yaku = ctx.yaku;
     if (yaku === undefined) return;
     if (yaku.get("kokushi_open") === undefined) {
       yaku.register({
         id: "kokushi_open",
         name: "우는 국사무쌍",
-        closedHan: 3,
-        openHan: 3,
-        // kokushi_pon 부로가 있는 국사 화료만 성립 (닫힌 국사는 표준 역만이 잡는다)
+        closedHan: 13,
+        openHan: 13,
+        isYakuman: true,
+        // kokushi_pon 후로가 있는 국사 화료만 성립 (닫힌 국사는 표준 역만이 잡는다)
         check: (variant, wctx) =>
           variant.form === "kokushi" &&
           wctx.melds.some((m) => m.kind === "kokushi_pon"),

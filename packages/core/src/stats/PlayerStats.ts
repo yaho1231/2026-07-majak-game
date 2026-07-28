@@ -25,8 +25,68 @@ import type {
   KanDeclaredPayload,
   RoundSettledPayload,
 } from "../mahjong/flow/flowEvents.js";
+import { AUGMENT_OFFERED, AUGMENT_DRAFTED } from "../augment/events.js";
+import type { AugmentOfferedPayload, AugmentDraftedPayload } from "../augment/events.js";
 
 // ─────────────────────────── 원시 누적 통계 ───────────────────────────
+
+/**
+ * 증강 하나에 대한 원시 누적 카운터. 전부 합계 형태라 career 누적이 가능하다.
+ * - offered/picked: 드래프트에서 제시된/선택된 횟수 → 픽률 = picked / offered.
+ *   (도박사 지급분은 offered·picked 어디에도 안 들어간다 — 오퍼가 아니므로)
+ * - games/placements/placementSum: 이 증강을 '보유한 채로' 끝낸 판의 최종 순위
+ *   (지급분 포함 보유 기준) → 평균순위·1위율.
+ */
+export interface AugmentStatRaw {
+  /** 드래프트 3지선다에 제시된 횟수 */
+  offered: number;
+  /** 드래프트에서 선택된 횟수 (지급 제외) */
+  picked: number;
+  /** 이 증강을 보유한 채 완료한 판 수 */
+  games: number;
+  /** 보유 판의 순위별 횟수 [1위, 2위, 3위, 4위] */
+  placements: [number, number, number, number];
+  /** 보유 판의 순위 합 (평균 순위용) */
+  placementSum: number;
+}
+
+export function createEmptyAugmentStat(): AugmentStatRaw {
+  return { offered: 0, picked: 0, games: 0, placements: [0, 0, 0, 0], placementSum: 0 };
+}
+
+function mergeAugmentStat(a: AugmentStatRaw, b: AugmentStatRaw): AugmentStatRaw {
+  return {
+    offered: a.offered + b.offered,
+    picked: a.picked + b.picked,
+    games: a.games + b.games,
+    placements: [
+      a.placements[0] + b.placements[0],
+      a.placements[1] + b.placements[1],
+      a.placements[2] + b.placements[2],
+      a.placements[3] + b.placements[3],
+    ],
+    placementSum: a.placementSum + b.placementSum,
+  };
+}
+
+/** 증강 통계 맵 깊은 복사 (저장·스냅샷에서 공유 참조 방지). */
+function cloneAugments(m: Record<string, AugmentStatRaw>): Record<string, AugmentStatRaw> {
+  const out: Record<string, AugmentStatRaw> = {};
+  for (const [id, s] of Object.entries(m)) {
+    out[id] = { ...s, placements: [...s.placements] as [number, number, number, number] };
+  }
+  return out;
+}
+
+/** 원시 통계 깊은 복사 (배열·중첩 맵의 공유 참조 방지). */
+function cloneStatsRaw(s: PlayerStatsRaw): PlayerStatsRaw {
+  return {
+    ...s,
+    placements: [...s.placements] as [number, number, number, number],
+    augments: cloneAugments(s.augments ?? {}),
+    augmentTierPicks: [...(s.augmentTierPicks ?? [0, 0, 0])] as [number, number, number],
+  };
+}
 
 /**
  * 저장·병합되는 원시 카운터. 파생 비율은 저장하지 않고 deriveStats로 계산한다.
@@ -49,7 +109,7 @@ export interface PlayerStatsRaw {
   dealInPointsTotal: number;
   /** 리치 선언 국 수 */
   riichiRounds: number;
-  /** 후로(펑·치·명깡·가깡) 국 수 — 안깡은 제외 (멘젠 유지) */
+  /** 후로(펑·치·대명깡·가깡) 국 수 — 안깡은 제외 (멘젠 유지) */
   callRounds: number;
   /** 완료한 반장전 수 */
   games: number;
@@ -57,6 +117,14 @@ export interface PlayerStatsRaw {
   placements: [number, number, number, number];
   /** 순위 합 (평균 순위용) */
   placementSum: number;
+  /** 증강 id별 누적 통계 (제시·선택·보유 판 성적) */
+  augments: Record<string, AugmentStatRaw>;
+  /** 획득(선택)한 증강의 등급 분포 [silver, gold, prism] — 지급 제외 */
+  /**
+   * @deprecated 2026-07-22 (52차) 등급 폐기로 더 이상 누적하지 않는다.
+   * 이미 저장된 통계와의 호환을 위해 필드만 남긴다 — 신규 게임에서는 항상 0이다.
+   */
+  augmentTierPicks: [number, number, number];
 }
 
 /** 파생 비율까지 포함한 표시용 통계 (0~1 비율, 평균값). */
@@ -97,11 +165,19 @@ export function createEmptyStats(): PlayerStatsRaw {
     games: 0,
     placements: [0, 0, 0, 0],
     placementSum: 0,
+    augments: {},
+    augmentTierPicks: [0, 0, 0],
   };
 }
 
 /** 두 원시 통계를 합산 (career 누적·여러 판 합계). 입력은 변경하지 않는다. */
 export function mergeStats(a: PlayerStatsRaw, b: PlayerStatsRaw): PlayerStatsRaw {
+  const augments = cloneAugments(a.augments ?? {});
+  for (const [id, s] of Object.entries(b.augments ?? {})) {
+    augments[id] = mergeAugmentStat(augments[id] ?? createEmptyAugmentStat(), s);
+  }
+  const at = a.augmentTierPicks ?? [0, 0, 0];
+  const bt = b.augmentTierPicks ?? [0, 0, 0];
   return {
     roundsPlayed: a.roundsPlayed + b.roundsPlayed,
     wins: a.wins + b.wins,
@@ -120,6 +196,8 @@ export function mergeStats(a: PlayerStatsRaw, b: PlayerStatsRaw): PlayerStatsRaw
       a.placements[3] + b.placements[3],
     ],
     placementSum: a.placementSum + b.placementSum,
+    augments,
+    augmentTierPicks: [at[0] + bt[0], at[1] + bt[1], at[2] + bt[2]],
   };
 }
 
@@ -129,6 +207,8 @@ export function deriveStats(raw: PlayerStatsRaw): PlayerStatsView {
   return {
     ...raw,
     placements: [...raw.placements] as [number, number, number, number],
+    augments: cloneAugments(raw.augments ?? {}),
+    augmentTierPicks: [...(raw.augmentTierPicks ?? [0, 0, 0])] as [number, number, number],
     winRate: ratio(raw.wins, raw.roundsPlayed),
     dealInRate: ratio(raw.dealIns, raw.roundsPlayed),
     riichiRate: ratio(raw.riichiRounds, raw.roundsPlayed),
@@ -159,7 +239,7 @@ export interface RankInput {
 /**
  * 한 판(반장전)의 이벤트를 소비해 플레이어별 통계를 누적한다.
  *
- * - 국 진행 이벤트(리치 버림·부로·깡)는 "이번 국" 플래그로만 표시하고,
+ * - 국 진행 이벤트(리치 버림·후로·깡)는 "이번 국" 플래그로만 표시하고,
  *   ROUND_SETTLED 시점에 국 단위 카운터에 반영한다 (국당 최대 1회 계상).
  * - 반장전 종료 시 recordGameEnd(rankings)로 순위를 누적한다.
  */
@@ -168,10 +248,27 @@ export class StatsTracker {
   private readonly participants: PlayerId[];
   private roundRiichi = new Set<PlayerId>();
   private roundCall = new Set<PlayerId>();
+  /** 게임 내내 각 플레이어가 획득한 증강(픽+지급) — 종료 시 순위 귀속용 */
+  private readonly heldByPlayer = new Map<PlayerId, Set<string>>();
+  /** 직전 오퍼(플레이어별) — 픽이 진짜 드래프트 선택인지(지급 아님) 판별용 */
+  private readonly lastOffered = new Map<PlayerId, Set<string>>();
 
   constructor(playerIds: PlayerId[]) {
     this.participants = [...playerIds];
-    for (const id of playerIds) this.stats.set(id, createEmptyStats());
+    for (const id of playerIds) {
+      this.stats.set(id, createEmptyStats());
+      this.heldByPlayer.set(id, new Set());
+    }
+  }
+
+  /** 증강 통계 항목을 (없으면 만들어) 반환한다. */
+  private ensureAug(s: PlayerStatsRaw, id: string): AugmentStatRaw {
+    let a = s.augments[id];
+    if (a === undefined) {
+      a = createEmptyAugmentStat();
+      s.augments[id] = a;
+    }
+    return a;
   }
 
   /** 확정 이벤트 하나를 소비한다. 리플레이 로그의 JSON도 그대로 넣을 수 있다. */
@@ -196,6 +293,25 @@ export class StatsTracker {
         // 안깡은 멘젠을 깨지 않으므로 후로에 넣지 않는다.
         if (p.kanKind === "kan_open" || p.kanKind === "kan_added") {
           this.roundCall.add(p.player);
+        }
+        break;
+      }
+      case AUGMENT_OFFERED: {
+        const p = event.payload as AugmentOfferedPayload;
+        this.lastOffered.set(p.player, new Set(p.augmentIds));
+        const s = this.stats.get(p.player);
+        if (s !== undefined) {
+          for (const id of p.augmentIds) this.ensureAug(s, id).offered++;
+        }
+        break;
+      }
+      case AUGMENT_DRAFTED: {
+        const p = event.payload as AugmentDraftedPayload;
+        this.heldByPlayer.get(p.player)?.add(p.augmentId);
+        const s = this.stats.get(p.player);
+        // 직전 오퍼에 포함된 픽만 '선택'으로 계상 (도박사 지급분은 제외).
+        if (s !== undefined && this.lastOffered.get(p.player)?.has(p.augmentId) === true) {
+          this.ensureAug(s, p.augmentId).picked++;
         }
         break;
       }
@@ -250,23 +366,29 @@ export class StatsTracker {
       s.placementSum += r.rank;
       const idx = r.rank - 1;
       s.placements[idx] = (s.placements[idx] ?? 0) + 1;
+      // 이 판에 보유했던 증강(픽+지급)에 최종 순위를 귀속시킨다.
+      const held = this.heldByPlayer.get(r.playerId);
+      if (held !== undefined) {
+        for (const id of held) {
+          const a = this.ensureAug(s, id);
+          a.games++;
+          a.placementSum += r.rank;
+          a.placements[idx] = (a.placements[idx] ?? 0) + 1;
+        }
+      }
     }
   }
 
   /** 플레이어별 현재 통계 스냅샷 (복사본). */
   snapshot(): Map<PlayerId, PlayerStatsRaw> {
     const out = new Map<PlayerId, PlayerStatsRaw>();
-    for (const [id, s] of this.stats) {
-      out.set(id, { ...s, placements: [...s.placements] as [number, number, number, number] });
-    }
+    for (const [id, s] of this.stats) out.set(id, cloneStatsRaw(s));
     return out;
   }
 
   /** 특정 플레이어의 통계 스냅샷 (복사본). */
   get(playerId: PlayerId): PlayerStatsRaw | undefined {
     const s = this.stats.get(playerId);
-    return s === undefined
-      ? undefined
-      : { ...s, placements: [...s.placements] as [number, number, number, number] };
+    return s === undefined ? undefined : cloneStatsRaw(s);
   }
 }

@@ -10,7 +10,65 @@ MAJAK은 **단일 포트**에서 HTTP(빌드된 SPA 정적 서빙) + WebSocket(�
 
 ---
 
-## 1. 사전 준비
+## 0. 현재 프로덕션 배포 — Cloudflare Tunnel (2026-07-21~)
+
+실서비스는 **Cloudflare Tunnel**로 운영한다. `https://majak.yaho1231.com` → 터널 →
+`http://127.0.0.1:3011`. TLS(wss)는 Cloudflare 엣지가 종단하므로 **포트포워딩·인증서
+관리가 필요 없고**, 홈 IP도 노출되지 않는다. 하나의 터널(`yaho1231`)이 마작(majak.)과
+대시보드(gol.)를 함께 서빙한다.
+
+```
+브라우저 ──HTTPS/WSS──▶ Cloudflare ──Tunnel──▶ 맥미니 127.0.0.1
+                         ├─ gol.yaho1231.com   → :8501 (deeplolDiscord 대시보드)
+                         └─ majak.yaho1231.com → :3011 (이 서버)
+```
+
+**구성 요소**
+- ingress: `~/.cloudflared/config.yml` (호스트명 → 로컬 포트 매핑, 매칭 안 되면 404)
+- 자동 시작: LaunchAgent `~/Library/LaunchAgents/com.yaho1231.cloudflared.plist`
+  (`KeepAlive`로 죽으면 재시작, 로그인 시 시작). 로그: `~/Library/Logs/cloudflared-yaho1231.log`
+- 서버 설정: `deploy/majak.env`에 `HOST=127.0.0.1`, `TRUST_PROXY=cloudflare`,
+  `ALLOWED_ORIGINS=https://majak.yaho1231.com`, `PUBLIC_HOST=majak.yaho1231.com`
+
+**⚠️ 필수 — `TRUST_PROXY=cloudflare`**: 터널이 127.0.0.1로 포워딩하므로 서버가 보는
+소켓 주소는 **모든 접속자에게 127.0.0.1**이다. 이 값이 없으면 IP 기반 방어(연결 상한·
+요청 제한·인증 무차별대입 차단·방 생성 제한)가 **전원에게 무력화**된다. 서버는
+`CF-Connecting-IP`로 실제 IP를 복원하되, 소켓이 루프백일 때만 헤더를 신뢰해 위조를 막는다.
+검증: 부팅 로그에 `신뢰 프록시 : cloudflare` 확인. 보안 상세는 `SECURITY.md`.
+
+**Cloudflare 대시보드 설정 (SSL/TLS → Edge Certificates, 2026-07-21 적용·검증)**
+- `Always Use HTTPS` **ON** — 없으면 `http://majak.yaho1231.com`이 리다이렉트 없이 평문 200을
+  준다. 평문 페이지는 MITM이 JS를 바꿔치기할 수 있고 CSP `connect-src`가 `ws: wss:`로 열려 있어
+  WS를 임의 호스트로 돌릴 수 있다(단 `ALLOWED_ORIGINS`가 https만 허용해 로그인 자체는 막힌다).
+- `HSTS` **ON**, max-age 6개월. `includeSubDomains`·`Preload`는 **끔** — 전자는 존의 다른
+  서브도메인이 HTTP면 6개월간 접속 불가, 후자는 되돌리는 데 수개월 걸려 실수 복구가 안 된다.
+- `No-Sniff Header` ON (서버도 보내지만 CF 자체 응답에도 붙는다).
+
+**검증 명령** (배포·설정 변경 후 이걸로 확인한다):
+```bash
+curl -sSI http://majak.yaho1231.com/  | head -3          # 301 → https 여야 함
+curl -sSI https://majak.yaho1231.com/ | grep -i strict-  # strict-transport-security: max-age=15552000
+# WS 오리진 게이트: 정상 101 / 위조·평문 오리진 403
+curl -sSi -N --http1.1 -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==" \
+  -H "Origin: https://majak.yaho1231.com" https://majak.yaho1231.com/ | head -1
+```
+
+**터널 재구성이 필요할 때**(도메인 변경 등):
+```bash
+cloudflared tunnel login                              # 브라우저 인증(존 선택)
+cloudflared tunnel create <이름>                      # 터널 + 자격증명 생성
+# ~/.cloudflared/config.yml 에 ingress 작성 후:
+cloudflared tunnel route dns <이름> majak.<도메인>    # CNAME 생성
+cloudflared tunnel ingress validate                   # 설정 검증
+launchctl kickstart -k gui/$(id -u)/com.yaho1231.cloudflared
+```
+
+> 아래 1~7절은 **대안(직접 포트포워딩 + Caddy/nginx)** 참고용이다. 현재 운영에는 쓰지 않는다.
+
+---
+
+## 1. 사전 준비 (대안: 직접 포트포워딩 방식)
 
 - **Node.js 22+** (내장 `node:sqlite` 사용).
 - 서버로 향하는 **도메인** (DuckDNS 등 동적 DNS 가능).

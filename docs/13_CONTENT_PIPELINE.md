@@ -102,7 +102,7 @@ export const newYaku: YakuDef = {
   isYakuman: false, 
   evaluate: (ctx) => {
     // ctx.handKinds: 손패 (형태 정보 포함)
-    // ctx.melds: 부로패 목록
+    // ctx.melds: 후로패 목록
     // ctx.winTile: 화료패
     
     // 조건 검사
@@ -113,7 +113,7 @@ export const newYaku: YakuDef = {
   },
 };
 ```
-만약 부로(멘젠이 깨짐) 시 판수가 깎이는 역(쿠이사가리)이라면, `evaluate` 내에서 `ctx.isClosed`를 확인해 리턴하는 판수를 조절하면 된다.
+만약 후로(멘젠이 깨짐) 시 판수가 깎이는 역(쿠이사가리)이라면, `evaluate` 내에서 `ctx.isClosed`를 확인해 리턴하는 판수를 조절하면 된다.
 
 ---
 
@@ -218,7 +218,7 @@ Prompt 생성 경로도 추가해야 한다. 새 Prompt 경로를 만들 때는 
 | 콘텐츠 | 최소 테스트 |
 |--------|-------------|
 | Rule | 기본값 resolve + Modifier 적용 |
-| Yaku | 성립/불성립, 멘젠/부로 차이, 도라가 역이 아님을 침범하지 않는지 |
+| Yaku | 성립/불성립, 멘젠/후로 차이, 도라가 역이 아님을 침범하지 않는지 |
 | Action | validate 거부 1개 + 성공 이벤트 1개 + Flow Prompt 노출 |
 | Reducer/Event | 상태 변화, 패 보존, event log 재현성 |
 | Effect | 발동 조건, 미발동 조건, 연쇄 한도와 충돌하지 않는지 |

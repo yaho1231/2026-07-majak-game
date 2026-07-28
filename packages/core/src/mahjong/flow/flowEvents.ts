@@ -51,16 +51,25 @@ export interface TileDiscardedPayload {
    * Interceptor가 payload를 바꿔 리치를 더블리치로 승격시킬 수 있다.
    */
   riichiDouble?: boolean;
+  /**
+   * 버림 '명의'를 다른 사람에게 돌린다 (누명). 지정하면 패가 그 사람의 바닥으로 가고
+   * 후리텐 근거인 `discardedKinds`도 그 사람에게 기록된다. 손패 출처·방총 책임
+   * (`lastDiscard.player`)·턴 진행은 실제로 버린 `player` 그대로다.
+   * 미지정(기본)이면 종전과 완전히 동일하게 동작한다.
+   */
+  creditTo?: PlayerId;
 }
 
 export interface CallMadePayload {
   caller: PlayerId;
   from: PlayerId;
-  /** kokushi_pon = 울어 국사 전용 특수 부로(서로 다른 요구패 3장) */
+  /** kokushi_pon = 울어 국사 전용 특수 후로(서로 다른 요구패 3장) */
   meldKind: "pon" | "chi" | "kokushi_pon";
   /** 손에서 내는 패 */
   handTileIds: TileId[];
   calledTileId: TileId;
+  /** 멘젠 유지 후로 (묵계) — 생성되는 후로에 silent 플래그를 단다 */
+  silent?: boolean;
 }
 
 export interface KanDeclaredPayload {
@@ -69,7 +78,7 @@ export interface KanDeclaredPayload {
   handTileIds: TileId[];
   calledFrom?: PlayerId;
   calledTileId?: TileId;
-  /** 소명깡(shouminkan)의 경우 기존 pon 멜드의 tileId */
+  /** 소대명깡(shouminkan)의 경우 기존 pon 후로의 tileId */
   targetMeldTileId?: TileId;
 }
 
@@ -125,6 +134,15 @@ export interface RoundSettledPayload {
   prevalentWind: number;
   /** outcome=win일 때 화료 상세 (트리플론 제외 최대 2건) */
   winInfos?: WinInfo[];
+  /**
+   * outcome=draw일 때 **텐파이로 집계된 플레이어** (승승장구의 draw.treatAsTenpai 포함).
+   *
+   * 이걸 payload에 실어 주지 않으면 유국 정산에 개입하는 증강이 "누가 노텐인가"를
+   * `deltas[id] < 0`으로 **추정**해야 한다. 그러면 다른 유국 증강(유국역만 등)이
+   * 먼저 돌아 음수를 만들어 놓은 순간 텐파이인 사람까지 노텐으로 오판한다 —
+   * 승승장구가 실제로 그랬다(60차 수정).
+   */
+  tenpaiPlayers?: PlayerId[];
 }
 
 function withPlayerRound(
@@ -169,20 +187,12 @@ export function registerFlowReducers(
     const sourceZone = p.rinshan ? DEAD_WALL : WALL;
     let zones = moveTiles(state.zones, sourceZone, handZone(p.player), [p.tileId]);
 
-    // 영상패 쯔모 시 패산 마지막 패를 왕패 '앞'에 보충 — 왕패 14장 유지 +
-    // 도라 표시패의 절대 인덱스(4·6·8·10·12) 불변 (sys.flipDora 규약)
-    if (p.rinshan) {
-      const wall = zones[WALL];
-      const dead = zones[DEAD_WALL];
-      const last = wall?.tileIds.at(-1);
-      if (wall !== undefined && dead !== undefined && last !== undefined) {
-        zones = {
-          ...zones,
-          [WALL]: { ...wall, tileIds: wall.tileIds.slice(0, -1) },
-          [DEAD_WALL]: { ...dead, tileIds: [last, ...dead.tileIds] },
-        };
-      }
-    }
+    // 영상패는 **소모된다** — 패산 최후미에서 보충하지 않는다 (2026-07-26 사용자 확정).
+    // 깡 한 번에 왕패 앞이 한 자리씩 비고, 왕패는 14 → 13 → … → 10장으로 줄어든다.
+    // 표시패는 밀리지 않는다: 도라·뒷도라 블록은 언제나 왕패의 **마지막 10장**이라
+    // 앞이 비어도 같은 물리 패가 그대로 표시패다(인덱스만 당겨진다).
+    // 그래서 표시패 자리는 상수(4·6·8…)가 아니라 doraIndicatorIndex()로 구한다.
+    // (북풍 상인의 북빼기만은 뽑은 자리를 패산 최후미로 되채운다 — 그쪽 리듀서 참고.)
 
     // 이번에 뽑는 플레이어가 이미 버림 이력이 있으면 첫 바퀴 종료
     const drawerDiscarded =
@@ -230,9 +240,12 @@ export function registerFlowReducers(
     const discardsBefore =
       state.zones[discardsZone(p.player)]?.tileIds.length ?? 0;
     const discardedKind = state.tiles[p.tileId]?.kind;
+    // 누명(creditTo): 패가 놓이는 바닥과 후리텐 이력만 다른 사람 명의로 간다.
+    // 손패 출처·방총 책임(lastDiscard.player)·턴 진행은 실제 버린 사람 그대로다.
+    const credited = p.creditTo ?? p.player;
     let next: GameState = {
       ...state,
-      zones: moveTiles(state.zones, handZone(p.player), discardsZone(p.player), [
+      zones: moveTiles(state.zones, handZone(p.player), discardsZone(credited), [
         p.tileId,
       ]),
       round: {
@@ -243,9 +256,10 @@ export function registerFlowReducers(
         chankan: null,
       },
     };
-    // 버림 이력 기록 (부로로 강에서 사라져도 후리텐 판정에 남는다)
+    // 버림 이력 기록 (후로로 바닥에서 사라져도 후리텐 판정에 남는다).
+    // 누명이면 지목당한 사람의 이력에 새겨져 그 사람이 후리텐에 걸린다.
     if (discardedKind !== undefined) {
-      next = withPlayerRound(next, p.player, (rs) => ({
+      next = withPlayerRound(next, credited, (rs) => ({
         ...rs,
         discardedKinds: [...rs.discardedKinds, kindKey(discardedKind)],
       }));
@@ -291,9 +305,10 @@ export function registerFlowReducers(
       tileIds: [...p.handTileIds, p.calledTileId],
       calledFrom: p.from,
       calledTileId: p.calledTileId,
+      ...(p.silent === true ? { silent: true } : {}),
     };
-    // 부로 발생 → 첫 바퀴 종료, 전원 일발 소멸.
-    // 부로한 사람은 자기 수순이 온 것이므로 일시 후리텐 해소 (EMA 통용 룰)
+    // 후로 발생 → 첫 바퀴 종료, 전원 일발 소멸.
+    // 후로한 사람은 자기 수순이 온 것이므로 일시 후리텐 해소 (EMA 통용 룰)
     const byPlayer = Object.fromEntries(
       Object.entries(state.round.byPlayer).map(([id, rs]) => [
         id,

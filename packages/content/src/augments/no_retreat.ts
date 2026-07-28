@@ -1,13 +1,11 @@
 /**
  * 물러설 수 없는 선언 (no_retreat, prism).
  * "불변으로써 만변에 응한다 — 그것이 리치의 극의."
- * 첫 패를 받은 자기 첫 턴에만 액티브 버튼이 활성화되며, 게임당 1회 사용한다.
- * 사용한 국 동안 플레이어는 반드시 "리치를 포함한 화료"만 할 수 있다. 그 대신
- * 리치 공탁금(1000)을 내지 않고, 리치·일발·뒷도라가 각각 2판으로 계산된다.
+ * 첫 패를 받은 자기 첫 턴에만 액티브 버튼이 활성화되며, 2국에 1회 선언할 수 있다.
+ * 선언한 국 동안 리치 공탁금(1000)을 내지 않고, 리치·일발·뒷도라가 각각 2판으로
+ * 계산된다.
  *
  * 구현(전부 국 단위 게이팅 — declared=roundKey일 때만):
- * - win.blockedYaku: 리치 중이 아니면 모든 역을 봉인 → 역 없음으로 화료 불가.
- *   (리치를 선언하면 봉인이 풀려 정상 화료 — "리치 포함 화료만" 강제.)
  * - riichi.cost: 0 (공탁 미지불 — 리치 선언패의 riichiCost가 0이 되어 봉·차감 없음).
  * - score.extraHan: 화료 시 실제 채점을 재구성해 뒷도라(uraHan)만큼 한 번 더 더하고
  *   (2배), 리치·일발이 있으면 각 +1(1→2판). 역만에는 적용하지 않는다.
@@ -32,14 +30,30 @@ import { roundKey, stringOf } from "../util.js";
 
 const ID = "no_retreat";
 const ACTION = "declare_no_retreat";
-/** 게임당 1회 사용 플래그 */
-const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
-/** 선언한 국의 roundKey (국이 바뀌면 자동 만료) */
+/** 마지막으로 선언한 국의 roundKey (효과 게이팅 + 쿨다운 기준) */
 const declaredKey = (h: PlayerId): string => `${ID}:round:${h}`;
 
-/** 이번 국에 no_retreat를 선언한 상태인가 */
+/** 이번 국에 no_retreat를 선언한 상태인가 (효과는 선언한 그 국에만 적용) */
 function declaredThisRound(state: GameState, holder: PlayerId): boolean {
   return stringOf(state, declaredKey(holder)) === roundKey(state);
+}
+
+/** roundKey "pw-rn-honba" → 절대 국 인덱스 (동1=1, 남1=5, 서1=9…) */
+function absRoundOf(key: string): number {
+  const parts = key.split("-").map(Number);
+  const pw = parts[0] ?? 0;
+  const rn = parts[1] ?? 0;
+  return (pw - 1) * 4 + rn;
+}
+
+/**
+ * 선언 가능 여부 — 2국에 1회. 선언 이력이 없거나, 마지막 선언 국으로부터
+ * 2국 이상 지났을 때만 다시 선언할 수 있다(선언한 국·바로 다음 국은 쿨다운).
+ */
+function canDeclare(state: GameState, holder: PlayerId): boolean {
+  const last = stringOf(state, declaredKey(holder));
+  if (last === null) return true;
+  return absRoundOf(roundKey(state)) - absRoundOf(last) >= 2;
 }
 
 const declareAction: ActionDef<Record<string, never>> = {
@@ -49,7 +63,8 @@ const declareAction: ActionDef<Record<string, never>> = {
     if (player === undefined || !player.augments.includes(ID)) {
       return "no no_retreat augment";
     }
-    if (state.augmentData[usedKey(req.player)] === true) return "already used";
+    // 2국에 1회 — 선언한 국·바로 다음 국은 쿨다운
+    if (!canDeclare(state, req.player)) return "on cooldown";
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
@@ -62,7 +77,6 @@ const declareAction: ActionDef<Record<string, never>> = {
     return null;
   },
   toEvents: (req, { state }) => [
-    augmentDataSet(usedKey(req.player), true),
     augmentDataSet(declaredKey(req.player), roundKey(state)),
   ],
 };
@@ -70,9 +84,12 @@ const declareAction: ActionDef<Record<string, never>> = {
 export const noRetreat: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
+  category: "riichi",
   name: "물러설 수 없는 선언",
   description:
-    "첫 턴에 선언(게임당 1회)하면, 그 국에는 반드시 리치를 포함해야만 화료할 수 있다. 그 대신 리치 공탁금을 내지 않고 리치·일발·뒷도라가 각각 2판으로 계산된다.",
+    "(2국에 1회) 국의 첫 순에 액티브 버튼이 활성화되며, 선언하면 그 국에는 리치 공탁금을 내지 않고 리치·일발·뒷도라가 각각 2판으로 계산된다.",
+  detail:
+    "(2국에 1회) 아직 버리지도 울지도 않은 국의 첫 순에만 선언할 수 있다. 그 국에는 공탁금 없이 리치를 걸 수 있고, 화료 시 리치·일발·뒷도라가 각각 2판으로 계산된다(뒷도라는 장수만큼 두 배). 역만 손에는 추가 판이 적용되지 않는다.",
   install(ctx) {
     const { engine, holder, layer, instanceId } = ctx;
 
@@ -80,19 +97,8 @@ export const noRetreat: AugmentDef = defineAugment({
       engine.actions.register(declareAction);
     }
 
-    // 리치 중이 아니면 모든 역 봉인 → "리치 포함 화료만" 강제
-    engine.rules.addModifier<string[]>("win.blockedYaku", {
-      source: instanceId,
-      layer,
-      apply: (cur, rctx) => {
-        if (rctx.playerId !== holder) return cur;
-        const state = rctx.state as GameState | undefined;
-        if (state === undefined || !declaredThisRound(state, holder)) return cur;
-        if (state.round.byPlayer[holder]?.riichi != null) return cur; // 리치 → 해제
-        const allIds = (ctx.yaku?.all() ?? []).map((y) => y.id);
-        return [...cur, ...allIds];
-      },
-    });
+    // 48차 무페널티: "리치를 안 걸면 전 역 봉인(=화료 불가)"이라는 배수진을 삭제했다.
+    // 선언은 이제 순수한 상향 — 공탁 면제 + 리치·일발·뒷도라 2배만 남는다.
 
     // 리치 공탁금 면제 (선언한 국 동안)
     engine.rules.addModifier<number>("riichi.cost", {
@@ -150,10 +156,16 @@ export const noRetreat: AugmentDef = defineAugment({
     });
 
     // 첫 턴에만 선언 버튼 노출 (합법성은 validate가 최종 판정)
+    // 2국에 1회 — 쿨다운 중이면 숨긴다.
     ctx.holderTurnOptions((state) =>
-      state.augmentData[usedKey(holder)] === true
-        ? []
-        : [{ type: ACTION, payload: {} }],
+      canDeclare(state, holder) ? [{ type: ACTION, payload: {} }] : [],
     );
+  },
+  // 첫 턴 선언은 리치 공탁이 공짜가 되고 리치·일발·뒷도라가 2판이 되는 순수 이득
+  // (선언만 해도 잃는 것이 없다) — 제시되면 무조건 선언한다.
+  bot: {
+    choose({ options }) {
+      return options.find((o) => o.type === ACTION) ?? null;
+    },
   },
 });

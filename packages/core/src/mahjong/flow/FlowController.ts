@@ -16,19 +16,25 @@ import { WALL, discardsZone } from "../../engine/zones/Zone.js";
 import { sameKind, kindKey } from "../tiles/Tile.js";
 import type { TileId, TileKind } from "../tiles/Tile.js";
 import { winningKinds } from "../scoring/waits.js";
-import { ROUND_SETTLED } from "./flowEvents.js";
-import type { RoundSettledPayload } from "./flowEvents.js";
+import { DEFAULT_SEQUENCE_SUITS, honorMaxRank } from "../scoring/decompose.js";
+import { ROUND_SETTLED, KAN_DECLARED } from "./flowEvents.js";
+import type { RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
 import type { SettleWinRequest } from "./standardActions.js";
 import {
   SYSTEM_PLAYER,
   handIdsOf,
-  handKindsOf,
+  winHandKindsOf,
   kindOf,
   meldCountOf,
   nextSeat,
   playerAtSeat,
   playerOf,
   scoringOptionsOf,
+  sameCallKind,
+  mixedTripletsFor,
+  polarEndsFor,
+  honorRunsFor,
+  snakeKanFor,
 } from "./helpers.js";
 
 export interface ActionOption {
@@ -204,21 +210,69 @@ export class FlowController {
 
       const hand = handIdsOf(state, player);
 
-      // 안깡 (ankan) — 같은 종류는 한 번만 제시 (서로 다른 종류의 안깡 2개는 각각 유지)
-      const sameTiles = hand.filter(t => sameKind(kindOf(state, t), kindOf(state, tileId)));
+      // 안깡 (ankan) — 같은 종류는 한 번만 제시 (서로 다른 종류의 안깡 2개는 각각 유지).
+      // 무너진 국경이면 무늬가 섞인 4장(랭크만 같음)도 안깡이 된다.
+      const mixedTri = mixedTripletsFor(state, this.engine.rules, player);
+      const sameTiles = hand
+        .filter((t) => sameCallKind(kindOf(state, t), kindOf(state, tileId), mixedTri))
+        .slice(0, 4);
       if (sameTiles.length === 4) {
-        const key = kindKey(kindOf(state, tileId));
+        const k = kindOf(state, tileId);
+        // 혼색 안깡은 무늬가 달라도 한 묶음이므로 랭크로 중복을 막는다
+        const key = mixedTri ? `rank:${k.suit === "wind" || k.suit === "dragon" ? kindKey(k) : k.rank}` : kindKey(k);
         if (!ankanKindsSeen.has(key) && this.validateOk(player, "ankan", { tileIds: sameTiles })) {
           ankanKindsSeen.add(key);
           options.push({ type: "ankan", payload: { tileIds: sameTiles } });
         }
       }
+
+      // 동남서북 안깡 (바람의 계보) — 네 바람 각 1장이면 한 깡으로 (종류당 한 번만 제시)
+      if (
+        !ankanKindsSeen.has("fourwinds") &&
+        honorRunsFor(state, this.engine.rules, player)
+      ) {
+        const windIds = [1, 2, 3, 4].map((r) =>
+          hand.find((t) => {
+            const kk = kindOf(state, t);
+            return kk.suit === "wind" && kk.rank === r;
+          }),
+        );
+        if (windIds.every((x): x is number => x !== undefined)) {
+          const quad = windIds as [number, number, number, number];
+          if (this.validateOk(player, "ankan", { tileIds: quad })) {
+            ankanKindsSeen.add("fourwinds");
+            options.push({ type: "ankan", payload: { tileIds: quad } });
+          }
+        }
+      }
       
-      // 소명깡 (shouminkan)
+      // 4연속 안깡 (장사진) — 같은 무늬 연속 4장을 한 깡으로 (시작 랭크당 한 번만 제시)
+      if (snakeKanFor(state, this.engine.rules, player)) {
+        for (const suit of DEFAULT_SEQUENCE_SUITS) {
+          for (let start = 1; start + 3 <= 9; start++) {
+            const seenKey = `snake:${suit}${start}`;
+            if (ankanKindsSeen.has(seenKey)) continue;
+            const ids = [0, 1, 2, 3].map((d) =>
+              hand.find((t) => {
+                const kk = kindOf(state, t);
+                return kk.suit === suit && kk.rank === start + d;
+              }),
+            );
+            if (!ids.every((x): x is number => x !== undefined)) continue;
+            const quad = ids as [number, number, number, number];
+            if (this.validateOk(player, "ankan", { tileIds: quad })) {
+              ankanKindsSeen.add(seenKey);
+              options.push({ type: "ankan", payload: { tileIds: quad } });
+            }
+          }
+        }
+      }
+
+      // 소대명깡 (shouminkan)
       for (const m of state.round.byPlayer[player]?.melds ?? []) {
         if (m.kind === "pon" && m.tileIds.length === 3) {
           const tk = kindOf(state, m.tileIds[0]!);
-          if (sameKind(kindOf(state, tileId), tk)) {
+          if (sameCallKind(kindOf(state, tileId), tk, mixedTri)) {
              if (this.validateOk(player, "shouminkan", { tileId, targetMeldTileId: m.tileIds[0]! })) {
                options.push({ type: "shouminkan", payload: { tileId, targetMeldTileId: m.tileIds[0]! } });
              }
@@ -272,8 +326,12 @@ export class FlowController {
         options.push({ type: "win", payload: {} });
       }
 
+      // 무너진 국경이면 무늬를 안 가리고 랭크만, 양극이면 같은 무늬 1·9를 같은 패로 본다.
+      // (양극은 퐁만 — 깡 재료로는 쓰지 않으므로 minkan은 아래에서 pure/mixed로만 판정된다)
+      const mixedTri = mixedTripletsFor(state, this.engine.rules, p.id);
+      const polar = polarEndsFor(state, this.engine.rules, p.id);
       const matching = handIdsOf(state, p.id).filter((t) =>
-        sameKind(kindOf(state, t), discardKind),
+        sameCallKind(kindOf(state, t), discardKind, mixedTri, polar),
       );
       if (matching.length >= 2) {
         // 적도라 사용 여부가 다른 조합을 각각 제시한다 (적5를 손에 남길 선택권)
@@ -326,8 +384,20 @@ export class FlowController {
     called: TileKind,
   ): { tileIds: [TileId, TileId] }[] {
     const state = this.engine.state;
-    const wrap =
-      scoringOptionsOf(state, this.engine.rules, player).wrapRuns === true;
+    const opts = scoringOptionsOf(state, this.engine.rules, player);
+    // 바람의 계보(honorRuns) — 자패도 슌쯔가 된다(동남서·남서북·백발중).
+    // 자패엔 무늬 혼합·순환이 없고 rank 상한만 다르다(바람 4 / 삼원 3).
+    const isHonorCall = !DEFAULT_SEQUENCE_SUITS.has(called.suit);
+    const honorRun = isHonorCall && opts.honorRuns === true;
+    if (isHonorCall && !honorRun) return [];
+    const maxRank = honorRun ? honorMaxRank(called.suit) : 9;
+    const wrap = !honorRun && opts.wrapRuns === true;
+    // 무너진 국경(mixedRuns)이면 슌쯔 재료의 무늬가 달라도 된다 —
+    // 후보 생성도 세 무늬를 전부 훑어야 실제로 칠 수 있다.
+    const mixedRun = !honorRun && opts.mixedRuns === true;
+    const suits: TileKind["suit"][] = mixedRun
+      ? ["man", "pin", "sou"]
+      : [called.suit];
     const norm = (r: number): number =>
       wrap ? ((((r - 1) % 9) + 9) % 9) + 1 : r;
     // 같은 kind라도 적도라 여부가 다르면 별개 후보로 제시 (적5 온존 선택권)
@@ -351,13 +421,17 @@ export class FlowController {
     const out: { tileIds: [TileId, TileId] }[] = [];
     const seen = new Set<string>();
     for (const [r1, r2] of shapes) {
-      if (r1 < 1 || r2 > 9) continue;
-      const key = `${r1}:${r2}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      for (const a of findIds({ suit: called.suit, rank: r1 })) {
-        for (const b of findIds({ suit: called.suit, rank: r2 }, a)) {
-          out.push({ tileIds: [a, b] });
+      if (r1 < 1 || r2 > maxRank) continue;
+      for (const s1 of suits) {
+        for (const s2 of suits) {
+          const key = `${s1}${r1}:${s2}${r2}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          for (const a of findIds({ suit: s1, rank: r1 })) {
+            for (const b of findIds({ suit: s2, rank: r2 }, a)) {
+              out.push({ tileIds: [a, b] });
+            }
+          }
         }
       }
     }
@@ -446,7 +520,7 @@ export class FlowController {
       return this.runAuto();
     }
 
-    // 부로 우선순위: 깡/펑 > 원격 치(call.chi.fromAnyone 보유자) > 일반 치
+    // 후로 우선순위: 깡/펑 > 원격 치(call.chi.fromAnyone 보유자) > 일반 치
     const chis = [...decisions.entries()].filter(([, o]) => o.type === "chi");
     const remoteChi = chis.find(([id]) =>
       this.engine.rules.resolve<boolean>("call.chi.fromAnyone", {
@@ -468,8 +542,19 @@ export class FlowController {
       chis[0];
     
     if (call !== undefined) {
+      const before = this.engine.eventLog.length;
       this.submitPlayer(call[0], call[1]);
-      if (call[1].type === "minkan") {
+      // 대명깡을 선언한 콜은 영상패를 뽑아야 한다. 표준 minkan뿐 아니라
+      // 리액션에서 KAN_DECLARED(kan_open)를 내는 커스텀 콜(증강)도 포함한다 —
+      // 그렇지 않으면 일반 패를 뽑아 영상개화가 성립하지 않는다.
+      const declaredOpenKan = this.engine.eventLog
+        .slice(before)
+        .some(
+          (e) =>
+            e.type === KAN_DECLARED &&
+            (e.payload as KanDeclaredPayload).kanKind === "kan_open",
+        );
+      if (declaredOpenKan) {
         this.flipKanDoraBeforeRinshan();
         this.sys("sys.drawRinshan");
       }
@@ -546,7 +631,7 @@ export class FlowController {
     for (const p of state.players) {
       if (p.id === target.player) continue;
       const waits = winningKinds(
-        handKindsOf(state, p.id),
+        winHandKindsOf(state, this.engine.rules, p.id),
         meldCountOf(state, p.id),
         undefined,
         scoringOptionsOf(state, this.engine.rules, p.id),

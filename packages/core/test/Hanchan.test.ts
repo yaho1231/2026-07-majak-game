@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { HanchanController, DEFAULT_HANCHAN_CONFIG } from "../src/match/HanchanController.js";
+import {
+  HanchanController,
+  DEFAULT_HANCHAN_CONFIG,
+  hanchanConfigForMode,
+  agariYameTriggers,
+} from "../src/match/HanchanController.js";
 import type { HanchanConfig } from "../src/match/HanchanController.js";
 import type { PlayerAgent } from "../src/match/PlayerAgent.js";
 import type { PlayerView } from "../src/information/PlayerView.js";
 import type { ActionOption, DecisionPrompt } from "../src/mahjong/flow/FlowController.js";
+import { installAugment } from "../src/augment/Augment.js";
 import type { AugmentDef } from "../src/augment/Augment.js";
 import type { DraftStage } from "../src/network/protocol.js";
 import { Prng } from "../src/engine/random/Prng.js";
@@ -124,6 +130,75 @@ describe("HanchanController — 반장전 완주 (드래프트 포함)", () => {
   }, 15000); // 반장전은 시간이 걸릴 수 있음
 });
 
+// ─────────────────────────── §2.5 동풍전 완주 ───────────────────────────
+
+describe("HanchanController — 동풍전 완주 (드래프트 2회)", () => {
+  it("봇 4명이 동풍전(동 4국)을 완주하고, 드래프트가 gameStart·eastThird 2회 발동한다", async () => {
+    const draftStages: string[] = [];
+    const roundEnds: string[] = [];
+    const agents = makeAgents([11, 22, 33, 44]);
+    const ctrl = new HanchanController(
+      agents,
+      {
+        ...DEFAULT_HANCHAN_CONFIG,
+        ...hanchanConfigForMode("tonpuu"), // mode·maxWind=1·westEntry=false·drafts
+        dobi: false,
+        seed: 123,
+      },
+      {
+        onDraftStart: (stage) => draftStages.push(stage),
+        onRoundEnd: (_, outcome) => roundEnds.push(outcome),
+      },
+    );
+    const rankings = await ctrl.run();
+
+    expect(rankings).toHaveLength(4);
+    // 드래프트는 게임 시작(동1 진입) + 동3 진입, 정확히 2회
+    expect(draftStages).toEqual(["gameStart", "eastThird"]);
+    // 동풍전은 최소 4국(동1~4). 연장(본장)으로 더 길어질 수 있으나 4 이상.
+    expect(roundEnds.length).toBeGreaterThanOrEqual(4);
+    const totalRaw = rankings.reduce((s, r) => s + r.rawScore, 0);
+    expect(totalRaw).toBe(100000);
+  }, 15000);
+
+  it("결정론: 같은 시드 동풍전 = 같은 순위·점수", async () => {
+    const run = async () => {
+      const agents = makeAgents([5, 6, 7, 8]);
+      const ctrl = new HanchanController(agents, {
+        ...DEFAULT_HANCHAN_CONFIG,
+        ...hanchanConfigForMode("tonpuu"),
+        dobi: false,
+        seed: 456,
+      });
+      return ctrl.run();
+    };
+    const [r1, r2] = await Promise.all([run(), run()]);
+    expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
+  }, 15000);
+
+  it("아무도 반환점(30000)에 못 미치면 남장(남입)으로 연장했다가 남4국에서 종료한다", async () => {
+    // returnScore를 아주 높게 잡아 서든데스가 절대 끝나지 않게 → 동4국 후 남장 전체 진행,
+    // 남4국(장=3 진입)에서 강제 종료. 동4국 하드 종료였다면 국 수가 4에 그친다.
+    const roundEnds: string[] = [];
+    const agents = makeAgents([2, 4, 6, 8]);
+    const ctrl = new HanchanController(
+      agents,
+      {
+        ...DEFAULT_HANCHAN_CONFIG,
+        ...hanchanConfigForMode("tonpuu"),
+        dobi: false,
+        returnScore: 10_000_000, // 아무도 도달 불가 → 서든데스 최대치까지
+        seed: 321,
+      },
+      { onRoundEnd: (_, outcome) => roundEnds.push(outcome) },
+    );
+    const rankings = await ctrl.run();
+    expect(rankings).toHaveLength(4);
+    // 동1~4 + 남1~4 = 최소 8국(연장·본장으로 더 늘 수 있음). 연장이 없었다면 4에 그친다.
+    expect(roundEnds.length).toBeGreaterThanOrEqual(8);
+  }, 20000);
+});
+
 // ─────────────────────────── §3 이벤트 콜백 ───────────────────────────
 
 describe("HanchanController — 이벤트 콜백", () => {
@@ -217,6 +292,14 @@ describe("HanchanController — 이벤트 콜백", () => {
     const game = createStandardGameFromState(state);
     for (const event of gameEvents) {
       state = game.engine.reducers.dispatch(state, event);
+      // ⚠ 증강은 자기 이벤트 타입의 Reducer를 install에서 등록한다(RecallPerformed 등).
+      // 드래프트되는 순간 설치하지 않으면 이후 그 증강이 만든 이벤트에서 재구성이 죽는다
+      // — ReplayReader의 readReplay·reconstructGame과 같은 규약이다.
+      if (event.type === "AugmentDrafted") {
+        const p = event.payload as { player: string; augmentId: string };
+        const def = game.augments.get(p.augmentId);
+        if (def !== undefined) installAugment(game.engine, def, p.player, { yaku: game.yaku });
+      }
     }
 
     // 재구성 점수 == 라이브 최종 점수
@@ -337,5 +420,97 @@ describe("HanchanController — PlayerView 가시성 통합", () => {
     });
     await ctrl.run();
     expect(checked).toBeGreaterThan(0);
+  });
+});
+
+// ─────────────────────────── 아가리야메 ───────────────────────────
+
+describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", () => {
+  // 오야 자리=0, 정산 후 장풍·국번이 그대로면 렌짱(오야 유지)로 본다.
+  const scores = (s0: number, s1: number, s2: number, s3: number) => [
+    { seat: 0, score: s0 },
+    { seat: 1, score: s1 },
+    { seat: 2, score: s2 },
+    { seat: 3, score: s3 },
+  ];
+
+  it("반장 남4국: 오야 렌짱 + 오야 단독 1위 → 종국", () => {
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+        prevalentWind: 2,
+        roundNumber: 4,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+    ).toBe(true);
+  });
+
+  it("동풍 동4국: 오야 렌짱 + 오야 단독 1위 → 종국", () => {
+    expect(
+      agariYameTriggers(true, 1, { wind: 1, roundNumber: 4, dealerSeat: 0 }, {
+        prevalentWind: 1,
+        roundNumber: 4,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+    ).toBe(true);
+  });
+
+  it("오야가 1위가 아니면 계속 (연장)", () => {
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+        prevalentWind: 2,
+        roundNumber: 4,
+        players: scores(20000, 40000, 20000, 20000),
+      }),
+    ).toBe(false);
+  });
+
+  it("오야가 1위지만 동점(단독 아님)이면 계속", () => {
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+        prevalentWind: 2,
+        roundNumber: 4,
+        players: scores(35000, 35000, 15000, 15000),
+      }),
+    ).toBe(false);
+  });
+
+  it("렌짱이 아니면(정산 후 국번이 넘어감) 미적용", () => {
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+        prevalentWind: 3, // 서1로 넘어감 = 오야 교대
+        roundNumber: 1,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+    ).toBe(false);
+  });
+
+  it("최종 국이 아니면(남3국 등) 미적용", () => {
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 3, dealerSeat: 0 }, {
+        prevalentWind: 2,
+        roundNumber: 3,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+    ).toBe(false);
+  });
+
+  it("반장에서 동4국(최종 아님)은 미적용", () => {
+    expect(
+      agariYameTriggers(true, 2, { wind: 1, roundNumber: 4, dealerSeat: 0 }, {
+        prevalentWind: 1,
+        roundNumber: 4,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+    ).toBe(false);
+  });
+
+  it("agariYame=false면 항상 미적용", () => {
+    expect(
+      agariYameTriggers(false, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+        prevalentWind: 2,
+        roundNumber: 4,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+    ).toBe(false);
   });
 });

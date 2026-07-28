@@ -21,6 +21,12 @@ export interface PlayerAgent {
   readonly isBot: boolean;
   /** 상태 갱신 수신. 봇은 무시하거나 다음 결정에 활용 */
   sendView(view: PlayerView): void;
+  /**
+   * 뷰 브로드캐스트 시 이 좌석 대신 다른 좌석 시점으로 뷰를 받고 싶을 때
+   * 그 좌석 id(또는 SPECTATOR_ID)를 돌려준다. null/미구현이면 본인 좌석 기준.
+   * 증강 테스트의 시점 전환(관찰) 전용 — 결정(decide)은 항상 본인 좌석으로 처리된다.
+   */
+  viewSeatOverride?(): PlayerId | null;
   /** 부가 서버 메시지 수신 (catalog·roundOver 등). 봇은 생략 가능 */
   notify?(msg: ServerMessage): void;
   /**

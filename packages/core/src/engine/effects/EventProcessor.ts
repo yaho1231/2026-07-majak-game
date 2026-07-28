@@ -16,11 +16,17 @@ import type { GameEvent, ProposedEvent } from "../events/GameEvent.js";
 import type { RuleRegistry } from "../rules/RuleRegistry.js";
 import { EffectRegistry } from "./EffectRegistry.js";
 
-export interface ProcessorOptions {
+export interface ProcessorOptions<S = unknown> {
   /** 세로 연쇄(A→B→A…) 한도. 대체 포함 매 홉마다 depth+1 */
   maxChainDepth?: number;
   /** 루트 이벤트 하나가 만들 수 있는 이벤트 총량 (가로 폭발 방지) */
   maxEventsPerRoot?: number;
+  /**
+   * source(증강 인스턴스)의 Interceptor·Reaction을 상태에 따라 무효화하는 게이트 (무장해제).
+   * false를 돌려주는 source의 효과는 이 이벤트 처리에서 건너뛴다. 생략(기본)이면 전부 적용해
+   * 종전 동작과 완전히 동일하다. GameEngine이 state.augmentData의 비활성 목록을 읽어 설정한다.
+   */
+  isSourceEnabled?: (source: string, state: S) => boolean;
 }
 
 export interface CanceledEvent {
@@ -52,14 +58,16 @@ export const DEFAULT_MAX_EVENTS_PER_ROOT = 128;
 export class EventProcessor<S> {
   private readonly maxChainDepth: number;
   private readonly maxEventsPerRoot: number;
+  private readonly isSourceEnabled: (source: string, state: S) => boolean;
 
   constructor(
     private readonly effects: EffectRegistry<S>,
     private readonly reducer: Reducer<S>,
-    options: ProcessorOptions = {},
+    options: ProcessorOptions<S> = {},
   ) {
     this.maxChainDepth = options.maxChainDepth ?? DEFAULT_MAX_CHAIN_DEPTH;
     this.maxEventsPerRoot = options.maxEventsPerRoot ?? DEFAULT_MAX_EVENTS_PER_ROOT;
+    this.isSourceEnabled = options.isSourceEnabled ?? (() => true);
   }
 
   /**
@@ -97,6 +105,8 @@ export class EventProcessor<S> {
       let draft = item.event;
       let dropped = false;
       for (const { source, intercept } of this.effects.interceptorsFor(draft.type)) {
+        // 무장해제로 비활성화된 source의 Interceptor는 건너뛴다
+        if (!this.isSourceEnabled(source, state)) continue;
         const result = intercept(draft, { state, rules });
         if (result === null) {
           canceled.push({ event: draft, by: source, reason: "canceled" });
@@ -123,7 +133,9 @@ export class EventProcessor<S> {
       events.push(confirmed);
 
       // ── Reaction: 방출은 큐 맨 뒤 (너비 우선) ──
-      for (const { react } of this.effects.reactionsFor(confirmed.type)) {
+      for (const { source, react } of this.effects.reactionsFor(confirmed.type)) {
+        // 무장해제로 비활성화된 source의 Reaction은 건너뛴다
+        if (!this.isSourceEnabled(source, state)) continue;
         react(confirmed, {
           state,
           rules,

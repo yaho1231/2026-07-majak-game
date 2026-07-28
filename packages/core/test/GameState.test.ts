@@ -105,4 +105,29 @@ describe("setupRound", () => {
     expect(before.zones[WALL]?.tileIds).toHaveLength(136);
     expect(before.round.phase).toBe("setup");
   });
+
+  it("국 시작 시 패를 원본으로 되돌린다 — 증강 변형(kind·conjured)이 다음 국으로 새지 않는다", () => {
+    // 지난 국에서 증강이 패 0을 다른 색으로 바꾸고 conjured 보라 이펙트를 붙였다고 가정
+    const dirty = setupRound(newGame());
+    const original = dirty.tiles[0]!;
+    const mutated: GameState = {
+      ...dirty,
+      round: { ...dirty.round, phase: "round.over" },
+      tiles: {
+        ...dirty.tiles,
+        0: { ...original, kind: { suit: "sou", rank: 9 }, attrs: { conjured: true } },
+      },
+    };
+
+    const next = setupRound(mutated);
+    // 패 0은 원본 kind로 복구되고 conjured 이펙트가 사라진다
+    expect(next.tiles[0]!.kind).toEqual(original.kind);
+    expect(next.tiles[0]!.attrs.conjured).toBeUndefined();
+    // 모든 패가 표준 세트와 일치한다 (변형 잔재 없음)
+    const fresh = setupRound(newGame());
+    for (const id of Object.keys(fresh.tiles).map(Number)) {
+      expect(next.tiles[id]!.kind).toEqual(fresh.tiles[id]!.kind);
+      expect(next.tiles[id]!.attrs).toEqual(fresh.tiles[id]!.attrs);
+    }
+  });
 });

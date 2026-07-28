@@ -3,7 +3,7 @@ Version : 1.0
 Status : Active
 Last Updated : 2026-07-15
 
-국의 진행: 페이즈 전이, 표준 액션, 부로 우선순위, 화료·유국 정산.
+국의 진행: 페이즈 전이, 표준 액션, 후로 우선순위, 화료·유국 정산.
 구현: `packages/core/src/mahjong/flow/`
 
 ---
@@ -58,7 +58,7 @@ flow.submit(player, option)     → FlowStatus   // 결정 하나 반영
 | riichi | turn.act | 멘젠, 미리치, 점수≥`riichi.cost`, 패산≥4, 버린 후 텐파이 |
 | win (쯔모/론) | turn.act / reaction | evaluateWin ok (역 1+), **론은 후리텐 검사**, 가깡 직후 창깡 가능 |
 | pon | reaction | 같은 kind 2장, `call.pon.enabled`, 리치 중 불가 |
-| chi | reaction | **상가의 버림만**, 순자 성립, `call.chi.enabled`, 리치 중 불가 |
+| chi | reaction | **상가의 버림만**, 슌쯔 성립, `call.chi.enabled`, 리치 중 불가 |
 | ankan | turn.act | 같은 kind 4장, 리치 중에는 마지막 쯔모패 포함 + 대기 불변일 때만 |
 | minkan | reaction | 버림패와 같은 kind 3장, 리치 중 불가 |
 | shouminkan | turn.act | 기존 pon에 같은 kind 1장 추가, 창깡 reaction 후 영상쯔모 |
@@ -85,7 +85,7 @@ flow.submit(player, option)     → FlowStatus   // 결정 하나 반영
 
 # 4. 정산 규칙 (01 §5·§7 구현)
 
-- **화료**: evaluateWin(우라 포함) → calculateScore. 본장: 론 +300(방총자),
+- **화료**: evaluateWin(뒷도라 포함) → calculateScore. 본장: 론 +300(방총자),
   쯔모 +100씩. 공탁은 첫 화료자(더블론 시 방총자 하가 우선)가 전액.
   친 화료 = 연친+본장+1 / 자 화료 = 친 이동+본장 0.
 - **황패유국**: 텐파이 공개(winningKinds로 판정), 노텐 벌부 3000을
@@ -93,12 +93,12 @@ flow.submit(player, option)     → FlowStatus   // 결정 하나 반영
 - **트리플론**: 유산국 처리 (본장+1, 공탁 이월, 친 유지).
 - **도중유국**: 구종구패(선택), 사풍연타, 사깡유국(2인 이상 4깡),
   사인리치, 트리플론을 `sys.settleAbort`로 처리한다.
-- **깡**: 대명깡/가깡/안깡을 지원한다. 기본 룰은 깡 후 신도라를 공개하고
-  영상패를 쯔모한다. `dora.kanTiming = "afterDiscard"` 변형에서는 신도라를
+- **깡**: 대명깡/가깡/안깡을 지원한다. 기본 룰은 깡 후 새로운 도라를 공개하고
+  영상패를 쯔모한다. `dora.kanTiming = "afterDiscard"` 변형에서는 새로운 도라를
   예약했다가 깡 후 첫 버림 뒤 공개한다. 가깡은 창깡 reaction을 먼저 열고,
   전원 패스 시 영상패로 진행한다. 안깡 창깡은 국사무쌍에 한해 허용한다.
-- **더블 리치**: 첫 버림 && 부로 없음. **일발**: 리치 후 자기 다음 버림 전까지,
-  부로 발생 시 소멸. **후리텐**: 자기 버림패에 대기패가 있으면 론 불가.
+- **더블 리치**: 첫 버림 && 후로 없음. **일발**: 리치 후 자기 다음 버림 전까지,
+  후로 발생 시 소멸. **후리텐**: 자기 버림패에 대기패가 있으면 론 불가.
   론 가능한 패를 넘기면 일시 후리텐이 붙고 다음 자기 쯔모 때 해제된다.
   리치 중 론 가능한 패를 넘기면 리치 후리텐으로 국 끝까지 론 불가다.
 

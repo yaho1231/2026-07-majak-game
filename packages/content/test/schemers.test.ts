@@ -5,7 +5,9 @@
 import { describe, expect, it } from "vitest";
 import {
   FlowController,
+  SPECTATOR_ID,
   SYSTEM_PLAYER,
+  buildPlayerView,
   createStandardGame,
   createStandardGameFromState,
   handIdsOf,
@@ -13,6 +15,7 @@ import {
   isNumberSuit,
   kindKey,
   kindOf,
+  seatWindOf,
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
@@ -55,11 +58,36 @@ function seatOf(game: Game, player: PlayerId): number {
   return p.seat;
 }
 
+/** seal_hands 액션 validate (사유 문자열 또는 null) */
+function sealValidate(game: Game, player: PlayerId): string | null {
+  const def = game.engine.actions.get("seal_hands");
+  if (def === undefined) throw new Error("no seal_hands action");
+  return def.validate(
+    { player, type: "seal_hands", payload: {} },
+    { state: game.engine.state, rules: game.engine.rules },
+  );
+}
+
 describe("discard_lock (봉인술사)", () => {
-  it("첫 국 시작 시 상대 3명의 손패 수패 중 최대 3종을 봉인하고 본인만 확인 가능하다", () => {
-    const game = createStandardGame({ seed: 42 });
+  it("액티브 발동 시 상대 3명의 손패 수패 중 최대 2종을 봉인하고 본인만 확인 가능하다", () => {
+    // 자기 턴의 국 첫 행동(버림 전) 상태를 만든다 — p0(seat 0)이 발동 조건을 만족한다.
+    const base = withAugments(
+      craft({
+        hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+        seed: 42,
+      }),
+      { p0: ["discard_lock"] },
+    );
+    const game = createStandardGameFromState(base);
     installAugment(game.engine, discardLock, "p0", { yaku: game.yaku });
-    sys(game, "sys.startRound");
+
+    // 발동 전에는 봉인이 없다
+    expect(game.engine.eventLog.some((e) => e.type === "DiscardLockSealed")).toBe(false);
+
+    const res = game.engine.submit({ player: "p0", type: "seal_hands", payload: {} });
+    expect(res.ok).toBe(true);
 
     const state = game.engine.state;
     for (const pid of ["p1", "p2", "p3"] as PlayerId[]) {
@@ -70,7 +98,7 @@ describe("discard_lock (봉인술사)", () => {
       expect(state.augmentData[viewKey("*", `sealed:${pid}`)]).toBeUndefined();
       const list = sealed as string[];
       expect(list.length).toBeGreaterThan(0);
-      expect(list.length).toBeLessThanOrEqual(3);
+      expect(list.length).toBeLessThanOrEqual(2);
       // 봉인된 kind는 실제로 그 플레이어 손패에 있는 수패 종류다
       const handNumberKinds = new Set(
         handIdsOf(state, pid)
@@ -94,31 +122,89 @@ describe("discard_lock (봉인술사)", () => {
         state,
       }),
     ).toEqual([]);
-    // 완료 플래그 기록 (게임당 1회)
-    expect(state.augmentData["discard_lock:done:p0"]).toBe(true);
+    // 발동 국 시퀀스 기록 (쿨다운 기준) — craft 상태는 seq 0
+    expect(state.augmentData["discard_lock:used:p0"]).toBe(0);
     // 난수 소비가 이벤트 payload를 거쳐 state.prngState에 반영되었다
     const sealedEvent = game.engine.eventLog.find((e) => e.type === "DiscardLockSealed");
     expect(sealedEvent).toBeDefined();
     expect((sealedEvent?.payload as { prngState: number }).prngState).toBe(state.prngState);
   });
 
-  it("봉인은 게임당 1회 — 다음 국이 시작돼도 다시 봉인하지 않는다", () => {
+  it("국 시작만으로는 봉인하지 않고, 매 국 쿨다운 카운터만 오른다 (자동 발동 없음)", () => {
     const game = createStandardGame({ seed: 7 });
     installAugment(game.engine, discardLock, "p0", { yaku: game.yaku });
     sys(game, "sys.startRound");
-    const before = ["p1", "p2", "p3"].map(
-      (pid) => game.engine.state.augmentData[viewKey("p0", `sealed:${pid}`)],
-    );
-
-    sys(game, "sys.settleAbort");
-    sys(game, "sys.startRound"); // 두 번째 국 — 재봉인 없어야 한다
-    const after = ["p1", "p2", "p3"].map(
-      (pid) => game.engine.state.augmentData[viewKey("p0", `sealed:${pid}`)],
-    );
-    expect(after).toEqual(before);
+    // 자동 봉인이 사라졌다 — 이벤트도, 봉인 목록도 없다
     expect(
-      game.engine.eventLog.filter((e) => e.type === "DiscardLockSealed"),
-    ).toHaveLength(1);
+      game.engine.eventLog.some((e) => e.type === "DiscardLockSealed"),
+    ).toBe(false);
+    for (const pid of ["p1", "p2", "p3"]) {
+      expect(game.engine.state.augmentData[viewKey("p0", `sealed:${pid}`)]).toBeUndefined();
+    }
+    // 국 시퀀스(쿨다운 기준)는 첫 국에 1로 올라간다
+    expect(game.engine.state.augmentData["discard_lock:seq:p0"]).toBe(1);
+  });
+
+  it("2국 쿨다운 — 발동 국 이후 2국이 지나야 다시 봉인할 수 있다", () => {
+    // seq/used를 직접 주입해 쿨다운 판정(validate)만 결정적으로 확인한다.
+    const mk = (seq: number, used: number | undefined): string | null => {
+      const base = withAugments(
+        craft({
+          hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+          phase: "turn.act",
+          turnSeat: 0,
+          seed: 7,
+        }),
+        { p0: ["discard_lock"] },
+      );
+      const state: GameState = {
+        ...base,
+        augmentData: {
+          ...base.augmentData,
+          "discard_lock:seq:p0": seq,
+          ...(used === undefined ? {} : { "discard_lock:used:p0": used }),
+        },
+      };
+      const game = createStandardGameFromState(state);
+      installAugment(game.engine, discardLock, "p0", { yaku: game.yaku });
+      return sealValidate(game, "p0");
+    };
+    expect(mk(1, undefined)).toBeNull(); // 한 번도 안 씀 → 가능
+    expect(mk(1, 1)).toBe("on cooldown"); // 방금 쓴 국
+    expect(mk(2, 1)).toBe("on cooldown"); // 1국 경과 — 아직
+    expect(mk(3, 1)).toBeNull(); // 2국 경과 → 다시 가능
+  });
+
+  it("국 도중(이미 버린 뒤)·상대 턴에는 봉인 버튼이 활성화되지 않는다", () => {
+    // p0이 이미 한 번 버린 상태(discardedKinds 비어 있지 않음) → 첫 시작 아님
+    const base = withAugments(
+      craft({
+        hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+        discards: { p0: "1m" },
+        phase: "turn.act",
+        turnSeat: 0,
+        seed: 5,
+      }),
+      { p0: ["discard_lock"] },
+    );
+    const midTurn = createStandardGameFromState(base);
+    installAugment(midTurn.engine, discardLock, "p0", { yaku: midTurn.yaku });
+    expect(sealValidate(midTurn, "p0")).toBe("not at round start");
+
+    // 상대(p1) 턴이면 내 턴이 아니다
+    const notMyTurn = createStandardGameFromState(
+      withAugments(
+        craft({
+          hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+          phase: "turn.act",
+          turnSeat: 1,
+          seed: 5,
+        }),
+        { p0: ["discard_lock"] },
+      ),
+    );
+    installAugment(notMyTurn.engine, discardLock, "p0", { yaku: notMyTurn.yaku });
+    expect(sealValidate(notMyTurn, "p0")).toBe("not your turn");
   });
 
   it("상대는 봉인 kind를 버릴 수 없고, 봉인 아닌 패·보유자 본인은 영향 없다", () => {
@@ -136,7 +222,6 @@ describe("discard_lock (봉인술사)", () => {
         [viewKey("p0", "sealed:p1")]: ["man1", "pin5", "sou9"],
         // 보유자 키가 있어도 본인에겐 적용되지 않아야 한다
         [viewKey("p0", "sealed:p0")]: ["man9"],
-        "discard_lock:done:p0": true,
       },
     };
     const game = createStandardGameFromState(state);
@@ -163,10 +248,45 @@ describe("discard_lock (봉인술사)", () => {
       }),
     ).toEqual([]);
   });
+
+  it("봉인 대상은 자기 뷰 sealedKinds로 봉인 종류를 본다 (타인 비노출, 관전자 전원 노출)", () => {
+    const base = craft({
+      hands: { p0: "*", p1: "123m456p789s11z22z", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 1,
+    });
+    const state: GameState = {
+      ...base,
+      augmentData: {
+        ...base.augmentData,
+        [viewKey("p0", "sealed:p1")]: ["man1", "pin5", "sou9"],
+        [viewKey("p0", "sealed:p0")]: ["man9"],
+      },
+    };
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, discardLock, "p0", { yaku: game.yaku });
+
+    // 봉인 대상 본인 뷰 — 자기 국 상태에 sealedKinds가 실린다 (자물쇠 표시용)
+    const viewP1 = buildPlayerView(game.engine.state, "p1", game.engine.rules);
+    expect(viewP1.round.byPlayer["p1"]?.sealedKinds).toEqual(["man1", "pin5", "sou9"]);
+
+    // 제3자 뷰에서는 남의 봉인이 보이지 않는다
+    const viewP2 = buildPlayerView(game.engine.state, "p2", game.engine.rules);
+    expect(viewP2.round.byPlayer["p1"]?.sealedKinds).toBeUndefined();
+
+    // 보유자 본인 패는 봉인되지 않는다 (sealed:p0 키가 있어도 무시)
+    const viewP0 = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    expect(viewP0.round.byPlayer["p0"]?.sealedKinds).toBeUndefined();
+
+    // 관전자(리플레이 포함)는 전원의 봉인을 본다
+    const spec = buildPlayerView(game.engine.state, SPECTATOR_ID, game.engine.rules);
+    expect(spec.round.byPlayer["p1"]?.sealedKinds).toEqual(["man1", "pin5", "sou9"]);
+    expect(spec.round.byPlayer["p2"]?.sealedKinds).toBeUndefined();
+  });
 });
 
 describe("pseudo_dealer (찬탈자)", () => {
-  it("자기 턴에 게임당 1회 선언 → 다음 국 동안만 오야 취급(win.treatAsDealer)", () => {
+  it("자기 턴에 선언하면 그 즉시 오야 자리를 빼앗고 자풍이 다시 매겨진다 (2국당 1회)", () => {
     const base = craft({
       hands: { p0: "*", p1: "123m456p789s11z22z", p2: "*", p3: "*" },
       phase: "turn.act",
@@ -185,6 +305,10 @@ describe("pseudo_dealer (찬탈자)", () => {
       ),
     ).toBe("no pseudo_dealer augment");
 
+    // 시작 시점 오야는 p0(자리 0), p1의 자풍은 남(2)
+    expect(game.engine.state.round.dealerSeat).toBe(0);
+    expect(seatWindOf(game.engine.state, "p1")).toBe(2);
+
     // 보유자 턴 프롬프트에 claim_dealer가 노출된다
     const flow = new FlowController(game.engine);
     const status = flow.begin();
@@ -192,14 +316,13 @@ describe("pseudo_dealer (찬탈자)", () => {
     const prompt = status.prompts.find((p) => p.player === "p1");
     expect(prompt?.options.some((o) => o.type === "claim_dealer")).toBe(true);
 
-    // 선언 실행 — "armed" + 사용 플래그, 선언한 국에는 아직 효과 없음
+    // 선언 실행 — 오야 자리가 p1로 넘어오고 자풍이 p1 기준으로 다시 정해진다
     const after = flow.submit("p1", { type: "claim_dealer", payload: {} });
     const st1 = game.engine.state;
-    expect(st1.augmentData["pseudo_dealer:p1"]).toBe("armed");
-    expect(st1.augmentData["pseudo_dealer:used:p1"]).toBe(true);
-    expect(
-      game.engine.rules.resolve<boolean>("win.treatAsDealer", { playerId: "p1", state: st1 }),
-    ).toBe(false);
+    expect(st1.round.dealerSeat).toBe(1);
+    expect(seatWindOf(st1, "p1")).toBe(1); // 동(오야)
+    expect(seatWindOf(st1, "p0")).toBe(4); // 원래 오야는 북으로 밀린다
+    expect(st1.augmentData["pseudo_dealer:cd:p1"]).toBe(2);
 
     // 선언 직후에도 턴은 이어지고, claim_dealer는 더 이상 제시되지 않는다 (discard는 유지)
     if (after.kind !== "awaiting") throw new Error("expected awaiting after claim");
@@ -207,31 +330,28 @@ describe("pseudo_dealer (찬탈자)", () => {
     expect(reprompt?.options.some((o) => o.type === "claim_dealer")).toBe(false);
     expect(reprompt?.options.some((o) => o.type === "discard")).toBe(true);
 
-    // 국 종료 → "active": 다음 국 동안 보유자만 오야 취급
+    // 국이 끝나도 오야 자리는 되돌아가지 않는다 (진짜 강탈) — 쿨다운만 줄어든다
     sys(game, "sys.settleAbort");
     const st2 = game.engine.state;
-    expect(st2.augmentData["pseudo_dealer:p1"]).toBe("active");
+    expect(st2.augmentData["pseudo_dealer:cd:p1"]).toBe(1);
+    // 쿨다운 중 재선언 거부
     expect(
-      game.engine.rules.resolve<boolean>("win.treatAsDealer", { playerId: "p1", state: st2 }),
-    ).toBe(true);
-    expect(
-      game.engine.rules.resolve<boolean>("win.treatAsDealer", { playerId: "p0", state: st2 }),
-    ).toBe(false);
+      def.validate(
+        { player: "p1", type: "claim_dealer", payload: {} },
+        { state: st2, rules: game.engine.rules },
+      ),
+    ).toBe("claim_dealer on cooldown");
 
-    // 그 다음 국 종료 → 해제 (연장 없음)
+    // 다음 국 종료 → 쿨다운 0, 다시 선언 가능
     sys(game, "sys.settleAbort");
     const st3 = game.engine.state;
-    expect(
-      game.engine.rules.resolve<boolean>("win.treatAsDealer", { playerId: "p1", state: st3 }),
-    ).toBe(false);
-
-    // 게임당 1회 — 재선언은 거부
+    expect(st3.augmentData["pseudo_dealer:cd:p1"]).toBe(0);
     expect(
       def.validate(
         { player: "p1", type: "claim_dealer", payload: {} },
         { state: st3, rules: game.engine.rules },
       ),
-    ).toBe("claim_dealer already used");
+    ).not.toBe("claim_dealer on cooldown");
   });
 
   it("자기 턴이 아니면 선언할 수 없다", () => {
@@ -254,19 +374,30 @@ describe("pseudo_dealer (찬탈자)", () => {
 });
 
 describe("seat_swap (자리 바꿈)", () => {
-  it("상대 지정 선언 → ROUND_SETTLED 이후 두 명의 seat가 교환되고 예약이 해제된다", () => {
+  // 52차(docs/16 §1b F): "다음 국부터"라는 지연을 없애고 **즉시 적용**으로 바꿨다.
+  // 발동 창은 내 첫 순(첫 바퀴에서 내가 아직 버리지 않았을 때)이다.
+  /** 첫 바퀴·아무도 안 버린 상태 (craft는 firstTurn:false라 직접 켜 준다) */
+  function craftFirstTurn(turnSeat = 0): GameState {
     const base = craft({
       hands: { p0: "123m456p789s11z22z", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
-      turnSeat: 0,
+      turnSeat,
     });
-    const game = createStandardGameFromState(withAugments(base, { p0: ["seat_swap"] }));
+    return { ...base, round: { ...base.round, firstTurn: true } };
+  }
+
+  it("내 첫 순에 상대를 지정하면 그 자리에서 즉시 자리가 바뀐다", () => {
+    // 동풍전(tonpuu)으로 열어 사용 1회 — 재사용 거부까지 한 번에 검증
+    const base = craftFirstTurn();
+    const tonpuu: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };
+    const game = createStandardGameFromState(
+      withAugments(tonpuu, { p0: ["seat_swap"] }),
+    );
     installAugment(game.engine, seatSwap, "p0", { yaku: game.yaku });
 
     const ctx = { state: game.engine.state, rules: game.engine.rules };
     const def = game.engine.actions.get("seat_swap");
     if (def === undefined) throw new Error("no seat_swap action");
-    // 자기 자신·미지의 대상·비보유자는 거부
     expect(
       def.validate({ player: "p0", type: "seat_swap", payload: { target: "p0" } }, ctx),
     ).toBe("cannot swap with yourself");
@@ -277,46 +408,91 @@ describe("seat_swap (자리 바꿈)", () => {
       def.validate({ player: "p1", type: "seat_swap", payload: { target: "p0" } }, ctx),
     ).toBe("no seat_swap augment");
 
-    // p2 지정 선언 — 즉시 자리가 바뀌지는 않는다 (예약만)
+    const before = { p0: seatOf(game, "p0"), p2: seatOf(game, "p2") };
     const result = game.engine.submit({
       player: "p0",
       type: "seat_swap",
       payload: { target: "p2" },
     });
     expect(result.ok).toBe(true);
-    expect(game.engine.state.augmentData["seat_swap:p0"]).toBe("p2");
-    expect(game.engine.state.augmentData["seat_swap:used:p0"]).toBe(true);
-    expect(seatOf(game, "p0")).toBe(0);
-    expect(seatOf(game, "p2")).toBe(2);
 
-    // 국 종료 → 자리 교환 + 예약 해제
-    sys(game, "sys.settleAbort");
-    expect(seatOf(game, "p0")).toBe(2);
-    expect(seatOf(game, "p2")).toBe(0);
+    // 예약이 아니라 즉시 교환 — 정산을 기다리지 않는다
+    expect(seatOf(game, "p0")).toBe(before.p2);
+    expect(seatOf(game, "p2")).toBe(before.p0);
     expect(seatOf(game, "p1")).toBe(1);
     expect(seatOf(game, "p3")).toBe(3);
-    expect(game.engine.state.augmentData["seat_swap:p0"]).toBeNull();
+    expect(game.engine.state.augmentData["seat_swap:uses:p0"]).toBe(1);
     expect(game.engine.eventLog.some((e) => e.type === "SeatsSwapped")).toBe(true);
 
-    // 게임당 1회 — 재사용 거부, 이후 국 종료에도 더 이상 교환 없음
+    // 동풍전 1회 — 재사용 거부
     expect(
       def.validate(
         { player: "p0", type: "seat_swap", payload: { target: "p1" } },
         { state: game.engine.state, rules: game.engine.rules },
       ),
-    ).toBe("seat_swap already used");
-    sys(game, "sys.settleAbort");
-    expect(seatOf(game, "p0")).toBe(2);
-    expect(seatOf(game, "p2")).toBe(0);
+    ).toBe("seat_swap no uses left");
+  });
+
+  it("오야를 지목하면 그 국의 오야를 그 자리에서 빼앗아 온다", () => {
+    // p1이 자기 첫 순에 오야(자리 0의 p0)를 지목한다 — 앞사람이 이미 버린 뒤여도 된다
+    const base = craftFirstTurn(1);
+    const state: GameState = {
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p0: { ...base.round.byPlayer.p0!, discardedKinds: ["m1"] },
+        },
+      },
+    };
+    const game = createStandardGameFromState(withAugments(state, { p1: ["seat_swap"] }));
+    installAugment(game.engine, seatSwap, "p1", { yaku: game.yaku });
+
+    const dealerSeat = game.engine.state.round.dealerSeat;
+    const dealerBefore = game.engine.state.players.find((p) => p.seat === dealerSeat)?.id;
+    expect(dealerBefore).toBe("p0");
+
+    const r = game.engine.submit({
+      player: "p1",
+      type: "seat_swap",
+      payload: { target: "p0" },
+    });
+    expect(r.ok).toBe(true);
+
+    const dealerAfter = game.engine.state.players.find(
+      (p) => p.seat === game.engine.state.round.dealerSeat,
+    )?.id;
+    expect(dealerAfter).toBe("p1"); // 오야를 훔쳐 왔다
+  });
+
+  it("내가 이미 버린 뒤에는 쓸 수 없다", () => {
+    const base = craftFirstTurn();
+    const state: GameState = {
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p0: { ...base.round.byPlayer.p0!, discardedKinds: ["m1"] },
+        },
+      },
+    };
+    const game = createStandardGameFromState(withAugments(state, { p0: ["seat_swap"] }));
+    installAugment(game.engine, seatSwap, "p0", { yaku: game.yaku });
+    const def = game.engine.actions.get("seat_swap");
+    expect(
+      def?.validate(
+        { player: "p0", type: "seat_swap", payload: { target: "p2" } },
+        { state: game.engine.state, rules: game.engine.rules },
+      ),
+    ).toBe("you already discarded this round");
   });
 
   it("보유자 턴 프롬프트에 상대 3명 각각의 교환 후보가 노출된다", () => {
-    const base = craft({
-      hands: { p0: "123m456p789s11z22z", p1: "*", p2: "*", p3: "*" },
-      phase: "turn.act",
-      turnSeat: 0,
-    });
-    const game = createStandardGameFromState(withAugments(base, { p0: ["seat_swap"] }));
+    const game = createStandardGameFromState(
+      withAugments(craftFirstTurn(), { p0: ["seat_swap"] }),
+    );
     installAugment(game.engine, seatSwap, "p0", { yaku: game.yaku });
 
     const flow = new FlowController(game.engine);

@@ -1,7 +1,8 @@
 /**
- * combat_augments — 이번에 추가된 증강 4종 검증.
- * vanguard(선봉) / nagashi_yakuman(유국역만) / cliff_bloom(절벽 위에 피어난 꽃) /
+ * combat_augments — 전투 계열 증강 3종 검증.
+ * nagashi_yakuman(유국역만) / cliff_bloom(절벽 위에 피어난 꽃) /
  * no_retreat(물러설 수 없는 선언)
+ * (선봉vanguard은 48차 도파민 리디자인에서 삭제 — 정산 배율 패시브)
  */
 
 import { describe, expect, it } from "vitest";
@@ -13,6 +14,7 @@ import {
   createStandardGameFromState,
   discardsZone,
   evaluateWin,
+  handZone,
   installAugment,
   playerOf,
 } from "@majak/core";
@@ -23,10 +25,11 @@ import type {
   TileId,
 } from "@majak/core";
 import { craft } from "./helpers.js";
-import { vanguard } from "../src/augments/vanguard.js";
 import { nagashiYakuman } from "../src/augments/nagashi_yakuman.js";
+import { yakumanShield } from "../src/augments/yakuman_shield.js";
 import { cliffBloom } from "../src/augments/cliff_bloom.js";
 import { noRetreat } from "../src/augments/no_retreat.js";
+import { suitUnify } from "../src/augments/suit_unify.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 const SYS = "__system";
@@ -79,66 +82,6 @@ function runTsumo(game: Game): RoundSettledPayload {
   return lastSettled(game);
 }
 
-// ─────────────────────────── vanguard (선봉) ───────────────────────────
-
-describe("vanguard (선봉)", () => {
-  it("동장 화료 시 얻는 점수가 1.5배", () => {
-    const base = runTsumo(createStandardGameFromState(tanyaoTsumo()));
-    const baseDelta = base.deltas["p0"] ?? 0;
-
-    const game = createStandardGameFromState(
-      withAugments(tanyaoTsumo(), "p0", ["vanguard"]),
-    );
-    installAugment(game.engine, vanguard, "p0", { yaku: game.yaku });
-    const settled = runTsumo(game);
-
-    expect(baseDelta).toBeGreaterThan(0);
-    expect(settled.deltas["p0"]).toBe(Math.round((baseDelta * 1.5) / 100) * 100);
-  });
-
-  it("동장이 아니면(남장) 0.75배만 얻는다", () => {
-    const south = (): GameState => {
-      const s = tanyaoTsumo();
-      return { ...s, round: { ...s.round, prevalentWind: 2 } };
-    };
-    const base = runTsumo(createStandardGameFromState(south()));
-    const baseDelta = base.deltas["p0"] ?? 0;
-
-    const game = createStandardGameFromState(withAugments(south(), "p0", ["vanguard"]));
-    installAugment(game.engine, vanguard, "p0", { yaku: game.yaku });
-    const settled = runTsumo(game);
-
-    expect(settled.deltas["p0"]).toBe(Math.round((baseDelta * 0.75) / 100) * 100);
-  });
-
-  it("방총(실점)은 배율이 적용되지 않는다", () => {
-    // p0가 지불하는 국: p1이 p0의 버림을 론. vanguard는 화료자 본인일 때만 발동.
-    const s = withAugments(
-      craft({
-        hands: { p0: "*", p1: "234m345p456s678s2s", p2: "*", p3: "*" },
-        phase: "reaction",
-        turnSeat: 1,
-        lastDiscard: { player: "p0", spec: "2s" },
-      }),
-      "p0",
-      ["vanguard"],
-    );
-    const game = createStandardGameFromState(s);
-    installAugment(game.engine, vanguard, "p0", { yaku: game.yaku });
-    const flow = new FlowController(game.engine);
-    const status = flow.begin();
-    if (status.kind !== "awaiting") throw new Error("expected awaiting");
-    const win = status.prompts
-      .find((p) => p.player === "p1")
-      ?.options.find((o) => o.type === "win");
-    if (win === undefined) throw new Error("no ron for p1");
-    flow.submit("p1", win);
-    const settled = lastSettled(game);
-    // p0의 실점과 p1의 획득이 정확히 상쇄 (배율 없음)
-    expect(settled.deltas["p0"]).toBeLessThan(0);
-    expect((settled.deltas["p0"] ?? 0) + (settled.deltas["p1"] ?? 0)).toBe(0);
-  });
-});
 
 // ─────────────────────── nagashi_yakuman (유국역만) ───────────────────────
 
@@ -191,7 +134,9 @@ describe("nagashi_yakuman (유국역만)", () => {
     expect(settled.deltas["p0"]).toBe(base.deltas["p0"]);
   });
 
-  it("내 버림이 울리면(called 플래그) 성립하지 않는다", () => {
+  // 52차(docs/16 §1b D): 성립 조건이 극단적이라 사실상 장식이던 것을 완화 —
+  // **무울림 조건을 삭제**했다. 내 버림이 울려도 바닥이 전부 요구패면 성립한다.
+  it("내 버림이 울려도 성립한다 (52차: 무울림 조건 삭제)", () => {
     const game = createStandardGameFromState(
       withData(withAugments(drawState(), "p0", ["nagashi_yakuman"]), {
         "nagashi_yakuman:called:p0": "1-1-0",
@@ -200,18 +145,40 @@ describe("nagashi_yakuman (유국역만)", () => {
     installAugment(game.engine, nagashiYakuman, "p0", { yaku: game.yaku });
     const base = settleDraw(createStandardGameFromState(drawState()));
     const settled = settleDraw(game);
-    expect(settled.deltas["p0"]).toBe(base.deltas["p0"]);
+    expect(settled.deltas["p0"]).toBeGreaterThan(base.deltas["p0"] ?? 0);
+  });
+
+  it("역만 방어술 보유자는 유국역만 지불에서 면제된다 (완전 면역 연동)", () => {
+    // p0 유국역만(오야) + p1이 역만 방어술 보유 → p1은 0, p2·p3만 16000씩 낸다.
+    const st = withAugments(
+      withAugments(drawState(), "p0", ["nagashi_yakuman"]),
+      "p1",
+      ["yakuman_shield"],
+    );
+    const base = settleDraw(createStandardGameFromState(drawState()));
+
+    const game = createStandardGameFromState(st);
+    installAugment(game.engine, nagashiYakuman, "p0", { yaku: game.yaku });
+    installAugment(game.engine, yakumanShield, "p1", { yaku: game.yaku });
+    const settled = settleDraw(game);
+
+    const diff = (id: PlayerId): number =>
+      (settled.deltas[id] ?? 0) - (base.deltas[id] ?? 0);
+    expect(diff("p1")).toBe(0); // 방어막 → 면제
+    expect(diff("p2")).toBe(-16000);
+    expect(diff("p3")).toBe(-16000);
+    expect(diff("p0")).toBe(32000); // p2·p3 몫만 수령
   });
 });
 
 // ───────────────────── cliff_bloom (절벽 위에 피어난 꽃) ─────────────────────
 
-describe("cliff_bloom (절벽 위에 피어난 꽃)", () => {
-  /** 1m 안깡 후 234567p9934s(2s·5s 대기)로 텐파이가 되는 손 */
-  function bloomState(): GameState {
+describe("cliff_bloom (절벽 위에 피어난 꽃) — 48차 재설계", () => {
+  /** 1m·2p 각각 4장 — 한 국에 안깡을 두 번 할 수 있는 손 (텐파이와 무관) */
+  function twoKanState(): GameState {
     return withAugments(
       craft({
-        hands: { p0: "1111m234567p9934s", p1: "*", p2: "*", p3: "*" },
+        hands: { p0: "1111m2222p345s678s", p1: "*", p2: "*", p3: "*" },
         phase: "turn.act",
         turnSeat: 0,
         drawnLastFor: "p0",
@@ -221,53 +188,82 @@ describe("cliff_bloom (절벽 위에 피어난 꽃)", () => {
     );
   }
 
-  it("bloom_kan이 노출되고, 사용하면 영상개화로 화료한다", () => {
-    const game = createStandardGameFromState(bloomState());
+  function optionsFor(
+    status: ReturnType<FlowController["begin"]>,
+    player: PlayerId,
+  ): { type: string; payload: unknown }[] {
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    return status.prompts.find((p) => p.player === player)?.options ?? [];
+  }
+
+  it("깡을 하면 영상패 선택(bloom_pick)이 열리고, 고른 패가 손에 들어온다", () => {
+    const game = createStandardGameFromState(twoKanState());
     installAugment(game.engine, cliffBloom, "p0", { yaku: game.yaku });
 
     const flow = new FlowController(game.engine);
-    const s0 = flow.begin();
-    if (s0.kind !== "awaiting") throw new Error("expected awaiting");
-    const bloom = s0.prompts
-      .find((p) => p.player === "p0")
-      ?.options.find((o) => o.type === "bloom_kan");
-    expect(bloom).toBeDefined();
+    let status = flow.begin();
+    const ankan = optionsFor(status, "p0").find((o) => o.type === "ankan");
+    expect(ankan).toBeDefined();
 
-    const s1 = flow.submit("p0", bloom!);
-    if (s1.kind !== "awaiting") throw new Error("expected awaiting after kan");
-    const win = s1.prompts
-      .find((p) => p.player === "p0")
-      ?.options.find((o) => o.type === "win");
-    expect(win).toBeDefined();
+    status = flow.submit("p0", ankan!);
+    // 깡의 영상 쯔모가 영상패 1장을 **소모**했으므로(보충 없음, 07 §2) 남은 3장이 후보다
+    const picks = optionsFor(status, "p0").filter((o) => o.type === "bloom_pick");
+    expect(picks).toHaveLength(3);
+
+    const deadWallBefore = [...(game.engine.state.zones["deadWall"]?.tileIds ?? [])];
+    expect(deadWallBefore).toHaveLength(13);
+    const wanted = deadWallBefore[2] as TileId;
+    const pick2 = picks.find((o) => (o.payload as { index: number }).index === 2);
+    flow.submit("p0", pick2!);
+
+    const st = game.engine.state;
+    // 고른 패가 손에 들어오고 새 쯔모패가 된다 / 왕패 장수는 보존된다
+    expect(st.zones[handZone("p0")]?.tileIds).toContain(wanted);
+    expect(st.round.lastDrawnTile).toBe(wanted);
+    expect(st.zones["deadWall"]?.tileIds).toHaveLength(deadWallBefore.length);
+  });
+
+  it("같은 국에 깡을 두 번 하면 텐파이가 아니어도 손이 만개해 영상개화로 화료한다", () => {
+    const game = createStandardGameFromState(twoKanState());
+    installAugment(game.engine, cliffBloom, "p0", { yaku: game.yaku });
+
+    const flow = new FlowController(game.engine);
+    let status = flow.begin();
+    // 첫 깡 — 아직 만개하지 않는다
+    status = flow.submit("p0", optionsFor(status, "p0").find((o) => o.type === "ankan")!);
+    expect(optionsFor(status, "p0").some((o) => o.type === "win")).toBe(false);
+
+    // 두 번째 깡 — 만개
+    const secondKan = optionsFor(status, "p0").find((o) => o.type === "ankan");
+    expect(secondKan).toBeDefined();
+    status = flow.submit("p0", secondKan!);
+
+    const win = optionsFor(status, "p0").find((o) => o.type === "win");
+    expect(win).toBeDefined(); // 패와 상관없이 화료할 수 있다
+    // 만개했으므로 영상패 선택은 더 뜨지 않는다
+    expect(optionsFor(status, "p0").some((o) => o.type === "bloom_pick")).toBe(false);
 
     flow.submit("p0", win!);
     const settled = lastSettled(game);
     const info = settled.winInfos?.find((w) => w.winner === "p0");
     expect(info).toBeDefined();
     expect(info!.yaku.some((y) => y.id === "rinshan")).toBe(true);
+    expect(settled.deltas["p0"]).toBeGreaterThan(0);
   });
 
-  it("텐파이가 되지 않는 깡은 bloom_kan을 노출하지 않는다", () => {
-    // 1m 4장을 깡하면 남는 손이 텐파이가 아님 (흩어진 패)
-    const s = withAugments(
-      craft({
-        hands: { p0: "1111m258m369p47s9s", p1: "*", p2: "*", p3: "*" },
-        phase: "turn.act",
-        turnSeat: 0,
-        drawnLastFor: "p0",
-      }),
-      "p0",
-      ["cliff_bloom"],
-    );
-    const game = createStandardGameFromState(s);
+  it("횟수 제한이 없다 — 다음 국에도 깡마다 다시 고를 수 있다", () => {
+    const base = twoKanState();
+    const game = createStandardGameFromState({
+      ...base,
+      round: { ...base.round, prevalentWind: 2, roundNumber: 3, honba: 1 },
+    });
     installAugment(game.engine, cliffBloom, "p0", { yaku: game.yaku });
+
     const flow = new FlowController(game.engine);
-    const s0 = flow.begin();
-    if (s0.kind !== "awaiting") throw new Error("expected awaiting");
-    const bloom = s0.prompts
-      .find((p) => p.player === "p0")
-      ?.options.find((o) => o.type === "bloom_kan");
-    expect(bloom).toBeUndefined();
+    let status = flow.begin();
+    status = flow.submit("p0", optionsFor(status, "p0").find((o) => o.type === "ankan")!);
+    // 깡으로 영상패 1장이 소모돼 남은 3장이 후보다 (국이 바뀌어도 다시 열린다는 것이 요지)
+    expect(optionsFor(status, "p0").filter((o) => o.type === "bloom_pick")).toHaveLength(3);
   });
 });
 
@@ -303,22 +299,67 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
 
     flow.submit("p0", declare!);
     const st = game.engine.state;
-    expect(st.augmentData["no_retreat:used:p0"]).toBe(true);
     expect(st.augmentData["no_retreat:round:p0"]).toBe("1-1-0");
   });
 
-  it("선언 후 리치 전에는 모든 역이 봉인된다 (리치 포함 화료만)", () => {
+  it("선언 후에는 같은 국에 다시 선언할 수 없다 (매 국 1회)", () => {
+    // 이미 이번 국(1-1-0)에 선언한 상태 → 첫 턴이어도 후보가 사라진다.
     const game = createStandardGameFromState(withData(firstTurn(), DECLARED));
     installAugment(game.engine, noRetreat, "p0", { yaku: game.yaku });
-    const blocked = game.engine.rules.resolve<string[]>("win.blockedYaku", {
-      playerId: "p0",
-      state: game.engine.state,
-    });
-    // 리치 중이 아니므로 전 역 봉인 (탕야오·멘젠쯔모 등 다수)
-    expect(blocked).toContain("tanyao");
-    expect(blocked).toContain("menzen_tsumo");
-    expect(blocked.length).toBeGreaterThan(20);
-    // 미보유자는 영향 없음
+    const flow = new FlowController(game.engine);
+    const s0 = flow.begin();
+    if (s0.kind !== "awaiting") throw new Error("expected awaiting");
+    const declare = s0.prompts
+      .find((p) => p.player === "p0")
+      ?.options.find((o) => o.type === "declare_no_retreat");
+    expect(declare).toBeUndefined();
+  });
+
+  /** firstTurn을 지정한 동장 국 번호로 옮기고 선언 기록을 주입한 상태 */
+  function atRound(roundNumber: number, declaredRoundKey: string): GameState {
+    const base = firstTurn();
+    return {
+      ...base,
+      round: { ...base.round, roundNumber },
+      augmentData: { ...base.augmentData, "no_retreat:round:p0": declaredRoundKey },
+    };
+  }
+
+  /** 그 상태에서 declare_no_retreat 후보가 노출되는가 */
+  function declareAvailable(state: GameState): boolean {
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, noRetreat, "p0", { yaku: game.yaku });
+    const s0 = new FlowController(game.engine).begin();
+    if (s0.kind !== "awaiting") throw new Error("expected awaiting");
+    return (
+      s0.prompts
+        .find((p) => p.player === "p0")
+        ?.options.some((o) => o.type === "declare_no_retreat") ?? false
+    );
+  }
+
+  it("선언한 바로 다음 국은 쿨다운으로 선언할 수 없다 (2국에 1회)", () => {
+    // 동1(1-1-0)에 선언 → 동2(1-2-0)는 쿨다운 (diff 1 < 2)
+    expect(declareAvailable(atRound(2, "1-1-0"))).toBe(false);
+  });
+
+  it("2국 뒤·오래된 선언 이력이면 다시 선언할 수 있다", () => {
+    // 동1에 선언 → 동3(1-3-0)부터 다시 가능 (diff 2)
+    expect(declareAvailable(atRound(3, "1-1-0"))).toBe(true);
+    // 아주 오래된 이력(0-0-0)은 당연히 가능
+    expect(declareAvailable(atRound(1, "0-0-0"))).toBe(true);
+  });
+
+  it("선언해도 역을 봉인하지 않는다 — 리치 없이도 그대로 화료할 수 있다 (48차 무페널티)", () => {
+    const game = createStandardGameFromState(withData(firstTurn(), DECLARED));
+    installAugment(game.engine, noRetreat, "p0", { yaku: game.yaku });
+    // 예전에는 "리치를 안 걸면 전 역 봉인(=화료 불가)"이라는 배수진이 있었다.
+    expect(
+      game.engine.rules.resolve<string[]>("win.blockedYaku", {
+        playerId: "p0",
+        state: game.engine.state,
+      }),
+    ).toEqual([]);
     expect(
       game.engine.rules.resolve<string[]>("win.blockedYaku", {
         playerId: "p1",
@@ -361,7 +402,7 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
 
   it("리치·일발·뒷도라가 2판으로 계산된다 (extraHan)", () => {
     // p0 리치+일발 쯔모. 선언 상태에서 extraHan = uraHan(2배분) + 리치1 + 일발1.
-    const s = withData(firstTurn(), { ...DECLARED, "no_retreat:used:p0": true });
+    const s = withData(firstTurn(), { ...DECLARED });
     const st: GameState = {
       ...s,
       round: {
@@ -397,8 +438,7 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
 // ───────────── 다중 액티브 증강: 한 턴에 여러 발동 후보 노출 ─────────────
 
 describe("여러 액티브 증강 동시 보유", () => {
-  it("첫 턴에 cliff_bloom·no_retreat 둘 다 보유하면 두 발동 후보가 모두 노출된다", () => {
-    // 안깡→텐파이가 되는 개막 손 + 두 액티브 증강
+  it("첫 턴에 suit_unify·no_retreat 둘 다 보유하면 두 발동 후보가 모두 노출된다", () => {
     const s = withAugments(
       craft({
         hands: { p0: "1111m234567p9934s", p1: "*", p2: "*", p3: "*" },
@@ -407,10 +447,10 @@ describe("여러 액티브 증강 동시 보유", () => {
         drawnLastFor: "p0",
       }),
       "p0",
-      ["cliff_bloom", "no_retreat"],
+      ["suit_unify", "no_retreat"],
     );
     const game = createStandardGameFromState(s);
-    installAugment(game.engine, cliffBloom, "p0", { yaku: game.yaku });
+    installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
     installAugment(game.engine, noRetreat, "p0", { yaku: game.yaku });
 
     const flow = new FlowController(game.engine);
@@ -418,7 +458,7 @@ describe("여러 액티브 증강 동시 보유", () => {
     if (status.kind !== "awaiting") throw new Error("expected awaiting");
     const opts = status.prompts.find((p) => p.player === "p0")?.options ?? [];
     // 클라이언트가 액티브 메뉴로 골라 쓸 수 있도록 두 증강의 액션이 모두 프롬프트에 있다
-    expect(opts.some((o) => o.type === "bloom_kan")).toBe(true);
+    expect(opts.some((o) => o.type === "mono_world")).toBe(true);
     expect(opts.some((o) => o.type === "declare_no_retreat")).toBe(true);
   });
 });

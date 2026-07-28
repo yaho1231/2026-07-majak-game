@@ -12,12 +12,15 @@ import type { PlayerView, PublicTileView } from "../information/PlayerView.js";
 import type { TileId } from "../mahjong/tiles/Tile.js";
 import type { DecisionPrompt, ActionOption } from "../mahjong/flow/FlowController.js";
 import type { RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
-import type { AugmentDef, AugmentTier } from "../augment/Augment.js";
+import type { AugmentCategory, AugmentDef, AugmentTier } from "../augment/Augment.js";
 import type { PlayerStatsView } from "../stats/PlayerStats.js";
 
 // ─────────────────────────── 클라이언트 → 서버 ───────────────────────────
 
-export type DraftStage = "gameStart" | "southEntry";
+export type DraftStage = "gameStart" | "southEntry" | "eastThird";
+
+/** 게임 모드 — 반장전(hanchan)·동풍전(tonpuu). */
+export type GameMode = import("../engine/state/GameState.js").GameMode;
 
 // ── 인증 (15) ──
 
@@ -83,6 +86,27 @@ export interface ReplayGetMessage {
 
 // ── 관리자 관전 (15) ──
 
+/** 전체 플레이어 누적 통계(리더보드) 요청 — 로그인한 누구나. */
+export interface LeaderboardRequestMessage {
+  type: "leaderboard";
+}
+
+/** 전체 계정 목록 요청 (관리자 전용). */
+export interface AdminUsersRequestMessage {
+  type: "adminUsers";
+}
+
+/** 증강 파워 티어표 요청 (관리자 전용). */
+export interface AdminAugmentTiersRequestMessage {
+  type: "adminAugmentTiers";
+}
+
+/** 계정 삭제 (관리자 전용). */
+export interface AdminDeleteUserMessage {
+  type: "adminDeleteUser";
+  userId: number;
+}
+
 /** 진행 중 게임 목록 요청 (관리자 전용). */
 export interface LiveGamesRequestMessage {
   type: "liveGames";
@@ -97,6 +121,51 @@ export interface SpectateMessage {
 /** 관전 종료. */
 export interface SpectateStopMessage {
   type: "spectateStop";
+}
+
+// ── 증강 테스트(샌드박스) (49) ──
+
+/**
+ * 증강 테스트 게임 시작 (관리자 전용).
+ * 봇 3명과 함께 드래프트 없이 즉시 시작하는 1인 전용 방을 만든다.
+ * 이 방의 게임은 리플레이·게임 기록·누적 통계를 남기지 않는다(실데이터 오염 방지).
+ */
+export interface SandboxStartMessage {
+  type: "sandboxStart";
+  /** 게임 모드 (기본 반장전). 모드 전용 증강을 시험하려면 동풍전으로 연다. */
+  mode?: GameMode;
+}
+
+/** 진행 중인 테스트 게임에서 증강 1개를 즉시 획득한다 (관리자 전용). */
+export interface SandboxGrantMessage {
+  type: "sandboxGrant";
+  augmentId: string;
+  /** 지급 대상 좌석 (생략 시 본인). 봇에게 줘서 상대 시점도 시험할 수 있다. */
+  target?: PlayerId;
+}
+
+/**
+ * 테스트 게임 초기화 — 지금 판을 버리고 지정한 증강만 지급된 새 판을 시작한다.
+ * augments를 비우면 증강 없는 백지 상태가 된다.
+ */
+export interface SandboxResetMessage {
+  type: "sandboxReset";
+  /** 새 판 시작 시 좌석별로 미리 지급할 증강 (생략·빈 객체 = 증강 없음) */
+  augments?: Record<string, string[]>;
+  /** 새 판의 게임 모드 (생략 시 유지) */
+  mode?: GameMode;
+}
+
+/**
+ * 증강 테스트에서 뷰 시점을 다른 좌석으로 전환한다 (관리자 전용).
+ * seat에 다른 좌석 id를 주면 그 좌석이 실제로 보는 가시성 필터가 적용된 뷰를,
+ * SPECTATOR_ID(`__spectator`)를 주면 전체 공개 뷰를 받는다. 본인 좌석 id로 되돌린다.
+ * 관찰 전용 — 이 시점에서 조작(버림·리치 등)은 하지 않는다(프롬프트는 항상 본인 좌석 기준).
+ */
+export interface SandboxViewAsMessage {
+  type: "sandboxViewAs";
+  /** 관찰할 좌석 id (또는 SPECTATOR_ID). 본인 좌석 id면 원래 시점으로 복귀. */
+  seat: PlayerId;
 }
 
 /** @deprecated 15차 이전 호환용 — joinRoom을 사용하라. */
@@ -157,6 +226,12 @@ export interface StartGameMessage {
   type: "startGame";
 }
 
+/** 게임 모드 변경 (방장 전용, 대기 중에만). 대기실에서 반장전/동풍전을 고른다. */
+export interface SetGameModeMessage {
+  type: "setGameMode";
+  mode: GameMode;
+}
+
 /** 통계 재전송 요청. */
 export interface StatsRequestMessage {
   type: "statsRequest";
@@ -183,6 +258,7 @@ export type ClientMessage =
   | AddBotMessage
   | RemoveBotMessage
   | StartGameMessage
+  | SetGameModeMessage
   | StatsRequestMessage
   | VoteAbortMessage
   | RegisterMessage
@@ -194,9 +270,17 @@ export type ClientMessage =
   | LeaveRoomMessage
   | ReplayListRequestMessage
   | ReplayGetMessage
+  | LeaderboardRequestMessage
+  | AdminUsersRequestMessage
+  | AdminAugmentTiersRequestMessage
+  | AdminDeleteUserMessage
   | LiveGamesRequestMessage
   | SpectateMessage
-  | SpectateStopMessage;
+  | SpectateStopMessage
+  | SandboxStartMessage
+  | SandboxGrantMessage
+  | SandboxResetMessage
+  | SandboxViewAsMessage;
 
 // ─────────────────────────── 서버 → 클라이언트 ───────────────────────────
 
@@ -218,6 +302,16 @@ export interface PromptMessage {
   prompt: DecisionPrompt;
 }
 
+/**
+ * 대기 중이던 프롬프트가 **내 응답 없이** 해소됐다 (제한 시간 초과·좌석 포기).
+ * 서버는 안전 폴백으로 진행하지만, 클라이언트에는 아무 신호도 가지 않아
+ * 선택 UI(버튼·영상패 선택 모달 등)가 내 차례가 지나간 뒤에도 계속 떠 있었다.
+ * 이 메시지를 받으면 떠 있는 선택 UI를 즉시 닫는다.
+ */
+export interface PromptCancelMessage {
+  type: "promptCancel";
+}
+
 export interface DraftOfferMessage {
   type: "draftOffer";
   stage: DraftStage;
@@ -227,14 +321,25 @@ export interface DraftOfferMessage {
     name: string;
     description: string;
   }>;
+  /** 자동 선택까지 남은 시간(ms) — 클라이언트 카운트다운 표시용. 없으면 표시 안 함. */
+  deadlineMs?: number;
 }
 
 /** 증강 카탈로그 항목 (표시용 — 클라이언트가 id→이름을 얻는 유일한 경로) */
 export interface AugmentCatalogEntry {
   id: string;
   tier: AugmentTier;
+  /** 계열 (AugmentDef.category) — 카드·pill·컷인 색과 아이콘의 단일 소스 */
+  category: AugmentCategory;
   name: string;
   description: string;
+  /** 도감 상세 설명 (AugmentDef.detail). 없으면 도감은 description으로 대체 표시. */
+  detail?: string;
+  /** 드래프트 스테이지 제한 (없으면 전 스테이지). 도감 "획득 시점" 배지용. */
+  draftStages?: readonly ("gameStart" | "southEntry" | "eastThird")[];
+  /** 게임 모드 제한 (없으면 전 모드). 도감 "모드 전용" 배지용. */
+  modes?: readonly GameMode[];
+  /** 지급형 증강이면 함께 지급되는 등급 (도박사 계열). 도감 "연쇄 지급" 배지용. */
 }
 
 /** 게임 시작 시 1회 전송 — 증강 pill·드래프트 표시에 쓰는 정적 카탈로그 */
@@ -247,7 +352,7 @@ export interface CatalogMessage {
 export interface RevealedHand {
   /** 손패 (화료패 포함, 정렬 전) */
   hand: PublicTileView[];
-  /** 부로 묶음 */
+  /** 후로 묶음 */
   melds: { kind: string; tiles: PublicTileView[] }[];
 }
 
@@ -256,9 +361,9 @@ export interface RoundOverMessage {
   outcome: "win" | "draw" | "abort";
   /** 정산 상세 — 점수 변동·화료 정보(역 목록·판·부·점수) 포함 */
   settle: RoundSettledPayload;
-  /** 화료 시 공개되는 우라도라 표시패 */
+  /** 화료 시 공개되는 뒷도라 표시패 */
   uraDoraIndicators: TileId[];
-  /** 이 메시지가 참조하는 패의 메타데이터 (우라 표시패·화료패) */
+  /** 이 메시지가 참조하는 패의 메타데이터 (뒷도라 표시패·화료패) */
   tiles: Record<TileId, PublicTileView>;
   /** 화료자별 공개 손패 */
   revealedHands: Record<PlayerId, RevealedHand>;
@@ -334,6 +439,8 @@ export interface LobbyMessage {
   youId: PlayerId;
   /** 방장이 지금 게임을 시작할 수 있는지 (4인 + 전원 준비). */
   canStart: boolean;
+  /** 선택된 게임 모드 (반장전/동풍전). 방장만 바꿀 수 있다. */
+  gameMode: GameMode;
   players: LobbyPlayerEntry[];
 }
 
@@ -355,6 +462,79 @@ export interface StatsMessage {
   game?: StatsEntry[];
   /** 누적(career) 통계. */
   career: StatsEntry[];
+}
+
+// ── 전체 통계 · 계정 관리 (32) ──
+
+/** 리더보드 항목 — 닉네임별 누적 통계(봇 제외). */
+export interface LeaderboardEntry {
+  nickname: string;
+  stats: PlayerStatsView;
+}
+
+/** 전체 플레이어 통계 — 메인 화면에서 누구나 볼 수 있다. */
+export interface LeaderboardMessage {
+  type: "leaderboard";
+  entries: LeaderboardEntry[];
+}
+
+/** 계정 1건 (관리자 목록용). */
+export interface AdminUserEntry {
+  id: number;
+  username: string;
+  isAdmin: boolean;
+  /** ISO 가입 시각 */
+  createdAt: string;
+  /** 참가한 게임 수 */
+  games: number;
+}
+
+/** 전체 계정 목록 (관리자 전용 응답). */
+export interface AdminUsersMessage {
+  type: "adminUsers";
+  users: AdminUserEntry[];
+}
+
+/**
+ * 증강 파워 티어표 한 줄 (관리자 전용).
+ * **실시간**: 서버가 살아 있는 카탈로그와 `AUGMENT_POWER_TIERS`를 매 요청마다 조인한다 —
+ * 티어 표에 없는 증강은 `tier: null`(미분류)로 그대로 드러나고, 카탈로그에서 사라진
+ * id는 애초에 나오지 않는다.
+ */
+export interface AugmentTierEntry {
+  id: string;
+  name: string;
+  category: AugmentCategory;
+  description: string;
+  /** null이면 powerTier.ts에 아직 등재되지 않은 증강 (미분류) */
+  tier: string | null;
+  /** 타점 */
+  p: number | null;
+  /** 속도 */
+  s: number | null;
+  /** 무대응 */
+  u: number | null;
+  /** 빈도 */
+  f: number | null;
+  /** p*3 + s*3 + u*2 + f*2 */
+  score: number | null;
+  /** 드래프트 가중치 (1.0 = 균등 기준) */
+  weight: number | null;
+  /** 조건이 극단적으로 드물어 산식보다 한 단계 낮춘 항목 */
+  rare: boolean;
+  note: string;
+}
+
+/** 증강 파워 티어표 (관리자 전용 응답). */
+export interface AdminAugmentTiersMessage {
+  type: "adminAugmentTiers";
+  entries: AugmentTierEntry[];
+  /** 티어 순서 (강한 것부터) — 클라가 그룹 정렬에 쓴다 */
+  order: string[];
+  /** 티어별 한 줄 정의 */
+  labels: Record<string, string>;
+  /** 티어별 드래프트 가중치 */
+  weights: Record<string, number>;
 }
 
 // ── 인증·방·리플레이·관전 응답 (15) ──
@@ -422,7 +602,24 @@ export interface SpectateEndedMessage {
 }
 
 /**
- * 액션 연출 트리거 — 표준 액션(버림·리치·부로 등)이 아닌 특수 액션
+ * 증강 테스트 게임 상태 (관리자 전용) — 판이 시작·재시작될 때마다 전송한다.
+ * 이 메시지를 받은 클라이언트는 증강 테스트 패널을 열고, 이전 판의 잔상
+ * (프롬프트·결과 화면·순위)을 정리한 뒤 새 판의 뷰를 받는다.
+ */
+export interface SandboxMessage {
+  type: "sandbox";
+  code: string;
+  mode: GameMode;
+  /** 이 판 시작 시 좌석별로 미리 지급된 증강 */
+  augments: Record<string, string[]>;
+  /** 이 테스트 방에서 관리자 본인이 실제로 앉은 좌석 id (조작·복귀 기준) */
+  seat: PlayerId;
+  /** 현재 관찰 중인 좌석 id (또는 SPECTATOR_ID). 본인 좌석이면 평소대로 조작 가능. */
+  viewAs: PlayerId;
+}
+
+/**
+ * 액션 연출 트리거 — 표준 액션(버림·리치·후로 등)이 아닌 특수 액션
  * (액티브 증강 발동 등)이 실행될 때 전원에게 브로드캐스트된다.
  */
 export interface ActionFxMessage {
@@ -435,6 +632,7 @@ export type ServerMessage =
   | JoinedMessage
   | ViewMessage
   | PromptMessage
+  | PromptCancelMessage
   | DraftOfferMessage
   | CatalogMessage
   | RoundOverMessage
@@ -445,6 +643,9 @@ export type ServerMessage =
   | PongMessage
   | LobbyMessage
   | StatsMessage
+  | LeaderboardMessage
+  | AdminUsersMessage
+  | AdminAugmentTiersMessage
   | AuthOkMessage
   | RoomCreatedMessage
   | ReplayListMessage
@@ -452,4 +653,5 @@ export type ServerMessage =
   | LiveGamesMessage
   | SpectateStartedMessage
   | SpectateEndedMessage
+  | SandboxMessage
   | ActionFxMessage;

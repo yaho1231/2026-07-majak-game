@@ -26,11 +26,44 @@ const triplets = (v: ScoringVariant): ScoringSet[] =>
   v.sets.filter((s) => s.type === "triplet");
 const isStd = (v: ScoringVariant): boolean => v.form === "standard";
 
-/** 순자의 시작 랭크 (부로 순자는 순서 보장이 없으므로 min으로) */
+/** 슌쯔의 시작 랭크 (후로 슌쯔는 순서 보장이 없으므로 min으로) */
 const runStart = (s: ScoringSet): number => Math.min(...s.tiles.map((t) => t.rank));
 
+/**
+ * 한 무늬로만 이뤄진 슌쯔인가.
+ * 무너진 국경(mixedRuns)은 2만·3통·4삭 같은 혼색 슌쯔를 만든다 — 무늬를 요구하는
+ * 역(삼색동순·일기통관·이페코)은 first(s).suit만 보면 그런 슌쯔를 제 무늬로 착각하므로
+ * 반드시 이 검사를 함께 걸어야 한다.
+ */
+const isPureRun = (s: ScoringSet): boolean =>
+  s.tiles.every((t) => t.suit === first(s).suit);
+
+/**
+ * 한 무늬로만 이뤄진 커쯔인가.
+ * 무너진 국경(mixedTriplets)은 2만·2통·2삭 같은 혼색 커쯔를 만든다 — 무늬를 요구하는
+ * 역(삼색동각 등)은 first(s).suit만 보면 그런 커쯔를 제 무늬로 착각하므로 함께 걸어야 한다.
+ * (isPureRun의 커쯔판 — 51차 교훈의 확장)
+ */
+const isPureTriplet = (s: ScoringSet): boolean =>
+  s.tiles.every((t) => t.suit === first(s).suit);
+
+/**
+ * 한 랭크로만 이뤄진 커쯔인가.
+ * 양극(polarEnds)은 199·191·911 같은 1·9 혼합 커쯔를 만든다 — 랭크를 요구하는
+ * 역(삼색동각 등)은 first(s).rank만 보면 199를 '1 커쯔'로 착각하므로 함께 걸어야 한다.
+ * (isPureTriplet의 랭크판)
+ */
+const isSameRankTriplet = (s: ScoringSet): boolean =>
+  s.tiles.every((t) => t.rank === first(s).rank);
+
 const hasTripletOf = (v: ScoringVariant, suit: string, rank: number): boolean =>
-  triplets(v).some((s) => first(s).suit === suit && first(s).rank === rank);
+  triplets(v).some(
+    (s) =>
+      isPureTriplet(s) &&
+      isSameRankTriplet(s) &&
+      first(s).suit === suit &&
+      first(s).rank === rank,
+  );
 
 const dragonTriplets = (v: ScoringVariant): number =>
   triplets(v).filter((s) => first(s).suit === Suits.Dragon).length;
@@ -43,10 +76,11 @@ const isYakuhaiPair = (pair: TileKind, ctx: WinContext): boolean =>
   (pair.suit === Suits.Wind &&
     (pair.rank === ctx.seatWind || pair.rank === ctx.prevalentWind));
 
-/** 동일 순자 쌍의 수 (이페코=1, 량페코=2) */
+/** 동일 슌쯔 쌍의 수 (이페코=1, 량페코=2) */
 function duplicateRunPairs(v: ScoringVariant): number {
   const countByRun = new Map<string, number>();
   for (const r of runs(v)) {
+    if (!isPureRun(r)) continue; // 혼색 슌쯔는 '같은 슌쯔' 판정에서 제외
     const key = `${first(r).suit}:${runStart(r)}`;
     countByRun.set(key, (countByRun.get(key) ?? 0) + 1);
   }
@@ -116,7 +150,9 @@ export const standardYakuList: YakuDef[] = [
     openHan: null,
     check: (v, ctx) =>
       isStd(v) &&
-      v.sets.every((s) => s.type === "run") &&
+      // 깡은 어떤 경우에도 슌쯔가 아니다 — 랭크가 섞인 깡(바람의 계보의 동남서북,
+      // 장사진의 4연속)이 슌쯔성 몸통으로 나오므로 isKan을 함께 막아야 핑후가 헛성립하지 않는다.
+      v.sets.every((s) => s.type === "run" && s.isKan !== true) &&
       v.pair !== null &&
       !isYakuhaiPair(v.pair, ctx) &&
       v.waitType === "ryanmen",
@@ -237,7 +273,9 @@ export const standardYakuList: YakuDef[] = [
       for (let r = 1; r <= 7; r++) {
         if (
           NUMBER_SUITS.every((suit) =>
-            runs(v).some((s) => first(s).suit === suit && runStart(s) === r),
+            runs(v).some(
+              (s) => isPureRun(s) && first(s).suit === suit && runStart(s) === r,
+            ),
           )
         ) {
           return true;
@@ -300,7 +338,9 @@ export const standardYakuList: YakuDef[] = [
       isStd(v) &&
       NUMBER_SUITS.some((suit) =>
         [1, 4, 7].every((r) =>
-          runs(v).some((s) => first(s).suit === suit && runStart(s) === r),
+          runs(v).some(
+            (s) => isPureRun(s) && first(s).suit === suit && runStart(s) === r,
+          ),
         ),
       ),
   },

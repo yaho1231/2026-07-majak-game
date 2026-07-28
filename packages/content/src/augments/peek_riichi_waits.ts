@@ -1,13 +1,22 @@
 /**
- * 선언 간파 (peek_riichi_waits) — 리치 중인 상대에게 1000점을 지불하고
- * 그 상대의 오름패(대기)를 확인한다 (국당 상대별 1회).
+ * 선언 간파 (peek_riichi_waits) — 리치 중인 상대의 오름패(대기)를 비용 없이
+ * 확인하고, 간파한 그 국에 한해 그 오름패를 내 손에서 만들어낸다.
+ *
+ * 설계: docs/16_AUGMENT_REDESIGN.md §1b C (52차 버프)
  *
  * 구현 지점:
  * - 커스텀 액션 "peek_waits" {target}: 자기 턴에 리치 중인 상대를 지정.
  * - 커스텀 이벤트 PeekWaitsPerformed {holder, target, waits}: Reducer가
- *   점수 이동(-1000/+1000)과 보유자 전용 뷰 데이터·사용 플래그를 기록한다.
+ *   보유자 전용 뷰 데이터와 사용 플래그를 기록한다 (점수 이동 없음).
  *   waits는 표시용 kindKey 문자열 배열 (클라이언트가 바로 그린다).
- * - holderTurnOptions: 리치 중인 상대마다 후보 노출 (validate가 거른다).
+ * - 커스텀 액션 "peek_forge" {tileId, kind}: **국당 1회**, 간파해 둔 대기패 중
+ *   하나를 골라 내 손패 1장을 그 패로 바꿔 만든다(tileKindChanged, conjured).
+ *   상대의 오름패를 내가 쥐어 안전패로 삼거나, 역으로 그 패로 화료를 노린다.
+ *   kind는 kindKey 문자열("man5")로 주고받는다 — FlowController.submit이
+ *   payload JSON 완전일치를 요구하므로 구조체보다 문자열이 안전하다.
+ * - holderTurnOptions: (아직 간파를 안 썼다면) 리치 중인 상대마다 간파 후보 +
+ *   (손패 × 간파한 대기) 조합의 위조 후보를 노출한다 (validate가 최종으로 거른다).
+ * - 간파는 **국당 1회**(2026-07-26 밸런스, 예전엔 상대별 1회).
  */
 
 import {
@@ -17,8 +26,10 @@ import {
   kindOf,
   meldCountOf,
   playerAtSeat,
+  tileKindChanged,
   winningKinds,
   scoringOptionsOf,
+  augmentDataSet,
   ROUND_STARTED,
 } from "@majak/core";
 import type {
@@ -26,16 +37,18 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  TileId,
+  TileKind,
 } from "@majak/core";
 import { flagOf, roundKey, viewKey } from "../util.js";
 
 const AUGMENT_ID = "peek_riichi_waits";
-/** 간파 비용 (상대에게 지불) */
-const PEEK_COST = 1000;
 /** 증강 id에서 파생한 이벤트 타입 (다른 증강과 충돌 방지) */
 const PEEK_WAITS_PERFORMED = "PeekWaitsPerformed";
 /** 지난 국에서 간파한 오름패 뷰를 새 국 시작 시 지우는 이벤트 */
 const PEEK_WAITS_CLEARED = "PeekWaitsCleared";
+/** 간파한 대기패를 손패에 만들어내는 액션 */
+const ACTION_FORGE = "peek_forge";
 /** viewKey(holder, "waits:{target}")의 공통 접두 — 이 접두의 뷰 키를 국마다 정리 */
 const waitsViewPrefix = (holder: PlayerId): string => viewKey(holder, "waits:");
 
@@ -50,12 +63,42 @@ interface PeekWaitsClearedPayload {
   holder: PlayerId;
 }
 
-/** 국·상대 단위 사용 플래그 키 */
-const usedKey = (
-  state: GameState,
-  holder: PlayerId,
-  target: PlayerId,
-): string => `${AUGMENT_ID}:used:${roundKey(state)}:${holder}:${target}`;
+/**
+ * 국 단위 사용 플래그 키 (roundKey를 섞어 국마다 자동 만료).
+ * ⚠ 밸런스(2026-07-26): 예전엔 `:{target}`까지 붙은 **상대별 1회**라 리치가 셋이면
+ * 한 국에 세 번 볼 수 있었다. 이제 **국당 1회** — 누구를 볼지가 선택이 된다.
+ */
+const usedKey = (state: GameState, holder: PlayerId): string =>
+  `${AUGMENT_ID}:used:${roundKey(state)}:${holder}`;
+
+/** 국 단위 위조 사용 플래그 키 (roundKey를 섞어 국마다 자동 만료) */
+const forgedKey = (state: GameState, holder: PlayerId): string =>
+  `${AUGMENT_ID}:forged:${roundKey(state)}:${holder}`;
+
+/**
+ * 이번 국에 이 보유자가 간파해 둔 대기패 전부 (kindKey 문자열, 중복 제거·정렬).
+ * 간파 결과는 view:{holder}:waits:{target} 채널에 쌓이고 새 국에 지워지므로,
+ * 이 목록이 비어 있으면 "이번 국에 간파한 적이 없다"는 뜻이다.
+ */
+function peekedWaits(state: GameState, holder: PlayerId): string[] {
+  const prefix = waitsViewPrefix(holder);
+  const out = new Set<string>();
+  for (const [k, v] of Object.entries(state.augmentData)) {
+    if (!k.startsWith(prefix) || !Array.isArray(v)) continue;
+    for (const kind of v) if (typeof kind === "string") out.add(kind);
+  }
+  return [...out].sort();
+}
+
+/** kindKey("man5") → TileKind. 형식이 어긋나면 null */
+function parseKindKey(key: string): TileKind | null {
+  const m = /^([a-z]+)(\d+)$/.exec(key);
+  if (m === null) return null;
+  const suit = m[1] as string;
+  const rank = Number(m[2]);
+  if (!Number.isInteger(rank) || rank <= 0) return null;
+  return { suit, rank };
+}
 
 const peekWaitsAction: ActionDef<{ target: PlayerId }> = {
   type: "peek_waits",
@@ -73,10 +116,9 @@ const peekWaitsAction: ActionDef<{ target: PlayerId }> = {
     if (state.round.byPlayer[req.payload.target]?.riichi == null) {
       return "target is not in riichi";
     }
-    if (flagOf(state, usedKey(state, req.player, req.payload.target))) {
-      return "already peeked this player this round";
+    if (flagOf(state, usedKey(state, req.player))) {
+      return "already peeked this round";
     }
-    if (player.score < PEEK_COST) return "not enough points";
     return null;
   },
   toEvents: (req, { state, rules }) => {
@@ -97,12 +139,60 @@ const peekWaitsAction: ActionDef<{ target: PlayerId }> = {
   },
 };
 
+const peekForgeAction: ActionDef<{ tileId: TileId; kind: string }> = {
+  type: ACTION_FORGE,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined) return "unknown player";
+    if (!player.augments.includes(AUGMENT_ID)) {
+      return "no peek_riichi_waits augment";
+    }
+    if (state.round.phase !== "turn.act") return "not in act phase";
+    if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
+      return "not your turn";
+    }
+    if (flagOf(state, forgedKey(state, req.player))) {
+      return "already forged this round";
+    }
+    if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
+      return "tile not in hand";
+    }
+    if (!peekedWaits(state, req.player).includes(req.payload.kind)) {
+      return "kind not among peeked waits";
+    }
+    if (parseKindKey(req.payload.kind) === null) return "bad kind";
+    return null;
+  },
+  toEvents: (req, { state }) => [
+    tileKindChanged([
+      {
+        tileId: req.payload.tileId,
+        kind: parseKindKey(req.payload.kind) as TileKind,
+        attrs: { conjured: true },
+      },
+    ]),
+    augmentDataSet(forgedKey(state, req.player), true),
+  ],
+};
+
 export const peekRiichiWaits: AugmentDef = defineAugment({
   id: AUGMENT_ID,
   tier: "gold",
+  category: "info",
   name: "선언 간파",
   description:
-    "자기 턴에 리치 중인 상대에게 1000점을 지불하고 그 상대의 오름패를 확인한다 (국당 상대별 1회).",
+    "(매 국 1회 + 위조 1회) 자기 순에 리치 중인 상대 하나를 골라 그 오름패를 공짜로 확인한다. 간파한 국에 한해 1회, 내 손패 1장을 간파한 오름패로 바꿔 만들 수 있다.",
+  detail:
+    "(매 국 1회 + 위조 1회) 자기 순에 리치 중인 상대를 지목해 그 오름패를 자신만 확인한다. 알아낸 대기는 그 국에만 유효하다. 간파한 국에는 추가로 1회, 내 손패 한 장을 간파한 오름패 중 하나로 바꿔 만들 수 있다.",
+  // 봇: 리치를 건 상대가 있으면(옵션은 그런 상대별로만 제시된다) 항상 간파한다.
+  //     48차 무페널티로 비용이 사라져 점수 게이트를 뒀을 이유가 없다 — 공짜 정보는 늘 이득.
+  //     텐파이 여부와 무관 — 방총을 피하려는 정보라 오히려 손이 덜 됐을 때 더 값지다.
+  //     (위조 peek_forge는 어느 패를 버릴지 판단이 필요해 봇에게 맡기지 않는다.)
+  bot: {
+    choose({ options }) {
+      return options.find((o) => o.type === "peek_waits") ?? null;
+    },
+  },
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -110,27 +200,23 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
     if (!engine.reducers.has(PEEK_WAITS_PERFORMED)) {
       engine.reducers.register(PEEK_WAITS_PERFORMED, (state, event) => {
         const p = event.payload as PeekWaitsPerformedPayload;
+        // 48차 무페널티: 간파는 공짜다 (예전엔 대상에게 1000점을 지불해 상대를 살찌웠다)
         return {
           ...state,
-          // 비용 이동: 보유자 → 대상
-          players: state.players.map((pl) =>
-            pl.id === p.holder
-              ? { ...pl, score: pl.score - PEEK_COST }
-              : pl.id === p.target
-                ? { ...pl, score: pl.score + PEEK_COST }
-                : pl,
-          ),
           augmentData: {
             ...state.augmentData,
-            // 보유자 화면에만 대기 노출 + 국·상대 단위 사용 플래그
+            // 보유자 화면에만 대기 노출 + 국 단위 사용 플래그
             [viewKey(p.holder, `waits:${p.target}`)]: p.waits,
-            [usedKey(state, p.holder, p.target)]: true,
+            [usedKey(state, p.holder)]: true,
           },
         };
       });
     }
     if (!engine.actions.has("peek_waits")) {
       engine.actions.register(peekWaitsAction);
+    }
+    if (!engine.actions.has(ACTION_FORGE)) {
+      engine.actions.register(peekForgeAction);
     }
 
     // 간파한 오름패는 그 국의 리치에 한한 정보 — 새 국이 시작되면 지운다.
@@ -160,14 +246,31 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
       });
     });
 
-    // 리치 중인 각 상대에 대해 후보 노출 (사용 여부·점수는 validate가 판정)
-    ctx.holderTurnOptions((state) =>
-      state.players
-        .filter(
-          (p) =>
-            p.id !== holder && state.round.byPlayer[p.id]?.riichi != null,
-        )
-        .map((p) => ({ type: "peek_waits", payload: { target: p.id } })),
-    );
+    // 리치 중인 각 상대에 대해 간파 후보 + 간파해 둔 대기가 있으면 위조 후보를 노출
+    // (사용 여부·합법성은 validate가 판정). 후보 수 = 손패(≤14) × 간파한 대기 종류.
+    ctx.holderTurnOptions((state) => {
+      const options: { type: string; payload: unknown }[] = flagOf(
+        state,
+        usedKey(state, holder),
+      )
+        ? [] // 이번 국엔 이미 간파했다 (국당 1회)
+        : state.players
+            .filter(
+              (p) => p.id !== holder && state.round.byPlayer[p.id]?.riichi != null,
+            )
+            .map((p) => ({ type: "peek_waits", payload: { target: p.id } }));
+
+      if (!flagOf(state, forgedKey(state, holder))) {
+        const kinds = peekedWaits(state, holder);
+        if (kinds.length > 0) {
+          for (const tileId of handIdsOf(state, holder)) {
+            for (const kind of kinds) {
+              options.push({ type: ACTION_FORGE, payload: { tileId, kind } });
+            }
+          }
+        }
+      }
+      return options;
+    });
   },
 });

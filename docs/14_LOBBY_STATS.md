@@ -88,6 +88,22 @@ waiting ──(방장 startGame)──▶ playing ──(gameOver)──▶ 방 
 
 게임 종료 시 `recordGameEnd(rankings)`로 순위(games·placements·placementSum)를 누적한다.
 
+## 증강 통계 (augment stats)
+
+증강 지표는 `PlayerStatsRaw.augments`(증강 id별 `AugmentStatRaw`)와 `augmentTierPicks`([silver,gold,prism])에 쌓인다.
+
+| 지표 | 소스 이벤트 | 규칙 |
+|------|-------------|------|
+| augments[id].offered | AUGMENT_OFFERED | 드래프트 3지선다에 제시된 횟수 |
+| augments[id].picked | AUGMENT_DRAFTED (직전 오퍼에 포함된 것만) | 선택 횟수 → 픽률=picked/offered. **도박사 지급분 제외** |
+| augmentTierPicks | AUGMENT_DRAFTED(오퍼 픽) + 오퍼 tier | 획득 등급 분포 |
+| augments[id].games/placements/placementSum | recordGameEnd + 종료 시 보유 증강 | 보유 판 순위 귀속(지급 포함) → 평균순위·1위율 |
+
+- **오퍼는 이벤트다** : `AUGMENT_OFFERED`(상태 불변 no-op reducer)를 `DraftController.recordOffer`가 픽보다 먼저 고정 순서로 로그에 남긴다. 시드에서 결정적이라 리플레이·재개에서 동일. 사후 재계산은 불가(roll의 exclude가 보유분만큼 커져 오퍼가 달라짐)라 **드래프트 시점 캡처가 필수**.
+- 홈 화면: **내 증강 통계**(시그니처·등급분포·성적표·함정 경고·도감 수집률)는 career에서, **증강 메타**(전체 픽률·평균순위 티어 + 증강 장인)는 leaderboard 전체에서 클라이언트가 파생.
+- **닉네임별 성적은 관리자 전용(47차)**: 서버가 비관리자에게 보내는 leaderboard 항목은 `nickname: ""`(익명). 증강 메타·도감 전체 통계는 익명 집계라 그대로 동작하고, '증강 장인'(닉네임 노출)만 관리자에게 보인다. 상세는 15 §4.
+- **증강 도감(Codex) 전체화면**(15 §도감): 홈의 "📖 증강 도감" 버튼으로 진입. 카탈로그 전체(표준+콘텐츠 74종)를 등급별 그리드로 브라우징하고, 카드 클릭 시 상세 오버레이(도감 상세 설명 `detail` + 등장/모드/지급 배지 + **내 통계와 서버 전체 통계 나란히**)를 연다. "전체 통계" 탭은 모든 증강을 내 판·평균순위 / 서버 표본·픽률·평균순위·1위율로 **정렬·필터** 가능한 표로 보여준다. 데이터 소스는 홈과 동일(career + leaderboard 클라이언트 파생) — 서버 집계 엔드포인트를 새로 만들지 않는다.
+
 ## 파생 비율 (deriveStats)
 
 `winRate·dealInRate·riichiRate·callRate·tsumoRate·avgWinPoints·avgDealInPoints·
@@ -134,6 +150,9 @@ onGameOver(rankings)
   그 외는 준비 완료/취소 토글.
 - **GameOverModal** : "순위 / 통계" 탭. 통계 탭은 플레이어별 "이번 판 / 누적"
   통계 그리드(국수·화료율·방총률·리치율·후로율·쯔모율·평균화료·평균방총·평균순위·1위율).
+- **CodexScreen** : 증강 도감 전체화면(App.tsx). 홈에서만 진입하는 별도 화면(라우팅 ternary에
+  `codexOpen` 분기). 도감 그리드 + 상세 오버레이 + 정렬 가능한 전체 통계표. `catalog`·career·
+  leaderboard를 props로 받아 파생하며, 진입 시 `refreshHome`으로 최신 통계를 당겨온다.
 
 ---
 

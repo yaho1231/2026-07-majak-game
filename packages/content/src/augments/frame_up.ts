@@ -1,0 +1,121 @@
+/**
+ * 누명 (frame_up, prism) — "내가 버린 걸로 친다고? 나 이제 후리텐이야?!"
+ *
+ * 동풍전 1·반장전 2회, 자기 턴에 **내가 버릴 패를 상대 한 명의 바닥에 놓는다**. 그 패는
+ * 그 사람이 버린 것으로 기록되어(후리텐 근거 `discardedKinds`에 새겨진다) 그가 그 종류로
+ * 론할 수 없게 되고, 동시에 **내 바닥에는 남지 않아 내 후리텐도 회피**된다.
+ *
+ * 구현: 코어 `TileDiscardedPayload.creditTo`(신규 선택 필드)를 쓴다 — 패가 놓이는 바닥과
+ * 후리텐 이력만 지목 대상 명의로 가고, **손패 출처·방총 책임(`lastDiscard.player`)·턴 진행은
+ * 실제로 버린 나 그대로**다. 즉 심는 순간 다른 상대의 론 반응은 정상적으로 열리고, 그 패로
+ * 쏘이면 책임은 내가 진다(원안 대응 규칙 그대로).
+ *
+ * 표준 버림을 대체하는 액션이므로 손패 장수·턴 흐름은 일반 버림과 완전히 같다.
+ * 리치 중에는 버릴 패가 쯔모패로 고정되므로 발동할 수 없다.
+ */
+
+import {
+  TILE_DISCARDED,
+  augmentDataSet,
+  defineAugment,
+  handIdsOf,
+  kindKey,
+  kindOf,
+  playerAtSeat,
+} from "@majak/core";
+import type {
+  ActionDef,
+  AugmentDef,
+  GameState,
+  PlayerId,
+  TileId,
+} from "@majak/core";
+import { counterOf, matchUses, viewKey } from "../util.js";
+
+const ID = "frame_up";
+const ACTION = "frame_discard";
+
+/** 매치당 사용 횟수 (동풍1/반장2) */
+const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
+const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
+  counterOf(state, usesKey(h)) < matchUses(state);
+
+/** 리치 중인가 (버릴 패가 고정돼 지목 버림 불가) */
+const inRiichi = (state: GameState, h: PlayerId): boolean =>
+  state.round.byPlayer[h]?.riichi != null;
+
+const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
+  type: ACTION,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined || !player.augments.includes(ID)) {
+      return "no frame_up augment";
+    }
+    if (state.round.phase !== "turn.act") return "not in act phase";
+    if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
+      return "not your turn";
+    }
+    if (!hasUsesLeft(state, req.player)) return "no uses left this game";
+    if (inRiichi(state, req.player)) return "cannot frame during riichi";
+    if (req.payload.target === req.player) return "cannot frame yourself";
+    if (!state.players.some((p) => p.id === req.payload.target)) {
+      return "unknown target";
+    }
+    if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
+      return "tile not in hand";
+    }
+    return null;
+  },
+  toEvents: (req, { state }) => [
+    // 표준 버림과 동일하되 '명의'만 지목 대상에게 — 방총 책임·턴 진행은 나에게 남는다
+    {
+      type: TILE_DISCARDED,
+      payload: {
+        player: req.player,
+        tileId: req.payload.tileId,
+        riichi: false,
+        riichiCost: 0,
+        creditTo: req.payload.target,
+      },
+    },
+    augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+    // 전원 공개 — 누구 바닥에 무엇이 심겼는지 보여야 대응할 수 있다
+    augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
+      target: req.payload.target,
+      kind: kindKey(kindOf(state, req.payload.tileId)),
+    }),
+  ],
+};
+
+export const frameUp: AugmentDef = defineAugment({
+  id: ID,
+  tier: "prism",
+  category: "disrupt",
+  name: "누명",
+  description:
+    "(동풍전 1회 · 반장전 2회) 자기 순에 내가 버릴 패를 지목한 상대의 바닥에 놓는다 — 그 사람이 버린 것으로 기록되어 후리텐에 걸리고, 내 바닥에는 남지 않아 내 후리텐은 회피된다.",
+  detail:
+    "(동풍전 1회 · 반장전 2회) 자기 순에 버릴 패 한 장을 골라 상대 한 명의 바닥에 놓는다. 그 패는 그 사람이 버린 것으로 기록되어, 그가 그 종류로 기다리고 있었다면 후리텐에 걸린다. 동시에 그 패가 내 바닥에 남지 않아 내 후리텐은 회피된다. 다만 실제로 버린 사람은 나이므로 다른 상대의 론 반응은 평소대로 열려 있고 그 패로 쏘이면 책임도 내가 진다. 심긴 패는 전원에게 공개되며, 리치 중에는 쓸 수 없다.",
+  install(ctx) {
+    const { engine, holder } = ctx;
+
+    if (!engine.actions.has(ACTION)) {
+      engine.actions.register(frameAction);
+    }
+
+    // 손패 × 상대 조합을 후보로 낸다 (합법성은 validate가 최종 판정)
+    ctx.holderTurnOptions((state) => {
+      if (!hasUsesLeft(state, holder)) return [];
+      if (inRiichi(state, holder)) return [];
+      const opts: { type: string; payload: unknown }[] = [];
+      for (const id of handIdsOf(state, holder)) {
+        for (const p of state.players) {
+          if (p.id === holder) continue;
+          opts.push({ type: ACTION, payload: { tileId: id, target: p.id } });
+        }
+      }
+      return opts;
+    });
+  },
+  // 봇 정책 없음 — 어떤 패를 누구에게 심어야 이득인지는 상대 대기 추정이 필요하다.
+});

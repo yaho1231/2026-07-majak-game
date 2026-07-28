@@ -253,7 +253,7 @@ describe("PlayerView — RoundView", () => {
     }
   });
 
-  it("우라도라는 기본적으로 null, 옵션으로 전달하면 노출된다", () => {
+  it("뒷도라는 기본적으로 null, 옵션으로 전달하면 노출된다", () => {
     const state = makeState();
     const rules = makeRules();
     const ura: TileId[] = [1, 2];

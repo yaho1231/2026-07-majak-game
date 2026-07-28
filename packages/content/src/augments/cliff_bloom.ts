@@ -1,34 +1,41 @@
 /**
- * 절벽 위에 피어난 꽃 (cliff_bloom, prism).
- * 게임당 1회. 액티브 버튼을 누르면 안깡을 하고, 가져온 보충패와 무관하게
- * 반드시 영상개화(嶺上開花)로 화료한다. 버튼은 "손패에서 깡이 가능하며,
- * 그 깡 이후 손패가 텐파이가 될 때"에만 활성화된다.
+ * 절벽 위에 피어난 꽃 (cliff_bloom, prism) — 48차 재설계.
  *
- * 구현:
- * - bloom_kan 액션: 미사용·자기 턴·안깡 가능·깡 후 텐파이를 검사하고, 사용/무장
- *   플래그를 세운 뒤 KAN_DECLARED(kan_closed)를 낸다. 이후 표준 흐름이 영상패를 뽑는다.
- * - TILE_DRAWN(rinshan) 리액션: 무장 상태면, 뽑은 영상패의 종류를 현재 손패의
- *   대기패 중 하나로 바꾼다(tileKindChanged). 손이 화료형이 되어 다음 턴 프롬프트에
- *   쯔모(영상개화)가 뜬다 — 무장 상태에서는 어떤 패를 뽑든 화료가 보장된다.
+ * 이전: 2국당 1회, "깡 후 텐파이가 될 때만" 열리는 버튼으로 확정 영상개화.
+ * 지금: **횟수 제한 없음. 조건도 없다.**
+ *   ① 깡을 할 때마다 영상패를 운에 맡기지 않는다 — 왕패 앞 4장을 보고 **원하는 것을 고른다**
+ *      (전용 선택 모달, `bloom_pick`).
+ *   ② 같은 국에서 **두 번째 깡을 완성하는 순간 손이 만개한다** — 손패가 그 자리에서
+ *      완성형으로 다시 피어나(conjured) **패와 상관없이 즉시 영상개화로 화료**할 수 있다.
+ *      텐파이였는지, 무엇을 들고 있었는지는 전혀 상관없다.
  *
- * "가져온 보충패와 무관하게"를 종류 치환으로 실현하므로, rinshan_gamble처럼 4장
- * 한도를 넘는 패가 생길 수 있다(프리즘의 상식 파괴). 바뀐 패는 conjured로 표시한다.
+ * 리미트는 "한 국에 깡을 두 번 해야 한다"는 조건 자체다 — 페널티는 붙이지 않는다
+ * (10_AUGMENT_SYSTEM §0 "리미트는 횟수로 준다").
+ *
+ * 구현 메모:
+ * - 깡은 **표준 깡 흐름을 그대로 쓴다**(전용 깡 액션 없음). KAN_DECLARED를 세고,
+ *   이어지는 영상패 TILE_DRAWN에 반응할 뿐이라 안깡·가깡·대명깡이 전부 자동 지원된다.
+ * - 만개는 손패 kind를 통째로 완성형으로 덮어쓴다(tileKindChanged, conjured). 4장 한도를
+ *   넘는 패가 생길 수 있다 — 프리즘의 상식 파괴.
+ * - `rinshan` 플래그는 state.round.lastDrawRinshan에서 오므로, 패를 바꿔치기해도
+ *   영상개화는 그대로 성립한다. 만개 국의 보상은 **그 영상개화를 4판으로 취급**하는 것
+ *   하나뿐이다(BLOOM_RINSHAN_HAN) — 실제로 영상개화가 붙은 화료에만 적용된다.
  */
 
 import {
+  DEAD_WALL,
   KAN_DECLARED,
   TILE_DRAWN,
-  WALL,
   augmentDataSet,
   defineAugment,
   handIdsOf,
+  handZone,
   kindKey,
-  kindOf,
   meldCountOf,
+  moveTiles,
   playerAtSeat,
-  sameKind,
+  rinshanRemaining,
   scoringOptionsOf,
-  standardKinds,
   tileKindChanged,
   winningKinds,
 } from "@majak/core";
@@ -36,99 +43,161 @@ import type {
   ActionDef,
   AugmentDef,
   GameState,
+  KanDeclaredPayload,
   PlayerId,
   RuleRegistry,
+  Suit,
   TileDrawnPayload,
   TileId,
+  TileKind,
+  TileKindChangedPayload,
+  VisibilityRule,
+  WinInfo,
 } from "@majak/core";
-import { flagOf } from "../util.js";
+import {
+  addWinPointBonus,
+  counterOf,
+  flagOf,
+  roundKey,
+  viewKey,
+  winPointsWithExtraHan,
+} from "../util.js";
+import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 
 const ID = "cliff_bloom";
-const ACTION = "bloom_kan";
-/** 게임당 1회 사용 플래그 */
-const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
-/** 영상패를 대기패로 치환할 예약 상태 */
-const armedKey = (h: PlayerId): string => `${ID}:armed:${h}`;
+const ACTION_PICK = "bloom_pick";
+const BLOOM_PICK_TAKEN = "BloomPickTaken";
 
-/** 지정한 4장으로 안깡했을 때 남는 손패가 텐파이인가 */
-function postKanTenpai(
+/** 만개까지 필요한 깡 횟수 */
+const KANS_TO_BLOOM = 2;
+/**
+ * 만개 화료의 **영상개화를 몇 판으로 취급하는가** (2026-07-26 사용자 확정).
+ *
+ * 표준 영상개화는 1판이다. 만개한 국의 화료에서는 그것을 **4판짜리 역으로 취급**한다 —
+ * 손패가 눈앞에서 다시 피어나 그 자리에서 오르는 장면의 마감을, 정산에서도 "영상개화 4판"
+ * 하나로 읽히게 하는 것이 이 증강의 보상 전부다.
+ *
+ * 연혁: 52차 "+3판 환산 + 6000점"(docs/16 §1c) → 2026-07-26 확정 보상 단위 통일로 합 7판 →
+ * 같은 날 **영상개화 4판 취급(= +3판)**으로 정리. 판수는 만관/하네만 상한에서 비선형이라
+ * 3판+4판 중복이 저판 손에서 과하게 터졌다.
+ *
+ * 구현: 커스텀 역은 GameState를 못 읽어 "만개했는가"를 볼 수 없으므로, 표준 영상개화 1판은
+ * 그대로 두고 **차이(4 − 1 = 3판)만** 정산 보정으로 얹는다.
+ *
+ * ⚠ 붙는 조건: 이 증강의 하이라이트는 어디까지나 **만개**다(깡마다 영상패를 고르는 것은
+ * 상시 편의 기능이라 국마다 몇 번이고 일어난다). 깡 한 번만 한 국의 평범한 화료까지
+ * 붙으면 "깡하면 +3판"이라는 보이지 않는 패시브가 되어 §0에 정면으로 걸린다.
+ * 따라서 **만개(bloomed)한 국 + 실제로 영상개화가 붙은 화료** 한정이다.
+ */
+const BLOOM_RINSHAN_HAN = 4;
+/** 표준 영상개화 판수 — 정산에 얹는 것은 BLOOM_RINSHAN_HAN과의 차이뿐이다 */
+const STANDARD_RINSHAN_HAN = 1;
+/** 표준 영상개화 역 id (standardYaku) */
+const RINSHAN_YAKU = "rinshan";
+
+/** 이번 국에 이 보유자가 선언한 깡 수 */
+const kanCountKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:kans:${roundKey(state)}:${h}`;
+/** 이번 국에 이미 만개했는가 */
+const bloomedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:bloomed:${roundKey(state)}:${h}`;
+/**
+ * 지금 고를 수 있는 영상패의 대상 쯔모패 (tileId + 1, 0 = 없음).
+ * "지금 쯔모패가 그 영상패일 때만 유효"하므로 플래그가 스스로 만료된다 —
+ * 깡을 연달아 하거나 만개해도 지난 깡의 선택권이 남지 않는다.
+ */
+const pickKey = (h: PlayerId): string => `${ID}:pick:${h}`;
+
+/** 지금 이 플레이어가 영상패를 고를 수 있는가 */
+function canPick(state: GameState, h: PlayerId): boolean {
+  const drawn = state.round.lastDrawnTile;
+  if (drawn === null) return false;
+  return counterOf(state, pickKey(h)) === drawn + 1;
+}
+
+interface BloomPickPayload {
+  player: PlayerId;
+  index: number;
+  drawnTileId: TileId;
+  takenTileId: TileId;
+}
+
+/**
+ * 손패를 완성형으로 다시 짠다 — 머리(자패) 1개 + 남은 멘쯔 수만큼의 슌쯔.
+ * 무늬·숫자를 흩어 배치해 삼색·일기통관 같은 역이 우연히 붙지 않게 한다
+ * (만개의 보상은 판수가 아니라 '확정 화료'다).
+ */
+function bloomChanges(
   state: GameState,
   rules: RuleRegistry,
   holder: PlayerId,
-  kanIds: readonly TileId[],
-): boolean {
-  const handIds = handIdsOf(state, holder);
-  if (!kanIds.every((id) => handIds.includes(id))) return false;
-  const restKinds = handIds
-    .filter((id) => !kanIds.includes(id))
-    .map((id) => kindOf(state, id));
-  const meldCount = meldCountOf(state, holder) + 1; // + 이번 깡
-  return (
-    winningKinds(
-      restKinds,
-      meldCount,
-      standardKinds(),
-      scoringOptionsOf(state, rules, holder),
-    ).length > 0
-  );
-}
+): TileKindChangedPayload["changes"] | null {
+  const concealed = handIdsOf(state, holder);
+  // ⚠ 멘쯔 수를 4로 하드코딩하면 안 된다 — 진짜 용(scoring.totalSets=5, 손패 16/17장)
+  //    보유자는 `sets*3+2`가 영원히 안 맞아 만개가 **한 번도 일어나지 않았다**(60차 수정).
+  //    화료형의 단일 진실은 scoringOptionsOf다.
+  const totalSets = scoringOptionsOf(state, rules, holder).totalSets ?? 4;
+  const sets = totalSets - meldCountOf(state, holder);
+  if (sets < 0) return null;
+  // 완성형은 머리 2장 + 멘쯔 3장씩 — 장수가 맞지 않으면 손대지 않는다(방어)
+  if (concealed.length !== sets * 3 + 2) return null;
 
-/** 손패에서 안깡 가능한 종류의 4장 묶음들 */
-function ankanGroups(state: GameState, holder: PlayerId): TileId[][] {
-  const byKind = new Map<string, TileId[]>();
-  for (const id of handIdsOf(state, holder)) {
-    const k = kindKey(kindOf(state, id));
-    byKind.set(k, [...(byKind.get(k) ?? []), id]);
-  }
-  const groups: TileId[][] = [];
-  for (const ids of byKind.values()) {
-    if (ids.length >= 4) groups.push(ids.slice(0, 4));
-  }
-  return groups;
-}
+  const changes: TileKindChangedPayload["changes"] = [];
+  const pair: TileKind = { suit: "wind", rank: 1 };
+  changes.push({ tileId: concealed[0] as TileId, kind: pair, attrs: { conjured: true } });
+  changes.push({ tileId: concealed[1] as TileId, kind: pair, attrs: { conjured: true } });
 
-const bloomKanAction: ActionDef<{ tileIds: TileId[] }> = {
-  type: ACTION,
-  validate: (req, { state, rules }) => {
-    const player = state.players.find((p) => p.id === req.player);
-    if (player === undefined || !player.augments.includes(ID)) {
-      return "no cliff_bloom augment";
+  const suits: readonly Suit[] = ["man", "pin", "sou"];
+  for (let i = 0; i < sets; i++) {
+    const suit = suits[i % 3] as Suit;
+    const start = 1 + (i % 3) * 2; // 123 / 345 / 567 — 삼색·일통 회피
+    for (let j = 0; j < 3; j++) {
+      changes.push({
+        tileId: concealed[2 + i * 3 + j] as TileId,
+        kind: { suit, rank: start + j },
+        attrs: { conjured: true },
+      });
     }
-    if (state.augmentData[usedKey(req.player)] === true) return "already used";
+  }
+  return changes;
+}
+
+const bloomPickAction: ActionDef<{ index: number }> = {
+  type: ACTION_PICK,
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined) return "unknown player";
+    if (!player.augments.includes(ID)) return "no cliff_bloom augment";
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (state.round.byPlayer[req.player]?.riichi != null) {
-      return "riichi: cannot bloom";
+    if (!canPick(state, req.player)) return "no rinshan pick available";
+    const idx = req.payload.index;
+    // 고를 수 있는 건 **아직 남은 영상패**뿐이다. 깡으로 뽑은 자리는 보충되지 않으므로
+    // 상수 4로 잡으면 이미 빈 자리를 지나 도라 표시패를 집게 된다(2026-07-26).
+    if (!Number.isInteger(idx) || idx < 0 || idx >= rinshanRemaining(state)) {
+      return "invalid rinshan index";
     }
-    if ((state.zones[WALL]?.tileIds.length ?? 0) === 0) {
-      return "cannot kan with empty wall";
+    if ((state.zones[DEAD_WALL]?.tileIds ?? [])[idx] === undefined) {
+      return "no tile at that index";
     }
-    if (state.round.kanCount >= 4) return "kan limit reached";
-    const ids = req.payload.tileIds;
-    if (!Array.isArray(ids) || new Set(ids).size !== 4) return "need 4 tiles";
-    const hand = handIdsOf(state, req.player);
-    if (!ids.every((id) => hand.includes(id))) return "tiles not in hand";
-    const k = kindOf(state, ids[0]!);
-    if (!ids.every((id) => sameKind(kindOf(state, id), k))) {
-      return "tiles are not identical";
-    }
-    if (!postKanTenpai(state, rules, req.player, ids)) {
-      return "hand is not tenpai after kan";
-    }
+    const drawn = state.round.lastDrawnTile;
+    if (drawn === null) return "no drawn tile to trade";
+    if (!handIdsOf(state, req.player).includes(drawn)) return "drawn tile not in hand";
     return null;
   },
-  toEvents: (req) => [
-    augmentDataSet(usedKey(req.player), true),
-    augmentDataSet(armedKey(req.player), true),
+  toEvents: (req, { state }) => [
     {
-      type: KAN_DECLARED,
+      type: BLOOM_PICK_TAKEN,
       payload: {
         player: req.player,
-        kanKind: "kan_closed",
-        handTileIds: req.payload.tileIds,
-      },
+        index: req.payload.index,
+        drawnTileId: state.round.lastDrawnTile as TileId,
+        takenTileId: (state.zones[DEAD_WALL]?.tileIds ?? [])[
+          req.payload.index
+        ] as TileId,
+      } satisfies BloomPickPayload,
     },
   ],
 };
@@ -136,55 +205,127 @@ const bloomKanAction: ActionDef<{ tileIds: TileId[] }> = {
 export const cliffBloom: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
+  category: "call",
   name: "절벽 위에 피어난 꽃",
   description:
-    "게임당 1회, 액티브 버튼으로 안깡을 하고 어떤 보충패를 뽑든 반드시 영상개화로 화료한다. 손패에서 깡이 가능하고, 그 깡 이후 손이 텐파이가 될 때만 발동할 수 있다.",
+    "(상시) 깡을 할 때마다 영상패를 왕패 앞 4장 중에서 직접 고른다. 그리고 한 국에 깡을 두 번 하면 손패와 상관없이 그 자리에서 손이 만개해 즉시 영상개화로 화료하며, 그 영상개화는 4판으로 취급된다.",
+  detail:
+    "(상시) 깡할 때마다 왕패 앞 4장을 모두 보고 영상패를 직접 고른다. 같은 국에서 두 번째 깡을 완성하면 텐파이였는지 무엇을 쥐고 있었는지와 무관하게 손패가 완성형으로 재구성되어 영상개화로 즉시 화료한다. 만개한 국의 화료에서는 영상개화가 1판이 아니라 4판으로 계산된다. 만개하지 않은 국의 화료에는 아무것도 얹히지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
-    if (!engine.actions.has(ACTION)) {
-      engine.actions.register(bloomKanAction);
+    if (!engine.actions.has(ACTION_PICK)) {
+      engine.actions.register(bloomPickAction);
+      engine.reducers.register(BLOOM_PICK_TAKEN, (state, event) => {
+        const p = event.payload as BloomPickPayload;
+        // 고른 영상패를 손으로 → 비워진 자리에 쯔모패를 밀어 넣는다 (왕패 장수 보존)
+        let zones = moveTiles(state.zones, DEAD_WALL, handZone(p.player), [
+          p.takenTileId,
+        ]);
+        zones = moveTiles(zones, handZone(p.player), DEAD_WALL, [p.drawnTileId], p.index);
+        return {
+          ...state,
+          zones,
+          // 새 쯔모패는 고른 패 — pickKey는 옛 쯔모패를 가리키므로 자동으로 만료된다
+          round: { ...state.round, lastDrawnTile: p.takenTileId },
+        };
+      });
     }
 
-    // 영상패를 뽑는 순간, 무장 상태면 그 패를 대기패 중 하나로 바꿔 화료를 보장한다
+    // 보유자에게 **남은 영상패만** 공개 — 무엇을 고를지 보고 정한다.
+    // 상수 4로 두면 깡으로 영상패가 줄어든 뒤 그 뒤의 도라 표시패까지 새어 보인다.
+    ctx.engine.rules.addModifier<VisibilityRule>("visibility.deadWall", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        return { mode: "peek", count: state === undefined ? 4 : rinshanRemaining(state) };
+      },
+    });
+
+    // 만개 국의 영상개화는 4판으로 취급한다 — 표준 1판과의 차이(+3판)만 얹는다
+    // (커스텀 역은 state를 못 읽으므로 판도 정산 보정으로 환산한다)
+    addWinPointBonus(ctx, (state: GameState, info: WinInfo) => {
+      if (!flagOf(state, bloomedKey(state, holder))) return 0;
+      if (!info.yaku.some((y) => y.id === RINSHAN_YAKU)) return 0;
+      return winPointsWithExtraHan(
+        state,
+        holder,
+        info,
+        BLOOM_RINSHAN_HAN - STANDARD_RINSHAN_HAN,
+      );
+    });
+
+    // 이번 국의 깡 수를 센다 (안깡·가깡·대명깡 전부)
+    ctx.reaction(KAN_DECLARED, (event, rc) => {
+      const p = event.payload as KanDeclaredPayload;
+      if (p.player !== holder) return;
+      const key = kanCountKey(rc.state, holder);
+      rc.emit(augmentDataSet(key, counterOf(rc.state, key) + 1));
+    });
+
+    // 영상패를 뽑는 순간 — 두 번째 깡이면 만개, 아니면 선택 모달을 연다
     ctx.reaction(TILE_DRAWN, (event, rc) => {
       const p = event.payload as TileDrawnPayload;
       if (p.player !== holder || !p.rinshan) return;
-      if (!flagOf(rc.state, armedKey(holder))) return;
-      rc.emit(augmentDataSet(armedKey(holder), false));
-
       const state = rc.state;
-      const drawnId = p.tileId;
-      const restKinds = handIdsOf(state, holder)
-        .filter((id) => id !== drawnId)
-        .map((id) => kindOf(state, id));
-      const waits = winningKinds(
-        restKinds,
-        meldCountOf(state, holder),
-        standardKinds(),
-        scoringOptionsOf(state, rc.rules, holder),
-      );
-      const drawnKind = kindOf(state, drawnId);
-      // 이미 대기패를 뽑았으면 그대로(자연 영상개화), 아니면 대기패로 치환
-      const target = waits.find((k) => sameKind(k, drawnKind)) ?? waits[0];
-      if (target === undefined) return; // 방어: validate가 텐파이를 보장
-      if (!sameKind(target, drawnKind)) {
-        rc.emit(
-          tileKindChanged([
-            { tileId: drawnId, kind: target, attrs: { conjured: true } },
-          ]),
-        );
+      const kans = counterOf(state, kanCountKey(state, holder));
+
+      if (kans >= KANS_TO_BLOOM && !flagOf(state, bloomedKey(state, holder))) {
+        const changes = bloomChanges(state, rc.rules, holder);
+        if (changes !== null) {
+          rc.emit(tileKindChanged(changes));
+          rc.emit(augmentDataSet(bloomedKey(state, holder), true));
+          rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), "만개"));
+          return; // 만개했으면 영상패를 고를 이유가 없다
+        }
       }
+      rc.emit(augmentDataSet(pickKey(holder), p.tileId + 1));
     });
 
-    // 무장 플래그는 국을 넘겨 남지 않게 — 사용 전(미무장)엔 아무 옵션도 만들지 않는다.
-    // 안깡 가능 + 깡 후 텐파이인 묶음마다 후보를 낸다 (합법성은 validate가 최종 판정).
+    // 선택 모달용 후보 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) => {
-      if (state.augmentData[usedKey(holder)] === true) return [];
-      if (playerAtSeat(state, state.round.turnSeat).id !== holder) return [];
-      return ankanGroups(state, holder)
-        .filter((ids) => postKanTenpai(state, engine.rules, holder, ids))
-        .map((ids) => ({ type: ACTION, payload: { tileIds: ids } }));
+      if (!canPick(state, holder)) return [];
+      return Array.from({ length: rinshanRemaining(state) }, (_v, index) => ({
+        type: ACTION_PICK,
+        payload: { index },
+      }));
     });
+  },
+  // 깡의 영상패를 왕패 앞 4장에서 고른다(홀더에겐 공개). 오름패가 있으면 그걸 골라
+  // 영상개화로 화료하고, 없으면 짝·슌쯔가 되는 패를, 그래도 없으면 첫 후보를 고른다
+  // (아무거나 고르는 편이 무작위 영상패보다 낫다).
+  bot: {
+    choose({ options, view, holder }) {
+      const picks = options.filter((o) => o.type === ACTION_PICK);
+      if (picks.length === 0) return null;
+      const dead = view.zones[DEAD_WALL]?.tileIds ?? [];
+      const kinds = handKindsOf(view, holder);
+      const meldCount = view.round.byPlayer[holder]?.meldCount ?? 0;
+      const wins = new Set(
+        winningKinds(kinds, meldCount, undefined, view.scoringOptions).map(kindKey),
+      );
+      const kindAt = (o: (typeof picks)[number]): TileKind | undefined => {
+        const idx = (o.payload as { index?: number }).index;
+        const id = idx !== undefined ? dead[idx] : undefined;
+        return id !== undefined ? view.tiles[id]?.kind : undefined;
+      };
+      // 1) 오름패면 즉시 화료
+      for (const o of picks) {
+        const k = kindAt(o);
+        if (k !== undefined && wins.has(kindKey(k))) return o;
+      }
+      // 2) 손을 진전시키는 패(짝·이웃)
+      for (const o of picks) {
+        const k = kindAt(o);
+        if (k === undefined) continue;
+        if (kinds.some((x) => x.suit === k.suit && x.rank === k.rank) || hasNeighbor(kinds, k)) {
+          return o;
+        }
+      }
+      // 3) 아무거나 (무작위 영상패보다 나음)
+      return picks[0] ?? null;
+    },
   },
 });

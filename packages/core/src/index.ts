@@ -5,7 +5,11 @@ export { Prng } from "./engine/random/Prng.js";
 
 export type { GameEvent, ProposedEvent } from "./engine/events/GameEvent.js";
 
-export { GameEngine } from "./engine/GameEngine.js";
+export {
+  GameEngine,
+  DISARMED_SOURCES_KEY,
+  isSourceDisarmed,
+} from "./engine/GameEngine.js";
 export type {
   EngineOptions,
   SubmitResult,
@@ -55,7 +59,14 @@ export {
   kindKey,
 } from "./mahjong/tiles/Tile.js";
 
-export { decompose, isWinningShape, ORPHAN_KINDS, DEFAULT_SEQUENCE_SUITS } from "./mahjong/scoring/decompose.js";
+export {
+  decompose,
+  isWinningShape,
+  ORPHAN_KINDS,
+  DEFAULT_SEQUENCE_SUITS,
+  honorMaxRank,
+  isHonorRun,
+} from "./mahjong/scoring/decompose.js";
 export type { Decomposition, DecompSet, DecomposeOptions } from "./mahjong/scoring/decompose.js";
 export { winningKinds, isTenpai } from "./mahjong/scoring/waits.js";
 export { buildVariants, allKinds } from "./mahjong/scoring/WinContext.js";
@@ -87,6 +98,8 @@ export {
   kindOf,
   handIdsOf,
   handKindsOf,
+  winHandIdsOf,
+  winHandKindsOf,
   meldInfosOf,
   meldCountOf,
   scoringOptionsOf,
@@ -139,35 +152,56 @@ export {
   uninstallAugment,
   augmentInstanceId,
   TIER_LAYER,
+  AUGMENT_CATEGORIES,
 } from "./augment/Augment.js";
 export type {
   AugmentDef,
   AugmentTier,
+  EffectOptions,
+  AugmentCategory,
   AugmentContext,
   AugmentExtras,
+  AugmentBotPolicy,
+  BotDecisionContext,
+  BotAugmentOption,
+  BotRng,
 } from "./augment/Augment.js";
 export { AugmentRegistry } from "./augment/AugmentRegistry.js";
-export type { TierWeights } from "./augment/AugmentRegistry.js";
+export { SETTLE_LAYER, SETTLE_STAGE } from "./augment/settleStages.js";
+export type { SettleStage } from "./augment/settleStages.js";
 export {
   SCORE_CHANGED,
   AUGMENT_DRAFTED,
   AUGMENT_DATA_SET,
+  AUGMENT_DISARMED,
   TILE_KIND_CHANGED,
   scoreChanged,
   augmentDataSet,
+  augmentDisarmed,
   tileKindChanged,
   registerAugmentSupport,
   draftDoneKey,
+  augmentStageKey,
 } from "./augment/events.js";
 export type {
   ScoreChangedPayload,
   AugmentDraftedPayload,
   AugmentDataSetPayload,
+  AugmentDisarmedPayload,
   TileKindChangedPayload,
 } from "./augment/events.js";
 export { DraftController, rebuildAugments } from "./augment/DraftController.js";
 export type { DraftStage } from "./augment/DraftController.js";
 export { standardAugments, discardRecall } from "./augment/standardAugments.js";
+export {
+  AUGMENT_POWER_TIERS,
+  POWER_TIER_ORDER,
+  POWER_TIER_WEIGHT,
+  POWER_TIER_LABEL,
+  TIER_CUTS,
+  powerScore,
+} from "./augment/powerTier.js";
+export type { PowerTier, PowerTierEntry } from "./augment/powerTier.js";
 export type {
   Tile,
   TileId,
@@ -193,12 +227,16 @@ export {
   createInitialGameState,
   setupRound,
   DEAD_WALL_SIZE,
+  INDICATOR_BLOCK_SIZE,
   FIRST_DORA_INDEX,
   HAND_START_SIZE,
+  rinshanRemaining,
+  doraIndicatorIndex,
 } from "./engine/state/GameState.js";
 export type {
   GameState,
   GameConfig,
+  GameMode,
   InitialStateOptions,
   SetupRoundOptions,
   PlayerState,
@@ -237,6 +275,7 @@ export {
 export type {
   PlayerStatsRaw,
   PlayerStatsView,
+  AugmentStatRaw,
   RankInput,
 } from "./stats/PlayerStats.js";
 
@@ -261,9 +300,15 @@ export type {
   LeaveRoomMessage,
   ReplayListRequestMessage,
   ReplayGetMessage,
+  LeaderboardRequestMessage,
+  AdminUsersRequestMessage,
+  AdminDeleteUserMessage,
   LiveGamesRequestMessage,
   SpectateMessage,
   SpectateStopMessage,
+  SandboxStartMessage,
+  SandboxGrantMessage,
+  SandboxResetMessage,
   ClientMessage,
   JoinedMessage,
   ViewMessage,
@@ -283,6 +328,12 @@ export type {
   LobbyMessage,
   StatsEntry,
   StatsMessage,
+  LeaderboardEntry,
+  LeaderboardMessage,
+  AdminUserEntry,
+  AdminUsersMessage,
+  AugmentTierEntry,
+  AdminAugmentTiersMessage,
   AuthOkMessage,
   RoomCreatedMessage,
   ReplayGameSummary,
@@ -292,6 +343,7 @@ export type {
   LiveGamesMessage,
   SpectateStartedMessage,
   SpectateEndedMessage,
+  SandboxMessage,
   ActionFxMessage,
   ServerMessage,
 } from "./network/protocol.js";

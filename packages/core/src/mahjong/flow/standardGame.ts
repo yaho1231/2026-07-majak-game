@@ -71,6 +71,8 @@ export interface StandardGameOptions {
   extraAugments?: readonly AugmentDef[];
   /** 자리별 표시 정보(닉네임·봇). 없으면 id·비봇 폴백. */
   playerMeta?: import("../../engine/state/GameState.js").GameConfig["playerMeta"];
+  /** 게임 모드(반장전/동풍전). 없으면 hanchan 폴백. state.config.mode로 관통된다. */
+  mode?: import("../../engine/state/GameState.js").GameMode;
 }
 
 export function createStandardGame(options: StandardGameOptions): StandardGame {
@@ -79,6 +81,7 @@ export function createStandardGame(options: StandardGameOptions): StandardGame {
       seed: options.seed,
       playerIds: options.playerIds ?? ["p0", "p1", "p2", "p3"],
       ...(options.playerMeta !== undefined ? { playerMeta: options.playerMeta } : {}),
+      ...(options.mode !== undefined ? { mode: options.mode } : {}),
     },
     {
       startScore: options.startScore ?? 25000,

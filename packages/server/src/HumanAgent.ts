@@ -53,6 +53,11 @@ export class HumanAgent implements PlayerAgent {
   private abandoned = false;
   /** 재접속 시 즉시 복원해 줄 마지막 뷰 */
   private lastView: PlayerView | null = null;
+  /**
+   * 증강 테스트 시점 전환 — 이 좌석(또는 SPECTATOR_ID) 시점으로 뷰를 받는다.
+   * null이면 본인 좌석 기준(평소). 관찰 전용이며 결정(decide)에는 영향이 없다.
+   */
+  private viewSeat: PlayerId | null = null;
   /** 재접속 시 재전송할 증강 카탈로그 */
   private lastCatalog: ServerMessage | null = null;
 
@@ -70,8 +75,13 @@ export class HumanAgent implements PlayerAgent {
    * - 마지막 PlayerView
    * - 응답 대기 중이던 프롬프트/드래프트 (있으면 재전송해 진행이 막히지 않게)
    */
-  reconnect(ws: WebSocket): void {
+  reconnect(ws: WebSocket, afterAttach?: () => void): void {
     this.ws = ws;
+    // 소켓을 붙인 뒤, 뷰·프롬프트를 복원하기 **전에** 호출자가 끼워 넣는 훅.
+    // 증강 테스트에서 sandbox 상태 메시지를 여기서 보내야 한다 — 그 메시지는
+    // 클라이언트에서 프롬프트·결과를 초기화하므로, 복원 전송보다 먼저 나가야
+    // 복원된 프롬프트가 지워지지 않는다.
+    afterAttach?.();
     if (this.lastCatalog !== null) {
       this.send(this.lastCatalog);
     }
@@ -90,6 +100,7 @@ export class HumanAgent implements PlayerAgent {
           name: c.name,
           description: c.description,
         })),
+        deadlineMs: DECISION_TIMEOUT_MS,
       });
     }
   }
@@ -120,6 +131,7 @@ export class HumanAgent implements PlayerAgent {
       const options = this.pendingPrompt.options;
       this.pendingDecision = null;
       this.pendingPrompt = null;
+      this.send({ type: "promptCancel" });
       resolve(safeFallbackOption(options));
     }
     if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
@@ -132,9 +144,48 @@ export class HumanAgent implements PlayerAgent {
     }
   }
 
+  /**
+   * 같은 좌석으로 새 판을 시작하기 전 정리 (증강 테스트 초기화 전용).
+   * 이전 판의 컨트롤러는 이미 무효 종료돼 결정을 기다리지 않으므로, 대기 중이던
+   * resolver·타이머를 resolve 없이 버린다. 남겨 두면 지난 판의 타임아웃이 뒤늦게
+   * 터지거나, 클라이언트의 늦은 응답이 폐기된 프롬프트에 매칭된다.
+   */
+  resetForNewGame(): void {
+    this.clearTimeout();
+    if (this.continueTimeout !== null) {
+      clearTimeout(this.continueTimeout);
+      this.continueTimeout = null;
+    }
+    this.pendingDecision = null;
+    this.pendingPrompt = null;
+    this.pendingDraft = null;
+    this.pendingDraftChoices = null;
+    this.pendingDraftStage = null;
+    this.pendingContinue = null;
+    this.lastView = null;
+    this.viewSeat = null; // 새 판은 본인 시점에서 시작
+  }
+
   sendView(view: PlayerView): void {
     this.lastView = view;
     this.send({ type: "view", view });
+  }
+
+  /**
+   * 증강 테스트 관찰 시점을 지정한다 (본인 좌석 id면 원래 시점으로 복귀).
+   * 컨트롤러가 broadcastViews·resendViewTo에서 viewSeatOverride를 통해 참조한다.
+   */
+  setViewSeat(seat: PlayerId | null): void {
+    this.viewSeat = seat;
+  }
+
+  /** 현재 관찰 시점 (본인 좌석 기준이면 null). */
+  get viewSeatId(): PlayerId | null {
+    return this.viewSeat;
+  }
+
+  viewSeatOverride(): PlayerId | null {
+    return this.viewSeat;
   }
 
   /** 서버 → 클라이언트 임의 메시지 전송 (catalog·roundOver·gameOver) */
@@ -151,6 +202,9 @@ export class HumanAgent implements PlayerAgent {
     return new Promise<ActionOption>((resolve) => {
       this.pendingDecision = resolve;
       this.scheduleTimeout(() => {
+        // 제한 시간 초과 — 서버는 안전 폴백으로 진행한다. 클라이언트가 이걸 모르면
+        // 내 차례가 지나간 뒤에도 선택 모달·버튼이 계속 떠 있으므로 취소를 알린다.
+        this.send({ type: "promptCancel" });
         resolve(safeFallbackOption(prompt.options));
       });
     });
@@ -169,6 +223,7 @@ export class HumanAgent implements PlayerAgent {
         name: c.name,
         description: c.description,
       })),
+      deadlineMs: DECISION_TIMEOUT_MS,
     });
 
     return new Promise<string>((resolve) => {
@@ -212,10 +267,12 @@ export class HumanAgent implements PlayerAgent {
   handleMessage(msg: ClientMessage): void {
     if (msg.type === "action" && this.pendingDecision !== null) {
       const opts = this.pendingPrompt?.options ?? [];
+      // 클라이언트가 보낸 payload(공격자 제어, 최대 프레임 크기)는 옵션마다가 아니라
+      // **한 번만** 직렬화한다. 옵션 N개 × 큰 payload 재직렬화로 이벤트 루프를
+      // 점유시키는 것을 막는다. 서버측 옵션 payload는 작으므로 그쪽은 반복해도 싸다.
+      const wantPayload = JSON.stringify(msg.payload);
       const matched = opts.find(
-        (o) =>
-          o.type === msg.actionType &&
-          JSON.stringify(o.payload) === JSON.stringify(msg.payload),
+        (o) => o.type === msg.actionType && JSON.stringify(o.payload) === wantPayload,
       );
       if (matched) {
         this.clearTimeout();

@@ -18,9 +18,20 @@ import { randomUUID, randomInt } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { WebSocket } from "ws";
 import { contentAugments } from "@majak/content";
-import { HanchanController } from "@majak/core/match/HanchanController.js";
+import { AugmentRegistry } from "@majak/core/augment/AugmentRegistry.js";
+import { standardAugments } from "@majak/core/augment/standardAugments.js";
+import {
+  AUGMENT_POWER_TIERS,
+  POWER_TIER_LABEL,
+  POWER_TIER_ORDER,
+  POWER_TIER_WEIGHT,
+  powerScore,
+} from "@majak/core/augment/powerTier.js";
+import { HanchanController, hanchanConfigForMode } from "@majak/core/match/HanchanController.js";
 import type { SpectatorSink } from "@majak/core/match/HanchanController.js";
+import type { GameMode } from "@majak/core/engine/state/GameState.js";
 import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
+import { SPECTATOR_ID } from "@majak/core/information/PlayerView.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
   ClientMessage,
@@ -29,6 +40,9 @@ import type {
   LobbyPlayerEntry,
   ReplayGameSummary,
   StatsEntry,
+  LeaderboardEntry,
+  AugmentCatalogEntry,
+  AugmentTierEntry,
 } from "@majak/core/network/protocol.js";
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
@@ -37,6 +51,29 @@ import { BotAgent } from "./BotAgent.js";
 import { ReplayWriter } from "./ReplayWriter.js";
 import type { StatsStore } from "./StatsStore.js";
 import type { AuthResult, SiteDb, UserRow } from "./SiteDb.js";
+
+/**
+ * 봇의 액티브 증강 정책 조회용 전체 증강 정의(standard + content).
+ * buildAugmentCatalog와 달리 install·bot 등 원본 필드가 살아 있어 BotAgent가 정책을 읽는다.
+ */
+const ALL_AUGMENT_DEFS = [...standardAugments, ...contentAugments];
+
+/** 게임 레지스트리와 동일 구성(standard + content)의 정적 증강 카탈로그를 만든다. */
+function buildAugmentCatalog(): AugmentCatalogEntry[] {
+  const registry = new AugmentRegistry();
+  registry.addAll(standardAugments);
+  registry.addAll(contentAugments);
+  return registry.all().map((a) => ({
+    id: a.id,
+    tier: a.tier,
+    category: a.category,
+    name: a.name,
+    description: a.description,
+    ...(a.detail !== undefined ? { detail: a.detail } : {}),
+    ...(a.draftStages !== undefined ? { draftStages: a.draftStages } : {}),
+    ...(a.modes !== undefined ? { modes: a.modes } : {}),
+  }));
+}
 
 type RoomPhase = "waiting" | "playing";
 
@@ -55,6 +92,20 @@ interface Room {
   spectators: Set<Conn>;
   /** 게임 무효(중단)에 동의한 사람 playerId 집합 (게임 중에만 의미). */
   abortVotes: Set<PlayerId>;
+  /** 선택된 게임 모드 (반장전/동풍전). 방장이 대기실에서 바꾼다. 기본 hanchan. */
+  gameMode: GameMode;
+  /**
+   * 증강 테스트(샌드박스) 방 — 관리자 1명 + 봇 3명, 드래프트 없음.
+   * 리플레이 파일·게임 인덱스·누적 통계를 남기지 않는다(실대국 데이터 오염 방지).
+   */
+  sandbox: boolean;
+  /** 다음 판 시작 시 좌석별로 미리 지급할 증강 (샌드박스 전용) */
+  sandboxAugments: Record<PlayerId, string[]>;
+  /**
+   * 샌드박스 재시작 대기 — 무효 종료 콜백이 방을 지우는 대신 새 판을 시작하게 한다.
+   * (판 교체는 컨트롤러 abort → onGameAborted → startGame 순서로 일어난다)
+   */
+  sandboxRestarting: boolean;
 }
 
 /** 연결 1개의 상태 — 인증·방 참가·관전을 소켓 단위로 추적한다 */
@@ -68,18 +119,124 @@ interface Conn {
   spectating: Room | null;
   /** 최근 인증 시도 타임스탬프(ms) — 레이트리밋용 슬라이딩 윈도우 */
   authAttempts: number[];
+  /** 이 연결의 원격 IP (핸드셰이크 시점). 원격 남용 방어(스로틀·상한)의 키. */
+  ip: string;
+  /** 메시지 레이트리밋 토큰 버킷 상태. */
+  msgTokens: number;
+  msgLastRefill: number;
+  /** 미인증 유예 타이머 — 인증에 성공하거나 연결이 닫히면 해제한다. */
+  authDeadline: ReturnType<typeof setTimeout> | null;
+  /** 누적 프로토콜 위반 횟수 (기형 프레임·형식 위반). 상한 초과 시 연결 종료. */
+  violations: number;
 }
 
 const MAX_PLAYERS = 4;
+/**
+ * 봇 행동 전 생각 시간(ms) — 즉시 타패하면 진행이 부자연스러워 한 박자 둔다.
+ * 테스트(vitest)는 실제 대기를 피하려고 0, BOT_THINK_MS 환경변수로 덮어쓸 수 있다.
+ */
+const BOT_THINK_MS = Number(
+  process.env.BOT_THINK_MS ?? (process.env.VITEST ? 0 : 1000),
+);
 /** 방 코드 문자 집합 — 혼동 문자는 제외 (O/0, I/1) */
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LEN = 6;
 /** 인증 레이트리밋: AUTH_WINDOW_MS 창에서 연결당 최대 AUTH_MAX_ATTEMPTS회 */
 const AUTH_WINDOW_MS = 60_000;
 const AUTH_MAX_ATTEMPTS = 12;
+/**
+ * IP 기준 인증 시도 창·상한 — 매번 새 WS 연결을 열어 연결 단위 리밋을 우회하는
+ * 온라인 무차별 대입을 막는다(연결을 재생성해도 원격 IP는 그대로다).
+ */
+const AUTH_IP_WINDOW_MS = 60_000;
+const AUTH_IP_MAX_ATTEMPTS = 30;
+/** 전체 동시 WS 연결 상한 (자원 고갈 방지). */
+const MAX_CONNECTIONS = 300;
+/** IP당 동시 WS 연결 상한 (연결 폭주·레이트리밋 우회 방지). 루프백/로컬은 예외. */
+const MAX_CONNECTIONS_PER_IP = 16;
+/** 연결당 메시지 토큰 버킷 — 한 연결이 메시지로 이벤트 루프를 폭주시키지 못하게. 루프백은 예외. */
+const MSG_BUCKET_CAPACITY = 80;
+const MSG_BUCKET_REFILL_PER_SEC = 40;
+/** 동시 scrypt 상한 — 인증 폭주가 libuv 스레드풀을 독점해 게임 fs I/O를 굶기지 못하게. */
+const MAX_SCRYPT_CONCURRENCY = 4;
+/**
+ * scrypt 대기 큐 상한 — 인증이 몰려 슬롯이 없을 때 무한정 큐에 쌓지 않는다.
+ * 상한을 넘으면 즉시 거부해 메모리 증가와 정상 로그인 무기한 지연을 막는다.
+ */
+const MAX_SCRYPT_QUEUE = 64;
+/**
+ * 연결당 송신 버퍼 상한(bytes) — 수신자가 응답을 제때 읽지 않아(느린/악의적
+ * 소비자) ws 송신 큐가 이 상한을 넘으면 그 연결을 끊는다. replayGet 등 큰
+ * 응답을 반복 요청하며 읽지 않는 방식의 메모리 고갈을 막는다.
+ */
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+/**
+ * 전체 동시 방 개수 상한 — 방은 코드·좌석·타이머를 붙들므로 무제한 생성은
+ * 메모리 고갈과 방 코드 공간(32^6) 잠식으로 이어진다.
+ */
+const MAX_ROOMS = 200;
+/**
+ * IP당 방 생성 창·상한 — 계정을 여러 개 만들어 방만 대량으로 찍어내는 남용을
+ * 막는다(계정당 동시 1방 제한은 이미 있으나, 만들고 나가기를 반복하면 우회된다).
+ * 루프백/로컬은 예외.
+ */
+const ROOM_CREATE_WINDOW_MS = 600_000; // 10분
+const ROOM_CREATE_MAX_PER_IP = 20;
+/**
+ * 미인증 연결 유예(ms) — 이 시간 안에 로그인하지 않으면 연결을 끊는다.
+ * 인증 없이 소켓만 열어 두고 연결 상한 슬롯을 점유하는 스쿼팅을 막는다.
+ * (게임 기능은 이미 인증 게이트 뒤에 있지만, 소켓 자체가 자원이다.)
+ */
+const UNAUTH_TIMEOUT_MS = 30_000;
+/**
+ * 프로토콜 위반 허용 횟수 — 초과하면 즉시 연결을 끊는다.
+ * 정상 클라이언트는 JSON 객체에 문자열 type을 담아서만 보내므로, 파싱 실패나
+ * 형식 위반은 사실상 퍼징·탐색이다. 다만 클라이언트 버그로 게임 중인 사람을
+ * 한 번에 끊지 않도록 아주 작은 여유만 둔다.
+ */
+const MAX_PROTOCOL_VIOLATIONS = 3;
+/**
+ * 인증 필드 길이 상한 — maxPayload(512KB) 안에서 거대한 문자열을 보내
+ * scrypt·DB 조회 비용을 부풀리지 못하게 한다. SiteDb의 정책(비밀번호 8~72자)보다
+ * 느슨하게 두되, 명백한 남용만 입구에서 자른다.
+ */
+const MAX_AUTH_FIELD_LEN = 256;
+/**
+ * 증강 테스트에서 한 좌석에 미리 지급할 수 있는 증강 수 상한.
+ * 실전(1인 2개)보다 훨씬 넉넉하되, 무한정 쌓아 판을 못 돌리게 되는 것은 막는다.
+ */
+const MAX_SANDBOX_AUGMENTS = 40;
+
+/**
+ * 루프백(로컬)·테스트 연결인지. 직접 노출 배포에서 원격 클라이언트는 실제 공인 IP로
+ * 도달하므로, 로컬/테스트만 원격 남용 방어(연결 상한·IP 스로틀·메시지 버킷)에서 제외한다.
+ */
+function isLoopbackIp(ip: string): boolean {
+  return ip === "local" || ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+}
+
+/**
+ * 인증 관련 문자열 필드가 모두 상한 이내인지. 문자열이 아닌 값(undefined 등)은
+ * 각 케이스의 타입 검사가 따로 처리하므로 여기서는 통과시킨다.
+ * 거대 문자열로 scrypt·DB 조회 비용을 부풀리는 남용을 입구에서 차단한다.
+ */
+function withinAuthFieldLimit(...fields: unknown[]): boolean {
+  return fields.every((f) => typeof f !== "string" || f.length <= MAX_AUTH_FIELD_LEN);
+}
 
 export class RoomManager {
   private rooms = new Map<string, Room>();
+  /** 모든 활성 연결 — 계정 삭제·세션 무효화 시 강제 로그아웃 대상 조회용. */
+  private conns = new Set<Conn>();
+  /** IP별 동시 연결 수 (연결 상한 판정용). */
+  private ipConnCount = new Map<string, number>();
+  /** IP별 인증 시도 슬라이딩 윈도우 (연결 우회 무차별 대입 차단). */
+  private authIpHits = new Map<string, number[]>();
+  /** IP별 방 생성 슬라이딩 윈도우 (방 대량 생성 남용 차단). */
+  private roomCreateIpHits = new Map<string, number[]>();
+  /** 진행 중 scrypt 수 + 대기 큐 (동시 실행 상한). */
+  private scryptActive = 0;
+  private scryptQueue: Array<() => void> = [];
 
   constructor(
     private replayDir: string,
@@ -95,10 +252,35 @@ export class RoomManager {
     private signupCode = "",
   ) {}
 
+  /**
+   * 정적 증강 카탈로그(게임의 레지스트리와 동일 구성). 인증 직후 1회 보내
+   * 홈 화면 통계가 증강 id→이름·등급을 게임 전에도 표시할 수 있게 한다.
+   */
+  private readonly augmentCatalog: AugmentCatalogEntry[] = buildAugmentCatalog();
+
+  /** 카탈로그 id 집합 — 증강 테스트 요청의 id 검증용. */
+  private readonly augmentIds: Set<string> = new Set(
+    this.augmentCatalog.map((a) => a.id),
+  );
+
   // ─────────────────────────── 연결 수립 ───────────────────────────
 
   /** 새 WebSocket 연결 — 이후 모든 메시지를 이 핸들러가 라우팅한다 */
-  handleConnection(ws: WebSocket): void {
+  handleConnection(ws: WebSocket, ip = "local"): void {
+    // 동시 연결 상한 (전체·IP별) — 루프백/로컬은 제외한다.
+    const perIp = this.ipConnCount.get(ip) ?? 0;
+    if (
+      this.conns.size >= MAX_CONNECTIONS ||
+      (!isLoopbackIp(ip) && perIp >= MAX_CONNECTIONS_PER_IP)
+    ) {
+      try {
+        ws.close(1013, "server busy");
+      } catch {
+        /* 이미 닫힘 */
+      }
+      return;
+    }
+
     const conn: Conn = {
       id: randomUUID(),
       ws,
@@ -108,17 +290,42 @@ export class RoomManager {
       agent: null,
       spectating: null,
       authAttempts: [],
+      ip,
+      msgTokens: MSG_BUCKET_CAPACITY,
+      msgLastRefill: Date.now(),
+      authDeadline: null,
+      violations: 0,
     };
+    this.conns.add(conn);
+    this.ipConnCount.set(ip, perIp + 1);
+
+    // 미인증 스쿼팅 차단 — 유예 안에 로그인하지 않으면 소켓을 회수한다.
+    this.armAuthDeadline(conn);
 
     ws.on("message", (data) => {
-      let msg: ClientMessage;
+      // 연결당 메시지 토큰 버킷 — 초과분은 조용히 버린다(응답 증폭 방지). 루프백은 제외.
+      if (!isLoopbackIp(ip) && !this.consumeMsgToken(conn)) return;
+      let parsed: unknown;
       try {
-        msg = JSON.parse(data.toString()) as ClientMessage;
+        parsed = JSON.parse(data.toString());
       } catch {
-        return; // 잘못된 프레임 무시
+        // 기형 프레임 — 정상 클라이언트는 보내지 않는다. 위반으로 계상한다.
+        this.protocolViolation(conn);
+        return;
+      }
+      // 형식 검증: 객체 + 문자열 type 이어야 라우팅한다. 배열·null·원시값·
+      // type 없는 객체는 전부 위반으로 계상해 퍼징을 빠르게 끊는다.
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed) ||
+        typeof (parsed as { type?: unknown }).type !== "string"
+      ) {
+        this.protocolViolation(conn);
+        return;
       }
       try {
-        this.route(conn, msg);
+        this.route(conn, parsed as ClientMessage);
       } catch (err) {
         console.error("Message handling error:", err);
         this.send(conn.ws, { type: "error", code: "INTERNAL", message: "서버 오류가 발생했습니다" });
@@ -131,7 +338,66 @@ export class RoomManager {
     });
   }
 
+  /**
+   * 미인증 유예 타이머를 (재)설정한다. 유예 안에 인증하지 않으면 소켓을 끊어
+   * 연결 상한 슬롯을 회수한다. unref로 프로세스 종료를 막지 않게 한다.
+   */
+  private armAuthDeadline(conn: Conn): void {
+    if (conn.authDeadline !== null) clearTimeout(conn.authDeadline);
+    const timer = setTimeout(() => {
+      conn.authDeadline = null;
+      if (conn.user !== null) return; // 그사이 인증됨
+      try {
+        conn.ws.close(1008, "authentication timeout");
+      } catch {
+        /* 이미 닫힘 */
+      }
+    }, UNAUTH_TIMEOUT_MS);
+    timer.unref?.();
+    conn.authDeadline = timer;
+  }
+
+  /**
+   * 프로토콜 위반 1회를 계상하고, 상한을 넘으면 연결을 끊는다.
+   * 조용히 무시만 하면 공격자가 같은 소켓으로 계속 탐색할 수 있으므로,
+   * 위반이 쌓이면 소켓 자체를 회수한다.
+   */
+  private protocolViolation(conn: Conn): void {
+    conn.violations += 1;
+    if (conn.violations < MAX_PROTOCOL_VIOLATIONS) return;
+    try {
+      conn.ws.close(1008, "protocol violation");
+    } catch {
+      /* 이미 닫힘 */
+    }
+  }
+
+  /** 토큰 버킷 — 여유 토큰이 있으면 소비하고 true, 없으면 false. */
+  private consumeMsgToken(conn: Conn): boolean {
+    const now = Date.now();
+    const elapsedSec = (now - conn.msgLastRefill) / 1000;
+    if (elapsedSec > 0) {
+      conn.msgTokens = Math.min(
+        MSG_BUCKET_CAPACITY,
+        conn.msgTokens + elapsedSec * MSG_BUCKET_REFILL_PER_SEC,
+      );
+      conn.msgLastRefill = now;
+    }
+    if (conn.msgTokens < 1) return false;
+    conn.msgTokens -= 1;
+    return true;
+  }
+
   private handleClose(conn: Conn): void {
+    this.conns.delete(conn);
+    // 미인증 유예 타이머 해제 — 닫힌 연결에 대고 타이머가 남지 않게 한다.
+    if (conn.authDeadline !== null) {
+      clearTimeout(conn.authDeadline);
+      conn.authDeadline = null;
+    }
+    const left = (this.ipConnCount.get(conn.ip) ?? 1) - 1;
+    if (left <= 0) this.ipConnCount.delete(conn.ip);
+    else this.ipConnCount.set(conn.ip, left);
     this.stopSpectating(conn);
     const room = conn.room;
     if (room === null || conn.agent === null) return;
@@ -156,7 +422,11 @@ export class RoomManager {
       case "register": {
         const db = this.db;
         if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
-        if (typeof msg.username !== "string" || typeof msg.password !== "string") {
+        if (
+          typeof msg.username !== "string" ||
+          typeof msg.password !== "string" ||
+          !withinAuthFieldLimit(msg.username, msg.password, msg.signupCode, msg.adminCode)
+        ) {
           return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
         }
         if (this.rateLimited(conn)) return;
@@ -171,7 +441,11 @@ export class RoomManager {
       case "login": {
         const db = this.db;
         if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
-        if (typeof msg.username !== "string" || typeof msg.password !== "string") {
+        if (
+          typeof msg.username !== "string" ||
+          typeof msg.password !== "string" ||
+          !withinAuthFieldLimit(msg.username, msg.password)
+        ) {
           return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
         }
         if (this.rateLimited(conn)) return;
@@ -180,9 +454,13 @@ export class RoomManager {
         return;
       }
       case "tokenLogin": {
+        if (typeof msg.sessionToken === "string" && msg.sessionToken.length > MAX_AUTH_FIELD_LEN) {
+          return this.fail(conn, "TOKEN_INVALID", "세션이 만료되었습니다");
+        }
         if (typeof msg.sessionToken !== "string") {
           return this.fail(conn, "TOKEN_INVALID", "세션이 만료되었습니다");
         }
+        if (this.rateLimited(conn)) return;
         const user = this.db?.loginByToken(msg.sessionToken) ?? null;
         if (user === null) return this.fail(conn, "TOKEN_INVALID", "세션이 만료되었습니다");
         this.applyAuth(conn, user, msg.sessionToken);
@@ -190,16 +468,14 @@ export class RoomManager {
       }
       case "logout": {
         if (conn.sessionToken !== null) this.db?.logout(conn.sessionToken);
-        // 방·관전 상태도 정리한다 — 안 그러면 좌석/방장이 유령으로 남아
+        // 방·관전 상태를 정리한다 — 안 그러면 좌석/방장이 유령으로 남아
         // 대기실이 소프트락된다 (인증 게이트에 걸려 leaveRoom도 못 보냄).
-        if (conn.room !== null && conn.agent !== null && conn.room.phase === "waiting") {
-          this.leaveWaiting(conn.room, conn.agent);
-        }
-        this.stopSpectating(conn);
-        conn.room = null;
-        conn.agent = null;
+        this.detachSeat(conn);
         conn.user = null;
         conn.sessionToken = null;
+        // 다시 미인증 상태이므로 유예 타이머를 되건다 — 로그인 후 로그아웃으로
+        // 타이머만 소모하고 소켓을 계속 붙들고 있는 우회를 막는다.
+        this.armAuthDeadline(conn);
         return;
       }
       default:
@@ -232,6 +508,7 @@ export class RoomManager {
       case "ready":
       case "addBot":
       case "removeBot":
+      case "setGameMode":
       case "startGame": {
         if (conn.room === null || conn.agent === null) return;
         this.handleLobbyMessage(conn.room, conn.agent, msg);
@@ -263,13 +540,30 @@ export class RoomManager {
         });
         return;
       }
+      // ── 전체 통계 (누구나) ──
+      case "leaderboard":
+        return this.sendLeaderboard(conn);
+      // ── 계정 관리 (관리자) ──
+      case "adminUsers": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sendAdminUsers(conn);
+      }
+      case "adminAugmentTiers": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sendAugmentTiers(conn);
+      }
+      case "adminDeleteUser": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.adminDeleteUser(conn, user, msg.userId);
+      }
       // ── 관리자 관전 ──
       case "liveGames": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
         this.send(conn.ws, {
           type: "liveGames",
           rooms: [...this.rooms.values()]
-            .filter((r) => r.phase === "playing")
+            // 증강 테스트 방은 실대국이 아니므로 관전 목록에서 제외한다
+            .filter((r) => r.phase === "playing" && !r.sandbox)
             .map((r) => ({
               code: r.code,
               startedAt: r.startedAt ?? "",
@@ -285,6 +579,23 @@ export class RoomManager {
         return this.spectate(conn, user, msg.code);
       case "spectateStop":
         return this.stopSpectating(conn);
+      // ── 증강 테스트 (관리자) ──
+      case "sandboxStart": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sandboxStart(conn, user, msg.mode);
+      }
+      case "sandboxGrant": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sandboxGrant(conn, msg.augmentId, msg.target);
+      }
+      case "sandboxReset": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sandboxReset(conn, msg.augments, msg.mode);
+      }
+      case "sandboxViewAs": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sandboxViewAs(conn, msg.seat);
+      }
       default:
         return;
     }
@@ -300,14 +611,42 @@ export class RoomManager {
     run: () => Promise<AuthResult>,
   ): Promise<void> {
     try {
-      const r = await run();
+      const r = await this.withScryptSlot(run);
       if (!r.ok || r.user === undefined || r.sessionToken === undefined) {
         return this.fail(conn, failCode, r.error ?? "인증 실패");
       }
       this.applyAuth(conn, r.user, r.sessionToken);
     } catch (err) {
+      // 큐 과포화는 남용 신호이므로 로그 없이 조용히 레이트리밋으로 응답한다
+      // (공격 시 로그 스팸 방지). 그 외 예기치 못한 오류만 기록한다.
+      if (err instanceof Error && err.message === "auth queue full") {
+        return this.fail(conn, "RATE_LIMITED", "인증 요청이 많습니다. 잠시 후 다시 시도하세요");
+      }
       console.error("auth error:", err);
       this.fail(conn, "INTERNAL", "인증 처리 중 오류가 발생했습니다");
+    }
+  }
+
+  /**
+   * 동시 scrypt 실행을 MAX_SCRYPT_CONCURRENCY로 제한한다. 인증 폭주가 libuv
+   * 스레드풀을 독점해 진행 중 게임의 리플레이 fs I/O를 굶기지 못하게 한다.
+   */
+  private async withScryptSlot<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.scryptActive >= MAX_SCRYPT_CONCURRENCY) {
+      // 큐가 이미 가득 차 있으면 더 쌓지 않고 거부한다 — 무한 큐 증가와
+      // 정상 로그인 무기한 지연을 막는다. doAuth가 이 오류를 잡아 실패로 응답한다.
+      if (this.scryptQueue.length >= MAX_SCRYPT_QUEUE) {
+        throw new Error("auth queue full");
+      }
+      await new Promise<void>((resolve) => this.scryptQueue.push(resolve));
+    }
+    this.scryptActive++;
+    try {
+      return await fn();
+    } finally {
+      this.scryptActive--;
+      const next = this.scryptQueue.shift();
+      if (next !== undefined) next();
     }
   }
 
@@ -318,24 +657,101 @@ export class RoomManager {
    */
   private rateLimited(conn: Conn): boolean {
     const now = Date.now();
+    // 연결 단위 슬라이딩 윈도우.
     conn.authAttempts = conn.authAttempts.filter((t) => now - t < AUTH_WINDOW_MS);
-    if (conn.authAttempts.length >= AUTH_MAX_ATTEMPTS) {
+    // IP 단위 슬라이딩 윈도우 — 새 연결을 열어 연결 단위 리밋을 우회하는 무차별 대입을 막는다.
+    // 루프백/로컬은 제외한다(원격 클라는 직접 노출 배포에서 실제 IP로 도달한다).
+    const exempt = isLoopbackIp(conn.ip);
+    const ipHits = exempt
+      ? []
+      : (this.authIpHits.get(conn.ip) ?? []).filter((t) => now - t < AUTH_IP_WINDOW_MS);
+
+    if (
+      conn.authAttempts.length >= AUTH_MAX_ATTEMPTS ||
+      (!exempt && ipHits.length >= AUTH_IP_MAX_ATTEMPTS)
+    ) {
       this.fail(conn, "RATE_LIMITED", "인증 시도가 너무 많습니다. 잠시 후 다시 시도하세요");
       return true;
     }
     conn.authAttempts.push(now);
+    if (!exempt) {
+      ipHits.push(now);
+      this.authIpHits.set(conn.ip, ipHits);
+      this.pruneAuthIpHits(now);
+    }
     return false;
   }
 
+  /** authIpHits 맵이 커지면 창이 완전히 지난 IP 항목을 정리한다(메모리 상한). */
+  private pruneAuthIpHits(now: number): void {
+    if (this.authIpHits.size < 2048) return;
+    for (const [ip, hits] of this.authIpHits) {
+      if (hits.every((t) => now - t >= AUTH_IP_WINDOW_MS)) this.authIpHits.delete(ip);
+    }
+  }
+
+  /**
+   * IP 단위 방 생성 슬라이딩 윈도우. 한도를 넘으면 true(거부).
+   * 계정당 동시 1방 제한은 만들고 나가기를 반복하면 우회되므로, IP를 키로
+   * 생성 빈도 자체를 제한한다. 루프백/로컬(테스트·개발)은 제외.
+   */
+  private roomCreateLimited(conn: Conn): boolean {
+    if (isLoopbackIp(conn.ip)) return false;
+    const now = Date.now();
+    const hits = (this.roomCreateIpHits.get(conn.ip) ?? []).filter(
+      (t) => now - t < ROOM_CREATE_WINDOW_MS,
+    );
+    if (hits.length >= ROOM_CREATE_MAX_PER_IP) {
+      this.roomCreateIpHits.set(conn.ip, hits);
+      return true;
+    }
+    hits.push(now);
+    this.roomCreateIpHits.set(conn.ip, hits);
+    // 메모리 상한 — 창이 완전히 지난 IP 항목을 정리한다.
+    if (this.roomCreateIpHits.size >= 2048) {
+      for (const [ip, ts] of this.roomCreateIpHits) {
+        if (ts.every((t) => now - t >= ROOM_CREATE_WINDOW_MS)) this.roomCreateIpHits.delete(ip);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 연결을 방·좌석·관전에서 분리한다(신원·세션 토큰은 건드리지 않는다).
+   * 로그아웃과 재인증이 공유하는 정리 로직. 대기실이면 좌석을 비우고,
+   * 게임 중이면 좌석은 재접속용으로 남겨 둔다(신원=닉네임 기준 재접속).
+   */
+  private detachSeat(conn: Conn): void {
+    if (conn.room !== null && conn.agent !== null && conn.room.phase === "waiting") {
+      this.leaveWaiting(conn.room, conn.agent);
+    }
+    this.stopSpectating(conn);
+    conn.room = null;
+    conn.agent = null;
+  }
+
   private applyAuth(conn: Conn, user: UserRow, sessionToken: string): void {
+    // 재인증 방어 — 이미 인증돼 방/좌석을 가진 연결이 (같은/다른 신원으로) 다시
+    // 로그인하면 이전 좌석 링크가 끊어져 대기실에 유령 좌석이 영구히 남는다.
+    // 새 신원을 적용하기 전에 이전 좌석을 분리한다.
+    if (conn.user !== null || conn.room !== null) {
+      this.detachSeat(conn);
+    }
     conn.user = user;
     conn.sessionToken = sessionToken;
+    // 인증 완료 — 미인증 유예 타이머를 해제한다.
+    if (conn.authDeadline !== null) {
+      clearTimeout(conn.authDeadline);
+      conn.authDeadline = null;
+    }
     this.send(conn.ws, {
       type: "authOk",
       username: user.username,
       isAdmin: user.isAdmin,
       sessionToken,
     });
+    // 홈 통계에서 증강 이름·등급을 게임 시작 전에도 쓸 수 있도록 정적 카탈로그를 보낸다.
+    this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
   }
 
   private fail(conn: Conn, code: string, message: string): void {
@@ -377,6 +793,21 @@ export class RoomManager {
     if (existing !== null) {
       return this.fail(conn, "ALREADY_IN_ROOM", `이미 방(${existing.code})에 참가 중입니다`);
     }
+    // 전체 방 개수 상한 — 서버 전체 자원 보호.
+    if (this.rooms.size >= MAX_ROOMS) {
+      return this.fail(conn, "SERVER_BUSY", "서버가 혼잡합니다. 잠시 후 다시 시도하세요");
+    }
+    // IP당 방 생성 레이트리밋 — 계정을 갈아타며 방을 대량 생성하는 남용을 막는다.
+    if (this.roomCreateLimited(conn)) {
+      return this.fail(conn, "RATE_LIMITED", "방 생성이 너무 잦습니다. 잠시 후 다시 시도하세요");
+    }
+    const room = this.newRoom();
+    this.send(conn.ws, { type: "roomCreated", code: room.code });
+    this.seat(conn, user, room);
+  }
+
+  /** 새 방을 만들어 등록한다 (일반 방·샌드박스 공통 초기값). */
+  private newRoom(options: { sandbox?: boolean; gameMode?: GameMode } = {}): Room {
     const code = this.generateCode();
     const room: Room = {
       code,
@@ -389,10 +820,13 @@ export class RoomManager {
       startedAt: null,
       spectators: new Set(),
       abortVotes: new Set(),
+      gameMode: options.gameMode ?? "hanchan",
+      sandbox: options.sandbox ?? false,
+      sandboxAugments: {},
+      sandboxRestarting: false,
     };
     this.rooms.set(code, room);
-    this.send(conn.ws, { type: "roomCreated", code });
-    this.seat(conn, user, room);
+    return room;
   }
 
   private joinRoom(conn: Conn, user: UserRow, rawCode: string): void {
@@ -405,6 +839,11 @@ export class RoomManager {
       return this.fail(conn, "ROOM_NOT_FOUND", "존재하지 않는 방 코드입니다");
     }
 
+    // 증강 테스트 방은 1인 전용 — 방 주인의 재접속만 허용하고, 남에게는 방의 존재를 감춘다
+    if (room.sandbox && !room.agents.some((a) => this.isActiveHuman(a, user.username))) {
+      return this.fail(conn, "ROOM_NOT_FOUND", "존재하지 않는 방 코드입니다");
+    }
+
     // 게임 중 — 같은 계정이면 신원 기준 재접속 (포기한 좌석은 재접속 불가)
     if (room.phase === "playing") {
       const mine = room.agents.find(
@@ -414,7 +853,9 @@ export class RoomManager {
       if (mine === undefined) {
         return this.fail(conn, "ROOM_PLAYING", "이미 게임이 시작된 방입니다");
       }
-      mine.reconnect(conn.ws);
+      // 증강 테스트 방이면, 뷰·프롬프트 복원 전에 sandbox 패널 상태를 먼저 보낸다
+      // (sandbox 메시지가 클라이언트에서 프롬프트를 초기화하므로 순서가 중요하다).
+      mine.reconnect(conn.ws, room.sandbox ? () => this.sendSandboxState(room) : undefined);
       conn.room = room;
       conn.agent = mine;
       this.send(conn.ws, { type: "joined", playerId: mine.id, roomId: code, token: "" });
@@ -497,7 +938,7 @@ export class RoomManager {
     for (let k = 0; k < n; k++) {
       const id = this.freeSlot(room);
       if (id === null) break;
-      room.agents.push(new BotAgent(id, `Bot_${id}`));
+      room.agents.push(new BotAgent(id, `Bot_${id}`, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS));
     }
   }
 
@@ -538,6 +979,13 @@ export class RoomManager {
         }
         return;
       }
+      case "setGameMode": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        if (msg.mode !== "hanchan" && msg.mode !== "tonpuu") return;
+        room.gameMode = msg.mode;
+        this.broadcastLobby(room);
+        return;
+      }
       case "startGame": {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         if (!this.canStart(room)) {
@@ -576,6 +1024,7 @@ export class RoomManager {
           hostId: room.hostId ?? a.id,
           youId: a.id,
           canStart,
+          gameMode: room.gameMode,
           players,
         });
       }
@@ -595,8 +1044,175 @@ export class RoomManager {
     this.send(conn.ws, { type: "stats", career });
   }
 
+  /**
+   * 전체 플레이어 누적 통계(리더보드).
+   * 닉네임별 성적은 **관리자 전용** — 비관리자에게는 닉네임을 빈 문자열로 지워 보낸다.
+   * (증강 메타·도감 전체 통계는 이 데이터의 익명 집계라 누구나 계속 볼 수 있어야 하므로
+   *  요청 자체를 막지 않고 신원만 제거한다. 클라는 nickname==="" 을 익명으로 취급.)
+   */
+  private sendLeaderboard(conn: Conn): void {
+    if (!this.statsStore) {
+      this.send(conn.ws, { type: "leaderboard", entries: [] });
+      return;
+    }
+    const all = this.statsStore.all();
+    // 삭제된 계정의 "유령 통계"를 거른다 — stats.json은 닉네임 키라 계정을 지워도
+    // 예전 통계가 남을 수 있다(과거 삭제·통계 파일 미정리분). 현재 존재하는 계정의
+    // 닉네임만 리더보드에 포함해, 삭제가 stats 파일 정리 타이밍과 무관하게 즉시 반영되게 한다.
+    const known = this.db ? new Set(this.db.listUsers().map((u) => u.username)) : null;
+    const anonymize = conn.user === null || !conn.user.isAdmin;
+    const entries: LeaderboardEntry[] = Object.entries(all)
+      .filter(([nickname]) => known === null || known.has(nickname))
+      .map(([nickname, raw]) => ({
+        nickname: anonymize ? "" : nickname,
+        stats: deriveStats(raw),
+      }));
+    // 게임 수(활동량) 내림차순, 동률이면 평균 순위 오름차순으로 정렬한다.
+    entries.sort(
+      (a, b) => b.stats.games - a.stats.games || a.stats.avgPlacement - b.stats.avgPlacement,
+    );
+    this.send(conn.ws, { type: "leaderboard", entries });
+  }
+
+  /** 전체 계정 목록 (관리자 전용). */
+  private sendAdminUsers(conn: Conn): void {
+    const users = this.db?.listUsers() ?? [];
+    this.send(conn.ws, {
+      type: "adminUsers",
+      users: users.map((u) => ({
+        id: u.id,
+        username: u.username,
+        isAdmin: u.isAdmin,
+        createdAt: u.createdAt,
+        games: u.games,
+      })),
+    });
+  }
+
+  /**
+   * 증강 파워 티어표 (관리자 전용).
+   *
+   * **실시간**: 살아 있는 카탈로그(`this.augmentCatalog`)를 기준으로 매 요청마다
+   * `AUGMENT_POWER_TIERS`를 조인한다 — 새로 추가했는데 티어를 안 매긴 증강은
+   * `tier: null`(미분류)로 표에 그대로 드러나고, 카탈로그에서 빠진 id는 나오지 않는다.
+   * 티어 데이터를 고치고 서버만 다시 띄우면 화면이 곧바로 따라온다.
+   */
+  private sendAugmentTiers(conn: Conn): void {
+    const entries: AugmentTierEntry[] = this.augmentCatalog.map((a) => {
+      const t = AUGMENT_POWER_TIERS[a.id];
+      if (t === undefined) {
+        return {
+          id: a.id,
+          name: a.name,
+          category: a.category,
+          description: a.description,
+          tier: null,
+          p: null,
+          s: null,
+          u: null,
+          f: null,
+          score: null,
+          weight: null,
+          rare: false,
+          note: "",
+        };
+      }
+      return {
+        id: a.id,
+        name: a.name,
+        category: a.category,
+        description: a.description,
+        tier: t.tier,
+        p: t.p,
+        s: t.s,
+        u: t.u,
+        f: t.f,
+        score: powerScore(t),
+        weight: POWER_TIER_WEIGHT[t.tier],
+        rare: t.rare === true,
+        note: t.note,
+      };
+    });
+    // 티어 내림차순 → 같은 티어면 총점 내림차순 (미분류는 맨 뒤)
+    const rank = (tier: string | null): number =>
+      tier === null ? POWER_TIER_ORDER.length : POWER_TIER_ORDER.indexOf(tier as never);
+    entries.sort(
+      (a, b) => rank(a.tier) - rank(b.tier) || (b.score ?? 0) - (a.score ?? 0),
+    );
+    this.send(conn.ws, {
+      type: "adminAugmentTiers",
+      entries,
+      order: [...POWER_TIER_ORDER],
+      labels: { ...POWER_TIER_LABEL },
+      weights: { ...POWER_TIER_WEIGHT },
+    });
+  }
+
+  /** 계정 삭제 (관리자 전용) — 본인은 삭제 불가. 삭제 후 목록·리더보드를 갱신한다. */
+  private adminDeleteUser(conn: Conn, admin: UserRow, userId: number): void {
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (!Number.isInteger(userId)) return this.fail(conn, "BAD_REQUEST", "잘못된 사용자 ID입니다");
+    if (userId === admin.id) return this.fail(conn, "CANNOT_DELETE_SELF", "본인 계정은 삭제할 수 없습니다");
+    let res: { ok: boolean; username?: string; error?: string };
+    try {
+      res = this.db.deleteUser(userId);
+    } catch (err) {
+      console.error("deleteUser error:", err);
+      return this.fail(conn, "DELETE_FAILED", "계정 삭제 중 오류가 발생했습니다");
+    }
+    if (!res.ok) return this.fail(conn, "DELETE_FAILED", res.error ?? "계정 삭제에 실패했습니다");
+    // 삭제된 사용자의 이미 열린 연결을 강제 로그아웃한다 (캐시된 권한·신원이 남지 않게).
+    this.evictUser(userId);
+    // 갱신된 목록·리더보드를 되돌려준다. 통계 저장소(닉네임 키)는 비동기라
+    // 삭제 완료를 기다린 뒤 리더보드를 보내 삭제가 반영되게 한다.
+    const finish = (): void => {
+      this.sendAdminUsers(conn);
+      this.sendLeaderboard(conn);
+    };
+    if (res.username !== undefined && this.statsStore) {
+      void this.statsStore
+        .remove(res.username)
+        .then(finish)
+        .catch((err: unknown) => {
+          console.error("stats remove error:", err);
+          finish();
+        });
+    } else {
+      finish();
+    }
+  }
+
+  /**
+   * 주어진 사용자 id의 열린 연결을 전부 강제 로그아웃한다. 계정 삭제 시 호출한다 —
+   * conn.user(권한 포함)는 인증 시 1회 캐시되고 재검증되지 않으므로, 이 축출이 없으면
+   * 삭제된 계정이 이미 열린 소켓으로 관리자 권한을 계속 행사할 수 있다.
+   */
+  private evictUser(userId: number): void {
+    for (const c of this.conns) {
+      if (c.user?.id !== userId) continue;
+      if (c.room !== null && c.agent !== null) {
+        if (c.room.phase === "waiting") this.leaveWaiting(c.room, c.agent);
+        else c.agent.abandon(); // 게임 중이면 좌석을 봇처럼 자동 진행시켜 완주하게 둔다
+      }
+      this.stopSpectating(c);
+      c.room = null;
+      c.agent = null;
+      c.user = null;
+      c.sessionToken = null;
+      this.fail(c, "SESSION_REVOKED", "계정이 삭제되어 로그아웃되었습니다");
+      try {
+        c.ws.close();
+      } catch {
+        /* 이미 닫힘 */
+      }
+    }
+  }
+
   private sendReplayList(conn: Conn, user: UserRow): void {
-    const rows = this.db?.listGamesFor(user.id) ?? [];
+    // 관리자는 모든 게임 리플레이를, 일반 사용자는 본인 참가 게임만 본다.
+    const rows = user.isAdmin
+      ? this.db?.listAllGames() ?? []
+      : this.db?.listGamesFor(user.id) ?? [];
     const games: ReplayGameSummary[] = rows.map((g) => ({
       gameId: g.gameId,
       code: g.code,
@@ -648,6 +1264,12 @@ export class RoomManager {
     const room = this.rooms.get(code);
     if (room === undefined || room.phase !== "playing" || room.controller === null) {
       return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
+    }
+    // 본인이 참가 중인 방은 관전 불가 — 관전 뷰는 전원의 손패·산·도라를 그대로
+    // 노출하므로, 대국 중인 참가자(관리자여도)가 자기 방을 관전하면 완전정보
+    // 치트가 된다. (다른 방 관전은 그대로 허용.)
+    if (room.agents.some((a) => this.isActiveHuman(a, user.username))) {
+      return this.fail(conn, "FORBIDDEN", "본인이 참가 중인 게임은 관전할 수 없습니다");
     }
     this.stopSpectating(conn); // 기존 관전 정리 (동시 1개)
     const sink: SpectatorSink = {
@@ -705,6 +1327,180 @@ export class RoomManager {
     if (voters.length >= needed) room.controller?.requestAbort();
   }
 
+  // ─────────────────────────── 증강 테스트 (관리자) ───────────────────────────
+
+  /**
+   * 증강 테스트 방을 만들고 즉시 시작한다 — 관리자 1명 + 봇 3명, 드래프트 없음.
+   * 증강은 테스트 패널에서 직접 지급하며, 이 방의 게임은 기록을 남기지 않는다.
+   */
+  private sandboxStart(conn: Conn, user: UserRow, mode?: GameMode): void {
+    const existing = this.membershipOf(user.username);
+    if (existing !== null) {
+      return this.fail(
+        conn,
+        existing.phase === "playing" ? "ALREADY_IN_GAME" : "ALREADY_IN_ROOM",
+        `이미 방(${existing.code})에 참가 중입니다 — 나간 뒤 다시 시도하세요`,
+      );
+    }
+    if (this.rooms.size >= MAX_ROOMS) {
+      return this.fail(conn, "SERVER_BUSY", "서버가 혼잡합니다. 잠시 후 다시 시도하세요");
+    }
+    const room = this.newRoom({
+      sandbox: true,
+      gameMode: mode === "tonpuu" ? "tonpuu" : "hanchan",
+    });
+    this.send(conn.ws, { type: "roomCreated", code: room.code });
+    this.seat(conn, user, room);
+    this.addBots(room, MAX_PLAYERS - room.agents.length);
+    // 상태 메시지를 먼저 보낸다 — startGame이 동기적으로 첫 뷰를 쏘기 때문에,
+    // 나중에 보내면 클라이언트가 테스트 화면을 준비하기 전에 뷰가 도착한다.
+    this.sendSandboxState(room);
+    void this.startGame(room);
+  }
+
+  /** 진행 중인 테스트 게임에 증강 1개를 즉시 지급한다. */
+  private sandboxGrant(conn: Conn, augmentId: string, target?: PlayerId): void {
+    const room = conn.room;
+    if (room === null || !room.sandbox || conn.agent === null) {
+      return this.fail(conn, "NOT_SANDBOX", "증강 테스트 게임에서만 사용할 수 있습니다");
+    }
+    if (room.controller === null) {
+      return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
+    }
+    if (typeof augmentId !== "string" || !this.augmentIds.has(augmentId)) {
+      return this.fail(conn, "UNKNOWN_AUGMENT", "존재하지 않는 증강입니다");
+    }
+    const seat =
+      typeof target === "string" && room.agents.some((a) => a.id === target)
+        ? target
+        : conn.agent.id;
+    const res = room.controller.grantAugment(seat, augmentId);
+    if (!res.ok) {
+      return this.fail(conn, "GRANT_FAILED", `증강 지급 실패: ${res.reason ?? "알 수 없음"}`);
+    }
+  }
+
+  /**
+   * 테스트 게임 초기화 — 지금 판을 버리고, 지정한 증강만 지급된 새 판을 시작한다.
+   * 새 판은 증강·규칙 등록이 전부 새 엔진에 다시 깔리므로, 이전 판에서 설치한
+   * 증강의 흔적이 남지 않는다(증강 개별 제거보다 확실한 초기화).
+   */
+  private sandboxReset(
+    conn: Conn,
+    augments?: Record<string, string[]>,
+    mode?: GameMode,
+  ): void {
+    const room = conn.room;
+    if (room === null || !room.sandbox) {
+      return this.fail(conn, "NOT_SANDBOX", "증강 테스트 게임에서만 사용할 수 있습니다");
+    }
+    // 이미 끝나 정리된 방(게임 종료 후 결과 화면)에서의 요청 — 되살리지 않는다.
+    // 안 막으면 폐기된 컨트롤러에 abort를 걸어 재시작 플래그만 남고 아무 일도 안 일어난다.
+    if (this.rooms.get(room.code) !== room) {
+      return this.fail(conn, "ROOM_CLOSED", "끝난 테스트 게임입니다 — 홈에서 새로 시작하세요");
+    }
+    if (room.sandboxRestarting) return; // 이미 재시작 중 — 중복 요청 무시
+    room.sandboxAugments = this.sanitizeSandboxAugments(room, augments);
+    if (mode === "hanchan" || mode === "tonpuu") room.gameMode = mode;
+
+    // 아직 게임이 없으면(시작 실패·종료 직후) 바로 새 판을 시작한다
+    if (room.controller === null) {
+      room.phase = "waiting";
+      this.sendSandboxState(room);
+      void this.startGame(room);
+      return;
+    }
+    // 진행 중이면 무효 종료를 요청하고, onGameAborted가 새 판을 시작한다
+    room.sandboxRestarting = true;
+    room.controller.requestAbort();
+  }
+
+  /**
+   * 클라이언트가 보낸 좌석별 증강 목록을 정제한다 —
+   * 실재하는 좌석·카탈로그에 있는 id만, 중복 없이, 좌석당 상한까지.
+   */
+  private sanitizeSandboxAugments(
+    room: Room,
+    augments?: Record<string, string[]>,
+  ): Record<PlayerId, string[]> {
+    const clean: Record<PlayerId, string[]> = {};
+    if (augments === null || typeof augments !== "object") return clean;
+    for (const [seat, ids] of Object.entries(augments ?? {})) {
+      if (!room.agents.some((a) => a.id === seat) || !Array.isArray(ids)) continue;
+      const picked: string[] = [];
+      for (const id of ids) {
+        if (typeof id !== "string" || !this.augmentIds.has(id) || picked.includes(id)) continue;
+        picked.push(id);
+        if (picked.length >= MAX_SANDBOX_AUGMENTS) break;
+      }
+      if (picked.length > 0) clean[seat as PlayerId] = picked;
+    }
+    return clean;
+  }
+
+  /**
+   * 테스트 방의 사람(=관리자)에게 현재 테스트 설정을 알린다.
+   * seat/viewAs는 사람마다 다르므로(각자의 좌석·관찰 시점) 개별로 만들어 보낸다.
+   */
+  private sendSandboxState(room: Room): void {
+    for (const a of room.agents) {
+      if (!(a instanceof HumanAgent)) continue;
+      a.notify({
+        type: "sandbox",
+        code: room.code,
+        mode: room.gameMode,
+        augments: room.sandboxAugments,
+        seat: a.id,
+        viewAs: a.viewSeatId ?? a.id,
+      });
+    }
+  }
+
+  /**
+   * 증강 테스트 관찰 시점을 전환한다 — 지정 좌석(또는 SPECTATOR_ID) 시점의 뷰를
+   * 즉시 다시 보내고, 이후 브로드캐스트도 그 시점으로 나간다. 관찰 전용이라
+   * 결정(버림·리치 등)은 그대로 본인 좌석으로 처리된다.
+   */
+  private sandboxViewAs(conn: Conn, seat: PlayerId): void {
+    const room = conn.room;
+    const agent = conn.agent;
+    if (room === null || !room.sandbox || !(agent instanceof HumanAgent)) {
+      return this.fail(conn, "NOT_SANDBOX", "증강 테스트 게임에서만 사용할 수 있습니다");
+    }
+    // 실재 좌석이거나 전체 공개(SPECTATOR_ID)만 허용한다.
+    const valid = seat === SPECTATOR_ID || room.agents.some((a) => a.id === seat);
+    if (typeof seat !== "string" || !valid) {
+      return this.fail(conn, "BAD_SEAT", "존재하지 않는 좌석입니다");
+    }
+    // 본인 좌석이면 override를 해제해 평소 시점으로 되돌린다.
+    agent.setViewSeat(seat === agent.id ? null : seat);
+    // 다음 상태 변화를 기다리지 않고 즉시 새 시점의 뷰를 보낸다. 클라이언트는
+    // 이 뷰의 playerId로 현재 관찰 좌석을 판별하므로 sandbox 메시지 재전송은 불필요
+    // (재전송하면 진행 중 프롬프트·결과 화면이 초기화된다).
+    room.controller?.resendViewTo(agent.id);
+  }
+
+  /**
+   * 테스트 판을 새로 시작한다 (이전 컨트롤러가 무효 종료된 뒤 호출).
+   * 봇은 새 인스턴스로 교체하고 사람 좌석은 대기 중이던 결정을 버려,
+   * 지난 판의 내부 상태가 새 판으로 새지 않게 한다.
+   */
+  private restartSandbox(room: Room): void {
+    room.sandboxRestarting = false;
+    room.phase = "waiting";
+    room.controller = null;
+    room.writer = null;
+    room.abortVotes.clear();
+    room.agents = room.agents.map((a) =>
+      this.isBot(a) ? new BotAgent(a.id, a.nickname, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS) : a,
+    );
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.resetForNewGame();
+    }
+    this.sendSandboxState(room);
+    void this.startGame(room);
+  }
+
   // ─────────────────────────── 게임 시작·진행 ───────────────────────────
 
   private async startGame(room: Room): Promise<void> {
@@ -712,22 +1508,30 @@ export class RoomManager {
     room.phase = "playing";
     room.startedAt = new Date().toISOString();
 
-    const writer = new ReplayWriter(this.replayDir, room.code);
-    await writer.open();
+    // 증강 테스트 방은 리플레이 파일을 남기지 않는다 — 판을 자주 갈아엎는 성격이라
+    // 파일만 쌓이고, 어차피 게임 인덱스·통계에도 기록하지 않는다.
+    const writer = room.sandbox ? null : new ReplayWriter(this.replayDir, room.code);
+    if (writer !== null) await writer.open();
     room.writer = writer;
 
     const playerIds = room.agents.map((a) => a.id);
     const tracker = new StatsTracker(playerIds);
 
     room.controller = new HanchanController(room.agents, {
+      // 모드에 맞는 진행 설정(장 수·서입·드래프트 스케줄) 한 벌. 반장전/동풍전 분기.
+      ...hanchanConfigForMode(room.gameMode),
       extraAugments: contentAugments,
       interRoundDelayMs: this.interRoundDelayMs,
       // 매 게임 새 시드 — 안 넣으면 프로세스 내 모든 게임이 같은 시드를 써서
       // 배패·증강 선택지가 매번 똑같이 반복된다("증강이 초기화 안 됨"의 원인).
       seed: randomInt(0x1_0000_0000),
+      // 증강 테스트: 드래프트 없이 시작하고, 고른 증강만 배패 전에 지급한다
+      ...(room.sandbox
+        ? { draftSchedules: [], presetAugments: room.sandboxAugments }
+        : {}),
     }, {
       onEvent: (eventJson: string) => {
-        writer.write(eventJson);
+        writer?.write(eventJson);
         try {
           tracker.consume(JSON.parse(eventJson) as { type: string; payload?: unknown });
         } catch {
@@ -739,15 +1543,25 @@ export class RoomManager {
         for (const agent of room.agents) {
           if (agent instanceof HumanAgent) agent.notify(msg);
         }
-        writer.close();
-        this.recordGame(room, rankings);
-        void this.finishStats(room, tracker, rankings).catch((err: unknown) => {
-          console.error("finishStats error:", err);
-        });
+        writer?.close();
+        // 증강 테스트 결과는 기록하지 않는다 — 리플레이 목록·리더보드·증강 통계
+        // (도감의 근거)가 시험용 판으로 오염되지 않게 한다.
+        if (!room.sandbox) {
+          this.recordGame(room, rankings);
+          void this.finishStats(room, tracker, rankings).catch((err: unknown) => {
+            console.error("finishStats error:", err);
+          });
+        }
         this.endSpectating(room, "게임이 종료되었습니다", msg);
         this.rooms.delete(room.code);
       },
       onGameAborted: () => {
+        writer?.close();
+        // 증강 테스트 초기화 — 방·좌석을 유지한 채 새 판을 시작한다(무효 알림 없음)
+        if (room.sandbox && room.sandboxRestarting) {
+          this.restartSandbox(room);
+          return;
+        }
         // 전원 합의 무효 — 정산·기록·통계 없이 즉시 정리하고 홈으로 돌린다
         const msg: ServerMessage = {
           type: "gameAborted",
@@ -756,7 +1570,6 @@ export class RoomManager {
         for (const agent of room.agents) {
           if (agent instanceof HumanAgent) agent.notify(msg);
         }
-        writer.close();
         this.endSpectating(room, "게임이 무효 처리되었습니다", msg);
         this.rooms.delete(room.code);
       },
@@ -765,7 +1578,7 @@ export class RoomManager {
     // 백그라운드로 실행 (프롬프트 대기는 각 HumanAgent가 소켓으로 처리)
     room.controller.run().catch((err: unknown) => {
       console.error("Game crashed:", err);
-      writer.close();
+      writer?.close();
       // 플레이어들에게도 반드시 알린다 — 안 그러면 마지막 화면에서 무한 대기.
       const crashMsg: ServerMessage = {
         type: "error",
@@ -869,8 +1682,18 @@ export class RoomManager {
   // ─────────────────────────── 전송 ───────────────────────────
 
   private send(ws: WebSocket, msg: ServerMessage): void {
-    if (ws.readyState === 1 /* OPEN */) {
-      ws.send(JSON.stringify(msg));
+    if (ws.readyState !== 1 /* OPEN */) return;
+    // 백프레셔 가드 — 송신 큐가 상한을 넘으면 그 연결을 끊는다. 응답을 읽지 않는
+    // 느린/악의적 소비자가 서버 메모리를 무한 증가시키지 못하게 한다. 정상
+    // 클라이언트는 메시지를 즉시 소비하므로 이 상한(4MB)에 닿지 않는다.
+    if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+      try {
+        ws.terminate();
+      } catch {
+        /* 이미 닫힘 */
+      }
+      return;
     }
+    ws.send(JSON.stringify(msg));
   }
 }

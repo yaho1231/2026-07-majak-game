@@ -128,7 +128,7 @@ Modifier는 필요한 경우 읽기 전용으로만 사용해야 하며, state�
 | `riichi.cost` | number | 1000 | 리치 비용·공탁 |
 | `riichi.minWallTiles` | number | 4 | 리치 가능 패산 장수 |
 | `riichi.requiresClosed` | boolean | true | 멘젠 리치 조건 |
-| `dora.kanTiming` | `"beforeRinshan" \| "afterDiscard"` | `"beforeRinshan"` | 깡 신도라 공개 타이밍 |
+| `dora.kanTiming` | `"beforeRinshan" \| "afterDiscard"` | `"beforeRinshan"` | 깡 새로운 도라 공개 타이밍 |
 | `call.pon.enabled` | boolean | true | 펑 허용 |
 | `call.chi.enabled` | boolean | true | 치 허용 |
 | `draw.notenPenalty` | number | 3000 | 황패유국 노텐 벌부 |
@@ -136,11 +136,14 @@ Modifier는 필요한 경우 읽기 전용으로만 사용해야 하며, state�
 | `win.furiten.enabled` | boolean | true | 후리텐 론 금지 |
 | `win.blockedYaku` | string[] | `[]` | 성립 금지 역 id 목록 (evaluateWin에서 제외) |
 | `win.treatAsDealer` | boolean | false | 점수 계산만 오야 취급 (연장은 실제 오야만) |
+| `win.ronImmune` | boolean | false | 이 사람의 버림패는 론당하지 않는다 (천하무적). `playerId`는 '쏘일 사람' |
 | `score.extraHan` | number | 0 | 화료 시 추가 판 (역만 제외, 동적 Modifier 가능) |
 | `discard.blockedKinds` | string[] | `[]` | 버림 금지 kindKey 목록 (전부 봉인이면 허용) |
 | `call.chi.fromAnyone` | boolean | false | 상가 외의 버림패도 치 가능 (펑>원격치>일반치) |
 | `draw.notenExempt` | boolean | false | 유국 노텐 벌점 면제 |
-| `scoring.wrapRuns` | boolean | false | 8-9-1 / 9-1-2 순환 순자 허용 |
+| `scoring.wrapRuns` | boolean | false | 8-9-1 / 9-1-2 순환 슌쯔 허용 |
+| `scoring.mixedRuns` | boolean | false | 무늬가 다른 수패로도 슌쯔 허용 (2만·3통·4삭 — 무너진 국경) |
+| `scoring.uraWithoutRiichi` | boolean | false | 리치 없이도 뒷도라를 센다 (숨은 칼날). ctx에 `winType`·`isClosed`가 온다 |
 | `scoring.totalSets` | number | 4 | 표준형 필요 멘쯔 수 (진짜 용 = 5) |
 | `scoring.kokushiMeldAssist` | boolean | false | 요구패 펑 1개를 국사 구성(그 종류+작두)으로 인정 |
 | `deal.handSize` | number | 13 | 배패 장수 (ROUND_STARTED reducer가 rules 클로저로 읽음) |
@@ -148,6 +151,15 @@ Modifier는 필요한 경우 읽기 전용으로만 사용해야 하며, state�
 
 `scoring.*` 계열은 `helpers.scoringOptionsOf(state, rules, player)`가 DecomposeOptions로
 묶어서 화료 판정·텐파이·후리텐·대기·치 후보 등 모든 판정 지점에 일관 적용한다.
+(`scoring.kokushiMeldAssist`가 켜지고 실제로 `kokushi_pon` 후로가 있으면 `kokushiOnly`가
+함께 켜져 표준형·치토이 분해를 아예 열거하지 않는다 — 우는 국사무쌍은 국사로만 화료한다.)
+
+**분해 규칙을 바꾸는 증강은 클라이언트 `waitDecompOptions`도 함께 고쳐야 한다.** 클라는
+대기를 서버가 아니라 스스로 계산하므로, 여기만 고치면 화면의 오름패 표시가 실제 화료와 어긋난다.
+
+`RuleContext`에는 가시성용 `zoneOwner` 외에 화료 문맥용 `winType`·`isClosed`가 있다
+(`buildWinContext`가 채운다). 커스텀 역의 `check`는 GameState를 볼 수 없으므로, "이번 국에
+선언했는가" 같은 상태 조건은 `win.blockedYaku` Modifier로 게이팅한다.
 
 ## 5.2 Augment Draft
 
@@ -168,7 +180,7 @@ Modifier는 필요한 경우 읽기 전용으로만 사용해야 하며, state�
 |----------|------|--------|--------|
 | `visibility.hand` | VisibilityRule | `"owner"` | 손패 공개 범위 |
 | `visibility.discards` | VisibilityRule | `"public"` | 버림패 공개 범위 |
-| `visibility.melds` | VisibilityRule | `"public"` | 멜드 공개 범위 |
+| `visibility.melds` | VisibilityRule | `"public"` | 후로 공개 범위 |
 | `visibility.wall` | VisibilityRule | `"hidden"` | 패산 공개 범위 |
 | `visibility.deadWall` | VisibilityRule | `"hidden"` | 왕패 공개 범위 |
 
