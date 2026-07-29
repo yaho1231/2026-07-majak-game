@@ -12,6 +12,7 @@
 import { handZone, kindKey } from "@majak/core";
 import type {
   BotAugmentOption,
+  BotDecisionContext,
   PlayerId,
   PlayerView,
   TileId,
@@ -21,21 +22,20 @@ import type {
 /**
  * 봇이 **판단할 수 없어 정책을 두지 않은** 액티브 증강 id.
  *
- * 폴드 수단·다단계 블라인드 교환·상대 대기 추정이 필요한 것들이다. 봇이 이걸 뽑으면
+ * 다단계 블라인드 교환·상대 대기 추정이 필요한 것들이다. 봇이 이걸 뽑으면
  * 증강 한 칸을 놀리는 셈이라, 드래프트에서 **후순위로 미룬다**(BotAgent.decideDraft).
  * `bot_policy_coverage.test.ts`가 이 목록을 그대로 읽어 "정책도 없고 목록에도 없는
  * 액티브 증강"을 잡는다 — 목록과 테스트의 단일 진실이다.
+ *
+ * 2026-07-29: 봇이 위험(리치·안전패)과 샹텐을 읽게 되면서 **폴드 계열 4종**
+ * (자유 선언·승부수·손바닥 뒤집기·장사진)이 판단 가능해져 목록에서 빠졌다.
  */
 export const BOT_UNUSABLE_AUGMENTS: readonly string[] = [
   "future_sight", // 2단계 블라인드 교환 — 순이득 여부 불명
-  "free_riichi_discard", // 리치 중 안전패 선택 — 위험 읽기 필요
   "meld_dissolve", // 자기 후로 되돌리기 — 템포 손해 판단 불가
-  "last_stand", // 리치 취소 = 폴드 수단
   "hand_swap3", // 지정→3장 넘김→3장 받음의 다단계 — 한 번의 choose로 조율 불가
   "tile_split", // 어떤 패를 어떻게 쪼갤지 — 손패 가치 추정 필요
   "frame_up", // 어떤 패를 누구에게 심을지 — 상대 대기 추정 필요
-  "palm_flip", // 리치를 풀지 말지 — 대기 가치·위험 판단 필요
-  "snake_kan", // 언제 4연속 깡을 칠지 — 손패 가치 판단 필요
 ];
 
 const isNum = (k: TileKind): boolean =>
@@ -92,19 +92,48 @@ export function hasNeighbor(kinds: TileKind[], k: TileKind): boolean {
 }
 
 /**
- * 손패가 "약한가" — 손을 통째로 갈아엎는 재구성 증강(밥상 뒤엎기·통째로 바꾸기·
- * 개벽 등)을 켤지 판단한다. 텐파이면 절대 약하지 않다고 본다. 그 외에는 고립패
- * (짝도 이웃도 없는 패) 수로 어림하고, threshold 이상이면 약한 손으로 본다.
- * (정확한 샹텐 계산 대신 값싸고 보수적인 근사 — 좋은 손을 잘못 엎지 않게 한다.)
+ * 손패가 "갈아엎을 만큼 나쁜가" — 손을 통째로 재구성하는 증강(밥상 뒤엎기·통째로
+ * 바꾸기·개벽 등)을 켤지 판단한다.
+ *
+ * 기준은 **샹텐**이다(BotAgent가 국사·치토이까지 포함해 계산해 넘긴다). 예전엔 고립패
+ * 수로 어림했는데, 그러면 요구패 13종처럼 **국사 텐파이인 손**도 "고립패 13장"으로
+ * 읽혀 엎어 버렸다 — 사람은 절대 그러지 않는다.
  */
-export function handIsWeak(kinds: TileKind[], tenpai: boolean, threshold = 5): boolean {
-  if (tenpai) return false;
-  if (kinds.length === 0) return false;
-  let isolated = 0;
-  for (const k of kinds) {
-    if (!hasPair(kinds, k) && !hasNeighbor(kinds, k)) isolated++;
+export function handIsPoor(ctx: BotDecisionContext, minShanten = 4): boolean {
+  if (ctx.tenpai) return false;
+  return ctx.shanten >= minShanten;
+}
+
+/** 텐파이일 때 오름패가 세상에 몇 장 남아 있는가 (0이면 죽은 대기). */
+export function waitTilesLeft(ctx: BotDecisionContext): number {
+  let n = 0;
+  for (const w of ctx.waits) n += ctx.remaining(w);
+  return n;
+}
+
+/**
+ * {tileId}를 버리는 후보들 중 **가장 안전한** 패를 고른다 (리치 중 안전패 선택용).
+ * 지금 판에 위협이 없으면 null — 안전패를 고를 이유가 없다.
+ */
+export function pickSafestDiscard(
+  ctx: BotDecisionContext,
+  type: string,
+): BotAugmentOption | null {
+  if (ctx.threat <= 0) return null;
+  let best: BotAugmentOption | null = null;
+  let bestSafety = -Infinity;
+  for (const o of ctx.options) {
+    if (o.type !== type) continue;
+    const tileId = (o.payload as { tileId?: TileId }).tileId;
+    const kind = tileId !== undefined ? ctx.view.tiles[tileId]?.kind : undefined;
+    if (kind === undefined) continue;
+    const s = ctx.safety(kind);
+    if (s > bestSafety) {
+      bestSafety = s;
+      best = o;
+    }
   }
-  return isolated >= threshold;
+  return best;
 }
 
 const sameKind = (a: TileKind, b: TileKind): boolean =>

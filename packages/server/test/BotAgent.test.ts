@@ -19,22 +19,10 @@ import {
   WIN_DECLARED,
 } from "@majak/core";
 import type { HanchanConfig } from "@majak/core";
-import { BotAgent, keepValue } from "../src/BotAgent.js";
-import type { TileKind } from "@majak/core";
+import { BotAgent } from "../src/BotAgent.js";
 
-const k = (suit: TileKind["suit"], rank: number): TileKind => ({ suit, rank });
-
-describe("keepValue — 버림 휴리스틱", () => {
-  it("외톨이 자패가 붙어 있는 수패보다 먼저 버려진다", () => {
-    const hand = [k("wind", 1), k("man", 3), k("man", 4)];
-    expect(keepValue(k("wind", 1), hand)).toBeLessThan(keepValue(k("man", 3), hand));
-  });
-
-  it("또이쯔(같은 패 2장)는 고립 수패보다 가치가 높다", () => {
-    const hand = [k("pin", 5), k("pin", 5), k("sou", 9)];
-    expect(keepValue(k("pin", 5), hand)).toBeGreaterThan(keepValue(k("sou", 9), hand));
-  });
-});
+// 개별 판단(타패·수비·리치·후로)의 경계는 BotPlay.test.ts에서 장면별로 본다.
+// 여기서는 그 판단들이 **실게임에서 실제로 작동하는지**만 이벤트 로그로 확인한다.
 
 describe("BotAgent — 실게임에서 리치·화료가 발생한다", () => {
   it(

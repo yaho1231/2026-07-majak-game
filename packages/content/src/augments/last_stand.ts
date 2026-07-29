@@ -22,6 +22,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, PlayerId } from "@majak/core";
 import { flagOf } from "../util.js";
+import { waitTilesLeft } from "./botHelpers.js";
 
 const RIICHI_CANCELED = "RiichiCanceled";
 const usedKey = (h: PlayerId): string => `last_stand:used:${h}`;
@@ -114,6 +115,24 @@ export const lastStand: AugmentDef = defineAugment({
         : [],
     );
   },
-  // 봇 정책 없음 — 리치 취소는 순전히 폴드(방총 회피) 수단인데, 봇은 위험을 읽어
-  // 접지 않는다. 확정 가치인 리치를 언제 물릴지는 단순 규칙으로 판단할 수 없다.
+  /**
+   * 리치 취소는 폴드 수단이다 — **이길 가망이 사라졌는데 계속 쏘일 위험만 남았을 때**
+   * 쓴다. 사람이 실제로 물러서는 두 장면을 그대로 옮겼다.
+   *
+   *  · 남이 리치를 걸었는데 내 대기가 죽었다(오름패가 세상에 거의 안 남았다).
+   *  · 패산이 얼마 안 남아 화료는 어려운데 상대는 아직 위험하다.
+   *
+   * 취소하면 리치봉도 돌아오고 그 뒤로는 안전패를 골라 낼 수 있다(봇의 버림 판단이
+   * 위협을 보고 알아서 접는다). 위협이 없으면 리치는 그대로 두는 것이 항상 낫다.
+   */
+  bot: {
+    choose(ctx) {
+      const opt = ctx.options.find((o) => o.type === "cancel_riichi");
+      if (opt === undefined) return null;
+      if (ctx.threat < 0.9) return null; // 위협이 없으면 물러설 이유가 없다
+      const left = waitTilesLeft(ctx);
+      const hopeless = left <= 1 || (ctx.wallLeft <= 12 && left <= 3);
+      return hopeless ? opt : null;
+    },
+  },
 });

@@ -31,7 +31,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, sameHandSize, viewKey } from "../util.js";
-import { handIsWeak, handKindsOf } from "./botHelpers.js";
+import { handIsPoor } from "./botHelpers.js";
 
 const ID = "full_hand_swap";
 const ACTION = "hand_swap";
@@ -157,11 +157,11 @@ export const fullHandSwap: AugmentDef = defineAugment({
   // 내 손이 명백히 나쁠 때만 상대 손을 통째로 강탈한다. 상대 손 속은 볼 수 없으므로
   // 대상은 무작위로 고른다(누구를 뺏어도 내 쓰레기 손보다는 기대값이 높다).
   bot: {
-    choose({ options, view, holder, tenpai, rng }) {
-      if (!handIsWeak(handKindsOf(view, holder), tenpai)) return null;
-      const mine = options.filter((o) => o.type === ACTION);
+    choose(ctx) {
+      if (!handIsPoor(ctx)) return null;
+      const mine = ctx.options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
-      return mine[rng.int(mine.length)] ?? mine[0] ?? null;
+      return mine[ctx.rng.int(mine.length)] ?? mine[0] ?? null;
     },
   },
 });

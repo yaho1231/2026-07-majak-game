@@ -17,6 +17,7 @@ GameState를 직접 알지 못한다 — Game Flow(11)가 상태에서 입력을
 |------|------|
 | `decompose.ts` | 손패 → 분해(4멘쯔1작두 / 치토이 / 국사) 전체 열거 |
 | `waits.ts` | 텐파이 여부·대기패 계산 |
+| `shanten.ts` | 샹텐(화료까지 남은 갈아치기)·우케이레(받는 패의 실제 장수) — 봇·증강 정책의 손 평가 |
 | `WinContext.ts` | 화료 문맥(WinContext)과 채점 변형(ScoringVariant) 생성 |
 | `YakuRegistry.ts` | 역의 **등록형** 관리 (추가·제거 가능) |
 | `standardYaku.ts` | 01_GAME_RULES의 표준 역 전체 — 등록 API의 첫 사용자 |
