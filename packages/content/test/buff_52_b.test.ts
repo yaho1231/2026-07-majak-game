@@ -314,7 +314,7 @@ describe("eternal_dealer (만년 오야) — 자풍 동 고정 + 연장 3회", (
     ).toBe(null);
   });
 
-  it("오야가 아닌데 화료하면 오야 자리가 유지되고 횟수가 1 소모된다", () => {
+  it("오야가 아닌데 화료하면 오야 자리를 자기 자리로 가져오고 횟수가 1 소모된다", () => {
     const base = withAugment(craftNonDealerWin(), "p0", "eternal_dealer");
     const baseline = createStandardGameFromState(structuredClone(base));
     runTsumoWin(baseline);
@@ -323,7 +323,10 @@ describe("eternal_dealer (만년 오야) — 자풍 동 고정 + 연장 3회", (
     const game = createStandardGameFromState(structuredClone(base));
     installAugment(game.engine, eternalDealer, "p0");
     runTsumoWin(game);
-    expect(lastSettled(game).dealerSeat).toBe(1); // 연장
+    // 2026-07-29 감사: 예전에는 옛 오야 자리(1)가 그대로 유지되어, 보유자가 자기 횟수를
+    // 태워 **남의 오야를 늘려 주는** 결과였다. 이제 보유자 자리로 옮겨 온다.
+    const holderSeat = game.engine.state.players.find((pl) => pl.id === "p0")?.seat;
+    expect(lastSettled(game).dealerSeat).toBe(holderSeat);
     expect(game.engine.state.augmentData["eternal_dealer:keeps:p0"]).toBe(1);
     expect(game.engine.state.augmentData["view:*:eternal_dealer:p0"]).toBe(
       "연장 (남은 2회)",

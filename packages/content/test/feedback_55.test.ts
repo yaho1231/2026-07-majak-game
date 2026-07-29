@@ -155,7 +155,8 @@ function playOneRound(aug: AugmentDef, seed: number): void {
 describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
   const FOG_KEY = "hidden_river:fog:p0";
   const LAST_KEY = viewKey("*", "hidden_river:last:p0");
-  const REVEAL_KEY = viewKey("*", "revealTiles:fog");
+  // 공개 채널은 보유자별로 갈린다 (박무와 키를 공유하면 서로 덮어쓴다)
+  const REVEAL_KEY = viewKey("*", "revealTiles:fog:p0");
 
   function setup(): Game {
     const state = withAugment(

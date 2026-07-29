@@ -28,11 +28,19 @@ import type {
   GameState,
   PlayerId,
 } from "@majak/core";
-import { counterOf, flagOf, viewKey } from "../util.js";
+import { counterOf, flagOf, roundKey, viewKey } from "../util.js";
 
 const ID = "time_stop";
 const ACTION = "time_stop_use";
-const armedKey = (h: PlayerId): string => `${ID}:armed:${h}`;
+/**
+ * 이번 턴에 시간을 멈춰 뒀는가.
+ *
+ * ⚠ **국 스코프여야 한다.** 선언한 국이 남의 론·유국으로 먼저 끝나면 게임 스코프 키에
+ * armed=true가 남아, 다음 국에서 공짜 추가 턴이 새거나(TURN_PASSED 인터셉터) 반대로
+ * 재선언이 "already armed"로 막혔다(2026-07-29 감사).
+ */
+const armedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:armed:${roundKey(state)}:${h}`;
 /** 마지막으로 소진한 window(+1). 0=미사용. */
 const usedWindowKey = (h: PlayerId): string => `${ID}:window:${h}`;
 
@@ -66,12 +74,12 @@ const useAction: ActionDef<Record<string, never>> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (flagOf(state, armedKey(req.player))) return "already armed this turn";
+    if (flagOf(state, armedKey(state, req.player))) return "already armed this turn";
     if (!chargeAvailable(state, req.player)) return "no charge this window";
     return null;
   },
   toEvents: (req, { state }) => [
-    augmentDataSet(armedKey(req.player), true),
+    augmentDataSet(armedKey(state, req.player), true),
     augmentDataSet(usedWindowKey(req.player), windowOf(state) + 1),
     augmentDataSet(viewKey(req.player, `${ID}:armed`), true),
   ],
@@ -105,7 +113,7 @@ export const timeStop: AugmentDef = defineAugment({
     ctx.holderTurnOptions((state) => {
       if (state.round.phase !== "turn.act") return [];
       if (playerAtSeat(state, state.round.turnSeat).id !== holder) return [];
-      if (flagOf(state, armedKey(holder))) return []; // 이미 이번 턴 선언함
+      if (flagOf(state, armedKey(state, holder))) return []; // 이미 이번 턴 선언함
       if (!chargeAvailable(state, holder)) return [];
       return [{ type: ACTION, payload: {} }];
     });
@@ -113,7 +121,7 @@ export const timeStop: AugmentDef = defineAugment({
     // 보유자의 버림이 지나갈 때 다음 자리를 보유자로 되돌린다 (추가 턴)
     ctx.interceptor(TURN_PASSED, (event, ic) => {
       const state = ic.state;
-      if (!flagOf(state, armedKey(holder))) return event;
+      if (!flagOf(state, armedKey(state, holder))) return event;
       if (state.round.lastDiscard?.player !== holder) return event; // 남이 운 경우 유지
       const seat = seatOf(state, holder);
       if (seat === undefined) return event;
@@ -125,14 +133,14 @@ export const timeStop: AugmentDef = defineAugment({
     ctx.reaction(TURN_PASSED, (event, rc) => {
       void event;
       const state = rc.state;
-      if (!flagOf(state, armedKey(holder))) return;
+      if (!flagOf(state, armedKey(state, holder))) return;
       const seat = seatOf(state, holder);
       if (
         seat !== undefined &&
         state.round.lastDiscard?.player === holder &&
         state.round.turnSeat === seat
       ) {
-        rc.emit(augmentDataSet(armedKey(holder), false));
+        rc.emit(augmentDataSet(armedKey(state, holder), false));
         rc.emit(augmentDataSet(viewKey(holder, `${ID}:armed`), false));
       }
     });

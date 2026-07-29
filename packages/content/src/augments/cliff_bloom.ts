@@ -60,6 +60,7 @@ import {
   flagOf,
   roundKey,
   viewKey,
+  widenPeek,
   winPointsWithExtraHan,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
@@ -105,14 +106,18 @@ const bloomedKey = (state: GameState, h: PlayerId): string =>
  * 지금 고를 수 있는 영상패의 대상 쯔모패 (tileId + 1, 0 = 없음).
  * "지금 쯔모패가 그 영상패일 때만 유효"하므로 플래그가 스스로 만료된다 —
  * 깡을 연달아 하거나 만개해도 지난 깡의 선택권이 남지 않는다.
+ *
+ * ⚠ 그래도 **국 스코프**여야 한다. tileId 비교만으로는 국이 바뀐 뒤 같은 tileId를
+ * 정상 쯔모했을 때 되살아나, 깡도 없이 쯔모패를 왕패와 맞바꿀 수 있었다(2026-07-29 감사).
  */
-const pickKey = (h: PlayerId): string => `${ID}:pick:${h}`;
+const pickKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:pick:${roundKey(state)}:${h}`;
 
 /** 지금 이 플레이어가 영상패를 고를 수 있는가 */
 function canPick(state: GameState, h: PlayerId): boolean {
   const drawn = state.round.lastDrawnTile;
   if (drawn === null) return false;
-  return counterOf(state, pickKey(h)) === drawn + 1;
+  return counterOf(state, pickKey(state, h)) === drawn + 1;
 }
 
 interface BloomPickPayload {
@@ -240,7 +245,10 @@ export const cliffBloom: AugmentDef = defineAugment({
       apply: (cur, rctx) => {
         if (rctx.playerId !== holder) return cur;
         const state = rctx.state as GameState | undefined;
-        return { mode: "peek", count: state === undefined ? 4 : rinshanRemaining(state) };
+        return widenPeek(cur, {
+          mode: "peek",
+          count: state === undefined ? 4 : rinshanRemaining(state),
+        });
       },
     });
 
@@ -281,7 +289,7 @@ export const cliffBloom: AugmentDef = defineAugment({
           return; // 만개했으면 영상패를 고를 이유가 없다
         }
       }
-      rc.emit(augmentDataSet(pickKey(holder), p.tileId + 1));
+      rc.emit(augmentDataSet(pickKey(rc.state, holder), p.tileId + 1));
     });
 
     // 선택 모달용 후보 (합법성은 validate가 최종 판정)

@@ -47,6 +47,8 @@ export const hiddenBlade: AugmentDef = defineAugment({
     if (yaku === undefined) return;
     if (yaku.get(ID) === undefined) {
       yaku.register({
+        // 무장해제되면 이 역도 함께 잠긴다 (evaluate가 disarmedSources와 대조)
+        source: ctx.instanceId,
         id: ID,
         name: "숨은 칼날",
         closedHan: 2,

@@ -25,15 +25,34 @@ const ACTION = "reload_use";
 const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(h)) < matchUses(state);
-/** 대상 증강의 사용 카운터 키 (matchUses 규약) */
-const targetUsesKey = (augId: string, h: PlayerId): string => `${augId}:uses:${h}`;
+/**
+ * 대상 증강의 사용 카운터 키 후보.
+ *
+ * 대부분은 `<id>:uses:<holder>`(matchUses 규약)를 쓰지만, 매치 스코프 카운터를
+ * `<id>:used:<holder>`로 이름 붙인 증강도 넷 있다(연금술사·등가교환·연못 강탈·역만 방어술).
+ * 예전에는 `uses`만 봐서 그 넷은 **재장전이 광고하는 "소진 복구"의 사각지대**였다
+ * (2026-07-29 감사). 키를 옮기면 기존 상태·테스트가 깨지므로 여기서 둘 다 인정한다.
+ */
+const targetUsesKeys = (augId: string, h: PlayerId): string[] => [
+  `${augId}:uses:${h}`,
+  `${augId}:used:${h}`,
+];
+
+/** 이 증강이 실제로 소진 이력을 남긴 카운터 키 (없으면 null) */
+function spentKeyOf(
+  state: GameState,
+  augId: string,
+  holder: PlayerId,
+): string | null {
+  return targetUsesKeys(augId, holder).find((k) => counterOf(state, k) > 0) ?? null;
+}
 
 /** 복구 가능한(=소진 이력이 있는) 홀더의 다른 증강 id 목록 */
 function reloadable(state: GameState, holder: PlayerId): string[] {
   const player = state.players.find((p) => p.id === holder);
   if (player === undefined) return [];
   return player.augments.filter(
-    (augId) => augId !== ID && counterOf(state, targetUsesKey(augId, holder)) > 0,
+    (augId) => augId !== ID && spentKeyOf(state, augId, holder) !== null,
   );
 }
 
@@ -53,16 +72,18 @@ const reloadAction: ActionDef<{ augmentId: string }> = {
     if (!player.augments.includes(req.payload.augmentId)) {
       return "you do not have that augment";
     }
-    if (counterOf(state, targetUsesKey(req.payload.augmentId, req.player)) <= 0) {
+    if (spentKeyOf(state, req.payload.augmentId, req.player) === null) {
       return "that augment has no spent use to restore";
     }
     return null;
   },
   toEvents: (req, { state }) => {
-    const spent = counterOf(state, targetUsesKey(req.payload.augmentId, req.player));
+    // validate가 존재를 보장한다
+    const key = spentKeyOf(state, req.payload.augmentId, req.player) as string;
+    const spent = counterOf(state, key);
     return [
       // 대상 증강의 사용 카운터를 1 되돌린다 (한 번 더 쓸 수 있게)
-      augmentDataSet(targetUsesKey(req.payload.augmentId, req.player), spent - 1),
+      augmentDataSet(key, spent - 1),
       // 재장전 자신을 1 소진
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       // 전원 공개 — 소진됐다고 믿던 증강이 되살아났음을 알린다

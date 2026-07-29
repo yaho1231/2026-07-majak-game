@@ -21,6 +21,7 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  TileAttrs,
   TileId,
 } from "@majak/core";
 import { counterOf, roundKey } from "../util.js";
@@ -80,7 +81,12 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
         {
           tileId: req.payload.tileId,
           kind: { suit: k.suit, rank: k.rank + req.payload.delta },
-          attrs: { conjured: true },
+          // 적도라 표식은 **숫자와 함께 옮기지 않는다** — 적5를 4나 6으로 옮기면
+          // 존재할 수 없는 '적4·적6'이 생겨 +1판이 그대로 따라왔다(2026-07-29 감사).
+          // (undefined는 TileKindChanged 규약상 해당 키를 제거한다)
+          // undefined는 TileKindChanged 규약상 "그 키를 제거"를 뜻한다
+          // (exactOptionalPropertyTypes 때문에 타입 단언이 필요하다)
+          attrs: { conjured: true, red: undefined, redFor: undefined } as unknown as TileAttrs,
         },
       ]),
       augmentDataSet(usedKey(req.player), counterOf(state, usedKey(req.player)) + 1),

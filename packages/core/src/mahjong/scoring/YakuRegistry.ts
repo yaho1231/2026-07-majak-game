@@ -22,6 +22,15 @@ export interface YakuDef {
    * 다른 실제 역이 하나도 없으면 아예 적용되지 않는다 (증강 보너스 역용).
    */
   auxiliary?: boolean;
+  /**
+   * 이 역을 등록한 주체(증강 인스턴스 id). 증강이 만든 역은 **반드시** 채운다.
+   *
+   * 무장해제(disarm)는 규칙 모디파이어·효과·액티브 버튼을 전부 잠그지만, 역 레지스트리에는
+   * source 개념이 없어 **커스텀 역만 잠기지 않고 그대로 성립**했다(2026-07-29 감사).
+   * 이 필드가 있으면 evaluate가 WinContext.disarmedSources와 대조해 걸러낸다.
+   * 표준 역은 비워 둔다(잠글 주체가 없다).
+   */
+  source?: string;
   check(variant: ScoringVariant, ctx: WinContext): boolean;
 }
 

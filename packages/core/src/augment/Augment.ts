@@ -157,6 +157,21 @@ export interface AugmentContext {
   holderTurnOptions(
     build: (state: GameState) => { type: string; payload: unknown }[],
   ): void;
+  /**
+   * 보유자에게 **리액션(후로) 프롬프트**의 추가 선택지를 노출한다.
+   * `holderTurnOptions`의 리액션판 — 우는 국사·허장성세·묵계처럼 남의 버림에 반응하는
+   * 커스텀 콜이 쓴다.
+   *
+   * ⚠ `engine.registerReactionOptions`를 직접 부르지 말 것. 그 경로에는 **무장해제 게이트가
+   * 없어**, 잠긴 증강의 콜 버튼이 그대로 뜨고 제출까지 통과한다(2026-07-29 감사에서
+   * 3종 전부 확인). 이 헬퍼는 `holderTurnOptions`와 같은 `isSourceDisarmed` 가드를 건다.
+   */
+  holderReactionOptions(
+    build: (
+      state: GameState,
+      discard: { player: PlayerId; tileId: number },
+    ) => { type: string; payload: unknown }[],
+  ): void;
 }
 
 export interface AugmentDef {
@@ -276,6 +291,14 @@ export function installAugment(
         // 않은 옵션의 submit을 거부하므로, 여기서 후보를 비우면 액션도 함께 막힌다.
         if (isSourceDisarmed(state, instanceId)) return [];
         return build(state);
+      });
+    },
+    holderReactionOptions(build) {
+      engine.registerReactionOptions((state, player, discard) => {
+        if (player !== holder) return [];
+        // holderTurnOptions와 동일한 무장해제 가드 — 잠기면 콜 버튼도 함께 사라진다
+        if (isSourceDisarmed(state, instanceId)) return [];
+        return build(state, discard);
       });
     },
   };

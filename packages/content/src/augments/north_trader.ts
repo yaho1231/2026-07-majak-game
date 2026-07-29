@@ -60,6 +60,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, viewKey } from "../util.js";
+import { handKindsOf, seatWindOf } from "./botHelpers.js";
 
 const ID = "north_trader";
 const ACTION = "north_pull";
@@ -69,10 +70,13 @@ const EVENT = "NorthPulled";
 const pulledKey = (state: GameState, h: PlayerId): string =>
   `${ID}:pulled:${state.round.prevalentWind}-${state.round.roundNumber}-${state.round.honba}:${h}`;
 
+/** 北의 바람 랭크 */
+const NORTH_RANK = 4;
+
 /** 北(바람 4)인가 */
 function isNorth(state: GameState, id: TileId): boolean {
   const k = kindOf(state, id);
-  return k.suit === "wind" && k.rank === 4;
+  return k.suit === "wind" && k.rank === NORTH_RANK;
 }
 
 const wallIds = (state: GameState): readonly TileId[] =>
@@ -177,6 +181,11 @@ export const northTrader: AugmentDef = defineAugment({
           ...state.round,
           lastDrawnTile: p.replacement,
           lastDrawRinshan: true,
+          // 북빼기는 '배패 그대로'를 깬다 — 천화·지화의 전제가 사라진다.
+          // 예전에는 두 플래그를 그대로 둬서 오야가 첫 순에 북을 뺀 뒤 보충패로 화료하면
+          // **천화가 붙었다**(2026-07-29 감사). 삼마 북빼기 룰도 동일하게 천화를 깬다.
+          firstTurn: false,
+          goAroundBroken: true,
         };
         const key = pulledKey(state, p.player);
         const next = (typeof state.augmentData[key] === "number"
@@ -216,9 +225,23 @@ export const northTrader: AugmentDef = defineAugment({
     });
   },
   // 봇: 北이 손에 있으면 곧바로 뺀다 — 객풍패를 도라로 바꾸는 순수 이득이다.
+  /*
+   * 봇: 예전에는 옵션이 뜨면 무조건 빼서 **자기 손을 부쉈다** — 北 샹퐁 텐파이·北 커쯔
+   * 후보·자일색 진행 중에도 北을 한 장씩 전부 뽑아냈고, 북가(자풍 北)에게는 역패가
+   * 사라졌다(2026-07-29 감사). 이득이 명백할 때만 뺀다.
+   */
   bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
+    choose({ options, view, holder, tenpai }) {
+      const opt = options.find((o) => o.type === ACTION);
+      if (opt === undefined) return null;
+      if (tenpai) return null; // 텐파이면 손을 건드리지 않는다
+      const kinds = handKindsOf(view, holder);
+      const norths = kinds.filter(
+        (k) => k.suit === "wind" && k.rank === NORTH_RANK,
+      ).length;
+      if (norths >= 2) return null; // 커쯔·샹퐁 재료 — 빼면 손해다
+      if (seatWindOf(view, holder) === NORTH_RANK) return null; // 북가에겐 역패다
+      return opt;
     },
   },
 });

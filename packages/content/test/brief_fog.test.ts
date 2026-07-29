@@ -30,7 +30,9 @@ import { briefFog } from "../src/augments/brief_fog.js";
 type Game = ReturnType<typeof createStandardGameFromState>;
 
 const USES_KEY = "brief_fog:uses:p0";
-const TURN_KEY = "brief_fog:turn:p0";
+/** 선언 순 키는 국 스코프다 (국이 바뀌면 자동 만료) */
+const turnKeyFor = (st: GameState): string =>
+  `brief_fog:turn:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0`;
 
 function withAugment(state: GameState, player: PlayerId, id: string): GameState {
   return {
@@ -110,7 +112,7 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
 
     const s = game.engine.state;
     expect(s.augmentData[USES_KEY]).toBe(1);
-    expect(s.augmentData[TURN_KEY]).toBe(0); // 선언 순 = turnCount 0
+    expect(s.augmentData[turnKeyFor(s)]).toBe(0); // 선언 순 = turnCount 0
     expect(s.augmentData[viewKey("*", "brief_fog:p0")]).toBe("안개");
 
     // (a) 타인 뷰: 네 사람 바닥이 전부 장수만

@@ -14,10 +14,21 @@ import { addWinPointBonus } from "../util.js";
 
 const roundUp100 = (n: number): number => Math.ceil(n / 100) * 100;
 
+/**
+ * 역만 화료에 가정하는 부수.
+ *
+ * 코어는 역만이 성립하면 판·부수를 세지 않고 `han=0, fu=0`으로 둔다(evaluate). 그래서
+ * 예전 구현은 `base = 0 × 2^15 = 0`이 되어 **역만에는 청천정 보너스가 한 푼도 붙지 않았다**
+ * — 13판 헤아림 역만은 수백만 점이 되는데 진짜 역만은 0이라는 모순이었다(2026-07-29 감사).
+ * 부수를 되살릴 수 없으므로 표준값 30부(가장 흔한 부수)를 가정해 13판 환산과 맞춘다.
+ */
+const YAKUMAN_ASSUMED_FU = 30;
+
 /** 상한 없는 청천정 총점 (화료자 기준, 본장·공탁 제외) */
 function aotenjouTotal(info: WinInfo, isDealer: boolean): number {
   const effHan = info.han + 13 * info.yakumanCount;
-  const base = info.fu * 2 ** (2 + effHan);
+  const fu = info.yakumanCount > 0 && info.fu === 0 ? YAKUMAN_ASSUMED_FU : info.fu;
+  const base = fu * 2 ** (2 + effHan);
   if (info.winType === "ron") {
     return roundUp100(base * (isDealer ? 6 : 4));
   }
@@ -35,7 +46,7 @@ export const aotenjouCeiling: AugmentDef = defineAugment({
   description:
     "(상시) 자신의 화료에서 만관·하네만·배만 같은 단계 상한이 사라져, 판·부수가 높을수록 점수가 지수적으로 폭발한다(청천정). 역만은 13판으로 환산한다.",
   detail:
-    "(상시) 자신이 화료할 때마다 점수 단계 상한이 적용되지 않고 부수와 판수에 따라 끝까지 계산된다(청천정). 역만은 13판으로 쳐서 합산한다. 상한이 사라져 늘어난 몫은 한도 없이 전액 뱅크가 지급하므로 상대가 더 내지는 않는다.",
+    "(상시) 자신이 화료할 때마다 점수 단계 상한이 적용되지 않고 부수와 판수에 따라 끝까지 계산된다(청천정). 역만은 13판·30부로 쳐서 합산한다. 상한이 사라져 늘어난 몫은 한도 없이 전액 뱅크가 지급하므로 상대가 더 내지는 않는다.",
   install(ctx) {
     const { holder } = ctx;
     addWinPointBonus(ctx, (state: GameState, info) => {

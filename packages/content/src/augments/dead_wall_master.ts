@@ -46,7 +46,12 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, roundKey, viewKey } from "../util.js";
+import {
+  counterOf,
+  roundKey,
+  viewKey,
+  widenPeek,
+} from "../util.js";
 
 const ID = "dead_wall_master";
 const ACTION_SWAP = "dw_swap";
@@ -234,7 +239,10 @@ export const deadWallMaster: AugmentDef = defineAugment({
       apply: (cur, rctx) => {
         if (rctx.playerId !== holder) return cur;
         const state = rctx.state as GameState | undefined;
-        return { mode: "peek", count: state === undefined ? 14 : deadWallSize(state) };
+        return widenPeek(cur, {
+          mode: "peek",
+          count: state === undefined ? 14 : deadWallSize(state),
+        });
       },
     });
 

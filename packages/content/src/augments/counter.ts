@@ -80,9 +80,14 @@ function bestWinValue(
   const inHand = new Set(handIdsOf(state, player));
   for (const waitKind of waits) {
     const key = kindKey(waitKind);
-    const tileId = Object.keys(state.tiles)
+    // 같은 종류라면 **적도라가 아닌 대표 패**를 고른다. tileId 오름차순으로 첫 패를
+    // 집으면 5는 항상 적5가 걸려 실제로 쏘지도 않은 +1판이 붙었고, 만관 경계에서
+    // 8000 → 12000으로 튀었다(2026-07-29 감사).
+    const candidates = Object.keys(state.tiles)
       .map(Number)
-      .find((t) => !inHand.has(t) && kindKey(state.tiles[t]!.kind) === key);
+      .filter((t) => !inHand.has(t) && kindKey(state.tiles[t]!.kind) === key);
+    const tileId =
+      candidates.find((t) => state.tiles[t]?.attrs.red !== true) ?? candidates[0];
     if (tileId === undefined) continue;
     const ev = evaluateWin(
       buildWinContext(state, player, "ron", tileId, { includeUra: true, rules }),

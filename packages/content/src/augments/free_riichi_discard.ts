@@ -96,7 +96,7 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
   description:
     "(상시) 리치를 걸면 그 순간의 손패로 오름패가 고정되고, 이후 자기 순마다 손패에서 아무 패나 자유롭게 버릴 수 있다. 화료 시 손패는 첫 리치 때의 모습으로 남는다.",
   detail:
-    "(상시) 리치를 선언한 순간의 손패가 고정되어 오름패·화료형·텐파이·후리텐 판정이 모두 그 손패 기준이 된다. 그 뒤로는 자기 순마다 쯔모패가 아닌 손패도 조건 없이 버릴 수 있어, 물리 손패를 자유롭게 바꿔도 오름패는 변하지 않는다. 화료 시 공개되는 손패도 첫 리치 때의 모습이다. 다만 대기패를 버리면 후리텐은 그대로 걸린다.",
+    "(상시) 리치를 선언한 순간의 손패가 고정되어 오름패·화료형·텐파이·후리텐 판정이 모두 그 손패 기준이 된다. 그 뒤로는 자기 순마다 쯔모패가 아닌 손패도 조건 없이 버릴 수 있어, 물리 손패를 자유롭게 바꿔도 오름패는 변하지 않는다. 화료 시 공개되는 손패도 첫 리치 때의 모습이다. 다만 대기패를 버리면 후리텐은 그대로 걸리며, 고정된 손패와 어긋나지 않도록 리치 뒤에는 깡을 칠 수 없다.",
   install(ctx) {
     const { engine, holder, layer, instanceId } = ctx;
 
@@ -122,6 +122,26 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
       rc.emit(
         augmentDataSet(viewKey(holder, `free_declare_waits:${holder}`), waits),
       );
+    });
+
+    /*
+     * 스냅샷이 살아 있는 동안 보유자는 깡을 칠 수 없다.
+     *
+     * 스냅샷은 손패 **id 목록**만 고정한다 — 멘쯔 수는 고정하지 않는다. 그래서 리치 뒤에
+     * 안깡(또는 오픈 리치 + 가깡)을 치면 코어가 "스냅샷 13장 + 살아 있는 멘쯔 1개"로
+     * 분해를 돌려 장수 방정식이 깨지고, **대기가 통째로 사라져** 화료·후리텐 마킹·유국
+     * 텐파이가 전부 조용히 죽는다(2026-07-29 감사, 실측 재현). 코어의 리치 안깡 안전성
+     * 검사(isRiichiSafeAnkan)는 물리 손패를 보므로 이 어긋남을 잡지 못한다.
+     */
+    engine.rules.addModifier<boolean>("call.kan.enabled", {
+      source: instanceId,
+      layer,
+      apply: (current, rctx) => {
+        if (rctx.playerId !== holder) return current;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return current;
+        return snapshotOf(state, holder) === null ? current : false;
+      },
     });
 
     // 화료·대기·후리텐·텐파이 판정에 쓰는 손패를 보유자에 한해 스냅샷으로 덮어쓴다.

@@ -38,6 +38,7 @@
  */
 
 import {
+  ROUND_STARTED,
   TILE_DRAWN,
   WALL,
   augmentDataSet,
@@ -206,6 +207,23 @@ export const bottomDeal: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(armedKey(rc.state, holder), false));
       rc.emit(augmentDataSet(viewArmedKey(holder), false));
       rc.emit(augmentDataSet(noticeKey(holder), false));
+    });
+
+    /*
+     * 국이 바뀌면 예약 표시를 끈다.
+     *
+     * armedKey는 roundKey 스코프라 저절로 만료되지만, 공개 표시 두 채널(viewArmedKey·
+     * noticeKey)은 고정 키다. 예약을 소비하기 전에 국이 끝나면(남의 론·유국) 표시만
+     * 남아 다음 국 내내 전원에게 "밑장 예약 중"이라는 **거짓 정보**를 보여 줬다
+     * (2026-07-29 감사). 실제 예약과 표시의 수명을 맞춘다.
+     */
+    ctx.reaction(ROUND_STARTED, (_event, rc) => {
+      if (rc.state.augmentData[viewArmedKey(holder)] === true) {
+        rc.emit(augmentDataSet(viewArmedKey(holder), false));
+      }
+      if (rc.state.augmentData[noticeKey(holder)] === true) {
+        rc.emit(augmentDataSet(noticeKey(holder), false));
+      }
     });
 
     // 보유자에게 패산 맨 밑 3장 공개 — 스냅샷이 아니라 매번 상태에서 계산된다

@@ -15,6 +15,7 @@ import {
   defineAugment,
   playerAtSeat,
   ROUND_SETTLED,
+  ROUND_STARTED,
   SETTLE_STAGE,
 } from "@majak/core";
 import type {
@@ -112,6 +113,14 @@ export const bloodContract: AugmentDef = defineAugment({
         type: event.type,
         payload: { ...p, deltas: { ...p.deltas, [holder]: round100(d * mult) } },
       };
+    });
+
+    // 계약 배지는 고정 키라 국이 바뀌어도 남는다 — 실제 계약(contractKey)은 국 스코프이므로
+    // 그대로 두면 '계약하지 않은 국'에도 지난 계약이 전원 화면에 계속 떠 있다(2026-07-29 감사).
+    ctx.reaction(ROUND_STARTED, (_event, rc) => {
+      if (stringOf(rc.state, contractKey(rc.state, holder)) !== null) return;
+      if (stringOf(rc.state, viewKey("*", `${ID}:${holder}`)) === null) return;
+      rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), ""));
     });
 
     ctx.holderTurnOptions((state) => {
