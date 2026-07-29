@@ -30,6 +30,7 @@ import type { PlayerAgent } from "./PlayerAgent.js";
 import type {
   RankingEntry,
   DraftStage,
+  RevealedHand,
   RoundOverMessage,
   ServerMessage,
 } from "../network/protocol.js";
@@ -719,6 +720,13 @@ export class HanchanController {
     // "화료 시 패의 모습은 첫 리치 때의 손패". 쯔모패는 스냅샷/손패에서 제외한 뒤
     // 화료패를 한 번만 얹어 쯔모·론 모두 13장+화료패 형태로 통일한다.
     const revealedHands: RoundOverMessage["revealedHands"] = {};
+    const meldViewsOf = (id: PlayerId): RevealedHand["melds"] =>
+      (state.round.byPlayer[id]?.melds ?? []).map((m) => ({
+        kind: m.kind as string,
+        tiles: m.tileIds
+          .map(tileView)
+          .filter((v): v is PublicTileView => v !== null),
+      }));
     for (const info of settle.winInfos ?? []) {
       const concealedIds = winHandIdsOf(state, game.engine.rules, info.winner).filter(
         (id) => id !== info.winningTileId,
@@ -727,13 +735,20 @@ export class HanchanController {
         ...concealedIds.map(tileView),
         tileView(info.winningTileId),
       ].filter((v): v is PublicTileView => v !== null);
-      const melds = (state.round.byPlayer[info.winner]?.melds ?? []).map((m) => ({
-        kind: m.kind as string,
-        tiles: m.tileIds
+      revealedHands[info.winner] = { hand, melds: meldViewsOf(info.winner) };
+    }
+
+    // 황패유국 — 텐파이자만 손을 공개한다 (실제 마작의 텐파이 선언). 노텐은 엎어 둔다.
+    // 이게 없으면 결과 화면에 "유 국"과 ±점수만 남아 왜 주고받았는지 알 수 없다.
+    // 손패는 텐파이 집계와 같은 winHandIdsOf로 뽑아야(자유 선언의 리치 스냅샷 포함)
+    // 화면에 뜬 손과 텐파이 판정이 어긋나지 않는다.
+    if (outcome === "draw") {
+      for (const id of settle.tenpaiPlayers ?? []) {
+        const hand = winHandIdsOf(state, game.engine.rules, id)
           .map(tileView)
-          .filter((v): v is PublicTileView => v !== null),
-      }));
-      revealedHands[info.winner] = { hand, melds };
+          .filter((v): v is PublicTileView => v !== null);
+        revealedHands[id] = { hand, melds: meldViewsOf(id) };
+      }
     }
 
     const msg: RoundOverMessage = {

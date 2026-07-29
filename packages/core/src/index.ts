@@ -128,6 +128,7 @@ export type {
   FuritenMarkedPayload,
   WinDeclaredPayload,
   RoundSettledPayload,
+  AbortReason,
   WinInfo,
 } from "./mahjong/flow/flowEvents.js";
 export {
