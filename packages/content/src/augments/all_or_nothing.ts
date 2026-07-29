@@ -5,23 +5,23 @@
  * 받으며, 화료하지 못하면(유국·타가 화료 포함) 공탁금은 전부 뱅크로 사라진다.
  *
  * 구현: 표준 리치와 같은 검증 + 올인 금액을 즉시 차감(ScoreChanged)하고 국·금액을
- * 기록하는 커스텀 액션. ROUND_SETTLED reaction에서 화료 시 +2×올인, 실패 시 소멸.
+ * 기록하는 커스텀 액션. 정산 인터셉터(BankTopUp)에서 화료 시 판돈만큼 가산한다.
  */
 
 import {
-  ROUND_SETTLED,
+  SETTLE_STAGE,
   TILE_DISCARDED,
+  WALL,
   augmentDataSet,
   defineAugment,
   handIdsOf,
   kindOf,
   meldCountOf,
+  openMeldCountOf,
   playerAtSeat,
   playerOf,
-  scoreChanged,
   scoringOptionsOf,
   winningKinds,
-  WALL,
 } from "@majak/core";
 import type {
   ActionDef,
@@ -31,7 +31,13 @@ import type {
   RoundSettledPayload,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, roundKey, stringOf, viewKey } from "../util.js";
+import {
+  counterOf,
+  matchUses,
+  roundKey,
+  settleInterceptor,
+  viewKey,
+} from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
 
 const ID = "all_or_nothing";
@@ -39,8 +45,16 @@ const ACTION = "all_in_riichi";
 const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(h)) < matchUses(state);
-/** 진행 중 올인의 금액과 국 (roundKey|amount) */
-const activeKey = (h: PlayerId): string => `${ID}:active:${h}`;
+/**
+ * 이번 국에 건 올인 금액 (국 스코프 — 국이 바뀌면 자동 만료).
+ *
+ * ⚠ 예전에는 게임 스코프 키에 `"<roundKey>|<금액>"`을 넣고 정산 **리액션**에서 현재
+ * roundKey와 비교했다. 그런데 ROUND_SETTLED 리듀서는 이미 **다음 국의** honba·roundNumber를
+ * 적용한 뒤라 비교가 항상 어긋났고, 그래서 **판돈이 한 번도 지급되지 않았다**(2026-07-29 감사).
+ * 지금은 국 스코프 키 + 정산 인터셉터(정산 전 state)라 두 문제가 함께 사라진다.
+ */
+const activeKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:active:${roundKey(state)}:${h}`;
 
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;
@@ -70,7 +84,9 @@ const allInRiichiAction: ActionDef<{ tileId: TileId }> = {
     }
     if (
       rules.resolve<boolean>("riichi.requiresClosed", { playerId: req.player }) &&
-      meldCountOf(state, req.player) > 0
+      // 멘젠 판정은 **드러난** 후로만 센다 — meldCountOf를 쓰면 안깡·묵계 펑이 있는
+      // 손에서 표준 riichi는 되는데 all_in_riichi만 조용히 사라졌다(2026-07-29 감사).
+      openMeldCountOf(state, req.player) > 0
     ) {
       return "riichi requires a closed hand";
     }
@@ -110,7 +126,7 @@ const allInRiichiAction: ActionDef<{ tileId: TileId }> = {
       // 48차 무페널티: 걸어 두는 금액을 차감하지 않는다 — 빗나가도 잃는 것은 없다.
       // 기록만 남기고(동풍전 1·반장전 2회 소진), 화료하면 그 금액만큼 뱅크에서 받는다.
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
-      augmentDataSet(activeKey(req.player), `${roundKey(state)}|${allIn}`),
+      augmentDataSet(activeKey(state, req.player), allIn),
       augmentDataSet(viewKey("*", `${ID}:${req.player}`), allIn),
     ];
   },
@@ -132,18 +148,21 @@ export const allOrNothing: AugmentDef = defineAugment({
       engine.actions.register(allInRiichiAction);
     }
 
-    ctx.reaction(ROUND_SETTLED, (event, rc) => {
-      const raw = stringOf(rc.state, activeKey(holder));
-      if (raw === null) return;
-      const [rk, amtStr] = raw.split("|");
-      if (rk !== roundKey(rc.state)) return; // 다른 국의 잔재 방어
-      const allIn = Number(amtStr) || 0;
+    // 판돈 지급은 뱅크가 발행하는 가산이므로 BankTopUp 단계다 — 배수(Multiply) 뒤에 와야
+    // 일확천금 등에 판돈까지 곱해지지 않는다. deltas에 얹으므로 결과 화면 증감에도 그대로 뜬다.
+    settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event, ic) => {
       const p = event.payload as RoundSettledPayload;
-      const won =
-        p.outcome === "win" && (p.winInfos ?? []).some((w) => w.winner === holder);
-      // 화료하면 건 금액만큼 뱅크에서 받는다. 빗나가면 아무 일도 일어나지 않는다.
-      if (won && allIn > 0) rc.emit(scoreChanged(holder, allIn, ID));
-      rc.emit(augmentDataSet(activeKey(holder), ""));
+      if (p.outcome !== "win") return event;
+      if (!(p.winInfos ?? []).some((w) => w.winner === holder)) return event;
+      const allIn = counterOf(ic.state, activeKey(ic.state, holder));
+      if (allIn <= 0) return event;
+      return {
+        type: event.type,
+        payload: {
+          ...p,
+          deltas: { ...p.deltas, [holder]: (p.deltas[holder] ?? 0) + allIn },
+        },
+      };
     });
 
     ctx.holderTurnOptions((state) => {

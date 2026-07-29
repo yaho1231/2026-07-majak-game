@@ -20,6 +20,7 @@ import {
   WALL,
   augmentDataSet,
   defineAugment,
+  handIdsOf,
   handZone,
   kindKey,
   kindOf,
@@ -83,6 +84,12 @@ const takeBackAction: ActionDef<Record<string, never>> = {
     }
     if (onCooldown(state, req.player)) return "take back is on cooldown";
     if (state.round.lastDrawnTile == null) return "no drawn tile";
+    // 쯔모패가 아직 내 손에 있어야 한다. 손패를 통째로 갈아엎는 증강(밥상 뒤엎기·통째로
+    // 바꾸기 등)과 겹치면 lastDrawnTile이 손 밖의 패를 가리킬 수 있고, 그대로 두면
+    // 리듀서의 moveTiles가 "not in zone hand:*"로 던져 국이 죽는다.
+    if (!handIdsOf(state, req.player).includes(state.round.lastDrawnTile)) {
+      return "drawn tile is no longer in hand";
+    }
     if (state.round.lastDrawRinshan) return "cannot take back a rinshan tile";
     if (wallLen(state) === 0) return "wall is empty";
     return null;

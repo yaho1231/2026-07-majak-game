@@ -20,17 +20,18 @@
 
 import {
   TILE_DISCARDED,
+  WALL,
   augmentDataSet,
   defineAugment,
   handIdsOf,
   kindKey,
   kindOf,
   meldCountOf,
+  openMeldCountOf,
   playerAtSeat,
   playerOf,
   scoringOptionsOf,
   winningKinds,
-  WALL,
 } from "@majak/core";
 import type {
   ActionDef,
@@ -99,7 +100,9 @@ const openRiichiAction: ActionDef<{ tileId: TileId }> = {
     }
     if (
       rules.resolve<boolean>("riichi.requiresClosed", { playerId: req.player }) &&
-      meldCountOf(state, req.player) > 0
+      // 멘젠 판정은 **드러난** 후로만 센다 — meldCountOf를 쓰면 안깡·묵계 펑이 있는
+      // 손에서 표준 리치는 되는데 개문 선언만 조용히 사라진다(2026-07-29 감사).
+      openMeldCountOf(state, req.player) > 0
     ) {
       return "riichi requires a closed hand";
     }
@@ -168,6 +171,8 @@ export const openRiichiReveal: AugmentDef = defineAugment({
     const yaku = ctx.yaku;
     if (yaku !== undefined && yaku.get(STRIKE_YAKU) === undefined) {
       yaku.register({
+        // 무장해제되면 이 역도 함께 잠긴다 (evaluate가 disarmedSources와 대조)
+        source: ctx.instanceId,
         id: STRIKE_YAKU,
         name: "오픈 리치 직격",
         closedHan: 13,

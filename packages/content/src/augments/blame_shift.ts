@@ -65,14 +65,28 @@ export const blameShift: AugmentDef = defineAugment({
       if (info === undefined || info.from === null) return event;
       const discarder = info.from;
 
-      // 쏜 사람이 이번 론으로 문 총액(양수). deltas는 이미 본장·공탁까지 반영돼 있고
-      // 론에서는 쏜 사람만 음수이므로 그 크기를 그대로 재분배 대상으로 삼는다.
-      const owed = -(p.deltas[discarder] ?? 0);
+      /*
+       * 재분배 대상은 **내 화료에 대한 지불분만**이다.
+       *
+       * ⚠ 더블론에서는 `deltas[discarder]`에 다른 화료자에게 갈 몫까지 들어 있다. 예전에는
+       * 그 총액을 통째로 재분배해, 공동 승자가 **자기가 받을 돈의 일부를 되레 부담**하고
+       * 아무 상관 없는 사람에게도 그 몫이 떠넘겨졌다(2026-07-29 감사).
+       * 쏜 사람의 지불액 = Σ(화료자 points) + 본장이므로, 다른 화료자의 points를 빼면
+       * 내 몫(+본장)만 정확히 남는다.
+       */
+      const otherWinnersTotal = (p.winInfos ?? [])
+        .filter((w) => w.winner !== holder)
+        .reduce((sum, w) => sum + w.points, 0);
+      const owed = -(p.deltas[discarder] ?? 0) - otherWinnersTotal;
       if (owed <= 0) return event;
 
-      // 나를 뺀 세 명. 쏜 사람을 마지막에 두어 끝수를 흡수시킨다.
+      // 화료자는 전부 제외한다 — 승자에게 지불을 떠넘기지 않는다.
+      // 쏜 사람을 마지막에 두어 끝수를 흡수시킨다.
+      const winners = new Set((p.winInfos ?? []).map((w) => w.winner));
       const losers: PlayerId[] = [
-        ...ic.state.players.map((pl) => pl.id).filter((id) => id !== holder && id !== discarder),
+        ...ic.state.players
+          .map((pl) => pl.id)
+          .filter((id) => !winners.has(id) && id !== discarder),
         discarder,
       ];
       if (losers.length === 0) return event;

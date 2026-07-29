@@ -82,9 +82,22 @@ export const letItRide: AugmentDef = defineAugment({
       const d = p.deltas[holder] ?? 0;
       if (d <= 0) return event;
       const mult = multiplierFor(counterOf(ic.state, streakKey(holder)));
+      if (mult <= 1) return event;
+      /*
+       * 배수는 **순수 화료 점수에만** 건다.
+       *
+       * deltas에는 본장 보너스와 공탁(리치봉) 회수까지 섞여 있다. 예전에는 그 합계를
+       * 통째로 곱해, 3본장·공탁 3000점이 쌓인 국에서 2900점 화료가 27,200점이 됐다
+       * (정상 15,500점, 2026-07-29 감사). 화료분만 곱하고 본장·공탁은 원본 그대로 둔다.
+       */
+      const winPoints = (p.winInfos ?? [])
+        .filter((w) => w.winner === holder)
+        .reduce((sum, w) => sum + w.points, 0);
+      if (winPoints <= 0) return event;
+      const bonus = Math.min(winPoints, d) * (mult - 1);
       return {
         type: event.type,
-        payload: { ...p, deltas: { ...p.deltas, [holder]: d * mult } },
+        payload: { ...p, deltas: { ...p.deltas, [holder]: d + bonus } },
       };
     });
 
@@ -96,7 +109,9 @@ export const letItRide: AugmentDef = defineAugment({
       const dealtIn = (p.winInfos ?? []).some((w) => w.from === holder);
       let next = streak;
       if (p.outcome === "win" && won) next = streak + 1;
-      else if (p.outcome === "draw" || dealtIn) next = 0;
+      // 화료로 이어지지 않은 국은 전부 초기화 — 예전에는 도중유국(abort)만 빠져나가
+      // 구종구패 한 번으로 4배 스택이 그대로 살아남았다(2026-07-29 감사).
+      else if (p.outcome !== "win" || dealtIn) next = 0;
       if (next !== streak) rc.emit(augmentDataSet(streakKey(holder), next));
       if (!viewIsCurrent(rc.state, holder, next)) {
         rc.emit(augmentDataSet(rideViewKey(holder), viewValue(next)));

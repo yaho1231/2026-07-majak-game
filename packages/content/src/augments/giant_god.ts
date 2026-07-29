@@ -119,6 +119,10 @@ const giantGodAction: ActionDef<Record<string, never>> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
+    // 리치 중에는 손패가 동결된다 (2026-07-29 감사: 자기 리치 검사 누락)
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
     if (handIdsOf(state, req.player).length < 13) return "need at least 13 in hand";
     if (pickKokushiIds(state, req.player) === null) {
       return "kokushi 13 kinds are not all in your pond";

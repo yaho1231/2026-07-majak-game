@@ -33,7 +33,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, stringOf, viewKey } from "../util.js";
+import { counterOf, matchUses, viewKey } from "../util.js";
 
 const ID = "disarm";
 const ACTION = "disarm_lock";
@@ -42,8 +42,20 @@ const ACTION = "disarm_lock";
 const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(h)) < matchUses(state);
-/** 이번에 잠근 대상 인스턴스 id (국 종료 시 해제용) */
+/**
+ * 이번 국에 이 보유자가 잠근 대상 인스턴스 id **목록** (국 종료 시 해제용).
+ *
+ * ⚠ 예전에는 문자열 슬롯 하나였다. 그래서 한 국에 두 번 잠그면 첫 대상의 id가 덮여
+ * **국이 끝나도 영영 풀리지 않았다** — 매치가 끝날 때까지 영구 무장해제(2026-07-29 감사).
+ * 목록으로 두고 국 종료에 전부 되돌린다. 함께 '국당 1회' 가드도 건다.
+ */
 const lockedKey = (h: PlayerId): string => `${ID}:locked:${h}`;
+
+/** 이번 국에 잠근 대상들 (없으면 빈 배열) */
+function lockedList(state: GameState, h: PlayerId): string[] {
+  const v = state.augmentData[lockedKey(h)];
+  return Array.isArray(v) ? [...(v as string[])] : [];
+}
 
 /** 현재 무장해제된 source 목록 */
 function disarmedList(state: GameState): string[] {
@@ -63,6 +75,10 @@ const disarmAction: ActionDef<{ target: PlayerId; augmentId: string }> = {
       return "not your turn";
     }
     if (!hasUsesLeft(state, req.player)) return "no uses left this game";
+    // 국당 1회 — 한 국에 여러 증강을 동시에 잠그는 것은 설명에 없는 능력이다
+    if (lockedList(state, req.player).length > 0) {
+      return "already disarmed this round";
+    }
     if (req.payload.target === req.player) return "cannot disarm yourself";
     const target = state.players.find((p) => p.id === req.payload.target);
     if (target === undefined) return "unknown target";
@@ -86,7 +102,7 @@ const disarmAction: ActionDef<{ target: PlayerId; augmentId: string }> = {
       }),
       augmentDataSet(DISARMED_SOURCES_KEY, list),
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
-      augmentDataSet(lockedKey(req.player), src),
+      augmentDataSet(lockedKey(req.player), [...lockedList(state, req.player), src]),
       // 전원 공개 지목 관계 (피격자·관전자 포함)
       augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
         target: req.payload.target,
@@ -104,7 +120,7 @@ export const disarm: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 상대 한 명의 증강 하나를 지목해 이번 국 동안 완전히 무효화한다 — 규칙도, 발동 효과도, 액티브 버튼도 전부 잠긴다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 한 명의 증강 하나를 지목하면 그 증강이 이번 국이 끝날 때까지 완전히 잠긴다. 상시 규칙(만년 오야의 오야 고정·천하무적의 무방총)도, 정산 개입도, 액티브 버튼도 전부 사라진다. 손패 장수처럼 그 증강이 이미 바꿔 놓은 것이 있으면 잠기는 순간 원래대로 되돌아간다 — 진짜 용을 잠그면 필요 없는 패 3장이 패산으로 돌아가며 평범한 손패로 복귀한다. 지목은 전원에게 공개되며 국이 끝나면 증강도 원래대로 돌아온다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 한 명의 증강 하나를 지목하면 그 증강이 이번 국이 끝날 때까지 완전히 잠긴다. 상시 규칙(만년 오야의 오야 고정·천하무적의 무방총)도, 정산 개입도, 액티브 버튼도 전부 사라진다. 손패 장수처럼 그 증강이 이미 바꿔 놓은 것이 있으면 잠기는 순간 원래대로 되돌아간다 — 진짜 용을 잠그면 필요 없는 패 3장이 패산으로 돌아가며 평범한 손패로 복귀한다. 한 국에 한 명의 증강 하나만 잠글 수 있고, 지목은 전원에게 공개되며 국이 끝나면 증강도 원래대로 돌아온다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -112,18 +128,19 @@ export const disarm: AugmentDef = defineAugment({
       engine.actions.register(disarmAction);
     }
 
-    // 국이 끝나면 이번에 잠근 대상을 되돌린다 (다음 국엔 정상 작동)
+    // 국이 끝나면 이번 국에 잠근 대상을 **전부** 되돌린다 (다음 국엔 정상 작동)
     ctx.reaction(ROUND_SETTLED, (_event, rc) => {
-      const locked = stringOf(rc.state, lockedKey(holder));
-      if (locked === null) return;
-      const list = disarmedList(rc.state).filter((s) => s !== locked);
+      const locked = lockedList(rc.state, holder);
+      if (locked.length === 0) return;
+      const list = disarmedList(rc.state).filter((s) => !locked.includes(s));
       rc.emit(augmentDataSet(DISARMED_SOURCES_KEY, list));
-      rc.emit(augmentDataSet(lockedKey(holder), ""));
+      rc.emit(augmentDataSet(lockedKey(holder), []));
     });
 
     // 아직 안 썼으면 보유자 턴에 각 상대의 각 증강을 지목 후보로 낸다
     ctx.holderTurnOptions((state) => {
       if (!hasUsesLeft(state, holder)) return [];
+      if (lockedList(state, holder).length > 0) return [];
       const opts: { type: string; payload: unknown }[] = [];
       for (const p of state.players) {
         if (p.id === holder) continue;

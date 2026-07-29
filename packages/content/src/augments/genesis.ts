@@ -41,8 +41,8 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, statePrng, viewKey } from "../util.js";
-import { handIsPoor } from "./botHelpers.js";
+import { counterOf, flagOf, matchUses, roundKey, statePrng, viewKey } from "../util.js";
+import { handIsWeak, handKindsOf } from "./botHelpers.js";
 
 const ID = "genesis";
 const ACTION = "genesis_flip";
@@ -64,12 +64,23 @@ const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(h)) < matchUses(state);
 
+/**
+ * 이번 국에 이미 개벽했는가 (국 스코프).
+ *
+ * 개벽은 손패를 통째로 갈아엎지만 **턴을 넘기지 않는다**. 그래서 예전에는 같은 턴에
+ * 버튼이 다시 떠서, 봇이 한 턴 만에 매치 횟수(1~2회)를 전부 태워 버렸다(2026-07-29 감사).
+ * 국당 1회로 묶어 연타를 막는다.
+ */
+const flippedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:flipped:${roundKey(state)}:${h}`;
+
 /** 자기 턴(turn.act)이고 리치 중이 아니면 발동 가능 */
 function canFlip(state: GameState, holder: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== holder) return false;
   if (r.byPlayer[holder]?.riichi != null) return false;
+  if (flagOf(state, flippedKey(state, holder))) return false; // 국당 1회
   return true;
 }
 
@@ -138,6 +149,7 @@ function flipEvents(
   return [
     { type: GENESIS_FLIP_PERFORMED, payload },
     augmentDataSet(usesKey(holder), counterOf(state, usesKey(holder)) + 1),
+    augmentDataSet(flippedKey(state, holder), true),
     // 개벽이 일어났음을 전원에게 알린다 (구체적 결과는 손패로 드러난다)
     augmentDataSet(viewKey("*", `${ID}:${holder}`), true),
   ];

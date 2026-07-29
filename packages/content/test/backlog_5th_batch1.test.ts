@@ -163,7 +163,8 @@ describe("함구령 (call_seal)", () => {
       augmentData: {
         ...s.augmentData,
         "call_seal:uses:p0": 1,
-        "call_seal:turn:p0": 0,
+        // 선언 순 키는 국 스코프다 (국이 바뀌면 봉인이 저절로 만료된다)
+        [`call_seal:turn:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:p0`]: 0,
       },
     };
   }

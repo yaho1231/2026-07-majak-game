@@ -23,6 +23,30 @@ import { kindKey } from "../tiles/Tile.js";
 import type { TileId } from "../tiles/Tile.js";
 import { playerAtSeat } from "./helpers.js";
 
+/**
+ * 후로가 가져갈 패가 **실제로 놓여 있는 바닥 존**.
+ *
+ * 보통은 `discardsZone(버린 사람)`이지만, 누명(frame_up)처럼 `TileDiscardedPayload.creditTo`로
+ * **패가 놓이는 바닥과 방총 책임을 분리**하는 증강이 있다. 그때 `lastDiscard.player`(=책임자)와
+ * 패가 실제로 있는 존이 갈라지므로, `discardsZone(from)`을 그대로 쓰면 moveTiles가
+ * "Tile N is not in zone discards:X"로 던져 **국이 통째로 죽는다**.
+ *
+ * 그래서 존을 이름이 아니라 **실물 위치로** 찾는다. 타일은 항상 정확히 한 존에만 있으므로
+ * 결과는 유일하고, players 순회 순서는 고정이라 결정적이다. 못 찾으면 기존 동작(=책임자의
+ * 바닥)으로 폴백해 기존 호출자와 완전히 호환된다.
+ */
+function discardZoneHolding(
+  state: GameState,
+  tileId: TileId,
+  fallback: PlayerId,
+): string {
+  for (const p of state.players) {
+    const zone = discardsZone(p.id);
+    if (state.zones[zone]?.tileIds.includes(tileId) === true) return zone;
+  }
+  return discardsZone(fallback);
+}
+
 export const ROUND_STARTED = "RoundStarted";
 export const TILE_DRAWN = "TileDrawn";
 export const TILE_DISCARDED = "TileDiscarded";
@@ -124,6 +148,22 @@ export interface WinInfo {
   limit: string | null;
 }
 
+/**
+ * 도중유국(outcome="abort")이 성립한 사유. 결과 화면이 "도중 유국"만 띄우면
+ * 왜 국이 끊겼는지 알 수 없어, 사유를 정산 payload에 실어 그대로 보여 준다.
+ */
+export type AbortReason =
+  /** 구종구패 — 배패에 요구패·자패가 9종 이상이라 첫 순에 유국 선언 */
+  | "kyushuKyuhai"
+  /** 사깡산료 — 서로 다른 두 사람 이상이 깡을 4개 만들었다 */
+  | "fourKan"
+  /** 사풍연타 — 첫 순에 네 명이 같은 풍패를 버렸다 */
+  | "fourWind"
+  /** 사가리치 — 네 명이 모두 리치를 걸었다 */
+  | "fourRiichi"
+  /** 삼가화 — 한 버림패에 세 명이 동시에 론했다 */
+  | "tripleRon";
+
 export interface RoundSettledPayload {
   outcome: "win" | "draw" | "abort";
   deltas: Record<PlayerId, number>;
@@ -134,6 +174,13 @@ export interface RoundSettledPayload {
   prevalentWind: number;
   /** outcome=win일 때 화료 상세 (트리플론 제외 최대 2건) */
   winInfos?: WinInfo[];
+  /**
+   * 친이 그대로 이어지는가(연장). `dealerSeat`은 **다음 국**의 친이라, 결과 화면이
+   * 이 값만으로는 연장인지 친이 넘어갔는지 되짚을 수 없다 — 판정한 쪽이 실어 준다.
+   */
+  dealerContinues?: boolean;
+  /** outcome=abort일 때 중단 사유 */
+  abortReason?: AbortReason;
   /**
    * outcome=draw일 때 **텐파이로 집계된 플레이어** (승승장구의 draw.treatAsTenpai 포함).
    *
@@ -295,7 +342,8 @@ export function registerFlowReducers(
     const p = event.payload as CallMadePayload;
     let zones = moveTiles(
       state.zones,
-      discardsZone(p.from),
+      // 누명(creditTo)으로 남의 바닥에 심긴 패도 울 수 있어야 한다 — 존을 실물로 찾는다
+      discardZoneHolding(state, p.calledTileId, p.from),
       meldsZone(p.caller),
       [p.calledTileId],
     );
@@ -347,7 +395,13 @@ export function registerFlowReducers(
       zones = moveTiles(zones, handZone(p.player), meldsZone(p.player), p.handTileIds);
       melds.push({ kind: "kan_closed", tileIds: p.handTileIds });
     } else if (p.kanKind === "kan_open") {
-      zones = moveTiles(zones, discardsZone(p.calledFrom!), meldsZone(p.player), [p.calledTileId!]);
+      // CALL_MADE와 같은 이유로 존을 실물로 찾는다 (누명으로 심긴 패의 대명깡)
+      zones = moveTiles(
+        zones,
+        discardZoneHolding(state, p.calledTileId!, p.calledFrom!),
+        meldsZone(p.player),
+        [p.calledTileId!],
+      );
       zones = moveTiles(zones, handZone(p.player), meldsZone(p.player), p.handTileIds);
       melds.push({
         kind: "kan_open",

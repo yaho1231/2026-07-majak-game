@@ -22,8 +22,10 @@
 import {
   CALL_MADE,
   WALL,
+  augmentInstanceId,
   defineAugment,
   handIdsOf,
+  isSourceDisarmed,
   kindKey,
   kindOf,
 } from "@majak/core";
@@ -96,11 +98,23 @@ const wallLen = (state: GameState): number => state.zones[WALL]?.tileIds.length 
 
 const kokushiPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined) return "unknown player";
     if (!player.augments.includes(ID)) return "no open_kokushi augment";
     if (state.round.phase !== "reaction") return "not in reaction phase";
+    // 무장해제된 증강의 콜은 성립하지 않는다 (버튼은 holderReactionOptions가 이미 가리지만,
+    // 제출 경로에서도 최종 차단한다).
+    if (isSourceDisarmed(state, augmentInstanceId(req.player, ID))) {
+      return "augment is disarmed";
+    }
+    // 후로 봉인(함구령 등)을 우회하지 않는다 — 커스텀 콜도 표준 펑과 같은 규칙을 탄다.
+    if (rules.resolve<boolean>("call.blocked", { playerId: req.player, state })) {
+      return "calls are sealed";
+    }
+    if (!rules.resolve<boolean>("call.pon.enabled", { playerId: req.player, state })) {
+      return "pon is disabled";
+    }
     const last = state.round.lastDiscard;
     if (last === null) return "nothing to call";
     if (last.player === req.player) return "cannot call own discard";
@@ -172,8 +186,7 @@ export const openKokushi: AugmentDef = defineAugment({
     }
 
     // 리액션(후로) 프롬프트에 kokushi_pon 후보 노출 — 합법성은 validate가 최종 판정
-    engine.registerReactionOptions((state, player, discard) => {
-      if (player !== holder) return [];
+    ctx.holderReactionOptions((state, discard) => {
       const dk = kindOf(state, discard.tileId);
       if (!isOrphan(dk)) return [];
       // 손패의 요구패를 kind별로 모은다
@@ -203,6 +216,8 @@ export const openKokushi: AugmentDef = defineAugment({
     if (yaku === undefined) return;
     if (yaku.get("kokushi_open") === undefined) {
       yaku.register({
+        // 무장해제되면 이 역도 함께 잠긴다 (evaluate가 disarmedSources와 대조)
+        source: ctx.instanceId,
         id: "kokushi_open",
         name: "우는 국사무쌍",
         closedHan: 13,

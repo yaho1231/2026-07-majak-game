@@ -27,6 +27,7 @@ import {
 } from "../mahjong/flow/helpers.js";
 import { calculateScore } from "../mahjong/scoring/score.js";
 import { defineAugment } from "./Augment.js";
+import { SETTLE_LAYER, SETTLE_STAGE } from "./settleStages.js";
 import type { AugmentContext, AugmentDef } from "./Augment.js";
 import type { PlayerView } from "../information/PlayerView.js";
 
@@ -49,7 +50,18 @@ function addWinHanBonus(
   ctx: AugmentContext,
   han: (state: GameState, info: WinInfo) => number,
 ): void {
-  ctx.interceptor(ROUND_SETTLED, (event, ic) => {
+  /*
+   * ⚠ 정산 인터셉터는 **반드시** SETTLE_LAYER + 단계(priority)로 등록한다.
+   * 그냥 `ctx.interceptor(ROUND_SETTLED, …)`를 부르면 실행 순서가 증강의 tier와
+   * 드래프트 픽 순서에 끌려가, deltas를 이어서 고쳐 쓰는 다른 정산 증강들과의 결과가
+   * 픽 순서로 갈린다(settleStages.ts가 없애려던 바로 그 문제, 2026-07-29 감사).
+   * 이 보너스는 뱅크가 발행하는 가산이므로 `BankTopUp` 단계다 — 배수(Multiply) 뒤.
+   * (content/util.ts의 settleInterceptor와 동일한 규약. 코어는 그 헬퍼를 쓸 수 없어
+   *  같은 layer·priority를 직접 지정한다.)
+   */
+  ctx.interceptor(
+    ROUND_SETTLED,
+    (event, ic) => {
     const p = event.payload as RoundSettledPayload;
     if (p.outcome !== "win") return event;
     const info = (p.winInfos ?? []).find((w) => w.winner === ctx.holder);
@@ -74,7 +86,9 @@ function addWinHanBonus(
         deltas: { ...p.deltas, [ctx.holder]: (p.deltas[ctx.holder] ?? 0) + bonus },
       },
     };
-  });
+    },
+    { layer: SETTLE_LAYER, priority: SETTLE_STAGE.BankTopUp },
+  );
 }
 
 /** 표준 리치의 판수 — 개문선언은 이것과의 차이만 얹는다 */

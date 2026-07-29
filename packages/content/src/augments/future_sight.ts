@@ -33,6 +33,7 @@ import {
   discardsZone,
   handIdsOf,
   handZone,
+  kindKey,
   moveTiles,
   playerAtSeat,
 } from "@majak/core";
@@ -41,6 +42,7 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  PlayerRoundState,
   TileDiscardedPayload,
   TileId,
 } from "@majak/core";
@@ -184,7 +186,7 @@ export const futureSight: AugmentDef = defineAugment({
   description:
     "(자기 순마다 1회) 액티브 버튼을 누르면 손패에서 무작위 3장이 뽑히고, 그중 바닥에 버릴 1장을 직접 고른 뒤(나머지 2장은 패산 맨 밑으로) 패산 위 3장을 가져온다. 이번 국에 두 번 쓸 때마다 화료 시 +1판을 얻는다.",
   detail:
-    "(자기 순마다 1회) 자기 순에 액티브 버튼을 눌러야 발동한다. 버튼을 누른 뒤에야 손패에서 뽑힌 무작위 3장이 제시되고, 그중 버릴 1장을 직접 고르면 나머지 2장은 패산 맨 밑으로 들어가며 패산에서 3장을 새로 받는다. 새로 받은 3장은 전원에게 공개된다. 버튼을 누르지 않은 채 그냥 버리면 그 순의 발동 기회는 사라진다. 교환할 때마다 층이 1씩 쌓여 그 국에 화료하면 층 2개당 +1판을 얻으며(내림) 국이 바뀌면 초기화된다. 바닥으로 보낸 패에는 방총 위험이 그대로 걸리고, 리치 중에는 쓸 수 없다.",
+    "(자기 순마다 1회) 자기 순에 액티브 버튼을 눌러야 발동한다. 버튼을 누른 뒤에야 손패에서 뽑힌 무작위 3장이 제시되고, 그중 버릴 1장을 직접 고르면 나머지 2장은 패산 맨 밑으로 들어가며 패산에서 3장을 새로 받는다. 새로 받은 3장은 전원에게 공개된다. 버튼을 누르지 않은 채 그냥 버리면 그 순의 발동 기회는 사라진다. 교환할 때마다 층이 1씩 쌓여 그 국에 화료하면 층 2개당 +1판을 얻으며(내림) 국이 바뀌면 초기화된다. 바닥으로 보낸 패는 내 바닥에 쌓여 그 종류로는 내가 론할 수 없게 되지만(후리텐), 턴 중간에 놓는 것이라 다른 사람의 론·후로 대상은 되지 않는다. 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -202,13 +204,31 @@ export const futureSight: AugmentDef = defineAugment({
         ) {
           throw new Error("future_sight: malformed exchange payload");
         }
-        // 1장은 자기 버림더미로 (버림 흐름과 무관 — lastDiscard는 건드리지 않는다)
+        // 1장은 자기 버림더미로. 버림 **흐름**과는 무관하다 — lastDiscard를 건드리지 않으므로
+        // 남의 론·후로 반응은 열리지 않는다(턴 중간에 리액션을 열면 순서가 깨진다).
+        // 다만 내 바닥에 실제로 쌓이므로 **내 후리텐 근거로는 남겨야 한다** — 예전에는
+        // discardedKinds에 새기지 않아 "내가 바닥에 버린 패로 내가 론하는" 상태가 됐다
+        // (2026-07-29 감사).
         let zones = moveTiles(
           state.zones,
           handZone(p.player),
           discardsZone(p.player),
           [toDiscards],
         );
+        const discardedKind = state.tiles[toDiscards]?.kind;
+        const byPlayer =
+          discardedKind === undefined
+            ? state.round.byPlayer
+            : {
+                ...state.round.byPlayer,
+                [p.player]: {
+                  ...(state.round.byPlayer[p.player] as PlayerRoundState),
+                  discardedKinds: [
+                    ...(state.round.byPlayer[p.player]?.discardedKinds ?? []),
+                    kindKey(discardedKind),
+                  ],
+                },
+              };
         // 2장은 패산 맨 밑(배열 끝)으로 — 앞쪽(다음 쯔모) 순서는 유지된다
         zones = moveTiles(zones, handZone(p.player), WALL, [toWallA, toWallB]);
         // 패산 위(앞) 3장을 손으로
@@ -229,7 +249,7 @@ export const futureSight: AugmentDef = defineAugment({
           zones,
           prngState: p.prngState,
           // 마지막으로 들어온 패를 쯔모패로 — 이어지는 버림·리치 흐름 유지
-          round: { ...state.round, lastDrawnTile: newDrawn },
+          round: { ...state.round, lastDrawnTile: newDrawn, byPlayer },
           augmentData: {
             ...state.augmentData,
             [sKey]: stacks,

@@ -14,26 +14,29 @@
  * 조건부 해석이 가능한 것은 standardActions가 두 규칙 resolve에 state를 넘기기 때문.
  */
 
-import {
-  ROUND_SETTLED,
-  WIN_DECLARED,
-  augmentDataSet,
-  defineAugment,
-} from "@majak/core";
+import { ROUND_SETTLED, augmentDataSet, defineAugment } from "@majak/core";
 import type {
   AugmentDef,
   GameState,
   PlayerId,
   RoundSettledPayload,
-  WinDeclaredPayload,
 } from "@majak/core";
 import { stringOf, viewKey } from "../util.js";
 
 const nemKey = (h: PlayerId): string => `avenger:nemesis:${h}`;
 
-/** 지금 론하려는 대상(버림패·창깡)의 주인이 이 보유자의 원수인가 */
+/**
+ * 지금 **론**하려는 대상(버림패·창깡)의 주인이 이 보유자의 원수인가.
+ *
+ * `phase === "reaction"`을 반드시 함께 본다 — `lastDiscard`는 다음 사람의 `turn.act`까지
+ * 살아 있으므로, 그것만 보면 **쯔모 화료에도** 후리텐·역 요구 해제가 붙어 설명과
+ * 어긋난다("원수의 버림패에 한해"). 리액션 페이즈는 론·창깡 문맥에서만 유지되고,
+ * `sys.settleWin`이 규칙을 다시 resolve하는 시점에도 그대로라 정산까지 일관된다
+ * (WIN_DECLARED는 identityReducer라 페이즈를 바꾸지 않는다).
+ */
 function targetIsNemesis(state: GameState | undefined, holder: PlayerId): boolean {
   if (state === undefined) return false;
+  if (state.round.phase !== "reaction") return false;
   const nemesis = stringOf(state, nemKey(holder));
   if (nemesis === null) return false;
   const from = state.round.lastDiscard?.player ?? state.round.chankan?.player;
@@ -74,20 +77,34 @@ export const avenger: AugmentDef = defineAugment({
       },
     });
 
-    // 복수 성공 — 원수에게 론으로 화료하면 그 자리에서 원한이 풀린다
-    ctx.reaction(WIN_DECLARED, (event, rc) => {
-      const p = event.payload as WinDeclaredPayload;
-      if (p.winner !== holder || p.winType !== "ron") return;
-      const nemesis = stringOf(rc.state, nemKey(holder));
-      if (nemesis === null || p.from !== nemesis) return;
-      rc.emit(augmentDataSet(nemKey(holder), ""));
-      rc.emit(augmentDataSet(viewKey("*", `avenger:${holder}`), ""));
-    });
-
-    // 방총당하면 원수 지정 (전원 공개 — Rule #4 대응의 전제)
+    /*
+     * 원수의 지정·해제는 **둘 다 정산(ROUND_SETTLED) 뒤에** 한다.
+     *
+     * ⚠ 해제를 WIN_DECLARED 반응으로 두면 안 된다: `sys.settleWin`이 정산 시점 state로
+     *   `win.requiresYaku`를 **다시 resolve**하는데(standardActions sysSettleWin), 그 전에
+     *   원한이 풀려 있으면 요구가 되살아나 "Invalid win by …"로 **국·매치가 통째로 죽는다**
+     *   (역 없는 손으로 원수에게 론한 경우). 한 국에 지정과 해제가 함께 일어날 수는 없다 —
+     *   론당한 사람은 그 국의 화료자가 될 수 없기 때문이다.
+     */
     ctx.reaction(ROUND_SETTLED, (event, rc) => {
       const p = event.payload as RoundSettledPayload;
-      const ronnedBy = (p.winInfos ?? []).find(
+      const infos = p.winInfos ?? [];
+
+      // 복수 성공 — 원수에게 론으로 화료했으면 원한이 풀린다
+      const nemesis = stringOf(rc.state, nemKey(holder));
+      if (
+        nemesis !== null &&
+        infos.some(
+          (w) => w.winner === holder && w.winType === "ron" && w.from === nemesis,
+        )
+      ) {
+        rc.emit(augmentDataSet(nemKey(holder), ""));
+        rc.emit(augmentDataSet(viewKey("*", `avenger:${holder}`), ""));
+        return;
+      }
+
+      // 방총당하면 원수 지정 (전원 공개 — Rule #4 대응의 전제)
+      const ronnedBy = infos.find(
         (w) => w.winType === "ron" && w.from === holder,
       )?.winner;
       if (ronnedBy === undefined || ronnedBy === holder) return;

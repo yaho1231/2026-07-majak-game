@@ -123,6 +123,15 @@ const LIMIT_NAMES: Record<string, string> = {
   yakuman: "역만",
 };
 
+/** 도중유국 사유 (RoundSettledPayload.abortReason) — 결과 화면 부제 */
+const ABORT_REASONS: Record<string, string> = {
+  kyushuKyuhai: "구종구패 — 배패에 요구패·자패가 9종 이상이라 국을 물렸다",
+  fourKan: "사깡산료 — 서로 다른 두 사람 이상이 깡을 넷 만들었다",
+  fourWind: "사풍연타 — 첫 순에 네 명이 같은 풍패를 버렸다",
+  fourRiichi: "사가리치 — 네 명이 모두 리치를 걸었다",
+  tripleRon: "삼가화 — 한 버림패에 세 명이 동시에 론했다",
+};
+
 /**
  * 역만 배수 이름 — 2배·3배는 마작 통칭대로 "더블/트리플", 4배부터는 숫자로 센다.
  * (대삼원+자일색처럼 역만 역이 겹치면 yakumanCount가 그대로 배수가 된다.)
@@ -7924,25 +7933,54 @@ function RoundResultPanel({
     if (result.outcome === "win" && headRows > 0) sfx.yakuSteps(headRows);
   }, [result, headRows]);
 
+  const isWin = result.outcome === "win";
+  const isDraw = result.outcome === "draw";
+  // 텐파이 집계가 실리지 않은 정산(구 버전 로그 이어받기)은 전원 "노텐"으로 오표기하느니
+  // 예전 점수표로 물러난다 — delta 부호로 텐파이를 추정하면 유국 증강이 섞일 때 틀린다.
+  const tenpaiPlayers = settle.tenpaiPlayers;
+  const drawDetail = isDraw && tenpaiPlayers !== undefined;
+  const tenpaiSet = new Set(tenpaiPlayers ?? []);
+  // 다음 국 안내 — 유국·도중유국은 여기가 유일한 "그래서 어떻게 되는가" 정보다.
+  const nextRoundNote: string[] = [];
+  if (!isWin) {
+    // 도중유국은 친이 "연장"된 게 아니라 같은 국을 다시 치는 것이라 표현을 나눈다
+    if (settle.dealerContinues === true) nextRoundNote.push(isDraw ? "친 연장" : "친 유지");
+    else if (settle.dealerContinues === false) nextRoundNote.push("친 넘어감");
+    nextRoundNote.push(`${settle.honba}본장`);
+    if (settle.riichiPot > 0) {
+      nextRoundNote.push(`리치봉 ${settle.riichiPot.toLocaleString()}점 이월`);
+    }
+  }
+
   return (
-    <div className="overlay result-overlay">
-      <div className="result-petals" aria-hidden>
-        {Array.from({ length: 12 }).map((_, i) => (
-          <i
-            key={i}
-            className="result-petal"
-            style={{
-              left: `${(i * 8.3 + 4) % 100}%`,
-              animationDelay: `${(i % 5) * 0.5}s`,
-              animationDuration: `${6 + (i % 4)}s`,
-            }}
-          />
-        ))}
-      </div>
+    <div className={`overlay result-overlay result-outcome-${result.outcome}`}>
+      {/* 축하 꽃잎은 화료에만 — 유국·도중유국에 뿌리면 진 사람에게도 축포가 된다 */}
+      {isWin ? (
+        <div className="result-petals" aria-hidden>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <i
+              key={i}
+              className="result-petal"
+              style={{
+                left: `${(i * 8.3 + 4) % 100}%`,
+                animationDelay: `${(i % 5) * 0.5}s`,
+                animationDuration: `${6 + (i % 4)}s`,
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
       <div className="result-panel">
         <h2 className="result-title">
-          {result.outcome === "win" ? "화 료" : result.outcome === "draw" ? "유 국" : "도중 유국"}
+          {isWin ? "화 료" : isDraw ? "유 국" : "도중 유국"}
         </h2>
+        {!isWin ? (
+          <p className="result-subtitle">
+            {isDraw
+              ? "패산 소진 — 텐파이한 사람만 손을 공개한다"
+              : (ABORT_REASONS[settle.abortReason ?? ""] ?? "국이 중단됐다")}
+          </p>
+        ) : null}
 
         {infos.map((w, wi) => {
           // 역 리스트를 하나의 배열로 모아 스탬프 스태거 딜레이를 일관되게 준다
@@ -8030,6 +8068,63 @@ function RoundResultPanel({
           );
         })}
 
+        {/* 유국 — 누가 텐파이였고 그 손이 무엇이었는지. 이 블록이 없으면 결과창에
+            "유 국"과 ±점수만 남아 왜 주고받았는지 알 수 없다. */}
+        {drawDetail ? (
+          <div className="result-draw">
+            {view.players.map((p, pi) => {
+              const tenpai = tenpaiSet.has(p.id);
+              const revealed = result.revealedHands[p.id];
+              const d = settle.deltas[p.id] ?? 0;
+              return (
+                <div
+                  key={p.id}
+                  className={`result-draw-row ${tenpai ? "is-tenpai" : "is-noten"}`}
+                  style={{ animationDelay: `${0.1 + pi * 0.12}s` }}
+                >
+                  <div className="result-draw-head">
+                    <span className="result-draw-seat">{seatWindChar(view, p)}</span>
+                    <span className="result-draw-name">{playerName(view, p)}</span>
+                    <span className={`result-draw-badge ${tenpai ? "badge-tenpai" : "badge-noten"}`}>
+                      {tenpai ? "텐파이" : "노텐"}
+                    </span>
+                    <span
+                      className={`result-draw-delta ${
+                        d > 0 ? "delta-plus" : d < 0 ? "delta-minus" : "delta-zero"
+                      }`}
+                    >
+                      {d > 0 ? "+" : ""}
+                      {d.toLocaleString()}
+                    </span>
+                  </div>
+                  {revealed !== undefined ? (
+                    <div className="result-draw-hand">
+                      {sortTileViews(revealed.hand).map((t, ti) => (
+                        <span
+                          key={t.id}
+                          className="result-tile"
+                          style={{ animationDelay: `${0.16 + pi * 0.12 + ti * 0.025}s` }}
+                        >
+                          <TileImg tile={t} size="result" />
+                        </span>
+                      ))}
+                      {revealed.melds.map((m, mi) => (
+                        <span key={`m${mi}`} className="result-meld">
+                          {m.tiles.map((t) => (
+                            <TileImg key={t.id} tile={t} size="result" />
+                          ))}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="result-draw-hidden">패를 공개하지 않았다</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
         {result.uraDoraIndicators.length > 0 ? (
           <div className="result-ura">
             <span className="result-ura-label">뒷도라</span>
@@ -8039,20 +8134,30 @@ function RoundResultPanel({
           </div>
         ) : null}
 
-        <div className="result-deltas">
-          {view.players.map((p) => {
-            const d = settle.deltas[p.id] ?? 0;
-            return (
-              <div key={p.id} className="result-delta-row">
-                <span>{nameOf(p.id)}</span>
-                <span className={d > 0 ? "delta-plus" : d < 0 ? "delta-minus" : "delta-zero"}>
-                  {d > 0 ? "+" : ""}
-                  {d.toLocaleString()}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        {/* 유국은 위 텐파이 행이 이미 사람별 증감을 달고 있어 표를 겹쳐 싣지 않는다.
+            도중유국은 점수 이동이 없어(전원 0) 표 대신 안내 한 줄로 대신한다. */}
+        {drawDetail ? null : view.players.some((p) => (settle.deltas[p.id] ?? 0) !== 0) ? (
+          <div className="result-deltas">
+            {view.players.map((p) => {
+              const d = settle.deltas[p.id] ?? 0;
+              return (
+                <div key={p.id} className="result-delta-row">
+                  <span className="result-delta-name">{nameOf(p.id)}</span>
+                  <span className={d > 0 ? "delta-plus" : d < 0 ? "delta-minus" : "delta-zero"}>
+                    {d > 0 ? "+" : ""}
+                    {d.toLocaleString()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="result-no-move">점수 이동 없음</p>
+        )}
+
+        {nextRoundNote.length > 0 ? (
+          <p className="result-next">{nextRoundNote.join(" · ")}</p>
+        ) : null}
 
         <button className="lobby-join result-close" onClick={onClose}>
           닫기 (다음 국)

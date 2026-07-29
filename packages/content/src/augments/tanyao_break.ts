@@ -43,6 +43,8 @@ export const tanyaoBreak: AugmentDef = defineAugment({
     // 역은 게임(YakuRegistry)당 1회만 등록 — 여러 명이 같은 증강을 보유해도 안전
     if (yaku.get(ID) === undefined) {
       yaku.register({
+        // 무장해제되면 이 역도 함께 잠긴다 (evaluate가 disarmedSources와 대조)
+        source: ctx.instanceId,
         id: ID,
         name: "탕야오 해방",
         closedHan: BREAK_HAN,

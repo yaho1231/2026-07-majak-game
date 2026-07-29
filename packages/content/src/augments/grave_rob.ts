@@ -88,7 +88,13 @@ function simulateRob(
 ): GameState {
   let zones = moveTiles(state.zones, handZone(holder), WALL, [drawnId]);
   zones = moveTiles(zones, discardsZone(fromPlayer), handZone(holder), [graveId]);
-  return { ...state, zones, round: { ...state.round, lastDrawnTile: graveId } };
+  // 깡이 아니므로 영상 플래그를 끈다 — 깡 직후 도굴하면 남아 있던 플래그로
+  // **영상개화(+1판)가 헛성립**했다(2026-07-29 감사).
+  return {
+    ...state,
+    zones,
+    round: { ...state.round, lastDrawnTile: graveId, lastDrawRinshan: false },
+  };
 }
 
 /** 그 패를 파내면 화료가 성립하는가 (역 없음도 화료 불가로 본다) */
@@ -179,8 +185,13 @@ export const graveRob: AugmentDef = defineAugment({
     const { engine, holder } = ctx;
 
     if (!engine.actions.has(ACTION)) {
-      // YakuRegistry는 게임 전체가 공유하는 단일 객체라 첫 설치 시점의 것을 잡아도 안전하다
-      engine.actions.register(makeAction(ctx.yaku as YakuRegistry));
+      // YakuRegistry는 게임 전체가 공유하는 단일 객체라 첫 설치 시점의 것을 잡아도 안전하다.
+      // 다만 없이 설치되면(테스트가 extras를 빠뜨린 경우 등) 액션이 undefined 레지스트리를
+      // 붙든 채 등록되어, 한참 뒤 도굴 후보를 만들 때 원인 불명으로 터진다 — 여기서 막는다.
+      if (ctx.yaku === undefined) {
+        throw new Error("grave_rob requires a YakuRegistry (installAugment extras.yaku)");
+      }
+      engine.actions.register(makeAction(ctx.yaku));
       engine.reducers.register(EVENT, (state, event) => {
         const p = event.payload as GraveRobPayload;
         const sim = simulateRob(state, p.holder, p.drawnId, p.graveId, p.fromPlayer);
@@ -215,7 +226,7 @@ export const graveRob: AugmentDef = defineAugment({
           ok = robWins(
             state,
             engine.rules,
-            ctx.yaku as YakuRegistry,
+            ctx.yaku as YakuRegistry, // install 시점에 존재를 검증했다
             holder,
             drawn,
             c.graveId,

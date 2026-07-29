@@ -69,6 +69,11 @@ export function evaluateWin(
     ctx.blockedYaku !== undefined && ctx.blockedYaku.length > 0
       ? new Set(ctx.blockedYaku)
       : null;
+  // 무장해제된 증강이 등록한 커스텀 역은 성립하지 않는다 (표준 역은 source가 없어 무관)
+  const disarmed =
+    ctx.disarmedSources !== undefined && ctx.disarmedSources.length > 0
+      ? new Set(ctx.disarmedSources)
+      : null;
 
   for (const variant of variants) {
     const matched: YakuResult[] = [];
@@ -76,6 +81,9 @@ export function evaluateWin(
 
     for (const def of registry.all()) {
       if (blocked !== null && blocked.has(def.id)) continue;
+      if (disarmed !== null && def.source !== undefined && disarmed.has(def.source)) {
+        continue;
+      }
       const han = variant.isClosed ? def.closedHan : def.openHan;
       if (han === null) continue;
       if (!def.check(variant, ctx)) continue;

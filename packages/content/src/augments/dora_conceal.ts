@@ -15,7 +15,7 @@
  */
 
 import { defineAugment } from "@majak/core";
-import type { AugmentDef } from "@majak/core";
+import type { AugmentDef, GameState } from "@majak/core";
 
 const ID = "dora_conceal";
 
@@ -34,7 +34,14 @@ export const doraConceal: AugmentDef = defineAugment({
     ctx.engine.rules.addModifier<boolean>("visibility.doraIndicators.hidden", {
       source: ctx.instanceId,
       layer: ctx.layer,
-      apply: (cur, rctx) => (rctx.playerId !== holder ? true : cur),
+      apply: (cur, rctx) => {
+        if (rctx.playerId === holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        // 종국 공개(결과 화면)에서는 감추지 않는다 — detail이 "표시패는 종국 공개에서
+        // 뒤집힌다"고 약속하는데 예전에는 끝까지 덮여 있었다(2026-07-29 감사).
+        if (state?.round.phase === "round.over") return cur;
+        return true;
+      },
     });
   },
   // 봇 정책 없음 — 패시브라 발동 판단이 없다.

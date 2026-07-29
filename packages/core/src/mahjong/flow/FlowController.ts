@@ -122,12 +122,12 @@ export class FlowController {
         state.round.kanCount === 4 &&
         new Set(state.round.kanCallers).size >= 2
       ) {
-        this.sys("sys.settleAbort");
+        this.sys("sys.settleAbort", { reason: "fourKan" }); // 사깡산료
         continue;
       }
 
       if (phase === "turn.draw" && state.round.firstTurn && this.isFourWindAbort()) {
-        this.sys("sys.settleAbort");
+        this.sys("sys.settleAbort", { reason: "fourWind" }); // 사풍연타
         continue;
       }
 
@@ -136,7 +136,7 @@ export class FlowController {
         if (state.round.byPlayer[p.id]?.riichi != null) riichiCount++;
       }
       if (riichiCount === 4 && phase === "turn.draw") {
-        this.sys("sys.settleAbort"); // 사가리치
+        this.sys("sys.settleAbort", { reason: "fourRiichi" }); // 사가리치
         continue;
       }
 
@@ -458,7 +458,7 @@ export class FlowController {
         this.sys("sys.settleWin", wins);
       } else if (option.type === "kyushuKyuhai") {
         this.submitPlayer(player, option);
-        this.sys("sys.settleAbort");
+        this.sys("sys.settleAbort", { reason: "kyushuKyuhai" }); // 구종구패
       } else {
         this.submitPlayer(player, option);
         if (option.type === "discard" || option.type === "riichi") {
@@ -501,7 +501,7 @@ export class FlowController {
     if (winners.length === 0) this.markPassFuriten();
 
     if (winners.length >= 3) {
-      this.sys("sys.settleAbort"); // 삼가화 (Sanchaho)
+      this.sys("sys.settleAbort", { reason: "tripleRon" }); // 삼가화 (Sanchaho)
       return this.runAuto();
     }
     if (winners.length > 0) {

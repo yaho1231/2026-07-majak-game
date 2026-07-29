@@ -42,12 +42,19 @@ function declaredThisRound(state: GameState, holder: PlayerId): boolean {
   return stringOf(state, declaredKey(holder)) === roundKey(state);
 }
 
-/** roundKey "pw-rn-honba" → 절대 국 인덱스 (동1=1, 남1=5, 서1=9…) */
-function absRoundOf(key: string): number {
+/**
+ * roundKey "pw-rn-honba" → 정렬 가능한 국 순서값 (본장 포함).
+ *
+ * ⚠ 본장을 세지 않으면 오야 연장이 길어질 때 동1-0본장과 동1-3본장이 같은 값이 되어
+ * **쿨다운이 풀리지 않는다**(2026-07-29 감사, no_retreat와 동일 결함).
+ * 좌석 수도 하드코딩하지 않고 호출자가 넘긴다.
+ */
+function absRoundOf(key: string, seats: number): number {
   const parts = key.split("-").map(Number);
   const pw = parts[0] ?? 0;
   const rn = parts[1] ?? 0;
-  return (pw - 1) * 4 + rn;
+  const honba = parts[2] ?? 0;
+  return ((pw - 1) * seats + rn) * 100 + Math.min(honba, 99);
 }
 
 /**
@@ -57,7 +64,8 @@ function absRoundOf(key: string): number {
 function canDeclare(state: GameState, holder: PlayerId): boolean {
   const last = stringOf(state, declaredKey(holder));
   if (last === null) return true;
-  return absRoundOf(roundKey(state)) - absRoundOf(last) >= 2;
+  const seats = state.players.length;
+  return absRoundOf(roundKey(state), seats) - absRoundOf(last, seats) >= 200;
 }
 
 const declareAction: ActionDef<Record<string, never>> = {

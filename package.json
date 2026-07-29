@@ -20,6 +20,7 @@
     "serve:logs": "bash deploy/serve.sh logs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p packages/core",
+    "typecheck:content": "tsc --noEmit -p packages/content",
     "typecheck:server": "tsc --noEmit -p packages/server",
     "typecheck:client": "tsc --noEmit -p packages/client",
     "build:client": "npm run build -w @majak/client",

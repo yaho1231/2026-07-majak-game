@@ -50,15 +50,22 @@ import { handKindsOf, kindCounts } from "./botHelpers.js";
 const ID = "conjure_draw";
 const ACTION = "conjure_tsumo";
 
-/** 다음 쯔모로 소환할 목표 패(TileKind 객체). 소비되면 비운다 — 국이 아니라 즉시 만료 */
-const pendingKey = (h: PlayerId): string => `${ID}:pending:${h}`;
+/**
+ * 다음 쯔모로 소환할 목표 패(TileKind 객체). 소비되면 비운다.
+ *
+ * ⚠ **국 스코프여야 한다.** 소비 전에 국이 끝나면(남이 론·쯔모·유국) 게임 스코프 키에는
+ * 예약이 그대로 남아, 다음 국의 첫 쯔모를 강탈하고 그 국의 소환권(국당 1회)까지 한 번 더
+ * 주는 이중 발동이 됐다(2026-07-29 감사). 국 스코프로 두면 저절로 만료된다.
+ */
+const pendingKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:pending:${roundKey(state)}:${h}`;
 /** 국당 1회 소진 플래그 (roundKey 스코프 — 매 국 초기화) */
 const usedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:used:${roundKey(state)}:${h}`;
 
 /** augmentData에 저장된 대기 목표 kind를 읽는다 (없거나 비었으면 null) */
 function pendingKind(state: GameState, h: PlayerId): TileKind | null {
-  const v = state.augmentData[pendingKey(h)];
+  const v = state.augmentData[pendingKey(state, h)];
   if (
     v !== null &&
     typeof v === "object" &&
@@ -93,7 +100,7 @@ const conjureAction: ActionDef<{ tileId: TileId }> = {
     const kind = kindOf(state, req.payload.tileId);
     return [
       // 목표 kind를 대기열에 (TileKind 객체 그대로 — 다음 쯔모에서 읽어 쓴다)
-      augmentDataSet(pendingKey(req.player), { suit: kind.suit, rank: kind.rank }),
+      augmentDataSet(pendingKey(state, req.player), { suit: kind.suit, rank: kind.rank }),
       // 국당 1회 소진
       augmentDataSet(usedKey(state, req.player), true),
       // 발동 + 무엇을 불렀는지 전원 공개
@@ -133,7 +140,7 @@ export const conjureDraw: AugmentDef = defineAugment({
         ]),
       );
       // 소비했으니 대기열을 비운다 (한 번의 소환 = 한 번의 쯔모)
-      rc.emit(augmentDataSet(pendingKey(holder), null));
+      rc.emit(augmentDataSet(pendingKey(rc.state, holder), null));
       rc.emit(augmentDataSet(viewKey("*", `${ID}:done:${holder}`), kindKey(target)));
     });
 

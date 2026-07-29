@@ -20,13 +20,15 @@
  */
 
 import {
+  ROUND_SETTLED,
+  SETTLE_STAGE,
+  augmentInstanceId,
   defineAugment,
   discardsZone,
+  isSourceDisarmed,
   isTerminalOrHonor,
   kindOf,
   playerOf,
-  ROUND_SETTLED,
-  SETTLE_STAGE,
 } from "@majak/core";
 import type {
   AugmentDef,
@@ -69,8 +71,15 @@ export const nagashiYakuman: AugmentDef = defineAugment({
       const deltas = { ...p.deltas };
       for (const pl of ic.state.players) {
         if (pl.id === holder) continue;
-        // 역만 방어술 보유자는 유국역만 지불에서 면제된다 (완전 면역 연동)
-        if (pl.augments.includes("yakuman_shield")) continue;
+        // 역만 방어술 보유자는 유국역만 지불에서 면제된다 (완전 면역 연동).
+        // 단 **무장해제로 잠긴 방어막은 면제하지 않는다** — 보유 문자열만 보면 잠긴
+        // 방어막까지 공짜로 막아 줬다(2026-07-29 감사).
+        if (
+          pl.augments.includes("yakuman_shield") &&
+          !isSourceDisarmed(ic.state, augmentInstanceId(pl.id, "yakuman_shield"))
+        ) {
+          continue;
+        }
         // 쯔모 역만: 오야 화료 = 전원 16000 / 자 화료 = 오야 16000·자 8000
         const pay = holderIsDealer ? 16000 : pl.seat === dealerSeat ? 16000 : 8000;
         deltas[pl.id] = (deltas[pl.id] ?? 0) - pay;

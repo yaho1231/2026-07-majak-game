@@ -43,7 +43,9 @@ function startFlow(state: GameState) {
   return { game, flow, status };
 }
 
-const PENDING = "conjure_draw:pending:p0";
+/** 소환 예약 키는 국 스코프다 (소비 전에 국이 끝나면 자동 만료) */
+const pendingFor = (st: GameState): string =>
+  `conjure_draw:pending:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0`;
 /** 국 스코프 사용 플래그 키 (roundKey 포함) */
 const usedKeyOf = (state: GameState): string => {
   const r = state.round;
@@ -74,7 +76,7 @@ describe("소환 (conjure_draw)", () => {
 
     flow.submit("p0", opt);
     const st = game.engine.state;
-    expect(st.augmentData[PENDING]).toEqual({
+    expect(st.augmentData[pendingFor(st)]).toEqual({
       suit: expectedKind.suit,
       rank: expectedKind.rank,
     });
@@ -94,7 +96,7 @@ describe("소환 (conjure_draw)", () => {
     const CHUN: TileKind = { suit: "dragon", rank: 3 };
     const primed: GameState = {
       ...withAugments(base, "p0", ["conjure_draw"]),
-      augmentData: { [PENDING]: CHUN },
+      augmentData: { [pendingFor(base)]: CHUN },
     };
     const { game, flow, status: begun } = startFlow(primed);
 
@@ -119,7 +121,7 @@ describe("소환 (conjure_draw)", () => {
     expect(tile.kind).toEqual(CHUN);
     expect(tile.attrs.conjured).toBe(true);
     // 대기열은 소비되어 비워졌다
-    expect(st.augmentData[PENDING]).toBeNull();
+    expect(st.augmentData[pendingFor(st)]).toBeNull();
     // begun은 p3 턴이었다 (몰이 시작점 확인)
     expect(begun.prompts.some((p) => p.player === "p3")).toBe(true);
   });

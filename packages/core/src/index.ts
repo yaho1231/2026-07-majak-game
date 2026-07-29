@@ -104,6 +104,7 @@ export {
   winHandKindsOf,
   meldInfosOf,
   meldCountOf,
+  openMeldCountOf,
   scoringOptionsOf,
   uraIndicatorIds,
 } from "./mahjong/flow/helpers.js";
@@ -130,6 +131,7 @@ export type {
   FuritenMarkedPayload,
   WinDeclaredPayload,
   RoundSettledPayload,
+  AbortReason,
   WinInfo,
 } from "./mahjong/flow/flowEvents.js";
 export {

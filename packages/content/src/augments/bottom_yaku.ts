@@ -107,6 +107,8 @@ export const bottomYaku: AugmentDef = defineAugment({
 
     if (yaku.get(FLOW) === undefined) {
       yaku.register({
+        // 무장해제되면 이 역도 함께 잠긴다 (evaluate가 disarmedSources와 대조)
+        source: ctx.instanceId,
         id: FLOW,
         name: "역류 통관",
         closedHan: 2,
@@ -119,6 +121,8 @@ export const bottomYaku: AugmentDef = defineAugment({
     }
     if (yaku.get(LETGO) === undefined) {
       yaku.register({
+        // 무장해제되면 이 역도 함께 잠긴다 (evaluate가 disarmedSources와 대조)
+        source: ctx.instanceId,
         id: LETGO,
         name: "미련 없음",
         closedHan: 1,
