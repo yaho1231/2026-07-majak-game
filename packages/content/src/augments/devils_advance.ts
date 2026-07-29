@@ -43,6 +43,11 @@ const grantedKey = (h: PlayerId): string => `${ID}:granted:${h}`;
 /** 빚이 이미 폭발했는가 (게임당 1회) — 48차의 exempt 키를 재사용 */
 const burstKey = (h: PlayerId): string => `${ID}:exempt:${h}`;
 
+/** 이번 정산에서 빚이 폭발한 보유자 목록 (인터셉터 → reaction 신호) */
+interface BurstMark {
+  burstBy?: PlayerId[];
+}
+
 export const devilsAdvance: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
@@ -65,13 +70,18 @@ export const devilsAdvance: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(vKey, `가불 ${ADVANCE}`));
     });
 
-    // 만관 이상 화료 → 빚이 폭발한다 (게임당 1회, 제로섬 강탈)
-    let burst = false;
+    /*
+     * 만관 이상 화료 → 빚이 폭발한다 (게임당 1회, 제로섬 강탈).
+     *
+     * ⚠ 인터셉터 → 리액션 신호는 **이벤트 payload 표식**으로 넘긴다. 예전에는 엔진 밖
+     * 클로저 변수(`let burst`)를 썼는데, 그건 상태에 없는 값이라 재개·리플레이 재구성
+     * (rebuildAugments)에서 어긋나고 같은 증강을 두 명이 가지면 서로 덮어쓴다
+     * (2026-07-29 감사).
+     */
     // 정산 단계: Transfer — 상대 셋에게서 정액 3000씩 강탈 — 정액이므로 배수 뒤에 온다.
     settleInterceptor(ctx, SETTLE_STAGE.Transfer, (event, ic) => {
-      burst = false;
       if (flagOf(ic.state, burstKey(holder))) return event;
-      const p = event.payload as RoundSettledPayload;
+      const p = event.payload as RoundSettledPayload & BurstMark;
       if (p.outcome !== "win") return event;
       const info = (p.winInfos ?? []).find((w) => w.winner === holder);
       if (info === undefined || info.limit === null) return event;
@@ -85,14 +95,16 @@ export const devilsAdvance: AugmentDef = defineAugment({
       }
       if (taken === 0) return event;
       deltas[holder] = (deltas[holder] ?? 0) + taken;
-      burst = true;
-      return { type: event.type, payload: { ...p, deltas } };
+      return {
+        type: event.type,
+        payload: { ...p, deltas, burstBy: [...(p.burstBy ?? []), holder] },
+      };
     });
 
-    // 폭발이 실제로 적용됐으면 청산 기록 (같은 이벤트 처리 안에서 인터셉터가 넘긴 플래그)
-    ctx.reaction(ROUND_SETTLED, (_event, rc) => {
-      if (!burst) return;
-      burst = false;
+    // 폭발이 실제로 적용됐으면 청산 기록 (인터셉터가 payload에 남긴 표식을 본다)
+    ctx.reaction(ROUND_SETTLED, (event, rc) => {
+      const p = event.payload as RoundSettledPayload & BurstMark;
+      if (!(p.burstBy ?? []).includes(holder)) return;
       rc.emit(augmentDataSet(burstKey(holder), true));
       rc.emit(augmentDataSet(vKey, "청산"));
     });

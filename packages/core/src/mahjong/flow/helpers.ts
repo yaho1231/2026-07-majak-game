@@ -5,6 +5,7 @@
  */
 
 import { DEAD_WALL, discardsZone, handZone } from "../../engine/zones/Zone.js";
+import { DISARMED_SOURCES_KEY } from "../../engine/GameEngine.js";
 import type { PlayerId } from "../../engine/zones/Zone.js";
 import type { GameState, PlayerState } from "../../engine/state/GameState.js";
 import type { RuleRegistry } from "../../engine/rules/RuleRegistry.js";
@@ -545,6 +546,13 @@ export function buildWinContext(
         fromPlayerId: from,
         fromRiichi: state.round.byPlayer[from]?.riichi != null,
       };
+    })(),
+    // 무장해제된 증강의 커스텀 역을 평가에서 빼기 위한 목록 (rules 유무와 무관하게 싣는다)
+    ...(() => {
+      const v = state.augmentData[DISARMED_SOURCES_KEY];
+      return Array.isArray(v) && v.length > 0
+        ? { disarmedSources: v as string[] }
+        : {};
     })(),
     ...(rules !== undefined
       ? {

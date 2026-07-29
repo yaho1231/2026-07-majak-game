@@ -451,6 +451,9 @@ const ankanAction: ActionDef<{ tileIds: [TileId, TileId, TileId, TileId] }> = {
   validate: (req, { state, rules }) => {
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (!isTurnPlayer(state, req.player)) return "not your turn";
+    if (!rules.resolve<boolean>("call.kan.enabled", { playerId: req.player, state })) {
+      return "kan is disabled";
+    }
     if (wallIds(state).length === 0) return "cannot kan with empty wall";
     if (state.round.kanCount >= 4) return "kan limit reached";
     // 보충할 영상패가 없으면 깡을 칠 수 없다. 보통은 위 4회 상한이 먼저 걸리지만,
@@ -506,6 +509,9 @@ const minkanAction: ActionDef<{ tileIds: [TileId, TileId, TileId] }> = {
   type: "minkan",
   validate: (req, { state, rules }) => {
     if (state.round.phase !== "reaction") return "not in reaction phase";
+    if (!rules.resolve<boolean>("call.kan.enabled", { playerId: req.player, state })) {
+      return "kan is disabled";
+    }
     if (wallIds(state).length === 0) return "no calls on the last discard";
     if (state.round.kanCount >= 4) return "kan limit reached";
     // 보충할 영상패가 없으면 깡을 칠 수 없다. 보통은 위 4회 상한이 먼저 걸리지만,
@@ -552,6 +558,9 @@ const shouminkanAction: ActionDef<{ tileId: TileId, targetMeldTileId: TileId }> 
   validate: (req, { state, rules }) => {
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (!isTurnPlayer(state, req.player)) return "not your turn";
+    if (!rules.resolve<boolean>("call.kan.enabled", { playerId: req.player, state })) {
+      return "kan is disabled";
+    }
     if (wallIds(state).length === 0) return "cannot kan with empty wall";
     if (state.round.kanCount >= 4) return "kan limit reached";
     // 보충할 영상패가 없으면 깡을 칠 수 없다. 보통은 위 4회 상한이 먼저 걸리지만,
@@ -772,6 +781,8 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
       const deltas: Record<PlayerId, number> = {};
       for (const p of state.players) deltas[p.id] = 0;
       let dealerWon = false;
+      // 만년 오야가 자로서 연장을 가져온 경우의 새 오야 자리 (없으면 null)
+      let keepDealerSeat: number | null = null;
       const winInfos: WinInfo[] = [];
 
       req.payload.wins.forEach((w, i) => {
@@ -792,15 +803,24 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
         }
         const isDealer =
           playerOf(state, w.winner).seat === state.round.dealerSeat;
-        // 연장(렌짱) — 실제 오야이거나, 오야 자리를 유지시키는 증강(만년 오야)이 켠 경우
-        if (
-          isDealer ||
+        // 연장(렌짱) — 실제 오야이거나, 오야 자리를 가져오는 증강(만년 오야)이 켠 경우
+        if (isDealer) {
+          dealerWon = true;
+        } else if (
           rules.resolve<boolean>("round.keepDealer", {
             playerId: w.winner,
             state,
           })
         ) {
           dealerWon = true;
+          /*
+           * 자(子)로서 화료했는데 연장이 켜졌다 = **오야 자리를 가져온다**.
+           *
+           * ⚠ 예전에는 dealerWon만 세워서 `dealerSeat`가 **그 국의 실제 오야 그대로** 남았다.
+           * 그러면 화료한 보유자가 자기 연장 횟수를 소모해 **남의 오야를 늘려 주는** 꼴이었다
+           * (2026-07-29 감사). 만년 오야는 자기 자리를 오야로 만드는 능력이므로 좌석을 옮긴다.
+           */
+          keepDealerSeat = playerOf(state, w.winner).seat;
         }
         // 오야 취급 증강 (win.treatAsDealer) — 점수 계산만 오야, 연장은 실제 오야만
         const scoresAsDealer =
@@ -906,7 +926,7 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
         ? {
             roundNumber: state.round.roundNumber,
             prevalentWind: state.round.prevalentWind,
-            dealerSeat: state.round.dealerSeat,
+            dealerSeat: keepDealerSeat ?? state.round.dealerSeat,
           }
         : advanceRound(state, rules.resolve<number>("turn.direction", { state }));
 
@@ -1022,6 +1042,15 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define<"beforeRinshan" | "afterDiscard">("dora.kanTiming", "beforeRinshan");
   rules.define("call.pon.enabled", true);
   rules.define("call.chi.enabled", true);
+  /**
+   * 이 플레이어가 깡(안깡·대명깡·가깡)을 칠 수 있는가.
+   *
+   * 깡은 멘쯔 수를 늘려 **손패 장수 방정식을 바꾼다**. 리치 시점의 손패를 스냅샷으로
+   * 고정해 대기를 판정하는 증강(자유 선언)은 스냅샷이 멘쯔 수 변화를 모르므로,
+   * 그 상태에서 깡을 허용하면 분해가 어긋나 대기가 통째로 사라진다(소프트락).
+   * 그런 증강이 보유자에 한해 false로 잠근다.
+   */
+  rules.define("call.kan.enabled", true);
   rules.define("draw.notenPenalty", 3000);
   rules.define("win.requiresYaku", true);
   rules.define("win.furiten.enabled", true);

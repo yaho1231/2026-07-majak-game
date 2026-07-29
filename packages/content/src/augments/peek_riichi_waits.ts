@@ -154,6 +154,11 @@ const peekForgeAction: ActionDef<{ tileId: TileId; kind: string }> = {
     if (flagOf(state, forgedKey(state, req.player))) {
       return "already forged this round";
     }
+    // 리치 중에는 손패가 동결된다 — 위조는 손패 한 장의 종류를 바꿔 대기를 갈아엎으므로
+    // 리치 후에 허용하면 "리치하면 손이 고정된다"는 규칙이 깨진다(2026-07-29 감사).
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
     if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
       return "tile not in hand";
     }

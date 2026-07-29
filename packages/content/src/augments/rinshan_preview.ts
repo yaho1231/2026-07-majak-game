@@ -125,8 +125,14 @@ export const rinshanPreview: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
-          // 새 쯔모패는 끌어온 영상패 — 리치 중 쯔모기리도 이 패를 기준으로 판정된다
-          round: { ...state.round, lastDrawnTile: p.takenTileId },
+          // 새 쯔모패는 끌어온 영상패 — 리치 중 쯔모기리도 이 패를 기준으로 판정된다.
+          // 다만 **깡을 하지 않았으므로 영상개화는 성립하지 않는다** — 플래그를 끄지 않으면
+          // 깡 직후에 끌어온 패로 +1판이 잘못 붙었다(2026-07-29 감사).
+          round: {
+            ...state.round,
+            lastDrawnTile: p.takenTileId,
+            lastDrawRinshan: false,
+          },
         };
       });
     }

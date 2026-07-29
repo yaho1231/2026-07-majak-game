@@ -112,9 +112,15 @@ export const tableFlip: AugmentDef = defineAugment({
         let zones = moveTiles(state.zones, handZone(p.holder), WALL, p.returned);
         // ② 패산 위에서 같은 장수를 새 손으로 (①에서 넣은 패는 맨 밑이라 안 걸린다)
         zones = moveTiles(zones, WALL, handZone(p.holder), p.drawn);
+        // ③ 쯔모패를 새 손의 마지막 패로 갱신한다.
+        //    반납한 손패에는 그 순의 쯔모패도 들어 있다. 갱신하지 않으면 round.lastDrawnTile이
+        //    **이제 패산에 있는 패**를 계속 가리켜, 쯔모 화료가 영영 성립하지 않고
+        //    쯔모패를 손에서 빼는 다른 증강(무르기 등)이 moveTiles에서 국을 죽인다.
+        const nextDrawn = p.drawn.at(-1) ?? state.round.lastDrawnTile;
         return {
           ...state,
           zones,
+          round: { ...state.round, lastDrawnTile: nextDrawn },
           augmentData: {
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,

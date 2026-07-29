@@ -12,10 +12,10 @@
  *   발동 횟수 제한뿐이므로 여기서 그것을 쓴다 (점수 손해는 붙이지 않는다).
  *
  * 연장 소모 판정: ROUND_SETTLED 인터셉터의 ic.state는 **리듀서 적용 전** = 지금 정산되는 국이라
- * 그 국의 진짜 오야 자리를 알 수 있다. 내가 진짜 오야가 아닌데 내 화료로 오야 자리가 그대로
- * 유지됐다면(payload.dealerSeat === 정산 전 dealerSeat) 우리 규칙이 일한 것이다.
- * 인터셉터→리액션이 같은 이벤트 처리 안에서 순차 실행되는 점을 이용해 플래그를 넘긴다
- * (karma가 쓰던 것과 같은 패턴 — 매 진입 시 false로 리셋되어 리플레이 결정성을 해치지 않는다).
+ * 그 국의 진짜 오야 자리를 알 수 있다. 내가 진짜 오야가 아닌데 내 화료로 오야 자리가
+ * **내 자리로 옮겨 왔다면**(payload.dealerSeat === 내 자리) 우리 규칙이 일한 것이다.
+ * 인터셉터 → 리액션 신호는 **이벤트 payload 표식**으로 넘긴다(2026-07-29 감사) —
+ * 엔진 밖 클로저 변수는 상태에 없어 재개·리플레이 재구성에서 어긋나고 다중 보유 시 충돌한다.
  */
 
 import {
@@ -44,6 +44,11 @@ const MAX_KEEPS = 3;
 /** 이 게임에서 이미 소모한 연장 횟수 (게임 단위 — roundKey를 섞지 않는다) */
 const keepsKey = (h: PlayerId): string => `${ID}:keeps:${h}`;
 
+/** 이번 정산에서 연장(오야 자리 이전)을 발동한 보유자 목록 */
+interface ExtendMark {
+  extendedBy?: PlayerId[];
+}
+
 export const eternalDealer: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
@@ -52,7 +57,7 @@ export const eternalDealer: AugmentDef = defineAugment({
   description:
     "(상시 · 연장은 게임 내 3회) 내 화료는 언제나 오야 화료로 계산되고 채점 자풍이 동으로 고정된다. 게다가 내가 화료하면 오야 자리가 그대로 유지된다.",
   detail:
-    "(상시 · 연장은 게임 내 3회) 획득 이후 자신의 모든 화료가 오야 화료로 계산되어 점수가 약 1.5배가 된다. 여기에 채점상의 자풍이 항상 동으로 고정되어 역패 동이 늘 성립하고, 장풍이 동인 국에서는 더블동이 된다. 마지막으로 자신이 화료하면 오야 자리가 그대로 유지된다(연장) — 다만 무한 국을 막기 위해 이 연장은 게임 내 3회까지만 발동하며 남은 횟수는 전원에게 공개된다. 실제 오야로서 화료한 국은 원래 연장이므로 횟수를 소모하지 않는다.",
+    "(상시 · 연장은 게임 내 3회) 획득 이후 자신의 모든 화료가 오야 화료로 계산되어 점수가 약 1.5배가 된다. 여기에 채점상의 자풍이 항상 동으로 고정되어 역패 동이 늘 성립하고, 장풍이 동인 국에서는 더블동이 된다. 마지막으로 자신이 화료하면 오야 자리가 자기 자리로 옮겨 온다(연장) — 다만 무한 국을 막기 위해 이 연장은 게임 내 3회까지만 발동하며 남은 횟수는 전원에게 공개된다. 실제 오야로서 화료한 국은 원래 연장이므로 횟수를 소모하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -78,32 +83,39 @@ export const eternalDealer: AugmentDef = defineAugment({
       },
     });
 
-    // 연장이 실제로 우리 규칙 때문에 일어났는지 판정해 리액션에 넘긴다
-    let extended = false;
+    /*
+     * 연장이 **우리 규칙 때문에** 일어났는지 판정해 리액션에 넘긴다.
+     *
+     * ⚠ 신호는 엔진 밖 클로저 변수가 아니라 **이벤트 payload 표식**으로 넘긴다. 클로저는
+     * 상태에 없는 값이라 재개·리플레이 재구성(rebuildAugments)에서 어긋나고, 같은 증강을
+     * 두 명이 가지면 서로 덮어쓴다(2026-07-29 감사, 역만 방어술의 ShieldMark와 같은 패턴).
+     */
     // 정산 단계: Observe — deltas를 바꾸지 않고 연장 여부만 관찰한다 — 맨 뒤.
     settleInterceptor(ctx, SETTLE_STAGE.Observe, (event, ic) => {
-      extended = false;
-      const p = event.payload as RoundSettledPayload;
+      const p = event.payload as RoundSettledPayload & ExtendMark;
       if (p.outcome !== "win") return event;
       const infos = p.winInfos ?? [];
       if (!infos.some((w) => w.winner === holder)) return event;
       const dealerSeat = ic.state.round.dealerSeat;
+      const holderSeat = playerOf(ic.state, holder).seat;
       // 진짜 오야로서 화료한 국은 원래 연장이다 — 횟수를 소모하지 않는다
-      if (playerOf(ic.state, holder).seat === dealerSeat) return event;
+      if (holderSeat === dealerSeat) return event;
       // 더블론 등으로 진짜 오야도 함께 화료했다면 그것도 원래 연장이다
       if (infos.some((w) => playerOf(ic.state, w.winner).seat === dealerSeat)) {
         return event;
       }
-      // 오야 자리가 그대로 유지됐는가 (payload.dealerSeat = 다음 국의 오야 자리)
-      if (p.dealerSeat !== dealerSeat) return event;
+      // 오야 자리가 **내 자리로 옮겨 왔는가** (payload.dealerSeat = 다음 국의 오야 자리)
+      if (p.dealerSeat !== holderSeat) return event;
       if (counterOf(ic.state, keepsKey(holder)) >= MAX_KEEPS) return event;
-      extended = true;
-      return event;
+      return {
+        type: event.type,
+        payload: { ...p, extendedBy: [...(p.extendedBy ?? []), holder] },
+      };
     });
 
-    ctx.reaction(ROUND_SETTLED, (_event, rc) => {
-      if (!extended) return;
-      extended = false;
+    ctx.reaction(ROUND_SETTLED, (event, rc) => {
+      const p = event.payload as RoundSettledPayload & ExtendMark;
+      if (!(p.extendedBy ?? []).includes(holder)) return;
       const used = counterOf(rc.state, keepsKey(holder)) + 1;
       rc.emit(augmentDataSet(keepsKey(holder), used));
       // 전원 공개 — 남은 연장 횟수가 테이블에 보인다

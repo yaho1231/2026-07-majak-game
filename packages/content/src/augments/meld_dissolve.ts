@@ -110,6 +110,11 @@ const dissolveAction: ActionDef<{ meldIndex: number }> = {
       return "not your turn";
     }
     if (flagOf(state, usedKey(state, req.player))) return "already used this round";
+    // 리치를 걸면 손패는 동결된다 — 보유자 자신의 리치를 반드시 확인한다
+    // (2026-07-29 감사: 상대 리치만 보고 자기 리치를 빠뜨려 리치 후 손을 갈아치울 수 있었다)
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: cannot dissolve";
+    }
     const melds = state.round.byPlayer[req.player]?.melds ?? [];
     const meld = melds[req.payload.meldIndex];
     if (!isDissolvable(meld)) return "no dissolvable pon/chi meld at that index";
@@ -191,7 +196,9 @@ export const meldDissolve: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
-          round: { ...state.round, byPlayer, lastDrawnTile },
+          // lastDrawRinshan을 반드시 끈다 — 대명깡 직후(영상 쯔모 상태)에 해체하면
+          // 그 플래그가 남아 이어지는 화료에 **영상개화가 헛성립**한다(2026-07-29 감사).
+          round: { ...state.round, byPlayer, lastDrawnTile, lastDrawRinshan: false },
           augmentData: {
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,

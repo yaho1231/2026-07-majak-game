@@ -392,11 +392,14 @@ describe("score.honbaPerStick / round.keepDealer — 정산 훅", () => {
     expect(p.honba).toBe(0);
   });
 
-  it("round.keepDealer가 켜지면 비오야가 화료해도 연장된다", () => {
+  it("round.keepDealer가 켜지면 비오야가 화료해도 연장되고 오야 자리가 그 사람에게 옮겨 온다", () => {
     const game = settleRon(0);
     holderRule(game, "round.keepDealer", "p1", true);
     const p = settleWinDeltas(game);
-    expect(p.dealerSeat).toBe(0);
+    // 2026-07-29 감사: 예전에는 dealerSeat가 옛 오야(0) 그대로라, 보유자가 자기 연장
+    // 횟수를 태워 **남의 오야를 늘려 주는** 결과였다. 이제 자리를 가져온다.
+    const p1Seat = game.engine.state.players.find((pl) => pl.id === "p1")?.seat;
+    expect(p.dealerSeat).toBe(p1Seat);
     expect(p.honba).toBe(1);
   });
 });

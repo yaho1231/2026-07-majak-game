@@ -58,6 +58,11 @@ export interface WinContext {
   fromRiichi?: boolean;
   /** 성립을 금지할 역 id 목록 (win.blockedYaku 규칙에서 유도) */
   blockedYaku?: string[];
+  /**
+   * 지금 무장해제된 증강 인스턴스 id 목록 (state의 DISARMED_SOURCES_KEY에서 유도).
+   * 여기 실린 source로 등록된 커스텀 역은 성립하지 않는다.
+   */
+  disarmedSources?: readonly string[];
   /** 분해 옵션 (scoring.* 규칙에서 유도 — helpers.scoringOptionsOf) */
   options?: DecomposeOptions;
 }

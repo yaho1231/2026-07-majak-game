@@ -123,6 +123,7 @@ function activeTarget(state: GameState, holder: PlayerId): PlayerId | null {
 /** 보유자의 자기 턴(행동 페이즈)인가 */
 function onMyTurn(state: GameState, holder: PlayerId): boolean {
   if (state.round.phase !== "turn.act") return false;
+  if (state.round.byPlayer[holder]?.riichi != null) return false; // 리치 중엔 손이 동결
   return playerAtSeat(state, state.round.turnSeat).id === holder;
 }
 
@@ -135,6 +136,9 @@ function commonReject(state: GameState, player: PlayerId): string | null {
   if (playerAtSeat(state, state.round.turnSeat).id !== player) {
     return "not your turn";
   }
+  // 보유자 자신이 리치 중이면 손패가 동결된다 — 대상의 리치만 보고 자기 리치를
+  // 빠뜨리면 리치 후 손패 3장을 바꿔치기할 수 있었다(2026-07-29 감사).
+  if (state.round.byPlayer[player]?.riichi != null) return "riichi: hand is frozen";
   return null;
 }
 

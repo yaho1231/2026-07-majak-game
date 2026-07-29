@@ -15,14 +15,17 @@ import {
   SETTLE_STAGE,
   augmentStageKey,
   calculateScore,
+  meldCountOf,
   playerAtSeat,
 } from "@majak/core";
 import type {
   AugmentContext,
   GameState,
+  PeekVisibility,
   PlayerId,
   RoundSettledPayload,
   SettleStage,
+  VisibilityRule,
   WinInfo,
   YakuRegistry,
 } from "@majak/core";
@@ -59,11 +62,20 @@ export function viewKey(player: PlayerId | "*", key: string): string {
 }
 
 /**
- * 두 플레이어의 배패 장수(deal.handSize)가 같은지.
- * 손패 수·화료형(scoring.totalSets) 규칙은 **플레이어에 고정**돼 있어 타일과 함께 이동하지
- * 않는다. 진짜 용(16장)처럼 장수가 다른 상대와 손패를 통째로 맞바꾸면 한쪽은 필요한 장수를
- * 못 채워 화료·버림 판정이 깨진다. 손패를 통째로 옮기는 증강(자리 바꿈·통째로 바꾸기)의
- * **공용 가드** — 여기 한 곳에서만 판정해 사본이 갈라져 가드가 빠지는 일을 막는다.
+ * 두 플레이어의 손패를 **통째로 맞바꿔도 안전한가**.
+ *
+ * 손패 수·화료형(`deal.handSize`·`scoring.totalSets`) 규칙은 **플레이어에 고정**돼 있어
+ * 타일과 함께 이동하지 않는다. 진짜 용(16장)처럼 장수가 다른 상대와 손을 바꾸면 한쪽은
+ * 필요한 장수를 못 채워 화료·버림 판정이 깨진다.
+ *
+ * ⚠ 배패 장수만 보면 부족하다 — **후로(멘쯔)는 손패와 함께 이동하지 않기 때문**이다.
+ * 멘쯔가 1개인 사람(손패 10장)과 0개인 사람(손패 13장)은 `deal.handSize`가 둘 다 13이라
+ * 예전 가드를 그대로 통과했고, 바꾸고 나면 "손패 13장 + 멘쯔 1개 = 16장"처럼 화료가
+ * 물리적으로 불가능한 손이 남아 **그 국 내내 벽돌**이 됐다(2026-07-29 감사, 실측 재현).
+ * 그래서 멘쯔 수까지 같은지 함께 본다.
+ *
+ * 손패를 통째로 옮기는 증강(자리 바꿈·통째로 바꾸기)의 **공용 가드** —
+ * 여기 한 곳에서만 판정해 사본이 갈라져 가드가 빠지는 일을 막는다.
  */
 export function sameHandSize(
   rules: {
@@ -73,10 +85,34 @@ export function sameHandSize(
   a: PlayerId,
   b: PlayerId,
 ): boolean {
-  return (
-    rules.resolve<number>("deal.handSize", { playerId: a, state }) ===
+  if (
+    rules.resolve<number>("deal.handSize", { playerId: a, state }) !==
     rules.resolve<number>("deal.handSize", { playerId: b, state })
-  );
+  ) {
+    return false;
+  }
+  return meldCountOf(state, a) === meldCountOf(state, b);
+}
+
+/**
+ * 두 열람(peek) 가시성을 **더 넓은 쪽으로** 합친다.
+ *
+ * 열람 범위를 넓히는 증강이 둘 이상 겹칠 때(절벽 위에 피어난 꽃 × 왕패의 주인) 각자
+ * `cur`를 무시하고 자기 값으로 덮으면, 최종 범위가 **드래프트 픽 순서**로 갈린다 —
+ * 늦게 설치된 쪽이 이겨 먼저 픽한 증강의 핵심 능력이 조용히 사라졌다(2026-07-29 감사).
+ * 열람은 "더 많이 보는 쪽"으로 합치는 것이 의미상 옳고, 순서와 무관해진다.
+ *
+ * 이미 전면 공개(`public`)라면 그대로 둔다 — 그보다 넓을 수는 없다.
+ */
+export function widenPeek(
+  current: VisibilityRule,
+  next: PeekVisibility,
+): VisibilityRule {
+  if (current === "public") return current;
+  if (typeof current === "object" && current.mode === "peek") {
+    return current.count >= next.count ? current : next;
+  }
+  return next;
 }
 
 /**

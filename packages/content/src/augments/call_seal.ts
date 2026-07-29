@@ -14,7 +14,7 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundKey, viewKey } from "../util.js";
 
 const ID = "call_seal";
 const ACTION = "call_seal_use";
@@ -25,13 +25,21 @@ const SEAL_TURNS = 6;
 const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
 const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
   counterOf(state, usesKey(holder)) < matchUses(state);
-/** 발동한 순(turnCount) — 봉인 만료 계산용 (마지막 선언 기준) */
-const turnKey = (holder: PlayerId): string => `${ID}:turn:${holder}`;
+/**
+ * 발동한 순(turnCount) — 봉인 만료 계산용 (마지막 선언 기준).
+ *
+ * ⚠ **국 스코프여야 한다.** `round.turnCount`는 국이 바뀔 때 0으로 리셋되는데, 기준점을
+ * 게임 스코프 키에 두면 다음 국에서 `0 - 6 < 6`이 영원히 참이 되어 6순 봉인이
+ * **매치가 끝날 때까지 풀리지 않는다**(2026-07-29 감사). 국 스코프로 두면 키가
+ * 저절로 만료되어 다음 국은 깨끗하게 시작한다. 사용 횟수(usesKey)는 게임 스코프 유지.
+ */
+const turnKey = (state: GameState, holder: PlayerId): string =>
+  `${ID}:turn:${roundKey(state)}:${holder}`;
 
 /** 지금 상대 후로가 봉인돼 있는가 — 마지막 선언 후 6순 이내 */
 function sealActive(state: GameState, holder: PlayerId): boolean {
   if (counterOf(state, usesKey(holder)) === 0) return false;
-  const declared = state.augmentData[turnKey(holder)];
+  const declared = state.augmentData[turnKey(state, holder)];
   if (typeof declared !== "number") return false;
   return state.round.turnCount - declared < SEAL_TURNS;
 }
@@ -52,7 +60,7 @@ const sealAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
-    augmentDataSet(turnKey(req.player), state.round.turnCount),
+    augmentDataSet(turnKey(state, req.player), state.round.turnCount),
     // 발동 사실을 전원에게 알린다 (상대는 왜 못 우는지 알아야 대응한다)
     augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
       turnCount: state.round.turnCount,

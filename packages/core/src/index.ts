@@ -102,6 +102,7 @@ export {
   winHandKindsOf,
   meldInfosOf,
   meldCountOf,
+  openMeldCountOf,
   scoringOptionsOf,
   uraIndicatorIds,
 } from "./mahjong/flow/helpers.js";

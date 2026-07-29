@@ -38,12 +38,20 @@ function declaredThisRound(state: GameState, holder: PlayerId): boolean {
   return stringOf(state, declaredKey(holder)) === roundKey(state);
 }
 
-/** roundKey "pw-rn-honba" → 절대 국 인덱스 (동1=1, 남1=5, 서1=9…) */
-function absRoundOf(key: string): number {
+/**
+ * roundKey "pw-rn-honba" → 정렬 가능한 국 순서값.
+ *
+ * ⚠ **본장을 반드시 센다.** 예전에는 `(pw-1)*4 + rn`으로 본장을 버렸는데, 오야가 연장하면
+ * 동1-0본장 → 동1-3본장이 전부 같은 값이라 **쿨다운이 영영 풀리지 않았다**(2026-07-29 감사).
+ * 자리 수를 넉넉히 잡아(본장 100 미만) 국 → 본장 순으로 단조 증가하게 만든다.
+ * 좌석 수도 4로 하드코딩하지 않고 호출자가 넘긴다.
+ */
+function absRoundOf(key: string, seats: number): number {
   const parts = key.split("-").map(Number);
   const pw = parts[0] ?? 0;
   const rn = parts[1] ?? 0;
-  return (pw - 1) * 4 + rn;
+  const honba = parts[2] ?? 0;
+  return ((pw - 1) * seats + rn) * 100 + Math.min(honba, 99);
 }
 
 /**
@@ -53,7 +61,9 @@ function absRoundOf(key: string): number {
 function canDeclare(state: GameState, holder: PlayerId): boolean {
   const last = stringOf(state, declaredKey(holder));
   if (last === null) return true;
-  return absRoundOf(roundKey(state)) - absRoundOf(last) >= 2;
+  const seats = state.players.length;
+  // 본장 단위까지 세므로 "2국 뒤"는 100×2 = 200이다
+  return absRoundOf(roundKey(state), seats) - absRoundOf(last, seats) >= 200;
 }
 
 const declareAction: ActionDef<Record<string, never>> = {
@@ -149,7 +159,10 @@ export const noRetreat: AugmentDef = defineAugment({
 
         const has = (id: string): boolean => ev.yaku.some((y) => y.id === id);
         let bonus = ev.uraHan; // 뒷도라 한 번 더 = 2배
-        if (has("riichi") || has("double_riichi")) bonus += 1; // 리치 1→2
+        // "리치 성분을 2판으로" — 더블리치는 이미 2판이므로 더하지 않는다.
+        // 예전에는 둘 다 +1을 줘서 뒤늦은 출진(더블리치 강제)과 겹치면 3판이 됐다
+        // (안내 문구와 결과가 어긋남, 2026-07-29 감사).
+        if (has("riichi") && !has("double_riichi")) bonus += 1; // 리치 1→2
         if (has("ippatsu")) bonus += 1; // 일발 1→2
         return cur + bonus;
       },

@@ -49,7 +49,9 @@ const noticeKey = (holder: PlayerId): string => viewKey("*", `${ID}:${holder}`);
 const lastMapKey = (holder: PlayerId): string =>
   viewKey("*", `${ID}:last:${holder}`);
 /** 위 맵의 tileId를 '진짜 패'로 그리게 하는 코어 공개 채널 */
-const REVEAL_KEY = viewKey("*", "revealTiles:fog");
+/** 보유자별 공개 채널 — 박무(brief_fog)와 키를 공유하면 서로 덮어쓴다(2026-07-29 감사) */
+const revealKey = (holder: PlayerId): string =>
+  viewKey("*", `revealTiles:fog:${holder}`);
 
 /** 안개가 선언되어 있는가 */
 function fogDeclared(state: GameState, holder: PlayerId): boolean {
@@ -85,7 +87,7 @@ const declareFogAction: ActionDef<Record<string, never>> = {
       augmentDataSet(fogKey(req.player), true),
       augmentDataSet(noticeKey(req.player), "안개"),
       augmentDataSet(lastMapKey(req.player), map),
-      augmentDataSet(REVEAL_KEY, Object.values(map)),
+      augmentDataSet(revealKey(req.player), Object.values(map)),
     ];
   },
 };
@@ -129,15 +131,17 @@ export const hiddenRiver: AugmentDef = defineAugment({
       if (!fogDeclared(rc.state, holder)) return;
       const map = lastDiscardMap(rc.state);
       rc.emit(augmentDataSet(lastMapKey(holder), map));
-      rc.emit(augmentDataSet(REVEAL_KEY, Object.values(map)));
+      rc.emit(augmentDataSet(revealKey(holder), Object.values(map)));
     });
 
     // 국이 바뀌면 바닥이 비므로 지난 국 tileId가 새지 않게 맵을 비운다
     // (선언 플래그는 게임 단위라 그대로 유지된다).
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
-      if (!fogDeclared(rc.state, holder)) return;
-      rc.emit(augmentDataSet(lastMapKey(holder), {}));
-      rc.emit(augmentDataSet(REVEAL_KEY, []));
+      const revealed = rc.state.augmentData[revealKey(holder)];
+      if (Array.isArray(revealed) && revealed.length > 0) {
+        rc.emit(augmentDataSet(lastMapKey(holder), {}));
+        rc.emit(augmentDataSet(revealKey(holder), []));
+      }
     });
 
     // 아직 선언하지 않았다면 보유자 턴에 선언 후보를 낸다 (합법성은 validate가 최종 판정)

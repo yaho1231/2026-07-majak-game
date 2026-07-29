@@ -44,6 +44,17 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
 const inRiichi = (state: GameState, h: PlayerId): boolean =>
   state.round.byPlayer[h]?.riichi != null;
 
+/**
+ * 첫 바퀴(사풍연타 판정 창)인가 — 그 동안에는 심을 수 없다.
+ *
+ * 사풍연타는 "네 명의 **첫 버림**이 모두 같은 바람"으로 판정하는데, 엔진은 그것을
+ * 각자 바닥의 장수로 센다(FlowController.isFourWindAbort). 누명은 버린 사람 바닥을
+ * 0장, 지목당한 사람 바닥을 2장으로 만들어 그 판정을 조용히 무너뜨린다(성립해야 할
+ * 도중유국이 안 나거나, 아직 버리지도 않은 사람이 1장으로 집계돼 오탐이 난다).
+ * 창이 첫 바퀴뿐이라, 그 동안 발동을 막는 것이 판정을 건드리지 않는 가장 싼 해법이다.
+ */
+const inFirstGoAround = (state: GameState): boolean => state.round.firstTurn;
+
 const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
   type: ACTION,
   validate: (req, { state }) => {
@@ -57,6 +68,7 @@ const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
     }
     if (!hasUsesLeft(state, req.player)) return "no uses left this game";
     if (inRiichi(state, req.player)) return "cannot frame during riichi";
+    if (inFirstGoAround(state)) return "cannot frame on the first go-around";
     if (req.payload.target === req.player) return "cannot frame yourself";
     if (!state.players.some((p) => p.id === req.payload.target)) {
       return "unknown target";
@@ -95,7 +107,7 @@ export const frameUp: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 내가 버릴 패를 지목한 상대의 바닥에 놓는다 — 그 사람이 버린 것으로 기록되어 후리텐에 걸리고, 내 바닥에는 남지 않아 내 후리텐은 회피된다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 버릴 패 한 장을 골라 상대 한 명의 바닥에 놓는다. 그 패는 그 사람이 버린 것으로 기록되어, 그가 그 종류로 기다리고 있었다면 후리텐에 걸린다. 동시에 그 패가 내 바닥에 남지 않아 내 후리텐은 회피된다. 다만 실제로 버린 사람은 나이므로 다른 상대의 론 반응은 평소대로 열려 있고 그 패로 쏘이면 책임도 내가 진다. 심긴 패는 전원에게 공개되며, 리치 중에는 쓸 수 없다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 버릴 패 한 장을 골라 상대 한 명의 바닥에 놓는다. 그 패는 그 사람이 버린 것으로 기록되어, 그가 그 종류로 기다리고 있었다면 후리텐에 걸린다. 동시에 그 패가 내 바닥에 남지 않아 내 후리텐은 회피된다. 다만 실제로 버린 사람은 나이므로 다른 상대의 론 반응은 평소대로 열려 있고 그 패로 쏘이면 책임도 내가 진다. 심긴 패는 전원에게 공개되며, 리치 중이거나 국의 첫 바퀴에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -107,6 +119,7 @@ export const frameUp: AugmentDef = defineAugment({
     ctx.holderTurnOptions((state) => {
       if (!hasUsesLeft(state, holder)) return [];
       if (inRiichi(state, holder)) return [];
+      if (inFirstGoAround(state)) return [];
       const opts: { type: string; payload: unknown }[] = [];
       for (const id of handIdsOf(state, holder)) {
         for (const p of state.players) {

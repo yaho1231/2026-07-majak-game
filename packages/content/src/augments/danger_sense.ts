@@ -44,6 +44,8 @@ import type {
 import { flagOf, roundKey, viewKey } from "../util.js";
 
 const ID = "danger_sense";
+/** 리치가 없을 때 봇이 스캔을 미루는 최소 순 — 이 전에는 위험패 정보가 거의 없다 */
+const SCAN_MIN_TURN = 6;
 const ACTION = "danger_sense_use";
 
 /** 이미 이 국에서 발동했는가 (국 단위 — roundKey 스코프, 매 국 초기화) */
@@ -115,9 +117,19 @@ export const dangerSense: AugmentDef = defineAugment({
   detail:
     "(매 국 1회) 자기 순에 선언하면 그 순간 세 상대의 손패를 읽어 대기(오름패)를 계산하고, 그와 겹치는 내 손패 종류를 나에게만 표시한다. 리치를 걸지 않은 다마텐 상대의 대기와 상대의 특수 화료형까지 반영된다. 손을 바꾸거나 점수를 옮기지는 않으며, 결과는 선언한 순간의 스냅샷이라 이후 상황이 바뀌어도 갱신되지 않는다.",
   // 봇: 자해 위험이 없는 순수 정보다 — 옵션이 뜨면 곧바로 선언한다.
+  /*
+   * 봇: 국당 1회뿐인 스캔을 **정보가 0인 첫 순에 태워 버리던** 문제를 막는다
+   * (2026-07-29 감사). 누가 리치를 걸었거나 어느 정도 순이 지난 뒤에만 쓴다.
+   */
   bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
+    choose({ options, view }) {
+      const opt = options.find((o) => o.type === ACTION);
+      if (opt === undefined) return null;
+      const someoneRiichi = Object.values(view.round.byPlayer).some(
+        (r) => r.riichiDeclared,
+      );
+      if (!someoneRiichi && view.round.turnCount < SCAN_MIN_TURN) return null;
+      return opt;
     },
   },
   install(ctx) {

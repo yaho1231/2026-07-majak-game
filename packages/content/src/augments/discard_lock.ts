@@ -194,9 +194,20 @@ export const discardLock: AugmentDef = defineAugment({
       engine.actions.register(sealHandsAction);
     }
 
-    // 국이 시작될 때마다 진행 국 수 카운터를 올린다 (쿨다운 계산 기준)
+    // 국이 시작될 때마다 진행 국 수 카운터를 올린다 (쿨다운 계산 기준).
+    // 함께: 봉인 때 보유자에게 실물 공개한 패 목록(revealTiles)을 비운다 — 고정 키라
+    // 그대로 두면 지난 국의 tileId가 **다음 국 내내 보유자에게 정체까지 노출**된다
+    // (적도라 표식 포함, 2026-07-29 감사).
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
       rc.emit(augmentDataSet(seqKey(holder), roundSeq(rc.state, holder) + 1));
+      for (const p of rc.state.players) {
+        if (p.id === holder) continue;
+        const key = revealTilesKey(holder, p.id);
+        const cur = rc.state.augmentData[key];
+        if (Array.isArray(cur) && cur.length > 0) {
+          rc.emit(augmentDataSet(key, []));
+        }
+      }
     });
 
     // 발동 조건이 충족된 자기 턴에만 봉인 선택지(액티브 버튼)를 노출

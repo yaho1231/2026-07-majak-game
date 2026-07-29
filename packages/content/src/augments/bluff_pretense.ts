@@ -19,8 +19,10 @@
 import {
   CALL_MADE,
   augmentDataSet,
+  augmentInstanceId,
   defineAugment,
   handIdsOf,
+  isSourceDisarmed,
   kindKey,
   kindOf,
   tileKindChanged,
@@ -91,12 +93,24 @@ function pickSacrifice(
 
 const bluffPonAction: ActionDef<{ tileId: TileId }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined || !player.augments.includes(ID)) {
       return "no bluff_pretense augment";
     }
     if (state.round.phase !== "reaction") return "not in reaction phase";
+    // 무장해제된 증강의 콜은 성립하지 않는다 (버튼은 holderReactionOptions가 이미 가리지만,
+    // 제출 경로에서도 최종 차단한다).
+    if (isSourceDisarmed(state, augmentInstanceId(req.player, ID))) {
+      return "augment is disarmed";
+    }
+    // 후로 봉인(함구령 등)을 우회하지 않는다 — 커스텀 콜도 표준 펑과 같은 규칙을 탄다.
+    if (rules.resolve<boolean>("call.blocked", { playerId: req.player, state })) {
+      return "calls are sealed";
+    }
+    if (!rules.resolve<boolean>("call.pon.enabled", { playerId: req.player, state })) {
+      return "pon is disabled";
+    }
     if (flagOf(state, usedKey(state, req.player))) return "already used this round";
     const last = state.round.lastDiscard;
     if (last === null) return "nothing to call";
@@ -172,8 +186,7 @@ export const bluffPretense: AugmentDef = defineAugment({
 
     // 리액션 프롬프트에 bluff_pon 후보를 노출(합법성은 validate가 최종 판정).
     // 표준 펑/치 사이 우선순위로 처리되는 커스텀 콜(24차).
-    engine.registerReactionOptions((state, player, discard) => {
-      if (player !== holder) return [];
+    ctx.holderReactionOptions((state, discard) => {
       if (flagOf(state, usedKey(state, holder))) return [];
       if (state.round.byPlayer[holder]?.riichi != null) return [];
       const targetKey = kindKey(kindOf(state, discard.tileId));

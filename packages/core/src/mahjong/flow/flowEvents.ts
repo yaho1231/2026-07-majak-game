@@ -23,6 +23,30 @@ import { kindKey } from "../tiles/Tile.js";
 import type { TileId } from "../tiles/Tile.js";
 import { playerAtSeat } from "./helpers.js";
 
+/**
+ * 후로가 가져갈 패가 **실제로 놓여 있는 바닥 존**.
+ *
+ * 보통은 `discardsZone(버린 사람)`이지만, 누명(frame_up)처럼 `TileDiscardedPayload.creditTo`로
+ * **패가 놓이는 바닥과 방총 책임을 분리**하는 증강이 있다. 그때 `lastDiscard.player`(=책임자)와
+ * 패가 실제로 있는 존이 갈라지므로, `discardsZone(from)`을 그대로 쓰면 moveTiles가
+ * "Tile N is not in zone discards:X"로 던져 **국이 통째로 죽는다**.
+ *
+ * 그래서 존을 이름이 아니라 **실물 위치로** 찾는다. 타일은 항상 정확히 한 존에만 있으므로
+ * 결과는 유일하고, players 순회 순서는 고정이라 결정적이다. 못 찾으면 기존 동작(=책임자의
+ * 바닥)으로 폴백해 기존 호출자와 완전히 호환된다.
+ */
+function discardZoneHolding(
+  state: GameState,
+  tileId: TileId,
+  fallback: PlayerId,
+): string {
+  for (const p of state.players) {
+    const zone = discardsZone(p.id);
+    if (state.zones[zone]?.tileIds.includes(tileId) === true) return zone;
+  }
+  return discardsZone(fallback);
+}
+
 export const ROUND_STARTED = "RoundStarted";
 export const TILE_DRAWN = "TileDrawn";
 export const TILE_DISCARDED = "TileDiscarded";
@@ -318,7 +342,8 @@ export function registerFlowReducers(
     const p = event.payload as CallMadePayload;
     let zones = moveTiles(
       state.zones,
-      discardsZone(p.from),
+      // 누명(creditTo)으로 남의 바닥에 심긴 패도 울 수 있어야 한다 — 존을 실물로 찾는다
+      discardZoneHolding(state, p.calledTileId, p.from),
       meldsZone(p.caller),
       [p.calledTileId],
     );
@@ -370,7 +395,13 @@ export function registerFlowReducers(
       zones = moveTiles(zones, handZone(p.player), meldsZone(p.player), p.handTileIds);
       melds.push({ kind: "kan_closed", tileIds: p.handTileIds });
     } else if (p.kanKind === "kan_open") {
-      zones = moveTiles(zones, discardsZone(p.calledFrom!), meldsZone(p.player), [p.calledTileId!]);
+      // CALL_MADE와 같은 이유로 존을 실물로 찾는다 (누명으로 심긴 패의 대명깡)
+      zones = moveTiles(
+        zones,
+        discardZoneHolding(state, p.calledTileId!, p.calledFrom!),
+        meldsZone(p.player),
+        [p.calledTileId!],
+      );
       zones = moveTiles(zones, handZone(p.player), meldsZone(p.player), p.handTileIds);
       melds.push({
         kind: "kan_open",
