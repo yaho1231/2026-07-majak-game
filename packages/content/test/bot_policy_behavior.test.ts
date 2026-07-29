@@ -19,7 +19,7 @@ import { bigHand } from "../src/augments/big_hand.js";
 import { tableFlip } from "../src/augments/table_flip.js";
 import { disarm } from "../src/augments/disarm.js";
 import { alchemist } from "../src/augments/alchemist.js";
-import { h } from "./helpers.js";
+import { botCtx, h } from "./helpers.js";
 
 /** 결정론 rng (정책이 요구하지만 이 테스트 케이스들은 실제로 쓰지 않는다). */
 const rng = { int: (n: number) => 0, float: () => 0 };
@@ -87,7 +87,7 @@ function fakeView(holder: PlayerId, handSpec: string, players: FakePlayer[]): Pl
 }
 
 function ctx(view: PlayerView, options: BotAugmentOption[], tenpai = false): BotDecisionContext {
-  return { view, options, holder: view.playerId, rng, tenpai };
+  return botCtx(view, options, { rng, tenpai, ...(tenpai ? { shanten: 0 } : {}) });
 }
 
 describe("봇 액티브 증강 정책 동작", () => {
@@ -100,8 +100,10 @@ describe("봇 액티브 증강 정책 동작", () => {
 
   it("table_flip: 배패가 나쁠 때만 엎는다", () => {
     const opt = { type: "table_flip_do", payload: {} };
-    // 고립패 투성이 — 엎는다
-    const weak = fakeView("p0", "19m19p19s1234567z", [{ id: "p0", seat: 0 }]);
+    // 6샹텐 — 어디로도 갈 길이 없다 → 엎는다
+    // (요구패 13종은 고립패투성이로 **보이지만** 국사 텐파이라 엎으면 안 된다.
+    //  판단 기준이 고립패 수에서 샹텐으로 바뀐 뒤 그 손은 지키는 쪽이 맞다.)
+    const weak = fakeView("p0", "1479m2589p369s12z", [{ id: "p0", seat: 0 }]);
     expect(tableFlip.bot?.choose(ctx(weak, [opt]))).toEqual(opt);
     // 잘 이어진 손 — 지킨다
     const good = fakeView("p0", "234m456p678s1122z", [{ id: "p0", seat: 0 }]);

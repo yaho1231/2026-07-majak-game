@@ -530,9 +530,12 @@ docs/16 §1b(기존 증강 버프)·§1c(신규 16종)를 구현하며 코어에
 - `AugmentDef.bot?: AugmentBotPolicy` — 선택 필드. 정의하면 `BotAgent`가 매 결정마다
   `bot.choose(ctx)`를 호출해 발동 여부를 위임한다. **없으면 봇은 그 증강을 뽑아도 쓰지 않는다**
   (안전 기본값 = 종전 동작, 회귀 없음).
-- `BotDecisionContext` = `{ view, options, holder, rng, tenpai }`. 정책은 **순수 함수**로,
-  이 증강이 소유한 액션 타입만 `options`에서 골라 돌려주거나(발동) `null`(건너뜀)을 반환한다.
-  `tenpai`는 BotAgent가 `isTenpai`(대기형 13장 직접 / 쯔모 후 14장은 한 장씩 빼 판정)로 계산해 준다.
+- `BotDecisionContext` = `{ view, options, holder, rng, tenpai, shanten, waits, turn, wallLeft,
+  threat, remaining(kind), safety(kind) }`. 정책은 **순수 함수**로, 이 증강이 소유한 액션 타입만
+  `options`에서 골라 돌려주거나(발동) `null`(건너뜀)을 반환한다. 뒤쪽 7개는 BotAgent가
+  자기 뷰로 계산한 **판 읽기**(`packages/server/src/bot/read.ts`)를 그대로 넘긴 것이다 —
+  정보 비대칭을 깨지 않으면서 정책이 "지금 위험한가 / 이 패가 몇 장 남았나 / 손이 얼마나
+  머냐"를 물을 수 있다(2026-07-29 확장).
 - BotAgent는 정책이 돌려준 옵션이 **실제로 제시된 옵션인지 재확인**한 뒤 제출한다
   (미제시 옵션 제출은 FlowController가 throw). 증강 발동은 버림을 소비하지 않는 '추가 행동'이라
   화료 다음·콜/리치/버림 앞에서 판단하고, 발동 후 봇은 다시 프롬프트를 받아 버림을 잇는다.
@@ -548,8 +551,9 @@ docs/16 §1b(기존 증강 버프)·§1c(신규 16종)를 구현하며 코어에
     영상 정찰·봉인술사(순수 이득·방해).
   - *텐파이 게이트*: 올인(`all_or_nothing`)·오픈 리치(`open_riichi_reveal`)·천리안(`tenpai_scan`)·
     덤터기(`scapegoat`, 리더 겨냥) — 화료가 가시권일 때만.
-  - *손 약함 게이트*(고립패 근사 `handIsWeak`): 밥상 뒤엎기·개벽·짝수의 세계·통째로 바꾸기 —
-    이미 짜인 손은 지키고 나쁜 배패만 갈아엎는다.
+  - *손 약함 게이트*(`handIsPoor` — 샹텐 기준. 2026-07-29 이전엔 고립패 근사 `handIsWeak`):
+    밥상 뒤엎기·개벽·짝수의 세계·통째로 바꾸기 — 이미 짜인 손은 지키고 나쁜 배패만 갈아엎는다.
+    고립패 수로 재던 시절엔 **요구패 13종(국사 텐파이)마저 "고립패 13장"으로 읽혀 엎어 버렸다.**
   - *개선 판정*(`tileSwapImproves`/짝·이웃 매칭): 연금술사·염색·소환·날치기·절벽 위의 꽃 —
     실제로 손이 나아지는 변경/획득/영상패일 때만.
   - *대상 선택*: 무장해제(최다 무장 상대)·기생충(최고 점수)·자리 바꿈(오야 강탈)·핏빛 계약
@@ -579,16 +583,26 @@ docs/16 §1b(기존 증강 버프)·§1c(신규 16종)를 구현하며 코어에
     고립일 때, 정적의 손은 바닥에 손을 진전시키는 패가 있을 때, 예지는 **공개까지만**(재배열은 항등).
   - **드래프트 전략**: 봇이 판단할 수 없는 액티브(`BOT_UNUSABLE_AUGMENTS`)는 뽑아도 놀리므로
     3택에 다른 후보가 있으면 그쪽을 고른다(같은 후보군 안에서는 종전대로 시드 PRNG).
-- **의도적 예외**(정책 없음, 9종): 봇이 이득을 계산할 수 없는 폴드·다단계 교환·위험 읽기류 —
-  리치 취소(`last_stand`)·자유 선언(`free_riichi_discard`)·파혼(`meld_dissolve`)·
-  미래를 보는 자(`future_sight`)·등가교환(`hand_swap3`)·분열(`tile_split`)·누명(`frame_up`)·
-  손바닥 뒤집기(`palm_flip`)·장사진(`snake_kan`).
+- **4차 폴드 계열 해금(2026-07-29)** — 봇이 위험(리치·현물·스지)과 샹텐을 읽게 되면서
+  "언제 물러설지"가 계산 가능해졌다. 예외 9종 중 4종에 정책을 넣었다.
+  - 자유 선언(`free_riichi_discard`): 리치 중, **쯔모기리보다 확실히 안전한 손패가 있을 때만**
+    그 패를 낸다(위협이 없으면 손패를 헤집지 않는다). 이 증강의 값어치는 통째로 안전패 선택이다.
+  - 승부수(`last_stand`): 상대 리치 + 내 대기가 죽었을 때(또는 종반 + 거의 죽은 대기) 리치를 물려
+    리치봉을 회수하고 안전패로 돌아선다 — 폴드.
+  - 손바닥 뒤집기(`palm_flip`): 오름패가 **한 장도 안 남은** 리치를, 다시 짤 시간(패산 12장 이상)이
+    있을 때 푼다 — 폴드가 아니라 대기 갈아타기(봉이 살아 있어 재리치는 공짜).
+  - 장사진(`snake_kan`): 4연속 깡은 언제나 대기를 바꾸므로 **텐파이 + 깡 뒤에도 대기가 살아 있을 때**만.
+    남이 리치 중이면 치지 않는다(새 도라는 그 사람에게도 붙는다).
+- **의도적 예외**(정책 없음, 5종): 봇이 이득을 계산할 수 없는 다단계 교환·상대 대기 추정류 —
+  파혼(`meld_dissolve`)·미래를 보는 자(`future_sight`)·등가교환(`hand_swap3`)·분열(`tile_split`)·
+  누명(`frame_up`).
   각 파일에 "봇 정책 없음 — 이유" 주석을 달고, 목록은 `botHelpers.BOT_UNUSABLE_AUGMENTS`가
   단일 진실이다(커버리지 테스트와 BotAgent 드래프트가 같은 목록을 읽는다).
 - 회귀: `packages/server/test/BotAgentAugment.test.ts`(정책 단위 + 드래프트·발동 완주 통합),
   `packages/server/test/BotAgentKan.test.ts`(깡 판단 경계),
   `packages/content/test/bot_policy_coverage.test.ts`(전수 커버리지 — 턴 옵션·리액션 콜·코어 표준 증강),
-  `packages/content/test/bot_policy_behavior.test.ts`·`bot_policy_new.test.ts`(정책 발동/절제 동작).
+  `packages/content/test/bot_policy_behavior.test.ts`·`bot_policy_new.test.ts`·
+  `bot_policy_defense.test.ts`(정책 발동/절제 동작).
 
 ---
 

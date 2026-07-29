@@ -29,6 +29,7 @@ import type {
   PlayerId,
 } from "@majak/core";
 import { counterOf, flagOf, matchUses, roundKey, viewKey } from "../util.js";
+import { waitTilesLeft } from "./botHelpers.js";
 
 const ID = "palm_flip";
 const ACTION = "flip_riichi";
@@ -121,5 +122,21 @@ export const palmFlip: AugmentDef = defineAugment({
       return [{ type: ACTION, payload: {} }];
     });
   },
-  // 봇 정책 없음 — 리치를 풀지 말지는 대기 가치·위험 판단이 필요하다.
+  /**
+   * 승부수(`last_stand`)가 물러서는 수단이라면 이쪽은 **대기를 갈아타는 수단**이다.
+   * 그래서 판단 기준도 위험이 아니라 "지금 대기가 죽었는가"다 — 오름패가 세상에 한 장도
+   * 남지 않은 리치는 그대로 두면 유국까지 아무 일도 일어나지 않는다.
+   *
+   * 풀고 나서 손을 다시 짤 시간(패산)이 남아 있을 때만 켠다. 봉이 그대로 살아 있어
+   * 재리치는 공짜이므로, 푼 뒤의 리치 판단은 평소 규칙(넓은 대기를 고른다)에 맡긴다.
+   */
+  bot: {
+    choose(ctx) {
+      const opt = ctx.options.find((o) => o.type === ACTION);
+      if (opt === undefined) return null;
+      if (!ctx.tenpai) return null;
+      if (ctx.wallLeft < 12) return null; // 다시 짤 시간이 없다
+      return waitTilesLeft(ctx) === 0 ? opt : null;
+    },
+  },
 });

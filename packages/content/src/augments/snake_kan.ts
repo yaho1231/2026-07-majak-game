@@ -18,10 +18,32 @@
  * ⚠ 리치 중에는 선언할 수 없다 — 4연속 깡은 언제나 대기를 바꾼다(표준 안깡 안전성 규칙).
  */
 
-import { defineAugment } from "@majak/core";
-import type { AugmentDef } from "@majak/core";
+import { defineAugment, winningKinds } from "@majak/core";
+import type { AugmentDef, TileId, TileKind } from "@majak/core";
+import { handKindsOf } from "./botHelpers.js";
 
 const ID = "snake_kan";
+
+/** 같은 무늬 연속 4장인가 (3-4-5-6 같은 장사진 재료) */
+function isRunQuad(kinds: readonly TileKind[]): boolean {
+  if (kinds.length !== 4) return false;
+  const head = kinds[0];
+  if (head === undefined) return false;
+  if (!(head.suit === "man" || head.suit === "pin" || head.suit === "sou")) return false;
+  if (!kinds.every((k) => k.suit === head.suit)) return false;
+  const ranks = kinds.map((k) => k.rank).sort((a, b) => a - b);
+  return ranks.every((r, i) => i === 0 || r === (ranks[i - 1] ?? 0) + 1);
+}
+
+/** kinds에서 remove의 각 패를 한 장씩 뺀 목록 */
+function without(kinds: TileKind[], remove: readonly TileKind[]): TileKind[] {
+  const out = [...kinds];
+  for (const r of remove) {
+    const i = out.findIndex((k) => k.suit === r.suit && k.rank === r.rank);
+    if (i >= 0) out.splice(i, 1);
+  }
+  return out;
+}
 
 export const snakeKan: AugmentDef = defineAugment({
   id: ID,
@@ -35,5 +57,37 @@ export const snakeKan: AugmentDef = defineAugment({
   install(ctx) {
     ctx.setHolderRule("call.snakeKan", true);
   },
-  // 봇 정책 없음 — 깡 선언은 표준 후보 생성 경로로 제시되며, 언제 깡칠지는 손패 가치 판단이 필요하다.
+  /**
+   * 4연속 깡은 **언제나 대기를 바꾼다** — 슌쯔 하나 + 여분 한 장으로 쓰던 넉 장을 통째로
+   * 눕히기 때문이다. 그래서 봇은 **텐파이 상태에서 깡을 쳐도 대기가 살아 있을 때**만
+   * 선언한다. 그때는 새 도라 한 장과 영상패 쯔모가 공짜로 얹히는 순이득이다.
+   *
+   * 노텐일 때는 치지 않는다 — 손이 나아가지 않는데 넉 장을 굳혀 형태만 좁아진다.
+   * 남이 리치를 걸었을 때도 치지 않는다(새 도라는 그 사람에게도 붙는다).
+   *
+   * 장사진 깡은 표준 `ankan` 옵션으로 제시되고 BotAgent의 일반 깡 판단은 **같은 패
+   * 4장만** 다루므로(서로 다른 패의 깡은 이득 계산이 손패에 달렸다), 여기서 직접 고른다.
+   */
+  bot: {
+    choose(ctx) {
+      if (!ctx.tenpai) return null;
+      if (ctx.threat >= 0.9) return null;
+      const hand = handKindsOf(ctx.view, ctx.holder);
+      const meldCount = ctx.view.round.byPlayer[ctx.holder]?.meldCount ?? 0;
+      for (const o of ctx.options) {
+        if (o.type !== "ankan") continue;
+        const ids = (o.payload as { tileIds?: TileId[] }).tileIds ?? [];
+        const kinds: TileKind[] = [];
+        for (const id of ids) {
+          const k = ctx.view.tiles[id]?.kind;
+          if (k !== undefined) kinds.push(k);
+        }
+        if (!isRunQuad(kinds)) continue; // 같은 패 4장은 BotAgent의 일반 규칙 담당
+        const rest = without(hand, kinds);
+        const waits = winningKinds(rest, meldCount + 1, undefined, ctx.view.scoringOptions);
+        if (waits.length > 0) return o;
+      }
+      return null;
+    },
+  },
 });

@@ -13,15 +13,63 @@ import {
   handZone,
   kindKey,
   meldsZone,
+  shantenOf,
+  winningKinds,
 } from "@majak/core";
 import type {
+  BotAugmentOption,
+  BotDecisionContext,
   GameState,
   Meld,
   PlayerId,
+  PlayerView,
   TileId,
   TileKind,
   WinInfo,
 } from "@majak/core";
+
+/**
+ * 봇 정책 테스트용 문맥 — 실제 BotAgent가 넘기는 판 읽기를 뷰에서 그대로 계산한다.
+ * (샹텐·텐파이·대기는 진짜 값이라, 손패만 바꿔도 정책이 실제 게임과 같게 반응한다.)
+ * 위협·안전도처럼 판 상황에 달린 값은 기본이 '평화로운 판'이고 overrides로 덮어쓴다.
+ */
+export function botCtx(
+  view: PlayerView,
+  options: BotAugmentOption[],
+  overrides: Partial<BotDecisionContext> = {},
+): BotDecisionContext {
+  const hand: TileKind[] = [];
+  for (const id of view.zones[handZone(view.playerId)]?.tileIds ?? []) {
+    const k = view.tiles[id]?.kind;
+    if (k !== undefined) hand.push(k);
+  }
+  const meldCount = view.round.byPlayer[view.playerId]?.meldCount ?? 0;
+  const shanten = shantenOf(hand, meldCount, view.scoringOptions);
+  // BotAgent와 같게: 13장이면 그대로, 14장(쯔모 직후)이면 한 장씩 빼 보며 대기형을 찾는다
+  let waits = winningKinds(hand, meldCount, undefined, view.scoringOptions);
+  if (waits.length === 0) {
+    for (let i = 0; i < hand.length; i++) {
+      const rest = hand.slice(0, i).concat(hand.slice(i + 1));
+      const w = winningKinds(rest, meldCount, undefined, view.scoringOptions);
+      if (w.length > waits.length) waits = w;
+    }
+  }
+  return {
+    view,
+    options,
+    holder: view.playerId,
+    rng: { int: () => 0, float: () => 0 },
+    tenpai: waits.length > 0,
+    shanten,
+    waits,
+    turn: view.round.turnCount,
+    wallLeft: 60,
+    threat: 0,
+    remaining: () => 4,
+    safety: () => 1,
+    ...overrides,
+  };
+}
 
 /**
  * 확정 보상 "+N판"이 실제로 얹어 주는 뱅크 점수 —

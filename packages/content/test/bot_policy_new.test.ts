@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { AugmentDef, BotDecisionContext, PlayerView, TileKind } from "@majak/core";
 import { contentAugments } from "../src/index.js";
+import { botCtx } from "./helpers.js";
 
 const defOf = (id: string): AugmentDef => {
   const d = contentAugments.find((a) => a.id === id);
@@ -62,13 +63,7 @@ function makeView(opts: ViewOpts): PlayerView {
 }
 
 function ctxOf(view: PlayerView, options: { type: string; payload: unknown }[]): BotDecisionContext {
-  return {
-    view,
-    options,
-    holder: "p0",
-    rng: { int: () => 0, float: () => 0 },
-    tenpai: false,
-  };
+  return botCtx(view, options);
 }
 
 /** 흩어진 잡패 손 (짝도 이웃도 거의 없다) */

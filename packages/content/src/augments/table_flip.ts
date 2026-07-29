@@ -34,7 +34,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { flagOf, roundKey, viewKey } from "../util.js";
-import { handIsWeak, handKindsOf } from "./botHelpers.js";
+import { handIsPoor } from "./botHelpers.js";
 
 const ID = "table_flip";
 const ACTION = "table_flip_do";
@@ -136,11 +136,11 @@ export const tableFlip: AugmentDef = defineAugment({
   },
   // 배패가 나쁘면(고립패가 많으면) 통째로 새로 받는다 — 이미 쓸 만한 배패는 지킨다.
   bot: {
-    choose({ options, view, holder, tenpai }) {
-      const opt = options.find((o) => o.type === ACTION);
+    choose(ctx) {
+      const opt = ctx.options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
-      // 배패를 통째로 다시 받는 것뿐이라 손해가 없다 → 문턱을 낮게(고립패 4장) 잡는다
-      return handIsWeak(handKindsOf(view, holder), tenpai, 4) ? opt : null;
+      // 배패를 통째로 다시 받는 것뿐이라 손해가 없다 → 문턱을 낮게(3샹텐) 잡는다
+      return handIsPoor(ctx, 3) ? opt : null;
     },
   },
 });

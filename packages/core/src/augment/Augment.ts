@@ -19,6 +19,7 @@ import type { PlayerId } from "../engine/zones/Zone.js";
 import type { GameMode } from "../engine/state/GameState.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
 import type { PlayerView } from "../information/PlayerView.js";
+import type { TileKind } from "../mahjong/tiles/Tile.js";
 
 export type AugmentTier = "silver" | "gold" | "prism";
 
@@ -79,7 +80,14 @@ export interface BotRng {
   float(): number;
 }
 
-/** 봇이 액티브 증강 발동을 판단할 때 받는 문맥 */
+/**
+ * 봇이 액티브 증강 발동을 판단할 때 받는 문맥.
+ *
+ * 뷰만 넘기던 것을 2026-07-29에 **봇이 이미 계산해 둔 판 읽기**까지 넘기도록 넓혔다.
+ * 예전엔 각 정책이 "지금 위험한가 / 이 패가 몇 장 남았나"를 알 수 없어, 그걸 알아야
+ * 판단이 서는 증강(자유 선언·승부수·손바닥 뒤집기)에 아예 정책을 못 달았다.
+ * 값은 전부 봇이 자기 뷰로 계산한 것이라 정보 비대칭을 깨지 않는다.
+ */
 export interface BotDecisionContext {
   /** 봇(보유자)의 현재 뷰 */
   view: PlayerView;
@@ -91,6 +99,20 @@ export interface BotDecisionContext {
   rng: BotRng;
   /** 보유자가 텐파이인지 (BotAgent가 계산해 제공) */
   tenpai: boolean;
+  /** 화료까지 남은 갈아치기 횟수 (0=텐파이, 1=1샹텐 …) */
+  shanten: number;
+  /** 텐파이면 오름패 종류 목록 (아니면 빈 배열) */
+  waits: readonly TileKind[];
+  /** 이번 국의 순목 (몇 번째 차례인가) */
+  turn: number;
+  /** 패산에 남은 장수 */
+  wallLeft: number;
+  /** 상대 중 가장 높은 위협도 0(무해)~1(리치) */
+  threat: number;
+  /** 이 종류가 보이지 않는 곳에 몇 장 남았나 (0~4) */
+  remaining(kind: TileKind): number;
+  /** 이 패를 지금 버릴 때의 안전도 0(위험)~1(완전 안전) */
+  safety(kind: TileKind): number;
 }
 
 /**

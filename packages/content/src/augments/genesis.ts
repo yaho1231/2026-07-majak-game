@@ -42,7 +42,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { counterOf, matchUses, statePrng, viewKey } from "../util.js";
-import { handIsWeak, handKindsOf } from "./botHelpers.js";
+import { handIsPoor } from "./botHelpers.js";
 
 const ID = "genesis";
 const ACTION = "genesis_flip";
@@ -228,10 +228,10 @@ export const genesis: AugmentDef = defineAugment({
   },
   // 자패↔수패를 통째로 뒤섞는 도박수 — 손이 명백히 약할 때만 던진다(좋은 손은 지킨다).
   bot: {
-    choose({ options, view, holder, tenpai }) {
-      const opt = options.find((o) => o.type === ACTION);
+    choose(ctx) {
+      const opt = ctx.options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
-      return handIsWeak(handKindsOf(view, holder), tenpai) ? opt : null;
+      return handIsPoor(ctx) ? opt : null;
     },
   },
 });

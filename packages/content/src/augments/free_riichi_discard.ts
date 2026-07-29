@@ -36,6 +36,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { roundKey, viewKey } from "../util.js";
+import { pickSafestDiscard } from "./botHelpers.js";
 
 const AUGMENT_ID = "free_riichi_discard";
 
@@ -145,7 +146,30 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
         .map((tileId) => ({ type: "free_discard", payload: { tileId } }));
     });
   },
-  // 봇 정책 없음 — 봇은 리치 중 쯔모기리(정상 discard)로 충분하다. 자유 버림의 이득은
-  // '위험한 손패를 골라 버리고 안전한 쯔모패를 남기는' 안전패 선택인데, 봇은 위험을
-  // 읽지 못한다. 아무 손패나 버리면 오히려 방총 위험만 커진다.
+  /**
+   * 이 증강의 값어치는 통째로 **안전패 선택**에 있다. 리치를 걸면 오름패가 스냅샷으로
+   * 고정되므로 손패를 무엇으로 바꾸든 화료력은 그대로고, 남는 것은 "지금 무엇을 버리는
+   * 것이 덜 위험한가"뿐이다.
+   *
+   * 그래서 다른 사람이 리치를 걸었을 때(위협이 있을 때)만 켜고, **쯔모패를 그냥
+   * 버리는 것보다 확실히 안전한 손패가 있을 때만** 그 패를 낸다. 위협이 없으면 발동하지
+   * 않는다 — 손패를 헤집어 봐야 얻는 게 없다.
+   */
+  bot: {
+    choose(ctx) {
+      if (ctx.threat <= 0) return null;
+      const drawn = ctx.view.round.myDrawnTile;
+      const drawnKind = drawn !== null ? ctx.view.tiles[drawn]?.kind : undefined;
+      // 쯔모기리가 이미 안전하면 굳이 손패를 열지 않는다
+      const drawnSafety = drawnKind !== undefined ? ctx.safety(drawnKind) : 0;
+      if (drawnSafety >= 0.95) return null;
+      const safest = pickSafestDiscard(ctx, "free_discard");
+      if (safest === null) return null;
+      const tileId = (safest.payload as { tileId?: TileId }).tileId;
+      const kind = tileId !== undefined ? ctx.view.tiles[tileId]?.kind : undefined;
+      if (kind === undefined) return null;
+      // 확실히 더 안전할 때만 (근소한 차이로 손패를 바꾸지는 않는다)
+      return ctx.safety(kind) > drawnSafety + 0.1 ? safest : null;
+    },
+  },
 });

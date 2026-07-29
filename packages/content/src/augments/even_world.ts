@@ -35,7 +35,7 @@ import type {
   TileKindChangedPayload,
 } from "@majak/core";
 import { counterOf, matchUses, viewKey } from "../util.js";
-import { handIsWeak, handKindsOf } from "./botHelpers.js";
+import { handIsPoor } from "./botHelpers.js";
 
 const ID = "even_world";
 const ACTION = "even_world_flip";
@@ -159,10 +159,10 @@ export const evenWorld: AugmentDef = defineAugment({
   // 홀수 수패를 짝수로 몰아 짝·슌쯔·탕야오를 만든다 — 손이 약할 때(고립패가 많을 때)만
   // 발동해, 이미 잘 짜인 손을 헝클지 않는다.
   bot: {
-    choose({ options, view, holder, tenpai }) {
-      const opt = options.find((o) => o.type === ACTION);
+    choose(ctx) {
+      const opt = ctx.options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
-      return handIsWeak(handKindsOf(view, holder), tenpai) ? opt : null;
+      return handIsPoor(ctx) ? opt : null;
     },
   },
 });
