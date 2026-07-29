@@ -124,6 +124,22 @@ export interface WinInfo {
   limit: string | null;
 }
 
+/**
+ * 도중유국(outcome="abort")이 성립한 사유. 결과 화면이 "도중 유국"만 띄우면
+ * 왜 국이 끊겼는지 알 수 없어, 사유를 정산 payload에 실어 그대로 보여 준다.
+ */
+export type AbortReason =
+  /** 구종구패 — 배패에 요구패·자패가 9종 이상이라 첫 순에 유국 선언 */
+  | "kyushuKyuhai"
+  /** 사깡산료 — 서로 다른 두 사람 이상이 깡을 4개 만들었다 */
+  | "fourKan"
+  /** 사풍연타 — 첫 순에 네 명이 같은 풍패를 버렸다 */
+  | "fourWind"
+  /** 사가리치 — 네 명이 모두 리치를 걸었다 */
+  | "fourRiichi"
+  /** 삼가화 — 한 버림패에 세 명이 동시에 론했다 */
+  | "tripleRon";
+
 export interface RoundSettledPayload {
   outcome: "win" | "draw" | "abort";
   deltas: Record<PlayerId, number>;
@@ -134,6 +150,13 @@ export interface RoundSettledPayload {
   prevalentWind: number;
   /** outcome=win일 때 화료 상세 (트리플론 제외 최대 2건) */
   winInfos?: WinInfo[];
+  /**
+   * 친이 그대로 이어지는가(연장). `dealerSeat`은 **다음 국**의 친이라, 결과 화면이
+   * 이 값만으로는 연장인지 친이 넘어갔는지 되짚을 수 없다 — 판정한 쪽이 실어 준다.
+   */
+  dealerContinues?: boolean;
+  /** outcome=abort일 때 중단 사유 */
+  abortReason?: AbortReason;
   /**
    * outcome=draw일 때 **텐파이로 집계된 플레이어** (승승장구의 draw.treatAsTenpai 포함).
    *

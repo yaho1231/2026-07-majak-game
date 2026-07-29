@@ -35,7 +35,12 @@ import {
   DORA_FLIPPED,
   FURITEN_MARKED,
 } from "./flowEvents.js";
-import type { RoundSettledPayload, WinDeclaredPayload, WinInfo } from "./flowEvents.js";
+import type {
+  AbortReason,
+  RoundSettledPayload,
+  WinDeclaredPayload,
+  WinInfo,
+} from "./flowEvents.js";
 import {
   SYSTEM_PLAYER,
   buildWinContext,
@@ -914,6 +919,7 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
         roundNumber: next.roundNumber,
         prevalentWind: next.prevalentWind,
         winInfos,
+        dealerContinues: dealerWon,
       };
       return [{ type: ROUND_SETTLED, payload }];
     },
@@ -974,15 +980,22 @@ const sysSettleDraw: ActionDef<Record<string, never>> = {
       prevalentWind: next.prevalentWind,
       // 유국 증강이 "누가 노텐인가"를 delta 부호로 추정하지 않도록 실제 집계를 싣는다
       tenpaiPlayers: tenpai.map((p) => p.id),
+      dealerContinues: dealerTenpai,
     };
     return [{ type: ROUND_SETTLED, payload }];
   },
 };
 
-const sysSettleAbort: ActionDef<Record<string, never>> = {
+/** 도중유국 요청 — 사유는 판정한 FlowController가 넣는다 (결과 화면 표시용) */
+export interface SettleAbortRequest {
+  reason?: AbortReason;
+}
+
+const sysSettleAbort: ActionDef<SettleAbortRequest> = {
   type: "sys.settleAbort",
   validate: (req) => sysOnly(req.player),
-  toEvents: (_req, { state }) => {
+  toEvents: (req, { state }) => {
+    const reason = req.payload?.reason;
     const payload: RoundSettledPayload = {
       outcome: "abort",
       deltas: Object.fromEntries(state.players.map((p) => [p.id, 0])),
@@ -991,6 +1004,10 @@ const sysSettleAbort: ActionDef<Record<string, never>> = {
       riichiPot: state.round.riichiPot,
       roundNumber: state.round.roundNumber,
       prevalentWind: state.round.prevalentWind,
+      // 도중유국은 친이 넘어가지 않는다 (연장이 아니라 같은 국을 다시 치는 것)
+      dealerContinues: true,
+      // 구 리플레이(사유 없는 로그)와 섞이므로 값이 있을 때만 싣는다
+      ...(reason !== undefined ? { abortReason: reason } : {}),
     };
     return [{ type: ROUND_SETTLED, payload }];
   },

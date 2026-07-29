@@ -2920,11 +2920,138 @@ button {
 }
 
 .result-title {
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 26px;
   letter-spacing: 10px;
   color: #ffd76a;
   text-shadow: 0 0 22px rgba(255, 215, 106, 0.45);
+}
+
+/* 유국·도중유국은 축하가 아니다 — 금빛 대신 차가운 은빛으로 톤을 낮춘다 */
+.result-outcome-draw .result-title,
+.result-outcome-abort .result-title {
+  color: #cfe0ee;
+  text-shadow: 0 0 22px rgba(150, 190, 220, 0.35);
+}
+
+.result-outcome-draw,
+.result-outcome-abort {
+  background: radial-gradient(130% 110% at 50% 16%, rgba(26, 38, 56, 0.66), rgba(6, 13, 23, 0.94));
+}
+
+.result-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #93a8bb;
+  letter-spacing: 0.02em;
+}
+
+/* ── 유국 텐파이 공개 ── */
+
+.result-draw {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 1.2vh, 12px);
+  width: min(760px, 94vw);
+}
+
+.result-draw-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: clamp(8px, 1.4vh, 14px) clamp(12px, 2.2vw, 20px);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  animation: yaku-stamp 0.28s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+/* 텐파이는 손을 펼친 쪽 — 살짝 띄워 노텐과 한눈에 갈린다 */
+.result-draw-row.is-tenpai {
+  border-color: rgba(255, 215, 106, 0.35);
+  background: rgba(255, 215, 106, 0.06);
+}
+
+.result-draw-row.is-noten {
+  opacity: 0.72;
+}
+
+.result-draw-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-draw-seat {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  color: #d8e4ee;
+}
+
+.result-draw-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #f0ead8;
+}
+
+.result-draw-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.badge-tenpai {
+  background: rgba(60, 140, 220, 0.3);
+  border: 1px solid rgba(100, 175, 255, 0.6);
+  color: #bcdcff;
+}
+
+.badge-noten {
+  background: rgba(120, 130, 145, 0.25);
+  border: 1px solid rgba(160, 175, 190, 0.45);
+  color: #c2cedb;
+}
+
+/* 증감은 오른쪽 끝에 붙여 4행이 한 열로 읽힌다 */
+.result-draw-delta {
+  margin-left: auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-draw-hand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.result-draw-hidden {
+  font-size: 12px;
+  color: #6d8398;
+  text-align: left;
+}
+
+/* 다음 국 안내 (연장 여부·본장·리치봉 이월) */
+.result-next {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #d7c7a0;
+  letter-spacing: 0.04em;
+}
+
+.result-no-move {
+  margin: 0;
+  font-size: 13px;
+  color: #8ea3b6;
 }
 
 .result-win {
@@ -3168,17 +3295,26 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px 18px;
-  max-width: 340px;
-  margin: 0 auto 16px;
+  width: min(420px, 92vw);
+  margin: 0 auto;
 }
 
 .result-delta-row {
   display: flex;
   justify-content: space-between;
+  /* 이름과 숫자가 붙어 "봇 하나-1,500"으로 읽히던 것을 막는다 (긴 닉네임은 말줄임) */
+  gap: 12px;
   font-size: 14px;
   padding: 5px 12px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.045);
+  font-variant-numeric: tabular-nums;
+}
+
+.result-delta-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .delta-plus { color: #8fe3a1; font-weight: 800; }
