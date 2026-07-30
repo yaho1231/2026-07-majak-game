@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+# 같은 브랜치에 새 푸시가 오면 진행 중인 런은 취소한다 (러너 시간 절약).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: 타입체크
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite 내장 모듈을 쓴다 — Node 22 미만에서는 서버가 뜨지 않는다.
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run typecheck:content
+      - run: npm run typecheck:server
+      - run: npm run typecheck:client
+
+  test:
+    name: 테스트
+    runs-on: ubuntu-latest
+    # 로컬(고병렬)에서 ~370초. 러너는 코어가 적어 훨씬 길어질 수 있다.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    name: 클라이언트 빌드
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build:client
