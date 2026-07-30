@@ -6,7 +6,7 @@
 
 1. **작업은 항상 브랜치에서.** master에 직접 커밋 금지.
 2. 커밋 후 `git push -u origin <branch>`.
-3. 게이트: **기준선보다 나빠지지 않아야** 한다. master가 현재 red 상태(2026-07-30 기준 87 테스트 실패 / 8 타입 에러)이므로 "전부 통과"는 게이트로 쓸 수 없다. 기준선은 [.claude/test-baseline.txt](.claude/test-baseline.txt).
+3. 게이트: **기준선보다 나빠지지 않아야** 한다. master가 현재 red 상태(2026-07-30 기준 87 테스트 실패 / 8 타입 에러)이므로 "전부 통과"는 게이트로 쓸 수 없다. 기준선은 [docs/23_TEST_BASELINE.md](docs/23_TEST_BASELINE.md).
    ```
    npm test
    npm run typecheck && npm run typecheck:content && npm run typecheck:server && npm run typecheck:client
