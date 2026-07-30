@@ -1,5 +1,56 @@
 /* MAJAK — 게임 테이블 UI (작혼 스타일: 중앙 4방향 바닥 + 사각 인포 패널) */
 
+/* ═══════════════ 디자인 토큰 ═══════════════
+   먹빛 녹색 마작장. 원칙 세 가지만 지킨다.
+   1. 펠트는 채도를 낮게 — 주인공은 패지 배경이 아니다.
+   2. 강조색은 황동 하나. 보라는 증강이 발동하는 순간에만 쓴다.
+   3. 2차 텍스트는 회색이 아니라 펠트 색조를 띤 세이지 — 판 위에 얹힌 것처럼 보이게. */
+
+:root {
+  /* 펠트 — 중앙이 밝고 가장자리가 어두운 실제 라사지 */
+  --felt-0: #0a1210;
+  --felt-1: #0d1712;
+  --felt-2: #16231c;
+  --felt-3: #1e2e26;
+
+  /* 표면 — 펠트 위에 얹히는 3단 고도 */
+  --surface-1: rgba(9, 16, 13, 0.92);
+  --surface-2: rgba(14, 23, 18, 0.94);
+  --surface-3: rgba(21, 33, 26, 0.96);
+
+  /* 선 — 헤어라인이 기본. 황동 테두리는 '지금 중요한 것' 한 곳에만 */
+  --line: rgba(236, 228, 210, 0.1);
+  --line-strong: rgba(236, 228, 210, 0.18);
+  --brass: #9a7b42;
+  --brass-bright: #c2a068;
+  --brass-line: rgba(154, 123, 66, 0.5);
+
+  /* 텍스트 — 상아에서 세이지로 내려가는 4단 */
+  --ink-1: #ece4d2;
+  --ink-2: #a8bcaf;
+  --ink-3: #7b9084;
+  --ink-4: #5f7469;
+
+  /* 증강 전용 */
+  --aug: #7c5cff;
+
+  /* 모서리 — 한 체계로 고정 (반경 섞으면 깨져 보인다) */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* 그림자 — 오프셋과 블러가 같이 있어야 깊이다.
+     무채 검정이 아니라 펠트 색조를 섞어 판에 붙어 보이게 한다. */
+  --shadow-1: 0 1px 2px rgba(4, 9, 7, 0.4);
+  --shadow-2: 0 4px 14px rgba(4, 9, 7, 0.45);
+  --shadow-3: 0 12px 36px rgba(4, 9, 7, 0.55);
+  --inset-well: inset 0 2px 10px rgba(3, 7, 5, 0.55);
+
+  /* 이징 — 지수형 감속. 바운스(1.4 오버슈트)는 쓰지 않는다 */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -10,7 +61,7 @@ body,
   margin: 0;
   height: 100%;
   font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-  color: #e8e4d8;
+  color: #ece4d2;
   /* 모바일: 주소창 여닫힘에 따라 실제 보이는 높이를 쓴다 (100vh는 잘린다) */
   height: 100dvh;
   /* 게임판을 손가락으로 밀었을 때 페이지가 통째로 튀지 않게 */
@@ -34,8 +85,13 @@ button {
   width: 100%;
   height: 100dvh;
   overflow: hidden;
+  /* 펠트: 위에서 조명이 하나 떨어지는 라사지.
+     맨 위 두 겹은 아주 옅은 직조 결 — 단색 그라디언트만 깔면 판이 플라스틱처럼 보인다.
+     결은 2px 주기라 화면을 채워도 비용이 거의 없다. */
   background:
-    radial-gradient(ellipse at 50% 42%, #2d5a80 0%, #1d3f5e 45%, #12283f 75%, #0a1826 100%);
+    repeating-linear-gradient(90deg, rgba(236, 228, 210, 0.011) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(0deg, rgba(3, 7, 5, 0.028) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse 78% 62% at 50% 40%, var(--felt-3) 0%, var(--felt-2) 42%, var(--felt-1) 74%, var(--felt-0) 100%);
 }
 
 /* ─────────────── 로비 ─────────────── */
@@ -49,10 +105,10 @@ button {
 .lobby-card {
   width: min(360px, 90vw);
   padding: 34px 30px;
-  border-radius: 14px;
-  background: rgba(10, 22, 36, 0.88);
-  border: 1px solid rgba(214, 178, 94, 0.35);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  border: 1px solid var(--brass-line);
+  box-shadow: var(--shadow-3);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -62,15 +118,15 @@ button {
   margin: 0;
   text-align: center;
   font-size: 34px;
+  /* 자간은 넓게 유지(간판 글씨) 하되 글로우는 뺀다 — 무게는 굵기가 만든다 */
   letter-spacing: 10px;
-  color: #d6b25e;
-  text-shadow: 0 2px 12px rgba(214, 178, 94, 0.35);
+  color: var(--brass-bright);
 }
 
 .lobby-tag {
   margin: -6px 0 10px;
   text-align: center;
-  color: #8fa8bd;
+  color: #93a89b;
   font-size: 13px;
 }
 
@@ -79,42 +135,48 @@ button {
   flex-direction: column;
   gap: 5px;
   font-size: 12px;
-  color: #9db4c8;
+  color: #a8bcaf;
 }
 
 .lobby-card input {
   padding: 9px 11px;
-  border-radius: 8px;
-  border: 1px solid #34506b;
-  background: #0e2237;
-  color: #e8e4d8;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--felt-1);
+  color: var(--ink-1);
   font-size: 14px;
+  transition: border-color 0.14s var(--ease);
+}
+
+.lobby-card input:focus-visible {
+  outline: none;
+  border-color: var(--brass);
 }
 
 .lobby-join {
   margin-top: 10px;
   padding: 12px;
   border: none;
-  border-radius: 9px;
-  background: linear-gradient(180deg, #e7c470, #c39a3e);
-  color: #241a05;
+  border-radius: var(--r-md);
+  background: var(--brass);
+  color: #241c0c;
   font-size: 16px;
   font-weight: 800;
   letter-spacing: 4px;
-  box-shadow: 0 6px 18px rgba(214, 178, 94, 0.3);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 248, 230, 0.28);
+  transition: transform 0.14s var(--ease), background 0.14s var(--ease);
 }
 
 .lobby-join:hover {
   transform: translateY(-1px);
-  box-shadow: 0 9px 24px rgba(214, 178, 94, 0.45);
+  background: var(--brass-bright);
 }
 
 .lobby-hint {
   margin: 4px 0 0;
   text-align: center;
   font-size: 11px;
-  color: #6d8398;
+  color: #5f7469;
 }
 
 /* ─────────────── 테이블 배치 · 크기 변수 ─────────────── */
@@ -216,14 +278,14 @@ button {
   height: 42px;
   border-radius: 9px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(10, 22, 36, 0.6);
-  color: #b9c8d6;
+  background: rgba(13, 23, 18, 0.6);
+  color: #c2d0c5;
   font-size: 18px;
 }
 
 .icon-btn:hover {
-  background: rgba(20, 40, 60, 0.85);
-  color: #e8e4d8;
+  background: rgba(21, 33, 25, 0.85);
+  color: #ece4d2;
 }
 
 .leave-btn {
@@ -257,42 +319,44 @@ button {
   align-items: center;
   gap: 9px;
   padding: 8px 14px 8px 11px;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(9, 20, 33, 0.82);
-  color: #c2cedb;
+  border-radius: var(--r-md);
+  /* 흰색 반투명 테두리는 펠트 위에서 회색으로 뜬다 — 상아 계열로 맞춘다 */
+  border: 1px solid var(--line-strong);
+  background: var(--surface-1);
+  color: var(--ink-2);
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.5px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
+  box-shadow: var(--shadow-1);
+  transition: color 0.14s var(--ease), background 0.14s var(--ease), border-color 0.14s var(--ease);
 }
 
 .qt-item:hover {
-  background: rgba(24, 46, 68, 0.92);
+  background: rgba(28, 43, 36, 0.92);
   border-color: rgba(255, 255, 255, 0.38);
-  color: #e6eef6;
+  color: #f7f3e8;
 }
 
 .qt-dot {
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  background: #4a5b6b;
+  background: #33483d;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
   flex: 0 0 auto;
 }
 
+/* 켜진 상태: 황동 글자를 황동 배경에 올리면 3.4:1 밖에 안 나온다(15px 본문 기준 미달).
+   배경은 어둡게 두고 글자만 밝혀서 대비를 확보한다 — 켜짐은 테두리와 점이 알려준다. */
 .qt-item.qt-on {
-  color: #ffd27a;
-  background: rgba(120, 78, 18, 0.42);
-  border-color: rgba(255, 197, 94, 0.55);
+  color: #e6d2a8;
+  background: rgba(24, 38, 30, 0.9);
+  border-color: var(--brass-line);
 }
 
 .qt-item.qt-on .qt-dot {
-  background: #ffbe4d;
-  box-shadow: 0 0 6px rgba(255, 190, 77, 0.9);
+  background: var(--brass-bright);
 }
 
 .qt-label {
@@ -337,10 +401,15 @@ button {
   transform: translate(-50%, -50%);
   width: var(--panel);
   height: var(--panel);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(9, 20, 33, 0.94), rgba(14, 30, 47, 0.94));
-  border: 1px solid rgba(214, 178, 94, 0.45);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-md);
+  /* 떠 있는 카드가 아니라 테이블에 파인 중앙 홈. 펠트보다 어둡고, 안쪽으로 그림자가 진다.
+     조명이 위에서 오므로 빛을 받는 쪽은 아래 안쪽 모서리다. */
+  background: radial-gradient(ellipse 82% 82% at 50% 34%, rgba(11, 19, 15, 0.93), rgba(6, 12, 9, 0.97));
+  border: 1px solid rgba(3, 7, 5, 0.6);
+  box-shadow:
+    var(--inset-well),
+    inset 0 -1px 0 rgba(236, 228, 210, 0.07),
+    0 1px 0 rgba(236, 228, 210, 0.04);
 }
 
 /* 현재 턴 방향의 패널 모서리가 빛난다 */
@@ -348,19 +417,21 @@ button {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: var(--r-md);
   pointer-events: none;
-  transition: box-shadow 0.3s ease;
+  transition: box-shadow 0.3s var(--ease);
 }
 
-.center-panel::after { animation: turn-edge 1.4s ease-in-out infinite; }
-.center-panel.turn-bottom::after { box-shadow: inset 0 -12px 30px rgba(255, 200, 80, 0.92); }
-.center-panel.turn-top::after { box-shadow: inset 0 12px 30px rgba(255, 200, 80, 0.92); }
-.center-panel.turn-left::after { box-shadow: inset 12px 0 30px rgba(255, 200, 80, 0.92); }
-.center-panel.turn-right::after { box-shadow: inset -12px 0 30px rgba(255, 200, 80, 0.92); }
+/* 차례 표시는 정보다 — 30px 블룸으로 번지게 두면 어느 변인지 읽는 데 시간이 걸린다.
+   선명한 황동 선 1줄(정보) + 짧은 감쇠(강조)로 나눈다. */
+.center-panel::after { animation: turn-edge 2.6s var(--ease-quart) infinite; }
+.center-panel.turn-bottom::after { box-shadow: inset 0 -2px 0 var(--brass-bright), inset 0 -11px 16px rgba(154, 123, 66, 0.2); }
+.center-panel.turn-top::after { box-shadow: inset 0 2px 0 var(--brass-bright), inset 0 11px 16px rgba(154, 123, 66, 0.2); }
+.center-panel.turn-left::after { box-shadow: inset 2px 0 0 var(--brass-bright), inset 11px 0 16px rgba(154, 123, 66, 0.2); }
+.center-panel.turn-right::after { box-shadow: inset -2px 0 0 var(--brass-bright), inset -11px 0 16px rgba(154, 123, 66, 0.2); }
 
 @keyframes turn-edge {
-  0%, 100% { opacity: 0.55; }
+  0%, 100% { opacity: 0.72; }
   50% { opacity: 1; }
 }
 
@@ -381,8 +452,8 @@ button {
 .center-round {
   font-size: max(15px, calc(var(--panel) * 0.15));
   font-weight: 800;
-  color: #ffd76a;
-  text-shadow: 0 2px 10px rgba(255, 215, 106, 0.35);
+  color: #f0c86a;
+  text-shadow: 0 2px 10px rgba(240, 200, 106, 0.35);
   line-height: 1.1;
 }
 
@@ -392,7 +463,7 @@ button {
   flex-wrap: wrap;
   gap: 2px calc(var(--panel) * 0.035);
   font-size: max(10px, calc(var(--panel) * 0.068));
-  color: #9db4c8;
+  color: #a8bcaf;
 }
 
 /* 좁은 패널에서 "3본장"이 "3 / 본장"으로 쪼개지지 않게 — 항목 사이에서만 줄바꿈 */
@@ -402,11 +473,11 @@ button {
 
 .wall-count {
   font-variant-numeric: tabular-nums;
-  color: #cfe2ef;
+  color: #ece4d2;
 }
 
 .center-sub .pot {
-  color: #ff9d7e;
+  color: #f7a186;
 }
 
 .center-dora {
@@ -423,8 +494,8 @@ button {
 
 .dora-back {
   border-radius: 3px;
-  background: linear-gradient(180deg, #3b6e8f 0%, #24485f 60%, #1a3549 100%);
-  border: 1px solid #14293a;
+  background: linear-gradient(180deg, #3e5548 0%, #22332a 60%, #1c2b24 100%);
+  border: 1px solid #152119;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
@@ -439,20 +510,20 @@ button {
   margin-top: 4px;
   padding: 3px 8px;
   border-radius: 8px;
-  background: rgba(60, 30, 96, 0.55);
-  border: 1px solid rgba(190, 140, 255, 0.6);
-  box-shadow: 0 0 12px rgba(150, 90, 240, 0.45);
+  background: rgba(58, 43, 99, 0.55);
+  border: 1px solid rgba(199, 188, 255, 0.6);
+  box-shadow: 0 0 12px rgba(165, 145, 255, 0.45);
   animation: bar-in 0.25s ease-out;
 }
 .center-ura-peek .dora-slot {
-  box-shadow: 0 0 8px rgba(190, 140, 255, 0.75);
+  box-shadow: 0 0 8px rgba(199, 188, 255, 0.75);
   border-radius: 3px;
 }
 .ura-peek-tag {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.3px;
-  color: #d7c0ff;
+  color: #e2dcff;
   white-space: nowrap;
 }
 
@@ -492,53 +563,55 @@ button {
   display: grid;
   place-items: center;
   border-radius: 7px;
-  background: #24485f;
-  color: #cfe2ef;
+  background: #22332a;
+  color: #ece4d2;
   font-weight: 700;
   font-size: var(--plate-font);
   transition: background 0.25s ease, color 0.25s ease;
 }
 
 .plate-dealer {
-  background: #a33327;
-  color: #ffe9d2;
+  background: #9c392e;
+  color: #f7f3e8;
 }
 
 .plate-score {
-  color: #d7e4ee;
+  color: #ece4d2;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
+/* 2px 링은 '어느 자리가 차례인가'라는 정보라서 남긴다. 그 뒤의 18px 블룸만 걷어낸다. */
 .plate-turn {
-  background: rgba(255, 215, 106, 0.16);
-  border-radius: 9px;
-  box-shadow: 0 0 0 2px rgba(255, 215, 106, 0.6), 0 0 18px rgba(255, 215, 106, 0.45);
+  background: rgba(240, 200, 106, 0.14);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 2px rgba(240, 200, 106, 0.6);
 }
 
 .plate-turn .plate-score {
-  color: #ffe089;
+  color: #e6d2a8;
   font-weight: 800;
 }
 
 .plate-turn .plate-wind {
-  background: #e7c470;
-  color: #241a05;
-  animation: turn-pulse 1.4s ease-in-out infinite;
+  /* 황동 배경에 #4a3a22 글자는 3.97:1 — 18px 기준 미달이라 글자를 더 어둡게 */
+  background: var(--brass-bright);
+  color: #2a2109;
+  animation: turn-pulse 2.4s var(--ease-quart) infinite;
 }
 
 @keyframes turn-pulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(255, 215, 106, 0.4); }
-  50% { box-shadow: 0 0 16px rgba(255, 215, 106, 0.95); }
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 1; }
 }
 
 .plate-stick {
   width: 26px;
   height: 5px;
   border-radius: 3px;
-  background: #f6f2e6;
+  background: #f7f3e8;
   position: relative;
-  box-shadow: 0 0 8px rgba(255, 90, 90, 0.7);
+  box-shadow: 0 0 8px rgba(245, 100, 100, 0.7);
   animation: stick-in 0.4s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
@@ -551,7 +624,7 @@ button {
   height: 4px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  background: #d04a3a;
+  background: #c75143;
 }
 
 @keyframes stick-in {
@@ -630,7 +703,7 @@ button {
 }
 
 .rt-riichi .tile-face {
-  box-shadow: 0 0 10px rgba(255, 100, 110, 0.75);
+  box-shadow: 0 0 10px rgba(246, 109, 118, 0.75);
 }
 
 /* 타패 슬램 — 위에서 내리꽂혀 착지 스쿼시(1.08, 0.9) 후 리바운드 (부피 보존) */
@@ -643,7 +716,7 @@ button {
 }
 
 .rt-latest .tile-face {
-  outline: 2px solid #ffd76a;
+  outline: 2px solid #f0c86a;
   outline-offset: 1px;
   animation: latest-glow 1.2s ease-in-out infinite;
 }
@@ -698,8 +771,8 @@ button {
 .rt-riichi.rt-latest::after { display: none; }
 
 @keyframes latest-glow {
-  0%, 100% { outline-color: rgba(255, 215, 106, 0.95); }
-  50% { outline-color: rgba(255, 215, 106, 0.3); }
+  0%, 100% { outline-color: rgba(240, 200, 106, 0.95); }
+  50% { outline-color: rgba(240, 200, 106, 0.3); }
 }
 
 /* ─────────────── 상대 영역 ─────────────── */
@@ -755,8 +828,8 @@ button {
   width: var(--back-w);
   height: var(--back-h);
   border-radius: 4px;
-  background: linear-gradient(180deg, #3b6e8f 0%, #24485f 60%, #1a3549 100%);
-  border: 1px solid #14293a;
+  background: linear-gradient(180deg, #3e5548 0%, #22332a 60%, #1c2b24 100%);
+  border: 1px solid #152119;
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 2px 3px rgba(0, 0, 0, 0.4);
 }
 
@@ -764,8 +837,8 @@ button {
   width: var(--back-h);
   height: var(--back-w);
   border-radius: 4px;
-  background: linear-gradient(90deg, #3b6e8f 0%, #24485f 60%, #1a3549 100%);
-  border: 1px solid #14293a;
+  background: linear-gradient(90deg, #3e5548 0%, #22332a 60%, #1c2b24 100%);
+  border: 1px solid #152119;
   box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.18), 0 2px 3px rgba(0, 0, 0, 0.4);
 }
 
@@ -811,17 +884,18 @@ button {
   width: max-content;
   max-width: min(94vw, 560px);
   border-radius: 18px;
-  background: rgba(8, 18, 30, 0.75);
+  background: rgba(11, 19, 16, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 17px;
   transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
+/* 0 0 22px 색 글로우는 깊이가 아니라 장식이다 — 테두리로 상태를 알리고 그림자는 실제 오프셋을 준다 */
 .nameplate-turn {
-  border-color: #ffd76a;
-  background: rgba(46, 38, 10, 0.9);
-  box-shadow: 0 0 22px rgba(255, 215, 106, 0.7);
-  animation: turn-pulse 1.4s ease-in-out infinite;
+  border-color: var(--brass-bright);
+  background: rgba(36, 53, 44, 0.92);
+  box-shadow: var(--shadow-2), inset 0 0 0 1px rgba(240, 200, 106, 0.14);
+  animation: turn-pulse 2.4s var(--ease-quart) infinite;
 }
 
 /* 현재 차례 뱃지 — 누구 차례인지 한눈에 */
@@ -830,18 +904,19 @@ button {
   align-items: center;
   padding: 2px 10px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #ffd76a, #f0a63f);
-  color: #2a1c02;
+  /* 그라디언트 아래쪽 끝(#b8975c)에서 글자 대비가 3.94:1 까지 떨어졌다 — 13px 본문 기준 미달.
+     단색 밝은 황동 + 더 어두운 글자로 올린다(약 10:1). */
+  background: #f0c86a;
+  color: #2a2109;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 1px;
-  box-shadow: 0 0 12px rgba(255, 215, 106, 0.7);
-  animation: turn-pulse 1.4s ease-in-out infinite;
+  animation: turn-pulse 2.4s var(--ease-quart) infinite;
 }
 
 .np-name {
   font-weight: 700;
-  color: #f0ead8;
+  color: #ece4d2;
   max-width: 340px;
   white-space: nowrap;
   overflow: hidden;
@@ -870,26 +945,26 @@ button {
   white-space: nowrap;
   word-break: keep-all;
   overflow-wrap: anywhere;
-  background: rgba(150, 108, 230, 0.25);
-  border: 1px solid rgba(170, 130, 255, 0.5);
-  color: #d7c7ff;
+  background: rgba(165, 145, 255, 0.25);
+  border: 1px solid rgba(199, 188, 255, 0.5);
+  color: #e2dcff;
   cursor: help;
 }
 
 .np-furiten {
-  color: #ff8d7e;
+  color: #f08a7c;
   font-size: 11px;
   font-weight: 700;
-  border: 1px solid rgba(255, 120, 100, 0.6);
+  border: 1px solid rgba(246, 127, 109, 0.6);
   border-radius: 4px;
   padding: 0 6px;
 }
 
 .np-noyaku {
-  color: #ffcf6b;
+  color: #f0c86a;
   font-size: 11px;
   font-weight: 700;
-  border: 1px solid rgba(255, 200, 90, 0.6);
+  border: 1px solid rgba(184, 151, 92, 0.6);
   border-radius: 4px;
   padding: 0 6px;
 }
@@ -922,8 +997,8 @@ button {
   bottom: -3px;
   height: 2px;
   border-radius: 2px;
-  background: rgba(120, 200, 255, 0.75);
-  box-shadow: 0 0 6px rgba(110, 200, 255, 0.5);
+  background: rgba(126, 201, 234, 0.75);
+  box-shadow: 0 0 6px rgba(118, 201, 233, 0.5);
 }
 .meld-col.meld-pulled::after {
   left: auto;
@@ -1039,8 +1114,8 @@ button {
   width: 100%;
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(180deg, #3b6e8f 0%, #24485f 60%, #1a3549 100%);
-  border: 1px solid #14293a;
+  background: linear-gradient(180deg, #3e5548 0%, #22332a 60%, #1c2b24 100%);
+  border: 1px solid #152119;
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18);
 }
 
@@ -1083,15 +1158,15 @@ button {
   padding: 12px var(--hand-pad) 10px;
   max-width: calc(100vw - var(--hand-side) * 2);
   border-radius: 16px;
-  background: rgba(6, 14, 24, 0.5);
+  background: rgba(11, 19, 16, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.06);
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 /* 내 차례 — 손패 전체가 금색으로 빛난다 */
 .own-hand-turn {
-  border-color: rgba(255, 215, 106, 0.7);
-  box-shadow: 0 0 36px rgba(255, 215, 106, 0.4);
+  border-color: rgba(240, 200, 106, 0.7);
+  box-shadow: 0 0 36px rgba(240, 200, 106, 0.4);
 }
 
 /* 드래그로 패 버리기 — 드래그 중에만 나타나는 바닥(중앙) 드롭 영역 */
@@ -1105,9 +1180,9 @@ button {
   z-index: 9;
   display: grid;
   place-items: center;
-  border: 3px dashed rgba(255, 215, 106, 0.65);
+  border: 3px dashed rgba(240, 200, 106, 0.65);
   border-radius: 20px;
-  background: rgba(255, 215, 106, 0.07);
+  background: rgba(240, 200, 106, 0.07);
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
   /* bar-in은 transform을 translateY로 덮어써 translateX(-50%) 중앙정렬이 풀렸다가
      끝에서 되돌아온다("가운데가 아닌 곳에 떴다가 이동"). 중앙정렬을 유지하는
@@ -1121,8 +1196,8 @@ button {
 }
 
 .discard-dropzone-over {
-  background: rgba(255, 215, 106, 0.2);
-  border-color: rgba(255, 215, 106, 0.95);
+  background: rgba(240, 200, 106, 0.2);
+  border-color: rgba(240, 200, 106, 0.95);
   transform: translateX(-50%) scale(1.02);
 }
 
@@ -1130,7 +1205,7 @@ button {
   font-size: clamp(20px, 3.4vmin, 30px);
   font-weight: 800;
   letter-spacing: 4px;
-  color: #ffd76a;
+  color: #f0c86a;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
   pointer-events: none;
 }
@@ -1167,7 +1242,7 @@ button {
 /* 봉인된 패 (봉인술사 등 discard.blockedKinds) — 보라 체인 + 자물쇠 뱃지.
    버릴 수 없는 이유가 보이도록 살짝 어둡게. 리치 dimmed와 겹치면 dimmed가 우선. */
 .hand-sealed .tile-face {
-  outline: 2px solid rgba(138, 77, 255, 0.85);
+  outline: 2px solid rgba(165, 145, 255, 0.85);
   filter: brightness(0.72) saturate(0.75);
 }
 
@@ -1183,13 +1258,13 @@ button {
 
 /* 지뢰 탐지 — 지금 버리면 방총인 패를 실제 손패 위에 붉게 표시한다 (왼쪽 위 패널 대체). */
 .hand-danger .tile-face {
-  outline: 2px solid rgba(255, 92, 92, 0.9);
-  box-shadow: 0 0 12px rgba(255, 70, 70, 0.6);
+  outline: 2px solid rgba(245, 102, 102, 0.9);
+  box-shadow: 0 0 12px rgba(244, 81, 81, 0.6);
   animation: danger-pulse 1.3s ease-in-out infinite;
 }
 @keyframes danger-pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(255, 70, 70, 0.45); }
-  50% { box-shadow: 0 0 16px rgba(255, 80, 80, 0.85); }
+  0%, 100% { box-shadow: 0 0 8px rgba(244, 81, 81, 0.45); }
+  50% { box-shadow: 0 0 16px rgba(244, 91, 91, 0.85); }
 }
 .hand-danger-badge {
   position: absolute;
@@ -1197,7 +1272,7 @@ button {
   left: -5px;
   z-index: 3;
   font-size: 15px;
-  color: #ff5a5a;
+  color: #f56464;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
   pointer-events: none;
 }
@@ -1213,8 +1288,8 @@ button {
   width: max-content;
   max-width: 92%;
   border-radius: 10px;
-  background: rgba(20, 12, 34, 0.9);
-  border: 1px solid rgba(170, 130, 255, 0.55);
+  background: rgba(36, 26, 61, 0.9);
+  border: 1px solid rgba(199, 188, 255, 0.55);
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
   animation: bar-in 0.25s ease-out;
 }
@@ -1222,7 +1297,7 @@ button {
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.5px;
-  color: #d7c7ff;
+  color: #e2dcff;
   white-space: nowrap;
 }
 .next-tsumo-cell {
@@ -1241,8 +1316,8 @@ button {
   height: 15px;
   padding: 0 3px;
   border-radius: 999px;
-  background: #7c5ce0;
-  color: #fff;
+  background: #a591ff;
+  color: #f7f3e8;
   font-size: 10px;
   font-weight: 800;
   line-height: 15px;
@@ -1253,8 +1328,8 @@ button {
 /* 영상패 재열기 버튼의 숨쉬는 발광. (2026-07-26까지 폐기된 도박사의 손과 공용
    키프레임(gamble-lock-glow)을 쓰고 있어, 그쪽을 지우면 조용히 죽는 구조였다) */
 @keyframes rinshan-reopen-glow {
-  0%, 100% { box-shadow: 0 0 12px rgba(240, 180, 70, 0.35); }
-  50% { box-shadow: 0 0 22px rgba(240, 180, 70, 0.6); }
+  0%, 100% { box-shadow: 0 0 12px rgba(184, 151, 92, 0.35); }
+  50% { box-shadow: 0 0 22px rgba(184, 151, 92, 0.6); }
 }
 /* 영상패 선택 모달 — 깡 직후 "따로 조금 크게" 띄우는 선택 창 */
 .rinshan-pick-overlay {
@@ -1263,7 +1338,7 @@ button {
   z-index: 120;
   display: grid;
   place-items: center;
-  background: rgba(6, 8, 16, 0.62);
+  background: rgba(11, 19, 16, 0.62);
   backdrop-filter: blur(4px);
   animation: overlay-in 0.2s ease-out;
 }
@@ -1275,10 +1350,10 @@ button {
   max-width: min(94vw, 900px);
   max-height: 92vh;
   overflow-y: auto;
-  background: linear-gradient(180deg, rgba(34, 26, 12, 0.98), rgba(20, 15, 8, 0.98));
-  border: 1px solid rgba(255, 205, 110, 0.75);
-  box-shadow: 0 0 40px rgba(240, 180, 70, 0.4), 0 18px 50px rgba(0, 0, 0, 0.6);
-  animation: rinshan-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+  background: linear-gradient(180deg, rgba(74, 58, 34, 0.98), rgba(74, 58, 34, 0.98));
+  border: 1px solid rgba(207, 174, 118, 0.75);
+  box-shadow: 0 0 40px rgba(184, 151, 92, 0.4), 0 18px 50px rgba(0, 0, 0, 0.6);
+  animation: rinshan-pop 0.28s var(--ease);
 }
 @keyframes rinshan-pop {
   from { transform: scale(0.8); opacity: 0; }
@@ -1288,15 +1363,15 @@ button {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 2px;
-  color: #ffd76a;
-  text-shadow: 0 0 20px rgba(255, 215, 106, 0.5);
+  color: #f0c86a;
+  text-shadow: 0 0 20px rgba(240, 200, 106, 0.5);
 }
 .rinshan-pick-sub {
   margin: 8px auto 18px;
   max-width: 420px;
   font-size: 13px;
   line-height: 1.5;
-  color: rgba(255, 236, 200, 0.85);
+  color: rgba(226, 199, 147, 0.85);
 }
 .rinshan-pick-tiles {
   display: flex;
@@ -1318,7 +1393,7 @@ button {
   box-sizing: border-box;
   padding: 10px 6px 8px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 205, 110, 0.35);
+  border: 1px solid rgba(207, 174, 118, 0.35);
   background: rgba(255, 255, 255, 0.05);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
@@ -1337,7 +1412,7 @@ button {
   background: rgba(255, 255, 255, 0.02);
 }
 .rinshan-slot-spent .rinshan-pick-label {
-  color: rgba(255, 236, 200, 0.4);
+  color: rgba(226, 199, 147, 0.4);
 }
 .rinshan-spent-box {
   display: block;
@@ -1355,23 +1430,23 @@ button {
 
 /* 절벽 위 꽃 모달 — 고를 수 있는 영상패 자리(초록). 도라·뒷도라 자리는 이 모달에
    나오지 않으므로(고를 수 없다) 자리별 색 구분과 범례는 폐기했다(2026-07-26). */
-.rinshan-slot-rinshan { border-color: rgba(105, 220, 160, 0.5); }
-.rinshan-slot-rinshan .rinshan-pick-label { color: #8fe9b8; }
+.rinshan-slot-rinshan { border-color: rgba(111, 214, 167, 0.5); }
+.rinshan-slot-rinshan .rinshan-pick-label { color: #94e4be; }
 
 /* 등가교환 3장 선택 — 고른 패는 켜진 상태로 유지된다 (세 번째 클릭에 제출) */
 .rinshan-pick-tile.rinshan-pick-on {
-  border-color: rgba(140, 220, 255, 0.95);
-  background: rgba(120, 200, 255, 0.14);
-  box-shadow: 0 0 22px rgba(110, 200, 255, 0.65);
+  border-color: rgba(149, 217, 246, 0.95);
+  background: rgba(126, 201, 234, 0.14);
+  box-shadow: 0 0 22px rgba(118, 201, 233, 0.65);
   transform: translateY(-6px);
 }
 .rinshan-pick-tile.rinshan-pick-on .rinshan-pick-label {
-  color: #bfe9ff;
+  color: #ece4d2;
 }
 .rinshan-pick-tile:hover {
   transform: translateY(-6px);
-  border-color: rgba(255, 215, 106, 0.95);
-  box-shadow: 0 0 20px rgba(255, 200, 90, 0.6);
+  border-color: rgba(240, 200, 106, 0.95);
+  box-shadow: 0 0 20px rgba(184, 151, 92, 0.6);
 }
 .rinshan-pick-label {
   font-size: 11px;
@@ -1383,7 +1458,7 @@ button {
   overflow-wrap: anywhere;
   max-width: 100%;
   text-align: center;
-  color: rgba(255, 236, 200, 0.95);
+  color: rgba(226, 199, 147, 0.95);
 }
 .rinshan-pick-skip {
   margin-top: 18px;
@@ -1391,7 +1466,7 @@ button {
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: #f7f3e8;
   font-size: 13px;
   cursor: pointer;
 }
@@ -1406,18 +1481,18 @@ button {
 }
 .foresight-cell:hover {
   transform: translateY(-4px);
-  border-color: rgba(190, 140, 255, 0.9);
+  border-color: rgba(199, 188, 255, 0.9);
 }
 .foresight-cell.foresight-dragging {
   opacity: 0.5;
   transform: scale(0.94);
 }
 .foresight-cell.foresight-mine {
-  border-color: rgba(120, 220, 255, 0.95);
-  box-shadow: 0 0 18px rgba(110, 200, 255, 0.55);
+  border-color: rgba(130, 215, 245, 0.95);
+  box-shadow: 0 0 18px rgba(118, 201, 233, 0.55);
 }
 .foresight-cell.foresight-mine .rinshan-pick-label {
-  color: #bfe9ff;
+  color: #ece4d2;
 }
 .foresight-actions {
   display: flex;
@@ -1433,13 +1508,13 @@ button {
   padding: 10px 22px;
   font-size: 15px;
   font-weight: 800;
-  color: #eae0ff;
-  border-color: rgba(190, 140, 255, 0.8);
-  background: rgba(120, 78, 220, 0.35);
+  color: #f7f3e8;
+  border-color: rgba(199, 188, 255, 0.8);
+  background: rgba(165, 145, 255, 0.35);
   cursor: pointer;
 }
 .foresight-confirm:hover:not(:disabled) {
-  background: rgba(140, 96, 240, 0.5);
+  background: rgba(165, 145, 255, 0.5);
   transform: translateY(-2px);
 }
 .foresight-confirm:disabled {
@@ -1457,7 +1532,7 @@ button {
 .aug-morph-arrow {
   font-size: 20px;
   font-weight: 800;
-  color: rgba(255, 220, 150, 0.8);
+  color: rgba(207, 174, 118, 0.8);
 }
 /* 변형 모달은 패가 두 장(전·후)이라 개별 확대를 조금 줄여 폭을 아낀다 */
 .aug-morph-tile {
@@ -1491,14 +1566,14 @@ button {
   gap: 4px;
   padding: 2px 6px;
   border-radius: 8px;
-  border: 1px solid rgba(140, 220, 255, 0.55);
-  background: rgba(120, 200, 255, 0.12);
+  border: 1px solid rgba(149, 217, 246, 0.55);
+  background: rgba(126, 201, 234, 0.12);
 }
 /* 이미 짝지어 예약된 패 — 다시 누르면 취소된다 */
 .aug-pick-tile-staged {
   opacity: 0.55;
-  border-color: rgba(140, 220, 255, 0.75);
-  background: rgba(120, 200, 255, 0.1);
+  border-color: rgba(149, 217, 246, 0.75);
+  background: rgba(126, 201, 234, 0.1);
 }
 .aug-pick-row {
   display: flex;
@@ -1506,22 +1581,22 @@ button {
   gap: 12px;
   padding: 10px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 205, 110, 0.35);
+  border: 1px solid rgba(207, 174, 118, 0.35);
   background: rgba(255, 255, 255, 0.05);
   cursor: pointer;
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
 }
 .aug-pick-row:hover {
   transform: translateY(-3px);
-  border-color: rgba(255, 215, 106, 0.95);
-  box-shadow: 0 0 20px rgba(255, 200, 90, 0.5);
+  border-color: rgba(240, 200, 106, 0.95);
+  box-shadow: 0 0 20px rgba(184, 151, 92, 0.5);
 }
 .aug-pick-row-label {
   flex: 0 0 auto;
   min-width: 88px;
   font-size: 14px;
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
   text-align: left;
 }
 .aug-pick-row-tiles {
@@ -1536,7 +1611,7 @@ button {
 }
 .aug-pick-row-static:hover {
   transform: none;
-  border-color: rgba(255, 205, 110, 0.35);
+  border-color: rgba(207, 174, 118, 0.35);
   box-shadow: none;
 }
 .aug-pick-tile {
@@ -1549,8 +1624,8 @@ button {
 }
 .aug-pick-tile:hover:not(:disabled) {
   transform: translateY(-4px);
-  border-color: rgba(255, 215, 106, 0.95);
-  box-shadow: 0 0 12px rgba(255, 200, 90, 0.55);
+  border-color: rgba(240, 200, 106, 0.95);
+  box-shadow: 0 0 12px rgba(184, 151, 92, 0.55);
 }
 .aug-pick-tile:disabled {
   opacity: 0.35;
@@ -1571,9 +1646,9 @@ button {
 }
 
 .aug-pick-tile-on {
-  border-color: rgba(140, 220, 255, 0.95);
-  background: rgba(120, 200, 255, 0.16);
-  box-shadow: 0 0 14px rgba(110, 200, 255, 0.6);
+  border-color: rgba(149, 217, 246, 0.95);
+  background: rgba(126, 201, 234, 0.16);
+  box-shadow: 0 0 14px rgba(118, 201, 233, 0.6);
   transform: translateY(-4px);
 }
 
@@ -1585,13 +1660,13 @@ button {
   z-index: 60;
   padding: 10px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 205, 110, 0.8);
-  background: linear-gradient(180deg, rgba(120, 84, 24, 0.95), rgba(80, 56, 16, 0.95));
-  color: #ffe8b8;
+  border: 1px solid rgba(207, 174, 118, 0.8);
+  background: linear-gradient(180deg, rgba(107, 84, 48, 0.95), rgba(74, 58, 34, 0.95));
+  color: #e2c793;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 0 18px rgba(240, 180, 70, 0.45);
+  box-shadow: 0 0 18px rgba(184, 151, 92, 0.45);
   animation: rinshan-reopen-glow 1.6s ease-in-out infinite;
 }
 .rinshan-reopen:hover { filter: brightness(1.12); }
@@ -1603,7 +1678,7 @@ button {
   filter: brightness(1.1);
 }
 .hand-dragging .tile-face {
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5), 0 0 12px rgba(255, 215, 106, 0.4);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5), 0 0 12px rgba(240, 200, 106, 0.4);
 }
 /* 드래그 중엔 나머지 패의 hover 들림을 끈다 (슬라이드 transform과 충돌 방지) */
 .own-hand-dragging .hand-clickable:hover {
@@ -1615,7 +1690,7 @@ button {
 }
 
 .hand-riichi .tile-face {
-  outline: 2px solid #ff7a6a;
+  outline: 2px solid #f68173;
   animation: latest-glow 1s ease-in-out infinite;
 }
 
@@ -1625,7 +1700,7 @@ button {
 }
 
 .hand-drawn .tile-face {
-  box-shadow: 0 0 14px rgba(255, 215, 106, 0.55), 0 3px 5px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 14px rgba(240, 200, 106, 0.55), 0 3px 5px rgba(0, 0, 0, 0.35);
 }
 
 .own-corner-right {
@@ -1650,7 +1725,7 @@ button {
 .prompt-timer-fill {
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(90deg, #ffd76a, #ff8c5f);
+  background: linear-gradient(90deg, #f0c86a, #e8825a);
   transform-origin: left;
   animation: timer-run 30s linear forwards;
 }
@@ -1667,15 +1742,15 @@ button {
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  border-radius: 14px;
-  background: rgba(8, 18, 30, 0.85);
-  border: 1px solid rgba(214, 178, 94, 0.35);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-  animation: bar-in 0.18s ease-out;
+  border-radius: var(--r-lg);
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-3);
+  animation: bar-in 0.22s var(--ease);
 }
 
 @keyframes bar-in {
-  from { transform: translateY(12px); opacity: 0; }
+  from { transform: translateY(10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
@@ -1684,46 +1759,48 @@ button {
   align-items: center;
   gap: 8px;
   padding: 13px 26px;
-  border-radius: 11px;
+  border-radius: var(--r-md);
   border: none;
   font-size: 21px;
   font-weight: 800;
   letter-spacing: 2px;
-  color: #fff;
-  transition: transform 0.1s ease;
+  color: #f7f3e8;
+  /* 위쪽 안쪽 테두리 한 줄이 버튼을 입체로 만든다 — 180deg 광택 그라디언트보다 조용하다 */
+  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition: transform 0.14s var(--ease), filter 0.14s var(--ease);
 }
 
 @media (hover: hover) {
   .act:hover {
-    transform: scale(1.07);
+    transform: translateY(-1px);
+    filter: brightness(1.08);
   }
 }
 
+/* 색은 기능이다 — 30초 안에 화료/리치/후로를 구분해야 한다. 색상은 유지하고 광택만 뺀다. */
 .act-win {
-  background: linear-gradient(180deg, #ff8c5f, #d84b2f);
-  box-shadow: 0 0 20px rgba(255, 120, 70, 0.6);
+  background: #c2472e;
 }
 
 .act-riichi {
-  background: linear-gradient(180deg, #ff6f7d, #c22a44);
-  box-shadow: 0 0 18px rgba(255, 90, 110, 0.55);
+  background: #ad2b42;
 }
 
 .act-call {
-  background: linear-gradient(180deg, #4f8fce, #2d5f96);
+  background: #2c5a88;
 }
 
 .act-pass {
-  background: linear-gradient(180deg, #5a6b7a, #3a4854);
+  background: #2a3d33;
   font-weight: 600;
 }
 
 .act-cancel {
-  background: linear-gradient(180deg, #5a6b7a, #3a4854);
+  background: #2a3d33;
 }
 
 .action-hint {
-  color: #ffb9a8;
+  color: #fabcad;
   font-size: 14px;
 }
 
@@ -1744,9 +1821,9 @@ button {
 .tile-face {
   display: inline-grid;
   place-items: center;
-  background: #f8f5ec;
+  background: #f7f3e8;
   border-radius: 5px;
-  border: 1px solid #b9b09b;
+  border: 1px solid #93a89b;
   box-shadow: 0 3px 5px rgba(0, 0, 0, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.12);
   overflow: hidden;
 }
@@ -1760,12 +1837,12 @@ button {
 
 /* 증강이 새로 만들어낸 패 — 프리즘 보라 글로우 + 반짝임으로 원본과 구분 */
 .tile-conjured {
-  border-color: #c58cff;
+  border-color: #c7bcff;
   box-shadow:
     0 3px 5px rgba(0, 0, 0, 0.35),
     inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-    0 0 8px 1px rgba(180, 120, 255, 0.85),
-    0 0 2px rgba(210, 170, 255, 0.9);
+    0 0 8px 1px rgba(199, 188, 255, 0.85),
+    0 0 2px rgba(199, 188, 255, 0.9);
   position: relative;
 }
 
@@ -1774,7 +1851,7 @@ button {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(135deg, rgba(197, 140, 255, 0.28), rgba(120, 200, 255, 0.12) 45%, transparent 70%);
+  background: linear-gradient(135deg, rgba(199, 188, 255, 0.28), rgba(126, 201, 234, 0.12) 45%, transparent 70%);
   mix-blend-mode: screen;
   pointer-events: none;
   animation: conjured-shimmer 1.8s ease-in-out infinite;
@@ -1798,7 +1875,7 @@ button {
 
 /* 전원 공통 도라(표시패가 가리키는 패·적도라) — 금빛 */
 .tile-dora {
-  border-color: #ffcf5a;
+  border-color: #b8975c;
   animation: dora-glow 2.2s ease-in-out infinite;
 }
 
@@ -1807,15 +1884,15 @@ button {
     box-shadow:
       0 3px 5px rgba(0, 0, 0, 0.35),
       inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(255, 222, 130, 0.85),
-      0 0 6px 1px rgba(255, 186, 46, 0.6);
+      inset 0 0 0 1px rgba(207, 174, 118, 0.85),
+      0 0 6px 1px rgba(184, 151, 92, 0.6);
   }
   50% {
     box-shadow:
       0 3px 5px rgba(0, 0, 0, 0.35),
       inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(255, 236, 176, 1),
-      0 0 13px 3px rgba(255, 190, 60, 0.95);
+      inset 0 0 0 1px rgba(226, 199, 147, 1),
+      0 0 13px 3px rgba(184, 151, 92, 0.95);
   }
 }
 
@@ -1823,7 +1900,7 @@ button {
    안쪽 금테(도라) + 바깥 장미빛(그 사람 전용). 증강 생성패의 보라(.tile-conjured)와
    붙어 있어도 색으로 갈리도록 보라가 아닌 마젠타 쪽으로 민다. */
 .tile-dora-own {
-  border-color: #ff9ad9;
+  border-color: #f9a0d7;
   animation: dora-own-glow 2.2s ease-in-out infinite;
 }
 
@@ -1832,15 +1909,15 @@ button {
     box-shadow:
       0 3px 5px rgba(0, 0, 0, 0.35),
       inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(255, 226, 150, 0.85),
-      0 0 6px 1px rgba(255, 90, 190, 0.6);
+      inset 0 0 0 1px rgba(207, 174, 118, 0.85),
+      0 0 6px 1px rgba(245, 100, 188, 0.6);
   }
   50% {
     box-shadow:
       0 3px 5px rgba(0, 0, 0, 0.35),
       inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(255, 240, 190, 1),
-      0 0 13px 3px rgba(255, 105, 200, 0.95);
+      inset 0 0 0 1px rgba(226, 199, 147, 1),
+      0 0 13px 3px rgba(246, 114, 198, 0.95);
   }
 }
 
@@ -1860,11 +1937,11 @@ button {
 }
 
 .tile-dora::before {
-  background: linear-gradient(90deg, transparent, rgba(255, 246, 205, 0.95), transparent);
+  background: linear-gradient(90deg, transparent, rgba(247, 243, 232, 0.95), transparent);
 }
 
 .tile-dora-own::before {
-  background: linear-gradient(90deg, transparent, rgba(255, 220, 244, 0.95), transparent);
+  background: linear-gradient(90deg, transparent, rgba(247, 243, 232, 0.95), transparent);
 }
 
 @keyframes dora-shine {
@@ -1896,7 +1973,7 @@ button {
 
 .tile-text {
   font-size: 10px;
-  color: #24313c;
+  color: #1c2b24;
   font-weight: 700;
 }
 
@@ -1913,7 +1990,7 @@ button {
   align-items: center;
   padding: 14px 0 16px;
   pointer-events: none;
-  animation: ribbon-in 0.38s cubic-bezier(0.2, 1.3, 0.4, 1);
+  animation: ribbon-in 0.38s var(--ease);
 }
 
 @keyframes ribbon-in {
@@ -1929,7 +2006,7 @@ button {
   letter-spacing: 16px;
   text-indent: 16px;
   line-height: 1.1;
-  animation: banner-zoom 0.4s cubic-bezier(0.2, 1.4, 0.4, 1);
+  animation: banner-zoom 0.4s var(--ease);
 }
 
 @keyframes banner-zoom {
@@ -1954,76 +2031,76 @@ button {
 }
 
 .banner-riichi {
-  background: linear-gradient(90deg, transparent, rgba(160, 24, 44, 0.92) 18%, rgba(160, 24, 44, 0.92) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(152, 32, 50, 0.92) 18%, rgba(152, 32, 50, 0.92) 82%, transparent);
 }
 
 .banner-riichi .banner-text {
-  color: #ffe9e4;
-  text-shadow: 0 0 26px #ff5a6e;
+  color: #f7f3e8;
+  text-shadow: 0 0 26px #f56476;
 }
 
 .banner-win {
-  background: linear-gradient(90deg, transparent, rgba(170, 122, 22, 0.94) 18%, rgba(170, 122, 22, 0.94) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(138, 109, 60, 0.94) 18%, rgba(138, 109, 60, 0.94) 82%, transparent);
 }
 
 .banner-win .banner-text {
-  color: #fff6dc;
-  text-shadow: 0 0 28px #ffd76a;
+  color: #f7f3e8;
+  text-shadow: 0 0 28px #f0c86a;
 }
 
 .banner-draw {
-  background: linear-gradient(90deg, transparent, rgba(40, 58, 74, 0.94) 18%, rgba(40, 58, 74, 0.94) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(34, 51, 42, 0.94) 18%, rgba(34, 51, 42, 0.94) 82%, transparent);
 }
 
 .banner-draw .banner-text {
-  color: #cfe2ef;
+  color: #ece4d2;
   font-size: clamp(32px, 6vmin, 46px);
 }
 
 .banner-info {
-  background: linear-gradient(90deg, transparent, rgba(16, 38, 60, 0.94) 18%, rgba(16, 38, 60, 0.94) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(21, 33, 25, 0.94) 18%, rgba(21, 33, 25, 0.94) 82%, transparent);
 }
 
 .banner-info .banner-text {
-  color: #ffd76a;
-  text-shadow: 0 0 22px rgba(255, 215, 106, 0.5);
+  color: #f0c86a;
+  text-shadow: 0 0 22px rgba(240, 200, 106, 0.5);
 }
 
 .banner-chi {
-  background: linear-gradient(90deg, transparent, rgba(24, 110, 74, 0.93) 18%, rgba(24, 110, 74, 0.93) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(28, 106, 78, 0.93) 18%, rgba(28, 106, 78, 0.93) 82%, transparent);
 }
 
 .banner-chi .banner-text {
-  color: #dbffe9;
-  text-shadow: 0 0 24px #3fe08c;
+  color: #f7f3e8;
+  text-shadow: 0 0 24px #3ecf85;
 }
 
 .banner-pon {
-  background: linear-gradient(90deg, transparent, rgba(26, 78, 138, 0.93) 18%, rgba(26, 78, 138, 0.93) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(51, 72, 61, 0.93) 18%, rgba(51, 72, 61, 0.93) 82%, transparent);
 }
 
 .banner-pon .banner-text {
-  color: #dcedff;
-  text-shadow: 0 0 24px #55a4ff;
+  color: #f7f3e8;
+  text-shadow: 0 0 24px #5b9fe8;
 }
 
 .banner-kan {
-  background: linear-gradient(90deg, transparent, rgba(84, 44, 140, 0.93) 18%, rgba(84, 44, 140, 0.93) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(82, 61, 143, 0.93) 18%, rgba(82, 61, 143, 0.93) 82%, transparent);
 }
 
 .banner-kan .banner-text {
-  color: #ecdcff;
-  text-shadow: 0 0 24px #b07ef2;
+  color: #f7f3e8;
+  text-shadow: 0 0 24px #a37ce8;
 }
 
 /* 패 봉인 알림 (봉인술사 등) — 어두운 보라, 잠긴 느낌 */
 .banner-seal {
-  background: linear-gradient(90deg, transparent, rgba(58, 30, 92, 0.95) 18%, rgba(58, 30, 92, 0.95) 82%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(58, 43, 99, 0.95) 18%, rgba(58, 43, 99, 0.95) 82%, transparent);
 }
 
 .banner-seal .banner-text {
-  color: #d9c6ff;
-  text-shadow: 0 0 26px #8a4dff;
+  color: #e2dcff;
+  text-shadow: 0 0 26px #a591ff;
 }
 
 /* ─────────────── 리치 풀 연출 (배너 격상 — z60 = 기존 배너 슬롯) ─────────────── */
@@ -2063,9 +2140,9 @@ button {
   gap: 34px;
   padding: 20px 0 22px;
   background: linear-gradient(90deg, transparent,
-    rgba(150, 12, 34, 0.96) 16%, rgba(96, 4, 18, 0.97) 50%,
-    rgba(150, 12, 34, 0.96) 84%, transparent);
-  box-shadow: 0 0 90px rgba(255, 70, 90, 0.55);
+    rgba(142, 20, 40, 0.96) 16%, rgba(90, 10, 22, 0.97) 50%,
+    rgba(142, 20, 40, 0.96) 84%, transparent);
+  box-shadow: 0 0 90px rgba(244, 81, 99, 0.55);
   transform: skewY(-2deg);
   animation: riichi-band-in 0.3s cubic-bezier(0.15, 1, 0.3, 1) both;
 }
@@ -2097,9 +2174,9 @@ button {
   width: clamp(150px, 26vmin, 230px);
   height: clamp(12px, 2.2vmin, 18px);
   border-radius: 999px;
-  background: linear-gradient(180deg, #ffffff 0%, #f2ede0 45%, #cfc6b2 100%);
+  background: linear-gradient(180deg, #f7f3e8 0%, #f7f3e8 45%, #c2d0c5 100%);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45),
-              0 0 18px rgba(255, 96, 110, 0.75),
+              0 0 18px rgba(245, 106, 118, 0.75),
               inset 0 1px 0 rgba(255, 255, 255, 0.9);
   animation: stick-slide 0.5s cubic-bezier(0.2, 1.25, 0.35, 1) 0.12s both;
 }
@@ -2112,8 +2189,8 @@ button {
   aspect-ratio: 1; /* 막대 높이에 맞춘 정원(正圓) 한 개 */
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #e85a4d 0 30%, #d0392e 55%, #a81f16 100%);
-  box-shadow: 0 0 5px rgba(208, 57, 46, 0.75), inset 0 -1px 2px rgba(0, 0, 0, 0.35);
+  background: radial-gradient(circle at 40% 35%, #df6256 0 30%, #c64138 55%, #9f271f 100%);
+  box-shadow: 0 0 5px rgba(198, 65, 56, 0.75), inset 0 -1px 2px rgba(0, 0, 0, 0.35);
 }
 
 @keyframes stick-slide {
@@ -2135,13 +2212,13 @@ button {
   letter-spacing: 18px;
   text-indent: 18px;
   line-height: 1;
-  background: linear-gradient(180deg, #fff 8%, #ffd9d2 34%, #ff8a92 50%, #ffe9e4 66%, #fff 92%);
+  background: linear-gradient(180deg, #f7f3e8 8%, #f7f3e8 34%, #f89198 50%, #f7f3e8 66%, #f7f3e8 92%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  filter: drop-shadow(0 0 26px rgba(255, 90, 110, 0.85)) drop-shadow(0 3px 0 rgba(0, 0, 0, 0.4));
-  animation: riichi-text-in 0.34s cubic-bezier(0.2, 1.5, 0.4, 1) 0.1s both;
+  filter: drop-shadow(0 0 26px rgba(245, 100, 118, 0.85)) drop-shadow(0 3px 0 rgba(0, 0, 0, 0.4));
+  animation: riichi-text-in 0.34s var(--ease) 0.1s both;
 }
 
 @keyframes riichi-text-in {
@@ -2153,14 +2230,14 @@ button {
 .riichi-sub {
   margin-top: 6px;
   font-size: 15px;
-  color: rgba(255, 233, 228, 0.92);
+  color: rgba(247, 243, 232, 0.92);
 }
 
 .riichi-flash {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% 50%, rgba(255, 86, 104, 0.75) 0%, transparent 70%);
+  background: radial-gradient(ellipse at 50% 50%, rgba(245, 96, 112, 0.75) 0%, transparent 70%);
   opacity: 0;
   animation: flash-pop 0.18s ease-out 0.12s both;
 }
@@ -2180,7 +2257,7 @@ button {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 12px;
-  background: rgba(4, 10, 18, 0.78);
+  background: rgba(11, 19, 16, 0.78);
   backdrop-filter: blur(3px);
   animation: overlay-in 0.25s ease-out;
 }
@@ -2199,19 +2276,19 @@ button {
   font-size: clamp(34px, 5vmin, 50px);
   letter-spacing: 12px;
   text-indent: 12px;
-  color: #ffd76a;
-  text-shadow: 0 0 28px rgba(255, 215, 106, 0.55), 0 2px 0 rgba(0, 0, 0, 0.4);
+  color: #f0c86a;
+  text-shadow: 0 0 28px rgba(240, 200, 106, 0.55), 0 2px 0 rgba(0, 0, 0, 0.4);
   animation: draft-title-glow 2.4s ease-in-out infinite;
 }
 
 @keyframes draft-title-glow {
-  0%, 100% { text-shadow: 0 0 22px rgba(255, 215, 106, 0.45), 0 2px 0 rgba(0, 0, 0, 0.4); }
-  50% { text-shadow: 0 0 40px rgba(255, 215, 106, 0.8), 0 2px 0 rgba(0, 0, 0, 0.4); }
+  0%, 100% { text-shadow: 0 0 22px rgba(240, 200, 106, 0.45), 0 2px 0 rgba(0, 0, 0, 0.4); }
+  50% { text-shadow: 0 0 40px rgba(240, 200, 106, 0.8), 0 2px 0 rgba(0, 0, 0, 0.4); }
 }
 
 .draft-stage {
   margin: 8px 0 16px;
-  color: #a9c0d4;
+  color: #c2d0c5;
   font-size: 15px;
   letter-spacing: 1px;
 }
@@ -2224,24 +2301,24 @@ button {
   gap: 6px;
   padding: 5px 16px;
   border-radius: 999px;
-  background: rgba(8, 18, 30, 0.7);
+  background: rgba(11, 19, 16, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #d7e4f0;
+  color: #ece4d2;
   font-size: 15px;
   letter-spacing: 0.5px;
 }
 .draft-timer strong {
   font-size: 19px;
-  color: #ffd76a;
+  color: #f0c86a;
   font-variant-numeric: tabular-nums;
 }
 .draft-timer-urgent {
-  border-color: #ff8d7e;
-  color: #ffd2ca;
+  border-color: #f08a7c;
+  color: #fcd4cd;
   animation: turn-pulse 0.9s ease-in-out infinite;
 }
 .draft-timer-urgent strong {
-  color: #ff8d7e;
+  color: #f08a7c;
 }
 
 .draft-cards {
@@ -2261,7 +2338,7 @@ button {
 }
 .draft-waiting {
   margin: 24px 0 0;
-  color: #9fe6b4;
+  color: #a3e2ba;
   font-size: 15px;
   letter-spacing: 0.5px;
 }
@@ -2277,11 +2354,11 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  color: #f4efe1;
-  background: linear-gradient(165deg, #1c334a 0%, #16293d 45%, #0b1826 100%);
-  border: 2px solid #3a5670;
+  color: #f7f3e8;
+  background: linear-gradient(165deg, #1c2b24 0%, #152119 45%, #0d1712 100%);
+  border: 2px solid #33483d;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  animation: card-in 0.45s cubic-bezier(0.2, 1.2, 0.4, 1) both;
+  animation: card-in 0.45s var(--ease) both;
   transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
@@ -2327,26 +2404,26 @@ button {
 }
 
 .tier-silver {
-  color: #b7cede;
-  border-color: #8fa8bd;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 22px rgba(150, 185, 215, 0.25);
+  color: #c2d0c5;
+  border-color: #93a89b;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 22px rgba(168, 188, 175, 0.25);
 }
-.tier-silver:hover { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 44px rgba(180, 205, 225, 0.6); }
+.tier-silver:hover { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 44px rgba(194, 208, 197, 0.6); }
 
 .tier-gold {
-  color: #ffcf6b;
-  border-color: #e2b64f;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 26px rgba(255, 200, 90, 0.3);
+  color: #f0c86a;
+  border-color: #b8975c;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 26px rgba(184, 151, 92, 0.3);
 }
-.tier-gold:hover { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 52px rgba(255, 200, 90, 0.65); }
+.tier-gold:hover { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 52px rgba(184, 151, 92, 0.65); }
 
 .tier-prism {
-  color: #cfa9ff;
-  border-color: #b07ef2;
-  background: linear-gradient(165deg, #2a2050 0%, #221a3d 45%, #120f28 100%);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 30px rgba(180, 130, 255, 0.35);
+  color: #c7bcff;
+  border-color: #a37ce8;
+  background: linear-gradient(165deg, #3a2b63 0%, #241a3d 45%, #0d1712 100%);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 30px rgba(199, 188, 255, 0.35);
 }
-.tier-prism:hover { box-shadow: 0 20px 62px rgba(0, 0, 0, 0.6), 0 0 60px rgba(190, 130, 255, 0.75); }
+.tier-prism:hover { box-shadow: 0 20px 62px rgba(0, 0, 0, 0.6), 0 0 60px rgba(199, 188, 255, 0.75); }
 
 .draft-card-head {
   display: flex;
@@ -2384,7 +2461,7 @@ button {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
-  color: #e7eef5;
+  color: #f7f3e8;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
@@ -2399,7 +2476,7 @@ button {
 .aug-tip-cat {
   font-size: 11px;
   font-weight: 700;
-  color: #9db4c8;
+  color: #a8bcaf;
 }
 
 /* 액티브 증강 뱃지 (드래프트 카드) */
@@ -2411,29 +2488,29 @@ button {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 800;
-  color: #ffe08a;
-  background: rgba(255, 196, 74, 0.14);
-  border: 1px solid rgba(255, 196, 74, 0.55);
+  color: #cfae76;
+  background: rgba(184, 151, 92, 0.14);
+  border: 1px solid rgba(184, 151, 92, 0.55);
 }
 
 /* 액티브 증강 표시 (툴팁 한 줄) */
 .aug-tip-active {
   font-size: 11px;
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
 }
 
 .draft-name {
   font-size: clamp(22px, 2.6vmin, 28px);
   font-weight: 800;
-  color: #fbf6e8;
+  color: #f7f3e8;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
 .draft-desc {
   font-size: 14.5px;
   line-height: 1.65;
-  color: #c4d3df;
+  color: #d3dbcd;
 }
 
 /* 드래프트 카드 — 액티브 증강 안내 줄 */
@@ -2441,7 +2518,7 @@ button {
   margin-top: 4px;
   font-size: 12.5px;
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
 }
 
 /* ─────────────── 게임 종료 ─────────────── */
@@ -2450,14 +2527,14 @@ button {
   width: min(420px, 92vw);
   padding: 28px;
   border-radius: 16px;
-  background: rgba(10, 22, 36, 0.95);
-  border: 1px solid rgba(214, 178, 94, 0.45);
+  background: rgba(13, 23, 18, 0.95);
+  border: 1px solid rgba(184, 151, 92, 0.45);
   text-align: center;
 }
 
 .gameover-panel h2 {
   margin: 0 0 18px;
-  color: #ffd76a;
+  color: #f0c86a;
   letter-spacing: 6px;
 }
 
@@ -2480,13 +2557,13 @@ button {
 }
 
 .rank-1 {
-  background: linear-gradient(90deg, rgba(214, 178, 94, 0.3), rgba(214, 178, 94, 0.08));
-  border: 1px solid rgba(255, 215, 106, 0.5);
+  background: linear-gradient(90deg, rgba(184, 151, 92, 0.3), rgba(184, 151, 92, 0.08));
+  border: 1px solid rgba(240, 200, 106, 0.5);
 }
 
 .rank-no {
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
 }
 
 .rank-name {
@@ -2495,7 +2572,7 @@ button {
 }
 
 .rank-raw {
-  color: #9db4c8;
+  color: #a8bcaf;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2504,9 +2581,9 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.rank-final-plus { color: #8fe3a1; }
-.rank-final-minus { color: #ff8d7e; }
-.rank-final-zero { color: #9db4c8; }
+.rank-final-plus { color: #93dfa8; }
+.rank-final-minus { color: #f08a7c; }
+.rank-final-zero { color: #a8bcaf; }
 
 /* ─────────────── 개막 연출 ─────────────── */
 
@@ -2519,7 +2596,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: radial-gradient(ellipse at center, rgba(6, 14, 24, 0.82), rgba(3, 8, 14, 0.96));
+  background: radial-gradient(ellipse at center, rgba(11, 19, 16, 0.82), rgba(11, 19, 16, 0.96));
   animation: intro-fade 2.1s ease forwards;
   pointer-events: none;
 }
@@ -2534,7 +2611,7 @@ button {
 .intro-line {
   width: min(420px, 70vw);
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(214, 178, 94, 0.9), transparent);
+  background: linear-gradient(90deg, transparent, rgba(184, 151, 92, 0.9), transparent);
   animation: intro-line 0.9s cubic-bezier(0.2, 0.9, 0.2, 1) both;
 }
 
@@ -2548,23 +2625,23 @@ button {
   font-weight: 900;
   letter-spacing: 14px;
   text-indent: 14px;
-  color: #ffd76a;
-  text-shadow: 0 0 34px rgba(255, 215, 106, 0.55);
-  animation: banner-zoom 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  color: #f0c86a;
+  text-shadow: 0 0 34px rgba(240, 200, 106, 0.55);
+  animation: banner-zoom 0.6s var(--ease) both;
 }
 
 .intro-round {
   font-size: clamp(20px, 3.6vmin, 28px);
   font-weight: 800;
-  color: #e8e4d8;
+  color: #ece4d2;
   letter-spacing: 6px;
-  animation: banner-zoom 0.6s 0.25s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  animation: banner-zoom 0.6s 0.25s var(--ease) both;
 }
 
 .intro-seat {
   font-size: 14px;
-  color: #8fa8bd;
-  animation: banner-zoom 0.6s 0.45s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  color: #93a89b;
+  animation: banner-zoom 0.6s 0.45s var(--ease) both;
 }
 
 /* ─────────────── 화료 컷인 (론/쯔모/역만/유국) ─────────────── */
@@ -2586,15 +2663,15 @@ button {
 }
 
 /* ── 컷인 FX 색 변수 — 플래시·파티클·충격파 링이 톤 색을 따른다 ── */
-.cutin-ron { --fx-color: #ff4a5e; --fx-glow: rgba(255, 86, 104, 0.85); }
-.cutin-grave { --fx-color: #c69c4a; --fx-glow: rgba(214, 172, 92, 0.85); }
-.cutin-spy { --fx-color: #4adcc6; --fx-glow: rgba(90, 226, 202, 0.85); }
-.cutin-tsumo { --fx-color: #59aaff; --fx-glow: rgba(94, 178, 255, 0.8); }
-.cutin-yakuman { --fx-color: #ffd76a; --fx-glow: rgba(255, 215, 120, 0.9); }
-.cutin-limit { --fx-color: #ffcf6a; --fx-glow: rgba(255, 205, 110, 0.85); }
-.cutin-chi { --fx-color: #3fe08c; --fx-glow: rgba(63, 224, 140, 0.7); }
-.cutin-pon { --fx-color: #55a4ff; --fx-glow: rgba(85, 164, 255, 0.7); }
-.cutin-kan { --fx-color: #b07ef2; --fx-glow: rgba(176, 126, 242, 0.75); }
+.cutin-ron { --fx-color: #f45566; --fx-glow: rgba(245, 96, 112, 0.85); }
+.cutin-grave { --fx-color: #9a7b42; --fx-glow: rgba(184, 151, 92, 0.85); }
+.cutin-spy { --fx-color: #46c9b6; --fx-glow: rgba(98, 218, 205, 0.85); }
+.cutin-tsumo { --fx-color: #5b9fe8; --fx-glow: rgba(105, 183, 231, 0.8); }
+.cutin-yakuman { --fx-color: #f0c86a; --fx-glow: rgba(207, 174, 118, 0.9); }
+.cutin-limit { --fx-color: #f0c86a; --fx-glow: rgba(207, 174, 118, 0.85); }
+.cutin-chi { --fx-color: #3ecf85; --fx-glow: rgba(62, 207, 133, 0.7); }
+.cutin-pon { --fx-color: #5b9fe8; --fx-glow: rgba(91, 159, 232, 0.7); }
+.cutin-kan { --fx-color: #a37ce8; --fx-glow: rgba(163, 124, 232, 0.75); }
 
 /* 임팩트 플래시 — 글자 슬램 착지(~0.2s)에 톤 컬러로 번쩍 */
 .cutin-flash {
@@ -2617,7 +2694,7 @@ button {
 /* 역만 2차 플래시 (금색) */
 .cutin-flash-2 {
   animation-delay: 0.45s;
-  background: radial-gradient(ellipse at 50% 50%, rgba(255, 215, 120, 0.7) 0%, transparent 70%);
+  background: radial-gradient(ellipse at 50% 50%, rgba(207, 174, 118, 0.7) 0%, transparent 70%);
 }
 
 /* 파티클 버스트 — 방사형 파편 (개수·궤적은 App CutInBurst가 CSS 변수로 주입) */
@@ -2637,13 +2714,13 @@ button {
   width: var(--px-size);
   height: var(--px-size);
   border-radius: 1px;
-  background: var(--fx-color, #fff);
+  background: var(--fx-color, #f7f3e8);
   opacity: 0;
   transform: rotate(var(--px-angle)) translateX(0) scale(1.2);
   animation: px-fly var(--px-dur) cubic-bezier(0.05, 0.7, 0.2, 1) var(--px-delay) both;
 }
 
-.px:nth-child(3n) { background: #fff; }
+.px:nth-child(3n) { background: #f7f3e8; }
 .px:nth-child(4n) { border-radius: 50%; }
 
 @keyframes px-fly {
@@ -2666,7 +2743,7 @@ button {
   height: 46vmin;
   margin: -23vmin 0 0 -23vmin;
   border-radius: 50%;
-  border: 3px solid var(--fx-color, #fff);
+  border: 3px solid var(--fx-color, #f7f3e8);
   box-shadow: 0 0 24px var(--fx-glow, rgba(255, 255, 255, 0.6)),
               inset 0 0 18px var(--fx-glow, rgba(255, 255, 255, 0.4));
   opacity: 0;
@@ -2713,7 +2790,7 @@ button {
 
 .cutin-yakuman .cutin-rays {
   background: repeating-conic-gradient(from 0deg,
-    rgba(255, 214, 106, 0.12) 0deg 4deg, transparent 4deg 11deg);
+    rgba(207, 174, 118, 0.12) 0deg 4deg, transparent 4deg 11deg);
   animation-duration: 0.25s, 4.5s; /* 역만은 더 빠른 회전 */
 }
 
@@ -2791,29 +2868,29 @@ button {
 }
 
 .cutin-ron .cutin-band {
-  background: linear-gradient(90deg, transparent, rgba(168, 22, 38, 0.95) 14%, rgba(110, 8, 22, 0.97) 86%, transparent);
-  box-shadow: 0 0 80px rgba(255, 60, 80, 0.5);
+  background: linear-gradient(90deg, transparent, rgba(159, 31, 45, 0.95) 14%, rgba(104, 14, 26, 0.97) 86%, transparent);
+  box-shadow: 0 0 80px rgba(243, 72, 89, 0.5);
 }
 
 .cutin-ron .cutin-text {
-  color: #fff1ec;
-  text-shadow: 0 0 40px #ff4a5e, 0 4px 0 rgba(0, 0, 0, 0.35);
+  color: #f7f3e8;
+  text-shadow: 0 0 40px #f45566, 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
 .cutin-tsumo .cutin-band {
-  background: linear-gradient(90deg, transparent, rgba(20, 96, 160, 0.95) 14%, rgba(10, 58, 106, 0.97) 86%, transparent);
-  box-shadow: 0 0 80px rgba(80, 170, 255, 0.45);
+  background: linear-gradient(90deg, transparent, rgba(38, 100, 135, 0.95) 14%, rgba(34, 51, 42, 0.97) 86%, transparent);
+  box-shadow: 0 0 80px rgba(93, 176, 229, 0.45);
 }
 
 .cutin-tsumo .cutin-text {
-  color: #eef7ff;
-  text-shadow: 0 0 40px #59aaff, 0 4px 0 rgba(0, 0, 0, 0.35);
+  color: #f7f3e8;
+  text-shadow: 0 0 40px #5b9fe8, 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
 .cutin-yakuman .cutin-band {
   background:
-    linear-gradient(90deg, transparent, rgba(122, 62, 190, 0.96) 12%, rgba(190, 120, 30, 0.96) 50%, rgba(122, 62, 190, 0.96) 88%, transparent);
-  box-shadow: 0 0 110px rgba(255, 190, 90, 0.65);
+    linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.96) 12%, rgba(138, 109, 60, 0.96) 50%, rgba(124, 92, 255, 0.96) 88%, transparent);
+  box-shadow: 0 0 110px rgba(184, 151, 92, 0.65);
   animation: cutin-band 0.34s cubic-bezier(0.15, 1, 0.3, 1) both, yakuman-shimmer 1.4s linear infinite;
 }
 
@@ -2833,14 +2910,14 @@ button {
 .cutin-yakuman .cutin-text {
   letter-spacing: 26px;
   background: linear-gradient(100deg,
-    #ffd76a 0%, #fff6dc 20%, #b07ef2 45%, #ffd76a 60%, #ff9a6a 80%, #ffd76a 100%);
+    #f0c86a 0%, #f7f3e8 20%, #a37ce8 45%, #f0c86a 60%, #cfae76 80%, #f0c86a 100%);
   background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  filter: drop-shadow(0 0 30px rgba(255, 215, 106, 0.9))
-          drop-shadow(0 0 60px rgba(176, 126, 242, 0.7))
+  filter: drop-shadow(0 0 30px rgba(240, 200, 106, 0.9))
+          drop-shadow(0 0 60px rgba(163, 124, 232, 0.7))
           drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45));
   animation: yakuman-hue 1.8s linear infinite;
 }
@@ -2858,42 +2935,42 @@ button {
 }
 
 .cutin-draw .cutin-band {
-  background: linear-gradient(90deg, transparent, rgba(44, 62, 80, 0.95) 14%, rgba(30, 44, 58, 0.97) 86%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(34, 51, 42, 0.95) 14%, rgba(28, 43, 36, 0.97) 86%, transparent);
 }
 
 .cutin-draw .cutin-text {
-  color: #cfe2ef;
+  color: #ece4d2;
   font-size: clamp(40px, 9vmin, 70px);
 }
 
 /* ─── 만관 이상 컷인 (일반 화료보다 화려, 역만보다는 아래). data-tier로 등급별 강도 상승 ─── */
 .cutin-limit .cutin-band {
   background: linear-gradient(90deg,
-    transparent, rgba(214, 158, 46, 0.96) 14%,
-    rgba(176, 116, 20, 0.97) 50%, rgba(214, 158, 46, 0.96) 86%, transparent);
-  box-shadow: 0 0 92px rgba(255, 200, 96, 0.55);
+    transparent, rgba(154, 123, 66, 0.96) 14%,
+    rgba(138, 109, 60, 0.97) 50%, rgba(154, 123, 66, 0.96) 86%, transparent);
+  box-shadow: 0 0 92px rgba(184, 151, 92, 0.55);
 }
 .cutin-limit .cutin-text {
-  color: #fff6dc;
+  color: #f7f3e8;
   letter-spacing: 18px;
-  text-shadow: 0 0 40px #ffcf6a, 0 4px 0 rgba(0, 0, 0, 0.4);
+  text-shadow: 0 0 40px #f0c86a, 0 4px 0 rgba(0, 0, 0, 0.4);
 }
-.cutin-limit .cutin-sub { color: rgba(255, 246, 220, 0.95); }
+.cutin-limit .cutin-sub { color: rgba(247, 243, 232, 0.95); }
 
 /* 하네만 — 따뜻한 주황, 더 강한 글로우 */
 .cutin-limit[data-tier="haneman"] .cutin-band {
   background: linear-gradient(90deg,
-    transparent, rgba(232, 140, 40, 0.96) 12%,
-    rgba(200, 90, 20, 0.97) 50%, rgba(232, 140, 40, 0.96) 88%, transparent);
-  box-shadow: 0 0 104px rgba(255, 170, 80, 0.6);
+    transparent, rgba(154, 123, 66, 0.96) 12%,
+    rgba(138, 109, 60, 0.97) 50%, rgba(154, 123, 66, 0.96) 88%, transparent);
+  box-shadow: 0 0 104px rgba(184, 151, 92, 0.6);
 }
 
 /* 배만 — 자홍 계열 + 밝기 펄스 */
 .cutin-limit[data-tier="baiman"] .cutin-band {
   background: linear-gradient(90deg,
-    transparent, rgba(198, 70, 150, 0.96) 12%,
-    rgba(150, 40, 120, 0.97) 50%, rgba(210, 110, 60, 0.96) 88%, transparent);
-  box-shadow: 0 0 120px rgba(255, 130, 180, 0.62);
+    transparent, rgba(190, 78, 148, 0.96) 12%,
+    rgba(143, 47, 117, 0.97) 50%, rgba(154, 123, 66, 0.96) 88%, transparent);
+  box-shadow: 0 0 120px rgba(248, 138, 182, 0.62);
   animation: cutin-band 0.34s cubic-bezier(0.15, 1, 0.3, 1) both,
              limit-pulse 1.1s ease-in-out infinite;
 }
@@ -2902,15 +2979,15 @@ button {
 /* 삼배만 — 역만 직전 강도: 무지갯빛 + 상시 시머 + 넓은 자간 */
 .cutin-limit[data-tier="sanbaiman"] .cutin-band {
   background: linear-gradient(90deg,
-    transparent, rgba(122, 62, 190, 0.96) 10%, rgba(210, 80, 120, 0.96) 38%,
-    rgba(230, 170, 40, 0.96) 62%, rgba(122, 62, 190, 0.96) 90%, transparent);
-  box-shadow: 0 0 130px rgba(255, 190, 110, 0.68);
+    transparent, rgba(124, 92, 255, 0.96) 10%, rgba(202, 88, 123, 0.96) 38%,
+    rgba(154, 123, 66, 0.96) 62%, rgba(124, 92, 255, 0.96) 90%, transparent);
+  box-shadow: 0 0 130px rgba(207, 174, 118, 0.68);
   animation: cutin-band 0.34s cubic-bezier(0.15, 1, 0.3, 1) both,
              yakuman-shimmer 1.3s linear infinite;
 }
 .cutin-limit[data-tier="sanbaiman"] .cutin-text {
   letter-spacing: 24px;
-  text-shadow: 0 0 46px #ffd76a, 0 0 84px #d0507a, 0 5px 0 rgba(0, 0, 0, 0.42);
+  text-shadow: 0 0 46px #f0c86a, 0 0 84px #c8587d, 0 5px 0 rgba(0, 0, 0, 0.42);
 }
 
 @keyframes limit-pulse {
@@ -2929,33 +3006,33 @@ button {
 }
 
 .cutin-chi .cutin-band {
-  background: linear-gradient(90deg, transparent, rgba(20, 118, 78, 0.95) 14%, rgba(10, 78, 52, 0.97) 86%, transparent);
-  box-shadow: 0 0 70px rgba(63, 224, 140, 0.45);
+  background: linear-gradient(90deg, transparent, rgba(26, 112, 83, 0.95) 14%, rgba(17, 71, 54, 0.97) 86%, transparent);
+  box-shadow: 0 0 70px rgba(62, 207, 133, 0.45);
 }
 
 .cutin-chi .cutin-text {
-  color: #e6fff1;
-  text-shadow: 0 0 38px #3fe08c, 0 4px 0 rgba(0, 0, 0, 0.35);
+  color: #f7f3e8;
+  text-shadow: 0 0 38px #3ecf85, 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
 .cutin-pon .cutin-band {
-  background: linear-gradient(90deg, transparent, rgba(26, 92, 160, 0.95) 14%, rgba(14, 58, 108, 0.97) 86%, transparent);
-  box-shadow: 0 0 70px rgba(85, 164, 255, 0.45);
+  background: linear-gradient(90deg, transparent, rgba(43, 98, 136, 0.95) 14%, rgba(34, 51, 42, 0.97) 86%, transparent);
+  box-shadow: 0 0 70px rgba(91, 159, 232, 0.45);
 }
 
 .cutin-pon .cutin-text {
-  color: #eaf3ff;
-  text-shadow: 0 0 38px #55a4ff, 0 4px 0 rgba(0, 0, 0, 0.35);
+  color: #f7f3e8;
+  text-shadow: 0 0 38px #5b9fe8, 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
 .cutin-kan .cutin-band {
-  background: linear-gradient(90deg, transparent, rgba(96, 52, 158, 0.95) 14%, rgba(60, 30, 108, 0.97) 86%, transparent);
-  box-shadow: 0 0 74px rgba(176, 126, 242, 0.5);
+  background: linear-gradient(90deg, transparent, rgba(82, 61, 143, 0.95) 14%, rgba(58, 43, 99, 0.97) 86%, transparent);
+  box-shadow: 0 0 74px rgba(163, 124, 232, 0.5);
 }
 
 .cutin-kan .cutin-text {
-  color: #f3e9ff;
-  text-shadow: 0 0 40px #b07ef2, 0 4px 0 rgba(0, 0, 0, 0.35);
+  color: #f7f3e8;
+  text-shadow: 0 0 40px #a37ce8, 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
 .cutin .cutin-sub {
@@ -2968,7 +3045,7 @@ button {
   z-index: 55;
   overflow: hidden;
   /* 작혼式 몰입 배경은 오버레이에 둔다 — 패널은 투명이라 꽃잎이 콘텐츠 뒤로 비친다 */
-  background: radial-gradient(130% 110% at 50% 16%, rgba(40, 26, 64, 0.62), rgba(6, 13, 23, 0.93));
+  background: radial-gradient(130% 110% at 50% 16%, rgba(36, 26, 61, 0.62), rgba(11, 19, 16, 0.93));
 }
 
 /* 작혼式 풀스크린 정산 — 카드가 아니라 화면을 꽉 채운다 */
@@ -2987,7 +3064,7 @@ button {
   align-items: center;
   justify-content: safe center; /* 콘텐츠가 화면보다 커도 위가 잘리지 않게 */
   gap: clamp(8px, 1.8vh, 18px);
-  animation: result-in 0.4s cubic-bezier(0.2, 1.2, 0.4, 1);
+  animation: result-in 0.4s var(--ease);
 }
 
 @keyframes result-in {
@@ -2999,26 +3076,26 @@ button {
   margin: 0;
   font-size: 26px;
   letter-spacing: 10px;
-  color: #ffd76a;
-  text-shadow: 0 0 22px rgba(255, 215, 106, 0.45);
+  color: #f0c86a;
+  text-shadow: 0 0 22px rgba(240, 200, 106, 0.45);
 }
 
 /* 유국·도중유국은 축하가 아니다 — 금빛 대신 차가운 은빛으로 톤을 낮춘다 */
 .result-outcome-draw .result-title,
 .result-outcome-abort .result-title {
-  color: #cfe0ee;
-  text-shadow: 0 0 22px rgba(150, 190, 220, 0.35);
+  color: #ece4d2;
+  text-shadow: 0 0 22px rgba(168, 188, 175, 0.35);
 }
 
 .result-outcome-draw,
 .result-outcome-abort {
-  background: radial-gradient(130% 110% at 50% 16%, rgba(26, 38, 56, 0.66), rgba(6, 13, 23, 0.94));
+  background: radial-gradient(130% 110% at 50% 16%, rgba(21, 33, 25, 0.66), rgba(11, 19, 16, 0.94));
 }
 
 .result-subtitle {
   margin: 0;
   font-size: 13px;
-  color: #93a8bb;
+  color: #93a89b;
   letter-spacing: 0.02em;
 }
 
@@ -3044,8 +3121,8 @@ button {
 
 /* 텐파이는 손을 펼친 쪽 — 살짝 띄워 노텐과 한눈에 갈린다 */
 .result-draw-row.is-tenpai {
-  border-color: rgba(255, 215, 106, 0.35);
-  background: rgba(255, 215, 106, 0.06);
+  border-color: rgba(240, 200, 106, 0.35);
+  background: rgba(240, 200, 106, 0.06);
 }
 
 .result-draw-row.is-noten {
@@ -3067,13 +3144,13 @@ button {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
   font-size: 12px;
-  color: #d8e4ee;
+  color: #ece4d2;
 }
 
 .result-draw-name {
   font-size: 15px;
   font-weight: 800;
-  color: #f0ead8;
+  color: #ece4d2;
 }
 
 .result-draw-badge {
@@ -3084,15 +3161,15 @@ button {
 }
 
 .badge-tenpai {
-  background: rgba(60, 140, 220, 0.3);
-  border: 1px solid rgba(100, 175, 255, 0.6);
-  color: #bcdcff;
+  background: rgba(74, 146, 195, 0.3);
+  border: 1px solid rgba(109, 181, 231, 0.6);
+  color: #ece4d2;
 }
 
 .badge-noten {
-  background: rgba(120, 130, 145, 0.25);
-  border: 1px solid rgba(160, 175, 190, 0.45);
-  color: #c2cedb;
+  background: rgba(95, 116, 105, 0.25);
+  border: 1px solid rgba(168, 188, 175, 0.45);
+  color: #d3dbcd;
 }
 
 /* 증감은 오른쪽 끝에 붙여 4행이 한 열로 읽힌다 */
@@ -3111,7 +3188,7 @@ button {
 
 .result-draw-hidden {
   font-size: 12px;
-  color: #6d8398;
+  color: #5f7469;
   text-align: left;
 }
 
@@ -3120,14 +3197,14 @@ button {
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: #d7c7a0;
+  color: #cfae76;
   letter-spacing: 0.04em;
 }
 
 .result-no-move {
   margin: 0;
   font-size: 13px;
-  color: #8ea3b6;
+  color: #93a89b;
 }
 
 .result-win {
@@ -3156,7 +3233,7 @@ button {
 .result-winner {
   font-size: 19px;
   font-weight: 800;
-  color: #f0ead8;
+  color: #ece4d2;
 }
 
 .result-wintype {
@@ -3166,11 +3243,11 @@ button {
   font-weight: 800;
 }
 
-.wt-tsumo { background: rgba(60, 140, 220, 0.3); border: 1px solid rgba(100, 175, 255, 0.6); color: #bcdcff; }
-.wt-ron { background: rgba(200, 50, 70, 0.3); border: 1px solid rgba(255, 110, 125, 0.6); color: #ffc9cf; }
+.wt-tsumo { background: rgba(74, 146, 195, 0.3); border: 1px solid rgba(109, 181, 231, 0.6); color: #ece4d2; }
+.wt-ron { background: rgba(191, 59, 77, 0.3); border: 1px solid rgba(246, 119, 132, 0.6); color: #fcccd2; }
 
 .result-from {
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 13px;
 }
 
@@ -3202,9 +3279,9 @@ button {
 }
 
 .result-tile-win .tile-face {
-  outline: 2px solid #ffd76a;
+  outline: 2px solid #f0c86a;
   outline-offset: 1px;
-  box-shadow: 0 0 14px rgba(255, 215, 106, 0.75);
+  box-shadow: 0 0 14px rgba(240, 200, 106, 0.75);
 }
 
 .result-meld {
@@ -3231,7 +3308,7 @@ button {
   display: flex;
   justify-content: space-between;
   font-size: 14px;
-  color: #d7e4ee;
+  color: #ece4d2;
   padding: 3px 10px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.04);
@@ -3245,13 +3322,13 @@ button {
 }
 
 .result-yaku-aug {
-  border: 1px solid rgba(170, 130, 255, 0.45);
-  color: #d7c7ff;
+  border: 1px solid rgba(199, 188, 255, 0.45);
+  color: #e2dcff;
 }
 
 .result-han {
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
 }
 
 .result-total {
@@ -3263,7 +3340,7 @@ button {
 }
 
 .result-limit {
-  color: #ff9d7e;
+  color: #f7a186;
 }
 
 /* 작혼式 판수 원형 배지 */
@@ -3275,17 +3352,17 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 36%, #1c2a44, #0a1626);
-  border: 3px solid #ffd76a;
-  box-shadow: 0 0 40px rgba(255, 215, 106, 0.4), inset 0 0 28px rgba(255, 215, 106, 0.12);
+  background: radial-gradient(circle at 50% 36%, #1c2b24, #0d1712);
+  border: 3px solid #f0c86a;
+  box-shadow: 0 0 40px rgba(240, 200, 106, 0.4), inset 0 0 28px rgba(240, 200, 106, 0.12);
 }
 
 .result-han-big {
   font-size: clamp(30px, 6vmin, 50px);
   font-weight: 900;
-  color: #ffe9b0;
+  color: #e2c793;
   line-height: 0.95;
-  text-shadow: 0 0 18px rgba(255, 180, 90, 0.6);
+  text-shadow: 0 0 18px rgba(184, 151, 92, 0.6);
 }
 
 /* 배수 역만 — "2배 역만"(5자)·"10배 역만"(6자)이 점수 원을 넘지 않게 글자 수만큼 줄인다 */
@@ -3297,7 +3374,7 @@ button {
   margin-top: 4px;
   font-size: clamp(11px, 2vmin, 15px);
   font-weight: 700;
-  color: #c9d6e2;
+  color: #d3dbcd;
   letter-spacing: 0.04em;
 }
 
@@ -3305,14 +3382,14 @@ button {
   display: inline-block; /* 카운트업 팝 transform용 */
   margin: 0;
   font-size: clamp(22px, 4.4vmin, 36px);
-  color: #ffd76a;
-  text-shadow: 0 0 16px rgba(255, 215, 106, 0.45);
+  color: #f0c86a;
+  text-shadow: 0 0 16px rgba(240, 200, 106, 0.45);
   font-variant-numeric: tabular-nums; /* 카운트업 중 폭 흔들림 방지 */
 }
 
 /* 카운트업 완주 — 최종 숫자에서 스쿼시 팝 (종지) */
 .result-points-done {
-  animation: points-pop 0.3s cubic-bezier(0.2, 1.5, 0.4, 1);
+  animation: points-pop 0.3s var(--ease);
 }
 
 @keyframes points-pop {
@@ -3336,7 +3413,7 @@ button {
   width: 11px;
   height: 11px;
   border-radius: 60% 0 60% 0;
-  background: rgba(255, 205, 140, 0.4);
+  background: rgba(207, 174, 118, 0.4);
   opacity: 0;
   animation-name: result-petal-fall;
   animation-timing-function: linear;
@@ -3363,7 +3440,7 @@ button {
 
 .result-ura-label {
   font-size: 12px;
-  color: #b28ae8;
+  color: #c7bcff;
   margin-right: 6px;
 }
 
@@ -3393,9 +3470,9 @@ button {
   white-space: nowrap;
 }
 
-.delta-plus { color: #8fe3a1; font-weight: 800; }
-.delta-minus { color: #ff8d7e; font-weight: 800; }
-.delta-zero { color: #7d92a5; }
+.delta-plus { color: #93dfa8; font-weight: 800; }
+.delta-minus { color: #f08a7c; font-weight: 800; }
+.delta-zero { color: #7b9084; }
 
 .result-close {
   letter-spacing: 6px;
@@ -3415,8 +3492,8 @@ button {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
 
-.score-plus { color: #8fe3a1; }
-.score-minus { color: #ff8d7e; }
+.score-plus { color: #93dfa8; }
+.score-minus { color: #f08a7c; }
 
 @keyframes score-float {
   0% { transform: translate(-50%, 6px); opacity: 0; }
@@ -3444,11 +3521,11 @@ button {
   gap: 9px;
   padding: 7px 12px;
   border-radius: 10px;
-  background: rgba(8, 18, 30, 0.9);
-  border: 1px solid rgba(170, 130, 255, 0.45);
+  background: rgba(11, 19, 16, 0.9);
+  border: 1px solid rgba(199, 188, 255, 0.45);
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
   font-size: 14px;
-  color: #e6eef6;
+  color: #f7f3e8;
   animation: bar-in 0.25s ease-out;
 }
 
@@ -3457,13 +3534,13 @@ button {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 800;
-  background: rgba(150, 108, 230, 0.42);
-  color: #ecdfff;
+  background: rgba(165, 145, 255, 0.42);
+  color: #f7f3e8;
   white-space: nowrap;
 }
 
-.ainfo-tag-seal { background: rgba(210, 66, 66, 0.42); color: #ffd6d6; }
-.ainfo-tag-peek { background: rgba(60, 150, 220, 0.42); color: #d3e8ff; }
+.ainfo-tag-seal { background: rgba(201, 75, 75, 0.42); color: #f7f3e8; }
+.ainfo-tag-peek { background: rgba(74, 154, 195, 0.42); color: #f7f3e8; }
 
 .ainfo-tiles {
   display: inline-flex;
@@ -3477,13 +3554,13 @@ button {
 
 /* ─────────────── 증강 pill 등급색·기타 ─────────────── */
 
-.aug-silver { background: rgba(150, 175, 200, 0.22); border-color: rgba(180, 205, 228, 0.5); color: #d5e4f0; }
-.aug-gold { background: rgba(220, 175, 70, 0.22); border-color: rgba(255, 205, 100, 0.55); color: #ffe4a8; }
-.aug-prism { background: rgba(150, 108, 230, 0.25); border-color: rgba(170, 130, 255, 0.5); color: #d7c7ff; }
+.aug-silver { background: rgba(168, 188, 175, 0.22); border-color: rgba(211, 219, 205, 0.5); color: #ece4d2; }
+.aug-gold { background: rgba(154, 123, 66, 0.22); border-color: rgba(184, 151, 92, 0.55); color: #e2c793; }
+.aug-prism { background: rgba(165, 145, 255, 0.25); border-color: rgba(199, 188, 255, 0.5); color: #e2dcff; }
 
 .act-aug {
-  background: linear-gradient(180deg, #8f5fd6, #5f3496);
-  box-shadow: 0 0 16px rgba(150, 100, 230, 0.5);
+  background: linear-gradient(180deg, #a591ff, #523d8f);
+  box-shadow: 0 0 16px rgba(165, 145, 255, 0.5);
 }
 
 .act-target {
@@ -3494,7 +3571,7 @@ button {
 
 /* 자유선언(리치 후 선택 버림) 가능한 패 — 보라 글로우 */
 .hand-free .tile-face {
-  outline: 2px solid rgba(170, 130, 255, 0.8);
+  outline: 2px solid rgba(199, 188, 255, 0.8);
   outline-offset: 1px;
 }
 
@@ -3506,7 +3583,7 @@ button {
 
 /* 역행 표시 */
 .rev-dir {
-  color: #cfa9ff;
+  color: #c7bcff;
   font-weight: 700;
 }
 
@@ -3536,8 +3613,8 @@ button {
   width: min(540px, 94vw);
   padding: 30px 28px 24px;
   border-radius: 16px;
-  background: rgba(10, 22, 36, 0.92);
-  border: 1px solid rgba(214, 178, 94, 0.4);
+  background: rgba(13, 23, 18, 0.92);
+  border: 1px solid rgba(184, 151, 92, 0.4);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
 }
 
@@ -3546,19 +3623,19 @@ button {
   text-align: center;
   font-size: 26px;
   letter-spacing: 8px;
-  color: #d6b25e;
-  text-shadow: 0 2px 12px rgba(214, 178, 94, 0.3);
+  color: #b8975c;
+  text-shadow: 0 2px 12px rgba(184, 151, 92, 0.3);
 }
 
 .waitroom-room {
   margin: 6px 0 18px;
   text-align: center;
-  color: #8fa8bd;
+  color: #93a89b;
   font-size: 13px;
 }
 
 .waitroom-room b {
-  color: #e8e4d8;
+  color: #ece4d2;
 }
 
 .mode-select {
@@ -3574,10 +3651,10 @@ button {
   align-items: center;
   gap: 2px;
   padding: 10px 6px;
-  border: 1px solid rgba(143, 168, 189, 0.28);
+  border: 1px solid rgba(147, 168, 155, 0.28);
   border-radius: 9px;
-  background: rgba(143, 168, 189, 0.08);
-  color: #8fa8bd;
+  background: rgba(147, 168, 155, 0.08);
+  color: #93a89b;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
@@ -3587,13 +3664,13 @@ button {
 }
 
 .mode-btn:not(:disabled):hover {
-  border-color: rgba(231, 196, 112, 0.6);
+  border-color: rgba(184, 151, 92, 0.6);
 }
 
 .mode-btn.mode-active {
-  border-color: #e7c470;
-  background: rgba(231, 196, 112, 0.16);
-  color: #f2e4bf;
+  border-color: #b8975c;
+  background: rgba(184, 151, 92, 0.16);
+  color: #e2c793;
 }
 
 .mode-name {
@@ -3625,25 +3702,25 @@ button {
 }
 
 .seat-row.seat-me {
-  border-color: rgba(255, 215, 106, 0.4);
-  background: rgba(214, 178, 94, 0.1);
+  border-color: rgba(240, 200, 106, 0.4);
+  background: rgba(184, 151, 92, 0.1);
 }
 
 .seat-row.seat-empty {
   opacity: 0.5;
-  border: 1px dashed rgba(143, 168, 189, 0.35);
+  border: 1px dashed rgba(147, 168, 155, 0.35);
   background: transparent;
 }
 
 .seat-idx {
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
   text-align: center;
 }
 
 .seat-vacant {
   grid-column: 2 / -1;
-  color: #6f8399;
+  color: #5f7469;
   font-size: 13px;
 }
 
@@ -3663,7 +3740,7 @@ button {
 }
 
 .seat-you {
-  color: #8fa8bd;
+  color: #93a89b;
   font-weight: 400;
   font-size: 12px;
 }
@@ -3672,8 +3749,8 @@ button {
   margin-left: 4px;
   padding: 1px 5px;
   border-radius: 5px;
-  background: rgba(143, 168, 189, 0.22);
-  color: #b9cbdb;
+  background: rgba(147, 168, 155, 0.22);
+  color: #c2d0c5;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 1px;
@@ -3693,14 +3770,14 @@ button {
   padding: 2px 6px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.06);
-  color: #b9cbdb;
+  color: #c2d0c5;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .stat-chip-empty {
-  color: #6f8399;
+  color: #5f7469;
   font-style: italic;
 }
 
@@ -3720,18 +3797,18 @@ button {
 }
 
 .badge-host {
-  background: rgba(214, 178, 94, 0.25);
-  color: #ffd76a;
+  background: rgba(184, 151, 92, 0.25);
+  color: #f0c86a;
 }
 
 .badge-ready {
-  background: rgba(96, 200, 128, 0.22);
-  color: #8fe3a1;
+  background: rgba(101, 195, 136, 0.22);
+  color: #93dfa8;
 }
 
 .badge-wait {
-  background: rgba(143, 168, 189, 0.18);
-  color: #9db4c8;
+  background: rgba(147, 168, 155, 0.18);
+  color: #a8bcaf;
 }
 
 .seat-kick {
@@ -3740,14 +3817,14 @@ button {
   padding: 0;
   border: none;
   border-radius: 6px;
-  background: rgba(226, 90, 90, 0.2);
-  color: #ff9d9d;
+  background: rgba(218, 98, 98, 0.2);
+  color: #f9a3a3;
   font-size: 12px;
   line-height: 1;
 }
 
 .seat-kick:hover {
-  background: rgba(226, 90, 90, 0.4);
+  background: rgba(218, 98, 98, 0.4);
 }
 
 .waitroom-actions {
@@ -3773,27 +3850,27 @@ button {
 
 .wr-bot {
   flex: 0 0 auto;
-  background: rgba(143, 168, 189, 0.2);
-  color: #cfe0ef;
+  background: rgba(147, 168, 155, 0.2);
+  color: #ece4d2;
 }
 
 .wr-bot:not(:disabled):hover {
-  background: rgba(143, 168, 189, 0.35);
+  background: rgba(147, 168, 155, 0.35);
 }
 
 .wr-start {
-  background: linear-gradient(180deg, #e7c470, #c39a3e);
-  color: #241a05;
+  background: linear-gradient(180deg, #b8975c, #9a7b42);
+  color: #4a3a22;
 }
 
 .wr-ready {
-  background: linear-gradient(180deg, #61c880, #3d9a5c);
-  color: #06210f;
+  background: linear-gradient(180deg, #66c388, #429563);
+  color: #072011;
 }
 
 .wr-unready {
-  background: rgba(143, 168, 189, 0.2);
-  color: #cfe0ef;
+  background: rgba(147, 168, 155, 0.2);
+  color: #ece4d2;
 }
 
 .wr-btn:not(:disabled):hover {
@@ -3803,7 +3880,7 @@ button {
 .waitroom-hint {
   margin: 14px 0 0;
   text-align: center;
-  color: #8fa8bd;
+  color: #93a89b;
   font-size: 12px;
 }
 
@@ -3818,17 +3895,17 @@ button {
 
 .go-tab {
   padding: 7px 20px;
-  border: 1px solid rgba(214, 178, 94, 0.35);
+  border: 1px solid rgba(184, 151, 92, 0.35);
   border-radius: 999px;
   background: transparent;
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 13px;
   font-weight: 700;
 }
 
 .go-tab.active {
-  background: rgba(214, 178, 94, 0.22);
-  color: #ffd76a;
+  background: rgba(184, 151, 92, 0.22);
+  color: #f0c86a;
 }
 
 .stats-list {
@@ -3860,11 +3937,11 @@ button {
   gap: 5px;
   font-weight: 800;
   font-size: 15px;
-  color: #ffd76a;
+  color: #f0c86a;
 }
 
 .stats-career-note {
-  color: #8fa8bd;
+  color: #93a89b;
   font-size: 11px;
 }
 
@@ -3873,7 +3950,7 @@ button {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
-  color: #7f97ac;
+  color: #7b9084;
 }
 
 .stats-grid {
@@ -3894,13 +3971,13 @@ button {
 
 .stats-k {
   font-size: 10px;
-  color: #7f97ac;
+  color: #7b9084;
 }
 
 .stats-v {
   font-size: 13px;
   font-weight: 800;
-  color: #e8e4d8;
+  color: #ece4d2;
   font-variant-numeric: tabular-nums;
 }
 
@@ -3920,8 +3997,8 @@ button {
   flex-direction: column;
   padding: 10px 16px 14px;
   border-radius: 14px;
-  background: rgba(10, 22, 36, 0.97);
-  border: 1px solid rgba(214, 178, 94, 0.4);
+  background: rgba(13, 23, 18, 0.97);
+  border: 1px solid rgba(184, 151, 92, 0.4);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
   animation: bar-in 0.18s ease-out;
 }
@@ -3933,7 +4010,7 @@ button {
   flex: 0 0 auto;
   font-size: 17px;
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
   letter-spacing: 4px;
   padding-bottom: 8px;
   margin: -4px -4px 0;
@@ -3952,7 +4029,7 @@ button {
 }
 
 .settings-grip {
-  color: #6d8398;
+  color: #5f7469;
   font-size: 15px;
   letter-spacing: 0;
   line-height: 1;
@@ -3980,7 +4057,7 @@ button {
   border-radius: 7px;
   border: none;
   background: rgba(255, 255, 255, 0.08);
-  color: #b9c8d6;
+  color: #c2d0c5;
   font-size: 13px;
 }
 
@@ -4035,16 +4112,16 @@ button {
   gap: 14px;
   padding: 12px 4px 4px;
   margin-top: 6px;
-  border-top: 1px solid rgba(160, 24, 44, 0.35);
+  border-top: 1px solid rgba(152, 32, 50, 0.35);
 }
 
 .abort-btn {
   flex: 0 0 auto;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(160, 24, 44, 0.6);
-  background: rgba(160, 24, 44, 0.16);
-  color: #ffcdd4;
+  border: 1px solid rgba(152, 32, 50, 0.6);
+  background: rgba(152, 32, 50, 0.16);
+  color: #f7f3e8;
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
@@ -4052,24 +4129,24 @@ button {
 }
 
 .abort-btn:hover {
-  background: rgba(160, 24, 44, 0.3);
+  background: rgba(152, 32, 50, 0.3);
 }
 
 .abort-btn-on {
-  background: rgba(160, 24, 44, 0.85);
-  border-color: rgba(255, 120, 138, 0.9);
-  color: #fff;
+  background: rgba(152, 32, 50, 0.85);
+  border-color: rgba(247, 128, 144, 0.9);
+  color: #f7f3e8;
 }
 
 .settings-label {
   font-size: 15px;
   font-weight: 700;
-  color: #e8e4d8;
+  color: #ece4d2;
 }
 
 .settings-desc {
   font-size: 12px;
-  color: #8fa8bd;
+  color: #93a89b;
   line-height: 1.4;
 }
 
@@ -4079,13 +4156,13 @@ button {
   height: 29px;
   border-radius: 999px;
   border: none;
-  background: rgba(143, 168, 189, 0.3);
+  background: rgba(147, 168, 155, 0.3);
   position: relative;
   transition: background 0.18s ease;
 }
 
 .toggle-on {
-  background: linear-gradient(180deg, #61c880, #3d9a5c);
+  background: linear-gradient(180deg, #66c388, #429563);
 }
 
 .toggle-knob {
@@ -4095,7 +4172,7 @@ button {
   width: 23px;
   height: 23px;
   border-radius: 50%;
-  background: #fff;
+  background: #f7f3e8;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
   transition: transform 0.18s ease;
 }
@@ -4116,7 +4193,7 @@ button {
 
 .settings-slider input[type="range"] {
   width: 120px;
-  accent-color: #61c880;
+  accent-color: #66c388;
   cursor: pointer;
 }
 
@@ -4125,7 +4202,7 @@ button {
   text-align: right;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  color: #cfc9ba;
+  color: #c2d0c5;
 }
 
 /* ─────────────── 액티브 증강 버튼 ─────────────── */
@@ -4138,9 +4215,9 @@ button {
 .aug-btn {
   padding: 9px 16px;
   border-radius: 10px;
-  border: 1px solid rgba(170, 130, 255, 0.4);
-  background: rgba(60, 40, 96, 0.75);
-  color: #cdbcf5;
+  border: 1px solid rgba(199, 188, 255, 0.4);
+  background: rgba(58, 43, 99, 0.75);
+  color: #c7bcff;
   font-size: 15px;
   font-weight: 800;
   letter-spacing: 1px;
@@ -4153,10 +4230,10 @@ button {
 }
 
 .aug-btn-on {
-  background: linear-gradient(180deg, #8f5fd6, #5f3496);
-  color: #fff;
-  border-color: rgba(190, 150, 255, 0.7);
-  box-shadow: 0 0 18px rgba(150, 100, 230, 0.55);
+  background: linear-gradient(180deg, #a591ff, #523d8f);
+  color: #f7f3e8;
+  border-color: rgba(199, 188, 255, 0.7);
+  box-shadow: 0 0 18px rgba(165, 145, 255, 0.55);
   animation: turn-pulse 1.4s ease-in-out infinite;
 }
 
@@ -4174,8 +4251,8 @@ button {
   gap: 6px;
   padding: 8px;
   border-radius: 12px;
-  background: rgba(10, 22, 36, 0.97);
-  border: 1px solid rgba(170, 130, 255, 0.5);
+  background: rgba(13, 23, 18, 0.97);
+  border: 1px solid rgba(199, 188, 255, 0.5);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
   min-width: 170px;
   /* 선택지가 많아도(염색 등) 화면을 넘지 않게 — 넘치면 스크롤 */
@@ -4197,20 +4274,20 @@ button {
   gap: 5px;
   padding: 4px 8px;
   border-radius: 10px;
-  background: rgba(24, 20, 44, 0.9);
-  border: 1px solid rgba(170, 130, 255, 0.55);
-  box-shadow: 0 0 10px rgba(150, 110, 240, 0.28);
+  background: rgba(36, 26, 61, 0.9);
+  border: 1px solid rgba(199, 188, 255, 0.55);
+  box-shadow: 0 0 10px rgba(165, 145, 255, 0.28);
 }
 .ai-badge-tag {
   font-size: 11px;
   font-weight: 700;
-  color: rgba(210, 190, 255, 0.95);
+  color: rgba(226, 220, 255, 0.95);
   letter-spacing: 0.03em;
 }
 .ai-badge-text {
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: #f7f3e8;
 }
 .ai-badge-tiles {
   display: inline-flex;
@@ -4227,14 +4304,14 @@ button {
   padding: 6px 14px;
   margin: 4px 0;
   border-radius: 12px;
-  background: rgba(24, 20, 44, 0.95);
-  border: 1px solid rgba(190, 150, 255, 0.7);
-  box-shadow: 0 0 14px rgba(160, 110, 240, 0.4);
+  background: rgba(36, 26, 61, 0.95);
+  border: 1px solid rgba(199, 188, 255, 0.7);
+  box-shadow: 0 0 14px rgba(165, 145, 255, 0.4);
 }
 .arm-hint-text {
   font-size: 14px;
   font-weight: 700;
-  color: rgba(220, 200, 255, 0.98);
+  color: rgba(226, 220, 255, 0.98);
 }
 .arm-hint-cancel,
 .arm-sub-cancel {
@@ -4242,7 +4319,7 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: #f7f3e8;
   font-size: 13px;
   cursor: pointer;
 }
@@ -4255,13 +4332,13 @@ button {
   padding: 8px 14px;
   margin: 4px 0;
   border-radius: 12px;
-  background: rgba(10, 22, 36, 0.97);
-  border: 1px solid rgba(170, 130, 255, 0.6);
+  background: rgba(13, 23, 18, 0.97);
+  border: 1px solid rgba(199, 188, 255, 0.6);
 }
 .arm-sub-label {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(205, 185, 255, 0.9);
+  color: rgba(226, 220, 255, 0.9);
 }
 .arm-sub-btn {
   display: inline-flex;
@@ -4269,9 +4346,9 @@ button {
   gap: 6px;
   padding: 8px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(190, 150, 255, 0.6);
-  background: linear-gradient(180deg, rgba(120, 80, 200, 0.55), rgba(80, 50, 150, 0.55));
-  color: #fff;
+  border: 1px solid rgba(199, 188, 255, 0.6);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.55), rgba(82, 61, 143, 0.55));
+  color: #f7f3e8;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -4281,32 +4358,32 @@ button {
 /* 선택 모드에서 발동 대상이 되는 손패 강조 */
 .hand-armable {
   cursor: pointer;
-  outline: 2px solid rgba(200, 160, 255, 0.95);
+  outline: 2px solid rgba(199, 188, 255, 0.95);
   outline-offset: -1px;
-  box-shadow: 0 0 12px 2px rgba(170, 120, 255, 0.75);
+  box-shadow: 0 0 12px 2px rgba(199, 188, 255, 0.75);
   animation: armable-pulse 1.1s ease-in-out infinite;
 }
 @keyframes armable-pulse {
-  0%, 100% { box-shadow: 0 0 8px 1px rgba(170, 120, 255, 0.55); }
-  50% { box-shadow: 0 0 16px 3px rgba(190, 140, 255, 0.95); }
+  0%, 100% { box-shadow: 0 0 8px 1px rgba(199, 188, 255, 0.55); }
+  50% { box-shadow: 0 0 16px 3px rgba(199, 188, 255, 0.95); }
 }
 .aug-btn-armed {
-  outline: 2px solid rgba(200, 160, 255, 0.95);
-  box-shadow: 0 0 14px rgba(170, 120, 255, 0.8);
+  outline: 2px solid rgba(199, 188, 255, 0.95);
+  box-shadow: 0 0 14px rgba(199, 188, 255, 0.8);
 }
 
 /* 무장(클릭 발동) 대상 — 상대(전체 영역) 강조 + 클릭 안내 태그 */
 .opp-armable {
   cursor: pointer;
   border-radius: 12px;
-  outline: 2px solid rgba(200, 160, 255, 0.95);
+  outline: 2px solid rgba(199, 188, 255, 0.95);
   outline-offset: 4px;
-  box-shadow: 0 0 18px 3px rgba(170, 120, 255, 0.7);
+  box-shadow: 0 0 18px 3px rgba(199, 188, 255, 0.7);
   animation: armable-pulse 1.1s ease-in-out infinite;
 }
 .opp-armable:hover {
-  outline-color: rgba(230, 200, 255, 1);
-  box-shadow: 0 0 26px 6px rgba(190, 140, 255, 0.95);
+  outline-color: rgba(226, 220, 255, 1);
+  box-shadow: 0 0 26px 6px rgba(199, 188, 255, 0.95);
 }
 .opp-arm-tag {
   position: absolute;
@@ -4316,14 +4393,14 @@ button {
   z-index: 30;
   padding: 2px 10px;
   border-radius: 10px;
-  background: rgba(24, 20, 44, 0.97);
-  border: 1px solid rgba(200, 160, 255, 0.9);
-  color: rgba(230, 210, 255, 0.98);
+  background: rgba(36, 26, 61, 0.97);
+  border: 1px solid rgba(199, 188, 255, 0.9);
+  color: rgba(247, 243, 232, 0.98);
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 0 12px rgba(170, 120, 255, 0.6);
+  box-shadow: 0 0 12px rgba(199, 188, 255, 0.6);
 }
 
 /* 무장(클릭 발동) 대상 — 바닥(버림패) 한 장 강조 */
@@ -4332,15 +4409,15 @@ button {
      (안 하면 클릭이 바닥을 통과해 배경에 떨어져 무장이 취소됨) */
   pointer-events: auto;
   cursor: pointer;
-  outline: 2px solid rgba(200, 160, 255, 0.98);
+  outline: 2px solid rgba(199, 188, 255, 0.98);
   outline-offset: -1px;
   border-radius: 4px;
-  box-shadow: 0 0 12px 2px rgba(170, 120, 255, 0.8);
+  box-shadow: 0 0 12px 2px rgba(199, 188, 255, 0.8);
   animation: armable-pulse 1.1s ease-in-out infinite;
   z-index: 5;
 }
 .rt.rt-armable:hover {
-  box-shadow: 0 0 18px 4px rgba(200, 150, 255, 1);
+  box-shadow: 0 0 18px 4px rgba(199, 188, 255, 1);
 }
 
 /* 등가교환: 상대 선택 줄은 버튼이 여럿이라 줄바꿈을 허용한다 */
@@ -4350,9 +4427,9 @@ button {
 .arm-swap-target {
   padding: 5px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(190, 150, 255, 0.7);
-  background: linear-gradient(180deg, rgba(120, 80, 200, 0.6), rgba(80, 50, 150, 0.6));
-  color: #fff;
+  border: 1px solid rgba(199, 188, 255, 0.7);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.6), rgba(82, 61, 143, 0.6));
+  color: #f7f3e8;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
@@ -4362,9 +4439,9 @@ button {
 }
 /* 등가교환으로 넘길 3장 — 선택 확정을 금색 고정 강조로 구분(선택 후보의 보라 펄스와 대비) */
 .hand-swap-picked {
-  outline: 3px solid rgba(255, 210, 90, 0.98);
+  outline: 3px solid rgba(184, 151, 92, 0.98);
   outline-offset: -1px;
-  box-shadow: 0 0 16px 3px rgba(255, 190, 70, 0.9);
+  box-shadow: 0 0 16px 3px rgba(184, 151, 92, 0.9);
   transform: translateY(-10px);
   animation: none;
 }
@@ -4373,7 +4450,7 @@ button {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: rgba(205, 185, 255, 0.85);
+  color: rgba(226, 220, 255, 0.85);
   padding: 2px 4px 2px;
 }
 
@@ -4385,8 +4462,8 @@ button {
   padding: 10px 12px;
   border-radius: 8px;
   border: none;
-  background: linear-gradient(180deg, #8f5fd6, #5f3496);
-  color: #fff;
+  background: linear-gradient(180deg, #a591ff, #523d8f);
+  color: #f7f3e8;
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
@@ -4421,8 +4498,8 @@ button {
   gap: 4px;
   padding: 7px 10px;
   border-radius: 10px;
-  background: rgba(8, 18, 30, 0.97);
-  border: 1px solid rgba(255, 120, 110, 0.6);
+  background: rgba(11, 19, 16, 0.97);
+  border: 1px solid rgba(246, 127, 119, 0.6);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   pointer-events: none;
   white-space: nowrap;
@@ -4435,13 +4512,13 @@ button {
   left: 50%;
   transform: translateX(-50%);
   border: 6px solid transparent;
-  border-top-color: rgba(8, 18, 30, 0.97);
+  border-top-color: rgba(11, 19, 16, 0.97);
 }
 
 .wait-tip-label {
   font-size: 11px;
   font-weight: 800;
-  color: #ff9d8e;
+  color: #f8a295;
   letter-spacing: 1px;
 }
 
@@ -4463,16 +4540,16 @@ button {
   gap: 7px;
   padding: 5px 11px 6px;
   border-radius: 11px;
-  background: rgba(8, 22, 36, 0.95);
-  border: 1px solid rgba(90, 170, 235, 0.7);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(70, 150, 220, 0.35);
+  background: rgba(13, 23, 18, 0.95);
+  border: 1px solid rgba(100, 173, 212, 0.7);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(82, 154, 196, 0.35);
   animation: bar-in 0.25s ease-out;
   z-index: 25;
 }
 
 .waits-badge-mine {
-  border-color: rgba(255, 130, 110, 0.75);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 14px rgba(255, 120, 90, 0.4);
+  border-color: rgba(246, 136, 119, 0.75);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 14px rgba(245, 126, 100, 0.4);
 }
 
 .waits-badge-label {
@@ -4482,25 +4559,25 @@ button {
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 1px;
-  color: #9fd0f5;
+  color: #9ecee6;
   white-space: nowrap;
 }
 
 .waits-badge-mine .waits-badge-label {
-  color: #ffb0a0;
+  color: #f9b4a6;
 }
 
 /* 오픈 리치로 공개된 오름패 — 전원에게 크게, 눈에 띄게 */
 .waits-badge-open {
   padding: 6px 13px 7px;
-  border-color: rgba(255, 205, 90, 0.9);
-  background: rgba(40, 26, 6, 0.95);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 18px rgba(255, 190, 70, 0.5);
+  border-color: rgba(184, 151, 92, 0.9);
+  background: rgba(74, 58, 34, 0.95);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 18px rgba(184, 151, 92, 0.5);
   animation: bar-in 0.25s ease-out, open-riichi-pulse 1.6s ease-in-out infinite;
 }
 
 .waits-badge-open .waits-badge-label {
-  color: #ffdd88;
+  color: #cfae76;
 }
 
 .waits-badge-open .waits-badge-tiles .tile-mini {
@@ -4509,15 +4586,15 @@ button {
 }
 
 @keyframes open-riichi-pulse {
-  0%, 100% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 14px rgba(255, 190, 70, 0.4); }
-  50% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 26px rgba(255, 205, 90, 0.7); }
+  0%, 100% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 14px rgba(184, 151, 92, 0.4); }
+  50% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 26px rgba(184, 151, 92, 0.7); }
 }
 
 .waits-badge-owner {
   padding: 0 7px;
   border-radius: 999px;
-  background: rgba(90, 170, 235, 0.25);
-  color: #d6ecff;
+  background: rgba(100, 173, 212, 0.25);
+  color: #f7f3e8;
   font-size: 12px;
   font-weight: 700;
 }
@@ -4553,8 +4630,8 @@ button {
   max-width: min(240px, 78vw);
   padding: 9px 12px;
   border-radius: 10px;
-  background: rgba(10, 22, 36, 0.98);
-  border: 1px solid rgba(170, 130, 255, 0.55);
+  background: rgba(13, 23, 18, 0.98);
+  border: 1px solid rgba(199, 188, 255, 0.55);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   text-align: left;
   white-space: normal;
@@ -4567,7 +4644,7 @@ button {
 }
 
 .aug-pill:focus {
-  outline: 2px solid rgba(190, 150, 255, 0.85);
+  outline: 2px solid rgba(199, 188, 255, 0.85);
   outline-offset: 1px;
 }
 
@@ -4599,7 +4676,7 @@ button {
   gap: 6px;
   font-size: 13px;
   font-weight: 800;
-  color: #f0ead8;
+  color: #ece4d2;
 }
 
 .aug-tip-tier {
@@ -4608,21 +4685,21 @@ button {
   opacity: 0.85;
 }
 
-.tier-txt-silver { color: #c8d8e4; }
-.tier-txt-gold { color: #ffd76a; }
-.tier-txt-prism { color: #cfa9ff; }
+.tier-txt-silver { color: #d3dbcd; }
+.tier-txt-gold { color: #f0c86a; }
+.tier-txt-prism { color: #c7bcff; }
 
 .aug-tip-desc {
   font-size: 12px;
   line-height: 1.5;
-  color: #b7c6d3;
+  color: #c2d0c5;
 }
 
 /* ─────────────── 손패 hover → 공개패 강조 ─────────────── */
 
 /* 내 손패에 마우스를 올리면 같은 종류의 버림패·후로가 청록으로 반짝인다 */
 .tile-hl .tile-face {
-  outline: 3px solid #63d6ff;
+  outline: 3px solid #6fd0f3;
   outline-offset: 0;
   border-radius: 4px;
   animation: hl-pulse 0.85s ease-in-out infinite;
@@ -4631,8 +4708,8 @@ button {
 }
 
 @keyframes hl-pulse {
-  0%, 100% { box-shadow: 0 0 6px 1px rgba(99, 214, 255, 0.65); }
-  50% { box-shadow: 0 0 16px 5px rgba(99, 214, 255, 1); }
+  0%, 100% { box-shadow: 0 0 6px 1px rgba(111, 208, 243, 0.65); }
+  50% { box-shadow: 0 0 16px 5px rgba(111, 208, 243, 1); }
 }
 
 /* ─────────────── 반응형 ─────────────── */
@@ -4995,39 +5072,39 @@ button {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 14px;
   font-weight: 700;
   transition: background 0.15s, color 0.15s;
 }
 
 .auth-tab.active {
-  background: rgba(214, 178, 94, 0.22);
-  color: #ffd76a;
+  background: rgba(184, 151, 92, 0.22);
+  color: #f0c86a;
 }
 
 .auth-optional {
-  color: #6d8398;
+  color: #5f7469;
   font-weight: 400;
 }
 
 .auth-error {
   margin: 2px 0 0;
-  color: #ff9d8e;
+  color: #f8a295;
   font-size: 13px;
   text-align: center;
 }
 
 .auth-reconnect {
-  background: linear-gradient(180deg, #5a8fd0, #33639e);
-  color: #eaf3ff;
+  background: linear-gradient(180deg, #7b9084, #3e5548);
+  color: #f7f3e8;
 }
 
 .auth-advanced-toggle {
   margin-top: 2px;
   border: none;
   background: none;
-  color: #6d8398;
+  color: #5f7469;
   font-size: 12px;
   text-align: center;
 }
@@ -5048,6 +5125,9 @@ button {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  /* 테이블 조명(중앙 radial)은 스크롤되는 문서에 안 맞는다 — 위에서 아래로 가라앉는 지면으로 바꾼다.
+     같은 먹녹 세계지만 '판'이 아니라 '페이지'로 읽히게. */
+  background: linear-gradient(180deg, var(--felt-2) 0%, var(--felt-1) 42%, var(--felt-0) 100%);
 }
 
 .home-nav {
@@ -5055,8 +5135,8 @@ button {
   align-items: center;
   gap: 12px;
   padding: 14px 26px;
-  background: rgba(6, 14, 24, 0.75);
-  border-bottom: 1px solid rgba(214, 178, 94, 0.25);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -5067,12 +5147,11 @@ button {
   font-size: 22px;
   font-weight: 900;
   letter-spacing: 6px;
-  color: #d6b25e;
-  text-shadow: 0 2px 10px rgba(214, 178, 94, 0.35);
+  color: var(--brass-bright);
 }
 
 .home-tagline {
-  color: #7f97ac;
+  color: #7b9084;
   font-size: 12px;
 }
 
@@ -5083,7 +5162,7 @@ button {
   align-items: center;
   gap: 7px;
   font-weight: 700;
-  color: #e8e4d8;
+  color: #ece4d2;
 }
 
 .home-admin-badge {
@@ -5091,9 +5170,9 @@ button {
   border-radius: 999px;
   font-size: 10px;
   font-weight: 800;
-  background: rgba(226, 90, 90, 0.25);
-  border: 1px solid rgba(255, 120, 100, 0.5);
-  color: #ffb9a8;
+  background: rgba(218, 98, 98, 0.25);
+  border: 1px solid rgba(246, 127, 109, 0.5);
+  color: #fabcad;
 }
 
 .home-logout {
@@ -5101,7 +5180,7 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.05);
-  color: #b9c8d6;
+  color: #c2d0c5;
   font-size: 13px;
 }
 
@@ -5126,12 +5205,18 @@ button {
   width: 100%;
 }
 
+/* 카드는 전부 조용하게 — 여섯 장 모두에 황동 테두리를 두르면 어느 것도 강조가 아니게 된다.
+   황동은 지금 눌러야 할 카드(방 만들기가 든 카드) 하나에만 남긴다. */
 .home-card {
   padding: 22px 24px;
-  border-radius: 16px;
-  background: rgba(10, 22, 36, 0.88);
-  border: 1px solid rgba(214, 178, 94, 0.28);
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.4);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
+}
+
+.home-card:has(.home-create) {
+  border-color: var(--brass-line);
 }
 
 /* 상단 3카드: 왼쪽(대국+내 통계) 세로 스택 + 오른쪽(내 증강 통계) 2열 배치 */
@@ -5198,7 +5283,7 @@ button {
   margin: 0 0 14px;
   font-size: 17px;
   letter-spacing: 2px;
-  color: #ffd76a;
+  color: #f0c86a;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5218,7 +5303,7 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.05);
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 14px;
 }
 
@@ -5228,19 +5313,20 @@ button {
   width: 100%;
   padding: 16px;
   border: none;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #e7c470, #c39a3e);
-  color: #241a05;
+  border-radius: var(--r-md);
+  /* 단색 황동 + 위쪽 안쪽 하이라이트. 세로 그라디언트 + 색 글로우는 웹 2.0 광택이다. */
+  background: var(--brass);
+  color: #241c0c;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: 3px;
-  box-shadow: 0 6px 20px rgba(214, 178, 94, 0.3);
-  transition: transform 0.12s, box-shadow 0.12s;
+  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 248, 230, 0.28);
+  transition: transform 0.14s var(--ease), background 0.14s var(--ease);
 }
 
 .home-create:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(214, 178, 94, 0.45);
+  transform: translateY(-1px);
+  background: var(--brass-bright);
 }
 
 .home-join {
@@ -5253,9 +5339,9 @@ button {
   flex: 1;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid #34506b;
-  background: #0e2237;
-  color: #e8e4d8;
+  border: 1px solid #33483d;
+  background: #152119;
+  color: #ece4d2;
   font-size: 16px;
   letter-spacing: 4px;
   font-weight: 700;
@@ -5266,8 +5352,8 @@ button {
   padding: 12px 22px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(180deg, #4f8fce, #2d5f96);
-  color: #fff;
+  background: linear-gradient(180deg, #4a86bd, #2c5a88);
+  color: #f7f3e8;
   font-size: 15px;
   font-weight: 800;
 }
@@ -5279,22 +5365,22 @@ button {
   margin-top: 10px;
   padding: 10px;
   border-radius: 10px;
-  border: 1px dashed rgba(143, 200, 130, 0.5);
-  background: rgba(96, 200, 128, 0.1);
-  color: #8fe3a1;
+  border: 1px dashed rgba(141, 196, 133, 0.5);
+  background: rgba(101, 195, 136, 0.1);
+  color: #93dfa8;
   font-size: 13px;
   font-weight: 700;
 }
 
 .home-hint {
   margin: 14px 0 0;
-  color: #7f97ac;
+  color: #7b9084;
   font-size: 12.5px;
   line-height: 1.6;
 }
 
 .home-empty {
-  color: #6d8398;
+  color: #5f7469;
   font-size: 13px;
   text-align: center;
   padding: 18px 0;
@@ -5329,12 +5415,12 @@ button {
   font-size: 14px;
   padding: 4px 0;
   border-radius: 8px;
-  background: rgba(143, 168, 189, 0.15);
-  color: #b9cbdb;
+  background: rgba(147, 168, 155, 0.15);
+  color: #c2d0c5;
 }
 
-.replay-rank-1 { background: rgba(214, 178, 94, 0.25); color: #ffd76a; }
-.replay-rank-2 { background: rgba(180, 205, 225, 0.2); color: #d5e4f0; }
+.replay-rank-1 { background: rgba(184, 151, 92, 0.25); color: #f0c86a; }
+.replay-rank-2 { background: rgba(194, 208, 197, 0.2); color: #ece4d2; }
 
 .replay-meta {
   flex: 1;
@@ -5346,12 +5432,12 @@ button {
 
 .replay-date {
   font-size: 12px;
-  color: #8fa8bd;
+  color: #93a89b;
 }
 
 .replay-players {
   font-size: 13px;
-  color: #d7e4ee;
+  color: #ece4d2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5361,21 +5447,21 @@ button {
   padding: 8px 14px;
   border: none;
   border-radius: 8px;
-  background: rgba(79, 143, 206, 0.25);
-  border: 1px solid rgba(100, 175, 255, 0.4);
-  color: #bcdcff;
+  background: rgba(74, 134, 189, 0.25);
+  border: 1px solid rgba(109, 181, 231, 0.4);
+  color: #ece4d2;
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.replay-open:hover { background: rgba(79, 143, 206, 0.45); }
+.replay-open:hover { background: rgba(74, 134, 189, 0.45); }
 
 .live-code {
   flex: 0 0 auto;
   font-weight: 800;
   letter-spacing: 2px;
-  color: #ffd76a;
+  color: #f0c86a;
   font-size: 14px;
 }
 
@@ -5405,11 +5491,11 @@ button {
 .lb-table thead th {
   position: sticky;
   top: 0;
-  background: rgba(10, 22, 36, 0.96);
-  color: #9db4c8;
+  background: rgba(13, 23, 18, 0.96);
+  color: #a8bcaf;
   font-weight: 700;
   font-size: 12px;
-  border-bottom: 1px solid rgba(214, 178, 94, 0.28);
+  border-bottom: 1px solid rgba(184, 151, 92, 0.28);
   z-index: 1;
 }
 
@@ -5419,14 +5505,14 @@ button {
 .lb-table td.lb-rank {
   text-align: left;
   font-weight: 800;
-  color: #b9cbdb;
+  color: #c2d0c5;
   width: 34px;
 }
 
 .lb-table td.lb-name {
   text-align: left;
   font-weight: 700;
-  color: #e8e4d8;
+  color: #ece4d2;
 }
 
 .lb-table tbody tr {
@@ -5436,10 +5522,10 @@ button {
 .lb-table tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
 
 .lb-table tbody tr.lb-me {
-  background: rgba(214, 178, 94, 0.12);
+  background: rgba(184, 151, 92, 0.12);
 }
 
-.lb-table tbody tr.lb-me td.lb-name { color: #ffd76a; }
+.lb-table tbody tr.lb-me td.lb-name { color: #f0c86a; }
 
 /* ─────────────── 증강 통계 (홈: 내 증강 통계 · 증강 메타) ─────────────── */
 
@@ -5458,13 +5544,13 @@ button {
 .aug-block-title {
   font-size: 0.82rem;
   font-weight: 700;
-  color: #9db4c8;
+  color: #a8bcaf;
   letter-spacing: 0.02em;
 }
 
 .aug-collect {
   font-weight: 600;
-  color: #7d93a6;
+  color: #7b9084;
   margin-left: 6px;
 }
 
@@ -5480,14 +5566,14 @@ button {
   vertical-align: middle;
   opacity: 0.92;
 }
-.aug-tier-silver { color: #b7cede; }
-.aug-tier-gold { color: #ffcf6b; }
-.aug-tier-prism { color: #cfa9ff; }
+.aug-tier-silver { color: #c2d0c5; }
+.aug-tier-gold { color: #f0c86a; }
+.aug-tier-prism { color: #c7bcff; }
 
 /* 평균순위 색 (낮을수록 좋음) */
-.aug-good { color: #8fe3a1; font-weight: 700; }
-.aug-mid { color: #e6d78a; font-weight: 700; }
-.aug-bad { color: #ff8d7e; font-weight: 700; }
+.aug-good { color: #93dfa8; font-weight: 700; }
+.aug-mid { color: #cfae76; font-weight: 700; }
+.aug-bad { color: #f08a7c; font-weight: 700; }
 
 /* 시그니처 증강 */
 .aug-sig-row {
@@ -5505,8 +5591,8 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.08);
   min-width: 130px;
 }
-.aug-sig-name { font-weight: 700; color: #e7eef4; }
-.aug-sig-meta { font-size: 0.76rem; color: #9db4c8; }
+.aug-sig-name { font-weight: 700; color: #f7f3e8; }
+.aug-sig-meta { font-size: 0.76rem; color: #a8bcaf; }
 
 /* 등급 분포 막대 */
 .aug-tier-dist {
@@ -5527,19 +5613,19 @@ button {
   overflow: hidden;
 }
 .aug-tier-bar-fill { height: 100%; border-radius: 999px; }
-.aug-tier-fill-silver { background: linear-gradient(90deg, #8fa8bd, #b7cede); }
-.aug-tier-fill-gold { background: linear-gradient(90deg, #e2b64f, #ffcf6b); }
-.aug-tier-fill-prism { background: linear-gradient(90deg, #b07ef2, #cfa9ff); }
+.aug-tier-fill-silver { background: linear-gradient(90deg, #93a89b, #c2d0c5); }
+.aug-tier-fill-gold { background: linear-gradient(90deg, #b8975c, #f0c86a); }
+.aug-tier-fill-prism { background: linear-gradient(90deg, #a37ce8, #c7bcff); }
 .aug-tier-bar-n {
   font-size: 0.74rem;
-  color: #9db4c8;
+  color: #a8bcaf;
   min-width: 66px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 /* 함정 경고 */
-.aug-trap-title { color: #ffb27e; }
+.aug-trap-title { color: #cfae76; }
 .aug-trap-row {
   display: flex;
   flex-wrap: wrap;
@@ -5549,8 +5635,8 @@ button {
   font-size: 0.8rem;
   padding: 4px 9px;
   border-radius: 8px;
-  background: rgba(255, 141, 126, 0.1);
-  border: 1px solid rgba(255, 141, 126, 0.25);
+  background: rgba(240, 138, 124, 0.1);
+  border: 1px solid rgba(240, 138, 124, 0.25);
 }
 
 /* 증강 테이블 (lb-table 재사용 + 조정) */
@@ -5560,7 +5646,7 @@ button {
   text-align: left;
   white-space: nowrap;
 }
-.aug-table td.aug-name { color: #e7eef4; font-weight: 600; }
+.aug-table td.aug-name { color: #f7f3e8; font-weight: 600; }
 .aug-table th.aug-rank-h { width: 30px; }
 
 /* 증강 장인 */
@@ -5575,35 +5661,35 @@ button {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
-.aug-master-aug { font-weight: 700; color: #e7eef4; margin-bottom: 3px; }
-.aug-master-who { font-size: 0.82rem; color: #d7c98a; }
-.aug-master-g { color: #7d93a6; margin-left: 4px; font-size: 0.74rem; }
+.aug-master-aug { font-weight: 700; color: #f7f3e8; margin-bottom: 3px; }
+.aug-master-who { font-size: 0.82rem; color: #b8975c; }
+.aug-master-g { color: #7b9084; margin-left: 4px; font-size: 0.74rem; }
 
 /* ─────────────── 증강 도감 홈 진입 ─────────────── */
 .home-head-actions { display: flex; align-items: center; gap: 8px; }
 .home-codex-btn {
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(214, 178, 94, 0.4);
-  background: rgba(214, 178, 94, 0.12);
-  color: #e7d9a8;
+  border: 1px solid rgba(184, 151, 92, 0.4);
+  background: rgba(184, 151, 92, 0.12);
+  color: #cfae76;
   font-size: 12.5px;
   font-weight: 700;
   white-space: nowrap;
 }
-.home-codex-btn:hover { background: rgba(214, 178, 94, 0.22); }
+.home-codex-btn:hover { background: rgba(184, 151, 92, 0.22); }
 .home-codex-cta {
   margin-top: 14px;
   width: 100%;
   padding: 11px 14px;
   border-radius: 10px;
-  border: 1px solid rgba(214, 178, 94, 0.35);
-  background: linear-gradient(90deg, rgba(214, 178, 94, 0.14), rgba(207, 169, 255, 0.10));
-  color: #ecdfb2;
+  border: 1px solid rgba(184, 151, 92, 0.35);
+  background: linear-gradient(90deg, rgba(184, 151, 92, 0.14), rgba(199, 188, 255, 0.10));
+  color: #cfae76;
   font-size: 13px;
   font-weight: 700;
 }
-.home-codex-cta:hover { border-color: rgba(214, 178, 94, 0.6); }
+.home-codex-cta:hover { border-color: rgba(184, 151, 92, 0.6); }
 
 /* ─────────────── 증강 도감 (Codex) 전체화면 ─────────────── */
 .codex {
@@ -5611,7 +5697,7 @@ button {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  background: radial-gradient(1200px 600px at 50% -10%, rgba(40, 34, 60, 0.6), transparent), #0a1119;
+  background: radial-gradient(1200px 600px at 50% -10%, rgba(28, 43, 36, 0.6), transparent), #0b1310;
 }
 .codex-nav { gap: 14px; }
 .codex-back {
@@ -5619,7 +5705,7 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.05);
-  color: #cdd9e4;
+  color: #ece4d2;
   font-size: 13px;
   font-weight: 600;
 }
@@ -5629,9 +5715,9 @@ button {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 800;
-  background: rgba(143, 227, 161, 0.14);
-  border: 1px solid rgba(143, 227, 161, 0.35);
-  color: #b6e9c2;
+  background: rgba(147, 223, 168, 0.14);
+  border: 1px solid rgba(147, 223, 168, 0.35);
+  color: #b9e6c6;
   font-variant-numeric: tabular-nums;
 }
 .codex-tabs { display: flex; gap: 4px; }
@@ -5640,14 +5726,14 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: transparent;
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 13px;
   font-weight: 700;
 }
 .codex-tab-on {
-  background: rgba(214, 178, 94, 0.16);
-  border-color: rgba(214, 178, 94, 0.45);
-  color: #ecdfb2;
+  background: rgba(184, 151, 92, 0.16);
+  border-color: rgba(184, 151, 92, 0.45);
+  color: #cfae76;
 }
 
 .codex-toolbar {
@@ -5667,20 +5753,20 @@ button {
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.03);
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 12.5px;
   font-weight: 700;
 }
-.codex-filter-on { background: rgba(255, 255, 255, 0.12); color: #e7eef4; }
-.codex-filter-silver.codex-filter-on { border-color: #b7cede; color: #cfe0ee; }
-.codex-filter-gold.codex-filter-on { border-color: #ffcf6b; color: #ffde96; }
-.codex-filter-prism.codex-filter-on { border-color: #cfa9ff; color: #ddc2ff; }
+.codex-filter-on { background: rgba(255, 255, 255, 0.12); color: #f7f3e8; }
+.codex-filter-silver.codex-filter-on { border-color: #c2d0c5; color: #ece4d2; }
+.codex-filter-gold.codex-filter-on { border-color: #f0c86a; color: #cfae76; }
+.codex-filter-prism.codex-filter-on { border-color: #c7bcff; color: #e2dcff; }
 .codex-only {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  color: #9db4c8;
+  color: #a8bcaf;
   cursor: pointer;
 }
 .codex-search {
@@ -5689,7 +5775,7 @@ button {
   border-radius: 9px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.04);
-  color: #e7eef4;
+  color: #f7f3e8;
   font-size: 13px;
   min-width: 200px;
 }
@@ -5710,13 +5796,13 @@ button {
   align-items: center;
   gap: 8px;
 }
-.codex-group-silver { color: #b7cede; }
-.codex-group-gold { color: #ffcf6b; }
-.codex-group-prism { color: #cfa9ff; }
+.codex-group-silver { color: #c2d0c5; }
+.codex-group-gold { color: #f0c86a; }
+.codex-group-prism { color: #c7bcff; }
 .codex-group-n {
   font-size: 11px;
   font-weight: 700;
-  color: #7d93a6;
+  color: #7b9084;
   padding: 1px 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
@@ -5726,38 +5812,42 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 12px;
 }
+/* 등급 표시: 왼쪽만 3px 두껍게 하는 건 만들어진 UI의 가장 알아보기 쉬운 표식이다.
+   정보(은·금·프리즘)는 남기고, 테두리 전체 색 + 좌상단 옅은 틴트로 옮긴다.
+   108장 그리드에서 훑을 때의 식별성은 틴트가 대신한다. */
 .codex-card {
+  --rarity: #a8bcaf;
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 13px 15px;
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-left-width: 3px;
-  transition: transform 0.08s ease, border-color 0.12s ease, background 0.12s ease;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  background:
+    radial-gradient(ellipse 130% 90% at 0% 0%, color-mix(in oklab, var(--rarity) 13%, transparent), transparent 62%),
+    var(--surface-2);
+  border: 1px solid var(--line);
+  border-color: color-mix(in oklab, var(--rarity) 32%, transparent);
+  transition: transform 0.14s var(--ease), border-color 0.14s var(--ease), background 0.14s var(--ease);
 }
 .codex-card:hover {
   transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in oklab, var(--rarity) 62%, transparent);
 }
-.codex-card-silver { border-left-color: #8fa8bd; }
-.codex-card-gold { border-left-color: #e2b64f; }
-.codex-card-prism { border-left-color: #b07ef2; }
-.codex-card-silver:hover { border-color: rgba(183, 206, 222, 0.5); }
-.codex-card-gold:hover { border-color: rgba(255, 207, 107, 0.5); }
-.codex-card-prism:hover { border-color: rgba(207, 169, 255, 0.5); }
+.codex-card-silver { --rarity: #a8bcaf; }
+.codex-card-gold { --rarity: #c2a068; }
+.codex-card-prism { --rarity: #a37ce8; }
 .codex-card-locked { opacity: 0.5; filter: saturate(0.55); }
 .codex-card-locked:hover { opacity: 0.8; }
 .codex-card-top { display: flex; align-items: center; justify-content: space-between; }
-.codex-check { color: #8fe3a1; font-weight: 900; font-size: 13px; }
+.codex-check { color: #93dfa8; font-weight: 900; font-size: 13px; }
 .codex-check-sm { margin-left: 6px; font-size: 11px; }
-.codex-card-name { font-weight: 800; color: #eef3f8; font-size: 14.5px; }
+.codex-card-name { font-weight: 800; color: #f7f3e8; font-size: 14.5px; }
 .codex-card-desc {
   font-size: 11.8px;
   line-height: 1.45;
-  color: #9db4c8;
+  color: #a8bcaf;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -5766,16 +5856,16 @@ button {
 .codex-card-foot {
   margin-top: auto;
   font-size: 11.5px;
-  color: #b9c8d6;
+  color: #c2d0c5;
   font-variant-numeric: tabular-nums;
 }
-.codex-card-sample { color: #7d93a6; margin-left: 4px; }
-.codex-dim { color: #6f8395; }
+.codex-card-sample { color: #7b9084; margin-left: 4px; }
+.codex-dim { color: #5f7469; }
 
 /* 통계표 */
 .codex-table-scroll { max-height: none; }
 .codex-table th.codex-sort { cursor: pointer; user-select: none; white-space: nowrap; }
-.codex-table th.codex-sort:hover { color: #e7eef4; }
+.codex-table th.codex-sort:hover { color: #f7f3e8; }
 .codex-row { cursor: pointer; }
 .codex-row:hover td { background: rgba(255, 255, 255, 0.05); }
 
@@ -5784,7 +5874,7 @@ button {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(4, 8, 14, 0.72);
+  background: rgba(11, 19, 16, 0.72);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -5798,8 +5888,8 @@ button {
   overflow-y: auto;
   padding: 24px 26px 20px;
   border-radius: 18px;
-  background: linear-gradient(180deg, #141c28, #0d141d);
-  border: 1px solid rgba(214, 178, 94, 0.25);
+  background: linear-gradient(180deg, #101a15, #0d1712);
+  border: 1px solid rgba(184, 151, 92, 0.25);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 .codex-detail-close {
@@ -5811,17 +5901,17 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.05);
-  color: #b9c8d6;
+  color: #c2d0c5;
   font-size: 14px;
 }
 .codex-detail-close:hover { background: rgba(255, 255, 255, 0.14); }
 .codex-detail-head { display: flex; align-items: center; gap: 10px; padding-right: 36px; }
-.codex-detail-name { font-size: 21px; font-weight: 900; color: #f2f6fa; margin: 0; }
+.codex-detail-name { font-size: 21px; font-weight: 900; color: #f7f3e8; margin: 0; }
 .codex-detail-owned {
   margin-left: auto;
   font-size: 12px;
   font-weight: 800;
-  color: #8fe3a1;
+  color: #93dfa8;
   white-space: nowrap;
 }
 .codex-detail-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
@@ -5830,15 +5920,15 @@ button {
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 999px;
-  background: rgba(207, 169, 255, 0.12);
-  border: 1px solid rgba(207, 169, 255, 0.3);
-  color: #ddc2ff;
+  background: rgba(199, 188, 255, 0.12);
+  border: 1px solid rgba(199, 188, 255, 0.3);
+  color: #e2dcff;
 }
 .codex-detail-body { margin-top: 16px; }
 .codex-para {
   font-size: 13.6px;
   line-height: 1.68;
-  color: #d3dde6;
+  color: #ece4d2;
   margin: 0 0 11px;
 }
 .codex-para:last-child { margin-bottom: 0; }
@@ -5858,18 +5948,18 @@ button {
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.5px;
-  color: #d6b25e;
+  color: #b8975c;
   margin-bottom: 9px;
 }
 .codex-stat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.codex-stat-list li { font-size: 12.6px; color: #b9c8d6; font-variant-numeric: tabular-nums; }
-.codex-stat-list b { color: #e7eef4; }
+.codex-stat-list li { font-size: 12.6px; color: #c2d0c5; font-variant-numeric: tabular-nums; }
+.codex-stat-list b { color: #f7f3e8; }
 .codex-stat-empty { font-size: 12.4px; margin: 0; }
 .codex-detail-id {
   margin-top: 16px;
   text-align: right;
   font-size: 10.5px;
-  color: #566372;
+  color: #3e5548;
   font-family: ui-monospace, monospace;
 }
 
@@ -5929,7 +6019,7 @@ button {
   gap: 7px;
   min-width: 0;
   font-weight: 700;
-  color: #e8e4d8;
+  color: #ece4d2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5941,24 +6031,24 @@ button {
   align-items: center;
   gap: 12px;
   font-size: 12px;
-  color: #8fa8bd;
+  color: #93a89b;
 }
 
-.user-games { font-weight: 700; color: #b9cbdb; }
+.user-games { font-weight: 700; color: #c2d0c5; }
 
 .user-delete {
   flex: 0 0 auto;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 120, 100, 0.45);
-  background: rgba(226, 90, 90, 0.18);
-  color: #ffb9a8;
+  border: 1px solid rgba(246, 127, 109, 0.45);
+  background: rgba(218, 98, 98, 0.18);
+  color: #fabcad;
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
 }
 
-.user-delete:hover:not(:disabled) { background: rgba(226, 90, 90, 0.34); }
+.user-delete:hover:not(:disabled) { background: rgba(218, 98, 98, 0.34); }
 .user-delete:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ─────────────── 대기실 방 코드 ─────────────── */
@@ -5971,30 +6061,30 @@ button {
   margin: 12px 0 4px;
   padding: 12px;
   border-radius: 12px;
-  background: rgba(214, 178, 94, 0.1);
-  border: 1px dashed rgba(255, 215, 106, 0.5);
+  background: rgba(184, 151, 92, 0.1);
+  border: 1px dashed rgba(240, 200, 106, 0.5);
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.waitroom-code:hover { background: rgba(214, 178, 94, 0.2); }
+.waitroom-code:hover { background: rgba(184, 151, 92, 0.2); }
 
 .waitroom-code-label {
   font-size: 12px;
-  color: #9db4c8;
+  color: #a8bcaf;
 }
 
 .waitroom-code-value {
   font-size: 26px;
   font-weight: 900;
   letter-spacing: 8px;
-  color: #ffd76a;
-  text-shadow: 0 0 16px rgba(255, 215, 106, 0.4);
+  color: #f0c86a;
+  text-shadow: 0 0 16px rgba(240, 200, 106, 0.4);
 }
 
 .waitroom-code-copy {
   font-size: 12px;
-  color: #8fa8bd;
+  color: #93a89b;
 }
 
 /* ─────────────── 관전 바·리플레이 컨트롤 ─────────────── */
@@ -6007,9 +6097,9 @@ button {
   z-index: 45;
   padding: 8px 18px;
   border-radius: 999px;
-  background: rgba(226, 90, 90, 0.18);
-  border: 1px solid rgba(255, 120, 100, 0.5);
-  color: #ffb9a8;
+  background: rgba(218, 98, 98, 0.18);
+  border: 1px solid rgba(246, 127, 109, 0.5);
+  color: #fabcad;
   font-size: 13px;
   font-weight: 700;
   pointer-events: none;
@@ -6033,14 +6123,14 @@ button {
   width: min(860px, 96vw);
   padding: 10px 16px;
   border-radius: 14px;
-  background: rgba(8, 18, 30, 0.95);
-  border: 1px solid rgba(214, 178, 94, 0.4);
+  background: rgba(11, 19, 16, 0.95);
+  border: 1px solid rgba(184, 151, 92, 0.4);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 .replayer-round {
   font-weight: 800;
-  color: #ffd76a;
+  color: #f0c86a;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -6051,7 +6141,7 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
-  color: #d7e4ee;
+  color: #ece4d2;
   font-size: 14px;
 }
 
@@ -6059,9 +6149,9 @@ button {
 
 .rp-play {
   width: 44px;
-  background: rgba(214, 178, 94, 0.25);
-  border-color: rgba(255, 215, 106, 0.5);
-  color: #ffd76a;
+  background: rgba(184, 151, 92, 0.25);
+  border-color: rgba(240, 200, 106, 0.5);
+  color: #f0c86a;
 }
 
 .rp-speed {
@@ -6071,12 +6161,12 @@ button {
 
 .replayer-slider {
   flex: 1;
-  accent-color: #e7c470;
+  accent-color: #b8975c;
 }
 
 .replayer-pos {
   font-size: 12px;
-  color: #8fa8bd;
+  color: #93a89b;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -6094,7 +6184,7 @@ button {
   font-size: 14px;
   font-weight: 700;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
-  animation: toast-in 0.25s cubic-bezier(0.2, 1.2, 0.4, 1);
+  animation: toast-in 0.25s var(--ease);
   pointer-events: none;
   max-width: 90vw;
   text-align: center;
@@ -6106,15 +6196,15 @@ button {
 }
 
 .toast-error {
-  background: rgba(160, 40, 44, 0.95);
-  border: 1px solid rgba(255, 110, 110, 0.5);
-  color: #ffe3e0;
+  background: rgba(153, 47, 51, 0.95);
+  border: 1px solid rgba(246, 119, 119, 0.5);
+  color: #f7f3e8;
 }
 
 .toast-info {
-  background: rgba(16, 48, 74, 0.96);
-  border: 1px solid rgba(100, 175, 255, 0.45);
-  color: #d5eaff;
+  background: rgba(28, 43, 36, 0.96);
+  border: 1px solid rgba(109, 181, 231, 0.45);
+  color: #f7f3e8;
 }
 
 /* ─────────────── 재연결 인디케이터 ─────────────── */
@@ -6130,9 +6220,9 @@ button {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: #ffe9c2;
-  background: rgba(120, 78, 20, 0.96);
-  border-bottom: 1px solid rgba(255, 190, 90, 0.5);
+  color: #e2c793;
+  background: rgba(107, 84, 48, 0.96);
+  border-bottom: 1px solid rgba(184, 151, 92, 0.5);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
   animation: bar-in 0.25s ease;
   pointer-events: none;
@@ -6152,9 +6242,9 @@ button {
   flex-wrap: wrap;
   padding: 12px 16px;
   text-align: center;
-  color: #ffe1e6;
-  background: rgba(150, 20, 40, 0.97);
-  border-bottom: 1px solid rgba(255, 120, 138, 0.6);
+  color: #f7f3e8;
+  background: rgba(142, 28, 45, 0.97);
+  border-bottom: 1px solid rgba(247, 128, 144, 0.6);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
   animation: bar-in 0.25s ease;
   pointer-events: auto;
@@ -6175,7 +6265,7 @@ button {
 
 .abort-banner-sub {
   font-size: 13px;
-  color: #ffd0d8;
+  color: #f7f3e8;
 }
 
 .abort-banner-actions {
@@ -6193,9 +6283,9 @@ button {
 }
 
 .abort-yes {
-  border: 1px solid rgba(120, 220, 140, 0.7);
-  background: rgba(40, 160, 70, 0.9);
-  color: #fff;
+  border: 1px solid rgba(125, 215, 149, 0.7);
+  background: rgba(46, 154, 80, 0.9);
+  color: #f7f3e8;
 }
 
 .abort-yes-on {
@@ -6204,9 +6294,9 @@ button {
 }
 
 .abort-no {
-  border: 1px solid rgba(255, 150, 160, 0.7);
-  background: rgba(70, 72, 82, 0.9);
-  color: #fff;
+  border: 1px solid rgba(249, 156, 165, 0.7);
+  background: rgba(42, 61, 51, 0.9);
+  color: #f7f3e8;
 }
 
 .reconnect-spin {
@@ -6250,7 +6340,7 @@ button {
     90deg,
     transparent,
     rgba(255, 255, 255, 0.05) 30%,
-    var(--fx-glow, rgba(200, 160, 255, 0.9)) 50%,
+    var(--fx-glow, rgba(199, 188, 255, 0.9)) 50%,
     rgba(255, 255, 255, 0.05) 70%,
     transparent
   );
@@ -6282,8 +6372,8 @@ button {
   height: 3px;
   top: 0;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--fx-glow, rgba(200, 160, 255, 0.9)), transparent);
-  box-shadow: 0 0 16px var(--fx-glow, rgba(200, 160, 255, 0.7));
+  background: linear-gradient(90deg, transparent, var(--fx-glow, rgba(199, 188, 255, 0.9)), transparent);
+  box-shadow: 0 0 16px var(--fx-glow, rgba(199, 188, 255, 0.7));
   opacity: 0;
   animation: scan-sweep 0.34s ease-out 0.06s both;
 }
@@ -6304,22 +6394,22 @@ button {
  * 컷인(섬광·스캔라인)과 드래프트 카드 칩·pill 아이콘이 **같은 팔레트**를 쓴다
  * — 그래서 두 셀렉터를 한 줄에 묶어 정의한다(docs/19 §4.1).
  */
-.cutin-aug[data-aug-cat="scoring"], .aug-cat-scoring { --fx-color: #ffd76a; --fx-glow: rgba(255, 215, 120, 0.9); }
-.cutin-aug[data-aug-cat="info"],    .aug-cat-info    { --fx-color: #4adcc6; --fx-glow: rgba(90, 226, 202, 0.9); }
-.cutin-aug[data-aug-cat="hand"],    .aug-cat-hand    { --fx-color: #b07ef2; --fx-glow: rgba(190, 140, 255, 0.9); }
-.cutin-aug[data-aug-cat="shape"],   .aug-cat-shape   { --fx-color: #ff8f5e; --fx-glow: rgba(255, 150, 100, 0.9); }
-.cutin-aug[data-aug-cat="call"],    .aug-cat-call    { --fx-color: #3fe08c; --fx-glow: rgba(80, 235, 155, 0.9); }
-.cutin-aug[data-aug-cat="riichi"],  .aug-cat-riichi  { --fx-color: #ffa64a; --fx-glow: rgba(255, 176, 96, 0.9); }
-.cutin-aug[data-aug-cat="defense"], .aug-cat-defense { --fx-color: #6fb6ff; --fx-glow: rgba(120, 185, 255, 0.9); }
-.cutin-aug[data-aug-cat="disrupt"], .aug-cat-disrupt { --fx-color: #ff6fa8; --fx-glow: rgba(255, 130, 180, 0.9); }
-.cutin-aug[data-aug-cat="etc"],     .aug-cat-etc     { --fx-color: #d7c7ff; --fx-glow: rgba(215, 199, 255, 0.9); }
+.cutin-aug[data-aug-cat="scoring"], .aug-cat-scoring { --fx-color: #f0c86a; --fx-glow: rgba(207, 174, 118, 0.9); }
+.cutin-aug[data-aug-cat="info"],    .aug-cat-info    { --fx-color: #46c9b6; --fx-glow: rgba(98, 218, 205, 0.9); }
+.cutin-aug[data-aug-cat="hand"],    .aug-cat-hand    { --fx-color: #a37ce8; --fx-glow: rgba(199, 188, 255, 0.9); }
+.cutin-aug[data-aug-cat="shape"],   .aug-cat-shape   { --fx-color: #f0885c; --fx-glow: rgba(184, 151, 92, 0.9); }
+.cutin-aug[data-aug-cat="call"],    .aug-cat-call    { --fx-color: #3ecf85; --fx-glow: rgba(97, 218, 164, 0.9); }
+.cutin-aug[data-aug-cat="riichi"],  .aug-cat-riichi  { --fx-color: #b8975c; --fx-glow: rgba(184, 151, 92, 0.9); }
+.cutin-aug[data-aug-cat="defense"], .aug-cat-defense { --fx-color: #77bae9; --fx-glow: rgba(126, 189, 234, 0.9); }
+.cutin-aug[data-aug-cat="disrupt"], .aug-cat-disrupt { --fx-color: #f678aa; --fx-glow: rgba(248, 138, 182, 0.9); }
+.cutin-aug[data-aug-cat="etc"],     .aug-cat-etc     { --fx-color: #e2dcff; --fx-glow: rgba(226, 220, 255, 0.9); }
 
 /*
  * 계열 색을 실제 UI에 입힌다 — 여태 `.aug-cat-*` 클래스가 CSS에 없어서
  * 드래프트 칩·pill 아이콘이 전부 같은 회색이었다(docs/19 §0.4-5 개발 선행 항목).
  */
 .draft-cat[class*="aug-cat-"] {
-  color: color-mix(in srgb, var(--fx-color) 78%, #ffffff);
+  color: color-mix(in srgb, var(--fx-color) 78%, #f7f3e8);
   background: color-mix(in srgb, var(--fx-color) 16%, rgba(0, 0, 0, 0.34));
   border-color: color-mix(in srgb, var(--fx-color) 52%, transparent);
 }
@@ -6334,9 +6424,9 @@ button {
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--fx-color) 55%, #120a20) 14%,
-    color-mix(in srgb, var(--fx-color) 28%, #0b0614) 50%,
-    color-mix(in srgb, var(--fx-color) 55%, #120a20) 86%,
+    color-mix(in srgb, var(--fx-color) 55%, #241a3d) 14%,
+    color-mix(in srgb, var(--fx-color) 28%, #241a3d) 50%,
+    color-mix(in srgb, var(--fx-color) 55%, #241a3d) 86%,
     transparent
   );
   box-shadow: 0 0 90px var(--fx-glow);
@@ -6350,7 +6440,7 @@ button {
 .cutin-aug-icon {
   font-size: clamp(30px, 6.5vmin, 54px);
   line-height: 1;
-  filter: drop-shadow(0 0 18px var(--fx-glow, rgba(200, 160, 255, 0.8)));
+  filter: drop-shadow(0 0 18px var(--fx-glow, rgba(199, 188, 255, 0.8)));
   animation: aug-icon-pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both;
 }
 
@@ -6363,8 +6453,8 @@ button {
 
 .cutin-augment .cutin-band {
   background:
-    linear-gradient(90deg, transparent, rgba(110, 60, 190, 0.95) 14%, rgba(70, 30, 130, 0.97) 50%, rgba(110, 60, 190, 0.95) 86%, transparent);
-  box-shadow: 0 0 90px rgba(170, 110, 255, 0.55);
+    linear-gradient(90deg, transparent, rgba(124, 92, 255, 0.95) 14%, rgba(82, 61, 143, 0.97) 50%, rgba(124, 92, 255, 0.95) 86%, transparent);
+  box-shadow: 0 0 90px rgba(165, 145, 255, 0.55);
   animation: cutin-band 0.34s cubic-bezier(0.15, 1, 0.3, 1) both, augment-shimmer 1.1s linear infinite;
 }
 
@@ -6374,17 +6464,17 @@ button {
 }
 
 .cutin-augment .cutin-text {
-  color: #f1e6ff;
+  color: #f7f3e8;
   font-size: clamp(44px, 9.5vmin, 78px);
   letter-spacing: 8px;
-  text-shadow: 0 0 42px #b07ef2, 0 0 80px #7a3ebe, 0 4px 0 rgba(0, 0, 0, 0.4);
+  text-shadow: 0 0 42px #a37ce8, 0 0 80px #7c5cff, 0 4px 0 rgba(0, 0, 0, 0.4);
 }
 
 /* 무덤 도굴 — 흙빛 금 + 관 뚜껑이 열리듯 아래에서 솟는 빛 */
 .cutin-grave .cutin-band {
   background:
-    linear-gradient(90deg, transparent, rgba(96, 74, 36, 0.95) 14%, rgba(38, 28, 12, 0.98) 50%, rgba(96, 74, 36, 0.95) 86%, transparent);
-  box-shadow: 0 0 100px rgba(198, 156, 74, 0.5);
+    linear-gradient(90deg, transparent, rgba(107, 84, 48, 0.95) 14%, rgba(74, 58, 34, 0.98) 50%, rgba(107, 84, 48, 0.95) 86%, transparent);
+  box-shadow: 0 0 100px rgba(154, 123, 66, 0.5);
   animation: cutin-band 0.34s cubic-bezier(0.15, 1, 0.3, 1) both, grave-rise 1.5s ease-out both;
 }
 
@@ -6395,17 +6485,17 @@ button {
 }
 
 .cutin-grave .cutin-text {
-  color: #f3e2b4;
+  color: #e2c793;
   font-size: clamp(44px, 9.5vmin, 78px);
   letter-spacing: 8px;
-  text-shadow: 0 0 44px #c69c4a, 0 0 88px #6b4c14, 0 4px 0 rgba(0, 0, 0, 0.55);
+  text-shadow: 0 0 44px #9a7b42, 0 0 88px #6b5430, 0 4px 0 rgba(0, 0, 0, 0.55);
 }
 
 /* 스파이 적발 — 청록 형광, 정체가 드러나듯 스캔라인이 훑고 지나간다 */
 .cutin-spy .cutin-band {
   background:
-    linear-gradient(90deg, transparent, rgba(20, 96, 88, 0.95) 14%, rgba(8, 40, 38, 0.98) 50%, rgba(20, 96, 88, 0.95) 86%, transparent);
-  box-shadow: 0 0 100px rgba(74, 220, 198, 0.5);
+    linear-gradient(90deg, transparent, rgba(26, 90, 84, 0.95) 14%, rgba(10, 38, 36, 0.98) 50%, rgba(26, 90, 84, 0.95) 86%, transparent);
+  box-shadow: 0 0 100px rgba(70, 201, 182, 0.5);
   animation: cutin-band 0.34s cubic-bezier(0.15, 1, 0.3, 1) both, spy-scan 1.2s ease-out both;
 }
 
@@ -6416,10 +6506,10 @@ button {
 }
 
 .cutin-spy .cutin-text {
-  color: #d8fff6;
+  color: #f7f3e8;
   font-size: clamp(44px, 9.5vmin, 78px);
   letter-spacing: 8px;
-  text-shadow: 0 0 44px #4adcc6, 0 0 88px #10756a, 0 4px 0 rgba(0, 0, 0, 0.55);
+  text-shadow: 0 0 44px #46c9b6, 0 0 88px #186d64, 0 4px 0 rgba(0, 0, 0, 0.55);
 }
 
 /* ─────────────── 증강 테스트 패널 (관리자) ─────────────── */
@@ -6437,15 +6527,15 @@ button {
   border-radius: 9px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.04);
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 13px;
   font-weight: 700;
 }
 
 .sandbox-mode.on {
-  border-color: rgba(170, 130, 255, 0.7);
-  background: rgba(150, 108, 230, 0.22);
-  color: #e2d4ff;
+  border-color: rgba(199, 188, 255, 0.7);
+  background: rgba(165, 145, 255, 0.22);
+  color: #f7f3e8;
 }
 
 /* 인게임 열기 버튼 (좌상단, 증강 인포 패널 위) */
@@ -6456,16 +6546,16 @@ button {
   z-index: 46;
   padding: 8px 13px;
   border-radius: 999px;
-  border: 1px solid rgba(170, 130, 255, 0.5);
-  background: rgba(24, 16, 44, 0.9);
-  color: #ddc7ff;
+  border: 1px solid rgba(199, 188, 255, 0.5);
+  background: rgba(36, 26, 61, 0.9);
+  color: #e2dcff;
   font-size: 13px;
   font-weight: 800;
 }
 
 .sbx-fab:hover {
-  background: rgba(60, 34, 100, 0.95);
-  color: #f2e9ff;
+  background: rgba(58, 43, 99, 0.95);
+  color: #f7f3e8;
 }
 
 .sbx {
@@ -6480,8 +6570,8 @@ button {
   gap: 9px;
   padding: 13px 14px;
   border-radius: 14px;
-  background: rgba(10, 16, 30, 0.97);
-  border: 1px solid rgba(170, 130, 255, 0.45);
+  background: rgba(11, 19, 16, 0.97);
+  border: 1px solid rgba(199, 188, 255, 0.45);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
   animation: bar-in 0.18s ease-out;
 }
@@ -6495,7 +6585,7 @@ button {
 .sbx-title {
   font-size: 16px;
   font-weight: 800;
-  color: #e2d4ff;
+  color: #f7f3e8;
 }
 
 .sbx-mode {
@@ -6503,8 +6593,8 @@ button {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
-  background: rgba(150, 108, 230, 0.25);
-  color: #d7c7ff;
+  background: rgba(165, 145, 255, 0.25);
+  color: #e2dcff;
 }
 
 .sbx-x {
@@ -6513,7 +6603,7 @@ button {
   border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.05);
-  color: #b9c8d6;
+  color: #c2d0c5;
   font-size: 13px;
 }
 
@@ -6526,22 +6616,22 @@ button {
   flex: 1;
   padding: 9px 0;
   border-radius: 9px;
-  border: 1px solid rgba(214, 178, 94, 0.45);
-  background: rgba(214, 178, 94, 0.14);
-  color: #f0dfae;
+  border: 1px solid rgba(184, 151, 92, 0.45);
+  background: rgba(184, 151, 92, 0.14);
+  color: #cfae76;
   font-size: 12.5px;
   font-weight: 800;
 }
 
-.sbx-btn:hover { background: rgba(214, 178, 94, 0.26); }
+.sbx-btn:hover { background: rgba(184, 151, 92, 0.26); }
 
 .sbx-btn-danger {
-  border-color: rgba(224, 96, 96, 0.5);
-  background: rgba(200, 60, 60, 0.16);
-  color: #ffc9c9;
+  border-color: rgba(216, 104, 104, 0.5);
+  background: rgba(192, 68, 68, 0.16);
+  color: #fccccc;
 }
 
-.sbx-btn-danger:hover { background: rgba(200, 60, 60, 0.3); }
+.sbx-btn-danger:hover { background: rgba(192, 68, 68, 0.3); }
 
 .sbx-target,
 .sbx-filters {
@@ -6554,7 +6644,7 @@ button {
 .sbx-label {
   font-size: 11.5px;
   font-weight: 700;
-  color: #7f97ac;
+  color: #7b9084;
 }
 
 .sbx-seat {
@@ -6562,15 +6652,15 @@ button {
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.03);
-  color: #9db4c8;
+  color: #a8bcaf;
   font-size: 12px;
   font-weight: 700;
 }
 
 .sbx-seat.on {
-  border-color: rgba(170, 130, 255, 0.7);
-  background: rgba(150, 108, 230, 0.24);
-  color: #e2d4ff;
+  border-color: rgba(199, 188, 255, 0.7);
+  background: rgba(165, 145, 255, 0.24);
+  color: #f7f3e8;
 }
 
 .sbx-seat-n {
@@ -6583,9 +6673,9 @@ button {
 
 /* 시점 전환 행 — 관찰 시점은 파랑 계열로 대상(보라)과 구분한다 */
 .sbx-viewas .sbx-seat.on {
-  border-color: rgba(110, 180, 255, 0.7);
-  background: rgba(80, 150, 235, 0.24);
-  color: #d4e8ff;
+  border-color: rgba(118, 185, 233, 0.7);
+  background: rgba(92, 157, 211, 0.24);
+  color: #f7f3e8;
 }
 
 /* 상대 시점 관찰 중 상단 배너 */
@@ -6600,23 +6690,23 @@ button {
   gap: 10px;
   padding: 8px 16px;
   border-radius: 999px;
-  background: rgba(70, 130, 220, 0.22);
-  border: 1px solid rgba(120, 180, 255, 0.55);
-  color: #cfe4ff;
+  background: rgba(82, 139, 196, 0.22);
+  border: 1px solid rgba(126, 185, 234, 0.55);
+  color: #f7f3e8;
   font-size: 13px;
   font-weight: 700;
 }
 
 .sbx-observe-bar.my-turn {
-  background: rgba(230, 170, 60, 0.24);
-  border-color: rgba(255, 200, 100, 0.7);
-  color: #ffe6b8;
+  background: rgba(154, 123, 66, 0.24);
+  border-color: rgba(184, 151, 92, 0.7);
+  color: #e2c793;
   animation: sbx-observe-pulse 1.1s ease-in-out infinite;
 }
 
 @keyframes sbx-observe-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 200, 100, 0.0); }
-  50% { box-shadow: 0 0 0 6px rgba(255, 200, 100, 0.18); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(184, 151, 92, 0.0); }
+  50% { box-shadow: 0 0 0 6px rgba(184, 151, 92, 0.18); }
 }
 
 .sbx-observe-back {
@@ -6641,7 +6731,7 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.04);
-  color: #e7eef4;
+  color: #f7f3e8;
   font-size: 12.5px;
 }
 
@@ -6672,19 +6762,19 @@ button {
 .sbx-give {
   width: 32px;
   border-radius: 8px;
-  border: 1px solid rgba(170, 130, 255, 0.45);
-  background: rgba(150, 108, 230, 0.18);
-  color: #e2d4ff;
+  border: 1px solid rgba(199, 188, 255, 0.45);
+  background: rgba(165, 145, 255, 0.18);
+  color: #f7f3e8;
   font-size: 15px;
   font-weight: 800;
 }
 
-.sbx-give:hover:not(:disabled) { background: rgba(150, 108, 230, 0.4); }
+.sbx-give:hover:not(:disabled) { background: rgba(165, 145, 255, 0.4); }
 
 .sbx-give:disabled {
   border-color: rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.05);
-  color: #7f97ac;
+  color: #7b9084;
   cursor: default;
 }
 
@@ -6709,13 +6799,13 @@ button {
   gap: 5px;
   font-size: 13px;
   font-weight: 700;
-  color: #e7eef4;
+  color: #f7f3e8;
 }
 
 .sbx-desc {
   font-size: 11.5px;
   line-height: 1.45;
-  color: #8fa6ba;
+  color: #93a89b;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -6727,8 +6817,8 @@ button {
   overflow-y: auto;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(170, 130, 255, 0.35);
-  background: rgba(24, 16, 44, 0.7);
+  border: 1px solid rgba(199, 188, 255, 0.35);
+  background: rgba(36, 26, 61, 0.7);
 }
 
 .sbx-detail-head {
@@ -6736,12 +6826,12 @@ button {
   align-items: center;
   gap: 7px;
   font-size: 13.5px;
-  color: #e7eef4;
+  color: #f7f3e8;
 }
 
 .sbx-id {
   font-size: 10.5px;
-  color: #7f97ac;
+  color: #7b9084;
   font-family: ui-monospace, monospace;
 }
 
@@ -6752,15 +6842,15 @@ button {
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 700;
-  background: rgba(150, 108, 230, 0.22);
-  color: #d7c7ff;
+  background: rgba(165, 145, 255, 0.22);
+  color: #e2dcff;
 }
 
 .sbx-detail-body {
   margin: 8px 0 0;
   font-size: 12px;
   line-height: 1.65;
-  color: #c3d3e0;
+  color: #d3dbcd;
   white-space: pre-wrap;
 }
 
@@ -6768,10 +6858,10 @@ button {
   margin: 0;
   font-size: 11px;
   line-height: 1.55;
-  color: #7f97ac;
+  color: #7b9084;
 }
 
-.sbx-hint b { color: #f0dfae; }
+.sbx-hint b { color: #cfae76; }
 
 /* ─────────────── 접근성: 모션 최소화 ─────────────── */
 
@@ -6802,16 +6892,16 @@ button {
     box-shadow:
       0 3px 5px rgba(0, 0, 0, 0.35),
       inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(255, 236, 176, 1),
-      0 0 10px 2px rgba(255, 190, 60, 0.9);
+      inset 0 0 0 1px rgba(226, 199, 147, 1),
+      0 0 10px 2px rgba(184, 151, 92, 0.9);
   }
   .tile-dora-own {
     animation: none;
     box-shadow:
       0 3px 5px rgba(0, 0, 0, 0.35),
       inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(255, 240, 190, 1),
-      0 0 10px 2px rgba(255, 105, 200, 0.9);
+      inset 0 0 0 1px rgba(226, 199, 147, 1),
+      0 0 10px 2px rgba(246, 114, 198, 0.9);
   }
   .rt-latest::before,
   .rt-latest::after { display: none; }
@@ -6829,7 +6919,7 @@ button {
 /* 2단 선택 모달에서 "먼저 앞 단계를 고르세요" 안내 */
 .aug-pick-row-hint {
   font-size: 12px;
-  color: rgba(255, 236, 200, 0.55);
+  color: rgba(226, 199, 147, 0.55);
   align-self: center;
 }
 
@@ -6850,8 +6940,8 @@ button {
   transform: translateX(-50%);
   padding: 0 3px;
   border-radius: 3px;
-  background: rgba(200, 60, 60, 0.92);
-  color: #fff;
+  background: rgba(192, 68, 68, 0.92);
+  color: #f7f3e8;
   font-size: 9px;
   font-weight: 800;
   letter-spacing: -0.5px;
@@ -6862,8 +6952,8 @@ button {
   margin-left: 6px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(200, 60, 60, 0.9);
-  color: #fff;
+  background: rgba(192, 68, 68, 0.9);
+  color: #f7f3e8;
   font-size: 10px;
   font-weight: 800;
 }
@@ -6894,14 +6984,14 @@ button {
 .tier-chip-lg { font-size: 13.5px; padding: 4px 12px; }
 
 /* 위로 갈수록 뜨겁게 — 티어가 색으로 먼저 읽히게 한다 */
-.tier-SSp { background: rgba(255, 92, 92, 0.2); border-color: #ff6b6b; color: #ffb3b3; }
-.tier-Sp  { background: rgba(255, 150, 70, 0.18); border-color: #ff9a46; color: #ffc999; }
-.tier-S   { background: rgba(255, 207, 107, 0.16); border-color: #ffcf6b; color: #ffde96; }
-.tier-A   { background: rgba(207, 169, 255, 0.15); border-color: #cfa9ff; color: #ddc2ff; }
-.tier-B   { background: rgba(120, 180, 255, 0.14); border-color: #78b4ff; color: #b4d6ff; }
-.tier-C   { background: rgba(183, 206, 222, 0.12); border-color: #b7cede; color: #cfe0ee; }
-.tier-D   { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.22); color: #9db4c8; }
-.tier-none { background: rgba(200, 60, 60, 0.18); border-color: #c83c3c; color: #ffb3b3; }
+.tier-SSp { background: rgba(245, 102, 102, 0.2); border-color: #f67474; color: #fab8b8; }
+.tier-Sp  { background: rgba(184, 151, 92, 0.18); border-color: #b8975c; color: #cfae76; }
+.tier-S   { background: rgba(240, 200, 106, 0.16); border-color: #f0c86a; color: #cfae76; }
+.tier-A   { background: rgba(199, 188, 255, 0.15); border-color: #c7bcff; color: #e2dcff; }
+.tier-B   { background: rgba(126, 185, 234, 0.14); border-color: #7eb9ea; color: #ece4d2; }
+.tier-C   { background: rgba(194, 208, 197, 0.12); border-color: #c2d0c5; color: #ece4d2; }
+.tier-D   { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.22); color: #a8bcaf; }
+.tier-none { background: rgba(192, 68, 68, 0.18); border-color: #c04444; color: #fab8b8; }
 
 .tier-group { margin-bottom: 22px; }
 .tier-group-head {
@@ -6910,13 +7000,13 @@ button {
   flex-wrap: wrap;
   gap: 10px;
   padding: 6px 2px 8px;
-  border-bottom: 1px solid rgba(214, 178, 94, 0.2);
+  border-bottom: 1px solid rgba(184, 151, 92, 0.2);
   margin-bottom: 6px;
 }
-.tier-group-count { color: #e7eef4; font-size: 13px; font-variant-numeric: tabular-nums; }
-.tier-group-weight { color: #b9c8d6; font-size: 12px; font-variant-numeric: tabular-nums; }
-.tier-group-label { color: #8ea3b6; font-size: 12px; }
-.tier-warn { color: #ff9a9a; font-weight: 700; }
+.tier-group-count { color: #f7f3e8; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tier-group-weight { color: #c2d0c5; font-size: 12px; font-variant-numeric: tabular-nums; }
+.tier-group-label { color: #93a89b; font-size: 12px; }
+.tier-warn { color: #f9a0a0; font-weight: 700; }
 
 .tier-table-wrap { overflow-x: auto; }
 .tier-table { font-size: 12.5px; }
@@ -6928,27 +7018,27 @@ button {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.tier-table td.tier-score { font-weight: 800; color: #e7eef4; }
+.tier-table td.tier-score { font-weight: 800; color: #f7f3e8; }
 .tier-td-name { min-width: 140px; }
-.tier-td-name b { color: #eef3f8; }
+.tier-td-name b { color: #f7f3e8; }
 .tier-td-id {
   display: block;
   font-size: 10.5px;
-  color: #6f8395;
+  color: #5f7469;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.tier-td-note { color: #9db4c8; line-height: 1.5; min-width: 260px; }
-.tier-row-none td { background: rgba(200, 60, 60, 0.08); }
+.tier-td-note { color: #a8bcaf; line-height: 1.5; min-width: 260px; }
+.tier-row-none td { background: rgba(192, 68, 68, 0.08); }
 .tier-rare {
   margin-left: 5px;
   padding: 1px 5px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
-  color: #b9c8d6;
+  color: #c2d0c5;
   font-size: 10px;
   font-weight: 700;
 }
-.tier-axis-help { color: #7d93a6; font-size: 11.5px; }
+.tier-axis-help { color: #7b9084; font-size: 11.5px; }
 
 /* 밑장빼기 — 패산 맨 밑 3장. 오른쪽 끝이 '다음에 빼올 밑장'이다.
    열람은 visibility.wall peek(back)이 실시간으로 주므로 창은 상태에 따라 그대로 밀린다. */
@@ -6962,24 +7052,24 @@ button {
   width: max-content;
   max-width: 92%;
   border-radius: 10px;
-  background: rgba(12, 22, 18, 0.92);
-  border: 1px solid rgba(120, 200, 150, 0.5);
+  background: rgba(11, 19, 16, 0.92);
+  border: 1px solid rgba(124, 196, 156, 0.5);
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
   animation: bar-in 0.25s ease-out;
 }
 /* 예약된 상태 — 다음 쯔모가 밑장으로 온다는 것을 테두리로 알린다 */
 .bottom-deal-strip.bottom-deal-armed {
-  border-color: rgba(255, 196, 92, 0.9);
-  box-shadow: 0 0 14px rgba(255, 196, 92, 0.35);
+  border-color: rgba(184, 151, 92, 0.9);
+  box-shadow: 0 0 14px rgba(184, 151, 92, 0.35);
 }
 .bottom-deal-tag {
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.5px;
-  color: #a8e0c0;
+  color: #abddc4;
   white-space: nowrap;
 }
-.bottom-deal-armed .bottom-deal-tag { color: #ffcf6a; }
+.bottom-deal-armed .bottom-deal-tag { color: #f0c86a; }
 .bottom-deal-cell {
   position: relative;
   display: inline-flex;
@@ -7002,8 +7092,8 @@ button {
   height: 15px;
   padding: 0 3px;
   border-radius: 999px;
-  background: #2f8f63;
-  color: #fff;
+  background: #348a68;
+  color: #f7f3e8;
   font-size: 10px;
   font-weight: 800;
   line-height: 15px;
@@ -7011,5 +7101,5 @@ button {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 .bottom-deal-armed .bottom-deal-cell.bottom-deal-next::after {
-  background: #c8912f;
+  background: #9a7b42;
 }
