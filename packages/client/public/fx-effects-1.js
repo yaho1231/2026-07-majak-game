@@ -39,9 +39,9 @@ import {
   tileEl,
   token,
   veil,
-} from "/fx-core.js?v=6";
+} from "/fx-core.js?v=7";
 
-import { def } from "/fx-registry.js?v=6";
+import { def } from "/fx-registry.js?v=7";
 
 /* ══════════════════ 기법군 A · 3D 변환 + 물리 ══════════════════ */
 
