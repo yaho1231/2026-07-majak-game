@@ -5,6 +5,9 @@
  */
 
 import {
+  EASE,
+  EASE_IMPACT,
+  EASE_QUART,
   NUM_CODES,
   S,
   alive,
@@ -93,8 +96,8 @@ def({
       sp.vy = rnd(-21, -13);
       sp.vr = rnd(-0.42, 0.42);
     }
-    flash(180, "#ffe6a8", 0.35);
-    ring(500, 560, 30, 420, 700, "rgba(255,215,106,.5)", 4);
+    flash(180, "#dcc79a", 0.35);
+    ring(500, 560, 30, 420, 700, "rgba(194,160,104,.5)", 4);
 
     let t = 0;
     drawHooks.add((dt, c) => {
@@ -126,7 +129,7 @@ def({
         { transform: "scale(1.1,.88)", offset: 0.68 },
         { transform: "scale(.97,1.04)", offset: 0.84 },
         { transform: "scale(1,1)" },
-      ], { duration: 420, delay: i * 42, easing: "cubic-bezier(.3,1.2,.4,1)" });
+      ], { duration: 420, delay: i * 42, easing: EASE_IMPACT });
       later(() => alive(tok) && sfx.clack(rnd(700, 1100)), i * 42);
     }
     await sleep(900);
@@ -150,7 +153,7 @@ def({
       const a0 = -135 + i * 90;
       const p = svgEl("path", {
         d: arcPath(500, 312, 246, a0 + 12, a0 + 78),
-        fill: "none", stroke: "rgba(143,168,189,.75)", "stroke-width": 3,
+        fill: "none", stroke: "rgba(168,188,175,.75)", "stroke-width": 3,
         "stroke-linecap": "round", "stroke-dasharray": 220, "stroke-dashoffset": 220,
       }, sv);
       arcs.push(p);
@@ -169,19 +172,19 @@ def({
     hs.setAttribute("viewBox", "0 0 120 170");
     svgEl("path", {
       d: "M18 10 H102 L66 85 L102 160 H18 L54 85 Z",
-      fill: "rgba(12,26,42,.85)", stroke: "#d6b25e", "stroke-width": 3,
+      fill: "rgba(12,26,42,.85)", stroke: "#9a7b42", "stroke-width": 3,
     }, hs);
     // 위/아래 캡의 폭을 다르게 둔다 — 좌우대칭 도형은 180° 돌려도 안 돌아간 것처럼 보인다
     svgEl("rect", { x: 22, y: 2, width: 76, height: 9, rx: 4, fill: "#c9a24e" }, hs);
-    svgEl("rect", { x: 4, y: 156, width: 112, height: 13, rx: 5, fill: "#e7c470" }, hs);
+    svgEl("rect", { x: 4, y: 156, width: 112, height: 13, rx: 5, fill: "#c2a068" }, hs);
     // 시작은 '흐르는 중' — 위 벌브에 모래가 차 있다.
     // 아래 벌브(svg 기준)는 뒤집힌 뒤 화면 위로 올라가므로, 그때 채우면 모래가 올라가 보인다.
-    const sandUp = svgEl("path", { d: "M18 14 H102 L66 82 H54 Z", fill: "#e7c470" }, hs);
-    const sandLo = svgEl("path", { d: "M54 96 H66 L66 96 H54 Z", fill: "#e7c470" }, hs);
+    const sandUp = svgEl("path", { d: "M18 14 H102 L66 82 H54 Z", fill: "#c2a068" }, hs);
+    const sandLo = svgEl("path", { d: "M54 96 H66 L66 96 H54 Z", fill: "#c2a068" }, hs);
     anim(box, [
       { transform: "scale(.3) rotate(-30deg)", opacity: 0 },
       { transform: "scale(1) rotate(0deg)", opacity: 1 },
-    ], { duration: 380, easing: "cubic-bezier(.2,1.4,.4,1)" });
+    ], { duration: 380, easing: EASE });
     sfx.ping(900);
     await sleep(460);
     if (!alive(tok)) return;
@@ -236,7 +239,7 @@ def({
     if (!alive(tok)) return;
     for (const [i, p] of arcs.entries()) {
       anim(p, [
-        { strokeDashoffset: 0, stroke: "rgba(143,168,189,.75)" },
+        { strokeDashoffset: 0, stroke: "rgba(168,188,175,.75)" },
         { strokeDashoffset: -220, stroke: "rgba(255,120,130,.95)" },
       ], { duration: 560, delay: i * 90 });
     }
@@ -264,7 +267,7 @@ def({
     const stick = mk(null, {
       position: "absolute", left: "500px", top: "398px",
       width: "112px", height: "12px", margin: "0 0 0 -56px", borderRadius: "6px",
-      background: "linear-gradient(180deg,#fff,#e2ded0)",
+      background: "linear-gradient(180deg,#fff,#d8d2c2)",
       boxShadow: "0 2px 10px rgba(0,0,0,.5)",
     });
     mk(null, {
@@ -274,7 +277,7 @@ def({
     anim(stick, [
       { transform: "translateY(-40px) rotate(-18deg)", opacity: 0 },
       { transform: "translateY(0) rotate(0deg)", opacity: 1 },
-    ], { duration: 340, easing: "cubic-bezier(.2,1.3,.4,1)" });
+    ], { duration: 340, easing: EASE });
     sfx.clack(1400);
     await sleep(300);
     if (!alive(tok)) return;
@@ -296,7 +299,7 @@ def({
     const glare = mk(null, {
       position: "absolute", left: `${hr.x - 60}px`, top: `${hr.y - 30}px`,
       width: `${hr.w + 120}px`, height: `${hr.h + 60}px`,
-      background: "linear-gradient(100deg, transparent 42%, rgba(255,236,170,.95) 50%, transparent 58%)",
+      background: "linear-gradient(100deg, transparent 42%, rgba(214,186,138,.95) 50%, transparent 58%)",
       mixBlendMode: "screen", filter: "blur(1px)",
     });
     anim(glare, [{ transform: "translateX(-120%)" }, { transform: "translateX(120%)" }], {
@@ -313,9 +316,9 @@ def({
       const ghost = mk(null, {
         position: "absolute", left: `${hr.x}px`, top: `${hr.y}px`,
         width: `${hr.w}px`, height: `${hr.h}px`,
-        border: "1px solid rgba(255,215,106,.9)", borderRadius: "6px",
-        background: "linear-gradient(180deg, rgba(255,215,106,.22), rgba(255,215,106,.05))",
-        boxShadow: "0 0 24px rgba(255,215,106,.5)",
+        border: "1px solid rgba(194,160,104,.9)", borderRadius: "6px",
+        background: "linear-gradient(180deg, rgba(194,160,104,.22), rgba(194,160,104,.05))",
+        boxShadow: "0 0 24px rgba(194,160,104,.5)",
       });
       anim(ghost, [
         { transform: "translate(0,0) scale(1)", opacity: 0.95 },
@@ -402,7 +405,7 @@ def({
     flash(560, "#fff", 1);
     shake(560, 14);
     ring(CX, CY, 20, 700, 900, "rgba(255,255,255,.85)", 6);
-    ring(CX, CY, 20, 460, 700, "rgba(255,215,106,.8)", 3);
+    ring(CX, CY, 20, 460, 700, "rgba(194,160,104,.8)", 3);
     for (const p of ps) {
       const a = Math.atan2(p.y - CY, p.x - CX) + rnd(-0.3, 0.3);
       const sp = rnd(4, 15);
@@ -420,7 +423,7 @@ def({
       anim(el, [
         { opacity: 0, transform: "scale(.2)", filter: "brightness(3)" },
         { opacity: 1, transform: "scale(1)", filter: "brightness(1)" },
-      ], { duration: 420, delay: i * 6, easing: "cubic-bezier(.2,1.3,.4,1)" });
+      ], { duration: 420, delay: i * 6, easing: EASE });
     }
     await sleep(1500);
   },
@@ -563,15 +566,15 @@ def({
     const panel = mk(null, {
       position: "absolute", left: "500px", top: "268px",
       width: "300px", height: "132px", margin: "-66px 0 0 -150px", borderRadius: "12px",
-      background: "linear-gradient(165deg,#1d3a55,#0b1a29)",
-      border: "2px solid #d6b25e", boxShadow: "0 14px 40px rgba(0,0,0,.6)",
+      background: "linear-gradient(165deg,#152119,#0d1712)",
+      border: "2px solid #9a7b42", boxShadow: "0 14px 40px rgba(0,0,0,.6)",
       display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
       overflow: "hidden",
     });
     anim(panel, [
       { transform: "scale(.5) rotate(-6deg)", opacity: 0 },
       { transform: "scale(1) rotate(0)", opacity: 1 },
-    ], { duration: 340, easing: "cubic-bezier(.2,1.5,.4,1)" });
+    ], { duration: 340, easing: EASE });
     sfx.ping(700);
     await sleep(340);
     if (!alive(tok)) return;
@@ -582,7 +585,7 @@ def({
     for (let r = 0; r < 3; r++) {
       const win = mk(null, {
         position: "relative", width: "62px", height: "84px", borderRadius: "7px",
-        background: "#08131f", border: "1px solid rgba(214,178,94,.5)", overflow: "hidden",
+        background: "#0a1210", border: "1px solid rgba(154,123,66,.5)", overflow: "hidden",
       }, panel);
       const strip = mk(null, {
         position: "absolute", left: "0", top: "0", width: "100%",
@@ -615,7 +618,7 @@ def({
       sp.finished.then(() => {
         if (!alive(tok)) return;
         sfx.clack(600 + i * 300);
-        flash(120, "#ffe6a8", 0.2);
+        flash(120, "#dcc79a", 0.2);
       }).catch(() => {});
     }
     await sleep(1900);
@@ -625,12 +628,12 @@ def({
     sfx.impact();
     sfx.chime();
     shake(500, 10);
-    flash(300, "#ffeab5", 0.75);
-    ring(500, 300, 40, 620, 900, "rgba(255,215,106,.85)", 5);
+    flash(300, "#dcc79a", 0.75);
+    ring(500, 300, 40, 620, 900, "rgba(194,160,104,.85)", 5);
     anim(panel, [
       { transform: "scale(1)", boxShadow: "0 14px 40px rgba(0,0,0,.6)" },
-      { transform: "scale(1.12)", boxShadow: "0 0 60px rgba(255,215,106,.9)", offset: 0.3 },
-      { transform: "scale(1)", boxShadow: "0 0 30px rgba(255,215,106,.5)" },
+      { transform: "scale(1.12)", boxShadow: "0 0 60px rgba(194,160,104,.9)", offset: 0.3 },
+      { transform: "scale(1)", boxShadow: "0 0 30px rgba(194,160,104,.5)" },
     ], { duration: 700 });
     banner("일확천금", "JACKPOT", 1800);
 
@@ -669,9 +672,9 @@ def({
         // 회전하는 원판처럼 — 세로를 눌러 두께감을 만든다
         c.scale(1, Math.abs(Math.cos(o.rot * 0.6)) * 0.6 + 0.4);
         const grd = c.createLinearGradient(-o.r, -o.r, o.r, o.r);
-        grd.addColorStop(0, "#fff0c0");
-        grd.addColorStop(0.5, "#e7c470");
-        grd.addColorStop(1, "#a67c22");
+        grd.addColorStop(0, "#e6d5ae");
+        grd.addColorStop(0.5, "#c2a068");
+        grd.addColorStop(1, "#6f5526");
         c.fillStyle = grd;
         c.beginPath();
         c.arc(0, 0, o.r, 0, 6.284);
@@ -696,9 +699,9 @@ def({
     };
     roll();
     anim(S.csBottom, [
-      { transform: "translateX(-50%) scale(1)", color: "#ffd76a" },
+      { transform: "translateX(-50%) scale(1)", color: "#c2a068" },
       { transform: "translateX(-50%) scale(1.5)", color: "#fff", offset: 0.5 },
-      { transform: "translateX(-50%) scale(1)", color: "#ffd76a" },
+      { transform: "translateX(-50%) scale(1)", color: "#c2a068" },
     ], { duration: 1500 });
     await sleep(2200);
     if (!alive(tok)) return;
@@ -848,7 +851,7 @@ def({
     anim(radar, [
       { opacity: 0, transform: "scale(.7)" },
       { opacity: 1, transform: "scale(1)" },
-    ], { duration: 340, easing: "cubic-bezier(.2,1.3,.4,1)" });
+    ], { duration: 340, easing: EASE });
     anim(sweep, [{ transform: "rotate(0deg)" }, { transform: "rotate(720deg)" }], { duration: 3000, easing: "linear" });
     sfx.ping(1200);
 
@@ -886,7 +889,7 @@ def({
         anim(tag, [
           { opacity: 0, transform: "scale(.6)" },
           { opacity: 1, transform: "scale(1)" },
-        ], { duration: 240, easing: "cubic-bezier(.2,1.6,.4,1)" });
+        ], { duration: 240, easing: EASE });
 
         const line = document.createElement("div");
         line.textContent = s.tenpai ? `▸ 좌석 감지 · ${s.wait}` : "▸ 좌석 무반응 · 노텐";
@@ -964,7 +967,7 @@ def({
       { transform: "scale(1)" },
       { transform: "scale(1.34) translateY(-10px)", offset: 0.4 },
       { transform: "scale(1.24) translateY(-8px)" },
-    ], { duration: 500, easing: "cubic-bezier(.2,1.4,.4,1)" });
+    ], { duration: 500, easing: EASE });
 
     // 표식 낙인
     const mark = mk(null, {
@@ -977,7 +980,7 @@ def({
     anim(mark, [
       { transform: "translate(-50%,-50%) scale(3.4) rotate(-30deg)", opacity: 0 },
       { transform: "translate(-50%,-50%) scale(1) rotate(0deg)", opacity: 1 },
-    ], { duration: 260, easing: "cubic-bezier(.2,1.6,.3,1)" });
+    ], { duration: 260, easing: EASE });
 
     // "나만 보인다" 워터마크
     const wm = mk(null, {
@@ -1185,7 +1188,7 @@ def({
         { transform: `translateX(${dx}px) scale(1)` },
         { transform: `translateX(${dx}px) scale(1.2,.86)`, offset: 0.3 },
         { transform: `translateX(${dx}px) scale(1)` },
-      ], { duration: 420, easing: "cubic-bezier(.2,1.5,.4,1)" });
+      ], { duration: 420, easing: EASE });
     }
     for (let i = 0; i < 16; i++) {
       const a = rnd(0, 6.283);
@@ -1219,7 +1222,7 @@ def({
         { transform: "translateY(0) scale(1)" },
         { transform: "translateY(-8px) scale(1.12)", offset: 0.4 },
         { transform: "translateY(0) scale(1)" },
-      ], { duration: 380, easing: "cubic-bezier(.3,1.3,.4,1)" });
+      ], { duration: 380, easing: EASE_IMPACT });
     }
     sfx.clack(1500);
     await sleep(1000);
@@ -1406,7 +1409,7 @@ def({
       { transform: "translateY(0) scale(1)", opacity: 1, offset: 0.7 },
       { transform: "scale(1.06,.94)", offset: 0.85 },
       { transform: "scale(1)" },
-    ], { duration: 460, easing: "cubic-bezier(.3,1.1,.4,1)" });
+    ], { duration: 460, easing: EASE });
     sfx.clack(300);
     shake(220, 6);
     banner("무 장 해 제", "AUGMENT DISARMED", 1600);
@@ -1454,7 +1457,7 @@ def({
     anim(doc, [
       { transform: "translateY(80px) rotate(-3deg) scale(.9)", opacity: 0 },
       { transform: "translateY(0) rotate(0) scale(1)", opacity: 1 },
-    ], { duration: 480, easing: "cubic-bezier(.2,1.1,.3,1)" });
+    ], { duration: 480, easing: EASE });
     sfx.whoosh(0.5);
     await sleep(540);
     if (!alive(tok)) return;
@@ -1615,7 +1618,7 @@ def({
     anim(cl, [
       { opacity: 0, transform: "scale(.4)" },
       { opacity: 1, transform: "scale(1)" },
-    ], { duration: 340, easing: "cubic-bezier(.2,1.4,.4,1)" });
+    ], { duration: 340, easing: EASE });
     anim(sec, [
       { transform: "rotate(0deg)" },
       { transform: "rotate(5.4deg)", offset: 0.3 },
@@ -1698,7 +1701,7 @@ def({
     anim(tile, [
       { transform: "translateY(16px) scale(.7) rotateX(70deg)", opacity: 0 },
       { transform: "translateY(-26px) scale(1.5) rotateX(0deg)", opacity: 1 },
-    ], { duration: 520, easing: "cubic-bezier(.2,1.2,.3,1)" });
+    ], { duration: 520, easing: EASE_IMPACT });
     ring(wr.cx, wr.cy, 10, 130, 560, "rgba(255,170,80,.8)", 3);
 
     // 흙먼지
@@ -1776,7 +1779,7 @@ def({
     anim(dest, [
       { transform: "scale(1.6) rotate(20deg)", opacity: 0.4, filter: "brightness(2.4)" },
       { transform: "scale(1) rotate(0)", opacity: 1, filter: "brightness(1)" },
-    ], { duration: 420, easing: "cubic-bezier(.2,1.4,.4,1)" });
+    ], { duration: 420, easing: EASE });
     ring(dr.cx, dr.cy, 10, 100, 460, "rgba(255,190,110,.85)", 2);
     banner("무덤 도굴", "GRAVE ROBBED", 1500);
     await sleep(1500);
