@@ -251,6 +251,40 @@ describe("밥상 뒤엎기 (table_flip)", () => {
     }
     expect(flipped).toBe(true);
   });
+
+  /**
+   * 회귀: 엎으면 쯔모패까지 통째로 산으로 돌아가는데 `round.lastDrawnTile`을 갱신하지
+   * 않아, 손에 없는(=패산에 있는) 패를 계속 쯔모패로 가리켰다. 쯔모패를 산으로 되돌리는
+   * 무덤 도굴이 그 자리에서 터졌고(반장전 퍼즈에서 2판 중단), 쯔모기리·쯔모 화료 판정도
+   * 같은 값을 본다. (대조군: 통째로 바꾸기는 쯔모패를 반납 대상에서 빼 이 문제가 없다.)
+   */
+  it("엎은 뒤에도 쯔모패는 손패 안에 있다", () => {
+    const game = gameWithAugment(11, "p0", "table_flip");
+    installAugment(game.engine, tableFlip, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    let status = flow.begin();
+
+    let flipped = false;
+    let guard = 0;
+    while (status.kind === "awaiting" && guard++ < 200) {
+      const prompt = status.prompts[0]!;
+      const opts = prompt.options as ActionOption[];
+      const flip = opts.find((o) => o.type === "table_flip_do");
+      if (flip && prompt.player === "p0") {
+        status = flow.submit("p0", flip);
+        const st = game.engine.state;
+        const drawn = st.round.lastDrawnTile;
+        expect(drawn).not.toBeNull();
+        expect(handIdsOf(st, "p0")).toContain(drawn);
+        expect(st.zones[WALL]?.tileIds ?? []).not.toContain(drawn);
+        flipped = true;
+        break;
+      }
+      const discard = opts.find((o) => o.type === "discard") ?? opts[0];
+      status = flow.submit(prompt.player, discard!);
+    }
+    expect(flipped).toBe(true);
+  });
 });
 
 describe("허장성세 (bluff_pretense)", () => {

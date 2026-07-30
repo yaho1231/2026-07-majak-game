@@ -8,12 +8,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  FlowController,
   createStandardGameFromState,
   discardsZone,
   handIdsOf,
   installAugment,
   kindKey,
   kindOf,
+  meldsZone,
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
@@ -112,6 +114,65 @@ describe("누명 (frame_up)", () => {
         payload: { tileId: tile, target: "p1" },
       }).ok,
     ).toBe(false);
+  });
+
+  /**
+   * 회귀: 심긴 패는 **지목당한 사람의 바닥**에 있지만 방총 책임(lastDiscard.player)은
+   * 실제로 버린 사람이다. 후로 리듀서가 버린 사람의 바닥에서 패를 꺼내려 하면
+   * "Tile N is not in zone discards:X"로 국이 통째로 죽었다 — 심긴 패를 아무나 울면
+   * 재현됐고, 반장전 퍼즈 240판 중 6판이 이걸로 중단됐다.
+   */
+  it("심긴 패를 제3자가 펑해도 엔진이 죽지 않는다", () => {
+    // p0가 3m을 버릴 참, p2는 3m 2장 보유 → 펑 가능
+    const base = craft({
+      hands: {
+        p0: "3m123m456m789m11p",
+        p1: "*",
+        p2: "33m123p456p789p1s1s",
+        p3: "*",
+      },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = setup(withAug(base, "p0", ["frame_up"]));
+    const tile = findTile(game, M3);
+
+    const flow = new FlowController(game.engine);
+    flow.begin();
+    let status = flow.submit("p0", {
+      type: "frame_discard",
+      payload: { tileId: tile, target: "p1" },
+    } as never);
+
+    // 패는 p1 바닥에, 책임은 p0
+    expect(game.engine.state.zones[discardsZone("p1")]?.tileIds).toContain(tile);
+    expect(game.engine.state.round.lastDiscard).toEqual({ player: "p0", tileId: tile });
+
+    // p2가 펑 — 반응은 전원 응답으로 해소되므로 나머지는 pass
+    const pon = status.kind === "awaiting"
+      ? status.prompts.find((p) => p.player === "p2")?.options.find((o) => o.type === "pon")
+      : undefined;
+    expect(pon).toBeDefined();
+    expect(() => {
+      status = flow.submit("p2", pon as never);
+      let guard = 0;
+      while (status.kind === "awaiting" && guard++ < 6) {
+        const pr = status.prompts[0]!;
+        const pass = pr.options.find((o) => o.type === "pass");
+        if (pass === undefined) break;
+        status = flow.submit(pr.player, pass);
+      }
+    }).not.toThrow();
+
+    // 후로가 실제로 성립했다 — 패는 p1 바닥을 떠나 p2의 후로로 갔다
+    const st = game.engine.state;
+    expect(st.zones[discardsZone("p1")]?.tileIds ?? []).not.toContain(tile);
+    expect(st.zones[meldsZone("p2")]?.tileIds).toContain(tile);
+    const meld = st.round.byPlayer["p2"]?.melds[0];
+    expect(meld?.kind).toBe("pon");
+    // 방총 책임은 실제로 버린 p0 그대로 (누명의 설계)
+    expect(meld?.calledFrom).toBe("p0");
   });
 
   it("대조군: creditTo 없는 표준 버림은 내 바닥·내 이력에 남는다", () => {
