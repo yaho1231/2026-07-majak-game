@@ -34,8 +34,8 @@ import {
   svgEl,
   tileEl,
   veil,
-} from "/fx-core.js?v=5";
-import { def } from "/fx-registry.js?v=5";
+} from "/fx-core.js?v=6";
+import { def } from "/fx-registry.js?v=6";
 
 /* ══════════════════ 자리 바꿈 ══════════════════ */
 
@@ -148,7 +148,9 @@ def({
       arrived.el.style.borderColor = "#c2a068";
       arrived.el.style.color = "#c2a068";
       arrived.el.style.boxShadow = "0 0 26px rgba(194,160,104,.7)";
-      anim(arrived.el, [{ scale: "1" }, { scale: "1.3" }, { scale: "1" }], { duration: 420, easing: EASE_IMPACT });
+      // 좌석 배지는 UI 크롬이다 — 물체 충돌용 EASE_IMPACT 가 아니라 감속만 쓴다.
+      // 게다가 펄스는 키프레임이 이미 만들고 있어 오버슈트 이징이 할 일도 없다.
+      anim(arrived.el, [{ scale: "1" }, { scale: "1.3" }, { scale: "1" }], { duration: 420, easing: EASE });
       ring(CX, CY + R, 16, 120, 560, "rgba(194,160,104,.85)", 2);
     }
     const note = mk(null, {
