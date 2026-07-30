@@ -33,8 +33,8 @@ import {
   svgEl,
   tileEl,
   veil,
-} from "/fx-core.js";
-import { def } from "/fx-registry.js";
+} from "/fx-core.js?v=5";
+import { def } from "/fx-registry.js?v=5";
 
 /** 패 종류 표기 — HUD 라벨용 */
 const label = (code) => {

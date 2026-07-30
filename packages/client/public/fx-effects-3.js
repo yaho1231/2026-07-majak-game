@@ -34,8 +34,8 @@ import {
   svgEl,
   tileEl,
   veil,
-} from "/fx-core.js";
-import { def } from "/fx-registry.js";
+} from "/fx-core.js?v=5";
+import { def } from "/fx-registry.js?v=5";
 
 /* ══════════════════ 자리 바꿈 ══════════════════ */
 
