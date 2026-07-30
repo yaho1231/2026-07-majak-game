@@ -15,7 +15,13 @@ import type { DraftStage } from "../src/network/protocol.js";
 import { Prng } from "../src/engine/random/Prng.js";
 import { createInitialGameState } from "../src/engine/state/GameState.js";
 import { createStandardGameFromState } from "../src/mahjong/flow/standardGame.js";
-import type { GameConfig, InitialStateOptions } from "../src/engine/state/GameState.js";
+import { DEAD_WALL, WALL, createZone, handZone } from "../src/engine/zones/Zone.js";
+import { kindKey } from "../src/mahjong/tiles/Tile.js";
+import type {
+  GameConfig,
+  GameState,
+  InitialStateOptions,
+} from "../src/engine/state/GameState.js";
 import type { GameEvent } from "../src/engine/events/GameEvent.js";
 
 // ─────────────────────────── 테스트용 봇 에이전트 ───────────────────────────
@@ -105,6 +111,122 @@ describe("HanchanController — 단국 완주", () => {
     const [r1, r2] = await Promise.all([run(), run()]);
     expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
   });
+});
+
+// ─────────────────────────── §1.5 리치 강제 수 자동 처리 ───────────────────────────
+
+describe("HanchanController — 리치 쯔모기리 자동 처리", () => {
+  /** 받은 프롬프트를 기록하는 봇 — "무엇을 물어봤는가"를 검사한다 */
+  class SpyAgent extends TestBotAgent {
+    asked: DecisionPrompt[] = [];
+
+    override async decide(prompt: DecisionPrompt): Promise<ActionOption> {
+      this.asked.push(prompt);
+      return super.decide(prompt);
+    }
+  }
+
+  /**
+   * p0가 리치를 건 채 자기 차례(쯔모 직전)를 맞는 국 중간 상태.
+   * p0 손패는 겹치는 패가 없는 13종이라 무엇을 뽑아도 화료·안깡이 되지 않는다 —
+   * 즉 p0의 모든 순은 쯔모기리 하나뿐인 강제 수다.
+   */
+  function riichiMidRoundState(): GameState {
+    const ids = ["p0", "p1", "p2", "p3"];
+    const base = createInitialGameState(
+      { seed: 3, playerIds: ids },
+      { startScore: 25000, redFivesPerSuit: 1 },
+    );
+    const pool = new Map<string, number[]>();
+    for (const tile of Object.values(base.tiles)) {
+      const key = kindKey(tile.kind);
+      pool.set(key, [...(pool.get(key) ?? []), tile.id]);
+    }
+    const take = (key: string): number => {
+      const id = pool.get(key)?.shift();
+      if (id === undefined) throw new Error(`no tile left: ${key}`);
+      return id;
+    };
+
+    const zones = { ...base.zones };
+    zones[handZone("p0")] = {
+      ...createZone(handZone("p0"), "hand", "p0"),
+      tileIds: [
+        "man1", "man4", "man7", "pin1", "pin4", "pin7",
+        "sou1", "sou4", "sou7", "wind1", "wind2", "wind3", "wind4",
+      ].map(take),
+    };
+    // 나머지 셋은 세 갈래로 번갈아 나눈다 — id순으로 뭉텅이를 떼어 주면 같은 패
+    // 넉 장이 한 손에 몰려 국이 첫 순에 끝나 버린다(강제 수 표본이 1장뿐).
+    let rest = [...pool.values()].flat().sort((a, b) => a - b);
+    ids.slice(1).forEach((p, i) => {
+      zones[handZone(p)] = {
+        ...createZone(handZone(p), "hand", p),
+        tileIds: rest.filter((_, k) => k % 3 === i).slice(0, 13),
+      };
+    });
+    const dealt = new Set(ids.slice(1).flatMap((p) => zones[handZone(p)]!.tileIds));
+    rest = rest.filter((id) => !dealt.has(id));
+    zones[DEAD_WALL] = { ...createZone(DEAD_WALL, "deadWall"), tileIds: rest.slice(0, 14) };
+    zones[WALL] = { ...createZone(WALL, "wall"), tileIds: rest.slice(14) };
+
+    return {
+      ...base,
+      zones,
+      round: {
+        ...base.round,
+        phase: "turn.draw",
+        turnSeat: 0,
+        firstTurn: false,
+        doraIndicators: [zones[DEAD_WALL].tileIds[4] as number],
+        byPlayer: {
+          ...base.round.byPlayer,
+          p0: {
+            ...base.round.byPlayer["p0"]!,
+            riichi: { double: false, ippatsu: false, discardIndex: 0 },
+          },
+        },
+      },
+    };
+  }
+
+  it("리치 후 쯔모기리는 에이전트에게 묻지 않고 컨트롤러가 대신 둔다", async () => {
+    const agents = ["p0", "p1", "p2", "p3"].map((id, i) => new SpyAgent(id, (i + 1) * 13));
+    const game = createStandardGameFromState(riichiMidRoundState());
+
+    // 첫 국이 끝나는 시점의 기록만 본다 (다음 국의 p0는 리치가 아니다)
+    let askedInRound1: number | null = null;
+    let discardsInRound1 = 0;
+    const ctrl = new HanchanController(
+      agents,
+      {
+        ...DEFAULT_HANCHAN_CONFIG,
+        maxWind: 1,
+        westEntry: false,
+        dobi: false,
+        draftSchedules: [],
+        seed: 5150,
+        autoMoveDelayMs: 5, // 실서버처럼 한 박자 쉬는 경로도 함께 태운다
+      },
+      {
+        onRoundEnd: (g) => {
+          askedInRound1 ??= agents[0]!.asked.length;
+          if (discardsInRound1 === 0) {
+            discardsInRound1 = g.engine.state.round.byPlayer["p0"]?.discardedKinds.length ?? 0;
+          }
+        },
+      },
+    );
+    await ctrl.resume(game);
+
+    // 리치 중인 p0는 자기 순마다 버렸지만, 단 한 번도 결정을 요청받지 않았다
+    expect(discardsInRound1).toBeGreaterThan(3);
+    expect(askedInRound1).toBe(0);
+    // 다른 국·다른 좌석에서도 강제 수 프롬프트가 새어 나가지 않는다
+    for (const agent of agents) {
+      expect(agent.asked.filter((p) => p.auto === true)).toHaveLength(0);
+    }
+  }, 15000);
 });
 
 // ─────────────────────────── §2 반장전 완주 ───────────────────────────

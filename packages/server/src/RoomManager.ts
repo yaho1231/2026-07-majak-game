@@ -138,6 +138,14 @@ const MAX_PLAYERS = 4;
 const BOT_THINK_MS = Number(
   process.env.BOT_THINK_MS ?? (process.env.VITEST ? 0 : 1000),
 );
+/**
+ * 강제 수(리치 쯔모기리)를 서버가 대신 두기 전의 한 박자(ms) — 고민이 아니라
+ * "패가 놓이는 것을 보는" 시간이라 봇 생각 시간보다 짧다. 이게 0이면 앞 사람의
+ * 버림과 같은 프레임에 나가 리치가 무엇을 흘렸는지 화면에서 사라진다.
+ */
+const AUTO_MOVE_MS = Number(
+  process.env.AUTO_MOVE_MS ?? (process.env.VITEST ? 0 : 450),
+);
 /** 방 코드 문자 집합 — 혼동 문자는 제외 (O/0, I/1) */
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LEN = 6;
@@ -1522,6 +1530,7 @@ export class RoomManager {
       ...hanchanConfigForMode(room.gameMode),
       extraAugments: contentAugments,
       interRoundDelayMs: this.interRoundDelayMs,
+      autoMoveDelayMs: AUTO_MOVE_MS,
       // 매 게임 새 시드 — 안 넣으면 프로세스 내 모든 게임이 같은 시드를 써서
       // 배패·증강 선택지가 매번 똑같이 반복된다("증강이 초기화 안 됨"의 원인).
       seed: randomInt(0x1_0000_0000),
