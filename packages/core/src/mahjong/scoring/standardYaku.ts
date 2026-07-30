@@ -71,6 +71,19 @@ const dragonTriplets = (v: ScoringVariant): number =>
 const windTriplets = (v: ScoringVariant): number =>
   triplets(v).filter((s) => first(s).suit === Suits.Wind).length;
 
+/**
+ * 국사무쌍 13면 대기인가 — 더블 역만.
+ * 판정은 "머리(중복된 요구패)가 곧 화료패"다. 그러면 화료 직전 손은 요구패 13종 ×1장이었고,
+ * 13종 어느 것으로도 화료할 수 있었다는 뜻이 된다.
+ * 손패 13종이 다 있는지도 함께 본다 — 왕의 징표(kokushiDupes)로 종류가 빠진 채 선 국사는
+ * 머리와 화료패가 우연히 같아도 13면이 아니다.
+ */
+function isKokushi13(v: ScoringVariant, ctx: WinContext): boolean {
+  if (v.form !== "kokushi" || v.pair === null) return false;
+  if (kindKey(v.pair) !== kindKey(ctx.winningTile)) return false;
+  return new Set(allKinds(v).map(kindKey)).size === 13;
+}
+
 const isYakuhaiPair = (pair: TileKind, ctx: WinContext): boolean =>
   pair.suit === Suits.Dragon ||
   (pair.suit === Suits.Wind &&
@@ -392,7 +405,18 @@ export const standardYakuList: YakuDef[] = [
     closedHan: 13,
     openHan: null,
     isYakuman: true,
-    check: (v) => v.form === "kokushi",
+    // 13면 대기는 kokushi_13(더블)이 잡는다 — 둘이 함께 서면 3배가 되므로 배타로 뺀다
+    check: (v, ctx) => v.form === "kokushi" && !isKokushi13(v, ctx),
+  },
+  {
+    id: "kokushi_13",
+    name: "국사무쌍 13면 대기",
+    closedHan: 26,
+    // 멘젠 한정 — 울어 국사(kokushi_open, 증강)는 자기 def로 단일 역만을 유지한다
+    openHan: null,
+    isYakuman: true,
+    yakumanMultiplier: 2,
+    check: (v, ctx) => isKokushi13(v, ctx),
   },
   {
     id: "suuankou",
@@ -422,9 +446,11 @@ export const standardYakuList: YakuDef[] = [
   {
     id: "daisuushii",
     name: "대사희",
-    closedHan: 13,
-    openHan: 13,
+    // 더블 역만 — 바람 4종을 전부 커쯔로 모으는 난도는 소사희와 급이 다르다
+    closedHan: 26,
+    openHan: 26,
     isYakuman: true,
+    yakumanMultiplier: 2,
     check: (v) => windTriplets(v) === 4,
   },
   {

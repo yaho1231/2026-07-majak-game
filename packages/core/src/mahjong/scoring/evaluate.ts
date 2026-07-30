@@ -22,6 +22,7 @@ export interface YakuResult {
 export interface WinEvaluation {
   /** 역이 1개 이상인가 (false = 형태는 화료지만 역 없음 → 화료 불가) */
   ok: boolean;
+  /** 역만 배수의 합 (복합 합산 + 더블 역만의 배수). 0 = 역만 아님 */
   yakumanCount: number;
   yaku: YakuResult[];
   /** 역만이면 0 (역만은 판을 세지 않는다) */
@@ -88,7 +89,8 @@ export function evaluateWin(
       if (han === null) continue;
       if (!def.check(variant, ctx)) continue;
       if (def.isYakuman === true) {
-        yakumanCount += 1;
+        // 더블 역만(대사희·국사 13면)은 한 역이 2를 더한다 — 복합 합산과 같은 축이다
+        yakumanCount += Math.max(1, def.yakumanMultiplier ?? 1);
         matched.push({ id: def.id, name: def.name, han });
       } else {
         matched.push({ id: def.id, name: def.name, han });

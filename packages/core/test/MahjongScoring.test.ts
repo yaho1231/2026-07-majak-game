@@ -245,13 +245,53 @@ describe("evaluateWin — 역만과 암각 판정", () => {
     expect(r?.han).toBe(5);
   });
 
-  it("국사무쌍", () => {
+  it("국사무쌍 — 단면 대기(머리 ≠ 화료패)는 단일 역만", () => {
+    // 1m 2장을 이미 쥔 채 9m만 기다린 손 — 13종 중 9m 한 장으로만 화료했다
     const r = evaluateWin(
-      ctxOf({ hand: h("119m19p19s1234567z"), winningTile: t("1m") }),
+      ctxOf({ hand: h("119m19p19s1234567z"), winningTile: t("9m") }),
       registry,
     );
     expect(r?.yakumanCount).toBe(1);
     expect(ids(r)).toEqual(["kokushi"]);
+  });
+
+  it("국사무쌍 13면 대기 — 더블 역만 (kokushi와 배타)", () => {
+    // 요구패 13종 ×1장에서 1m을 더 받았다 = 13종 어디로도 화료할 수 있던 손
+    const r = evaluateWin(
+      ctxOf({ hand: h("119m19p19s1234567z"), winningTile: t("1m") }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(2);
+    expect(ids(r)).toEqual(["kokushi_13"]);
+  });
+
+  it("대사희 — 더블 역만", () => {
+    // 북을 론으로 받아 그 커쯔가 명각이 된다 → 스안커는 서지 않고 대사희만 남는다
+    const r = evaluateWin(
+      ctxOf({ hand: h("111z222z333z444z55p"), winningTile: t("4z") }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(2);
+    expect(ids(r)).toEqual(["daisuushii"]);
+  });
+
+  it("대사희 배수는 복합 합산과 같은 축이다 — 스안커까지 서면 3배", () => {
+    // 5p 단기 론: 바람 커쯔 4개가 전부 암각으로 남아 스안커(1배)가 더 붙는다
+    const r = evaluateWin(
+      ctxOf({ hand: h("111z222z333z444z55p"), winningTile: t("5p") }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(3);
+    expect(ids(r)).toEqual(["daisuushii", "suuankou"]);
+  });
+
+  it("소사희는 단일 역만 그대로", () => {
+    const r = evaluateWin(
+      ctxOf({ hand: h("111z222z333z44z789p"), winningTile: t("9p") }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(1);
+    expect(ids(r)).toEqual(["shousuushii"]);
   });
 
   it("대삼원 — 역만이면 일반 역·도라를 세지 않는다", () => {

@@ -95,6 +95,7 @@ const YAKU_NAMES: Record<string, string> = {
   honitsu: "혼일색",
   chinitsu: "청일색",
   kokushi: "국사무쌍",
+  kokushi_13: "국사무쌍 13면 대기",
   suuankou: "스안커",
   daisangen: "대삼원",
   shousuushii: "소사희",
@@ -133,14 +134,19 @@ const ABORT_REASONS: Record<string, string> = {
 };
 
 /**
- * 역만 배수 이름 — 2배·3배는 마작 통칭대로 "더블/트리플", 4배부터는 숫자로 센다.
- * (대삼원+자일색처럼 역만 역이 겹치면 yakumanCount가 그대로 배수가 된다.)
+ * 역만 배수 이름 — 배수는 "더블/트리플" 통칭 대신 **숫자로만** 센다.
+ * 4배·5배까지 가는 판에서 통칭과 숫자가 섞이면 컷인만 보고는 크기를 못 잰다.
+ * (대삼원+자일색처럼 역만 역이 겹치거나, 대사희·국사 13면처럼 역 하나가 2배여도
+ *  yakumanCount가 그대로 배수가 된다.)
  */
 function yakumanName(count: number): string {
   if (count <= 1) return "역만";
-  if (count === 2) return "더블역만";
-  if (count === 3) return "트리플역만";
-  return `${count}배역만`;
+  return `${count}배 역만`;
+}
+
+/** 결과창 역 한 줄의 배수 표기 — 역만 역의 판수는 13×배수로 등록돼 있다 */
+function yakumanHanLabel(han: number): string {
+  return yakumanName(Math.max(1, Math.round(han / 13)));
 }
 
 const ACTION_LABEL: Record<string, string> = {
@@ -2048,7 +2054,8 @@ export function App(): JSX.Element {
       const wt = headline.winType === "tsumo" ? "쯔모" : "론";
 
       if (isYakuman) {
-        // 배수 역만은 문구로 드러난다 — "역 만"만 뜨면 더블·트리플이 정산표에서야 보인다.
+        // 배수 역만은 컷인 문구가 "2배 역만"처럼 배수를 그대로 말한다 —
+        // "역 만"만 뜨면 대사희·국사 13면의 2배가 정산표에서야 보인다.
         // (헤아림 역만은 yakumanCount가 0이라 배수 이름을 붙이지 않는다.)
         const ycount = yakumanWin.yakumanCount;
         const ylabel =
@@ -2647,7 +2654,7 @@ export function App(): JSX.Element {
                 {CATEGORY_META[augmentCategory(activeProd.augId)].icon}
               </span>
             ) : null}
-            {/* 배수 역만("트리플역만" 등)은 글자가 길다 — 자간 큰 컷인이 밴드를 넘지 않게 CSS에 알린다 */}
+            {/* 배수 역만("2배 역만" 등)은 글자가 길다 — 자간 큰 컷인이 밴드를 넘지 않게 CSS에 알린다 */}
             <span className="cutin-text" data-long={activeProd.text.replace(/\s/g, "").length >= 4 ? "1" : undefined}>
               {activeProd.text}
             </span>
@@ -8108,7 +8115,8 @@ function RoundResultPanel({
             ...w.yaku.map((y) => ({
               key: y.id,
               label: YAKU_NAMES[y.id] ?? y.name,
-              han: w.yakumanCount > 0 ? "역만" : `${y.han}판`,
+              // 역만 손의 역 줄은 판수 대신 배수로 — 대사희·국사 13면은 한 줄이 "2배 역만"이다
+              han: w.yakumanCount > 0 ? yakumanHanLabel(y.han) : `${y.han}판`,
             })),
             ...(w.doraHan > 0 ? [{ key: "dora", label: "도라", han: `${w.doraHan}판` }] : []),
             ...(w.uraHan > 0 ? [{ key: "ura", label: "뒷도라", han: `${w.uraHan}판` }] : []),
@@ -8163,19 +8171,17 @@ function RoundResultPanel({
 
             <div className="result-total">
               <span className="result-han-circle">
-                {/* 글자 수를 넘겨 준다 — "트리플역만"은 원 밖으로 나가므로 CSS가 줄인다 */}
+                {/* 글자 수를 넘겨 준다 — "2배 역만"은 원 밖으로 나가므로 CSS가 줄인다 */}
                 <b className="result-han-big" data-len={`${w.yakumanCount >= 2 ? yakumanName(w.yakumanCount).length : 0}`}>
                   {w.yakumanCount > 0 ? yakumanName(w.yakumanCount) : `${w.han}판`}
                 </b>
                 <i className="result-fu-sm">
-                  {/* 배수 역만은 큰 글자가 이미 "더블역만"이라, 작은 줄엔 배수 근거를 적는다 */}
-                  {w.yakumanCount >= 2
-                    ? `역만 ×${w.yakumanCount}`
-                    : w.yakumanCount > 0
-                      ? w.limit !== null
-                        ? (LIMIT_NAMES[w.limit] ?? w.limit)
-                        : ""
-                      : `${w.fu}부${w.limit !== null ? ` · ${LIMIT_NAMES[w.limit] ?? w.limit}` : ""}`}
+                  {/* 배수는 큰 글자가 이미 "2배 역만"으로 말한다 — 작은 줄은 등급만 */}
+                  {w.yakumanCount > 0
+                    ? w.limit !== null
+                      ? (LIMIT_NAMES[w.limit] ?? w.limit)
+                      : ""
+                    : `${w.fu}부${w.limit !== null ? ` · ${LIMIT_NAMES[w.limit] ?? w.limit}` : ""}`}
                 </i>
               </span>
               <CountUpPoints value={w.points} mute={wi > 0} />
