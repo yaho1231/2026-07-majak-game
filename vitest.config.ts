@@ -10,5 +10,12 @@ import { configDefaults, defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, "**/.claude/**"],
+    /**
+     * CI 러너는 코어가 적어 `waitFor` 계열 타이밍 테스트가 부하로 굶어 터진다
+     * (`RoomManager.test.ts`의 국 사이 대기 테스트 — 단독 실행은 항상 통과).
+     * 게이트가 흔들리면 게이트를 안 보게 되므로 CI에서만 재시도를 켠다.
+     * 로컬은 0 — 여기서 깜빡이면 그건 봐야 하는 신호다.
+     */
+    retry: process.env["CI"] === undefined ? 0 : 2,
   },
 });
