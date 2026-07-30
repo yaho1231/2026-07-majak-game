@@ -3,13 +3,18 @@
  * 연출 정의는 fx-effects-*.js 에 있다. 여기는 목록·재생·속도만 다룬다.
  */
 
-import { S, alive, anim, buildStage, fitCanvas, fitStage, resetStage, setSpeed, token } from "/fx-core.js?v=7";
-import { EFFECTS } from "/fx-registry.js?v=7";
+import { S, alive, anim, buildStage, fitCanvas, fitStage, resetStage, setSpeed, token } from "/fx-core.js?v=9";
+import { EFFECTS } from "/fx-registry.js?v=9";
 // 등록만 하면 되는 모듈들 — import 자체가 부수효과다
-import "/fx-effects-1.js?v=7";
-import "/fx-effects-2.js?v=7";
-import "/fx-effects-3.js?v=7";
-import "/fx-effects-4.js?v=7";
+import "/fx-effects-1.js?v=9";
+import "/fx-effects-2.js?v=9";
+import "/fx-effects-3.js?v=9";
+import "/fx-effects-4.js?v=9";
+import "/fx-effects-5.js?v=9";
+import "/fx-effects-6.js?v=9";
+import "/fx-effects-7.js?v=9";
+import "/fx-effects-8.js?v=9";
+import "/fx-effects-9.js?v=9";
 
 const FAM_ORDER = [
   "3D · 물리",
@@ -19,6 +24,14 @@ const FAM_ORDER = [
   "파괴 · 임팩트",
   "시간 · 궤적",
   "선택 · 인터랙션",
+  "리치 · 선언",
+  "수비 · 결계",
+  "점수 · 경로",
+  "화료형 · 성립",
+  "후로 · 손길",
+  "교란 · 낙인",
+  "손패 · 조작",
+  "정보 · 열람",
 ];
 const $ = (id) => document.getElementById(id);
 let current = null;

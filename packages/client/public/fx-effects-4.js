@@ -39,8 +39,8 @@ import {
   svgEl,
   tileEl,
   veil,
-} from "/fx-core.js?v=7";
-import { def } from "/fx-registry.js?v=7";
+} from "/fx-core.js?v=9";
+import { def } from "/fx-registry.js?v=9";
 
 const FAM = "선택 · 인터랙션";
 
