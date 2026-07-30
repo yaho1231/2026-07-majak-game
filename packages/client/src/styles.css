@@ -2845,7 +2845,7 @@ button {
   animation: yakuman-hue 1.8s linear infinite;
 }
 
-/* 배수 역만("더블역만"~"6배역만")은 글자가 2자→4·5자로 늘어난다.
+/* 배수 역만("2배 역만"~"6배 역만")은 글자가 2자→4·5자로 늘어난다.
    자간 26px 그대로면 밴드를 뚫고 나가므로 글자 수가 많을 때만 크기·자간을 줄인다. */
 .cutin-yakuman .cutin-text[data-long] {
   font-size: clamp(34px, 7.5vmin, 72px);
@@ -3288,9 +3288,9 @@ button {
   text-shadow: 0 0 18px rgba(255, 180, 90, 0.6);
 }
 
-/* 배수 역만 — "더블역만"(4자)·"트리플역만"(5자)이 점수 원을 넘지 않게 글자 수만큼 줄인다 */
-.result-han-big[data-len="4"] { font-size: clamp(17px, 3.4vmin, 27px); }
+/* 배수 역만 — "2배 역만"(5자)·"10배 역만"(6자)이 점수 원을 넘지 않게 글자 수만큼 줄인다 */
 .result-han-big[data-len="5"] { font-size: clamp(15px, 2.9vmin, 24px); }
+.result-han-big[data-len="6"] { font-size: clamp(13px, 2.5vmin, 21px); }
 
 .result-fu-sm {
   font-style: normal;

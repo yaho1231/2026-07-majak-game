@@ -18,6 +18,12 @@ export interface YakuDef {
   openHan: number | null;
   isYakuman?: boolean;
   /**
+   * 역만 배수 — 이 역 하나가 몇 배 역만인가 (기본 1). 2 = 더블 역만.
+   * evaluate가 yakumanCount에 이 값만큼 더하므로 복합 합산과 자연히 맞물린다.
+   * closedHan/openHan도 13×배수로 맞춰 둘 것 — 결과창이 역 한 줄의 배수를 그 판수로 읽는다.
+   */
+  yakumanMultiplier?: number;
+  /**
    * 보조 역 — 도라처럼 판은 더하지만 "역 있음" 판정에는 세지 않는다.
    * 다른 실제 역이 하나도 없으면 아예 적용되지 않는다 (증강 보너스 역용).
    */
