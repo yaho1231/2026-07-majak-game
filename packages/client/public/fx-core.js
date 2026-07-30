@@ -21,6 +21,18 @@ for (const c of [...ALL_CODES, "0m", "0p", "0s"]) {
   imgs.set(c, im);
 }
 
+/* 이징 — 클라이언트 디자인 토큰(--ease / --ease-quart)과 같은 값.
+ * WAAPI easing 문자열에는 CSS 변수를 못 쓰므로 상수로 들고 쓴다.
+ *
+ * UI 크롬(패널·라벨·HUD·프레임·카드)은 EASE 로 감속만 한다 — 리스킨에서 바운스
+ * 오버슈트를 걷어낸 규율을 랩도 따른다. 반면 패가 물리적으로 부딪히는 순간
+ * (타패 슬램·분열 스냅·발굴)에는 스쿼시를 남긴다 — 게임의 tile-in 도 그렇게 한다.
+ * UI 가 튀면 싸구려로 보이지만, 물체가 안 튀면 무게가 없어 보인다. */
+export const EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+export const EASE_QUART = "cubic-bezier(0.25, 1, 0.5, 1)";
+/** 물체 충돌용 — 착지 후 살짝 되돌아오는 정도만 */
+export const EASE_IMPACT = "cubic-bezier(0.2, 1.2, 0.4, 1)";
+
 export const rnd = (a, b) => a + Math.random() * (b - a);
 export const pick = (arr) => arr[(Math.random() * arr.length) | 0];
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -162,10 +174,11 @@ export function drawTile(c, sp) {
   const w = sp.w;
   const h = sp.h;
   roundRect(c, -w / 2, -h / 2, w, h, 4);
-  c.fillStyle = sp.back ? "#1f5138" : "#f8f5ec";
+  // .tf / .tf.back 과 같은 값 — 캔버스로 넘어간 패가 DOM 패와 달라 보이면 인계가 들킨다
+  c.fillStyle = sp.back ? "#142519" : "#f2ece0";
   c.fill();
   c.lineWidth = 1;
-  c.strokeStyle = sp.back ? "#123122" : "#b9b09b";
+  c.strokeStyle = sp.back ? "#0a130d" : "#b0a894";
   c.stroke();
   if (!sp.back && sp.img && sp.img.complete && sp.img.naturalWidth > 0) {
     c.drawImage(sp.img, -w / 2 + 1, -h / 2 + 1, w - 2, h - 2);
@@ -440,7 +453,7 @@ export function ring(cx, cy, r0, r1, ms, color = "rgba(255,215,106,.9)", w = 3) 
       { transform: "scale(1)", opacity: 0.95 },
       { transform: `scale(${r1 / r0})`, opacity: 0 },
     ],
-    { duration: ms, easing: "cubic-bezier(.15,.7,.3,1)" },
+    { duration: ms, easing: EASE_QUART },
   );
   a.finished.then(() => d.remove()).catch(() => d.remove());
   return d;
@@ -473,7 +486,7 @@ export function banner(title, sub, ms = 1300) {
       { transform: "translateX(0)", letterSpacing: "14px", opacity: 1, offset: 0.78 },
       { transform: "translateX(18px)", opacity: 0 },
     ],
-    { duration: ms, easing: "cubic-bezier(.15,.9,.2,1)" },
+    { duration: ms, easing: EASE },
   );
   anim(s, [{ opacity: 0 }, { opacity: 1, offset: 0.35 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }], {
     duration: ms,
@@ -491,7 +504,7 @@ export function banner(title, sub, ms = 1300) {
   anim(sw, [{ transform: "translateX(-100%)" }, { transform: "translateX(100%)" }], {
     duration: ms * 0.5,
     delay: ms * 0.16,
-    easing: "cubic-bezier(.3,0,.7,1)",
+    easing: EASE_QUART,
   });
 
   const a = anim(b, [{ opacity: 1 }, { opacity: 1, offset: 0.9 }, { opacity: 0 }], { duration: ms });
