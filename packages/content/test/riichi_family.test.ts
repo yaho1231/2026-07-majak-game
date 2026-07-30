@@ -21,6 +21,7 @@ import { roundKey, viewKey } from "../src/util.js";
 import { riichiUpgrade } from "../src/augments/riichi_upgrade.js";
 import { freeRiichiDiscard } from "../src/augments/free_riichi_discard.js";
 import { peekRiichiWaits } from "../src/augments/peek_riichi_waits.js";
+import { lastStand } from "../src/augments/last_stand.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -428,5 +429,61 @@ describe("peek_riichi_waits (선언 간파)", () => {
     expect(
       game.engine.state.augmentData[viewKey("p0", "waits:p1")],
     ).toBeUndefined();
+  });
+});
+
+// ─────────────────────────── 리치 자동 버림과 증강 ───────────────────────────
+
+/**
+ * 리치를 걸면 손이 잠겨 쯔모기리 말고는 둘 수 있는 수가 없다 —
+ * FlowController가 그런 순의 프롬프트에 auto를 붙여 진행부가 대신 두게 한다.
+ * 다만 증강이 그 순에 다른 수를 열어 준다면 여전히 사람이 골라야 한다.
+ */
+describe("리치 자동 버림 — 증강이 선택지를 열면 자동으로 두지 않는다", () => {
+  /** p0 리치 상태 + 쓸모없는 쯔모 1장 (14장 turn.act) */
+  function forcedState(augments: string[]): GameState {
+    return withRiichi(
+      withAugments(
+        craft({
+          hands: { p0: "123m456p789s55z66z1m", p1: "*", p2: "*", p3: "*" },
+          phase: "turn.act",
+          turnSeat: 0,
+          drawnLastFor: "p0",
+        }),
+        "p0",
+        augments,
+      ),
+      "p0",
+    );
+  }
+
+  function p0Prompt(game: Game): { options: { type: string }[]; auto?: true } {
+    const status = new FlowController(game.engine).begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status.prompts.find((p) => p.player === "p0");
+    if (prompt === undefined) throw new Error("no prompt for p0");
+    return prompt;
+  }
+
+  it("증강이 없으면 쯔모기리 하나뿐 — auto", () => {
+    const prompt = p0Prompt(createStandardGameFromState(forcedState([])));
+    expect(prompt.options).toHaveLength(1);
+    expect(prompt.auto).toBe(true);
+  });
+
+  it("자유 선언(free_riichi_discard)은 버릴 패를 고르게 하므로 auto가 아니다", () => {
+    const game = createStandardGameFromState(forcedState(["free_riichi_discard"]));
+    installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
+    const prompt = p0Prompt(game);
+    expect(prompt.options.some((o) => o.type === "free_discard")).toBe(true);
+    expect(prompt.auto).toBeUndefined();
+  });
+
+  it("승부수(last_stand)는 리치 취소를 열어 두므로 auto가 아니다", () => {
+    const game = createStandardGameFromState(forcedState(["last_stand"]));
+    installAugment(game.engine, lastStand, "p0", { yaku: game.yaku });
+    const prompt = p0Prompt(game);
+    expect(prompt.options.some((o) => o.type === "cancel_riichi")).toBe(true);
+    expect(prompt.auto).toBeUndefined();
   });
 });

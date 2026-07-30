@@ -83,6 +83,12 @@ export interface HanchanConfig {
    * 기본 0 (테스트·봇 게임은 지연 없음). 실서버가 사람 게임에서 설정한다.
    */
   interRoundDelayMs?: number;
+  /**
+   * 강제 수(리치 쯔모기리)를 대신 둘 때의 한 박자(ms). 물어볼 것이 없어 즉시
+   * 둘 수 있지만, 그러면 앞 사람의 버림과 같은 프레임에 묻혀 "리치가 무엇을
+   * 흘렸는지"가 화면에서 사라진다. 기본 0 (테스트·봇 게임은 지연 없음).
+   */
+  autoMoveDelayMs?: number;
 }
 
 export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
@@ -99,6 +105,7 @@ export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
   seed: Date.now(),
   redFivesPerSuit: 1,
   interRoundDelayMs: 0,
+  autoMoveDelayMs: 0,
 };
 
 /**
@@ -510,6 +517,17 @@ export class HanchanController {
     this.broadcastViews(game); // 배패 직후 — 손패가 보이는 첫 시점
 
     while (status.kind === "awaiting") {
+      // 강제 수(리치 쯔모기리) — 고를 것이 없으니 에이전트에게 묻지 않고 그대로 둔다.
+      // 사람은 프롬프트조차 받지 않아 매 순 같은 패를 다시 클릭할 일이 없다.
+      // 턴 프롬프트는 언제나 한 명뿐이라 auto가 다른 사람의 리액션과 섞이지 않는다.
+      const auto = status.prompts.length === 1 ? status.prompts[0] : undefined;
+      if (auto?.auto === true) {
+        if (await this.pauseForAutoMove()) return "abort";
+        status = flow.submit(auto.player, auto.options[0]!);
+        this.broadcastViews(game);
+        continue;
+      }
+
       // 결정이 필요한 플레이어에게 prompt 전송하고 결과 수집 (무효 요청 시 즉시 이탈)
       const raced = await Promise.race([
         Promise.all(
@@ -597,6 +615,21 @@ export class HanchanController {
 
     this.broadcastViews(game); // 모든 픽 적용 후 한 번만 공개
     this.events.onDraftEnd?.(stage);
+  }
+
+  /**
+   * 강제 수를 대신 두기 전 한 박자 — 봇의 생각 시간과 같은 자리다. 이게 없으면
+   * 리치의 쯔모기리가 앞 사람의 버림과 한 프레임에 붙어 나가 무엇을 흘렸는지
+   * 보이지 않는다. 무효 요청이 오면 즉시 깨어나 true(=중단)를 돌려준다.
+   */
+  private async pauseForAutoMove(): Promise<boolean> {
+    const ms = this.config.autoMoveDelayMs ?? 0;
+    if (ms <= 0) return this.aborted;
+    const raced = await Promise.race([
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+      this.abortSignal,
+    ]);
+    return raced !== null;
   }
 
   /**

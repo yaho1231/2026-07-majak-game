@@ -120,6 +120,22 @@ function craft(cfg: {
   };
 }
 
+/** 대상 플레이어를 리치 상태로 만든다 (선언 절차 없이 상태만) */
+function withRiichi(state: GameState, player: PlayerId): GameState {
+  const rs = state.round.byPlayer[player];
+  if (rs === undefined) throw new Error(`unknown player: ${player}`);
+  return {
+    ...state,
+    round: {
+      ...state.round,
+      byPlayer: {
+        ...state.round.byPlayer,
+        [player]: { ...rs, riichi: { double: false, ippatsu: false, discardIndex: 0 } },
+      },
+    },
+  };
+}
+
 function totalPoints(game: StandardGame): number {
   return (
     game.engine.state.players.reduce((sum, p) => sum + p.score, 0) +
@@ -269,6 +285,62 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
       double: true,
       ippatsu: true,
     });
+  });
+
+  it("리치 자동 버림: 둘 수 있는 수가 쯔모기리뿐이면 프롬프트에 auto가 붙는다", () => {
+    const state = withRiichi(
+      craft({
+        hands: {
+          p0: "123m456p789s55z66z1m", // 5z·6z 샹퐁 텐파이 + 손을 못 바꾸는 쯔모 1m
+          p1: JUNK1,
+          p2: JUNK2,
+          p3: JUNK3,
+        },
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
+      }),
+      "p0",
+    );
+    const game = createStandardGameFromState(state);
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+
+    const prompt = status.prompts[0];
+    const drawn = game.engine.state.round.lastDrawnTile;
+    expect(prompt?.player).toBe("p0");
+    expect(prompt?.options).toEqual([{ type: "discard", payload: { tileId: drawn } }]);
+    expect(prompt?.auto).toBe(true);
+
+    // auto라도 옵션은 진짜 합법 수다 — 그대로 두면 정상 버림으로 흐른다
+    flow.submit("p0", prompt!.options[0]!);
+    expect(game.engine.state.zones[discardsZone("p0")]?.tileIds).toContain(drawn);
+  });
+
+  it("리치 자동 버림: 쯔모(화료)가 가능하면 auto가 붙지 않는다", () => {
+    const state = withRiichi(
+      craft({
+        hands: {
+          p0: "123m456p789s55z66z5z", // 샹퐁 대기에 5z를 쯔모 — 화료 선택지가 생긴다
+          p1: JUNK1,
+          p2: JUNK2,
+          p3: JUNK3,
+        },
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
+      }),
+      "p0",
+    );
+    const game = createStandardGameFromState(state);
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+
+    const prompt = status.prompts[0];
+    expect(prompt?.options.some((o) => o.type === "win")).toBe(true);
+    expect(prompt?.auto).toBeUndefined();
   });
 
   it("론: 대기패가 버려지면 win 옵션이 뜨고, 정산까지 흐른다", () => {

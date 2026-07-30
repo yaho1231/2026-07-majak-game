@@ -45,6 +45,16 @@ export interface ActionOption {
 export interface DecisionPrompt {
   player: PlayerId;
   options: ActionOption[];
+  /**
+   * 물어볼 것이 없는 강제 수 — 리치로 손이 잠겨 쯔모기리 외에는 둘 수 있는 수가
+   * 하나도 없을 때만 붙는다(안깡·쯔모·리치 취소 같은 증강 선택지가 하나라도
+   * 있으면 붙지 않는다). 진행부(HanchanController)는 이 프롬프트를 에이전트에게
+   * 묻지 않고 그대로 둔다 — 사람은 매 순 같은 패를 다시 클릭하지 않아도 된다.
+   *
+   * 규칙 판정은 그대로다: options에는 유일한 합법 수가 들어 있고, 이 프롬프트를
+   * 무시하고 직접 submit해도 결과는 같다 (테스트·리플레이는 영향 없음).
+   */
+  auto?: true;
 }
 
 export type FlowStatus =
@@ -296,6 +306,15 @@ export class FlowController {
     }
     if (options.length === 0) {
       throw new Error(`Turn player ${player} has no legal actions`);
+    }
+    // 리치 중 강제 쯔모기리 — 손패가 잠겨 버릴 패를 고를 수 없고, 위에서 모은
+    // 선택지(안깡·쯔모·증강 액션)도 하나도 없다면 물어볼 것이 남지 않는다.
+    if (
+      state.round.byPlayer[player]?.riichi != null &&
+      options.length === 1 &&
+      options[0]?.type === "discard"
+    ) {
+      return { player, options, auto: true };
     }
     return { player, options };
   }
