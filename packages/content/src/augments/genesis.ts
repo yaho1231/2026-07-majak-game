@@ -42,7 +42,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { counterOf, flagOf, matchUses, roundKey, statePrng, viewKey } from "../util.js";
-import { handIsWeak, handKindsOf } from "./botHelpers.js";
+import { handIsPoor, handKindsOf } from "./botHelpers.js";
 
 const ID = "genesis";
 const ACTION = "genesis_flip";

@@ -30,7 +30,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { craft, h, hanBonusPoints } from "./helpers.js";
+import { botCtx, craft, h, hanBonusPoints } from "./helpers.js";
 import { futureSight } from "../src/augments/future_sight.js";
 import { bottomDeal } from "../src/augments/bottom_deal.js";
 
@@ -606,13 +606,12 @@ describe("bottom_deal — 봇 정책 (실게임 뷰)", () => {
       .map((id) => view.tiles[id]?.kind)
       .filter((k): k is TileKind => k !== undefined);
     const bottomId = view.zones[WALL]?.tileIds.at(-1) as TileId;
-    const picked = bottomDeal.bot?.choose({
-      view,
-      options: prompt.options,
-      holder: "p0",
-      rng,
-      tenpai: isTenpai(hand, view.round.byPlayer["p0"]?.meldCount ?? 0),
-    });
+    const picked = bottomDeal.bot?.choose(
+      botCtx(view, prompt.options, {
+        rng,
+        tenpai: isTenpai(hand, view.round.byPlayer["p0"]?.meldCount ?? 0),
+      }),
+    );
     return { picked, bottomKind: kindKey(view.tiles[bottomId]!.kind), hand };
   }
 
