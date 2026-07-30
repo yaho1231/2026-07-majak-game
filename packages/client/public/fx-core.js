@@ -72,13 +72,24 @@ export const S = {
   csBottom: $("csBottom"),
 };
 
-/** 화면 크기에 맞춰 무대를 축소한다. .stage 의 transform 은 여기서만 건드린다. */
+/** 화면 크기에 맞춰 무대를 축소한다. .stage 의 transform 은 여기서만 건드린다.
+ *  무대는 absolute 로 띄워져 있으므로 중앙 정렬(translate)도 여기서 같이 준다. */
 export function fitStage() {
   const wrap = $("stageWrap");
-  const k = Math.min((wrap.clientWidth - 28) / 1000, (wrap.clientHeight - 28) / 625, 1.35);
-  S.stage.style.transform = `scale(${Math.max(0.3, k)})`;
+  const pad = wrap.clientWidth < 520 ? 8 : 24;
+  const k = Math.min((wrap.clientWidth - pad) / 1000, (wrap.clientHeight - pad) / 625, 1.35);
+  // 하한은 '터지지 않기' 위한 안전장치일 뿐 — 실제로는 항상 들어맞는 배율을 쓴다
+  S.stage.style.transform = `translate(-50%, -50%) scale(${Math.max(0.12, k)})`;
 }
-addEventListener("resize", fitStage);
+
+/* 무대 배율은 창 크기가 아니라 '무대 칸의 실제 크기'에 달려 있다 — 미디어쿼리로 사이드바가
+   접히거나 컨트롤 바가 줄바꿈되면 창 크기는 그대로인데 칸 크기만 바뀐다. resize 이벤트만
+   믿으면 그런 경우를 놓쳐 배율이 옛 값에 남는다. 칸을 직접 관찰한다. */
+if (typeof ResizeObserver === "function") {
+  new ResizeObserver(() => fitStage()).observe($("stageWrap"));
+} else {
+  addEventListener("resize", fitStage);
+}
 
 /** 요소의 무대 좌표계 사각형 (스케일 보정) */
 export function sRect(el) {

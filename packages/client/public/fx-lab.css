@@ -206,19 +206,22 @@ button {
   min-height: 0;
 }
 
+/* 무대는 1000×625 고정 박스라 일반 흐름에 두면 부모 그리드를 1000px 로 벌려버린다
+   (좁은 화면에서 레이아웃이 터지는 원인). absolute 로 띄워 레이아웃에서 빼고,
+   중앙 정렬 + 축소는 transform 하나로만 처리한다. */
 .stage-wrap {
+  position: relative;
   flex: 1;
   min-height: 0;
-  display: grid;
-  place-items: center;
-  padding: 14px;
   overflow: hidden;
 }
 
 /* ─────────────── 무대 (1000×625 고정) ─────────────── */
 
 .stage {
-  position: relative;
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 1000px;
   height: 625px;
   flex: none;
@@ -683,14 +686,34 @@ button {
   font-weight: 700;
 }
 
-/* 좁은 화면: 사이드바를 위로 접는다 */
+/* 좁은 화면: 사이드바를 위로 접는다.
+   비율(40%)로 나누면 무대 높이가 같이 쪼그라들어 판이 안 보인다 — 목록은 고정 높이
+   스크롤 스트립으로 두고 남는 높이는 전부 무대에 준다. */
 @media (max-width: 860px) {
   .lab {
     grid-template-columns: 1fr;
-    grid-template-rows: 40% 60%;
+    grid-template-rows: 168px minmax(0, 1fr);
   }
   .side {
     border-right: none;
     border-bottom: 1px solid var(--line);
+  }
+  .side-head {
+    padding: 10px 14px 8px;
+  }
+  .side-head h1 {
+    font-size: 15px;
+  }
+  .side-foot {
+    display: none;
+  }
+  .ctl {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px 10px;
+  }
+  .note {
+    flex-basis: 100%;
+    font-size: 10.5px;
   }
 }
