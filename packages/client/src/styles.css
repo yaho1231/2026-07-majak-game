@@ -11,17 +11,28 @@ body,
   height: 100%;
   font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   color: #e8e4d8;
+  /* 모바일: 주소창 여닫힘에 따라 실제 보이는 높이를 쓴다 (100vh는 잘린다) */
+  height: 100dvh;
+  /* 게임판을 손가락으로 밀었을 때 페이지가 통째로 튀지 않게 */
+  overscroll-behavior: none;
+}
+
+body {
+  /* 탭할 때 회색 사각형이 번쩍이지 않게 (모바일 크롬·사파리) */
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
   font-family: inherit;
   cursor: pointer;
+  /* 더블탭 확대로 인한 300ms 클릭 지연 제거 */
+  touch-action: manipulation;
 }
 
 .game-root {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100dvh;
   overflow: hidden;
   background:
     radial-gradient(ellipse at 50% 42%, #2d5a80 0%, #1d3f5e 45%, #12283f 75%, #0a1826 100%);
@@ -116,6 +127,13 @@ button {
   /* 중앙 보드(바닥+패널) 정사각형 크기 — 모든 중앙 요소가 이 값에 비례 */
   --board: min(88vmin, 900px);
   --panel: calc(var(--board) * 0.3);
+  /* 중앙 4방향 점수판 — 넓은 화면에선 기존 고정값(138×36·18px) 그대로지만,
+     패널이 작아지면 비율을 따라 함께 줄어든다. 고정값만 쓰던 예전에는 좁은 화면에서
+     점수판이 패널 밖으로 삐져나와 국 표시·바닥패와 겹쳤다. */
+  --plate-w: min(138px, calc(var(--panel) * 0.62));
+  --plate-h: min(36px, calc(var(--panel) * 0.17));
+  --plate-font: max(11px, min(18px, calc(var(--panel) * 0.105)));
+  --plate-wind: max(13px, min(30px, calc(var(--panel) * 0.15)));
   /* 바닥 타일 */
   --rt-w: calc(var(--board) * 0.058);
   --rt-h: calc(var(--rt-w) * 1.5);
@@ -123,14 +141,22 @@ button {
   --river-w: calc(var(--rt-w) * 5 + var(--rt-h) + 3px);
   --river-h: calc(var(--rt-h) * 3);
   --river-gap: calc(var(--board) * 0.014);
-  /* 내 손패 (넓은 화면일수록 커지되, 14장이 가로로 넘치지 않게 vw 기반) */
-  --hand-w: clamp(52px, 6vw, 84px);
-  --hand-h: calc(var(--hand-w) * 1.6);
+
+  /* ── 내 손패 ──
+     넓은 화면일수록 커지되(--hand-pref), 장수(--hand-n)가 화면 폭을 넘기지 않도록
+     .own-hand에서 실제 여백·gap을 빼고 나눈 값(--hand-fit)과 min()으로 묶는다.
+     --hand-w 자체는 .own-hand에서 계산한다 — --hand-n을 인라인으로 덮어써도
+     같은 요소에서 다시 치환되어야 하기 때문(치환은 선언된 요소 기준). */
+  --hand-n: 14;
+  --hand-pref: clamp(52px, 6vw, 84px);
+  --hand-gap: 5px;
+  --hand-pad: 18px;
+  --hand-side: 8px;
   /* 후로 타일 */
   --mt-w: clamp(38px, 5vmin, 52px);
   --mt-h: calc(var(--mt-w) * 1.5);
-  /* 상대 손패 뒷면 — 다른 플레이어의 패가 잘 보이게 키움 */
-  --back-w: clamp(38px, 4.9vmin, 50px);
+  /* 상대 손패 뒷면 — 잘 보이게 키우되 13장이 가로로 넘치지 않게 폭을 조인다 */
+  --back-w: min(clamp(38px, 4.9vmin, 50px), calc((100vw - 84px) / 13));
   --back-h: calc(var(--back-w) * 1.36);
 }
 
@@ -218,6 +244,12 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* 손패 위에 눕는 모바일 변형 — 기본은 숨기고 좁은 화면에서만 켠다.
+   (두 벌이 동시에 렌더되므로 반드시 한쪽만 보여야 한다) */
+.quick-toggles-inline {
+  display: none;
 }
 
 .qt-item {
@@ -334,17 +366,20 @@ button {
 
 .center-core {
   position: absolute;
-  inset: 28px;
+  /* 4방향 점수판이 차지하는 띠(가로=--plate-h)를 피해서 안쪽만 쓴다.
+     고정 28px 인셋이던 예전에는 좁은 화면에서 국 표시·점수·도라가 서로 겹쳤다. */
+  inset: calc(var(--plate-h) * 0.8) var(--plate-h);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  --dora-w: calc((var(--panel) - 88px) / 5);
+  /* 도라 표시패 5장 — 패널에 비례 (예전 고정식은 작은 패널에서 폭이 0에 수렴했다) */
+  --dora-w: calc(var(--panel) * 0.115);
 }
 
 .center-round {
-  font-size: calc(var(--panel) * 0.15);
+  font-size: max(15px, calc(var(--panel) * 0.15));
   font-weight: 800;
   color: #ffd76a;
   text-shadow: 0 2px 10px rgba(255, 215, 106, 0.35);
@@ -354,9 +389,15 @@ button {
 .center-sub {
   display: flex;
   justify-content: center;
-  gap: 9px;
-  font-size: calc(var(--panel) * 0.068);
+  flex-wrap: wrap;
+  gap: 2px calc(var(--panel) * 0.035);
+  font-size: max(10px, calc(var(--panel) * 0.068));
   color: #9db4c8;
+}
+
+/* 좁은 패널에서 "3본장"이 "3 / 본장"으로 쪼개지지 않게 — 항목 사이에서만 줄바꿈 */
+.center-sub > * {
+  white-space: nowrap;
 }
 
 .wall-count {
@@ -419,31 +460,42 @@ button {
 
 .plate {
   position: absolute;
-  width: 138px;
-  height: 36px;
+  width: var(--plate-w);
+  height: var(--plate-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  font-size: 18px;
+  /* 좁은 화면에서 고정 8px은 점수 글자를 판 밖으로 밀어낸다 — 판 높이에 비례시킨다 */
+  gap: calc(var(--plate-h) * 0.22);
+  font-size: var(--plate-font);
+  white-space: nowrap;
 }
 
 .plate-bottom { left: 50%; bottom: 4px; transform: translateX(-50%); }
 .plate-top { left: 50%; top: 4px; transform: translateX(-50%) rotate(180deg); }
-/* 세로 플레이트: 고정폭 박스를 중앙 회전 → 시각적으로 세로 띠가 된다 */
-.plate-right { top: 50%; right: -51px; transform: translateY(-50%) rotate(-90deg); }
-.plate-left { top: 50%; left: -51px; transform: translateY(-50%) rotate(90deg); }
+/* 세로 플레이트: 고정폭 박스를 중앙 회전 → 시각적으로 세로 띠가 된다.
+   회전 후 박스가 패널 밖으로 나가는 만큼(폭-높이)/2를 음수 오프셋으로 준다. */
+.plate-right {
+  top: 50%;
+  right: calc((var(--plate-h) - var(--plate-w)) / 2);
+  transform: translateY(-50%) rotate(-90deg);
+}
+.plate-left {
+  top: 50%;
+  left: calc((var(--plate-h) - var(--plate-w)) / 2);
+  transform: translateY(-50%) rotate(90deg);
+}
 
 .plate-wind {
-  width: 30px;
-  height: 30px;
+  width: var(--plate-wind);
+  height: var(--plate-wind);
   display: grid;
   place-items: center;
   border-radius: 7px;
   background: #24485f;
   color: #cfe2ef;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--plate-font);
   transition: background 0.25s ease, color 0.25s ease;
 }
 
@@ -1016,10 +1068,20 @@ button {
 }
 
 .own-hand {
+  /* 화면 폭 안에 --hand-n장이 반드시 들어가는 최대 타일 폭.
+     (화면폭 − 좌우여백 − 손패 패딩 − 타일 사이 gap 합) / 장수.
+     나누는 수를 n+0.5로 잡은 건 쯔모패 앞의 벌어짐(.hand-drawn margin-left = 0.4w)
+     까지 미리 빼두기 위해서다. */
+  --hand-fit: calc(
+    (100vw - var(--hand-side) * 2 - var(--hand-pad) * 2 -
+      (var(--hand-n) - 1) * var(--hand-gap)) / (var(--hand-n) + 0.5)
+  );
+  --hand-w: min(var(--hand-pref), var(--hand-fit));
   display: flex;
   align-items: flex-end;
-  gap: 5px;
-  padding: 12px 18px 10px;
+  gap: var(--hand-gap);
+  padding: 12px var(--hand-pad) 10px;
+  max-width: calc(100vw - var(--hand-side) * 2);
   border-radius: 16px;
   background: rgba(6, 14, 24, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1090,9 +1152,12 @@ button {
   cursor: default;
 }
 
-.hand-clickable:hover {
-  transform: translateY(-12px);
-  filter: brightness(1.08);
+/* 마우스가 있는 기기에서만 — 터치에서는 hover가 탭 후에도 남아 패가 들린 채 굳는다 */
+@media (hover: hover) {
+  .hand-clickable:hover {
+    transform: translateY(-12px);
+    filter: brightness(1.08);
+  }
 }
 
 .hand-dimmed {
@@ -1628,8 +1693,10 @@ button {
   transition: transform 0.1s ease;
 }
 
-.act:hover {
-  transform: scale(1.07);
+@media (hover: hover) {
+  .act:hover {
+    transform: scale(1.07);
+  }
 }
 
 .act-win {
@@ -2105,7 +2172,14 @@ button {
   inset: 0;
   z-index: 50;
   display: grid;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  /* safe center: 내용이 화면보다 크면 가운데 정렬을 포기하고 위부터 보여준다
+     (아니면 위쪽이 잘려 드래프트 제목·타이머가 사라진다) */
+  align-content: safe center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
   background: rgba(4, 10, 18, 0.78);
   backdrop-filter: blur(3px);
   animation: overlay-in 0.25s ease-out;
@@ -2246,8 +2320,10 @@ button {
   to { transform: translateY(0) scale(1) rotateX(0); opacity: 1; }
 }
 
-.draft-card:hover {
-  transform: translateY(-12px) scale(1.04);
+@media (hover: hover) {
+  .draft-card:hover {
+    transform: translateY(-12px) scale(1.04);
+  }
 }
 
 .tier-silver {
@@ -3830,13 +3906,19 @@ button {
 
 /* ─────────────── 설정 패널 ─────────────── */
 
+/* 화면 어디서 열려도(대국·홈·대기실) 같은 자리에 뜨고, 헤더를 끌어 옮길 수 있다.
+   position:fixed + 내부 스크롤이라 세로가 짧은 화면에서도 항상 전체가 보인다. */
 .settings-panel {
-  position: absolute;
+  position: fixed;
   top: 62px;
   right: 14px;
-  z-index: 45;
-  width: min(330px, 92vw);
-  padding: 14px 16px;
+  z-index: 90;
+  width: min(330px, calc(100vw - 16px));
+  /* 헤더(고정) + 본문(스크롤) — 화면 높이를 넘지 않는다 */
+  max-height: min(78vh, calc(100dvh - 24px));
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 14px;
   border-radius: 14px;
   background: rgba(10, 22, 36, 0.97);
   border: 1px solid rgba(214, 178, 94, 0.4);
@@ -3847,17 +3929,54 @@ button {
 .settings-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
   font-size: 17px;
   font-weight: 800;
   color: #ffd76a;
   letter-spacing: 4px;
-  margin-bottom: 8px;
+  padding-bottom: 8px;
+  margin: -4px -4px 0;
+  padding-left: 4px;
+  padding-right: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  /* 드래그 핸들 — 터치에서 스크롤 제스처로 가로채이지 않게 */
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.settings-head:active {
+  cursor: grabbing;
+}
+
+.settings-grip {
+  color: #6d8398;
+  font-size: 15px;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.settings-title {
+  flex: 1 1 auto;
+}
+
+/* 항목 목록 — 여기만 스크롤되고 헤더(=드래그 핸들)는 항상 보인다 */
+.settings-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -4px;
+  padding: 0 4px;
 }
 
 .settings-x {
-  width: 28px;
-  height: 28px;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
   border-radius: 7px;
   border: none;
   background: rgba(255, 255, 255, 0.08);
@@ -3879,10 +3998,34 @@ button {
   cursor: pointer;
 }
 
+/* 헤더 밑줄과 첫 항목의 윗줄이 겹쳐 두 줄로 보이지 않게 */
+.settings-body > .settings-row:first-child {
+  border-top: none;
+}
+
 .settings-text {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  /* 설명이 길어도 토글·슬라이더를 밀어내지 않고 줄바꿈되게 */
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* 좁은 화면: 음량 슬라이더를 설명 아래 줄로 내려 글자가 두세 자씩 끊기지 않게 */
+@media (max-width: 700px) {
+  .settings-row-slider {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .settings-row-slider .settings-slider {
+    flex: 1 0 100%;
+    justify-content: flex-start;
+  }
+  .settings-row-slider .settings-slider input[type="range"] {
+    flex: 1 1 auto;
+    width: auto;
+  }
 }
 
 .settings-abort {
@@ -4407,7 +4550,7 @@ button {
   flex-direction: column;
   gap: 4px;
   width: max-content;
-  max-width: 240px;
+  max-width: min(240px, 78vw);
   padding: 9px 12px;
   border-radius: 10px;
   background: rgba(10, 22, 36, 0.98);
@@ -4417,8 +4560,15 @@ button {
   white-space: normal;
 }
 
-.aug-pill:hover .aug-tip {
+/* :focus는 터치용 — 마우스가 없으면 hover가 없으므로 탭해서 설명을 연다 */
+.aug-pill:hover .aug-tip,
+.aug-pill:focus .aug-tip {
   display: flex;
+}
+
+.aug-pill:focus {
+  outline: 2px solid rgba(190, 150, 255, 0.85);
+  outline-offset: 1px;
 }
 
 .aug-tip-down {
@@ -4487,25 +4637,337 @@ button {
 
 /* ─────────────── 반응형 ─────────────── */
 
+/* 빠른 토글이 좌하단에 뜨는 폭대(901px~)에서는 손패가 그 위를 덮지 않도록
+   양옆으로 토글 폭만큼 자리를 비운다. 손패가 원래 크기로도 여유가 있는
+   아주 넓은 화면(약 1530px~)에서는 --hand-pref가 이겨서 아무 영향이 없다. */
+@media (min-width: 901px) {
+  .table {
+    --hand-side: 116px;
+  }
+}
+
 @media (max-width: 900px) {
   .table {
-    --board: min(90vmin, 560px);
-    --hand-w: clamp(32px, 6vw, 50px);
+    /* 58vh 상한 — 창이 낮으면 바닥(버림패) 아래쪽이 손패 영역까지 흘러내린다 */
+    --board: min(90vmin, 58vh, 560px);
+    --hand-pref: clamp(32px, 6vw, 50px);
+  }
+
+  .table-center {
+    top: 44%;
   }
 
   .opp-strip-left .nameplate,
   .opp-strip-right .nameplate {
     display: none;
   }
+
+  /* 맞은편 상대: 이름표 + 뒷면 13장을 가로로 늘어놓으면 화면 폭을 넘는다 → 세로로 쌓는다 */
+  .opp-strip-top {
+    flex-direction: column;
+    gap: 6px;
+    max-width: calc(100vw - 12px);
+  }
+
+  /* 좌하단 빠른 토글이 손패 왼쪽 끝을 덮는다 — 손패 위 가로 줄로 옮긴다 */
+  .quick-toggles:not(.quick-toggles-inline) {
+    display: none;
+  }
+  .quick-toggles-inline {
+    display: flex;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    max-width: calc(100vw - 12px);
+    transform: none;
+  }
+}
+
+/* ── 모바일(세로) 대국 화면 ──
+   좁은 폭이 모든 것의 병목이다. 크기 변수를 화면 폭에 맞춰 다시 잡고,
+   좌하단 빠른 토글처럼 겹치던 요소는 손패 위 줄로 옮긴다. */
+@media (max-width: 700px) {
+  .table {
+    /* 세로 화면: 폭이 board를 결정한다. 다만 board를 화면 폭까지 키우면 바닥(river)이
+       좌·우 상대 영역과 겹치므로, 양옆에 상대 자리를 남기는 74vw까지만 키운다. */
+    --board: min(74vw, 48vh, 460px);
+    /* 보드가 작아진 만큼 중앙 패널 비율은 키운다 — 안 그러면 국·점수 글자가 안 읽힌다
+       (점수판 크기는 --panel에 비례하므로 따로 손댈 필요가 없다) */
+    --panel: calc(var(--board) * 0.46);
+    /* 손패 14장이 반드시 한 줄에 들어가게 여백·간격까지 조인다 */
+    --hand-pref: clamp(24px, 7vw, 50px);
+    --hand-gap: 2px;
+    --hand-pad: 7px;
+    --hand-side: 4px;
+    --mt-w: min(clamp(15px, 4.4vw, 30px), calc((100vw - 40px) / 13));
+    --back-w: min(clamp(13px, 4.2vw, 26px), calc((100vw - 40px) / 13));
+  }
+
+  /* 액션 바가 뜨면 내 영역이 위로 자라므로 보드를 살짝 올려 둔다 */
+  .table-center {
+    top: 45%;
+  }
+
+  /* 상단 아이콘 버튼을 줄이고, 상대 이름표가 그 아래로 내려오게 한다 */
+  .icon-btn {
+    top: 8px;
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+  }
+  .leave-btn { right: 8px; }
+  .settings-btn { right: 48px; }
+
+  /* 이름표가 화면 폭을 거의 다 쓰므로 우상단 아이콘 버튼 아래로 내린다 */
+  .opp-strip-top {
+    top: 48px;
+    gap: 5px;
+  }
+  .opp-strip-left { left: 6px; }
+  .opp-strip-right { right: 6px; }
+  .opp-strip-left,
+  .opp-strip-right {
+    max-height: 100%;
+    gap: 6px;
+  }
+
+  .nameplate {
+    gap: 5px 7px;
+    padding: 5px 10px;
+    font-size: 13px;
+    max-width: calc(100vw - 16px);
+  }
+  .np-name { max-width: 42vw; }
+  .aug-pill { font-size: 11px; max-width: 40vw; }
+
+  .quick-toggles-inline { gap: 5px; }
+
+  .own-area {
+    bottom: 8px;
+    gap: 7px;
+    width: 100%;
+  }
+  .own-top {
+    gap: 7px;
+    max-width: calc(100vw - 8px);
+  }
+  .own-hand {
+    border-radius: 12px;
+  }
+
+  /* 드래그 버리기 영역 — 손패와 겹치지 않게 위쪽으로 */
+  .discard-dropzone {
+    bottom: 190px;
+    width: min(300px, 84vw);
+    height: clamp(110px, 24vh, 210px);
+  }
+
+  /* 액션 바 — 한 줄에 다 안 들어가면 접히되 버튼은 손가락 크기를 지킨다 */
+  .action-bar {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 7px;
+    padding: 7px 10px;
+    max-width: calc(100vw - 12px);
+  }
+  .act {
+    padding: 10px 16px;
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+  .action-hint {
+    flex-basis: 100%;
+    text-align: center;
+    font-size: 12px;
+  }
+
+  /* 드래프트: 카드 3장을 가로로 못 놓으니 세로로 쌓고 화면 폭에 맞춘다 */
+  .draft-title { letter-spacing: 6px; text-indent: 6px; }
+  .draft-stage { margin: 6px 0 10px; font-size: 13px; }
+  .draft-timer { margin-bottom: 12px; }
+  .draft-cards {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .draft-card {
+    width: min(320px, calc(100vw - 24px));
+    min-height: 0;
+    height: auto;
+    padding: 18px 16px 16px;
+    gap: 10px;
+  }
+  .draft-desc { font-size: 13.5px; line-height: 1.5; }
+
+  /* 게임 무효 투표 배너가 상단 아이콘 버튼과 겹치지 않게 */
+  .abort-banner { max-width: calc(100vw - 12px); }
+
+  /* 증강 정보 패널 — top:60px는 아래로 내려온 상대 이름표와 겹친다 */
+  .ainfo {
+    left: 6px;
+    top: 108px;
+    gap: 5px;
+    max-width: calc(100vw - 12px);
+  }
+  .ainfo-row {
+    padding: 5px 9px;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  /* 바닥(버림패)이 3단을 넘어 밖으로 흘러나오면 좌·우 상대 영역과 만난다.
+     그때 가려지는 쪽이 정보가 없는 뒷면 패이도록 바닥을 위로 올린다. */
+  .table-center { z-index: 6; }
+
+  /* 국 결과 — 역 목록(최소 320px)과 판수 원이 가로로 나란히 서면 넘친다. 세로로 쌓는다. */
+  .result-win {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "hand" "circle" "yaku";
+    justify-items: center;
+  }
+  .result-yaku-list {
+    min-width: 0;
+    width: 100%;
+  }
+  .result-han-circle {
+    width: clamp(96px, 30vw, 132px);
+    height: clamp(96px, 30vw, 132px);
+  }
+  .result-title { font-size: 20px; letter-spacing: 5px; }
+  .result-deltas { grid-template-columns: minmax(0, 1fr); }
+  .tile-result {
+    width: clamp(20px, 6.4vw, 30px);
+    height: calc(clamp(20px, 6.4vw, 30px) * 1.5);
+  }
+
+  /* 게임 종료 카드 */
+  .gameover-panel { padding: 18px 14px; }
+}
+
+/* ── 모바일(가로) — 세로 공간이 극단적으로 좁다.
+   보드를 높이에 맞춰 줄이고 손패도 함께 낮춘다. ── */
+@media (max-height: 560px) and (orientation: landscape) {
+  .table {
+    /* 세로가 병목: 보드 + 내 영역(이름표·액션바·손패)이 모두 들어가야 한다 */
+    --board: min(56vh, 44vw, 460px);
+    --panel: calc(var(--board) * 0.46);
+    /* 패널이 아주 작아 글자 최소 크기(11px)가 비율을 앞지른다 — 판을 더 넓게 잡는다 */
+    --plate-w: calc(var(--panel) * 0.76);
+    --hand-pref: min(clamp(24px, 4.6vw, 52px), 8.4vh);
+    --hand-gap: 3px;
+    --hand-pad: 10px;
+    --mt-w: clamp(16px, 4vh, 30px);
+    --back-w: min(clamp(14px, 3.6vh, 26px), calc((100vw - 60px) / 13));
+  }
+  .table-center { top: 42%; }
+  .own-area { bottom: 6px; gap: 6px; }
+  .own-hand { padding: 6px var(--hand-pad) 5px; }
+  .icon-btn { top: 8px; width: 34px; height: 34px; font-size: 15px; }
+  .leave-btn { right: 8px; }
+  .settings-btn { right: 48px; }
+  /* 가로에서는 폭이 넉넉하다 — 맞은편 상대는 다시 한 줄로 */
+  .opp-strip-top { top: 8px; flex-direction: row; gap: 10px; }
+  /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
+  .quick-toggles:not(.quick-toggles-inline) { display: flex; bottom: 8px; gap: 4px; }
+  .quick-toggles-inline { display: none; }
+  .qt-item { padding: 4px 8px; font-size: 12px; }
+  .discard-dropzone { bottom: 150px; height: clamp(90px, 22vh, 160px); }
+  .action-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 6px 10px; }
+  .act { padding: 8px 14px; font-size: 15px; letter-spacing: 1px; }
+  .draft-card { min-height: 0; height: auto; }
+  .draft-title { font-size: 26px; }
+}
+
+/* ── 모바일: 홈·로비·대기실 ── */
+@media (max-width: 700px) {
+  /* 상단 바 — 로고·부제·닉네임이 서로 밀어내 세 줄로 접히던 곳 */
+  .home-nav {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .home-logo {
+    font-size: 17px;
+    letter-spacing: 3px;
+  }
+  .home-tagline {
+    display: none;
+  }
+  /* 긴 닉네임이 로고·버튼을 밀어내 상단바가 세 줄로 접히지 않게 가둔다 */
+  .home-user {
+    min-width: 0;
+    gap: 5px;
+    font-size: 14px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .home-admin-badge {
+    flex: 0 0 auto;
+  }
+  .home-logout {
+    flex: 0 0 auto;
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+
+  .home-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px 12px 32px;
+  }
+  .home-card {
+    padding: 16px 14px;
+  }
+  .home-create {
+    padding: 14px;
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+  /* 자간 4px이 placeholder까지 늘려 "방 코드 입력 (예: AB"에서 잘렸다 */
+  .home-join input {
+    min-width: 0;
+    letter-spacing: 2px;
+  }
+
+  /* 대기실 */
+  .waitroom-card {
+    padding: 20px 14px 16px;
+  }
+  .waitroom-title {
+    font-size: 21px;
+    letter-spacing: 4px;
+  }
+  .waitroom-actions,
+  .mode-select {
+    flex-wrap: wrap;
+  }
+
+  /* 로비·인증 카드 */
+  .lobby-card,
+  .auth-card {
+    padding: 24px 18px;
+  }
+}
+
+/* placeholder에는 코드 입력용 넓은 자간이 필요 없다 (잘림 방지) */
+.home-join input::placeholder {
+  letter-spacing: 0;
+  font-weight: 600;
 }
 
 @media (max-width: 560px) {
   .seat-row {
-    grid-template-columns: 24px 1fr auto;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
     row-gap: 6px;
   }
   .seat-stats {
     grid-column: 2 / -1;
+  }
+  /* 4번째 칸(준비완료·강퇴)이 3열 그리드 밖으로 밀려 카드 왼쪽으로 삐져나갔다 */
+  .seat-status {
+    grid-column: 3;
+    grid-row: 1;
   }
   .stats-grid {
     grid-template-columns: repeat(3, 1fr);
@@ -4645,15 +5107,14 @@ button {
 
 .home-logout:hover { background: rgba(255, 255, 255, 0.12); }
 
-/* 홈 설정 — 톱니 버튼 아래로 설정 패널이 드롭다운되도록 앵커 */
+/* 홈 설정 — 패널은 position:fixed(화면 기준)라 앵커가 필요 없다.
+   대국·대기실과 같은 자리(오른쪽 위)에서 뜨고, 헤더를 끌어 옮길 수 있다. */
 .home-settings { position: relative; }
 .home-gear {
   font-size: 16px;
   line-height: 1;
   padding: 7px 11px;
 }
-/* 이 래퍼 기준으로 패널을 버튼 바로 아래·오른쪽 정렬 */
-.home-settings .settings-panel { top: 48px; right: 0; }
 
 .home-main {
   display: grid;
@@ -5412,9 +5873,31 @@ button {
   font-family: ui-monospace, monospace;
 }
 
-@media (max-width: 560px) {
-  .codex-detail-stats { grid-template-columns: 1fr; }
-  .codex-search { margin-left: 0; width: 100%; }
+@media (max-width: 700px) {
+  .codex-detail-stats { grid-template-columns: minmax(0, 1fr); }
+  .codex-search { margin-left: 0; width: 100%; min-width: 0; }
+  /* 도감 상단바 — 제목·수집뱃지·탭이 한 줄에 안 들어가 글자가 세로로 깨졌다 */
+  .codex-nav {
+    gap: 6px;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+  }
+  .codex-nav .home-logo {
+    font-size: 15px;
+    letter-spacing: 2px;
+    white-space: nowrap;
+  }
+  .codex-back,
+  .codex-tab,
+  .codex-collect-badge {
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .codex-toolbar { gap: 8px; padding: 10px 12px; }
+  .codex-main { padding: 14px 12px 40px; }
+  .codex-grid { grid-template-columns: minmax(0, 1fr); }
+  .codex-filters { flex-wrap: wrap; }
 }
 
 /* ─────────────── 관리자 — 플레이어 관리 ─────────────── */

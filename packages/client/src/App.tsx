@@ -4344,6 +4344,13 @@ function GameTable(props: {
         catalog={catalog}
         autoSort={props.settings.autoSort}
         showMyWaits={props.settings.showMyWaits}
+        {...(props.spectator !== true
+          ? {
+              quickToggles: (
+                <QuickToggles settings={props.settings} onSetting={props.onSetting} inline />
+              ),
+            }
+          : {})}
         onRiichiMode={props.onRiichiMode}
         onSubmit={props.onSubmit}
         onHoverKind={setHoverKind}
@@ -4495,10 +4502,14 @@ function useSelection(
  * 게임 화면 좌하단에 붙는 빠른 토글 바.
  * 설정창을 열지 않고 자동정렬·자동화료·후로없음·자동버림을 글자 클릭으로 바로 온/오프한다.
  * (설정은 localStorage에 저장되고, 이미 떠 있는 프롬프트에도 소급 적용된다.)
+ *
+ * inline: 좁은 화면(모바일)용 — 좌하단 절대배치 대신 내 손패 바로 위에 가로 줄로 눕는다.
+ * 두 벌 다 렌더하고 CSS 미디어쿼리가 한쪽만 보여준다 (상태는 없는 컴포넌트라 안전).
  */
 function QuickToggles(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  inline?: boolean;
 }): JSX.Element {
   const items: { key: "autoSort" | "autoWin" | "autoNoMeld" | "autoDiscard"; label: string; desc: string }[] = [
     { key: "autoSort", label: "자동정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
@@ -4507,7 +4518,7 @@ function QuickToggles(props: {
     { key: "autoDiscard", label: "자동버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능하면 먼저 화료)" },
   ];
   return (
-    <div className="quick-toggles">
+    <div className={`quick-toggles${props.inline === true ? " quick-toggles-inline" : ""}`}>
       {items.map((it) => {
         const active = props.settings[it.key];
         return (
@@ -4527,6 +4538,91 @@ function QuickToggles(props: {
 }
 
 // ─────────────────────────── 설정 패널 ───────────────────────────
+
+/**
+ * 떠 있는 패널을 헤더 드래그로 옮길 수 있게 한다 (마우스·터치 공통).
+ *
+ * 패널은 position:fixed라 기본 위치는 CSS(top/right)가 정한다. 처음 드래그하는
+ * 순간 실제 화면 좌표를 재서 left/top으로 전환하므로 튀지 않는다. 이동 중에도,
+ * 창 크기가 바뀔 때도 항상 뷰포트 안으로 물려 두기 때문에 "설정창이 화면 밖으로
+ * 나가 안 보이는" 상황이 생기지 않는다.
+ */
+function useDraggablePanel(): {
+  ref: React.RefObject<HTMLDivElement>;
+  style: React.CSSProperties | undefined;
+  onPointerDown: (e: React.PointerEvent) => void;
+} {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  // 드래그 시작 시점의 "패널 좌상단 기준 커서 오프셋"
+  const grabRef = useRef<{ dx: number; dy: number } | null>(null);
+
+  /** 패널이 화면 밖으로 나가지 않게 좌표를 가둔다. */
+  const clamp = (left: number, top: number, w: number, h: number) => ({
+    left: Math.min(Math.max(left, 8), Math.max(8, window.innerWidth - w - 8)),
+    top: Math.min(Math.max(top, 8), Math.max(8, window.innerHeight - h - 8)),
+  });
+
+  const onPointerDown = (e: React.PointerEvent): void => {
+    // 헤더 안의 닫기 버튼 등은 드래그가 아니라 클릭으로 동작해야 한다
+    if ((e.target as HTMLElement).closest("button") !== null) return;
+    const el = ref.current;
+    if (el === null) return;
+    const r = el.getBoundingClientRect();
+    grabRef.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    setPos(clamp(r.left, r.top, r.width, r.height));
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+
+  // 드래그 중 이동·종료. 포인터 캡처를 헤더가 쥐고 있어 창 밖으로 나가도 따라온다.
+  useEffect(() => {
+    const onMove = (e: PointerEvent): void => {
+      const grab = grabRef.current;
+      const el = ref.current;
+      if (grab === null || el === null) return;
+      const r = el.getBoundingClientRect();
+      setPos(clamp(e.clientX - grab.dx, e.clientY - grab.dy, r.width, r.height));
+    };
+    const onUp = (): void => {
+      grabRef.current = null;
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
+
+  // 창 크기·회전이 바뀌면 옮겨 둔 패널을 다시 화면 안으로 끌어온다
+  useEffect(() => {
+    if (pos === null) return;
+    const onResize = (): void => {
+      const el = ref.current;
+      if (el === null) return;
+      const r = el.getBoundingClientRect();
+      setPos((p) => (p === null ? null : clamp(p.left, p.top, r.width, r.height)));
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [pos !== null]);
+
+  return {
+    ref,
+    style:
+      pos === null
+        ? undefined
+        : { left: pos.left, top: pos.top, right: "auto", bottom: "auto" },
+    onPointerDown,
+  };
+}
 
 function SettingsPanel(props: {
   settings: Settings;
@@ -4552,86 +4648,100 @@ function SettingsPanel(props: {
   ];
   const votes = props.abortVote?.votes ?? 0;
   const needed = props.abortVote?.needed ?? 0;
+  const drag = useDraggablePanel();
   return (
-    <div className="settings-panel">
-      <div className="settings-head">
-        <span>설정</span>
+    <div
+      className="settings-panel"
+      ref={drag.ref}
+      {...(drag.style !== undefined ? { style: drag.style } : {})}
+      role="dialog"
+      aria-label="설정"
+    >
+      <div
+        className="settings-head"
+        onPointerDown={drag.onPointerDown}
+        title="여기를 끌어 창을 옮길 수 있습니다"
+      >
+        <span className="settings-grip" aria-hidden="true">⠿</span>
+        <span className="settings-title">설정</span>
         <button className="settings-x" onClick={props.onClose} title="닫기">✕</button>
       </div>
-      {rows.map((r) => (
-        <label key={r.key} className="settings-row">
+      <div className="settings-body">
+        {rows.map((r) => (
+          <label key={r.key} className="settings-row">
+            <div className="settings-text">
+              <span className="settings-label">{r.label}</span>
+              <span className="settings-desc">{r.desc}</span>
+            </div>
+            <button
+              className={`toggle${props.settings[r.key] ? " toggle-on" : ""}`}
+              role="switch"
+              aria-checked={props.settings[r.key]}
+              onClick={() => props.onSetting(r.key, !props.settings[r.key])}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </label>
+        ))}
+        <label className="settings-row settings-row-slider">
           <div className="settings-text">
-            <span className="settings-label">{r.label}</span>
-            <span className="settings-desc">{r.desc}</span>
-          </div>
-          <button
-            className={`toggle${props.settings[r.key] ? " toggle-on" : ""}`}
-            role="switch"
-            aria-checked={props.settings[r.key]}
-            onClick={() => props.onSetting(r.key, !props.settings[r.key])}
-          >
-            <span className="toggle-knob" />
-          </button>
-        </label>
-      ))}
-      <label className="settings-row">
-        <div className="settings-text">
-          <span className="settings-label">배경음악 음량</span>
-          <span className="settings-desc">
-            대국 중 흐르는 배경음악의 음량입니다 (0이면 끔). 리치가 걸리면 리치 BGM에
-            자리를 내주고, 그 국이 끝나면 돌아옵니다.
-          </span>
-        </div>
-        <div className="settings-slider">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={Math.round(props.settings.bgmVolume * 100)}
-            onChange={(e) => props.onSetting("bgmVolume", Number(e.target.value) / 100)}
-            aria-label="배경음악 음량"
-          />
-          <span className="settings-slider-val">{Math.round(props.settings.bgmVolume * 100)}</span>
-        </div>
-      </label>
-      <label className="settings-row">
-        <div className="settings-text">
-          <span className="settings-label">리치 BGM 음량</span>
-          <span className="settings-desc">
-            리치 선언 시 나오는 전용 BGM의 음량입니다 (0이면 끔)
-          </span>
-        </div>
-        <div className="settings-slider">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={Math.round(props.settings.riichiBgmVolume * 100)}
-            onChange={(e) => props.onSetting("riichiBgmVolume", Number(e.target.value) / 100)}
-            aria-label="리치 BGM 음량"
-          />
-          <span className="settings-slider-val">
-            {Math.round(props.settings.riichiBgmVolume * 100)}
-          </span>
-        </div>
-      </label>
-      {props.onVoteAbort !== undefined ? (
-        <div className="settings-abort">
-          <div className="settings-text">
-            <span className="settings-label">게임 무효 요청</span>
+            <span className="settings-label">배경음악 음량</span>
             <span className="settings-desc">
-              사람 전원이 동의하면 게임을 무효 처리합니다 (봇은 자동 동의).
-              {needed > 0 ? ` 현재 ${votes}/${needed} 동의.` : ""}
+              대국 중 흐르는 배경음악의 음량입니다 (0이면 끔). 리치가 걸리면 리치 BGM에
+              자리를 내주고, 그 국이 끝나면 돌아옵니다.
             </span>
           </div>
-          <button
-            className={`abort-btn${props.iVoted === true ? " abort-btn-on" : ""}`}
-            onClick={() => props.onVoteAbort?.(props.iVoted === true ? "withdraw" : "agree")}
-          >
-            {props.iVoted === true ? "동의 취소" : "게임 무효 요청"}
-          </button>
-        </div>
-      ) : null}
+          <div className="settings-slider">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(props.settings.bgmVolume * 100)}
+              onChange={(e) => props.onSetting("bgmVolume", Number(e.target.value) / 100)}
+              aria-label="배경음악 음량"
+            />
+            <span className="settings-slider-val">{Math.round(props.settings.bgmVolume * 100)}</span>
+          </div>
+        </label>
+        <label className="settings-row settings-row-slider">
+          <div className="settings-text">
+            <span className="settings-label">리치 BGM 음량</span>
+            <span className="settings-desc">
+              리치 선언 시 나오는 전용 BGM의 음량입니다 (0이면 끔)
+            </span>
+          </div>
+          <div className="settings-slider">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(props.settings.riichiBgmVolume * 100)}
+              onChange={(e) => props.onSetting("riichiBgmVolume", Number(e.target.value) / 100)}
+              aria-label="리치 BGM 음량"
+            />
+            <span className="settings-slider-val">
+              {Math.round(props.settings.riichiBgmVolume * 100)}
+            </span>
+          </div>
+        </label>
+        {props.onVoteAbort !== undefined ? (
+          <div className="settings-abort">
+            <div className="settings-text">
+              <span className="settings-label">게임 무효 요청</span>
+              <span className="settings-desc">
+                사람 전원이 동의하면 게임을 무효 처리합니다 (봇은 자동 동의).
+                {needed > 0 ? ` 현재 ${votes}/${needed} 동의.` : ""}
+              </span>
+            </div>
+            <button
+              className={`abort-btn${props.iVoted === true ? " abort-btn-on" : ""}`}
+              onClick={() => props.onVoteAbort?.(props.iVoted === true ? "withdraw" : "agree")}
+            >
+              {props.iVoted === true ? "동의 취소" : "게임 무효 요청"}
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -5414,7 +5524,9 @@ function NamePlate({
           {player.augments.map((a) => {
             const entry = catalog[a];
             return (
-              <span key={a} className="aug-pill aug-prism">
+              // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
+              // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
+              <span key={a} className="aug-pill aug-prism" tabIndex={0}>
                 <AugCatIcon id={a} />
                 {entry?.name ?? a}
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
@@ -5718,6 +5830,8 @@ function OwnArea(props: {
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
   showMyWaits: boolean;
+  /** 좁은 화면에서 손패 바로 위에 눕는 빠른 토글 (모바일 전용, CSS가 표시를 결정) */
+  quickToggles?: JSX.Element;
   onRiichiMode: (v: boolean) => void;
   onSubmit: (o: ActionOption) => void;
   onHoverKind: (k: TileKind | null) => void;
@@ -6172,11 +6286,12 @@ function OwnArea(props: {
     return () => cancelAnimationFrame(raf);
   }, [committing]);
 
-  // 진짜 용(17장) 등 넓은 손패도 화면 안에 들어오게 타일 폭을 조인다
-  const handStyle =
-    displayIds.length > 15
-      ? ({ "--hand-w": "clamp(40px, 5.4vw, 64px)" } as React.CSSProperties)
-      : undefined;
+  // 진짜 용(17장) 등 넓은 손패도 화면 안에 들어오게 타일 폭을 조인다.
+  // --hand-n(장수)만 넘기면 styles.css의 --hand-fit이 폭을 자동으로 계산한다.
+  // 14 미만으로는 내리지 않는다 — 후로로 손패가 줄었다고 타일이 커지면 안 된다.
+  const handStyle = {
+    "--hand-n": String(Math.max(14, displayIds.length)),
+  } as React.CSSProperties;
 
   return (
     <>
@@ -6189,6 +6304,7 @@ function OwnArea(props: {
         </div>
       ) : null}
       <div className="own-area" ref={areaRef} data-arm-zone="1">
+        {props.quickToggles ?? null}
         <div className="own-top">
           <NamePlate view={view} player={me} catalog={props.catalog} tipUp />
           {myWaits.length > 0 ? (
@@ -6339,7 +6455,7 @@ function OwnArea(props: {
           className={`own-hand${isMyTurn ? " own-hand-turn" : ""}${
             drag?.moved === true ? " own-hand-dragging" : ""
           }${committing ? " own-hand-nofx" : ""}`}
-          {...(handStyle !== undefined ? { style: handStyle } : {})}
+          style={handStyle}
         >
           {displayIds.map((id, idx) => {
             const opts = optionsByTile.get(id) ?? [];
