@@ -6,17 +6,25 @@
 
 1. **작업은 항상 브랜치에서.** master에 직접 커밋 금지.
 2. 커밋 후 `git push -u origin <branch>`.
-3. 게이트: **기준선보다 나빠지지 않아야** 한다. master가 현재 red 상태(2026-07-30 기준 87 테스트 실패 / 8 타입 에러)이므로 "전부 통과"는 게이트로 쓸 수 없다. 기준선은 [docs/23_TEST_BASELINE.md](docs/23_TEST_BASELINE.md).
+3. 게이트: **테스트 994개 전부 통과 + 타입 에러 0**. 기준선과 알려진 플레이크는 [docs/23_TEST_BASELINE.md](docs/23_TEST_BASELINE.md).
    ```
    npm test
    npm run typecheck && npm run typecheck:content && npm run typecheck:server && npm run typecheck:client
    ```
-   - 실패 수·타입 에러 수가 기준선보다 **늘었으면** 머지 금지. 원인을 고친다.
-   - 기준선과 같거나 줄었으면 통과. 줄었으면 `.claude/test-baseline.txt`를 갱신해 커밋에 포함한다.
+   - 실패가 생기면 머지 금지. 원인을 고친다.
+   - 실패가 났을 때 **먼저 그 파일만 단독 실행해 본다** — 병렬 부하 탓 플레이크일 수 있다(기준선 문서에 알려진 1건 있음).
    - 못 고치면 PR을 draft로 두고 사용자에게 보고한다.
+   - **측정은 메인 체크아웃에서 한다.** 워크트리에는 `node_modules`가 없어 `@majak/core`가 상위 심볼릭링크를 통해 메인 체크아웃 코드로 해석된다 — 워크트리에서 잰 타입체크 결과는 신뢰할 수 없다.
 4. `gh pr create --base master` — 제목은 Conventional Commits, 본문에 변경 요약·검증 결과(테스트/타입체크 통과 여부)를 적는다.
 5. `gh pr merge --squash --delete-branch` 로 즉시 병합. (auto-merge가 켜져 있으면 `--auto` 사용)
 6. 병합 후 `git checkout master && git pull` 로 로컬 master를 동기화하고, 결과 요약을 사용자에게 보고한다.
+
+### 메인 체크아웃은 항상 master (필수)
+`/Users/skul/Documents/newMajak` 는 **공개 서버가 서빙하는 코드**다(`deploy/serve.sh` → `majak.yaho1231.com`). 여기서 다른 브랜치를 체크아웃하면 그 브랜치가 그대로 배포된다 — 실제로 이 저장소가 `c45dbab`(막다른 커밋)에 며칠간 서 있어서 PR #1·#5·#4·#3 이 전부 서버에 반영되지 않았다.
+
+- 메인 체크아웃은 `master` 고정. 갱신은 `git pull` 만.
+- 작업은 워크트리에서 한다.
+- master 갱신 후 배포: `npm run serve` (클라 빌드 + 서버 재시작 포함). 확인은 서빙되는 에셋 해시가 방금 빌드한 `packages/client/dist/assets/` 와 일치하는지 본다.
 
 ### 절대 하지 않는 것
 - `git push --force`, force-with-lease, master에 대한 강제 갱신
