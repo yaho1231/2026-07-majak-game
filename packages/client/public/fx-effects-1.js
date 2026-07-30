@@ -39,9 +39,9 @@ import {
   tileEl,
   token,
   veil,
-} from "/fx-core.js?v=7";
+} from "/fx-core.js?v=9";
 
-import { def } from "/fx-registry.js?v=7";
+import { def } from "/fx-registry.js?v=9";
 
 /* ══════════════════ 기법군 A · 3D 변환 + 물리 ══════════════════ */
 
@@ -248,7 +248,7 @@ def({
 });
 
 def({
-  id: "open_riichi",
+  id: "open_riichi_reveal",
   name: "오픈 리치",
   tier: "gold",
   fam: "3D · 물리",

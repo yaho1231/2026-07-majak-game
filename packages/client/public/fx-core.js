@@ -354,6 +354,16 @@ export function buildStage() {
   }
   fill(S.wallTop, 14, () => tileEl(null, { back: true }));
 
+  // 중앙 인포 — 연출이 바꿔놓은 국·바람·점수·색을 되돌린다.
+  // (대기만성은 바람과 국을, 천하통일은 국 표시를, 죽기살기·승부수는 점수 색을 바꾼다)
+  const wind = document.getElementById("centerWind");
+  const sub = S.stage.querySelector(".center-sub");
+  const center = S.stage.querySelector(".center");
+  if (wind) { wind.textContent = "東"; wind.style.cssText = ""; }
+  if (sub) { sub.textContent = "1국 0본장"; sub.style.cssText = ""; }
+  if (center) center.style.cssText = "";
+  for (const c of S.stage.querySelectorAll(".center-score")) c.style.cssText = "";
+
   S.augSlot.textContent = "";
   for (const c of AUG_CARDS) {
     const card = document.createElement("div");
