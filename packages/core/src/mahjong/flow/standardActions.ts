@@ -454,6 +454,12 @@ const ankanAction: ActionDef<{ tileIds: [TileId, TileId, TileId, TileId] }> = {
     // 왕패를 소모하는 증강(뒤집힌 모래시계)이 끼면 상한 전에 영상패가 마를 수 있다 —
     // 그때 깡을 허용하면 FlowController의 sys.drawRinshan이 실패해 국이 터진다.
     if (rinshanRemaining(state) === 0) return "no rinshan tiles left";
+    // 후로(치·펑) 직후에는 깡을 칠 수 없다 — 깡은 **쯔모한 순**의 권리다(표준 룰).
+    // turn.act에서 lastDrawnTile이 null인 경우는 CALL_MADE 직후뿐이라(배패·턴 넘김은
+    // turn.draw) 이 한 줄이 정확히 "울고 나서 바로 깡"만 막는다.
+    // 예: 1삭 3장에서 1삭을 펑 → 남은 1삭으로 그 순에 가깡, 은 성립하지 않는다.
+    //     다음 자기 순에 쯔모하고 나면 정상적으로 칠 수 있다 (2026-07-31 사용자 확정).
+    if (state.round.lastDrawnTile === null) return "must draw before calling a kan";
     const ids = req.payload.tileIds;
     if (new Set(ids).size !== 4) return "duplicate tile ids";
     const hand = handIdsOf(state, req.player);
@@ -561,6 +567,12 @@ const shouminkanAction: ActionDef<{ tileId: TileId, targetMeldTileId: TileId }> 
     // 왕패를 소모하는 증강(뒤집힌 모래시계)이 끼면 상한 전에 영상패가 마를 수 있다 —
     // 그때 깡을 허용하면 FlowController의 sys.drawRinshan이 실패해 국이 터진다.
     if (rinshanRemaining(state) === 0) return "no rinshan tiles left";
+    // 후로(치·펑) 직후에는 깡을 칠 수 없다 — 깡은 **쯔모한 순**의 권리다(표준 룰).
+    // turn.act에서 lastDrawnTile이 null인 경우는 CALL_MADE 직후뿐이라(배패·턴 넘김은
+    // turn.draw) 이 한 줄이 정확히 "울고 나서 바로 깡"만 막는다.
+    // 예: 1삭 3장에서 1삭을 펑 → 남은 1삭으로 그 순에 가깡, 은 성립하지 않는다.
+    //     다음 자기 순에 쯔모하고 나면 정상적으로 칠 수 있다 (2026-07-31 사용자 확정).
+    if (state.round.lastDrawnTile === null) return "must draw before calling a kan";
     if (state.round.byPlayer[req.player]?.riichi != null) return "riichi: cannot call";
     const hand = handIdsOf(state, req.player);
     if (!hand.includes(req.payload.tileId)) return "tile not in hand";

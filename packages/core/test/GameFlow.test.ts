@@ -18,7 +18,7 @@ import {
 import type { PlayerId } from "../src/engine/zones/Zone.js";
 import { kindKey } from "../src/mahjong/tiles/Tile.js";
 import type { TileId, TileKind } from "../src/mahjong/tiles/Tile.js";
-import { SYSTEM_PLAYER } from "../src/mahjong/flow/helpers.js";
+import { SYSTEM_PLAYER, handIdsOf } from "../src/mahjong/flow/helpers.js";
 import { FlowController } from "../src/mahjong/flow/FlowController.js";
 import type { FlowStatus } from "../src/mahjong/flow/FlowController.js";
 import {
@@ -460,9 +460,10 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
     }
   });
 
-  it("가깡: 같은 패 3장에서 펑하면 남은 1장으로 그 자리에서 가깡할 수 있다", () => {
+  it("가깡: 펑한 그 순에는 칠 수 없고, 다음 순에 쯔모하고 나면 칠 수 있다", () => {
     // 손에 1삭 3장 → 1삭을 펑(손패 2장 소모) → 손에 1삭 1장이 남는다.
-    // 그 순간(펑 직후의 자기 턴) 바로 가깡 후보가 떠야 한다 — 다음 순까지 기다릴 이유가 없다.
+    // 깡은 **쯔모한 순의 권리**다 — 펑 직후(쯔모 없이 버리는 순)에는 가깡을 칠 수 없고,
+    // 한 바퀴 돌아 자기 순에 쯔모한 뒤에야 칠 수 있다 (2026-07-31 사용자 확정).
     const state = craft({
       hands: {
         p0: "1s147m2589p369s77z",
@@ -497,11 +498,57 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
     status = flow.submit("p2", ponOption as { type: string; payload: unknown });
     if (status.kind !== "awaiting") throw new Error("expected p2 turn");
 
-    const turn = status.prompts.find((p) => p.player === "p2");
-    const kan = turn?.options.find((o) => o.type === "shouminkan");
+    // ① 펑 직후 — 아직 쯔모하지 않았으므로 가깡 후보가 없다
+    const rightAfterPon = status.prompts.find((p) => p.player === "p2");
+    expect(rightAfterPon?.options.some((o) => o.type === "shouminkan")).toBe(false);
+    const leftover = handIdsOf(game.engine.state, "p2").find(
+      (t) => kindKey(game.engine.state.tiles[t]?.kind as TileKind) === "sou1",
+    );
+    expect(leftover).toBeDefined();
+    // 직접 제출해도 거부된다 (후보 목록과 validate가 같은 판정을 쓴다)
+    const ponMeldId = game.engine.state.round.byPlayer["p2"]?.melds[0]?.tileIds[0];
+    const early = game.engine.submit({
+      player: "p2",
+      type: "shouminkan",
+      payload: { tileId: leftover, targetMeldTileId: ponMeldId },
+    });
+    expect(early.ok).toBe(false);
+    if (!early.ok) expect(early.reason).toBe("must draw before calling a kan");
+
+    // ② 한 바퀴 돌아 p2가 쯔모한 뒤에는 칠 수 있다.
+    //    p2는 남은 1삭을 계속 쥐고 있어야 하므로 1삭이 아닌 패만 버린다.
+    const keepSou1 = (opts: readonly { type: string; payload: unknown }[]) =>
+      opts.find(
+        (o) =>
+          o.type === "discard" &&
+          kindKey(
+            game.engine.state.tiles[(o.payload as { tileId: TileId }).tileId]
+              ?.kind as TileKind,
+          ) !== "sou1",
+      );
+    status = flow.submit("p2", keepSou1(rightAfterPon?.options ?? [])!);
+    let guard = 0;
+    while (status.kind === "awaiting" && guard++ < 40) {
+      const prompt = status.prompts[0]!;
+      if (
+        prompt.player === "p2" &&
+        prompt.options.some((o) => o.type === "shouminkan")
+      ) {
+        break;
+      }
+      const pick =
+        prompt.options.find((o) => o.type === "pass") ??
+        (prompt.player === "p2" ? keepSou1(prompt.options) : undefined) ??
+        prompt.options.find((o) => o.type === "discard") ??
+        prompt.options[0]!;
+      status = flow.submit(prompt.player, pick);
+    }
+    if (status.kind !== "awaiting") throw new Error("expected p2 to reach its turn");
+    const kan = status.prompts
+      .find((p) => p.player === "p2")
+      ?.options.find((o) => o.type === "shouminkan");
     expect(kan).toBeDefined();
-    // 실제로 제출해도 통과한다 (후보만 뜨고 거부되는 일이 없게)
-    status = flow.submit("p2", kan as { type: string; payload: unknown });
+    flow.submit("p2", kan as { type: string; payload: unknown });
     const melds = game.engine.state.round.byPlayer["p2"]?.melds ?? [];
     expect(melds[0]?.kind).toBe("kan_added");
     expect(melds[0]?.tileIds).toHaveLength(4);
