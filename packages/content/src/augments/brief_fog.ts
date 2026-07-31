@@ -44,7 +44,7 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, matchUses, roundKey, viewKey } from "../util.js";
+import { counterOf, matchUses, roundKey, roundViewKey } from "../util.js";
 
 const ID = "brief_fog";
 const ACTION = "declare_brief_fog";
@@ -67,10 +67,10 @@ const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
 const turnKey = (state: GameState, holder: PlayerId): string =>
   `${ID}:turn:${roundKey(state)}:${holder}`;
 /** 선언 사실을 전원에게 알리는 공개 뷰 채널 */
-const noticeKey = (holder: PlayerId): string => viewKey("*", `${ID}:${holder}`);
+const noticeKey = (holder: PlayerId): string => roundViewKey("*", `${ID}:${holder}`);
 /** 각 플레이어의 마지막 버림패 맵 { playerId: tileId } — 전원 공개 */
 const lastMapKey = (holder: PlayerId): string =>
-  viewKey("*", `${ID}:last:${holder}`);
+  roundViewKey("*", `${ID}:last:${holder}`);
 /**
  * 위 맵의 tileId를 '진짜 패'로 그리게 하는 코어 공개 채널.
  *
@@ -78,7 +78,7 @@ const lastMapKey = (holder: PlayerId): string =>
  * 공유해, 한쪽이 선언하면 다른 쪽의 공개 목록을 통째로 덮어썼다(2026-07-29 감사).
  */
 const revealKey = (holder: PlayerId): string =>
-  viewKey("*", `revealTiles:fog:${holder}`);
+  roundViewKey("*", `revealTiles:fog:${holder}`);
 
 /** 이 게임에 한 번이라도 선언했는가 (안개가 걷혔어도 true) */
 function fogDeclared(state: GameState, holder: PlayerId): boolean {

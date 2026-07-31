@@ -31,13 +31,7 @@ import type {
   RoundSettledPayload,
   TileId,
 } from "@majak/core";
-import {
-  counterOf,
-  matchUses,
-  roundKey,
-  settleInterceptor,
-  viewKey,
-} from "../util.js";
+import { counterOf, matchUses, roundKey, roundViewKey, settleInterceptor } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
 
 const ID = "all_or_nothing";
@@ -127,7 +121,7 @@ const allInRiichiAction: ActionDef<{ tileId: TileId }> = {
       // 기록만 남기고(동풍전 1·반장전 2회 소진), 화료하면 그 금액만큼 뱅크에서 받는다.
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       augmentDataSet(activeKey(state, req.player), allIn),
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), allIn),
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), allIn),
     ];
   },
 };

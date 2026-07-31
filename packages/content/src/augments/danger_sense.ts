@@ -41,7 +41,7 @@ import type {
   PlayerId,
   RuleRegistry,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "danger_sense";
 /** 리치가 없을 때 봇이 스캔을 미루는 최소 순 — 이 전에는 위험패 정보가 거의 없다 */
@@ -102,7 +102,7 @@ const dangerSenseAction: ActionDef<Record<string, never>> = {
     return [
       augmentDataSet(usedKey(state, req.player), true),
       // 위험패 목록은 보유자 화면에만 나간다 (비밀 정보)
-      augmentDataSet(viewKey(req.player, ID), danger),
+      augmentDataSet(roundViewKey(req.player, ID), danger),
     ];
   },
 };

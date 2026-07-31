@@ -19,7 +19,7 @@ import {
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
-import { viewKey } from "../src/util.js";
+import { roundViewKey, viewKey } from "../src/util.js";
 import { discardLock } from "../src/augments/discard_lock.js";
 import { pseudoDealer } from "../src/augments/pseudo_dealer.js";
 import { seatSwap } from "../src/augments/seat_swap.js";
@@ -92,10 +92,10 @@ describe("discard_lock (봉인술사)", () => {
     const state = game.engine.state;
     for (const pid of ["p1", "p2", "p3"] as PlayerId[]) {
       // 봉인 목록은 보유자(p0) 전용 키에만 저장된다
-      const sealed = state.augmentData[viewKey("p0", `sealed:${pid}`)];
+      const sealed = state.augmentData[roundViewKey("p0", `sealed:${pid}`)];
       expect(Array.isArray(sealed)).toBe(true);
       // 전원 공개 키에는 없다 (전체 공개 X)
-      expect(state.augmentData[viewKey("*", `sealed:${pid}`)]).toBeUndefined();
+      expect(state.augmentData[roundViewKey("*", `sealed:${pid}`)]).toBeUndefined();
       const list = sealed as string[];
       expect(list.length).toBeGreaterThan(0);
       expect(list.length).toBeLessThanOrEqual(2);
@@ -107,17 +107,21 @@ describe("discard_lock (봉인술사)", () => {
           .map((k) => kindKey(k)),
       );
       for (const key of list) expect(handNumberKinds.has(key)).toBe(true);
-      // 규칙(discard.blockedKinds)에도 그대로 반영된다
-      const blocked = game.engine.rules.resolve<string[]>("discard.blockedKinds", {
+      // 규칙은 **개별 패**(discard.blockedTileIds)로 걸린다 — 봉인 시점 손패의 그 패들.
+      const blockedIds = game.engine.rules.resolve<TileId[]>("discard.blockedTileIds", {
         playerId: pid,
         state,
       });
-      for (const key of list) expect(blocked).toContain(key);
+      expect(blockedIds.length).toBeGreaterThan(0);
+      for (const id of blockedIds) {
+        expect(handIdsOf(state, pid)).toContain(id);
+        expect(list).toContain(kindKey(kindOf(state, id)));
+      }
     }
     // 보유자 본인은 봉인 대상이 아니다
-    expect(state.augmentData[viewKey("p0", "sealed:p0")]).toBeUndefined();
+    expect(state.augmentData[roundViewKey("p0", "sealed:p0")]).toBeUndefined();
     expect(
-      game.engine.rules.resolve<string[]>("discard.blockedKinds", {
+      game.engine.rules.resolve<TileId[]>("discard.blockedTileIds", {
         playerId: "p0",
         state,
       }),
@@ -139,7 +143,7 @@ describe("discard_lock (봉인술사)", () => {
       game.engine.eventLog.some((e) => e.type === "DiscardLockSealed"),
     ).toBe(false);
     for (const pid of ["p1", "p2", "p3"]) {
-      expect(game.engine.state.augmentData[viewKey("p0", `sealed:${pid}`)]).toBeUndefined();
+      expect(game.engine.state.augmentData[roundViewKey("p0", `sealed:${pid}`)]).toBeUndefined();
     }
     // 국 시퀀스(쿨다운 기준)는 첫 국에 1로 올라간다
     expect(game.engine.state.augmentData["discard_lock:seq:p0"]).toBe(1);
@@ -207,81 +211,105 @@ describe("discard_lock (봉인술사)", () => {
     expect(sealValidate(notMyTurn, "p0")).toBe("not your turn");
   });
 
-  it("상대는 봉인 kind를 버릴 수 없고, 봉인 아닌 패·보유자 본인은 영향 없다", () => {
+  /**
+   * 봉인 결과(실제 잠긴 tileId)를 직접 주입한 상태를 만든다 — 검증을 결정적으로.
+   * 봉인은 종류가 아니라 **그 순간 손에 있던 그 패들**을 잠근다.
+   */
+  const withSealedTiles = (
+    kinds: readonly string[],
+  ): { game: Game; tileOf: (key: string) => TileId } => {
     const base = craft({
       hands: { p0: "*", p1: "123m456p789s11z22z", p2: "*", p3: "*" },
       phase: "turn.act",
       turnSeat: 1,
     });
-    // 봉인 결과를 직접 주입해 검증을 결정적으로 만든다
+    const idOf = (key: string): TileId => {
+      const id = handIdsOf(base, "p1").find(
+        (t) => kindKey(kindOf(base, t)) === key,
+      );
+      if (id === undefined) throw new Error(`no ${key} in hand`);
+      return id;
+    };
     const state: GameState = {
       ...base,
       augmentData: {
         ...base.augmentData,
-        // 봉인은 보유자(p0) 전용 키에 저장된다 (규칙이 이 키를 읽는다)
-        [viewKey("p0", "sealed:p1")]: ["man1", "pin5", "sou9"],
+        // 표시용 종류 목록과 실제 잠긴 패 목록 — 둘 다 보유자(p0) 전용 키
+        [roundViewKey("p0", "sealed:p1")]: [...kinds],
+        [roundViewKey("p0", "revealTiles:p1")]: kinds.map(idOf),
         // 보유자 키가 있어도 본인에겐 적용되지 않아야 한다
-        [viewKey("p0", "sealed:p0")]: ["man9"],
+        [roundViewKey("p0", "sealed:p0")]: ["man9"],
+        [roundViewKey("p0", "revealTiles:p0")]: [handIdsOf(base, "p0")[0] as TileId],
       },
     };
     const game = createStandardGameFromState(state);
     installAugment(game.engine, discardLock, "p0", { yaku: game.yaku });
+    return { game, tileOf: idOf };
+  };
 
-    const hand = handIdsOf(game.engine.state, "p1");
-    const tileOf = (key: string): TileId => {
-      const id = hand.find((t) => kindKey(kindOf(game.engine.state, t)) === key);
-      if (id === undefined) throw new Error(`no ${key} in hand`);
-      return id;
-    };
+  it("상대는 봉인된 그 패를 버릴 수 없고, 봉인 아닌 패·보유자 본인은 영향 없다", () => {
+    const { game, tileOf } = withSealedTiles(["man1", "pin5", "sou9"]);
 
-    // 봉인된 kind는 버릴 수 없다
-    expect(discardValidate(game, "p1", tileOf("man1"))).toBe("tile kind is sealed");
-    expect(discardValidate(game, "p1", tileOf("pin5"))).toBe("tile kind is sealed");
+    // 봉인된 그 패는 버릴 수 없다
+    expect(discardValidate(game, "p1", tileOf("man1"))).toBe("tile is sealed");
+    expect(discardValidate(game, "p1", tileOf("pin5"))).toBe("tile is sealed");
     // 봉인이 아닌 패는 정상 통과
     expect(discardValidate(game, "p1", tileOf("sou7"))).toBeNull();
     expect(discardValidate(game, "p1", tileOf("wind1"))).toBeNull();
     // 보유자 본인은 어떤 봉인도 적용되지 않는다
     expect(
-      game.engine.rules.resolve<string[]>("discard.blockedKinds", {
+      game.engine.rules.resolve<TileId[]>("discard.blockedTileIds", {
         playerId: "p0",
         state: game.engine.state,
       }),
     ).toEqual([]);
   });
 
-  it("봉인 대상은 자기 뷰 sealedKinds로 봉인 종류를 본다 (타인 비노출, 관전자 전원 노출)", () => {
-    const base = craft({
-      hands: { p0: "*", p1: "123m456p789s11z22z", p2: "*", p3: "*" },
-      phase: "turn.act",
-      turnSeat: 1,
-    });
-    const state: GameState = {
-      ...base,
-      augmentData: {
-        ...base.augmentData,
-        [viewKey("p0", "sealed:p1")]: ["man1", "pin5", "sou9"],
-        [viewKey("p0", "sealed:p0")]: ["man9"],
+  it("봉인 뒤 같은 종류가 새로 들어와도 그 패는 잠기지 않는다 (처음 지목된 2장만)", () => {
+    const { game, tileOf } = withSealedTiles(["man1"]);
+    const sealedId = tileOf("man1");
+    // 같은 종류(man1)의 **다른 실물 패**를 손에 하나 더 넣는다 (새로 쯔모한 셈)
+    const extra = Object.values(game.engine.state.tiles).find(
+      (t) => kindKey(t.kind) === "man1" && t.id !== sealedId,
+    );
+    expect(extra).toBeDefined();
+    const st = game.engine.state;
+    const patched: GameState = {
+      ...st,
+      zones: {
+        ...st.zones,
+        [`hand:p1`]: {
+          ...(st.zones["hand:p1"] as GameState["zones"][string]),
+          tileIds: [...(st.zones["hand:p1"]?.tileIds ?? []), (extra as { id: TileId }).id],
+        },
       },
     };
-    const game = createStandardGameFromState(state);
-    installAugment(game.engine, discardLock, "p0", { yaku: game.yaku });
+    const g2 = createStandardGameFromState(patched);
+    installAugment(g2.engine, discardLock, "p0", { yaku: g2.yaku });
+    expect(discardValidate(g2, "p1", sealedId)).toBe("tile is sealed");
+    expect(discardValidate(g2, "p1", (extra as { id: TileId }).id)).toBeNull();
+  });
 
-    // 봉인 대상 본인 뷰 — 자기 국 상태에 sealedKinds가 실린다 (자물쇠 표시용)
+  it("봉인 대상은 자기 뷰 sealedTileIds로 잠긴 패를 본다 (타인 비노출, 관전자 전원 노출)", () => {
+    const { game, tileOf } = withSealedTiles(["man1", "pin5", "sou9"]);
+    const expected = ["man1", "pin5", "sou9"].map(tileOf);
+
+    // 봉인 대상 본인 뷰 — 자기 국 상태에 sealedTileIds가 실린다 (자물쇠 표시용)
     const viewP1 = buildPlayerView(game.engine.state, "p1", game.engine.rules);
-    expect(viewP1.round.byPlayer["p1"]?.sealedKinds).toEqual(["man1", "pin5", "sou9"]);
+    expect(viewP1.round.byPlayer["p1"]?.sealedTileIds?.sort()).toEqual([...expected].sort());
 
     // 제3자 뷰에서는 남의 봉인이 보이지 않는다
     const viewP2 = buildPlayerView(game.engine.state, "p2", game.engine.rules);
-    expect(viewP2.round.byPlayer["p1"]?.sealedKinds).toBeUndefined();
+    expect(viewP2.round.byPlayer["p1"]?.sealedTileIds).toBeUndefined();
 
     // 보유자 본인 패는 봉인되지 않는다 (sealed:p0 키가 있어도 무시)
     const viewP0 = buildPlayerView(game.engine.state, "p0", game.engine.rules);
-    expect(viewP0.round.byPlayer["p0"]?.sealedKinds).toBeUndefined();
+    expect(viewP0.round.byPlayer["p0"]?.sealedTileIds).toBeUndefined();
 
     // 관전자(리플레이 포함)는 전원의 봉인을 본다
     const spec = buildPlayerView(game.engine.state, SPECTATOR_ID, game.engine.rules);
-    expect(spec.round.byPlayer["p1"]?.sealedKinds).toEqual(["man1", "pin5", "sou9"]);
-    expect(spec.round.byPlayer["p2"]?.sealedKinds).toBeUndefined();
+    expect(spec.round.byPlayer["p1"]?.sealedTileIds?.sort()).toEqual([...expected].sort());
+    expect(spec.round.byPlayer["p2"]?.sealedTileIds).toBeUndefined();
   });
 });
 
@@ -424,11 +452,22 @@ describe("seat_swap (자리 바꿈)", () => {
     expect(game.engine.state.augmentData["seat_swap:uses:p0"]).toBe(1);
     expect(game.engine.eventLog.some((e) => e.type === "SeatsSwapped")).toBe(true);
 
-    // 동풍전 1회 — 재사용 거부
+    // 반장전 3회 — 아직 남아 있다 (2026-07-31 버프: matchUses + 1)
     expect(
       def.validate(
         { player: "p0", type: "seat_swap", payload: { target: "p1" } },
         { state: game.engine.state, rules: game.engine.rules },
+      ),
+    ).toBeNull();
+    // 다 쓰면 거부된다
+    const spent: GameState = {
+      ...game.engine.state,
+      augmentData: { ...game.engine.state.augmentData, "seat_swap:uses:p0": 3 },
+    };
+    expect(
+      def.validate(
+        { player: "p0", type: "seat_swap", payload: { target: "p1" } },
+        { state: spent, rules: game.engine.rules },
       ),
     ).toBe("seat_swap no uses left");
   });

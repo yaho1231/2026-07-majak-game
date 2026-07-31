@@ -36,7 +36,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { addWinHanBonus, flagOf, roundKey, viewKey } from "../util.js";
+import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "foresight";
 const REVEAL = "foresight_reveal";
@@ -59,7 +59,7 @@ const lastTurnKey = (state: GameState, h: PlayerId): string =>
 const revealTurnKey = (state: GameState, h: PlayerId): string =>
   `${ID}:reveal:${roundKey(state)}:${h}`;
 /** 공개된 앞 4장 kind를 담는 보유자 전용 채널 */
-const peekViewKey = (h: PlayerId): string => viewKey(h, "foresight_peek");
+const peekViewKey = (h: PlayerId): string => roundViewKey(h, "foresight_peek");
 
 /** 패산 앞 PEEK장의 tileId (부족하면 짧은 배열) */
 function frontIds(state: GameState): TileId[] {
@@ -155,7 +155,7 @@ const revealAction: ActionDef<Record<string, never>> = {
       augmentDataSet(lastTurnKey(state, req.player), tc),
       augmentDataSet(revealTurnKey(state, req.player), tc),
       // 발동 사실만 전원 공개 (무엇을 봤는지는 보유자만 안다)
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
         round: roundKey(state),
         turnCount: tc,
       }),

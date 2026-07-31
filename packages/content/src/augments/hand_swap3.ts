@@ -43,7 +43,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, roundKey, stringOf, viewKey } from "../util.js";
+import { counterOf, roundKey, roundViewKey, stringOf } from "../util.js";
 
 const ID = "hand_swap3";
 /** 대상 지정 액션 (손패는 움직이지 않는다) */
@@ -79,7 +79,7 @@ const doneKey = (state: GameState, holder: PlayerId): string =>
   `${ID}:done:${roundKey(state)}:${holder}`;
 /** 보유자 전용 '실제 패' 공개 키 (revealTiles:* 채널 → 진짜 패 메타데이터 노출) */
 const revealKey = (holder: PlayerId, target: PlayerId): string =>
-  viewKey(holder, `revealTiles:${target}`);
+  roundViewKey(holder, `revealTiles:${target}`);
 
 interface HandSwap3SwappedPayload {
   holder: PlayerId;

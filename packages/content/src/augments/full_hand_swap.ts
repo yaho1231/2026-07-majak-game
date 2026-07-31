@@ -30,7 +30,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, sameHandSize, viewKey } from "../util.js";
+import { counterOf, roundViewKey, sameHandSize } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 
 const ID = "full_hand_swap";
@@ -132,7 +132,7 @@ export const fullHandSwap: AugmentDef = defineAugment({
             ...state.augmentData,
             [usedKey(p.holder)]: counterOf(state, usedKey(p.holder)) + 1,
             // 누구를 털었는지 전원 공개 (Rule #4 대응의 전제)
-            [viewKey("*", `${ID}:${p.holder}`)]: p.target,
+            [roundViewKey("*", `${ID}:${p.holder}`)]: p.target,
           },
         };
         return next;

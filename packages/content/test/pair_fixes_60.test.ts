@@ -578,7 +578,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
     });
 
   const banner = (g: Game): unknown =>
-    g.engine.state.augmentData["view:*:riichi_seal:p0"];
+    g.engine.state.augmentData["view:*:riichi_seal:p0#round"];
 
   /** p0가 선제 리치를 걸어 봉인이 선 상태까지 진행한다 */
   function declareFirstRiichi(g: Game): FlowController {
@@ -622,7 +622,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
       {
         ...withData(s0, {
           [`riichi_seal:sealed:${roundKey(s0)}:p0`]: true,
-          "view:*:riichi_seal:p0": "봉인",
+          "view:*:riichi_seal:p0#round": "봉인",
         }),
         round: {
           ...s0.round,

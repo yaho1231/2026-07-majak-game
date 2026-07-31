@@ -33,14 +33,14 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey, viewKey } from "../util.js";
 
 const ID = "ura_peek";
 const ACTION = "ura_peek_reveal";
 const ACTION_SWAP = "ura_swap";
 const EVENT = "UraPeeked";
 const EVENT_SWAP = "UraSwapped";
-const uraViewKey = (h: PlayerId): string => viewKey(h, "ura");
+const uraViewKey = (h: PlayerId): string => roundViewKey(h, "ura");
 const usedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:used:${roundKey(state)}:${h}`;
 /** 국당 1회 바꿔치기 플래그 */

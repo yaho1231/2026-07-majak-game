@@ -24,6 +24,7 @@ import type {
   RoundSettledPayload,
 } from "@majak/core";
 import { craft } from "./helpers.js";
+import { roundKey } from "../src/util.js";
 import { spy } from "../src/augments/spy.js";
 
 function withAugments(
@@ -99,7 +100,7 @@ describe("스파이 (spy)", () => {
     expect(marks.length).toBeLessThanOrEqual(14);
   });
 
-  it("이미 지정했으면 다시 제시되지 않는다 (게임당 1회)", () => {
+  it("이번 국에 이미 찍었으면 다시 제시되지 않는다 (국당 1회 — 2026-07-31 버프)", () => {
     const base = craft({
       hands: { p0: "112233m456p789s1z", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
@@ -108,11 +109,32 @@ describe("스파이 (spy)", () => {
     });
     const marked: GameState = {
       ...withAugments(base, "p0", ["spy"]),
-      augmentData: { "spy:mark:p0": MAN3 },
+      augmentData: {
+        "spy:mark:p0": MAN3,
+        [`spy:marked:${roundKey(base)}:p0`]: true,
+      },
     };
     const { status } = startFlow(marked);
     const prompt = status.prompts.find((p) => p.player === "p0");
     expect(prompt?.options.filter((o) => o.type === "spy_mark")).toHaveLength(0);
+  });
+
+  it("국이 바뀌면 다시 찍을 수 있다 (지정은 새로 찍기 전까지 유효)", () => {
+    const base = craft({
+      hands: { p0: "112233m456p789s1z", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    // 지난 국에 찍어 둔 상태 — 이번 국(roundKey가 다르다)에는 다시 후보가 뜬다
+    const marked: GameState = {
+      ...withAugments(base, "p0", ["spy"]),
+      augmentData: { "spy:mark:p0": MAN3, "spy:marked:1-0-0:p0": true },
+    };
+    const { status } = startFlow(marked);
+    const prompt = status.prompts.find((p) => p.player === "p0");
+    expect((prompt?.options.filter((o) => o.type === "spy_mark") ?? []).length)
+      .toBeGreaterThan(0);
   });
 
   it("찍힌 패로 상대가 화료하면 그 이득이 통째로 홀더에게 온다", () => {

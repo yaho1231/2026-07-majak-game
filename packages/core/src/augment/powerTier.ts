@@ -182,12 +182,12 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "모든 화료가 오야 계산(×1.5) + 채점 자풍 동 고정(+1~2판) + 연장 3회. 세 겹이 전부 상시 패시브",
   },
   grave_rob: {
-    tier: "S+",
+    tier: "S",
     p: 4,
-    s: 5,
+    s: 4,
     u: 5,
     f: 2,
-    note: "텐파이면 상대 바닥의 과거 버림패로 확정 화료. 후반 바닥에 오름패가 없을 확률은 사실상 0",
+    note: "상대 바닥 **최근 10장** 안에 오름패가 있으면 확정 화료(2026-07-31 무덤 깊이 제한)",
   },
   cliff_bloom: {
     tier: "S+",
@@ -343,7 +343,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     s: 5,
     u: 5,
     f: 2,
-    note: "멘젠 유지 버림패 회수 = 유효패 확정 인수 3회. 후리텐도 안 걸린다",
+    note: "멘젠 유지 버림패 회수 3회. 각자 최근 3장까지 골라 잡는다(2026-07-31 버프)",
   },
   silent_swap: {
     tier: "A",
@@ -684,12 +684,12 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "버린 자패 4장을 다음 국 배패로. 역패·자패 빌드 전용",
   },
   spy: {
-    tier: "B",
+    tier: "A",
     p: 4,
     s: 1,
     u: 5,
-    f: 1,
-    note: "지정 패로 상대가 화료하면 전액 강탈. 게임 1회·확률 의존",
+    f: 4,
+    note: "지정 패로 상대가 화료하면 전액 강탈. 매 국 다시 찍는다(2026-07-31 버프)",
   },
   parasite: {
     tier: "B",
@@ -796,12 +796,12 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "지목 1명 4판 이하 화료 금지. 나머지 둘은 자유",
   },
   red_five_touch: {
-    tier: "B",
+    tier: "A",
     p: 3,
     s: 1,
     u: 5,
-    f: 1,
-    note: "게임 1회 지정 숫자 적도라화. 손패에 그 숫자가 몇 장이냐에 좌우",
+    f: 5,
+    note: "지정 숫자가 게임 내내 내 적도라. 뽑는 족족 각인된다(2026-07-31 버프)",
   },
   reload: {
     tier: "B",
@@ -816,8 +816,8 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     p: 2,
     s: 2,
     u: 4,
-    f: 2,
-    note: "자리·손패 교환. 첫 순이라 손패 이득은 작고 오야 강탈이 본체",
+    f: 3,
+    note: "자리·손패 교환 2~3회. 내 첫 순이면 언제든(2026-07-31 버프). 오야 강탈이 본체",
   },
   push_riichi: {
     tier: "B",

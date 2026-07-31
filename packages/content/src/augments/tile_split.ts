@@ -34,7 +34,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "tile_split";
 const ACTION = "split_tile";
@@ -135,7 +135,7 @@ const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
       ]),
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       // 전원 공개 — 무엇이 무엇으로 갈라졌는지 보인다
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
         from: kindKey(target),
         to: [
           kindKey({ suit: target.suit, rank: a }),

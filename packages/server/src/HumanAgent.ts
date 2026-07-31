@@ -210,6 +210,22 @@ export class HumanAgent implements PlayerAgent {
     });
   }
 
+  /**
+   * 대기 중인 결정을 지금 안전 폴백(패스)으로 끝낸다 — 우선순위가 더 높은 선언이
+   * 이미 확정돼 이 선택이 결과를 바꿀 수 없을 때 컨트롤러가 부른다.
+   * 클라이언트에는 취소를 알려 버튼·모달이 남지 않게 한다.
+   */
+  cancelDecision(): void {
+    if (this.pendingDecision === null || this.pendingPrompt === null) return;
+    this.clearTimeout();
+    const resolve = this.pendingDecision;
+    const options = this.pendingPrompt.options;
+    this.pendingDecision = null;
+    this.pendingPrompt = null;
+    this.send({ type: "promptCancel" });
+    resolve(safeFallbackOption(options));
+  }
+
   async decideDraft(stage: DraftStage, choices: AugmentDef[]): Promise<string> {
     if (this.abandoned) return choices[0]!.id;
     this.pendingDraftChoices = choices;

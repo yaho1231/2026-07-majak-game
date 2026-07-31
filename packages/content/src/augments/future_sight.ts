@@ -51,6 +51,7 @@ import {
   counterOf,
   flagOf,
   roundKey,
+  roundViewKey,
   statePrng,
   viewKey,
 } from "../util.js";
@@ -78,9 +79,9 @@ const armedKey = (state: GameState, player: PlayerId): string =>
   `${ID}:armed:${roundKey(state)}:${player}`;
 /** 교환으로 들어온 3장 — 전원 공개 */
 const gotKey = (player: PlayerId): string =>
-  viewKey("*", `${ID}:got:${player}`);
+  roundViewKey("*", `${ID}:got:${player}`);
 /** 위 tileId를 '진짜 패'로 그리게 하는 코어 공개 채널 */
-const REVEAL_KEY = viewKey("*", "revealTiles:future");
+const REVEAL_KEY = roundViewKey("*", "revealTiles:future");
 
 /** 지금 무장되어 있는가 (액티브 버튼을 이미 눌렀는가) */
 function isArmed(state: GameState, player: PlayerId): boolean {

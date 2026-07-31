@@ -35,7 +35,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { roundKey, viewKey } from "../util.js";
+import { roundKey, roundViewKey } from "../util.js";
 
 const ID = "take_back";
 const ACTION = "take_back";
@@ -134,7 +134,7 @@ export const takeBack: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [lastUsedKey(state, p.holder)]: p.turnNo,
-            [viewKey("*", `${ID}:${p.holder}`)]: p.revealedKind,
+            [roundViewKey("*", `${ID}:${p.holder}`)]: p.revealedKind,
           },
         };
       });

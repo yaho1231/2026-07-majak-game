@@ -28,7 +28,7 @@ import type {
   GameState,
   PlayerId,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, roundKey, viewKey } from "../util.js";
+import { counterOf, flagOf, matchUses, roundKey, roundViewKey } from "../util.js";
 import { waitTilesLeft } from "./botHelpers.js";
 
 const ID = "palm_flip";
@@ -67,7 +67,7 @@ const flipAction: ActionDef<Record<string, never>> = {
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
     augmentDataSet(flippedKey(state, req.player), true),
     // 전원 공개 — 상대는 이 사람의 리치 정보에 유통기한이 있다는 걸 알아야 한다
-    augmentDataSet(viewKey("*", `${ID}:${req.player}`), roundKey(state)),
+    augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), roundKey(state)),
   ],
 };
 

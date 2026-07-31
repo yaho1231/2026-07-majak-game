@@ -1,8 +1,15 @@
 /**
  * 날치기 (pond_snatch, prism).
- * 게임에서 3회, 자기 턴에 쯔모하는 대신 상대의 가장 최근 버림패 1장을 주워 손에
+ * 게임에서 3회, 자기 턴에 쯔모하는 대신 상대가 **최근에 버린 3장** 중 1장을 주워 손에
  * 넣는다. 후로로 치지 않아 멘젠이 유지되며(리치도 가능), 원래 주인의 바닥 기록은
  * 그대로 남아 그 상대의 후리텐 판정은 유지된다.
+ *
+ * # 버프 (2026-07-31 사용자 지시)
+ *
+ * 예전에는 **각자의 마지막 한 장**만 대상이라, 발동 가능한 순에 쓸모 있는 패가 깔려
+ * 있을 확률이 낮았다. 쯔모 한 번을 통째로 내주는 비용에 비해 건질 것이 없어 3회를
+ * 다 쓰지 못하고 게임이 끝나기 일쑤였다. 이제 **각 상대의 최근 3장**까지 손이 닿는다 —
+ * 같은 값이면 지금 필요한 패를 고를 수 있어 "쯔모를 포기할 만한가"가 실제 판단이 된다.
  *
  * 구현: 자기 턴(이미 쯔모한 상태)에서 쯔모패를 패산 맨 밑으로 되돌리고(take_back과
  * 동일) 상대의 최근 버림패를 손으로 가져와 lastDrawnTile로 삼는 커스텀 이벤트.
@@ -32,6 +39,8 @@ const ID = "pond_snatch";
 const ACTION = "pond_snatch";
 const EVENT = "PondSnatchPerformed";
 const MAX_USES = 3;
+/** 손이 닿는 깊이 — 각 상대의 **최근 SNATCH_DEPTH장** (2026-07-31 버프: 1 → 3) */
+const SNATCH_DEPTH = 3;
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;
@@ -43,7 +52,7 @@ interface PondSnatchPayload {
   fromPlayer: PlayerId;
 }
 
-/** 각 상대의 가장 최근 버림패(바닥 맨 끝) id */
+/** 각 상대의 최근 버림패 SNATCH_DEPTH장 (바닥 맨 끝부터) */
 function recentDiscards(
   state: GameState,
   holder: PlayerId,
@@ -52,8 +61,9 @@ function recentDiscards(
   for (const p of state.players) {
     if (p.id === holder) continue;
     const ids = state.zones[discardsZone(p.id)]?.tileIds ?? [];
-    const last = ids.at(-1);
-    if (last !== undefined) out.push({ fromPlayer: p.id, snatchId: last });
+    for (const snatchId of ids.slice(-SNATCH_DEPTH)) {
+      out.push({ fromPlayer: p.id, snatchId });
+    }
   }
   return out;
 }
@@ -78,7 +88,9 @@ const pondSnatchAction: ActionDef<{ snatchId: TileId; fromPlayer: PlayerId }> = 
     if (wallLen(state) === 0) return "wall is empty";
     if (req.payload.fromPlayer === req.player) return "cannot snatch your own pond";
     const pond = state.zones[discardsZone(req.payload.fromPlayer)]?.tileIds ?? [];
-    if (pond.at(-1) !== req.payload.snatchId) return "not the most recent discard";
+    if (!pond.slice(-SNATCH_DEPTH).includes(req.payload.snatchId)) {
+      return "not among the recent discards";
+    }
     return null;
   },
   toEvents: (req, { state }) => {
@@ -98,9 +110,9 @@ export const pondSnatch: AugmentDef = defineAugment({
   category: "hand",
   name: "날치기",
   description:
-    "(게임 내 3회) 자기 순에 쯔모하는 대신 상대의 가장 최근 버림패 1장을 주워 손에 넣는다. 후로로 치지 않아 멘젠·리치가 유지된다.",
+    "(게임 내 3회) 자기 순에 쯔모하는 대신 상대가 최근에 버린 3장 중 1장을 주워 손에 넣는다. 후로로 치지 않아 멘젠·리치가 유지된다.",
   detail:
-    "(게임 내 3회) 자기 순에 그 순의 쯔모패를 패산 맨 밑으로 되돌리고, 대신 상대의 가장 최근 버림패 1장을 손에 넣는다. 후로로 치지 않으므로 멘젠이 유지되고 리치도 그대로 걸 수 있다. 원주인의 바닥 기록은 남아 그 상대의 후리텐 판정도 유지된다. 리치 중이거나 영상패를 잡은 순, 패산이 바닥난 국에는 쓸 수 없다.",
+    "(게임 내 3회) 자기 순에 그 순의 쯔모패를 패산 맨 밑으로 되돌리고, 대신 상대 세 명이 각각 최근에 버린 3장(최대 9장) 중 1장을 골라 손에 넣는다. 후로로 치지 않으므로 멘젠이 유지되고 리치도 그대로 걸 수 있다. 원주인의 바닥 기록은 남아 그 상대의 후리텐 판정도 유지된다. 리치 중이거나 영상패를 잡은 순, 패산이 바닥난 국에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

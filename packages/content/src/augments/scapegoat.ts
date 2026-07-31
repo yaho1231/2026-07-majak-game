@@ -22,12 +22,7 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import {
-  roundKey,
-  settleInterceptor,
-  stringOf,
-  viewKey,
-} from "../util.js";
+import { roundKey, roundViewKey, settleInterceptor, stringOf } from "../util.js";
 
 const ID = "scapegoat";
 const ACTION = "scapegoat_mark";
@@ -56,7 +51,7 @@ const markAction: ActionDef<{ target: PlayerId }> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(targetKey(state, req.player), req.payload.target),
-    augmentDataSet(viewKey("*", `${ID}:${req.player}`), req.payload.target),
+    augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), req.payload.target),
   ],
 };
 

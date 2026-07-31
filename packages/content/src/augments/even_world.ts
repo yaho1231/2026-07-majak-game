@@ -34,7 +34,7 @@ import type {
   TileKind,
   TileKindChangedPayload,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 
 const ID = "even_world";
@@ -108,7 +108,7 @@ function evenEvents(state: GameState, holder: PlayerId) {
     // 사용 횟수 +1 (동풍전 1·반장전 2회)
     augmentDataSet(usesKey(holder), counterOf(state, usesKey(holder)) + 1),
     // 짝수의 세계가 발동됐음을 전원에게 알린다 (구체적 결과는 손패로 드러난다)
-    augmentDataSet(viewKey("*", `${ID}:${holder}`), true),
+    augmentDataSet(roundViewKey("*", `${ID}:${holder}`), true),
   ];
 }
 

@@ -28,7 +28,7 @@ import type {
   GameState,
   PlayerId,
 } from "@majak/core";
-import { counterOf, flagOf, roundKey, viewKey } from "../util.js";
+import { counterOf, flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "time_stop";
 const ACTION = "time_stop_use";
@@ -81,7 +81,7 @@ const useAction: ActionDef<Record<string, never>> = {
   toEvents: (req, { state }) => [
     augmentDataSet(armedKey(state, req.player), true),
     augmentDataSet(usedWindowKey(req.player), windowOf(state) + 1),
-    augmentDataSet(viewKey(req.player, `${ID}:armed`), true),
+    augmentDataSet(roundViewKey(req.player, `${ID}:armed`), true),
   ],
 };
 
@@ -141,7 +141,7 @@ export const timeStop: AugmentDef = defineAugment({
         state.round.turnSeat === seat
       ) {
         rc.emit(augmentDataSet(armedKey(state, holder), false));
-        rc.emit(augmentDataSet(viewKey(holder, `${ID}:armed`), false));
+        rc.emit(augmentDataSet(roundViewKey(holder, `${ID}:armed`), false));
       }
     });
   },

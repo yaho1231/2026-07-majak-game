@@ -1085,6 +1085,45 @@ button {
   transform: translate(-50%, -50%) rotate(-90deg);
 }
 
+/*
+ * 후로 줄맞춤 — 눕힌 패는 **깊이가 얕다**(세운 패 h → 눕힌 패 w).
+ *
+ * 실제 탁자에서 후로는 자기 몸 쪽 가장자리를 맞춰 늘어놓고, 울어 온 패만 그 자리에서
+ * 90° 돌린다. 그래서 얕아진 만큼 비는 자리는 **반대편(테이블 안쪽)** 에 생긴다.
+ * 아래(내 자리)에서는 그게 "아래 정렬"이지만, 마주 앉은 위 상대와 옆에 앉은 상대는
+ * 몸 쪽이 각각 화면 위·화면 바깥쪽이라 정렬 방향이 다르다 — 전부 아래·가운데로
+ * 맞추고 있어서 상대 후로만 줄이 어긋나 보였다(2026-07-31 사용자 보고).
+ */
+
+/* 위 상대: 몸 쪽이 화면 **위** → 눕힌 호출패도 위에 붙는다 */
+.opp-melds-row,
+.opp-melds-row .meld-row {
+  align-items: flex-start;
+}
+
+.opp-melds-row .mtile-row-lying > .mtile-inner,
+.opp-melds-row .mtile-stack > .stack-a {
+  bottom: auto;
+  top: calc((var(--mt-w) - var(--mt-h)) / 2);
+}
+
+.opp-melds-row .mtile-stack > .stack-b {
+  bottom: auto;
+  top: calc((var(--mt-w) - var(--mt-h)) / 2 + var(--mt-w));
+}
+
+/* 옆자리 상대: 몸 쪽이 화면 바깥쪽 → 세워 보이는 호출패가 그 가장자리에 붙는다 */
+.opp-strip-left .mtile-col > .mtile-inner {
+  left: 0;
+  transform: none;
+}
+
+.opp-strip-right .mtile-col > .mtile-inner {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
 /* 가깡 — 눕힌 두 장 겹침 */
 .mtile-stack {
   width: var(--mt-h);
@@ -4420,6 +4459,50 @@ button {
   box-shadow: 0 0 18px 4px rgba(199, 188, 255, 1);
 }
 
+/* 무덤 도굴 — 고르는 순간 화료가 확정되는 패. 보통의 클릭 대상(보라)과 확실히 갈라
+   금빛으로 띄우고 "화료" 표식을 붙인다. */
+.rt.rt-win-armable {
+  outline-color: rgba(255, 216, 122, 1);
+  box-shadow:
+    0 0 16px 4px rgba(255, 198, 74, 0.9),
+    0 0 34px 10px rgba(255, 170, 40, 0.45);
+  animation: grave-win-pulse 0.9s ease-in-out infinite;
+  z-index: 6;
+}
+
+.rt.rt-win-armable:hover {
+  box-shadow:
+    0 0 22px 6px rgba(255, 216, 122, 1),
+    0 0 46px 14px rgba(255, 170, 40, 0.6);
+}
+
+.rt-win-tag {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #ffd77a, #e2952a);
+  color: #40270a;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes grave-win-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.28);
+  }
+}
+
 /* 등가교환: 상대 선택 줄은 버튼이 여럿이라 줄바꿈을 허용한다 */
 .arm-swap {
   flex-wrap: wrap;
@@ -4482,6 +4565,12 @@ button {
 
 .aug-menu-item:hover {
   filter: brightness(1.1);
+}
+
+/* 2단계 메뉴에서 증강 목록으로 되돌아가는 항목 — 후보와 섞이지 않게 눌러 놓는다 */
+.aug-menu-back {
+  background: linear-gradient(180deg, #4b4363, #2f2a41);
+  opacity: 0.9;
 }
 
 /* ─────────────── 리치 대기패 툴팁 ─────────────── */

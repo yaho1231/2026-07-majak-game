@@ -144,7 +144,7 @@ describe("even_world (짝수의 세계)", () => {
     }
 
     // 발동됐음을 전원 공개, 사용 카운터 +1
-    expect(state.augmentData["view:*:even_world:p0"]).toBe(true);
+    expect(state.augmentData["view:*:even_world:p0#round"]).toBe(true);
     expect(state.augmentData["even_world:uses:p0"]).toBe(1);
   });
 

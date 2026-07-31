@@ -30,7 +30,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "frame_up";
 const ACTION = "frame_discard";
@@ -92,7 +92,7 @@ const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
     },
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
     // 전원 공개 — 누구 바닥에 무엇이 심겼는지 보여야 대응할 수 있다
-    augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
+    augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
       target: req.payload.target,
       kind: kindKey(kindOf(state, req.payload.tileId)),
     }),

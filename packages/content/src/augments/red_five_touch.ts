@@ -14,6 +14,17 @@
  *   요구하므로 후보는 오름차순 랭크로 안정 정렬해 낸다.)
  * - 게임당 1회·자기 턴 조건은 그대로.
  *
+ * # 버프 (2026-07-31 사용자 지시) — 스냅샷에서 **상시 각인**으로
+ *
+ * 예전에는 발동 순간 손에 있던 그 패들만 물들였다. 그 패를 버리거나 후로로 흘리면
+ * 효과가 그대로 사라지고, 이후 같은 숫자를 새로 쯔모해도 평범한 패였다 — 실버 티어
+ * 치고도 남는 게 없었다. 이제 **지정한 숫자는 게임이 끝날 때까지 나에게 적도라**다:
+ * 국이 새로 시작될 때(배패)와 내가 새 패를 뽑을 때마다 그 숫자에 다시 각인을 새긴다.
+ * 지정 자체는 여전히 게임당 1회다.
+ *
+ * (매 국 tiles가 원본으로 리셋되므로 각인은 반드시 ROUND_STARTED에서 다시 새겨야 한다 —
+ *  안 그러면 첫 국에만 효과가 있고 다음 국부터 조용히 사라진다.)
+ *
  * 55차(사용자 피드백: "증강으로 생성한 도라는 나만 사용가능하게"):
  * 물들인 패의 attrs에 `redFor: <보유자 id>`를 함께 새긴다. 예전엔 `{ red: true }`만
  * 붙어서, 그 패를 버려 상대가 펑·치로 가져가면 **상대가 내 적도라로 이득을 봤다**.
@@ -22,6 +33,9 @@
  */
 
 import {
+  CALL_MADE,
+  ROUND_STARTED,
+  TILE_DRAWN,
   augmentDataSet,
   defineAugment,
   handIdsOf,
@@ -36,12 +50,33 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  ProposedEvent,
+  TileDrawnPayload,
   TileKindChangedPayload,
 } from "@majak/core";
 
 const ID = "red_five_touch";
 const ACTION = "red_touch";
 const usedKey = (player: PlayerId): string => `${ID}:used:${player}`;
+/** 지정한 숫자 (게임 내내 유지 — 각인을 다시 새길 때 읽는다) */
+const rankKey = (player: PlayerId): string => `${ID}:rank:${player}`;
+
+/** 이 사람이 지정해 둔 숫자 (아직 안 썼으면 null) */
+function markedRank(state: GameState, player: PlayerId): number | null {
+  const v = state.augmentData[rankKey(player)];
+  return typeof v === "number" && v >= 1 && v <= 9 ? v : null;
+}
+
+/** 손패의 그 숫자 중 **아직 각인되지 않은** 패에 적도라를 새기는 변경 목록 */
+function engraveChanges(
+  state: GameState,
+  player: PlayerId,
+  rank: number,
+): TileKindChangedPayload["changes"] {
+  return rankIdsOf(state, player, rank)
+    .filter((tileId) => state.tiles[tileId]?.attrs.redFor !== player)
+    .map((tileId) => ({ tileId, attrs: { red: true, redFor: player } }));
+}
 
 /** 손패에서 지정 숫자에 해당하는 수패 id 목록 */
 function rankIdsOf(
@@ -98,7 +133,12 @@ const redTouchAction: ActionDef<{ rank: number }> = {
       tileId,
       attrs: { red: true, redFor: req.player },
     }));
-    return [tileKindChanged(changes), augmentDataSet(usedKey(req.player), true)];
+    return [
+      tileKindChanged(changes),
+      augmentDataSet(usedKey(req.player), true),
+      // 지정 숫자를 남겨 둔다 — 이후 뽑는 패·다음 국 배패에도 같은 각인을 다시 새긴다
+      augmentDataSet(rankKey(req.player), req.payload.rank),
+    ];
   },
 };
 
@@ -108,9 +148,9 @@ export const redFiveTouch: AugmentDef = defineAugment({
   category: "hand",
   name: "붉은 손길",
   description:
-    "(게임 내 1회) 자기 순에 숫자 하나(1~9)를 지정해 손패의 그 숫자를 전부 적도라로 만든다. 이렇게 만든 적도라는 나만 쓸 수 있다.",
+    "(게임 내 1회) 자기 순에 숫자 하나(1~9)를 지정하면, 그 뒤로 내 손에 들어오는 그 숫자가 게임이 끝날 때까지 전부 적도라가 된다. 이 적도라는 나만 쓸 수 있다.",
   detail:
-    "(게임 내 1회) 자기 순에 발동하면서 1부터 9까지 중 숫자 하나를 고르면, 그 시점 손패에 있는 그 숫자의 수패(만·통·삭)가 전부 적도라로 바뀐다. 이 적도라에는 소유자가 각인되어, 버린 패를 상대가 후로로 가져가도 상대의 점수로는 계산되지 않는다. 손에 없는 숫자는 고를 수 없다.",
+    "(게임 내 1회) 자기 순에 발동하면서 1부터 9까지 중 숫자 하나를 고르면, 그 숫자의 수패(만·통·삭)가 내 손에 들어올 때마다 적도라가 된다 — 발동 시점의 손패는 물론, 이후 뽑는 패와 다음 국 배패까지 게임이 끝날 때까지 계속 적용된다. 이 적도라에는 소유자가 각인되어, 버린 패를 상대가 후로로 가져가도 상대의 점수로는 계산되지 않는다. 손에 없는 숫자는 고를 수 없다.",
   // 봇: 텐파이일 때, 손패에 가장 많은 랭크를 골라 발동한다 —
   //     그 시점 손에 쥔 패가 그대로 남아 적도라가 될 확률이 높다.
   //     (해당 랭크가 손에 없으면 애초에 후보로 뜨지 않는다.)
@@ -145,6 +185,24 @@ export const redFiveTouch: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(redTouchAction);
     }
+
+    /** 지금 손에 있는 지정 숫자에 각인을 다시 새긴다 (이미 새겨진 패는 건너뛴다) */
+    const engrave = (state: GameState, emit: (e: ProposedEvent) => void): void => {
+      const rank = markedRank(state, holder);
+      if (rank === null) return;
+      const changes = engraveChanges(state, holder, rank);
+      if (changes.length > 0) emit(tileKindChanged(changes));
+    };
+
+    // 새 국 배패 — setupRound가 tiles를 원본으로 되돌리므로 각인을 다시 새긴다
+    ctx.reaction(ROUND_STARTED, (_event, rc) => engrave(rc.state, rc.emit));
+    // 내가 새로 뽑은 패 — 지정 숫자면 그 자리에서 적도라가 된다
+    ctx.reaction(TILE_DRAWN, (event, rc) => {
+      if ((event.payload as TileDrawnPayload).player !== holder) return;
+      engrave(rc.state, rc.emit);
+    });
+    // 울어서 손이 바뀐 순간도 포함 (후로로 남은 손패가 정리된 뒤 각인 유지)
+    ctx.reaction(CALL_MADE, (_event, rc) => engrave(rc.state, rc.emit));
 
     // 손패에 실제로 있는 랭크만 후보로 — 빈 옵션이 뜨지 않는다
     ctx.holderTurnOptions((state) =>

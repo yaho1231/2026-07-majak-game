@@ -23,7 +23,7 @@ import type {
   RuleContext,
 } from "@majak/core";
 import { craft } from "./helpers.js";
-import { viewKey } from "../src/util.js";
+import { roundViewKey, viewKey } from "../src/util.js";
 
 import { briefFog } from "../src/augments/brief_fog.js";
 
@@ -113,7 +113,7 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
     const s = game.engine.state;
     expect(s.augmentData[USES_KEY]).toBe(1);
     expect(s.augmentData[turnKeyFor(s)]).toBe(0); // 선언 순 = turnCount 0
-    expect(s.augmentData[viewKey("*", "brief_fog:p0")]).toBe("안개");
+    expect(s.augmentData[roundViewKey("*", "brief_fog:p0")]).toBe("안개");
 
     // (a) 타인 뷰: 네 사람 바닥이 전부 장수만
     const other = buildPlayerView(s, "p1", game.engine.rules);
@@ -133,7 +133,7 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "declare_brief_fog", payload: {} });
     const s = game.engine.state;
-    const map = s.augmentData[viewKey("*", "brief_fog:last:p0")] as Record<
+    const map = s.augmentData[roundViewKey("*", "brief_fog:last:p0")] as Record<
       PlayerId,
       number
     >;

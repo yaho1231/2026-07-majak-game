@@ -36,7 +36,7 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { flagOf, viewKey } from "../util.js";
+import { flagOf, roundViewKey } from "../util.js";
 
 const ID = "hidden_river";
 const ACTION = "declare_fog";
@@ -44,14 +44,14 @@ const ACTION = "declare_fog";
 /** 안개 선언 플래그 — **게임 단위**라 roundKey를 섞지 않는다 */
 const fogKey = (holder: PlayerId): string => `${ID}:fog:${holder}`;
 /** 선언 사실을 전원에게 알리는 공개 뷰 채널 */
-const noticeKey = (holder: PlayerId): string => viewKey("*", `${ID}:${holder}`);
+const noticeKey = (holder: PlayerId): string => roundViewKey("*", `${ID}:${holder}`);
 /** 각 플레이어의 마지막 버림패 맵 { playerId: tileId } — 전원 공개 */
 const lastMapKey = (holder: PlayerId): string =>
-  viewKey("*", `${ID}:last:${holder}`);
+  roundViewKey("*", `${ID}:last:${holder}`);
 /** 위 맵의 tileId를 '진짜 패'로 그리게 하는 코어 공개 채널 */
 /** 보유자별 공개 채널 — 박무(brief_fog)와 키를 공유하면 서로 덮어쓴다(2026-07-29 감사) */
 const revealKey = (holder: PlayerId): string =>
-  viewKey("*", `revealTiles:fog:${holder}`);
+  roundViewKey("*", `revealTiles:fog:${holder}`);
 
 /** 안개가 선언되어 있는가 */
 function fogDeclared(state: GameState, holder: PlayerId): boolean {

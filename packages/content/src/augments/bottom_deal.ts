@@ -55,7 +55,7 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { handKindsExcept, handKindsOf, usefulIn } from "./botHelpers.js";
 
 const ID = "bottom_deal";
@@ -69,9 +69,9 @@ const PEEK = 3;
 const armedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:armed:${roundKey(state)}:${h}`;
 /** 보유자 뷰 전용 채널 — 지금 예약 상태인지 UI에 노출한다 */
-const viewArmedKey = (h: PlayerId): string => viewKey(h, `${ID}:armed:${h}`);
+const viewArmedKey = (h: PlayerId): string => roundViewKey(h, `${ID}:armed:${h}`);
 /** 전원 공개 마커 — 누가 밑장빼기를 선언했는지는 모두가 안다 (내용은 아니다) */
-const noticeKey = (h: PlayerId): string => viewKey("*", `${ID}:armed:${h}`);
+const noticeKey = (h: PlayerId): string => roundViewKey("*", `${ID}:armed:${h}`);
 
 /** 패산 맨 밑장 (다음 밑장빼기로 나올 패). 패산이 비면 undefined */
 function bottomTile(state: GameState): TileId | undefined {

@@ -10,6 +10,7 @@
 
 import {
   Prng,
+  ROUND_SCOPED_MARK,
   ROUND_SETTLED,
   SETTLE_LAYER,
   SETTLE_STAGE,
@@ -59,6 +60,23 @@ export function matchUses(state: GameState): number {
 /** 본인 전용 뷰 채널 키 (PlayerView.augmentView로 전달됨) */
 export function viewKey(player: PlayerId | "*", key: string): string {
   return `view:${player}:${key}`;
+}
+
+/**
+ * **국 스코프** 뷰 채널 키 — 국이 끝나면 엔진이 알아서 지운다.
+ *
+ * "이번 국 동안"만 성립하는 효과의 공개 표시(일확천금의 배수, 무장해제의 지목,
+ * 단색 세계의 무늬 …)는 반드시 이걸로 쓴다. `viewKey`(고정 키)로 쓰면 효과 쪽
+ * roundKey는 만료됐는데 화면 표시만 다음 국에 그대로 남는다 — 2026-07-31 사용자
+ * 보고("국이 지나갔는데 효과·설명이 남아 있다")의 원인이 전부 이것이었다.
+ *
+ * 표식은 `setupRound`가 국 경계에서 떼어 지우고, `buildPlayerView`가 클라이언트에
+ * 넘기기 전에 이름에서 떼어 낸다 — 클라이언트 코드는 종전 채널 이름 그대로 읽는다.
+ *
+ * 국을 넘어 유지돼야 하는 값(스택·낙인·게임당 1회 지정)에는 쓰지 말 것.
+ */
+export function roundViewKey(player: PlayerId | "*", key: string): string {
+  return `${viewKey(player, key)}${ROUND_SCOPED_MARK}`;
 }
 
 /**

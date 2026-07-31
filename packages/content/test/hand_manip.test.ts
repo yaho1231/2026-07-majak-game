@@ -19,7 +19,7 @@ import {
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
-import { roundKey, viewKey } from "../src/util.js";
+import { roundKey, roundViewKey, viewKey } from "../src/util.js";
 import { suitUnify } from "../src/augments/suit_unify.js";
 import { redFiveTouch } from "../src/augments/red_five_touch.js";
 import { handSwap3 } from "../src/augments/hand_swap3.js";
@@ -81,38 +81,57 @@ describe("suit_unify — 단색 세계", () => {
   it("첫 패를 받은 자기 턴에 버튼으로 발동하면 수패가 무작위 한 종류로 통일되고 전원 공개된다", () => {
     const game = createStandardGameFromState(craftFirstHand());
     installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
+    const before = game.engine.state;
 
     // 자기 턴 프롬프트에 발동 버튼이 뜬다
     const flow = new FlowController(game.engine);
     const status = flow.begin();
     if (status.kind !== "awaiting") throw new Error("expected awaiting");
     const prompt = status.prompts.find((p) => p.player === "p0")!;
-    const option = prompt.options.find((o) => o.type === "mono_world");
+    // 이 크래프트 상태의 패산에는 통수가 넉넉하다 — 실물 교환 경로를 확인하려고 통수를 고른다
+    const option = prompt.options.find(
+      (o) => o.type === "mono_world" && (o.payload as { suit?: string }).suit === "pin",
+    );
     expect(option).toBeDefined();
 
     flow.submit("p0", option as { type: string; payload: unknown });
 
     const state = game.engine.state;
-    const suit = state.augmentData["view:*:suit_unify:p0"];
-    expect(["man", "pin", "sou"]).toContain(suit);
-    // 손패의 모든 수패가 공개된 종류로 통일 (자패는 그대로), 새로 만든 패는 conjured 표시
+    const suit = state.augmentData["view:*:suit_unify:p0#round"];
+    expect(suit).toBe("pin");
+    // 손패의 모든 수패가 공개된 종류로 통일 (자패는 그대로)
     const hand = handIdsOf(state, "p0");
     for (const id of hand) {
       const kind = kindOf(state, id);
-      if (isNumberSuit(kind)) {
-        expect(kind.suit).toBe(suit);
+      if (isNumberSuit(kind)) expect(kind.suit).toBe(suit);
+    }
+    // 손패 장수는 그대로 (개벽과 같은 1:1 실물 교환)
+    expect(hand).toHaveLength(handIdsOf(before, "p0").length);
+    // 패산 장수도 그대로 — 내보낸 만큼 되받는다
+    expect(state.zones[WALL]?.tileIds).toHaveLength(before.zones[WALL]?.tileIds.length ?? 0);
+
+    // 생성(conjured)은 **패산에 그 숫자의 통수가 없었을 때만** 일어난다.
+    // 있었으면 실물과 맞바꾸므로 새 패를 만들지 않는다 (2026-07-31 실물 교환 규약).
+    const availableByRank = new Map<number, number>();
+    for (const id of before.zones[WALL]?.tileIds ?? []) {
+      const k = kindOf(before, id);
+      if (k.suit !== "pin") continue;
+      availableByRank.set(k.rank, (availableByRank.get(k.rank) ?? 0) + 1);
+    }
+    let realSwaps = 0;
+    for (const id of handIdsOf(before, "p0")) {
+      const k = kindOf(before, id);
+      if (!isNumberSuit(k) || k.suit === "pin") continue;
+      const left = availableByRank.get(k.rank) ?? 0;
+      if (left > 0) {
+        availableByRank.set(k.rank, left - 1);
+        realSwaps++;
+      } else {
+        // 패산이 비어 그 자리에서 만들어진 패 — conjured 표식이 붙는다
         expect(state.tiles[id]?.attrs.conjured).toBe(true);
       }
     }
-    // 변경 대상은 보유자 손패뿐
-    const changeEvent = game.engine.eventLog.find(
-      (e) => e.type === TILE_KIND_CHANGED,
-    );
-    expect(changeEvent).toBeDefined();
-    const changes = (
-      changeEvent?.payload as { changes: { tileId: TileId }[] }
-    ).changes;
-    for (const c of changes) expect(hand).toContain(c.tileId);
+    expect(realSwaps).toBeGreaterThan(0); // 실물 교환 경로가 실제로 돈다
     // 사용 카운터
     expect(state.augmentData["suit_unify:uses:p0"]).toBe(1);
   });
@@ -199,6 +218,66 @@ describe("red_five_touch — 붉은 손길", () => {
     expect(again.ok).toBe(false);
   });
 
+  it("지정한 숫자는 이후 뽑는 패·다음 국 배패에도 계속 각인된다 (2026-07-31 버프)", () => {
+    const game = createStandardGameFromState(craftRedState());
+    installAugment(game.engine, redFiveTouch, "p0", { yaku: game.yaku });
+    expect(
+      game.engine.submit({ player: "p0", type: "red_touch", payload: { rank: 5 } }).ok,
+    ).toBe(true);
+    expect(game.engine.state.augmentData["red_five_touch:rank:p0"]).toBe(5);
+
+    const isRed5 = (state: GameState, id: TileId): boolean => {
+      const k = kindOf(state, id);
+      return (
+        isNumberSuit(k) &&
+        k.rank === 5 &&
+        state.tiles[id]?.attrs.red === true &&
+        state.tiles[id]?.attrs.redFor === "p0"
+      );
+    };
+
+    // 한 장 버리고 턴을 넘겨 p0이 새로 쯔모할 때까지 돌린다
+    const flow = new FlowController(game.engine);
+    let status = flow.begin();
+    let guard = 0;
+    while (status.kind === "awaiting" && guard++ < 200) {
+      const prompt = status.prompts[0]!;
+      const drew =
+        prompt.player === "p0" &&
+        prompt.options.some((o) => o.type === "discard") &&
+        game.engine.state.round.lastDrawnTile !== null &&
+        guard > 1;
+      if (drew) break;
+      const pick =
+        prompt.options.find((o) => o.type === "discard") ??
+        prompt.options.find((o) => o.type === "pass") ??
+        prompt.options[0]!;
+      status = flow.submit(prompt.player, pick);
+    }
+    // 새로 뽑은 패가 5라면 그 자리에서 적도라가 되어 있다 (아니면 5가 안 왔을 뿐)
+    for (const id of handIdsOf(game.engine.state, "p0")) {
+      const k = kindOf(game.engine.state, id);
+      if (isNumberSuit(k) && k.rank === 5) expect(isRed5(game.engine.state, id)).toBe(true);
+    }
+
+    // 다음 국 — setupRound가 tiles를 원본으로 되돌려도 각인이 다시 새겨진다
+    const settle = game.engine.submit({
+      player: SYSTEM_PLAYER,
+      type: "sys.settleAbort",
+      payload: { reason: "kyushuKyuhai" },
+    });
+    expect(settle.ok).toBe(true);
+    expect(
+      game.engine.submit({ player: SYSTEM_PLAYER, type: "sys.startRound", payload: {} }).ok,
+    ).toBe(true);
+    const next = game.engine.state;
+    const fives = handIdsOf(next, "p0").filter((id) => {
+      const k = kindOf(next, id);
+      return isNumberSuit(k) && k.rank === 5;
+    });
+    for (const id of fives) expect(isRed5(next, id)).toBe(true);
+  });
+
   it("5가 아닌 숫자도 지정할 수 있다 (52차: 아무 숫자나)", () => {
     const game = createStandardGameFromState(craftRedState());
     installAugment(game.engine, redFiveTouch, "p0", { yaku: game.yaku });
@@ -264,7 +343,7 @@ describe("hand_swap3 — 등가교환", () => {
   const giveKeyOf = (s: GameState): string =>
     `hand_swap3:give:${roundKey(s)}:p0`;
   const revealKeyOf = (target: PlayerId): string =>
-    viewKey("p0", `revealTiles:${target}`);
+    roundViewKey("p0", `revealTiles:${target}`);
 
   type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -569,8 +648,9 @@ describe("hand_swap3 — 등가교환", () => {
     }
 
     const state = game.engine.state;
-    // 공개 채널은 비워지고, 국 단위 키(지정·잔여 교환)는 새 국에서 조회되지 않는다
-    expect(state.augmentData[revealKeyOf("p1")]).toEqual([]);
+    // 공개 채널은 국 스코프 키(roundViewKey)라 setupRound가 통째로 지운다.
+    // 국 단위 키(지정·잔여 교환)도 새 국에서는 조회되지 않는다.
+    expect(state.augmentData[revealKeyOf("p1")]).toBeUndefined();
     expect(state.augmentData[targetKeyOf(state)]).toBeUndefined();
     expect(state.augmentData[leftKeyOf(state)]).toBeUndefined();
     // 게임 단위 사용 횟수는 국을 넘어 유지된다
@@ -635,7 +715,7 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
     expect(state.round.lastDrawnTile).toBe(drawn);
     expect(state.augmentData["full_hand_swap:used:p0"]).toBe(1);
     // 누구를 털었는지 전원 공개
-    expect(state.augmentData["view:*:full_hand_swap:p0"]).toBe("p1");
+    expect(state.augmentData["view:*:full_hand_swap:p0#round"]).toBe("p1");
     // 2회째도 가능 (다른 상대와)
     const second = game.engine.submit({
       player: "p0",

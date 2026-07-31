@@ -55,6 +55,7 @@ import {
   playerOf,
   scoringOptionsOf,
   sameCallKind,
+  sealedDiscardIds,
   mixedTripletsFor,
   polarEndsFor,
   honorRunsFor,
@@ -154,19 +155,12 @@ const discardAction: ActionDef<{ tileId: TileId }> = {
     if (rs?.riichi != null && req.payload.tileId !== state.round.lastDrawnTile) {
       return "riichi: must discard the drawn tile";
     }
-    // 봉인된 패 (discard.blockedKinds 규칙, kindKey 목록).
-    // 손패 전부가 봉인이면 소프트락 방지를 위해 허용한다.
-    const blocked = rules.resolve<string[]>("discard.blockedKinds", {
-      playerId: req.player,
-      state,
-    });
-    if (blocked.length > 0 && rs?.riichi == null) {
-      const blockedSet = new Set(blocked);
-      if (blockedSet.has(kindKey(kindOf(state, req.payload.tileId)))) {
-        const hasFree = hand.some(
-          (id) => !blockedSet.has(kindKey(kindOf(state, id))),
-        );
-        if (hasFree) return "tile kind is sealed";
+    // 봉인된 패 — 종류 단위(discard.blockedKinds)와 개별 패 단위(discard.blockedTileIds)를
+    // 함께 본다. 어느 쪽이든 손패 전부가 봉인이면 소프트락 방지를 위해 허용한다.
+    if (rs?.riichi == null) {
+      const sealed = sealedDiscardIds(state, rules, req.player, hand);
+      if (sealed.has(req.payload.tileId) && hand.some((id) => !sealed.has(id))) {
+        return "tile is sealed";
       }
     }
     return null;
@@ -1068,6 +1062,15 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("win.ronImmune", false);
   /** 버릴 수 없는 패 kindKey 목록 (전부 봉인이면 소프트락 방지 허용) */
   rules.define<string[]>("discard.blockedKinds", []);
+  /**
+   * 버릴 수 없는 **개별 패**(tileId) 목록 — 종류가 아니라 지목된 그 한 장만 잠근다.
+   *
+   * 종류 단위 봉인(`discard.blockedKinds`)은 봉인 뒤에 **새로 들어온 같은 종류**까지
+   * 함께 잠근다. 봉인술사처럼 "그 순간 손에 있던 패 2장"만 묶는 능력에는 그게 과했다
+   * (2026-07-31 사용자 보고). 이쪽은 잠근 그 패가 손을 떠나면 자연히 풀린다.
+   * 전부 봉인이면 소프트락 방지로 허용하는 것은 종류 봉인과 같다.
+   */
+  rules.define<TileId[]>("discard.blockedTileIds", []);
   /** 치를 아무에게서나 (우선순위: 펑 > 원격 치 > 일반 치) */
   rules.define("call.chi.fromAnyone", false);
   /** 유국 시 노텐 벌점 면제 */

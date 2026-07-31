@@ -17,7 +17,7 @@ import {
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
-import { roundKey, viewKey } from "../src/util.js";
+import { roundKey, roundViewKey, viewKey } from "../src/util.js";
 import { riichiUpgrade } from "../src/augments/riichi_upgrade.js";
 import { freeRiichiDiscard } from "../src/augments/free_riichi_discard.js";
 import { peekRiichiWaits } from "../src/augments/peek_riichi_waits.js";
@@ -276,7 +276,7 @@ describe("free_riichi_discard (자유 선언)", () => {
       [...(st.zones[handZone("p0")]?.tileIds ?? [])].sort((a, b) => a - b),
     );
     // 대기(오름패)가 보유자 전용 뷰 채널로 노출된다
-    const waits = st.augmentData[viewKey("p0", "free_declare_waits:p0")];
+    const waits = st.augmentData[roundViewKey("p0", "free_declare_waits:p0")];
     expect(Array.isArray(waits)).toBe(true);
     expect((waits as string[]).sort()).toEqual(["sou3", "sou6", "sou9"]);
   });

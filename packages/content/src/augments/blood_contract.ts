@@ -15,7 +15,6 @@ import {
   defineAugment,
   playerAtSeat,
   ROUND_SETTLED,
-  ROUND_STARTED,
   SETTLE_STAGE,
 } from "@majak/core";
 import type {
@@ -25,12 +24,7 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import {
-  roundKey,
-  settleInterceptor,
-  stringOf,
-  viewKey,
-} from "../util.js";
+import { roundKey, roundViewKey, settleInterceptor, stringOf } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 
 const ID = "blood_contract";
@@ -76,7 +70,7 @@ const declareAction: ActionDef<{ yaku: string }> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(contractKey(state, req.player), req.payload.yaku),
-    augmentDataSet(viewKey("*", `${ID}:${req.player}`), req.payload.yaku),
+    augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), req.payload.yaku),
   ],
 };
 
@@ -115,13 +109,8 @@ export const bloodContract: AugmentDef = defineAugment({
       };
     });
 
-    // 계약 배지는 고정 키라 국이 바뀌어도 남는다 — 실제 계약(contractKey)은 국 스코프이므로
-    // 그대로 두면 '계약하지 않은 국'에도 지난 계약이 전원 화면에 계속 떠 있다(2026-07-29 감사).
-    ctx.reaction(ROUND_STARTED, (_event, rc) => {
-      if (stringOf(rc.state, contractKey(rc.state, holder)) !== null) return;
-      if (stringOf(rc.state, viewKey("*", `${ID}:${holder}`)) === null) return;
-      rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), ""));
-    });
+    // 계약 배지는 roundViewKey라 국 경계에서 엔진이 지운다 — 계약하지 않은 국에
+    // 지난 계약이 전원 화면에 남아 있던 문제(2026-07-29 감사)는 이제 구조로 막힌다.
 
     ctx.holderTurnOptions((state) => {
       if (discardCount(state, holder) > 0) return [];

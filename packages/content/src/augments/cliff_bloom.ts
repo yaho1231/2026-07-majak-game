@@ -59,7 +59,7 @@ import {
   counterOf,
   flagOf,
   roundKey,
-  viewKey,
+  roundViewKey,
   widenPeek,
   winPointsWithExtraHan,
 } from "../util.js";
@@ -285,7 +285,7 @@ export const cliffBloom: AugmentDef = defineAugment({
         if (changes !== null) {
           rc.emit(tileKindChanged(changes));
           rc.emit(augmentDataSet(bloomedKey(state, holder), true));
-          rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), "만개"));
+          rc.emit(augmentDataSet(roundViewKey("*", `${ID}:${holder}`), "만개"));
           return; // 만개했으면 영상패를 고를 이유가 없다
         }
       }

@@ -33,7 +33,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "three_dragons_will";
 const ACTION = "dragons_will";
@@ -143,7 +143,7 @@ const willAction: ActionDef<Record<string, never>> = {
       ),
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       // 전원 공개 — 대삼원이 섰다는 것은 테이블 전체의 사건이다
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), kindKey(pending.kind)),
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), kindKey(pending.kind)),
     ];
   },
 };

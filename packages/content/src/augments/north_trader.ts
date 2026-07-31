@@ -59,7 +59,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, viewKey } from "../util.js";
+import { counterOf, roundViewKey } from "../util.js";
 import { handKindsOf, seatWindOf } from "./botHelpers.js";
 
 const ID = "north_trader";
@@ -199,7 +199,7 @@ export const northTrader: AugmentDef = defineAugment({
             ...state.augmentData,
             [key]: next,
             // 전원 공개 — 몇 장을 빼놓았는지(=도라 몇 판인지)는 테이블의 공유 정보다
-            [viewKey("*", `${ID}:${p.player}`)]: next,
+            [roundViewKey("*", `${ID}:${p.player}`)]: next,
           },
         };
       });

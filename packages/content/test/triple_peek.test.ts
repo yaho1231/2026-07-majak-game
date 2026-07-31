@@ -97,7 +97,7 @@ describe("삼세 예지 (triple_peek)", () => {
     const { game, flow } = startFlow(scn);
     flow.submit("p0", { type: ACTION, payload: {} });
 
-    const result = game.engine.state.augmentData[`view:p0:${ID}`];
+    const result = game.engine.state.augmentData[`view:p0:${ID}#round`];
     // 배열 · 길이 3 · 전부 kindKey 문자열
     expect(Array.isArray(result)).toBe(true);
     const arr = result as unknown[];
@@ -107,7 +107,7 @@ describe("삼세 예지 (triple_peek)", () => {
     expect(arr).toEqual(expected);
 
     // 발동 사실만 담은 전원 공개 마커가 존재한다 (내용 없음)
-    expect(game.engine.state.augmentData[`view:*:${ID}:p0`]).toBeDefined();
+    expect(game.engine.state.augmentData[`view:*:${ID}:p0#round`]).toBeDefined();
   });
 
   it("보유자가 실제로 뽑을 패산 위치(3,7,11)의 kind와 일치한다", () => {
@@ -120,7 +120,7 @@ describe("삼세 예지 (triple_peek)", () => {
 
     const { game, flow } = startFlow(scn);
     flow.submit("p0", { type: ACTION, payload: {} });
-    expect(game.engine.state.augmentData[`view:p0:${ID}`]).toEqual(byIndex);
+    expect(game.engine.state.augmentData[`view:p0:${ID}#round`]).toEqual(byIndex);
   });
 
   it("동풍전 1회 — 두 번째 선언은 거부되고 옵션도 사라진다", () => {

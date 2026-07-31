@@ -39,7 +39,7 @@ import type {
   TileDrawnPayload,
   TileKind,
 } from "@majak/core";
-import { addWinHanBonus, flagOf, roundKey, viewKey } from "../util.js";
+import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "haitei_lord";
 /** 발동한 국의 화료에 얹는 판수 (구 +4500점) */
@@ -102,7 +102,7 @@ export const haiteiLord: AugmentDef = defineAugment({
       // 전원 공개 — 마지막 패가 무엇으로 바뀌었는지가 이 증강의 구경거리다
       rc.emit(
         augmentDataSet(
-          viewKey("*", `${ID}:${holder}`),
+          roundViewKey("*", `${ID}:${holder}`),
           already ? drawnKey : kindKey(target),
         ),
       );

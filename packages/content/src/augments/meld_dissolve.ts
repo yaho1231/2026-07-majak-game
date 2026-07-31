@@ -57,7 +57,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "meld_dissolve";
 const ACTION = "dissolve_meld";
@@ -203,7 +203,7 @@ export const meldDissolve: AugmentDef = defineAugment({
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,
             // 전원 공개 — 상대가 후리텐·안전패를 다시 판정하도록
-            [viewKey("*", `${ID}:${p.holder}`)]: {
+            [roundViewKey("*", `${ID}:${p.holder}`)]: {
               meldIndex: p.meldIndex,
               returned: p.handContributed.map((id) => kindKey(kindOf(state, id))),
               toPond: kindKey(kindOf(state, p.calledTileId)),

@@ -38,7 +38,7 @@ import type {
   PlayerId,
   RuleRegistry,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "triple_peek";
 const ACTION = "triple_peek_use";
@@ -51,10 +51,10 @@ const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
 const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
   counterOf(state, usesKey(holder)) < matchUses(state);
 /** 예지 결과(kindKey 3개)를 담는 보유자 전용 채널 */
-const resultKey = (holder: PlayerId): string => viewKey(holder, ID);
+const resultKey = (holder: PlayerId): string => roundViewKey(holder, ID);
 /** 발동 사실만 알리는 전원 공개 마커 (내용 없음) */
 const noticeKey = (holder: PlayerId): string =>
-  viewKey("*", `${ID}:${holder}`);
+  roundViewKey("*", `${ID}:${holder}`);
 
 /** turn.direction 규칙 해석 (기본 1=시계) */
 function turnDirection(state: GameState, rules: RuleRegistry): number {

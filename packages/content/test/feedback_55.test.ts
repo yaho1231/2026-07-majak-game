@@ -31,7 +31,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { craft } from "./helpers.js";
-import { roundKey, viewKey } from "../src/util.js";
+import { roundKey, roundViewKey, viewKey } from "../src/util.js";
 
 import { hiddenRiver } from "../src/augments/hidden_river.js";
 import { handSwap3 } from "../src/augments/hand_swap3.js";
@@ -154,9 +154,9 @@ function playOneRound(aug: AugmentDef, seed: number): void {
 
 describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
   const FOG_KEY = "hidden_river:fog:p0";
-  const LAST_KEY = viewKey("*", "hidden_river:last:p0");
+  const LAST_KEY = roundViewKey("*", "hidden_river:last:p0");
   // 공개 채널은 보유자별로 갈린다 (박무와 키를 공유하면 서로 덮어쓴다)
-  const REVEAL_KEY = viewKey("*", "revealTiles:fog:p0");
+  const REVEAL_KEY = roundViewKey("*", "revealTiles:fog:p0");
 
   function setup(): Game {
     const state = withAugment(
@@ -197,7 +197,7 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
 
     const s = game.engine.state;
     expect(s.augmentData[FOG_KEY]).toBe(true);
-    expect(s.augmentData[viewKey("*", "hidden_river:p0")]).toBe("안개");
+    expect(s.augmentData[roundViewKey("*", "hidden_river:p0")]).toBe("안개");
 
     // 타인 뷰: 네 사람 바닥이 전부 장수만
     const other = buildPlayerView(s, "p1", game.engine.rules);
@@ -385,8 +385,8 @@ describe("hand_swap3 — 발동한 국에는 재사용 불가", () => {
 describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   const armedKeyOf = (s: GameState): string =>
     `future_sight:armed:${roundKey(s)}:p0`;
-  const GOT_KEY = viewKey("*", "future_sight:got:p0");
-  const REVEAL_KEY = viewKey("*", "revealTiles:future");
+  const GOT_KEY = roundViewKey("*", "future_sight:got:p0");
+  const REVEAL_KEY = roundViewKey("*", "revealTiles:future");
 
   function setup(): Game {
     const state = withAugment(
@@ -528,7 +528,7 @@ describe("jackpot — 룰렛에 0.5배가 추가됐다", () => {
       game.engine.submit({ player: "p0", type: "jackpot_roll", payload: {} });
       const s = game.engine.state;
       if (s.augmentData[multKeyOf(s)] !== 0.5) continue;
-      expect(s.augmentData["view:*:jackpot:p0"]).toBe("0.5배");
+      expect(s.augmentData["view:*:jackpot:p0#round"]).toBe("0.5배");
       return;
     }
     throw new Error("0.5배가 한 번도 뽑히지 않았다");

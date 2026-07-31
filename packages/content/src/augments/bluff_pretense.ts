@@ -34,7 +34,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
 
 const ID = "bluff_pretense";
@@ -150,7 +150,7 @@ const bluffPonAction: ActionDef<{ tileId: TileId }> = {
       },
       // ③ 국당 1회 소진 + 전원 공개
       augmentDataSet(usedKey(state, req.player), true),
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), true),
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), true),
     ];
   },
 };

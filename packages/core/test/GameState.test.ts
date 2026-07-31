@@ -10,7 +10,9 @@ import {
   DEAD_WALL_SIZE,
   FIRST_DORA_INDEX,
   HAND_START_SIZE,
+  ROUND_SCOPED_MARK,
   createInitialGameState,
+  isRoundScopedKey,
   setupRound,
 } from "../src/engine/state/GameState.js";
 import type { GameState } from "../src/engine/state/GameState.js";
@@ -129,5 +131,32 @@ describe("setupRound", () => {
       expect(next.tiles[id]!.kind).toEqual(fresh.tiles[id]!.kind);
       expect(next.tiles[id]!.attrs).toEqual(fresh.tiles[id]!.attrs);
     }
+  });
+});
+
+describe("국 스코프 augmentData (ROUND_SCOPED_MARK)", () => {
+  it("표식이 붙은 키만 국 경계에서 지워지고 나머지는 남는다", () => {
+    const state: GameState = {
+      ...newGame(),
+      augmentData: {
+        // 국 스코프 — 지워져야 한다
+        [`view:*:jackpot:p0${ROUND_SCOPED_MARK}`]: "3배",
+        [`jackpot:mult:1-1-0:p0${ROUND_SCOPED_MARK}`]: 3,
+        // 게임 스코프 — 남아야 한다
+        "let_it_ride:streak:p0": 2,
+        "view:*:parasite:p0": "p1",
+      },
+    };
+    const next = setupRound(state);
+    expect(next.augmentData[`view:*:jackpot:p0${ROUND_SCOPED_MARK}`]).toBeUndefined();
+    expect(next.augmentData[`jackpot:mult:1-1-0:p0${ROUND_SCOPED_MARK}`]).toBeUndefined();
+    expect(next.augmentData["let_it_ride:streak:p0"]).toBe(2);
+    expect(next.augmentData["view:*:parasite:p0"]).toBe("p1");
+  });
+
+  it("isRoundScopedKey는 키 끝의 표식만 본다", () => {
+    expect(isRoundScopedKey(`a:b${ROUND_SCOPED_MARK}`)).toBe(true);
+    expect(isRoundScopedKey("a:b")).toBe(false);
+    expect(isRoundScopedKey(`${ROUND_SCOPED_MARK}:a`)).toBe(false);
   });
 });

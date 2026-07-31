@@ -265,7 +265,7 @@ describe("ura_peek (이면투시) — 뒷도라 바꿔치기", () => {
     const uraId = uraIndicatorIds(game.engine.state)[0] as TileId;
     const uraPos = before.indexOf(uraId);
     const target = before[0] as TileId;
-    expect(game.engine.state.augmentData["view:p0:ura"]).toEqual([
+    expect(game.engine.state.augmentData["view:p0:ura#round"]).toEqual([
       kindKey(kindOf(game.engine.state, uraId)),
     ]);
 
@@ -280,7 +280,7 @@ describe("ura_peek (이면투시) — 뒷도라 바꿔치기", () => {
     expect(game.engine.state.round.doraIndicators).toEqual(doraBefore);
     expect(uraIndicatorIds(game.engine.state)[0]).toBe(target);
     // 보유자 뷰가 새 뒷도라로 갱신된다
-    expect(game.engine.state.augmentData["view:p0:ura"]).toEqual([
+    expect(game.engine.state.augmentData["view:p0:ura#round"]).toEqual([
       kindKey(kindOf(game.engine.state, target)),
     ]);
   });
@@ -570,26 +570,29 @@ describe("seat_swap (자리 바꿈) — 즉시 적용", () => {
     expect(game.engine.eventLog.some((e) => e.type === "SeatsSwapped")).toBe(true);
   });
 
-  it("동풍전 1회 — 재사용은 거부된다", () => {
+  it("동풍전 2회 — 다 쓰면 거부된다 (2026-07-31 버프: 1 → 2회)", () => {
     const base = firstTurnState();
     const tonpuu: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };
     const game = setup(tonpuu);
     submitOk(game, "p0", "seat_swap", { target: "p2" });
-    expect(validateOf(game, "seat_swap", "p0", { target: "p1" })).toBe(
+    // 한 번 더 쓸 수 있다 (자리가 바뀌었으니 지금 p0은 seat 2, 여전히 자기 순)
+    expect(validateOf(game, "seat_swap", "p0", { target: "p1" })).toBeNull();
+    submitOk(game, "p0", "seat_swap", { target: "p1" });
+    expect(validateOf(game, "seat_swap", "p0", { target: "p3" })).toBe(
       "seat_swap no uses left",
     );
   });
 
-  it("첫 바퀴가 지났으면 거부된다", () => {
+  // round.firstTurn(첫 바퀴)은 누가 울기만 해도 꺼진다 — 그걸 조건으로 두면 앞자리
+  // 봇의 퐁 한 번에 그 국의 발동 기회가 사라졌다(2026-07-31 버프로 조건에서 뺐다).
+  it("첫 바퀴가 깨졌어도 내가 아직 안 버렸으면 쓸 수 있다", () => {
     const notFirst = setup(
       (() => {
         const s = firstTurnState();
         return { ...s, round: { ...s.round, firstTurn: false } };
       })(),
     );
-    expect(validateOf(notFirst, "seat_swap", "p0", { target: "p2" })).toBe(
-      "not the first turn of the round",
-    );
+    expect(validateOf(notFirst, "seat_swap", "p0", { target: "p2" })).toBeNull();
   });
 
   // 발동 창은 "아무도 안 버렸을 때"가 아니라 **내가 아직 안 버렸을 때**다.

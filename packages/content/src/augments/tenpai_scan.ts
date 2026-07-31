@@ -36,7 +36,7 @@ import type {
   PlayerId,
   RuleRegistry,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "tenpai_scan";
 const ACTION = "tenpai_scan_use";
@@ -46,7 +46,7 @@ const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
 const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
   counterOf(state, usesKey(holder)) < matchUses(state);
 /** 스캔 결과(텐파이인 상대 id 배열)를 실을 보유자 전용 뷰 채널 */
-const resultKey = (holder: PlayerId): string => viewKey(holder, ID);
+const resultKey = (holder: PlayerId): string => roundViewKey(holder, ID);
 
 /** 나를 뺀 상대 중 지금 텐파이인 사람들의 id (채점 변형 반영) */
 function tenpaiOpponents(

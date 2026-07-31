@@ -45,7 +45,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "giant_god";
 const ACTION = "giant_god";
@@ -178,7 +178,7 @@ export const giantGod: AugmentDef = defineAugment({
             ...state.augmentData,
             [usesKey(p.holder)]: counterOf(state, usesKey(p.holder)) + 1,
             // 전원 공개 — 거신병 각성
-            [viewKey("*", `${ID}:${p.holder}`)]: true,
+            [roundViewKey("*", `${ID}:${p.holder}`)]: true,
           },
         };
       });

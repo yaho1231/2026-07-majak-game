@@ -49,7 +49,7 @@ import type {
   ProposedEvent,
   TileDiscardedPayload,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "riichi_seal";
 
@@ -92,7 +92,7 @@ export const riichiSeal: AugmentDef = defineAugment({
     "(매 국 1회 — 그 국의 첫 리치를 내가 선언할 때) 국의 첫 리치를 내가 선언하는 순간 나머지 세 명의 리치가 잠겨, 상대는 리치·일발·뒷도라라는 최대 화력 수단을 통째로 잃는다. 봉인은 내가 그 리치를 지고 있는 동안만 유지된다 — 손바닥 뒤집기나 승부수로 리치를 풀면 봉인도 그 자리에서 풀리고, 그 사이 상대가 리치를 걸었다면 같은 국에 다시 걸어도 봉인은 돌아오지 않는다. 국이 바뀌면 초기화되어, 다음 국에 다시 선제 리치를 걸면 그 국 동안 또 봉인된다. 나보다 먼저 리치를 건 사람이 있으면 봉인은 아예 서지 않으며, 이미 선언된 리치를 되돌리지도 않는다. 봉인 사실은 전원에게 공개된다. 점수는 1점도 늘지 않는다.",
   install(ctx) {
     const { holder } = ctx;
-    const bannerKey = viewKey("*", `${ID}:${holder}`);
+    const bannerKey = roundViewKey("*", `${ID}:${holder}`);
 
     /**
      * 공개 배너를 현재 봉인 상태에 맞춘다.

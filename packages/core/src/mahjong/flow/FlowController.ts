@@ -63,6 +63,28 @@ export type FlowStatus =
 
 const PASS: ActionOption = { type: "pass", payload: {} };
 
+/**
+ * 리액션(버림패에 대한 선언)의 **우선순위**. 클수록 세다: 론 > 펑·대명깡 > 치 > 패스.
+ * `resolve()`가 실제로 해소하는 순서와 같은 서열이며, 진행부(HanchanController)가
+ * "이미 확정된 선언보다 약한 프롬프트는 더 기다릴 필요가 없다"를 판정하는 데 쓴다.
+ *
+ * 모르는 타입(증강이 붙인 커스텀 리액션)은 **최상위로 본다** — 무엇을 하는지 모르는
+ * 선언을 임의로 접으면 증강이 조용히 죽는다. 접지 않고 물어보는 쪽이 안전하다.
+ */
+export function reactionPriority(type: string): number {
+  switch (type) {
+    case "pass":
+      return 0;
+    case "chi":
+      return 1;
+    case "pon":
+    case "minkan":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 export class FlowController {
   private pending = new Map<PlayerId, ActionOption[]>();
   private decisions = new Map<PlayerId, ActionOption>();

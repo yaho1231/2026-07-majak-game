@@ -41,7 +41,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, roundKey, statePrng, viewKey } from "../util.js";
+import { counterOf, flagOf, matchUses, roundKey, roundViewKey, statePrng } from "../util.js";
 import { handIsPoor, handKindsOf } from "./botHelpers.js";
 
 const ID = "genesis";
@@ -151,7 +151,7 @@ function flipEvents(
     augmentDataSet(usesKey(holder), counterOf(state, usesKey(holder)) + 1),
     augmentDataSet(flippedKey(state, holder), true),
     // 개벽이 일어났음을 전원에게 알린다 (구체적 결과는 손패로 드러난다)
-    augmentDataSet(viewKey("*", `${ID}:${holder}`), true),
+    augmentDataSet(roundViewKey("*", `${ID}:${holder}`), true),
   ];
 }
 

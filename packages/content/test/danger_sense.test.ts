@@ -19,7 +19,7 @@ import type { GameState, PlayerId } from "@majak/core";
 import { craft } from "./helpers.js";
 import { dangerSense } from "../src/augments/danger_sense.js";
 
-const VIEW_KEY = "view:p0:danger_sense";
+const VIEW_KEY = "view:p0:danger_sense#round";
 const MAN3 = kindKey({ suit: "man", rank: 3 }); // 위험패: p1의 오름패
 const DRAGON3 = kindKey({ suit: "dragon", rank: 3 }); // 7z 중(red) — 아무도 안 기다리는 안전패
 
