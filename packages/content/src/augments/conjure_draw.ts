@@ -44,7 +44,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 
 const ID = "conjure_draw";
@@ -104,7 +104,7 @@ const conjureAction: ActionDef<{ tileId: TileId }> = {
       // 국당 1회 소진
       augmentDataSet(usedKey(state, req.player), true),
       // 발동 + 무엇을 불렀는지 전원 공개
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), kindKey(kind)),
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), kindKey(kind)),
     ];
   },
 };
@@ -141,7 +141,7 @@ export const conjureDraw: AugmentDef = defineAugment({
       );
       // 소비했으니 대기열을 비운다 (한 번의 소환 = 한 번의 쯔모)
       rc.emit(augmentDataSet(pendingKey(rc.state, holder), null));
-      rc.emit(augmentDataSet(viewKey("*", `${ID}:done:${holder}`), kindKey(target)));
+      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:done:${holder}`), kindKey(target)));
     });
 
     // 발동 후보 — 손패 종류당 하나만 제시(같은 종류를 여러 번 내지 않는다).

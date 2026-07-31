@@ -8,7 +8,7 @@
  * 설계: docs/12_NETWORK_REPLAY.md §4
  */
 
-import { FlowController } from "../mahjong/flow/FlowController.js";
+import { FlowController, reactionPriority } from "../mahjong/flow/FlowController.js";
 import type { ActionOption, DecisionPrompt, FlowStatus } from "../mahjong/flow/FlowController.js";
 import {
   createStandardGame,
@@ -529,14 +529,41 @@ export class HanchanController {
       }
 
       // 결정이 필요한 플레이어에게 prompt 전송하고 결과 수집 (무효 요청 시 즉시 이탈)
+      //
+      // 리액션은 여러 명에게 동시에 나가는데, 우선순위가 더 높은 선언(론·펑)이 들어오는
+      // 순간 나머지 사람의 선택은 결과를 바꿀 수 없다. 예전에는 그래도 전원의 응답을
+      // 기다려서, 봇이 이미 론을 부른 뒤에도 사람이 '치'나 '스킵'을 누를 때까지 판이
+      // 멈춰 있었다(2026-07-31 사용자 보고). 이제 확정되는 즉시 남은 프롬프트를 접는다.
+      const prompts = status.prompts;
+      const decidedRank = new Map<PlayerId, number>();
+      const bestPossible = new Map<PlayerId, number>(
+        prompts.map((p) => [
+          p.player,
+          p.options.reduce((m, o) => Math.max(m, reactionPriority(o.type)), 0),
+        ]),
+      );
+      /** 확정된 선언보다 약한 프롬프트를 접는다 (리액션 프롬프트가 여럿일 때만) */
+      const foldOutranked = (): void => {
+        if (prompts.length < 2) return;
+        let best = 0;
+        for (const r of decidedRank.values()) best = Math.max(best, r);
+        if (best === 0) return;
+        for (const p of prompts) {
+          if (decidedRank.has(p.player)) continue;
+          if ((bestPossible.get(p.player) ?? 0) >= best) continue;
+          this.agents.get(p.player)?.cancelDecision?.();
+        }
+      };
       const raced = await Promise.race([
         Promise.all(
-          status.prompts.map(async (prompt) => {
+          prompts.map(async (prompt) => {
             const agent = this.agents.get(prompt.player);
             if (agent === undefined) {
               throw new Error(`No agent for player ${prompt.player}`);
             }
             const chosen = await agent.decide(prompt);
+            decidedRank.set(prompt.player, reactionPriority(chosen.type));
+            foldOutranked();
             return { player: prompt.player, option: chosen };
           }),
         ).then((decisions) => ({ decisions })),

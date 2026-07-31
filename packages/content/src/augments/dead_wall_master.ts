@@ -46,12 +46,7 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import {
-  counterOf,
-  roundKey,
-  viewKey,
-  widenPeek,
-} from "../util.js";
+import { counterOf, roundKey, roundViewKey, widenPeek } from "../util.js";
 
 const ID = "dead_wall_master";
 const ACTION_SWAP = "dw_swap";
@@ -73,18 +68,25 @@ const swapsKey = (state: GameState, h: PlayerId): string =>
   `${ID}:swaps:${roundKey(state)}:${h}`;
 /** 보유자 뷰 전용 채널 — 남은 교환 횟수를 클라이언트에 노출한다 */
 const viewRemainingKey = (h: PlayerId): string =>
-  viewKey(h, `${ID}:remaining:${h}`);
+  roundViewKey(h, `${ID}:remaining:${h}`);
 
 /** 이번 국에 남은 교환 횟수 */
 function remainingSwaps(state: GameState, h: PlayerId): number {
   return Math.max(0, SWAPS_PER_ROUND - counterOf(state, swapsKey(state, h)));
 }
 
-/** 지금이 '국 시작(자기 첫 순)'이고 아직 교환 여력이 있는가 */
+/**
+ * 지금이 '국 시작(자기 첫 순)'이고 아직 교환 여력이 있는가.
+ *
+ * ⚠ `round.firstTurn`(첫 바퀴)은 쓰지 않는다. 그 플래그는 **누구든** 울거나 깡을 하면
+ * 즉시 false가 되어, 내 앞자리 봇이 퐁 한 번만 해도 그 국의 교환 기회가 통째로
+ * 사라졌다 — 오야가 아닌 국에서 "왕패의 주인이 발동하지 않는다"는 증상의 원인이었다
+ * (2026-07-31 사용자 보고). 판정 기준은 **내가 아직 한 장도 버리지 않은 내 순**이다
+ * (일확천금·단색 세계·밥상 뒤엎기와 같은 규약).
+ */
 function canSwap(state: GameState, h: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
-  if (!r.firstTurn) return false;
   if (playerAtSeat(state, r.turnSeat).id !== h) return false;
   if ((r.byPlayer[h]?.discardedKinds.length ?? 0) > 0) return false;
   if (r.byPlayer[h]?.riichi != null) return false;

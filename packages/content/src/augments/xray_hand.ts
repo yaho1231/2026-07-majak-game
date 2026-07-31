@@ -23,7 +23,7 @@ import type {
   PlayerId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, roundKey, viewKey } from "../util.js";
+import { counterOf, flagOf, matchUses, roundKey, roundViewKey } from "../util.js";
 
 const ID = "xray_hand";
 const ACTION = "xray_reveal";
@@ -61,7 +61,7 @@ const xrayAction: ActionDef<Record<string, never>> = {
     augmentDataSet(activeKey(state, req.player), true),
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
     // 발동 사실은 전원 공개 — 상대가 수비를 조일 수 있게
-    augmentDataSet(viewKey("*", `${ID}:${req.player}`), true),
+    augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), true),
   ],
 };
 

@@ -117,6 +117,29 @@ describe("무덤 도굴 (grave_rob)", () => {
     for (const id of junk) expect(offered.has(id)).toBe(false);
   });
 
+  it("최근 10장보다 깊이 묻힌 패는 파낼 수 없다 (2026-07-31 무덤 깊이 제한)", () => {
+    // p1 바닥 맨 앞의 3만 뒤로 상대 셋이 12장을 더 버린다 → 3만은 창(10장) 밖으로 밀려난다
+    const base = craft({
+      hands: { p0: "123m456m789m123p3m9p", p1: "*", p2: "*", p3: "*" },
+      discards: { p0: "1z", p1: "3m2z3z4z5z", p2: "1z2z3z4z", p3: "5z6z7z1z" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const { game, prompt } = startWithGraveRob(withAugments(base, "p0", ["grave_rob"]));
+    expect(robOptions(prompt)).toHaveLength(0);
+
+    // 직접 제출해도 거부된다 (후보 목록과 validate가 같은 판정을 쓴다)
+    const buried = (game.engine.state.zones[discardsZone("p1")]?.tileIds ?? [])[0] as TileId;
+    const res = game.engine.submit({
+      player: "p0",
+      type: "grave_rob",
+      payload: { graveId: buried, fromPlayer: "p1" },
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("that tile is buried too deep");
+  });
+
   it("자기 바닥은 도굴 대상이 아니다 (후리텐 존중)", () => {
     // p0의 바닥에도 3만을 놓아 둔다 — 그래도 자기 것은 제시되지 않아야 한다
     const base = craft({

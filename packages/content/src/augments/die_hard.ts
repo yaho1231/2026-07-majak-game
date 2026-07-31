@@ -26,7 +26,7 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { counterOf, matchUses, settleInterceptor, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey, settleInterceptor } from "../util.js";
 
 const ID = "die_hard";
 
@@ -77,7 +77,7 @@ export const dieHard: AugmentDef = defineAugment({
       rc.emit(
         augmentDataSet(usesKey(holder), counterOf(rc.state, usesKey(holder)) + 1),
       );
-      rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), true));
+      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:${holder}`), true));
     });
   },
 });

@@ -122,7 +122,7 @@ describe("riichi_seal (리치 봉인)", () => {
       ).toBe(true);
     }
     // 전원 공개 뷰 채널
-    expect(st.augmentData["view:*:riichi_seal:p0"]).toBe("봉인");
+    expect(st.augmentData["view:*:riichi_seal:p0#round"]).toBe("봉인");
   });
 
   it("봉인된 상대는 리치 옵션 자체가 사라진다", () => {
@@ -249,6 +249,30 @@ describe("mixed_nine_gates (뒤섞인 아홉 개의 연꽃)", () => {
     expect(after).not.toBeNull();
     expect(after!.yaku.some((y) => y.id === "mixed_nine_gates")).toBe(true);
     expect(after!.yakumanCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("무늬가 흩어져 표준 분해가 안 되는 구련 배열도 화료가 된다 (2026-07-31)", () => {
+    // 1m1m·1p | 2m3p4s | 5m6p7s | 8m9p9s | 9m9s — 랭크는 1112345678999+9지만
+    // 몸통마다 무늬가 다 달라 표준 분해로는 4멘쯔+작두가 서지 않는다.
+    const SCATTERED = "11m1p2m3p4s5m6p7s8m9p9m9s9s";
+    const counts = new Array<number>(10).fill(0);
+    for (const k of h(SCATTERED)) counts[k.rank] = (counts[k.rank] ?? 0) + 1;
+    expect(counts.slice(1)).toEqual([3, 1, 1, 1, 1, 1, 1, 1, 4]);
+
+    // 증강이 없으면 화료형 자체가 아니다 — 예전엔 이 상태로 역만만 정의돼 있어
+    // "역만인데 화료 버튼이 안 뜨는" 손이 됐다.
+    expect(evalHand(SCATTERED, false)).toBeNull();
+
+    const ev = evalHand(SCATTERED, true);
+    expect(ev).not.toBeNull();
+    expect(ev!.yaku.some((y) => y.id === "mixed_nine_gates")).toBe(true);
+    expect(ev!.yakumanCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("구련 배열이 아니면 무늬 무시가 켜지지 않는다 (아무 손이나 혼색 몸통이 되지 않는다)", () => {
+    // 랭크가 구련 뼈대가 아닌 평범한 혼색 손 — 무늬가 섞인 몸통은 여전히 화료형이 아니다
+    const ev = evalHand("123m456p789s11z22z2m", true);
+    expect(ev?.yaku.some((y) => y.id === "mixed_nine_gates") ?? false).toBe(false);
   });
 
   it("한 무늬 순혈은 표준 구련보등의 몫 — 이 역이 중복으로 붙지 않는다", () => {
@@ -406,7 +430,7 @@ describe("off_by_one (한 끗 차이)", () => {
     // 7s로 뽑혔지만 6s로 한 칸 밀려 있다
     expect(kindKey(kindOf(game.engine.state, drawn))).toBe("sou6");
     expect(game.engine.state.tiles[drawn]?.attrs?.conjured).toBe(true);
-    expect(game.engine.state.augmentData["view:*:off_by_one:p0"]).toBe("sou6");
+    expect(game.engine.state.augmentData["view:*:off_by_one:p0#round"]).toBe("sou6");
     expect(optionsFor(status, "p0").some((o) => o.type === "win")).toBe(true);
   });
 

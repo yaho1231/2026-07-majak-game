@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { RuleRegistry } from "../src/engine/rules/RuleRegistry.js";
-import { createInitialGameState, setupRound } from "../src/engine/state/GameState.js";
+import {
+  ROUND_SCOPED_MARK,
+  createInitialGameState,
+  setupRound,
+} from "../src/engine/state/GameState.js";
 import type { GameState } from "../src/engine/state/GameState.js";
 import {
   WALL,
@@ -483,5 +487,46 @@ describe("buildPlayerView — 불변성", () => {
     const view = buildPlayerView(state, "p0", rules);
     view.round.doraIndicators.push(9999 as TileId);
     expect(state.round.doraIndicators.length).toBe(1);
+  });
+});
+
+describe("증강 뷰 채널 — 비워진 값·국 스코프 표식", () => {
+  function stateWith(augmentData: Record<string, unknown>): GameState {
+    const base = setupRound(
+      createInitialGameState(
+        { seed: 3, playerIds: ["p0", "p1", "p2", "p3"] },
+        { startScore: 25000, redFivesPerSuit: 1 },
+      ),
+    );
+    return { ...base, augmentData };
+  }
+
+  it('""·null로 비운 채널은 아예 내려가지 않는다 (빈 배지가 남지 않게)', () => {
+    const rules = new RuleRegistry();
+    defineVisibilityRules(rules);
+    const view = buildPlayerView(
+      stateWith({
+        "view:*:riichi_seal:p0": "",
+        "view:*:rank_gate:p0": null,
+        "view:*:parasite:p0": "p1",
+      }),
+      "p1",
+      rules,
+    );
+    expect(view.augmentView["riichi_seal:p0"]).toBeUndefined();
+    expect(view.augmentView["rank_gate:p0"]).toBeUndefined();
+    expect(view.augmentView["parasite:p0"]).toBe("p1");
+  });
+
+  it("국 스코프 표식은 클라이언트에 넘기기 전에 채널 이름에서 떨어진다", () => {
+    const rules = new RuleRegistry();
+    defineVisibilityRules(rules);
+    const view = buildPlayerView(
+      stateWith({ [`view:*:jackpot:p0${ROUND_SCOPED_MARK}`]: "3배" }),
+      "p1",
+      rules,
+    );
+    expect(view.augmentView["jackpot:p0"]).toBe("3배");
+    expect(view.augmentView[`jackpot:p0${ROUND_SCOPED_MARK}`]).toBeUndefined();
   });
 });

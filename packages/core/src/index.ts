@@ -93,6 +93,7 @@ export {
   SYSTEM_PLAYER,
   buildWinContext,
   isFuriten,
+  sealedDiscardIds,
   seatWindOf,
   nextSeat,
   playerOf,
@@ -138,7 +139,7 @@ export {
   defineStandardFlowRules,
   registerStandardActions,
 } from "./mahjong/flow/standardActions.js";
-export { FlowController } from "./mahjong/flow/FlowController.js";
+export { FlowController, reactionPriority } from "./mahjong/flow/FlowController.js";
 export type {
   ActionOption,
   DecisionPrompt,
@@ -236,6 +237,8 @@ export {
   HAND_START_SIZE,
   rinshanRemaining,
   doraIndicatorIndex,
+  ROUND_SCOPED_MARK,
+  isRoundScopedKey,
 } from "./engine/state/GameState.js";
 export type {
   GameState,

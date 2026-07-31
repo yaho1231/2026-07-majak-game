@@ -33,7 +33,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 
 const ID = "table_flip";
@@ -125,7 +125,7 @@ export const tableFlip: AugmentDef = defineAugment({
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,
             // 반납한 손패를 전원 공개
-            [viewKey("*", `${ID}:${p.holder}`)]: p.revealedKinds,
+            [roundViewKey("*", `${ID}:${p.holder}`)]: p.revealedKinds,
           },
         };
       });

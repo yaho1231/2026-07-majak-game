@@ -58,7 +58,7 @@ function startFlow(state: GameState) {
   return { game, flow, status };
 }
 
-const VIEW_KEY = "view:p0:tenpai_scan";
+const VIEW_KEY = "view:p0:tenpai_scan#round";
 
 describe("천리안 (tenpai_scan)", () => {
   it("자기 턴에 선언 후보가 제시된다", () => {

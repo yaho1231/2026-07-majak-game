@@ -37,7 +37,7 @@ import type {
   TileDiscardedPayload,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, stringOf, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey, stringOf, viewKey } from "../util.js";
 
 const ID = "push_riichi";
 const ACTION = "push_brand";
@@ -142,7 +142,7 @@ export const pushRiichi: AugmentDef = defineAugment({
       const target = stringOf(rc.state, brandKey(holder));
       if (target === null || p.player !== target) return;
       rc.emit(augmentDataSet(brandKey(holder), ""));
-      rc.emit(augmentDataSet(viewKey("*", `${ID}:fired:${holder}`), target));
+      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:fired:${holder}`), target));
     });
 
     // 사용 횟수가 남았고 활성 낙인이 없으면 보유자 턴에 각 상대를 지목 후보로 낸다

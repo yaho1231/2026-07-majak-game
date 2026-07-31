@@ -9,6 +9,7 @@
  * 설계: docs/09_INFORMATION_SYSTEM.md
  */
 
+import { ROUND_SCOPED_MARK } from "../engine/state/GameState.js";
 import type { GameState, Meld, PlayerRoundState, RoundState } from "../engine/state/GameState.js";
 import type { RuleRegistry } from "../engine/rules/RuleRegistry.js";
 import type { PlayerId, ZoneId } from "../engine/zones/Zone.js";
@@ -16,7 +17,12 @@ import { kindKey } from "../mahjong/tiles/Tile.js";
 import type { TileAttrs, TileId, TileKind } from "../mahjong/tiles/Tile.js";
 import { winningKinds } from "../mahjong/scoring/waits.js";
 import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
-import { scoringOptionsOf, tenpaiNoYaku, yakulessWaits } from "../mahjong/flow/helpers.js";
+import {
+  scoringOptionsOf,
+  sealedDiscardIds,
+  tenpaiNoYaku,
+  yakulessWaits,
+} from "../mahjong/flow/helpers.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
 import { discardsZone, handZone, meldsZone } from "../engine/zones/Zone.js";
 
@@ -133,6 +139,14 @@ export interface PlayerRoundView {
    * 자물쇠 표시를 그리는 용도 (봉인 여부는 클릭해 보면 드러나므로 숨길 정보가 아니다).
    */
   sealedKinds?: string[];
+  /**
+   * 봉인되어 버릴 수 없는 **개별 손패**(tileId 목록) — `discard.blockedKinds`와
+   * `discard.blockedTileIds`를 합친 최종 판정 결과. 본인 뷰(관전자는 전원)에만 실린다.
+   *
+   * `sealedKinds`만으로는 "종류는 잠겼지만 이 한 장은 안 잠긴" 개별 봉인을 그릴 수 없다 —
+   * 자물쇠는 이 목록으로 그려야 서버 판정과 정확히 일치한다.
+   */
+  sealedTileIds?: TileId[];
   /** 후로 수 — melds Zone 장수로 계산 가능하지만 편의용 */
   meldCount: number;
   /**
@@ -319,15 +333,33 @@ export function buildPlayerView(
   const augmentView: Record<string, unknown> = {};
   const ownPrefix = `view:${viewerId}:`;
   const publicPrefix = "view:*:";
+  /**
+   * 채널 이름에서 국 스코프 표식을 뗀다 — 클라이언트는 표식을 모른다.
+   * (표식이 붙은 키는 다음 국 시작에 setupRound가 통째로 지운다.)
+   */
+  const channel = (raw: string): string =>
+    raw.endsWith(ROUND_SCOPED_MARK)
+      ? raw.slice(0, raw.length - ROUND_SCOPED_MARK.length)
+      : raw;
+  /**
+   * 비워진 채널은 아예 내려보내지 않는다.
+   *
+   * 증강이 표시를 내릴 때 `augmentDataSet(key, "")`로 값을 비우는데(리듀서에 삭제가
+   * 없다), 클라이언트는 **키가 있으면 그린다** — 리치 봉인·핏빛 계약이 값 검사 없이
+   * 행을 만들어 "봉인 해제됐는데 봉인 배지가 남는" 증상이 났다(2026-07-31).
+   * 빈 값은 여기서 잘라, 어느 증강이든 ""로 비우면 화면에서도 사라지게 한다.
+   */
+  const cleared = (v: unknown): boolean => v === undefined || v === null || v === "";
   for (const [key, value] of Object.entries(state.augmentData)) {
+    if (cleared(value)) continue;
     if (key.startsWith(publicPrefix)) {
-      augmentView[key.slice(publicPrefix.length)] = value;
+      augmentView[channel(key.slice(publicPrefix.length))] = value;
     } else if (isSpectator && key.startsWith("view:")) {
       const rest = key.slice("view:".length);
       const sep = rest.indexOf(":");
-      if (sep > 0) augmentView[rest.slice(sep + 1)] = value;
+      if (sep > 0) augmentView[channel(rest.slice(sep + 1))] = value;
     } else if (key.startsWith(ownPrefix)) {
-      augmentView[key.slice(ownPrefix.length)] = value;
+      augmentView[channel(key.slice(ownPrefix.length))] = value;
     }
   }
 
@@ -487,13 +519,20 @@ function buildRoundView(
     const riichiIndex =
       pr.riichi !== null ? { riichiTileIndex: pr.riichi.discardIndex } : {};
 
-    // 봉인된 패 종류 — 본인(관전자는 전원)에게만 노출. 규칙 미정의 상태(비표준 게임) 폴백 [].
+    // 봉인된 패 — 본인(관전자는 전원)에게만 노출. 규칙 미정의 상태(비표준 게임) 폴백 [].
+    const showSealed = pid === viewerId || viewerId === SPECTATOR_ID;
     const sealedKinds =
-      (pid === viewerId || viewerId === SPECTATOR_ID) &&
-      rules.has("discard.blockedKinds")
+      showSealed && rules.has("discard.blockedKinds")
         ? [...new Set(rules.resolve<string[]>("discard.blockedKinds", { playerId: pid, state }))]
         : [];
-    const sealed = sealedKinds.length > 0 ? { sealedKinds } : {};
+    // 실제로 잠긴 손패 — 종류 봉인과 개별 패 봉인을 합친 최종 판정(버림 액션과 같은 함수)
+    const sealedTileIds = showSealed
+      ? [...sealedDiscardIds(state, rules, pid)]
+      : [];
+    const sealed = {
+      ...(sealedKinds.length > 0 ? { sealedKinds } : {}),
+      ...(sealedTileIds.length > 0 ? { sealedTileIds } : {}),
+    };
 
     if (pid === viewerId) {
       const furitenReasons = buildFuritenReasons(state, pid, pr, rules);

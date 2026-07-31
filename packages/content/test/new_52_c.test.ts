@@ -166,8 +166,18 @@ describe("dead_wall_master (왕패의 주인)", () => {
     // 손패 장수는 그대로 14장
     expect(st.zones[handZone("p0")]?.tileIds).toHaveLength(14);
     // 남은 횟수가 뷰 채널로 미러링된다
-    expect(st.augmentData["view:p0:dead_wall_master:remaining:p0"]).toBe(1);
+    expect(st.augmentData["view:p0:dead_wall_master:remaining:p0#round"]).toBe(1);
     expect(st.augmentData["dead_wall_master:swaps:1-1-0:p0"]).toBe(1);
+  });
+
+  it("앞자리가 울어 첫 바퀴가 깨져도, 내가 아직 안 버렸으면 교환할 수 있다", () => {
+    // round.firstTurn은 누가 울기만 해도 false가 된다. 그걸 조건으로 두면 오야가 아닌
+    // 국에서 앞자리 봇의 퐁 한 번에 교환 기회가 통째로 사라졌다 (2026-07-31).
+    const { flow } = setup(
+      firstTurnState(undefined, { round: { ...firstTurnState().round, firstTurn: false } }),
+    );
+    const opts = optionsFor(flow.begin(), "p0").filter((o) => o.type === "dw_swap");
+    expect(opts.length).toBeGreaterThan(0);
   });
 
   it("국당 2장까지 — 2번 쓰면 후보가 사라진다 (2026-07-26 밸런스: 4 → 2)", () => {
@@ -178,7 +188,7 @@ describe("dead_wall_master (왕패의 주인)", () => {
       expect(opt).toBeDefined();
       status = flow.submit("p0", opt!);
     }
-    expect(game.engine.state.augmentData["view:p0:dead_wall_master:remaining:p0"]).toBe(0);
+    expect(game.engine.state.augmentData["view:p0:dead_wall_master:remaining:p0#round"]).toBe(0);
     expect(optionsFor(status, "p0").some((o) => o.type === "dw_swap")).toBe(false);
     // 타패는 그대로 가능하다 (막힌 상태가 아니다)
     expect(optionsFor(status, "p0").some((o) => o.type === "discard")).toBe(true);
@@ -402,7 +412,7 @@ describe("void_kan (성립하지 않는 깡)", () => {
       (id) => st.tiles[id]?.attrs?.conjured === true,
     );
     expect(conjured).toHaveLength(1);
-    expect(st.augmentData["view:*:void_kan:p0"]).toBe("wind1");
+    expect(st.augmentData["view:*:void_kan:p0#round"]).toBe("wind1");
     // 창깡 론이 후보로 뜬다
     expect(optionsFor(status, "p0").some((o) => o.type === "win")).toBe(true);
   });
@@ -526,7 +536,7 @@ describe("honba_hunter (본장 사냥꾼)", () => {
     installAugment(game.engine, honbaHunter, "p0", { yaku: game.yaku });
     const flow = new FlowController(game.engine);
     flow.begin();
-    expect(game.engine.state.augmentData["view:*:honba_hunter:p0"]).toEqual({
+    expect(game.engine.state.augmentData["view:*:honba_hunter:p0#round"]).toEqual({
       honba: 0,
       perStick: 1500,
       value: 0,

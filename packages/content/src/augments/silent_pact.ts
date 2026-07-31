@@ -31,7 +31,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
 
 const ID = "silent_pact";
@@ -101,7 +101,7 @@ const silentPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
         },
       },
       augmentDataSet(usedKey(state, req.player), true),
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), true),
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), true),
     ];
   },
 };

@@ -35,12 +35,12 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { roundKey, viewKey } from "../util.js";
+import { roundKey, roundViewKey } from "../util.js";
 
 const ID = "ankan_dora";
 
 /** 전원 공개 채널 — 값 = { round, kinds } */
-const publicKey = (h: PlayerId): string => viewKey("*", `${ID}:${h}`);
+const publicKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 
 /** 보유자의 안깡(kan_closed) 종류 = 개인 도라 종류 (kindKey 문자열, 중복 제거) */
 function ankanKinds(state: GameState, h: PlayerId): string[] {

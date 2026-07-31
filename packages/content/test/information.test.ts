@@ -188,7 +188,7 @@ describe("hidden_river — 안개 바닥", () => {
 });
 
 describe("ura_peek — 이면투시", () => {
-  const URA_VIEW_KEY = "view:p0:ura";
+  const URA_VIEW_KEY = "view:p0:ura#round";
 
   function setup() {
     const state = craft({

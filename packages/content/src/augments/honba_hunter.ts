@@ -15,7 +15,7 @@
 
 import { ROUND_STARTED, augmentDataSet, defineAugment } from "@majak/core";
 import type { AugmentDef } from "@majak/core";
-import { viewKey } from "../util.js";
+import { roundViewKey } from "../util.js";
 
 const ID = "honba_hunter";
 /** 본장 1개당 지불액 (표준 300) */
@@ -40,7 +40,7 @@ export const honbaHunter: AugmentDef = defineAugment({
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
       const honba = rc.state.round.honba;
       rc.emit(
-        augmentDataSet(viewKey("*", `${ID}:${holder}`), {
+        augmentDataSet(roundViewKey("*", `${ID}:${holder}`), {
           honba,
           perStick: HONBA_PER_STICK,
           value: honba * HONBA_PER_STICK,

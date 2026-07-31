@@ -14,7 +14,7 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, roundKey, viewKey } from "../util.js";
+import { counterOf, matchUses, roundKey, roundViewKey } from "../util.js";
 
 const ID = "call_seal";
 const ACTION = "call_seal_use";
@@ -62,7 +62,7 @@ const sealAction: ActionDef<Record<string, never>> = {
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
     augmentDataSet(turnKey(state, req.player), state.round.turnCount),
     // 발동 사실을 전원에게 알린다 (상대는 왜 못 우는지 알아야 대응한다)
-    augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
+    augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
       turnCount: state.round.turnCount,
       until: state.round.turnCount + SEAL_TURNS,
     }),

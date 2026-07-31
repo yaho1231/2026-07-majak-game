@@ -32,7 +32,7 @@ import {
   winningKinds,
 } from "@majak/core";
 import type { AugmentDef, TileDrawnPayload } from "@majak/core";
-import { viewKey } from "../util.js";
+import { roundViewKey } from "../util.js";
 
 const ID = "off_by_one";
 
@@ -82,7 +82,7 @@ export const offByOne: AugmentDef = defineAugment({
         ]),
       );
       // 전원 공개 — 한 칸 밀려 바뀐 그 패가 이 증강의 구경거리다
-      rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), kindKey(target)));
+      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:${holder}`), kindKey(target)));
     });
   },
 });

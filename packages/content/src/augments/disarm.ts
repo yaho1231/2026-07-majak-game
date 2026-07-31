@@ -33,7 +33,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "disarm";
 const ACTION = "disarm_lock";
@@ -104,7 +104,7 @@ const disarmAction: ActionDef<{ target: PlayerId; augmentId: string }> = {
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       augmentDataSet(lockedKey(req.player), [...lockedList(state, req.player), src]),
       // 전원 공개 지목 관계 (피격자·관전자 포함)
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), {
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
         target: req.payload.target,
         augmentId: req.payload.augmentId,
       }),

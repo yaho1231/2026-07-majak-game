@@ -101,7 +101,7 @@ describe("open_riichi_reveal (오픈 리치)", () => {
       st.augmentData[`open_riichi_reveal:declared:${roundKey(st)}:p0`],
     ).toBe(true);
     // 오름패(2s·5s·8s)가 view:*: 채널로 전원 공개된다
-    const revealed = st.augmentData["view:*:open_riichi_reveal:p0"];
+    const revealed = st.augmentData["view:*:open_riichi_reveal:p0#round"];
     expect(Array.isArray(revealed)).toBe(true);
     expect(new Set(revealed as string[])).toEqual(
       new Set(["sou2", "sou5", "sou8"]),

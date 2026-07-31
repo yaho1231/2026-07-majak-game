@@ -1511,10 +1511,31 @@ export class RoomManager {
 
   // ─────────────────────────── 게임 시작·진행 ───────────────────────────
 
+  /**
+   * 좌석(방위) 무작위 배정 — 시작 직전에 `room.agents` 순서를 섞는다.
+   *
+   * 좌석은 `HanchanController`가 받는 배열의 **순서**로 정해지고(0번이 첫 동가=친),
+   * 대기실 순서는 곧 들어온 순서였다 — 방장이 늘 친으로 시작하고, 늘 같은 상대가
+   * 하가에 앉았다. 자리(방위)는 판의 유불리에 직결되므로 매 판 새로 뽑는다.
+   * 좌석 id(p0~p3)는 그대로라 재접속·관전·증강 지급 경로는 영향을 받지 않는다.
+   *
+   * 증강 테스트 방은 섞지 않는다 — 초기화할 때마다 내 방위가 바뀌면 시험이 어렵다.
+   */
+  private shuffleSeats(room: Room): void {
+    if (room.sandbox) return;
+    for (let i = room.agents.length - 1; i > 0; i--) {
+      const j = randomInt(i + 1);
+      const a = room.agents[i] as PlayerAgent;
+      room.agents[i] = room.agents[j] as PlayerAgent;
+      room.agents[j] = a;
+    }
+  }
+
   private async startGame(room: Room): Promise<void> {
     if (room.phase === "playing") return;
     room.phase = "playing";
     room.startedAt = new Date().toISOString();
+    this.shuffleSeats(room);
 
     // 증강 테스트 방은 리플레이 파일을 남기지 않는다 — 판을 자주 갈아엎는 성격이라
     // 파일만 쌓이고, 어차피 게임 인덱스·통계에도 기록하지 않는다.

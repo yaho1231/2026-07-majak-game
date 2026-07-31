@@ -137,7 +137,7 @@ describe("jackpot (일확천금) — 룰렛을 돌린 국만 배수가 붙는다
     const s = game.engine.state;
     const mult = s.augmentData[`jackpot:mult:${roundKeyOf(s)}:p0`];
     expect([0.5, 2, 3, 4]).toContain(mult);
-    expect(s.augmentData["view:*:jackpot:p0"]).toBe(`${String(mult)}배`);
+    expect(s.augmentData["view:*:jackpot:p0#round"]).toBe(`${String(mult)}배`);
     // 난수를 소비했으면 전진된 상태가 되돌려져 있어야 한다 (결정론)
     expect(s.prngState).not.toBe(before);
   });

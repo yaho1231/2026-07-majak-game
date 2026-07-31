@@ -2157,7 +2157,7 @@ export function App(): JSX.Element {
           if (k !== undefined) shown.kanAdded.add(`${p.id}:${kindKey(k)}`);
         }
       }
-      shown.sealed = next.round.byPlayer[next.playerId]?.sealedKinds?.length ?? 0;
+      shown.sealed = next.round.byPlayer[next.playerId]?.sealedTileIds?.length ?? 0;
       return;
     }
 
@@ -2348,15 +2348,17 @@ export function App(): JSX.Element {
       }
     }
 
-    // 패 봉인 (봉인술사 등) — 내 봉인 종류 수가 이전 알림보다 늘었을 때만.
-    // 봉인은 게임 내내 유지되므로 국이 바뀌어도 sealed 카운터는 리셋하지 않는다.
-    const sealedNow = next.round.byPlayer[next.playerId]?.sealedKinds?.length ?? 0;
+    // 패 봉인 (봉인술사 등) — 내 봉인 패 수가 이전 알림보다 늘었을 때만.
+    // 봉인은 국이 끝나면 풀리므로 다음 국에 다시 걸리면 알림도 다시 뜬다.
+    const sealedNow = next.round.byPlayer[next.playerId]?.sealedTileIds?.length ?? 0;
+    // 봉인이 풀리면(국 경계·소진) 기준선을 내려 다음 봉인에도 배너가 다시 뜨게 한다
+    if (sealedNow < shown.sealed) shown.sealed = sealedNow;
     if (sealedNow > shown.sealed) {
       shown.sealed = sealedNow;
       showBanner(
         "봉 인",
         "seal",
-        `누군가 내 패 ${sealedNow}종류를 봉인했습니다 — 🔒 패는 버릴 수 없음`,
+        `누군가 내 패 ${sealedNow}장을 봉인했습니다 — 🔒 이 패는 버릴 수 없음`,
         2400,
         sfx.augmentSoft,
         undefined,
@@ -5349,10 +5351,14 @@ function River({
           // 무장된 액션의 클릭 대상 버림패인지 — 대상이면 옵션을 잡아 강조·클릭 발동
           const armOpt = sel.riverOptionFor(playerId, id, tk);
           const armable = armOpt !== undefined;
+          // 무덤 도굴은 "고르면 그 자리에서 화료"라 후보가 곧 화료패다 —
+          // 다른 클릭 대상과 같은 보랏빛으로 두면 그게 안 보인다. 금빛 + 화료 표식으로
+          // 확실히 구분한다 (2026-07-31 사용자 요청: "화료할 수 있는 패 좀 더 티나게").
+          const winArm = armable && sel.armedType === "grave_rob";
           return (
             <span
               key={id}
-              className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}`}
+              className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}`}
               {...(armable
                 ? { "data-arm-zone": "1", role: "button" as const, onClick: () => sel.submit(armOpt) }
                 : {})}
@@ -5360,6 +5366,7 @@ function River({
               <span className="rt-inner">
                 <TileImg tile={view.tiles[id]} size="fill" owner={playerId} />
               </span>
+              {winArm ? <span className="rt-win-tag">화료</span> : null}
             </span>
           );
         })}
@@ -5977,9 +5984,11 @@ function OwnArea(props: {
   const armName = armedAug !== null ? (ACTION_LABEL[armedAug] ?? armedAug) : "";
   const areaRef = useRef<HTMLDivElement>(null);
 
-  // 봉인된 패 종류 (봉인술사 등 discard.blockedKinds) — 자물쇠 표시 + 클릭 안내용
+  // 봉인되어 버릴 수 없는 내 손패(tileId) — 자물쇠 표시 + 클릭 안내용.
+  // 서버가 종류 봉인·개별 패 봉인을 합쳐 최종 판정한 결과라 판정과 표시가 어긋나지 않는다.
+  // (예전엔 종류 목록만 받아, 봉인 뒤 새로 쯔모한 같은 종류에도 자물쇠가 그려졌다.)
   const sealedSet = useMemo(
-    () => new Set(view.round.byPlayer[me.id]?.sealedKinds ?? []),
+    () => new Set(view.round.byPlayer[me.id]?.sealedTileIds ?? []),
     [view, me.id],
   );
 
@@ -6477,11 +6486,10 @@ function OwnArea(props: {
               (props.riichiMode && riichi === undefined) ||
               (riichiDeclared && !props.riichiMode && noDiscard);
             const isDrawn = hasDrawn && id === drawnId;
-            // 봉인된 종류(봉인술사 등) — 자물쇠 표시. 소프트락 해제 등으로 버릴 수
+            // 봉인된 패(봉인술사 등) — 자물쇠 표시. 소프트락 해제 등으로 버릴 수
             // 있게 된 경우(clickable)에도 봉인 상태 자체는 계속 보여준다.
             const tileKind = view.tiles[id]?.kind;
-            const sealed =
-              sealedSet.size > 0 && tileKind !== undefined && sealedSet.has(kindKey(tileKind));
+            const sealed = sealedSet.has(id);
             // 지뢰 탐지 — 이 패를 지금 버리면 방총(위험). 실제 손패 위에 경고 표시.
             const danger =
               dangerSet.size > 0 && tileKind !== undefined && dangerSet.has(kindKey(tileKind));
@@ -7030,6 +7038,10 @@ function ActiveAugmentControl(props: {
   // 무장(클릭 발동) 상태는 게임판 전체가 공유하므로 SelectionContext에서 읽는다.
   const sel = useContext(SelectionContext);
   const [open, setOpen] = useState(false);
+  // 메뉴에서 파고든 액션 타입 — null이면 1단계(증강 목록), 값이 있으면 2단계(그 증강의 후보들).
+  // 후보를 증강 이름과 뒤섞어 한 층에 늘어놓으면 핏빛 계약처럼 후보가 8개인 증강이
+  // 메뉴를 통째로 차지해 다른 액티브 증강이 묻힌다 — 증강을 고른 뒤 후보를 고른다.
+  const [menuType, setMenuType] = useState<string | null>(null);
   // 후보를 드롭다운 버튼으로 늘어놓지 않고 전용 모달로 고르는 타입 (docs/10 §2a-1).
   // 값은 모달을 띄울 액션 타입 — 닫히면 null.
   const [pickModal, setPickModal] = useState<string | null>(null);
@@ -7049,6 +7061,7 @@ function ActiveAugmentControl(props: {
     const onDown = (e: PointerEvent): void => {
       if (rootRef.current !== null && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
+        setMenuType(null);
       }
     };
     document.addEventListener("pointerdown", onDown);
@@ -7099,6 +7112,13 @@ function ActiveAugmentControl(props: {
     setModalPick([]);
     setDwPairs([]);
   }, [pickModal, myPrompt]);
+
+  // 파고든 증강의 후보가 프롬프트에서 사라지면 1단계로 되돌린다 (빈 목록이 남지 않게).
+  useEffect(() => {
+    if (menuType === null) return;
+    if ((myPrompt?.options ?? []).some((o) => o.type === menuType)) return;
+    setMenuType(null);
+  }, [menuType, myPrompt]);
 
   // ── 왕패의 주인 — 여러 쌍을 한 번에 고른 뒤 차례로 제출한다 ──
   // 서버는 교환 1회 = 액션 1개라, 고른 쌍을 **프롬프트가 갱신될 때마다 하나씩** 보낸다.
@@ -7163,9 +7183,11 @@ function ActiveAugmentControl(props: {
     }
   };
 
-  // 이 타입 발동 — 클릭형이면 무장, 모달형이면 전용 모달, 옵션 1개면 즉시 제출, 여럿이면 메뉴
+  // 이 타입 발동 — 클릭형이면 무장, 모달형이면 전용 모달, 옵션 1개면 즉시 제출,
+  // 여럿이면 그 증강의 후보 목록(2단계)으로 파고든다.
   const activate = (type: string): void => {
     setOpen(false);
+    setMenuType(null);
     if (armType(type)) {
       sel.arm(type);
       return;
@@ -7175,8 +7197,12 @@ function ActiveAugmentControl(props: {
       return;
     }
     const opts = byType.get(type) ?? [];
-    if (opts.length === 1) sel.submit(opts[0]!);
-    else setOpen(true);
+    if (opts.length === 1) {
+      sel.submit(opts[0]!);
+      return;
+    }
+    setMenuType(type);
+    setOpen(true);
   };
 
   // 버튼 옆 개수 — swap3·dw_swap은 조합이 수백 개라 고를 수 있는 '패 수'로 환산해 보여준다.
@@ -7203,11 +7229,17 @@ function ActiveAugmentControl(props: {
       sel.arm(sel.armedType); // 다시 눌러 선택 모드 취소(같은 타입이면 해제)
       return;
     }
+    if (open) {
+      setOpen(false);
+      setMenuType(null);
+      return;
+    }
     if (types.length === 1) {
       activate(types[0]!);
       return;
     }
-    setOpen((v) => !v);
+    setMenuType(null);
+    setOpen(true);
   };
 
   // 단색 세계 — 통일할 무늬를 '내 손패가 그 색이 된 모습'으로 보여주고 고르게 한다.
@@ -7674,58 +7706,67 @@ function ActiveAugmentControl(props: {
         document.body,
       ) : null}
       {open && usable ? (
-        <div className="aug-menu">
-          <div className="aug-menu-head">사용할 증강 선택</div>
-          {types.flatMap((type) => {
-            if (armType(type)) {
-              return [
-                <button
-                  key={type}
-                  className="aug-menu-item"
-                  onClick={() => {
-                    sel.arm(type);
-                    setOpen(false);
-                  }}
-                >
-                  <strong className="aug-menu-name">{augNameFor(type)}</strong>
-                  <span className="act-target">{armHint(type)}</span>
-                </button>,
-              ];
-            }
-            if (MODAL_PICK_TYPES.has(type)) {
-              return [
-                <button
-                  key={type}
-                  className="aug-menu-item"
-                  onClick={() => {
-                    setPickModal(type);
-                    setOpen(false);
-                  }}
-                >
-                  <strong className="aug-menu-name">{augNameFor(type)}</strong>
-                  <span className="act-target">패를 보고 고르기</span>
-                </button>,
-              ];
-            }
-            return (byType.get(type) ?? []).map((o, i) => {
+        menuType !== null ? (
+          // 2단계 — 고른 증강의 후보들. 이름은 머리글에 한 번만 쓰고 후보만 나열한다.
+          <div className="aug-menu">
+            <div className="aug-menu-head">{augNameFor(menuType)}</div>
+            {(byType.get(menuType) ?? []).map((o, i) => {
               const detail = optionDetail(view, o);
               return (
                 <button
-                  key={`${type}-${i}`}
+                  key={`${menuType}-${i}`}
                   className="aug-menu-item"
                   onClick={() => {
                     sel.submit(o);
                     setOpen(false);
+                    setMenuType(null);
                   }}
                 >
-                  <strong className="aug-menu-name">{augNameFor(type)}</strong>
-                  {detail !== "" ? <span className="act-target">{detail}</span> : null}
+                  <strong className="aug-menu-name">
+                    {detail !== "" ? detail : augNameFor(menuType)}
+                  </strong>
                   <ActionTiles view={view} option={o} />
                 </button>
               );
-            });
-          })}
-        </div>
+            })}
+            {types.length > 1 ? (
+              <button
+                className="aug-menu-item aug-menu-back"
+                onClick={() => setMenuType(null)}
+              >
+                <strong className="aug-menu-name">← 증강 다시 고르기</strong>
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          // 1단계 — 지금 쓸 수 있는 증강 목록. 후보가 여럿인 증강은 눌러서 파고든다.
+          <div className="aug-menu">
+            <div className="aug-menu-head">사용할 증강 선택</div>
+            {types.map((type) => {
+              const opts = byType.get(type) ?? [];
+              const hint = armType(type)
+                ? armHint(type)
+                : MODAL_PICK_TYPES.has(type)
+                  ? "패를 보고 고르기"
+                  : opts.length > 1
+                    ? `${opts.length}가지 중 고르기`
+                    : optionDetail(view, opts[0] as ActionOption);
+              return (
+                <button
+                  key={type}
+                  className="aug-menu-item"
+                  onClick={() => activate(type)}
+                >
+                  <strong className="aug-menu-name">{augNameFor(type)}</strong>
+                  {hint !== "" ? <span className="act-target">{hint}</span> : null}
+                  {!armType(type) && !MODAL_PICK_TYPES.has(type) && opts.length === 1 ? (
+                    <ActionTiles view={view} option={opts[0] as ActionOption} />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        )
       ) : null}
       <button
         className={`aug-btn${usable ? " aug-btn-on" : ""}${sel.armedType !== null ? " aug-btn-armed" : ""}`}

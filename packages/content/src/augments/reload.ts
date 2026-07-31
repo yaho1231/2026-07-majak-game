@@ -16,7 +16,7 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "reload";
 const ACTION = "reload_use";
@@ -87,7 +87,7 @@ const reloadAction: ActionDef<{ augmentId: string }> = {
       // 재장전 자신을 1 소진
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       // 전원 공개 — 소진됐다고 믿던 증강이 되살아났음을 알린다
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), req.payload.augmentId),
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), req.payload.augmentId),
     ];
   },
 };

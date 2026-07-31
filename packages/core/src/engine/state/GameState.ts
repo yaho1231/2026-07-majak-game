@@ -154,6 +154,28 @@ export interface GameState {
   augmentData: Record<string, unknown>;
 }
 
+/**
+ * **국 스코프 augmentData 키 표식.**
+ *
+ * 키 이름 끝에 이 표식이 붙은 augmentData 항목은 다음 국이 시작될 때(`setupRound`)
+ * 통째로 지워진다 — "이번 국 동안만" 유효한 플래그·표시가 다음 국으로 새지 않게 한다.
+ *
+ * 왜 필요한가: 증강의 **효과** 키는 대개 `roundKey`를 섞어 국이 바뀌면 자동 만료되는데,
+ * 그 효과를 화면에 알리는 **뷰 채널**(`view:*:…`)은 고정 키라 그대로 남았다. 그래서
+ * 일확천금의 "3배!"·무장해제의 지목 관계처럼 이미 끝난 국의 표시가 다음 국 화면에
+ * 계속 떠 있었다(2026-07-31 사용자 보고). 증강마다 ROUND_STARTED 리액션으로 하나씩
+ * 지우는 대신, 키에 표식 하나만 붙이면 국 경계에서 엔진이 일괄 정리한다.
+ *
+ * 뷰 채널에 써도 클라이언트는 이 표식을 보지 못한다 — `buildPlayerView`가 떼고 넘긴다.
+ * 국을 넘어 유지돼야 하는 값(스택·낙인·게임당 1회 지정 등)에는 붙이지 말 것.
+ */
+export const ROUND_SCOPED_MARK = "#round";
+
+/** 이 키가 국 경계에서 지워지는 국 스코프 키인가 */
+export function isRoundScopedKey(key: string): boolean {
+  return key.endsWith(ROUND_SCOPED_MARK);
+}
+
 /** 시작 점수·적도라 수는 호출자(Core Engine)가 RuleRegistry에서 읽어 넘긴다 */
 export interface InitialStateOptions {
   startScore: number;
@@ -351,11 +373,20 @@ export function setupRound(
     throw new Error("Dead wall is too small for a dora indicator");
   }
 
+  // 국 스코프 표식이 붙은 augmentData는 국 경계에서 통째로 지운다 — 지난 국의
+  // 효과 플래그·공개 표시가 다음 국으로 새지 않는다(ROUND_SCOPED_MARK 참조).
+  // 증강의 ROUND_STARTED 리액션은 이 리듀서 **뒤에** 돌므로, 새 국의 값을 다시 실을 수 있다.
+  const augmentData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(state.augmentData)) {
+    if (!isRoundScopedKey(key)) augmentData[key] = value;
+  }
+
   return {
     ...state,
     prngState: prng.getState(),
     tiles,
     zones,
+    augmentData,
     round: {
       ...state.round,
       turnSeat: state.round.dealerSeat,

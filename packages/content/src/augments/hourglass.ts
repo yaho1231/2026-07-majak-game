@@ -46,8 +46,8 @@ import {
   flagOf,
   matchUses,
   roundKey,
+  roundViewKey,
   settleInterceptor,
-  viewKey,
 } from "../util.js";
 
 const ID = "hourglass";
@@ -109,7 +109,7 @@ export const hourglass: AugmentDef = defineAugment({
               (typeof state.augmentData[usesKey(p.holder)] === "number"
                 ? (state.augmentData[usesKey(p.holder)] as number)
                 : 0) + 1,
-            [viewKey("*", `${ID}:${p.holder}`)]: p.tiles.length,
+            [roundViewKey("*", `${ID}:${p.holder}`)]: p.tiles.length,
           },
         };
       });

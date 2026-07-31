@@ -35,7 +35,7 @@ import type {
   TileDiscardedPayload,
   TileId,
 } from "@majak/core";
-import { roundKey, viewKey } from "../util.js";
+import { roundKey, roundViewKey } from "../util.js";
 import { pickSafestDiscard } from "./botHelpers.js";
 
 const AUGMENT_ID = "free_riichi_discard";
@@ -121,7 +121,7 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
       ).map(kindKey);
       rc.emit(augmentDataSet(snapKey(rc.state, holder), handIds));
       rc.emit(
-        augmentDataSet(viewKey(holder, `free_declare_waits:${holder}`), waits),
+        augmentDataSet(roundViewKey(holder, `free_declare_waits:${holder}`), waits),
       );
     });
 

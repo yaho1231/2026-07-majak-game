@@ -42,7 +42,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { viewKey } from "../util.js";
+import { roundViewKey } from "../util.js";
 
 const ID = "void_kan";
 
@@ -117,7 +117,7 @@ export const voidKan: AugmentDef = defineAugment({
         ]),
       );
       // 발동 순간을 전원에게 알린다 (클라이언트 컷인용 — 무엇이 오름패가 됐는지)
-      rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), kindKey(target)));
+      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:${holder}`), kindKey(target)));
     });
   },
 });

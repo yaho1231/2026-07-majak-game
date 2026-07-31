@@ -17,6 +17,16 @@
  *   결과: 발동자 = 상대 암패 + 상대 후로 + 내 쯔모패(14 상당, 턴 유지), 상대 = 내 암패
  *   − 쯔모패 + 내 후로(13 상당). 후로 장수가 달라도 정합이 맞는다.
  * - turnSeat는 "턴을 쥔 사람(발동자)"을 따라 옮긴다 — 사람이 바뀌는 것은 dealerSeat뿐.
+ *
+ * # 버프 (2026-07-31 사용자 지시)
+ *
+ * ① **발동 창 확대.** 예전 조건은 `round.firstTurn`(첫 바퀴)이었는데, 이 플래그는
+ *    **누가 울거나 깡을 하면 즉시 false**가 된다. 내 앞자리가 퐁 한 번만 해도 그 국의
+ *    자리 바꿈은 통째로 사라졌다 — 오야가 아닌 국에서는 거의 못 쓰는 증강이었다.
+ *    지금 기준은 **내가 아직 한 장도 버리지 않은 내 순**이다(일확천금·단색 세계와 같은 규약).
+ *    손패를 통째로 맞바꿔도 내 버림 이력이 비어 있다는 정합성은 그대로 지켜진다.
+ * ② **횟수 +1** (동풍전 2회 · 반장전 3회). 결과가 무작위 손에 달린 도박수라
+ *    한 번 빗나가면 게임이 끝나던 것을, 다시 걸어 볼 수 있게 했다.
  */
 
 import {
@@ -44,10 +54,11 @@ interface SeatsSwappedPayload {
   b: PlayerId;
 }
 
-/** 매치당 사용 횟수 카운터 (게임 단위). 동풍전 1·반장전 2회. */
+/** 매치당 사용 횟수 카운터 (게임 단위). 동풍전 2·반장전 3회 (2026-07-31 버프: +1). */
 const usesKey = (player: PlayerId): string => `seat_swap:uses:${player}`;
+const maxUses = (state: GameState): number => matchUses(state) + 1;
 const hasUsesLeft = (state: GameState, player: PlayerId): boolean =>
-  counterOf(state, usesKey(player)) < matchUses(state);
+  counterOf(state, usesKey(player)) < maxUses(state);
 
 const seatSwapAction: ActionDef<{ target: PlayerId }> = {
   type: "seat_swap",
@@ -72,10 +83,11 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
     if (!sameHandSize(rules, state, req.player, req.payload.target)) {
       return "hand sizes differ";
     }
-    // **내** 첫 순에만 — 첫 바퀴(firstTurn) 안에서 내가 아직 한 장도 버리지 않았을 때.
-    // 이 창으로 좁혀 두면, 손패를 통째로 맞바꿔도 내 버림 이력이 비어 있어 후리텐 등이
-    // 어긋나지 않는다(내가 가져온 새 손과 내 빈 버림은 충돌하지 않는다).
-    if (!state.round.firstTurn) return "not the first turn of the round";
+    // **내** 첫 순에만 — 내가 이 국에서 아직 한 장도 버리지 않았을 때.
+    // 이 창이면 손패를 통째로 맞바꿔도 내 버림 이력이 비어 있어 후리텐 등이 어긋나지
+    // 않는다(내가 가져온 새 손과 내 빈 버림은 충돌하지 않는다).
+    // ⚠ round.firstTurn(첫 바퀴)은 쓰지 않는다 — 남이 울기만 해도 꺼져서, 앞자리
+    // 봇의 퐁 한 번에 그 국의 발동 기회가 통째로 사라졌다(2026-07-31 버프).
     if ((state.round.byPlayer[req.player]?.discardedKinds.length ?? 0) > 0) {
       return "you already discarded this round";
     }
@@ -96,9 +108,9 @@ export const seatSwap: AugmentDef = defineAugment({
   category: "disrupt",
   name: "자리 바꿈",
   description:
-    "(동풍전 1회 · 반장전 2회) 내 첫 순에 상대 한 명을 지정하면 그 자리에서 즉시 자리와 손패를 통째로 맞바꾼다 — 자풍·오야·차례는 물론 상대의 손패·후로까지 가져온다.",
+    "(동풍전 2회 · 반장전 3회) 내 첫 순에 상대 한 명을 지정하면 그 자리에서 즉시 자리와 손패를 통째로 맞바꾼다 — 자풍·오야·차례는 물론 상대의 손패·후로까지 가져온다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 첫 바퀴에서 내가 아직 버리지 않은 시점에 상대 한 명을 지정하면 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다.",
+    "(동풍전 2회 · 반장전 3회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다.",
   install(ctx) {
     const { engine } = ctx;
 

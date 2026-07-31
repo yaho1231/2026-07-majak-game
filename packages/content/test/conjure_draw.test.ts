@@ -82,7 +82,7 @@ describe("소환 (conjure_draw)", () => {
     });
     expect(st.augmentData[usedKeyOf(st)]).toBe(true);
     // 무엇을 불렀는지 전원 공개
-    expect(st.augmentData[`view:*:conjure_draw:p0`]).toBe(kindKey(expectedKind));
+    expect(st.augmentData[`view:*:conjure_draw:p0#round`]).toBe(kindKey(expectedKind));
   });
 
   it("다음 정상 쯔모가 지목한 패로 물질화된다(conjured), 대기열은 비워진다", () => {

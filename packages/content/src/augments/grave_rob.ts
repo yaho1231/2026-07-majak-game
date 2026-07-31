@@ -43,7 +43,7 @@ import type {
   TileId,
   YakuRegistry,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "grave_rob";
 const ACTION = "grave_rob";
@@ -63,19 +63,55 @@ interface GraveRobPayload {
   fromPlayer: PlayerId;
 }
 
-/** 상대들의 바닥 전체 (내 바닥은 후리텐 존중으로 제외) */
+/**
+ * 파낼 수 있는 무덤의 깊이 — **최근 버림 10장**까지만 (2026-07-31 사용자 확정).
+ *
+ * 예전에는 상대 셋의 바닥 **전체**가 대상이라, 순이 쌓일수록 후보가 수십 장으로 불어나
+ * 사실상 "언젠가 한 번은 반드시 화료"가 됐다. 무덤이 얕아야 "지금 저 패가 아직 위에
+ * 있을 때 파낸다"는 타이밍 판단이 생긴다.
+ */
+const GRAVE_DEPTH = 10;
+
+/**
+ * 상대들의 바닥에서 **가장 최근 GRAVE_DEPTH장** (내 바닥은 후리텐 존중으로 제외).
+ *
+ * 전체 순서를 기록해 두는 곳이 없으므로 바닥 안 순서(각자 버린 순)와 자리 순으로
+ * 되짚는다 — 같은 순번이면 친부터 돌았으니 그 순서가 곧 시간 순이다. 후로로 바닥에서
+ * 빠진 패가 있으면 한 칸씩 어긋나지만, 이건 규칙 판정이 아니라 "무덤 깊이"라는
+ * 게임 감각용 창이라 그 정도 오차는 문제되지 않는다(결정적이므로 리플레이는 안전).
+ */
 function graveCandidates(
   state: GameState,
   holder: PlayerId,
 ): { fromPlayer: PlayerId; graveId: TileId }[] {
-  const out: { fromPlayer: PlayerId; graveId: TileId }[] = [];
+  const n = state.players.length;
+  const rows: {
+    fromPlayer: PlayerId;
+    graveId: TileId;
+    turn: number;
+    seatOrder: number;
+  }[] = [];
   for (const p of state.players) {
     if (p.id === holder) continue;
-    for (const id of state.zones[discardsZone(p.id)]?.tileIds ?? []) {
-      out.push({ fromPlayer: p.id, graveId: id });
-    }
+    const seatOrder = ((p.seat - state.round.dealerSeat) % n + n) % n;
+    const pond = state.zones[discardsZone(p.id)]?.tileIds ?? [];
+    pond.forEach((id, turn) => {
+      rows.push({ fromPlayer: p.id, graveId: id, turn, seatOrder });
+    });
   }
-  return out;
+  rows.sort((a, b) => a.turn - b.turn || a.seatOrder - b.seatOrder);
+  return rows
+    .slice(-GRAVE_DEPTH)
+    .map(({ fromPlayer, graveId }) => ({ fromPlayer, graveId }));
+}
+
+/** 이 패가 지금 파낼 수 있는 깊이 안에 있는가 (validate·후보 생성이 같은 판정을 쓴다) */
+function inGraveWindow(
+  state: GameState,
+  holder: PlayerId,
+  graveId: TileId,
+): boolean {
+  return graveCandidates(state, holder).some((c) => c.graveId === graveId);
 }
 
 /** 도굴을 반영한 가상 상태 — 쯔모패는 패산으로, 무덤 패는 손으로 */
@@ -141,6 +177,9 @@ function makeAction(yaku: YakuRegistry): ActionDef<{
       if (req.payload.fromPlayer === req.player) return "cannot rob your own pond";
       const pond = state.zones[discardsZone(req.payload.fromPlayer)]?.tileIds ?? [];
       if (!pond.includes(req.payload.graveId)) return "tile is not in that pond";
+      if (!inGraveWindow(state, req.player, req.payload.graveId)) {
+        return "that tile is buried too deep";
+      }
       if (
         !robWins(
           state,
@@ -178,9 +217,9 @@ export const graveRob: AugmentDef = defineAugment({
   category: "hand",
   name: "무덤 도굴",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 상대의 바닥에 잠든 과거의 버림패 1장을 파내 그대로 화료한다. 지불은 쯔모 취급으로 세 명이 분담한다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 상대들이 **최근에 버린 10장** 중 1장을 파내 그대로 화료한다. 지불은 쯔모 취급으로 세 명이 분담한다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 세 명의 버림패 더미 전체에서 화료가 성립하는 패 1장을 골라 그대로 화료한다. 화료가 되는 패만 후보로 제시된다. 그 순의 쯔모패는 패산으로 돌아가고, 한참 전에 버린 사람에게 책임을 묻지 않도록 지불은 쯔모와 같이 세 명이 분담한다. 자기 바닥은 후리텐 존중을 위해 대상이 아니며, 원주인의 바닥 기록은 남아 그 사람의 후리텐 판정도 유지된다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 세 명이 최근에 버린 10장 안에서 화료가 성립하는 패 1장을 골라 그대로 화료한다. 화료가 되는 패만 후보로 제시되며, 그보다 더 오래전에 흘린 패는 무덤 깊이 묻혀 파낼 수 없다. 그 순의 쯔모패는 패산으로 돌아가고, 한참 전에 버린 사람에게 책임을 묻지 않도록 지불은 쯔모와 같이 세 명이 분담한다. 자기 바닥은 후리텐 존중을 위해 대상이 아니며, 원주인의 바닥 기록은 남아 그 사람의 후리텐 판정도 유지된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -201,7 +240,7 @@ export const graveRob: AugmentDef = defineAugment({
             ...sim.augmentData,
             [usesKey(p.holder)]: counterOf(state, usesKey(p.holder)) + 1,
             // 전원 공개 — 누구의 무덤에서 무엇이 나왔는지가 이 증강의 구경거리다
-            [viewKey("*", `${ID}:${p.holder}`)]: kindKey(kindOf(state, p.graveId)),
+            [roundViewKey("*", `${ID}:${p.holder}`)]: kindKey(kindOf(state, p.graveId)),
           },
         };
       });

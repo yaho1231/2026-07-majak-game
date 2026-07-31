@@ -298,6 +298,45 @@ export function isRunQuad(kinds: readonly TileKind[]): boolean {
  * 버림 '이력'(discardedKinds)을 쓴다 — 버림패가 후로로 바닥에서 사라져도
  * 후리텐은 유지된다 (표준 룰).
  */
+/**
+ * 이 플레이어가 **지금 버릴 수 없는 손패 tileId 집합** (봉인).
+ *
+ * 두 봉인 규칙을 한 곳에서 합친다:
+ * - `discard.blockedKinds` — 종류 단위. 봉인 뒤 새로 들어온 같은 종류도 함께 잠긴다.
+ * - `discard.blockedTileIds` — 개별 패 단위. 지목된 그 한 장만 잠기고, 손을 떠나면 풀린다.
+ *
+ * 판정과 표시(자물쇠 아이콘)가 어긋나지 않도록 버림 액션과 PlayerView가 **이 함수 하나**를
+ * 쓴다. 소프트락 방지(손패 전부가 봉인이면 허용)는 호출자가 판단한다 — 여기서는
+ * "잠긴 패가 무엇인가"만 돌려준다.
+ */
+export function sealedDiscardIds(
+  state: GameState,
+  rules: RuleRegistry,
+  playerId: PlayerId,
+  hand: readonly TileId[] = handIdsOf(state, playerId),
+): Set<TileId> {
+  const out = new Set<TileId>();
+  if (rules.has("discard.blockedKinds")) {
+    const kinds = new Set(
+      rules.resolve<string[]>("discard.blockedKinds", { playerId, state }),
+    );
+    if (kinds.size > 0) {
+      for (const id of hand) {
+        if (kinds.has(kindKey(kindOf(state, id)))) out.add(id);
+      }
+    }
+  }
+  if (rules.has("discard.blockedTileIds")) {
+    for (const id of rules.resolve<TileId[]>("discard.blockedTileIds", {
+      playerId,
+      state,
+    })) {
+      if (hand.includes(id)) out.add(id);
+    }
+  }
+  return out;
+}
+
 export function isFuriten(
   state: GameState,
   id: PlayerId,

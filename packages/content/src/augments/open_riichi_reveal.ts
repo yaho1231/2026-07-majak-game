@@ -46,7 +46,7 @@ import {
   addWinPointBonus,
   flagOf,
   roundKey,
-  viewKey,
+  roundViewKey,
   winPointsWithExtraHan,
   yakuHolders,
 } from "../util.js";
@@ -138,7 +138,7 @@ const openRiichiAction: ActionDef<{ tileId: TileId }> = {
       },
       augmentDataSet(declaredKey(state, req.player), true),
       // 오름패(대기)를 전원에게 공개 — 클라이언트가 상대 손패 위에 크게 표시한다
-      augmentDataSet(viewKey("*", `${ID}:${req.player}`), waits),
+      augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), waits),
     ];
   },
 };

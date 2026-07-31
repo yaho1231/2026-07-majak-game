@@ -38,7 +38,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { addWinHanBonus, flagOf, roundKey, viewKey } from "../util.js";
+import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, usefulIn } from "./botHelpers.js";
 
 const ID = "silent_swap";
@@ -143,7 +143,7 @@ export const silentSwap: AugmentDef = defineAugment({
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,
             // 전원 공개 — 누구의 바닥에서 무엇이 걸어 나왔는지가 이 증강의 구경거리다
-            [viewKey("*", `${ID}:${p.holder}`)]: {
+            [roundViewKey("*", `${ID}:${p.holder}`)]: {
               from: p.fromPlayer,
               kind: kindKey(kindOf(state, p.takenId)),
             },

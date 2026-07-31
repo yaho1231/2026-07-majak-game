@@ -33,13 +33,7 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import {
-  counterOf,
-  roundKey,
-  settleInterceptor,
-  statePrng,
-  viewKey,
-} from "../util.js";
+import { counterOf, roundKey, roundViewKey, settleInterceptor, statePrng } from "../util.js";
 
 const ID = "jackpot";
 const ACTION = "jackpot_roll";
@@ -170,7 +164,7 @@ export const jackpot: AugmentDef = defineAugment({
             ...state.augmentData,
             [p.key]: p.multiplier,
             // 전원 공개 — "이번 국 3배!"가 테이블에 뜬다
-            [viewKey("*", `${ID}:${p.player}`)]: `${p.multiplier}배`,
+            [roundViewKey("*", `${ID}:${p.player}`)]: `${p.multiplier}배`,
           },
         };
       });

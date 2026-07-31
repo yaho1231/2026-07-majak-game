@@ -460,6 +460,53 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
     }
   });
 
+  it("가깡: 같은 패 3장에서 펑하면 남은 1장으로 그 자리에서 가깡할 수 있다", () => {
+    // 손에 1삭 3장 → 1삭을 펑(손패 2장 소모) → 손에 1삭 1장이 남는다.
+    // 그 순간(펑 직후의 자기 턴) 바로 가깡 후보가 떠야 한다 — 다음 순까지 기다릴 이유가 없다.
+    const state = craft({
+      hands: {
+        p0: "1s147m2589p369s77z",
+        p1: "369m369p369s12z34z",
+        p2: "111s129m258p3467z",
+        p3: "258m258p258s55z66z",
+      },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = createStandardGameFromState(state);
+    const flow = new FlowController(game.engine);
+    let status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+
+    const oneSou = game.engine.state.zones[handZone("p0")]?.tileIds.find(
+      (t) => kindKey(game.engine.state.tiles[t]?.kind as TileKind) === "sou1",
+    );
+    expect(oneSou).toBeDefined();
+    status = flow.submit("p0", { type: "discard", payload: { tileId: oneSou } });
+    if (status.kind !== "awaiting") throw new Error("expected reaction");
+
+    const ponOption = status.prompts
+      .find((p) => p.player === "p2")
+      ?.options.find((o) => o.type === "pon");
+    expect(ponOption).toBeDefined();
+    for (const prompt of status.prompts) {
+      if (prompt.player === "p2") continue;
+      status = flow.submit(prompt.player, { type: "pass", payload: {} });
+    }
+    status = flow.submit("p2", ponOption as { type: string; payload: unknown });
+    if (status.kind !== "awaiting") throw new Error("expected p2 turn");
+
+    const turn = status.prompts.find((p) => p.player === "p2");
+    const kan = turn?.options.find((o) => o.type === "shouminkan");
+    expect(kan).toBeDefined();
+    // 실제로 제출해도 통과한다 (후보만 뜨고 거부되는 일이 없게)
+    status = flow.submit("p2", kan as { type: string; payload: unknown });
+    const melds = game.engine.state.round.byPlayer["p2"]?.melds ?? [];
+    expect(melds[0]?.kind).toBe("kan_added");
+    expect(melds[0]?.tileIds).toHaveLength(4);
+  });
+
   it("펑: 버림패를 가져와 턴을 빼앗고, 첫 바퀴·일발이 깨진다", () => {
     const state = craft({
       hands: {

@@ -232,8 +232,8 @@ describe("bottom_deal — 밑장빼기", () => {
     const r = s.round;
     return `bottom_deal:armed:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0`;
   };
-  const VIEW_ARMED_KEY = "view:p0:bottom_deal:armed:p0";
-  const NOTICE_KEY = "view:*:bottom_deal:armed:p0";
+  const VIEW_ARMED_KEY = "view:p0:bottom_deal:armed:p0#round";
+  const NOTICE_KEY = "view:*:bottom_deal:armed:p0#round";
 
   /** 자기 턴(turn.act, 14장) — 예약 절차를 보는 장면 */
   function actScene(): GameState {
