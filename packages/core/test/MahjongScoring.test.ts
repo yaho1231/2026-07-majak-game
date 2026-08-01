@@ -235,6 +235,38 @@ describe("evaluateWin — 역만과 암각 판정", () => {
     expect(ids(r)).toEqual(["suuankou"]);
   });
 
+  // ── 스안커 단기 — 안커 4개 + 머리 대기는 **더블 역만** (2026-08-02 사용자 확정) ──
+  const tankiHand = h("111m222p333s555z9s"); // 13장: 안커 4개 + 9s 한 장
+
+  it("안커 4개 + 머리 대기를 론하면 스안커 단기 (더블 역만)", () => {
+    const r = evaluateWin(
+      ctxOf({ hand: [...tankiHand, t("9s")], winningTile: t("9s"), winType: "ron" }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(2);
+    expect(ids(r)).toContain("suuankou_tanki");
+    // 단일 스안커와 함께 서면 3배가 된다 — 배타여야 한다
+    expect(ids(r)).not.toContain("suuankou");
+  });
+
+  it("같은 단기 손을 쯔모해도 단기는 단기 (더블 역만)", () => {
+    const r = evaluateWin(
+      ctxOf({ hand: [...tankiHand, t("9s")], winningTile: t("9s"), winType: "tsumo" }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(2);
+    expect(ids(r)).toContain("suuankou_tanki");
+  });
+
+  it("샹퐁 대기 쯔모는 단기가 아니라 단일 스안커 그대로", () => {
+    const r = evaluateWin(
+      ctxOf({ hand: [...suuankouHand, t("5z")], winningTile: t("5z"), winType: "tsumo" }),
+      registry,
+    );
+    expect(ids(r)).toContain("suuankou");
+    expect(ids(r)).not.toContain("suuankou_tanki");
+  });
+
   it("같은 손이 론이면 산안커+또이또이+역패 (론 커쯔는 명각)", () => {
     const r = evaluateWin(
       ctxOf({ hand: [...suuankouHand, t("5z")], winningTile: t("5z"), winType: "ron" }),
@@ -275,14 +307,14 @@ describe("evaluateWin — 역만과 암각 판정", () => {
     expect(ids(r)).toEqual(["daisuushii"]);
   });
 
-  it("대사희 배수는 복합 합산과 같은 축이다 — 스안커까지 서면 3배", () => {
-    // 5p 단기 론: 바람 커쯔 4개가 전부 암각으로 남아 스안커(1배)가 더 붙는다
+  it("대사희 배수는 복합 합산과 같은 축이다 — 스안커 단기까지 서면 4배", () => {
+    // 5p 단기 론: 바람 커쯔 4개가 전부 암각으로 남고, 화료패가 머리라 스안커 단기(2배)가 붙는다
     const r = evaluateWin(
       ctxOf({ hand: h("111z222z333z444z55p"), winningTile: t("5p") }),
       registry,
     );
-    expect(r?.yakumanCount).toBe(3);
-    expect(ids(r)).toEqual(["daisuushii", "suuankou"]);
+    expect(r?.yakumanCount).toBe(4);
+    expect(ids(r)).toEqual(["daisuushii", "suuankou_tanki"]);
   });
 
   it("소사희는 단일 역만 그대로", () => {

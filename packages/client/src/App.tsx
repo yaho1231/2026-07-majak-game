@@ -98,6 +98,7 @@ const YAKU_NAMES: Record<string, string> = {
   kokushi: "국사무쌍",
   kokushi_13: "국사무쌍 13면 대기",
   suuankou: "스안커",
+  suuankou_tanki: "스안커 단기",
   daisangen: "대삼원",
   shousuushii: "소사희",
   daisuushii: "대사희",
@@ -5505,8 +5506,8 @@ function augmentLogRows(
     if (head === "danger_sense") continue;
     // 삼세 예지: 손패 위 '다음 쯔모' 스트립
     if (head === "triple_peek") continue;
-    // 미래를 보는 자가 가져온 패: 뱃지 줄(ActiveInfoBadges)
-    if (head === "future_sight" || head === "future_stacks") continue;
+    // 미래를 보는 자 — 가져온 패는 뱃지 줄(ActiveInfoBadges), 쌓인 판수는 이름표 pill
+    if (head === "future_sight") continue;
     // 스파이가 찍은 패: 뱃지 줄
     if (head === "spy") continue;
     // 안개가 걷어낸 강의 마지막 패: 강(River)이 직접 그린다
@@ -6659,6 +6660,10 @@ const PILL_NUMBER: Record<string, (n: number) => PillStatus | null> = {
       : null,
   hourglass: (n) => (n > 0 ? { chip: `${n}장`, note: `되돌린 패 ${n}장` } : null),
   north_trader: (n) => (n > 0 ? { chip: `北${n}`, note: `빼놓은 北 ${n}장` } : null),
+  // 미래를 보는 자 — 이번 국에 쌓인 층 = 화료 시 얹히는 판수. 몇 판이 붙어 있는지
+  // 화면 어디에도 없어 "쌓이는 게 안 보인다"는 피드백이 있었다(2026-08-02).
+  future_sight: (n) =>
+    n > 0 ? { chip: `+${n}판`, note: `이번 국 ${n}번 교환 — 화료하면 +${n}판` } : null,
 };
 
 /** 값이 상태 문자열인 채널 — 그 글을 그대로 pill에 붙인다 */
@@ -9487,6 +9492,16 @@ function carryOverOf(
   return out;
 }
 
+/** 이 사람에게 증강이 얹은(또는 뺀) 점수 합 — 결과창의 최종 획득점 계산용 */
+function augPointsOf(
+  settle: RoundOverMessage["settle"],
+  player: string,
+): number {
+  return (settle.augPoints ?? [])
+    .filter((a) => a.player === player)
+    .reduce((sum, a) => sum + a.points, 0);
+}
+
 function RoundResultPanel({
   result,
   view,
@@ -9602,6 +9617,22 @@ function RoundResultPanel({
             ...(w.extraHan > 0
               ? [{ key: "extra", label: "증강 보너스", han: `${w.extraHan}판`, aug: true }]
               : []),
+            /**
+             * 증강이 정산에서 **점수를 직접 움직인 내역**(augPoints).
+             *
+             * 인터셉터는 deltas만 고치고 지나가므로, 이 줄이 없으면 화면에는 표준 점수만
+             * 뜨고 증강이 한 일이 통째로 사라진다 — 뚫린 천장이 점수를 몇 배로 불려도
+             * "어디서 온 숫자인지" 알 수 없었다(2026-08-02 사용자 보고).
+             * 상대에게서 가져온 몫은 그렇게 적어 준다(뱅크 발행과 부담 주체가 다르다).
+             */
+            ...(settle.augPoints ?? [])
+              .filter((a) => a.player === w.winner && a.points !== 0)
+              .map((a) => ({
+                key: `augpt:${a.augId}`,
+                label: `${augmentDisplayName(a.augId)}${a.fromOpponents === true ? " (타가 부담)" : ""}`,
+                han: `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
+                aug: true,
+              })),
           ];
           return (
           <div key={w.winner} className="result-win">
@@ -9662,7 +9693,9 @@ function RoundResultPanel({
                     : `${w.fu}부${w.limit !== null ? ` · ${LIMIT_NAMES[w.limit] ?? w.limit}` : ""}`}
                 </i>
               </span>
-              <CountUpPoints value={w.points} mute={wi > 0} />
+              {/* 증강이 점수를 움직였으면 **최종 획득점**으로 굴린다 — 표준 점수만 크게
+                  띄우면 위 증강 줄과 아래 ±점수가 서로 다른 이야기를 한다. */}
+              <CountUpPoints value={w.points + augPointsOf(settle, w.winner)} mute={wi > 0} />
             </div>
           </div>
           );
