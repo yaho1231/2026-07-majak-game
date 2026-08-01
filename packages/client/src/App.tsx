@@ -5161,7 +5161,6 @@ function augmentLogRows(
   if (entries.length === 0) return rows;
 
   const me = view.playerId;
-  const suitKo: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
   // 채널 head → 사람이 읽는 이름 (카탈로그에 없는 짧은 키를 위해)
   const HEAD_NAME: Record<string, string> = {
     ura: "이면투시(뒷도라)",
@@ -5238,16 +5237,7 @@ function augmentLogRows(
     // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 표식으로 못 쓰므로 뱃지 줄에 남는다.
     if (RELATION_HEADS.has(head)) continue;
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
-    if (
-      head === "let_it_ride" ||
-      head === "jackpot" ||
-      head === "hidden_river" ||
-      head === "riichi_seal"
-    ) {
-      continue;
-    }
-    // 본장 사냥꾼은 뱃지 줄이 **내 것만** 띄운다 — 제3자 것만 로그에 남긴다.
-    if (head === "honba_hunter" && target === me) continue;
+    if (head === "hidden_river" || head === "riichi_seal") continue;
 
     if (head === "revealTiles" && Array.isArray(value)) {
       // 봉인술사 — 상대의 봉인된 '실제' 손패를 진짜 패 그대로 보여준다.
@@ -5271,20 +5261,9 @@ function augmentLogRows(
       if (view.augmentView[`revealTiles:${target ?? ""}`] === undefined) {
         rows.push(tileRow(key, "봉인", who, kindsOf(value)));
       }
-    } else if (head === "suit_unify" && typeof value === "string") {
-      rows.push(textRow(key, "단색", `${who}: ${suitKo[value] ?? value}`));
     } else if (head === "take_back") {
       const kinds = typeof value === "string" ? kindsOf([value]) : [];
       if (kinds.length > 0) rows.push(tileRow(key, nameOf(head), who, kinds));
-    } else if (head === "blood_contract" && typeof value === "string") {
-      rows.push(textRow(key, nameOf(head), `${who}: ${YAKU_NAMES[value] ?? value}`));
-    } else if (head === "all_or_nothing" && typeof value === "number") {
-      rows.push(textRow(key, "올인", `${who}: ${value.toLocaleString()}점`));
-    } else if (head === "ankan_dora") {
-      // 밀실의 도라 — 안깡친 종류가 보유자만의 개인 도라가 된다(전원 공개)
-      const m = value as { kinds?: string[] } | null;
-      const kinds = m !== null && typeof m === "object" ? kindsOf(m.kinds) : [];
-      if (kinds.length > 0) rows.push(tileRow(key, "밀실의 도라", `${who}의 개인 도라`, kinds));
     } else if (head === "tenpai_scan") {
       // 천리안 — 지금 텐파이인 상대 목록 (보유자 전용 채널)
       const ids = Array.isArray(value) ? (value as string[]) : [];
@@ -6415,13 +6394,64 @@ const PILL_FLAG = new Set([
  * 이름표 증강 pill이 대신 보여주는 채널 — 증강 정보 로그(augmentLogRows)에는 남기지 않는다.
  * 새 증강의 잔량·상태를 pill에 붙였다면 여기에도 넣어야 두 군데에 겹쳐 뜨지 않는다.
  */
+const SUIT_KO: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
+
+/**
+ * 값 모양이 제각각인 채널 — 그 증강이 **지금 무엇으로 굳었는지**를 pill에 박는다.
+ *
+ * ⚠ 이 중 배수·본장 가치·밀실의 도라는 한때 중앙 보드(점수판 옆·본장 옆·도라 줄)에
+ * 붙이려다 물렀다. `.center-core`는 `inset`으로 높이가 고정돼 있어(패널 211px 중
+ * 코어 ~146px, 이미 국 표시+요약줄+도라 5장으로 꽉 찬다) 줄을 더하면 내용이 4방향
+ * 점수판 위로 넘친다. 점수판(--plate-w 131px)도 바람·점수만으로 이미 98px을 쓴다.
+ * 중앙에는 자리가 없다 — pill이 유일하게 여유 있는 자리다.
+ */
+const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
+  suit_unify: (raw) => {
+    if (typeof raw !== "string" || raw === "") return null;
+    const ko = SUIT_KO[raw] ?? raw;
+    return { chip: ko, note: `이번 국 손패가 ${ko}로 통일된다` };
+  },
+  blood_contract: (raw) => {
+    if (typeof raw !== "string" || raw === "") return null;
+    const yaku = YAKU_NAMES[raw] ?? raw;
+    return { chip: yaku, note: `계약한 역 — ${yaku}으로만 화료할 수 있다` };
+  },
+  all_or_nothing: (raw) => {
+    if (typeof raw !== "number" || raw <= 0) return null;
+    return { chip: `${raw.toLocaleString()}점`, note: `${raw.toLocaleString()}점을 걸었다` };
+  },
+  let_it_ride: (raw) => {
+    const m = raw as { streak?: number; multiplier?: number } | null;
+    if (m === null || typeof m !== "object") return null;
+    const mult = m.multiplier ?? 1;
+    if (mult <= 1) return null;
+    return { chip: `×${mult}`, note: `${m.streak ?? 0}연승 — 다음 화료 ×${mult}` };
+  },
+  jackpot: (raw) => {
+    if (typeof raw !== "string" || raw === "") return null;
+    return { chip: raw, note: `이번 국 화료 점수 ${raw}` };
+  },
+  honba_hunter: (raw) => {
+    const m = raw as { honba?: number; value?: number } | null;
+    if (m === null || typeof m !== "object" || (m.honba ?? 0) <= 0) return null;
+    const value = m.value ?? 0;
+    return {
+      chip: `+${value.toLocaleString()}`,
+      note: `${m.honba}본장 = 화료 시 +${value.toLocaleString()}점`,
+    };
+  },
+};
+
 const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
   ...Object.keys(PILL_NUMBER),
+  ...Object.keys(PILL_CUSTOM),
   ...PILL_TEXT,
   ...PILL_FLAG,
   "alchemist",
   "dead_wall_master",
   "reload",
+  "call_seal",
+  "ankan_dora",
 ]);
 
 function augmentPillStatus(
@@ -6443,9 +6473,31 @@ function augmentPillStatus(
     return { chip: `${left}회`, note: `이번 국 왕패 교환 ${left}회 남음` };
   }
 
+  // 울기 봉인 — 몇 순 남았는지. 값이 객체라 예전엔 어떤 표시에도 안 걸려
+  // **화면에 아무것도 안 떴다**(2026-08-01 감사).
+  if (augId === "call_seal") {
+    const m = av[`call_seal:${playerId}`] as { until?: number } | null;
+    if (m === null || typeof m !== "object" || typeof m.until !== "number") return null;
+    const left = m.until - view.round.turnCount;
+    if (left <= 0) return null;
+    return { chip: `${left}순`, note: `앞으로 ${left}순 동안 아무도 후로할 수 없다` };
+  }
+  // 밀실의 도라 — 안깡친 종류가 이 사람만의 개인 도라가 된다(전원 공개).
+  if (augId === "ankan_dora") {
+    const m = av[`ankan_dora:${playerId}`] as { kinds?: string[] } | null;
+    const kinds = (Array.isArray(m?.kinds) ? m.kinds : [])
+      .map(parseKindKey)
+      .filter((k): k is TileKind => k !== null);
+    if (kinds.length === 0) return null;
+    const names = kinds.map((kind) => formatTile({ kind })).join("·");
+    return { chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` };
+  }
+
   const raw = av[`${augId}:${playerId}`];
   if (raw === undefined) return null;
 
+  const custom = PILL_CUSTOM[augId];
+  if (custom !== undefined) return custom(raw);
   const asNumber = PILL_NUMBER[augId];
   if (asNumber !== undefined && typeof raw === "number") return asNumber(raw);
   if (PILL_TEXT.has(augId) && typeof raw === "string" && raw !== "") {
@@ -7954,37 +8006,12 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
   // 덤터기 지목 대상 (내 것)
   const scape = av[`scapegoat:${me.id}`];
   if (typeof scape === "string") textBadge("scapegoat", "덤터기", playerNameById(view, scape));
-  // 판돈 굴리기 — 이번 국 예치 여부 / 금고
-  // 판돈 굴리기 — 52차에 금고·예치를 걷어내고 **연승 배수**가 됐다.
-  // 상대 것도 보여야 "쟤 지금 4배다"라는 긴장이 성립한다(이 증강의 도파민 전부).
-  for (const [key, value] of Object.entries(av)) {
-    if (!key.startsWith("let_it_ride:")) continue;
-    const m = value as { streak?: number; multiplier?: number } | null;
-    if (m === null || typeof m !== "object") continue;
-    const mult = m.multiplier ?? 1;
-    if (mult <= 1) continue;
-    const who = key.slice("let_it_ride:".length);
-    textBadge(
-      `lir_${who}`,
-      "🎲 판돈 굴리기",
-      `${who === me.id ? "" : `${playerNameById(view, who)} `}${m.streak ?? 0}연승 — 다음 화료 ×${mult}`,
-    );
-  }
+  // 판돈 굴리기 배수(×4)·일확천금 배수도 그 사람의 증강 pill에 붙는다.
   // 스파이 — 내가 찍은 패는 나만 본다(비밀 지정)
   const spyMark = av["spy:mark"];
   if (typeof spyMark === "string") {
     const kind = parseKindKey(spyMark);
     if (kind !== null) tilesBadge("spy", "🕵️ 스파이", [kind]);
-  }
-  // 일확천금 — 이번 국에 굴려 나온 배수 (상대에게도 보이는 공개 정보다)
-  for (const [key, value] of Object.entries(av)) {
-    if (!key.startsWith("jackpot:") || typeof value !== "string") continue;
-    const who = key.slice("jackpot:".length);
-    textBadge(
-      `jackpot_${who}`,
-      "💰 일확천금",
-      who === me.id ? `이번 국 ${value}` : `${playerNameById(view, who)} ${value}`,
-    );
   }
   // 카르마 업보 게이지 · 대기만성 만개 · 가불 인생 · 만년 오야는 이제 그 사람의
   // 이름표 증강 pill 위에 잔량/게이지로 붙는다(aug-pill-chip·aug-pill-gauge).
@@ -8031,11 +8058,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
   }
   // 역만 방어술 방어 횟수 · 연금술 잔여 · 왕패 교환 잔여도 이름표 pill로 옮겼다
   // (그 증강이 몇 번 남았는지는 그 증강 위에 붙는 게 맞다).
-  // 본장 사냥꾼 — 내 앞의 본장이 얼마짜리인지 상시로 보여준다(쌓일수록 테이블이 긴장한다)
-  const hh = av[`honba_hunter:${me.id}`] as { honba?: number; value?: number } | undefined;
-  if (hh !== undefined && typeof hh === "object" && (hh.honba ?? 0) > 0) {
-    textBadge("hh", "🔥 본장 사냥꾼", `${hh.honba}본장 = +${(hh.value ?? 0).toLocaleString()}점`);
-  }
+  // 본장 사냥꾼의 본장 가치도 그 사람의 증강 pill에 붙는다.
   // 격(格) — 지목당했으면 그 국 내내 "싼 손으로는 못 오른다"를 상시로 보여준다
   // (지목형 공통 연출 규칙: 전면 컷인 + 상시 뱃지 + 관계 표식).
   for (const [key, raw] of Object.entries(av)) {
