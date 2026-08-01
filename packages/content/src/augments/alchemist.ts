@@ -8,6 +8,7 @@
  */
 
 import {
+  TILE_DRAWN,
   augmentDataSet,
   defineAugment,
   handIdsOf,
@@ -24,7 +25,7 @@ import type {
   TileAttrs,
   TileId,
 } from "@majak/core";
-import { counterOf, roundKey } from "../util.js";
+import { counterOf, roundKey, viewKey } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 
 const ID = "alchemist";
@@ -33,6 +34,14 @@ const MAX_USES = 5;
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
 /** 마지막으로 사용한 '턴'의 서명 (한 턴에 한 번만 쓰게 막는다) */
 const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
+/**
+ * 남은 횟수를 보유자 화면에 노출하는 채널 — "몇 번 남았는지 안 보인다"는 보고
+ * (2026-08-01)에 대한 대응. 게임 전체 5회라 국을 넘어 유지돼야 하므로 국 스코프가
+ * 아닌 고정 viewKey를 쓴다. 값은 **남은 횟수**(0이면 소진).
+ */
+const leftViewKey = (h: PlayerId): string => viewKey(h, `${ID}:left`);
+const usesLeft = (state: GameState, h: PlayerId): number =>
+  Math.max(0, MAX_USES - counterOf(state, usedKey(h)));
 
 /**
  * 이 국에서 보유자의 현재 턴을 식별하는 서명.
@@ -92,6 +101,8 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
       augmentDataSet(usedKey(req.player), counterOf(state, usedKey(req.player)) + 1),
       // 이번 턴에 썼음을 기록 → 같은 턴 재사용 차단 (버림으로 턴이 넘어가면 자동 해제)
       augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
+      // 남은 횟수 갱신 (위 usedKey 증가를 반영해 -1)
+      augmentDataSet(leftViewKey(req.player), usesLeft(state, req.player) - 1),
     ];
   },
 };
@@ -104,13 +115,23 @@ export const alchemist: AugmentDef = defineAugment({
   description:
     "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9 순환 없음). 리치 중에도 쓸 수 있고, 바뀐 패는 매번 전원에게 공개된다.",
   detail:
-    "(게임 내 5회) 자기 순에 액티브 버튼으로 발동해 손패의 수패 1장을 골라 숫자를 ±1 이동한다 — 무늬는 그대로이고 1↔9 순환은 없으며 자패는 대상이 아니다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 바뀐 패는 매번 전원에게 공개된다.",
+    "(게임 내 5회 — 남은 횟수는 액티브 버튼 옆에 상시 표시된다) 자기 순에 액티브 버튼으로 발동해 손패의 수패 1장을 골라 숫자를 ±1 이동한다 — 무늬는 그대로이고 1↔9 순환은 없으며 자패는 대상이 아니다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 바뀐 패는 매번 전원에게 공개된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(alchemyAction);
     }
+
+    // 남은 횟수 채널 동기화 — 값이 어긋날 때만 발행한다.
+    // ROUND_STARTED로는 부족하다: 게임 시작 드래프트는 1국 배패 **뒤에** 설치되므로
+    // 첫 국 내내 채널이 비어 "몇 번 남았는지 안 보인다"가 그대로 남는다(2026-08-01 보고).
+    // 쯔모는 매 순 일어나므로 획득 직후 첫 쯔모에 곧바로 값이 선다(그 뒤로는 no-op).
+    ctx.reaction(TILE_DRAWN, (_event, rc) => {
+      const left = usesLeft(rc.state, holder);
+      if (rc.state.augmentData[leftViewKey(holder)] === left) return;
+      rc.emit(augmentDataSet(leftViewKey(holder), left));
+    });
 
     ctx.holderTurnOptions((state) => {
       if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];

@@ -252,6 +252,15 @@ const STANDARD_ACTION_TYPES = new Set([
   "pass",
 ]);
 
+/**
+ * 액티브 증강의 **무장(1단계) 액션** — 발동 연출을 내지 않는다.
+ *
+ * 2단계 증강(무장 선언 → 실제 발동)은 액션이 둘이라 그대로 두면 컷인이 **두 번** 뜬다
+ * (2026-08-01 사용자 보고: "미래를 보는 자 연출 2번 나옴"). 무장은 아직 아무 일도
+ * 일어나지 않은 선언이므로, 연출은 실제로 판이 움직이는 2단계에만 붙인다.
+ */
+const FX_SILENT_ACTION_TYPES = new Set(["future_arm"]);
+
 // ─────────────────────────── HanchanController ───────────────────────────
 
 export class HanchanController {
@@ -658,7 +667,10 @@ export class HanchanController {
           status = flow.submit(player, option);
           // 특수 액션(액티브 증강 등) 실행 연출 — 표준 액션이 아닌 것만.
           // 비표준 타입은 턴 프롬프트에서만 나오므로 결정 = 실행이 보장된다.
-          if (!STANDARD_ACTION_TYPES.has(option.type)) {
+          if (
+            !STANDARD_ACTION_TYPES.has(option.type) &&
+            !FX_SILENT_ACTION_TYPES.has(option.type)
+          ) {
             this.notifyAll({ type: "actionFx", player, actionType: option.type });
           }
         }

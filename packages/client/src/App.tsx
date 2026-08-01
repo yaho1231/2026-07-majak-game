@@ -606,13 +606,23 @@ const CATEGORY_META: Record<AugmentCategory, CategoryMeta> = {
  * 카탈로그 도착 전(또는 알 수 없는 id)은 `etc`.
  */
 const CATEGORY_BY_ID: Record<string, AugmentCategory> = {};
+/** id → 이름. 계열과 같은 이유로 전역 — 카탈로그를 못 받은 곳에서도 사람 말로 쓴다. */
+const NAME_BY_ID: Record<string, string> = {};
 
 function rememberCategories(entries: readonly AugmentCatalogEntry[]): void {
-  for (const e of entries) CATEGORY_BY_ID[e.id] = e.category;
+  for (const e of entries) {
+    CATEGORY_BY_ID[e.id] = e.category;
+    NAME_BY_ID[e.id] = e.name;
+  }
 }
 
 function augmentCategory(id: string): AugmentCategory {
   return CATEGORY_BY_ID[id] ?? "etc";
+}
+
+/** 증강 id → 표시 이름 (카탈로그 도착 전이면 id 그대로) */
+function augmentDisplayName(id: string): string {
+  return NAME_BY_ID[id] ?? id;
 }
 
 /** 증강 카테고리 아이콘 (임시 이모지). */
@@ -5002,6 +5012,8 @@ function AugmentInfoPanel({
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
 }): JSX.Element | null {
+  // 펼침 상태 — 훅은 어떤 조기 반환보다 위에 있어야 한다(Rules of Hooks)
+  const [expanded, setExpanded] = useState(false);
   const entries = Object.entries(view.augmentView);
   if (entries.length === 0) return null;
 
@@ -5167,6 +5179,35 @@ function AugmentInfoPanel({
       }
     } else if (head === "riichi_seal") {
       rows.push(textRow(key, "리치 봉인", `${who}: 이번 국 다른 셋은 리치 불가`));
+    } else if (head === "push_riichi") {
+      // 등 떠밀기 — 낙인(누가 누구를) / 발동(강제 리치가 터진 순간).
+      // 값이 playerId라 예전엔 아래 문자열 폴백이 "p2"를 그대로 찍었다(2026-08-01 보고).
+      if (typeof value !== "string" || value === "") continue;
+      if (target === "fired") {
+        rows.push(textRow(key, "등 떠밀기", `${playerNameById(view, value)} — 강제 리치`));
+      } else {
+        rows.push(
+          textRow(key, "등 떠밀기", `${who} → ${playerNameById(view, value)} 낙인`),
+        );
+      }
+    } else if (head === "parasite") {
+      // 기생충 — 지금 누구에게 붙어 있는지 (값이 숙주 playerId)
+      if (typeof value !== "string" || value === "") continue;
+      rows.push(textRow(key, "기생", `${who} → ${playerNameById(view, value)}`));
+    } else if (head === "disarm") {
+      // 무장해제 — 누가 누구의 어떤 증강을 잠갔는지.
+      // 값이 객체라 예전엔 어떤 분기에도 안 걸려 **화면에 아무것도 안 떴다** —
+      // "무장해제가 안 잠긴다"는 보고의 정체(2026-08-01).
+      const m = value as { target?: string; augmentId?: string } | null;
+      if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
+      const augName = catalog[m.augmentId ?? ""]?.name ?? m.augmentId ?? "";
+      rows.push(
+        textRow(
+          key,
+          "🔒 무장해제",
+          `${who} → ${playerNameById(view, m.target)}의 「${augName}」 이번 국 잠김`,
+        ),
+      );
     } else if (typeof value === "number") {
       rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} — ` : ""}스택 ${value}`));
     } else if (typeof value === "string") {
@@ -5177,7 +5218,25 @@ function AugmentInfoPanel({
   }
 
   if (rows.length === 0) return null;
-  return <div className="ainfo">{rows}</div>;
+  // 줄이 쌓이면 왼쪽 상대(상가)를 통째로 덮는다 — 기본은 세 줄까지만 보여주고
+  // 나머지는 접는다(펼치면 스크롤되는 상자 안에서만 길어진다). 2026-08-01 보고.
+  const COLLAPSED = 3;
+  const hidden = rows.length - COLLAPSED;
+  const shown = expanded || hidden <= 0 ? rows : rows.slice(0, COLLAPSED);
+  return (
+    <div className={`ainfo${expanded ? " ainfo-expanded" : ""}`}>
+      {shown}
+      {hidden > 0 ? (
+        <button
+          type="button"
+          className="ainfo-more"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "▲ 접기" : `▼ ${hidden}개 더`}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 // ─────────────────────────── 증강 테스트 패널 (관리자) ───────────────────────────
@@ -6094,6 +6153,25 @@ function OpponentStrip({
   );
 }
 
+/**
+ * 무장해제로 이번 국 잠긴 이 플레이어의 증강 id 집합.
+ *
+ * 무장해제는 지목 관계를 `view:*:disarm:{시전자}` 국 스코프 채널에 실어 전원에게
+ * 공개한다(값 = {target, augmentId}). 국이 끝나면 서버가 그 채널을 지우므로,
+ * 여기 남아 있다는 것 자체가 "지금 잠겨 있다"는 뜻이다.
+ */
+function disarmedAugmentsOf(view: PlayerView, playerId: string): Set<string> {
+  const out = new Set<string>();
+  for (const [key, raw] of Object.entries(view.augmentView)) {
+    if (!key.startsWith("disarm:")) continue;
+    const m = raw as { target?: string; augmentId?: string } | null;
+    if (m === null || typeof m !== "object") continue;
+    if (m.target !== playerId || typeof m.augmentId !== "string") continue;
+    out.add(m.augmentId);
+  }
+  return out;
+}
+
 function NamePlate({
   view,
   player,
@@ -6113,6 +6191,9 @@ function NamePlate({
   const isTurn = view.round.turnSeat === player.seat;
   const furiten = isMe && view.round.byPlayer[player.id]?.furiten === true;
   const noYaku = isMe && view.round.byPlayer[player.id]?.noYaku === true;
+  // 무장해제로 이번 국 잠긴 이 사람의 증강 — 이름표의 pill에 쇠사슬을 채운다.
+  // 잠금이 화면 어디에도 드러나지 않아 "무장해제가 안 먹는다"로 보였다(2026-08-01).
+  const disarmed = disarmedAugmentsOf(view, player.id);
   return (
     <div className={`nameplate${isTurn ? " nameplate-turn" : ""}`}>
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
@@ -6121,11 +6202,17 @@ function NamePlate({
         <span className="np-augs">
           {player.augments.map((a) => {
             const entry = catalog[a];
+            const locked = disarmed.has(a);
             return (
               // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
-              <span key={a} className="aug-pill aug-prism" tabIndex={0}>
+              <span
+                key={a}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}`}
+                tabIndex={0}
+              >
                 <AugCatIcon id={a} />
+                {locked ? "🔒 " : ""}
                 {entry?.name ?? a}
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
                   <span className="aug-tip-name">
@@ -6133,6 +6220,9 @@ function NamePlate({
                     {entry?.name ?? a}
                   </span>
                   <span className="aug-tip-cat">{CATEGORY_META[augmentCategory(a)].label} 계열</span>
+                  {locked ? (
+                    <span className="aug-tip-locked">🔒 무장해제 — 이번 국 동안 잠김</span>
+                  ) : null}
                   {isActiveAugment(a) ? (
                     <span className="aug-tip-active">⚡ 액티브 증강 (직접 발동)</span>
                   ) : null}
@@ -7606,6 +7696,11 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
       `${who === me.id ? "" : `${playerNameById(view, who)} `}역만 ${value}회 방어`,
     );
   }
+  // 연금술사 — 게임 전체 5회 중 몇 번 남았는지 (0이면 더 못 쓴다)
+  const alchemyLeft = av["alchemist:left"];
+  if (typeof alchemyLeft === "number") {
+    textBadge("alchemist", "⚗️ 연금술", `${alchemyLeft}회 남음`);
+  }
   // 왕패의 주인 — 국 시작에 몇 번 더 바꿀 수 있는지 (0이 되면 발동 창이 닫힌다)
   const dwLeft = av[`dead_wall_master:remaining:${me.id}`];
   if (typeof dwLeft === "number" && dwLeft > 0) {
@@ -7631,6 +7726,28 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
       );
     } else if (mark.by === me.id && typeof mark.target === "string") {
       textBadge("rank_gate_mine", "격(格) 지목", playerNameById(view, mark.target));
+    }
+  }
+  // 무장해제 — 내 증강이 잠겼거나 내가 잠갔으면 그 국 내내 크게 보여준다.
+  // (좌상단 패널에만 있으면 "잠긴 것 같지가 않다"는 인상이 남는다 — 2026-08-01 보고)
+  for (const [key, raw] of Object.entries(av)) {
+    if (!key.startsWith("disarm:")) continue;
+    const m = raw as { target?: string; augmentId?: string } | null;
+    if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
+    const by = key.slice("disarm:".length);
+    const augName = augmentDisplayName(m.augmentId ?? "");
+    if (m.target === me.id) {
+      textBadge(
+        `disarm_on_me_${by}`,
+        "🔒 무장해제당함",
+        `${augName} — ${playerNameById(view, by)}가 이번 국 잠갔다`,
+      );
+    } else if (by === me.id) {
+      textBadge(
+        "disarm_mine",
+        "🔒 무장해제",
+        `${playerNameById(view, m.target)}의 ${augName} 잠금`,
+      );
     }
   }
 
@@ -7823,23 +7940,11 @@ function ActiveAugmentControl(props: {
     setOpen(true);
   };
 
-  // 버튼 옆 개수 — swap3·dw_swap은 조합이 수백 개라 고를 수 있는 '패 수'로 환산해 보여준다.
-  const displayCount = types.reduce((n, t) => {
-    if (t === "dw_swap") {
-      const ids = new Set(
-        (byType.get(t) ?? []).map((o) => (o.payload as { handTileId?: number }).handTileId),
-      );
-      return n + ids.size;
-    }
-    if (t === "foresight_order") return n + 1; // 순열 23개는 "1회 발동"으로 센다
-    if (t === "swap3") {
-      const ts = new Set(
-        (byType.get(t) ?? []).map((o) => (o.payload as { target?: string }).target),
-      );
-      return n + ts.size;
-    }
-    return n + (byType.get(t)?.length ?? 0);
-  }, 0);
+  // 버튼 옆 개수 = **지금 쓸 수 있는 액티브 증강의 수**.
+  // 예전엔 후보 옵션 수를 셌다 — 회수(버림패마다 후보 1개)·연금술(패×방향)처럼 후보가
+  // 패 수만큼 나오는 증강이 "액티브 증강 (17)"처럼 떠 패 개수로 읽혔다(2026-08-01 보고).
+  // 한 증강이 액션 타입을 둘 이상 낼 수 있으므로(예지의 발동·재배열) 증강 id로 접는다.
+  const displayCount = new Set(types.map((t) => ACTION_AUGMENT[t] ?? t)).size;
 
   const click = (): void => {
     if (!usable) return;
@@ -8608,6 +8713,11 @@ function unifyPreview(
 function optionDetail(view: PlayerView, option: ActionOption): string {
   const p = (option.payload ?? {}) as Record<string, unknown>;
   const who = p.target ?? p.fromPlayer ?? p.host;
+  // 무장해제처럼 "누구의 어떤 증강"까지 골라야 하는 액션은 둘 다 적는다 —
+  // 이름만 적으면 상대의 증강 수만큼 똑같은 버튼이 늘어서 무엇을 잠그는지 알 수 없다.
+  if (typeof who === "string" && typeof p.augmentId === "string") {
+    return `${playerNameById(view, who)} — ${augmentDisplayName(p.augmentId)}`;
+  }
   if (typeof who === "string") return playerNameById(view, who);
   if (typeof p.yaku === "string") return YAKU_NAMES[p.yaku] ?? p.yaku;
   const suitKo: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
