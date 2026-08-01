@@ -528,6 +528,39 @@ describe("seat_swap (자리 바꿈)", () => {
     ).toBe("you already discarded this round");
   });
 
+  it("이미 리치 선언한 상대는 지목할 수 없다 (리치=텐파이 불변식 보호)", () => {
+    const base = craftFirstTurn();
+    const state: GameState = {
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p2: {
+            ...base.round.byPlayer.p2!,
+            riichi: { double: false, ippatsu: false, discardIndex: 0 },
+          },
+        },
+      },
+    };
+    const game = createStandardGameFromState(withAugments(state, { p0: ["seat_swap"] }));
+    installAugment(game.engine, seatSwap, "p0", { yaku: game.yaku });
+    const def = game.engine.actions.get("seat_swap");
+    expect(
+      def?.validate(
+        { player: "p0", type: "seat_swap", payload: { target: "p2" } },
+        { state: game.engine.state, rules: game.engine.rules },
+      ),
+    ).toBe("target already riichi");
+    // 리치 안 한 상대는 그대로 지목 가능
+    expect(
+      def?.validate(
+        { player: "p0", type: "seat_swap", payload: { target: "p1" } },
+        { state: game.engine.state, rules: game.engine.rules },
+      ),
+    ).toBeNull();
+  });
+
   it("보유자 턴 프롬프트에 상대 3명 각각의 교환 후보가 노출된다", () => {
     const game = createStandardGameFromState(
       withAugments(craftFirstTurn(), { p0: ["seat_swap"] }),

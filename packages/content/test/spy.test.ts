@@ -171,4 +171,51 @@ describe("스파이 (spy)", () => {
     const settled = lastSettled(flow);
     expect(settled.deltas["p1"] ?? 0).toBeGreaterThan(0);
   });
+
+  it("더블 론으로 두 명이 동시에 찍힌 패로 화료하면 둘 다에게서 훔친다 (.find 편향 회귀)", () => {
+    // p0=holder(spy, 3만 지정). p1·p2 둘 다 3만으로 론했다고 가정한 합성 정산 이벤트를
+    // 직접 밀어 넣어 settleInterceptor(Transfer)가 winInfos 전원을 훑는지 검증한다.
+    const base = craft({
+      hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const state: GameState = {
+      ...withAugments(base, "p0", ["spy"]),
+      augmentData: { "spy:mark:p0": MAN3 },
+    };
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, spy, "p0", { yaku: game.yaku });
+
+    const winTileEntry = Object.entries(game.engine.state.tiles).find(
+      ([, t]) => kindKey(t.kind) === MAN3,
+    );
+    if (winTileEntry === undefined) throw new Error("no 3m tile in deck");
+    const winTile = Number(winTileEntry[0]);
+    const payload: RoundSettledPayload = {
+      outcome: "win",
+      winInfos: [
+        { winner: "p1", winType: "ron", from: "p3", points: 2000, winningTileId: winTile },
+        { winner: "p2", winType: "ron", from: "p3", points: 3000, winningTileId: winTile },
+      ],
+      deltas: { p0: 0, p1: 2000, p2: 3000, p3: -5000 },
+    } as unknown as RoundSettledPayload;
+
+    // 실제 게임 진행 없이 정산 인터셉터 파이프라인만 태우는 합성 액션
+    game.engine.actions.register({
+      type: "__test_settle__",
+      validate: () => null,
+      toEvents: () => [{ type: ROUND_SETTLED, payload }],
+    });
+    const r = game.engine.submit({ player: "p0", type: "__test_settle__", payload: {} });
+    expect(r.ok).toBe(true);
+
+    const final = (r as { events: GameEvent[] }).events.find(
+      (e) => e.type === ROUND_SETTLED,
+    )?.payload as RoundSettledPayload;
+    // 둘 다 3만으로 화료했으므로 두 승자 몫이 전부 홀더에게 온다
+    expect(final.deltas["p1"] ?? 0).toBe(0);
+    expect(final.deltas["p2"] ?? 0).toBe(0);
+    expect(final.deltas["p0"] ?? 0).toBe(5000);
+  });
 });
