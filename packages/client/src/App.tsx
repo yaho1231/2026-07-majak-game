@@ -4421,6 +4421,9 @@ function GameTable(props: {
 }): JSX.Element {
   const { view, prompt, catalog } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 증강 정보 로그 — 기본은 접힘. 예전엔 왼쪽 위에 상시로 펼쳐져 왼쪽 상대를 덮었다.
+  // 설정 패널과 같은 자리(우상단)에 뜨므로 둘 중 하나만 열린다.
+  const [logOpen, setLogOpen] = useState(false);
   // 증강 테스트 시점 전환: sandbox.seat이 내 실제 좌석, view.playerId는 지금 보고 있는 좌석.
   // 둘이 다르면 상대(또는 전체공개) 시점을 관찰 중이다.
   const sbxSelfId = props.sandbox?.seat ?? null;
@@ -4498,7 +4501,14 @@ function GameTable(props: {
           ) : null}
         </div>
       ) : null}
-      <button className="icon-btn settings-btn" onClick={() => setSettingsOpen((v) => !v)} title="설정">⚙</button>
+      <button
+        className="icon-btn settings-btn"
+        onClick={() => {
+          setSettingsOpen((v) => !v);
+          setLogOpen(false);
+        }}
+        title="설정"
+      >⚙</button>
       <button className="icon-btn leave-btn" onClick={props.onLeave} title="나가기">✕</button>
       {settingsOpen ? (
         <SettingsPanel
@@ -4534,7 +4544,15 @@ function GameTable(props: {
         <CenterPanel view={view} seats={seats} scoreFx={props.scoreFx} />
       </div>
 
-      <AugmentInfoPanel view={view} catalog={catalog} />
+      <AugmentLog
+        view={view}
+        catalog={catalog}
+        open={logOpen}
+        onToggle={() => {
+          setLogOpen((v) => !v);
+          setSettingsOpen(false);
+        }}
+      />
 
       {props.sandbox != null && props.spectator !== true ? (
         <SandboxPanel
@@ -4998,26 +5016,30 @@ function AbortVoteBanner(props: {
   );
 }
 
-// ─────────────────────────── 증강 정보 패널 ───────────────────────────
+// ─────────────────────────── 증강 정보 로그 ───────────────────────────
 
 /**
- * PlayerView.augmentView(증강 정보 채널)를 사람이 읽을 수 있게 표시.
- * 알려진 키 규약: sealed:{pid} / waits:{pid} /
- * suit_unify:{pid} / future_stacks / promise_next:{pid} 등.
+ * `PlayerView.augmentView`(증강 정보 채널)를 사람이 읽을 수 있는 줄로 바꾼다.
+ *
+ * ⚠ 여기 남는 것은 **어디에도 자리를 못 잡은 잔여 정보**뿐이어야 한다.
+ * 증강 정보의 제자리는 "그 정보가 가리키는 대상 위"다 —
+ * 오름패는 상대 손패 위(WaitsBadge), 위험패는 내 손패 위(hand-danger),
+ * 뒷도라는 중앙 도라 표시패 아래, 무장해제는 이름표의 증강 pill(aug-pill-locked),
+ * 내 상태는 손패 옆 뱃지 줄(ActiveInfoBadges). 새 증강을 붙일 때도 그 순서로 찾고,
+ * 정말 자리가 없을 때만 이 로그로 내린다.
+ *
+ * 예전에는 이 목록이 화면 **왼쪽 위에 상시로 펼쳐져** 왼쪽 상대(상가)를 덮었다.
+ * 지금은 우상단 📜 버튼 뒤에 접혀 있고, 기본은 닫힘이다.
  */
-function AugmentInfoPanel({
-  view,
-  catalog,
-}: {
-  view: PlayerView;
-  catalog: Record<string, AugmentCatalogEntry>;
-}): JSX.Element | null {
-  // 펼침 상태 — 훅은 어떤 조기 반환보다 위에 있어야 한다(Rules of Hooks)
-  const [expanded, setExpanded] = useState(false);
-  const entries = Object.entries(view.augmentView);
-  if (entries.length === 0) return null;
-
+function augmentLogRows(
+  view: PlayerView,
+  catalog: Record<string, AugmentCatalogEntry>,
+): JSX.Element[] {
   const rows: JSX.Element[] = [];
+  const entries = Object.entries(view.augmentView);
+  if (entries.length === 0) return rows;
+
+  const me = view.playerId;
   const suitKo: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
   // 채널 head → 사람이 읽는 이름 (카탈로그에 없는 짧은 키를 위해)
   const HEAD_NAME: Record<string, string> = {
@@ -5031,17 +5053,17 @@ function AugmentInfoPanel({
   };
   const nameOf = (h: string): string => HEAD_NAME[h] ?? catalog[h]?.name ?? h;
   const tileRow = (k: string, tag: string, note: string, kinds: TileKind[]): JSX.Element => (
-    <div key={k} className="ainfo-row">
-      <span className="ainfo-tag">{tag}</span>
+    <div key={k} className="auglog-row">
+      <span className="auglog-tag">{tag}</span>
       {note !== "" ? <span>{note}</span> : null}
-      <span className="ainfo-tiles">
+      <span className="auglog-tiles">
         {kinds.map((kind, i) => <TileImg key={i} tile={{ kind }} size="mini" />)}
       </span>
     </div>
   );
   const textRow = (k: string, tag: string, note: string, tagClass = ""): JSX.Element => (
-    <div key={k} className="ainfo-row">
-      <span className={`ainfo-tag ${tagClass}`}>{tag}</span>
+    <div key={k} className="auglog-row">
+      <span className={`auglog-tag ${tagClass}`}>{tag}</span>
       <span>{note}</span>
     </div>
   );
@@ -5049,22 +5071,75 @@ function AugmentInfoPanel({
     Array.isArray(arr)
       ? (arr as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
       : [];
+  /** 이 문자열이 이 판의 좌석 id인가 — 폴백이 "p2"를 날것으로 찍는 것을 막는다 */
+  const isPlayerId = (s: string): boolean => view.players.some((p) => p.id === s);
+
+  /**
+   * 값이 **패 종류 키 하나**인 채널 — 폴백에 맡기면 `m3` 가 그대로 찍힌다(2026-08-01).
+   * head → 줄에 붙일 이름.
+   */
+  const KIND_VALUE: Record<string, string> = {
+    conjure_draw: "소환한 패",
+    "conjure_draw:done": "소환 성공",
+    grave_rob: "도굴한 패",
+    off_by_one: "한 끗 차이",
+    void_kan: "허공의 깡",
+    three_dragons_will: "삼원패의 의지",
+    haitei_lord: "해저의 주인",
+  };
+  /** 값이 **좌석 id**인 채널 — 폴백에 맡기면 `p2` 가 그대로 찍힌다(2026-08-01). */
+  const PLAYER_VALUE: Record<string, string> = {
+    counter: "반격",
+    full_hand_swap: "통째 교환",
+    riichi_upgrade: "이중 선언",
+  };
 
   for (const [key, value] of entries) {
     const [head, target] = key.split(":") as [string, string | undefined];
     const who = target === undefined ? "" : playerNameById(view, target);
 
-    // 아래 항목들은 액티브 버튼 옆 스트립/바닥 글로우에서 크게 보여주므로 패널에선 생략
+    // ── 다른 곳에 제자리가 있는 채널은 여기 찍지 않는다 ──────────────────
+    // 뒷도라: 중앙 도라 표시패 아래(center-ura-peek)
     if (head === "ura") continue;
-    // 복수자: 내 것과 나를 노리는 것은 ActiveInfoBadges가 크게 띄우므로 제3자 것만 여기 남긴다
+    // 오름패 간파: 상대 손패 위 WaitsBadge
+    if (head === "waits" || head === "open_riichi_reveal" || head === "free_declare_waits") continue;
+    // 위험패: 내 손패 위 ⚠ (hand-danger)
+    if (head === "danger_sense") continue;
+    // 삼세 예지: 손패 위 '다음 쯔모' 스트립
+    if (head === "triple_peek") continue;
+    // 미래를 보는 자가 가져온 패: 뱃지 줄(ActiveInfoBadges)
+    if (head === "future_sight" || head === "future_stacks") continue;
+    // 스파이가 찍은 패: 뱃지 줄
+    if (head === "spy") continue;
+    // 안개가 걷어낸 강의 마지막 패: 강(River)이 직접 그린다
+    if (head === "revealTiles" && (target === "fog" || target === "future")) continue;
+    // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
+    if (
+      head === "let_it_ride" ||
+      head === "karma" ||
+      head === "jackpot" ||
+      head === "yakuman_shield" ||
+      head === "devils_advance" ||
+      head === "eternal_dealer" ||
+      head === "late_bloomer" ||
+      head === "late_bloomer_east" ||
+      head === "hidden_river" ||
+      head === "riichi_seal" ||
+      head === "alchemist" ||
+      head === "dead_wall_master"
+    ) {
+      continue;
+    }
+    // 아래는 뱃지 줄이 **내 것만** 띄운다 — 제3자 관계만 로그에 남긴다.
     if (head === "avenger") {
-      if (target === view.playerId || value === view.playerId) continue;
+      if (target === me || value === me) continue;
       if (typeof value === "string" && value !== "") {
         rows.push(textRow(key, "복수", `${who} → ${playerNameById(view, value)}`));
       }
       continue;
     }
-    if (head === "scapegoat" && target === view.playerId) continue;
+    if (head === "scapegoat" && target === me) continue;
+    if (head === "honba_hunter" && target === me) continue;
 
     if (head === "revealTiles" && Array.isArray(value)) {
       // 봉인술사 — 상대의 봉인된 '실제' 손패를 진짜 패 그대로 보여준다.
@@ -5074,10 +5149,10 @@ function AugmentInfoPanel({
         .filter((t): t is PublicTileView => t !== undefined);
       if (tiles.length > 0) {
         rows.push(
-          <div key={key} className="ainfo-row">
-            <span className="ainfo-tag">봉인</span>
+          <div key={key} className="auglog-row">
+            <span className="auglog-tag">봉인</span>
             <span>{who}</span>
-            <span className="ainfo-tiles">
+            <span className="auglog-tiles">
               {tiles.map((t) => <TileImg key={t.id} tile={t} size="mini" />)}
             </span>
           </div>,
@@ -5088,19 +5163,10 @@ function AugmentInfoPanel({
       if (view.augmentView[`revealTiles:${target ?? ""}`] === undefined) {
         rows.push(tileRow(key, "봉인", who, kindsOf(value)));
       }
-    } else if (head === "waits") {
-      // 선언 간파 오름패는 상대 손패 위(WaitsBadge)에 상시 표시하므로 패널에서는 생략
     } else if (head === "suit_unify" && typeof value === "string") {
       rows.push(textRow(key, "단색", `${who}: ${suitKo[value] ?? value}`));
     } else if (head === "scapegoat" && typeof value === "string") {
       rows.push(textRow(key, "덤터기", `${who} → ${playerNameById(view, value)}`));
-    } else if (head === "let_it_ride") {
-      const m = value as { streak?: number; multiplier?: number } | null;
-      if (m !== null && typeof m === "object" && (m.multiplier ?? 1) > 1) {
-        rows.push(
-          textRow(key, "판돈", `${who}: ${m.streak ?? 0}연승 — 다음 화료 ×${m.multiplier}`),
-        );
-      }
     } else if (head === "take_back") {
       const kinds = typeof value === "string" ? kindsOf([value]) : [];
       if (kinds.length > 0) rows.push(tileRow(key, nameOf(head), who, kinds));
@@ -5109,9 +5175,10 @@ function AugmentInfoPanel({
     } else if (head === "all_or_nothing" && typeof value === "number") {
       rows.push(textRow(key, "올인", `${who}: ${value.toLocaleString()}점`));
     } else if (head === "rank_gate") {
-      // 격 — 지목 관계는 전면 컷인·상시 뱃지가 담당하지만, 제3자에게도 관계를 보여준다
+      // 격 — 지목 당사자(나)는 뱃지 줄이 크게 띄운다. 제3자 관계만 여기 남긴다.
       const m = value as { by?: string; target?: string; minHan?: number } | null;
       if (m !== null && typeof m === "object" && typeof m.target === "string") {
+        if (m.target === me || m.by === me) continue;
         rows.push(
           textRow(
             key,
@@ -5132,12 +5199,6 @@ function AugmentInfoPanel({
       rows.push(
         textRow(key, "천리안", names.length > 0 ? `텐파이: ${names.join(", ")}` : "텐파이인 상대 없음"),
       );
-    } else if (head === "danger_sense") {
-      // 지뢰 탐지 — 실제 손패 위에 ⚠로 직접 표시하므로(OwnHand의 hand-danger) 왼쪽 위 패널에선 생략.
-      continue;
-    } else if (head === "triple_peek") {
-      // 삼세 예지 — 손패 바로 위 '다음 쯔모' 스트립으로 크게 보여주므로 왼쪽 위 패널에선 생략.
-      continue;
     } else if (head === "regret" || head === "honor_return") {
       // 미련 — 유국 시 다음 국으로 이월되는 텐파이 손 / 귀환 — 다음 국 배패에 부활할 자패.
       // 두 채널 모두 TileKind 객체 배열을 싣는다(kindKey 문자열이 아니다).
@@ -5165,20 +5226,6 @@ function AugmentInfoPanel({
     } else if (head === "foresight") {
       // 예지 — 발동(공개)했다는 사실만 공개(무엇을 봤고 어떻게 짰는지는 비공개)
       rows.push(textRow(key, "예지", `${who}: 예지를 발동했다`));
-    } else if (head === "honba_hunter") {
-      // 본장 사냥꾼 — 본장이 쌓이는 것 자체가 테이블의 긴장이 되도록 상시 노출한다
-      const m = value as { honba?: number; perStick?: number; value?: number } | null;
-      if (m !== null && typeof m === "object") {
-        rows.push(
-          textRow(
-            key,
-            "본장 사냥꾼",
-            `${who}: ${m.honba ?? 0}본장 × ${(m.perStick ?? 0).toLocaleString()} = +${(m.value ?? 0).toLocaleString()}점`,
-          ),
-        );
-      }
-    } else if (head === "riichi_seal") {
-      rows.push(textRow(key, "리치 봉인", `${who}: 이번 국 다른 셋은 리치 불가`));
     } else if (head === "push_riichi") {
       // 등 떠밀기 — 낙인(누가 누구를) / 발동(강제 리치가 터진 순간).
       // 값이 playerId라 예전엔 아래 문자열 폴백이 "p2"를 그대로 찍었다(2026-08-01 보고).
@@ -5194,48 +5241,93 @@ function AugmentInfoPanel({
       // 기생충 — 지금 누구에게 붙어 있는지 (값이 숙주 playerId)
       if (typeof value !== "string" || value === "") continue;
       rows.push(textRow(key, "기생", `${who} → ${playerNameById(view, value)}`));
+    } else if (head === "reload") {
+      // 재장전 — 값이 augmentId다. 폴백에 맡기면 "late_bloomer"가 그대로 찍혔다(2026-08-01).
+      if (typeof value !== "string" || value === "") continue;
+      rows.push(textRow(key, "재장전", `${who}: 「${augmentDisplayName(value)}」 재사용`));
     } else if (head === "disarm") {
-      // 무장해제 — 누가 누구의 어떤 증강을 잠갔는지.
-      // 값이 객체라 예전엔 어떤 분기에도 안 걸려 **화면에 아무것도 안 떴다** —
-      // "무장해제가 안 잠긴다"는 보고의 정체(2026-08-01).
+      // 무장해제 — 당사자(나)는 뱃지 줄 + 이름표 pill 자물쇠가 이미 보여준다.
       const m = value as { target?: string; augmentId?: string } | null;
       if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
-      const augName = catalog[m.augmentId ?? ""]?.name ?? m.augmentId ?? "";
+      if (m.target === me || target === me) continue;
       rows.push(
         textRow(
           key,
           "🔒 무장해제",
-          `${who} → ${playerNameById(view, m.target)}의 「${augName}」 이번 국 잠김`,
+          `${who} → ${playerNameById(view, m.target)}의 「${augmentDisplayName(m.augmentId ?? "")}」 이번 국 잠김`,
         ),
       );
+    } else if (KIND_VALUE[key] !== undefined || KIND_VALUE[head] !== undefined) {
+      // 값이 패 종류 키 하나인 채널 — 글자가 아니라 실제 패로 그린다.
+      const label = KIND_VALUE[key] ?? KIND_VALUE[head] ?? head;
+      const kinds = typeof value === "string" ? kindsOf([value]) : [];
+      if (kinds.length > 0) rows.push(tileRow(key, label, who, kinds));
+    } else if (PLAYER_VALUE[head] !== undefined) {
+      // 값이 좌석 id인 채널 — 이름으로 푼다.
+      if (typeof value !== "string" || value === "") continue;
+      rows.push(textRow(key, PLAYER_VALUE[head] ?? head, `${who} → ${playerNameById(view, value)}`));
+    } else if (typeof value === "boolean") {
+      // 발동 사실만 싣는 채널(진짜 용·개벽·배짱 등) — 예전엔 어떤 분기에도 안 걸려
+      // 채널을 쐈는데 **화면에 아무것도 안 떴다**(2026-08-01 감사).
+      if (!value) continue;
+      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}발동`));
     } else if (typeof value === "number") {
       rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} — ` : ""}스택 ${value}`));
     } else if (typeof value === "string") {
-      // roundKey(예: "1-1-0") 등 내부값은 "선언" 플래그로만 표시 (원시값 노출 방지)
-      const clean = /^\d+-\d+-\d+$/.test(value) ? "선언" : value;
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}${clean}`));
+      // 폴백 안전망 — 내부값이 그대로 새어나가지 않게 좌석 id·패 키·roundKey를 먼저 푼다.
+      const asKind = parseKindKey(value);
+      if (isPlayerId(value)) {
+        rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} → ` : ""}${playerNameById(view, value)}`));
+      } else if (asKind !== null) {
+        rows.push(tileRow(key, nameOf(head), who, [asKind]));
+      } else {
+        const clean = /^\d+-\d+-\d+$/.test(value) ? "선언" : value;
+        rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}${clean}`));
+      }
     }
   }
 
+  return rows;
+}
+
+/**
+ * 증강 정보 로그 — 우상단 📜 버튼 뒤에 접혀 있다(기본 닫힘).
+ * 열림 상태는 GameTable이 들고 있다(설정 패널과 같은 자리라 둘 중 하나만 열린다).
+ */
+function AugmentLog({
+  view,
+  catalog,
+  open,
+  onToggle,
+}: {
+  view: PlayerView;
+  catalog: Record<string, AugmentCatalogEntry>;
+  open: boolean;
+  onToggle: () => void;
+}): JSX.Element | null {
+  const rows = augmentLogRows(view, catalog);
   if (rows.length === 0) return null;
-  // 줄이 쌓이면 왼쪽 상대(상가)를 통째로 덮는다 — 기본은 세 줄까지만 보여주고
-  // 나머지는 접는다(펼치면 스크롤되는 상자 안에서만 길어진다). 2026-08-01 보고.
-  const COLLAPSED = 3;
-  const hidden = rows.length - COLLAPSED;
-  const shown = expanded || hidden <= 0 ? rows : rows.slice(0, COLLAPSED);
   return (
-    <div className={`ainfo${expanded ? " ainfo-expanded" : ""}`}>
-      {shown}
-      {hidden > 0 ? (
-        <button
-          type="button"
-          className="ainfo-more"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          {expanded ? "▲ 접기" : `▼ ${hidden}개 더`}
-        </button>
+    <>
+      <button
+        type="button"
+        className={`icon-btn auglog-btn${open ? " auglog-btn-on" : ""}`}
+        onClick={onToggle}
+        title="증강 정보 로그"
+      >
+        📜
+        <span className="auglog-count">{rows.length}</span>
+      </button>
+      {open ? (
+        <div className="auglog">
+          <div className="auglog-head">
+            증강 정보
+            <button type="button" className="auglog-close" onClick={onToggle} title="닫기">✕</button>
+          </div>
+          <div className="auglog-body">{rows}</div>
+        </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
