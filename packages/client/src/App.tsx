@@ -4476,6 +4476,7 @@ function GameTable(props: {
     <SelectionContext.Provider value={selection}>
     <HighlightContext.Provider value={hoverKind}>
     <DoraContext.Provider value={doraFx}>
+    <RelationProvider view={view}>
     <div className="table" ref={tableRef}>
       {props.spectator === true ? (
         <div className="spectate-bar">
@@ -4544,8 +4545,6 @@ function GameTable(props: {
         <CenterPanel view={view} seats={seats} scoreFx={props.scoreFx} />
       </div>
 
-      <RelationArrows view={view} />
-
       <AugmentLog
         view={view}
         catalog={catalog}
@@ -4594,6 +4593,7 @@ function GameTable(props: {
         {...(props.onHandOrder !== undefined ? { onHandOrder: props.onHandOrder } : {})}
       />
     </div>
+    </RelationProvider>
     </DoraContext.Provider>
     </HighlightContext.Provider>
     </SelectionContext.Provider>
@@ -5021,25 +5021,26 @@ function AbortVoteBanner(props: {
 // ─────────────────────────── 지목 관계 화살표 ───────────────────────────
 
 /**
- * "A가 B를 지목했다"는 관계를 **좌석과 좌석을 잇는 화살표**로 그린다.
+ * "A가 B를 지목했다"는 관계를 **양쪽 이름표 위의 작은 표식**으로 보여준다.
  *
  * 이 관계들은 예전에 전부 글줄이었다 — `복수 남풍 → 서풍`, `기생 동풍 → 북풍`,
  * `격(格) 서풍 → 남풍 (5판 미만 화료 불가)` … 아홉 종이 한꺼번에 걸리면 목록의
- * 절반을 먹는다. 관계는 글이 아니라 선으로 읽는 게 빠르다.
+ * 절반을 먹는다.
  *
- * 곡선은 판 **바깥쪽으로** 휜다 — 안쪽으로 휘면 바닥(강)과 도라 표시패를 가로지른다.
- * 양 끝점은 좌석 좌표를 박아 두는 대신 이름표(`[data-seat-anchor]`)의 실제 화면
- * 위치를 재서 쓴다. 화면 크기·이름표 길이가 바뀌어도 따라온다.
+ * ⚠ 한때 좌석과 좌석을 잇는 **화살표**로 그렸다가 되돌렸다(2026-08-01 사용자 보고
+ * — "화면 전체를 그어버린다 · 판을 가린다"). 맞은편 좌석끼리는 선이 화면을 통째로
+ * 가로지를 수밖에 없어서, 곡선을 아무리 판 바깥으로 돌려도 시야를 먹었다.
+ * 관계는 **관계에 걸린 사람 위**에 앉히는 게 맞다 — 판 위에는 아무것도 그리지 않는다.
  */
 type Relation = {
   key: string;
   from: string;
   to: string;
-  /** 곡선 가운데에 앉는 표식 */
+  /** 이름표 표식에 앉는 아이콘 */
   icon: string;
   /** 표식에 붙는 짧은 이름 */
   label: string;
-  /** 선 색 */
+  /** 표식 색 */
   color: string;
 };
 
@@ -5056,7 +5057,7 @@ const RELATION_META: Record<string, { icon: string; label: string; color: string
   full_hand_swap: { icon: "🔀", label: "통째 교환", color: "#5fd0c0" },
 };
 
-/** 이 화살표들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
+/** 이 표식들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
 const RELATION_HEADS: ReadonlySet<string> = new Set(Object.keys(RELATION_META));
 
 /** augmentView에서 지금 살아 있는 지목 관계를 뽑는다 */
@@ -5096,152 +5097,44 @@ function relationsOf(view: PlayerView): Relation[] {
   return out;
 }
 
-/** 이름표 중심의 화면 좌표 (오버레이 기준) */
-type Anchor = { x: number; y: number };
+/**
+ * 지금 마우스를 올린 관계 — 한쪽 이름표의 표식에 손을 대면 **상대 이름표가 함께
+ * 빛난다**. 관계는 두 자리에 걸쳐 있어서, 한쪽만 강조하면 어디로 향하는지 모른다.
+ */
+const RelationHoverContext = createContext<{
+  /** 이 판에 걸린 지목 관계 전부 */
+  relations: readonly Relation[];
+  hovered: string | null;
+  setHovered: (key: string | null) => void;
+}>({ relations: [], hovered: null, setHovered: () => undefined });
 
-function RelationArrows({ view }: { view: PlayerView }): JSX.Element | null {
+/**
+ * 지목 관계를 이름표에 흘려보내는 공급자. GameTable이 한 번 감싸면 좌석마다 다른
+ * 컴포넌트(OpponentStrip·OwnArea)를 지나는 prop 배관 없이 NamePlate가 바로 읽는다.
+ */
+function RelationProvider({
+  view,
+  children,
+}: {
+  view: PlayerView;
+  children: React.ReactNode;
+}): JSX.Element {
+  const [hovered, setHovered] = useState<string | null>(null);
   const relations = relationsOf(view);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-  const [anchors, setAnchors] = useState<Record<string, Anchor>>({});
-  // 어떤 관계에 마우스를 올렸는가 — 그 선만 남기고 나머지는 죽인다
-  const [hover, setHover] = useState<string | null>(null);
-
-  // 이름표는 우리 바깥에 있으므로(좌석마다 다른 컨테이너) DOM에서 직접 잰다.
-  // view가 바뀔 때마다 다시 재는 이유: 증강 pill이 늘면 이름표 크기가 변한다.
-  useEffect(() => {
-    const host = hostRef.current;
-    if (host === null) return undefined;
-    const measure = (): void => {
-      const hr = host.getBoundingClientRect();
-      const next: Record<string, Anchor> = {};
-      for (const p of view.players) {
-        const el = document.querySelector(`[data-seat-anchor="${p.id}"]`);
-        if (el === null) continue;
-        const r = el.getBoundingClientRect();
-        next[p.id] = {
-          x: r.left + r.width / 2 - hr.left,
-          y: r.top + r.height / 2 - hr.top,
-        };
-      }
-      setSize({ w: hr.width, h: hr.height });
-      setAnchors(next);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(host);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [view]);
-
-  if (relations.length === 0) return <div className="rel-arrows" ref={hostRef} />;
-
-  const cx = size.w / 2;
-  const cy = size.h / 2;
-  // 좌석 고리의 반지름 — 판 중심에서 가장 먼 이름표까지의 거리.
-  // 곡선을 이 바깥으로 돌려야 세로로 긴 화면에서도 바닥을 가로지르지 않는다.
-  const ring = Math.max(
-    1,
-    ...Object.values(anchors).map((p) => Math.hypot(p.x - cx, p.y - cy)),
+  const value = useMemo(
+    () => ({ relations, hovered, setHovered }),
+    // relations는 매 렌더 새 배열이라 내용으로 비교한다(키 목록이 곧 내용이다)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [relations.map((r) => `${r.key}:${r.from}:${r.to}`).join("|"), hovered],
   );
-  const drawn: JSX.Element[] = [];
-
-  relations.forEach((rel, i) => {
-    const a = anchors[rel.from];
-    const b = anchors[rel.to];
-    if (a === undefined || b === undefined) return;
-
-    // 제어점은 좌석 고리 **바깥**에 둔다 — 안쪽으로 휘면 바닥(강)과 도라를 가로지른다.
-    // 방향은 두 끝의 가운데가 판 중심에서 벗어난 쪽. 맞은편 좌석끼리는 가운데가 곧
-    // 판 중심이라 밀 방향이 없으므로, 두 좌석을 잇는 선의 수직으로 비킨다.
-    const mx = (a.x + b.x) / 2;
-    const my = (a.y + b.y) / 2;
-    let dirX = mx - cx;
-    let dirY = my - cy;
-    const dist = Math.hypot(dirX, dirY);
-    const opposite = dist < ring * 0.12;
-    if (opposite) {
-      // 방향을 **좌석 id 순서로 고정**한 뒤 실제 진행 방향에 따라 부호를 뒤집는다 —
-      // 이렇게 해야 A→B와 B→A가 서로 반대쪽으로 휜다. (b-a에서 바로 수직을 뽑으면
-      // 벡터와 부호가 함께 뒤집혀 두 화살표가 같은 쪽에 포개진다.)
-      const forward = rel.from < rel.to;
-      const lo = forward ? a : b;
-      const hi = forward ? b : a;
-      const len = Math.hypot(hi.x - lo.x, hi.y - lo.y) || 1;
-      const sign = forward ? 1 : -1;
-      dirX = (-(hi.y - lo.y) / len) * sign;
-      dirY = ((hi.x - lo.x) / len) * sign;
-    } else {
-      dirX /= dist;
-      dirY /= dist;
-    }
-    // 반지름은 **좌석 고리 기준**이다(화면 크기 기준이면 세로로 긴 화면에서 판을
-    // 못 비켜간다). 맞은편끼리는 화면을 가로지르므로 더 크게 부풀린다.
-    // i를 더해 같은 두 좌석에 여러 관계가 걸려도 선이 포개지지 않게 한다.
-    const wanted = ring * (opposite ? 1.15 : 0.95) + i * 16;
-    // 곡선의 꼭대기는 제어점까지 거리의 절반이다 — 그 지점이 화면 밖으로 나가지
-    // 않도록 반지름을 자른다(세로로 긴 화면에서 좌우로 부푸는 곡선이 잘렸다).
-    const margin = 18;
-    const tx = dirX > 0 ? (size.w - margin - cx) / dirX : dirX < 0 ? (margin - cx) / dirX : Infinity;
-    const ty = dirY > 0 ? (size.h - margin - cy) / dirY : dirY < 0 ? (margin - cy) / dirY : Infinity;
-    const radius = Math.min(wanted, 2 * Math.min(tx, ty));
-    const px = cx + dirX * radius;
-    const py = cy + dirY * radius;
-
-    // 표식이 앉을 자리 — 곡선 위 한 점.
-    // 맞은편 좌석끼리는 곡선의 한가운데가 곧 좌·우 이름표 높이라 표식이 이름표를
-    // 덮는다. 그래서 조금 앞당겨 앉힌다(t=0.35).
-    const t = opposite ? 0.35 : 0.5;
-    const it = 1 - t;
-    const lx = it * it * a.x + 2 * t * it * px + t * t * b.x;
-    const ly = it * it * a.y + 2 * t * it * py + t * t * b.y;
-    // 끝점의 접선 방향으로 화살촉을 돌린다
-    const angle = (Math.atan2(b.y - py, b.x - px) * 180) / Math.PI;
-
-    // 선은 이름표 **가장자리**에서 끊는다 — 중심까지 그으면 닉네임 위를 덮는다.
-    const back = (from: Anchor, toward: Anchor, by: number): Anchor => {
-      const len = Math.hypot(toward.x - from.x, toward.y - from.y) || 1;
-      return { x: from.x + ((toward.x - from.x) / len) * by, y: from.y + ((toward.y - from.y) / len) * by };
-    };
-    const start = back(a, { x: px, y: py }, 26);
-    const end = back(b, { x: px, y: py }, 26);
-
-    const dim = hover !== null && hover !== rel.key;
-    drawn.push(
-      <g
-        key={rel.key}
-        className={`rel-arrow${dim ? " rel-arrow-dim" : ""}`}
-        style={{ color: rel.color }}
-        onMouseEnter={() => setHover(rel.key)}
-        onMouseLeave={() => setHover(null)}
-      >
-        <path
-          className="rel-arrow-line"
-          d={`M ${start.x} ${start.y} Q ${px} ${py} ${end.x} ${end.y}`}
-          fill="none"
-        />
-        <polygon className="rel-arrow-head" points="0,0 -13,-5.5 -13,5.5" transform={`translate(${end.x} ${end.y}) rotate(${angle})`} />
-        <g transform={`translate(${lx} ${ly})`}>
-          <circle className="rel-arrow-dot" r="12" />
-          <text className="rel-arrow-icon" textAnchor="middle" dominantBaseline="central">
-            {rel.icon}
-          </text>
-          <title>{`${rel.label} — ${playerNameById(view, rel.from)} → ${playerNameById(view, rel.to)}`}</title>
-        </g>
-      </g>,
-    );
-  });
-
   return (
-    <div className="rel-arrows" ref={hostRef}>
-      {drawn.length > 0 ? (
-        <svg width={size.w} height={size.h} aria-hidden="true">{drawn}</svg>
-      ) : null}
-    </div>
+    <RelationHoverContext.Provider value={value}>{children}</RelationHoverContext.Provider>
   );
+}
+
+/** 이 이름표에 걸린 관계 — 내가 지목한 것과 나를 지목한 것 */
+function relationsAt(relations: readonly Relation[], playerId: string): Relation[] {
+  return relations.filter((r) => r.from === playerId || r.to === playerId);
 }
 
 // ─────────────────────────── 증강 정보 로그 ───────────────────────────
@@ -5341,8 +5234,8 @@ function augmentLogRows(
     if (head === "revealTiles" && (target === "fog" || target === "future")) continue;
     // 잔량·게이지·발동 여부는 그 사람의 이름표 증강 pill이 대신 보여준다.
     if (PILL_OWNED_HEADS.has(head)) continue;
-    // "A가 B를 지목했다"는 관계는 좌석과 좌석을 잇는 화살표(RelationArrows)가 그린다.
-    // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 선으로 못 쓰므로 뱃지 줄에 남는다.
+    // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
+    // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 표식으로 못 쓰므로 뱃지 줄에 남는다.
     if (RELATION_HEADS.has(head)) continue;
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
     if (
@@ -6587,10 +6480,16 @@ function NamePlate({
   // 잠금이 화면 어디에도 드러나지 않아 "무장해제가 안 먹는다"로 보였다(2026-08-01).
   const disarmed = disarmedAugmentsOf(view, player.id);
   const reloaded = reloadedAugmentsOf(view, player.id);
+  // 이 사람에게 걸린 지목 관계 — 판 위에 선을 긋는 대신 양쪽 이름표에 표식을 앉힌다.
+  const { relations, hovered, setHovered } = useContext(RelationHoverContext);
+  const myRelations = relationsAt(relations, player.id);
+  // 상대 이름표의 표식에 손이 올라가 있고 그 관계가 나를 향하면 나도 같이 빛난다
+  const linked =
+    hovered !== null && myRelations.some((r) => r.key === hovered);
   return (
-    // data-seat-anchor — 지목 관계 화살표(RelationArrows)가 이 이름표의 실제
-    // 화면 위치를 재서 곡선의 양 끝으로 삼는다. 좌석 좌표를 코드에 박지 않는다.
-    <div className={`nameplate${isTurn ? " nameplate-turn" : ""}`} data-seat-anchor={player.id}>
+    <div
+      className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}`}
+    >
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
       {player.augments.length > 0 ? (
@@ -6640,6 +6539,32 @@ function NamePlate({
                     <span className="aug-tip-desc">{entry.description}</span>
                   ) : null}
                 </span>
+              </span>
+            );
+          })}
+        </span>
+      ) : null}
+      {myRelations.length > 0 ? (
+        <span className="np-rels">
+          {myRelations.map((r) => {
+            const outgoing = r.from === player.id;
+            const other = playerNameById(view, outgoing ? r.to : r.from);
+            return (
+              // tabIndex — 터치에는 hover가 없다. 탭하면 포커스로 상대가 빛난다.
+              <span
+                key={r.key}
+                className={`np-rel${outgoing ? " np-rel-out" : " np-rel-in"}${hovered === r.key ? " np-rel-on" : ""}`}
+                style={{ color: r.color }}
+                tabIndex={0}
+                title={`${r.label} — ${playerNameById(view, r.from)} → ${playerNameById(view, r.to)}`}
+                onMouseEnter={() => setHovered(r.key)}
+                onMouseLeave={() => setHovered(null)}
+                onFocus={() => setHovered(r.key)}
+                onBlur={() => setHovered(null)}
+              >
+                <span className="np-rel-icon">{r.icon}</span>
+                <span className="np-rel-dir">{outgoing ? "→" : "←"}</span>
+                <span className="np-rel-who">{other}</span>
               </span>
             );
           })}

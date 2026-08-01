@@ -3787,65 +3787,77 @@ button {
   100% { transform: translate(-50%, -26px); opacity: 0; }
 }
 
-/* ─────────────── 지목 관계 화살표 ─────────────── */
+/* ─────────────── 지목 관계 표식 (이름표 위) ─────────────── */
 
-/* "A가 B를 지목했다"를 좌석과 좌석을 잇는 곡선으로 그린다.
-   곡선은 판 바깥으로 휘어 바닥(강)·도라 표시패 위를 지나지 않는다. */
+/* "A가 B를 지목했다"를 **양쪽 이름표**에 앉힌다.
+   한때 좌석과 좌석을 잇는 화살표로 그렸다가 되돌렸다 — 맞은편끼리는 선이 화면을
+   통째로 가로질러 판(바닥·도라)을 가렸다(2026-08-01 보고). 판 위에는 아무것도 안 그린다. */
 
-.rel-arrows {
-  position: absolute;
-  inset: 0;
-  z-index: 8;
-  /* 판 위에 얹히는 장식이다 — 패를 누르는 것을 절대 가로막지 않는다.
-     표식(rel-arrow-dot)만 예외로 마우스를 받는다. */
-  pointer-events: none;
-  overflow: hidden;
+.np-rels {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
-.rel-arrow {
-  opacity: 0.9;
-  transition: opacity 0.2s var(--ease);
-}
-
-/* 하나에 마우스를 올리면 나머지는 뒤로 물러난다 (선이 여럿일 때 따라 읽기) */
-.rel-arrow-dim {
-  opacity: 0.22;
-}
-
-.rel-arrow-line {
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-dasharray: 7 6;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75));
-  animation: rel-flow 1.4s linear infinite;
-}
-
-@keyframes rel-flow {
-  to { stroke-dashoffset: -26; }
-}
-
-.rel-arrow-head {
-  fill: currentColor;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75));
-}
-
-.rel-arrow-dot {
-  fill: rgba(11, 19, 16, 0.94);
-  stroke: currentColor;
-  stroke-width: 2;
-  pointer-events: auto;
+.np-rel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  /* 색은 증강마다 다르다 — style의 color를 테두리·글자에 함께 쓴다 */
+  color: inherit;
+  border: 1px solid currentColor;
+  background: rgba(11, 19, 16, 0.72);
   cursor: help;
+  transition: box-shadow 0.15s var(--ease), background 0.15s var(--ease);
 }
 
-.rel-arrow-icon {
-  font-size: 14px;
-  pointer-events: none;
-  user-select: none;
+/* 나를 지목한 것은 조금 더 무겁게 — 대응이 필요한 쪽이다 */
+.np-rel-in {
+  background: rgba(11, 19, 16, 0.92);
+  box-shadow: inset 0 0 0 1px currentColor;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .rel-arrow-line { animation: none; }
+/* 표식에 손을 올린 동안 */
+.np-rel-on {
+  background: rgba(36, 53, 44, 0.96);
+  box-shadow: 0 0 0 2px currentColor;
+}
+
+.np-rel-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.np-rel-dir {
+  opacity: 0.85;
+}
+
+.np-rel-who {
+  color: #f7f3e8;
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 좁은 화면에서는 상대 이름을 접고 아이콘+방향만 남긴다.
+   좌·우 이름표는 화면 절반씩을 쓰므로, 표식이 두어 개만 붙어도 가운데에서 서로
+   부딪힌다. 누구인지는 표식을 탭하면(title) 그대로 나온다. */
+@media (max-width: 700px) {
+  .np-rel-who { display: none; }
+  .np-rel { padding: 2px 6px; gap: 3px; }
+}
+
+/* 한쪽 표식에 손을 대면 관계의 **반대편 이름표**가 함께 빛난다 —
+   관계는 두 자리에 걸쳐 있어서 한쪽만 강조하면 어디로 향하는지 모른다. */
+.nameplate-linked {
+  border-color: rgba(240, 200, 106, 0.85);
+  box-shadow: 0 0 0 2px rgba(240, 200, 106, 0.35);
 }
 
 /* ─────────────── 증강 정보 로그 (우상단, 기본 접힘) ─────────────── */
