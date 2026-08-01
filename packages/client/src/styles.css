@@ -3727,43 +3727,91 @@ button {
   100% { transform: translate(-50%, -26px); opacity: 0; }
 }
 
-/* ─────────────── 증강 정보 패널 ─────────────── */
+/* ─────────────── 증강 정보 로그 (우상단, 기본 접힘) ─────────────── */
 
-.ainfo {
+/* 예전엔 이 목록이 왼쪽 위(left:14 / top:60)에 상시로 펼쳐져 왼쪽 상대를 덮었다.
+   지금은 📜 버튼 뒤에 접혀 있고, 설정 패널과 같은 자리에 뜬다(둘 중 하나만 열림). */
+
+.auglog-btn {
+  right: 114px;
+}
+
+.auglog-btn-on {
+  background: rgba(21, 33, 25, 0.95);
+  color: #ece4d2;
+  border-color: rgba(199, 188, 255, 0.6);
+}
+
+.auglog-count {
   position: absolute;
-  left: 14px;
-  top: 60px;
-  z-index: 20;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(165, 145, 255, 0.95);
+  color: #14121f;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 17px;
+}
+
+.auglog {
+  position: fixed;
+  top: 62px;
+  right: 14px;
+  z-index: 90;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(70vh, calc(100dvh - 84px));
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  padding: 10px 14px 12px;
+  border-radius: 14px;
+  background: rgba(13, 23, 18, 0.97);
+  border: 1px solid rgba(199, 188, 255, 0.45);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  animation: bar-in 0.18s ease-out;
+}
+
+.auglog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  font-size: 15px;
+  font-weight: 800;
+  color: #d8d2ff;
+  letter-spacing: 3px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.auglog-close {
+  border: none;
+  background: none;
+  color: #8b97a0;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.auglog-close:hover {
+  color: #ece4d2;
+}
+
+.auglog-body {
+  display: flex;
+  flex-direction: column;
+  /* 떠 있던 시절과 달리 지금은 상자 안이다 — 줄 폭을 상자에 맞춰 가지런히 둔다 */
+  align-items: stretch;
   gap: 7px;
-  max-width: 320px;
-  /* 펼쳐도 화면 절반을 넘기지 않는다 — 그 아래는 스크롤로 본다.
-     (예전엔 줄 수만큼 무한정 자라 왼쪽 상대를 덮었다) */
-  max-height: 46vh;
+  padding-top: 9px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 
-.ainfo-more {
-  align-self: flex-start;
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(199, 188, 255, 0.45);
-  background: rgba(11, 19, 16, 0.9);
-  color: #d8d2ff;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.ainfo-more:hover {
-  border-color: rgba(199, 188, 255, 0.8);
-}
-
-.ainfo-row {
+.auglog-row {
   display: flex;
   flex: 0 0 auto; /* 스크롤 상자 안에서 줄이 찌부러지지 않게 */
   align-items: center;
@@ -3772,13 +3820,11 @@ button {
   border-radius: 10px;
   background: rgba(11, 19, 16, 0.9);
   border: 1px solid rgba(199, 188, 255, 0.45);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
   font-size: 14px;
   color: #f7f3e8;
-  animation: bar-in 0.25s ease-out;
 }
 
-.ainfo-tag {
+.auglog-tag {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
@@ -3788,15 +3834,12 @@ button {
   white-space: nowrap;
 }
 
-.ainfo-tag-seal { background: rgba(201, 75, 75, 0.42); color: #f7f3e8; }
-.ainfo-tag-peek { background: rgba(74, 154, 195, 0.42); color: #f7f3e8; }
-
-.ainfo-tiles {
+.auglog-tiles {
   display: inline-flex;
   gap: 3px;
 }
 
-.ainfo-tiles .tile-mini {
+.auglog-tiles .tile-mini {
   width: 23px;
   height: 33px;
 }
@@ -5131,6 +5174,7 @@ button {
   }
   .leave-btn { right: 8px; }
   .settings-btn { right: 48px; }
+  .auglog-btn { right: 88px; }
 
   /* 이름표가 화면 폭을 거의 다 쓰므로 우상단 아이콘 버튼 아래로 내린다 */
   .opp-strip-top {
@@ -5216,15 +5260,13 @@ button {
   /* 게임 무효 투표 배너가 상단 아이콘 버튼과 겹치지 않게 */
   .abort-banner { max-width: calc(100vw - 12px); }
 
-  /* 증강 정보 패널 — top:60px는 아래로 내려온 상대 이름표와 겹친다 */
-  .ainfo {
-    left: 6px;
-    top: 108px;
-    gap: 5px;
-    max-width: calc(100vw - 12px);
-    max-height: 38vh;
+  /* 증강 정보 로그 — 좁은 화면에서는 화면 폭을 거의 다 쓴다 */
+  .auglog {
+    right: 6px;
+    width: calc(100vw - 12px);
+    max-height: 60vh;
   }
-  .ainfo-row {
+  .auglog-row {
     padding: 5px 9px;
     gap: 6px;
     font-size: 12px;
@@ -5280,6 +5322,7 @@ button {
   .icon-btn { top: 8px; width: 34px; height: 34px; font-size: 15px; }
   .leave-btn { right: 8px; }
   .settings-btn { right: 48px; }
+  .auglog-btn { right: 88px; }
   /* 가로에서는 폭이 넉넉하다 — 맞은편 상대는 다시 한 줄로 */
   .opp-strip-top { top: 8px; flex-direction: row; gap: 10px; }
   /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
