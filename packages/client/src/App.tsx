@@ -5113,20 +5113,14 @@ function augmentLogRows(
     if (head === "spy") continue;
     // 안개가 걷어낸 강의 마지막 패: 강(River)이 직접 그린다
     if (head === "revealTiles" && (target === "fog" || target === "future")) continue;
+    // 잔량·게이지·발동 여부는 그 사람의 이름표 증강 pill이 대신 보여준다.
+    if (PILL_OWNED_HEADS.has(head)) continue;
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
     if (
       head === "let_it_ride" ||
-      head === "karma" ||
       head === "jackpot" ||
-      head === "yakuman_shield" ||
-      head === "devils_advance" ||
-      head === "eternal_dealer" ||
-      head === "late_bloomer" ||
-      head === "late_bloomer_east" ||
       head === "hidden_river" ||
-      head === "riichi_seal" ||
-      head === "alchemist" ||
-      head === "dead_wall_master"
+      head === "riichi_seal"
     ) {
       continue;
     }
@@ -5241,10 +5235,6 @@ function augmentLogRows(
       // 기생충 — 지금 누구에게 붙어 있는지 (값이 숙주 playerId)
       if (typeof value !== "string" || value === "") continue;
       rows.push(textRow(key, "기생", `${who} → ${playerNameById(view, value)}`));
-    } else if (head === "reload") {
-      // 재장전 — 값이 augmentId다. 폴백에 맡기면 "late_bloomer"가 그대로 찍혔다(2026-08-01).
-      if (typeof value !== "string" || value === "") continue;
-      rows.push(textRow(key, "재장전", `${who}: 「${augmentDisplayName(value)}」 재사용`));
     } else if (head === "disarm") {
       // 무장해제 — 당사자(나)는 뱃지 줄 + 이름표 pill 자물쇠가 이미 보여준다.
       const m = value as { target?: string; augmentId?: string } | null;
@@ -6281,6 +6271,120 @@ function disarmedAugmentsOf(view: PlayerView, playerId: string): Set<string> {
   return out;
 }
 
+/** 재장전으로 이번 게임에 되살린 이 사람의 증강 (pill에 ♻를 붙인다) */
+function reloadedAugmentsOf(view: PlayerView, playerId: string): Set<string> {
+  const out = new Set<string>();
+  const v = view.augmentView[`reload:${playerId}`];
+  if (typeof v === "string" && v !== "") out.add(v);
+  return out;
+}
+
+/**
+ * 이름표의 증강 pill에 얹는 상태 — **잔량·게이지·발동 여부**.
+ *
+ * 이 정보들은 예전에 전부 화면 왼쪽 위 목록에 "스택 3", "연장 (남은 2회)" 같은
+ * 글줄로 쌓여 있었다. 정보의 제자리는 그 정보가 가리키는 대상, 곧 **그 사람의 그
+ * 증강 pill 위**다 — 무장해제의 자물쇠(aug-pill-locked)가 이미 쓰고 있는 자리다.
+ */
+type PillStatus = {
+  /** pill 오른쪽에 붙는 짧은 글 ("3회", "🛡2", "만개" …) */
+  chip: string;
+  /** 0~1 게이지 (지금은 카르마 업보만) */
+  gauge?: number;
+  /** 툴팁에 붙는 한 줄 설명 */
+  note: string;
+};
+
+/** 카르마 청산선 — 이 값을 넘으면 게이지가 가득 찬다 */
+const KARMA_FULL = 8000;
+
+/** 값이 숫자인 잔량·게이지 채널 — 채널 키는 `{augId}:{playerId}` */
+const PILL_NUMBER: Record<string, (n: number) => PillStatus | null> = {
+  yakuman_shield: (n) => (n > 0 ? { chip: `🛡${n}`, note: `역만 ${n}회 방어` } : null),
+  karma: (n) =>
+    n > 0
+      ? {
+          chip: n.toLocaleString(),
+          gauge: Math.min(1, n / KARMA_FULL),
+          note:
+            n >= KARMA_FULL
+              ? `업보 ${n.toLocaleString()} — 청산 가능`
+              : `업보 ${n.toLocaleString()} / ${KARMA_FULL.toLocaleString()}`,
+        }
+      : null,
+  hourglass: (n) => (n > 0 ? { chip: `${n}장`, note: `되돌린 패 ${n}장` } : null),
+  north_trader: (n) => (n > 0 ? { chip: `北${n}`, note: `빼놓은 北 ${n}장` } : null),
+};
+
+/** 값이 상태 문자열인 채널 — 그 글을 그대로 pill에 붙인다 */
+const PILL_TEXT = new Set([
+  "eternal_dealer",
+  "devils_advance",
+  "late_bloomer",
+  "late_bloomer_east",
+  "cliff_bloom",
+]);
+
+/**
+ * 발동 사실만 싣는 boolean 채널 — 예전엔 어떤 표시에도 안 걸려 채널을 쐈는데
+ * 화면에 아무것도 안 떴다(2026-08-01 감사).
+ */
+const PILL_FLAG = new Set([
+  "even_world",
+  "genesis",
+  "giant_god",
+  "die_hard",
+  "bluff_pretense",
+  "silent_pact",
+  "xray_hand",
+]);
+
+/**
+ * 이름표 증강 pill이 대신 보여주는 채널 — 증강 정보 로그(augmentLogRows)에는 남기지 않는다.
+ * 새 증강의 잔량·상태를 pill에 붙였다면 여기에도 넣어야 두 군데에 겹쳐 뜨지 않는다.
+ */
+const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
+  ...Object.keys(PILL_NUMBER),
+  ...PILL_TEXT,
+  ...PILL_FLAG,
+  "alchemist",
+  "dead_wall_master",
+  "reload",
+]);
+
+function augmentPillStatus(
+  view: PlayerView,
+  playerId: string,
+  augId: string,
+): PillStatus | null {
+  const av = view.augmentView;
+
+  // 보유자 화면에만 실리는 잔량 채널 — 남의 pill에는 애초에 값이 없다.
+  if (augId === "alchemist") {
+    const left = av["alchemist:left"];
+    if (typeof left !== "number") return null;
+    return { chip: `${left}회`, note: `연금술 ${left}회 남음` };
+  }
+  if (augId === "dead_wall_master") {
+    const left = av[`dead_wall_master:remaining:${playerId}`];
+    if (typeof left !== "number" || left <= 0) return null;
+    return { chip: `${left}회`, note: `이번 국 왕패 교환 ${left}회 남음` };
+  }
+
+  const raw = av[`${augId}:${playerId}`];
+  if (raw === undefined) return null;
+
+  const asNumber = PILL_NUMBER[augId];
+  if (asNumber !== undefined && typeof raw === "number") return asNumber(raw);
+  if (PILL_TEXT.has(augId) && typeof raw === "string" && raw !== "") {
+    return { chip: raw, note: raw };
+  }
+  if (PILL_FLAG.has(augId) && raw === true) {
+    return { chip: "발동", note: "이번 국에 발동했다" };
+  }
+  return null;
+}
+
 function NamePlate({
   view,
   player,
@@ -6303,6 +6407,7 @@ function NamePlate({
   // 무장해제로 이번 국 잠긴 이 사람의 증강 — 이름표의 pill에 쇠사슬을 채운다.
   // 잠금이 화면 어디에도 드러나지 않아 "무장해제가 안 먹는다"로 보였다(2026-08-01).
   const disarmed = disarmedAugmentsOf(view, player.id);
+  const reloaded = reloadedAugmentsOf(view, player.id);
   return (
     <div className={`nameplate${isTurn ? " nameplate-turn" : ""}`}>
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
@@ -6312,17 +6417,26 @@ function NamePlate({
           {player.augments.map((a) => {
             const entry = catalog[a];
             const locked = disarmed.has(a);
+            const status = augmentPillStatus(view, player.id, a);
             return (
               // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${status !== null ? " aug-pill-live" : ""}`}
                 tabIndex={0}
               >
                 <AugCatIcon id={a} />
                 {locked ? "🔒 " : ""}
-                {entry?.name ?? a}
+                {reloaded.has(a) ? "♻ " : ""}
+                {/* 이름만 별도 span — 무장해제 취소선이 잔량 칩까지 그어지지 않게 */}
+                <span className="aug-pill-name">{entry?.name ?? a}</span>
+                {status !== null ? <span className="aug-pill-chip">{status.chip}</span> : null}
+                {status?.gauge !== undefined ? (
+                  <span className="aug-pill-gauge" aria-hidden="true">
+                    <span style={{ transform: `scaleX(${status.gauge})` }} />
+                  </span>
+                ) : null}
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
                   <span className="aug-tip-name">
                     <AugCatIcon id={a} />
@@ -6331,6 +6445,12 @@ function NamePlate({
                   <span className="aug-tip-cat">{CATEGORY_META[augmentCategory(a)].label} 계열</span>
                   {locked ? (
                     <span className="aug-tip-locked">🔒 무장해제 — 이번 국 동안 잠김</span>
+                  ) : null}
+                  {reloaded.has(a) ? (
+                    <span className="aug-tip-status">♻ 재장전 — 이 증강을 다시 쓸 수 있다</span>
+                  ) : null}
+                  {status !== null ? (
+                    <span className="aug-tip-status">{status.note}</span>
                   ) : null}
                   {isActiveAugment(a) ? (
                     <span className="aug-tip-active">⚡ 액티브 증강 (직접 발동)</span>
@@ -7760,34 +7880,9 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
       who === me.id ? `이번 국 ${value}` : `${playerNameById(view, who)} ${value}`,
     );
   }
-  // 카르마 — 업보 게이지. 상대 것도 보여야 "쟤 게이지 찼다"는 대응이 성립한다
-  for (const [key, value] of Object.entries(av)) {
-    if (!key.startsWith("karma:") || typeof value !== "number" || value <= 0) continue;
-    const who = key.slice("karma:".length);
-    textBadge(
-      `karma_${who}`,
-      who === me.id ? "⚖️ 내 업보" : "⚖️ 업보",
-      `${who === me.id ? "" : `${playerNameById(view, who)} `}${value.toLocaleString()}${value >= 8000 ? " (청산 가능)" : ""}`,
-    );
-  }
-  // 대기만성 — 후반에 만개하면 후리텐·무역 제한이 풀린다
-  for (const [key, value] of Object.entries(av)) {
-    if (!/^late_bloomer(_east)?:/.test(key) || typeof value !== "string") continue;
-    const who = key.slice(key.indexOf(":") + 1);
-    textBadge(
-      `lb_${who}`,
-      "🌸 대기만성",
-      who === me.id ? `${value} — 후리텐·역 없음 무시` : `${playerNameById(view, who)} ${value}`,
-    );
-  }
-  // 가불 인생 / 만년 오야 — 공개 상태 문자열 그대로
-  for (const [key, value] of Object.entries(av)) {
-    if (!key.startsWith("devils_advance:") && !key.startsWith("eternal_dealer:")) continue;
-    if (typeof value !== "string") continue;
-    const who = key.slice(key.indexOf(":") + 1);
-    const tag = key.startsWith("devils_advance:") ? "😈 가불" : "👑 만년 오야";
-    textBadge(`${key}`, tag, `${who === me.id ? "" : `${playerNameById(view, who)} `}${value}`);
-  }
+  // 카르마 업보 게이지 · 대기만성 만개 · 가불 인생 · 만년 오야는 이제 그 사람의
+  // 이름표 증강 pill 위에 잔량/게이지로 붙는다(aug-pill-chip·aug-pill-gauge).
+  // 여기서도 띄우면 같은 값이 화면 두 곳에 겹친다.
   // 리치 봉인 / 이중 선언 — 내 리치가 잠겼으면 왜 잠겼는지 반드시 보여준다
   for (const [key, value] of Object.entries(av)) {
     if (key.startsWith("riichi_seal:") && typeof value === "string") {
@@ -7828,26 +7923,8 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
       `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 마지막 한 장만 보인다`,
     );
   }
-  // 역만 방어술 — 지금까지 막아낸 역만 수(전원 공개). 횟수 제한이 없어 "역만이 안 통한다"가 보인다
-  for (const [key, value] of Object.entries(av)) {
-    if (!key.startsWith("yakuman_shield:") || typeof value !== "number") continue;
-    const who = key.slice("yakuman_shield:".length);
-    textBadge(
-      `ys_${who}`,
-      "🛡 역만 방어술",
-      `${who === me.id ? "" : `${playerNameById(view, who)} `}역만 ${value}회 방어`,
-    );
-  }
-  // 연금술사 — 게임 전체 5회 중 몇 번 남았는지 (0이면 더 못 쓴다)
-  const alchemyLeft = av["alchemist:left"];
-  if (typeof alchemyLeft === "number") {
-    textBadge("alchemist", "⚗️ 연금술", `${alchemyLeft}회 남음`);
-  }
-  // 왕패의 주인 — 국 시작에 몇 번 더 바꿀 수 있는지 (0이 되면 발동 창이 닫힌다)
-  const dwLeft = av[`dead_wall_master:remaining:${me.id}`];
-  if (typeof dwLeft === "number" && dwLeft > 0) {
-    textBadge("dwm", "🏯 왕패 교환", `${dwLeft}회 남음`);
-  }
+  // 역만 방어술 방어 횟수 · 연금술 잔여 · 왕패 교환 잔여도 이름표 pill로 옮겼다
+  // (그 증강이 몇 번 남았는지는 그 증강 위에 붙는 게 맞다).
   // 본장 사냥꾼 — 내 앞의 본장이 얼마짜리인지 상시로 보여준다(쌓일수록 테이블이 긴장한다)
   const hh = av[`honba_hunter:${me.id}`] as { honba?: number; value?: number } | undefined;
   if (hh !== undefined && typeof hh === "object" && (hh.honba ?? 0) > 0) {

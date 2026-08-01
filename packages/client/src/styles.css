@@ -2693,6 +2693,11 @@ button {
     rgba(120, 128, 124, 0.16) 0 5px,
     rgba(120, 128, 124, 0.05) 5px 10px
   );
+}
+
+/* 취소선은 **증강 이름에만** 긋는다 — pill 전체에 걸면 잔량 칩(aug-pill-chip)까지
+   그어진다. text-decoration은 자손에서 none으로 지울 수 없다. */
+.aug-pill-locked .aug-pill-name {
   text-decoration: line-through;
   text-decoration-color: rgba(201, 75, 75, 0.75);
 }
@@ -2701,6 +2706,61 @@ button {
   font-size: 11px;
   font-weight: 800;
   color: #e08a8a;
+}
+
+/* 툴팁의 상태 한 줄 (잔량·게이지·재장전) */
+.aug-tip-status {
+  font-size: 11px;
+  font-weight: 800;
+  color: #d8d2ff;
+}
+
+/* ── 증강 pill의 잔량·게이지 ──────────────────────────────────────────────
+   그 증강이 몇 번 남았는지·게이지가 얼마나 찼는지는 **그 증강 위**에 붙는다.
+   예전엔 전부 화면 왼쪽 위 목록에 "스택 3" 같은 글줄로 쌓여 있었다. */
+
+/* 지금 값이 살아 있는 pill — 테두리를 조금 밝혀 눈에 걸리게 한다 */
+.aug-pill-live {
+  border-color: rgba(199, 188, 255, 0.85);
+}
+
+.aug-pill-chip {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(199, 188, 255, 0.9);
+  color: #16142a;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+/* 잠긴 증강의 잔량은 같이 죽인다 — 지금은 못 쓰는 능력이다 */
+.aug-pill-locked .aug-pill-chip {
+  background: rgba(141, 148, 144, 0.7);
+  color: #1b1f1d;
+}
+
+/* 카르마 업보 — pill 바닥에 눕는 얇은 게이지 */
+.aug-pill-gauge {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 1px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.aug-pill-gauge > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #a591ff, #f0c86a);
+  transform-origin: left;
+  transition: transform 0.3s var(--ease);
 }
 
 .draft-name {
