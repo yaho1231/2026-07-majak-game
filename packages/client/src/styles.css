@@ -1259,6 +1259,40 @@ button {
   transform: translateX(-50%) rotate(-90deg);
 }
 
+/*
+ * 가깡 — 옆자리(세로 줄) 버전. 줄이 세로로 흐르므로 겹치는 방향은 **가로**다.
+ * 세운 패(mtile-col)와 같은 모양 둘을 몸 쪽(테이블 바깥)에서 안쪽으로 나란히 얹는다.
+ * 이게 없던 동안 좌·우 상대의 가깡은 4장 일렬이라 대명깡과 구분되지 않았다.
+ */
+.mtile-stack-col {
+  width: calc(var(--mt-w) * 2);
+  height: var(--mt-h);
+}
+
+.mtile-stack-col > .mtile-inner {
+  inset: auto;
+  position: absolute;
+  top: 0;
+  width: var(--mt-w);
+  height: var(--mt-h);
+  transform: none;
+}
+
+/* 왼쪽 자리: 몸 쪽이 화면 왼쪽 → 울어 온 패가 바깥, 더한 패가 안쪽 */
+.mtile-stack-col.mtile-left > .stack-a { left: 0; }
+.mtile-stack-col.mtile-left > .stack-b { left: var(--mt-w); }
+/* 오른쪽 자리: 좌우가 뒤집힌다 */
+.mtile-stack-col.mtile-right > .stack-a { right: 0; }
+.mtile-stack-col.mtile-right > .stack-b { right: var(--mt-w); }
+
+/*
+ * 세로 줄은 원래 가운데 정렬이라, 스택이 끼면 폭이 넓어져 나머지 패의 가장자리가
+ * 어긋난다. 가로 줄이 몸 쪽(아래/위) 가장자리를 맞추는 것과 똑같이,
+ * 세로 줄도 몸 쪽(화면 바깥) 가장자리로 맞춘다.
+ */
+.opp-strip-left .meld-col { align-items: flex-start; }
+.opp-strip-right .meld-col { align-items: flex-end; }
+
 .tile-back-face {
   display: block;
   width: 100%;
