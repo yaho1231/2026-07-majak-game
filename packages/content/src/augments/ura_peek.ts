@@ -33,7 +33,8 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey, viewKey } from "../util.js";
+import type { VisibilityRule } from "@majak/core";
+import { flagOf, roundKey, roundViewKey, viewKey, widenPeek } from "../util.js";
 
 const ID = "ura_peek";
 const ACTION = "ura_peek_reveal";
@@ -149,7 +150,7 @@ export const uraPeek: AugmentDef = defineAugment({
   description:
     "(매 국 1회 + 바꿔치기 1회) 자기 순에 뒷도라 표시패를 본인만 확인한다. 확인한 국에는 1회, 그 뒷도라 표시패를 왕패의 다른 패와 바꿔치기할 수 있다.",
   detail:
-    "(매 국 1회 + 바꿔치기 1회) 자기 순에 이번 국의 뒷도라 표시패를 자신만 확인한다. 한 번 열면 그 국 동안 유지되어 깡으로 뒷도라가 늘어나면 새 표시패도 자동으로 보인다. 확인한 국에는 추가로 1회, 뒷도라 표시패를 왕패의 다른 패와 통째로 맞바꿔 내 손에 맞는 뒷도라를 직접 만들 수 있다(도라 표시패 자리는 건드릴 수 없다). 국이 바뀌면 확인한 정보는 지워진다.",
+    "(매 국 1회 + 바꿔치기 1회) 자기 순에 이번 국의 뒷도라 표시패를 자신만 확인한다. 한 번 열면 그 국 동안 유지되어 깡으로 뒷도라가 늘어나면 새 표시패도 자동으로 보인다. 확인한 국에는 추가로 1회, 뒷도라 표시패를 왕패의 다른 패와 통째로 맞바꿔 내 손에 맞는 뒷도라를 직접 만들 수 있다(도라 표시패 자리는 건드릴 수 없다). 고를 수 있도록 바꿔치기를 쓰기 전까지 왕패 전체가 자신에게만 보인다. 국이 바뀌면 확인한 정보는 지워진다.",
   // 봇: 텐파이일 때 확인한다 — 리치를 걸지 다마텐으로 갈지 판단할 정보가 가장 필요한 시점.
   //     (바꿔치기는 내 손패와 맞춰 골라야 해서 봇에게 맡기지 않는다.)
   bot: {
@@ -206,6 +207,26 @@ export const uraPeek: AugmentDef = defineAugment({
         };
       });
     }
+
+    // 바꿔치기 상대를 고르려면 왕패가 **보여야 한다** — 안 보이면 클라이언트의
+    // 교환 모달이 빈 칸만 띄우고(왕패는 기본 hidden) 눈 감고 바꾸는 꼴이 된다
+    // (2026-08-01 사용자 보고). 그래서 이면투시를 발동한 국에, 아직 바꿔치기를
+    // 쓰지 않은 동안만 보유자에게 왕패 전체를 연다. 바꾸고 나면 다시 닫힌다.
+    engine.rules.addModifier<VisibilityRule>("visibility.deadWall", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        if (!flagOf(state, usedKey(state, holder))) return cur;
+        if (flagOf(state, swappedKey(state, holder))) return cur;
+        return widenPeek(cur, {
+          mode: "peek",
+          count: state.zones[DEAD_WALL]?.tileIds.length ?? 0,
+        });
+      },
+    });
 
     // 새 국 시작 시 지난 국의 뒷도라 정보를 지운다
     ctx.reaction(ROUND_STARTED, (_event, rc) => {

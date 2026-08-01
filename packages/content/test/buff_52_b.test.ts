@@ -513,6 +513,31 @@ describe("karma (카르마) — 즉시 적립, 즉시 강탈", () => {
     expect(game.engine.state.augmentData["view:*:karma:p0"]).toBe(0);
   });
 
+  it("강탈액은 100점 단위로 떨어진다 (3으로 안 나눠떨어져도)", () => {
+    const base = withAugmentData(withAugment(craftTanyaoTsumo(), "p0", "karma"), {
+      "karma:gauge:p0": 9100,
+    });
+    const game = createStandardGameFromState(structuredClone(base));
+    installAugment(game.engine, karma, "p0");
+    const before = Object.fromEntries(
+      game.engine.state.players.map((p) => [p.id, p.score]),
+    );
+    expect(
+      game.engine.submit({ player: "p0", type: "karma_burn", payload: {} }).ok,
+    ).toBe(true);
+
+    const after = game.engine.state.players;
+    // 9,100 / 3 = 3,033.3… → 1인당 3,000 (100점 단위 내림), 내가 받는 건 그 합계 9,000
+    for (const id of ["p1", "p2", "p3"]) {
+      expect((after.find((p) => p.id === id)?.score ?? 0) - before[id]!).toBe(
+        -3000,
+      );
+    }
+    expect((after.find((p) => p.id === "p0")?.score ?? 0) - before["p0"]!).toBe(
+      9000,
+    );
+  });
+
   it("지연 환급(오라스 전액 환급)은 사라졌다 — 최종국 화료에 보너스가 없다", () => {
     const raw = atRound(craftTanyaoTsumo(), 2, 4); // 오라스
     const base = withAugmentData(withAugment(raw, "p0", "karma"), {

@@ -5080,10 +5080,6 @@ function AugmentInfoPanel({
       // 선언 간파 오름패는 상대 손패 위(WaitsBadge)에 상시 표시하므로 패널에서는 생략
     } else if (head === "suit_unify" && typeof value === "string") {
       rows.push(textRow(key, "단색", `${who}: ${suitKo[value] ?? value}`));
-    } else if (head === "ura") {
-      // 이면투시 — 확인한 뒷도라 표시패
-      const kinds = kindsOf(value);
-      if (kinds.length > 0) rows.push(tileRow(key, "뒷도라", "", kinds));
     } else if (head === "scapegoat" && typeof value === "string") {
       rows.push(textRow(key, "덤터기", `${who} → ${playerNameById(view, value)}`));
     } else if (head === "let_it_ride") {
@@ -7469,8 +7465,8 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
       ? (v as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
       : [];
 
-  // 이면투시 — 확인한 뒷도라
-  tilesBadge("ura", "뒷도라", kindsOf(av["ura"]));
+  // 이면투시(뒷도라)는 여기 띄우지 않는다 — 중앙 도라 표시패 바로 아래(center-ura-peek)에
+  // 이미 같은 것이 뜬다. 두 군데에 겹쳐 보인다는 지적(2026-08-01)에 따라 중앙만 남겼다.
   // 영상 정찰 — 공개된 영상패.
   // 깡으로 영상패가 소모되면 왕패 앞 4장이 더는 전부 영상패가 아니므로(07 §2)
   // 남은 영상패 수만큼만 자른다 — 안 그러면 도라 표시패가 '영상패'로 새어 보인다.

@@ -41,6 +41,8 @@ const ID = "karma";
 const ACTION = "karma_burn";
 /** 태울 수 있는 최소 게이지 */
 const BURN_THRESHOLD = 8000;
+/** 점수 이동 단위 — 마작 점수는 100점 단위로 떨어진다 (2026-08-01 사용자 지적) */
+const UNIT = 100;
 
 /** 누적 업보 게이지 (게임 단위) */
 const gaugeKey = (holder: PlayerId): string => `${ID}:gauge:${holder}`;
@@ -48,14 +50,23 @@ const gaugeKey = (holder: PlayerId): string => `${ID}:gauge:${holder}`;
 const gaugeViewKey = (holder: PlayerId): string =>
   viewKey("*", `${ID}:${holder}`);
 
-/** 게이지를 태울 때의 분배 — 1인당 몫(내림)과 내가 받는 합계 */
+/**
+ * 게이지를 태울 때의 분배 — 1인당 몫과 내가 받는 합계.
+ *
+ * 1인당 몫은 **100점 단위로 내림**한다 (9,100 / 3 → 3,000씩). 마작 점수는 100점
+ * 단위로 움직이는데 예전엔 그냥 나누기 내림이라 3,033점 같은 값이 나왔다.
+ * 내가 받는 값은 몫의 합계라 제로섬은 그대로 유지된다.
+ */
 function burnShares(
   state: GameState,
   holder: PlayerId,
 ): { targets: PlayerId[]; per: number; total: number } {
   const targets = state.players.filter((p) => p.id !== holder).map((p) => p.id);
   const gauge = counterOf(state, gaugeKey(holder));
-  const per = targets.length > 0 ? Math.floor(gauge / targets.length) : 0;
+  const per =
+    targets.length > 0
+      ? Math.floor(gauge / targets.length / UNIT) * UNIT
+      : 0;
   return { targets, per, total: per * targets.length };
 }
 
@@ -95,7 +106,7 @@ export const karma: AugmentDef = defineAugment({
   description:
     "(상시 적립 · 게이지 8,000 이상일 때 발동) 점수를 잃을 때마다 그 손실이 '업보' 게이지로 쌓이고(전원 공개), 자기 순에 게이지를 태워 쌓인 만큼을 상대 셋에게서 균등하게 즉시 강탈한다.",
   detail:
-    "(상시 적립 · 게이지 8,000 이상일 때 발동) 국 정산에서 점수를 잃으면 방총이든 쯔모당함이든 그 손실액이 업보 게이지에 그대로 적립되고, 게이지 수치는 전원에게 공개된다. 게이지가 8,000 이상이면 자기 순에 게이지를 태워 쌓인 만큼을 상대 세 명에게서 균등하게 뜯어낸다(뱅크가 아니라 상대 주머니에서 나온다). 태우면 게이지는 0이 되고 다시 처음부터 쌓인다.",
+    "(상시 적립 · 게이지 8,000 이상일 때 발동) 국 정산에서 점수를 잃으면 방총이든 쯔모당함이든 그 손실액이 업보 게이지에 그대로 적립되고, 게이지 수치는 전원에게 공개된다. 게이지가 8,000 이상이면 자기 순에 게이지를 태워 쌓인 만큼을 상대 세 명에게서 균등하게 뜯어낸다(뱅크가 아니라 상대 주머니에서 나온다. 1인당 몫은 100점 단위로 내림). 태우면 게이지는 0이 되고 다시 처음부터 쌓인다.",
   // 봇: 태우는 데 자해 위험이 없다 — 게이지가 차서 옵션이 뜨면 즉시 태운다.
   bot: {
     choose({ options }) {
@@ -115,7 +126,10 @@ export const karma: AugmentDef = defineAugment({
       const p = event.payload as RoundSettledPayload;
       const loss = Math.max(0, -(p.deltas[holder] ?? 0));
       if (loss <= 0) return;
-      const gauge = counterOf(rc.state, gaugeKey(holder)) + loss;
+      // 게이지도 100점 단위로 떨어뜨린다 — 증강이 100 단위가 아닌 점수를 옮겼더라도
+      // 화면에 3,033 같은 수치가 뜨지 않게 한다. (통상 손실은 이미 100 단위다.)
+      const gauge =
+        Math.floor((counterOf(rc.state, gaugeKey(holder)) + loss) / UNIT) * UNIT;
       rc.emit(augmentDataSet(gaugeKey(holder), gauge));
       // 전원 공개 — 상대가 "쟤 게이지 찼다"를 보고 대응할 수 있어야 한다
       rc.emit(augmentDataSet(gaugeViewKey(holder), gauge));
