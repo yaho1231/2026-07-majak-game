@@ -217,15 +217,22 @@ export function registerFlowReducers(
   rules?: RuleRegistry,
 ): void {
   reducers.register(ROUND_STARTED, (state) =>
-    setupRound(
-      state,
-      rules !== undefined && rules.has("deal.handSize")
+    setupRound(state, {
+      ...(rules !== undefined && rules.has("deal.handSize")
         ? {
-            handSizeFor: (playerId) =>
+            handSizeFor: (playerId: PlayerId) =>
               rules.resolve<number>("deal.handSize", { playerId, state }),
           }
-        : undefined,
-    ),
+        : {}),
+      // 강제 배패(증강 테스트) — 규칙이 정의돼 있을 때만. 평소에는 없는 규칙이라
+      // 무작위 배패 경로가 그대로 유지된다.
+      ...(rules !== undefined && rules.has("deal.presetHand")
+        ? {
+            presetHandFor: (playerId: PlayerId) =>
+              rules.resolve<readonly string[]>("deal.presetHand", { playerId, state }),
+          }
+        : {}),
+    }),
   );
 
   reducers.register(TILE_DRAWN, (state, event) => {

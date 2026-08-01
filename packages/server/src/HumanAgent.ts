@@ -35,17 +35,30 @@ export function safeFallbackOption(options: ActionOption[]): ActionOption {
 type ResolveDecision = (option: ActionOption) => void;
 type ResolveDraft = (id: string) => void;
 
+/** 좌석 하나에 대해 응답을 기다리는 중인 결정 */
+interface PendingDecision {
+  prompt: DecisionPrompt;
+  resolve: ResolveDecision;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export class HumanAgent implements PlayerAgent {
   readonly id: PlayerId;
   readonly nickname: string;
   readonly isBot = false;
 
-  private pendingDecision: ResolveDecision | null = null;
+  /**
+   * 응답을 기다리는 결정들 — **좌석 id → 대기**.
+   *
+   * 평소에는 본인 좌석 하나뿐이지만, 증강 테스트에서 봇 좌석을 조종하면 내 좌석과
+   * 그 봇 좌석에 리액션 프롬프트가 **동시에** 뜰 수 있다. 그래서 단일 슬롯이 아니라
+   * 좌석별로 들고, 클라이언트 응답의 `seat`으로 짝을 맞춘다.
+   */
+  private readonly pending = new Map<PlayerId, PendingDecision>();
   private pendingDraft: ResolveDraft | null = null;
-  private pendingPrompt: DecisionPrompt | null = null;
   private pendingDraftChoices: AugmentDef[] | null = null;
   private pendingDraftStage: DraftStage | null = null;
-  private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  private draftTimeout: ReturnType<typeof setTimeout> | null = null;
   /** 국 사이 "다음 국으로" 대기 resolver (결과 화면 닫힘 신호 대기) */
   private pendingContinue: (() => void) | null = null;
   private continueTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -88,8 +101,9 @@ export class HumanAgent implements PlayerAgent {
     if (this.lastView !== null) {
       this.send({ type: "view", view: this.lastView });
     }
-    if (this.pendingDecision !== null && this.pendingPrompt !== null) {
-      this.send({ type: "prompt", prompt: this.pendingPrompt });
+    if (this.pending.size > 0) {
+      // 대기 중인 프롬프트 전부 재전송 — 봇 좌석 조종 중이면 두 자리가 동시에 떠 있다
+      for (const p of this.pending.values()) this.send({ type: "prompt", prompt: p.prompt });
     } else if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
       this.send({
         type: "draftOffer",
@@ -123,20 +137,13 @@ export class HumanAgent implements PlayerAgent {
   abandon(): void {
     if (this.abandoned) return;
     this.abandoned = true;
-    this.clearTimeout();
     // 국 사이 대기 중이었다면 즉시 해소 (봇처럼 다음 국으로 넘어가게)
     if (this.pendingContinue !== null) this.resolveContinue();
-    if (this.pendingDecision !== null && this.pendingPrompt !== null) {
-      const resolve = this.pendingDecision;
-      const options = this.pendingPrompt.options;
-      this.pendingDecision = null;
-      this.pendingPrompt = null;
-      this.send({ type: "promptCancel" });
-      resolve(safeFallbackOption(options));
-    }
+    for (const seat of [...this.pending.keys()]) this.cancelDecisionFor(seat);
     if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
       const resolve = this.pendingDraft;
       const firstId = this.pendingDraftChoices[0]!.id;
+      this.clearDraftTimeout();
       this.pendingDraft = null;
       this.pendingDraftChoices = null;
       this.pendingDraftStage = null;
@@ -151,13 +158,13 @@ export class HumanAgent implements PlayerAgent {
    * 터지거나, 클라이언트의 늦은 응답이 폐기된 프롬프트에 매칭된다.
    */
   resetForNewGame(): void {
-    this.clearTimeout();
+    for (const p of this.pending.values()) clearTimeout(p.timer);
+    this.pending.clear();
+    this.clearDraftTimeout();
     if (this.continueTimeout !== null) {
       clearTimeout(this.continueTimeout);
       this.continueTimeout = null;
     }
-    this.pendingDecision = null;
-    this.pendingPrompt = null;
     this.pendingDraft = null;
     this.pendingDraftChoices = null;
     this.pendingDraftStage = null;
@@ -194,19 +201,33 @@ export class HumanAgent implements PlayerAgent {
     this.send(msg);
   }
 
-  async decide(prompt: DecisionPrompt): Promise<ActionOption> {
-    if (this.abandoned) return safeFallbackOption(prompt.options);
-    this.pendingPrompt = prompt;
-    this.send({ type: "prompt", prompt });
+  decide(prompt: DecisionPrompt): Promise<ActionOption> {
+    return this.decideFor(this.id, prompt);
+  }
 
+  /**
+   * **다른 좌석의 결정을 대신 받는다** (증강 테스트의 봇 좌석 조종 전용).
+   * 프롬프트를 그대로 내 소켓으로 보내고, 클라이언트는 `action.seat`에 그 좌석을
+   * 실어 답한다. 내 좌석 결정과 동시에 떠 있어도 서로 섞이지 않는다.
+   */
+  decideAs(seat: PlayerId, prompt: DecisionPrompt): Promise<ActionOption> {
+    return this.decideFor(seat, prompt);
+  }
+
+  private decideFor(seat: PlayerId, prompt: DecisionPrompt): Promise<ActionOption> {
+    if (this.abandoned) return Promise.resolve(safeFallbackOption(prompt.options));
+    // 같은 좌석에 이전 대기가 남아 있으면(정상 흐름에는 없다) 폴백으로 정리한다
+    this.cancelDecisionFor(seat);
+    this.send({ type: "prompt", prompt });
     return new Promise<ActionOption>((resolve) => {
-      this.pendingDecision = resolve;
-      this.scheduleTimeout(() => {
+      const timer = setTimeout(() => {
         // 제한 시간 초과 — 서버는 안전 폴백으로 진행한다. 클라이언트가 이걸 모르면
         // 내 차례가 지나간 뒤에도 선택 모달·버튼이 계속 떠 있으므로 취소를 알린다.
-        this.send({ type: "promptCancel" });
+        this.pending.delete(seat);
+        this.send({ type: "promptCancel", seat });
         resolve(safeFallbackOption(prompt.options));
-      });
+      }, DECISION_TIMEOUT_MS);
+      this.pending.set(seat, { prompt, resolve, timer });
     });
   }
 
@@ -216,14 +237,22 @@ export class HumanAgent implements PlayerAgent {
    * 클라이언트에는 취소를 알려 버튼·모달이 남지 않게 한다.
    */
   cancelDecision(): void {
-    if (this.pendingDecision === null || this.pendingPrompt === null) return;
-    this.clearTimeout();
-    const resolve = this.pendingDecision;
-    const options = this.pendingPrompt.options;
-    this.pendingDecision = null;
-    this.pendingPrompt = null;
-    this.send({ type: "promptCancel" });
-    resolve(safeFallbackOption(options));
+    this.cancelDecisionFor(this.id);
+  }
+
+  /** 특정 좌석의 대기 결정만 폴백으로 끝낸다 (봇 좌석 조종 해제·취소용). */
+  cancelDecisionFor(seat: PlayerId): void {
+    const p = this.pending.get(seat);
+    if (p === undefined) return;
+    clearTimeout(p.timer);
+    this.pending.delete(seat);
+    this.send({ type: "promptCancel", seat });
+    p.resolve(safeFallbackOption(p.prompt.options));
+  }
+
+  /** 이 좌석의 결정을 지금 기다리고 있는가 (조종 해제 시 판별용). */
+  hasPendingFor(seat: PlayerId): boolean {
+    return this.pending.has(seat);
   }
 
   async decideDraft(stage: DraftStage, choices: AugmentDef[]): Promise<string> {
@@ -244,10 +273,13 @@ export class HumanAgent implements PlayerAgent {
 
     return new Promise<string>((resolve) => {
       this.pendingDraft = resolve;
-      this.scheduleTimeout(() => {
-        const fallback = choices[0]!.id;
-        resolve(fallback);
-      });
+      this.draftTimeout = setTimeout(() => {
+        this.pendingDraft = null;
+        this.pendingDraftChoices = null;
+        this.pendingDraftStage = null;
+        this.draftTimeout = null;
+        resolve(choices[0]!.id);
+      }, DECISION_TIMEOUT_MS);
     });
   }
 
@@ -281,8 +313,18 @@ export class HumanAgent implements PlayerAgent {
    * Room이 소켓 메시지를 받으면 이 메서드를 호출한다.
    */
   handleMessage(msg: ClientMessage): void {
-    if (msg.type === "action" && this.pendingDecision !== null) {
-      const opts = this.pendingPrompt?.options ?? [];
+    if (msg.type === "action" && this.pending.size > 0) {
+      // 어느 좌석의 응답인가 — seat이 오면 그 좌석, 없으면(구 클라이언트·평소)
+      // 본인 좌석, 그것도 없으면 대기가 하나뿐일 때 그것으로 본다.
+      const only = this.pending.size === 1 ? [...this.pending.keys()][0]! : null;
+      const seat =
+        msg.seat !== undefined && this.pending.has(msg.seat)
+          ? msg.seat
+          : this.pending.has(this.id)
+            ? this.id
+            : only;
+      const entry = seat === null ? undefined : this.pending.get(seat);
+      const opts = entry?.prompt.options ?? [];
       // 클라이언트가 보낸 payload(공격자 제어, 최대 프레임 크기)는 옵션마다가 아니라
       // **한 번만** 직렬화한다. 옵션 N개 × 큰 payload 재직렬화로 이벤트 루프를
       // 점유시키는 것을 막는다. 서버측 옵션 payload는 작으므로 그쪽은 반복해도 싸다.
@@ -290,12 +332,10 @@ export class HumanAgent implements PlayerAgent {
       const matched = opts.find(
         (o) => o.type === msg.actionType && JSON.stringify(o.payload) === wantPayload,
       );
-      if (matched) {
-        this.clearTimeout();
-        const resolve = this.pendingDecision;
-        this.pendingDecision = null;
-        this.pendingPrompt = null;
-        resolve(matched);
+      if (matched && entry !== undefined && seat !== null) {
+        clearTimeout(entry.timer);
+        this.pending.delete(seat);
+        entry.resolve(matched);
       } else {
         this.send({
           type: "error",
@@ -310,7 +350,7 @@ export class HumanAgent implements PlayerAgent {
       const choices = this.pendingDraftChoices ?? [];
       const valid = choices.find((c) => c.id === msg.augmentId);
       if (valid) {
-        this.clearTimeout();
+        this.clearDraftTimeout();
         const resolve = this.pendingDraft;
         this.pendingDraft = null;
         this.pendingDraftChoices = null;
@@ -344,23 +384,10 @@ export class HumanAgent implements PlayerAgent {
     }
   }
 
-  private scheduleTimeout(fallback: () => void): void {
-    this.clearTimeout();
-    this.timeoutHandle = setTimeout(() => {
-      this.pendingDecision = null;
-      this.pendingDraft = null;
-      this.pendingPrompt = null;
-      this.pendingDraftChoices = null;
-      this.pendingDraftStage = null;
-      this.timeoutHandle = null;
-      fallback();
-    }, DECISION_TIMEOUT_MS);
-  }
-
-  private clearTimeout(): void {
-    if (this.timeoutHandle !== null) {
-      clearTimeout(this.timeoutHandle);
-      this.timeoutHandle = null;
+  private clearDraftTimeout(): void {
+    if (this.draftTimeout !== null) {
+      clearTimeout(this.draftTimeout);
+      this.draftTimeout = null;
     }
   }
 }

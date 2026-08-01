@@ -32,6 +32,7 @@ import type { SpectatorSink } from "@majak/core/match/HanchanController.js";
 import type { GameMode } from "@majak/core/engine/state/GameState.js";
 import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
 import { SPECTATOR_ID } from "@majak/core/information/PlayerView.js";
+import { standardKinds } from "@majak/core/mahjong/tiles/Tile.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
   ClientMessage,
@@ -43,11 +44,13 @@ import type {
   LeaderboardEntry,
   AugmentCatalogEntry,
   AugmentTierEntry,
+  SandboxBotRules,
 } from "@majak/core/network/protocol.js";
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
 import { HumanAgent } from "./HumanAgent.js";
 import { BotAgent } from "./BotAgent.js";
+import { SandboxBotAgent } from "./SandboxBotAgent.js";
 import { ReplayWriter } from "./ReplayWriter.js";
 import type { StatsStore } from "./StatsStore.js";
 import type { AuthResult, SiteDb, UserRow } from "./SiteDb.js";
@@ -101,6 +104,12 @@ interface Room {
   sandbox: boolean;
   /** 다음 판 시작 시 좌석별로 미리 지급할 증강 (샌드박스 전용) */
   sandboxAugments: Record<PlayerId, string[]>;
+  /** 다음 판 시작 시 좌석별로 강제 배패할 손패 (kindKey 목록, 샌드박스 전용) */
+  sandboxHands: Record<PlayerId, string[]>;
+  /** 봇 행동 제약 (후로·리치·화료·증강 금지, 샌드박스 전용) */
+  sandboxBotRules: SandboxBotRules;
+  /** 봇 좌석 직접 조작 모드 — 켜면 관찰 중인 봇 좌석을 내가 둔다 (샌드박스 전용) */
+  sandboxControl: boolean;
   /**
    * 샌드박스 재시작 대기 — 무효 종료 콜백이 방을 지우는 대신 새 판을 시작하게 한다.
    * (판 교체는 컨트롤러 abort → onGameAborted → startGame 순서로 일어난다)
@@ -214,6 +223,52 @@ const MAX_AUTH_FIELD_LEN = 256;
  * 실전(1인 2개)보다 훨씬 넉넉하되, 무한정 쌓아 판을 못 돌리게 되는 것은 막는다.
  */
 const MAX_SANDBOX_AUGMENTS = 40;
+/** 강제 배패로 지정할 수 있는 장수 상한 (배패 13 + 여유). 넘치면 잘라 낸다. */
+const MAX_SANDBOX_HAND = 14;
+
+/** 강제 배패에 쓸 수 있는 패 종류 (kindKey) — 표준 34종만. */
+const VALID_TILE_KEYS = new Set(
+  standardKinds().map((k) => `${k.suit}${k.rank}`),
+);
+
+/**
+ * 클라이언트가 보낸 강제 배패 지정을 정제한다 —
+ * 실재하는 좌석, 표준 34종 kindKey, 같은 종류 4장 이하, 좌석당 상한까지.
+ * (같은 종류를 5장 요구하면 어차피 패산에 없어 조용히 무시되지만, 입구에서 자른다.)
+ */
+export function sanitizeSandboxHands(
+  agents: readonly PlayerAgent[],
+  hands?: Record<string, string[]>,
+): Record<PlayerId, string[]> {
+  const clean: Record<PlayerId, string[]> = {};
+  if (hands === null || typeof hands !== "object") return clean;
+  for (const [seat, keys] of Object.entries(hands ?? {})) {
+    if (!agents.some((a) => a.id === seat) || !Array.isArray(keys)) continue;
+    const picked: string[] = [];
+    const used = new Map<string, number>();
+    for (const key of keys) {
+      if (typeof key !== "string" || !VALID_TILE_KEYS.has(key)) continue;
+      const n = used.get(key) ?? 0;
+      if (n >= 4) continue; // 한 종류는 4장뿐
+      used.set(key, n + 1);
+      picked.push(key);
+      if (picked.length >= MAX_SANDBOX_HAND) break;
+    }
+    if (picked.length > 0) clean[seat as PlayerId] = picked;
+  }
+  return clean;
+}
+
+/** 봇 제약 플래그를 boolean 4개로 정제한다 (클라이언트가 뭘 보내든 형태 고정). */
+export function sanitizeBotRules(rules: SandboxBotRules | undefined): SandboxBotRules {
+  const r = rules ?? {};
+  return {
+    noCall: r.noCall === true,
+    noRiichi: r.noRiichi === true,
+    noWin: r.noWin === true,
+    noAugment: r.noAugment === true,
+  };
+}
 
 /**
  * 루프백(로컬)·테스트 연결인지. 직접 노출 배포에서 원격 클라이언트는 실제 공인 IP로
@@ -598,11 +653,19 @@ export class RoomManager {
       }
       case "sandboxReset": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
-        return this.sandboxReset(conn, msg.augments, msg.mode);
+        return this.sandboxReset(conn, msg.augments, msg.mode, msg.hands);
       }
       case "sandboxViewAs": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
         return this.sandboxViewAs(conn, msg.seat);
+      }
+      case "sandboxBotRules": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sandboxSetBotRules(conn, msg.rules);
+      }
+      case "sandboxControl": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.sandboxSetControl(conn, msg.enabled === true);
       }
       default:
         return;
@@ -831,6 +894,9 @@ export class RoomManager {
       gameMode: options.gameMode ?? "hanchan",
       sandbox: options.sandbox ?? false,
       sandboxAugments: {},
+      sandboxHands: {},
+      sandboxBotRules: {},
+      sandboxControl: true,
       sandboxRestarting: false,
     };
     this.rooms.set(code, room);
@@ -946,8 +1012,21 @@ export class RoomManager {
     for (let k = 0; k < n; k++) {
       const id = this.freeSlot(room);
       if (id === null) break;
-      room.agents.push(new BotAgent(id, `Bot_${id}`, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS));
+      room.agents.push(this.newBot(room, id));
     }
+  }
+
+  /**
+   * 봇 1명 생성. 증강 테스트 방은 조작 가능한 봇(SandboxBotAgent)을 쓰고,
+   * 지금 걸린 봇 제약을 곧바로 물려준다. 실대국 방은 종전 그대로 BotAgent다.
+   */
+  private newBot(room: Room, id: PlayerId): BotAgent {
+    if (!room.sandbox) {
+      return new BotAgent(id, `Bot_${id}`, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS);
+    }
+    const bot = new SandboxBotAgent(id, `Bot_${id}`, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS);
+    bot.setRestrictions(room.sandboxBotRules);
+    return bot;
   }
 
   private isBot(agent: PlayerAgent): boolean {
@@ -1397,6 +1476,7 @@ export class RoomManager {
     conn: Conn,
     augments?: Record<string, string[]>,
     mode?: GameMode,
+    hands?: Record<string, string[]>,
   ): void {
     const room = conn.room;
     if (room === null || !room.sandbox) {
@@ -1409,6 +1489,7 @@ export class RoomManager {
     }
     if (room.sandboxRestarting) return; // 이미 재시작 중 — 중복 요청 무시
     room.sandboxAugments = this.sanitizeSandboxAugments(room, augments);
+    room.sandboxHands = sanitizeSandboxHands(room.agents, hands);
     if (mode === "hanchan" || mode === "tonpuu") room.gameMode = mode;
 
     // 아직 게임이 없으면(시작 실패·종료 직후) 바로 새 판을 시작한다
@@ -1447,6 +1528,68 @@ export class RoomManager {
   }
 
   /**
+   * 봇 행동 제약(후로·리치·화료·증강 금지)을 갱신하고 즉시 봇들에게 물린다.
+   * 판을 갈아엎지 않으므로 다음 결정부터 바로 먹는다.
+   */
+  private sandboxSetBotRules(conn: Conn, rules: SandboxBotRules): void {
+    const room = conn.room;
+    if (room === null || !room.sandbox) {
+      return this.fail(conn, "NOT_SANDBOX", "증강 테스트 게임에서만 사용할 수 있습니다");
+    }
+    room.sandboxBotRules = sanitizeBotRules(rules);
+    for (const a of room.agents) {
+      if (a instanceof BotAgent) a.setRestrictions(room.sandboxBotRules);
+    }
+    this.sendSandboxConfig(room);
+  }
+
+  /** 봇 좌석 직접 조작 모드를 켜고 끈다 (지금 보고 있는 좌석에 즉시 반영). */
+  private sandboxSetControl(conn: Conn, enabled: boolean): void {
+    const room = conn.room;
+    if (room === null || !room.sandbox) {
+      return this.fail(conn, "NOT_SANDBOX", "증강 테스트 게임에서만 사용할 수 있습니다");
+    }
+    room.sandboxControl = enabled;
+    this.syncSandboxControl(room);
+    this.sendSandboxConfig(room);
+  }
+
+  /**
+   * 지금 누가 어느 봇 좌석을 조종하는지 맞춘다 —
+   * "조작 모드가 켜져 있고, 그 봇 좌석 시점을 보고 있는 사람"이 조종자다.
+   * 조종에서 풀린 좌석은 대기 중이던 결정을 즉시 봇에게 돌려준다.
+   */
+  private syncSandboxControl(room: Room): void {
+    if (!room.sandbox) return;
+    for (const agent of room.agents) {
+      if (!(agent instanceof SandboxBotAgent)) continue;
+      const driver = room.sandboxControl
+        ? room.agents.find(
+            (a): a is HumanAgent => a instanceof HumanAgent && a.viewSeatId === agent.id,
+          ) ?? null
+        : null;
+      agent.setController(driver);
+    }
+  }
+
+  /** 판을 건드리지 않는 설정 변경(봇 제약·조작 모드·조종 좌석)만 알린다. */
+  private sendSandboxConfig(room: Room): void {
+    for (const a of room.agents) {
+      if (!(a instanceof HumanAgent)) continue;
+      const controlling =
+        room.agents.find(
+          (b) => b instanceof SandboxBotAgent && b.controlledBy === a,
+        )?.id ?? null;
+      a.notify({
+        type: "sandboxConfig",
+        botRules: room.sandboxBotRules,
+        control: room.sandboxControl,
+        controlling,
+      });
+    }
+  }
+
+  /**
    * 테스트 방의 사람(=관리자)에게 현재 테스트 설정을 알린다.
    * seat/viewAs는 사람마다 다르므로(각자의 좌석·관찰 시점) 개별로 만들어 보낸다.
    */
@@ -1458,6 +1601,9 @@ export class RoomManager {
         code: room.code,
         mode: room.gameMode,
         augments: room.sandboxAugments,
+        hands: room.sandboxHands,
+        botRules: room.sandboxBotRules,
+        control: room.sandboxControl,
         seat: a.id,
         viewAs: a.viewSeatId ?? a.id,
       });
@@ -1482,6 +1628,9 @@ export class RoomManager {
     }
     // 본인 좌석이면 override를 해제해 평소 시점으로 되돌린다.
     agent.setViewSeat(seat === agent.id ? null : seat);
+    // 시점이 바뀌었다 — 조종권도 따라 옮긴다(놓인 좌석의 대기 결정은 봇이 회수한다)
+    this.syncSandboxControl(room);
+    this.sendSandboxConfig(room);
     // 다음 상태 변화를 기다리지 않고 즉시 새 시점의 뷰를 보낸다. 클라이언트는
     // 이 뷰의 playerId로 현재 관찰 좌석을 판별하므로 sandbox 메시지 재전송은 불필요
     // (재전송하면 진행 중 프롬프트·결과 화면이 초기화된다).
@@ -1499,12 +1648,12 @@ export class RoomManager {
     room.controller = null;
     room.writer = null;
     room.abortVotes.clear();
-    room.agents = room.agents.map((a) =>
-      this.isBot(a) ? new BotAgent(a.id, a.nickname, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS) : a,
-    );
+    room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.resetForNewGame();
     }
+    // 새 판은 내 시점에서 시작한다(resetForNewGame가 viewSeat을 비운다) — 조종 대상도 없다
+    this.syncSandboxControl(room);
     this.sendSandboxState(room);
     void this.startGame(room);
   }
@@ -1557,7 +1706,11 @@ export class RoomManager {
       seed: randomInt(0x1_0000_0000),
       // 증강 테스트: 드래프트 없이 시작하고, 고른 증강만 배패 전에 지급한다
       ...(room.sandbox
-        ? { draftSchedules: [], presetAugments: room.sandboxAugments }
+        ? {
+            draftSchedules: [],
+            presetAugments: room.sandboxAugments,
+            presetHands: room.sandboxHands,
+          }
         : {}),
     }, {
       onEvent: (eventJson: string) => {
