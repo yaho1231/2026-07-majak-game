@@ -297,6 +297,9 @@ export function registerFlowReducers(
     // 누명(creditTo): 패가 놓이는 바닥과 후리텐 이력만 다른 사람 명의로 간다.
     // 손패 출처·방총 책임(lastDiscard.player)·턴 진행은 실제 버린 사람 그대로다.
     const credited = p.creditTo ?? p.player;
+    // 쯔모기리 — 방금 쯔모한 패를 손에 넣지 않고 그대로 버렸는가.
+    // 판정은 **버리기 직전** 상태로 해야 한다(lastDrawnTile을 아래에서 비우므로).
+    const tsumogiri = state.round.lastDrawnTile === p.tileId;
     let next: GameState = {
       ...state,
       zones: moveTiles(state.zones, handZone(p.player), discardsZone(credited), [
@@ -308,8 +311,28 @@ export function registerFlowReducers(
         lastDiscard: { player: p.player, tileId: p.tileId },
         lastDrawRinshan: false,
         chankan: null,
+        /**
+         * 쯔모패는 버리는 순간 "따로 쥔 한 장"이 아니게 된다 — 손버림이었다면
+         * 남은 쯔모패가 그대로 손에 섞이고, 쯔모기리였다면 아예 손을 떠난다.
+         *
+         * 예전에는 여기서 비우지 않아 다음 쯔모까지 값이 살아 있었고, 그 탓에
+         * 손버림한 뒤에도 화면에서 쯔모패가 계속 옆으로 떨어져 있다가 **다음 내 차례에야**
+         * 손패로 정리됐다 (2026-08-01 사용자 보고).
+         *
+         * 이 값을 읽는 규칙(리치 쯔모기리 강제·쯔모 화료·깡 가능 여부·쯔모패 교환)은
+         * 전부 turn.act에서, 즉 **버리기 전에** 본다. 후로 직후 turn.act에서 이미
+         * null인 경우를 다루고 있으므로(standardActions "must draw before calling a kan")
+         * 버림 이후 null도 같은 의미로 안전하다.
+         */
+        lastDrawnTile: null,
       },
     };
+    if (tsumogiri) {
+      next = withPlayerRound(next, p.player, (rs) => ({
+        ...rs,
+        tsumogiriIds: [...rs.tsumogiriIds, p.tileId],
+      }));
+    }
     // 버림 이력 기록 (후로로 바닥에서 사라져도 후리텐 판정에 남는다).
     // 누명이면 지목당한 사람의 이력에 새겨져 그 사람이 후리텐에 걸린다.
     if (discardedKind !== undefined) {

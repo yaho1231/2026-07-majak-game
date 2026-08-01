@@ -80,6 +80,16 @@ export interface PlayerRoundState {
    * 버림패가 후로로 바닥에서 사라져도 후리텐 판정은 이 이력을 쓴다 (표준 룰).
    */
   discardedKinds: string[];
+  /**
+   * **쯔모기리**로 버린 패의 tileId 목록 — 방금 쯔모한 패를 손에 넣지 않고 그대로 버린 것.
+   *
+   * 실제 탁자에서 전원이 보는 정보다(손이 열리지 않으니 손버림과 눈에 띄게 다르다).
+   * 상대의 손이 언제 움직였는지가 곧 판 읽기의 재료라, 바닥에 표식으로 남겨 둔다.
+   *
+   * 인덱스가 아니라 **tileId**로 담는다 — 후로로 바닥에서 패가 빠지면 인덱스가 밀려
+   * (리치 선언패 인덱스가 겪는 문제) 엉뚱한 패에 표식이 붙는다.
+   */
+  tsumogiriIds: TileId[];
 }
 
 export interface PlayerState {
@@ -229,6 +239,7 @@ function freshPlayerRoundState(): PlayerRoundState {
     furiten: false,
     melds: [],
     discardedKinds: [],
+    tsumogiriIds: [],
   };
 }
 

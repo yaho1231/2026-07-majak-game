@@ -184,6 +184,7 @@ export function craft(cfg: CraftConfig): GameState {
       furiten: false,
       melds,
       discardedKinds: h(cfg.discards?.[p] ?? "").map(kindKey),
+      tsumogiriIds: [],
     };
   }
 

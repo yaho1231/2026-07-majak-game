@@ -156,9 +156,37 @@ export interface PlayerRoundView {
   melds: MeldView[];
   /** 리치 선언패의 discards 내 인덱스 (바닥에서 눕혀 그리는 용도, 공개) */
   riichiTileIndex?: number;
+  /**
+   * **쯔모기리**로 버린 패의 tileId 목록 (공개).
+   * 바닥에 "손을 대지 않고 그대로 흘린 패" 표식을 그리는 용도 —
+   * 실제 탁자에서 손이 움직였는지는 전원이 보는 정보다.
+   */
+  tsumogiriIds: TileId[];
+  /**
+   * 지금 **쯔모패를 손패와 떨어뜨려 쥐고 있는가** (공개).
+   *
+   * 실제 탁자에서 쯔모패는 손패 오른쪽에 한 장 따로 놓인다 — 내용은 안 보여도
+   * "따로 한 장 있다"는 건 전원이 본다. true면 이 사람의 손패 마지막 한 장이
+   * 그 쯔모패이므로, 클라이언트는 그 앞에 틈을 벌려 그린다.
+   *
+   * 손패에 끼워 넣었거나(직접 배치를 옮겼거나) 이미 버렸으면 false다.
+   */
+  drawnSeparated: boolean;
 }
 
 export type FuritenReason = "discard" | "temporary" | "riichi";
+
+/** 버림패가 나온 손패 자리 — 내용은 밝히지 않고 자리만 공개한다 */
+export interface DiscardOrigin {
+  player: PlayerId;
+  tileId: TileId;
+  /** 버리기 직전 배치에서의 0-based 자리 (왼→오른쪽) */
+  index: number;
+  /** 그때의 총 자릿수 (쯔모패 포함) */
+  handSize: number;
+  /** 떨어져 있던 쯔모패를 그대로 버렸는가 */
+  tsumogiri: boolean;
+}
 
 export interface RoundView {
   prevalentWind: number;
@@ -175,6 +203,17 @@ export interface RoundView {
   doraIndicators: TileId[];
   /** 마지막 버림패. reaction 페이즈에서 누가 무엇을 버렸는지 */
   lastDiscard: { player: PlayerId; tileId: TileId } | null;
+  /**
+   * 마지막 버림패가 **손패 어느 자리에서 나왔는가** (공개).
+   *
+   * 실제 탁자에서 남의 손이 어느 자리에서 열렸는지는 전원이 본다 — 그게 판 읽기의
+   * 재료다. 배치를 서버가 알고 있으므로(handOrder) 패 내용을 밝히지 않고
+   * 자리만 공개할 수 있다. 클라이언트가 그 자리에 잠깐 표식을 띄운다.
+   *
+   * `index`는 **버리기 직전** 배치에서의 0-based 자리(왼→오른쪽), `handSize`는 그때의
+   * 총 자릿수다. `index === handSize - 1 && tsumogiri`면 떨어져 있던 쯔모패를 그대로 버린 것.
+   */
+  lastDiscardFrom: DiscardOrigin | null;
   /**
    * 이번 턴 쯔모패 — 뷰어 본인의 손패에 있을 때만 노출 (그 외 null).
    * 클라이언트가 손패 정렬 시 쯔모패를 분리해 그리는 용도.
@@ -290,13 +329,24 @@ function sortForDisplay(state: GameState, tileIds: readonly TileId[]): TileId[] 
   });
 }
 
-/** 소유자가 정한 배치를 지금 손패에 적용한다 (배치가 없으면 표준 정렬) */
+/**
+ * 소유자가 정한 배치를 지금 손패에 적용한다 (배치가 없으면 표준 정렬).
+ *
+ * 배치가 없을 때 **쯔모패는 맨 뒤**로 뺀다 — 실제 탁자에서 쯔모패는 손패 오른쪽에
+ * 한 장 따로 놓기 때문이다. 배치를 보내는 클라이언트도 같은 자리에 둔다.
+ * (배치를 직접 옮겨 손패 사이에 끼워 넣었다면 그 배치를 존중한다 — 그때는
+ * `drawnSeparated`가 false가 되어 화면에서도 틈이 사라진다.)
+ */
 function arrangeHand(
   state: GameState,
   tileIds: readonly TileId[],
   order: readonly TileId[] | undefined,
 ): TileId[] {
   if (order === undefined || order.length === 0) {
+    const drawn = state.round.lastDrawnTile;
+    if (drawn !== null && tileIds.includes(drawn)) {
+      return [...sortForDisplay(state, tileIds.filter((id) => id !== drawn)), drawn];
+    }
     return sortForDisplay(state, tileIds);
   }
   const inHand = new Set(tileIds);
@@ -313,6 +363,20 @@ function arrangeHand(
     tileIds.filter((id) => !seen.has(id)),
   );
   return [...placed, ...rest];
+}
+
+/**
+ * 이 사람의 **지금 손패를 배치 순서대로** 돌려준다 (뷰와 똑같은 순서).
+ *
+ * 뷰를 만들지 않고 자리만 알아야 하는 쪽(버리기 직전에 자리를 재는 HanchanController)이
+ * 쓴다 — 뷰와 같은 함수를 거쳐야 화면의 자리와 어긋나지 않는다.
+ */
+export function arrangeHandForDisplay(
+  state: GameState,
+  player: PlayerId,
+  order: readonly TileId[] | undefined,
+): TileId[] {
+  return arrangeHand(state, state.zones[handZone(player)]?.tileIds ?? [], order);
 }
 
 // ─────────────────────────── 핵심: buildPlayerView ───────────────────────────
@@ -339,12 +403,19 @@ export function buildPlayerView(
      * 없는 플레이어는 표준 정렬로 폴백한다. 자세한 규약은 arrangeHand 주석.
      */
     handOrder?: Record<PlayerId, readonly TileId[]>;
+    /**
+     * 마지막 버림패가 나온 손패 자리. 배치를 아는 쪽(HanchanController)이
+     * 버리기 **직전**에 재어 넘긴다 — 패가 손을 떠난 뒤에는 복원할 수 없다.
+     */
+    lastDiscardFrom?: DiscardOrigin | null;
   },
 ): PlayerView {
   const isSpectator = viewerId === SPECTATOR_ID;
 
   // ── Zone 가시성 필터링 ──
   const zones: Record<ZoneId, ZoneView> = {};
+  /** 좌석별 배치가 적용된 손패 (가시성 적용 전) — 쯔모패 분리 판정에 쓴다 */
+  const arrangedHands: Record<PlayerId, TileId[]> = {};
   for (const zone of Object.values(state.zones)) {
     const visibility = resolveZoneVisibility(
       zone.kind,
@@ -356,10 +427,13 @@ export function buildPlayerView(
     );
     // 손패는 소유자가 정한 배치를 **가시성보다 먼저** 입힌다 — 그래야
     // 엿보기(앞 N장)도, 관전·투시(전부 공개)도 모두 같은 배치를 본다.
-    const zoneTileIds =
-      zone.kind === "hand" && zone.owner !== undefined
-        ? arrangeHand(state, zone.tileIds, options?.handOrder?.[zone.owner])
-        : zone.tileIds;
+    let zoneTileIds = zone.tileIds;
+    if (zone.kind === "hand" && zone.owner !== undefined) {
+      zoneTileIds = arrangeHand(state, zone.tileIds, options?.handOrder?.[zone.owner]);
+      // 배치는 가려진 손패에도 존재한다 — 쯔모패가 따로 놓였는지(공개 정보)를
+      // 판단하려면 뷰가 아니라 이 배치를 봐야 한다.
+      arrangedHands[zone.owner] = zoneTileIds;
+    }
     const { tileIds, hiddenCount } = applyVisibility(
       zoneTileIds,
       zone.owner,
@@ -395,6 +469,8 @@ export function buildPlayerView(
     options?.uraDoraIndicators ?? null,
     // 후로 상세는 melds Zone이 이 뷰어에게 전부 공개일 때만 노출
     (pid) => zones[meldsZone(pid)]?.hiddenCount === 0,
+    arrangedHands,
+    options?.lastDiscardFrom ?? null,
     options?.yaku,
   );
 
@@ -575,6 +651,8 @@ function buildRoundView(
   rules: RuleRegistry,
   uraDoraIndicators: TileId[] | null,
   meldsVisible: (pid: PlayerId) => boolean,
+  arrangedHands: Record<PlayerId, TileId[]>,
+  lastDiscardFrom: DiscardOrigin | null,
   yaku?: YakuRegistry,
 ): RoundView {
   const byPlayer: Record<PlayerId, PlayerRoundView> = {};
@@ -586,6 +664,7 @@ function buildRoundView(
       furiten: false,
       melds: [],
       discardedKinds: [],
+      tsumogiriIds: [],
     };
     const meldCount = pr.melds.length;
     const riichiDeclared = pr.riichi !== null;
@@ -600,6 +679,15 @@ function buildRoundView(
       : [];
     const riichiIndex =
       pr.riichi !== null ? { riichiTileIndex: pr.riichi.discardIndex } : {};
+    // 쯔모패가 손패와 떨어져 있는가 — 배치의 **마지막 한 장**이 이번 쯔모패면 그렇다.
+    // (버리면 lastDrawnTile이 비므로 자연히 false가 된다.)
+    const arranged = arrangedHands[pid] ?? [];
+    const drawnSeparated =
+      round.lastDrawnTile !== null &&
+      arranged.length > 0 &&
+      arranged[arranged.length - 1] === round.lastDrawnTile;
+    // 쯔모기리 표식·분리 여부는 실제 탁자에서 전원이 보는 정보다 (본인·타인 공통)
+    const publicDraw = { tsumogiriIds: [...pr.tsumogiriIds], drawnSeparated };
 
     // 봉인된 패 — 본인(관전자는 전원)에게만 노출. 규칙 미정의 상태(비표준 게임) 폴백 [].
     const showSealed = pid === viewerId || viewerId === SPECTATOR_ID;
@@ -635,6 +723,7 @@ function buildRoundView(
         melds,
         ...riichiIndex,
         ...sealed,
+        ...publicDraw,
       };
     } else {
       // 스텔스 리치 — 이 사람의 리치는 타인에게 보이지 않는다(본인·관전자는 그대로).
@@ -652,6 +741,7 @@ function buildRoundView(
         melds,
         ...(hidden ? {} : riichiIndex),
         ...sealed,
+        ...publicDraw,
       };
     }
   }
@@ -690,6 +780,15 @@ function buildRoundView(
     lastDiscard: round.lastDiscard
       ? { player: round.lastDiscard.player, tileId: round.lastDiscard.tileId }
       : null,
+    // 지금 바닥에 놓인 그 버림패의 출처일 때만 싣는다 — 더 진행된 뒤의 낡은 표식이
+    // 엉뚱한 자리에 남지 않게 한다.
+    lastDiscardFrom:
+      lastDiscardFrom !== null &&
+      round.lastDiscard !== null &&
+      lastDiscardFrom.tileId === round.lastDiscard.tileId &&
+      lastDiscardFrom.player === round.lastDiscard.player
+        ? lastDiscardFrom
+        : null,
     myDrawnTile,
     uraDoraIndicators,
     byPlayer,
