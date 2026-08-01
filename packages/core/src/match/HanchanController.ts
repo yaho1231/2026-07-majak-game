@@ -19,8 +19,12 @@ import { DraftController, rebuildAugments } from "../augment/DraftController.js"
 import { installAugment } from "../augment/Augment.js";
 import { draftDoneKey } from "../augment/events.js";
 import { RuleLayer } from "../engine/rules/RuleRegistry.js";
-import { SPECTATOR_ID, buildPlayerView } from "../information/PlayerView.js";
-import type { PlayerView, PublicTileView } from "../information/PlayerView.js";
+import {
+  SPECTATOR_ID,
+  arrangeHandForDisplay,
+  buildPlayerView,
+} from "../information/PlayerView.js";
+import type { DiscardOrigin, PlayerView, PublicTileView } from "../information/PlayerView.js";
 import type { GameState } from "../engine/state/GameState.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import type { TileId } from "../mahjong/tiles/Tile.js";
@@ -228,6 +232,12 @@ export interface SpectatorSink {
   notify?(msg: ServerMessage): void;
 }
 
+/**
+ * 손패에서 한 장을 바닥에 내려놓는 액션들 — 버림 자리(lastDiscardFrom)를 재는 대상.
+ * riichi는 선언과 함께 버리고, free_discard는 리치 중 자유 버림(증강)이다.
+ */
+const DISCARDING_ACTIONS = new Set(["discard", "riichi", "free_discard"]);
+
 /** 표준 액션 타입 — 이 외의 액션 실행은 actionFx로 브로드캐스트된다 */
 const STANDARD_ACTION_TYPES = new Set([
   "discard",
@@ -265,6 +275,11 @@ export class HanchanController {
    * 배치가 보인다. 배치가 없는 좌석(봇)은 코어가 표준 정렬로 폴백한다.
    */
   private readonly handOrder: Record<PlayerId, readonly TileId[]> = {};
+  /**
+   * 마지막 버림패가 손패 어느 자리에서 나왔는지. 배치를 아는 건 여기(handOrder)뿐이고
+   * 패가 손을 떠난 뒤에는 자리를 복원할 수 없어 **버리기 직전**에 재어 둔다.
+   */
+  private lastDiscardFrom: DiscardOrigin | null = null;
   /** 전원 합의 무효 종료 요청 여부 */
   private aborted = false;
   /** 무효 요청 시 즉시 resolve되는 신호 (결정 대기를 깨우는 용도) */
@@ -574,6 +589,7 @@ export class HanchanController {
     // 지난 국의 손패 배치는 버린다 — tile id는 국이 바뀌어도 0~135를 그대로 재사용해
     // 남겨 두면 새 배패에 지난 국의 배치가 엉뚱하게 들러붙는다.
     for (const pid of Object.keys(this.handOrder)) delete this.handOrder[pid];
+    this.lastDiscardFrom = null;
     const flow = new FlowController(game.engine);
     let status: FlowStatus = flow.begin();
     this.broadcastViews(game); // 배패 직후 — 손패가 보이는 첫 시점
@@ -585,6 +601,7 @@ export class HanchanController {
       const auto = status.prompts.length === 1 ? status.prompts[0] : undefined;
       if (auto?.auto === true) {
         if (await this.pauseForAutoMove()) return "abort";
+        this.trackDiscardOrigin(game, auto.player, auto.options[0]!);
         status = flow.submit(auto.player, auto.options[0]!);
         this.broadcastViews(game);
         continue;
@@ -637,6 +654,7 @@ export class HanchanController {
       // 순서대로 submit (FlowController는 모든 결정이 모이면 resolve)
       for (const { player, option } of raced.decisions) {
         if (flow.isPending(player)) {
+          this.trackDiscardOrigin(game, player, option);
           status = flow.submit(player, option);
           // 특수 액션(액티브 증강 등) 실행 연출 — 표준 액션이 아닌 것만.
           // 비표준 타입은 턴 프롬프트에서만 나오므로 결정 = 실행이 보장된다.
@@ -741,6 +759,47 @@ export class HanchanController {
     ]);
   }
 
+  /**
+   * 버리기 **직전**에 그 패가 배치의 몇 번째 자리였는지 재어 둔다.
+   *
+   * 실제 탁자에서 남의 손이 어느 자리에서 열렸는지는 전원이 보는 정보다. 배치를
+   * 서버가 알고 있으므로(handOrder) 패 내용을 밝히지 않고 자리만 공개할 수 있다.
+   *
+   * **버림 외의 액션에서는 손대지 않는다.** 표식은 바닥에 놓인 그 버림패가 살아 있는
+   * 동안 계속 보여야 한다 — 실제 탁자에서도 다음 사람이 버릴 때까지 벌어진 자리가
+   * 남아 있다. (패스에서 지웠더니 내 차례가 오는 순간 앞사람 자리가 사라졌다.)
+   * 낡은 표식은 buildPlayerView가 `round.lastDiscard`와 대조해 걸러내므로
+   * — 후로가 그 패를 가져가면 CALL_MADE가 lastDiscard를 비운다 — 여기서는 안전하다.
+   */
+  private trackDiscardOrigin(
+    game: StandardGame,
+    player: PlayerId,
+    option: { type: string; payload: unknown },
+  ): void {
+    // 손패에서 한 장을 바닥에 내려놓는 액션 전부.
+    // riichi = 선언과 함께 버림, free_discard = 리치 중 자유 버림(증강).
+    if (!DISCARDING_ACTIONS.has(option.type)) return;
+    const tileId = (option.payload as { tileId?: unknown })?.tileId;
+    if (typeof tileId !== "number") {
+      this.lastDiscardFrom = null;
+      return;
+    }
+    const state = game.engine.state;
+    const arranged = arrangeHandForDisplay(state, player, this.handOrder[player]);
+    const index = arranged.indexOf(tileId);
+    if (index < 0) {
+      this.lastDiscardFrom = null;
+      return;
+    }
+    this.lastDiscardFrom = {
+      player,
+      tileId,
+      index,
+      handSize: arranged.length,
+      tsumogiri: state.round.lastDrawnTile === tileId,
+    };
+  }
+
   // ─────────────────────────── 뷰 브로드캐스트 ───────────────────────────
 
   private broadcastViews(game: StandardGame, uraDoraIndicators?: TileId[]): void {
@@ -749,6 +808,7 @@ export class HanchanController {
     const viewOpt = {
       yaku: game.yaku, // 본인 뷰 형식텐파이(역없음) 계산용
       handOrder: this.handOrder, // 손패 배치 — 전원이 같은 순서를 본다
+      lastDiscardFrom: this.lastDiscardFrom, // 마지막 버림이 나온 자리
       ...(uraDoraIndicators !== undefined && uraDoraIndicators.length > 0
         ? { uraDoraIndicators }
         : {}),
@@ -783,6 +843,7 @@ export class HanchanController {
       buildPlayerView(state, viewerId, rules, {
         yaku: this.game.yaku,
         handOrder: this.handOrder,
+        lastDiscardFrom: this.lastDiscardFrom,
       }),
     );
   }
@@ -807,6 +868,7 @@ export class HanchanController {
       sink.sendView(
         buildPlayerView(this.game.engine.state, SPECTATOR_ID, this.game.engine.rules, {
           handOrder: this.handOrder,
+          lastDiscardFrom: this.lastDiscardFrom,
         }),
       );
     }

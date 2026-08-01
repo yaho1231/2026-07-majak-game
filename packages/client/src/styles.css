@@ -696,6 +696,23 @@ button {
   inset: 0;
 }
 
+/* ── 쯔모기리 표식 ──
+   쯔모한 패를 손에 넣지 않고 그대로 흘린 패. 실제 탁자에서는 손이 움직이지 않아
+   전원이 구분해 보는 정보이므로, 바닥에 작은 점으로 남긴다. 손버림(표식 없음)과
+   대비만 되면 되므로 패 그림을 가리지 않을 만큼만 작게. */
+.rt-tsumo-dot {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(126, 201, 234, 0.9);
+  box-shadow: 0 0 3px rgba(126, 201, 234, 0.8);
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* 리치 선언패 — 눕혀서 그린다 */
 .rt-riichi {
   width: var(--rt-h);
@@ -878,6 +895,41 @@ button {
   background: linear-gradient(90deg, #3e5548 0%, #22332a 60%, #1c2b24 100%);
   border: 1px solid #152119;
   box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.18), 0 2px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* ── 쯔모패 자리 ──
+   실제 탁자에서 쯔모패는 손패에서 한 칸 띄워 오른쪽에 따로 놓는다. 내용은 안 보여도
+   "따로 한 장 있다"는 건 전원이 보는 정보라, 뒷면에도 똑같이 틈을 벌린다.
+   맞은편은 가로, 좌·우 자리는 세로로 흐르므로 틈을 벌리는 축이 다르다
+   (오른쪽 자리는 아래→위로 흘러 배치의 끝이 맨 위에 온다 → 아래쪽에 틈). */
+.opp-strip-top .slot-drawn { margin-left: calc(var(--back-w) * 0.5); }
+.opp-strip-left .slot-drawn { margin-top: calc(var(--back-w) * 0.5); }
+.opp-strip-right .slot-drawn { margin-bottom: calc(var(--back-w) * 0.5); }
+
+/* ── 방금 패가 빠져나간 자리 ──
+   다음 버림이 나올 때까지 빈 칸으로 남겨, 상대가 손패 몇 번째에서 뺐는지(손버림)
+   또는 떨어져 있던 쯔모패를 그대로 흘렸는지(쯔모기리)를 눈으로 읽게 한다.
+   자리를 차지해야 나머지 패가 밀리지 않는다 — 그래야 자리 번호가 뜻을 갖는다. */
+.slot-gone {
+  display: inline-block;
+  border-radius: 4px;
+  border: 1px dashed rgba(240, 200, 106, 0.5);
+  background: rgba(240, 200, 106, 0.08);
+  animation: slot-gone-in 0.45s ease-out both;
+}
+.opp-strip-top .slot-gone { width: var(--back-w); height: var(--back-h); }
+.opp-strip-left .slot-gone,
+.opp-strip-right .slot-gone { width: var(--back-h); height: var(--back-w); }
+/* 쯔모기리 — 손을 대지 않고 흘린 자리. 손버림과 색으로 구분한다 */
+.slot-gone-tsumo {
+  border-color: rgba(126, 201, 234, 0.55);
+  background: rgba(126, 201, 234, 0.1);
+}
+
+@keyframes slot-gone-in {
+  0% { opacity: 0; transform: scale(0.82); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 /* 증강 등으로 공개된 상대 손패 — 뒷면과 **같은 자리**를 쓴다.

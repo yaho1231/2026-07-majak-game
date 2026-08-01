@@ -76,6 +76,7 @@ function fakeView(holder: PlayerId, handSpec: string, players: FakePlayer[]): Pl
       direction: 1,
       doraIndicators: [],
       lastDiscard: null,
+      lastDiscardFrom: null,
       myDrawnTile: null,
       uraDoraIndicators: null,
       byPlayer: {},

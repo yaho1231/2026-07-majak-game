@@ -24,6 +24,8 @@ import {
 } from "../src/information/PlayerView.js";
 import type { VisibilityRule } from "../src/information/PlayerView.js";
 import { RuleLayer } from "../src/engine/rules/RuleRegistry.js";
+import { createStandardGame } from "../src/mahjong/flow/standardGame.js";
+import { FlowController } from "../src/mahjong/flow/FlowController.js";
 
 // ─────────────────────────── 테스트 유틸 ───────────────────────────
 
@@ -605,5 +607,134 @@ describe("손패 배치 — 모든 뷰어가 소유자가 정한 순서를 본�
 
     const view = buildPlayerView(state, "p1", rules, { handOrder: { p0: arranged } });
     expect(view.zones[handZone("p0")]?.tileIds).toEqual(arranged.slice(0, 3));
+  });
+});
+
+// ───────────────── §N 쯔모패 분리 · 쯔모기리 · 버림 자리 (전원 공개) ─────────────────
+
+describe("쯔모패와 버림 자리 — 상대·관전자도 읽을 수 있어야 한다", () => {
+  /** p0에게 패산에서 한 장 쥐여 주고 그 tileId를 돌려준다 (쯔모 흉내) */
+  function giveDraw(state: GameState): { state: GameState; drawn: TileId } {
+    const wall = state.zones[WALL]?.tileIds ?? [];
+    const drawn = wall[0] as TileId;
+    const hand = state.zones[handZone("p0")]?.tileIds ?? [];
+    return {
+      state: {
+        ...state,
+        zones: {
+          ...state.zones,
+          [WALL]: { ...state.zones[WALL]!, tileIds: wall.slice(1) },
+          [handZone("p0")]: {
+            ...state.zones[handZone("p0")]!,
+            tileIds: [...hand, drawn],
+          },
+        },
+        round: { ...state.round, lastDrawnTile: drawn },
+      },
+      drawn,
+    };
+  }
+
+  it("쯔모패는 배치가 없어도 맨 뒤에 놓이고, 전원이 '따로 쥐고 있음'을 본다", () => {
+    const { state, drawn } = giveDraw(makeState());
+    const rules = makeRules();
+
+    // 관전자 뷰: 배치의 마지막 한 장이 쯔모패
+    const spec = buildPlayerView(state, SPECTATOR_ID, rules);
+    const shown = spec.zones[handZone("p0")]?.tileIds ?? [];
+    expect(shown[shown.length - 1]).toBe(drawn);
+    expect(spec.round.byPlayer["p0"]?.drawnSeparated).toBe(true);
+
+    // 손패 내용은 안 보이는 상대에게도 '따로 쥐고 있다'는 사실은 공개된다
+    const other = buildPlayerView(state, "p1", rules);
+    expect(other.zones[handZone("p0")]?.tileIds).toEqual([]);
+    expect(other.round.byPlayer["p0"]?.drawnSeparated).toBe(true);
+  });
+
+  it("쯔모패를 손패 사이로 옮겨 배치하면 분리 표시가 사라진다", () => {
+    const { state, drawn } = giveDraw(makeState());
+    const rules = makeRules();
+    const hand = state.zones[handZone("p0")]?.tileIds ?? [];
+    // 쯔모패를 맨 앞으로 끌어다 놓은 배치
+    const arranged = [drawn, ...hand.filter((id) => id !== drawn)];
+
+    const view = buildPlayerView(state, "p1", rules, { handOrder: { p0: arranged } });
+    expect(view.round.byPlayer["p0"]?.drawnSeparated).toBe(false);
+  });
+
+  it("버리면 쯔모패 분리가 즉시 풀린다 (다음 쯔모까지 떠 있지 않는다)", () => {
+    const game = createStandardGame({ seed: 7 });
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const turnPlayer = status.prompts[0]!.player;
+    const drawn = game.engine.state.round.lastDrawnTile;
+    expect(drawn).not.toBeNull();
+
+    // 쯔모패가 **아닌** 패를 버린다 (손버림)
+    const discard = status.prompts[0]!.options.find(
+      (o) => o.type === "discard" && (o.payload as { tileId: TileId }).tileId !== drawn,
+    );
+    if (discard === undefined) throw new Error("no tedashi option");
+    flow.submit(turnPlayer, discard as { type: string; payload: unknown });
+
+    // 버린 사람의 쯔모패는 손에 섞였다 — 흐름이 다음 사람의 쯔모까지 진행되므로
+    // round.lastDrawnTile은 이제 **그 다음 사람의** 패다. 버린 사람 것이면 안 된다.
+    expect(game.engine.state.round.lastDrawnTile).not.toBe(drawn);
+    const view = buildPlayerView(game.engine.state, SPECTATOR_ID, game.engine.rules);
+    expect(view.round.byPlayer[turnPlayer]?.drawnSeparated).toBe(false);
+    // 그 사람 손패 어디에도 쯔모패가 끝에 떨어져 있지 않다 (배치에 섞였다)
+    const hand = view.zones[handZone(turnPlayer)]?.tileIds ?? [];
+    expect(hand).toContain(drawn);
+    // 손버림이므로 쯔모기리 표식은 붙지 않는다
+    expect(view.round.byPlayer[turnPlayer]?.tsumogiriIds).toEqual([]);
+  });
+
+  it("쯔모기리로 버리면 그 패에 표식이 남고, 전원이 본다", () => {
+    const game = createStandardGame({ seed: 7 });
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const turnPlayer = status.prompts[0]!.player;
+    const drawn = game.engine.state.round.lastDrawnTile as TileId;
+
+    const discard = status.prompts[0]!.options.find(
+      (o) => o.type === "discard" && (o.payload as { tileId: TileId }).tileId === drawn,
+    );
+    if (discard === undefined) throw new Error("no tsumogiri option");
+    flow.submit(turnPlayer, discard as { type: string; payload: unknown });
+
+    for (const viewer of [turnPlayer, "p1", "p2", SPECTATOR_ID]) {
+      const view = buildPlayerView(game.engine.state, viewer, game.engine.rules);
+      expect(view.round.byPlayer[turnPlayer]?.tsumogiriIds).toEqual([drawn]);
+    }
+  });
+
+  it("버림 자리는 지금 바닥에 있는 그 버림패의 것일 때만 실린다", () => {
+    const state = makeState();
+    const rules = makeRules();
+    const origin = { player: "p0", tileId: 5, index: 3, handSize: 14, tsumogiri: false };
+
+    // lastDiscard가 없으면(아직 아무도 안 버림) 표식도 없다
+    expect(buildPlayerView(state, "p1", rules, { lastDiscardFrom: origin }).round.lastDiscardFrom)
+      .toBeNull();
+
+    // lastDiscard와 짝이 맞을 때만 싣는다
+    const discarded: GameState = {
+      ...state,
+      round: { ...state.round, lastDiscard: { player: "p0", tileId: 5 } },
+    };
+    expect(
+      buildPlayerView(discarded, "p1", rules, { lastDiscardFrom: origin }).round.lastDiscardFrom,
+    ).toEqual(origin);
+
+    // 다른 패가 버려진 뒤라면 낡은 표식은 버린다
+    const moved: GameState = {
+      ...state,
+      round: { ...state.round, lastDiscard: { player: "p0", tileId: 9 } },
+    };
+    expect(
+      buildPlayerView(moved, "p1", rules, { lastDiscardFrom: origin }).round.lastDiscardFrom,
+    ).toBeNull();
   });
 });

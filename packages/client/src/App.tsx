@@ -5657,6 +5657,12 @@ function River({
   const hidden = zone?.hiddenCount ?? 0;
   const riichiIdx = view.round.byPlayer[playerId]?.riichiTileIndex;
   const last = view.round.lastDiscard;
+  // 쯔모기리(손을 대지 않고 그대로 흘린 패) — 실제 탁자에서 전원이 보는 정보다.
+  // 인덱스가 아니라 tileId로 받아, 후로로 바닥에서 패가 빠져도 표식이 밀리지 않는다.
+  const tsumogiri = useMemo(
+    () => new Set(view.round.byPlayer[playerId]?.tsumogiriIds ?? []),
+    [view.round.byPlayer, playerId],
+  );
   // 안개 덮인 바닥 — 보유자가 선언하면 각자의 마지막 버림패 tileId가 전원 공개로 실린다.
   // (여러 명이 보유해도 내용이 같으므로 먼저 찾은 맵을 쓴다.)
   const fogLastId = useMemo<number | undefined>(() => {
@@ -5689,10 +5695,13 @@ function River({
           // 다른 클릭 대상과 같은 보랏빛으로 두면 그게 안 보인다. 금빛 + 화료 표식으로
           // 확실히 구분한다 (2026-07-31 사용자 요청: "화료할 수 있는 패 좀 더 티나게").
           const winArm = armable && sel.armedType === "grave_rob";
+          // 쯔모기리는 손이 움직이지 않았다는 뜻 — 손버림과 구분해 점 하나를 찍는다
+          const tsumo = tsumogiri.has(id);
           return (
             <span
               key={id}
-              className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}`}
+              className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}${tsumo ? " rt-tsumogiri" : ""}`}
+              title={tsumo ? "쯔모기리 (쯔모한 패를 그대로 버림)" : "손버림 (손패에서 꺼내 버림)"}
               {...(armable
                 ? { "data-arm-zone": "1", role: "button" as const, onClick: () => sel.submit(armOpt) }
                 : {})}
@@ -5700,6 +5709,7 @@ function River({
               <span className="rt-inner">
                 <TileImg tile={view.tiles[id]} size="fill" owner={playerId} />
               </span>
+              {tsumo ? <span className="rt-tsumo-dot" /> : null}
               {winArm ? <span className="rt-win-tag">화료</span> : null}
             </span>
           );
@@ -5740,6 +5750,73 @@ function River({
 
 // ─────────────────────────── 상대 영역 ───────────────────────────
 
+/**
+ * 상대 손패의 한 자리.
+ * - `tile` : 이 뷰어에게 공개된 패 (관전·투시·엿보기)
+ * - `back` : 뒷면 (내용 비공개)
+ * - `gone` : 방금 패가 빠져나간 빈 자리 (다음 버림 전까지만)
+ */
+type OppSlot =
+  | { kind: "tile"; id: number }
+  | { kind: "back"; key: number }
+  | { kind: "gone"; tsumogiri: boolean };
+
+/** 슬롯 React key — 패는 id로, 나머지는 자리 번호로 (같은 자리면 같은 key) */
+function slotKey(s: OppSlot, i: number): string {
+  return s.kind === "tile" ? `t${s.id}` : s.kind === "back" ? `b${s.key}` : `g${i}`;
+}
+
+/**
+ * 상대 손패 한 자리. 뒷면·공개패·빈 자리를 **같은 크기로** 그려, 패가 빠져도
+ * 나머지 자리가 밀리지 않는다 — 그래야 "몇 번째에서 뺐는지"가 눈에 남는다.
+ *
+ * `gap`은 쯔모패 자리 — 실제 탁자처럼 손패에서 한 칸 띄워 그린다.
+ */
+function OppHandSlot({
+  slot,
+  side,
+  gap,
+  view,
+  owner,
+  highlight,
+}: {
+  slot: OppSlot;
+  side: "top" | "left" | "right";
+  gap: boolean;
+  view: PlayerView;
+  owner: string;
+  highlight: TileKind | null;
+}): JSX.Element {
+  const gapCls = gap ? " slot-drawn" : "";
+  if (slot.kind === "gone") {
+    return (
+      <span
+        className={`slot-gone${slot.tsumogiri ? " slot-gone-tsumo" : ""}${gapCls}`}
+        title={slot.tsumogiri ? "쯔모패를 그대로 버렸습니다" : "이 자리에서 패를 뺐습니다"}
+      />
+    );
+  }
+  if (slot.kind === "back") {
+    return <span className={`${side === "top" ? "back-v" : "back-h"}${gapCls}`} />;
+  }
+  const tile = view.tiles[slot.id];
+  const hl = kindMatches(tile, highlight) ? " tile-hl" : "";
+  if (side === "top") {
+    return (
+      <span className={`open-tile${hl}${gapCls}`}>
+        <TileImg tile={tile} size="fill" owner={owner} />
+      </span>
+    );
+  }
+  return (
+    <span className={`open-tile-lying open-${side}${hl}${gapCls}`}>
+      <span className="open-tile-inner">
+        <TileImg tile={tile} size="fill" owner={owner} />
+      </span>
+    </span>
+  );
+}
+
 function OpponentStrip({
   view,
   player,
@@ -5757,14 +5834,38 @@ function OpponentStrip({
   // 뷰의 순서가 곧 소유자의 배치다(core arrangeHand) — 여기서 다시 정렬하면
   // 실제로 쥔 배치와 어긋난다. 뒷면(hidden)은 그대로 개수만.
   const arranged = zone?.tileIds ?? [];
-  // 오른쪽 자리는 실제 탁자처럼 플레이어가 왼쪽을 바라봐 손패가 아래→위로 흐른다.
-  // 배치가 그대로 읽히도록 오른쪽 자리만 표시 순서를 뒤집는다.
-  const open = side === "right" ? [...arranged].reverse() : arranged;
+  const pr = view.round.byPlayer[player.id];
+  // 방금 이 사람이 버렸다면 그 패가 빠져나간 자리를 빈 칸으로 남겨 둔다 —
+  // "13장 중 몇 번째에서 뺐는지 / 떨어져 있던 쯔모패를 흘렸는지"가 그대로 보인다.
+  // 다음 버림이 나오면 서버가 표식을 갈아 끼우므로 저절로 사라진다.
+  const from = view.round.lastDiscardFrom;
+  const vacated = from !== null && from.player === player.id ? from : null;
+  const slots = useMemo<OppSlot[]>(() => {
+    // 배치 순서 그대로: 공개된 패가 앞(엿보기는 앞 N장), 나머지는 뒷면.
+    const list: OppSlot[] = [
+      ...arranged.map((id) => ({ kind: "tile" as const, id })),
+      ...Array.from({ length: hidden }, (_, i) => ({ kind: "back" as const, key: i })),
+    ];
+    if (vacated !== null) {
+      // 자리 수가 한 장 줄어든 상태라, 빠진 자리에 빈 칸을 도로 끼워 넣으면
+      // 버리기 직전의 배치가 그대로 복원된다.
+      const at = Math.max(0, Math.min(vacated.index, list.length));
+      list.splice(at, 0, { kind: "gone", tsumogiri: vacated.tsumogiri });
+    }
+    // 오른쪽 자리는 실제 탁자처럼 플레이어가 왼쪽을 바라봐 손패가 아래→위로 흐른다.
+    // 배치가 그대로 읽히도록 오른쪽 자리만 표시 순서를 뒤집는다.
+    return side === "right" ? list.reverse() : list;
+  }, [arranged, hidden, vacated, side]);
+  // 쯔모패를 손패와 떨어뜨려 쥐고 있는가 (전원 공개). 방금 쯔모기리로 흘렸다면
+  // 그 빈 칸도 떨어져 있던 자리이므로 똑같이 틈을 벌린다.
+  const separated = pr?.drawnSeparated === true || vacated?.tsumogiri === true;
+  /** 틈을 벌릴 슬롯 — 배치의 맨 끝(오른쪽 자리는 뒤집혔으니 맨 앞) */
+  const gapAt = separated ? (side === "right" ? 0 : slots.length - 1) : -1;
   // 이 상대의 손패 장수 — 뒷면 크기를 이 수에 맞춰야 진짜 용(16·17장)이
   // 화면 밖으로 흘러 잘리지 않는다 (CSS --back-n).
-  const handCount = open.length + hidden;
-  const melds = view.round.byPlayer[player.id]?.melds ?? [];
-  const meldCount = view.round.byPlayer[player.id]?.meldCount ?? 0;
+  const handCount = slots.length;
+  const melds = pr?.melds ?? [];
+  const meldCount = pr?.meldCount ?? 0;
   // 좌·우 자리는 후로도 **같은 세로줄**에 쌓인다 — 후로가 먹는 높이를 빼고 남은
   // 만큼으로 뒷면 크기를 정해야 손패가 화면 밖으로 밀려나지 않는다 (CSS --meld-n).
   const meldTileCount =
@@ -5790,7 +5891,7 @@ function OpponentStrip({
   // 관전 모드에서는 손패가 전부 공개되므로 각 플레이어의 오름패(대기)를 직접 계산해 표시
   const specWaits = useMemo<TileKind[]>(() => {
     if (view.playerId !== SPECTATOR_ID) return [];
-    const kinds = open
+    const kinds = arranged
       .map((id) => view.tiles[id]?.kind)
       .filter((k): k is TileKind => k !== undefined);
     if (kinds.length % 3 !== 1) return [];
@@ -5799,7 +5900,7 @@ function OpponentStrip({
     } catch {
       return [];
     }
-  }, [view, open, meldCount, player]);
+  }, [view, arranged, meldCount, player]);
   // 오픈 리치로 공개된 오름패는 전원에게 상시 보인다 (다른 정보 소스보다 우선).
   const openWaits = openRiichiWaits(view, player.id);
   const waits = openWaits.length > 0 ? openWaits : peeked.length > 0 ? peeked : specWaits;
@@ -5820,13 +5921,16 @@ function OpponentStrip({
           <PulledGroup view={view} owner={player} layout="row" />
         </div>
         <div className="opp-backs-row">
-          {open.map((id) => (
-            <span key={id} className={`open-tile${kindMatches(view.tiles[id], highlight) ? " tile-hl" : ""}`}>
-              <TileImg tile={view.tiles[id]} size="fill" owner={player.id} />
-            </span>
-          ))}
-          {Array.from({ length: hidden }, (_, i) => (
-            <span key={i} className="back-v" />
+          {slots.map((s, i) => (
+            <OppHandSlot
+              key={slotKey(s, i)}
+              slot={s}
+              side="top"
+              gap={i === gapAt}
+              view={view}
+              owner={player.id}
+              highlight={highlight}
+            />
           ))}
         </div>
         <NamePlate view={view} player={player} catalog={catalog} tipAlign="center" />
@@ -5844,15 +5948,16 @@ function OpponentStrip({
       {waits.length > 0 ? <WaitsBadge waits={waits} owner={playerName(view, player)} openRiichi={openWaits.length > 0} /> : null}
       <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
       <div className="opp-backs-col">
-        {open.map((id) => (
-          <span key={id} className={`open-tile-lying open-${side}${kindMatches(view.tiles[id], highlight) ? " tile-hl" : ""}`}>
-            <span className="open-tile-inner">
-              <TileImg tile={view.tiles[id]} size="fill" owner={player.id} />
-            </span>
-          </span>
-        ))}
-        {Array.from({ length: hidden }, (_, i) => (
-          <span key={i} className="back-h" />
+        {slots.map((s, i) => (
+          <OppHandSlot
+            key={slotKey(s, i)}
+            slot={s}
+            side={side}
+            gap={i === gapAt}
+            view={view}
+            owner={player.id}
+            highlight={highlight}
+          />
         ))}
       </div>
       <div className="opp-melds-col">

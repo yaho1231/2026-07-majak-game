@@ -545,6 +545,56 @@ describe("HanchanController — PlayerView 가시성 통합", () => {
   });
 });
 
+// ─────────────────────── 버림 자리(lastDiscardFrom) ───────────────────────
+
+describe("HanchanController — 버림이 나온 손패 자리", () => {
+  it("모든 버림에 자리가 실리고, 자리·장수·쯔모기리 여부가 실제와 맞는다", async () => {
+    // 상대 화면에서 "13장 중 몇 번째에서 뺐는지 / 떨어져 있던 쯔모패를 흘렸는지"를
+    // 그리는 근거다. 자리가 비거나 범위를 벗어나면 화면의 빈 칸이 엉뚱한 곳에 뜬다.
+    const bots = makeAgents([11, 22, 33, 44], "discardOnly");
+    let seen = 0;
+    let sawTedashi = false;
+    let sawTsumogiri = false;
+    const ctrl = new HanchanController(bots, {
+      ...DEFAULT_HANCHAN_CONFIG,
+      maxWind: 1,
+      westEntry: false,
+      dobi: false,
+      draftSchedules: [],
+      seed: 909,
+    });
+    // 뷰가 갈 때마다 검사한다 — sendView를 가로채 누적
+    for (const agent of bots as TestBotAgent[]) {
+      const orig = agent.sendView.bind(agent);
+      agent.sendView = (view: PlayerView): void => {
+        orig(view);
+        const from = view.round.lastDiscardFrom;
+        const last = view.round.lastDiscard;
+        if (from === null || last === null) return;
+        seen++;
+        // 표식은 항상 지금 바닥에 놓인 그 버림패의 것이어야 한다
+        expect(from.tileId).toBe(last.tileId);
+        expect(from.player).toBe(last.player);
+        // 자리는 그때의 손패 안이어야 한다
+        expect(from.index).toBeGreaterThanOrEqual(0);
+        expect(from.index).toBeLessThan(from.handSize);
+        // 쯔모기리면 떨어져 있던 마지막 자리에서 나왔다
+        if (from.tsumogiri) {
+          sawTsumogiri = true;
+          expect(from.index).toBe(from.handSize - 1);
+        } else {
+          sawTedashi = true;
+        }
+      };
+    }
+    await ctrl.run();
+    expect(seen).toBeGreaterThan(0);
+    // 한 국을 다 돌면 손버림·쯔모기리가 둘 다 나온다 (무작위 버림 정책)
+    expect(sawTedashi).toBe(true);
+    expect(sawTsumogiri).toBe(true);
+  });
+});
+
 // ─────────────────────────── 아가리야메 ───────────────────────────
 
 describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", () => {

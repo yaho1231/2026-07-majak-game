@@ -110,6 +110,7 @@ function craft(cfg: {
       furiten: false,
       melds,
       discardedKinds: h(cfg.discards?.[p] ?? "").map(kindKey),
+      tsumogiriIds: [],
     };
   }
 

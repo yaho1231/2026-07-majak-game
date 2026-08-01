@@ -256,6 +256,7 @@ export type {
 // ── Information System (09) ──
 export {
   buildPlayerView,
+  arrangeHandForDisplay,
   defineVisibilityRules,
   SPECTATOR_ID,
 } from "./information/PlayerView.js";
@@ -270,6 +271,7 @@ export type {
   MeldView,
   RoundView,
   FuritenReason,
+  DiscardOrigin,
 } from "./information/PlayerView.js";
 
 // ── Player Stats (14) ──
