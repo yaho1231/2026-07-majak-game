@@ -6334,24 +6334,38 @@ function MeldGroup({
     view.tiles,
   );
 
-  if (meld.kind === "kan_added" && layout === "row" && meld.calledTileId !== undefined) {
+  // 가깡 — 더한 4장째를 울어 온 패 위에 겹쳐 쌓는다. 옆자리(col)도 같다:
+  // 예전엔 row에서만 쌓아, 좌·우 상대의 가깡이 4장 일렬로 그려져 대명깡과
+  // 구분되지 않았다(2026-08-01).
+  if (meld.kind === "kan_added" && meld.calledTileId !== undefined) {
     const stackExtra = others[0];
     const upright = others.slice(1);
     const pos = rel === 3 ? 0 : rel === 2 ? 1 : upright.length;
+    const stack = (
+      <MeldStack
+        key="stack"
+        view={view}
+        a={meld.calledTileId}
+        b={stackExtra}
+        owner={owner.id}
+        layout={layout}
+        colSide={colSide}
+      />
+    );
     const items: JSX.Element[] = [];
     upright.forEach((id, idx) => {
-      if (idx === pos) {
-        items.push(
-          <MeldStack key="stack" view={view} a={meld.calledTileId!} b={stackExtra} owner={owner.id} />,
-        );
-      }
-      items.push(<MeldTile key={id} layout="row" tile={view.tiles[id]} owner={owner.id} />);
-    });
-    if (pos >= upright.length) {
+      if (idx === pos) items.push(stack);
       items.push(
-        <MeldStack key="stack" view={view} a={meld.calledTileId!} b={stackExtra} owner={owner.id} />,
+        <MeldTile
+          key={id}
+          layout={layout}
+          colSide={colSide}
+          tile={view.tiles[id]}
+          owner={owner.id}
+        />,
       );
-    }
+    });
+    if (pos >= upright.length) items.push(stack);
     return <span className={cls}>{items}</span>;
   }
 
@@ -6435,15 +6449,24 @@ function MeldStack({
   a,
   b,
   owner,
+  layout = "row",
+  colSide,
 }: {
   view: PlayerView;
   a: number;
   b?: number | undefined;
   /** 후로의 주인 — 도라 반짝임 판정용. */
   owner: string;
+  /** 후로 줄 방향 — 옆자리(col)에서는 겹치는 방향이 90° 돌아간다 */
+  layout?: "row" | "col";
+  colSide?: "left" | "right" | undefined;
 }): JSX.Element {
+  const cls =
+    layout === "row"
+      ? "mtile mtile-stack"
+      : `mtile mtile-stack-col mtile-${colSide ?? "left"}`;
   return (
-    <span className="mtile mtile-stack">
+    <span className={cls}>
       <span className="mtile-inner stack-a">
         <TileImg tile={view.tiles[a]} size="fill" owner={owner} />
       </span>
