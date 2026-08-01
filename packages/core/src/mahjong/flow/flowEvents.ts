@@ -190,6 +190,27 @@ export interface RoundSettledPayload {
    * 승승장구가 실제로 그랬다(60차 수정).
    */
   tenpaiPlayers?: PlayerId[];
+  /**
+   * 증강이 정산에서 **점수를 직접 얹거나 뺀 내역** (표시 전용 — deltas에는 이미 반영돼 있다).
+   *
+   * 정산 인터셉터는 `deltas`만 고치고 지나가므로, 결과 화면에는 "왜 이 숫자가 됐는지"가
+   * 아무 데도 남지 않았다 — 뚫린 천장이 화료점을 몇 배로 불려도 화면에는 표준 점수만
+   * 떴다(2026-08-02 사용자 보고: "뚫린 천장이 어떤 역할을 하는지 안 보인다").
+   * 각 증강이 자기 몫을 한 줄씩 남겨 결과 화면이 그대로 읽어 준다.
+   */
+  augPoints?: AugPointNote[];
+}
+
+/** 증강이 정산에 얹은 점수 한 줄 (결과 화면 표시용) */
+export interface AugPointNote {
+  /** 이 점수가 오간 사람 (보통 화료자) */
+  player: PlayerId;
+  /** 증강 id — 화면이 카탈로그에서 이름을 찾는다 */
+  augId: string;
+  /** 이 증강이 더한 점수 (음수면 뺀 것) */
+  points: number;
+  /** 상대가 낸 몫인가 (false·생략 = 뱅크 발행이라 상대는 더 내지 않았다) */
+  fromOpponents?: boolean;
 }
 
 function withPlayerRound(

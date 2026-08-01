@@ -130,9 +130,12 @@ describe("future_sight — 미래를 보는 자", () => {
     // 난수 소비 반영 + 스택·뷰 기록
     expect(st1.prngState).not.toBe(st0.prngState);
     expect(st1.augmentData[STACKS_KEY]).toBe(1);
-    expect(st1.augmentData["view:p0:future_stacks"]).toBe(1);
+    // 쌓인 판수는 전원 공개 채널로 나간다 — 이름표 증강 pill이 "+N판"으로 띄운다
+    expect(
+      buildPlayerView(st1, "p1", game.engine.rules).augmentView["future_sight:p0"],
+    ).toBe(1);
 
-    // 같은 턴에는 재사용 불가 — 프롬프트에서도 사라지고 직접 제출도 거부
+    // 같은 순에는 재사용 불가 — 프롬프트에서도 사라지고 직접 제출도 거부
     expect(st1.round.phase).toBe("turn.act");
     if (status.kind !== "awaiting") throw new Error("expected awaiting");
     const reprompt = status.prompts.find((p) => p.player === "p0");
@@ -146,7 +149,55 @@ describe("future_sight — 미래를 보는 자", () => {
       payload: { tileId: hand[0] as TileId },
     });
     expect(again.ok).toBe(false);
-    if (!again.ok) expect(again.reason).toBe("already used this turn");
+    if (!again.ok) expect(again.reason).toBe("future sight is on cooldown");
+  });
+
+  // ── 3순에 1회 (2026-08-02 사용자 지시) ──
+  const TURNS_KEY = "future_sight:turns:1-1-0:p0";
+  const LAST_KEY = "future_sight:last:1-1-0:p0";
+
+  /** 순 번호(turns)와 마지막 발동 순(last)을 주입하고 무장이 통과하는지 본다 */
+  function armOk(turns: number, last: number | null): boolean {
+    const st = withAugmentData(craftFutureState(), {
+      [TURNS_KEY]: turns,
+      ...(last === null ? {} : { [LAST_KEY]: last }),
+    });
+    const game = createStandardGameFromState(st);
+    installAugment(game.engine, futureSight, "p0", { yaku: game.yaku });
+    return game.engine.submit({ player: "p0", type: "future_arm", payload: {} }).ok;
+  }
+
+  it("3순에 1회 — 내 순이 세 번 지나야 다시 열린다", () => {
+    expect(armOk(0, null)).toBe(true); // 이 국에 아직 안 썼다
+    expect(armOk(0, 0)).toBe(false); // 방금 쓴 그 순
+    expect(armOk(1, 0)).toBe(false);
+    expect(armOk(2, 0)).toBe(false);
+    expect(armOk(3, 0)).toBe(true); // 세 순이 지났다
+  });
+
+  it("순 카운터는 **내 버림**에만 오른다 — 교환이 바닥에 놓는 한 장은 세지 않는다", () => {
+    const game = createStandardGameFromState(craftFutureState());
+    installAugment(game.engine, futureSight, "p0", { yaku: game.yaku });
+    const turns = (): unknown => game.engine.state.augmentData[TURNS_KEY];
+
+    game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
+    const three = handIdsOf(game.engine.state, "p0");
+    const opt = new FlowController(game.engine)
+      .begin();
+    if (opt.kind !== "awaiting") throw new Error("expected awaiting");
+    const ex = opt.prompts
+      .find((p) => p.player === "p0")
+      ?.options.find((o) => o.type === "future_exchange");
+    expect(ex).toBeDefined();
+    game.engine.submit({ player: "p0", type: "future_exchange", payload: ex!.payload });
+    // 교환은 바닥에 한 장을 놓지만 그건 내 '순'이 아니다
+    expect(turns()).toBeUndefined();
+    expect(three.length).toBeGreaterThan(0);
+
+    // 진짜 버림이 있어야 순이 넘어간다
+    const tileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
+    expect(game.engine.submit({ player: "p0", type: "discard", payload: { tileId } }).ok).toBe(true);
+    expect(turns()).toBe(1);
   });
 
   it("리치 중에는 쓸 수 없다", () => {
@@ -210,12 +261,12 @@ describe("future_sight — 미래를 보는 자", () => {
     };
   }
 
-  it("화료 시 이번 국 2스택당 +1판을 얻는다 (내림)", () => {
-    // 2026-07-26: 스택당 1판이 지수적으로 과해 2스택당 1판으로 낮췄다
-    for (const [stacks, han] of [[1, 0], [2, 1], [3, 1], [4, 2], [5, 2]] as const) {
+  it("화료 시 이번 국 **스택당 +1판**을 얻는다", () => {
+    // 2026-07-26: 매 순 발동이라 스택당 1판이 과해 2스택당 1판으로 낮췄었다.
+    // 2026-08-02: 발동을 3순에 1회로 조이면서 스택당 1판으로 되돌렸다(사용자 지시).
+    for (const [stacks, han] of [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]] as const) {
       const { bonus, expected } = settleWithStacks(stacks);
-      if (han === 0) expect(bonus).toBe(0);
-      else expect(expected(han)).toBeGreaterThan(0);
+      expect(expected(han)).toBeGreaterThan(0); // 스택 하나부터 실제 점수가 붙는다
       expect(bonus).toBe(expected(han));
     }
   });

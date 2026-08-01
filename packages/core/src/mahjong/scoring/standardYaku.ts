@@ -84,6 +84,15 @@ function isKokushi13(v: ScoringVariant, ctx: WinContext): boolean {
   return new Set(allKinds(v).map(kindKey)).size === 13;
 }
 
+/**
+ * 스안커 뼈대 — 표준형 + **안커 4개**.
+ *
+ * 샹퐁 대기를 론으로 채우면 그 커쯔는 명각이 되므로(buildVariants) 여기서 자동으로
+ * 걸러진다. 즉 이 함수가 참인 론은 전부 단기 대기이고, 쯔모는 둘 다 가능하다.
+ */
+const isSuuankou = (v: ScoringVariant): boolean =>
+  isStd(v) && triplets(v).filter((s) => s.concealed).length === 4;
+
 const isYakuhaiPair = (pair: TileKind, ctx: WinContext): boolean =>
   pair.suit === Suits.Dragon ||
   (pair.suit === Suits.Wind &&
@@ -424,7 +433,19 @@ export const standardYakuList: YakuDef[] = [
     closedHan: 13,
     openHan: null,
     isYakuman: true,
-    check: (v) => isStd(v) && triplets(v).filter((s) => s.concealed).length === 4,
+    // 단기(머리 대기)는 suuankou_tanki(더블)가 잡는다 — 둘이 함께 서면 3배가 되므로 배타로 뺀다
+    check: (v) => isSuuankou(v) && v.waitType !== "tanki",
+  },
+  {
+    id: "suuankou_tanki",
+    name: "스안커 단기",
+    // 더블 역만 — 안커 4개를 세운 채 **머리 한 장**으로 기다리는 손이다. 샹퐁 대기와 달리
+    // 론으로도 안커가 깨지지 않아(화료패가 커쯔에 들어가지 않는다) 성립 자체가 한 급 위다.
+    closedHan: 26,
+    openHan: null,
+    isYakuman: true,
+    yakumanMultiplier: 2,
+    check: (v) => isSuuankou(v) && v.waitType === "tanki",
   },
   {
     id: "daisangen",

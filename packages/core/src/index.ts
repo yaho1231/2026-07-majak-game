@@ -133,6 +133,7 @@ export type {
   WinDeclaredPayload,
   RoundSettledPayload,
   AbortReason,
+  AugPointNote,
   WinInfo,
 } from "./mahjong/flow/flowEvents.js";
 export {

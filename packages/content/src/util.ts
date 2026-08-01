@@ -22,6 +22,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type {
+  AugPointNote,
   AugmentContext,
   GameState,
   PeekVisibility,
@@ -291,9 +292,112 @@ export function addWinPointBonus(
       ...p.deltas,
       [ctx.holder]: (p.deltas[ctx.holder] ?? 0) + bonus,
     };
-    return { type: event.type, payload: { ...p, deltas } };
+    return {
+      type: event.type,
+      payload: {
+        ...p,
+        deltas,
+        augPoints: withAugPoint(p, ctx, bonus, false),
+      },
+    };
   });
 }
+
+/**
+ * ctx.instanceId(`aug:{holder}:{augmentId}`)에서 증강 id를 되꺼낸다.
+ * 결과 화면이 카탈로그에서 이름을 찾을 때 쓴다.
+ */
+function augIdOf(ctx: AugmentContext): string {
+  const parts = ctx.instanceId.split(":");
+  return parts.slice(2).join(":") || ctx.instanceId;
+}
+
+/**
+ * 정산 payload에 "이 증강이 점수를 이만큼 움직였다" 한 줄을 덧붙인다 (표시 전용).
+ *
+ * deltas만 고치고 지나가면 결과 화면에는 표준 점수만 남아 증강이 한 일이 통째로
+ * 안 보인다(2026-08-02 사용자 보고). 같은 증강이 여러 줄을 남기지 않도록 합산한다.
+ */
+function withAugPoint(
+  p: RoundSettledPayload,
+  ctx: AugmentContext,
+  points: number,
+  fromOpponents: boolean,
+): AugPointNote[] {
+  const augId = augIdOf(ctx);
+  const prev = p.augPoints ?? [];
+  const at = prev.findIndex((n) => n.player === ctx.holder && n.augId === augId);
+  const merged: AugPointNote = {
+    player: ctx.holder,
+    augId,
+    points: (at >= 0 ? (prev[at]?.points ?? 0) : 0) + points,
+    ...(fromOpponents ? { fromOpponents: true } : {}),
+  };
+  if (at < 0) return [...prev, merged];
+  return prev.map((n, i) => (i === at ? merged : n));
+}
+
+/**
+ * 보유자의 화료점을 올리되 **그 몫을 지불자에게서 가져오는** 인터셉터.
+ *
+ * `addWinPointBonus`(뱅크 발행)와 달리 상대의 점수가 실제로 줄어든다 —
+ * 무페널티 원칙(10_AUGMENT_SYSTEM §0)의 **명시적 예외**이므로, 사용자가 그렇게
+ * 지정한 증강에만 쓴다(2026-08-02 뚫린 천장: "추가 점수도 타가들한테 가져오게").
+ *
+ * 분배는 표준 지불 구조 그대로다 — 론은 방총자가 전액, 쯔모는 친 2배·자 1배.
+ * 단계는 `Transfer` — 배수(Multiply)·뱅크 가산(BankTopUp) **뒤**라 이 이동액에
+ * 다른 배수가 다시 곱해지지 않는다.
+ */
+export function addWinPointTransfer(
+  ctx: AugmentContext,
+  points: (state: GameState, info: WinInfo) => number,
+): void {
+  settleInterceptor(ctx, SETTLE_STAGE.Transfer, (event, ic) => {
+    const p = event.payload as RoundSettledPayload;
+    if (p.outcome !== "win") return event;
+    const info = (p.winInfos ?? []).find((w) => w.winner === ctx.holder);
+    if (info === undefined) return event;
+    const extra = Math.max(0, Math.round(points(ic.state, info)));
+    if (extra === 0) return event;
+
+    const state = ic.state as GameState;
+    const deltas = { ...p.deltas };
+    let moved = 0;
+    const take = (from: PlayerId, amount: number): void => {
+      if (amount <= 0 || from === ctx.holder) return;
+      deltas[from] = (deltas[from] ?? 0) - amount;
+      moved += amount;
+    };
+
+    if (info.winType === "ron" && info.from !== null) {
+      take(info.from, extra);
+    } else {
+      // 쯔모 — 표준 분배와 같은 비율. 화료자가 친이면 셋이 똑같이, 자면 친이 2배를 낸다.
+      const dealer = playerAtSeat(state, state.round.dealerSeat).id;
+      const others = state.players.map((pl) => pl.id).filter((id) => id !== ctx.holder);
+      if (dealer === ctx.holder) {
+        const each = roundUp100(extra / 3);
+        for (const id of others) take(id, each);
+      } else {
+        // 친 2 : 자 1 : 자 1 = 4몫. 100점 단위로 올려 나눈다.
+        const unit = roundUp100(extra / 4);
+        for (const id of others) take(id, id === dealer ? unit * 2 : unit);
+      }
+    }
+    if (moved === 0) return event;
+    deltas[ctx.holder] = (deltas[ctx.holder] ?? 0) + moved;
+    return {
+      type: event.type,
+      payload: {
+        ...p,
+        deltas,
+        augPoints: withAugPoint(p, ctx, moved, true),
+      },
+    };
+  });
+}
+
+const roundUp100 = (n: number): number => Math.ceil(n / 100) * 100;
 
 /**
  * "+N판"을 정산 시점 뱅크 점수로 환산한다 — 실제 화료 점수(info.points)와

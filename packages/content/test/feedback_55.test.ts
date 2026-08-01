@@ -486,7 +486,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
      * 예전에는 "이번 턴"을 `roundKey#turnCount`로 식별했는데, turnCount는 오야가
      * 쯔모할 때마다 올라 **오야가 깡을 치면 같은 턴에 스탬프가 갈렸다** — 그 자리에서
      * 한 번 더 교환할 수 있었고, 쯔모 2회·바닥 2장이 되어 패 수가 안 맞아 보였다.
-     * 이제 플래그는 내가 실제로 버릴 때만 풀린다.
+     * 이제 순은 **내 버림**만 세므로 turnCount가 아무리 올라도 쿨다운이 풀리지 않는다.
      */
     const bumped = {
       ...game.engine.state,
@@ -502,7 +502,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
     expect(handAfter).toBe(14);
   });
 
-  it("내가 버리면 다음 순에는 다시 쓸 수 있다", () => {
+  it("내가 버리면 순이 하나 오르지만, 쿨다운(3순)은 아직 안 풀린다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
     const opt = turnOptions(game).find((o) => o.type === "future_exchange")!;
@@ -515,9 +515,13 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
     expect(
       game.engine.submit({ player: "p0", type: "discard", payload: { tileId: toss } }).ok,
     ).toBe(true);
-    // 버림으로 내 턴이 끝났다 — 사용 기록이 풀린다
+    // 버림으로 내 순이 하나 넘어갔다 (쿨다운의 기준이 되는 카운터)
+    const rk = roundKey(game.engine.state);
+    expect(game.engine.state.augmentData[`future_sight:turns:${rk}:p0`]).toBe(1);
+    expect(game.engine.state.augmentData[`future_sight:last:${rk}:p0`]).toBe(0);
+    // 아직 한 순밖에 안 지났으니 다시 열리지 않는다 (3순에 1회)
     expect(
-      game.engine.state.augmentData[`future_sight:turn_used:${roundKey(game.engine.state)}:p0`],
+      game.engine.submit({ player: "p0", type: "future_arm", payload: {} }).ok,
     ).toBe(false);
   });
 
