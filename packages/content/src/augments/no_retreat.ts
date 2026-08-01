@@ -26,12 +26,16 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { roundKey, stringOf } from "../util.js";
+import { roundKey, roundSeqOf, stringOf, trackRoundSeq } from "../util.js";
 
 const ID = "no_retreat";
 const ACTION = "declare_no_retreat";
-/** 마지막으로 선언한 국의 roundKey (효과 게이팅 + 쿨다운 기준) */
+/** 쿨다운 — 한 번 선언하면 이만큼 국(본장 포함)이 지나야 다시 열린다 */
+const COOLDOWN_ROUNDS = 2;
+/** 마지막으로 선언한 국의 roundKey (효과 게이팅용 — 그 국에만 효과가 산다) */
 const declaredKey = (h: PlayerId): string => `${ID}:round:${h}`;
+/** 마지막으로 선언한 국 시퀀스 (쿨다운 계산용) */
+const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 
 /** 이번 국에 no_retreat를 선언한 상태인가 (효과는 선언한 그 국에만 적용) */
 function declaredThisRound(state: GameState, holder: PlayerId): boolean {
@@ -39,31 +43,19 @@ function declaredThisRound(state: GameState, holder: PlayerId): boolean {
 }
 
 /**
- * roundKey "pw-rn-honba" → 정렬 가능한 국 순서값.
+ * 선언 가능 여부 — 2국에 1회. 선언 이력이 없거나, 마지막 선언 이후 배패가 2번
+ * 더 이루어졌을 때만 다시 선언할 수 있다.
  *
- * ⚠ **본장을 반드시 센다.** 예전에는 `(pw-1)*4 + rn`으로 본장을 버렸는데, 오야가 연장하면
- * 동1-0본장 → 동1-3본장이 전부 같은 값이라 **쿨다운이 영영 풀리지 않았다**(2026-07-29 감사).
- * 자리 수를 넉넉히 잡아(본장 100 미만) 국 → 본장 순으로 단조 증가하게 만든다.
- * 좌석 수도 4로 하드코딩하지 않고 호출자가 넘긴다.
- */
-function absRoundOf(key: string, seats: number): number {
-  const parts = key.split("-").map(Number);
-  const pw = parts[0] ?? 0;
-  const rn = parts[1] ?? 0;
-  const honba = parts[2] ?? 0;
-  return ((pw - 1) * seats + rn) * 100 + Math.min(honba, 99);
-}
-
-/**
- * 선언 가능 여부 — 2국에 1회. 선언 이력이 없거나, 마지막 선언 국으로부터
- * 2국 이상 지났을 때만 다시 선언할 수 있다(선언한 국·바로 다음 국은 쿨다운).
+ * ⚠ **본장도 한 국으로 센다** — 동1국0본장에 쓰고 동1국1본장을 지나 동2국에 가면
+ * 두 국이 지난 것이다(2026-08-01 사용자 확정). 예전엔 roundKey를 자릿수로 쪼개
+ * 산술 비교했는데, 국 번호가 오르는 폭과 본장이 오르는 폭이 달라 이 경우가
+ * 통째로 쿨다운에 갇혔다. 이제 배패 횟수(util.roundSeqOf)를 직접 센다.
  */
 function canDeclare(state: GameState, holder: PlayerId): boolean {
-  const last = stringOf(state, declaredKey(holder));
-  if (last === null) return true;
-  const seats = state.players.length;
-  // 본장 단위까지 세므로 "2국 뒤"는 100×2 = 200이다
-  return absRoundOf(roundKey(state), seats) - absRoundOf(last, seats) >= 200;
+  if (declaredThisRound(state, holder)) return false; // 이번 국엔 이미 걸었다
+  const used = state.augmentData[usedSeqKey(holder)];
+  if (typeof used !== "number") return true; // 한 번도 안 씀
+  return roundSeqOf(state, ID, holder) - used >= COOLDOWN_ROUNDS;
 }
 
 const declareAction: ActionDef<Record<string, never>> = {
@@ -88,6 +80,7 @@ const declareAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(declaredKey(req.player), roundKey(state)),
+    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
   ],
 };
 
@@ -106,6 +99,9 @@ export const noRetreat: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(declareAction);
     }
+
+    // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
+    trackRoundSeq(ctx, ID);
 
     // 48차 무페널티: "리치를 안 걸면 전 역 봉인(=화료 불가)"이라는 배수진을 삭제했다.
     // 선언은 이제 순수한 상향 — 공탁 면제 + 리치·일발·뒷도라 2배만 남는다.

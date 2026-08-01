@@ -26,7 +26,13 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { addWinPointBonus, roundKey, stringOf } from "../util.js";
+import {
+  addWinPointBonus,
+  roundKey,
+  roundSeqOf,
+  stringOf,
+  trackRoundSeq,
+} from "../util.js";
 
 /** 만관 하한 — 자(子) 8000 / 오야(親) 12000 */
 const MANGAN_NONDEALER = 8000;
@@ -34,8 +40,12 @@ const MANGAN_DEALER = 12000;
 
 const ID = "big_hand";
 const ACTION = "declare_big_hand";
-/** 마지막으로 선언한 국의 roundKey (효과 게이팅 + 쿨다운 기준) */
+/** 쿨다운 — 한 번 선언하면 이만큼 국(본장 포함)이 지나야 다시 열린다 */
+const COOLDOWN_ROUNDS = 2;
+/** 마지막으로 선언한 국의 roundKey (효과 게이팅용 — 그 국에만 효과가 산다) */
 const declaredKey = (h: PlayerId): string => `${ID}:round:${h}`;
+/** 마지막으로 선언한 국 시퀀스 (쿨다운 계산용) */
+const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 
 /** 이번 국에 큰손을 선언한 상태인가 (효과는 선언한 그 국에만 적용) */
 function declaredThisRound(state: GameState, holder: PlayerId): boolean {
@@ -43,29 +53,18 @@ function declaredThisRound(state: GameState, holder: PlayerId): boolean {
 }
 
 /**
- * roundKey "pw-rn-honba" → 정렬 가능한 국 순서값 (본장 포함).
+ * 선언 가능 여부 — 2국에 1회. 선언 이력이 없거나, 마지막 선언 이후 배패가 2번
+ * 더 이루어졌을 때만 다시 선언할 수 있다.
  *
- * ⚠ 본장을 세지 않으면 오야 연장이 길어질 때 동1-0본장과 동1-3본장이 같은 값이 되어
- * **쿨다운이 풀리지 않는다**(2026-07-29 감사, no_retreat와 동일 결함).
- * 좌석 수도 하드코딩하지 않고 호출자가 넘긴다.
- */
-function absRoundOf(key: string, seats: number): number {
-  const parts = key.split("-").map(Number);
-  const pw = parts[0] ?? 0;
-  const rn = parts[1] ?? 0;
-  const honba = parts[2] ?? 0;
-  return ((pw - 1) * seats + rn) * 100 + Math.min(honba, 99);
-}
-
-/**
- * 선언 가능 여부 — 2국에 1회. 선언 이력이 없거나, 마지막 선언 국으로부터
- * 2국 이상 지났을 때만 다시 선언할 수 있다(선언한 국·바로 다음 국은 쿨다운).
+ * ⚠ **본장도 한 국으로 센다** — 동1국0본장에 쓰고 동1국1본장을 지나 동2국에 가면
+ * 두 국이 지난 것이다(2026-08-01 사용자 확정). roundKey를 자릿수로 쪼개 비교하던
+ * 예전 방식은 이 경우를 쿨다운에 가뒀다(no_retreat와 동일 결함).
  */
 function canDeclare(state: GameState, holder: PlayerId): boolean {
-  const last = stringOf(state, declaredKey(holder));
-  if (last === null) return true;
-  const seats = state.players.length;
-  return absRoundOf(roundKey(state), seats) - absRoundOf(last, seats) >= 200;
+  if (declaredThisRound(state, holder)) return false; // 이번 국엔 이미 걸었다
+  const used = state.augmentData[usedSeqKey(holder)];
+  if (typeof used !== "number") return true; // 한 번도 안 씀
+  return roundSeqOf(state, ID, holder) - used >= COOLDOWN_ROUNDS;
 }
 
 const declareAction: ActionDef<Record<string, never>> = {
@@ -90,6 +89,7 @@ const declareAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(declaredKey(req.player), roundKey(state)),
+    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
   ],
 };
 
@@ -108,6 +108,9 @@ export const bigHand: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(declareAction);
     }
+
+    // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
+    trackRoundSeq(ctx, ID);
 
     // 업사이드 — 선언한 국에 화료가 만관 미만이면 뱅크에서 채워 받는다
     addWinPointBonus(ctx, (state, info) => {

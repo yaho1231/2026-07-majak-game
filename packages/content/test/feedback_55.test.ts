@@ -468,6 +468,59 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
     expect(s.augmentData[armedKeyOf(s)]).toBe(false);
   });
 
+  it("한 순에 한 번뿐 — 교환 뒤에는 깡을 쳐도 다시 무장할 수 없다 (2026-08-01)", () => {
+    const game = setup();
+    game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
+    const opt = turnOptions(game).find((o) => o.type === "future_exchange")!;
+    game.engine.submit({
+      player: "p0",
+      type: "future_exchange",
+      payload: opt.payload as { tileId: TileId },
+    });
+    const handAfter = handIdsOf(game.engine.state, "p0").length;
+
+    // 교환 직후에는 무장 후보가 사라진다
+    expect(turnOptions(game).some((o) => o.type === "future_arm")).toBe(false);
+
+    /**
+     * 예전에는 "이번 턴"을 `roundKey#turnCount`로 식별했는데, turnCount는 오야가
+     * 쯔모할 때마다 올라 **오야가 깡을 치면 같은 턴에 스탬프가 갈렸다** — 그 자리에서
+     * 한 번 더 교환할 수 있었고, 쯔모 2회·바닥 2장이 되어 패 수가 안 맞아 보였다.
+     * 이제 플래그는 내가 실제로 버릴 때만 풀린다.
+     */
+    const bumped = {
+      ...game.engine.state,
+      round: { ...game.engine.state.round, turnCount: game.engine.state.round.turnCount + 1 },
+    };
+    const after = createStandardGameFromState(bumped);
+    installAugment(after.engine, futureSight, "p0", { yaku: after.yaku });
+    expect(turnOptions(after).some((o) => o.type === "future_arm")).toBe(false);
+    expect(
+      after.engine.submit({ player: "p0", type: "future_arm", payload: {} }).ok,
+    ).toBe(false);
+    // 손패 장수는 교환 전후로 변하지 않는다 (3장 나가고 3장 들어온다)
+    expect(handAfter).toBe(14);
+  });
+
+  it("내가 버리면 다음 순에는 다시 쓸 수 있다", () => {
+    const game = setup();
+    game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
+    const opt = turnOptions(game).find((o) => o.type === "future_exchange")!;
+    game.engine.submit({
+      player: "p0",
+      type: "future_exchange",
+      payload: opt.payload as { tileId: TileId },
+    });
+    const toss = handIdsOf(game.engine.state, "p0")[0] as TileId;
+    expect(
+      game.engine.submit({ player: "p0", type: "discard", payload: { tileId: toss } }).ok,
+    ).toBe(true);
+    // 버림으로 내 턴이 끝났다 — 사용 기록이 풀린다
+    expect(
+      game.engine.state.augmentData[`future_sight:turn_used:${roundKey(game.engine.state)}:p0`],
+    ).toBe(false);
+  });
+
   it("무장만 하고 그냥 버리면 무장이 풀린다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });

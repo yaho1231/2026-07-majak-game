@@ -1098,6 +1098,8 @@ function sortTileViews(tiles: PublicTileView[]): PublicTileView[] {
 function waitDecompOptions(
   player: PlayerInfo | undefined,
   view?: PlayerView,
+  /** 지금 그 사람의 손패 (증강 조건이 손 모양에 걸리는 경우에만 쓴다) */
+  hand?: readonly TileKind[],
 ): DecomposeOptions | undefined {
   if (player === undefined) return undefined;
   // 분해 규칙을 바꾸는 증강들을 누적한다 — 서버 helpers.scoringOptionsOf와 같은 옵션을
@@ -1139,7 +1141,55 @@ function waitDecompOptions(
       opts.kokushiOnly = true;
     }
   }
-  return Object.keys(opts).length > 0 ? opts : undefined;
+  // 뒤섞인 아홉 개의 연꽃 — 손이 구련 뼈대 위에 있을 때만 무늬를 지운다(서버와 같은 조건).
+  // 이게 없으면 27종 대기가 통째로 안 보여 "텐파이인지 모르겠다"가 된다(2026-08-01 사용자 보고).
+  if (has("mixed_nine_gates") && hand !== undefined && onNineGatesPath(hand)) {
+    opts.mixedRuns = true;
+    opts.mixedTriplets = true;
+    opts.mixedPairs = true;
+  }
+  /**
+   * 서버가 **뷰어 본인 몫**으로 실어 준 분해 옵션이 최종 진실이다 — 위 추론은 관전·상대
+   * 손패용 대체물이고, 내 손은 서버가 규칙 레지스트리로 계산한 값을 그대로 쓴다.
+   * (없는 옵션은 키 자체가 없으므로 덮어써도 위에서 켠 것이 꺼지지 않는다.)
+   */
+  const server =
+    view !== undefined && player.id === view.playerId ? view.scoringOptions : undefined;
+  const merged = { ...opts, ...(server ?? {}) };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/** 구련보등 뼈대(1112345678999)의 랭크별 최소 장수 — 코어 mixed_nine_gates의 사본 */
+const NINE_GATES_BASE: readonly number[] = [0, 3, 1, 1, 1, 1, 1, 1, 1, 3];
+
+/**
+ * 이 손이 "무늬만 흩어진 구련보등"으로 가는 길 위에 있는가
+ * (content/mixed_nine_gates.ts의 onNineGatesPath와 같은 판정).
+ *
+ * 13장은 뼈대 그대로, 14장은 **한 장을 빼면 뼈대가 되는가**로 본다 — 자패를 쥔 채
+ * 리치를 걸려는 순간(뼈대 13장 + 자패 1장)도 대기가 잡혀야 하기 때문이다.
+ */
+function onNineGatesPath(hand: readonly TileKind[]): boolean {
+  const extra = (tiles: readonly TileKind[]): number | null => {
+    const counts = new Array<number>(10).fill(0);
+    for (const k of tiles) {
+      if (k.suit !== "man" && k.suit !== "pin" && k.suit !== "sou") return null;
+      if (k.rank < 1 || k.rank > 9) return null;
+      counts[k.rank] = (counts[k.rank] ?? 0) + 1;
+    }
+    let over = 0;
+    for (let r = 1; r <= 9; r++) {
+      const diff = (counts[r] ?? 0) - (NINE_GATES_BASE[r] ?? 0);
+      if (diff < 0) return null;
+      over += diff;
+    }
+    return over;
+  };
+  if (hand.length === 13) return extra(hand) === 0;
+  if (hand.length === 14) {
+    return hand.some((_k, i) => extra(hand.filter((_x, j) => j !== i)) === 0);
+  }
+  return false;
 }
 
 /** 도라·뒷도라 표시패 블록의 장수 — 코어 INDICATOR_BLOCK_SIZE의 사본 (07 §2) */
@@ -1258,11 +1308,24 @@ function formatTile(tile: { kind: TileKind; attrs?: Record<string, unknown> } | 
   return `${tile.kind.suit}${rank}`;
 }
 
+/**
+ * 이 패를 **적도라 그림(0m·0p·0s)** 으로 그려야 하는가.
+ *
+ * ⚠ 적도라 그림은 **5에만 존재한다**. 붉은 손길처럼 5가 아닌 랭크에 적도라를 새기는
+ * 증강이 생긴 뒤로, `red`만 보고 0번 그림을 쓰면 3만·7통이 전부 **적5로 보였다**
+ * (2026-08-01 사용자 보고: "지금 들어오는 게 전부 아카5로만 보임"). 5가 아닌 적도라는
+ * 원래 그림 그대로 두고 붉은 이펙트(.tile-red)만 얹는다.
+ */
+function usesRedArt(kind: TileKind, red: boolean): boolean {
+  return red && kind.rank === 5 && (kind.suit === "man" || kind.suit === "pin" || kind.suit === "sou");
+}
+
 function tileImageSrcOf(kind: TileKind, red: boolean): string | null {
   const { suit, rank } = kind;
   if (suit === "man" || suit === "pin" || suit === "sou") {
     if (rank < 1 || rank > 9) return null;
-    return `/tiles/${red ? 0 : rank}${suit === "man" ? "m" : suit === "pin" ? "p" : "s"}.png`;
+    const face = usesRedArt(kind, red) ? 0 : rank;
+    return `/tiles/${face}${suit === "man" ? "m" : suit === "pin" ? "p" : "s"}.png`;
   }
   if (suit === "wind" && rank >= 1 && rank <= 4) return `/tiles/${rank}z.png`;
   if (suit === "dragon" && rank >= 1 && rank <= 3) return `/tiles/${rank + 4}z.png`;
@@ -1314,19 +1377,22 @@ function TileImg({
   owner?: string | undefined;
 }): JSX.Element {
   const doraFx = useContext(DoraContext);
-  const src = tile === undefined ? null : tileImageSrcOf(tile.kind, tile.attrs?.red === true);
+  const isRed = tile?.attrs?.red === true;
+  const src = tile === undefined ? null : tileImageSrcOf(tile.kind, isRed);
   // 증강이 새로 만들어낸 패(색 변환 등)는 원본과 구분되게 별도 이펙트로 표시한다
   const conjured = tile?.attrs?.conjured === true ? " tile-conjured" : "";
+  // 5가 아닌 적도라(붉은 손길 등)는 그림이 없다 — 원래 패 그대로 두고 붉은 기운만 얹는다
+  const red = tile !== undefined && isRed && !usesRedArt(tile.kind, true) ? " tile-red" : "";
   const dora = owner === undefined ? "" : doraClassOf(tile, owner, doraFx);
   if (src === null) {
     return (
-      <span className={`tile-face tile-${size} tile-text${conjured}${dora}`}>
+      <span className={`tile-face tile-${size} tile-text${conjured}${red}${dora}`}>
         {formatTile(tile)}
       </span>
     );
   }
   return (
-    <span className={`tile-face tile-${size}${conjured}${dora}`}>
+    <span className={`tile-face tile-${size}${conjured}${red}${dora}`}>
       <img src={src} alt={formatTile(tile)} draggable={false} />
     </span>
   );
@@ -1967,6 +2033,10 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "actionFx") {
+      const augId = ACTION_AUGMENT[msg.actionType] ?? msg.actionType;
+      // 전용 사건 컷인이 있는 증강은 그쪽이 결과까지 보여준다 — 여기서 또 띄우면
+      // 한 번 발동에 컷인이 두 번 뜬다(2026-08-01 사용자 보고: 소환·무르기 연출 문제).
+      if (AUG_EVENT_AUG_IDS.has(augId)) return;
       // 액티브 증강 발동 연출 — 이름은 라벨 맵 → 카탈로그 순으로 찾는다
       const label =
         ACTION_LABEL[msg.actionType] ??
@@ -1974,18 +2044,10 @@ export function App(): JSX.Element {
         msg.actionType;
       const pv = prevViewRef.current;
       const who = pv !== null ? playerNameById(pv, msg.player) : msg.player;
-      // 무덤 도굴은 전용 톤 — 바닥에서 패가 걸어 나오는 순간이 이 증강의 전부다
-      if (msg.actionType === "grave_rob") {
-        showCutIn(label, "grave", `${who} — 바닥에서 파낸 패로 화료`, 2000, {
-          sfx: () => sfx.augment(1),
-          impact: { shake: 3 },
-        });
-        return;
-      }
       // 증강 발동은 후로(타악)와 계열이 다른 "번개 스침" 사운드 — 소리만으로 구분된다
       showCutIn(label, "augment", `${who} — 증강 발동`, 1600, {
         sfx: () => sfx.augment(0),
-        augId: ACTION_AUGMENT[msg.actionType] ?? msg.actionType,
+        augId,
       });
       return;
     }
@@ -2297,7 +2359,7 @@ export function App(): JSX.Element {
       shown.augEvents = new Set();
       for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
         if (augEventFor(key) === null) continue;
-        shown.augEvents.add(`${key}=${JSON.stringify(raw)}@${rk}`);
+        shown.augEvents.add(augEventSig(key, raw, shown.roundKey));
       }
       return;
     }
@@ -2547,7 +2609,9 @@ export function App(): JSX.Element {
     for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
       if (!key.startsWith("void_kan:")) continue;
       if (typeof raw !== "string" || raw === "") continue;
-      const seen = `${key}:${raw}:${roundKeyOf(next)}`;
+      // ⚠ 국 키는 **shown.roundKey**(마지막으로 실제 시작된 국)를 쓴다 — 아래 augEvents와
+      //   같은 이유다. 정산 뷰의 국 번호는 이미 다음 국을 가리켜 서명이 통째로 갈린다.
+      const seen = `${key}:${raw}:${shown.roundKey}`;
       if (shown.voidKan.has(seen)) continue;
       shown.voidKan.add(seen);
       const holder = key.slice("void_kan:".length);
@@ -2567,17 +2631,17 @@ export function App(): JSX.Element {
       if (def === null) continue;
       // 껐다 켜는 플래그형(밑장빼기 무장 해제 등)은 켜졌을 때만 알린다
       if (raw === false || raw === null || raw === undefined || raw === "") continue;
-      const seen = `${key}=${JSON.stringify(raw)}@${roundKeyOf(next)}`;
+      const seen = augEventSig(key, raw, shown.roundKey);
       if (shown.augEvents.has(seen)) continue;
       shown.augEvents.add(seen);
       const holder = key.slice(def.prefix.length + 1);
       const who = playerNameById(next, holder);
       const tiles = augEventTiles(raw);
-      showCutIn(def.title, "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, 2000, {
+      showCutIn(def.title, def.tone ?? "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, 2000, {
         sfx: () => sfx.augment(1),
         augId: def.augId,
         ...(tiles.length > 0 ? { tiles } : {}),
-        impact: { shake: 2 },
+        impact: { shake: def.shake ?? 2 },
       });
     }
 
@@ -5191,14 +5255,27 @@ function relationsAt(relations: readonly Relation[], playerId: string): Relation
  *
  * 키는 채널 접두다. 더 긴 접두가 먼저 맞는다(`conjure_draw:done` > `conjure_draw`).
  */
-const AUG_EVENTS: Record<string, { title: string; sub: string; augId: string }> = {
+const AUG_EVENTS: Record<
+  string,
+  { title: string; sub: string; augId: string; tone?: CutInTone; shake?: ImpactSpec["shake"] }
+> = {
   "conjure_draw:done": { title: "소환 성공", sub: "부른 패가 그대로 왔다", augId: "conjure_draw" },
   conjure_draw: { title: "소환", sub: "다음 쯔모로 이 패를 부른다", augId: "conjure_draw" },
   three_dragons_will: { title: "삼원패의 의지", sub: "삼원패가 손으로 걸어 들어온다", augId: "three_dragons_will" },
   haitei_lord: { title: "해저의 주인", sub: "마지막 한 장을 손에 넣었다", augId: "haitei_lord" },
   off_by_one: { title: "한 끗 차이", sub: "한 끗을 비틀어 손을 맞췄다", augId: "off_by_one" },
-  grave_rob: { title: "무덤 도굴", sub: "바닥에 묻힌 패로 화료했다", augId: "grave_rob" },
-  take_back: { title: "무르기", sub: "방금 버린 패를 도로 집었다", augId: "take_back" },
+  // 무덤 도굴만 전용 톤 — 바닥에서 패가 걸어 나오는 순간이 이 증강의 전부다
+  grave_rob: {
+    title: "무덤 도굴",
+    sub: "바닥에 묻힌 패로 화료했다",
+    augId: "grave_rob",
+    tone: "grave",
+    shake: 3,
+  },
+  // 무르기는 '버린 패'가 아니라 **방금 쯔모한 패**를 패산 밑으로 돌려보낸다.
+  // 문구가 "방금 버린 패를 도로 집었다"였던 탓에 컷인에 뜬 패가 자기 버림패로 읽혔다
+  // (2026-08-01 사용자 보고: "방금 버린 패가 계속 뜸").
+  take_back: { title: "무르기", sub: "쯔모패를 패산 맨 밑으로 돌려보내고 다시 뽑았다", augId: "take_back" },
   silent_swap: { title: "정적의 손", sub: "상대의 바닥에서 소리 없이 가져갔다", augId: "silent_swap" },
   foresight: { title: "예지", sub: "앞을 보고 손을 다시 짰다", augId: "foresight" },
   palm_flip: { title: "손바닥 뒤집기", sub: "판이 통째로 뒤집힌다", augId: "palm_flip" },
@@ -5207,9 +5284,38 @@ const AUG_EVENTS: Record<string, { title: string; sub: string; augId: string }> 
   "bottom_deal:armed": { title: "밑장빼기", sub: "패산 맨 밑장을 노린다", augId: "bottom_deal" },
 };
 
+/**
+ * 사건 컷인 중복 방지 서명 — `채널=값@국`.
+ *
+ * ⚠ **국 키는 "마지막으로 실제 시작된 국"(bannerShown.roundKey)이어야 한다.**
+ * 뷰의 국 번호를 쓰면 안 된다: `RoundSettled` 리듀서가 정산과 동시에 **다음 국의
+ * 번호·본장**을 미리 올려 두므로(flowEvents.ts), `phase === "round.over"` 뷰는 이미
+ * 다음 국을 가리킨다. 그 뷰에서 서명을 다시 만들면 **국 안에서 이미 보여 준 사건이
+ * 전부 새 사건으로 보여** 컷인이 한 번 더 재생됐다 —
+ * 그것도 이 뷰가 `roundOver` 메시지보다 **먼저** 도착하므로(HanchanController:
+ * broadcastViews → notifyRoundOver) 화료 컷인 앞에 끼어들었다.
+ * 2026-08-01 사용자 보고 "론 나오기 전에 쓰지도 않은 증강 연출이 2번 나온다"가 이것이다
+ * (소환은 채널이 둘 — `conjure_draw`·`conjure_draw:done` — 이라 정확히 2번 재생됐다).
+ *
+ * `shown.roundKey`는 진짜 다음 국이 시작될 때만 갱신되고, 그때 augEvents 집합도 함께
+ * 비워진다 — 그래서 국이 넘어가면 같은 사건이 다시 정상적으로 터진다.
+ */
+function augEventSig(key: string, raw: unknown, roundKey: string): string {
+  return `${key}=${JSON.stringify(raw)}@${roundKey}`;
+}
+
 /** 채널 키에 맞는 사건 정의 — 더 긴 접두가 이긴다 */
-function augEventFor(key: string): { prefix: string; title: string; sub: string; augId: string } | null {
-  let best: { prefix: string; title: string; sub: string; augId: string } | null = null;
+type AugEventDef = {
+  prefix: string;
+  title: string;
+  sub: string;
+  augId: string;
+  tone?: CutInTone;
+  shake?: ImpactSpec["shake"];
+};
+
+function augEventFor(key: string): AugEventDef | null {
+  let best: AugEventDef | null = null;
   for (const [prefix, def] of Object.entries(AUG_EVENTS)) {
     if (!key.startsWith(`${prefix}:`)) continue;
     if (best !== null && best.prefix.length >= prefix.length) continue;
@@ -5241,6 +5347,18 @@ function augEventTiles(raw: unknown): TileKind[] {
   }
   return out;
 }
+
+/**
+ * 전용 사건 컷인을 가진 증강 id.
+ *
+ * 이 증강들은 **발동 결과**를 자기 컷인으로 보여준다. 그런데 액티브 액션은 서버가
+ * `actionFx`도 함께 보내므로, 걸러 내지 않으면 한 번의 발동에 컷인이 두 번 뜬다
+ * ("증강 발동" → "무르기"). 2단계 액션의 무장 컷인을 서버가 지우는 것
+ * (HanchanController FX_SILENT_ACTION_TYPES)과 같은 이유다.
+ */
+const AUG_EVENT_AUG_IDS: ReadonlySet<string> = new Set(
+  Object.values(AUG_EVENTS).map((d) => d.augId),
+);
 
 /** 이 컷인들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
 const AUG_EVENT_HEADS: ReadonlySet<string> = new Set([
@@ -6324,7 +6442,7 @@ function OpponentStrip({
       .filter((k): k is TileKind => k !== undefined);
     if (kinds.length % 3 !== 1) return [];
     try {
-      return winningKinds(kinds, meldCount, undefined, waitDecompOptions(player, view));
+      return winningKinds(kinds, meldCount, undefined, waitDecompOptions(player, view, kinds));
     } catch {
       return [];
     }
@@ -7300,6 +7418,10 @@ function OwnArea(props: {
     return byTile;
   }, [myPrompt]);
   const canPickFuture = futurePick.size > 0;
+  /**
+   * 제출 직후 모달을 즉시 내리기 위한 로컬 플래그 (닫기 버튼은 없다 — 발동은 되돌릴 수
+   * 없으므로 "발동하지 않고 진행"이라는 출구를 두지 않는다). 새 프롬프트가 오면 풀린다.
+   */
   const [futureDismissed, setFutureDismissed] = useState(false);
   useEffect(() => {
     setFutureDismissed(false);
@@ -7344,13 +7466,18 @@ function OwnArea(props: {
   const hoverWaits = useMemo<TileKind[]>(() => {
     if (hoverId === null) return [];
     if (frozenWaits.length > 0) return frozenWaits;
+    const all = rawHand
+      .map((id) => view.tiles[id]?.kind)
+      .filter((k): k is TileKind => k !== undefined);
     const kinds = rawHand
       .filter((id) => id !== hoverId)
       .map((id) => view.tiles[id]?.kind)
       .filter((k): k is TileKind => k !== undefined);
     if (kinds.length === 0) return [];
     try {
-      return winningKinds(kinds, myMeldCount, undefined, waitDecompOptions(me, view));
+      // 분해 옵션은 **버리기 전 손 전체**로 판정한다 — 서버(scoringOptionsOf)가 보는 손과
+      // 같아야 "버리면 텐파이"가 화면에서도 똑같이 잡힌다.
+      return winningKinds(kinds, myMeldCount, undefined, waitDecompOptions(me, view, all));
     } catch {
       return [];
     }
@@ -7374,7 +7501,7 @@ function OwnArea(props: {
       .filter((k): k is TileKind => k !== undefined);
     if (kinds.length % 3 !== 1) return [];
     try {
-      return winningKinds(kinds, myMeldCount, undefined, waitDecompOptions(me, view));
+      return winningKinds(kinds, myMeldCount, undefined, waitDecompOptions(me, view, kinds));
     } catch {
       return [];
     }
@@ -7863,7 +7990,9 @@ function OwnArea(props: {
           🔄 등가교환 계속하기
         </button>
       ) : null}
-      {/* 미래를 보는 자 — 뽑힌 3장을 보여주고 바닥에 버릴 1장을 고르게 한다 */}
+      {/* 미래를 보는 자 — 뽑힌 3장을 보여주고 바닥에 버릴 1장을 고르게 한다.
+          ⚠ 닫기가 없다. 버튼을 누른 순간 발동은 확정이고(사용자 확정 2026-08-01
+          "사용하면 무조건 패가 바뀌어야 한다"), 고르기 싫으면 랜덤으로 맡긴다. */}
       {canPickFuture && !futureDismissed ? (
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
@@ -7894,17 +8023,18 @@ function OwnArea(props: {
             </div>
             <button
               className="rinshan-pick-skip"
-              onClick={() => setFutureDismissed(true)}
+              onClick={() => {
+                const opts = [...futurePick.values()];
+                const pick = opts[Math.floor(Math.random() * opts.length)];
+                if (pick === undefined) return;
+                props.onSubmit(pick);
+                setFutureDismissed(true);
+              }}
             >
-              닫기 (발동하지 않고 진행)
+              🎲 아무거나 (랜덤으로 버리기)
             </button>
           </div>
         </div>
-      ) : null}
-      {canPickFuture && futureDismissed ? (
-        <button className="rinshan-reopen" onClick={() => setFutureDismissed(false)}>
-          🔮 미래를 보는 자
-        </button>
       ) : null}
       {/* 영상패 선택 모달 — 깡 직후 절벽 위에 피어난 꽃이 영상패를 고른다 */}
       {canPickRinshan && !rinshanDismissed ? (
@@ -7966,6 +8096,15 @@ function OwnArea(props: {
 }
 
 /**
+ * 오름패를 한 줄에 늘어놓을 최대 종류 수.
+ *
+ * 뒤섞인 아홉 개의 연꽃처럼 무늬를 지우는 손은 대기가 27종까지 간다 — 전부 그리면
+ * 뱃지가 화면을 가로지르고 툴팁이 손패를 덮는다. 앞쪽 몇 장만 보여주고 나머지는
+ * `+N`으로 접어, "대기가 넓다"는 사실과 대표 패가 함께 읽히게 한다.
+ */
+const WAIT_TILE_CAP = 9;
+
+/**
  * 상시 표시용 오름패 뱃지 — 선언 간파(상대 위)와 내 오름패(손패 위)에 공용.
  * WaitTip과 달리 hover 없이 계속 떠 있는다.
  */
@@ -7996,15 +8135,20 @@ function WaitsBadge({
           : "";
   const dead = (k: TileKind): boolean => noYaku?.has(kindKey(k)) === true;
   const allDead = waits.length > 0 && waits.every(dead);
+  const shown = waits.slice(0, WAIT_TILE_CAP);
+  const hidden = waits.length - shown.length;
   return (
     <div className={`waits-badge${cls}`}>
       <span className="waits-badge-label">
         {openRiichi === true ? "오픈 리치" : mine === true ? "내 오름패" : "간파"}
         {owner !== undefined && mine !== true ? <span className="waits-badge-owner">{owner}</span> : null}
+        {waits.length > WAIT_TILE_CAP ? (
+          <span className="waits-badge-count">{waits.length}종</span>
+        ) : null}
         {allDead ? <span className="waits-badge-noyaku">역없음</span> : null}
       </span>
       <span className="waits-badge-tiles">
-        {waits.map((k) => (
+        {shown.map((k) => (
           <span
             key={`${k.suit}${k.rank}`}
             className={`wait-tile${dead(k) ? " wait-tile-noyaku" : ""}`}
@@ -8014,6 +8158,11 @@ function WaitsBadge({
             {dead(k) ? <span className="wait-noyaku-tag">역없음</span> : null}
           </span>
         ))}
+        {hidden > 0 ? (
+          <span className="wait-more" title={waits.map((k) => formatTile({ kind: k })).join(" ")}>
+            +{hidden}
+          </span>
+        ) : null}
       </span>
     </div>
   );
@@ -8030,14 +8179,19 @@ function WaitTip({
 }): JSX.Element {
   const dead = (k: TileKind): boolean => noYaku?.has(kindKey(k)) === true;
   const allDead = waits.length > 0 && waits.every(dead);
+  const shown = waits.slice(0, WAIT_TILE_CAP);
+  const hidden = waits.length - shown.length;
   return (
     <span className="wait-tip">
       <span className="wait-tip-label">
         {waits.length === 0 ? "형식 텐파이" : allDead ? "대기 (역없음)" : "대기"}
+        {waits.length > WAIT_TILE_CAP ? (
+          <span className="waits-badge-count">{waits.length}종</span>
+        ) : null}
       </span>
       {waits.length > 0 ? (
         <span className="wait-tip-tiles">
-          {waits.map((k) => (
+          {shown.map((k) => (
             <span
               key={`${k.suit}${k.rank}`}
               className={`wait-tile${dead(k) ? " wait-tile-noyaku" : ""}`}
@@ -8047,6 +8201,7 @@ function WaitTip({
               {dead(k) ? <span className="wait-noyaku-tag">역없음</span> : null}
             </span>
           ))}
+          {hidden > 0 ? <span className="wait-more">+{hidden}</span> : null}
         </span>
       ) : null}
     </span>

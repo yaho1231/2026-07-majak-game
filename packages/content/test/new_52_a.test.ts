@@ -13,6 +13,7 @@ import {
   createStandardGame,
   createStandardGameFromState,
   evaluateWin,
+  handIdsOf,
   handKindsOf,
   handZone,
   installAugment,
@@ -309,6 +310,33 @@ describe("mixed_nine_gates (뒤섞인 아홉 개의 연꽃)", () => {
     // 111m 999m 11z(머리) 345p 678p — 랭크 뼈대는 깨지고 자패가 들어간다
     const ev = evalHand("111m999m11z345p678p", true);
     expect(ev?.yaku.some((y) => y.id === "mixed_nine_gates") ?? false).toBe(false);
+  });
+
+  it("뼈대 13장 + 자패 1장이어도 그 자패를 버리는 리치가 제시된다 (2026-08-01)", () => {
+    // 뼈대(무늬 흩어진 1112345678999) 13장을 쥔 채 동(1z)을 쯔모한 14장.
+    // 동을 버리면 곧바로 27종 대기 텐파이인데, 예전에는 손 전체가 수패가 아니라는
+    // 이유로 무늬 무시가 꺼져 대기가 0으로 잡혔다 — 리치가 아예 안 떴다.
+    const HAND = "1m1p1s2m3p4s5m6p7s8m9p9s9m1z"; // 마지막 1z가 방금 쯔모한 패
+    const game = createStandardGameFromState(mixedState(HAND));
+    installAugment(game.engine, mixedNineGates, "p0", { yaku: game.yaku });
+    const state = game.engine.state;
+
+    // 자패를 버린 뒤의 13장이 27종 대기로 잡혀야 한다
+    const honor = handIdsOf(state, "p0").find((id) => !isNumberSuit(kindOf(state, id)));
+    expect(honor).toBeDefined();
+    const after = handKindsOf(state, "p0").filter(
+      (_k, i) => handIdsOf(state, "p0")[i] !== honor,
+    );
+    expect(
+      winningKinds(after, 0, undefined, scoringOptionsOf(state, game.engine.rules, "p0")),
+    ).toHaveLength(27);
+
+    // 그리고 그 자패를 버리는 리치가 실제로 제시된다
+    const flow = new FlowController(game.engine);
+    const riichis = optionsFor(flow.begin(), "p0").filter((o) => o.type === "riichi");
+    expect(
+      riichis.some((o) => (o.payload as { tileId?: number }).tileId === honor),
+    ).toBe(true);
   });
 
   it("실게임 한 국을 완주한다 (여러 시드)", () => {
