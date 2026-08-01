@@ -315,13 +315,19 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
     expect(declare).toBeUndefined();
   });
 
-  /** firstTurn을 지정한 동장 국 번호로 옮기고 선언 기록을 주입한 상태 */
-  function atRound(roundNumber: number, declaredRoundKey: string): GameState {
+  /**
+   * 진행 국 수(seq)와 마지막 선언 시점(usedSeq)을 주입한 첫 턴 상태.
+   * 쿨다운은 **배패 횟수**로 재므로(본장 재배패도 1국) 국 번호가 아니라 이 두 수가 기준이다.
+   */
+  function withSeq(seq: number, usedSeq: number | null): GameState {
     const base = firstTurn();
     return {
       ...base,
-      round: { ...base.round, roundNumber },
-      augmentData: { ...base.augmentData, "no_retreat:round:p0": declaredRoundKey },
+      augmentData: {
+        ...base.augmentData,
+        "no_retreat:seq:p0": seq,
+        ...(usedSeq === null ? {} : { "no_retreat:usedSeq:p0": usedSeq }),
+      },
     };
   }
 
@@ -339,15 +345,38 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
   }
 
   it("선언한 바로 다음 국은 쿨다운으로 선언할 수 없다 (2국에 1회)", () => {
-    // 동1(1-1-0)에 선언 → 동2(1-2-0)는 쿨다운 (diff 1 < 2)
-    expect(declareAvailable(atRound(2, "1-1-0"))).toBe(false);
+    // 1국째에 선언 → 2국째는 쿨다운 (diff 1 < 2)
+    expect(declareAvailable(withSeq(2, 1))).toBe(false);
   });
 
-  it("2국 뒤·오래된 선언 이력이면 다시 선언할 수 있다", () => {
-    // 동1에 선언 → 동3(1-3-0)부터 다시 가능 (diff 2)
-    expect(declareAvailable(atRound(3, "1-1-0"))).toBe(true);
-    // 아주 오래된 이력(0-0-0)은 당연히 가능
-    expect(declareAvailable(atRound(1, "0-0-0"))).toBe(true);
+  it("2국 뒤·선언 이력 없음이면 다시 선언할 수 있다", () => {
+    expect(declareAvailable(withSeq(3, 1))).toBe(true);
+    expect(declareAvailable(withSeq(1, null))).toBe(true);
+  });
+
+  it("본장도 한 국으로 센다 — 배패마다 seq가 오른다 (2026-08-01)", () => {
+    // 동1국0본장에 선언하고 동1국1본장을 지나 동2국에 가면 2국이 지난 것이다.
+    // 예전에는 roundKey("장-국-본장")를 자릿수로 쪼개 비교해, 국 번호가 그대로인
+    // 본장 재배패가 국 수에 안 잡혀 이 경우가 통째로 쿨다운에 갇혔다.
+    const st = firstTurn();
+    const game = createStandardGameFromState({
+      ...st,
+      round: { ...st.round, phase: "round.over" },
+    });
+    installAugment(game.engine, noRetreat, "p0", { yaku: game.yaku });
+    const seq = (): number =>
+      (game.engine.state.augmentData["no_retreat:seq:p0"] as number | undefined) ?? 0;
+    expect(seq()).toBe(0);
+    for (let i = 1; i <= 2; i++) {
+      const r = game.engine.submit({ player: SYS, type: "sys.startRound", payload: {} });
+      expect(r.ok).toBe(true);
+      expect(seq()).toBe(i);
+      // 도중유국 정산 = 같은 국의 본장만 +1 (국 번호는 그대로)
+      game.engine.submit({ player: SYS, type: "sys.settleAbort", payload: {} });
+    }
+    // 국 번호는 그대로인데도 두 국이 지난 것으로 잡힌다
+    expect(game.engine.state.round.roundNumber).toBe(st.round.roundNumber);
+    expect(game.engine.state.round.honba).toBe(2);
   });
 
   it("선언해도 역을 봉인하지 않는다 — 리치 없이도 그대로 화료할 수 있다 (48차 무페널티)", () => {

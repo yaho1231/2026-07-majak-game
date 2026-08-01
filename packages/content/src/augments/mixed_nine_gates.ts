@@ -69,17 +69,27 @@ function isMixedNineGates(hand: readonly TileKind[]): boolean {
 /**
  * 지금 이 사람의 손이 "무늬만 흩어진 구련보등"으로 가는 길 위에 있는가.
  *
- * 13장(뼈대 정확히 = 9면 대기)과 14장(뼈대 + 1장) 둘 다 받는다 — 대기·후리텐·유국
- * 텐파이도 화료와 같은 분해를 써야 판정이 갈라지지 않기 때문이다. 후로한 손은 제외한다
+ * 13장(뼈대 정확히 = 9면 대기)과 14장 둘 다 받는다 — 대기·후리텐·유국 텐파이도
+ * 화료와 같은 분해를 써야 판정이 갈라지지 않기 때문이다. 후로한 손은 제외한다
  * (이 역은 멘젠 전용이고, 후로 멘쯔가 끼면 랭크 카운트로 뼈대를 셀 수 없다).
+ *
+ * ⚠ 14장은 **한 장을 빼면 뼈대가 되는가**로 본다. 예전엔 14장 전체가 수패이고
+ * 뼈대+1일 때만 켜져서, 뼈대 13장을 쥔 채 자패를 쯔모한 순간(=그 자패를 버리면
+ * 곧바로 텐파이) 무늬 무시가 꺼졌다 — `winningKinds`가 대기를 0으로 보고
+ * **리치가 아예 제시되지 않았다**(2026-08-01 사용자 보고: "텐파이인지 모르겠어,
+ * 리치도 안 나오고"). 뼈대 밖의 한 장은 어차피 몸통이 되지 못하므로,
+ * 이 조건이 넓어져도 없던 화료형이 생기지는 않는다.
  */
 function onNineGatesPath(state: GameState, player: string): boolean {
   if ((state.round.byPlayer[player]?.melds.length ?? 0) > 0) return false;
   const hand = winHandKindsOf(state, undefined, player);
-  if (hand.length !== 13 && hand.length !== 14) return false;
-  const extra = nineGatesExtra(hand);
-  if (extra === null) return false;
-  return extra === hand.length - 13;
+  if (hand.length === 13) return nineGatesExtra(hand) === 0;
+  if (hand.length === 14) {
+    return hand.some(
+      (_k, i) => nineGatesExtra(hand.filter((_x, j) => j !== i)) === 0,
+    );
+  }
+  return false;
 }
 
 export const mixedNineGates: AugmentDef = defineAugment({

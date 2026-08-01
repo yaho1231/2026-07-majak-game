@@ -12,8 +12,10 @@ import {
   Prng,
   ROUND_SCOPED_MARK,
   ROUND_SETTLED,
+  ROUND_STARTED,
   SETTLE_LAYER,
   SETTLE_STAGE,
+  augmentDataSet,
   augmentStageKey,
   calculateScore,
   meldCountOf,
@@ -169,6 +171,44 @@ export function flagOf(state: GameState, key: string): boolean {
 export function stringOf(state: GameState, key: string): string | null {
   const v = state.augmentData[key];
   return typeof v === "string" && v !== "" ? v : null;
+}
+
+// ─────────────────── "N국에 1회" 쿨다운 ───────────────────
+
+/**
+ * 지금까지 **배패가 이루어진 횟수**를 세는 카운터 키 (보유자별).
+ *
+ * `roundKey`("장-국-본장") 산술로 국 수를 세면 안 된다. 동1국0본장 → 동1국1본장은
+ * 국 번호가 그대로라 "몇 판이 지났는가"가 산술에 잡히지 않고, 반대로 국 번호가
+ * 오르는 폭(동1→동2)과 본장이 오르는 폭이 서로 달라 어떤 자릿수를 잡아도 어긋난다.
+ * 실제로 동1국0본장에 쓴 "2국에 1회"가 동1국1본장을 지나 동2국에 가도 안 풀렸다
+ * (2026-08-01 사용자 보고). **사용자 기준은 명확하다 — 배패 한 번 = 1국이다.**
+ *
+ * 그래서 세는 대신 **국이 시작될 때마다 +1** 한다(discard_lock이 쓰던 방식).
+ * 연장·유국 재배패도 ROUND_STARTED를 거치므로 본장이 곧 한 국으로 잡힌다.
+ */
+const roundSeqKey = (augmentId: string, holder: PlayerId): string =>
+  `${augmentId}:seq:${holder}`;
+
+/** 지금까지 진행된 국 수 (아직 세기 전이면 0) */
+export function roundSeqOf(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+): number {
+  return counterOf(state, roundSeqKey(augmentId, holder));
+}
+
+/**
+ * 국 진행 카운터를 이 증강 인스턴스에 붙인다 (`install`에서 한 번 호출).
+ * 이후 `roundSeqOf`로 국 수를 읽고, 발동 시점의 값을 기록해 두면
+ * `roundSeqOf(now) - used >= N` 이 곧 "N국이 지났는가"가 된다.
+ */
+export function trackRoundSeq(ctx: AugmentContext, augmentId: string): void {
+  ctx.reaction(ROUND_STARTED, (_event, rc) => {
+    const key = roundSeqKey(augmentId, ctx.holder);
+    rc.emit(augmentDataSet(key, counterOf(rc.state, key) + 1));
+  });
 }
 
 /**

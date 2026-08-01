@@ -2046,6 +2046,35 @@ button {
   50% { opacity: 1; }
 }
 
+/* ── 5가 아닌 적도라 (붉은 손길) ──
+   적도라 그림(0m·0p·0s)은 5에만 있다. 3만·7통에 각인된 적도라는 원래 그림 그대로
+   두고 붉은 기운만 얹어 "이 패는 붉다"를 읽히게 한다 — 예전엔 red 플래그만 보고
+   0번 그림을 써서 무슨 패를 쥐어도 전부 적5로 보였다(2026-08-01 사용자 보고). */
+.tile-red {
+  position: relative;
+  border-color: #e2564f;
+  box-shadow:
+    0 3px 5px rgba(0, 0, 0, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.12),
+    0 0 7px 1px rgba(226, 86, 79, 0.75);
+}
+
+.tile-red::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 110%, rgba(233, 66, 56, 0.5), rgba(233, 66, 56, 0.16) 55%, transparent 78%);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  animation: red-touch-pulse 2s ease-in-out infinite;
+}
+
+@keyframes red-touch-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
 /* ── 도라 — 판이 곧바로 붙는 패라 그림만으로는 구분이 안 된다. 테두리·글로우로 띄우고
    패 표면을 대각으로 훑는 광택을 얹어 "반짝이는 패 = 도라"로 읽히게 한다.
    .tile-face가 overflow:hidden이라 광택(::before)은 패 안에서만 보인다. ── */
@@ -7553,6 +7582,32 @@ button {
   color: #f7f3e8;
   font-size: 10px;
   font-weight: 800;
+}
+
+/* ── 대기가 너무 넓을 때 ──
+   무늬를 지우는 손(뒤섞인 아홉 개의 연꽃)은 오름패가 27종까지 간다. 앞의 몇 장만
+   그리고 나머지는 "+N"으로 접는다 — 종류 수는 라벨 옆 배지가 말해 준다. */
+.waits-badge-count {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(100, 173, 212, 0.28);
+  color: #f7f3e8;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.wait-more {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: rgba(20, 26, 24, 0.6);
+  border: 1px solid rgba(226, 199, 147, 0.35);
+  color: #e2c793;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 /* ─────────────── 증강 파워 티어표 (관리자 전용) ─────────────── */

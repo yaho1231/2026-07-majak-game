@@ -69,11 +69,21 @@ const STACKS_PER_HAN = 2;
 
 const stacksKey = (state: GameState, player: PlayerId): string =>
   `${ID}:stacks:${roundKey(state)}:${player}`;
-/** 턴 사용 기록 키 (값 = 사용한 턴의 스탬프) */
-const turnUsedKey = (player: PlayerId): string => `${ID}:turn_used:${player}`;
-/** "이번 턴"을 식별하는 스탬프 (국 + 순) */
-const turnStamp = (state: GameState): string =>
-  `${roundKey(state)}#${state.round.turnCount}`;
+/**
+ * 이번 턴에 이미 교환했는가 (국 스코프 플래그).
+ *
+ * ⚠ 예전에는 `roundKey#turnCount` 스탬프로 "이번 턴"을 식별했다. 그런데 `turnCount`는
+ * **오야가 쯔모할 때마다** 오르므로, 오야가 깡을 쳐 영상패를 뽑으면 같은 턴 안에서
+ * 스탬프가 갈려 **한 턴에 두 번 교환**됐다 — 쯔모가 두 번, 바닥에 버린 패도 두 장이
+ * 되어 손패 산술이 어긋나 보였다(2026-08-01 사용자 보고: "쯔모 두 번 하고 패를
+ * 두 번 버림, 깡 치면 한 번 더 사용 가능해지는 듯").
+ *
+ * 이제 플래그는 **내가 실제로 버릴 때**(TILE_DISCARDED) 풀린다 — 보유자의 턴은 언제나
+ * 버림 하나로 끝나므로, 그 사이에 깡·영상 쯔모가 몇 번 끼든 교환은 한 번뿐이다.
+ * (교환이 바닥에 놓는 한 장은 TILE_DISCARDED를 거치지 않으므로 플래그를 풀지 않는다.)
+ */
+const turnUsedKey = (state: GameState, player: PlayerId): string =>
+  `${ID}:turn_used:${roundKey(state)}:${player}`;
 /** 무장 플래그 키 (국 단위 — 국이 바뀌면 자동 소멸) */
 const armedKey = (state: GameState, player: PlayerId): string =>
   `${ID}:armed:${roundKey(state)}:${player}`;
@@ -90,7 +100,7 @@ function isArmed(state: GameState, player: PlayerId): boolean {
 
 /** 이번 턴에 이미 교환했는가 */
 function usedThisTurn(state: GameState, player: PlayerId): boolean {
-  return state.augmentData[turnUsedKey(player)] === turnStamp(state);
+  return flagOf(state, turnUsedKey(state, player));
 }
 
 /** 지금 발동(무장/교환)이 가능한 상황인가 — 두 액션의 공통 조건 */
@@ -187,7 +197,7 @@ export const futureSight: AugmentDef = defineAugment({
   description:
     "(자기 순마다 1회) 액티브 버튼을 누르면 손패에서 무작위 3장이 뽑히고, 그중 바닥에 버릴 1장을 직접 고른 뒤(나머지 2장은 패산 맨 밑으로) 패산 위 3장을 가져온다. 이번 국에 두 번 쓸 때마다 화료 시 +1판을 얻는다.",
   detail:
-    "(자기 순마다 1회) 자기 순에 액티브 버튼을 눌러야 발동한다. 버튼을 누른 뒤에야 손패에서 뽑힌 무작위 3장이 제시되고, 그중 버릴 1장을 직접 고르면 나머지 2장은 패산 맨 밑으로 들어가며 패산에서 3장을 새로 받는다. 새로 받은 3장은 전원에게 공개된다. 버튼을 누르지 않은 채 그냥 버리면 그 순의 발동 기회는 사라진다. 교환할 때마다 층이 1씩 쌓여 그 국에 화료하면 층 2개당 +1판을 얻으며(내림) 국이 바뀌면 초기화된다. 바닥으로 보낸 패는 내 바닥에 쌓여 그 종류로는 내가 론할 수 없게 되지만(후리텐), 턴 중간에 놓는 것이라 다른 사람의 론·후로 대상은 되지 않는다. 리치 중에는 쓸 수 없다.",
+    "(자기 순마다 1회) 자기 순에 액티브 버튼을 눌러야 발동한다. 버튼을 누른 뒤에야 손패에서 뽑힌 무작위 3장이 제시되고, 그중 버릴 1장을 직접 고르면 나머지 2장은 패산 맨 밑으로 들어가며 패산에서 3장을 새로 받는다. 한 번 누르면 교환은 취소할 수 없고, 고르지 않으면 무작위로 한 장이 버려진다. 새로 받은 3장은 전원에게 공개된다. 한 순에 한 번뿐이며 깡을 쳐도 그 순에 다시 열리지 않는다. 교환할 때마다 층이 1씩 쌓여 그 국에 화료하면 층 2개당 +1판을 얻으며(내림) 국이 바뀌면 초기화된다. 바닥으로 보낸 패는 내 바닥에 쌓여 그 종류로는 내가 론할 수 없게 되지만(후리텐), 턴 중간에 놓는 것이라 다른 사람의 론·후로 대상은 되지 않는다. 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -254,7 +264,8 @@ export const futureSight: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [sKey]: stacks,
-            [turnUsedKey(p.player)]: turnStamp(state),
+            // 이 턴은 다 썼다 — 내가 실제로 버릴 때 풀린다(깡·영상 쯔모로는 안 풀린다)
+            [turnUsedKey(state, p.player)]: true,
             // 교환이 끝나면 무장이 풀린다 (다시 쓰려면 버튼을 또 눌러야 한다)
             [armedKey(state, p.player)]: false,
             // 보유자 화면에 현재 스택 수 노출
@@ -272,12 +283,18 @@ export const futureSight: AugmentDef = defineAugment({
       engine.actions.register(futureArmAction);
     }
 
-    // 무장한 채 그냥 버리면 무장이 풀린다 — 그 턴에만 유효한 선언이다.
+    // 내가 버리면 내 턴이 끝난 것이다 — 무장(그 턴에만 유효한 선언)과 이번 턴 사용
+    // 기록을 함께 내린다. 턴 경계를 '버림'으로 잡으면 깡·영상 쯔모가 몇 번 끼어도
+    // 교환은 한 턴에 한 번뿐이다.
     ctx.reaction(TILE_DISCARDED, (event, rc) => {
       const p = event.payload as TileDiscardedPayload;
       if (p.player !== holder) return;
-      if (!isArmed(rc.state, holder)) return;
-      rc.emit(augmentDataSet(armedKey(rc.state, holder), false));
+      if (isArmed(rc.state, holder)) {
+        rc.emit(augmentDataSet(armedKey(rc.state, holder), false));
+      }
+      if (usedThisTurn(rc.state, holder)) {
+        rc.emit(augmentDataSet(turnUsedKey(rc.state, holder), false));
+      }
     });
 
     // 국이 바뀌면 지난 국 tileId가 새지 않게 공개 채널을 비운다
