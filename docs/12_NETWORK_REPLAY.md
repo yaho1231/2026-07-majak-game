@@ -49,7 +49,11 @@ type ClientMessage =
   // ── 증강 테스트 (49, 관리자 전용 — 상세는 docs/15 §5c) ──
   | { type: "sandboxStart"; mode?: GameMode }      // 봇3 + 드래프트 없는 시험 게임
   | { type: "sandboxGrant"; augmentId: string; target?: PlayerId }  // 즉시 획득
-  | { type: "sandboxReset"; augments?: Record<PlayerId, string[]>; mode?: GameMode }
+  | { type: "sandboxReset"; augments?: Record<PlayerId, string[]>;
+      hands?: Record<PlayerId, string[]>; mode?: GameMode }   // hands = kindKey 강제 배패
+  | { type: "sandboxViewAs"; seat: PlayerId }      // 시점 전환 (SPECTATOR_ID = 전체 공개)
+  | { type: "sandboxBotRules"; rules: SandboxBotRules }  // 봇 후로·리치·화료·증강 금지
+  | { type: "sandboxControl"; enabled: boolean }   // 봇 시점에서 직접 조작 on/off
 ```
 
 ## 서버 → 클라이언트
@@ -71,7 +75,12 @@ type ServerMessage =
   | { type: "lobby";  roomId; hostId; youId; canStart; players: LobbyPlayerEntry[] }
   | { type: "stats";  game?: StatsEntry[]; career: StatsEntry[] }
   // ── 증강 테스트 (49) — 판이 시작·재시작될 때마다 (관리자에게만) ──
-  | { type: "sandbox"; code: string; mode: GameMode; augments: Record<PlayerId, string[]> }
+  | { type: "sandbox"; code: string; mode: GameMode; augments: Record<PlayerId, string[]>;
+      hands: Record<PlayerId, string[]>; botRules: SandboxBotRules; control: boolean;
+      seat: PlayerId; viewAs: PlayerId }
+  // 판을 갈아엎지 않는 설정 변경만 (봇 제약 토글·시점 전환) — 화면을 초기화하지 않는다
+  | { type: "sandboxConfig"; botRules: SandboxBotRules; control: boolean;
+      controlling: PlayerId | null }
 ```
 
 > 대기실(방장·준비·봇 채우기)과 통계 수집/영속화 상세는 **docs/14_LOBBY_STATS.md**.

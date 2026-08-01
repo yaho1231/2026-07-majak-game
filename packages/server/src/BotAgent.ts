@@ -29,7 +29,7 @@ import type {
   BotDecisionContext,
   BotRng,
 } from "@majak/core/augment/Augment.js";
-import type { DraftStage } from "@majak/core/network/protocol.js";
+import type { DraftStage, SandboxBotRules } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type { TileKind } from "@majak/core/mahjong/tiles/Tile.js";
 import { chooseCall } from "./bot/call.js";
@@ -39,6 +39,48 @@ import { buildRead, readPlan } from "./bot/read.js";
 import type { BotRead, HandPlan } from "./bot/read.js";
 import { rollProfile } from "./bot/profile.js";
 import type { BotProfile } from "./bot/profile.js";
+
+/** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
+const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
+
+/**
+ * 표준 마작 액션 — 이 밖의 액션 타입은 전부 액티브 증강의 발동이다
+ * (증강이 자기 이름의 액션을 등록한다). 봇 증강 금지 판정에 쓴다.
+ */
+const STANDARD_ACTION_TYPES = new Set([
+  "discard",
+  "riichi",
+  "win",
+  "pon",
+  "chi",
+  "ankan",
+  "minkan",
+  "shouminkan",
+  "kyushuKyuhai",
+  "pass",
+]);
+
+/**
+ * 봇 제약(증강 테스트)에 걸리는 선택지를 후보에서 뺀다.
+ *
+ * 결정 **직전에 후보를 좁히는** 방식이라 판단 로직 자체는 손대지 않는다 —
+ * 제약이 없으면(기본) 원본 배열을 그대로 돌려주므로 실대국 봇은 한 치도 달라지지 않는다.
+ * 전부 걸러져 고를 것이 없어지면 원본을 그대로 쓴다(봇이 답을 못 내면 판이 멈춘다).
+ */
+export function restrictOptions(
+  options: ActionOption[],
+  rules: SandboxBotRules | null,
+): ActionOption[] {
+  if (rules === null) return options;
+  const kept = options.filter((o) => {
+    if (rules.noWin === true && o.type === "win") return false;
+    if (rules.noRiichi === true && o.type === "riichi") return false;
+    if (rules.noCall === true && CALL_TYPES.has(o.type)) return false;
+    if (rules.noAugment === true && !STANDARD_ACTION_TYPES.has(o.type)) return false;
+    return true;
+  });
+  return kept.length > 0 ? kept : options;
+}
 
 /** 플레이어 id에서 안정적 시드 파생 (결정론 유지) */
 function seedFromId(id: string): number {
@@ -68,6 +110,11 @@ export class BotAgent implements PlayerAgent {
   private roundKey = "";
   /** 후로로 확정한 이번 국의 목표 역 */
   private plan: HandPlan = null;
+  /**
+   * 봇 행동 제약 (증강 테스트 전용). null(기본)이면 제약 없음 —
+   * 실대국 봇은 이 값이 절대 채워지지 않으므로 판단이 종전과 완전히 동일하다.
+   */
+  private restrictions: SandboxBotRules | null = null;
 
   constructor(
     id: PlayerId,
@@ -88,6 +135,20 @@ export class BotAgent implements PlayerAgent {
     const map = new Map<string, AugmentDef>();
     for (const def of catalog ?? []) map.set(def.id, def);
     this.catalog = map;
+  }
+
+  /**
+   * 봇 행동 제약을 건다 (증강 테스트 전용). 전부 꺼진 객체·null이면 제약 해제.
+   * 진행 중인 판에도 다음 결정부터 즉시 반영된다.
+   */
+  setRestrictions(rules: SandboxBotRules | null): void {
+    const on =
+      rules !== null &&
+      (rules.noCall === true ||
+        rules.noRiichi === true ||
+        rules.noWin === true ||
+        rules.noAugment === true);
+    this.restrictions = on ? rules : null;
   }
 
   sendView(view: PlayerView): void {
@@ -121,7 +182,9 @@ export class BotAgent implements PlayerAgent {
   }
 
   private decideNow(prompt: DecisionPrompt): ActionOption {
-    const { options } = prompt;
+    // 증강 테스트 제약(후로·리치·화료·증강 금지)에 걸리는 선택지를 먼저 걷어낸다.
+    // 제약이 없으면 prompt.options 그대로다.
+    const options = restrictOptions(prompt.options, this.restrictions);
 
     // 1. 화료는 무조건 (론·쯔모)
     const win = options.find((o) => o.type === "win");

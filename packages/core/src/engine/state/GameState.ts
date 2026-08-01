@@ -9,7 +9,7 @@
  * 설계: docs/03_GAME_STATE.md
  */
 
-import { buildStandardTileSet } from "../../mahjong/tiles/Tile.js";
+import { buildStandardTileSet, kindKey } from "../../mahjong/tiles/Tile.js";
 import type { Tile, TileId } from "../../mahjong/tiles/Tile.js";
 import { Prng } from "../random/Prng.js";
 import {
@@ -311,6 +311,97 @@ export function createInitialGameState(
 export interface SetupRoundOptions {
   /** 플레이어별 배패 장수 (기본 13). deal.handSize 규칙에서 유도된다 */
   handSizeFor?: (playerId: PlayerId) => number;
+  /**
+   * 플레이어별 **강제 배패** (kindKey 목록 — "man5"·"wind1"). 증강 테스트 전용으로,
+   * deal.presetHand 규칙에서 유도된다. 빈 배열·undefined면 평소대로 무작위 배패.
+   *
+   * 배패가 끝난 뒤 패산과 맞바꾸는 방식이라 총 장수·패산 길이·왕패는 그대로다
+   * (남은 장수·도라 표시패가 어긋나지 않는다). 지정한 종류의 패가 패산에 남아 있지
+   * 않으면(이미 4장을 다 썼거나 다른 좌석이 가져갔으면) 그 자리는 조용히 건너뛴다.
+   */
+  presetHandFor?: (playerId: PlayerId) => readonly string[] | undefined;
+}
+
+/**
+ * 강제 배패 적용 — 이미 배패가 끝난 zones에서 요청한 종류의 패를 패산과 맞바꾼다.
+ *
+ * 좌석을 **친부터 자리 순서대로** 처리하므로 같은 패를 두 좌석이 요구하면 앞선
+ * 좌석이 먼저 가져간다(결정적). 밀려난 손패는 패산 **맨 뒤**로 보내 남은 국의 쯔모
+ * 순서가 요청 때문에 앞당겨지지 않게 한다.
+ */
+function applyPresetHands(
+  zones: Zones,
+  tiles: Record<TileId, Tile>,
+  order: readonly PlayerId[],
+  presetFor: (playerId: PlayerId) => readonly string[] | undefined,
+): Zones {
+  const wanted = new Map<PlayerId, readonly string[]>();
+  for (const p of order) {
+    const list = presetFor(p);
+    if (list !== undefined && list.length > 0) wanted.set(p, list);
+  }
+  if (wanted.size === 0) return zones; // 지정 없음 — 배패를 한 장도 건드리지 않는다
+
+  const keyOf = (id: TileId): string => {
+    const tile = tiles[id];
+    return tile === undefined ? "" : kindKey(tile.kind);
+  };
+  const dealt = new Map<PlayerId, TileId[]>(
+    order.map((p) => [p, [...(zones[handZone(p)]?.tileIds ?? [])]]),
+  );
+  const wall = [...(zones[WALL]?.tileIds ?? [])];
+
+  // ① 요청한 종류를 확보한다 — 자기 손 → 패산 → **다른 좌석의 손** 순.
+  //    왕패(영상패·표시패)는 건드리지 않는다: 도라가 바뀌면 시험 조건이 흔들린다.
+  //    그래서 이미 왕패로 간 사본은 못 가져오고, 그 자리는 무작위로 채워진다.
+  const claimed = new Set<TileId>();
+  const picked = new Map<PlayerId, TileId[]>();
+  for (const player of order) {
+    const own = dealt.get(player) ?? [];
+    const mine: TileId[] = [];
+    for (const key of (wanted.get(player) ?? []).slice(0, own.length)) {
+      const search = (ids: readonly TileId[]): TileId | undefined =>
+        ids.find((id) => !claimed.has(id) && keyOf(id) === key);
+      const found =
+        search(own) ??
+        search(wall) ??
+        search(order.flatMap((q) => (q === player ? [] : (dealt.get(q) ?? []))));
+      if (found === undefined) continue; // 남은 사본 없음 — 이 자리는 무작위로 채운다
+      claimed.add(found);
+      mine.push(found);
+    }
+    picked.set(player, mine);
+  }
+
+  // ② 남은 자리 — 원래 자기 손에 남은 패 우선, 모자라면 패산 앞쪽에서 당겨 온다
+  const leftoverOwn = new Map<PlayerId, TileId[]>(
+    order.map((p) => [p, (dealt.get(p) ?? []).filter((id) => !claimed.has(id))]),
+  );
+  const spare = wall.filter((id) => !claimed.has(id));
+  for (const player of order) {
+    const hand = picked.get(player) ?? [];
+    const own = leftoverOwn.get(player) ?? [];
+    const size = (dealt.get(player) ?? []).length;
+    while (hand.length < size) {
+      const next = own.shift() ?? spare.shift();
+      if (next === undefined) break;
+      hand.push(next);
+    }
+  }
+
+  // ③ 패산 = 남은 패산(원래 순서) + 손에서 밀려난 패(최후미).
+  //    밀려난 패를 앞에 두면 방금 뺏은 패가 다음 쯔모로 곧장 되돌아온다.
+  const out: Zones = { ...zones, [WALL]: { ...zones[WALL]!, tileIds: [
+    ...spare,
+    ...order.flatMap((p) => leftoverOwn.get(p) ?? []),
+  ] } };
+  for (const player of order) {
+    out[handZone(player)] = {
+      ...zones[handZone(player)]!,
+      tileIds: picked.get(player) ?? [],
+    };
+  }
+  return out;
 }
 
 /**
@@ -368,6 +459,18 @@ export function setupRound(
     zones[meldsZone(p.id)] = createZone(meldsZone(p.id), "melds", p.id);
   }
 
+  // 강제 배패 (증강 테스트) — 배패가 끝난 뒤 패산과 맞바꾼다. 친부터 자리 순서대로.
+  let dealt: Zones = zones;
+  if (options.presetHandFor !== undefined) {
+    const seatOrder: PlayerId[] = [];
+    for (let i = 0; i < playerCount; i++) {
+      const seat = (state.round.dealerSeat + i) % playerCount;
+      const player = state.players.find((p) => p.seat === seat);
+      if (player !== undefined) seatOrder.push(player.id);
+    }
+    dealt = applyPresetHands(zones, tiles, seatOrder, options.presetHandFor);
+  }
+
   const firstDora = deadWallIds[FIRST_DORA_INDEX];
   if (firstDora === undefined) {
     throw new Error("Dead wall is too small for a dora indicator");
@@ -385,7 +488,7 @@ export function setupRound(
     ...state,
     prngState: prng.getState(),
     tiles,
-    zones,
+    zones: dealt,
     augmentData,
     round: {
       ...state.round,

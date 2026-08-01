@@ -152,15 +152,53 @@ export interface SandboxResetMessage {
   type: "sandboxReset";
   /** 새 판 시작 시 좌석별로 미리 지급할 증강 (생략·빈 객체 = 증강 없음) */
   augments?: Record<string, string[]>;
+  /**
+   * 새 판 시작 시 좌석별로 강제 배패할 손패 (`kindKey` 표기 — "man5"·"wind1").
+   * 생략·빈 배열이면 평소대로 무작위 배패. 지정한 장수만 앞에서 채우고 나머지는
+   * 무작위로 채우므로, 일부만 지정해도 된다. **매 국** 이 손패로 다시 배패된다.
+   */
+  hands?: Record<string, string[]>;
   /** 새 판의 게임 모드 (생략 시 유지) */
   mode?: GameMode;
+}
+
+/**
+ * 봇 행동 제약 (증강 테스트 전용) — 켜진 항목을 봇이 하지 않는다.
+ * 특정 상황(내 리치를 아무도 안 깨는 판 등)을 재현하기 위한 시험용 스위치다.
+ */
+export interface SandboxBotRules {
+  /** 후로(펑·치·대명깡) 금지 */
+  noCall?: boolean;
+  /** 리치 선언 금지 */
+  noRiichi?: boolean;
+  /** 화료(론·쯔모) 금지 */
+  noWin?: boolean;
+  /** 액티브 증강 발동 금지 */
+  noAugment?: boolean;
+}
+
+/** 봇 행동 제약을 지금 즉시 갱신한다 (관리자 전용). 진행 중인 판에 바로 적용된다. */
+export interface SandboxBotRulesMessage {
+  type: "sandboxBotRules";
+  rules: SandboxBotRules;
+}
+
+/**
+ * 봇 좌석 직접 조작 모드 토글 (관리자 전용).
+ * 켜면 `sandboxViewAs`로 봇 좌석을 보고 있는 동안 그 봇의 결정(버림·리치·후로·
+ * 증강 발동)이 봇 대신 나에게 온다. 시점을 옮기거나 끄면 즉시 봇에게 돌아간다.
+ */
+export interface SandboxControlMessage {
+  type: "sandboxControl";
+  enabled: boolean;
 }
 
 /**
  * 증강 테스트에서 뷰 시점을 다른 좌석으로 전환한다 (관리자 전용).
  * seat에 다른 좌석 id를 주면 그 좌석이 실제로 보는 가시성 필터가 적용된 뷰를,
  * SPECTATOR_ID(`__spectator`)를 주면 전체 공개 뷰를 받는다. 본인 좌석 id로 되돌린다.
- * 관찰 전용 — 이 시점에서 조작(버림·리치 등)은 하지 않는다(프롬프트는 항상 본인 좌석 기준).
+ * 기본은 관찰 전용이지만, `sandboxControl`이 켜져 있으면 관찰 중인 봇 좌석의
+ * 결정이 나에게 와서 그 좌석을 직접 조작할 수 있다.
  */
 export interface SandboxViewAsMessage {
   type: "sandboxViewAs";
@@ -181,6 +219,12 @@ export interface ActionMessage {
   type: "action";
   actionType: string;
   payload: unknown;
+  /**
+   * 이 결정이 어느 좌석의 것인가 (증강 테스트의 봇 좌석 조작 전용).
+   * 생략하면 본인 좌석. 자기 좌석과 조종 중인 봇 좌석에 프롬프트가 동시에 떠 있을
+   * 때 어느 쪽 응답인지 가른다.
+   */
+  seat?: PlayerId;
 }
 
 export interface DraftPickMessage {
@@ -297,7 +341,9 @@ export type ClientMessage =
   | SandboxStartMessage
   | SandboxGrantMessage
   | SandboxResetMessage
-  | SandboxViewAsMessage;
+  | SandboxViewAsMessage
+  | SandboxBotRulesMessage
+  | SandboxControlMessage;
 
 // ─────────────────────────── 서버 → 클라이언트 ───────────────────────────
 
@@ -327,6 +373,12 @@ export interface PromptMessage {
  */
 export interface PromptCancelMessage {
   type: "promptCancel";
+  /**
+   * 취소된 프롬프트의 좌석. 생략하면 떠 있는 선택 UI 전부를 닫는다(구 동작).
+   * 증강 테스트에서 내 좌석과 조종 중인 봇 좌석에 프롬프트가 동시에 떠 있을 때,
+   * 한쪽만 접히도록 가른다.
+   */
+  seat?: PlayerId;
 }
 
 export interface DraftOfferMessage {
@@ -629,10 +681,30 @@ export interface SandboxMessage {
   mode: GameMode;
   /** 이 판 시작 시 좌석별로 미리 지급된 증강 */
   augments: Record<string, string[]>;
+  /** 이 판 시작 시 좌석별로 강제 배패된 손패 (kindKey 목록). 비었으면 무작위 배패. */
+  hands: Record<string, string[]>;
+  /** 지금 걸려 있는 봇 행동 제약 */
+  botRules: SandboxBotRules;
+  /** 봇 좌석 직접 조작 모드가 켜져 있는가 */
+  control: boolean;
   /** 이 테스트 방에서 관리자 본인이 실제로 앉은 좌석 id (조작·복귀 기준) */
   seat: PlayerId;
   /** 현재 관찰 중인 좌석 id (또는 SPECTATOR_ID). 본인 좌석이면 평소대로 조작 가능. */
   viewAs: PlayerId;
+}
+
+/**
+ * 증강 테스트 설정 변경 알림 (관리자 전용) — 판을 갈아엎지 않고 바뀌는 값만 보낸다.
+ * `sandbox` 메시지는 "새 판이 시작됐다"는 신호라 클라이언트가 프롬프트·결과 화면을
+ * 통째로 정리한다. 봇 제약 토글·시점 전환처럼 판이 그대로인 변경은 이쪽으로 보낸다.
+ */
+export interface SandboxConfigMessage {
+  type: "sandboxConfig";
+  botRules: SandboxBotRules;
+  /** 봇 좌석 직접 조작 모드 on/off */
+  control: boolean;
+  /** 지금 내가 실제로 조종 중인 봇 좌석 (없으면 null) */
+  controlling: PlayerId | null;
 }
 
 /**
@@ -671,4 +743,5 @@ export type ServerMessage =
   | SpectateStartedMessage
   | SpectateEndedMessage
   | SandboxMessage
+  | SandboxConfigMessage
   | ActionFxMessage;

@@ -317,6 +317,10 @@ export type {
   SandboxStartMessage,
   SandboxGrantMessage,
   SandboxResetMessage,
+  SandboxViewAsMessage,
+  SandboxBotRules,
+  SandboxBotRulesMessage,
+  SandboxControlMessage,
   ClientMessage,
   JoinedMessage,
   ViewMessage,
@@ -352,6 +356,7 @@ export type {
   SpectateStartedMessage,
   SpectateEndedMessage,
   SandboxMessage,
+  SandboxConfigMessage,
   ActionFxMessage,
   ServerMessage,
 } from "./network/protocol.js";

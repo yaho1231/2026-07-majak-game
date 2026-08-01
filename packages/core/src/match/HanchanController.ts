@@ -18,6 +18,7 @@ import type { StandardGame, StandardGameOptions } from "../mahjong/flow/standard
 import { DraftController, rebuildAugments } from "../augment/DraftController.js";
 import { installAugment } from "../augment/Augment.js";
 import { draftDoneKey } from "../augment/events.js";
+import { RuleLayer } from "../engine/rules/RuleRegistry.js";
 import { SPECTATOR_ID, buildPlayerView } from "../information/PlayerView.js";
 import type { PlayerView, PublicTileView } from "../information/PlayerView.js";
 import type { GameState } from "../engine/state/GameState.js";
@@ -78,6 +79,12 @@ export interface HanchanConfig {
    * 증강도 1국부터 온전히 작동한다. 카탈로그에 없는 id는 무시한다.
    */
   presetAugments?: Record<PlayerId, readonly string[]>;
+  /**
+   * 좌석별 **강제 배패** (증강 테스트용) — kindKey 목록("man5"·"wind1").
+   * 매 국 배패 직후 패산과 맞바꿔 지정한 패를 손에 쥐여 준다(총 장수·왕패 불변).
+   * 지정하지 않은 자리·좌석은 평소대로 무작위 배패다.
+   */
+  presetHands?: Record<PlayerId, readonly string[]>;
   /**
    * 국 종료 후 다음 국 시작까지의 대기(ms). 결과 화면을 볼 시간을 준다.
    * 기본 0 (테스트·봇 게임은 지연 없음). 실서버가 사람 게임에서 설정한다.
@@ -326,6 +333,9 @@ export class HanchanController {
     const game = createStandardGame(options);
     this.game = game;
 
+    // 강제 배패 규칙 — 1국 배패(runRound의 flow.begin)보다 먼저 깔아야 첫 국부터 먹는다
+    this.installPresetHands(game);
+
     // 초기 상태를 이벤트 로그에 기록
     this.emitInit(game.engine.state, options);
 
@@ -423,6 +433,31 @@ export class HanchanController {
     if (reason !== null) return { ok: false, reason };
     this.broadcastViews(game);
     return { ok: true };
+  }
+
+  /**
+   * 강제 배패(증강 테스트)를 `deal.presetHand` 규칙으로 깐다.
+   *
+   * 규칙은 평소에 **정의조차 되지 않는다** — 정의됐을 때만 배패 리듀서가 강제 배패
+   * 경로를 타므로, 일반 게임의 무작위 배패는 이 기능이 있어도 한 줄도 달라지지 않는다.
+   * 규칙 합성은 결정적이라 같은 시드·같은 지정이면 리플레이도 그대로 재현된다.
+   */
+  private installPresetHands(game: StandardGame): void {
+    const preset = this.config.presetHands;
+    if (preset === undefined) return;
+    const seats = Object.entries(preset).filter(
+      ([player, ids]) => this.agents.has(player as PlayerId) && ids.length > 0,
+    );
+    if (seats.length === 0) return;
+    const table = new Map<string, readonly string[]>(seats);
+    const rules = game.engine.rules;
+    if (!rules.has("deal.presetHand")) rules.define("deal.presetHand", [] as readonly string[]);
+    rules.addModifier<readonly string[]>("deal.presetHand", {
+      source: "__sandbox_preset_hand",
+      layer: RuleLayer.System,
+      apply: (current, ctx) =>
+        ctx.playerId === undefined ? current : (table.get(ctx.playerId) ?? current),
+    });
   }
 
   /** 설정된 사전 지급 증강을 설치한다. 알 수 없는 id·중복은 조용히 건너뛴다. */

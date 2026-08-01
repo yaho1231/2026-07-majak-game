@@ -21,6 +21,11 @@ class FakeSocket {
   sent: any[] = [];
   /** 프롬프트에 자동 응답할지 (게임을 계속 굴려야 하는 테스트에서 켠다) */
   autoRespond = false;
+  /**
+   * 자동 응답에서 제외할 좌석 — **자기 차례(버림 선택지가 있는 프롬프트)만** 남겨 둔다.
+   * 리액션(패스/후로)까지 손에 쥐고 있으면 답하지 않은 채 판이 멈춰 테스트가 굶는다.
+   */
+  skipSeats = new Set<string>();
   private handlers: Record<string, ((...a: any[]) => void)[]> = {};
   private waiters: { pred: (m: any) => boolean; resolve: () => void; timer: ReturnType<typeof setTimeout> }[] = [];
 
@@ -70,10 +75,18 @@ class FakeSocket {
   private respond(msg: any): void {
     if (msg.type === "prompt") {
       const opts = msg.prompt.options as any[];
+      if (this.skipSeats.has(msg.prompt.player) && opts.some((o) => o.type === "discard")) return;
       const pick =
         opts.find((o) => o.type === "pass") ?? opts.find((o) => o.type === "discard") ?? opts[0];
+      // 실제 클라이언트처럼 어느 좌석의 답인지 함께 보낸다 (봇 좌석 조종 대응)
       setTimeout(
-        () => this.clientSend({ type: "action", actionType: pick.type, payload: pick.payload }),
+        () =>
+          this.clientSend({
+            type: "action",
+            actionType: pick.type,
+            payload: pick.payload,
+            seat: msg.prompt.player,
+          }),
         0,
       );
     } else if (msg.type === "roundOver") {
@@ -348,5 +361,151 @@ describe("증강 테스트 — 기록 없음", () => {
     const files = await readdir(h.replayDir);
     expect(files.filter((f) => f.endsWith(".jsonl"))).toEqual([]);
     expect(h.db.listAllGames()).toEqual([]);
+  });
+});
+
+describe("증강 테스트 — 손패 지정", () => {
+  it("지정한 손패로 배패되고, 그 지정이 sandbox 상태로 돌아온다", async () => {
+    const h = await newHarness();
+    const admin = await startSandbox(h);
+    const me = admin.last("joined").playerId;
+    const want = ["man1", "man1", "man1", "pin9", "wind2"];
+
+    admin.clientSend({ type: "sandboxReset", augments: {}, hands: { [me]: want } });
+    await admin.waitFor((m) => m.type === "sandbox" && Object.keys(m.hands).length > 0);
+    expect(admin.last("sandbox").hands).toEqual({ [me]: want });
+
+    // 새 판의 첫 뷰에서 내 손패에 지정한 종류가 실제로 들어 있다
+    await admin.waitFor(
+      (m) => m.type === "view" && (m.view.zones[`hand:${me}`]?.tileIds.length ?? 0) >= 13,
+    );
+    const view = admin.last("view").view;
+    const keys = view.zones[`hand:${me}`].tileIds.map((id: number) => {
+      const k = view.tiles[id].kind;
+      return `${k.suit}${k.rank}`;
+    });
+    for (const key of new Set(want)) {
+      expect(keys.filter((k: string) => k === key).length).toBeGreaterThanOrEqual(
+        want.filter((w) => w === key).length,
+      );
+    }
+    // 친은 이미 첫 쯔모를 했을 수 있어 13 또는 14장이다
+    expect(keys.length).toBeGreaterThanOrEqual(13);
+  });
+
+  it("없는 좌석·이상한 패 이름·5장째 사본은 조용히 걸러진다", async () => {
+    const h = await newHarness();
+    const admin = await startSandbox(h);
+    const me = admin.last("joined").playerId;
+    admin.clientSend({
+      type: "sandboxReset",
+      augments: {},
+      hands: { [me]: ["man1", "돌", "man99", "man1", "man1", "man1", "man1"], p9: ["pin1"] },
+    });
+    await admin.waitFor((m) => m.type === "sandbox" && Object.keys(m.hands).length > 0);
+    // 유효한 man1 4장만 남는다 (5장째와 없는 종류·좌석은 버려진다)
+    expect(admin.last("sandbox").hands).toEqual({ [me]: ["man1", "man1", "man1", "man1"] });
+  });
+});
+
+describe("증강 테스트 — 봇 제약", () => {
+  it("체크한 제약이 sandboxConfig로 돌아오고, 판을 갈아엎지 않는다", async () => {
+    const h = await newHarness();
+    const admin = await startSandbox(h);
+    const before = admin.all("sandbox").length;
+
+    admin.clientSend({ type: "sandboxBotRules", rules: { noCall: true, noWin: true } });
+    await admin.waitFor((m) => m.type === "sandboxConfig");
+    const cfg = admin.last("sandboxConfig");
+    expect(cfg.botRules).toEqual({
+      noCall: true,
+      noRiichi: false,
+      noWin: true,
+      noAugment: false,
+    });
+    // 새 판(sandbox 메시지)이 시작되지 않았다 — 진행 중인 판에 그대로 먹는다
+    expect(admin.all("sandbox").length).toBe(before);
+  });
+
+  it("일반 방·비관리자는 봇 제약을 걸 수 없다", async () => {
+    const h = await newHarness();
+    const user = await connectAs(h, "Alice");
+    user.clientSend({ type: "sandboxBotRules", rules: { noWin: true } });
+    expect(user.last("error")?.code).toBe("FORBIDDEN");
+
+    const admin = await connectAs(h, "Boss", { admin: true });
+    admin.clientSend({ type: "createRoom" });
+    admin.clientSend({ type: "sandboxControl", enabled: false });
+    expect(admin.last("error")?.code).toBe("NOT_SANDBOX");
+  });
+});
+
+describe("증강 테스트 — 봇 좌석 직접 조작", () => {
+  /** 내 좌석은 자동으로 두게 하고(판이 흘러야 한다) 봇 좌석만 손으로 남긴다 */
+  async function puppetSetup(): Promise<{ admin: FakeSocket; me: string; bot: string }> {
+    const h = await newHarness();
+    const admin = await startSandbox(h, true);
+    const me = admin.last("joined").playerId;
+    const bot = admin.last("view").view.players.find((p: any) => p.id !== me).id;
+    admin.skipSeats.add(bot);
+    return { admin, me, bot };
+  }
+
+  it("봇 시점으로 가면 그 좌석의 결정이 나에게 오고, 내가 대신 둘 수 있다", async () => {
+    const { admin, bot } = await puppetSetup();
+
+    admin.clientSend({ type: "sandboxViewAs", seat: bot });
+    await admin.waitFor((m) => m.type === "sandboxConfig" && m.controlling === bot);
+    expect(admin.last("sandboxConfig").control).toBe(true);
+
+    // 그 봇의 차례가 오면 프롬프트가 내 소켓으로 온다
+    await admin.waitFor(
+      (m) => m.type === "prompt" && m.prompt.player === bot && m.prompt.options.some((o: any) => o.type === "discard"),
+    );
+    const prompt = [...admin.sent]
+      .reverse()
+      .find((m) => m.type === "prompt" && m.prompt.player === bot);
+    const discard = prompt.prompt.options.find((o: any) => o.type === "discard");
+
+    // 내가 그 좌석으로 답하면 실제로 그 패가 버려진다
+    admin.clientSend({
+      type: "action",
+      actionType: "discard",
+      payload: discard.payload,
+      seat: bot,
+    });
+    await admin.waitFor(
+      (m) => m.type === "view" && (m.view.zones[`discards:${bot}`]?.tileIds ?? []).includes(discard.payload.tileId),
+    );
+  });
+
+  it("조작 모드를 끄면 봇이 스스로 둔다 (프롬프트가 나에게 오지 않는다)", async () => {
+    const { admin, bot } = await puppetSetup();
+
+    admin.clientSend({ type: "sandboxControl", enabled: false });
+    await admin.waitFor((m) => m.type === "sandboxConfig" && m.control === false);
+    admin.clientSend({ type: "sandboxViewAs", seat: bot });
+    await admin.waitFor((m) => m.type === "sandboxConfig" && m.controlling === null);
+    admin.sent.length = 0;
+
+    // 봇이 알아서 두어 판이 흐른다 — 그 좌석 프롬프트는 나에게 오지 않는다
+    await admin.waitFor((m) => m.type === "view");
+    await new Promise((r) => setTimeout(r, 120));
+    expect(admin.all("prompt").some((m) => m.prompt.player === bot)).toBe(false);
+  });
+
+  it("조작 중 시점을 옮기면 대기 중이던 봇 결정을 봇이 즉시 회수한다", async () => {
+    const { admin, me, bot } = await puppetSetup();
+
+    admin.clientSend({ type: "sandboxViewAs", seat: bot });
+    await admin.waitFor(
+      (m) => m.type === "prompt" && m.prompt.player === bot && m.prompt.options.some((o: any) => o.type === "discard"),
+    );
+    // 답하지 않고 내 시점으로 복귀 → 봇이 이어서 둔다 (30초 타임아웃을 기다리지 않는다)
+    admin.clientSend({ type: "sandboxViewAs", seat: me });
+    await admin.waitFor(
+      (m) => m.type === "view" && (m.view.zones[`discards:${bot}`]?.tileIds.length ?? 0) > 0,
+      3000,
+    );
   });
 });
