@@ -16,7 +16,7 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, flagOf, matchUses, roundViewKey } from "../util.js";
 
 const ID = "reload";
 const ACTION = "reload_use";
@@ -38,13 +38,24 @@ const targetUsesKeys = (augId: string, h: PlayerId): string[] => [
   `${augId}:used:${h}`,
 ];
 
-/** 이 증강이 실제로 소진 이력을 남긴 카운터 키 (없으면 null) */
+/**
+ * 이 증강이 실제로 소진 이력을 남긴 카운터 키 (없으면 null).
+ *
+ * `:used:` 키는 숫자 카운터(예: pond_snatch)뿐 아니라 **불리언 플래그**로 소진을
+ * 기록하는 증강도 있다(예: red_five_touch — `augmentDataSet(usedKey, true)`).
+ * `counterOf`는 숫자가 아니면 0을 반환하므로 불리언 소진은 `flagOf`로도 함께 봐야
+ * 사각지대가 생기지 않는다(2026-08 감사).
+ */
 function spentKeyOf(
   state: GameState,
   augId: string,
   holder: PlayerId,
 ): string | null {
-  return targetUsesKeys(augId, holder).find((k) => counterOf(state, k) > 0) ?? null;
+  return (
+    targetUsesKeys(augId, holder).find(
+      (k) => counterOf(state, k) > 0 || flagOf(state, k),
+    ) ?? null
+  );
 }
 
 /** 복구 가능한(=소진 이력이 있는) 홀더의 다른 증강 id 목록 */
@@ -80,10 +91,11 @@ const reloadAction: ActionDef<{ augmentId: string }> = {
   toEvents: (req, { state }) => {
     // validate가 존재를 보장한다
     const key = spentKeyOf(state, req.payload.augmentId, req.player) as string;
-    const spent = counterOf(state, key);
+    // 불리언 소진 플래그는 false로, 숫자 카운터는 1 감소로 되돌린다
+    const restored = flagOf(state, key) ? false : counterOf(state, key) - 1;
     return [
-      // 대상 증강의 사용 카운터를 1 되돌린다 (한 번 더 쓸 수 있게)
-      augmentDataSet(key, spent - 1),
+      // 대상 증강의 사용 기록을 되돌린다 (한 번 더 쓸 수 있게)
+      augmentDataSet(key, restored),
       // 재장전 자신을 1 소진
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       // 전원 공개 — 소진됐다고 믿던 증강이 되살아났음을 알린다

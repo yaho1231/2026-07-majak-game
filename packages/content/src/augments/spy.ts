@@ -134,19 +134,25 @@ export const spy: AugmentDef = defineAugment({
       const marked = stringOf(ic.state, markKey(holder));
       if (marked === null) return event;
 
-      const hit = (p.winInfos ?? []).find(
+      // 더블 론 등으로 지정 패 일치 화료자가 둘 이상일 수 있다 — 전원의 몫을 훔친다
+      // (.find로 첫 명만 훔치면 나머지 일치 승자의 몫이 그대로 남는 버그가 있었다).
+      const hits = (p.winInfos ?? []).filter(
         (w) =>
           w.winner !== holder &&
           kindKey(kindOf(ic.state as GameState, w.winningTileId)) === marked,
       );
-      if (hit === undefined) return event;
-
-      const gain = p.deltas[hit.winner] ?? 0;
-      if (gain <= 0) return event; // 받을 것이 없으면 훔칠 것도 없다
+      if (hits.length === 0) return event;
 
       const deltas = { ...p.deltas };
-      deltas[hit.winner] = 0;
-      deltas[holder] = (deltas[holder] ?? 0) + gain;
+      let stolen = 0;
+      for (const hit of hits) {
+        const gain = deltas[hit.winner] ?? 0;
+        if (gain <= 0) continue; // 받을 것이 없으면 훔칠 것도 없다
+        deltas[hit.winner] = 0;
+        stolen += gain;
+      }
+      if (stolen === 0) return event;
+      deltas[holder] = (deltas[holder] ?? 0) + stolen;
       return { type: event.type, payload: { ...p, deltas } };
     });
 

@@ -83,6 +83,12 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
     if (!sameHandSize(rules, state, req.player, req.payload.target)) {
       return "hand sizes differ";
     }
+    // 상대가 이미 리치를 선언했다면 손을 통째로 맞바꿀 수 없다 — 리치는 "이 손으로
+    // 텐파이 고정"이 전제인데, 손패만 바뀌고 riichi 필드(공탁·일발)는 자리에 남아
+    // 리치=텐파이 불변식이 깨진다(원래 대기와 무관한 손을 쥔 채 강제 쯔모기리하게 됨).
+    if (state.round.byPlayer[req.payload.target]?.riichi != null) {
+      return "target already riichi";
+    }
     // **내** 첫 순에만 — 내가 이 국에서 아직 한 장도 버리지 않았을 때.
     // 이 창이면 손패를 통째로 맞바꿔도 내 버림 이력이 비어 있어 후리텐 등이 어긋나지
     // 않는다(내가 가져온 새 손과 내 빈 버림은 충돌하지 않는다).

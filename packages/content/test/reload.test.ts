@@ -69,6 +69,31 @@ describe("재장전 (reload)", () => {
     ).toBe(false);
   });
 
+  it("불리언 :used: 플래그로 소진을 기록하는 증강(red_five_touch)도 복구 대상이 된다", () => {
+    const base = craft({
+      hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const s = withAug(base, "p0", ["reload", "red_five_touch"]);
+    const withUsed: GameState = {
+      ...s,
+      augmentData: { ...s.augmentData, "red_five_touch:used:p0": true },
+    };
+    const game = start(withUsed);
+    const provider = game.engine.turnOptionProviders[0];
+    const opts = provider ? provider(game.engine.state, "p0") : [];
+    expect(opts.some((o) => o.type === "reload_use")).toBe(true);
+
+    const r = game.engine.submit({
+      player: "p0",
+      type: "reload_use",
+      payload: { augmentId: "red_five_touch" },
+    });
+    expect(r.ok).toBe(true);
+    expect(game.engine.state.augmentData["red_five_touch:used:p0"]).toBe(false);
+  });
+
   it("holderTurnOptions가 복구 가능한 증강만 후보로 낸다", () => {
     const game = start(scene(1));
     const provider = game.engine.turnOptionProviders[0];
