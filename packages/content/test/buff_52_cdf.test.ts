@@ -698,12 +698,13 @@ describe("let_it_ride (판돈 굴리기) — 연승 배수", () => {
     return runTsumo(base).deltas["p0"] ?? 0;
   };
 
-  it("첫 화료는 2배, 2연승은 3배, 3연승 이상은 4배(상한)", () => {
+  it("첫 화료는 1배, 2연승은 2배, 3연승은 3배, 4연승 이상은 4배(상한)", () => {
     const gain = baseGain();
     expect(gain).toBeGreaterThan(0);
-    expect(runTsumo(setup()).deltas["p0"]).toBe(gain * 2);
-    expect(runTsumo(setup(1)).deltas["p0"]).toBe(gain * 3);
-    expect(runTsumo(setup(2)).deltas["p0"]).toBe(gain * 4);
+    expect(runTsumo(setup()).deltas["p0"]).toBe(gain);
+    expect(runTsumo(setup(1)).deltas["p0"]).toBe(gain * 2);
+    expect(runTsumo(setup(2)).deltas["p0"]).toBe(gain * 3);
+    expect(runTsumo(setup(3)).deltas["p0"]).toBe(gain * 4);
     expect(runTsumo(setup(9)).deltas["p0"]).toBe(gain * 4); // 상한
   });
 
@@ -713,7 +714,7 @@ describe("let_it_ride (판돈 굴리기) — 연승 배수", () => {
     expect(game.engine.state.augmentData["let_it_ride:streak:p0"]).toBe(2);
     expect(game.engine.state.augmentData["view:*:let_it_ride:p0"]).toEqual({
       streak: 2,
-      multiplier: 4,
+      multiplier: 3,
     });
   });
 
@@ -736,7 +737,7 @@ describe("let_it_ride (판돈 굴리기) — 연승 배수", () => {
     expect(game.engine.state.augmentData["let_it_ride:streak:p0"]).toBe(0);
     expect(game.engine.state.augmentData["view:*:let_it_ride:p0"]).toEqual({
       streak: 0,
-      multiplier: 2,
+      multiplier: 1,
     });
   });
 

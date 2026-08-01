@@ -4862,6 +4862,26 @@ button {
   height: 50px;
 }
 
+/* 선언 간파로 알아낸 상대의 오름패 — 오픈 리치와 같은 크기로 그 상대의 손패 위에 띄운다.
+   (색은 파랑 계열로 남겨 "전원 공개(오픈 리치)"와 "나만 아는 정보(간파)"를 구분한다.) */
+.waits-badge-peek {
+  padding: 6px 13px 7px;
+  border-color: rgba(100, 173, 212, 0.9);
+  background: rgba(15, 34, 46, 0.95);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 18px rgba(82, 154, 196, 0.5);
+  animation: bar-in 0.25s ease-out, peek-waits-pulse 1.6s ease-in-out infinite;
+}
+
+.waits-badge-peek .waits-badge-tiles .tile-mini {
+  width: 34px;
+  height: 50px;
+}
+
+@keyframes peek-waits-pulse {
+  0%, 100% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 14px rgba(82, 154, 196, 0.4); }
+  50% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 26px rgba(82, 154, 196, 0.7); }
+}
+
 @keyframes open-riichi-pulse {
   0%, 100% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 14px rgba(184, 151, 92, 0.4); }
   50% { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55), 0 0 26px rgba(184, 151, 92, 0.7); }

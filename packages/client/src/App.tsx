@@ -6087,6 +6087,9 @@ function OpponentStrip({
   // 오픈 리치로 공개된 오름패는 전원에게 상시 보인다 (다른 정보 소스보다 우선).
   const openWaits = openRiichiWaits(view, player.id);
   const waits = openWaits.length > 0 ? openWaits : peeked.length > 0 ? peeked : specWaits;
+  // 간파한 오름패는 오픈 리치와 같은 크기·강조로 그 상대의 손패 위에 띄운다
+  // (예전엔 작은 뱃지라 상대 손패 옆에 묻혀 잘 안 보였다).
+  const peekBadge = openWaits.length === 0 && peeked.length > 0;
 
   if (side === "top") {
     return (
@@ -6096,7 +6099,14 @@ function OpponentStrip({
         {...armProps}
       >
         {oppArmable ? <div className="opp-arm-tag">✦ 여기 클릭</div> : null}
-        {waits.length > 0 ? <WaitsBadge waits={waits} owner={playerName(view, player)} openRiichi={openWaits.length > 0} /> : null}
+        {waits.length > 0 ? (
+          <WaitsBadge
+            waits={waits}
+            owner={playerName(view, player)}
+            openRiichi={openWaits.length > 0}
+            peek={peekBadge}
+          />
+        ) : null}
         <div className="opp-melds-row">
           {melds.map((m, i) => (
             <MeldGroup key={i} view={view} meld={m} owner={player} layout="row" />
@@ -6128,7 +6138,14 @@ function OpponentStrip({
       {...armProps}
     >
       {oppArmable ? <div className="opp-arm-tag">✦ 여기 클릭</div> : null}
-      {waits.length > 0 ? <WaitsBadge waits={waits} owner={playerName(view, player)} openRiichi={openWaits.length > 0} /> : null}
+      {waits.length > 0 ? (
+          <WaitsBadge
+            waits={waits}
+            owner={playerName(view, player)}
+            openRiichi={openWaits.length > 0}
+            peek={peekBadge}
+          />
+        ) : null}
       <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
       <div className="opp-backs-col">
         {slots.map((s, i) => (
@@ -7450,16 +7467,26 @@ function WaitsBadge({
   owner,
   mine,
   openRiichi,
+  peek,
   noYaku,
 }: {
   waits: TileKind[];
   owner?: string;
   mine?: boolean;
   openRiichi?: boolean;
+  /** 선언 간파로 알아낸 상대의 오름패 — 오픈 리치와 같은 크기로 상대 손패 위에 띄운다 */
+  peek?: boolean;
   /** 역이 없어 론이 안 되는 대기 종류(kindKey) — 오름패 표시의 오해를 막는다 */
   noYaku?: ReadonlySet<string>;
 }): JSX.Element {
-  const cls = openRiichi === true ? " waits-badge-open" : mine === true ? " waits-badge-mine" : "";
+  const cls =
+    openRiichi === true
+      ? " waits-badge-open"
+      : peek === true
+        ? " waits-badge-peek"
+        : mine === true
+          ? " waits-badge-mine"
+          : "";
   const dead = (k: TileKind): boolean => noYaku?.has(kindKey(k)) === true;
   const allDead = waits.length > 0 && waits.every(dead);
   return (
