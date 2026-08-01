@@ -52,16 +52,13 @@ import type {
   TileKind,
   TileKindChangedPayload,
   VisibilityRule,
-  WinInfo,
 } from "@majak/core";
 import {
-  addWinPointBonus,
   counterOf,
   flagOf,
   roundKey,
   roundViewKey,
   widenPeek,
-  winPointsWithExtraHan,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 
@@ -93,8 +90,6 @@ const KANS_TO_BLOOM = 2;
 const BLOOM_RINSHAN_HAN = 4;
 /** 표준 영상개화 판수 — 정산에 얹는 것은 BLOOM_RINSHAN_HAN과의 차이뿐이다 */
 const STANDARD_RINSHAN_HAN = 1;
-/** 표준 영상개화 역 id (standardYaku) */
-const RINSHAN_YAKU = "rinshan";
 
 /** 이번 국에 이 보유자가 선언한 깡 수 */
 const kanCountKey = (state: GameState, h: PlayerId): string =>
@@ -252,17 +247,28 @@ export const cliffBloom: AugmentDef = defineAugment({
       },
     });
 
-    // 만개 국의 영상개화는 4판으로 취급한다 — 표준 1판과의 차이(+3판)만 얹는다
-    // (커스텀 역은 state를 못 읽으므로 판도 정산 보정으로 환산한다)
-    addWinPointBonus(ctx, (state: GameState, info: WinInfo) => {
-      if (!flagOf(state, bloomedKey(state, holder))) return 0;
-      if (!info.yaku.some((y) => y.id === RINSHAN_YAKU)) return 0;
-      return winPointsWithExtraHan(
-        state,
-        holder,
-        info,
-        BLOOM_RINSHAN_HAN - STANDARD_RINSHAN_HAN,
-      );
+    // 만개 국의 영상개화는 4판으로 취급한다 — 표준 1판과의 차이(+3판)만 얹는다.
+    //
+    // ⚠ 예전에는 이 차액을 addWinPointBonus로 **점수에만** 얹었다. 그러면 정산창에는
+    //    "영상개화 1판"만 남아 4판 취급이 화면 어디에도 나타나지 않는다(2026-08-01
+    //    사용자 보고: "깡 두 번 치고 화료했는데 영상개화 1판으로 취급됨").
+    //    score.extraHan은 코어가 총 판수에 합산하고 WinInfo.extraHan으로도 실어 주므로
+    //    정산창이 "증강 보너스 3판"으로 보여 준다 — 보이지 않던 보상이 보이게 된다.
+    ctx.engine.rules.addModifier<number>("score.extraHan", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        if (!flagOf(state, bloomedKey(state, holder))) return cur;
+        // 영상개화의 성립 조건과 같은 판정(쯔모 + 마지막 뽑기가 영상패)을 그대로 쓴다.
+        // 만개는 영상 쯔모 직후에 일어나므로, 그 화료가 아니면 아무것도 얹지 않는다.
+        if (!state.round.lastDrawRinshan) return cur;
+        const drawn = state.round.lastDrawnTile;
+        if (drawn === null || !handIdsOf(state, holder).includes(drawn)) return cur;
+        return cur + (BLOOM_RINSHAN_HAN - STANDARD_RINSHAN_HAN);
+      },
     });
 
     // 이번 국의 깡 수를 센다 (안깡·가깡·대명깡 전부)

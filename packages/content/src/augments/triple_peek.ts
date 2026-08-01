@@ -23,6 +23,7 @@
  */
 
 import {
+  TILE_DRAWN,
   WALL,
   augmentDataSet,
   defineAugment,
@@ -37,6 +38,7 @@ import type {
   GameState,
   PlayerId,
   RuleRegistry,
+  TileDrawnPayload,
 } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
 
@@ -52,6 +54,12 @@ const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
   counterOf(state, usesKey(holder)) < matchUses(state);
 /** 예지 결과(kindKey 3개)를 담는 보유자 전용 채널 */
 const resultKey = (holder: PlayerId): string => roundViewKey(holder, ID);
+/** 아직 오지 않은 예지 결과 (쯔모할 때마다 앞에서 한 장씩 지워진다) */
+function peekedKinds(state: GameState, holder: PlayerId): string[] {
+  const v = state.augmentData[resultKey(holder)];
+  return Array.isArray(v) ? (v as string[]) : [];
+}
+
 /** 발동 사실만 알리는 전원 공개 마커 (내용 없음) */
 const noticeKey = (holder: PlayerId): string =>
   roundViewKey("*", `${ID}:${holder}`);
@@ -125,9 +133,9 @@ export const triplePeek: AugmentDef = defineAugment({
   category: "info",
   name: "삼세 예지",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 내 다음 쯔모 세 장의 종류가 나에게만 공개된다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 액티브 버튼을 누른 그 시점의 패산 기준으로 내 다음 쯔모 세 장의 종류가 나에게만 공개된다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 앞으로 내게 배정될 다음 쯔모 세 장의 '종류'가 나에게만 공개된다 — 실제 패가 아니라 무엇이 올지 그 종류만 안다. 선언한 순간의 스냅샷이라, 그 사이 누군가 후로(펑·치·깡)를 하면 쯔모 차례가 밀려 예지가 어긋날 수 있다. 무엇을 봤는지는 나만 알고 상대에게는 발동 사실만 공개되며, 사용 횟수는 국이 바뀌어도 채워지지 않는다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 앞으로 내게 배정될 다음 쯔모 세 장의 '종류'가 나에게만 공개된다 — 실제 패가 아니라 무엇이 올지 그 종류만 안다. **액티브 버튼을 누른 그 시점의 정보**만 보여 주는 스냅샷이라, 그 사이 누군가 후로(펑·치·깡)를 하면 쯔모 차례가 밀려 예지가 어긋날 수 있다. 예지한 패는 내가 한 장 뽑을 때마다 하나씩 지워지고, 세 번을 다 뽑으면 스트립이 사라진다(이미 다 온 정보라 더 볼 것이 없다). 무엇을 봤는지는 나만 알고 상대에게는 발동 사실만 공개되며, 사용 횟수는 국이 바뀌어도 채워지지 않는다.",
   // 봇: 자해 위험이 전혀 없다 — 옵션이 뜨면 곧바로 선언한다.
   bot: {
     choose({ options }) {
@@ -139,6 +147,18 @@ export const triplePeek: AugmentDef = defineAugment({
 
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) engine.actions.register(peekAction);
+
+    // 예지한 패가 실제로 손에 들어오면 그 한 장은 목록에서 지운다 — 세 장을 다 뽑으면
+    // 목록이 비어 스트립이 사라진다. "이미 온 패"를 계속 띄워 두면 다음 쯔모를 가리키는
+    // 정보로 오독된다(2026-08-01 사용자 보고).
+    // 영상패(깡)는 왕패에서 오므로 예지한 패산 순서를 소모하지 않는다 — 세지 않는다.
+    ctx.reaction(TILE_DRAWN, (event, rc) => {
+      const p = event.payload as TileDrawnPayload;
+      if (p.player !== holder || p.rinshan) return;
+      const rest = peekedKinds(rc.state, holder);
+      if (rest.length === 0) return;
+      rc.emit(augmentDataSet(resultKey(holder), rest.slice(1)));
+    });
 
     // 아직 안 썼으면 보유자 턴에 선언 후보를 낸다 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) =>

@@ -317,6 +317,10 @@ describe("stealth_riichi (스텔스 리치)", () => {
     const theirs = buildPlayerView(st, "p1", game.engine.rules);
     expect(theirs.round.byPlayer["p0"]?.riichiDeclared).toBe(false);
     expect(theirs.round.byPlayer["p0"]?.riichiTileIndex).toBeUndefined();
+    // 본인 뷰에는 "이 리치는 은닉이다"가 실린다 — 클라가 대형 리치 컷인·BGM 대신
+    // 조용한 표시를 쓰는 근거다(2026-08-01: 스텔스인데 더블리치 컷인이 떴다).
+    expect(mine.round.byPlayer["p0"]?.riichiHidden).toBe(true);
+    expect(theirs.round.byPlayer["p0"]?.riichiHidden).toBeUndefined();
   });
 
   it("화료 판정에는 리치 역이 그대로 붙는다 (은닉은 진행 중 뷰에만)", () => {

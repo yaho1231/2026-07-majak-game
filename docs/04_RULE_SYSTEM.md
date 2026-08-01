@@ -143,6 +143,8 @@ Modifier는 필요한 경우 읽기 전용으로만 사용해야 하며, state�
 | `draw.notenExempt` | boolean | false | 유국 노텐 벌점 면제 |
 | `scoring.wrapRuns` | boolean | false | 8-9-1 / 9-1-2 순환 슌쯔 허용 |
 | `scoring.mixedRuns` | boolean | false | 무늬가 다른 수패로도 슌쯔 허용 (2만·3통·4삭 — 무너진 국경) |
+| `scoring.mixedTriplets` | boolean | false | 무늬가 다른 수패로도 커쯔 허용 (2만·2통·2삭 — 동수의 결속) |
+| `scoring.mixedPairs` | boolean | false | 무늬가 다른 수패로도 작두 허용 (2만+2통 — 뒤섞인 아홉 개의 연꽃) |
 | `scoring.uraWithoutRiichi` | boolean | false | 리치 없이도 뒷도라를 센다 (숨은 칼날). ctx에 `winType`·`isClosed`가 온다 |
 | `scoring.totalSets` | number | 4 | 표준형 필요 멘쯔 수 (진짜 용 = 5) |
 | `scoring.kokushiMeldAssist` | boolean | false | 요구패 펑 1개를 국사 구성(그 종류+작두)으로 인정 |

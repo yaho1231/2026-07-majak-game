@@ -123,6 +123,32 @@ describe("삼세 예지 (triple_peek)", () => {
     expect(game.engine.state.augmentData[`view:p0:${ID}#round`]).toEqual(byIndex);
   });
 
+  it("한 장 뽑을 때마다 앞에서 지워지고, 세 번 뽑으면 사라진다 (2026-08-01)", () => {
+    const scn = scene();
+    const { game, flow } = startFlow(scn);
+    let status = flow.submit("p0", { type: ACTION, payload: {} });
+    const key = `view:p0:${ID}#round`;
+    const peeked = game.engine.state.augmentData[key] as string[];
+    expect(peeked).toHaveLength(3);
+
+    // p0이 실제로 세 번 뽑을 때까지 전원 버림·패스로 순번을 돌린다
+    const seen: number[] = [3];
+    for (let guard = 0; guard < 60 && seen[seen.length - 1] !== 0; guard++) {
+      if (status.kind !== "awaiting") break;
+      const prompt = status.prompts[0];
+      if (prompt === undefined) break;
+      const opt =
+        prompt.options.find((o) => o.type === "discard") ??
+        prompt.options.find((o) => o.type === "pass");
+      if (opt === undefined) break;
+      status = flow.submit(prompt.player, opt);
+      const rest = (game.engine.state.augmentData[key] as string[] | undefined) ?? [];
+      if (rest.length !== seen[seen.length - 1]) seen.push(rest.length);
+    }
+    // 3 → 2 → 1 → 0 으로 한 장씩만 줄어든다
+    expect(seen).toEqual([3, 2, 1, 0]);
+  });
+
   it("동풍전 1회 — 두 번째 선언은 거부되고 옵션도 사라진다", () => {
     const base = scene();
     const scn: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };

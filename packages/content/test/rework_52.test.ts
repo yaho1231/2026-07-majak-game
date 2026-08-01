@@ -108,13 +108,16 @@ describe("cliff_bloom (절벽 위에 피어난 꽃) — 만개 국의 영상개�
   it("만개한 국의 영상개화는 4판으로 취급된다 (표준 1판과의 차이 +3판)", () => {
     const plain = settleTsumo("aug");
     const bloom = settleTsumo("bloom");
-    // 증강은 손을 건드리지 않으므로 두 경우의 WinInfo는 동일하다
     expect(plain.info.yaku.some((y) => y.id === "rinshan")).toBe(true);
-    expect(bloom.info.points).toBe(plain.info.points);
-    // 2026-07-26: 구 "+3판 환산 + 6000점"(합 7판) → 영상개화 4판 취급 = +3판
-    const expected = winPointsWithExtraHan(bloom.before, "p0", bloom.info, 3);
+    // 2026-08-01: 차액을 '보이지 않는 점수 보정'이 아니라 score.extraHan으로 얹는다 —
+    // 정산창이 "증강 보너스 3판"으로 보여 준다(그전엔 영상개화 1판만 보였다).
+    expect(plain.info.extraHan).toBe(0);
+    expect(bloom.info.extraHan).toBe(3);
+    expect(bloom.info.han).toBe(plain.info.han + 3);
+    const expected = winPointsWithExtraHan(bloom.before, "p0", plain.info, 3);
     expect(expected).toBeGreaterThan(0);
     expect(bloom.delta - plain.delta).toBe(expected);
+    expect(bloom.info.points).toBe(plain.info.points + expected);
   });
 
   it("만개하지 않은 국의 화료에는 아무 보너스도 붙지 않는다", () => {

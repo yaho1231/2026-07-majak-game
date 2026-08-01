@@ -1091,6 +1091,13 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("scoring.mixedRuns", false);
   /** 혼색 커쯔 (2만-2통-2삭) 허용 — 무너진 국경. 치뿐 아니라 펑·깡도 무늬를 안 가린다 */
   rules.define("scoring.mixedTriplets", false);
+  /**
+   * 혼색 머리 (2만-2통) 허용 — 랭크만 맞으면 작두가 선다.
+   * 뒤섞인 아홉 개의 연꽃처럼 **랭크 공간에서만 화료형을 세우는** 증강이 켠다.
+   * 슌쯔·커쯔만 열어 두면 머리가 같은 무늬 2장으로 묶이는 손만 화료할 수 있어,
+   * 대기 27종 중 3종만 오름패가 되는 반쪽 대기가 된다(2026-08-01 사용자 보고).
+   */
+  rules.define("scoring.mixedPairs", false);
   /** 순환 슌쯔 (8-9-1, 9-1-2) 허용 — 부숴진 벽 */
   rules.define("scoring.wrapRuns", false);
   /** 표준형에 필요한 멘쯔 수 (진짜 용 = 5) */

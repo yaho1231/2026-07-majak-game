@@ -60,6 +60,13 @@ export interface DecomposeOptions {
    */
   mixedTriplets?: boolean;
   /**
+   * 무늬가 다른 수패로도 작두(머리)를 만든다 — 2만+2통도 머리다.
+   * mixedRuns·mixedTriplets와 짝을 이루는 세 번째 축으로, 셋을 모두 켜면 화료형이
+   * **랭크만으로** 성립한다(뒤섞인 아홉 개의 연꽃). 자패는 무늬 개념이 없으므로
+   * 이 옵션과 무관하게 동일 패 2장만 머리다.
+   */
+  mixedPairs?: boolean;
+  /**
    * 국사 형태로만 화료 가능 (우는 국사무쌍: 특수 퐁을 한 순간 다른 길이 닫힌다).
    * 표준형·치토이 분해를 아예 열거하지 않는다 — 화료·텐파이·대기·후리텐이
    * 전부 이 분해를 통해 계산되므로, 여기서 막으면 모든 판정 지점에 일관 적용된다.
@@ -106,6 +113,7 @@ function normalizeOptions(
     | "kokushiOnly"
     | "mixedRuns"
     | "mixedTriplets"
+    | "mixedPairs"
     | "kokushiDupes"
     | "polarEnds"
     | "chiitoiMixedPairs"
@@ -121,6 +129,7 @@ function normalizeOptions(
       kokushiOnly: false,
       mixedRuns: false,
       mixedTriplets: false,
+      mixedPairs: false,
       kokushiDupes: 0,
       polarEnds: false,
       chiitoiMixedPairs: false,
@@ -135,6 +144,7 @@ function normalizeOptions(
     kokushiOnly: o.kokushiOnly ?? false,
     mixedRuns: o.mixedRuns ?? false,
     mixedTriplets: o.mixedTriplets ?? false,
+    mixedPairs: o.mixedPairs ?? false,
     kokushiDupes: o.kokushiDupes ?? 0,
     polarEnds: o.polarEnds ?? false,
     chiitoiMixedPairs: o.chiitoiMixedPairs ?? false,
@@ -462,6 +472,7 @@ export function decompose(
     kokushiOnly,
     mixedRuns,
     mixedTriplets,
+    mixedPairs,
     kokushiDupes,
     polarEnds,
     chiitoiMixedPairs,
@@ -490,6 +501,37 @@ export function decompose(
         results.push({ form: "standard", pair: pairKind, sets });
       }
       counts.n.set(pairKey, c);
+    }
+
+    // 혼색 머리 — 랭크만 같으면 무늬가 달라도 작두다 (수패 한정).
+    // 위의 순수 머리와 겹치지 않게 **서로 다른 두 kind**의 조합만 만든다.
+    if (mixedPairs) {
+      for (let i = 0; i < counts.order.length; i++) {
+        for (let j = i + 1; j < counts.order.length; j++) {
+          const ka = counts.order[i] as string;
+          const kb = counts.order[j] as string;
+          const a = counts.kindOf.get(ka) as TileKind;
+          const b = counts.kindOf.get(kb) as TileKind;
+          if (a.rank !== b.rank) continue;
+          if (!sequenceSuits.has(a.suit) || !sequenceSuits.has(b.suit)) continue;
+          if ((counts.n.get(ka) ?? 0) < 1 || (counts.n.get(kb) ?? 0) < 1) continue;
+          counts.n.set(ka, (counts.n.get(ka) as number) - 1);
+          counts.n.set(kb, (counts.n.get(kb) as number) - 1);
+          for (const sets of extractSets(
+            counts,
+            sequenceSuits,
+            wrapRuns,
+            mixedRuns,
+            mixedTriplets,
+            polarEnds,
+            honorRuns,
+          )) {
+            results.push({ form: "standard", pair: a, sets });
+          }
+          counts.n.set(ka, (counts.n.get(ka) as number) + 1);
+          counts.n.set(kb, (counts.n.get(kb) as number) + 1);
+        }
+      }
     }
   }
 

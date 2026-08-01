@@ -2663,6 +2663,28 @@ button {
   text-align: center;
 }
 
+/* 종국 뒤 행동 — "이어하기"(방 유지)와 "로비로"를 나란히. 이어하기가 주 동선이다. */
+.go-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.go-actions .lobby-join {
+  flex: 1;
+  letter-spacing: 2px;
+}
+
+.go-actions .go-leave {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-2, #d8d2c4);
+  box-shadow: none;
+  border: 1px solid rgba(184, 151, 92, 0.35);
+}
+
+.go-actions .go-leave:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 .gameover-panel h2 {
   margin: 0 0 18px;
   color: #f0c86a;
@@ -7376,6 +7398,28 @@ button {
 
 .sbx-hand-chip:hover {
   outline: 1px solid rgba(216, 104, 104, 0.8);
+}
+
+/* 14번째 한 장 — 배패가 아니라 그 좌석의 첫 쯔모다 (한눈에 갈라 보이게) */
+.sbx-hand-chip-draw {
+  position: relative;
+  margin-left: 10px;
+  outline: 1px solid rgba(240, 200, 106, 0.75);
+}
+
+.sbx-hand-chip-tag {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  transform: translateX(-50%);
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(240, 200, 106, 0.9);
+  color: #241c0c;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 11px;
+  letter-spacing: 0;
 }
 
 /* 34종 고르는 판 — 만/통/삭 9열에 맞춰 접힌다 */

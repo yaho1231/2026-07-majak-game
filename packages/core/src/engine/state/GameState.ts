@@ -329,6 +329,10 @@ export interface SetupRoundOptions {
    * 배패가 끝난 뒤 패산과 맞바꾸는 방식이라 총 장수·패산 길이·왕패는 그대로다
    * (남은 장수·도라 표시패가 어긋나지 않는다). 지정한 종류의 패가 패산에 남아 있지
    * 않으면(이미 4장을 다 썼거나 다른 좌석이 가져갔으면) 그 자리는 조용히 건너뛴다.
+   *
+   * 배패 장수(13)보다 **한 장 더** 지정하면 그 한 장은 그 좌석의 **첫 쯔모**가 된다 —
+   * 14장을 고르는 것이 곧 "이 손으로 첫 순을 맞겠다"이기 때문이다(2026-08-01 사용자
+   * 보고: 14장을 골랐는데 13장만 들어왔다). 그보다 더 지정한 몫은 버려진다.
    */
   presetHandFor?: (playerId: PlayerId) => readonly string[] | undefined;
 }
@@ -339,6 +343,10 @@ export interface SetupRoundOptions {
  * 좌석을 **친부터 자리 순서대로** 처리하므로 같은 패를 두 좌석이 요구하면 앞선
  * 좌석이 먼저 가져간다(결정적). 밀려난 손패는 패산 **맨 뒤**로 보내 남은 국의 쯔모
  * 순서가 요청 때문에 앞당겨지지 않게 한다.
+ *
+ * 요청한 사본이 왕패로 새어 들어갔을 때도 **영상패 블록(앞 4장)에서는 회수한다** —
+ * 그러지 않으면 "3장 지정했는데 2장만 들어온다"가 뽑기 운으로 종종 일어났다.
+ * 도라·뒷도라 표시패(왕패의 마지막 10장)는 끝까지 건드리지 않으므로 도라는 그대로다.
  */
 function applyPresetHands(
   zones: Zones,
@@ -361,25 +369,38 @@ function applyPresetHands(
     order.map((p) => [p, [...(zones[handZone(p)]?.tileIds ?? [])]]),
   );
   const wall = [...(zones[WALL]?.tileIds ?? [])];
+  const deadWall = [...(zones[DEAD_WALL]?.tileIds ?? [])];
+  /**
+   * 왕패에서 가져와도 되는 구간 — **영상패 블록(앞)**뿐이다.
+   * 도라·뒷도라 표시패는 언제나 왕패의 마지막 10장이라 이 구간을 건드려도
+   * 표시패는 한 장도 바뀌지 않는다(시험 조건인 도라가 흔들리지 않는다).
+   */
+  const rinshanCount = Math.max(0, deadWall.length - INDICATOR_BLOCK_SIZE);
+  const rinshanIds = deadWall.slice(0, rinshanCount);
 
-  // ① 요청한 종류를 확보한다 — 자기 손 → 패산 → **다른 좌석의 손** 순.
-  //    왕패(영상패·표시패)는 건드리지 않는다: 도라가 바뀌면 시험 조건이 흔들린다.
-  //    그래서 이미 왕패로 간 사본은 못 가져오고, 그 자리는 무작위로 채워진다.
+  // ① 요청한 종류를 확보한다 — 자기 손 → 패산 → 다른 좌석의 손 → **영상패** 순.
+  //    표시패(도라)는 끝까지 건드리지 않는다. 네 곳을 다 뒤져도 사본이 없으면
+  //    (요청이 5장째거나 이미 다 나갔으면) 그 자리는 조용히 무작위로 채운다.
   const claimed = new Set<TileId>();
   const picked = new Map<PlayerId, TileId[]>();
+  /** 배패 장수를 넘겨 지정한 한 장 — 그 좌석의 첫 쯔모로 깔아 준다 */
+  const firstDraw = new Map<PlayerId, TileId>();
   for (const player of order) {
     const own = dealt.get(player) ?? [];
     const mine: TileId[] = [];
-    for (const key of (wanted.get(player) ?? []).slice(0, own.length)) {
+    // 손패 장수 + 1까지 본다. 마지막 한 장은 손이 아니라 첫 쯔모 자리로 간다.
+    for (const key of (wanted.get(player) ?? []).slice(0, own.length + 1)) {
       const search = (ids: readonly TileId[]): TileId | undefined =>
         ids.find((id) => !claimed.has(id) && keyOf(id) === key);
       const found =
         search(own) ??
         search(wall) ??
-        search(order.flatMap((q) => (q === player ? [] : (dealt.get(q) ?? []))));
+        search(order.flatMap((q) => (q === player ? [] : (dealt.get(q) ?? [])))) ??
+        search(rinshanIds);
       if (found === undefined) continue; // 남은 사본 없음 — 이 자리는 무작위로 채운다
       claimed.add(found);
-      mine.push(found);
+      if (mine.length < own.length) mine.push(found);
+      else firstDraw.set(player, found);
     }
     picked.set(player, mine);
   }
@@ -400,12 +421,39 @@ function applyPresetHands(
     }
   }
 
-  // ③ 패산 = 남은 패산(원래 순서) + 손에서 밀려난 패(최후미).
+  // ③ 첫 쯔모 지정 — 패산 맨 앞은 친부터 자리 순서대로 한 장씩 뽑혀 나간다.
+  //    지정이 있는 좌석의 자리에 그 패를 끼워 넣으면 그 좌석의 첫 쯔모가 된다.
+  //    (그 사이에 후로가 끼면 순서가 밀린다 — 첫 순 시험이 목적이므로 그대로 둔다.)
+  const front: TileId[] = [];
+  if (firstDraw.size > 0) {
+    const last = order.reduce((acc, p, i) => (firstDraw.has(p) ? i : acc), -1);
+    for (let i = 0; i <= last; i++) {
+      const want = firstDraw.get(order[i] as PlayerId);
+      const next = want ?? spare.shift();
+      if (next !== undefined) front.push(next);
+    }
+  }
+
+  // ④ 영상패를 빼 왔으면 그 자리를 메운다 — 왕패는 언제나 14장이어야 하고(깡 흐름·
+  //    남은 장수 표시), 표시패 블록은 여전히 마지막 10장 그대로다. 메울 패는 패산
+  //    **맨 뒤**에서 꺼내 쓴다(앞에서 꺼내면 다음 쯔모 순서가 밀린다).
+  const leftovers = order.flatMap((p) => leftoverOwn.get(p) ?? []);
+  const tail = [...spare, ...leftovers];
+  const deadOut = deadWall.map((id) => {
+    if (!claimed.has(id)) return id;
+    const fill = tail.pop();
+    return fill ?? id;
+  });
+
+  // ⑤ 패산 = 첫 쯔모 지정 + 남은 패산(원래 순서) + 손에서 밀려난 패(최후미).
   //    밀려난 패를 앞에 두면 방금 뺏은 패가 다음 쯔모로 곧장 되돌아온다.
-  const out: Zones = { ...zones, [WALL]: { ...zones[WALL]!, tileIds: [
-    ...spare,
-    ...order.flatMap((p) => leftoverOwn.get(p) ?? []),
-  ] } };
+  const out: Zones = {
+    ...zones,
+    [WALL]: { ...zones[WALL]!, tileIds: [...front, ...tail] },
+    ...(zones[DEAD_WALL] !== undefined
+      ? { [DEAD_WALL]: { ...zones[DEAD_WALL], tileIds: deadOut } }
+      : {}),
+  };
   for (const player of order) {
     out[handZone(player)] = {
       ...zones[handZone(player)]!,
