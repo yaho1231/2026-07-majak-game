@@ -2605,6 +2605,11 @@ export function App(): JSX.Element {
     send({ type: "setGameMode", mode });
     sfx.pick();
   }
+  /** 자리 섞기 (방장) — 서버가 동남서북을 다시 뽑아 대기실에 그대로 반영한다 */
+  function shuffleSeats(): void {
+    send({ type: "shuffleSeats" });
+    sfx.pick();
+  }
 
   // ── 화면 라우팅 ──
   const isSpectator = spectating !== null;
@@ -2687,6 +2692,7 @@ export function App(): JSX.Element {
           onRemoveBot={removeBot}
           onStart={startGame}
           onSetGameMode={setGameMode}
+          onShuffleSeats={shuffleSeats}
           onLeave={returnHome}
           onToast={(t) => showToast(t, "info")}
         />
@@ -4149,6 +4155,7 @@ function WaitingRoom(props: {
   onRemoveBot: (playerId: string) => void;
   onStart: () => void;
   onSetGameMode: (mode: GameMode) => void;
+  onShuffleSeats: () => void;
   onLeave: () => void;
   onToast?: (text: string) => void;
 }): JSX.Element {
@@ -4190,8 +4197,15 @@ function WaitingRoom(props: {
   const me = lobby.players.find((p) => p.playerId === lobby.youId) ?? null;
   const isHost = lobby.youId === lobby.hostId;
   const iAmReady = me?.ready === true;
+  /**
+   * 자리 줄 세우기 — 동(0)·남(1)·서(2)·북(3).
+   *
+   * 기준은 서버가 준 `seat`(좌석 배열 순서)다. playerId 번호가 아니다 — 자리를 섞으면
+   * p2가 동가일 수 있고, 예전에 id 번호로 줄을 세웠을 때는 대기실이 보여 주는 방위와
+   * 실제 게임 방위가 서로 달랐다.
+   */
   const slots: (LobbyPlayerEntry | null)[] = [0, 1, 2, 3].map(
-    (i) => lobby.players.find((p) => p.playerId === `p${i}`) ?? null,
+    (i) => lobby.players.find((p) => p.seat === i) ?? null,
   );
   const readyCount = lobby.players.filter((p) => !p.isHost && p.ready).length;
   const needReady = lobby.players.filter((p) => !p.isHost && !p.isBot).length;
@@ -4288,6 +4302,14 @@ function WaitingRoom(props: {
                 + 봇 추가
               </button>
               <button
+                className="wr-btn wr-shuffle"
+                onClick={props.onShuffleSeats}
+                disabled={lobby.players.length < 2}
+                title="동남서북 자리를 다시 뽑습니다 (친이 바뀝니다)"
+              >
+                🎲 자리 섞기
+              </button>
+              <button
                 className="wr-btn wr-start"
                 onClick={props.onStart}
                 disabled={!lobby.canStart}
@@ -4306,7 +4328,7 @@ function WaitingRoom(props: {
         </div>
         <p className="waitroom-hint">
           {isHost
-            ? "방장입니다 — 4인이 모두 준비되면 게임을 시작하세요."
+            ? "방장입니다 — 자리(동남서북)는 여기 보이는 그대로 시작합니다. 4인이 모두 준비되면 게임을 시작하세요."
             : iAmReady
               ? "준비 완료. 방장이 시작하기를 기다립니다…"
               : "준비 완료 버튼을 누르면 방장이 게임을 시작할 수 있습니다."}

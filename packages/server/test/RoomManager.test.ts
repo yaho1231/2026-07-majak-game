@@ -361,6 +361,56 @@ describe("방 생성·참가 (코드)", () => {
     expect(dup.last("error")?.code).toBe("DUPLICATE_JOIN");
   });
 
+  it("자리 섞기 — 방장이 누르면 동남서북이 다시 뽑히고 대기실에 그대로 반영된다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    for (let i = 0; i < 3; i++) host.clientSend({ type: "addBot" });
+
+    const seatsOf = (): Record<string, number> => {
+      const out: Record<string, number> = {};
+      for (const p of host.last("lobby").players as { playerId: string; seat: number }[]) {
+        out[p.playerId] = p.seat;
+      }
+      return out;
+    };
+    // 좌석은 언제나 0~3을 한 번씩 쓴다 (겹치거나 비지 않는다)
+    const valid = (m: Record<string, number>): boolean =>
+      [...new Set(Object.values(m))].sort().join() === "0,1,2,3";
+    expect(valid(seatsOf())).toBe(true);
+
+    // 무작위라 한 번은 그대로일 수 있다 — 여러 번 눌러 실제로 바뀌는지 본다
+    const before = seatsOf();
+    let changed = false;
+    for (let i = 0; i < 12 && !changed; i++) {
+      host.clientSend({ type: "shuffleSeats" });
+      const now = seatsOf();
+      expect(valid(now)).toBe(true);
+      changed = Object.keys(before).some((id) => before[id] !== now[id]);
+    }
+    expect(changed).toBe(true);
+  });
+
+  it("자리 섞기는 방장 전용 — 다른 사람이 눌러도 자리가 바뀌지 않는다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    host.clientSend({ type: "addBot" });
+    host.clientSend({ type: "addBot" });
+
+    const seatsOf = (sock: FakeSocket): string =>
+      (sock.last("lobby").players as { playerId: string; seat: number }[])
+        .map((p) => `${p.playerId}:${p.seat}`)
+        .sort()
+        .join(",");
+    const before = seatsOf(guest);
+    for (let i = 0; i < 12; i++) guest.clientSend({ type: "shuffleSeats" });
+    expect(seatsOf(guest)).toBe(before);
+  });
+
   it("대기실에서 나가면(소켓 close) 자리가 비고, 방장이 나가면 승계된다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");

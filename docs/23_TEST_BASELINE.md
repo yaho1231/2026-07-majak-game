@@ -1,12 +1,12 @@
 # master 테스트 기준선 (baseline)
 
-측정: 2026-08-01, `claude/mahjong-bugs-features-6d558f` (워크트리 alias 설정으로 core 변경까지 반영).
+측정: 2026-08-01, `claude/lobby-seat-shuffle` (워크트리 alias 설정으로 core 변경까지 반영).
 **측정은 반드시 메인 체크아웃에서 한다** (아래 "측정 환경 함정" 참고).
 
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   1059 / 1059 통과 (실패 0)
+npm test                   1061 / 1061 통과 (실패 0)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
