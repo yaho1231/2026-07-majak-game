@@ -124,6 +124,17 @@ export class HumanAgent implements PlayerAgent {
     return this.ws === ws;
   }
 
+  /**
+   * 이 좌석의 소켓이 지금 살아 있는지.
+   *
+   * 대기실에는 재접속 개념이 없다(끊기면 그 자리에서 빠진다) — 그래서 대기 중인 방에
+   * 소켓이 닫힌 사람 좌석이 남아 있다면 그건 전부 유령이다. 게임 중에 끊긴 채로
+   * 종국을 맞은 좌석이 여기로 흘러들며, RoomManager가 이 값으로 걷어낸다.
+   */
+  isConnected(): boolean {
+    return this.ws.readyState === 1 /* OPEN */;
+  }
+
   /** 이 플레이어가 게임을 포기했는지 (좌석은 남되 봇처럼 자동 진행). */
   get isAbandoned(): boolean {
     return this.abandoned;

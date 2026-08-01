@@ -101,6 +101,11 @@ interface Room {
   spectators: Set<Conn>;
   /** 게임 무효(중단)에 동의한 사람 playerId 집합 (게임 중에만 의미). */
   abortVotes: Set<PlayerId>;
+  /**
+   * 방장이 강퇴한 사람들의 username. 이 방이 살아 있는 동안 재입장을 막는다 —
+   * 코드만 알면 곧바로 되돌아올 수 있으면 강퇴가 아무 의미가 없다.
+   */
+  kicked: Set<string>;
   /** 선택된 게임 모드 (반장전/동풍전). 방장이 대기실에서 바꾼다. 기본 hanchan. */
   gameMode: GameMode;
   /**
@@ -577,6 +582,7 @@ export class RoomManager {
       case "ready":
       case "addBot":
       case "removeBot":
+      case "kickPlayer":
       case "setGameMode":
       case "shuffleSeats":
       case "startGame": {
@@ -878,10 +884,85 @@ export class RoomManager {
     return agent instanceof HumanAgent && !agent.isAbandoned && agent.nickname === username;
   }
 
+  /** 이 좌석을 지금 붙들고 있는 연결 (없으면 null). */
+  private connOf(agent: HumanAgent): Conn | null {
+    for (const c of this.conns) {
+      if (c.agent === agent) return c;
+    }
+    return null;
+  }
+
+  /**
+   * 대기실에 남은 **끊긴 좌석(유령)** 을 걷어낸다.
+   *
+   * 대기 중에는 재접속 개념이 없다 — 끊기면 `handleClose`가 그 자리에서 빼 준다.
+   * 그래서 대기 중인 방에 소켓이 닫힌 사람 좌석이 남아 있다면 전부 유령이다.
+   * 유령은 두 가지를 망가뜨렸다:
+   * - 대기실에 **접속하지도 않은 사람이 앉아 있는 것처럼** 보이고, 준비를 하지 않아
+   *   방장이 게임을 시작할 수 없다.
+   * - `membershipOf`에 걸려 그 사람이 **새 방을 만들지도, 다른 방에 들어가지도** 못한다
+   *   ("이미 방에 참가 중입니다"). 새로고침해야 풀리던 증상의 정체다.
+   *
+   * 유령이 생기는 길: 게임 중에 끊긴 좌석은 재접속용으로 남겨 두는데(설계), 그 사람이
+   * 돌아오지 않은 채로 판이 끝나면 남겨 둘 근거가 사라진 좌석이 대기실로 넘어온다.
+   */
+  private pruneGhostSeats(room: Room): void {
+    if (room.phase !== "waiting") return;
+    for (const a of [...room.agents]) {
+      if (!(a instanceof HumanAgent)) continue;
+      if (a.isConnected() && !a.isAbandoned) continue;
+      const c = this.connOf(a);
+      if (c !== null) {
+        c.room = null;
+        c.agent = null;
+      }
+      this.leaveWaiting(room, a);
+    }
+  }
+
+  /** 모든 대기실의 유령 좌석을 훑어 치운다 (방 생성·참가 직전의 지연 청소). */
+  private sweepGhostSeats(): void {
+    for (const room of [...this.rooms.values()]) this.pruneGhostSeats(room);
+  }
+
+  /**
+   * **이 연결이 붙들고 있던 옛 좌석**을 놓아 준다 (놓았으면 true).
+   *
+   * 홈 화면은 방에 앉아 있는 동안 뜨지 않으므로, 이 연결에서 `createRoom`이나 다른
+   * 코드의 `joinRoom`이 왔다는 것은 클라이언트가 이미 방을 떠난 것으로 알고 있다는
+   * 뜻이다 — 서버 좌석만 남은 상태 어긋남이라 붙들고 있을 이유가 없다.
+   * (예전에는 결과 화면에서 홈으로 나갈 때 클라이언트가 `leaveRoom`을 보내지 않아
+   *  이 어긋남이 실제로 생겼다. 클라이언트를 고쳤지만, 캐시된 옛 클라이언트와
+   *  아직 모르는 경로를 위해 서버에서도 스스로 풀리게 둔다.)
+   *
+   * 다른 탭·다른 연결이 실제로 쓰고 있는 좌석은 건드리지 않는다(중복 참가 방어 유지).
+   * 게임 중인 방도 건드리지 않는다 — 그건 재접속으로 돌아가야 할 좌석이다.
+   */
+  private releaseOwnStaleSeat(conn: Conn, room: Room, username: string): boolean {
+    if (room.phase !== "waiting") return false;
+    const mine = room.agents.find(
+      (a): a is HumanAgent => this.isActiveHuman(a, username),
+    );
+    if (mine === undefined) return false;
+    if (!mine.isSocket(conn.ws) && mine.isConnected()) return false; // 다른 연결이 쓰는 좌석
+    if (conn.agent === mine) {
+      conn.room = null;
+      conn.agent = null;
+    }
+    this.leaveWaiting(room, mine);
+    return true;
+  }
+
   private createRoom(conn: Conn, user: UserRow): void {
-    const existing = this.membershipOf(user.username);
+    this.sweepGhostSeats();
+    let existing = this.membershipOf(user.username);
     if (existing !== null && existing.phase === "playing") {
       return this.fail(conn, "ALREADY_IN_GAME", `진행 중인 게임(${existing.code})이 있습니다 — 코드로 재접속하세요`);
+    }
+    // 이 연결이 붙들고 있던 대기실 좌석이면 놓아 준다 — 홈에서 방을 만들려는
+    // 사람에게 "이미 방에 참가 중입니다"를 돌려주는 상태 어긋남을 스스로 푼다.
+    if (existing !== null && this.releaseOwnStaleSeat(conn, existing, user.username)) {
+      existing = this.membershipOf(user.username);
     }
     if (existing !== null) {
       return this.fail(conn, "ALREADY_IN_ROOM", `이미 방(${existing.code})에 참가 중입니다`);
@@ -913,6 +994,7 @@ export class RoomManager {
       startedAt: null,
       spectators: new Set(),
       abortVotes: new Set(),
+      kicked: new Set(),
       gameMode: options.gameMode ?? "hanchan",
       sandbox: options.sandbox ?? false,
       sandboxAugments: {},
@@ -929,6 +1011,7 @@ export class RoomManager {
     if (typeof rawCode !== "string") {
       return this.fail(conn, "ROOM_NOT_FOUND", "존재하지 않는 방 코드입니다");
     }
+    this.sweepGhostSeats();
     const code = rawCode.trim().toUpperCase();
     const room = this.rooms.get(code);
     if (room === undefined) {
@@ -938,6 +1021,11 @@ export class RoomManager {
     // 증강 테스트 방은 1인 전용 — 방 주인의 재접속만 허용하고, 남에게는 방의 존재를 감춘다
     if (room.sandbox && !room.agents.some((a) => this.isActiveHuman(a, user.username))) {
       return this.fail(conn, "ROOM_NOT_FOUND", "존재하지 않는 방 코드입니다");
+    }
+
+    // 방장이 내보낸 사람은 이 방에 다시 들어올 수 없다
+    if (room.kicked.has(user.username)) {
+      return this.fail(conn, "KICKED", "방장이 내보낸 방입니다");
     }
 
     // 게임 중 — 같은 계정이면 신원 기준 재접속 (포기한 좌석은 재접속 불가)
@@ -959,10 +1047,22 @@ export class RoomManager {
     }
 
     // 대기실 — 중복 참가·정원 확인
-    if (room.agents.some((a) => this.isActiveHuman(a, user.username))) {
+    const mineHere = room.agents.find(
+      (a): a is HumanAgent => this.isActiveHuman(a, user.username),
+    );
+    if (mineHere !== undefined) {
+      // 이 연결이 이미 붙들고 있는 좌석이면 새 자리를 주는 대신 **그 자리에 도로 앉힌다**.
+      // (클라이언트만 방 상태를 잃은 경우 — 코드로 다시 들어오면 조용히 복구된다.)
+      if (mineHere.isSocket(conn.ws) || !mineHere.isConnected()) {
+        return this.reseat(conn, room, mineHere);
+      }
       return this.fail(conn, "DUPLICATE_JOIN", "이미 이 방에 참가 중입니다 (다른 탭 확인)");
     }
-    const other = this.membershipOf(user.username);
+    let other = this.membershipOf(user.username);
+    // 이 연결이 붙들고 있던 다른 방의 대기실 좌석이면 놓아 주고 진행한다
+    if (other !== null && this.releaseOwnStaleSeat(conn, other, user.username)) {
+      other = this.membershipOf(user.username);
+    }
     if (other !== null) {
       return this.fail(conn, "ALREADY_IN_ROOM", `이미 다른 방(${other.code})에 참가 중입니다`);
     }
@@ -970,6 +1070,23 @@ export class RoomManager {
       return this.fail(conn, "ROOM_FULL", "방이 가득 찼습니다");
     }
     this.seat(conn, user, room);
+  }
+
+  /**
+   * 이미 있는 대기실 좌석에 이 연결을 도로 붙인다 (자리·방장·준비는 그대로).
+   * 클라이언트가 방 상태만 잃었을 때 코드로 다시 들어오면 여기로 온다.
+   */
+  private reseat(conn: Conn, room: Room, agent: HumanAgent): void {
+    const prev = this.connOf(agent);
+    if (prev !== null && prev !== conn) {
+      prev.room = null;
+      prev.agent = null;
+    }
+    agent.reconnect(conn.ws);
+    conn.room = room;
+    conn.agent = agent;
+    this.send(conn.ws, { type: "joined", playerId: agent.id, roomId: room.code, token: "" });
+    this.broadcastLobby(room);
   }
 
   /** 대기실 자리 배정 + joined/lobby 전송 */
@@ -1089,6 +1206,28 @@ export class RoomManager {
           room.agents.splice(idx, 1);
           this.broadcastLobby(room);
         }
+        return;
+      }
+      case "kickPlayer": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        if (typeof msg.playerId !== "string" || msg.playerId === room.hostId) return;
+        const target = room.agents.find((a) => a.id === msg.playerId);
+        if (target === undefined) return;
+        if (!(target instanceof HumanAgent)) {
+          // 봇을 지정했으면 removeBot과 같은 처리
+          room.agents.splice(room.agents.indexOf(target), 1);
+          this.broadcastLobby(room);
+          return;
+        }
+        // 코드만 알면 곧바로 돌아올 수 있으면 강퇴가 아니다 — 이 방 한정으로 막는다
+        room.kicked.add(target.nickname);
+        target.notify({ type: "kicked", roomId: room.code });
+        const c = this.connOf(target);
+        if (c !== null) {
+          c.room = null;
+          c.agent = null;
+        }
+        this.leaveWaiting(room, target); // 자리·준비 정리 + 대기실 갱신 브로드캐스트
         return;
       }
       case "shuffleSeats": {
@@ -1455,7 +1594,11 @@ export class RoomManager {
    * 증강은 테스트 패널에서 직접 지급하며, 이 방의 게임은 기록을 남기지 않는다.
    */
   private sandboxStart(conn: Conn, user: UserRow, mode?: GameMode): void {
-    const existing = this.membershipOf(user.username);
+    this.sweepGhostSeats();
+    let existing = this.membershipOf(user.username);
+    if (existing !== null && this.releaseOwnStaleSeat(conn, existing, user.username)) {
+      existing = this.membershipOf(user.username);
+    }
     if (existing !== null) {
       return this.fail(
         conn,
@@ -1721,10 +1864,11 @@ export class RoomManager {
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.resetForNewGame();
     }
-    // 이미 연결이 끊긴 좌석은 대기실에 유령으로 남기지 않는다
-    for (const a of [...room.agents]) {
-      if (a instanceof HumanAgent && a.isAbandoned) this.leaveWaiting(room, a);
-    }
+    // 포기했거나 이미 연결이 끊긴 좌석은 대기실에 유령으로 남기지 않는다.
+    // 게임 중 끊긴 좌석은 재접속용으로 남겨 두지만(설계), 판이 끝나면 그 근거가 사라진다 —
+    // 안 치우면 게임을 끄고 돌아오지 않은 사람이 대기실에 앉아 있는 것처럼 보이고
+    // (준비를 안 하니 방장은 시작도 못 한다), 그 사람은 새 방을 만들지도 못한다.
+    this.pruneGhostSeats(room);
     if (this.rooms.get(room.code) !== room) return; // 마지막 사람이 빠져 방이 사라졌다
     if (room.hostId === null || !room.agents.some((a) => a.id === room.hostId)) {
       room.hostId = room.agents.find((a) => a instanceof HumanAgent)?.id ?? null;

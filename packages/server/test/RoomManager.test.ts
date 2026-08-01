@@ -24,6 +24,11 @@ class FakeSocket {
   readyState = 1; // OPEN
   sent: any[] = [];
   autoRespond = false;
+  /**
+   * 이 타입의 메시지를 받는 **즉시(동기)** 소켓을 닫는다.
+   * "결과 화면이 뜨자마자 창을 닫았다" 같은 순간을 레이스 없이 재현한다.
+   */
+  closeOnType: string | null = null;
   private handlers: Record<string, ((...a: any[]) => void)[]> = {};
   private waiters: { pred: (m: any) => boolean; resolve: () => void; timer: ReturnType<typeof setTimeout> }[] = [];
 
@@ -38,6 +43,11 @@ class FakeSocket {
       }
       return true;
     });
+    if (this.closeOnType !== null && msg.type === this.closeOnType) {
+      this.closeOnType = null;
+      this.close();
+      return;
+    }
     if (this.autoRespond) this.respond(msg);
   }
 
@@ -600,6 +610,184 @@ describe("게임 완주·기록", () => {
     },
     40_000,
   );
+});
+
+describe("유령 좌석 정리 (접속 어긋남)", () => {
+  it(
+    "종국 순간 창을 닫은 사람은 대기실에 남지 않고, 곧바로 새 방을 만들 수 있다",
+    async () => {
+      const h = await newHarness();
+      const host = await connectAndRegister(h, "Host", { autoRespond: true });
+      host.clientSend({ type: "createRoom" });
+      const code = host.last("roomCreated").code;
+      host.clientSend({ type: "setGameMode", mode: "tonpuu" }); // 동풍전 — 테스트 시간 단축
+
+      const guest = await connectAndRegister(h, "Guest", { autoRespond: true });
+      const guestToken = guest.last("authOk").sessionToken;
+      guest.clientSend({ type: "joinRoom", code });
+      guest.clientSend({ type: "ready", ready: true });
+      host.clientSend({ type: "addBot" });
+      host.clientSend({ type: "addBot" });
+      // 결과 화면이 뜨는 순간 게임을 끈다 (= 방으로 돌아오지 않는다)
+      guest.closeOnType = "gameOver";
+      host.clientSend({ type: "startGame" });
+
+      await host.waitFor((m) => m.type === "gameOver", 60_000);
+      expect(guest.readyState).toBe(3); // 닫혔다
+      host.sent.length = 0; // 종국 뒤 대기실 방송만 본다
+      await host.waitFor((m) => m.type === "lobby", 20_000);
+
+      // 접속하지 않은 사람이 대기실에 앉아 있으면 안 된다 (방장은 시작도 못 하게 된다)
+      const lobby = host.last("lobby");
+      expect(lobby.roomId).toBe(code);
+      expect(lobby.players.map((p: any) => p.nickname)).not.toContain("Guest");
+
+      // 그 사람도 "이미 방에 참가 중"에 막히지 않고 새 방을 만들 수 있다
+      const back = new FakeSocket();
+      h.rm.handleConnection(back.asWs());
+      back.clientSend({ type: "tokenLogin", sessionToken: guestToken });
+      await back.waitFor((m) => m.type === "authOk");
+      back.clientSend({ type: "createRoom" });
+      expect(back.last("error")).toBeUndefined();
+      expect(back.last("roomCreated")?.code).toMatch(/^[A-Z2-9]{6}$/);
+    },
+    70_000,
+  );
+
+  it("방을 떠난 것으로 아는 클라이언트가 새 방을 만들면 옛 좌석을 놓아 준다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    expect(host.last("lobby").players).toHaveLength(2);
+
+    // leaveRoom 없이 홈으로 돌아간 클라이언트 — 홈 화면에서만 나오는 메시지다
+    guest.clientSend({ type: "createRoom" });
+    expect(guest.last("error")).toBeUndefined();
+    const newCode = guest.last("roomCreated").code;
+    expect(newCode).not.toBe(code);
+    // 옛 방에서는 자리가 비고, 새 방에서는 방장이 된다
+    expect(host.last("lobby").players).toHaveLength(1);
+    expect(guest.last("lobby").roomId).toBe(newCode);
+    expect(guest.last("lobby").hostId).toBe(guest.last("joined").playerId);
+  });
+
+  it("같은 연결이 같은 코드로 다시 들어오면 원래 자리에 도로 앉는다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    const seatId = guest.last("joined").playerId;
+
+    guest.clientSend({ type: "joinRoom", code });
+    expect(guest.last("error")).toBeUndefined();
+    expect(guest.last("joined").playerId).toBe(seatId); // 새 자리가 아니라 원래 자리
+    expect(host.last("lobby").players).toHaveLength(2); // 자리가 늘어나지 않는다
+  });
+
+  it("다른 연결(다른 탭)의 중복 참가는 그대로 거부된다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+
+    const otherTab = await connectAndLogin(h, "Guest", "pw123456");
+    otherTab.clientSend({ type: "joinRoom", code });
+    expect(otherTab.last("error")?.code).toBe("DUPLICATE_JOIN");
+    expect(host.last("lobby").players).toHaveLength(2);
+  });
+});
+
+describe("강퇴 (방장)", () => {
+  it("방장이 내보내면 그 사람은 자리에서 빠지고 kicked를 받는다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    const guestId = guest.last("joined").playerId;
+    guest.clientSend({ type: "ready", ready: true });
+
+    host.clientSend({ type: "kickPlayer", playerId: guestId });
+    expect(guest.last("kicked")?.roomId).toBe(code);
+    const lobby = host.last("lobby");
+    expect(lobby.players).toHaveLength(1);
+    expect(lobby.players[0].nickname).toBe("Host");
+
+    // 강퇴당한 사람은 이 방에 다시 들어올 수 없다 (코드를 알아도)
+    guest.clientSend({ type: "joinRoom", code });
+    expect(guest.last("error")?.code).toBe("KICKED");
+    expect(host.last("lobby").players).toHaveLength(1);
+
+    // 다른 방에는 자유롭게 들어간다 (계정이 막히는 것이 아니다)
+    guest.clientSend({ type: "createRoom" });
+    expect(guest.last("roomCreated")?.code).toMatch(/^[A-Z2-9]{6}$/);
+  });
+
+  it("강퇴는 방장 전용이고, 방장 자신은 강퇴할 수 없다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    const hostId = host.last("lobby").hostId;
+    const guestId = guest.last("joined").playerId;
+
+    // 방장이 아닌 사람이 방장을 내보내려 해도 아무 일도 없다
+    guest.clientSend({ type: "kickPlayer", playerId: hostId });
+    expect(host.last("kicked")).toBeUndefined();
+    expect(host.last("lobby").players).toHaveLength(2);
+
+    // 다른 사람을 내보내려 해도 마찬가지
+    guest.clientSend({ type: "kickPlayer", playerId: guestId });
+    expect(guest.last("kicked")).toBeUndefined();
+    expect(host.last("lobby").players).toHaveLength(2);
+
+    // 방장이 자기 자신을 지목해도 방이 무너지지 않는다
+    host.clientSend({ type: "kickPlayer", playerId: hostId });
+    expect(host.last("kicked")).toBeUndefined();
+    expect(host.last("lobby").players).toHaveLength(2);
+  });
+
+  it("강퇴로 봇을 지목하면 봇이 자리에서 빠진다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    host.clientSend({ type: "addBot" });
+    const bot = (host.last("lobby").players as any[]).find((p) => p.isBot);
+    host.clientSend({ type: "kickPlayer", playerId: bot.playerId });
+    expect(host.last("lobby").players).toHaveLength(1);
+  });
+
+  it("게임 중에는 강퇴가 먹지 않는다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host", { autoRespond: true });
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest", { autoRespond: true });
+    guest.clientSend({ type: "joinRoom", code });
+    const guestId = guest.last("joined").playerId;
+    guest.clientSend({ type: "ready", ready: true });
+    host.clientSend({ type: "addBot" });
+    host.clientSend({ type: "addBot" });
+    host.clientSend({ type: "startGame" });
+    await guest.waitFor((m) => m.type === "view");
+
+    host.clientSend({ type: "kickPlayer", playerId: guestId });
+    expect(guest.last("kicked")).toBeUndefined();
+    // 게임은 그대로 진행된다 (전원 합의 무효로만 중단할 수 있다)
+    guest.clientSend({ type: "voteAbort", vote: "agree" });
+    host.clientSend({ type: "voteAbort", vote: "agree" });
+    await host.waitFor((m) => m.type === "gameAborted", 10_000);
+  });
 });
 
 describe("입력 검증·견고성", () => {
