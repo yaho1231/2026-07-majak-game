@@ -23,6 +23,7 @@ import {
   kindOf,
   playerAtSeat,
   uraIndicatorIds,
+  buildPlayerView,
 } from "@majak/core";
 import type {
   ActionOption,
@@ -303,6 +304,29 @@ describe("ura_peek (이면투시) — 뒷도라 바꿔치기", () => {
     expect(validateOf(game, "ura_swap", "p0", { deadIndex: 1 })).toBe(
       "already swapped this round",
     );
+  });
+
+  it("확인한 뒤에는 보유자에게 왕패가 전부 보인다 (바꿔치기 상대를 골라야 하므로)", () => {
+    const game = setup();
+    const size = deadWallOf(game).length;
+
+    // 발동 전에는 여느 때처럼 왕패가 안 보인다
+    const before = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    expect(before.zones[DEAD_WALL]?.tileIds ?? []).toHaveLength(0);
+
+    submitOk(game, "p0", "ura_peek_reveal", {});
+    const after = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    // deadIndex는 이 배열의 인덱스라, 순서까지 그대로여야 클라이언트가 고를 수 있다
+    expect(after.zones[DEAD_WALL]?.tileIds).toEqual(deadWallOf(game));
+    expect(after.zones[DEAD_WALL]?.tileIds).toHaveLength(size);
+    // 상대에게는 여전히 안 보인다
+    const opp = buildPlayerView(game.engine.state, "p1", game.engine.rules);
+    expect(opp.zones[DEAD_WALL]?.tileIds ?? []).toHaveLength(0);
+
+    // 바꿔치기를 쓰고 나면 다시 닫힌다
+    submitOk(game, "p0", "ura_swap", { deadIndex: 0 });
+    const done = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    expect(done.zones[DEAD_WALL]?.tileIds ?? []).toHaveLength(0);
   });
 });
 
