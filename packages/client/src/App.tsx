@@ -135,13 +135,15 @@ const ABORT_REASONS: Record<string, string> = {
 };
 
 /**
- * 역만 배수 이름 — 배수는 "더블/트리플" 통칭 대신 **숫자로만** 센다.
- * 4배·5배까지 가는 판에서 통칭과 숫자가 섞이면 컷인만 보고는 크기를 못 잰다.
+ * 역만 배수 이름 — 2·3배는 마작에서 통용되는 **더블/트리플 역만**으로 부르고,
+ * 그 위(4배 이상)는 통칭이 없으므로 숫자로 센다.
  * (대삼원+자일색처럼 역만 역이 겹치거나, 대사희·국사 13면처럼 역 하나가 2배여도
  *  yakumanCount가 그대로 배수가 된다.)
  */
 function yakumanName(count: number): string {
   if (count <= 1) return "역만";
+  if (count === 2) return "더블 역만";
+  if (count === 3) return "트리플 역만";
   return `${count}배 역만`;
 }
 
@@ -156,6 +158,8 @@ const ACTION_LABEL: Record<string, string> = {
   chi: "치",
   bluff_pon: "허장성세 — 펑",
   silent_pon: "묵계 — 멘젠 펑",
+  // 우는 국사무쌍의 특수 후로 — 버려진 요구패 1장 + 손패 2장(서로 다른 요구패 3종)
+  kokushi_pon: "우는 국사무쌍 — 요구패 펑",
   minkan: "깡",
   ankan: "안깡",
   shouminkan: "가깡",
@@ -293,6 +297,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   dissolve_meld: "meld_dissolve",
   disarm_lock: "disarm",
   silent_pon: "silent_pact",
+  kokushi_pon: "open_kokushi",
   xray_reveal: "xray_hand",
   push_brand: "push_riichi",
   reload_use: "reload",
@@ -509,7 +514,19 @@ function armModeOf(type: string): ArmMode | undefined {
 }
 
 /** 무장 안내 문구 — 무엇을 클릭해야 하는지. */
-function armPromptText(mode: ArmMode | null): string {
+/**
+ * 무장한 뒤 **패를 버리면서** 발동하는 리치 계열 액션.
+ *
+ * 이 액션들은 결국 "이 패를 버리며 리치를 건다"라서, 평소 리치와 손놀림이 같아야 한다 —
+ * 액티브 버튼 → 손패를 바닥으로 드래그. 클릭 발동도 그대로 남긴다(둘 다 된다).
+ * (2026-08-01 사용자 요청: 오픈 리치·스텔스 리치를 드래그로도 걸 수 있게)
+ */
+const DRAG_DISCARD_ARM_TYPES = new Set(["open_riichi", "stealth_riichi", "all_in_riichi"]);
+
+function armPromptText(mode: ArmMode | null, type?: string | null): string {
+  if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
+    return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
+  }
   switch (mode) {
     case "opp":
       return "대상 상대를 클릭하세요";
@@ -824,7 +841,19 @@ const BANNER_IMPACT_MS = 180;
  * 패를 하나 버리는 액션 — 클릭 순간 바로 "탁"이 나야 하는 것들. 리치 선언도 패를 하나
  * 버리는 행위라 여기 포함된다(빠지면 클릭엔 무음, 에코 뷰에서 뒤늦게 소리가 난다).
  */
-const DISCARD_LIKE = new Set(["discard", "free_discard", "riichi"]);
+/**
+ * "패를 하나 버린다"로 끝나는 액션 — 타패음·자기 버림 기억(에코 소리 억제) 대상.
+ * 오픈 리치·스텔스 리치·올인 리치도 결국 그 패를 버리는 수라, 소리가 빠지면
+ * 드래그로 걸었을 때만 무음이 되어 손놀림과 감각이 어긋난다.
+ */
+const DISCARD_LIKE = new Set([
+  "discard",
+  "free_discard",
+  "riichi",
+  "open_riichi",
+  "stealth_riichi",
+  "all_in_riichi",
+]);
 
 /**
  * 화면 연출 하나(배너/컷인). 여러 개가 한꺼번에 발생해도 큐에 쌓여
@@ -1426,6 +1455,8 @@ export function App(): JSX.Element {
   const pendingResult = useRef<RoundOverMessage | null>(null);
   const [roundResult, setRoundResult] = useState<RoundOverMessage | null>(null);
   const [rankings, setRankings] = useState<RankingEntry[] | null>(null);
+  /** 종국 뒤에도 방이 살아 있어 같은 멤버로 한 판 더 갈 수 있는가 (결과 화면의 "이어하기") */
+  const [canContinue, setCanContinue] = useState(false);
   const [abortVote, setAbortVote] = useState<AbortVoteMessage | null>(null);
   const [riichiMode, setRiichiMode] = useState(false);
   const [intro, setIntro] = useState(false);
@@ -1731,6 +1762,7 @@ export function App(): JSX.Element {
     setDraftPicked(false);
     draftPickedRef.current = false;
     setRankings(null);
+    setCanContinue(false);
     setRoundResult(null);
     setAbortVote(null);
     setSpectating(null);
@@ -1750,6 +1782,44 @@ export function App(): JSX.Element {
         rankGate: new Set(),
     voidKan: new Set(),
       };
+  }
+
+  /**
+   * 이어하기 — 방을 나가지 않고 그대로 대기실로 돌아간다.
+   *
+   * 서버는 종국과 함께 방을 대기실 상태로 되돌려 두므로, 여기서는 게임 화면만 걷어내면
+   * 대기실(inWaiting)이 그대로 열린다 — 다음 판은 평소처럼 전원 준비 + 방장 시작이다.
+   * 증강 테스트 방은 대기실이 없으므로(관리자 1명 + 봇 3명) 곧바로 새 판을 시작한다:
+   * 지금 지정된 증강·손패 설정을 그대로 넘겨, 종국이 곧 '판 초기화'가 되게 한다.
+   */
+  function continueInRoom(): void {
+    setRankings(null);
+    setCanContinue(false);
+    setRoundResult(null);
+    setPrompts({});
+    setView(null);
+    clearProductions();
+    setScoreFx({});
+    prevViewRef.current = null;
+    introShown.current = false;
+    bannerShown.current = {
+      roundKey: "",
+      riichi: new Set(),
+      melds: {},
+      kanAdded: new Set(),
+      sealed: 0,
+      spyCaught: new Set(),
+      rankGate: new Set(),
+      voidKan: new Set(),
+    };
+    if (sandbox !== null) {
+      send({
+        type: "sandboxReset",
+        augments: sandbox.augments,
+        hands: sandbox.hands,
+        mode: sandbox.mode,
+      });
+    }
   }
 
   /** 홈으로 — 게임 상태를 정리하고 홈 데이터(통계·리플레이)를 새로 고친다 */
@@ -2047,12 +2117,17 @@ export function App(): JSX.Element {
       riichiBgm.stop(); // 게임 종료 — 혹시 남아 있을 BGM 확실히 정지
       riichiBgmArmed.current = false;
       setRankings(msg.rankings);
+      setCanContinue(msg.canContinue === true);
       setPrompts({});
       setDraft(null);
       setDraftPicked(false);
       setAbortVote(null);
-      activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
-      window.localStorage.removeItem(LAST_ROOM_KEY);
+      // 방이 남아 있으면(이어하기 가능) 재입장 대상도 그대로 둔다 —
+      // 새로고침·재연결로 돌아와도 같은 대기실에 다시 앉는다.
+      if (msg.canContinue !== true) {
+        activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
+        window.localStorage.removeItem(LAST_ROOM_KEY);
+      }
       return;
     }
     if (msg.type === "abortVote") {
@@ -2094,7 +2169,7 @@ export function App(): JSX.Element {
       const wt = headline.winType === "tsumo" ? "쯔모" : "론";
 
       if (isYakuman) {
-        // 배수 역만은 컷인 문구가 "2배 역만"처럼 배수를 그대로 말한다 —
+        // 배수 역만은 컷인 문구가 "더블 역만"처럼 배수를 그대로 말한다 —
         // "역 만"만 뜨면 대사희·국사 13면의 2배가 정산표에서야 보인다.
         // (헤아림 역만은 yakumanCount가 0이라 배수 이름을 붙이지 않는다.)
         const ycount = yakumanWin.yakumanCount;
@@ -2297,6 +2372,24 @@ export function App(): JSX.Element {
         // (BGM도 이 시점의 start()에서 다른 트랙으로 갈아끼워 흐름 전환을 함께 준다.)
         const isChase = shown.riichi.size > 0;
         shown.riichi.add(p.id);
+        /*
+         * 스텔스 리치 — 이 리치는 타가에게 보이지 않는다(본인 뷰에만 riichiHidden이 온다).
+         * 그런데 연출은 "리 치"·"더블리치" 대형 컷인 + 리치 BGM이라, 여러 좌석을 함께 보는
+         * 화면(증강 테스트의 시점 전환)에서는 리치가, 더블까지 붙으면 그 사실까지 공개된
+         * 것처럼 보인다(2026-08-01 사용자 보고: 스텔스로 걸었는데 더블리치가 공개됨).
+         * 은닉 리치는 컷인·BGM 없이 나에게만 조용한 토스트로 알린다.
+         */
+        if (next.round.byPlayer[p.id]?.riichiHidden === true) {
+          riichiBgmArmed.current = false;
+          showToast(
+            next.round.byPlayer[p.id]?.doubleRiichi === true
+              ? "스텔스 리치 — 더블리치로 성립했습니다 (타가에게는 보이지 않습니다)"
+              : "스텔스 리치 — 성립했습니다 (타가에게는 보이지 않습니다)",
+            "info",
+            2600,
+          );
+          continue;
+        }
         // 리치 BGM은 여기서 바로 켜지 않고 '무장'만 한다. 실제 start()는 아래 리치 배너가
         // 화면에 뜨는 순간(showBanner의 onShow)에 실행돼, 브금이 연출보다 먼저 나오지 않는다.
         // (이미 끝나는 국의 스테일 뷰에서는 무장하지 않는다. 국이 끝나면 fadeOut/stop이
@@ -2350,7 +2443,8 @@ export function App(): JSX.Element {
         if (m !== undefined) {
           const isKan =
             m.kind === "kan_open" || m.kind === "kan_closed" || m.kind === "kan_added";
-          const label = m.kind === "chi" ? "치" : isKan ? "깡" : "펑";
+          const label =
+            m.kind === "chi" ? "치" : isKan ? "깡" : m.kind === "kokushi_pon" ? "국사 펑" : "펑";
           const tone = m.kind === "chi" ? "chi" : isKan ? "kan" : "pon";
           const who = playerNameById(next, p.id);
           // 부른 패(없으면 후로 첫 패)를 컷인에 함께 보여준다
@@ -2712,7 +2806,7 @@ export function App(): JSX.Element {
                 {CATEGORY_META[augmentCategory(activeProd.augId)].icon}
               </span>
             ) : null}
-            {/* 배수 역만("2배 역만" 등)은 글자가 길다 — 자간 큰 컷인이 밴드를 넘지 않게 CSS에 알린다 */}
+            {/* 배수 역만("더블 역만" 등)은 글자가 길다 — 자간 큰 컷인이 밴드를 넘지 않게 CSS에 알린다 */}
             <span className="cutin-text" data-long={activeProd.text.replace(/\s/g, "").length >= 4 ? "1" : undefined}>
               {activeProd.text}
             </span>
@@ -2748,7 +2842,14 @@ export function App(): JSX.Element {
         />
       ) : null}
       {rankings !== null ? (
-        <GameOverModal rankings={rankings} stats={stats} onClose={returnHome} />
+        <GameOverModal
+          rankings={rankings}
+          stats={stats}
+          onClose={returnHome}
+          {...(canContinue && !isSpectator
+            ? { onContinue: continueInRoom, sandbox: sandbox !== null }
+            : {})}
+        />
       ) : null}
       {toast !== null ? (
         <div key={toast.key} className={`toast toast-${toast.tone}`}>
@@ -5375,8 +5476,10 @@ function SandboxPanel(props: {
   );
 }
 
-/** 강제 배패로 지정할 수 있는 최대 장수 (배패 13장 + 여유 1장) */
+/** 강제 배패로 지정할 수 있는 최대 장수 (배패 13장 + 첫 쯔모 1장) */
 const SANDBOX_HAND_MAX = 14;
+/** 실제 배패 장수 — 이보다 뒤에 담은 한 장은 그 좌석의 첫 쯔모가 된다 */
+const SANDBOX_DEAL_SIZE = 13;
 
 /**
  * 손패 지정 — 34종 패를 눌러 담고, 담은 순서대로 배패된다.
@@ -5421,11 +5524,12 @@ function SandboxHandEditor(props: {
           props.hand.map((key, i) => (
             <button
               key={`${key}-${i}`}
-              className="sbx-hand-chip"
+              className={`sbx-hand-chip${i >= SANDBOX_DEAL_SIZE ? " sbx-hand-chip-draw" : ""}`}
               onClick={() => props.onRemoveAt(i)}
-              title="빼기"
+              title={i >= SANDBOX_DEAL_SIZE ? "첫 쯔모 — 빼기" : "빼기"}
             >
               <TileImg tile={{ kind: kindFromKey(key) }} size="mini" />
+              {i >= SANDBOX_DEAL_SIZE ? <span className="sbx-hand-chip-tag">쯔모</span> : null}
             </button>
           ))
         )}
@@ -5454,8 +5558,10 @@ function SandboxHandEditor(props: {
         ▶ 이 손패로 새 판
       </button>
       <p className="sbx-hint">
-        지정한 패는 <b>매 국</b> 다시 배패됩니다. 패산에 남은 사본이 없으면(다른 좌석이
-        같은 패를 먼저 가져갔거나 4장을 넘겼으면) 그 자리는 조용히 무작위로 채워집니다.
+        앞 13장이 배패이고, <b>14번째 한 장은 그 좌석의 첫 쯔모</b>가 됩니다 — 14장을 고르면
+        첫 순의 손 그대로 시작합니다. 지정한 패는 <b>매 국</b> 다시 배패됩니다. 패산에 남은
+        사본이 없으면(다른 좌석이 같은 패를 먼저 가져갔거나 4장을 넘겼으면) 그 자리는
+        조용히 무작위로 채워집니다.
       </p>
     </div>
   );
@@ -6652,6 +6758,12 @@ function OwnArea(props: {
   /** 이 패를 (드래그·클릭으로) 지금 낼 수 있는 옵션 — 클릭 동작과 동일 규칙. */
   function discardOptionFor(id: number | null): ActionOption | undefined {
     if (id === null) return undefined;
+    // 오픈 리치·스텔스 리치 등으로 무장한 동안에는 그 액션이 곧 '이 패를 버리는' 수단이다
+    if (armedAug !== null) {
+      return DRAG_DISCARD_ARM_TYPES.has(armedAug)
+        ? armedByTile.get(id)?.[0]
+        : undefined;
+    }
     const opts = optionsByTile.get(id) ?? [];
     return props.riichiMode
       ? opts.find((o) => o.type === "riichi")
@@ -6666,7 +6778,9 @@ function OwnArea(props: {
    * 실제 드래그(리프트·재정렬)는 임계값 이상 움직여야 시작하고, 그 전엔 클릭으로 처리된다.
    */
   function beginDrag(e: React.PointerEvent, id: number, idx: number): void {
-    if (isSpectator || armedAug !== null) return;
+    // 무장 중에는 드래그를 막는다 — 단, 버리면서 발동하는 리치 계열만 예외로 연다.
+    if (isSpectator) return;
+    if (armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug)) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const container = handRef.current;
     if (container === null) return;
@@ -6750,7 +6864,12 @@ function OwnArea(props: {
       if (b.overDiscard) {
         const opt = discardOptionFor(b.id);
         setDragBoth(null);
-        if (opt !== undefined) props.onSubmit(opt);
+        // 무장 액션으로 버렸으면 무장도 함께 푼다(sel.submit) — 남아 있으면 다음 패까지
+        // 그 액션의 대상으로 잡힌다.
+        if (opt !== undefined) {
+          if (armedAug !== null) sel.submit(opt);
+          else props.onSubmit(opt);
+        }
         return;
       }
       // 최종 자리로 부드럽게 안착시킨 뒤 순서를 확정한다 (수동 정렬 모드만 커밋).
@@ -6795,7 +6914,9 @@ function OwnArea(props: {
           ref={dropzoneRef}
           className={`discard-dropzone${drag?.overDiscard === true ? " discard-dropzone-over" : ""}`}
         >
-          <span className="discard-dropzone-label">🀫 여기에 놓아 버리기</span>
+          <span className="discard-dropzone-label">
+            {armedAug !== null ? `✦ 여기에 놓아 ${armName}` : "🀫 여기에 놓아 버리기"}
+          </span>
         </div>
       ) : null}
       <div className="own-area" ref={areaRef} data-arm-zone="1">
@@ -6851,7 +6972,7 @@ function OwnArea(props: {
           </div>
         ) : armedAug !== null ? (
           <div className="arm-hint">
-            <span className="arm-hint-text">✦ {armName} — {armPromptText(sel.armMode)}</span>
+            <span className="arm-hint-text">✦ {armName} — {armPromptText(sel.armMode, armedAug)}</span>
             <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
               취소
             </button>
@@ -8635,7 +8756,7 @@ function RoundResultPanel({
             ...w.yaku.map((y) => ({
               key: y.id,
               label: YAKU_NAMES[y.id] ?? y.name,
-              // 역만 손의 역 줄은 판수 대신 배수로 — 대사희·국사 13면은 한 줄이 "2배 역만"이다
+              // 역만 손의 역 줄은 판수 대신 배수로 — 대사희·국사 13면은 한 줄이 "더블 역만"이다
               han: w.yakumanCount > 0 ? yakumanHanLabel(y.han) : `${y.han}판`,
             })),
             ...(w.doraHan > 0 ? [{ key: "dora", label: "도라", han: `${w.doraHan}판` }] : []),
@@ -8691,12 +8812,12 @@ function RoundResultPanel({
 
             <div className="result-total">
               <span className="result-han-circle">
-                {/* 글자 수를 넘겨 준다 — "2배 역만"은 원 밖으로 나가므로 CSS가 줄인다 */}
+                {/* 글자 수를 넘겨 준다 — "더블 역만"은 원 밖으로 나가므로 CSS가 줄인다 */}
                 <b className="result-han-big" data-len={`${w.yakumanCount >= 2 ? yakumanName(w.yakumanCount).length : 0}`}>
                   {w.yakumanCount > 0 ? yakumanName(w.yakumanCount) : `${w.han}판`}
                 </b>
                 <i className="result-fu-sm">
-                  {/* 배수는 큰 글자가 이미 "2배 역만"으로 말한다 — 작은 줄은 등급만 */}
+                  {/* 배수는 큰 글자가 이미 "더블 역만"으로 말한다 — 작은 줄은 등급만 */}
                   {w.yakumanCount > 0
                     ? w.limit !== null
                       ? (LIMIT_NAMES[w.limit] ?? w.limit)
@@ -8891,10 +9012,15 @@ function GameOverModal({
   rankings,
   stats,
   onClose,
+  onContinue,
+  sandbox = false,
 }: {
   rankings: RankingEntry[];
   stats: StatsMessage | null;
   onClose: () => void;
+  /** 방이 살아 있을 때만 — 같은 멤버 그대로 다음 판으로 (증강 테스트는 즉시 새 판) */
+  onContinue?: () => void;
+  sandbox?: boolean;
 }): JSX.Element {
   const [tab, setTab] = useState<"rank" | "stats">("rank");
   const gameStats = stats?.game ?? [];
@@ -8969,9 +9095,19 @@ function GameOverModal({
           </div>
         )}
 
-        <button className="lobby-join" onClick={onClose}>
-          로비로
-        </button>
+        <div className="go-actions">
+          {onContinue !== undefined ? (
+            <button className="lobby-join" onClick={onContinue}>
+              {sandbox ? "새 판 시작" : "이어하기 (방 유지)"}
+            </button>
+          ) : null}
+          <button
+            className={onContinue !== undefined ? "lobby-join go-leave" : "lobby-join"}
+            onClick={onClose}
+          >
+            로비로
+          </button>
+        </div>
       </div>
     </div>
   );

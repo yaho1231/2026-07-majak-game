@@ -443,6 +443,36 @@ describe("게임 완주·기록", () => {
   );
 
   it(
+    "종국 뒤에도 방이 남아 대기실로 돌아간다 — 이어하기로 같은 방에서 한 판 더",
+    async () => {
+      const h = await newHarness(30_000);
+      const sock = await connectAndRegister(h, "Again", { autoRespond: true });
+      sock.clientSend({ type: "createRoom" });
+      await sock.waitFor((m) => m.type === "roomCreated");
+      const code = sock.last("roomCreated").code;
+      for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
+      sock.clientSend({ type: "startGame" });
+
+      await sock.waitFor((m) => m.type === "gameOver", 20_000);
+      // 방이 살아 있다는 신호 — 결과 화면이 "이어하기"를 띄우는 근거
+      expect(sock.last("gameOver").canContinue).toBe(true);
+      // 통계 영속화까지 기다린다 (임시 디렉터리 정리 레이스 방지)
+      await sock.waitFor((m) => m.type === "stats", 20_000);
+      // 대기실 상태가 다시 방송된다 (같은 방 코드·4인 그대로)
+      await sock.waitFor((m) => m.type === "lobby", 20_000);
+      const lobby = sock.last("lobby");
+      expect(lobby.roomId).toBe(code);
+      expect(lobby.players).toHaveLength(4);
+      expect(lobby.canStart).toBe(true);
+
+      // 그 방에서 곧바로 다음 판이 시작된다
+      sock.clientSend({ type: "startGame" });
+      await sock.waitFor((m) => m.type === "view", 20_000);
+    },
+    45_000,
+  );
+
+  it(
     "게임 중 무효 투표에 사람 전원이 동의하면 게임이 무효 처리된다 (봇 자동 동의)",
     async () => {
       const h = await newHarness();

@@ -13,10 +13,14 @@ import {
   createStandardGame,
   createStandardGameFromState,
   evaluateWin,
+  handKindsOf,
   handZone,
   installAugment,
+  isNumberSuit,
   kindKey,
   kindOf,
+  scoringOptionsOf,
+  winningKinds,
 } from "@majak/core";
 import type {
   ActionOption,
@@ -267,6 +271,24 @@ describe("mixed_nine_gates (뒤섞인 아홉 개의 연꽃)", () => {
     expect(ev).not.toBeNull();
     expect(ev!.yaku.some((y) => y.id === "mixed_nine_gates")).toBe(true);
     expect(ev!.yakumanCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("13장 뼈대는 랭크 1~9 어느 수패로도 화료된다 — 27종 대기 (2026-08-01)", () => {
+    // 무늬가 흩어진 1112345678999 텐파이. 오름패는 무늬와 무관하게 랭크 1~9 전부여야
+    // 하는데, 머리를 같은 무늬 2장으로만 세우던 시절엔 3종만 화료가 됐다.
+    const TENPAI = "1m1p1s2m3p4s5m6p7s8m9p9s9m";
+    const st = mixedState(TENPAI);
+    const game = createStandardGameFromState(st);
+    installAugment(game.engine, mixedNineGates, "p0", { yaku: game.yaku });
+    const state = game.engine.state;
+    const waits = winningKinds(
+      handKindsOf(state, "p0"),
+      0,
+      undefined,
+      scoringOptionsOf(state, game.engine.rules, "p0"),
+    );
+    expect(waits).toHaveLength(27);
+    expect(waits.every((k) => isNumberSuit(k))).toBe(true);
   });
 
   it("구련 배열이 아니면 무늬 무시가 켜지지 않는다 (아무 손이나 혼색 몸통이 되지 않는다)", () => {

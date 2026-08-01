@@ -156,6 +156,7 @@ export interface SandboxResetMessage {
    * 새 판 시작 시 좌석별로 강제 배패할 손패 (`kindKey` 표기 — "man5"·"wind1").
    * 생략·빈 배열이면 평소대로 무작위 배패. 지정한 장수만 앞에서 채우고 나머지는
    * 무작위로 채우므로, 일부만 지정해도 된다. **매 국** 이 손패로 다시 배패된다.
+   * 배패 장수(13)보다 한 장 더(14장) 지정하면 마지막 한 장이 그 좌석의 **첫 쯔모**가 된다.
    */
   hands?: Record<string, string[]>;
   /** 새 판의 게임 모드 (생략 시 유지) */
@@ -456,6 +457,12 @@ export interface RankingEntry {
 export interface GameOverMessage {
   type: "gameOver";
   rankings: RankingEntry[];
+  /**
+   * 방이 살아 있어 그대로 한 판 더 갈 수 있다 — 결과 화면의 "이어하기"가 이 값으로 뜬다.
+   * 방은 종국과 함께 **대기실 상태**로 돌아가므로, 이어하기는 그 대기실로 되돌아가는 것이고
+   * 다음 판은 평소처럼 전원 준비 + 방장 시작으로 열린다.
+   */
+  canContinue?: boolean;
 }
 
 /** 게임 무효 투표 현황 — 사람 중 몇 명이 동의했는지 (봇은 자동 동의라 제외). */

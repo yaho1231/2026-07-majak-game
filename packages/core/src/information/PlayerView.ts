@@ -114,6 +114,12 @@ export interface PlayerRoundView {
   riichiDeclared: boolean;
   /** 더블리치 여부. 리치 중일 때만 의미 있음 */
   doubleRiichi: boolean;
+  /**
+   * 이 리치가 **타가에게 보이지 않는** 리치인가 (스텔스 리치). 본인 뷰에서만 채워진다.
+   * 클라이언트가 "리치!"·"더블리치!" 같은 전원 공개형 연출을 대신 조용한 표시로
+   * 바꾸는 데 쓴다 — 큰 컷인이 뜨면 여러 시점을 함께 보는 화면에서 은닉이 새 보인다.
+   */
+  riichiHidden?: boolean;
   /** 일발 유효 여부 (본인 뷰에서만 포함) */
   ippatsu?: boolean;
   /** 후리텐 상태 (본인 뷰에서만 포함) */
@@ -704,6 +710,12 @@ function buildRoundView(
       ...(sealedTileIds.length > 0 ? { sealedTileIds } : {}),
     };
 
+    // 이 사람의 리치가 은닉 대상인가 (본인 뷰 표시 + 타인 뷰 마스킹의 단일 판정)
+    const riichiIsHidden =
+      riichiDeclared &&
+      rules.has("riichi.hidden") &&
+      rules.resolve<boolean>("riichi.hidden", { playerId: pid, state });
+
     if (pid === viewerId) {
       const furitenReasons = buildFuritenReasons(state, pid, pr, rules);
       // 형식텐파이(역없음)는 yaku 레지스트리가 주어졌을 때만 계산 (열린 손 전용)
@@ -719,6 +731,7 @@ function buildRoundView(
         furitenReasons,
         ...(noYaku ? { noYaku: true } : {}),
         ...(noYakuWaits.length > 0 ? { noYakuWaits } : {}),
+        ...(riichiIsHidden ? { riichiHidden: true } : {}),
         meldCount,
         melds,
         ...riichiIndex,
@@ -728,11 +741,7 @@ function buildRoundView(
     } else {
       // 스텔스 리치 — 이 사람의 리치는 타인에게 보이지 않는다(본인·관전자는 그대로).
       // 타인에게 새는 리치 신호는 이 셋뿐이므로 셋을 함께 가린다.
-      const hidden =
-        viewerId !== SPECTATOR_ID &&
-        riichiDeclared &&
-        rules.has("riichi.hidden") &&
-        rules.resolve<boolean>("riichi.hidden", { playerId: pid, state });
+      const hidden = viewerId !== SPECTATOR_ID && riichiIsHidden;
       // 타인 뷰: 리치 선언 여부·더블 여부만 공개
       byPlayer[pid] = {
         riichiDeclared: hidden ? false : riichiDeclared,

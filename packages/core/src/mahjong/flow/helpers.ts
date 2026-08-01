@@ -145,6 +145,12 @@ export function scoringOptionsOf(
   ) {
     opts.mixedTriplets = true;
   }
+  if (
+    rules.has("scoring.mixedPairs") &&
+    rules.resolve<boolean>("scoring.mixedPairs", ctx)
+  ) {
+    opts.mixedPairs = true;
+  }
   if (rules.has("scoring.totalSets")) {
     const totalSets = rules.resolve<number>("scoring.totalSets", ctx);
     if (totalSets !== 4) opts.totalSets = totalSets;

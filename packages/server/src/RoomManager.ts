@@ -1679,6 +1679,48 @@ export class RoomManager {
     void this.startGame(room);
   }
 
+  /**
+   * 게임이 끝난 방을 **대기실 상태로 되돌린다** — 방·좌석·방장은 그대로 남는다.
+   *
+   * 예전에는 종국과 동시에 방을 지웠다. 그래서 같은 멤버로 한 판 더 하려면 전원이
+   * 홈으로 나가 방을 새로 만들고 코드를 다시 나눠야 했다(2026-08-01 사용자 요청).
+   * 지금은 결과 화면의 "이어하기"가 이 대기실로 돌아오게 하고, 평소처럼 **전원 준비 +
+   * 방장 시작**으로 다음 판이 열린다 — 동의 절차를 새로 만들지 않고 대기실을 그대로 쓴다.
+   *
+   * 사람이 아무도 안 돌아오면 방은 저절로 사라진다: 마지막 사람이 나가거나(leaveWaiting)
+   * 연결이 끊기는 순간 humansLeft가 false가 되어 방이 지워진다.
+   * 증강 테스트 방도 같은 처리다 — 종국이 곧 방 퇴장이 아니라 **판 초기화**가 되어,
+   * 테스트 패널의 "새 판"·"초기화"가 종국 뒤에도 그대로 먹는다.
+   */
+  private resetRoomAfterGame(room: Room): void {
+    if (this.rooms.get(room.code) !== room) return; // 이미 정리된 방
+    room.phase = "waiting";
+    room.controller = null;
+    room.writer = null;
+    room.startedAt = null;
+    room.abortVotes.clear();
+    room.ready.clear();
+    room.sandboxRestarting = false;
+    // 봇은 새 인스턴스로 — 지난 판의 내부 상태(프로필·기억)를 다음 판에 끌고 가지 않는다
+    room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.resetForNewGame();
+    }
+    // 이미 연결이 끊긴 좌석은 대기실에 유령으로 남기지 않는다
+    for (const a of [...room.agents]) {
+      if (a instanceof HumanAgent && a.isAbandoned) this.leaveWaiting(room, a);
+    }
+    if (this.rooms.get(room.code) !== room) return; // 마지막 사람이 빠져 방이 사라졌다
+    if (room.hostId === null || !room.agents.some((a) => a.id === room.hostId)) {
+      room.hostId = room.agents.find((a) => a instanceof HumanAgent)?.id ?? null;
+    }
+    if (room.sandbox) {
+      this.syncSandboxControl(room);
+      this.sendSandboxState(room);
+    }
+    this.broadcastLobby(room);
+  }
+
   // ─────────────────────────── 게임 시작·진행 ───────────────────────────
 
   /**
@@ -1743,21 +1785,31 @@ export class RoomManager {
         }
       },
       onGameOver: (rankings: RankingEntry[]) => {
-        const msg: ServerMessage = { type: "gameOver", rankings };
+        // 방은 그대로 남는다 — 결과 화면에서 "이어하기"로 같은 멤버와 다음 판을 간다.
+        const msg: ServerMessage = { type: "gameOver", rankings, canContinue: true };
         for (const agent of room.agents) {
           if (agent instanceof HumanAgent) agent.notify(msg);
         }
         writer?.close();
         // 증강 테스트 결과는 기록하지 않는다 — 리플레이 목록·리더보드·증강 통계
         // (도감의 근거)가 시험용 판으로 오염되지 않게 한다.
-        if (!room.sandbox) {
-          this.recordGame(room, rankings);
-          void this.finishStats(room, tracker, rankings).catch((err: unknown) => {
-            console.error("finishStats error:", err);
-          });
-        }
+        // 관전은 여기서 끊는다 — 다음 판은 새 게임이라 관전자가 새로 붙어야 한다.
         this.endSpectating(room, "게임이 종료되었습니다", msg);
-        this.rooms.delete(room.code);
+        if (room.sandbox) {
+          this.resetRoomAfterGame(room);
+          return;
+        }
+        this.recordGame(room, rankings);
+        // ⚠ 방 정리는 통계 전송이 끝난 **뒤**에 한다 — finishStats는 room.agents를 훑어
+        //    이번 판 통계를 보내는데, 먼저 정리하면 그 사이 좌석이 갈려(봇 교체·포기한
+        //    좌석 제거) 통계가 엉뚱한 명단으로 나가거나 아예 도달하지 않는다.
+        void this.finishStats(room, tracker, rankings)
+          .catch((err: unknown) => {
+            console.error("finishStats error:", err);
+          })
+          .finally(() => {
+            this.resetRoomAfterGame(room);
+          });
       },
       onGameAborted: () => {
         writer?.close();

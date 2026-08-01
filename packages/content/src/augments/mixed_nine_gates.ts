@@ -93,8 +93,14 @@ export const mixedNineGates: AugmentDef = defineAugment({
     "(상시) 멘젠 화료형 14장이 모두 수패이고, 무늬와 무관하게 랭크가 1112345678999에 아무 랭크 한 장을 더한 배열이면 역만이 된다. 무늬가 한 종류뿐이면 표준 구련보등이 그대로 적용되므로 이 역은 무늬가 두 종류 이상 섞였을 때만 성립한다. 후로하면 성립하지 않으며 추가 보너스는 없다.",
   install(ctx) {
     // 화료형을 열어 준다 — 손이 구련 뼈대일 때만 무늬를 무시하고 몸통을 세운다.
-    // (슌쯔·커쯔 둘 다 필요하다: 1112345678999는 111·999 커쯔와 234·567·89x 슌쯔로 선다.)
-    for (const rule of ["scoring.mixedRuns", "scoring.mixedTriplets"] as const) {
+    // (슌쯔·커쯔·머리 셋 다 필요하다: 1112345678999는 111·999 커쯔와 234·567·89x 슌쯔로
+    //  서고, 오름패가 만드는 작두는 무늬가 갈린 두 장인 경우가 대부분이다 —
+    //  머리를 안 열면 27종 대기 중 같은 무늬 짝이 맞는 3종만 화료가 됐다.)
+    for (const rule of [
+      "scoring.mixedRuns",
+      "scoring.mixedTriplets",
+      "scoring.mixedPairs",
+    ] as const) {
       ctx.engine.rules.addModifier<boolean>(rule, {
         source: ctx.instanceId,
         layer: ctx.layer,
