@@ -578,6 +578,7 @@ export class RoomManager {
       case "addBot":
       case "removeBot":
       case "setGameMode":
+      case "shuffleSeats":
       case "startGame": {
         if (conn.room === null || conn.agent === null) return;
         this.handleLobbyMessage(conn.room, conn.agent, msg);
@@ -983,6 +984,7 @@ export class RoomManager {
     conn.room = room;
     conn.agent = agent;
     this.send(conn.ws, { type: "joined", playerId, roomId: room.code, token: "" });
+    this.shuffleSeatsIfFull(room);
     this.broadcastLobby(room);
   }
 
@@ -1016,6 +1018,7 @@ export class RoomManager {
     const room = this.rooms.get(code);
     if (!room || room.phase === "playing") return;
     this.addBots(room, MAX_PLAYERS - room.agents.length);
+    this.shuffleSeatsIfFull(room); // 자리는 대기실 단계에서 정해진다 (startGame은 안 섞는다)
     await this.startGame(room);
   }
 
@@ -1075,6 +1078,7 @@ export class RoomManager {
       case "addBot": {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         this.addBots(room, 1);
+        this.shuffleSeatsIfFull(room);
         this.broadcastLobby(room);
         return;
       }
@@ -1085,6 +1089,13 @@ export class RoomManager {
           room.agents.splice(idx, 1);
           this.broadcastLobby(room);
         }
+        return;
+      }
+      case "shuffleSeats": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        if (room.sandbox) return; // 증강 테스트 방은 자리를 고정한다
+        this.shuffleSeats(room);
+        this.broadcastLobby(room);
         return;
       }
       case "setGameMode": {
@@ -1110,12 +1121,14 @@ export class RoomManager {
 
   private broadcastLobby(room: Room): void {
     if (room.phase !== "waiting") return;
-    const players: LobbyPlayerEntry[] = room.agents.map((a) => {
+    // 좌석(방위)은 agents 배열의 **순서**다 — 0번이 첫 동가(친).
+    const players: LobbyPlayerEntry[] = room.agents.map((a, seat) => {
       const isBot = this.isBot(a);
       const isHost = a.id === room.hostId;
       const career = !isBot && this.statsStore ? this.statsStore.get(a.nickname) : null;
       return {
         playerId: a.id,
+        seat,
         nickname: a.nickname,
         isBot,
         isHost,
@@ -1703,6 +1716,8 @@ export class RoomManager {
     room.sandboxRestarting = false;
     // 봇은 새 인스턴스로 — 지난 판의 내부 상태(프로필·기억)를 다음 판에 끌고 가지 않는다
     room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
+    // 다음 판은 새 자리에서 — 이어하기로 계속 두어도 같은 사람이 계속 친을 하지 않는다
+    this.shuffleSeats(room);
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.resetForNewGame();
     }
@@ -1724,12 +1739,17 @@ export class RoomManager {
   // ─────────────────────────── 게임 시작·진행 ───────────────────────────
 
   /**
-   * 좌석(방위) 무작위 배정 — 시작 직전에 `room.agents` 순서를 섞는다.
+   * 좌석(방위) 무작위 배정 — `room.agents` 순서를 섞는다.
    *
-   * 좌석은 `HanchanController`가 받는 배열의 **순서**로 정해지고(0번이 첫 동가=친),
-   * 대기실 순서는 곧 들어온 순서였다 — 방장이 늘 친으로 시작하고, 늘 같은 상대가
-   * 하가에 앉았다. 자리(방위)는 판의 유불리에 직결되므로 매 판 새로 뽑는다.
+   * 좌석은 `HanchanController`가 받는 배열의 **순서**로 정해진다(0번이 첫 동가=친).
+   * 들어온 순서가 곧 자리였을 때는 방장이 늘 친으로 시작하고 늘 같은 상대가 하가에
+   * 앉았다 — 자리는 판의 유불리에 직결되므로 무작위로 뽑는다.
    * 좌석 id(p0~p3)는 그대로라 재접속·관전·증강 지급 경로는 영향을 받지 않는다.
+   *
+   * ⚠ 예전에는 이걸 `startGame` 직전에 **몰래** 돌렸다. 그러면 대기실이 보여 주던
+   * 동남서북(그때는 playerId 번호순이었다)과 실제 방위가 달라, 게임에 들어가서야
+   * 자기 자리를 알 수 있었다. 지금은 방이 4인으로 찰 때·판이 끝날 때 한 번 섞고
+   * 그 결과를 대기실에 그대로 보여 주며, 방장이 `shuffleSeats`로 다시 뽑을 수 있다.
    *
    * 증강 테스트 방은 섞지 않는다 — 초기화할 때마다 내 방위가 바뀌면 시험이 어렵다.
    */
@@ -1743,11 +1763,21 @@ export class RoomManager {
     }
   }
 
+  /**
+   * 방이 4인으로 **막 찼을 때** 자리를 한 번 섞는다 — 기본값이 무작위이도록.
+   * 자리가 덜 찼을 때 섞으면 빈자리가 사람보다 앞에 오는 등 표시가 어수선해지고,
+   * 어차피 사람이 더 들어오면 다시 섞이므로 가득 찼을 때만 돌린다.
+   */
+  private shuffleSeatsIfFull(room: Room): void {
+    if (room.agents.length < MAX_PLAYERS) return;
+    this.shuffleSeats(room);
+  }
+
   private async startGame(room: Room): Promise<void> {
     if (room.phase === "playing") return;
     room.phase = "playing";
     room.startedAt = new Date().toISOString();
-    this.shuffleSeats(room);
+    // 자리는 대기실에서 이미 정해져 보이고 있다 — 여기서 다시 섞으면 그 표시가 거짓이 된다.
 
     // 증강 테스트 방은 리플레이 파일을 남기지 않는다 — 판을 자주 갈아엎는 성격이라
     // 파일만 쌓이고, 어차피 게임 인덱스·통계에도 기록하지 않는다.

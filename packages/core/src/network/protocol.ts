@@ -287,6 +287,17 @@ export interface StartGameMessage {
   type: "startGame";
 }
 
+/**
+ * 자리 섞기 (방장 전용, 대기 중에만) — 네 자리(동남서북)를 무작위로 다시 뽑는다.
+ *
+ * 자리는 그대로 게임의 방위·친 순서가 되므로 판의 유불리에 직결된다. 방을 만든 순서가
+ * 곧 자리였을 때는 방장이 늘 첫 동가(친)였다. 방이 4인으로 찰 때·판이 끝날 때 자동으로
+ * 한 번 섞이고, 그 뒤로는 이 메시지로 몇 번이든 다시 뽑을 수 있다.
+ */
+export interface ShuffleSeatsMessage {
+  type: "shuffleSeats";
+}
+
 /** 게임 모드 변경 (방장 전용, 대기 중에만). 대기실에서 반장전/동풍전을 고른다. */
 export interface SetGameModeMessage {
   type: "setGameMode";
@@ -321,6 +332,7 @@ export type ClientMessage =
   | RemoveBotMessage
   | StartGameMessage
   | SetGameModeMessage
+  | ShuffleSeatsMessage
   | StatsRequestMessage
   | VoteAbortMessage
   | RegisterMessage
@@ -500,6 +512,13 @@ export interface LobbyPlayerEntry {
   nickname: string;
   isBot: boolean;
   isHost: boolean;
+  /**
+   * 이 사람이 앉은 자리 (0=동 1=남 2=서 3=북) — 그대로 게임의 방위가 된다.
+   *
+   * `playerId`의 번호가 아니라 **좌석 배열 순서**다. 둘은 방을 만든 직후에만 같고,
+   * 자리를 섞으면 갈라진다(p2가 동가일 수 있다). 대기실은 이 값으로 줄을 세운다.
+   */
+  seat: number;
   /** 준비 완료 여부. 방장·봇은 항상 true. */
   ready: boolean;
   /** 누적(career) 통계 — 신규 플레이어면 null. */
