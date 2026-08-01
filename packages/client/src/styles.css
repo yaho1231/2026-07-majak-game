@@ -1193,6 +1193,25 @@ button {
   align-items: flex-start;
 }
 
+/*
+ * 후로 좌우(위아래) 뒤집기 — 눕힌 패의 자리는 "누구에게서 울었나"를 말한다.
+ * 상가에서 울면 묶음의 **왼쪽 끝**, 대면이면 가운데, 하가면 오른쪽 끝. 단 그 왼쪽·오른쪽은
+ * **후로 주인의 왼쪽·오른쪽**이라, 마주 보거나 옆으로 앉은 상대는 화면에서 뒤집힌다.
+ * 그대로 그리면 "왼쪽에서 울었는데 누운 패가 오른쪽에 있다"가 된다(2026-08-01 보고).
+ *  - 위 상대(대면): 그의 오른쪽 = 화면 왼쪽 → 가로 반전
+ *  - 오른쪽 상대(하가): 그의 오른쪽 = 화면 위쪽 → 세로 반전
+ *  - 왼쪽 상대(상가): 그의 오른쪽 = 화면 아래쪽 → 그대로가 맞다
+ */
+.opp-melds-row,
+.opp-melds-row .meld-row {
+  flex-direction: row-reverse;
+}
+
+.opp-strip-right .opp-melds-col,
+.opp-strip-right .opp-melds-col .meld-col {
+  flex-direction: column-reverse;
+}
+
 .opp-melds-row .mtile-row-lying > .mtile-inner,
 .opp-melds-row .mtile-stack > .stack-a {
   bottom: auto;
@@ -2631,6 +2650,25 @@ button {
   color: #f0c86a;
 }
 
+/* 무장해제로 이번 국 잠긴 증강 — 회색으로 죽이고 빗금을 얹어 "지금은 없는 능력"으로 읽힌다 */
+.aug-pill-locked {
+  color: #8d9490;
+  border-color: rgba(141, 148, 144, 0.5);
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(120, 128, 124, 0.16) 0 5px,
+    rgba(120, 128, 124, 0.05) 5px 10px
+  );
+  text-decoration: line-through;
+  text-decoration-color: rgba(201, 75, 75, 0.75);
+}
+
+.aug-tip-locked {
+  font-size: 11px;
+  font-weight: 800;
+  color: #e08a8a;
+}
+
 .draft-name {
   font-size: clamp(22px, 2.6vmin, 28px);
   font-weight: 800;
@@ -3664,12 +3702,36 @@ button {
   z-index: 20;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 7px;
   max-width: 320px;
+  /* 펼쳐도 화면 절반을 넘기지 않는다 — 그 아래는 스크롤로 본다.
+     (예전엔 줄 수만큼 무한정 자라 왼쪽 상대를 덮었다) */
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.ainfo-more {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(199, 188, 255, 0.45);
+  background: rgba(11, 19, 16, 0.9);
+  color: #d8d2ff;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ainfo-more:hover {
+  border-color: rgba(199, 188, 255, 0.8);
 }
 
 .ainfo-row {
   display: flex;
+  flex: 0 0 auto; /* 스크롤 상자 안에서 줄이 찌부러지지 않게 */
   align-items: center;
   gap: 9px;
   padding: 7px 12px;
@@ -5106,6 +5168,7 @@ button {
     top: 108px;
     gap: 5px;
     max-width: calc(100vw - 12px);
+    max-height: 38vh;
   }
   .ainfo-row {
     padding: 5px 9px;

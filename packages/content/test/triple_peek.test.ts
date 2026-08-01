@@ -2,7 +2,8 @@
  * 삼세 예지 (triple_peek) 동작 테스트.
  *
  * 핵심 계약:
- *  1. 자기 턴(turn.act)에 선언할 수 있고, 선언은 게임당 1회다.
+ *  1. 자기 턴(turn.act)에 선언할 수 있고, 선언은 **매 국 1회**다(2026-08-01 버프 —
+ *     예전엔 동풍전 1·반장전 2회로 매치 전체에 걸쳐 소진됐다).
  *  2. 선언하면 내 다음 쯔모 3장의 **종류(kindKey 문자열)**가 보유자 전용 채널로 나간다.
  *  3. 그 3개는 패산에서 보유자가 실제로 뽑게 될 패의 kind다(자리 회전으로 검증).
  */
@@ -149,12 +150,14 @@ describe("삼세 예지 (triple_peek)", () => {
     expect(seen).toEqual([3, 2, 1, 0]);
   });
 
-  it("동풍전 1회 — 두 번째 선언은 거부되고 옵션도 사라진다", () => {
-    const base = scene();
-    const scn: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };
+  it("이번 국 1회 — 두 번째 선언은 거부되고 옵션도 사라진다", () => {
+    const scn = scene();
     const { game, flow } = startFlow(scn);
     const status = flow.submit("p0", { type: ACTION, payload: {} });
-    expect(game.engine.state.augmentData[`${ID}:uses:p0`]).toBe(1);
+    // 카운터 키에는 국 식별자가 섞인다 (국이 바뀌면 다른 키 = 다시 1회)
+    const r = scn.round;
+    const roundK = `${r.prevalentWind}-${r.roundNumber}-${r.honba}`;
+    expect(game.engine.state.augmentData[`${ID}:uses:${roundK}:p0`]).toBe(1);
 
     // 선언 후 여전히 p0 턴이면 옵션이 더는 제시되지 않는다
     const prompt =
@@ -164,5 +167,32 @@ describe("삼세 예지 (triple_peek)", () => {
     expect(
       prompt?.options.filter((o) => o.type === ACTION) ?? [],
     ).toHaveLength(0);
+    // 반장전이어도 같은 국에 두 번은 안 된다 (매치 잔여 횟수가 아니라 국 단위다)
+    const def = game.engine.actions.get(ACTION);
+    expect(
+      def?.validate(
+        { player: "p0", type: ACTION, payload: {} },
+        { state: game.engine.state, rules: game.engine.rules },
+      ),
+    ).toBe("no uses left this round");
+  });
+
+  it("국이 바뀌면 다시 1회 쓸 수 있다 (2026-08-01 버프)", () => {
+    const scn = scene();
+    const { game, flow } = startFlow(scn);
+    flow.submit("p0", { type: ACTION, payload: {} });
+
+    // 다음 국으로 넘어간 상태를 흉내낸다 (본장만 올려도 국 키가 달라진다)
+    const advanced = {
+      ...game.engine.state,
+      round: { ...game.engine.state.round, roundNumber: game.engine.state.round.roundNumber + 1 },
+    };
+    const def = game.engine.actions.get(ACTION);
+    expect(
+      def?.validate(
+        { player: "p0", type: ACTION, payload: {} },
+        { state: advanced, rules: game.engine.rules },
+      ),
+    ).toBeNull();
   });
 });
