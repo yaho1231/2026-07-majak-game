@@ -134,8 +134,11 @@ Version: 1.0 (2026-07-16, 20차)
     `catalog` + `view`가 온다.
   - `sandboxGrant{augmentId, target?}` → 진행 중인 판에서 그 자리에 증강 설치
     (`HanchanController.grantAugment`). target 생략 시 본인, 지정하면 봇에게도 준다.
-  - `sandboxReset{augments?, mode?}` → 지금 판을 버리고 **좌석별 사전 지급 목록**으로
-    새 판을 시작한다. `augments` 생략·`{}` = 증강 없는 백지 초기화.
+  - `sandboxReset{augments?, hands?, mode?}` → 지금 판을 버리고 **좌석별 사전 지급 목록**과
+    **강제 배패**로 새 판을 시작한다. `augments` 생략·`{}` = 증강 없는 백지 초기화.
+  - `sandboxBotRules{rules}` → 봇 행동 제약(후로·리치·화료·증강 발동 금지)을 갱신한다.
+    판을 갈아엎지 않고 **다음 결정부터** 먹으며, 응답은 `sandboxConfig`다.
+  - `sandboxControl{enabled}` → 봇 좌석 직접 조작 모드 on/off (기본 on).
 - 초기화가 "증강 개별 제거"가 아니라 **판 교체**인 이유: install은 rules/effects/
   actions/turnOptions에 등록하는 부수효과라 완전한 되돌리기가 없다. 엔진을 새로 만드는
   쪽이 잔재 없는 초기화다. 교체는 `controller.requestAbort()` →
@@ -151,11 +154,31 @@ Version: 1.0 (2026-07-16, 20차)
   (`recordGame`)·누적 통계(`finishStats`) 모두 건너뛴다. 시험용 판이 도감·리더보드의
   근거 데이터를 오염시키지 않게 하기 위함이다. 방은 `liveGames` 목록에서도 빠지고,
   방 주인의 재접속 외의 `joinRoom`은 `ROOM_NOT_FOUND`(존재 자체를 감춤)로 응답한다.
+- **강제 배패**(`HanchanConfig.presetHands` → `deal.presetHand` 규칙 → `setupRound`):
+  좌석별 kindKey 목록("man5"·"wind1")을 주면 **매 국** 배패 직후 패산과 맞바꿔 그 패를
+  쥐여 준다. 총 장수·왕패는 그대로라 남은 장수·도라 표시패가 어긋나지 않는다. 요청한
+  사본이 자기 손·패산·다른 좌석 손 어디에도 없으면(이미 왕패로 갔으면) 그 자리는 조용히
+  무작위로 채워진다. 규칙은 **지정이 있을 때만 정의**되므로 일반 게임의 배패 경로는
+  한 줄도 달라지지 않는다.
+- **봇 행동 제약**(`SandboxBotRules`): `BotAgent.setRestrictions`가 결정 직전에 후보를
+  좁힌다(`restrictOptions`) — 판단 로직 자체는 그대로다. 전부 걸러지면 원본으로
+  되돌아간다(봇이 답을 못 내면 판이 멈춘다). 실대국 봇은 이 값이 채워지지 않는다.
+- **봇 좌석 직접 조작**: 샌드박스의 봇은 `SandboxBotAgent`(BotAgent 상속)다. 조작
+  모드가 켜져 있고 관리자가 그 좌석 시점을 보고 있으면 `decide`가
+  `HumanAgent.decideAs(seat, prompt)`로 넘어가고, 클라이언트는 `action.seat`으로 답한다.
+  그래서 `HumanAgent`는 결정을 **좌석별 맵**으로 들고 있다(내 좌석과 조종 중인 봇 좌석에
+  리액션이 동시에 뜬다). 시점을 옮기거나 모드를 끄면 대기 중이던 결정을 봇이 즉시
+  회수한다(30초 타임아웃을 기다리지 않는다).
 - 클라이언트: 홈의 "🧪 증강 테스트" 카드(관리자 전용, 모드 선택 + 시작) → 게임 화면
-  좌상단 `🧪 증강` 버튼 → `SandboxPanel`(카탈로그 전량 목록·등급 필터·검색·대상 좌석
-  선택·＋로 즉시 획득·도감 상세·새 판/초기화). `sandbox` 메시지를 받으면 이전 판의
-  프롬프트·결과창·순위·연출을 모두 정리한다.
-- 회귀 테스트: `packages/server/test/Sandbox.test.ts` (권한·시작·지급·초기화·기록 없음).
+  좌상단 `🧪 증강` 버튼 → `SandboxPanel`. 탭 3개 — **증강 지급**(카탈로그 전량·검색·
+  대상 좌석·＋로 즉시 획득·도감 상세), **손패 지정**(34종 패 클릭으로 담기·현재 손패
+  담기·이 손패로 새 판), **봇 설정**(제약 체크박스 4종·봇 시점 직접 조작 토글).
+  `sandbox` 메시지를 받으면 이전 판의 프롬프트·결과창·순위·연출을 모두 정리하고,
+  `sandboxConfig`는 판을 건드리지 않고 설정만 갱신한다.
+- 회귀 테스트: `packages/server/test/Sandbox.test.ts`(권한·시작·지급·초기화·손패 지정·
+  봇 제약·봇 좌석 조작·기록 없음), `packages/server/test/BotRestrictions.test.ts`,
+  `packages/server/test/HumanAgent.test.ts`(좌석별 결정 대기),
+  `packages/core/test/PresetHand.test.ts`(강제 배패).
 
 ## §6 연출 (actionFx)
 

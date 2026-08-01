@@ -66,3 +66,56 @@ describe("HumanAgent.awaitContinue — 다음 국 ack 게이트", () => {
     expect(resolved).toBe(true);
   });
 });
+
+/**
+ * 봇 좌석 조종(증강 테스트) — 한 소켓이 **좌석 두 개**의 결정을 동시에 기다릴 수 있다.
+ * 리액션 프롬프트는 여러 자리에 동시에 나가므로, 단일 슬롯이면 나중 것이 앞의 것을
+ * 덮어써 한쪽이 영원히 응답을 못 받는다.
+ */
+describe("HumanAgent — 좌석별 결정 대기 (봇 좌석 조종)", () => {
+  const prompt = (player: string, ...types: string[]): any => ({
+    player,
+    options: types.map((t) => ({ type: t, payload: {} })),
+  });
+
+  it("내 좌석과 조종 중인 봇 좌석의 결정을 동시에 들고, seat으로 갈라 답한다", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Boss", sock.asWs());
+    const mine = agent.decide(prompt("p0", "pass", "pon"));
+    const bots = agent.decideAs("p2" as never, prompt("p2", "pass", "chi"));
+    await tick();
+    // 두 좌석의 프롬프트가 모두 나갔다
+    expect(sock.sent.filter((m) => m.type === "prompt").map((m) => m.prompt.player))
+      .toEqual(["p0", "p2"]);
+
+    agent.handleMessage({ type: "action", actionType: "chi", payload: {}, seat: "p2" } as never);
+    expect((await bots).type).toBe("chi");
+
+    agent.handleMessage({ type: "action", actionType: "pon", payload: {}, seat: "p0" } as never);
+    expect((await mine).type).toBe("pon");
+  });
+
+  it("seat 없이 온 응답은 내 좌석의 것으로 본다 (평소·구 클라이언트)", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Boss", sock.asWs());
+    const mine = agent.decide(prompt("p0", "pass", "pon"));
+    void agent.decideAs("p2" as never, prompt("p2", "pass"));
+    agent.handleMessage({ type: "action", actionType: "pon", payload: {} } as never);
+    expect((await mine).type).toBe("pon");
+  });
+
+  it("한 좌석만 취소해도 다른 좌석의 대기는 살아 있다", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Boss", sock.asWs());
+    const mine = agent.decide(prompt("p0", "pass", "pon"));
+    const bots = agent.decideAs("p2" as never, prompt("p2", "pass", "chi"));
+    agent.cancelDecisionFor("p2" as never);
+    expect((await bots).type).toBe("pass"); // 안전 폴백
+    // 취소 통지에는 좌석이 실려, 클라이언트가 내 프롬프트를 지우지 않는다
+    expect(sock.sent.filter((m) => m.type === "promptCancel")).toEqual([
+      { type: "promptCancel", seat: "p2" },
+    ]);
+    agent.handleMessage({ type: "action", actionType: "pon", payload: {}, seat: "p0" } as never);
+    expect((await mine).type).toBe("pon");
+  });
+});

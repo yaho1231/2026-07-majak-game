@@ -32,13 +32,14 @@ import type {
   ReplayGameSummary,
   RoundOverMessage,
   SandboxMessage,
+  SandboxBotRules,
   ServerMessage,
   StatsEntry,
   StatsMessage,
   TileKind,
   WinInfo,
 } from "@majak/core";
-import { SPECTATOR_ID, doraKindFor, kindKey, winningKinds } from "@majak/core";
+import { SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
@@ -1301,6 +1302,8 @@ export function App(): JSX.Element {
   const introShown = useRef(false);
   /** 최신 설정·카탈로그를 소켓 콜백(고정 클로저) 안에서 읽기 위한 ref. */
   const settingsRef = useRef<Settings>(DEFAULT_SETTINGS);
+  /** 증강 테스트 상태의 최신 값 (소켓 콜백은 마운트 시 고정된 스테일 클로저다) */
+  const sandboxRef = useRef<SandboxMessage | null>(null);
   const catalogRef = useRef<Record<string, AugmentCatalogEntry>>({});
   const spectatingRef = useRef(false);
   /** 자동 재연결 상태: 예약 타이머·시도 횟수·의도적 종료 여부. */
@@ -1359,11 +1362,20 @@ export function App(): JSX.Element {
   const [liveRooms, setLiveRooms] = useState<LiveRoomSummary[]>([]);
   /** 증강 테스트(샌드박스) 게임 상태 — null이면 일반 게임. 관리자만 받는다. */
   const [sandbox, setSandbox] = useState<SandboxMessage | null>(null);
+  /** 지금 내가 조종 중인 봇 좌석 (증강 테스트 · 없으면 null) — 서버가 알려 준다 */
+  const [controlling, setControlling] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserEntry[]>([]);
   const [spectating, setSpectating] = useState<string | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
-  const [prompt, setPrompt] = useState<PromptMessage["prompt"] | null>(null);
+  /**
+   * 응답을 기다리는 프롬프트들 — **좌석 id → 프롬프트**.
+   *
+   * 평소에는 내 좌석 하나뿐이다. 증강 테스트에서 봇 좌석을 조종하면 내 좌석과 그 봇
+   * 좌석에 프롬프트가 동시에 뜰 수 있어, 지금 보고 있는 좌석(view.playerId)의 것을
+   * 골라 그린다. 단일 슬롯이던 시절에는 나중에 온 쪽이 앞의 것을 덮어써 잃어버렸다.
+   */
+  const [prompts, setPrompts] = useState<Record<string, PromptMessage["prompt"]>>({});
   const [promptSeq, setPromptSeq] = useState(0);
   const [draft, setDraft] = useState<DraftOfferMessage | null>(null);
   /** 내가 이번 드래프트에서 이미 골랐는가 — 고른 뒤 "다른 플레이어 대기 중" 표시용 */
@@ -1371,6 +1383,16 @@ export function App(): JSX.Element {
   // handleServerMessage는 마운트 시 고정된 스테일 클로저라 draftPicked state를
   // 못 읽는다 → 뷰 핸들러에서 "이미 골랐는가"를 판정할 ref를 따로 둔다.
   const draftPickedRef = useRef(false);
+  /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
+  const prompt = view === null ? null : (prompts[view.playerId] ?? null);
+  /** 좌석 하나의 프롬프트만 지운다 (제출·취소) */
+  const dropPrompt = (seat: string): void =>
+    setPrompts((prev) => {
+      if (!(seat in prev)) return prev;
+      const next = { ...prev };
+      delete next[seat];
+      return next;
+    });
   const [catalog, setCatalog] = useState<Record<string, AugmentCatalogEntry>>({});
   // 연출 큐 — 대기열(ref)과 현재 재생 중(active) 하나. 한 번에 하나씩 순서대로.
   const productionQueue = useRef<Production[]>([]);
@@ -1410,6 +1432,7 @@ export function App(): JSX.Element {
   const [scoreFx, setScoreFx] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<Settings>(loadSettings);
   settingsRef.current = settings; // 매 렌더 동기화 (소켓 콜백에서 최신 설정 읽기)
+  sandboxRef.current = sandbox; // 소켓 콜백에서 "내 실제 좌석"을 읽기 위한 동기화
   catalogRef.current = catalog;
   spectatingRef.current = spectating !== null;
 
@@ -1590,24 +1613,29 @@ export function App(): JSX.Element {
    * 쓴다 — 론/후로 버튼이 이미 뜬 뒤 설정을 켜도 즉시 반영되도록.
    */
   function tryAutoRespond(p: PromptMessage["prompt"], auto: Settings): boolean {
+    // 증강 테스트에서 봇 좌석을 조종하는 중이면 자동응답을 걸지 않는다 —
+    // 그 좌석을 직접 두려고 들어간 것인데 자동 화료·쯔모기리가 대신 쳐 버리면 곤란하다.
+    const sbx = sandboxRef.current;
+    if (sbx !== null && p.player !== sbx.seat) return false;
     const opts = p.options;
+    const seat = p.player;
     const win = opts.find((o) => o.type === "win");
     const pass = opts.find((o) => o.type === "pass");
     // 자동 화료 — 화료 가능하면 즉시 론·쯔모
     if (auto.autoWin && win !== undefined) {
-      send({ type: "action", actionType: "win", payload: win.payload });
+      send({ type: "action", actionType: "win", payload: win.payload, seat });
       return true;
     }
     // 후로 없음 — 후로(치·펑·깡)만 있는 프롬프트를 즉시 패스
     if (auto.autoNoMeld && pass !== undefined && isCallOnlyPrompt(opts)) {
-      send({ type: "action", actionType: "pass", payload: pass.payload });
+      send({ type: "action", actionType: "pass", payload: pass.payload, seat });
       return true;
     }
     // 자동 버림(쯔모기리) — 내 턴에 쯔모한 패를 자동으로 버린다. 화료 가능하면 먼저 화료.
     const drawn = prevViewRef.current?.round.myDrawnTile ?? null;
     if (auto.autoDiscard && drawn !== null) {
       if (win !== undefined) {
-        send({ type: "action", actionType: "win", payload: win.payload });
+        send({ type: "action", actionType: "win", payload: win.payload, seat });
         return true;
       }
       const disc = opts.find(
@@ -1618,7 +1646,7 @@ export function App(): JSX.Element {
       if (disc !== undefined) {
         sfx.discard();
         rememberOwnDiscard(disc.payload);
-        send({ type: "action", actionType: disc.type, payload: disc.payload });
+        send({ type: "action", actionType: disc.type, payload: disc.payload, seat });
         return true;
       }
     }
@@ -1676,7 +1704,7 @@ export function App(): JSX.Element {
   // 이미 떠 있는 프롬프트에 자동화료·후로없음·자동버림 설정을 소급 적용한다.
   // (설정을 프롬프트가 뜬 '뒤' 켜도 즉시 반영 — 론/후로 버튼 표시 후 토글 대응)
   useEffect(() => {
-    if (prompt !== null && tryAutoRespond(prompt, settings)) setPrompt(null);
+    if (prompt !== null && tryAutoRespond(prompt, settings)) dropPrompt(prompt.player);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings, prompt]);
 
@@ -1696,8 +1724,9 @@ export function App(): JSX.Element {
     setJoined(null);
     setLobby(null);
     setSandbox(null);
+    setControlling(null);
     setView(null);
-    setPrompt(null);
+    setPrompts({});
     setDraft(null);
     setDraftPicked(false);
     draftPickedRef.current = false;
@@ -1888,7 +1917,8 @@ export function App(): JSX.Element {
       // 증강 테스트 판이 시작/재시작됐다 — 지난 판의 잔상(프롬프트·결과·순위·연출)을
       // 모두 걷어내고 곧 도착할 새 뷰를 받을 준비를 한다.
       setSandbox(msg);
-      setPrompt(null);
+      setControlling(null);
+      setPrompts({});
       setDraft(null);
       setDraftPicked(false);
       draftPickedRef.current = false;
@@ -1916,6 +1946,14 @@ export function App(): JSX.Element {
         rankGate: new Set(),
     voidKan: new Set(),
       };
+      return;
+    }
+    if (msg.type === "sandboxConfig") {
+      // 판은 그대로이고 설정만 바뀌었다 — 프롬프트·결과 화면을 건드리지 않는다.
+      setSandbox((prev) =>
+        prev === null ? prev : { ...prev, botRules: msg.botRules, control: msg.control },
+      );
+      setControlling(msg.controlling);
       return;
     }
     if (msg.type === "lobby") {
@@ -1966,7 +2004,7 @@ export function App(): JSX.Element {
       }
       // 자동 화료·후로없음·자동버림 — 설정에 맞으면 프롬프트를 그리지 않고 즉시 처리한다.
       if (tryAutoRespond(msg.prompt, settingsRef.current)) {
-        setPrompt(null);
+        dropPrompt(msg.prompt.player);
         return;
       }
       // 치·펑·깡·론 버튼이 뜨는 순간의 은은한 "삑" — 내 리액션(선택지에 pass가 있는
@@ -1978,7 +2016,7 @@ export function App(): JSX.Element {
       ) {
         sfx.callPrompt();
       }
-      setPrompt(msg.prompt);
+      setPrompts((prev) => ({ ...prev, [msg.prompt.player]: msg.prompt }));
       setPromptSeq((s) => s + 1);
       setDraft(null);
       setDraftPicked(false);
@@ -1987,7 +2025,9 @@ export function App(): JSX.Element {
     }
     if (msg.type === "promptCancel") {
       // 제한 시간 초과 등으로 내 차례가 서버에서 이미 지나갔다 — 떠 있는 선택 UI를 닫는다.
-      setPrompt(null);
+      // seat이 실려 오면 그 좌석 것만 접는다(봇 좌석 조종 중 내 프롬프트를 살리기 위해).
+      if (msg.seat !== undefined) dropPrompt(msg.seat);
+      else setPrompts({});
       setRiichiMode(false);
       return;
     }
@@ -1995,7 +2035,7 @@ export function App(): JSX.Element {
       setDraft(msg);
       setDraftPicked(false);
       draftPickedRef.current = false;
-      setPrompt(null);
+      setPrompts({});
       sfx.draft();
       return;
     }
@@ -2007,7 +2047,7 @@ export function App(): JSX.Element {
       riichiBgm.stop(); // 게임 종료 — 혹시 남아 있을 BGM 확실히 정지
       riichiBgmArmed.current = false;
       setRankings(msg.rankings);
-      setPrompt(null);
+      setPrompts({});
       setDraft(null);
       setDraftPicked(false);
       setAbortVote(null);
@@ -2423,8 +2463,15 @@ export function App(): JSX.Element {
       sfx.discard();
       rememberOwnDiscard(option.payload);
     }
-    send({ type: "action", actionType: option.type, payload: option.payload } as ActionMessage);
-    setPrompt(null);
+    // 어느 좌석의 결정인가 — 봇 좌석을 조종 중이면 그 좌석(view.playerId)으로 답한다.
+    const seat = view?.playerId;
+    send({
+      type: "action",
+      actionType: option.type,
+      payload: option.payload,
+      ...(seat !== undefined ? { seat } : {}),
+    } as ActionMessage);
+    if (seat !== undefined) dropPrompt(seat);
     setRiichiMode(false);
   }
 
@@ -2515,11 +2562,17 @@ export function App(): JSX.Element {
           abortVote={abortVote}
           onVoteAbort={voteAbort}
           sandbox={sandbox}
+          controlling={controlling}
+          selfPending={sandbox !== null && prompts[sandbox.seat] !== undefined}
           onSandboxGrant={(augmentId, target) =>
             send({ type: "sandboxGrant", augmentId, target })
           }
-          onSandboxReset={(augments) => send({ type: "sandboxReset", augments })}
+          onSandboxReset={(augments, hands) =>
+            send({ type: "sandboxReset", augments, ...(hands !== undefined ? { hands } : {}) })
+          }
           onSandboxViewAs={(seat) => send({ type: "sandboxViewAs", seat })}
+          onSandboxBotRules={(rules) => send({ type: "sandboxBotRules", rules })}
+          onSandboxControl={(enabled) => send({ type: "sandboxControl", enabled })}
           onSetting={updateSetting}
           onRiichiMode={setRiichiMode}
           onSubmit={submitOption}
@@ -4210,9 +4263,18 @@ function GameTable(props: {
   onVoteAbort?: (vote: "agree" | "withdraw" | "reject") => void;
   /** 증강 테스트 게임이면 그 상태 (관리자 전용). null이면 일반 게임. */
   sandbox?: SandboxMessage | null;
+  /** 증강 테스트에서 지금 내가 조종 중인 봇 좌석 (없으면 null) */
+  controlling?: string | null;
+  /** 증강 테스트에서 **내 실제 좌석**이 지금 결정을 기다리는가 (다른 시점 관찰 중 안내용) */
+  selfPending?: boolean;
   onSandboxGrant?: (augmentId: string, target: string) => void;
-  onSandboxReset?: (augments: Record<string, string[]>) => void;
+  onSandboxReset?: (
+    augments: Record<string, string[]>,
+    hands?: Record<string, string[]>,
+  ) => void;
   onSandboxViewAs?: (seat: string) => void;
+  onSandboxBotRules?: (rules: SandboxBotRules) => void;
+  onSandboxControl?: (enabled: boolean) => void;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   onRiichiMode: (v: boolean) => void;
   onSubmit: (o: ActionOption) => void;
@@ -4225,8 +4287,10 @@ function GameTable(props: {
   // 둘이 다르면 상대(또는 전체공개) 시점을 관찰 중이다.
   const sbxSelfId = props.sandbox?.seat ?? null;
   const observing = sbxSelfId !== null && view.playerId !== sbxSelfId;
+  // 지금 보고 있는 봇 좌석을 실제로 조종 중인가 — 그러면 이 자리에서 직접 둘 수 있다.
+  const driving = props.controlling != null && props.controlling === view.playerId;
   // 관찰 중인데 내 실제 좌석에 결정 프롬프트가 와 있으면 "내 차례" 복귀를 안내한다.
-  const myTurnWhileObserving = observing && prompt !== null && prompt.player === sbxSelfId;
+  const myTurnWhileObserving = observing && props.selfPending === true;
   // 내 손패에 마우스를 올리면 그 종류의 공개패(버림·후로)를 강조하기 위한 hover 종류
   const [hoverKind, setHoverKind] = useState<TileKind | null>(null);
   // 관전자·리플레이는 자리가 없으므로 현재 오야(친)를 하단 시점으로 삼아
@@ -4278,11 +4342,13 @@ function GameTable(props: {
         </div>
       ) : null}
       {observing ? (
-        <div className={myTurnWhileObserving ? "sbx-observe-bar my-turn" : "sbx-observe-bar"}>
-          🔍{" "}
+        <div
+          className={`sbx-observe-bar${myTurnWhileObserving ? " my-turn" : ""}${driving ? " driving" : ""}`}
+        >
+          {driving ? "🎮 " : "🔍 "}
           {view.playerId === SPECTATOR_ID
             ? "전체 공개 시점으로 관찰 중"
-            : `${playerNameById(view, view.playerId)} 시점으로 관찰 중`}
+            : `${playerNameById(view, view.playerId)} 시점으로 ${driving ? "직접 조작 중" : "관찰 중"}`}
           {myTurnWhileObserving ? " · 내 차례입니다!" : ""}
           {sbxSelfId !== null && props.onSandboxViewAs !== undefined ? (
             <button
@@ -4337,9 +4403,12 @@ function GameTable(props: {
           view={view}
           catalog={catalog}
           sandbox={props.sandbox}
+          controlling={props.controlling ?? null}
           {...(props.onSandboxGrant !== undefined ? { onGrant: props.onSandboxGrant } : {})}
           {...(props.onSandboxReset !== undefined ? { onReset: props.onSandboxReset } : {})}
           {...(props.onSandboxViewAs !== undefined ? { onViewAs: props.onSandboxViewAs } : {})}
+          {...(props.onSandboxBotRules !== undefined ? { onBotRules: props.onSandboxBotRules } : {})}
+          {...(props.onSandboxControl !== undefined ? { onControl: props.onSandboxControl } : {})}
           {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
         />
       ) : null}
@@ -5000,13 +5069,22 @@ function SandboxPanel(props: {
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
   sandbox: SandboxMessage;
+  /** 지금 내가 조종 중인 봇 좌석 (없으면 null) */
+  controlling: string | null;
   onGrant?: (augmentId: string, target: string) => void;
-  onReset?: (augments: Record<string, string[]>) => void;
+  onReset?: (
+    augments: Record<string, string[]>,
+    hands?: Record<string, string[]>,
+  ) => void;
   onViewAs?: (seat: string) => void;
+  onBotRules?: (rules: SandboxBotRules) => void;
+  onControl?: (enabled: boolean) => void;
   onToast?: (text: string) => void;
 }): JSX.Element {
   const { view, catalog } = props;
   const [open, setOpen] = useState(false);
+  /** 열려 있는 탭 — 증강 지급 / 손패 지정 / 봇 설정 */
+  const [tab, setTab] = useState<"augment" | "hand" | "bot">("augment");
   // 내 실제 좌석은 sandbox.seat — 시점을 상대로 바꾸면 view.playerId는 그 상대가 되므로
   // "나"·기본 대상 판별에는 view.playerId가 아니라 sandbox.seat을 써야 한다.
   const selfId = props.sandbox.seat;
@@ -5039,6 +5117,45 @@ function SandboxPanel(props: {
     return out;
   };
 
+  // ── 손패 지정 ──
+  // 서버가 마지막으로 적용한 지정을 초기값으로 들고, 편집은 로컬에서 하다가
+  // "이 손패로 새 판"에서 한 번에 넘긴다 (배패는 국 시작에만 개입할 수 있다).
+  const [handDraft, setHandDraft] = useState<Record<string, string[]>>(
+    () => props.sandbox.hands,
+  );
+  const handOf = (seat: string): string[] => handDraft[seat] ?? [];
+  const setHandOf = (seat: string, keys: string[]): void =>
+    setHandDraft((prev) => ({ ...prev, [seat]: keys }));
+  const addHandTile = (key: string): void => {
+    const cur = handOf(targetId);
+    if (cur.length >= SANDBOX_HAND_MAX) return;
+    if (cur.filter((k) => k === key).length >= 4) return; // 한 종류는 4장뿐
+    setHandOf(targetId, [...cur, key]);
+  };
+  const removeHandTileAt = (index: number): void =>
+    setHandOf(
+      targetId,
+      handOf(targetId).filter((_, i) => i !== index),
+    );
+  /** 지금 화면에 보이는 그 좌석의 손패를 그대로 담는다 (거기서 몇 장만 고치기 좋다) */
+  const copyVisibleHand = (): void => {
+    const ids = view.zones[`hand:${targetId}`]?.tileIds ?? [];
+    const keys = ids
+      .map((id) => view.tiles[id]?.kind)
+      .filter((k): k is TileKind => k !== undefined)
+      .map((k) => `${k.suit}${k.rank}`);
+    if (keys.length === 0) {
+      props.onToast?.("그 좌석의 손패가 지금 화면에 보이지 않습니다 (시점을 옮겨 보세요)");
+      return;
+    }
+    setHandOf(targetId, keys.slice(0, SANDBOX_HAND_MAX));
+  };
+
+  // ── 봇 설정 ──
+  const botRules = props.sandbox.botRules;
+  const toggleBotRule = (key: keyof SandboxBotRules): void =>
+    props.onBotRules?.({ ...botRules, [key]: botRules[key] !== true });
+
   const grant = (c: AugmentCatalogEntry): void => {
     if (owned.has(c.id)) return;
     props.onGrant?.(c.id, targetId);
@@ -5068,20 +5185,21 @@ function SandboxPanel(props: {
         <button
           className="sbx-btn"
           onClick={() => {
-            props.onReset?.(currentAugments());
-            props.onToast?.("증강을 유지한 채 새 판을 시작합니다");
+            props.onReset?.(currentAugments(), handDraft);
+            props.onToast?.("증강·손패 지정을 유지한 채 새 판을 시작합니다");
           }}
-          title="지금 보유한 증강 그대로 첫 국부터 다시 시작"
+          title="지금 보유한 증강과 손패 지정 그대로 첫 국부터 다시 시작"
         >
-          ↻ 새 판 (증강 유지)
+          ↻ 새 판 (설정 유지)
         </button>
         <button
           className="sbx-btn sbx-btn-danger"
           onClick={() => {
-            props.onReset?.({});
-            props.onToast?.("증강을 모두 비우고 새 판을 시작합니다");
+            setHandDraft({});
+            props.onReset?.({}, {});
+            props.onToast?.("증강·손패 지정을 모두 비우고 새 판을 시작합니다");
           }}
-          title="증강을 모두 제거하고 백지 상태로 다시 시작"
+          title="증강·손패 지정을 모두 제거하고 백지 상태로 다시 시작"
         >
           ⟲ 초기화
         </button>
@@ -5132,6 +5250,54 @@ function SandboxPanel(props: {
         ))}
       </div>
 
+      <div className="sbx-tabs">
+        {([
+          ["augment", "증강 지급"],
+          ["hand", "손패 지정"],
+          ["bot", "봇 설정"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            className={tab === id ? "sbx-tab on" : "sbx-tab"}
+            onClick={() => setTab(id)}
+          >
+            {label}
+            {id === "hand" && handOf(targetId).length > 0 ? (
+              <span className="sbx-seat-n">{handOf(targetId).length}</span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      {tab === "hand" ? (
+        <SandboxHandEditor
+          hand={handOf(targetId)}
+          targetName={targetId === selfId ? "나" : playerNameById(view, targetId)}
+          onAdd={addHandTile}
+          onRemoveAt={removeHandTileAt}
+          onClear={() => setHandOf(targetId, [])}
+          onCopyVisible={copyVisibleHand}
+          onApply={() => {
+            props.onReset?.(currentAugments(), handDraft);
+            props.onToast?.("지정한 손패로 새 판을 시작합니다");
+          }}
+        />
+      ) : null}
+
+      {tab === "bot" ? (
+        <SandboxBotSettings
+          rules={botRules}
+          control={props.sandbox.control}
+          controlling={props.controlling}
+          controllingName={
+            props.controlling === null ? null : playerNameById(view, props.controlling)
+          }
+          onToggle={toggleBotRule}
+          {...(props.onControl !== undefined ? { onControl: props.onControl } : {})}
+        />
+      ) : null}
+
+      {tab === "augment" ? (
       <div className="sbx-filters">
         <span className="codex-filter codex-filter-on">전체 {all.length}</span>
         <input
@@ -5141,7 +5307,9 @@ function SandboxPanel(props: {
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+      ) : null}
 
+      {tab === "augment" ? (
       <div className="sbx-list">
         {filtered.length === 0 ? (
           <p className="home-empty">조건에 맞는 증강이 없습니다.</p>
@@ -5173,8 +5341,9 @@ function SandboxPanel(props: {
           })
         )}
       </div>
+      ) : null}
 
-      {detail !== undefined ? (
+      {tab === "augment" && detail !== undefined ? (
         <div className="sbx-detail">
           <div className="sbx-detail-head">
             <b>{detail.name}</b>
@@ -5192,10 +5361,169 @@ function SandboxPanel(props: {
       ) : null}
 
       <p className="sbx-hint">
-        획득은 즉시 적용됩니다. 배패·국 시작에 개입하는 증강(패 변형 등)은 이번 국을
-        되돌리지 못하니 <b>새 판</b>으로 첫 국부터 확인하세요. 이 게임은 리플레이·통계에
-        남지 않습니다.
+        증강 획득은 즉시 적용됩니다. 배패·국 시작에 개입하는 증강(패 변형 등)과
+        <b> 손패 지정</b>은 국 시작에만 개입할 수 있으니 <b>새 판</b>으로 확인하세요.
+        이 게임은 리플레이·통계에 남지 않습니다.
       </p>
+    </div>
+  );
+}
+
+/** 강제 배패로 지정할 수 있는 최대 장수 (배패 13장 + 여유 1장) */
+const SANDBOX_HAND_MAX = 14;
+
+/**
+ * 손패 지정 — 34종 패를 눌러 담고, 담은 순서대로 배패된다.
+ *
+ * 국 시작에만 개입할 수 있어(배패는 국 시작에 한 번뿐) 편집은 로컬에서 하고
+ * "이 손패로 새 판"에서 한 번에 넘긴다. 13장을 다 채우지 않아도 되며, 지정한 만큼만
+ * 앞에서 채우고 나머지는 평소대로 무작위다 — "이 3장만 확실히" 같은 시험이 쉽다.
+ */
+function SandboxHandEditor(props: {
+  hand: string[];
+  targetName: string;
+  onAdd: (key: string) => void;
+  onRemoveAt: (index: number) => void;
+  onClear: () => void;
+  onCopyVisible: () => void;
+  onApply: () => void;
+}): JSX.Element {
+  const kinds = standardKinds();
+  const used = (key: string): number => props.hand.filter((k) => k === key).length;
+  const full = props.hand.length >= SANDBOX_HAND_MAX;
+
+  return (
+    <div className="sbx-hand">
+      <div className="sbx-hand-head">
+        <span className="sbx-label">{props.targetName}의 배패</span>
+        <span className="sbx-hand-count">
+          {props.hand.length}/{SANDBOX_HAND_MAX}
+        </span>
+        <span className="home-spacer" />
+        <button className="sbx-btn sbx-btn-sm" onClick={props.onCopyVisible} title="지금 보이는 손패를 그대로 담는다">
+          현재 손패 담기
+        </button>
+        <button className="sbx-btn sbx-btn-sm sbx-btn-danger" onClick={props.onClear}>
+          비우기
+        </button>
+      </div>
+
+      <div className="sbx-hand-picked" data-arm-zone>
+        {props.hand.length === 0 ? (
+          <span className="sbx-hand-empty">지정 없음 — 평소대로 무작위 배패</span>
+        ) : (
+          props.hand.map((key, i) => (
+            <button
+              key={`${key}-${i}`}
+              className="sbx-hand-chip"
+              onClick={() => props.onRemoveAt(i)}
+              title="빼기"
+            >
+              <TileImg tile={{ kind: kindFromKey(key) }} size="mini" />
+            </button>
+          ))
+        )}
+      </div>
+
+      <div className="sbx-hand-pick" data-arm-zone>
+        {kinds.map((kind) => {
+          const key = `${kind.suit}${kind.rank}`;
+          const n = used(key);
+          return (
+            <button
+              key={key}
+              className={`sbx-hand-tile${n > 0 ? " on" : ""}`}
+              disabled={full || n >= 4}
+              onClick={() => props.onAdd(key)}
+              title={n >= 4 ? "이 종류는 4장까지" : "손패에 담기"}
+            >
+              <TileImg tile={{ kind }} size="mini" />
+              {n > 0 ? <span className="sbx-seat-n">{n}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <button className="sbx-btn sbx-btn-wide" onClick={props.onApply}>
+        ▶ 이 손패로 새 판
+      </button>
+      <p className="sbx-hint">
+        지정한 패는 <b>매 국</b> 다시 배패됩니다. 패산에 남은 사본이 없으면(다른 좌석이
+        같은 패를 먼저 가져갔거나 4장을 넘겼으면) 그 자리는 조용히 무작위로 채워집니다.
+      </p>
+    </div>
+  );
+}
+
+/** "man5" 같은 kindKey를 TileKind로 되돌린다 (숫자 부분이 rank) */
+function kindFromKey(key: string): TileKind {
+  const m = /^([a-z]+)(\d+)$/.exec(key);
+  return m === null
+    ? { suit: "man", rank: 1 }
+    : { suit: m[1]!, rank: Number(m[2]) };
+}
+
+/**
+ * 봇 설정 — 행동 제약 4종과 봇 좌석 직접 조작 모드.
+ *
+ * 제약은 판을 갈아엎지 않고 다음 결정부터 바로 먹는다(체크하는 순간 적용).
+ * 조작 모드를 켜면 시점 전환으로 들어간 봇 좌석을 내가 직접 둔다 — 상대의 특정 타패나
+ * 증강 발동이 있어야만 확인되는 상황을 손으로 만들 수 있다.
+ */
+function SandboxBotSettings(props: {
+  rules: SandboxBotRules;
+  control: boolean;
+  controlling: string | null;
+  controllingName: string | null;
+  onToggle: (key: keyof SandboxBotRules) => void;
+  onControl?: (enabled: boolean) => void;
+}): JSX.Element {
+  const items: Array<[keyof SandboxBotRules, string, string]> = [
+    ["noCall", "후로 불가", "봇이 펑·치·대명깡을 하지 않는다"],
+    ["noRiichi", "리치 불가", "봇이 리치를 선언하지 않는다 (다마텐은 친다)"],
+    ["noWin", "화료 불가", "봇이 론·쯔모를 하지 않는다 — 판이 끝까지 흐른다"],
+    ["noAugment", "증강 사용 불가", "봇이 액티브 증강을 발동하지 않는다"],
+  ];
+  return (
+    <div className="sbx-bot">
+      <div className="sbx-bot-group">
+        <span className="sbx-label">봇 행동 제약</span>
+        {items.map(([key, label, hint]) => (
+          <label key={key} className="sbx-check" title={hint}>
+            <input
+              type="checkbox"
+              checked={props.rules[key] === true}
+              onChange={() => props.onToggle(key)}
+            />
+            <span className="sbx-check-label">{label}</span>
+            <span className="sbx-check-hint">{hint}</span>
+          </label>
+        ))}
+      </div>
+
+      {props.onControl !== undefined ? (
+        <div className="sbx-bot-group">
+          <span className="sbx-label">봇 좌석 조작</span>
+          <label className="sbx-check" title="시점 전환으로 들어간 봇 좌석을 내가 직접 둔다">
+            <input
+              type="checkbox"
+              checked={props.control}
+              onChange={() => props.onControl?.(!props.control)}
+            />
+            <span className="sbx-check-label">봇 시점에서 직접 조작</span>
+            <span className="sbx-check-hint">
+              그 좌석의 타패·리치·후로·증강 발동이 봇 대신 나에게 온다
+            </span>
+          </label>
+          <p className="sbx-hint">
+            {props.control
+              ? props.controlling !== null
+                ? `지금 ${props.controllingName ?? props.controlling} 좌석을 조작 중입니다.`
+                : "위 시점 버튼으로 봇 좌석을 고르면 그 자리를 직접 두게 됩니다."
+              : "꺼져 있습니다 — 봇 시점은 관찰만 됩니다."}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
