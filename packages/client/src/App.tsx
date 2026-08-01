@@ -5331,6 +5331,10 @@ function augmentLogRows(
     if (head === "spy") continue;
     // 안개가 걷어낸 강의 마지막 패: 강(River)이 직접 그린다
     if (head === "revealTiles" && (target === "fog" || target === "future")) continue;
+    // 다음 국으로 넘어가는 것(미련·귀환)은 국 결과창이 보여준다 — 그게 쓸모 있는 순간이다
+    if (head === "regret" || head === "honor_return") continue;
+    // 상대의 봉인·투시된 실제 패는 **그 상대의 손패 옆**(SealBadge)에 띄운다
+    if (head === "sealed" || head === "revealTiles") continue;
     // 잔량·게이지·발동 여부는 그 사람의 이름표 증강 pill이 대신 보여준다.
     if (PILL_OWNED_HEADS.has(head)) continue;
     // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
@@ -5342,49 +5346,13 @@ function augmentLogRows(
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
     if (head === "hidden_river" || head === "riichi_seal") continue;
 
-    if (head === "revealTiles" && Array.isArray(value)) {
-      // 봉인술사 — 상대의 봉인된 '실제' 손패를 진짜 패 그대로 보여준다.
-      const tiles = (value as unknown[])
-        .filter((id): id is number => typeof id === "number")
-        .map((id) => view.tiles[id])
-        .filter((t): t is PublicTileView => t !== undefined);
-      if (tiles.length > 0) {
-        rows.push(
-          <div key={key} className="auglog-row">
-            <span className="auglog-tag">봉인</span>
-            <span>{who}</span>
-            <span className="auglog-tiles">
-              {tiles.map((t) => <TileImg key={t.id} tile={t} size="mini" />)}
-            </span>
-          </div>,
-        );
-      }
-    } else if (head === "sealed" && Array.isArray(value)) {
-      // 봉인 '실제 패'(revealTiles)가 있으면 그쪽이 대신 표시하므로 종류 목록은 생략.
-      if (view.augmentView[`revealTiles:${target ?? ""}`] === undefined) {
-        rows.push(tileRow(key, "봉인", who, kindsOf(value)));
-      }
-    } else if (head === "tenpai_scan") {
+    if (head === "tenpai_scan") {
       // 천리안 — 지금 텐파이인 상대 목록 (보유자 전용 채널)
       const ids = Array.isArray(value) ? (value as string[]) : [];
       const names = ids.map((id) => playerNameById(view, id)).filter((n) => n !== "");
       rows.push(
         textRow(key, "천리안", names.length > 0 ? `텐파이: ${names.join(", ")}` : "텐파이인 상대 없음"),
       );
-    } else if (head === "regret" || head === "honor_return") {
-      // 미련 — 유국 시 다음 국으로 이월되는 텐파이 손 / 귀환 — 다음 국 배패에 부활할 자패.
-      // 두 채널 모두 TileKind 객체 배열을 싣는다(kindKey 문자열이 아니다).
-      const kinds = (Array.isArray(value) ? value : []).filter(
-        (k): k is TileKind =>
-          k !== null && typeof k === "object" && typeof (k as TileKind).suit === "string",
-      );
-      if (kinds.length > 0) {
-        rows.push(
-          head === "regret"
-            ? tileRow(key, "미련", `${who}의 이월 손패`, kinds)
-            : tileRow(key, "귀환", `${who}의 회수 자패`, kinds),
-        );
-      }
     } else if (PLAYER_VALUE[head] !== undefined) {
       // 값이 좌석 id인 채널 — 이름으로 푼다.
       if (typeof value !== "string" || value === "") continue;
@@ -6215,6 +6183,66 @@ function OppHandSlot({
   );
 }
 
+/**
+ * 봉인술사·손패 강탈로 알아낸 **그 상대의 손패** — 그 사람의 손패 옆에 띄운다.
+ *
+ * 예전엔 화면 왼쪽 위 목록에 `봉인 남풍 [미니패…]`로 떠 있었다. 누구 손패인지
+ * 글로 읽어야 했고, 정작 그 사람의 손패는 화면 반대편에 있었다. 정보는 그
+ * 정보가 가리키는 대상 옆에 있어야 한다 — 오름패 간파(WaitsBadge)와 같은 자리다.
+ *
+ * `revealTiles:{pid}`(실제 패, 적도라까지 그대로)가 있으면 그쪽이 우선이고,
+ * 없으면 `sealed:{pid}`(종류 목록)로 떨어진다.
+ *
+ * ⚠ 손패 **자리**까지는 알 수 없다. 서버는 명시된 tileId의 메타데이터만 뷰에 얹고
+ * 그 패들은 여전히 hiddenCount에 남는다(core PlayerView §revealTiles). 그래서
+ * 뒷면 자리를 이 패로 바꿔 치지 않는다 — 그러면 "앞에서 N번째"라는 없는 정보를
+ * 지어내게 된다. 손패 옆에 따로 띄운다.
+ */
+function sealedPeekOf(
+  view: PlayerView,
+  playerId: string,
+): { tiles: PublicTileView[]; kinds: TileKind[] } | null {
+  const revealed = view.augmentView[`revealTiles:${playerId}`];
+  if (Array.isArray(revealed)) {
+    const tiles = (revealed as unknown[])
+      .filter((id): id is number => typeof id === "number")
+      .map((id) => view.tiles[id])
+      .filter((t): t is PublicTileView => t !== undefined);
+    if (tiles.length > 0) return { tiles, kinds: [] };
+  }
+  const sealed = view.augmentView[`sealed:${playerId}`];
+  if (Array.isArray(sealed)) {
+    const kinds = (sealed as unknown[])
+      .map((k) => (typeof k === "string" ? parseKindKey(k) : null))
+      .filter((k): k is TileKind => k !== null);
+    if (kinds.length > 0) return { tiles: [], kinds };
+  }
+  return null;
+}
+
+/** 봉인·투시로 알아낸 상대 손패를 그 상대의 손패 옆에 띄우는 뱃지 */
+function SealBadge({
+  peek,
+  owner,
+}: {
+  peek: { tiles: PublicTileView[]; kinds: TileKind[] };
+  owner: string;
+}): JSX.Element {
+  return (
+    <div className="seal-badge" title={`${owner}의 봉인된 손패 — 나만 보인다`}>
+      <span className="seal-badge-label">
+        🔒 봉인
+        <span className="seal-badge-owner">{owner}</span>
+      </span>
+      <span className="seal-badge-tiles">
+        {peek.tiles.length > 0
+          ? peek.tiles.map((t) => <TileImg key={t.id} tile={t} size="mini" />)
+          : peek.kinds.map((kind, i) => <TileImg key={i} tile={{ kind }} size="mini" />)}
+      </span>
+    </div>
+  );
+}
+
 function OpponentStrip({
   view,
   player,
@@ -6286,6 +6314,8 @@ function OpponentStrip({
     : {};
   // 선언 간파로 알아낸 이 상대의 화료패 — 발동한 본인에게만 상시 노출
   const peeked = peekedWaits(view, player.id);
+  // 봉인술사·손패 강탈로 알아낸 이 상대의 손패 — 오름패 간파와 같은 자리에 띄운다
+  const sealPeek = sealedPeekOf(view, player.id);
   // 관전 모드에서는 손패가 전부 공개되므로 각 플레이어의 오름패(대기)를 직접 계산해 표시
   const specWaits = useMemo<TileKind[]>(() => {
     if (view.playerId !== SPECTATOR_ID) return [];
@@ -6322,6 +6352,7 @@ function OpponentStrip({
             peek={peekBadge}
           />
         ) : null}
+        {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
         <div className="opp-melds-row">
           {melds.map((m, i) => (
             <MeldGroup key={i} view={view} meld={m} owner={player} layout="row" />
@@ -6361,6 +6392,7 @@ function OpponentStrip({
             peek={peekBadge}
           />
         ) : null}
+      {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
       <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
       <div className="opp-backs-col">
         {slots.map((s, i) => (
@@ -9208,6 +9240,36 @@ function CountUpPoints({ value, mute = false }: { value: number; mute?: boolean 
   );
 }
 
+/**
+ * 유국 뒤 **다음 국으로 넘어가는 것** — 미련(이월되는 텐파이 손) · 귀환(부활할 자패).
+ *
+ * 둘 다 "이번 국이 끝나면 어떻게 되는가"라는 정보라 국 결과창이 제자리다.
+ * 예전엔 국이 도는 내내 왼쪽 위 목록에 줄로 떠 있었는데, 정작 그게 쓸모 있는
+ * 순간(유국 정산 화면)에는 결과창에 가려 보이지 않았다.
+ *
+ * 두 채널 모두 kindKey 문자열이 아니라 TileKind 객체 배열을 싣는다.
+ */
+function carryOverOf(
+  view: PlayerView,
+  playerId: string,
+): { label: string; note: string; kinds: TileKind[] }[] {
+  const out: { label: string; note: string; kinds: TileKind[] }[] = [];
+  const kindsOf = (raw: unknown): TileKind[] =>
+    (Array.isArray(raw) ? raw : []).filter(
+      (k): k is TileKind =>
+        k !== null && typeof k === "object" && typeof (k as TileKind).suit === "string",
+    );
+  const regret = kindsOf(view.augmentView[`regret:${playerId}`]);
+  if (regret.length > 0) {
+    out.push({ label: "미련", note: "다음 국으로 이 손을 그대로 가져간다", kinds: regret });
+  }
+  const back = kindsOf(view.augmentView[`honor_return:${playerId}`]);
+  if (back.length > 0) {
+    out.push({ label: "귀환", note: "다음 국 배패에 이 자패가 되살아난다", kinds: back });
+  }
+  return out;
+}
+
 function RoundResultPanel({
   result,
   view,
@@ -9440,6 +9502,17 @@ function RoundResultPanel({
                   ) : (
                     <div className="result-draw-hidden">패를 공개하지 않았다</div>
                   )}
+                  {carryOverOf(view, p.id).map((c) => (
+                    <div key={c.label} className="result-carry">
+                      <span className="result-carry-tag">{c.label}</span>
+                      <span className="result-carry-tiles">
+                        {c.kinds.map((kind, i) => (
+                          <TileImg key={i} tile={{ kind }} size="mini" />
+                        ))}
+                      </span>
+                      <span className="result-carry-note">{c.note}</span>
+                    </div>
+                  ))}
                 </div>
               );
             })}
