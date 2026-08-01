@@ -3787,6 +3787,67 @@ button {
   100% { transform: translate(-50%, -26px); opacity: 0; }
 }
 
+/* ─────────────── 지목 관계 화살표 ─────────────── */
+
+/* "A가 B를 지목했다"를 좌석과 좌석을 잇는 곡선으로 그린다.
+   곡선은 판 바깥으로 휘어 바닥(강)·도라 표시패 위를 지나지 않는다. */
+
+.rel-arrows {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  /* 판 위에 얹히는 장식이다 — 패를 누르는 것을 절대 가로막지 않는다.
+     표식(rel-arrow-dot)만 예외로 마우스를 받는다. */
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.rel-arrow {
+  opacity: 0.9;
+  transition: opacity 0.2s var(--ease);
+}
+
+/* 하나에 마우스를 올리면 나머지는 뒤로 물러난다 (선이 여럿일 때 따라 읽기) */
+.rel-arrow-dim {
+  opacity: 0.22;
+}
+
+.rel-arrow-line {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 7 6;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75));
+  animation: rel-flow 1.4s linear infinite;
+}
+
+@keyframes rel-flow {
+  to { stroke-dashoffset: -26; }
+}
+
+.rel-arrow-head {
+  fill: currentColor;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75));
+}
+
+.rel-arrow-dot {
+  fill: rgba(11, 19, 16, 0.94);
+  stroke: currentColor;
+  stroke-width: 2;
+  pointer-events: auto;
+  cursor: help;
+}
+
+.rel-arrow-icon {
+  font-size: 14px;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rel-arrow-line { animation: none; }
+}
+
 /* ─────────────── 증강 정보 로그 (우상단, 기본 접힘) ─────────────── */
 
 /* 예전엔 이 목록이 왼쪽 위(left:14 / top:60)에 상시로 펼쳐져 왼쪽 상대를 덮었다.
