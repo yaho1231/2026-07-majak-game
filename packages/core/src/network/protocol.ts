@@ -194,6 +194,22 @@ export interface PingMessage {
 }
 
 /**
+ * 내 손패 배치(왼→오른쪽 순서)를 서버에 알린다.
+ *
+ * 손패 배치는 실제 탁자에서 전원이 함께 보는 정보다 — 뒷면이라 내용은 안 보여도
+ * "몇 번째 자리의 패"는 모두에게 같아야 한다. 그래서 배치를 서버로 올려
+ * 관전·투시로 손패가 공개될 때 소유자가 실제로 쥔 순서 그대로 보이게 한다.
+ *
+ * 손패가 바뀌면(쯔모·버림) 클라이언트가 새 배치를 다시 보낸다. 서버는 낡은 배치도
+ * 그대로 흡수한다(없는 패는 무시, 새 패는 맨 뒤) — 자세한 규약은 core arrangeHand.
+ */
+export interface HandOrderMessage {
+  type: "handOrder";
+  /** 손패 tile id를 왼→오른쪽 순서로 */
+  tileIds: TileId[];
+}
+
+/**
  * 국 결과 화면을 닫고 다음 국으로 넘어갈 준비가 됐다는 신호.
  * 사람이 "닫기"를 누르거나 결과 화면이 자동으로 닫힐 때 전송한다.
  * 서버는 모든 사람이 이 신호를 보내면(또는 대기 상한 초과 시) 다음 국을 시작한다.
@@ -253,6 +269,7 @@ export type ClientMessage =
   | ActionMessage
   | DraftPickMessage
   | PingMessage
+  | HandOrderMessage
   | RoundContinueMessage
   | ReadyMessage
   | AddBotMessage

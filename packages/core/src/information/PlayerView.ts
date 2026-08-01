@@ -244,6 +244,77 @@ export function defineVisibilityRules(rules: RuleRegistry): void {
   rules.define<boolean>("visibility.doraIndicators.hidden", false);
 }
 
+// ─────────────────────────── 손패 배치(정렬) ───────────────────────────
+
+/**
+ * **손패 배치는 소유자의 것이다.**
+ *
+ * 실제 탁자에서 손패의 왼→오른쪽 순서는 그 사람이 정한다. 남들에게는 뒷면이라
+ * 내용이 안 보일 뿐, **자리 자체는 모두가 같은 것을 본다**. 뷰어마다 제각기
+ * 정렬하면 관전·투시로 공개될 때 그 사람이 실제로 쥔 배치와 어긋난다
+ * (2026-08-01 사용자 지적).
+ *
+ * 그래서 배치는 뷰를 만들 때 **한 번만** 정하고 모든 뷰어가 그 순서를 받는다.
+ * - 소유자가 배치를 보내 왔으면(`handOrder`) 그 순서 그대로.
+ * - 보내지 않았으면(봇·아직 한 번도 안 보낸 사람) 표준 정렬로 폴백한다.
+ *
+ * 배치는 곧 낡는다(쯔모·후로로 손패가 바뀌므로). 낡아도 안전하게 흡수한다:
+ * 지금 손에 없는 id는 무시하고, 배치에 없는 새 패(= 방금 쯔모한 패)는 **맨 뒤**로
+ * 보낸다 — 실제 마작에서 쯔모패를 손패 오른쪽에 따로 놓는 것과 같다.
+ */
+const DISPLAY_SUIT_ORDER: Record<string, number> = {
+  man: 0,
+  pin: 1,
+  sou: 2,
+  wind: 3,
+  dragon: 4,
+};
+
+/** 표준 정렬 키 — 만→통→삭→풍→삼원, 같은 패면 적도라가 앞. 클라이언트 sortTileIds의 사본 */
+function displayOrderOf(state: GameState, id: TileId): number {
+  const tile = state.tiles[id];
+  if (tile === undefined) return Number.MAX_SAFE_INTEGER;
+  const suit = DISPLAY_SUIT_ORDER[tile.kind.suit] ?? 9;
+  return suit * 1000 + tile.kind.rank * 10 - (tile.attrs.red === true ? 1 : 0);
+}
+
+function sortForDisplay(state: GameState, tileIds: readonly TileId[]): TileId[] {
+  return [...tileIds].sort((a, b) => {
+    const oa = displayOrderOf(state, a);
+    const ob = displayOrderOf(state, b);
+    if (oa !== ob) return oa - ob;
+    const sa = state.tiles[a]?.kind.suit ?? "";
+    const sb = state.tiles[b]?.kind.suit ?? "";
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return a - b;
+  });
+}
+
+/** 소유자가 정한 배치를 지금 손패에 적용한다 (배치가 없으면 표준 정렬) */
+function arrangeHand(
+  state: GameState,
+  tileIds: readonly TileId[],
+  order: readonly TileId[] | undefined,
+): TileId[] {
+  if (order === undefined || order.length === 0) {
+    return sortForDisplay(state, tileIds);
+  }
+  const inHand = new Set(tileIds);
+  const placed: TileId[] = [];
+  const seen = new Set<TileId>();
+  for (const id of order) {
+    if (!inHand.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    placed.push(id);
+  }
+  // 배치에 없는 패(= 배치를 보낸 뒤에 들어온 패)는 정렬해 맨 뒤에 붙인다
+  const rest = sortForDisplay(
+    state,
+    tileIds.filter((id) => !seen.has(id)),
+  );
+  return [...placed, ...rest];
+}
+
 // ─────────────────────────── 핵심: buildPlayerView ───────────────────────────
 
 /**
@@ -263,6 +334,11 @@ export function buildPlayerView(
     uraDoraIndicators?: TileId[];
     /** 역 레지스트리 — 주면 본인 뷰에 형식텐파이(역없음) 여부를 채운다 */
     yaku?: YakuRegistry;
+    /**
+     * 플레이어별 손패 배치 (소유자가 직접 정한 왼→오른쪽 순서).
+     * 없는 플레이어는 표준 정렬로 폴백한다. 자세한 규약은 arrangeHand 주석.
+     */
+    handOrder?: Record<PlayerId, readonly TileId[]>;
   },
 ): PlayerView {
   const isSpectator = viewerId === SPECTATOR_ID;
@@ -278,8 +354,14 @@ export function buildPlayerView(
       zone.owner,
       state,
     );
+    // 손패는 소유자가 정한 배치를 **가시성보다 먼저** 입힌다 — 그래야
+    // 엿보기(앞 N장)도, 관전·투시(전부 공개)도 모두 같은 배치를 본다.
+    const zoneTileIds =
+      zone.kind === "hand" && zone.owner !== undefined
+        ? arrangeHand(state, zone.tileIds, options?.handOrder?.[zone.owner])
+        : zone.tileIds;
     const { tileIds, hiddenCount } = applyVisibility(
-      zone.tileIds,
+      zoneTileIds,
       zone.owner,
       viewerId,
       visibility,
