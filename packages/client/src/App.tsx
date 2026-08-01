@@ -4544,6 +4544,8 @@ function GameTable(props: {
         <CenterPanel view={view} seats={seats} scoreFx={props.scoreFx} />
       </div>
 
+      <RelationArrows view={view} />
+
       <AugmentLog
         view={view}
         catalog={catalog}
@@ -5016,6 +5018,232 @@ function AbortVoteBanner(props: {
   );
 }
 
+// ─────────────────────────── 지목 관계 화살표 ───────────────────────────
+
+/**
+ * "A가 B를 지목했다"는 관계를 **좌석과 좌석을 잇는 화살표**로 그린다.
+ *
+ * 이 관계들은 예전에 전부 글줄이었다 — `복수 남풍 → 서풍`, `기생 동풍 → 북풍`,
+ * `격(格) 서풍 → 남풍 (5판 미만 화료 불가)` … 아홉 종이 한꺼번에 걸리면 목록의
+ * 절반을 먹는다. 관계는 글이 아니라 선으로 읽는 게 빠르다.
+ *
+ * 곡선은 판 **바깥쪽으로** 휜다 — 안쪽으로 휘면 바닥(강)과 도라 표시패를 가로지른다.
+ * 양 끝점은 좌석 좌표를 박아 두는 대신 이름표(`[data-seat-anchor]`)의 실제 화면
+ * 위치를 재서 쓴다. 화면 크기·이름표 길이가 바뀌어도 따라온다.
+ */
+type Relation = {
+  key: string;
+  from: string;
+  to: string;
+  /** 곡선 가운데에 앉는 표식 */
+  icon: string;
+  /** 표식에 붙는 짧은 이름 */
+  label: string;
+  /** 선 색 */
+  color: string;
+};
+
+/** 지목형 증강 → 표식·색. 여기 없는 관계는 그리지 않는다. */
+const RELATION_META: Record<string, { icon: string; label: string; color: string }> = {
+  avenger: { icon: "🗡", label: "복수", color: "#e0685f" },
+  scapegoat: { icon: "🎭", label: "덤터기", color: "#e0a05f" },
+  rank_gate: { icon: "⛩️", label: "격", color: "#c9a227" },
+  push_riichi: { icon: "🤚", label: "등 떠밀기", color: "#5fa8e0" },
+  disarm: { icon: "🔒", label: "무장해제", color: "#8d9490" },
+  parasite: { icon: "🪱", label: "기생", color: "#7fbf6a" },
+  frame_up: { icon: "🖼", label: "누명", color: "#b98cd8" },
+  counter: { icon: "↩️", label: "반격", color: "#e05f9a" },
+  full_hand_swap: { icon: "🔀", label: "통째 교환", color: "#5fd0c0" },
+};
+
+/** 이 화살표들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
+const RELATION_HEADS: ReadonlySet<string> = new Set(Object.keys(RELATION_META));
+
+/** augmentView에서 지금 살아 있는 지목 관계를 뽑는다 */
+function relationsOf(view: PlayerView): Relation[] {
+  const out: Relation[] = [];
+  const seen = new Set<string>();
+  const has = (id: string): boolean => view.players.some((p) => p.id === id);
+  const push = (key: string, head: string, from: string, to: string): void => {
+    const meta = RELATION_META[head];
+    if (meta === undefined) return;
+    if (from === to || !has(from) || !has(to)) return;
+    // 같은 증강의 같은 관계가 두 채널로 들어와도 선은 하나만 (등 떠밀기의 낙인/발동)
+    const dedup = `${head}:${from}:${to}`;
+    if (seen.has(dedup)) return;
+    seen.add(dedup);
+    out.push({ key, from, to, ...meta });
+  };
+
+  for (const [key, value] of Object.entries(view.augmentView)) {
+    const [head, target] = key.split(":") as [string, string | undefined];
+    if (!RELATION_HEADS.has(head)) continue;
+
+    // 값이 객체인 것 — 지목자는 키에, 대상은 값 안에 있다
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const m = value as { by?: string; target?: string };
+      if (typeof m.target !== "string") continue;
+      push(key, head, typeof m.by === "string" ? m.by : (target ?? ""), m.target);
+      continue;
+    }
+    // 값이 대상 playerId인 것 — `push_riichi:fired:{h}` 처럼 중간 마디가 낀 키도 있어
+    // 지목자는 키의 **마지막** 마디에서 읽는다.
+    if (typeof value !== "string" || value === "") continue;
+    const parts = key.split(":");
+    const from = parts[parts.length - 1] ?? "";
+    push(key, head, from, value);
+  }
+  return out;
+}
+
+/** 이름표 중심의 화면 좌표 (오버레이 기준) */
+type Anchor = { x: number; y: number };
+
+function RelationArrows({ view }: { view: PlayerView }): JSX.Element | null {
+  const relations = relationsOf(view);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [anchors, setAnchors] = useState<Record<string, Anchor>>({});
+  // 어떤 관계에 마우스를 올렸는가 — 그 선만 남기고 나머지는 죽인다
+  const [hover, setHover] = useState<string | null>(null);
+
+  // 이름표는 우리 바깥에 있으므로(좌석마다 다른 컨테이너) DOM에서 직접 잰다.
+  // view가 바뀔 때마다 다시 재는 이유: 증강 pill이 늘면 이름표 크기가 변한다.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (host === null) return undefined;
+    const measure = (): void => {
+      const hr = host.getBoundingClientRect();
+      const next: Record<string, Anchor> = {};
+      for (const p of view.players) {
+        const el = document.querySelector(`[data-seat-anchor="${p.id}"]`);
+        if (el === null) continue;
+        const r = el.getBoundingClientRect();
+        next[p.id] = {
+          x: r.left + r.width / 2 - hr.left,
+          y: r.top + r.height / 2 - hr.top,
+        };
+      }
+      setSize({ w: hr.width, h: hr.height });
+      setAnchors(next);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [view]);
+
+  if (relations.length === 0) return <div className="rel-arrows" ref={hostRef} />;
+
+  const cx = size.w / 2;
+  const cy = size.h / 2;
+  // 좌석 고리의 반지름 — 판 중심에서 가장 먼 이름표까지의 거리.
+  // 곡선을 이 바깥으로 돌려야 세로로 긴 화면에서도 바닥을 가로지르지 않는다.
+  const ring = Math.max(
+    1,
+    ...Object.values(anchors).map((p) => Math.hypot(p.x - cx, p.y - cy)),
+  );
+  const drawn: JSX.Element[] = [];
+
+  relations.forEach((rel, i) => {
+    const a = anchors[rel.from];
+    const b = anchors[rel.to];
+    if (a === undefined || b === undefined) return;
+
+    // 제어점은 좌석 고리 **바깥**에 둔다 — 안쪽으로 휘면 바닥(강)과 도라를 가로지른다.
+    // 방향은 두 끝의 가운데가 판 중심에서 벗어난 쪽. 맞은편 좌석끼리는 가운데가 곧
+    // 판 중심이라 밀 방향이 없으므로, 두 좌석을 잇는 선의 수직으로 비킨다.
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    let dirX = mx - cx;
+    let dirY = my - cy;
+    const dist = Math.hypot(dirX, dirY);
+    const opposite = dist < ring * 0.12;
+    if (opposite) {
+      // 방향을 **좌석 id 순서로 고정**한 뒤 실제 진행 방향에 따라 부호를 뒤집는다 —
+      // 이렇게 해야 A→B와 B→A가 서로 반대쪽으로 휜다. (b-a에서 바로 수직을 뽑으면
+      // 벡터와 부호가 함께 뒤집혀 두 화살표가 같은 쪽에 포개진다.)
+      const forward = rel.from < rel.to;
+      const lo = forward ? a : b;
+      const hi = forward ? b : a;
+      const len = Math.hypot(hi.x - lo.x, hi.y - lo.y) || 1;
+      const sign = forward ? 1 : -1;
+      dirX = (-(hi.y - lo.y) / len) * sign;
+      dirY = ((hi.x - lo.x) / len) * sign;
+    } else {
+      dirX /= dist;
+      dirY /= dist;
+    }
+    // 반지름은 **좌석 고리 기준**이다(화면 크기 기준이면 세로로 긴 화면에서 판을
+    // 못 비켜간다). 맞은편끼리는 화면을 가로지르므로 더 크게 부풀린다.
+    // i를 더해 같은 두 좌석에 여러 관계가 걸려도 선이 포개지지 않게 한다.
+    const wanted = ring * (opposite ? 1.15 : 0.95) + i * 16;
+    // 곡선의 꼭대기는 제어점까지 거리의 절반이다 — 그 지점이 화면 밖으로 나가지
+    // 않도록 반지름을 자른다(세로로 긴 화면에서 좌우로 부푸는 곡선이 잘렸다).
+    const margin = 18;
+    const tx = dirX > 0 ? (size.w - margin - cx) / dirX : dirX < 0 ? (margin - cx) / dirX : Infinity;
+    const ty = dirY > 0 ? (size.h - margin - cy) / dirY : dirY < 0 ? (margin - cy) / dirY : Infinity;
+    const radius = Math.min(wanted, 2 * Math.min(tx, ty));
+    const px = cx + dirX * radius;
+    const py = cy + dirY * radius;
+
+    // 표식이 앉을 자리 — 곡선 위 한 점.
+    // 맞은편 좌석끼리는 곡선의 한가운데가 곧 좌·우 이름표 높이라 표식이 이름표를
+    // 덮는다. 그래서 조금 앞당겨 앉힌다(t=0.35).
+    const t = opposite ? 0.35 : 0.5;
+    const it = 1 - t;
+    const lx = it * it * a.x + 2 * t * it * px + t * t * b.x;
+    const ly = it * it * a.y + 2 * t * it * py + t * t * b.y;
+    // 끝점의 접선 방향으로 화살촉을 돌린다
+    const angle = (Math.atan2(b.y - py, b.x - px) * 180) / Math.PI;
+
+    // 선은 이름표 **가장자리**에서 끊는다 — 중심까지 그으면 닉네임 위를 덮는다.
+    const back = (from: Anchor, toward: Anchor, by: number): Anchor => {
+      const len = Math.hypot(toward.x - from.x, toward.y - from.y) || 1;
+      return { x: from.x + ((toward.x - from.x) / len) * by, y: from.y + ((toward.y - from.y) / len) * by };
+    };
+    const start = back(a, { x: px, y: py }, 26);
+    const end = back(b, { x: px, y: py }, 26);
+
+    const dim = hover !== null && hover !== rel.key;
+    drawn.push(
+      <g
+        key={rel.key}
+        className={`rel-arrow${dim ? " rel-arrow-dim" : ""}`}
+        style={{ color: rel.color }}
+        onMouseEnter={() => setHover(rel.key)}
+        onMouseLeave={() => setHover(null)}
+      >
+        <path
+          className="rel-arrow-line"
+          d={`M ${start.x} ${start.y} Q ${px} ${py} ${end.x} ${end.y}`}
+          fill="none"
+        />
+        <polygon className="rel-arrow-head" points="0,0 -13,-5.5 -13,5.5" transform={`translate(${end.x} ${end.y}) rotate(${angle})`} />
+        <g transform={`translate(${lx} ${ly})`}>
+          <circle className="rel-arrow-dot" r="12" />
+          <text className="rel-arrow-icon" textAnchor="middle" dominantBaseline="central">
+            {rel.icon}
+          </text>
+          <title>{`${rel.label} — ${playerNameById(view, rel.from)} → ${playerNameById(view, rel.to)}`}</title>
+        </g>
+      </g>,
+    );
+  });
+
+  return (
+    <div className="rel-arrows" ref={hostRef}>
+      {drawn.length > 0 ? (
+        <svg width={size.w} height={size.h} aria-hidden="true">{drawn}</svg>
+      ) : null}
+    </div>
+  );
+}
+
 // ─────────────────────────── 증강 정보 로그 ───────────────────────────
 
 /**
@@ -5089,8 +5317,6 @@ function augmentLogRows(
   };
   /** 값이 **좌석 id**인 채널 — 폴백에 맡기면 `p2` 가 그대로 찍힌다(2026-08-01). */
   const PLAYER_VALUE: Record<string, string> = {
-    counter: "반격",
-    full_hand_swap: "통째 교환",
     riichi_upgrade: "이중 선언",
   };
 
@@ -5115,6 +5341,9 @@ function augmentLogRows(
     if (head === "revealTiles" && (target === "fog" || target === "future")) continue;
     // 잔량·게이지·발동 여부는 그 사람의 이름표 증강 pill이 대신 보여준다.
     if (PILL_OWNED_HEADS.has(head)) continue;
+    // "A가 B를 지목했다"는 관계는 좌석과 좌석을 잇는 화살표(RelationArrows)가 그린다.
+    // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 선으로 못 쓰므로 뱃지 줄에 남는다.
+    if (RELATION_HEADS.has(head)) continue;
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
     if (
       head === "let_it_ride" ||
@@ -5124,15 +5353,7 @@ function augmentLogRows(
     ) {
       continue;
     }
-    // 아래는 뱃지 줄이 **내 것만** 띄운다 — 제3자 관계만 로그에 남긴다.
-    if (head === "avenger") {
-      if (target === me || value === me) continue;
-      if (typeof value === "string" && value !== "") {
-        rows.push(textRow(key, "복수", `${who} → ${playerNameById(view, value)}`));
-      }
-      continue;
-    }
-    if (head === "scapegoat" && target === me) continue;
+    // 본장 사냥꾼은 뱃지 줄이 **내 것만** 띄운다 — 제3자 것만 로그에 남긴다.
     if (head === "honba_hunter" && target === me) continue;
 
     if (head === "revealTiles" && Array.isArray(value)) {
@@ -5159,8 +5380,6 @@ function augmentLogRows(
       }
     } else if (head === "suit_unify" && typeof value === "string") {
       rows.push(textRow(key, "단색", `${who}: ${suitKo[value] ?? value}`));
-    } else if (head === "scapegoat" && typeof value === "string") {
-      rows.push(textRow(key, "덤터기", `${who} → ${playerNameById(view, value)}`));
     } else if (head === "take_back") {
       const kinds = typeof value === "string" ? kindsOf([value]) : [];
       if (kinds.length > 0) rows.push(tileRow(key, nameOf(head), who, kinds));
@@ -5168,19 +5387,6 @@ function augmentLogRows(
       rows.push(textRow(key, nameOf(head), `${who}: ${YAKU_NAMES[value] ?? value}`));
     } else if (head === "all_or_nothing" && typeof value === "number") {
       rows.push(textRow(key, "올인", `${who}: ${value.toLocaleString()}점`));
-    } else if (head === "rank_gate") {
-      // 격 — 지목 당사자(나)는 뱃지 줄이 크게 띄운다. 제3자 관계만 여기 남긴다.
-      const m = value as { by?: string; target?: string; minHan?: number } | null;
-      if (m !== null && typeof m === "object" && typeof m.target === "string") {
-        if (m.target === me || m.by === me) continue;
-        rows.push(
-          textRow(
-            key,
-            "격(格)",
-            `${playerNameById(view, m.by ?? "")} → ${playerNameById(view, m.target)} (${m.minHan ?? 5}판 미만 화료 불가)`,
-          ),
-        );
-      }
     } else if (head === "ankan_dora") {
       // 밀실의 도라 — 안깡친 종류가 보유자만의 개인 도라가 된다(전원 공개)
       const m = value as { kinds?: string[] } | null;
@@ -5220,33 +5426,6 @@ function augmentLogRows(
     } else if (head === "foresight") {
       // 예지 — 발동(공개)했다는 사실만 공개(무엇을 봤고 어떻게 짰는지는 비공개)
       rows.push(textRow(key, "예지", `${who}: 예지를 발동했다`));
-    } else if (head === "push_riichi") {
-      // 등 떠밀기 — 낙인(누가 누구를) / 발동(강제 리치가 터진 순간).
-      // 값이 playerId라 예전엔 아래 문자열 폴백이 "p2"를 그대로 찍었다(2026-08-01 보고).
-      if (typeof value !== "string" || value === "") continue;
-      if (target === "fired") {
-        rows.push(textRow(key, "등 떠밀기", `${playerNameById(view, value)} — 강제 리치`));
-      } else {
-        rows.push(
-          textRow(key, "등 떠밀기", `${who} → ${playerNameById(view, value)} 낙인`),
-        );
-      }
-    } else if (head === "parasite") {
-      // 기생충 — 지금 누구에게 붙어 있는지 (값이 숙주 playerId)
-      if (typeof value !== "string" || value === "") continue;
-      rows.push(textRow(key, "기생", `${who} → ${playerNameById(view, value)}`));
-    } else if (head === "disarm") {
-      // 무장해제 — 당사자(나)는 뱃지 줄 + 이름표 pill 자물쇠가 이미 보여준다.
-      const m = value as { target?: string; augmentId?: string } | null;
-      if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
-      if (m.target === me || target === me) continue;
-      rows.push(
-        textRow(
-          key,
-          "🔒 무장해제",
-          `${who} → ${playerNameById(view, m.target)}의 「${augmentDisplayName(m.augmentId ?? "")}」 이번 국 잠김`,
-        ),
-      );
     } else if (KIND_VALUE[key] !== undefined || KIND_VALUE[head] !== undefined) {
       // 값이 패 종류 키 하나인 채널 — 글자가 아니라 실제 패로 그린다.
       const label = KIND_VALUE[key] ?? KIND_VALUE[head] ?? head;
@@ -6409,7 +6588,9 @@ function NamePlate({
   const disarmed = disarmedAugmentsOf(view, player.id);
   const reloaded = reloadedAugmentsOf(view, player.id);
   return (
-    <div className={`nameplate${isTurn ? " nameplate-turn" : ""}`}>
+    // data-seat-anchor — 지목 관계 화살표(RelationArrows)가 이 이름표의 실제
+    // 화면 위치를 재서 곡선의 양 끝으로 삼는다. 좌석 좌표를 코드에 박지 않는다.
+    <div className={`nameplate${isTurn ? " nameplate-turn" : ""}`} data-seat-anchor={player.id}>
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
       {player.augments.length > 0 ? (
