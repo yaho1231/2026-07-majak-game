@@ -1373,6 +1373,12 @@ export function App(): JSX.Element {
     rankGate: Set<string>;
     /** 성립하지 않는 깡 컷인을 이미 띄운 `${key}:${kind}:${roundKey}` */
     voidKan: Set<string>;
+    /**
+     * 일회성 증강 사건 컷인을 이미 띄운 서명 `${key}=${값}@${roundKey}`.
+     * 채널은 국이 끝날 때까지 값을 그대로 들고 있으므로(뷰가 매 틱 다시 온다)
+     * 서명으로 걸러야 같은 사건이 매 뷰마다 다시 터지지 않는다.
+     */
+    augEvents: Set<string>;
   }>({
     roundKey: "",
     riichi: new Set(),
@@ -1382,6 +1388,7 @@ export function App(): JSX.Element {
     spyCaught: new Set(),
     rankGate: new Set(),
     voidKan: new Set(),
+    augEvents: new Set(),
   });
 
   const [connection, setConnection] = useState<ConnectionState>("idle");
@@ -1790,7 +1797,8 @@ export function App(): JSX.Element {
         sealed: 0,
         spyCaught: new Set(),
         rankGate: new Set(),
-    voidKan: new Set(),
+        voidKan: new Set(),
+        augEvents: new Set(),
       };
   }
 
@@ -1821,6 +1829,7 @@ export function App(): JSX.Element {
       spyCaught: new Set(),
       rankGate: new Set(),
       voidKan: new Set(),
+      augEvents: new Set(),
     };
     if (sandbox !== null) {
       send({
@@ -2024,7 +2033,8 @@ export function App(): JSX.Element {
         sealed: 0,
         spyCaught: new Set(),
         rankGate: new Set(),
-    voidKan: new Set(),
+        voidKan: new Set(),
+        augEvents: new Set(),
       };
       return;
     }
@@ -2283,6 +2293,12 @@ export function App(): JSX.Element {
         }
       }
       shown.sealed = next.round.byPlayer[next.playerId]?.sealedTileIds?.length ?? 0;
+      // 재접속·중간 합류: 이미 벌어진 증강 사건이 한꺼번에 터지지 않게 시드한다.
+      shown.augEvents = new Set();
+      for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
+        if (augEventFor(key) === null) continue;
+        shown.augEvents.add(`${key}=${JSON.stringify(raw)}@${rk}`);
+      }
       return;
     }
 
@@ -2318,6 +2334,7 @@ export function App(): JSX.Element {
       shown.riichi = new Set();
       shown.melds = {};
       shown.kanAdded = new Set();
+      shown.augEvents = new Set();
       // 안전망: 리치 BGM이 국 종료 처리(fadeOut)를 어떤 이유로 놓쳐도
       // 새 국에는 절대 이월되지 않게 확실히 정지한다.
       riichiBgm.stop();
@@ -2539,6 +2556,27 @@ export function App(): JSX.Element {
         sfx: () => sfx.augment(1),
         augId: "void_kan",
         ...(kind !== null ? { tiles: [kind] } : {}),
+        impact: { shake: 2 },
+      });
+    }
+
+    // 일회성 증강 사건 — 터지는 순간 한 번 크게 보여주고 끝낸다(AUG_EVENTS 표).
+    // 채널은 국이 끝날 때까지 값을 들고 있으므로 서명으로 걸러 매 뷰마다 재발동하지 않게 한다.
+    for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
+      const def = augEventFor(key);
+      if (def === null) continue;
+      // 껐다 켜는 플래그형(밑장빼기 무장 해제 등)은 켜졌을 때만 알린다
+      if (raw === false || raw === null || raw === undefined || raw === "") continue;
+      const seen = `${key}=${JSON.stringify(raw)}@${roundKeyOf(next)}`;
+      if (shown.augEvents.has(seen)) continue;
+      shown.augEvents.add(seen);
+      const holder = key.slice(def.prefix.length + 1);
+      const who = playerNameById(next, holder);
+      const tiles = augEventTiles(raw);
+      showCutIn(def.title, "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, 2000, {
+        sfx: () => sfx.augment(1),
+        augId: def.augId,
+        ...(tiles.length > 0 ? { tiles } : {}),
         impact: { shake: 2 },
       });
     }
@@ -5018,7 +5056,7 @@ function AbortVoteBanner(props: {
   );
 }
 
-// ─────────────────────────── 지목 관계 화살표 ───────────────────────────
+// ─────────────────────────── 지목 관계 표식 ───────────────────────────
 
 /**
  * "A가 B를 지목했다"는 관계를 **양쪽 이름표 위의 작은 표식**으로 보여준다.
@@ -5137,6 +5175,81 @@ function relationsAt(relations: readonly Relation[], playerId: string): Relation
   return relations.filter((r) => r.from === playerId || r.to === playerId);
 }
 
+// ─────────────────────────── 일회성 증강 사건 (컷인) ───────────────────────────
+
+/**
+ * **한 번 일어나고 끝나는** 증강 사건 → 전면 컷인 문구.
+ *
+ * 이 채널들은 "지금 무슨 일이 벌어졌다"를 싣는다. 상태가 아니라 사건이므로 목록에
+ * 줄로 쌓아 둘 이유가 없다 — 터지는 순간 크게 보여주고 사라지면 된다.
+ * (예전엔 왼쪽 위 목록에 `소환한 패 [3만]` 같은 줄로 남아 국이 끝날 때까지 붙어 있었다.)
+ *
+ * ⚠ 이 사건들을 **바닥(강) 위의 표식**으로 그리려다 접었다. 무르기·정적의 손·무덤
+ * 도굴·한 끗 차이는 전부 그 패가 바닥에서 **빠져나간** 사건이라 표시할 대상이 이미
+ * 없고, 채널이 싣는 것도 tileId가 아니라 패 '종류'라 어느 패였는지 특정할 수도 없다.
+ * 바닥에 남는 증강 상태는 안개(revealTiles:fog)뿐이고 그건 이미 River가 그린다.
+ *
+ * 키는 채널 접두다. 더 긴 접두가 먼저 맞는다(`conjure_draw:done` > `conjure_draw`).
+ */
+const AUG_EVENTS: Record<string, { title: string; sub: string; augId: string }> = {
+  "conjure_draw:done": { title: "소환 성공", sub: "부른 패가 그대로 왔다", augId: "conjure_draw" },
+  conjure_draw: { title: "소환", sub: "다음 쯔모로 이 패를 부른다", augId: "conjure_draw" },
+  three_dragons_will: { title: "삼원패의 의지", sub: "삼원패가 손으로 걸어 들어온다", augId: "three_dragons_will" },
+  haitei_lord: { title: "해저의 주인", sub: "마지막 한 장을 손에 넣었다", augId: "haitei_lord" },
+  off_by_one: { title: "한 끗 차이", sub: "한 끗을 비틀어 손을 맞췄다", augId: "off_by_one" },
+  grave_rob: { title: "무덤 도굴", sub: "바닥에 묻힌 패로 화료했다", augId: "grave_rob" },
+  take_back: { title: "무르기", sub: "방금 버린 패를 도로 집었다", augId: "take_back" },
+  silent_swap: { title: "정적의 손", sub: "상대의 바닥에서 소리 없이 가져갔다", augId: "silent_swap" },
+  foresight: { title: "예지", sub: "앞을 보고 손을 다시 짰다", augId: "foresight" },
+  palm_flip: { title: "손바닥 뒤집기", sub: "판이 통째로 뒤집힌다", augId: "palm_flip" },
+  tile_split: { title: "패 쪼개기", sub: "한 장이 두 장으로 갈라졌다", augId: "tile_split" },
+  meld_dissolve: { title: "후로 해체", sub: "이미 울어 둔 묶음이 풀렸다", augId: "meld_dissolve" },
+  "bottom_deal:armed": { title: "밑장빼기", sub: "패산 맨 밑장을 노린다", augId: "bottom_deal" },
+};
+
+/** 채널 키에 맞는 사건 정의 — 더 긴 접두가 이긴다 */
+function augEventFor(key: string): { prefix: string; title: string; sub: string; augId: string } | null {
+  let best: { prefix: string; title: string; sub: string; augId: string } | null = null;
+  for (const [prefix, def] of Object.entries(AUG_EVENTS)) {
+    if (!key.startsWith(`${prefix}:`)) continue;
+    if (best !== null && best.prefix.length >= prefix.length) continue;
+    best = { prefix, ...def };
+  }
+  return best;
+}
+
+/** 사건 값에서 함께 띄울 패를 뽑는다 (값이 패 키 하나이거나, kind/from/to를 품은 객체다) */
+function augEventTiles(raw: unknown): TileKind[] {
+  if (typeof raw === "string") {
+    const k = parseKindKey(raw);
+    return k === null ? [] : [k];
+  }
+  if (raw === null || typeof raw !== "object") return [];
+  const m = raw as { kind?: unknown; from?: unknown; to?: unknown };
+  const out: TileKind[] = [];
+  for (const v of [m.kind, m.from]) {
+    if (typeof v !== "string") continue;
+    const k = parseKindKey(v);
+    if (k !== null) out.push(k);
+  }
+  if (Array.isArray(m.to)) {
+    for (const v of m.to) {
+      if (typeof v !== "string") continue;
+      const k = parseKindKey(v);
+      if (k !== null) out.push(k);
+    }
+  }
+  return out;
+}
+
+/** 이 컷인들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
+const AUG_EVENT_HEADS: ReadonlySet<string> = new Set([
+  ...Object.keys(AUG_EVENTS).map((k) => k.split(":")[0] ?? k),
+  // 표를 만들기 전부터 전용 컷인이 있던 둘 — 로그에 다시 찍히지 않게 함께 넣는다
+  "void_kan", // 성립하지 않는 깡
+  "spy", // 스파이 적발
+]);
+
 // ─────────────────────────── 증강 정보 로그 ───────────────────────────
 
 /**
@@ -5194,19 +5307,6 @@ function augmentLogRows(
   /** 이 문자열이 이 판의 좌석 id인가 — 폴백이 "p2"를 날것으로 찍는 것을 막는다 */
   const isPlayerId = (s: string): boolean => view.players.some((p) => p.id === s);
 
-  /**
-   * 값이 **패 종류 키 하나**인 채널 — 폴백에 맡기면 `m3` 가 그대로 찍힌다(2026-08-01).
-   * head → 줄에 붙일 이름.
-   */
-  const KIND_VALUE: Record<string, string> = {
-    conjure_draw: "소환한 패",
-    "conjure_draw:done": "소환 성공",
-    grave_rob: "도굴한 패",
-    off_by_one: "한 끗 차이",
-    void_kan: "허공의 깡",
-    three_dragons_will: "삼원패의 의지",
-    haitei_lord: "해저의 주인",
-  };
   /** 값이 **좌석 id**인 채널 — 폴백에 맡기면 `p2` 가 그대로 찍힌다(2026-08-01). */
   const PLAYER_VALUE: Record<string, string> = {
     riichi_upgrade: "이중 선언",
@@ -5236,6 +5336,9 @@ function augmentLogRows(
     // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
     // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 표식으로 못 쓰므로 뱃지 줄에 남는다.
     if (RELATION_HEADS.has(head)) continue;
+    // 한 번 일어나고 끝나는 사건은 터지는 순간 전면 컷인으로 크게 보여준다(AUG_EVENTS).
+    // 상태가 아니라 사건이라 국이 끝날 때까지 줄로 쌓아 둘 이유가 없다.
+    if (AUG_EVENT_HEADS.has(head)) continue;
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
     if (head === "hidden_river" || head === "riichi_seal") continue;
 
@@ -5261,9 +5364,6 @@ function augmentLogRows(
       if (view.augmentView[`revealTiles:${target ?? ""}`] === undefined) {
         rows.push(tileRow(key, "봉인", who, kindsOf(value)));
       }
-    } else if (head === "take_back") {
-      const kinds = typeof value === "string" ? kindsOf([value]) : [];
-      if (kinds.length > 0) rows.push(tileRow(key, nameOf(head), who, kinds));
     } else if (head === "tenpai_scan") {
       // 천리안 — 지금 텐파이인 상대 목록 (보유자 전용 채널)
       const ids = Array.isArray(value) ? (value as string[]) : [];
@@ -5285,24 +5385,6 @@ function augmentLogRows(
             : tileRow(key, "귀환", `${who}의 회수 자패`, kinds),
         );
       }
-    } else if (head === "silent_swap") {
-      const m = value as { from?: string; kind?: string } | null;
-      if (m !== null && typeof m === "object") {
-        const kinds = typeof m.kind === "string" ? kindsOf([m.kind]) : [];
-        rows.push(
-          kinds.length > 0
-            ? tileRow(key, "정적의 손", `${who} ← ${playerNameById(view, m.from ?? "")}의 바닥`, kinds)
-            : textRow(key, "정적의 손", who),
-        );
-      }
-    } else if (head === "foresight") {
-      // 예지 — 발동(공개)했다는 사실만 공개(무엇을 봤고 어떻게 짰는지는 비공개)
-      rows.push(textRow(key, "예지", `${who}: 예지를 발동했다`));
-    } else if (KIND_VALUE[key] !== undefined || KIND_VALUE[head] !== undefined) {
-      // 값이 패 종류 키 하나인 채널 — 글자가 아니라 실제 패로 그린다.
-      const label = KIND_VALUE[key] ?? KIND_VALUE[head] ?? head;
-      const kinds = typeof value === "string" ? kindsOf([value]) : [];
-      if (kinds.length > 0) rows.push(tileRow(key, label, who, kinds));
     } else if (PLAYER_VALUE[head] !== undefined) {
       // 값이 좌석 id인 채널 — 이름으로 푼다.
       if (typeof value !== "string" || value === "") continue;
