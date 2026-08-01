@@ -24,15 +24,40 @@ Last Updated : 2026-07-16
 방(Room)은 두 페이즈를 가진다.
 
 ```
-waiting ──(방장 startGame)──▶ playing ──(gameOver)──▶ 방 삭제
+waiting ──(방장 startGame)──▶ playing ──(gameOver)──▶ waiting (이어하기)
+                                                       └─(사람이 다 나가면)─▶ 방 삭제
 ```
 
-- **방장(host)** : 방에 처음 들어온 사람. `room.hostId`.
+- **방장(host)** : 방에 처음 들어온 사람. `room.hostId`. 방장이 나가면 남은 사람에게 승계된다.
 - **준비(ready)** : 방장을 제외한 사람은 준비 완료 버튼을 눌러야 한다. 봇·방장은 항상 준비 상태.
 - **봇 채우기** : 방장이 빈 자리에 봇을 넣거나(`addBot`) 뺄 수 있다(`removeBot`).
+- **강퇴(kickPlayer)** : 방장이 대기 중에만 사람을 내보낸다. 내보낸 사람은 **그 방이 살아 있는 동안 재입장 불가**(`room.kicked`) — 코드만 알면 곧바로 돌아올 수 있으면 강퇴가 의미가 없다.
 - **시작 조건(canStart)** : `4인 && 방장 외 모든 사람이 준비`. 방장만 `startGame` 가능.
 
 자리(playerId `p0`~`p3`)는 항상 최소 빈 슬롯을 채운다. 봇 제거 후 재사용된다.
+
+## 좌석 정리 — 유령 좌석은 만들지 않는다
+
+게임 중 끊긴 좌석은 **재접속용으로 남긴다**(신원=닉네임 기준 재접속). 하지만 판이 끝나면
+남겨 둘 근거가 사라지므로, `resetRoomAfterGame`이 대기실로 되돌릴 때 **소켓이 닫혔거나
+포기한 사람 좌석을 전부 걷어낸다**(`pruneGhostSeats`). 대기 중에는 재접속 개념이 없어
+(끊기면 `handleClose`가 그 자리에서 뺀다) 대기실에 닫힌 소켓의 좌석이 있으면 그건 유령이다.
+
+유령을 방치했을 때 실제로 나던 증상(2026-08-01 수정):
+
+- 게임을 끄고 돌아오지 않은 사람이 **대기실에 앉아 있는 것처럼** 보이고, 준비를 하지 않아
+  방장이 다음 판을 시작할 수 없었다.
+- 그 사람은 `membershipOf`에 걸려 **새 방을 만들지도 못했다**("이미 방에 참가 중입니다").
+  새로고침하면 풀리던 이유는, 소켓이 닫히면서 그제서야 좌석이 정리됐기 때문이다.
+
+방 생성·참가(`createRoom`·`joinRoom`·`sandboxStart`) 직전에도 전체 대기실을 한 번 훑어
+치우고(`sweepGhostSeats`), **이 연결이 붙들고 있던 좌석**은 놓아 준다(`releaseOwnStaleSeat`).
+홈 화면은 방에 앉아 있는 동안 뜨지 않으므로, 그 연결에서 온 `createRoom`은 곧 "클라이언트는
+이미 방을 떠난 것으로 안다"는 신호다. 같은 코드로 다시 들어오면 새 자리를 주는 대신 원래
+자리에 도로 앉힌다(`reseat`). 다른 탭·다른 연결이 실제로 쓰는 좌석은 건드리지 않는다.
+
+클라이언트 쪽 짝: 방에 앉아 있었다면 홈으로 나갈 때 **반드시** `leaveRoom`을 보낸다.
+결과 화면에서 나갈 때 이걸 빠뜨린 것이 위 증상의 원래 발단이었다.
 
 ## 메시지 (프로토콜 §14)
 
@@ -43,11 +68,14 @@ waiting ──(방장 startGame)──▶ playing ──(gameOver)──▶ 방 
 | `ready` | `ready: boolean` | 준비 토글 | 방장 외 사람 |
 | `addBot` | — | 빈 자리에 봇 1명 | 방장 |
 | `removeBot` | `playerId` | 봇 제거 | 방장 |
+| `kickPlayer` | `playerId` | 플레이어 강퇴 (대기 중만, 방장 자신 불가) | 방장 |
 | `startGame` | — | 게임 시작 | 방장 (canStart일 때) |
 | `statsRequest` | — | 누적 통계 재전송 요청 | 사람 |
 
 서버 → 클라이언트
 
+- `kicked` : 방장에게 강퇴당했다. `{ roomId }` — 클라이언트는 방 상태를 정리하고 홈으로.
+  (재입장하려 하면 `error` `KICKED`로 막힌다.)
 - `lobby` : 대기실 스냅샷. 참가·준비·봇 변화마다 브로드캐스트.
   `{ roomId, hostId, youId, canStart, players: LobbyPlayerEntry[] }`
   - `LobbyPlayerEntry = { playerId, nickname, isBot, isHost, ready, stats: PlayerStatsView | null }`
@@ -55,10 +83,10 @@ waiting ──(방장 startGame)──▶ playing ──(gameOver)──▶ 방 
 
 ## 라우팅
 
-`RoomManager.setupWsHandlers`가 소켓 메시지를 받아,
-대기실/통계 메시지(`ready·addBot·removeBot·startGame·statsRequest`)는 RoomManager가,
-그 외 게임 메시지(`action·draftPick·ping`)는 `HumanAgent.handleMessage`가 처리한다.
-`index.ts`의 join 이후 라우팅은 이 리스너 하나로 통일된다.
+`RoomManager.route`가 소켓 메시지를 받아,
+대기실/통계 메시지(`ready·addBot·removeBot·kickPlayer·shuffleSeats·setGameMode·startGame·statsRequest`)는
+RoomManager가, 그 외 게임 메시지(`action·draftPick·roundContinue·ping`)는
+`HumanAgent.handleMessage`가 처리한다. 인증 이후 라우팅은 이 함수 하나로 통일된다.
 
 ## 편의 경로
 

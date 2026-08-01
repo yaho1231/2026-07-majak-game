@@ -282,6 +282,18 @@ export interface RemoveBotMessage {
   playerId: PlayerId;
 }
 
+/**
+ * 플레이어 강퇴 (방장 전용, 대기 중에만).
+ *
+ * 방장 자신은 대상이 될 수 없다. 강퇴된 사람은 **그 방에는 다시 들어올 수 없다** —
+ * 코드만 알면 곧바로 되돌아올 수 있으면 강퇴가 아무 의미가 없기 때문이다.
+ * (봇을 지정하면 `removeBot`과 같이 자리에서 빠진다.)
+ */
+export interface KickPlayerMessage {
+  type: "kickPlayer";
+  playerId: PlayerId;
+}
+
 /** 게임 시작 (방장 전용, 전원 준비 + 4인일 때만 유효). */
 export interface StartGameMessage {
   type: "startGame";
@@ -330,6 +342,7 @@ export type ClientMessage =
   | ReadyMessage
   | AddBotMessage
   | RemoveBotMessage
+  | KickPlayerMessage
   | StartGameMessage
   | SetGameModeMessage
   | ShuffleSeatsMessage
@@ -523,6 +536,15 @@ export interface LobbyPlayerEntry {
   ready: boolean;
   /** 누적(career) 통계 — 신규 플레이어면 null. */
   stats: PlayerStatsView | null;
+}
+
+/**
+ * 방장에게 강퇴당했다 — 클라이언트는 방 상태를 정리하고 홈으로 돌아간다.
+ * (이 방에는 다시 들어올 수 없으므로 재입장 대상에서도 지운다.)
+ */
+export interface KickedMessage {
+  type: "kicked";
+  roomId: string;
 }
 
 /** 대기실 상태 스냅샷 — 참가·준비·봇 변화마다 브로드캐스트. */
@@ -757,6 +779,7 @@ export type ServerMessage =
   | ErrorMessage
   | PongMessage
   | LobbyMessage
+  | KickedMessage
   | StatsMessage
   | LeaderboardMessage
   | AdminUsersMessage

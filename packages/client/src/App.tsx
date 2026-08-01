@@ -1841,9 +1841,18 @@ export function App(): JSX.Element {
     }
   }
 
-  /** 홈으로 — 게임 상태를 정리하고 홈 데이터(통계·리플레이)를 새로 고친다 */
+  /**
+   * 홈으로 — 게임 상태를 정리하고 홈 데이터(통계·리플레이)를 새로 고친다.
+   *
+   * ⚠ 방에 앉아 있었다면 **반드시** leaveRoom을 보낸다. 예전에는 `view === null`
+   * (대기실)일 때만 보냈는데, 종국 결과 화면에서 홈으로 나가면 view가 아직 살아 있어
+   * 서버에는 내 좌석이 그대로 남았다. 종국 뒤 방이 대기실로 되돌아오게 바뀌면서
+   * 그 좌석이 유령이 되어 — 방장 화면에는 접속하지도 않은 사람이 앉아 있고, 나는
+   * "이미 방에 참가 중입니다"로 새 방을 만들지 못했다(새로고침해야 풀렸다).
+   * 게임 중 나가기도 마찬가지로 알려야 서버가 그 자리를 자동 진행으로 넘긴다.
+   */
   function returnHome(): void {
-    if (joined !== null && view === null) send({ type: "leaveRoom" });
+    if (joined !== null) send({ type: "leaveRoom" });
     if (spectating !== null) send({ type: "spectateStop" });
     resetGameState();
     setReplayData(null);
@@ -1902,11 +1911,18 @@ export function App(): JSX.Element {
         resetGameState();
         return;
       }
-      // 재연결 후 자동 재입장했는데 그 방이 사라졌으면(게임이 오프라인 중 종료 등)
-      // 조용히 홈으로 돌아간다. activeRoomRef가 살아 있으면 = 자동 재입장 시도였다.
-      if ((msg.code === "ROOM_NOT_FOUND" || msg.code === "ROOM_PLAYING") && activeRoomRef.current !== null) {
+      // 재연결 후 자동 재입장했는데 그 방이 사라졌거나(게임이 오프라인 중 종료 등)
+      // 방장이 나를 내보냈으면 조용히 홈으로 돌아간다.
+      // activeRoomRef가 살아 있으면 = 자동 재입장 시도였다.
+      if (
+        (msg.code === "ROOM_NOT_FOUND" || msg.code === "ROOM_PLAYING" || msg.code === "KICKED") &&
+        activeRoomRef.current !== null
+      ) {
         activeRoomRef.current = null;
-        showToast("진행 중이던 게임이 종료되었습니다", "info");
+        showToast(
+          msg.code === "KICKED" ? "방장이 방에서 내보냈습니다" : "진행 중이던 게임이 종료되었습니다",
+          "info",
+        );
         resetGameState();
         refreshHome();
         return;
@@ -2148,6 +2164,17 @@ export function App(): JSX.Element {
         activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
         window.localStorage.removeItem(LAST_ROOM_KEY);
       }
+      return;
+    }
+    if (msg.type === "kicked") {
+      // 방장이 대기실에서 내보냈다 — 이 방에는 다시 못 들어가므로 재입장 대상에서도 지운다
+      showToast("방장이 방에서 내보냈습니다", "info", 4000);
+      activeRoomRef.current = null;
+      if (window.localStorage.getItem(LAST_ROOM_KEY) === msg.roomId) {
+        window.localStorage.removeItem(LAST_ROOM_KEY);
+      }
+      resetGameState();
+      refreshHome();
       return;
     }
     if (msg.type === "abortVote") {
@@ -2645,6 +2672,10 @@ export function App(): JSX.Element {
   function removeBot(playerId: string): void {
     send({ type: "removeBot", playerId: playerId as LobbyPlayerEntry["playerId"] });
   }
+  /** 강퇴 (방장 전용) — 내보낸 사람은 이 방에 다시 들어올 수 없다 */
+  function kickPlayer(playerId: string): void {
+    send({ type: "kickPlayer", playerId: playerId as LobbyPlayerEntry["playerId"] });
+  }
   function startGame(): void {
     send({ type: "startGame" });
     sfx.round();
@@ -2738,6 +2769,7 @@ export function App(): JSX.Element {
           onReady={setReady}
           onAddBot={addBot}
           onRemoveBot={removeBot}
+          onKick={kickPlayer}
           onStart={startGame}
           onSetGameMode={setGameMode}
           onShuffleSeats={shuffleSeats}
@@ -4201,6 +4233,8 @@ function WaitingRoom(props: {
   onReady: (ready: boolean) => void;
   onAddBot: () => void;
   onRemoveBot: (playerId: string) => void;
+  /** 플레이어 강퇴 (방장 전용) */
+  onKick: (playerId: string) => void;
   onStart: () => void;
   onSetGameMode: (mode: GameMode) => void;
   onShuffleSeats: () => void;
@@ -4331,6 +4365,21 @@ function WaitingRoom(props: {
                     )}
                     {isHost && p.isBot ? (
                       <button className="seat-kick" onClick={() => props.onRemoveBot(p.playerId)} title="봇 제거">✕</button>
+                    ) : isHost && !p.isHost ? (
+                      // 강퇴는 되돌릴 수 없다(그 사람은 이 방에 다시 못 들어온다) — 한 번 묻는다
+                      <button
+                        className="seat-kick"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `'${p.nickname}' 님을 방에서 내보낼까요?\n이 방에는 다시 들어올 수 없습니다.`,
+                            )
+                          ) {
+                            props.onKick(p.playerId);
+                          }
+                        }}
+                        title="강퇴"
+                      >✕</button>
                     ) : null}
                   </span>
                 </>
@@ -4548,7 +4597,20 @@ function GameTable(props: {
         }}
         title="설정"
       >⚙</button>
-      <button className="icon-btn leave-btn" onClick={props.onLeave} title="나가기">✕</button>
+      {/* 게임 중 나가기 = 포기(좌석은 자동 진행으로 완주한다) — 되돌릴 수 없으니 한 번 묻는다.
+          관전은 그냥 화면을 닫는 것이라 묻지 않는다. */}
+      <button
+        className="icon-btn leave-btn"
+        onClick={() => {
+          if (
+            props.spectator === true ||
+            window.confirm("게임을 포기하고 나갈까요?\n남은 판은 자동으로 진행되며 다시 들어올 수 없습니다.")
+          ) {
+            props.onLeave();
+          }
+        }}
+        title="나가기"
+      >✕</button>
       {settingsOpen ? (
         <SettingsPanel
           settings={props.settings}
