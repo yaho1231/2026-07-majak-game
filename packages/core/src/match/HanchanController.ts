@@ -259,6 +259,12 @@ export class HanchanController {
   private game: StandardGame | null = null;
   /** 관전자 중도 합류 시 재전송할 증강 카탈로그 */
   private catalogMsg: ServerMessage | null = null;
+  /**
+   * 플레이어가 직접 정한 손패 배치 (왼→오른쪽). 클라이언트가 손패가 바뀔 때마다 올린다.
+   * 뷰를 만들 때 그대로 실려, 관전·투시로 손패가 공개될 때 소유자가 실제로 쥔
+   * 배치가 보인다. 배치가 없는 좌석(봇)은 코어가 표준 정렬로 폴백한다.
+   */
+  private readonly handOrder: Record<PlayerId, readonly TileId[]> = {};
   /** 전원 합의 무효 종료 요청 여부 */
   private aborted = false;
   /** 무효 요청 시 즉시 resolve되는 신호 (결정 대기를 깨우는 용도) */
@@ -287,6 +293,24 @@ export class HanchanController {
     if (this.aborted) return;
     this.aborted = true;
     this.fireAbort();
+  }
+
+  /**
+   * 손패 배치를 갱신한다. 낡은 배치(이미 버린 패 등)는 코어가 흡수하므로
+   * 여기서는 검증하지 않고 그대로 담아 둔다.
+   *
+   * 배치가 바뀌어도 게임 상태는 그대로다 — 즉시 뷰를 다시 뿌려, 관전자·투시
+   * 보유자가 다음 게임 이벤트를 기다리지 않고 새 배치를 본다.
+   */
+  setHandOrder(player: PlayerId, tileIds: readonly TileId[]): void {
+    const prev = this.handOrder[player];
+    // 같은 배치를 다시 보내오면 아무 것도 하지 않는다 — 뷰 브로드캐스트를
+    // 되풀이시키는 값싼 공격 통로를 막는다.
+    if (prev !== undefined && prev.length === tileIds.length && prev.every((id, i) => id === tileIds[i])) {
+      return;
+    }
+    this.handOrder[player] = [...tileIds];
+    if (this.game !== null) this.broadcastViews(this.game);
   }
 
   /** 반장전 전체를 실행하고 최종 순위를 반환한다 */
@@ -547,6 +571,9 @@ export class HanchanController {
   // ─────────────────────────── 국 1개 실행 ───────────────────────────
 
   private async runRound(game: StandardGame): Promise<"win" | "draw" | "abort"> {
+    // 지난 국의 손패 배치는 버린다 — tile id는 국이 바뀌어도 0~135를 그대로 재사용해
+    // 남겨 두면 새 배패에 지난 국의 배치가 엉뚱하게 들러붙는다.
+    for (const pid of Object.keys(this.handOrder)) delete this.handOrder[pid];
     const flow = new FlowController(game.engine);
     let status: FlowStatus = flow.begin();
     this.broadcastViews(game); // 배패 직후 — 손패가 보이는 첫 시점
@@ -721,6 +748,7 @@ export class HanchanController {
     const rules = game.engine.rules;
     const viewOpt = {
       yaku: game.yaku, // 본인 뷰 형식텐파이(역없음) 계산용
+      handOrder: this.handOrder, // 손패 배치 — 전원이 같은 순서를 본다
       ...(uraDoraIndicators !== undefined && uraDoraIndicators.length > 0
         ? { uraDoraIndicators }
         : {}),
@@ -751,7 +779,12 @@ export class HanchanController {
     const state = this.game.engine.state;
     const rules = this.game.engine.rules;
     const viewerId = agent.viewSeatOverride?.() ?? agent.id;
-    agent.sendView(buildPlayerView(state, viewerId, rules, { yaku: this.game.yaku }));
+    agent.sendView(
+      buildPlayerView(state, viewerId, rules, {
+        yaku: this.game.yaku,
+        handOrder: this.handOrder,
+      }),
+    );
   }
 
   private notifyAll(msg: ServerMessage): void {
@@ -772,7 +805,9 @@ export class HanchanController {
     if (this.game !== null) {
       if (this.catalogMsg !== null) sink.notify?.(this.catalogMsg);
       sink.sendView(
-        buildPlayerView(this.game.engine.state, SPECTATOR_ID, this.game.engine.rules),
+        buildPlayerView(this.game.engine.state, SPECTATOR_ID, this.game.engine.rules, {
+          handOrder: this.handOrder,
+        }),
       );
     }
   }

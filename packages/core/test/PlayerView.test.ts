@@ -530,3 +530,80 @@ describe("증강 뷰 채널 — 비워진 값·국 스코프 표식", () => {
     expect(view.augmentView[`jackpot:p0${ROUND_SCOPED_MARK}`]).toBeUndefined();
   });
 });
+
+// ─────────────────────────── §N 손패 배치 (handOrder) ───────────────────────────
+
+describe("손패 배치 — 모든 뷰어가 소유자가 정한 순서를 본다", () => {
+  /** p0의 손패를 원하는 종류로 갈아끼우고 그 tileId 목록을 돌려준다 */
+  function handOf(state: GameState): TileId[] {
+    return [...(state.zones[handZone("p0")]?.tileIds ?? [])];
+  }
+
+  it("배치가 없으면 표준 정렬(만→통→삭→풍→삼원)로 보인다 — 봇 손패 폴백", () => {
+    const state = makeState();
+    const rules = makeRules();
+    const view = buildPlayerView(state, "p0", rules);
+    const shown = view.zones[handZone("p0")]?.tileIds ?? [];
+    const order = shown.map((id) => {
+      const k = state.tiles[id]?.kind as TileKind;
+      return { suit: k.suit, rank: k.rank };
+    });
+    const rank = (s: string): number =>
+      ({ man: 0, pin: 1, sou: 2, wind: 3, dragon: 4 })[s] ?? 9;
+    for (let i = 1; i < order.length; i++) {
+      const a = order[i - 1]!;
+      const b = order[i]!;
+      expect(rank(a.suit) * 100 + a.rank).toBeLessThanOrEqual(rank(b.suit) * 100 + b.rank);
+    }
+  });
+
+  it("소유자가 정한 배치가 본인·타인·관전자 뷰에 똑같이 실린다", () => {
+    const state = makeState();
+    const rules = makeRules();
+    const hand = handOf(state);
+    // 일부러 표준 정렬과 다른 순서 (뒤집기)
+    const arranged = [...hand].reverse();
+
+    const own = buildPlayerView(state, "p0", rules, { handOrder: { p0: arranged } });
+    expect(own.zones[handZone("p0")]?.tileIds).toEqual(arranged);
+
+    // 타인에게는 내용이 안 보이지만(뒷면) 장수는 그대로다
+    const other = buildPlayerView(state, "p1", rules, { handOrder: { p0: arranged } });
+    expect(other.zones[handZone("p0")]?.tileIds).toEqual([]);
+    expect(other.zones[handZone("p0")]?.hiddenCount).toBe(arranged.length);
+
+    // 관전자는 전부 공개 — 소유자가 쥔 배치 그대로여야 한다
+    const spec = buildPlayerView(state, SPECTATOR_ID, rules, { handOrder: { p0: arranged } });
+    expect(spec.zones[handZone("p0")]?.tileIds).toEqual(arranged);
+  });
+
+  it("낡은 배치를 흡수한다 — 없는 패는 무시하고, 새로 들어온 패는 맨 뒤", () => {
+    const state = makeState();
+    const rules = makeRules();
+    const hand = handOf(state);
+    // 손패에서 2장을 뺀 배치 + 이미 손을 떠난 가짜 id
+    const stale = [...hand.slice(2), 999];
+
+    const view = buildPlayerView(state, SPECTATOR_ID, rules, { handOrder: { p0: stale } });
+    const shown = view.zones[handZone("p0")]?.tileIds ?? [];
+    expect(shown.length).toBe(hand.length);
+    expect(shown).not.toContain(999);
+    // 배치에 있던 패가 먼저, 배치에 없던 2장은 뒤로 밀린다
+    expect(shown.slice(0, hand.length - 2)).toEqual(hand.slice(2));
+    expect(new Set(shown.slice(hand.length - 2))).toEqual(new Set(hand.slice(0, 2)));
+  });
+
+  it("엿보기(앞 N장)도 소유자의 배치 기준으로 잘린다", () => {
+    const state = makeState();
+    const rules = makeRules();
+    rules.addModifier<VisibilityRule>("visibility.hand", {
+      source: "test_peek",
+      layer: RuleLayer.System,
+      apply: () => ({ mode: "peek", count: 3 }),
+    });
+    const arranged = [...handOf(state)].reverse();
+
+    const view = buildPlayerView(state, "p1", rules, { handOrder: { p0: arranged } });
+    expect(view.zones[handZone("p0")]?.tileIds).toEqual(arranged.slice(0, 3));
+  });
+});

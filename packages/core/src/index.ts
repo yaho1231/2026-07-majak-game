@@ -293,6 +293,7 @@ export type {
   ActionMessage,
   DraftPickMessage,
   PingMessage,
+  HandOrderMessage,
   ReadyMessage,
   AddBotMessage,
   RemoveBotMessage,

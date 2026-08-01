@@ -78,6 +78,12 @@ function buildAugmentCatalog(): AugmentCatalogEntry[] {
   }));
 }
 
+/**
+ * handOrder로 받아들일 tile id 최대 개수. 손패는 진짜 용(17장)이 최대라
+ * 넉넉히 잡아도 이 정도면 충분하다 — 넘치면 통째로 버린다.
+ */
+const MAX_HAND_ORDER = 24;
+
 type RoomPhase = "waiting" | "playing";
 
 interface Room {
@@ -575,6 +581,21 @@ export class RoomManager {
       case "startGame": {
         if (conn.room === null || conn.agent === null) return;
         this.handleLobbyMessage(conn.room, conn.agent, msg);
+        return;
+      }
+      // ── 손패 배치 ──
+      // 게임 상태를 바꾸지 않는 표시용 정보라 프롬프트 대기와 무관하게 언제든 받는다.
+      case "handOrder": {
+        if (conn.room === null || conn.agent === null) return;
+        const ids = Array.isArray(msg.tileIds)
+          ? msg.tileIds.filter((n): n is number => Number.isInteger(n))
+          : [];
+        // 손패는 아무리 커도 20장 남짓 — 그 이상은 버린다 (프레임 낭비 방지)
+        if (ids.length > MAX_HAND_ORDER) return;
+        // 증강 테스트에서 다른 좌석 시점을 보고 있으면 화면에 뜬 손패도 그 좌석의 것이다 —
+        // 배치는 **지금 보고 있는 좌석**에 붙여야 맞다 (전체공개 시점은 클라이언트가 안 보낸다).
+        const seat = conn.agent.viewSeatOverride?.() ?? conn.agent.id;
+        conn.room.controller?.setHandOrder(seat, ids);
         return;
       }
       // ── 게임 액션 · 결과 화면 닫기 ──

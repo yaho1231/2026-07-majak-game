@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FlowController,
+  buildPlayerView,
   ROUND_SETTLED,
   SYSTEM_PLAYER,
   createStandardGame,
@@ -181,5 +182,29 @@ describe("true_dragon (진짜 용)", () => {
 
     expect(validate("p1")).toBe("hand sizes differ"); // 진짜 용 = 16장 → 거부
     expect(validate("p2")).toBeNull(); // 표준 상대 = 13장 → 교환 가능
+  });
+  it("상대 시점 장수: 쯔모 17장 → 버림 16장이 그대로 실린다 (13장으로 보이지 않는다)", () => {
+    // 진짜 용 보유자의 손패는 남에게 뒷면이지만 **장수는 전원 공개**다.
+    // 버린 뒤에도 16장이어야 상대가 "저 사람은 용이다"를 계속 읽을 수 있다.
+    const game = createStandardGame({ seed: 3 });
+    installAugment(game.engine, trueDragon, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+
+    const seenByP1 = (): number => {
+      const view = buildPlayerView(game.engine.state, "p1", game.engine.rules);
+      const zone = view.zones[handZone("p0")];
+      return (zone?.tileIds.length ?? 0) + (zone?.hiddenCount ?? 0);
+    };
+
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    expect(seenByP1()).toBe(17); // 배패 16 + 쯔모 1
+
+    const discard = status.prompts
+      .find((p) => p.player === "p0")
+      ?.options.find((o) => o.type === "discard");
+    if (discard === undefined) throw new Error("no discard option");
+    flow.submit("p0", discard as { type: string; payload: unknown });
+    expect(seenByP1()).toBe(16); // 표준 13장이 아니다
   });
 });

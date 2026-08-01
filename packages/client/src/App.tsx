@@ -2573,6 +2573,9 @@ export function App(): JSX.Element {
           onSandboxViewAs={(seat) => send({ type: "sandboxViewAs", seat })}
           onSandboxBotRules={(rules) => send({ type: "sandboxBotRules", rules })}
           onSandboxControl={(enabled) => send({ type: "sandboxControl", enabled })}
+          {...(isSpectator
+            ? {}
+            : { onHandOrder: (tileIds: number[]) => send({ type: "handOrder", tileIds }) })}
           onSetting={updateSetting}
           onRiichiMode={setRiichiMode}
           onSubmit={submitOption}
@@ -4280,6 +4283,8 @@ function GameTable(props: {
   onSubmit: (o: ActionOption) => void;
   onLeave: () => void;
   onToast?: (text: string) => void;
+  /** 내 손패 배치가 바뀌었을 때 서버에 알린다 (관전 모드에서는 없음) */
+  onHandOrder?: (tileIds: number[]) => void;
 }): JSX.Element {
   const { view, prompt, catalog } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -4433,6 +4438,7 @@ function GameTable(props: {
         onSubmit={props.onSubmit}
         onHoverKind={setHoverKind}
         {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
+        {...(props.onHandOrder !== undefined ? { onHandOrder: props.onHandOrder } : {})}
       />
     </div>
     </DoraContext.Provider>
@@ -5747,13 +5753,26 @@ function OpponentStrip({
 }): JSX.Element {
   const zone = view.zones[`hand:${player.id}`];
   const hidden = zone?.hiddenCount ?? 0;
-  // 공개된 손패는 정렬해서 보여준다(관전·투시 등). 뒷면(hidden)은 그대로 개수만.
-  const sorted = sortTileIds(zone?.tileIds ?? [], view.tiles);
+  // 공개된 손패(관전·투시 등)는 **그 사람이 정한 배치 그대로** 보여준다.
+  // 뷰의 순서가 곧 소유자의 배치다(core arrangeHand) — 여기서 다시 정렬하면
+  // 실제로 쥔 배치와 어긋난다. 뒷면(hidden)은 그대로 개수만.
+  const arranged = zone?.tileIds ?? [];
   // 오른쪽 자리는 실제 탁자처럼 플레이어가 왼쪽을 바라봐 손패가 아래→위로 흐른다.
-  // 정렬(만→통→삭→자패)이 그대로 읽히도록 오른쪽 자리만 표시 순서를 뒤집는다.
-  const open = side === "right" ? [...sorted].reverse() : sorted;
+  // 배치가 그대로 읽히도록 오른쪽 자리만 표시 순서를 뒤집는다.
+  const open = side === "right" ? [...arranged].reverse() : arranged;
+  // 이 상대의 손패 장수 — 뒷면 크기를 이 수에 맞춰야 진짜 용(16·17장)이
+  // 화면 밖으로 흘러 잘리지 않는다 (CSS --back-n).
+  const handCount = open.length + hidden;
   const melds = view.round.byPlayer[player.id]?.melds ?? [];
   const meldCount = view.round.byPlayer[player.id]?.meldCount ?? 0;
+  // 좌·우 자리는 후로도 **같은 세로줄**에 쌓인다 — 후로가 먹는 높이를 빼고 남은
+  // 만큼으로 뒷면 크기를 정해야 손패가 화면 밖으로 밀려나지 않는다 (CSS --meld-n).
+  const meldTileCount =
+    melds.reduce((n, m) => n + m.tileIds.length, 0) + pulledMeldTileIds(view, player.id).length;
+  const sizeVars = {
+    "--back-n": Math.max(1, handCount),
+    "--meld-n": meldTileCount,
+  } as CSSProperties;
   const highlight = useContext(HighlightContext);
   // 액티브 증강 무장 중 — 이 상대가 클릭 대상이면 강조하고 클릭 시 발동한다.
   const sel = useContext(SelectionContext);
@@ -5787,7 +5806,11 @@ function OpponentStrip({
 
   if (side === "top") {
     return (
-      <div className={`opp-strip opp-strip-top${oppArmable ? " opp-armable" : ""}`} {...armProps}>
+      <div
+        className={`opp-strip opp-strip-top${oppArmable ? " opp-armable" : ""}`}
+        style={sizeVars}
+        {...armProps}
+      >
         {oppArmable ? <div className="opp-arm-tag">✦ 여기 클릭</div> : null}
         {waits.length > 0 ? <WaitsBadge waits={waits} owner={playerName(view, player)} openRiichi={openWaits.length > 0} /> : null}
         <div className="opp-melds-row">
@@ -5812,7 +5835,11 @@ function OpponentStrip({
   }
 
   return (
-    <div className={`opp-strip opp-strip-${side}${oppArmable ? " opp-armable" : ""}`} {...armProps}>
+    <div
+      className={`opp-strip opp-strip-${side}${oppArmable ? " opp-armable" : ""}`}
+      style={sizeVars}
+      {...armProps}
+    >
       {oppArmable ? <div className="opp-arm-tag">✦ 여기 클릭</div> : null}
       {waits.length > 0 ? <WaitsBadge waits={waits} owner={playerName(view, player)} openRiichi={openWaits.length > 0} /> : null}
       <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
@@ -6178,6 +6205,8 @@ function OwnArea(props: {
   onSubmit: (o: ActionOption) => void;
   onHoverKind: (k: TileKind | null) => void;
   onToast?: (text: string) => void;
+  /** 내 손패 배치를 서버에 알린다 — 다른 사람도 같은 배치(뒷면)를 본다 */
+  onHandOrder?: (tileIds: number[]) => void;
 }): JSX.Element {
   const { view, me, prompt, autoSort } = props;
   // 관전 모드에서는 하단 시점 플레이어(me)의 손패를 그대로 보여준다
@@ -6228,6 +6257,10 @@ function OwnArea(props: {
   const [armSub, setArmSub] = useState<{ tileId: number; options: ActionOption[] } | null>(null);
 
   const displayIds = useMemo(() => {
+    // 관전 시점에서는 **그 사람이 정한 배치**를 그대로 보여준다 —
+    // 뷰의 손패 순서가 곧 소유자의 배치다 (core arrangeHand). 여기서 다시 정렬하면
+    // 관전자만 다른 순서를 보게 된다.
+    if (isSpectator) return rawHand;
     if (autoSort) {
       const base = hasDrawn ? rawHand.filter((id) => id !== drawnId) : rawHand;
       const sorted = sortTileIds(base, view.tiles);
@@ -6243,7 +6276,20 @@ function OwnArea(props: {
     if (drawnPending) remaining = remaining.filter((id) => id !== drawnId);
     const added = sortTileIds(remaining, view.tiles);
     return drawnPending ? [...kept, ...added, drawnId] : [...kept, ...added];
-  }, [autoSort, rawHand, manualOrder, drawnId, hasDrawn, view.tiles]);
+  }, [isSpectator, autoSort, rawHand, manualOrder, drawnId, hasDrawn, view.tiles]);
+
+  // 손패 배치를 서버에 올린다 — 다른 사람은 뒷면이지만 **자리는 이 배치 그대로** 보고,
+  // 관전·투시로 공개되면 내가 실제로 쥔 순서가 보인다.
+  // 순서가 진짜로 바뀐 경우에만 보낸다 (매 렌더 전송 방지).
+  const sentOrderRef = useRef<string>("");
+  const onHandOrder = props.onHandOrder;
+  useEffect(() => {
+    if (onHandOrder === undefined || isSpectator) return;
+    const key = displayIds.join(",");
+    if (key === sentOrderRef.current) return;
+    sentOrderRef.current = key;
+    onHandOrder(displayIds);
+  }, [displayIds, onHandOrder, isSpectator]);
 
   const optionsByTile = useMemo(() => {
     const map = new Map<number, ActionOption[]>();
