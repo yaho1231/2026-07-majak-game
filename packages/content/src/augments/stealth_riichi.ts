@@ -20,6 +20,7 @@
 
 import {
   TILE_DISCARDED,
+  augmentDataSet,
   defineAugment,
   handIdsOf,
   kindOf,
@@ -37,9 +38,14 @@ import type {
   RuleRegistry,
   TileId,
 } from "@majak/core";
+import { flagOf, roundKey } from "../util.js";
 
 const ID = "stealth_riichi";
 const ACTION = "stealth_riichi";
+
+/** 이 국의 리치가 스텔스 액션으로 선언됐다는 표시 (표준 리치와 구분) */
+const activeKey = (state: GameState, holder: PlayerId): string =>
+  `${ID}:active:${roundKey(state)}:${holder}`;
 
 /** 노출 후로 수 (안깡은 멘젠을 깨지 않는다 — 코어 openMeldCountOf와 같은 규칙) */
 function openMelds(state: GameState, player: PlayerId): number {
@@ -99,7 +105,7 @@ const stealthRiichiAction: ActionDef<{ tileId: TileId }> = {
     }
     return null;
   },
-  toEvents: (req) => [
+  toEvents: (req, { state }) => [
     {
       type: TILE_DISCARDED,
       payload: {
@@ -110,6 +116,10 @@ const stealthRiichiAction: ActionDef<{ tileId: TileId }> = {
         riichiCost: 0,
       },
     },
+    // 이 국의 리치는 스텔스로 선언됐다는 표시 — riichi.hidden이 이 표시가 있을 때만
+    // 켜지도록 해서, 홀더가 (커스텀 액션이 아니라) 표준 riichi 액션으로 공탁 1000점을
+    // 내고 선언한 경우까지 무조건 은닉되던 모순을 막는다.
+    augmentDataSet(activeKey(state, req.player), true),
   ],
 };
 
@@ -141,8 +151,19 @@ export const stealthRiichi: AugmentDef = defineAugment({
       engine.actions.register(stealthRiichiAction);
     }
 
-    // 코어가 타인 뷰에서 리치 상태를 가린다 (진행 중에만 — 정산 정보는 그대로 나간다)
-    ctx.setHolderRule("riichi.hidden", true);
+    // 코어가 타인 뷰에서 리치 상태를 가린다 (진행 중에만 — 정산 정보는 그대로 나간다).
+    // 단, 이 국의 리치가 스텔스 액션으로 선언됐을 때만 — 홀더가 표준 riichi 액션(공탁
+    // 1000점)으로 걸었다면 공탁까지 낸 정식 리치인데 아무에게도 안 보이는 모순이 생긴다.
+    ctx.engine.rules.addModifier<boolean>("riichi.hidden", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const st = rctx.state as GameState | undefined;
+        if (st === undefined) return cur;
+        return flagOf(st, activeKey(st, holder)) ? true : cur;
+      },
+    });
 
     // 아직 리치 전일 때, 버려도 텐파이가 유지되는 손패만 후보로 노출한다.
     // 클라이언트는 이 후보 패만 무장 대상으로 강조해 손패 직접 클릭으로 발동시킨다.

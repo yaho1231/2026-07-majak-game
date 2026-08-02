@@ -8,7 +8,7 @@
  *  액티브·쿨다운으로 바꿔, 언제 잠글지 고르는 판단과 재사용 타이밍이 걸리게 했다.)
  * 상대는 자기 봉인 패에 자물쇠 표시만 보고(view.sealedTileIds — 클릭해 보면 어차피
  * 드러나는 정보), 보유자는 각 상대의 봉인된 '실제' 손패를 진짜 패 그대로 본다
- * (revealTiles:* 채널로 특정 tile id만 노출 — 상대 손패 전체가 새지 않는다).
+ * (discardLockReveal:* 채널로 특정 tile id만 노출 — 상대 손패 전체가 새지 않는다).
  *
  * # 봉인은 그 국까지, 잠기는 것은 그 2장뿐 (2026-07-31 사용자 확정)
  *
@@ -22,7 +22,7 @@
  * - 액티브 액션 seal_hands: 자기 턴·turn.act·국 첫 행동(discardedKinds 비어 있음)·쿨다운 종료
  *   조건을 validate가 최종 판정. toEvents가 statePrng로 상대별 봉인 kind를 뽑아
  *   커스텀 이벤트 DiscardLockSealed 하나로 봉인 목록·사용 국 시퀀스·전진된 prngState를 기록.
- * - 봉인 목록은 view:{holder}:sealed:{pid}(종류 표시용)·view:{holder}:revealTiles:{pid}
+ * - 봉인 목록은 view:{holder}:sealed:{pid}(종류 표시용)·view:{holder}:discardLockReveal:{pid}
  *   (실제 잠긴 tileId)에 저장한다 — 둘 다 국 스코프 키다.
  * - 쿨다운은 국 단위: ROUND_STARTED마다 discard_lock:seq:{holder}를 +1 하고,
  *   발동 국의 시퀀스를 discard_lock:used:{holder}에 남겨 seq-used>=2 일 때만 재발동 허용.
@@ -74,13 +74,20 @@ const sealedKey = (holder: PlayerId, target: PlayerId): string =>
  * 봉인된 **실제 패의 tileId 목록**.
  *
  * 두 역할을 겸한다:
- * ① 보유자에게 진짜 패로 보여주는 공개 채널(`revealTiles:*` 규약 — 명시된 tile id만 노출).
+ * ① 보유자에게 진짜 패로 보여주는 공개 채널(`discardLockReveal:*` 전용 채널 — 명시된 tile id만
+ *   노출. `revealTiles:*`는 hand_swap3 등 다른 증강도 같은 이름 규약을 써서 동시 보유 시
+ *   충돌했다 — 봉인 판정의 실체이기도 한 이 값은 별도 채널을 쓴다, 2026-08 감사).
  * ② `discard.blockedTileIds` 규칙이 읽는 **봉인 판정의 실체** — 봉인은 종류가 아니라
  *    이 목록에 담긴 그 패들만 잠근다. 목록은 발동 시점의 손패로 고정되므로,
  *    그 뒤 같은 종류를 새로 쯔모해도 그 새 패는 잠기지 않는다.
  */
+// 예전엔 `revealTiles:{target}`을 썼는데, 다른 view 채널 증강(hand_swap3 등)도
+// 같은 이름 규약을 쓴다 — augmentData가 키 문자열 하나에 값 하나뿐이라, 두 증강을
+// 동시에 보유하고 같은 상대를 지목하면 서로 덮어썼다(이 값은 discard.blockedTileIds가
+// 읽는 봉인 판정의 실체이기도 해서 단순 표시 버그가 아니라 실제 봉인이 틀어졌다).
+// 전용 채널로 분리해 충돌을 막는다(2026-08 감사, docs/22 §12-20).
 const sealTilesKey = (holder: PlayerId, target: PlayerId): string =>
-  roundViewKey(holder, `revealTiles:${target}`);
+  roundViewKey(holder, `discardLockReveal:${target}`);
 
 /** 지금까지 진행된 국 시퀀스 (없으면 0) */
 function roundSeq(state: GameState, holder: PlayerId): number {
@@ -198,7 +205,7 @@ export const discardLock: AugmentDef = defineAugment({
         // 재발동 시 상대별로 새 봉인으로 덮어쓴다.
         for (const [pid, kinds] of Object.entries(p.seals)) {
           augmentData[sealedKey(p.holder, pid)] = kinds;
-          // 봉인된 실제 손패 tile id — 보유자에게 진짜 패로 보여준다 (revealTiles:* 채널)
+          // 봉인된 실제 손패 tile id — 보유자에게 진짜 패로 보여준다 (discardLockReveal:* 채널)
           augmentData[sealTilesKey(p.holder, pid)] = p.sealTiles[pid] ?? [];
         }
         augmentData[usedKey(p.holder)] = p.usedSeq;

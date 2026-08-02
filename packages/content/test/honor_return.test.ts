@@ -76,6 +76,26 @@ describe("귀환 (honor_return) — 기록", () => {
     const r = game.engine.submit({ player: "p0", type: "honor_recall", payload: {} });
     expect(r.ok).toBe(false);
   });
+
+  it("리치 중에는 발동할 수 없다 (docs/21 D-2 재확인 수정)", () => {
+    const base = scene("3m5z5z1z1z");
+    const state: GameState = {
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p0: {
+            ...base.round.byPlayer["p0"]!,
+            riichi: { double: false, ippatsu: false, discardIndex: 0 },
+          },
+        },
+      },
+    };
+    const game = setup(state);
+    const r = game.engine.submit({ player: "p0", type: "honor_recall", payload: {} });
+    expect(r.ok).toBe(false);
+  });
 });
 
 describe("귀환 (honor_return) — 배패 주입", () => {

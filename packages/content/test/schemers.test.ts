@@ -236,10 +236,10 @@ describe("discard_lock (봉인술사)", () => {
         ...base.augmentData,
         // 표시용 종류 목록과 실제 잠긴 패 목록 — 둘 다 보유자(p0) 전용 키
         [roundViewKey("p0", "sealed:p1")]: [...kinds],
-        [roundViewKey("p0", "revealTiles:p1")]: kinds.map(idOf),
+        [roundViewKey("p0", "discardLockReveal:p1")]: kinds.map(idOf),
         // 보유자 키가 있어도 본인에겐 적용되지 않아야 한다
         [roundViewKey("p0", "sealed:p0")]: ["man9"],
-        [roundViewKey("p0", "revealTiles:p0")]: [handIdsOf(base, "p0")[0] as TileId],
+        [roundViewKey("p0", "discardLockReveal:p0")]: [handIdsOf(base, "p0")[0] as TileId],
       },
     };
     const game = createStandardGameFromState(state);
