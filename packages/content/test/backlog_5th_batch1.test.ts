@@ -138,6 +138,43 @@ describe("뒤늦은 출진 (late_double)", () => {
     expect(g.engine.state.round.byPlayer["p0"]?.riichi?.double).toBe(true);
   });
 
+  /** 2026-08-02 상향: 이렇게 승격된 더블리치에는 화료 시 +1판이 더 붙는다. */
+  it("승격된 더블리치에는 +1판이 붙는다", () => {
+    const g = createStandardGameFromState(scene(true));
+    installAugment(g.engine, lateDouble, "p0", { yaku: g.yaku });
+    // 리치 전에는 보너스가 없다
+    expect(
+      g.engine.rules.resolve<number>("score.extraHan", {
+        playerId: "p0",
+        state: g.engine.state,
+      }),
+    ).toBe(0);
+    const flow = new FlowController(g.engine);
+    flow.begin();
+    flow.submit("p0", { type: "riichi", payload: { tileId: riichiTile(g) } });
+    expect(
+      g.engine.rules.resolve<number>("score.extraHan", {
+        playerId: "p0",
+        state: g.engine.state,
+      }),
+    ).toBe(1);
+  });
+
+  it("8순 이후 리치는 승격도 보너스도 없다", () => {
+    const g = createStandardGameFromState(setTurnCount(scene(true), 9));
+    installAugment(g.engine, lateDouble, "p0", { yaku: g.yaku });
+    const flow = new FlowController(g.engine);
+    flow.begin();
+    flow.submit("p0", { type: "riichi", payload: { tileId: riichiTile(g) } });
+    expect(g.engine.state.round.byPlayer["p0"]?.riichi?.double).toBe(false);
+    expect(
+      g.engine.rules.resolve<number>("score.extraHan", {
+        playerId: "p0",
+        state: g.engine.state,
+      }),
+    ).toBe(0);
+  });
+
   it("증강이 없으면 5순 리치는 더블이 아니다 (대조군)", () => {
     const g = createStandardGameFromState(scene(false));
     const flow = new FlowController(g.engine);

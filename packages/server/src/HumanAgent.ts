@@ -19,11 +19,26 @@ import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 export const DECISION_TIMEOUT_MS = 30_000;
 
 /**
+ * **반드시 끝맺어야 하는 다단계 선택**의 액션 타입.
+ *
+ * 등가교환은 대상을 지정하는 순간 상대 손패가 공개된다 — 거기서 빠져나올 길이 있으면
+ * "정보만 챙기고 교환은 안 한다"가 성립해 버린다. 그래서 클라이언트에서 닫기 버튼을
+ * 없앴고(2026-08-02 사용자 지시), 시간이 다 되면 여기서 **남은 조합 중 무작위로**
+ * 하나를 골라 교환을 끝낸다 — 패스하거나 그냥 버려서 능력을 흘리지 않는다.
+ */
+const FORCED_ACTION_TYPES = new Set(["swap3_give", "swap3_take"]);
+
+/**
  * 타임아웃/접속 끊김 시 안전한 폴백 선택.
  * 절대 능동적 선언(론·펑·치·깡·리치)을 하지 않는다:
- * 패스 > 마지막 버림 옵션(쯔모기리에 해당) > 첫 옵션 순.
+ * 강제 마무리 선택 > 패스 > 마지막 버림 옵션(쯔모기리에 해당) > 첫 옵션 순.
  */
 export function safeFallbackOption(options: ActionOption[]): ActionOption {
+  // 되돌릴 수 없는 발동의 마무리 단계 — 무작위로라도 끝맺는다
+  const forced = options.filter((o) => FORCED_ACTION_TYPES.has(o.type));
+  if (forced.length > 0) {
+    return forced[Math.floor(Math.random() * forced.length)]!;
+  }
   const pass = options.find((o) => o.type === "pass");
   if (pass !== undefined) return pass;
   const discards = options.filter((o) => o.type === "discard");

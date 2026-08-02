@@ -1,7 +1,7 @@
 /**
  * 뒤집힌 모래시계 (hourglass, prism) — "죽었던 국이 나 혼자만의 서든데스로 되살아난다".
  *
- * 동풍전 1·반장전 2회, **황패유국이 선언되는 순간 내가 텐파이라면** 국이 끝나지 않는다 —
+ * **2국에 1회**, **황패유국이 선언되는 순간 내가 텐파이라면** 국이 끝나지 않는다 —
  * 왕패에서 4장이 패산으로 넘어오고, 그 4장을 **나 혼자 연속으로 쯔모**한다.
  *
  * 구현 (코어 변경 없음, 이벤트 인터셉트 2종):
@@ -42,12 +42,12 @@ import type {
   TileId,
 } from "@majak/core";
 import {
-  counterOf,
   flagOf,
-  matchUses,
   roundKey,
+  roundSeqOf,
   roundViewKey,
   settleInterceptor,
+  trackRoundSeq,
 } from "../util.js";
 
 const ID = "hourglass";
@@ -62,8 +62,21 @@ const EVENT = "HourglassOpened";
  */
 const EXTRA_TILES = 4;
 
-/** 매치당 사용 횟수 (동풍1/반장2) */
-const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
+/**
+ * 쿨다운 — 한 번 연장하면 이만큼 국(본장 포함)이 지나야 다시 열린다.
+ * 2026-08-02 사용자 지시로 "동풍1/반장2"에서 **2국당 1회**로 상향했다 — 발동 조건이
+ * "유국 순간 텐파이"라 기회 자체가 드물어, 매치당 횟수 제한까지 겹치면 사장된다.
+ */
+const COOLDOWN_ROUNDS = 2;
+/** 마지막으로 연장한 국 시퀀스 (big_hand와 같은 쿨다운 계산) */
+const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
+
+/** 지금 연장할 수 있는가 — 쓴 적이 없거나, 마지막 사용 이후 2국이 지났다 */
+function offCooldown(state: GameState, h: PlayerId): boolean {
+  const used = state.augmentData[usedSeqKey(h)];
+  if (typeof used !== "number") return true;
+  return roundSeqOf(state, ID, h) - used >= COOLDOWN_ROUNDS;
+}
 /** 이번 국에 이미 연장했는가 — 두 번째 유국은 그대로 통과 (무한 연장 방지) */
 const openedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:opened:${roundKey(state)}:${h}`;
@@ -82,9 +95,9 @@ export const hourglass: AugmentDef = defineAugment({
   category: "disrupt",
   name: "뒤집힌 모래시계",
   description:
-    "(동풍전 1회 · 반장전 2회) 황패유국이 선언되는 순간 내가 텐파이라면 국이 끝나지 않는다 — 왕패 4장이 패산으로 넘어오고 그 4장을 나 혼자 연속으로 쯔모한다.",
+    "(2국에 1회) 황패유국이 선언되는 순간 내가 텐파이라면 국이 끝나지 않는다 — 왕패 4장이 패산으로 넘어오고 그 4장을 나 혼자 연속으로 쯔모한다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 황패유국 순간 자신이 텐파이라면 국이 끝나지 않고, 왕패에서 4장이 패산으로 넘어와 그 4장을 혼자 연속으로 쯔모한다. 넘어오는 것은 아직 안 쓴 영상패라, 그 국에 깡이 있었으면 쓴 만큼 연장이 짧아지고 영상패를 다 썼으면 발동하지 않는다. 연장 중 자신이 버리는 패는 평소대로 론 대상이다. 유국 순간 텐파이가 아니면 발동하지 않으며 넘어온 패를 다 쓰면 그대로 유국으로 정산된다.",
+    "(2국에 1회) 황패유국 순간 자신이 텐파이라면 국이 끝나지 않고, 왕패에서 4장이 패산으로 넘어와 그 4장을 혼자 연속으로 쯔모한다. 넘어오는 것은 아직 안 쓴 영상패라, 그 국에 깡이 있었으면 쓴 만큼 연장이 짧아지고 영상패를 다 썼으면 발동하지 않는다. 연장 중 자신이 버리는 패는 평소대로 론 대상이다. 유국 순간 텐파이가 아니면 발동하지 않으며 넘어온 패를 다 쓰면 그대로 유국으로 정산된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -105,15 +118,16 @@ export const hourglass: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [openedKey(state, p.holder)]: true,
-            [usesKey(p.holder)]:
-              (typeof state.augmentData[usesKey(p.holder)] === "number"
-                ? (state.augmentData[usesKey(p.holder)] as number)
-                : 0) + 1,
+            // 이 국을 쿨다운 기준점으로 찍는다 (2국이 지나야 다시 열린다)
+            [usedSeqKey(p.holder)]: roundSeqOf(state, ID, p.holder),
             [roundViewKey("*", `${ID}:${p.holder}`)]: p.tiles.length,
           },
         };
       });
     }
+
+    // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
+    trackRoundSeq(ctx, ID);
 
     // 유국 정산을 가로채 연장으로 대체한다
     // 정산 단계: Replace — 정산 이벤트 자체를 대체한다(유국 취소) — 반드시 맨 앞.
@@ -123,7 +137,7 @@ export const hourglass: AugmentDef = defineAugment({
       const state = ic.state;
       // 이미 이 국에 연장했으면(=4장을 다 쓴 두 번째 유국) 그대로 정산한다
       if (flagOf(state, openedKey(state, holder))) return event;
-      if (counterOf(state, usesKey(holder)) >= matchUses(state)) return event;
+      if (!offCooldown(state, holder)) return event;
       // 유국 순간 텐파이여야 한다
       const tenpai = isTenpai(
         winHandKindsOf(state, ic.rules, holder),

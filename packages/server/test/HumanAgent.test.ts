@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { WebSocket } from "ws";
-import { HumanAgent } from "../src/HumanAgent.js";
+import { HumanAgent, safeFallbackOption } from "../src/HumanAgent.js";
 
 class FakeSocket {
   readyState = 1; // OPEN
@@ -117,5 +117,38 @@ describe("HumanAgent — 좌석별 결정 대기 (봇 좌석 조종)", () => {
     ]);
     agent.handleMessage({ type: "action", actionType: "pon", payload: {}, seat: "p0" } as never);
     expect((await mine).type).toBe("pon");
+  });
+});
+
+/**
+ * 등가교환은 대상을 지정하는 순간 상대 손패가 공개된다 — 시간이 다 됐다고 패스·쯔모기리로
+ * 흘려보내면 "정보만 보고 교환은 안 한다"가 성립한다(2026-08-02 사용자 지시로 클라이언트의
+ * 닫기 버튼도 없앴다). 폴백은 남은 조합 중 하나를 무작위로 골라 교환을 끝내야 한다.
+ */
+describe("safeFallbackOption — 되돌릴 수 없는 다단계 선택은 무작위로라도 끝맺는다", () => {
+  const opt = (type: string, payload: unknown = {}): any => ({ type, payload });
+
+  it("swap3_give/take 후보가 있으면 그중에서 고른다 (패스·버림보다 우선)", () => {
+    for (const forced of ["swap3_give", "swap3_take"]) {
+      const options = [
+        opt("discard", { tileId: 1 }),
+        opt("discard", { tileId: 2 }),
+        opt(forced, { a: 1 }),
+        opt(forced, { a: 2 }),
+      ];
+      for (let i = 0; i < 20; i++) {
+        expect(safeFallbackOption(options).type).toBe(forced);
+      }
+    }
+  });
+
+  it("강제 후보가 없으면 종전대로 패스 > 마지막 버림 순이다", () => {
+    expect(
+      safeFallbackOption([opt("discard", { tileId: 1 }), opt("pass")]).type,
+    ).toBe("pass");
+    expect(
+      safeFallbackOption([opt("discard", { tileId: 1 }), opt("discard", { tileId: 2 })])
+        .payload,
+    ).toEqual({ tileId: 2 });
   });
 });

@@ -88,8 +88,8 @@ describe("누명 (frame_up)", () => {
     // 방총 책임은 실제 버린 나 — lastDiscard.player = p0
     expect(st.round.lastDiscard?.player).toBe("p0");
     expect(st.round.lastDiscard?.tileId).toBe(tile);
-    // 사용 카운터 소진
-    expect(st.augmentData["frame_up:uses:p0"]).toBe(1);
+    // 쿨다운 기준점이 찍혔다 (2국에 1회 — 이 국 시퀀스를 기록한다)
+    expect(typeof st.augmentData["frame_up:usedSeq:p0"]).toBe("number");
   });
 
   it("자기 자신은 지목할 수 없다", () => {
@@ -173,6 +173,42 @@ describe("누명 (frame_up)", () => {
     expect(meld?.kind).toBe("pon");
     // 방총 책임은 실제로 버린 p0 그대로 (누명의 설계)
     expect(meld?.calledFrom).toBe("p0");
+  });
+
+  /**
+   * 2026-08-02 상향: "동풍1/반장2"에서 **2국에 1회**로 바뀌었다.
+   * 쿨다운은 국 시퀀스(`frame_up:seq:*`) - 마지막 사용(`usedSeq`) >= 2 로 판정한다.
+   */
+  it("직전 국에 썼으면 쿨다운이라 심을 수 없다", () => {
+    const s = scene();
+    const game = setup({
+      ...s,
+      augmentData: { ...s.augmentData, "frame_up:seq:p0": 1, "frame_up:usedSeq:p0": 0 },
+    });
+    const tile = findTile(game, M3);
+    const r = game.engine.submit({
+      player: "p0",
+      type: "frame_discard",
+      payload: { tileId: tile, target: "p1" },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("on cooldown");
+  });
+
+  it("2국이 지나면 다시 심을 수 있다", () => {
+    const s = scene();
+    const game = setup({
+      ...s,
+      augmentData: { ...s.augmentData, "frame_up:seq:p0": 2, "frame_up:usedSeq:p0": 0 },
+    });
+    const tile = findTile(game, M3);
+    expect(
+      game.engine.submit({
+        player: "p0",
+        type: "frame_discard",
+        payload: { tileId: tile, target: "p1" },
+      }).ok,
+    ).toBe(true);
   });
 
   it("대조군: creditTo 없는 표준 버림은 내 바닥·내 이력에 남는다", () => {

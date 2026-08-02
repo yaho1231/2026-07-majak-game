@@ -125,4 +125,39 @@ describe("귀환 (honor_return) — 배패 주입", () => {
     // 기록은 비워졌다
     expect(game.engine.state.augmentData["honor_return:keep:p0"]).toEqual([]);
   });
+
+  /**
+   * 회귀(2026-08-02 사용자 보고): 덮어쓴 자리가 적5였으면 `red` 표식이 자패에 그대로
+   * 따라붙어, 되받은 자패 한 장만 이펙트가 다르고(붉은 패) 채점에서도 적도라 1판이
+   * 몰래 얹혔다. attrs는 병합이므로 red를 명시적으로 꺼야 한다.
+   */
+  it("덮어쓴 자리가 적도라였어도 되받은 자패는 적도라가 아니다", () => {
+    const keep = h("1z1z5z5z");
+    const base = craft({
+      hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const state: GameState = {
+      ...base,
+      round: { ...base.round, phase: "round.over" },
+      augmentData: {
+        ...base.augmentData,
+        "honor_return:keep:p0": keep.map((k) => ({ ...k })),
+      },
+    };
+    const game = setup(state);
+    expect(
+      game.engine.submit({ player: SYSTEM_PLAYER, type: "sys.startRound", payload: {} }).ok,
+    ).toBe(true);
+
+    const st = game.engine.state;
+    const hand = st.zones[handZone("p0")]?.tileIds ?? [];
+    // 이 배패의 첫 자리에는 실제로 적5가 온다 — 사용자가 본 그 상황 그대로다.
+    for (const id of hand.slice(0, 4)) {
+      expect(st.tiles[id]?.attrs?.conjured).toBe(true);
+      expect(st.tiles[id]?.attrs?.red).not.toBe(true);
+    }
+    expect(handKeys(game, "p0").slice(0, 4)).toEqual(keep.map(kindKey));
+  });
 });

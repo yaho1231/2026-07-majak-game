@@ -288,8 +288,11 @@ export const handSwap3: AugmentDef = defineAugment({
         const drawn = state.round.lastDrawnTile;
         const nextDrawn =
           drawn !== null && p.gives.includes(drawn) ? (p.takes[0] as TileId) : drawn;
-        // 상대 손패 구성이 바뀌었으므로 공개 채널도 새 손패로 갱신한다.
-        const revealed = [...(zones[handZone(p.target)]?.tileIds ?? [])];
+        // 교환이 끝나면 공개는 거기서 끝난다 — 채널을 비운다.
+        // (2026-08-02 사용자 지시: "3개씩 교환하고 끝이야. 따로 더 보여줄 필요는 없어".
+        //  예전엔 교환 후 상대의 새 손패를 계속 실어 둬서, 그 상대 옆에 남은 국 내내
+        //  손패가 떠 있었다 — 게다가 클라이언트가 그걸 봉인술사와 같은 배지로 그려
+        //  '🔒 봉인'이라는 엉뚱한 이름표가 붙었다.)
         const next: GameState = {
           ...state,
           zones,
@@ -303,7 +306,7 @@ export const handSwap3: AugmentDef = defineAugment({
             [giveKey(state, p.holder)]: [],
             // 이 국에는 다시 지정할 수 없다 (사용자 피드백: 발동한 국 재사용 금지)
             [doneKey(state, p.holder)]: true,
-            [revealKey(p.holder, p.target)]: revealed,
+            [revealKey(p.holder, p.target)]: [],
           },
         };
         return next;
