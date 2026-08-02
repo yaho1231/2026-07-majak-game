@@ -6241,11 +6241,13 @@ function River({
     () => new Set(view.round.byPlayer[playerId]?.tsumogiriIds ?? []),
     [view.round.byPlayer, playerId],
   );
-  // 안개 덮인 바닥 — 보유자가 선언하면 각자의 마지막 버림패 tileId가 전원 공개로 실린다.
+  // 박무(brief_fog) — 선언하면 각자의 마지막 버림패 tileId가 전원 공개로 실린다.
   // (여러 명이 보유해도 내용이 같으므로 먼저 찾은 맵을 쓴다.)
+  // ※ 안개 덮인 바닥(hidden_river)은 2026-08-02부터 "최근 6장"을 코어 peek 가시성으로
+  //   직접 열어 주므로 이 채널을 쓰지 않는다 — 아래 바닥 렌더가 zone.tileIds로 그린다.
   const fogLastId = useMemo<number | undefined>(() => {
     for (const [key, value] of Object.entries(view.augmentView)) {
-      if (!key.startsWith("hidden_river:last:")) continue;
+      if (!key.startsWith("brief_fog:last:")) continue;
       const map = value as Record<string, unknown> | null;
       if (map === null || typeof map !== "object") continue;
       const id = map[playerId];
@@ -6257,70 +6259,96 @@ function River({
   // 액티브 증강 무장 중 — 이 바닥의 특정 버림패가 클릭 대상이면 강조·클릭 발동한다.
   // (회수=내 바닥 / 날치기·무덤 도굴=상대 바닥)
   const sel = useContext(SelectionContext);
+  // 안개(hidden_river)는 **뒤 6장만** 공개하므로 가려진 패는 바닥의 **앞쪽**에 있다.
+  // 보이는 패를 먼저 그리면 최근 6장이 오래된 뒷면들 앞에 서 버린다 — 섞여 있을 때는
+  // 뒷면을 먼저 깐다. (전부 가려진 박무의 count_only는 ids가 비어 순서가 무의미하다.)
+  const backsFirst = hidden > 0 && ids.length > 0;
+  const tilesEl = (
+    <>
+      {ids.map((id, i) => {
+        const latest =
+          last !== null && last.player === playerId && last.tileId === id && i === ids.length - 1;
+        // 리치 선언패의 가로 눕힘은 **바닥 전체가 보일 때만** 맞다 — 안개로 앞부분이
+        // 잘려 있으면 인덱스가 밀려 엉뚱한 패가 눕는다.
+        const rotated = hidden === 0 && riichiIdx !== undefined && i === riichiIdx;
+        const match = kindMatches(view.tiles[id], highlight);
+        const tk = view.tiles[id]?.kind;
+        // 무장된 액션의 클릭 대상 버림패인지 — 대상이면 옵션을 잡아 강조·클릭 발동
+        const armOpt = sel.riverOptionFor(playerId, id, tk);
+        const armable = armOpt !== undefined;
+        // 무덤 도굴은 "고르면 그 자리에서 화료"라 후보가 곧 화료패다 —
+        // 다른 클릭 대상과 같은 보랏빛으로 두면 그게 안 보인다. 금빛 + 화료 표식으로
+        // 확실히 구분한다 (2026-07-31 사용자 요청: "화료할 수 있는 패 좀 더 티나게").
+        const winArm = armable && sel.armedType === "grave_rob";
+        // 쯔모기리는 손이 움직이지 않았다는 뜻 — 손버림과 구분해 점 하나를 찍는다
+        const tsumo = tsumogiri.has(id);
+        return (
+          <span
+            key={id}
+            className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}${tsumo ? " rt-tsumogiri" : ""}`}
+            title={tsumo ? "쯔모기리 (쯔모한 패를 그대로 버림)" : "손버림 (손패에서 꺼내 버림)"}
+            {...(armable
+              ? { "data-arm-zone": "1", role: "button" as const, onClick: () => sel.submit(armOpt) }
+              : {})}
+          >
+            <span className="rt-inner">
+              <TileImg tile={view.tiles[id]} size="fill" owner={playerId} />
+            </span>
+            {tsumo ? <span className="rt-tsumo-dot" /> : null}
+            {winArm ? <span className="rt-win-tag">화료</span> : null}
+          </span>
+        );
+      })}
+    </>
+  );
+  // 안개 바닥(가려진 버림패) — 뒷면으로 표시.
+  const backsEl = (
+    <>
+      {Array.from({ length: hidden }, (_, i) => {
+        // 바닥이 통째로 가려졌을 때(박무의 count_only)에 한해, **이 사람의 마지막
+        // 버림패**는 안개 속에서도 보인다 — 테이블 전체의 최신 버림(round.lastDiscard)
+        // 이거나, 박무가 전원 공개로 실어 주는 "각자의 마지막 한 장"(brief_fog:last:*).
+        // 최근 몇 장이 이미 실물로 보이는 안개 덮인 바닥에서는 이 예외가 필요 없다.
+        const ownLastId =
+          last !== null && last.player === playerId ? last.tileId : fogLastId;
+        const revealLast =
+          !backsFirst &&
+          i === hidden - 1 &&
+          ownLastId !== undefined &&
+          view.tiles[ownLastId] !== undefined;
+        if (revealLast) {
+          return (
+            <span key={`h${i}`} className="rt rt-latest">
+              <span className="rt-inner">
+                <TileImg tile={view.tiles[ownLastId]} size="fill" owner={playerId} />
+              </span>
+            </span>
+          );
+        }
+        return (
+          <span key={`h${i}`} className="rt">
+            <span className="rt-inner">
+              <span className="tile-back-face rt-hidden" />
+            </span>
+          </span>
+        );
+      })}
+    </>
+  );
   return (
     <div className={`river-wrap river-${side}`}>
       <div className="river">
-        {ids.map((id, i) => {
-          const latest =
-            last !== null && last.player === playerId && last.tileId === id && i === ids.length - 1;
-          const rotated = riichiIdx !== undefined && i === riichiIdx;
-          const match = kindMatches(view.tiles[id], highlight);
-          const tk = view.tiles[id]?.kind;
-          // 무장된 액션의 클릭 대상 버림패인지 — 대상이면 옵션을 잡아 강조·클릭 발동
-          const armOpt = sel.riverOptionFor(playerId, id, tk);
-          const armable = armOpt !== undefined;
-          // 무덤 도굴은 "고르면 그 자리에서 화료"라 후보가 곧 화료패다 —
-          // 다른 클릭 대상과 같은 보랏빛으로 두면 그게 안 보인다. 금빛 + 화료 표식으로
-          // 확실히 구분한다 (2026-07-31 사용자 요청: "화료할 수 있는 패 좀 더 티나게").
-          const winArm = armable && sel.armedType === "grave_rob";
-          // 쯔모기리는 손이 움직이지 않았다는 뜻 — 손버림과 구분해 점 하나를 찍는다
-          const tsumo = tsumogiri.has(id);
-          return (
-            <span
-              key={id}
-              className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}${tsumo ? " rt-tsumogiri" : ""}`}
-              title={tsumo ? "쯔모기리 (쯔모한 패를 그대로 버림)" : "손버림 (손패에서 꺼내 버림)"}
-              {...(armable
-                ? { "data-arm-zone": "1", role: "button" as const, onClick: () => sel.submit(armOpt) }
-                : {})}
-            >
-              <span className="rt-inner">
-                <TileImg tile={view.tiles[id]} size="fill" owner={playerId} />
-              </span>
-              {tsumo ? <span className="rt-tsumo-dot" /> : null}
-              {winArm ? <span className="rt-win-tag">화료</span> : null}
-            </span>
-          );
-        })}
-        {/* 안개 바닥(가려진 버림패) — 뒷면으로 표시. 단, 현재 마지막 버림패(round.lastDiscard)는
-            론·후로 판정을 위해 예외적으로 공개되므로 맨 끝 한 장은 실제 패로 그린다. */}
-        {Array.from({ length: hidden }, (_, i) => {
-          // 안개 속에서도 **이 사람의 마지막 버림패**는 보인다.
-          // 테이블 전체의 최신 버림(round.lastDiscard)뿐 아니라, 안개 증강이 전원 공개로
-          // 실어 주는 "각자의 마지막 한 장"(hidden_river:last:*)도 실제 패로 그린다.
-          const ownLastId =
-            last !== null && last.player === playerId ? last.tileId : fogLastId;
-          const revealLast =
-            i === hidden - 1 &&
-            ownLastId !== undefined &&
-            view.tiles[ownLastId] !== undefined;
-          if (revealLast) {
-            return (
-              <span key={`h${i}`} className="rt rt-latest">
-                <span className="rt-inner">
-                  <TileImg tile={view.tiles[ownLastId]} size="fill" owner={playerId} />
-                </span>
-              </span>
-            );
-          }
-          return (
-            <span key={`h${i}`} className="rt">
-              <span className="rt-inner">
-                <span className="tile-back-face rt-hidden" />
-              </span>
-            </span>
-          );
-        })}
+        {backsFirst ? (
+          <>
+            {backsEl}
+            {tilesEl}
+          </>
+        ) : (
+          <>
+            {tilesEl}
+            {backsEl}
+          </>
+        )}
       </div>
     </div>
   );

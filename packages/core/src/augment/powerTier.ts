@@ -265,7 +265,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     s: 4,
     u: 5,
     f: 4,
-    note: "패산 4장 열람 + 순서 재배열. 내 쯔모를 만들고 상대 쯔모를 망가뜨린다",
+    note: "패산 4장 열람(2순 1회) + 순서 재배열(국당 1회). 내 쯔모를 만들고 상대 쯔모를 망가뜨린다",
   },
   let_it_ride: {
     tier: "S",
@@ -387,7 +387,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     s: 4,
     u: 5,
     f: 3,
-    note: "연속 2턴 = 쯔모 1회 선취. 2국당 1회",
+    note: "연속 2턴 = 쯔모 1회 선취. 매 국 1회",
   },
   bluff_pretense: {
     tier: "A",
@@ -539,7 +539,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     s: 2,
     u: 5,
     f: 4,
-    note: "발동 후 게임 끝까지 전원의 바닥이 나에게만 보인다 — 상대 셋의 수비를 영구 파괴",
+    note: "발동 후 게임 끝까지 전원의 바닥이 최근 6장만 공개된다(보유자는 전부) — 상대 셋의 수비를 영구 파괴",
   },
   late_double: {
     tier: "A",
@@ -822,7 +822,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     s: 2,
     u: 4,
     f: 3,
-    note: "자리·손패 교환 2~3회. 내 첫 순이면 언제든(2026-07-31 버프). 오야 강탈이 본체",
+    note: "자리·손패 교환 2~3회(국당 1회). 내 첫 순이면 언제든. 오야 강탈이 본체",
   },
   push_riichi: {
     tier: "B",

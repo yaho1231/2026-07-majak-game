@@ -27,6 +27,12 @@
  *    손패를 통째로 맞바꿔도 내 버림 이력이 비어 있다는 정합성은 그대로 지켜진다.
  * ② **횟수 +1** (동풍전 2회 · 반장전 3회). 결과가 무작위 손에 달린 도박수라
  *    한 번 빗나가면 게임이 끝나던 것을, 다시 걸어 볼 수 있게 했다.
+ *
+ * # 국당 1회 (2026-08-02 사용자 지시)
+ *
+ * 발동 창이 "내가 아직 한 장도 버리지 않은 내 순"이라 손을 맞바꿔도 내 버림 이력은
+ * 그대로 비어 있다 — 매치 횟수만 남으면 **같은 순에 연달아** 자리를 갈아탈 수 있었다.
+ * 국 스코프 소진 플래그(roundUsedKey)로 한 국에 한 번으로 잠근다.
  */
 
 import {
@@ -44,7 +50,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, sameHandSize } from "../util.js";
+import { counterOf, flagOf, matchUses, roundKey, sameHandSize } from "../util.js";
 
 /** 자리 교환 확정 이벤트 (증강 id에서 파생한 이름 — 다른 증강과 충돌 방지) */
 const SEATS_SWAPPED = "SeatsSwapped";
@@ -60,6 +66,16 @@ const maxUses = (state: GameState): number => matchUses(state) + 1;
 const hasUsesLeft = (state: GameState, player: PlayerId): boolean =>
   counterOf(state, usesKey(player)) < maxUses(state);
 
+/**
+ * 이번 국에 이미 썼는가 — **국 스코프**(2026-08-02 사용자 지시: 1국 1회).
+ *
+ * 발동 창이 "내가 아직 한 장도 버리지 않은 내 순"이라, 손을 맞바꿔도 내 버림 이력은
+ * 계속 비어 있다 — 매치 횟수가 남아 있으면 **같은 순에** 연달아 자리를 갈아탈 수
+ * 있었다(테이블을 한 순에 두 번 뒤집는다). 국당 1회로 잠근다.
+ */
+const roundUsedKey = (state: GameState, player: PlayerId): string =>
+  `seat_swap:round:${roundKey(state)}:${player}`;
+
 const seatSwapAction: ActionDef<{ target: PlayerId }> = {
   type: "seat_swap",
   validate: (req, { state, rules }) => {
@@ -67,6 +83,9 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
     if (player === undefined) return "unknown player";
     if (!player.augments.includes("seat_swap")) return "no seat_swap augment";
     if (!hasUsesLeft(state, req.player)) return "seat_swap no uses left";
+    if (flagOf(state, roundUsedKey(state, req.player))) {
+      return "seat_swap already used this round";
+    }
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
@@ -105,6 +124,7 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
       payload: { a: req.player, b: req.payload.target } satisfies SeatsSwappedPayload,
     },
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+    augmentDataSet(roundUsedKey(state, req.player), true),
   ],
 };
 
@@ -114,9 +134,9 @@ export const seatSwap: AugmentDef = defineAugment({
   category: "disrupt",
   name: "자리 바꿈",
   description:
-    "(동풍전 2회 · 반장전 3회) 내 첫 순에 상대 한 명을 지정하면 그 자리에서 즉시 자리와 손패를 통째로 맞바꾼다 — 자풍·오야·차례는 물론 상대의 손패·후로까지 가져온다.",
+    "(동풍전 2회 · 반장전 3회, 국당 1회) 내 첫 순에 상대 한 명을 지정하면 그 자리에서 즉시 자리와 손패를 통째로 맞바꾼다 — 자풍·오야·차례는 물론 상대의 손패·후로까지 가져온다.",
   detail:
-    "(동풍전 2회 · 반장전 3회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다.",
+    "(동풍전 2회 · 반장전 3회, 한 국에는 1회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다.",
   install(ctx) {
     const { engine } = ctx;
 
@@ -193,13 +213,15 @@ export const seatSwap: AugmentDef = defineAugment({
     // 보유자 턴 프롬프트에 상대별 교환 후보 노출 (validate가 최종 판정).
     // 배패 장수가 다른 상대(진짜 용 등)는 애초에 후보에서 제외한다.
     ctx.holderTurnOptions((state) =>
-      state.players
-        .filter(
-          (p) =>
-            p.id !== ctx.holder &&
-            sameHandSize(engine.rules, state, ctx.holder, p.id),
-        )
-        .map((p) => ({ type: "seat_swap", payload: { target: p.id } })),
+      flagOf(state, roundUsedKey(state, ctx.holder))
+        ? []
+        : state.players
+            .filter(
+              (p) =>
+                p.id !== ctx.holder &&
+                sameHandSize(engine.rules, state, ctx.holder, p.id),
+            )
+            .map((p) => ({ type: "seat_swap", payload: { target: p.id } })),
     );
   },
   // 자리와 손패를 통째로 맞바꾼다 — 내가 오야가 아닐 때, 오야 상대와 바꿔 오야(연장·1.5배
