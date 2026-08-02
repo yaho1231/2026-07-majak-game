@@ -29,6 +29,7 @@ import type {
   PlayerId,
   RoundSettledPayload,
   SettleStage,
+  TileId,
   VisibilityRule,
   WinInfo,
   YakuRegistry,
@@ -134,6 +135,26 @@ export function widenPeek(
     return current.count >= next.count ? current : next;
   }
   return next;
+}
+
+/**
+ * 쯔모패를 다른 패로 갈아끼운다 — `lastDrawnTile`과 `lastDrawRinshan`을 **함께** 다룬다.
+ *
+ * 영상개화는 `lastDrawRinshan` 플래그로만 판정된다(helpers.ts `rinshan`). 그래서
+ * 깡 직후(영상 쯔모 상태)에 쯔모패를 바꿔치기하면서 플래그를 안 끄면, 바닥이나
+ * 남의 손에서 가져온 패로 화료해도 **영상개화 +1판이 그대로 붙는다**.
+ *
+ * pond_snatch·take_back·meld_dissolve·grave_rob은 각자 플래그를 껐지만
+ * silent_swap·hand_swap3·suit_unify에는 안 퍼져 있었다(docs/25 P2). 앞으로
+ * 쯔모패를 바꾸는 증강은 전부 이 헬퍼를 거친다 — 소스 스캔 테스트가 강제한다.
+ *
+ * 영상패로 뽑는 것이 능력 자체인 증강(north_trader)은 예외적으로 직접 세운다.
+ */
+export function replaceDrawnTile(
+  round: GameState["round"],
+  tileId: TileId | null,
+): GameState["round"] {
+  return { ...round, lastDrawnTile: tileId, lastDrawRinshan: false };
 }
 
 /**

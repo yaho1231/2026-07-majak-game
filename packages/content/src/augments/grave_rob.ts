@@ -44,7 +44,12 @@ import type {
   TileId,
   YakuRegistry,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import {
+  counterOf,
+  matchUses,
+  replaceDrawnTile,
+  roundViewKey,
+} from "../util.js";
 
 const ID = "grave_rob";
 const ACTION = "grave_rob";
@@ -136,7 +141,7 @@ function simulateRob(
   return {
     ...state,
     zones,
-    round: { ...state.round, lastDrawnTile: graveId, lastDrawRinshan: false },
+    round: replaceDrawnTile(state.round, graveId),
   };
 }
 

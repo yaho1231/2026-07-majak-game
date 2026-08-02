@@ -43,7 +43,13 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, roundKey, roundViewKey, stringOf } from "../util.js";
+import {
+  counterOf,
+  replaceDrawnTile,
+  roundKey,
+  roundViewKey,
+  stringOf,
+} from "../util.js";
 import {
   breakStealthRiichiEvents,
   ensureStealthBreakReducer,
@@ -311,7 +317,7 @@ export const handSwap3: AugmentDef = defineAugment({
         const next: GameState = {
           ...state,
           zones,
-          round: { ...state.round, lastDrawnTile: nextDrawn },
+          round: replaceDrawnTile(state.round, nextDrawn),
           augmentData: {
             ...state.augmentData,
             [leftKey(state, p.holder)]: Math.max(

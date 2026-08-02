@@ -33,7 +33,12 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import {
+  flagOf,
+  replaceDrawnTile,
+  roundKey,
+  roundViewKey,
+} from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 
 const ID = "table_flip";
@@ -120,7 +125,7 @@ export const tableFlip: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
-          round: { ...state.round, lastDrawnTile: nextDrawn },
+          round: replaceDrawnTile(state.round, nextDrawn),
           augmentData: {
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,

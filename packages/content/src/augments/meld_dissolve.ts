@@ -57,7 +57,12 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import {
+  flagOf,
+  replaceDrawnTile,
+  roundKey,
+  roundViewKey,
+} from "../util.js";
 
 const ID = "meld_dissolve";
 const ACTION = "dissolve_meld";
@@ -198,7 +203,7 @@ export const meldDissolve: AugmentDef = defineAugment({
           zones,
           // lastDrawRinshan을 반드시 끈다 — 대명깡 직후(영상 쯔모 상태)에 해체하면
           // 그 플래그가 남아 이어지는 화료에 **영상개화가 헛성립**한다(2026-07-29 감사).
-          round: { ...state.round, byPlayer, lastDrawnTile, lastDrawRinshan: false },
+          round: { ...replaceDrawnTile(state.round, lastDrawnTile), byPlayer },
           augmentData: {
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,

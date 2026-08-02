@@ -41,7 +41,15 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, roundKey, roundViewKey, statePrng } from "../util.js";
+import {
+  counterOf,
+  flagOf,
+  matchUses,
+  replaceDrawnTile,
+  roundKey,
+  roundViewKey,
+  statePrng,
+} from "../util.js";
 import { handIsPoor, handKindsOf } from "./botHelpers.js";
 
 const ID = "genesis";
@@ -225,7 +233,7 @@ export const genesis: AugmentDef = defineAugment({
           prngState: p.prngState,
           ...(remap === undefined
             ? {}
-            : { round: { ...state.round, lastDrawnTile: remap.wallId } }),
+            : { round: replaceDrawnTile(state.round, remap.wallId) }),
         };
       });
     }
