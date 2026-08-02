@@ -2664,7 +2664,7 @@ export function App(): JSX.Element {
       const holder = key.slice(def.prefix.length + 1);
       const who = playerNameById(next, holder);
       const tiles = augEventTiles(raw);
-      showCutIn(def.title, def.tone ?? "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, 2000, {
+      showCutIn(def.title, def.tone ?? "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, def.ms ?? 2000, {
         sfx: () => sfx.augment(1),
         augId: def.augId,
         ...(tiles.length > 0 ? { tiles } : {}),
@@ -5319,7 +5319,15 @@ function relationsAt(relations: readonly Relation[], playerId: string): Relation
  */
 const AUG_EVENTS: Record<
   string,
-  { title: string; sub: string; augId: string; tone?: CutInTone; shake?: ImpactSpec["shake"] }
+  {
+    title: string;
+    sub: string;
+    augId: string;
+    tone?: CutInTone;
+    shake?: ImpactSpec["shake"];
+    /** 컷인이 떠 있는 시간(ms). 기본 2000 — 패가 많아 읽을 게 많으면 늘린다 */
+    ms?: number;
+  }
 > = {
   "conjure_draw:done": { title: "소환 성공", sub: "부른 패가 그대로 왔다", augId: "conjure_draw" },
   conjure_draw: { title: "소환", sub: "다음 쯔모로 이 패를 부른다", augId: "conjure_draw" },
@@ -5342,6 +5350,16 @@ const AUG_EVENTS: Record<
   foresight: { title: "예지", sub: "앞을 보고 손을 다시 짰다", augId: "foresight" },
   palm_flip: { title: "손바닥 뒤집기", sub: "판이 통째로 뒤집힌다", augId: "palm_flip" },
   tile_split: { title: "패 쪼개기", sub: "한 장이 두 장으로 갈라졌다", augId: "tile_split" },
+  // 밥상 뒤엎기 — 반납한 배패 13장은 **전원 공개**가 대가다. 그런데 채널만 실려 있고
+  // 그리는 곳이 없어 아무에게도 안 보였다(2026-08-02 사용자 보고). 상태가 아니라
+  // 사건이므로 국 내내 붙여 두지 않고 컷인으로 잠깐 크게 보여주고 지운다.
+  table_flip: {
+    title: "밥상 뒤엎기",
+    sub: "이 손패를 통째로 산에 반납했다",
+    augId: "table_flip",
+    shake: 3,
+    ms: 3600, // 13장을 훑을 시간
+  },
   meld_dissolve: { title: "후로 해체", sub: "이미 울어 둔 묶음이 풀렸다", augId: "meld_dissolve" },
   "bottom_deal:armed": { title: "밑장빼기", sub: "패산 맨 밑장을 노린다", augId: "bottom_deal" },
 };
@@ -5374,6 +5392,7 @@ type AugEventDef = {
   augId: string;
   tone?: CutInTone;
   shake?: ImpactSpec["shake"];
+  ms?: number;
 };
 
 function augEventFor(key: string): AugEventDef | null {
@@ -5386,11 +5405,21 @@ function augEventFor(key: string): AugEventDef | null {
   return best;
 }
 
-/** 사건 값에서 함께 띄울 패를 뽑는다 (값이 패 키 하나이거나, kind/from/to를 품은 객체다) */
+/**
+ * 사건 값에서 함께 띄울 패를 뽑는다.
+ * 값의 모양은 셋 — 패 키 하나("man5") · TileKind 객체 배열(밥상 뒤엎기의 반납 손패) ·
+ * kind/from/to를 품은 객체(패 쪼개기 등).
+ */
 function augEventTiles(raw: unknown): TileKind[] {
   if (typeof raw === "string") {
     const k = parseKindKey(raw);
     return k === null ? [] : [k];
+  }
+  if (Array.isArray(raw)) {
+    return raw.filter(
+      (k): k is TileKind =>
+        k !== null && typeof k === "object" && typeof (k as TileKind).suit === "string",
+    );
   }
   if (raw === null || typeof raw !== "object") return [];
   const m = raw as { kind?: unknown; from?: unknown; to?: unknown };
@@ -7816,13 +7845,21 @@ function OwnArea(props: {
         {armSub !== null ? (
           <div className="rinshan-pick-overlay">
             <div className="rinshan-pick-panel">
-              <div className="rinshan-pick-title">✦ {armName} — 무엇으로 바꿀까요?</div>
+              <div className="rinshan-pick-title">
+                ✦ {armName} — {armSub.options[0]?.type === "split_tile" ? "어떻게 쪼갤까요?" : "무엇으로 바꿀까요?"}
+              </div>
               <div className="rinshan-pick-sub">
-                고른 패가 어떻게 바뀌는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다.
+                {armSub.options[0]?.type === "split_tile"
+                  ? "고른 패가 어떤 두 장으로 갈라지는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."
+                  : "고른 패가 어떻게 바뀌는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."}
               </div>
               <div className="rinshan-pick-tiles">
                 {armSub.options.map((o, i) => {
-                  const after = morphedTile(view, o);
+                  // 분열은 결과가 **두 장**이라 morphedTile(한 장) 경로로는 그릴 수 없었다.
+                  // 그래서 전부 ActionTiles 대체 경로로 떨어져 후보 버튼이 죄다 "원래 패"
+                  // 하나로만 보였고, 어느 분할을 고르는지 알 수 없었다(2026-08-02 사용자 보고).
+                  const pieces = splitPreview(view, o);
+                  const after = pieces === null ? morphedTile(view, o) : null;
                   return (
                     <button
                       key={i}
@@ -7835,7 +7872,12 @@ function OwnArea(props: {
                       <span className="aug-morph">
                         <TileImg tile={view.tiles[armSub.tileId]} size="hand" />
                         <span className="aug-morph-arrow" aria-hidden="true">→</span>
-                        {after !== null ? (
+                        {pieces !== null ? (
+                          <>
+                            <TileImg tile={pieces[0]} size="hand" />
+                            <TileImg tile={pieces[1]} size="hand" />
+                          </>
+                        ) : after !== null ? (
                           <TileImg tile={after} size="hand" />
                         ) : (
                           <ActionTiles view={view} option={o} />
@@ -9367,6 +9409,28 @@ function morphedTile(
 }
 
 /**
+ * 분열(`split_tile`)의 결과 **두 장**을 미리 계산한다 — 한 장이 a·b(합 = 원래 숫자)로
+ * 갈라지고 무늬는 그대로다. 결과가 둘이라 한 장짜리 morphedTile로는 표현할 수 없어
+ * 전용 경로를 둔다. 분열이 아니면 null.
+ */
+function splitPreview(
+  view: PlayerView,
+  option: ActionOption,
+): [{ kind: TileKind; attrs: { conjured: true } }, { kind: TileKind; attrs: { conjured: true } }] | null {
+  if (option.type !== "split_tile") return null;
+  const p = (option.payload ?? {}) as Record<string, unknown>;
+  if (typeof p.tileId !== "number" || typeof p.a !== "number") return null;
+  const src = view.tiles[p.tileId]?.kind;
+  if (src === undefined) return null;
+  const b = src.rank - p.a;
+  if (p.a < 1 || b < 1) return null;
+  return [
+    { kind: { suit: src.suit, rank: p.a }, attrs: { conjured: true } },
+    { kind: { suit: src.suit, rank: b }, attrs: { conjured: true } },
+  ];
+}
+
+/**
  * 단색 세계처럼 "손패 전체가 한 무늬로 물드는" 액션의 결과를 미리 계산한다.
  * 자패(wind·dragon)는 그대로 두고 수패만 목표 무늬로 옮긴다 — suit_unify와 같은 규칙.
  */
@@ -9411,6 +9475,11 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
   }
   if (typeof who === "string") return playerNameById(view, who);
   if (typeof p.yaku === "string") return YAKU_NAMES[p.yaku] ?? p.yaku;
+  // 분열 — 한 패에 후보가 여럿(9 → 1+8·2+7·3+6·4+5)이라 어느 분할인지 라벨로도 적는다
+  if (option.type === "split_tile" && typeof p.a === "number" && typeof p.tileId === "number") {
+    const src = view.tiles[p.tileId]?.kind;
+    if (src !== undefined) return `${p.a} + ${src.rank - p.a}`;
+  }
   const suitKo: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
   if (typeof p.suit === "string") return suitKo[p.suit] ?? p.suit;
   if (typeof p.delta === "number") return p.delta > 0 ? "+1" : "-1";

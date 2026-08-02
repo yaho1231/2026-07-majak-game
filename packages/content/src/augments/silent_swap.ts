@@ -38,7 +38,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
+import { addWinHanBonus, flagOf, riichiHidden, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, usefulIn } from "./botHelpers.js";
 
 const ID = "silent_swap";
@@ -51,9 +51,21 @@ const WIN_BONUS_HAN = 2;
 const usedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:used:${roundKey(state)}:${h}`;
 
-/** 이번 국에 리치를 건 사람이 하나라도 있는가 */
-function anyRiichi(state: GameState): boolean {
-  return state.players.some((p) => state.round.byPlayer[p.id]?.riichi != null);
+/**
+ * 이번 국에 리치를 건 사람이 하나라도 있는가.
+ *
+ * ⚠ **숨은 리치(스텔스 리치)는 세지 않는다.** 이 증강은 "누가 리치를 걸었을 때"만
+ * 버튼이 열리므로, 스텔스 리치로 열어 버리면 버튼이 켜지는 것만으로 "누군가 리치다"가
+ * 새어 나간다 — 아무도 모르는 것이 그 증강의 전부다(2026-08-02 감사).
+ */
+function anyRiichi(
+  rules: Parameters<typeof riichiHidden>[0],
+  state: GameState,
+): boolean {
+  return state.players.some(
+    (p) =>
+      state.round.byPlayer[p.id]?.riichi != null && !riichiHidden(rules, state, p.id),
+  );
 }
 
 /** 그 패가 놓여 있는 바닥의 주인 (어느 바닥에도 없으면 null) */
@@ -78,7 +90,7 @@ interface SilentSwapPayload {
 
 const silentTakeAction: ActionDef<{ tileId: TileId }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined || !player.augments.includes(ID)) {
       return "no silent_swap augment";
@@ -88,7 +100,7 @@ const silentTakeAction: ActionDef<{ tileId: TileId }> = {
       return "not your turn";
     }
     if (flagOf(state, usedKey(state, req.player))) return "already used this round";
-    if (anyRiichi(state)) return "riichi declared: the room is not silent";
+    if (anyRiichi(rules, state)) return "riichi declared: the room is not silent";
     const drawn = state.round.lastDrawnTile;
     if (drawn === null) return "no drawn tile to trade";
     if (!handIdsOf(state, req.player).includes(drawn)) return "drawn tile not in hand";
@@ -157,7 +169,7 @@ export const silentSwap: AugmentDef = defineAugment({
       if (flagOf(state, usedKey(state, holder))) return [];
       if (state.round.phase !== "turn.act") return [];
       if (playerAtSeat(state, state.round.turnSeat).id !== holder) return [];
-      if (anyRiichi(state)) return [];
+      if (anyRiichi(engine.rules, state)) return [];
       const out: { type: string; payload: { tileId: TileId } }[] = [];
       for (const p of state.players) {
         for (const tileId of state.zones[discardsZone(p.id)]?.tileIds ?? []) {
