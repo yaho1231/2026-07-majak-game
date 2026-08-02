@@ -31,7 +31,14 @@ import type {
   RoundSettledPayload,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, roundKey, roundViewKey, settleInterceptor } from "../util.js";
+import {
+  counterOf,
+  matchUses,
+  roundKey,
+  roundViewKey,
+  settleInterceptor,
+  withAugPoint,
+} from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
 
 const ID = "all_or_nothing";
@@ -155,6 +162,7 @@ export const allOrNothing: AugmentDef = defineAugment({
         payload: {
           ...p,
           deltas: { ...p.deltas, [holder]: (p.deltas[holder] ?? 0) + allIn },
+          augPoints: withAugPoint(p, ctx, allIn),
         },
       };
     });

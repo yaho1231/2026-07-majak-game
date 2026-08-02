@@ -24,7 +24,13 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { roundKey, roundViewKey, settleInterceptor, stringOf } from "../util.js";
+import {
+  roundKey,
+  roundViewKey,
+  settleInterceptor,
+  stringOf,
+  withAugPoint,
+} from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 
 const ID = "blood_contract";
@@ -103,9 +109,14 @@ export const bloodContract: AugmentDef = defineAugment({
       const hasContract = info.yaku.some((y) => y.id === contract);
       // 48차 무페널티: 계약을 못 지켜도 깎이지 않는다 (예전엔 0.5배)
       const mult = hasContract ? 1.5 : 1;
+      const after = round100(d * mult);
       return {
         type: event.type,
-        payload: { ...p, deltas: { ...p.deltas, [holder]: round100(d * mult) } },
+        payload: {
+          ...p,
+          deltas: { ...p.deltas, [holder]: after },
+          augPoints: withAugPoint(p, ctx, after - d),
+        },
       };
     });
 

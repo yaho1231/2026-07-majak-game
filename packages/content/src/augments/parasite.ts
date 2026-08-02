@@ -30,6 +30,7 @@ import {
   settleInterceptor,
   stringOf,
   viewKey,
+  withAugPoint,
 } from "../util.js";
 
 /** 기생 대상 키: 지정 후엔 항상 PlayerId (이동만 하고 해제되지 않는다) */
@@ -98,7 +99,10 @@ export const parasite: AugmentDef = defineAugment({
         [host]: d - share,
         [holder]: (p.deltas[holder] ?? 0) + share,
       };
-      return { type: event.type, payload: { ...p, deltas } };
+      return {
+        type: event.type,
+        payload: { ...p, deltas, augPoints: withAugPoint(p, ctx, share) },
+      };
     });
 
     // 숙주가 화료했거나(winner) 론을 맞았으면(ron의 from) 기생 대상을

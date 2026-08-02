@@ -270,3 +270,28 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
     expect(game.engine.state.augmentData[VIEW_KEY]).toBe("p1");
   });
 });
+
+describe("parasite — augPoints 기록 (docs/25 P9)", () => {
+  it("증강이 움직인 점수가 결과 화면용 augPoints에 정확히 실린다", () => {
+    const base = craftTsumoBy("p1");
+    const baseline = createStandardGameFromState(structuredClone(base));
+    const augmented = createStandardGameFromState(
+      structuredClone(withParasiteOn(base, "p1")),
+    );
+    installAugment(augmented.engine, parasite, "p0");
+
+    settleTsumo(baseline, "p1");
+    settleTsumo(augmented, "p1");
+
+    const baseD = lastSettled(baseline).deltas;
+    const augSettle = lastSettled(augmented);
+    const note = (augSettle.augPoints ?? []).find(
+      (n) => n.player === "p0" && n.augId === "parasite",
+    );
+
+    // 기록이 있어야 하고, 그 값이 **실제 delta 변동과 같아야** 한다.
+    // 예전에는 deltas만 고쳐서 결과 화면에 이유 없는 점수 이동만 남았다.
+    expect(note).toBeDefined();
+    expect(note?.points).toBe((augSettle.deltas["p0"] ?? 0) - (baseD["p0"] ?? 0));
+  });
+});
