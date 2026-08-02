@@ -216,3 +216,70 @@ describe("교환이 성사되면 그 숨은 리치가 풀린다", () => {
     expect(keys[0]!.startsWith("view:*:")).toBe(false);
   });
 });
+
+/**
+ * 남아 있던 빈틈 (docs/25 P3): **지정한 뒤에** 대상이 스텔스 리치를 걸면?
+ *
+ * 대상 목록(swap3)은 riichiBlocksSwap을 거쳐 숨은 리치를 남겼는데, 지정 이후
+ * 진행을 판정하는 `activeTarget`만 원시 `byPlayer[target].riichi`를 봤다. 그래서
+ * 지정해 둔 상대가 스텔스 리치를 걸면 보유자의 give/take 옵션이 통째로 사라져,
+ * 그 빈자리가 곧 "저 사람이 리치를 걸었다"가 됐다.
+ */
+describe("손패 3장 교환 — 지정 후 대상이 스텔스 리치를 걸어도 교환이 이어진다", () => {
+  /** p0가 p1을 이미 지정해 둔 상태 (지정은 손패를 움직이지 않는다) */
+  function aimed(mode: Riichi): Game {
+    const game = scene(handSwap3, "none");
+    const s0 = game.engine.state;
+    const r = s0.round;
+    const roundK = `${r.prevalentWind}-${r.roundNumber}-${r.honba}`;
+    const p1Round = r.byPlayer["p1"];
+    if (p1Round === undefined) throw new Error("no p1 round state");
+
+    const aimedState: GameState = {
+      ...s0,
+      round: {
+        ...r,
+        byPlayer: {
+          ...r.byPlayer,
+          p1:
+            mode === "none"
+              ? p1Round
+              : { ...p1Round, riichi: { double: false, ippatsu: false, discardIndex: 0 } },
+        },
+      },
+      augmentData: {
+        ...s0.augmentData,
+        [`hand_swap3:target:${roundK}:p0`]: "p1",
+        [`hand_swap3:left:${roundK}:p0`]: 1,
+        ...(mode === "stealth"
+          ? { [`stealth_riichi:active:${roundK}:p1`]: true }
+          : {}),
+      },
+    };
+
+    const withAugs = withAug(
+      withAug(aimedState, "p0", [handSwap3.id]),
+      "p1",
+      mode === "stealth" ? ["stealth_riichi"] : [],
+    );
+    const g = createStandardGameFromState(withAugs);
+    installAugment(g.engine, handSwap3, "p0", { yaku: g.yaku });
+    if (mode === "stealth") installAugment(g.engine, stealthRiichi, "p1", { yaku: g.yaku });
+    return g;
+  }
+
+  const gives = (game: Game): ActionOption[] =>
+    turnOptions(game, "p0").filter((o) => o.type === "swap3_give");
+
+  it("리치가 없으면 넘길 3장 후보가 뜬다 (기준선)", () => {
+    expect(gives(aimed("none")).length).toBeGreaterThan(0);
+  });
+
+  it("숨은 리치를 걸어도 후보가 그대로 뜬다 — 사라지면 그 자체가 누설이다", () => {
+    expect(gives(aimed("stealth")).length).toBeGreaterThan(0);
+  });
+
+  it("보이는 리치는 종전대로 교환을 막는다 (모두가 아는 정보라 누설될 것이 없다)", () => {
+    expect(gives(aimed("open")).length).toBe(0);
+  });
+});

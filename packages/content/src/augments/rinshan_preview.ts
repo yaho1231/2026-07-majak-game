@@ -41,7 +41,11 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { flagOf, roundKey } from "../util.js";
+import {
+  flagOf,
+  roundKey,
+  widenPeek,
+} from "../util.js";
 
 const ID = "rinshan_preview";
 const ACTION_PULL = "rinshan_pull";
@@ -146,7 +150,10 @@ export const rinshanPreview: AugmentDef = defineAugment({
         if (rctx.playerId !== holder) return cur;
         const state = rctx.state as GameState | undefined;
         if (state !== undefined && rinshanRemaining(state) === 0) return cur;
-        return { mode: "peek", count: 1 };
+        // widenPeek 필수 — cur를 무시하고 덮으면 왕패를 더 넓게 여는 다른 증강
+        // (왕패의 주인 14장, 이면투시 전체 공개)을 1장으로 **좁혀** 버린다.
+        // 최종 열람 범위가 드래프트 픽 순서로 갈리던 원인이다(docs/25 P7).
+        return widenPeek(cur, { mode: "peek", count: 1 });
       },
     });
 
