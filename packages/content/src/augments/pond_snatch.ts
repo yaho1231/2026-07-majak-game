@@ -32,7 +32,10 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf } from "../util.js";
+import {
+  counterOf,
+  replaceDrawnTile,
+} from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 
 const ID = "pond_snatch";
@@ -131,7 +134,7 @@ export const pondSnatch: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
-          round: { ...state.round, lastDrawnTile: p.snatchId, lastDrawRinshan: false },
+          round: replaceDrawnTile(state.round, p.snatchId),
           augmentData: {
             ...state.augmentData,
             [usedKey(p.holder)]: counterOf(state, usedKey(p.holder)) + 1,

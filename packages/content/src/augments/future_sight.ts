@@ -56,6 +56,7 @@ import {
   addWinHanBonus,
   counterOf,
   flagOf,
+  replaceDrawnTile,
   roundKey,
   roundViewKey,
   statePrng,
@@ -279,7 +280,7 @@ export const futureSight: AugmentDef = defineAugment({
           zones,
           prngState: p.prngState,
           // 마지막으로 들어온 패를 쯔모패로 — 이어지는 버림·리치 흐름 유지
-          round: { ...state.round, lastDrawnTile: newDrawn, byPlayer },
+          round: { ...replaceDrawnTile(state.round, newDrawn), byPlayer },
           augmentData: {
             ...state.augmentData,
             [sKey]: stacks,

@@ -39,7 +39,14 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { addWinHanBonus, flagOf, riichiHidden, roundKey, roundViewKey } from "../util.js";
+import {
+  addWinHanBonus,
+  flagOf,
+  replaceDrawnTile,
+  riichiHidden,
+  roundKey,
+  roundViewKey,
+} from "../util.js";
 import { handKindsOf, usefulIn } from "./botHelpers.js";
 
 const ID = "silent_swap";
@@ -150,8 +157,9 @@ export const silentSwap: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
-          // 가져온 패가 새 쯔모패 — 이어지는 버림 흐름 유지
-          round: { ...state.round, lastDrawnTile: p.takenId },
+          // 가져온 패가 새 쯔모패 — 이어지는 버림 흐름 유지.
+          // 영상 쯔모 직후에 집었더라도 바닥 패는 영상패가 아니므로 플래그도 내린다.
+          round: replaceDrawnTile(state.round, p.takenId),
           augmentData: {
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,
