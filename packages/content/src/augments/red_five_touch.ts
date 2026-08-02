@@ -113,6 +113,11 @@ const redTouchAction: ActionDef<{ rank: number }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
+    // 리치 중에는 손이 잠긴다 — 다른 손패 변형 증강(giant_god·peek_riichi_waits 등)과
+    // 같은 규약. 리치 후에도 무비용으로 판수를 늘릴 수 있던 사각지대를 막는다.
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
     const rank = req.payload.rank;
     if (!Number.isInteger(rank) || rank < 1 || rank > 9) {
       return "rank must be 1..9";

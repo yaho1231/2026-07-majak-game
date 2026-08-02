@@ -87,6 +87,12 @@ const recallAction: ActionDef<Record<string, never>> = {
       return "not your turn";
     }
     if (!hasUsesLeft(state, req.player)) return "no uses left this game";
+    // 같은 계열(giant_god·tile_split·genesis·even_world)과 같은 규약 — 리치 중에는
+    // 손패를 건드리는 액티브를 막는다(docs/21 D-2). 이 증강은 다음 국 배패에만
+    // 영향을 주지만, "리치 중엔 손 관련 액티브 정지"라는 일관된 규약을 지킨다.
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
     if (keptKinds(state, req.player).length > 0) return "already recalled, pending next round";
     if (recallableHonors(state, req.player).length === 0) {
       return "no honor tiles in your discards";

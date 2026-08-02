@@ -1110,11 +1110,10 @@ function waitDecompOptions(
   const has = (id: string): boolean => player.augments.includes(id);
   // 진짜 용 — 5멘쯔 손이라 기본 4멘쯔 분해로는 텐파이가 잡히지 않는다
   if (has("true_dragon")) opts.totalSets = 5;
-  // 무너진 국경 — 혼색 슌쯔·혼색 커쯔를 인정하지 않으면 대기가 실제보다 좁게 보인다
-  if (has("broken_border")) {
-    opts.mixedRuns = true;
-    opts.mixedTriplets = true;
-  }
+  // 무너진 국경 — 혼색 슌쯔만 허용한다(서버 broken_border.ts는 scoring.mixedRuns만
+  // 킨다 — 혼색 커쯔는 mixed_triplet 전용). 예전엔 여기서 mixedTriplets까지 같이
+  // 켜서 서버가 인정 안 하는 몸통을 화면이 정상으로 표시하는 desync가 있었다.
+  if (has("broken_border")) opts.mixedRuns = true;
   // 동수의 결속 — 혼색 커쯔만 (슌쯔는 기존처럼)
   if (has("mixed_triplet")) opts.mixedTriplets = true;
   // 부숴진 벽 — 순환 슌쯔(8-9-1·9-1-2)
@@ -5514,8 +5513,11 @@ function augmentLogRows(
     if (head === "revealTiles" && (target === "fog" || target === "future")) continue;
     // 다음 국으로 넘어가는 것(미련·귀환)은 국 결과창이 보여준다 — 그게 쓸모 있는 순간이다
     if (head === "regret" || head === "honor_return") continue;
-    // 상대의 봉인·투시된 실제 패는 **그 상대의 손패 옆**(SealBadge)에 띄운다
-    if (head === "sealed" || head === "revealTiles") continue;
+    // 상대의 봉인·투시된 실제 패는 **그 상대의 손패 옆**(SealBadge)에 띄운다.
+    // discardLockReveal은 봉인술사 전용 채널 — hand_swap3와 같은 `revealTiles:{target}`
+    // 키를 동시에 쓰면 같은 보유자가 두 증강을 함께 들었을 때 서로 덮어써 봉인 판정
+    // 자체가 틀어지던 문제가 있어 분리했다(2026-08 감사).
+    if (head === "sealed" || head === "revealTiles" || head === "discardLockReveal") continue;
     // 잔량·게이지·발동 여부는 그 사람의 이름표 증강 pill이 대신 보여준다.
     if (PILL_OWNED_HEADS.has(head)) continue;
     // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
@@ -6383,7 +6385,12 @@ function sealedPeekOf(
   view: PlayerView,
   playerId: string,
 ): { tiles: PublicTileView[]; kinds: TileKind[] } | null {
-  const revealed = view.augmentView[`revealTiles:${playerId}`];
+  // discardLockReveal(봉인술사 전용)과 revealTiles(등가교환 등 범용 채널)를 모두 본다 —
+  // 같은 보유자가 discard_lock과 hand_swap3를 함께 들고 같은 상대를 지목해도 서로
+  // 덮어쓰지 않도록 분리된 채널이다(2026-08 감사).
+  const revealed =
+    view.augmentView[`discardLockReveal:${playerId}`] ??
+    view.augmentView[`revealTiles:${playerId}`];
   if (Array.isArray(revealed)) {
     const tiles = (revealed as unknown[])
       .filter((id): id is number => typeof id === "number")

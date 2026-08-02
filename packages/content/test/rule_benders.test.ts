@@ -257,6 +257,78 @@ describe("open_kokushi (우는 국사무쌍)", () => {
     expect(game.engine.state.round.phase).toBe("turn.act");
     expect(game.engine.state.zones[meldsZone("p0")]?.tileIds.length).toBe(3);
   });
+
+  it("kokushi_pon 후에는 표준 펑·치가 막힌다 (소프트락 회귀 — 국사 외길 강제)", () => {
+    // p0가 이미 kokushi_pon(동남서) 후로를 하나 가진 상태에서 표준 펑감(백 2장 매칭)을
+    // 상대가 버린다. 예전엔 이걸 허용해서 표준형은 kokushiOnly에 막히고 국사는 이
+    // 표준 멘쯔 때문에 완성 불가능해지는 소프트락이 났다.
+    const base = craft({
+      hands: { p0: "19m19p9s4z55z", p1: "*", p2: "*", p3: "*" }, // 백(5z) 페어 보유
+      melds: { p0: [{ kind: "kokushi_pon", spec: "123z" }] },
+      phase: "reaction",
+      turnSeat: 1,
+      lastDiscard: { player: "p1", spec: "5z" }, // 백 — 표준 펑감
+    });
+    const withAug = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === "p0" ? { ...p, augments: [...p.augments, "open_kokushi"] } : p,
+      ),
+    };
+    const game = createStandardGameFromState(withAug);
+    installAugment(game.engine, openKokushi, "p0", { yaku: game.yaku });
+
+    const ponDef = game.engine.actions.get("pon");
+    const chiDef = game.engine.actions.get("chi");
+    if (ponDef === undefined || chiDef === undefined) throw new Error("missing action defs");
+    const ctx = { state: game.engine.state, rules: game.engine.rules };
+    const whitePair = handIdsOf(game.engine.state, "p0")
+      .filter((id) => kindKey(kindOf(game.engine.state, id)) === "dragon1")
+      .slice(0, 2) as [TileId, TileId];
+
+    expect(
+      ponDef.validate({ player: "p0", type: "pon", payload: { tileIds: whitePair } }, ctx),
+    ).not.toBeNull();
+    expect(
+      chiDef.validate({ player: "p0", type: "chi", payload: { tileIds: [] } }, ctx),
+    ).not.toBeNull();
+  });
+
+  it("kokushi_pon 후에도 kokushi_pon 자체는 계속 부를 수 있다 (퐁 횟수 제한 없음 유지)", () => {
+    // p0가 이미 동남서 kokushi_pon을 하나 가진 상태. 손에 9통·9삭을 들고 있다가
+    // 상대가 9만을 버리면 두 번째 kokushi_pon(9만9통9삭)이 성립해야 한다.
+    const base = craft({
+      hands: { p0: "9p9s1m2m3m4m5m6m7m8m", p1: "*", p2: "*", p3: "*" },
+      melds: { p0: [{ kind: "kokushi_pon", spec: "123z" }] },
+      phase: "reaction",
+      turnSeat: 1,
+      lastDiscard: { player: "p1", spec: "9m" },
+    });
+    const withAug = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === "p0" ? { ...p, augments: [...p.augments, "open_kokushi"] } : p,
+      ),
+    };
+    const game = createStandardGameFromState(withAug);
+    installAugment(game.engine, openKokushi, "p0", { yaku: game.yaku });
+
+    const kokushiDef = game.engine.actions.get("kokushi_pon");
+    if (kokushiDef === undefined) throw new Error("missing kokushi_pon def");
+    const ctx = { state: game.engine.state, rules: game.engine.rules };
+    const nineP = handIdsOf(game.engine.state, "p0").find(
+      (id) => kindKey(kindOf(game.engine.state, id)) === "pin9",
+    ) as TileId;
+    const nineS = handIdsOf(game.engine.state, "p0").find(
+      (id) => kindKey(kindOf(game.engine.state, id)) === "sou9",
+    ) as TileId;
+    expect(
+      kokushiDef.validate(
+        { player: "p0", type: "kokushi_pon", payload: { tileIds: [nineP, nineS] } },
+        ctx,
+      ),
+    ).toBeNull();
+  });
 });
 
 // ─────────────────────────── broken_wall ───────────────────────────

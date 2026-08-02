@@ -109,11 +109,11 @@ const kokushiPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
       return "augment is disarmed";
     }
     // 후로 봉인(함구령 등)을 우회하지 않는다 — 커스텀 콜도 표준 펑과 같은 규칙을 탄다.
+    // ⚠ call.pon.enabled는 일부러 안 본다 — 아래 install()에서 "국사 외길 강제"를 위해
+    // 커밋 후 표준 펑만 그 토글로 막는데, kokushi_pon까지 같이 막히면 이 증강의 핵심
+    // ("퐁 횟수 제한 없음")이 깨진다. kokushi_pon은 이 자체 validate로만 통제한다.
     if (rules.resolve<boolean>("call.blocked", { playerId: req.player, state })) {
       return "calls are sealed";
-    }
-    if (!rules.resolve<boolean>("call.pon.enabled", { playerId: req.player, state })) {
-      return "pon is disabled";
     }
     const last = state.round.lastDiscard;
     if (last === null) return "nothing to call";
@@ -179,6 +179,31 @@ export const openKokushi: AugmentDef = defineAugment({
 
     // 보유자만 국사 분해에 kokushi_pon 후로를 인정한다 (helpers/decompose가 읽음)
     ctx.setHolderRule("scoring.kokushiMeldAssist", true);
+
+    // kokushi_pon을 한 번이라도 하면 core의 scoringOptionsOf가 그 국 내내
+    // kokushiOnly=true로 표준형 분해를 막는다(helpers.ts). 그런데 이 증강은 일반
+    // 펑·치·깡까지는 막지 않아서, kokushi_pon 뒤에 일반 펑·치를 하나라도 하면
+    // 표준형은 kokushiOnly에 막히고 국사는 요구패 아닌 패로 된 그 멘쯔 때문에
+    // 절대 완성될 수 없어 그 국 내내 화료·텐파이가 불가능한 소프트락이 된다.
+    // → kokushi_pon으로 손이 한 번 열리면 그 뒤로는 kokushi_pon 외의 모든 콜을
+    //   막아 "국사 외길"을 강제한다(2026-08 감사).
+    const committedToKokushi = (state: GameState): boolean =>
+      (state.round.byPlayer[holder]?.melds ?? []).some((m) => m.kind === "kokushi_pon");
+    for (const rule of ["call.pon.enabled", "call.chi.enabled", "call.kan.enabled"] as const) {
+      ctx.engine.rules.addModifier<boolean>(rule, {
+        source: ctx.instanceId,
+        layer: ctx.layer,
+        apply: (cur, rctx) => {
+          if (rctx.playerId !== holder) return cur;
+          // 표준 pon·chi는 resolve 호출부가 state를 안 넘긴다(core standardActions.ts) —
+          // rctx.state에 기대지 않고 엔진의 현재 상태를 직접 본다. 이 resolve는 항상
+          // 그 액션의 validate 안에서 동기로 일어나므로 engine.state와 검증 대상 state가
+          // 같다.
+          const st = (rctx.state as GameState | undefined) ?? ctx.engine.state;
+          return committedToKokushi(st) ? false : cur;
+        },
+      });
+    }
 
     // 액션은 게임당 한 번만 등록 (여러 보유자가 있어도 안전)
     if (!engine.actions.has(ACTION)) {
