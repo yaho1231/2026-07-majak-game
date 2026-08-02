@@ -40,7 +40,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, roundKey, viewKey } from "../util.js";
+import { flagOf, riichiHidden, roundKey, viewKey } from "../util.js";
 
 const AUGMENT_ID = "peek_riichi_waits";
 /** 증강 id에서 파생한 이벤트 타입 (다른 증강과 충돌 방지) */
@@ -102,7 +102,7 @@ function parseKindKey(key: string): TileKind | null {
 
 const peekWaitsAction: ActionDef<{ target: PlayerId }> = {
   type: "peek_waits",
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined) return "unknown player";
     if (!player.augments.includes(AUGMENT_ID)) {
@@ -114,6 +114,11 @@ const peekWaitsAction: ActionDef<{ target: PlayerId }> = {
     }
     if (req.payload.target === req.player) return "cannot peek yourself";
     if (state.round.byPlayer[req.payload.target]?.riichi == null) {
+      return "target is not in riichi";
+    }
+    // 스텔스 리치는 **아무에게도 보이지 않는다** — 간파 대상으로도 잡히지 않는다.
+    // 여기를 열어 두면 후보 목록만으로 "저 사람이 리치다"가 새어 나간다.
+    if (riichiHidden(rules, state, req.payload.target)) {
       return "target is not in riichi";
     }
     if (flagOf(state, usedKey(state, req.player))) {
@@ -261,7 +266,11 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
         ? [] // 이번 국엔 이미 간파했다 (국당 1회)
         : state.players
             .filter(
-              (p) => p.id !== holder && state.round.byPlayer[p.id]?.riichi != null,
+              (p) =>
+                p.id !== holder &&
+                state.round.byPlayer[p.id]?.riichi != null &&
+                // 숨은 리치(스텔스)는 후보에 올리지 않는다 — 후보가 뜨는 것 자체가 누설
+                !riichiHidden(engine.rules, state, p.id),
             )
             .map((p) => ({ type: "peek_waits", payload: { target: p.id } }));
 

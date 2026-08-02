@@ -168,6 +168,31 @@ export function flagOf(state: GameState, key: string): boolean {
   return state.augmentData[key] === true;
 }
 
+/**
+ * 그 플레이어의 리치가 **숨겨져 있는가** (스텔스 리치).
+ *
+ * 코어 규칙 `riichi.hidden`이 true면 타가의 뷰에서 리치 표시가 지워진다. 그런데 뷰만
+ * 가려서는 부족하다 — **리치 중인 상대를 대상으로 삼는 증강**이 원시 상태
+ * (`round.byPlayer[x].riichi`)를 그대로 읽으면, 후보 목록이 뜨는 것만으로 "저 사람이
+ * 리치다"가 새어 나간다(선언 간파의 대상 목록이 실제로 그랬다 — 2026-08-02 감사).
+ * 그런 증강은 대상 판정에 이 함수를 함께 걸어 **숨은 리치는 없는 것으로 본다**.
+ *
+ * 드래프트 상호 배제(conflicts)로는 이걸 막을 수 없다 — 배제는 **한 사람이 두 증강을
+ * 같이 갖는 것**만 막고, 스텔스 리치를 건 사람과 리치 정보를 읽는 사람은 서로 다른
+ * 플레이어이기 때문이다.
+ */
+export function riichiHidden(
+  rules: {
+    has: (rule: string) => boolean;
+    resolve: <T>(rule: string, ctx: { playerId: PlayerId; state: GameState }) => T;
+  },
+  state: GameState,
+  player: PlayerId,
+): boolean {
+  if (!rules.has("riichi.hidden")) return false;
+  return rules.resolve<boolean>("riichi.hidden", { playerId: player, state }) === true;
+}
+
 /** augmentData 문자열 읽기 (없거나 빈 문자열이면 null) */
 export function stringOf(state: GameState, key: string): string | null {
   const v = state.augmentData[key];

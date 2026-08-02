@@ -2241,6 +2241,9 @@ button {
   gap: 3px;
   margin-top: 6px;
   justify-content: center;
+  /* 손패 한 벌(밥상 뒤엎기의 반납 13장)이 통째로 실릴 수 있다 — 화면 밖으로 새지 않게 접는다 */
+  flex-wrap: wrap;
+  max-width: min(92vw, 720px);
 }
 
 .banner-riichi {

@@ -147,8 +147,10 @@ export const bloodContract: AugmentDef = defineAugment({
         target = "chinitsu"; // 한 색 수패뿐
       } else if (offSuit <= 1 && (suitCount[dom] ?? 0) >= 5) {
         target = "honitsu"; // 한 색 + 자패로 몰림
-      } else if (pairs >= 4) {
-        target = "chiitoitsu"; // 짝이 많음
+      } else if (pairs >= 4 && kinds.length <= 14) {
+        // 짝이 많음. 단 **손패가 14장을 넘으면 치또이가 아예 성립하지 않는다**
+        // (진짜 용 = 5멘쯔·17장). 그런 손에 치또이를 걸면 배율이 통째로 죽는다.
+        target = "chiitoitsu";
       }
       if (target === null) return null;
       return (
