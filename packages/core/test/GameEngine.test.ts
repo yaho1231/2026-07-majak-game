@@ -88,6 +88,7 @@ describe("GameEngine.submit — 기본 흐름", () => {
         },
       ],
       canceled: [],
+      failures: [],
     });
     expect(engine.state.zones[handZone("p0")]?.tileIds).toHaveLength(12);
     expect(engine.state.zones[discardsZone("p0")]?.tileIds).toEqual([tileId]);
@@ -257,5 +258,63 @@ describe("GameEngine.submit — 증강(Effect)과의 결합", () => {
     }
     expect(engine.state.zones[discardsZone("p0")]?.tileIds).toHaveLength(2);
     expect(engine.state.lastEventSeq).toBe(2);
+  });
+});
+
+describe("훅 격리 — 증강 예외가 액션을 죽이지 않는다 (docs/25 최우선#1)", () => {
+  it("Reaction이 던져도 submit은 성공하고 상태가 채택된다", () => {
+    const engine = buildEngine();
+    engine.effects.register({
+      source: "aug:p1:broken",
+      layer: RuleLayer.Prism,
+      on: TILES_MOVED,
+      react: () => {
+        throw new Error("augment bug");
+      },
+    });
+    const tileId = firstHandTile(engine, "p0");
+
+    const result = engine.submit({ player: "p0", type: "discard", payload: { tileId } });
+
+    // 격리 전에는 여기서 ok:false → FlowController throw → 방 삭제로 이어졌다
+    expect(result.ok).toBe(true);
+    expect(engine.state.zones[discardsZone("p0")]?.tileIds).toEqual([tileId]);
+    if (result.ok) {
+      expect(result.failures).toEqual([
+        {
+          source: "aug:p1:broken",
+          phase: "react",
+          eventType: TILES_MOVED,
+          message: "augment bug",
+        },
+      ]);
+    }
+  });
+
+  it("Interceptor가 던져도 다른 증강의 수정은 그대로 살아남는다", () => {
+    const engine = buildEngine();
+    engine.effects.register({
+      source: "aug:p1:broken",
+      layer: RuleLayer.Silver,
+      on: TILES_MOVED,
+      intercept: () => {
+        throw new Error("augment bug");
+      },
+    });
+    engine.effects.register({
+      source: "aug:p2:healthy",
+      layer: RuleLayer.Gold,
+      on: TILES_MOVED,
+      intercept: (e) => ({
+        ...e,
+        payload: { ...(e.payload as TilesMovedPayload), to: discardsZone("p3") },
+      }),
+    });
+    const tileId = firstHandTile(engine, "p0");
+
+    const result = engine.submit({ player: "p0", type: "discard", payload: { tileId } });
+
+    expect(result.ok).toBe(true);
+    expect(engine.state.zones[discardsZone("p3")]?.tileIds).toEqual([tileId]);
   });
 });

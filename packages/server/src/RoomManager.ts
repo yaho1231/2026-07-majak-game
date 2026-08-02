@@ -1941,6 +1941,13 @@ export class RoomManager {
       // 매 게임 새 시드 — 안 넣으면 프로세스 내 모든 게임이 같은 시드를 써서
       // 배패·증강 선택지가 매번 똑같이 반복된다("증강이 초기화 안 됨"의 원인).
       seed: randomInt(0x1_0000_0000),
+      // 증강 훅이 던지면 엔진이 그 source만 격리하고 게임을 계속한다. 격리가 없던
+      // 시절에는 예외 하나가 방 삭제로 이어졌다. 대신 여기서 반드시 남겨야
+      // 증강 버그가 흔적 없이 사라지지 않는다.
+      onEffectError: (f) =>
+        console.error(
+          `[augment] ${f.source} ${f.phase} threw on ${f.eventType} (room ${room.code}): ${f.message}`,
+        ),
       // 증강 테스트: 드래프트 없이 시작하고, 고른 증강만 배패 전에 지급한다
       ...(room.sandbox
         ? {

@@ -247,3 +247,104 @@ describe("EffectRegistry", () => {
     expect(result.state.applied).toEqual([{ type: "add", value: 5 }]);
   });
 });
+
+describe("훅 격리 (docs/25 최우선#1)", () => {
+  it("Interceptor가 던지면 그 source만 빠지고 나머지는 정상 적용된다", () => {
+    const { effects, processor, rules, state } = setup();
+    effects.register({
+      source: "broken-aug",
+      layer: RuleLayer.Silver,
+      on: "add",
+      intercept: () => {
+        throw new Error("boom");
+      },
+    });
+    effects.register({
+      source: "healthy-aug",
+      layer: RuleLayer.Gold,
+      on: "add",
+      intercept: (e) => ({ ...e, payload: { value: (e.payload as { value: number }).value * 2 } }),
+    });
+
+    const result = processor.process(state, rules, ev("add", 5), 0);
+
+    // 던진 쪽은 "아무것도 안 한 것"으로 취급 → 5가 그대로 넘어가 healthy가 2배
+    expect(result.state.applied).toEqual([{ type: "add", value: 10 }]);
+    expect(result.failures).toEqual([
+      { source: "broken-aug", phase: "intercept", eventType: "add", message: "boom" },
+    ]);
+  });
+
+  it("Reaction이 던지면 그 Reaction이 이미 emit한 이벤트는 전부 폐기된다 (all-or-nothing)", () => {
+    const { effects, processor, rules, state } = setup();
+    effects.register({
+      source: "broken-aug",
+      layer: RuleLayer.Silver,
+      on: "add",
+      react: (_e, ctx) => {
+        ctx.emit(ev("half-emitted", 1));
+        throw new Error("boom");
+      },
+    });
+    effects.register({
+      source: "healthy-aug",
+      layer: RuleLayer.Gold,
+      on: "add",
+      react: (_e, ctx) => {
+        ctx.emit(ev("follow", 2));
+      },
+    });
+
+    const result = processor.process(state, rules, ev("add", 5), 0);
+
+    expect(result.state.applied).toEqual([
+      { type: "add", value: 5 },
+      { type: "follow", value: 2 },
+    ]);
+    expect(result.events.map((e) => e.type)).not.toContain("half-emitted");
+    expect(result.failures).toEqual([
+      { source: "broken-aug", phase: "react", eventType: "add", message: "boom" },
+    ]);
+  });
+
+  it("onEffectError로 실패가 보고되고, 콜백이 던져도 게임은 계속된다", () => {
+    const seen: string[] = [];
+    const { effects, processor, rules, state } = setup({
+      onEffectError: (f) => {
+        seen.push(`${f.phase}:${f.source}`);
+        throw new Error("logger exploded");
+      },
+    });
+    effects.register({
+      source: "broken-aug",
+      layer: RuleLayer.Silver,
+      on: "add",
+      intercept: () => {
+        throw new Error("boom");
+      },
+    });
+
+    const result = processor.process(state, rules, ev("add", 5), 0);
+
+    expect(seen).toEqual(["intercept:broken-aug"]);
+    expect(result.state.applied).toEqual([{ type: "add", value: 5 }]);
+  });
+
+  it("한도 초과는 여전히 throw다 — 격리 대상이 아니다", () => {
+    const { effects, processor, rules, state } = setup({ maxEventsPerRoot: 5 });
+    effects.register({
+      source: "runaway",
+      layer: RuleLayer.Silver,
+      on: "add",
+      react: (_e, ctx) => {
+        ctx.emit(ev("add", 1));
+      },
+    });
+    expect(() => processor.process(state, rules, ev("add", 1), 0)).toThrow(/maxEventsPerRoot/);
+  });
+
+  it("실패가 없으면 failures는 빈 배열이다", () => {
+    const { processor, rules, state } = setup();
+    expect(processor.process(state, rules, ev("add", 5), 0).failures).toEqual([]);
+  });
+});
