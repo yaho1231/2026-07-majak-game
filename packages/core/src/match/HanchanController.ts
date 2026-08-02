@@ -19,6 +19,7 @@ import { DraftController, rebuildAugments } from "../augment/DraftController.js"
 import { installAugment } from "../augment/Augment.js";
 import { draftDoneKey } from "../augment/events.js";
 import { RuleLayer } from "../engine/rules/RuleRegistry.js";
+import type { EffectFailure } from "../engine/effects/EventProcessor.js";
 import {
   SPECTATOR_ID,
   arrangeHandForDisplay,
@@ -100,6 +101,12 @@ export interface HanchanConfig {
    * 흘렸는지"가 화면에서 사라진다. 기본 0 (테스트·봇 게임은 지연 없음).
    */
   autoMoveDelayMs?: number;
+  /**
+   * 증강 훅(Interceptor·Reaction)이 던져서 격리됐을 때 호출된다 — 서버 로깅용.
+   * 격리 덕분에 게임은 계속 진행되므로, 이 훅이 없으면 증강 버그가 **아무 흔적 없이**
+   * 조용히 사라진다. 운영에서는 반드시 연결할 것. (docs/25 최우선#1)
+   */
+  onEffectError?: (failure: EffectFailure) => void;
 }
 
 export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
@@ -366,6 +373,9 @@ export class HanchanController {
       redFivesPerSuit: this.config.redFivesPerSuit ?? 1,
       ...(this.config.extraAugments !== undefined
         ? { extraAugments: this.config.extraAugments }
+        : {}),
+      ...(this.config.onEffectError !== undefined
+        ? { processor: { onEffectError: this.config.onEffectError } }
         : {}),
     };
     const game = createStandardGame(options);

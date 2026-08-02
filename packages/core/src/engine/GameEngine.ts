@@ -13,7 +13,11 @@ import { ActionRegistry } from "./actions/ActionRegistry.js";
 import type { ActionRequest } from "./actions/ActionRegistry.js";
 import { EffectRegistry } from "./effects/EffectRegistry.js";
 import { EventProcessor } from "./effects/EventProcessor.js";
-import type { CanceledEvent, ProcessorOptions } from "./effects/EventProcessor.js";
+import type {
+  CanceledEvent,
+  EffectFailure,
+  ProcessorOptions,
+} from "./effects/EventProcessor.js";
 import type { GameEvent } from "./events/GameEvent.js";
 import { ReducerRegistry } from "./reducers/ReducerRegistry.js";
 import { RuleRegistry } from "./rules/RuleRegistry.js";
@@ -61,7 +65,7 @@ export interface EngineOptions {
 }
 
 export type SubmitResult =
-  | { ok: true; events: GameEvent[]; canceled: CanceledEvent[] }
+  | { ok: true; events: GameEvent[]; canceled: CanceledEvent[]; failures: EffectFailure[] }
   | { ok: false; reason: string };
 
 /**
@@ -170,12 +174,14 @@ export class GameEngine {
       let lastSeq = state.lastEventSeq;
       const events: GameEvent[] = [];
       const canceled: CanceledEvent[] = [];
+      const failures: EffectFailure[] = [];
 
       for (const root of roots) {
         const result = this.processor.process(state, this.rules, root, lastSeq);
         state = result.state;
         events.push(...result.events);
         canceled.push(...result.canceled);
+        failures.push(...result.failures);
         const last = result.events[result.events.length - 1];
         if (last !== undefined) lastSeq = last.seq;
       }
@@ -183,7 +189,7 @@ export class GameEngine {
       // 성공했을 때만 새 상태 채택 (트랜잭션)
       this.currentState = { ...state, lastEventSeq: lastSeq };
       this.log.push(...events);
-      return { ok: true, events, canceled };
+      return { ok: true, events, canceled, failures };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, reason: `Action failed: ${message}` };

@@ -44,6 +44,7 @@ export type {
   ProcessorOptions,
   ProcessResult,
   CanceledEvent,
+  EffectFailure,
   Reducer,
 } from "./engine/effects/EventProcessor.js";
 
