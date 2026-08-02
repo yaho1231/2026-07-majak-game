@@ -51,6 +51,11 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, flagOf, matchUses, roundKey, sameHandSize } from "../util.js";
+import {
+  breakStealthRiichiEvents,
+  ensureStealthBreakReducer,
+  riichiBlocksSwap,
+} from "./stealthBreak.js";
 
 /** 자리 교환 확정 이벤트 (증강 id에서 파생한 이름 — 다른 증강과 충돌 방지) */
 const SEATS_SWAPPED = "SeatsSwapped";
@@ -105,7 +110,9 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
     // 상대가 이미 리치를 선언했다면 손을 통째로 맞바꿀 수 없다 — 리치는 "이 손으로
     // 텐파이 고정"이 전제인데, 손패만 바뀌고 riichi 필드(공탁·일발)는 자리에 남아
     // 리치=텐파이 불변식이 깨진다(원래 대기와 무관한 손을 쥔 채 강제 쯔모기리하게 됨).
-    if (state.round.byPlayer[req.payload.target]?.riichi != null) {
+    // ⚠ 단 **숨은 리치(스텔스)는 막지 않는다** — 후보에서 빼면 그 빈자리가 곧
+    //   "저 사람 리치다"가 되어 은닉이 통째로 깨진다. 대신 맞바꾸는 순간 해제한다.
+    if (riichiBlocksSwap(rules, state, req.payload.target)) {
       return "target already riichi";
     }
     // **내** 첫 순에만 — 내가 이 국에서 아직 한 장도 버리지 않았을 때.
@@ -118,13 +125,15 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
     }
     return null;
   },
-  toEvents: (req, { state }) => [
+  toEvents: (req, { state, rules }) => [
     {
       type: SEATS_SWAPPED,
       payload: { a: req.player, b: req.payload.target } satisfies SeatsSwappedPayload,
     },
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
     augmentDataSet(roundUsedKey(state, req.player), true),
+    // 손이 통째로 바뀌었으면 그 손에 걸려 있던 숨은 리치는 풀린다 (당사자에게만 통보)
+    ...breakStealthRiichiEvents(rules, state, req.payload.target, req.player),
   ],
 };
 
@@ -136,9 +145,12 @@ export const seatSwap: AugmentDef = defineAugment({
   description:
     "(동풍전 2회 · 반장전 3회, 국당 1회) 내 첫 순에 상대 한 명을 지정하면 그 자리에서 즉시 자리와 손패를 통째로 맞바꾼다 — 자풍·오야·차례는 물론 상대의 손패·후로까지 가져온다.",
   detail:
-    "(동풍전 2회 · 반장전 3회, 한 국에는 1회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다.",
+    "(동풍전 2회 · 반장전 3회, 한 국에는 1회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다. 리치한 상대는 지정할 수 없지만, **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손이 바뀌는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다.",
   install(ctx) {
     const { engine } = ctx;
+
+    // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
+    ensureStealthBreakReducer(engine);
 
     // 이벤트·액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.reducers.has(SEATS_SWAPPED)) {

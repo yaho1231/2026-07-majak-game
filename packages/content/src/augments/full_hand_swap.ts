@@ -31,6 +31,11 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, roundViewKey, sameHandSize } from "../util.js";
+import {
+  breakStealthRiichiEvents,
+  ensureStealthBreakReducer,
+  riichiBlocksSwap,
+} from "./stealthBreak.js";
 import { handIsPoor } from "./botHelpers.js";
 
 const ID = "full_hand_swap";
@@ -76,7 +81,9 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
     const target = state.players.find((p) => p.id === req.payload.target);
     if (target === undefined) return "unknown target";
     if (target.id === req.player) return "cannot target yourself";
-    if (state.round.byPlayer[target.id]?.riichi != null) {
+    // 보이는 리치만 막는다 — 숨은 리치(스텔스)를 여기서 빼면 후보 목록의 빈자리가
+    // 곧 "저 사람 리치다"가 된다. 숨은 리치는 대상으로 삼되 아래에서 해제한다.
+    if (riichiBlocksSwap(rules, state, target.id)) {
       return "target is in riichi";
     }
     if (!sameHandSize(rules, state, req.player, target.id)) {
@@ -88,7 +95,7 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
     }
     return null;
   },
-  toEvents: (req, { state }) => {
+  toEvents: (req, { state, rules }) => {
     const drawn = state.round.lastDrawnTile;
     const steal = [...handIdsOf(state, req.payload.target)];
     const payload: FullHandSwapPayload = {
@@ -99,7 +106,11 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
       // 내 패는 배열 끝에 붙으므로 앞쪽 N장은 그대로다 (validate가 길이를 보장)
       refill: (state.zones[WALL]?.tileIds ?? []).slice(0, steal.length),
     };
-    return [{ type: FULL_HAND_SWAP_PERFORMED, payload }];
+    return [
+      { type: FULL_HAND_SWAP_PERFORMED, payload },
+      // 손을 통째로 뺏겼으면 그 손에 걸려 있던 숨은 리치는 풀린다 (당사자에게만 통보)
+      ...breakStealthRiichiEvents(rules, state, req.payload.target, req.player),
+    ];
   },
 };
 
@@ -111,9 +122,12 @@ export const fullHandSwap: AugmentDef = defineAugment({
   description:
     "(게임 내 2회) 국의 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패(쯔모패 제외)는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다.",
   detail:
-    "(게임 내 2회) 국의 첫 순에 상대 한 명을 지정해 그 손패를 통째로 가져온다. 교환이 아니라 강탈이라 내 손패(쯔모패 제외)는 상대가 아니라 패산 맨 밑으로 들어가고, 상대는 패산 위에서 같은 장수를 새로 받는다. 내 배패가 상대를 강화하는 일은 없다. 리치한 상대와 손패 장수가 다른 상대는 지정할 수 없다.",
+    "(게임 내 2회) 국의 첫 순에 상대 한 명을 지정해 그 손패를 통째로 가져온다. 교환이 아니라 강탈이라 내 손패(쯔모패 제외)는 상대가 아니라 패산 맨 밑으로 들어가고, 상대는 패산 위에서 같은 장수를 새로 받는다. 내 배패가 상대를 강화하는 일은 없다. 리치한 상대와 손패 장수가 다른 상대는 지정할 수 없다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손을 뺏기는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
+    ensureStealthBreakReducer(engine);
 
     // 이벤트·액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.reducers.has(FULL_HAND_SWAP_PERFORMED)) {
