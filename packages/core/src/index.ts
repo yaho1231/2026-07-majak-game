@@ -259,6 +259,7 @@ export {
   buildPlayerView,
   arrangeHandForDisplay,
   defineVisibilityRules,
+  visibleTileIdsIn,
   SPECTATOR_ID,
 } from "./information/PlayerView.js";
 export type {

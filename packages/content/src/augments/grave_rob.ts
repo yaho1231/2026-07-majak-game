@@ -33,6 +33,7 @@ import {
   kindOf,
   moveTiles,
   playerAtSeat,
+  visibleTileIdsIn,
 } from "@majak/core";
 import type {
   ActionDef,
@@ -82,6 +83,7 @@ const GRAVE_DEPTH = 10;
  */
 function graveCandidates(
   state: GameState,
+  rules: RuleRegistry,
   holder: PlayerId,
 ): { fromPlayer: PlayerId; graveId: TileId }[] {
   const n = state.players.length;
@@ -94,7 +96,11 @@ function graveCandidates(
   for (const p of state.players) {
     if (p.id === holder) continue;
     const seatOrder = ((p.seat - state.round.dealerSeat) % n + n) % n;
-    const pond = state.zones[discardsZone(p.id)]?.tileIds ?? [];
+    // ⚠ **보유자에게 실제로 보이는 패만** 무덤으로 센다. 후보는 "지금 파면 화료되는
+    //    패"만 남으므로, 안개(박무·숨은 강)로 가려진 바닥까지 긁으면 그 순간
+    //    "안 보이는 저 패가 내 오름패다"가 후보 하나로 드러난다(2026-08-02 감사).
+    //    보이지 않는 무덤은 팔 수도 없다 — 정보와 규칙을 같은 선에 맞춘다.
+    const pond = visibleTileIdsIn(state, rules, holder, discardsZone(p.id));
     pond.forEach((id, turn) => {
       rows.push({ fromPlayer: p.id, graveId: id, turn, seatOrder });
     });
@@ -108,10 +114,11 @@ function graveCandidates(
 /** 이 패가 지금 파낼 수 있는 깊이 안에 있는가 (validate·후보 생성이 같은 판정을 쓴다) */
 function inGraveWindow(
   state: GameState,
+  rules: RuleRegistry,
   holder: PlayerId,
   graveId: TileId,
 ): boolean {
-  return graveCandidates(state, holder).some((c) => c.graveId === graveId);
+  return graveCandidates(state, rules, holder).some((c) => c.graveId === graveId);
 }
 
 /** 도굴을 반영한 가상 상태 — 쯔모패는 패산으로, 무덤 패는 손으로 */
@@ -177,7 +184,7 @@ function makeAction(yaku: YakuRegistry): ActionDef<{
       if (req.payload.fromPlayer === req.player) return "cannot rob your own pond";
       const pond = state.zones[discardsZone(req.payload.fromPlayer)]?.tileIds ?? [];
       if (!pond.includes(req.payload.graveId)) return "tile is not in that pond";
-      if (!inGraveWindow(state, req.player, req.payload.graveId)) {
+      if (!inGraveWindow(state, rules, req.player, req.payload.graveId)) {
         return "that tile is buried too deep";
       }
       if (
@@ -258,7 +265,7 @@ export const graveRob: AugmentDef = defineAugment({
       const verdict = new Map<string, boolean>();
       const out: { type: string; payload: { graveId: TileId; fromPlayer: PlayerId } }[] =
         [];
-      for (const c of graveCandidates(state, holder)) {
+      for (const c of graveCandidates(state, engine.rules, holder)) {
         const key = kindKey(kindOf(state, c.graveId));
         let ok = verdict.get(key);
         if (ok === undefined) {
