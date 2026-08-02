@@ -594,15 +594,30 @@ describe("seat_swap (자리 바꿈) — 즉시 적용", () => {
     expect(game.engine.eventLog.some((e) => e.type === "SeatsSwapped")).toBe(true);
   });
 
-  it("동풍전 2회 — 다 쓰면 거부된다 (2026-07-31 버프: 1 → 2회)", () => {
+  // 2026-08-02(사용자 지시): 매치 횟수(동풍전 2·반장전 3)와 별개로 **한 국에는 1회**.
+  // 손을 맞바꿔도 내 버림 이력은 계속 비어 있어, 예전에는 같은 순에 연달아 자리를
+  // 갈아탈 수 있었다.
+  it("국당 1회 — 같은 국에서 두 번째 발동은 거부된다 (매치 횟수가 남아 있어도)", () => {
     const base = firstTurnState();
     const tonpuu: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };
     const game = setup(tonpuu);
     submitOk(game, "p0", "seat_swap", { target: "p2" });
-    // 한 번 더 쓸 수 있다 (자리가 바뀌었으니 지금 p0은 seat 2, 여전히 자기 순)
-    expect(validateOf(game, "seat_swap", "p0", { target: "p1" })).toBeNull();
-    submitOk(game, "p0", "seat_swap", { target: "p1" });
-    expect(validateOf(game, "seat_swap", "p0", { target: "p3" })).toBe(
+    // 매치 횟수는 1/2만 썼지만 이 국에서는 더 못 쓴다
+    expect(game.engine.state.augmentData["seat_swap:uses:p0"]).toBe(1);
+    expect(validateOf(game, "seat_swap", "p0", { target: "p1" })).toBe(
+      "seat_swap already used this round",
+    );
+  });
+
+  it("매치 횟수를 다 쓰면 거부된다 (동풍전 2회)", () => {
+    const base = firstTurnState();
+    const tonpuu: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };
+    const spent: GameState = {
+      ...tonpuu,
+      augmentData: { ...tonpuu.augmentData, "seat_swap:uses:p0": 2 },
+    };
+    const game = setup(spent);
+    expect(validateOf(game, "seat_swap", "p0", { target: "p2" })).toBe(
       "seat_swap no uses left",
     );
   });

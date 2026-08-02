@@ -132,7 +132,8 @@ describe("hidden_river — 안개 바닥", () => {
   function setup(declared = true) {
     const state = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
-      discards: { p0: "1z2z", p1: "9m" },
+      // p0 바닥은 8장(+lastDiscard 1장) — 최근 6장만 남고 앞이 가려지는지 본다
+      discards: { p0: "1z2z3z4z5z6z7z1m", p1: "9m" },
       phase: "reaction",
       turnSeat: 0,
       lastDiscard: { player: "p0", spec: "5s" },
@@ -154,32 +155,28 @@ describe("hidden_river — 안개 바닥", () => {
     expect(river.hiddenCount).toBe(0);
   });
 
-  it("타인 뷰: 네 사람 모두의 바닥이 가려지고, 마지막 버림패만 반응 판정용으로 보인다", () => {
+  it("타인 뷰: 최근 6장만 보이고 그 앞은 장수만 남는다", () => {
     const game = setup();
     const st = game.engine.state;
     const view = buildPlayerView(st, "p1", game.engine.rules);
 
-    // 보유자(p0)의 바닥: 내용 비공개, 장수(3장)만
+    // 보유자(p0)의 바닥 9장 중 뒤 6장만 공개, 앞 3장은 장수만
     const river = zoneOf(view, discardsZone("p0"));
-    expect(river.tileIds).toHaveLength(0);
+    expect(river.tileIds).toHaveLength(6);
     expect(river.hiddenCount).toBe(3);
 
-    // 마지막 버림패는 lastDiscard 채널로 노출 (론·후로 판정 가능)
+    // 마지막 버림패는 그 6장에 들어 있다 (론·후로 판정 가능)
     const lastId = st.round.lastDiscard?.tileId as TileId;
     expect(view.round.lastDiscard?.tileId).toBe(lastId);
     expect(view.tiles[lastId]).toBeDefined();
-
-    // 자기 바닥(p1)조차 가려진다 — 안개는 테이블 전체에 낀다
-    const ownRiver = zoneOf(view, discardsZone("p1"));
-    expect(ownRiver.tileIds).toHaveLength(0);
-    expect(ownRiver.hiddenCount).toBe(1);
+    expect(river.tileIds).toContain(lastId);
   });
 
   it("보유자 본인 뷰: 네 사람의 바닥이 전부 그대로 보인다", () => {
     const game = setup();
     const view = buildPlayerView(game.engine.state, "p0", game.engine.rules);
     const mine = zoneOf(view, discardsZone("p0"));
-    expect(mine.tileIds).toHaveLength(3);
+    expect(mine.tileIds).toHaveLength(9);
     expect(mine.hiddenCount).toBe(0);
     const theirs = zoneOf(view, discardsZone("p1"));
     expect(theirs.tileIds).toHaveLength(1);

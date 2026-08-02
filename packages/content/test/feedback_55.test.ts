@@ -1,7 +1,7 @@
 /**
  * feedback_55 — 55차 사용자 플레이 피드백에 따른 기존 증강 사양 변경 5건 검증.
  *
- * 대상: hidden_river(액티브 선언형 + 각자 마지막 버림패 공개) ·
+ * 대상: hidden_river(액티브 선언형 + 최근 6장 공개 — 2026-08-02 사양 변경) ·
  *       hand_swap3(발동한 국 재사용 금지) ·
  *       future_sight(액티브 버튼 2단계 + 가져온 패 공개) ·
  *       jackpot(룰렛에 0.5배 추가) ·
@@ -154,15 +154,13 @@ function playOneRound(aug: AugmentDef, seed: number): void {
 
 describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
   const FOG_KEY = "hidden_river:fog:p0";
-  const LAST_KEY = roundViewKey("*", "hidden_river:last:p0");
-  // 공개 채널은 보유자별로 갈린다 (박무와 키를 공유하면 서로 덮어쓴다)
-  const REVEAL_KEY = roundViewKey("*", "revealTiles:fog:p0");
 
   function setup(): Game {
     const state = withAugment(
       craft({
         hands: { p0: "123m456m789m123p99p", p1: "*", p2: "*", p3: "*" },
-        discards: { p0: "1z2z", p1: "9m", p2: "3z" },
+        // p0 바닥은 8장 — 최근 6장만 남고 앞 2장이 안개에 가려지는지 본다
+        discards: { p0: "1z2z3z4z5z6z7z1m", p1: "9m", p2: "3z" },
         phase: "turn.act",
         turnSeat: 0,
         drawnLastFor: "p0",
@@ -179,7 +177,7 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
   it("선언 전에는 바닥이 정상적으로 보인다 (상시 패시브가 아니다)", () => {
     const game = setup();
     const view = buildPlayerView(game.engine.state, "p1", game.engine.rules);
-    expect(zoneOf(view, discardsZone("p0")).tileIds).toHaveLength(2);
+    expect(zoneOf(view, discardsZone("p0")).tileIds).toHaveLength(8);
     expect(zoneOf(view, discardsZone("p0")).hiddenCount).toBe(0);
     expect(game.engine.state.augmentData[FOG_KEY]).toBeUndefined();
   });
@@ -199,15 +197,16 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
     expect(s.augmentData[FOG_KEY]).toBe(true);
     expect(s.augmentData[roundViewKey("*", "hidden_river:p0")]).toBe("안개");
 
-    // 타인 뷰: 네 사람 바닥이 전부 장수만
+    // 타인 뷰: 최근 6장만 보이고 그 앞은 장수만 (6장 이하인 바닥은 그대로 보인다)
     const other = buildPlayerView(s, "p1", game.engine.rules);
-    expect(zoneOf(other, discardsZone("p0")).tileIds).toHaveLength(0);
+    expect(zoneOf(other, discardsZone("p0")).tileIds).toHaveLength(6);
     expect(zoneOf(other, discardsZone("p0")).hiddenCount).toBe(2);
-    expect(zoneOf(other, discardsZone("p1")).hiddenCount).toBe(1);
+    expect(zoneOf(other, discardsZone("p2")).tileIds).toHaveLength(1);
+    expect(zoneOf(other, discardsZone("p2")).hiddenCount).toBe(0);
 
     // 보유자 뷰: 전부 그대로
     const mine = buildPlayerView(s, "p0", game.engine.rules);
-    expect(zoneOf(mine, discardsZone("p0")).tileIds).toHaveLength(2);
+    expect(zoneOf(mine, discardsZone("p0")).tileIds).toHaveLength(8);
     expect(zoneOf(mine, discardsZone("p1")).tileIds).toHaveLength(1);
   });
 
@@ -222,34 +221,23 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
     expect(turnOptions(game).some((o) => o.type === "declare_fog")).toBe(false);
   });
 
-  it("각 플레이어의 마지막 버림패는 안개 속에서도 전원에게 보인다", () => {
+  it("공개되는 최근 6장은 바닥의 **뒤쪽**이고, 그 앞 패는 패 내용까지 감춰진다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "declare_fog", payload: {} });
 
     const s = game.engine.state;
-    const lastOf = (p: PlayerId): TileId | undefined =>
-      s.zones[discardsZone(p)]?.tileIds.at(-1);
-    const map = s.augmentData[LAST_KEY] as Record<PlayerId, TileId>;
-    expect(map["p0"]).toBe(lastOf("p0"));
-    expect(map["p1"]).toBe(lastOf("p1"));
-    expect(map["p2"]).toBe(lastOf("p2"));
-    // p3은 버린 패가 없으므로 맵에 없다
-    expect(map["p3"]).toBeUndefined();
-
-    // 같은 tileId가 revealTiles 채널에도 실려 '진짜 패'로 그릴 수 있다
-    expect(s.augmentData[REVEAL_KEY]).toEqual(Object.values(map));
+    const river = s.zones[discardsZone("p0")]?.tileIds as TileId[];
     const other = buildPlayerView(s, "p1", game.engine.rules);
-    for (const id of Object.values(map)) {
-      expect(other.tiles[id]).toBeDefined();
-    }
-    // 반면 바닥의 그 앞 패(p0의 첫 버림)는 여전히 보이지 않는다
-    const hiddenId = s.zones[discardsZone("p0")]?.tileIds[0] as TileId;
-    expect(other.tiles[hiddenId]).toBeUndefined();
+    // 뒤 6장이 그대로(순서 유지) 보인다
+    expect(zoneOf(other, discardsZone("p0")).tileIds).toEqual(river.slice(-6));
+    // 그 앞 2장은 tiles에도 없다 — 장수로만 남는다
+    for (const id of river.slice(0, 2)) expect(other.tiles[id]).toBeUndefined();
   });
 
-  it("버릴 때마다 '각자의 마지막 버림패' 맵이 갱신된다", () => {
+  it("버릴 때마다 공개 창이 따라 밀린다 (최신 6장 유지)", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "declare_fog", payload: {} });
+    const before = game.engine.state.zones[discardsZone("p0")]?.tileIds as TileId[];
 
     const hand = handIdsOf(game.engine.state, "p0");
     const toss = hand[0] as TileId;
@@ -261,9 +249,13 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
     expect(r.ok).toBe(true);
 
     const s = game.engine.state;
-    const map = s.augmentData[LAST_KEY] as Record<PlayerId, TileId>;
-    expect(map["p0"]).toBe(toss);
-    expect(s.augmentData[REVEAL_KEY]).toContain(toss);
+    const other = buildPlayerView(s, "p1", game.engine.rules);
+    const shown = zoneOf(other, discardsZone("p0")).tileIds;
+    expect(shown).toHaveLength(6);
+    expect(shown.at(-1)).toBe(toss); // 방금 버린 패는 보인다
+    expect(zoneOf(other, discardsZone("p0")).hiddenCount).toBe(3);
+    // 창이 한 칸 밀려, 예전에 보이던 가장 오래된 패가 이제 가려진다
+    expect(other.tiles[before.slice(-6)[0] as TileId]).toBeUndefined();
   });
 
   it("실게임 한 국 완주 (3시드)", () => {

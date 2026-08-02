@@ -111,4 +111,46 @@ describe("시간 정지 — 추가 턴이 실제로 발동한다", () => {
     expect(declared).toBe(true);
     expect(extraTurnSeen).toBe(true);
   });
+
+  // 2026-08-02(사용자 지시) 버프: 2국당 1회 → **매 국 1회**.
+  // 소진 기록이 국(roundKey) 스코프라 국이 바뀌면 그대로 다시 충전된다.
+  it("소진은 국 단위 — 같은 국에선 못 쓰고 다음 국엔 다시 열린다", () => {
+    const game = createStandardGame({ seed: 5, extraAugments: [timeStop] });
+    installAugment(game.engine, timeStop, "p0", { yaku: game.yaku });
+    game.engine.state.players.find((p) => p.id === "p0")!.augments.push("time_stop");
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    expect(status.prompts[0]!.options.some((o) => o.type === "time_stop_use")).toBe(true);
+
+    flow.submit("p0", { type: "time_stop_use", payload: {} });
+    const s = game.engine.state;
+    expect(s.augmentData["time_stop:used:1-1-0:p0"]).toBe(true);
+
+    const def = game.engine.actions.get("time_stop_use");
+    if (def === undefined) throw new Error("no time_stop_use action");
+    // 이번 국엔 charge가 없다 (armed 플래그를 지워도 소진 기록이 막는다)
+    const disarmed = {
+      ...s,
+      augmentData: { ...s.augmentData, "time_stop:armed:1-1-0:p0": false },
+    };
+    expect(
+      def.validate(
+        { player: "p0", type: "time_stop_use", payload: {} },
+        { state: disarmed, rules: game.engine.rules },
+      ),
+    ).toBe("no charge this round");
+
+    // 다음 국(동2국)에서는 소진 키가 달라져 다시 쓸 수 있다
+    const nextRound = {
+      ...disarmed,
+      round: { ...disarmed.round, roundNumber: 2 },
+    };
+    expect(
+      def.validate(
+        { player: "p0", type: "time_stop_use", payload: {} },
+        { state: nextRound, rules: game.engine.rules },
+      ),
+    ).toBeNull();
+  });
 });

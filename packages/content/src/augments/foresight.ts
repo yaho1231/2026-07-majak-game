@@ -11,6 +11,9 @@
  *
  * 발동한 국에 화료하면 +2판. 발동 후 2순 동안 재발동 비활성(쿨다운).
  *
+ * 2026-08-02(사용자 지시) 너프: 열람(2순 1회)은 그대로 두고 **재배열만 국에 1회**로
+ * 묶는다 — 발동할 때마다 패산을 다시 짜는 "매 순 조작"을 막는다.
+ *
  * 액션 두 개로 나눈다:
  * - `foresight_reveal {}` : 앞 4장의 kind를 보유자 전용 채널(view:{h}:foresight_peek)에 싣고,
  *   소진·쿨다운·"이번 턴 공개" 마커를 세운다. 패산은 아직 바꾸지 않는다.
@@ -55,6 +58,15 @@ const usedKey = (state: GameState, h: PlayerId): string =>
 /** 마지막 발동 순(turnCount) — 쿨다운 기준 (roundKey 스코프) */
 const lastTurnKey = (state: GameState, h: PlayerId): string =>
   `${ID}:turn:${roundKey(state)}:${h}`;
+/**
+ * 이번 국에 재배열을 이미 썼는가 (roundKey 스코프).
+ *
+ * 2026-08-02(사용자 지시) 너프: **열람은 2순에 1회 그대로, 재배열은 국에 1회.**
+ * 예전에는 발동할 때마다 패산을 다시 짤 수 있어 국 내내 한 바퀴씩 쯔모를 설계했다.
+ * 이제 두 번째 발동부터는 "보기"만 되고 드래그 확정은 열리지 않는다.
+ */
+const orderUsedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:ordered:${roundKey(state)}:${h}`;
 /** '이번 턴에 공개했고 아직 재배열 안 함' 마커 = 공개 시점의 turnCount (roundKey 스코프) */
 const revealTurnKey = (state: GameState, h: PlayerId): string =>
   `${ID}:reveal:${roundKey(state)}:${h}`;
@@ -173,6 +185,9 @@ const orderAction: ActionDef<{ order: number[] }> = {
     }
     if (!isMyTurn(state, req.player)) return "not your turn";
     if (!revealedThisTurn(state, req.player)) return "reveal first";
+    if (flagOf(state, orderUsedKey(state, req.player))) {
+      return "reorder already used this round";
+    }
     if (frontIds(state).length < PEEK) return "not enough wall tiles";
     if (!isValidOrder(req.payload.order)) return "invalid order";
     return null;
@@ -193,9 +208,9 @@ export const foresight: AugmentDef = defineAugment({
   category: "info",
   name: "예지",
   description:
-    "(2순에 1회) 자기 순에 발동하면 그 순간 패산 다음 4장이 나에게만 공개되고(발동=공개, 취소 불가), 드래그로 순서를 바꿔 다음 한 바퀴를 설계한다. 발동한 국에 화료하면 +2판을 얻는다.",
+    "(열람 2순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 그 순간 패산 다음 4장이 나에게만 공개되고(발동=공개, 취소 불가), 국에 한 번은 드래그로 순서를 바꿔 다음 한 바퀴를 설계한다. 발동한 국에 화료하면 +2판을 얻는다.",
   detail:
-    "(2순에 1회) 자기 순에 발동하면 패산 앞 4장이 나에게만 공개된다. 이 4장은 하가·대면·상가·나의 다음 쯔모이며 네 번째가 내 쯔모다. 드래그로 순서를 바꿔 다시 배치할 수 있고, 바꾸지 않거나 순 시간이 지나면 그대로 확정된다. 발동 자체가 이미 소진이라 취소할 수 없으며, 발동 후 2순 동안은 다시 발동할 수 없고 국이 바뀌면 초기화된다. 무엇을 보고 어떻게 섞었는지는 나만 알고 상대에게는 발동 사실만 보인다. 발동한 국에 화료하면 +2판을 얻는다.",
+    "(열람 2순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 패산 앞 4장이 나에게만 공개된다. 이 4장은 하가·대면·상가·나의 다음 쯔모이며 네 번째가 내 쯔모다. 드래그로 순서를 바꿔 다시 배치할 수 있지만 **재배열은 한 국에 한 번**이라, 그 국에 다시 발동하면 열람만 되고 순서는 손댈 수 없다. 바꾸지 않거나 순 시간이 지나면 그대로 확정된다. 발동 자체가 이미 소진이라 취소할 수 없으며, 발동 후 2순 동안은 다시 발동할 수 없고 국이 바뀌면 초기화된다. 무엇을 보고 어떻게 섞었는지는 나만 알고 상대에게는 발동 사실만 보인다. 발동한 국에 화료하면 +2판을 얻는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -224,6 +239,8 @@ export const foresight: AugmentDef = defineAugment({
             [peekViewKey(p.holder)]: newKinds,
             // 재배열 완료 — 이번 턴 재배열 마커를 지운다 (한 번만)
             [revealTurnKey(state, p.holder)]: -1,
+            // 재배열은 국에 1회 — 이후 발동은 열람만 된다
+            [orderUsedKey(state, p.holder)]: true,
           },
         };
       });
@@ -235,7 +252,11 @@ export const foresight: AugmentDef = defineAugment({
     //    모달이 사용자가 만든 순서에 맞는 후보를 골라 제출한다(항등 포함 = '그대로 두기').
     ctx.holderTurnOptions((state) => {
       if (canReveal(state, holder)) return [{ type: REVEAL, payload: {} }];
-      if (revealedThisTurn(state, holder) && frontIds(state).length >= PEEK) {
+      if (
+        revealedThisTurn(state, holder) &&
+        !flagOf(state, orderUsedKey(state, holder)) &&
+        frontIds(state).length >= PEEK
+      ) {
         return ALL_ORDERS.map((order) => ({ type: ORDER, payload: { order: [...order] } }));
       }
       return [];

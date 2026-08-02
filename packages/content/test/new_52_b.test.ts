@@ -395,6 +395,33 @@ describe("foresight (예지)", () => {
     expect(after).toHaveLength(before.length);
   });
 
+  // 2026-08-02(사용자 지시) 너프: 열람은 2순 1회 그대로, **재배열은 국에 1회**.
+  it("재배열은 국에 1회 — 두 번째 발동에서는 order 후보가 없고 제출도 거부된다", () => {
+    const { game, flow } = start(foresightScene(), foresight);
+    flow.submit("p0", { type: "foresight_reveal", payload: {} });
+    flow.submit("p0", { type: "foresight_order", payload: { order: [1, 0, 2, 3] } });
+    expect(game.engine.state.augmentData["foresight:ordered:1-1-0:p0"]).toBe(true);
+
+    // 같은 국에서 다시 발동(공개)한 상황을 만든다 — 쿨다운이 지난 순으로 옮겨 다시 연다
+    const base = foresightScene();
+    const again: GameState = {
+      ...base,
+      round: { ...base.round, turnCount: 4 },
+      augmentData: { ...base.augmentData, "foresight:ordered:1-1-0:p0": true },
+    };
+    const second = start(again, foresight);
+    expect(optionsOf(second.prompt, "foresight_reveal")).toHaveLength(1);
+    second.flow.submit("p0", { type: "foresight_reveal", payload: {} });
+    const def = second.game.engine.actions.get("foresight_order");
+    if (def === undefined) throw new Error("no foresight_order action");
+    expect(
+      def.validate(
+        { player: "p0", type: "foresight_order", payload: { order: [1, 0, 2, 3] } },
+        { state: second.game.engine.state, rules: second.game.engine.rules },
+      ),
+    ).toBe("reorder already used this round");
+  });
+
   it("발동하지 않고 order를 내면 거부된다 (발동=공개가 선행)", () => {
     const { game } = start(foresightScene(), foresight);
     const def = game.engine.actions.get("foresight_order");

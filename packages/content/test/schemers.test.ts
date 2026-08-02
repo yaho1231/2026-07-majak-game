@@ -452,14 +452,14 @@ describe("seat_swap (자리 바꿈)", () => {
     expect(game.engine.state.augmentData["seat_swap:uses:p0"]).toBe(1);
     expect(game.engine.eventLog.some((e) => e.type === "SeatsSwapped")).toBe(true);
 
-    // 반장전 3회 — 아직 남아 있다 (2026-07-31 버프: matchUses + 1)
+    // 매치 횟수(동풍전 2회)는 남았지만 **같은 국에서는** 더 못 쓴다 (2026-08-02: 국당 1회)
     expect(
       def.validate(
         { player: "p0", type: "seat_swap", payload: { target: "p1" } },
         { state: game.engine.state, rules: game.engine.rules },
       ),
-    ).toBeNull();
-    // 다 쓰면 거부된다
+    ).toBe("seat_swap already used this round");
+    // 매치 횟수를 다 쓰면 거부된다
     const spent: GameState = {
       ...game.engine.state,
       augmentData: { ...game.engine.state.augmentData, "seat_swap:uses:p0": 3 },
