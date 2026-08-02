@@ -113,10 +113,19 @@ export class GameEngine {
         isSourceEnabled: (source, state) => !isSourceDisarmed(state, source),
       },
     );
-    // 무장해제: 비활성 source의 Rule Modifier를 합성에서 제외 (state가 있는 resolve에 한함)
+    // 무장해제: 비활성 source의 Rule Modifier를 합성에서 제외.
+    //
+    // ctx.state가 없으면 엔진의 현재 상태로 판정한다. 예전에는 state가 없을 때
+    // 무조건 통과시켰는데, state를 안 넘기고 resolve하는 호출부가 core+content에
+    // 17곳이라 그 규칙들이 **무장해제로 절대 잠기지 않았다** (docs/25 최우선#3).
+    // 대표 사례가 표준 증강 open_riichi — 무장해제해도 후로한 손으로 리치가 됐다.
+    //
+    // 무장해제 목록은 국 경계에서만 바뀌므로, submit 처리 중(아직 currentState가
+    // 커밋되기 전)의 폴백도 같은 국 안에서는 정확하다. 정확성이 필요한 호출부는
+    // 종전대로 ctx.state를 넘기면 그쪽이 우선한다.
     this.rules.setSourceGate((source, ctx) => {
-      const st = ctx.state as GameState | undefined;
-      return st === undefined || !isSourceDisarmed(st, source);
+      const st = (ctx.state as GameState | undefined) ?? this.currentState;
+      return !isSourceDisarmed(st, source);
     });
     if (options.log !== undefined) this.log.push(...options.log);
   }

@@ -15,6 +15,8 @@ import {
   createStandardGameFromState,
   installAugment,
   isSourceDisarmed,
+  RuleLayer,
+  standardAugments,
 } from "@majak/core";
 import type { AugmentDef, GameState, PlayerId } from "@majak/core";
 import { openKokushi } from "../src/augments/open_kokushi.js";
@@ -205,5 +207,70 @@ describe("무장해제 게이트 ③ disarm 자신", () => {
     const locked = game.engine.state.augmentData["disarm:locked:p0"];
     expect(Array.isArray(locked)).toBe(true);
     expect(locked).toEqual([augmentInstanceId("p1", "always_tenpai")]);
+  });
+});
+
+/**
+ * 무장해제 게이트 ④ — 규칙 Modifier의 state 없는 resolve (docs/25 최우선#3).
+ *
+ * sourceGate가 `ctx.state`가 없으면 무조건 통과시키던 시절에는, state를 안 넘기고
+ * resolve하는 호출부(core+content 17곳)의 규칙이 **무장해제로 절대 잠기지 않았다**.
+ * 대표 사례가 표준 증강 `open_riichi`다 — standardActions의
+ * `resolve("riichi.requiresClosed", { playerId })`에 state가 없어서,
+ * 무장해제를 걸어도 후로한 손으로 리치가 그대로 통과했다.
+ */
+describe("무장해제 게이트 ④ 규칙 Modifier — state 없는 resolve", () => {
+  /** riichi.cost를 0으로 만드는 Modifier 하나만 단 게임 */
+  function costGame(disarmed: boolean) {
+    const src = "aug:p0:test";
+    let s = craft({ hands: { p0: "123m456m789m11p22p" }, phase: "turn.discard", turnSeat: 0 });
+    if (disarmed) s = preDisarmed(s, [src]);
+    const game = createStandardGameFromState(s);
+    game.engine.rules.addModifier<number>("riichi.cost", {
+      source: src,
+      layer: RuleLayer.Prism,
+      apply: () => 0,
+    });
+    return game;
+  }
+
+  it("ctx.state를 안 넘겨도 무장해제된 source의 Modifier는 합성에서 빠진다", () => {
+    expect(costGame(false).engine.rules.resolve<number>("riichi.cost", { playerId: "p0" }))
+      .toBe(0);
+    // 예전에는 여기서 0이 나왔다 — state가 없으면 게이트가 무조건 통과였다
+    expect(costGame(true).engine.rules.resolve<number>("riichi.cost", { playerId: "p0" }))
+      .toBe(1000);
+  });
+
+  it("ctx.state를 명시로 넘긴 경로는 종전대로 정확히 동작한다", () => {
+    const game = costGame(true);
+    expect(
+      game.engine.rules.resolve<number>("riichi.cost", {
+        playerId: "p0",
+        state: game.engine.state,
+      }),
+    ).toBe(1000);
+  });
+
+  it("개문선언(open_riichi)이 무장해제되면 리치의 멘젠 조건이 되살아난다", () => {
+    const def = standardAugments.find((a) => a.id === "open_riichi");
+    if (def === undefined) throw new Error("open_riichi not in standard catalog");
+    const src = augmentInstanceId("p0", "open_riichi");
+
+    for (const disarmed of [false, true]) {
+      let s = withAugments(
+        craft({ hands: { p0: "123m456m789m11p22p" }, phase: "turn.discard", turnSeat: 0 }),
+      { p0: ["open_riichi"] },
+      );
+      if (disarmed) s = preDisarmed(s, [src]);
+      const game = createStandardGameFromState(s);
+      installAugment(game.engine, def, "p0", { yaku: game.yaku });
+
+      expect(isSourceDisarmed(game.engine.state, src)).toBe(disarmed);
+      // standardActions가 실제로 쓰는 호출 형태 — state를 넘기지 않는다
+      expect(
+        game.engine.rules.resolve<boolean>("riichi.requiresClosed", { playerId: "p0" }),
+      ).toBe(disarmed);
+    }
   });
 });
