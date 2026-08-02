@@ -1745,13 +1745,13 @@ export function App(): JSX.Element {
       send({ type: "action", actionType: "pass", payload: pass.payload, seat });
       return true;
     }
-    // 자동 버림(쯔모기리) — 내 턴에 쯔모한 패를 자동으로 버린다. 화료 가능하면 먼저 화료.
+    // 자동 버림(쯔모기리) — 내 턴에 쯔모한 패를 자동으로 버린다.
+    // ⚠ 화료 가능하면 **멈춘다**. 예전엔 여기서 곧바로 win을 보내, 자동화료를 꺼 둔
+    //    사람이 자동버림만 켰는데도 멋대로 쯔모가 나갔다(2026-08-02 사용자 보고).
+    //    화료를 자동으로 칠지는 자동화료 설정만이 정한다 — 그건 위에서 이미 봤다.
     const drawn = prevViewRef.current?.round.myDrawnTile ?? null;
     if (auto.autoDiscard && drawn !== null) {
-      if (win !== undefined) {
-        send({ type: "action", actionType: "win", payload: win.payload, seat });
-        return true;
-      }
+      if (win !== undefined) return false;
       const disc = opts.find(
         (o) =>
           (o.type === "discard" || o.type === "free_discard") &&
@@ -4916,7 +4916,7 @@ function QuickToggles(props: {
     { key: "autoSort", label: "자동정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
     { key: "autoWin", label: "자동화료", desc: "텐파이에서 화료 가능하면 자동으로 론·쯔모합니다" },
     { key: "autoNoMeld", label: "후로없음", desc: "치·펑·깡 기회를 자동으로 넘깁니다" },
-    { key: "autoDiscard", label: "자동버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능하면 먼저 화료)" },
+    { key: "autoDiscard", label: "자동버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
   ];
   return (
     <div className={`quick-toggles${props.inline === true ? " quick-toggles-inline" : ""}`}>
@@ -5041,7 +5041,7 @@ function SettingsPanel(props: {
     { key: "autoSort", label: "자동 정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
     { key: "autoWin", label: "자동 화료", desc: "텐파이에서 화료 가능하면 자동으로 론·쯔모합니다" },
     { key: "autoNoMeld", label: "후로 없음", desc: "치·펑·깡 기회를 자동으로 넘깁니다" },
-    { key: "autoDiscard", label: "자동 버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능하면 먼저 화료)" },
+    { key: "autoDiscard", label: "자동 버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
     { key: "showMyWaits", label: "내 오름패 표시", desc: "텐파이면 손패 위에 화료패를 항상 표시합니다" },
     { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝입니다 (나만의 도라는 보랏금)" },
     { key: "screenFx", label: "화면 효과", desc: "화료·리치 때 화면 흔들림·번쩍임·파티클 (멀미·광과민이면 끄세요)" },
@@ -6402,7 +6402,7 @@ function OppHandSlot({
  * 글로 읽어야 했고, 정작 그 사람의 손패는 화면 반대편에 있었다. 정보는 그
  * 정보가 가리키는 대상 옆에 있어야 한다 — 오름패 간파(WaitsBadge)와 같은 자리다.
  *
- * `revealTiles:{pid}`(실제 패, 적도라까지 그대로)가 있으면 그쪽이 우선이고,
+ * `discardLockReveal:{pid}`(실제 패, 적도라까지 그대로)가 있으면 그쪽이 우선이고,
  * 없으면 `sealed:{pid}`(종류 목록)로 떨어진다.
  *
  * ⚠ 손패 **자리**까지는 알 수 없다. 서버는 명시된 tileId의 메타데이터만 뷰에 얹고
@@ -6414,12 +6414,12 @@ function sealedPeekOf(
   view: PlayerView,
   playerId: string,
 ): { tiles: PublicTileView[]; kinds: TileKind[] } | null {
-  // discardLockReveal(봉인술사 전용)과 revealTiles(등가교환 등 범용 채널)를 모두 본다 —
-  // 같은 보유자가 discard_lock과 hand_swap3를 함께 들고 같은 상대를 지목해도 서로
-  // 덮어쓰지 않도록 분리된 채널이다(2026-08 감사).
-  const revealed =
-    view.augmentView[`discardLockReveal:${playerId}`] ??
-    view.augmentView[`revealTiles:${playerId}`];
+  // **봉인술사 전용 채널(discardLockReveal)만** 본다.
+  // 범용 채널 `revealTiles:{pid}`는 여기서 읽지 않는다 — 등가교환이 교환 중에만
+  // 쓰는 채널인데 이 배지가 그걸 '🔒 봉인'으로 그려, 교환한 상대에게 봉인이 걸린
+  // 것처럼 보였다(2026-08-02 사용자 보고). 등가교환의 상대 손패는 교환 모달에서만
+  // 보이면 된다 — 배지로 따로 띄우지 않는다.
+  const revealed = view.augmentView[`discardLockReveal:${playerId}`];
   if (Array.isArray(revealed)) {
     const tiles = (revealed as unknown[])
       .filter((id): id is number => typeof id === "number")
@@ -8086,26 +8086,22 @@ function OwnArea(props: {
                 );
               })}
             </div>
+            {/* 닫기가 없다 — 지정한 순간 상대 손패를 이미 봤으므로 "안 하고 나가기"는
+                정보만 챙기고 사용을 아끼는 무료 열람이 된다(2026-08-02 사용자 지시).
+                고를 수 있는 건 선택 초기화뿐이고, 시간이 다 되면 서버가 남은 조합에서
+                무작위로 하나를 골라 교환을 마친다. */}
             <button
               className="rinshan-pick-skip"
-              onClick={() => {
-                if (swap3Sel.length > 0) {
-                  setSwap3Sel([]);
-                  return;
-                }
-                setSwapTakeDismissed(true);
-              }}
+              disabled={swap3Sel.length === 0}
+              onClick={() => setSwap3Sel([])}
             >
-              {swap3Sel.length > 0 ? "← 선택 다시" : "닫기 (교환하지 않고 진행)"}
+              {swap3Sel.length > 0 ? "← 선택 다시" : "세 장을 고르면 교환됩니다"}
             </button>
           </div>
         </div>
       ) : null}
-      {canSwapTake && swapTakeDismissed ? (
-        <button className="rinshan-reopen" onClick={() => setSwapTakeDismissed(false)}>
-          🔄 등가교환 계속하기
-        </button>
-      ) : null}
+      {/* '다시 열기' 버튼은 없다 — 이제 dismissed는 "방금 제출했다"는 뜻뿐이고
+          (닫기가 사라졌다), 다음 단계 프롬프트가 오면 모달이 알아서 다시 뜬다. */}
       {/* 미래를 보는 자 — 뽑힌 3장을 보여주고 바닥에 버릴 1장을 고르게 한다.
           ⚠ 닫기가 없다. 버튼을 누른 순간 발동은 확정이고(사용자 확정 2026-08-01
           "사용하면 무조건 패가 바뀌어야 한다"), 고르기 싫으면 랜덤으로 맡긴다. */}

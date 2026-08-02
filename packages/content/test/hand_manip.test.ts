@@ -451,10 +451,11 @@ describe("hand_swap3 — 등가교환", () => {
     // 장수는 양쪽 다 보존
     expect(handIdsOf(after, "p0")).toHaveLength(size0);
     expect(handIdsOf(after, "p1")).toHaveLength(size1);
-    // 교환 횟수 소진 + 대기 중인 선택 비움 + 공개 채널 갱신
+    // 교환 횟수 소진 + 대기 중인 선택 비움 + 공개 채널은 **비워진다**
+    // (교환이 끝나면 상대 손패를 계속 보여 주지 않는다 — 2026-08-02 사용자 지시)
     expect(after.augmentData[leftKeyOf(after)]).toBe(0);
     expect(after.augmentData[giveKeyOf(after)]).toEqual([]);
-    expect(after.augmentData[revealKeyOf("p1")]).toEqual([...handIdsOf(after, "p1")]);
+    expect(after.augmentData[revealKeyOf("p1")]).toEqual([]);
     // 무작위는 여전히 쓰지 않는다
     expect(after.prngState).toBe(prng);
 

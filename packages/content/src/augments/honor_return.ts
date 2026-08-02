@@ -137,7 +137,12 @@ export const honorReturn: AugmentDef = defineAugment({
         changes.push({
           tileId: hand[i] as TileId,
           kind: kinds[i] as TileKind,
-          attrs: { conjured: true },
+          // red를 반드시 끈다 — attrs는 병합이라, 덮어쓴 자리가 하필 적5(또는 붉은
+          // 손길로 물든 패)였으면 그 표식이 자패에 그대로 따라붙었다. 화면에서는
+          // 되받은 자패 한 장만 보랏빛(conjured)이 아니라 붉은빛(tile-red)으로 떠
+          // "왜 얘만 이펙트가 다르냐"가 됐고(2026-08-02 사용자 보고), 채점에서도
+          // 자패가 적도라 1판을 몰래 얹었다. 자패는 적도라가 될 수 없다.
+          attrs: { conjured: true, red: false },
         });
       }
       // 배패 13장 안에서 교체 — 장수 불변, 결정적(prng 불필요)

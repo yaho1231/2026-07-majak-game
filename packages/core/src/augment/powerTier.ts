@@ -466,8 +466,8 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     p: 3,
     s: 3,
     u: 5,
-    f: 2,
-    note: "유국을 거부하고 왕패 4장 솔로 쯔모. 텐파이면 추가 화료 기회",
+    f: 3,
+    note: "유국을 거부하고 왕패 4장 솔로 쯔모. 텐파이면 추가 화료 기회 (2026-08-02: 매치 1~2회 → 2국에 1회)",
   },
   riichi_seal: {
     tier: "A",
@@ -543,11 +543,11 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
   },
   late_double: {
     tier: "A",
-    p: 3,
+    p: 4,
     s: 1,
     u: 4,
     f: 5,
-    note: "7순까지의 리치가 전부 더블리치. 실전 리치의 대부분이 +1판",
+    note: "7순까지의 리치가 전부 더블리치 + 그 더블리치에 +1판 (2026-08-02 상향 — 실전 리치 대부분이 +2판)",
   },
   tile_split: {
     tier: "A",
@@ -578,8 +578,8 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     p: 2,
     s: 3,
     u: 5,
-    f: 2,
-    note: "내 후리텐 회피 + 상대 후리텐 강제. 위험패 처리와 방해를 동시에",
+    f: 4,
+    note: "내 후리텐 회피 + 상대 후리텐 강제. 위험패 처리와 방해를 동시에 (2026-08-02: 매치 1~2회 → 2국에 1회)",
   },
   palm_flip: {
     tier: "A",

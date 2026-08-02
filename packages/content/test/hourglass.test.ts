@@ -65,8 +65,8 @@ describe("뒤집힌 모래시계 (hourglass)", () => {
     // 턴이 홀더에게, 페이즈는 쯔모
     expect(st.round.turnSeat).toBe(playerOf(st, "p0").seat);
     expect(st.round.phase).toBe("turn.draw");
-    // 사용 카운터 소진
-    expect(st.augmentData["hourglass:uses:p0"]).toBe(1);
+    // 쿨다운 기준점이 찍혔다 (2국에 1회 — 이 국 시퀀스를 기록한다)
+    expect(typeof st.augmentData["hourglass:usedSeq:p0"]).toBe("number");
   });
 
   it("노텐이면 그대로 유국 정산된다", () => {
@@ -74,7 +74,7 @@ describe("뒤집힌 모래시계 (hourglass)", () => {
     const r = game.engine.submit({ player: SYSTEM_PLAYER, type: "sys.settleDraw", payload: {} });
     expect(r.ok).toBe(true);
     expect(settled(game)).toBe(true);
-    expect(game.engine.state.augmentData["hourglass:uses:p0"]).toBeUndefined();
+    expect(game.engine.state.augmentData["hourglass:usedSeq:p0"]).toBeUndefined();
   });
 
   it("연장 후 두 번째 유국은 그대로 정산된다 (무한 연장 없음)", () => {
@@ -92,5 +92,33 @@ describe("뒤집힌 모래시계 (hourglass)", () => {
     const r = game2.engine.submit({ player: SYSTEM_PLAYER, type: "sys.settleDraw", payload: {} });
     expect(r.ok).toBe(true);
     expect(game2.engine.eventLog.some((e: GameEvent) => e.type === ROUND_SETTLED)).toBe(true);
+  });
+
+  /**
+   * 2026-08-02 상향: "동풍1/반장2"에서 **2국에 1회**로 바뀌었다.
+   * 쿨다운은 국 시퀀스(`hourglass:seq:*`) - 마지막 사용(`usedSeq`) >= 2 로 판정한다.
+   */
+  it("직전 국에 썼으면 쿨다운이라 그대로 정산된다", () => {
+    const s = scene("123m456m789m11p23p");
+    const game = setup({
+      ...s,
+      augmentData: { ...s.augmentData, "hourglass:seq:p0": 1, "hourglass:usedSeq:p0": 0 },
+    });
+    expect(
+      game.engine.submit({ player: SYSTEM_PLAYER, type: "sys.settleDraw", payload: {} }).ok,
+    ).toBe(true);
+    expect(settled(game)).toBe(true);
+  });
+
+  it("2국이 지나면 다시 연장된다", () => {
+    const s = scene("123m456m789m11p23p");
+    const game = setup({
+      ...s,
+      augmentData: { ...s.augmentData, "hourglass:seq:p0": 2, "hourglass:usedSeq:p0": 0 },
+    });
+    expect(
+      game.engine.submit({ player: SYSTEM_PLAYER, type: "sys.settleDraw", payload: {} }).ok,
+    ).toBe(true);
+    expect(settled(game)).toBe(false);
   });
 });

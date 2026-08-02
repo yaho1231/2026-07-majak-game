@@ -127,7 +127,10 @@ export const regret: AugmentDef = defineAugment({
         changes.push({
           tileId: hand[i] as TileId,
           kind: kinds[i] as TileKind,
-          attrs: { conjured: true },
+          // honor_return과 같은 이유로 red를 끈다 — attrs 병합이라 덮어쓴 자리가
+          // 적5였으면 되살린 패(예: 3만)가 적도라로 남아 화면·채점이 함께 어긋난다.
+          // 보존하는 것은 kind뿐이므로 적도라 표식은 따라오지 않는 게 맞다.
+          attrs: { conjured: true, red: false },
         });
       }
       // 갓 받은 배패를 보존 kind로 일괄 변경 (결정적 — prng 불필요)

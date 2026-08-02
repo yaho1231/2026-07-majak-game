@@ -1,7 +1,7 @@
 /**
  * 누명 (frame_up, prism) — "내가 버린 걸로 친다고? 나 이제 후리텐이야?!"
  *
- * 동풍전 1·반장전 2회, 자기 턴에 **내가 버릴 패를 상대 한 명의 바닥에 놓는다**. 그 패는
+ * **2국에 1회**, 자기 턴에 **내가 버릴 패를 상대 한 명의 바닥에 놓는다**. 그 패는
  * 그 사람이 버린 것으로 기록되어(후리텐 근거 `discardedKinds`에 새겨진다) 그가 그 종류로
  * 론할 수 없게 되고, 동시에 **내 바닥에는 남지 않아 내 후리텐도 회피**된다.
  *
@@ -30,15 +30,25 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { roundSeqOf, roundViewKey, trackRoundSeq } from "../util.js";
 
 const ID = "frame_up";
 const ACTION = "frame_discard";
 
-/** 매치당 사용 횟수 (동풍1/반장2) */
-const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
-const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
-  counterOf(state, usesKey(h)) < matchUses(state);
+/**
+ * 쿨다운 — 한 번 심으면 이만큼 국(본장 포함)이 지나야 다시 열린다.
+ * 2026-08-02 사용자 지시로 "동풍1/반장2"에서 **2국당 1회**로 상향했다 —
+ * 매치당 1~2회는 국이 흘러가는 동안 쓸 자리를 못 찾고 사장되기 일쑤였다.
+ */
+const COOLDOWN_ROUNDS = 2;
+/** 마지막으로 심은 국 시퀀스 (big_hand와 같은 쿨다운 계산) */
+const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
+/** 지금 심을 수 있는가 — 쓴 적이 없거나, 마지막 사용 이후 2국이 지났다 */
+const offCooldown = (state: GameState, h: PlayerId): boolean => {
+  const used = state.augmentData[usedSeqKey(h)];
+  if (typeof used !== "number") return true;
+  return roundSeqOf(state, ID, h) - used >= COOLDOWN_ROUNDS;
+};
 
 /** 리치 중인가 (버릴 패가 고정돼 지목 버림 불가) */
 const inRiichi = (state: GameState, h: PlayerId): boolean =>
@@ -66,7 +76,7 @@ const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (!hasUsesLeft(state, req.player)) return "no uses left this game";
+    if (!offCooldown(state, req.player)) return "on cooldown";
     if (inRiichi(state, req.player)) return "cannot frame during riichi";
     if (inFirstGoAround(state)) return "cannot frame on the first go-around";
     if (req.payload.target === req.player) return "cannot frame yourself";
@@ -90,7 +100,7 @@ const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
         creditTo: req.payload.target,
       },
     },
-    augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
     // 전원 공개 — 누구 바닥에 무엇이 심겼는지 보여야 대응할 수 있다
     augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
       target: req.payload.target,
@@ -105,9 +115,9 @@ export const frameUp: AugmentDef = defineAugment({
   category: "disrupt",
   name: "누명",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 내가 버릴 패를 지목한 상대의 바닥에 놓는다 — 그 사람이 버린 것으로 기록되어 후리텐에 걸리고, 내 바닥에는 남지 않아 내 후리텐은 회피된다.",
+    "(2국에 1회) 자기 순에 내가 버릴 패를 지목한 상대의 바닥에 놓는다 — 그 사람이 버린 것으로 기록되어 후리텐에 걸리고, 내 바닥에는 남지 않아 내 후리텐은 회피된다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 버릴 패 한 장을 골라 상대 한 명의 바닥에 놓는다. 그 패는 그 사람이 버린 것으로 기록되어, 그가 그 종류로 기다리고 있었다면 후리텐에 걸린다. 동시에 그 패가 내 바닥에 남지 않아 내 후리텐은 회피된다. 다만 실제로 버린 사람은 나이므로 다른 상대의 론 반응은 평소대로 열려 있고 그 패로 쏘이면 책임도 내가 진다. 심긴 패는 전원에게 공개되며, 리치 중이거나 국의 첫 바퀴에는 쓸 수 없다.",
+    "(2국에 1회) 자기 순에 버릴 패 한 장을 골라 상대 한 명의 바닥에 놓는다. 그 패는 그 사람이 버린 것으로 기록되어, 그가 그 종류로 기다리고 있었다면 후리텐에 걸린다. 동시에 그 패가 내 바닥에 남지 않아 내 후리텐은 회피된다. 다만 실제로 버린 사람은 나이므로 다른 상대의 론 반응은 평소대로 열려 있고 그 패로 쏘이면 책임도 내가 진다. 심긴 패는 전원에게 공개되며, 리치 중이거나 국의 첫 바퀴에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -115,9 +125,12 @@ export const frameUp: AugmentDef = defineAugment({
       engine.actions.register(frameAction);
     }
 
+    // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
+    trackRoundSeq(ctx, ID);
+
     // 손패 × 상대 조합을 후보로 낸다 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) => {
-      if (!hasUsesLeft(state, holder)) return [];
+      if (!offCooldown(state, holder)) return [];
       if (inRiichi(state, holder)) return [];
       if (inFirstGoAround(state)) return [];
       const opts: { type: string; payload: unknown }[] = [];
