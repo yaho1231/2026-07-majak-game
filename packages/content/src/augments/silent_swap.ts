@@ -30,6 +30,7 @@ import {
   kindOf,
   moveTiles,
   playerAtSeat,
+  visibleTileIdsIn,
 } from "@majak/core";
 import type {
   ActionDef,
@@ -164,7 +165,14 @@ export const silentSwap: AugmentDef = defineAugment({
       });
     }
 
-    // 보유자 턴 후보: 네 명 전원의 바닥 전부 (합법성 최종 판정은 validate)
+    /*
+     * 보유자 턴 후보: 네 명 전원의 바닥 중 **보유자에게 실제로 보이는 패만**.
+     *
+     * 안개 계열(박무·숨은 강)이 가려 놓은 바닥까지 후보로 내면, 보유자는 뒷면인
+     * 패를 집게 되어 "무엇을 가져오는지 보고 고른다"는 이 능력이 제비뽑기가 된다
+     * (클라이언트는 뷰에 없는 tileId를 빈 패로 그린다). 보이지 않는 바닥에는
+     * 손을 넣지 않는다 — 정보와 규칙을 같은 선에 맞춘다(2026-08-02 감사).
+     */
     ctx.holderTurnOptions((state) => {
       if (flagOf(state, usedKey(state, holder))) return [];
       if (state.round.phase !== "turn.act") return [];
@@ -172,7 +180,12 @@ export const silentSwap: AugmentDef = defineAugment({
       if (anyRiichi(engine.rules, state)) return [];
       const out: { type: string; payload: { tileId: TileId } }[] = [];
       for (const p of state.players) {
-        for (const tileId of state.zones[discardsZone(p.id)]?.tileIds ?? []) {
+        for (const tileId of visibleTileIdsIn(
+          state,
+          engine.rules,
+          holder,
+          discardsZone(p.id),
+        )) {
           out.push({ type: ACTION, payload: { tileId } });
         }
       }

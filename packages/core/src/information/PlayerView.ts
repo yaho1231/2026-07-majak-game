@@ -557,6 +557,37 @@ export function buildPlayerView(
   };
 }
 
+/**
+ * **이 뷰어에게 실제로 보이는** 그 Zone의 패 id — 뷰를 통째로 만들지 않고 묻는다.
+ *
+ * 증강이 남의 바닥·손패를 후보로 낼 때 쓴다. 프롬프트 후보는 **그 자체가 정보**다 —
+ * FlowController가 validate를 통과한 후보만 제시하므로, 가려진 패를 후보에 담으면
+ * "무엇이 거기 있는가"가 후보의 존재·개수로 새어 나간다. 특히 후보를 조건으로
+ * 거르는 증강(무덤 도굴 = '화료되는 패만')은 가려진 패의 정체를 그대로 알려 준다
+ * (2026-08-02 감사, 안개 계열 × 무덤 도굴).
+ *
+ * 판정은 buildPlayerView와 **같은 두 함수**(resolveZoneVisibility·applyVisibility)를
+ * 거친다 — 사본을 만들면 화면에 보이는 것과 후보가 갈라진다.
+ */
+export function visibleTileIdsIn(
+  state: GameState,
+  rules: RuleRegistry,
+  viewer: PlayerId,
+  zoneId: ZoneId,
+): TileId[] {
+  const zone = state.zones[zoneId];
+  if (zone === undefined) return [];
+  const visibility = resolveZoneVisibility(
+    zone.kind,
+    viewer,
+    rules,
+    viewer === SPECTATOR_ID,
+    zone.owner,
+    state,
+  );
+  return applyVisibility(zone.tileIds, zone.owner, viewer, visibility).tileIds;
+}
+
 // ─────────────────────────── 내부 헬퍼 ───────────────────────────
 
 function resolveZoneVisibility(

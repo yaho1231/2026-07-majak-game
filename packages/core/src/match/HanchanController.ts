@@ -261,6 +261,20 @@ const STANDARD_ACTION_TYPES = new Set([
  */
 const FX_SILENT_ACTION_TYPES = new Set(["future_arm"]);
 
+/**
+ * **발동 사실 자체가 비밀**인 액션 — 연출을 보유자(와 관전자)에게만 보낸다.
+ *
+ * ⚠ 2026-08-02 감사: 스텔스 리치가 여기 없어서 `actionFx`가 전원에게 나갔고,
+ * 모두의 화면에 "스텔스 리치 — ○○ 증강 발동" 컷인이 떴다. 뷰 쪽은
+ * `riichi.hidden`으로 riichiDeclared·더블·선언패 자리를 정확히 가리고 있었는데,
+ * 연출이 증강 이름을 그대로 외쳐 **은닉이 선언보다 더 시끄러웠다** —
+ * "아무도 내가 리치인 줄 모른다"는 이 증강의 존재 이유가 통째로 무너져 있었다.
+ *
+ * 완전 무음(FX_SILENT)으로 두지 않는 이유: 보유자에게는 발동이 먹혔다는 확인이
+ * 필요하다. 관전자는 어차피 모든 정보를 보는 시점이라 함께 받는다.
+ */
+const FX_PRIVATE_ACTION_TYPES = new Set(["stealth_riichi"]);
+
 // ─────────────────────────── HanchanController ───────────────────────────
 
 export class HanchanController {
@@ -671,7 +685,17 @@ export class HanchanController {
             !STANDARD_ACTION_TYPES.has(option.type) &&
             !FX_SILENT_ACTION_TYPES.has(option.type)
           ) {
-            this.notifyAll({ type: "actionFx", player, actionType: option.type });
+            const fx: ServerMessage = {
+              type: "actionFx",
+              player,
+              actionType: option.type,
+            };
+            // 비밀 발동은 보유자·관전자에게만 — 전원 방송하면 증강 이름이 그대로 새 나간다
+            if (FX_PRIVATE_ACTION_TYPES.has(option.type)) {
+              this.notifyPrivate(player, fx);
+            } else {
+              this.notifyAll(fx);
+            }
           }
         }
       }
@@ -864,6 +888,15 @@ export class HanchanController {
     for (const agent of this.agents.values()) {
       agent.notify?.(msg);
     }
+    for (const s of this.spectators.values()) s.notify?.(msg);
+  }
+
+  /**
+   * **그 좌석과 관전자에게만** 보낸다 — 발동 사실이 비밀인 연출용
+   * (FX_PRIVATE_ACTION_TYPES). 관전자는 이미 모든 정보를 보는 시점이라 포함한다.
+   */
+  private notifyPrivate(player: PlayerId, msg: ServerMessage): void {
+    this.agents.get(player)?.notify?.(msg);
     for (const s of this.spectators.values()) s.notify?.(msg);
   }
 
