@@ -66,3 +66,31 @@ describe("숨은 리치 인지 계약 (docs/25 P3)", () => {
     }
   });
 });
+
+describe("augPoints 기록 계약 (docs/25 P9)", () => {
+  /**
+   * 정산 deltas를 직접 고치면서 augPoints를 안 남기면, 결과 화면이 표시하는 합계와
+   * 실제 점수 증감이 어긋난다 — 클라이언트는 화료자 표시 점수를
+   * `w.points + augPointsOf(...)`로 계산하기 때문이다(App.tsx). 판돈·연승 배수·
+   * 부활·역만 방어·강탈이 전부 "유령 점수"로 움직였다.
+   *
+   * addWinPointBonus / addWinPointTransfer / addHanBonus 래퍼는 내부에서
+   * withAugPoint를 부르므로, 래퍼만 쓰는 증강은 이 계약을 자동으로 만족한다.
+   */
+  const WRAPPERS = ["addWinPointBonus", "addWinPointTransfer", "addHanBonus", "addWinHanBonus"];
+
+  it("settleInterceptor로 deltas를 직접 고치는 증강은 augPoints를 남긴다", () => {
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = read(f);
+      if (!src.includes("settleInterceptor")) continue;
+      // deltas를 payload에 실어 돌려주는가 (직접 수정)
+      if (!/deltas[,:]/.test(src)) continue;
+      if (src.includes("withAugPoint")) continue;
+      // 래퍼만 쓰는 경우는 통과 (래퍼가 내부에서 기록한다)
+      if (WRAPPERS.some((w) => src.includes(w))) continue;
+      offenders.push(f);
+    }
+    expect(offenders, "deltas만 고치고 augPoints를 안 남기는 증강").toEqual([]);
+  });
+});

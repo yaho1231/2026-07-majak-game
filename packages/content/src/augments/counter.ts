@@ -53,6 +53,7 @@ import {
   stringOf,
   viewKey,
   winPointsWithExtraHan,
+  withAugPoint,
 } from "../util.js";
 
 /**
@@ -241,6 +242,7 @@ export const counter: AugmentDef = defineAugment({
             ...p.deltas,
             [holder]: (p.deltas[holder] ?? 0) + bonus,
           },
+          augPoints: withAugPoint(p, ctx, bonus),
         },
       };
     });

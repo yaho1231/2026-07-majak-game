@@ -21,7 +21,10 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { settleInterceptor } from "../util.js";
+import {
+  settleInterceptor,
+  withAugPoint,
+} from "../util.js";
 
 const ID = "always_tenpai";
 /** 노텐 지불자 한 명당 보유자가 추가로 받는 점수 (사용자 지시 버프) */
@@ -65,8 +68,12 @@ export const alwaysTenpai: AugmentDef = defineAugment({
       for (const pl of noten) {
         deltas[pl.id] = (deltas[pl.id] ?? 0) - PER_NOTEN_BONUS;
       }
-      deltas[holder] = (deltas[holder] ?? 0) + PER_NOTEN_BONUS * noten.length;
-      return { type: event.type, payload: { ...p, deltas } };
+      const gained = PER_NOTEN_BONUS * noten.length;
+      deltas[holder] = (deltas[holder] ?? 0) + gained;
+      return {
+        type: event.type,
+        payload: { ...p, deltas, augPoints: withAugPoint(p, ctx, gained) },
+      };
     });
   },
   // 봇 정책 없음 — 패시브라 발동 판단이 없다.

@@ -34,6 +34,7 @@ import {
   counterOf,
   settleInterceptor,
   viewKey,
+  withAugPoint,
 } from "../util.js";
 
 const ID = "let_it_ride";
@@ -97,7 +98,11 @@ export const letItRide: AugmentDef = defineAugment({
       const bonus = Math.min(winPoints, d) * (mult - 1);
       return {
         type: event.type,
-        payload: { ...p, deltas: { ...p.deltas, [holder]: d + bonus } },
+        payload: {
+          ...p,
+          deltas: { ...p.deltas, [holder]: d + bonus },
+          augPoints: withAugPoint(p, ctx, bonus),
+        },
       };
     });
 

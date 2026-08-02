@@ -32,6 +32,7 @@ import {
   flagOf,
   settleInterceptor,
   viewKey,
+  withAugPoint,
 } from "../util.js";
 
 const ID = "devils_advance";
@@ -97,7 +98,12 @@ export const devilsAdvance: AugmentDef = defineAugment({
       deltas[holder] = (deltas[holder] ?? 0) + taken;
       return {
         type: event.type,
-        payload: { ...p, deltas, burstBy: [...(p.burstBy ?? []), holder] },
+        payload: {
+          ...p,
+          deltas,
+          augPoints: withAugPoint(p, ctx, taken),
+          burstBy: [...(p.burstBy ?? []), holder],
+        },
       };
     });
 

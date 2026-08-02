@@ -33,7 +33,14 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { counterOf, roundKey, roundViewKey, settleInterceptor, statePrng } from "../util.js";
+import {
+  counterOf,
+  roundKey,
+  roundViewKey,
+  settleInterceptor,
+  statePrng,
+  withAugPoint,
+} from "../util.js";
 
 const ID = "jackpot";
 const ACTION = "jackpot_roll";
@@ -191,6 +198,7 @@ export const jackpot: AugmentDef = defineAugment({
         payload: {
           ...p,
           deltas: { ...p.deltas, [holder]: Math.round(d * mult) },
+          augPoints: withAugPoint(p, ctx, Math.round(d * mult) - d),
         },
       };
     });

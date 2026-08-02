@@ -26,7 +26,13 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey, settleInterceptor } from "../util.js";
+import {
+  counterOf,
+  matchUses,
+  roundViewKey,
+  settleInterceptor,
+  withAugPoint,
+} from "../util.js";
 
 const ID = "die_hard";
 
@@ -65,6 +71,7 @@ export const dieHard: AugmentDef = defineAugment({
         payload: {
           ...p,
           deltas: { ...p.deltas, [holder]: (p.deltas[holder] ?? 0) - 2 * after },
+          augPoints: withAugPoint(p, ctx, -2 * after),
           revivedBy: [...(p.revivedBy ?? []), holder],
         },
       };

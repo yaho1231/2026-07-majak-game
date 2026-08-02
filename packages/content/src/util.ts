@@ -363,8 +363,12 @@ function augIdOf(ctx: AugmentContext): string {
  *
  * deltas만 고치고 지나가면 결과 화면에는 표준 점수만 남아 증강이 한 일이 통째로
  * 안 보인다(2026-08-02 사용자 보고). 같은 증강이 여러 줄을 남기지 않도록 합산한다.
+ *
+ * addWinPointBonus 같은 래퍼는 내부에서 이걸 부른다. 정산 deltas를 **직접** 고치는
+ * 증강(판돈·연승 배수·부활·역만 방어·강탈)은 래퍼를 안 거치므로 직접 호출해야 한다
+ * — 안 하면 결과 화면 합계와 실제 증감이 어긋난다(docs/25 P9). 소스 스캔이 강제한다.
  */
-function withAugPoint(
+export function withAugPoint(
   p: RoundSettledPayload,
   ctx: AugmentContext,
   points: number,

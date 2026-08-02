@@ -38,6 +38,7 @@ import {
   counterOf,
   settleInterceptor,
   viewKey,
+  withAugPoint,
 } from "../util.js";
 
 const ID = "yakuman_shield";
@@ -96,6 +97,7 @@ export const yakumanShield: AugmentDef = defineAugment({
         payload: {
           ...p,
           deltas,
+          augPoints: withAugPoint(p, ctx, refund),
           shieldedBy: [...(p.shieldedBy ?? []), holder],
         },
       };
