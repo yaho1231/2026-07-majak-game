@@ -43,9 +43,15 @@ import { flagOf, roundKey } from "../util.js";
 const ID = "stealth_riichi";
 const ACTION = "stealth_riichi";
 
-/** 이 국의 리치가 스텔스 액션으로 선언됐다는 표시 (표준 리치와 구분) */
-const activeKey = (state: GameState, holder: PlayerId): string =>
+/**
+ * 이 국의 리치가 스텔스 액션으로 선언됐다는 표시 (표준 리치와 구분).
+ *
+ * 손을 바꾸는 증강이 이 리치를 해제할 때 표식도 함께 내려야 하므로 밖으로 연다
+ * (`stealthBreak.ts`). 남겨 두면 같은 국에 다시 건 **표준 리치**까지 은닉된다.
+ */
+export const stealthActiveKey = (state: GameState, holder: PlayerId): string =>
   `${ID}:active:${roundKey(state)}:${holder}`;
+const activeKey = stealthActiveKey;
 
 /** 노출 후로 수 (안깡은 멘젠을 깨지 않는다 — 코어 openMeldCountOf와 같은 규칙) */
 function openMelds(state: GameState, player: PlayerId): number {
@@ -136,7 +142,7 @@ export const stealthRiichi: AugmentDef = defineAugment({
   description:
     "(매 국 1회 — 리치는 국당 한 번) 텐파이 상태에서 보이지 않는 리치를 건다. 타가에게는 평범한 타패로 보이지만 화료 시에는 리치로 취급되며(리치 1판·일발·뒷도라), 공탁 1000점도 내지 않는다.",
   detail:
-    "(매 국 1회 — 리치는 국당 한 번) 텐파이 상태에서 손패를 직접 눌러 발동한다. 그 패를 버리면서 리치가 성립하지만 리치 선언 표시도 리치봉도 타가의 화면에 나타나지 않으며, 공탁 1000점도 내지 않는다. 화료하면 리치로 취급되어 리치·일발·뒷도라가 전부 적용되고 정산 화면에서 리치였음이 그때 공개된다. 표준 리치와 마찬가지로 손은 잠겨 쯔모패만 버릴 수 있고 후로도 할 수 없다.",
+    "(매 국 1회 — 리치는 국당 한 번) 텐파이 상태에서 손패를 직접 눌러 발동한다. 그 패를 버리면서 리치가 성립하지만 리치 선언 표시도 리치봉도 타가의 화면에 나타나지 않으며, 공탁 1000점도 내지 않는다. 화료하면 리치로 취급되어 리치·일발·뒷도라가 전부 적용되고 정산 화면에서 리치였음이 그때 공개된다. 표준 리치와 마찬가지로 손은 잠겨 쯔모패만 버릴 수 있고 후로도 할 수 없다. ⚠ 은닉의 대가가 하나 있다 — 남들은 나를 리치가 아닌 사람으로 취급하므로, 손을 바꾸는 증강(통째로 바꾸기·손패 3장 교환·자리 바꿈)이 나를 대상으로 삼을 수 있다. 그렇게 손이 바뀌면 이 리치는 풀린다(나만 알게 된다).",
   // 봇: 텐파이일 때 무조건 건다 — 공탁도 없고 잃는 것이 없다.
   bot: {
     choose({ options, tenpai }) {

@@ -44,6 +44,11 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, roundKey, roundViewKey, stringOf } from "../util.js";
+import {
+  breakStealthRiichiEvents,
+  ensureStealthBreakReducer,
+  riichiBlocksSwap,
+} from "./stealthBreak.js";
 
 const ID = "hand_swap3";
 /** 대상 지정 액션 (손패는 움직이지 않는다) */
@@ -167,7 +172,7 @@ function triples(ids: readonly TileId[]): TileId[][] {
 /** 지정 — 상대의 손패를 보유자에게 공개하고 3:3 교환 1회를 연다 (손패는 그대로) */
 const aimAction: ActionDef<{ target: PlayerId }> = {
   type: AIM_ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const common = commonReject(state, req.player);
     if (common !== null) return common;
     if (counterOf(state, usedKey(req.player)) >= MAX_USES) {
@@ -180,7 +185,10 @@ const aimAction: ActionDef<{ target: PlayerId }> = {
     const target = state.players.find((p) => p.id === req.payload.target);
     if (target === undefined) return "unknown target";
     if (target.id === req.player) return "cannot target yourself";
-    if (state.round.byPlayer[target.id]?.riichi != null) {
+    // 보이는 리치만 막는다 — 숨은 리치(스텔스)를 대상 목록에서 빼면 그 빈자리가
+    // 곧 "저 사람 리치다"가 된다. 숨은 리치는 지정할 수 있고, 교환이 성사되는
+    // 순간(take) 그 리치가 풀린다.
+    if (riichiBlocksSwap(rules, state, target.id)) {
       return "target is in riichi";
     }
     if (handIdsOf(state, req.player).length < SWAP_TILES) {
@@ -228,14 +236,14 @@ const giveAction: ActionDef<{ gives: TileId[] }> = {
 /** 가져올 상대 3장 선택 — 여기서 3:3 교환이 실제로 일어난다 */
 const takeAction: ActionDef<{ takes: TileId[] }> = {
   type: TAKE_ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const common = commonReject(state, req.player);
     if (common !== null) return common;
     const target = aimedTarget(state, req.player);
     if (target === null) return "no target designated";
     if (swappedThisRound(state, req.player)) return "already swapped this round";
     if (swapsLeft(state, req.player) <= 0) return "no swaps left";
-    if (state.round.byPlayer[target]?.riichi != null) return "target is in riichi";
+    if (riichiBlocksSwap(rules, state, target)) return "target is in riichi";
     const gives = pendingGives(state, req.player);
     if (gives.length !== SWAP_TILES) return "choose your three tiles first";
     const myHand = handIdsOf(state, req.player);
@@ -247,7 +255,7 @@ const takeAction: ActionDef<{ takes: TileId[] }> = {
     }
     return null;
   },
-  toEvents: (req, { state }) => {
+  toEvents: (req, { state, rules }) => {
     const target = aimedTarget(state, req.player) as PlayerId;
     const payload: HandSwap3SwappedPayload = {
       holder: req.player,
@@ -255,7 +263,11 @@ const takeAction: ActionDef<{ takes: TileId[] }> = {
       gives: pendingGives(state, req.player),
       takes: [...req.payload.takes],
     };
-    return [{ type: HAND_SWAP3_SWAPPED, payload }];
+    return [
+      { type: HAND_SWAP3_SWAPPED, payload },
+      // 손패 3장이 갈렸으면 그 손에 걸려 있던 숨은 리치는 풀린다 (당사자에게만 통보)
+      ...breakStealthRiichiEvents(rules, state, target, req.player),
+    ];
   },
 };
 
@@ -267,9 +279,12 @@ export const handSwap3: AugmentDef = defineAugment({
   description:
     "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패가 나에게만 공개되고, 넘길 내 3장과 가져올 상대 3장을 각각 골라 통째로 맞바꾼다.",
   detail:
-    "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패 전체가 나에게만 진짜 패로 공개된다. 이어서 넘길 내 3장과 가져올 상대 3장을 각각 한 번에 골라 맞바꾸며, 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로 유지된다. 리치한 상대는 지정할 수 없고 지정한 뒤 상대가 리치하면 교환이 중단된다. 한 번 교환을 마친 국에는 그 국이 끝날 때까지 다시 쓸 수 없어 두 번째 사용은 다음 국 이후로 미뤄진다.",
+    "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패 전체가 나에게만 진짜 패로 공개된다. 이어서 넘길 내 3장과 가져올 상대 3장을 각각 한 번에 골라 맞바꾸며, 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로 유지된다. 리치한 상대는 지정할 수 없고 지정한 뒤 상대가 리치하면 교환이 중단된다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다. 한 번 교환을 마친 국에는 그 국이 끝날 때까지 다시 쓸 수 없어 두 번째 사용은 다음 국 이후로 미뤄진다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
+    ensureStealthBreakReducer(engine);
 
     // 이벤트·액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.reducers.has(HAND_SWAP3_SWAPPED)) {
@@ -361,7 +376,8 @@ export const handSwap3: AugmentDef = defineAugment({
         .filter(
           (p) =>
             p.id !== holder &&
-            state.round.byPlayer[p.id]?.riichi == null &&
+            // 숨은 리치는 후보에 남긴다 — 빠지는 것 자체가 누설이기 때문이다
+            !riichiBlocksSwap(engine.rules, state, p.id) &&
             handIdsOf(state, p.id).length >= SWAP_TILES,
         )
         .map((p) => ({ type: AIM_ACTION, payload: { target: p.id } }));

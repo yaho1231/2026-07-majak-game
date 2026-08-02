@@ -1439,6 +1439,8 @@ export function App(): JSX.Element {
     rankGate: Set<string>;
     /** 성립하지 않는 깡 컷인을 이미 띄운 `${key}:${kind}:${roundKey}` */
     voidKan: Set<string>;
+    /** 숨은 리치가 풀렸다는 당사자 전용 컷인을 이미 띄운 `${key}:${roundKey}` */
+    stealthBroken: Set<string>;
     /**
      * 일회성 증강 사건 컷인을 이미 띄운 서명 `${key}=${값}@${roundKey}`.
      * 채널은 국이 끝날 때까지 값을 그대로 들고 있으므로(뷰가 매 틱 다시 온다)
@@ -1454,6 +1456,7 @@ export function App(): JSX.Element {
     spyCaught: new Set(),
     rankGate: new Set(),
     voidKan: new Set(),
+    stealthBroken: new Set(),
     augEvents: new Set(),
   });
 
@@ -1863,6 +1866,7 @@ export function App(): JSX.Element {
         sealed: 0,
         spyCaught: new Set(),
         rankGate: new Set(),
+        stealthBroken: new Set(),
         voidKan: new Set(),
         augEvents: new Set(),
       };
@@ -1894,6 +1898,7 @@ export function App(): JSX.Element {
       sealed: 0,
       spyCaught: new Set(),
       rankGate: new Set(),
+      stealthBroken: new Set(),
       voidKan: new Set(),
       augEvents: new Set(),
     };
@@ -2111,6 +2116,7 @@ export function App(): JSX.Element {
         sealed: 0,
         spyCaught: new Set(),
         rankGate: new Set(),
+        stealthBroken: new Set(),
         voidKan: new Set(),
         augEvents: new Set(),
       };
@@ -2670,6 +2676,30 @@ export function App(): JSX.Element {
         ...(tiles.length > 0 ? { tiles } : {}),
         impact: { shake: def.shake ?? 2 },
       });
+    }
+
+    /*
+     * 숨은 리치가 풀렸다 — **당사자에게만** 알린다.
+     *
+     * 손을 바꾸는 증강(통째로 바꾸기·손패 3장 교환·자리 바꿈)에게 손을 뺏히면
+     * 스텔스 리치가 해제된다. 채널이 당사자 전용이라 이 루프는 그 사람 화면에서만
+     * 돈다 — 전원 공개로 알리면 "저 사람이 리치였구나"가 뒤늦게 새어, 막으려던
+     * 누설이 한 박자 늦게 그대로 일어난다(2026-08-02).
+     */
+    for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
+      if (!key.startsWith("stealth_riichi:broken:")) continue;
+      const mark = raw as { by?: string } | null;
+      if (mark === null || typeof mark !== "object") continue;
+      const seen = `${key}:${shown.roundKey}`;
+      if (shown.stealthBroken.has(seen)) continue;
+      shown.stealthBroken.add(seen);
+      showCutIn(
+        "리치 해제",
+        "augment",
+        `${playerNameById(next, mark.by ?? "")}에게 손을 빼앗겨 숨은 리치가 풀렸다`,
+        2400,
+        { sfx: () => sfx.augment(1), augId: "stealth_riichi", impact: { shake: 2 } },
+      );
     }
 
     // 격(格) 지목 — 지목당한 사람에게만 전면 컷인 (지목형 공통 연출 규칙, docs/16 §2).
