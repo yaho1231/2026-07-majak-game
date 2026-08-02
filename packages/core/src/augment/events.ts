@@ -88,6 +88,21 @@ export interface TileKindChangedPayload {
   prngState?: number;
 }
 
+/** 변경이 종류를 실제로 바꾸는가 (kind 생략이거나 같은 종류면 false) */
+function kindDiffers(current: TileKind, next: TileKind | undefined): boolean {
+  return next !== undefined && (next.suit !== current.suit || next.rank !== current.rank);
+}
+
+/**
+ * 적도라 표식을 뗀 attrs. 적도라는 "이 무늬의 5"라는 뜻이라 종류가 바뀌면
+ * 의미를 잃는다 — 남겨 두면 존재할 수 없는 패(적도라 東, 적4, 적5통 2장)가 생긴다.
+ */
+function withoutRed(attrs: TileAttrs): TileAttrs {
+  if (attrs.red === undefined && attrs.redFor === undefined) return attrs;
+  const { red: _red, redFor: _redFor, ...rest } = attrs;
+  return rest;
+}
+
 export function tileKindChanged(
   changes: TileKindChangedPayload["changes"],
   prngState?: number,
@@ -225,10 +240,15 @@ export function registerAugmentSupport(engine: GameEngine): void {
     for (const c of p.changes) {
       const tile = tiles[c.tileId];
       if (tile === undefined) throw new Error(`Unknown tile: ${c.tileId}`);
+      // 적도라 표식은 (무늬, 랭크)에 묶인 속성이다 — 종류가 바뀌면 따라가면 안 된다.
+      // 예전에는 attrs를 그대로 병합해서 '적도라 東', '적4·적6', 심지어 **적5통 2장**
+      // 같은 것이 생겼다(docs/25 P1, 6종). 이제 종류가 실제로 바뀌는 변경에서는
+      // red/redFor를 기본으로 떼고, 변경 주체가 명시하면 그쪽이 이긴다.
+      const base = kindDiffers(tile.kind, c.kind) ? withoutRed(tile.attrs) : tile.attrs;
       tiles[c.tileId] = {
         ...tile,
         kind: c.kind ?? tile.kind,
-        attrs: c.attrs === undefined ? tile.attrs : { ...tile.attrs, ...c.attrs },
+        attrs: c.attrs === undefined ? base : { ...base, ...c.attrs },
       };
     }
     return {
