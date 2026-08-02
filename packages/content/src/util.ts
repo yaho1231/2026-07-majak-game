@@ -297,7 +297,7 @@ export function addWinPointBonus(
       payload: {
         ...p,
         deltas,
-        augPoints: withAugPoint(p, ctx, bonus, false),
+        augPoints: withAugPoint(p, ctx, bonus),
       },
     };
   });
@@ -322,7 +322,8 @@ function withAugPoint(
   p: RoundSettledPayload,
   ctx: AugmentContext,
   points: number,
-  fromOpponents: boolean,
+  /** 화면에 판으로 적을 값 (없으면 점수로 적는다) */
+  han?: number,
 ): AugPointNote[] {
   const augId = augIdOf(ctx);
   const prev = p.augPoints ?? [];
@@ -331,7 +332,7 @@ function withAugPoint(
     player: ctx.holder,
     augId,
     points: (at >= 0 ? (prev[at]?.points ?? 0) : 0) + points,
-    ...(fromOpponents ? { fromOpponents: true } : {}),
+    ...(han !== undefined && han > 0 ? { han } : {}),
   };
   if (at < 0) return [...prev, merged];
   return prev.map((n, i) => (i === at ? merged : n));
@@ -347,17 +348,25 @@ function withAugPoint(
  * 분배는 표준 지불 구조 그대로다 — 론은 방총자가 전액, 쯔모는 친 2배·자 1배.
  * 단계는 `Transfer` — 배수(Multiply)·뱅크 가산(BankTopUp) **뒤**라 이 이동액에
  * 다른 배수가 다시 곱해지지 않는다.
+ *
+ * @param points 얹을 점수, 또는 `{ points, han }`. han을 주면 결과 화면이 그 줄을
+ *               점수 대신 **판**으로 적는다(역 목록의 다른 줄과 단위를 맞추기 위함).
  */
 export function addWinPointTransfer(
   ctx: AugmentContext,
-  points: (state: GameState, info: WinInfo) => number,
+  points: (
+    state: GameState,
+    info: WinInfo,
+  ) => number | { points: number; han?: number },
 ): void {
   settleInterceptor(ctx, SETTLE_STAGE.Transfer, (event, ic) => {
     const p = event.payload as RoundSettledPayload;
     if (p.outcome !== "win") return event;
     const info = (p.winInfos ?? []).find((w) => w.winner === ctx.holder);
     if (info === undefined) return event;
-    const extra = Math.max(0, Math.round(points(ic.state, info)));
+    const raw = points(ic.state, info);
+    const asObj = typeof raw === "number" ? { points: raw } : raw;
+    const extra = Math.max(0, Math.round(asObj.points));
     if (extra === 0) return event;
 
     const state = ic.state as GameState;
@@ -391,7 +400,7 @@ export function addWinPointTransfer(
       payload: {
         ...p,
         deltas,
-        augPoints: withAugPoint(p, ctx, moved, true),
+        augPoints: withAugPoint(p, ctx, moved, asObj.han),
       },
     };
   });

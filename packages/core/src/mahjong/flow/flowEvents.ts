@@ -207,10 +207,15 @@ export interface AugPointNote {
   player: PlayerId;
   /** 증강 id — 화면이 카탈로그에서 이름을 찾는다 */
   augId: string;
-  /** 이 증강이 더한 점수 (음수면 뺀 것) */
+  /** 이 증강이 더한 점수 (음수면 뺀 것). 결과 화면의 최종 획득점 합산에 쓴다 */
   points: number;
-  /** 상대가 낸 몫인가 (false·생략 = 뱅크 발행이라 상대는 더 내지 않았다) */
-  fromOpponents?: boolean;
+  /**
+   * 화면에 **판으로** 적을 값 (없으면 점수 그대로 적는다).
+   *
+   * 결과 화면의 역 목록은 전부 "N판" 단위라, 점수로만 적힌 줄은 혼자 튄다.
+   * 판으로 말할 수 있는 증강(뚫린 천장 = 만관 위로 인정된 판)은 이 값을 싣는다.
+   */
+  han?: number;
 }
 
 function withPlayerRound(
