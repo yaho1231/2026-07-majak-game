@@ -123,11 +123,18 @@ function pendingGives(state: GameState, holder: PlayerId): TileId[] {
 }
 
 /** 지금 바로 교환할 수 있는 대상 (지정됨 + 횟수 남음 + 대상이 리치 아님) */
-function activeTarget(state: GameState, holder: PlayerId): PlayerId | null {
+function activeTarget(
+  state: GameState,
+  rules: Parameters<typeof riichiBlocksSwap>[0],
+  holder: PlayerId,
+): PlayerId | null {
   const target = aimedTarget(state, holder);
   if (target === null) return null;
   if (swapsLeft(state, holder) <= 0) return null;
-  if (state.round.byPlayer[target]?.riichi != null) return null;
+  // 원시 riichi를 보면 안 된다 — 지정해 둔 상대가 **스텔스** 리치를 걸었을 때
+  // 보유자의 give/take 옵션이 통째로 사라져, 그 빈자리가 곧 "저 사람 리치다"가
+  // 된다(docs/25 P3). 숨은 리치는 대상으로 남기고 교환 시 stealthBreak가 해제한다.
+  if (riichiBlocksSwap(rules, state, target)) return null;
   return target;
 }
 
@@ -360,7 +367,7 @@ export const handSwap3: AugmentDef = defineAugment({
       const myHand = handIdsOf(state, holder);
       if (myHand.length < SWAP_TILES) return [];
 
-      const target = activeTarget(state, holder);
+      const target = activeTarget(state, engine.rules, holder);
       if (target !== null) {
         const gives = pendingGives(state, holder);
         if (gives.length === 0) {

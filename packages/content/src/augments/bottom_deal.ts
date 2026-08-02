@@ -55,7 +55,12 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import {
+  flagOf,
+  roundKey,
+  roundViewKey,
+  widenPeek,
+} from "../util.js";
 import { handKindsExcept, handKindsOf, usefulIn } from "./botHelpers.js";
 
 const ID = "bottom_deal";
@@ -232,7 +237,10 @@ export const bottomDeal: AugmentDef = defineAugment({
       layer: ctx.layer,
       apply: (cur, rctx) => {
         if (rctx.playerId !== holder) return cur;
-        return { mode: "peek", count: PEEK, pick: "back" };
+        // widenPeek 필수 — 지금은 visibility.wall 모디파이어가 이것 하나뿐이라
+        // 결과가 같지만, 패산을 여는 증강이 하나만 더 생기면 cur를 덮는 순간
+        // 최종 열람 범위가 드래프트 픽 순서로 갈린다(docs/25 P7).
+        return widenPeek(cur, { mode: "peek", count: PEEK, pick: "back" });
       },
     });
 
