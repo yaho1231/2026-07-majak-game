@@ -9623,14 +9623,20 @@ function RoundResultPanel({
              * 인터셉터는 deltas만 고치고 지나가므로, 이 줄이 없으면 화면에는 표준 점수만
              * 뜨고 증강이 한 일이 통째로 사라진다 — 뚫린 천장이 점수를 몇 배로 불려도
              * "어디서 온 숫자인지" 알 수 없었다(2026-08-02 사용자 보고).
-             * 상대에게서 가져온 몫은 그렇게 적어 준다(뱅크 발행과 부담 주체가 다르다).
+             *
+             * 판으로 말할 수 있는 증강(`han`)은 판으로 적는다 — 역 목록이 전부 "N판"이라
+             * 점수 줄 하나만 단위가 튀면 오히려 읽기 어렵다. 누가 냈는지는 적지 않는다:
+             * 화료점이 오른 만큼 지불자가 내는 것은 당연한 일이라 설명할 값이 아니다.
              */
             ...(settle.augPoints ?? [])
               .filter((a) => a.player === w.winner && a.points !== 0)
               .map((a) => ({
                 key: `augpt:${a.augId}`,
-                label: `${augmentDisplayName(a.augId)}${a.fromOpponents === true ? " (타가 부담)" : ""}`,
-                han: `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
+                label: augmentDisplayName(a.augId),
+                han:
+                  a.han !== undefined && a.han > 0
+                    ? `+${a.han}판`
+                    : `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
                 aug: true,
               })),
           ];

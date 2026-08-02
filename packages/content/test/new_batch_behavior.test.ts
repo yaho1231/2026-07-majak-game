@@ -144,6 +144,30 @@ describe("aotenjou_ceiling (뚫린 천장)", () => {
     expect(sum).toBe(0);
   });
 
+  it("결과창 줄은 **만관 위로 살아남은 판수**로 적힌다", () => {
+    // 스안커 쯔모(오야) — 역만 13판 환산이므로 만관(5판) 위로 8판이 살아남는다.
+    const state = withAugments(
+      craft({
+        hands: { p0: "111m222p333s99s555z", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
+      }),
+      "p0",
+      ["aotenjou_ceiling"],
+    );
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, aotenjouCeiling, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    const s = flow.begin();
+    if (s.kind !== "awaiting") throw new Error("expected awaiting");
+    flow.submit("p0", s.prompts.find((p) => p.player === "p0")!.options.find((o) => o.type === "win")!);
+    const note = (lastSettled(game).augPoints ?? []).find(
+      (a) => a.augId === "aotenjou_ceiling",
+    );
+    expect(note?.han).toBe(8);
+  });
+
   it("증강이 얹은 점수가 결과창용 augPoints에 남는다", () => {
     // 판이 높아야 보전이 생긴다 — 스택으로 판을 올릴 수 없으니 부수·판이 큰 손 대신
     // 보전이 0인 손에서도 "0이면 줄을 남기지 않는다"를 확인한다.
@@ -162,15 +186,14 @@ describe("aotenjou_ceiling (뚫린 천장)", () => {
     if (extra > 0) {
       expect(note).toBeDefined();
       expect(note?.points).toBe(extra);
-      expect(note?.fromOpponents).toBe(true);
     } else {
       expect(note).toBeUndefined();
     }
   });
 
-  it("역만 쯔모 — 590만이 아니라 만관 9개(오야 108,000)로 떨어지고 타가가 낸다", () => {
-    // 스안커 쯔모(오야). 표준 역만 오야 쯔모 = 48,000.
-    // 청천정: 13판 환산 → base 2000×9 = 18,000 → 오야 쯔모 36,000×3 = 108,000.
+  it("역만 쯔모 — 590만이 아니라 만관 5개(오야 60,000)로 떨어지고 타가가 낸다", () => {
+    // 스안커 쯔모(오야). 표준 역만 오야 쯔모 = 48,000 (각 16,000).
+    // 청천정: 13판 환산 → base 2000 + 8×1000 = 10,000 → 오야 쯔모 20,000×3 = 60,000.
     const state = withAugments(
       craft({
         hands: { p0: "111m222p333s99s555z", p1: "*", p2: "*", p3: "*" },
@@ -182,21 +205,24 @@ describe("aotenjou_ceiling (뚫린 천장)", () => {
       ["aotenjou_ceiling"],
     );
     const d = tsumoDeltas(state, [{ def: aotenjouCeiling, holder: "p0" }]);
-    expect(at(d, "p0")).toBe(108_000);
-    for (const id of ["p1", "p2", "p3"] as PlayerId[]) expect(at(d, id)).toBe(-36_000);
+    expect(at(d, "p0")).toBe(60_000);
+    for (const id of ["p1", "p2", "p3"] as PlayerId[]) expect(at(d, id)).toBe(-20_000);
     expect(at(d, "p0") + at(d, "p1") + at(d, "p2") + at(d, "p3")).toBe(0);
   });
 
-  it("점수 곡선 — 만관 위로는 판 하나당 만관 하나 (역만도 자릿수를 유지한다)", () => {
+  it("점수 곡선 — 만관 위로는 2판당 만관 하나 (배수형 증강과 같은 급으로 맞춘다)", () => {
     // 정통 청천정(부수×2^(판+2))은 역만 한 방이 590만 점이 됐다(2026-08-02 사용자 실측).
-    // 개편 곡선은 자 론 기준 5판=8000, 6판=16000 … 역만(13판 환산)=72000이다.
-    const base = (effHan: number): number => 2000 * (effHan - 4);
+    // 1차 개편(판당 만관 1개)은 8판 이상에서 조건 없이 2~3배라 여전히 셌다.
+    // 지금 곡선: base = 만관 + (판−5)×만관/2.
+    const base = (effHan: number): number => 2000 + (effHan - 5) * 1000;
     const nonDealerRon = (effHan: number): number => base(effHan) * 4;
-    expect(nonDealerRon(5)).toBe(8_000);
-    expect(nonDealerRon(6)).toBe(16_000);
-    expect(nonDealerRon(8)).toBe(32_000);
-    expect(nonDealerRon(13)).toBe(72_000);
-    // 표준 역만(32000)의 2.25배 — 판을 끝낼 수는 있어도 자릿수를 잃지는 않는다
-    expect(nonDealerRon(13) / 32_000).toBeCloseTo(2.25, 5);
+    expect(nonDealerRon(5)).toBe(8_000); // 만관 그대로
+    expect(nonDealerRon(6)).toBe(12_000); // 표준 하네만과 동일
+    expect(nonDealerRon(8)).toBe(20_000); // 표준 배만 16,000의 1.25배
+    expect(nonDealerRon(10)).toBe(28_000); // 표준 배만 16,000의 1.75배
+    expect(nonDealerRon(13)).toBe(40_000); // 표준 역만 32,000의 1.25배
+    // 상한이 없다는 정체성은 그대로 — 더블 역만(26판 환산)도 계속 늘어난다
+    expect(nonDealerRon(26)).toBe(92_000);
+    expect(nonDealerRon(13) / 32_000).toBeCloseTo(1.25, 5);
   });
 });
