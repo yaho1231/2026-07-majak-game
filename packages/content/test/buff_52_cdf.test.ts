@@ -72,11 +72,15 @@ function withRiichi(state: GameState, player: PlayerId): GameState {
     ...state,
     round: {
       ...state.round,
+      // 리치를 걸었다면 공탁에 그 봉이 올라가 있어야 한다 — 실제 리듀서가 하는 일이다.
+      // 공탁을 비워 두면 "선언은 했는데 낸 돈은 없는" 상태라, 실납부액 상한을 쓰는
+      // 환급 경로(docs/25 최우선#2)에서 현실과 다른 결과가 나온다.
+      riichiPot: state.round.riichiPot + 1000,
       byPlayer: {
         ...state.round.byPlayer,
         [player]: {
           ...rs,
-          riichi: { double: false, ippatsu: false, discardIndex: 0 },
+          riichi: { double: false, ippatsu: false, discardIndex: 0, cost: 1000 },
         },
       },
     },
