@@ -57,6 +57,11 @@ function atFirstHand(state: GameState, holder: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== holder) return false;
+  // 쯔모를 마친 순이어야 한다. 치·펑 직후에도 turn.act이지만 그때는 lastDrawnTile이
+  // null이고, 리듀서가 새 손의 마지막 패를 쯔모패로 세우면 **후로 턴인데 쯔모 화료
+  // 옵션이 열린다** — 실제 마작에서 불가능한 상태이고, lastDrawnTile을 읽는 규칙
+  // (리치 쯔모기리 강제·안깡 판정)이 통째로 오염된다(docs/25 방해 #11).
+  if (r.lastDrawnTile === null) return false;
   return (r.byPlayer[holder]?.discardedKinds.length ?? 0) === 0;
 }
 
@@ -121,7 +126,12 @@ export const tableFlip: AugmentDef = defineAugment({
         //    반납한 손패에는 그 순의 쯔모패도 들어 있다. 갱신하지 않으면 round.lastDrawnTile이
         //    **이제 패산에 있는 패**를 계속 가리켜, 쯔모 화료가 영영 성립하지 않고
         //    쯔모패를 손에서 빼는 다른 증강(무르기 등)이 moveTiles에서 국을 죽인다.
-        const nextDrawn = p.drawn.at(-1) ?? state.round.lastDrawnTile;
+        // 원래 쯔모패가 없던 턴(후로 직후)이면 없는 채로 둔다 — validate가 이미
+        // 막지만, 리듀서가 단독으로도 없던 쯔모패를 만들지 않게 한 겹 더 지킨다.
+        const nextDrawn =
+          state.round.lastDrawnTile === null
+            ? null
+            : (p.drawn.at(-1) ?? state.round.lastDrawnTile);
         return {
           ...state,
           zones,

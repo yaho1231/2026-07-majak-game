@@ -47,6 +47,7 @@ import type {
   ActionDef,
   AugmentDef,
   GameState,
+  Meld,
   PlayerId,
   TileId,
 } from "@majak/core";
@@ -189,14 +190,28 @@ export const seatSwap: AugmentDef = defineAugment({
         zones = moveTiles(zones, meldsZone(p.b), meldsZone(p.a), bMelds);
 
         // byPlayer.melds(의미 정보)도 함께 맞바꾼다 (물리 존과 일치)
+        //
+        // ⚠ calledFrom(누구에게서 울었는가)도 함께 뒤집어야 한다. 그대로 두면
+        // "p0가 p1의 버림을 펑" → 자리 교환 후 **p1이 calledFrom: p1인 멘쯔**를
+        // 갖는다 — 자기 버림을 자기가 운 셈이 되어 표시와 책임 판정이 자기 자신을
+        // 가리킨다(docs/25 손패 #6). 교환 당사자끼리만 뒤집으면 되고, 제3자에게서
+        // 운 멘쯔는 그대로다.
+        const swapCalledFrom = (melds: readonly Meld[]): Meld[] =>
+          melds.map((m) =>
+            m.calledFrom === p.a
+              ? { ...m, calledFrom: p.b }
+              : m.calledFrom === p.b
+                ? { ...m, calledFrom: p.a }
+                : m,
+          );
         const rsA = state.round.byPlayer[p.a];
         const rsB = state.round.byPlayer[p.b];
         const byPlayer =
           rsA !== undefined && rsB !== undefined
             ? {
                 ...state.round.byPlayer,
-                [p.a]: { ...rsA, melds: rsB.melds },
-                [p.b]: { ...rsB, melds: rsA.melds },
+                [p.a]: { ...rsA, melds: swapCalledFrom(rsB.melds) },
+                [p.b]: { ...rsB, melds: swapCalledFrom(rsA.melds) },
               }
             : state.round.byPlayer;
 
