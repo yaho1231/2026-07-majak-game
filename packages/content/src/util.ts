@@ -259,9 +259,9 @@ export function trackRoundSeq(ctx: AugmentContext, augmentId: string): void {
 }
 
 /**
- * 이 증강이 '두 번째(늦은) 드래프트'에서 획득됐는가.
- * 게임은 총 2개(게임 시작 + 남장/동장 후반 진입)를 준다. 두 번째로 들어온 증강은
- * 남은 국이 절반뿐이라 국을 거듭해 쌓는 스택형 증강이 제 값을 못 낸다 — 이때 보강한다.
+ * 이 증강이 '게임 시작 이후(늦은) 드래프트'에서 획득됐는가.
+ * 게임은 각 국 첫 진입마다 1개씩(동풍전 3개·반장전 4개) 준다. 시작 이후에 들어온
+ * 증강은 남은 국이 적어 국을 거듭해 쌓는 스택형 증강이 제 값을 못 낸다 — 이때 보강한다.
  * 스테이지는 정식 픽에서 상태에 기록되므로(augmentStageKey) 리플레이·재개에서도 결정적.
  * (도박사가 지급한 증강은 스테이지 기록이 없어 false로 본다 — 첫 픽으로 취급.)
  */
@@ -271,7 +271,7 @@ export function draftedLate(
   augmentId: string,
 ): boolean {
   const stage = state.augmentData[augmentStageKey(holder, augmentId)];
-  return stage === "southEntry" || stage === "eastThird";
+  return typeof stage === "string" && stage !== "gameStart";
 }
 
 /**

@@ -30,8 +30,8 @@ export interface PlayerMeta {
 
 /**
  * 게임 모드 — 진행 길이(장 수)와 증강 템포를 결정한다.
- * - hanchan(반장전): 동+남 2장(기본 남4국까지). 드래프트 gameStart+southEntry.
- * - tonpuu(동풍전): 동 1장(기본 동4국까지). 드래프트 gameStart+eastThird.
+ * - hanchan(반장전): 동+남 2장(기본 남4국까지). 드래프트 4회 — 동1·동3·남1·남3국 진입.
+ * - tonpuu(동풍전): 동 1장(기본 동4국까지). 드래프트 3회 — 동1·동3·동4국 진입.
  * 생략 시(구 리플레이·테스트) hanchan으로 폴백한다.
  */
 export type GameMode = "hanchan" | "tonpuu";

@@ -140,7 +140,7 @@ export function draftDoneKey(stage: string, player: PlayerId): string {
 
 /**
  * 특정 증강이 '어느 드래프트 스테이지에서 획득됐는지'를 담는 상태 키.
- * 정식 픽에서만 기록된다(markStage 있는 경우). 스택형 증강이 두 번째 드래프트로
+ * 정식 픽에서만 기록된다(markStage 있는 경우). 스택형 증강이 뒤쪽 스테이지로
  * 늦게 들어와 축적할 국이 적을 때 보강 여부를 결정하는 데 쓴다 — install 시점의
  * 클로저가 아니라 상태에서 읽어야 리플레이·재개(rebuildAugments)에서 결정적이다.
  */

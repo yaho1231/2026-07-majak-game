@@ -52,7 +52,7 @@ docs/18의 네온·홀로그램 방향은 **폐기**. 17번 C안(수묵) 계열�
 | 3 | 증강 선택 모달 중 `silent_take`(정적의 손)·`foresight_order`(예지)는 **모달 방식에서 제외**됨 — 각각 바닥 직클릭 / 발동 후 드래그 재배열로 전환 | `App.tsx:510-517` 주석 |
 | 4 | `TileAttrs.redFor`(개인 한정 적도라)가 **클라이언트 미구현** — 지금은 전원에게 진짜 적도라처럼 보임. 전용 시각 언어 필요(§1-B) | `core/tiles/Tile.ts:45`, App.tsx 참조 0건 |
 | 5 | JSX가 붙이는 `.aug-cat-{카테고리}` 클래스가 **CSS에 미정의** — 카테고리 색은 컷인에서만 살아 있음. pill/배지 이식 필요 | `App.tsx:5162, 7652` vs styles.css |
-| 6 | 동풍전 드래프트 2차 스테이지(`eastThird`) 라벨이 "남장 돌입"으로 오표기 | `App.tsx:7633-7635` |
+| 6 | ~~동풍전 드래프트 2차 스테이지(`eastThird`) 라벨이 "남장 돌입"으로 오표기~~ → 2026-08-04 해소: 스테이지 5종 전부 `DRAFT_STAGE_HEADLINE` 표로 분리 | `App.tsx` `DRAFT_STAGE_HEADLINE` |
 
 ---
 
@@ -183,14 +183,14 @@ docs/18의 네온·홀로그램 방향은 **폐기**. 17번 C안(수묵) 계열�
 | 카드 일러스트 슬롯 | 신규 | **DOM에 이미지 슬롯 없음**(텍스트만) — 개발 선행 | `aug-{id}-card.png` (조립 산출) | PNG 220×160 내외 | 108종 = **조립 시스템**(카테고리 프레임 9 + 심볼 40~50 + 조합 규칙)으로 납품 |
 | 카드 뒷면 | 신규 | 등장 연출용(현재 rotateX 슬라이드뿐) | `draft-card-back@2x.png` | PNG | 뒤집기 연출 대비 |
 | 액티브 배지 | 격상 | `isActiveAugment()`(62종) → `.aug-active-badge` "⚡ 액티브" | `badge-active.svg` | SVG | 번개 모티프. `.draft-active-note` 문구와 세트 |
-| 스테이지 라벨 | 기존 | `DraftStage = "gameStart"\|"southEntry"\|"eastThird"` → `.draft-stage` | — | — | ⚠ eastThird 오표기 버그(§0.4-6) 수정 후 문구 확정 |
+| 스테이지 라벨 | 기존 | `DraftStage = "gameStart"\|"eastThird"\|"eastFourth"\|"southEntry"\|"southThird"` → `.draft-stage` | — | — | 스테이지별 문구는 `DRAFT_STAGE_HEADLINE`(App.tsx). 동풍전 3회·반장전 4회 |
 | 타이틀 | 격상 | `.draft-title` "증강 선택"(`#ffd76a`+glow) | `calli-draft-title.png` | PNG/SVG | §6.4 캘리그래피 세트에 포함 |
 
 ### 4.3 인게임 보유/상태 표시
 
 | 분류 | 구분 | 코드 상 변수/Type/State | 디자이너 전달 파일명 | 추천 포맷/규격 | 비주얼 가이드 & 상태 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 증강 pill (이름표 내) | 격상 | `player.augments[]` → `.aug-pill`(12px, 보라 pill) + `AugCatIcon` | `aug-pill-bg@2x.png` (9-slice) | PNG | 17 C-34. 최대 2슬롯(드래프트 2회). **빈 슬롯 표시 없음** — 슬롯 프레임 개념 도입 검토 |
+| 증강 pill (이름표 내) | 격상 | `player.augments[]` → `.aug-pill`(12px, 보라 pill) + `AugCatIcon` | `aug-pill-bg@2x.png` (9-slice) | PNG | 17 C-34. 최대 3~4슬롯(동풍전 3회·반장전 4회 드래프트, 도박사 계열이면 그 이상 — flex-wrap). **빈 슬롯 표시 없음** — 슬롯 프레임 개념 도입 검토 |
 | 증강 툴팁 | 격상 | `.aug-tip` — 상/하 × 좌/중/우 **6배치**, max-width 240 | `tooltip-frame@2x.png` (9-slice+꼬리) | PNG | 17 C-35. 현재 꼬리 없음. `.wait-tip`(적색)과 톤 분열 — 통합 툴팁 시스템(§5.3) |
 | **상태 뱃지 19종** | 격상 | `ActiveInfoBadges`(`.ai-badge`) + `AugmentInfoPanel`(`.ainfo-tag`, 변형: 기본 보라/`-seal` 적/`-peek` 청) | `augstate-{뒷도라\|영상패\|복수\|표적\|덤터기\|판돈\|스파이\|일확천금\|업보\|대기만성\|가불\|만년오야\|리치봉인\|이중선언\|가져온패\|안개바닥\|역만방어\|왕패교환\|본장사냥꾼\|격}.svg` | SVG 16~20px | 17 D-1. 현재 이모지(🎲🕵️💰⚖️🌸😈👑🔒🔮🌫🛡🏯🔥). 배경 2톤: 정보급/경고급 |
 | 액티브 증강 버튼 | 격상 | `ActiveAugmentControl` → `.aug-btn` "✦ 액티브 증강 (N)" / `.aug-btn-on`(보라 그라디언트+`turn-pulse`) / `:disabled` | `btn-aug-{normal\|on\|disabled}@2x.png` | PNG 9-slice | §5.1 버튼 시스템의 보라 톤과 통일 |

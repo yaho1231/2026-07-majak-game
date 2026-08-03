@@ -29,7 +29,10 @@ const PLAYERS = ["p0", "p1", "p2", "p3"] as const;
 
 /** 여러 시드·양 스테이지에서 특정 모드의 드래프트에 제시된 모든 증강 id 집합 */
 function offeredIds(mode: GameMode): Set<string> {
-  const stages = mode === "tonpuu" ? ["gameStart", "eastThird"] as const : ["gameStart", "southEntry"] as const;
+  const stages =
+    mode === "tonpuu"
+      ? (["gameStart", "eastThird", "eastFourth"] as const)
+      : (["gameStart", "eastThird", "southEntry", "southThird"] as const);
   const seen = new Set<string>();
   for (let seed = 1; seed <= 60; seed++) {
     const game = createStandardGame({ seed, mode, extraAugments: contentAugments });

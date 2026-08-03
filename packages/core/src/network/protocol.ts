@@ -17,7 +17,12 @@ import type { PlayerStatsView } from "../stats/PlayerStats.js";
 
 // ─────────────────────────── 클라이언트 → 서버 ───────────────────────────
 
-export type DraftStage = "gameStart" | "southEntry" | "eastThird";
+export type DraftStage =
+  | "gameStart"
+  | "eastThird"
+  | "eastFourth"
+  | "southEntry"
+  | "southThird";
 
 /** 게임 모드 — 반장전(hanchan)·동풍전(tonpuu). */
 export type GameMode = import("../engine/state/GameState.js").GameMode;
@@ -431,7 +436,7 @@ export interface AugmentCatalogEntry {
   /** 도감 상세 설명 (AugmentDef.detail). 없으면 도감은 description으로 대체 표시. */
   detail?: string;
   /** 드래프트 스테이지 제한 (없으면 전 스테이지). 도감 "획득 시점" 배지용. */
-  draftStages?: readonly ("gameStart" | "southEntry" | "eastThird")[];
+  draftStages?: readonly DraftStage[];
   /** 게임 모드 제한 (없으면 전 모드). 도감 "모드 전용" 배지용. */
   modes?: readonly GameMode[];
   /** 지급형 증강이면 함께 지급되는 등급 (도박사 계열). 도감 "연쇄 지급" 배지용. */

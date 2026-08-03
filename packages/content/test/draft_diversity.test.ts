@@ -21,7 +21,7 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
   it("반장전 1차 드래프트: 네 명의 12장이 전부 서로 다르다", () => {
     for (const seed of [1, 5, 17, 88, 2026, 31337]) {
       const g = game(seed);
-      const draft = new DraftController(g.engine, g.augments);
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
       const all = PLAYERS.flatMap((p) =>
         draft.roll("gameStart", p).map((d) => d.id),
       );
@@ -33,7 +33,7 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
   it("동풍전도 마찬가지 — 모드 필터로 풀이 깎여도 칸이 나뉜다", () => {
     for (const seed of [2, 9, 404]) {
       const g = game(seed, "tonpuu");
-      const draft = new DraftController(g.engine, g.augments);
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
       const all = PLAYERS.flatMap((p) =>
         draft.roll("eastThird", p).map((d) => d.id),
       );
@@ -42,12 +42,17 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
     }
   });
 
-  it("한 게임 전체(1차 + 2차)에서 같은 증강을 둘이 갖지 않는다", () => {
+  it("한 게임 전체(반장전 4스테이지)에서 같은 증강을 둘이 갖지 않는다", () => {
     for (const seed of [3, 21, 777]) {
       const g = game(seed);
-      const draft = new DraftController(g.engine, g.augments);
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
       const held: string[] = [];
-      for (const stage of ["gameStart", "southEntry"] as const) {
+      for (const stage of [
+        "gameStart",
+        "eastThird",
+        "southEntry",
+        "southThird",
+      ] as const) {
         const offers = new Map<PlayerId, string[]>();
         for (const p of PLAYERS) {
           offers.set(
@@ -55,7 +60,7 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
             draft.roll(stage, p).map((d) => d.id),
           );
         }
-        // 2차 제시에는 1차에서 누가 가져간 것이 하나도 없다
+        // 뒤 스테이지 제시에는 앞 스테이지에서 누가 가져간 것이 하나도 없다
         for (const ids of offers.values()) {
           for (const id of ids) expect(held).not.toContain(id);
         }
@@ -65,7 +70,7 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
           held.push(pick);
         }
       }
-      expect(new Set(held).size).toBe(held.length); // 8명분 픽이 전부 다른 증강
+      expect(new Set(held).size).toBe(held.length); // 4스테이지 × 4명 = 16픽이 전부 다른 증강
     }
   });
 
@@ -73,7 +78,7 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
     // 스테이지 도중 남이 픽해도 내 후보가 흔들리지 않아야 pick 검증을 통과한다.
     for (const seed of [4, 64, 1234]) {
       const g = game(seed);
-      const draft = new DraftController(g.engine, g.augments);
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
       const offers = PLAYERS.map((p) => ({
         p,
         ids: draft.roll("gameStart", p).map((d) => d.id),
@@ -88,7 +93,7 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
     const seen = new Set<string>();
     for (let seed = 1; seed <= 40; seed++) {
       const g = game(seed);
-      const draft = new DraftController(g.engine, g.augments);
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
       for (const p of PLAYERS) {
         for (const d of draft.roll("gameStart", p)) seen.add(d.id);
       }

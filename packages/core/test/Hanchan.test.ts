@@ -237,7 +237,7 @@ describe("HanchanController — 반장전 완주 (드래프트 포함)", () => {
     maxWind: 2,
     westEntry: false,
     dobi: false,
-    draftSchedules: ["gameStart", "southEntry"],
+    draftSchedules: ["gameStart", "eastThird", "southEntry", "southThird"],
     seed: 7,
   };
 
@@ -250,12 +250,32 @@ describe("HanchanController — 반장전 완주 (드래프트 포함)", () => {
     const totalRaw = rankings.reduce((s, r) => s + r.rawScore, 0);
     expect(totalRaw).toBe(100000);
   }, 15000); // 반장전은 시간이 걸릴 수 있음
+
+  it("드래프트가 동1·동3·남1·남3국 진입 4회 발동한다", async () => {
+    const draftStages: string[] = [];
+    const agents = makeAgents([9, 18, 27, 36]);
+    const ctrl = new HanchanController(
+      agents,
+      {
+        ...DEFAULT_HANCHAN_CONFIG,
+        ...hanchanConfigForMode("hanchan"),
+        westEntry: false,
+        dobi: false,
+        agariYame: false, // 오라스 아가리야메로 조기 종국하면 남3 드래프트만 확인된다
+        seed: 4242,
+      },
+      { onDraftStart: (stage) => draftStages.push(stage) },
+    );
+    await ctrl.run();
+
+    expect(draftStages).toEqual(["gameStart", "eastThird", "southEntry", "southThird"]);
+  }, 20000);
 });
 
 // ─────────────────────────── §2.5 동풍전 완주 ───────────────────────────
 
-describe("HanchanController — 동풍전 완주 (드래프트 2회)", () => {
-  it("봇 4명이 동풍전(동 4국)을 완주하고, 드래프트가 gameStart·eastThird 2회 발동한다", async () => {
+describe("HanchanController — 동풍전 완주 (드래프트 3회)", () => {
+  it("봇 4명이 동풍전(동 4국)을 완주하고, 드래프트가 동1·동3·동4국 진입 3회 발동한다", async () => {
     const draftStages: string[] = [];
     const roundEnds: string[] = [];
     const agents = makeAgents([11, 22, 33, 44]);
@@ -275,8 +295,8 @@ describe("HanchanController — 동풍전 완주 (드래프트 2회)", () => {
     const rankings = await ctrl.run();
 
     expect(rankings).toHaveLength(4);
-    // 드래프트는 게임 시작(동1 진입) + 동3 진입, 정확히 2회
-    expect(draftStages).toEqual(["gameStart", "eastThird"]);
+    // 드래프트는 동1(게임 시작)·동3·동4 진입, 정확히 3회
+    expect(draftStages).toEqual(["gameStart", "eastThird", "eastFourth"]);
     // 동풍전은 최소 4국(동1~4). 연장(본장)으로 더 길어질 수 있으나 4 이상.
     expect(roundEnds.length).toBeGreaterThanOrEqual(4);
     const totalRaw = rankings.reduce((s, r) => s + r.rawScore, 0);

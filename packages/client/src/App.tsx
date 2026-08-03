@@ -3455,17 +3455,44 @@ function AugmentMeta({
 
 // ══════════════════════════ 증강 도감 (Codex) ══════════════════════════
 
+/**
+ * 드래프트 스테이지 — 각 국 첫 진입 때 1회씩.
+ * 동풍전 3회(동1·동3·동4) · 반장전 4회(동1·동3·남1·남3).
+ */
+const DRAFT_STAGE_ORDER = [
+  "gameStart",
+  "eastThird",
+  "eastFourth",
+  "southEntry",
+  "southThird",
+] as const;
+
 const CODEX_STAGE_LABEL: Record<string, string> = {
   gameStart: "게임 시작 시",
+  eastThird: "동3국 진입 시",
+  eastFourth: "동4국 진입 시",
   southEntry: "남장 진입 시",
-  eastThird: "동풍 3순",
+  southThird: "남3국 진입 시",
+};
+
+/** 드래프트 오버레이 부제 — 지금 어느 국에 들어서며 받는 증강인가. */
+const DRAFT_STAGE_HEADLINE: Record<string, string> = {
+  gameStart: "대국 개시 — 동1국",
+  eastThird: "동3국 돌입",
+  eastFourth: "동4국 돌입",
+  southEntry: "남장 돌입 — 남1국",
+  southThird: "남3국 돌입",
 };
 const CODEX_MODE_LABEL: Record<string, string> = { hanchan: "반장전", tonpuu: "동풍전" };
 
 /** 카탈로그 항목의 등장/모드/지급 제한을 사람이 읽는 배지 문자열로. */
 function codexBadges(c: AugmentCatalogEntry): string[] {
   const out: string[] = [];
-  if (c.draftStages !== undefined && c.draftStages.length > 0 && c.draftStages.length < 3) {
+  if (
+    c.draftStages !== undefined &&
+    c.draftStages.length > 0 &&
+    c.draftStages.length < DRAFT_STAGE_ORDER.length
+  ) {
     out.push("등장: " + c.draftStages.map((s) => CODEX_STAGE_LABEL[s] ?? s).join(" · "));
   }
   if (c.modes !== undefined && c.modes.length === 1) {
@@ -9983,7 +10010,7 @@ function DraftOverlay({
       <div className="draft-panel">
         <h2 className="draft-title">증강 선택</h2>
         <p className="draft-stage">
-          {draft.stage === "gameStart" ? "대국 개시 — 첫 번째 증강" : "남장 돌입 — 두 번째 증강"}
+          {DRAFT_STAGE_HEADLINE[draft.stage] ?? "증강 획득"}
         </p>
         {showTimer ? (
           <div className={`draft-timer${urgent ? " draft-timer-urgent" : ""}`}>

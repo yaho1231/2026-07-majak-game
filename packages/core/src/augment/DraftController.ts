@@ -24,12 +24,21 @@ import type { AugmentDef, AugmentExtras } from "./Augment.js";
 import { AugmentRegistry } from "./AugmentRegistry.js";
 
 /**
- * 드래프트 스테이지.
- * - gameStart: 게임 시작(동1국 진입) — 두 모드 공통.
+ * 드래프트 스테이지 — 각 국에 **처음 진입할 때 1회씩**만 열린다.
+ * - gameStart:  게임 시작(동1국 진입) — 두 모드 공통.
+ * - eastThird:  동3국 진입 — 두 모드 공통.
+ * - eastFourth: 동4국 진입 — 동풍전 전용.
  * - southEntry: 남장 진입(남1국) — 반장전 전용.
- * - eastThird: 동3국 진입 — 동풍전 전용.
+ * - southThird: 남3국 진입 — 반장전 전용.
+ *
+ * 결과적으로 동풍전은 3개(동1·동3·동4), 반장전은 4개(동1·동3·남1·남3)를 지급한다.
  */
-export type DraftStage = "gameStart" | "southEntry" | "eastThird";
+export type DraftStage =
+  | "gameStart"
+  | "eastThird"
+  | "eastFourth"
+  | "southEntry"
+  | "southThird";
 
 function hashString(s: string): number {
   let h = 2166136261;
@@ -132,9 +141,12 @@ export class DraftController {
     if (seatIdx < 0 || seats <= 1) return null;
 
     const count = this.engine.rules.resolve<number>("augment.draft.choices");
-    // 칸 크기는 제시 수의 4배(최소 12) — 보유·상호 배제로 몇 개가 빠져도 3개를 못 채울 일이
-    // 없을 만큼의 여유다. 칸 밖에는 보충용 나머지가 최소 count개 남아야 한다.
-    const cellSize = Math.max(count * 4, 12);
+    // 칸 크기는 제시 수의 6배(최소 18) — 스테이지가 4회(반장전)로 늘면서 마지막 스테이지에는
+    // 남들이 이미 가진 것(최대 3×3=9)과 내가 가진 것(3)이 내 칸에서 빠질 수 있다. 그래도
+    // 3개를 채우려면 3+9+3=15가 필요하므로 18로 잡아 여유를 둔다. 칸이 마르면 칸 밖에서
+    // 보충하는데(아래 roll), 그 경로는 남의 보유분을 걸러 내지 못해 중복이 새어 나간다.
+    // 칸 밖에는 보충용 나머지가 최소 count개 남아야 한다.
+    const cellSize = Math.max(count * 6, 18);
     const pool = this.catalog.all().filter((d) => this.offerable(d, stage));
     if (pool.length < seats * cellSize + count) return null; // 카탈로그가 작다 → 기존 방식
 
