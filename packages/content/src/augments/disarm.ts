@@ -25,6 +25,7 @@
 
 import {
   DISARMED_SOURCES_KEY,
+  ROUND_SCOPED_MARK,
   ROUND_SETTLED,
   augmentDataSet,
   augmentDisarmed,
@@ -49,7 +50,15 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
  * **국이 끝나도 영영 풀리지 않았다** — 매치가 끝날 때까지 영구 무장해제(2026-07-29 감사).
  * 목록으로 두고 국 종료에 전부 되돌린다. 함께 '국당 1회' 가드도 건다.
  */
-const lockedKey = (h: PlayerId): string => `${ID}:locked:${h}`;
+/**
+ * 이번 국에 이 보유자가 잠근 대상 목록.
+ *
+ * **국 스코프 키**다 — 아래 ROUND_SETTLED 리액션이 정리하지만, 그 리액션의 source가
+ * 자기 자신이라 **무장해제로 무장해제를 잠그면 게이트에 막혀 영영 돌지 않는다.**
+ * 그러면 "이번 국 이미 씀" 판정이 매치 끝까지 참으로 남아 이 증강이 죽는다
+ * (docs/25 방해 #1). 엔진이 국 경계에서 지우게 해 게이트와 무관하게 만든다.
+ */
+const lockedKey = (h: PlayerId): string => `${ID}:locked:${h}${ROUND_SCOPED_MARK}`;
 
 /** 이번 국에 잠근 대상들 (없으면 빈 배열) */
 function lockedList(state: GameState, h: PlayerId): string[] {

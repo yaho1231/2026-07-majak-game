@@ -562,7 +562,23 @@ export class FlowController {
     }
 
     // 후로 우선순위: 깡/펑 > 원격 치(call.chi.fromAnyone 보유자) > 일반 치
-    const chis = [...decisions.entries()].filter(([, o]) => o.type === "chi");
+    //
+    // 같은 종류의 콜이 둘 이상이면 **버린 사람에게 가까운 자리**가 이긴다(표준 룰의
+    // 상가 우선). 예전에는 `decisions`(Map)의 삽입 순서 — 즉 **누가 먼저 소켓 응답을
+    // 보냈는지** — 로 갈렸다. 같은 입력이 다른 결과를 내 리플레이·재개가 어긋나고,
+    // 사람 대 봇에서는 봇이 항상 먼저 답해 이겼다(docs/25 방해 #4).
+    const fromSeat = playerOf(state, targetPlayer).seat;
+    const seatCount = state.players.length;
+    const byNearestSeat = (
+      a: [PlayerId, ActionOption],
+      b: [PlayerId, ActionOption],
+    ): number => {
+      const dist = (id: PlayerId): number =>
+        (playerOf(state, id).seat - fromSeat + seatCount) % seatCount;
+      return dist(a[0]) - dist(b[0]);
+    };
+    const ordered = [...decisions.entries()].sort(byNearestSeat);
+    const chis = ordered.filter(([, o]) => o.type === "chi");
     const remoteChi = chis.find(([id]) =>
       this.engine.rules.resolve<boolean>("call.chi.fromAnyone", {
         playerId: id,
@@ -572,12 +588,10 @@ export class FlowController {
     // 증강이 등록한 커스텀 리액션 콜(울어 국사 등) — 표준 타입이 아닌 것.
     // 엔진은 특정 액션명을 알 필요 없이 펑과 치 사이 우선순위로 처리한다.
     const STANDARD_REACTIONS = new Set(["win", "pass", "chi", "pon", "minkan"]);
-    const customCall = [...decisions.entries()].find(
-      ([, o]) => !STANDARD_REACTIONS.has(o.type),
-    );
+    const customCall = ordered.find(([, o]) => !STANDARD_REACTIONS.has(o.type));
     const call =
-      [...decisions.entries()].find(([, o]) => o.type === "minkan") ??
-      [...decisions.entries()].find(([, o]) => o.type === "pon") ??
+      ordered.find(([, o]) => o.type === "minkan") ??
+      ordered.find(([, o]) => o.type === "pon") ??
       customCall ??
       remoteChi ??
       chis[0];

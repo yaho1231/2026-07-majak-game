@@ -212,6 +212,14 @@ const riichiAction: ActionDef<{ tileId: TileId }> = {
     ) {
       return "not tenpai after discard";
     }
+    // 봉인된 패는 리치 선언으로도 버릴 수 없다 — discardAction과 같은 규칙을 탄다.
+    // 여기에 검사가 없어서 봉인술사가 잠근 패를 "리치 한 번"으로 털어낼 수 있었다
+    // (docs/25 방해 #2). 손패 전부가 봉인이면 소프트락 방지를 위해 허용하는 예외도 같다.
+    // (리치 중 재검사는 하지 않는다 — 리치를 걸면 쯔모기리가 강제되므로 선택지가 없다.)
+    const sealed = sealedDiscardIds(state, rules, req.player, handIds);
+    if (sealed.has(req.payload.tileId) && handIds.some((id) => !sealed.has(id))) {
+      return "tile is sealed";
+    }
     return null;
   },
   toEvents: (req, { state, rules }) => [

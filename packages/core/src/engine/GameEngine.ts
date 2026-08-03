@@ -21,6 +21,7 @@ import type {
 import type { GameEvent } from "./events/GameEvent.js";
 import { ReducerRegistry } from "./reducers/ReducerRegistry.js";
 import { RuleRegistry } from "./rules/RuleRegistry.js";
+import { ROUND_SCOPED_MARK } from "./state/GameState.js";
 import type { GameState } from "./state/GameState.js";
 import type { PlayerId } from "./zones/Zone.js";
 
@@ -70,9 +71,15 @@ export type SubmitResult =
 
 /**
  * 무장해제로 이번 국 비활성화된 증강 인스턴스(source) 목록 — state.augmentData에 담긴다
- * (리플레이 안전). 무장해제 증강이 대상 국 시작 시 채우고 국 종료 시 비운다.
+ * (리플레이 안전).
+ *
+ * **국 스코프 키**다 — 국 경계에서 `setupRound`가 지운다. 예전에는 무장해제 증강이
+ * 자기 리액션으로 직접 비웠는데, 그 리액션의 source가 자기 자신이라 **무장해제로
+ * 무장해제를 잠그면 해제 코드가 게이트에 막혀 영영 돌지 않았다** — 지목당한 증강이
+ * 매치 끝까지 잠기고, 잠근 쪽의 "이번 국 이미 씀" 플래그도 영원히 안 풀렸다
+ * (docs/25 방해 #1). 정리를 엔진이 하면 게이트와 무관해진다.
  */
-export const DISARMED_SOURCES_KEY = "engine:disarmed";
+export const DISARMED_SOURCES_KEY = `engine:disarmed${ROUND_SCOPED_MARK}`;
 
 /**
  * source가 이번 국 무장해제로 비활성화됐는가. 목록이 비면 즉시 false(핫패스 무할당).
