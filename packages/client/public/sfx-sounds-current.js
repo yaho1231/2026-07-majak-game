@@ -1,8 +1,8 @@
 /* 현재 게임에 들어 있는 소리 — sfx.ts 를 그대로 포팅한 기준점.
  * 새 바리에이션과 비교할 수 있게 모든 사운드에 "현재" 항목을 등록한다.
  */
-import { def } from "/sfx-registry.js?v=1";
-import { play, thump, noise, sparkle, tileBody, clack, shot, rand } from "/sfx-kit.js?v=1";
+import { def } from "/sfx-registry.js?v=2";
+import { play, thump, noise, sparkle, tileBody, clack, shot, rand } from "/sfx-kit.js?v=2";
 
 const cur = (sound, dur, tag, run) =>
   def({ id: `${sound}-current`, sound, name: "현재 게임", tag, dur, run });

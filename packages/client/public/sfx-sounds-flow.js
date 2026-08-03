@@ -1,8 +1,8 @@
 /* 흐름·결과 사운드 바리에이션 — round / draft / pick / draw / yakuSteps
  * 무드: 일본식 팝 + 미소녀 초능력 + 리치마작. 오르골·하프·유리·벚꽃, 그리고 패의 실물감.
  */
-import { def } from "/sfx-registry.js?v=1";
-import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, note } from "/sfx-kit.js?v=1";
+import { def } from "/sfx-registry.js?v=2";
+import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, note } from "/sfx-kit.js?v=2";
 
 // 오르골 부분음 세트 (권장 비율)
 const ORGEL = [[1, 1], [3.01, 0.25], [4.9, 0.1]];

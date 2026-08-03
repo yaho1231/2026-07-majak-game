@@ -2,16 +2,16 @@
  *
  * 바리에이션 정의는 sfx-sounds-*.js 에 있다. 여기는 목록·재생·선택·자가진단만.
  */
-import { SOUNDS, VARIANTS } from "/sfx-registry.js?v=1";
-import { unlock, setMaster, setEnv, loadSamples } from "/sfx-kit.js?v=1";
+import { ADOPTED, SOUNDS, VARIANTS } from "/sfx-registry.js?v=2";
+import { unlock, setMaster, setEnv, loadSamples } from "/sfx-kit.js?v=2";
 // 등록만 하면 되는 모듈들 — import 자체가 부수효과다
-import "/sfx-sounds-current.js?v=1";
-import "/sfx-sounds-ui.js?v=1";
-import "/sfx-sounds-call.js?v=1";
-import "/sfx-sounds-augment.js?v=1";
-import "/sfx-sounds-declare.js?v=1";
-import "/sfx-sounds-bigwin.js?v=1";
-import "/sfx-sounds-flow.js?v=1";
+import "/sfx-sounds-current.js?v=2";
+import "/sfx-sounds-ui.js?v=2";
+import "/sfx-sounds-call.js?v=2";
+import "/sfx-sounds-augment.js?v=2";
+import "/sfx-sounds-declare.js?v=2";
+import "/sfx-sounds-bigwin.js?v=2";
+import "/sfx-sounds-flow.js?v=2";
 
 const $ = (id) => document.getElementById(id);
 const STORE_KEY = "sfxlab-stars";
@@ -82,9 +82,22 @@ function playVariant(v, row, partKey) {
   }
 }
 
+/**
+ * 이 바리에이션이 **지금 게임에서 나는 소리**인가.
+ * 채택된 게 있으면 그것, 없으면 그 사운드의 "현재 게임"(-current)이 곧 게임 소리다.
+ */
+function isInGame(v) {
+  if (ADOPTED.has(v.id)) return true;
+  if (!v.id.endsWith("-current")) return false;
+  return !VARIANTS.some((o) => o.sound === v.sound && ADOPTED.has(o.id));
+}
+
 function buildVariantRow(v, sound) {
   const row = document.createElement("div");
-  row.className = "variant" + (v.id.endsWith("-current") ? " is-current" : "");
+  row.className =
+    "variant" +
+    (v.id.endsWith("-current") ? " is-current" : "") +
+    (isInGame(v) ? " in-game" : "");
 
   const play = document.createElement("button");
   play.className = "v-play";
@@ -109,7 +122,16 @@ function buildVariantRow(v, sound) {
   const body = document.createElement("div");
   body.className = "v-body";
   body.innerHTML = `<div class="v-name"></div><div class="v-tag"></div>`;
-  body.querySelector(".v-name").textContent = v.name;
+  const nameEl = body.querySelector(".v-name");
+  // 교체가 확정된 사운드에서는 "현재 게임"이 더 이상 현재가 아니다 — 비교용 이전 소리다
+  const superseded = v.id.endsWith("-current") && !isInGame(v);
+  nameEl.textContent = superseded ? "이전 소리" : v.name;
+  if (isInGame(v)) {
+    const badge = document.createElement("span");
+    badge.className = "v-badge";
+    badge.textContent = ADOPTED.has(v.id) ? "채택됨" : "게임 적용 중";
+    nameEl.appendChild(badge);
+  }
   body.querySelector(".v-tag").textContent = v.tag;
   row.appendChild(body);
 
@@ -138,7 +160,8 @@ function build() {
   app.textContent = "";
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = "브라우저 정책상 첫 클릭 후부터 소리가 납니다 · 회색 항목이 현재 게임에 들어 있는 소리";
+  hint.textContent =
+    "브라우저 정책상 첫 클릭 후부터 소리가 납니다 · 민트 테두리가 지금 게임에서 나는 소리";
   app.appendChild(hint);
 
   for (const fam of famsInOrder()) {

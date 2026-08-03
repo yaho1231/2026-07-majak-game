@@ -2,8 +2,8 @@
  * 공통 설계: 마작 "탁" 코어(clack/tileBody) 한 방 + 작은 귀여운 틴트.
  * 3종은 같은 재질에서 무게만 다르게 — 치=낮고 둥글게, 펑=중간·드라이, 깡=높고 짧게.
  */
-import { def } from "/sfx-registry.js?v=1";
-import { noise, tileBody, clack, bell, pluck, popBend, note } from "/sfx-kit.js?v=1";
+import { def } from "/sfx-registry.js?v=2";
+import { noise, tileBody, clack, bell, pluck, popBend, note } from "/sfx-kit.js?v=2";
 
 // ① 도자기 잔을 내려놓는 클랙 직후 오르골 한 알이 반짝 — 실물감 위에 키라키라 여운
 def({

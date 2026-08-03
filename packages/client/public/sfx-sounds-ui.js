@@ -2,8 +2,8 @@
  * 방향 축: 오르골 마이크로 톡 · 유리구슬 · 뽀용 마이크로벤드 · 고토 플럭 · 파스텔 코인.
  * 전부 합성 — 현재 게임(샘플·square 틱·생 노이즈)과 뚜렷이 다른 결을 노린다.
  */
-import { def } from "/sfx-registry.js?v=1";
-import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, rand } from "/sfx-kit.js?v=1";
+import { def } from "/sfx-registry.js?v=2";
+import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, rand } from "/sfx-kit.js?v=2";
 
 // ───────── hover — 손패 훑기 (≤0.06s, 초당 31회 연타 대비 오실레이터 1~2개) ─────────
 

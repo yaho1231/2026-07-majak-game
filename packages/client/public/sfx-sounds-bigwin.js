@@ -1,8 +1,8 @@
 /* 대형 화료(manganSet · yakuman) 바리에이션 — 키라키라 일본풍 팝 방향.
  * 현재 게임(트라이앵글 팡파르 / 공 롱테일)과 다른 재질: 오르골·하프·유리구슬·와다이코.
  */
-import { def } from "/sfx-registry.js?v=1";
-import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, note, rand } from "/sfx-kit.js?v=1";
+import { def } from "/sfx-registry.js?v=2";
+import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, note, rand } from "/sfx-kit.js?v=2";
 
 // 오르골 부분음 / 유리구슬 부분음
 const ORGEL = [[1, 1], [3.01, 0.25], [4.9, 0.1]];
