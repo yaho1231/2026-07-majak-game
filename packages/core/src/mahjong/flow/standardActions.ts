@@ -914,13 +914,13 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
       ) {
         const fromRs = state.round.byPlayer[first.from];
         if (fromRs?.riichi != null && fromRs.riichi.ippatsu) {
-          riichiRefund = Math.min(
-            rules.resolve<number>("riichi.cost", {
-              playerId: first.from,
-              state,
-            }),
-            state.round.riichiPot,
-          );
+          // 실제로 낸 만큼만 돌려준다. 공탁을 내지 않는 리치(스텔스 리치 등)가
+          // 규칙 상수를 그대로 받아 가면 없던 점수가 생기고, 그만큼 화료자가
+          // 공탁을 덜 받는다(docs/25 최우선#2). 손으로 조립한 구 상태에만 규칙값 폴백.
+          const paid =
+            fromRs.riichi.cost ??
+            rules.resolve<number>("riichi.cost", { playerId: first.from, state });
+          riichiRefund = Math.min(paid, state.round.riichiPot);
           deltas[first.from] = (deltas[first.from] ?? 0) + riichiRefund;
         }
       }

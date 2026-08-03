@@ -375,6 +375,8 @@ export function registerFlowReducers(
             p.riichiDouble ?? (discardsBefore === 0 && !state.round.goAroundBroken),
           ippatsu: true,
           discardIndex: discardsBefore,
+          // 환급 상한의 근거 — 규칙값이 아니라 이번에 실제로 낸 금액이다
+          cost: p.riichiCost,
         },
       }));
       next = {

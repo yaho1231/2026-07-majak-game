@@ -51,6 +51,16 @@ export interface RiichiState {
   ippatsu: boolean;
   /** 선언패의 discards 내 인덱스 */
   discardIndex: number;
+  /**
+   * 이 리치로 **실제로 낸 공탁액**. 환급(선언패 론·리치 취소)은 규칙값이 아니라
+   * 이 값을 상한으로 삼는다 — 공탁을 내지 않는 증강(스텔스 리치·배수의 진)이
+   * 규칙 상수 1000을 그대로 돌려받아 **없는 점수를 만들어 내던** 구멍을 막는다
+   * (docs/25 최우선#2).
+   *
+   * 선택 필드인 이유: 손으로 조립한 상태(테스트 하네스)에는 없을 수 있어서다.
+   * 실제 게임의 리치는 TILE_DISCARDED 리듀서가 항상 채운다.
+   */
+  cost?: number;
 }
 
 export interface Meld {

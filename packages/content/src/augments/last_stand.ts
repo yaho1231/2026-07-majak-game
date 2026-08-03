@@ -50,10 +50,14 @@ const cancelRiichiAction: ActionDef<Record<string, never>> = {
     return null;
   },
   toEvents: (req, { state, rules }) => {
-    const refund = rules.resolve<number>("riichi.cost", {
-      playerId: req.player,
-      state,
-    });
+    // 실제로 낸 만큼만, 그리고 공탁에 남아 있는 만큼만 돌려받는다.
+    // 공탁을 내지 않는 리치(스텔스 리치)가 규칙 상수를 받아 가면 없던 점수가
+    // 생기고 riichiPot이 음수가 되어, 그 국 화료자가 되레 점수를 뺏겼다
+    // (docs/25 최우선#2). 손으로 조립한 구 상태에만 규칙값 폴백.
+    const paid =
+      state.round.byPlayer[req.player]?.riichi?.cost ??
+      rules.resolve<number>("riichi.cost", { playerId: req.player, state });
+    const refund = Math.max(0, Math.min(paid, state.round.riichiPot));
     return [
       {
         type: RIICHI_CANCELED,
