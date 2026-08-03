@@ -170,7 +170,7 @@ export class DraftController {
 
     // 내 칸에서 뽑는다 — 기존 제외 + 남이 이미 가진 것(게임 내 중복 금지).
     const banned = new Set([...exclude, ...this.heldByOthers(player)]);
-    const chosen = AugmentRegistry.rollFrom(prng, count, cell, banned);
+    const chosen = this.catalog.rollFromCell(prng, count, cell, banned);
     if (chosen.length >= count) return chosen;
 
     // 칸이 말라붙은 극단적 경우에만 칸 밖에서 보충한다. 여기서는 **남의 보유분을 제외하지
@@ -181,7 +181,7 @@ export class DraftController {
       .filter((d) => !exclude.has(d.id) && !picked.has(d.id));
     return [
       ...chosen,
-      ...AugmentRegistry.rollFrom(prng, count - chosen.length, rest),
+      ...this.catalog.rollFromCell(prng, count - chosen.length, rest),
     ];
   }
 

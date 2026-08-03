@@ -19,6 +19,7 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import { RoomManager } from "./RoomManager.js";
 import { StatsStore } from "./StatsStore.js";
+import { AugmentStatsStore } from "./AugmentStatsStore.js";
 import { SiteDb } from "./SiteDb.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -93,9 +94,21 @@ process.on("uncaughtException", (err) => {
 
 const statsStore = new StatsStore(STATS_PATH);
 await statsStore.load();
+// 증강별 실전 성적 — 20판마다 티어 가중치를 자동 조정한다 (docs/25, 사용자 확정 2026-08-03)
+const augmentStats = new AugmentStatsStore(
+  STATS_PATH.replace(/\.json$/, "") + ".augments.json",
+);
+await augmentStats.load();
 
 const db = SESSION_TTL_MS !== undefined ? new SiteDb(DB_PATH, SESSION_TTL_MS) : new SiteDb(DB_PATH);
-const roomManager = new RoomManager(REPLAY_DIR, statsStore, INTER_ROUND_DELAY_MS, db, SIGNUP_CODE);
+const roomManager = new RoomManager(
+  REPLAY_DIR,
+  statsStore,
+  INTER_ROUND_DELAY_MS,
+  db,
+  SIGNUP_CODE,
+  augmentStats,
+);
 
 // ─────────────────────────── 정적 파일 서버 ───────────────────────────
 

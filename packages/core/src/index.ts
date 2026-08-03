@@ -201,6 +201,17 @@ export { DraftController, rebuildAugments } from "./augment/DraftController.js";
 export type { DraftStage } from "./augment/DraftController.js";
 export { standardAugments, discardRecall } from "./augment/standardAugments.js";
 export {
+  ADJUST_EVERY_GAMES,
+  ADJUST_FRACTION,
+  MAX_HALF_STEPS,
+  MIN_SAMPLE,
+  adjustedWeight,
+  computeAdjustment,
+  weightForOffset,
+  weightsFromOffsets,
+} from "./augment/tierAdjust.js";
+export type { AugmentRecord, TierOffsets } from "./augment/tierAdjust.js";
+export {
   AUGMENT_POWER_TIERS,
   POWER_TIER_ORDER,
   POWER_TIER_WEIGHT,

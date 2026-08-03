@@ -107,6 +107,11 @@ export interface HanchanConfig {
    * 조용히 사라진다. 운영에서는 반드시 연결할 것. (docs/25 최우선#1)
    */
   onEffectError?: (failure: EffectFailure) => void;
+  /**
+   * 드래프트 가중치 덮어쓰기 (티어 자동 조정 결과). 서버가 AugmentStatsStore에서
+   * 읽어 넘긴다. 없으면 정적 티어표를 그대로 쓴다.
+   */
+  augmentWeights?: Readonly<Record<string, number>>;
 }
 
 export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
@@ -297,6 +302,11 @@ export class HanchanController {
   private readonly spectators = new Map<string, SpectatorSink>();
   /** 진행 중인 게임 (관전자 중도 합류 시 즉시 뷰 전송용) */
   private game: StandardGame | null = null;
+
+  /** 진행 중인 게임 상태 (통계 집계·관리 도구용. 아직 시작 전이면 null) */
+  get gameState(): GameState | null {
+    return this.game?.engine.state ?? null;
+  }
   /** 관전자 중도 합류 시 재전송할 증강 카탈로그 */
   private catalogMsg: ServerMessage | null = null;
   /**
@@ -376,6 +386,9 @@ export class HanchanController {
         : {}),
       ...(this.config.onEffectError !== undefined
         ? { processor: { onEffectError: this.config.onEffectError } }
+        : {}),
+      ...(this.config.augmentWeights !== undefined
+        ? { augmentWeights: this.config.augmentWeights }
         : {}),
     };
     const game = createStandardGame(options);
