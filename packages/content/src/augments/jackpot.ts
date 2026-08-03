@@ -68,6 +68,9 @@ const MULTIPLIER_WEIGHTS: readonly { multiplier: number; weight: number }[] = [
 ];
 const WEIGHT_TOTAL = MULTIPLIER_WEIGHTS.reduce((s, m) => s + m.weight, 0);
 
+/** 점수는 100점 단위다 — 0.5배 같은 배수 뒤에는 반드시 격자로 되돌린다 */
+const round100 = (n: number): number => Math.round(n / 100) * 100;
+
 /**
  * 지금이 이 플레이어의 **국 첫 순**인가 — 아직 아무것도 버리지 않은 자기 턴.
  * (단색 세계·밥상 뒤엎기의 atFirstHand과 같은 판정 규약.)
@@ -192,13 +195,21 @@ export const jackpot: AugmentDef = defineAugment({
       const d = p.deltas[holder] ?? 0;
       // 무페널티: 잃을 때는 곱하지 않는다 — 버는 쪽만 불어나거나 줄어든다
       if (d <= 0) return event;
+
+      // 공탁(리치봉)은 배수 대상이 아니다 — 남이 낸 봉을 3배로 불리면 그만큼을
+      // 뱅크가 새로 발행하게 되어 공탁 총량 불변식이 깨진다. 공탁은 첫 화료자에게
+      // 통째로 가므로, 그 사람일 때만 떼어 놓고 곱한 뒤 되돌려 붙인다.
+      const pot = (p.winInfos ?? [])[0]?.winner === holder ? p.riichiPot : 0;
+      const base = Math.max(0, d - pot);
+      // 0.5배가 있으므로 100점 격자로 맞춘다 — 안 맞추면 소지점이 100의 배수가
+      // 아니게 되어 결과창·순위 표시가 깨진다(docs/25 역/점수 #7).
+      const after = round100(base * mult) + pot;
       return {
         type: event.type,
-        // 0.5배가 있으므로 정수로 반올림한다
         payload: {
           ...p,
-          deltas: { ...p.deltas, [holder]: Math.round(d * mult) },
-          augPoints: withAugPoint(p, ctx, Math.round(d * mult) - d),
+          deltas: { ...p.deltas, [holder]: after },
+          augPoints: withAugPoint(p, ctx, after - d),
         },
       };
     });
