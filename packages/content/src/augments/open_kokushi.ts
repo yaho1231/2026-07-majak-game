@@ -96,6 +96,27 @@ function neededPartners(dk: TileKind): [TileKind, TileKind][] {
 
 const wallLen = (state: GameState): number => state.zones[WALL]?.tileIds.length ?? 0;
 
+/**
+ * 이미 후로로 잡아 둔 요구패 kind 집합.
+ *
+ * 국사는 **13종을 하나씩** 모으는 손이라, 같은 요구패를 두 번 울면 그 손은 영영
+ * 완성되지 않는다. 그런데 예전에는 validate도 후보 생성도 기존 후로를 보지 않아,
+ * 요구패가 겹치는 kokushi_pon을 두 번 부를 수 있었다 — 그 순간 국사 분해가 영구
+ * 실패하고 `kokushiOnly`가 표준형·치토이까지 막아 **그 국이 통째로 잠겼다**
+ * (화료·텐파이 모두 불가 + 노텐 벌점 확정). 봇은 커밋 상태면 조건 없이 콜하므로
+ * 반드시 이 함정을 밟았다(docs/25 역/점수 #4).
+ */
+function meldedOrphanKinds(state: GameState, player: PlayerId): Set<string> {
+  const out = new Set<string>();
+  for (const meld of state.round.byPlayer[player]?.melds ?? []) {
+    for (const id of meld.tileIds) {
+      const k = kindOf(state, id);
+      if (isOrphan(k)) out.add(kindKey(k));
+    }
+  }
+  return out;
+}
+
 const kokushiPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
   type: ACTION,
   validate: (req, { state, rules }) => {
@@ -126,6 +147,11 @@ const kokushiPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
     if (!hand.includes(a) || !hand.includes(b)) return "tiles not in hand";
     const kinds = [kindOf(state, last.tileId), kindOf(state, a), kindOf(state, b)];
     if (!isKokushiGroup(kinds)) return "not a valid kokushi group";
+    // 이미 후로한 요구패를 또 울면 국사가 영영 완성되지 않는다 (그 국 소프트락)
+    const already = meldedOrphanKinds(state, req.player);
+    if (kinds.some((k) => already.has(kindKey(k)))) {
+      return "that orphan is already melded";
+    }
     return null;
   },
   toEvents: (req, { state }) => {
@@ -214,12 +240,16 @@ export const openKokushi: AugmentDef = defineAugment({
     ctx.holderReactionOptions((state, discard) => {
       const dk = kindOf(state, discard.tileId);
       if (!isOrphan(dk)) return [];
+      // 이미 후로한 요구패는 후보에서 통째로 뺀다 — 버튼이 떠 있으면 봇이 누른다
+      const already = meldedOrphanKinds(state, holder);
+      if (already.has(kindKey(dk))) return [];
       // 손패의 요구패를 kind별로 모은다
       const byKind = new Map<string, TileId[]>();
       for (const id of handIdsOf(state, holder)) {
         const k = kindOf(state, id);
         if (!isOrphan(k)) continue;
         const key = kindKey(k);
+        if (already.has(key)) continue;
         const list = byKind.get(key);
         if (list === undefined) byKind.set(key, [id]);
         else list.push(id);
