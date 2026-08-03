@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAJAK — 효과음 랩</title>
+    <link rel="stylesheet" href="/sfx-lab.css?v=1" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="top-l">
+        <h1>MAJAK 효과음 랩</h1>
+        <p>일본풍 팝 · 미소녀 초능력 리치마작 — 바리에이션을 눌러 듣고 ★로 골라주세요</p>
+      </div>
+      <div class="top-r">
+        <label class="vol">
+          <span>볼륨</span>
+          <input type="range" id="vol" min="0" max="100" value="70" />
+        </label>
+        <button class="btn" id="btnTest">자가진단</button>
+      </div>
+    </header>
+
+    <main id="app"></main>
+
+    <div class="pickbar" id="pickbar">
+      <span id="pickCount">선택 0개</span>
+      <button class="btn btn-copy" id="btnCopy">선택 내역 복사</button>
+    </div>
+
+    <div class="testpanel" id="testpanel" hidden></div>
+
+    <script type="module" src="/sfx-lab.js?v=1"></script>
+  </body>
+</html>
