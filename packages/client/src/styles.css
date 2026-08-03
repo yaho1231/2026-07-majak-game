@@ -5261,9 +5261,11 @@ button {
   white-space: normal;
 }
 
-/* :focus는 터치용 — 마우스가 없으면 hover가 없으므로 탭해서 설명을 연다 */
+/* :focus는 터치용 — 마우스가 없으면 hover가 없으므로 탭해서 설명을 연다.
+   :focus-within은 툴팁 **안쪽**("자세히" 칩·용어)을 눌렀을 때 툴팁이 닫히지 않게 한다 */
 .aug-pill:hover .aug-tip,
-.aug-pill:focus .aug-tip {
+.aug-pill:focus .aug-tip,
+.aug-pill:focus-within .aug-tip {
   display: flex;
 }
 
@@ -5317,6 +5319,163 @@ button {
   font-size: 12px;
   line-height: 1.5;
   color: #c2d0c5;
+}
+
+/* ───────── 증강 설명 (요약 배지 + 본문 + 자세히 토글) ─────────
+   .augdesc는 inline이다 — 부모(.codex-card-desc·.sbx-desc)가 -webkit-box로
+   줄 수를 자르고 있어서, 여기서 블록을 만들면 그 자르기가 깨진다. */
+.augdesc { display: inline; }
+
+/* 사용 빈도 배지 — 원문 머리말 "(상시)" "(매 국 1회)"를 떼어내 여기에 앉혔다 */
+.augdesc-use {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(199, 188, 255, 0.14);
+  border: 1px solid rgba(199, 188, 255, 0.34);
+  color: #ded7ff;
+  font-size: 0.85em;
+  font-weight: 800;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+.augdesc-body { display: inline; }
+
+/* 원문을 펼쳤을 때 — 툴팁 안에서 끝없이 늘어나지 않게 높이를 묶고 스크롤을 준다 */
+.augdesc-body-full {
+  display: block;
+  margin-top: 5px;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+/* 다섯 줄 방어선 — 요약이 없는(새로 추가된) 증강이 원문 첫 문장으로 대체될 때를 대비 */
+.aug-tip-desc .augdesc-body:not(.augdesc-body-full),
+.draft-desc .augdesc-body:not(.augdesc-body-full) {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.augdesc-more {
+  align-self: flex-start;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #b7c6bb;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* 드래프트 카드는 내용이 가운데 정렬이다 — 칩만 왼쪽에 붙으면 어긋나 보인다 */
+.draft-card .augdesc-more { align-self: center; }
+
+.augdesc-more:hover {
+  background: rgba(199, 188, 255, 0.16);
+  border-color: rgba(199, 188, 255, 0.45);
+  color: #ece4d2;
+}
+
+.augdesc-more-on {
+  background: rgba(199, 188, 255, 0.18);
+  border-color: rgba(199, 188, 255, 0.5);
+  color: #ece4d2;
+}
+
+/* 키보드가 있는 기기에는 Shift가 더 빠르다 — 칩 옆에 조용히 붙여 알려 준다 */
+.augdesc-more-key {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 9.5px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+/* ───────── 마작 용어 풀이 ─────────
+   설명 본문에 섞인 전문 용어에 밑줄을 긋고, 잠시 올려 두면 초보자용 한 줄이 뜬다.
+   툴팁은 body 포털 + position:fixed다 — 툴팁·카드 모두 overflow가 걸린 상자 안이라
+   그 안에 두면 잘린다. */
+.gterm {
+  color: #f2d792;
+  border-bottom: 1px dashed rgba(242, 215, 146, 0.55);
+  cursor: help;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.gterm:hover {
+  color: #ffeec0;
+  border-bottom-color: #f2d792;
+  background: rgba(242, 215, 146, 0.12);
+}
+
+.gterm-tip {
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: max-content;
+  max-width: min(300px, 92vw);
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: rgba(20, 16, 10, 0.98);
+  border: 1px solid rgba(242, 215, 146, 0.6);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  transform: translate(-50%, calc(-100% - 9px));
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  animation: gterm-in 0.13s ease-out;
+}
+
+.gterm-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+  border-top-color: rgba(242, 215, 146, 0.6);
+}
+
+.gterm-tip-name {
+  font-size: 12.5px;
+  font-weight: 900;
+  color: #f2d792;
+}
+
+.gterm-tip-body {
+  font-size: 12px;
+  line-height: 1.55;
+  color: #ded6c4;
+}
+
+@keyframes gterm-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% - 3px)); }
+  to { opacity: 1; transform: translate(-50%, calc(-100% - 9px)); }
+}
+
+/* 도감 상세의 리드 문단 — 요약 한 줄을 원문 위에 먼저 세운다 */
+.codex-lead {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(199, 188, 255, 0.09);
+  border-left: 3px solid rgba(199, 188, 255, 0.55);
+  font-size: 14.2px;
+  line-height: 1.6;
+  font-weight: 700;
+  color: #f7f3e8;
 }
 
 /* ─────────────── 손패 hover → 공개패 강조 ─────────────── */

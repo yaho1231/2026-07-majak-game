@@ -40,6 +40,9 @@ import type {
   WinInfo,
 } from "@majak/core";
 import { SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
+import { briefOf, splitLead } from "./augmentBrief.js";
+import { splitTerms } from "./glossary.js";
+import type { GlossaryEntry } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
@@ -3453,6 +3456,178 @@ function AugmentMeta({
   );
 }
 
+// ═══════════════ 증강 설명 (요약 · 자세히 · 마작 용어 풀이) ═══════════════
+//
+// 화면에 뜨는 증강 설명은 세 겹이다.
+//   1) 요약  — augmentBrief.ts의 한 문장. **기본으로 보이는 것은 이것뿐**이다.
+//   2) 설명  — AugmentDef.description 원문. Shift를 누르거나 "자세히"를 눌러야 열린다.
+//   3) 상세  — AugmentDef.detail. 도감·샌드박스의 상세 패널에만 있다.
+//
+// 원래는 (2)가 곧바로 드래프트 카드와 이름표 툴팁에 박혀 있었다. 조건·예외까지 담은
+// 문장이라 좁은 카드에서 열 줄 가까이 흘렀고, 고르는 3초 동안 읽을 수 있는 분량이
+// 아니었다. 그래서 (1)을 새로 앞에 세우고 (2)를 한 번 더 누르는 자리로 물렸다.
+//
+// 그리고 어느 층이든 "슌쯔·커쯔·오름패" 같은 말은 그냥 나온다 — TermText가 glossary.ts에
+// 등록된 표기에 밑줄을 긋고, 잠시 올려 두면 초보자용 한 줄이 뜬다.
+
+/** 용어에 마우스를 올리고 툴팁이 뜰 때까지 (ms) — "길게 올려 두면" */
+const TERM_HOVER_MS = 450;
+
+/**
+ * Shift를 누르고 있는가 — 증강 설명의 "자세히"를 여는 전역 스위치.
+ *
+ * 창이 포커스를 잃으면(alt-tab) keyup을 못 받아 눌린 채로 굳으므로 blur에서 푼다.
+ */
+function useShiftHeld(): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent): void => { if (e.key === "Shift") setHeld(true); };
+    const up = (e: KeyboardEvent): void => { if (e.key === "Shift") setHeld(false); };
+    const clear = (): void => setHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", clear);
+    };
+  }, []);
+  return held;
+}
+
+/**
+ * 밑줄 그인 마작 용어 한 개.
+ *
+ * 툴팁은 `position: fixed` + 포털이다 — 증강 툴팁·드래프트 카드 모두 `overflow`가
+ * 걸린 상자 안에 있어서, 그 안에 두면 잘린다.
+ */
+function GlossaryTerm({ text, entry }: { text: string; entry: GlossaryEntry }): JSX.Element {
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const timer = useRef<number | null>(null);
+
+  const disarm = (): void => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+  const open = (): void => {
+    const r = ref.current?.getBoundingClientRect();
+    if (r === undefined) return;
+    // 화면 밖으로 새지 않게 가로 위치를 여백 안쪽으로 접는다
+    const half = Math.min(150, window.innerWidth / 2 - 8);
+    setAt({ left: Math.min(Math.max(r.left + r.width / 2, half + 8), window.innerWidth - half - 8), top: r.top });
+  };
+  const close = (): void => { disarm(); setAt(null); };
+
+  useEffect(() => disarm, []);
+  // 터치·클릭으로 연 툴팁은 다음 탭에서 닫는다 (같은 클릭으로 바로 닫히지 않게 캡처는 다음 틱)
+  useEffect(() => {
+    if (at === null) return;
+    const t = window.setTimeout(() => window.addEventListener("pointerdown", close), 0);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("pointerdown", close);
+    };
+  }, [at !== null]);
+
+  return (
+    <>
+      <span
+        ref={ref}
+        className="gterm"
+        onMouseEnter={() => { disarm(); timer.current = window.setTimeout(open, TERM_HOVER_MS); }}
+        onMouseLeave={close}
+        // 드래프트 카드는 통째로 버튼이다 — 용어를 눌렀다고 그 증강이 뽑히면 안 된다
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (at === null) open(); else close(); }}
+      >
+        {text}
+      </span>
+      {at !== null
+        ? createPortal(
+            <span className="gterm-tip" style={{ left: at.left, top: at.top }}>
+              <b className="gterm-tip-name">{entry.label}</b>
+              <span className="gterm-tip-body">{entry.short}</span>
+            </span>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
+/** 한 덩어리 문장을 용어 조각과 일반 조각으로 갈라 렌더 */
+function termNodes(text: string, seed: string): JSX.Element[] {
+  return splitTerms(text).map((c, i) =>
+    c.kind === "term" ? (
+      <GlossaryTerm key={`${seed}:${i}`} text={c.text} entry={c.entry} />
+    ) : (
+      <span key={`${seed}:${i}`}>{c.text}</span>
+    ),
+  );
+}
+
+/** 마작 용어에 밑줄을 그어 주는 본문. `**강조**`도 함께 처리한다. */
+function TermText({ text }: { text: string }): JSX.Element {
+  const parts = useMemo(() => text.split(/\*\*(.+?)\*\*/g), [text]);
+  return (
+    <>
+      {parts.map((p, i) =>
+        // split의 홀수 조각이 ** ** 안쪽이다
+        i % 2 === 1 ? <strong key={i}>{termNodes(p, String(i))}</strong> : <span key={i}>{termNodes(p, String(i))}</span>,
+      )}
+    </>
+  );
+}
+
+/**
+ * 증강 설명 본문 — 기본은 요약 한 줄, `expanded`면 원문 설명.
+ *
+ * `use`(사용 빈도)는 원문 머리말 `(상시)` `(매 국 1회)`를 배지로 떼어낸 것이라
+ * 요약 본문은 순수하게 효과만 말한다. 그 덕에 좁은 카드에서도 다섯 줄을 넘지 않는다.
+ */
+function AugDesc({
+  id,
+  description,
+  expanded,
+}: {
+  id: string;
+  description: string | undefined;
+  expanded: boolean;
+}): JSX.Element {
+  const brief = briefOf(id, description);
+  const lead = splitLead(description ?? "");
+  const showFull = expanded && lead.body !== "";
+  // 펼쳤을 때는 배지도 원문 머리말로 바꿔 단다 — 요약의 use보다 조건이 자세할 때가 많고,
+  // 본문에 머리말을 남겨 두면 같은 말이 배지와 두 번 나온다.
+  const use = showFull && lead.use !== "" ? lead.use : brief.use;
+  return (
+    <span className="augdesc">
+      {use !== "" ? <span className="augdesc-use">{use}</span> : null}
+      <span className={`augdesc-body${showFull ? " augdesc-body-full" : ""}`}>
+        <TermText text={showFull ? lead.body : brief.text} />
+      </span>
+    </span>
+  );
+}
+
+/** "자세히 ▾ / 간단히 ▴" 토글 — Shift가 없는 터치 기기의 통로 */
+function MoreToggle({ open, onToggle }: { open: boolean; onToggle: () => void }): JSX.Element {
+  return (
+    <span
+      className={`augdesc-more${open ? " augdesc-more-on" : ""}`}
+      role="button"
+      tabIndex={-1}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
+    >
+      {open ? "간단히 ▴" : "자세히 ▾"}
+      <span className="augdesc-more-key">Shift</span>
+    </span>
+  );
+}
+
 // ══════════════════════════ 증강 도감 (Codex) ══════════════════════════
 
 const CODEX_STAGE_LABEL: Record<string, string> = {
@@ -3755,7 +3930,15 @@ function CodexScreen(props: {
   const selSrv = selected !== null ? srvMap.get(selected) : undefined;
   const selMaster = selected !== null ? masters.get(selected) : undefined;
   const selBadges = sel !== undefined ? codexBadges(sel) : [];
-  const selText = sel !== undefined && (sel.detail ?? "").trim() !== "" ? sel.detail! : sel?.description ?? "";
+  // 상세 오버레이는 세 겹을 모두 편다 — 요약(리드) → 원문 설명 → 상세.
+  // detail이 없으면 원문 설명이 그 자리를 대신한다.
+  const selBrief = sel !== undefined ? briefOf(sel.id, sel.description) : null;
+  const selDetail = (sel?.detail ?? "").trim();
+  // 원문 머리말은 리드 문단의 배지가 이미 말하고 있다 — 본문에서는 뗀다
+  const selParas = [
+    splitLead(sel?.description ?? "").body,
+    ...(selDetail !== "" ? selDetail.split(/\n\n+/) : []),
+  ].filter((p) => p.trim() !== "");
 
   return (
     <div className="codex">
@@ -3799,7 +3982,10 @@ function CodexScreen(props: {
                   {m.collected ? <span className="codex-check">✓</span> : null}
                 </div>
                 <div className="codex-card-name">{m.cat.name}</div>
-                <div className="codex-card-desc">{m.cat.description}</div>
+                {/* 카드는 요약만 — 원문과 상세는 카드를 눌러 여는 상세 오버레이에 있다 */}
+                <div className="codex-card-desc">
+                  <AugDesc id={m.cat.id} description={m.cat.description} expanded={false} />
+                </div>
                 {m.srv !== undefined && m.srv.games > 0 ? (
                   <div className="codex-card-foot">
                     서버 평균 <b className={avgRankClass(m.srv.avgPlacement)}>{m.srv.avgPlacement.toFixed(2)}</b>
@@ -3866,8 +4052,14 @@ function CodexScreen(props: {
             ) : null}
 
             <div className="codex-detail-body">
-              {selText.split(/\n\n+/).map((para, i) => (
-                <p key={i} className="codex-para">{para}</p>
+              {selBrief !== null ? (
+                <p className="codex-lead">
+                  {selBrief.use !== "" ? <span className="augdesc-use">{selBrief.use}</span> : null}
+                  <TermText text={selBrief.text} />
+                </p>
+              ) : null}
+              {selParas.map((para, i) => (
+                <p key={i} className="codex-para"><TermText text={para} /></p>
               ))}
             </div>
 
@@ -5943,7 +6135,9 @@ function SandboxPanel(props: {
                     {c.name}
                     {isActiveAugment(c.id) ? <ActiveBadge /> : null}
                   </span>
-                  <span className="sbx-desc">{c.description}</span>
+                  <span className="sbx-desc">
+                    <AugDesc id={c.id} description={c.description} expanded={false} />
+                  </span>
                 </button>
               </div>
             );
@@ -5964,7 +6158,7 @@ function SandboxPanel(props: {
             <span key={b} className="sbx-badge">{b}</span>
           ))}
           <p className="sbx-detail-body">
-            {(detail.detail ?? "").trim() !== "" ? detail.detail : detail.description}
+            <TermText text={(detail.detail ?? "").trim() !== "" ? detail.detail! : detail.description} />
           </p>
         </div>
       ) : null}
@@ -6928,6 +7122,9 @@ function NamePlate({
   // 이 사람에게 걸린 지목 관계 — 판 위에 선을 긋는 대신 양쪽 이름표에 표식을 앉힌다.
   const { relations, hovered, setHovered } = useContext(RelationHoverContext);
   const myRelations = relationsAt(relations, player.id);
+  // 증강 툴팁의 "자세히" — Shift를 누르고 있거나(데스크톱), 툴팁 안의 칩을 눌렀거나(터치)
+  const shiftHeld = useShiftHeld();
+  const [detailFor, setDetailFor] = useState<string | null>(null);
   // 상대 이름표의 표식에 손이 올라가 있고 그 관계가 나를 향하면 나도 같이 빛난다
   const linked =
     hovered !== null && myRelations.some((r) => r.key === hovered);
@@ -6980,9 +7177,13 @@ function NamePlate({
                   {isActiveAugment(a) ? (
                     <span className="aug-tip-active">⚡ 액티브 증강 (직접 발동)</span>
                   ) : null}
-                  {entry?.description !== undefined ? (
-                    <span className="aug-tip-desc">{entry.description}</span>
-                  ) : null}
+                  <span className="aug-tip-desc">
+                    <AugDesc id={a} description={entry?.description} expanded={shiftHeld || detailFor === a} />
+                  </span>
+                  <MoreToggle
+                    open={shiftHeld || detailFor === a}
+                    onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
+                  />
                 </span>
               </span>
             );
@@ -9977,6 +10178,10 @@ function DraftOverlay({
   const remainSec = Math.ceil(remainMs / 1000);
   const showTimer = total !== undefined && !picked;
   const urgent = showTimer && remainSec <= 5;
+  // 카드는 기본적으로 요약 한 줄만 보여준다 — 고르는 몇 초 안에 읽히는 분량이어야 한다.
+  // 원문 설명은 Shift를 누르고 있는 동안, 또는 카드의 "자세히"를 눌렀을 때만 펼친다.
+  const shiftHeld = useShiftHeld();
+  const [moreFor, setMoreFor] = useState<string | null>(null);
 
   return (
     <div className="overlay">
@@ -10008,7 +10213,13 @@ function DraftOverlay({
                 </span>
               </span>
               <strong className="draft-name">{c.name}</strong>
-              <span className="draft-desc">{c.description}</span>
+              <span className="draft-desc">
+                <AugDesc id={c.id} description={c.description} expanded={shiftHeld || moreFor === c.id} />
+              </span>
+              <MoreToggle
+                open={shiftHeld || moreFor === c.id}
+                onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
+              />
               {isActiveAugment(c.id) ? (
                 <span className="draft-active-note">⚡ 액티브 증강 — 내 턴에 직접 발동</span>
               ) : null}
