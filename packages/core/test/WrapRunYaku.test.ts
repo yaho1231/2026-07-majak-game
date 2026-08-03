@@ -164,3 +164,37 @@ describe("표준 14장 역만은 그대로다 (회귀 방지)", () => {
     expect(eval14("1112345678999m1m", "1m")).toContain("chuuren");
   });
 });
+
+/**
+ * 자패 슌쯔(바람의 계보)가 수패 전용 역에 흘러들던 문제 (docs/25 역/점수 #10).
+ *
+ * 자패는 suit가 하나(wind/dragon)라 `isPureRun`을 그냥 통과한다. 그래서 동남서
+ * 두 벌이 이페코가 되고, 자패 슌쯔만으로 핑후까지 붙었다.
+ */
+describe("자패 슌쯔는 수패 전용 역에 끼지 않는다", () => {
+  function evalHonorRuns(spec: string, win: string): string[] {
+    const ctx: WinContext = {
+      hand: h(spec),
+      winningTile: t(win),
+      melds: [],
+      winType: "ron",
+      seatWind: 2,
+      prevalentWind: 1,
+      riichi: null,
+      options: { honorRuns: true },
+    };
+    return (evaluateWin(ctx, registry)?.yaku ?? []).map((y) => y.id);
+  }
+
+  it("동남서 두 벌은 이페코가 아니다", () => {
+    expect(evalHonorRuns("123z123z567z234m55m", "4m")).not.toContain("iipeiko");
+  });
+
+  it("자패 슌쯔가 섞이면 핑후가 아니다", () => {
+    expect(evalHonorRuns("123z234m345p456s55s", "6s")).not.toContain("pinfu");
+  });
+
+  it("수패 슌쯔만으로 이뤄진 핑후는 그대로 성립한다 (회귀 방지)", () => {
+    expect(evalHonorRuns("234m345p456s678s99p", "8s")).toContain("pinfu");
+  });
+});
