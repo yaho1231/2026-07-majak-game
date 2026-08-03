@@ -21,6 +21,10 @@
 
 import { BOT_UNUSABLE_AUGMENTS } from "@majak/content";
 import { Prng } from "@majak/core/engine/random/Prng.js";
+import {
+  AUGMENT_POWER_TIERS,
+  powerScore,
+} from "@majak/core/augment/powerTier.js";
 import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
 import type { PlayerView } from "@majak/core/information/PlayerView.js";
 import type { ActionOption, DecisionPrompt } from "@majak/core/mahjong/flow/FlowController.js";
@@ -291,8 +295,30 @@ export class BotAgent implements PlayerAgent {
     // (패시브 증강은 발동이 필요 없으므로 여기서 걸리지 않는다.)
     const usable = choices.filter((c) => !BOT_UNUSABLE_AUGMENTS.includes(c.id));
     const pool = usable.length > 0 ? usable : choices;
-    // 같은 후보군 안에서는 시드 PRNG로 픽 (시드만으로 재현 가능 — 결정론 유지)
-    const idx = this.rng.int(pool.length);
-    return pool[idx]?.id ?? pool[0]!.id;
+    // 파워 점수가 높은 쪽을 고른다. 예전에는 평가 없이 균등 난수라 SS+와 D를 같은
+    // 확률로 집었고, 그래서 사람 대 봇 게임의 통계로는 "증강이 센지"를 판정할 수
+    // 없었다(docs/25 시스템 횡단 #9). 티어표는 core가 이미 전수 관리한다.
+    let best = pool[0] as AugmentDef;
+    let bestScore = powerOf(best.id);
+    const tied: AugmentDef[] = [best];
+    for (const c of pool.slice(1)) {
+      const score = powerOf(c.id);
+      if (score > bestScore) {
+        best = c;
+        bestScore = score;
+        tied.length = 0;
+        tied.push(c);
+      } else if (score === bestScore) {
+        tied.push(c);
+      }
+    }
+    // 동점은 시드 PRNG로 (시드만으로 재현 가능 — 결정론 유지)
+    return (tied[this.rng.int(tied.length)] ?? best).id;
   }
+}
+
+/** 증강의 파워 점수 (티어표에 없으면 중간값으로 본다 — 새 증강이 과대·과소평가되지 않게) */
+function powerOf(id: string): number {
+  const entry = AUGMENT_POWER_TIERS[id];
+  return entry === undefined ? 25 : powerScore(entry);
 }
