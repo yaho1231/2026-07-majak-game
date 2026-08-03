@@ -73,6 +73,9 @@ export const invincible: AugmentDef = defineAugment({
       return threatened ? opt : null;
     },
   },
+  // B급 무효(docs/25 §conflicts): 같은 win.ronImmune 키를 같은 값으로 쓴다.
+  // 조약이 살아 있는 구간에 무적을 선언하면 그 발동이 통째로 낭비된다.
+  conflicts: ["no_ron_pact"],
   install(ctx) {
     const { engine, holder } = ctx;
 

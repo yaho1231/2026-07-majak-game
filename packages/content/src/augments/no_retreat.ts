@@ -93,6 +93,9 @@ export const noRetreat: AugmentDef = defineAugment({
     "(2국에 1회) 국의 첫 순에 액티브 버튼이 활성화되며, 선언하면 그 국에는 리치 공탁금을 내지 않고 리치·일발·뒷도라가 각각 2판으로 계산된다.",
   detail:
     "(2국에 1회) 아직 버리지도 울지도 않은 국의 첫 순에만 선언할 수 있다. 그 국에는 공탁금 없이 리치를 걸 수 있고, 화료 시 리치·일발·뒷도라가 각각 2판으로 계산된다(뒷도라는 장수만큼 두 배). 역만 손에는 추가 판이 적용되지 않는다.",
+  // B급 무효(docs/25 §conflicts): 둘 다 riichi.cost를 0으로 만든다 — 겹치는 국에서
+  // 두 번째는 아무 일도 하지 않는다.
+  conflicts: ["palm_flip"],
   install(ctx) {
     const { engine, holder, layer, instanceId } = ctx;
 
