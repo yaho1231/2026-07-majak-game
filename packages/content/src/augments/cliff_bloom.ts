@@ -147,10 +147,27 @@ function bloomChanges(
   changes.push({ tileId: concealed[0] as TileId, kind: pair, attrs: { conjured: true } });
   changes.push({ tileId: concealed[1] as TileId, kind: pair, attrs: { conjured: true } });
 
-  const suits: readonly Suit[] = ["man", "pin", "sou"];
+  // 만개 손의 멘쯔 배치표. (무늬, 시작 랭크) 조합이 **전부 서로 달라야** 한다 —
+  // 예전에는 `suits[i % 3]` + `1 + (i % 3) * 2`라 i=0과 i=3이 똑같이 만123이 되어
+  // 멘젠 만개마다 **이페코가 확정으로** 붙었다(docs/25 벽패 #5). 주석은 "삼색·일통
+  // 회피"라고 적혀 있었지만 정작 이페코를 만들고 있었다.
+  //
+  // 아래 배치는 세 역을 모두 피한다:
+  //  · 이페코 — (무늬,시작) 5쌍이 전부 다르다
+  //  · 삼색동순 — 같은 시작 랭크가 세 무늬에 걸치지 않는다 (1은 만에만, 7은 통에만)
+  //  · 일기통관 — 한 무늬 안의 시작이 {1,4,7}을 이루지 않는다 (만 1·5 / 통 3·7 / 삭 6)
+  // 진짜 용(5멘쯔)까지 감당하도록 5칸을 둔다.
+  const LAYOUT: readonly { suit: Suit; start: number }[] = [
+    { suit: "man", start: 1 },
+    { suit: "man", start: 5 },
+    { suit: "pin", start: 3 },
+    { suit: "sou", start: 6 },
+    { suit: "pin", start: 7 },
+  ];
   for (let i = 0; i < sets; i++) {
-    const suit = suits[i % 3] as Suit;
-    const start = 1 + (i % 3) * 2; // 123 / 345 / 567 — 삼색·일통 회피
+    const slot = LAYOUT[i % LAYOUT.length] as { suit: Suit; start: number };
+    const suit = slot.suit;
+    const start = slot.start;
     for (let j = 0; j < 3; j++) {
       changes.push({
         tileId: concealed[2 + i * 3 + j] as TileId,
