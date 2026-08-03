@@ -24,9 +24,14 @@ export function calculateFu(
   if (ctx.winType === "tsumo" && !hasPinfu) fu += 2;
 
   for (const s of variant.sets) {
-    if (s.type !== "triplet") continue;
-    const tile = s.tiles[0] as TileKind;
-    let setFu = isTerminalOrHonor(tile) ? 8 : 4; // 암각 기준
+    // 깡은 랭크가 섞여도 깡이다. 바람의 계보(동남서북)·장사진(3-4-5-6)의 깡은
+    // meldToSet이 슌쯔성 몸통으로 내보내므로, type만 보면 커쯔 루프를 통째로
+    // 건너뛰어 **부수가 0**이 됐다 — 자패 안깡 32부가 사라져 "깡을 안 하는 게
+    // 이득"이 되고, 스깡쯔를 세워도 20부 손이 나왔다(docs/25 역/점수 #9).
+    if (s.type !== "triplet" && s.isKan !== true) continue;
+    // 랭크가 섞인 깡은 "전부 요구패·자패인가"로 판정한다 — 보통 커쯔는 모든 패가
+    // 같은 종류라 종전과 결과가 같다.
+    let setFu = s.tiles.every((t: TileKind) => isTerminalOrHonor(t)) ? 8 : 4; // 암각 기준
     if (!s.concealed) setFu /= 2;
     if (s.isKan) setFu *= 4;
     fu += setFu;

@@ -11,6 +11,7 @@
 import {
   Suits,
   isHonor,
+  isNumberSuit,
   isTerminal,
   isTerminalOrHonor,
   kindKey,
@@ -126,6 +127,9 @@ function duplicateRunPairs(v: ScoringVariant): number {
   for (const r of runs(v)) {
     if (!isPureRun(r)) continue; // 혼색 슌쯔는 '같은 슌쯔' 판정에서 제외
     if (!isLinearRun(r)) continue; // 순환 슌쯔(8-9-1)는 123과 같은 슌쯔가 아니다
+    // 자패 슌쯔(바람의 계보의 동남서)는 이페코·량페코의 '같은 슌쯔'가 아니다.
+    // 자패는 suit가 하나(wind/dragon)라 isPureRun을 그냥 통과한다(docs/25 역/점수 #10).
+    if (!isNumberSuit(first(r))) continue;
     const key = `${first(r).suit}:${runStart(r)}`;
     countByRun.set(key, (countByRun.get(key) ?? 0) + 1);
   }
@@ -197,7 +201,10 @@ export const standardYakuList: YakuDef[] = [
       isStd(v) &&
       // 깡은 어떤 경우에도 슌쯔가 아니다 — 랭크가 섞인 깡(바람의 계보의 동남서북,
       // 장사진의 4연속)이 슌쯔성 몸통으로 나오므로 isKan을 함께 막아야 핑후가 헛성립하지 않는다.
-      v.sets.every((s) => s.type === "run" && s.isKan !== true) &&
+      // 자패 슌쯔도 핑후가 아니다 — 핑후는 수패 슌쯔 넷이 전제다
+      v.sets.every(
+        (s) => s.type === "run" && s.isKan !== true && isNumberSuit(first(s)),
+      ) &&
       v.pair !== null &&
       !isYakuhaiPair(v.pair, ctx) &&
       v.waitType === "ryanmen",
