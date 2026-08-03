@@ -124,7 +124,7 @@ export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
   agariYame: true,
   uma: [5, 15],
   oka: 0,
-  draftSchedules: ["gameStart", "southEntry"],
+  draftSchedules: ["gameStart", "eastThird", "southEntry", "southThird"],
   seed: Date.now(),
   redFivesPerSuit: 1,
   interRoundDelayMs: 0,
@@ -134,8 +134,10 @@ export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
 /**
  * 게임 모드에 맞는 진행 설정 한 벌(장 수·서입·드래프트 스케줄)을 만든다.
  * 호출부(서버 startGame)는 이 결과에 seed·extraAugments 등을 합쳐 넘긴다.
- * - hanchan: 동+남 2장, 남입 후 서장 서든데스, 드래프트 gameStart+southEntry.
- * - tonpuu: 동 1장, 동4국 후 남장 서든데스(남입), 드래프트 gameStart+eastThird(동3국 진입).
+ * - hanchan: 동+남 2장, 남입 후 서장 서든데스, 드래프트 4회
+ *   (gameStart=동1국 + eastThird=동3국 + southEntry=남1국 + southThird=남3국).
+ * - tonpuu: 동 1장, 동4국 후 남장 서든데스(남입), 드래프트 3회
+ *   (gameStart=동1국 + eastThird=동3국 + eastFourth=동4국).
  *   서든데스는 maxWind+1장(반장=서장, 동풍=남장)까지: 국 정산마다 1위가 반환점 이상이면
  *   즉시 종료, 아니면 다음 국 진행, 그 장 4국까지 가면 무조건 종료 (shouldEnd 참고).
  */
@@ -147,14 +149,14 @@ export function hanchanConfigForMode(
       mode,
       maxWind: 1,
       westEntry: true, // 동4국 후 30000 미달이면 남장 서든데스(남입) — 반장전 서입과 대칭
-      draftSchedules: ["gameStart", "eastThird"],
+      draftSchedules: ["gameStart", "eastThird", "eastFourth"],
     };
   }
   return {
     mode,
     maxWind: 2,
     westEntry: true,
-    draftSchedules: ["gameStart", "southEntry"],
+    draftSchedules: ["gameStart", "eastThird", "southEntry", "southThird"],
   };
 }
 
@@ -198,14 +200,21 @@ export function agariYameTriggers(
  * 중반 드래프트 스테이지별 진입 조건.
  * ROUND_SETTLED 리듀서가 이미 다음 국의 장풍·국 번호를 올린 뒤 검사하므로,
  * "막 다음 국으로 넘어가는 시점"의 round 상태로 판정한다.
+ * - eastThird(공통):   동3국 진입 (prevalentWind=1, roundNumber=3)
+ * - eastFourth(동풍전): 동4국 진입 (prevalentWind=1, roundNumber=4)
  * - southEntry(반장전): 남1국 진입 (prevalentWind=2, roundNumber=1)
- * - eastThird(동풍전): 동3국 진입 (prevalentWind=1, roundNumber=3)
+ * - southThird(반장전): 남3국 진입 (prevalentWind=2, roundNumber=3)
+ *
+ * 조건이 "해당 국 진입"이고 스테이지당 1회(draftedStages 가드)이므로, 본장 연장으로
+ * 같은 국이 여러 번 열려도 **첫 진입 때만** 지급된다.
  */
 const MID_DRAFT_TRIGGER: Partial<
   Record<DraftStage, (r: GameState["round"]) => boolean>
 > = {
-  southEntry: (r) => r.prevalentWind === 2 && r.roundNumber === 1,
   eastThird: (r) => r.prevalentWind === 1 && r.roundNumber === 3,
+  eastFourth: (r) => r.prevalentWind === 1 && r.roundNumber === 4,
+  southEntry: (r) => r.prevalentWind === 2 && r.roundNumber === 1,
+  southThird: (r) => r.prevalentWind === 2 && r.roundNumber === 3,
 };
 
 // ─────────────────────────── 이벤트 콜백 ───────────────────────────
@@ -595,7 +604,7 @@ export class HanchanController {
       }
 
       // 중반 드래프트 진입 체크 (드래프트) — 스테이지당 1회만.
-      // 반장전=남1국 진입(southEntry), 동풍전=동3국 진입(eastThird). 연장(본장)으로
+      // 반장전=동3·남1·남3국 진입, 동풍전=동3·동4국 진입. 연장(본장)으로
       // 라운드 번호가 유지돼도 재추첨하지 않는다(draftedStages 가드).
       const round = game.engine.state.round;
       for (const stage of this.config.draftSchedules ?? []) {

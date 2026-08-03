@@ -533,7 +533,7 @@ describe("DraftController — 상호 배제(conflicts)", () => {
 
 
 describe("DraftController — 다양성 (좌석별 후보 칸 · 중복 금지)", () => {
-  /** 좌석 칸(4 × 12) + 보충 여유를 감당할 만큼 큰 카탈로그 */
+  /** 좌석 칸(4 × 18) + 보충 여유를 감당할 만큼 큰 카탈로그 */
   const bigCatalog = Array.from({ length: 120 }, (_, i) =>
     defineAugment({
       id: `div_${i}`,

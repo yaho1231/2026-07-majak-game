@@ -214,7 +214,7 @@ export interface AugmentDef {
    * 생략하면 모든 스테이지에서 제시된다. (예: 게임 전체에 걸쳐 성장해야
    * 의미가 있는 증강은 ["gameStart"]로 제한한다)
    */
-  draftStages?: readonly ("gameStart" | "southEntry" | "eastThird")[];
+  draftStages?: readonly import("./DraftController.js").DraftStage[];
   /**
    * 이 증강이 제시될 수 있는 게임 모드 제한.
    * 생략하면 모든 모드에서 제시된다. 게임 진행 길이(장 수)에 의존하는 템포 증강은
