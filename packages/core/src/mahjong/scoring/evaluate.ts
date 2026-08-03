@@ -11,7 +11,7 @@ import { buildVariants } from "./WinContext.js";
 import type { ScoringVariant, WaitType, WinContext } from "./WinContext.js";
 import { countDora } from "./dora.js";
 import { calculateFu } from "./fu.js";
-import type { YakuRegistry } from "./YakuRegistry.js";
+import type { YakuDef, YakuRegistry } from "./YakuRegistry.js";
 
 export interface YakuResult {
   id: string;
@@ -82,7 +82,7 @@ export function evaluateWin(
 
     for (const def of registry.all()) {
       if (blocked !== null && blocked.has(def.id)) continue;
-      if (disarmed !== null && def.source !== undefined && disarmed.has(def.source)) {
+      if (disarmed !== null && def.source !== undefined && isYakuDisarmed(def, ctx, disarmed)) {
         continue;
       }
       const han = variant.isClosed ? def.closedHan : def.openHan;
@@ -162,4 +162,31 @@ export function evaluateWin(
   if (best === null) return null;
   const { variant: _variant, ...evaluation } = best;
   return evaluation;
+}
+
+/**
+ * 이 화료자에게 이 커스텀 역이 잠겨 있는가.
+ *
+ * 커스텀 역은 게임당 한 번만 등록되므로 `def.source`는 **먼저 설치된 보유자**의
+ * 인스턴스 id(`aug:{설치자}:{증강id}`)로 고정된다. 그런데 같은 증강을 두 명이
+ * 가질 수 있어서, 그대로 대조하면 무장해제가 엉뚱하게 걸렸다 — 설치자를 잠그면
+ * **다른 보유자의 역까지** 사라지고, 다른 보유자를 잠그면 **아무 일도 안 났다**
+ * (docs/25 최우선#3, 감사 4개 팀이 독립 확인).
+ *
+ * 봐야 하는 것은 "이 화료자의 그 증강이 잠겼는가"다. 그래서 source에서 증강 id만
+ * 떼어 내 화료자의 인스턴스 id로 다시 만들어 대조한다. 보유자가 한 명뿐인
+ * 일반적인 경우에는 둘이 같은 값이라 동작이 달라지지 않는다.
+ */
+function isYakuDisarmed(
+  def: YakuDef,
+  ctx: WinContext,
+  disarmed: ReadonlySet<string>,
+): boolean {
+  const source = def.source as string;
+  if (ctx.winnerId === undefined) return disarmed.has(source);
+  // `aug:{holder}:{augmentId}` — 증강 id에 콜론이 있을 수 있어 앞 두 조각만 떼어 낸다
+  const parts = source.split(":");
+  if (parts.length < 3 || parts[0] !== "aug") return disarmed.has(source);
+  const augmentId = parts.slice(2).join(":");
+  return disarmed.has(`aug:${ctx.winnerId}:${augmentId}`);
 }
