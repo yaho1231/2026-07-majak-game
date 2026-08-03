@@ -417,6 +417,14 @@ export function buildPlayerView(
   },
 ): PlayerView {
   const isSpectator = viewerId === SPECTATOR_ID;
+  /** 이 뷰어에게 도라 표시패가 가려져 있는가 (가려진 도라) — 왕패 열람에도 적용한다 */
+  const hidesDoraIndicators =
+    !isSpectator &&
+    rules.has("visibility.doraIndicators.hidden") &&
+    rules.resolve<boolean>("visibility.doraIndicators.hidden", {
+      playerId: viewerId,
+      state,
+    });
 
   // ── Zone 가시성 필터링 ──
   const zones: Record<ZoneId, ZoneView> = {};
@@ -440,12 +448,23 @@ export function buildPlayerView(
       // 판단하려면 뷰가 아니라 이 배치를 봐야 한다.
       arrangedHands[zone.owner] = zoneTileIds;
     }
-    const { tileIds, hiddenCount } = applyVisibility(
+    let { tileIds, hiddenCount } = applyVisibility(
       zoneTileIds,
       zone.owner,
       viewerId,
       visibility,
     );
+    // 가려진 도라(dora_conceal)는 RoundView.doraIndicators만 비웠다. 그런데 표시패
+    // **실물은 왕패 Zone에 그대로 있어**, 왕패를 여는 증강(이면투시·왕패의 주인·
+    // 절벽 위에 피어난 꽃·영상 정찰)을 가진 뷰어에게는 종류까지 그대로 새어 나갔다 —
+    // prism 증강의 유일한 능력이 상대의 silver 하나로 무효화됐다(docs/25 정보 #3).
+    // 표시패를 별도 Zone으로 분리하는 대신, 여기서 그 tileId만 뺀다.
+    if (zone.kind === "deadWall" && hidesDoraIndicators) {
+      const indicators = new Set(state.round.doraIndicators);
+      const kept = tileIds.filter((id) => !indicators.has(id));
+      hiddenCount += tileIds.length - kept.length;
+      tileIds = kept;
+    }
     zones[zone.id] = {
       id: zone.id,
       kind: zone.kind,
@@ -648,6 +667,14 @@ function applyVisibility(
       return { tileIds: [], hiddenCount: tileIds.length };
 
     case "count_only":
+      // 자기 Zone은 자기가 안다. peek 분기에는 있던 소유자 면제가 여기엔 없어서,
+      // 박무(brief_fog)가 깔리면 **피해자가 자기 바닥도 못 봤다** — 실제 탁자에서
+      // 불가능한 상태이고, 자기 후리텐 판단(내가 뭘 버렸는지)이 화면에서 사라졌다
+      // (docs/25 정보 #2). 안개는 남의 바닥을 가리는 능력이지 내 기억을 지우는
+      // 능력이 아니다.
+      if (owner === viewerId) {
+        return { tileIds: [...tileIds], hiddenCount: 0 };
+      }
       return { tileIds: [], hiddenCount: tileIds.length };
   }
 }

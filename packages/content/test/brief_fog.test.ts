@@ -115,11 +115,15 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
     expect(s.augmentData[turnKeyFor(s)]).toBe(0); // 선언 순 = turnCount 0
     expect(s.augmentData[roundViewKey("*", "brief_fog:p0")]).toBe("안개");
 
-    // (a) 타인 뷰: 네 사람 바닥이 전부 장수만
+    // (a) 타인 뷰: **남의** 바닥이 장수만 — 자기 바닥은 그대로 본다.
+    // (예전에는 count_only가 소유자를 면제하지 않아 피해자가 자기 바닥도 못 봤다.
+    //  실제 탁자에서 불가능한 상태이고 자기 후리텐 판단이 화면에서 사라졌다 —
+    //  docs/25 정보 #2. 안개는 남의 바닥을 가리는 능력이지 내 기억을 지우지 않는다.)
     const other = buildPlayerView(s, "p1", game.engine.rules);
     expect(zoneOf(other, discardsZone("p0")).tileIds).toHaveLength(0);
     expect(zoneOf(other, discardsZone("p0")).hiddenCount).toBe(2);
-    expect(zoneOf(other, discardsZone("p1")).hiddenCount).toBe(1);
+    expect(zoneOf(other, discardsZone("p1")).tileIds).toHaveLength(1);
+    expect(zoneOf(other, discardsZone("p1")).hiddenCount).toBe(0);
     expect(discardVisibility(game, "p1", s)).toBe("count_only");
 
     // (b) 보유자 뷰: 전부 그대로

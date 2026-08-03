@@ -285,7 +285,17 @@ const FX_SILENT_ACTION_TYPES = new Set(["future_arm"]);
  * 완전 무음(FX_SILENT)으로 두지 않는 이유: 보유자에게는 발동이 먹혔다는 확인이
  * 필요하다. 관전자는 어차피 모든 정보를 보는 시점이라 함께 받는다.
  */
-const FX_PRIVATE_ACTION_TYPES = new Set(["stealth_riichi"]);
+const FX_PRIVATE_ACTION_TYPES = new Set([
+  "stealth_riichi",
+  // 천리안 — detail이 "발동 사실도 밝혀진 목록도 상대에게는 공개되지 않는다"고
+  // 약속하는데 컷인이 전원에게 나갔다. 상대는 "지금 내 텐파이가 읽혔다"를 알고
+  // 수비를 조였다 — 스텔스 리치에서 고친 것과 같은 누설이다(docs/25 정보 #1).
+  //
+  // 여기 추가할 후보는 **detail이 발동 사실의 비밀을 약속하는가**로 가른다.
+  // 예: spy는 "상대에게는 지정 사실만 공개된다"라 대상이 아니고, 투시·삼세 예지는
+  // 결과만 비공개라 대상이 아니다. 증강 보유 자체는 어차피 전원 공개다.
+  "tenpai_scan_use",
+]);
 
 // ─────────────────────────── HanchanController ───────────────────────────
 
