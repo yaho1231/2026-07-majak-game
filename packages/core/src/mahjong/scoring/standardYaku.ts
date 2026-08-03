@@ -30,6 +30,21 @@ const isStd = (v: ScoringVariant): boolean => v.form === "standard";
 const runStart = (s: ScoringSet): number => Math.min(...s.tiles.map((t) => t.rank));
 
 /**
+ * 랭크가 min부터 **연속으로 이어지는** 평범한 슌쯔인가.
+ *
+ * 끝없는 윤회(wrapRuns)는 8-9-1·9-1-2 같은 순환 슌쯔를 만든다. 그런데 `runStart`가
+ * 최솟값이라 8-9-1의 시작 랭크가 **1**로 잡혀, 123과 같은 슌쯔로 기록됐다. 그래서
+ * 삼색동순·일기통관·이페코가 통째로 헛성립했다(docs/25 벽패 #1).
+ *
+ * 무늬를 요구하는 역이 `isPureRun`을 함께 걸어야 하듯, **순서를 요구하는 역**은
+ * 이 검사를 함께 걸어야 한다. 순환 슌쯔는 "1부터 시작하는 슌쯔"가 아니다.
+ */
+const isLinearRun = (s: ScoringSet): boolean => {
+  const ranks = s.tiles.map((t) => t.rank).sort((a, b) => a - b);
+  return ranks.every((r, i) => r === (ranks[0] as number) + i);
+};
+
+/**
  * 한 무늬로만 이뤄진 슌쯔인가.
  * 무너진 국경(mixedRuns)은 2만·3통·4삭 같은 혼색 슌쯔를 만든다 — 무늬를 요구하는
  * 역(삼색동순·일기통관·이페코)은 first(s).suit만 보면 그런 슌쯔를 제 무늬로 착각하므로
@@ -85,13 +100,20 @@ function isKokushi13(v: ScoringVariant, ctx: WinContext): boolean {
 }
 
 /**
- * 스안커 뼈대 — 표준형 + **안커 4개**.
+ * 스안커 뼈대 — 표준형 + **손 전체가 안커**.
  *
  * 샹퐁 대기를 론으로 채우면 그 커쯔는 명각이 되므로(buildVariants) 여기서 자동으로
  * 걸러진다. 즉 이 함수가 참인 론은 전부 단기 대기이고, 쯔모는 둘 다 가능하다.
+ *
+ * ⚠ 멘쯔 수를 4로 하드코딩하지 않는다. 진짜 용(scoring.totalSets=5)에서는
+ * "안커 4개 + 슌쯔 1개"가 `=== 4`를 만족해 역만이 붙고, 정작 5안커를 세우면
+ * 조건이 깨져 **더 좋은 손이 역만에서 탈락**했다(docs/25 역/점수 #2).
+ * 조건은 장수가 아니라 "몸통이 전부 안커인가"다.
  */
 const isSuuankou = (v: ScoringVariant): boolean =>
-  isStd(v) && triplets(v).filter((s) => s.concealed).length === 4;
+  isStd(v) &&
+  v.sets.length > 0 &&
+  v.sets.every((s) => s.type === "triplet" && s.concealed);
 
 const isYakuhaiPair = (pair: TileKind, ctx: WinContext): boolean =>
   pair.suit === Suits.Dragon ||
@@ -103,6 +125,7 @@ function duplicateRunPairs(v: ScoringVariant): number {
   const countByRun = new Map<string, number>();
   for (const r of runs(v)) {
     if (!isPureRun(r)) continue; // 혼색 슌쯔는 '같은 슌쯔' 판정에서 제외
+    if (!isLinearRun(r)) continue; // 순환 슌쯔(8-9-1)는 123과 같은 슌쯔가 아니다
     const key = `${first(r).suit}:${runStart(r)}`;
     countByRun.set(key, (countByRun.get(key) ?? 0) + 1);
   }
@@ -296,7 +319,11 @@ export const standardYakuList: YakuDef[] = [
         if (
           NUMBER_SUITS.every((suit) =>
             runs(v).some(
-              (s) => isPureRun(s) && first(s).suit === suit && runStart(s) === r,
+              (s) =>
+                isPureRun(s) &&
+                isLinearRun(s) &&
+                first(s).suit === suit &&
+                runStart(s) === r,
             ),
           )
         ) {
@@ -361,7 +388,11 @@ export const standardYakuList: YakuDef[] = [
       NUMBER_SUITS.some((suit) =>
         [1, 4, 7].every((r) =>
           runs(v).some(
-            (s) => isPureRun(s) && first(s).suit === suit && runStart(s) === r,
+            (s) =>
+              isPureRun(s) &&
+              isLinearRun(s) &&
+              first(s).suit === suit &&
+              runStart(s) === r,
           ),
         ),
       ),
@@ -508,8 +539,13 @@ export const standardYakuList: YakuDef[] = [
       if (!isStd(v) || !v.isClosed || ctx.melds.length > 0) return false;
       const p = suitProfile(v);
       if (p.numberSuits.size !== 1 || p.hasHonor) return false;
+      const kinds = allKinds(v);
+      // 구련은 **정확히 14장**의 뼈대다. 장수를 안 보면 진짜 용의 17장 손
+      // (111p 999p + 슌쯔 3개 + 작두)이 1·9 셋씩 + 2~8 하나씩을 우연히 만족해
+      // 역만이 헛성립한다(docs/25 역/점수 #3).
+      if (kinds.length !== 14) return false;
       const counts = new Array<number>(10).fill(0);
-      for (const k of allKinds(v)) counts[k.rank] = (counts[k.rank] ?? 0) + 1;
+      for (const k of kinds) counts[k.rank] = (counts[k.rank] ?? 0) + 1;
       if ((counts[1] ?? 0) < 3 || (counts[9] ?? 0) < 3) return false;
       for (let r = 2; r <= 8; r++) if ((counts[r] ?? 0) < 1) return false;
       return true;
