@@ -47,6 +47,7 @@ import type {
   SandboxBotRules,
 } from "@majak/core/network/protocol.js";
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
+import type { AugmentStatsStore } from "./AugmentStatsStore.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
 import { HumanAgent } from "./HumanAgent.js";
 import { BotAgent } from "./BotAgent.js";
@@ -324,6 +325,11 @@ export class RoomManager {
      * 비어 있으면 가입 개방(로컬·개발 기본). 공개 배포에서 무단 가입·계정 탐색을 막는다.
      */
     private signupCode = "",
+    /**
+     * 증강별 실전 성적 — 20판마다 드래프트 가중치를 자동 조정한다.
+     * 없으면 정적 티어표를 그대로 쓴다(테스트·로컬 기본).
+     */
+    private augmentStats?: AugmentStatsStore,
   ) {}
 
   /**
@@ -1941,6 +1947,10 @@ export class RoomManager {
       // 매 게임 새 시드 — 안 넣으면 프로세스 내 모든 게임이 같은 시드를 써서
       // 배패·증강 선택지가 매번 똑같이 반복된다("증강이 초기화 안 됨"의 원인).
       seed: randomInt(0x1_0000_0000),
+      // 티어 자동 조정 결과를 이 방의 드래프트에 건다 (없으면 정적 티어표)
+      ...(this.augmentStats !== undefined
+        ? { augmentWeights: this.augmentStats.weights() }
+        : {}),
       // 증강 훅이 던지면 엔진이 그 source만 격리하고 게임을 계속한다. 격리가 없던
       // 시절에는 예외 하나가 방 삭제로 이어졌다. 대신 여기서 반드시 남겨야
       // 증강 버그가 흔적 없이 사라지지 않는다.
@@ -1981,6 +1991,7 @@ export class RoomManager {
           return;
         }
         this.recordGame(room, rankings);
+        this.recordAugmentResults(room, rankings);
         // ⚠ 방 정리는 통계 전송이 끝난 **뒤**에 한다 — finishStats는 room.agents를 훑어
         //    이번 판 통계를 보내는데, 먼저 정리하면 그 사이 좌석이 갈려(봇 교체·포기한
         //    좌석 제거) 통계가 엉뚱한 명단으로 나가거나 아예 도달하지 않는다.
@@ -2054,6 +2065,30 @@ export class RoomManager {
       });
     } catch (err) {
       console.error("Failed to record game:", err);
+    }
+  }
+
+  /**
+   * 증강별 실전 성적을 기록한다 — 20판마다 티어 자동 조정이 돈다.
+   *
+   * 조정 결과는 **다음에 만들어지는 방**부터 적용된다. 진행 중인 게임의 카탈로그를
+   * 중간에 갈아 끼우면 같은 판에서 확률이 바뀌어 리플레이가 어긋난다.
+   */
+  private recordAugmentResults(room: Room, rankings: RankingEntry[]): void {
+    if (this.augmentStats === undefined) return;
+    try {
+      const state = room.controller?.gameState;
+      if (state === undefined || state === null) return;
+      const results = rankings.map((r) => ({
+        augments: state.players.find((p) => p.id === r.playerId)?.augments ?? [],
+        rank: r.rank,
+      }));
+      if (this.augmentStats.record(results)) {
+        const p = this.augmentStats.progress();
+        console.log(`[augment] 티어 자동 조정 #${p.adjustments} 적용 (${p.every}판 주기)`);
+      }
+    } catch (err) {
+      console.error("Failed to record augment stats:", err);
     }
   }
 

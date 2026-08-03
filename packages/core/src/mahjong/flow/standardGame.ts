@@ -73,6 +73,11 @@ export interface StandardGameOptions {
   playerMeta?: import("../../engine/state/GameState.js").GameConfig["playerMeta"];
   /** 게임 모드(반장전/동풍전). 없으면 hanchan 폴백. state.config.mode로 관통된다. */
   mode?: import("../../engine/state/GameState.js").GameMode;
+  /**
+   * 드래프트 가중치 덮어쓰기 (티어 자동 조정 결과). 없으면 정적 티어표를 쓴다.
+   * 카탈로그 인스턴스에 실리므로 방마다 독립이다.
+   */
+  augmentWeights?: Readonly<Record<string, number>>;
 }
 
 export function createStandardGame(options: StandardGameOptions): StandardGame {
@@ -88,5 +93,14 @@ export function createStandardGame(options: StandardGameOptions): StandardGame {
       redFivesPerSuit: options.redFivesPerSuit ?? 1,
     },
   );
-  return createStandardGameFromState(state, options.processor, options.extraAugments);
+  const game = createStandardGameFromState(
+    state,
+    options.processor,
+    options.extraAugments,
+  );
+  // 티어 자동 조정 결과를 이 게임의 드래프트에만 건다 (카탈로그는 게임마다 새것)
+  if (options.augmentWeights !== undefined) {
+    game.augments.setWeightOverrides(options.augmentWeights);
+  }
+  return game;
 }

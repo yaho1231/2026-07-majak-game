@@ -14,6 +14,19 @@ import { AUGMENT_POWER_TIERS, POWER_TIER_WEIGHT } from "./powerTier.js";
 
 export class AugmentRegistry {
   private readonly defs = new Map<string, AugmentDef>();
+  /**
+   * 증강 id → 드래프트 가중치 덮어쓰기 (티어 자동 조정 결과).
+   *
+   * **인스턴스 필드**인 것이 중요하다 — 카탈로그는 게임마다 새로 만들어지므로,
+   * 모듈 전역에 두면 동시에 진행되는 방들이 서로의 조정값에 오염된다.
+   * 비어 있으면 정적 티어표를 그대로 쓴다(종전 동작).
+   */
+  private weightOverrides: Readonly<Record<string, number>> = {};
+
+  /** 티어 자동 조정 결과를 이 게임의 드래프트에 적용한다 (서버가 게임 생성 시 주입) */
+  setWeightOverrides(weights: Readonly<Record<string, number>>): void {
+    this.weightOverrides = weights;
+  }
 
   add(def: AugmentDef): void {
     if (this.defs.has(def.id)) {
@@ -44,7 +57,17 @@ export class AugmentRegistry {
     count: number,
     exclude: ReadonlySet<string> = new Set(),
   ): AugmentDef[] {
-    return AugmentRegistry.rollFrom(prng, count, this.all(), exclude);
+    return AugmentRegistry.rollFrom(prng, count, this.all(), exclude, this.weightOverrides);
+  }
+
+  /** 후보 목록 버전의 rollFrom — 이 카탈로그의 가중치 덮어쓰기를 함께 적용한다 */
+  rollFromCell(
+    prng: Prng,
+    count: number,
+    candidates: readonly AugmentDef[],
+    exclude: ReadonlySet<string> = new Set(),
+  ): AugmentDef[] {
+    return AugmentRegistry.rollFrom(prng, count, candidates, exclude, this.weightOverrides);
   }
 
   /**
@@ -62,19 +85,28 @@ export class AugmentRegistry {
     count: number,
     candidates: readonly AugmentDef[],
     exclude: ReadonlySet<string> = new Set(),
+    overrides: Readonly<Record<string, number>> = {},
   ): AugmentDef[] {
     const bucket = candidates.filter((d) => !exclude.has(d.id));
     const chosen: AugmentDef[] = [];
     while (chosen.length < count && bucket.length > 0) {
-      const idx = AugmentRegistry.pickWeighted(prng, bucket);
+      const idx = AugmentRegistry.pickWeighted(prng, bucket, overrides);
       chosen.push(bucket[idx] as AugmentDef);
       bucket.splice(idx, 1);
     }
     return chosen;
   }
 
-  /** 이 증강의 드래프트 가중치 (티어표에 없으면 균등 1.0) */
-  static draftWeight(id: string): number {
+  /**
+   * 이 증강의 드래프트 가중치. 자동 조정 결과가 있으면 그것이 정적 티어표를 이긴다.
+   * 티어표에 없으면 균등 1.0 — 새 증강이 티어 미등재라고 안 뽑히는 사고를 막는다.
+   */
+  static draftWeight(
+    id: string,
+    overrides: Readonly<Record<string, number>> = {},
+  ): number {
+    const override = overrides[id];
+    if (override !== undefined) return override;
     const tier = AUGMENT_POWER_TIERS[id]?.tier;
     return tier === undefined ? 1 : POWER_TIER_WEIGHT[tier];
   }
@@ -86,9 +118,13 @@ export class AugmentRegistry {
    * 플랫폼 부동소수 오차에 노출되므로, 가중치를 정수 눈금(×100)으로 바꿔 정수 범위에서
    * 고른다. 티어 가중치가 소수점 둘째 자리까지라 손실이 없다.
    */
-  private static pickWeighted(prng: Prng, bucket: readonly AugmentDef[]): number {
+  private static pickWeighted(
+    prng: Prng,
+    bucket: readonly AugmentDef[],
+    overrides: Readonly<Record<string, number>> = {},
+  ): number {
     const ticks = bucket.map((d) =>
-      Math.max(1, Math.round(AugmentRegistry.draftWeight(d.id) * 100)),
+      Math.max(1, Math.round(AugmentRegistry.draftWeight(d.id, overrides) * 100)),
     );
     const total = ticks.reduce((sum, t) => sum + t, 0);
     let roll = prng.int(total);
