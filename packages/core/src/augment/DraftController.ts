@@ -226,8 +226,18 @@ export function rebuildAugments(
   catalog: AugmentRegistry,
   extras: AugmentExtras = {},
 ): void {
-  for (const player of engine.state.players) {
-    for (const augmentId of player.augments) {
+  // 설치 순서를 **원본 드래프트와 같은 모양**으로 맞춘다.
+  //
+  // 원본은 스테이지마다 자리 순으로 한 장씩 돌아간다(p0 gameStart, p1 gameStart, …,
+  // p0 southEntry, …). 예전 재구성은 플레이어별로 몰아서(p0의 전부 → p1의 전부)
+  // 설치해 등록 순서(seq)가 달라졌고, seq에 기대는 동률 훅의 결과가 뒤집혔다 —
+  // 즉 **이어하기·리플레이가 원본과 다른 점수를 낼 수 있었다**(docs/25 P6).
+  // player.augments는 픽 순서로 쌓이므로 인덱스가 곧 드래프트 스테이지에 대응한다.
+  const maxCount = Math.max(0, ...engine.state.players.map((p) => p.augments.length));
+  for (let i = 0; i < maxCount; i++) {
+    for (const player of engine.state.players) {
+      const augmentId = player.augments[i];
+      if (augmentId === undefined) continue;
       const def = catalog.get(augmentId);
       if (def === undefined) {
         throw new Error(`Cannot rebuild unknown augment: ${augmentId}`);
