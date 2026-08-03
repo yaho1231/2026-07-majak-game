@@ -483,16 +483,18 @@ export const sfx = {
   },
 
   /**
-   * 패 슬라이드 — 마른 "칙" 노이즈만 (~28ms). 손패를 마우스로 끌어 슬롯을 하나
-   * 넘길 때마다 한 번. 딱(톤) 없이 노이즈만이라 연속으로 넘겨도 거슬리지 않게 게인 낮게.
+   * 패 슬라이드 — 비단이 스치는 "사락" (~38ms). 손패를 마우스로 끌어 슬롯을 하나
+   * 넘길 때마다 한 번. (2026-08-03 유저 확정: 효과음 랩 `slide-silk`)
+   *
+   * 좁은 밴드패스(Q=2.2)를 1.6k→3.2k로 **올려** 훑는 노이즈 한 겹뿐이다. 예전엔
+   * 고정 밴드패스 + 고역 겹치기 2겹이었는데, 그건 마른 "칙"이라 연속으로 넘길 때
+   * 거칠었다. 상행 스윕은 결이 부드러워 같은 게인에서도 덜 쏜다.
    */
   slide(): void {
     const now = Date.now();
     if (now - lastSlideAt < 40) return;
     lastSlideAt = now;
-    const v = rand(0.9, 1.1);
-    noiseBurst({ filter: "bandpass", freq: 2400 * v, q: 1.2, dur: 0.028, gain: 0.06 });
-    noiseBurst({ at: 0, filter: "highpass", freq: 5000, dur: 0.016, gain: 0.04 });
+    noiseBurst({ filter: "bandpass", freq: 1600, freqTo: 3200, q: 2.2, dur: 0.038, gain: 0.05 });
   },
 
   /**
@@ -757,9 +759,21 @@ export const sfx = {
     }
   },
 
-  /** 점수 카운트업 틱 — 진행도(0~1)에 비례해 피치 상승 */
+  /**
+   * 점수 카운트업 틱 — 오르골 핀이 계단을 오르는 방울 소리.
+   * (2026-08-03 유저 확정: 효과음 랩 `countTick-orgel`)
+   *
+   * 진행도 0~1을 **완전5도**(7반음)에 걸쳐 C6→G6로 올린다. 선형 Hz 증가가 아니라
+   * 지수(음정) 증가라 귀에는 균일한 계단으로 들린다. 예전엔 square 1발이라 길게
+   * 세면 쏘았는데, 사인 기음 + 오르골 부분음(×3.01)으로 바꿔 둥글게 만들었다.
+   * @param progress 카운트업 진행도 0~1
+   */
   countTick(progress: number): void {
-    play([{ freq: 880 + progress * 700, dur: 0.035, type: "square", gain: 0.035 }]);
+    const f = 1046 * 2 ** ((progress * 7) / 12);
+    play([
+      { freq: f, dur: 0.03, type: "sine", gain: 0.038 },
+      { freq: f * 3.01, dur: 0.016, type: "sine", gain: 0.01 },
+    ]);
   },
 
   /** 점수 카운트업 피니시 — 짧은 종지 */

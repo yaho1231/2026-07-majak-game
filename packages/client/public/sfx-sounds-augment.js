@@ -3,8 +3,8 @@
  * 방향: 후로의 밝은 클랙과 계열이 다른 저역+신비 계열.
  * 각 바리에이션은 같은 재질의 3단 — soft 는 light 의 축소판, heavy 는 확대판.
  */
-import { def } from "/sfx-registry.js?v=1";
-import { play, thump, noise, sparkle, bell, popBend, gliss, rand } from "/sfx-kit.js?v=1";
+import { def } from "/sfx-registry.js?v=2";
+import { play, thump, noise, sparkle, bell, popBend, gliss, rand } from "/sfx-kit.js?v=2";
 
 // ① 와다이코 "둥" 위로 신사 방울(스즈)이 은은히 울린다 — 북의 실물감 + 영적인 잔향
 def({

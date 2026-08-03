@@ -2,8 +2,8 @@
  * 방향: 오르골·하프·뽀용·코인/유리 4계열. 현재 게임(금속 벨·브라스풍 팡파르)과
  * 뚜렷이 다른 "일본식 팝 + 미소녀" 결을 노린다.
  */
-import { def } from "/sfx-registry.js?v=1";
-import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, note } from "/sfx-kit.js?v=1";
+import { def } from "/sfx-registry.js?v=2";
+import { play, thump, noise, sparkle, tileBody, bell, pluck, popBend, coin, gliss, chord, note } from "/sfx-kit.js?v=2";
 
 const ORGEL = [[1, 1], [3.01, 0.25], [4.9, 0.1]];
 

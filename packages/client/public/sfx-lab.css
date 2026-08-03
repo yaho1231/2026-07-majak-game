@@ -75,6 +75,14 @@ main { max-width: 980px; margin: 0 auto; padding: 20px 22px; }
 .variant.playing { border-color: var(--pink); }
 .variant.is-current { opacity: 0.82; }
 .variant.is-current .v-name { color: var(--cur); }
+/* 지금 게임에서 실제로 나는 소리 — 채택된 것 또는(채택이 없으면) 현재 소리 */
+.variant.in-game { opacity: 1; border-color: var(--mint); }
+.variant.in-game .v-name { color: var(--tx); }
+
+.v-badge {
+  margin-left: 7px; font-size: 10px; font-weight: 700; vertical-align: 1px;
+  color: var(--bg); background: var(--mint); border-radius: 99px; padding: 2px 7px;
+}
 
 .v-play {
   width: 34px; height: 34px; flex-shrink: 0;
