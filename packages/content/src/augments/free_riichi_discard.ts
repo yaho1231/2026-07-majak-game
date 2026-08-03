@@ -98,6 +98,13 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
     "(상시) 리치를 걸면 그 순간의 손패로 오름패가 고정되고, 이후 자기 순마다 손패에서 아무 패나 자유롭게 버릴 수 있다. 화료 시 손패는 첫 리치 때의 모습으로 남는다.",
   detail:
     "(상시) 리치를 선언한 순간의 손패가 고정되어 오름패·화료형·텐파이·후리텐 판정이 모두 그 손패 기준이 된다. 그 뒤로는 자기 순마다 쯔모패가 아닌 손패도 조건 없이 버릴 수 있어, 물리 손패를 자유롭게 바꿔도 오름패는 변하지 않는다. 화료 시 공개되는 손패도 첫 리치 때의 모습이다. 다만 대기패를 버리면 후리텐은 그대로 걸리며, 고정된 손패와 어긋나지 않도록 리치 뒤에는 깡을 칠 수 없다.",
+  // A급 파괴(docs/25 §conflicts): 리치를 취소해도 선언 시점 손패 스냅샷이 남아
+  // hand.winTileIds를 그 국 내내 덮는다 → 화료·후리텐·유국 텐파이가 옛 손으로
+  // 계산되어 **그 국이 통째로 벽돌**이 된다. 리치를 푸는 두 증강을 배제한다.
+  conflicts: [
+    "last_stand", // cancel_riichi로 리치 해제 → 스냅샷만 남는다
+    "palm_flip", // RiichiFlipped로 리치 해제 → 동일
+  ],
   install(ctx) {
     const { engine, holder, layer, instanceId } = ctx;
 

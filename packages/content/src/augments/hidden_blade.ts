@@ -27,6 +27,9 @@ export const hiddenBlade: AugmentDef = defineAugment({
     "(상시) 리치를 선언하지 않은 멘젠 론 화료에 +2판이 붙고, 리치를 걸지 않았어도 뒷도라가 적용된다.",
   detail:
     "(상시) 리치를 선언하지 않은 채 멘젠으로 론 화료하면 +2판이 붙고, 리치를 걸지 않았는데도 뒷도라가 뒤집힌다. 리치 역이 붙는 것이 아니라 판만 얹는 것이라 다른 역이 하나 이상 있어야 하며, 쯔모 화료·후로 화료나 실제로 리치를 건 손에는 붙지 않는다.",
+  // B급 무효(docs/25 §conflicts): 둘 다 scoring.uraWithoutRiichi를 연다.
+  // "멘젠 다마텐 론 + 상대 리치" 손에서 뒷도라 해제가 완전히 중복된다.
+  conflicts: ["soul_hunt"],
   install(ctx) {
     const { holder } = ctx;
 
