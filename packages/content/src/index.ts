@@ -18,6 +18,10 @@ import type { AugmentDef } from "@majak/core";
 // 봇이 판단할 수 없어 정책을 두지 않은 액티브 증강 목록 (드래프트 후순위·커버리지 테스트)
 export { BOT_UNUSABLE_AUGMENTS } from "./augments/botHelpers.js";
 
+// 초읽기(time_pressure)의 제한 시간·채널 — 서버(HumanAgent)와 클라이언트가 함께 읽는다.
+// 제한 시간은 게임 규칙이 아니라 접속·진행의 문제라 엔진 밖에서 다룬다.
+export { TIME_PRESSURE_CHANNEL, TIME_PRESSURE_SECONDS } from "./augments/time_pressure.js";
+
 // ── Silver — 기본 능력 (규칙 훼손 적음) ──
 import { redFiveTouch } from "./augments/red_five_touch.js";
 import { counter } from "./augments/counter.js";
@@ -140,6 +144,16 @@ import { palmFlip } from "./augments/palm_flip.js";
 import { northTrader } from "./augments/north_trader.js";
 import { hourglass } from "./augments/hourglass.js";
 
+// ── 6차 사용자 발안 8종 (2026-08-04, docs/16 §2c) — 도라 확장·메타·국 한정 자동 발동 ──
+import { mirrorDora } from "./augments/mirror_dora.js";
+import { cornucopia } from "./augments/cornucopia.js";
+import { timePressure } from "./augments/time_pressure.js";
+import { blindRon } from "./augments/blind_ron.js";
+import { doraAfterimage } from "./augments/dora_afterimage.js";
+import { signFlip } from "./augments/sign_flip.js";
+import { runawayRiichi } from "./augments/runaway_riichi.js";
+import { pickyEater } from "./augments/picky_eater.js";
+
 export {
   redFiveTouch,
   counter,
@@ -245,10 +259,18 @@ export {
   palmFlip,
   northTrader,
   hourglass,
+  mirrorDora,
+  cornucopia,
+  timePressure,
+  blindRon,
+  doraAfterimage,
+  signFlip,
+  runawayRiichi,
+  pickyEater,
 };
 
 /**
- * 콘텐츠 팩 전체 카탈로그 — **104종** (2026-07-25, 5차 배치 1~7: +28종. ankan_dora는 개편).
+ * 콘텐츠 팩 전체 카탈로그 — **112종** (2026-08-04, 6차 사용자 발안 8종 추가).
  *
  * 등급(tier)은 52차에 표시상 폐기됐다(docs/10 §2a) — 필드는 RuleLayer 합성 우선순위로만 남아 있고,
  * 드래프트는 카탈로그 전체에서 균등·비복원으로 3장을 뽑는다(`AugmentRegistry.rollUniform`).
@@ -369,4 +391,13 @@ export const contentAugments: AugmentDef[] = [
   palmFlip, // 손바닥 뒤집기 — 리치 해제+무료 재리치(§2 백로그)
   northTrader, // 북풍 상인 — 북빼기+개인 도라(§2 백로그)
   hourglass, // 뒤집힌 모래시계 — 유국 거부 솔로 쯔모(§2 백로그)
+  // 6차 사용자 발안 (2026-08-04) — docs/16 §2c
+  mirrorDora, // 거울의 도라 — 표시패의 앞도 내 도라
+  cornucopia, // 화수분 — 획득 즉시 무작위 증강 2개
+  timePressure, // 초읽기 — 이번 국 전원 5초 제한
+  blindRon, // 눈먼 총알 — 이번 국 모든 론이 무작위 대상에게
+  doraAfterimage, // 도라의 잔상 — 직전 국의 도라를 되살린다
+  signFlip, // 음양 반전 — 이번 국 내 점수의 부호가 뒤집힌다
+  runawayRiichi, // 폭주 리치 — 리치 + 연속 5쯔모
+  pickyEater, // 편식 — 한 무늬만 12장 버리면 단색 세계
 ];

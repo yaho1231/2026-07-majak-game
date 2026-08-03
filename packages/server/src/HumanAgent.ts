@@ -15,6 +15,7 @@ import type { ActionOption, DecisionPrompt } from "@majak/core/mahjong/flow/Flow
 import type { AugmentDef } from "@majak/core/augment/Augment.js";
 import type { DraftStage, ServerMessage, ClientMessage } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
+import { TIME_PRESSURE_CHANNEL } from "@majak/content";
 
 export const DECISION_TIMEOUT_MS = 30_000;
 
@@ -240,11 +241,31 @@ export class HumanAgent implements PlayerAgent {
     return this.decideFor(seat, prompt);
   }
 
+  /**
+   * 이 결정의 제한 시간(ms).
+   *
+   * 평소에는 AFK 방지용 30초지만, **초읽기(time_pressure)**가 걸린 국에는 그 증강이
+   * 뷰에 실어 보낸 초를 그대로 쓴다. 제한 시간은 게임 규칙이 아니라 접속·진행의
+   * 문제라 엔진이 아니라 여기서 다룬다 — 증강 쪽은 공개 채널에 숫자 하나만 싣는다.
+   * 국이 끝나면 채널이 국 스코프로 자동 소멸해 30초로 돌아온다.
+   */
+  private decisionTimeoutMs(): number {
+    const limit = this.lastView?.augmentView?.[TIME_PRESSURE_CHANNEL];
+    if (typeof limit !== "number" || limit <= 0) return DECISION_TIMEOUT_MS;
+    return Math.min(DECISION_TIMEOUT_MS, Math.round(limit * 1000));
+  }
+
   private decideFor(seat: PlayerId, prompt: DecisionPrompt): Promise<ActionOption> {
     if (this.abandoned) return Promise.resolve(safeFallbackOption(prompt.options));
     // 같은 좌석에 이전 대기가 남아 있으면(정상 흐름에는 없다) 폴백으로 정리한다
     this.cancelDecisionFor(seat);
-    this.send({ type: "prompt", prompt });
+    const timeoutMs = this.decisionTimeoutMs();
+    // 초읽기가 걸린 국에만 마감을 실어 보낸다 — 클라이언트가 카운트다운을 그린다.
+    this.send(
+      timeoutMs < DECISION_TIMEOUT_MS
+        ? { type: "prompt", prompt, deadlineMs: timeoutMs }
+        : { type: "prompt", prompt },
+    );
     return new Promise<ActionOption>((resolve) => {
       const timer = setTimeout(() => {
         // 제한 시간 초과 — 서버는 안전 폴백으로 진행한다. 클라이언트가 이걸 모르면
@@ -252,7 +273,7 @@ export class HumanAgent implements PlayerAgent {
         this.pending.delete(seat);
         this.send({ type: "promptCancel", seat });
         resolve(safeFallbackOption(prompt.options));
-      }, DECISION_TIMEOUT_MS);
+      }, timeoutMs);
       this.pending.set(seat, { prompt, resolve, timer });
     });
   }

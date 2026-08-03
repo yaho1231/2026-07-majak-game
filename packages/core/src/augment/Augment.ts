@@ -20,6 +20,7 @@ import type { GameMode } from "../engine/state/GameState.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
 import type { PlayerView } from "../information/PlayerView.js";
 import type { TileKind } from "../mahjong/tiles/Tile.js";
+import { augmentGrantKey } from "./events.js";
 
 export type AugmentTier = "silver" | "gold" | "prism";
 
@@ -152,6 +153,8 @@ export interface EffectOptions {
 /** install이 받는 도구 상자. 뒤에서 전부 source=instanceId로 등록된다 */
 export interface AugmentContext {
   holder: PlayerId;
+  /** 이 증강의 id (instanceId에서 파싱하지 않아도 되게 그대로 준다) */
+  augmentId: string;
   instanceId: string;
   layer: RuleLayer;
   engine: GameEngine;
@@ -194,6 +197,19 @@ export interface AugmentContext {
       discard: { player: PlayerId; tileId: number },
     ) => { type: string; payload: unknown }[],
   ): void;
+
+  /**
+   * **다른 증강을 보유자에게 지급한다** (지급형 증강 전용 — 화수분).
+   *
+   * `pick`은 지급 가능한 후보(보유 중인 것과 자기 자신을 제외한 카탈로그 전체)를 받아
+   * 지급할 것을 고른다. 선택은 **상태에서 파생된 결정론적 난수**로 해야 한다
+   * (리플레이·재개에서 같은 결과가 나와야 하므로 Math.random 금지).
+   *
+   * 지급은 **한 인스턴스당 한 번**이다 — 결과가 `augmentGrantKey`로 상태에 남아,
+   * 재구성(rebuildAugments)에서 install이 다시 불려도 다시 뽑지 않는다.
+   * 카탈로그를 넘기지 않은 경로(최소 테스트 게임)에서는 아무 일도 하지 않는다.
+   */
+  grantAugments(pick: (available: readonly AugmentDef[]) => readonly AugmentDef[]): void;
 }
 
 export interface AugmentDef {
@@ -264,6 +280,14 @@ export function augmentInstanceId(holder: PlayerId, augmentId: string): string {
 /** installAugment에 넘길 수 있는 부가 도구 (StandardGame이 제공) */
 export interface AugmentExtras {
   yaku?: YakuRegistry;
+  /**
+   * 증강 카탈로그 — 지급형 증강(`ctx.grantAugments`)이 후보를 고를 때 쓴다.
+   * 없으면 지급은 조용히 no-op이다.
+   */
+  catalog?: {
+    all(): readonly AugmentDef[];
+    get(id: string): AugmentDef | undefined;
+  };
 }
 
 /** 획득 시 증강 능력을 엔진 Registry에 등록한다 (부수효과 — DraftController가 호출) */
@@ -277,6 +301,7 @@ export function installAugment(
   const layer = TIER_LAYER[def.tier];
   const ctx: AugmentContext = {
     holder,
+    augmentId: def.id,
     instanceId,
     layer,
     engine,
@@ -322,6 +347,47 @@ export function installAugment(
         if (isSourceDisarmed(state, instanceId)) return [];
         return build(state, discard);
       });
+    },
+    grantAugments(pick) {
+      const catalog = extras.catalog;
+      if (catalog === undefined) return;
+      // 이미 지급 이력이 있으면(재구성) 다시 뽑지 않는다 — 지급된 증강은
+      // player.augments에 남아 있어 rebuildAugments가 알아서 재설치한다.
+      if (engine.state.augmentData[augmentGrantKey(holder, def.id)] !== undefined) {
+        return;
+      }
+      const held = new Set(
+        engine.state.players.find((p) => p.id === holder)?.augments ?? [],
+      );
+      // 상호 배제(conflicts)는 지급에서도 지킨다 — 드래프트에서 못 만나게 막아 둔 조합이
+      // 지급으로 뚫리면 손패 장수·화료형이 어긋나 그 국이 통째로 벽돌이 된다.
+      const forbidden = new Set<string>();
+      for (const id of held) {
+        for (const c of catalog.get(id)?.conflicts ?? []) forbidden.add(c);
+      }
+      const mode = engine.state.config.mode ?? "hanchan";
+      const available = catalog
+        .all()
+        .filter(
+          (d) =>
+            d.id !== def.id &&
+            !held.has(d.id) &&
+            !forbidden.has(d.id) &&
+            !(d.conflicts ?? []).some((c) => held.has(c)) &&
+            (d.modes === undefined || d.modes.includes(mode)),
+        );
+      const chosen = pick(available);
+      const augmentIds = [...new Set(chosen.map((d) => d.id))];
+      const res = engine.submit({
+        player: holder,
+        type: "augmentGrant",
+        payload: { by: def.id, augmentIds },
+      });
+      if (!res.ok) return;
+      for (const id of augmentIds) {
+        const granted = catalog.get(id);
+        if (granted !== undefined) installAugment(engine, granted, holder, extras);
+      }
     },
   };
   def.install(ctx);

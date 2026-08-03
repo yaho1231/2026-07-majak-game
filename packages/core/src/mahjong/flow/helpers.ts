@@ -451,6 +451,21 @@ export function yakulessWaits(
   return out;
 }
 
+/**
+ * 증강이 이 사람에게만 얹는 개인 도라 종류 (규칙이 없거나 값이 이상하면 빈 배열).
+ * `rules`가 없는 경로(테스트용 최소 문맥)에서는 개인 도라도 없다.
+ */
+function extraDoraKinds(
+  state: GameState,
+  rules: RuleRegistry | undefined,
+  winner: PlayerId,
+  rule: "scoring.extraDoraKinds" | "scoring.extraUraDoraKinds",
+): TileKind[] {
+  if (rules === undefined || !rules.has(rule)) return [];
+  const kinds = rules.resolve<readonly TileKind[]>(rule, { playerId: winner, state });
+  return Array.isArray(kinds) ? [...kinds] : [];
+}
+
 /** 공개된 도라 표시패의 바로 다음 왕패가 뒷도라 표시패 (07 §2 규약) */
 export function uraIndicatorIds(state: GameState): TileId[] {
   const deadWall = state.zones[DEAD_WALL]?.tileIds ?? [];
@@ -560,10 +575,18 @@ export function buildWinContext(
         (rs?.discardedKinds.length ?? 0) === 0 &&
         playerOf(state, winner).seat !== state.round.dealerSeat,
     },
-    doraKinds: state.round.doraIndicators.map((t) => doraKindFor(kindOf(state, t))),
+    // 개인 도라(scoring.extraDoraKinds)는 표준 도라 뒤에 그대로 이어 붙는다 —
+    // countDora가 중복을 세므로 표준 도라와 같은 종류면 자연히 중첩된다.
+    doraKinds: [
+      ...state.round.doraIndicators.map((t) => doraKindFor(kindOf(state, t))),
+      ...extraDoraKinds(state, rules, winner, "scoring.extraDoraKinds"),
+    ],
     uraDoraKinds:
       options.includeUra === true
-        ? uraIndicatorIds(state).map((t) => doraKindFor(kindOf(state, t)))
+        ? [
+            ...uraIndicatorIds(state).map((t) => doraKindFor(kindOf(state, t))),
+            ...extraDoraKinds(state, rules, winner, "scoring.extraUraDoraKinds"),
+          ]
         : [],
     // 리치 없이도 뒷도라를 세는 증강(숨은 칼날) — winType·멘젠 여부까지 넘겨
     // 규칙 쪽에서 "다마텐 론"만 골라낼 수 있게 한다

@@ -85,7 +85,10 @@ export async function replayFile(
       const p = event.payload as { player: PlayerId; augmentId: string };
       const def = game.augments.get(p.augmentId);
       if (def !== undefined) {
-        installAugment(game.engine, def, p.player, { yaku: game.yaku });
+        installAugment(game.engine, def, p.player, {
+          yaku: game.yaku,
+          catalog: game.augments,
+        });
       }
     }
     events.push(event);
@@ -119,7 +122,10 @@ export function buildReplayView(
 ) {
   const game = createStandardGameFromState(state, undefined, extraAugments);
   // 가시성 증강("상대 패 확인" 등)의 Rule Modifier를 뷰에 반영
-  rebuildAugments(game.engine, game.augments, { yaku: game.yaku });
+  rebuildAugments(game.engine, game.augments, {
+    yaku: game.yaku,
+    catalog: game.augments,
+  });
   return buildPlayerView(state, viewer, game.engine.rules);
 }
 
@@ -173,7 +179,10 @@ export function reconstructGame(
 
   // 2차: 최종 상태를 담은 재개용 엔진 + 로그 시드 + 증강 재설치
   const game = createStandardGameFromState(state, undefined, extraAugments, events);
-  rebuildAugments(game.engine, game.augments, { yaku: game.yaku });
+  rebuildAugments(game.engine, game.augments, {
+    yaku: game.yaku,
+    catalog: game.augments,
+  });
   return { game, eventCount: events.length };
 }
 

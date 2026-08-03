@@ -1078,6 +1078,17 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("score.extraHan", 0);
   /** 리치를 걸지 않은 손도 뒷도라를 센다 (숨은 칼날). ctx에 winType·isClosed가 온다 */
   rules.define("scoring.uraWithoutRiichi", false);
+  /**
+   * 이 사람에게만 얹히는 **개인 도라 종류** (거울의 도라·도라의 잔상).
+   *
+   * 표시패에서 나온 표준 도라에 이어 붙는다 — `countDora`가 중복을 그대로 세므로
+   * 표준 도라와 겹치면 자연히 중첩된다. 화료 문맥을 만들 때 한 번 resolve되며,
+   * 손패·후로·**화료패**를 전부 포함한 정상 도라 계산 경로를 그대로 탄다.
+   * (`score.extraHan`으로 흉내 내면 화료패가 손패 Zone에 없는 론에서 한 장이 샌다.)
+   */
+  rules.define<readonly TileKind[]>("scoring.extraDoraKinds", []);
+  /** 위의 뒷도라판 — 뒷도라를 세는 손(리치·숨은 칼날)에만 얹힌다 */
+  rules.define<readonly TileKind[]>("scoring.extraUraDoraKinds", []);
   /** 이 사람의 버림패는 론당하지 않는다 (천하무적). playerId는 '쏘일 사람' */
   rules.define("win.ronImmune", false);
   /** 버릴 수 없는 패 kindKey 목록 (전부 봉인이면 소프트락 방지 허용) */

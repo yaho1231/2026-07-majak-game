@@ -27,6 +27,7 @@ import type {
   GameState,
   PeekVisibility,
   PlayerId,
+  ProposedEvent,
   RoundSettledPayload,
   SettleStage,
   TileId,
@@ -256,6 +257,51 @@ export function trackRoundSeq(ctx: AugmentContext, augmentId: string): void {
     const key = roundSeqKey(augmentId, ctx.holder);
     rc.emit(augmentDataSet(key, counterOf(rc.state, key) + 1));
   });
+}
+
+// ───────────── "뽑자마자 자동 사용, 이번 국만" (선발동형) ─────────────
+
+/**
+ * 이 증강이 자동 발동한 국을 담는 키 (보유자별, 게임 전체에 한 번만 굳는다).
+ */
+const armedRoundKey = (augmentId: string, holder: PlayerId): string =>
+  `${augmentId}:armedRound:${holder}`;
+
+/**
+ * **획득 직후의 국 하나에만** 효과를 켜는 증강의 공용 배선 (`install`에서 호출).
+ *
+ * 드래프트는 국과 국 사이에만 열리므로, 획득 뒤 **처음 시작되는 국**이 곧 사용자가
+ * 말하는 "이번 국"이다. 그 국의 `roundKey`를 상태에 한 번 굳혀 두고,
+ * `armedNow`가 지금이 그 국인지 판정한다.
+ *
+ * install 시점의 `roundKey`를 쓰면 안 된다 — 그때 상태에 남아 있는 것은 **직전 국**이고,
+ * install은 재구성(rebuildAugments)에서 다시 불리므로 클로저에 담아도 값이 어긋난다.
+ * 상태에 한 번만 쓰는(이미 있으면 건드리지 않는) 방식이라 재구성·리플레이에서도 같다.
+ *
+ * `onArm`은 **켜지는 바로 그 순간** 함께 낼 이벤트를 만든다(공개 채널 표시 등).
+ * 같은 ROUND_STARTED에 리액션을 따로 하나 더 달면 안 된다 — 그 리액션이 보는 state에는
+ * 아직 위 표식이 반영되지 않아 `armedNow`가 항상 false다.
+ */
+export function armOnNextRound(
+  ctx: AugmentContext,
+  augmentId: string,
+  onArm?: (state: GameState) => ProposedEvent<string, unknown>[],
+): void {
+  ctx.reaction(ROUND_STARTED, (_event, rc) => {
+    const key = armedRoundKey(augmentId, ctx.holder);
+    if (rc.state.augmentData[key] !== undefined) return;
+    rc.emit(augmentDataSet(key, roundKey(rc.state)));
+    for (const e of onArm?.(rc.state) ?? []) rc.emit(e);
+  });
+}
+
+/** 지금이 그 증강이 자동 발동한 국인가 (`armOnNextRound`와 짝) */
+export function armedNow(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+): boolean {
+  return stringOf(state, armedRoundKey(augmentId, holder)) === roundKey(state);
 }
 
 /**

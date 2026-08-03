@@ -238,6 +238,10 @@ const ACTION_LABEL: Record<string, string> = {
   dragons_will: "삼원의 의지 — 발동",
   flip_riichi: "손바닥 뒤집기 — 리치 해제",
   north_pull: "북풍 상인 — 북빼기",
+  // 2026-08-04 (6차) 신규
+  dora_recall: "도라의 잔상 — 되살리기",
+  blitz_riichi: "폭주 리치 — 선언",
+  picky_unify: "편식 — 단색화",
 };
 
 /** 액티브 액션 → 그 액션을 만들어내는 증강 id (메뉴에서 어느 증강인지 표시용). */
@@ -311,6 +315,10 @@ const ACTION_AUGMENT: Record<string, string> = {
   dragons_will: "three_dragons_will",
   flip_riichi: "palm_flip",
   north_pull: "north_trader",
+  // 2026-08-04 (6차) 신규
+  dora_recall: "dora_afterimage",
+  blitz_riichi: "runaway_riichi",
+  picky_unify: "picky_eater",
 };
 
 /** 플레이어가 버튼으로 발동하는 액티브 증강 액션 타입 (타일 클릭 액션은 제외). */
@@ -381,6 +389,10 @@ const AUGMENT_ACTION_TYPES = new Set([
   "dragons_will",
   "flip_riichi",
   "north_pull",
+  // 2026-08-04 (6차) 신규
+  "dora_recall",
+  "blitz_riichi",
+  "picky_unify",
 ]);
 
 /**
@@ -450,6 +462,10 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "three_dragons_will",
   "palm_flip",
   "north_trader",
+  // 2026-08-04 (6차) 신규 — 액티브 발동이 있는 것만 (나머지 5종은 패시브·자동 발동)
+  "dora_afterimage",
+  "runaway_riichi",
+  "picky_eater",
 ]);
 
 /** 이 증강이 '액티브 증강' 버튼으로 직접 발동되는지 (설명카드·툴팁 뱃지용). */
@@ -510,6 +526,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   conjure_tsumo: "hand",
   // 정적의 손 — 새 탭 없이 실제 바닥패(네 사람 전부)를 직접 클릭해 주울 패를 고른다
   silent_take: "any-river",
+  // 폭주 리치 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
+  blitz_riichi: "hand",
 };
 
 /** 이 액션이 클릭(무장) 방식으로 발동되는지 — 아니면 버튼으로 발동. */
@@ -574,6 +592,7 @@ const MODAL_PICK_TYPES = new Set<string>([
   "dw_swap", // 왕패 14장 ↔ 내 손패 1장
   "red_touch", // 적도라로 만들 숫자 지정 (1~9)
   "ura_swap", // 뒷도라 표시패와 맞바꿀 왕패 자리
+  "picky_unify", // 편식 — 단색 세계와 같은 무늬 선택 모달
 ]);
 
 // ─────────────────────────── 증강 카테고리 (분류·아이콘) ───────────────────────────
@@ -1503,14 +1522,22 @@ export function App(): JSX.Element {
   const draftPickedRef = useRef(false);
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
   const prompt = view === null ? null : (prompts[view.playerId] ?? null);
+  /**
+   * 초읽기(time_pressure)가 걸린 국의 **결정 마감 시각**(epoch ms).
+   * 서버가 프롬프트에 `deadlineMs`를 실어 보낼 때만 켜진다 — 평소의 30초 AFK
+   * 타임아웃에는 실리지 않으므로 화면에 시계가 뜨지 않는다.
+   */
+  const [promptDeadline, setPromptDeadline] = useState<number | null>(null);
   /** 좌석 하나의 프롬프트만 지운다 (제출·취소) */
-  const dropPrompt = (seat: string): void =>
+  const dropPrompt = (seat: string): void => {
+    setPromptDeadline(null);
     setPrompts((prev) => {
       if (!(seat in prev)) return prev;
       const next = { ...prev };
       delete next[seat];
       return next;
     });
+  };
   const [catalog, setCatalog] = useState<Record<string, AugmentCatalogEntry>>({});
   // 연출 큐 — 대기열(ref)과 현재 재생 중(active) 하나. 한 번에 하나씩 순서대로.
   const productionQueue = useRef<Production[]>([]);
@@ -2194,6 +2221,12 @@ export function App(): JSX.Element {
         sfx.callPrompt();
       }
       setPrompts((prev) => ({ ...prev, [msg.prompt.player]: msg.prompt }));
+      // 초읽기가 걸린 국에만 마감이 실려 온다 → 카운트다운을 켠다
+      setPromptDeadline(
+        msg.deadlineMs !== undefined && msg.deadlineMs > 0
+          ? Date.now() + msg.deadlineMs
+          : null,
+      );
       setPromptSeq((s) => s + 1);
       setDraft(null);
       setDraftPicked(false);
@@ -2205,6 +2238,7 @@ export function App(): JSX.Element {
       // seat이 실려 오면 그 좌석 것만 접는다(봇 좌석 조종 중 내 프롬프트를 살리기 위해).
       if (msg.seat !== undefined) dropPrompt(msg.seat);
       else setPrompts({});
+      setPromptDeadline(null);
       setRiichiMode(false);
       return;
     }
@@ -2828,6 +2862,7 @@ export function App(): JSX.Element {
           view={view}
           prompt={prompt}
           promptSeq={promptSeq}
+          promptDeadline={promptDeadline}
           riichiMode={riichiMode}
           catalog={catalog}
           scoreFx={scoreFx}
@@ -4786,6 +4821,8 @@ function GameTable(props: {
   view: PlayerView;
   prompt: PromptMessage["prompt"] | null;
   promptSeq: number;
+  /** 초읽기(time_pressure)가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
+  promptDeadline?: number | null;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   scoreFx: Record<string, number>;
@@ -4988,6 +5025,7 @@ function GameTable(props: {
         me={me}
         prompt={prompt}
         promptSeq={props.promptSeq}
+        promptDeadline={props.promptDeadline ?? null}
         riichiMode={props.riichiMode}
         catalog={catalog}
         autoSort={props.settings.autoSort}
@@ -6979,6 +7017,9 @@ const PILL_NUMBER: Record<string, (n: number) => PillStatus | null> = {
   // 화면 어디에도 없어 "쌓이는 게 안 보인다"는 피드백이 있었다(2026-08-02).
   future_sight: (n) =>
     n > 0 ? { chip: `+${n}판`, note: `이번 국 ${n}번 교환 — 화료하면 +${n}판` } : null,
+  // 폭주 리치 — 남은 연속 쯔모 횟수
+  runaway_riichi: (n) =>
+    n > 0 ? { chip: `${n}쯔모`, note: `연속 쯔모 ${n}번 남음 — 타가가 후로하면 끝난다` } : null,
 };
 
 /** 값이 상태 문자열인 채널 — 그 글을 그대로 pill에 붙인다 */
@@ -6995,6 +7036,8 @@ const PILL_TEXT = new Set([
  * 화면에 아무것도 안 떴다(2026-08-01 감사).
  */
 const PILL_FLAG = new Set([
+  "blind_ron",
+  "sign_flip",
   "even_world",
   "genesis",
   "giant_god",
@@ -7045,6 +7088,19 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     if (typeof raw !== "string" || raw === "") return null;
     return { chip: raw, note: `이번 국 화료 점수 ${raw}` };
   },
+  // 편식 — 통일한 무늬 (발동 뒤). 진행도는 아래 전용 분기가 그린다.
+  picky_eater: (raw) => {
+    if (typeof raw !== "string" || raw === "") return null;
+    const ko = SUIT_KO[raw] ?? raw;
+    return { chip: ko, note: `손패의 수패가 ${ko}로 통일됐다` };
+  },
+  // 화수분 — 쏟아진 증강 2개
+  cornucopia: (raw) => {
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const ids = raw.filter((x): x is string => typeof x === "string");
+    if (ids.length === 0) return null;
+    return { chip: `+${ids.length}`, note: `화수분에서 나온 증강 ${ids.length}개` };
+  },
   honba_hunter: (raw) => {
     const m = raw as { honba?: number; value?: number } | null;
     if (m === null || typeof m !== "object" || (m.honba ?? 0) <= 0) return null;
@@ -7066,6 +7122,10 @@ const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
   "reload",
   "call_seal",
   "ankan_dora",
+  "mirror_dora",
+  "dora_afterimage",
+  "picky_eater",
+  "time_pressure",
 ]);
 
 function augmentPillStatus(
@@ -7105,6 +7165,43 @@ function augmentPillStatus(
     if (kinds.length === 0) return null;
     const names = kinds.map((kind) => formatTile({ kind })).join("·");
     return { chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` };
+  }
+
+  // 거울의 도라 · 도라의 잔상 — 이 사람에게만 도라가 되는 종류(전원 공개)
+  if (augId === "mirror_dora" || augId === "dora_afterimage") {
+    const raw = av[`${augId}:${playerId}`];
+    const kinds = (Array.isArray(raw) ? raw : [])
+      .filter((k): k is string => typeof k === "string")
+      .map(parseKindKey)
+      .filter((k): k is TileKind => k !== null);
+    if (kinds.length === 0) return null;
+    const names = kinds.map((kind) => formatTile({ kind })).join("·");
+    return { chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` };
+  }
+
+  // 편식 — 퀘스트 진행도. 발동 뒤에는 아래 PILL_CUSTOM이 통일된 무늬를 그린다.
+  if (augId === "picky_eater" && av[`picky_eater:${playerId}`] === undefined) {
+    const m = av[`picky_eater:progress:${playerId}`] as
+      | { suit?: string | null; count?: number; need?: number; failed?: boolean }
+      | null;
+    if (m === null || typeof m !== "object" || typeof m.count !== "number") return null;
+    const need = m.need ?? 12;
+    if (m.failed === true) {
+      return { chip: "실패", note: "다른 무늬를 버려 이번 국 퀘스트는 깨졌다" };
+    }
+    if (m.count === 0) return null;
+    const ko = m.suit == null ? "자패만" : (SUIT_KO[m.suit] ?? m.suit);
+    return {
+      chip: `${m.count}/${need}`,
+      note: `${ko}만 버리는 중 — ${need}장을 채우면 손패를 한 색으로 물들인다`,
+    };
+  }
+
+  // 초읽기 — 테이블 전원에게 걸리는 제한이라 채널에 보유자가 없다
+  if (augId === "time_pressure") {
+    const sec = av["time_pressure"];
+    if (typeof sec !== "number" || sec <= 0) return null;
+    return { chip: `${sec}초`, note: `이번 국 전원의 모든 결정이 ${sec}초 제한이다` };
   }
 
   const raw = av[`${augId}:${playerId}`];
@@ -7540,11 +7637,57 @@ function handReordered(order: number[], id: number, targetIdx: number): number[]
 
 // ─────────────────────────── 내 영역 ───────────────────────────
 
+/**
+ * 프롬프트 제한시간 게이지.
+ *
+ * 평소에는 서버의 30초 AFK 타임아웃을 어림잡아 보여 주는 장식이다(마감이 안 실려 온다).
+ * **초읽기(time_pressure)**가 걸린 국에는 서버가 실제 마감(`deadlineMs`)을 실어 보내므로,
+ * 게이지 길이를 그 시간에 맞추고 **남은 초를 숫자로** 함께 띄운다 — 5초 안에 골라야 하는
+ * 국에서 막대만 줄어드는 것으로는 얼마나 남았는지 읽히지 않는다.
+ */
+function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Element {
+  const { deadline } = props;
+  const [left, setLeft] = useState<number | null>(
+    deadline === null ? null : Math.max(0, deadline - Date.now()),
+  );
+  useEffect(() => {
+    if (deadline === null) {
+      setLeft(null);
+      return;
+    }
+    setLeft(Math.max(0, deadline - Date.now()));
+    const t = setInterval(() => setLeft(Math.max(0, deadline - Date.now())), 100);
+    return () => clearInterval(t);
+  }, [deadline]);
+
+  const total = deadline === null ? null : Math.max(0, deadline - Date.now());
+  return (
+    <div
+      className={`prompt-timer${deadline === null ? "" : " prompt-timer-urgent"}`}
+      key={props.seq}
+    >
+      <div
+        className="prompt-timer-fill"
+        style={
+          total === null
+            ? undefined
+            : ({ "--timer-duration": `${total}ms` } as CSSProperties)
+        }
+      />
+      {left === null ? null : (
+        <span className="prompt-timer-count">{(left / 1000).toFixed(1)}초</span>
+      )}
+    </div>
+  );
+}
+
 function OwnArea(props: {
   view: PlayerView;
   me: PlayerInfo;
   prompt: PromptMessage["prompt"] | null;
   promptSeq: number;
+  /** 초읽기가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
+  promptDeadline: number | null;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
@@ -8190,9 +8333,7 @@ function OwnArea(props: {
               onRiichiMode={props.onRiichiMode}
               onSubmit={props.onSubmit}
             />
-            <div className="prompt-timer" key={props.promptSeq}>
-              <div className="prompt-timer-fill" />
-            </div>
+            <PromptTimer seq={props.promptSeq} deadline={props.promptDeadline} />
           </>
         ) : null}
         {nextTsumoKinds.length > 0 ? (
@@ -8980,8 +9121,11 @@ function ActiveAugmentControl(props: {
     setOpen(true);
   };
 
-  // 단색 세계 — 통일할 무늬를 '내 손패가 그 색이 된 모습'으로 보여주고 고르게 한다.
-  const monoOptions = pickModal === "mono_world" ? (byType.get("mono_world") ?? []) : [];
+  // 단색 세계·편식 — 통일할 무늬를 '내 손패가 그 색이 된 모습'으로 보여주고 고르게 한다.
+  // 두 증강의 효과가 완전히 같으므로(퀘스트판) 모달도 한 벌만 둔다.
+  const monoType =
+    pickModal === "mono_world" || pickModal === "picky_unify" ? pickModal : null;
+  const monoOptions = monoType === null ? [] : (byType.get(monoType) ?? []);
   // 모달에 펼치는 내 손패는 **항상 정렬해서** 보여준다 — Zone 순서(뽑은 순)로 두면
   // 게임판의 손패와 배열이 달라 같은 패를 눈으로 못 찾는다.
   const myHandIds = sortTileIds(view.zones[`hand:${me.id}`]?.tileIds ?? [], view.tiles);
@@ -9085,10 +9229,10 @@ function ActiveAugmentControl(props: {
 
   return (
     <div className="own-aug" ref={rootRef}>
-      {pickModal === "mono_world" && monoOptions.length > 0 ? createPortal(
+      {monoType !== null && monoOptions.length > 0 ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
-            <div className="rinshan-pick-title">🎨 {augNameFor("mono_world")} — 통일할 무늬 선택</div>
+            <div className="rinshan-pick-title">🎨 {augNameFor(monoType)} — 통일할 무늬 선택</div>
             <div className="rinshan-pick-sub">
               고른 무늬로 손패의 모든 수패가 물듭니다. 자패는 그대로입니다 —
               아래는 실제로 바뀔 손패의 모습입니다.

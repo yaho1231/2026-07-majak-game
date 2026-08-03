@@ -394,6 +394,12 @@ export interface ViewMessage {
 export interface PromptMessage {
   type: "prompt";
   prompt: DecisionPrompt;
+  /**
+   * 이 결정의 제한 시간(ms) — **초읽기(time_pressure)가 걸린 국에만** 실린다.
+   * 평소의 30초 AFK 타임아웃은 게임 규칙이 아니라 진행 보호 장치라 싣지 않는다.
+   * 값이 있으면 클라이언트가 카운트다운을 그리고, 넘기면 서버가 안전 폴백으로 진행한다.
+   */
+  deadlineMs?: number;
 }
 
 /**

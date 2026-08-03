@@ -30,6 +30,15 @@ export interface AugmentBrief {
 const MODE_1_2 = "동풍전1·반장전2";
 
 export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
+  // 2026-08-04 6차 신규 8종
+  blind_ron: { use: "이번 국만", text: "이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다." },
+  cornucopia: { use: "획득 즉시", text: "무작위 증강 2개가 함께 쏟아진다. 전원에게 공개된다." },
+  dora_afterimage: { use: "2국에 1회", text: "직전 국의 도라가 되살아나 이번 국 내 도라로 겹쳐진다." },
+  mirror_dora: { use: "상시", text: "도라 표시패의 앞 패도 나에게만 도라가 된다." },
+  picky_eater: { use: "2국에 1회", text: "한 무늬만 12장 버리면 손패의 수패를 원하는 한 색으로 바꾼다." },
+  runaway_riichi: { use: "2국에 1회", text: "텐파이에서 리치를 걸고 혼자 연속 5쯔모. 상대가 울면 끝난다." },
+  sign_flip: { use: "이번 국만", text: "이 국에는 내 점수의 부호가 뒤집힌다 — 쏘이면 오히려 받는다." },
+  time_pressure: { use: "이번 국만", text: "이 국에는 전원의 모든 결정이 5초 제한이다. 나도 포함이다." },
   alchemist: { use: "게임 5회", text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 된다." },
   all_or_nothing: { use: MODE_1_2, text: "리치에 내 점수 절반을 건다. 이기면 그만큼 더 받고, 져도 잃지 않는다." },
   always_tenpai: { use: "상시", text: "유국 때 늘 텐파이 취급 — 벌점을 안 내고 노텐인 상대마다 2000점을 받는다." },

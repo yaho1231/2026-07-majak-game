@@ -564,7 +564,10 @@ export class HanchanController {
       payload: { augmentId },
     });
     if (!res.ok) return res.reason;
-    installAugment(game.engine, def, player, { yaku: game.yaku });
+    installAugment(game.engine, def, player, {
+      yaku: game.yaku,
+      catalog: game.augments,
+    });
     return null;
   }
 
@@ -755,6 +758,7 @@ export class HanchanController {
     this.events.onDraftStart?.(stage);
     const draft = new DraftController(game.engine, game.augments, {
       yaku: game.yaku,
+      catalog: game.augments,
     });
 
     // 아직 이 스테이지를 마치지 않은 에이전트만 대상. 재개 시 이미 뽑은 사람은 건너뛴다 —

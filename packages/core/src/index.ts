@@ -86,7 +86,7 @@ export { registerStandardYaku, standardYakuList } from "./mahjong/scoring/standa
 export { calculateFu } from "./mahjong/scoring/fu.js";
 export { calculateScore } from "./mahjong/scoring/score.js";
 export type { ScoreArgs, ScoreResult, LimitName } from "./mahjong/scoring/score.js";
-export { doraKindFor, countDora } from "./mahjong/scoring/dora.js";
+export { doraKindFor, frontDoraKindFor, countDora } from "./mahjong/scoring/dora.js";
 export { evaluateWin } from "./mahjong/scoring/evaluate.js";
 export type { WinEvaluation, YakuResult } from "./mahjong/scoring/evaluate.js";
 
@@ -126,6 +126,7 @@ export {
 } from "./mahjong/flow/flowEvents.js";
 export type {
   TileDrawnPayload,
+  TurnPassedPayload,
   TileDiscardedPayload,
   CallMadePayload,
   KanDeclaredPayload,
@@ -189,6 +190,7 @@ export {
   registerAugmentSupport,
   draftDoneKey,
   augmentStageKey,
+  augmentGrantKey,
 } from "./augment/events.js";
 export type {
   ScoreChangedPayload,

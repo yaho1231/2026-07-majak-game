@@ -24,6 +24,7 @@ const ALL = [...standardAugments, ...contentAugments];
  */
 const ETC_ALLOWED = new Set([
   "reload", // 재장전 — 증강 자체의 사용 횟수를 다루는 메타 능력
+  "cornucopia", // 화수분 — 증강을 지급하는 메타 능력
 ]);
 
 const CLIENT_APP = join(

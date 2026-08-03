@@ -149,6 +149,47 @@ export function augmentStageKey(player: PlayerId, augmentId: string): string {
 }
 
 /**
+ * 어떤 증강이 **다른 증강을 지급했는지**를 담는 상태 키 (지급자별로 한 번).
+ *
+ * 지급형 증강(화수분)은 install에서 지급을 실행하는데, install은 정상 픽뿐 아니라
+ * **재구성(rebuildAugments)에서도 다시 불린다**. 이 키가 없으면 이어하기·리플레이마다
+ * 새로 2장을 더 뽑아 증강이 무한히 불어난다. 지급 결과를 상태에 남겨 두면 재구성에서는
+ * 그대로 읽고 지나가며, 지급된 증강들은 player.augments에 이미 있어 정상 재설치된다.
+ */
+export function augmentGrantKey(player: PlayerId, byAugmentId: string): string {
+  return `augment:granted:${player}:${byAugmentId}`;
+}
+
+/**
+ * 증강 지급 (지급형 증강 전용). 여러 장을 한 번에 기록하고, 지급 이력을 남긴다.
+ * 이미 보유한 id는 조용히 건너뛴다 — 기록에는 실제로 지급된 것만 남는다.
+ */
+const augmentGrantAction: ActionDef<{ by: string; augmentIds: string[] }> = {
+  type: "augmentGrant",
+  validate: (req, { state }) => {
+    const player = state.players.find((p) => p.id === req.player);
+    if (player === undefined) return "unknown player";
+    if (state.augmentData[augmentGrantKey(req.player, req.payload.by)] !== undefined) {
+      return "already granted";
+    }
+    return null;
+  },
+  toEvents: (req, { state }) => {
+    const held = new Set(
+      state.players.find((p) => p.id === req.player)?.augments ?? [],
+    );
+    const granted = req.payload.augmentIds.filter((id) => !held.has(id));
+    return [
+      ...granted.map((augmentId) => ({
+        type: AUGMENT_DRAFTED,
+        payload: { player: req.player, augmentId },
+      })),
+      augmentDataSet(augmentGrantKey(req.player, req.payload.by), granted),
+    ];
+  },
+};
+
+/**
  * 드래프트 픽.
  * payload.markStage가 있으면(정식 픽) 그 스테이지 완료 플래그도 함께 기록한다 —
  * 진행 상태를 보유 증강 '수'로 세지 않게 해 도박사(한 턴에 2개 획득)에도 견고하다.
@@ -260,6 +301,7 @@ export function registerAugmentSupport(engine: GameEngine): void {
 
   engine.actions.register(draftPickAction);
   engine.actions.register(draftOfferAction);
+  engine.actions.register(augmentGrantAction);
 
   engine.rules.define("augment.draft.choices", 3);
 }
