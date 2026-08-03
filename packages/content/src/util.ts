@@ -303,15 +303,25 @@ export function addHanBonus(
  * 결과가 픽 순서로 갈린다는 뜻이다. 이 헬퍼는 레이어를 `SETTLE_LAYER` 하나로 모으고
  * 순서를 **단계(stage)** 로만 정한다. 단계 정의와 배치 근거는 core의
  * `settleStages.ts`가 단일 진실이다.
+ *
+ * **같은 단계 안의 동률**도 여기서 확정한다. 예전에는 동률이면 등록 순서(seq)로
+ * 밀렸는데, 그 순서가 곧 드래프트 픽 순서라 결과가 "누가 먼저 뽑았는가"로 갈렸다
+ * (docs/25 P6). 실제로 죽기살기 × 역만 방어술(둘 다 Shield)은 순서에 따라 최종
+ * 점수와 남은 사용 횟수가 통째로 달라졌고, 서로 기생하는 기생충 둘도 마찬가지였다.
+ *
+ * 이제 **보유자의 자리(seat)** 를 하위 자릿수로 얹어 게임 상태만으로 순서가 정해진다.
+ * 단계 간격이 100이고 자리는 0~3이라 단계 경계를 넘지 않는다. 재구성(resume·리플레이)
+ * 으로 설치 순서가 달라져도 결과가 같다.
  */
 export function settleInterceptor(
   ctx: AugmentContext,
   stage: SettleStage,
   intercept: Parameters<AugmentContext["interceptor"]>[1],
 ): void {
+  const seat = ctx.engine.state.players.find((p) => p.id === ctx.holder)?.seat ?? 0;
   ctx.interceptor(ROUND_SETTLED, intercept, {
     layer: SETTLE_LAYER,
-    priority: stage,
+    priority: stage + seat,
   });
 }
 
