@@ -70,6 +70,12 @@ function shouldFlip(
   if (!isNumberSuit(kind) || kind.rank % 2 !== 1) return false;
   if (dora.has(kindKey(kind))) return false; // 표시패 도라 — 유지
   if (state.tiles[tileId]?.attrs.red === true) return false; // 적도라(빨간 5) — 유지
+  // 바꾼 **결과**가 도라가 되면 바꾸지 않는다. 변환 전 kind만 보던 시절에는
+  // 도라가 8p인 국에서 7p·9p를 쥐면 전부 8p가 되어 **도라가 공짜로 생겼다** —
+  // "도라는 지켜 준다"는 설명과 정반대로, 7·9를 많이 쥘수록 이득인 증강이었다
+  // (docs/25 역/점수 #11).
+  const next: TileKind = { suit: kind.suit, rank: toEvenRank(kind.rank) };
+  if (dora.has(kindKey(next))) return false;
   return true;
 }
 
