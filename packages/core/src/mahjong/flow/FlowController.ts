@@ -663,11 +663,26 @@ export class FlowController {
    * 지금 지나가는 패(버림 또는 가깡패)가 대기패였던 모든 플레이어를
    * 일시 후리텐(리치 중이면 영구)으로 마킹한다. 론 옵션이 제시되지 않았던
    * 사람(역 없음·이미 후리텐)도 포함한다 — 표준 룰의 동순내 후리텐.
+   *
+   * 단 **누구도 론할 수 없었던 패**는 예외다. 후리텐은 "화료를 넘겼다"는
+   * 사실에 붙는 벌인데, 규칙이 론 자체를 막았다면 넘긴 것이 없다.
+   * 천하무적·불가침 조약(win.ronImmune)이 그렇다 — 예전에는 이 경우에도
+   * 마킹이 돌아, 리치자가 **그 국 내내 아무에게서도 론할 수 없게** 됐다.
+   * 설명에 없는 "리치자 전원 무력화"가 숨어 있던 셈이다(docs/25 최우선#4).
    */
   private markPassFuriten(): void {
     const state = this.engine.state;
     const target = state.round.lastDiscard ?? state.round.chankan;
     if (target === null) return;
+    // 이 사람의 패는 론당하지 않는다 → 아무도 화료를 넘긴 것이 아니다
+    if (
+      this.engine.rules.resolve<boolean>("win.ronImmune", {
+        playerId: target.player,
+        state,
+      })
+    ) {
+      return;
+    }
     const targetKind = kindOf(state, target.tileId);
     for (const p of state.players) {
       if (p.id === target.player) continue;
