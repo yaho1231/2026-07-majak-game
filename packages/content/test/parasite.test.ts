@@ -1,6 +1,6 @@
 /**
- * parasite (기생충) 테스트 — 지정 액션 validate / 정산 절반 이전(제로섬 보존) /
- * 숙주 화료·방총 시 기생 대상 자동 이동 (보유자 건너뜀).
+ * parasite (기생충) 테스트 — 지정 액션 validate(국마다 1회) / 정산 절반 이전(제로섬 보존) /
+ * 숙주가 잃는 국 무페널티 / 국이 바뀌면 지정이 풀려 다시 지정할 수 있다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -19,13 +19,15 @@ import type {
   TileId,
 } from "@majak/core";
 import { craft } from "./helpers.js";
-import { viewKey } from "../src/util.js";
+import { roundKey, roundViewKey } from "../src/util.js";
 import { parasite } from "../src/augments/parasite.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
-const TARGET_KEY = "parasite:target:p0";
-const VIEW_KEY = viewKey("*", "parasite:p0");
+/** 이번 국의 기생 대상 키 (국이 바뀌면 만료된다) */
+const targetKeyOf = (state: GameState): string =>
+  `parasite:target:p0:${roundKey(state)}`;
+const VIEW_KEY = roundViewKey("*", "parasite:p0");
 
 /** state.players[].augments에 증강 보유를 직접 주입한다 (드래프트 이벤트 생략) */
 function withAugments(state: GameState, grants: Record<PlayerId, string[]>): GameState {
@@ -44,7 +46,7 @@ function withParasiteOn(state: GameState, target: PlayerId): GameState {
     ...state,
     augmentData: {
       ...state.augmentData,
-      [TARGET_KEY]: target,
+      [targetKeyOf(state)]: target,
       [VIEW_KEY]: target,
     },
   };
@@ -141,16 +143,16 @@ describe("parasite (기생충) — parasite_attach 지정", () => {
       payload: { target: "p1" },
     });
     expect(result.ok).toBe(true);
-    expect(game.engine.state.augmentData[TARGET_KEY]).toBe("p1");
+    expect(game.engine.state.augmentData[targetKeyOf(base)]).toBe("p1");
     expect(game.engine.state.augmentData[VIEW_KEY]).toBe("p1");
 
-    // 게임당 1회 — 재사용 거부, 후보도 더 이상 노출되지 않는다
+    // 국마다 1회 — 같은 국에 다시 지정은 거부, 후보도 더 이상 노출되지 않는다
     expect(
       def.validate(
         { player: "p0", type: "parasite_attach", payload: { target: "p2" } },
         { state: game.engine.state, rules: game.engine.rules },
       ),
-    ).toBe("parasite already attached");
+    ).toBe("parasite already attached this round");
     const status2 = new FlowController(game.engine).begin();
     if (status2.kind !== "awaiting") throw new Error("expected awaiting");
     expect(
@@ -164,7 +166,7 @@ describe("parasite (기생충) — parasite_attach 지정", () => {
 // ─────────────────────────── 정산 절반 이전 ───────────────────────────
 
 describe("parasite (기생충) — 정산 절반 이전", () => {
-  it("숙주가 쯔모 화료하면 획득의 절반을 대신 받고, 합계는 불변(제로섬) + 대상 이동", () => {
+  it("숙주가 쯔모 화료하면 획득의 절반을 대신 받고, 합계는 불변(제로섬)", () => {
     const base = craftTsumoBy("p1");
     const baseline = createStandardGameFromState(structuredClone(base));
     const augmented = createStandardGameFromState(
@@ -186,12 +188,11 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
     expect(augD["p2"]).toBe(baseD["p2"]);
     expect(augD["p3"]).toBe(baseD["p3"]);
 
-    // 숙주가 화료했으므로 기생 대상이 다음 자리(p2)로 옮겨간다
-    expect(augmented.engine.state.augmentData[TARGET_KEY]).toBe("p2");
-    expect(augmented.engine.state.augmentData[VIEW_KEY]).toBe("p2");
+    // 대상은 저절로 옮겨 다니지 않는다 — 이 국의 숙주는 끝까지 p1
+    expect(augmented.engine.state.augmentData[targetKeyOf(base)]).toBe("p1");
   });
 
-  it("숙주가 잃을 때는 함께 잃지 않는다 — 대상도 이동하지 않는다 (48차 무페널티)", () => {
+  it("숙주가 잃을 때는 함께 잃지 않는다 (48차 무페널티)", () => {
     // p2가 쯔모 화료 → 숙주 p1은 지불자
     const base = craftTsumoBy("p2");
     const baseline = createStandardGameFromState(structuredClone(base));
@@ -211,12 +212,10 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
     expect(augD["p0"]).toBe(baseD["p0"]);
     expect(sumOf(augD)).toBe(sumOf(baseD));
 
-    // 숙주가 화료도 방총도 아니므로 대상은 그대로
-    expect(augmented.engine.state.augmentData[TARGET_KEY]).toBe("p1");
-    expect(augmented.engine.state.augmentData[VIEW_KEY]).toBe("p1");
+    expect(augmented.engine.state.augmentData[targetKeyOf(base)]).toBe("p1");
   });
 
-  it("숙주가 론을 맞아도 손실은 분담하지 않고, 대상만 다음 자리로 이동한다", () => {
+  it("숙주가 론을 맞아도 손실은 분담하지 않는다", () => {
     // p1이 5s를 버렸고 p2가 그 5s로 론 (234m345p345s678s + 55s)
     const base = craft({
       hands: { p0: "*", p1: "*", p2: "234m345p345s678s5s", p3: "*" },
@@ -251,23 +250,63 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
     expect(augD["p0"]).toBe(baseD["p0"]);
     expect(sumOf(augD)).toBe(sumOf(baseD));
 
-    // 론을 맞았으므로 대상이 숙주(p1)의 다음 자리 p2로 옮겨간다
-    expect(augmented.engine.state.augmentData[TARGET_KEY]).toBe("p2");
-    expect(augmented.engine.state.augmentData[VIEW_KEY]).toBe("p2");
+    // 론을 맞아도 대상은 옮겨가지 않는다 — 이 국의 숙주는 끝까지 p1
+    expect(augmented.engine.state.augmentData[targetKeyOf(base)]).toBe("p1");
   });
 
-  it("다음 자리가 보유자 자신이면 건너뛰고 그다음 플레이어로 이동한다", () => {
-    // 숙주 p3(seat 3)가 화료 → 다음 자리 seat 0은 보유자 p0 → 건너뛰어 p1
-    const base = craftTsumoBy("p3");
-    const game = createStandardGameFromState(
-      structuredClone(withParasiteOn(base, "p3")),
+  it("지난 국의 지정은 다음 국 정산에 영향을 주지 않는다 (국 단위 만료)", () => {
+    // 1국(동1국 0본장)에 p1을 지정해 뒀지만, 정산은 2국(동2국) 상태에서 일어난다
+    const base = craftTsumoBy("p1");
+    const stale = {
+      ...base,
+      augmentData: {
+        ...base.augmentData,
+        [`parasite:target:p0:${roundKey(base)}`]: "p1",
+      },
+      round: { ...base.round, roundNumber: 2 },
+    };
+    const baseline = createStandardGameFromState(
+      structuredClone({ ...base, round: { ...base.round, roundNumber: 2 } }),
     );
+    const augmented = createStandardGameFromState(structuredClone(stale));
+    installAugment(augmented.engine, parasite, "p0");
+
+    settleTsumo(baseline, "p1");
+    settleTsumo(augmented, "p1");
+
+    // 국이 바뀌었으므로 지난 국의 지정은 죽어 있다 — 정산이 기준선과 같다
+    expect(lastSettled(augmented).deltas).toEqual(lastSettled(baseline).deltas);
+  });
+
+  it("국이 바뀌면 다시 지정할 수 있다 (매 국 1회 액티브)", () => {
+    const base = craft({
+      hands: { p0: "123m456p789s11z22z", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const game = createStandardGameFromState(withAugments(base, { p0: ["parasite"] }));
     installAugment(game.engine, parasite, "p0");
+    const def = game.engine.actions.get("parasite_attach");
+    if (def === undefined) throw new Error("no parasite_attach action");
 
-    settleTsumo(game, "p3");
+    const r = game.engine.submit({
+      player: "p0",
+      type: "parasite_attach",
+      payload: { target: "p1" },
+    });
+    expect(r.ok).toBe(true);
 
-    expect(game.engine.state.augmentData[TARGET_KEY]).toBe("p1");
-    expect(game.engine.state.augmentData[VIEW_KEY]).toBe("p1");
+    // 다음 국(동2국)에서는 지정이 풀려 있어 다른 상대로 새로 지정할 수 있다
+    const nextRound = {
+      ...game.engine.state,
+      round: { ...game.engine.state.round, roundNumber: 2 },
+    };
+    expect(
+      def.validate(
+        { player: "p0", type: "parasite_attach", payload: { target: "p2" } },
+        { state: nextRound, rules: game.engine.rules },
+      ),
+    ).toBeNull();
   });
 });
 

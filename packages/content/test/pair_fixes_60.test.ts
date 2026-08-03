@@ -394,7 +394,7 @@ describe("정산 인터셉터 — 설치(픽) 순서와 무관하게 같은 결�
     const base0 = withAug(ronScene(), { p0: ["jackpot"], p2: ["parasite"] });
     const base = withData(base0, {
       [`jackpot:mult:${roundKey(base0)}:p0`]: 3,
-      "parasite:target:p2": "p0",
+      [`parasite:target:p2:${roundKey(base0)}`]: "p0",
     });
     const a = runRon(base, [
       { def: C.parasite, holder: "p2" },
