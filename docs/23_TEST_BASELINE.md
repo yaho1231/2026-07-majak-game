@@ -17,7 +17,11 @@ npm run typecheck:client   0 errors
 
 - `packages/server/test/RoomManager.test.ts > 게임 완주·기록 > 국 사이 대기(interRoundDelayMs>0)에서 결과 화면을 닫으면(roundContinue) 즉시 다음 국으로 진행한다` — `waitFor timeout`
 
-이건 **타이밍 플레이크**다. 파일 단독 실행 3회 모두 32/32 통과했고, 전체 병렬 실행에서 워커가 굶을 때만 터진다. 코드 결함이 아니므로 게이트에서 이 1건은 예외로 둔다. 자주 재현되면 `RoomManager.test.ts:64`의 `waitFor` 타임아웃을 늘리는 쪽이 맞다.
+- `packages/server/test/Sandbox.test.ts > 증강 테스트 — 손패 지정 > 지정한 손패로 배패되고, 그 지정이 sandbox 상태로 돌아온다` — `expected 2 to be greater than or equal to 3`
+  (2026-08-04 추가) 지정 손패의 장수를 **마지막으로 받은 view**로 세는데, 부하가 걸리면 그 사이 한 순이 지나가 지정 패가 이미 버려져 있다. 단독 실행 23/23 통과.
+  **판별법**: 변경을 되돌리고(`git stash`) 전체를 한 번 더 돌려 같은 실패가 나면 플레이크다 — 실제로 이 방법으로 무관함을 확인했다.
+
+둘 다 **타이밍 플레이크**다. 파일 단독 실행에서는 항상 통과하고, 전체 병렬 실행에서 워커가 굶을 때만 터진다. 코드 결함이 아니므로 게이트에서 이 실패들은 예외로 둔다. 자주 재현되면 `RoomManager.test.ts:64`의 `waitFor` 타임아웃을 늘리고, Sandbox 쪽은 view 대신 배패 직후 상태를 재는 쪽이 맞다.
 
 ## 게이트 기준
 

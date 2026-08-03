@@ -109,7 +109,12 @@ export const bloodContract: AugmentDef = defineAugment({
       const hasContract = info.yaku.some((y) => y.id === contract);
       // 48차 무페널티: 계약을 못 지켜도 깎이지 않는다 (예전엔 0.5배)
       const mult = hasContract ? 1.5 : 1;
-      const after = round100(d * mult);
+      // 공탁(리치봉)은 배수 대상이 아니다 — 남이 낸 봉을 1.5배로 불리면 그만큼을
+      // 뱅크가 새로 발행해 공탁 총량 불변식이 깨진다(docs/25 방해 #13).
+      // 공탁은 첫 화료자에게 통째로 가므로 그 사람일 때만 떼어 놓고 곱한 뒤 되돌린다.
+      const pot = (p.winInfos ?? [])[0]?.winner === holder ? p.riichiPot : 0;
+      const base = Math.max(0, d - pot);
+      const after = round100(base * mult) + pot;
       return {
         type: event.type,
         payload: {
