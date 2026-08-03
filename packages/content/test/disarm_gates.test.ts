@@ -15,6 +15,7 @@ import {
   createStandardGameFromState,
   installAugment,
   isSourceDisarmed,
+  ROUND_SCOPED_MARK,
   RuleLayer,
   standardAugments,
 } from "@majak/core";
@@ -204,7 +205,9 @@ describe("무장해제 게이트 ③ disarm 자신", () => {
       type: "disarm_lock",
       payload: { target: "p1", augmentId: "always_tenpai" },
     });
-    const locked = game.engine.state.augmentData["disarm:locked:p0"];
+    // 키에 국 스코프 표식이 붙는다 — 해제 리액션이 게이트에 막혀도 엔진이 국
+    // 경계에서 지우게 하기 위함이다(docs/25 방해 #1).
+    const locked = game.engine.state.augmentData[`disarm:locked:p0${ROUND_SCOPED_MARK}`];
     expect(Array.isArray(locked)).toBe(true);
     expect(locked).toEqual([augmentInstanceId("p1", "always_tenpai")]);
   });
