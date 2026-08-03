@@ -162,7 +162,27 @@ defineAugment({
 | `ctx.setHolderRule(rule, value)` | 보유자에게만 규칙 값 고정 | RuleRegistry.addModifier (player-scoped) |
 | `ctx.reaction(on, react)` | 이벤트 후 새 이벤트 방출 | EffectRegistry.register |
 | `ctx.interceptor(on, fn)` | 이벤트를 수정·취소·대체 | EffectRegistry.register |
+| `ctx.grantAugments(pick)` | **다른 증강을 보유자에게 지급** (화수분) | augmentGrant 액션 + installAugment |
 | `ctx.engine` | 그 외 모든 것 (새 Action·Zone·역…) | 직접 접근 |
+
+- `ctx.grantAugments`는 지급형 증강 전용이다(2026-08-04, 화수분). 후보는 카탈로그 전체에서
+  **자기 자신·이미 보유·상호 배제(conflicts)·모드 부적합**을 뺀 목록이며, 선택은 **상태에서
+  파생된 결정론적 난수**여야 한다(`Math.random` 금지 — 리플레이가 갈라진다).
+  지급은 **인스턴스당 한 번**이다: 결과가 `augmentGrantKey`로 상태에 남아, 재구성
+  (`rebuildAugments`)에서 install이 다시 불려도 다시 뽑지 않는다. 카탈로그를 넘기지 않은
+  경로(최소 테스트 게임)에서는 조용한 no-op다.
+
+## "뽑자마자 자동 발동, 이번 국만" (2026-08-04)
+
+드래프트는 국과 국 사이에만 열리므로, 획득 뒤 **처음 시작되는 국**이 곧 사용자가 말하는
+"이번 국"이다. 공용 배선은 `content/util.ts`의 `armOnNextRound(ctx, id, onArm?)` /
+`armedNow(state, id, holder)` 한 쌍이다 (초읽기·눈먼 총알·음양 반전).
+
+- install 시점의 `roundKey`를 클로저에 담으면 안 된다 — 그때 상태에 남아 있는 것은 **직전 국**이고,
+  install은 재구성에서 다시 불린다. 상태에 **한 번만 쓰는**(이미 있으면 건드리지 않는) 방식이라
+  리플레이·재개에서도 같은 국이 잡힌다.
+- 공개 채널 표시는 **반드시 `onArm`으로** 낸다. 같은 `ROUND_STARTED`에 리액션을 하나 더 달면
+  그 리액션이 보는 state에는 아직 표식이 반영되지 않아 `armedNow`가 항상 false다.
 
 - 모든 등록의 `source`는 인스턴스 id(`aug:<player>:<augmentId>`)다.
   증강 파괴가 필요해지면 `removeBySource`로 규칙·훅이 한 번에 사라진다.

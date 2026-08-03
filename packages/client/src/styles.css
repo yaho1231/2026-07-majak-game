@@ -1897,13 +1897,13 @@ button {
   gap: 10px;
 }
 
-/* 프롬프트 제한시간 게이지 (서버 30초 타임아웃 기준) */
+/* 프롬프트 제한시간 게이지 (기본은 서버 30초 타임아웃 기준) */
 .prompt-timer {
+  position: relative;
   width: min(420px, 60vw);
   height: 5px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
 }
 
 .prompt-timer-fill {
@@ -1911,7 +1911,30 @@ button {
   border-radius: 3px;
   background: linear-gradient(90deg, #f0c86a, #e8825a);
   transform-origin: left;
-  animation: timer-run 30s linear forwards;
+  /* 초읽기가 걸리면 PromptTimer가 --timer-duration을 실제 마감으로 덮어쓴다 */
+  animation: timer-run var(--timer-duration, 30s) linear forwards;
+}
+
+/* 초읽기(time_pressure) — 실제 마감이 있는 국. 게이지를 굵게 하고 남은 초를 띄운다 */
+.prompt-timer-urgent {
+  height: 8px;
+  box-shadow: 0 0 12px rgba(232, 90, 90, 0.5);
+}
+
+.prompt-timer-urgent .prompt-timer-fill {
+  background: linear-gradient(90deg, #f0c86a, #e05050);
+}
+
+.prompt-timer-count {
+  position: absolute;
+  right: 0;
+  bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffd9a0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
 }
 
 @keyframes timer-run {
