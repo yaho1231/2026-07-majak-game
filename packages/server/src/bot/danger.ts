@@ -14,7 +14,7 @@
  */
 
 import { discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
-import type { PlayerId, PlayerView, TileKind } from "@majak/core";
+import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -36,23 +36,38 @@ export interface Threat {
  *
  * 사람은 이걸 "장 세기"라고 부른다 — 받을 패가 이미 다 나간 형태를 남기지 않고,
  * 자패가 3장 보이면 그 패를 안전패로 쓴다. 봇도 같은 정보를 쓴다.
+ *
+ * ⚠ **증강이 만들어 낸 패(`attrs.conjured`)는 세지 않는다.** 증강은 "없던 패를 준다"를
+ * 기존 타일의 kind를 덮어쓰는 방식으로 구현하므로 같은 종류가 5장 이상 존재할 수 있다
+ * (docs/25 P8 — 프리즘의 의도된 상식 파괴). 사람은 생성패가 화면에 보라색으로 구분되어
+ * 그려지니 셈에서 뺄 수 있는데, 봇은 kind만 보고 **진짜 패로 착각**했다 — 실제로는
+ * 아직 1장 남았는데 "다 나갔다"고 판단해 그 대기를 죽은 것으로 보거나 남은 장수 기반
+ * 안전도를 잘못 매긴다. 사람과 봇이 같은 정보를 보게 맞춘다.
+ *
+ * (한계: 덮어쓰기 전 종류는 복원할 수 없어, 그 원래 종류는 실제보다 한 장 더 남은 것으로
+ * 센다. 생성패를 빼는 것만으로도 방향은 맞다 — 없는 패를 있다고 세는 쪽이 더 나쁘다.)
+ *
+ * 현물(現物)·스지 판정은 여기가 아니라 `readThreats`가 따로 한다. 생성패라도 바닥에
+ * 놓인 이상 그 사람은 그 종류로 론할 수 없으므로(후리텐) 거기서는 그대로 세는 것이 맞다.
  */
 export function tileTracker(view: PlayerView): (kind: TileKind) => number {
   const seen = new Map<string, number>();
-  const bump = (kind: TileKind | undefined): void => {
-    if (kind === undefined) return;
-    const key = kindKey(kind);
+  const bump = (id: TileId | undefined): void => {
+    const tile = id === undefined ? undefined : view.tiles[id];
+    if (tile === undefined) return;
+    if (tile.attrs.conjured === true) return; // 증강 생성패 — 진짜 장수가 아니다
+    const key = kindKey(tile.kind);
     seen.set(key, (seen.get(key) ?? 0) + 1);
   };
   const countZone = (zoneId: string): void => {
-    for (const id of view.zones[zoneId]?.tileIds ?? []) bump(view.tiles[id]?.kind);
+    for (const id of view.zones[zoneId]?.tileIds ?? []) bump(id);
   };
   countZone(handZone(view.playerId));
   for (const p of view.players) {
     countZone(discardsZone(p.id));
     countZone(meldsZone(p.id));
   }
-  for (const id of view.round.doraIndicators) bump(view.tiles[id]?.kind);
+  for (const id of view.round.doraIndicators) bump(id);
 
   return (kind) => Math.max(0, 4 - (seen.get(kindKey(kind)) ?? 0));
 }
