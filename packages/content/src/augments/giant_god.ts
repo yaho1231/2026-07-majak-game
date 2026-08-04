@@ -171,9 +171,39 @@ export const giantGod: AugmentDef = defineAugment({
         );
         // ② 원래 손패 앞 13장을 바닥으로 (①에서 올라온 국사와 id가 겹치지 않는다)
         zones = moveTiles(zones, handZone(p.holder), discardsZone(p.holder), p.handOut);
+
+        // ③ 버림 **이력**도 바닥과 맞춘다.
+        //
+        // 후리텐은 물리 바닥이 아니라 discardedKinds로 판정한다. 그런데 이 증강의
+        // 발동 조건이 "바닥에 국사 13종이 전부 있다"이므로, 손대지 않으면 보유자는
+        // **13면 대기 전부에 후리텐**이라 론이 원리적으로 불가능했다 — "요구패 13종
+        // 어느 것으로도 화료할 수 있다"는 설명이 쯔모에만 참이었다(docs/25 국면 #3).
+        //
+        // 반대로 바닥으로 내려간 13장은 이력에 없어서, 상대가 "저 패를 버렸으니
+        // 안전하다"고 읽으면 그대로 쏘였다(같은 문서 #6).
+        //
+        // 되가져온 종류는 이력에서 한 장씩 빼고, 내려간 종류는 더한다 — 이력이 곧
+        // 바닥이라는 관계를 회복하면 두 문제가 함께 사라진다.
+        const pulled = p.kokushiIds.map((id) => kindKey(kindOf(state, id)));
+        const rs = state.round.byPlayer[p.holder];
+        const history = [...(rs?.discardedKinds ?? [])];
+        for (const key of pulled) {
+          const at = history.indexOf(key);
+          if (at >= 0) history.splice(at, 1);
+        }
+        history.push(...p.handOut.map((id) => kindKey(kindOf(state, id))));
+        const byPlayer =
+          rs === undefined
+            ? state.round.byPlayer
+            : {
+                ...state.round.byPlayer,
+                [p.holder]: { ...rs, discardedKinds: history },
+              };
+
         return {
           ...state,
           zones,
+          round: { ...state.round, byPlayer },
           augmentData: {
             ...state.augmentData,
             [usesKey(p.holder)]: counterOf(state, usesKey(p.holder)) + 1,

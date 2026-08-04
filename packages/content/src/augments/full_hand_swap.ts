@@ -78,6 +78,11 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
       return "not your turn";
     }
     if (state.round.turnCount > 1) return "only on the first turn";
+    // 쯔모를 마친 순이어야 한다. 치·펑 직후에도 turn.act이지만 그때는 lastDrawnTile이
+    // null이고, 교환 로직이 "보유자는 쯔모패 한 장을 더 들고 있다"를 전제하므로
+    // **손패가 한 장 모자란 채로 남아 그 국 내내 벽돌**이 된다(docs/25 손패 #1).
+    // turnCount는 친의 쯔모에만 오르므로 첫 바퀴 내내 1이라, 후로 직후가 이 창에 든다.
+    if (state.round.lastDrawnTile === null) return "no drawn tile";
     const target = state.players.find((p) => p.id === req.payload.target);
     if (target === undefined) return "unknown target";
     if (target.id === req.player) return "cannot target yourself";
