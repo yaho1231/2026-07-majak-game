@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   HanchanController,
   DEFAULT_HANCHAN_CONFIG,
+  DEFAULT_SEED,
   hanchanConfigForMode,
   agariYameTriggers,
 } from "../src/match/HanchanController.js";
@@ -763,5 +764,34 @@ describe("아가리야메 — 오야 자리가 옮겨가는 경우", () => {
         },
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * 기본 시드는 **고정값**이어야 한다.
+ *
+ * 예전에는 `Date.now()`였다. 모듈 로드 시 한 번 평가되므로 같은 프로세스의 모든
+ * 게임이 같은 시드를 쓰고(시드를 빠뜨린 호출자는 판이 전부 똑같아진다), 재시작하면
+ * 값이 달라져 **그 게임을 다시 재현할 수 없었다**(docs/25 시스템 횡단 #15).
+ * 결정론이 전제인 리플레이·resume에서 가장 나쁜 조합이다.
+ */
+describe("기본 시드 결정론", () => {
+  it("DEFAULT_HANCHAN_CONFIG.seed는 시간이 아니라 고정 상수다", () => {
+    expect(DEFAULT_HANCHAN_CONFIG.seed).toBe(DEFAULT_SEED);
+    expect(Number.isInteger(DEFAULT_SEED)).toBe(true);
+    // 시계에서 온 값이면 지금 시각 근처의 큰 수가 된다 — 그런 값이면 안 된다
+    expect(DEFAULT_SEED).toBeLessThan(1_000_000);
+  });
+
+  it("같은 기본 설정에서 만든 배패는 매번 같다", () => {
+    const deal = (): string[] => {
+      const state = createInitialGameState(
+        { seed: DEFAULT_HANCHAN_CONFIG.seed, playerIds: ["p0", "p1", "p2", "p3"] },
+        { startScore: 25000, redFivesPerSuit: 1 },
+      );
+      const game = createStandardGameFromState(state);
+      return (game.engine.state.zones[WALL]?.tileIds ?? []).slice(0, 8).map(String);
+    };
+    expect(deal()).toEqual(deal());
   });
 });

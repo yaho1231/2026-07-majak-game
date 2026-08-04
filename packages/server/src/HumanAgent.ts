@@ -29,16 +29,33 @@ export const DECISION_TIMEOUT_MS = 30_000;
  */
 const FORCED_ACTION_TYPES = new Set(["swap3_give", "swap3_take"]);
 
+/** 후보 목록에서 뽑는 결정론적 해시 (FNV-1a) — 같은 상황이면 항상 같은 값 */
+function hashOptions(options: ActionOption[]): number {
+  const text = JSON.stringify(options);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 /**
  * 타임아웃/접속 끊김 시 안전한 폴백 선택.
  * 절대 능동적 선언(론·펑·치·깡·리치)을 하지 않는다:
  * 강제 마무리 선택 > 패스 > 마지막 버림 옵션(쯔모기리에 해당) > 첫 옵션 순.
  */
 export function safeFallbackOption(options: ActionOption[]): ActionOption {
-  // 되돌릴 수 없는 발동의 마무리 단계 — 무작위로라도 끝맺는다
+  // 되돌릴 수 없는 발동의 마무리 단계 — 예측하기 어려운 하나를 골라 끝맺는다.
+  //
+  // ⚠ 예전에는 `Math.random()`이었다. 게임 경로에서 유일한 비결정 지점이라,
+  // 타임아웃이 한 번이라도 끼면 **그 판을 리플레이·resume으로 재현할 수 없었다**
+  // (docs/25 시스템 횡단 #14). 지금은 후보 목록 자체를 해시해 고른다 — 후보는
+  // 상태에서 파생되므로 같은 상황이면 같은 선택이 나오고(재현 가능), 상대가
+  // 내다볼 수 있는 "항상 첫 번째"도 아니다.
   const forced = options.filter((o) => FORCED_ACTION_TYPES.has(o.type));
   if (forced.length > 0) {
-    return forced[Math.floor(Math.random() * forced.length)]!;
+    return forced[hashOptions(forced) % forced.length]!;
   }
   const pass = options.find((o) => o.type === "pass");
   if (pass !== undefined) return pass;

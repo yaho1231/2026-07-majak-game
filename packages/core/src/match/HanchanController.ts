@@ -114,6 +114,20 @@ export interface HanchanConfig {
   augmentWeights?: Readonly<Record<string, number>>;
 }
 
+/**
+ * 시드를 안 넘긴 호출자가 받는 기본 시드.
+ *
+ * 예전 값은 `Date.now()`였다. 모듈이 **로드될 때 한 번** 평가되므로 같은 프로세스의
+ * 모든 게임이 같은 시드를 쓰고(= 서버가 시드를 빠뜨리면 판이 전부 똑같아진다),
+ * 재시작하면 값이 달라져 **그 게임을 다시 재현할 수 없다**. 결정론이 전제인
+ * 리플레이·resume에서 가장 나쁜 조합이다(docs/25 시스템 횡단 #15).
+ *
+ * 고정값으로 바꿔 "시드를 안 주면 항상 같은 판"이 되게 했다 — 조용한 비결정 대신
+ * 눈에 띄는 반복이다. **실제 대국은 반드시 호출자가 시드를 넘긴다**
+ * (서버는 `RoomManager`가 `randomInt`로 만들어 넘기고, 그 값이 리플레이에 남는다).
+ */
+export const DEFAULT_SEED = 1;
+
 export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
   mode: "hanchan",
   startScore: 25000,
@@ -125,7 +139,7 @@ export const DEFAULT_HANCHAN_CONFIG: HanchanConfig = {
   uma: [5, 15],
   oka: 0,
   draftSchedules: ["gameStart", "eastThird", "southEntry", "southThird"],
-  seed: Date.now(),
+  seed: DEFAULT_SEED,
   redFivesPerSuit: 1,
   interRoundDelayMs: 0,
   autoMoveDelayMs: 0,
