@@ -102,8 +102,18 @@ export class GameEngine {
   private readonly processor: EventProcessor<GameState>;
   private currentState: GameState;
   private readonly log: GameEvent[] = [];
-  private readonly turnProviders: TurnOptionProvider[] = [];
-  private readonly reactionProviders: ReactionOptionProvider[] = [];
+  /**
+   * 옵션 프로바이더는 **누가 등록했는지**(증강 인스턴스 id)를 함께 들고 있는다.
+   * 없으면 증강을 파괴해도 액티브 버튼을 낼 프로바이더가 그대로 남는다
+   * (docs/25 시스템 횡단 #7 — uninstallAugment가 절반만 제거하던 원인).
+   */
+  private readonly turnProviders: { source?: string; provider: TurnOptionProvider }[] = [];
+  private readonly reactionProviders: {
+    source?: string;
+    provider: ReactionOptionProvider;
+  }[] = [];
+  /** 증강 인스턴스 id → 파괴 시 실행할 정리 훅 */
+  private readonly uninstallHooks = new Map<string, (() => void)[]>();
 
   constructor(options: EngineOptions) {
     this.currentState = options.state;
@@ -142,23 +152,54 @@ export class GameEngine {
   }
 
   /** 증강이 턴 프롬프트 확장을 등록한다 (콘텐츠 등록 지점) */
-  registerTurnOptions(provider: TurnOptionProvider): void {
-    this.turnProviders.push(provider);
+  registerTurnOptions(provider: TurnOptionProvider, source?: string): void {
+    this.turnProviders.push({ provider, ...(source !== undefined ? { source } : {}) });
   }
 
   /** FlowController가 턴 프롬프트를 만들 때 읽는다 */
   get turnOptionProviders(): readonly TurnOptionProvider[] {
-    return this.turnProviders;
+    return this.turnProviders.map((e) => e.provider);
   }
 
   /** 증강이 리액션(후로) 프롬프트 확장을 등록한다 (콘텐츠 등록 지점) */
-  registerReactionOptions(provider: ReactionOptionProvider): void {
-    this.reactionProviders.push(provider);
+  registerReactionOptions(provider: ReactionOptionProvider, source?: string): void {
+    this.reactionProviders.push({ provider, ...(source !== undefined ? { source } : {}) });
+  }
+
+  /** 증강 파괴(uninstallAugment) 시 그 인스턴스가 등록한 옵션 프로바이더를 걷어낸다 */
+  removeOptionProvidersBySource(source: string): void {
+    const drop = (list: { source?: string }[]): void => {
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i]?.source === source) list.splice(i, 1);
+      }
+    };
+    drop(this.turnProviders);
+    drop(this.reactionProviders);
+  }
+
+  /**
+   * 증강이 스스로 등록하는 정리 훅 — uninstallAugment가 그 인스턴스의 훅을 전부 부른다.
+   *
+   * 코어가 모르는 곳(콘텐츠의 커스텀 역 보유자 집합 등)에 심어 둔 것을 걷어내는 통로다.
+   * 코어가 소유한 것(규칙·효과·옵션 프로바이더)은 여기 쓰지 않아도 자동으로 지워진다.
+   */
+  registerUninstallHook(source: string, cleanup: () => void): void {
+    const list = this.uninstallHooks.get(source);
+    if (list === undefined) this.uninstallHooks.set(source, [cleanup]);
+    else list.push(cleanup);
+  }
+
+  /** 해당 인스턴스의 정리 훅을 실행하고 목록을 비운다 (두 번 불러도 한 번만 돈다) */
+  runUninstallHooks(source: string): void {
+    const list = this.uninstallHooks.get(source);
+    if (list === undefined) return;
+    this.uninstallHooks.delete(source);
+    for (const fn of list) fn();
   }
 
   /** FlowController가 리액션 프롬프트를 만들 때 읽는다 */
   get reactionOptionProviders(): readonly ReactionOptionProvider[] {
-    return this.reactionProviders;
+    return this.reactionProviders.map((e) => e.provider);
   }
 
   /** append-only. 초기 상태(시드 포함) + 이 로그 = 리플레이 */

@@ -94,3 +94,20 @@ describe("augPoints 기록 계약 (docs/25 P9)", () => {
     expect(offenders, "deltas만 고치고 augPoints를 안 남기는 증강").toEqual([]);
   });
 });
+
+describe("커스텀 역 보유자 등록 계약 (docs/25 시스템 횡단 #7)", () => {
+  /**
+   * 커스텀 역은 게임(YakuRegistry)당 1회만 등록하고 보유자는 `yakuHolders` 집합으로
+   * 가린다. 그래서 코어의 `uninstallAugment`가 source로 걷어낼 수 없는 유일한
+   * 잔재다 — 직접 `.add(holder)`를 부르면 증강이 파괴된 뒤에도 **역이 계속 성립한다**.
+   * `addYakuHolder`는 등록과 동시에 `ctx.onUninstall`로 해제까지 걸어 준다.
+   */
+  it("yakuHolders 등록은 addYakuHolder를 거친다", () => {
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = read(f);
+      if (/yakuHolders\([^)]*\)\.add\(/.test(src)) offenders.push(f);
+    }
+    expect(offenders, "addYakuHolder 없이 보유자를 직접 추가하는 증강").toEqual([]);
+  });
+});

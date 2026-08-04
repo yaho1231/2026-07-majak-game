@@ -14,7 +14,7 @@
 
 import { defineAugment } from "@majak/core";
 import type { AugmentDef, GameState } from "@majak/core";
-import { yakuHolders } from "../util.js";
+import { addYakuHolder, yakuHolders } from "../util.js";
 
 const ID = "hidden_blade";
 
@@ -65,6 +65,6 @@ export const hiddenBlade: AugmentDef = defineAugment({
           wctx.riichi === null,
       });
     }
-    yakuHolders(yaku, ID).add(ctx.holder);
+    addYakuHolder(ctx, yaku, ID);
   },
 });
