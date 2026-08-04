@@ -764,6 +764,15 @@ export interface SettleWinRequest {
   wins: { winner: PlayerId; from: PlayerId | null; tileId: TileId; winType: "tsumo" | "ron" }[];
 }
 
+/**
+ * 다음 국으로 넘긴다 (연장이 아닐 때).
+ *
+ * ⚠ 다음 오야는 **로테이션 기준 자리**(round.rotationSeat)에서 뽑는다. 그 국의 실제
+ * 오야(dealerSeat)에서 뽑으면 오야 자리를 옮기는 증강(찬탈자·만년 오야)이 한 번
+ * 개입한 것만으로 로테이션이 통째로 어긋나, 한 장 안에서 어떤 자리는 오야를 두 번
+ * 하고 어떤 자리는 한 번도 못 한다 — 국 번호는 무조건 +1로 오르기 때문이다.
+ * (구 상태·리플레이에는 rotationSeat가 없으므로 dealerSeat로 폴백한다.)
+ */
 function advanceRound(
   state: GameState,
   direction: number,
@@ -771,15 +780,19 @@ function advanceRound(
   roundNumber: number;
   prevalentWind: number;
   dealerSeat: number;
+  rotationSeat: number;
 } {
   const roundNumber = state.round.roundNumber + 1;
+  const rotation = state.round.rotationSeat ?? state.round.dealerSeat;
+  const nextRotation = nextSeat(state, rotation, direction);
   return {
     roundNumber: roundNumber > state.players.length ? 1 : roundNumber,
     prevalentWind:
       roundNumber > state.players.length
         ? state.round.prevalentWind + 1
         : state.round.prevalentWind,
-    dealerSeat: nextSeat(state, state.round.dealerSeat, direction),
+    dealerSeat: nextRotation,
+    rotationSeat: nextRotation,
   };
 }
 
@@ -941,6 +954,9 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
             roundNumber: state.round.roundNumber,
             prevalentWind: state.round.prevalentWind,
             dealerSeat: keepDealerSeat ?? state.round.dealerSeat,
+            // 연장은 국 번호를 소모하지 않으므로 로테이션 기준도 그대로다.
+            // (만년 오야가 오야 자리를 자기 쪽으로 끌어와도 순번은 안 건드린다.)
+            rotationSeat: state.round.rotationSeat ?? state.round.dealerSeat,
           }
         : advanceRound(state, rules.resolve<number>("turn.direction", { state }));
 
@@ -948,6 +964,7 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
         outcome: "win",
         deltas,
         dealerSeat: next.dealerSeat,
+        rotationSeat: next.rotationSeat,
         honba: dealerWon ? state.round.honba + 1 : 0,
         riichiPot: 0,
         roundNumber: next.roundNumber,
@@ -1002,12 +1019,15 @@ const sysSettleDraw: ActionDef<Record<string, never>> = {
           roundNumber: state.round.roundNumber,
           prevalentWind: state.round.prevalentWind,
           dealerSeat: state.round.dealerSeat,
+          // 텐파이야메(연장)도 국 번호를 소모하지 않는다 — 기준 자리 유지
+          rotationSeat: state.round.rotationSeat ?? state.round.dealerSeat,
         }
       : advanceRound(state, rules.resolve<number>("turn.direction", { state }));
     const payload: RoundSettledPayload = {
       outcome: "draw",
       deltas,
       dealerSeat: next.dealerSeat,
+      rotationSeat: next.rotationSeat,
       honba: state.round.honba + 1,
       riichiPot: state.round.riichiPot,
       roundNumber: next.roundNumber,
@@ -1034,6 +1054,7 @@ const sysSettleAbort: ActionDef<SettleAbortRequest> = {
       outcome: "abort",
       deltas: Object.fromEntries(state.players.map((p) => [p.id, 0])),
       dealerSeat: state.round.dealerSeat,
+      rotationSeat: state.round.rotationSeat ?? state.round.dealerSeat,
       honba: state.round.honba + 1,
       riichiPot: state.round.riichiPot,
       roundNumber: state.round.roundNumber,
