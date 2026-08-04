@@ -98,8 +98,37 @@ describe("분열 (tile_split)", () => {
       const id = handIdsOf(st, "p0").find((t) => kindKey(kindOf(st, t)) === key)!;
       expect(st.tiles[id]?.attrs?.conjured).toBe(true);
     }
-    // 사용 카운터 소진
-    expect(st.augmentData["tile_split:uses:p0"]).toBe(1);
+    // 사용 표식은 **국 단위** — 국이 바뀌면 다시 쓸 수 있다
+    const rd = st.round;
+    expect(
+      st.augmentData[`tile_split:used:${rd.prevalentWind}-${rd.roundNumber}-${rd.honba}:p0`],
+    ).toBe(true);
+  });
+
+  it("같은 국에 두 번은 못 쓰고, 국이 바뀌면 다시 쓸 수 있다", () => {
+    const game = setup(scene());
+    const target = findTile(game, K.p9)!;
+    expect(
+      game.engine.submit({ player: "p0", type: "split_tile", payload: { tileId: target, a: 4 } }).ok,
+    ).toBe(true);
+
+    // 같은 국 — 거부
+    const again = findTile(game, K.p9) ?? findTile(game, K.p5)!;
+    expect(
+      game.engine.submit({ player: "p0", type: "split_tile", payload: { tileId: again, a: 2 } }).ok,
+    ).toBe(false);
+
+    // 다음 국 — 새 판을 깔면(같은 augmentData 유지) 다시 발동한다
+    const st = game.engine.state;
+    const next = setup({
+      ...scene(),
+      augmentData: { ...st.augmentData },
+      round: { ...scene().round, roundNumber: 2 },
+    });
+    const t2 = findTile(next, K.p9)!;
+    expect(
+      next.engine.submit({ player: "p0", type: "split_tile", payload: { tileId: t2, a: 4 } }).ok,
+    ).toBe(true);
   });
 
   it("합이 맞지 않는 분할은 거부된다", () => {
