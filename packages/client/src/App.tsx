@@ -2956,7 +2956,13 @@ export function App(): JSX.Element {
 
       {inGame && intro && !isSpectator ? <IntroOverlay view={view!} /> : null}
       {draftVisible && draft !== null ? (
-        <DraftOverlay draft={draft} onPick={pickDraft} picked={draftPicked} />
+        <DraftOverlay
+          draft={draft}
+          onPick={pickDraft}
+          picked={draftPicked}
+          owned={view?.players.find((p) => p.id === view.playerId)?.augments ?? []}
+          catalog={catalog}
+        />
       ) : null}
       {activeProd !== null && activeProd.channel === "banner" && activeProd.tone === "riichi" ? (
         // 리치 전용 풀 연출 — 비네트 암전 + 붉은 밴드 + 천점봉 슬라이드-인 + 금속성 글자
@@ -7118,6 +7124,7 @@ const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
   ...PILL_TEXT,
   ...PILL_FLAG,
   "alchemist",
+  "tile_dyeing",
   "dead_wall_master",
   "reload",
   "call_seal",
@@ -7140,6 +7147,12 @@ function augmentPillStatus(
     const left = av["alchemist:left"];
     if (typeof left !== "number") return null;
     return { chip: `${left}회`, note: `연금술 ${left}회 남음` };
+  }
+  // 염색 — 연금술사와 같은 게임 전체 5회 자원 (2026-08-04 국당 1회에서 개편)
+  if (augId === "tile_dyeing") {
+    const left = av["tile_dyeing:left"];
+    if (typeof left !== "number") return null;
+    return { chip: `${left}회`, note: `염색 ${left}회 남음` };
   }
   if (augId === "dead_wall_master") {
     const left = av[`dead_wall_master:remaining:${playerId}`];
@@ -10325,11 +10338,16 @@ function DraftOverlay({
   draft,
   onPick,
   picked,
+  owned,
+  catalog,
 }: {
   draft: DraftOfferMessage;
   onPick: (id: string) => void;
   /** 이미 골랐는가 — 카드 비활성 + "다른 플레이어 대기 중" 표시 */
   picked: boolean;
+  /** 지금까지 내가 고른 증강 — 무엇을 이어 붙일지 판단하려면 눈앞에 있어야 한다 */
+  owned: readonly string[];
+  catalog: Record<string, AugmentCatalogEntry>;
 }): JSX.Element {
   // 남은 시간 카운트다운 — 서버가 보낸 deadlineMs(자동 선택까지)를 받은 시점부터 센다.
   // draft.stage가 바뀌면(다음 스테이지) 타이머를 다시 시작한다.
@@ -10364,6 +10382,26 @@ function DraftOverlay({
         {showTimer ? (
           <div className={`draft-timer${urgent ? " draft-timer-urgent" : ""}`}>
             ⏳ 남은 시간 <strong>{remainSec}</strong>초
+          </div>
+        ) : null}
+        {/* 지금까지 고른 증강 — 새 증강은 기존 증강과 맞물릴 때 값하므로, 무엇을
+            들고 있는지 보이지 않으면 고를 수가 없다 (2026-08-04 사용자 요청). */}
+        {owned.length > 0 ? (
+          <div className="draft-owned">
+            <span className="draft-owned-tag">보유 중 {owned.length}</span>
+            {owned.map((id) => {
+              const entry = catalog[id];
+              return (
+                <span
+                  key={id}
+                  className={`draft-owned-pill aug-cat-${augmentCategory(id)}`}
+                  title={entry?.description ?? id}
+                >
+                  <AugCatIcon id={id} />
+                  {entry?.name ?? id}
+                </span>
+              );
+            })}
           </div>
         ) : null}
         <div className={`draft-cards${picked ? " draft-cards-locked" : ""}`}>
