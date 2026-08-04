@@ -49,8 +49,21 @@ export interface GameConfig {
 export interface RiichiState {
   double: boolean;
   ippatsu: boolean;
-  /** 선언패의 discards 내 인덱스 */
+  /**
+   * 선언패의 discards 내 인덱스.
+   *
+   * ⚠ 표시용으로 이 값을 **그대로 믿지 말 것** — 바닥 중간에서 패를 빼 가는 증강
+   * (도굴 grave_rob 등)이 지나가면 뒤쪽 패가 한 칸씩 당겨져 자리가 어긋난다.
+   * PlayerView는 `discardTileId`로 현재 위치를 다시 찾는다(docs/25 손패 조작 #4).
+   */
   discardIndex: number;
+  /**
+   * 선언패의 tileId — 자리가 밀려도 표식이 따라갈 수 있게 하는 단일 진실.
+   *
+   * 선택 필드인 이유: 손으로 조립한 상태(테스트 하네스)·구 리플레이에는 없을 수 있어
+   * 그때는 `discardIndex`로 폴백한다.
+   */
+  discardTileId?: TileId;
   /**
    * 이 리치로 **실제로 낸 공탁액**. 환급(선언패 론·리치 취소)은 규칙값이 아니라
    * 이 값을 상한으로 삼는다 — 공탁을 내지 않는 증강(스텔스 리치·배수의 진)이
