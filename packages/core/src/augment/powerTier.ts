@@ -22,6 +22,9 @@
  * **"미분류"** 로 뜨므로(카탈로그와 실시간 대조) 조용히 빠지지 않는다.
  */
 
+import { BOT_WEIGHT } from "./Augment.js";
+import type { AugmentCategory } from "./Augment.js";
+
 /** 파워 티어 — SS+가 최상위(게임 종결급) */
 export type PowerTier = "SS+" | "S+" | "S" | "A" | "B" | "C" | "D";
 
@@ -91,6 +94,27 @@ export interface PowerTierEntry {
 /** 총점 = p*3 + s*3 + u*2 + f*2 */
 export function powerScore(e: PowerTierEntry): number {
   return e.p * 3 + e.s * 3 + e.u * 2 + e.f * 2;
+}
+
+/**
+ * 봇 발동 강도 기본값 (0~100) — 정책이 `{option, weight}`로 강도를 명시하지 않았을 때 쓴다.
+ *
+ * 액티브를 둘 이상 보유한 봇은 한 프롬프트에 하나만 제출할 수 있다. 예전에는 보유 배열의
+ * 첫 non-null이 무조건 이겨 **픽 순서**가 판단을 눌렀다(docs/25 시스템 횡단 #10). 강도를
+ * 안 밝힌 정책끼리는 "더 센 증강을 먼저 태운다"가 픽 순서보다 낫다 — 파워 점수(최대 50)를
+ * 2배해 0~100 축에 올린다. 티어표에 없는 id는 평시값(BOT_WEIGHT.normal = 50).
+ *
+ * 예외로 `info` 계열은 파워와 무관하게 항상 뒤로 민다(BOT_WEIGHT.info). 정보는 한 순
+ * 늦게 봐도 거의 손해가 없는 반면, 같은 프롬프트의 다른 액티브는 그 순이 지나면 기회를
+ * 잃는 것이 보통이다.
+ */
+export function defaultBotWeight(
+  augmentId: string,
+  category?: AugmentCategory,
+): number {
+  if (category === "info") return BOT_WEIGHT.info;
+  const entry = AUGMENT_POWER_TIERS[augmentId];
+  return entry === undefined ? BOT_WEIGHT.normal : Math.min(100, powerScore(entry) * 2);
 }
 
 /**

@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { botChosenOption } from "@majak/core";
 import type { BotDecisionContext, BotAugmentOption } from "@majak/core";
 import { seatSwap } from "../src/augments/seat_swap.js";
 import { threeDragonsWill } from "../src/augments/three_dragons_will.js";
@@ -50,7 +51,7 @@ describe("자리 바꿈 봇 — 손이 좋으면 교환하지 않는다", () => 
   });
 
   it("손이 나쁘면 종전대로 오야와 교환한다", () => {
-    const picked = seatSwap.bot?.choose(ctxWith(5, false, opts));
+    const picked = botChosenOption(seatSwap.bot?.choose(ctxWith(5, false, opts)) ?? null);
     expect(picked).not.toBeNull();
     expect((picked?.payload as { target?: string }).target).toBe("p1");
   });

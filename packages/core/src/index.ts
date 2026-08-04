@@ -161,6 +161,8 @@ export {
   augmentInstanceId,
   TIER_LAYER,
   AUGMENT_CATEGORIES,
+  BOT_WEIGHT,
+  botChosenOption,
 } from "./augment/Augment.js";
 export type {
   AugmentDef,
@@ -172,6 +174,7 @@ export type {
   AugmentBotPolicy,
   BotDecisionContext,
   BotAugmentOption,
+  BotAugmentChoice,
   BotRng,
 } from "./augment/Augment.js";
 export { AugmentRegistry } from "./augment/AugmentRegistry.js";
@@ -220,6 +223,7 @@ export {
   POWER_TIER_LABEL,
   TIER_CUTS,
   powerScore,
+  defaultBotWeight,
 } from "./augment/powerTier.js";
 export type { PowerTier, PowerTierEntry } from "./augment/powerTier.js";
 export type {
