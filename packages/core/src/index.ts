@@ -384,7 +384,11 @@ export type {
 } from "./network/protocol.js";
 
 // ── Match (12·15) ──
-export { HanchanController, DEFAULT_HANCHAN_CONFIG } from "./match/HanchanController.js";
+export {
+  HanchanController,
+  DEFAULT_HANCHAN_CONFIG,
+  DEFAULT_SEED,
+} from "./match/HanchanController.js";
 export type {
   HanchanConfig,
   HanchanEvents,
