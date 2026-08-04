@@ -94,6 +94,7 @@ export {
   SYSTEM_PLAYER,
   buildWinContext,
   isFuriten,
+  isRunQuad,
   sealedDiscardIds,
   seatWindOf,
   nextSeat,

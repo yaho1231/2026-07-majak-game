@@ -129,3 +129,18 @@ describe("턴 카운터 계약 (docs/25 P5)", () => {
     );
   });
 });
+
+describe("깡 판정 단일 진실 계약 (docs/25 벽패/왕패/깡 #9)", () => {
+  /**
+   * 장사진(`snake_kan`)의 '4연속 깡' 판정은 코어 `isRunQuad`가 단일 진실이다.
+   * 증강 쪽에 사본을 두면 엔진의 ankan validate와 봇 정책이 서로 다른 규칙을 보게 되어,
+   * 봇이 제시받지 못한 깡을 고르거나 반대로 낼 수 있는 깡을 영영 안 치게 된다.
+   */
+  it("증강이 isRunQuad를 자체 구현하지 않는다", () => {
+    const offenders: string[] = [];
+    for (const f of files) {
+      if (/function\s+isRunQuad\s*\(/.test(read(f))) offenders.push(f);
+    }
+    expect(offenders, "isRunQuad 사본을 둔 증강 (코어에서 import할 것)").toEqual([]);
+  });
+});

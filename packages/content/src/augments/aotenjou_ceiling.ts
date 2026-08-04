@@ -77,7 +77,18 @@ export const aotenjouCeiling: AugmentDef = defineAugment({
   install(ctx) {
     const { holder } = ctx;
     addWinPointTransfer(ctx, (state: GameState, info) => {
-      const isDealer = playerAtSeat(state, state.round.dealerSeat).id === holder;
+      /*
+       * 오야 배율은 **자리만으로 정하지 않는다** — 정산(`sysSettleWin`)이
+       * `isDealer || win.treatAsDealer`로 정하므로 여기서도 같은 기준을 써야 한다.
+       * 예전에는 자리만 봐서, 만년 오야·찬탈자가 오야 취급을 켠 국에 상한 해제분만
+       * 자 기준으로 깎여 얹혔다(docs/25 역/점수 #15). 큰손이 먼저 고친 것과 같은 문제다.
+       */
+      const isDealer =
+        playerAtSeat(state, state.round.dealerSeat).id === holder ||
+        ctx.engine.rules.resolve<boolean>("win.treatAsDealer", {
+          playerId: holder,
+          state,
+        });
       const uncapped = totalOf(aotenjouBase(info), isDealer, info.winType);
       // 기준선은 '증강이 없었다면 받았을 점수' — info.points를 그대로 쓰면 다른 증강이
       // 배수를 걸어 둔 국에서 그 배수까지 되빼게 된다.

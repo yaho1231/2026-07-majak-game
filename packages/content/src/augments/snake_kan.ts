@@ -18,22 +18,16 @@
  * ⚠ 리치 중에는 선언할 수 없다 — 4연속 깡은 언제나 대기를 바꾼다(표준 안깡 안전성 규칙).
  */
 
-import { defineAugment, winningKinds } from "@majak/core";
+/*
+ * `isRunQuad`는 **코어의 것을 쓴다** — 예전에는 이 파일에 사본이 있어서, 엔진의
+ * ankan validate(코어 판정)와 봇 정책(사본 판정)이 서로 다른 규칙을 볼 수 있었다
+ * (docs/25 벽패/왕패/깡 #9). 판정의 단일 진실은 코어다.
+ */
+import { defineAugment, isRunQuad, winningKinds } from "@majak/core";
 import type { AugmentDef, TileId, TileKind } from "@majak/core";
 import { handKindsOf } from "./botHelpers.js";
 
 const ID = "snake_kan";
-
-/** 같은 무늬 연속 4장인가 (3-4-5-6 같은 장사진 재료) */
-function isRunQuad(kinds: readonly TileKind[]): boolean {
-  if (kinds.length !== 4) return false;
-  const head = kinds[0];
-  if (head === undefined) return false;
-  if (!(head.suit === "man" || head.suit === "pin" || head.suit === "sou")) return false;
-  if (!kinds.every((k) => k.suit === head.suit)) return false;
-  const ranks = kinds.map((k) => k.rank).sort((a, b) => a - b);
-  return ranks.every((r, i) => i === 0 || r === (ranks[i - 1] ?? 0) + 1);
-}
 
 /** kinds에서 remove의 각 패를 한 장씩 뺀 목록 */
 function without(kinds: TileKind[], remove: readonly TileKind[]): TileKind[] {
