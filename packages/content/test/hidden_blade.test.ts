@@ -123,3 +123,51 @@ describe("hidden_blade (숨은 칼날)", () => {
     expect((a?.han ?? 0) - (b?.han ?? 0)).toBe(1);
   });
 });
+
+describe("hidden_blade — 리치를 걸었다가 취소해도 다마텐 보너스는 없다", () => {
+  /*
+   * 역 check가 볼 수 있는 것은 `wctx.riichi`뿐인데, 승부수·손바닥 뒤집기가 리치를
+   * 풀면 그 값이 null이 된다 → **리치 → 취소 → 멘젠 론**에 +2판과 뒷도라가 전부
+   * 붙었다(docs/25 P10). 공탁을 내고 손을 굳히는 대가를 치른 뒤 그 대가만 무르고
+   * 다마텐 보상을 가져가는 셈이다. "이번 국에 선언한 적이 있는가"로 봐야 한다.
+   */
+  const DECLARED_KEY = (s: GameState): string =>
+    `hidden_blade:declared:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:p0`;
+
+  /** 리치를 선언한 뒤 취소한 상태 (선언 이력만 남고 riichi는 null) */
+  function craftCancelled(): GameState {
+    const s = craftRon(false);
+    return { ...s, augmentData: { ...s.augmentData, [DECLARED_KEY(s)]: true } };
+  }
+
+  it("선언 이력이 있으면 뒷도라 문이 닫힌다", () => {
+    const game = setup(craftCancelled());
+    expect(
+      game.engine.rules.resolve<boolean>("scoring.uraWithoutRiichi", {
+        playerId: "p0",
+        state: game.engine.state,
+        winType: "ron",
+        isClosed: true,
+      } as never),
+    ).toBe(false);
+  });
+
+  it("선언 이력이 있으면 +2판 역도 금지된다", () => {
+    const game = setup(craftCancelled());
+    const blocked = game.engine.rules.resolve<string[]>("win.blockedYaku", {
+      playerId: "p0",
+      state: game.engine.state,
+    });
+    expect(blocked).toContain("hidden_blade");
+  });
+
+  it("선언한 적이 없으면 종전대로 열린다 (대조군)", () => {
+    const game = setup(craftRon(false));
+    expect(
+      game.engine.rules.resolve<string[]>("win.blockedYaku", {
+        playerId: "p0",
+        state: game.engine.state,
+      }),
+    ).not.toContain("hidden_blade");
+  });
+});

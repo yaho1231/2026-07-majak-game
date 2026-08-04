@@ -141,7 +141,7 @@ export const allOrNothing: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회) 리치를 선언할 때 '올인'을 함께 걸어 현재 점수의 절반을 판돈으로 내건다(전원 공개). 그 리치로 화료하면 판돈만큼을 통째로 더 받으며, 빗나가도 잃는 것은 없다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 리치 선언과 동시에 올인을 건다. 현재 점수의 절반(1000점 단위 내림)이 판돈으로 전원에게 공개되고, 그 리치로 화료하면 판돈과 같은 금액을 뱅크에서 추가로 받는다. 유국이나 타가 화료로 국이 끝나도 점수는 한 푼도 줄지 않는다.",
+    "(동풍전 1회 · 반장전 2회) 리치 선언과 동시에 올인을 건다. 현재 점수의 절반(1000점 단위 내림)이 판돈으로 전원에게 공개되고, 그 리치로 화료하면 판돈과 같은 금액을 뱅크에서 추가로 받는다. 유국이나 타가 화료로 국이 끝나도 점수는 한 푼도 줄지 않으며, 그 리치가 풀리면(승부수·손바닥 뒤집기) 판돈도 함께 사라진다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -157,6 +157,14 @@ export const allOrNothing: AugmentDef = defineAugment({
       if (!(p.winInfos ?? []).some((w) => w.winner === holder)) return event;
       const allIn = counterOf(ic.state, activeKey(ic.state, holder));
       if (allIn <= 0) return event;
+      /*
+       * **그 리치가 아직 살아 있어야** 판돈이 나온다.
+       *
+       * ⚠ 예전에는 "판돈이 걸려 있고 내가 화료했는가"만 봤다. 승부수(last_stand)·
+       * 손바닥 뒤집기(palm_flip)로 리치를 풀고 완전히 다른 손으로 화료해도 판돈이
+       * 전액 지급됐다(docs/25 P10) — detail이 약속하는 것은 "그 리치로 화료하면"이다.
+       */
+      if (ic.state.round.byPlayer[holder]?.riichi == null) return event;
       return {
         type: event.type,
         payload: {
