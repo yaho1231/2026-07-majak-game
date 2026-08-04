@@ -1,7 +1,7 @@
 /**
  * 등 떠밀기 (push_riichi, prism) — "숨을 수 없다."
  *
- * 동풍전 1·반장전 2회, 자기 턴에 상대 한 명에게 **낙인**을 찍는다(전원 공개). 이후 그가
+ * 매 국 1회, 자기 턴에 상대 한 명에게 **낙인**을 찍는다(전원 공개). 이후 그가
  * 리치 가능한 상태(멘젠 텐파이·공탁 여유·리치 미봉쇄)에서 패를 버리는 순간, 그 버림이
  * **자동으로 강제 리치**가 된다. 다마텐으로 숨으려는 바로 그 순간 시스템이 리치봉을 던지게 만든다.
  *
@@ -37,15 +37,16 @@ import type {
   TileDiscardedPayload,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey, stringOf, viewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey, stringOf, viewKey } from "../util.js";
 
 const ID = "push_riichi";
 const ACTION = "push_brand";
 
-/** 매치당 사용 횟수 (동풍1/반장2) */
-const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
+/** 국당 1회 — 국이 바뀌면 다시 찍을 수 있다 (단, 살아 있는 낙인이 있으면 못 찍는다) */
+const usedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:used:${roundKey(state)}:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
-  counterOf(state, usesKey(h)) < matchUses(state);
+  !flagOf(state, usedKey(state, h));
 /** 현재 낙인 대상 (게임 단위 — 국을 넘어 유지, 발동 시 소멸) */
 const brandKey = (h: PlayerId): string => `${ID}:brand:${h}`;
 
@@ -94,7 +95,7 @@ const brandAction: ActionDef<{ target: PlayerId }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (!hasUsesLeft(state, req.player)) return "no uses left this game";
+    if (!hasUsesLeft(state, req.player)) return "already used this round";
     if (stringOf(state, brandKey(req.player)) !== null) return "a brand is already active";
     if (req.payload.target === req.player) return "cannot brand yourself";
     if (!state.players.some((p) => p.id === req.payload.target)) return "unknown target";
@@ -102,7 +103,7 @@ const brandAction: ActionDef<{ target: PlayerId }> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(brandKey(req.player), req.payload.target),
-    augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+    augmentDataSet(usedKey(state, req.player), true),
     // 전원 공개 지목 관계
     augmentDataSet(viewKey("*", `${ID}:${req.player}`), req.payload.target),
   ],
@@ -114,9 +115,9 @@ export const pushRiichi: AugmentDef = defineAugment({
   category: "disrupt",
   name: "등 떠밀기",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 한 명에게 낙인을 찍는다(전원 공개). 그가 리치 가능한 상태에서 패를 버리는 순간 그 버림이 자동으로 강제 리치가 된다.",
+    "(매 국 1회) 자기 순에 상대 한 명에게 낙인을 찍는다(전원 공개). 그가 리치 가능한 상태에서 패를 버리는 순간 그 버림이 자동으로 강제 리치가 된다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 한 명에게 낙인을 찍는다. 낙인자가 멘젠 텐파이 상태로 패를 버리려 하면 그 버림이 자동으로 리치가 되어 리치봉이 강제로 던져진다 — 다마텐으로 숨을 수 없다. 낙인은 발동 전까지 국을 넘어 유지되며 한 번 터지면 소멸한다. 후로해 멘젠이 깨진 손에는 조건이 서지 않는다.",
+    "(매 국 1회) 자기 순에 상대 한 명에게 낙인을 찍는다. 낙인자가 멘젠 텐파이 상태로 패를 버리려 하면 그 버림이 자동으로 리치가 되어 리치봉이 강제로 던져진다 — 다마텐으로 숨을 수 없다. 낙인은 발동 전까지 국을 넘어 유지되며 한 번 터지면 소멸한다. 후로해 멘젠이 깨진 손에는 조건이 서지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

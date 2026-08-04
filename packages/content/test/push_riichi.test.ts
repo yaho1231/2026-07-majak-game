@@ -3,7 +3,7 @@
  *  1. 낙인 대상이 멘젠 텐파이로 패를 버리면 그 버림이 강제 리치가 된다.
  *  2. 낙인 발동 후 낙인이 소멸한다.
  *  3. 낙인이 없거나 버린 뒤 노텐이면 강제되지 않는다.
- *  4. 지목은 매치당 횟수(동풍1/반장2) 제한.
+ *  4. 지목은 국당 1회 제한(활성 낙인이 있으면 그동안은 재지목 불가).
  */
 
 import { describe, expect, it } from "vitest";
@@ -82,7 +82,7 @@ describe("등 떠밀기 (push_riichi)", () => {
     expect(game.engine.state.augmentData["push_riichi:brand:p0"]).toBe("p1");
   });
 
-  it("지목은 매치당 횟수 제한 (반장전 2회)", () => {
+  it("지목은 국당 1회 — 같은 국에는 못 찍고 다음 국에는 다시 찍는다", () => {
     // p0 턴 상태에서 지목 후보 검증
     const base = craft({ hands: { p0: "*", p1: "*", p2: "*", p3: "*" }, phase: "turn.act", turnSeat: 0 });
     const game = start(withAug(base, "p0", ["push_riichi"]));
@@ -92,6 +92,25 @@ describe("등 떠밀기 (push_riichi)", () => {
     // 활성 낙인이 있으면 재지목 거부
     const r2 = game.engine.submit({ player: "p0", type: "push_brand", payload: { target: "p2" } });
     expect(r2.ok).toBe(false);
+
+    // 낙인이 터져 사라져도 **같은 국 안에서는** 다시 못 찍는다
+    const spent = {
+      ...game.engine.state,
+      augmentData: { ...game.engine.state.augmentData, "push_riichi:brand:p0": "" },
+    };
+    const sameRound = start(spent);
+    expect(
+      sameRound.engine.submit({ player: "p0", type: "push_brand", payload: { target: "p2" } }).ok,
+    ).toBe(false);
+
+    // 국이 바뀌면 사용 표식이 새 키가 되어 다시 찍을 수 있다
+    const nextRound = start({
+      ...spent,
+      round: { ...spent.round, roundNumber: spent.round.roundNumber + 1 },
+    });
+    expect(
+      nextRound.engine.submit({ player: "p0", type: "push_brand", payload: { target: "p2" } }).ok,
+    ).toBe(true);
   });
 });
 

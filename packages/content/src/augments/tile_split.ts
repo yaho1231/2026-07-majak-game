@@ -1,7 +1,7 @@
 /**
  * 분열 (tile_split, prism) — "한 장이 두 장으로 갈라진다".
  *
- * 동풍전 1·반장전 2회, 자기 턴에 손패의 **수패 1장을 두 숫자로 쪼갠다** — 두 숫자의 합이
+ * 매 국 1회, 자기 턴에 손패의 **수패 1장을 두 숫자로 쪼갠다** — 두 숫자의 합이
  * 원래 숫자가 되고 무늬는 그대로다(예: 9통 → 4통 + 5통). 애물단지 끝패 한 장이 급소 두 장으로
  * 다시 태어난다.
  *
@@ -34,15 +34,16 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "tile_split";
 const ACTION = "split_tile";
 
-/** 매치당 사용 횟수 (동풍1/반장2) */
-const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
+/** 국당 1회 — 국이 바뀌면 다시 쓸 수 있다 */
+const usedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:used:${roundKey(state)}:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
-  counterOf(state, usesKey(h)) < matchUses(state);
+  !flagOf(state, usedKey(state, h));
 
 /** 리치 중인가 (손패 변형 금지) */
 const inRiichi = (state: GameState, h: PlayerId): boolean =>
@@ -98,7 +99,7 @@ const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (!hasUsesLeft(state, req.player)) return "no uses left this game";
+    if (!hasUsesLeft(state, req.player)) return "already used this round";
     if (inRiichi(state, req.player)) return "cannot split during riichi";
     if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
       return "tile not in hand";
@@ -133,7 +134,7 @@ const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
           attrs: { conjured: true },
         },
       ]),
-      augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+      augmentDataSet(usedKey(state, req.player), true),
       // 전원 공개 — 무엇이 무엇으로 갈라졌는지 보인다
       augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
         from: kindKey(target),
@@ -152,9 +153,9 @@ export const tileSplit: AugmentDef = defineAugment({
   category: "hand",
   name: "분열",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통 → 4통 + 5통). 두 번째 조각은 손패에서 가장 쓸모없는 잡패가 그 자리에 물질화한다.",
+    "(매 국 1회) 자기 순에 손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통 → 4통 + 5통). 두 번째 조각은 손패에서 가장 쓸모없는 잡패가 그 자리에 물질화한다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 손패의 수패 한 장을 골라 두 숫자로 쪼갠다 — 두 숫자의 합이 원래 숫자가 되고 무늬는 그대로다(예: 9통 → 4통 + 5통). 쪼갤 수 있는 것은 랭크 2 이상의 수패이며, 두 번째 조각은 손패에서 가장 고립된 잡패 하나가 그 자리에 물질화해 채우므로 손패 장수는 변하지 않는다. 결과는 전원에게 공개되고 리치 중에는 쓸 수 없다.",
+    "(매 국 1회) 손패의 수패 한 장을 골라 두 숫자로 쪼갠다 — 두 숫자의 합이 원래 숫자가 되고 무늬는 그대로다(예: 9통 → 4통 + 5통). 쪼갤 수 있는 것은 랭크 2 이상의 수패이며, 두 번째 조각은 손패에서 가장 고립된 잡패 하나가 그 자리에 물질화해 채우므로 손패 장수는 변하지 않는다. 결과는 전원에게 공개되고 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
