@@ -75,6 +75,37 @@ export interface GameSummaryRow {
   players: { nickname: string; isBot: boolean; rank: number; score: number }[];
 }
 
+/** 제보 게시판 한 줄 (조회 결과). 공개 범위 판정은 조회 쿼리가 이미 끝냈다. */
+export interface FeedbackRow {
+  id: number;
+  userId: number | null;
+  author: string;
+  kind: FeedbackKind;
+  title: string;
+  body: string;
+  status: FeedbackStatus;
+  reply: string;
+  createdAt: string;
+  repliedAt: string | null;
+}
+
+export type FeedbackKind = "bug" | "idea";
+export type FeedbackStatus = "open" | "reviewing" | "done" | "rejected";
+
+const FEEDBACK_KINDS = new Set<string>(["bug", "idea"]);
+const FEEDBACK_STATUSES = new Set<string>(["open", "reviewing", "done", "rejected"]);
+
+/** 제보 길이 상한 — 화면·DB를 지키는 선. 넘으면 거부한다(조용히 자르지 않는다). */
+const FEEDBACK_TITLE_MAX = 80;
+const FEEDBACK_BODY_MAX = 4000;
+const FEEDBACK_REPLY_MAX = 4000;
+
+/**
+ * 도배 방지 — 한 계정이 최근 1시간에 쓸 수 있는 제보 수.
+ * 게시판은 로그인해야 쓸 수 있으므로 계정 단위로만 막으면 충분하다.
+ */
+const FEEDBACK_PER_HOUR = 10;
+
 const USERNAME_RE = /^[A-Za-z0-9가-힣_-]{2,12}$/;
 
 /** 예약어 — 봇 사칭·시스템 id·프로토타입 키(__proto__ 등)를 닉네임으로 못 쓰게 */
@@ -138,6 +169,19 @@ export class SiteDb {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        author TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        reply TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        replied_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
     `);
   }
 
@@ -296,6 +340,9 @@ export class SiteDb {
     try {
       this.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
       this.db.prepare("UPDATE game_players SET user_id = NULL WHERE user_id = ?").run(userId);
+      // 제보는 남기되 주인을 끊는다 — 관리자에게는 계속 보이고(처리 이력 보존),
+      // 나중에 같은 닉네임으로 재가입한 다른 사람에게는 보이지 않는다.
+      this.db.prepare("UPDATE feedback SET user_id = NULL WHERE user_id = ?").run(userId);
       this.db.prepare("DELETE FROM users WHERE id = ?").run(userId);
       this.db.exec("COMMIT");
     } catch (err) {
@@ -312,6 +359,120 @@ export class SiteDb {
     return row === undefined
       ? null
       : { id: row.id, username: row.username, isAdmin: row.is_admin === 1 };
+  }
+
+  // ─────────────────────────── 제보 게시판 ───────────────────────────
+
+  /**
+   * 제보 작성. 종류·길이를 여기서 최종 검증한다 (라우터에서 한 번, DB에서 한 번 —
+   * 저장소를 직접 쓰는 다른 경로가 생겨도 규칙이 깨지지 않게).
+   */
+  addFeedback(
+    user: UserRow,
+    kind: string,
+    title: string,
+    body: string,
+  ): { ok: boolean; id?: number; error?: string } {
+    if (!FEEDBACK_KINDS.has(kind)) return { ok: false, error: "제보 종류가 올바르지 않습니다" };
+    const t = typeof title === "string" ? title.trim() : "";
+    const b = typeof body === "string" ? body.trim() : "";
+    if (t === "") return { ok: false, error: "제목을 입력해 주세요" };
+    if (t.length > FEEDBACK_TITLE_MAX) {
+      return { ok: false, error: `제목은 ${FEEDBACK_TITLE_MAX}자 이내여야 합니다` };
+    }
+    if (b === "") return { ok: false, error: "내용을 입력해 주세요" };
+    if (b.length > FEEDBACK_BODY_MAX) {
+      return { ok: false, error: `내용은 ${FEEDBACK_BODY_MAX}자 이내여야 합니다` };
+    }
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const recent = this.db
+      .prepare("SELECT COUNT(*) AS n FROM feedback WHERE user_id = ? AND created_at > ?")
+      .get(user.id, since) as { n: number };
+    if (Number(recent.n) >= FEEDBACK_PER_HOUR) {
+      return { ok: false, error: "제보가 너무 잦습니다. 잠시 후 다시 시도해 주세요" };
+    }
+    const res = this.db
+      .prepare(
+        `INSERT INTO feedback (user_id, author, kind, title, body, status, reply, created_at, replied_at)
+         VALUES (?, ?, ?, ?, ?, 'open', '', ?, NULL)`,
+      )
+      .run(user.id, user.username, kind, t, b, new Date().toISOString());
+    return { ok: true, id: Number(res.lastInsertRowid) };
+  }
+
+  /**
+   * 볼 수 있는 제보 목록 (최신순).
+   *
+   * **공개 범위가 곧 쿼리다** — 관리자는 전체, 그 외에는 `user_id = 본인`인 글만.
+   * 남의 글은 애초에 조회되지 않으므로 상위 계층이 필터를 빠뜨려도 새지 않는다.
+   */
+  listFeedback(user: UserRow, limit = 200): FeedbackRow[] {
+    const rows = user.isAdmin
+      ? (this.db
+          .prepare("SELECT * FROM feedback ORDER BY id DESC LIMIT ?")
+          .all(limit) as Record<string, unknown>[])
+      : (this.db
+          .prepare("SELECT * FROM feedback WHERE user_id = ? ORDER BY id DESC LIMIT ?")
+          .all(user.id, limit) as Record<string, unknown>[]);
+    return rows.map((r) => this.toFeedbackRow(r));
+  }
+
+  /** 제보 1건 조회 — 권한 판정은 호출자가 한다 (작성자 본인 또는 관리자). */
+  getFeedback(id: number): FeedbackRow | null {
+    if (!Number.isInteger(id)) return null;
+    const row = this.db.prepare("SELECT * FROM feedback WHERE id = ?").get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row === undefined ? null : this.toFeedbackRow(row);
+  }
+
+  /** 상태·답변 변경 (관리자 전용 — 권한 판정은 호출자). 준 항목만 바꾼다. */
+  updateFeedback(
+    id: number,
+    patch: { status?: string; reply?: string },
+  ): { ok: boolean; error?: string } {
+    const cur = this.getFeedback(id);
+    if (cur === null) return { ok: false, error: "존재하지 않는 제보입니다" };
+    if (patch.status !== undefined && !FEEDBACK_STATUSES.has(patch.status)) {
+      return { ok: false, error: "상태 값이 올바르지 않습니다" };
+    }
+    if (patch.reply !== undefined && typeof patch.reply !== "string") {
+      return { ok: false, error: "답변이 올바르지 않습니다" };
+    }
+    const reply = patch.reply === undefined ? cur.reply : patch.reply.trim();
+    if (reply.length > FEEDBACK_REPLY_MAX) {
+      return { ok: false, error: `답변은 ${FEEDBACK_REPLY_MAX}자 이내여야 합니다` };
+    }
+    this.db
+      .prepare("UPDATE feedback SET status = ?, reply = ?, replied_at = ? WHERE id = ?")
+      .run(patch.status ?? cur.status, reply, new Date().toISOString(), id);
+    return { ok: true };
+  }
+
+  /** 제보 삭제 — 작성자 본인 또는 관리자만. */
+  deleteFeedback(id: number, user: UserRow): { ok: boolean; error?: string } {
+    const cur = this.getFeedback(id);
+    if (cur === null) return { ok: false, error: "존재하지 않는 제보입니다" };
+    if (!user.isAdmin && cur.userId !== user.id) {
+      return { ok: false, error: "삭제 권한이 없습니다" };
+    }
+    this.db.prepare("DELETE FROM feedback WHERE id = ?").run(id);
+    return { ok: true };
+  }
+
+  private toFeedbackRow(r: Record<string, unknown>): FeedbackRow {
+    return {
+      id: Number(r.id),
+      userId: r.user_id === null ? null : Number(r.user_id),
+      author: String(r.author),
+      kind: String(r.kind) as FeedbackKind,
+      title: String(r.title),
+      body: String(r.body),
+      status: String(r.status) as FeedbackStatus,
+      reply: String(r.reply ?? ""),
+      createdAt: String(r.created_at),
+      repliedAt: r.replied_at === null || r.replied_at === undefined ? null : String(r.replied_at),
+    };
   }
 
   // ─────────────────────────── 게임 인덱스 ───────────────────────────
