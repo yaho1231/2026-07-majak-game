@@ -146,8 +146,9 @@ describe("take_back (무르기) — 3턴에 1회", () => {
               ...(base.round.byPlayer["p0"] as NonNullable<
                 (typeof base.round.byPlayer)["p0"]
               >),
-              // 버린 종류 목록의 길이가 곧 턴 번호다 (내용은 무관)
+              // 실제 버림 횟수가 곧 턴 번호다 (후리텐 이력 내용은 무관)
               discardedKinds: Array.from({ length: discards }, () => "man1"),
+              discardCount: discards,
             },
           },
         },

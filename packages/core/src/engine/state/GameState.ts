@@ -101,8 +101,22 @@ export interface PlayerRoundState {
   /**
    * 이번 국 자신이 버린 패의 kindKey 이력 (버림 시점 스냅샷, 순서 보존).
    * 버림패가 후로로 바닥에서 사라져도 후리텐 판정은 이 이력을 쓴다 (표준 룰).
+   *
+   * ⚠ **"내가 몇 번 버렸나"의 근거로 쓰지 말 것.** 이건 *후리텐 이력*이라
+   * 누명(frame_up)이면 지목당한 사람 쪽에 새겨지고, 거신병·미래를 보는 자는
+   * 이 목록을 통째로 다시 쓴다. 턴 세기에는 `discardCount`를 쓴다(docs/25 P5).
    */
   discardedKinds: string[];
+  /**
+   * 이번 국 **실제로 버림을 한 횟수** — "내 몇 번째 순인가"의 단일 진실.
+   *
+   * `discardedKinds.length`를 턴 카운터로 쓰던 4종(자리 바꿈·단색 세계·되돌리기·
+   * 연금술)이 누명과 만나면 값이 0에 고정돼 **10순에도 "첫 순"** 으로 인정됐다
+   * (첫 순 리미트 무력화 / 되돌리기 쿨다운 영구 미해제 — docs/25 P5).
+   * 이 값은 `TILE_DISCARDED`의 **실제 버린 사람**(`payload.player`)에게만 오르고
+   * `creditTo`에 영향받지 않으며, 후리텐 이력을 다시 쓰는 증강과도 무관하다.
+   */
+  discardCount: number;
   /**
    * **쯔모기리**로 버린 패의 tileId 목록 — 방금 쯔모한 패를 손에 넣지 않고 그대로 버린 것.
    *
@@ -272,6 +286,7 @@ function freshPlayerRoundState(): PlayerRoundState {
     furiten: false,
     melds: [],
     discardedKinds: [],
+    discardCount: 0,
     tsumogiriIds: [],
   };
 }

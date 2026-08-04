@@ -62,7 +62,7 @@ function atFirstHand(state: GameState, holder: PlayerId): boolean {
   // 옵션이 열린다** — 실제 마작에서 불가능한 상태이고, lastDrawnTile을 읽는 규칙
   // (리치 쯔모기리 강제·안깡 판정)이 통째로 오염된다(docs/25 방해 #11).
   if (r.lastDrawnTile === null) return false;
-  return (r.byPlayer[holder]?.discardedKinds.length ?? 0) === 0;
+  return (r.byPlayer[holder]?.discardCount ?? 0) === 0;
 }
 
 interface TableFlipPayload {

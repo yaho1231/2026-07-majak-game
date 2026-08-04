@@ -48,7 +48,7 @@ const usesLeft = (state: GameState, h: PlayerId): number =>
  * 매 턴은 정확히 버림 한 번으로 끝나므로 (국 + 버림 수)로 턴을 유일하게 식별한다.
  */
 function currentTurnSig(state: GameState, h: PlayerId): string {
-  const discards = state.round.byPlayer[h]?.discardedKinds.length ?? 0;
+  const discards = state.round.byPlayer[h]?.discardCount ?? 0;
   return `${roundKey(state)}:${discards}`;
 }
 

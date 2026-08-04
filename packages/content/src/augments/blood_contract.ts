@@ -50,7 +50,7 @@ const contractKey = (state: GameState, h: PlayerId): string =>
   `${ID}:yaku:${roundKey(state)}:${h}`;
 
 const discardCount = (state: GameState, h: PlayerId): number =>
-  state.round.byPlayer[h]?.discardedKinds.length ?? 0;
+  state.round.byPlayer[h]?.discardCount ?? 0;
 
 const round100 = (n: number): number => Math.round(n / 100) * 100;
 

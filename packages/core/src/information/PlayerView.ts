@@ -728,6 +728,7 @@ function buildRoundView(
       furiten: false,
       melds: [],
       discardedKinds: [],
+      discardCount: 0,
       tsumogiriIds: [],
     };
     const meldCount = pr.melds.length;

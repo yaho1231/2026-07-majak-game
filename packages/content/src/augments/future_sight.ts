@@ -80,7 +80,7 @@ const stacksKey = (state: GameState, player: PlayerId): string =>
 /**
  * 이번 국에서 **내가 버린 횟수** = 내 순 번호 (국 스코프).
  *
- * ⚠ 순을 `state.round.turnCount`나 `discardedKinds.length`로 세면 안 된다.
+ * ⚠ 순을 `state.round.turnCount`나 버림 이력 길이로 세면 안 된다.
  * 전자는 **오야가 쯔모할 때마다** 올라 깡 한 번에 같은 순이 두 순으로 갈렸고
  * (2026-08-01 사용자 보고: "깡 치면 한 번 더 사용 가능해지는 듯"), 후자는 이 증강이
  * 교환할 때 바닥에 놓는 한 장까지 세어 **발동하자마자 순이 넘어간 것처럼** 보인다.

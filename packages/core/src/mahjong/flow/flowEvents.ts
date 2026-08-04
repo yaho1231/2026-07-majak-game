@@ -373,6 +373,17 @@ export function registerFlowReducers(
         discardedKinds: [...rs.discardedKinds, kindKey(discardedKind)],
       }));
     }
+    /*
+     * 실제 버림 횟수는 **버린 사람**에게 센다 (`credited`가 아니다).
+     *
+     * "내 몇 번째 순인가"를 `discardedKinds.length`로 세던 증강들이 누명과 만나면
+     * 그 값이 0에 고정돼 10순에도 "첫 순"으로 인정됐다(docs/25 P5). 후리텐 이력과
+     * 턴 카운터는 애초에 다른 것이라 필드를 나눈다.
+     */
+    next = withPlayerRound(next, p.player, (rs) => ({
+      ...rs,
+      discardCount: rs.discardCount + 1,
+    }));
     if (p.riichi) {
       next = withPlayerRound(next, p.player, (rs) => ({
         ...rs,

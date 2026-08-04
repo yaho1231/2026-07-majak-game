@@ -72,7 +72,7 @@ const declareAction: ActionDef<Record<string, never>> = {
       return "not your turn";
     }
     // 첫 패를 받은 첫 턴 — 아직 버리지도, 울지도 않은 상태
-    if ((state.round.byPlayer[req.player]?.discardedKinds.length ?? 0) > 0) {
+    if ((state.round.byPlayer[req.player]?.discardCount ?? 0) > 0) {
       return "not your first turn";
     }
     if (meldCountOf(state, req.player) > 0) return "not your first turn";
