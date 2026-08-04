@@ -57,17 +57,31 @@ const gaugeViewKey = (holder: PlayerId): string =>
  * 단위로 움직이는데 예전엔 그냥 나누기 내림이라 3,033점 같은 값이 나왔다.
  * 내가 받는 값은 몫의 합계라 제로섬은 그대로 유지된다.
  */
+/**
+ * 태울 몫 — 대상별 지불액과 그 합.
+ *
+ * **각자의 잔여 점수를 넘겨 받지 않는다**(2026-08-04 사용자 확정). 예전에는
+ * 게이지를 인원수로 나눈 값을 잔여 점수와 무관하게 물려서, 800점 남은 상대에게
+ * 12,000이 터지면 그 사람이 **-11,200점이 된 채로 그 국을 계속 쳤다** — 도비
+ * 판정은 국 정산 뒤에만 돌기 때문이다(docs/25 방해 #14).
+ *
+ * 못 받은 몫은 다른 사람에게 넘기지 않는다. 게이지가 그만큼 헛되이 타는 것이
+ * "빈털터리에게서는 더 못 뜯는다"는 규칙에 맞다.
+ */
 function burnShares(
   state: GameState,
   holder: PlayerId,
-): { targets: PlayerId[]; per: number; total: number } {
-  const targets = state.players.filter((p) => p.id !== holder).map((p) => p.id);
+): { shares: { id: PlayerId; amount: number }[]; total: number } {
+  const others = state.players.filter((p) => p.id !== holder);
   const gauge = counterOf(state, gaugeKey(holder));
   const per =
-    targets.length > 0
-      ? Math.floor(gauge / targets.length / UNIT) * UNIT
-      : 0;
-  return { targets, per, total: per * targets.length };
+    others.length > 0 ? Math.floor(gauge / others.length / UNIT) * UNIT : 0;
+  const shares = others.map((p) => ({
+    id: p.id,
+    // 잔여 점수도 100점 격자로 내려 맞춘다 (음수 방지)
+    amount: Math.max(0, Math.min(per, Math.floor(p.score / UNIT) * UNIT)),
+  }));
+  return { shares, total: shares.reduce((sum, x) => sum + x.amount, 0) };
 }
 
 const karmaBurnAction: ActionDef<Record<string, never>> = {
@@ -87,9 +101,11 @@ const karmaBurnAction: ActionDef<Record<string, never>> = {
     return null;
   },
   toEvents: (req, { state }) => {
-    const { targets, per, total } = burnShares(state, req.player);
+    const { shares, total } = burnShares(state, req.player);
     const events: ProposedEvent<string, unknown>[] = [];
-    for (const t of targets) events.push(scoreChanged(t, -per, ID));
+    for (const t of shares) {
+      if (t.amount > 0) events.push(scoreChanged(t.id, -t.amount, ID));
+    }
     events.push(scoreChanged(req.player, total, ID));
     // 게이지를 전부 태운다 — 공개 뷰도 0으로
     events.push(augmentDataSet(gaugeKey(req.player), 0));
