@@ -6013,7 +6013,11 @@ const AUG_EVENTS: Record<
     ms: 3600, // 13장을 훑을 시간
   },
   meld_dissolve: { title: "후로 해체", sub: "이미 울어 둔 묶음이 풀렸다", augId: "meld_dissolve" },
-  "bottom_deal:armed": { title: "밑장빼기", sub: "패산 맨 밑장을 노린다", augId: "bottom_deal" },
+  "bottom_deal:armed": {
+    title: "밑장빼기",
+    sub: "다음에 뽑을 패를 패산 맨 밑에서 빼온다",
+    augId: "bottom_deal",
+  },
 };
 
 /**
