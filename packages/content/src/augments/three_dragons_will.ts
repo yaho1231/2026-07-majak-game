@@ -34,6 +34,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { handIsPoor } from "./botHelpers.js";
 
 const ID = "three_dragons_will";
 const ACTION = "dragons_will";
@@ -186,8 +187,14 @@ export const threeDragonsWill: AugmentDef = defineAugment({
   },
   // 봇: 조건이 서면 곧바로 발동한다 — 역만이 걸리는 순수 이득이고 자해 위험이 없다.
   bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
+    choose(ctx) {
+      // 재료로 뽑히는 것은 "가장 고립된 패"인데, 그 유용도 계산은 같은 무늬 이웃만
+      // 세므로 **이미 완성된 몸통의 패도 최저점이 될 수 있다**. 조건이 서는 즉시
+      // 무조건 발동하면 789m·789p 같은 완성 몸통 둘이 통째로 날아간다
+      // (docs/25 역/점수 #14). 손이 아직 멀 때만 지른다 — 대삼원을 노릴 값어치가
+      // 있는 국면이면 어차피 손이 좋지 않다.
+      if (!handIsPoor(ctx)) return null;
+      return ctx.options.find((o) => o.type === ACTION) ?? null;
     },
   },
 });
