@@ -288,10 +288,14 @@ describe("late_bloomer_east (대기만성 · 동풍전)", () => {
 
 // ─────────────────────────── eternal_dealer (만년 오야) ───────────────────────────
 
-/** p0가 오야가 아닌 판 (오야 = seat 1) */
+/**
+ * p0가 오야가 아닌 판 (오야 = seat 1).
+ * 로테이션 기준 자리도 함께 옮긴다 — 오야가 자리 1이라는 것은 "동2국"이지
+ * "오야를 빼앗긴 동1국"이 아니다. 기준을 0에 둔 채로 두면 다음 오야가 다시 자리 1이 된다.
+ */
 function craftNonDealerWin(): GameState {
   const s = craftTanyaoTsumo();
-  return { ...s, round: { ...s.round, dealerSeat: 1 } };
+  return { ...s, round: { ...s.round, dealerSeat: 1, rotationSeat: 1 } };
 }
 
 describe("eternal_dealer (만년 오야) — 자풍 동 고정 + 연장 3회", () => {

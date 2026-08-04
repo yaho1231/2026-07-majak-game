@@ -124,6 +124,16 @@ export interface RoundState {
   /** 공탁 리치봉 (점수 단위, 이월 포함) */
   riichiPot: number;
   dealerSeat: number;
+  /**
+   * 오야 로테이션의 **기준 자리** — 증강이 건드리지 않는, 국 번호와 짝을 이루는 좌석.
+   *
+   * 국 번호는 무조건 +1로 오르는데 다음 오야를 `dealerSeat`(그 국의 실제 오야)에서
+   * 뽑으면, 오야 자리를 옮기는 증강(찬탈자·만년 오야)이 한 번만 개입해도 한 장 안에서
+   * **어떤 자리는 오야를 두 번 하고 어떤 자리는 한 번도 못 한다**. 로테이션은 이 값을
+   * 따라 돌고, 증강은 `dealerSeat`만 옮긴다 — 강탈한 국이 끝나면 원래 순번으로 복귀한다.
+   * 연장(렌짱)은 국 번호를 소모하지 않으므로 이 값도 그대로 둔다.
+   */
+  rotationSeat: number;
   turnSeat: number;
   /** 현재 순 (친의 n번째 쯔모 = n순). setupRound 직후 0 */
   turnCount: number;
@@ -309,6 +319,7 @@ export function createInitialGameState(
       honba: 0,
       riichiPot: 0,
       dealerSeat: 0,
+      rotationSeat: 0,
       turnSeat: 0,
       turnCount: 0,
       phase: "setup",

@@ -168,6 +168,12 @@ export interface RoundSettledPayload {
   outcome: "win" | "draw" | "abort";
   deltas: Record<PlayerId, number>;
   dealerSeat: number;
+  /**
+   * 다음 국의 **로테이션 기준 자리** (RoundState.rotationSeat 참조).
+   * 생략하면 `dealerSeat`로 폴백한다 — 이 필드가 없던 시절의 리플레이 로그를 위한
+   * 호환 경로이므로, 새로 만드는 정산은 세 갈래(화료·유국·도중유국) 모두 명시한다.
+   */
+  rotationSeat?: number;
   honba: number;
   riichiPot: number;
   roundNumber: number;
@@ -572,6 +578,7 @@ export function registerFlowReducers(
         ...state.round,
         phase: "round.over",
         dealerSeat: p.dealerSeat,
+        rotationSeat: p.rotationSeat ?? p.dealerSeat,
         honba: p.honba,
         riichiPot: p.riichiPot,
         roundNumber: p.roundNumber,
