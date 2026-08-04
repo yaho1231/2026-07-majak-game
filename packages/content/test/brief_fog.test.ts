@@ -113,7 +113,8 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
     const s = game.engine.state;
     expect(s.augmentData[USES_KEY]).toBe(1);
     expect(s.augmentData[turnKeyFor(s)]).toBe(0); // 선언 순 = turnCount 0
-    expect(s.augmentData[roundViewKey("*", "brief_fog:p0")]).toBe("안개");
+    // 표식은 남은 순을 함께 밝힌다 — 안개가 걷힌 뒤에도 "안개"가 떠 있던 문제(docs/25 #4)
+    expect(s.augmentData[roundViewKey("*", "brief_fog:p0")]).toBe("안개 (6순 남음)");
 
     // (a) 타인 뷰: **남의** 바닥이 장수만 — 자기 바닥은 그대로 본다.
     // (예전에는 count_only가 소유자를 면제하지 않아 피해자가 자기 바닥도 못 봤다.
@@ -196,5 +197,43 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
     expect(
       turnOptions(game).some((o) => o.type === "declare_brief_fog"),
     ).toBe(false);
+  });
+});
+
+describe("brief_fog — 안개 표식은 실제 안개 상태를 따라간다", () => {
+  const NOTICE_KEY = roundViewKey("*", "brief_fog:p0");
+
+  /** 지금 턴인 사람이 손패 한 장을 버려 한 틱 진행시킨다 */
+  function discardOnce(game: Game, player: PlayerId): void {
+    const tileId = game.engine.state.zones[`hand:${player}`]?.tileIds[0];
+    if (tileId === undefined) throw new Error("no tile to discard");
+    const r = game.engine.submit({ player, type: "discard", payload: { tileId } });
+    if (!r.ok) throw new Error(`discard rejected: ${r.reason}`);
+  }
+
+  it("선언하면 남은 순 수와 함께 표식이 뜬다", () => {
+    const game = setup();
+    game.engine.submit({ player: "p0", type: "declare_brief_fog", payload: {} });
+    expect(game.engine.state.augmentData[NOTICE_KEY]).toBe(`안개 (${6}순 남음)`);
+  });
+
+  it("6순이 지나면 표식도 함께 내려간다 (국 끝까지 남지 않는다)", () => {
+    const game = setup();
+    game.engine.submit({ player: "p0", type: "declare_brief_fog", payload: {} });
+    expect(game.engine.state.augmentData[NOTICE_KEY]).toBeTruthy();
+
+    // 창이 지난 시점(turnCount 9)에서 다시 세우고 한 틱 진행시킨다
+    const later = atTurn(game.engine.state, 9);
+    const g2 = createStandardGameFromState(later);
+    installAugment(g2.engine, briefFog, "p0", { yaku: g2.yaku });
+    // 이 시점에 이미 안개는 걷혔다 (visibility는 기본값)
+    expect(discardVisibility(g2, "p1", g2.engine.state)).toBe("public");
+    // 그런데 표식은 아직 선언 당시의 값이 남아 있다 — 한 틱이 지나면 걷어내야 한다
+    discardOnce(g2, "p0");
+    expect(g2.engine.state.augmentData[NOTICE_KEY]).toBe("");
+    // 안개 중에만 쓰던 "각자의 마지막 한 장" 공개도 함께 내린다
+    expect(g2.engine.state.augmentData[roundViewKey("*", "revealTiles:fog:p0")]).toEqual(
+      [],
+    );
   });
 });
