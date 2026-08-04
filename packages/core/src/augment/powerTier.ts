@@ -475,7 +475,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     s: 1,
     u: 5,
     f: 2,
-    note: "안깡 1묶음 = +4판 확정. 무대응이지만 안깡 자체가 자주 안 나온다",
+    note: "안깡 1묶음(깡친 네 장) = +4판 확정. 무대응이지만 안깡 자체가 자주 안 나온다",
   },
   all_or_nothing: {
     tier: "A",

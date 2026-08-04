@@ -7227,7 +7227,11 @@ function augmentPillStatus(
     if (left <= 0) return null;
     return { chip: `${left}순`, note: `앞으로 ${left}순 동안 아무도 후로할 수 없다` };
   }
-  // 밀실의 도라 — 안깡친 종류가 이 사람만의 개인 도라가 된다(전원 공개).
+  /*
+   * 밀실의 도라 — **깡에 들어간 네 장**이 이 사람만의 도라가 된다(전원 공개).
+   * 종류가 아니라 그 네 장이라, 손패에 같은 패가 있어도 판이 붙지 않는다.
+   * 그래서 문구도 "이 종류가 도라"가 아니라 "깡친 네 장이 도라"로 적는다.
+   */
   if (augId === "ankan_dora") {
     const m = av[`ankan_dora:${playerId}`] as { kinds?: string[] } | null;
     const kinds = (Array.isArray(m?.kinds) ? m.kinds : [])
@@ -7235,7 +7239,10 @@ function augmentPillStatus(
       .filter((k): k is TileKind => k !== null);
     if (kinds.length === 0) return null;
     const names = kinds.map((kind) => formatTile({ kind })).join("·");
-    return { chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` };
+    return {
+      chip: names,
+      note: `안깡한 ${names}${kinds.length > 1 ? "" : " 네 장"}이 이 사람에게만 도라 — 손패의 같은 패에는 붙지 않는다`,
+    };
   }
 
   // 거울의 도라 · 도라의 잔상 — 이 사람에게만 도라가 되는 종류(전원 공개)
