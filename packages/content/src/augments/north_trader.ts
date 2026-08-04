@@ -50,6 +50,7 @@ import {
   meldsZone,
   moveTiles,
   playerAtSeat,
+  TILE_DISCARDED,
   rinshanRemaining,
 } from "@majak/core";
 import type {
@@ -66,10 +67,6 @@ const ID = "north_trader";
 const ACTION = "north_pull";
 const EVENT = "NorthPulled";
 
-/** 빼놓은 北 장수 (국 단위가 아니라 국마다 리셋되어야 하므로 roundKey를 섞는다) */
-const pulledKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:pulled:${state.round.prevalentWind}-${state.round.roundNumber}-${state.round.honba}:${h}`;
-
 /** 北의 바람 랭크 */
 const NORTH_RANK = 4;
 
@@ -77,6 +74,26 @@ const NORTH_RANK = 4;
 function isNorth(state: GameState, id: TileId): boolean {
   const k = kindOf(state, id);
   return k.suit === "wind" && k.rank === NORTH_RANK;
+}
+
+/**
+ * **지금 이 사람 앞에 서 있는 빼놓은 北 장수** — 개인 도라 판의 단일 진실.
+ *
+ * 빼놓은 北은 melds Zone에 놓이되 어떤 Meld에도 속하지 않는다(그래서 손이 닫힌 채로
+ * 남는다). 클라이언트가 '빼놓은 北'을 알아보는 기준과 같다.
+ *
+ * ⚠ 카운터(`pulledKey`)로 세면 안 된다 — 자리 바꿈(seat_swap)이 후로 존을 통째로
+ * 맞바꾸면 **北 실물은 상대에게 넘어갔는데 도라 판은 원래 주인에게 남는다**
+ * (docs/25 손패 조작 #5). 자기 앞에 없는 패로 판을 받는 셈이다. 상태에서 세면
+ * 실물과 점수가 원리적으로 어긋나지 않는다.
+ */
+function pulledNorthCount(state: GameState, h: PlayerId): number {
+  const inMelds = new Set(
+    (state.round.byPlayer[h]?.melds ?? []).flatMap((m) => m.tileIds),
+  );
+  return (state.zones[meldsZone(h)]?.tileIds ?? []).filter(
+    (id) => !inMelds.has(id) && isNorth(state, id),
+  ).length;
 }
 
 const wallIds = (state: GameState): readonly TileId[] =>
@@ -187,23 +204,32 @@ export const northTrader: AugmentDef = defineAugment({
           firstTurn: false,
           goAroundBroken: true,
         };
-        const key = pulledKey(state, p.player);
-        const next = (typeof state.augmentData[key] === "number"
-          ? (state.augmentData[key] as number)
-          : 0) + 1;
+        // 표시도 **실물에서 센다** — 점수(score.extraHan)와 같은 근거를 써야
+        // 자리 바꿈 뒤에 "北3장"이라 떠 있는데 판은 0인 어긋남이 안 생긴다.
+        const next = pulledNorthCount({ ...state, zones }, p.player);
         return {
           ...state,
           zones,
           round,
           augmentData: {
             ...state.augmentData,
-            [key]: next,
             // 전원 공개 — 몇 장을 빼놓았는지(=도라 몇 판인지)는 테이블의 공유 정보다
             [roundViewKey("*", `${ID}:${p.player}`)]: next,
           },
         };
       });
     }
+
+    /*
+     * 표시 재동기화 — 자리 바꿈으로 후로 존이 통째로 넘어가면 실물과 표시가 갈린다.
+     * 매 버림마다 실물에서 다시 세어, 이름표의 "北N장"이 점수와 어긋나지 않게 한다.
+     */
+    ctx.reaction(TILE_DISCARDED, (_event, rc) => {
+      const key = roundViewKey("*", `${ID}:${holder}`);
+      const shown = counterOf(rc.state, key);
+      const actual = pulledNorthCount(rc.state, holder);
+      if (shown !== actual) rc.emit(augmentDataSet(key, actual));
+    });
 
     // 빼놓은 北 장당 +1판 (개인 도라 — 보유자에게만)
     engine.rules.addModifier<number>("score.extraHan", {
@@ -213,7 +239,7 @@ export const northTrader: AugmentDef = defineAugment({
         if (rctx.playerId !== holder) return cur;
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return cur;
-        return cur + counterOf(state, pulledKey(state, holder));
+        return cur + pulledNorthCount(state, holder);
       },
     });
 
