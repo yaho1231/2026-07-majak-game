@@ -6154,7 +6154,19 @@ function augmentLogRows(
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
     if (head === "hidden_river" || head === "riichi_seal") continue;
 
-    if (head === "tenpai_scan") {
+    if (head === "cornucopia") {
+      /*
+       * 수상한 주사위 — 이 사람에게 쏟아진 증강 2개.
+       * 쏟아진 것들은 그 사람 이름표에 pill로 서 있고, 주사위 자신은 이름표에서 뺐다
+       * (칸을 세 칸 먹어 판을 가렸다). "이 둘이 주사위에서 나왔다"는 출처만 여기 남긴다.
+       */
+      const ids = Array.isArray(value)
+        ? value.filter((x): x is string => typeof x === "string")
+        : [];
+      if (ids.length === 0) continue;
+      const names = ids.map((id) => catalog[id]?.name ?? id).join(", ");
+      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} — ` : ""}${names}`));
+    } else if (head === "tenpai_scan") {
       /*
        * 천리안 — 스캔한 순간 텐파이였던 상대 목록 (보유자 전용 채널).
        * 갱신되지 않는 스냅샷이라 국이 끝날 때까지 그대로 떠 있다 — 몇 순 기준인지
@@ -7412,13 +7424,6 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     const ko = SUIT_KO[raw] ?? raw;
     return { chip: ko, note: `손패의 수패가 ${ko}로 통일됐다` };
   },
-  // 화수분 — 쏟아진 증강 2개
-  cornucopia: (raw) => {
-    if (!Array.isArray(raw) || raw.length === 0) return null;
-    const ids = raw.filter((x): x is string => typeof x === "string");
-    if (ids.length === 0) return null;
-    return { chip: `+${ids.length}`, note: `화수분에서 나온 증강 ${ids.length}개` };
-  },
   honba_hunter: (raw) => {
     const m = raw as { honba?: number; value?: number } | null;
     if (m === null || typeof m !== "object" || (m.honba ?? 0) <= 0) return null;
@@ -7584,15 +7589,23 @@ function NamePlate({
   // 상대 이름표의 표식에 손이 올라가 있고 그 관계가 나를 향하면 나도 같이 빛난다
   const linked =
     hovered !== null && myRelations.some((r) => r.key === hovered);
+  // 이름표에 세울 증강 pill.
+  // 화수분(수상한 주사위)은 뺀다 — 획득 순간 증강 2개를 쏟고 역할이 끝나는 증강이라,
+  // 쏟아진 2개가 이미 옆에 pill로 서 있는데 자기 이름까지 세우면 칸만 세 칸 먹는다
+  // (2026-08-04 사용자 지적: 이 증강 하나로 이름표가 판을 가렸다).
+  const pills = player.augments.filter((a) => a !== "cornucopia");
+  // 5개 이상 — 정규 드래프트 최대치(반장전 4개)를 넘긴, 사실상 화수분을 먹은 사람이다.
+  // 이름만 접어 아이콘 칩으로 세운다: 툴팁은 그대로라 눌러 보면 전부 읽을 수 있다.
+  const compact = pills.length >= 5;
   return (
     <div
       className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}`}
     >
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
-      {player.augments.length > 0 ? (
-        <span className="np-augs">
-          {player.augments.map((a) => {
+      {pills.length > 0 ? (
+        <span className={`np-augs${compact ? " np-augs-compact" : ""}`}>
+          {pills.map((a) => {
             const entry = catalog[a];
             const locked = disarmed.has(a);
             const status = augmentPillStatus(view, player.id, a);
