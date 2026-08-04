@@ -8543,7 +8543,8 @@ button {
 
 .peek-btn {
   position: fixed;
-  right: 14px;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 14px;
   /* 모달(120)보다 위 — 덮개가 투명해진 뒤에도 이 버튼만은 눌린 채로 보여야 한다 */
   z-index: 130;
@@ -8599,5 +8600,5 @@ body.peeking .overlay-peekable > * {
 }
 
 @media (max-width: 620px) {
-  .peek-btn { right: 8px; bottom: 8px; padding: 8px 12px; font-size: 11.5px; }
+  .peek-btn { bottom: 8px; padding: 8px 12px; font-size: 11.5px; }
 }
