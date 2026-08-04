@@ -122,7 +122,9 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
     // 않는다(내가 가져온 새 손과 내 빈 버림은 충돌하지 않는다).
     // ⚠ round.firstTurn(첫 바퀴)은 쓰지 않는다 — 남이 울기만 해도 꺼져서, 앞자리
     // 봇의 퐁 한 번에 그 국의 발동 기회가 통째로 사라졌다(2026-07-31 버프).
-    if ((state.round.byPlayer[req.player]?.discardedKinds.length ?? 0) > 0) {
+    // ⚠ discardedKinds(후리텐 이력)로 세면 안 된다 — 누명이면 남의 이력에 새겨져
+    //    0에 고정된다(docs/25 P5). 실제 버림 횟수는 discardCount다.
+    if ((state.round.byPlayer[req.player]?.discardCount ?? 0) > 0) {
       return "you already discarded this round";
     }
     return null;

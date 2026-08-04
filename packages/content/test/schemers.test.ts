@@ -481,7 +481,7 @@ describe("seat_swap (자리 바꿈)", () => {
         ...base.round,
         byPlayer: {
           ...base.round.byPlayer,
-          p0: { ...base.round.byPlayer.p0!, discardedKinds: ["m1"] },
+          p0: { ...base.round.byPlayer.p0!, discardedKinds: ["m1"], discardCount: 1 },
         },
       },
     };
@@ -513,7 +513,7 @@ describe("seat_swap (자리 바꿈)", () => {
         ...base.round,
         byPlayer: {
           ...base.round.byPlayer,
-          p0: { ...base.round.byPlayer.p0!, discardedKinds: ["m1"] },
+          p0: { ...base.round.byPlayer.p0!, discardedKinds: ["m1"], discardCount: 1 },
         },
       },
     };

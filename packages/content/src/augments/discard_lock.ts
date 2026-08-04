@@ -104,7 +104,7 @@ function offCooldown(state: GameState, holder: PlayerId): boolean {
 
 /** 보유자의 이번 국 첫 행동인가 (아직 아무 패도 버리지 않음 = "첫 시작") */
 function atRoundStart(state: GameState, holder: PlayerId): boolean {
-  return (state.round.byPlayer[holder]?.discardedKinds.length ?? 0) === 0;
+  return (state.round.byPlayer[holder]?.discardCount ?? 0) === 0;
 }
 
 /** 현재 봉인을 발동할 수 있는 상태인지 종합 판정 (턴·페이즈·첫 시작·쿨다운) */

@@ -88,7 +88,7 @@ function canSwap(state: GameState, h: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== h) return false;
-  if ((r.byPlayer[h]?.discardedKinds.length ?? 0) > 0) return false;
+  if ((r.byPlayer[h]?.discardCount ?? 0) > 0) return false;
   if (r.byPlayer[h]?.riichi != null) return false;
   return remainingSwaps(state, h) > 0;
 }

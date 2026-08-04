@@ -45,12 +45,13 @@ const usesLeft = (state: GameState, h: PlayerId): number =>
 
 /**
  * 이 국에서 보유자의 현재 턴을 식별하는 서명.
- * 매 턴은 정확히 버림 한 번으로 끝나므로 버림 수(discardedKinds.length)가
+ * 매 턴은 정확히 버림 한 번으로 끝나므로 버림 수(discardCount)가
  * 턴마다 1씩 늘어난다 → (국 + 버림 수)로 턴을 유일하게 식별한다.
  * (연금술은 버림을 소비하지 않으므로 같은 턴 재사용 시 이 서명이 그대로다.)
  */
 function currentTurnSig(state: GameState, h: PlayerId): string {
-  const discards = state.round.byPlayer[h]?.discardedKinds.length ?? 0;
+  // 누명이 discardedKinds를 남의 이력으로 돌리므로 실제 버림 횟수로 센다(docs/25 P5)
+  const discards = state.round.byPlayer[h]?.discardCount ?? 0;
   return `${roundKey(state)}:${discards}`;
 }
 

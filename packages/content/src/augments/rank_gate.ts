@@ -44,7 +44,7 @@ function markedBy(state: GameState, holder: PlayerId): PlayerId | null {
 /** 아직 국 첫 순인가 (아무 후로·깡도 없고 보유자가 아직 버리지 않았다) */
 function atFirstTurn(state: GameState, holder: PlayerId): boolean {
   if (!state.round.firstTurn) return false;
-  return (state.round.byPlayer[holder]?.discardedKinds.length ?? 0) === 0;
+  return (state.round.byPlayer[holder]?.discardCount ?? 0) === 0;
 }
 
 const markAction: ActionDef<{ target: PlayerId }> = {

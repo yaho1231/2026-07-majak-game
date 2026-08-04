@@ -221,3 +221,40 @@ describe("누명 (frame_up)", () => {
     expect(st.round.byPlayer["p1"]?.discardedKinds ?? []).not.toContain(M3);
   });
 });
+
+describe("누명 — '내 첫 순인가'를 discardedKinds로 세면 안 된다 (docs/25 P5)", () => {
+  /*
+   * `discardedKinds`는 **후리텐 이력**이라 누명이면 지목당한 사람 쪽에 새겨진다.
+   * 그런데 자리 바꿈·단색 세계·되돌리기·연금술이 이 필드의 길이를 "내가 몇 번 버렸나"의
+   * 근거로 썼다 → 매 버림을 남의 바닥에 심으면 그 값이 0에 고정되어 **10순에도 "첫 순"**
+   * 으로 인정됐다(자리 바꿈의 첫 순 리미트 무력화, 되돌리기 쿨다운 영구 미해제).
+   * 실제 버림 횟수는 별도 카운터(discardCount)로 센다 — 누명이 건드리지 못한다.
+   */
+  it("누명으로 버려도 실제 버린 사람의 버림 횟수는 늘어난다", () => {
+    const game = setup(scene());
+    const tileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
+    const r = game.engine.submit({
+      player: "p0",
+      type: "frame_discard",
+      payload: { tileId, target: "p1" },
+    });
+    expect(r.ok).toBe(true);
+
+    const rs = game.engine.state.round.byPlayer;
+    // 후리텐 이력은 종전대로 지목당한 사람에게 (이 동작은 의도된 것)
+    expect(rs["p0"]?.discardedKinds).toHaveLength(0);
+    expect(rs["p1"]?.discardedKinds).toHaveLength(1);
+    // 실제로 버린 것은 p0다 — 턴 카운터는 p0만 오른다
+    expect(rs["p0"]?.discardCount).toBe(1);
+    expect(rs["p1"]?.discardCount).toBe(0);
+  });
+
+  it("표준 버림에서는 둘이 같이 오른다", () => {
+    const game = setup(scene());
+    const tileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
+    game.engine.submit({ player: "p0", type: "discard", payload: { tileId } });
+    const rs = game.engine.state.round.byPlayer;
+    expect(rs["p0"]?.discardedKinds).toHaveLength(1);
+    expect(rs["p0"]?.discardCount).toBe(1);
+  });
+});

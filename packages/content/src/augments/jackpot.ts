@@ -78,7 +78,7 @@ const round100 = (n: number): number => Math.round(n / 100) * 100;
 function atFirstTurn(state: GameState, player: PlayerId): boolean {
   if (state.round.phase !== "turn.act") return false;
   if (playerAtSeat(state, state.round.turnSeat).id !== player) return false;
-  return (state.round.byPlayer[player]?.discardedKinds.length ?? 0) === 0;
+  return (state.round.byPlayer[player]?.discardCount ?? 0) === 0;
 }
 
 /** 이번 국에 확정된 배수 (국이 바뀌면 키가 달라져 자동 만료) */

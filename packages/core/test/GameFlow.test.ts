@@ -103,6 +103,7 @@ function craft(cfg: {
     byPlayer[p] = {
       ...byPlayer[p]!,
       discardedKinds: h(cfg.discards?.[p] ?? "").map(kindKey),
+      discardCount: h(cfg.discards?.[p] ?? "").length,
     };
   }
 

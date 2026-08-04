@@ -52,7 +52,8 @@ const lastUsedKey = (state: GameState, h: PlayerId): string =>
 
 /** 이 국에서 보유자의 현재 턴 번호 (= 내가 버린 수) */
 function turnNo(state: GameState, h: PlayerId): number {
-  return state.round.byPlayer[h]?.discardedKinds.length ?? 0;
+  // 누명이 discardedKinds를 남의 이력으로 돌리므로 실제 버림 횟수로 센다(docs/25 P5)
+  return state.round.byPlayer[h]?.discardCount ?? 0;
 }
 
 /** 쿨다운 중인가 (마지막 사용 이후 3턴이 지나지 않았다) */

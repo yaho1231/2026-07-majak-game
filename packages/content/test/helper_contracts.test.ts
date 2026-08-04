@@ -111,3 +111,21 @@ describe("커스텀 역 보유자 등록 계약 (docs/25 시스템 횡단 #7)", 
     expect(offenders, "addYakuHolder 없이 보유자를 직접 추가하는 증강").toEqual([]);
   });
 });
+
+describe("턴 카운터 계약 (docs/25 P5)", () => {
+  /**
+   * `discardedKinds`는 **후리텐 이력**이라 누명(frame_up)이면 지목당한 사람 쪽에
+   * 새겨지고, 거신병·미래를 보는 자는 이 목록을 통째로 다시 쓴다. 그래서 이 길이를
+   * "내가 몇 번 버렸나"로 쓰면 매 버림을 남의 바닥에 심는 것만으로 값이 0에 고정돼
+   * **10순에도 "첫 순"** 으로 인정된다. 턴 세기는 `discardCount`가 단일 진실이다.
+   */
+  it("discardedKinds.length를 턴 카운터로 쓰지 않는다", () => {
+    const offenders: string[] = [];
+    for (const f of files) {
+      if (/discardedKinds\.length/.test(read(f))) offenders.push(f);
+    }
+    expect(offenders, "discardedKinds.length를 세는 증강 (discardCount를 쓸 것)").toEqual(
+      [],
+    );
+  });
+});

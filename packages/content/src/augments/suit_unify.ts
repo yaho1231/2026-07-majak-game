@@ -53,7 +53,8 @@ function atFirstHand(state: GameState, holder: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== holder) return false;
-  return (r.byPlayer[holder]?.discardedKinds.length ?? 0) === 0;
+  // 누명이 discardedKinds를 남의 이력으로 돌리므로 실제 버림 횟수로 센다(docs/25 P5)
+  return (r.byPlayer[holder]?.discardCount ?? 0) === 0;
 }
 
 /**
