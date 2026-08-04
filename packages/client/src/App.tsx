@@ -7978,11 +7978,18 @@ function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Eleme
     return () => clearInterval(t);
   }, [deadline]);
 
-  const total = deadline === null ? null : Math.max(0, deadline - Date.now());
+  // 게이지 길이는 **이 마감을 처음 본 순간의 남은 시간**으로 한 번만 정한다.
+  // 렌더마다 다시 계산하면(0.1초마다 다시 렌더된다) CSS 애니메이션의 duration이 계속
+  // 줄어드는데, 진행도는 `경과/duration`이라 막대가 실제 시간의 두 배 속도로 비었다.
+  const total = useMemo(
+    () => (deadline === null ? null : Math.max(0, deadline - Date.now())),
+    [deadline],
+  );
   return (
     <div
       className={`prompt-timer${deadline === null ? "" : " prompt-timer-urgent"}`}
-      key={props.seq}
+      // 마감이 바뀌면 새로 마운트해 애니메이션을 처음부터 돌린다
+      key={`${props.seq}:${deadline ?? "none"}`}
     >
       <div
         className="prompt-timer-fill"

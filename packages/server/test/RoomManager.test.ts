@@ -371,6 +371,29 @@ describe("방 생성·참가 (코드)", () => {
     expect(dup.last("error")?.code).toBe("DUPLICATE_JOIN");
   });
 
+  it("봇 추가로 자리가 꽉 차도 자리는 그대로다 — 섞기는 '자리 섞기'를 눌렀을 때만", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+
+    const seatsOf = (): string =>
+      (host.last("lobby").players as { playerId: string; seat: number }[])
+        .map((p) => `${p.playerId}:${p.seat}`)
+        .sort()
+        .join(",");
+
+    // 사람 둘이 앉은 상태의 자리 — 봇을 채워 방을 꽉 채워도 이대로 남아야 한다
+    const before = seatsOf();
+    host.clientSend({ type: "addBot" });
+    host.clientSend({ type: "addBot" });
+    const after = seatsOf();
+    expect(after.startsWith(before)).toBe(true);
+    expect(after).toBe("p0:0,p1:1,p2:2,p3:3");
+  });
+
   it("자리 섞기 — 방장이 누르면 동남서북이 다시 뽑히고 대기실에 그대로 반영된다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
