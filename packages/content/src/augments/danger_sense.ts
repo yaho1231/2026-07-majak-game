@@ -108,8 +108,16 @@ const dangerSenseAction: ActionDef<Record<string, never>> = {
     const danger = dangerKinds(state, rules, req.player);
     return [
       augmentDataSet(usedKey(state, req.player), true),
-      // 위험패 목록은 보유자 화면에만 나간다 (비밀 정보)
-      augmentDataSet(roundViewKey(req.player, ID), danger),
+      /*
+       * 위험패 목록은 보유자 화면에만 나간다 (비밀 정보).
+       * 스캔한 순(turnCount)을 함께 싣는다 — 이 결과는 갱신되지 않는 스냅샷이라
+       * 순이 지날수록 틀려진다(상대가 새로 텐파이하면 잡히지 않는다).
+       * 화면이 "N순 기준"이라고 밝혀 그 나이를 드러낸다.
+       */
+      augmentDataSet(roundViewKey(req.player, ID), {
+        kinds: danger,
+        turn: state.round.turnCount,
+      }),
     ];
   },
 };

@@ -13,8 +13,10 @@
  * - toEvents(req, { state, rules })에서 나를 뺀 세 상대 각각에 대해
  *   isTenpai(winHandKindsOf, meldCountOf, undefined, scoringOptionsOf)로 텐파이를
  *   계산한다 — 채점 변형 증강(scoring.*)까지 그대로 반영한다(peek_riichi_waits와 동일 계보).
- * - 결과(텐파이인 상대 id 배열)는 viewKey(holder, "tenpai_scan") 채널에 실어
- *   **보유자 화면에만** 노출한다. 발동 사실·상대 목록은 아무에게도 새지 않는다.
+ * - 결과는 `{ players, turn }`(텐파이인 상대 id 배열 + 스캔한 순)로
+ *   viewKey(holder, "tenpai_scan") 채널에 실어 **보유자 화면에만** 노출한다.
+ *   발동 사실·상대 목록은 아무에게도 새지 않는다. turn은 화면이 "N순 기준"을
+ *   밝히기 위한 것 — 스냅샷이 국 끝까지 남아 시간이 지날수록 틀려지기 때문이다.
  * - 선언은 **게임 단위**다(국이 바뀌어도 재사용 불가) — 그래서 used 플래그 키에
  *   roundKey를 섞지 않는다.
  * - augmentDataSet만 발행하므로 별도 reducer가 필요 없다(코어 reducer가 처리).
@@ -81,8 +83,18 @@ const scanAction: ActionDef<Record<string, never>> = {
     return null;
   },
   toEvents: (req, { state, rules }) => [
-    // 텐파이인 상대 목록을 보유자 화면에만 공개 (내용·대기는 주지 않는다)
-    augmentDataSet(resultKey(req.player), tenpaiOpponents(state, rules, req.player)),
+    /*
+     * 텐파이인 상대 목록을 보유자 화면에만 공개 (내용·대기는 주지 않는다).
+     *
+     * **스캔한 순(turnCount)을 함께 싣는다.** 결과는 국 끝까지 그대로 떠 있는
+     * 스냅샷이라, 순이 지날수록 조용히 틀린 정보가 된다 — 노텐이던 사람이 텐파이가
+     * 돼도 목록은 그대로다. 화면이 "N순 기준"이라고 밝히면 보는 사람이 그 나이를
+     * 감안할 수 있다(docs/25 정보 계열 — 스냅샷 표시 잔류).
+     */
+    augmentDataSet(resultKey(req.player), {
+      players: tenpaiOpponents(state, rules, req.player),
+      turn: state.round.turnCount,
+    }),
     // 게임 단위 사용 플래그
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
   ],

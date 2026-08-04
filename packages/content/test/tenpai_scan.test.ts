@@ -3,7 +3,7 @@
  *
  * 핵심 계약:
  *  1. 자기 턴에 선언할 수 있고(게임당 1회), 선언하면 텐파이인 상대 목록이
- *     보유자 전용 채널(view:{holder}:tenpai_scan)에만 실린다.
+ *     보유자 전용 채널(view:{holder}:tenpai_scan)에 `{ players, turn }`으로만 실린다.
  *  2. 텐파이인 상대(p1)는 목록에 들고, 노텐인 상대(p2)는 들지 않는다.
  *  3. 게임당 1회 — 한 번 쓰면 다시 제시되지 않는다.
  */
@@ -73,12 +73,29 @@ describe("천리안 (tenpai_scan)", () => {
     const { game, flow } = startFlow(scene());
     flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
 
-    const result = game.engine.state.augmentData[VIEW_KEY];
-    expect(Array.isArray(result)).toBe(true);
-    const ids = result as PlayerId[];
+    const result = game.engine.state.augmentData[VIEW_KEY] as {
+      players: PlayerId[];
+      turn: number;
+    };
+    expect(Array.isArray(result.players)).toBe(true);
+    const ids = result.players;
     expect(ids).toContain("p1"); // 텐파이
     expect(ids).not.toContain("p2"); // 노텐
     expect(ids).not.toContain("p0"); // 자기 자신은 제외
+  });
+
+  it("스캔한 순(turnCount)을 함께 실어 화면이 'N순 기준'을 밝힐 수 있다", () => {
+    // 이 결과는 갱신되지 않는 스냅샷이라 국이 끝날 때까지 그대로 떠 있다 —
+    // 몇 순 기준인지 없으면 시간이 지날수록 조용히 틀린 정보가 된다.
+    const base = scene();
+    const atTurn7: GameState = {
+      ...base,
+      round: { ...base.round, turnCount: 7 },
+    };
+    const { game, flow } = startFlow(atTurn7);
+    flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+    const result = game.engine.state.augmentData[VIEW_KEY] as { turn: number };
+    expect(result.turn).toBe(7);
   });
 
   it("동풍전 1회 — 한 번 쓰면 다시 제시되지 않는다", () => {

@@ -130,8 +130,13 @@ describe("지뢰 탐지 — 후리텐 상대는 위험으로 세지 않는다 (d
   function dangerKeys(g: ReturnType<typeof createStandardGameFromState>): string[] {
     const res = g.engine.submit({ player: "p0", type: "danger_sense_use", payload: {} });
     if (!res.ok) throw new Error(`danger_sense rejected: ${res.reason}`);
-    const v = g.engine.state.augmentData[roundViewKey("p0", "danger_sense")];
-    return Array.isArray(v) ? (v as string[]) : [];
+    // 스냅샷은 `{ kinds, turn }` — turn은 화면의 "N순 기준" 표기용이다
+    const v = g.engine.state.augmentData[roundViewKey("p0", "danger_sense")] as
+      | { kinds?: string[] }
+      | undefined;
+    const kinds = v?.kinds;
+    if (!Array.isArray(kinds)) throw new Error("danger_sense: kinds 없음");
+    return kinds;
   }
 
   it("후리텐이 아니면 그 대기패가 위험으로 잡힌다 (기준선)", () => {
