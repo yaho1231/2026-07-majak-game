@@ -41,6 +41,7 @@ import type {
 } from "@majak/core";
 import { SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
 import { briefOf, splitLead } from "./augmentBrief.js";
+import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { splitTerms } from "./glossary.js";
 import type { GlossaryEntry } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
@@ -579,10 +580,33 @@ const TILE_SELECT_ACTIONS = new Set(
  * 패가 아닌 것을 고르는 선언형(핏빛 계약의 역 지정)도 규약상 버튼이 맞다.
  */
 /**
- * 패산 앞 4장이 **누구의 쯔모가 되는지** — 예지(foresight) 모달의 자리 이름.
- * 패산 맨 앞은 다음에 뽑는 사람(하가)의 것이고, 내 차례는 한 바퀴 뒤인 네 번째다.
+ * 정보 스캔 채널(천리안·지뢰 탐지)의 값을 읽는다 — `{ [field]: string[], turn }`.
+ *
+ * 이 결과들은 **갱신되지 않는 스냅샷**이라 국이 끝날 때까지 그대로 떠 있다. 몇 순
+ * 기준인지 밝히지 않으면 시간이 지날수록 조용히 틀린 정보가 된다(docs/25 정보 계열).
+ * 구 리플레이는 배열만 실어 보내므로 그 형태도 그대로 읽는다(순은 `null`).
  */
-const DRAW_ORDER_LABELS = ["하가", "대면", "상가", "나"] as const;
+function readScanSnapshot(
+  value: unknown,
+  field: string,
+): { items: string[]; turn: number | null } {
+  if (Array.isArray(value)) return { items: value as string[], turn: null };
+  if (typeof value === "object" && value !== null) {
+    const rec = value as Record<string, unknown>;
+    const raw = rec[field];
+    return {
+      items: Array.isArray(raw) ? (raw as string[]) : [],
+      turn: typeof rec["turn"] === "number" ? rec["turn"] : null,
+    };
+  }
+  return { items: [], turn: null };
+}
+
+/*
+ * 예지(foresight) 모달의 자리 이름은 고정 배열이 아니라 `drawOrder.ts`가
+ * 렌더 시점의 `turnSeat`·`direction`에서 계산한다 — 역행(turn.direction = −1)이나
+ * 차례가 건너뛴 뒤에도 라벨이 실제 쯔모 순서와 어긋나지 않는다.
+ */
 
 const MODAL_PICK_TYPES = new Set<string>([
   "mono_world",
@@ -5877,11 +5901,20 @@ function augmentLogRows(
     if (head === "hidden_river" || head === "riichi_seal") continue;
 
     if (head === "tenpai_scan") {
-      // 천리안 — 지금 텐파이인 상대 목록 (보유자 전용 채널)
-      const ids = Array.isArray(value) ? (value as string[]) : [];
-      const names = ids.map((id) => playerNameById(view, id)).filter((n) => n !== "");
+      /*
+       * 천리안 — 스캔한 순간 텐파이였던 상대 목록 (보유자 전용 채널).
+       * 갱신되지 않는 스냅샷이라 국이 끝날 때까지 그대로 떠 있다 — 몇 순 기준인지
+       * 밝히지 않으면 시간이 지날수록 **틀린 정보를 확신 있게** 보여 주게 된다.
+       */
+      const snap = readScanSnapshot(value, "players");
+      const names = snap.items.map((id) => playerNameById(view, id)).filter((n) => n !== "");
+      const asOf = snap.turn === null ? "" : ` (${snap.turn}순 기준)`;
       rows.push(
-        textRow(key, "천리안", names.length > 0 ? `텐파이: ${names.join(", ")}` : "텐파이인 상대 없음"),
+        textRow(
+          key,
+          "천리안",
+          `${names.length > 0 ? `텐파이: ${names.join(", ")}` : "텐파이인 상대 없음"}${asOf}`,
+        ),
       );
     } else if (PLAYER_VALUE[head] !== undefined) {
       // 값이 좌석 id인 채널 — 이름으로 푼다.
@@ -7897,12 +7930,17 @@ function OwnArea(props: {
     [view, me.id],
   );
 
-  // 지뢰 탐지 — 지금 버리면 방총인 내 손패 종류(kindKey). 왼쪽 위 대신 실제 손패 위에 표시한다.
-  const dangerSet = useMemo(() => {
-    if (isSpectator) return new Set<string>();
-    const v = view.augmentView["danger_sense"];
-    return new Set(Array.isArray(v) ? (v as string[]) : []);
+  /*
+   * 지뢰 탐지 — 스캔한 순간 "버리면 방총"이던 내 손패 종류(kindKey).
+   * 왼쪽 위 대신 실제 손패 위에 ⚠로 표시한다. 갱신되지 않는 스냅샷이라 몇 순
+   * 기준인지 함께 들고 다니며 ⚠ 툴팁에 밝힌다.
+   */
+  const dangerScan = useMemo(() => {
+    if (isSpectator) return { set: new Set<string>(), turn: null as number | null };
+    const snap = readScanSnapshot(view.augmentView["danger_sense"], "kinds");
+    return { set: new Set(snap.items), turn: snap.turn };
   }, [view.augmentView, isSpectator]);
+  const dangerSet = dangerScan.set;
 
   // 삼세 예지 — 내 다음 쯔모 3장(종류). 왼쪽 위 대신 손패 바로 위 스트립에 크게 보여준다.
   const nextTsumoKinds = useMemo<TileKind[]>(() => {
@@ -8503,7 +8541,16 @@ function OwnArea(props: {
               >
                 <TileImg tile={view.tiles[id]} size="hand" owner={me.id} />
                 {sealed ? <span className="hand-seal-badge">🔒</span> : null}
-                {danger ? <span className="hand-danger-badge" title="지뢰 탐지 — 이 패는 방총">⚠</span> : null}
+                {danger ? (
+                  <span
+                    className="hand-danger-badge"
+                    title={`지뢰 탐지 — 이 패는 방총${
+                      dangerScan.turn === null ? "" : ` (${dangerScan.turn}순 기준)`
+                    }`}
+                  >
+                    ⚠
+                  </span>
+                ) : null}
                 {showWaits ? <WaitTip waits={hoverWaits} noYaku={noYakuWaitSet} /> : null}
               </button>
             );
@@ -9019,6 +9066,19 @@ function ActiveAugmentControl(props: {
   const foresightReorderable =
     (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
     foresightPeek.length === 4;
+  /**
+   * 공개된 4장이 각각 **누구의 쯔모가 되는지** — 렌더 시점의 차례·진행 방향에서 계산한다.
+   * 고정 배열(["하가","대면","상가","나"])이던 시절에는 역행(turn.direction = −1)에서
+   * 라벨이 통째로 뒤집혔다.
+   */
+  const foresightSeatLabels = useMemo<string[]>(() => {
+    const seatCount = view.players.length;
+    const mySeat = view.players.find((p) => p.id === view.playerId)?.seat ?? 0;
+    const dir = view.round.direction;
+    return projectedDrawSeats(view.round.turnSeat, dir, seatCount, 4).map((s) =>
+      relativeSeatLabel(mySeat, s, dir, seatCount),
+    );
+  }, [view.players, view.playerId, view.round.turnSeat, view.round.direction]);
   // 발동해서 재배열 후보가 뜨면 드래그 모달을 자동으로 연다(한 번 닫으면 다시 안 뜬다).
   // 후보가 사라지면(재배열 제출·턴 종료) 상태를 초기화한다.
   useEffect(() => {
@@ -9450,7 +9510,8 @@ function ActiveAugmentControl(props: {
             <div className="rinshan-pick-tiles foresight-drag">
               {foresightArr.map((origIdx, pos) => {
                 const kind = foresightPeek[origIdx];
-                const isMine = pos === 3; // 네 번째 자리 = 나의 쯔모
+                const seatLabel = foresightSeatLabels[pos] ?? "";
+                const isMine = seatLabel === "나";
                 return (
                   <div
                     key={pos}
@@ -9477,7 +9538,7 @@ function ActiveAugmentControl(props: {
                   >
                     {kind !== undefined ? <TileImg tile={{ kind }} size="hand" /> : null}
                     <span className="rinshan-pick-label">
-                      {DRAW_ORDER_LABELS[pos] ?? ""}
+                      {seatLabel}
                       {isMine ? " ★" : ""}
                     </span>
                   </div>

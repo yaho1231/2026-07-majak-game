@@ -3,7 +3,7 @@
  *
  * 핵심 계약:
  *  1. 자기 턴에 선언하면, 내 손패 중 지금 버리면 방총이 되는 종류가 보유자 전용
- *     채널(view:p0:danger_sense)에 kindKey 문자열 배열로 실린다.
+ *     채널(view:p0:danger_sense)에 `{ kinds: kindKey[], turn }`으로 실린다.
  *  2. 상대의 대기와 겹치는 종류만 잡히고, 아무도 기다리지 않는 안전패는 빠진다.
  *  3. 발동은 게임당 1회 — 다시 후보로 제시되지 않는다.
  */
@@ -75,12 +75,18 @@ describe("지뢰 탐지 (danger_sense)", () => {
 
     flow.submit("p0", { type: "danger_sense_use", payload: {} });
 
-    const danger = game.engine.state.augmentData[VIEW_KEY];
-    expect(Array.isArray(danger)).toBe(true);
+    // 스냅샷은 `{ kinds, turn }` — turn은 화면이 "N순 기준"을 밝히기 위한 것이다
+    // (결과는 갱신되지 않아 순이 지나면 틀려진다).
+    const danger = game.engine.state.augmentData[VIEW_KEY] as {
+      kinds: string[];
+      turn: number;
+    };
+    expect(Array.isArray(danger.kinds)).toBe(true);
+    expect(danger.turn).toBe(game.engine.state.round.turnCount);
     // p1이 기다리는 3m은 위험패로 잡힌다
-    expect(danger).toContain(MAN3);
+    expect(danger.kinds).toContain(MAN3);
     // 아무도 안 기다리는 7z(중)은 안전 — 목록에 없다
-    expect(danger).not.toContain(DRAGON3);
+    expect(danger.kinds).not.toContain(DRAGON3);
   });
 
   it("발동은 국당 1회 — 이후 후보로 제시되지 않는다", () => {
