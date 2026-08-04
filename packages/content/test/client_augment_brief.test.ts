@@ -100,4 +100,19 @@ describe("마작 용어 사전", () => {
       expect(hit.has(key), key).toBe(true);
     }
   });
+
+  it("게임 텍스트에 한 번도 안 나오는 항목은 싣지 않는다", () => {
+    // 사전의 수록 기준은 "이 게임이 실제로 쓰는 말"이다. 마작 용어 전체를 옮겨 오면
+    // 안 쓰는 말이 사전의 대부분을 차지해, 쓰는 말을 고칠 때 어디를 볼지 흐려진다.
+    // 증강 설명이 바뀌어 더는 안 쓰는 말이 되면 여기서 걸린다 — 항목을 빼거나,
+    // 그 말을 다시 쓰는 증강과 함께 남긴다.
+    const corpus = [
+      ...ALL.map((a) => a.description),
+      ...ALL.map((a) => a.detail ?? ""),
+      ...Object.values(AUGMENT_BRIEF).map((b) => b.text),
+    ].join("\n");
+    const hit = new Set<string>();
+    for (const c of splitTerms(corpus)) if (c.kind === "term") hit.add(c.entry.key);
+    expect(GLOSSARY.filter((g) => !hit.has(g.key)).map((g) => g.key)).toEqual([]);
+  });
 });
