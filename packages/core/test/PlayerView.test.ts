@@ -325,6 +325,71 @@ describe("PlayerView — RoundView", () => {
     expect(other.round.byPlayer["p1"]?.riichiTileIndex).toBeUndefined();
   });
 
+  it("바닥 앞쪽 패가 빠져도 리치 표식은 같은 패를 가리킨다", () => {
+    /*
+     * 인덱스만 들고 있으면, 도굴(grave_rob)처럼 **바닥 중간에서 패를 빼 가는** 증강이
+     * 지나간 뒤 뒤쪽 패가 한 칸씩 당겨져 **엉뚱한 패가 눕혀 표시된다**
+     * (docs/25 손패 조작 #4). 표식은 자리가 아니라 그 패를 따라가야 한다.
+     */
+    const base = makeState();
+    const p0 = base.round.byPlayer["p0"];
+    if (p0 === undefined) throw new Error("missing p0");
+    // p0 바닥에 6장을 깔아 둔다 (패산 앞에서 빌려 온다)
+    const wall = base.zones[WALL]?.tileIds ?? [];
+    const river = wall.slice(0, 6);
+    const zone = base.zones[discardsZone("p0")];
+    if (zone === undefined) throw new Error("no discards zone");
+    const state: GameState = {
+      ...base,
+      zones: {
+        ...base.zones,
+        [discardsZone("p0")]: { ...zone, tileIds: river },
+      },
+    };
+    const declaredId = river[4];
+    if (declaredId === undefined) throw new Error("river too short");
+
+    const declared: GameState = {
+      ...state,
+      round: {
+        ...state.round,
+        byPlayer: {
+          ...state.round.byPlayer,
+          p0: {
+            ...p0,
+            riichi: {
+              double: false,
+              ippatsu: true,
+              discardIndex: 4,
+              discardTileId: declaredId,
+            },
+          },
+        },
+      },
+    };
+    const rules = makeRules();
+    expect(buildPlayerView(declared, "p1", rules).round.byPlayer["p0"]?.riichiTileIndex)
+      .toBe(4);
+
+    // 선언패보다 **앞의** 패 한 장이 바닥에서 빠져나간다 (도굴)
+    const robbed: GameState = {
+      ...declared,
+      zones: {
+        ...declared.zones,
+        [discardsZone("p0")]: {
+          ...zone,
+          tileIds: river.filter((id) => id !== river[1]),
+        },
+      },
+    };
+    const after = buildPlayerView(robbed, "p1", rules);
+    // 인덱스는 3으로 당겨지지만, 가리키는 패는 여전히 선언패 그대로여야 한다
+    const afterRiver = after.zones[discardsZone("p0")]?.tileIds ?? [];
+    const idx = after.round.byPlayer["p0"]?.riichiTileIndex;
+    expect(idx).toBe(3);
+    expect(afterRiver[idx as number]).toBe(declaredId);
+  });
+
   it("myDrawnTile: 본인 손패에 있는 쯔모패만 노출, 타인 뷰는 null", () => {
     const state = makeState();
     const drawn = state.zones[handZone("p0")]?.tileIds[0];

@@ -741,8 +741,23 @@ function buildRoundView(
           ...(m.calledTileId !== undefined ? { calledTileId: m.calledTileId } : {}),
         }))
       : [];
-    const riichiIndex =
-      pr.riichi !== null ? { riichiTileIndex: pr.riichi.discardIndex } : {};
+    /*
+     * 리치 선언패 자리 — **그 패의 현재 위치**를 다시 찾는다.
+     *
+     * 저장된 `discardIndex`를 그대로 내보내면, 도굴(grave_rob)처럼 바닥 중간에서
+     * 패를 빼 가는 증강이 지나간 뒤 뒤쪽 패가 한 칸씩 당겨져 **엉뚱한 패가 눕혀
+     * 표시된다**(docs/25 손패 조작 #4). tileId가 없는 구 상태는 종전대로 인덱스 폴백.
+     */
+    const riichiIndex = ((): { riichiTileIndex?: number } => {
+      if (pr.riichi === null) return {};
+      const declaredId = pr.riichi.discardTileId;
+      if (declaredId === undefined) return { riichiTileIndex: pr.riichi.discardIndex };
+      const river = state.zones[discardsZone(pid)]?.tileIds ?? [];
+      const at = river.indexOf(declaredId);
+      // 선언패 자체가 바닥에서 사라졌으면(도굴 대상이 선언패였다) 표식을 내린다 —
+      // 없는 패를 가리키느니 아무것도 안 가리키는 편이 정직하다.
+      return at >= 0 ? { riichiTileIndex: at } : {};
+    })();
     // 쯔모패가 손패와 떨어져 있는가 — 배치의 **마지막 한 장**이 이번 쯔모패면 그렇다.
     // (버리면 lastDrawnTile이 비므로 자연히 false가 된다.)
     const arranged = arrangedHands[pid] ?? [];

@@ -381,6 +381,9 @@ export function registerFlowReducers(
             p.riichiDouble ?? (discardsBefore === 0 && !state.round.goAroundBroken),
           ippatsu: true,
           discardIndex: discardsBefore,
+          // 자리가 아니라 **그 패**가 표식의 단일 진실이다 — 바닥 중간에서 패를
+          // 빼 가는 증강이 지나가도 표식이 따라간다(docs/25 손패 조작 #4).
+          discardTileId: p.tileId,
           // 환급 상한의 근거 — 규칙값이 아니라 이번에 실제로 낸 금액이다
           cost: p.riichiCost,
         },
