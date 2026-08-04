@@ -226,13 +226,19 @@ describe("red_five_touch — 붉은 손길", () => {
     ).toBe(true);
     expect(game.engine.state.augmentData["red_five_touch:rank:p0"]).toBe(5);
 
+    /*
+     * "이 패가 p0에게 적도라로 값하는가" — helpers의 redCount와 같은 정의를 쓴다.
+     * 각인(redFor)이 없는 **자연 적도라**는 누구에게나 적도라이므로 여기 포함된다.
+     * (붉은 손길은 자연 적도라에는 각인을 찍지 않는다 — docs/25 국면 #13)
+     */
     const isRed5 = (state: GameState, id: TileId): boolean => {
       const k = kindOf(state, id);
+      const owner = state.tiles[id]?.attrs.redFor;
       return (
         isNumberSuit(k) &&
         k.rank === 5 &&
         state.tiles[id]?.attrs.red === true &&
-        state.tiles[id]?.attrs.redFor === "p0"
+        (owner === undefined || owner === "p0")
       );
     };
 
@@ -776,5 +782,72 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("only on the first turn");
+  });
+});
+
+describe("red_five_touch — 원래 적도라에는 각인을 찍지 않는다 (docs/25 국면 #13)", () => {
+  /*
+   * `redFor`는 "이 적도라는 이 사람 것"이라는 각인이라, 각인된 패는 **다른 사람에게는
+   * 적도라로 세지 않는다**(helpers의 redCount). 그런데 각인 대상에서 **패산에서 나온
+   * 진짜 적도라**를 빼지 않아, 보유자가 마침 들고 있던 자연 적5까지 자기 것으로
+   * 도장이 찍혔다 → 그 패가 손을 떠나면(버림 후 펑·손 교환) 새 주인은 원래 있던
+   * 적도라 값을 잃는다. 보유자가 얻는 것은 없다(각인 없이도 이미 자기에게 붙는다).
+   */
+  it("자연 적5는 redFor 없이 남고, 나머지 5만 각인된다", () => {
+    const base = craft({
+      hands: { p0: "55m55p55s12346m789p", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    // 손패의 5 중 한 장을 '패산에서 나온 진짜 적도라'로 만든다 (redFor 없음)
+    const fiveIds = handIdsOf(base, "p0").filter((id) => {
+      const k = kindOf(base, id);
+      return isNumberSuit(k) && k.rank === 5;
+    });
+    const naturalRed = fiveIds[0] as TileId;
+    const state: GameState = withAugments(
+      {
+        ...base,
+        tiles: {
+          ...base.tiles,
+          [naturalRed]: {
+            ...(base.tiles[naturalRed] as NonNullable<(typeof base.tiles)[number]>),
+            attrs: { red: true },
+          },
+        },
+      },
+      "p0",
+      ["red_five_touch"],
+    );
+
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, redFiveTouch, "p0", { yaku: game.yaku });
+    const r = game.engine.submit({
+      player: "p0",
+      type: "red_touch",
+      payload: { rank: 5 },
+    });
+    expect(r.ok).toBe(true);
+
+    const after = game.engine.state;
+    // 자연 적도라는 그대로 — 누구에게나 적도라다
+    expect(after.tiles[naturalRed]?.attrs.red).toBe(true);
+    expect(after.tiles[naturalRed]?.attrs.redFor).toBeUndefined();
+
+    // 원래 적도라가 아니었던 5는 보유자 각인이 찍힌다.
+    // (패산에는 무늬당 자연 적5가 한 장씩 들어 있으므로 손패의 5가 전부
+    //  평범한 패인 것은 아니다 — 입력 상태에서 red가 아니었던 것만 고른다.)
+    const plainFives = fiveIds.filter((id) => state.tiles[id]?.attrs.red !== true);
+    expect(plainFives.length).toBeGreaterThan(0);
+    for (const id of plainFives) {
+      expect(after.tiles[id]?.attrs.redFor).toBe("p0");
+    }
+    // 입력에서 이미 자연 적도라였던 5는 전부 각인 없이 남는다
+    for (const id of fiveIds) {
+      if (state.tiles[id]?.attrs.red === true) {
+        expect(after.tiles[id]?.attrs.redFor).toBeUndefined();
+      }
+    }
   });
 });

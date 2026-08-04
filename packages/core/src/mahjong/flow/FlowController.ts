@@ -627,18 +627,28 @@ export class FlowController {
     return this.runAuto();
   }
 
+  /**
+   * 사풍연타 — 네 명의 **첫 버림**이 모두 같은 바람인가.
+   *
+   * ⚠ 바닥의 현재 장수(`ids.length === 1`)로 세면 안 된다. 첫 바퀴에 개입하는 증강
+   * 하나만 있어도 판정이 조용히 무너진다(docs/25 방해 #9):
+   *  - 날치기(pond_snatch)가 남의 바닥에서 한 장을 가져가면 그 바닥이 0장이 되어
+   *    **성립해야 할 도중유국이 안 난다.**
+   *  - 시간 정지(time_stop)로 한 사람이 두 번 버리면 그 바닥이 2장이 되어 역시 안 난다.
+   *
+   * 버림 **이력의 첫 장**을 보면 바닥을 어떻게 헤집어도 판정이 흔들리지 않는다.
+   * (누명 frame_up은 이력 자체를 남에게 돌리므로 첫 바퀴 발동이 따로 막혀 있다 —
+   *  `frame_up.ts`의 `inFirstGoAround` 가드.)
+   */
   private isFourWindAbort(): boolean {
     const state = this.engine.state;
-    const firstDiscards = state.players.map((p) => {
-      const ids = state.zones[discardsZone(p.id)]?.tileIds ?? [];
-      return ids.length === 1 ? kindOf(state, ids[0] as TileId) : null;
-    });
-    if (firstDiscards.some((k) => k === null)) return false;
-    const first = firstDiscards[0];
-    return (
-      first?.suit === "wind" &&
-      firstDiscards.every((k) => k !== null && sameKind(k, first))
+    const firstDiscards = state.players.map(
+      (p) => state.round.byPlayer[p.id]?.discardedKinds[0] ?? null,
     );
+    const first = firstDiscards[0];
+    if (first === null || first === undefined) return false;
+    if (!first.startsWith("wind")) return false;
+    return firstDiscards.every((k) => k === first);
   }
 
   private submitPlayer(player: PlayerId, option: ActionOption): void {

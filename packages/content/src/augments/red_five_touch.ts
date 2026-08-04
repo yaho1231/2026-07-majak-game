@@ -67,14 +67,28 @@ function markedRank(state: GameState, player: PlayerId): number | null {
   return typeof v === "number" && v >= 1 && v <= 9 ? v : null;
 }
 
-/** 손패의 그 숫자 중 **아직 각인되지 않은** 패에 적도라를 새기는 변경 목록 */
+/**
+ * 손패의 그 숫자 중 **아직 각인되지 않은** 패에 적도라를 새기는 변경 목록.
+ *
+ * ⚠ **패산에서 나온 진짜 적도라(`red`는 있고 `redFor`는 없는 패)는 건드리지 않는다.**
+ * `redFor` 각인은 "이 적도라는 이 사람 것"이라 각인된 패는 **다른 사람에게는 적도라로
+ * 세지 않는다**(helpers의 redCount). 자연 적5에 도장을 찍으면 그 패가 손을 떠났을 때
+ * (버림 후 펑·손 교환) 새 주인이 원래 있던 적도라 값을 잃는다 — 남의 적도라를 무력화하는
+ * 셈이다(docs/25 국면 #13). 보유자가 얻는 것은 없다: 각인이 없어도 자연 적도라는
+ * 이미 자기에게 그대로 붙는다.
+ */
 function engraveChanges(
   state: GameState,
   player: PlayerId,
   rank: number,
 ): TileKindChangedPayload["changes"] {
   return rankIdsOf(state, player, rank)
-    .filter((tileId) => state.tiles[tileId]?.attrs.redFor !== player)
+    .filter((tileId) => {
+      const attrs = state.tiles[tileId]?.attrs;
+      if (attrs?.redFor === player) return false; // 이미 내 각인
+      if (attrs?.red === true && attrs.redFor === undefined) return false; // 자연 적도라
+      return true;
+    })
     .map((tileId) => ({ tileId, attrs: { red: true, redFor: player } }));
 }
 
@@ -128,16 +142,15 @@ const redTouchAction: ActionDef<{ rank: number }> = {
     return null;
   },
   toEvents: (req, { state }) => {
-    const changes: TileKindChangedPayload["changes"] = rankIdsOf(
+    // 각인 규칙의 단일 진실은 engraveChanges다 — 여기서 따로 map하면 자연 적도라
+    // 제외 같은 규칙이 한쪽에만 반영된다(실제로 그랬다).
+    // redFor = 이 적도라의 주인(= 발동한 보유자). 이 패를 버려서 상대가 펑·치로
+    // 가져가도 상대의 채점에는 적도라로 세어지지 않는다 (채점 쪽 처리는 코어 담당).
+    const changes: TileKindChangedPayload["changes"] = engraveChanges(
       state,
       req.player,
       req.payload.rank,
-      // redFor = 이 적도라의 주인(= 발동한 보유자). 이 패를 버려서 상대가 펑·치로
-      // 가져가도 상대의 채점에는 적도라로 세어지지 않는다 (채점 쪽 처리는 코어 담당).
-    ).map((tileId) => ({
-      tileId,
-      attrs: { red: true, redFor: req.player },
-    }));
+    );
     return [
       tileKindChanged(changes),
       augmentDataSet(usedKey(req.player), true),
