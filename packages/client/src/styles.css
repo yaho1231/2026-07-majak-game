@@ -4602,6 +4602,46 @@ button {
   font-size: 12px;
 }
 
+.waitroom-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  /* 팁마다 길이가 달라 카드 높이가 튀지 않게 두 줄 높이를 미리 잡아 둔다 */
+  min-height: 42px;
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(184, 151, 92, 0.22);
+  background: rgba(184, 151, 92, 0.07);
+}
+
+.waitroom-tip-label {
+  flex: none;
+  color: #b8975c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1.55;
+}
+
+.waitroom-tip-text {
+  color: #cfdcd3;
+  font-size: 12px;
+  line-height: 1.55;
+  animation: waitroom-tip-in 0.45s ease both;
+}
+
+@keyframes waitroom-tip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waitroom-tip-text {
+    animation: none;
+  }
+}
+
 /* ─────────────── 게임 종료 통계 ─────────────── */
 
 .go-tabs {

@@ -4933,6 +4933,46 @@ function StatsGrid({ s }: { s: PlayerStatsView }): JSX.Element {
 
 // ─────────────────────────── 대기실 ───────────────────────────
 
+/**
+ * 대기실에서 10초마다 한 줄씩 돌려 보여 주는 조작 꿀팁.
+ *
+ * 게임 화면에만 있는 표시 규칙(쯔모기리 점·도라 반짝임 등)은 판이 시작되면 물어볼 데가
+ * 없어서, 기다리는 동안 눈에 익혀 두라고 여기에 둔다.
+ */
+const WAITROOM_TIPS: readonly string[] = [
+  "패 오른쪽 아래에 동그라미 표시가 있는 건 쯔모기리(뽑아서 바로 버린) 패입니다.",
+  "동풍전은 동1·3·4국에서 증강을 총 3번, 반장전은 동1·3국과 남1·3국에서 총 4번 획득합니다.",
+  "증강의 상세 설명은 Shift 키를 누르고 있는 동안 볼 수 있습니다.",
+  "증강을 클릭해 두면 증강 설명창을 고정해 둘 수 있습니다.",
+  "용어의 상세 설명은 마우스를 잠시 올려 두면 볼 수 있습니다.",
+  "용어 설명을 볼지 말지는 설정에서 켜고 끌 수 있습니다.",
+  "노란색으로 계속 반짝이는 패는 도라입니다.",
+  "보라색으로 계속 반짝이는 패는 원래의 4개 패가 아니라 증강 등으로 새로 만들어진 패입니다.",
+  "상대가 타패한 뒤 점선 표시를 보면 그 패를 어디서 냈는지 알 수 있습니다.",
+  "게임 무효 투표는 설정 맨 아래에 있습니다.",
+];
+
+const WAITROOM_TIP_MS = 10_000;
+
+/** 꿀팁 한 줄을 10초마다 교체한다. 시작 팁은 매번 무작위 — 같은 팁만 보고 나가지 않게. */
+function WaitroomTips(): JSX.Element {
+  const [i, setI] = useState(() => Math.floor(Math.random() * WAITROOM_TIPS.length));
+  useEffect(() => {
+    const t = window.setInterval(
+      () => setI((v) => (v + 1) % WAITROOM_TIPS.length),
+      WAITROOM_TIP_MS,
+    );
+    return () => window.clearInterval(t);
+  }, []);
+  return (
+    <div className="waitroom-tip" aria-live="polite">
+      <span className="waitroom-tip-label">💡 꿀팁</span>
+      {/* key를 바꿔 페이드 인 애니메이션을 매번 다시 태운다 */}
+      <span key={i} className="waitroom-tip-text">{WAITROOM_TIPS[i]}</span>
+    </div>
+  );
+}
+
 function WaitingRoom(props: {
   lobby: LobbyMessage | null;
   roomId: string;
@@ -5138,6 +5178,7 @@ function WaitingRoom(props: {
               ? "준비 완료. 방장이 시작하기를 기다립니다…"
               : "준비 완료 버튼을 누르면 방장이 게임을 시작할 수 있습니다."}
         </p>
+        <WaitroomTips />
       </div>
     </div>
   );
