@@ -12,7 +12,7 @@ import {
   DEFAULT_HANCHAN_CONFIG,
   standardAugments,
 } from "@majak/core";
-import type { HanchanConfig, PlayerView } from "@majak/core";
+import type { AugmentDef, HanchanConfig, PlayerView } from "@majak/core";
 import type { TileKind } from "@majak/core";
 import { BotAgent } from "../src/BotAgent.js";
 import type { ActionOption } from "@majak/core/mahjong/flow/FlowController.js";
@@ -167,4 +167,109 @@ describe("BotAgent — 증강 드래프트+발동 경로가 게임을 끝까지 
     },
     120_000,
   );
+});
+
+// ─────────────────── 액티브 2개 동시 발동 시 우선순위 ───────────────────
+
+/** 항상 자기 옵션을 고르는 최소 증강 정의 (가중치 지정 가능) */
+function alwaysFire(
+  id: string,
+  weight?: number,
+  category: AugmentDef["category"] = "buff",
+): AugmentDef {
+  return {
+    id,
+    tier: "silver",
+    category,
+    name: id,
+    description: id,
+    detail: id,
+    bot: {
+      choose({ options }) {
+        const opt = options.find((o) => o.type === id);
+        if (opt === undefined) return null;
+        return weight === undefined ? opt : { option: opt, weight };
+      },
+    },
+    install() {
+      /* 테스트용 — 설치 효과 없음 */
+    },
+  };
+}
+
+describe("BotAgent — 액티브 2개가 동시에 발동을 원할 때", () => {
+  it("보유(픽) 순서가 아니라 파워가 센 증강을 먼저 태운다", async () => {
+    // ura_peek(B, 25점)을 먼저 픽했지만 pseudo_dealer(A, 29점)가 더 세다.
+    const bot = new BotAgent("p0", undefined, 1, contentAugments);
+    const view = makeView({ augments: ["ura_peek", "pseudo_dealer"], hand: TENPAI_HAND });
+    bot.sendView(view);
+    const options = optionsWith(view, [
+      { type: "ura_peek_reveal", payload: {} },
+      { type: "claim_dealer", payload: {} },
+    ]);
+    const decision = await bot.decide({ player: "p0", options });
+    expect(decision.type).toBe("claim_dealer");
+  });
+
+  it("픽 순서를 뒤집어도 같은 증강이 선택된다 (순서 비의존)", async () => {
+    const bot = new BotAgent("p0", undefined, 1, contentAugments);
+    const view = makeView({ augments: ["pseudo_dealer", "ura_peek"], hand: TENPAI_HAND });
+    bot.sendView(view);
+    const options = optionsWith(view, [
+      { type: "ura_peek_reveal", payload: {} },
+      { type: "claim_dealer", payload: {} },
+    ]);
+    const decision = await bot.decide({ player: "p0", options });
+    expect(decision.type).toBe("claim_dealer");
+  });
+
+  it("정책이 실은 명시 가중치가 파워 기본값을 이긴다", async () => {
+    // strong_aug는 파워 미등재(기본값)지만 지금 급하다고 90을 실어 보낸다.
+    const defs = [alwaysFire("weak_aug"), alwaysFire("strong_aug", 90)];
+    const bot = new BotAgent("p0", undefined, 1, defs);
+    const view = makeView({ augments: ["weak_aug", "strong_aug"], hand: TENPAI_HAND });
+    bot.sendView(view);
+    const options = optionsWith(view, [
+      { type: "weak_aug", payload: {} },
+      { type: "strong_aug", payload: {} },
+    ]);
+    const decision = await bot.decide({ player: "p0", options });
+    expect(decision.type).toBe("strong_aug");
+  });
+
+  it("정보 계열(info)은 다른 액티브에 순번을 양보한다", async () => {
+    // 정보는 한 순 늦게 봐도 손해가 거의 없지만, 상대 액티브는 그 순이 지나면 기회를 잃는다.
+    const defs = [alwaysFire("peek_aug", undefined, "info"), alwaysFire("act_aug")];
+    const bot = new BotAgent("p0", undefined, 1, defs);
+    const view = makeView({ augments: ["peek_aug", "act_aug"], hand: TENPAI_HAND });
+    bot.sendView(view);
+    const options = optionsWith(view, [
+      { type: "peek_aug", payload: {} },
+      { type: "act_aug", payload: {} },
+    ]);
+    const decision = await bot.decide({ player: "p0", options });
+    expect(decision.type).toBe("act_aug");
+  });
+
+  it("정보 증강 하나뿐이면 강도가 낮아도 그대로 발동한다", async () => {
+    const bot = new BotAgent("p0", undefined, 1, contentAugments);
+    const view = makeView({ augments: ["ura_peek"], hand: TENPAI_HAND });
+    bot.sendView(view);
+    const options = optionsWith(view, [{ type: "ura_peek_reveal", payload: {} }]);
+    const decision = await bot.decide({ player: "p0", options });
+    expect(decision.type).toBe("ura_peek_reveal");
+  });
+
+  it("가중치가 같으면 보유 순서로 결정론적으로 끊는다", async () => {
+    const defs = [alwaysFire("weak_aug", 50), alwaysFire("strong_aug", 50)];
+    const bot = new BotAgent("p0", undefined, 1, defs);
+    const view = makeView({ augments: ["strong_aug", "weak_aug"], hand: TENPAI_HAND });
+    bot.sendView(view);
+    const options = optionsWith(view, [
+      { type: "weak_aug", payload: {} },
+      { type: "strong_aug", payload: {} },
+    ]);
+    const decision = await bot.decide({ player: "p0", options });
+    expect(decision.type).toBe("strong_aug");
+  });
 });

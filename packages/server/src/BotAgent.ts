@@ -23,6 +23,7 @@ import { BOT_UNUSABLE_AUGMENTS } from "@majak/content";
 import { Prng } from "@majak/core/engine/random/Prng.js";
 import {
   AUGMENT_POWER_TIERS,
+  defaultBotWeight,
   powerScore,
 } from "@majak/core/augment/powerTier.js";
 import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
@@ -257,6 +258,12 @@ export class BotAgent implements PlayerAgent {
    * 각 증강 정책(AugmentDef.bot)은 자기 소유 옵션만 골라야 하고, 여기서는
    * 정책이 돌려준 옵션이 실제로 이번 프롬프트에 제시됐는지 한 번 더 확인한다
    * (제시되지 않은 옵션을 제출하면 FlowController가 throw).
+   *
+   * 여럿이 동시에 발동을 원하면 **발동 강도**가 큰 쪽을 태운다. 정책이 강도를
+   * 밝히지 않으면 그 증강의 파워 점수에서 나온 기본값(`defaultBotWeight`)을 쓰고,
+   * 동점은 보유 순서로 끊는다(결정론). 예전에는 배열 순서의 첫 non-null이 무조건
+   * 이겨서, 액티브 2개를 들면 판단 강도와 무관하게 **픽 순서가 이겼다**
+   * (docs/25 시스템 횡단 #10).
    */
   private chooseAugment(read: BotRead, options: ActionOption[]): ActionOption | null {
     const me = read.view.players.find((p) => p.id === this.id);
@@ -276,17 +283,26 @@ export class BotAgent implements PlayerAgent {
       remaining: (kind: TileKind) => read.remainingOf(kind),
       safety: (kind: TileKind) => read.safetyOf(kind),
     };
-    // 보유 증강 순서대로 — 먼저 발동을 원하는 증강을 채택 (결정론적)
+    let best: { option: ActionOption; weight: number } | null = null;
     for (const augId of me.augments) {
-      const policy = this.catalog.get(augId)?.bot;
-      if (policy === undefined) continue;
+      const def = this.catalog.get(augId);
+      const policy = def?.bot;
+      if (def === undefined || policy === undefined) continue;
       const picked = policy.choose(ctx);
       if (picked === null) continue;
-      const key = JSON.stringify(picked);
+      const weighted =
+        "option" in picked
+          ? picked
+          : { option: picked, weight: defaultBotWeight(augId, def.category) };
+      const key = JSON.stringify(weighted.option);
       const match = options.find((o) => JSON.stringify(o) === key);
-      if (match !== undefined) return match;
+      if (match === undefined) continue;
+      // 동점은 먼저 본 쪽(보유 순서)이 이긴다 — 순수 부등호라 자동으로 그렇게 된다
+      if (best === null || weighted.weight > best.weight) {
+        best = { option: match, weight: weighted.weight };
+      }
     }
-    return null;
+    return best?.option ?? null;
   }
 
   async decideDraft(_stage: DraftStage, choices: AugmentDef[]): Promise<string> {

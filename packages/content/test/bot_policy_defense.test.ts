@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { BOT_WEIGHT, botChosenOption } from "@majak/core";
 import type { BotAugmentOption, PlayerView, TileKind } from "@majak/core";
 import { freeRiichiDiscard } from "../src/augments/free_riichi_discard.js";
 import { lastStand } from "../src/augments/last_stand.js";
@@ -82,12 +83,14 @@ describe("자유 선언 — 리치 중 안전패 선택", () => {
   it("리치가 걸린 판에서는 쯔모패보다 안전한 손패를 골라 버린다", () => {
     const v = view(HAND);
     const safeId = idOf(v, "9m");
-    const picked = freeRiichiDiscard.bot?.choose(
-      botCtx(v, options(v), {
-        threat: 1,
-        // 9m만 현물(안전), 나머지는 위험
-        safety: (k) => (k.suit === "man" && k.rank === 9 ? 1 : 0.3),
-      }),
+    const picked = botChosenOption(
+      freeRiichiDiscard.bot?.choose(
+        botCtx(v, options(v), {
+          threat: 1,
+          // 9m만 현물(안전), 나머지는 위험
+          safety: (k) => (k.suit === "man" && k.rank === 9 ? 1 : 0.3),
+        }),
+      ) ?? null,
     );
     expect((picked?.payload as { tileId?: number }).tileId).toBe(safeId);
   });
@@ -108,10 +111,11 @@ describe("승부수 — 이길 가망이 없을 때만 리치를 물린다", () 
 
   it("대기가 죽었고 상대가 리치면 물러선다", () => {
     const v = view(HAND);
+    // 방어 급박 국면이므로 발동 강도(BOT_WEIGHT.defend)를 실어 돌려준다
     const picked = lastStand.bot?.choose(
       botCtx(v, [OPT], { threat: 1, remaining: () => 0 }),
     );
-    expect(picked).toEqual(OPT);
+    expect(picked).toEqual({ option: OPT, weight: BOT_WEIGHT.defend });
   });
 
   it("대기가 살아 있으면 리치를 유지한다", () => {

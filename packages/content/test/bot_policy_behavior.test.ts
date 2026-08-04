@@ -6,7 +6,7 @@
  * 배경: 2026-07-25, 봇이 액티브 증강을 잘 안 쓰던 문제를 고치며 도입.
  */
 
-import { kindKey } from "@majak/core";
+import { botChosenOption, kindKey } from "@majak/core";
 import type {
   BotAugmentOption,
   BotDecisionContext,
@@ -121,7 +121,7 @@ describe("봇 액티브 증강 정책 동작", () => {
       { type: "disarm_lock", payload: { target: "p1", augmentId: "a" } },
       { type: "disarm_lock", payload: { target: "p2", augmentId: "a" } },
     ];
-    const picked = disarm.bot?.choose(ctx(view, opts));
+    const picked = botChosenOption(disarm.bot?.choose(ctx(view, opts)) ?? null);
     expect((picked?.payload as { target?: string }).target).toBe("p2");
   });
 

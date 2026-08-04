@@ -123,10 +123,54 @@ export interface BotDecisionContext {
  * choose는 발동할 옵션(반드시 ctx.options 중 하나와 동형)을 돌려주거나, 발동하지 않으면 null.
  * 이 증강이 소유한 액션 타입만 골라야 하며(다른 옵션은 무시), 발동은 그 증강에
  * 명백히 유리하고 자해 위험이 낮을 때만 하는 것을 원칙으로 한다.
+ *
+ * **액티브를 둘 이상 보유한 봇**은 한 프롬프트에 하나만 제출할 수 있다. 그때 누구를
+ * 태울지는 `{ option, weight }`로 돌려준 **발동 강도**가 정한다 — 옵션만 돌려주면
+ * 그 증강의 파워 점수에서 나온 기본 강도를 쓴다(`DEFAULT_BOT_WEIGHT_OF` 참조).
+ * 예전에는 `player.augments` 배열의 첫 non-null이 무조건 이겨 **픽 순서**가 판단을
+ * 눌렀다(docs/25 시스템 횡단 #10).
  */
 export interface AugmentBotPolicy {
-  choose(ctx: BotDecisionContext): BotAugmentOption | null;
+  choose(ctx: BotDecisionContext): BotAugmentOption | BotAugmentChoice | null;
 }
+
+/** 발동 강도를 실어 보내는 choose 반환형 */
+export interface BotAugmentChoice {
+  option: BotAugmentOption;
+  /**
+   * 이번 결정에서 이 증강을 태우고 싶은 정도 0~100.
+   * 같은 프롬프트에서 여럿이 발동을 원하면 가장 큰 값이 이기고, 동점은 보유 순서로
+   * 끊는다(결정론). 기준은 `BOT_WEIGHT`.
+   */
+  weight: number;
+}
+
+/** choose 반환값에서 옵션만 꺼낸다 (강도 표기 유무를 흡수) */
+export function botChosenOption(
+  picked: BotAugmentOption | BotAugmentChoice | null,
+): BotAugmentOption | null {
+  if (picked === null) return null;
+  return "option" in picked ? picked.option : picked;
+}
+
+/**
+ * 발동 강도 기준값 — 정책이 상황별로 골라 쓰는 공용 어휘.
+ * 숫자를 직접 쓰지 말고 여기서 고른다(정책 간 비교가 의미를 갖도록).
+ */
+export const BOT_WEIGHT = {
+  /** 지금 화료가 걸렸다 / 역만이 확정된다 — 놓치면 국이 끝난다 */
+  win: 90,
+  /** 방총·즉사를 막는다. 위협이 실재할 때만 이 값을 쓴다 */
+  defend: 75,
+  /** 손이 실제로 전진한다 (텐파이·대기 개선) */
+  advance: 60,
+  /** 특별히 급하지 않은 평시 발동 */
+  normal: 50,
+  /** 나중을 위한 포석 (자원 적립·조건 세팅) */
+  setup: 35,
+  /** 정보만 얻는다 — 늦게 써도 손해가 거의 없다 */
+  info: 20,
+} as const;
 
 export const TIER_LAYER: Record<AugmentTier, RuleLayer> = {
   silver: RuleLayer.Silver,

@@ -15,7 +15,13 @@
  * - 쯔모·유국은 그대로다. 막는 것은 오직 "내 버림패로 쏘이는 것"뿐.
  */
 
-import { ROUND_SETTLED, augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
+import {
+  BOT_WEIGHT,
+  ROUND_SETTLED,
+  augmentDataSet,
+  defineAugment,
+  playerAtSeat,
+} from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { flagOf, roundKey } from "../util.js";
 
@@ -70,7 +76,8 @@ export const invincible: AugmentDef = defineAugment({
       const threatened = Object.entries(view.round.byPlayer).some(
         ([pid, rs]) => pid !== holder && rs.riichiDeclared,
       );
-      return threatened ? opt : null;
+      // 상대 리치가 실재할 때만 켠다 = 방어가 급한 국면 — 정보·포석보다 먼저.
+      return threatened ? { option: opt, weight: BOT_WEIGHT.defend } : null;
     },
   },
   // B급 무효(docs/25 §conflicts): 같은 win.ronImmune 키를 같은 값으로 쓴다.

@@ -15,6 +15,7 @@
  */
 
 import {
+  BOT_WEIGHT,
   ROUND_STARTED,
   augmentDataSet,
   defineAugment,
@@ -136,7 +137,9 @@ export const lastStand: AugmentDef = defineAugment({
       if (ctx.threat < 0.9) return null; // 위협이 없으면 물러설 이유가 없다
       const left = waitTilesLeft(ctx);
       const hopeless = left <= 1 || (ctx.wallLeft <= 12 && left <= 3);
-      return hopeless ? opt : null;
+      // 여기까지 왔으면 "지금 접지 않으면 방총한다"는 상황이다 — 같은 프롬프트의
+      // 다른 액티브(정보·포석)보다 먼저 태운다.
+      return hopeless ? { option: opt, weight: BOT_WEIGHT.defend } : null;
     },
   },
 });
