@@ -162,9 +162,17 @@ export const spy: AugmentDef = defineAugment({
       if (p.outcome !== "win") return;
       const marked = stringOf(rc.state, markKey(holder));
       if (marked === null) return;
-      const hit = (p.winInfos ?? []).find((w) => w.winner !== holder);
-      if (hit === undefined) return;
-      if (kindKey(kindOf(rc.state, hit.winningTileId)) !== marked) return;
+      // 인터셉터는 지정 패와 일치하는 **모든** 화료자의 몫을 훔친다. 공개도 같은
+      // 기준이어야 한다 — 예전에는 첫 비보유자 화료자 하나만 보고 kind가 다르면
+      // 그냥 빠져나가, 더블론에서 두 번째 화료자를 훔쳤을 때 **점수만 옮겨가고
+      // 적발 컷인이 안 떴다**(docs/25 정보 #9). "적발되는 순간이 이 증강의 전부"인데
+      // 결과 화면에 이유 없는 점수 이동만 남았다.
+      const hits = (p.winInfos ?? []).filter(
+        (w) =>
+          w.winner !== holder &&
+          kindKey(kindOf(rc.state, w.winningTileId)) === marked,
+      );
+      if (hits.length === 0) return;
       rc.emit(augmentDataSet(roundViewKey("*", `${ID}:caught:${holder}`), marked));
     });
   },

@@ -25,6 +25,7 @@
  */
 
 import {
+  TILE_DRAWN,
   WALL,
   augmentDataSet,
   defineAugment,
@@ -37,6 +38,7 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  TileDrawnPayload,
   TileId,
 } from "@majak/core";
 import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
@@ -250,6 +252,23 @@ export const foresight: AugmentDef = defineAugment({
     //  - 아직 이번 턴 공개 전이면 발동(공개) 후보 하나.
     //  - 이미 공개했으면(재배열 대기) 0~3 모든 순열을 재배열 후보로 낸다 — 클라 드래그
     //    모달이 사용자가 만든 순서에 맞는 후보를 골라 제출한다(항등 포함 = '그대로 두기').
+    // 예언한 4장은 뽑히는 대로 지운다.
+    //
+    // 스냅샷을 그대로 두면 **이미 남의 손에 들어간 패를 "다음 4장"으로** 국 끝까지
+    // 보여 준다 — 정보 증강이 틀린 정보를 확신 있게 주는 셈이다(docs/25 정보 #5).
+    // 삼세 예지가 같은 문제로 2026-08-01에 고친 방식을 그대로 쓴다.
+    //
+    // ⚠ 보유자 본인의 쯔모만 세면 안 된다. 이 예언은 네 자리의 다음 쯔모를 함께
+    // 보여 주므로, **누가 뽑든** 패산 앞이 한 장씩 줄어든다.
+    // 영상패(깡)는 왕패에서 오므로 패산 순서를 소모하지 않는다 — 세지 않는다.
+    ctx.reaction(TILE_DRAWN, (event, rc) => {
+      const p = event.payload as TileDrawnPayload;
+      if (p.rinshan) return;
+      const rest = rc.state.augmentData[peekViewKey(holder)];
+      if (!Array.isArray(rest) || rest.length === 0) return;
+      rc.emit(augmentDataSet(peekViewKey(holder), (rest as string[]).slice(1)));
+    });
+
     ctx.holderTurnOptions((state) => {
       if (canReveal(state, holder)) return [{ type: REVEAL, payload: {} }];
       if (

@@ -26,6 +26,7 @@ import {
   augmentDataSet,
   defineAugment,
   handIdsOf,
+  isFuriten,
   kindKey,
   kindOf,
   meldCountOf,
@@ -65,11 +66,17 @@ function dangerKinds(
   const oppWaits = new Set<string>();
   for (const p of state.players) {
     if (p.id === holder) continue;
+    // 후리텐인 상대는 그 대기로 **론할 수 없다**. 순수 대기만 보면 이미 자기
+    // 대기패를 버려 둔 상대의 패까지 "쏘인다"로 표시돼, 안전패를 못 버리고
+    // 손을 접게 만든다 — 설명("지금 버리면 상대에게 쏘이는 패")이 단언인 만큼
+    // 오탐은 곧 능력값의 손실이다(docs/25 정보 #10).
+    const opts = scoringOptionsOf(state, rules, p.id);
+    if (isFuriten(state, p.id, opts, rules)) continue;
     const waits = winningKinds(
       winHandKindsOf(state, rules, p.id),
       meldCountOf(state, p.id),
       undefined,
-      scoringOptionsOf(state, rules, p.id),
+      opts,
     );
     for (const kind of waits) oppWaits.add(kindKey(kind));
   }
