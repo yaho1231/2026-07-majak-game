@@ -393,6 +393,31 @@ describe("bottom_deal — 밑장빼기", () => {
     expect(st1.augmentData[NOTICE_KEY]).toBe(false);
   });
 
+  it("패산이 한 장뿐이라 바꿀 것이 없으면 예약을 소비하지 않는다", () => {
+    /*
+     * 인터셉터는 위와 밑이 같은 패면(패산 1장) 그냥 지나가는데, 소비 리액션에는
+     * 그 조건이 없어 **국당 1회 예약이 아무 일 없이 날아갔다**(docs/25 벽패 #11).
+     * 주석은 "조건이 인터셉터와 같다"고 적혀 있었지만 실제로는 달랐다.
+     */
+    const base = drawScene(true);
+    const wall = base.zones[WALL];
+    if (wall === undefined) throw new Error("no wall");
+    const one: GameState = {
+      ...base,
+      zones: {
+        ...base.zones,
+        // 패산을 한 장만 남긴다 — 위와 밑이 같은 패다
+        [WALL]: { ...wall, tileIds: wall.tileIds.slice(0, 1) },
+      },
+    };
+    const game = createStandardGameFromState(one);
+    installAugment(game.engine, bottomDeal, "p0", { yaku: game.yaku });
+    new FlowController(game.engine).begin();
+
+    const st = game.engine.state;
+    expect(st.augmentData[armedKey(st)]).toBe(true); // 예약은 그대로 살아 있다
+  });
+
   it("밑장을 빼면 보이는 창이 되돌아온다 (BCD → ABC)", () => {
     const game = createStandardGameFromState(drawScene(true));
     installAugment(game.engine, bottomDeal, "p0", { yaku: game.yaku });

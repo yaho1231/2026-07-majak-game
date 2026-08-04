@@ -202,13 +202,21 @@ export const bottomDeal: AugmentDef = defineAugment({
       return { type: event.type, payload: { ...p, tileId: bottom } };
     });
 
-    // 예약 소비 — 인터셉터는 emit할 수 없으므로 적용 후에 플래그를 내린다.
-    // 조건이 인터셉터와 같으므로 "바꿔치기가 일어났으면 소비된다"가 어긋나지 않는다.
+    /*
+     * 예약 소비 — 인터셉터는 emit할 수 없으므로 적용 후에 플래그를 내린다.
+     *
+     * ⚠ 인터셉터가 **실제로 바꿔치기한 경우에만** 소비해야 한다. 예전 주석은
+     * "조건이 인터셉터와 같다"고 했지만 실은 달랐다 — 인터셉터는 패산이 한 장뿐이라
+     * 위와 밑이 같은 패면(`bottom === p.tileId`) 그냥 지나가는데, 여기서는 그 경우에도
+     * 플래그를 내려 **국당 1회 예약이 아무 일 없이 날아갔다**(docs/25 벽패/왕패/깡 #11).
+     * 뽑기 전 패산이 2장 이상이었어야 바꿀 것이 있었다 = 뽑은 뒤 1장 이상 남았어야 한다.
+     */
     ctx.reaction(TILE_DRAWN, (event, rc) => {
       const p = event.payload as { player: PlayerId; rinshan: boolean };
       if (p.player !== holder) return;
       if (p.rinshan) return;
       if (!flagOf(rc.state, armedKey(rc.state, holder))) return;
+      if ((rc.state.zones[WALL]?.tileIds.length ?? 0) === 0) return;
       rc.emit(augmentDataSet(armedKey(rc.state, holder), false));
       rc.emit(augmentDataSet(viewArmedKey(holder), false));
       rc.emit(augmentDataSet(noticeKey(holder), false));
