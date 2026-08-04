@@ -3131,8 +3131,64 @@ export function App(): JSX.Element {
           {toast.text}
         </div>
       ) : null}
+      <PeekButton />
     </div>
     </GlossaryTipsContext.Provider>
+  );
+}
+
+// ─────────────────── 잠깐 보기 (가려진 게임판 훔쳐보기) ───────────────────
+
+/**
+ * 증강 선택창·증강 사용 모달이 게임판을 통째로 덮을 때, **누르고 있는 동안만**
+ * 그 창을 투명하게 만들어 밑에 뭐가 있었는지 확인시켜 주는 버튼.
+ *
+ * 보기 전용이다 — 훔쳐보는 동안에도 덮개(오버레이 루트)는 그대로 화면을 덮고 있어
+ * 클릭이 게임판까지 내려가지 않는다(styles.css의 `body.peeking` 규칙). 버튼이 언제
+ * 보이는지도 CSS가 정한다(`body:has(.rinshan-pick-overlay, .overlay-peekable)`) —
+ * 모달들이 여기저기서 포탈로 뜨는 터라 React 상태로 모아 세기 어렵다.
+ */
+function PeekButton(): JSX.Element {
+  const [peeking, setPeeking] = useState(false);
+  useEffect(() => {
+    document.body.classList.toggle("peeking", peeking);
+    return () => document.body.classList.remove("peeking");
+  }, [peeking]);
+  // 버튼 밖에서(창 밖에서도) 손을 떼거나 창이 포커스를 잃으면 반드시 원래대로 돌아온다 —
+  // 안 그러면 오버레이가 투명한 채로 굳어 아무것도 고를 수 없게 된다.
+  useEffect(() => {
+    if (!peeking) return;
+    const off = (): void => setPeeking(false);
+    window.addEventListener("pointerup", off);
+    window.addEventListener("pointercancel", off);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("pointerup", off);
+      window.removeEventListener("pointercancel", off);
+      window.removeEventListener("blur", off);
+    };
+  }, [peeking]);
+  return createPortal(
+    <button
+      type="button"
+      className={`peek-btn${peeking ? " peek-btn-on" : ""}`}
+      aria-label="누르고 있는 동안 게임판 보기"
+      onPointerDown={(e) => {
+        e.preventDefault();
+        setPeeking(true);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") setPeeking(true);
+      }}
+      onKeyUp={(e) => {
+        if (e.key === " " || e.key === "Enter") setPeeking(false);
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <span className="peek-btn-icon" aria-hidden="true">👁</span>
+      <span className="peek-btn-text">{peeking ? "떼면 다시 덮임" : "누른 채로 게임판 보기"}</span>
+    </button>,
+    document.body,
   );
 }
 
@@ -10771,7 +10827,8 @@ function DraftOverlay({
   const [moreFor, setMoreFor] = useState<string | null>(null);
 
   return (
-    <div className="overlay">
+    // overlay-peekable — '누른 채로 게임판 보기' 버튼이 잠깐 투명하게 만드는 대상 표시
+    <div className="overlay overlay-peekable">
       <div className="draft-panel">
         <h2 className="draft-title">증강 선택</h2>
         <p className="draft-stage">
