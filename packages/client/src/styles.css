@@ -707,8 +707,8 @@ button {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(126, 201, 234, 0.9);
-  box-shadow: 0 0 3px rgba(126, 201, 234, 0.8);
+  background: rgba(138, 143, 141, 0.75);
+  box-shadow: 0 0 0 1px rgba(247, 243, 232, 0.55);
   pointer-events: none;
   z-index: 2;
 }
