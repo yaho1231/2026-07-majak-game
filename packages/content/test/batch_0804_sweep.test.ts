@@ -2,7 +2,7 @@
  * batch_0804_sweep — 6차 사용자 발안 8종을 실게임 한 국에 얹어 크래시·소프트락이
  * 없는지 훑는다.
  *
- * 특히 **폭주 리치**는 TURN_PASSED를 가로채 순서를 자기에게 고정하므로, 놓아 주는
+ * 특히 **영혼의 일격**은 TURN_PASSED를 가로채 순서를 자기에게 고정하므로, 놓아 주는
  * 조건이 어긋나면 그 국이 영원히 안 끝난다 — 완주 자체가 계약이다.
  * **화수분**은 install에서 다른 증강을 지급하므로 카탈로그를 넘겨 지급 경로까지 태운다.
  */
@@ -18,7 +18,7 @@ import { timePressure } from "../src/augments/time_pressure.js";
 import { blindRon } from "../src/augments/blind_ron.js";
 import { doraAfterimage } from "../src/augments/dora_afterimage.js";
 import { signFlip } from "../src/augments/sign_flip.js";
-import { runawayRiichi } from "../src/augments/runaway_riichi.js";
+import { soulStrike } from "../src/augments/soul_strike.js";
 import { pickyEater } from "../src/augments/picky_eater.js";
 
 const NEW_AUGMENTS: AugmentDef[] = [
@@ -28,7 +28,7 @@ const NEW_AUGMENTS: AugmentDef[] = [
   blindRon,
   doraAfterimage,
   signFlip,
-  runawayRiichi,
+  soulStrike,
   pickyEater,
 ];
 
@@ -74,7 +74,7 @@ function playOneRound(aug: AugmentDef, seed: number): void {
     const prompt = status.prompts[0]!;
     status = flow.submit(prompt.player, decide(prompt.options, usedAug));
   }
-  // guard에 걸려 나왔다면 소프트락이다 (폭주 리치의 턴 고정이 안 풀린 경우)
+  // guard에 걸려 나왔다면 소프트락이다 (영혼의 일격의 턴 고정이 안 풀린 경우)
   expect(status.kind).toBe("roundOver");
 }
 

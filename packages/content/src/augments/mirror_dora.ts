@@ -47,7 +47,7 @@ export const mirrorDora: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
-  name: "거울의 도라",
+  name: "거울",
   description:
     "(상시) 도라 표시패의 앞 패도 나에게만 도라가 된다 — 표시패가 5통이면 6통과 함께 4통도 내 도라다. 깡도라·뒷도라 표시패에도 똑같이 적용된다.",
   detail:

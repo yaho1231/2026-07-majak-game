@@ -240,7 +240,7 @@ const ACTION_LABEL: Record<string, string> = {
   north_pull: "북풍 상인 — 북빼기",
   // 2026-08-04 (6차) 신규
   dora_recall: "도라의 잔상 — 되살리기",
-  blitz_riichi: "폭주 리치 — 선언",
+  soul_strike: "영혼의 일격 — 선언",
   picky_unify: "편식 — 단색화",
 };
 
@@ -317,7 +317,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   north_pull: "north_trader",
   // 2026-08-04 (6차) 신규
   dora_recall: "dora_afterimage",
-  blitz_riichi: "runaway_riichi",
+  soul_strike: "soul_strike",
   picky_unify: "picky_eater",
 };
 
@@ -391,7 +391,7 @@ const AUGMENT_ACTION_TYPES = new Set([
   "north_pull",
   // 2026-08-04 (6차) 신규
   "dora_recall",
-  "blitz_riichi",
+  "soul_strike",
   "picky_unify",
 ]);
 
@@ -464,7 +464,7 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "north_trader",
   // 2026-08-04 (6차) 신규 — 액티브 발동이 있는 것만 (나머지 5종은 패시브·자동 발동)
   "dora_afterimage",
-  "runaway_riichi",
+  "soul_strike",
   "picky_eater",
 ]);
 
@@ -526,8 +526,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   conjure_tsumo: "hand",
   // 정적의 손 — 새 탭 없이 실제 바닥패(네 사람 전부)를 직접 클릭해 주울 패를 고른다
   silent_take: "any-river",
-  // 폭주 리치 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
-  blitz_riichi: "hand",
+  // 영혼의 일격 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
+  soul_strike: "hand",
 };
 
 /** 이 액션이 클릭(무장) 방식으로 발동되는지 — 아니면 버튼으로 발동. */
@@ -7018,7 +7018,7 @@ const PILL_NUMBER: Record<string, (n: number) => PillStatus | null> = {
   future_sight: (n) =>
     n > 0 ? { chip: `+${n}판`, note: `이번 국 ${n}번 교환 — 화료하면 +${n}판` } : null,
   // 폭주 리치 — 남은 연속 쯔모 횟수
-  runaway_riichi: (n) =>
+  soul_strike: (n) =>
     n > 0 ? { chip: `${n}쯔모`, note: `연속 쯔모 ${n}번 남음 — 타가가 후로하면 끝난다` } : null,
 };
 

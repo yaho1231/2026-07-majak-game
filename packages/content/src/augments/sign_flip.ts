@@ -49,7 +49,7 @@ export const signFlip: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
-  name: "음양 반전",
+  name: "반전",
   description:
     "뽑는 순간 자동 발동. 이번 국 동안 내 점수의 부호가 뒤집힌다 — 8000점을 쏘이면 뱅크에서 8000점을 받고, 1000점을 벌면 1000점을 빼앗긴다.",
   detail:

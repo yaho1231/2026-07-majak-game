@@ -36,7 +36,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   dora_afterimage: { use: "2국에 1회", text: "직전 국의 도라가 되살아나 이번 국 내 도라로 겹쳐진다." },
   mirror_dora: { use: "상시", text: "도라 표시패의 앞 패도 나에게만 도라가 된다." },
   picky_eater: { use: "2국에 1회", text: "한 무늬만 12장 버리면 손패의 수패를 원하는 한 색으로 바꾼다." },
-  runaway_riichi: { use: "2국에 1회", text: "텐파이에서 리치를 걸고 혼자 연속 5쯔모. 상대가 울면 끝난다." },
+  soul_strike: { use: "2국에 1회", text: "리치(2판)를 걸고 혼자 연속 6쯔모. 그 사이 쯔모 화료는 일발." },
   sign_flip: { use: "이번 국만", text: "이 국에는 내 점수의 부호가 뒤집힌다 — 쏘이면 오히려 받는다." },
   time_pressure: { use: "이번 국만", text: "이 국에는 전원의 모든 결정이 5초 제한이다. 나도 포함이다." },
   alchemist: { use: "게임 5회", text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 된다." },
