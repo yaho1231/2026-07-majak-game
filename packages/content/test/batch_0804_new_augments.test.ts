@@ -38,7 +38,7 @@ import { timePressure, TIME_PRESSURE_SECONDS } from "../src/augments/time_pressu
 import { blindRon } from "../src/augments/blind_ron.js";
 import { doraAfterimage } from "../src/augments/dora_afterimage.js";
 import { signFlip } from "../src/augments/sign_flip.js";
-import { runawayRiichi } from "../src/augments/runaway_riichi.js";
+import { soulStrike } from "../src/augments/soul_strike.js";
 import { pickyEater, questProgress } from "../src/augments/picky_eater.js";
 
 // ─────────────────────────── 공용 하네스 ───────────────────────────
@@ -117,9 +117,9 @@ function settleRon(
   return lastSettled(flow);
 }
 
-// ─────────────────────────── 1. 거울의 도라 ───────────────────────────
+// ─────────────────────────── 1. 거울 ───────────────────────────
 
-describe("거울의 도라 (mirror_dora)", () => {
+describe("거울 (mirror_dora)", () => {
   it("표시패의 '앞'은 표준 도라의 정확한 역방향 순환이다", () => {
     expect(frontDoraKindFor({ suit: "pin", rank: 5 })).toEqual({ suit: "pin", rank: 4 });
     expect(frontDoraKindFor({ suit: "man", rank: 1 })).toEqual({ suit: "man", rank: 9 });
@@ -172,9 +172,9 @@ describe("거울의 도라 (mirror_dora)", () => {
   });
 });
 
-// ─────────────────────────── 2. 화수분 ───────────────────────────
+// ─────────────────────────── 2. 수상한 주사위 ───────────────────────────
 
-describe("화수분 (cornucopia)", () => {
+describe("수상한 주사위 (cornucopia)", () => {
   const newGame = (): ReturnType<typeof createStandardGame> =>
     createStandardGame({ seed: 7, extraAugments: contentAugments });
 
@@ -277,9 +277,9 @@ describe("눈먼 총알 (blind_ron)", () => {
   });
 });
 
-// ─────────────────────────── 5. 도라의 잔상 ───────────────────────────
+// ─────────────────────────── 5. 잔상 ───────────────────────────
 
-describe("도라의 잔상 (dora_afterimage)", () => {
+describe("잔상 (dora_afterimage)", () => {
   it("되살린 도라가 이번 국의 도라 위에 겹쳐 붙는다", () => {
     const base = ronScene();
     // 이번 국 표시패와 무관한 종류(2s)를 '직전 국의 도라'로 심는다.
@@ -307,9 +307,9 @@ describe("도라의 잔상 (dora_afterimage)", () => {
   });
 });
 
-// ─────────────────────────── 6. 음양 반전 ───────────────────────────
+// ─────────────────────────── 6. 반전 ───────────────────────────
 
-describe("음양 반전 (sign_flip)", () => {
+describe("반전 (sign_flip)", () => {
   it("보유자가 쏘이면 잃는 대신 같은 금액을 얻는다 (상대는 정상)", () => {
     // p1이 보유자다 — p0에게 쏘여 잃을 자리에서 반대로 받는다
     const base = ronScene();
@@ -350,11 +350,11 @@ describe("음양 반전 (sign_flip)", () => {
   });
 });
 
-// ─────────────────────────── 7. 폭주 리치 ───────────────────────────
+// ─────────────────────────── 7. 영혼의 일격 ───────────────────────────
 
-describe("폭주 리치 (runaway_riichi)", () => {
+describe("영혼의 일격 (soul_strike)", () => {
   /** p0가 자기 순(turn.act)에 텐파이로 서 있는 장면 — 9s를 버리면 텐파이 유지 */
-  const blitzScene = (): GameState =>
+  const strikeScene = (): GameState =>
     withAugments(
       craft({
         hands: { p0: "123m123p123s678s99s", p1: "*", p2: "*", p3: "*" },
@@ -363,45 +363,202 @@ describe("폭주 리치 (runaway_riichi)", () => {
         drawnLastFor: "p0",
       }),
       "p0",
-      ["runaway_riichi"],
+      ["soul_strike"],
     );
+
+  const activeKey = (s: GameState): string => `soul_strike:active:${roundKeyOf(s)}:p0`;
+  const leftKey = (s: GameState): string => `soul_strike:left:${roundKeyOf(s)}:p0`;
 
   function start(state: GameState) {
     const game = createStandardGameFromState(state);
-    installAugment(game.engine, runawayRiichi, "p0", { yaku: game.yaku });
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
     const flow = new FlowController(game.engine);
     flow.begin();
     return { game, flow };
   }
 
-  it("발동하면 리치가 걸리고 남은 연속 쯔모가 5로 선다", () => {
-    const { game, flow } = start(blitzScene());
+  it("발동하면 리치가 걸리고 연속 쯔모가 6으로 선다", () => {
+    const { game, flow } = start(strikeScene());
     const tileId = game.engine.state.zones["hand:p0"]?.tileIds.at(-1) as TileId;
-    flow.submit("p0", { type: "blitz_riichi", payload: { tileId } });
-    expect(game.engine.state.round.byPlayer["p0"]?.riichi).not.toBeNull();
-    const left =
-      game.engine.state.augmentData[
-        `runaway_riichi:left:${roundKeyOf(game.engine.state)}:p0`
-      ];
-    // 선언 직후 이미 한 장을 뽑았을 수 있으므로 5 이하 4 이상
-    expect(typeof left === "number" && left <= 5 && left >= 4).toBe(true);
+    flow.submit("p0", { type: "soul_strike", payload: { tileId } });
+    const st = game.engine.state;
+    expect(st.round.byPlayer["p0"]?.riichi).not.toBeNull();
+    expect(st.augmentData[activeKey(st)]).toBe(true);
+    // 선언 직후 이미 첫 장을 뽑았으므로 6 또는 5
+    const left = st.augmentData[leftKey(st)];
+    expect(typeof left === "number" && left <= 6 && left >= 5).toBe(true);
   });
 
-  it("남은 횟수가 있는 동안 턴이 보유자에게 고정된다", () => {
-    const state = withData(blitzScene(), {
-      [`runaway_riichi:left:${roundKeyOf(blitzScene())}:p0`]: 3,
-    });
+  it("폭주 중에는 턴이 보유자에게 고정된다", () => {
+    const base = strikeScene();
+    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 3 });
     const game = createStandardGameFromState(state);
-    installAugment(game.engine, runawayRiichi, "p0", { yaku: game.yaku });
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
     emit(game, { type: TURN_PASSED, payload: { nextSeat: 1 } });
     expect(game.engine.state.round.turnSeat).toBe(0);
   });
 
-  it("남은 횟수가 0이면 턴이 정상적으로 넘어간다", () => {
-    const game = createStandardGameFromState(blitzScene());
-    installAugment(game.engine, runawayRiichi, "p0", { yaku: game.yaku });
+  it("폭주가 아니면 턴이 정상적으로 넘어간다", () => {
+    const game = createStandardGameFromState(strikeScene());
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
     emit(game, { type: TURN_PASSED, payload: { nextSeat: 1 } });
     expect(game.engine.state.round.turnSeat).toBe(1);
+  });
+
+  it("남은 횟수 0에서 타패하면 폭주가 끝난다 (하가로 넘어간다)", () => {
+    const base = strikeScene();
+    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 0 });
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+    const tileId = game.engine.state.zones["hand:p0"]?.tileIds[0] as TileId;
+    emit(game, {
+      type: "TileDiscarded",
+      payload: { player: "p0", tileId, riichi: false, riichiCost: 0 },
+    });
+    const st = game.engine.state;
+    expect(st.augmentData[activeKey(st)]).toBe(false);
+    // 고정이 풀렸으니 턴 넘김이 그대로 통과한다
+    emit(game, { type: TURN_PASSED, payload: { nextSeat: 1 } });
+    expect(game.engine.state.round.turnSeat).toBe(1);
+  });
+
+  it("남은 횟수가 남아 있으면 타패해도 폭주가 계속된다", () => {
+    const base = strikeScene();
+    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 2 });
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+    const tileId = game.engine.state.zones["hand:p0"]?.tileIds[0] as TileId;
+    emit(game, {
+      type: "TileDiscarded",
+      payload: { player: "p0", tileId, riichi: false, riichiCost: 0 },
+    });
+    expect(game.engine.state.augmentData[activeKey(game.engine.state)]).toBe(true);
+  });
+
+  it("6장을 다 뽑은 뒤의 쯔모는 횟수를 더 소모하지 않는다 (안깡 연장)", () => {
+    const base = strikeScene();
+    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 0 });
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+    // 영상 쯔모는 왕패에서 나온다 — 리듀서가 실물을 옮기므로 실제 왕패 패를 쓴다
+    const tileId = game.engine.state.zones[DEAD_WALL]?.tileIds[0] as TileId;
+    emit(game, {
+      type: "TileDrawn",
+      payload: { player: "p0", tileId, rinshan: true },
+    });
+    const st = game.engine.state;
+    expect(st.augmentData[leftKey(st)]).toBe(0);
+    expect(st.augmentData[activeKey(st)]).toBe(true);
+  });
+
+  it("폭주 중 쯔모하면 일발이 되살아난다", () => {
+    const base = strikeScene();
+    const state: GameState = withData(
+      {
+        ...base,
+        round: {
+          ...base.round,
+          byPlayer: {
+            ...base.round.byPlayer,
+            // 리치를 걸고 이미 한 번 버려 일발이 꺼진 상태
+            p0: {
+              ...base.round.byPlayer["p0"]!,
+              riichi: { double: false, ippatsu: false, discardIndex: 0, cost: 1000 },
+            },
+          },
+        },
+      },
+      { [activeKey(base)]: true, [leftKey(base)]: 3 },
+    );
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+    const tileId = game.engine.state.zones[WALL]?.tileIds[0] as TileId;
+    emit(game, {
+      type: "TileDrawn",
+      payload: { player: "p0", tileId, rinshan: false },
+    });
+    expect(game.engine.state.round.byPlayer["p0"]?.riichi?.ippatsu).toBe(true);
+  });
+
+  it("타가가 후로하면 폭주가 즉시 끝난다", () => {
+    // p0가 버린 5p를 p1이 퐁하는 실제 장면 — 후로 절차를 그대로 태운다
+    const base = withAugments(
+      craft({
+        hands: { p0: "*", p1: "55p123m456m789m1s", p2: "*", p3: "*" },
+        phase: "reaction",
+        turnSeat: 0,
+        lastDiscard: { player: "p0", spec: "5p" },
+      }),
+      "p0",
+      ["soul_strike"],
+    );
+    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 4 });
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const pon = status.prompts
+      .find((pr) => pr.player === "p1")
+      ?.options.find((o) => o.type === "pon");
+    expect(pon).toBeDefined();
+    flow.submit("p1", pon!);
+    expect(game.engine.state.augmentData[activeKey(game.engine.state)]).toBe(false);
+  });
+
+  it("이 리치로 화료하면 리치를 2판으로 취급한다 (+1판만큼 점수가 오른다)", () => {
+    const base = ronScene();
+    const declared = `soul_strike:declared:${roundKeyOf(base)}:p0`;
+    const plain = settleRon(base);
+    const boosted = settleRon(
+      withData(withAugments(base, "p0", ["soul_strike"]), { [declared]: true }),
+      (game) => {
+        installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+      },
+    );
+    // 뱅크 발행이라 상대가 더 내지는 않는다 — 내 수령만 늘어난다
+    expect(boosted.deltas["p0"] ?? 0).toBeGreaterThan(plain.deltas["p0"] ?? 0);
+    expect(boosted.deltas["p1"]).toBe(plain.deltas["p1"]);
+  });
+
+  it("발동하지 않은 국에는 판수 보너스가 붙지 않는다", () => {
+    const base = ronScene();
+    const plain = settleRon(base);
+    const same = settleRon(withAugments(base, "p0", ["soul_strike"]), (game) => {
+      installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+    });
+    expect(same.deltas["p0"]).toBe(plain.deltas["p0"]);
+  });
+
+  it("실제로 여섯 번 연달아 뽑고, 여섯째를 버리면 하가로 넘어간다", () => {
+    const { game, flow } = start(strikeScene());
+    const tileId = game.engine.state.zones["hand:p0"]?.tileIds.at(-1) as TileId;
+    let status = flow.submit("p0", { type: "soul_strike", payload: { tileId } });
+
+    // 아무도 울지 않고(패스) 화료도 하지 않는 진행 — 폭주만 흘려 본다
+    let guard = 0;
+    while (status.kind === "awaiting" && guard++ < 200) {
+      const prompt = status.prompts[0]!;
+      if (prompt.player !== "p0") break; // 턴이 남에게 넘어갔다 = 폭주 종료
+      const pass = prompt.options.find((o) => o.type === "pass");
+      const discard = prompt.options.find((o) => o.type === "discard");
+      const next = pass ?? discard;
+      if (next === undefined) break;
+      status = flow.submit(prompt.player, next);
+    }
+
+    // 이벤트 로그에서 p0의 패산 쯔모 횟수를 센다 (선언 직후 첫 장부터)
+    const log = (flow as unknown as { engine: { eventLog: GameEvent[] } }).engine.eventLog;
+    const draws = log.filter(
+      (e) =>
+        e.type === "TileDrawn" &&
+        (e.payload as { player: PlayerId; rinshan: boolean }).player === "p0" &&
+        !(e.payload as { rinshan: boolean }).rinshan,
+    );
+    expect(draws).toHaveLength(6);
+    // 폭주가 끝나 있고, 턴은 더 이상 p0에 묶여 있지 않다
+    const st = game.engine.state;
+    expect(st.augmentData[activeKey(st)]).toBe(false);
   });
 
   it("텐파이가 아니면 후보가 아예 뜨지 않는다", () => {
@@ -413,13 +570,13 @@ describe("폭주 리치 (runaway_riichi)", () => {
         drawnLastFor: "p0",
       }),
       "p0",
-      ["runaway_riichi"],
+      ["soul_strike"],
     );
     const { flow } = start(broken);
     const status = flow.begin();
     if (status.kind !== "awaiting") throw new Error("expected awaiting");
     const mine = status.prompts.find((pr) => pr.player === "p0");
-    expect(mine?.options.some((o) => o.type === "blitz_riichi")).toBe(false);
+    expect(mine?.options.some((o) => o.type === "soul_strike")).toBe(false);
   });
 });
 

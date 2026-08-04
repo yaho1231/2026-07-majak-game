@@ -1004,13 +1004,13 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     f: 5,
     note: "표시패의 앞도 내 도라 — 상시로 도라 밀도가 두 배. 상대는 흘리지 않는 것 말고 대응이 없다",
   },
-  runaway_riichi: {
+  soul_strike: {
     tier: "S",
-    p: 3,
+    p: 4,
     s: 5,
     u: 4,
     f: 3,
-    note: "리치 + 연속 5쯔모. 텐파이 손이 다섯 순을 당겨 온다 — 후로로 끊는 대응은 있다",
+    note: "리치(2판·더블 3판) + 연속 6쯔모, 그 사이 쯔모 화료는 전부 일발. 후로로 끊는 대응은 있다",
   },
   sign_flip: {
     tier: "A",

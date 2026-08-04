@@ -151,7 +151,7 @@ import { timePressure } from "./augments/time_pressure.js";
 import { blindRon } from "./augments/blind_ron.js";
 import { doraAfterimage } from "./augments/dora_afterimage.js";
 import { signFlip } from "./augments/sign_flip.js";
-import { runawayRiichi } from "./augments/runaway_riichi.js";
+import { soulStrike } from "./augments/soul_strike.js";
 import { pickyEater } from "./augments/picky_eater.js";
 
 export {
@@ -265,7 +265,7 @@ export {
   blindRon,
   doraAfterimage,
   signFlip,
-  runawayRiichi,
+  soulStrike,
   pickyEater,
 };
 
@@ -398,6 +398,6 @@ export const contentAugments: AugmentDef[] = [
   blindRon, // 눈먼 총알 — 이번 국 모든 론이 무작위 대상에게
   doraAfterimage, // 도라의 잔상 — 직전 국의 도라를 되살린다
   signFlip, // 음양 반전 — 이번 국 내 점수의 부호가 뒤집힌다
-  runawayRiichi, // 폭주 리치 — 리치 + 연속 5쯔모
+  soulStrike, // 영혼의 일격 — 리치(2판) + 연속 6쯔모
   pickyEater, // 편식 — 한 무늬만 12장 버리면 단색 세계
 ];
