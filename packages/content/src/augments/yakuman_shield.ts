@@ -85,7 +85,13 @@ export const yakumanShield: AugmentDef = defineAugment({
 
       // 손실 전액 환급 → 보유자 손실 0. 환급분은 화료자 이득 한도까지 차감하고,
       // 부족분은 뱅크가 발행한다(제로섬 불변식은 아니다 — 프로젝트 허용).
-      const refund = -loss;
+      // 환급 상한은 **그 역만 화료의 값**이다. 예전에는 그 국의 합산 손실(deltas)
+      // 전액을 되돌려, 더블론에서 함께 난 평범한 화료(3900)까지 무효화되고 다른
+      // 증강이 뜯어간 이동액도 함께 환급됐다(docs/25 국면 #4).
+      // points는 본장·공탁을 제외한 화료 획득점이다. 본장 부담까지 막을 필요는
+      // 없으므로(역만을 막는 능력이지 본장을 막는 능력이 아니다) 그대로 상한으로 쓴다.
+      const cap = bigWin.points;
+      const refund = Math.min(-loss, cap);
       const winnerGain = p.deltas[bigWin.winner] ?? 0;
       const deduct = Math.min(refund, Math.max(0, winnerGain));
 

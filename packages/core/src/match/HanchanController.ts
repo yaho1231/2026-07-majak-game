@@ -179,6 +179,8 @@ export function agariYameTriggers(
   post: {
     prevalentWind: number;
     roundNumber: number;
+    /** 정산 **후**의 오야 자리 — 오야를 옮기는 증강이 있으면 played와 달라진다 */
+    dealerSeat: number;
     players: { seat: number; score: number }[];
   },
 ): boolean {
@@ -189,8 +191,13 @@ export function agariYameTriggers(
   const renchan =
     post.prevalentWind === played.wind && post.roundNumber === played.roundNumber;
   if (!renchan) return false;
-  // 오야가 단독 1위인가
-  const dealer = post.players.find((p) => p.seat === played.dealerSeat);
+  // 오야가 단독 1위인가 — **정산 후** 오야 자리로 본다.
+  //
+  // 만년 오야·찬탈자처럼 오야 자리를 옮기는 증강이 있으면 "연장한 사람"과
+  // "점수를 조회하는 사람"이 서로 달라진다. 예전에는 국 시작 시점의 오야를 봐서,
+  // 남4국에 p2가 연장했는데 p0의 점수로 아가리야메를 판정해 **엉뚱한 사람의
+  // 1위로 게임이 끝나거나**, 반대로 끝나야 할 게임이 안 끝났다(docs/25 국면 #5).
+  const dealer = post.players.find((p) => p.seat === post.dealerSeat);
   if (dealer === undefined) return false;
   const top = Math.max(...post.players.map((p) => p.score));
   return dealer.score === top && post.players.filter((p) => p.score === top).length === 1;
@@ -1107,6 +1114,7 @@ export class HanchanController {
     return agariYameTriggers(this.config.agariYame, this.config.maxWind, played, {
       prevalentWind: state.round.prevalentWind,
       roundNumber: state.round.roundNumber,
+      dealerSeat: state.round.dealerSeat,
       players: state.players.map((p) => ({ seat: p.seat, score: p.score })),
     });
   }

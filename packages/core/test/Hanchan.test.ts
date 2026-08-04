@@ -631,6 +631,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
         prevalentWind: 2,
         roundNumber: 4,
+        dealerSeat: 0,
         players: scores(40000, 20000, 20000, 20000),
       }),
     ).toBe(true);
@@ -641,6 +642,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(true, 1, { wind: 1, roundNumber: 4, dealerSeat: 0 }, {
         prevalentWind: 1,
         roundNumber: 4,
+        dealerSeat: 0,
         players: scores(40000, 20000, 20000, 20000),
       }),
     ).toBe(true);
@@ -651,6 +653,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
         prevalentWind: 2,
         roundNumber: 4,
+        dealerSeat: 0,
         players: scores(20000, 40000, 20000, 20000),
       }),
     ).toBe(false);
@@ -661,6 +664,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
         prevalentWind: 2,
         roundNumber: 4,
+        dealerSeat: 0,
         players: scores(35000, 35000, 15000, 15000),
       }),
     ).toBe(false);
@@ -671,6 +675,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
         prevalentWind: 3, // 서1로 넘어감 = 오야 교대
         roundNumber: 1,
+        dealerSeat: 1, // 오야가 다음 자리로 넘어갔다
         players: scores(40000, 20000, 20000, 20000),
       }),
     ).toBe(false);
@@ -681,6 +686,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(true, 2, { wind: 2, roundNumber: 3, dealerSeat: 0 }, {
         prevalentWind: 2,
         roundNumber: 3,
+        dealerSeat: 0,
         players: scores(40000, 20000, 20000, 20000),
       }),
     ).toBe(false);
@@ -691,6 +697,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(true, 2, { wind: 1, roundNumber: 4, dealerSeat: 0 }, {
         prevalentWind: 1,
         roundNumber: 4,
+        dealerSeat: 0,
         players: scores(40000, 20000, 20000, 20000),
       }),
     ).toBe(false);
@@ -701,8 +708,60 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
       agariYameTriggers(false, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
         prevalentWind: 2,
         roundNumber: 4,
+        dealerSeat: 0,
         players: scores(40000, 20000, 20000, 20000),
       }),
+    ).toBe(false);
+  });
+});
+
+/**
+ * 오야 자리를 옮기는 증강(만년 오야·찬탈자)과 아가리야메 (docs/25 국면 #5).
+ *
+ * 연장 판정은 "정산 후 장풍·국번이 그대로"인데, 1위 조회는 **국 시작 시점의 오야**를
+ * 봤다. 오야 자리가 옮겨가면 연장한 사람과 점수를 조회하는 사람이 서로 달라진다.
+ */
+describe("아가리야메 — 오야 자리가 옮겨가는 경우", () => {
+  const scores2 = (s0: number, s1: number, s2: number, s3: number) => [
+    { seat: 0, score: s0 },
+    { seat: 1, score: s1 },
+    { seat: 2, score: s2 },
+    { seat: 3, score: s3 },
+  ];
+
+  it("연장한 새 오야가 단독 1위면 종국이다", () => {
+    // 남4국: 시작 오야는 자리 0이었지만 정산 후 오야가 자리 2로 옮겨갔고,
+    // 자리 2가 단독 1위다 → 연장한 본인이 1위이므로 종국.
+    expect(
+      agariYameTriggers(
+        true,
+        2,
+        { wind: 2, roundNumber: 4, dealerSeat: 0 },
+        {
+          prevalentWind: 2,
+          roundNumber: 4,
+          dealerSeat: 2,
+          players: scores2(20000, 20000, 40000, 20000),
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("옛 오야가 1위여도 새 오야가 1위가 아니면 종국이 아니다", () => {
+    // 예전에는 played.dealerSeat(자리 0)의 점수를 봐서 **엉뚱한 사람의 1위**로
+    // 게임이 끝났다.
+    expect(
+      agariYameTriggers(
+        true,
+        2,
+        { wind: 2, roundNumber: 4, dealerSeat: 0 },
+        {
+          prevalentWind: 2,
+          roundNumber: 4,
+          dealerSeat: 2,
+          players: scores2(40000, 20000, 20000, 20000),
+        },
+      ),
     ).toBe(false);
   });
 });

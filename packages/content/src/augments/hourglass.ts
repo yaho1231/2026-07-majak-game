@@ -166,6 +166,11 @@ export const hourglass: AugmentDef = defineAugment({
       if (!flagOf(state, openedKey(state, holder))) return event;
       // 패산이 다 마르면 연장이 끝난 것이므로 그대로 둔다
       if ((state.zones[WALL]?.tileIds.length ?? 0) === 0) return event;
+      // **보유자가 버린 뒤**에만 턴을 되가져온다. 누가 버렸는지 보지 않으면,
+      // 연장 중 상대가 보유자의 버림을 울어 한 장 버렸을 때 그 턴까지 빼앗아
+      // 그 상대는 쯔모를 한 번도 못 받고 손패만 줄어든 채 국이 끝났다
+      // (docs/25 방해 #17). 후로는 패산을 소모하지 않아 연장이 한 턴 늘기도 했다.
+      if (state.round.lastDiscard?.player !== holder) return event;
       const seat = playerOf(state, holder).seat;
       const p = event.payload as { nextSeat: number };
       if (p.nextSeat === seat) return event;
