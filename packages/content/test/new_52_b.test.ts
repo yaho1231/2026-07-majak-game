@@ -2,7 +2,7 @@
  * 52차 신규 증강 그룹 B 동작 테스트.
  *
  * - silent_swap (정적의 손): 리치 0인 국에서만, 네 명 전원의 바닥에서 1장 회수 + 화료 시 +3판
- * - ankan_dora (봉인된 보물): 리치 중 안깡 1묶음당 score.extraHan +4
+ * - ankan_dora (밀실의 도라): 안깡 1묶음(깡친 네 장)당 score.extraHan +4 (리치 무관)
  * - foresight (예지): 패산 앞 4장 재배열(23개 순열) + 2순 쿨다운 + 화료 시 +3판
  * - rank_gate (격): 국 첫 순에 상대 1명 지목 → 그 사람의 win.minHan = 5
  */
@@ -275,7 +275,7 @@ function ankanScene(ankan: number, riichi: boolean): GameState {
 }
 
 describe("ankan_dora (밀실의 도라)", () => {
-  it("안깡친 종류가 개인 도라가 되어 손패·멜드 매칭 장수만큼 +판 (안깡 1묶음=4장→+4판)", () => {
+  it("안깡 1묶음(깡친 네 장)당 +4판", () => {
     for (const [ankan, expected] of [
       [1, 4],
       [2, 8],
@@ -304,6 +304,53 @@ describe("ankan_dora (밀실의 도라)", () => {
         state: game.engine.state,
       }),
     ).toBe(8);
+  });
+
+  it("도라가 되는 것은 깡에 들어간 네 장뿐 — 손패의 같은 종류에는 붙지 않는다", () => {
+    /*
+     * 2026-08-04 사용자 확정: "그냥 깡치면 도라 4개가 생긴다"는 개념이다.
+     * 예전에는 깡친 **종류**를 개인 도라로 등록하고 손패·후로에서 그 종류를 세어,
+     * 랭크가 섞인 깡(장사진 3-4-5-6·바람의 계보 동남서북)은 첫 종류 하나만 잡히고
+     * 손패에 남은 같은 패에는 값이 붙는 어긋남이 있었다.
+     */
+    /*
+     * 랭크가 섞인 깡(3-4-5-6m) + 손패에 3m 두 장.
+     * 옛 동작: 깡의 첫 종류(3m)만 도라 → 깡 안의 3m 1장 + 손패 3m 2장 = 3판.
+     * 새 동작: 깡에 들어간 네 장이 도라 → 손패 3m은 무관 = 4판.
+     * (같은 패 4장짜리 보통 깡은 5번째 장이 존재할 수 없어 두 동작이 구분되지 않는다.)
+     */
+    const base = craft({
+      hands: { p0: "33m456p789p12s", p1: "*", p2: "*", p3: "*" },
+      melds: { p0: [{ kind: "kan_closed" as const, spec: "3456m" }] },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const game = createStandardGameFromState(withAugments(base, "p0", ["ankan_dora"]));
+    installAugment(game.engine, ankanDora, "p0", { yaku: game.yaku });
+    expect(
+      game.engine.rules.resolve<number>("score.extraHan", {
+        playerId: "p0",
+        state: game.engine.state,
+      }),
+    ).toBe(4);
+  });
+
+  it("랭크가 섞인 깡도 네 장 전부 도라가 된다 (+4판)", () => {
+    // 장사진(3-4-5-6)·바람의 계보(동남서북)처럼 랭크가 섞인 안깡
+    const base = craft({
+      hands: { p0: "456p789p12s3s", p1: "*", p2: "*", p3: "*" },
+      melds: { p0: [{ kind: "kan_closed" as const, spec: "3456m" }] },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const game = createStandardGameFromState(withAugments(base, "p0", ["ankan_dora"]));
+    installAugment(game.engine, ankanDora, "p0", { yaku: game.yaku });
+    expect(
+      game.engine.rules.resolve<number>("score.extraHan", {
+        playerId: "p0",
+        state: game.engine.state,
+      }),
+    ).toBe(4);
   });
 
   it("안깡이 하나도 없으면 판이 붙지 않는다", () => {

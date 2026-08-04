@@ -42,7 +42,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   alchemist: { use: "게임 5회", text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 사용 가능하다." },
   all_or_nothing: { use: MODE_1_2, text: "리치에 내 점수 절반을 건다. 이기면 그만큼 더 받고, 져도 잃지 않는다." },
   always_tenpai: { use: "상시", text: "유국 때 늘 텐파이 취급 — 벌점을 안 내고 노텐인 상대마다 2000점을 받는다." },
-  ankan_dora: { use: "상시", text: "안깡할 때마다 그 패가 나만의 도라가 된다." },
+  ankan_dora: { use: "상시", text: "안깡할 때마다 깡친 네 장이 나만의 도라가 된다(+4판)." },
   aotenjou_ceiling: { use: "상시", text: "내 점수에 상한이 없다. 판이 오르는 만큼 끝없이 커진다." },
   async_chiitoi: { use: "상시", text: "치또이쯔에서 무늬가 달라도 숫자만 같으면 한 쌍이다." },
   avenger: { use: "상시", text: "나를 쏜 상대에게는 후리텐이어도 역이 없어도 론할 수 있다." },
