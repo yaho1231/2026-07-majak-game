@@ -490,14 +490,14 @@ export function addWinPointTransfer(
       // 쯔모 — 표준 분배와 같은 비율. 화료자가 친이면 셋이 똑같이, 자면 친이 2배를 낸다.
       const dealer = playerAtSeat(state, state.round.dealerSeat).id;
       const others = state.players.map((pl) => pl.id).filter((id) => id !== ctx.holder);
-      if (dealer === ctx.holder) {
-        const each = roundUp100(extra / 3);
-        for (const id of others) take(id, each);
-      } else {
-        // 친 2 : 자 1 : 자 1 = 4몫. 100점 단위로 올려 나눈다.
-        const unit = roundUp100(extra / 4);
-        for (const id of others) take(id, id === dealer ? unit * 2 : unit);
-      }
+      // 친이 무거운 쪽이 먼저 오도록 정렬 — 나머지 100점을 결정적으로 배분한다
+      const payers =
+        dealer === ctx.holder
+          ? others.map((id) => ({ id, weight: 1 }))
+          : [...others]
+              .sort((a, b) => (b === dealer ? 1 : 0) - (a === dealer ? 1 : 0))
+              .map((id) => ({ id, weight: id === dealer ? 2 : 1 }));
+      for (const { id, amount } of splitOnGrid(extra, payers)) take(id, amount);
     }
     if (moved === 0) return event;
     deltas[ctx.holder] = (deltas[ctx.holder] ?? 0) + moved;
@@ -513,6 +513,35 @@ export function addWinPointTransfer(
 }
 
 const roundUp100 = (n: number): number => Math.ceil(n / 100) * 100;
+
+/**
+ * 총액을 100점 격자 위에서 가중 분배한다 — **합계가 총액과 정확히 같다**.
+ *
+ * 예전에는 `roundUp100(extra / 3)`을 각자에게 물려서, 이미 100단위로 반올림된
+ * 총액을 **두 번 올림**했다. extra=2500이면 자 쯔모에서 unit=700 → 친 1400 +
+ * 자 700 + 자 700 = 2800이 이동해 계산값보다 300을 더 받았다. 판수가 높을수록
+ * 오차가 쌓이고, 결과창 augPoints(실제 이동액)와 판수 표기의 근거가 어긋난다
+ * (docs/25 역/점수 #12).
+ *
+ * 몫을 100 단위로 내림해 나눈 뒤, 남는 100점을 **무거운 쪽부터** 한 칸씩 얹는다.
+ * 표준 마작이 각 지불을 개별로 올리는 것과는 다르지만, 여기서 나누는 값은 이미
+ * "총 이동액"으로 확정된 수라 총액을 지키는 쪽이 맞다.
+ */
+export function splitOnGrid(
+  total: number,
+  payers: readonly { id: PlayerId; weight: number }[],
+): { id: PlayerId; amount: number }[] {
+  const units = payers.reduce((sum, p) => sum + p.weight, 0);
+  if (units <= 0) return [];
+  const per = Math.floor(total / units / 100) * 100;
+  const out = payers.map((p) => ({ id: p.id, amount: per * p.weight }));
+  let left = total - out.reduce((sum, o) => sum + o.amount, 0);
+  for (let i = 0; left >= 100 && out.length > 0; i = (i + 1) % out.length) {
+    (out[i] as { amount: number }).amount += 100;
+    left -= 100;
+  }
+  return out;
+}
 
 /**
  * "+N판"을 정산 시점 뱅크 점수로 환산한다 — 실제 화료 점수(info.points)와
