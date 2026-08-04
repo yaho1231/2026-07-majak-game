@@ -646,7 +646,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     s: 3,
     u: 4,
     f: 4,
-    note: "국당 1회 무늬 1장 변경. 확실하지만 폭이 좁다",
+    note: "무늬 변환 5회(게임 전체). 확실하지만 한 번에 1장씩이라 폭이 좁다",
   },
   unification: {
     tier: "B",

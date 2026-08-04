@@ -132,7 +132,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   tanyao_break: { use: "상시", text: "자패만 없으면 1·9가 섞여도 탕야오. 게다가 2판으로 값한다." },
   tenpai_scan: { use: MODE_1_2, text: "지금 텐파이인 상대가 누구인지 나에게만 알려 준다." },
   three_dragons_will: { use: MODE_1_2, text: "백·발·중 중 둘이 커쯔면 남은 한 장을 커쯔로 완성해 준다." },
-  tile_dyeing: { use: "매 국 1회", text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다." },
+  tile_dyeing: { use: "게임 5회", text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다. 리치 중에도 된다." },
   tile_split: { use: MODE_1_2, text: "손패의 수패 1장을 합이 같은 두 장으로 쪼갠다(9통 → 4통+5통)." },
   time_stop: { use: "매 국 1회", text: "그 국에서 내 차례를 한 번 더 진행한다." },
   triple_peek: { use: "매 국 1회", text: "내 다음 쯔모 세 장이 무엇인지 나에게만 보인다." },

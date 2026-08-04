@@ -1,13 +1,15 @@
 /**
  * 염색 (tile_dyeing, gold).
- * 국당 1회, 자기 턴에 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(3만→3통).
+ * 게임 전체 5회, 자기 턴에 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(3만→3통).
  * 변환은 전원 공개, 리치 중에도 사용할 수 있다. 혼일색·삼색 빌드의 윤활유.
  *
- * 구현: red_five_touch/suit_unify 패턴. holderTurnOptions로 손패 수패×다른 무늬
- * 후보(≤26)를 열거, TileKindChanged(conjured)로 변환. roundKey 국당 1회 플래그.
+ * 구현: 연금술사(alchemist)와 같은 자원 구조 — 게임 단위 카운터 5회 + 한 순 1회 제한 +
+ * 남은 횟수 뷰 채널. holderTurnOptions로 손패 수패×다른 무늬 후보(≤26)를 열거,
+ * TileKindChanged(conjured)로 변환한다.
  */
 
 import {
+  TILE_DRAWN,
   augmentDataSet,
   defineAugment,
   handIdsOf,
@@ -23,15 +25,37 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey } from "../util.js";
+import { counterOf, roundKey, viewKey } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 
 const ID = "tile_dyeing";
 const ACTION = "tile_dye";
+const MAX_USES = 5;
 const SUITS = ["man", "pin", "sou"] as const;
 type NumSuit = (typeof SUITS)[number];
-const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+
+/** 게임 전체 사용 횟수 (국을 넘어 누적된다) */
+const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
+/** 마지막으로 사용한 '턴'의 서명 (한 턴에 한 번만 쓰게 막는다) */
+const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
+/** 남은 횟수를 보유자 화면에 노출하는 채널 — 게임 스코프라 국 스코프 키를 쓰지 않는다. */
+const leftViewKey = (h: PlayerId): string => viewKey(h, `${ID}:left`);
+const usesLeft = (state: GameState, h: PlayerId): number =>
+  Math.max(0, MAX_USES - counterOf(state, usedKey(h)));
+
+/**
+ * 이 국에서 보유자의 현재 턴을 식별하는 서명 (연금술사와 동일).
+ * 매 턴은 정확히 버림 한 번으로 끝나므로 (국 + 버림 수)로 턴을 유일하게 식별한다.
+ */
+function currentTurnSig(state: GameState, h: PlayerId): string {
+  const discards = state.round.byPlayer[h]?.discardedKinds.length ?? 0;
+  return `${roundKey(state)}:${discards}`;
+}
+
+/** 보유자가 이번 턴에 이미 염색을 썼는가 */
+function usedThisTurn(state: GameState, h: PlayerId): boolean {
+  return state.augmentData[turnUsedKey(h)] === currentTurnSig(state, h);
+}
 
 const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
   type: ACTION,
@@ -46,7 +70,8 @@ const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
     }
     // 48차 무페널티: 리치 중 사용 금지 해제 — 리치 여부는 더 이상 보지 않는다.
     // (검사를 return null로 바꾸면 아래 한도·손패 검증이 통째로 건너뛰어지므로 삭제한다.)
-    if (flagOf(state, usedKey(state, req.player))) return "already used this round";
+    if (counterOf(state, usedKey(req.player)) >= MAX_USES) return "no uses left";
+    if (usedThisTurn(state, req.player)) return "already used this turn";
     if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
       return "tile not in hand";
     }
@@ -65,7 +90,11 @@ const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
           attrs: { conjured: true },
         },
       ]),
-      augmentDataSet(usedKey(state, req.player), true),
+      augmentDataSet(usedKey(req.player), counterOf(state, usedKey(req.player)) + 1),
+      // 이번 턴에 썼음을 기록 → 같은 턴 재사용 차단 (버림으로 턴이 넘어가면 자동 해제)
+      augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
+      // 남은 횟수 갱신 (위 usedKey 증가를 반영해 -1)
+      augmentDataSet(leftViewKey(req.player), usesLeft(state, req.player) - 1),
     ];
   },
 };
@@ -76,9 +105,9 @@ export const tileDyeing: AugmentDef = defineAugment({
   category: "hand",
   name: "염색",
   description:
-    "(매 국 1회) 자기 순에 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",
+    "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",
   detail:
-    "(매 국 1회) 자기 순에 손패의 수패 1장을 숫자는 그대로 둔 채 다른 무늬로 바꾼다. 리치 중에도 쓸 수 있다. 바뀐 패는 전원에게 공개되고 자패는 대상이 아니다.",
+    "(게임 내 5회 — 남은 횟수는 증강 표식에 상시 표시된다) 자기 순에 손패의 수패 1장을 숫자는 그대로 둔 채 다른 무늬로 바꾼다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 바뀐 패는 전원에게 공개되고 자패는 대상이 아니다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -86,7 +115,18 @@ export const tileDyeing: AugmentDef = defineAugment({
       engine.actions.register(dyeAction);
     }
 
+    // 남은 횟수 채널 동기화 — 연금술사와 같은 이유로 ROUND_STARTED가 아니라 쯔모에 건다
+    // (게임 시작 드래프트는 1국 배패 뒤에 설치돼 첫 국 내내 채널이 비어 버린다).
+    ctx.reaction(TILE_DRAWN, (_event, rc) => {
+      const left = usesLeft(rc.state, holder);
+      if (rc.state.augmentData[leftViewKey(holder)] === left) return;
+      rc.emit(augmentDataSet(leftViewKey(holder), left));
+    });
+
     ctx.holderTurnOptions((state) => {
+      if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];
+      if (usedThisTurn(state, holder)) return []; // 한 턴에 한 번만
+
       const opts: { type: string; payload: { tileId: TileId; suit: NumSuit } }[] = [];
       for (const id of handIdsOf(state, holder)) {
         const k = kindOf(state, id);
@@ -98,7 +138,7 @@ export const tileDyeing: AugmentDef = defineAugment({
       return opts;
     });
   },
-  // 수패 1장의 무늬를 바꿔 고립패를 짝·슌쯔(또는 혼일·청일)에 붙인다(국당 1회).
+  // 수패 1장의 무늬를 바꿔 고립패를 짝·슌쯔(또는 혼일·청일)에 붙인다(게임당 5회).
   // 실제로 손이 나아지는 변경이 있을 때만 발동한다.
   bot: {
     choose({ options, view, holder }) {
