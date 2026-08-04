@@ -1701,15 +1701,46 @@ button {
 }
 .rinshan-pick-skip:hover { background: rgba(255, 255, 255, 0.16); }
 
-/* 예지 — 드래그 재배열 모달 */
-.foresight-drag {
+/* 예지 — 액티브 증강 버튼 옆 '다음 패' 스트립 (모달을 대체, 2026-08-04).
+   공개된 패는 뽑힐 때까지 계속 여기 남고, 재배열이 열려 있을 때만 드래그된다. */
+.foresight-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(199, 188, 255, 0.45);
+  background: rgba(58, 43, 99, 0.55);
+}
+.foresight-strip-tag {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #c7bcff;
+  white-space: nowrap;
+}
+.foresight-strip-tiles {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.foresight-drag .foresight-cell {
   cursor: grab;
 }
 .foresight-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px;
+  border-radius: 8px;
+  border: 1px solid transparent;
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
 }
-.foresight-cell:hover {
-  transform: translateY(-4px);
+.foresight-drag .foresight-cell:hover {
+  transform: translateY(-3px);
   border-color: rgba(199, 188, 255, 0.9);
 }
 .foresight-cell.foresight-dragging {
@@ -1718,12 +1749,50 @@ button {
 }
 .foresight-cell.foresight-mine {
   border-color: rgba(130, 215, 245, 0.95);
-  box-shadow: 0 0 18px rgba(118, 201, 233, 0.55);
+  box-shadow: 0 0 14px rgba(118, 201, 233, 0.5);
 }
-.foresight-cell.foresight-mine .rinshan-pick-label {
+.foresight-cell-label {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: rgba(226, 199, 147, 0.95);
+}
+.foresight-cell.foresight-mine .foresight-cell-label {
   color: #ece4d2;
 }
-.foresight-actions {
+.foresight-strip-hint {
+  font-size: 11px;
+  color: rgba(226, 199, 147, 0.8);
+  white-space: nowrap;
+}
+.foresight-strip-confirm {
+  padding: 5px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(199, 188, 255, 0.8);
+  background: rgba(165, 145, 255, 0.35);
+  color: #f7f3e8;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.foresight-strip-confirm:hover {
+  background: rgba(165, 145, 255, 0.55);
+}
+/* 좁은 화면 — 안내 문구는 접고 패와 자리 라벨만 남긴다 (패가 먼저다) */
+@media (max-width: 700px) {
+  .foresight-strip {
+    padding: 3px 7px;
+    gap: 6px;
+  }
+  .foresight-strip-hint {
+    display: none;
+  }
+}
+
+/* 증강 모달의 확정/취소 줄 (왕패의 주인 등). 예전엔 예지 모달과 클래스를 공유했다. */
+.aug-modal-actions {
   display: flex;
   gap: 12px;
   justify-content: center;
@@ -1731,7 +1800,7 @@ button {
   margin-top: 16px;
   flex-wrap: wrap;
 }
-.foresight-confirm {
+.aug-modal-confirm {
   width: auto;
   flex-direction: row;
   padding: 10px 22px;
@@ -1742,11 +1811,11 @@ button {
   background: rgba(165, 145, 255, 0.35);
   cursor: pointer;
 }
-.foresight-confirm:hover:not(:disabled) {
+.aug-modal-confirm:hover:not(:disabled) {
   background: rgba(165, 145, 255, 0.5);
   transform: translateY(-2px);
 }
-.foresight-confirm:disabled {
+.aug-modal-confirm:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -4834,6 +4903,11 @@ button {
 .own-aug {
   position: relative;
   display: flex;
+  align-items: center;
+  /* 예지 스트립이 붙으면 좁은 화면에서 한 줄에 다 안 들어간다 — 넘치지 말고 접힌다 */
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
 }
 
 .aug-btn {

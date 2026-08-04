@@ -9306,11 +9306,9 @@ function ActiveAugmentControl(props: {
   const [modalPick, setModalPick] = useState<number[]>([]);
   // 왕패의 주인 — 확정 전까지 쌓아 두는 교환 쌍 (손패 ↔ 왕패 자리). 남은 횟수만큼 담긴다.
   const [dwPairs, setDwPairs] = useState<{ handTileId: number; deadIndex: number }[]>([]);
-  // 예지 — 발동(공개) 후 드래그 재배열. arr[newPos] = 원래 인덱스. null=모달 닫힘.
+  // 예지 — 재배열 드래그 중인 순서. arr[newPos] = 원래 인덱스. null이면 손대지 않은 상태.
   const [foresightArr, setForesightArr] = useState<number[] | null>(null);
   const [foresightDragFrom, setForesightDragFrom] = useState<number | null>(null);
-  // 이번 공개에 대해 모달을 이미 닫았는지 — 다시 자동으로 열리지 않게 한다.
-  const foresightClosedRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
   // 메뉴가 열려 있을 때 바깥을 누르면 닫는다 (실수로 눌러도 다른 곳 클릭으로 취소)
   useEffect(() => {
@@ -9337,7 +9335,8 @@ function ActiveAugmentControl(props: {
       o.type !== "future_exchange",
   );
 
-  // 예지 — 발동(공개) 후 앞 4장 kind. 훅은 조기 반환보다 위에 있어야 한다(Rules of Hooks).
+  // 예지 — 공개된 패산 앞 장들의 kind (뽑히는 대로 앞에서 한 장씩 줄어든다).
+  // 훅은 조기 반환보다 위에 있어야 한다(Rules of Hooks).
   const foresightPeek = useMemo<TileKind[]>(() => {
     const raw = view.augmentView["foresight_peek"];
     return Array.isArray(raw)
@@ -9348,7 +9347,7 @@ function ActiveAugmentControl(props: {
     (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
     foresightPeek.length === 4;
   /**
-   * 공개된 4장이 각각 **누구의 쯔모가 되는지** — 렌더 시점의 차례·진행 방향에서 계산한다.
+   * 공개된 패들이 각각 **누구의 쯔모가 되는지** — 렌더 시점의 차례·진행 방향에서 계산한다.
    * 고정 배열(["하가","대면","상가","나"])이던 시절에는 역행(turn.direction = −1)에서
    * 라벨이 통째로 뒤집혔다.
    */
@@ -9356,20 +9355,26 @@ function ActiveAugmentControl(props: {
     const seatCount = view.players.length;
     const mySeat = view.players.find((p) => p.id === view.playerId)?.seat ?? 0;
     const dir = view.round.direction;
-    return projectedDrawSeats(view.round.turnSeat, dir, seatCount, 4).map((s) =>
-      relativeSeatLabel(mySeat, s, dir, seatCount),
-    );
-  }, [view.players, view.playerId, view.round.turnSeat, view.round.direction]);
-  // 발동해서 재배열 후보가 뜨면 드래그 모달을 자동으로 연다(한 번 닫으면 다시 안 뜬다).
-  // 후보가 사라지면(재배열 제출·턴 종료) 상태를 초기화한다.
+    return projectedDrawSeats(
+      view.round.turnSeat,
+      dir,
+      seatCount,
+      foresightPeek.length,
+    ).map((s) => relativeSeatLabel(mySeat, s, dir, seatCount));
+  }, [
+    view.players,
+    view.playerId,
+    view.round.turnSeat,
+    view.round.direction,
+    foresightPeek.length,
+  ]);
+  // 재배열 후보가 뜨면 드래그용 항등 순서를 깐다. 후보가 사라지면(제출·턴 종료·국에 1회
+  // 소진) 비운다 — 그래도 공개된 패는 아래 스트립에 계속 보인다(열람만 되는 재발동 포함).
   useEffect(() => {
     if (foresightReorderable) {
-      if (foresightArr === null && !foresightClosedRef.current) {
-        setForesightArr([0, 1, 2, 3]);
-      }
-    } else {
-      foresightClosedRef.current = false;
-      if (foresightArr !== null) setForesightArr(null);
+      if (foresightArr === null) setForesightArr([0, 1, 2, 3]);
+    } else if (foresightArr !== null) {
+      setForesightArr(null);
     }
   }, [foresightReorderable, foresightArr]);
 
@@ -9526,22 +9531,25 @@ function ActiveAugmentControl(props: {
     }));
   })();
 
-  // ── 예지 — 발동(공개) 후 드래그로 앞 4장을 재배열한다 ── (후보 매핑·핸들러; 훅은 위에)
+  // ── 예지 — 공개된 패를 버튼 옆 스트립에 늘어놓고, 재배열 가능할 때만 드래그시킨다 ──
+  // (후보 매핑·핸들러; 훅은 위에)
   const foresightOpts = byType.get("foresight_order") ?? [];
   const foresightByKey = new Map<string, ActionOption>();
   for (const o of foresightOpts) {
     const ord = (o.payload as { order?: unknown }).order;
     if (Array.isArray(ord)) foresightByKey.set(ord.join(","), o);
   }
-  const closeForesight = (): void => {
-    foresightClosedRef.current = true;
-    setForesightArr(null);
-    setForesightDragFrom(null);
-  };
+  // 스트립에 그릴 순서 — 재배열 중이면 드래그 순서, 아니면 공개된 그대로.
+  const foresightOrder: number[] =
+    foresightReorderable && foresightArr !== null
+      ? foresightArr
+      : foresightPeek.map((_k, i) => i);
+  // 손대지 않았으면(항등) 확정할 게 없다 — 국에 한 번뿐인 재배열을 헛되이 쓰지 않게 막는다.
+  const foresightMoved = foresightOrder.some((orig, pos) => orig !== pos);
   const confirmForesight = (arr: number[]): void => {
     const opt = foresightByKey.get(arr.join(","));
     if (opt !== undefined) sel.submit(opt);
-    closeForesight();
+    setForesightDragFrom(null);
   };
 
   // ── 왕패의 주인 — 내 손패 ↔ 왕패를 **여러 쌍 한 번에** 고른다 ──
@@ -9779,68 +9787,6 @@ function ActiveAugmentControl(props: {
         </div>,
         document.body,
       ) : null}
-      {/* 예지 — 발동(공개) 후 공개된 4장을 드래그로 재배열한다. arr[newPos]=원래 인덱스. */}
-      {foresightArr !== null && foresightPeek.length === 4 ? createPortal(
-        <div className="rinshan-pick-overlay">
-          <div className="rinshan-pick-panel aug-pick-wide">
-            <div className="rinshan-pick-title">🔮 예지 — 다음 한 바퀴를 설계</div>
-            <div className="rinshan-pick-sub">
-              패산의 다음 네 장입니다. <b>패를 드래그해</b> 순서를 바꾸세요 —
-              <b> 네 번째(나)가 내 쯔모</b>입니다. 그대로 두려면 아래 버튼을 누르세요.
-            </div>
-            <div className="rinshan-pick-tiles foresight-drag">
-              {foresightArr.map((origIdx, pos) => {
-                const kind = foresightPeek[origIdx];
-                const seatLabel = foresightSeatLabels[pos] ?? "";
-                const isMine = seatLabel === "나";
-                return (
-                  <div
-                    key={pos}
-                    className={`rinshan-pick-tile foresight-cell${isMine ? " foresight-mine" : ""}${
-                      foresightDragFrom === pos ? " foresight-dragging" : ""
-                    }`}
-                    draggable
-                    onDragStart={() => setForesightDragFrom(pos)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => {
-                      const from = foresightDragFrom;
-                      setForesightDragFrom(null);
-                      if (from === null || from === pos) return;
-                      setForesightArr((cur) => {
-                        if (cur === null) return cur;
-                        const next = [...cur];
-                        // from 자리의 패를 빼서 pos 자리에 끼워 넣는다 (재배열)
-                        const [moved] = next.splice(from, 1);
-                        next.splice(pos, 0, moved as number);
-                        return next;
-                      });
-                    }}
-                    onDragEnd={() => setForesightDragFrom(null)}
-                  >
-                    {kind !== undefined ? <TileImg tile={{ kind }} size="hand" /> : null}
-                    <span className="rinshan-pick-label">
-                      {seatLabel}
-                      {isMine ? " ★" : ""}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="foresight-actions">
-              <button
-                className="rinshan-pick-tile foresight-confirm"
-                onClick={() => confirmForesight(foresightArr)}
-              >
-                이 순서로 확정
-              </button>
-              <button className="rinshan-pick-skip" onClick={closeForesight}>
-                그대로 두기 (바꾸지 않고 진행)
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
       {/* 왕패의 주인 — 손패↔왕패 쌍을 남은 횟수만큼 골라 두었다가 한 번에 확정한다 */}
       {pickModal === "dw_swap" ? createPortal(
         <div className="rinshan-pick-overlay">
@@ -9931,9 +9877,9 @@ function ActiveAugmentControl(props: {
                 </div>
               ) : null}
             </div>
-            <div className="foresight-actions">
+            <div className="aug-modal-actions">
               <button
-                className="rinshan-pick-tile foresight-confirm"
+                className="rinshan-pick-tile aug-modal-confirm"
                 disabled={dwPairs.length === 0}
                 onClick={() => {
                   setDwQueue(dwPairs);
@@ -10044,6 +9990,71 @@ function ActiveAugmentControl(props: {
       >
         ✦ 액티브 증강{usable ? ` (${displayCount})` : ""}
       </button>
+      {/*
+        예지 — 공개된 패산 앞장을 **액티브 증강 버튼 옆에 상시로** 늘어놓는다.
+        예전에는 재배열 후보가 있을 때만 뜨는 모달이 유일한 표시 수단이라,
+        재배열을 이미 쓴 국에 다시 발동하면(열람만 가능) 이펙트만 나오고
+        정작 본 패는 어디에도 안 보였다 — 정보 증강이 정보를 안 주는 셈이었다.
+        이제 공개 채널이 살아 있는 동안 계속 보이고, 재배열이 열려 있을 때만 드래그된다.
+      */}
+      {foresightPeek.length > 0 ? (
+        <div className="foresight-strip">
+          <span className="foresight-strip-tag">🔮 예지</span>
+          <div className={`foresight-strip-tiles${foresightReorderable ? " foresight-drag" : ""}`}>
+            {foresightOrder.map((origIdx, pos) => {
+              const kind = foresightPeek[origIdx];
+              const seatLabel = foresightSeatLabels[pos] ?? "";
+              const isMine = seatLabel === "나";
+              return (
+                <div
+                  key={pos}
+                  className={`foresight-cell${isMine ? " foresight-mine" : ""}${
+                    foresightDragFrom === pos ? " foresight-dragging" : ""
+                  }`}
+                  title={`${seatLabel} 쯔모${foresightReorderable ? " — 드래그로 순서 변경" : ""}`}
+                  draggable={foresightReorderable}
+                  onDragStart={() => setForesightDragFrom(pos)}
+                  onDragOver={(e) => {
+                    if (foresightReorderable) e.preventDefault();
+                  }}
+                  onDrop={() => {
+                    const from = foresightDragFrom;
+                    setForesightDragFrom(null);
+                    if (from === null || from === pos) return;
+                    setForesightArr((cur) => {
+                      if (cur === null) return cur;
+                      const next = [...cur];
+                      // from 자리의 패를 빼서 pos 자리에 끼워 넣는다 (재배열)
+                      const [moved] = next.splice(from, 1);
+                      next.splice(pos, 0, moved as number);
+                      return next;
+                    });
+                  }}
+                  onDragEnd={() => setForesightDragFrom(null)}
+                >
+                  {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
+                  <span className="foresight-cell-label">
+                    {seatLabel}
+                    {isMine ? " ★" : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {foresightReorderable ? (
+            foresightMoved ? (
+              <button
+                className="foresight-strip-confirm"
+                onClick={() => confirmForesight(foresightOrder)}
+              >
+                이 순서로 확정
+              </button>
+            ) : (
+              <span className="foresight-strip-hint">드래그해 순서 바꾸기 (국에 1회)</span>
+            )
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
