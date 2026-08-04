@@ -83,6 +83,18 @@ describe("마작 용어 사전", () => {
     expect(pick("황패유국과 유국만관")).toEqual(["ryuukyoku", "nagashi"]);
   });
 
+  it("두 글자 용어가 일반 문장에 파묻히지 않는다", () => {
+    const pick = (text: string): string[] =>
+      splitTerms(text).filter((c) => c.kind === "term").map((c) => (c.kind === "term" ? c.entry.key : ""));
+    // `대가`는 "그 상대가"의 꼬리에 통째로 들어 있다 — 여기에 밑줄이 그이면 안 된다
+    expect(pick("그 상대가 버린 패")).toEqual([]);
+    expect(pick("대가와 상가")).toEqual(["toimen", "kamicha"]);
+    expect(pick("하가·대면·상가·나")).toEqual(["shimocha", "toimen", "kamicha"]);
+    // `머리`·`대기`도 낱말 안에 숨는다
+    expect(pick("대기만성")).toEqual([]);
+    expect(pick("머리카락")).toEqual([]);
+  });
+
   it("쪼갠 조각을 도로 이으면 원문이 된다", () => {
     for (const a of ALL) {
       const joined = splitTerms(a.description).map((c) => c.text).join("");

@@ -687,6 +687,8 @@ interface Settings {
   screenFx: boolean;
   /** 효과음 on/off. */
   sfxOn: boolean;
+  /** 용어 설명 — 증강 설명 안의 마작 용어에 밑줄을 긋고 풀이 툴팁을 띄운다. */
+  glossaryTips: boolean;
   /** 리치 BGM 볼륨 (0~1). 0이면 재생하지 않음. 효과음(sfxOn)과 독립. */
   riichiBgmVolume: number;
   /** 평상시 대국 BGM 볼륨 (0~1). 0이면 재생하지 않음. 리치 BGM과 별도. */
@@ -703,6 +705,7 @@ const DEFAULT_SETTINGS: Settings = {
   doraFx: true,
   screenFx: true,
   sfxOn: true,
+  glossaryTips: true,
   riichiBgmVolume: 0.5,
   bgmVolume: 0.35,
 };
@@ -2829,6 +2832,7 @@ export function App(): JSX.Element {
   const lastRoomCode = window.localStorage.getItem(LAST_ROOM_KEY);
 
   return (
+    <GlossaryTipsContext.Provider value={settings.glossaryTips}>
     <div className="game-root" ref={gameRootRef}>
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
@@ -3081,6 +3085,7 @@ export function App(): JSX.Element {
         </div>
       ) : null}
     </div>
+    </GlossaryTipsContext.Provider>
   );
 }
 
@@ -3511,6 +3516,12 @@ function AugmentMeta({
 // 그리고 어느 층이든 "슌쯔·커쯔·오름패" 같은 말은 그냥 나온다 — TermText가 glossary.ts에
 // 등록된 표기에 밑줄을 긋고, 잠시 올려 두면 초보자용 한 줄이 뜬다.
 
+/**
+ * 용어 설명(설정)이 켜져 있는가. 기본 true — Provider 밖(스토리북·테스트)에서도
+ * 평소대로 동작하게 두고, 끄는 쪽만 App이 명시적으로 내려 준다.
+ */
+const GlossaryTipsContext = createContext(true);
+
 /** 용어에 마우스를 올리고 툴팁이 뜰 때까지 (ms) — "길게 올려 두면" */
 const TERM_HOVER_MS = 450;
 
@@ -3600,7 +3611,8 @@ function GlossaryTerm({ text, entry }: { text: string; entry: GlossaryEntry }): 
 }
 
 /** 한 덩어리 문장을 용어 조각과 일반 조각으로 갈라 렌더 */
-function termNodes(text: string, seed: string): JSX.Element[] {
+function termNodes(text: string, seed: string, tips: boolean): JSX.Element[] {
+  if (!tips) return [<span key={seed}>{text}</span>];
   return splitTerms(text).map((c, i) =>
     c.kind === "term" ? (
       <GlossaryTerm key={`${seed}:${i}`} text={c.text} entry={c.entry} />
@@ -3610,14 +3622,22 @@ function termNodes(text: string, seed: string): JSX.Element[] {
   );
 }
 
-/** 마작 용어에 밑줄을 그어 주는 본문. `**강조**`도 함께 처리한다. */
+/**
+ * 마작 용어에 밑줄을 그어 주는 본문. `**강조**`도 함께 처리한다.
+ *
+ * 설정에서 "용어 설명"을 끄면 밑줄도 툴팁도 없이 맨 글자로 흘린다 — 용어를 이미
+ * 아는 사람에게는 밑줄이 글을 읽는 데 방해가 되기 때문이다. `**강조**` 처리는 남는다.
+ */
 function TermText({ text }: { text: string }): JSX.Element {
+  const tips = useContext(GlossaryTipsContext);
   const parts = useMemo(() => text.split(/\*\*(.+?)\*\*/g), [text]);
   return (
     <>
       {parts.map((p, i) =>
         // split의 홀수 조각이 ** ** 안쪽이다
-        i % 2 === 1 ? <strong key={i}>{termNodes(p, String(i))}</strong> : <span key={i}>{termNodes(p, String(i))}</span>,
+        i % 2 === 1
+          ? <strong key={i}>{termNodes(p, String(i), tips)}</strong>
+          : <span key={i}>{termNodes(p, String(i), tips)}</span>,
       )}
     </>
   );
@@ -5339,6 +5359,11 @@ function SettingsPanel(props: {
     { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝입니다 (나만의 도라는 보랏금)" },
     { key: "screenFx", label: "화면 효과", desc: "화료·리치 때 화면 흔들림·번쩍임·파티클 (멀미·광과민이면 끄세요)" },
     { key: "sfxOn", label: "효과음", desc: "모든 게임 효과음을 켭니다" },
+    {
+      key: "glossaryTips",
+      label: "용어 설명",
+      desc: "증강 설명의 마작 용어(슌쯔·오름패…)에 밑줄을 긋고, 올려 두면 풀이를 띄웁니다",
+    },
   ];
   const votes = props.abortVote?.votes ?? 0;
   const needed = props.abortVote?.needed ?? 0;
