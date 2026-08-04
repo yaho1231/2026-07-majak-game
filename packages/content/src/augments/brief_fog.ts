@@ -94,6 +94,20 @@ function fogActive(state: GameState, holder: PlayerId): boolean {
   return state.round.turnCount - declaredTurn < FOG_TURNS;
 }
 
+/** 지금 안개가 몇 순 더 가는가 (걷혔으면 0) */
+function fogTurnsLeft(state: GameState, holder: PlayerId): number {
+  if (!fogDeclared(state, holder)) return 0;
+  const declaredTurn = state.augmentData[turnKey(state, holder)];
+  if (typeof declaredTurn !== "number") return 0;
+  return Math.max(0, FOG_TURNS - (state.round.turnCount - declaredTurn));
+}
+
+/** 이름표에 붙는 표식 문구 (걷혔으면 빈 문자열 = 표식 없음) */
+function fogNotice(state: GameState, holder: PlayerId): string {
+  const left = fogTurnsLeft(state, holder);
+  return left > 0 ? `안개 (${left}순 남음)` : "";
+}
+
 /** 네 사람 각자의 마지막 버림패 { playerId: tileId } */
 function lastDiscardMap(state: GameState): Record<PlayerId, TileId> {
   const out: Record<PlayerId, TileId> = {};
@@ -123,7 +137,9 @@ const declareBriefFogAction: ActionDef<Record<string, never>> = {
     return [
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       augmentDataSet(turnKey(state, req.player), state.round.turnCount),
-      augmentDataSet(noticeKey(req.player), "안개"),
+      // 선언 시점의 state에는 아직 uses·turnKey가 반영되지 않았다 — 방금 건 안개이므로
+      // 남은 순은 정의상 FOG_TURNS다. 이후 갱신은 TILE_DISCARDED 틱이 맡는다.
+      augmentDataSet(noticeKey(req.player), `안개 (${FOG_TURNS}순 남음)`),
       augmentDataSet(lastMapKey(req.player), map),
       augmentDataSet(revealKey(req.player), Object.values(map)),
     ];
@@ -177,9 +193,30 @@ export const briefFog: AugmentDef = defineAugment({
       },
     });
 
-    // 버림이 일어날 때마다 "각자의 마지막 버림패" 맵을 갱신한다 (안개 유효 중에만).
+    /*
+     * 버림마다 한 틱: 안개가 살아 있으면 "각자의 마지막 버림패" 맵과 남은 순 표식을
+     * 갱신하고, 이미 걷혔으면 그 흔적을 걷어낸다.
+     *
+     * ⚠ 예전에는 안개가 유효할 때만 돌고 표식(noticeKey)은 선언 시 한 번만 세웠다.
+     * 표식은 국 스코프라 **6순이 지나 안개가 실제로 걷힌 뒤에도 국이 끝날 때까지
+     * "안개"가 떠 있었다**(docs/25 정보 계열 #4). 화면이 실제 상태와 어긋나면
+     * 상대는 걷힌 안개를 피해 계속 수비하게 된다.
+     */
     ctx.reaction(TILE_DISCARDED, (_event, rc) => {
-      if (!fogActive(rc.state, holder)) return;
+      const notice = fogNotice(rc.state, holder);
+      if (rc.state.augmentData[noticeKey(holder)] !== notice) {
+        rc.emit(augmentDataSet(noticeKey(holder), notice));
+      }
+      if (notice === "") {
+        // 안개가 걷혔다 — 바닥은 다시 전부 공개되므로 "마지막 한 장" 공개도 필요 없다.
+        // 남겨 두면 지난 순의 tileId가 계속 실물 공개된 채로 떠 있는다.
+        const revealed = rc.state.augmentData[revealKey(holder)];
+        if (Array.isArray(revealed) && revealed.length > 0) {
+          rc.emit(augmentDataSet(lastMapKey(holder), {}));
+          rc.emit(augmentDataSet(revealKey(holder), []));
+        }
+        return;
+      }
       const map = lastDiscardMap(rc.state);
       rc.emit(augmentDataSet(lastMapKey(holder), map));
       rc.emit(augmentDataSet(revealKey(holder), Object.values(map)));
@@ -197,6 +234,11 @@ export const briefFog: AugmentDef = defineAugment({
       }
       if (Array.isArray(revealed) && revealed.length > 0) {
         rc.emit(augmentDataSet(revealKey(holder), []));
+      }
+      // 표식도 함께 — 국 스코프 키라 자동으로 지워지지만, 재구성 경로에서 지난 국의
+      // 문구가 남는 경우가 있어 명시적으로 비운다.
+      if (rc.state.augmentData[noticeKey(holder)] !== undefined) {
+        rc.emit(augmentDataSet(noticeKey(holder), ""));
       }
     });
 
