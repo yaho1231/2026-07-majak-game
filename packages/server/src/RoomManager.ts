@@ -1124,7 +1124,6 @@ export class RoomManager {
     conn.room = room;
     conn.agent = agent;
     this.send(conn.ws, { type: "joined", playerId, roomId: room.code, token: "" });
-    this.shuffleSeatsIfFull(room);
     this.broadcastLobby(room);
   }
 
@@ -1218,7 +1217,6 @@ export class RoomManager {
       case "addBot": {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         this.addBots(room, 1);
-        this.shuffleSeatsIfFull(room);
         this.broadcastLobby(room);
         return;
       }
@@ -1961,8 +1959,7 @@ export class RoomManager {
     room.sandboxRestarting = false;
     // 봇은 새 인스턴스로 — 지난 판의 내부 상태(프로필·기억)를 다음 판에 끌고 가지 않는다
     room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
-    // 다음 판은 새 자리에서 — 이어하기로 계속 두어도 같은 사람이 계속 친을 하지 않는다
-    this.shuffleSeats(room);
+    // 자리는 그대로 둔다 — 섞는 건 방장이 "자리 섞기"를 눌렀을 때만이다.
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.resetForNewGame();
     }
@@ -1994,8 +1991,11 @@ export class RoomManager {
    *
    * ⚠ 예전에는 이걸 `startGame` 직전에 **몰래** 돌렸다. 그러면 대기실이 보여 주던
    * 동남서북(그때는 playerId 번호순이었다)과 실제 방위가 달라, 게임에 들어가서야
-   * 자기 자리를 알 수 있었다. 지금은 방이 4인으로 찰 때·판이 끝날 때 한 번 섞고
-   * 그 결과를 대기실에 그대로 보여 주며, 방장이 `shuffleSeats`로 다시 뽑을 수 있다.
+   * 자기 자리를 알 수 있었다.
+   *
+   * ⚠ 그 뒤에는 방이 4인으로 찰 때·판이 끝날 때도 자동으로 돌렸는데, 봇 추가 버튼으로
+   * 마지막 자리를 채우는 순간 이미 보고 있던 자리가 통째로 뒤집혔다. 지금은 **방장이
+   * `shuffleSeats`(자리 섞기)를 눌렀을 때만** 섞는다.
    *
    * 증강 테스트 방은 섞지 않는다 — 초기화할 때마다 내 방위가 바뀌면 시험이 어렵다.
    */
@@ -2010,9 +2010,11 @@ export class RoomManager {
   }
 
   /**
-   * 방이 4인으로 **막 찼을 때** 자리를 한 번 섞는다 — 기본값이 무작위이도록.
-   * 자리가 덜 찼을 때 섞으면 빈자리가 사람보다 앞에 오는 등 표시가 어수선해지고,
-   * 어차피 사람이 더 들어오면 다시 섞이므로 가득 찼을 때만 돌린다.
+   * 방이 4인으로 찼을 때 자리를 한 번 섞는다.
+   *
+   * 대기실 경로에서는 쓰지 않는다(자리는 방장이 눌렀을 때만 바뀐다).
+   * 남은 사용처는 `fillWithBots` — 대기실을 거치지 않고 곧바로 시작하는 디버깅 경로라
+   * "자리가 눈앞에서 뒤집히는" 문제가 없고, 기본값이 무작위인 편이 낫다.
    */
   private shuffleSeatsIfFull(room: Room): void {
     if (room.agents.length < MAX_PLAYERS) return;
