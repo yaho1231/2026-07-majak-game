@@ -44,6 +44,7 @@ import type {
   LeaderboardEntry,
   AugmentCatalogEntry,
   AugmentTierEntry,
+  FeedbackEntry,
   SandboxBotRules,
 } from "@majak/core/network/protocol.js";
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
@@ -230,6 +231,11 @@ const MAX_PROTOCOL_VIOLATIONS = 3;
  * 느슨하게 두되, 명백한 남용만 입구에서 자른다.
  */
 const MAX_AUTH_FIELD_LEN = 256;
+/**
+ * 제보 본문·답변의 입구 상한. SiteDb가 실제 규칙(제목 80·본문 4000)을 판정하므로
+ * 여기는 "거대한 문자열을 DB까지 들여보내지 않는" 여유 있는 방벽이다.
+ */
+const MAX_FEEDBACK_FIELD = 8000;
 /**
  * 증강 테스트에서 한 좌석에 미리 지급할 수 있는 증강 수 상한.
  * 실전(1인 동풍전 3개·반장전 4개)보다 훨씬 넉넉하되, 무한정 쌓아 판을 못 돌리게 되는 것은 막는다.
@@ -640,6 +646,17 @@ export class RoomManager {
       // ── 전체 통계 (누구나) ──
       case "leaderboard":
         return this.sendLeaderboard(conn);
+      // ── 제보 게시판 ──
+      case "feedbackSubmit":
+        return this.submitFeedback(conn, user, msg.kind, msg.title, msg.body);
+      case "feedbackList":
+        return this.sendFeedback(conn, user);
+      case "feedbackUpdate": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.updateFeedback(conn, user, msg.id, msg.status, msg.reply);
+      }
+      case "feedbackDelete":
+        return this.deleteFeedback(conn, user, msg.id);
       // ── 계정 관리 (관리자) ──
       case "adminUsers": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
@@ -1338,6 +1355,85 @@ export class RoomManager {
       (a, b) => b.stats.games - a.stats.games || a.stats.avgPlacement - b.stats.avgPlacement,
     );
     this.send(conn.ws, { type: "leaderboard", entries });
+  }
+
+  // ─────────────────────────── 제보 게시판 ───────────────────────────
+
+  /**
+   * 볼 수 있는 제보 목록을 보낸다.
+   * **비관리자에게는 SiteDb가 본인 글만 조회해 준다** — 여기서 다시 거르지 않아도
+   * 남의 글이 실릴 수 없다(공개 범위가 쿼리 자체에 박혀 있다).
+   */
+  private sendFeedback(conn: Conn, user: UserRow): void {
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    const rows = this.db.listFeedback(user);
+    const entries: FeedbackEntry[] = rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      title: r.title,
+      body: r.body,
+      author: r.author,
+      createdAt: r.createdAt,
+      status: r.status,
+      reply: r.reply,
+      repliedAt: r.repliedAt,
+      mine: r.userId !== null && r.userId === user.id,
+    }));
+    this.send(conn.ws, { type: "feedbackList", entries, isAdmin: user.isAdmin });
+  }
+
+  /** 제보 작성 — 성공하면 갱신된 목록을 되돌려준다. */
+  private submitFeedback(
+    conn: Conn,
+    user: UserRow,
+    kind: unknown,
+    title: unknown,
+    body: unknown,
+  ): void {
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (typeof kind !== "string" || typeof title !== "string" || typeof body !== "string") {
+      return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
+    }
+    // 길이 상한은 SiteDb가 최종 판정하지만, 거대한 문자열이 DB까지 가지 않게 입구에서 자른다.
+    if (title.length > MAX_FEEDBACK_FIELD || body.length > MAX_FEEDBACK_FIELD) {
+      return this.fail(conn, "BAD_REQUEST", "내용이 너무 깁니다");
+    }
+    const res = this.db.addFeedback(user, kind, title, body);
+    if (!res.ok) return this.fail(conn, "FEEDBACK_FAILED", res.error ?? "제보 등록에 실패했습니다");
+    this.sendFeedback(conn, user);
+  }
+
+  /** 제보 상태·답변 변경 (관리자 전용 — 호출 전에 권한 확인됨). */
+  private updateFeedback(
+    conn: Conn,
+    user: UserRow,
+    id: unknown,
+    status: unknown,
+    reply: unknown,
+  ): void {
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (!Number.isInteger(id)) return this.fail(conn, "BAD_REQUEST", "잘못된 제보 ID입니다");
+    if (status !== undefined && typeof status !== "string") {
+      return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
+    }
+    if (reply !== undefined && (typeof reply !== "string" || reply.length > MAX_FEEDBACK_FIELD)) {
+      return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
+    }
+    const res = this.db.updateFeedback(id as number, {
+      ...(status !== undefined ? { status: status as string } : {}),
+      ...(reply !== undefined ? { reply: reply as string } : {}),
+    });
+    if (!res.ok) return this.fail(conn, "FEEDBACK_FAILED", res.error ?? "제보 수정에 실패했습니다");
+    this.sendFeedback(conn, user);
+  }
+
+  /** 제보 삭제 — 작성자 본인 또는 관리자 (권한 판정은 SiteDb). */
+  private deleteFeedback(conn: Conn, user: UserRow, id: unknown): void {
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (!Number.isInteger(id)) return this.fail(conn, "BAD_REQUEST", "잘못된 제보 ID입니다");
+    const res = this.db.deleteFeedback(id as number, user);
+    if (!res.ok) return this.fail(conn, "FEEDBACK_FAILED", res.error ?? "제보 삭제에 실패했습니다");
+    this.sendFeedback(conn, user);
   }
 
   /** 전체 계정 목록 (관리자 전용). */

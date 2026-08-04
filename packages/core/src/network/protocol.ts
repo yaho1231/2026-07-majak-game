@@ -89,6 +89,50 @@ export interface ReplayGetMessage {
   gameId: number;
 }
 
+// ── 제보 게시판 (버그·증강 아이디어) ──
+
+/** 제보 종류 — 버그 제보 / 증강 아이디어. */
+export type FeedbackKind = "bug" | "idea";
+
+/**
+ * 제보 처리 상태 — 관리자만 바꾼다.
+ * open(접수) → reviewing(검토 중) → done(반영 완료) / rejected(반려)
+ */
+export type FeedbackStatus = "open" | "reviewing" | "done" | "rejected";
+
+/**
+ * 제보 작성.
+ *
+ * **공개 범위**: 작성자 본인과 관리자만 읽는다 (서버가 조회 시점에 걸러 낸다).
+ * 다른 사람의 글은 목록에 아예 실리지 않는다.
+ */
+export interface FeedbackSubmitMessage {
+  type: "feedbackSubmit";
+  kind: FeedbackKind;
+  title: string;
+  body: string;
+}
+
+/** 내가 볼 수 있는 제보 목록 요청 (본인 글 전부 / 관리자는 전체). */
+export interface FeedbackListRequestMessage {
+  type: "feedbackList";
+}
+
+/** 제보 상태 변경·답변 (관리자 전용). 둘 다 선택이며 준 항목만 바뀐다. */
+export interface FeedbackUpdateMessage {
+  type: "feedbackUpdate";
+  id: number;
+  status?: FeedbackStatus;
+  /** 작성자에게 보이는 관리자 답변. 빈 문자열이면 답변 삭제. */
+  reply?: string;
+}
+
+/** 제보 삭제 — 작성자 본인 또는 관리자. */
+export interface FeedbackDeleteMessage {
+  type: "feedbackDelete";
+  id: number;
+}
+
 // ── 관리자 관전 (15) ──
 
 /** 전체 플레이어 누적 통계(리더보드) 요청 — 로그인한 누구나. */
@@ -363,6 +407,10 @@ export type ClientMessage =
   | ReplayListRequestMessage
   | ReplayGetMessage
   | LeaderboardRequestMessage
+  | FeedbackSubmitMessage
+  | FeedbackListRequestMessage
+  | FeedbackUpdateMessage
+  | FeedbackDeleteMessage
   | AdminUsersRequestMessage
   | AdminAugmentTiersRequestMessage
   | AdminDeleteUserMessage
@@ -606,6 +654,35 @@ export interface LeaderboardMessage {
   entries: LeaderboardEntry[];
 }
 
+// ── 제보 게시판 ──
+
+/** 제보 1건. 목록에는 **내 글**(또는 관리자면 전체)만 실린다. */
+export interface FeedbackEntry {
+  id: number;
+  kind: FeedbackKind;
+  title: string;
+  body: string;
+  /** 작성자 닉네임. 계정이 삭제된 글은 작성 당시 닉네임이 그대로 남는다. */
+  author: string;
+  /** ISO 작성 시각 */
+  createdAt: string;
+  status: FeedbackStatus;
+  /** 관리자 답변 (없으면 ""). 작성자와 관리자만 본다. */
+  reply: string;
+  /** ISO 답변·상태 변경 시각 (없으면 null) */
+  repliedAt: string | null;
+  /** 이 글을 내가 썼는가 (관리자 목록에서 내 글 구분용) */
+  mine: boolean;
+}
+
+/** 제보 목록 응답 — 최신순. */
+export interface FeedbackListMessage {
+  type: "feedbackList";
+  entries: FeedbackEntry[];
+  /** 관리자 화면인가 (전체 글이 실렸는가) */
+  isAdmin: boolean;
+}
+
 /** 계정 1건 (관리자 목록용). */
 export interface AdminUserEntry {
   id: number;
@@ -793,6 +870,7 @@ export type ServerMessage =
   | KickedMessage
   | StatsMessage
   | LeaderboardMessage
+  | FeedbackListMessage
   | AdminUsersMessage
   | AdminAugmentTiersMessage
   | AuthOkMessage

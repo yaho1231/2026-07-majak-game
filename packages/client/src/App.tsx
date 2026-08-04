@@ -16,6 +16,9 @@ import type {
   DecomposeOptions,
   LeaderboardEntry,
   DraftOfferMessage,
+  FeedbackEntry,
+  FeedbackKind,
+  FeedbackStatus,
   GameMode,
   JoinedMessage,
   LiveRoomSummary,
@@ -1530,6 +1533,8 @@ export function App(): JSX.Element {
   const [controlling, setControlling] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserEntry[]>([]);
+  /** 제보 게시판 — 내가 볼 수 있는 글만 온다(내 글, 관리자면 전체). */
+  const [feedback, setFeedback] = useState<FeedbackEntry[]>([]);
   const [spectating, setSpectating] = useState<string | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
   /**
@@ -1991,6 +1996,7 @@ export function App(): JSX.Element {
     send({ type: "statsRequest" });
     send({ type: "replayList" });
     send({ type: "leaderboard" });
+    send({ type: "feedbackList" });
   }
 
   function logout(): void {
@@ -2004,6 +2010,7 @@ export function App(): JSX.Element {
     setMyReplays([]);
     setLeaderboard([]);
     setAdminUsers([]);
+    setFeedback([]);
   }
 
   function handleServerMessage(msg: ServerMessage): void {
@@ -2020,6 +2027,7 @@ export function App(): JSX.Element {
       send({ type: "statsRequest" });
       send({ type: "replayList" });
       send({ type: "leaderboard" });
+      send({ type: "feedbackList" });
       if (msg.isAdmin) {
         send({ type: "liveGames" });
         send({ type: "adminUsers" });
@@ -2087,6 +2095,10 @@ export function App(): JSX.Element {
     }
     if (msg.type === "adminUsers") {
       setAdminUsers(msg.users);
+      return;
+    }
+    if (msg.type === "feedbackList") {
+      setFeedback(msg.entries);
       return;
     }
     if (msg.type === "adminAugmentTiers") {
@@ -2959,6 +2971,17 @@ export function App(): JSX.Element {
           leaderboard={leaderboard}
           catalog={catalog}
           adminUsers={adminUsers}
+          feedback={feedback}
+          onSubmitFeedback={(kind, title, body) =>
+            send({ type: "feedbackSubmit", kind, title, body })
+          }
+          onRefreshFeedback={() => send({ type: "feedbackList" })}
+          onUpdateFeedback={(id, patch) => send({ type: "feedbackUpdate", id, ...patch })}
+          onDeleteFeedback={(id) => {
+            if (window.confirm("이 제보를 삭제할까요? 되돌릴 수 없습니다.")) {
+              send({ type: "feedbackDelete", id });
+            }
+          }}
           lastRoomCode={lastRoomCode}
           settings={settings}
           onSetting={updateSetting}
@@ -4215,6 +4238,208 @@ function CodexScreen(props: {
   );
 }
 
+// ─────────────────────────── 제보 게시판 ───────────────────────────
+
+const FEEDBACK_KIND_LABEL: Record<FeedbackKind, string> = {
+  bug: "🐞 버그 제보",
+  idea: "💡 증강 아이디어",
+};
+
+const FEEDBACK_STATUS_LABEL: Record<FeedbackStatus, string> = {
+  open: "접수",
+  reviewing: "검토 중",
+  done: "반영 완료",
+  rejected: "반려",
+};
+
+const FEEDBACK_STATUSES: FeedbackStatus[] = ["open", "reviewing", "done", "rejected"];
+
+/** 제보 본문·답변은 작성자가 친 줄바꿈이 곧 의미다 — pre-wrap으로 그대로 보인다. */
+const FEEDBACK_TEXT_STYLE: CSSProperties = { whiteSpace: "pre-wrap" };
+
+/**
+ * 제보 게시판 — 버그 제보 / 증강 아이디어를 받는다.
+ *
+ * **공개 범위**: 내가 쓴 글과 관리자만 본다. 서버가 조회 단계에서 걸러 보내므로
+ * 목록에는 애초에 남의 글이 실리지 않는다(관리자는 전체 + 작성자 표시).
+ */
+function FeedbackBoard(props: {
+  auth: AuthInfo;
+  entries: FeedbackEntry[];
+  onSubmit: (kind: FeedbackKind, title: string, body: string) => void;
+  onRefresh: () => void;
+  onUpdate: (id: number, patch: { status?: FeedbackStatus; reply?: string }) => void;
+  onDelete: (id: number) => void;
+}): JSX.Element {
+  const [kind, setKind] = useState<FeedbackKind>("bug");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  /** 펼쳐 본 글 id — 목록은 제목만 보여 주고, 누르면 본문·답변이 열린다. */
+  const [openId, setOpenId] = useState<number | null>(null);
+  /** 관리자 답변 편집 중인 글 id → 입력값 */
+  const [replyDraft, setReplyDraft] = useState<Record<number, string>>({});
+  /** 방금 제출했는가 — 목록이 갱신돼 오면 입력창을 비운다 */
+  const submittedRef = useRef<string | null>(null);
+
+  // 서버가 갱신된 목록을 되돌려주면 = 등록 성공. 그때만 입력창을 비운다
+  // (실패 시에는 error 토스트만 오므로 쓴 글이 날아가지 않는다).
+  useEffect(() => {
+    if (submittedRef.current === null) return;
+    if (props.entries.some((e) => e.title === submittedRef.current && e.mine)) {
+      submittedRef.current = null;
+      setTitle("");
+      setBody("");
+    }
+  }, [props.entries]);
+
+  const canSubmit = title.trim() !== "" && body.trim() !== "";
+
+  function submit(): void {
+    if (!canSubmit) return;
+    submittedRef.current = title.trim();
+    props.onSubmit(kind, title.trim(), body.trim());
+  }
+
+  return (
+    <section className="home-card home-feedback">
+      <div className="home-card-head">
+        <h2>📮 제보 게시판</h2>
+        <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+      </div>
+      <p className="home-hint">
+        버그를 발견했거나 새 증강 아이디어가 떠올랐다면 남겨 주세요.
+        {props.auth.isAdmin
+          ? " 관리자는 모든 제보를 보고 상태·답변을 남길 수 있습니다."
+          : " 내가 쓴 글은 나와 관리자에게만 보입니다."}
+      </p>
+
+      <div className="fb-form">
+        <div className="fb-kind-pick">
+          {(["bug", "idea"] as FeedbackKind[]).map((k) => (
+            <button
+              key={k}
+              className={kind === k ? "fb-kind on" : "fb-kind"}
+              onClick={() => setKind(k)}
+            >
+              {FEEDBACK_KIND_LABEL[k]}
+            </button>
+          ))}
+        </div>
+        <input
+          className="fb-title"
+          value={title}
+          maxLength={80}
+          placeholder="제목 (예: 리치 후 쯔모가 두 번 들어옵니다)"
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <textarea
+          className="fb-body"
+          value={body}
+          maxLength={4000}
+          rows={5}
+          placeholder={
+            kind === "bug"
+              ? "무엇을 했고, 무엇을 기대했고, 실제로 무슨 일이 일어났는지 적어 주세요. 방 코드·증강 이름이 있으면 큰 도움이 됩니다."
+              : "어떤 증강인가요? 발동 조건과 효과, 그리고 왜 재미있을지 적어 주세요."
+          }
+          onChange={(e) => setBody(e.target.value)}
+        />
+        <div className="fb-form-foot">
+          <span className="codex-dim">{body.length} / 4000</span>
+          <button className="home-create fb-submit" disabled={!canSubmit} onClick={submit}>
+            제출
+          </button>
+        </div>
+      </div>
+
+      {props.entries.length === 0 ? (
+        <p className="home-empty">아직 등록된 제보가 없습니다.</p>
+      ) : (
+        <ul className="fb-list">
+          {props.entries.map((e) => {
+            const open = openId === e.id;
+            const canDelete = e.mine || props.auth.isAdmin;
+            return (
+              <li key={e.id} className={`fb-row fb-${e.kind}`}>
+                <button className="fb-head" onClick={() => setOpenId(open ? null : e.id)}>
+                  <span className={`fb-kind-tag fb-kind-${e.kind}`}>
+                    {e.kind === "bug" ? "🐞 버그" : "💡 아이디어"}
+                  </span>
+                  <span className="fb-row-title">{e.title}</span>
+                  <span className={`fb-status fb-status-${e.status}`}>
+                    {FEEDBACK_STATUS_LABEL[e.status]}
+                  </span>
+                  <span className="fb-row-meta">
+                    {props.auth.isAdmin ? (
+                      <span className="fb-author">
+                        {e.author}
+                        {e.mine ? <span className="seat-you"> (나)</span> : null}
+                      </span>
+                    ) : null}
+                    <span className="fb-date">{new Date(e.createdAt).toLocaleDateString()}</span>
+                  </span>
+                </button>
+                {open ? (
+                  <div className="fb-detail">
+                    <p className="fb-body-text" style={FEEDBACK_TEXT_STYLE}>{e.body}</p>
+                    {e.reply !== "" ? (
+                      <div className="fb-reply">
+                        <b>관리자 답변</b>
+                        {e.repliedAt !== null ? (
+                          <span className="fb-date"> {new Date(e.repliedAt).toLocaleDateString()}</span>
+                        ) : null}
+                        <p style={FEEDBACK_TEXT_STYLE}>{e.reply}</p>
+                      </div>
+                    ) : null}
+                    {props.auth.isAdmin ? (
+                      <div className="fb-admin">
+                        <div className="fb-status-pick">
+                          {FEEDBACK_STATUSES.map((s) => (
+                            <button
+                              key={s}
+                              className={e.status === s ? "fb-status-btn on" : "fb-status-btn"}
+                              onClick={() => props.onUpdate(e.id, { status: s })}
+                            >
+                              {FEEDBACK_STATUS_LABEL[s]}
+                            </button>
+                          ))}
+                        </div>
+                        <textarea
+                          className="fb-reply-input"
+                          rows={3}
+                          maxLength={4000}
+                          placeholder="작성자에게 보일 답변"
+                          value={replyDraft[e.id] ?? e.reply}
+                          onChange={(ev) =>
+                            setReplyDraft((d) => ({ ...d, [e.id]: ev.target.value }))
+                          }
+                        />
+                        <button
+                          className="fb-reply-save"
+                          onClick={() =>
+                            props.onUpdate(e.id, { reply: replyDraft[e.id] ?? e.reply })
+                          }
+                        >
+                          답변 저장
+                        </button>
+                      </div>
+                    ) : null}
+                    {canDelete ? (
+                      <button className="user-delete fb-delete" onClick={() => props.onDelete(e.id)}>
+                        삭제
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function HomeScreen(props: {
   auth: AuthInfo;
   stats: StatsMessage | null;
@@ -4223,6 +4448,12 @@ function HomeScreen(props: {
   leaderboard: LeaderboardEntry[];
   catalog: Record<string, AugmentCatalogEntry>;
   adminUsers: AdminUserEntry[];
+  /** 제보 게시판 — 내 글(관리자면 전체) */
+  feedback: FeedbackEntry[];
+  onSubmitFeedback: (kind: FeedbackKind, title: string, body: string) => void;
+  onRefreshFeedback: () => void;
+  onUpdateFeedback: (id: number, patch: { status?: FeedbackStatus; reply?: string }) => void;
+  onDeleteFeedback: (id: number) => void;
   /** 관리자 전용 파워 티어표 (요약 배지용) */
   augmentTiers: AdminAugmentTiersMessage | null;
   lastRoomCode: string | null;
@@ -4458,6 +4689,15 @@ function HomeScreen(props: {
           </div>
           <AugmentMeta leaderboard={props.leaderboard} catalog={props.catalog} />
         </section>
+
+        <FeedbackBoard
+          auth={props.auth}
+          entries={props.feedback}
+          onSubmit={props.onSubmitFeedback}
+          onRefresh={props.onRefreshFeedback}
+          onUpdate={props.onUpdateFeedback}
+          onDelete={props.onDeleteFeedback}
+        />
 
         {props.auth.isAdmin ? replaysCard : null}
 
