@@ -7309,6 +7309,19 @@ function reloadedAugmentsOf(view: PlayerView, playerId: string): Set<string> {
 }
 
 /**
+ * 수상한 주사위(화수분)에서 쏟아진 이 사람의 증강 — pill에 🎲를 붙인다.
+ *
+ * 주사위 자신은 이름표에 세우지 않으므로(칸을 세 칸 먹어 판을 가렸다), 이 표식이
+ * "이 둘은 주사위에서 굴러 나온 것"이라는 유일한 흔적이다. 채널은 전원 공개라
+ * 남의 이름표에도 똑같이 붙는다.
+ */
+function cornucopiaGrantsOf(view: PlayerView, playerId: string): Set<string> {
+  const raw = view.augmentView[`cornucopia:${playerId}`];
+  if (!Array.isArray(raw)) return new Set();
+  return new Set(raw.filter((x): x is string => typeof x === "string"));
+}
+
+/**
  * 이름표의 증강 pill에 얹는 상태 — **잔량·게이지·발동 여부**.
  *
  * 이 정보들은 예전에 전부 화면 왼쪽 위 목록에 "스택 3", "연장 (남은 2회)" 같은
@@ -7580,6 +7593,8 @@ function NamePlate({
   // 잠금이 화면 어디에도 드러나지 않아 "무장해제가 안 먹는다"로 보였다(2026-08-01).
   const disarmed = disarmedAugmentsOf(view, player.id);
   const reloaded = reloadedAugmentsOf(view, player.id);
+  // 수상한 주사위에서 굴러 나온 증강 — pill에 🎲를 붙여 출처를 남긴다
+  const fromDice = cornucopiaGrantsOf(view, player.id);
   // 이 사람에게 걸린 지목 관계 — 판 위에 선을 긋는 대신 양쪽 이름표에 표식을 앉힌다.
   const { relations, hovered, setHovered } = useContext(RelationHoverContext);
   const myRelations = relationsAt(relations, player.id);
@@ -7595,16 +7610,17 @@ function NamePlate({
   // (2026-08-04 사용자 지적: 이 증강 하나로 이름표가 판을 가렸다).
   const pills = player.augments.filter((a) => a !== "cornucopia");
   // 5개 이상 — 정규 드래프트 최대치(반장전 4개)를 넘긴, 사실상 화수분을 먹은 사람이다.
-  // 이름만 접어 아이콘 칩으로 세운다: 툴팁은 그대로라 눌러 보면 전부 읽을 수 있다.
-  const compact = pills.length >= 5;
+  // 이름표를 빽빽 모드로 돌린다: 증강 pill과 지목 표식(np-rel)의 **이름만** 접어
+  // 아이콘 칩으로 세운다. 툴팁·title은 그대로라 올려 보면 전부 읽을 수 있다.
+  const dense = pills.length >= 5;
   return (
     <div
-      className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}`}
+      className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}`}
     >
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
       {pills.length > 0 ? (
-        <span className={`np-augs${compact ? " np-augs-compact" : ""}`}>
+        <span className="np-augs">
           {pills.map((a) => {
             const entry = catalog[a];
             const locked = disarmed.has(a);
@@ -7614,12 +7630,13 @@ function NamePlate({
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${status !== null ? " aug-pill-live" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}`}
                 tabIndex={0}
               >
                 <AugCatIcon id={a} />
                 {locked ? "🔒 " : ""}
                 {reloaded.has(a) ? "♻ " : ""}
+                {fromDice.has(a) ? <span className="aug-pill-dice-mark" aria-hidden="true">🎲</span> : null}
                 {/* 이름만 별도 span — 무장해제 취소선이 잔량 칩까지 그어지지 않게 */}
                 <span className="aug-pill-name">{entry?.name ?? a}</span>
                 {status !== null ? <span className="aug-pill-chip">{status.chip}</span> : null}
@@ -7639,6 +7656,9 @@ function NamePlate({
                   ) : null}
                   {reloaded.has(a) ? (
                     <span className="aug-tip-status">♻ 재장전 — 이 증강을 다시 쓸 수 있다</span>
+                  ) : null}
+                  {fromDice.has(a) ? (
+                    <span className="aug-tip-status">🎲 수상한 주사위에서 굴러 나왔다</span>
                   ) : null}
                   {status !== null ? (
                     <span className="aug-tip-status">{status.note}</span>
