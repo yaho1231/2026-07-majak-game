@@ -94,3 +94,50 @@ describe("등 떠밀기 (push_riichi)", () => {
     expect(r2.ok).toBe(false);
   });
 });
+
+describe("등 떠밀기 — 터진 낙인은 화면에서도 내려간다", () => {
+  const PUBLIC_KEY = "view:*:push_riichi:p0";
+
+  it("지목하면 전원 공개 채널에 대상이 실린다", () => {
+    // p0 턴에서 지목한다
+    const base = craft({
+      hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = start(withAug(base, "p0", ["push_riichi"]));
+    const r = game.engine.submit({
+      player: "p0",
+      type: "push_brand",
+      payload: { target: "p1" },
+    });
+    expect(r.ok).toBe(true);
+    expect(game.engine.state.augmentData[PUBLIC_KEY]).toBe("p1");
+  });
+
+  it("낙인이 터지면 공개 채널도 함께 비워진다 (매치 끝까지 잔류 금지)", () => {
+    /*
+     * 낙인 상태(brandKey)는 발동과 함께 비워지는데 **표시 채널은 그대로 남아**,
+     * 이미 사라진 낙인이 매치가 끝날 때까지 이름표에 떠 있었다(docs/25 리치 #8, P4).
+     * 상대는 없는 낙인을 피해 계속 다마텐을 포기하게 된다.
+     */
+    const game = start({
+      ...scene({ brand: "p1" }),
+      augmentData: {
+        ...scene({ brand: "p1" }).augmentData,
+        [PUBLIC_KEY]: "p1",
+      },
+    });
+    expect(game.engine.state.augmentData[PUBLIC_KEY]).toBe("p1");
+
+    // p1이 텐파이 버림 → 강제 리치가 걸리며 낙인이 소멸한다
+    game.engine.submit({
+      player: "p1",
+      type: "discard",
+      payload: { tileId: lastTile(game) },
+    });
+    expect(game.engine.state.augmentData["push_riichi:brand:p0"]).toBe("");
+    expect(game.engine.state.augmentData[PUBLIC_KEY]).toBe("");
+  });
+});

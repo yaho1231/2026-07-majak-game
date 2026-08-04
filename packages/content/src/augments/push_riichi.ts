@@ -142,6 +142,15 @@ export const pushRiichi: AugmentDef = defineAugment({
       const target = stringOf(rc.state, brandKey(holder));
       if (target === null || p.player !== target) return;
       rc.emit(augmentDataSet(brandKey(holder), ""));
+      /*
+       * 낙인 표시도 함께 내린다.
+       *
+       * ⚠ 예전에는 상태(brandKey)만 비우고 공개 채널은 그대로 뒀다. 표시 키는
+       * **게임 단위**(viewKey)라, 이미 사라진 낙인이 매치가 끝날 때까지 이름표에
+       * 떠 있었다(docs/25 리치 #8, P4). 상대는 없는 낙인을 피해 계속 다마텐을
+       * 포기하게 된다. 클라이언트는 빈 문자열을 관계 없음으로 읽는다.
+       */
+      rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), ""));
       rc.emit(augmentDataSet(roundViewKey("*", `${ID}:fired:${holder}`), target));
     });
 
