@@ -30,8 +30,13 @@
  *   깨진다. 조건이 필요하면 전방탐색 `(?!…)` / `(?=…)`만 쓴다.
  * - 짧은 표기가 긴 표기를 잡아먹지 않게, 매칭은 **긴 것 우선**으로 자동 정렬된다
  *   (도라 표시패 → 뒷도라 → 도라). 별도 조치가 필요 없다.
- * - 한 글자·두 글자 표기는 일반 문장에 파묻힌다. `자가`는 "숫자가·혼자가"에,
- *   `대가`는 "그 상대가"에 걸려서 뺐다. `판`은 `3판`처럼 숫자를 묶어서만 잡는다.
+ * - 한 글자·두 글자 표기는 일반 문장에 파묻힌다. `자가`는 "숫자가·혼자가"에 걸려서
+ *   아예 뺐고, `대가`는 "그 상대가"에 걸리므로 앞이 한글이면 잡지 않는다.
+ *   `판`은 `3판`처럼 숫자를 묶어서만 잡는다.
+ *
+ * ## 켜고 끄기
+ * 설정의 **용어 설명** 토글(`Settings.glossaryTips`)이 꺼지면 밑줄도 툴팁도 없이
+ * 맨 글자로 흐른다. 용어를 이미 아는 사람에게는 밑줄이 글을 읽는 데 방해가 된다.
  */
 export interface GlossaryEntry {
   /** 안정적인 식별자 (툴팁 key) */
@@ -121,17 +126,17 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     key: "ura_dora",
     label: "뒷도라",
-    short: "리치를 걸고 이겼을 때만 추가로 열어 보는 보너스. 공짜 한 방.",
+    short: "리치를 걸고 화료했을 때만 추가로 열어 보는 보너스 패.",
   },
   {
     key: "red_dora",
     label: "적도라",
-    short: "빨갛게 칠한 5. 들고 있기만 해도 점수가 한 단계 오른다.",
+    short: "빨갛게 칠한 5. 한 장당 점수가 한 단계 오르지만, 적도라만으로는 이길 수 없다.",
   },
   {
     key: "kan_dora",
     label: "깡도라",
-    short: "깡을 할 때마다 새로 열리는 보너스 패. 판이 통째로 커진다.",
+    short: "깡을 할 때마다 새로 열리는 보너스 패.",
     match: ["깡도라"],
   },
   {
@@ -155,7 +160,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     key: "dead_wall",
     label: "왕패",
-    short: "패산 끝에 떼어 둔 14장. 보너스 안내패와 깡 보충패가 여기서 나온다.",
+    short: "패산 끝에 떼어 둔 14장. 도라 표시패와 영상패가 여기서 나온다.",
   },
   {
     key: "haipai",
@@ -170,13 +175,13 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     key: "haitei",
     label: "해저",
-    short: "패산의 맨 마지막 패. 그 패로 이기면 점수가 한 단계 더 붙는다.",
+    short: "패산의 맨 마지막 패.",
     match: ["해저패", "해저(?![로모])"],
   },
   {
     key: "river",
     label: "바닥",
-    short: "자기 앞에 버린 패가 줄지어 놓이는 자리. 누가 뭘 버렸는지 다 보인다.",
+    short: "자기 앞에 버린 패가 줄지어 놓이는 자리.",
     match: ["버림패", "바닥(?=[의에을은이과와도만])"],
   },
   {
@@ -240,12 +245,20 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     label: "하가",
     short: "내 바로 다음 차례인 오른쪽 사람.",
   },
+  {
+    key: "toimen",
+    label: "대가",
+    short: "내 반대편(정면)에 위치한 사람. '대면'이라고도 한다.",
+    // `대가`는 "그 상대가"에 통째로 파묻힌다 — 앞이 한글이면 잡지 않는다.
+    // 게임 텍스트가 실제로 쓰는 표기는 `대면` 쪽이다(예지의 "하가·대면·상가·나").
+    match: ["대면", "(?<![가-힣])대가"],
+  },
 
   // ── 이기는 방법 ────────────────────────────────────────────
   {
     key: "agari",
     label: "화료",
-    short: "손을 완성해 점수를 받는 것. 이 게임의 '이겼다'.",
+    short: "손을 완성해 점수를 받는 것. 이 게임을 승리한다.",
   },
   {
     key: "tsumo",
@@ -299,7 +312,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     key: "furiten",
     label: "후리텐",
-    short: "내 오름패를 내가 이미 버려서, 남의 패로는 못 이기게 된 상태. 쯔모는 된다.",
+    short: "내 오름패에 포함되는 패를 내가 이미 버려서, 남의 패로는 못 이기게 된 상태. 쯔모는 가능하다.",
   },
   {
     key: "genbutsu",
@@ -490,12 +503,12 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     key: "chinitsu",
     label: "청일색",
-    short: "손 전체를 한 무늬로만 채운 손. 점수가 크게 붙는다.",
+    short: "손 전체를 한 무늬로만 채운 손.",
   },
   {
     key: "honitsu",
     label: "혼일색",
-    short: "한 무늬 + 자패만으로 채운 손. 청일색보다는 만들기 쉽다.",
+    short: "한 무늬 + 자패만으로 채운 손.",
   },
   {
     key: "honroutou",
@@ -522,7 +535,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     key: "menzen_tsumo",
     label: "멘젠쯔모",
-    short: "한 번도 울지 않은 손을 스스로 뽑은 패로 완성한 것. 그 자체로 점수가 붙는다.",
+    short: "한 번도 울지 않은 손을 스스로 뽑은 패로 완성한 것.",
   },
   {
     key: "haitei_raoyue",
