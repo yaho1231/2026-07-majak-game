@@ -4529,6 +4529,18 @@ function HomeScreen(props: {
         <span className="home-logo">MAJAK</span>
         <span className="home-tagline">리치마작 × 증강</span>
         <span className="home-spacer" />
+        {/* 게시판은 첫 화면 아래에 있어 있는 줄도 모르고 지나친다 — 상단에서 바로 간다. */}
+        <button
+          className="home-logout home-feedback-jump"
+          onClick={() =>
+            // 즉시 이동(behavior 생략) — 홈은 .home이 스크롤 컨테이너라 smooth가
+            // 중간에 멈추는 환경이 있었다. 목적지는 확실히 도착하는 편이 낫다.
+            document.querySelector(".home-feedback")?.scrollIntoView({ block: "start" })
+          }
+          title="버그 제보 · 증강 아이디어"
+        >
+          📮 제보
+        </button>
         <span className="home-user">
           {props.auth.username}
           {props.auth.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
@@ -4634,6 +4646,17 @@ function HomeScreen(props: {
         </section>
         </div>
 
+        {/* 제보 게시판은 상단 바로 아래 — 맨 아래에 두면 일반 유저는 증강 메타 카드를
+            두 화면 넘게 지나야 만나서, 게시판이 있는 줄도 모른다. */}
+        <FeedbackBoard
+          auth={props.auth}
+          entries={props.feedback}
+          onSubmit={props.onSubmitFeedback}
+          onRefresh={props.onRefreshFeedback}
+          onUpdate={props.onUpdateFeedback}
+          onDelete={props.onDeleteFeedback}
+        />
+
         {/* 닉네임별 성적표는 관리자 전용 (서버도 비관리자에겐 닉네임을 지워 보낸다) */}
         {props.auth.isAdmin ? (
         <section className="home-card home-leaderboard">
@@ -4689,15 +4712,6 @@ function HomeScreen(props: {
           </div>
           <AugmentMeta leaderboard={props.leaderboard} catalog={props.catalog} />
         </section>
-
-        <FeedbackBoard
-          auth={props.auth}
-          entries={props.feedback}
-          onSubmit={props.onSubmitFeedback}
-          onRefresh={props.onRefreshFeedback}
-          onUpdate={props.onUpdateFeedback}
-          onDelete={props.onDeleteFeedback}
-        />
 
         {props.auth.isAdmin ? replaysCard : null}
 
