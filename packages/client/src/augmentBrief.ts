@@ -50,7 +50,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   blame_shift: { use: "상시", text: "내 론 점수를 쏜 사람 혼자가 아니라 셋이 나눠 낸다(총액은 그대로)." },
   blood_contract: { use: "매 국 1회", text: "역 하나를 미리 걸고, 그 역으로 화료하면 점수가 1.5배가 된다." },
   bluff_pretense: { use: "매 국 1회", text: "같은 패가 1장뿐이어도 퐁한다. 모자란 장은 잡패가 변신해 채운다." },
-  bottom_deal: { use: "매 순 1회", text: "패산 맨 밑 3장이 나만 보이고, 원하면 맨 밑에서 뽑는다." },
+  bottom_deal: { use: "매 순 1회", text: "패산 맨 밑 3장이 나만 보이고, 쓰면 다음 쯔모를 맨 밑에서 뽑는다." },
   bottom_yaku: { use: "상시", text: "내 버림패 모양에 따라 화료 시 최대 3판이 더 붙는다." },
   brief_fog: { use: MODE_1_2, text: "6순 동안 모두의 버림패를 가린다. 나만 그대로 볼 수 있다." },
   broken_border: { use: "상시", text: "슌쯔에 무늬 제한이 없다 — 2만·3통·4삭도 한 몸통." },
