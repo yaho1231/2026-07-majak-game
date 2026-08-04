@@ -126,7 +126,7 @@ export interface BotDecisionContext {
  *
  * **액티브를 둘 이상 보유한 봇**은 한 프롬프트에 하나만 제출할 수 있다. 그때 누구를
  * 태울지는 `{ option, weight }`로 돌려준 **발동 강도**가 정한다 — 옵션만 돌려주면
- * 그 증강의 파워 점수에서 나온 기본 강도를 쓴다(`DEFAULT_BOT_WEIGHT_OF` 참조).
+ * 그 증강의 파워 점수에서 나온 기본 강도를 쓴다(`defaultBotWeight` 참조).
  * 예전에는 `player.augments` 배열의 첫 non-null이 무조건 이겨 **픽 순서**가 판단을
  * 눌렀다(docs/25 시스템 횡단 #10).
  */
@@ -241,6 +241,15 @@ export interface AugmentContext {
       discard: { player: PlayerId; tileId: number },
     ) => { type: string; payload: unknown }[],
   ): void;
+
+  /**
+   * 이 증강이 파괴될 때(`uninstallAugment`) 실행할 정리 훅.
+   *
+   * 코어가 소유한 등록(규칙·효과·옵션 프로바이더)은 자동으로 지워지므로 여기 쓸 필요가
+   * 없다. **코어가 모르는 곳**에 심어 둔 것 — 커스텀 역의 보유자 집합(`yakuHolders`)처럼
+   * 게임 스코프에 남는 것 — 을 걷어내는 통로다.
+   */
+  onUninstall(cleanup: () => void): void;
 
   /**
    * **다른 증강을 보유자에게 지급한다** (지급형 증강 전용 — 화수분).
@@ -382,7 +391,7 @@ export function installAugment(
         // 않은 옵션의 submit을 거부하므로, 여기서 후보를 비우면 액션도 함께 막힌다.
         if (isSourceDisarmed(state, instanceId)) return [];
         return build(state);
-      });
+      }, instanceId);
     },
     holderReactionOptions(build) {
       engine.registerReactionOptions((state, player, discard) => {
@@ -390,7 +399,10 @@ export function installAugment(
         // holderTurnOptions와 동일한 무장해제 가드 — 잠기면 콜 버튼도 함께 사라진다
         if (isSourceDisarmed(state, instanceId)) return [];
         return build(state, discard);
-      });
+      }, instanceId);
+    },
+    onUninstall(cleanup) {
+      engine.registerUninstallHook(instanceId, cleanup);
     },
     grantAugments(pick) {
       const catalog = extras.catalog;
@@ -437,7 +449,22 @@ export function installAugment(
   def.install(ctx);
 }
 
-/** 증강 파괴 시 규칙·훅을 한 번에 제거 (Prism 확장용) */
+/**
+ * 증강 파괴 시 그 인스턴스가 남긴 등록을 한 번에 걷어낸다 (증강 파괴/교체 계열용).
+ *
+ * 지우는 것 — 규칙 모디파이어, 효과(reaction/interceptor), 턴·리액션 옵션 프로바이더,
+ * 그리고 증강이 `ctx.onUninstall`로 등록해 둔 정리 훅(커스텀 역 보유자 집합 등).
+ *
+ * **일부러 남기는 것**:
+ *  - `engine.actions`에 등록된 액션 타입 — 게임당 1회 등록이라 같은 증강을 든 다른
+ *    사람의 것까지 함께 지워진다. 액션의 validate가 `player.augments.includes(id)`를
+ *    보므로, 보유 목록에서 빠지면 그대로 무력해진다.
+ *  - `engine.reducers`에 등록된 이벤트 리듀서 — 지나간 이벤트를 다시 적용하는
+ *    리플레이·resume이 이 리듀서를 필요로 한다. 지우면 과거 기록을 못 읽는다.
+ *
+ * ⚠ 호출자는 **`player.augments`에서 그 id를 빼는 일까지** 해야 한다. 이 함수는
+ * 등록만 걷어내고 상태는 건드리지 않는다(상태 변경은 이벤트로만 한다는 규약).
+ */
 export function uninstallAugment(
   engine: GameEngine,
   def: AugmentDef,
@@ -446,4 +473,6 @@ export function uninstallAugment(
   const instanceId = augmentInstanceId(holder, def.id);
   engine.rules.removeBySource(instanceId);
   engine.effects.removeBySource(instanceId);
+  engine.removeOptionProvidersBySource(instanceId);
+  engine.runUninstallHooks(instanceId);
 }

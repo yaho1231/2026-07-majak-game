@@ -43,7 +43,7 @@ import type {
   GameState,
   PlayerId,
 } from "@majak/core";
-import { yakuHolders } from "../util.js";
+import { addYakuHolder, yakuHolders } from "../util.js";
 
 const ID = "bottom_yaku";
 /** 역류 통관 — 한 무늬 1~9가 모두 바닥에 (2판) */
@@ -138,7 +138,6 @@ export const bottomYaku: AugmentDef = defineAugment({
           hasTripleDiscard(engine.state, wctx.winnerId),
       });
     }
-    yakuHolders(yaku, FLOW).add(ctx.holder);
-    yakuHolders(yaku, LETGO).add(ctx.holder);
+    addYakuHolder(ctx, yaku, FLOW, LETGO);
   },
 });

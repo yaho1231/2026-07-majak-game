@@ -18,7 +18,7 @@
 
 import { allKinds, defineAugment, isNumberSuit, isTerminal } from "@majak/core";
 import type { AugmentDef } from "@majak/core";
-import { yakuHolders } from "../util.js";
+import { addYakuHolder, yakuHolders } from "../util.js";
 
 const ID = "tanyao_break";
 /**
@@ -62,6 +62,6 @@ export const tanyaoBreak: AugmentDef = defineAugment({
         },
       });
     }
-    yakuHolders(yaku, ID).add(ctx.holder);
+    addYakuHolder(ctx, yaku, ID);
   },
 });

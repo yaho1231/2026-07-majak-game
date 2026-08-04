@@ -20,7 +20,7 @@
 
 import { defineAugment } from "@majak/core";
 import type { AugmentDef, GameState } from "@majak/core";
-import { yakuHolders } from "../util.js";
+import { addYakuHolder, yakuHolders } from "../util.js";
 
 const ID = "soul_hunt";
 
@@ -74,6 +74,6 @@ export const soulHunt: AugmentDef = defineAugment({
           wctx.fromRiichi === true,
       });
     }
-    yakuHolders(yaku, ID).add(ctx.holder);
+    addYakuHolder(ctx, yaku, ID);
   },
 });

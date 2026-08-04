@@ -28,7 +28,7 @@
 
 import { defineAugment, isNumberSuit, winHandKindsOf } from "@majak/core";
 import type { AugmentDef, GameState, TileKind } from "@majak/core";
-import { yakuHolders } from "../util.js";
+import { addYakuHolder, yakuHolders } from "../util.js";
 
 const ID = "mixed_nine_gates";
 
@@ -143,6 +143,6 @@ export const mixedNineGates: AugmentDef = defineAugment({
           isMixedNineGates(wctx.hand),
       });
     }
-    yakuHolders(yaku, ID).add(ctx.holder);
+    addYakuHolder(ctx, yaku, ID);
   },
 });

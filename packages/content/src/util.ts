@@ -179,6 +179,28 @@ export function yakuHolders(yaku: YakuRegistry, yakuId: string): Set<PlayerId> {
   return holders;
 }
 
+/**
+ * 커스텀 역의 **보유자로 등록**하고, 증강이 파괴되면 자동으로 빠지게 한다.
+ *
+ * `yakuHolders(...).add(holder)`를 직접 부르면 `uninstallAugment` 뒤에도 보유자로
+ * 남아 **파괴된 증강의 역이 계속 성립한다** — 커스텀 역은 게임당 1회 등록이라
+ * 코어가 소스로 걷어낼 수 없는 유일한 잔재였다(docs/25 시스템 횡단 #7).
+ * 소스 스캔 테스트가 `.add(` 직접 호출을 금지한다.
+ */
+export function addYakuHolder(
+  ctx: AugmentContext,
+  yaku: YakuRegistry,
+  ...yakuIds: string[]
+): void {
+  const holder = ctx.holder;
+  for (const id of yakuIds) {
+    yakuHolders(yaku, id).add(holder);
+    ctx.onUninstall(() => {
+      yakuHolders(yaku, id).delete(holder);
+    });
+  }
+}
+
 /** augmentData 숫자 카운터 읽기 (없으면 0) */
 export function counterOf(state: GameState, key: string): number {
   const v = state.augmentData[key];

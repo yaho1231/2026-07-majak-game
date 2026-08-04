@@ -175,7 +175,7 @@ describe("BotAgent — 증강 드래프트+발동 경로가 게임을 끝까지 
 function alwaysFire(
   id: string,
   weight?: number,
-  category: AugmentDef["category"] = "buff",
+  category: AugmentDef["category"] = "etc",
 ): AugmentDef {
   return {
     id,

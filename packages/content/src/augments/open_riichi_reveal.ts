@@ -48,6 +48,7 @@ import {
   roundKey,
   roundViewKey,
   winPointsWithExtraHan,
+  addYakuHolder,
   yakuHolders,
 } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
@@ -189,7 +190,7 @@ export const openRiichiReveal: AugmentDef = defineAugment({
           wctx.fromRiichi !== true,
       });
     }
-    if (yaku !== undefined) yakuHolders(yaku, ID).add(holder);
+    if (yaku !== undefined) addYakuHolder(ctx, yaku, ID);
     engine.rules.addModifier<string[]>("win.blockedYaku", {
       source: ctx.instanceId,
       layer: ctx.layer,
