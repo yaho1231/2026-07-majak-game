@@ -50,12 +50,23 @@ const inRiichi = (state: GameState, h: PlayerId): boolean =>
 
 const isDragon = (k: TileKind): boolean => k.suit === "dragon";
 
-/** 손패의 삼원패 랭크별 장수 */
+/**
+ * 삼원패 랭크별 장수 — **손패와 후로를 함께** 센다.
+ *
+ * 예전에는 손패만 봐서, 백백백을 펑하고 발발발을 쥔 채 中 한 장인 손이
+ * "완성 두 종류"로 잡히지 않아 발동할 수 없었다 — 설명("두 종류를 커쯔로
+ * 만들고")과 어긋난다(docs/25 역/점수 #14). 대삼원은 후로해도 성립하는 역이라
+ * 후로한 커쯔를 세지 않을 이유가 없다.
+ */
 function dragonCounts(state: GameState, holder: PlayerId): Map<number, number> {
   const counts = new Map<number, number>(DRAGON_RANKS.map((r) => [r, 0]));
-  for (const id of handIdsOf(state, holder)) {
+  const bump = (id: TileId): void => {
     const k = kindOf(state, id);
     if (isDragon(k)) counts.set(k.rank, (counts.get(k.rank) ?? 0) + 1);
+  };
+  for (const id of handIdsOf(state, holder)) bump(id);
+  for (const meld of state.round.byPlayer[holder]?.melds ?? []) {
+    for (const id of meld.tileIds) bump(id);
   }
   return counts;
 }
