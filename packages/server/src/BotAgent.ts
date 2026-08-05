@@ -1,19 +1,23 @@
 /**
- * BotAgent — 사람처럼 치는 것을 목표로 하는 규칙 기반 봇.
+ * BotAgent — 사람처럼 치는 것을 목표로 하는 봇.
  *
- * 매 결정마다 판을 한 번 읽고(`bot/read.ts`), 그 읽기를 네 갈래 판단이 나눠 쓴다.
+ * 매 결정마다 판을 한 번 읽고(`bot/read.ts`), 그 읽기를 여러 평가자가 나눠 쓴 뒤
+ * **전부 점수로 입찰**한다. 이긴 입찰이 실행된다(`bot/decide.ts`).
  *
- * - **버림** (`bot/discard.ts`) — 버린 뒤의 샹텐과 우케이레(받는 패의 실제 장수)로 고르고,
- *   도라를 흘리는 손해와 노리는 역의 방향을 얹는다. 상대가 리치를 걸면 그 비중을 낮추고
- *   안전도(현물·스지·노찬스)를 섞는다 = **밀기/접기**.
- * - **리치** (`bot/discard.ts`) — 기본은 건다. 죽은 대기·후리텐·패산 고갈·고타점 다마텐·
- *   남의 리치에 맞선 싸구려 나쁜 대기만 참는다. 선언패는 가장 넓은 대기를 남기는 쪽.
- * - **후로** (`bot/call.ts`) — 손이 실제로 전진하고(역패 펑만 예외) 화료할 역이 있을 때만.
- *   종반에는 형식텐파이를 위해 부른다.
- * - **깡** (`bot/kan.ts`) — 손이 상하지 않을 때만. 남이 리치 중이면 도라를 늘려 주지 않는다.
+ * - **값어치·확률** (`bot/value.ts`) — 예상 판수를 코어 점수표로 옮겨 손을 점수로 매기고,
+ *   대기·우케이레·남은 순목으로 화료 확률을 낸다. 모든 입찰의 공통 눈금이다.
+ * - **순위** (`bot/match.ts`) — 점수판과 남은 국 수를 `riskAppetite` 한 축으로 압축한다.
+ * - **위험** (`bot/danger.ts`) — 현물·스지·노찬스로 방총 확률을, 상대 리치·후로·도라로
+ *   예상 실점을 낸다. 곱하면 기대 실점 — 기대 획득과 같은 단위다.
+ * - **버림·리치** (`bot/discard.ts`) — 후보마다 버린 뒤의 판 EV. 다마텐은 규칙이 아니라
+ *   리치 입찰이 진 결과다.
+ * - **후로** (`bot/call.ts`) — 울고 간 판과 안 울고 간 판의 EV 비교. 구조적으로 불가능한
+ *   콜(역 없음·전진 없음·멘젠 텐파이 파괴)만 걸러 낸다.
+ * - **깡** (`bot/kan.ts`) — 새 도라와 영상패가 버는 것에서, 남에게 붙는 도라를 뺀다.
  *
  * 액티브 증강은 각 증강 파일의 `bot` 정책(AugmentDef.bot)에 위임하고, 그 정책이 쓸 수
  * 있도록 위 읽기(샹텐·대기·위협·안전도·잔여 장수)를 `BotDecisionContext`로 넘긴다.
+ * 정책이 말하는 발동 강도는 `augmentPoints`가 점수 축으로 옮긴다.
  * 봇마다 성격(`bot/profile.ts`)이 달라 미는 정도·우는 문턱·생각 시간이 갈린다.
  *
  * 설계: docs/00_MASTER_ARCHITECTURE.md §5.4
@@ -37,9 +41,11 @@ import type {
 import type { DraftStage, SandboxBotRules } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type { TileKind } from "@majak/core/mahjong/tiles/Tile.js";
-import { chooseCall } from "./bot/call.js";
-import { chooseDiscard, chooseRiichi } from "./bot/discard.js";
-import { chooseKan } from "./bot/kan.js";
+import { bidCall, bidPass } from "./bot/call.js";
+import { bidDiscard, bidRiichi } from "./bot/discard.js";
+import { bidKan } from "./bot/kan.js";
+import { augmentPoints, bestBid, EXTRA_ACTION_FLOOR } from "./bot/decide.js";
+import type { ActionBid } from "./bot/decide.js";
 import { buildRead, readPlan } from "./bot/read.js";
 import type { BotRead, HandPlan } from "./bot/read.js";
 import { rollProfile } from "./bot/profile.js";
@@ -199,12 +205,26 @@ export class BotAgent implements PlayerAgent {
     return chosen;
   }
 
+  /**
+   * 이번 프롬프트에서 무엇을 할지.
+   *
+   * **2026-08-05 재작성.** 예전에는 고정된 우선순위 사슬이었다 —
+   * `화료 → 증강 → 깡 → 후로 → 리치 → 버림`. 각 단계가 "한다/안 한다"만 돌려주고
+   * 앞 단계가 하겠다면 뒤 단계는 물어보지도 않아서, 봇은 **비교를 한 적이 없었다.**
+   * 이 펑이 리치보다 이득인지, 이 깡이 안전패 한 장보다 나은지를 물을 자리가 구조적으로
+   * 없었고, 새 판단을 붙이려면 사슬 어딘가에 끼워 넣어야 했다 — 그 위치가 곧 판단이
+   * 되어 버리는 구조였다.
+   *
+   * 지금은 후보가 전부 **점수로 입찰**한다. 남아 있는 층은 취향이 아니라 게임의
+   * 사실이다 — 깡과 증강은 턴을 소비하지 않아 다른 행동과 경쟁하지 않는다
+   * (하고 나서 그대로 버릴 수 있다). 자세한 근거는 `bot/decide.ts`.
+   */
   private decideNow(prompt: DecisionPrompt): ActionOption {
     // 증강 테스트 제약(후로·리치·화료·증강 금지)에 걸리는 선택지를 먼저 걷어낸다.
     // 제약이 없으면 prompt.options 그대로다.
     const options = restrictOptions(prompt.options, this.restrictions);
 
-    // 1. 화료는 무조건 (론·쯔모)
+    // 화료는 비교하지 않는다 — 이기는 것보다 나은 선택지는 없다
     const win = options.find((o) => o.type === "win");
     if (win) return win;
 
@@ -215,43 +235,31 @@ export class BotAgent implements PlayerAgent {
     }
     this.plan = readPlan(read, this.plan);
 
-    // 2. 액티브 증강 발동 — 상황에 맞으면(증강 정책이 판단) 발동한다.
-    //    증강 액션은 버림을 소비하지 않는 '추가 행동'이라, 발동 후 봇은 다시
-    //    프롬프트를 받아 리치·버림을 이어간다. 그래서 콜·리치·버림보다 먼저 본다.
-    const augment = this.chooseAugment(read, options);
-    if (augment) return augment;
+    // ── 1층: 추가 행동 (깡 · 액티브 증강) ──
+    // 턴을 소비하지 않으므로 버림·리치와 경쟁하지 않는다. 이득이 눈에 보이면 먼저 한다.
+    const extra = bestBid([
+      bidKan(read, options, this.profile, this.plan),
+      ...this.augmentBids(read, options),
+    ]);
+    if (extra !== null && extra.value > EXTRA_ACTION_FLOOR) return extra.option;
 
-    // 3. 깡(안깡·가깡) — 손을 망치지 않을 때만. 깡도 버림을 소비하지 않는 추가 행동이라
-    //    (영상패를 뽑고 다시 프롬프트가 온다) 콜·리치보다 먼저 본다.
-    const kan = chooseKan(read, options, this.profile);
-    if (kan) return kan;
-
-    // 4. 리액션 콜(펑·치·대명깡)
-    const call = chooseCall(read, options, this.plan, this.profile);
-    if (call) {
-      this.plan = call.plan;
-      return call.option;
+    // ── 2층: 턴을 소비하는 행동 ──
+    // 전부 "그 길로 갔을 때 이 판이 얼마짜리인가"(절대 EV)로 입찰하므로 직접 견줄 수 있다.
+    // 다마텐도 '울지 않기'도 여기서 규칙 없이 나온다 — 그냥 그쪽 입찰이 이긴 것이다.
+    const call = bidCall(read, options, this.plan, this.profile);
+    const turn = bestBid([
+      call,
+      bidPass(read, options, this.plan, this.profile),
+      bidRiichi(read, options.filter((o) => o.type === "riichi"), this.plan, this.profile),
+      bidDiscard(read, options.filter((o) => o.type === "discard"), this.plan, this.profile),
+    ]);
+    if (turn !== null) {
+      // 후로가 이겼으면 이번 국의 역 방향이 그 콜로 확정된다
+      if (call !== null && turn.option === call.option) this.plan = call.plan;
+      return turn.option;
     }
 
-    // 5. 멘젠 텐파이면 리치 — 걸 만할 때만, 가장 넓은 대기를 남기는 패로
-    const riichis = options.filter((o) => o.type === "riichi");
-    if (riichis.length > 0) {
-      const declared = chooseRiichi(read, riichis, this.profile);
-      if (declared !== null) return declared;
-    }
-
-    // 6. (콜 프롬프트에서 후로 안 하기로 함) 패스
-    const pass = options.find((o) => o.type === "pass");
-    if (pass) return pass;
-
-    // 7. 내 차례 버림 — 진행·값어치·방향·안전을 섞어 고른다
-    const discards = options.filter((o) => o.type === "discard");
-    if (discards.length > 0) {
-      const picked = chooseDiscard(read, discards, this.plan, this.profile);
-      if (picked !== null) return picked;
-    }
-
-    // 8. 그 외(강제 선택지) 랜덤
+    // 아무도 입찰하지 않는 프롬프트(증강이 만든 강제 선택지 등)는 난수로
     const idx = this.rng.int(options.length);
     return options[idx] ?? options[0]!;
   }
@@ -267,20 +275,21 @@ export class BotAgent implements PlayerAgent {
   // ─────────────────────────── 액티브 증강 발동 ───────────────────────────
 
   /**
-   * 보유 액티브 증강의 봇 정책을 순회하며 발동할 옵션을 고른다. 없으면 null.
-   * 각 증강 정책(AugmentDef.bot)은 자기 소유 옵션만 골라야 하고, 여기서는
-   * 정책이 돌려준 옵션이 실제로 이번 프롬프트에 제시됐는지 한 번 더 확인한다
-   * (제시되지 않은 옵션을 제출하면 FlowController가 throw).
+   * 보유 액티브 증강의 봇 정책을 순회하며 **입찰 목록**을 만든다.
    *
-   * 여럿이 동시에 발동을 원하면 **발동 강도**가 큰 쪽을 태운다. 정책이 강도를
-   * 밝히지 않으면 그 증강의 파워 점수에서 나온 기본값(`defaultBotWeight`)을 쓰고,
-   * 동점은 보유 순서로 끊는다(결정론). 예전에는 배열 순서의 첫 non-null이 무조건
-   * 이겨서, 액티브 2개를 들면 판단 강도와 무관하게 **픽 순서가 이겼다**
-   * (docs/25 시스템 횡단 #10).
+   * 각 증강 정책(AugmentDef.bot)은 자기 소유 옵션만 골라야 하고, 여기서는 정책이
+   * 돌려준 옵션이 실제로 이번 프롬프트에 제시됐는지 한 번 더 확인한다 (제시되지 않은
+   * 옵션을 제출하면 FlowController가 throw).
+   *
+   * 정책들은 `BOT_WEIGHT`라는 **별도 눈금**(0~100)으로 말한다. 그 눈금은 증강끼리
+   * 비교하는 데는 충분했지만 깡·리치·버림과는 비교할 수 없었다 — 그래서 예전 봇은
+   * 발동 가능한 증강이 있으면 그 값어치와 무관하게 **무조건 먼저 태웠다.**
+   * 정책 115개를 고쳐 쓰는 대신 `augmentPoints`가 두 눈금 사이의 환율이 된다.
+   * 정책은 지금 쓰는 말을 그대로 쓰고, 코어가 그 말을 점수로 옮긴다.
    */
-  private chooseAugment(read: BotRead, options: ActionOption[]): ActionOption | null {
+  private augmentBids(read: BotRead, options: ActionOption[]): ActionBid[] {
     const me = read.view.players.find((p) => p.id === this.id);
-    if (me === undefined || me.augments.length === 0) return null;
+    if (me === undefined || me.augments.length === 0) return [];
 
     const ctx: BotDecisionContext = {
       view: read.view,
@@ -296,7 +305,11 @@ export class BotAgent implements PlayerAgent {
       remaining: (kind: TileKind) => read.remainingOf(kind),
       safety: (kind: TileKind) => read.safetyOf(kind),
     };
-    let best: { option: ActionOption; weight: number } | null = null;
+    // 증강의 값어치는 손의 값어치에 매인다 — 만관 손에서의 '평시 발동'과
+    // 1000점 손에서의 '평시 발동'은 같은 강도라도 실제 값이 다르다
+    const handPoints = read.valueOf({ plan: this.plan }).points;
+
+    const bids: ActionBid[] = [];
     for (const augId of me.augments) {
       const def = this.catalog.get(augId);
       const policy = def?.bot;
@@ -310,12 +323,14 @@ export class BotAgent implements PlayerAgent {
       const key = JSON.stringify(weighted.option);
       const match = options.find((o) => JSON.stringify(o) === key);
       if (match === undefined) continue;
-      // 동점은 먼저 본 쪽(보유 순서)이 이긴다 — 순수 부등호라 자동으로 그렇게 된다
-      if (best === null || weighted.weight > best.weight) {
-        best = { option: match, weight: weighted.weight };
-      }
+      bids.push({
+        option: match,
+        value: augmentPoints(weighted.weight, handPoints),
+        reason: `증강 ${augId} (강도 ${weighted.weight})`,
+      });
     }
-    return best?.option ?? null;
+    // 동점은 먼저 본 쪽(보유 순서)이 이긴다 — bestBid가 순수 부등호라 그렇게 된다
+    return bids;
   }
 
   async decideDraft(_stage: DraftStage, choices: AugmentDef[]): Promise<string> {

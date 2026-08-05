@@ -37,6 +37,16 @@ export type HandPlan =
   | { yaku: "toitoi" }
   | null;
 
+/** 가정한 손을 값매기는 질의 — 생략한 값은 지금 손 그대로 */
+export interface ValueQuery {
+  /** 그 손이 노리는 역 방향 */
+  plan: HandPlan;
+  /** 이 판단으로 잃거나 얻는 도라 수 (도라를 흘리는 버림은 음수) */
+  doraDelta?: number;
+  /** 그때의 후로 수 — 울고 난 뒤를 값매길 때 넣는다 (멘젠 판수가 사라진다) */
+  meldCount?: number;
+}
+
 export interface BotRead {
   view: PlayerView;
   me: PlayerId;
@@ -70,16 +80,31 @@ export interface BotRead {
   /** 게임 전체에서 이 국의 처지 (순위·남은 국·판돈 → 위험 감수 성향) */
   match: MatchContext;
   /**
-   * 이 방향으로 갔을 때 손의 값어치 (판수·점수). 방향이 바뀌면 값도 바뀐다.
-   * `doraDelta`는 이 판단으로 잃거나 얻는 도라 수 — 도라를 흘리는 버림 후보는
-   * 음수를 넣어 값어치가 실제로 얼마나 내려가는지를 점수로 본다.
+   * **가정한 손**의 값어치 (판수·점수).
+   *
+   * 지금 손뿐 아니라 "이 패를 버린 뒤"·"이걸 울고 난 뒤"·"깡을 친 뒤"를 전부 같은
+   * 함수로 값매길 수 있어야 판단들이 서로 비교된다 — 그게 이 인자들의 이유다.
    */
-  valueOf(plan: HandPlan, doraDelta?: number): HandValue;
+  valueOf(input: ValueQuery): HandValue;
   /**
    * 지금 손이 남은 순목 안에 화료할 확률.
    * 버림 후보를 비교할 때는 그 패를 버린 뒤의 샹텐·우케이레를 넣어 다시 잰다.
    */
-  winChanceOf(input: { shanten: number; waitTiles: number; ukeireTiles: number }): number;
+  winChanceOf(input: {
+    shanten: number;
+    waitTiles: number;
+    ukeireTiles: number;
+    /**
+     * 론이 막혀 쯔모로만 이길 수 있는 손인가 — 후리텐이거나 **역이 없는 멘젠 텐파이**.
+     * 역없는 손이 그래도 이기려면 리치를 걸어야 한다는 판단이 여기서 나온다.
+     */
+    tsumoOnly?: boolean;
+    /**
+     * 이 판단이 **쯔모를 몇 번 더 벌어 주는가** (깡의 영상패 = 1).
+     * 공짜 쯔모 한 번은 그 자체로 값이 있다 — 도라를 세지 않아도 깡이 이득인 이유다.
+     */
+    extraDraws?: number;
+  }): number;
   /** 텐파이일 때 오름패의 남은 장수 합 (노텐이면 0) */
   waitTiles: number;
   /** 이 패 목록에 든 도라 수 (적도라 제외) */
@@ -205,11 +230,11 @@ export function buildRead(view: PlayerView, me: PlayerId, mode?: BotGameMode): B
     remainingOf,
     safetyOf: (kind) => safetyOf(kind, threats, remainingOf),
     expectedLoss: (kind) => expectedLossOf(kind, threats, remainingOf),
-    valueOf: (plan, doraDelta = 0) =>
+    valueOf: (input) =>
       estimateHandValue({
-        handDora: Math.max(0, handDora + doraDelta),
-        meldCount,
-        plan,
+        handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
+        meldCount: input.meldCount ?? meldCount,
+        plan: input.plan,
         isDealer: match.isDealer,
         riichiDeclared: mine?.riichiDeclared === true,
       }),
@@ -218,9 +243,10 @@ export function buildRead(view: PlayerView, me: PlayerId, mode?: BotGameMode): B
         shanten: input.shanten,
         waitTiles: input.waitTiles,
         ukeireTiles: input.ukeireTiles,
-        wallLeft,
+        // 쯔모 한 번 = 패산 4장 (넷이 돌아가므로)
+        wallLeft: wallLeft + (input.extraDraws ?? 0) * 4,
         turn: view.round.turnCount,
-        furiten,
+        furiten: furiten || input.tsumoOnly === true,
       }),
     doraIn,
     handDora,
@@ -269,6 +295,18 @@ export function readPlan(read: BotRead, committed: HandPlan = null): HandPlan {
   }
   if (committed !== null) return committed;
 
+  /**
+   * 이미 눕혀 둔 역패 커쯔 — 그 자체가 확정 역이다.
+   *
+   * 예전에는 이 방향을 `chooseCall`이 울 때 한 번 정해 주는 것에만 의존했다. 그래서
+   * 그 경로를 안 거친 후로(재개·리플레이 재구성·증강이 만든 후로)는 방향을 잃었고,
+   * **역이 확정된 손이 "역없는 열린 손"으로 읽혔다**(2026-08-05 EV 도입 때 드러났다).
+   * 방향은 기억이 아니라 판에서 읽는 것이 옳다.
+   */
+  for (const { kind, n } of groupKinds(meldKindsOf(read)).values()) {
+    if (n >= 3 && read.isYakuhai(kind)) return { yaku: "yakuhai" };
+  }
+
   // 토이토이 — 커쯔·작두가 4조 이상이면 사람도 이 방향을 본다
   const pairs = new Map<string, number>();
   for (const k of all) {
@@ -284,6 +322,20 @@ export function readPlan(read: BotRead, committed: HandPlan = null): HandPlan {
   if (orphans <= 1) return { yaku: "tanyao" };
 
   return null;
+}
+
+/** 같은 종류끼리 묶어 장수를 센다 (대표 kind를 함께 들고 있어 되파싱이 필요 없다) */
+function groupKinds(
+  kinds: readonly TileKind[],
+): Map<string, { kind: TileKind; n: number }> {
+  const m = new Map<string, { kind: TileKind; n: number }>();
+  for (const k of kinds) {
+    const key = kindKey(k);
+    const cur = m.get(key);
+    if (cur === undefined) m.set(key, { kind: k, n: 1 });
+    else cur.n++;
+  }
+  return m;
 }
 
 const isOrphan = (k: TileKind): boolean =>

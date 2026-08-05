@@ -19,18 +19,38 @@ import { BotAgent } from "../src/BotAgent.js";
 
 const k = (suit: TileKind["suit"], rank: number): TileKind => ({ suit, rank });
 
-/** BotAgent가 읽는 필드만 채운 최소 뷰 (손패는 kinds 순서대로 tileId 0..n) */
-function viewOf(hand: TileKind[]): PlayerView {
+/**
+ * BotAgent가 읽는 필드만 채운 최소 뷰 (손패는 kinds 순서대로 tileId 0..n).
+ * `melds`는 **실제로 눕힌 후로**여야 한다 — 가깡 장면처럼 "이미 펑했다"를 전제하는
+ * 뷰에서 비워 두면 손패 장수와 앞뒤가 맞지 않고, 무엇보다 봇이 그 후로에서
+ * "역이 이미 확정됐다"를 읽지 못해 손을 화료 가망 없는 형태로 본다
+ * (2026-08-05 EV 판단 도입 때 드러났다).
+ */
+function viewOf(hand: TileKind[], melds: TileKind[][] = []): PlayerView {
   const tiles: Record<number, { id: number; kind: TileKind; attrs: unknown }> = {};
   const handIds: number[] = [];
   hand.forEach((kind, i) => {
     tiles[i] = { id: i, kind, attrs: {} };
     handIds.push(i);
   });
+  // 눕힌 후로는 **실제로 보여야** 한다 — 봇은 여기서 "역이 이미 확정됐다"를 읽는다
+  const meldIds: number[] = [];
+  const meldViews = melds.map((m) => {
+    const ids = m.map((kind) => {
+      const id = hand.length + meldIds.length;
+      tiles[id] = { id, kind, attrs: {} };
+      meldIds.push(id);
+      return id;
+    });
+    return { kind: "pon" as const, tileIds: ids };
+  });
   return {
     playerId: "p0",
     tiles,
-    zones: { "hand:p0": { id: "hand:p0", kind: "hand", tileIds: handIds, hiddenCount: 0 } },
+    zones: {
+      "hand:p0": { id: "hand:p0", kind: "hand", tileIds: handIds, hiddenCount: 0 },
+      "melds:p0": { id: "melds:p0", kind: "melds", tileIds: meldIds, hiddenCount: 0 },
+    },
     players: [
       { id: "p0", seat: 0, score: 25000, augments: [], nickname: "p0", isBot: true },
       { id: "p1", seat: 1, score: 25000, augments: [], nickname: "p1", isBot: true },
@@ -39,7 +59,7 @@ function viewOf(hand: TileKind[]): PlayerView {
       prevalentWind: 1, roundNumber: 1, honba: 0, riichiPot: 0,
       dealerSeat: 0, turnSeat: 0, turnCount: 3, phase: "turn.act", direction: 1,
       doraIndicators: [], lastDiscard: null, myDrawnTile: null, uraDoraIndicators: null,
-      byPlayer: { p0: { meldCount: 0, riichiDeclared: false } },
+      byPlayer: { p0: { meldCount: meldViews.length, melds: meldViews, riichiDeclared: false } },
     },
     augmentView: {},
   } as unknown as PlayerView;
@@ -97,19 +117,21 @@ describe("BotAgent — 깡 판단", () => {
   });
 
   it("가깡은 대기를 깨지 않으면 한다", async () => {
-    // 이미 펑한 패의 4번째 한 장 — 손패에서 1장 빠질 뿐이다
+    // 3z를 이미 펑해 둔 상태에서 4번째 3z를 쯔모했다 (손패 10 + 쯔모 1).
+    // 가깡하면 그 한 장만 빠지고 78s 량면 텐파이가 그대로 남는다.
     const hand = [
       k("man", 1), k("man", 2), k("man", 3),
-      k("pin", 5), k("pin", 6), k("pin", 7),
-      k("sou", 2), k("sou", 3), k("sou", 4),
-      k("wind", 1), k("wind", 1), k("dragon", 3),
+      k("pin", 4), k("pin", 5), k("pin", 6),
+      k("sou", 7), k("sou", 8),
+      k("sou", 9), k("sou", 9),
+      k("dragon", 3),
     ];
-    const view = viewOf(hand);
+    const view = viewOf(hand, [[k("dragon", 3), k("dragon", 3), k("dragon", 3)]]);
     const bot = new BotAgent("p0", undefined, 1);
     bot.sendView(view);
     const shou: ActionOption = {
       type: "shouminkan",
-      payload: { tileId: 11, targetMeldTileId: 99 },
+      payload: { tileId: 10, targetMeldTileId: 99 },
     };
     const decision = await bot.decide({ player: "p0", options: optionsWith(view, [shou]) });
     expect(decision.type).toBe("shouminkan");
