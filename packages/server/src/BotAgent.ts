@@ -53,6 +53,8 @@ import type { BotProfile } from "./bot/profile.js";
 import type { BotGameMode } from "./bot/match.js";
 import { OpponentMemory } from "./bot/opponents.js";
 import { chooseDraft } from "./bot/draft.js";
+import { NO_FLAGS } from "./bot/flags.js";
+import type { BotFlags } from "./bot/flags.js";
 
 /** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
@@ -146,6 +148,12 @@ export class BotAgent implements PlayerAgent {
    * 정보 비대칭이 깨지지 않는다(`bot/opponents.ts`).
    */
   private readonly opponents = new OpponentMemory();
+  /**
+   * 실험 스위치 — **2:2 정책 대전 전용**(`bot/arena.ts`). 실대국 봇은 항상 비어 있다.
+   * 새 판단을 곧바로 갈아치우지 않고 이 뒤에 두면, 같은 탁에 두 정책을 앉혀
+   * 평균 순위로 강함을 잴 수 있다(자기대국은 넷이 같아 순위가 2.5로 수렴한다).
+   */
+  private flags: BotFlags = NO_FLAGS;
 
   constructor(
     id: PlayerId,
@@ -180,6 +188,12 @@ export class BotAgent implements PlayerAgent {
         rules.noWin === true ||
         rules.noAugment === true);
     this.restrictions = on ? rules : null;
+  }
+
+  /** 실험 스위치를 건다 (측정 전용) */
+  setFlags(flags: BotFlags): void {
+    this.flags = flags;
+    this.read = null;
   }
 
   /** 이 봇의 원형 (표시·집계용) */
@@ -306,6 +320,7 @@ export class BotAgent implements PlayerAgent {
     this.read = buildRead(this.lastView, this.id, {
       mode: this.mode,
       traitsOf: (p) => this.opponents.traitsOf(p),
+      flags: this.flags,
     });
     return this.read;
   }

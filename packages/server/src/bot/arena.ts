@@ -46,6 +46,8 @@ import type {
 import { BotAgent } from "../BotAgent.js";
 import { profileOf } from "./profile.js";
 import type { ArchetypeName } from "./profile.js";
+import { NO_FLAGS } from "./flags.js";
+import type { BotFlags } from "./flags.js";
 
 export interface ArenaOptions {
   /** 돌릴 판 수 */
@@ -65,6 +67,19 @@ export interface ArenaOptions {
    * 생략하면 봇이 시드에서 스스로 뽑는다(실제 대국과 같은 조건).
    */
   seats?: readonly [ArchetypeName, ArchetypeName, ArchetypeName, ArchetypeName];
+  /**
+   * **2:2 정책 대전.** 이 스위치를 켠 봇 둘과 끄지 않은 봇 둘을 같은 탁에 앉힌다.
+   *
+   * 자기대국(넷이 같은 정책)으로는 강함을 잴 수 없다 — 평균 순위가 구조상 2.5로
+   * 수렴하기 때문이다. 강함은 상대적인 값이라 **같은 탁에 둘을 앉혀야** 나온다.
+   *
+   * **같은 배패를 좌우 바꿔 두 번 돌린다**(듀플리케이트 브리지와 같은 방식).
+   * 한 번은 0·2번 자리가 스위치를 켜고, 한 번은 1·3번 자리가 켠다. 배패와 산이
+   * 완전히 같으므로 **패 운이 통째로 상쇄되고** 남는 것은 정책 차이뿐이다.
+   * 그냥 판마다 자리를 번갈아 앉히면 배패 운이 그대로 잡음으로 남아, 웬만한 개선은
+   * 그 잡음에 묻힌다(실측: 120판 표준오차 ±0.118 — 어지간한 변경보다 크다).
+   */
+  ab?: BotFlags;
 }
 
 export interface ArenaResult {
@@ -77,6 +92,31 @@ export interface ArenaResult {
   byArchetype: { archetype: ArchetypeName; stats: PlayerStatsView }[];
   /** 유국률 (아무도 화료하지 못한 국의 비율) */
   drawRate: number;
+  /** 2:2 정책 대전 결과 (ab를 켰을 때만) */
+  ab?: {
+    flags: string[];
+    /** 스위치를 켠 두 자리의 합산 */
+    on: PlayerStatsView;
+    /** 끄고 앉은 두 자리의 합산 */
+    off: PlayerStatsView;
+    /** 평균 순위 차 (양수 = 켠 쪽이 우세) */
+    placementGain: number;
+    /**
+     * **1인당 최종 점수 차** (양수 = 켠 쪽이 우세).
+     *
+     * 순위는 1~4의 네 칸뿐이라 둔하다 — 크게 이겼든 간신히 이겼든 같은 1위다.
+     * 점수는 연속값이라 같은 판수에서 훨씬 많은 정보를 준다. 드물게 나오는
+     * 변화(비싼 역을 제대로 세는 것 같은)는 순위로는 잘 안 보이고 점수로 먼저 보인다.
+     */
+    scoreGain: number;
+    /** 점수 차의 실측 표준오차 */
+    scoreStandardError: number;
+    /**
+     * 그 차이의 **실측** 표준오차. 배패별 차이의 표본표준편차에서 나온다 —
+     * 이론값을 쓰면 듀플리케이트로 잡음이 얼마나 줄었는지를 알 수 없다.
+     */
+    standardError: number;
+  };
   elapsedMs: number;
 }
 
@@ -97,19 +137,48 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
   const seed = opts.seed ?? 0x5eed;
   const mode: GameMode = opts.mode ?? "hanchan";
   const started = Date.now();
+  /**
+   * 2:2 대전에서는 **성격을 통일한다**(따로 지정하지 않으면 균형형 넷).
+   *
+   * 안 그러면 봇이 시드에서 각자 원형을 뽑는데, 그러면 켠 쪽과 끈 쪽의 성격 구성이
+   * 달라져 **스위치의 효과와 성격의 효과가 섞인다.** 실제로 아무도 안 읽는 스위치로
+   * 재 봤을 때 순위 차가 0.11이나 나왔다 — 전부 성격 차이였다.
+   */
+  const seats =
+    opts.seats ??
+    (opts.ab !== undefined
+      ? (["balanced", "balanced", "balanced", "balanced"] as const)
+      : undefined);
 
   const totals = new Map<PlayerId, PlayerStatsRaw>();
   const archetypeOf = new Map<PlayerId, ArchetypeName>();
   let rounds = 0;
   let winRounds = 0;
+  // 2:2 대전 집계 — 자리를 번갈아 앉히므로 좌석별이 아니라 '켠 쪽/끈 쪽'으로 모은다
+  const abOn: PlayerStatsRaw = createEmptyStats();
+  const abOff: PlayerStatsRaw = createEmptyStats();
+  // 배패별 순위 차 — 표준오차를 이론이 아니라 **표본에서** 낸다
+  const dealDiffs: number[] = [];
+  const dealScoreDiffs: number[] = [];
+  let dealOn = 0;
+  let dealOff = 0;
+  let dealScoreOn = 0;
+  let dealScoreOff = 0;
 
-  for (let g = 0; g < opts.games; g++) {
-    const gs = gameSeed(seed, g);
+  // 2:2 대전은 같은 배패를 좌우 바꿔 두 번 돈다 — 그래서 실제 판수가 두 배다
+  const mirrored = opts.ab !== undefined;
+  const passes = mirrored ? 2 : 1;
+  for (let g = 0; g < opts.games * passes; g++) {
+    const deal = mirrored ? Math.floor(g / 2) : g;
+    const side = mirrored ? g % 2 : 0;
+    const gs = gameSeed(seed, deal);
     const bots = SEATS.map((id, i) => {
       const bot = new BotAgent(id, `Bot_${id}`, gs + i);
-      const fixed = opts.seats?.[i];
+      const fixed = seats?.[i];
       if (fixed !== undefined) bot.setProfile(profileOf(fixed));
       bot.setGameMode(mode === "tonpuu" ? "tonpuu" : "hanchan");
+      // 같은 배패의 첫 번째 판은 0·2번, 두 번째 판은 1·3번이 스위치를 켠다
+      if (opts.ab !== undefined && i % 2 === side) bot.setFlags(opts.ab);
       archetypeOf.set(id, bot.archetype);
       return bot;
     });
@@ -136,11 +205,39 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
 
     const rankings = await controller.run();
     tracker.recordGameEnd(rankings);
+    if (mirrored) {
+      for (const r of rankings) {
+        const i = SEATS.indexOf(r.playerId);
+        if (i < 0) continue;
+        // 순위 점수(우마 포함)가 이 판의 성적이다 — 제로섬이라 합이 0이다
+        const pts = (r as { score?: number }).score ?? 0;
+        if (i % 2 === side) {
+          dealOn += r.rank;
+          dealScoreOn += pts;
+        } else {
+          dealOff += r.rank;
+          dealScoreOff += pts;
+        }
+      }
+      // 같은 배패의 두 판이 다 끝나면 그 배패의 차이를 기록한다 (각 쪽 4인분)
+      if (side === 1) {
+        dealDiffs.push((dealOff - dealOn) / 4);
+        dealScoreDiffs.push((dealScoreOn - dealScoreOff) / 4);
+        dealOn = 0;
+        dealOff = 0;
+        dealScoreOn = 0;
+        dealScoreOff = 0;
+      }
+    }
 
-    for (const id of SEATS) {
+    for (const [i, id] of SEATS.entries()) {
       const s = tracker.get(id);
       if (s === undefined) continue;
       totals.set(id, mergeStats(totals.get(id) ?? createEmptyStats(), s));
+      if (opts.ab !== undefined) {
+        const bucket = i % 2 === side ? abOn : abOff;
+        Object.assign(bucket, mergeStats(structuredClone(bucket), s));
+      }
     }
   }
 
@@ -169,8 +266,32 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       stats: deriveStats(raw),
     })),
     drawRate: rounds === 0 ? 0 : Math.max(0, 1 - winRounds / rounds),
+    ...(opts.ab !== undefined
+      ? {
+          ab: {
+            flags: [...opts.ab],
+            on: deriveStats(abOn),
+            off: deriveStats(abOff),
+            placementGain: mean(dealDiffs),
+            standardError: standardError(dealDiffs),
+            scoreGain: mean(dealScoreDiffs),
+            scoreStandardError: standardError(dealScoreDiffs),
+          },
+        }
+      : {}),
     elapsedMs: Date.now() - started,
   };
+}
+
+const mean = (xs: readonly number[]): number =>
+  xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
+
+/** 표본표준편차 ÷ √n — 배패별 차이에서 직접 낸다 */
+function standardError(xs: readonly number[]): number {
+  if (xs.length < 2) return Infinity;
+  const m = mean(xs);
+  const variance = xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1);
+  return Math.sqrt(variance / xs.length);
 }
 
 /** 사람이 읽는 한 장 요약 (CLI 출력) */
@@ -178,7 +299,8 @@ export function formatArena(r: ArenaResult): string {
   const pct = (n: number): string => `${(n * 100).toFixed(1)}%`;
   const lines: string[] = [];
   lines.push(
-    `게임 ${r.games}판 · 국 ${r.rounds} · 유국률 ${pct(r.drawRate)} · ${(r.elapsedMs / 1000).toFixed(1)}초`,
+    `게임 ${r.games}${r.ab !== undefined ? "배패 × 2(좌우 교대)" : "판"} · 국 ${r.rounds} · ` +
+      `유국률 ${pct(r.drawRate)} · ${(r.elapsedMs / 1000).toFixed(1)}초`,
   );
   lines.push("");
   lines.push("원형        화료율  방총율  리치율  후로율  평균화료  평균방총  평균순위");
@@ -195,6 +317,56 @@ export function formatArena(r: ArenaResult): string {
         Math.round(s.avgDealInPoints).toString().padStart(9),
         s.avgPlacement.toFixed(3).padStart(9),
       ].join(" "),
+    );
+  }
+  if (r.ab !== undefined) {
+    lines.push("");
+    lines.push(`2:2 정책 대전 — 스위치 [${r.ab.flags.join(", ")}]`);
+    lines.push("쪽    화료율  방총율  리치율  후로율  평균화료  평균순위");
+    for (const [label, s] of [
+      ["켠 쪽", r.ab.on],
+      ["끈 쪽", r.ab.off],
+    ] as const) {
+      lines.push(
+        [
+          label.padEnd(5),
+          pct(s.winRate).padStart(6),
+          pct(s.dealInRate).padStart(7),
+          pct(s.riichiRate).padStart(7),
+          pct(s.callRate).padStart(7),
+          Math.round(s.avgWinPoints).toString().padStart(9),
+          s.avgPlacement.toFixed(4).padStart(9),
+        ].join(" "),
+      );
+    }
+    /**
+     * 순위는 제로섬이라 두 쪽의 평균은 항상 2.5다 — **차이만이** 뜻을 가진다.
+     * 표준오차는 이론값이 아니라 **배패별 차이의 표본**에서 낸다: 듀플리케이트로
+     * 배패 운이 얼마나 상쇄됐는지는 실제로 재 봐야 알 수 있기 때문이다.
+     */
+    const diff = r.ab.placementGain;
+    const se = r.ab.standardError;
+    const verdict = !Number.isFinite(se)
+      ? "표본 부족"
+      : Math.abs(diff) > se * 2
+        ? "유의미"
+        : "판수 부족";
+    lines.push(
+      `평균 순위 차 ${diff >= 0 ? "+" : ""}${diff.toFixed(4)} ` +
+        `(켠 쪽이 ${diff > 0 ? "우세" : diff < 0 ? "열세" : "동률"}) · ` +
+        `표준오차 ±${se.toFixed(4)} → ${verdict}`,
+    );
+    // 순위는 네 칸뿐이라 둔하다 — 점수는 연속값이라 같은 판수에서 더 잘 보인다
+    const sg = r.ab.scoreGain;
+    const sse = r.ab.scoreStandardError;
+    const sVerdict = !Number.isFinite(sse)
+      ? "표본 부족"
+      : Math.abs(sg) > sse * 2
+        ? "유의미"
+        : "판수 부족";
+    lines.push(
+      `1인당 점수 차 ${sg >= 0 ? "+" : ""}${sg.toFixed(0)} · ` +
+        `표준오차 ±${sse.toFixed(0)} → ${sVerdict}`,
     );
   }
   return lines.join("\n");

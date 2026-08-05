@@ -25,6 +25,7 @@
 import { calculateScore } from "@majak/core";
 import type { TileKind } from "@majak/core";
 import type { HandPlan } from "./read.js";
+import { bestYakuHan } from "./yaku.js";
 
 /** 손 하나의 값어치 추정 */
 export interface HandValue {
@@ -106,6 +107,12 @@ export interface HandValueInput {
   isDealer: boolean;
   /** 이미 리치를 선언했는가 — 그러면 points에 리치 판수가 이미 들어간다 */
   riichiDeclared: boolean;
+  /**
+   * 손 전체(손패 + 후로)의 패. 주면 **역을 직접 읽어** 판수를 잡는다
+   * (`bot/yaku.ts`) — 청일색·치또이·일통·산색·찬타처럼 `plan`이 모르는 역들이다.
+   * 안 주면 예전처럼 `plan`이 아는 네 역만 센다.
+   */
+  kinds?: readonly TileKind[];
 }
 
 /**
@@ -117,7 +124,12 @@ export interface HandValueInput {
  */
 export function estimateHandValue(input: HandValueInput): HandValue {
   const menzen = input.meldCount === 0;
-  const base = input.handDora + planHan(input.plan, menzen);
+  // 방향(`plan`)이 아는 역과, 손을 직접 읽어 찾은 역 중 **비싼 쪽**을 쓴다.
+  // 방향은 "무엇을 버릴까"의 기준이라 좁게 잡혀 있고, 그래서 청일색·치또이처럼
+  // 방향이 모르는 비싼 역을 놓친다 — 그걸 여기서 메운다.
+  const fromPlan = planHan(input.plan, menzen);
+  const fromHand = input.kinds === undefined ? 0 : bestYakuHan(input.kinds, menzen);
+  const base = input.handDora + Math.max(fromPlan, fromHand);
   const fu = estimateFu(input.plan, menzen);
 
   const withRiichi = menzen ? base + RIICHI_HAN : base;
@@ -130,7 +142,7 @@ export function estimateHandValue(input: HandValueInput): HandValue {
    * 완전히 0으로 두지는 않는다: 남은 쯔모로 탕야오가 붙거나 해저가 걸리는 길이
    * 닫힌 것은 아니라, 아주 낮은 잔값만 남긴다.
    */
-  const yakuless = !menzen && planHan(input.plan, menzen) === 0;
+  const yakuless = !menzen && Math.max(fromPlan, fromHand) === 0;
   const score = (h: number): number =>
     pointsForHan(h, fu, input.isDealer) * (yakuless ? YAKULESS_OPEN : 1);
 
