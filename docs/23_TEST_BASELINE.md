@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   1061 / 1061 통과 (실패 0)
+npm test                   1585 / 1585 통과 (실패 0)   ← 2026-08-05 갱신 (보안 회귀 18건 추가 포함)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
@@ -20,6 +20,12 @@ npm run typecheck:client   0 errors
 - `packages/server/test/Sandbox.test.ts > 증강 테스트 — 손패 지정 > 지정한 손패로 배패되고, 그 지정이 sandbox 상태로 돌아온다` — `expected 2 to be greater than or equal to 3`
   (2026-08-04 추가) 지정 손패의 장수를 **마지막으로 받은 view**로 세는데, 부하가 걸리면 그 사이 한 순이 지나가 지정 패가 이미 버려져 있다. 단독 실행 23/23 통과.
   **판별법**: 변경을 되돌리고(`git stash`) 전체를 한 번 더 돌려 같은 실패가 나면 플레이크다 — 실제로 이 방법으로 무관함을 확인했다.
+
+- (2026-08-05) `RoomManager.test.ts`의 **게임 완주 계열 어느 것이든** `Test timed out`으로 무더기로
+  터질 수 있다. 원인은 코드가 아니라 **다른 세션이 동시에 `npm test`를 돌리고 있는 것**이었다
+  (`pgrep -fl "bin/vitest"`로 확인 — 두 개 이상이면 그게 원인이다). 같은 변경으로 두 번 돌렸더니
+  실패 목록이 9건 → 2건으로 **매번 달라졌고**, 파일 단독 실행은 44/44, `packages/server` 전체는
+  251/251로 항상 통과했다. 실패 집합이 실행마다 바뀌면 결함이 아니다.
 
 둘 다 **타이밍 플레이크**다. 파일 단독 실행에서는 항상 통과하고, 전체 병렬 실행에서 워커가 굶을 때만 터진다. 코드 결함이 아니므로 게이트에서 이 실패들은 예외로 둔다. 자주 재현되면 `RoomManager.test.ts:64`의 `waitFor` 타임아웃을 늘리고, Sandbox 쪽은 view 대신 배패 직후 상태를 재는 쪽이 맞다.
 

@@ -11,7 +11,7 @@
  */
 
 import { createRequire } from "node:module";
-import { randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { DatabaseSync as DatabaseSyncT } from "node:sqlite";
 
@@ -126,12 +126,31 @@ const MAX_SESSIONS_PER_USER = 10;
  */
 const DUMMY_SALT = "00000000000000000000000000000000";
 
+/**
+ * 문자열 2개를 **길이 정보까지 포함해** 상수 시간에 비교한다.
+ *
+ * 관리자 코드·가입 코드처럼 "서버가 아는 비밀"을 `===`로 비교하면 첫 불일치
+ * 바이트에서 곧바로 빠져나오므로, 원격에서도 이론상 앞자리부터 한 글자씩
+ * 맞춰 나갈 수 있다(응답 시간 오라클). 길이가 달라도 같은 비용을 치르도록
+ * 양쪽을 고정 길이 다이제스트로 만든 뒤 timingSafeEqual로 비교한다.
+ */
+export function safeEqual(a: string, b: string): boolean {
+  const ha = createHash("sha256").update(a, "utf8").digest();
+  const hb = createHash("sha256").update(b, "utf8").digest();
+  return timingSafeEqual(ha, hb);
+}
+
 export class SiteDb {
   private readonly db: DatabaseSyncT;
 
   constructor(
     path: string,
     private readonly sessionTtlMs: number = DEFAULT_SESSION_TTL_MS,
+    /**
+     * 관리자 코드를 환경변수로 고정한다(ADMIN_CODE). 설정하면 DB에 저장하지도,
+     * 부팅 로그에 찍지도 않고, 쓰고 나서 회전하지도 않는다 — 운영자가 값을 쥔다.
+     */
+    private readonly adminCodeOverride: string = "",
   ) {
     this.db = new DatabaseSync(path);
     this.db.exec(`
@@ -187,17 +206,52 @@ export class SiteDb {
 
   // ─────────────────────────── 관리자 코드 ───────────────────────────
 
-  /** 관리자 가입 코드 — 없으면 생성해 저장한다 (서버 부팅 로그로 확인) */
+  /**
+   * 관리자 가입 코드 — 없으면 생성해 저장한다 (서버 부팅 로그로 확인).
+   *
+   * ⚠ 이 값은 **관리자 권한 그 자체**다: 관리자는 전 계정 조회·삭제, 모든 리플레이
+   * 열람, 진행 중 대국 관전(전원 손패가 보이는 완전정보)을 할 수 있다. 그래서
+   * 한 번 쓰이면 곧바로 회전하고(`consumeAdminCode`), 관리자가 이미 있으면 부팅
+   * 로그에도 찍지 않는다(index.ts). 값을 운영자가 직접 쥐려면 ADMIN_CODE 환경변수.
+   */
   adminCode(): string {
+    if (this.adminCodeOverride !== "") return this.adminCodeOverride;
     const row = this.db
       .prepare("SELECT value FROM config WHERE key = 'admin_code'")
       .get() as { value: string } | undefined;
     if (row !== undefined) return row.value;
-    const code = randomBytes(6).toString("base64url");
+    // 48비트는 온라인 추측에는 충분하지만 유출 내성이 없다 — 128비트로 올린다.
+    const code = randomBytes(16).toString("base64url");
     this.db
       .prepare("INSERT INTO config (key, value) VALUES ('admin_code', ?)")
       .run(code);
     return code;
+  }
+
+  /** 관리자 계정이 하나라도 있는지 (부팅 로그에 코드를 노출할지 판단용). */
+  hasAdmin(): boolean {
+    const row = this.db.prepare("SELECT 1 AS n FROM users WHERE is_admin = 1 LIMIT 1").get();
+    return row !== undefined;
+  }
+
+  /**
+   * 관리자 코드를 검증하고 **써 버린다**(일치했을 때만 회전).
+   *
+   * 예전에는 같은 코드가 영원히 유효했다 — 부팅 로그·스크린샷·백업에서 한 번
+   * 새면 누구든 무기한으로 자기 계정을 관리자로 승급할 수 있었다. 지금은 쓰이는
+   * 즉시 새 코드로 갈리므로, 유출된 값은 **이미 쓰였다면 죽은 값**이다.
+   * (ADMIN_CODE 환경변수로 고정한 경우에는 운영자 소유이므로 회전하지 않는다.)
+   */
+  verifyAdminCode(code: string): boolean {
+    return code !== "" && safeEqual(code, this.adminCode());
+  }
+
+  /** 관리자 코드를 새 값으로 회전한다 (승급이 실제로 일어난 뒤에 호출). */
+  private rotateAdminCode(): void {
+    if (this.adminCodeOverride !== "") return; // 운영자가 env로 고정한 값은 건드리지 않는다
+    this.db
+      .prepare("UPDATE config SET value = ? WHERE key = 'admin_code'")
+      .run(randomBytes(16).toString("base64url"));
   }
 
   // ─────────────────────────── 계정 ───────────────────────────
@@ -220,23 +274,42 @@ export class SiteDb {
     if (username.length >= 4 && password.toLowerCase().includes(username.toLowerCase())) {
       return { ok: false, error: "비밀번호에 닉네임을 포함할 수 없습니다" };
     }
+    // ⚠ scrypt를 **닉네임 중복 검사보다 먼저** 돌린다 (순서가 곧 방어다).
+    //
+    // 예전에는 중복이면 곧바로 반환했다 — 그래서 "이미 있는 닉네임"은 즉시,
+    // "없는 닉네임"은 scrypt 비용(수십 ms) 뒤에 응답이 왔다. 오류 문구를 읽지
+    // 않아도 **응답 시간만으로** 계정 존재 여부를 훑을 수 있는 열거 오라클이다
+    // (로그인 쪽은 이미 더미 scrypt로 막아 두었다). 이제 두 경로가 같은 비용을
+    // 치른다. 문구 자체는 가입 UX상 남기되, 타이밍 채널은 닫는다.
+    const salt = randomBytes(16).toString("hex");
+    const hash = (await scryptAsync(password, salt, 64)).toString("hex");
+
     const exists = this.db
       .prepare("SELECT id FROM users WHERE username = ?")
       .get(username);
     if (exists !== undefined) {
       return { ok: false, error: "이미 사용 중인 닉네임입니다" };
     }
-    const salt = randomBytes(16).toString("hex");
-    const hash = (await scryptAsync(password, salt, 64)).toString("hex");
-    const isAdmin = adminCode !== undefined && adminCode !== "" && adminCode === this.adminCode();
-    if (adminCode !== undefined && adminCode !== "" && !isAdmin) {
+    const wantsAdmin = adminCode !== undefined && adminCode !== "";
+    const isAdmin = wantsAdmin && this.verifyAdminCode(adminCode);
+    if (wantsAdmin && !isAdmin) {
       return { ok: false, error: "관리자 코드가 올바르지 않습니다" };
     }
-    const res = this.db
-      .prepare(
-        "INSERT INTO users (username, pass_salt, pass_hash, is_admin, created_at) VALUES (?, ?, ?, ?, ?)",
-      )
-      .run(username, salt, hash, isAdmin ? 1 : 0, new Date().toISOString());
+    let res: { lastInsertRowid: number | bigint };
+    try {
+      res = this.db
+        .prepare(
+          "INSERT INTO users (username, pass_salt, pass_hash, is_admin, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(username, salt, hash, isAdmin ? 1 : 0, new Date().toISOString());
+    } catch {
+      // 중복 검사와 INSERT 사이의 경합(같은 닉네임 동시 가입) — UNIQUE 제약이
+      // 막아 주므로 계정이 겹치지는 않는다. 예외를 그대로 올리면 INTERNAL로
+      // 새므로 여기서 평범한 실패로 바꾼다.
+      return { ok: false, error: "이미 사용 중인 닉네임입니다" };
+    }
+    // 승급이 실제로 일어난 뒤에 코드를 회전한다 — 유출된 코드는 한 번만 먹는다.
+    if (isAdmin) this.rotateAdminCode();
     const user: UserRow = {
       id: Number(res.lastInsertRowid),
       username,
