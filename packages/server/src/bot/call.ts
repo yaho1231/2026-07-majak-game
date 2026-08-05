@@ -220,6 +220,8 @@ function evOfCall(
     shanten: shape.shanten,
     waitTiles: picked.waitTiles,
     ukeireTiles: shape.ukeire,
+    // 울고 난 손은 **열린 손**이다 — 남의 버림패로도 계속 전진한다
+    open: { hand: shape.hand, ukeireKinds: shape.ukeireKinds },
   });
   /**
    * **손을 여는 것에 대한 취향.** 멘젠파는 같은 계산을 하고도 여는 쪽을 싫어하고,
@@ -241,10 +243,13 @@ function evOfCall(
 /** 울지 않고 지금 손 그대로 갔을 때 판의 절대 EV */
 function evOfPass(read: BotRead, plan: HandPlan, profile: BotProfile): number {
   const value = read.valueOf({ plan });
+  const u = ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts);
   const pWin = read.winChanceOf({
     shanten: Math.max(0, read.shanten),
     waitTiles: read.waitTiles,
-    ukeireTiles: ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts).tiles,
+    ukeireTiles: u.tiles,
+    // 이미 열린 손이면 패스한 뒤에도 계속 부를 수 있다 — 콜 쪽과 같은 자로 재야 한다
+    open: read.meldCount > 0 ? { hand: read.hand, ukeireKinds: u.kinds } : undefined,
   });
   const noten = read.tenpai && read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
   const s = scales(read, profile);
@@ -385,16 +390,16 @@ function effectiveShape(
   read: BotRead,
   picked: CallPlan,
   plan: HandPlan,
-): { shanten: number; ukeire: number } {
-  const keep = keepFor(plan);
-  if (keep === null) return { shanten: picked.shanten, ukeire: picked.ukeire };
-  const rest = removeKinds(read.hand, picked.used).filter(keep);
-  if (rest.length === 0) return { shanten: picked.shanten, ukeire: picked.ukeire };
+): { shanten: number; ukeire: number; hand: TileKind[]; ukeireKinds: readonly TileKind[] } {
   const meldCount = read.meldCount + 1;
-  return {
-    shanten: shantenOf(rest, meldCount, read.opts),
-    ukeire: ukeireOf(rest, meldCount, read.remainingOf, read.opts).tiles,
-  };
+  const plain = removeKinds(read.hand, picked.used);
+  const keep = keepFor(plan);
+  const rest = keep === null ? plain : plain.filter(keep);
+  const hand = rest.length === 0 ? plain : rest;
+  const u = ukeireOf(hand, meldCount, read.remainingOf, read.opts);
+  // 걸러 낸 게 없으면 이미 잰 값이 그대로다 — 같은 계산을 두 번 하지 않는다
+  const shanten = hand === plain ? picked.shanten : shantenOf(hand, meldCount, read.opts);
+  return { shanten, ukeire: u.tiles, hand, ukeireKinds: u.kinds };
 }
 
 /** 그 역이 손에 남기라고 요구하는 패의 조건 (제약이 없는 역은 null) */

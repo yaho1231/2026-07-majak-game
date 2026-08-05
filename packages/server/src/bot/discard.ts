@@ -82,12 +82,13 @@ export function foldWeight(read: BotRead, profile: BotProfile): number {
   if (read.riichiDeclared) return 0; // 이미 리치 — 선택권이 없다
 
   const value = read.valueOf({ plan: null });
-  const ukeire = ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts).tiles;
+  const u = ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts);
   const gain =
     read.winChanceOf({
       shanten: Math.max(0, read.shanten),
       waitTiles: read.waitTiles,
-      ukeireTiles: ukeire,
+      ukeireTiles: u.tiles,
+      open: read.meldCount > 0 ? { hand: read.hand, ukeireKinds: u.kinds } : undefined,
     }) *
     (value.points + read.match.potBonus);
 
@@ -134,6 +135,9 @@ interface Shape {
   ukeire: number;
   /** 텐파이일 때 오름패의 남은 장수 (노텐이면 0) */
   waitTiles: number;
+  /** 버린 뒤의 손패와 우케이레 종류 — 열린 손의 전진 속도를 잴 때 쓴다 */
+  hand: TileKind[];
+  ukeireKinds: readonly TileKind[];
 }
 
 /**
@@ -150,6 +154,8 @@ function shapesOf(read: BotRead, cands: readonly Candidate[]): Map<string, Shape
       shanten: shantenOf(removeKinds(read.hand, [c.kind]), read.meldCount, read.opts),
       ukeire: 0,
       waitTiles: 0,
+      hand: [],
+      ukeireKinds: [],
     });
   }
   let bestShanten = Infinity;
@@ -160,7 +166,10 @@ function shapesOf(read: BotRead, cands: readonly Candidate[]): Map<string, Shape
     const c = cands.find((x) => kindKey(x.kind) === key);
     if (c === undefined) continue;
     const rest = removeKinds(read.hand, [c.kind]);
-    shape.ukeire = ukeireOf(rest, read.meldCount, read.remainingOf, read.opts).tiles;
+    const u = ukeireOf(rest, read.meldCount, read.remainingOf, read.opts);
+    shape.ukeire = u.tiles;
+    shape.hand = rest;
+    shape.ukeireKinds = u.kinds;
     if (shape.shanten <= 0) {
       shape.waitTiles = waitTilesOf(
         winningKinds(rest, read.meldCount, undefined, read.opts),
@@ -198,6 +207,11 @@ function lineEV(
     waitTiles: shape.waitTiles,
     ukeireTiles: shape.ukeire,
     tsumoOnly: opts.tsumoOnly,
+    // 이미 후로한 손은 남의 버림패로도 전진한다 — 그만큼 빨리 완성된다
+    open:
+      read.meldCount > 0
+        ? { hand: shape.hand, ukeireKinds: shape.ukeireKinds }
+        : undefined,
   });
   if (opts.riichi) pWin *= FOLD_PRESSURE; // 알리면 상대가 조심한다
 
