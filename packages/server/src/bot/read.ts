@@ -26,7 +26,7 @@ import {
 import type { Threat } from "./danger.js";
 import { readMatch } from "./match.js";
 import type { BotGameMode, MatchContext } from "./match.js";
-import { estimateHandValue, waitTilesOf, winChance } from "./value.js";
+import { callableUkeireTiles, estimateHandValue, waitTilesOf, winChance } from "./value.js";
 import type { HandValue } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
@@ -108,6 +108,12 @@ export interface BotRead {
      * 공짜 쯔모 한 번은 그 자체로 값이 있다 — 도라를 세지 않아도 깡이 이득인 이유다.
      */
     extraDraws?: number;
+    /**
+     * 이 손이 **열린 손일 때** 그 손패와 우케이레 종류. 주면 남의 버림패로 부르는
+     * 몫까지 세어 전진 속도를 잰다(`callableUkeireTiles`) — 열린 손은 턴을 쓰지 않고
+     * 전진하므로 쯔모만 세면 체계적으로 느리게 보인다.
+     */
+    open?: { hand: readonly TileKind[]; ukeireKinds: readonly TileKind[] } | undefined;
   }): number;
   /** 텐파이일 때 오름패의 남은 장수 합 (노텐이면 0) */
   waitTiles: number;
@@ -165,6 +171,7 @@ export function buildRead(
   // 예전 호출부는 모드 문자열만 넘겼다 — 둘 다 받는다
   const context: ReadContext = typeof ctx === "string" ? { mode: ctx } : ctx;
   const mode = context.mode;
+  const flags = context.flags ?? NO_FLAGS;
   const hand: TileKind[] = [];
   for (const id of view.zones[handZone(me)]?.tileIds ?? []) {
     const k = view.tiles[id]?.kind;
@@ -261,7 +268,7 @@ export function buildRead(
         // 손을 직접 읽어 역을 잡는다 (`bot/yaku.ts`) — 청일색·치또이·일통·산색·찬타.
         // `noYakuRead` 스위치는 이 읽기를 **끈다** — 하위 시스템 하나의 기여를
         // 2:2 대전으로 언제든 다시 잴 수 있게 남겨 둔 측정용 손잡이다.
-        ...((context.flags ?? NO_FLAGS).has("noYakuRead")
+        ...(flags.has("noYakuRead")
           ? {}
           : { kinds: [...hand, ...meldKinds] }),
         handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
@@ -279,11 +286,15 @@ export function buildRead(
         wallLeft: wallLeft + (input.extraDraws ?? 0) * 4,
         turn: view.round.turnCount,
         furiten: furiten || input.tsumoOnly === true,
+        openUkeire:
+          input.open === undefined
+            ? undefined
+            : callableUkeireTiles(input.open.hand, input.open.ukeireKinds, remainingOf),
       }),
     doraIn,
     handDora,
     seatWind,
-    flags: context.flags ?? NO_FLAGS,
+    flags,
     furiten,
     riichiDeclared: mine?.riichiDeclared === true,
     isYakuhai(kind) {

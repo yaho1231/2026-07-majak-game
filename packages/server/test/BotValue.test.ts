@@ -11,13 +11,14 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { ukeireOf } from "@majak/core";
 import type { TileId } from "@majak/core";
 import { chooseDiscard } from "../src/bot/discard.js";
 import { buildRead } from "../src/bot/read.js";
 import { readMatch } from "../src/bot/match.js";
-import { estimateHandValue, winChance } from "../src/bot/value.js";
+import { callableUkeireTiles, estimateHandValue, winChance } from "../src/bot/value.js";
 import { NEUTRAL_PROFILE } from "../src/bot/profile.js";
-import { botScene } from "./botTestView.js";
+import { botScene, h } from "./botTestView.js";
 import type { BotScene } from "./botTestView.js";
 
 function pickedKind(scene: BotScene, option: { payload: unknown } | null): string {
@@ -239,5 +240,73 @@ describe("순위가 밀기/접기를 바꾼다 — 같은 손, 같은 리치, �
     expect(read.match.riskAppetite).toBeGreaterThan(0);
     const picked = chooseDiscard(read, scene.discardOptions(), null, NEUTRAL_PROFILE);
     expect(pickedKind(scene, picked)).toBe("4p");
+  });
+});
+
+/**
+ * 열린 손의 화료 확률 — 후로율이 사람의 절반 이하였던 원인.
+ *
+ * `winChance`의 노텐 구간은 "샹텐 한 단계에 몇 순 걸리는가"를 **내 쯔모만** 세어
+ * 재고 있었다. 닫힌 손에는 맞지만 열린 손에는 틀리다 — 열린 손은 남의 버림패를
+ * 펑·치로 가져와 턴을 쓰지 않고 전진한다. 그 몫이 빠져 있어 후로 EV가 체계적으로
+ * 낮게 잡혔고, 후로 판단이 패스에 지곤 했다.
+ */
+describe("열린 손의 전진 속도 — 남의 버림패로도 전진한다", () => {
+  const all4 = (): number => 4;
+
+  it("또이쯔로 들고 있는 우케이레는 펑으로 부를 수 있어 실효 장수가 는다", () => {
+    const pon = callableUkeireTiles(h("11m"), h("1m"), all4);
+    expect(pon).toBeGreaterThan(4);
+  });
+
+  it("치는 상가한테서만 부르므로 펑보다 덜 는다", () => {
+    const chi = callableUkeireTiles(h("34m"), h("2m"), all4);
+    const pon = callableUkeireTiles(h("11m"), h("1m"), all4);
+    expect(chi).toBeGreaterThan(4);
+    expect(chi).toBeLessThan(pon);
+  });
+
+  it("부를 수 없는 우케이레는 그대로다 — 그건 정말로 쯔모뿐이다", () => {
+    // 5z(백)를 한 장만 들고 있으면 그 패는 펑도 치도 안 된다
+    expect(callableUkeireTiles(h("5z"), h("5z"), all4)).toBe(4);
+  });
+
+  it("남은 장수가 0인 패는 세지 않는다", () => {
+    expect(callableUkeireTiles(h("11m"), h("1m"), () => 0)).toBe(0);
+  });
+
+  it("실효 우케이레를 주면 노텐 손의 화료 확률이 오른다", () => {
+    const base = {
+      shanten: 2,
+      waitTiles: 0,
+      ukeireTiles: 16,
+      wallLeft: 60,
+      turn: 6,
+      furiten: false,
+    };
+    expect(winChance({ ...base, openUkeire: 30 })).toBeGreaterThan(winChance(base));
+  });
+
+  it("이미 후로한 손은 판 읽기에서도 더 빠르게 잡힌다", () => {
+    // 백 펑 + 1샹텐. 55p 또이쯔는 펑으로, 34s·78s는 치로 부를 수 있다
+    const scene = botScene({ hand: "234m55p34s78s1p", melds: ["555z"] });
+    const read = buildRead(scene.view, "p0");
+    const u = ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts);
+    const base = { shanten: Math.max(0, read.shanten), waitTiles: 0, ukeireTiles: u.tiles };
+    expect(
+      read.winChanceOf({ ...base, open: { hand: read.hand, ukeireKinds: u.kinds } }),
+    ).toBeGreaterThan(read.winChanceOf(base));
+  });
+
+  it("텐파이는 달라지지 않는다 — 대기는 이미 론 몫(RON_MULTIPLIER)을 세고 있다", () => {
+    const tenpai = {
+      shanten: 0,
+      waitTiles: 8,
+      ukeireTiles: 8,
+      wallLeft: 60,
+      turn: 6,
+      furiten: false,
+    };
+    expect(winChance({ ...tenpai, openUkeire: 40 })).toBe(winChance(tenpai));
   });
 });

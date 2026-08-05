@@ -22,7 +22,7 @@
  * 판단이 같은 근사를 쓰므로 비교는 옳게 된다.
  */
 
-import { calculateScore } from "@majak/core";
+import { calculateScore, kindKey } from "@majak/core";
 import type { TileKind } from "@majak/core";
 import type { HandPlan } from "./read.js";
 import { bestYakuHan } from "./yaku.js";
@@ -208,6 +208,81 @@ export interface WinChanceInput {
   turn: number;
   /** 후리텐이면 론이 없다 — 쯔모만 남는다 */
   furiten: boolean;
+  /**
+   * **열린 손의 실효 우케이레** (`callableUkeireTiles`). 주면 노텐 구간의 전진
+   * 속도를 이 값으로 잰다 — 열린 손은 내 쯔모만 기다리지 않기 때문이다.
+   * 닫힌 손에서는 주지 않는다(그 손은 실제로 쯔모만 기다린다).
+   */
+  openUkeire?: number | undefined;
+}
+
+// ─────────────────────────── 열린 손의 전진 속도 ───────────────────────────
+
+/**
+ * 부를 수 있는 우케이레에 곱하는 배수 — 대기의 `RON_MULTIPLIER`와 **같은 근거**다.
+ *
+ * 펑은 상대 셋 누구의 버림패로도 부를 수 있으므로 기회가 내 쯔모 1장이 아니다.
+ * 다만 상대가 그 패를 그대로 흘려 줄 확률은 1이 아니라(자기 손에 쓰거나 위험을 읽고
+ * 안고 죽는다) 3배가 아니라 1.2배쯤 얹힌다 — 론에서 관측된 것과 같은 할인이다.
+ */
+const PON_REACH = RON_MULTIPLIER;
+
+/** 치는 상가(上家) 한 명한테서만 부른다 — 펑이 얹는 몫의 1/3 */
+const CHI_REACH = 1 + (RON_MULTIPLIER - 1) / 3;
+
+const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
+
+/**
+ * 열린 손이 **실제로 만날 수 있는** 우케이레 장수.
+ *
+ * `winChance`의 노텐 구간은 "샹텐 한 단계에 몇 순 걸리는가"를 우케이레 장수만으로
+ * 재는데, 그 식은 **내 쯔모만** 센다. 닫힌 손에는 맞지만 열린 손에는 틀리다 —
+ * 열린 손은 남의 버림패를 펑·치로 가져와 턴을 쓰지 않고 전진한다. 그래서 지금까지
+ * 봇은 후로한 손(과 후로하려는 손)의 속도를 **체계적으로 낮게** 봤고, 후로 EV가
+ * 패스 EV에 지는 일이 잦았다(실측 후로율 7~17% vs 사람 30~40%).
+ *
+ * 여기서는 우케이레 한 종류씩 "이건 부를 수 있는가"를 보고 장수에 배수를 곱한다.
+ * 또이쯔를 이루고 있는 패는 펑으로(셋 다), 슌쯔가 될 패는 치로(상가만) 부를 수 있다.
+ * 부를 수 없는 패(머리를 갈아 끼우는 단독패 등)는 배수 1 — 그건 정말로 쯔모뿐이다.
+ *
+ * ## 재 본 결과 (2026-08-06, 동풍전 400배패 = 800판, 2:2 정책 대전)
+ *
+ *     후로율 12.6% → 16.0%   화료율 18.3% → 18.9%   방총률 10.8% → 11.2%
+ *     평균 순위 차 +0.0063 ± 0.0341 → **유의미하지 않음**
+ *
+ * 강해졌다고는 못 한다. 확인한 것은 **손해가 없다**는 것과, 후로율이 사람 쪽으로
+ * 3.4%p 움직였다는 것이다. 여전히 사람(30~40%)에는 크게 못 미치므로 남은 거리는
+ * 이 추정이 아니라 `call.ts`의 구조적 문턱(역 요구·샹텐 감소 요구)에 있다 —
+ * 다만 #136에서 배웠듯 그 문턱을 그냥 풀면 판이 나빠진다. 다음 실험의 자리다.
+ */
+export function callableUkeireTiles(
+  hand: readonly TileKind[],
+  ukeire: readonly TileKind[],
+  remainingOf: (kind: TileKind) => number,
+): number {
+  const counts = new Map<string, number>();
+  for (const k of hand) counts.set(kindKey(k), (counts.get(kindKey(k)) ?? 0) + 1);
+  const has = (suit: string, rank: number): boolean =>
+    (counts.get(kindKey({ suit, rank })) ?? 0) > 0;
+
+  let total = 0;
+  for (const k of ukeire) {
+    const left = remainingOf(k);
+    if (left <= 0) continue;
+    // 또이쯔를 들고 있으면 그 패는 펑으로 부를 수 있다
+    if ((counts.get(kindKey(k)) ?? 0) >= 2) {
+      total += left * PON_REACH;
+      continue;
+    }
+    const r = k.rank;
+    const chiable =
+      NUMBER_SUITS.has(k.suit) &&
+      ((has(k.suit, r - 2) && has(k.suit, r - 1)) ||
+        (has(k.suit, r - 1) && has(k.suit, r + 1)) ||
+        (has(k.suit, r + 1) && has(k.suit, r + 2)));
+    total += left * (chiable ? CHI_REACH : 1);
+  }
+  return total;
 }
 
 /**
@@ -252,7 +327,8 @@ export function winChance(input: WinChanceInput): number {
   // 노텐: 텐파이까지 몇 순 걸리는가.
   // 샹텐 한 단계를 줄이는 데 (분모/우케이레) 순 걸리고, 손이 자라면서 우케이레도
   // 넓어지므로 0.75를 곱해 낙관 보정한다.
-  const ukeire = Math.max(1, input.ukeireTiles);
+  // 열린 손은 남의 버림패로도 전진하므로 실효 장수(`openUkeire`)로 잰다.
+  const ukeire = Math.max(1, input.openUkeire ?? input.ukeireTiles);
   const turnsPerStep = (unseen / ukeire) * 0.75;
   const remain = draws - turnsPerStep * input.shanten;
   if (remain <= 0) return hopelessFloor(input.ukeireTiles);
