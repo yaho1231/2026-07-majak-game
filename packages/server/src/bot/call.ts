@@ -220,7 +220,16 @@ function evOfCall(
     waitTiles: picked.waitTiles,
     ukeireTiles: picked.ukeire,
   });
-  const gain = pWin * (value.points + read.match.potBonus);
+  /**
+   * **손을 여는 것에 대한 취향.** 멘젠파는 같은 계산을 하고도 여는 쪽을 싫어하고,
+   * 속공파는 반대다 — 어느 쪽도 틀리지 않아서 EV를 뒤엎지 않고 기울이기만 한다.
+   *
+   * 2026-08-05: 후로 판단을 EV로 옮기면서 `callLoose`가 **어디에도 쓰이지 않게
+   * 됐다**(예전엔 `maxOpenShanten` 문턱이 이 값을 읽었다). 성격 넷 중 하나가 조용히
+   * 죽어 있었던 셈이라, 여기서 되살린다.
+   */
+  const appetite = 0.75 + profile.callLoose * 0.5;
+  const gain = pWin * (value.points + read.match.potBonus) * appetite;
   // 종반에 텐파이가 걸리면 노텐벌부를 피한다
   const noten = picked.shanten <= 0 && read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
   // 열린 손은 접기 어렵다 — 남은 국의 위험패를 계속 통과시켜야 한다

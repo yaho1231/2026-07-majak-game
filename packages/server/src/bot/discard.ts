@@ -210,17 +210,92 @@ function lineEV(
   // 리치를 좋아하는 성격은 같은 계산에서도 리치 쪽에 웃돈을 준다
   const appetite = opts.riichi ? 0.75 + profile.riichiLoose * 0.5 : 1;
 
-  const gain =
+  let gain =
     pWin * (points + read.match.potBonus) * placement * appetite +
     (shape.shanten <= 0 ? opts.notenStake : 0) +
     directionGain(c.kind, plan, value.points);
+  // 속도냐 타점이냐 — 어느 쪽도 틀리지 않는 취향이라 EV를 뒤엎지 않고 기울이기만 한다
+  gain *= valueTilt(value.points, profile);
 
   // 리치는 손을 고정시켜 남은 순의 위험패를 전부 통과시켜야 한다 — 위험이 더 길다
   const horizon = opts.riichi ? LOCKED_PUSH_HORIZON : PUSH_HORIZON;
   const loss = read.expectedLoss(c.kind) * horizon;
 
-  return gain * scale.gain - loss * scale.loss - (opts.riichi ? RIICHI_COST : 0);
+  return (
+    gain * scale.gain -
+    loss * scale.loss -
+    (opts.riichi ? RIICHI_COST : 0) +
+    bluffBonus(c.kind, profile)
+  );
 }
+
+/** 사람다운 흔들림에 쓰는 결정론 난수 (BotAgent의 시드 PRNG) */
+export interface BotJitter {
+  /** 0 이상 n 미만 정수 */
+  int(n: number): number;
+}
+
+/**
+ * **비슷한 선택지 사이에서만** 흔들린다.
+ *
+ * 사람은 쓸모가 엇비슷한 두 패 중 무엇을 버릴지 매번 같게 고르지 않는다. 봇이
+ * 언제나 정확히 같은 한 장을 고르면 그 자체가 읽히는 정보가 되고("쟤는 이 형태에서
+ * 항상 이걸 버린다"), 무엇보다 사람으로 보이지 않는다.
+ *
+ * 흔들림의 폭은 **EV 차이로 묶여 있다.** 손해가 뚜렷한 선택은 성격이 아무리
+ * 변덕스러워도 후보에 들어오지 않는다 — 사람다움을 위해 실력을 버리지는 않는다.
+ */
+function wobble(
+  scored: readonly { c: Candidate; ev: number }[],
+  bestEV: number,
+  profile: BotProfile,
+  jitter: BotJitter | undefined,
+): { c: Candidate; ev: number } | null {
+  if (jitter === undefined || profile.noise <= 0 || scored.length < 2) return null;
+  // 폭은 EV 규모에 비례하되, 모두가 0에 가까운 국면(가망 없는 손)에서도 작동하도록
+  // 바닥을 둔다. 바닥이 크면 그런 국면에서 **모든 후보가 후보로 묶여** 성격 차이가
+  // 사라지므로 작게 잡는다. 성격이 그 폭을 정한다.
+  const band = profile.noise * Math.max(30, Math.abs(bestEV) * 0.06);
+  const near = scored.filter((x) => x.ev >= bestEV - band);
+  if (near.length < 2) return null;
+  return near[jitter.int(near.length)] ?? null;
+}
+
+/** 타점 취향의 기준점 — 이 근처의 손은 어느 성격에서도 값이 그대로다 */
+const VALUE_REF = 5000;
+
+/**
+ * **속도냐 타점이냐**의 기울기.
+ *
+ * 같은 손을 싸게 빨리 먹을지 비싸게 천천히 먹을지는 실력 문제가 아니라 취향이고,
+ * 사람마다 확실히 갈린다. 그래서 EV의 순서를 뒤엎지 않고 **비싼 줄기 쪽으로 살짝
+ * 기울이거나 반대로 기울이기만** 한다(중립이면 정확히 1이라 아무 일도 없다).
+ */
+function valueTilt(points: number, profile: BotProfile): number {
+  const k = profile.valueBias - 0.5; // -0.5(속도) ~ +0.5(타점)
+  if (k === 0) return 1;
+  return (Math.max(500, points) / VALUE_REF) ** k;
+}
+
+/**
+ * 값을 치르지 않는 거짓말.
+ *
+ * 접은 국에도 중장패를 흘리면 남에게는 아직 미는 것처럼 보인다 — 실제로 이 봇의
+ * 상대 읽기(`danger.readThreats`)가 "종반에 중장패를 흘리는 손"을 텐파이 신호로
+ * 잡으므로, 이 허세는 **같은 탁의 봇들에게 실제로 통한다.**
+ *
+ * 크기를 아주 작게 둔 것이 요점이다. 안전도가 사실상 같은 후보들 사이에서만
+ * 순서를 바꾸므로, 허세 때문에 위험패를 내는 일은 일어나지 않는다.
+ */
+function bluffBonus(kind: TileKind, profile: BotProfile): number {
+  const isNumber = kind.suit === "man" || kind.suit === "pin" || kind.suit === "sou";
+  if (!isNumber) return 0;
+  const look = kind.rank >= 3 && kind.rank <= 7 ? 1 : kind.rank === 2 || kind.rank === 8 ? 0.5 : 0;
+  return profile.bluff * look * BLUFF_TIEBREAK;
+}
+
+/** 허세가 흔들 수 있는 최대 폭 (점수) — 동점 근처만 건드리는 크기 */
+const BLUFF_TIEBREAK = 45;
 
 /**
  * 리치를 선언하면 남은 국 내내 손을 고칠 수 없다 — 위험패가 와도 그대로 낸다.
@@ -256,6 +331,12 @@ export function bidDiscard(
   options: readonly ActionOption[],
   plan: HandPlan,
   profile: BotProfile,
+  /**
+   * 사람다운 흔들림을 주는 난수 (선택). 넘기지 않으면 **항상 최선**을 고른다 —
+   * 평가자 단위 테스트가 흔들리지 않도록 기본은 결정론적 최선이고, 실제 봇만
+   * `BotAgent`에서 이 난수를 넘겨 준다.
+   */
+  jitter?: BotJitter,
 ): ActionBid | null {
   const cands = candidatesOf(read, options);
   if (cands.length === 0) return null;
@@ -265,6 +346,7 @@ export function bidDiscard(
   const notenStake = read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
   const tsumoOnly = read.meldCount === 0 && !hasYakuNow(read);
 
+  const scored: { c: Candidate; ev: number }[] = [];
   let best: Candidate | null = null;
   let bestEV = -Infinity;
   for (const c of cands) {
@@ -275,6 +357,7 @@ export function bidDiscard(
       tsumoOnly,
       notenStake,
     });
+    scored.push({ c, ev });
     // 동점이면 뒤쪽(쯔모패 쪽)을 버린다 — 사람도 쓸모 같으면 쯔모기리한다
     if (ev >= bestEV) {
       bestEV = ev;
@@ -282,6 +365,11 @@ export function bidDiscard(
     }
   }
   if (best === null) return null;
+  const wobbled = wobble(scored, bestEV, profile, jitter);
+  if (wobbled !== null) {
+    best = wobbled.c;
+    bestEV = wobbled.ev;
+  }
   const shape = shapes.get(kindKey(best.kind));
   return {
     option: best.option,
