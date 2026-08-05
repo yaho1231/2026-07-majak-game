@@ -56,8 +56,16 @@ export class AugmentRegistry {
     prng: Prng,
     count: number,
     exclude: ReadonlySet<string> = new Set(),
+    bias: Readonly<Record<string, number>> = {},
   ): AugmentDef[] {
-    return AugmentRegistry.rollFrom(prng, count, this.all(), exclude, this.weightOverrides);
+    return AugmentRegistry.rollFrom(
+      prng,
+      count,
+      this.all(),
+      exclude,
+      this.weightOverrides,
+      bias,
+    );
   }
 
   /** 후보 목록 버전의 rollFrom — 이 카탈로그의 가중치 덮어쓰기를 함께 적용한다 */
@@ -66,8 +74,16 @@ export class AugmentRegistry {
     count: number,
     candidates: readonly AugmentDef[],
     exclude: ReadonlySet<string> = new Set(),
+    bias: Readonly<Record<string, number>> = {},
   ): AugmentDef[] {
-    return AugmentRegistry.rollFrom(prng, count, candidates, exclude, this.weightOverrides);
+    return AugmentRegistry.rollFrom(
+      prng,
+      count,
+      candidates,
+      exclude,
+      this.weightOverrides,
+      bias,
+    );
   }
 
   /**
@@ -79,6 +95,9 @@ export class AugmentRegistry {
    * 돼 있고 **드래프트 어디에서도 읽히지 않아** 실제 추첨이 완전 균등이었다 —
    * docs/20이 계산한 "SS+가 6장 중 뜰 확률 11% → 1.8%"가 현실이 아니었다
    * (docs/25 최우선#10). 티어표에 없는 id는 1.0(균등)으로 본다.
+   *
+   * `bias`는 그 위에 **곱해지는** 배수다 — 보유 증강과의 시너지(`augment/synergy.ts`)처럼
+   * 그 플레이어에게만 달린 편향을 티어 가중과 분리해 싣는다. 없으면 1.0(영향 없음).
    */
   static rollFrom(
     prng: Prng,
@@ -86,11 +105,12 @@ export class AugmentRegistry {
     candidates: readonly AugmentDef[],
     exclude: ReadonlySet<string> = new Set(),
     overrides: Readonly<Record<string, number>> = {},
+    bias: Readonly<Record<string, number>> = {},
   ): AugmentDef[] {
     const bucket = candidates.filter((d) => !exclude.has(d.id));
     const chosen: AugmentDef[] = [];
     while (chosen.length < count && bucket.length > 0) {
-      const idx = AugmentRegistry.pickWeighted(prng, bucket, overrides);
+      const idx = AugmentRegistry.pickWeighted(prng, bucket, overrides, bias);
       chosen.push(bucket[idx] as AugmentDef);
       bucket.splice(idx, 1);
     }
@@ -122,9 +142,15 @@ export class AugmentRegistry {
     prng: Prng,
     bucket: readonly AugmentDef[],
     overrides: Readonly<Record<string, number>> = {},
+    bias: Readonly<Record<string, number>> = {},
   ): number {
     const ticks = bucket.map((d) =>
-      Math.max(1, Math.round(AugmentRegistry.draftWeight(d.id, overrides) * 100)),
+      Math.max(
+        1,
+        Math.round(
+          AugmentRegistry.draftWeight(d.id, overrides) * (bias[d.id] ?? 1) * 100,
+        ),
+      ),
     );
     const total = ticks.reduce((sum, t) => sum + t, 0);
     let roll = prng.int(total);

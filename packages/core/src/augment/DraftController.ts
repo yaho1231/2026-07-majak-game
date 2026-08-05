@@ -13,6 +13,11 @@
  * 두 장치 모두 **결정적**이며, 스테이지 도중 남이 픽해도 내 후보가 흔들리지 않는다
  * (근거는 `cellFor` 주석 — `pick`의 "제시된 것인가" 검증이 여기에 의존한다).
  *
+ * **시너지(2026-08-05)**: 그 위에 세 번째 겹을 얹었다 — 내가 **이미 집은 증강과 축이 겹치는**
+ * 증강의 가중치를 올리고, 서로 죽는 증강의 가중치를 내린다(`synergyBiasFor` → `augment/synergy.ts`).
+ * 리치를 집었으면 리치를 키우는 것이 더 자주 오되, 스텔스 리치처럼 **은닉이 존재 이유인** 증강에는
+ * 리치를 드러내는 것들이 오히려 덜 온다. 근거가 내 보유 목록뿐이라 위 두 장치의 결정성을 깨지 않는다.
+ *
  * 설계: docs/10_AUGMENT_SYSTEM.md §3~4
  */
 
@@ -22,6 +27,7 @@ import type { PlayerId } from "../engine/zones/Zone.js";
 import { installAugment } from "./Augment.js";
 import type { AugmentDef, AugmentExtras } from "./Augment.js";
 import { AugmentRegistry } from "./AugmentRegistry.js";
+import { synergyBias } from "./synergy.js";
 
 /**
  * 드래프트 스테이지 — 각 국에 **처음 진입할 때 1회씩**만 열린다.
@@ -176,13 +182,14 @@ export class DraftController {
     const seed = (state.config.seed ^ hashString(`${stage}:${player}`)) >>> 0;
     const prng = new Prng(seed);
     const count = this.engine.rules.resolve<number>("augment.draft.choices");
+    const bias = this.synergyBiasFor(player);
 
     const cell = this.cellFor(stage, player);
-    if (cell === null) return this.catalog.rollUniform(prng, count, exclude);
+    if (cell === null) return this.catalog.rollUniform(prng, count, exclude, bias);
 
     // 내 칸에서 뽑는다 — 기존 제외 + 남이 이미 가진 것(게임 내 중복 금지).
     const banned = new Set([...exclude, ...this.heldByOthers(player)]);
-    const chosen = this.catalog.rollFromCell(prng, count, cell, banned);
+    const chosen = this.catalog.rollFromCell(prng, count, cell, banned, bias);
     if (chosen.length >= count) return chosen;
 
     // 칸이 말라붙은 극단적 경우에만 칸 밖에서 보충한다. 여기서는 **남의 보유분을 제외하지
@@ -193,8 +200,25 @@ export class DraftController {
       .filter((d) => !exclude.has(d.id) && !picked.has(d.id));
     return [
       ...chosen,
-      ...this.catalog.rollFromCell(prng, count - chosen.length, rest),
+      ...this.catalog.rollFromCell(prng, count - chosen.length, rest, new Set(), bias),
     ];
+  }
+
+  /**
+   * 이 플레이어의 **보유 증강과의 시너지** 편향 (증강 id → 가중치 배수).
+   *
+   * 첫 스테이지에는 보유가 없어 빈 객체 = 완전 중립이다. 이후 스테이지에서는
+   * 이미 집은 것과 축이 겹치는 증강이 더 자주, 서로 죽는 증강이 덜 뜬다
+   * (표와 사유는 `augment/synergy.ts` · docs/26).
+   *
+   * **결정성**: 근거가 `player` 본인의 보유 목록뿐이라 `excludeFor`와 같은 안정성을
+   * 가진다 — 스테이지 도중 남이 픽해도 내 후보가 흔들리지 않는다. 내 보유 목록은
+   * 내가 픽하는 순간에만 바뀌고, `pick`은 제출 **전에** `roll`을 다시 계산해 검증한다.
+   */
+  private synergyBiasFor(player: PlayerId): Readonly<Record<string, number>> {
+    const held =
+      this.engine.state.players.find((p) => p.id === player)?.augments ?? [];
+    return synergyBias(held);
   }
 
   /**

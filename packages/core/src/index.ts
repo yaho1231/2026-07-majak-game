@@ -228,6 +228,15 @@ export {
   defaultBotWeight,
 } from "./augment/powerTier.js";
 export type { PowerTier, PowerTierEntry } from "./augment/powerTier.js";
+export {
+  AUGMENT_SYNERGY,
+  SYNERGY_TAG_LABEL,
+  SYNERGY_BONUS,
+  SYNERGY_PENALTY,
+  synergyBonusFor,
+  synergyBias,
+} from "./augment/synergy.js";
+export type { SynergyTag, SynergyEntry } from "./augment/synergy.js";
 export type {
   Tile,
   TileId,
