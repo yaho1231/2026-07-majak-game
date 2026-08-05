@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node --import tsx/esm src/index.ts",
     "replay": "node --import tsx/esm src/replay.ts",
-    "start": "node --import tsx/esm src/index.ts"
+    "start": "node --import tsx/esm src/index.ts",
+    "arena": "node --import tsx/esm src/arenaCli.ts"
   },
   "dependencies": {
     "@majak/core": "*",
