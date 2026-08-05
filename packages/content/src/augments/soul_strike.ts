@@ -80,6 +80,7 @@ import {
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "soul_strike";
 const ACTION = "soul_strike";
@@ -289,8 +290,11 @@ export const soulStrike: AugmentDef = defineAugment({
       flagOf(state, declaredKey(state, holder)) ? RIICHI_HAN_BONUS : 0,
     );
   },
-  bot: {
-    choose: (ctx) => {
+  bot: plan({
+    intent: "score",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: (ctx) => {
       if (!ctx.tenpai) return null;
       // 패산이 얕으면 여섯 순을 다 못 쓴다 — 넉넉할 때만 지른다
       if (ctx.wallLeft < 24) return null;
@@ -310,5 +314,5 @@ export const soulStrike: AugmentDef = defineAugment({
       }
       return best;
     },
-  },
+  }),
 });

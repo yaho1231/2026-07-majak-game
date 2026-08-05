@@ -27,6 +27,7 @@ import type {
 } from "@majak/core";
 import { counterOf, roundKey, viewKey } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "tile_dyeing";
 const ACTION = "tile_dye";
@@ -140,8 +141,11 @@ export const tileDyeing: AugmentDef = defineAugment({
   },
   // 수패 1장의 무늬를 바꿔 고립패를 짝·슌쯔(또는 혼일·청일)에 붙인다(게임당 5회).
   // 실제로 손이 나아지는 변경이 있을 때만 발동한다.
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const kinds = handKindsOf(view, holder);
       for (const o of options) {
         if (o.type !== ACTION) continue;
@@ -154,5 +158,5 @@ export const tileDyeing: AugmentDef = defineAugment({
       }
       return null;
     },
-  },
+  }),
 });

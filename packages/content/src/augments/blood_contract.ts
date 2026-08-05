@@ -32,6 +32,7 @@ import {
   withAugPoint,
 } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "blood_contract";
 const ACTION = "blood_contract_declare";
@@ -136,8 +137,11 @@ export const bloodContract: AugmentDef = defineAugment({
   },
   // 계약 역을 포함해 화료하면 점수 1.5배(빗나가도 벌점 없음) — 손 모양이 명백히 향하는
   // 역이 있을 때만 계약해 배율을 실현 가능성 높은 쪽에 건다. 애매하면 계약하지 않는다.
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "score",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const kinds = handKindsOf(view, holder);
       if (kinds.length === 0) return null;
       const isNum = (s: string): boolean => s === "man" || s === "pin" || s === "sou";
@@ -175,5 +179,5 @@ export const bloodContract: AugmentDef = defineAugment({
         ) ?? null
       );
     },
-  },
+  }),
 });

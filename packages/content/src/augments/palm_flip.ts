@@ -30,6 +30,7 @@ import type {
 } from "@majak/core";
 import { counterOf, flagOf, matchUses, roundKey, roundViewKey } from "../util.js";
 import { waitTilesLeft } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "palm_flip";
 const ACTION = "flip_riichi";
@@ -130,13 +131,16 @@ export const palmFlip: AugmentDef = defineAugment({
    * 풀고 나서 손을 다시 짤 시간(패산)이 남아 있을 때만 켠다. 봉이 그대로 살아 있어
    * 재리치는 공짜이므로, 푼 뒤의 리치 판단은 평소 규칙(넓은 대기를 고른다)에 맡긴다.
    */
-  bot: {
-    choose(ctx) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: (ctx) => {
       const opt = ctx.options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
       if (!ctx.tenpai) return null;
       if (ctx.wallLeft < 12) return null; // 다시 짤 시간이 없다
       return waitTilesLeft(ctx) === 0 ? opt : null;
     },
-  },
+  }),
 });

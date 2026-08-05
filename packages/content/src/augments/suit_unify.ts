@@ -39,6 +39,7 @@ import {
   registerMonoWorldReducer,
 } from "./suitUnifyCore.js";
 import { handKindsOf } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "suit_unify";
 const ACTION = "mono_world";
@@ -120,8 +121,11 @@ export const suitUnify: AugmentDef = defineAugment({
   },
   // 수패를 전부 한 색으로 몰아 청일색을 노린다. 텐파이면 손을 깨므로 발동하지 않고,
   // 수패가 충분할 때(≥5장) 가장 많은 색으로 통일해 rank 충돌을 최소화한다.
-  bot: {
-    choose({ options, view, holder, tenpai }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null;
       const counts: Record<string, number> = { man: 0, pin: 0, sou: 0 };
       let total = 0;
@@ -142,5 +146,5 @@ export const suitUnify: AugmentDef = defineAugment({
         ) ?? null
       );
     },
-  },
+  }),
 });

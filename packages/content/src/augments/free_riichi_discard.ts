@@ -37,6 +37,7 @@ import type {
 } from "@majak/core";
 import { roundKey, roundViewKey } from "../util.js";
 import { pickSafestDiscard } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const AUGMENT_ID = "free_riichi_discard";
 
@@ -182,8 +183,11 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
    * 버리는 것보다 확실히 안전한 손패가 있을 때만** 그 패를 낸다. 위협이 없으면 발동하지
    * 않는다 — 손패를 헤집어 봐야 얻는 게 없다.
    */
-  bot: {
-    choose(ctx) {
+  bot: plan({
+    intent: "defend",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: (ctx) => {
       if (ctx.threat <= 0) return null;
       const drawn = ctx.view.round.myDrawnTile;
       const drawnKind = drawn !== null ? ctx.view.tiles[drawn]?.kind : undefined;
@@ -198,5 +202,5 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
       // 확실히 더 안전할 때만 (근소한 차이로 손패를 바꾸지는 않는다)
       return ctx.safety(kind) > drawnSafety + 0.1 ? safest : null;
     },
-  },
+  }),
 });

@@ -54,6 +54,7 @@ import type {
   TileDrawnPayload,
   TileKindChangedPayload,
 } from "@majak/core";
+import { plan } from "./botPlan.js";
 
 const ID = "red_five_touch";
 const ACTION = "red_touch";
@@ -172,8 +173,11 @@ export const redFiveTouch: AugmentDef = defineAugment({
   // 봇: 텐파이일 때, 손패에 가장 많은 랭크를 골라 발동한다 —
   //     그 시점 손에 쥔 패가 그대로 남아 적도라가 될 확률이 높다.
   //     (해당 랭크가 손에 없으면 애초에 후보로 뜨지 않는다.)
-  bot: {
-    choose({ options, tenpai, view, holder }) {
+  bot: plan({
+    intent: "score",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, tenpai, view, holder }) => {
       if (!tenpai) return null;
       const mine = options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
@@ -195,7 +199,7 @@ export const redFiveTouch: AugmentDef = defineAugment({
       }
       return best;
     },
-  },
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

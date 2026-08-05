@@ -26,6 +26,8 @@ function ctxWith(
     tenpai,
     waits: [],
     remaining: () => 4,
+    placement: { rank: 2, allLast: false, riskAppetite: 0 },
+    handPoints: 3900,
     view: {
       players: [
         { id: "p0", seat: 1 },
@@ -43,11 +45,11 @@ describe("자리 바꿈 봇 — 손이 좋으면 교환하지 않는다", () => 
   ];
 
   it("텐파이면 발동하지 않는다", () => {
-    expect(seatSwap.bot?.choose(ctxWith(0, true, opts))).toBeNull();
+    expect(botChosenOption(seatSwap.bot?.choose(ctxWith(0, true, opts)) ?? null)).toBeNull();
   });
 
   it("셰텐이 얕으면(손이 자라는 중) 발동하지 않는다", () => {
-    expect(seatSwap.bot?.choose(ctxWith(1, false, opts))).toBeNull();
+    expect(botChosenOption(seatSwap.bot?.choose(ctxWith(1, false, opts)) ?? null)).toBeNull();
   });
 
   it("손이 나쁘면 종전대로 오야와 교환한다", () => {
@@ -63,10 +65,10 @@ describe("삼원의 의지 봇 — 손이 좋으면 몸통을 태우지 않는�
   ];
 
   it("텐파이면 발동하지 않는다", () => {
-    expect(threeDragonsWill.bot?.choose(ctxWith(0, true, opts))).toBeNull();
+    expect(botChosenOption(threeDragonsWill.bot?.choose(ctxWith(0, true, opts)) ?? null)).toBeNull();
   });
 
   it("손이 나쁘면 종전대로 발동한다", () => {
-    expect(threeDragonsWill.bot?.choose(ctxWith(5, false, opts))).not.toBeNull();
+    expect(botChosenOption(threeDragonsWill.bot?.choose(ctxWith(5, false, opts)) ?? null)).not.toBeNull();
   });
 });

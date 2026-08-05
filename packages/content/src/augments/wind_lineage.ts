@@ -24,6 +24,7 @@
 import { defineAugment } from "@majak/core";
 import type { AugmentDef, TileKind } from "@majak/core";
 import { handKindsOf } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "wind_lineage";
 
@@ -52,8 +53,11 @@ export const windLineage: AugmentDef = defineAugment({
    * (안 그러면 봇은 이 깡을 영영 치지 않는다), 네 바람이 전부 **고립**일 때 — 즉 짝·자패
    * 슌쯔 재료로 더 쓸 데가 없을 때 — 깡으로 바꿔 영상패와 새로운 도라를 챙긴다.
    */
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const hand = handKindsOf(view, holder);
       for (const o of options) {
         if (o.type !== "ankan") continue;
@@ -75,5 +79,5 @@ export const windLineage: AugmentDef = defineAugment({
       }
       return null;
     },
-  },
+  }),
 });

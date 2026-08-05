@@ -36,6 +36,7 @@ import type {
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "bluff_pretense";
 const ACTION = "bluff_pon";
@@ -168,15 +169,18 @@ export const bluffPretense: AugmentDef = defineAugment({
    * 봇: 잡패 한 장을 태워 커쯔를 만드는 콜이라, **역패**(그 커쯔 자체가 역)일 때만 쓴다.
    * 수패로 부르면 손만 열리고 역이 안 서는 일이 잦다.
    */
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "disrupt",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const opt = options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
       const kind = lastDiscardKind(view);
       if (kind === undefined || !isYakuhaiFor(view, holder, kind)) return null;
       return opt;
     },
-  },
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

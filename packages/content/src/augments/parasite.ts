@@ -35,6 +35,7 @@ import {
   stringOf,
   withAugPoint,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 /** 이번 국의 기생 대상 키 (국이 바뀌면 만료되어 다시 지정할 수 있다) */
 const targetKey = (holder: PlayerId, state: GameState): string =>
@@ -119,8 +120,11 @@ export const parasite: AugmentDef = defineAugment({
   },
   // 숙주가 버는 점수의 절반을 나눠 받는다(숙주가 화료할수록 이득) — 가장 점수가 높은
   // 상대(리드 중이라 계속 벌 가능성이 큰 쪽)에 기생한다. 없으면 첫 상대.
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "disrupt",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const mine = options.filter((o) => o.type === "parasite_attach");
       if (mine.length === 0) return null;
       const scoreOf = new Map<string, number>();
@@ -137,5 +141,5 @@ export const parasite: AugmentDef = defineAugment({
       }
       return best;
     },
-  },
+  }),
 });

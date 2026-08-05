@@ -46,6 +46,7 @@ import type {
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "conjure_draw";
 const ACTION = "conjure_tsumo";
@@ -164,8 +165,11 @@ export const conjureDraw: AugmentDef = defineAugment({
   },
   // 다음 쯔모를 지목한 패의 복제로 부른다(국당 1회). 이미 2장 든 패를 지목하면
   // 그 쯔모로 커쯔가 완성되는 확실한 이득 — 그럴 때만 발동해 1회를 값지게 쓴다.
-  bot: {
-    choose({ options, view, holder, tenpai }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null; // 텐파이면 오름패를 그냥 쯔모하는 게 낫다
       const counts = kindCounts(handKindsOf(view, holder));
       for (const o of options) {
@@ -177,5 +181,5 @@ export const conjureDraw: AugmentDef = defineAugment({
       }
       return null;
     },
-  },
+  }),
 });

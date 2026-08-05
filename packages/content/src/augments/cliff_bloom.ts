@@ -65,6 +65,7 @@ import {
   widenPeek,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "cliff_bloom";
 const ACTION_PICK = "bloom_pick";
@@ -331,8 +332,11 @@ export const cliffBloom: AugmentDef = defineAugment({
   // 깡의 영상패를 왕패 앞 4장에서 고른다(홀더에겐 공개). 오름패가 있으면 그걸 골라
   // 영상개화로 화료하고, 없으면 짝·슌쯔가 되는 패를, 그래도 없으면 첫 후보를 고른다
   // (아무거나 고르는 편이 무작위 영상패보다 낫다).
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const picks = options.filter((o) => o.type === ACTION_PICK);
       if (picks.length === 0) return null;
       const dead = view.zones[DEAD_WALL]?.tileIds ?? [];
@@ -362,5 +366,5 @@ export const cliffBloom: AugmentDef = defineAugment({
       // 3) 아무거나 (무작위 영상패보다 나음)
       return picks[0] ?? null;
     },
-  },
+  }),
 });

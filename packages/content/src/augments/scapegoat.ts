@@ -23,6 +23,7 @@ import type {
   RoundSettledPayload,
 } from "@majak/core";
 import { roundKey, roundViewKey, settleInterceptor, stringOf } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "scapegoat";
 const ACTION = "scapegoat_mark";
@@ -103,8 +104,11 @@ export const scapegoat: AugmentDef = defineAugment({
   },
   // 쯔모 화료 시 지불을 한 상대에게 몰아준다(총액 불변) — 내가 텐파이라 화료가 가시권일
   // 때, 점수가 가장 높은 상대에게 몰아 그 상대의 순위를 끌어내린다.
-  bot: {
-    choose({ options, view, holder, tenpai }) {
+  bot: plan({
+    intent: "defend",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) => {
       if (!tenpai) return null;
       const mine = options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
@@ -122,5 +126,5 @@ export const scapegoat: AugmentDef = defineAugment({
       }
       return best;
     },
-  },
+  }),
 });

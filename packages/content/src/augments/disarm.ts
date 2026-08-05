@@ -35,6 +35,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "disarm";
 const ACTION = "disarm_lock";
@@ -162,8 +163,11 @@ export const disarm: AugmentDef = defineAugment({
   },
   // 동풍전 1·반장전 2회 — 증강을 가장 많이 든 상대의 능력 하나를 잠근다(방해 이득, 자해 없음).
   // 대상 증강의 강약까지는 판단하지 못하므로, 가장 많이 무장한 상대를 노려 무장 하나를 뺀다.
-  bot: {
-    choose({ options, view }) {
+  bot: plan({
+    intent: "disrupt",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view }) => {
       const mine = options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
       const augCount = new Map<string, number>();
@@ -180,5 +184,5 @@ export const disarm: AugmentDef = defineAugment({
       }
       return best;
     },
-  },
+  }),
 });

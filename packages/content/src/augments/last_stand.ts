@@ -15,7 +15,6 @@
  */
 
 import {
-  BOT_WEIGHT,
   ROUND_STARTED,
   augmentDataSet,
   defineAugment,
@@ -24,6 +23,7 @@ import {
 import type { ActionDef, AugmentDef, PlayerId } from "@majak/core";
 import { flagOf } from "../util.js";
 import { waitTilesLeft } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const RIICHI_CANCELED = "RiichiCanceled";
 const usedKey = (h: PlayerId): string => `last_stand:used:${h}`;
@@ -130,16 +130,19 @@ export const lastStand: AugmentDef = defineAugment({
    * 취소하면 리치봉도 돌아오고 그 뒤로는 안전패를 골라 낼 수 있다(봇의 버림 판단이
    * 위협을 보고 알아서 접는다). 위협이 없으면 리치는 그대로 두는 것이 항상 낫다.
    */
-  bot: {
-    choose(ctx) {
+  bot: plan({
+    intent: "defend",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: (ctx) => {
       const opt = ctx.options.find((o) => o.type === "cancel_riichi");
       if (opt === undefined) return null;
       if (ctx.threat < 0.9) return null; // 위협이 없으면 물러설 이유가 없다
       const left = waitTilesLeft(ctx);
       const hopeless = left <= 1 || (ctx.wallLeft <= 12 && left <= 3);
-      // 여기까지 왔으면 "지금 접지 않으면 방총한다"는 상황이다 — 같은 프롬프트의
-      // 다른 액티브(정보·포석)보다 먼저 태운다.
-      return hopeless ? { option: opt, weight: BOT_WEIGHT.defend } : null;
+      // 여기까지 왔으면 "지금 접지 않으면 방총한다"는 상황이다. 그 급함은 이제
+      // 의도(`defend`)가 강도로 옮겨 주므로 정책이 숫자를 직접 쓰지 않는다.
+      return hopeless ? opt : null;
     },
-  },
+  }),
 });
