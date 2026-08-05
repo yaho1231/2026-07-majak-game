@@ -7625,7 +7625,25 @@ function augmentPillStatus(
       .filter((k): k is string => typeof k === "string")
       .map(parseKindKey)
       .filter((k): k is TileKind => k !== null);
-    if (kinds.length === 0) return null;
+    if (kinds.length === 0) {
+      // 잔상은 아직 안 썼어도 **무엇을 되살릴 수 있는지**를 보유자 본인에게만 보여 준다
+      // — 값어치를 보고 발동할지 정하라는 증강이라, 안 보이면 도박이 된다.
+      if (augId === "dora_afterimage") {
+        const prev = (Array.isArray(av[`dora_afterimage:prev:${playerId}`])
+          ? (av[`dora_afterimage:prev:${playerId}`] as unknown[])
+          : [])
+          .filter((k): k is string => typeof k === "string")
+          .map(parseKindKey)
+          .filter((k): k is TileKind => k !== null);
+        if (prev.length === 0) return null;
+        const prevNames = prev.map((kind) => formatTile({ kind })).join("·");
+        return {
+          chip: `↺ ${prevNames}`,
+          note: `직전 국의 도라 — 발동하면 ${prevNames}이(가) 나에게만 도라로 겹쳐진다 (나에게만 보인다)`,
+        };
+      }
+      return null;
+    }
     const names = kinds.map((kind) => formatTile({ kind })).join("·");
     return { chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` };
   }
@@ -10417,6 +10435,15 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
   if (option.type === "split_tile" && typeof p.a === "number" && typeof p.tileId === "number") {
     const src = view.tiles[p.tileId]?.kind;
     if (src !== undefined) return `${p.a} + ${src.rank - p.a}`;
+  }
+  // 잔상 — 되살릴 도라를 버튼에 적는다. 무엇이 되살아나는지 모른 채 누르면 안 되는 액션이다.
+  if (option.type === "dora_recall") {
+    const raw = view.augmentView[`dora_afterimage:prev:${view.playerId}`];
+    const kinds = (Array.isArray(raw) ? raw : [])
+      .filter((k): k is string => typeof k === "string")
+      .map(parseKindKey)
+      .filter((k): k is TileKind => k !== null);
+    if (kinds.length > 0) return kinds.map((kind) => formatTile({ kind })).join("·");
   }
   const suitKo: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
   if (typeof p.suit === "string") return suitKo[p.suit] ?? p.suit;

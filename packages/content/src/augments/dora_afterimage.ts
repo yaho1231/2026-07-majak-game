@@ -39,6 +39,7 @@ import {
   roundSeqOf,
   roundViewKey,
   trackRoundSeq,
+  viewKey,
 } from "../util.js";
 
 const ID = "dora_afterimage";
@@ -50,6 +51,13 @@ const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 
 /** 직전 국의 도라 종류 (국을 넘어 유지되므로 국 스코프 키가 아니다) */
 const prevDoraKey = `${ID}:prevDora`;
+/**
+ * 발동 전에 보유자에게만 보여 주는 "되살릴 수 있는 도라" 채널.
+ * 무엇이 되살아나는지 모르면 쓸지 말지 판단할 수가 없다 — 그래서 국이 바뀔 때마다
+ * 후보를 미리 알려 준다. **고정 키**다: 매 국 정산에서 덮어써야 다음 국 내내 남는다.
+ * 상대에게는 안 보인다(발동해야 전원 공개된다).
+ */
+const candidateViewKey = (h: PlayerId): string => viewKey(h, `${ID}:prev:${h}`);
 /** 이번 국에 되살아난 도라 종류 (발동 시 굳힌다) */
 const recalledKey = (state: GameState, h: PlayerId): string =>
   `${ID}:recalled:${roundKey(state)}:${h}`;
@@ -118,7 +126,7 @@ export const doraAfterimage: AugmentDef = defineAugment({
   description:
     "(2국에 1회) 자기 순에 발동하면 직전 국의 도라 표시패가 되살아나, 그 도라가 이번 국의 도라 위에 나만의 도라로 겹쳐진다.",
   detail:
-    "자기 순에 발동하면 직전 국에 공개돼 있던 도라 표시패가 가리키던 도라가 보유자에게만 추가된다. 이번 국의 도라는 그대로 유지되고 그 위에 겹친다.\n\n대상은 직전 국의 배패 표시패와 깡도라 표시패이며, 뒷도라 표시패는 포함되지 않는다. 발동 시점에 종류가 고정되어 이후 깡도라가 뒤집혀도 변하지 않는다. 첫 국에는 발동할 수 없고, 되살아난 종류는 전원에게 공개된다.",
+    "자기 순에 발동하면 직전 국에 공개돼 있던 도라 표시패가 가리키던 도라가 보유자에게만 추가된다. 이번 국의 도라는 그대로 유지되고 그 위에 겹친다.\n\n대상은 직전 국의 배패 표시패와 깡도라 표시패이며, 뒷도라 표시패는 포함되지 않는다. 발동 시점에 종류가 고정되어 이후 깡도라가 뒤집혀도 변하지 않는다. 첫 국에는 발동할 수 없고, 되살아난 종류는 전원에게 공개된다.\n\n되살릴 수 있는 도라는 발동 전에도 보유자에게만 미리 보인다 — 쓸 값어치가 있는지 보고 고르면 된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -135,6 +143,8 @@ export const doraAfterimage: AugmentDef = defineAugment({
       );
       if (kinds.length === 0) return;
       rc.emit(augmentDataSet(prevDoraKey, kinds));
+      // 보유자에게만 미리 보여 준다 — 다음 국에 되살릴 수 있는 도라가 이것이다
+      rc.emit(augmentDataSet(candidateViewKey(holder), kinds.map(kindKey)));
     });
 
     // 되살아난 도라를 개인 도라로 얹는다 (거울의 도라와 같은 코어 경로)
