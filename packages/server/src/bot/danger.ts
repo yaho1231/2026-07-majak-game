@@ -16,6 +16,8 @@
 import { discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
 import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 import { pointsForHan } from "./value.js";
+import { NEUTRAL_TRAITS } from "./opponents.js";
+import type { OpponentTraits } from "./opponents.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -90,18 +92,20 @@ export function readThreats(
   me: PlayerId,
   /** 이 국의 도라 종류 — 상대 후로에 보이는 도라를 세어 실점 추정을 올린다 */
   doraKinds: readonly TileKind[] = [],
+  /** 지금까지 읽어 낸 이 사람의 성향 (없으면 '보통 사람') */
+  traitsOf: (p: PlayerId) => OpponentTraits = () => NEUTRAL_TRAITS,
 ): Threat[] {
   const out: Threat[] = [];
   const turn = view.round.turnCount;
   const doraSet = new Set(doraKinds.map(kindKey));
+  const ponds = pondsOf(view);
   for (const p of view.players) {
     if (p.id === me) continue;
     const rs = view.round.byPlayer[p.id];
+    const discards = discardKindsOf(view, p.id);
     const genbutsu = new Set<string>();
     const discardRanks = new Map<string, Set<number>>();
-    for (const id of view.zones[discardsZone(p.id)]?.tileIds ?? []) {
-      const kind = view.tiles[id]?.kind;
-      if (kind === undefined) continue;
+    for (const kind of discards) {
       genbutsu.add(kindKey(kind));
       if (isNumber(kind)) {
         let set = discardRanks.get(kind.suit);
@@ -116,6 +120,7 @@ export function readThreats(
     const riichi = rs?.riichiDeclared === true;
     const melds = rs?.meldCount ?? 0;
     const yakuhaiMeld = hasYakuhaiMeld(view, p.id);
+    const traits = traitsOf(p.id);
     let level = 0;
     if (riichi) {
       level = 1;
@@ -124,10 +129,25 @@ export function readThreats(
       // 역패 후로가 섞여 있으면 싸구려라도 확실히 화료를 향해 간다는 신호다.
       level = Math.min(0.75, 0.18 * melds + (turn >= 10 ? 0.2 : 0.08));
       if (yakuhaiMeld) level += 0.1;
+      /**
+       * **누가 울었는가.** 여태 한 번도 안 운 사람의 펑과, 매 국 우는 사람의 펑은
+       * 같은 후로가 아니다. 전자는 "이 손은 울 만하다"는 판단이 섰다는 뜻이고,
+       * 후자는 그냥 늘 하던 일이다. 사람이 실제로 하는 읽기를 그대로 옮긴다.
+       */
+      level *= 1 + (NEUTRAL_TRAITS.callRate - traits.callRate) * 0.6;
+      // 종반에 중장패를 흘리는 열린 손은 손이 완성됐다는 신호다
+      if (turn >= 9 && recentMiddleDiscards(discards) >= 2) level += 0.12;
     } else if (turn >= 12) {
       // 멘젠 무후로라도 종반이면 누구나 텐파이일 수 있다 (약한 상시 경계)
       level = 0.15;
     }
+
+    /**
+     * **접은 사람은 위험하지 않다.** 남의 리치에 현물만 골라 내고 있는 사람은
+     * 이미 화료를 포기한 것이다. 예전 봇은 후로 둘을 눕힌 채 접은 사람을 끝까지
+     * 무서워해서, 아무도 노리지 않는 패를 못 버리고 자기 손만 망쳤다.
+     */
+    if (!riichi && isFolding(view, p.id, discards, ponds)) level *= 0.25;
 
     const isDealer =
       view.players.find((x) => x.id === p.id)?.seat === view.round.dealerSeat;
@@ -138,10 +158,72 @@ export function readThreats(
       genbutsu,
       discardRanks,
       isDealer,
-      value: estimateThreatValue(view, p.id, { riichi, melds, yakuhaiMeld, isDealer, doraSet }),
+      value: estimateThreatValue(view, p.id, {
+        riichi,
+        melds,
+        yakuhaiMeld,
+        isDealer,
+        doraSet,
+        discards,
+        riichiTurn: rs?.riichiTileIndex,
+        traits,
+      }),
     });
   }
   return out.sort((a, b) => b.level * b.value - a.level * a.value);
+}
+
+/** 이 사람이 바닥에 버린 패들 (버린 순서) */
+function discardKindsOf(view: PlayerView, player: PlayerId): TileKind[] {
+  const out: TileKind[] = [];
+  for (const id of view.zones[discardsZone(player)]?.tileIds ?? []) {
+    const k = view.tiles[id]?.kind;
+    if (k !== undefined) out.push(k);
+  }
+  return out;
+}
+
+/** 전원의 바닥을 합친 집합 — "이건 이미 누군가 버린 패다"의 판정에 쓴다 */
+function pondsOf(view: PlayerView): Map<PlayerId, Set<string>> {
+  const m = new Map<PlayerId, Set<string>>();
+  for (const p of view.players) {
+    m.set(p.id, new Set(discardKindsOf(view, p.id).map(kindKey)));
+  }
+  return m;
+}
+
+/** 최근 3장 중 중장패(3~7) 개수 — 열린 손의 완성 신호 */
+function recentMiddleDiscards(discards: readonly TileKind[]): number {
+  let n = 0;
+  for (const k of discards.slice(-3)) {
+    if (isNumber(k) && k.rank >= 3 && k.rank <= 7) n++;
+  }
+  return n;
+}
+
+/**
+ * 이 사람이 **접고 있는가**.
+ *
+ * 판단 근거는 사람이 쓰는 것과 같다: 남이 리치를 걸어 놓았는데, 이 사람의 최근
+ * 버림이 전부 **그 리치의 현물**이면 화료를 포기하고 안전패만 내는 중이다.
+ * (자기 손을 진행시키는 사람은 현물만 골라 낼 수가 없다.)
+ */
+function isFolding(
+  view: PlayerView,
+  player: PlayerId,
+  discards: readonly TileKind[],
+  ponds: ReadonlyMap<PlayerId, Set<string>>,
+): boolean {
+  const recent = discards.slice(-3);
+  if (recent.length < 3) return false;
+  for (const other of view.players) {
+    if (other.id === player) continue;
+    if (view.round.byPlayer[other.id]?.riichiDeclared !== true) continue;
+    const pond = ponds.get(other.id);
+    if (pond === undefined) continue;
+    if (recent.every((k) => pond.has(kindKey(k)))) return true;
+  }
+  return false;
 }
 
 /**
@@ -155,7 +237,10 @@ export function readThreats(
  *   - 역패 후로 → 확정 1판(대신 싸다)
  *   - 후로에 **보이는** 도라 → 확정 판수
  *   - 감춰진 손패의 도라 기대값 → 약 1판 (도라 표시 1장당 손패 13장에 0.9장꼴)
- *   - 혼일색 읽기 → 후로가 한 색+자패로만 이루어져 있으면 +2판
+ *   - 혼일색 읽기 → 후로가 한 색+자패로만 이루어져 있거나, **버림패에 한 색이 통째로
+ *     빠져 있으면** +2판 (사람이 "저 색을 안 버린다"로 읽는 그것)
+ *   - 리치 순목 → 이른 리치는 좋은 손이라는 신호
+ *   - 그 사람의 성향 → 리치를 아끼는 사람의 리치는 비싸다
  */
 function estimateThreatValue(
   view: PlayerView,
@@ -166,6 +251,10 @@ function estimateThreatValue(
     yakuhaiMeld: boolean;
     isDealer: boolean;
     doraSet: ReadonlySet<string>;
+    discards: readonly TileKind[];
+    /** 리치 선언패가 바닥 몇 번째인가 (= 몇 순에 걸었는가) */
+    riichiTurn: number | undefined;
+    traits: OpponentTraits;
   },
 ): number {
   const meldKinds: TileKind[] = [];
@@ -186,10 +275,53 @@ function estimateThreatValue(
 
   // 혼일색 읽기 — 눕힌 패가 한 색(+자패)으로만 이루어져 있다
   if (info.melds > 0 && isOneSuitOrHonors(meldKinds)) han += 2;
+  // 눕힌 것이 없어도 **안 버리는 색**으로 읽힌다. 다른 두 색을 실컷 버리면서 한 색만
+  // 한 장도 안 흘리는 사람은 그 색을 모으는 중이다 — 사람이 늘 쓰는 읽기다.
+  else if (missingSuitRead(info.discards)) han += 2;
+
+  /**
+   * **언제 걸었는가.** 3~6순의 리치는 배패부터 좋았다는 뜻이라 도라도 역도 더
+   * 붙어 있기 쉽다. 반대로 12순이 넘어 건 리치는 겨우 텐파이가 된 손이 많다.
+   */
+  if (info.riichi && info.riichiTurn !== undefined) {
+    han += info.riichiTurn <= 5 ? 0.5 : info.riichiTurn >= 12 ? -0.3 : 0;
+  }
+
+  /**
+   * **누가 걸었는가.** 리치를 아껴 두는 사람이 걸었다면 고를 만한 손이었다는 뜻이고,
+   * 아무 손에나 거는 사람의 리치는 액면 그대로다. 관측이 쌓이기 전에는
+   * traits가 사전값이라 이 항이 0이 된다 — 첫 국에는 아무 영향이 없다.
+   */
+  if (info.riichi) {
+    han += (NEUTRAL_TRAITS.riichiRate - info.traits.riichiRate) * 3;
+  }
 
   // 손 값어치와 **같은 눈금**을 쓴다 — 기대 판수를 반올림하지 않고 보간한다.
   // 눈금이 어긋나면 "밀기가 이득인가"의 뺄셈이 조용히 한쪽으로 기운다.
   return pointsForHan(han, 30, info.isDealer);
+}
+
+/**
+ * 버림패에 **한 색이 통째로 빠져 있는가** — 그 색을 모으고 있다는 신호.
+ *
+ * 다른 두 색을 각각 3장 이상 버렸는데 한 색은 한 장도 안 버렸다면, 그 색이 손에
+ * 쌓이고 있다고 보는 것이 자연스럽다. 표본이 적으면 그냥 안 뽑혔을 뿐이라
+ * 버림패가 8장은 쌓인 뒤에만 읽는다.
+ */
+function missingSuitRead(discards: readonly TileKind[]): boolean {
+  if (discards.length < 8) return false;
+  const bySuit = new Map<string, number>();
+  for (const k of discards) {
+    if (isNumber(k)) bySuit.set(k.suit, (bySuit.get(k.suit) ?? 0) + 1);
+  }
+  let missing = 0;
+  let thick = 0;
+  for (const suit of NUMBER_SUITS) {
+    const n = bySuit.get(suit) ?? 0;
+    if (n === 0) missing++;
+    else if (n >= 3) thick++;
+  }
+  return missing === 1 && thick === 2;
 }
 
 /** 눕힌 패가 한 색 + 자패로만 이루어져 있는가 (혼일색·청일색 신호) */

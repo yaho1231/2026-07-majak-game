@@ -28,6 +28,8 @@ import { readMatch } from "./match.js";
 import type { BotGameMode, MatchContext } from "./match.js";
 import { estimateHandValue, waitTilesOf, winChance } from "./value.js";
 import type { HandValue } from "./value.js";
+import { NEUTRAL_TRAITS } from "./opponents.js";
+import type { OpponentTraits } from "./opponents.js";
 
 /** 이 국에 노리는 역 — 후로할지, 무엇을 버릴지의 기준이 된다 */
 export type HandPlan =
@@ -137,8 +139,23 @@ export function removeKinds(
   return out;
 }
 
+/** `buildRead`에 함께 넘기는, 뷰 바깥에서 오는 것들 */
+export interface ReadContext {
+  /** 몇 국짜리 게임인가 (뷰에 없다 — 서버가 알려 준다) */
+  mode?: BotGameMode;
+  /** 지금까지 읽어 낸 상대 성향 (뷰가 아니라 **기억**에서 온다) */
+  traitsOf?: (p: PlayerId) => OpponentTraits;
+}
+
 /** 뷰 하나로 이번 결정의 판 읽기를 만든다 */
-export function buildRead(view: PlayerView, me: PlayerId, mode?: BotGameMode): BotRead {
+export function buildRead(
+  view: PlayerView,
+  me: PlayerId,
+  ctx: BotGameMode | ReadContext = {},
+): BotRead {
+  // 예전 호출부는 모드 문자열만 넘겼다 — 둘 다 받는다
+  const context: ReadContext = typeof ctx === "string" ? { mode: ctx } : ctx;
+  const mode = context.mode;
   const hand: TileKind[] = [];
   for (const id of view.zones[handZone(me)]?.tileIds ?? []) {
     const k = view.tiles[id]?.kind;
@@ -175,7 +192,7 @@ export function buildRead(view: PlayerView, me: PlayerId, mode?: BotGameMode): B
     if (k !== undefined) doraKinds.push(doraKindFor(k));
   }
   // 위협 읽기는 도라를 알아야 한다 — 상대 후로에 눕혀진 도라가 예상 실점을 바꾼다
-  const threats = readThreats(view, me, doraKinds);
+  const threats = readThreats(view, me, doraKinds, context.traitsOf ?? (() => NEUTRAL_TRAITS));
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {
     const key = kindKey(d);

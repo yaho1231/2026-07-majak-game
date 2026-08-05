@@ -51,6 +51,7 @@ import type { BotRead, HandPlan } from "./bot/read.js";
 import { rollProfile } from "./bot/profile.js";
 import type { BotProfile } from "./bot/profile.js";
 import type { BotGameMode } from "./bot/match.js";
+import { OpponentMemory } from "./bot/opponents.js";
 
 /** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
@@ -133,6 +134,14 @@ export class BotAgent implements PlayerAgent {
    * 사람다운 판단이 나온다(`bot/match.ts`). 모르면 반장전으로 본다.
    */
   private mode: BotGameMode = "hanchan";
+  /**
+   * **상대가 어떤 사람인가**를 국을 넘어 기억한다.
+   *
+   * 예전 봇에게 상대 셋은 매 국 처음 보는 사람이었다 — 다섯 국 내내 한 번도 안 운
+   * 사람과 매 국 세 번씩 우는 사람을 똑같이 취급했다. 관측은 전부 뷰에서만 하므로
+   * 정보 비대칭이 깨지지 않는다(`bot/opponents.ts`).
+   */
+  private readonly opponents = new OpponentMemory();
 
   constructor(
     id: PlayerId,
@@ -178,6 +187,8 @@ export class BotAgent implements PlayerAgent {
   sendView(view: PlayerView): void {
     this.lastView = view;
     this.read = null; // 판이 바뀌었다 — 다음 결정에서 다시 읽는다
+    // 뷰의 변화에서 상대의 리치·후로를 읽어 성향으로 쌓는다 (국 경계도 여기서 잡는다)
+    this.opponents.observe(view, this.id);
     const rk = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
     if (rk !== this.roundKey) {
       this.roundKey = rk;
@@ -268,7 +279,10 @@ export class BotAgent implements PlayerAgent {
   private currentRead(): BotRead | null {
     if (this.read !== null) return this.read;
     if (this.lastView === null) return null;
-    this.read = buildRead(this.lastView, this.id, this.mode);
+    this.read = buildRead(this.lastView, this.id, {
+      mode: this.mode,
+      traitsOf: (p) => this.opponents.traitsOf(p),
+    });
     return this.read;
   }
 
