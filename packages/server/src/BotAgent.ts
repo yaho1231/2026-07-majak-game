@@ -44,6 +44,7 @@ import { buildRead, readPlan } from "./bot/read.js";
 import type { BotRead, HandPlan } from "./bot/read.js";
 import { rollProfile } from "./bot/profile.js";
 import type { BotProfile } from "./bot/profile.js";
+import type { BotGameMode } from "./bot/match.js";
 
 /** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
@@ -120,6 +121,12 @@ export class BotAgent implements PlayerAgent {
    * 실대국 봇은 이 값이 절대 채워지지 않으므로 판단이 종전과 완전히 동일하다.
    */
   private restrictions: SandboxBotRules | null = null;
+  /**
+   * 게임 모드 — **몇 국짜리 게임인가**. 뷰에는 없는 정보라 서버가 알려 준다.
+   * 이게 있어야 "지금이 올라스인가"를 알 수 있고, 그래야 순위를 지키거나 뒤집는
+   * 사람다운 판단이 나온다(`bot/match.ts`). 모르면 반장전으로 본다.
+   */
+  private mode: BotGameMode = "hanchan";
 
   constructor(
     id: PlayerId,
@@ -154,6 +161,12 @@ export class BotAgent implements PlayerAgent {
         rules.noWin === true ||
         rules.noAugment === true);
     this.restrictions = on ? rules : null;
+  }
+
+  /** 이 방의 게임 모드를 알린다 (게임 시작 시 서버가 호출). 순위 판단의 전제가 된다 */
+  setGameMode(mode: BotGameMode): void {
+    this.mode = mode;
+    this.read = null;
   }
 
   sendView(view: PlayerView): void {
@@ -247,7 +260,7 @@ export class BotAgent implements PlayerAgent {
   private currentRead(): BotRead | null {
     if (this.read !== null) return this.read;
     if (this.lastView === null) return null;
-    this.read = buildRead(this.lastView, this.id);
+    this.read = buildRead(this.lastView, this.id, this.mode);
     return this.read;
   }
 

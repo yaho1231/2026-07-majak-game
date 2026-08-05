@@ -15,8 +15,19 @@ import {
   winningKinds,
 } from "@majak/core";
 import type { DecomposeOptions, PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
-import { maxThreat, readThreats, safetyOf, tileTracker, wallLeftOf } from "./danger.js";
+import {
+  expectedLossOf,
+  maxThreat,
+  readThreats,
+  safetyOf,
+  tileTracker,
+  wallLeftOf,
+} from "./danger.js";
 import type { Threat } from "./danger.js";
+import { readMatch } from "./match.js";
+import type { BotGameMode, MatchContext } from "./match.js";
+import { estimateHandValue, waitTilesOf, winChance } from "./value.js";
+import type { HandValue } from "./value.js";
 
 /** 이 국에 노리는 역 — 후로할지, 무엇을 버릴지의 기준이 된다 */
 export type HandPlan =
@@ -51,6 +62,26 @@ export interface BotRead {
   remainingOf(kind: TileKind): number;
   /** 이 패를 버릴 때의 안전도 0(위험)~1(안전) */
   safetyOf(kind: TileKind): number;
+  /**
+   * 이 패를 버릴 때 **잃을 것으로 기대되는 점수** (확률 × 실점).
+   * `safetyOf`와 달리 점수 단위라 기대 획득(`gainIf`)과 직접 비교된다.
+   */
+  expectedLoss(kind: TileKind): number;
+  /** 게임 전체에서 이 국의 처지 (순위·남은 국·판돈 → 위험 감수 성향) */
+  match: MatchContext;
+  /**
+   * 이 방향으로 갔을 때 손의 값어치 (판수·점수). 방향이 바뀌면 값도 바뀐다.
+   * `doraDelta`는 이 판단으로 잃거나 얻는 도라 수 — 도라를 흘리는 버림 후보는
+   * 음수를 넣어 값어치가 실제로 얼마나 내려가는지를 점수로 본다.
+   */
+  valueOf(plan: HandPlan, doraDelta?: number): HandValue;
+  /**
+   * 지금 손이 남은 순목 안에 화료할 확률.
+   * 버림 후보를 비교할 때는 그 패를 버린 뒤의 샹텐·우케이레를 넣어 다시 잰다.
+   */
+  winChanceOf(input: { shanten: number; waitTiles: number; ukeireTiles: number }): number;
+  /** 텐파이일 때 오름패의 남은 장수 합 (노텐이면 0) */
+  waitTiles: number;
   /** 이 패 목록에 든 도라 수 (적도라 제외) */
   doraIn(kinds: readonly TileKind[]): number;
   /** 지금 손패(후로 포함)의 도라·적도라 합 — 손의 값어치 어림 */
@@ -82,7 +113,7 @@ export function removeKinds(
 }
 
 /** 뷰 하나로 이번 결정의 판 읽기를 만든다 */
-export function buildRead(view: PlayerView, me: PlayerId): BotRead {
+export function buildRead(view: PlayerView, me: PlayerId, mode?: BotGameMode): BotRead {
   const hand: TileKind[] = [];
   for (const id of view.zones[handZone(me)]?.tileIds ?? []) {
     const k = view.tiles[id]?.kind;
@@ -91,7 +122,6 @@ export function buildRead(view: PlayerView, me: PlayerId): BotRead {
   const meldCount = view.round.byPlayer[me]?.meldCount ?? 0;
   const opts: DecomposeOptions = view.scoringOptions ?? {};
   const remainingOf = tileTracker(view);
-  const threats = readThreats(view, me);
   const shanten = shantenOf(hand, meldCount, opts);
 
   // 텐파이·대기는 정확해야 한다 — 코어 계산기에 화료형 옵션을 그대로 넘긴다.
@@ -119,6 +149,8 @@ export function buildRead(view: PlayerView, me: PlayerId): BotRead {
     const k = view.tiles[id]?.kind;
     if (k !== undefined) doraKinds.push(doraKindFor(k));
   }
+  // 위협 읽기는 도라를 알아야 한다 — 상대 후로에 눕혀진 도라가 예상 실점을 바꾼다
+  const threats = readThreats(view, me, doraKinds);
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {
     const key = kindKey(d);
@@ -149,6 +181,10 @@ export function buildRead(view: PlayerView, me: PlayerId): BotRead {
     ((((seat - view.round.dealerSeat) * view.round.direction) % n) + n) % n + 1;
 
   const mine = view.round.byPlayer[me];
+  const match = readMatch(view, me, mode);
+  const wallLeft = wallLeftOf(view);
+  const furiten = mine?.furiten === true;
+  const waitTiles = waitTilesOf(waits, remainingOf);
 
   const read: BotRead = {
     view,
@@ -157,19 +193,39 @@ export function buildRead(view: PlayerView, me: PlayerId): BotRead {
     meldCount,
     opts,
     turn: view.round.turnCount,
-    wallLeft: wallLeftOf(view),
+    wallLeft,
     threats,
     threat: maxThreat(threats),
     shanten,
     tenpai,
     waits,
+    waitTiles,
+    match,
     doraKinds,
     remainingOf,
     safetyOf: (kind) => safetyOf(kind, threats, remainingOf),
+    expectedLoss: (kind) => expectedLossOf(kind, threats, remainingOf),
+    valueOf: (plan, doraDelta = 0) =>
+      estimateHandValue({
+        handDora: Math.max(0, handDora + doraDelta),
+        meldCount,
+        plan,
+        isDealer: match.isDealer,
+        riichiDeclared: mine?.riichiDeclared === true,
+      }),
+    winChanceOf: (input) =>
+      winChance({
+        shanten: input.shanten,
+        waitTiles: input.waitTiles,
+        ukeireTiles: input.ukeireTiles,
+        wallLeft,
+        turn: view.round.turnCount,
+        furiten,
+      }),
     doraIn,
     handDora,
     seatWind,
-    furiten: mine?.furiten === true,
+    furiten,
     riichiDeclared: mine?.riichiDeclared === true,
     isYakuhai(kind) {
       if (kind.suit === "dragon") return true;

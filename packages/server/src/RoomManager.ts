@@ -2036,6 +2036,13 @@ export class RoomManager {
     const playerIds = room.agents.map((a) => a.id);
     const tracker = new StatsTracker(playerIds);
 
+    // 봇에게 이 게임이 몇 국짜리인지 알린다 — 뷰에 없는 정보다. 이게 있어야 봇이
+    // "지금이 올라스인가"를 알고 순위를 지키거나 뒤집는 판단을 한다(bot/match.ts).
+    // 대기실에서 만들어질 땐 모드가 아직 바뀔 수 있어 시작 시점에 준다.
+    for (const agent of room.agents) {
+      if (agent instanceof BotAgent) agent.setGameMode(room.gameMode);
+    }
+
     room.controller = new HanchanController(room.agents, {
       // 모드에 맞는 진행 설정(장 수·서입·드래프트 스케줄) 한 벌. 반장전/동풍전 분기.
       ...hanchanConfigForMode(room.gameMode),
