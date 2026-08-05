@@ -305,6 +305,26 @@ describe("잔상 (dora_afterimage)", () => {
     const prev = game.engine.state.augmentData["dora_afterimage:prevDora"];
     expect(Array.isArray(prev) && prev.length).toBeGreaterThan(0);
   });
+
+  it("되살릴 수 있는 도라를 보유자에게만 미리 보여 준다 (발동 전)", () => {
+    const base = ronScene();
+    const game = createStandardGameFromState(withAugments(base, "p0", ["dora_afterimage"]));
+    installAugment(game.engine, doraAfterimage, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    flow.begin();
+    flow.submit("p0", { type: "win", payload: {} });
+
+    const prev = game.engine.state.augmentData["dora_afterimage:prevDora"] as TileKind[];
+    // 보유자 전용 채널 — 발동하지 않아도 다음 국에 되살릴 후보가 적혀 있다
+    const shown = game.engine.state.augmentData["view:p0:dora_afterimage:prev:p0"];
+    expect(shown).toEqual(prev.map(kindKey));
+    // 전원 공개 채널에는 새지 않는다
+    expect(
+      Object.keys(game.engine.state.augmentData).some(
+        (k) => k.startsWith("view:*:") && k.includes("dora_afterimage"),
+      ),
+    ).toBe(false);
+  });
 });
 
 // ─────────────────────────── 6. 반전 ───────────────────────────
