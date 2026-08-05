@@ -8,10 +8,11 @@
  * **다양성(2026-07-26)**: 한 게임에 증강이 최대한 골고루 나오게 두 겹을 건다.
  * ① 스테이지마다 제시 가능한 풀을 좌석별 **서로 소인 후보 칸**으로 갈라 —
  *    같은 스테이지에 두 사람에게 같은 증강이 제시되지 않는다(`cellFor`).
- * ② 누가 이미 보유한 증강은 아무에게도 다시 제시하지 않는다 —
+ * ② **스테이지가 열린 시점에** 누가 보유한 증강은 아무에게도 다시 제시하지 않는다 —
  *    한 게임에 같은 증강을 둘이 갖는 일이 없다(`heldByOthers`).
  * 두 장치 모두 **결정적**이며, 스테이지 도중 남이 픽해도 내 후보가 흔들리지 않는다
- * (근거는 `cellFor` 주석 — `pick`의 "제시된 것인가" 검증이 여기에 의존한다).
+ * (근거는 `heldAtStageStart` 주석 — `pick`의 "제시된 것인가" 검증이 여기에 의존한다.
+ * 흔들리면 게임이 예외로 끊긴다. 실제로 끊겼다).
  *
  * **시너지(2026-08-05)**: 그 위에 세 번째 겹을 얹었다 — 내가 **이미 집은 증강과 축이 겹치는**
  * 증강의 가중치를 올리고, 서로 죽는 증강의 가중치를 내린다(`synergyBiasFor` → `augment/synergy.ts`).
@@ -56,6 +57,35 @@ function hashString(s: string): number {
 }
 
 export class DraftController {
+  /**
+   * **이 스테이지가 열린 순간의** 보유 현황 (플레이어 id → 보유 증강).
+   *
+   * ## 왜 스냅샷인가 — 실제로 게임이 죽었다
+   *
+   * `heldByOthers`가 살아 있는 상태를 읽으면 **내 후보가 남의 픽에 흔들린다.**
+   * 스테이지 진행은 (전원에게 오퍼 → 전원 응답 → 고정 순서로 픽 적용)인데,
+   * `pick`은 "제시된 것인가"를 **다시 뽑아서** 검증한다. 앞 사람의 픽이 이미
+   * 적용된 뒤라 그 픽이 내 금지 목록에 새로 들어가고, 그러면 내 후보가 달라져
+   * 내가 고른 것이 "제시된 적 없다"가 된다 — `Augment X was not offered to pY`로
+   * **게임 진행이 예외로 끊긴다.**
+   *
+   * 칸(`cellFor`)이 서로 소라 원래는 이런 일이 없어야 하지만, 칸이 말라 **칸 밖에서
+   * 보충**하면 남의 칸에 있는 증강이 새어 들어온다. 그때 둘이 같은 것을 고르면 터진다.
+   * (증강 켠 아레나 60배패에서 재현됐다.)
+   *
+   * 스냅샷이면 스테이지 도중에는 무엇도 변하지 않는다 — "이미 누가 보유한 증강은
+   * 다시 제시하지 않는다"는 뜻도 그대로 지켜진다. 이번 스테이지에 **동시에** 고른
+   * 것까지 막지는 못하지만, 그건 애초에 칸이 막던 일이고 예외로 끊는 것보다 낫다.
+   *
+   * 스테이지별로 **처음 뽑을 때** 찍는다(생성자가 아니다) — 컨트롤러 하나로 여러
+   * 스테이지를 도는 호출자가 있고, 그때도 "앞 스테이지에서 누가 가져간 것"은
+   * 제외돼야 하기 때문이다.
+   */
+  private readonly heldAtStageStart = new Map<
+    DraftStage,
+    ReadonlyMap<PlayerId, readonly string[]>
+  >();
+
   constructor(
     private readonly engine: GameEngine,
     private readonly catalog: AugmentRegistry,
@@ -113,12 +143,22 @@ export class DraftController {
     return exclude;
   }
 
-  /** 다른 플레이어가 이미 보유한 증강 id (한 게임에 같은 증강이 둘 있지 않게) */
-  private heldByOthers(player: PlayerId): Set<string> {
+  /**
+   * 다른 플레이어가 **이 스테이지에 들어오기 전에** 보유한 증강 id
+   * (한 게임에 같은 증강이 둘 있지 않게). 스냅샷을 읽는 이유는 위 필드 주석에.
+   */
+  private heldByOthers(stage: DraftStage, player: PlayerId): Set<string> {
+    let snapshot = this.heldAtStageStart.get(stage);
+    if (snapshot === undefined) {
+      snapshot = new Map(
+        this.engine.state.players.map((p) => [p.id, [...p.augments]] as const),
+      );
+      this.heldAtStageStart.set(stage, snapshot);
+    }
     const out = new Set<string>();
-    for (const p of this.engine.state.players) {
-      if (p.id === player) continue;
-      for (const id of p.augments) out.add(id);
+    for (const [id, augments] of snapshot) {
+      if (id === player) continue;
+      for (const augId of augments) out.add(augId);
     }
     return out;
   }
@@ -135,7 +175,8 @@ export class DraftController {
    *   보유 증강 같은 가변 상태를 칸 계산에 넣으면, 스테이지 도중 누가 픽할 때마다 남의
    *   후보가 흔들려 `pick`의 "제시된 것인가" 검증이 깨진다.
    * - 칸이 서로 소이므로 **다른 사람이 이번 스테이지에 픽한 증강은 내 칸에 애초에 없다.**
-   *   그래서 `heldByOthers` 제외를 칸에 적용해도 내 후보는 흔들리지 않는다.
+   *   다만 칸이 마르면 칸 밖에서 보충하는 통로가 있어 이 성질이 새어 나갔다 — 그래서
+   *   금지 목록의 근거(`heldByOthers`)는 **스테이지 시작 시점 스냅샷**으로 고정한다.
    *
    * 카탈로그가 좌석 수를 감당할 만큼 크지 않으면 `null`을 돌려 **기존 전역 균등 추첨**으로
    * 돌아간다(작은 테스트 카탈로그·극단적 모드 필터). 그때는 겹침을 보장하지 못한다.
@@ -188,16 +229,17 @@ export class DraftController {
     if (cell === null) return this.catalog.rollUniform(prng, count, exclude, bias);
 
     // 내 칸에서 뽑는다 — 기존 제외 + 남이 이미 가진 것(게임 내 중복 금지).
-    const banned = new Set([...exclude, ...this.heldByOthers(player)]);
+    const banned = new Set([...exclude, ...this.heldByOthers(stage, player)]);
     const chosen = this.catalog.rollFromCell(prng, count, cell, banned, bias);
     if (chosen.length >= count) return chosen;
 
-    // 칸이 말라붙은 극단적 경우에만 칸 밖에서 보충한다. 여기서는 **남의 보유분을 제외하지
-    // 않는다** — 남이 이번 스테이지에 픽할 때마다 결과가 바뀌면 pick 검증이 깨지기 때문이다.
+    // 칸이 말라붙은 극단적 경우에만 칸 밖에서 보충한다. 보충분에도 **같은 금지 목록**을
+    // 건다 — 금지 목록이 스테이지 내내 고정(스냅샷)이라 pick 검증이 흔들리지 않는다.
+    // (예전에는 여기서만 남의 보유분을 걸러 내지 못해 같은 증강이 둘에게 새어 나갔다.)
     const picked = new Set(chosen.map((d) => d.id));
     const rest = this.catalog
       .all()
-      .filter((d) => !exclude.has(d.id) && !picked.has(d.id));
+      .filter((d) => !banned.has(d.id) && !picked.has(d.id));
     return [
       ...chosen,
       ...this.catalog.rollFromCell(prng, count - chosen.length, rest, new Set(), bias),
