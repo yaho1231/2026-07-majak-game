@@ -77,29 +77,29 @@ describe("자유 선언 — 리치 중 안전패 선택", () => {
 
   it("위협이 없으면 손패를 헤집지 않는다", () => {
     const v = view(HAND);
-    expect(freeRiichiDiscard.bot?.choose(botCtx(v, options(v)))).toBeNull();
+    expect(botChosenOption(freeRiichiDiscard.bot?.choose(botCtx(v, options(v))) ?? null)).toBeNull();
   });
 
   it("리치가 걸린 판에서는 쯔모패보다 안전한 손패를 골라 버린다", () => {
     const v = view(HAND);
     const safeId = idOf(v, "9m");
     const picked = botChosenOption(
-      freeRiichiDiscard.bot?.choose(
+      botChosenOption(freeRiichiDiscard.bot?.choose(
         botCtx(v, options(v), {
           threat: 1,
           // 9m만 현물(안전), 나머지는 위험
           safety: (k) => (k.suit === "man" && k.rank === 9 ? 1 : 0.3),
         }),
-      ) ?? null,
+      ) ?? null) ?? null,
     );
     expect((picked?.payload as { tileId?: number }).tileId).toBe(safeId);
   });
 
   it("쯔모패가 이미 완전 안전하면 굳이 바꾸지 않는다", () => {
     const v = view(HAND);
-    const picked = freeRiichiDiscard.bot?.choose(
+    const picked = botChosenOption(freeRiichiDiscard.bot?.choose(
       botCtx(v, options(v), { threat: 1, safety: () => 1 }),
-    );
+    ) ?? null);
     expect(picked).toBeNull();
   });
 });
@@ -111,21 +111,24 @@ describe("승부수 — 이길 가망이 없을 때만 리치를 물린다", () 
 
   it("대기가 죽었고 상대가 리치면 물러선다", () => {
     const v = view(HAND);
-    // 방어 급박 국면이므로 발동 강도(BOT_WEIGHT.defend)를 실어 돌려준다
-    const picked = lastStand.bot?.choose(
+    // 방어 급박 국면 — 강도는 이제 의도(`defend`)가 준다. 여기서는 무엇을 골랐는지만 본다.
+    const chosen = lastStand.bot?.choose(
       botCtx(v, [OPT], { threat: 1, remaining: () => 0 }),
     );
-    expect(picked).toEqual({ option: OPT, weight: BOT_WEIGHT.defend });
+    expect(botChosenOption(chosen ?? null)).toEqual(OPT);
+    expect(chosen !== null && chosen !== undefined && "weight" in chosen ? chosen.weight : 0).toBe(
+      BOT_WEIGHT.defend,
+    );
   });
 
   it("대기가 살아 있으면 리치를 유지한다", () => {
     const v = view(HAND);
-    expect(lastStand.bot?.choose(botCtx(v, [OPT], { threat: 1 }))).toBeNull();
+    expect(botChosenOption(lastStand.bot?.choose(botCtx(v, [OPT], { threat: 1 })) ?? null)).toBeNull();
   });
 
   it("위협이 없으면 대기가 죽어도 물리지 않는다 (유국 텐파이료가 남는다)", () => {
     const v = view(HAND);
-    expect(lastStand.bot?.choose(botCtx(v, [OPT], { remaining: () => 0 }))).toBeNull();
+    expect(botChosenOption(lastStand.bot?.choose(botCtx(v, [OPT], { remaining: () => 0 })) ?? null)).toBeNull();
   });
 });
 
@@ -135,22 +138,22 @@ describe("손바닥 뒤집기 — 죽은 대기를 갈아탄다", () => {
 
   it("오름패가 한 장도 안 남았고 다시 짤 시간이 있으면 푼다", () => {
     const v = view(HAND);
-    const picked = palmFlip.bot?.choose(
+    const picked = botChosenOption(palmFlip.bot?.choose(
       botCtx(v, [OPT], { remaining: () => 0, wallLeft: 40 }),
-    );
+    ) ?? null);
     expect(picked).toEqual(OPT);
   });
 
   it("종반이면 풀어 봐야 다시 짤 수 없다", () => {
     const v = view(HAND);
     expect(
-      palmFlip.bot?.choose(botCtx(v, [OPT], { remaining: () => 0, wallLeft: 6 })),
+      botChosenOption(palmFlip.bot?.choose(botCtx(v, [OPT], { remaining: () => 0, wallLeft: 6 })) ?? null),
     ).toBeNull();
   });
 
   it("대기가 살아 있으면 그대로 둔다", () => {
     const v = view(HAND);
-    expect(palmFlip.bot?.choose(botCtx(v, [OPT], { wallLeft: 40 }))).toBeNull();
+    expect(botChosenOption(palmFlip.bot?.choose(botCtx(v, [OPT], { wallLeft: 40 })) ?? null)).toBeNull();
   });
 });
 
@@ -164,18 +167,18 @@ describe("장사진 — 대기가 살아남는 4연속 깡만 친다", () => {
     // 3456s를 눕혀도 123m456m789m + 1p 단기 텐파이가 그대로 남는다
     const v = view("123m456m789m1p3456s");
     const opt = ankan(v, ["3s", "4s", "5s", "6s"]);
-    expect(snakeKan.bot?.choose(botCtx(v, [opt]))).toEqual(opt);
+    expect(botChosenOption(snakeKan.bot?.choose(botCtx(v, [opt])) ?? null)).toEqual(opt);
   });
 
   it("노텐이면 치지 않는다 (넉 장을 굳혀 봐야 손이 안 나아간다)", () => {
     const v = view("1479m2589p3456s12z");
     const opt = ankan(v, ["3s", "4s", "5s", "6s"]);
-    expect(snakeKan.bot?.choose(botCtx(v, [opt]))).toBeNull();
+    expect(botChosenOption(snakeKan.bot?.choose(botCtx(v, [opt])) ?? null)).toBeNull();
   });
 
   it("남이 리치 중이면 새 도라를 열어 주지 않는다", () => {
     const v = view("123m456m789m1p3456s");
     const opt = ankan(v, ["3s", "4s", "5s", "6s"]);
-    expect(snakeKan.bot?.choose(botCtx(v, [opt], { threat: 1 }))).toBeNull();
+    expect(botChosenOption(snakeKan.bot?.choose(botCtx(v, [opt], { threat: 1 })) ?? null)).toBeNull();
   });
 });

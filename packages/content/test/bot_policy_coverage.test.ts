@@ -65,6 +65,17 @@ describe("봇 액티브 증강 커버리지", () => {
     }
   });
 
+  it("모든 정책이 의도를 선언한다 — 각본이 아니라 의도로 쓴다", () => {
+    const script: string[] = [];
+    for (const file of augmentFiles()) {
+      const src = readFileSync(join(AUGMENTS_DIR, file), "utf8");
+      // 손수 쓴 `bot: { choose }`는 타이밍·강도를 스스로 들고 있다는 뜻이다.
+      // 남아도 되지만, 남았다는 사실이 눈에 보여야 한다.
+      if (/\n\s*bot:\s*\{/.test(src)) script.push(file.replace(/\.ts$/, ""));
+    }
+    expect(script, `의도 미선언 정책: ${script.join(", ")}`).toEqual([]);
+  });
+
   it("BOT_SKIP 예외는 실제 파일이고 사유 주석을 단다", () => {
     const files = new Set(augmentFiles().map((f) => f.replace(/\.ts$/, "")));
     for (const id of BOT_SKIP) {

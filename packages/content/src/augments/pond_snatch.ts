@@ -37,6 +37,7 @@ import {
   replaceDrawnTile,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "pond_snatch";
 const ACTION = "pond_snatch";
@@ -158,8 +159,11 @@ export const pondSnatch: AugmentDef = defineAugment({
   // 쯔모 대신 상대 버림패를 줍는다(게임 3회) — 쯔모 기회를 쓰는 만큼, 주운 패가
   // 확실히 손을 진전시킬 때만(짝을 만들거나 슌쯔로 이어질 때) 발동한다. 텐파이면
   // 그냥 오름패를 노리는 게 나으므로 발동하지 않는다.
-  bot: {
-    choose({ options, view, holder, tenpai }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null;
       const kinds = handKindsOf(view, holder);
       for (const o of options) {
@@ -173,5 +177,5 @@ export const pondSnatch: AugmentDef = defineAugment({
       }
       return null;
     },
-  },
+  }),
 });

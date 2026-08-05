@@ -47,6 +47,7 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import { counterOf, roundKey, roundViewKey, widenPeek } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "dead_wall_master";
 const ACTION_SWAP = "dw_swap";
@@ -146,8 +147,11 @@ export const deadWallMaster: AugmentDef = defineAugment({
     "(상시 열람 · 매 국 2회 교환) 왕패 14장이 항상 전부 보인다 — 왼쪽 4장은 깡으로 뽑는 영상패, 그 뒤 짝수 자리는 도라 표시패, 각 표시패의 오른쪽 옆이 뒷도라 표시패다. 아직 아무것도 버리지 않은 국의 첫 순에 한해 왕패 아무 자리의 패와 손패 1장을 맞바꾸며, 국당 2번까지 반복할 수 있다. 내보낸 손패가 왕패의 그 자리를 대신 채우므로 도라·뒷도라 표시패까지 바꿀 수 있다. 첫 순을 넘기면 그 국의 교환 기회는 사라지고 다음 국에 다시 2장이 채워진다.",
   // 봇: 손패에 같은 종류가 이미 있는 왕패 패를 가져오고, 홀로 뜬(1장뿐인) 손패를 내보낸다.
   //     확실한 개선만 고르므로 자해 위험이 없다.
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const swaps = options.filter((o) => o.type === ACTION_SWAP);
       if (swaps.length === 0) return null;
       const handIds = view.zones[handZone(holder)]?.tileIds ?? [];
@@ -181,7 +185,7 @@ export const deadWallMaster: AugmentDef = defineAugment({
       }
       return null;
     },
-  },
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

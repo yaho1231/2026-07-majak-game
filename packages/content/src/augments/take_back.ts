@@ -40,6 +40,7 @@ import {
   roundKey,
   roundViewKey,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "take_back";
 const ACTION = "take_back";
@@ -159,8 +160,11 @@ export const takeBack: AugmentDef = defineAugment({
    * 새 패로 바꾸는 것은 기댓값이 확실히 양수다. (2026-07-26: 예전엔 BOT_SKIP이라
    * 제시 134회에 발동 0회였다 — "봇이 증강을 안 쓴다"의 대표 사례.)
    */
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const opt = options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
       const drawn = view.round.myDrawnTile;
@@ -171,5 +175,5 @@ export const takeBack: AugmentDef = defineAugment({
       if (usefulIn(rest, drawnKind)) return null;
       return opt;
     },
-  },
+  }),
 });

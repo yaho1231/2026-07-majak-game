@@ -62,6 +62,7 @@ import type {
 } from "@majak/core";
 import { counterOf, roundViewKey } from "../util.js";
 import { handKindsOf, seatWindOf } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "north_trader";
 const ACTION = "north_pull";
@@ -256,8 +257,11 @@ export const northTrader: AugmentDef = defineAugment({
    * 후보·자일색 진행 중에도 北을 한 장씩 전부 뽑아냈고, 북가(자풍 北)에게는 역패가
    * 사라졌다(2026-07-29 감사). 이득이 명백할 때만 뺀다.
    */
-  bot: {
-    choose({ options, view, holder, tenpai }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) => {
       const opt = options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
       if (tenpai) return null; // 텐파이면 손을 건드리지 않는다
@@ -269,5 +273,5 @@ export const northTrader: AugmentDef = defineAugment({
       if (seatWindOf(view, holder) === NORTH_RANK) return null; // 북가에겐 역패다
       return opt;
     },
-  },
+  }),
 });

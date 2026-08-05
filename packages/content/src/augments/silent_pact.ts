@@ -33,6 +33,7 @@ import type {
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "silent_pact";
 const ACTION = "silent_pon";
@@ -119,15 +120,18 @@ export const silentPact: AugmentDef = defineAugment({
    * 봇: 부르는 패가 **역패**일 때만 운다. 멘젠이 유지되므로 리치 가능성을 잃지 않고
    * 역패 커쯔 하나로 역이 확정된다 — 자해 위험이 없는 확실 이득 구간이다.
    */
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "disrupt",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const opt = options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
       const kind = lastDiscardKind(view);
       if (kind === undefined || !isYakuhaiFor(view, holder, kind)) return null;
       return opt;
     },
-  },
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

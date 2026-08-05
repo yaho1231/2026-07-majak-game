@@ -39,6 +39,7 @@ import type {
 } from "@majak/core";
 
 import { handKindsOf } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "open_kokushi";
 const ACTION = "kokushi_pon";
@@ -186,8 +187,11 @@ export const openKokushi: AugmentDef = defineAugment({
    * ② 아직 없으면 손패의 서로 다른 요구패가 8종 이상일 때만 뛰어든다.
    * 잡손으로 부르면 그 국을 통째로 버리는 셈이라 문턱을 높게 잡았다.
    */
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "win",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const opt = options.find((o) => o.type === ACTION);
       if (opt === undefined) return null;
       const committed = (view.round.byPlayer[holder]?.melds ?? []).some(
@@ -199,7 +203,7 @@ export const openKokushi: AugmentDef = defineAugment({
       );
       return orphanKinds.size >= 8 ? opt : null;
     },
-  },
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

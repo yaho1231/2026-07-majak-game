@@ -48,6 +48,7 @@ import {
   roundViewKey,
 } from "../util.js";
 import { handKindsOf, usefulIn } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "silent_swap";
 const ACTION = "silent_take";
@@ -210,8 +211,11 @@ export const silentSwap: AugmentDef = defineAugment({
    * 가져온다 — 날치기(pond_snatch)와 같은 판단이다. 텐파이면 대기를 흐트러뜨리지
    * 않도록 손대지 않는다. (발동 국 화료 시 +2판이 따라온다.)
    */
-  bot: {
-    choose({ options, view, holder, tenpai }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null;
       const kinds = handKindsOf(view, holder);
       for (const o of options) {
@@ -223,5 +227,5 @@ export const silentSwap: AugmentDef = defineAugment({
       }
       return null;
     },
-  },
+  }),
 });

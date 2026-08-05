@@ -26,6 +26,7 @@
 import { defineAugment, isRunQuad, winningKinds } from "@majak/core";
 import type { AugmentDef, TileId, TileKind } from "@majak/core";
 import { handKindsOf } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "snake_kan";
 
@@ -62,8 +63,11 @@ export const snakeKan: AugmentDef = defineAugment({
    * 장사진 깡은 표준 `ankan` 옵션으로 제시되고 BotAgent의 일반 깡 판단은 **같은 패
    * 4장만** 다루므로(서로 다른 패의 깡은 이득 계산이 손패에 달렸다), 여기서 직접 고른다.
    */
-  bot: {
-    choose(ctx) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: (ctx) => {
       if (!ctx.tenpai) return null;
       if (ctx.threat >= 0.9) return null;
       const hand = handKindsOf(ctx.view, ctx.holder);
@@ -83,5 +87,5 @@ export const snakeKan: AugmentDef = defineAugment({
       }
       return null;
     },
-  },
+  }),
 });

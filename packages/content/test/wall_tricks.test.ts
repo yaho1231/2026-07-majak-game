@@ -33,6 +33,7 @@ import type {
 import { botCtx, craft, h, hanBonusPoints } from "./helpers.js";
 import { futureSight } from "../src/augments/future_sight.js";
 import { bottomDeal } from "../src/augments/bottom_deal.js";
+import { botChosenOption } from "@majak/core";
 
 /** 크래프트 상태에 보유 증강을 직접 주입한다 (드래프트 이벤트 생략) */
 function withAugments(
@@ -682,12 +683,12 @@ describe("bottom_deal — 봇 정책 (실게임 뷰)", () => {
       .map((id) => view.tiles[id]?.kind)
       .filter((k): k is TileKind => k !== undefined);
     const bottomId = view.zones[WALL]?.tileIds.at(-1) as TileId;
-    const picked = bottomDeal.bot?.choose(
+    const picked = botChosenOption(bottomDeal.bot?.choose(
       botCtx(view, prompt.options, {
         rng,
         tenpai: isTenpai(hand, view.round.byPlayer["p0"]?.meldCount ?? 0),
       }),
-    );
+    ) ?? null);
     return { picked, bottomKind: kindKey(view.tiles[bottomId]!.kind), hand };
   }
 

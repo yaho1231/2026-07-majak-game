@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { AugmentDef, BotDecisionContext, PlayerView, TileKind } from "@majak/core";
 import { contentAugments } from "../src/index.js";
 import { botCtx } from "./helpers.js";
+import { botChosenOption } from "@majak/core";
 
 const defOf = (id: string): AugmentDef => {
   const d = contentAugments.find((a) => a.id === id);
@@ -81,13 +82,13 @@ describe("커스텀 콜 정책 — 역패일 때만 운다", () => {
     it(`${id}: 삼원패(역패)면 운다`, () => {
       const view = makeView({ hand: SCATTERED, discard: k("dragon", 1) });
       const opt = { type: action, payload: {} };
-      expect(defOf(id).bot?.choose(ctxOf(view, [opt]))).toEqual(opt);
+      expect(botChosenOption(defOf(id).bot?.choose(ctxOf(view, [opt])) ?? null)).toEqual(opt);
     });
 
     it(`${id}: 수패면 울지 않는다`, () => {
       const view = makeView({ hand: SCATTERED, discard: k("pin", 5) });
       const opt = { type: action, payload: {} };
-      expect(defOf(id).bot?.choose(ctxOf(view, [opt]))).toBeNull();
+      expect(botChosenOption(defOf(id).bot?.choose(ctxOf(view, [opt])) ?? null)).toBeNull();
     });
   }
 });
@@ -101,13 +102,13 @@ describe("우는 국사 정책 — 요구패가 충분할 때만 뛰어든다", 
   it("요구패 9종이면 부른다", () => {
     const view = makeView({ hand: orphanHand, discard: k("dragon", 2) });
     const opt = { type: "kokushi_pon", payload: {} };
-    expect(defOf("open_kokushi").bot?.choose(ctxOf(view, [opt]))).toEqual(opt);
+    expect(botChosenOption(defOf("open_kokushi").bot?.choose(ctxOf(view, [opt])) ?? null)).toEqual(opt);
   });
 
   it("잡손이면 부르지 않는다", () => {
     const view = makeView({ hand: SCATTERED, discard: k("dragon", 2) });
     const opt = { type: "kokushi_pon", payload: {} };
-    expect(defOf("open_kokushi").bot?.choose(ctxOf(view, [opt]))).toBeNull();
+    expect(botChosenOption(defOf("open_kokushi").bot?.choose(ctxOf(view, [opt])) ?? null)).toBeNull();
   });
 });
 
@@ -118,12 +119,12 @@ describe("무르기 정책 — 쯔모패가 고립일 때만", () => {
     // 마지막 패(index 13)가 쯔모패 — 짝도 이웃도 없는 서풍
     const hand = [...SCATTERED, k("wind", 2)];
     const view = makeView({ hand, drawnIndex: 13 });
-    expect(defOf("take_back").bot?.choose(ctxOf(view, [opt]))).toEqual(opt);
+    expect(botChosenOption(defOf("take_back").bot?.choose(ctxOf(view, [opt])) ?? null)).toEqual(opt);
   });
 
   it("짝이 되는 쯔모패면 그대로 둔다", () => {
     const hand = [...SCATTERED, k("dragon", 1)]; // 손에 이미 백이 있다 → 짝
     const view = makeView({ hand, drawnIndex: 13 });
-    expect(defOf("take_back").bot?.choose(ctxOf(view, [opt]))).toBeNull();
+    expect(botChosenOption(defOf("take_back").bot?.choose(ctxOf(view, [opt])) ?? null)).toBeNull();
   });
 });

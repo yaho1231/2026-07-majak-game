@@ -58,6 +58,7 @@ import {
   riichiBlocksSwap,
 } from "./stealthBreak.js";
 import { handIsPoor } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 /** 자리 교환 확정 이벤트 (증강 id에서 파생한 이름 — 다른 증강과 충돌 방지) */
 const SEATS_SWAPPED = "SeatsSwapped";
@@ -256,8 +257,11 @@ export const seatSwap: AugmentDef = defineAugment({
   },
   // 자리와 손패를 통째로 맞바꾼다 — 내가 오야가 아닐 때, 오야 상대와 바꿔 오야(연장·1.5배
   // 점수)와 그 손패까지 빼앗는다. 이미 오야면 얻을 게 없어 발동하지 않는다.
-  bot: {
-    choose(ctx) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: (ctx) => {
       const { options, view, holder } = ctx;
       // 내 손이 쓸 만하면 바꾸지 않는다. 예전에는 손 상태를 전혀 안 봐서 좋은 배패를
       // 받아도 무작위인 오야 손과 맞바꿨고, 발동 창이 "내 첫 순"이라 매 국 첫 순에
@@ -276,5 +280,5 @@ export const seatSwap: AugmentDef = defineAugment({
         ) ?? null
       );
     },
-  },
+  }),
 });

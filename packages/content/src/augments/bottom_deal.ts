@@ -62,6 +62,7 @@ import {
   widenPeek,
 } from "../util.js";
 import { handKindsExcept, handKindsOf, usefulIn } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "bottom_deal";
 const ACTION = "bottom_deal";
@@ -131,8 +132,11 @@ export const bottomDeal: AugmentDef = defineAugment({
     "(상시 열람 · 매 순 1회) 패산 맨 밑 3장이 국 내내 나에게만 보인다 — 오른쪽 끝이 맨 밑장이고, 밑장을 뺄 때마다 그 옆의 패가 새 밑장이 된다. 패산 맨 밑은 유국 직전까지 아무도 뽑지 않는 자리라 보이는 3장은 그대로 남아 있으니, 그중 하나를 오름패로 만들어 놓고 빼오면 그 자리에서 화료한다. 자기 순에 '밑장빼기'를 선언하면 다음 쯔모 한 장을 패산 위가 아니라 맨 밑에서 빼오며, 선언한 사실은 전원에게 공개되지만 무엇이 보이는지는 나만 안다. 매 순 다시 선언할 수 있고, 깡의 영상패는 밑장이 아니라 예약이 그대로 남는다. 리치 중에도 쓸 수 있다. 다른 증강이 패산 밑으로 패를 밀어 넣으면 보이는 3장도 그만큼 밀린다.",
   // 봇: ① 텐파이면 밑장이 오름패일 때 예약해 그 자리에서 화료하고,
   //     ② 아니면 밑장이 손에 쓸모 있을 때만 예약한다. 확실한 개선만 고른다.
-  bot: {
-    choose({ options, view, holder, tenpai }) {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) => {
       const arm = options.find((o) => o.type === ACTION);
       if (arm === undefined) return null;
       // 열람 덕에 패산 밑 3장이 뷰에 들어온다 — 맨 뒤가 다음에 빼올 밑장이다
@@ -160,7 +164,7 @@ export const bottomDeal: AugmentDef = defineAugment({
       // 2) 아니면 손이 진전되는 밑장일 때만 예약한다
       return usefulIn(handKinds, bottomKind) ? arm : null;
     },
-  },
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

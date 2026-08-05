@@ -38,6 +38,7 @@ import {
   monoWorldEvent,
   registerMonoWorldReducer,
 } from "./suitUnifyCore.js";
+import { plan } from "./botPlan.js";
 
 const ID = "picky_eater";
 const ACTION = "picky_unify";
@@ -158,9 +159,12 @@ export const pickyEater: AugmentDef = defineAugment({
       return NUMBER_SUITS.map((suit) => ({ type: ACTION, payload: { suit } }));
     });
   },
-  bot: {
+  bot: plan({
+    intent: "advance",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
     // 퀘스트를 우연히 달성했다면 수패가 가장 많은 색으로 통일한다 (단색 세계와 같은 기준)
-    choose({ options, view, holder, tenpai }) {
+    pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null;
       const counts: Record<string, number> = { man: 0, pin: 0, sou: 0 };
       let total = 0;
@@ -181,5 +185,5 @@ export const pickyEater: AugmentDef = defineAugment({
         ) ?? null
       );
     },
-  },
+  }),
 });

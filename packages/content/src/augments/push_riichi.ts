@@ -38,6 +38,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey, stringOf, viewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "push_riichi";
 const ACTION = "push_brand";
@@ -166,8 +167,11 @@ export const pushRiichi: AugmentDef = defineAugment({
   },
   // 봇: 점수가 가장 높은 상대(선두)에게 낙인을 찍는다 — 다마텐 봉쇄로 압박(자해 없음).
   // 누구를 찍을지의 최적은 미묘하나, 선두 견제는 언제나 방어적으로 유효하다.
-  bot: {
-    choose({ options, view, holder }) {
+  bot: plan({
+    intent: "score",
+    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
+    fleeting: true,
+    pick: ({ options, view, holder }) => {
       const mine = options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
       const scoreOf = new Map<string, number>();
@@ -185,5 +189,5 @@ export const pushRiichi: AugmentDef = defineAugment({
       }
       return best;
     },
-  },
+  }),
 });
