@@ -342,6 +342,13 @@ export class BotAgent implements PlayerAgent {
       threat: read.threat,
       remaining: (kind: TileKind) => read.remainingOf(kind),
       safety: (kind: TileKind) => read.safetyOf(kind),
+      // 증강 정책도 순위와 손 값어치를 본다 — 버림·리치가 쓰는 것과 같은 축이다
+      placement: {
+        rank: read.match.rank,
+        allLast: read.match.allLast,
+        riskAppetite: read.match.riskAppetite,
+      },
+      handPoints: read.valueOf({ plan: this.plan }).points,
     };
     // 증강의 값어치는 손의 값어치에 매인다 — 만관 손에서의 '평시 발동'과
     // 1000점 손에서의 '평시 발동'은 같은 강도라도 실제 값이 다르다

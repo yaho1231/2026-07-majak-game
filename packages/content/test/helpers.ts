@@ -63,6 +63,9 @@ export function botCtx(
     shanten,
     waits,
     turn: view.round.turnCount,
+    // 순위 문맥 — 테스트 기본은 평시(동1국 균형)다. 필요한 테스트만 덮어쓴다.
+    placement: { rank: 2, allLast: false, riskAppetite: 0 },
+    handPoints: 3900,
     wallLeft: 60,
     threat: 0,
     remaining: () => 4,

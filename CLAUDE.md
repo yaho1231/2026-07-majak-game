@@ -14,7 +14,11 @@
    - 실패가 생기면 머지 금지. 원인을 고친다.
    - 실패가 났을 때 **먼저 그 파일만 단독 실행해 본다** — 병렬 부하 탓 플레이크일 수 있다(기준선 문서에 알려진 1건 있음).
    - 못 고치면 PR을 draft로 두고 사용자에게 보고한다.
-   - **측정은 메인 체크아웃에서 한다.** 워크트리에는 `node_modules`가 없어 `@majak/core`가 상위 심볼릭링크를 통해 메인 체크아웃 코드로 해석된다 — 워크트리에서 잰 타입체크 결과는 신뢰할 수 없다.
+   - **워크트리의 vitest는 메인 체크아웃 core를 본다.** `node_modules`가 없어 `@majak/core`가 상위 심볼릭링크로 해석되기 때문이다. core를 고쳤다면 alias 설정으로 한 번 더 돌린다:
+     ```
+     npx vitest run --config vitest.core.config.ts
+     ```
+     (타입체크는 tsconfig `paths` 덕에 워크트리 core를 본다 — 그대로 믿어도 된다.)
 4. `gh pr create --base master` — 제목은 Conventional Commits, 본문에 변경 요약·검증 결과(테스트/타입체크 통과 여부)를 적는다.
 5. `gh pr merge --squash --delete-branch` 로 즉시 병합. (auto-merge가 켜져 있으면 `--auto` 사용)
 6. 병합 후 `git checkout master && git pull` 로 로컬 master를 동기화하고, 결과 요약을 사용자에게 보고한다.
