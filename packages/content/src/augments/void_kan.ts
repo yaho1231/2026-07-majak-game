@@ -105,6 +105,13 @@ export const voidKan: AugmentDef = defineAugment({
       const p = event.payload as KanDeclaredPayload;
       if (p.player === holder) return;
       const state = rc.state;
+      /*
+       * 리치 중에는 손이 잠긴다 — 손패 변형 증강의 공통 규약이다
+       * (붉은 손길·거신병·선언 간파가 같은 가드를 둔다). 이 증강만 그 규약 밖에
+       * 있어서, 리치로 굳힌 손을 **본인도 모르게** 갈아 끼웠다(docs/25 벽패 #8).
+       * 리치는 "이 손을 더 안 바꾸겠다"는 선언이고 상대는 그 전제로 수비한다.
+       */
+      if (state.round.byPlayer[holder]?.riichi != null) return;
       // 챤깡이 성립하는 깡(안깡·가깡)에서만 — 대명깡은 chankan이 서지 않는다
       const chankanTile = state.round.chankan?.tileId ?? p.handTileIds[0];
       if (chankanTile === undefined) return;
