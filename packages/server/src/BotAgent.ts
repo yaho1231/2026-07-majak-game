@@ -52,6 +52,7 @@ import { rollProfile } from "./bot/profile.js";
 import type { BotProfile } from "./bot/profile.js";
 import type { BotGameMode } from "./bot/match.js";
 import { OpponentMemory } from "./bot/opponents.js";
+import { chooseDraft } from "./bot/draft.js";
 
 /** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
@@ -372,31 +373,28 @@ export class BotAgent implements PlayerAgent {
     return bids;
   }
 
+  /**
+   * 드래프트 — 무엇을 뽑을 것인가.
+   *
+   * 예전에는 파워 티어표 하나만 봤다. 그건 "이 증강이 센가"를 말하는 표이고, 그것만
+   * 보면 **네 봇이 전부 같은 기준으로 고른다** — 성격이 여섯이어도 덱은 한 종류다.
+   * 지금은 파워에 **성격 궁합**과 **이미 모으는 계열과의 시너지**를 곱한다
+   * (`bot/draft.ts`). 궁합은 파워를 뒤엎지 않고 비슷한 값 사이에서만 갈린다.
+   */
   async decideDraft(_stage: DraftStage, choices: AugmentDef[]): Promise<string> {
-    // 봇이 발동 판단을 할 수 없는 액티브 증강(다단계 교환류)은 뽑아 봐야 게임 내내
-    // 놀린다 → 나머지 선택지가 있으면 그쪽을 먼저 고른다.
-    // (패시브 증강은 발동이 필요 없으므로 여기서 걸리지 않는다.)
-    const usable = choices.filter((c) => !BOT_UNUSABLE_AUGMENTS.includes(c.id));
-    const pool = usable.length > 0 ? usable : choices;
-    // 파워 점수가 높은 쪽을 고른다. 예전에는 평가 없이 균등 난수라 SS+와 D를 같은
-    // 확률로 집었고, 그래서 사람 대 봇 게임의 통계로는 "증강이 센지"를 판정할 수
-    // 없었다(docs/25 시스템 횡단 #9). 티어표는 core가 이미 전수 관리한다.
-    let best = pool[0] as AugmentDef;
-    let bestScore = powerOf(best.id);
-    const tied: AugmentDef[] = [best];
-    for (const c of pool.slice(1)) {
-      const score = powerOf(c.id);
-      if (score > bestScore) {
-        best = c;
-        bestScore = score;
-        tied.length = 0;
-        tied.push(c);
-      } else if (score === bestScore) {
-        tied.push(c);
-      }
-    }
-    // 동점은 시드 PRNG로 (시드만으로 재현 가능 — 결정론 유지)
-    return (tied[this.rng.int(tied.length)] ?? best).id;
+    const held = this.lastView?.players.find((p) => p.id === this.id)?.augments ?? [];
+    const picked = chooseDraft(
+      choices,
+      {
+        profile: this.profile,
+        held,
+        catalog: this.catalog,
+        powerOf,
+        unusable: BOT_UNUSABLE_AUGMENTS,
+      },
+      this.botRng,
+    );
+    return (picked ?? choices[0])?.id ?? "";
   }
 }
 
