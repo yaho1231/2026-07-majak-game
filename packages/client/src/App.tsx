@@ -3173,17 +3173,61 @@ export function App(): JSX.Element {
 
 // ─────────────────── 잠깐 보기 (가려진 게임판 훔쳐보기) ───────────────────
 
+/** 잠깐 보기 버튼이 따라붙는 창들 — 이게 떠 있을 때만 버튼이 나온다 */
+const PEEK_OVERLAY_SEL = ".overlay-peekable, .rinshan-pick-overlay";
+/** 버튼을 바로 아래에 붙일 패널 (창의 실제 내용 상자) */
+const PEEK_PANEL_SEL = ".draft-panel, .rinshan-pick-panel";
+/** 패널과 버튼 사이 간격 (px) */
+const PEEK_GAP = 10;
+
 /**
  * 증강 선택창·증강 사용 모달이 게임판을 통째로 덮을 때, **누르고 있는 동안만**
  * 그 창을 투명하게 만들어 밑에 뭐가 있었는지 확인시켜 주는 버튼.
  *
  * 보기 전용이다 — 훔쳐보는 동안에도 덮개(오버레이 루트)는 그대로 화면을 덮고 있어
- * 클릭이 게임판까지 내려가지 않는다(styles.css의 `body.peeking` 규칙). 버튼이 언제
- * 보이는지도 CSS가 정한다(`body:has(.rinshan-pick-overlay, .overlay-peekable)`) —
- * 모달들이 여기저기서 포탈로 뜨는 터라 React 상태로 모아 세기 어렵다.
+ * 클릭이 게임판까지 내려가지 않는다(styles.css의 `body.peeking` 규칙).
+ *
+ * 위치는 **떠 있는 창 패널 바로 아래**다. 화면 맨 아래에 두었더니 눈길이 가 있는
+ * 증강 카드에서 너무 멀어 있는 줄도 몰랐다(2026-08-05 사용자 피드백). 패널 높이는
+ * 내용에 따라 제각각이라 CSS로는 못 맞춘다 — 창이 떠 있는 동안만 패널을 재서 따라간다.
+ * 아래에 자리가 없으면(패널이 화면을 거의 채우면) 화면 아래 끝으로 물러난다.
  */
-function PeekButton(): JSX.Element {
+function PeekButton(): JSX.Element | null {
   const [peeking, setPeeking] = useState(false);
+  // null = 붙을 창이 없다(=버튼을 그리지 않는다)
+  const [spot, setSpot] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const measure = (): void => {
+      const panels = document.querySelectorAll(PEEK_PANEL_SEL);
+      // 창이 겹쳐 뜨면 맨 나중 것이 위에 있다 (모달들은 body 끝으로 포탈된다)
+      const panel = panels[panels.length - 1];
+      if (document.querySelector(PEEK_OVERLAY_SEL) === null || panel === undefined) {
+        setSpot((cur) => (cur === null ? cur : null));
+        return;
+      }
+      const r = panel.getBoundingClientRect();
+      const h = btnRef.current?.offsetHeight ?? 34;
+      const top = Math.max(8, Math.min(r.bottom + PEEK_GAP, window.innerHeight - h - 8));
+      const left = (r.left + r.right) / 2;
+      setSpot((cur) =>
+        cur !== null && Math.abs(cur.top - top) < 0.5 && Math.abs(cur.left - left) < 0.5
+          ? cur
+          : { top, left },
+      );
+    };
+    measure();
+    // 창이 뜨고 지는 것·패널이 커지는 것을 모두 잡아야 해서 주기적으로 잰다.
+    // 10Hz면 눈에 띄지 않고(위치는 CSS transition으로 이어 붙인다) 비용도 무시할 만하다.
+    const timer = window.setInterval(measure, 100);
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, []);
   useEffect(() => {
     document.body.classList.toggle("peeking", peeking);
     return () => document.body.classList.remove("peeking");
@@ -3202,10 +3246,13 @@ function PeekButton(): JSX.Element {
       window.removeEventListener("blur", off);
     };
   }, [peeking]);
+  if (spot === null) return null;
   return createPortal(
     <button
+      ref={btnRef}
       type="button"
       className={`peek-btn${peeking ? " peek-btn-on" : ""}`}
+      style={{ top: `${spot.top}px`, left: `${spot.left}px` }}
       aria-label="누르고 있는 동안 게임판 보기"
       onPointerDown={(e) => {
         e.preventDefault();
