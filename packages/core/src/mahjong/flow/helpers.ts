@@ -311,9 +311,9 @@ export function isRunQuad(kinds: readonly TileKind[]): boolean {
  * - `discard.blockedKinds` — 종류 단위. 봉인 뒤 새로 들어온 같은 종류도 함께 잠긴다.
  * - `discard.blockedTileIds` — 개별 패 단위. 지목된 그 한 장만 잠기고, 손을 떠나면 풀린다.
  *
- * 판정과 표시(자물쇠 아이콘)가 어긋나지 않도록 버림 액션과 PlayerView가 **이 함수 하나**를
- * 쓴다. 소프트락 방지(손패 전부가 봉인이면 허용)는 호출자가 판단한다 — 여기서는
- * "잠긴 패가 무엇인가"만 돌려준다.
+ * ⚠ 이건 **원재료**다 — 리치 예외·소프트락 예외를 얹기 전의 "봉인 규칙이 지목한 패".
+ * 화면과 판정이 실제로 쓰는 최종 결과는 `lockedDiscardIds`다. 표시 쪽이 이 함수를 직접
+ * 쓰다가 자물쇠와 실제 버림 가능 여부가 어긋났다(docs/25 방해 #7).
  */
 export function sealedDiscardIds(
   state: GameState,
@@ -341,6 +341,31 @@ export function sealedDiscardIds(
     }
   }
   return out;
+}
+
+/**
+ * **실제로 버릴 수 없는 손패** — 봉인 규칙에 두 예외를 얹은 최종 판정.
+ *
+ * 버림 액션(`standardActions`의 discard validate)과 화면의 자물쇠 표시(`PlayerView`)가
+ * 반드시 이 함수 하나를 쓴다. 예전에는 표시가 `sealedDiscardIds`(원재료)를 그대로 실어,
+ * **화면에는 자물쇠가 걸렸는데 실제로는 버려지는 거짓 UI**가 났다(docs/25 방해 #7).
+ *
+ * 두 예외:
+ *  1. **리치 중에는 봉인을 보지 않는다** — 리치는 쯔모패만 버릴 수 있어, 그 위에 봉인까지
+ *     걸면 버릴 패가 하나도 없어질 수 있다.
+ *  2. **손패가 전부 봉인이면 전부 허용한다** — 소프트락 방지.
+ */
+export function lockedDiscardIds(
+  state: GameState,
+  rules: RuleRegistry,
+  playerId: PlayerId,
+  hand: readonly TileId[] = handIdsOf(state, playerId),
+): Set<TileId> {
+  if (state.round.byPlayer[playerId]?.riichi != null) return new Set();
+  const sealed = sealedDiscardIds(state, rules, playerId, hand);
+  if (sealed.size === 0) return sealed;
+  // 전부 잠겼으면 잠긴 것이 없는 것과 같다 (그대로 두면 버릴 패가 없다)
+  return hand.some((id) => !sealed.has(id)) ? sealed : new Set();
 }
 
 export function isFuriten(

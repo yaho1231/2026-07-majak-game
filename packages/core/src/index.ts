@@ -96,6 +96,7 @@ export {
   isFuriten,
   isRunQuad,
   sealedDiscardIds,
+  lockedDiscardIds,
   seatWindOf,
   nextSeat,
   playerOf,
