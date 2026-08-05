@@ -131,8 +131,12 @@ export function readiness(intent: AugmentIntent, ctx: BotDecisionContext): numbe
 
     // 값을 키우는 일은 **이길 손에만** 값이 붙는다. 4샹텐 잡손에 배율을 걸어 봐야
     // 그 국을 흘릴 뿐이다 — 봇이 실제로 하던 낭비가 이것이다.
-    case "score":
-      return ctx.tenpai ? 1 : clamp01(1 - Math.max(0, ctx.shanten) / 3) * timeLeft(ctx);
+    case "score": {
+      const close = ctx.tenpai ? 1 : clamp01(1 - Math.max(0, ctx.shanten) / 3) * timeLeft(ctx);
+      // 1000점짜리 손에 배율을 걸어 봐야 그 국을 흘릴 뿐이다 — 값이 붙을 손이어야 한다
+      const worth = clamp01(ctx.handPoints / 5000);
+      return close * (0.5 + 0.5 * worth);
+    }
 
     /**
      * 정보는 **쓸 데가 있을 때** 값이 있다. 셋 중 하나면 된다 —
@@ -151,10 +155,31 @@ export function readiness(intent: AugmentIntent, ctx: BotDecisionContext): numbe
     case "disrupt":
       return Math.max(clamp01(ctx.threat), clamp01((ctx.turn - 4) / 10));
 
-    // 포석은 회수할 시간이 남아 있을 때만.
+    /**
+     * 포석은 회수할 시간이 남아 있을 때만 — 그리고 **회수할 국이 남아 있을 때만.**
+     * 올라스에 까는 포석은 다음 국이 없어 값이 없다.
+     */
     case "setup":
-      return clamp01(1 - ctx.turn / 12) * timeLeft(ctx);
+      return ctx.placement.allLast ? 0 : clamp01(1 - ctx.turn / 12) * timeLeft(ctx);
   }
+}
+
+/**
+ * 순위가 **점수의 값어치 자체를 바꾼다.**
+ *
+ * 올라스 선두에게 추가 점수는 거의 쓸모가 없다 — 원하는 건 국이 조용히 끝나는
+ * 것이다. 그래서 점수를 키우는 증강은 값이 떨어지고, 막는 증강은 값이 오른다.
+ * 꼴찌는 정확히 반대다. 봇의 버림·리치가 쓰는 것과 **같은 축**(riskAppetite)이라
+ * 증강 판단만 따로 놀지 않는다.
+ *
+ * 2026-08-05까지 이 문맥에는 점수판이 아예 없어서, 증강은 동1국과 올라스에서
+ * 똑같이 발동했다.
+ */
+function placementTilt(intent: AugmentIntent, ctx: BotDecisionContext): number {
+  const appetite = ctx.placement.riskAppetite; // -1(지킨다) ~ +1(뒤집는다)
+  if (intent === "score" || intent === "win") return clamp01(1 + appetite * 0.35);
+  if (intent === "defend") return clamp01(1 - appetite * 0.3);
+  return 1;
 }
 
 export interface AugmentPlanSpec {
@@ -211,7 +236,7 @@ export function plan(spec: AugmentPlanSpec): PlannedPolicy {
       const option = spec.pick(ctx);
       if (option === null) return null;
 
-      const fit = readiness(spec.intent, ctx);
+      const fit = readiness(spec.intent, ctx) * placementTilt(spec.intent, ctx);
       if (spec.fleeting !== true) {
         const bar = MIN_READINESS[spec.intent] + (spec.oneShot === true ? ONE_SHOT_BAR : 0);
         if (fit < bar) return null; // 아직 때가 아니다 — 다음 순에 다시 본다

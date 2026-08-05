@@ -34,6 +34,8 @@ function ctx(over: Partial<BotDecisionContext> = {}): BotDecisionContext {
     threat: 0,
     remaining: () => 4,
     safety: () => 1,
+    placement: { rank: 2, allLast: false, riskAppetite: 0 },
+    handPoints: 3900,
     ...over,
   };
 }
@@ -59,8 +61,21 @@ describe("적기 — 판에서 나오는 값이지 증강이 정하는 값이 �
   });
 
   it("값 올리기는 **이길 손에만** 값이 붙는다 — 4샹텐 잡손에 배율을 걸지 않는다", () => {
-    expect(readiness("score", ctx({ tenpai: true, shanten: 0 }))).toBe(1);
+    expect(readiness("score", ctx({ tenpai: true, shanten: 0, handPoints: 8000 }))).toBe(1);
     expect(readiness("score", ctx({ shanten: 4 }))).toBe(0);
+  });
+
+  it("같은 텐파이라도 싸구려 손에는 배율이 덜 값나간다", () => {
+    const rich = readiness("score", ctx({ tenpai: true, shanten: 0, handPoints: 8000 }));
+    const poor = readiness("score", ctx({ tenpai: true, shanten: 0, handPoints: 1000 }));
+    expect(poor).toBeLessThan(rich);
+  });
+
+  it("올라스에 까는 포석은 값이 없다 — 회수할 국이 없다", () => {
+    const early = ctx({ turn: 2 });
+    const last = ctx({ turn: 2, placement: { rank: 1, allLast: true, riskAppetite: 0 } });
+    expect(readiness("setup", early)).toBeGreaterThan(0);
+    expect(readiness("setup", last)).toBe(0);
   });
 
   it("손 밀기는 갈 길과 시간이 남아 있을 때 값이 있다", () => {
@@ -151,6 +166,20 @@ describe("강도 — 의도가 대역을 정하고 적기가 그 안에서 흔�
 
   it("정책이 숫자를 직접 쓰지 않아도 강도가 나온다", () => {
     expect(weightOf(always("defend"), ctx({ threat: 1 }))).toBeGreaterThan(0);
+  });
+});
+
+describe("순위가 증강 판단을 바꾼다", () => {
+  const at = (riskAppetite: number, rank: number) =>
+    ctx({ tenpai: true, shanten: 0, threat: 1, handPoints: 8000, placement: { rank, allLast: true, riskAppetite } });
+
+  it("올라스 선두는 점수 증강을 덜 태우고 방어 증강을 더 태운다", () => {
+    const leader = at(-1, 1);
+    const chaser = at(1, 4);
+    expect(weightOf(always("score"), leader)).toBeLessThan(weightOf(always("score"), chaser));
+    expect(weightOf(always("defend"), leader)).toBeGreaterThan(
+      weightOf(always("defend"), chaser),
+    );
   });
 });
 
