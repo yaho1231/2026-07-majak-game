@@ -70,6 +70,13 @@ export interface BotViewOptions {
   riichiPot?: number;
   /** 본장 */
   honba?: number;
+  /**
+   * 상대가 눕힌 후로 (각 3장 스펙). 상대 위협 읽기(bot/danger.ts)를 세우는 데 쓴다 —
+   * "저 사람이 울었다"는 봇이 보는 공개 정보다.
+   */
+  oppMelds?: Partial<Record<string, string[]>>;
+  /** 리치 선언패가 그 사람 바닥의 몇 번째인가 (= 몇 순에 걸었는가) */
+  riichiTileIndex?: Partial<Record<string, number>>;
 }
 
 export interface BotScene {
@@ -115,8 +122,17 @@ export function botScene(opts: BotViewOptions): BotScene {
   });
   zoneOf(`melds:${me}`, "melds", meldTiles, me);
 
+  const oppMeldViews: Record<string, { kind: "pon"; tileIds: TileId[] }[]> = {};
   for (const p of PLAYERS) {
-    if (p !== me) zoneOf(`melds:${p}`, "melds", [], p);
+    if (p !== me) {
+      const ids: TileId[] = [];
+      oppMeldViews[p] = (opts.oppMelds?.[p] ?? []).map((spec) => {
+        const mine2 = h(spec).map((k) => add(k));
+        ids.push(...mine2);
+        return { kind: "pon" as const, tileIds: mine2 };
+      });
+      zoneOf(`melds:${p}`, "melds", ids, p);
+    }
     zoneOf(`discards:${p}`, "discards", h(opts.discards?.[p] ?? "").map((k) => add(k)), p);
   }
 
@@ -132,8 +148,11 @@ export function botScene(opts: BotViewOptions): BotScene {
     byPlayer[p] = {
       riichiDeclared: p === me ? opts.myRiichi === true : (opts.riichi ?? []).includes(p),
       doubleRiichi: false,
-      meldCount: p === me ? melds.length : 0,
-      melds: p === me ? melds : [],
+      meldCount: p === me ? melds.length : (oppMeldViews[p]?.length ?? 0),
+      melds: p === me ? melds : (oppMeldViews[p] ?? []),
+      ...(opts.riichiTileIndex?.[p] !== undefined
+        ? { riichiTileIndex: opts.riichiTileIndex[p] }
+        : {}),
       ...(p === me
         ? {
             furiten: opts.furiten === true,
