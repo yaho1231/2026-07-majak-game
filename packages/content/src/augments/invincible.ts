@@ -16,7 +16,6 @@
  */
 
 import {
-  BOT_WEIGHT,
   ROUND_SETTLED,
   augmentDataSet,
   defineAugment,
@@ -24,6 +23,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { flagOf, roundKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "invincible";
 const ACTION = "invincible_guard";
@@ -69,17 +69,12 @@ export const invincible: AugmentDef = defineAugment({
   detail:
     "(2국에 1회) 자기 순에 선언하면 그 국이 끝날 때까지 타가가 내 버림패로 론할 수 없다. 다만 상대의 쯔모 화료나 유국 노텐 벌점은 막지 못한다.",
   // 봇: 상대가 리치를 걸었을 때 켠다 — 방총 위험이 가장 큰 순간이 켤 값어치가 가장 크다.
-  bot: {
-    choose({ options, view, holder }) {
-      const opt = options.find((o) => o.type === ACTION);
-      if (opt === undefined) return null;
-      const threatened = Object.entries(view.round.byPlayer).some(
-        ([pid, rs]) => pid !== holder && rs.riichiDeclared,
-      );
-      // 상대 리치가 실재할 때만 켠다 = 방어가 급한 국면 — 정보·포석보다 먼저.
-      return threatened ? { option: opt, weight: BOT_WEIGHT.defend } : null;
-    },
-  },
+  // 상대 리치가 실재할 때만 켠다 = 방어가 급한 국면. 예전에는 그 판정과 강도를
+  // 이 파일이 직접 들고 있었는데, 둘 다 증강이 아니라 판의 문제라 planner가 맡는다.
+  bot: plan({
+    intent: "defend",
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   // B급 무효(docs/25 §conflicts): 같은 win.ronImmune 키를 같은 값으로 쓴다.
   // 조약이 살아 있는 구간에 무적을 선언하면 그 발동이 통째로 낭비된다.
   conflicts: ["no_ron_pact"],

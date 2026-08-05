@@ -43,6 +43,7 @@ import type {
   TileDrawnPayload,
 } from "@majak/core";
 import { counterOf, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "triple_peek";
 const ACTION = "triple_peek_use";
@@ -144,11 +145,11 @@ export const triplePeek: AugmentDef = defineAugment({
   detail:
     "(매 국 1회) 자기 순에 선언하면 앞으로 내게 배정될 다음 쯔모 세 장의 '종류'가 나에게만 공개된다 — 실제 패가 아니라 무엇이 올지 그 종류만 안다. **액티브 버튼을 누른 그 시점의 정보**만 보여 주는 스냅샷이라, 그 사이 누군가 후로(펑·치·깡)를 하면 쯔모 차례가 밀려 예지가 어긋날 수 있다. 예지한 패는 내가 한 장 뽑을 때마다 하나씩 지워지고, 세 번을 다 뽑으면 스트립이 사라진다(이미 다 온 정보라 더 볼 것이 없다). 무엇을 봤는지는 나만 알고 상대에게는 발동 사실만 공개되며, 사용 횟수는 국이 바뀌면 다시 채워진다.",
   // 봇: 자해 위험이 전혀 없다 — 옵션이 뜨면 곧바로 선언한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "inform",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

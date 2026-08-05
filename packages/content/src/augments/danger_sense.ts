@@ -43,10 +43,9 @@ import type {
   RuleRegistry,
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "danger_sense";
-/** 리치가 없을 때 봇이 스캔을 미루는 최소 순 — 이 전에는 위험패 정보가 거의 없다 */
-const SCAN_MIN_TURN = 6;
 const ACTION = "danger_sense_use";
 
 /** 이미 이 국에서 발동했는가 (국 단위 — roundKey 스코프, 매 국 초기화) */
@@ -136,17 +135,12 @@ export const dangerSense: AugmentDef = defineAugment({
    * 봇: 국당 1회뿐인 스캔을 **정보가 0인 첫 순에 태워 버리던** 문제를 막는다
    * (2026-07-29 감사). 누가 리치를 걸었거나 어느 정도 순이 지난 뒤에만 쓴다.
    */
-  bot: {
-    choose({ options, view }) {
-      const opt = options.find((o) => o.type === ACTION);
-      if (opt === undefined) return null;
-      const someoneRiichi = Object.values(view.round.byPlayer).some(
-        (r) => r.riichiDeclared,
-      );
-      if (!someoneRiichi && view.round.turnCount < SCAN_MIN_TURN) return null;
-      return opt;
-    },
-  },
+  // 위험을 보는 증강 — 위험이 실재할 때만 값이 있다. 예전의
+  // `!someoneRiichi && turnCount < N → null`을 planner의 `defend` 적기가 대신한다.
+  bot: plan({
+    intent: "defend",
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

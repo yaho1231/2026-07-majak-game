@@ -45,13 +45,12 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import { counterOf, matchUses, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "brief_fog";
 const ACTION = "declare_brief_fog";
 /** 안개가 유효한 순 수 — 선언한 순부터 이 수만큼 (turnCount는 오야가 뽑을 때만 +1 = 진짜 순) */
 const FOG_TURNS = 6;
-/** 리치가 없을 때 봇이 선언을 미루는 최소 순 (첫 순 안개는 가릴 정보가 없다) */
-const FOG_MIN_TURN = 5;
 
 /** 매치당 사용 횟수 카운터 — **게임 단위**라 roundKey를 섞지 않는다. 동풍전 1·반장전 2회. */
 const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
@@ -160,17 +159,14 @@ export const briefFog: AugmentDef = defineAugment({
    * 봇: 6순짜리 안개를 정보가 거의 없는 첫 순에 태우지 않는다 — 상대가 리치를 걸었거나
    * 어느 정도 순이 지나 현물이 쌓였을 때 걸어야 방해 가치가 산다(2026-07-29 감사).
    */
-  bot: {
-    choose({ options, view }) {
-      const opt = options.find((o) => o.type === ACTION);
-      if (opt === undefined) return null;
-      const someoneRiichi = Object.values(view.round.byPlayer).some(
-        (r) => r.riichiDeclared,
-      );
-      if (!someoneRiichi && view.round.turnCount < FOG_MIN_TURN) return null;
-      return opt;
-    },
-  },
+  // 예전에는 `!someoneRiichi && turnCount < N → null`을 이 파일이 직접 들고 있었다.
+  // 같은 조건문이 안개·위험 감지·무적에 복붙돼 있었고, 증강이 늘면 복붙도 늘어난다.
+  // 지금은 planner의 `disrupt` 적기가 한 곳에서 답한다.
+  bot: plan({
+    intent: "disrupt",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

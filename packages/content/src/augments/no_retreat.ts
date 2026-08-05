@@ -27,6 +27,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { roundKey, roundSeqOf, stringOf, trackRoundSeq } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "no_retreat";
 const ACTION = "declare_no_retreat";
@@ -175,9 +176,10 @@ export const noRetreat: AugmentDef = defineAugment({
   },
   // 첫 턴 선언은 리치 공탁이 공짜가 되고 리치·일발·뒷도라가 2판이 되는 순수 이득
   // (선언만 해도 잃는 것이 없다) — 제시되면 무조건 선언한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "score",
+    fleeting: true,
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

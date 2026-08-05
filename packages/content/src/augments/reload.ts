@@ -17,6 +17,7 @@
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { counterOf, flagOf, matchUses, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "reload";
 const ACTION = "reload_use";
@@ -130,9 +131,10 @@ export const reload: AugmentDef = defineAugment({
     });
   },
   // 봇: 복구할 증강이 있으면 곧바로 되살린다 — 자원 회복은 언제나 이득(자해 없음).
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "setup",
+    fleeting: true,
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

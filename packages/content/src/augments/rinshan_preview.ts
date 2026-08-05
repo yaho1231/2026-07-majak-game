@@ -46,6 +46,7 @@ import {
   roundKey,
   widenPeek,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "rinshan_preview";
 const ACTION_PULL = "rinshan_pull";
@@ -163,9 +164,8 @@ export const rinshanPreview: AugmentDef = defineAugment({
     );
   },
   // 깡 전 영상패를 미리 보는 순수 정보 이득 — 제시되면 항상 발동한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION_PULL) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "advance",
+    pick: ({ options }) => options.find((o) => o.type === ACTION_PULL) ?? null,
+  }),
 });

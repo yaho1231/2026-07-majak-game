@@ -35,6 +35,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { counterOf, matchUses, viewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "honor_return";
 const ACTION = "honor_recall";
@@ -160,9 +161,10 @@ export const honorReturn: AugmentDef = defineAugment({
     });
   },
   // 봇: 되받을 자패가 있으면 발동한다 — 자해 위험이 없는 순수 이득이다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "setup",
+    fleeting: true,
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

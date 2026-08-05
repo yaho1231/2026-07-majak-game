@@ -24,6 +24,7 @@ import type {
   PlayerId,
 } from "@majak/core";
 import { roundKey, stringOf, viewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "rank_gate";
 const ACTION = "rank_gate_mark";
@@ -122,9 +123,10 @@ export const rankGate: AugmentDef = defineAugment({
     });
   },
   // 봇: 지목은 자해 위험이 없다 — 기회가 열리면 언제나 첫 후보를 찍는다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "disrupt",
+    fleeting: true,
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

@@ -35,6 +35,7 @@ import {
   trackRoundSeq,
   withAugPoint,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 /** 만관 하한 — 자(子) 8000 / 오야(親) 12000 */
 const MANGAN_NONDEALER = 8000;
@@ -163,9 +164,9 @@ export const bigHand: AugmentDef = defineAugment({
   },
   // 첫 턴에만 제시되고, 그 국 화료를 최소 만관으로 끌어올리는 순수 이득 —
   // 제시되면 무조건 선언한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "score",
+    fleeting: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

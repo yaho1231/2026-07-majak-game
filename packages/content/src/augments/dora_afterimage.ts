@@ -41,6 +41,7 @@ import {
   trackRoundSeq,
   viewKey,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "dora_afterimage";
 const ACTION = "dora_recall";
@@ -162,11 +163,11 @@ export const doraAfterimage: AugmentDef = defineAugment({
     // 자기 순에 뜨는 액티브 버튼 (합법성 최종 판정은 validate)
     ctx.holderTurnOptions(() => [{ type: ACTION, payload: {} }]);
   },
-  bot: {
-    choose: (ctx) => {
-      // 텐파이에 가까울수록 값이 크다 — 1샹텐 이내에서만 쓴다
-      if (ctx.shanten > 1) return null;
-      return ctx.options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  // 값을 키우는 증강이라 **이길 손에만** 값이 붙는다 — 손이 얼마나 여물었는지는
+  // planner가 `score` 적기로 본다(예전의 `shanten > 1 → null`과 같은 판단이다).
+  bot: plan({
+    intent: "score",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

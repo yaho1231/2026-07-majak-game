@@ -39,6 +39,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { flagOf, roundKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "stealth_riichi";
 const ACTION = "stealth_riichi";
@@ -201,12 +202,12 @@ export const stealthRiichi: AugmentDef = defineAugment({
   detail:
     "(매 국 1회 — 리치는 국당 한 번) 텐파이 상태에서 손패를 직접 눌러 발동한다. 그 패를 버리면서 리치가 성립하지만 리치 선언 표시도 리치봉도 타가의 화면에 나타나지 않으며, 공탁 1000점도 내지 않는다. 화료하면 리치로 취급되어 리치·일발·뒷도라가 전부 적용되고 정산 화면에서 리치였음이 그때 공개된다. 표준 리치와 마찬가지로 손은 잠겨 쯔모패만 버릴 수 있고 후로도 할 수 없다. ⚠ 은닉의 대가가 하나 있다 — 남들은 나를 리치가 아닌 사람으로 취급하므로, 손을 바꾸는 증강(통째로 바꾸기·손패 3장 교환·자리 바꿈)이 나를 대상으로 삼을 수 있다. 그렇게 손이 바뀌면 이 리치는 풀린다(나만 알게 된다).",
   // 봇: 텐파이일 때 무조건 건다 — 공탁도 없고 잃는 것이 없다.
-  bot: {
-    choose({ options, tenpai }) {
-      if (!tenpai) return null;
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "score",
+    fleeting: true,
+    pick: ({ options, tenpai }) =>
+      tenpai ? (options.find((o) => o.type === ACTION) ?? null) : null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

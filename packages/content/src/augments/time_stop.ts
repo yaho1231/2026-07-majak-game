@@ -30,6 +30,7 @@ import type {
   PlayerId,
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "time_stop";
 const ACTION = "time_stop_use";
@@ -90,12 +91,12 @@ export const timeStop: AugmentDef = defineAugment({
     "(매 국 1회) 자기 순에 선언하고 그 순의 버림이 아무에게도 울리지 않으면, 순서가 넘어가지 않고 곧바로 한 번 더 쯔모하고 버린다. 버림이 울리면 발동이 다음 자기 순으로 미뤄질 뿐 소멸하지는 않는다.",
   // 봇: 텐파이일 때 선언한다 — 추가 턴(쯔모)이 곧바로 화료 기회 배증으로 이어진다.
   //     (charge가 없거나 이미 선언했으면 옵션이 제시되지 않아 자동으로 건너뛴다.)
-  bot: {
-    choose({ options, tenpai }) {
-      if (!tenpai) return null;
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "advance",
+    oneShot: true,
+    pick: ({ options, tenpai }) =>
+      tenpai ? (options.find((o) => o.type === ACTION) ?? null) : null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

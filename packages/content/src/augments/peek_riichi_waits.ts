@@ -42,6 +42,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { flagOf, riichiHidden, roundKey, viewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const AUGMENT_ID = "peek_riichi_waits";
 /** 증강 id에서 파생한 이벤트 타입 (다른 증강과 충돌 방지) */
@@ -206,11 +207,11 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
   //     48차 무페널티로 비용이 사라져 점수 게이트를 뒀을 이유가 없다 — 공짜 정보는 늘 이득.
   //     텐파이 여부와 무관 — 방총을 피하려는 정보라 오히려 손이 덜 됐을 때 더 값지다.
   //     (위조 peek_forge는 어느 패를 버릴지 판단이 필요해 봇에게 맡기지 않는다.)
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === "peek_waits") ?? null;
-    },
-  },
+  bot: plan({
+    intent: "defend",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === "peek_waits") ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

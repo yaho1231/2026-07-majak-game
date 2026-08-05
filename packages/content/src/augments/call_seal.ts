@@ -15,6 +15,7 @@
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { counterOf, matchUses, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "call_seal";
 const ACTION = "call_seal_use";
@@ -79,11 +80,11 @@ export const callSeal: AugmentDef = defineAugment({
   detail:
     "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 그 순간부터 6순 동안 상대 세 명이 치·펑·대명깡을 할 수 없다. 자기 손 안에서 완결되는 안깡·가깡은 막지 못하며, 6순이 지나면 봉인이 풀린다. 발동은 전원에게 공개된다.",
   // 봇: 자해 위험이 없다 — 옵션이 뜨면 곧바로 선언한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "disrupt",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

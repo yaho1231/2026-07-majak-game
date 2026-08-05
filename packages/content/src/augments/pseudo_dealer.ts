@@ -31,6 +31,7 @@ import {
   playerOf,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
+import { plan } from "./botPlan.js";
 
 const ID = "pseudo_dealer";
 const ACTION = "claim_dealer";
@@ -86,12 +87,12 @@ export const pseudoDealer: AugmentDef = defineAugment({
     "(2국에 1회) 자기 순에 선언하면 오야 자리가 즉시 나에게 넘어오고 네 사람의 자풍이 내 자리를 기준으로 다시 매겨진다 — 동을 안고 있던 사람이 객풍이 되기도 한다. 화료 점수는 오야 배율(1.5배)이 되고, 그 국에 화료하거나 텐파이로 유국하면 연장이 걸린다. 원래 오야는 오야 자격과 연장 권리를 함께 잃는다. 다만 오야 순번표 자체는 그대로라, 이 국이 끝나면 원래 순번에서 이어진다. 이미 내가 오야인 국에는 선언할 수 없다.",
   // 봇: 텐파이일 때 선언한다 — 화료가 유력한 국에서 오야 자리를 가져와 점수를 키운다.
   //     (쿨다운·이미 오야면 validate가 옵션을 걸러 자동으로 건너뛴다.)
-  bot: {
-    choose({ options, tenpai }) {
-      if (!tenpai) return null;
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "score",
+    oneShot: true,
+    pick: ({ options, tenpai }) =>
+      tenpai ? (options.find((o) => o.type === ACTION) ?? null) : null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

@@ -24,6 +24,7 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import { counterOf, flagOf, matchUses, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "xray_hand";
 const ACTION = "xray_reveal";
@@ -75,11 +76,11 @@ export const xrayHand: AugmentDef = defineAugment({
   detail:
     "(동풍전 1회 · 반장전 2회) 자기 순에 버튼으로 발동하면 그 국이 끝날 때까지 상대 세 명의 손패가 배패부터 마지막 쯔모까지 전부 나에게만 공개된다. 켠 사실은 전원에게 공개된다.",
   // 봇: 순수 정보 이득이라 자해가 없다 — 옵션이 뜨면 곧바로 발동한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "inform",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 
