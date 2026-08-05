@@ -30,6 +30,8 @@ import { estimateHandValue, waitTilesOf, winChance } from "./value.js";
 import type { HandValue } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
+import { NO_FLAGS } from "./flags.js";
+import type { BotFlags } from "./flags.js";
 
 /** 이 국에 노리는 역 — 후로할지, 무엇을 버릴지의 기준이 된다 */
 export type HandPlan =
@@ -121,6 +123,11 @@ export interface BotRead {
   riichiDeclared: boolean;
   /** 이 종류가 나에게 역패인가 */
   isYakuhai(kind: TileKind): boolean;
+  /**
+   * 켜져 있는 실험 스위치 (`bot/flags.ts`). 실대국은 항상 비어 있다 —
+   * 2:2 정책 대전으로 새 판단의 강함을 재는 동안에만 채워진다.
+   */
+  flags: BotFlags;
 }
 
 const sameKind = (a: TileKind, b: TileKind): boolean =>
@@ -145,6 +152,8 @@ export interface ReadContext {
   mode?: BotGameMode;
   /** 지금까지 읽어 낸 상대 성향 (뷰가 아니라 **기억**에서 온다) */
   traitsOf?: (p: PlayerId) => OpponentTraits;
+  /** 실험 스위치 (2:2 정책 대전 전용) */
+  flags?: BotFlags;
 }
 
 /** 뷰 하나로 이번 결정의 판 읽기를 만든다 */
@@ -249,6 +258,12 @@ export function buildRead(
     expectedLoss: (kind) => expectedLossOf(kind, threats, remainingOf),
     valueOf: (input) =>
       estimateHandValue({
+        // 손을 직접 읽어 역을 잡는다 (`bot/yaku.ts`) — 청일색·치또이·일통·산색·찬타.
+        // `noYakuRead` 스위치는 이 읽기를 **끈다** — 하위 시스템 하나의 기여를
+        // 2:2 대전으로 언제든 다시 잴 수 있게 남겨 둔 측정용 손잡이다.
+        ...((context.flags ?? NO_FLAGS).has("noYakuRead")
+          ? {}
+          : { kinds: [...hand, ...meldKinds] }),
         handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
         meldCount: input.meldCount ?? meldCount,
         plan: input.plan,
@@ -268,6 +283,7 @@ export function buildRead(
     doraIn,
     handDora,
     seatWind,
+    flags: context.flags ?? NO_FLAGS,
     furiten,
     riichiDeclared: mine?.riichiDeclared === true,
     isYakuhai(kind) {
