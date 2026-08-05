@@ -66,7 +66,29 @@ function defaultServerUrl(): string {
 }
 const SERVER_OVERRIDE_KEY = "majak.serverUrl";
 const SESSION_KEY = "majak.sessionToken";
+/** 이 세션 토큰을 **발급한 서버 주소**. 다른 서버에는 토큰을 보내지 않는다. */
+const SESSION_SERVER_KEY = "majak.sessionServer";
 const LAST_ROOM_KEY = "majak.lastRoomCode";
+
+/**
+ * 접속할 서버 주소 — 고급 설정의 수동 지정(있으면)을 쓰고, 없으면 same-origin.
+ *
+ * 수동 지정은 ws/wss만 허용한다. 저장 시점에도 막지만 여기서 한 번 더 거른다 —
+ * localStorage는 확장 프로그램·이전 버전·복사한 스니펫이 쓸 수 있는 자리라,
+ * 값이 이미 들어와 있다는 전제로 읽어야 한다.
+ */
+function serverUrlToUse(): string {
+  const raw = window.localStorage.getItem(SERVER_OVERRIDE_KEY);
+  if (raw === null || raw.trim() === "") return defaultServerUrl();
+  try {
+    const u = new URL(raw.trim());
+    if (u.protocol === "ws:" || u.protocol === "wss:") return u.toString();
+  } catch {
+    /* 형식 불량 — 기본값으로 */
+  }
+  window.localStorage.removeItem(SERVER_OVERRIDE_KEY);
+  return defaultServerUrl();
+}
 
 const WIND_CHAR = ["東", "南", "西", "北"];
 const WIND_KO = ["동", "남", "서", "북"];
@@ -1845,7 +1867,7 @@ export function App(): JSX.Element {
       return;
     }
     intentionalCloseRef.current = false;
-    const url = window.localStorage.getItem(SERVER_OVERRIDE_KEY) ?? defaultServerUrl();
+    const url = serverUrlToUse();
     setConnection((c) => (c === "reconnecting" ? "reconnecting" : "connecting"));
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -1853,7 +1875,16 @@ export function App(): JSX.Element {
       setConnection("connected");
       reconnectAttemptsRef.current = 0;
       const token = window.localStorage.getItem(SESSION_KEY);
-      if (token !== null && token !== "") send({ type: "tokenLogin", sessionToken: token });
+      // 토큰은 **그걸 발급한 서버에만** 되돌려 보낸다.
+      //
+      // 고급 설정의 서버 주소는 사람이 붙여넣는 값이다 — "이 주소로 바꾸면 더
+      // 빨라요" 한 마디에 바뀔 수 있는 자리에서 저장된 세션 토큰을 자동으로
+      // 흘려보내면, 그 순간 계정이 통째로 넘어간다. 발급처가 다르면 어차피 그
+      // 서버에서 쓸 수 없는 값이므로, 보내지 않아도 잃는 기능이 없다.
+      const issuer = window.localStorage.getItem(SESSION_SERVER_KEY);
+      if (token !== null && token !== "" && issuer === url) {
+        send({ type: "tokenLogin", sessionToken: token });
+      }
     });
     ws.addEventListener("message", (event) => {
       handleServerMessage(JSON.parse(event.data as string) as ServerMessage);
@@ -2002,6 +2033,7 @@ export function App(): JSX.Element {
   function logout(): void {
     send({ type: "logout" });
     window.localStorage.removeItem(SESSION_KEY);
+    window.localStorage.removeItem(SESSION_SERVER_KEY);
     window.localStorage.removeItem(LAST_ROOM_KEY);
     setAuth(null);
     resetGameState();
@@ -2016,6 +2048,8 @@ export function App(): JSX.Element {
   function handleServerMessage(msg: ServerMessage): void {
     if (msg.type === "authOk") {
       window.localStorage.setItem(SESSION_KEY, msg.sessionToken);
+      // 발급처를 함께 남긴다 — 다음 접속 때 같은 서버에만 되돌려 보내기 위함.
+      window.localStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
       setAuth({ username: msg.username, isAdmin: msg.isAdmin });
       // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
       // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
@@ -3247,8 +3281,24 @@ function AuthScreen(props: {
   }
 
   function saveServer(): void {
-    if (serverUrl.trim() === "") window.localStorage.removeItem(SERVER_OVERRIDE_KEY);
-    else window.localStorage.setItem(SERVER_OVERRIDE_KEY, serverUrl.trim());
+    const v = serverUrl.trim();
+    if (v === "") {
+      window.localStorage.removeItem(SERVER_OVERRIDE_KEY);
+    } else {
+      // ws/wss만 받는다 — http(s)·javascript: 등 다른 스킴은 여기서 거른다.
+      let ok = false;
+      try {
+        const u = new URL(v);
+        ok = u.protocol === "ws:" || u.protocol === "wss:";
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        setLocalError("서버 주소는 ws:// 또는 wss:// 로 시작해야 합니다");
+        return;
+      }
+      window.localStorage.setItem(SERVER_OVERRIDE_KEY, v);
+    }
     window.location.reload();
   }
 

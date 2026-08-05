@@ -6,7 +6,7 @@
 
 1. **작업은 항상 브랜치에서.** master에 직접 커밋 금지.
 2. 커밋 후 `git push -u origin <branch>`.
-3. 게이트: **테스트 994개 전부 통과 + 타입 에러 0**. 기준선과 알려진 플레이크는 [docs/23_TEST_BASELINE.md](docs/23_TEST_BASELINE.md).
+3. 게이트: **테스트 1585개 전부 통과 + 타입 에러 0**. 기준선과 알려진 플레이크는 [docs/23_TEST_BASELINE.md](docs/23_TEST_BASELINE.md).
    ```
    npm test
    npm run typecheck && npm run typecheck:content && npm run typecheck:server && npm run typecheck:client

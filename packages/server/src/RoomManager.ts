@@ -55,6 +55,7 @@ import { BotAgent } from "./BotAgent.js";
 import { SandboxBotAgent } from "./SandboxBotAgent.js";
 import { ReplayWriter } from "./ReplayWriter.js";
 import type { StatsStore } from "./StatsStore.js";
+import { safeEqual } from "./SiteDb.js";
 import type { AuthResult, SiteDb, UserRow } from "./SiteDb.js";
 
 /**
@@ -141,8 +142,15 @@ interface Conn {
   spectating: Room | null;
   /** 최근 인증 시도 타임스탬프(ms) — 레이트리밋용 슬라이딩 윈도우 */
   authAttempts: number[];
-  /** 이 연결의 원격 IP (핸드셰이크 시점). 원격 남용 방어(스로틀·상한)의 키. */
+  /** 이 연결의 원격 IP (핸드셰이크 시점). 로그·표시용. */
   ip: string;
+  /** 남용 방어 버킷 키 (IPv4=주소, IPv6=/64 프리픽스). 상한·스로틀은 전부 이 키로 센다. */
+  key: string;
+  /**
+   * 원격 남용 방어 면제 여부 — **소켓 상대가 진짜 루프백일 때만** 참.
+   * 헤더에서 복원한 IP는 아무리 `127.0.0.1`처럼 보여도 면제되지 않는다.
+   */
+  exempt: boolean;
   /** 메시지 레이트리밋 토큰 버킷 상태. */
   msgTokens: number;
   msgLastRefill: number;
@@ -291,9 +299,42 @@ export function sanitizeBotRules(rules: SandboxBotRules | undefined): SandboxBot
 /**
  * 루프백(로컬)·테스트 연결인지. 직접 노출 배포에서 원격 클라이언트는 실제 공인 IP로
  * 도달하므로, 로컬/테스트만 원격 남용 방어(연결 상한·IP 스로틀·메시지 버킷)에서 제외한다.
+ *
+ * ⚠ **이 판정만으로 면제를 결정하면 안 된다.** 프록시 뒤에서 IP는 헤더에서 복원되므로
+ * (`clientIpOf`), 헤더에 `127.0.0.1`을 실을 수 있는 경로가 하나라도 있으면 모든 방어가
+ * 통째로 꺼진다. 실제 면제 여부는 **소켓 상대가 진짜 루프백일 때만** 참인 플래그를
+ * 연결 수립 시점에 받아서 쓴다(`Conn.exempt`) — 여기 함수는 그 기본값 계산용이다.
  */
 function isLoopbackIp(ip: string): boolean {
   return ip === "local" || ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+}
+
+/**
+ * 남용 방어의 **버킷 키**. IPv4는 주소 그대로, IPv6는 `/64` 프리픽스로 묶는다.
+ *
+ * **왜**: IPv6를 쓰는 공격자는 보통 `/64`를 통째로 할당받는다 — 주소를 하나씩 갈아
+ * 가며 붙으면 "IP당 동시 연결 16"·"IP당 인증 30회/분"·"IP당 방 20개/10분"이 전부
+ * 사실상 무제한이 되고, 전역 300 연결 슬롯도 혼자 비울 수 있다. 실제 배분 단위인
+ * `/64`로 묶으면 그 우회가 닫힌다.
+ */
+export function abuseKeyOf(ip: string): string {
+  // IPv4-mapped IPv6(::ffff:1.2.3.4)는 IPv4로 취급한다.
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped !== null) return mapped[1] as string;
+  if (!ip.includes(":")) return ip; // IPv4 또는 "local" 등 비-IP 라벨
+  const zoneless = (ip.split("%")[0] as string).toLowerCase();
+  // 축약(`::`)을 먼저 편다 — 실제 배포에서 들어오는 주소는 대부분 축약형이라,
+  // 펴지 않고 앞 4그룹을 자르면 서로 다른 /64가 같은 키로 뭉치거나 그 반대가 된다.
+  const halves = zoneless.split("::");
+  if (halves.length > 2) return zoneless; // 기형 주소 — 통째로 키로 쓴다
+  const head = (halves[0] ?? "").split(":").filter((g) => g !== "");
+  const tail = halves.length === 2 ? (halves[1] ?? "").split(":").filter((g) => g !== "") : [];
+  const fill = 8 - head.length - tail.length;
+  if (halves.length === 2 && fill < 0) return zoneless;
+  const groups =
+    halves.length === 2 ? [...head, ...Array<string>(fill).fill("0"), ...tail] : head;
+  if (groups.length !== 8) return zoneless; // 판독 불가 — 안전하게 주소 전체를 키로
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":") + "::/64";
 }
 
 /**
@@ -351,13 +392,20 @@ export class RoomManager {
 
   // ─────────────────────────── 연결 수립 ───────────────────────────
 
-  /** 새 WebSocket 연결 — 이후 모든 메시지를 이 핸들러가 라우팅한다 */
-  handleConnection(ws: WebSocket, ip = "local"): void {
-    // 동시 연결 상한 (전체·IP별) — 루프백/로컬은 제외한다.
-    const perIp = this.ipConnCount.get(ip) ?? 0;
+  /**
+   * 새 WebSocket 연결 — 이후 모든 메시지를 이 핸들러가 라우팅한다.
+   *
+   * @param exempt 원격 남용 방어에서 면제할지. **소켓 상대가 진짜 루프백일 때만**
+   *   호출자가 참을 넘긴다(index.ts). 생략하면 ip 문자열로 추정한다 — 프록시가
+   *   없는 직접 노출·테스트 경로의 기존 동작 그대로다.
+   */
+  handleConnection(ws: WebSocket, ip = "local", exempt = isLoopbackIp(ip)): void {
+    const key = abuseKeyOf(ip);
+    // 동시 연결 상한 (전체·버킷별) — 루프백/로컬은 제외한다.
+    const perIp = this.ipConnCount.get(key) ?? 0;
     if (
       this.conns.size >= MAX_CONNECTIONS ||
-      (!isLoopbackIp(ip) && perIp >= MAX_CONNECTIONS_PER_IP)
+      (!exempt && perIp >= MAX_CONNECTIONS_PER_IP)
     ) {
       try {
         ws.close(1013, "server busy");
@@ -377,20 +425,22 @@ export class RoomManager {
       spectating: null,
       authAttempts: [],
       ip,
+      key,
+      exempt,
       msgTokens: MSG_BUCKET_CAPACITY,
       msgLastRefill: Date.now(),
       authDeadline: null,
       violations: 0,
     };
     this.conns.add(conn);
-    this.ipConnCount.set(ip, perIp + 1);
+    this.ipConnCount.set(key, perIp + 1);
 
     // 미인증 스쿼팅 차단 — 유예 안에 로그인하지 않으면 소켓을 회수한다.
     this.armAuthDeadline(conn);
 
     ws.on("message", (data) => {
       // 연결당 메시지 토큰 버킷 — 초과분은 조용히 버린다(응답 증폭 방지). 루프백은 제외.
-      if (!isLoopbackIp(ip) && !this.consumeMsgToken(conn)) return;
+      if (!exempt && !this.consumeMsgToken(conn)) return;
       let parsed: unknown;
       try {
         parsed = JSON.parse(data.toString());
@@ -481,9 +531,9 @@ export class RoomManager {
       clearTimeout(conn.authDeadline);
       conn.authDeadline = null;
     }
-    const left = (this.ipConnCount.get(conn.ip) ?? 1) - 1;
-    if (left <= 0) this.ipConnCount.delete(conn.ip);
-    else this.ipConnCount.set(conn.ip, left);
+    const left = (this.ipConnCount.get(conn.key) ?? 1) - 1;
+    if (left <= 0) this.ipConnCount.delete(conn.key);
+    else this.ipConnCount.set(conn.key, left);
     this.stopSpectating(conn);
     const room = conn.room;
     if (room === null || conn.agent === null) return;
@@ -516,8 +566,13 @@ export class RoomManager {
           return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
         }
         if (this.rateLimited(conn)) return;
-        // 가입 게이트: 코드가 설정돼 있으면 일치해야만 가입 허용
-        if (this.signupCode !== "" && msg.signupCode !== this.signupCode) {
+        // 가입 게이트: 코드가 설정돼 있으면 일치해야만 가입 허용.
+        // 비교는 상수 시간으로 — `!==`는 첫 불일치에서 빠져나와 응답 시간에
+        // "몇 글자까지 맞았는지"가 실린다(느리지만 원격에서도 재는 게 가능하다).
+        if (
+          this.signupCode !== "" &&
+          (typeof msg.signupCode !== "string" || !safeEqual(msg.signupCode, this.signupCode))
+        ) {
           return this.fail(conn, "SIGNUP_CODE_REQUIRED", "가입 코드가 필요합니다");
         }
         const { username, password, adminCode } = msg;
@@ -553,6 +608,13 @@ export class RoomManager {
         return;
       }
       case "logout": {
+        // 아직 로그인한 적 없는 연결의 logout은 아무것도 하지 않는다.
+        //
+        // ⚠ 예전에는 여기서 미인증 유예 타이머를 무조건 **되걸었다**. 그래서 인증
+        // 없이 소켓만 열어 두고 29초마다 `logout`을 한 번씩 보내면 30초 유예가
+        // 영원히 갱신되어, 인증 없이 연결 슬롯을 무기한 점유할 수 있었다
+        // (미인증 스쿼팅 차단을 스스로 무력화하는 경로).
+        if (conn.user === null) return;
         if (conn.sessionToken !== null) this.db?.logout(conn.sessionToken);
         // 방·관전 상태를 정리한다 — 안 그러면 좌석/방장이 유령으로 남아
         // 대기실이 소프트락된다 (인증 게이트에 걸려 leaveRoom도 못 보냄).
@@ -783,10 +845,10 @@ export class RoomManager {
     conn.authAttempts = conn.authAttempts.filter((t) => now - t < AUTH_WINDOW_MS);
     // IP 단위 슬라이딩 윈도우 — 새 연결을 열어 연결 단위 리밋을 우회하는 무차별 대입을 막는다.
     // 루프백/로컬은 제외한다(원격 클라는 직접 노출 배포에서 실제 IP로 도달한다).
-    const exempt = isLoopbackIp(conn.ip);
+    const exempt = conn.exempt;
     const ipHits = exempt
       ? []
-      : (this.authIpHits.get(conn.ip) ?? []).filter((t) => now - t < AUTH_IP_WINDOW_MS);
+      : (this.authIpHits.get(conn.key) ?? []).filter((t) => now - t < AUTH_IP_WINDOW_MS);
 
     if (
       conn.authAttempts.length >= AUTH_MAX_ATTEMPTS ||
@@ -798,7 +860,7 @@ export class RoomManager {
     conn.authAttempts.push(now);
     if (!exempt) {
       ipHits.push(now);
-      this.authIpHits.set(conn.ip, ipHits);
+      this.authIpHits.set(conn.key, ipHits);
       this.pruneAuthIpHits(now);
     }
     return false;
@@ -818,17 +880,17 @@ export class RoomManager {
    * 생성 빈도 자체를 제한한다. 루프백/로컬(테스트·개발)은 제외.
    */
   private roomCreateLimited(conn: Conn): boolean {
-    if (isLoopbackIp(conn.ip)) return false;
+    if (conn.exempt) return false;
     const now = Date.now();
-    const hits = (this.roomCreateIpHits.get(conn.ip) ?? []).filter(
+    const hits = (this.roomCreateIpHits.get(conn.key) ?? []).filter(
       (t) => now - t < ROOM_CREATE_WINDOW_MS,
     );
     if (hits.length >= ROOM_CREATE_MAX_PER_IP) {
-      this.roomCreateIpHits.set(conn.ip, hits);
+      this.roomCreateIpHits.set(conn.key, hits);
       return true;
     }
     hits.push(now);
-    this.roomCreateIpHits.set(conn.ip, hits);
+    this.roomCreateIpHits.set(conn.key, hits);
     // 메모리 상한 — 창이 완전히 지난 IP 항목을 정리한다.
     if (this.roomCreateIpHits.size >= 2048) {
       for (const [ip, ts] of this.roomCreateIpHits) {
