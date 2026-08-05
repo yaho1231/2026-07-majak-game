@@ -24,7 +24,7 @@ import {
   defineAugment,
   handIdsOf,
   kindOf,
-  meldInfosOf,
+  openMeldCountOf,
   playerAtSeat,
   scoringOptionsOf,
   winningKinds,
@@ -53,9 +53,16 @@ export const stealthActiveKey = (state: GameState, holder: PlayerId): string =>
   `${ID}:active:${roundKey(state)}:${holder}`;
 const activeKey = stealthActiveKey;
 
-/** 노출 후로 수 (안깡은 멘젠을 깨지 않는다 — 코어 openMeldCountOf와 같은 규칙) */
+/**
+ * 노출 후로 수 — **코어 `openMeldCountOf`를 그대로 쓴다**.
+ *
+ * ⚠ 예전에는 여기에 사본을 두고 `kan_closed`만 뺐다. 코어는 묵계(`silent`) 후로도
+ * 함께 빼므로, 묵계로 운 손은 **코어에서는 멘젠인데 스텔스 리치만 후로로 봐서**
+ * 선언이 막혔다(docs/25 리치 #3). 주석은 "코어와 같은 규칙"이라고 적혀 있었지만
+ * 실제로는 달랐다 — 멘젠 판정의 단일 진실은 코어다.
+ */
 function openMelds(state: GameState, player: PlayerId): number {
-  return meldInfosOf(state, player).filter((m) => m.kind !== "kan_closed").length;
+  return openMeldCountOf(state, player);
 }
 
 /** tileId를 버려도 텐파이가 유지되는가 */
@@ -112,6 +119,20 @@ const stealthRiichiAction: ActionDef<{ tileId: TileId }> = {
     return null;
   },
   toEvents: (req, { state }) => [
+    /*
+     * 은닉 표시를 **버림보다 먼저** 세운다.
+     *
+     * ⚠ root 이벤트는 순서대로 하나씩 완전히 처리된다(GameEngine.submit) — 버림을
+     * 먼저 내면 그 버림의 리액션이 도는 시점에 이 플래그가 아직 없다. 그래서
+     * `riichi.hidden`을 보고 갈라지는 분기(이중 선언의 트리플리치 표시 등)가
+     * **한 번도 은닉 쪽으로 가지 못했고**, 스텔스 리치가 전원에게 새어 나갔다
+     * (docs/25 리치 #4).
+     *
+     * 이 국의 리치가 스텔스 액션으로 선언됐다는 표시이기도 하다 — riichi.hidden이
+     * 이 표시가 있을 때만 켜지므로, 홀더가 표준 riichi 액션으로 공탁 1000점을 내고
+     * 선언한 경우까지 무조건 은닉되던 모순도 함께 막는다.
+     */
+    augmentDataSet(activeKey(state, req.player), true),
     {
       type: TILE_DISCARDED,
       payload: {
@@ -122,10 +143,6 @@ const stealthRiichiAction: ActionDef<{ tileId: TileId }> = {
         riichiCost: 0,
       },
     },
-    // 이 국의 리치는 스텔스로 선언됐다는 표시 — riichi.hidden이 이 표시가 있을 때만
-    // 켜지도록 해서, 홀더가 (커스텀 액션이 아니라) 표준 riichi 액션으로 공탁 1000점을
-    // 내고 선언한 경우까지 무조건 은닉되던 모순을 막는다.
-    augmentDataSet(activeKey(state, req.player), true),
   ],
 };
 

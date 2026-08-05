@@ -22,6 +22,7 @@
 import {
   defineAugment,
   handIdsOf,
+  winHandIdsOf,
   kindKey,
   kindOf,
   meldCountOf,
@@ -128,9 +129,16 @@ const peekWaitsAction: ActionDef<{ target: PlayerId }> = {
   },
   toEvents: (req, { state, rules }) => {
     const target = req.payload.target;
-    // 대상 손패의 대기 계산 — 채점 변형 증강(scoring.*)까지 반영
+    /*
+     * 대상의 대기 계산 — 채점 변형(scoring.*)과 **화료 판정용 손패**를 함께 반영한다.
+     *
+     * ⚠ `handIdsOf`(물리 손패)로 세면 안 된다. 자유 선언(free_riichi_discard)처럼
+     * `hand.winTileIds`로 화료 손패를 스냅샷으로 고정하는 증강이 있으면, 그 사람이
+     * **실제로 화료하는 패**와 여기 보여 주는 대기가 갈린다(docs/25 리치 #7).
+     * 정확한 정보가 존재 이유인 증강이 틀린 정보를 확신 있게 주게 된다.
+     */
     const waits = winningKinds(
-      handIdsOf(state, target).map((id) => kindOf(state, id)),
+      winHandIdsOf(state, rules, target).map((id) => kindOf(state, id)),
       meldCountOf(state, target),
       undefined,
       scoringOptionsOf(state, rules, target),

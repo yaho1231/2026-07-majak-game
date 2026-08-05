@@ -19,6 +19,7 @@ import {
   augmentDataSet,
   defineAugment,
   handIdsOf,
+  lockedDiscardIds,
   kindKey,
   kindOf,
   playerAtSeat,
@@ -67,7 +68,7 @@ const inFirstGoAround = (state: GameState): boolean => state.round.firstTurn;
 
 const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined || !player.augments.includes(ID)) {
       return "no frame_up augment";
@@ -83,8 +84,20 @@ const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
     if (!state.players.some((p) => p.id === req.payload.target)) {
       return "unknown target";
     }
-    if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
+    const hand = handIdsOf(state, req.player);
+    if (!hand.includes(req.payload.tileId)) {
       return "tile not in hand";
+    }
+    /*
+     * 봉인된 패는 명의를 남에게 돌려서도 버릴 수 없다.
+     *
+     * ⚠ 누명은 표준 discard 액션을 거치지 않고 `TILE_DISCARDED`를 직접 낸다. 그래서
+     * 봉인술사(discard_lock)가 잠근 패를 **"누명 한 번"으로 털어낼 수 있었다**
+     * (docs/25 방해 #3). 리치 선언 버림이 같은 이유로 봉인을 우회하던 것과 같은 구멍이다.
+     * 판정은 버림 액션·리치 선언과 같은 `lockedDiscardIds`를 쓴다.
+     */
+    if (lockedDiscardIds(state, rules, req.player, hand).has(req.payload.tileId)) {
+      return "tile is sealed";
     }
     return null;
   },
