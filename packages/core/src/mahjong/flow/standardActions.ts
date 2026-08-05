@@ -55,7 +55,7 @@ import {
   playerOf,
   scoringOptionsOf,
   sameCallKind,
-  sealedDiscardIds,
+  lockedDiscardIds,
   mixedTripletsFor,
   polarEndsFor,
   honorRunsFor,
@@ -155,13 +155,10 @@ const discardAction: ActionDef<{ tileId: TileId }> = {
     if (rs?.riichi != null && req.payload.tileId !== state.round.lastDrawnTile) {
       return "riichi: must discard the drawn tile";
     }
-    // 봉인된 패 — 종류 단위(discard.blockedKinds)와 개별 패 단위(discard.blockedTileIds)를
-    // 함께 본다. 어느 쪽이든 손패 전부가 봉인이면 소프트락 방지를 위해 허용한다.
-    if (rs?.riichi == null) {
-      const sealed = sealedDiscardIds(state, rules, req.player, hand);
-      if (sealed.has(req.payload.tileId) && hand.some((id) => !sealed.has(id))) {
-        return "tile is sealed";
-      }
+    // 봉인된 패 — 리치 예외·소프트락 예외까지 얹은 최종 판정을 쓴다.
+    // 화면의 자물쇠(PlayerView)도 같은 함수를 쓴다 — 갈라지면 거짓 UI가 된다.
+    if (lockedDiscardIds(state, rules, req.player, hand).has(req.payload.tileId)) {
+      return "tile is sealed";
     }
     return null;
   },
@@ -216,8 +213,9 @@ const riichiAction: ActionDef<{ tileId: TileId }> = {
     // 여기에 검사가 없어서 봉인술사가 잠근 패를 "리치 한 번"으로 털어낼 수 있었다
     // (docs/25 방해 #2). 손패 전부가 봉인이면 소프트락 방지를 위해 허용하는 예외도 같다.
     // (리치 중 재검사는 하지 않는다 — 리치를 걸면 쯔모기리가 강제되므로 선택지가 없다.)
-    const sealed = sealedDiscardIds(state, rules, req.player, handIds);
-    if (sealed.has(req.payload.tileId) && handIds.some((id) => !sealed.has(id))) {
+    // (선언 시점에는 아직 리치가 아니므로 lockedDiscardIds의 리치 예외는 걸리지 않고,
+    //  소프트락 예외만 적용된다 — 종전 동작과 같다.)
+    if (lockedDiscardIds(state, rules, req.player, handIds).has(req.payload.tileId)) {
       return "tile is sealed";
     }
     return null;

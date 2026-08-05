@@ -19,7 +19,7 @@ import { winningKinds } from "../mahjong/scoring/waits.js";
 import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
 import {
   scoringOptionsOf,
-  sealedDiscardIds,
+  lockedDiscardIds,
   tenpaiNoYaku,
   yakulessWaits,
 } from "../mahjong/flow/helpers.js";
@@ -775,10 +775,10 @@ function buildRoundView(
       showSealed && rules.has("discard.blockedKinds")
         ? [...new Set(rules.resolve<string[]>("discard.blockedKinds", { playerId: pid, state }))]
         : [];
-    // 실제로 잠긴 손패 — 종류 봉인과 개별 패 봉인을 합친 최종 판정(버림 액션과 같은 함수)
-    const sealedTileIds = showSealed
-      ? [...sealedDiscardIds(state, rules, pid)]
-      : [];
+    // 실제로 잠긴 손패 — 리치 예외·소프트락 예외까지 얹은 **버림 액션과 같은 판정**.
+    // 원재료(sealedDiscardIds)를 그대로 실으면 화면에는 자물쇠가 걸렸는데 실제로는
+    // 버려지는 거짓 UI가 된다(docs/25 방해 #7).
+    const sealedTileIds = showSealed ? [...lockedDiscardIds(state, rules, pid)] : [];
     const sealed = {
       ...(sealedKinds.length > 0 ? { sealedKinds } : {}),
       ...(sealedTileIds.length > 0 ? { sealedTileIds } : {}),
