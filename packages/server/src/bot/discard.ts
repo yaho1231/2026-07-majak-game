@@ -119,7 +119,7 @@ function directionGain(kind: TileKind, plan: HandPlan, handPoints: number): numb
     return handPoints * -0.03; // 같은 색·자패는 남긴다
   }
   if (plan.yaku === "tanyao") {
-    return !isNumber || kind.rank === 1 || kind.rank === 9 ? handPoints * 0.09 : 0;
+    return !isNumber || kind.rank === 1 || kind.rank === 9 ? handPoints * 0.2 : 0;
   }
   // 토이토이는 커쯔 지향이라 샹텐 계산이 이미 반영한다
   return 0;
