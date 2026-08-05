@@ -215,10 +215,11 @@ function evOfCall(
 ): number {
   const meldCount = read.meldCount + 1;
   const value = read.valueOf({ plan, meldCount });
+  const shape = effectiveShape(read, picked, plan);
   const pWin = read.winChanceOf({
-    shanten: picked.shanten,
+    shanten: shape.shanten,
     waitTiles: picked.waitTiles,
-    ukeireTiles: picked.ukeire,
+    ukeireTiles: shape.ukeire,
   });
   /**
    * **손을 여는 것에 대한 취향.** 멘젠파는 같은 계산을 하고도 여는 쪽을 싫어하고,
@@ -336,11 +337,15 @@ function yakuPathAfter(
       bestCount = c;
     }
   }
-  if (bestSuit !== null && bestCount >= 5 && numberTotal - bestCount <= 1) {
+  if (
+    bestSuit !== null &&
+    bestCount >= 5 &&
+    numberTotal - bestCount <= 1
+  ) {
     return { yaku: "honitsu", suit: bestSuit };
   }
 
-  // 탕야오 — 요구패가 ≤1장이고 부른 패도 심플일 때 (쿠이탄 허용 규칙)
+  // 탕야오 — 부른 패가 심플이고, 요구패를 흘려도 손이 남는가 (쿠이탄 허용 규칙)
   if (isSimple(called) && all.filter(isOrphan).length <= 1) {
     return { yaku: "tanyao" };
   }
@@ -357,6 +362,49 @@ function yakuPathAfter(
     if (sets + read.meldCount + 1 >= 4) return { yaku: "toitoi" };
   }
 
+  return null;
+}
+
+/**
+ * 이 콜로 가려는 역의 **실효 손 모양**.
+ *
+ * 2026-08-05 측정에서 드러난 것: 게이트를 풀어 후로율을 사람 수준(30~40%)으로
+ * 올렸더니 **판이 오히려 나빠졌다** — 유국률 25.6% → 30.8%, 총 화료율 74.4% → 69.3%.
+ * 더 울고 덜 이긴 것이다.
+ *
+ * 원인은 게이트가 아니라 **EV가 낙관적**이라는 데 있었다. 탕야오로 가기로 한 손의
+ * 샹텐을 요구패까지 포함해 셌기 때문이다. 그 요구패들은 앞으로 버릴 패라 멘쯔로
+ * 쓸 수 없는데도 "쓸 수 있다"고 세니, 실제보다 가까운 손으로 보였다. 그래서 봇은
+ * 자기가 실현할 수 없는 속도를 근거로 울었다.
+ *
+ * 이제 그 역으로 갈 때 **실제로 쓸 수 있는 패만으로** 샹텐과 우케이레를 잰다.
+ * 그러면 "요구패 서너 장을 흘려야 하는 탕야오"는 저절로 값이 떨어져 EV에서 진다 —
+ * 게이트로 막을 필요가 없어지고, 좋은 쿠이탄은 그대로 통과한다.
+ */
+function effectiveShape(
+  read: BotRead,
+  picked: CallPlan,
+  plan: HandPlan,
+): { shanten: number; ukeire: number } {
+  const keep = keepFor(plan);
+  if (keep === null) return { shanten: picked.shanten, ukeire: picked.ukeire };
+  const rest = removeKinds(read.hand, picked.used).filter(keep);
+  if (rest.length === 0) return { shanten: picked.shanten, ukeire: picked.ukeire };
+  const meldCount = read.meldCount + 1;
+  return {
+    shanten: shantenOf(rest, meldCount, read.opts),
+    ukeire: ukeireOf(rest, meldCount, read.remainingOf, read.opts).tiles,
+  };
+}
+
+/** 그 역이 손에 남기라고 요구하는 패의 조건 (제약이 없는 역은 null) */
+function keepFor(plan: HandPlan): ((k: TileKind) => boolean) | null {
+  if (plan === null) return null;
+  if (plan.yaku === "tanyao") return isSimple;
+  if (plan.yaku === "honitsu") {
+    const suit = plan.suit;
+    return (k) => !isNumber(k) || k.suit === suit;
+  }
   return null;
 }
 
