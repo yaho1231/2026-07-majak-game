@@ -149,18 +149,58 @@ describe("리치 — 걸 만할 때만 건다", () => {
     expect(chooseRiichi(read, scene.riichiOptions(), profile())).toBeNull();
   });
 
-  it("고타점 + 이미 역이 있으면 다마텐으로 감춘다", () => {
-    // 도라 4장(3m이 도라) + 넓은 대기 + 이른 순목 → 사람도 여기선 알리지 않는다
+  it("올라스 선두는 고타점이라도 다마텐으로 조용히 끝낸다", () => {
+    // 남4국(올라스), 나 혼자 12000점 앞선다. 여기서 추가 점수는 순위를 바꾸지 않는다 —
+    // 이기고 있는 사람이 원하는 건 **국이 조용히 끝나는 것**이다. 리치는 1000점을 내고
+    // 손을 고정시켜 남은 순의 위험패를 전부 통과시키는 거래인데, 살 이유가 없다.
+    const allLastLead = {
+      hand: "333m456m789m11p56s1z",
+      doraIndicator: "2m",
+      turnCount: 5,
+      prevalentWind: 2,
+      roundNumber: 4,
+      scores: { p0: 37000, p1: 25000, p2: 20000, p3: 18000 },
+    } as const;
+    const scene = botScene(allLastLead);
+    const read = buildRead(scene.view, "p0");
+    expect(read.match.allLast).toBe(true);
+    expect(read.match.rank).toBe(1);
+    expect(read.handDora).toBeGreaterThanOrEqual(3);
+    // 압박이 최대인 자리에서는 성격도 이를 뒤집지 못한다 — 저돌적인 사람도 여기선 참는다
+    expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.4 }))).toBeNull();
+    expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.9 }))).toBeNull();
+  });
+
+  it("압박이 어중간하면 성격이 리치를 가른다 (성격은 규칙이 아니라 저울)", () => {
+    // 같은 올라스지만 선두 차가 4000점뿐 — 지켜야 할 것도 있고 벌어야 할 것도 있다.
+    // 이 어중간한 자리에서 무조건 리치파와 다마텐파가 갈린다.
+    const scene = botScene({
+      hand: "333m456m789m11p56s1z",
+      doraIndicator: "2m",
+      turnCount: 5,
+      prevalentWind: 2,
+      roundNumber: 4,
+      scores: { p0: 29000, p1: 25000, p2: 24000, p3: 22000 },
+    });
+    const read = buildRead(scene.view, "p0");
+    expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.4 }))).toBeNull();
+    expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.9 }))).not.toBeNull();
+  });
+
+  it("같은 손이라도 동1국이면 건다 — 순위를 지킬 게 아직 없다", () => {
+    // 위와 완전히 같은 손·같은 순목. 다른 것은 '이 국이 게임의 어디인가'뿐이다.
+    //
+    // 2026-08-05: 예전 기준은 `도라 3장 이상 + 이른 순목 → 다마텐`이라는 도라 개수
+    // 규칙이었다. 그건 초보용 속설이다 — 5순째 오야 만관(12000)이 리치로 하네만
+    // (18000)이 되는 자리는 리치가 명백히 이득이다. 다마텐이 진짜로 이득인 자리는
+    // **점수를 더 벌 이유가 없을 때**이고, 그건 순위판을 봐야만 알 수 있다.
     const scene = botScene({
       hand: "333m456m789m11p56s1z",
       doraIndicator: "2m",
       turnCount: 5,
     });
     const read = buildRead(scene.view, "p0");
-    expect(read.handDora).toBeGreaterThanOrEqual(3);
-    expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.4 }))).toBeNull();
-    // 같은 손이라도 '무조건 리치' 성격이면 건다
-    expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.9 }))).not.toBeNull();
+    expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.4 }))).not.toBeNull();
   });
 });
 

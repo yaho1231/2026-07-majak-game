@@ -57,6 +57,19 @@ export interface BotViewOptions {
   lastDiscard?: { player: string; spec: string };
   /** 역없음 대기 (다마텐 판단용) */
   noYakuWaits?: string[];
+  /**
+   * 플레이어별 점수 (기본 전원 25000). 순위 판단(bot/match.ts)을 세우는 데 쓴다 —
+   * 같은 손이라도 올라스 선두와 꼴찌는 다르게 쳐야 한다.
+   */
+  scores?: Partial<Record<string, number>>;
+  /** 장풍 1=동 2=남 (기본 동) */
+  prevalentWind?: number;
+  /** 몇 국인가 (기본 1국). 남4국 = 반장전 올라스 */
+  roundNumber?: number;
+  /** 공탁 (리치봉) */
+  riichiPot?: number;
+  /** 본장 */
+  honba?: number;
 }
 
 export interface BotScene {
@@ -148,16 +161,16 @@ export function botScene(opts: BotViewOptions): BotScene {
     players: PLAYERS.map((id, seat) => ({
       id,
       seat,
-      score: 25000,
+      score: opts.scores?.[id] ?? 25000,
       augments: [],
       nickname: id,
       isBot: true,
     })),
     round: {
-      prevalentWind: 1,
-      roundNumber: 1,
-      honba: 0,
-      riichiPot: 0,
+      prevalentWind: opts.prevalentWind ?? 1,
+      roundNumber: opts.roundNumber ?? 1,
+      honba: opts.honba ?? 0,
+      riichiPot: opts.riichiPot ?? 0,
       dealerSeat: 0,
       turnSeat: 0,
       turnCount: opts.turnCount ?? 6,

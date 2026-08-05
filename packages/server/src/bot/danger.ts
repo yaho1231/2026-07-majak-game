@@ -15,6 +15,7 @@
 
 import { discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
 import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
+import { pointsForHan } from "./value.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -28,6 +29,17 @@ export interface Threat {
   genbutsu: Set<string>;
   /** 이 사람이 버린 수패의 rank 집합 (스지 계산용) */
   discardRanks: Map<string, Set<number>>;
+  /**
+   * 이 사람에게 쏘였을 때 잃을 것으로 보이는 점수.
+   *
+   * 예전에는 이 값이 없어서 **모든 방총을 똑같이 취급했다.** 자패 펑 하나 걸린
+   * 1000점짜리 손과 오야 리치가 봇에게는 구분이 안 됐고, 그래서 값싼 후로에 과하게
+   * 접고 오야 리치에 태연히 밀었다. 사람이 실제로 재는 것은 확률이 아니라
+   * **확률 × 실점**이다.
+   */
+  value: number;
+  /** 이 사람이 오야인가 (실점이 1.5배가 된다) */
+  isDealer: boolean;
 }
 
 /**
@@ -73,9 +85,15 @@ export function tileTracker(view: PlayerView): (kind: TileKind) => number {
 }
 
 /** 상대들의 위협도를 읽는다 (자기 자신은 제외). 위험한 순으로 정렬 */
-export function readThreats(view: PlayerView, me: PlayerId): Threat[] {
+export function readThreats(
+  view: PlayerView,
+  me: PlayerId,
+  /** 이 국의 도라 종류 — 상대 후로에 보이는 도라를 세어 실점 추정을 올린다 */
+  doraKinds: readonly TileKind[] = [],
+): Threat[] {
   const out: Threat[] = [];
   const turn = view.round.turnCount;
+  const doraSet = new Set(doraKinds.map(kindKey));
   for (const p of view.players) {
     if (p.id === me) continue;
     const rs = view.round.byPlayer[p.id];
@@ -95,24 +113,94 @@ export function readThreats(view: PlayerView, me: PlayerId): Threat[] {
       }
     }
 
+    const riichi = rs?.riichiDeclared === true;
+    const melds = rs?.meldCount ?? 0;
+    const yakuhaiMeld = hasYakuhaiMeld(view, p.id);
     let level = 0;
-    if (rs?.riichiDeclared === true) {
+    if (riichi) {
       level = 1;
-    } else {
-      const melds = rs?.meldCount ?? 0;
-      if (melds > 0) {
-        // 후로 손은 텐파이 여부가 안 보인다 — 후로 수와 순목으로 어림한다.
-        // 역패 후로가 섞여 있으면 싸구려라도 확실히 화료를 향해 간다는 신호다.
-        level = Math.min(0.75, 0.18 * melds + (turn >= 10 ? 0.2 : 0.08));
-        if (hasYakuhaiMeld(view, p.id)) level += 0.1;
-      } else if (turn >= 12) {
-        // 멘젠 무후로라도 종반이면 누구나 텐파이일 수 있다 (약한 상시 경계)
-        level = 0.15;
-      }
+    } else if (melds > 0) {
+      // 후로 손은 텐파이 여부가 안 보인다 — 후로 수와 순목으로 어림한다.
+      // 역패 후로가 섞여 있으면 싸구려라도 확실히 화료를 향해 간다는 신호다.
+      level = Math.min(0.75, 0.18 * melds + (turn >= 10 ? 0.2 : 0.08));
+      if (yakuhaiMeld) level += 0.1;
+    } else if (turn >= 12) {
+      // 멘젠 무후로라도 종반이면 누구나 텐파이일 수 있다 (약한 상시 경계)
+      level = 0.15;
     }
-    out.push({ player: p.id, level: Math.min(1, level), genbutsu, discardRanks });
+
+    const isDealer =
+      view.players.find((x) => x.id === p.id)?.seat === view.round.dealerSeat;
+
+    out.push({
+      player: p.id,
+      level: Math.min(1, level),
+      genbutsu,
+      discardRanks,
+      isDealer,
+      value: estimateThreatValue(view, p.id, { riichi, melds, yakuhaiMeld, isDealer, doraSet }),
+    });
   }
-  return out.sort((a, b) => b.level - a.level);
+  return out.sort((a, b) => b.level * b.value - a.level * a.value);
+}
+
+/**
+ * 이 상대에게 쏘였을 때의 예상 실점.
+ *
+ * 공개 정보만으로 상대의 판수를 어림하고 코어 점수표에 넣는다 — 봇이 손으로 만든
+ * 점수표를 들고 있으면 규칙이 바뀔 때 조용히 어긋나기 때문이다.
+ *
+ * 세는 것:
+ *   - 리치 → 리치·일발·우라·쯔모의 기대 판수(2.2)
+ *   - 역패 후로 → 확정 1판(대신 싸다)
+ *   - 후로에 **보이는** 도라 → 확정 판수
+ *   - 감춰진 손패의 도라 기대값 → 약 1판 (도라 표시 1장당 손패 13장에 0.9장꼴)
+ *   - 혼일색 읽기 → 후로가 한 색+자패로만 이루어져 있으면 +2판
+ */
+function estimateThreatValue(
+  view: PlayerView,
+  player: PlayerId,
+  info: {
+    riichi: boolean;
+    melds: number;
+    yakuhaiMeld: boolean;
+    isDealer: boolean;
+    doraSet: ReadonlySet<string>;
+  },
+): number {
+  const meldKinds: TileKind[] = [];
+  for (const id of view.zones[meldsZone(player)]?.tileIds ?? []) {
+    const k = view.tiles[id]?.kind;
+    if (k !== undefined) meldKinds.push(k);
+  }
+
+  let han = 0;
+  if (info.riichi) han += 2.2;
+  else if (info.yakuhaiMeld) han += 1;
+  else han += 1.2; // 무언가 역은 있다 (탕야오·핑후·역패 …)
+
+  // 감춰진 손패의 도라 기대값 — 도라 표시패 1장당 손에 0.9장꼴로 들어 있다
+  han += Math.min(2, view.round.doraIndicators.length * 0.9);
+  // 후로에 눕혀 보이는 도라는 확정이다
+  for (const k of meldKinds) if (info.doraSet.has(kindKey(k))) han += 1;
+
+  // 혼일색 읽기 — 눕힌 패가 한 색(+자패)으로만 이루어져 있다
+  if (info.melds > 0 && isOneSuitOrHonors(meldKinds)) han += 2;
+
+  // 손 값어치와 **같은 눈금**을 쓴다 — 기대 판수를 반올림하지 않고 보간한다.
+  // 눈금이 어긋나면 "밀기가 이득인가"의 뺄셈이 조용히 한쪽으로 기운다.
+  return pointsForHan(han, 30, info.isDealer);
+}
+
+/** 눕힌 패가 한 색 + 자패로만 이루어져 있는가 (혼일색·청일색 신호) */
+function isOneSuitOrHonors(kinds: readonly TileKind[]): boolean {
+  let suit: string | null = null;
+  for (const k of kinds) {
+    if (!isNumber(k)) continue;
+    if (suit === null) suit = k.suit;
+    else if (suit !== k.suit) return false;
+  }
+  return suit !== null;
 }
 
 /** 그 사람의 후로에 역패(삼원패·풍패) 커쯔가 있는가 — 값싼 확정 역의 신호 */
@@ -198,6 +286,38 @@ export function safetyOf(
     if (risk > worst) worst = risk;
   }
   return 1 - Math.min(1, worst);
+}
+
+/**
+ * `tileRisk`(0~1의 상대적 위험)를 **실제 방총 확률**로 옮기는 배율.
+ *
+ * 리치에 대한 무스지 중장패의 실측 방총률이 약 6%다. tileRisk가 그런 패에 0.58을
+ * 주므로 0.11을 곱하면 6.4%가 된다 — 이 상수 하나로 `tileRisk`의 상대 눈금이 전부
+ * 확률 축에 올라간다. 눈금이 확률이 되면 실점(점수)과 곱해 **기대 실점**이 나오고,
+ * 그때부터 수비는 공격(`value.ts`의 기대 획득)과 같은 단위로 비교된다.
+ */
+const DEAL_IN_SCALE = 0.11;
+
+/**
+ * 이 패를 지금 버릴 때 **잃을 것으로 기대되는 점수**.
+ *
+ * Σ(상대별 방총 확률 × 그 상대의 예상 실점). 한 장이 여러 상대에게 동시에 걸릴 수는
+ * 없지만 어느 쪽에 걸릴지 모르므로 기대값은 합이 맞다.
+ *
+ * `safetyOf`(0~1)와 달리 이 값은 **점수 단위**라, "이 패를 밀어서 얻는 기대 획득"과
+ * 직접 뺄셈이 된다. 봇의 밀기/접기는 이제 그 뺄셈 하나로 결정된다.
+ */
+export function expectedLossOf(
+  kind: TileKind,
+  threats: readonly Threat[],
+  remainingOf: (k: TileKind) => number,
+): number {
+  let loss = 0;
+  for (const t of threats) {
+    if (t.level <= 0) continue;
+    loss += t.level * tileRisk(kind, t, remainingOf) * DEAL_IN_SCALE * t.value;
+  }
+  return loss;
 }
 
 /** 가장 높은 위협도 (0~1) — "지금 판이 위험한가"의 한 줄 요약 */
