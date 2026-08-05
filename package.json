@@ -26,7 +26,8 @@
     "build:client": "npm run build -w @majak/client",
     "dev:server": "npm run dev -w @majak/server",
     "dev:client": "npm run dev -w @majak/client",
-    "replay": "npm run replay -w @majak/server --"
+    "replay": "npm run replay -w @majak/server --",
+    "arena": "npm run arena -w @majak/server --"
   },
   "devDependencies": {
     "typescript": "^5.5.0",

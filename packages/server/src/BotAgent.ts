@@ -116,7 +116,7 @@ export class BotAgent implements PlayerAgent {
    * 이 봇의 성격 — 원형(공격형·수비형·속공형·타점형·균형형·변덕형) 하나에서 나온다.
    * 미는 정도·우는 문턱·타점 취향·참을성·흔들림·허세가 전부 여기서 갈린다.
    */
-  private readonly profile: BotProfile;
+  private profile: BotProfile;
   /** 증강 id → 정의 (액티브 증강 정책 조회용). 없으면 봇은 증강을 발동하지 않는다 */
   private readonly catalog: ReadonlyMap<string, AugmentDef>;
   private lastView: PlayerView | null = null;
@@ -179,6 +179,19 @@ export class BotAgent implements PlayerAgent {
         rules.noWin === true ||
         rules.noAugment === true);
     this.restrictions = on ? rules : null;
+  }
+
+  /** 이 봇의 원형 (표시·집계용) */
+  get archetype(): BotProfile["archetype"] {
+    return this.profile.archetype;
+  }
+
+  /**
+   * 성격을 지정한다 — **측정·재현 전용**(`bot/arena.ts`, 테스트).
+   * 실대국 봇은 시드에서 스스로 뽑으므로 이 경로를 타지 않는다.
+   */
+  setProfile(profile: BotProfile): void {
+    this.profile = profile;
   }
 
   /** 이 방의 게임 모드를 알린다 (게임 시작 시 서버가 호출). 순위 판단의 전제가 된다 */
