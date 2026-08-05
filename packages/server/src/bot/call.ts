@@ -12,13 +12,15 @@
  * 예외 하나: 종반에 울어서 텐파이가 되면 **형식텐파이**(노텐벌부 회피)로 부른다.
  */
 
-import { kindKey, shantenOf, ukeireOf } from "@majak/core";
+import { kindKey, shantenOf, ukeireOf, winningKinds } from "@majak/core";
 import type { ActionOption } from "@majak/core/mahjong/flow/FlowController.js";
 import type { TileId, TileKind } from "@majak/core";
 import { meldKindsOf, removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
-import { foldWeight } from "./discard.js";
+import { scales } from "./discard.js";
+import type { ActionBid } from "./decide.js";
+import { NOTEN_PENALTY, waitTilesOf } from "./value.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -34,6 +36,8 @@ interface CallPlan {
   shanten: number;
   /** 부른 뒤의 우케이레 장수 */
   ukeire: number;
+  /** 부른 뒤가 텐파이면 오름패의 남은 장수 (아니면 0) */
+  waitTiles: number;
   /** 이 콜로 성립하는 역 방향 (없으면 null) */
   yaku: HandPlan;
   /** 적도라를 멘쯔에 넣어 버리는가 (같은 값이면 피한다) */
@@ -46,16 +50,25 @@ export interface CallChoice {
   plan: HandPlan;
 }
 
+/** 콜 입찰 — 값과 함께, 그 콜로 확정되는 역 방향을 실어 보낸다 */
+export interface CallBid extends ActionBid {
+  plan: HandPlan;
+}
+
 /**
- * 펑·치·대명깡 중 부를 것을 고른다. 부르지 않으면 null(패스).
+ * 울 수 있는 콜 중 가장 나은 것을 **입찰**로 낸다 (부른 뒤 판의 절대 EV).
+ * 여기서 null인 것은 "안 부르는 게 낫다"가 아니라 **부를 수 없다**는 뜻이다 —
+ * 열린 손에 역이 없거나, 손이 전진하지 않거나, 멘젠 텐파이를 스스로 깨는 콜.
+ * 부를지 말지는 이 입찰이 `bidPass`를 이기느냐로 결정된다.
+ *
  * 증강이 등록한 커스텀 콜은 여기서 다루지 않는다 — 각 증강의 bot 정책 담당이다.
  */
-export function chooseCall(
+export function bidCall(
   read: BotRead,
   options: readonly ActionOption[],
   committed: HandPlan,
   profile: BotProfile,
-): CallChoice | null {
+): CallBid | null {
   const callable = options.filter(
     (o) => o.type === "pon" || o.type === "chi" || o.type === "minkan",
   );
@@ -74,7 +87,6 @@ export function chooseCall(
   if (menzen && read.tenpai) return null;
 
   const before = shantenOf(read.hand, read.meldCount, read.opts);
-  const fold = foldWeight(read, profile);
 
   const plans: CallPlan[] = [];
   for (const option of callable) {
@@ -91,6 +103,13 @@ export function chooseCall(
       ukeire:
         after <= before
           ? ukeireOf(rest, read.meldCount + 1, read.remainingOf, read.opts).tiles
+          : 0,
+      waitTiles:
+        after <= 0
+          ? waitTilesOf(
+              winningKinds(rest, read.meldCount + 1, undefined, read.opts),
+              read.remainingOf,
+            )
           : 0,
       yaku,
       spendsRed: usesRedFive(read, option),
@@ -113,34 +132,128 @@ export function chooseCall(
       read.isYakuhai(called) &&
       p.shanten <= before,
   );
-  if (yakuhaiPon !== undefined && fold < 0.7) {
+  let picked: CallPlan | undefined;
+  let plan: HandPlan;
+  if (yakuhaiPon !== undefined) {
     // 자패는 슌쯔로 쓸 일이 없으니 4장째가 있으면 대명깡이 상위 호환이다
     const minkan = plans.find((p) => p.option.type === "minkan" && !isNumber(called));
-    const picked = minkan ?? yakuhaiPon;
-    return { option: picked.option, plan: { yaku: "yakuhai" } };
+    picked = minkan ?? yakuhaiPon;
+    plan = { yaku: "yakuhai" };
+  } else {
+    const best = plans[0];
+    if (best === undefined) return null;
+
+    // 손이 전진하지 않는 콜은 부르지 않는다 (텐파이를 잡는 콜은 전진으로 친다)
+    if (best.shanten >= before) return null;
+
+    // 종반 형식텐파이 — 역이 없어도 텐파이면 노텐벌부를 피한다
+    const lateTenpai = best.shanten === 0 && read.wallLeft <= 12;
+
+    // 열린 손은 역이 없으면 텐파이해도 못 먹는다 — 값어치가 0인 길이다
+    const found = best.yaku ?? (hasYakuhaiMeld ? ({ yaku: "yakuhai" } as const) : null);
+    if (found === null && !lateTenpai) return null;
+
+    picked = best;
+    plan = found ?? committed;
   }
 
-  const best = plans[0];
-  if (best === undefined) return null;
-
-  // 손이 전진하지 않는 콜은 부르지 않는다 (텐파이를 잡는 콜은 전진으로 친다)
-  if (best.shanten >= before) return null;
-
-  // 종반 형식텐파이 — 역이 없어도 텐파이면 노텐벌부를 피한다
-  const lateTenpai = best.shanten === 0 && read.wallLeft <= 12;
-
-  const plan = best.yaku ?? (hasYakuhaiMeld ? { yaku: "yakuhai" as const } : null);
-  if (plan === null && !lateTenpai) return null;
-
-  // 판이 위험한데 손이 멀면 열지 않는다 (열린 손은 접기도 어렵다)
-  if (fold > 0.5 && best.shanten >= 1 && !lateTenpai) return null;
-
-  // 성격: 느슨한 봇은 1샹텐까지, 단단한 봇은 텐파이가 걸릴 때만 운다
-  const maxOpenShanten = profile.callLoose > 0.65 ? 2 : profile.callLoose > 0.35 ? 1 : 0;
-  if (best.shanten > maxOpenShanten && !lateTenpai) return null;
-
-  return { option: best.option, plan: plan ?? committed };
+  const value = evOfCall(read, picked, plan, profile);
+  return {
+    option: picked.option,
+    value,
+    plan,
+    reason: `후로 샹텐${picked.shanten} ${plan?.yaku ?? "형식텐파이"}`,
+  };
 }
+
+/**
+ * 울지 않고 지금 손 그대로 가는 길의 입찰 (절대 EV).
+ * 콜 입찰과 **같은 축**이라 직접 견줄 수 있다 — 이것이 "울까 말까"의 전부다.
+ * 예전에는 `fold > 0.5`·`callLoose에 따른 샹텐 상한` 같은 문턱이 그 자리에 있었는데,
+ * 그 문턱은 내 손이 만관인지 1000점인지, 상대가 오야인지 자인지를 보지 못했다.
+ */
+export function bidPass(
+  read: BotRead,
+  options: readonly ActionOption[],
+  committed: HandPlan,
+  profile: BotProfile,
+): ActionBid | null {
+  const pass = options.find((o) => o.type === "pass");
+  if (pass === undefined) return null;
+  return {
+    option: pass,
+    value: evOfPass(read, committed, profile),
+    reason: `패스 (손 유지 샹텐${Math.max(0, read.shanten)})`,
+  };
+}
+
+/** 울 것인가 (예전 진입점 — 두 입찰의 비교) */
+export function chooseCall(
+  read: BotRead,
+  options: readonly ActionOption[],
+  committed: HandPlan,
+  profile: BotProfile,
+): CallChoice | null {
+  const call = bidCall(read, options, committed, profile);
+  if (call === null) return null;
+  if (call.value <= evOfPass(read, committed, profile)) return null;
+  return { option: call.option, plan: call.plan };
+}
+
+/**
+ * 이 콜을 부르고 갔을 때 판의 절대 EV.
+ *
+ * 울면 멘젠 판수(리치·쯔모·우라)가 통째로 날아가므로 `meldCount`를 올려 값을 다시
+ * 매긴다 — 그 손실이 계산에 실제로 들어가는 것이 요점이다. 예전에는 샹텐만 보고
+ * 울어서, 멘젠 3900이 열린 1000점이 되는 콜도 "전진했으니 이득"으로 읽었다.
+ */
+function evOfCall(
+  read: BotRead,
+  picked: CallPlan,
+  plan: HandPlan,
+  profile: BotProfile,
+): number {
+  const meldCount = read.meldCount + 1;
+  const value = read.valueOf({ plan, meldCount });
+  const pWin = read.winChanceOf({
+    shanten: picked.shanten,
+    waitTiles: picked.waitTiles,
+    ukeireTiles: picked.ukeire,
+  });
+  const gain = pWin * (value.points + read.match.potBonus);
+  // 종반에 텐파이가 걸리면 노텐벌부를 피한다
+  const noten = picked.shanten <= 0 && read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
+  // 열린 손은 접기 어렵다 — 남은 국의 위험패를 계속 통과시켜야 한다
+  const s = scales(read, profile);
+  return (gain + noten) * s.gain - openRisk(read) * s.loss;
+}
+
+/** 울지 않고 지금 손 그대로 갔을 때 판의 절대 EV */
+function evOfPass(read: BotRead, plan: HandPlan, profile: BotProfile): number {
+  const value = read.valueOf({ plan });
+  const pWin = read.winChanceOf({
+    shanten: Math.max(0, read.shanten),
+    waitTiles: read.waitTiles,
+    ukeireTiles: ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts).tiles,
+  });
+  const noten = read.tenpai && read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
+  const s = scales(read, profile);
+  return (pWin * (value.points + read.match.potBonus) + noten) * s.gain;
+}
+
+/**
+ * 손을 여는 대가 — 이후로는 접을 여지가 줄어 위험패를 계속 내야 한다.
+ * 위협이 없으면 0이다(열어도 잃을 것이 없다).
+ */
+function openRisk(read: BotRead): number {
+  if (read.threat <= 0) return 0;
+  let loss = 0;
+  for (const k of read.hand) loss += read.expectedLoss(k);
+  return (loss / Math.max(1, read.hand.length)) * OPEN_HORIZON;
+}
+
+/** 열린 손이 남은 국 동안 통과시켜야 하는 위험패의 몫 */
+const OPEN_HORIZON = 3;
 
 /** 이 콜이 손에서 내주는 패의 kind 목록 */
 function usedKinds(read: BotRead, option: ActionOption): TileKind[] {

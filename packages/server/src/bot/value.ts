@@ -68,6 +68,9 @@ function planHan(plan: HandPlan, menzen: boolean): number {
   }
 }
 
+/** 역없는 열린 손에 남기는 잔값 — 화료가 사실상 막혔다는 뜻 */
+const YAKULESS_OPEN = 0.15;
+
 /** 토이토이·자패 커쯔가 많은 손은 부수가 높다 — 만관 경계를 가르는 값이라 무시할 수 없다 */
 function estimateFu(plan: HandPlan, menzen: boolean): number {
   if (plan !== null && plan.yaku === "toitoi") return 40;
@@ -120,7 +123,16 @@ export function estimateHandValue(input: HandValueInput): HandValue {
   const withRiichi = menzen ? base + RIICHI_HAN : base;
   const han = input.riichiDeclared ? withRiichi : base;
 
-  const score = (h: number): number => pointsForHan(h, fu, input.isDealer);
+  /**
+   * 열린 손은 **역이 없으면 텐파이해도 화료할 수 없다.** 점수표는 판수 0을 1로
+   * 올려 세므로(1판 미만이라는 점수가 없다) 그냥 두면 역없는 열린 손이 1판짜리
+   * 멘젠 손과 같은 값으로 잡힌다 — 울어서 손을 망치는 판단이 여기서 나온다.
+   * 완전히 0으로 두지는 않는다: 남은 쯔모로 탕야오가 붙거나 해저가 걸리는 길이
+   * 닫힌 것은 아니라, 아주 낮은 잔값만 남긴다.
+   */
+  const yakuless = !menzen && planHan(input.plan, menzen) === 0;
+  const score = (h: number): number =>
+    pointsForHan(h, fu, input.isDealer) * (yakuless ? YAKULESS_OPEN : 1);
 
   return {
     han,
