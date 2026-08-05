@@ -104,7 +104,16 @@ const allInRiichiAction: ActionDef<{ tileId: TileId }> = {
       .filter((t) => t !== req.payload.tileId)
       .map((t) => kindOf(state, t));
     const opts = scoringOptionsOf(state, rules, req.player);
-    if (winningKinds(after, meldCountOf(state, req.player), undefined, opts).length === 0) {
+    /*
+     * 텐파이 요구는 **규칙에서 읽는다**(`riichi.requiresTenpai`) — 표준 리치 액션과 같다.
+     * 하드코딩하면 공성계(siege_riichi)가 그 규칙을 false로 내려도 커스텀 리치 3종에는
+     * 전혀 닿지 않아, "노텐 리치로 블러프한다"는 능력이 **이 리치들 앞에서만 조용히
+     * 사라진다**(docs/25 리치 #11).
+     */
+    if (
+      rules.resolve<boolean>("riichi.requiresTenpai", { playerId: req.player, state }) &&
+      winningKinds(after, meldCountOf(state, req.player), undefined, opts).length === 0
+    ) {
       return "not tenpai after discard";
     }
     return null;
