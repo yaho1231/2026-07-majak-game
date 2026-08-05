@@ -91,12 +91,22 @@ function ctx(view: PlayerView, options: BotAugmentOption[], tenpai = false): Bot
   return botCtx(view, options, { rng, tenpai, ...(tenpai ? { shanten: 0 } : {}) });
 }
 
+/**
+ * 정책은 옵션만 돌려줄 수도, 발동 강도를 실어 `{option, weight}`로 돌려줄 수도 있다
+ * (의도 선언형 정책은 항상 후자다). 여기서는 **무엇을 골랐는가**만 보므로 옵션을 푼다.
+ */
+function pick(def: { bot?: { choose(c: BotDecisionContext): unknown } }, c: BotDecisionContext) {
+  return botChosenOption(
+    (def.bot?.choose(c) ?? null) as Parameters<typeof botChosenOption>[0],
+  );
+}
+
 describe("봇 액티브 증강 정책 동작", () => {
   it("big_hand: 제시되면 선언한다 (첫 턴 순수 이득)", () => {
     const view = fakeView("p0", "123m456p789s11z2z", [{ id: "p0", seat: 0 }]);
     const opt = { type: "declare_big_hand", payload: {} };
-    expect(bigHand.bot?.choose(ctx(view, [opt]))).toEqual(opt);
-    expect(bigHand.bot?.choose(ctx(view, []))).toBeNull();
+    expect(pick(bigHand, ctx(view, [opt]))).toEqual(opt);
+    expect(pick(bigHand, ctx(view, []))).toBeNull();
   });
 
   it("table_flip: 배패가 나쁠 때만 엎는다", () => {
@@ -105,10 +115,10 @@ describe("봇 액티브 증강 정책 동작", () => {
     // (요구패 13종은 고립패투성이로 **보이지만** 국사 텐파이라 엎으면 안 된다.
     //  판단 기준이 고립패 수에서 샹텐으로 바뀐 뒤 그 손은 지키는 쪽이 맞다.)
     const weak = fakeView("p0", "1479m2589p369s12z", [{ id: "p0", seat: 0 }]);
-    expect(tableFlip.bot?.choose(ctx(weak, [opt]))).toEqual(opt);
+    expect(pick(tableFlip, ctx(weak, [opt]))).toEqual(opt);
     // 잘 이어진 손 — 지킨다
     const good = fakeView("p0", "234m456p678s1122z", [{ id: "p0", seat: 0 }]);
-    expect(tableFlip.bot?.choose(ctx(good, [opt]))).toBeNull();
+    expect(pick(tableFlip, ctx(good, [opt]))).toBeNull();
   });
 
   it("disarm: 증강을 가장 많이 든 상대를 노린다", () => {
@@ -121,7 +131,7 @@ describe("봇 액티브 증강 정책 동작", () => {
       { type: "disarm_lock", payload: { target: "p1", augmentId: "a" } },
       { type: "disarm_lock", payload: { target: "p2", augmentId: "a" } },
     ];
-    const picked = botChosenOption(disarm.bot?.choose(ctx(view, opts)) ?? null);
+    const picked = botChosenOption(pick(disarm, ctx(view, opts)) ?? null);
     expect((picked?.payload as { target?: string }).target).toBe("p2");
   });
 
@@ -137,9 +147,9 @@ describe("봇 액티브 증강 정책 동작", () => {
     };
     // 1m(+1 → 2m) : 고립패가 4m의 이웃이 된다 → 발동
     const improving = { type: "alchemy", payload: { tileId: kindId("1m"), delta: 1 } };
-    expect(alchemist.bot?.choose(ctx(view, [improving]))).toEqual(improving);
+    expect(pick(alchemist, ctx(view, [improving]))).toEqual(improving);
     // 7s는 이미 8s·9s와 이어져 쓸모 있다 — 바꿔봐야 개선이 아니므로 아낀다
     const noop = { type: "alchemy", payload: { tileId: kindId("7s"), delta: 1 } };
-    expect(alchemist.bot?.choose(ctx(view, [noop]))).toBeNull();
+    expect(pick(alchemist, ctx(view, [noop]))).toBeNull();
   });
 });

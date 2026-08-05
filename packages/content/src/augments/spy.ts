@@ -53,6 +53,7 @@ import {
   stringOf,
   viewKey,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "spy";
 const ACTION = "spy_mark";
@@ -178,9 +179,9 @@ export const spy: AugmentDef = defineAugment({
   },
   // 봇: 텐파이 여부와 무관하게, 지정 기회가 열려 있으면 첫 후보로 찍어 둔다
   //     (빗나가도 잃는 것이 없으므로 쓰지 않는 것이 언제나 손해)
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "setup",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

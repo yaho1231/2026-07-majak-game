@@ -34,7 +34,11 @@ const BOT_SKIP = new Set(BOT_UNUSABLE_AUGMENTS);
 /** 액티브 판정 — 봇에게 선택지가 제시되는 등록 경로 */
 const OPTION_HOOKS = ["holderTurnOptions", "registerReactionOptions"];
 
-const hasBotPolicy = (src: string): boolean => /\n\s*bot:\s*\{/.test(src);
+/**
+ * 정책은 두 모양 중 하나다 — 손수 쓴 `bot: { choose }` 또는 의도 선언
+ * `bot: plan({ intent, pick })`. 후자는 타이밍·강도를 공용 planner가 맡는다.
+ */
+const hasBotPolicy = (src: string): boolean => /\n\s*bot:\s*(\{|plan\()/.test(src);
 
 function augmentFiles(): string[] {
   return readdirSync(AUGMENTS_DIR)

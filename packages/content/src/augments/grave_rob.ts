@@ -50,6 +50,7 @@ import {
   replaceDrawnTile,
   roundViewKey,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "grave_rob";
 const ACTION = "grave_rob";
@@ -291,9 +292,9 @@ export const graveRob: AugmentDef = defineAugment({
     });
   },
   // 봇: 제시된다는 것 자체가 "지금 화료한다"는 뜻이므로 언제나 발동한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "win",
+    fleeting: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

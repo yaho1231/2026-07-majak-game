@@ -41,6 +41,7 @@ import {
   statePrng,
   withAugPoint,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "jackpot";
 const ACTION = "jackpot_roll";
@@ -154,11 +155,11 @@ export const jackpot: AugmentDef = defineAugment({
   detail:
     "(매 국 1회 · 국의 첫 순) 아직 아무것도 버리지 않은 첫 순에만 룰렛을 돌릴 수 있다. 그 자리에서 0.5배(30%)·1배(30%)·2배(30%)·3배(10%) 중 하나가 뽑혀 전원에게 공개된다. 그 국의 정산에서 자신의 획득 점수가 양수이면 뽑힌 배수만큼 곱해지고(0.5배는 절반으로 줄고 소수점은 반올림, 1배는 그대로) 늘어난 몫은 뱅크가 지급한다. 지불로 끝난 국에는 적용되지 않으며, 굴리지 않은 국에는 아무 효과가 없다.",
   // 봇: 기대값이 여전히 플러스다(0.5×.3 + 1×.3 + 2×.3 + 3×.1 = 1.35배) — 옵션이 뜨면 무조건 굴린다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "score",
+    fleeting: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

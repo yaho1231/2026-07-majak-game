@@ -40,6 +40,7 @@ import {
   withAugPoint,
 } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "all_or_nothing";
 const ACTION = "all_in_riichi";
@@ -194,10 +195,11 @@ export const allOrNothing: AugmentDef = defineAugment({
   },
   // 리치에 올인을 얹는다 — 빗나가도 잃는 것이 없는 순수 상방 도박이라, 텐파이면
   // 발동한다. 남은 손의 대기를 가장 덜 해치는(가장 고립된) 패로 선언한다.
-  bot: {
-    choose({ options, view, holder, tenpai }) {
-      if (!tenpai) return null;
-      return pickIsolatedDiscard(view, holder, options, ACTION);
-    },
-  },
+  bot: plan({
+    intent: "score",
+    fleeting: true,
+    oneShot: true,
+    pick: ({ options, view, holder, tenpai }) =>
+      tenpai ? pickIsolatedDiscard(view, holder, options, ACTION) : null,
+  }),
 });

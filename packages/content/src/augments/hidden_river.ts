@@ -36,6 +36,7 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import { flagOf, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "hidden_river";
 const ACTION = "declare_fog";
@@ -81,11 +82,11 @@ export const hiddenRiver: AugmentDef = defineAugment({
   detail:
     "(게임 내 1회) 선언하기 전에는 바닥이 평소대로 보이지만, 자기 순에 한 번 선언하면 게임이 끝날 때까지 네 사람 모두의 바닥에서 최근 6장만 공개된다. 그보다 앞선 버림패는 다른 사람에게 장수만 보이고 내용이 가려진다. 보유자만 네 개의 바닥을 끝까지 그대로 읽는다. 최근 6장은 전원에게 보이므로 론·후로 판정과 직전 한 바퀴의 현물 수비는 그대로 유지된다. 선언은 국이 바뀌어도 풀리지 않는다.",
   // 봇: 자해 위험이 전혀 없다 — 옵션이 뜨면 곧바로 선언한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "setup",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

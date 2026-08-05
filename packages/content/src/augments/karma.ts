@@ -36,6 +36,7 @@ import type {
   RoundSettledPayload,
 } from "@majak/core";
 import { counterOf, viewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "karma";
 const ACTION = "karma_burn";
@@ -124,11 +125,11 @@ export const karma: AugmentDef = defineAugment({
   detail:
     "(상시 적립 · 게이지 8,000 이상일 때 발동) 국 정산에서 점수를 잃으면 방총이든 쯔모당함이든 그 손실액이 업보 게이지에 그대로 적립되고, 게이지 수치는 전원에게 공개된다. 게이지가 8,000 이상이면 자기 순에 게이지를 태워 쌓인 만큼을 상대 세 명에게서 균등하게 뜯어낸다(뱅크가 아니라 상대 주머니에서 나온다. 1인당 몫은 100점 단위로 내림). 태우면 게이지는 0이 되고 다시 처음부터 쌓인다.",
   // 봇: 태우는 데 자해 위험이 없다 — 게이지가 차서 옵션이 뜨면 즉시 태운다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "score",
+    fleeting: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

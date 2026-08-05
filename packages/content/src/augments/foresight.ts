@@ -42,6 +42,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "foresight";
 const REVEAL = "foresight_reveal";
@@ -292,12 +293,10 @@ export const foresight: AugmentDef = defineAugment({
    * 발동 국 화료에 +2판을 얻으므로 순이득이다. 이른 소모만 피하도록 중반에 연다.
    * (2026-07-26: 정책이 아예 없어 제시 30회에 발동 0회였다.)
    */
-  bot: {
-    choose({ options, view, holder }) {
-      const opt = options.find((o) => o.type === REVEAL);
-      if (opt === undefined) return null;
-      const myDiscards = view.zones[`discards:${holder}`]?.tileIds.length ?? 0;
-      return myDiscards >= 3 ? opt : null;
-    },
-  },
+  // 예전에는 "버림패 3장 이상"이라는 순목 조건을 이 파일이 직접 들고 있었다.
+  // 그 판단은 증강이 아니라 판의 문제라 planner의 `inform` 적기가 대신한다.
+  bot: plan({
+    intent: "inform",
+    pick: ({ options }) => options.find((o) => o.type === REVEAL) ?? null,
+  }),
 });

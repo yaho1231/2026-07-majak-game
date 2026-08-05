@@ -52,6 +52,7 @@ import {
   yakuHolders,
 } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "open_riichi_reveal";
 const ACTION = "open_riichi";
@@ -241,10 +242,10 @@ export const openRiichiReveal: AugmentDef = defineAugment({
   },
   // 손을 공개하는 대신 직격(론) 보너스를 노리는 오픈 리치 — 텐파이일 때, 대기를 가장
   // 덜 해치는(가장 고립된) 패로 선언한다. 후보 자체가 '버려도 대기가 남는' 패만 나온다.
-  bot: {
-    choose({ options, view, holder, tenpai }) {
-      if (!tenpai) return null;
-      return pickIsolatedDiscard(view, holder, options, ACTION);
-    },
-  },
+  bot: plan({
+    intent: "score",
+    fleeting: true,
+    pick: ({ options, view, holder, tenpai }) =>
+      tenpai ? pickIsolatedDiscard(view, holder, options, ACTION) : null,
+  }),
 });

@@ -36,6 +36,7 @@ import type {
 } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "even_world";
 const ACTION = "even_world_flip";
@@ -164,11 +165,12 @@ export const evenWorld: AugmentDef = defineAugment({
   },
   // 홀수 수패를 짝수로 몰아 짝·슌쯔·탕야오를 만든다 — 손이 약할 때(고립패가 많을 때)만
   // 발동해, 이미 잘 짜인 손을 헝클지 않는다.
-  bot: {
-    choose(ctx) {
-      const opt = ctx.options.find((o) => o.type === ACTION);
-      if (opt === undefined) return null;
-      return handIsPoor(ctx) ? opt : null;
-    },
-  },
+  // 손을 통째로 갈아엎는 증강 — **나쁜 손이 곧 발동 조건**이라 planner의 `advance`
+  // 적기(손이 가까울수록 높다)와 방향이 반대다. 타이밍은 `pick`이 직접 본다.
+  bot: plan({
+    intent: "advance",
+    fleeting: true,
+    pick: (ctx) =>
+      handIsPoor(ctx) ? (ctx.options.find((o) => o.type === ACTION) ?? null) : null,
+  }),
 });

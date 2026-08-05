@@ -39,6 +39,7 @@ import type {
   RuleRegistry,
 } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "tenpai_scan";
 const ACTION = "tenpai_scan_use";
@@ -126,12 +127,11 @@ export const tenpaiScan: AugmentDef = defineAugment({
   // "밀지 접을지"의 정보라, 예전의 '내가 텐파이일 때만' 게이트는 정작 수비가 필요한
   // 노텐 구간을 막고 있었다(2026-07-26: 제시 31회에 발동 0회). 너무 이른 소모만
   // 피하도록 내 바닥이 5장 이상 쌓인 중반 이후로 연다.
-  bot: {
-    choose({ options, view, holder }) {
-      const opt = options.find((o) => o.type === ACTION);
-      if (opt === undefined) return null;
-      const myDiscards = view.zones[`discards:${holder}`]?.tileIds.length ?? 0;
-      return myDiscards >= 5 ? opt : null;
-    },
-  },
+  // "누가 텐파이인가"는 막는 데 쓰는 정보다 — 위험이 실재할 때 값이 있다.
+  // 예전의 "버림패 5장 이상" 순목 조건을 planner의 `defend` 적기가 대신한다.
+  bot: plan({
+    intent: "defend",
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

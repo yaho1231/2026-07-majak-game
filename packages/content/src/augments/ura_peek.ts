@@ -35,6 +35,7 @@ import type {
 } from "@majak/core";
 import type { VisibilityRule } from "@majak/core";
 import { flagOf, roundKey, roundViewKey, viewKey, widenPeek } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "ura_peek";
 const ACTION = "ura_peek_reveal";
@@ -153,12 +154,12 @@ export const uraPeek: AugmentDef = defineAugment({
     "(매 국 1회 + 바꿔치기 1회) 자기 순에 이번 국의 뒷도라 표시패를 자신만 확인한다. 한 번 열면 그 국 동안 유지되어 깡으로 뒷도라가 늘어나면 새 표시패도 자동으로 보인다. 확인한 국에는 추가로 1회, 뒷도라 표시패를 왕패의 다른 패와 통째로 맞바꿔 내 손에 맞는 뒷도라를 직접 만들 수 있다(도라 표시패 자리는 건드릴 수 없다). 고를 수 있도록 바꿔치기를 쓰기 전까지 왕패 전체가 자신에게만 보인다. 국이 바뀌면 확인한 정보는 지워진다.",
   // 봇: 텐파이일 때 확인한다 — 리치를 걸지 다마텐으로 갈지 판단할 정보가 가장 필요한 시점.
   //     (바꿔치기는 내 손패와 맞춰 골라야 해서 봇에게 맡기지 않는다.)
-  bot: {
-    choose({ options, tenpai }) {
-      if (!tenpai) return null;
-      return options.find((o) => o.type === ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "inform",
+    oneShot: true,
+    pick: ({ options, tenpai }) =>
+      tenpai ? (options.find((o) => o.type === ACTION) ?? null) : null,
+  }),
   install(ctx) {
     const { engine, holder } = ctx;
 

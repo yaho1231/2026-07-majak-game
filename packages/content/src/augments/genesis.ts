@@ -51,6 +51,7 @@ import {
   statePrng,
 } from "../util.js";
 import { handIsPoor, handKindsOf } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "genesis";
 const ACTION = "genesis_flip";
@@ -247,11 +248,12 @@ export const genesis: AugmentDef = defineAugment({
     });
   },
   // 자패↔수패를 통째로 뒤섞는 도박수 — 손이 명백히 약할 때만 던진다(좋은 손은 지킨다).
-  bot: {
-    choose(ctx) {
-      const opt = ctx.options.find((o) => o.type === ACTION);
-      if (opt === undefined) return null;
-      return handIsPoor(ctx) ? opt : null;
-    },
-  },
+  // 손을 통째로 갈아엎는 증강 — **나쁜 손이 곧 발동 조건**이라 planner의 `advance`
+  // 적기(손이 가까울수록 높다)와 방향이 반대다. 타이밍은 `pick`이 직접 본다.
+  bot: plan({
+    intent: "advance",
+    fleeting: true,
+    pick: (ctx) =>
+      handIsPoor(ctx) ? (ctx.options.find((o) => o.type === ACTION) ?? null) : null,
+  }),
 });

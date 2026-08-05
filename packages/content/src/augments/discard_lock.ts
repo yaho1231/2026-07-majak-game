@@ -42,6 +42,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { roundViewKey, statePrng } from "../util.js";
+import { plan } from "./botPlan.js";
 
 /** 봉인 확정 이벤트 (증강 id에서 파생한 이름 — 다른 증강과 충돌 방지) */
 const DISCARD_LOCK_SEALED = "DiscardLockSealed";
@@ -250,9 +251,10 @@ export const discardLock: AugmentDef = defineAugment({
   },
   // 국 시작에만 제시되며 상대 전원의 손패를 묶는 순수 방해 이득(자해 없음) —
   // 제시되면 항상 발동한다.
-  bot: {
-    choose({ options }) {
-      return options.find((o) => o.type === SEAL_ACTION) ?? null;
-    },
-  },
+  bot: plan({
+    intent: "disrupt",
+    fleeting: true,
+    oneShot: true,
+    pick: ({ options }) => options.find((o) => o.type === SEAL_ACTION) ?? null,
+  }),
 });

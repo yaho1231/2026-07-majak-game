@@ -37,6 +37,7 @@ import {
   riichiBlocksSwap,
 } from "./stealthBreak.js";
 import { handIsPoor } from "./botHelpers.js";
+import { plan } from "./botPlan.js";
 
 const ID = "full_hand_swap";
 const ACTION = "hand_swap";
@@ -175,12 +176,15 @@ export const fullHandSwap: AugmentDef = defineAugment({
   },
   // 내 손이 명백히 나쁠 때만 상대 손을 통째로 강탈한다. 상대 손 속은 볼 수 없으므로
   // 대상은 무작위로 고른다(누구를 뺏어도 내 쓰레기 손보다는 기대값이 높다).
-  bot: {
-    choose(ctx) {
+  // 나쁜 손이 곧 발동 조건 — planner의 `advance` 적기와 방향이 반대다(위 개벽 참고)
+  bot: plan({
+    intent: "advance",
+    fleeting: true,
+    pick: (ctx) => {
       if (!handIsPoor(ctx)) return null;
       const mine = ctx.options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
       return mine[ctx.rng.int(mine.length)] ?? mine[0] ?? null;
     },
-  },
+  }),
 });
