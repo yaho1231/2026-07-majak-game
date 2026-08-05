@@ -112,7 +112,10 @@ export class BotAgent implements PlayerAgent {
   private readonly rng: Prng;
   /** 증강 정책이 쓰는 결정론 난수 어댑터 (같은 rng를 공유) */
   private readonly botRng: BotRng;
-  /** 이 봇의 성격 — 미는 정도·우는 문턱·생각 시간이 여기서 갈린다 */
+  /**
+   * 이 봇의 성격 — 원형(공격형·수비형·속공형·타점형·균형형·변덕형) 하나에서 나온다.
+   * 미는 정도·우는 문턱·타점 취향·참을성·흔들림·허세가 전부 여기서 갈린다.
+   */
   private readonly profile: BotProfile;
   /** 증강 id → 정의 (액티브 증강 정책 조회용). 없으면 봇은 증강을 발동하지 않는다 */
   private readonly catalog: ReadonlyMap<string, AugmentDef>;
@@ -262,7 +265,14 @@ export class BotAgent implements PlayerAgent {
       call,
       bidPass(read, options, this.plan, this.profile),
       bidRiichi(read, options.filter((o) => o.type === "riichi"), this.plan, this.profile),
-      bidDiscard(read, options.filter((o) => o.type === "discard"), this.plan, this.profile),
+      bidDiscard(
+        read,
+        options.filter((o) => o.type === "discard"),
+        this.plan,
+        this.profile,
+        // 사람다운 흔들림 — 값이 엇비슷한 후보들 사이에서만 갈린다(bot/profile.ts)
+        this.botRng,
+      ),
     ]);
     if (turn !== null) {
       // 후로가 이겼으면 이번 국의 역 방향이 그 콜로 확정된다
@@ -339,7 +349,9 @@ export class BotAgent implements PlayerAgent {
       if (match === undefined) continue;
       bids.push({
         option: match,
-        value: augmentPoints(weighted.weight, handPoints),
+        // 참을성 있는 봇은 같은 강도라도 "지금 태우는 것"의 값을 낮게 본다 —
+        // 아껴 두었다 더 좋은 자리에서 쓰려 한다.
+        value: augmentPoints(weighted.weight, handPoints) * (1.15 - this.profile.patience * 0.3),
         reason: `증강 ${augId} (강도 ${weighted.weight})`,
       });
     }
