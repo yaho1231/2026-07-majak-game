@@ -497,6 +497,10 @@ installAugment(engine, def, holder)  ──▶ Registry에 능력 등록        
   같은 옵션을 화료·텐파이·대기·후리텐에 흘린다. 무엇이 될지는 고르지 않고 `evaluateWin`이
   변형 전부를 재서 **가장 비싼 것**을 채택한다(조커). 도라는 물리적인 패로 세고,
   후로(치·펑·깡) 판정은 조커를 보지 않는다.
+  **조커가 넓힌 대기는 후리텐을 만들지 않는다** (2026-08-07 사용자 확정) — 그대로 세면
+  "무엇으로도 화료할 수 있는데 론만 못 한다"가 되어 능력이 스스로를 잠근다(§0 무페널티 원칙).
+  판정은 `helpers.furitenOptionsOf` 한 곳이고(론 검증·뷰의 후리텐 사유·동순내 후리텐 마킹이
+  전부 이걸 거친다), 규칙 `win.furiten.countWildWaits`로 표준 동작을 되돌릴 수 있다.
 - **채점 변형 규칙**: `scoring.wrapRuns`(순환 슌쯔) / `scoring.totalSets`(5멘쯔) /
   `scoring.kokushiMeldAssist`(펑 국사) / `win.blockedYaku`(역 봉인) —
   `scoringOptionsOf`가 DecomposeOptions로 묶어 모든 판정 지점에 적용.

@@ -1152,6 +1152,11 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("scoring.honorRuns", false);
   /** 손패에서 무엇이든 될 수 있는 패(조커)의 종류 — 조커. 기본 없음 */
   rules.define<readonly TileKind[]>("scoring.wildKinds", []);
+  /**
+   * 조커가 **넓힌** 대기까지 후리텐으로 셀 것인가. 기본 false —
+   * 조커가 없었어도 잡을 수 있었던 패만 후리텐을 만든다 (helpers.furitenOptionsOf).
+   */
+  rules.define("win.furiten.countWildWaits", false);
   /** 같은 무늬 연속 4장(3-4-5-6)을 한 깡으로 — 장사진 */
   rules.define("call.snakeKan", false);
   /** 리치 선언에 텐파이를 요구한다 (공성계 = 가짜 리치 허용 시 false) */

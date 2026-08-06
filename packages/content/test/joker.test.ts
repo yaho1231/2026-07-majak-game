@@ -22,6 +22,7 @@ import {
   evaluateWin,
   handIdsOf,
   installAugment,
+  isFuriten,
   kindKey,
   scoringOptionsOf,
   shantenOf,
@@ -199,6 +200,40 @@ describe("조커 — 화료와 채점", () => {
     );
     expect(ev).not.toBeNull();
     expect(ev?.ok).toBe(true);
+  });
+});
+
+// ───────────────────────── 4b. 후리텐 ─────────────────────────
+
+describe("조커 — 넓힌 대기는 후리텐을 만들지 않는다", () => {
+  const furiten = (game: Game): boolean =>
+    isFuriten(game.engine.state, "p0", optsOf(game), game.engine.rules);
+
+  it("조커가 새로 열어 준 대기는 이미 버렸어도 후리텐이 아니다", () => {
+    // 백이 없었다면 텐파이조차 아니었던 손 — 1삭은 조커가 열어 준 대기다
+    const game = mk("111999m55m23s23p5z", { discards: "1s" });
+    fire(game);
+    expect(waitsOf(game)).toContain("sou1");
+    expect(furiten(game)).toBe(false);
+  });
+
+  it("조커가 없었어도 잡을 수 있었던 패는 그대로 후리텐이다", () => {
+    // 14통 대기는 백과 무관하게 원래 있던 대기다
+    const game = mk("111999m55m234s23p", { discards: "1p" });
+    fire(game);
+    expect(furiten(game)).toBe(true);
+  });
+
+  it("조커 덕에 대기가 된 백을 버렸어도 후리텐이 아니다", () => {
+    const game = mk("111999m55m234s23p", { discards: "5z" });
+    fire(game);
+    expect(waitsOf(game)).toContain("dragon1");
+    expect(furiten(game)).toBe(false);
+  });
+
+  it("발동 전에는 표준 후리텐 그대로다", () => {
+    const game = mk("111999m55m234s23p", { discards: "1p" });
+    expect(furiten(game)).toBe(true);
   });
 });
 
