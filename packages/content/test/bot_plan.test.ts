@@ -368,3 +368,25 @@ describe("갈아엎기로 다시 배정한 것들", () => {
     expect(readiness("rewrite", junk)).toBeGreaterThan(readiness("advance", junk));
   });
 });
+
+/**
+ * **문턱과 적기가 서로 맞물려 정책을 죽이지 않는가.**
+ *
+ * 시간 정지가 정확히 그렇게 죽어 있었다 — `pick`이 텐파이일 때만 후보를 내는데
+ * `advance` 적기의 텐파이 값(0.3)이 `oneShot` 문턱(0.15+0.2=0.35)보다 낮아,
+ * **조건이 맞는 유일한 순간에 언제나 막혔다.** 숫자 둘이 각자 그럴듯해서 아무도
+ * 안 봤다. 그 관계를 여기에 못 박는다.
+ */
+describe("문턱과 적기의 관계", () => {
+  it("텐파이 전용 advance 정책은 발동할 수 있어야 한다", () => {
+    const fit = readiness("advance", ctx({ tenpai: true, shanten: 0 }));
+    // 문턱(MIN_READINESS.advance = 0.15)을 넘는다 — 넘지 못하면 그 정책은 영영 죽는다
+    expect(fire(always("advance"), ctx({ tenpai: true, shanten: 0 }))).toEqual(OPT);
+    expect(fit).toBeGreaterThan(0.15);
+  });
+
+  it("거기에 oneShot을 얹으면 텐파이에서 죽는다 — 이 조합을 쓰면 안 된다", () => {
+    // 이 테스트는 "고쳐야 할 상태"를 박아 두는 것이 아니라 **왜 뗐는지**를 남기는 것이다.
+    expect(fire(always("advance", { oneShot: true }), ctx({ tenpai: true, shanten: 0 }))).toBeNull();
+  });
+});

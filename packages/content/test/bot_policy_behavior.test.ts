@@ -21,6 +21,7 @@ import { disarm } from "../src/augments/disarm.js";
 import { alchemist } from "../src/augments/alchemist.js";
 import { rankGate } from "../src/augments/rank_gate.js";
 import { parasite } from "../src/augments/parasite.js";
+import { timeStop } from "../src/augments/time_stop.js";
 import { botCtx, h } from "./helpers.js";
 
 /** 결정론 rng (정책이 요구하지만 이 테스트 케이스들은 실제로 쓰지 않는다). */
@@ -248,5 +249,25 @@ describe("counterplay 스위치를 끄면 예전 판단 그대로다", () => {
     ];
     const picked = botChosenOption(pick(disarm, { ...ctx(view, opts), threat: 0.9 }) ?? null);
     expect((picked?.payload as { target?: string }).target).toBe("p2");
+  });
+});
+
+/**
+ * **수학적으로 죽어 있던 정책** — 25배패 계측에서 "정책이 있는데 한 번도 발동 못 한 것"을
+ * 세다가 걸렸다. 시간 정지는 `pick`이 텐파이일 때만 후보를 내는데, `advance` 적기는
+ * 텐파이를 0.3으로 보고 `oneShot` 문턱이 0.35라 **조건이 맞는 유일한 순간에 언제나
+ * 막혔다.** 다섯 번 들고 한 번도 못 썼다.
+ */
+describe("시간 정지 — 텐파이에서 실제로 발동한다", () => {
+  const OPT = { type: "time_stop_use", payload: {} };
+
+  it("텐파이면 발동한다 (예전에는 문턱에 막혀 영영 못 했다)", () => {
+    const view = fakeView("p0", "123m456p789s11z2z", [{ id: "p0", seat: 0 }]);
+    expect(botChosenOption(pick(timeStop, ctx(view, [OPT], true)) ?? null)).toEqual(OPT);
+  });
+
+  it("텐파이가 아니면 발동하지 않는다 (조건은 그대로다)", () => {
+    const view = fakeView("p0", "123m456p789s11z2z", [{ id: "p0", seat: 0 }]);
+    expect(botChosenOption(pick(timeStop, ctx(view, [OPT], false)) ?? null)).toBeNull();
   });
 });
