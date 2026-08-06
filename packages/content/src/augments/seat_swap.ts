@@ -258,7 +258,8 @@ export const seatSwap: AugmentDef = defineAugment({
   // 자리와 손패를 통째로 맞바꾼다 — 내가 오야가 아닐 때, 오야 상대와 바꿔 오야(연장·1.5배
   // 점수)와 그 손패까지 빼앗는다. 이미 오야면 얻을 게 없어 발동하지 않는다.
   bot: plan({
-    intent: "advance",
+    // 자리와 손패를 통째로 맞바꾼다 — 갈아엎기다
+    intent: "rewrite",
     // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
     fleeting: true,
     pick: (ctx) => {

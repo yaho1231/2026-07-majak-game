@@ -19,6 +19,8 @@ import { bigHand } from "../src/augments/big_hand.js";
 import { tableFlip } from "../src/augments/table_flip.js";
 import { disarm } from "../src/augments/disarm.js";
 import { alchemist } from "../src/augments/alchemist.js";
+import { rankGate } from "../src/augments/rank_gate.js";
+import { parasite } from "../src/augments/parasite.js";
 import { botCtx, h } from "./helpers.js";
 
 /** 결정론 rng (정책이 요구하지만 이 테스트 케이스들은 실제로 쓰지 않는다). */
@@ -154,5 +156,97 @@ describe("봇 액티브 증강 정책 동작", () => {
     // 7s는 이미 8s·9s와 이어져 쓸모 있다 — 바꿔봐야 개선이 아니므로 아낀다
     const noop = { type: "alchemy", payload: { tileId: kindId("7s"), delta: 1 } };
     expect(pick(alchemist, ctx(view, [noop]))).toBeNull();
+  });
+});
+
+/**
+ * **카운터플레이** — 상대 증강은 `PlayerInfo.augments`로 뷰에 버젓이 보이는데,
+ * 정책들은 그것을 "몇 장인가"로만 세거나 아예 안 봤다. 무엇이 무서운지는
+ * `AUGMENT_PLAY`(코어)가 이미 표로 갖고 있다.
+ */
+describe("상대 증강을 보고 표적을 고른다 (counterplay)", () => {
+  /** 채택 전이라 스위치 뒤에 있다 — 검사는 켠 상태로 한다 */
+  const ON = { flags: new Set(["counterplay"]) };
+
+  it("무장해제: 장수가 아니라 **무엇이 무서운가**로 잠근다", () => {
+    // p1은 뚫린 천장 한 장(상한 없음), p2는 도라 잔챙이 셋. 예전 정책은 장수만 세서
+    // p2를 골랐고, 그 안에서 무엇을 잠글지는 아예 보지 않았다.
+    const view = fakeView("p0", "123m456p789s11z2z", [
+      { id: "p0", seat: 0 },
+      { id: "p1", seat: 1, augments: ["aotenjou_ceiling"] },
+      { id: "p2", seat: 2, augments: ["red_five_touch", "snake_kan", "north_trader"] },
+    ]);
+    const opts = [
+      { type: "disarm_lock", payload: { target: "p2", augmentId: "red_five_touch" } },
+      { type: "disarm_lock", payload: { target: "p2", augmentId: "snake_kan" } },
+      { type: "disarm_lock", payload: { target: "p2", augmentId: "north_trader" } },
+      { type: "disarm_lock", payload: { target: "p1", augmentId: "aotenjou_ceiling" } },
+    ];
+    const picked = botChosenOption(pick(disarm, { ...ctx(view, opts), threat: 0.9, ...ON }) ?? null);
+    expect(picked?.payload).toEqual({ target: "p1", augmentId: "aotenjou_ceiling" });
+  });
+
+  it("격(格): 좌석 순서가 아니라 위협으로 지목한다", () => {
+    const view = fakeView("p0", "123m456p789s11z2z", [
+      { id: "p0", seat: 0 },
+      { id: "p1", seat: 1, augments: [] },
+      { id: "p2", seat: 2, augments: ["eternal_dealer"] },
+      { id: "p3", seat: 3, augments: [] },
+    ]);
+    // 후보 목록의 첫 번째는 p1 — 예전 정책은 언제나 이쪽을 찍었다
+    const opts = [
+      { type: "rank_gate_mark", payload: { target: "p1" } },
+      { type: "rank_gate_mark", payload: { target: "p2" } },
+      { type: "rank_gate_mark", payload: { target: "p3" } },
+    ];
+    const picked = botChosenOption(pick(rankGate, { ...ctx(view, opts), ...ON }) ?? null);
+    expect((picked?.payload as { target?: string }).target).toBe("p2");
+  });
+
+  it("기생충: 점수판이 아니라 **이번 국에 벌 것 같은 사람**에게 붙는다", () => {
+    const view = fakeView("p0", "123m456p789s11z2z", [
+      { id: "p0", seat: 0 },
+      { id: "p1", seat: 1, score: 40000 }, // 부자지만 이번 국엔 조용하다
+      { id: "p2", seat: 2, score: 12000 }, // 가난하지만 리치를 걸었다
+    ]);
+    (view.round as { byPlayer: Record<string, unknown> }).byPlayer = {
+      p2: { riichiDeclared: true, meldCount: 0, melds: [] },
+    };
+    const opts = [
+      { type: "parasite_attach", payload: { target: "p1" } },
+      { type: "parasite_attach", payload: { target: "p2" } },
+    ];
+    const picked = botChosenOption(pick(parasite, { ...ctx(view, opts), threat: 0.9, ...ON }) ?? null);
+    expect((picked?.payload as { target?: string }).target).toBe("p2");
+  });
+});
+
+describe("counterplay 스위치를 끄면 예전 판단 그대로다", () => {
+  it("격(格)은 목록의 첫 번째(좌석 순서)를 찍는다", () => {
+    const view = fakeView("p0", "123m456p789s11z2z", [
+      { id: "p0", seat: 0 },
+      { id: "p1", seat: 1, augments: [] },
+      { id: "p2", seat: 2, augments: ["eternal_dealer"] },
+    ]);
+    const opts = [
+      { type: "rank_gate_mark", payload: { target: "p1" } },
+      { type: "rank_gate_mark", payload: { target: "p2" } },
+    ];
+    const picked = botChosenOption(pick(rankGate, ctx(view, opts)) ?? null);
+    expect((picked?.payload as { target?: string }).target).toBe("p1");
+  });
+
+  it("무장해제는 증강을 가장 많이 든 상대를 찍는다", () => {
+    const view = fakeView("p0", "123m456p789s11z2z", [
+      { id: "p0", seat: 0 },
+      { id: "p1", seat: 1, augments: ["aotenjou_ceiling"] },
+      { id: "p2", seat: 2, augments: ["red_five_touch", "snake_kan", "north_trader"] },
+    ]);
+    const opts = [
+      { type: "disarm_lock", payload: { target: "p1", augmentId: "aotenjou_ceiling" } },
+      { type: "disarm_lock", payload: { target: "p2", augmentId: "red_five_touch" } },
+    ];
+    const picked = botChosenOption(pick(disarm, { ...ctx(view, opts), threat: 0.9 }) ?? null);
+    expect((picked?.payload as { target?: string }).target).toBe("p2");
   });
 });

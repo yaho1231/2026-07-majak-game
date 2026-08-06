@@ -168,10 +168,10 @@ export const evenWorld: AugmentDef = defineAugment({
   // 손을 통째로 갈아엎는 증강 — **나쁜 손이 곧 발동 조건**이라 planner의 `advance`
   // 적기(손이 가까울수록 높다)와 방향이 반대다. 타이밍은 `pick`이 직접 본다.
   bot: plan({
-    intent: "advance",
-    // 손을 통째로 고치는 물건은 **회수할 순목이 남아 있을 때만** 값이 난다.
-    // 자기 순이면 언제든 되므로 미룰 수 있다.
+    intent: "rewrite",
+    // 방향을 바로잡아 다시 잰다 — 끄면 예전처럼 제시되는 즉시 발동한다
     fleeting: reviewedFleeting,
+    // 손패의 홀수를 통째로 갈아엎는다 — **잡손일수록 값이 난다.**
     pick: (ctx) =>
       handIsPoor(ctx) ? (ctx.options.find((o) => o.type === ACTION) ?? null) : null,
   }),

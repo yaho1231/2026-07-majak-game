@@ -265,3 +265,106 @@ describe("채택된 배치 1 — 무장해제는 아무 일 없는 1순에 태�
     expect(fireDisarm({ turn: 12, threat: 0 })).toEqual(DISARM_ACTION);
   });
 });
+
+/**
+ * 값어치 표 — 점수 증강의 적기는 "이 손이 값이 붙을 손인가"를 묻는데, 그 손 값어치에
+ * **내가 든 패시브가 빠져 있었다.** 뚫린 천장을 들고도 평범한 손으로 세면, 이미 비싼
+ * 손을 싸구려로 보고 접는다.
+ */
+describe("내 증강이 내 손 값어치에 반영된다 (counterplay)", () => {
+  const ON = new Set(["counterplay"]);
+  const withAug = (augments: string[], flags?: ReadonlySet<string>) =>
+    ctx({
+      handPoints: 2600,
+      shanten: 1,
+      ...(flags === undefined ? {} : { flags }),
+      view: {
+        players: [{ id: "p0", augments }],
+      } as unknown as BotDecisionContext["view"],
+    });
+
+  it("상한을 없애는 증강을 들었으면 같은 손이 더 값나간다", () => {
+    expect(readiness("score", withAug(["aotenjou_ceiling"], ON))).toBeGreaterThan(
+      readiness("score", withAug([], ON)),
+    );
+  });
+
+  it("방해·정보 증강은 손 값어치를 바꾸지 않는다", () => {
+    expect(readiness("score", withAug(["disarm", "xray_hand"], ON))).toBe(
+      readiness("score", withAug([], ON)),
+    );
+  });
+
+  it("스위치가 꺼져 있으면 예전 그대로다", () => {
+    expect(readiness("score", withAug(["aotenjou_ceiling"]))).toBe(
+      readiness("score", withAug([])),
+    );
+  });
+});
+
+/**
+ * `rewrite` — 측정이 만들어 낸 의도다.
+ *
+ * 개벽·짝수의 세계를 `advance`로 묶어 적기를 보게 했더니 400배패에서 순위
+ * −0.0037 ± 0.0094로 미세하게 밀렸다. 원인은 방향이었다 — 전진 적기는
+ * "가까울수록 밀 값이 있다"인데, **손을 통째로 갈아엎는 물건은 정반대**다.
+ * 적기 게이트가 그 물건이 가장 필요한 자리(잡손)에서 정확히 막고 있었다.
+ */
+describe("갈아엎기(rewrite) — 전진과 정확히 반대 방향이다", () => {
+  it("잡손일수록 값이 오른다", () => {
+    expect(readiness("rewrite", ctx({ shanten: 4 }))).toBeGreaterThan(
+      readiness("rewrite", ctx({ shanten: 2 })),
+    );
+  });
+
+  it("다 된 손은 흩지 않는다 (텐파이·1샹텐은 0)", () => {
+    expect(readiness("rewrite", ctx({ shanten: 0, tenpai: true }))).toBe(0);
+    expect(readiness("rewrite", ctx({ shanten: 1 }))).toBe(0);
+  });
+
+  it("전진과 방향이 반대다 (같은 손을 정반대로 본다)", () => {
+    const bad = ctx({ shanten: 4 });
+    const close = ctx({ shanten: 1 });
+    expect(readiness("rewrite", bad)).toBeGreaterThan(readiness("rewrite", close));
+    expect(readiness("advance", bad)).toBeLessThan(readiness("advance", close));
+  });
+
+  it("회수할 순목이 없으면 갈아엎어도 소용없다", () => {
+    expect(readiness("rewrite", ctx({ shanten: 4, wallLeft: 0 }))).toBe(0);
+  });
+});
+
+/**
+ * 의도 배정 — **축이 맞는가.**
+ *
+ * 배치 2가 걸린 함정이 정확히 이것이었다. 손을 통째로 갈아엎는 물건을 `advance`로
+ * 묶으면, 적기가 "가까울수록 값이 있다"로 계산돼 **그 물건이 가장 필요한 자리에서
+ * 값을 깎는다.** 전수로 훑어 같은 함정 다섯을 더 찾았다.
+ *
+ * 여섯은 전부 `fleeting: true`라 **발동 여부는 안 바뀐다** — 바뀌는 것은 여러 액티브가
+ * 동시에 발동하고 싶을 때의 **입찰 강도**다. 그 강도가 반대 방향이면, 잡손에서 손을
+ * 갈아엎을 기회를 다른 증강에게 뺏긴다.
+ */
+describe("갈아엎기로 다시 배정한 것들", () => {
+  const REWRITE = ["table_flip", "suit_unify", "full_hand_swap", "picky_eater", "seat_swap"];
+
+  it("손을 통째로 바꾸는 다섯은 rewrite다 (advance가 아니다)", async () => {
+    const mod = await import("../src/index.js");
+    const byId = new Map(mod.contentAugments.map((d) => [d.id, d]));
+    for (const id of REWRITE) {
+      const policy = byId.get(id)?.bot as { intent?: string } | undefined;
+      expect(policy?.intent, id).toBe("rewrite");
+    }
+  });
+
+  it("등 떠밀기는 방해다 — 내 손이 아니라 상대를 건드린다", async () => {
+    const mod = await import("../src/index.js");
+    const byId = new Map(mod.contentAugments.map((d) => [d.id, d]));
+    expect((byId.get("push_riichi")?.bot as { intent?: string }).intent).toBe("disrupt");
+  });
+
+  it("잡손에서 갈아엎기의 강도가 전진보다 높다 (뺏기지 않는다)", () => {
+    const junk = ctx({ shanten: 4, wallLeft: 60 });
+    expect(readiness("rewrite", junk)).toBeGreaterThan(readiness("advance", junk));
+  });
+});
