@@ -28,8 +28,9 @@ import type {
   RoundSettledPayload,
 } from "@majak/core";
 import {
+  cooldownReady,
+  cooldownUse,
   roundKey,
-  roundSeqOf,
   settleInterceptor,
   stringOf,
   trackRoundSeq,
@@ -47,8 +48,6 @@ const ACTION = "declare_big_hand";
 const COOLDOWN_ROUNDS = 2;
 /** 마지막으로 선언한 국의 roundKey (효과 게이팅용 — 그 국에만 효과가 산다) */
 const declaredKey = (h: PlayerId): string => `${ID}:round:${h}`;
-/** 마지막으로 선언한 국 시퀀스 (쿨다운 계산용) */
-const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 
 /** 이번 국에 큰손을 선언한 상태인가 (효과는 선언한 그 국에만 적용) */
 function declaredThisRound(state: GameState, holder: PlayerId): boolean {
@@ -65,9 +64,7 @@ function declaredThisRound(state: GameState, holder: PlayerId): boolean {
  */
 function canDeclare(state: GameState, holder: PlayerId): boolean {
   if (declaredThisRound(state, holder)) return false; // 이번 국엔 이미 걸었다
-  const used = state.augmentData[usedSeqKey(holder)];
-  if (typeof used !== "number") return true; // 한 번도 안 씀
-  return roundSeqOf(state, ID, holder) - used >= COOLDOWN_ROUNDS;
+  return cooldownReady(state, ID, holder, COOLDOWN_ROUNDS);
 }
 
 const declareAction: ActionDef<Record<string, never>> = {
@@ -92,7 +89,7 @@ const declareAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(declaredKey(req.player), roundKey(state)),
-    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
+    ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
   ],
 };
 
@@ -113,7 +110,7 @@ export const bigHand: AugmentDef = defineAugment({
     }
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 업사이드 — 선언한 국에 화료 수령액이 만관 미만이면 뱅크에서 채워 받는다.
     //

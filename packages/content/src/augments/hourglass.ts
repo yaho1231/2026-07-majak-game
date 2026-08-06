@@ -44,6 +44,9 @@ import type {
 import {
   flagOf,
   roundKey,
+  cooldownReady,
+  cooldownUsedKey,
+  cooldownViewKey,
   roundSeqOf,
   roundViewKey,
   settleInterceptor,
@@ -68,14 +71,9 @@ const EXTRA_TILES = 4;
  * "유국 순간 텐파이"라 기회 자체가 드물어, 매치당 횟수 제한까지 겹치면 사장된다.
  */
 const COOLDOWN_ROUNDS = 2;
-/** 마지막으로 연장한 국 시퀀스 (big_hand와 같은 쿨다운 계산) */
-const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
-
 /** 지금 연장할 수 있는가 — 쓴 적이 없거나, 마지막 사용 이후 2국이 지났다 */
 function offCooldown(state: GameState, h: PlayerId): boolean {
-  const used = state.augmentData[usedSeqKey(h)];
-  if (typeof used !== "number") return true;
-  return roundSeqOf(state, ID, h) - used >= COOLDOWN_ROUNDS;
+  return cooldownReady(state, ID, h, COOLDOWN_ROUNDS);
 }
 /** 이번 국에 이미 연장했는가 — 두 번째 유국은 그대로 통과 (무한 연장 방지) */
 const openedKey = (state: GameState, h: PlayerId): string =>
@@ -118,8 +116,9 @@ export const hourglass: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [openedKey(state, p.holder)]: true,
-            // 이 국을 쿨다운 기준점으로 찍는다 (2국이 지나야 다시 열린다)
-            [usedSeqKey(p.holder)]: roundSeqOf(state, ID, p.holder),
+            // 이 국을 쿨다운 기준점으로 찍고, 잔량 표시도 그 자리에서 갱신한다
+            [cooldownUsedKey(ID, p.holder)]: roundSeqOf(state, ID, p.holder),
+            [cooldownViewKey(ID, p.holder)]: COOLDOWN_ROUNDS,
             [roundViewKey("*", `${ID}:${p.holder}`)]: p.tiles.length,
           },
         };
@@ -127,7 +126,7 @@ export const hourglass: AugmentDef = defineAugment({
     }
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 유국 정산을 가로채 연장으로 대체한다
     // 정산 단계: Replace — 정산 이벤트 자체를 대체한다(유국 취소) — 반드시 맨 앞.

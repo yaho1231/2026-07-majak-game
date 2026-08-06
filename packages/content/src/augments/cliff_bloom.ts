@@ -6,8 +6,14 @@
  *   ① 깡을 할 때마다 영상패를 운에 맡기지 않는다 — 왕패 앞 4장을 보고 **원하는 것을 고른다**
  *      (전용 선택 모달, `bloom_pick`).
  *   ② 같은 국에서 **두 번째 깡을 완성하는 순간 손이 만개한다** — 손패가 그 자리에서
- *      완성형으로 다시 피어나(conjured) **패와 상관없이 즉시 영상개화로 화료**할 수 있다.
- *      텐파이였는지, 무엇을 들고 있었는지는 전혀 상관없다.
+ *      완성형으로 다시 피어나 **패와 상관없이 즉시 영상개화로 화료**할 수 있다.
+ *      텐파이였는지는 상관없다.
+ *
+ * 2026-08-06 사용자 지시: 만개형을 고정 배치에서 **지금 손과 가장 가까운 화료형**으로
+ * 바꿨다. 예전에는 무엇을 들고 있었든 똑같은 손(동동 + 만123·만567 …)이 나와서 "내 손이
+ * 피어난다"가 아니라 "남의 손이 배달된다"로 보였다. 이제 살릴 수 있는 패는 그대로 두고
+ * (conjured가 안 붙는다) 모자란 자리만 만들어 낸다 — 대신 걸어오던 방향의 역이 그대로
+ * 붙을 수 있다(고정 배치는 어떤 손에서도 역이 안 붙게 깎아 둔 것이었다).
  *
  * 리미트는 "한 국에 깡을 두 번 해야 한다"는 조건 자체다 — 페널티는 붙이지 않는다
  * (10_AUGMENT_SYSTEM §0 "리미트는 횟수로 준다").
@@ -34,7 +40,9 @@ import {
   defineAugment,
   handIdsOf,
   handZone,
+  isWinningShape,
   kindKey,
+  kindOf,
   meldCountOf,
   moveTiles,
   playerAtSeat,
@@ -127,10 +135,153 @@ interface BloomPickPayload {
   takenTileId: TileId;
 }
 
+/** 슌쯔를 만들 수 있는 무늬 (자패는 커쯔·머리만) */
+const NUMBER_SUITS: readonly Suit[] = ["man", "pin", "sou"];
+
 /**
- * 손패를 완성형으로 다시 짠다 — 머리(자패) 1개 + 남은 멘쯔 수만큼의 슌쯔.
- * 무늬·숫자를 흩어 배치해 삼색·일기통관 같은 역이 우연히 붙지 않게 한다
- * (만개의 보상은 판수가 아니라 '확정 화료'다).
+ * 손패와 하나도 안 겹칠 때 쓰는 **채움 멘쯔표**. (무늬, 시작 랭크)가 전부 서로 달라야 한다 —
+ * 예전에는 `suits[i % 3]` + `1 + (i % 3) * 2`라 i=0과 i=3이 똑같이 만123이 되어
+ * 멘젠 만개마다 **이페코가 확정으로** 붙었다(docs/25 벽패 #5).
+ *
+ * 아래 배치는 세 역을 모두 피한다:
+ *  · 이페코 — (무늬,시작) 5쌍이 전부 다르다
+ *  · 삼색동순 — 같은 시작 랭크가 세 무늬에 걸치지 않는다 (1은 만에만, 7은 통에만)
+ *  · 일기통관 — 한 무늬 안의 시작이 {1,4,7}을 이루지 않는다 (만 1·5 / 통 3·7 / 삭 6)
+ * 진짜 용(5멘쯔)까지 감당하도록 5칸을 둔다.
+ */
+const FILLER_LAYOUT: readonly { suit: Suit; start: number }[] = [
+  { suit: "man", start: 1 },
+  { suit: "man", start: 5 },
+  { suit: "pin", start: 3 },
+  { suit: "sou", start: 6 },
+  { suit: "pin", start: 7 },
+];
+
+const fillerSet = (i: number): TileKind[] => {
+  const slot = FILLER_LAYOUT[i % FILLER_LAYOUT.length] as { suit: Suit; start: number };
+  return [0, 1, 2].map((j) => ({ suit: slot.suit, rank: slot.start + j }));
+};
+
+/** kind 목록 → kindKey별 장수 */
+function countKinds(kinds: readonly TileKind[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const k of kinds) {
+    const key = kindKey(k);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** 이 멘쯔를 쓰면 손패에서 **그대로 살아남는 장수** (겹치는 만큼) */
+function overlapOf(set: readonly TileKind[], remain: Map<string, number>): number {
+  let gain = 0;
+  for (const [key, need] of countKinds(set)) {
+    gain += Math.min(remain.get(key) ?? 0, need);
+  }
+  return gain;
+}
+
+/** 고른 멘쯔가 먹은 만큼 남은 장수에서 뺀다 */
+function consumeKinds(set: readonly TileKind[], remain: Map<string, number>): void {
+  for (const k of set) {
+    const key = kindKey(k);
+    const left = remain.get(key) ?? 0;
+    if (left > 0) remain.set(key, left - 1);
+  }
+}
+
+/**
+ * 손패에 **한 장이라도 걸치는** 멘쯔 후보 전부 (커쯔 + 그 패를 포함하는 슌쯔 셋).
+ * 손패와 전혀 안 겹치는 멘쯔는 어차피 이득이 0이라 후보에 넣을 이유가 없다 —
+ * 그 자리는 `FILLER_LAYOUT`이 결정론적으로 메운다.
+ *
+ * 손패 순서에서 만들어지므로 순서도 결정론적이다(리플레이 일치).
+ */
+function candidateSets(hand: readonly TileKind[]): TileKind[][] {
+  const out: TileKind[][] = [];
+  const seen = new Set<string>();
+  const push = (set: TileKind[]): void => {
+    const key = set.map(kindKey).join("/");
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(set);
+  };
+  for (const k of hand) {
+    push([k, k, k]);
+    if (!NUMBER_SUITS.includes(k.suit)) continue;
+    for (let start = Math.max(1, k.rank - 2); start <= Math.min(7, k.rank); start++) {
+      push([0, 1, 2].map((j) => ({ suit: k.suit, rank: start + j })));
+    }
+  }
+  return out;
+}
+
+/** 후보 화료형 하나 — 살아남는 장수(kept)가 클수록 원래 손과 가깝다 */
+interface HandCandidate {
+  kinds: TileKind[];
+  kept: number;
+}
+
+/**
+ * 표준형(머리 1 + 멘쯔 sets개) 중 **원래 손과 가장 많이 겹치는 것**.
+ *
+ * 머리 후보를 하나씩 놓고, 남은 장수에 대해 이득이 가장 큰 멘쯔를 탐욕적으로 집는다.
+ * 겹침은 열화(한 번 쓴 장은 줄어든다)하므로 탐욕이 최적에 아주 가깝고, 무엇보다
+ * **입력이 같으면 결과가 같다** — 리플레이·재구성이 어긋나지 않아야 한다.
+ */
+function bestStandardHand(hand: readonly TileKind[], sets: number): HandCandidate {
+  const pairCandidates: TileKind[] = [];
+  const seenPair = new Set<string>();
+  for (const k of hand) {
+    if (seenPair.has(kindKey(k))) continue;
+    seenPair.add(kindKey(k));
+    pairCandidates.push(k);
+  }
+  // 손이 비어 있을 리는 없지만, 후보가 없으면 예전 만개의 머리(동)를 쓴다
+  if (pairCandidates.length === 0) pairCandidates.push({ suit: "wind", rank: 1 });
+
+  const candidates = candidateSets(hand);
+  let best: HandCandidate | null = null;
+  for (const pair of pairCandidates) {
+    const remain = countKinds(hand);
+    let kept = Math.min(remain.get(kindKey(pair)) ?? 0, 2);
+    consumeKinds([pair, pair], remain);
+    const kinds: TileKind[] = [pair, pair];
+    let filler = 0;
+    for (let i = 0; i < sets; i++) {
+      let pick: TileKind[] | null = null;
+      let pickGain = 0;
+      for (const c of candidates) {
+        const gain = overlapOf(c, remain);
+        if (gain > pickGain) {
+          pickGain = gain;
+          pick = c;
+        }
+      }
+      // 더 살릴 패가 없으면 역이 우연히 붙지 않는 채움 멘쯔로 메운다
+      if (pick === null) pick = fillerSet(filler++);
+      kept += pickGain;
+      consumeKinds(pick, remain);
+      kinds.push(...pick);
+    }
+    if (best === null || kept > best.kept) best = { kinds, kept };
+  }
+  return best as HandCandidate;
+}
+
+/**
+ * 손패를 **지금 손과 가장 가까운 완성형**으로 다시 짠다.
+ *
+ * 2026-08-06 사용자 지시로 고정 배치(항상 동동 + 만123·만567 …)를 걷어냈다. 예전에는
+ * 무엇을 들고 있었든 똑같은 손이 나와서, 만개가 "내 손이 피어난다"가 아니라 "남의 손이
+ * 배달된다"로 보였다. 이제는 **살릴 수 있는 패를 최대한 살리고** 모자란 자리만 메운다.
+ *
+ * ⚠ 그 대가로 손이 걸어오던 방향의 역(청일색·탕야오 등)이 그대로 붙을 수 있다.
+ * 만개의 보상을 "확정 화료"로만 묶어 두던 예전 설계와 다른 지점이라, 값이 커진 만큼은
+ * 의도된 것이다(고정 배치는 어떤 손에서도 역이 안 붙게 깎아 둔 것이었다).
+ *
+ * 바뀌지 않은 패는 **changes에 넣지 않는다** — 진짜 패는 진짜인 채로 남고,
+ * `conjured`(생성패, 화면에 보라색·봇의 패 셈에서 제외)는 실제로 만들어 낸 자리에만 붙는다.
  */
 function bloomChanges(
   state: GameState,
@@ -141,45 +292,54 @@ function bloomChanges(
   // ⚠ 멘쯔 수를 4로 하드코딩하면 안 된다 — 진짜 용(scoring.totalSets=5, 손패 16/17장)
   //    보유자는 `sets*3+2`가 영원히 안 맞아 만개가 **한 번도 일어나지 않았다**(60차 수정).
   //    화료형의 단일 진실은 scoringOptionsOf다.
-  const totalSets = scoringOptionsOf(state, rules, holder).totalSets ?? 4;
-  const sets = totalSets - meldCountOf(state, holder);
+  const opts = scoringOptionsOf(state, rules, holder);
+  const totalSets = opts.totalSets ?? 4;
+  const melds = meldCountOf(state, holder);
+  const sets = totalSets - melds;
   if (sets < 0) return null;
   // 완성형은 머리 2장 + 멘쯔 3장씩 — 장수가 맞지 않으면 손대지 않는다(방어)
   if (concealed.length !== sets * 3 + 2) return null;
 
-  const changes: TileKindChangedPayload["changes"] = [];
-  const pair: TileKind = { suit: "wind", rank: 1 };
-  changes.push({ tileId: concealed[0] as TileId, kind: pair, attrs: { conjured: true } });
-  changes.push({ tileId: concealed[1] as TileId, kind: pair, attrs: { conjured: true } });
+  const hand = concealed.map((id) => kindOf(state, id));
+  // 치토이츠는 후보로 두지 않는다 — 만개는 깡 두 번이 조건이라 이 시점의 손은
+  // 반드시 후로 2개 이상이고, 멘젠 7작두는 애초에 성립하지 않는다.
+  let target = bestStandardHand(hand, sets).kinds;
+  // 화료형 판정 자체를 바꾸는 증강(우는 국사무쌍 등)과 겹치면 표준형이 화료가 아닐 수
+  // 있다. 그럴 때는 아무것도 안 하느니 예전 고정 배치를 그대로 쓴다.
+  if (!isWinningShape(target, melds, opts)) {
+    const fallback: TileKind[] = [
+      { suit: "wind", rank: 1 },
+      { suit: "wind", rank: 1 },
+    ];
+    for (let i = 0; i < sets; i++) fallback.push(...fillerSet(i));
+    if (!isWinningShape(fallback, melds, opts)) return null;
+    target = fallback;
+  }
 
-  // 만개 손의 멘쯔 배치표. (무늬, 시작 랭크) 조합이 **전부 서로 달라야** 한다 —
-  // 예전에는 `suits[i % 3]` + `1 + (i % 3) * 2`라 i=0과 i=3이 똑같이 만123이 되어
-  // 멘젠 만개마다 **이페코가 확정으로** 붙었다(docs/25 벽패 #5). 주석은 "삼색·일통
-  // 회피"라고 적혀 있었지만 정작 이페코를 만들고 있었다.
-  //
-  // 아래 배치는 세 역을 모두 피한다:
-  //  · 이페코 — (무늬,시작) 5쌍이 전부 다르다
-  //  · 삼색동순 — 같은 시작 랭크가 세 무늬에 걸치지 않는다 (1은 만에만, 7은 통에만)
-  //  · 일기통관 — 한 무늬 안의 시작이 {1,4,7}을 이루지 않는다 (만 1·5 / 통 3·7 / 삭 6)
-  // 진짜 용(5멘쯔)까지 감당하도록 5칸을 둔다.
-  const LAYOUT: readonly { suit: Suit; start: number }[] = [
-    { suit: "man", start: 1 },
-    { suit: "man", start: 5 },
-    { suit: "pin", start: 3 },
-    { suit: "sou", start: 6 },
-    { suit: "pin", start: 7 },
-  ];
-  for (let i = 0; i < sets; i++) {
-    const slot = LAYOUT[i % LAYOUT.length] as { suit: Suit; start: number };
-    const suit = slot.suit;
-    const start = slot.start;
-    for (let j = 0; j < 3; j++) {
-      changes.push({
-        tileId: concealed[2 + i * 3 + j] as TileId,
-        kind: { suit, rank: start + j },
-        attrs: { conjured: true },
-      });
-    }
+  // 이미 그 패를 들고 있는 자리부터 채운다 — 그만큼 손대지 않아도 된다
+  const need = countKinds(target);
+  const untouched = new Set<TileId>();
+  for (let i = 0; i < concealed.length; i++) {
+    const key = kindKey(hand[i] as TileKind);
+    const left = need.get(key) ?? 0;
+    if (left <= 0) continue;
+    need.set(key, left - 1);
+    untouched.add(concealed[i] as TileId);
+  }
+  const leftover: TileKind[] = [];
+  for (const [key, n] of need) {
+    const kind = target.find((k) => kindKey(k) === key);
+    if (kind === undefined) continue;
+    for (let i = 0; i < n; i++) leftover.push(kind);
+  }
+
+  const changes: TileKindChangedPayload["changes"] = [];
+  let next = 0;
+  for (const tileId of concealed) {
+    if (untouched.has(tileId)) continue;
+    const kind = leftover[next++];
+    if (kind === undefined) return null; // 수가 안 맞으면 손대지 않는다(방어)
+    changes.push({ tileId, kind, attrs: { conjured: true } });
   }
   return changes;
 }
@@ -230,9 +390,9 @@ export const cliffBloom: AugmentDef = defineAugment({
   category: "call",
   name: "절벽 위에 피어난 꽃",
   description:
-    "(상시) 깡을 할 때마다 영상패를 왕패 앞 4장 중에서 직접 고른다. 그리고 한 국에 깡을 두 번 하면 손패와 상관없이 그 자리에서 손이 만개해 즉시 영상개화로 화료하며, 그 영상개화는 4판으로 취급된다.",
+    "(상시) 깡을 할 때마다 영상패를 왕패 앞 4장 중에서 직접 고른다. 그리고 한 국에 깡을 두 번 하면 텐파이가 아니어도 그 자리에서 손이 만개해(지금 손과 가장 가까운 화료형으로) 즉시 영상개화로 화료하며, 그 영상개화는 4판으로 취급된다.",
   detail:
-    "(상시) 깡할 때마다 왕패 앞 4장을 모두 보고 영상패를 직접 고른다. 같은 국에서 두 번째 깡을 완성하면 텐파이였는지 무엇을 쥐고 있었는지와 무관하게 손패가 완성형으로 재구성되어 영상개화로 즉시 화료한다. 만개한 국의 화료에서는 영상개화가 1판이 아니라 4판으로 계산된다. 만개하지 않은 국의 화료에는 아무것도 얹히지 않는다.",
+    "(상시) 깡할 때마다 왕패 앞 4장을 모두 보고 영상패를 직접 고른다. 같은 국에서 두 번째 깡을 완성하면 텐파이였는지 무엇을 쥐고 있었는지와 무관하게 손패가 완성형으로 재구성되어 영상개화로 즉시 화료한다. 재구성은 지금 손패에서 살릴 수 있는 패를 최대한 살린 화료형으로 계산되므로, 걸어오던 방향의 역이 그대로 붙을 수 있다. 만개한 국의 화료에서는 영상개화가 1판이 아니라 4판으로 계산된다. 만개하지 않은 국의 화료에는 아무것도 얹히지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

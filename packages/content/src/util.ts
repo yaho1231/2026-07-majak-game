@@ -270,14 +270,86 @@ export function roundSeqOf(
 }
 
 /**
+ * 마지막으로 발동한 국의 순번을 담는 키 (보유자별).
+ * "N국에 1회" 증강 8종이 전부 같은 이름을 쓰고 있어 공용으로 끌어올렸다.
+ */
+export const cooldownUsedKey = (augmentId: string, holder: PlayerId): string =>
+  `${augmentId}:usedSeq:${holder}`;
+
+/**
+ * 쿨다운 잔량을 **보유자 본인에게만** 알리는 뷰 채널 (`cooldown:{augmentId}`).
+ *
+ * 값은 "앞으로 몇 국을 더 기다려야 하는가"(0 = 지금 쓸 수 있다). 쿨다운은 국을 넘어
+ * 이어지므로 `roundViewKey`(국 스코프)가 아니라 고정 채널을 쓰고, 대신 국이 시작될
+ * 때마다 `trackRoundSeq`가 새 값을 덮어써 준다.
+ *
+ * 남에게는 공개하지 않는다 — 발동 자체는 어차피 보이지만, "지금 잠겨 있다"는 것은
+ * 상대가 마음 놓고 밀 수 있다는 뜻이라 보유자만 아는 편이 대칭적이다.
+ */
+export const cooldownViewKey = (augmentId: string, holder: PlayerId): string =>
+  viewKey(holder, `cooldown:${augmentId}`);
+
+/** 앞으로 몇 국 더 잠겨 있는가 (0 = 지금 쓸 수 있다) */
+export function cooldownLeft(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+  rounds: number,
+): number {
+  const used = state.augmentData[cooldownUsedKey(augmentId, holder)];
+  if (typeof used !== "number") return 0;
+  return Math.max(0, rounds - (roundSeqOf(state, augmentId, holder) - used));
+}
+
+/** 쿨다운이 풀렸는가 — 쓴 적이 없거나 마지막 사용 이후 `rounds`국이 지났다 */
+export function cooldownReady(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+  rounds: number,
+): boolean {
+  return cooldownLeft(state, augmentId, holder, rounds) === 0;
+}
+
+/**
+ * 발동 시점에 낼 이벤트 — 쿨다운 기준점을 찍고, 잔량 표시를 그 자리에서 갱신한다.
+ *
+ * 표시 갱신을 여기서 함께 내지 않으면 다음 국이 시작될 때까지(다음 `trackRoundSeq`)
+ * 화면이 "사용 가능"인 채로 남는다 — 방금 쓴 증강이 아직 쓸 수 있어 보인다.
+ */
+export function cooldownUse(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+  rounds: number,
+): ProposedEvent[] {
+  return [
+    augmentDataSet(cooldownUsedKey(augmentId, holder), roundSeqOf(state, augmentId, holder)),
+    augmentDataSet(cooldownViewKey(augmentId, holder), rounds),
+  ];
+}
+
+/**
  * 국 진행 카운터를 이 증강 인스턴스에 붙인다 (`install`에서 한 번 호출).
  * 이후 `roundSeqOf`로 국 수를 읽고, 발동 시점의 값을 기록해 두면
  * `roundSeqOf(now) - used >= N` 이 곧 "N국이 지났는가"가 된다.
+ *
+ * `cooldownRounds`를 넘기면 국이 바뀔 때마다 잔량 표시(`cooldownViewKey`)도 같이
+ * 갱신한다 — 카운터를 올린 **뒤**의 값으로 계산해야 하므로 여기서 직접 뺀다.
  */
-export function trackRoundSeq(ctx: AugmentContext, augmentId: string): void {
+export function trackRoundSeq(
+  ctx: AugmentContext,
+  augmentId: string,
+  cooldownRounds?: number,
+): void {
   ctx.reaction(ROUND_STARTED, (_event, rc) => {
     const key = roundSeqKey(augmentId, ctx.holder);
-    rc.emit(augmentDataSet(key, counterOf(rc.state, key) + 1));
+    const next = counterOf(rc.state, key) + 1;
+    rc.emit(augmentDataSet(key, next));
+    if (cooldownRounds === undefined) return;
+    const used = rc.state.augmentData[cooldownUsedKey(augmentId, ctx.holder)];
+    const left = typeof used === "number" ? Math.max(0, cooldownRounds - (next - used)) : 0;
+    rc.emit(augmentDataSet(cooldownViewKey(augmentId, ctx.holder), left));
   });
 }
 
