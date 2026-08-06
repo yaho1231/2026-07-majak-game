@@ -154,6 +154,9 @@ import { signFlip } from "./augments/sign_flip.js";
 import { soulStrike } from "./augments/soul_strike.js";
 import { pickyEater } from "./augments/picky_eater.js";
 
+// ── 7차 사용자 발안 (2026-08-07) — 만능패 ──
+import { joker } from "./augments/joker.js";
+
 export {
   redFiveTouch,
   counter,
@@ -267,10 +270,11 @@ export {
   signFlip,
   soulStrike,
   pickyEater,
+  joker,
 };
 
 /**
- * 콘텐츠 팩 전체 카탈로그 — **112종** (2026-08-04, 6차 사용자 발안 8종 추가).
+ * 콘텐츠 팩 전체 카탈로그 — **113종** (2026-08-07, 조커 추가).
  *
  * 등급(tier)은 52차에 표시상 폐기됐다(docs/10 §2a) — 필드는 RuleLayer 합성 우선순위로만 남아 있고,
  * 드래프트는 카탈로그 전체에서 균등·비복원으로 3장을 뽑는다(`AugmentRegistry.rollUniform`).
@@ -400,4 +404,6 @@ export const contentAugments: AugmentDef[] = [
   signFlip, // 음양 반전 — 이번 국 내 점수의 부호가 뒤집힌다
   soulStrike, // 영혼의 일격 — 리치(2판) + 연속 6쯔모
   pickyEater, // 편식 — 한 무늬만 12장 버리면 단색 세계
+  // 7차 사용자 발안 (2026-08-07)
+  joker, // 조커 — 이번 국 손패의 백이 무엇이든 되는 만능패
 ];

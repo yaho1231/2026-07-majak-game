@@ -181,9 +181,21 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
   const isClosed = ctx.melds.every((m) => m.kind === "kan_closed" || m.silent === true);
   const meldSets = ctx.melds.map(meldToSet);
   const variants: ScoringVariant[] = [];
-  const winKey = kindKey(ctx.winningTile);
+  /**
+   * 화료패가 **조커**면 그 패는 이 분해에서 조커가 변한 것으로 친다 — 물리적인 백을
+   * 그대로 찾으면 어느 몸통에도 없어 변형이 0개가 되고, 완성된 손이 화료로 안 잡힌다.
+   */
+  const wildKeys = new Set((ctx.options?.wildKinds ?? []).map(kindKey));
+  const winIsWild = wildKeys.has(kindKey(ctx.winningTile));
 
   for (const decomp of decompose(ctx.hand, ctx.melds.length, ctx.options)) {
+    const handKinds = decomp.effectiveHand ?? [...ctx.hand];
+    // 조커 화료패가 무엇이 됐는지는 분해마다 다르다 (중복 제거)
+    const winTiles: TileKind[] =
+      winIsWild && decomp.wildAs !== undefined && decomp.wildAs.length > 0
+        ? [...new Map(decomp.wildAs.map((k) => [kindKey(k), k])).values()]
+        : [ctx.winningTile];
+
     if (decomp.form === "chiitoitsu") {
       variants.push({
         form: "chiitoitsu",
@@ -192,7 +204,7 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
         // 실제 손패 14장을 함께 실어, 이종 쌍(비대칭 치또이: 1만+1통)이 있어도
         // allKinds가 손패 전체로 무늬·노두·자패를 정확히 판정하게 한다.
         // (표준 치또이는 pairs.flatMap과 동일하므로 영향 없음)
-        handKinds: [...ctx.hand],
+        handKinds,
         sets: [],
         waitType: "chiitoi",
         isClosed,
@@ -203,7 +215,7 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
       variants.push({
         form: "kokushi",
         pair: decomp.pair,
-        handKinds: [...ctx.hand],
+        handKinds,
         sets: [],
         waitType: "kokushi",
         isClosed,
@@ -214,49 +226,53 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
     // standard: 화료패를 품을 수 있는 곳마다 변형 하나
     const baseSets = decomp.sets;
 
-    if (decomp.pair !== null && kindKey(decomp.pair) === winKey) {
-      variants.push({
-        form: "standard",
-        pair: decomp.pair,
-        sets: [
-          ...baseSets.map((s) => ({
-            type: s.type,
-            tiles: s.tiles,
-            concealed: true,
-            isKan: false,
-          })),
-          ...meldSets,
-        ],
-        waitType: "tanki",
-        isClosed,
+    for (const winTile of winTiles) {
+      const winKey = kindKey(winTile);
+
+      if (decomp.pair !== null && kindKey(decomp.pair) === winKey) {
+        variants.push({
+          form: "standard",
+          pair: decomp.pair,
+          sets: [
+            ...baseSets.map((s) => ({
+              type: s.type,
+              tiles: s.tiles,
+              concealed: true,
+              isKan: false,
+            })),
+            ...meldSets,
+          ],
+          waitType: "tanki",
+          isClosed,
+        });
+      }
+
+      baseSets.forEach((absorber, i) => {
+        if (!absorber.tiles.some((t) => kindKey(t) === winKey)) return;
+        const waitType: WaitType =
+          absorber.type === "triplet" ? "shanpon" : classifyRunWait(absorber, winTile);
+        variants.push({
+          form: "standard",
+          pair: decomp.pair,
+          sets: [
+            ...baseSets.map((s, j) => ({
+              type: s.type,
+              tiles: s.tiles,
+              // 론으로 완성된 커쯔는 명각 취급
+              concealed: !(
+                j === i &&
+                s.type === "triplet" &&
+                ctx.winType === "ron"
+              ),
+              isKan: false,
+            })),
+            ...meldSets,
+          ],
+          waitType,
+          isClosed,
+        });
       });
     }
-
-    baseSets.forEach((absorber, i) => {
-      if (!absorber.tiles.some((t) => kindKey(t) === winKey)) return;
-      const waitType: WaitType =
-        absorber.type === "triplet" ? "shanpon" : classifyRunWait(absorber, ctx.winningTile);
-      variants.push({
-        form: "standard",
-        pair: decomp.pair,
-        sets: [
-          ...baseSets.map((s, j) => ({
-            type: s.type,
-            tiles: s.tiles,
-            // 론으로 완성된 커쯔는 명각 취급
-            concealed: !(
-              j === i &&
-              s.type === "triplet" &&
-              ctx.winType === "ron"
-            ),
-            isKan: false,
-          })),
-          ...meldSets,
-        ],
-        waitType,
-        isClosed,
-      });
-    });
   }
 
   return variants;
