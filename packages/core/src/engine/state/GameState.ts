@@ -26,6 +26,8 @@ import type { PlayerId, Zones } from "../zones/Zone.js";
 export interface PlayerMeta {
   nickname: string;
   isBot: boolean;
+  /** 봇의 전략 원형 id (표시 전용, 사람이면 없음) */
+  archetype?: string;
 }
 
 /**
@@ -140,6 +142,8 @@ export interface PlayerState {
   nickname: string;
   /** 봇 여부 (표시용) */
   isBot: boolean;
+  /** 봇의 전략 원형 id (표시용, 사람이면 null) */
+  archetype?: string | null;
 }
 
 export interface RoundState {
@@ -337,6 +341,7 @@ export function createInitialGameState(
       augments: [],
       nickname: config.playerMeta?.[id]?.nickname ?? id,
       isBot: config.playerMeta?.[id]?.isBot ?? false,
+      archetype: config.playerMeta?.[id]?.archetype ?? null,
     })),
     redFivesPerSuit: options.redFivesPerSuit,
     tiles,

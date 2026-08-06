@@ -1129,6 +1129,40 @@ function seatWindChar(view: PlayerView, player: PlayerInfo): string {
   return WIND_CHAR[seatWindIdx(view, player)] ?? "?";
 }
 
+/**
+ * 봇 전략 원형의 표시 이름과 설명 (`server/bot/profile.ts`의 원형과 1:1).
+ *
+ * 봇 셋이 "봇1·봇2·봇3"으로만 보이면 셋 다 같은 사람으로 읽힌다 — 실제로는 미는 정도도,
+ * 우는 문턱도, 타점 취향도 다르다. 이름표에 성향을 붙여 그 차이를 먼저 알려 준다.
+ */
+const ARCHETYPE_INFO: Record<string, { label: string; desc: string }> = {
+  attacker: { label: "공격형", desc: "밀고 걸고 물러서지 않는다. 상대 리치에도 잘 안 접는다." },
+  defender: { label: "수비형", desc: "방총을 극히 싫어한다. 아니다 싶으면 일찍 접는다." },
+  speedster: { label: "속공형", desc: "싸도 좋으니 빨리. 뭐든 울어서 텐파이를 잡는다." },
+  valueHunter: { label: "타점형", desc: "멘젠으로 크게. 잘 울지 않고 비싸질 때까지 기다린다." },
+  balanced: { label: "균형형", desc: "교과서대로 둔다. 치우친 데가 없다." },
+  wildcard: { label: "변덕형", desc: "읽히지 않는다. 같은 자리에서 매번 다르게 두고 허세가 잦다." },
+};
+
+/** 원형 id → 표시 정보 (모르는 id면 null — 서버가 원형을 늘려도 화면이 깨지지 않는다) */
+function archetypeInfo(archetype: string | null | undefined): { label: string; desc: string } | null {
+  return archetype != null ? ARCHETYPE_INFO[archetype] ?? null : null;
+}
+
+/**
+ * 봇 성향 칩 — 대기실·결과 화면처럼 전적 칩이 서는 자리에 대신 세운다.
+ * 원형을 모르면(구 서버·사람 좌석) 그냥 "봇"으로 떨어진다.
+ */
+function BotArchetypeChip(props: { archetype: string | null | undefined }): JSX.Element {
+  const info = archetypeInfo(props.archetype);
+  if (info === null) return <span className="stat-chip stat-chip-empty">봇</span>;
+  return (
+    <span className="stat-chip stat-chip-arch" title={`${info.label} 봇 — ${info.desc}`}>
+      {info.label}
+    </span>
+  );
+}
+
 /** 자리 순서 기준 봇 번호 (봇이 하나면 "봇", 여럿이면 "봇1"…) */
 function botLabel(view: PlayerView, player: PlayerInfo): string {
   const bots = view.players.filter((p) => p.isBot).sort((a, b) => a.seat - b.seat);
@@ -5224,12 +5258,13 @@ function WaitingRoom(props: {
                 <>
                   <span className="seat-name">
                     {p.isHost ? <span className="seat-crown" title="방장">👑</span> : null}
-                    {p.nickname}
+                    {p.isBot ? "봇" : p.nickname}
                     {p.playerId === lobby.youId ? <span className="seat-you"> (나)</span> : null}
                     {p.isBot ? <span className="seat-bot">BOT</span> : null}
                   </span>
                   <span className="seat-stats">
-                    {p.isBot ? <span className="stat-chip stat-chip-empty">봇</span>
+                    {/* 봇은 전적 대신 성향을 보여 준다 — 어떤 셋과 붙는지 알고 앉는다 */}
+                    {p.isBot ? <BotArchetypeChip archetype={p.archetype} />
                       : p.stats !== null ? <StatsChips s={p.stats} />
                       : <span className="stat-chip stat-chip-empty">전적 없음</span>}
                   </span>
@@ -7879,12 +7914,18 @@ function NamePlate({
   // 이름표를 빽빽 모드로 돌린다: 증강 pill과 지목 표식(np-rel)의 **이름만** 접어
   // 아이콘 칩으로 세운다. 툴팁·title은 그대로라 올려 보면 전부 읽을 수 있다.
   const dense = pills.length >= 5;
+  // 봇이면 성향(원형) — 사람 좌석에는 붙지 않는다
+  const arch = player.isBot ? archetypeInfo(player.archetype) : null;
   return (
     <div
       className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}`}
     >
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
+      {/* 봇 성향 — 이름만으로는 셋이 구분되지 않아서, 이름 옆에 원형을 세운다 */}
+      {arch !== null ? (
+        <span className="np-arch" title={`${arch.label} 봇 — ${arch.desc}`}>{arch.label}</span>
+      ) : null}
       {pills.length > 0 ? (
         <span className="np-augs">
           {pills.map((a) => {
@@ -11186,6 +11227,8 @@ function GameOverModal({
                 <span className="rank-name">
                   {r.isBot ? "봇" : r.nickname}
                   {r.isBot ? <span className="seat-bot">BOT</span> : null}
+                  {/* 어느 성향이 이겼는지 — 순위표에서 그게 읽혀야 다음 판이 달라진다 */}
+                  {r.isBot ? <BotArchetypeChip archetype={r.archetype} /> : null}
                 </span>
                 <span className="rank-raw">{r.rawScore.toLocaleString()}점</span>
                 <span

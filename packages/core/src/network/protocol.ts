@@ -528,6 +528,8 @@ export interface RankingEntry {
   nickname: string;
   /** 봇 여부 (순위표에서 봇 표기용) */
   isBot: boolean;
+  /** 봇의 전략 원형 id (표시용, 사람이면 null) */
+  archetype?: string | null;
   score: number;
   /** 우마·오카 적용 전 최종 점수 */
   rawScore: number;
@@ -583,6 +585,11 @@ export interface LobbyPlayerEntry {
   playerId: PlayerId;
   nickname: string;
   isBot: boolean;
+  /**
+   * 봇의 전략 원형 id (사람이면 null). 대기실에서 미리 보여야 "어떤 셋과 붙는지"를
+   * 알고 앉는다 — 방을 다시 만들지 않는 한 이 성향은 게임 내내 바뀌지 않는다.
+   */
+  archetype?: string | null;
   isHost: boolean;
   /**
    * 이 사람이 앉은 자리 (0=동 1=남 2=서 3=북) — 그대로 게임의 방위가 된다.

@@ -1039,6 +1039,19 @@ button {
   text-overflow: ellipsis;
 }
 
+/* 봇 성향 — 이름 옆에 붙는 작은 표식. 이름보다 약하게 두어 순서가 뒤집히지 않게 한다 */
+.np-arch {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(240, 200, 106, 0.3);
+  background: rgba(240, 200, 106, 0.1);
+  color: #dcbe7c;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .np-augs {
   display: flex;
   flex-wrap: wrap;
@@ -4534,6 +4547,14 @@ button {
 .stat-chip-empty {
   color: #5f7469;
   font-style: italic;
+}
+
+/* 봇 성향 칩 — 전적 칩 자리에 서지만 통계가 아니라 정체다. 황동 계열로 구분한다 */
+.stat-chip-arch {
+  background: rgba(240, 200, 106, 0.12);
+  color: #e6c880;
+  font-weight: 700;
+  cursor: help;
 }
 
 .seat-status {
