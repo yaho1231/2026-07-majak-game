@@ -18,6 +18,7 @@ import type { TileAttrs, TileId, TileKind } from "../mahjong/tiles/Tile.js";
 import { winningKinds } from "../mahjong/scoring/waits.js";
 import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
 import {
+  furitenOptionsOf,
   scoringOptionsOf,
   lockedDiscardIds,
   tenpaiNoYaku,
@@ -930,7 +931,8 @@ function hasDiscardFuriten(
     handKinds,
     pr.melds.length,
     undefined,
-    scoringOptionsOf(state, rules, player),
+    // 조커가 넓힌 대기는 후리텐을 만들지 않는다 (helpers.furitenOptionsOf)
+    furitenOptionsOf(state, rules, player),
   );
   if (waits.length === 0) return false;
   const waitKeys = new Set(waits.map(kindKey));

@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   1753 / 1753 통과 (실패 0)   ← 2026-08-07 갱신 (조커 회귀 15건 추가 포함)
+npm test                   1757 / 1757 통과 (실패 0)   ← 2026-08-07 갱신 (조커 회귀 19건 추가 포함)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
