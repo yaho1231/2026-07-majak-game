@@ -1170,6 +1170,11 @@ function legacyCopy(text: string): boolean {
 
 const SUIT_ORDER: Record<string, number> = { man: 0, pin: 1, sou: 2, wind: 3, dragon: 4 };
 
+/** 실물 패 없이 종류만 있을 때의 정렬 키 — 만·통·삭·풍·삼원 순, 같은 무늬면 랭크 순 */
+function kindOrder(kind: TileKind): number {
+  return (SUIT_ORDER[kind.suit] ?? 9) * 1000 + kind.rank * 10;
+}
+
 function tileOrder(tile: PublicTileView | undefined): number {
   if (tile === undefined) return Number.MAX_SAFE_INTEGER;
   const suit = SUIT_ORDER[tile.kind.suit] ?? 9;
@@ -6238,10 +6243,14 @@ function augEventTiles(raw: unknown): TileKind[] {
     return k === null ? [] : [k];
   }
   if (Array.isArray(raw)) {
-    return raw.filter(
-      (k): k is TileKind =>
-        k !== null && typeof k === "object" && typeof (k as TileKind).suit === "string",
-    );
+    // 밥상 뒤엎기가 공개하는 반납 손패 13장 — 서버가 보낸 손패 순서 그대로면 무늬가 뒤섞여
+    // 있어 한눈에 읽히지 않았다(2026-08-06 사용자 요청). 손패처럼 정렬해서 보여준다.
+    return raw
+      .filter(
+        (k): k is TileKind =>
+          k !== null && typeof k === "object" && typeof (k as TileKind).suit === "string",
+      )
+      .sort((a, b) => kindOrder(a) - kindOrder(b));
   }
   if (raw === null || typeof raw !== "object") return [];
   const m = raw as { kind?: unknown; from?: unknown; to?: unknown };
@@ -8920,7 +8929,12 @@ function OwnArea(props: {
         ) : null}
         {/* 한 패에 변형 선택지가 여럿일 때(염색 무늬·연금술 ±1) — 실물 패 전→후를 보여주는
             전용 모달(docs/10 §2a-1: 패를 고르는 증강은 후보 버튼 나열 금지) */}
-        {armSub !== null ? (
+        {/* ⚠ 반드시 포털로 body에 붙인다. 이 모달만 `.own-area` 안에 있었는데
+            `.own-area`는 `transform: translateX(-50%)`를 갖고 있어 **position: fixed의
+            컨테이닝 블록**이 된다 — 그래서 `inset: 0`이 화면이 아니라 손패 영역을 가리켜
+            모달이 화면 아래쪽에 처박히고 아래가 잘렸다(2026-08-06 사용자 보고: 분열).
+            같은 클래스를 쓰는 다른 모달들은 `.own-area` 바깥이라 멀쩡했다. */}
+        {armSub !== null ? createPortal(
           <div className="rinshan-pick-overlay">
             <div className="rinshan-pick-panel">
               <div className="rinshan-pick-title">
@@ -8970,7 +8984,8 @@ function OwnArea(props: {
                 취소 (바꾸지 않고 닫기)
               </button>
             </div>
-          </div>
+          </div>,
+          document.body,
         ) : null}
         {myPrompt !== null ? (
           <>
