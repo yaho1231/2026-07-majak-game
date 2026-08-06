@@ -51,7 +51,7 @@ import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/P
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
 import { HumanAgent } from "./HumanAgent.js";
-import { BotAgent } from "./BotAgent.js";
+import { BotAgent, seedFromId } from "./BotAgent.js";
 import { SandboxBotAgent } from "./SandboxBotAgent.js";
 import { ReplayWriter } from "./ReplayWriter.js";
 import type { StatsStore } from "./StatsStore.js";
@@ -88,6 +88,22 @@ function buildAugmentCatalog(): AugmentCatalogEntry[] {
 const MAX_HAND_ORDER = 24;
 
 type RoomPhase = "waiting" | "playing";
+
+/**
+ * 이 방, 이 좌석의 봇 시드.
+ *
+ * 시드를 안 넘기면 `BotAgent`가 **좌석 id만으로** 시드를 만든다. 그런데 방의 봇
+ * 좌석은 언제나 `p1`·`p2`·`p3`이라, 그러면 세상의 모든 방이 **똑같은 성격 조합**을
+ * 받았다 — 실제로 p1 공격형 · p2·p3 속공형으로 고정이었다. 원형 6종을 만들어 두고
+ * 실대국에는 2종만 나왔고, 수비형·균형형·타점형·변덕형은 아레나에서만 살아 있었다.
+ *
+ * 방 코드는 방을 만들 때마다 새로 뽑히므로 그걸 섞으면 방마다 성격이 달라진다.
+ * 그러면서도 **같은 방 코드 + 같은 좌석은 늘 같은 성격**이라 재현성은 그대로다
+ * (`bot/profile.ts`가 성격을 시드 PRNG로 뽑는 이유가 그것이다).
+ */
+function botSeed(code: string, id: PlayerId): number {
+  return seedFromId(`${code}:${id}`);
+}
 
 interface Room {
   code: string;
@@ -1246,10 +1262,11 @@ export class RoomManager {
    * 지금 걸린 봇 제약을 곧바로 물려준다. 실대국 방은 종전 그대로 BotAgent다.
    */
   private newBot(room: Room, id: PlayerId): BotAgent {
+    const seed = botSeed(room.code, id);
     if (!room.sandbox) {
-      return new BotAgent(id, `Bot_${id}`, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS);
+      return new BotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS);
     }
-    const bot = new SandboxBotAgent(id, `Bot_${id}`, undefined, ALL_AUGMENT_DEFS, BOT_THINK_MS);
+    const bot = new SandboxBotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS);
     bot.setRestrictions(room.sandboxBotRules);
     return bot;
   }
