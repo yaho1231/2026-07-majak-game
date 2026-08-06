@@ -8,7 +8,7 @@
  * 설계: docs/08_MAHJONG_ENGINE.md §2
  */
 
-import { Suits, kindKey } from "../tiles/Tile.js";
+import { Suits, kindKey, standardKinds } from "../tiles/Tile.js";
 import type { Suit, TileKind } from "../tiles/Tile.js";
 
 export interface DecompSet {
@@ -25,6 +25,14 @@ export interface Decomposition {
   pairs?: TileKind[];
   /** standard의 손패 쪽 멘쯔 (후로 멘쯔 제외) */
   sets: DecompSet[];
+  /**
+   * 조커(`wildKinds`)를 **실제 패로 바꿔 놓은** 손패. 조커가 없으면 undefined.
+   * 채점은 이 손을 봐야 한다 — 치토이·국사는 sets/pair가 아니라 손패 전체로
+   * 역을 판정하기 때문이다(`WinContext.allKinds`).
+   */
+  effectiveHand?: TileKind[];
+  /** 이 분해에서 조커가 각각 무엇이 됐는가 (손패에 있던 조커 수만큼) */
+  wildAs?: TileKind[];
 }
 
 export const DEFAULT_SEQUENCE_SUITS: ReadonlySet<Suit> = new Set([
@@ -99,28 +107,40 @@ export interface DecomposeOptions {
    * 자패 커쯔·머리는 기존처럼 동일 패라 이 옵션과 무관하다.
    */
   honorRuns?: boolean;
+  /**
+   * **조커** — 여기 실린 종류의 패는 손패에서 "무엇이든 될 수 있는 패"로 본다 (조커).
+   * 손에 그 종류가 있으면 그 자리를 다른 kind로 바꿔 놓은 손을 전부 만들어 분해한다.
+   * 그래서 머리가 되든 몸통이 되든 상관없고, 대기·화료·후리텐이 전부 같은 규칙을 탄다.
+   *
+   * 어느 패가 되는지는 **고르지 않는다** — 분해가 전부 나오므로 `evaluateWin`이
+   * 그중 가장 비싼 것을 채택한다(변형 비교는 역만 수 > 판 > 부).
+   * ⚠ 도라는 **물리적인 패**로 센다(`evaluate.fullKinds`가 `ctx.hand`를 본다) —
+   *    조커가 무엇으로 변하든 도라 판정은 원래 패 그대로다.
+   */
+  wildKinds?: readonly TileKind[];
+}
+
+/** 기본값이 전부 채워진 분해 옵션 (내부 전용) */
+interface NormalizedOptions {
+  sequenceSuits: ReadonlySet<Suit>;
+  wrapRuns: boolean;
+  totalSets: number;
+  kokushiOnly: boolean;
+  mixedRuns: boolean;
+  mixedTriplets: boolean;
+  mixedPairs: boolean;
+  kokushiDupes: number;
+  polarEnds: boolean;
+  chiitoiMixedPairs: boolean;
+  honorRuns: boolean;
+  wildKinds: readonly TileKind[];
+  kokushiMeldKinds?: TileKind[];
 }
 
 /** 하위 호환: Set이 오면 sequenceSuits로 해석한다 */
 function normalizeOptions(
   opts?: DecomposeOptions | ReadonlySet<Suit>,
-): Required<
-  Pick<
-    DecomposeOptions,
-    | "sequenceSuits"
-    | "wrapRuns"
-    | "totalSets"
-    | "kokushiOnly"
-    | "mixedRuns"
-    | "mixedTriplets"
-    | "mixedPairs"
-    | "kokushiDupes"
-    | "polarEnds"
-    | "chiitoiMixedPairs"
-    | "honorRuns"
-  >
-> &
-  Pick<DecomposeOptions, "kokushiMeldKinds"> {
+): NormalizedOptions {
   if (opts instanceof Set) {
     return {
       sequenceSuits: opts,
@@ -134,6 +154,7 @@ function normalizeOptions(
       polarEnds: false,
       chiitoiMixedPairs: false,
       honorRuns: false,
+      wildKinds: [],
     };
   }
   const o = (opts ?? {}) as DecomposeOptions;
@@ -149,6 +170,7 @@ function normalizeOptions(
     polarEnds: o.polarEnds ?? false,
     chiitoiMixedPairs: o.chiitoiMixedPairs ?? false,
     honorRuns: o.honorRuns ?? false,
+    wildKinds: o.wildKinds ?? [],
     ...(o.kokushiMeldKinds !== undefined
       ? { kokushiMeldKinds: o.kokushiMeldKinds }
       : {}),
@@ -454,6 +476,121 @@ function extractSets(
   return solutions;
 }
 
+// ───────────────────────── 조커 (wildKinds) ─────────────────────────
+
+/**
+ * 조커가 시도할 kind 목록. 표준 34종 + 손에 실제로 있는 커스텀 무늬 전부를 쓴다 —
+ * "무엇이든 될 수 있다"가 이 증강의 정의라 후보를 줄여 두면 조용히 안 되는 손이 생긴다.
+ *
+ * 다만 **순서**는 줄인다: 손패와 이웃한(±2) 후보를 앞세워, 존재만 보면 되는
+ * `isWinningShape`가 대개 첫 몇 개에서 끝나게 한다.
+ */
+function wildUniverse(
+  base: readonly TileKind[],
+  seqSuits: ReadonlySet<Suit>,
+): TileKind[] {
+  const nearKeys = new Set<string>();
+  for (const k of base) {
+    nearKeys.add(kindKey(k));
+    if (!seqSuits.has(k.suit)) continue;
+    for (let d = -2; d <= 2; d++) {
+      const r = k.rank + d;
+      if (r >= 1 && r <= 9) nearKeys.add(kindKey({ suit: k.suit, rank: r }));
+    }
+  }
+  const all = standardKinds();
+  const seen = new Set(all.map(kindKey));
+  for (const k of base) {
+    const key = kindKey(k);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    all.push(k);
+  }
+  return [
+    ...all.filter((k) => nearKeys.has(kindKey(k))),
+    ...all.filter((k) => !nearKeys.has(kindKey(k))),
+  ];
+}
+
+/**
+ * "이 손이 화료형인가"의 메모. 조커가 있으면 한 번의 대기 계산(34종 × 조커 후보 34종)이
+ * 1000번 넘게 분해를 부르는데, 그중 **같은 손이 절반**이다 — 조커가 a가 되고 후보가 b인
+ * 손과 그 반대가 정확히 같은 손이기 때문이다. 국이 바뀌어도 같은 손은 같은 답이라
+ * (순수 함수) 무효화가 필요 없고, 크기만 막는다.
+ */
+const wildShapeCache = new Map<string, boolean>();
+const WILD_CACHE_MAX = 200_000;
+
+/** 옵션 중 분해 결과를 바꾸는 값만 뽑은 서명 (조커 후보는 손에 이미 반영돼 있다) */
+function optionsSignature(norm: NormalizedOptions, meldCount: number): string {
+  return [
+    meldCount,
+    norm.totalSets,
+    norm.wrapRuns ? 1 : 0,
+    norm.mixedRuns ? 1 : 0,
+    norm.mixedTriplets ? 1 : 0,
+    norm.mixedPairs ? 1 : 0,
+    norm.polarEnds ? 1 : 0,
+    norm.chiitoiMixedPairs ? 1 : 0,
+    norm.honorRuns ? 1 : 0,
+    norm.kokushiOnly ? 1 : 0,
+    norm.kokushiDupes,
+    [...norm.sequenceSuits].sort().join("."),
+    (norm.kokushiMeldKinds ?? []).map(kindKey).sort().join("."),
+  ].join("/");
+}
+
+function isWinningShapeMemo(
+  hand: readonly TileKind[],
+  meldCount: number,
+  norm: NormalizedOptions,
+  signature: string,
+): boolean {
+  const key = `${signature}#${hand.map(kindKey).sort().join(",")}`;
+  const hit = wildShapeCache.get(key);
+  if (hit !== undefined) return hit;
+  const ok = decomposeExact(hand, meldCount, norm).length > 0;
+  if (wildShapeCache.size >= WILD_CACHE_MAX) wildShapeCache.clear();
+  wildShapeCache.set(key, ok);
+  return ok;
+}
+
+/**
+ * 손패의 조커를 실제 패로 바꿔 놓은 손을 하나씩 만들어 `visit`에 넘긴다.
+ * 조커끼리는 구분되지 않으므로 **중복 조합**(오름차순 인덱스)만 만든다.
+ * `visit`가 true를 돌려주면 즉시 멈춘다 (존재 판정의 조기 종료).
+ */
+function forEachWildHand(
+  hand: readonly TileKind[],
+  norm: NormalizedOptions,
+  visit: (effectiveHand: TileKind[], wildAs: TileKind[]) => boolean,
+): void {
+  const wildKeys = new Set(norm.wildKinds.map(kindKey));
+  const base: TileKind[] = [];
+  let wilds = 0;
+  for (const k of hand) {
+    if (wildKeys.has(kindKey(k))) wilds++;
+    else base.push(k);
+  }
+  if (wilds === 0) {
+    visit([...hand], []);
+    return;
+  }
+  const universe = wildUniverse(base, norm.sequenceSuits);
+  const chosen: TileKind[] = [];
+  const walk = (start: number): boolean => {
+    if (chosen.length === wilds) return visit([...base, ...chosen], [...chosen]);
+    for (let i = start; i < universe.length; i++) {
+      chosen.push(universe[i] as TileKind);
+      const stop = walk(i);
+      chosen.pop();
+      if (stop) return true;
+    }
+    return false;
+  };
+  walk(0);
+}
+
 /**
  * @param hand 손패의 kind 목록 (화료패 포함, 후로 제외)
  * @param meldCount 후로(깡 포함) 수 — 손패 쪽에 필요한 멘쯔 수가 그만큼 줄어든다
@@ -463,6 +600,26 @@ export function decompose(
   hand: readonly TileKind[],
   meldCount: number,
   opts?: DecomposeOptions | ReadonlySet<Suit>,
+): Decomposition[] {
+  const norm = normalizeOptions(opts);
+  if (norm.wildKinds.length === 0) return decomposeExact(hand, meldCount, norm);
+
+  // 조커 — 바꿔 놓은 손마다 분해를 전부 모은다. 어느 것을 쓸지는 채점이 고른다.
+  const out: Decomposition[] = [];
+  forEachWildHand(hand, norm, (effectiveHand, wildAs) => {
+    for (const d of decomposeExact(effectiveHand, meldCount, norm)) {
+      out.push({ ...d, effectiveHand, wildAs });
+    }
+    return false;
+  });
+  return out;
+}
+
+/** 조커를 이미 실제 패로 바꾼 손 하나를 분해한다 (조커를 모르는 원래 알고리즘) */
+function decomposeExact(
+  hand: readonly TileKind[],
+  meldCount: number,
+  norm: NormalizedOptions,
 ): Decomposition[] {
   const {
     sequenceSuits,
@@ -477,7 +634,7 @@ export function decompose(
     polarEnds,
     chiitoiMixedPairs,
     honorRuns,
-  } = normalizeOptions(opts);
+  } = norm;
   const results: Decomposition[] = [];
   const setsNeeded = totalSets - meldCount;
 
@@ -616,5 +773,18 @@ export function isWinningShape(
   meldCount: number,
   opts?: DecomposeOptions | ReadonlySet<Suit>,
 ): boolean {
-  return decompose(hand, meldCount, opts).length > 0;
+  const norm = normalizeOptions(opts);
+  if (norm.wildKinds.length === 0) {
+    return decomposeExact(hand, meldCount, norm).length > 0;
+  }
+  // 조커 — **존재만** 보면 되므로 첫 성공에서 멈춘다. 대기 계산(winningKinds)이
+  // 34종을 훑으며 이 함수를 부르기 때문에 조기 종료가 곧 체감 속도다.
+  const signature = optionsSignature(norm, meldCount);
+  let found = false;
+  forEachWildHand(hand, norm, (effectiveHand) => {
+    if (!isWinningShapeMemo(effectiveHand, meldCount, norm, signature)) return false;
+    found = true;
+    return true;
+  });
+  return found;
 }

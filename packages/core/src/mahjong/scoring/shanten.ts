@@ -239,6 +239,26 @@ export function shantenOf(
   opts?: DecomposeOptions,
 ): number {
   if (kinds.length === 0) return 8;
+  /**
+   * 조커(조커) — 무엇이든 될 수 있는 패는 **어떤 한 장을 뽑은 것과 같다**. 어떤 손이든
+   * 한 장을 더해 줄어드는 샹텐은 최대 1이므로, 조커를 빼고 잰 값에서 장수만큼 뺀다.
+   *
+   * 블록 모형이 장수를 세지 않아 "4멘쯔 + 조커"처럼 머리만 없는 손에서 1 낙관적으로
+   * 나올 수 있다. 그래도 되는 자리다 — 샹텐은 **어느 패를 버릴지 고르는 휴리스틱**이고
+   * (파일 머리말), 텐파이·화료 판정은 조커를 정확히 아는 `winningKinds`/`isWinningShape`가
+   * 따로 한다. 정작 중요한 것은 **조커를 버리면 손이 나빠진다**가 여기서 보이는 것이다 —
+   * 이게 없으면 봇이 백을 그냥 흘린다.
+   */
+  const wildKinds = opts?.wildKinds ?? [];
+  if (wildKinds.length > 0) {
+    const wildKeys = new Set(wildKinds.map(kindKey));
+    const rest = kinds.filter((k) => !wildKeys.has(kindKey(k)));
+    const wilds = kinds.length - rest.length;
+    if (wilds > 0) {
+      const { wildKinds: _wild, ...plain } = opts ?? {};
+      return Math.max(-1, shantenOf(rest, meldCount, plain) - wilds);
+    }
+  }
   const totalSets = opts?.totalSets ?? 4;
   let best = standardShanten(kinds, meldCount, totalSets);
   // 치토이·국사는 멘젠 13/14장 전용. 특수 화료형 증강이 걸린 손은 표준형만 본다.

@@ -287,6 +287,8 @@ const ACTION_LABEL: Record<string, string> = {
   dora_recall: "도라의 잔상 — 되살리기",
   soul_strike: "영혼의 일격 — 선언",
   picky_unify: "편식 — 단색화",
+  // 2026-08-07 (7차) 신규
+  joker_call: "조커 — 백을 만능패로",
 };
 
 /** 액티브 액션 → 그 액션을 만들어내는 증강 id (메뉴에서 어느 증강인지 표시용). */
@@ -364,6 +366,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   dora_recall: "dora_afterimage",
   soul_strike: "soul_strike",
   picky_unify: "picky_eater",
+  joker_call: "joker",
 };
 
 /** 플레이어가 버튼으로 발동하는 액티브 증강 액션 타입 (타일 클릭 액션은 제외). */
@@ -438,6 +441,8 @@ const AUGMENT_ACTION_TYPES = new Set([
   "dora_recall",
   "soul_strike",
   "picky_unify",
+  // 2026-08-07 (7차) 신규
+  "joker_call",
 ]);
 
 /**
@@ -511,6 +516,8 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "dora_afterimage",
   "soul_strike",
   "picky_eater",
+  // 2026-08-07 (7차) 신규
+  "joker",
 ]);
 
 /** 이 증강이 '액티브 증강' 버튼으로 직접 발동되는지 (설명카드·툴팁 뱃지용). */
@@ -1301,6 +1308,14 @@ function waitDecompOptions(
       opts.kokushiMeldKinds = kokushiMeldKinds;
       opts.kokushiOnly = true;
     }
+  }
+  /**
+   * 조커 — 발동한 국에만 백이 만능패다. 발동은 전원 공개 채널(`joker:{playerId}`)에
+   * 실리므로 **남의 손 대기 표시도** 서버와 같은 규칙으로 그린다. 내 손은 아래에서
+   * 서버가 실어 준 scoringOptions가 최종 진실이라 이 추론을 덮어쓴다.
+   */
+  if (has("joker") && view?.augmentView[`joker:${player.id}`] === true) {
+    opts.wildKinds = [{ suit: "dragon", rank: 1 }];
   }
   // 뒤섞인 아홉 개의 연꽃 — 손이 구련 뼈대 위에 있을 때만 무늬를 지운다(서버와 같은 조건).
   // 이게 없으면 27종 대기가 통째로 안 보여 "텐파이인지 모르겠다"가 된다(2026-08-01 사용자 보고).
@@ -7772,6 +7787,11 @@ const SUIT_KO: Record<string, string> = { man: "만수", pin: "통수", sou: "�
  * 중앙에는 자리가 없다 — pill이 유일하게 여유 있는 자리다.
  */
 const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
+  // 조커 — 발동하면 이번 국 내내 이 사람의 백이 만능패다 (전원 공개)
+  joker: (raw) =>
+    raw === true
+      ? { chip: "白 만능", note: "이번 국 이 사람의 손패에서 백이 무엇이든 된다" }
+      : null,
   suit_unify: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
     const ko = SUIT_KO[raw] ?? raw;

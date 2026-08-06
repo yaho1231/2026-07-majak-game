@@ -38,6 +38,8 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   picky_eater: { use: "2국에 1회", text: "한 무늬만 12장 버리면 손패의 수패를 원하는 한 색으로 바꾼다." },
   soul_strike: { use: "2국에 1회", text: "리치(2판)를 걸고 혼자 연속 6쯔모. 그 사이 쯔모 화료는 일발." },
   sign_flip: { use: "이번 국만", text: "이 국에는 내 점수의 부호가 뒤집힌다 — 쏘이면 오히려 받는다." },
+  // 2026-08-07 7차 신규
+  joker: { use: "2국에 1회", text: "이번 국 손패의 백이 무엇이든 되는 만능패가 된다." },
   time_pressure: { use: "이번 국만", text: "이 국에는 전원의 모든 결정이 5초 제한이다. 나도 포함이다." },
   alchemist: { use: "게임 5회", text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 사용 가능하다." },
   all_or_nothing: { use: MODE_1_2, text: "리치에 내 점수 절반을 건다. 이기면 그만큼 더 받고, 져도 잃지 않는다." },

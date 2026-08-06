@@ -223,6 +223,8 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   broken_wall: e(["shape", "terminal"]),
   polar_ends: e(["shape", "terminal"]),
   wind_lineage: e(["shape", "honor"]),
+  // 조커 — 백 한 장이 어떤 몸통·머리도 된다. 자패를 자원으로 쓰고 화료형을 넓힌다
+  joker: e(["shape", "honor", "hand_edit"]),
   async_chiitoi: e(["chiitoi", "shape", "menzen"]),
   true_dragon: e(["shape"]),
   tanyao_break: e(["tanyao"]),

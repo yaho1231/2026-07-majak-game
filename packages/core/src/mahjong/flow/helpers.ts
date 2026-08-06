@@ -177,6 +177,14 @@ export function scoringOptionsOf(
   ) {
     opts.honorRuns = true;
   }
+  /**
+   * 조커 — 이 종류의 패는 손패에서 무엇이든 될 수 있다. 화료·텐파이·대기·후리텐이
+   * 전부 이 옵션 하나를 타므로, 규칙에 실어 두면 판정 지점마다 손댈 것이 없다.
+   */
+  if (rules.has("scoring.wildKinds")) {
+    const wild = rules.resolve<readonly TileKind[]>("scoring.wildKinds", ctx);
+    if (wild.length > 0) opts.wildKinds = wild;
+  }
   if (
     rules.has("scoring.kokushiMeldAssist") &&
     rules.resolve<boolean>("scoring.kokushiMeldAssist", ctx)
