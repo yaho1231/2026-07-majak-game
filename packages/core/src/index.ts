@@ -110,6 +110,7 @@ export {
   meldCountOf,
   openMeldCountOf,
   scoringOptionsOf,
+  furitenOptionsOf,
   uraIndicatorIds,
 } from "./mahjong/flow/helpers.js";
 export type { BuildWinContextOptions } from "./mahjong/flow/helpers.js";
