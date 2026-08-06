@@ -412,7 +412,14 @@ export class HanchanController {
   async run(): Promise<RankingEntry[]> {
     const playerIds = [...this.agents.keys()];
     const playerMeta = Object.fromEntries(
-      [...this.agents.values()].map((a) => [a.id, { nickname: a.nickname, isBot: a.isBot }]),
+      [...this.agents.values()].map((a) => [
+        a.id,
+        {
+          nickname: a.nickname,
+          isBot: a.isBot,
+          ...(a.botArchetype !== undefined ? { archetype: a.botArchetype } : {}),
+        },
+      ]),
     );
     const options: StandardGameOptions = {
       seed: this.config.seed,
@@ -1169,6 +1176,7 @@ export class HanchanController {
         playerId: p.id,
         nickname: agent?.nickname ?? p.id,
         isBot: agent?.isBot ?? false,
+        archetype: agent?.botArchetype ?? null,
         // 최종 순위 점수 = (최종 점수 − 원점) + 우마 (+1위 오카) — 제로섬
         score: raw - startScore + umaValue * 1000 + okaValue * 1000,
         rawScore: raw,

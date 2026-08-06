@@ -218,6 +218,14 @@ export class BotAgent implements PlayerAgent {
   }
 
   /**
+   * `PlayerAgent.botArchetype` — 이름표·대기실·순위표에 성향을 세우려고 코어가 읽는다.
+   * `archetype`와 같은 값이지만 코어는 원형 타입을 모르므로 문자열로 넘긴다.
+   */
+  get botArchetype(): string {
+    return this.profile.archetype;
+  }
+
+  /**
    * 성격을 지정한다 — **측정·재현 전용**(`bot/arena.ts`, 테스트).
    * 실대국 봇은 시드에서 스스로 뽑으므로 이 경로를 타지 않는다.
    */

@@ -1370,6 +1370,7 @@ export class RoomManager {
         seat,
         nickname: a.nickname,
         isBot,
+        archetype: a.botArchetype ?? null,
         isHost,
         ready: isBot || isHost || room.ready.has(a.id),
         stats: career !== null ? deriveStats(career) : null,

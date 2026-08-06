@@ -85,6 +85,11 @@ export interface PlayerInfo {
   nickname: string;
   /** 봇 여부 (표시용) */
   isBot: boolean;
+  /**
+   * 봇의 전략 원형 id — 이름표에 성향을 세운다 (사람이면 null).
+   * 표시 전용이라 선택 필드다: 판단에 쓰이지 않으므로 테스트 뷰는 생략해도 된다.
+   */
+  archetype?: string | null;
 }
 
 export interface PublicTileView {
@@ -482,6 +487,7 @@ export function buildPlayerView(
     augments: [...p.augments],
     nickname: p.nickname,
     isBot: p.isBot,
+    archetype: p.archetype ?? null,
   }));
 
   // ── 국 뷰 ──

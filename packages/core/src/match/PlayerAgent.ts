@@ -19,6 +19,13 @@ export interface PlayerAgent {
   readonly nickname: string;
   /** 봇 여부 (인게임 표기·랭킹용) */
   readonly isBot: boolean;
+  /**
+   * 봇의 전략 원형 id (`attacker`·`defender`…). 사람이면 undefined.
+   *
+   * 표시 전용이다 — "봇1·봇2"만 보이면 셋이 같은 사람으로 읽히는데, 실제로는 미는
+   * 정도도 우는 문턱도 다르다. 이 값을 이름표에 세워야 그 차이가 보인다.
+   */
+  readonly botArchetype?: string;
   /** 상태 갱신 수신. 봇은 무시하거나 다음 결정에 활용 */
   sendView(view: PlayerView): void;
   /**
