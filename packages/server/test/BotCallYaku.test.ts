@@ -21,9 +21,8 @@ import { parseFlags } from "../src/bot/flags.js";
 import { botScene, h } from "./botTestView.js";
 import type { BotScene } from "./botTestView.js";
 
-/** 2026-08-06에 더한 넷까지 읽는다 (`extended`) — 재는 중이라 스위치 뒤에 있다 */
 const names = (spec: string, menzen: boolean): YakuName[] =>
-  guessYaku(h(spec), menzen, true).map((g) => g.name);
+  guessYaku(h(spec), menzen).map((g) => g.name);
 
 describe("역 읽기 — 새로 알아본 역들", () => {
   it("토이토이 — 커쯔가 될 덩이가 넷 이상 모였을 때", () => {
@@ -56,7 +55,7 @@ describe("역 읽기 — 새로 알아본 역들", () => {
   });
 
   it("색 계열은 어느 색으로 갈지도 함께 알려 준다", () => {
-    const g = guessYaku(h("123456789m1234m"), false, true).find((x) => x.name === "chinitsu");
+    const g = guessYaku(h("123456789m1234m"), false).find((x) => x.name === "chinitsu");
     expect(g?.suit).toBe("man");
   });
 });

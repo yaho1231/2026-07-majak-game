@@ -113,8 +113,6 @@ export interface HandValueInput {
    * 안 주면 예전처럼 `plan`이 아는 네 역만 센다.
    */
   kinds?: readonly TileKind[];
-  /** 2026-08-06에 더한 역 넷(탕야오·토이토이·산안커·삼색동각)까지 읽을 것인가 */
-  extendedYaku?: boolean;
 }
 
 /**
@@ -130,10 +128,7 @@ export function estimateHandValue(input: HandValueInput): HandValue {
   // 방향은 "무엇을 버릴까"의 기준이라 좁게 잡혀 있고, 그래서 청일색·치또이처럼
   // 방향이 모르는 비싼 역을 놓친다 — 그걸 여기서 메운다.
   const fromPlan = planHan(input.plan, menzen);
-  const fromHand =
-    input.kinds === undefined
-      ? 0
-      : bestYakuHan(input.kinds, menzen, input.extendedYaku === true);
+  const fromHand = input.kinds === undefined ? 0 : bestYakuHan(input.kinds, menzen);
   const base = input.handDora + Math.max(fromPlan, fromHand);
   const fu = estimateFu(input.plan, menzen);
 

@@ -42,6 +42,21 @@
  *
  * 즉 "측정이 개선을 확인했다"가 아니라 **"측정이 손해가 없음을 확인했고, 모형은
  * 더 옳아졌다"** 가 정확한 서술이다.
+ *
+ * ## 2026-08-06: 역 넷을 더하고 다시 쟀다 — 그리고 작은 표본에 속을 뻔했다
+ *
+ * 탕야오·토이토이·산안커·삼색동각을 더했다(요구패 없는 열린 손에 쿠이탄이 붙는 것을
+ * 아무도 안 세고 있어서, 그런 손이 '역없는 열린 손'으로 값의 15%까지 깎였다).
+ *
+ *     400배패  = 800판 : 순위 +0.0175 ± 0.0233 · 점수 +400 ± 434
+ *     1200배패 = 2400판: 순위 -0.0017 ± 0.0141 · 점수  +10 ± 256
+ *
+ * **400배패의 '양쪽 지표 다 양수'는 잡음이었다.** 표본을 3배로 늘리자 정확히 0이
+ * 됐다. 이 파일의 첫 확장(위)이 550배패였다는 것과 함께 기억할 값이다 — 이 규모의
+ * 변화는 400배패로는 판정할 수 없다.
+ *
+ * 그래도 채택한 이유는 위와 같다: 손해 없음이 **훨씬 정밀하게** 확인됐고(점수 ±256이면
+ * ±500점 넘는 효과는 배제된다) 모형은 더 옳아졌다.
  */
 
 import { kindKey } from "@majak/core";
@@ -150,18 +165,7 @@ function bySuit(kinds: readonly TileKind[]): Map<string, number[]> {
  * 아홉 장 중 일곱 장이 이미 있어야 인정한다. 가능성만으로 세면 봇이 못 가는 손을
  * 비싸다고 착각한다.
  */
-export function guessYaku(
-  kinds: readonly TileKind[],
-  menzen: boolean,
-  /**
-   * 2026-08-06에 더한 넷(탕야오·토이토이·산안커·삼색동각)까지 볼 것인가.
-   *
-   * 스위치 뒤에 둔 이유는 이 넷이 **손 값어치를 바꾸기** 때문이다 — 특히 탕야오는
-   * 요구패가 없는 열린 손을 '역없는 열린 손'(값의 15%)에서 멀쩡한 1판짜리로 올린다.
-   * 값어치는 봇의 모든 판단에 들어가므로 재고 나서 켠다.
-   */
-  extended = false,
-): YakuGuess[] {
+export function guessYaku(kinds: readonly TileKind[], menzen: boolean): YakuGuess[] {
   const out: YakuGuess[] = [];
   const suits = bySuit(kinds);
   const numberTotal = kinds.filter(isNumber).length;
@@ -250,8 +254,6 @@ export function guessYaku(
     out.push({ name, han: hanOf(name, menzen) });
   }
 
-  if (!extended) return out;
-
   /**
    * ── 탕야오 ──
    *
@@ -309,12 +311,8 @@ export function guessYaku(
  * 센다. 겹침을 다 더하면 추정이 낙관 쪽으로 크게 기울고, 그러면 못 가는 손을 붙들게
  * 된다. 과소평가가 과대평가보다 안전하다.
  */
-export function bestYakuHan(
-  kinds: readonly TileKind[],
-  menzen: boolean,
-  extended = false,
-): number {
+export function bestYakuHan(kinds: readonly TileKind[], menzen: boolean): number {
   let best = 0;
-  for (const g of guessYaku(kinds, menzen, extended)) if (g.han > best) best = g.han;
+  for (const g of guessYaku(kinds, menzen)) if (g.han > best) best = g.han;
   return best;
 }

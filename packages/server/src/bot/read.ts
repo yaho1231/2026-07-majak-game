@@ -319,7 +319,6 @@ export function buildRead(
         ...(flags.has("noYakuRead")
           ? {}
           : { kinds: [...hand, ...meldKinds] }),
-        extendedYaku: flags.has("yaku3"),
         handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
         meldCount: input.meldCount ?? meldCount,
         // 후로 수를 올려 물었다는 것은 **손을 연다**는 뜻이다 (콜 EV)
@@ -391,7 +390,7 @@ export function readPlan(read: BotRead, committed: HandPlan = null): HandPlan {
      * 자패가 한 장도 없으면 그 손은 혼일색이 아니라 **청일색**으로 간다.
      * 방향이 다르면 버릴 패가 달라진다 — 청일색은 자패도 정리 대상이다.
      */
-    if (read.flags.has("yaku3") && all.length - numberTotal === 0) {
+    if (all.length - numberTotal === 0) {
       return { yaku: "chinitsu", suit: bestSuit };
     }
     return { yaku: "honitsu", suit: bestSuit };
@@ -407,7 +406,7 @@ export function readPlan(read: BotRead, committed: HandPlan = null): HandPlan {
    * 비싸서 확정을 덮을 만하기 때문이고, 찬타는 그만큼 비싸지 않다 — 역패 펑으로
    * 방향이 정해진 손을 찬타로 덮으면 중장패를 버리라는 엉뚱한 지시가 된다.
    */
-  if (read.flags.has("yaku3")) {
+  {
     const hasCore = all.some(
       (k) =>
         (k.suit === "man" || k.suit === "pin" || k.suit === "sou") &&
