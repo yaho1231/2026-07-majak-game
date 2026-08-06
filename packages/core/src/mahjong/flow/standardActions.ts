@@ -1150,6 +1150,8 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("scoring.chiitoiMixedPairs", false);
   /** 자패 슌쯔 허용(동남서·남서북·백발중) — 바람의 계보 */
   rules.define("scoring.honorRuns", false);
+  /** 손패에서 무엇이든 될 수 있는 패(조커)의 종류 — 조커. 기본 없음 */
+  rules.define<readonly TileKind[]>("scoring.wildKinds", []);
   /** 같은 무늬 연속 4장(3-4-5-6)을 한 깡으로 — 장사진 */
   rules.define("call.snakeKan", false);
   /** 리치 선언에 텐파이를 요구한다 (공성계 = 가짜 리치 허용 시 false) */
