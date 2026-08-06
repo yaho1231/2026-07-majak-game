@@ -21,6 +21,7 @@ import type { BotProfile } from "./profile.js";
 import { scales } from "./discard.js";
 import type { ActionBid } from "./decide.js";
 import { NOTEN_PENALTY, waitTilesOf } from "./value.js";
+import type { CallOutcome } from "./callAudit.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -53,6 +54,11 @@ export interface CallChoice {
 /** 콜 입찰 — 값과 함께, 그 콜로 확정되는 역 방향을 실어 보낸다 */
 export interface CallBid extends ActionBid {
   plan: HandPlan;
+  /**
+   * 입찰까지 온 기회의 **결말**을 나중에 적는 손잡이 — 이겼는지 졌는지는
+   * `BotAgent`가 전부 견줘 봐야 알 수 있으므로 여기서 바로 못 적는다.
+   */
+  audit(outcome: CallOutcome, margin?: number): null;
 }
 
 /**
@@ -82,11 +88,26 @@ export function bidCall(
   const meldKinds = meldKindsOf(read);
   const hasYakuhaiMeld = countYakuhaiTriplets(read, meldKinds) > 0;
   const menzen = read.menzen;
+  const before = shantenOf(read.hand, read.meldCount, read.opts);
+
+  /**
+   * 이 콜 기회가 어디서 끝났는지 한 줄 남긴다 (`bot/callAudit.ts`).
+   * 실대국에서는 `callAudit`이 없어 아무 일도 하지 않는다.
+   */
+  const audit = (outcome: CallOutcome, margin?: number): null => {
+    read.callAudit?.record({
+      outcome,
+      canPon: callable.some((o) => o.type === "pon" || o.type === "minkan"),
+      yakuhai: read.isYakuhai(called),
+      shantenBefore: before,
+      turn: read.turn,
+      ...(margin === undefined ? {} : { margin }),
+    });
+    return null;
+  };
 
   // 이미 멘젠 텐파이 — 열면 리치·멘젠쯔모·이빨 다 날아간다. 사람은 여기서 안 운다.
-  if (menzen && read.tenpai) return null;
-
-  const before = shantenOf(read.hand, read.meldCount, read.opts);
+  if (menzen && read.tenpai) return audit("menzen_tenpai");
 
   const plans: CallPlan[] = [];
   for (const option of callable) {
@@ -115,7 +136,7 @@ export function bidCall(
       spendsRed: usesRedFive(read, option),
     });
   }
-  if (plans.length === 0) return null;
+  if (plans.length === 0) return audit("no_shape");
 
   plans.sort((a, b) => {
     if (a.shanten !== b.shanten) return a.shanten - b.shanten;
@@ -141,17 +162,17 @@ export function bidCall(
     plan = { yaku: "yakuhai" };
   } else {
     const best = plans[0];
-    if (best === undefined) return null;
+    if (best === undefined) return audit("no_shape");
 
     // 손이 전진하지 않는 콜은 부르지 않는다 (텐파이를 잡는 콜은 전진으로 친다)
-    if (best.shanten >= before) return null;
+    if (best.shanten >= before) return audit("no_progress");
 
     // 종반 형식텐파이 — 역이 없어도 텐파이면 노텐벌부를 피한다
     const lateTenpai = best.shanten === 0 && read.wallLeft <= 12;
 
     // 열린 손은 역이 없으면 텐파이해도 못 먹는다 — 값어치가 0인 길이다
     const found = best.yaku ?? (hasYakuhaiMeld ? ({ yaku: "yakuhai" } as const) : null);
-    if (found === null && !lateTenpai) return null;
+    if (found === null && !lateTenpai) return audit("no_yaku");
 
     picked = best;
     plan = found ?? committed;
@@ -162,6 +183,7 @@ export function bidCall(
     option: picked.option,
     value,
     plan,
+    audit,
     reason: `후로 샹텐${picked.shanten} ${plan?.yaku ?? "형식텐파이"}`,
   };
 }

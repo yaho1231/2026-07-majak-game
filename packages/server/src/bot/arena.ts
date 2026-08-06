@@ -49,6 +49,7 @@ import { profileOf } from "./profile.js";
 import type { ArchetypeName } from "./profile.js";
 import { NO_FLAGS } from "./flags.js";
 import type { BotFlags } from "./flags.js";
+import { CALL_OUTCOMES, CALL_OUTCOME_LABEL, CallTally } from "./callAudit.js";
 
 export interface ArenaOptions {
   /** 돌릴 판 수 */
@@ -81,6 +82,8 @@ export interface ArenaOptions {
    * 그 잡음에 묻힌다(실측: 120판 표준오차 ±0.118 — 어지간한 변경보다 크다).
    */
   ab?: BotFlags;
+  /** 콜 기회가 어디서 걸렸는지 집계한다 (`--calls`) */
+  auditCalls?: boolean;
 }
 
 export interface ArenaResult {
@@ -93,6 +96,11 @@ export interface ArenaResult {
   byArchetype: { archetype: ArchetypeName; stats: PlayerStatsView }[];
   /** 유국률 (아무도 화료하지 못한 국의 비율) */
   drawRate: number;
+  /**
+   * **콜 기회가 어디서 걸렸는가** (`--calls`를 켰을 때만).
+   * 후로율이 낮은 원인을 문턱에서 찾을지 값매김에서 찾을지 가르는 자료다.
+   */
+  calls?: CallTally;
   /** 2:2 정책 대전 결과 (ab를 켰을 때만) */
   ab?: {
     flags: string[];
@@ -176,6 +184,8 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       ? undefined
       : [...standardAugments, ...opts.augments];
 
+  const calls = opts.auditCalls === true ? new CallTally() : undefined;
+
   // 2:2 대전은 같은 배패를 좌우 바꿔 두 번 돈다 — 그래서 실제 판수가 두 배다
   const mirrored = opts.ab !== undefined;
   const passes = mirrored ? 2 : 1;
@@ -194,6 +204,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       bot.setGameMode(mode === "tonpuu" ? "tonpuu" : "hanchan");
       // 같은 배패의 첫 번째 판은 0·2번, 두 번째 판은 1·3번이 스위치를 켠다
       if (opts.ab !== undefined && i % 2 === side) bot.setFlags(opts.ab);
+      if (calls !== undefined) bot.setCallAudit(calls);
       archetypeOf.set(id, bot.archetype);
       return bot;
     });
@@ -281,6 +292,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       stats: deriveStats(raw),
     })),
     drawRate: rounds === 0 ? 0 : Math.max(0, 1 - winRounds / rounds),
+    ...(calls === undefined ? {} : { calls }),
     ...(opts.ab !== undefined
       ? {
           ab: {
@@ -382,6 +394,45 @@ export function formatArena(r: ArenaResult): string {
     lines.push(
       `1인당 점수 차 ${sg >= 0 ? "+" : ""}${sg.toFixed(0)} · ` +
         `표준오차 ±${sse.toFixed(0)} → ${sVerdict}`,
+    );
+  }
+
+  const calls = r.calls;
+  if (calls !== undefined && calls.total > 0) {
+    lines.push("");
+    lines.push(`콜 기회 ${calls.total}회 — 어디서 걸렸는가`);
+    lines.push("결말           기회      비율    펑가능   치뿐  역패기회  평균샹텐");
+    for (const outcome of CALL_OUTCOMES) {
+      const n = calls.count(outcome);
+      if (n === 0) continue;
+      lines.push(
+        `${CALL_OUTCOME_LABEL[outcome].padEnd(13)}` +
+          `${String(n).padStart(6)}` +
+          `${((n / calls.total) * 100).toFixed(1).padStart(9)}%` +
+          `${String(calls.ponCount(outcome)).padStart(8)}` +
+          `${String(calls.chiOnlyCount(outcome)).padStart(7)}` +
+          `${String(calls.yakuhaiCount(outcome)).padStart(9)}` +
+          `${calls.averageShanten(outcome).toFixed(2).padStart(10)}`,
+      );
+    }
+    /**
+     * 구조적 거절(문턱에서 EV를 계산해 보지도 않고 끝난 것)과 EV의 판단을 나눠 본다.
+     * 어느 쪽이 큰지가 "문턱을 봐야 하는가, 값매김을 봐야 하는가"를 가른다.
+     */
+    const gated =
+      calls.total - calls.count("taken") - calls.count("lost_to_pass");
+    if (calls.lostSamples > 0) {
+      // EV로 진 것 중 얼마나가 '아슬아슬하게' 졌는가 — 동전 던지기의 비율
+      lines.push(
+        `EV로 진 ${calls.lostSamples}건 중 5% 이내 ` +
+          `${(calls.narrowLossRate(0.05) * 100).toFixed(1)}% · ` +
+          `10% 이내 ${(calls.narrowLossRate(0.1) * 100).toFixed(1)}%`,
+      );
+    }
+    lines.push(
+      `구조적 거절 ${((gated / calls.total) * 100).toFixed(1)}% · ` +
+        `EV 판단 ${((calls.count("lost_to_pass") / calls.total) * 100).toFixed(1)}% · ` +
+        `실행 ${((calls.count("taken") / calls.total) * 100).toFixed(1)}%`,
     );
   }
   return lines.join("\n");

@@ -32,6 +32,7 @@ import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
 import { NO_FLAGS } from "./flags.js";
 import type { BotFlags } from "./flags.js";
+import type { CallAudit } from "./callAudit.js";
 
 /** 이 국에 노리는 역 — 후로할지, 무엇을 버릴지의 기준이 된다 */
 export type HandPlan =
@@ -139,6 +140,11 @@ export interface BotRead {
    * 2:2 정책 대전으로 새 판단의 강함을 재는 동안에만 채워진다.
    */
   flags: BotFlags;
+  /**
+   * 콜 기회가 어디서 걸렸는지 세는 집계기 (`bot/callAudit.ts`). 측정 전용이라
+   * 실대국은 `undefined`다 — 그러면 기록 호출 자체가 일어나지 않는다.
+   */
+  callAudit?: CallAudit | undefined;
 }
 
 const sameKind = (a: TileKind, b: TileKind): boolean =>
@@ -165,6 +171,8 @@ export interface ReadContext {
   traitsOf?: (p: PlayerId) => OpponentTraits;
   /** 실험 스위치 (2:2 정책 대전 전용) */
   flags?: BotFlags;
+  /** 콜 기회 집계기 (측정 전용) */
+  callAudit?: CallAudit | undefined;
 }
 
 /** 뷰 하나로 이번 결정의 판 읽기를 만든다 */
@@ -308,6 +316,7 @@ export function buildRead(
     handDora,
     seatWind,
     flags,
+    callAudit: context.callAudit,
     furiten,
     riichiDeclared: mine?.riichiDeclared === true,
     isYakuhai(kind) {
