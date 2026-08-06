@@ -52,6 +52,8 @@ import type { AugmentStatsStore } from "./AugmentStatsStore.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
 import { HumanAgent } from "./HumanAgent.js";
 import { BotAgent, seedFromId } from "./BotAgent.js";
+import { isArchetypeName } from "./bot/profile.js";
+import type { ArchetypeName } from "./bot/profile.js";
 import { SandboxBotAgent } from "./SandboxBotAgent.js";
 import { ReplayWriter } from "./ReplayWriter.js";
 import type { StatsStore } from "./StatsStore.js";
@@ -127,6 +129,13 @@ interface Room {
   kicked: Set<string>;
   /** 선택된 게임 모드 (반장전/동풍전). 방장이 대기실에서 바꾼다. 기본 hanchan. */
   gameMode: GameMode;
+  /**
+   * 방장이 대기실에서 지정한 좌석별 봇 성향. 없는 자리는 시드에서 뽑은 그대로다.
+   *
+   * 봇 인스턴스는 판이 끝날 때마다 새로 만들어지므로(`newBot`) 지정을 봇이 아니라
+   * **방이** 들고 있어야 한다 — 안 그러면 한 판 두고 오면 성향이 원래대로 돌아간다.
+   */
+  botArchetypes: Map<PlayerId, ArchetypeName>;
   /**
    * 증강 테스트(샌드박스) 방 — 관리자 1명 + 봇 3명, 드래프트 없음.
    * 리플레이 파일·게임 인덱스·누적 통계를 남기지 않는다(실대국 데이터 오염 방지).
@@ -672,6 +681,7 @@ export class RoomManager {
       case "ready":
       case "addBot":
       case "removeBot":
+      case "setBotArchetype":
       case "kickPlayer":
       case "setGameMode":
       case "shuffleSeats":
@@ -1100,6 +1110,7 @@ export class RoomManager {
       sandbox: options.sandbox ?? false,
       sandboxAugments: {},
       sandboxHands: {},
+      botArchetypes: new Map(),
       sandboxBotRules: {},
       sandboxControl: true,
       sandboxRestarting: false,
@@ -1263,10 +1274,12 @@ export class RoomManager {
    */
   private newBot(room: Room, id: PlayerId): BotAgent {
     const seed = botSeed(room.code, id);
+    // 방장이 이 자리의 성향을 지정했으면 그걸 물려준다 (없으면 시드에서 뽑는다)
+    const forced = room.botArchetypes.get(id);
     if (!room.sandbox) {
-      return new BotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS);
+      return new BotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
     }
-    const bot = new SandboxBotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS);
+    const bot = new SandboxBotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
     bot.setRestrictions(room.sandboxBotRules);
     return bot;
   }
@@ -1304,8 +1317,24 @@ export class RoomManager {
         const idx = room.agents.findIndex((a) => a.id === msg.playerId && this.isBot(a));
         if (idx >= 0) {
           room.agents.splice(idx, 1);
+          // 지정도 같이 지운다 — 안 그러면 나중에 그 좌석 id로 들어온 봇이
+          // 지운 봇의 성향을 물려받는다
+          room.botArchetypes.delete(msg.playerId);
           this.broadcastLobby(room);
         }
+        return;
+      }
+      case "setBotArchetype": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        if (typeof msg.playerId !== "string" || typeof msg.archetype !== "string") return;
+        if (!isArchetypeName(msg.archetype)) return; // 모르는 원형은 무시
+        const idx = room.agents.findIndex((a) => a.id === msg.playerId && this.isBot(a));
+        if (idx < 0) return;
+        room.botArchetypes.set(msg.playerId, msg.archetype);
+        // 성향은 생성 시점에 정해지므로 그 자리의 봇을 새로 만든다 (대기 중이라 안전하다)
+        room.agents[idx] = this.newBot(room, msg.playerId);
+        if (room.sandbox) this.syncSandboxControl(room);
+        this.broadcastLobby(room);
         return;
       }
       case "kickPlayer": {
