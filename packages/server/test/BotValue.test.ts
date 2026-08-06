@@ -326,3 +326,94 @@ describe("열린 손의 전진 속도 — 남의 버림패로도 전진한다", 
     expect(winChance({ ...tenpai, openUkeire: 40 })).toBe(winChance(tenpai));
   });
 });
+
+/**
+ * 부수 — 2026-08-06까지 30 고정이었다.
+ *
+ * 판수가 낮은 구간에서 부수는 점수를 절반 가까이 흔든다. 3판 30부 3900점과
+ * 3판 50부 6400점이 봇에게 같은 손으로 보였으니, 만관 경계 판단이 그만큼 거칠었다.
+ */
+describe("부수 — 손을 보고 센다", () => {
+  const base = {
+    handDora: 0,
+    meldCount: 0,
+    plan: null,
+    isDealer: false,
+    riichiDeclared: false,
+  };
+  const shape = (hand: string, melds: { kind: string; kinds: string }[] = []) => ({
+    hand: h(hand),
+    melds: melds.map((m) => ({ kind: m.kind, kinds: h(m.kinds) })),
+    seatWind: 1,
+    prevalentWind: 1,
+  });
+
+  it("손을 안 주면 예전 어림값 그대로다 (30부)", () => {
+    expect(estimateHandValue(base).fu).toBe(30);
+  });
+
+  it("요구패 안커가 둘이면 30부보다 높다", () => {
+    // 20(기본) + 10(멘젠 론) + 8 + 8 = 46 → 50부
+    const fu = estimateHandValue({ ...base, fuShape: shape("111m999p234s567s55p") }).fu;
+    expect(fu).toBe(50);
+  });
+
+  it("중장패 안커는 요구패 안커보다 싸다", () => {
+    const simple = estimateHandValue({ ...base, fuShape: shape("444m888s567s55p") }).fu;
+    const orphan = estimateHandValue({ ...base, fuShape: shape("111m999s567s55p") }).fu;
+    expect(simple).toBeLessThan(orphan);
+  });
+
+  it("자패 안깡은 부수를 크게 올린다 — 깡이 도라만 주는 게 아니다", () => {
+    // 20 + 10 + 32(자패 안깡) = 62 → 70부
+    const fu = estimateHandValue({
+      ...base,
+      meldCount: 1,
+      menzen: true, // 안깡은 손을 열지 않는다
+      fuShape: shape("234s567s55p234m", [{ kind: "kan_closed", kinds: "5555z" }]),
+    }).fu;
+    expect(fu).toBe(70);
+  });
+
+  it("열린 핑후형은 30부다 (코어와 같은 보정)", () => {
+    const fu = estimateHandValue({
+      ...base,
+      meldCount: 1,
+      fuShape: shape("234s567s55p234m", [{ kind: "chi", kinds: "345p" }]),
+    }).fu;
+    expect(fu).toBe(30);
+  });
+
+  it("치또이는 25부다", () => {
+    const fu = estimateHandValue({ ...base, fuShape: shape("11m33m55p77p99s22z44z") }).fu;
+    expect(fu).toBe(25);
+  });
+
+  it("역패 작두는 부수를 얹는다", () => {
+    const yakuhai = estimateHandValue({ ...base, fuShape: shape("234m345p567s234s11z") }).fu;
+    const plain = estimateHandValue({ ...base, fuShape: shape("234m345p567s234s22p") }).fu;
+    expect(yakuhai).toBeGreaterThan(plain);
+  });
+
+  it("안깡은 손을 열지 않는다 — 리치 판수가 날아가면 안 된다", () => {
+    // 예전에는 `meldCount === 0`이 멘젠 판정을 겸해서, 안깡 한 번에 손이
+    // '열린 손'이 됐다 — 리치 판수가 사라지고 역을 못 찾으면 값의 15%가 됐다.
+    const scene = botScene({ hand: "234m567m11p234s", melds: ["kan_closed:5555z"] });
+    const read = buildRead(scene.view, "p0");
+    expect(read.meldCount).toBe(1);
+    expect(read.menzen).toBe(true);
+    const value = read.valueOf({ plan: null });
+    expect(value.riichiPoints).toBeGreaterThan(value.points);
+  });
+
+  it("펑이 있으면 멘젠이 아니다", () => {
+    const scene = botScene({ hand: "234m567m11p234s", melds: ["555z"] });
+    expect(buildRead(scene.view, "p0").menzen).toBe(false);
+  });
+
+  it("부수가 오르면 같은 판수라도 손이 비싸진다", () => {
+    const cheap = estimateHandValue({ ...base, handDora: 2, fuShape: shape("234m345p567s234s22p") });
+    const rich = estimateHandValue({ ...base, handDora: 2, fuShape: shape("111m999p234s567s55p") });
+    expect(rich.points).toBeGreaterThan(cheap.points);
+  });
+});

@@ -243,6 +243,14 @@ export function buildRead(
   }
   const handDora = doraIn(hand) + doraIn(meldKinds) + reds;
 
+  // 부수를 세려면 후로가 치인지 펑인지 깡인지까지 알아야 한다 — 뷰에 그대로 있다
+  const meldShapes = (view.round.byPlayer[me]?.melds ?? []).map((m) => ({
+    kind: m.kind as string,
+    kinds: m.tileIds
+      .map((id) => view.tiles[id]?.kind)
+      .filter((k): k is TileKind => k !== undefined),
+  }));
+
   const seat = view.players.find((p) => p.id === me)?.seat ?? 0;
   const n = view.players.length || 4;
   const seatWind =
@@ -282,6 +290,13 @@ export function buildRead(
         ...(flags.has("noYakuRead")
           ? {}
           : { kinds: [...hand, ...meldKinds] }),
+        // 부수를 손에서 직접 센다
+        fuShape: {
+          hand,
+          melds: meldShapes,
+          seatWind,
+          prevalentWind: view.round.prevalentWind,
+        },
         handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
         meldCount: input.meldCount ?? meldCount,
         // 후로 수를 올려 물었다는 것은 **손을 연다**는 뜻이다 (콜 EV)

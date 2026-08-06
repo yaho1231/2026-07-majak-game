@@ -72,10 +72,102 @@ function planHan(plan: HandPlan, menzen: boolean): number {
 /** 역없는 열린 손에 남기는 잔값 — 화료가 사실상 막혔다는 뜻 */
 const YAKULESS_OPEN = 0.15;
 
-/** 토이토이·자패 커쯔가 많은 손은 부수가 높다 — 만관 경계를 가르는 값이라 무시할 수 없다 */
-function estimateFu(plan: HandPlan, menzen: boolean): number {
-  if (plan !== null && plan.yaku === "toitoi") return 40;
-  return menzen ? 30 : 30;
+/** 부수를 세는 데 필요한 손 모양 */
+export interface FuShape {
+  /** 감춰진 손패 (후로 제외) */
+  hand: readonly TileKind[];
+  /** 후로 — 종류와 그 패들 */
+  melds: readonly { kind: string; kinds: readonly TileKind[] }[];
+  /** 내 자풍 (역패 작두 판정용) */
+  seatWind: number;
+  /** 장풍 */
+  prevalentWind: number;
+}
+
+const isTerminalOrHonorKind = (k: TileKind): boolean =>
+  !NUMBER_SUITS.has(k.suit) || k.rank === 1 || k.rank === 9;
+
+/**
+ * 부수 어림.
+ *
+ * 2026-08-06까지 이 값은 **30 고정**이었다(토이토이만 40). 판수가 낮은 구간에서
+ * 부수는 점수를 절반 가까이 흔든다 — 3판 30부 3900점과 3판 50부 6400점은 봇에게
+ * 같은 손으로 보였다. 만관 경계에서 리치를 걸지 말지가 그만큼 거칠었다.
+ *
+ * 여기서는 손을 실제로 보고 센다. 규칙은 코어의 `calculateFu`와 같지만, **화료
+ * 전**이라 확정할 수 없는 것 둘은 가정으로 둔다.
+ *   - **론으로 화료한다** — `points`가 이미 론 기준이라 같은 가정을 쓴다.
+ *   - **대기는 량면** — 칸짱·펜짱·단기의 +2는 대기가 정해진 뒤에야 알 수 있다.
+ *
+ * 남은 어림 둘도 적어 둔다. 손패의 커쯔를 전부 안커로 세므로(333m을 345m로 쓸
+ * 수도 있다) 조금 후하고, 버림 후보를 값매길 때는 **버리기 전 손**으로 세므로
+ * 커쯔를 깨는 버림의 부수 손해가 안 보인다. 정확도보다 **일관성**이 목적이라는
+ * 이 파일의 원칙 안에 있는 오차다.
+ *
+ * ## 재 본 결과 (2026-08-06, 동풍전 400배패 = 800판, 2:2 정책 대전)
+ *
+ *     평균 화료 6308 → 6579   리치율 25.4% → 27.1%   후로율 16.1% → 11.6%
+ *     평균 순위 차 +0.0100 ± 0.0387 · 1인당 점수 차 +250 ± 724 → 유의미하지 않음
+ *
+ * 강해졌다고는 못 한다. 손의 값어치가 실제에 가까워졌고(멘젠 론 +10부·안커·깡을
+ * 이제 센다), 그만큼 리치가 늘고 후로가 줄었다. 후로가 준 것은 **모형이 옳아진
+ * 결과**다 — 예전의 30부 고정은 열린 손의 부수를 실제보다 높게 잡아 콜을 후하게
+ * 값매기고 있었다. 다만 봇의 후로율은 이미 사람보다 낮으므로, 이 방향의 변화가
+ * 사람다움에는 반대로 작용한다는 것을 함께 적어 둔다.
+ */
+function estimateFu(plan: HandPlan, menzen: boolean, shape?: FuShape): number {
+  if (shape === undefined) {
+    // 손을 못 보면 예전 어림값 그대로
+    if (plan !== null && plan.yaku === "toitoi") return 40;
+    return 30;
+  }
+
+  const counts = new Map<string, { kind: TileKind; n: number }>();
+  for (const k of shape.hand) {
+    const key = kindKey(k);
+    const cur = counts.get(key);
+    if (cur === undefined) counts.set(key, { kind: k, n: 1 });
+    else cur.n++;
+  }
+
+  // 치또이는 25부 고정 — 또이쯔가 여섯 벌 넘게 모인 멘젠 손이 그 길이다
+  if (menzen && shape.melds.length === 0) {
+    let pairs = 0;
+    for (const { n } of counts.values()) if (n >= 2) pairs++;
+    if (pairs >= 6) return 25;
+  }
+
+  let fu = 20;
+  if (menzen) fu += 10; // 멘젠 론
+
+  // 손패의 커쯔 = 안커. 요구패·자패는 두 배.
+  for (const { kind, n } of counts.values()) {
+    if (n >= 3) fu += isTerminalOrHonorKind(kind) ? 8 : 4;
+  }
+
+  // 후로 — 치는 0부, 펑은 밝은 커쯔, 깡은 네 배(안깡은 감춰진 값으로)
+  for (const meld of shape.melds) {
+    const head = meld.kinds[0];
+    if (head === undefined || meld.kind === "chi") continue;
+    const base = isTerminalOrHonorKind(head) ? 8 : 4;
+    if (meld.kind === "kan_closed") fu += base * 4; // 안깡
+    else if (meld.kind === "kan_open" || meld.kind === "kan_added") fu += (base / 2) * 4;
+    else fu += base / 2; // 펑
+  }
+
+  // 역패 작두 — 삼원패 +2, 자풍·장풍 각 +2 (연풍패는 +4)
+  for (const { kind, n } of counts.values()) {
+    if (n !== 2) continue;
+    if (kind.suit === "dragon") fu += 2;
+    else if (kind.suit === "wind") {
+      if (kind.rank === shape.seatWind) fu += 2;
+      if (kind.rank === shape.prevalentWind) fu += 2;
+    }
+  }
+
+  // 열린 핑후형 론 보정 — 코어와 같은 규칙
+  if (!menzen && fu === 20) fu = 30;
+  return Math.ceil(fu / 10) * 10;
 }
 
 /**
@@ -123,6 +215,11 @@ export interface HandValueInput {
    * 안 주면 예전처럼 `plan`이 아는 네 역만 센다.
    */
   kinds?: readonly TileKind[];
+  /**
+   * 부수를 세기 위한 손 모양. 주면 손을 직접 보고 부수를 센다 —
+   * 안 주면 예전처럼 30(토이토이 40) 고정이다.
+   */
+  fuShape?: FuShape;
 }
 
 /**
@@ -140,7 +237,7 @@ export function estimateHandValue(input: HandValueInput): HandValue {
   const fromPlan = planHan(input.plan, menzen);
   const fromHand = input.kinds === undefined ? 0 : bestYakuHan(input.kinds, menzen);
   const base = input.handDora + Math.max(fromPlan, fromHand);
-  const fu = estimateFu(input.plan, menzen);
+  const fu = estimateFu(input.plan, menzen, input.fuShape);
 
   const withRiichi = menzen ? base + RIICHI_HAN : base;
   const han = input.riichiDeclared ? withRiichi : base;
