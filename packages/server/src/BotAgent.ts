@@ -100,7 +100,14 @@ export function restrictOptions(
 }
 
 /** 플레이어 id에서 안정적 시드 파생 (결정론 유지) */
-function seedFromId(id: string): number {
+/**
+ * 문자열 하나를 시드로 (FNV-1a).
+ *
+ * 방마다 다른 성격이 앉게 하려면 **방 코드까지 섞어서** 넘겨야 한다
+ * (`RoomManager.newBot`) — id만 쓰면 좌석 이름이 늘 `p1`·`p2`·`p3`이라
+ * 모든 방이 같은 성격 조합을 받는다.
+ */
+export function seedFromId(id: string): number {
   let h = 2166136261;
   for (let i = 0; i < id.length; i++) {
     h ^= id.charCodeAt(i);
