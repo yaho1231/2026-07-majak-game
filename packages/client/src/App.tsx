@@ -1154,9 +1154,9 @@ function seatWindChar(view: PlayerView, player: PlayerInfo): string {
  * 우는 문턱도, 타점 취향도 다르다. 이름표에 성향을 붙여 그 차이를 먼저 알려 준다.
  */
 const ARCHETYPE_INFO: Record<string, { label: string; desc: string }> = {
-  attacker: { label: "공격형", desc: "밀고 걸고 물러서지 않는다. 상대 리치에도 잘 안 접는다." },
-  defender: { label: "수비형", desc: "방총을 극히 싫어한다. 아니다 싶으면 일찍 접는다." },
-  speedster: { label: "속공형", desc: "싸도 좋으니 빨리. 뭐든 울어서 텐파이를 잡는다." },
+  attacker: { label: "공격형", desc: "밀고 걸고 물러서지 않는다. 상대 리치에도 잘 포기하지 않는다." },
+  defender: { label: "수비형", desc: "방총을 극히 싫어한다. 아니다 싶으면 일찍 포기한다." },
+  speedster: { label: "속공형", desc: "타점이 낮아도 좋으니 빨리. 뭐든 울어서 텐파이를 잡는다." },
   valueHunter: { label: "타점형", desc: "멘젠으로 크게. 잘 울지 않고 비싸질 때까지 기다린다." },
   balanced: { label: "균형형", desc: "교과서대로 둔다. 치우친 데가 없다." },
   wildcard: { label: "변덕형", desc: "읽히지 않는다. 같은 자리에서 매번 다르게 두고 허세가 잦다." },
@@ -6415,7 +6415,10 @@ function augmentLogRows(
 
   for (const [key, value] of entries) {
     const [head, target] = key.split(":") as [string, string | undefined];
-    const who = target === undefined ? "" : playerNameById(view, target);
+    // `head:target` 의 target이 **좌석이 아닌** 채널도 있다(cooldown:{증강id} 등).
+    // 그때 playerNameById는 받은 문자열을 그대로 돌려주므로, 거르지 않으면
+    // `dora_afterimage` 같은 내부 id가 사람 이름 자리에 찍힌다(2026-08-06 제보).
+    const who = target !== undefined && isPlayerId(target) ? playerNameById(view, target) : "";
 
     // ── 다른 곳에 제자리가 있는 채널은 여기 찍지 않는다 ──────────────────
     // 뒷도라: 중앙 도라 표시패 아래(center-ura-peek)
@@ -6441,6 +6444,9 @@ function augmentLogRows(
     if (head === "sealed" || head === "revealTiles" || head === "discardLockReveal") continue;
     // 잔량·게이지·발동 여부는 그 사람의 이름표 증강 pill이 대신 보여준다.
     if (PILL_OWNED_HEADS.has(head)) continue;
+    // 내부 쿨다운(`cooldown:{증강id}`)은 그 증강의 pill이 "N국"으로 직접 보여준다.
+    // 여기 남겨 두면 사람 이름 자리에 증강 id가, 값 자리에 "스택 0"이 찍힌다.
+    if (head === "cooldown") continue;
     // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
     // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 표식으로 못 쓰므로 뱃지 줄에 남는다.
     if (RELATION_HEADS.has(head)) continue;
