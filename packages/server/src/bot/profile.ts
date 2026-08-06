@@ -58,6 +58,19 @@ export interface BotProfile {
    */
   noise: number;
   /**
+   * 0(현물주의) ~ 1(스지면 민다) — **스지를 얼마나 믿는가**.
+   *
+   * 스지는 사실이 아니라 **읽기**다. 량면 론이 지워진다는 것까지는 규칙이지만, 그래서
+   * 이 패를 내도 되느냐는 판단이고 사람마다 확실히 갈린다. 저돌적인 사람은 스지를
+   * 밀 구실로 쓰고("스지니까 통한다"), 수비적인 사람은 현물이 있는 한 스지에 손을
+   * 대지 않는다 — 스지 걸기에 쏘여 본 사람의 태도다.
+   *
+   * 다른 성격값과 마찬가지로 **분기를 만들지 않는다.** `suji.waitFactor`가 지우는
+   * 량면 몫에 곱해지는 저울일 뿐이라, 이 값이 0이어도 계산은 그대로 돌아간다
+   * (스지를 아예 안 본 값이 나올 뿐이다).
+   */
+  sujiTrust: number;
+  /**
    * 0(정직) ~ 1(허세) — **손해가 없을 때** 세 보이게 두는 정도.
    * 접은 국에도 중장패를 흘려 아직 미는 것처럼 보이게 한다. 안전도가 사실상 같은
    * 후보 사이에서만 작동하므로 값을 치르지 않는 거짓말이다.
@@ -82,6 +95,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     riichiLoose: 0.85,
     valueBias: 0.45,
     patience: 0.25,
+    // 스지를 '통한다'의 근거로 삼는다 — 미는 사람에게 스지는 밀 구실이다
+    sujiTrust: 0.9,
     noise: 0.3,
     bluff: 0.5,
   },
@@ -92,6 +107,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     riichiLoose: 0.35,
     valueBias: 0.5,
     patience: 0.75,
+    // 현물이 있는 한 스지에 손대지 않는다 — 스지 걸기에 쏘여 본 사람의 태도다
+    sujiTrust: 0.28,
     noise: 0.15,
     bluff: 0.4,
   },
@@ -102,6 +119,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     riichiLoose: 0.7,
     valueBias: 0.12,
     patience: 0.3,
+    // 깊게 안 읽는다. 스지면 낸다 — 손이 싸서 잃을 것도 적다
+    sujiTrust: 0.72,
     noise: 0.35,
     bluff: 0.3,
   },
@@ -112,6 +131,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     riichiLoose: 0.45,
     valueBias: 0.9,
     patience: 0.85,
+    // 비싼 손을 들고 있으니 방총 한 방이 뼈아프다 — 스지를 액면대로 믿지 않는다
+    sujiTrust: 0.42,
     noise: 0.2,
     bluff: 0.55,
   },
@@ -122,6 +143,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     riichiLoose: 0.6,
     valueBias: 0.5,
     patience: 0.5,
+    // 교과서 — 현물 다음이 스지, 스지 다음이 벽
+    sujiTrust: 0.6,
     noise: 0.25,
     bluff: 0.35,
   },
@@ -132,6 +155,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     riichiLoose: 0.75,
     valueBias: 0.5,
     patience: 0.2,
+    // 읽히지 않는 사람 — 스지도 그날 기분대로다(흔들림이 큰 만큼 폭도 넓다)
+    sujiTrust: 0.68,
     noise: 0.8,
     bluff: 0.8,
   },
@@ -159,6 +184,7 @@ export function rollProfile(rng: Prng): BotProfile {
     riichiLoose: shake(base.riichiLoose),
     valueBias: shake(base.valueBias),
     patience: shake(base.patience),
+    sujiTrust: shake(base.sujiTrust),
     noise: shake(base.noise),
     bluff: shake(base.bluff),
     tempo: 0.6 + rng.next() * 0.9,

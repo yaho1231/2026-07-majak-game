@@ -3,11 +3,20 @@
  *
  * 2026-07-29 이전의 봇에는 **수비 개념이 아예 없었다.** 상대가 리치를 걸든 말든 자기
  * 효율만 보고 버려서, 사람 눈에는 "생각 없이 밀어대는 기계"로 보였다. 사람이 실제로
- * 쓰는 근거는 대개 셋이고, 전부 공개 정보(버림패·후로·도라 표시패)만으로 계산된다.
+ * 쓰는 근거는 전부 공개 정보(버림패·후로·도라 표시패)만으로 계산되고, 안전한 순서대로
+ * 늘어놓으면 이렇게 된다.
  *
  *  1. **현물(現物)** — 그 사람이 이미 버린 패는 론이 안 된다(후리텐). 100% 안전.
- *  2. **스지(筋)** — 4가 버려졌으면 1·7의 량면 대기가 없다. 완전 안전은 아니고 확률이 준다.
- *  3. **노찬스** — 량면 대기의 재료가 이미 다 보이면 그 대기는 존재할 수 없다.
+ *  2. **통과패** — 리치 이후 남이 버렸는데 그 사람이 론하지 않은 패. 역시 100%다.
+ *  3. **스지(筋)** — 4가 버려졌으면 1·7의 량면 대기가 없다. **량면만** 지워진다.
+ *  4. **벽(카베)** — 량면·간짱의 재료가 이미 다 보이면 그 대기는 존재할 수 없다.
+ *  5. **무스지** — 아무것도 못 지운 패.
+ *  6. **도라 근처** — 스지라도 상대가 붙들고 있을 이유가 있는 자리다.
+ *
+ * 3~4를 **상수 곱셈이 아니라 대기형별 셈**으로 하는 것이 요점이다(`bot/suji.ts`) —
+ * 스지가 지우는 것도 량면이고 벽이 지우는 것도 량면이라, 곱해 버리면 같은 것을 두 번
+ * 지운다. 지금은 량면 자리 하나하나를 세워 놓고 지워진 자리만 뺀다. 그래서 샤보·간짱·
+ * 단기 몫이 언제나 남고, **스지 하나로 안전을 단정하는 일이 구조적으로 일어나지 않는다.**
  *
  * 여기에 "이 상대가 얼마나 위험한가"(리치 · 후로 수 · 진행 순목)를 곱해 0~1 위험도를 낸다.
  * 정확한 대기 추정이 아니라 **사람이 한눈에 쓰는 근거의 근사**다 — 그게 목적이다.
@@ -18,6 +27,7 @@ import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 import { pointsForHan } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
+import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -27,10 +37,27 @@ export interface Threat {
   player: PlayerId;
   /** 0(무해) ~ 1(리치). 텐파이 확률의 어림값 */
   level: number;
-  /** 이 사람에게 100% 안전한 패 (그가 버린 패 = 현물) */
+  /**
+   * 이 사람에게 100% 안전한 패 — **현물과 통과패**.
+   *
+   * 현물은 그가 버린 패(후리텐)다. 통과패는 그가 리치를 선언한 **뒤에** 남이 버렸는데
+   * 그가 론하지 않은 패다. 리치 중에는 대기를 바꿀 수 없고 론을 놓치면 그 국 내내
+   * 후리텐이 되므로, 통과한 패는 현물과 정확히 같은 값의 안전패다.
+   *
+   * 이 통과패를 예전에는 세지 않았다. 그래서 봇은 **리치자 본인의 바닥만** 안전패로
+   * 봤고, 다섯 순쯤 지나 안전패가 열 장 넘게 널려 있는 판에서도 접을 패가 없다고
+   * 판단해 무스지를 흘렸다 — 사람이라면 절대 하지 않을 실수다.
+   */
   genbutsu: Set<string>;
-  /** 이 사람이 버린 수패의 rank 집합 (스지 계산용) */
+  /**
+   * 이 사람이 **직접 버린** 수패의 rank 집합 (스지 계산용).
+   *
+   * 통과패는 여기에 들어오지 않는다 — 남이 버린 패는 이 사람의 후리텐을 만들지 않아
+   * 스지를 세우지 못한다. 그 패 자신이 안전할 뿐이다.
+   */
   discardRanks: Map<string, Set<number>>;
+  /** 이 사람이 리치를 선언했는가 — 스지 신뢰도가 여기서 갈린다 */
+  riichi: boolean;
   /**
    * 이 사람에게 쏘였을 때 잃을 것으로 보이는 점수.
    *
@@ -118,6 +145,12 @@ export function readThreats(
     }
 
     const riichi = rs?.riichiDeclared === true;
+    // 리치 이후 남의 바닥을 지나간 패는 이 사람이 론을 놓친 것이다 — 현물과 같다
+    if (riichi) {
+      for (const kind of passedSinceRiichi(view, p.id, rs?.riichiTileIndex)) {
+        genbutsu.add(kindKey(kind));
+      }
+    }
     const melds = rs?.meldCount ?? 0;
     const yakuhaiMeld = hasYakuhaiMeld(view, p.id);
     const traits = traitsOf(p.id);
@@ -157,6 +190,7 @@ export function readThreats(
       level: Math.min(1, level),
       genbutsu,
       discardRanks,
+      riichi,
       isDealer,
       value: estimateThreatValue(view, p.id, {
         riichi,
@@ -179,6 +213,39 @@ function discardKindsOf(view: PlayerView, player: PlayerId): TileKind[] {
   for (const id of view.zones[discardsZone(player)]?.tileIds ?? []) {
     const k = view.tiles[id]?.kind;
     if (k !== undefined) out.push(k);
+  }
+  return out;
+}
+
+/**
+ * **통과패** — 이 리치자가 리치를 건 뒤에 남들이 버렸는데 론하지 않은 패들.
+ *
+ * 리치 중에는 대기를 바꿀 수 없고, 자기 대기패를 그냥 지나치면 그 국 내내 후리텐이
+ * 된다. 그러니 리치 이후에 한 번이라도 지나간 패는 **현물과 같은 값의 안전패**다.
+ * 사람은 이걸 세지 않고는 리치에 접을 수조차 없다 — 리치자 본인의 바닥만으로는
+ * 안전패가 늘 모자란다.
+ *
+ * 순서는 바닥의 **자리 번호**로 어림한다. 뷰에는 전원의 버림을 한 줄로 세운 시계가
+ * 없고, 대신 리치 선언패가 그 사람 바닥의 몇 번째인지(`riichiTileIndex`)는 공개다.
+ * 넷이 돌아가며 한 장씩 놓으므로 다른 사람의 같은 번호는 대체로 같은 순이다. 좌석
+ * 순서 때문에 반 순씩 어긋날 수 있어 **선언 번호보다 뒤인 것만** 센다 — 틀리는 쪽이
+ * 위험하므로 한쪽으로만 틀리게 둔다. 선언 번호를 모르면(리치가 숨겨진 뷰) 아무것도
+ * 세지 않는다.
+ */
+function passedSinceRiichi(
+  view: PlayerView,
+  riichiPlayer: PlayerId,
+  riichiTileIndex: number | undefined,
+): TileKind[] {
+  if (riichiTileIndex === undefined) return [];
+  const out: TileKind[] = [];
+  for (const other of view.players) {
+    if (other.id === riichiPlayer) continue;
+    const pond = discardKindsOf(view, other.id);
+    for (let i = riichiTileIndex + 1; i < pond.length; i++) {
+      const k = pond[i];
+      if (k !== undefined) out.push(k);
+    }
   }
   return out;
 }
@@ -347,74 +414,122 @@ function hasYakuhaiMeld(view: PlayerView, player: PlayerId): boolean {
 }
 
 /**
+ * 수비 판단에 딸려 오는, 뷰 바깥에서 오는 것들.
+ *
+ * 스지를 얼마나 믿는지는 **성격**이고(`profile.sujiTrust`), 도라가 무엇인지와 지금이
+ * 몇 순인지는 **국면**이다. 위협 읽기(`readThreats`)는 상대만 보므로 이 셋은 따로 온다.
+ */
+export interface DefenseContext {
+  /** 지금 순목 — 종반일수록 스지가 지울 량면 자체가 적어진다 */
+  turn: number;
+  /** 이 국의 도라 종류 — 스지라도 도라 근처는 더 세게 잡는다 */
+  doraKinds: readonly TileKind[];
+  /** 0(현물주의) ~ 1(스지면 민다). `profile.sujiTrust` */
+  sujiTrust: number;
+}
+
+/** 성격도 도라도 모를 때 쓰는 값 — 교과서적인 중립 수비 */
+export const NEUTRAL_DEFENSE: DefenseContext = {
+  turn: 8,
+  doraKinds: [],
+  sujiTrust: 0.6,
+};
+
+/** rank별 **기본 위험** — 아무것도 못 지웠을 때의 값 (사람의 체감 순서 그대로) */
+function baseRisk(kind: TileKind): number {
+  if (!isNumber(kind)) return 0.3;
+  const r = kind.rank;
+  return r === 1 || r === 9 ? 0.3 : r === 2 || r === 8 ? 0.42 : r === 3 || r === 7 ? 0.5 : 0.58;
+}
+
+/**
+ * **도라 근처인가** — 위험을 되올리는 배율.
+ *
+ * 도라는 상대가 끝까지 붙들고 있는 패라 그 언저리에 대기가 몰린다. 이론이 마지막에
+ * 못 박는 것도 이것이다 — **스지라도 도라 근처면 세게 잡는다.** 그래서 이 배율은
+ * 스지·벽으로 깎은 **뒤에** 곱해진다(깎기 전에 곱하면 스지가 그 경고를 도로 지운다).
+ */
+function doraProximity(kind: TileKind, doraSet: ReadonlySet<string>): number {
+  if (doraSet.has(kindKey(kind))) return 1.35;
+  if (!isNumber(kind)) return 1;
+  for (const d of [kind.rank - 1, kind.rank + 1]) {
+    if (d >= 1 && d <= 9 && doraSet.has(kindKey({ suit: kind.suit, rank: d }))) return 1.12;
+  }
+  return 1;
+}
+
+/**
  * 한 상대에 대한 이 패의 위험도(0~1, 위협도 곱하기 전의 순수 패 위험).
- * 현물 0 → 스지·노찬스로 감액 → 자패는 남은 장수로, 수패는 중장패일수록 위험.
+ *
+ * 현물·통과패는 0, 나머지는 **기본 위험 × 남은 대기형 비율 × 도라 근처**다. 가운데
+ * 항이 `bot/suji.ts`의 대기형 셈이고, 스지·벽·장수 셈이 전부 그 안에서 합쳐진다.
+ *
+ * **0이 되는 것은 현물뿐이다.** 스지가 아무리 겹쳐도 샤보·간짱·단기 몫이 남으므로
+ * 이 함수는 양수를 돌려준다 — "스지 하나 보고 안전하다고 하지 말라"가 규칙이 아니라
+ * 계산의 성질이 되게 만든 것이다.
  */
 function tileRisk(
   kind: TileKind,
   threat: Threat,
   remainingOf: (k: TileKind) => number,
+  defense: DefenseContext,
+  doraSet: ReadonlySet<string>,
 ): number {
   if (threat.genbutsu.has(kindKey(kind))) return 0;
 
-  if (!isNumber(kind)) {
-    // 자패: 남은 장수가 곧 위험. 1장 남았으면 샤보/단기밖에 안 되니 거의 안전하다.
-    const left = remainingOf(kind);
-    if (left <= 1) return 0.04;
-    if (left === 2) return 0.14;
-    return 0.3;
-  }
+  const sujiCredit = isNumber(kind)
+    ? Math.max(0, Math.min(1, defense.sujiTrust)) *
+      sujiConfidence(defense.turn, threat.riichi)
+    : 0;
 
-  const r = kind.rank;
-  // 중장패일수록 량면·칸짱 대기에 두루 걸린다 (사람의 체감 순서 그대로)
-  let risk = r === 1 || r === 9 ? 0.3 : r === 2 || r === 8 ? 0.42 : r === 3 || r === 7 ? 0.5 : 0.58;
+  const factor = isNumber(kind)
+    ? waitFactor(kind.rank, {
+        discarded: threat.discardRanks.get(kind.suit) ?? EMPTY_RANKS,
+        aliveAt: (rank) =>
+          rank >= 1 && rank <= 9 ? remainingOf({ suit: kind.suit, rank }) : 0,
+        remaining: remainingOf(kind),
+        sujiCredit,
+        kabeCredit: KABE_CREDIT,
+      })
+    : // 자패는 량면·간짱·변짱이 없다 — 샤보·단기뿐이라 남은 장수가 곧 위험이다
+      pairWaitFactor(remainingOf(kind));
 
-  const discarded = threat.discardRanks.get(kind.suit) ?? new Set<number>();
-  const lowSuji = r > 3 && discarded.has(r - 3);
-  const highSuji = r < 7 && discarded.has(r + 3);
-  if (r >= 4 && r <= 6) {
-    // 양쪽 스지가 다 서면 량면 대기가 사라진다 (칸짱·샤보·단기만 남는다)
-    if (lowSuji && highSuji) risk *= 0.4;
-    else if (lowSuji || highSuji) risk *= 0.75;
-  } else if (lowSuji || highSuji) {
-    // 1~3·7~9는 한쪽 스지만으로 량면이 끊긴다
-    risk *= 0.45;
-  }
-
-  // 노찬스 — 량면의 재료가 세상에 안 남아 있으면 그 대기는 존재할 수 없다
-  if (noChance(kind, remainingOf)) risk *= 0.35;
-
-  return Math.min(1, risk);
+  return Math.min(1, baseRisk(kind) * factor * doraProximity(kind, doraSet));
 }
 
+const EMPTY_RANKS: ReadonlySet<number> = new Set<number>();
+
 /**
- * 이 패로 완성되는 량면 대기의 재료가 전부 소진됐는가.
- * 예: 4삭을 버릴 때 그 4삭이 걸릴 량면은 (2·3삭)과 (5·6삭)뿐이다. 3삭이 4장 다
- * 보이고 5삭도 4장 다 보이면 4삭은 량면에 걸리지 않는다(칸짱·단기만 남는다).
+ * 도라 종류 집합. `safetyOf`·`expectedLoss`는 한 번의 결정에서 수백 번 불리는데
+ * 문맥은 결정당 하나뿐이라, 문맥에 매달아 두고 한 번만 만든다.
  */
-function noChance(kind: TileKind, remainingOf: (k: TileKind) => number): boolean {
-  const r = kind.rank;
-  const suit = kind.suit;
-  const alive = (rank: number): boolean =>
-    rank >= 1 && rank <= 9 && remainingOf({ suit, rank }) > 0;
-  const lowSide = r >= 3 && alive(r - 1) && alive(r - 2);
-  const highSide = r <= 7 && alive(r + 1) && alive(r + 2);
-  return !lowSide && !highSide;
+const DORA_SETS = new WeakMap<DefenseContext, ReadonlySet<string>>();
+function doraSetOf(defense: DefenseContext): ReadonlySet<string> {
+  const cached = DORA_SETS.get(defense);
+  if (cached !== undefined) return cached;
+  const set: ReadonlySet<string> = new Set(defense.doraKinds.map(kindKey));
+  DORA_SETS.set(defense, set);
+  return set;
 }
 
 /**
  * 이 패를 지금 버릴 때의 **안전도** 0(위험) ~ 1(완전 안전).
  * 모든 상대 중 가장 위험한 값으로 잡는다 — 한 명한테만 쏘여도 실점이다.
+ *
+ * 상대가 여럿 리치를 걸었다면 **각자 따로** 센다. 스지는 그 사람이 버린 패로만
+ * 서는 것이라, 남의 바닥으로 선 스지를 이 사람에게 쓰면 그냥 무스지를 내는 것이다.
  */
 export function safetyOf(
   kind: TileKind,
   threats: readonly Threat[],
   remainingOf: (k: TileKind) => number,
+  defense: DefenseContext = NEUTRAL_DEFENSE,
 ): number {
+  const doraSet = doraSetOf(defense);
   let worst = 0;
   for (const t of threats) {
     if (t.level <= 0) continue;
-    const risk = t.level * tileRisk(kind, t, remainingOf);
+    const risk = t.level * tileRisk(kind, t, remainingOf, defense, doraSet);
     if (risk > worst) worst = risk;
   }
   return 1 - Math.min(1, worst);
@@ -443,11 +558,13 @@ export function expectedLossOf(
   kind: TileKind,
   threats: readonly Threat[],
   remainingOf: (k: TileKind) => number,
+  defense: DefenseContext = NEUTRAL_DEFENSE,
 ): number {
+  const doraSet = doraSetOf(defense);
   let loss = 0;
   for (const t of threats) {
     if (t.level <= 0) continue;
-    loss += t.level * tileRisk(kind, t, remainingOf) * DEAL_IN_SCALE * t.value;
+    loss += t.level * tileRisk(kind, t, remainingOf, defense, doraSet) * DEAL_IN_SCALE * t.value;
   }
   return loss;
 }
