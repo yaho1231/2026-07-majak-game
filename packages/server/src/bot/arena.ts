@@ -96,6 +96,21 @@ export interface ArenaOptions {
   flags?: BotFlags;
 }
 
+/** 증강 하나의 아레나 성적 */
+export interface AugmentStatRow {
+  id: string;
+  /** 드래프트에 제시된 횟수 */
+  offered: number;
+  /** 그중 고른 횟수 */
+  picked: number;
+  /** 픽률 = picked / offered — **봇이 이걸 좋아하는가** */
+  pickRate: number;
+  /** 이 증강을 보유한 채 끝낸 판 수 */
+  games: number;
+  /** 보유 판의 평균 순위 — **실제로 값을 했는가** (낮을수록 좋다) */
+  avgPlacement: number;
+}
+
 export interface ArenaResult {
   games: number;
   /** 진행된 총 국 수 */
@@ -116,6 +131,14 @@ export interface ArenaResult {
    * "봇이 울고 난 뒤를 잘 못 두는가"를 처음으로 재는 자리다(`bot/openTally.ts`).
    */
   open?: { opened: OpenSplitView; closed: OpenSplitView };
+  /**
+   * **증강별 성적** (`--augments`를 켰을 때만).
+   *
+   * `StatsTracker`는 증강별 제시·선택·보유 판 순위를 국 내내 모으고 있었는데
+   * 아레나가 그걸 **한 줄도 출력하지 않았다** — 모아서 버리고 있었다. 그래서
+   * "봇이 증강을 전략에 맞게 쓰는가"에 답할 자료가 하나도 없었다.
+   */
+  augmentStats?: AugmentStatRow[];
   /** 2:2 정책 대전 결과 (ab를 켰을 때만) */
   ab?: {
     flags: string[];
@@ -294,6 +317,36 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
   // 유국률 — 전원 화료 수의 합이 곧 '누군가 이긴 국' 수다
   winRounds = bySeat.reduce((n, s) => n + s.stats.wins, 0);
 
+  /**
+   * 증강별 성적을 좌석 넷에서 합친다.
+   *
+   * **픽률과 평균 순위를 나란히 보는 것이 요점이다.** 픽률은 "봇이 좋아하는가",
+   * 평균 순위는 "실제로 값을 했는가"다. 둘이 어긋나는 증강이 곧 고칠 자리다 —
+   * 많이 집는데 성적이 나쁘면 드래프트 평가가 틀린 것이고, 안 집는데 성적이
+   * 좋으면 놓치고 있는 것이다.
+   */
+  const augRaw = new Map<string, { offered: number; picked: number; games: number; sum: number }>();
+  for (const raw of totals.values()) {
+    for (const [id, a] of Object.entries(raw.augments ?? {})) {
+      const cur = augRaw.get(id) ?? { offered: 0, picked: 0, games: 0, sum: 0 };
+      cur.offered += a.offered;
+      cur.picked += a.picked;
+      cur.games += a.games;
+      cur.sum += a.placementSum;
+      augRaw.set(id, cur);
+    }
+  }
+  const augmentStats: AugmentStatRow[] = [...augRaw]
+    .map(([id, a]) => ({
+      id,
+      offered: a.offered,
+      picked: a.picked,
+      pickRate: a.offered === 0 ? 0 : a.picked / a.offered,
+      games: a.games,
+      avgPlacement: a.games === 0 ? 0 : a.sum / a.games,
+    }))
+    .sort((x, y) => y.pickRate - x.pickRate || y.offered - x.offered);
+
   const byArch = new Map<ArchetypeName, PlayerStatsRaw>();
   for (const seat of bySeat) {
     const raw = totals.get(seat.player);
@@ -312,6 +365,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
     drawRate: rounds === 0 ? 0 : Math.max(0, 1 - winRounds / rounds),
     ...(calls === undefined ? {} : { calls }),
     ...(openTally === undefined ? {} : { open: openTally.view() }),
+    ...(augmentStats.length === 0 ? {} : { augmentStats }),
     ...(opts.ab !== undefined
       ? {
           ab: {
@@ -414,6 +468,59 @@ export function formatArena(r: ArenaResult): string {
       `1인당 점수 차 ${sg >= 0 ? "+" : ""}${sg.toFixed(0)} · ` +
         `표준오차 ±${sse.toFixed(0)} → ${sVerdict}`,
     );
+  }
+
+  const augs = r.augmentStats;
+  if (augs !== undefined && augs.length > 0) {
+    /**
+     * **픽률과 평균 순위를 나란히 놓는다.** 둘이 어긋나는 증강이 고칠 자리다 —
+     * 많이 집는데 성적이 나쁘면 드래프트 평가가 틀렸고, 안 집는데 성적이 좋으면
+     * 놓치고 있는 것이다. 표본이 적은 증강은 순위가 요동치므로 보유 판 수도 함께 본다.
+     */
+    const seen = augs.filter((a) => a.offered >= 3);
+    lines.push("");
+
+    /**
+     * **한 번도 안 고른 증강**을 먼저 세운다.
+     *
+     * 이게 표에서 제일 먼저 봐야 할 줄이다 — 정책이 있고 커버리지 테스트도 통과하는데
+     * 드래프트가 아예 안 집으면 그 증강은 **실전에 존재하지 않는다.** 평균 순위로는
+     * 안 보인다(보유 판이 0이라 순위 자체가 없다).
+     */
+    const never = seen.filter((a) => a.picked === 0).sort((a, b) => b.offered - a.offered);
+    if (never.length > 0) {
+      lines.push(`한 번도 안 고른 증강 ${never.length}종 (제시 3회 이상)`);
+      lines.push(
+        never
+          .slice(0, 20)
+          .map((a) => `${a.id}(${a.offered})`)
+          .join(" · "),
+      );
+      lines.push("");
+    }
+
+    // 평균 순위는 보유 판이 어느 정도 쌓인 것만 — 한두 판짜리는 요동친다
+    const rows = seen.filter((a) => a.games >= 4).sort((a, b) => a.avgPlacement - b.avgPlacement);
+    if (rows.length === 0) return lines.join("\n");
+    lines.push(`증강 성적 (보유 4판 이상 ${rows.length}종) — 고르는가 · 골라서 값을 했는가`);
+    lines.push("증강                     제시   선택   픽률   보유판  평균순위");
+    const n = Math.min(8, Math.floor(rows.length / 2));
+    for (const [label, part] of [
+      ["── 성적이 좋은 쪽 ──", rows.slice(0, n)],
+      ["── 성적이 나쁜 쪽 ──", rows.slice(-n)],
+    ] as const) {
+      lines.push(label);
+      for (const a of part) {
+        lines.push(
+          `${a.id.slice(0, 22).padEnd(24)}` +
+            `${String(a.offered).padStart(5)}` +
+            `${String(a.picked).padStart(7)}` +
+            `${(a.pickRate * 100).toFixed(0).padStart(6)}%` +
+            `${String(a.games).padStart(8)}` +
+            `${a.avgPlacement.toFixed(2).padStart(10)}`,
+        );
+      }
+    }
   }
 
   const split = r.open;
