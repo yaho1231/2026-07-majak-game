@@ -50,6 +50,7 @@ import type { GlossaryEntry } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
+import { isLayoutCramped, layoutViewport, subscribeUiScale, toLayoutPx } from "./uiScale.js";
 
 /**
  * FIXED_SURFACE_NOTE — `position: fixed` 표면은 **반드시 body 포털로 띄운다.**
@@ -1046,7 +1047,8 @@ function CutInBurst({ seed, count }: { seed: number; count: number }): JSX.Eleme
           className="px"
           style={{
             "--px-angle": `${p.angle}deg`,
-            "--px-dist": `${p.dist}vmin`,
+            // 화면 비례 단위는 전부 가상 뷰포트 기준이다 (uiScale.ts 참고)
+            "--px-dist": `${p.dist}cqmin`,
             "--px-size": `${p.size}px`,
             "--px-delay": `${p.delay}s`,
             "--px-dur": `${p.dur}s`,
@@ -1554,6 +1556,39 @@ function TileImg({
     <span className={`tile-face tile-${size}${conjured}${red}${dora}`}>
       <img src={src} alt={formatTile(tile)} draggable={false} />
     </span>
+  );
+}
+
+/**
+ * 창이 너무 작아 자동 축소(uiScale.ts)로도 배치가 안 풀릴 때 왼쪽 위에 뜨는 안내.
+ * 브라우저 확대율은 스크립트로 못 건드린다 — 여기서부터는 사람이 눌러야 한다.
+ */
+function LayoutHint(): JSX.Element | null {
+  const [cramped, setCramped] = useState(isLayoutCramped);
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => subscribeUiScale(() => setCramped(isLayoutCramped())), []);
+  if (!cramped || dismissed) return null;
+  const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
+  return createPortal(
+    <div className="layout-hint" role="status">
+      <span className="layout-hint-icon">⤢</span>
+      <span>
+        창이 좁아 배치가 겹칠 수 있습니다 —{" "}
+        <b>
+          {mod} + −
+        </b>{" "}
+        로 화면을 줄이거나 창을 키워 보세요.
+      </span>
+      <button
+        type="button"
+        className="layout-hint-x"
+        onClick={() => setDismissed(true)}
+        aria-label="안내 닫기"
+      >
+        ×
+      </button>
+    </div>,
+    document.body,
   );
 }
 
@@ -2989,6 +3024,7 @@ export function App(): JSX.Element {
   return (
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
     <div className="game-root" ref={gameRootRef}>
+      <LayoutHint />
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
@@ -3293,8 +3329,10 @@ function PeekButton(): JSX.Element | null {
       }
       const r = panel.getBoundingClientRect();
       const h = btnRef.current?.offsetHeight ?? 34;
-      const top = Math.max(8, Math.min(r.bottom + PEEK_GAP, window.innerHeight - h - 8));
-      const left = (r.left + r.right) / 2;
+      // rect는 화면 좌표, 인라인 top/left는 레이아웃 좌표다 (uiScale.ts 참고)
+      const v = layoutViewport();
+      const top = Math.max(8, Math.min(toLayoutPx(r.bottom) + PEEK_GAP, v.h - h - 8));
+      const left = toLayoutPx((r.left + r.right) / 2);
       setSpot((cur) =>
         cur !== null && Math.abs(cur.top - top) < 0.5 && Math.abs(cur.left - left) < 0.5
           ? cur
@@ -3854,8 +3892,11 @@ function GlossaryTerm({ text, entry }: { text: string; entry: GlossaryEntry }): 
     const r = ref.current?.getBoundingClientRect();
     if (r === undefined) return;
     // 화면 밖으로 새지 않게 가로 위치를 여백 안쪽으로 접는다
-    const half = Math.min(150, window.innerWidth / 2 - 8);
-    setAt({ left: Math.min(Math.max(r.left + r.width / 2, half + 8), window.innerWidth - half - 8), top: r.top });
+    // (rect는 화면 좌표, 인라인 left/top은 레이아웃 좌표 — uiScale.ts 참고)
+    const v = layoutViewport();
+    const half = Math.min(150, v.w / 2 - 8);
+    const cx = toLayoutPx(r.left + r.width / 2);
+    setAt({ left: Math.min(Math.max(cx, half + 8), v.w - half - 8), top: toLayoutPx(r.top) });
   };
   const close = (): void => { disarm(); setAt(null); };
 
@@ -5829,11 +5870,18 @@ function useDraggablePanel(): {
   // 드래그 시작 시점의 "패널 좌상단 기준 커서 오프셋"
   const grabRef = useRef<{ dx: number; dy: number } | null>(null);
 
-  /** 패널이 화면 밖으로 나가지 않게 좌표를 가둔다. */
-  const clamp = (left: number, top: number, w: number, h: number) => ({
-    left: Math.min(Math.max(left, 8), Math.max(8, window.innerWidth - w - 8)),
-    top: Math.min(Math.max(top, 8), Math.max(8, window.innerHeight - h - 8)),
-  });
+  /**
+   * 패널이 화면 밖으로 나가지 않게 좌표를 가둔다.
+   * 인자·결과는 전부 **레이아웃 좌표**다 — getBoundingClientRect·clientX(화면 좌표)는
+   * toLayoutPx()로 바꿔 넣는다. UI 배율이 걸리면 두 좌표계가 어긋난다 (uiScale.ts 참고).
+   */
+  const clamp = (left: number, top: number, w: number, h: number) => {
+    const v = layoutViewport();
+    return {
+      left: Math.min(Math.max(left, 8), Math.max(8, v.w - w - 8)),
+      top: Math.min(Math.max(top, 8), Math.max(8, v.h - h - 8)),
+    };
+  };
 
   const onPointerDown = (e: React.PointerEvent): void => {
     // 헤더 안의 닫기 버튼 등은 드래그가 아니라 클릭으로 동작해야 한다
@@ -5842,7 +5890,9 @@ function useDraggablePanel(): {
     if (el === null) return;
     const r = el.getBoundingClientRect();
     grabRef.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-    setPos(clamp(r.left, r.top, r.width, r.height));
+    setPos(
+      clamp(toLayoutPx(r.left), toLayoutPx(r.top), toLayoutPx(r.width), toLayoutPx(r.height)),
+    );
     e.currentTarget.setPointerCapture(e.pointerId);
     e.preventDefault();
   };
@@ -5854,7 +5904,14 @@ function useDraggablePanel(): {
       const el = ref.current;
       if (grab === null || el === null) return;
       const r = el.getBoundingClientRect();
-      setPos(clamp(e.clientX - grab.dx, e.clientY - grab.dy, r.width, r.height));
+      setPos(
+        clamp(
+          toLayoutPx(e.clientX - grab.dx),
+          toLayoutPx(e.clientY - grab.dy),
+          toLayoutPx(r.width),
+          toLayoutPx(r.height),
+        ),
+      );
     };
     const onUp = (): void => {
       grabRef.current = null;
@@ -5876,7 +5933,9 @@ function useDraggablePanel(): {
       const el = ref.current;
       if (el === null) return;
       const r = el.getBoundingClientRect();
-      setPos((p) => (p === null ? null : clamp(p.left, p.top, r.width, r.height)));
+      setPos((p) =>
+        p === null ? null : clamp(p.left, p.top, toLayoutPx(r.width), toLayoutPx(r.height)),
+      );
     };
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
@@ -8840,11 +8899,12 @@ function OwnArea(props: {
     const base = slotCenter[fromIdx] ?? 0;
     if (id === did) {
       if (settling) {
-        const tx = (slotCenter[targetIdx] ?? base) - base;
+        // slotCenter·clientX는 화면 좌표, transform은 레이아웃 좌표다 (uiScale.ts 참고)
+        const tx = toLayoutPx((slotCenter[targetIdx] ?? base) - base);
         return { transform: `translate(${tx}px, 0)`, transition: "transform 0.16s ease", zIndex: 50 };
       }
       return {
-        transform: `translate(${curX - startX}px, ${curY - startY}px) scale(1.06)`,
+        transform: `translate(${toLayoutPx(curX - startX)}px, ${toLayoutPx(curY - startY)}px) scale(1.06)`,
         transition: "none",
         zIndex: 50,
         pointerEvents: "none",
@@ -8853,7 +8913,7 @@ function OwnArea(props: {
     if (autoSort) return undefined; // 자동정렬 중엔 재정렬 슬라이드 없음 (버리기 드래그만)
     const j = idx < fromIdx ? idx : idx - 1;
     const finalIdx = j < targetIdx ? j : j + 1;
-    const tx = (slotCenter[finalIdx] ?? slotCenter[idx] ?? 0) - (slotCenter[idx] ?? 0);
+    const tx = toLayoutPx((slotCenter[finalIdx] ?? slotCenter[idx] ?? 0) - (slotCenter[idx] ?? 0));
     return { transform: `translateX(${tx}px)`, transition: "transform 0.16s ease" };
   }
 
