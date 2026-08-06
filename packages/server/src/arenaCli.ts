@@ -34,6 +34,8 @@ const result = await runArena({
   ...(seats !== undefined ? { seats } : {}),
   ...(process.argv.includes("--augments") ? { augments: contentAugments } : {}),
   ...(arg("ab") !== undefined ? { ab: parseFlags(arg("ab")) } : {}),
+  // --calls : 콜 기회가 어디서 걸렸는지 집계한다 (bot/callAudit.ts)
+  ...(process.argv.includes("--calls") ? { auditCalls: true } : {}),
 });
 
 console.log(formatArena(result));

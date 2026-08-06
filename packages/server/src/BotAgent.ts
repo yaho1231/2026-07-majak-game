@@ -42,6 +42,7 @@ import type { DraftStage, SandboxBotRules } from "@majak/core/network/protocol.j
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type { TileKind } from "@majak/core/mahjong/tiles/Tile.js";
 import { bidCall, bidPass } from "./bot/call.js";
+import type { CallAudit } from "./bot/callAudit.js";
 import { bidDiscard, bidRiichi } from "./bot/discard.js";
 import { bidKan } from "./bot/kan.js";
 import { augmentPoints, bestBid, EXTRA_ACTION_FLOOR } from "./bot/decide.js";
@@ -154,6 +155,8 @@ export class BotAgent implements PlayerAgent {
    * 평균 순위로 강함을 잴 수 있다(자기대국은 넷이 같아 순위가 2.5로 수렴한다).
    */
   private flags: BotFlags = NO_FLAGS;
+  /** 콜 기회 집계기 (측정 전용 — 실대국은 undefined) */
+  private callAudit: CallAudit | undefined = undefined;
 
   constructor(
     id: PlayerId,
@@ -193,6 +196,12 @@ export class BotAgent implements PlayerAgent {
   /** 실험 스위치를 건다 (측정 전용) */
   setFlags(flags: BotFlags): void {
     this.flags = flags;
+    this.read = null;
+  }
+
+  /** 콜 기회 집계기를 건다 (측정 전용 — `bot/callAudit.ts`) */
+  setCallAudit(audit: CallAudit | undefined): void {
+    this.callAudit = audit;
     this.read = null;
   }
 
@@ -304,7 +313,15 @@ export class BotAgent implements PlayerAgent {
     ]);
     if (turn !== null) {
       // 후로가 이겼으면 이번 국의 역 방향이 그 콜로 확정된다
-      if (call !== null && turn.option === call.option) this.plan = call.plan;
+      if (call !== null && turn.option === call.option) {
+        this.plan = call.plan;
+        call.audit("taken");
+      } else if (call !== null) {
+        // 관문은 다 통과했는데 EV에서 졌다 — 집계에서 유일하게 '판단'인 항목이다.
+        // 얼마나 아슬아슬하게 졌는지를 이긴 입찰값 대비 비율로 남긴다.
+        const scale = Math.max(1, Math.abs(turn.value));
+        call.audit("lost_to_pass", (call.value - turn.value) / scale);
+      }
       return turn.option;
     }
 
@@ -321,6 +338,7 @@ export class BotAgent implements PlayerAgent {
       mode: this.mode,
       traitsOf: (p) => this.opponents.traitsOf(p),
       flags: this.flags,
+      callAudit: this.callAudit,
     });
     return this.read;
   }
