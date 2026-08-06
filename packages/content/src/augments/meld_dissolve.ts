@@ -63,6 +63,7 @@ import {
   roundKey,
   roundViewKey,
 } from "../util.js";
+import { plan } from "./botPlan.js";
 
 const ID = "meld_dissolve";
 const ACTION = "dissolve_meld";
@@ -232,6 +233,35 @@ export const meldDissolve: AugmentDef = defineAugment({
       return out;
     });
   },
-  // 봇 정책 없음 — 자기 후로를 되돌리는 건 템포 손해다. 봇은 역을 노리고 의도적으로만
-  // 후로하므로, 그걸 언제 무를지(멘젠 복구가 이득인지)는 단순 규칙으로 판단할 수 없다.
+  /**
+   * 봇 — **멘젠이 실제로 복구될 때만** 무른다.
+   *
+   * "템포 손해라 판단할 수 없다"고 두었던 자리인데, 갈리는 조건이 사실 하나다:
+   * **이 후로가 내 유일한 후로인가.** 후로가 둘이면 하나를 물러도 여전히 후로 손이라
+   * 얻는 것이 없고(=순수 손해), 하나뿐이면 리치가 통째로 돌아온다.
+   *
+   * 모양 손해는 생각보다 작다 — 되돌아오는 두 장은 펑이면 또이쯔, 치면 이어진 두 장이라
+   * **어차피 몸통 재료로 남는다.** 실제로 잃는 것은 울어 온 그 한 장뿐이다.
+   *
+   * 그래서 샹텐을 정밀히 세지 않는다. 해체하면 패산에서 한 장을 보충하는데 **그 패가
+   * 무엇인지 알 수 없어**, 세어 봐야 근거 없는 정밀도만 붙는다. 대신 조건을 셋으로 둔다.
+   *
+   *   1. 유일한 후로일 것 (멘젠 복구가 진짜로 일어난다)
+   *   2. 텐파이가 아닐 것 (다 된 손을 무르지 않는다)
+   *   3. 리치까지 갈 만큼 가까울 것 (2샹텐 이내)
+   *
+   * "언제 무를지"의 나머지 절반(회수할 순목이 남았는가)은 planner의 advance 적기가 답한다.
+   */
+  bot: plan({
+    intent: "advance",
+    oneShot: true,
+    pick: (ctx) => {
+      const { options, view, holder, tenpai, shanten } = ctx;
+      if (tenpai || shanten > 2) return null;
+      const melds = view.round.byPlayer[holder]?.melds ?? [];
+      const meldCount = view.round.byPlayer[holder]?.meldCount ?? melds.length;
+      if (meldCount !== 1) return null; // 물러도 여전히 후로 손이면 얻는 것이 없다
+      return options.find((o) => o.type === ACTION) ?? null;
+    },
+  }),
 });

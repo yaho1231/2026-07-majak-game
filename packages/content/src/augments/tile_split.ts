@@ -35,6 +35,8 @@ import type {
   TileKind,
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { plan } from "./botPlan.js";
+import { handIdsOfView, handKindsOf, isolatedIndex, shantenIfChanged } from "./botHelpers.js";
 
 const ID = "tile_split";
 const ACTION = "split_tile";
@@ -179,5 +181,51 @@ export const tileSplit: AugmentDef = defineAugment({
       return opts;
     });
   },
-  // 봇 정책 없음 — 어떤 패를 어떻게 쪼개야 손이 좋아지는지는 손패 가치 추정이 필요하다.
+  /**
+   * 봇 — **쪼갠 뒤의 샹텐을 직접 세어 본다.**
+   *
+   * "손패 가치 추정이 필요해서 판단할 수 없다"고 두었던 자리인데, 실은 셀 수 있다.
+   * 이 발동에는 무작위가 하나도 없기 때문이다 — 어느 패가 재료로 사라지는지까지
+   * 규칙이 결정한다(`pickMaterial`). 그래서 후보마다 "그 뒤의 손"을 그대로 만들어
+   * 샹텐을 세고, **실제로 나아지는 후보가 있을 때만** 발동한다.
+   *
+   * 봇 쪽 재료 계산은 `botHelpers.isolatedIndex`가 같은 규칙을 한 벌로 갖고 있다 —
+   * 규칙이 두 벌이 되면 어긋난다.
+   */
+  bot: plan({
+    intent: "advance",
+    oneShot: true, // 국에 한 번뿐이다 — 어중간한 자리에서 태우지 않는다
+    pick: (ctx) => {
+      const { options, view, holder } = ctx;
+      const ids = handIdsOfView(view, holder);
+      const kinds = handKindsOf(view, holder);
+      const base = shantenIfChanged(view, holder, [], []);
+      let best: { type: string; payload: unknown } | null = null;
+      let bestShanten = base;
+      for (const o of options) {
+        if (o.type !== ACTION) continue;
+        const p = o.payload as { tileId?: number; a?: number };
+        if (p.tileId === undefined || p.a === undefined) continue;
+        const targetIdx = ids.indexOf(p.tileId);
+        const target = kinds[targetIdx];
+        if (targetIdx < 0 || target === undefined) continue;
+        const materialIdx = isolatedIndex(kinds, targetIdx);
+        if (materialIdx < 0) continue;
+        const after = shantenIfChanged(
+          view,
+          holder,
+          [targetIdx, materialIdx],
+          [
+            { suit: target.suit, rank: p.a },
+            { suit: target.suit, rank: target.rank - p.a },
+          ],
+        );
+        if (after < bestShanten) {
+          bestShanten = after;
+          best = o;
+        }
+      }
+      return best;
+    },
+  }),
 });

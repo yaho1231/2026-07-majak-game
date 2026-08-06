@@ -61,6 +61,8 @@ import {
   roundViewKey,
   statePrng,
 } from "../util.js";
+import { plan } from "./botPlan.js";
+import { handKindsOf, usefulIn } from "./botHelpers.js";
 
 const ID = "future_sight";
 const ACTION = "future_exchange";
@@ -350,6 +352,49 @@ export const futureSight: AugmentDef = defineAugment({
       }));
     });
   },
-  // 봇 정책 없음 — 무장 후 3장을 교환하는 2단계 액션이고, 어떤 3장이 들어올지에 따라
-  // 손이 좋아질 수도 나빠질 수도 있다. 순이득 여부를 값싼 휴리스틱으로 가릴 수 없어 둔다.
+  /**
+   * 봇 — **두 단계가 서로 다른 질문**이라는 것을 알면 판단이 선다.
+   *
+   * "2단계라 조율할 수 없다"고 두었던 자리인데, 정책은 프롬프트마다 다시 불리므로
+   * 각 단계를 그 단계의 질문으로 답하면 된다.
+   *
+   * **1단계(무장)** — 손을 새로 고칠까. 들어올 3장은 모르지만 잃는 것도 모르는 3장이라
+   * 교환 자체는 대략 중립이고, **확실한 이득이 따로 있다**: 발동 하나당 화료 시 +1판.
+   * 그래서 "고쳐서 손해가 나는 손"만 피하면 된다 — 텐파이와 1샹텐이다(다 된 손을
+   * 흩는 것은 명백한 손해). 2샹텐부터는 고칠수록 이득이다.
+   *
+   * **2단계(교환)** — 뽑힌 3장 중 **무엇을 바닥에 버릴까.** 세 장 다 손을 떠나므로
+   * 손패 가치는 이미 정해졌고, 남은 변수는 **그 한 장이 바닥에 놓인다**는 것뿐이다.
+   * 즉 이건 손패 문제가 아니라 **안전패 문제**다 — 가장 안전한 것을 버린다.
+   * (같은 안전도면 손에 덜 쓸모 있는 쪽.) 이 단계는 미룰 수 없으므로 적기를 안 따진다.
+   */
+  bot: plan({
+    intent: "advance",
+    // 무장까지 마친 뒤라면 교환은 **지금 아니면 없다** — 그때만 적기 판단을 건너뛴다.
+    fleeting: ({ options }) => options.some((o) => o.type === ACTION),
+    pick: (ctx) => {
+      const { options, view, holder, tenpai, shanten, safety } = ctx;
+      const exchange = options.filter((o) => o.type === ACTION);
+      if (exchange.length > 0) {
+        const rest = handKindsOf(view, holder);
+        let best = exchange[0] ?? null;
+        let bestScore = -Infinity;
+        for (const o of exchange) {
+          const tileId = (o.payload as { tileId?: number }).tileId;
+          const k = tileId === undefined ? undefined : view.tiles[tileId]?.kind;
+          if (k === undefined) continue;
+          // 안전이 먼저, 그다음이 손패 쓸모 (안전도가 같을 때만 갈린다)
+          const score = safety(k) * 10 + (usefulIn(rest, k) ? 0 : 1);
+          if (score > bestScore) {
+            bestScore = score;
+            best = o;
+          }
+        }
+        return best;
+      }
+      // 아직 무장 전 — 다 된 손을 흩지 않는다
+      if (tenpai || shanten <= 1) return null;
+      return options.find((o) => o.type === ARM_ACTION) ?? null;
+    },
+  }),
 });
