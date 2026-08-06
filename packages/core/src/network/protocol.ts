@@ -332,6 +332,20 @@ export interface RemoveBotMessage {
 }
 
 /**
+ * 봇의 전략 성향을 바꾼다 (방장 전용, 대기 중에만).
+ *
+ * 기본 성향은 방 코드+좌석 시드로 뽑히는데, 그러면 "수비형 셋과 붙어 보고 싶다" 같은
+ * 연습을 하려고 방을 만들었다 지웠다 해야 했다. 지정하면 그 자리는 판이 끝나 대기실로
+ * 돌아와도 그 성향을 유지한다(봇 인스턴스는 매 판 새로 만들어지므로 방이 기억한다).
+ */
+export interface SetBotArchetypeMessage {
+  type: "setBotArchetype";
+  playerId: PlayerId;
+  /** 원형 id (`attacker`·`defender`…). 서버가 모르는 값이면 무시한다. */
+  archetype: string;
+}
+
+/**
  * 플레이어 강퇴 (방장 전용, 대기 중에만).
  *
  * 방장 자신은 대상이 될 수 없다. 강퇴된 사람은 **그 방에는 다시 들어올 수 없다** —
@@ -391,6 +405,7 @@ export type ClientMessage =
   | ReadyMessage
   | AddBotMessage
   | RemoveBotMessage
+  | SetBotArchetypeMessage
   | KickPlayerMessage
   | StartGameMessage
   | SetGameModeMessage

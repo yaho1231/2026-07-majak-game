@@ -1164,6 +1164,16 @@ const ARCHETYPE_INFO: Record<string, { label: string; desc: string }> = {
   wildcard: { label: "변덕형", desc: "읽히지 않는다. 같은 자리에서 매번 다르게 두고 허세가 잦다." },
 };
 
+/** 선택 목록에 세우는 순서 — 공격↔수비를 양 끝에 두고 사이를 채운다 */
+const ARCHETYPE_ORDER: readonly string[] = [
+  "attacker",
+  "speedster",
+  "valueHunter",
+  "balanced",
+  "wildcard",
+  "defender",
+];
+
 /** 원형 id → 표시 정보 (모르는 id면 null — 서버가 원형을 늘려도 화면이 깨지지 않는다) */
 function archetypeInfo(archetype: string | null | undefined): { label: string; desc: string } | null {
   return archetype != null ? ARCHETYPE_INFO[archetype] ?? null : null;
@@ -1180,6 +1190,37 @@ function BotArchetypeChip(props: { archetype: string | null | undefined }): JSX.
     <span className="stat-chip stat-chip-arch" title={`${info.label} 봇 — ${info.desc}`}>
       {info.label}
     </span>
+  );
+}
+
+/**
+ * 봇 성향 선택 (방장 전용, 대기실) — 그 자리 봇을 고른 원형으로 다시 앉힌다.
+ *
+ * 성향이 시드로만 정해지던 때는 "수비형 셋과 붙어 보고 싶다" 같은 연습을 하려면
+ * 원하는 조합이 나올 때까지 방을 만들었다 지웠다 해야 했다.
+ */
+function BotArchetypePicker(props: {
+  archetype: string | null | undefined;
+  onChange: (archetype: string) => void;
+}): JSX.Element {
+  const cur = props.archetype ?? "";
+  const info = archetypeInfo(props.archetype);
+  return (
+    <select
+      className="seat-arch-pick"
+      value={ARCHETYPE_ORDER.includes(cur) ? cur : ""}
+      title={info !== null ? `${info.label} 봇 — ${info.desc}` : "봇 성향 선택"}
+      aria-label="봇 성향"
+      onChange={(e) => props.onChange(e.target.value)}
+    >
+      {/* 서버가 모르는 원형을 보내 온 경우에만 잠깐 보이는 빈 항목 */}
+      {ARCHETYPE_ORDER.includes(cur) ? null : <option value="">성향</option>}
+      {ARCHETYPE_ORDER.map((id) => (
+        <option key={id} value={id}>
+          {ARCHETYPE_INFO[id]?.label ?? id}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -2996,6 +3037,15 @@ export function App(): JSX.Element {
   function removeBot(playerId: string): void {
     send({ type: "removeBot", playerId: playerId as LobbyPlayerEntry["playerId"] });
   }
+  /** 봇 성향 지정 (방장 전용) — 그 자리의 봇을 지정한 원형으로 다시 앉힌다 */
+  function setBotArchetype(playerId: string, archetype: string): void {
+    send({
+      type: "setBotArchetype",
+      playerId: playerId as LobbyPlayerEntry["playerId"],
+      archetype,
+    });
+    sfx.pick();
+  }
   /** 강퇴 (방장 전용) — 내보낸 사람은 이 방에 다시 들어올 수 없다 */
   function kickPlayer(playerId: string): void {
     send({ type: "kickPlayer", playerId: playerId as LobbyPlayerEntry["playerId"] });
@@ -3096,6 +3146,7 @@ export function App(): JSX.Element {
           onReady={setReady}
           onAddBot={addBot}
           onRemoveBot={removeBot}
+          onSetBotArchetype={setBotArchetype}
           onKick={kickPlayer}
           onStart={startGame}
           onSetGameMode={setGameMode}
@@ -5204,6 +5255,7 @@ function WaitingRoom(props: {
   onReady: (ready: boolean) => void;
   onAddBot: () => void;
   onRemoveBot: (playerId: string) => void;
+  onSetBotArchetype: (playerId: string, archetype: string) => void;
   /** 플레이어 강퇴 (방장 전용) */
   onKick: (playerId: string) => void;
   onStart: () => void;
@@ -5323,7 +5375,14 @@ function WaitingRoom(props: {
                   </span>
                   <span className="seat-stats">
                     {/* 봇은 전적 대신 성향을 보여 준다 — 어떤 셋과 붙는지 알고 앉는다 */}
-                    {p.isBot ? <BotArchetypeChip archetype={p.archetype} />
+                    {p.isBot ? (
+                        isHost
+                          ? <BotArchetypePicker
+                              archetype={p.archetype}
+                              onChange={(a) => props.onSetBotArchetype(p.playerId, a)}
+                            />
+                          : <BotArchetypeChip archetype={p.archetype} />
+                      )
                       : p.stats !== null ? <StatsChips s={p.stats} />
                       : <span className="stat-chip stat-chip-empty">전적 없음</span>}
                   </span>

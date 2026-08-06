@@ -51,7 +51,7 @@ import type { ActionBid } from "./bot/decide.js";
 import { buildRead, readPlan } from "./bot/read.js";
 import type { BotRead, HandPlan } from "./bot/read.js";
 import { rollProfile } from "./bot/profile.js";
-import type { BotProfile } from "./bot/profile.js";
+import type { ArchetypeName, BotProfile } from "./bot/profile.js";
 import type { BotGameMode } from "./bot/match.js";
 import { OpponentMemory } from "./bot/opponents.js";
 import { chooseDraft } from "./bot/draft.js";
@@ -173,6 +173,11 @@ export class BotAgent implements PlayerAgent {
     catalog?: Iterable<AugmentDef>,
     /** 행동 전 생각 시간(ms). 0이면 즉시 결정(테스트 기본) */
     private readonly thinkMs = 0,
+    /**
+     * 원형 고정 — 방장이 대기실에서 이 자리의 성향을 지정했을 때만 온다.
+     * 생략하면 종전대로 시드에서 뽑는다.
+     */
+    archetype?: ArchetypeName,
   ) {
     this.id = id;
     this.nickname = nickname ?? `Bot_${id}`;
@@ -181,7 +186,7 @@ export class BotAgent implements PlayerAgent {
       int: (n) => this.rng.int(n),
       float: () => this.rng.next(),
     };
-    this.profile = rollProfile(this.rng);
+    this.profile = rollProfile(this.rng, archetype);
     const map = new Map<string, AugmentDef>();
     for (const def of catalog ?? []) map.set(def.id, def);
     this.catalog = map;

@@ -169,12 +169,22 @@ const JITTER = 0.08;
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
+/** 문자열이 원형 이름인가 — 클라이언트가 보낸 값을 그대로 믿지 않으려고 쓴다 */
+export function isArchetypeName(s: string): s is ArchetypeName {
+  return (ARCHETYPE_NAMES as string[]).includes(s);
+}
+
 /**
  * 시드 난수로 성격을 뽑는다 — 먼저 **원형 하나**, 그 다음 작은 흔들림.
  * 원형은 균등하게 뽑는다(탁에 여러 성향이 섞이는 것이 목적이다).
+ *
+ * `forced`를 주면 원형만 그 값으로 고정하고 흔들림·템포는 그대로 뽑는다(방장이 대기실에서
+ * 성향을 지정한 자리). 이때도 원형 뽑기 난수는 **버리지 않고 그대로 소모한다** —
+ * 그래야 지정 여부와 상관없이 뒤따르는 난수열이 같아 재현이 어긋나지 않는다.
  */
-export function rollProfile(rng: Prng): BotProfile {
-  const name = ARCHETYPE_NAMES[rng.int(ARCHETYPE_NAMES.length)] ?? "balanced";
+export function rollProfile(rng: Prng, forced?: ArchetypeName): BotProfile {
+  const rolled = ARCHETYPE_NAMES[rng.int(ARCHETYPE_NAMES.length)] ?? "balanced";
+  const name = forced ?? rolled;
   const base = ARCHETYPES[name];
   const shake = (v: number): number => clamp01(v + (rng.next() - 0.5) * 2 * JITTER);
   return {

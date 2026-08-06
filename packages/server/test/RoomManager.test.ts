@@ -394,6 +394,35 @@ describe("방 생성·참가 (코드)", () => {
     expect(after).toBe("p0:0,p1:1,p2:2,p3:3");
   });
 
+  it("봇 성향 지정 — 방장이 고른 원형이 대기실에 반영되고, 방장 아닌 사람은 못 바꾼다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    host.clientSend({ type: "addBot" });
+
+    const botOf = (sock: FakeSocket): { playerId: string; archetype: string } =>
+      (sock.last("lobby").players as any[]).find((p) => p.isBot);
+
+    const bot = botOf(host);
+    expect(bot.archetype).toBeTruthy(); // 지정 전에도 시드에서 뽑은 원형이 실려 온다
+
+    host.clientSend({ type: "setBotArchetype", playerId: bot.playerId, archetype: "defender" });
+    expect(botOf(host).archetype).toBe("defender");
+    // 대기실 전원에게 같은 값이 간다
+    expect(botOf(guest).archetype).toBe("defender");
+
+    // 모르는 원형은 무시한다 (클라이언트가 보낸 값을 그대로 믿지 않는다)
+    host.clientSend({ type: "setBotArchetype", playerId: bot.playerId, archetype: "godmode" });
+    expect(botOf(host).archetype).toBe("defender");
+
+    // 방장이 아니면 못 바꾼다
+    guest.clientSend({ type: "setBotArchetype", playerId: bot.playerId, archetype: "attacker" });
+    expect(botOf(host).archetype).toBe("defender");
+  });
+
   it("자리 섞기 — 방장이 누르면 동남서북이 다시 뽑히고 대기실에 그대로 반영된다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
