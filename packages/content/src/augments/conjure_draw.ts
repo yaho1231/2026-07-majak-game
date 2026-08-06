@@ -46,7 +46,7 @@ import type {
 } from "@majak/core";
 import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
-import { plan, reviewedFleeting } from "./botPlan.js";
+import { plan } from "./botPlan.js";
 
 const ID = "conjure_draw";
 const ACTION = "conjure_tsumo";
@@ -167,8 +167,8 @@ export const conjureDraw: AugmentDef = defineAugment({
   // 그 쯔모로 커쯔가 완성되는 확실한 이득 — 그럴 때만 발동해 1회를 값지게 쓴다.
   bot: plan({
     intent: "advance",
-    // 매 국 1회지만 자기 순이면 언제든 된다 — 부른 패를 쓸 시간이 있어야 값이 난다.
-    fleeting: reviewedFleeting,
+    // 부른 패가 다음 쯔모로 온다 — 제시되는 순간이 곧 때다.
+    fleeting: true,
     pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null; // 텐파이면 오름패를 그냥 쯔모하는 게 낫다
       const counts = kindCounts(handKindsOf(view, holder));

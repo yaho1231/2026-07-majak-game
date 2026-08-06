@@ -148,8 +148,6 @@ export const rankGate: AugmentDef = defineAugment({
       const { options, view } = ctx;
       const mine = options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
-      // 스위치가 꺼져 있으면 예전 그대로 — 목록의 첫 번째(=좌석 순서)
-      if (ctx.flags?.has("counterplay") !== true) return mine[0] ?? null;
       const info = new Map(view.players.map((p) => [p.id, p]));
       let best = mine[0] ?? null;
       let bestScore = -Infinity;

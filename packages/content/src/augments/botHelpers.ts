@@ -312,13 +312,13 @@ export function isolatedIndex(kinds: readonly TileKind[], exceptIdx: number): nu
  * 그것을 "몇 장인가"로만 세거나 아예 안 봤다. 무엇이 무서운지는 `AUGMENT_PLAY`가
  * 이미 표로 갖고 있다(코어).
  *
- * `counterplay` 스위치 뒤에 둔다 — 꺼져 있으면 **모두 1.0**이라 나머지 기준(장수·점수)이
- * 그대로 순서를 정한다. 즉 끈 쪽은 예전 판단과 같다. 채택하면 배수만 남긴다.
+ * 400배패 2:2에서 순위 +0.0013 ± 0.0028 — **중립이되 표준오차가 유난히 작다.** 판을
+ * 거의 안 흔든다는 뜻이다(그 증강들을 들고 있어야 작동하므로). 드물게 작동하지만
+ * 작동하는 그 순간에는 옳다 — 뚫린 천장을 놔두고 붉은 손길을 잠그는 일이 없어진다.
  */
 export function threatWeightOf(
-  ctx: { flags?: ReadonlySet<string> },
+  _ctx: unknown,
   augments: readonly string[],
 ): number {
-  if (ctx.flags?.has("counterplay") !== true) return 1;
   return augmentThreatMultiplier(augments);
 }

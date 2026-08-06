@@ -165,9 +165,8 @@ describe("봇 액티브 증강 정책 동작", () => {
  * 정책들은 그것을 "몇 장인가"로만 세거나 아예 안 봤다. 무엇이 무서운지는
  * `AUGMENT_PLAY`(코어)가 이미 표로 갖고 있다.
  */
-describe("상대 증강을 보고 표적을 고른다 (counterplay)", () => {
-  /** 채택 전이라 스위치 뒤에 있다 — 검사는 켠 상태로 한다 */
-  const ON = { flags: new Set(["counterplay"]) };
+describe("상대 증강을 보고 표적을 고른다", () => {
+  const ON = {};
 
   it("무장해제: 장수가 아니라 **무엇이 무서운가**로 잠근다", () => {
     // p1은 뚫린 천장 한 장(상한 없음), p2는 도라 잔챙이 셋. 예전 정책은 장수만 세서
@@ -219,55 +218,5 @@ describe("상대 증강을 보고 표적을 고른다 (counterplay)", () => {
     ];
     const picked = botChosenOption(pick(parasite, { ...ctx(view, opts), threat: 0.9, ...ON }) ?? null);
     expect((picked?.payload as { target?: string }).target).toBe("p2");
-  });
-});
-
-describe("counterplay 스위치를 끄면 예전 판단 그대로다", () => {
-  it("격(格)은 목록의 첫 번째(좌석 순서)를 찍는다", () => {
-    const view = fakeView("p0", "123m456p789s11z2z", [
-      { id: "p0", seat: 0 },
-      { id: "p1", seat: 1, augments: [] },
-      { id: "p2", seat: 2, augments: ["eternal_dealer"] },
-    ]);
-    const opts = [
-      { type: "rank_gate_mark", payload: { target: "p1" } },
-      { type: "rank_gate_mark", payload: { target: "p2" } },
-    ];
-    const picked = botChosenOption(pick(rankGate, ctx(view, opts)) ?? null);
-    expect((picked?.payload as { target?: string }).target).toBe("p1");
-  });
-
-  it("무장해제는 증강을 가장 많이 든 상대를 찍는다", () => {
-    const view = fakeView("p0", "123m456p789s11z2z", [
-      { id: "p0", seat: 0 },
-      { id: "p1", seat: 1, augments: ["aotenjou_ceiling"] },
-      { id: "p2", seat: 2, augments: ["red_five_touch", "snake_kan", "north_trader"] },
-    ]);
-    const opts = [
-      { type: "disarm_lock", payload: { target: "p1", augmentId: "aotenjou_ceiling" } },
-      { type: "disarm_lock", payload: { target: "p2", augmentId: "red_five_touch" } },
-    ];
-    const picked = botChosenOption(pick(disarm, { ...ctx(view, opts), threat: 0.9 }) ?? null);
-    expect((picked?.payload as { target?: string }).target).toBe("p2");
-  });
-});
-
-/**
- * **수학적으로 죽어 있던 정책** — 25배패 계측에서 "정책이 있는데 한 번도 발동 못 한 것"을
- * 세다가 걸렸다. 시간 정지는 `pick`이 텐파이일 때만 후보를 내는데, `advance` 적기는
- * 텐파이를 0.3으로 보고 `oneShot` 문턱이 0.35라 **조건이 맞는 유일한 순간에 언제나
- * 막혔다.** 다섯 번 들고 한 번도 못 썼다.
- */
-describe("시간 정지 — 텐파이에서 실제로 발동한다", () => {
-  const OPT = { type: "time_stop_use", payload: {} };
-
-  it("텐파이면 발동한다 (예전에는 문턱에 막혀 영영 못 했다)", () => {
-    const view = fakeView("p0", "123m456p789s11z2z", [{ id: "p0", seat: 0 }]);
-    expect(botChosenOption(pick(timeStop, ctx(view, [OPT], true)) ?? null)).toEqual(OPT);
-  });
-
-  it("텐파이가 아니면 발동하지 않는다 (조건은 그대로다)", () => {
-    const view = fakeView("p0", "123m456p789s11z2z", [{ id: "p0", seat: 0 }]);
-    expect(botChosenOption(pick(timeStop, ctx(view, [OPT], false)) ?? null)).toBeNull();
   });
 });

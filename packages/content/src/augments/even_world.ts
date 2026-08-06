@@ -36,7 +36,7 @@ import type {
 } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
-import { plan, reviewedFleeting } from "./botPlan.js";
+import { plan } from "./botPlan.js";
 
 const ID = "even_world";
 const ACTION = "even_world_flip";
@@ -169,8 +169,6 @@ export const evenWorld: AugmentDef = defineAugment({
   // 적기(손이 가까울수록 높다)와 방향이 반대다. 타이밍은 `pick`이 직접 본다.
   bot: plan({
     intent: "rewrite",
-    // 방향을 바로잡아 다시 잰다 — 끄면 예전처럼 제시되는 즉시 발동한다
-    fleeting: reviewedFleeting,
     // 손패의 홀수를 통째로 갈아엎는다 — **잡손일수록 값이 난다.**
     pick: (ctx) =>
       handIsPoor(ctx) ? (ctx.options.find((o) => o.type === ACTION) ?? null) : null,
