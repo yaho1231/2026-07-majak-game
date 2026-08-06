@@ -106,6 +106,36 @@ describe("StatsTracker — 국 단위 집계", () => {
     expect(t.get("p0")!.riichiRounds).toBe(1);
   });
 
+  /**
+   * **후로율은 '국당' 비율이다** — 한 국에 세 번 울어도 1이다.
+   *
+   * 이 정의가 중요한 이유는 사람의 실측 통계(30~40%)가 같은 정의이기 때문이다.
+   * 봇의 후로율을 사람과 견줄 때 이 자가 어긋나면 격차의 크기 자체가 틀어진다
+   * (실제로 2026-08-06에 이 분모를 의심해 조사 방향이 한 번 흔들렸다).
+   * 리치율에는 같은 테스트가 있었지만 후로에는 없어, 여기서 함께 못을 박는다.
+   */
+  it("같은 국에서 세 번 울어도 후로 국은 1회만 (사람 통계와 같은 분모)", () => {
+    const t = new StatsTracker(P);
+    t.consume({ type: ROUND_STARTED });
+    t.consume(call("p0", "p3"));
+    t.consume(call("p0", "p1", "chi"));
+    t.consume(call("p0", "p2"));
+    t.consume(settle());
+    expect(t.get("p0")!.callRounds).toBe(1);
+    expect(t.get("p0")!.roundsPlayed).toBe(1);
+  });
+
+  it("국이 바뀌면 후로 표시가 초기화된다 — 국마다 다시 센다", () => {
+    const t = new StatsTracker(P);
+    for (let i = 0; i < 3; i++) {
+      t.consume({ type: ROUND_STARTED });
+      if (i < 2) t.consume(call("p0", "p3"));
+      t.consume(settle());
+    }
+    expect(t.get("p0")!.callRounds).toBe(2);
+    expect(t.get("p0")!.roundsPlayed).toBe(3);
+  });
+
   it("안깡은 후로에 포함되지 않고, 대명깡·가깡은 포함된다", () => {
     const t = new StatsTracker(P);
     t.consume({ type: ROUND_STARTED });
