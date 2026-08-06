@@ -34,6 +34,7 @@ import {
   createEmptyStats,
   deriveStats,
   mergeStats,
+  standardAugments,
 } from "@majak/core";
 import { hanchanConfigForMode } from "@majak/core/match/HanchanController.js";
 import type {
@@ -165,6 +166,16 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
   let dealScoreOn = 0;
   let dealScoreOff = 0;
 
+  /**
+   * 봇이 발동 판단에 쓸 증강 카탈로그 — **게임에 실제로 깔리는 것과 같아야 한다.**
+   * 증강을 안 쓰는 기본 아레나에서는 비운다(보유가 없어 어차피 조회되지 않지만,
+   * 기본 측정 경로를 한 치도 바꾸지 않기 위해서다).
+   */
+  const botCatalog =
+    opts.augments === undefined || opts.augments.length === 0
+      ? undefined
+      : [...standardAugments, ...opts.augments];
+
   // 2:2 대전은 같은 배패를 좌우 바꿔 두 번 돈다 — 그래서 실제 판수가 두 배다
   const mirrored = opts.ab !== undefined;
   const passes = mirrored ? 2 : 1;
@@ -173,7 +184,11 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
     const side = mirrored ? g % 2 : 0;
     const gs = gameSeed(seed, deal);
     const bots = SEATS.map((id, i) => {
-      const bot = new BotAgent(id, `Bot_${id}`, gs + i);
+      // 카탈로그를 넘겨야 봇이 **액티브 증강을 발동한다**(`BotAgent.catalog`가 비면
+      // 정책 조회가 통째로 비어 증강을 하나도 안 쓴다). 이게 빠져 있어서 `--augments`
+      // 아레나는 증강을 **뽑기만 하고 쓰지는 않는** 판을 재고 있었다 — 정책 63개가
+      // 측정에서 죽어 있었고, 증강 정책 변경은 스위치를 켜도 **정확히 0 차이**가 났다.
+      const bot = new BotAgent(id, `Bot_${id}`, gs + i, botCatalog);
       const fixed = seats?.[i];
       if (fixed !== undefined) bot.setProfile(profileOf(fixed));
       bot.setGameMode(mode === "tonpuu" ? "tonpuu" : "hanchan");
