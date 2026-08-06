@@ -178,7 +178,8 @@ export const fullHandSwap: AugmentDef = defineAugment({
   // 대상은 무작위로 고른다(누구를 뺏어도 내 쓰레기 손보다는 기대값이 높다).
   // 나쁜 손이 곧 발동 조건 — planner의 `advance` 적기와 방향이 반대다(위 개벽 참고)
   bot: plan({
-    intent: "advance",
+    // 상대 손패를 통째로 강탈한다 — 갈아엎기다
+    intent: "rewrite",
     fleeting: true,
     pick: (ctx) => {
       if (!handIsPoor(ctx)) return null;

@@ -51,7 +51,7 @@ import {
   statePrng,
 } from "../util.js";
 import { handIsPoor, handKindsOf } from "./botHelpers.js";
-import { plan, reviewedFleeting } from "./botPlan.js";
+import { plan } from "./botPlan.js";
 
 const ID = "genesis";
 const ACTION = "genesis_flip";
@@ -251,9 +251,8 @@ export const genesis: AugmentDef = defineAugment({
   // 손을 통째로 갈아엎는 증강 — **나쁜 손이 곧 발동 조건**이라 planner의 `advance`
   // 적기(손이 가까울수록 높다)와 방향이 반대다. 타이밍은 `pick`이 직접 본다.
   bot: plan({
-    intent: "advance",
-    // 손을 통째로 뒤집는 물건이라 회수할 시간이 있어야 한다 — 자기 순이면 언제든 된다.
-    fleeting: reviewedFleeting,
+    intent: "rewrite",
+    // 자패↔수패를 통째로 뒤집는다 — **잡손일수록 값이 난다.**
     pick: (ctx) =>
       handIsPoor(ctx) ? (ctx.options.find((o) => o.type === ACTION) ?? null) : null,
   }),

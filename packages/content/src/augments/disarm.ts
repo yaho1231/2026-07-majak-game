@@ -36,6 +36,7 @@ import {
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { threatWeightOf } from "./botHelpers.js";
 
 const ID = "disarm";
 const ACTION = "disarm_lock";
@@ -161,24 +162,40 @@ export const disarm: AugmentDef = defineAugment({
       return opts;
     });
   },
-  // 동풍전 1·반장전 2회 — 증강을 가장 많이 든 상대의 능력 하나를 잠근다(방해 이득, 자해 없음).
-  // 대상 증강의 강약까지는 판단하지 못하므로, 가장 많이 무장한 상대를 노려 무장 하나를 뺀다.
+  /**
+   * 봇 — **무엇이 무서운가**를 보고 잠근다.
+   *
+   * 예전에는 "증강을 가장 많이 든 상대"를 골라 그 사람의 증강 **아무거나** 잠갔다.
+   * 옵션에는 `augmentId`가 실려 있는데 그 필드를 한 번도 안 봤다 — 뚫린 천장을 놔두고
+   * 붉은 손길을 잠그는 일이 얼마든지 일어난다. 손에 든 장수는 위험의 척도가 아니다.
+   *
+   * 이제 `AUGMENT_PLAY`의 위협 배수로 고른다 — 그 표는 "이 증강을 든 상대에게 실점하는
+   * 것이 몇 배 비싼가"를 담고 있어, 잠글 값어치와 정확히 같은 축이다. 표에 없는 증강은
+   * 중립(1.0)이라 **위협이 같으면 예전처럼 많이 든 상대 쪽**으로 갈린다.
+   *
+   * 위협이 셋 다 도토리 키재기여도 손해는 없다 — 어차피 하나는 잠근다.
+   */
   bot: plan({
     intent: "disrupt",
     // 무장해제는 자기 순이면 국이 끝날 때까지 언제든 쓴다 — 1순에 태우면 상대가
     // 무엇을 하려는지 보기도 전에 소모한다. 위협이 서거나 판이 무르익은 뒤가 맞다.
-    pick: ({ options, view }) => {
+    pick: (ctx) => {
+      const { options, view } = ctx;
       const mine = options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
       const augCount = new Map<string, number>();
       for (const p of view.players) augCount.set(p.id, p.augments.length);
       let best = mine[0] ?? null;
-      let bestN = -1;
+      let bestScore = -Infinity;
       for (const o of mine) {
-        const target = (o.payload as { target?: string }).target;
-        const n = target === undefined ? 0 : (augCount.get(target) ?? 0);
-        if (n > bestN) {
-          bestN = n;
+        const p = o.payload as { target?: string; augmentId?: string };
+        if (p.augmentId === undefined) continue;
+        // 그 한 장이 만드는 위협이 먼저, 같으면 많이 무장한 쪽 (동점은 보유 순서로 끊긴다)
+        const threat = threatWeightOf(ctx, [p.augmentId]);
+        const count = p.target === undefined ? 0 : (augCount.get(p.target) ?? 0);
+        const score = threat * 100 + count;
+        if (score > bestScore) {
+          bestScore = score;
           best = o;
         }
       }

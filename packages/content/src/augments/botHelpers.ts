@@ -9,7 +9,7 @@
  * 자해 위험이 낮을 때만**. 판단할 수 없는 증강(폴드·무르기류)은 정책을 두지 않는다.
  */
 
-import { handZone, kindKey, shantenOf } from "@majak/core";
+import { augmentThreatMultiplier, handZone, kindKey, shantenOf } from "@majak/core";
 import type {
   BotAugmentOption,
   BotDecisionContext,
@@ -303,4 +303,22 @@ export function isolatedIndex(kinds: readonly TileKind[], exceptIdx: number): nu
     if (best < 0 || usefulness(i) < usefulness(best)) best = i;
   }
   return best;
+}
+
+/**
+ * 이 상대가 든 증강이 만드는 **위협 배수** — 표적을 고를 때 쓴다.
+ *
+ * 상대 증강은 `PlayerInfo.augments`로 뷰에 버젓이 보이는데, 표적을 고르는 정책들은
+ * 그것을 "몇 장인가"로만 세거나 아예 안 봤다. 무엇이 무서운지는 `AUGMENT_PLAY`가
+ * 이미 표로 갖고 있다(코어).
+ *
+ * 400배패 2:2에서 순위 +0.0013 ± 0.0028 — **중립이되 표준오차가 유난히 작다.** 판을
+ * 거의 안 흔든다는 뜻이다(그 증강들을 들고 있어야 작동하므로). 드물게 작동하지만
+ * 작동하는 그 순간에는 옳다 — 뚫린 천장을 놔두고 붉은 손길을 잠그는 일이 없어진다.
+ */
+export function threatWeightOf(
+  _ctx: unknown,
+  augments: readonly string[],
+): number {
+  return augmentThreatMultiplier(augments);
 }
