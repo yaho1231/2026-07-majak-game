@@ -7,7 +7,8 @@
  * - **값어치·확률** (`bot/value.ts`) — 예상 판수를 코어 점수표로 옮겨 손을 점수로 매기고,
  *   대기·우케이레·남은 순목으로 화료 확률을 낸다. 모든 입찰의 공통 눈금이다.
  * - **순위** (`bot/match.ts`) — 점수판과 남은 국 수를 `riskAppetite` 한 축으로 압축한다.
- * - **위험** (`bot/danger.ts`) — 현물·스지·노찬스로 방총 확률을, 상대 리치·후로·도라로
+ * - **위험** (`bot/danger.ts` · `bot/suji.ts`) — 이 패를 잡는 대기형을 세워 놓고 현물·
+ *   통과패·스지·벽·장수 셈으로 지워진 몫을 빼 방총 확률을, 상대 리치·후로·도라로
  *   예상 실점을 낸다. 곱하면 기대 실점 — 기대 획득과 같은 단위다.
  * - **버림·리치** (`bot/discard.ts`) — 후보마다 버린 뒤의 판 EV. 다마텐은 규칙이 아니라
  *   리치 입찰이 진 결과다.
@@ -231,6 +232,8 @@ export class BotAgent implements PlayerAgent {
    */
   setProfile(profile: BotProfile): void {
     this.profile = profile;
+    // 판 읽기가 성격을 탄다(`sujiTrust`) — 캐시된 읽기는 옛 사람의 것이다
+    this.read = null;
   }
 
   /** 이 방의 게임 모드를 알린다 (게임 시작 시 서버가 호출). 순위 판단의 전제가 된다 */
@@ -352,6 +355,8 @@ export class BotAgent implements PlayerAgent {
     this.read = buildRead(this.lastView, this.id, {
       mode: this.mode,
       traitsOf: (p) => this.opponents.traitsOf(p),
+      // 수비도 성격을 탄다 — 스지를 밀 구실로 쓰는 사람과 현물만 내는 사람이 갈린다
+      profile: this.profile,
       flags: this.flags,
       callAudit: this.callAudit,
     });

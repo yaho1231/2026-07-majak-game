@@ -23,7 +23,9 @@ import {
   tileTracker,
   wallLeftOf,
 } from "./danger.js";
-import type { Threat } from "./danger.js";
+import type { DefenseContext, Threat } from "./danger.js";
+import { NEUTRAL_PROFILE } from "./profile.js";
+import type { BotProfile } from "./profile.js";
 import { readMatch } from "./match.js";
 import type { BotGameMode, MatchContext } from "./match.js";
 import { callableUkeireTiles, estimateHandValue, waitTilesOf, winChance } from "./value.js";
@@ -169,6 +171,11 @@ export interface ReadContext {
   mode?: BotGameMode;
   /** 지금까지 읽어 낸 상대 성향 (뷰가 아니라 **기억**에서 온다) */
   traitsOf?: (p: PlayerId) => OpponentTraits;
+  /**
+   * 이 봇의 성격. 수비 판단이 성격을 타는 곳이 하나 있다 — **스지를 얼마나 믿는가**
+   * (`profile.sujiTrust`). 넘기지 않으면 교과서적인 중립값으로 읽는다.
+   */
+  profile?: BotProfile;
   /** 실험 스위치 (2:2 정책 대전 전용) */
   flags?: BotFlags;
   /** 콜 기회 집계기 (측정 전용) */
@@ -256,6 +263,20 @@ export function buildRead(
   const seatWind =
     ((((seat - view.round.dealerSeat) * view.round.direction) % n) + n) % n + 1;
 
+  /**
+   * 수비 저울 — 순목·도라·**스지 신뢰도**.
+   *
+   * `noSuji`는 스지 읽기를 **끄는** 스위치다(`bot/flags.ts`의 '자'). 켜면 스지 신뢰가
+   * 0이 되어 량면 감액이 사라지고, 벽·장수 셈만 남은 옛 수준의 수비가 된다 —
+   * 스지가 실제로 얼마나 기여하는지를 2:2 대전으로 언제든 다시 잴 수 있다.
+   */
+  const profile = context.profile ?? NEUTRAL_PROFILE;
+  const defense: DefenseContext = {
+    turn: view.round.turnCount,
+    doraKinds,
+    sujiTrust: flags.has("noSuji") ? 0 : profile.sujiTrust,
+  };
+
   const mine = view.round.byPlayer[me];
   const match = readMatch(view, me, mode);
   const wallLeft = wallLeftOf(view);
@@ -280,8 +301,8 @@ export function buildRead(
     match,
     doraKinds,
     remainingOf,
-    safetyOf: (kind) => safetyOf(kind, threats, remainingOf),
-    expectedLoss: (kind) => expectedLossOf(kind, threats, remainingOf),
+    safetyOf: (kind) => safetyOf(kind, threats, remainingOf, defense),
+    expectedLoss: (kind) => expectedLossOf(kind, threats, remainingOf, defense),
     valueOf: (input) =>
       estimateHandValue({
         // 손을 직접 읽어 역을 잡는다 (`bot/yaku.ts`) — 청일색·치또이·일통·산색·찬타.
