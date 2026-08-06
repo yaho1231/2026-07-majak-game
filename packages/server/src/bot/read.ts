@@ -397,9 +397,15 @@ export function readPlan(read: BotRead, committed: HandPlan = null): HandPlan {
     return { yaku: "honitsu", suit: bestSuit };
   }
 
+  if (committed !== null) return committed;
+
   /**
    * 찬타 계열 — 4·5·6이 한 장도 없는 손. 요구패 장수가 아니라 **중심패의 부재**로
    * 판정하는 것이 `bot/yaku.ts`와 같은 규율이다(456 슌쯔가 든 손을 찬타로 읽지 않는다).
+   *
+   * **확정된 방향(`committed`)보다 뒤에 둔다.** 혼일색이 앞에 있는 것은 그쪽이 훨씬
+   * 비싸서 확정을 덮을 만하기 때문이고, 찬타는 그만큼 비싸지 않다 — 역패 펑으로
+   * 방향이 정해진 손을 찬타로 덮으면 중장패를 버리라는 엉뚱한 지시가 된다.
    */
   if (read.flags.has("yaku3")) {
     const hasCore = all.some(
@@ -418,7 +424,6 @@ export function readPlan(read: BotRead, committed: HandPlan = null): HandPlan {
       return { yaku: all.length - numberTotal === 0 ? "junchan" : "chanta" };
     }
   }
-  if (committed !== null) return committed;
 
   /**
    * 이미 눕혀 둔 역패 커쯔 — 그 자체가 확정 역이다.

@@ -138,12 +138,50 @@ export function bidCall(
   }
   if (plans.length === 0) return audit("no_shape");
 
+  /**
+   * 후보 여럿 중 **무엇을 부를 것인가.**
+   *
+   * 예전에는 여기가 고정된 정렬이었다 — 샹텐 → 우케이레 → 적도라. 즉 **속도만** 보고
+   * 골랐고, 부른 뒤 손이 얼마짜리가 되는지는 선택에 아예 들어가지 않았다.
+   * `decide.ts`가 "고정된 우선순위 사슬은 판단하지 않은 판단"이라고 적어 둔 그 형태가
+   * 여기 남아 있었던 셈이다.
+   *
+   * 이게 왜 문제인가는 `bot/openTally.ts`의 첫 측정이 보여 준다 — 울고 난 손은
+   * 멘젠 손의 절반 이하 값이다(3371 vs 6896). 속도로만 고르면 같은 기회에서
+   * **더 싼 쪽**을 고르는 일이 생긴다(도라를 멘쯔에 묻는 치, 역이 싸지는 조합).
+   *
+   * 그래서 후보마다 EV를 내고 가장 큰 것을 고른다 — 봇의 다른 모든 판단과 같은 축이다.
+   * 속도 정렬은 EV가 같을 때의 결정론적 순서로만 남는다.
+   */
   plans.sort((a, b) => {
     if (a.shanten !== b.shanten) return a.shanten - b.shanten;
     if (b.ukeire !== a.ukeire) return b.ukeire - a.ukeire;
     if (a.spendsRed !== b.spendsRed) return a.spendsRed ? 1 : -1;
     return 0;
   });
+  if (read.flags.has("callValue") && plans.length > 1) {
+    /**
+     * **전진하는 후보들 안에서만** EV로 다시 세운다.
+     *
+     * 전부를 EV로 세우면 `plans[0]`이 더 이상 '가장 빠른 것'이 아니게 되는데,
+     * 바로 아래의 전진 게이트는 `plans[0]` 하나만 본다. 그러면 전진하는 후보가
+     * 따로 있는데도 "전진 없음"으로 잘린다 — 정렬 기준을 바꾸면서 그 뒤의 판정이
+     * 무엇을 전제하고 있었는지 함께 봐야 하는 자리다.
+     */
+    const advancing = plans.filter((p) => p.shanten < before);
+    if (advancing.length > 1) {
+      const scored = advancing.map((p) => ({
+        p,
+        // 그 후보로 갔을 때 확정되는 역 방향까지 반영해 값을 낸다
+        ev: evOfCall(read, p, p.yaku ?? committed, profile),
+      }));
+      scored.sort((a, b) => b.ev - a.ev);
+      const rest = plans.filter((p) => p.shanten >= before);
+      plans.length = 0;
+      for (const x of scored) plans.push(x.p);
+      for (const p of rest) plans.push(p);
+    }
+  }
 
   // 역패 펑은 특별 취급 — 그 커쯔 자체가 역이라 손 모양과 무관하게 확정 이득이다.
   // (샹텐이 나빠지지만 않으면 부른다. 사람도 역패 또이쯔는 거의 항상 펑한다.)

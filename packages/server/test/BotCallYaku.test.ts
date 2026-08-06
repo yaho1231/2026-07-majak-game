@@ -14,7 +14,12 @@
 import { describe, expect, it } from "vitest";
 import { guessYaku, hanOf, bestYakuHan } from "../src/bot/yaku.js";
 import type { YakuName } from "../src/bot/yaku.js";
-import { h } from "./botTestView.js";
+import { bidCall } from "../src/bot/call.js";
+import { buildRead } from "../src/bot/read.js";
+import { NEUTRAL_PROFILE } from "../src/bot/profile.js";
+import { parseFlags } from "../src/bot/flags.js";
+import { botScene, h } from "./botTestView.js";
+import type { BotScene } from "./botTestView.js";
 
 /** 2026-08-06에 더한 넷까지 읽는다 (`extended`) — 재는 중이라 스위치 뒤에 있다 */
 const names = (spec: string, menzen: boolean): YakuName[] =>
@@ -80,5 +85,88 @@ describe("판수 표는 하나뿐이다 — 열린 손의 쿠이사가리까지"
     // 청일색(멘젠 6판)이면서 일통이기도 한 손
     const kinds = h("123456789m1199m");
     expect(bestYakuHan(kinds, true)).toBe(hanOf("chinitsu", true));
+  });
+});
+
+/**
+ * **무엇을 부를 것인가** — 후보가 여럿일 때의 선택.
+ *
+ * 예전에는 샹텐 → 우케이레 → 적도라 순의 고정 정렬로 골랐다. 즉 속도만 봤고,
+ * 부른 뒤 손이 얼마짜리가 되는지는 선택에 들어가지 않았다. `bot/openTally.ts`의
+ * 첫 측정이 "울고 난 손이 멘젠 손의 절반 이하 값"임을 보여 준 뒤에 손댄 자리다.
+ */
+describe("콜 후보 고르기 — 속도만이 아니라 값도 본다", () => {
+  const opts = (scene: BotScene) => [
+    // 도라(적5p)를 멘쯔에 묻는 치
+    { type: "chi", payload: { tileIds: [scene.idOf("5p"), scene.idOf("6p")] } },
+    // 같은 값어치의 다른 치 — 도라를 안 쓴다
+    { type: "chi", payload: { tileIds: [scene.idOf("7p"), scene.idOf("8p")] } },
+    { type: "pass", payload: {} },
+  ];
+
+  it("스위치를 켜면 후보를 EV로 고른다 (기본은 예전 정렬 그대로)", () => {
+    const scene = botScene({
+      hand: "234m567s5678p99m",
+      lastDiscard: { player: "p3", spec: "6p" },
+      redAt: [7], // 5p를 적도라로
+    });
+    const withEv = buildRead(scene.view, "p0", { flags: parseFlags("callValue") });
+    const plain = buildRead(scene.view, "p0");
+    // 두 경로 다 무언가를 부르거나 둘 다 안 부른다 — 여기서 잡는 것은 '고르는 방식'이
+    // 바뀌어도 판단이 깨지지 않는다는 것이다 (구체적 선택은 EV가 정한다)
+    const a = bidCall(withEv, opts(scene) as never, null, NEUTRAL_PROFILE);
+    const b = bidCall(plain, opts(scene) as never, null, NEUTRAL_PROFILE);
+    expect(a === null).toBe(b === null);
+    if (a !== null && b !== null) {
+      // EV로 고른 쪽이 그 손에서 더 나쁜 값을 낼 수는 없다
+      expect(a.value).toBeGreaterThanOrEqual(b.value);
+    }
+  });
+
+  it("후보가 하나뿐이면 스위치가 아무것도 바꾸지 않는다", () => {
+    const scene = botScene({
+      hand: "234m567s5678p99m",
+      lastDiscard: { player: "p3", spec: "6p" },
+    });
+    const one = [
+      { type: "chi", payload: { tileIds: [scene.idOf("7p"), scene.idOf("8p")] } },
+      { type: "pass", payload: {} },
+    ];
+    const a = bidCall(
+      buildRead(scene.view, "p0", { flags: parseFlags("callValue") }),
+      one as never,
+      null,
+      NEUTRAL_PROFILE,
+    );
+    const b = bidCall(buildRead(scene.view, "p0"), one as never, null, NEUTRAL_PROFILE);
+    expect(a?.value).toBe(b?.value);
+  });
+});
+
+describe("EV 재정렬이 전진 게이트를 깨뜨리지 않는다", () => {
+  it("전진하는 후보가 있으면 EV 정렬을 켜도 그 콜이 살아남는다", () => {
+    /**
+     * 정렬 기준을 바꾸면 `plans[0]`이 '가장 빠른 것'이 아니게 되는데, 전진 게이트는
+     * `plans[0]` 하나만 본다. 전진 후보들 안에서만 다시 세우지 않으면 여기서
+     * 멀쩡한 콜이 '전진 없음'으로 잘린다.
+     */
+    const scene = botScene({
+      hand: "234m567s5678p99m",
+      lastDiscard: { player: "p3", spec: "6p" },
+    });
+    const options = [
+      { type: "chi", payload: { tileIds: [scene.idOf("5p"), scene.idOf("7p")] } },
+      { type: "chi", payload: { tileIds: [scene.idOf("7p"), scene.idOf("8p")] } },
+      { type: "pass", payload: {} },
+    ];
+    const on = bidCall(
+      buildRead(scene.view, "p0", { flags: parseFlags("callValue") }),
+      options as never,
+      null,
+      NEUTRAL_PROFILE,
+    );
+    const off = bidCall(buildRead(scene.view, "p0"), options as never, null, NEUTRAL_PROFILE);
+    // 스위치가 콜을 통째로 없애 버리면 안 된다
+    expect(on === null).toBe(off === null);
   });
 });
