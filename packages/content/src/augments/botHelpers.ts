@@ -9,7 +9,7 @@
  * 자해 위험이 낮을 때만**. 판단할 수 없는 증강(폴드·무르기류)은 정책을 두지 않는다.
  */
 
-import { handZone, kindKey } from "@majak/core";
+import { handZone, kindKey, shantenOf } from "@majak/core";
 import type {
   BotAugmentOption,
   BotDecisionContext,
@@ -29,12 +29,18 @@ import type {
  *
  * 2026-07-29: 봇이 위험(리치·안전패)과 샹텐을 읽게 되면서 **폴드 계열 4종**
  * (자유 선언·승부수·손바닥 뒤집기·장사진)이 판단 가능해져 목록에서 빠졌다.
+ *
+ * 2026-08-06: 세 종이 더 빠졌다. 못 하는 판단이 아니라 **질문을 잘못 세운 것**이었다.
+ * - **분열** — "손패 가치 추정이 필요"하다고 했지만 이 발동엔 무작위가 없다.
+ *   재료로 사라질 패까지 규칙이 정하므로 쪼갠 뒤의 손을 그대로 만들어 샹텐을 세면 된다.
+ * - **파혼** — "템포 손해 판단 불가"라고 했지만 갈리는 조건은 하나다. 유일한 후로일 때만
+ *   멘젠이 진짜로 돌아온다. 되돌아오는 두 장은 어차피 몸통 재료라 모양 손해가 작다.
+ * - **미래를 보는 자** — "2단계라 조율 불가"라고 했지만 정책은 프롬프트마다 다시 불린다.
+ *   1단계는 "손을 고칠까"(샹텐 문제), 2단계는 "무엇을 바닥에 놓을까"(**안전패 문제**)로
+ *   서로 다른 질문이고, 각각은 봇이 이미 답할 수 있는 것이다.
  */
 export const BOT_UNUSABLE_AUGMENTS: readonly string[] = [
-  "future_sight", // 2단계 블라인드 교환 — 순이득 여부 불명
-  "meld_dissolve", // 자기 후로 되돌리기 — 템포 손해 판단 불가
   "hand_swap3", // 지정→3장 넘김→3장 받음의 다단계 — 한 번의 choose로 조율 불가
-  "tile_split", // 어떤 패를 어떻게 쪼갤지 — 손패 가치 추정 필요
   "frame_up", // 어떤 패를 누구에게 심을지 — 상대 대기 추정 필요
 ];
 
@@ -49,6 +55,11 @@ export function handKindsOf(view: PlayerView, holder: PlayerId): TileKind[] {
     if (k !== undefined) out.push(k);
   }
   return out;
+}
+
+/** 홀더의 감춰진 손패 tileId 목록 — kind 목록과 **같은 순서**다(자리로 짝지을 때 쓴다). */
+export function handIdsOfView(view: PlayerView, holder: PlayerId): TileId[] {
+  return [...(view.zones[handZone(holder)]?.tileIds ?? [])];
 }
 
 /** 특정 패(보통 쯔모패)를 뺀 홀더의 손패 kind 목록 — "이 패가 없어도 되는가" 판단용. */
@@ -239,4 +250,57 @@ export function pickIsolatedDiscard(
     }
   }
   return best ?? mine[0] ?? null;
+}
+
+/**
+ * 손패를 이렇게 바꾸면 **샹텐이 몇이 되는가.**
+ *
+ * 분열·파혼처럼 "손패가 통째로 달라지는" 발동은 짝·이웃 휴리스틱(`tileSwapImproves`)으로는
+ * 못 가린다 — 여러 장이 한꺼번에 오가기 때문이다. 그럴 때는 **직접 세어 보는 것**이 맞고,
+ * 그 계산은 코어가 이미 갖고 있다.
+ *
+ * @param removeIdx 손패에서 뺄 자리(인덱스). 같은 종류가 여럿일 때 어느 것을 뺐는지가
+ *                  중요하므로 kind가 아니라 자리로 받는다.
+ * @param add       더할 패
+ * @param meldDelta 후로 수의 변화 (파혼처럼 후로가 손으로 돌아오면 -1)
+ */
+export function shantenIfChanged(
+  view: PlayerView,
+  holder: PlayerId,
+  removeIdx: readonly number[],
+  add: readonly TileKind[],
+  meldDelta = 0,
+): number {
+  const drop = new Set(removeIdx);
+  const kinds = handKindsOf(view, holder).filter((_, i) => !drop.has(i));
+  kinds.push(...add);
+  const meldCount = (view.round.byPlayer[holder]?.meldCount ?? 0) + meldDelta;
+  return shantenOf(kinds, Math.max(0, meldCount), view.scoringOptions);
+}
+
+/**
+ * 분열이 **재료로 삼을 패의 자리** — `tile_split.ts`의 `pickMaterial`과 같은 규칙이다.
+ *
+ * 봇이 "쪼개면 손이 어떻게 되는가"를 세려면 무엇이 사라지는지 알아야 한다. 규칙이
+ * 두 벌이 되면 어긋나므로, 봇 쪽 계산은 여기 한 곳에 둔다(같은 정의를 두 파일에 쓰지 않게).
+ */
+export function isolatedIndex(kinds: readonly TileKind[], exceptIdx: number): number {
+  const usefulness = (i: number): number => {
+    const k = kinds[i] as TileKind;
+    let n = 0;
+    for (let j = 0; j < kinds.length; j++) {
+      if (j === i || j === exceptIdx) continue;
+      const o = kinds[j] as TileKind;
+      if (o.suit !== k.suit) continue;
+      if (o.rank === k.rank) n += 2;
+      else if (isNum(k) && Math.abs(o.rank - k.rank) <= 2) n += 1;
+    }
+    return n;
+  };
+  let best = -1;
+  for (let i = 0; i < kinds.length; i++) {
+    if (i === exceptIdx) continue;
+    if (best < 0 || usefulness(i) < usefulness(best)) best = i;
+  }
+  return best;
 }
