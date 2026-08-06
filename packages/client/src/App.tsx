@@ -51,6 +51,24 @@ import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
 
+/**
+ * FIXED_SURFACE_NOTE — `position: fixed` 표면은 **반드시 body 포털로 띄운다.**
+ *
+ * `transform`·`filter`·`backdrop-filter`·`perspective`·`will-change: transform`이
+ * 걸린 조상은 그 순간부터 `position: fixed`의 **컨테이닝 블록**이 된다. 그러면
+ * `inset: 0`·`top`·`right`가 화면이 아니라 **그 조상의 패딩 박스** 기준으로 풀린다.
+ * 이 저장소의 게임 화면은 그런 조상 투성이라 사고가 실제로 났다:
+ *
+ * - `.own-area`는 `transform: translateX(-50%)`를 갖는다. 그 안에 있던 분열/염색
+ *   선택 모달이 화면 아래쪽 손패 영역에 처박히고 아래가 잘렸다(2026-08-06 보고).
+ * - `.game-root[data-shake] .table`은 흔들림 동안 `will-change: transform`을 켠다 —
+ *   그 안의 고정 표면이 화료·리치·깡 연출마다 판과 같이 흔들렸다.
+ * - `.home-nav`는 `backdrop-filter: blur(6px)`다. 홈 설정 패널은 마침 nav 원점이
+ *   화면 원점과 겹쳐 티가 안 났을 뿐, 조상이 한 겹만 바뀌어도 튄다.
+ *
+ * 그래서 고정 표면은 렌더 위치와 무관하게 `createPortal(..., document.body)`로 붙인다.
+ * React 이벤트는 여전히 JSX 트리를 따라 버블링하므로 핸들러는 그대로 동작한다.
+ */
 type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "closed";
 
 /** 자동 재연결 백오프 (ms) — 0.5s부터 두 배씩, 최대 10s. 무한 재시도. */
@@ -5873,7 +5891,12 @@ function SettingsPanel(props: {
   const votes = props.abortVote?.votes ?? 0;
   const needed = props.abortVote?.needed ?? 0;
   const drag = useDraggablePanel();
-  return (
+  // 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고.
+  // 이 패널은 특히 중요하다: 드래그가 `getBoundingClientRect()`(뷰포트 좌표)를 재서
+  // 인라인 left/top으로 넣는데, 그 좌표는 **컨테이닝 블록** 기준으로 해석된다.
+  // 홈에서는 `.home-nav`(backdrop-filter)가 컨테이닝 블록이라 마침 원점이 겹쳐
+  // 티가 안 났을 뿐, 조상에 여백이나 transform이 하나만 붙어도 창이 튄다.
+  return createPortal(
     <div
       className="settings-panel"
       ref={drag.ref}
@@ -5966,7 +5989,8 @@ function SettingsPanel(props: {
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -5981,7 +6005,8 @@ function AbortVoteBanner(props: {
   onVote: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
   const { votes, needed } = props.abortVote;
-  return (
+  // 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고
+  return createPortal(
     <div className="abort-banner" role="alertdialog" aria-live="assertive">
       <div className="abort-banner-info">
         <span className="abort-banner-title">게임 무효 투표</span>
@@ -6001,7 +6026,8 @@ function AbortVoteBanner(props: {
           반대
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -6473,15 +6499,19 @@ function AugmentLog({
         📜
         <span className="auglog-count">{rows.length}</span>
       </button>
-      {open ? (
-        <div className="auglog">
-          <div className="auglog-head">
-            증강 정보
-            <button type="button" className="auglog-close" onClick={onToggle} title="닫기">✕</button>
-          </div>
-          <div className="auglog-body">{rows}</div>
-        </div>
-      ) : null}
+      {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
+      {open
+        ? createPortal(
+            <div className="auglog">
+              <div className="auglog-head">
+                증강 정보
+                <button type="button" className="auglog-close" onClick={onToggle} title="닫기">✕</button>
+              </div>
+              <div className="auglog-body">{rows}</div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
@@ -9154,7 +9184,8 @@ function OwnArea(props: {
         </div>
       ) : null}
       {/* 등가교환 — 넘길 내 3장 → 가져올 상대 3장을 각각 한 번에 고른다 */}
-      {canSwapTake && !swapTakeDismissed ? (
+      {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
+      {canSwapTake && !swapTakeDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
             <div className="rinshan-pick-title">
@@ -9198,14 +9229,16 @@ function OwnArea(props: {
               {swap3Sel.length > 0 ? "← 선택 다시" : "세 장을 고르면 교환됩니다"}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
       {/* '다시 열기' 버튼은 없다 — 이제 dismissed는 "방금 제출했다"는 뜻뿐이고
           (닫기가 사라졌다), 다음 단계 프롬프트가 오면 모달이 알아서 다시 뜬다. */}
       {/* 미래를 보는 자 — 뽑힌 3장을 보여주고 바닥에 버릴 1장을 고르게 한다.
           ⚠ 닫기가 없다. 버튼을 누른 순간 발동은 확정이고(사용자 확정 2026-08-01
           "사용하면 무조건 패가 바뀌어야 한다"), 고르기 싫으면 랜덤으로 맡긴다. */}
-      {canPickFuture && !futureDismissed ? (
+      {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
+      {canPickFuture && !futureDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
             <div className="rinshan-pick-title">🔮 미래를 보는 자 — 버릴 패 선택</div>
@@ -9246,10 +9279,12 @@ function OwnArea(props: {
               🎲 아무거나 (랜덤으로 버리기)
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
       {/* 영상패 선택 모달 — 깡 직후 절벽 위에 피어난 꽃이 영상패를 고른다 */}
-      {canPickRinshan && !rinshanDismissed ? (
+      {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
+      {canPickRinshan && !rinshanDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
             <div className="rinshan-pick-title">
@@ -9295,13 +9330,16 @@ function OwnArea(props: {
               닫기 (가져오지 않고 진행)
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
       {/* 절벽 위 꽃: 닫은 뒤 다시 열기 */}
-      {canPickRinshan && rinshanDismissed ? (
+      {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
+      {canPickRinshan && rinshanDismissed ? createPortal(
         <button className="rinshan-reopen" onClick={() => setRinshanDismissed(false)}>
           🌸 영상패 가져오기
-        </button>
+        </button>,
+        document.body,
       ) : null}
     </>
   );
