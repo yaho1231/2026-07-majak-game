@@ -11,7 +11,7 @@ import {
   AUGMENT_PLAY,
   augmentThreatMultiplier,
   augmentValueMultiplier,
-} from "../src/bot/augmentPlaybook.js";
+} from "@majak/core";
 
 const CATALOG_IDS = new Set(contentAugments.map((d) => d.id));
 
@@ -96,14 +96,37 @@ describe("값어치 배수 — 내 손이 얼마나 비싼가", () => {
   });
 
   /**
-   * 위협과 값어치는 **같은 사실의 양면**이다 — 상대에게 비싼 손은 내가 들어도 비싸다.
-   * 한쪽만 적어 두면 봇이 "남이 들면 무섭지만 내가 들면 평범한" 증강을 갖게 된다.
+   * **뱅크가 내는 점수와 지불자가 내는 점수는 다르다.**
+   *
+   * 처음에는 "타점이 커지면 쏘는 쪽도 더 낸다"고 보고 둘을 같은 방향으로 묶었는데,
+   * 틀렸다. 큰손(차액을 뱅크가 채움)·일확천금·판돈 굴리기·핏빛 계약·카운터·
+   * 모 아니면 도는 늘어난 몫을 **뱅크가 발행**한다 — 그 상대에게 쏴도 내 지갑에서
+   * 나가는 돈은 한 푼도 안 늘어난다. 반대로 뚫린 천장은 초과분을 **지불자에게서**
+   * 가져오고, 가불 인생은 상대 셋에게서 직접 뜯는다.
+   *
+   * 그래서 검사할 것은 "같은 방향"이 아니라 **"위협이 1보다 작아지지 않는다"** 이다.
+   * 값이 오르는 증강이 쏘는 쪽을 **더 싸게** 만들 수는 없다.
    */
-  it("타점 증강은 위협과 값어치가 같은 방향이다", () => {
+  it("값이 오르는 증강의 위협이 1보다 작을 수는 없다", () => {
     for (const [id, play] of Object.entries(AUGMENT_PLAY)) {
       if (play.value !== undefined && play.value > 1) {
-        expect(play.threat, id).toBeGreaterThan(1);
+        expect(play.threat ?? 1, id).toBeGreaterThanOrEqual(1);
       }
+    }
+  });
+
+  it("뱅크가 발행하는 큰 점수는 쏘는 쪽 비용을 바꾸지 않는다", () => {
+    // 이 여섯은 늘어난 몫이 뱅크에서 나온다 — 각 증강 파일이 그렇게 적고 있다
+    for (const id of [
+      "big_hand",
+      "jackpot",
+      "let_it_ride",
+      "blood_contract",
+      "all_or_nothing",
+      "counter",
+    ]) {
+      expect(AUGMENT_PLAY[id]?.threat, id).toBeUndefined();
+      expect(AUGMENT_PLAY[id]?.value, id).toBeGreaterThan(1);
     }
   });
 });

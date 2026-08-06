@@ -237,6 +237,12 @@ export {
   synergyBias,
 } from "./augment/synergy.js";
 export type { SynergyTag, SynergyEntry } from "./augment/synergy.js";
+export {
+  AUGMENT_PLAY,
+  augmentThreatMultiplier,
+  augmentValueMultiplier,
+} from "./augment/play.js";
+export type { AugmentPlay } from "./augment/play.js";
 export type {
   Tile,
   TileId,
