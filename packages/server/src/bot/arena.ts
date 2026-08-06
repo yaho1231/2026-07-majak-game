@@ -50,6 +50,8 @@ import type { ArchetypeName } from "./profile.js";
 import { NO_FLAGS } from "./flags.js";
 import type { BotFlags } from "./flags.js";
 import { CALL_OUTCOMES, CALL_OUTCOME_LABEL, CallTally } from "./callAudit.js";
+import { OpenTally } from "./openTally.js";
+import type { OpenSplitView } from "./openTally.js";
 
 export interface ArenaOptions {
   /** 돌릴 판 수 */
@@ -84,6 +86,14 @@ export interface ArenaOptions {
   ab?: BotFlags;
   /** 콜 기회가 어디서 걸렸는지 집계한다 (`--calls`) */
   auditCalls?: boolean;
+  /**
+   * **네 자리 전부**에 거는 실험 스위치 (`--flags`).
+   *
+   * `ab`는 절반에만 걸어 강함을 재는 것이고, 이쪽은 "그 스위치를 켜면 판이 어떻게
+   * 달라지는가"를 보는 용도다 — 콜 기회 집계(`--calls`)와 함께 쓰면 새 판단이
+   * 어느 관문을 얼마나 열었는지가 그대로 보인다.
+   */
+  flags?: BotFlags;
 }
 
 export interface ArenaResult {
@@ -101,6 +111,11 @@ export interface ArenaResult {
    * 후로율이 낮은 원인을 문턱에서 찾을지 값매김에서 찾을지 가르는 자료다.
    */
   calls?: CallTally;
+  /**
+   * **울고 난 국 vs 안 운 국**의 성적 (`--calls`를 켰을 때만).
+   * "봇이 울고 난 뒤를 잘 못 두는가"를 처음으로 재는 자리다(`bot/openTally.ts`).
+   */
+  open?: { opened: OpenSplitView; closed: OpenSplitView };
   /** 2:2 정책 대전 결과 (ab를 켰을 때만) */
   ab?: {
     flags: string[];
@@ -185,6 +200,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       : [...standardAugments, ...opts.augments];
 
   const calls = opts.auditCalls === true ? new CallTally() : undefined;
+  const openTally = opts.auditCalls === true ? new OpenTally(SEATS) : undefined;
 
   // 2:2 대전은 같은 배패를 좌우 바꿔 두 번 돈다 — 그래서 실제 판수가 두 배다
   const mirrored = opts.ab !== undefined;
@@ -203,6 +219,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       if (fixed !== undefined) bot.setProfile(profileOf(fixed));
       bot.setGameMode(mode === "tonpuu" ? "tonpuu" : "hanchan");
       // 같은 배패의 첫 번째 판은 0·2번, 두 번째 판은 1·3번이 스위치를 켠다
+      if (opts.flags !== undefined) bot.setFlags(opts.flags);
       if (opts.ab !== undefined && i % 2 === side) bot.setFlags(opts.ab);
       if (calls !== undefined) bot.setCallAudit(calls);
       archetypeOf.set(id, bot.archetype);
@@ -225,6 +242,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
           const event = JSON.parse(json) as { type: string; payload?: unknown };
           if (event.type === ROUND_STARTED) rounds++;
           tracker.consume(event);
+          openTally?.consume(event);
         },
       },
     );
@@ -293,6 +311,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
     })),
     drawRate: rounds === 0 ? 0 : Math.max(0, 1 - winRounds / rounds),
     ...(calls === undefined ? {} : { calls }),
+    ...(openTally === undefined ? {} : { open: openTally.view() }),
     ...(opts.ab !== undefined
       ? {
           ab: {
@@ -395,6 +414,24 @@ export function formatArena(r: ArenaResult): string {
       `1인당 점수 차 ${sg >= 0 ? "+" : ""}${sg.toFixed(0)} · ` +
         `표준오차 ±${sse.toFixed(0)} → ${sVerdict}`,
     );
+  }
+
+  const split = r.open;
+  if (split !== undefined && split.opened.rounds + split.closed.rounds > 0) {
+    lines.push("");
+    lines.push("울고 난 국 vs 안 운 국 — 후로가 실제로 값을 하는가");
+    lines.push("갈래        국       화료율   방총률  평균화료");
+    for (const [label, v] of [
+      ["울었다", split.opened],
+      ["안 울었다", split.closed],
+    ] as const) {
+      lines.push(
+        `${label.padEnd(10)}${String(v.rounds).padStart(6)}` +
+          `${(v.winRate * 100).toFixed(1).padStart(11)}%` +
+          `${(v.dealInRate * 100).toFixed(1).padStart(8)}%` +
+          `${v.avgWinPoints.toFixed(0).padStart(10)}`,
+      );
+    }
   }
 
   const calls = r.calls;

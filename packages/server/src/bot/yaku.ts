@@ -53,12 +53,75 @@ const isNumber = (k: TileKind): boolean =>
 const isOrphan = (k: TileKind): boolean =>
   !isNumber(k) || k.rank === 1 || k.rank === 9;
 
+/**
+ * 봇이 아는 역 이름 — **손 값어치와 후로 판단이 함께 쓰는 하나의 어휘**다.
+ *
+ * 2026-08-06까지 이 어휘는 두 벌이었다. `bot/read.ts`의 `HandPlan`이 아는 역은
+ * 역패·탕야오·혼일색·토이토이 넷뿐인데 이 파일은 청일색·치또이·일통·산색·찬타까지
+ * 읽었다. 값어치는 여섯을 알고 **후로 게이트는 넷만 아는** 상태였고, 그래서
+ * "울면 화료할 역이 없다"로 잘려 나간 콜 기회가 전체의 36.6%였다(#152 집계).
+ * 산색으로 갈 수 있는 손도, 일통이 보이는 손도 게이트가 모르니 그냥 잘렸다.
+ *
+ * 어휘를 하나로 합쳐 그 구멍을 없앤다.
+ */
+export type YakuName =
+  | "yakuhai"
+  | "tanyao"
+  | "honitsu"
+  | "chinitsu"
+  | "toitoi"
+  | "sanankou"
+  | "ittsu"
+  | "sanshoku"
+  | "sanshokuDoukou"
+  | "chanta"
+  | "junchan"
+  | "chiitoitsu";
+
+/**
+ * 역이 주는 판수. 열린 손에서 한 판 깎이는 역(쿠이사가리)이 표에 그대로 들어 있다.
+ *
+ * 이 표가 값어치(`value.planHan`)와 후로 판단이 함께 보는 **한 벌의 눈금**이다 —
+ * 예전에는 두 곳이 각자 숫자를 들고 있어 조용히 어긋날 수 있었다.
+ */
+export function hanOf(name: YakuName, menzen: boolean): number {
+  switch (name) {
+    case "yakuhai":
+      return 1;
+    case "tanyao":
+      return 1;
+    case "honitsu":
+      return menzen ? 3 : 2;
+    case "chinitsu":
+      return menzen ? 6 : 5;
+    // 토이토이 2판 + 대개 따라오는 삼암각·역패로 실질 3판 근처 (열린 손도 안 깎인다)
+    case "toitoi":
+      return menzen ? 3 : 2;
+    case "sanankou":
+      return 2;
+    case "ittsu":
+      return menzen ? 2 : 1;
+    case "sanshoku":
+      return menzen ? 2 : 1;
+    case "sanshokuDoukou":
+      return 2;
+    case "chanta":
+      return menzen ? 2 : 1;
+    case "junchan":
+      return menzen ? 3 : 2;
+    case "chiitoitsu":
+      return 2;
+  }
+}
+
 /** 손 전체(손패 + 후로)에서 읽어 낸 역 후보 하나 */
 export interface YakuGuess {
-  /** 사람이 읽는 이름 (로그·설명용) */
-  name: string;
+  /** 역 이름 */
+  name: YakuName;
   /** 이 역이 주는 판수 */
   han: number;
+  /** 색 계열 역이 노리는 무늬 (혼일색·청일색만) */
+  suit?: string;
 }
 
 /** 같은 종류끼리 장수 세기 */
@@ -90,6 +153,14 @@ function bySuit(kinds: readonly TileKind[]): Map<string, number[]> {
 export function guessYaku(
   kinds: readonly TileKind[],
   menzen: boolean,
+  /**
+   * 2026-08-06에 더한 넷(탕야오·토이토이·산안커·삼색동각)까지 볼 것인가.
+   *
+   * 스위치 뒤에 둔 이유는 이 넷이 **손 값어치를 바꾸기** 때문이다 — 특히 탕야오는
+   * 요구패가 없는 열린 손을 '역없는 열린 손'(값의 15%)에서 멀쩡한 1판짜리로 올린다.
+   * 값어치는 봇의 모든 판단에 들어가므로 재고 나서 켠다.
+   */
+  extended = false,
 ): YakuGuess[] {
   const out: YakuGuess[] = [];
   const suits = bySuit(kinds);
@@ -108,9 +179,9 @@ export function guessYaku(
   }
   if (bestSuit !== null && bestCount >= 8) {
     if (honorTotal === 0 && numberTotal === bestCount) {
-      out.push({ name: "chinitsu", han: menzen ? 6 : 5 });
+      out.push({ name: "chinitsu", han: hanOf("chinitsu", menzen), suit: bestSuit });
     } else if (numberTotal - bestCount <= 1) {
-      out.push({ name: "honitsu", han: menzen ? 3 : 2 });
+      out.push({ name: "honitsu", han: hanOf("honitsu", menzen), suit: bestSuit });
     }
   }
 
@@ -118,7 +189,7 @@ export function guessYaku(
   if (menzen) {
     let pairs = 0;
     for (const n of counts(kinds).values()) if (n >= 2) pairs++;
-    if (pairs >= 5) out.push({ name: "chiitoitsu", han: 2 });
+    if (pairs >= 5) out.push({ name: "chiitoitsu", han: hanOf("chiitoitsu", menzen) });
   }
 
   /**
@@ -140,7 +211,7 @@ export function guessYaku(
     ].map((run) => run.filter((r) => (a[r] ?? 0) > 0).length);
     const have = runs.reduce((x, y) => x + y, 0);
     if (have >= 8 && runs.every((n) => n >= 2)) {
-      out.push({ name: "ittsu", han: menzen ? 2 : 1 });
+      out.push({ name: "ittsu", han: hanOf("ittsu", menzen) });
       break;
     }
   }
@@ -158,7 +229,7 @@ export function guessYaku(
       if (inSuit > 0) suitsTouched++;
     }
     if (have >= 7 && suitsTouched === 3) {
-      out.push({ name: "sanshoku", han: menzen ? 2 : 1 });
+      out.push({ name: "sanshoku", han: hanOf("sanshoku", menzen) });
       break;
     }
   }
@@ -175,10 +246,57 @@ export function guessYaku(
   const orphans = kinds.filter(isOrphan).length;
   if (!hasCore && kinds.length >= 10 && orphans >= 4) {
     const junchan = honorTotal === 0;
-    out.push({
-      name: junchan ? "junchan" : "chanta",
-      han: (junchan ? 3 : 2) - (menzen ? 0 : 1),
-    });
+    const name = junchan ? "junchan" : "chanta";
+    out.push({ name, han: hanOf(name, menzen) });
+  }
+
+  if (!extended) return out;
+
+  /**
+   * ── 탕야오 ──
+   *
+   * 요구패·자패가 한 장도 없으면 그 손은 이미 탕야오다. 값어치 쪽에서는 `plan`이
+   * 같은 값을 내지만, **방향이 안 정해진 손**(`plan === null`)에서는 아무도 이걸
+   * 세지 않았다 — 열린 손이면 "역없는 열린 손"으로 값이 15%까지 깎였다.
+   * 실제로는 쿠이탄이 붙는 멀쩡한 손이다.
+   */
+  if (kinds.length >= 8 && orphans === 0) {
+    out.push({ name: "tanyao", han: hanOf("tanyao", menzen) });
+  }
+
+  // ── 커쯔 계열 ── 또이쯔·커쯔가 몇 벌이나 모였는가로 잰다
+  const c = counts(kinds);
+  let triplets = 0;
+  let pairsOrBetter = 0;
+  for (const n of c.values()) {
+    if (n >= 3) triplets++;
+    if (n >= 2) pairsOrBetter++;
+  }
+  // 토이토이 — 커쯔가 될 덩이가 넷 이상(머리 포함 다섯 덩이 근처)
+  if (pairsOrBetter >= 4 && triplets >= 2) {
+    out.push({ name: "toitoi", han: hanOf("toitoi", menzen) });
+  }
+  /**
+   * 산안커 — **멘젠에서만** 센다. 열린 손에서도 안커 셋은 가능하지만, 여기서 세는
+   * 커쯔는 손패의 커쯔라 후로가 섞이면 암각인지 밝은 커쯔인지 구별이 안 된다.
+   * 과대평가보다 과소평가가 안전하다는 이 파일의 원칙대로 멘젠으로 좁힌다.
+   */
+  if (menzen && triplets >= 3) {
+    out.push({ name: "sanankou", han: hanOf("sanankou", menzen) });
+  }
+  // 삼색동각 — 같은 숫자의 커쯔·또이쯔가 세 색에 걸쳐 있을 때
+  for (let r = 1; r <= 9; r++) {
+    let touched = 0;
+    let have = 0;
+    for (const suitName of NUMBER_SUITS) {
+      const n = c.get(kindKey({ suit: suitName, rank: r })) ?? 0;
+      if (n >= 2) touched++;
+      have += Math.min(n, 3);
+    }
+    if (touched === 3 && have >= 7) {
+      out.push({ name: "sanshokuDoukou", han: hanOf("sanshokuDoukou", menzen) });
+      break;
+    }
   }
 
   return out;
@@ -191,8 +309,12 @@ export function guessYaku(
  * 센다. 겹침을 다 더하면 추정이 낙관 쪽으로 크게 기울고, 그러면 못 가는 손을 붙들게
  * 된다. 과소평가가 과대평가보다 안전하다.
  */
-export function bestYakuHan(kinds: readonly TileKind[], menzen: boolean): number {
+export function bestYakuHan(
+  kinds: readonly TileKind[],
+  menzen: boolean,
+  extended = false,
+): number {
   let best = 0;
-  for (const g of guessYaku(kinds, menzen)) if (g.han > best) best = g.han;
+  for (const g of guessYaku(kinds, menzen, extended)) if (g.han > best) best = g.han;
   return best;
 }

@@ -25,7 +25,7 @@
 import { calculateScore, kindKey } from "@majak/core";
 import type { TileKind } from "@majak/core";
 import type { HandPlan } from "./read.js";
-import { bestYakuHan } from "./yaku.js";
+import { bestYakuHan, hanOf } from "./yaku.js";
 
 /** 손 하나의 값어치 추정 */
 export interface HandValue {
@@ -51,22 +51,12 @@ const RIICHI_HAN = 2.2;
 const MENZEN_BASE_HAN = 1;
 
 /**
- * 노리는 역이 주는 판수. 열린 손은 한 판 깎이는 역(혼일색·준찬타 계열)이 있으므로
- * 멘젠/열린 손을 나눠 센다.
+ * 노리는 역이 주는 판수 — 표는 `bot/yaku.ts`의 `hanOf` 하나뿐이다.
+ * 예전에는 여기와 `yaku.ts`가 각자 숫자를 들고 있어 조용히 어긋날 수 있었다.
  */
 function planHan(plan: HandPlan, menzen: boolean): number {
   if (plan === null) return menzen ? MENZEN_BASE_HAN : 0;
-  switch (plan.yaku) {
-    case "yakuhai":
-      return 1;
-    case "tanyao":
-      return 1;
-    case "honitsu":
-      return menzen ? 3 : 2;
-    case "toitoi":
-      // 토이토이 2판 + 대개 따라오는 삼암각·역패로 실질 3판 근처
-      return menzen ? 3 : 2;
-  }
+  return hanOf(plan.yaku, menzen);
 }
 
 /** 역없는 열린 손에 남기는 잔값 — 화료가 사실상 막혔다는 뜻 */
@@ -123,6 +113,8 @@ export interface HandValueInput {
    * 안 주면 예전처럼 `plan`이 아는 네 역만 센다.
    */
   kinds?: readonly TileKind[];
+  /** 2026-08-06에 더한 역 넷(탕야오·토이토이·산안커·삼색동각)까지 읽을 것인가 */
+  extendedYaku?: boolean;
 }
 
 /**
@@ -138,7 +130,10 @@ export function estimateHandValue(input: HandValueInput): HandValue {
   // 방향은 "무엇을 버릴까"의 기준이라 좁게 잡혀 있고, 그래서 청일색·치또이처럼
   // 방향이 모르는 비싼 역을 놓친다 — 그걸 여기서 메운다.
   const fromPlan = planHan(input.plan, menzen);
-  const fromHand = input.kinds === undefined ? 0 : bestYakuHan(input.kinds, menzen);
+  const fromHand =
+    input.kinds === undefined
+      ? 0
+      : bestYakuHan(input.kinds, menzen, input.extendedYaku === true);
   const base = input.handDora + Math.max(fromPlan, fromHand);
   const fu = estimateFu(input.plan, menzen);
 

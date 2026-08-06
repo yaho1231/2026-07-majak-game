@@ -29,6 +29,7 @@ import type { BotProfile } from "./profile.js";
 import { readMatch } from "./match.js";
 import type { BotGameMode, MatchContext } from "./match.js";
 import { callableUkeireTiles, estimateHandValue, waitTilesOf, winChance } from "./value.js";
+import type { YakuName } from "./yaku.js";
 import type { HandValue } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
@@ -36,13 +37,14 @@ import { NO_FLAGS } from "./flags.js";
 import type { BotFlags } from "./flags.js";
 import type { CallAudit } from "./callAudit.js";
 
-/** 이 국에 노리는 역 — 후로할지, 무엇을 버릴지의 기준이 된다 */
-export type HandPlan =
-  | { yaku: "yakuhai" }
-  | { yaku: "honitsu"; suit: string }
-  | { yaku: "tanyao" }
-  | { yaku: "toitoi" }
-  | null;
+/**
+ * 이 국에 노리는 역 — 후로할지, 무엇을 버릴지의 기준이 된다.
+ *
+ * 이름은 `bot/yaku.ts`의 `YakuName`을 그대로 쓴다. 예전에는 여기에 넷(역패·탕야오·
+ * 혼일색·토이토이)만 있고 `yaku.ts`는 여섯을 더 알아서, **값어치는 아는 역을 후로
+ * 판단은 모르는** 상태였다 — 콜 기회의 36.6%가 "역 없음"으로 잘려 나간 원인이다.
+ */
+export type HandPlan = { yaku: YakuName; suit?: string } | null;
 
 /** 가정한 손을 값매기는 질의 — 생략한 값은 지금 손 그대로 */
 export interface ValueQuery {
@@ -233,7 +235,13 @@ export function buildRead(
     if (k !== undefined) doraKinds.push(doraKindFor(k));
   }
   // 위협 읽기는 도라를 알아야 한다 — 상대 후로에 눕혀진 도라가 예상 실점을 바꾼다
-  const threats = readThreats(view, me, doraKinds, context.traitsOf ?? (() => NEUTRAL_TRAITS));
+  const threats = readThreats(
+    view,
+    me,
+    doraKinds,
+    context.traitsOf ?? (() => NEUTRAL_TRAITS),
+    flags,
+  );
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {
     const key = kindKey(d);
@@ -311,6 +319,7 @@ export function buildRead(
         ...(flags.has("noYakuRead")
           ? {}
           : { kinds: [...hand, ...meldKinds] }),
+        extendedYaku: flags.has("yaku3"),
         handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
         meldCount: input.meldCount ?? meldCount,
         // 후로 수를 올려 물었다는 것은 **손을 연다**는 뜻이다 (콜 EV)
@@ -378,7 +387,36 @@ export function readPlan(read: BotRead, committed: HandPlan = null): HandPlan {
     }
   }
   if (bestSuit !== null && bestCount >= 5 && numberTotal - bestCount <= 1) {
+    /**
+     * 자패가 한 장도 없으면 그 손은 혼일색이 아니라 **청일색**으로 간다.
+     * 방향이 다르면 버릴 패가 달라진다 — 청일색은 자패도 정리 대상이다.
+     */
+    if (read.flags.has("yaku3") && all.length - numberTotal === 0) {
+      return { yaku: "chinitsu", suit: bestSuit };
+    }
     return { yaku: "honitsu", suit: bestSuit };
+  }
+
+  /**
+   * 찬타 계열 — 4·5·6이 한 장도 없는 손. 요구패 장수가 아니라 **중심패의 부재**로
+   * 판정하는 것이 `bot/yaku.ts`와 같은 규율이다(456 슌쯔가 든 손을 찬타로 읽지 않는다).
+   */
+  if (read.flags.has("yaku3")) {
+    const hasCore = all.some(
+      (k) =>
+        (k.suit === "man" || k.suit === "pin" || k.suit === "sou") &&
+        k.rank >= 4 &&
+        k.rank <= 6,
+    );
+    const orphans = all.filter(
+      (k) =>
+        !(k.suit === "man" || k.suit === "pin" || k.suit === "sou") ||
+        k.rank === 1 ||
+        k.rank === 9,
+    ).length;
+    if (!hasCore && all.length >= 10 && orphans >= 4) {
+      return { yaku: all.length - numberTotal === 0 ? "junchan" : "chanta" };
+    }
   }
   if (committed !== null) return committed;
 

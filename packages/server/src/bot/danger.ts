@@ -121,6 +121,8 @@ export function readThreats(
   doraKinds: readonly TileKind[] = [],
   /** 지금까지 읽어 낸 이 사람의 성향 (없으면 '보통 사람') */
   traitsOf: (p: PlayerId) => OpponentTraits = () => NEUTRAL_TRAITS,
+  /** 실험 스위치 (2:2 정책 대전 전용) */
+  flags?: ReadonlySet<string>,
 ): Threat[] {
   const out: Threat[] = [];
   const turn = view.round.turnCount;
@@ -176,6 +178,15 @@ export function readThreats(
     }
 
     /**
+     * **손이 움직였는가.** 쯔모기리와 手出し를 나눠 보는 읽기 — 사람이 탁에서
+     * 늘 하는 것인데 봇은 여태 한 번도 안 봤다(`tsumogiriIds`가 뷰에 있는데도).
+     * 멘젠 손에는 이게 거의 유일한 단서라, 후로 손보다 여기서 더 값을 한다.
+     */
+    if (flags?.has("read2") === true) {
+      level += motionBoost(readHandMotion(view, p.id), turn, riichi);
+    }
+
+    /**
      * **접은 사람은 위험하지 않다.** 남의 리치에 현물만 골라 내고 있는 사람은
      * 이미 화료를 포기한 것이다. 예전 봇은 후로 둘을 눕힌 채 접은 사람을 끝까지
      * 무서워해서, 아무도 노리지 않는 패를 못 버리고 자기 손만 망쳤다.
@@ -201,6 +212,16 @@ export function readThreats(
         discards,
         riichiTurn: rs?.riichiTileIndex,
         traits,
+        doubleRiichi: rs?.doubleRiichi === true,
+        /**
+         * 일발권 유도 — 리치 선언패가 아직 그 사람 바닥의 **마지막 장**이면
+         * 선언 뒤로 한 번도 버리지 않았다는 뜻이다(공개 정보만으로 안다).
+         */
+        ippatsu:
+          riichi &&
+          rs?.riichiTileIndex !== undefined &&
+          rs.riichiTileIndex === discards.length - 1,
+        extended: flags?.has("read2") === true,
       }),
     });
   }
@@ -268,6 +289,73 @@ function recentMiddleDiscards(discards: readonly TileKind[]): number {
   return n;
 }
 
+// ─────────────────────── 손동작 읽기 (쯔모기리 / 手出し) ───────────────────────
+
+/**
+ * 버림패 하나하나가 **쯔모기리인가 手出し인가**.
+ *
+ * 실제 탁에서 가장 강한 읽기 중 하나인데 봇은 이걸 한 번도 안 봤다. 뷰에는
+ * `tsumogiriIds`가 국 내내 실려 있고(전원 공개 정보다 — 실제 탁에서도 손이
+ * 움직였는지는 모두가 본다), 클라이언트는 바닥에 표식까지 그리는데 봇만 몰랐다.
+ *
+ * 두 신호가 나온다.
+ *
+ *  - **手出し**(손에서 뺐다) = 그 순간 손 모양이 바뀌었다. 종반의 중장패 手出し는
+ *    "방금 무언가를 맞췄다"는 뜻이라 텐파이가 가깝다는 강한 신호다.
+ *  - **연속 쯔모기리** = 손이 굳었다. 뽑는 족족 그대로 흘리는 사람은 이미 텐파이라
+ *    바꿀 것이 없거나, 접고 있다. 접기는 `isFolding`이 따로 잡으므로 남는 것은 전자다.
+ *
+ * 예전 `recentMiddleDiscards`는 이 둘을 구별하지 않았다. 그래서 쯔모로 흘러들어온
+ * 중장패(아무 뜻도 없는 우연)와 손에서 꺼낸 중장패(의미 있는 변화)를 같은 신호로
+ * 셌다 — 노이즈가 절반쯤 섞인 읽기였다.
+ */
+interface HandMotion {
+  /** 최근 3장 중 **手出し로 나온** 중장패 수 */
+  recentMiddleTedashi: number;
+  /** 마지막으로 손이 움직인 뒤로 몇 장을 그대로 흘렸는가 */
+  tsumogiriStreak: number;
+}
+
+function readHandMotion(view: PlayerView, player: PlayerId): HandMotion {
+  const ids = view.zones[discardsZone(player)]?.tileIds ?? [];
+  const tsumogiri = new Set(view.round.byPlayer[player]?.tsumogiriIds ?? []);
+
+  let recentMiddleTedashi = 0;
+  for (const id of ids.slice(-3)) {
+    if (tsumogiri.has(id)) continue;
+    const k = view.tiles[id]?.kind;
+    if (k !== undefined && isNumber(k) && k.rank >= 3 && k.rank <= 7) recentMiddleTedashi++;
+  }
+
+  let tsumogiriStreak = 0;
+  for (let i = ids.length - 1; i >= 0; i--) {
+    const id = ids[i];
+    if (id === undefined || !tsumogiri.has(id)) break;
+    tsumogiriStreak++;
+  }
+
+  return { recentMiddleTedashi, tsumogiriStreak };
+}
+
+/**
+ * 손동작이 위협도에 얹는 몫.
+ *
+ * 크기를 작게 잡은 것이 요점이다. 이건 **어림의 보정**이지 텐파이 판정이 아니다 —
+ * 뷰가 쯔모기리를 안 실어 주는 경로(리플레이 재구성 등)에서는 조용히 0이 되어야 한다.
+ */
+function motionBoost(motion: HandMotion, turn: number, riichi: boolean): number {
+  // 리치는 선언 뒤 전부 쯔모기리라 신호가 아니다 (이미 위협도 1이다)
+  if (riichi) return 0;
+  let boost = 0;
+  // 종반의 중장패 手出し — 손이 방금 바뀌었다
+  if (turn >= 9) boost += Math.min(2, motion.recentMiddleTedashi) * 0.07;
+  // 손이 굳었다 — 오래 흘릴수록 세지되 상한을 둔다
+  if (turn >= 8 && motion.tsumogiriStreak >= 3) {
+    boost += Math.min(0.12, (motion.tsumogiriStreak - 2) * 0.04);
+  }
+  return boost;
+}
+
 /**
  * 이 사람이 **접고 있는가**.
  *
@@ -322,6 +410,12 @@ function estimateThreatValue(
     /** 리치 선언패가 바닥 몇 번째인가 (= 몇 순에 걸었는가) */
     riichiTurn: number | undefined;
     traits: OpponentTraits;
+    /** 더블리치인가 (공개 정보) — 리치보다 한 판 비싸다 */
+    doubleRiichi: boolean;
+    /** 지금이 이 사람의 **일발권**인가 (아래 유도 참고) */
+    ippatsu: boolean;
+    /** 새 읽기를 켤 것인가 (2:2 대전용 스위치) */
+    extended: boolean;
   },
 ): number {
   const meldKinds: TileKind[] = [];
@@ -352,6 +446,27 @@ function estimateThreatValue(
    */
   if (info.riichi && info.riichiTurn !== undefined) {
     han += info.riichiTurn <= 5 ? 0.5 : info.riichiTurn >= 12 ? -0.3 : 0;
+  }
+
+  if (info.extended) {
+    /**
+     * **더블리치**는 리치보다 한 판 더 붙는다. 공개 정보인데(`doubleRiichi`가 타인
+     * 뷰에도 실린다) 봇은 여태 한 번도 안 봤다 — 배패부터 텐파이였던 손이라 값도
+     * 대개 더 나간다.
+     */
+    if (info.doubleRiichi) han += 1;
+    /**
+     * **일발권**에 쏘면 한 판이 더 붙는다.
+     *
+     * 리치의 기본값 2.2판에는 일발이 **평균치로**(약 0.25판) 이미 섞여 있다. 하지만
+     * 지금 이 순간이 일발권이라면 그건 평균이 아니라 확정 1판이라, 그 차이만큼만 얹는다.
+     *
+     * 뷰의 `ippatsu`는 본인 뷰 전용이라 못 쓴다(정보 비대칭은 지켜야 한다). 대신
+     * **공개 정보로 유도한다** — 리치를 선언한 그 패가 아직 그 사람 바닥의 마지막
+     * 장이면, 그 사람은 선언 뒤로 한 번도 버리지 않았다는 뜻이다. 후로가 끼면 일발이
+     * 깨지는데 그건 여기서 알 수 없으므로, 확정 1판이 아니라 그보다 낮게 잡는다.
+     */
+    if (info.ippatsu) han += 0.7;
   }
 
   /**

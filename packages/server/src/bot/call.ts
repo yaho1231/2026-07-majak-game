@@ -328,6 +328,23 @@ function countYakuhaiTriplets(read: BotRead, meldKinds: readonly TileKind[]): nu
  * 이 콜을 부른 뒤 열린 손이 노릴 수 있는 역 — 없으면 null(= 울면 화료할 수 없는 손).
  * 남은 손패가 아직 조건에 어긋나는 패를 한두 장 물고 있어도, 버려서 맞출 수 있는
  * 범위(≤1장)까지는 사람과 같게 인정한다.
+ *
+ * ## 이 게이트를 넓히는 실험은 세 번 반박됐다
+ *
+ * 값어치 쪽(`bot/yaku.ts`)은 청일색·일통·삼색동순·찬타·준찬타까지 읽는데 이 게이트는
+ * 넷만 안다. 그 어긋남이 #152 집계에서 "역 없음 36.6%"로 잡혔고, 그래서 게이트가
+ * 그 읽기를 그대로 쓰게 해 봤다 (2026-08-06, 동풍전 400배패 = 800판, 2:2 정책 대전):
+ *
+ *     역 없음 34.6% → 29.8% · 구조적 거절 83.1% → 77.6%  (게이트는 실제로 열렸다)
+ *     후로율 15.4% → 19.3%   화료율 18.9% → 18.7%   방총률 10.9% → 11.7%
+ *     평균 순위 -0.0250 ± 0.0282 · 1인당 점수 -855 ± 550
+ *
+ * 게이트는 열렸고 후로율도 사람 쪽으로 갔는데 **판은 나빠졌다.** #136·#148의 쿠이탄
+ * 완화와 정확히 같은 모양이다 — 세 번 다 더 울고 덜 이겼다.
+ *
+ * 그러니 봇의 낮은 후로율은 **아는 역이 적어서가 아니다.** 새로 통과시킨 콜은 EV에서
+ * 대부분 다시 걸렸고(EV 판단 11.4% → 16.3%, 실제 콜은 5.4% → 6.0%뿐), 통과한 것들은
+ * 손해였다. 역 읽기를 넓히는 일은 **값어치와 방향** 쪽에서 값을 하지 여기서는 아니다.
  */
 function yakuPathAfter(
   read: BotRead,
@@ -446,15 +463,36 @@ function effectiveShape(
   return { shanten, ukeire: u.tiles, hand, ukeireKinds: u.kinds };
 }
 
-/** 그 역이 손에 남기라고 요구하는 패의 조건 (제약이 없는 역은 null) */
+/**
+ * 그 역이 손에 남기라고 요구하는 패의 조건 (제약이 없는 역은 null).
+ *
+ * 이게 있어야 `effectiveShape`가 **앞으로 버릴 패를 멘쯔로 세지 않는다**(#136).
+ * 역을 새로 알아볼 때마다 여기도 같이 채워야 그 규율이 유지된다 — 안 채우면
+ * 그 역으로 가는 콜만 옛날처럼 낙관적으로 값매겨진다.
+ */
 function keepFor(plan: HandPlan): ((k: TileKind) => boolean) | null {
   if (plan === null) return null;
-  if (plan.yaku === "tanyao") return isSimple;
-  if (plan.yaku === "honitsu") {
-    const suit = plan.suit;
-    return (k) => !isNumber(k) || k.suit === suit;
+  switch (plan.yaku) {
+    case "tanyao":
+      return isSimple;
+    case "honitsu": {
+      const suit = plan.suit;
+      return (k) => !isNumber(k) || k.suit === suit;
+    }
+    case "chinitsu": {
+      // 청일색은 자패도 못 쓴다
+      const suit = plan.suit;
+      return (k) => isNumber(k) && k.suit === suit;
+    }
+    case "chanta":
+      // 찬타의 몸통에 4·5·6은 못 들어간다 (2·3·7·8은 슌쯔로 쓰인다)
+      return (k) => !isNumber(k) || k.rank < 4 || k.rank > 6;
+    case "junchan":
+      // 준찬타는 자패까지 뺀다
+      return (k) => isNumber(k) && (k.rank < 4 || k.rank > 6);
+    default:
+      return null;
   }
-  return null;
 }
 
 /** 이미 친 후로(치)가 있는가 — 토이토이 판단용 */
