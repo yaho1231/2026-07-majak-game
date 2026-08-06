@@ -36,7 +36,7 @@ export const PLAYERS = ["p0", "p1", "p2", "p3"] as const;
 export interface BotViewOptions {
   /** 홀더(p0)의 손패 */
   hand: string;
-  /** 홀더의 후로 (각 3장 스펙) */
+  /** 홀더의 후로 (각 3장 스펙). "kan_closed:5555z"처럼 종류를 앞에 붙일 수 있다 */
   melds?: string[];
   /** 플레이어별 버림패 */
   discards?: Partial<Record<string, string>>;
@@ -115,10 +115,13 @@ export function botScene(opts: BotViewOptions): BotScene {
   zoneOf(`hand:${me}`, "hand", handIds, me);
 
   const meldTiles: TileId[] = [];
+  // "555z"는 펑, "kan_closed:5555z"처럼 앞에 붙이면 그 종류로 (안깡 등)
   const melds = (opts.melds ?? []).map((spec) => {
-    const ids = h(spec).map((k) => add(k));
+    const at = spec.indexOf(":");
+    const kind = at < 0 ? "pon" : spec.slice(0, at);
+    const ids = h(at < 0 ? spec : spec.slice(at + 1)).map((k) => add(k));
     meldTiles.push(...ids);
-    return { kind: "pon" as const, tileIds: ids };
+    return { kind: kind as "pon", tileIds: ids };
   });
   zoneOf(`melds:${me}`, "melds", meldTiles, me);
 

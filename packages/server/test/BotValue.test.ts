@@ -298,6 +298,22 @@ describe("열린 손의 전진 속도 — 남의 버림패로도 전진한다", 
     ).toBeGreaterThan(read.winChanceOf(base));
   });
 
+  it("안깡은 손을 열지 않는다 — 리치 판수가 날아가면 안 된다", () => {
+    // 예전에는 `meldCount === 0`이 멘젠 판정을 겸해서, 안깡 한 번에 손이
+    // '열린 손'이 됐다 — 리치 판수가 사라지고 역을 못 찾으면 값의 15%가 됐다.
+    const scene = botScene({ hand: "234m567m11p234s", melds: ["kan_closed:5555z"] });
+    const read = buildRead(scene.view, "p0");
+    expect(read.meldCount).toBe(1);
+    expect(read.menzen).toBe(true);
+    const value = read.valueOf({ plan: null });
+    expect(value.riichiPoints).toBeGreaterThan(value.points);
+  });
+
+  it("펑이 있으면 멘젠이 아니다", () => {
+    const scene = botScene({ hand: "234m567m11p234s", melds: ["555z"] });
+    expect(buildRead(scene.view, "p0").menzen).toBe(false);
+  });
+
   it("텐파이는 달라지지 않는다 — 대기는 이미 론 몫(RON_MULTIPLIER)을 세고 있다", () => {
     const tenpai = {
       shanten: 0,

@@ -358,7 +358,7 @@ export function bidDiscard(
   const shapes = shapesOf(read, cands);
   // 종반에 텐파이를 붙들면 노텐벌부를 피한다 — 화료와 별개로 값이 있는 결과다
   const notenStake = read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
-  const tsumoOnly = read.meldCount === 0 && !hasYakuNow(read);
+  const tsumoOnly = read.menzen && !hasYakuNow(read);
 
   const scored: { c: Candidate; ev: number }[] = [];
   let best: Candidate | null = null;
