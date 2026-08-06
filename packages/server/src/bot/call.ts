@@ -81,7 +81,7 @@ export function bidCall(
 
   const meldKinds = meldKindsOf(read);
   const hasYakuhaiMeld = countYakuhaiTriplets(read, meldKinds) > 0;
-  const menzen = read.meldCount === 0;
+  const menzen = read.menzen;
 
   // 이미 멘젠 텐파이 — 열면 리치·멘젠쯔모·이빨 다 날아간다. 사람은 여기서 안 운다.
   if (menzen && read.tenpai) return null;

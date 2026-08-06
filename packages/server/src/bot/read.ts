@@ -57,6 +57,11 @@ export interface BotRead {
   /** 감춰진 손패(후로 제외) */
   hand: TileKind[];
   meldCount: number;
+  /**
+   * **점수상 멘젠인가** — 안깡만 있으면 여전히 참이다.
+   * 샹텐에 쓰는 `meldCount`와 다르다(안깡은 멘쯔로 세되 손은 열지 않는다).
+   */
+  menzen: boolean;
   /** 증강이 바꾼 화료형 옵션 — 텐파이·대기 계산에 반드시 넘긴다 */
   opts: DecomposeOptions;
   turn: number;
@@ -178,6 +183,11 @@ export function buildRead(
     if (k !== undefined) hand.push(k);
   }
   const meldCount = view.round.byPlayer[me]?.meldCount ?? 0;
+  /**
+   * **점수상 멘젠인가** — 안깡은 손을 열지 않는다. 샹텐은 안깡도 멘쯔로 세야 하므로
+   * `meldCount`와 나눠 둔다(둘을 겸하게 두면 안깡 한 번에 리치 판수가 날아간다).
+   */
+  const menzen = (view.round.byPlayer[me]?.melds ?? []).every((m) => m.kind === "kan_closed");
   const opts: DecomposeOptions = view.scoringOptions ?? {};
   const remainingOf = tileTracker(view);
   const shanten = shantenOf(hand, meldCount, opts);
@@ -249,6 +259,7 @@ export function buildRead(
     me,
     hand,
     meldCount,
+    menzen,
     opts,
     turn: view.round.turnCount,
     wallLeft,
@@ -273,6 +284,8 @@ export function buildRead(
           : { kinds: [...hand, ...meldKinds] }),
         handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
         meldCount: input.meldCount ?? meldCount,
+        // 후로 수를 올려 물었다는 것은 **손을 연다**는 뜻이다 (콜 EV)
+        menzen: menzen && (input.meldCount ?? meldCount) <= meldCount,
         plan: input.plan,
         isDealer: match.isDealer,
         riichiDeclared: mine?.riichiDeclared === true,

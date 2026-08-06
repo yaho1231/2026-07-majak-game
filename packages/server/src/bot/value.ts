@@ -99,8 +99,18 @@ export function pointsForHan(han: number, fu: number, isDealer: boolean): number
 export interface HandValueInput {
   /** 손 전체(후로 포함)의 도라 + 적도라 수 */
   handDora: number;
-  /** 후로 수 (0이면 멘젠) */
+  /** 후로 수 (샹텐·역 판정용) */
   meldCount: number;
+  /**
+   * **점수상 멘젠인가.** 생략하면 `meldCount === 0`으로 본다.
+   *
+   * 둘을 나눠 놓은 이유는 **안깡** 때문이다. 안깡은 샹텐 계산에서 멘쯔 하나로
+   * 세지만 손을 열지 않는다 — 리치도 걸 수 있고 멘젠쯔모·우라도라도 그대로다.
+   * 예전에는 `meldCount === 0` 하나가 둘을 겸했기 때문에, 안깡을 친 순간 봇의
+   * 손이 '열린 손'이 되어 리치 판수(2.2판)가 통째로 날아가고, 역을 못 찾으면
+   * 역없는 열린 손 취급(`YAKULESS_OPEN` = 값의 15%)까지 받았다.
+   */
+  menzen?: boolean;
   /** 이 국에 노리는 역 방향 */
   plan: HandPlan;
   /** 내가 오야인가 */
@@ -123,7 +133,7 @@ export interface HandValueInput {
  * 하기 때문이다. 손으로 만든 표는 규칙이 바뀌면 조용히 어긋난다.
  */
 export function estimateHandValue(input: HandValueInput): HandValue {
-  const menzen = input.meldCount === 0;
+  const menzen = input.menzen ?? input.meldCount === 0;
   // 방향(`plan`)이 아는 역과, 손을 직접 읽어 찾은 역 중 **비싼 쪽**을 쓴다.
   // 방향은 "무엇을 버릴까"의 기준이라 좁게 잡혀 있고, 그래서 청일색·치또이처럼
   // 방향이 모르는 비싼 역을 놓친다 — 그걸 여기서 메운다.
