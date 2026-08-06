@@ -59,18 +59,42 @@ html,
 body,
 #root {
   margin: 0;
-  height: 100%;
   font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   color: #ece4d2;
-  /* 모바일: 주소창 여닫힘에 따라 실제 보이는 높이를 쓴다 (100vh는 잘린다) */
-  height: 100dvh;
   /* 게임판을 손가락으로 밀었을 때 페이지가 통째로 튀지 않게 */
   overscroll-behavior: none;
 }
 
+html {
+  /* 모바일: 주소창 여닫힘에 따라 실제 보이는 높이를 쓴다 (100vh는 잘린다) */
+  height: 100dvh;
+  /* 아래 body는 창보다 클 수 있다(축소 배율). 문서가 스크롤되면 안 된다 —
+     스크롤이 필요한 화면(.home 등)은 저마다 안에서 스크롤한다. */
+  overflow: hidden;
+}
+
+/* ── 가상 뷰포트 ──
+   창이 디자인 기준(uiScale.ts BASE)보다 좁거나 낮으면 body를 "기준 크기만큼 큰 창"으로
+   잡고 통째로 축소한다. 브라우저 Ctrl +/− 를 대신하는 장치다 —
+   OS 배율 125%·작은 창에서 고정 px(이름표·액션바·여백)이 자리를 다 먹어
+   배치가 겹쳐 보이던 것을 진입 시점에 자동으로 풀어 준다.
+
+   그래서 이 파일의 화면 비례 단위는 전부 vw/vh/vmin이 아니라 **cqw/cqh/cqmin**이고,
+   크기 미디어쿼리도 전부 `@container ui`다. 둘 다 실제 창이 아니라 이 가상 뷰포트를
+   기준으로 풀려야 배율을 바꿔도 배치가 그대로 따라온다.
+   --ui-scale 은 uiScale.ts가 인라인으로 넣는다 (없으면 1 = 지금까지와 동일). */
 body {
+  width: calc(100% / var(--ui-scale, 1));
+  height: calc(100% / var(--ui-scale, 1));
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: 0 0;
+  container: ui / size;
   /* 탭할 때 회색 사각형이 번쩍이지 않게 (모바일 크롬·사파리) */
   -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  height: 100%;
 }
 
 button {
@@ -83,7 +107,7 @@ button {
 .game-root {
   position: relative;
   width: 100%;
-  height: 100dvh;
+  height: 100cqh;
   overflow: hidden;
   /* 펠트: 위에서 조명이 하나 떨어지는 라사지.
      맨 위 두 겹은 아주 옅은 직조 결 — 단색 그라디언트만 깔면 판이 플라스틱처럼 보인다.
@@ -103,7 +127,7 @@ button {
 }
 
 .lobby-card {
-  width: min(360px, 90vw);
+  width: min(360px, 90cqw);
   padding: 34px 30px;
   border-radius: var(--r-lg);
   background: var(--surface-2);
@@ -186,9 +210,19 @@ button {
   width: 100%;
   height: 100%;
 
-  /* 중앙 보드(바닥+패널) 정사각형 크기 — 모든 중앙 요소가 이 값에 비례 */
-  --board: min(88vmin, 900px);
-  --panel: calc(var(--board) * 0.3);
+  /* 중앙 보드(바닥+패널) 정사각형 크기 — 모든 중앙 요소가 이 값에 비례.
+     비율(88→80)이 내려간 건 아래 --panel이 바닥 한 단 폭까지 커지면서 바닥이
+     그만큼 바깥으로 밀렸기 때문이다. 보드를 같은 비율로 줄여 **중앙 덩어리가 차지하는
+     자리는 예전 그대로** 두었다 — 안 그러면 좌·우 상대 손패를 침범한다.
+     62cqw 상한은 세로로 긴 창(예: 1000×860)에서 좌·우 이름표와 겹치던 것을 막는다. */
+  --board: min(80cqmin, 62cqw, 820px);
+  /* 중앙 패널의 "원하는" 크기. 실제 --panel은 아래에서 바닥 한 단 폭과 max()로 묶는다 —
+     패널이 한 단보다 좁으면 네 바닥의 모서리가 서로 겹친다(2026-08-06 사용자 지적). */
+  --panel-min: calc(var(--board) * 0.3);
+  /* 바닥 한 단(--river-w)보다 패널이 좁으면 바닥이 패널 밖으로 삐져나와
+     이웃한 바닥 위로 올라탄다. 패널 ≥ 한 단이면 네 바닥이 패널을 두르는 액자가 되고
+     모서리 간격은 정확히 --river-gap 하나가 된다. */
+  --panel: max(var(--panel-min), var(--river-w));
   /* 중앙 4방향 점수판 — 넓은 화면에선 기존 고정값(138×36·18px) 그대로지만,
      패널이 작아지면 비율을 따라 함께 줄어든다. 고정값만 쓰던 예전에는 좁은 화면에서
      점수판이 패널 밖으로 삐져나와 국 표시·바닥패와 겹쳤다. */
@@ -210,12 +244,12 @@ button {
      --hand-w 자체는 .own-hand에서 계산한다 — --hand-n을 인라인으로 덮어써도
      같은 요소에서 다시 치환되어야 하기 때문(치환은 선언된 요소 기준). */
   --hand-n: 14;
-  --hand-pref: clamp(52px, 6vw, 84px);
+  --hand-pref: clamp(52px, 6cqw, 84px);
   --hand-gap: 5px;
   --hand-pad: 18px;
   --hand-side: 8px;
   /* 후로 타일 */
-  --mt-w: clamp(38px, 5vmin, 52px);
+  --mt-w: clamp(38px, 5cqmin, 52px);
   --mt-h: calc(var(--mt-w) * 1.5);
   /* ── 상대 손패 뒷면 ──
      크기는 **그 상대의 실제 손패 장수**(--back-n, OpponentStrip이 인라인으로 준다)에
@@ -225,8 +259,8 @@ button {
      실제 계산은 축이 다르므로 .opp-strip-top / -left / -right에서 한다. */
   --back-n: 13;
   --back-gap: 3px;
-  --back-cap: clamp(38px, 4.9vmin, 50px);
-  --back-w: min(var(--back-cap), calc((100vw - 84px) / 13));
+  --back-cap: clamp(38px, 4.9cqmin, 50px);
+  --back-w: min(var(--back-cap), calc((100cqw - 84px) / 13));
   --back-h: calc(var(--back-w) * 1.36);
 }
 
@@ -371,7 +405,7 @@ button {
   line-height: 1;
 }
 
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   .quick-toggles {
     left: 8px;
     bottom: 10px;
@@ -819,7 +853,7 @@ button {
   --back-room-x: 300px;
   --back-w: min(
     var(--back-cap),
-    calc((100vw - var(--back-room-x)) / var(--back-n) - var(--back-gap))
+    calc((100cqw - var(--back-room-x)) / var(--back-n) - var(--back-gap))
   );
   --back-h: calc(var(--back-w) * 1.36);
 }
@@ -837,7 +871,7 @@ button {
       14px,
       calc(
         (
-            (100vh - var(--back-room-y) - var(--meld-n) * var(--mt-h)) / var(--back-n) -
+            (100cqh - var(--back-room-y) - var(--meld-n) * var(--mt-h)) / var(--back-n) -
               var(--back-gap)
           ) / 1.36
       )
@@ -974,7 +1008,7 @@ button {
      width:max-content가 없으면 좌·우 자리(절대배치 shrink-to-fit)에서 이름표가
      자식의 min-content(=한 글자)까지 쪼그라들어 증강 이름이 세로로 한 자씩 깨졌다. */
   width: max-content;
-  max-width: min(94vw, 560px);
+  max-width: min(94cqw, 560px);
   border-radius: 18px;
   background: rgba(11, 19, 16, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -988,14 +1022,14 @@ button {
    내 이름표(.own-top 안)는 손패 위 빈 줄이라 상한을 건드리지 않는다.
    좁은 화면(~900px)은 좌·우 이름표가 아예 숨고 맞은편은 뒷면 줄 **아래**로 내려가
    가로 한 줄을 통째로 쓰므로, 여기서 좁히면 오히려 세로로 길어진다 — 넓은 화면 전용. */
-@media (min-width: 901px) {
+@container ui (min-width: 901px) {
   .opp-strip-left .nameplate,
   .opp-strip-right .nameplate {
-    max-width: min(26vw, 250px);
+    max-width: min(26cqw, 250px);
   }
 
   .opp-strip-top .nameplate {
-    max-width: min(34vw, 300px);
+    max-width: min(34cqw, 300px);
   }
 }
 
@@ -1415,7 +1449,7 @@ button {
      나누는 수를 n+0.5로 잡은 건 쯔모패 앞의 벌어짐(.hand-drawn margin-left = 0.4w)
      까지 미리 빼두기 위해서다. */
   --hand-fit: calc(
-    (100vw - var(--hand-side) * 2 - var(--hand-pad) * 2 -
+    (100cqw - var(--hand-side) * 2 - var(--hand-pad) * 2 -
       (var(--hand-n) - 1) * var(--hand-gap)) / (var(--hand-n) + 0.5)
   );
   --hand-w: min(var(--hand-pref), var(--hand-fit));
@@ -1423,7 +1457,7 @@ button {
   align-items: flex-end;
   gap: var(--hand-gap);
   padding: 12px var(--hand-pad) 10px;
-  max-width: calc(100vw - var(--hand-side) * 2);
+  max-width: calc(100cqw - var(--hand-side) * 2);
   border-radius: 16px;
   background: rgba(11, 19, 16, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1442,8 +1476,8 @@ button {
   left: 50%;
   bottom: 210px;
   transform: translateX(-50%);
-  width: min(620px, 74vw);
-  height: clamp(150px, 34vh, 330px);
+  width: min(620px, 74cqw);
+  height: clamp(150px, 34cqh, 330px);
   z-index: 9;
   display: grid;
   place-items: center;
@@ -1469,7 +1503,7 @@ button {
 }
 
 .discard-dropzone-label {
-  font-size: clamp(20px, 3.4vmin, 30px);
+  font-size: clamp(20px, 3.4cqmin, 30px);
   font-weight: 800;
   letter-spacing: 4px;
   color: #f0c86a;
@@ -1614,8 +1648,8 @@ button {
   padding: 24px 30px 20px;
   border-radius: 18px;
   /* 왕패 14장이 한 줄로 넘쳐 겹치지 않도록 최대폭을 두어 자연스럽게 여러 줄로 감싼다 */
-  max-width: min(94vw, 900px);
-  max-height: 92vh;
+  max-width: min(94cqw, 900px);
+  max-height: 92cqh;
   overflow-y: auto;
   background: linear-gradient(180deg, rgba(74, 58, 34, 0.98), rgba(74, 58, 34, 0.98));
   border: 1px solid rgba(207, 174, 118, 0.75);
@@ -1655,7 +1689,7 @@ button {
   /* 모달 안의 패는 손패보다 조금 크게 보여 준다 — 다만 **실제 크기**(--hand-w)로 키운다.
      transform: scale은 레이아웃 박스를 늘리지 않아, 커진 패가 옆 자리로 삐져나가 서로
      겹치고 아래 라벨까지 덮었다. 컬럼 폭을 패 폭에서 계산해 항상 여백이 남게 한다. */
-  --hand-w: clamp(52px, 6vw, 82px);
+  --hand-w: clamp(52px, 6cqw, 82px);
   width: calc(var(--hand-w) + 20px);
   box-sizing: border-box;
   padding: 10px 6px 8px;
@@ -1819,7 +1853,7 @@ button {
   background: rgba(165, 145, 255, 0.55);
 }
 /* 좁은 화면 — 안내 문구는 접고 패와 자리 라벨만 남긴다 (패가 먼저다) */
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   .foresight-strip {
     padding: 3px 7px;
     gap: 6px;
@@ -1872,13 +1906,13 @@ button {
 }
 /* 변형 모달은 패가 두 장(전·후)이라 개별 확대를 조금 줄여 폭을 아낀다 */
 .aug-morph-tile {
-  --hand-w: clamp(48px, 5.4vw, 74px);
+  --hand-w: clamp(48px, 5.4cqw, 74px);
   /* .rinshan-pick-tile의 고정폭은 **패 한 장** 기준이다. 전→후(분열은 전→후·후)로
      두세 장이 들어가는 이 모달에서는 패가 칸을 넘쳐 옆 후보의 패를 덮었다 —
      염색에서 "통수" 후보의 결과패가 "삭수" 후보의 원본패에 가려 무엇으로 바뀌는지
      알 수 없었다(2026-08-04 사용자 보고). 폭을 내용에 맞춘다. */
   width: auto;
-  max-width: min(92vw, 360px);
+  max-width: min(92cqw, 360px);
 }
 /* 전→후 한 줄은 절대 접히지 않는다 — 접히면 화살표가 줄 끝에 남아 더 헷갈린다 */
 .aug-morph {
@@ -1890,17 +1924,17 @@ button {
 }
 
 /* ── 손패 전체 미리보기형 선택 모달 (단색 세계·왕패의 주인·정적의 손·붉은 손길·이면투시) ── */
-.aug-pick-wide { max-width: min(96vw, 1080px); }
+.aug-pick-wide { max-width: min(96cqw, 1080px); }
 .aug-pick-rows {
   display: flex;
   flex-direction: column;
   gap: 10px;
   /* 패를 키운 만큼 세로가 길어질 수 있다 — 패널이 화면을 넘기지 않게 여기서만 스크롤 */
-  max-height: 62vh;
+  max-height: 62cqh;
   overflow-y: auto;
   /* 모달 안의 패는 손패에 가깝게 크게 — 25px짜리 미니 패는 무엇을 고르는지 안 보였다
      (2026-07-26). tile-mini의 원래 비율(25:37 ≈ 1.48)을 그대로 유지한다. */
-  --pick-tile-w: clamp(34px, 3.8vw, 50px);
+  --pick-tile-w: clamp(34px, 3.8cqw, 50px);
 }
 .aug-pick-row-tiles .tile-mini {
   width: var(--pick-tile-w);
@@ -2066,7 +2100,7 @@ button {
 /* 프롬프트 제한시간 게이지 (기본은 서버 30초 타임아웃 기준) */
 .prompt-timer {
   position: relative;
-  width: min(420px, 60vw);
+  width: min(420px, 60cqw);
   height: 5px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.12);
@@ -2403,7 +2437,7 @@ button {
 
 .banner-text {
   display: block;
-  font-size: clamp(40px, 8vmin, 64px);
+  font-size: clamp(40px, 8cqmin, 64px);
   font-weight: 900;
   letter-spacing: 16px;
   text-indent: 16px;
@@ -2432,7 +2466,7 @@ button {
   justify-content: center;
   /* 손패 한 벌(밥상 뒤엎기의 반납 13장)이 통째로 실릴 수 있다 — 화면 밖으로 새지 않게 접는다 */
   flex-wrap: wrap;
-  max-width: min(92vw, 720px);
+  max-width: min(92cqw, 720px);
 }
 
 .banner-riichi {
@@ -2459,7 +2493,7 @@ button {
 
 .banner-draw .banner-text {
   color: #ece4d2;
-  font-size: clamp(32px, 6vmin, 46px);
+  font-size: clamp(32px, 6cqmin, 46px);
 }
 
 .banner-info {
@@ -2517,7 +2551,7 @@ button {
   display: grid;
   place-items: center;
   pointer-events: none;
-  overflow: hidden; /* 천점봉이 화면 밖(-70vw)에서 날아온다 */
+  overflow: hidden; /* 천점봉이 화면 밖(-70cqw)에서 날아온다 */
   /* ttl 하드컷 완화 — 비네트만 페이드되고 밴드·글자가 뚝 끊기지 않게 */
   animation: prod-out 0.16s ease-in calc(var(--prod-ttl, 1500ms) - 0.16s) forwards;
 }
@@ -2576,8 +2610,8 @@ button {
 /* CSS로 그린 천점봉 — 왼쪽 화면 밖에서 슬라이드-인 + 오버슛 */
 .riichi-stick {
   position: relative;
-  width: clamp(150px, 26vmin, 230px);
-  height: clamp(12px, 2.2vmin, 18px);
+  width: clamp(150px, 26cqmin, 230px);
+  height: clamp(12px, 2.2cqmin, 18px);
   border-radius: 999px;
   background: linear-gradient(180deg, #f7f3e8 0%, #f7f3e8 45%, #c2d0c5 100%);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45),
@@ -2599,8 +2633,8 @@ button {
 }
 
 @keyframes stick-slide {
-  0% { transform: translateX(-70vw) rotate(-6deg); opacity: 0; }
-  60% { transform: translateX(3vw) rotate(1.5deg); opacity: 1; }
+  0% { transform: translateX(-70cqw) rotate(-6deg); opacity: 0; }
+  60% { transform: translateX(3cqw) rotate(1.5deg); opacity: 1; }
   100% { transform: translateX(0) rotate(0); opacity: 1; }
 }
 
@@ -2612,7 +2646,7 @@ button {
 
 /* 금속성 텍스트 — 그라디언트 클립. 투명 채움과 text-shadow는 탁해지므로 drop-shadow 사용 */
 .riichi-text {
-  font-size: clamp(52px, 12vmin, 96px);
+  font-size: clamp(52px, 12cqmin, 96px);
   font-weight: 900;
   letter-spacing: 18px;
   text-indent: 18px;
@@ -2678,7 +2712,7 @@ button {
 
 .draft-title {
   margin: 0;
-  font-size: clamp(34px, 5vmin, 50px);
+  font-size: clamp(34px, 5cqmin, 50px);
   letter-spacing: 12px;
   text-indent: 12px;
   color: #f0c86a;
@@ -2734,7 +2768,7 @@ button {
   justify-content: center;
   gap: 6px;
   margin: 0 auto 20px;
-  max-width: min(92vw, 900px);
+  max-width: min(92cqw, 900px);
 }
 .draft-owned-tag {
   font-size: 11px;
@@ -2784,8 +2818,8 @@ button {
 .draft-card {
   position: relative;
   overflow: hidden;
-  width: clamp(240px, 23vw, 290px);
-  min-height: clamp(300px, 42vh, 360px);
+  width: clamp(240px, 23cqw, 290px);
+  min-height: clamp(300px, 42cqh, 360px);
   padding: 30px 24px 26px;
   border-radius: 20px;
   display: flex;
@@ -3067,7 +3101,7 @@ button {
 }
 
 .draft-name {
-  font-size: clamp(22px, 2.6vmin, 28px);
+  font-size: clamp(22px, 2.6cqmin, 28px);
   font-weight: 800;
   color: #f7f3e8;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
@@ -3090,7 +3124,7 @@ button {
 /* ─────────────── 게임 종료 ─────────────── */
 
 .gameover-panel {
-  width: min(420px, 92vw);
+  width: min(420px, 92cqw);
   padding: 28px;
   border-radius: 16px;
   background: rgba(13, 23, 18, 0.95);
@@ -3197,7 +3231,7 @@ button {
 }
 
 .intro-line {
-  width: min(420px, 70vw);
+  width: min(420px, 70cqw);
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(184, 151, 92, 0.9), transparent);
   animation: intro-line 0.9s cubic-bezier(0.2, 0.9, 0.2, 1) both;
@@ -3209,7 +3243,7 @@ button {
 }
 
 .intro-title {
-  font-size: clamp(30px, 6vmin, 46px);
+  font-size: clamp(30px, 6cqmin, 46px);
   font-weight: 900;
   letter-spacing: 14px;
   text-indent: 14px;
@@ -3219,7 +3253,7 @@ button {
 }
 
 .intro-round {
-  font-size: clamp(20px, 3.6vmin, 28px);
+  font-size: clamp(20px, 3.6cqmin, 28px);
   font-weight: 800;
   color: #ece4d2;
   letter-spacing: 6px;
@@ -3317,9 +3351,9 @@ button {
   100% { transform: rotate(var(--px-angle)) translateX(var(--px-dist)) scale(0.15); opacity: 0; }
 }
 
-@media (max-width: 900px) {
+@container ui (max-width: 900px) {
   .px:nth-child(2n) { display: none; } /* 모바일 절반 */
-  .cutin-rays { display: none; } /* 150vmax 레이어 — 저사양 래스터 비용 회피 */
+  .cutin-rays { display: none; } /* 150cqmax 레이어 — 저사양 래스터 비용 회피 */
 }
 
 /* 충격파 링 — scale만 애니메이션 (합성 전용) */
@@ -3327,9 +3361,9 @@ button {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 46vmin;
-  height: 46vmin;
-  margin: -23vmin 0 0 -23vmin;
+  width: 46cqmin;
+  height: 46cqmin;
+  margin: -23cqmin 0 0 -23cqmin;
   border-radius: 50%;
   border: 3px solid var(--fx-color, #f7f3e8);
   box-shadow: 0 0 24px var(--fx-glow, rgba(255, 255, 255, 0.6)),
@@ -3356,13 +3390,13 @@ button {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 150vmax;
-  height: 150vmax;
-  margin: -75vmax 0 0 -75vmax; /* 회전해도 모서리가 안 빈다 */
+  width: 150cqmax;
+  height: 150cqmax;
+  margin: -75cqmax 0 0 -75cqmax; /* 회전해도 모서리가 안 빈다 */
   background: repeating-conic-gradient(from 0deg,
     rgba(255, 255, 255, 0.07) 0deg 3deg, transparent 3deg 13deg);
-  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 12vmin, #000 34vmin);
-          mask: radial-gradient(circle at 50% 50%, transparent 0 12vmin, #000 34vmin);
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 12cqmin, #000 34cqmin);
+          mask: radial-gradient(circle at 50% 50%, transparent 0 12cqmin, #000 34cqmin);
   opacity: 0;
   pointer-events: none;
   animation: rays-in 0.25s ease-out 0.05s both, rays-spin 7s linear 0.05s infinite;
@@ -3391,7 +3425,7 @@ button {
 
 .cf {
   position: absolute;
-  top: -4vh;
+  top: -4cqh;
   left: var(--cf-x);
   width: var(--cf-size);
   height: calc(var(--cf-size) * 0.45);
@@ -3403,7 +3437,7 @@ button {
 @keyframes cf-fall {
   0% { transform: translateY(0) rotate(0) rotateX(0); opacity: 0; }
   8% { opacity: 1; }
-  100% { transform: translateY(112vh) rotate(var(--cf-spin)) rotateX(720deg); opacity: 0.9; }
+  100% { transform: translateY(112cqh) rotate(var(--cf-spin)) rotateX(720deg); opacity: 0.9; }
 }
 
 .cutin-band {
@@ -3411,7 +3445,7 @@ button {
   left: -10%;
   right: -10%;
   top: 50%;
-  height: clamp(120px, 24vmin, 190px);
+  height: clamp(120px, 24cqmin, 190px);
   transform: translateY(-50%) skewY(-3deg);
   animation: cutin-band 0.34s cubic-bezier(0.15, 1, 0.3, 1) both;
 }
@@ -3436,14 +3470,14 @@ button {
 }
 
 .cutin-text {
-  font-size: clamp(56px, 13vmin, 104px);
+  font-size: clamp(56px, 13cqmin, 104px);
   font-weight: 900;
   letter-spacing: 12px;
   line-height: 1;
 }
 
 .cutin-sub {
-  font-size: clamp(16px, 3vmin, 24px);
+  font-size: clamp(16px, 3cqmin, 24px);
   font-weight: 700;
   opacity: 0.95;
   /* 임팩트(글자 슬램) 뒤에 등장 — 정보는 타격 다음 */
@@ -3513,7 +3547,7 @@ button {
 /* 배수 역만("2배 역만"~"6배 역만")은 글자가 2자→4·5자로 늘어난다.
    자간 26px 그대로면 밴드를 뚫고 나가므로 글자 수가 많을 때만 크기·자간을 줄인다. */
 .cutin-yakuman .cutin-text[data-long] {
-  font-size: clamp(34px, 7.5vmin, 72px);
+  font-size: clamp(34px, 7.5cqmin, 72px);
   letter-spacing: 12px;
 }
 
@@ -3528,7 +3562,7 @@ button {
 
 .cutin-draw .cutin-text {
   color: #ece4d2;
-  font-size: clamp(40px, 9vmin, 70px);
+  font-size: clamp(40px, 9cqmin, 70px);
 }
 
 /* ─── 만관 이상 컷인 (일반 화료보다 화려, 역만보다는 아래). data-tier로 등급별 강도 상승 ─── */
@@ -3585,11 +3619,11 @@ button {
 
 /* 후로(치·펑·깡) 컷인 — 화료보다 가볍게, 밴드·글자를 살짝 컴팩트하게 */
 .cutin-call .cutin-band {
-  height: clamp(88px, 17vmin, 138px);
+  height: clamp(88px, 17cqmin, 138px);
 }
 
 .cutin-call .cutin-text {
-  font-size: clamp(46px, 10vmin, 82px);
+  font-size: clamp(46px, 10cqmin, 82px);
   letter-spacing: 10px;
 }
 
@@ -3644,14 +3678,14 @@ button {
   height: 100%;
   max-height: 100%;
   overflow-y: auto;
-  padding: clamp(16px, 3.4vh, 40px) 20px;
+  padding: clamp(16px, 3.4cqh, 40px) 20px;
   background: transparent; /* 배경은 .result-overlay가 그린다 (꽃잎이 뒤로 비치게) */
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: safe center; /* 콘텐츠가 화면보다 커도 위가 잘리지 않게 */
-  gap: clamp(8px, 1.8vh, 18px);
+  gap: clamp(8px, 1.8cqh, 18px);
   animation: result-in 0.4s var(--ease);
 }
 
@@ -3692,15 +3726,15 @@ button {
 .result-draw {
   display: flex;
   flex-direction: column;
-  gap: clamp(6px, 1.2vh, 12px);
-  width: min(760px, 94vw);
+  gap: clamp(6px, 1.2cqh, 12px);
+  width: min(760px, 94cqw);
 }
 
 .result-draw-row {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: clamp(8px, 1.4vh, 14px) clamp(12px, 2.2vw, 20px);
+  padding: clamp(8px, 1.4cqh, 14px) clamp(12px, 2.2cqw, 20px);
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
@@ -3837,16 +3871,16 @@ button {
 
 .result-win {
   margin: 0;
-  padding: clamp(12px, 2vh, 22px) clamp(16px, 3vw, 30px);
+  padding: clamp(12px, 2cqh, 22px) clamp(16px, 3cqw, 30px);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  width: min(880px, 94vw);
+  width: min(880px, 94cqw);
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas: "name name" "hand hand" "yaku circle";
   align-items: center;
-  gap: clamp(8px, 1.6vh, 16px) clamp(20px, 4vw, 52px);
+  gap: clamp(8px, 1.6cqh, 16px) clamp(20px, 4cqw, 52px);
 }
 
 .result-winner-row {
@@ -3890,8 +3924,8 @@ button {
 }
 
 .tile-result {
-  width: clamp(24px, 3.4vmin, 34px);
-  height: calc(clamp(24px, 3.4vmin, 34px) * 1.5);
+  width: clamp(24px, 3.4cqmin, 34px);
+  height: calc(clamp(24px, 3.4cqmin, 34px) * 1.5);
   border-radius: 4px;
 }
 
@@ -3926,7 +3960,7 @@ button {
   flex-direction: column;
   gap: 4px;
   max-width: none;
-  min-width: min(320px, 60vw);
+  min-width: min(320px, 60cqw);
   margin: 0;
 }
 
@@ -3973,8 +4007,8 @@ button {
 
 /* 작혼式 판수 원형 배지 */
 .result-han-circle {
-  width: clamp(112px, 18vmin, 158px);
-  height: clamp(112px, 18vmin, 158px);
+  width: clamp(112px, 18cqmin, 158px);
+  height: clamp(112px, 18cqmin, 158px);
   border-radius: 50%;
   display: flex;
   flex-direction: column;
@@ -3986,7 +4020,7 @@ button {
 }
 
 .result-han-big {
-  font-size: clamp(30px, 6vmin, 50px);
+  font-size: clamp(30px, 6cqmin, 50px);
   font-weight: 900;
   color: #e2c793;
   line-height: 0.95;
@@ -3994,13 +4028,13 @@ button {
 }
 
 /* 배수 역만 — "2배 역만"(5자)·"10배 역만"(6자)이 점수 원을 넘지 않게 글자 수만큼 줄인다 */
-.result-han-big[data-len="5"] { font-size: clamp(15px, 2.9vmin, 24px); }
-.result-han-big[data-len="6"] { font-size: clamp(13px, 2.5vmin, 21px); }
+.result-han-big[data-len="5"] { font-size: clamp(15px, 2.9cqmin, 24px); }
+.result-han-big[data-len="6"] { font-size: clamp(13px, 2.5cqmin, 21px); }
 
 .result-fu-sm {
   font-style: normal;
   margin-top: 4px;
-  font-size: clamp(11px, 2vmin, 15px);
+  font-size: clamp(11px, 2cqmin, 15px);
   font-weight: 700;
   color: #d3dbcd;
   letter-spacing: 0.04em;
@@ -4009,7 +4043,7 @@ button {
 .result-points {
   display: inline-block; /* 카운트업 팝 transform용 */
   margin: 0;
-  font-size: clamp(22px, 4.4vmin, 36px);
+  font-size: clamp(22px, 4.4cqmin, 36px);
   color: #f0c86a;
   text-shadow: 0 0 16px rgba(240, 200, 106, 0.45);
   font-variant-numeric: tabular-nums; /* 카운트업 중 폭 흔들림 방지 */
@@ -4051,7 +4085,7 @@ button {
 @keyframes result-petal-fall {
   0% { opacity: 0; transform: translateY(0) rotate(0); }
   10% { opacity: 0.55; }
-  100% { opacity: 0; transform: translateY(105vh) translateX(28px) rotate(360deg); }
+  100% { opacity: 0; transform: translateY(105cqh) translateX(28px) rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4076,7 +4110,7 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px 18px;
-  width: min(420px, 92vw);
+  width: min(420px, 92cqw);
   margin: 0 auto;
 }
 
@@ -4191,7 +4225,7 @@ button {
 /* 좁은 화면에서는 상대 이름을 접고 아이콘+방향만 남긴다.
    좌·우 이름표는 화면 절반씩을 쓰므로, 표식이 두어 개만 붙어도 가운데에서 서로
    부딪힌다. 누구인지는 표식을 탭하면(title) 그대로 나온다. */
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   .np-rel-who { display: none; }
   .np-rel { padding: 2px 6px; gap: 3px; }
 }
@@ -4238,8 +4272,8 @@ button {
   top: 62px;
   right: 14px;
   z-index: 90;
-  width: min(340px, calc(100vw - 16px));
-  max-height: min(70vh, calc(100dvh - 84px));
+  width: min(340px, calc(100cqw - 16px));
+  max-height: min(70cqh, calc(100cqh - 84px));
   display: flex;
   flex-direction: column;
   padding: 10px 14px 12px;
@@ -4378,7 +4412,7 @@ button {
 
 .waitroom-card {
   position: relative;
-  width: min(540px, 94vw);
+  width: min(540px, 94cqw);
   padding: 30px 28px 24px;
   border-radius: 16px;
   background: rgba(13, 23, 18, 0.92);
@@ -4740,7 +4774,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: 60vh;
+  max-height: 60cqh;
   overflow-y: auto;
   margin-bottom: 20px;
   text-align: left;
@@ -4818,9 +4852,9 @@ button {
   top: 62px;
   right: 14px;
   z-index: 90;
-  width: min(330px, calc(100vw - 16px));
+  width: min(330px, calc(100cqw - 16px));
   /* 헤더(고정) + 본문(스크롤) — 화면 높이를 넘지 않는다 */
-  max-height: min(78vh, calc(100dvh - 24px));
+  max-height: min(78cqh, calc(100cqh - 24px));
   display: flex;
   flex-direction: column;
   padding: 10px 16px 14px;
@@ -4918,7 +4952,7 @@ button {
 }
 
 /* 좁은 화면: 음량 슬라이더를 설명 아래 줄로 내려 글자가 두세 자씩 끊기지 않게 */
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   .settings-row-slider {
     flex-wrap: wrap;
     row-gap: 8px;
@@ -5089,7 +5123,7 @@ button {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
   min-width: 170px;
   /* 선택지가 많아도(염색 등) 화면을 넘지 않게 — 넘치면 스크롤 */
-  max-height: min(60vh, 420px);
+  max-height: min(60cqh, 420px);
   overflow-y: auto;
 }
 
@@ -5575,7 +5609,7 @@ button {
   flex-direction: column;
   gap: 4px;
   width: max-content;
-  max-width: min(240px, 78vw);
+  max-width: min(240px, 78cqw);
   padding: 9px 12px;
   border-radius: 10px;
   background: rgba(13, 23, 18, 0.98);
@@ -5671,7 +5705,7 @@ button {
 .augdesc-body-full {
   display: block;
   margin-top: 5px;
-  max-height: 42vh;
+  max-height: 42cqh;
   overflow-y: auto;
 }
 
@@ -5749,7 +5783,7 @@ button {
   flex-direction: column;
   gap: 3px;
   width: max-content;
-  max-width: min(300px, 92vw);
+  max-width: min(300px, 92cqw);
   padding: 8px 11px;
   border-radius: 9px;
   background: rgba(20, 16, 10, 0.98);
@@ -5824,17 +5858,18 @@ button {
 /* 빠른 토글이 좌하단에 뜨는 폭대(901px~)에서는 손패가 그 위를 덮지 않도록
    양옆으로 토글 폭만큼 자리를 비운다. 손패가 원래 크기로도 여유가 있는
    아주 넓은 화면(약 1530px~)에서는 --hand-pref가 이겨서 아무 영향이 없다. */
-@media (min-width: 901px) {
+@container ui (min-width: 901px) {
   .table {
     --hand-side: 116px;
   }
 }
 
-@media (max-width: 900px) {
+@container ui (max-width: 900px) {
   .table {
-    /* 58vh 상한 — 창이 낮으면 바닥(버림패) 아래쪽이 손패 영역까지 흘러내린다 */
-    --board: min(90vmin, 58vh, 560px);
-    --hand-pref: clamp(32px, 6vw, 50px);
+    /* 세로 상한(53cqh) — 창이 낮으면 바닥(버림패) 아래쪽이 손패 영역까지 흘러내린다 */
+    /* 위 .table과 같은 이유로 비율을 한 번 낮췄다 (90→82 · 58→53 · 560→510) */
+    --board: min(82cqmin, 53cqh, 510px);
+    --hand-pref: clamp(32px, 6cqw, 50px);
   }
 
   .table-center {
@@ -5851,7 +5886,7 @@ button {
   .opp-strip-top {
     flex-direction: column;
     gap: 6px;
-    max-width: calc(100vw - 12px);
+    max-width: calc(100cqw - 12px);
     --back-room-x: 24px;
   }
 
@@ -5866,7 +5901,7 @@ button {
     flex-wrap: wrap;
     justify-content: center;
     gap: 6px;
-    max-width: calc(100vw - 12px);
+    max-width: calc(100cqw - 12px);
     transform: none;
   }
 }
@@ -5874,22 +5909,22 @@ button {
 /* ── 모바일(세로) 대국 화면 ──
    좁은 폭이 모든 것의 병목이다. 크기 변수를 화면 폭에 맞춰 다시 잡고,
    좌하단 빠른 토글처럼 겹치던 요소는 손패 위 줄로 옮긴다. */
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   .table {
     /* 세로 화면: 폭이 board를 결정한다. 다만 board를 화면 폭까지 키우면 바닥(river)이
-       좌·우 상대 영역과 겹치므로, 양옆에 상대 자리를 남기는 74vw까지만 키운다. */
-    --board: min(74vw, 48vh, 460px);
+       좌·우 상대 영역과 겹치므로, 양옆에 상대 자리를 남기는 74cqw까지만 키운다. */
+    --board: min(74cqw, 48cqh, 460px);
     /* 보드가 작아진 만큼 중앙 패널 비율은 키운다 — 안 그러면 국·점수 글자가 안 읽힌다
        (점수판 크기는 --panel에 비례하므로 따로 손댈 필요가 없다) */
-    --panel: calc(var(--board) * 0.46);
+    --panel-min: calc(var(--board) * 0.46);
     /* 손패 14장이 반드시 한 줄에 들어가게 여백·간격까지 조인다 */
-    --hand-pref: clamp(24px, 7vw, 50px);
+    --hand-pref: clamp(24px, 7cqw, 50px);
     --hand-gap: 2px;
     --hand-pad: 7px;
     --hand-side: 4px;
-    --mt-w: min(clamp(15px, 4.4vw, 30px), calc((100vw - 40px) / 13));
+    --mt-w: min(clamp(15px, 4.4cqw, 30px), calc((100cqw - 40px) / 13));
     /* 장수에 맞춘 실제 폭 계산은 .opp-strip-*에서 한다 — 여기서는 상한만 조인다 */
-    --back-cap: clamp(13px, 4.2vw, 26px);
+    --back-cap: clamp(13px, 4.2cqw, 26px);
     --back-gap: 2px;
   }
 
@@ -5926,10 +5961,10 @@ button {
     gap: 5px 7px;
     padding: 5px 10px;
     font-size: 13px;
-    max-width: calc(100vw - 16px);
+    max-width: calc(100cqw - 16px);
   }
-  .np-name { max-width: 42vw; }
-  .aug-pill { font-size: 11px; max-width: 40vw; }
+  .np-name { max-width: 42cqw; }
+  .aug-pill { font-size: 11px; max-width: 40cqw; }
 
   .quick-toggles-inline { gap: 5px; }
 
@@ -5940,7 +5975,7 @@ button {
   }
   .own-top {
     gap: 7px;
-    max-width: calc(100vw - 8px);
+    max-width: calc(100cqw - 8px);
   }
   .own-hand {
     border-radius: 12px;
@@ -5949,8 +5984,8 @@ button {
   /* 드래그 버리기 영역 — 손패와 겹치지 않게 위쪽으로 */
   .discard-dropzone {
     bottom: 190px;
-    width: min(300px, 84vw);
-    height: clamp(110px, 24vh, 210px);
+    width: min(300px, 84cqw);
+    height: clamp(110px, 24cqh, 210px);
   }
 
   /* 액션 바 — 한 줄에 다 안 들어가면 접히되 버튼은 손가락 크기를 지킨다 */
@@ -5959,7 +5994,7 @@ button {
     justify-content: center;
     gap: 7px;
     padding: 7px 10px;
-    max-width: calc(100vw - 12px);
+    max-width: calc(100cqw - 12px);
   }
   .act {
     padding: 10px 16px;
@@ -5982,7 +6017,7 @@ button {
     gap: 12px;
   }
   .draft-card {
-    width: min(320px, calc(100vw - 24px));
+    width: min(320px, calc(100cqw - 24px));
     min-height: 0;
     height: auto;
     padding: 18px 16px 16px;
@@ -5991,13 +6026,13 @@ button {
   .draft-desc { font-size: 13.5px; line-height: 1.5; }
 
   /* 게임 무효 투표 배너가 상단 아이콘 버튼과 겹치지 않게 */
-  .abort-banner { max-width: calc(100vw - 12px); }
+  .abort-banner { max-width: calc(100cqw - 12px); }
 
   /* 증강 정보 로그 — 좁은 화면에서는 화면 폭을 거의 다 쓴다 */
   .auglog {
     right: 6px;
-    width: calc(100vw - 12px);
-    max-height: 60vh;
+    width: calc(100cqw - 12px);
+    max-height: 60cqh;
   }
   .auglog-row {
     padding: 5px 9px;
@@ -6020,14 +6055,14 @@ button {
     width: 100%;
   }
   .result-han-circle {
-    width: clamp(96px, 30vw, 132px);
-    height: clamp(96px, 30vw, 132px);
+    width: clamp(96px, 30cqw, 132px);
+    height: clamp(96px, 30cqw, 132px);
   }
   .result-title { font-size: 20px; letter-spacing: 5px; }
   .result-deltas { grid-template-columns: minmax(0, 1fr); }
   .tile-result {
-    width: clamp(20px, 6.4vw, 30px);
-    height: calc(clamp(20px, 6.4vw, 30px) * 1.5);
+    width: clamp(20px, 6.4cqw, 30px);
+    height: calc(clamp(20px, 6.4cqw, 30px) * 1.5);
   }
 
   /* 게임 종료 카드 */
@@ -6036,18 +6071,18 @@ button {
 
 /* ── 모바일(가로) — 세로 공간이 극단적으로 좁다.
    보드를 높이에 맞춰 줄이고 손패도 함께 낮춘다. ── */
-@media (max-height: 560px) and (orientation: landscape) {
+@container ui (max-height: 560px) and (orientation: landscape) {
   .table {
     /* 세로가 병목: 보드 + 내 영역(이름표·액션바·손패)이 모두 들어가야 한다 */
-    --board: min(56vh, 44vw, 460px);
-    --panel: calc(var(--board) * 0.46);
+    --board: min(56cqh, 44cqw, 460px);
+    --panel-min: calc(var(--board) * 0.46);
     /* 패널이 아주 작아 글자 최소 크기(11px)가 비율을 앞지른다 — 판을 더 넓게 잡는다 */
     --plate-w: calc(var(--panel) * 0.76);
-    --hand-pref: min(clamp(24px, 4.6vw, 52px), 8.4vh);
+    --hand-pref: min(clamp(24px, 4.6cqw, 52px), 8.4cqh);
     --hand-gap: 3px;
     --hand-pad: 10px;
-    --mt-w: clamp(16px, 4vh, 30px);
-    --back-cap: clamp(14px, 3.6vh, 26px);
+    --mt-w: clamp(16px, 4cqh, 30px);
+    --back-cap: clamp(14px, 3.6cqh, 26px);
   }
   .table-center { top: 42%; }
   .own-area { bottom: 6px; gap: 6px; }
@@ -6062,7 +6097,7 @@ button {
   .quick-toggles:not(.quick-toggles-inline) { display: flex; bottom: 8px; gap: 4px; }
   .quick-toggles-inline { display: none; }
   .qt-item { padding: 4px 8px; font-size: 12px; }
-  .discard-dropzone { bottom: 150px; height: clamp(90px, 22vh, 160px); }
+  .discard-dropzone { bottom: 150px; height: clamp(90px, 22cqh, 160px); }
   .action-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 6px 10px; }
   .act { padding: 8px 14px; font-size: 15px; letter-spacing: 1px; }
   .draft-card { min-height: 0; height: auto; }
@@ -6070,7 +6105,7 @@ button {
 }
 
 /* ── 모바일: 홈·로비·대기실 ── */
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   /* 상단 바 — 로고·부제·닉네임이 서로 밀어내 세 줄로 접히던 곳 */
   .home-nav {
     gap: 8px;
@@ -6145,7 +6180,7 @@ button {
   font-weight: 600;
 }
 
-@media (max-width: 560px) {
+@container ui (max-width: 560px) {
   .seat-row {
     grid-template-columns: 24px minmax(0, 1fr) auto;
     row-gap: 6px;
@@ -6166,7 +6201,7 @@ button {
 /* ─────────────── 인증 화면 ─────────────── */
 
 .auth-card {
-  width: min(400px, 92vw);
+  width: min(400px, 92cqw);
 }
 
 .auth-tabs {
@@ -6311,7 +6346,7 @@ button {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 18px;
-  padding: 24px clamp(16px, 4vw, 48px) 48px;
+  padding: 24px clamp(16px, 4cqw, 48px) 48px;
   max-width: 1280px;
   margin: 0 auto;
   width: 100%;
@@ -6366,7 +6401,7 @@ button {
 /* 2열 배치일 때: 왼쪽 열은 행 높이 계산에 기여하지 않고(height:0) 오른쪽
    증강 카드가 정한 높이에 맞춘다. 리플레이가 많아도 열이 늘어나지 않고
    목록 안쪽에서만 스크롤된다. */
-@media (min-width: 901px) {
+@container ui (min-width: 901px) {
   .home-top { min-height: 640px; }
   .home-top-left {
     height: 0;
@@ -6384,7 +6419,7 @@ button {
   }
 }
 
-@media (max-width: 900px) {
+@container ui (max-width: 900px) {
   .home-top {
     grid-template-columns: 1fr;
   }
@@ -6853,7 +6888,7 @@ button {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 14px clamp(16px, 4vw, 48px);
+  padding: 14px clamp(16px, 4cqw, 48px);
   max-width: 1280px;
   margin: 0 auto;
   width: 100%;
@@ -6894,7 +6929,7 @@ button {
 
 .codex-main {
   flex: 1;
-  padding: 20px clamp(16px, 4vw, 48px) 56px;
+  padding: 20px clamp(16px, 4cqw, 48px) 56px;
   max-width: 1280px;
   margin: 0 auto;
   width: 100%;
@@ -6996,7 +7031,7 @@ button {
 .codex-detail {
   position: relative;
   width: min(640px, 100%);
-  max-height: 88vh;
+  max-height: 88cqh;
   overflow-y: auto;
   padding: 24px 26px 20px;
   border-radius: 18px;
@@ -7075,7 +7110,7 @@ button {
   font-family: ui-monospace, monospace;
 }
 
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   .codex-detail-stats { grid-template-columns: minmax(0, 1fr); }
   .codex-search { margin-left: 0; width: 100%; min-width: 0; }
   /* 도감 상단바 — 제목·수집뱃지·탭이 한 줄에 안 들어가 글자가 세로로 깨졌다 */
@@ -7367,7 +7402,7 @@ button {
 
 /* 좁은 화면: 종류·상태·날짜가 한 줄을 다 먹어 제목이 "리…"로 뭉개진다.
    제목을 아랫줄로 내려 전문을 보여 준다. */
-@media (max-width: 700px) {
+@container ui (max-width: 700px) {
   .fb-head { flex-wrap: wrap; }
   .fb-row-title {
     order: 3;
@@ -7453,7 +7488,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(860px, 96vw);
+  width: min(860px, 96cqw);
   padding: 10px 16px;
   border-radius: 14px;
   background: rgba(11, 19, 16, 0.95);
@@ -7519,7 +7554,7 @@ button {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
   animation: toast-in 0.25s var(--ease);
   pointer-events: none;
-  max-width: 90vw;
+  max-width: 90cqw;
   text-align: center;
 }
 
@@ -7538,6 +7573,55 @@ button {
   background: rgba(28, 43, 36, 0.96);
   border: 1px solid rgba(109, 181, 231, 0.45);
   color: #f7f3e8;
+}
+
+/* ─────────────── 배치 안내 (창이 너무 작을 때) ───────────────
+   uiScale.ts가 자동 축소로도 못 살린 창에서만 뜬다. 알림이지 경고가 아니다 —
+   구석에 작게, 판을 가리지 않게. */
+
+.layout-hint {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 310;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(340px, calc(100cqw - 16px));
+  padding: 7px 8px 7px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  background: var(--surface-3);
+  border: 1px solid var(--brass-line);
+  box-shadow: var(--shadow-2);
+  animation: bar-in 0.25s ease;
+}
+
+.layout-hint b {
+  color: var(--brass-bright);
+  white-space: nowrap;
+}
+
+.layout-hint-icon {
+  color: var(--brass);
+  font-size: 14px;
+}
+
+.layout-hint-x {
+  flex: none;
+  align-self: flex-start;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-4);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.layout-hint-x:hover {
+  color: var(--ink-1);
 }
 
 /* ─────────────── 재연결 인디케이터 ─────────────── */
@@ -7652,7 +7736,7 @@ button {
  * 흔들림·충격파는 쓰지 않는다(써도 번쩍임 뒤의 잔향으로만).
  */
 .cutin-aug .cutin-band {
-  height: clamp(78px, 15vmin, 124px);
+  height: clamp(78px, 15cqmin, 124px);
   animation: cutin-band-fast 0.18s cubic-bezier(0.1, 0.9, 0.2, 1) both;
 }
 
@@ -7714,7 +7798,7 @@ button {
 @keyframes scan-sweep {
   0% { transform: translateY(0); opacity: 0; }
   20% { opacity: 0.9; }
-  100% { transform: translateY(100vh); opacity: 0; }
+  100% { transform: translateY(100cqh); opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7771,7 +7855,7 @@ button {
 
 /* 계열 아이콘 — 글자 왼쪽에서 함께 번쩍인다 */
 .cutin-aug-icon {
-  font-size: clamp(30px, 6.5vmin, 54px);
+  font-size: clamp(30px, 6.5cqmin, 54px);
   line-height: 1;
   filter: drop-shadow(0 0 18px var(--fx-glow, rgba(199, 188, 255, 0.8)));
   animation: aug-icon-pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both;
@@ -7798,7 +7882,7 @@ button {
 
 .cutin-augment .cutin-text {
   color: #f7f3e8;
-  font-size: clamp(44px, 9.5vmin, 78px);
+  font-size: clamp(44px, 9.5cqmin, 78px);
   letter-spacing: 8px;
   text-shadow: 0 0 42px #a37ce8, 0 0 80px #7c5cff, 0 4px 0 rgba(0, 0, 0, 0.4);
 }
@@ -7819,7 +7903,7 @@ button {
 
 .cutin-grave .cutin-text {
   color: #e2c793;
-  font-size: clamp(44px, 9.5vmin, 78px);
+  font-size: clamp(44px, 9.5cqmin, 78px);
   letter-spacing: 8px;
   text-shadow: 0 0 44px #9a7b42, 0 0 88px #6b5430, 0 4px 0 rgba(0, 0, 0, 0.55);
 }
@@ -7840,7 +7924,7 @@ button {
 
 .cutin-spy .cutin-text {
   color: #f7f3e8;
-  font-size: clamp(44px, 9.5vmin, 78px);
+  font-size: clamp(44px, 9.5cqmin, 78px);
   letter-spacing: 8px;
   text-shadow: 0 0 44px #46c9b6, 0 0 88px #186d64, 0 4px 0 rgba(0, 0, 0, 0.55);
 }
@@ -7897,7 +7981,7 @@ button {
   top: 14px;
   bottom: 14px;
   z-index: 46;
-  width: min(390px, 92vw);
+  width: min(390px, 92cqw);
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -8709,6 +8793,6 @@ body.peeking .overlay-peekable > * {
   pointer-events: none;
 }
 
-@media (max-width: 620px) {
+@container ui (max-width: 620px) {
   .peek-btn { padding: 8px 12px; font-size: 11.5px; }
 }
