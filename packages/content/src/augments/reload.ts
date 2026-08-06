@@ -133,7 +133,8 @@ export const reload: AugmentDef = defineAugment({
   // 봇: 복구할 증강이 있으면 곧바로 되살린다 — 자원 회복은 언제나 이득(자해 없음).
   bot: plan({
     intent: "setup",
-    fleeting: true,
+    // 재장전은 자기 순이면 언제든 된다 — 회수할 국이 남아 있을 때만 값이 있다
+    // (올라스에 복구해 봐야 쓸 자리가 없다). 그 판단이 setup 적기다.
     oneShot: true,
     pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
   }),

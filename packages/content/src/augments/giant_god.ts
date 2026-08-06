@@ -46,7 +46,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
-import { plan } from "./botPlan.js";
+import { plan, reviewedFleeting } from "./botPlan.js";
 
 const ID = "giant_god";
 const ACTION = "giant_god";
@@ -222,7 +222,8 @@ export const giantGod: AugmentDef = defineAugment({
   // 봇: 제시된다는 것 자체가 국사 텐파이 확정이므로 언제나 발동한다.
   bot: plan({
     intent: "win",
-    fleeting: true,
+    // 조건이 서면 자기 순 아무 때나 된다 — 회수할 순목이 남아 있을 때 태운다.
+    fleeting: reviewedFleeting,
     pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
   }),
 });

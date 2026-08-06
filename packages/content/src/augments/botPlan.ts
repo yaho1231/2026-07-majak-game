@@ -198,8 +198,10 @@ export interface AugmentPlanSpec {
    * 배패 직후에만 제시되는 선언, 남의 버림에 반응하는 커스텀 콜처럼 "지금 아니면
    * 없는" 발동은 적기를 따질 이유가 없다 — 미룰 수가 없기 때문이다.
    * true면 타이밍 문턱을 건너뛰고, 강도만 판에 맞춰 조정된다.
+   *
+   * 함수로 주면 **판을 보고 정한다** — `reviewedFleeting`이 그 용도다(아래).
    */
-  fleeting?: boolean;
+  fleeting?: boolean | ((ctx: BotDecisionContext) => boolean);
   /**
    * 게임·국에 **한 번뿐인가.** 한 번뿐이면 어중간한 자리에서 태우지 않고 아낀다
    * (문턱이 올라간다). 매 순 다시 쓸 수 있는 증강은 지금 안 써도 손해가 없으므로
@@ -215,6 +217,33 @@ export interface PlannedPolicy extends AugmentBotPolicy {
 
 /** 한 번뿐인 발동에 얹는 추가 문턱 — 어중간한 자리에서 태우지 않는다 */
 const ONE_SHOT_BAR = 0.2;
+
+/**
+ * **"fleeting이라고 적혀 있었지만 사실은 미룰 수 있는 것"** 을 표시한다.
+ *
+ * 정책 63개 중 46개가 `fleeting: true`였다. 그런데 세어 보면 그중 상당수는 "지금
+ * 아니면 없는" 발동이 아니라 **자기 순이면 언제든 되는** 것이었다 — 무장해제·기생충·
+ * 카르마·재장전은 국이 끝날 때까지 아무 순에나 쓸 수 있다. `fleeting`이 붙어 있으니
+ * planner의 적기 판단이 통째로 건너뛰어졌고, 결과는 **1순에 아무 이유 없이 태우는 것**이다.
+ * (무장해제를 1순에 쓰면 그 국에 상대가 무엇을 하려는지 보기도 전에 소모한다.)
+ *
+ * 곧바로 갈아치우지 않고 `plantime` 스위치 뒤에 둔다 — 켜면 적기를 보고, 끄면 예전
+ * 그대로다. 2:2로 붙여 재고, 채택한 것은 표시를 지운다(스위치는 영구 설정이 아니라
+ * 임시 비계다 — `server/bot/flags.ts`).
+ *
+ * ## 배치 기록
+ *
+ * - **1차 6종 채택** (무장해제·기생충·재장전·연금술사·염색·날치기) — 400배패 2:2에서
+ *   순위 −0.0025 ± 0.0081 · 점수 +125 ± 145로 **중립**이었다. 개선을 확인한 것이
+ *   아니라 **손해 없음을 확인했고 모형이 더 옳아졌다.** 표시를 지우고 기본으로 삼았다.
+ * - **2차 5종 측정 중** (짝수의 세계·개벽·삼원의 의지·마작의 거신병·소환) — 손을 통째로
+ *   고치는 물건들이라 회수할 순목이 남아 있을 때만 값이 난다.
+ *
+ * 한 번에 46개를 다 건드리지 않는다. 배치로 나눠 재고, 이긴(또는 최소한 손해 없는)
+ * 배치만 남긴다 — 한꺼번에 바꾸면 어느 것이 무엇을 했는지 영영 알 수 없다.
+ */
+export const reviewedFleeting = (ctx: BotDecisionContext): boolean =>
+  ctx.flags?.has("plantime") !== true;
 
 /**
  * 의도 하나로 봇 정책을 만든다.
@@ -237,7 +266,9 @@ export function plan(spec: AugmentPlanSpec): PlannedPolicy {
       if (option === null) return null;
 
       const fit = readiness(spec.intent, ctx) * placementTilt(spec.intent, ctx);
-      if (spec.fleeting !== true) {
+      const fleeting =
+        typeof spec.fleeting === "function" ? spec.fleeting(ctx) : spec.fleeting === true;
+      if (!fleeting) {
         const bar = MIN_READINESS[spec.intent] + (spec.oneShot === true ? ONE_SHOT_BAR : 0);
         if (fit < bar) return null; // 아직 때가 아니다 — 다음 순에 다시 본다
       }

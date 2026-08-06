@@ -161,8 +161,7 @@ export const pondSnatch: AugmentDef = defineAugment({
   // 그냥 오름패를 노리는 게 나으므로 발동하지 않는다.
   bot: plan({
     intent: "advance",
-    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
-    fleeting: true,
+    // 게임 내 3회뿐이다 — 회수할 순목이 남아 있을 때만 태운다.
     pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null;
       const kinds = handKindsOf(view, holder);

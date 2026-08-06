@@ -165,8 +165,8 @@ export const disarm: AugmentDef = defineAugment({
   // 대상 증강의 강약까지는 판단하지 못하므로, 가장 많이 무장한 상대를 노려 무장 하나를 뺀다.
   bot: plan({
     intent: "disrupt",
-    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
-    fleeting: true,
+    // 무장해제는 자기 순이면 국이 끝날 때까지 언제든 쓴다 — 1순에 태우면 상대가
+    // 무엇을 하려는지 보기도 전에 소모한다. 위협이 서거나 판이 무르익은 뒤가 맞다.
     pick: ({ options, view }) => {
       const mine = options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
