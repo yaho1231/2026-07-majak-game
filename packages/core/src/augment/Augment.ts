@@ -129,6 +129,13 @@ export interface BotDecisionContext {
    * 배율을 걸어 봐야 그 국을 흘릴 뿐이다.
    */
   handPoints: number;
+  /**
+   * 봇의 **실험 스위치**(`server/bot/flags.ts`) — 2:2 정책 대전 전용.
+   *
+   * 증강 정책의 판단을 바꿀 때도 곧바로 갈아치우지 않고 스위치 뒤에 두고 재려면,
+   * 정책이 스위치를 볼 수 있어야 한다. 실대국에서는 항상 비어 있거나 없다.
+   */
+  flags?: ReadonlySet<string>;
 }
 
 /** 게임 전체에서 이 국의 처지 (봇이 점수판에서 읽어 넘긴다) */

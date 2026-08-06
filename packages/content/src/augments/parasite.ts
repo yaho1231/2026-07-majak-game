@@ -122,8 +122,8 @@ export const parasite: AugmentDef = defineAugment({
   // 상대(리드 중이라 계속 벌 가능성이 큰 쪽)에 기생한다. 없으면 첫 상대.
   bot: plan({
     intent: "disrupt",
-    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
-    fleeting: true,
+    // 기생은 숙주가 실제로 벌 것 같을 때 값이 난다 — 아무도 아무것도 안 한 1순에
+    // 붙이는 것은 그냥 낭비다. 자기 순이면 국 내내 언제든 붙일 수 있다.
     pick: ({ options, view, holder }) => {
       const mine = options.filter((o) => o.type === "parasite_attach");
       if (mine.length === 0) return null;

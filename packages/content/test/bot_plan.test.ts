@@ -13,8 +13,9 @@
 
 import { describe, expect, it } from "vitest";
 import { botChosenOption } from "@majak/core";
+import { disarm } from "../src/augments/disarm.js";
 import type { BotDecisionContext } from "@majak/core";
-import { plan, readiness } from "../src/augments/botPlan.js";
+import { plan, readiness, reviewedFleeting } from "../src/augments/botPlan.js";
 import type { AugmentIntent } from "../src/augments/botPlan.js";
 
 const OPT = { type: "x", payload: {} };
@@ -200,5 +201,67 @@ describe("의도 선언형으로 옮긴 증강들", () => {
       );
     expect(at(0)).toBeNull();
     expect(at(1)).toEqual(opt);
+  });
+});
+
+/**
+ * `fleeting`을 다시 본 것들 — 정책 63개 중 **46개가 `fleeting: true`** 였고,
+ * 그중 상당수는 "지금 아니면 없는" 발동이 아니라 **자기 순이면 언제든 되는** 것이었다.
+ * 무장해제·기생충·재장전이 그렇다. `fleeting`이 붙어 있으니 planner의 적기 판단이
+ * 통째로 건너뛰어졌고, 결과는 아무 이유 없이 1순에 태우는 것이었다.
+ *
+ * 곧바로 갈아치우지 않고 `plantime` 스위치 뒤에 뒀다 — 켜면 적기를 보고, 끄면 예전 그대로.
+ */
+describe("다시 본 fleeting (plantime)", () => {
+  const PLANTIME = new Set(["plantime"]);
+  const reviewed = always("disrupt", { fleeting: reviewedFleeting });
+
+  it("스위치가 꺼져 있으면 예전 그대로 — 1순에도 그냥 발동한다", () => {
+    expect(fire(reviewed, ctx({ turn: 1, threat: 0 }))).toEqual(OPT);
+  });
+
+  it("스위치를 켜면 아무 일도 없는 1순에는 미룬다", () => {
+    expect(fire(reviewed, ctx({ turn: 1, threat: 0, flags: PLANTIME }))).toBeNull();
+  });
+
+  it("스위치를 켜도 때가 오면 발동한다 (미루는 것이지 봉인이 아니다)", () => {
+    expect(fire(reviewed, ctx({ turn: 1, threat: 0.9, flags: PLANTIME }))).toEqual(OPT);
+    expect(fire(reviewed, ctx({ turn: 12, threat: 0, flags: PLANTIME }))).toEqual(OPT);
+  });
+
+  it("진짜 fleeting(true)은 스위치와 무관하게 그대로 발동한다", () => {
+    const real = always("disrupt", { fleeting: true });
+    expect(fire(real, ctx({ turn: 1, threat: 0, flags: PLANTIME }))).toEqual(OPT);
+  });
+});
+
+/**
+ * 채택된 1차 배치 — 스위치 없이도 적기를 본다. 실제 증강 정의로 검사한다
+ * (여기서 놓치면 "재검토했다"는 기록만 남고 동작은 예전 그대로일 수 있다).
+ */
+describe("채택된 배치 1 — 무장해제는 아무 일 없는 1순에 태우지 않는다", () => {
+  const DISARM_ACTION = { type: "disarm_lock", payload: { target: "p1" } };
+  const view = {
+    players: [
+      { id: "p0", augments: ["disarm"] },
+      { id: "p1", augments: ["big_hand", "jackpot"] },
+    ],
+  } as unknown as BotDecisionContext["view"];
+
+  const fireDisarm = (over: Partial<BotDecisionContext>) =>
+    botChosenOption(
+      disarm.bot?.choose({ ...ctx({ view, options: [DISARM_ACTION], ...over }) }) ?? null,
+    );
+
+  it("1순·무위협에는 미룬다 (예전에는 그냥 태웠다)", () => {
+    expect(fireDisarm({ turn: 1, threat: 0 })).toBeNull();
+  });
+
+  it("위협이 서면 발동한다", () => {
+    expect(fireDisarm({ turn: 1, threat: 0.9 })).toEqual(DISARM_ACTION);
+  });
+
+  it("판이 무르익으면 발동한다", () => {
+    expect(fireDisarm({ turn: 12, threat: 0 })).toEqual(DISARM_ACTION);
   });
 });

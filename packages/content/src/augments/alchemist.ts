@@ -153,8 +153,8 @@ export const alchemist: AugmentDef = defineAugment({
   // 변경(고립패 → 유용패)이 있을 때만 발동하고, 없으면 아낀다.
   bot: plan({
     intent: "advance",
-    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
-    fleeting: true,
+    // 게임 내 5회뿐이다 — 시간이 남아 있고 손이 닿는 거리일 때만 태운다.
+    // 유국 직전 3샹텐에 한 장 고쳐 봐야 회수할 순목이 없다.
     pick: ({ options, view, holder }) => {
       const kinds = handKindsOf(view, holder);
       for (const o of options) {

@@ -143,8 +143,7 @@ export const tileDyeing: AugmentDef = defineAugment({
   // 실제로 손이 나아지는 변경이 있을 때만 발동한다.
   bot: plan({
     intent: "advance",
-    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
-    fleeting: true,
+    // 게임 내 5회뿐이다 — 회수할 순목이 남아 있을 때만 태운다(연금술사와 같은 이유).
     pick: ({ options, view, holder }) => {
       const kinds = handKindsOf(view, holder);
       for (const o of options) {

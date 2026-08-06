@@ -364,6 +364,8 @@ export class BotAgent implements PlayerAgent {
         riskAppetite: read.match.riskAppetite,
       },
       handPoints: read.valueOf({ plan: this.plan }).points,
+      // 증강 정책의 판단도 스위치 뒤에 두고 2:2로 잴 수 있게 한다 (실대국은 항상 비어 있다)
+      flags: this.flags,
     };
     // 증강의 값어치는 손의 값어치에 매인다 — 만관 손에서의 '평시 발동'과
     // 1000점 손에서의 '평시 발동'은 같은 강도라도 실제 값이 다르다

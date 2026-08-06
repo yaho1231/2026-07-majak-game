@@ -131,7 +131,10 @@ describe("봇 액티브 증강 정책 동작", () => {
       { type: "disarm_lock", payload: { target: "p1", augmentId: "a" } },
       { type: "disarm_lock", payload: { target: "p2", augmentId: "a" } },
     ];
-    const picked = botChosenOption(pick(disarm, ctx(view, opts)) ?? null);
+    // 무장해제는 이제 적기를 본다(1순·무위협에는 미룬다) — 여기서 보려는 것은
+    // **누구를 고르는가**이므로 위협을 세워 발동 조건을 만들어 준다.
+    const c = { ...ctx(view, opts), threat: 0.9 };
+    const picked = botChosenOption(pick(disarm, c) ?? null);
     expect((picked?.payload as { target?: string }).target).toBe("p2");
   });
 
