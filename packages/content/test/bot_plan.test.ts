@@ -265,3 +265,23 @@ describe("채택된 배치 1 — 무장해제는 아무 일 없는 1순에 태�
     expect(fireDisarm({ turn: 12, threat: 0 })).toEqual(DISARM_ACTION);
   });
 });
+
+/**
+ * **문턱과 적기가 서로 맞물려 정책을 죽이지 않는가.**
+ *
+ * 시간 정지가 정확히 그렇게 죽어 있었다 — `pick`이 텐파이일 때만 후보를 내는데
+ * `advance` 적기의 텐파이 값(0.3)이 `oneShot` 문턱(0.15+0.2=0.35)보다 낮아,
+ * **조건이 맞는 유일한 순간에 언제나 막혔다.** 그 관계를 여기에 못 박는다.
+ */
+describe("문턱과 적기의 관계", () => {
+  it("텐파이 전용 advance 정책은 발동할 수 있어야 한다", () => {
+    expect(fire(always("advance"), ctx({ tenpai: true, shanten: 0 }))).toEqual(OPT);
+    expect(readiness("advance", ctx({ tenpai: true, shanten: 0 }))).toBeGreaterThan(0.15);
+  });
+
+  it("거기에 oneShot을 얹으면 텐파이에서 죽는다 — 이 조합을 쓰면 안 된다", () => {
+    expect(
+      fire(always("advance", { oneShot: true }), ctx({ tenpai: true, shanten: 0 })),
+    ).toBeNull();
+  });
+});
