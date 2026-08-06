@@ -35,8 +35,9 @@ import type {
   TileKind,
 } from "@majak/core";
 import {
+  cooldownReady,
+  cooldownUse,
   roundKey,
-  roundSeqOf,
   roundViewKey,
   trackRoundSeq,
   viewKey,
@@ -48,7 +49,6 @@ const ACTION = "dora_recall";
 
 /** 한 번 쓰면 이만큼 국(본장 포함)이 지나야 다시 열린다 */
 const COOLDOWN_ROUNDS = 2;
-const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 
 /** 직전 국의 도라 종류 (국을 넘어 유지되므로 국 스코프 키가 아니다) */
 const prevDoraKey = `${ID}:prevDora`;
@@ -83,11 +83,8 @@ const prevDora = (state: GameState): TileKind[] =>
 const recalledNow = (state: GameState, h: PlayerId): TileKind[] =>
   asKinds(state.augmentData[recalledKey(state, h)]);
 
-const offCooldown = (state: GameState, h: PlayerId): boolean => {
-  const used = state.augmentData[usedSeqKey(h)];
-  if (typeof used !== "number") return true;
-  return roundSeqOf(state, ID, h) - used >= COOLDOWN_ROUNDS;
-};
+const offCooldown = (state: GameState, h: PlayerId): boolean =>
+  cooldownReady(state, ID, h, COOLDOWN_ROUNDS);
 
 const recallAction: ActionDef<Record<string, never>> = {
   type: ACTION,
@@ -109,7 +106,7 @@ const recallAction: ActionDef<Record<string, never>> = {
     const kinds = prevDora(state);
     return [
       augmentDataSet(recalledKey(state, req.player), kinds),
-      augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
+      ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
       // 전원 공개 — 무엇이 이 사람의 도라가 됐는지 보여야 대응할 수 있다
       augmentDataSet(
         roundViewKey("*", `${ID}:${req.player}`),
@@ -134,7 +131,7 @@ export const doraAfterimage: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) engine.actions.register(recallAction);
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 매 국 끝에 그 국의 도라 종류를 적어 둔다 (다음 국이 되살릴 대상).
     // 정산 시점에는 그 국의 표시패가 아직 상태에 그대로 있다.

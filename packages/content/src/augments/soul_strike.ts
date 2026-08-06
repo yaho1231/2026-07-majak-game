@@ -73,10 +73,11 @@ import type {
 } from "@majak/core";
 import {
   addWinHanBonus,
+  cooldownReady,
+  cooldownUse,
   counterOf,
   flagOf,
   roundKey,
-  roundSeqOf,
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
@@ -98,7 +99,6 @@ const COOLDOWN_ROUNDS = 2;
  */
 const RIICHI_HAN_BONUS = 1;
 
-const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 /** 폭주가 켜져 있는가 (이번 국) */
 const activeKey = (state: GameState, h: PlayerId): string =>
   `${ID}:active:${roundKey(state)}:${h}`;
@@ -114,11 +114,8 @@ const isActive = (state: GameState, h: PlayerId): boolean =>
 const leftOf = (state: GameState, h: PlayerId): number =>
   counterOf(state, leftKey(state, h));
 
-const offCooldown = (state: GameState, h: PlayerId): boolean => {
-  const used = state.augmentData[usedSeqKey(h)];
-  if (typeof used !== "number") return true;
-  return roundSeqOf(state, ID, h) - used >= COOLDOWN_ROUNDS;
-};
+const offCooldown = (state: GameState, h: PlayerId): boolean =>
+  cooldownReady(state, ID, h, COOLDOWN_ROUNDS);
 
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;
@@ -182,7 +179,7 @@ const soulStrikeAction: ActionDef<{ tileId: TileId }> = {
     augmentDataSet(activeKey(state, req.player), true),
     augmentDataSet(leftKey(state, req.player), SOUL_DRAWS),
     augmentDataSet(declaredKey(state, req.player), true),
-    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
+    ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
     augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), SOUL_DRAWS),
   ],
 };
@@ -221,7 +218,7 @@ export const soulStrike: AugmentDef = defineAugment({
     }
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 손패 각 장을 후보로 낸다 (합법성 최종 판정은 validate)
     ctx.holderTurnOptions((state) =>

@@ -2925,6 +2925,34 @@ button {
   color: #f0c86a;
 }
 
+/* 퀘스트형 증강 뱃지 (드래프트 카드) — 액티브 뱃지와 나란히 설 수 있다 */
+.aug-quest-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #86c6a4;
+  background: rgba(88, 178, 132, 0.14);
+  border: 1px solid rgba(88, 178, 132, 0.55);
+}
+
+/* 퀘스트형 증강 표시 (툴팁 한 줄) — 달성 조건까지 함께 적는다 */
+.aug-tip-quest {
+  font-size: 11px;
+  font-weight: 800;
+  color: #7fd8a8;
+}
+
+/* 내부 쿨다운으로 지금 못 쓰는 증강 (툴팁 한 줄) */
+.aug-tip-cd {
+  font-size: 11px;
+  font-weight: 800;
+  color: #9fb4d8;
+}
+
 /* 무장해제로 이번 국 잠긴 증강 — 회색으로 죽이고 빗금을 얹어 "지금은 없는 능력"으로 읽힌다 */
 .aug-pill-locked {
   color: #8d9490;
@@ -2971,6 +2999,27 @@ button {
   border-radius: 999px;
   background: rgba(199, 188, 255, 0.9);
   color: #16142a;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+/* 내부 쿨다운 중인 증강 — 무장해제(빗금)와 달리 "곧 돌아온다"라 색만 식힌다.
+   빗금까지 얹으면 영영 잠긴 것처럼 읽혀 둘을 구분할 수 없다. */
+.aug-pill-cd {
+  color: #9fb4d8;
+  border-color: rgba(120, 150, 190, 0.55);
+  background: rgba(70, 92, 122, 0.18);
+}
+
+/* 남은 국 수 칩 — 잔량 칩과 나란히 서므로 색으로 갈라 둔다 */
+.aug-pill-cd-chip {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(120, 150, 190, 0.85);
+  color: #0f1620;
   font-size: 10.5px;
   font-weight: 800;
   line-height: 15px;

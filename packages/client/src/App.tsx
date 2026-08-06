@@ -500,6 +500,23 @@ function isActiveAugment(id: string): boolean {
 }
 
 /**
+ * **퀘스트형 증강** — 효과가 그냥 열려 있지 않고, 국(또는 게임) 안에서 조건을 직접
+ * 쌓아 달성해야 비로소 열리는 것들. 값은 그 조건을 한 줄로 적은 목표문이다.
+ *
+ * "액티브"(⚡)와 배타가 아니다 — 편식은 퀘스트를 채운 **뒤에** 액티브 버튼이 열리므로
+ * 두 뱃지가 함께 붙는다. 두 뱃지가 말하는 것이 서로 다르기 때문이다:
+ * ⚡는 "누가 발동하는가", 🎯는 "언제부터 발동할 수 있는가".
+ *
+ * 기준: 발동(또는 자동 발동)에 **보유자가 쌓아 올리는 진행도**가 필요한가.
+ * 단순히 "자기 턴에" · "첫 순에" 같은 타이밍 제약만 있는 것은 퀘스트가 아니다.
+ */
+const QUEST_GOAL: Record<string, string> = {
+  picky_eater: "한 무늬(+자패)만 12장 버리기",
+  karma: "잃은 점수를 업보 8,000까지 쌓기",
+  cliff_bloom: "한 국에 깡 두 번 (만개)",
+};
+
+/**
  * 액티브 액션을 '클릭'으로 발동할 때 무엇을 클릭하는지(대상 종류).
  * - "hand"      : 내 손패의 패를 클릭 (payload에 tileId)
  * - "opp"       : 상대 플레이어를 클릭 (payload에 target)
@@ -713,6 +730,17 @@ function ActiveBadge(): JSX.Element {
   return (
     <span className="aug-active-badge" title="직접 발동하는 액티브 증강">
       ⚡ 액티브
+    </span>
+  );
+}
+
+/** 조건을 달성해야 열리는 퀘스트형 증강 뱃지 — 드래프트 카드용. */
+function QuestBadge({ id }: { id: string }): JSX.Element | null {
+  const goal = QUEST_GOAL[id];
+  if (goal === undefined) return null;
+  return (
+    <span className="aug-quest-badge" title={`퀘스트 — ${goal}`}>
+      🎯 퀘스트
     </span>
   );
 }
@@ -6726,6 +6754,7 @@ function SandboxPanel(props: {
                 >
                   <span className="sbx-name">
                     {c.name}
+                    <QuestBadge id={c.id} />
                     {isActiveAugment(c.id) ? <ActiveBadge /> : null}
                   </span>
                   <span className="sbx-desc">
@@ -7663,6 +7692,18 @@ const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
   "time_pressure",
 ]);
 
+/**
+ * 내부 쿨다운("2국에 1회")이 몇 국 남았는가 — 0이면 지금 쓸 수 있다.
+ *
+ * 콘텐츠 쪽 `cooldownViewKey`(util.ts)가 **보유자 본인 채널**로만 올려 주므로, 남의
+ * pill에는 애초에 값이 없다. 예전에는 이 정보가 어디에도 없어서, 잠긴 증강이 그냥
+ * "아무 일도 안 일어나는 증강"으로 보였다(2026-08-06 사용자 지적).
+ */
+function cooldownRoundsLeft(view: PlayerView, augId: string): number {
+  const left = view.augmentView[`cooldown:${augId}`];
+  return typeof left === "number" && left > 0 ? left : 0;
+}
+
 function augmentPillStatus(
   view: PlayerView,
   playerId: string,
@@ -7756,7 +7797,7 @@ function augmentPillStatus(
       return { chip: "실패", note: "다른 무늬를 버려 이번 국 퀘스트는 깨졌다" };
     }
     if (m.count === 0) return null;
-    const ko = m.suit == null ? "자패만" : (SUIT_KO[m.suit] ?? m.suit);
+    const ko = m.suit == null ? "자패" : (SUIT_KO[m.suit] ?? m.suit);
     return {
       chip: `${m.count}/${need}`,
       note: `${ko}만 버리는 중 — ${need}장을 채우면 손패를 한 색으로 물들인다`,
@@ -7841,12 +7882,14 @@ function NamePlate({
             const entry = catalog[a];
             const locked = disarmed.has(a);
             const status = augmentPillStatus(view, player.id, a);
+            // 내부 쿨다운 잔량 — 보유자 본인 화면에만 실린다(view:{나}:cooldown:{id}).
+            const cooldown = cooldownRoundsLeft(view, a);
             return (
               // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}`}
                 tabIndex={0}
               >
                 <AugCatIcon id={a} />
@@ -7855,6 +7898,11 @@ function NamePlate({
                 {fromDice.has(a) ? <span className="aug-pill-dice-mark" aria-hidden="true">🎲</span> : null}
                 {/* 이름만 별도 span — 무장해제 취소선이 잔량 칩까지 그어지지 않게 */}
                 <span className="aug-pill-name">{entry?.name ?? a}</span>
+                {cooldown > 0 ? (
+                  <span className="aug-pill-cd-chip" title={`쿨다운 — ${cooldown}국 남음`}>
+                    🕐{cooldown}국
+                  </span>
+                ) : null}
                 {status !== null ? <span className="aug-pill-chip">{status.chip}</span> : null}
                 {status?.gauge !== undefined ? (
                   <span className="aug-pill-gauge" aria-hidden="true">
@@ -7870,6 +7918,11 @@ function NamePlate({
                   {locked ? (
                     <span className="aug-tip-locked">🔒 무장해제 — 이번 국 동안 잠김</span>
                   ) : null}
+                  {cooldown > 0 ? (
+                    <span className="aug-tip-cd">
+                      🕐 쿨다운 — 지금은 쓸 수 없다 (앞으로 {cooldown}국)
+                    </span>
+                  ) : null}
                   {reloaded.has(a) ? (
                     <span className="aug-tip-status">♻ 재장전 — 이 증강을 다시 쓸 수 있다</span>
                   ) : null}
@@ -7878,6 +7931,9 @@ function NamePlate({
                   ) : null}
                   {status !== null ? (
                     <span className="aug-tip-status">{status.note}</span>
+                  ) : null}
+                  {QUEST_GOAL[a] !== undefined ? (
+                    <span className="aug-tip-quest">🎯 퀘스트 증강 — {QUEST_GOAL[a]}</span>
                   ) : null}
                   {isActiveAugment(a) ? (
                     <span className="aug-tip-active">⚡ 액티브 증강 (직접 발동)</span>
@@ -11042,6 +11098,7 @@ function DraftOverlay({
                   <span className={`draft-cat aug-cat-${augmentCategory(c.id)}`}>
                     {CATEGORY_META[augmentCategory(c.id)].icon} {CATEGORY_META[augmentCategory(c.id)].label}
                   </span>
+                  <QuestBadge id={c.id} />
                   {isActiveAugment(c.id) ? <ActiveBadge /> : null}
                 </span>
               </span>

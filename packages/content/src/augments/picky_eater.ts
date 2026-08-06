@@ -31,7 +31,13 @@ import type {
   PlayerId,
   Suit,
 } from "@majak/core";
-import { roundKey, roundSeqOf, roundViewKey, trackRoundSeq } from "../util.js";
+import {
+  cooldownReady,
+  cooldownUse,
+  roundKey,
+  roundViewKey,
+  trackRoundSeq,
+} from "../util.js";
 import { handKindsOf } from "./botHelpers.js";
 import {
   NUMBER_SUITS,
@@ -48,7 +54,6 @@ const QUEST_DISCARDS = 12;
 /** 한 번 쓰면 이만큼 국(본장 포함)이 지나야 다시 열린다 */
 const COOLDOWN_ROUNDS = 2;
 
-const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 /** 이번 국에 이미 발동했는가 */
 const doneKey = (state: GameState, h: PlayerId): string =>
   `${ID}:done:${roundKey(state)}:${h}`;
@@ -96,11 +101,7 @@ const pickyAction: ActionDef<{ suit: Suit }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    const used = state.augmentData[usedSeqKey(req.player)];
-    if (
-      typeof used === "number" &&
-      roundSeqOf(state, ID, req.player) - used < COOLDOWN_ROUNDS
-    ) {
+    if (!cooldownReady(state, ID, req.player, COOLDOWN_ROUNDS)) {
       return "on cooldown";
     }
     if (state.augmentData[doneKey(state, req.player)] === true) {
@@ -115,7 +116,7 @@ const pickyAction: ActionDef<{ suit: Suit }> = {
   toEvents: (req, { state }) => [
     monoWorldEvent(state, req.player, req.payload.suit),
     augmentDataSet(doneKey(state, req.player), true),
-    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
+    ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
     // 어떤 색으로 통일됐는지 전원 공개
     augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), req.payload.suit),
   ],
@@ -137,7 +138,7 @@ export const pickyEater: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) engine.actions.register(pickyAction);
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 퀘스트 진행도를 전원에게 공개한다 — 몇 장 남았는지 보여야 대응이 성립한다
     const publish = (state: GameState): ReturnType<typeof augmentDataSet> => {

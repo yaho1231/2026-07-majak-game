@@ -45,7 +45,12 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { roundSeqOf, trackRoundSeq, viewKey } from "../util.js";
+import {
+  cooldownReady,
+  cooldownUse,
+  trackRoundSeq,
+  viewKey,
+} from "../util.js";
 
 const ID = "regret";
 /** 보존이 성사된 뒤 다시 성사되기까지 필요한 국 수 (2국에 1회) */
@@ -53,8 +58,6 @@ const COOLDOWN_ROUNDS = 2;
 
 /** 다음 국 배패로 주입할 보존 손패 kind (게임 단위 — 국을 넘어 유지) */
 const keepKey = (h: PlayerId): string => `${ID}:keep:${h}`;
-/** 마지막으로 보존이 성사된 국의 순번 (키가 없으면 아직 성사된 적 없음) */
-const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 /** 전원 공개 채널 (보존 손·대기 노출) */
 const noticeKey = (h: PlayerId): string => viewKey("*", `${ID}:${h}`);
 
@@ -65,9 +68,7 @@ const noticeKey = (h: PlayerId): string => viewKey("*", `${ID}:${h}`);
  * 구분되지 않는다(big_hand의 canDeclare와 같은 판정).
  */
 function offCooldown(state: GameState, holder: PlayerId): boolean {
-  const used = state.augmentData[usedSeqKey(holder)];
-  if (typeof used !== "number") return true;
-  return roundSeqOf(state, ID, holder) - used >= COOLDOWN_ROUNDS;
+  return cooldownReady(state, ID, holder, COOLDOWN_ROUNDS);
 }
 
 /** 보유자가 멘젠(후로 0) 텐파이인가 */
@@ -103,7 +104,7 @@ export const regret: AugmentDef = defineAugment({
     const { engine, holder } = ctx;
 
     // "2국에 1회" 판정을 위한 국 진행 카운터
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 유국 + 멘젠 텐파이 → 손패 kind 보존 (전원 공개). 단 2국에 1회.
     ctx.reaction(ROUND_SETTLED, (event, rc) => {
@@ -116,7 +117,7 @@ export const regret: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(keepKey(holder), kinds));
       rc.emit(augmentDataSet(noticeKey(holder), kinds.map((k) => ({ ...k }))));
       // 이 국을 기준으로 쿨다운 시작 — 다음 국은 보존이 열리지 않는다
-      rc.emit(augmentDataSet(usedSeqKey(holder), roundSeqOf(rc.state, ID, holder)));
+      for (const e of cooldownUse(rc.state, ID, holder, COOLDOWN_ROUNDS)) rc.emit(e);
     });
 
     // 다음 국 시작(딜 완료 후) → 보존 손이 있으면 배패를 그 kind로 덮고 보존을 비운다

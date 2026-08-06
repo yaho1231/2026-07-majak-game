@@ -26,7 +26,13 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { roundKey, roundSeqOf, stringOf, trackRoundSeq } from "../util.js";
+import {
+  cooldownReady,
+  cooldownUse,
+  roundKey,
+  stringOf,
+  trackRoundSeq,
+} from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "no_retreat";
@@ -54,9 +60,7 @@ function declaredThisRound(state: GameState, holder: PlayerId): boolean {
  */
 function canDeclare(state: GameState, holder: PlayerId): boolean {
   if (declaredThisRound(state, holder)) return false; // 이번 국엔 이미 걸었다
-  const used = state.augmentData[usedSeqKey(holder)];
-  if (typeof used !== "number") return true; // 한 번도 안 씀
-  return roundSeqOf(state, ID, holder) - used >= COOLDOWN_ROUNDS;
+  return cooldownReady(state, ID, holder, COOLDOWN_ROUNDS);
 }
 
 const declareAction: ActionDef<Record<string, never>> = {
@@ -81,7 +85,7 @@ const declareAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(declaredKey(req.player), roundKey(state)),
-    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
+    ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
   ],
 };
 
@@ -105,7 +109,7 @@ export const noRetreat: AugmentDef = defineAugment({
     }
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 48차 무페널티: "리치를 안 걸면 전 역 봉인(=화료 불가)"이라는 배수진을 삭제했다.
     // 선언은 이제 순수한 상향 — 공탁 면제 + 리치·일발·뒷도라 2배만 남는다.

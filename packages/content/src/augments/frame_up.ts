@@ -31,7 +31,12 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { roundSeqOf, roundViewKey, trackRoundSeq } from "../util.js";
+import {
+  cooldownReady,
+  cooldownUse,
+  roundViewKey,
+  trackRoundSeq,
+} from "../util.js";
 
 const ID = "frame_up";
 const ACTION = "frame_discard";
@@ -42,14 +47,9 @@ const ACTION = "frame_discard";
  * 매치당 1~2회는 국이 흘러가는 동안 쓸 자리를 못 찾고 사장되기 일쑤였다.
  */
 const COOLDOWN_ROUNDS = 2;
-/** 마지막으로 심은 국 시퀀스 (big_hand와 같은 쿨다운 계산) */
-const usedSeqKey = (h: PlayerId): string => `${ID}:usedSeq:${h}`;
 /** 지금 심을 수 있는가 — 쓴 적이 없거나, 마지막 사용 이후 2국이 지났다 */
-const offCooldown = (state: GameState, h: PlayerId): boolean => {
-  const used = state.augmentData[usedSeqKey(h)];
-  if (typeof used !== "number") return true;
-  return roundSeqOf(state, ID, h) - used >= COOLDOWN_ROUNDS;
-};
+const offCooldown = (state: GameState, h: PlayerId): boolean =>
+  cooldownReady(state, ID, h, COOLDOWN_ROUNDS);
 
 /** 리치 중인가 (버릴 패가 고정돼 지목 버림 불가) */
 const inRiichi = (state: GameState, h: PlayerId): boolean =>
@@ -113,7 +113,7 @@ const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
         creditTo: req.payload.target,
       },
     },
-    augmentDataSet(usedSeqKey(req.player), roundSeqOf(state, ID, req.player)),
+    ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
     // 전원 공개 — 누구 바닥에 무엇이 심겼는지 보여야 대응할 수 있다
     augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {
       target: req.payload.target,
@@ -148,7 +148,7 @@ export const frameUp: AugmentDef = defineAugment({
     }
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     // 손패 × 상대 조합을 후보로 낸다 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) => {
