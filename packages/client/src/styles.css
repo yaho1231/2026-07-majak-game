@@ -4583,6 +4583,24 @@ button {
   font-style: italic;
 }
 
+/* 봇 성향 선택 (방장) — 성향 칩과 같은 자리·같은 색이되 고를 수 있다는 것만 더 알린다 */
+.seat-arch-pick {
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(240, 200, 106, 0.32);
+  background: rgba(240, 200, 106, 0.12);
+  color: #e6c880;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.seat-arch-pick:hover {
+  border-color: rgba(240, 200, 106, 0.6);
+  background: rgba(240, 200, 106, 0.2);
+}
+
 /* 봇 성향 칩 — 전적 칩 자리에 서지만 통계가 아니라 정체다. 황동 계열로 구분한다 */
 .stat-chip-arch {
   background: rgba(240, 200, 106, 0.12);
