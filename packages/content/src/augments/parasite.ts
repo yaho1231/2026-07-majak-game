@@ -36,6 +36,7 @@ import {
   withAugPoint,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { threatWeightOf } from "./botHelpers.js";
 
 /** 이번 국의 기생 대상 키 (국이 바뀌면 만료되어 다시 지정할 수 있다) */
 const targetKey = (holder: PlayerId, state: GameState): string =>
@@ -120,22 +121,35 @@ export const parasite: AugmentDef = defineAugment({
   },
   // 숙주가 버는 점수의 절반을 나눠 받는다(숙주가 화료할수록 이득) — 가장 점수가 높은
   // 상대(리드 중이라 계속 벌 가능성이 큰 쪽)에 기생한다. 없으면 첫 상대.
+  /**
+   * 봇 — **누가 벌 것 같은가**로 숙주를 고른다.
+   *
+   * 기생은 숙주가 그 국에 얻는 점수의 절반을 가져온다. 그래서 고를 것은
+   * "점수가 높은 사람"이 아니라 **이번 국에 벌 것 같은 사람**이다. 예전 정책은 점수판만
+   * 봤는데, 점수판은 지금까지의 결과이지 이번 국의 예측이 아니다.
+   *
+   * 보이는 예측 재료가 둘 있다 — **리치를 걸었는가**(그 국에 화료할 확률이 확 올라간다),
+   * 그리고 **어떤 증강을 들었는가**(같은 화료라도 값이 다르다). 점수는 마지막 동점 처리로 남긴다.
+   */
   bot: plan({
     intent: "disrupt",
     // 기생은 숙주가 실제로 벌 것 같을 때 값이 난다 — 아무도 아무것도 안 한 1순에
     // 붙이는 것은 그냥 낭비다. 자기 순이면 국 내내 언제든 붙일 수 있다.
-    pick: ({ options, view, holder }) => {
+    pick: (ctx) => {
+      const { options, view, holder } = ctx;
       const mine = options.filter((o) => o.type === "parasite_attach");
       if (mine.length === 0) return null;
-      const scoreOf = new Map<string, number>();
-      for (const p of view.players) if (p.id !== holder) scoreOf.set(p.id, p.score);
+      const info = new Map(view.players.filter((p) => p.id !== holder).map((p) => [p.id, p]));
       let best = mine[0] ?? null;
       let bestScore = -Infinity;
       for (const o of mine) {
         const target = (o.payload as { target?: string }).target;
-        const s = target === undefined ? -Infinity : (scoreOf.get(target) ?? -Infinity);
-        if (s > bestScore) {
-          bestScore = s;
+        const p = target === undefined ? undefined : info.get(target);
+        if (p === undefined) continue;
+        const riichi = view.round.byPlayer[p.id]?.riichiDeclared === true ? 2 : 1;
+        const score = riichi * threatWeightOf(ctx, p.augments) * 1_000_000 + p.score;
+        if (score > bestScore) {
+          bestScore = score;
           best = o;
         }
       }

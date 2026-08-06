@@ -168,7 +168,8 @@ export const pushRiichi: AugmentDef = defineAugment({
   // 봇: 점수가 가장 높은 상대(선두)에게 낙인을 찍는다 — 다마텐 봉쇄로 압박(자해 없음).
   // 누구를 찍을지의 최적은 미묘하나, 선두 견제는 언제나 방어적으로 유효하다.
   bot: plan({
-    intent: "score",
+    // 상대에게 강제 리치를 건다 — 내 손이 아니라 **상대**를 건드리는 물건이다
+    intent: "disrupt",
     // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
     fleeting: true,
     pick: ({ options, view, holder }) => {

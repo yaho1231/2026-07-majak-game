@@ -122,7 +122,8 @@ export const suitUnify: AugmentDef = defineAugment({
   // 수패를 전부 한 색으로 몰아 청일색을 노린다. 텐파이면 손을 깨므로 발동하지 않고,
   // 수패가 충분할 때(≥5장) 가장 많은 색으로 통일해 rank 충돌을 최소화한다.
   bot: plan({
-    intent: "advance",
+    // 손패의 수패를 통째로 한 색으로 바꾼다 — 갈아엎기다
+    intent: "rewrite",
     // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
     fleeting: true,
     pick: ({ options, view, holder, tenpai }) => {

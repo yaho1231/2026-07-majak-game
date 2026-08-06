@@ -160,7 +160,8 @@ export const pickyEater: AugmentDef = defineAugment({
     });
   },
   bot: plan({
-    intent: "advance",
+    // 손패의 수패를 통째로 한 색으로 통일한다 — 갈아엎기다
+    intent: "rewrite",
     // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
     fleeting: true,
     // 퀘스트를 우연히 달성했다면 수패가 가장 많은 색으로 통일한다 (단색 세계와 같은 기준)

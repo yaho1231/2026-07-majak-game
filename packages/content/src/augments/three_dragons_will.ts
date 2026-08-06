@@ -35,7 +35,7 @@ import type {
 } from "@majak/core";
 import { counterOf, matchUses, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
-import { plan, reviewedFleeting } from "./botPlan.js";
+import { plan } from "./botPlan.js";
 
 const ID = "three_dragons_will";
 const ACTION = "dragons_will";
@@ -189,8 +189,8 @@ export const threeDragonsWill: AugmentDef = defineAugment({
   // 봇: 조건이 서면 곧바로 발동한다 — 역만이 걸리는 순수 이득이고 자해 위험이 없다.
   bot: plan({
     intent: "score",
-    // 조건이 서면 자기 순 아무 때나 된다 — 회수할 순목이 남아 있을 때 태운다.
-    fleeting: reviewedFleeting,
+    // 조건이 서면 그 자리에서 커쯔가 완성된다 — 미룰 이유가 없다.
+    fleeting: true,
     pick: (ctx) => {
       // 재료로 뽑히는 것은 "가장 고립된 패"인데, 그 유용도 계산은 같은 무늬 이웃만
       // 세므로 **이미 완성된 몸통의 패도 최저점이 될 수 있다**. 조건이 서는 즉시

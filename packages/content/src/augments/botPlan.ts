@@ -38,7 +38,7 @@
  * 일반화되는 것은 **언제·얼마나 급하게**이고, 그건 전부 판에서 나온다.
  */
 
-import { BOT_WEIGHT } from "@majak/core";
+import { BOT_WEIGHT, augmentValueMultiplier } from "@majak/core";
 import type {
   AugmentBotPolicy,
   BotAugmentChoice,
@@ -68,7 +68,16 @@ export type AugmentIntent =
   /** 상대를 방해한다 — 방해할 만한 상대가 있어야 값이 있다 */
   | "disrupt"
   /** 나중을 위한 포석 — 회수할 시간이 남아 있어야 값이 있다 */
-  | "setup";
+  | "setup"
+  /**
+   * 손을 **통째로 갈아엎는다** — 잡손일수록 값이 난다.
+   *
+   * `advance`와 방향이 정반대라 따로 세웠다. 전진은 "가까울수록 밀 값이 있다"이고,
+   * 갈아엎기는 **가까운 손을 흩으면 손해**다. 2026-08-06 측정에서 개벽·짝수의 세계를
+   * `advance`로 묶었다가 순위 −0.0037 ± 0.0094로 미세하게 밀렸는데, 원인이 이것이었다 —
+   * 적기 게이트가 **그 물건이 가장 필요한 자리(잡손)에서 정확히 막고** 있었다.
+   */
+  | "rewrite";
 
 /** 의도별 기준 강도 — `BOT_WEIGHT`의 어휘를 그대로 쓴다 */
 const BASE_WEIGHT: Record<AugmentIntent, number> = {
@@ -79,6 +88,7 @@ const BASE_WEIGHT: Record<AugmentIntent, number> = {
   disrupt: BOT_WEIGHT.normal,
   setup: BOT_WEIGHT.setup,
   inform: BOT_WEIGHT.info,
+  rewrite: BOT_WEIGHT.advance,
 };
 
 /**
@@ -95,6 +105,7 @@ const MIN_READINESS: Record<AugmentIntent, number> = {
   disrupt: 0.25,
   setup: 0.25,
   inform: 0.35,
+  rewrite: 0.2,
 };
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
@@ -134,7 +145,7 @@ export function readiness(intent: AugmentIntent, ctx: BotDecisionContext): numbe
     case "score": {
       const close = ctx.tenpai ? 1 : clamp01(1 - Math.max(0, ctx.shanten) / 3) * timeLeft(ctx);
       // 1000점짜리 손에 배율을 걸어 봐야 그 국을 흘릴 뿐이다 — 값이 붙을 손이어야 한다
-      const worth = clamp01(ctx.handPoints / 5000);
+      const worth = clamp01(myHandPoints(ctx) / 5000);
       return close * (0.5 + 0.5 * worth);
     }
 
@@ -156,12 +167,35 @@ export function readiness(intent: AugmentIntent, ctx: BotDecisionContext): numbe
       return Math.max(clamp01(ctx.threat), clamp01((ctx.turn - 4) / 10));
 
     /**
+     * 갈아엎기는 **손이 멀수록** 값이 난다 — 전진(advance)과 정확히 반대 방향이다.
+     * 텐파이·1샹텐을 흩는 것은 손해이므로 0에 가깝고, 3샹텐부터 제값이 된다.
+     * 회수할 순목이 없으면 어차피 의미가 없어 시간은 똑같이 곱한다.
+     */
+    case "rewrite":
+      return clamp01((Math.max(0, ctx.shanten) - 1) / 3) * timeLeft(ctx);
+
+    /**
      * 포석은 회수할 시간이 남아 있을 때만 — 그리고 **회수할 국이 남아 있을 때만.**
      * 올라스에 까는 포석은 다음 국이 없어 값이 없다.
      */
     case "setup":
       return ctx.placement.allLast ? 0 : clamp01(1 - ctx.turn / 12) * timeLeft(ctx);
   }
+}
+
+/**
+ * **내가 든 증강을 얹은** 내 손 값어치.
+ *
+ * `ctx.handPoints`는 봇이 평범한 손으로 계산한 값이다 — 뚫린 천장(상한 없음)이나
+ * 밀실의 도라(안깡당 +4판)를 들고 있어도 그 사실이 들어가 있지 않다. 그래서 점수를
+ * 키우는 증강이 "이 손에 걸 만한가"를 물을 때, **이미 비싼 손을 싸구려로 보고** 접었다.
+ *
+ * 표(`AUGMENT_PLAY`)는 상시 효과만 센다 — "지금 발동할까"는 여기가 아니라 의도가 답한다.
+ */
+function myHandPoints(ctx: BotDecisionContext): number {
+  // 뷰가 최소 형태(players 없음)일 수 있다 — 정책은 판을 모르고도 답할 수 있어야 한다
+  const mine = (ctx.view.players ?? []).find((p) => p.id === ctx.holder)?.augments ?? [];
+  return ctx.handPoints * augmentValueMultiplier(mine);
 }
 
 /**
@@ -199,8 +233,8 @@ export interface AugmentPlanSpec {
    * 없는" 발동은 적기를 따질 이유가 없다 — 미룰 수가 없기 때문이다.
    * true면 타이밍 문턱을 건너뛰고, 강도만 판에 맞춰 조정된다.
    *
-   * 함수로 주면 **판을 보고 정한다** — `reviewedFleeting`이 그 용도다(아래).
    */
+  /** 함수로 주면 **판을 보고 정한다** (미래를 보는 자: 무장 뒤의 교환은 미룰 수 없다) */
   fleeting?: boolean | ((ctx: BotDecisionContext) => boolean);
   /**
    * 게임·국에 **한 번뿐인가.** 한 번뿐이면 어중간한 자리에서 태우지 않고 아낀다
@@ -218,32 +252,27 @@ export interface PlannedPolicy extends AugmentBotPolicy {
 /** 한 번뿐인 발동에 얹는 추가 문턱 — 어중간한 자리에서 태우지 않는다 */
 const ONE_SHOT_BAR = 0.2;
 
-/**
- * **"fleeting이라고 적혀 있었지만 사실은 미룰 수 있는 것"** 을 표시한다.
+/*
+ * ## `fleeting` 재검토 기록 (2026-08-06)
  *
- * 정책 63개 중 46개가 `fleeting: true`였다. 그런데 세어 보면 그중 상당수는 "지금
- * 아니면 없는" 발동이 아니라 **자기 순이면 언제든 되는** 것이었다 — 무장해제·기생충·
- * 카르마·재장전은 국이 끝날 때까지 아무 순에나 쓸 수 있다. `fleeting`이 붙어 있으니
- * planner의 적기 판단이 통째로 건너뛰어졌고, 결과는 **1순에 아무 이유 없이 태우는 것**이다.
- * (무장해제를 1순에 쓰면 그 국에 상대가 무엇을 하려는지 보기도 전에 소모한다.)
+ * 정책 63개 중 46개가 `fleeting: true`였다 — "이 순을 넘기면 기회가 사라진다"는 뜻인데,
+ * 세어 보니 상당수는 그런 발동이 아니라 **자기 순이면 언제든 되는** 것이었다. 그것들은
+ * planner의 적기 판단을 통째로 건너뛰어, 1순에 아무 이유 없이 태우고 있었다.
  *
- * 곧바로 갈아치우지 않고 `plantime` 스위치 뒤에 둔다 — 켜면 적기를 보고, 끄면 예전
- * 그대로다. 2:2로 붙여 재고, 채택한 것은 표시를 지운다(스위치는 영구 설정이 아니라
- * 임시 비계다 — `server/bot/flags.ts`).
+ * 한 번에 다 건드리지 않고 배치로 나눠 `plantime` 스위치로 쟀다.
  *
- * ## 배치 기록
+ * - **1차 6종 채택** (무장해제·기생충·재장전·연금술사·염색·날치기) — 순위 −0.0025 ± 0.0081로
+ *   **중립.** 개선을 확인한 것이 아니라 손해 없음을 확인했고 모형이 더 옳아졌다.
+ * - **2차 5종 반려** (삼원의 의지·마작의 거신병·소환 등) — 순위 −0.0037 ± 0.0094로 밀렸다.
+ *   원인은 **의도의 방향**이었다: 손을 통째로 갈아엎는 물건을 `advance`로 묶으니 적기가
+ *   "가까울수록 값이 있다"로 계산돼 **그 물건이 가장 필요한 자리(잡손)에서 막았다.**
+ * - 그래서 `rewrite` 의도를 만들고 짝수의 세계·개벽을 다시 세웠더니 같은 시드에서
+ *   **부호가 뒤집혔다** (+0.0037 ± 0.0045).
  *
- * - **1차 6종 채택** (무장해제·기생충·재장전·연금술사·염색·날치기) — 400배패 2:2에서
- *   순위 −0.0025 ± 0.0081 · 점수 +125 ± 145로 **중립**이었다. 개선을 확인한 것이
- *   아니라 **손해 없음을 확인했고 모형이 더 옳아졌다.** 표시를 지우고 기본으로 삼았다.
- * - **2차 5종 측정 중** (짝수의 세계·개벽·삼원의 의지·마작의 거신병·소환) — 손을 통째로
- *   고치는 물건들이라 회수할 순목이 남아 있을 때만 값이 난다.
- *
- * 한 번에 46개를 다 건드리지 않는다. 배치로 나눠 재고, 이긴(또는 최소한 손해 없는)
- * 배치만 남긴다 — 한꺼번에 바꾸면 어느 것이 무엇을 했는지 영영 알 수 없다.
+ * 스위치는 임시 비계라 채택·반려가 끝난 지금 지웠다. 남은 `fleeting`들은 다시 훑어
+ * 대부분 옳게 붙어 있음을 확인했다(정책이 자기 타이밍을 직접 보거나, 첫 순·리액션 전용).
  */
-export const reviewedFleeting = (ctx: BotDecisionContext): boolean =>
-  ctx.flags?.has("plantime") !== true;
+
 
 /**
  * 의도 하나로 봇 정책을 만든다.

@@ -16,7 +16,12 @@
  * - 지목은 자해 위험이 전혀 없으므로 봇도 발동한다(옵션이 있으면 아무 상대나 지목).
  */
 
-import { ROUND_STARTED, augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
+import {
+  ROUND_STARTED,
+  augmentDataSet,
+  defineAugment,
+  playerAtSeat,
+} from "@majak/core";
 import type {
   ActionDef,
   AugmentDef,
@@ -25,6 +30,7 @@ import type {
 } from "@majak/core";
 import { roundKey, stringOf, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { threatWeightOf } from "./botHelpers.js";
 
 const ID = "rank_gate";
 const ACTION = "rank_gate_mark";
@@ -123,10 +129,40 @@ export const rankGate: AugmentDef = defineAugment({
     });
   },
   // 봇: 지목은 자해 위험이 없다 — 기회가 열리면 언제나 첫 후보를 찍는다.
+  /**
+   * 봇 — 표적을 **좌석 순서로 고르던 것**을 고친다.
+   *
+   * 예전 정책은 `options.find(...)` 한 줄이라 언제나 후보 목록의 첫 번째, 즉
+   * **자리 순서로 정해진 상대**를 찍었다. 지목은 국의 첫 순이라 판에서 읽을 것이 없지만,
+   * 그때도 보이는 것이 둘 있다 — **상대가 든 증강**과 **점수**다.
+   *
+   * 격(格)은 상대의 싼 화료를 막는 물건이니, 원래도 크게 칠 사람에게 걸어 봐야 값이 적다.
+   * 그래서 위협이 **가장 큰** 쪽이 아니라, 위협 배수로 정렬해 값이 나는 쪽부터 고른다 —
+   * 여기서는 "제일 무서운 상대를 묶는다"를 택했다(선두를 묶는 것과 같은 방향이다).
+   */
   bot: plan({
     intent: "disrupt",
-    fleeting: true,
+    fleeting: true, // 국의 첫 순에만 열린다 — 미룰 수가 없다
     oneShot: true,
-    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+    pick: (ctx) => {
+      const { options, view } = ctx;
+      const mine = options.filter((o) => o.type === ACTION);
+      if (mine.length === 0) return null;
+      const info = new Map(view.players.map((p) => [p.id, p]));
+      let best = mine[0] ?? null;
+      let bestScore = -Infinity;
+      for (const o of mine) {
+        const target = (o.payload as { target?: string }).target;
+        const p = target === undefined ? undefined : info.get(target);
+        if (p === undefined) continue;
+        // 증강이 만드는 위협이 먼저, 같으면 점수가 높은 쪽
+        const score = threatWeightOf(ctx, p.augments) * 100000 + p.score;
+        if (score > bestScore) {
+          bestScore = score;
+          best = o;
+        }
+      }
+      return best;
+    },
   }),
 });
