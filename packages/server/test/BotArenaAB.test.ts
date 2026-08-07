@@ -35,10 +35,18 @@ describe("2:2 정책 대전", () => {
   it(
     "같은 배패를 두 번 돈다 — 판수가 두 배가 된다",
     async () => {
-      const plain = await runArena(SMALL);
-      const ab = await runArena({ ...SMALL, ab: parseFlags("x") });
-      // 배패 수는 같고 실제로 돈 국은 대략 두 배다
-      expect(ab.rounds).toBeGreaterThan(plain.rounds * 1.5);
+      /**
+       * **양쪽의 봇을 같은 사람으로 맞춘다.** `ab`를 켜면 아레나가 성격을 균형형
+       * 넷으로 통일하는데(스위치 효과와 성격 효과가 섞이지 않게), 비교 대상인 평시
+       * 실행은 봇이 시드에서 각자 원형을 뽑는다. 그러면 두 실행이 **아예 다른 판**이라
+       * 국 수의 비가 크게 흔들린다 — 도중유국(구종구패) 하나에도 몇 국이 오간다.
+       * 좌석을 고정하면 평시 실행과 `ab`의 첫 패스가 같은 판이 되어, 국 수는 정확히
+       * 두 배가 된다(읽지 않는 스위치라 두 번째 패스도 같은 판이다).
+       */
+      const seats = ["balanced", "balanced", "balanced", "balanced"] as const;
+      const plain = await runArena({ ...SMALL, seats });
+      const ab = await runArena({ ...SMALL, seats, ab: parseFlags("x") });
+      expect(ab.rounds).toBe(plain.rounds * 2);
     },
     180_000,
   );

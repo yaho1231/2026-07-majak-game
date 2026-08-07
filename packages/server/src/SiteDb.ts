@@ -142,6 +142,8 @@ export function safeEqual(a: string, b: string): boolean {
 
 export class SiteDb {
   private readonly db: DatabaseSyncT;
+  /** 계정 집합이 바뀔 때마다 오르는 세대 번호 (가입·삭제). */
+  private usersRev = 0;
 
   constructor(
     path: string,
@@ -315,6 +317,7 @@ export class SiteDb {
     }
     // 승급이 실제로 일어난 뒤에 코드를 회전한다 — 유출된 코드는 한 번만 먹는다.
     if (isAdmin) this.rotateAdminCode();
+    this.usersRev++;
     const user: UserRow = {
       id: Number(res.lastInsertRowid),
       username,
@@ -403,6 +406,26 @@ export class SiteDb {
   }
 
   /**
+   * 존재하는 계정의 닉네임만 (관리 화면용 집계 없이).
+   *
+   * `listUsers`는 계정마다 상관 서브쿼리(`COUNT(DISTINCT game_id)`)를 돌린다.
+   * 리더보드는 "이 닉네임이 아직 살아 있는 계정인가"만 알면 되므로, 계정 수에
+   * 비례해 커지는 그 비용(node:sqlite는 동기 — 그동안 모든 게임이 멈춘다)을
+   * 치를 이유가 없다.
+   */
+  /** 계정 집합의 세대 번호 — 가입·삭제 때마다 오른다 (리더보드 캐시 무효화용). */
+  usersVersion(): number {
+    return this.usersRev;
+  }
+
+  listUsernames(): string[] {
+    const rows = this.db.prepare("SELECT username FROM users").all() as {
+      username: string;
+    }[];
+    return rows.map((r) => r.username);
+  }
+
+  /**
    * 계정 삭제 (관리자용) — 세션을 지우고 게임 기록은 익명(user_id=NULL)으로
    * 남긴다(다른 참가자의 리플레이·순위를 훼손하지 않기 위함). 삭제된 username을
    * 반환해 호출자가 통계 저장소(닉네임 키)도 함께 정리할 수 있게 한다.
@@ -423,6 +446,7 @@ export class SiteDb {
       this.db.prepare("UPDATE feedback SET user_id = NULL WHERE user_id = ?").run(userId);
       this.db.prepare("DELETE FROM users WHERE id = ?").run(userId);
       this.db.exec("COMMIT");
+      this.usersRev++;
     } catch (err) {
       this.db.exec("ROLLBACK");
       throw err;
@@ -555,20 +579,63 @@ export class SiteDb {
 
   // ─────────────────────────── 게임 인덱스 ───────────────────────────
 
+  /**
+   * 게임 1건 + 참가자 4행을 **한 트랜잭션으로** 기록한다.
+   *
+   * 나눠 쓰면 참가자 삽입 도중 실패했을 때 "참가자가 두 명뿐인 게임"이 남는다 —
+   * 그 행은 리플레이 목록·순위에 그대로 실려 영구히 어긋난 기록이 된다.
+   * deleteUser가 이미 같은 방식(BEGIN/COMMIT/ROLLBACK)을 쓴다.
+   */
   recordGame(rec: GameRecord): number {
-    const res = this.db
-      .prepare(
-        "INSERT INTO games (code, replay_path, started_at, ended_at) VALUES (?, ?, ?, ?)",
-      )
-      .run(rec.code, rec.replayPath, rec.startedAt, rec.endedAt);
-    const gameId = Number(res.lastInsertRowid);
-    const insert = this.db.prepare(
-      "INSERT INTO game_players (game_id, user_id, nickname, is_bot, rank, score) VALUES (?, ?, ?, ?, ?, ?)",
-    );
-    for (const p of rec.players) {
-      insert.run(gameId, p.userId, p.nickname, p.isBot ? 1 : 0, p.rank, p.score);
+    this.db.exec("BEGIN");
+    try {
+      const res = this.db
+        .prepare(
+          "INSERT INTO games (code, replay_path, started_at, ended_at) VALUES (?, ?, ?, ?)",
+        )
+        .run(rec.code, rec.replayPath, rec.startedAt, rec.endedAt);
+      const gameId = Number(res.lastInsertRowid);
+      const insert = this.db.prepare(
+        "INSERT INTO game_players (game_id, user_id, nickname, is_bot, rank, score) VALUES (?, ?, ?, ?, ?, ?)",
+      );
+      for (const p of rec.players) {
+        insert.run(gameId, p.userId, p.nickname, p.isBot ? 1 : 0, p.rank, p.score);
+      }
+      this.db.exec("COMMIT");
+      return gameId;
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
     }
-    return gameId;
+  }
+
+  /**
+   * `endedAt`이 기준 시각보다 오래된 게임을 지운다 — 지운 리플레이 파일 경로를
+   * 돌려주므로 호출자가 `.jsonl`도 함께 치울 수 있다.
+   *
+   * 게임 행과 리플레이 파일은 지금까지 아무도 지우지 않아 영원히 쌓이기만 했다.
+   * 오래된 판을 지우는 것은 되돌릴 수 없으므로 보존 기간은 호출자가 정한다
+   * (index.ts의 `GAME_RETENTION_DAYS` — 기본은 넉넉하게 잡혀 있다).
+   */
+  pruneGamesBefore(cutoffIso: string): string[] {
+    const rows = this.db
+      .prepare("SELECT id, replay_path FROM games WHERE ended_at < ?")
+      .all(cutoffIso) as { id: number; replay_path: string }[];
+    if (rows.length === 0) return [];
+    this.db.exec("BEGIN");
+    try {
+      const delPlayers = this.db.prepare("DELETE FROM game_players WHERE game_id = ?");
+      const delGame = this.db.prepare("DELETE FROM games WHERE id = ?");
+      for (const r of rows) {
+        delPlayers.run(r.id);
+        delGame.run(r.id);
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    return rows.map((r) => r.replay_path);
   }
 
   /** 해당 사용자가 참가한 게임 목록 (최신순, 최대 limit) */

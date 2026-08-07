@@ -52,9 +52,10 @@ import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/P
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
 import { HumanAgent } from "./HumanAgent.js";
+import { Prng } from "@majak/core/engine/random/Prng.js";
 import { BotAgent, seedFromId } from "./BotAgent.js";
-import { isArchetypeName } from "./bot/profile.js";
-import type { ArchetypeName } from "./bot/profile.js";
+import { isArchetypeName, isBotDifficulty, rollTableProfiles, withDifficulty } from "./bot/profile.js";
+import type { ArchetypeName, BotDifficulty } from "./bot/profile.js";
 import { SandboxBotAgent } from "./SandboxBotAgent.js";
 import { ReplayWriter } from "./ReplayWriter.js";
 import type { StatsStore } from "./StatsStore.js";
@@ -108,6 +109,18 @@ function botSeed(code: string, id: PlayerId): number {
   return seedFromId(`${code}:${id}`);
 }
 
+/**
+ * 한 판의 봇 성격을 통째로 뽑는 시드.
+ *
+ * 방 코드만 쓰면 **같은 방에서는 영원히 같은 셋**이 나온다 — 이어하기로 열 판을
+ * 해도 상대가 한 번도 안 바뀐다(`resetRoomAfterGame`이 같은 시드로 다시 만든다).
+ * 판 번호를 섞어 판마다 새로 뽑되, (방 코드 + 판 번호)가 같으면 결과도 같으므로
+ * 리플레이 재현성은 그대로다.
+ */
+function tableSeed(code: string, generation: number): number {
+  return seedFromId(`${code}#${generation}`);
+}
+
 interface Room {
   code: string;
   agents: PlayerAgent[];
@@ -137,6 +150,10 @@ interface Room {
    * **방이** 들고 있어야 한다 — 안 그러면 한 판 두고 오면 성향이 원래대로 돌아간다.
    */
   botArchetypes: Map<PlayerId, ArchetypeName>;
+  /** 이 방에서 시작한 판의 수 — 판마다 봇 성격을 다시 뽑는 데 쓴다(tableSeed). */
+  botGeneration: number;
+  /** 봇 난이도. 기본 hard = skill 1.0 = 종전 봇 그대로. */
+  botDifficulty: BotDifficulty;
   /**
    * 증강 테스트(샌드박스) 방 — 관리자 1명 + 봇 3명, 드래프트 없음.
    * 리플레이 파일·게임 인덱스·누적 통계를 남기지 않는다(실대국 데이터 오염 방지).
@@ -164,6 +181,14 @@ interface Room {
    * (판 교체는 컨트롤러 abort → onGameAborted → startGame 순서로 일어난다)
    */
   sandboxRestarting: boolean;
+  /**
+   * 이 방에 마지막으로 "무슨 일이 일어난" 시각(epoch ms) — 유휴 방 청소의 기준.
+   *
+   * 방 생성·참가·대기실 조작·게임 시작/종료가 이 값을 갱신한다. 게임이 실제로
+   * 돌고 있는 방(phase playing + controller 있음)은 시각과 무관하게 청소 대상이
+   * 아니므로, 긴 반장전이 도중에 지워질 일은 없다.
+   */
+  lastActivityAt: number;
 }
 
 /** 연결 1개의 상태 — 인증·방 참가·관전을 소켓 단위로 추적한다 */
@@ -260,6 +285,32 @@ const MAX_ROOMS = 200;
  */
 const ROOM_CREATE_WINDOW_MS = 600_000; // 10분
 const ROOM_CREATE_MAX_PER_IP = 20;
+/**
+ * 유휴 방 청소 주기·상한(ms).
+ *
+ * **왜 필요한가**: 방은 만들어지고 나면 사람이 나가거나 소켓이 끊길 때만 사라졌다.
+ * 그런데 브라우저 탭을 열어 둔 채 잊어버리면 소켓은 살아 있으므로 대기실이 영원히
+ * 남는다 — `MAX_ROOMS`(200)는 서버 전역 상한이라, 잊힌 방 200개면 **아무도 방을
+ * 만들 수 없다**(SERVER_BUSY). 그래서 "아무 일도 일어나지 않은" 대기실만 시간으로
+ * 걷어낸다.
+ *
+ * 진행 중인 게임은 대상이 아니다. 끊긴 사람의 재접속용 좌석도 게임 중인 방에
+ * 들어 있으므로 함께 보호된다.
+ */
+const ROOM_SWEEP_INTERVAL_MS = Number(process.env.ROOM_SWEEP_INTERVAL_MS ?? 60_000);
+/** 유휴 상한은 **호출할 때** 읽는다 — 테스트가 값을 바꿔 가며 청소를 검증할 수 있게. */
+function roomIdleTtlMs(): number {
+  const v = Number(process.env.ROOM_IDLE_TTL_MS ?? 30 * 60_000);
+  return Number.isFinite(v) ? v : 30 * 60_000;
+}
+/**
+ * 컨트롤러 없이 `phase:"playing"`으로 굳은 방을 걷어내는 상한(ms).
+ * 게임 시작이 실패하면 롤백이 처리하지만(startGame), 어떤 경로로든 이 상태가
+ * 남으면 그 방의 네 사람은 영영 새 방을 만들 수 없다 — 마지막 그물이다.
+ */
+const ZOMBIE_ROOM_TTL_MS = 60_000;
+/** 리더보드 캐시의 안전 수명(ms) — 명시적 무효화가 어긋나도 이 시간이면 새로 만든다. */
+const LEADERBOARD_CACHE_TTL_MS = 30_000;
 /**
  * 미인증 연결 유예(ms) — 이 시간 안에 로그인하지 않으면 연결을 끊는다.
  * 인증 없이 소켓만 열어 두고 연결 상한 슬롯을 점유하는 스쿼팅을 막는다.
@@ -431,6 +482,18 @@ export class RoomManager {
   /** 진행 중 scrypt 수 + 대기 큐 (동시 실행 상한). */
   private scryptActive = 0;
   private scryptQueue: Array<() => void> = [];
+  /** 유휴 방 청소 타이머 (프로세스 종료를 막지 않게 unref). */
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  /** 서버 종료 중인가 — 종료 뒤에 들어온 시작 요청을 받지 않는다. */
+  private shuttingDown = false;
+  /** 리더보드 캐시 — 통계·계정 세대가 그대로면 재계산하지 않는다. */
+  private leaderboardCache: {
+    statsRev: number;
+    usersRev: number;
+    at: number;
+    named: LeaderboardEntry[];
+    anonymous: LeaderboardEntry[];
+  } | null = null;
 
   constructor(
     private replayDir: string,
@@ -449,7 +512,145 @@ export class RoomManager {
      * 없으면 정적 티어표를 그대로 쓴다(테스트·로컬 기본).
      */
     private augmentStats?: AugmentStatsStore,
-  ) {}
+  ) {
+    // 유휴 방 청소 — 타이머가 프로세스 종료(테스트 포함)를 붙잡지 않게 unref한다.
+    this.sweepTimer = setInterval(() => this.sweepIdleRooms(), ROOM_SWEEP_INTERVAL_MS);
+    this.sweepTimer.unref?.();
+  }
+
+  // ─────────────────────────── 운영 로그 ───────────────────────────
+
+  /**
+   * 운영 로그 한 줄. **어느 방인지를 항상 함께 남긴다** — 코드가 없는 로그
+   * ("Game crashed:")는 여러 판이 동시에 도는 서버에서 사실상 쓸모가 없다.
+   * (시각은 index.ts가 모든 console 호출 앞에 붙인다.)
+   */
+  private log(room: Room | null, msg: string): void {
+    console.log(room === null ? `[srv] ${msg}` : `[room ${room.code}] ${msg}`);
+  }
+
+  private logError(room: Room | null, msg: string, err?: unknown): void {
+    const where = room === null ? "[srv]" : `[room ${room.code}]`;
+    if (err === undefined) console.error(`${where} ${msg}`);
+    else console.error(`${where} ${msg}`, err);
+  }
+
+  /** 이 방에 방금 무슨 일이 있었다 — 유휴 청소 시계를 되돌린다. */
+  private touch(room: Room): void {
+    room.lastActivityAt = Date.now();
+  }
+
+  /**
+   * 상태 점검용 스냅샷 (헬스 엔드포인트). 개인정보는 담지 않는다 — 개수뿐이다.
+   */
+  healthSnapshot(): {
+    connections: number;
+    rooms: number;
+    playing: number;
+    waiting: number;
+  } {
+    let playing = 0;
+    for (const r of this.rooms.values()) if (r.phase === "playing") playing++;
+    return {
+      connections: this.conns.size,
+      rooms: this.rooms.size,
+      playing,
+      waiting: this.rooms.size - playing,
+    };
+  }
+
+  // ─────────────────────────── 유휴 방 청소 ───────────────────────────
+
+  /**
+   * 아무 일도 일어나지 않은 대기실과, 컨트롤러 없이 굳은 방을 걷어낸다.
+   *
+   * **건드리지 않는 것**: 실제로 돌고 있는 게임(phase playing + controller). 그 방에는
+   * 끊긴 사람의 재접속용 좌석도 함께 들어 있으므로, 재접속 중인 사람도 같이 보호된다.
+   */
+  sweepIdleRooms(): void {
+    const now = Date.now();
+    const ttl = roomIdleTtlMs();
+    for (const room of [...this.rooms.values()]) {
+      if (room.phase === "playing") {
+        // 진행 중인 게임은 손대지 않는다. 다만 컨트롤러가 없는 "playing"은
+        // 게임이 아니라 잔해다 — 방치하면 그 사람들이 영영 방을 못 만든다.
+        if (room.controller !== null) continue;
+        if (now - room.lastActivityAt < ZOMBIE_ROOM_TTL_MS) continue;
+        this.logError(room, "컨트롤러 없이 playing으로 굳은 방을 회수한다");
+        this.closeRoom(room, "ROOM_CLOSED", "방이 정리되었습니다 — 홈에서 다시 시작하세요");
+        continue;
+      }
+      if (now - room.lastActivityAt < ttl) continue;
+      this.log(room, `유휴 ${Math.round((now - room.lastActivityAt) / 60_000)}분 — 방을 닫는다`);
+      this.closeRoom(room, "ROOM_IDLE_CLOSED", "오래 비어 있어 방이 닫혔습니다");
+    }
+  }
+
+  /**
+   * 방을 닫고 그 방을 붙들고 있던 연결을 전부 떼어 낸다.
+   *
+   * 방만 지우고 `conn.room`/`conn.agent`를 남겨 두면, 그 연결은 이미 버려진 방
+   * 객체를 계속 가리킨 채 `phase:"playing"` 가드를 통과해 폐기된 컨트롤러로
+   * 들어간다(무효 투표 경로에서 실제로 그랬다).
+   */
+  private closeRoom(room: Room, code: string, message: string): void {
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify({ type: "error", code, message });
+    }
+    this.endSpectating(room, message);
+    this.detachRoomConns(room);
+    this.rooms.delete(room.code);
+  }
+
+  /** 이 방을 가리키던 연결의 방·좌석 링크를 끊는다 (방 객체는 건드리지 않는다). */
+  private detachRoomConns(room: Room): void {
+    for (const c of this.conns) {
+      if (c.room === room) {
+        c.room = null;
+        c.agent = null;
+      }
+      if (c.spectating === room) c.spectating = null;
+    }
+  }
+
+  /**
+   * 서버 종료 — 진행 중인 판을 사람들에게 **알리고** 정리한다.
+   *
+   * 알림이 없으면 클라이언트는 소켓이 끊긴 것으로 보고 무한 재접속을 돌다가
+   * 서버가 돌아온 뒤 `ROOM_NOT_FOUND`를 받는다(40분짜리 반장전이 아무 설명 없이
+   * 사라진다). 여기서 gameAborted를 먼저 보내면 최소한 "무슨 일이 있었는지"는 남는다.
+   */
+  shutdown(reason = "서버가 재시작합니다 — 잠시 후 다시 접속해 주세요"): void {
+    this.shuttingDown = true;
+    if (this.sweepTimer !== null) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
+    for (const room of [...this.rooms.values()]) {
+      const msg: ServerMessage =
+        room.phase === "playing"
+          ? { type: "gameAborted", reason }
+          : { type: "error", code: "SERVER_SHUTDOWN", message: reason };
+      for (const a of room.agents) {
+        if (a instanceof HumanAgent) a.notify(msg);
+      }
+      this.endSpectating(room, reason, room.phase === "playing" ? msg : undefined);
+      // 컨트롤러 루프를 깨워 대기 중인 결정 프로미스를 붙들고 있지 않게 한다.
+      room.controller?.requestAbort();
+      room.writer?.close();
+      this.detachRoomConns(room);
+      this.rooms.delete(room.code);
+    }
+    this.log(null, "종료 알림 전송 완료 — 모든 방을 정리했다");
+  }
+
+  /** 청소 타이머만 멈춘다 (테스트 정리용). */
+  stop(): void {
+    if (this.sweepTimer !== null) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
+  }
 
   /**
    * 정적 증강 카탈로그(게임의 레지스트리와 동일 구성). 인증 직후 1회 보내
@@ -507,6 +708,7 @@ export class RoomManager {
     };
     this.conns.add(conn);
     this.ipConnCount.set(key, perIp + 1);
+    this.log(null, `연결 열림 ${key} (동시 ${this.conns.size})`);
 
     // 미인증 스쿼팅 차단 — 유예 안에 로그인하지 않으면 소켓을 회수한다.
     this.armAuthDeadline(conn);
@@ -544,7 +746,14 @@ export class RoomManager {
       try {
         this.route(conn, parsed as ClientMessage);
       } catch (err) {
-        console.error("Message handling error:", err);
+        // 어느 방·누구의 어떤 메시지였는지 없이는 재현할 수가 없다.
+        this.logError(
+          conn.room,
+          `메시지 처리 오류 (${conn.user?.username ?? "미인증"} · ${String(
+            (parsed as { type?: unknown }).type,
+          )}):`,
+          err,
+        );
         this.send(conn.ws, { type: "error", code: "INTERNAL", message: "서버 오류가 발생했습니다" });
       }
     });
@@ -607,6 +816,10 @@ export class RoomManager {
 
   private handleClose(conn: Conn): void {
     this.conns.delete(conn);
+    this.log(
+      conn.room,
+      `연결 닫힘 ${conn.user?.username ?? conn.key} (동시 ${this.conns.size})`,
+    );
     // 미인증 유예 타이머 해제 — 닫힌 연결에 대고 타이머가 남지 않게 한다.
     if (conn.authDeadline !== null) {
       clearTimeout(conn.authDeadline);
@@ -631,6 +844,7 @@ export class RoomManager {
     } else {
       // 지금 이 좌석이 붙들고 있는 결정이 있으면 30초를 다 기다리지 않게 줄인다.
       conn.agent.noticeDisconnect();
+      this.log(room, `${conn.agent.nickname} 접속 끊김 — 좌석은 재접속용으로 남긴다`);
       // 게임 중이면 좌석은 유지 — 같은 계정으로 joinRoom하면 재접속된다.
       // 다만 **남은 사람들에게 알린다**: 이름표가 "생각 중"과 구분되지 않으면
       // 자동 폴백까지의 몇 초가 그냥 멈춘 게임으로 보인다(QA P0-3b).
@@ -806,6 +1020,7 @@ export class RoomManager {
       case "addBot":
       case "removeBot":
       case "setBotArchetype":
+      case "setBotDifficulty":
       case "kickPlayer":
       case "setGameMode":
       case "shuffleSeats":
@@ -837,8 +1052,15 @@ export class RoomManager {
         return;
       }
       // ── 게임 무효(중단) 투표 ──
-      case "voteAbort":
-        return this.handleVoteAbort(conn, msg.vote);
+      case "voteAbort": {
+        // 경계 검증 — 여기만 값을 그대로 흘려보내고 있었다. 모르는 값이 오면
+        // "철회"로 해석되어, 오타 하나가 조용히 내 동의를 취소했다.
+        const vote: unknown = msg.vote;
+        if (vote !== "agree" && vote !== "withdraw" && vote !== "reject") {
+          return this.fail(conn, "BAD_REQUEST", "잘못된 투표 값입니다");
+        }
+        return this.handleVoteAbort(conn, vote);
+      }
       // ── 통계·리플레이 ──
       case "statsRequest":
         return this.sendCareerStats(conn);
@@ -1078,6 +1300,7 @@ export class RoomManager {
       clearTimeout(conn.authDeadline);
       conn.authDeadline = null;
     }
+    this.log(null, `로그인 ${user.username}${user.isAdmin ? " (관리자)" : ""} — ${conn.key}`);
     this.send(conn.ws, {
       type: "authOk",
       username: user.username,
@@ -1238,9 +1461,12 @@ export class RoomManager {
       sandboxAugments: {},
       sandboxHands: {},
       botArchetypes: new Map(),
+      botGeneration: 0,
+      botDifficulty: "hard",
       sandboxBotRules: {},
       sandboxControl: true,
       sandboxRestarting: false,
+      lastActivityAt: Date.now(),
     };
     this.rooms.set(code, room);
     return room;
@@ -1282,6 +1508,8 @@ export class RoomManager {
       mine.reconnect(conn.ws, room.sandbox ? () => this.sendSandboxState(room) : undefined);
       conn.room = room;
       conn.agent = mine;
+      this.touch(room);
+      this.log(room, `${user.username} 재접속 (${mine.id})`);
       this.send(conn.ws, { type: "joined", playerId: mine.id, roomId: code, token: "" });
       // 돌아왔다는 사실을 나머지 좌석의 이름표에도 반영한다.
       // (본인에게도 다시 나간다 — reconnect가 복원해 준 뷰에는 "접속 끊김"이 박혀 있다.)
@@ -1339,10 +1567,13 @@ export class RoomManager {
       return this.fail(conn, "ROOM_FULL", "방이 가득 찼습니다");
     }
     const agent = new HumanAgent(playerId, user.username, conn.ws);
+    agent.roomCode = room.code; // 타임아웃 폴백 로그에 방 코드를 싣는다
     room.agents.push(agent);
     if (room.hostId === null) room.hostId = playerId;
     conn.room = room;
     conn.agent = agent;
+    this.touch(room);
+    this.log(room, `${user.username} 착석 (${playerId}, ${room.agents.length}/4)`);
     this.send(conn.ws, { type: "joined", playerId, roomId: room.code, token: "" });
     this.broadcastLobby(room);
   }
@@ -1364,9 +1595,12 @@ export class RoomManager {
 
     const humansLeft = room.agents.some((a) => a instanceof HumanAgent);
     if (!humansLeft) {
+      this.log(room, `${agent.nickname} 퇴장 — 사람이 없어 방을 닫는다`);
       this.rooms.delete(room.code);
       return;
     }
+    this.touch(room);
+    this.log(room, `${agent.nickname} 퇴장 (${room.agents.length}/4)`);
     this.broadcastLobby(room);
   }
 
@@ -1428,6 +1662,8 @@ export class RoomManager {
   }
 
   private handleLobbyMessage(room: Room, agent: HumanAgent, msg: ClientMessage): void {
+    // 대기실에서 무엇이든 눌렸다면 이 방은 살아 있다 — 유휴 청소 시계를 되돌린다.
+    this.touch(room);
     switch (msg.type) {
       case "ready": {
         if (room.phase !== "waiting") return;
@@ -1453,6 +1689,14 @@ export class RoomManager {
           room.botArchetypes.delete(msg.playerId);
           this.broadcastLobby(room);
         }
+        return;
+      }
+      case "setBotDifficulty": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        if (typeof msg.difficulty !== "string" || !isBotDifficulty(msg.difficulty)) return;
+        room.botDifficulty = msg.difficulty;
+        // 실제 적용은 판 시작 때(seatBotProfiles) — 대기실에서는 표시만 바뀐다.
+        this.broadcastLobby(room);
         return;
       }
       case "setBotArchetype": {
@@ -1546,6 +1790,7 @@ export class RoomManager {
           youId: a.id,
           canStart,
           gameMode: room.gameMode,
+          botDifficulty: room.botDifficulty,
           players,
         });
       }
@@ -1576,23 +1821,55 @@ export class RoomManager {
       this.send(conn.ws, { type: "leaderboard", entries: [] });
       return;
     }
-    const all = this.statsStore.all();
+    const anonymize = conn.user === null || !conn.user.isAdmin;
+    const cache = this.leaderboardTable();
+    this.send(conn.ws, {
+      type: "leaderboard",
+      entries: anonymize ? cache.anonymous : cache.named,
+    });
+  }
+
+  /**
+   * 리더보드 표를 만들고 캐시한다 (**누가 부를 수 있는지는 그대로** — 비용만 고친다).
+   *
+   * 예전에는 요청마다 전체 통계표를 깊은 복사(JSON 왕복)하고, 계정마다 상관
+   * 서브쿼리가 도는 `listUsers()`를 돌리고, 항목마다 `deriveStats`를 계산해 정렬했다.
+   * 전부 **동기**라 그 시간 동안 이벤트 루프가 멈춘다 — 즉 서버의 모든 대국이 멈춘다.
+   * 클라이언트는 로그인할 때마다·홈으로 돌아올 때마다 이걸 부르고, 연결당 40 req/s까지
+   * 허용된다. 이제 통계·계정 세대(rev)가 그대로면 만들어 둔 표를 그대로 돌려준다.
+   */
+  private leaderboardTable(): { named: LeaderboardEntry[]; anonymous: LeaderboardEntry[] } {
+    const store = this.statsStore;
+    if (!store) return { named: [], anonymous: [] };
+    const statsRev = store.version();
+    const usersRev = this.db?.usersVersion() ?? 0;
+    const now = Date.now();
+    const c = this.leaderboardCache;
+    if (
+      c !== null &&
+      c.statsRev === statsRev &&
+      c.usersRev === usersRev &&
+      now - c.at < LEADERBOARD_CACHE_TTL_MS
+    ) {
+      return c;
+    }
     // 삭제된 계정의 "유령 통계"를 거른다 — stats.json은 닉네임 키라 계정을 지워도
     // 예전 통계가 남을 수 있다(과거 삭제·통계 파일 미정리분). 현재 존재하는 계정의
     // 닉네임만 리더보드에 포함해, 삭제가 stats 파일 정리 타이밍과 무관하게 즉시 반영되게 한다.
-    const known = this.db ? new Set(this.db.listUsers().map((u) => u.username)) : null;
-    const anonymize = conn.user === null || !conn.user.isAdmin;
-    const entries: LeaderboardEntry[] = Object.entries(all)
-      .filter(([nickname]) => known === null || known.has(nickname))
-      .map(([nickname, raw]) => ({
-        nickname: anonymize ? "" : nickname,
-        stats: deriveStats(raw),
-      }));
+    const known = this.db ? new Set(this.db.listUsernames()) : null;
+    const named: LeaderboardEntry[] = [];
+    for (const [nickname, raw] of store.entries()) {
+      if (known !== null && !known.has(nickname)) continue;
+      named.push({ nickname, stats: deriveStats(raw) });
+    }
     // 게임 수(활동량) 내림차순, 동률이면 평균 순위 오름차순으로 정렬한다.
-    entries.sort(
+    named.sort(
       (a, b) => b.stats.games - a.stats.games || a.stats.avgPlacement - b.stats.avgPlacement,
     );
-    this.send(conn.ws, { type: "leaderboard", entries });
+    // 비관리자에게는 닉네임을 지운 사본을 준다(순서·통계는 동일).
+    const anonymous = named.map((e) => ({ nickname: "", stats: e.stats }));
+    this.leaderboardCache = { statsRev, usersRev, at: now, named, anonymous };
+    return this.leaderboardCache;
   }
 
   // ─────────────────────────── 제보 게시판 ───────────────────────────
@@ -1903,6 +2180,9 @@ export class RoomManager {
   private handleVoteAbort(conn: Conn, vote: "agree" | "withdraw" | "reject"): void {
     const room = conn.room;
     if (room === null || room.phase !== "playing" || conn.agent === null) return;
+    // 이미 지워진 방(무효 종료·크래시 뒤 남은 참조)이면 아무것도 하지 않는다 —
+    // 폐기된 컨트롤러에 투표를 던져 봐야 아무 일도 일어나지 않는다.
+    if (this.rooms.get(room.code) !== room || room.controller === null) return;
 
     // 아직 게임에 남아 있는 사람들 (이탈 좌석은 봇처럼 자동 동의로 친다)
     const humans = room.agents.filter(
@@ -2298,6 +2578,7 @@ export class RoomManager {
     room.abortVotes.clear();
     room.ready.clear();
     room.sandboxRestarting = false;
+    this.touch(room);
     // 봇은 새 인스턴스로 — 지난 판의 내부 상태(프로필·기억)를 다음 판에 끌고 가지 않는다
     room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
     // 자리는 그대로 둔다 — 섞는 건 방장이 "자리 섞기"를 눌렀을 때만이다.
@@ -2362,10 +2643,93 @@ export class RoomManager {
     this.shuffleSeats(room);
   }
 
+  /**
+   * 게임을 시작한다. **이 함수는 거부하지 않는다** — 실패는 안에서 잡아 방을
+   * 대기실로 되돌린다(`rollbackFailedStart`).
+   *
+   * ⚠ 여기가 좀비 방의 산지였다. `phase = "playing"`을 먼저 세우고 그 뒤에
+   * `writer.open()`(mkdir — EACCES·ENOSPC로 던진다)과 컨트롤러 생성(증강 레지스트리·
+   * 가중치)을 했는데, 모든 호출부가 `void this.startGame(room)`이라 그 사이의 예외는
+   * 전역 핸들러로 새 나갔다. 남은 방은 `phase:"playing"` + `controller:null`로 **영원히**
+   * 굳었다 — 청소하는 곳이 없으니 네 사람은 그 뒤로 `createRoom`마다 ALREADY_IN_GAME을
+   * 받고, `joinRoom`은 존재하지 않는 게임으로 "재접속"시켰다.
+   */
   private async startGame(room: Room): Promise<void> {
     if (room.phase === "playing") return;
+    if (this.shuttingDown) return;
     room.phase = "playing";
     room.startedAt = new Date().toISOString();
+    this.touch(room);
+    this.seatBotProfiles(room);
+    try {
+      await this.openGame(room);
+    } catch (err) {
+      this.rollbackFailedStart(room, err);
+    }
+  }
+
+  /**
+   * 판이 시작될 때 봇 셋의 성격을 **한 번에** 뽑아 앉힌다.
+   *
+   * 좌석마다 따로 뽑던 예전 방식에는 두 가지가 없었다.
+   *
+   * 1. **서로 겹치지 않는다는 보장** — 원형 6종에서 독립적으로 3번 뽑으면 둘이 겹칠
+   *    확률이 약 44%다. 같은 원형끼리는 흔들림이 ±0.08뿐이라 사실상 같은 봇 둘을
+   *    상대하게 된다. `rollTableProfiles`가 이미 앉은 원형을 후보에서 빼 준다.
+   * 2. **판마다 달라진다는 보장** — 시드가 방 코드로만 정해져 있어 이어하기로 몇 판을
+   *    두든 같은 셋이 나왔다.
+   *
+   * 방장이 지정한 자리는 그대로 존중하고, 지정된 원형만 나머지 후보에서 뺀다.
+   */
+  private seatBotProfiles(room: Room): void {
+    const bots = room.agents.filter((a): a is BotAgent => a instanceof BotAgent);
+    if (bots.length === 0) return;
+    room.botGeneration += 1;
+    const rng = new Prng(tableSeed(room.code, room.botGeneration));
+    const forced = bots.map((b) => room.botArchetypes.get(b.id));
+    const profiles = rollTableProfiles(rng, bots.length, forced);
+    bots.forEach((bot, i) => {
+      const profile = profiles[i];
+      if (profile === undefined) return;
+      bot.setProfile(withDifficulty(profile, room.botDifficulty));
+    });
+  }
+
+  /**
+   * 시작 실패 롤백 — 방을 대기실로 되돌리고 사람들에게 알린다.
+   *
+   * 게스트 체험 방은 되돌릴 대기실이 없다(손님은 `startGame`을 보낼 수 없다) —
+   * 그 방은 접는다. 샌드박스 재시작 중이었다면 그 플래그도 함께 푼다.
+   */
+  private rollbackFailedStart(room: Room, err: unknown): void {
+    this.logError(room, "게임 시작 실패 — 방을 대기실로 되돌린다:", err);
+    room.writer?.close();
+    room.writer = null;
+    room.controller = null;
+    room.startedAt = null;
+    room.phase = "waiting";
+    room.sandboxRestarting = false;
+    this.touch(room);
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) {
+        a.notify({
+          type: "error",
+          code: "GAME_START_FAILED",
+          message: "게임을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+        });
+      }
+    }
+    if (room.guest) {
+      this.endSpectating(room, "게임을 시작하지 못했습니다");
+      this.detachRoomConns(room);
+      this.rooms.delete(room.code);
+      return;
+    }
+    this.broadcastLobby(room);
+  }
+
+  /** 실제 시작 절차 — 던질 수 있다(호출자 startGame이 롤백한다). */
+  private async openGame(room: Room): Promise<void> {
     // 자리는 대기실에서 이미 정해져 보이고 있다 — 여기서 다시 섞으면 그 표시가 거짓이 된다.
 
     // 증강 테스트·게스트 체험 방은 리플레이 파일을 남기지 않는다 — 어차피 게임
@@ -2435,6 +2799,11 @@ export class RoomManager {
           if (agent instanceof HumanAgent) agent.notify(msg);
         }
         writer?.close();
+        this.touch(room);
+        this.log(
+          room,
+          `게임 종료 — ${rankings.map((r) => `${r.rank}위 ${r.nickname}(${r.rawScore})`).join(", ")}`,
+        );
         // 증강 테스트 결과는 기록하지 않는다 — 리플레이 목록·리더보드·증강 통계
         // (도감의 근거)가 시험용 판으로 오염되지 않게 한다.
         // 관전은 여기서 끊는다 — 다음 판은 새 게임이라 관전자가 새로 붙어야 한다.
@@ -2449,9 +2818,10 @@ export class RoomManager {
         if (room.guest) {
           void this.finishStats(room, tracker, rankings, false)
             .catch((err: unknown) => {
-              console.error("finishStats error:", err);
+              this.logError(room, "finishStats error:", err);
             })
             .finally(() => {
+              this.detachRoomConns(room);
               this.rooms.delete(room.code);
             });
           return;
@@ -2463,7 +2833,7 @@ export class RoomManager {
         //    좌석 제거) 통계가 엉뚱한 명단으로 나가거나 아예 도달하지 않는다.
         void this.finishStats(room, tracker, rankings)
           .catch((err: unknown) => {
-            console.error("finishStats error:", err);
+            this.logError(room, "finishStats error:", err);
           })
           .finally(() => {
             this.resetRoomAfterGame(room);
@@ -2471,11 +2841,13 @@ export class RoomManager {
       },
       onGameAborted: () => {
         writer?.close();
+        this.touch(room);
         // 증강 테스트 초기화 — 방·좌석을 유지한 채 새 판을 시작한다(무효 알림 없음)
         if (room.sandbox && room.sandboxRestarting) {
           this.restartSandbox(room);
           return;
         }
+        this.log(room, "게임 무효 종료");
         // 전원 합의 무효 — 정산·기록·통계 없이 즉시 정리하고 홈으로 돌린다
         const msg: ServerMessage = {
           type: "gameAborted",
@@ -2485,13 +2857,21 @@ export class RoomManager {
           if (agent instanceof HumanAgent) agent.notify(msg);
         }
         this.endSpectating(room, "게임이 무효 처리되었습니다", msg);
+        // 방을 지우면서 이 방을 가리키던 연결도 함께 끊는다 — 남겨 두면 그 연결은
+        // 폐기된 방을 `phase:"playing"`인 채로 계속 가리켜, 무효 투표가 가드를
+        // 통과해 버려진 컨트롤러로 들어갔다.
+        //
+        // 증강 테스트 방만 예외다: 관리자 패널은 무효 종료된 방을 그대로 가리킨 채
+        // `sandboxReset`을 보내고, 서버는 거기에 "끝난 테스트 게임"(ROOM_CLOSED)이라고
+        // 답해야 한다 — 좌석 링크를 끊으면 그 안내가 "샌드박스가 아니다"로 바뀐다.
+        if (!room.sandbox) this.detachRoomConns(room);
         this.rooms.delete(room.code);
       },
     });
 
     // 백그라운드로 실행 (프롬프트 대기는 각 HumanAgent가 소켓으로 처리)
     room.controller.run().catch((err: unknown) => {
-      console.error("Game crashed:", err);
+      this.logError(room, "게임이 예외로 종료됐다:", err);
       writer?.close();
       // 플레이어들에게도 반드시 알린다 — 안 그러면 마지막 화면에서 무한 대기.
       const crashMsg: ServerMessage = {
@@ -2503,8 +2883,15 @@ export class RoomManager {
         if (agent instanceof HumanAgent) agent.notify(crashMsg);
       }
       this.endSpectating(room, "게임 오류로 종료되었습니다");
+      if (!room.sandbox) this.detachRoomConns(room); // 위 onGameAborted와 같은 이유
       this.rooms.delete(room.code);
     });
+
+    this.log(
+      room,
+      `게임 시작 (${room.gameMode}${room.sandbox ? " · 샌드박스" : ""}${room.guest ? " · 체험" : ""}) — ` +
+        room.agents.map((a) => `${a.id}:${a.nickname}`).join(" "),
+    );
   }
 
   /** 게임 결과를 SQLite 인덱스에 기록 (내 리플레이 목록의 근거) */

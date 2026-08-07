@@ -42,6 +42,7 @@ import type {
 import type { DraftStage, SandboxBotRules } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type { TileKind } from "@majak/core/mahjong/tiles/Tile.js";
+import { bidAbort } from "./bot/abort.js";
 import { bidCall, bidPass } from "./bot/call.js";
 import type { CallAudit } from "./bot/callAudit.js";
 import { bidDiscard, bidRiichi } from "./bot/discard.js";
@@ -50,8 +51,8 @@ import { augmentPoints, bestBid, EXTRA_ACTION_FLOOR } from "./bot/decide.js";
 import type { ActionBid } from "./bot/decide.js";
 import { buildRead, readPlan } from "./bot/read.js";
 import type { BotRead, HandPlan } from "./bot/read.js";
-import { rollProfile } from "./bot/profile.js";
-import type { ArchetypeName, BotProfile } from "./bot/profile.js";
+import { rollProfile, withDifficulty } from "./bot/profile.js";
+import type { ArchetypeName, BotDifficulty, BotProfile } from "./bot/profile.js";
 import type { BotGameMode } from "./bot/match.js";
 import { OpponentMemory } from "./bot/opponents.js";
 import { chooseDraft } from "./bot/draft.js";
@@ -133,6 +134,21 @@ export function seedFromId(id: string): number {
   return h >>> 0;
 }
 
+/**
+ * 봇 좌석 하나의 시드 — **판마다 달라야 한다.**
+ *
+ * 지금 `RoomManager`는 `seedFromId(`${code}:${id}`)`를 쓴다. 방 코드와 좌석 이름은
+ * 둘 다 방이 사는 동안 변하지 않으므로, **같은 방 코드에서는 영원히 같은 성격 셋**이
+ * 앉는다. 재대국(`newBot`을 다시 부른다)에도 같은 시드가 들어가 리롤이 없다 —
+ * 친구들과 방 하나를 계속 쓰면 몇십 판을 두어도 상대 셋이 한 번도 안 바뀐다.
+ *
+ * `game`(그 방에서 몇 번째 판인가)을 섞으면 판마다 새 사람이 앉는다. 같은 판 안에서는
+ * 여전히 결정론적이라 리플레이가 깨지지 않는다.
+ */
+export function botSeed(code: string, id: PlayerId, game = 0): number {
+  return seedFromId(`${code}:${id}:${game}`);
+}
+
 export class BotAgent implements PlayerAgent {
   readonly id: PlayerId;
   readonly nickname: string;
@@ -181,6 +197,12 @@ export class BotAgent implements PlayerAgent {
   private flags: BotFlags = NO_FLAGS;
   /** 콜 기회 집계기 (측정 전용 — 실대국은 undefined) */
   private callAudit: CallAudit | undefined = undefined;
+  /**
+   * 대기 중인 '생각 시간'을 즉시 끝내는 손잡이들 (`cancelDecision`).
+   * 하나의 봇이 동시에 두 프롬프트를 받는 일은 없지만, 취소가 어긋나면 판이 멈추므로
+   * 집합으로 두고 전부 깨운다.
+   */
+  private readonly thinkAborts = new Set<() => void>();
 
   constructor(
     id: PlayerId,
@@ -257,6 +279,23 @@ export class BotAgent implements PlayerAgent {
     this.read = null;
   }
 
+  /**
+   * 이 봇의 **난이도**를 정한다 (`bot/profile.ts`의 `skill` 한 칸).
+   *
+   * 성격은 그대로 두고 실력만 바꾼다 — 공격형 초보와 공격형 숙련자가 둘 다 있어야
+   * 난이도가 "다른 봇"이 아니라 "같은 사람의 다른 숙련도"로 읽힌다.
+   * 부르지 않으면 `hard`(= 지금까지의 봇)와 완전히 같다.
+   */
+  setDifficulty(difficulty: BotDifficulty): void {
+    this.profile = withDifficulty(this.profile, difficulty);
+    this.read = null;
+  }
+
+  /** 이 봇의 난이도 눈금 0(초보)~1(숙련) — 표시·집계용 */
+  get skill(): number {
+    return this.profile.skill;
+  }
+
   /** 이 방의 게임 모드를 알린다 (게임 시작 시 서버가 호출). 순위 판단의 전제가 된다 */
   setGameMode(mode: BotGameMode): void {
     this.mode = mode;
@@ -290,9 +329,42 @@ export class BotAgent implements PlayerAgent {
         chosen.type === "win";
       const jitter = 0.65 + this.rng.next() * 0.8;
       const ms = Math.round(this.thinkMs * this.profile.tempo * jitter * (weighty ? 1.4 : 1));
-      await new Promise((resolve) => setTimeout(resolve, ms));
+      await this.think(ms);
     }
     return chosen;
+  }
+
+  /**
+   * 생각하는 척하는 시간 — **끊을 수 있어야 한다.**
+   *
+   * 리액션 경합(같은 버림에 론과 펑이 함께 걸린 자리)에서 상위 선언이 확정되면
+   * `HanchanController`가 진 쪽의 프롬프트를 `cancelDecision()`으로 접는다. 그런데
+   * 이 자리가 그냥 `setTimeout`이면 **봇은 그 신호를 못 듣고 끝까지 잔다.** 국은
+   * `Promise.all`로 전원의 응답을 기다리므로, 펑을 고른 봇 하나(weighty ×1.4 →
+   * 최대 3초 남짓)가 **이미 결판난 남의 론을 그만큼 붙들고 있었다.** 경합이 붙은
+   * 모든 버림이 1~3초씩 죽은 시간을 먹었다.
+   *
+   * 결정 자체는 이미 나와 있으므로 취소는 **답을 바꾸지 않는다** — 남은 대기만
+   * 건너뛴다. 컨트롤러는 접힌 프롬프트의 답을 어차피 버린다.
+   */
+  private think(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        this.thinkAborts.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      this.thinkAborts.add(done);
+    });
+  }
+
+  /**
+   * 상위 선언이 확정돼 이 결정이 무의미해졌다 — 남은 생각 시간을 즉시 끝낸다.
+   * (`PlayerAgent.cancelDecision`. 대기 중이 아니면 아무 일도 하지 않는다.)
+   */
+  cancelDecision(): void {
+    for (const abort of [...this.thinkAborts]) abort();
   }
 
   /**
@@ -372,6 +444,8 @@ export class BotAgent implements PlayerAgent {
     const call = bidCall(read, options, this.plan, this.profile);
     const turn = bestBid([
       call,
+      // 구종구패 — 이 옵션에 입찰하는 평가자가 없어 봇은 여태 한 번도 선언하지 못했다
+      bidAbort(read, options),
       bidPass(read, options, this.plan, this.profile),
       bidRiichi(read, options.filter((o) => o.type === "riichi"), this.plan, this.profile),
       bidDiscard(
@@ -492,9 +566,26 @@ export class BotAgent implements PlayerAgent {
           "option" in picked
             ? picked
             : { option: picked, weight: defaultBotWeight(augId, def.category) };
-        const key = JSON.stringify(weighted.option);
-        const match = options.find((o) => JSON.stringify(o) === key);
-        if (match === undefined) continue;
+        const key = optionKey(weighted.option);
+        const match = options.find((o) => optionKey(o) === key);
+        if (match === undefined) {
+          /**
+           * 정책이 **제시되지 않은 옵션**을 돌려줬다. 예전에는 여기서 조용히
+           * `continue`했다 — 그래서 옵션을 `ctx.options`에서 고르지 않고 직접
+           * **만들어** 돌려주는 정책은 키 순서 하나만 달라도 영영 발동하지 않았고,
+           * 경고도 테스트 신호도 없었다(`optionKey` 주석 참고).
+           *
+           * 제약(샌드박스)이 걸린 자리에서는 정상적으로 걸러진 것일 수 있으므로
+           * 그때는 조용히 넘어간다.
+           */
+          if (this.restrictions === null) {
+            console.warn(
+              `[BotAgent] 증강 ${augId} 정책이 제시되지 않은 옵션을 돌려줬다 — 이번 순 무시:`,
+              key,
+            );
+          }
+          continue;
+        }
         bid = {
           option: match,
           // 참을성 있는 봇은 같은 강도라도 "지금 태우는 것"의 값을 낮게 본다 —
@@ -560,6 +651,26 @@ export class BotAgent implements PlayerAgent {
       return choices[0]?.id ?? "";
     }
   }
+}
+
+/**
+ * 옵션 하나의 **비교용 열쇠** — 키 순서에 흔들리지 않는다.
+ *
+ * 예전에는 `JSON.stringify(option)`을 그대로 비교했다. `JSON.stringify`는 객체의
+ * **삽입 순서**를 그대로 찍으므로, 같은 뜻의 옵션이라도 `{type, payload}`와
+ * `{payload, type}`은 다른 문자열이 된다. 증강 정책이 `ctx.options`에서 고르는 대신
+ * 옵션을 **직접 만들어** 돌려주면(정책 쪽에서는 자연스러운 일이다) 그 정책은
+ * 조용히 한 번도 발동하지 않았고, 로그도 테스트 실패도 남지 않았다.
+ *
+ * 키를 정렬해 찍으면 그 함정이 사라진다. 값의 순서(배열)는 뜻이 있으므로 그대로 둔다.
+ */
+export function optionKey(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(optionKey).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${optionKey(v)}`).join(",")}}`;
 }
 
 /** 증강의 파워 점수 (티어표에 없으면 중간값으로 본다 — 새 증강이 과대·과소평가되지 않게) */

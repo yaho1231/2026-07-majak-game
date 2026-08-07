@@ -149,6 +149,14 @@ export interface BotRead {
   /** 이 종류가 나에게 역패인가 */
   isYakuhai(kind: TileKind): boolean;
   /**
+   * **역이 없어도 화료할 수 있는가** — 무형화료(`yakuless_win`)가 켜 주는 규칙.
+   *
+   * 후로 게이트(`bot/call.ts`의 `no_yaku`)와 값어치 감액(`YAKULESS_OPEN`)이 둘 다
+   * 이 규칙을 전제로 서 있다. 규칙이 지워진 봇에게 그대로 걸면 **그 증강이 열어 주려던
+   * 콜을 봇이 전부 거절한다.**
+   */
+  noYakuRequired: boolean;
+  /**
    * 켜져 있는 실험 스위치 (`bot/flags.ts`). 실대국은 항상 비어 있다 —
    * 2:2 정책 대전으로 새 판단의 강함을 재는 동안에만 채워진다.
    */
@@ -213,7 +221,13 @@ export function buildRead(
    * **점수상 멘젠인가** — 안깡은 손을 열지 않는다. 샹텐은 안깡도 멘쯔로 세야 하므로
    * `meldCount`와 나눠 둔다(둘을 겸하게 두면 안깡 한 번에 리치 판수가 날아간다).
    */
-  const menzen = (view.round.byPlayer[me]?.melds ?? []).every((m) => m.kind === "kan_closed");
+  const myMelds = view.round.byPlayer[me]?.melds ?? [];
+  const menzen = myMelds.every((m) => m.kind === "kan_closed");
+  /**
+   * 안깡 수 — **후로가 손으로 돌아올 때**(파혼) 멘젠이 되살아나는지를 가른다.
+   * 남는 후로가 전부 안깡이면 그 손은 다시 점수상 멘젠이다.
+   */
+  const closedKanCount = myMelds.filter((m) => m.kind === "kan_closed").length;
   const opts: DecomposeOptions = view.scoringOptions ?? {};
   const remainingOf = tileTracker(view);
   const shanten = shantenOf(hand, meldCount, opts);
@@ -244,7 +258,13 @@ export function buildRead(
     if (k !== undefined) doraKinds.push(doraKindFor(k));
   }
   // 위협 읽기는 도라를 알아야 한다 — 상대 후로에 눕혀진 도라가 예상 실점을 바꾼다
-  const threats = readThreats(view, me, doraKinds, context.traitsOf ?? (() => NEUTRAL_TRAITS));
+  const threats = readThreats(
+    view,
+    me,
+    doraKinds,
+    context.traitsOf ?? (() => NEUTRAL_TRAITS),
+    flags,
+  );
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {
     const key = kindKey(d);
@@ -298,10 +318,25 @@ export function buildRead(
    * 코어에서 0.4~2.2로 잘려 있다. **그 국에만 사는 효과는 표에 없으므로**
    * 이미 꺼진 증강을 계속 비싸게 세는 일은 생기지 않는다.
    */
-  const myAugmentValue = augmentValueMultiplier(
-    view.players.find((p) => p.id === me)?.augments ?? [],
-  );
-  const match = readMatch(view, me, mode);
+  const myAugments = view.players.find((p) => p.id === me)?.augments ?? [];
+  const myAugmentValue = augmentValueMultiplier(myAugments);
+  const rules = handRulesOf(myAugments);
+  /**
+   * **가정한 후로 수에서 이 손이 점수상 멘젠인가.**
+   *
+   * 예전 식은 `menzen && 가정 <= 지금`이었다 — 후로가 **느는** 쪽(콜 EV)만 다룬다.
+   * 그런데 이 게임에는 후로를 **손으로 되돌리는** 증강이 있다(파혼). 그때는 후로 수가
+   * 줄고 멘젠이 실제로 되살아나는데, 지금 손이 열려 있으면 `menzen`이 false라 곱해져
+   * **되돌아온 뒤에도 계속 열린 손으로** 값매겨졌다. 그 증강의 값어치 전부가
+   * (리치 2.2판 + 역없는 열린 손 감액 해제) 봇의 눈에 보이지 않았다.
+   *
+   * 어느 후로가 돌아오는지는 여기서 모르므로, **남는 후로가 전부 안깡일 수 있는가**로
+   * 본다 — 안깡만 남으면 그 손은 점수상 멘젠이다.
+   */
+  const menzenAt = (assumed: number): boolean =>
+    assumed > meldCount ? false : assumed < meldCount ? assumed <= closedKanCount : menzen;
+
+  const match = readMatch(view, me, mode, flags);
   const wallLeft = wallLeftOf(view);
   const furiten = mine?.furiten === true;
   const waitTiles = waitTilesOf(waits, remainingOf);
@@ -336,8 +371,7 @@ export function buildRead(
           : { kinds: [...hand, ...meldKinds] }),
         handDora: Math.max(0, handDora + (input.doraDelta ?? 0)),
         meldCount: input.meldCount ?? meldCount,
-        // 후로 수를 올려 물었다는 것은 **손을 연다**는 뜻이다 (콜 EV)
-        menzen: menzen && (input.meldCount ?? meldCount) <= meldCount,
+        menzen: menzenAt(input.meldCount ?? meldCount),
         plan: input.plan,
         isDealer: match.isDealer,
         riichiDeclared: mine?.riichiDeclared === true,
@@ -345,6 +379,11 @@ export function buildRead(
         // 구멍을 막는다 — 샹텐·대기와 **같은 옵션**을 값어치도 본다
         opts,
         augmentMultiplier: input.withoutAugments === true ? 1 : myAugmentValue,
+        // 증강이 **규칙 자체를 지운** 두 자리 — 역 요구와 리치의 멘젠 요구
+        ...(rules.noYakuRequired ? { noYakuRequired: true } : {}),
+        ...(rules.openRiichiHan > 0 ? { openRiichiHan: rules.openRiichiHan } : {}),
+        // 멘젠 부수 분리 (`menzenfu`) — 측정 중인 스위치라 기본은 종전 동작이다
+        menzenFu: flags.has("menzenfu"),
       }),
     winChanceOf: (input) =>
       winChance({
@@ -367,6 +406,7 @@ export function buildRead(
     callAudit: context.callAudit,
     furiten,
     riichiDeclared: mine?.riichiDeclared === true,
+    noYakuRequired: rules.noYakuRequired,
     isYakuhai(kind) {
       if (kind.suit === "dragon") return true;
       if (kind.suit === "wind") {
@@ -490,6 +530,44 @@ const isOrphan = (k: TileKind): boolean =>
   !(k.suit === "man" || k.suit === "pin" || k.suit === "sou") ||
   k.rank === 1 ||
   k.rank === 9;
+
+// ──────────────── 증강이 **화료 규칙 자체**를 바꾼 자리 ────────────────
+
+/**
+ * 증강이 지운 **화료 규칙**을 값어치 계산이 읽을 수 있는 형태로 옮긴다.
+ *
+ * `view.scoringOptions`에는 화료**형**의 확장(무너진 국경·동수의 결속 …)만 실린다.
+ * "역이 필요한가"·"리치에 멘젠이 필요한가"는 `RuleRegistry`의 홀더 규칙이라 뷰에
+ * 실리지 않으므로, 보유 증강 id에서 되읽는 수밖에 없다.
+ *
+ * **표로 두는 이유는 `AUGMENT_PLAY`와 같다**(docs/27 §2.2) — 증강마다 함수를 쓰면
+ * 1000종에서 무너진다. 여기 없는 증강은 평범한 마작 규칙이므로 빠뜨려도 봇이
+ * 이상해지지 않는다.
+ *
+ * **조건부로만 규칙을 지우는 것은 넣지 않았다.** 만개해야 비로소 역이 필요 없어지는
+ * 늦게 피는 꽃(`late_bloomer`)과, 원수의 버림패에만 걸리는 복수자(`avenger`)가 그렇다 —
+ * 보유를 근거로 규칙을 지우면 **아직 오지 않은(또는 이미 지나간) 조건을 계속 참으로
+ * 믿는다.** docs/27 §2.2가 "그 국에만 사는 효과를 표에 넣지 않은" 것과 같은 규율이다.
+ */
+interface HandRules {
+  /** 역이 없어도 화료할 수 있는가 (`win.requiresYaku` = false) */
+  noYakuRequired: boolean;
+  /** 열린 손 리치가 몇 판인가 (0 = 열린 손으로는 리치를 못 건다) */
+  openRiichiHan: number;
+}
+
+/** 개문선언의 열린 손 리치는 2판으로 취급된다 (`standardAugments.OPEN_RIICHI_HAN`) */
+const OPEN_RIICHI_HAN = 2;
+
+function handRulesOf(augments: readonly string[]): HandRules {
+  let noYakuRequired = false;
+  let openRiichiHan = 0;
+  for (const id of augments) {
+    if (id === "yakuless_win") noYakuRequired = true;
+    if (id === "open_riichi") openRiichiHan = OPEN_RIICHI_HAN;
+  }
+  return { noYakuRequired, openRiichiHan };
+}
 
 /** 내 후로 패의 kind 목록 */
 export function meldKindsOf(read: BotRead): TileKind[] {

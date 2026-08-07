@@ -80,6 +80,32 @@ describe("손 값어치 — 판수를 점수로 옮긴다", () => {
       expect(steps[i] as number).toBeGreaterThan(steps[i - 1] as number);
     }
   });
+
+  it("도라가 경계를 반쯤 넘으면 값도 반쯤 넘는다 (보간이 살아 있다)", () => {
+    const at = (d: number): number => estimateHandValue({ ...base, handDora: d }).points;
+    for (const d of [1, 2, 3, 4]) {
+      const mid = at(d - 0.5);
+      // 반올림하면 mid가 양 끝 중 하나와 같아진다 — 보간이면 그 사이에 놓인다
+      expect(mid).toBeGreaterThan(at(d - 1));
+      expect(mid).toBeLessThan(at(d));
+    }
+  });
+
+  /**
+   * **부수 분기가 죽어 있었다** — `menzen ? 30 : 30`이라 토이토이가 아닌 모든 손이
+   * 멘젠·후로를 가리지 않고 30부로 값매겨졌다. 30부와 40부는 4판에서 7700과 만관을
+   * 가르는 자리다. 지금은 `menzenfu` 스위치 뒤에 두고 2:2로 재는 중이다.
+   */
+  it("멘젠 부수 분리 스위치를 켜면 멘젠 손이 후로 손보다 비싸진다", () => {
+    const plain = estimateHandValue({ ...base, handDora: 2 });
+    const split = estimateHandValue({ ...base, handDora: 2, menzenFu: true });
+    expect(plain.fu).toBe(30);
+    expect(split.fu).toBeGreaterThan(plain.fu);
+    expect(split.points).toBeGreaterThan(plain.points);
+    // 열린 손은 켜도 그대로다 (멘젠 론 +10부가 붙지 않는다)
+    const open = estimateHandValue({ ...base, handDora: 2, meldCount: 1, menzenFu: true });
+    expect(open.fu).toBe(30);
+  });
 });
 
 describe("화료 확률 — 넓을수록, 이를수록 높다", () => {
@@ -324,5 +350,34 @@ describe("열린 손의 전진 속도 — 남의 버림패로도 전진한다", 
       furiten: false,
     };
     expect(winChance({ ...tenpai, openUkeire: 40 })).toBe(winChance(tenpai));
+  });
+});
+
+/**
+ * **18순을 넘기면 화료 확률이 0으로 무너졌다.**
+ *
+ * `myDrawsLeft`가 `min(패산/4, 18 − 순목)`이라 오른쪽이 음수가 되는 순간 쯔모 수가
+ * 0이 되고, `winChance`가 절망 바닥값(≈0.004)으로 떨어진다. 바로 위 주석은
+ * "깡·증강으로 패산이 늘 수 있다"고 적어 놓고 그 늘어난 몫을 `min`이 버리고 있었다.
+ * 그러면 연장된 구간 내내 봇이 텐파이를 들고도 아무것도 밀지 않는다.
+ */
+describe("연장된 국 — 패산이 남아 있으면 판단이 살아 있다", () => {
+  const base = { shanten: 0, ukeireTiles: 0, waitTiles: 8, furiten: false };
+
+  it("18순을 넘겨도 패산이 두둑하면 확률이 바닥값으로 무너지지 않는다", () => {
+    const dead = winChance({ ...base, wallLeft: 0, turn: 22 });
+    const alive = winChance({ ...base, wallLeft: 40, turn: 22 });
+    expect(alive).toBeGreaterThan(dead * 10);
+  });
+
+  it("패산이 마르면 여전히 바닥값이다 (연장이 낙관을 만들지는 않는다)", () => {
+    expect(winChance({ ...base, wallLeft: 0, turn: 22 })).toBeLessThan(0.01);
+  });
+
+  it("표준 18순 안에서는 예전과 똑같다 — 순목 상한이 그대로 살아 있다", () => {
+    // 패산이 부풀어 실려도(뷰 폴백 70) 12순이면 여섯 번밖에 못 뽑는다
+    expect(winChance({ ...base, wallLeft: 70, turn: 12 })).toBeLessThan(
+      winChance({ ...base, wallLeft: 70, turn: 3 }),
+    );
   });
 });

@@ -17,7 +17,13 @@
 import { describe, expect, it } from "vitest";
 import { Prng } from "@majak/core";
 import type { TileId } from "@majak/core";
-import { ARCHETYPE_NAMES, profileOf, rollProfile } from "../src/bot/profile.js";
+import {
+  ARCHETYPE_NAMES,
+  profileOf,
+  rollProfile,
+  rollTableProfiles,
+  withDifficulty,
+} from "../src/bot/profile.js";
 import type { ArchetypeName } from "../src/bot/profile.js";
 import { bidDiscard } from "../src/bot/discard.js";
 import { bidCall, bidPass } from "../src/bot/call.js";
@@ -214,5 +220,81 @@ describe("허세 — 값을 치르지 않는 거짓말", () => {
     const read = buildRead(s.view, "p0");
     const bid = bidDiscard(read, s.discardOptions(), null, profileOf("wildcard"));
     expect(pickedKind(s, bid?.option)).not.toBe("5p");
+  });
+});
+
+/**
+ * **난이도** — 이 저장소에는 개념 자체가 없었다(`difficulty`로 검색해도 게임과
+ * 관련된 것이 하나도 없다). 사람이 붙는 자리인데 세 봇이 언제나 같은 실력이면
+ * 처음 앉은 사람은 이길 수 없고 익숙해진 사람은 이길 이유가 없다.
+ *
+ * 분기를 만들지 않는 것이 규율이다 — `skill`은 `discard.wobble`이 "엇비슷하다"고
+ * 보는 폭 하나만 넓힌다. 봇은 규칙을 몰라서가 아니라 고르기를 흔들려서 진다.
+ */
+describe("난이도", () => {
+  it("기본은 숙련(= 지금까지의 봇)이라 종전 동작과 같다", () => {
+    expect(profileOf("balanced").skill).toBe(1);
+    expect(rollProfile(new Prng(7)).skill).toBe(1);
+  });
+
+  it("난이도를 낮추면 실력만 내려가고 성격은 그대로다", () => {
+    const base = profileOf("attacker");
+    const easy = withDifficulty(base, "easy");
+    expect(easy.skill).toBeLessThan(base.skill);
+    expect(easy.archetype).toBe(base.archetype);
+    expect(easy.aggression).toBe(base.aggression);
+  });
+
+  it("초보 봇은 값이 더 벌어진 후보까지 흔들린다 (실수한다)", () => {
+    const scene = botScene({ hand: "123m456p78s1122z9s", turnCount: 8 });
+    const read = buildRead(scene.view, "p0");
+    const options = scene.discardOptions();
+    /** 난수를 바꿔 가며 실제로 몇 종류의 패가 나오는지 센다 */
+    const spread = (skill: number): number => {
+      const out = new Set<TileId | undefined>();
+      const profile = { ...profileOf("balanced"), skill };
+      for (let seed = 0; seed < 30; seed++) {
+        const rng = new Prng(seed);
+        const bid = bidDiscard(read, options, null, profile, { int: (n) => rng.int(n) });
+        out.add((bid?.option.payload as { tileId?: TileId }).tileId);
+      }
+      return out.size;
+    };
+    expect(spread(0.35)).toBeGreaterThan(spread(1));
+  });
+});
+
+describe("탁 전체의 성격을 함께 뽑는다", () => {
+  /**
+   * 예전에는 봇마다 따로 원형을 균등 추첨했다. 셋이 겹칠 확률이 **44%** —
+   * 두 판에 한 번은 같은 성향이 둘 앉고, 같은 원형의 두 봇은 흔들림이 ±0.08뿐이라
+   * 거의 구별되지 않는다. "탁에 여러 성향이 섞이는 것이 목적"이라던 주석과 어긋났다.
+   */
+  it("세 자리가 항상 서로 다른 원형이 된다", () => {
+    for (let seed = 0; seed < 50; seed++) {
+      const table = rollTableProfiles(new Prng(seed), 3);
+      expect(new Set(table.map((p) => p.archetype)).size).toBe(3);
+    }
+  });
+
+  it("자리가 원형보다 많으면 다 쓴 뒤 다시 채운다", () => {
+    const table = rollTableProfiles(new Prng(3), 8);
+    expect(table).toHaveLength(8);
+    // 앞 여섯은 여섯 원형이 한 번씩
+    expect(new Set(table.slice(0, 6).map((p) => p.archetype)).size).toBe(6);
+  });
+
+  it("지정한 자리는 그대로 두고, 나머지가 그것과 겹치지 않는다", () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const table = rollTableProfiles(new Prng(seed), 3, ["defender", undefined, undefined]);
+      expect(table[0]?.archetype).toBe("defender");
+      expect(new Set(table.map((p) => p.archetype)).size).toBe(3);
+    }
+  });
+
+  it("같은 시드면 같은 탁이 나온다 (재현성)", () => {
+    const a = rollTableProfiles(new Prng(11), 3).map((p) => p.archetype);
+    const b = rollTableProfiles(new Prng(11), 3).map((p) => p.archetype);
+    expect(a).toEqual(b);
   });
 });

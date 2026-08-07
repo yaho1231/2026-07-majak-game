@@ -82,8 +82,25 @@ export function draftScore(def: AugmentDef, ctx: DraftContext): number {
   }
   const synergy = 1 + Math.min(SYNERGY_CAP, sameCategory * SYNERGY_PER_HELD);
 
+  /**
+   * **파일 위의 불변식이 실제로는 깨져 있었다.**
+   *
+   * "궁합과 시너지는 파워를 대체하지 않고 기울인다"고 적어 놓고 두 배수를 그대로
+   * 곱했다. 폭은 궁합 0.75~1.35 × 시너지 1~1.24 = **2.23배**인데, 인접 파워 티어의
+   * 간격은 실측 1.26배쯤이다(코어 티어표 점수 16~47, 컷 사이 간격). 즉 성격 궁합
+   * 하나로 **티어 두 개를 통째로 뒤집을 수 있었다** — A티어를 놔두고 B티어를,
+   * 때로는 C티어를 집는다. 극단(SS+ vs D)에서만 불변식이 지켜지고 실제 선택이
+   * 일어나는 중간 구간에서는 지켜지지 않았다.
+   *
+   * 그래서 두 배수를 곱한 **기울기 전체에 제곱근**을 씌워 폭을 좁힌다. 방향과 순서는
+   * 그대로이고(단조 증가), 최대 폭이 1.67배 → **1.29배**가 되어 인접 티어 하나
+   * 언저리에 머문다. 상수를 하나 더 만들지 않고 성질로 묶는 편이 낫다 — 표를 고쳐도
+   * 불변식이 저절로 따라온다.
+   */
+  const tilt = Math.sqrt(fit * synergy);
+
   const usable = ctx.unusable.includes(def.id) ? UNUSABLE_PENALTY : 1;
-  return base * fit * synergy * usable;
+  return base * tilt * usable;
 }
 
 /** 봇이 발동 판단을 못 하는 증강에 곱하는 값 — 사실상 후순위로 민다 */

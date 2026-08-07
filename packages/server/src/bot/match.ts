@@ -21,6 +21,8 @@
  */
 
 import type { PlayerId, PlayerView } from "@majak/core";
+import { NO_FLAGS } from "./flags.js";
+import type { BotFlags } from "./flags.js";
 
 export type BotGameMode = "hanchan" | "tonpuu";
 
@@ -69,6 +71,7 @@ export function readMatch(
   view: PlayerView,
   me: PlayerId,
   mode: BotGameMode = "hanchan",
+  flags: BotFlags = NO_FLAGS,
 ): MatchContext {
   const scores = view.players.map((p) => ({ id: p.id, score: p.score, seat: p.seat }));
   const myScore = scores.find((p) => p.id === me)?.score ?? 25000;
@@ -94,11 +97,10 @@ export function readMatch(
   const seat = view.players.find((p) => p.id === me)?.seat ?? 0;
   const isDealer = seat === view.round.dealerSeat;
 
-  // 쫓는 압박에서 지키는 압박을 뺀다. 둘 다 크면(중간 순위, 위아래로 벌어짐) 상쇄돼
-  // 평시 판단이 되는데, 그게 사람의 감각과 맞다 — 위도 아래도 멀면 그냥 잘 치면 된다.
-  const wantPoints = clamp01(chase / PRESSURE_SPAN);
-  const wantSafety = clamp01(lead / PRESSURE_SPAN);
-  let riskAppetite = lateness * (wantPoints - wantSafety);
+  let riskAppetite = flags.has("place2")
+    ? ladderAppetite(sorted, rank, myScore, roundsLeft, lateness)
+    : // 예전 식 — 인접 순위만 보고 빼기 때문에 위아래가 둘 다 멀면 0으로 상쇄된다.
+      lateness * (clamp01(chase / PRESSURE_SPAN) - clamp01(lead / PRESSURE_SPAN));
 
   // 오야는 화료하면 연장된다 — 뒤집을 기회가 한 번 더 생기므로 조금 더 민다.
   // 반대로 올라스 오야 선두는 **끝내는 것**이 이득이라 더 지킨다.
@@ -117,6 +119,74 @@ export function readMatch(
     riskAppetite: Math.max(-1, Math.min(1, riskAppetite)),
   };
 }
+
+// ─────────────────────── 순위 사다리 전체를 본다 (`place2`) ───────────────────────
+
+/**
+ * 남은 국에서 **뒤집을 수 있는 점수차**의 어림.
+ *
+ * 하네만 직격이면 한 국에 24000점이 움직인다. 한 국당 그 정도를 '닿을 수 있는 거리'로
+ * 잡되, 그 안에서도 가까울수록 실현 가능성이 높으므로 선형으로 깎는다.
+ */
+const REACH_PER_ROUND = 16000;
+
+/**
+ * **이 순위차가 실제로 닿는가** 0(어림없다) ~ 1(코앞이다).
+ * 사람이 점수판을 보고 하는 판단은 "몇 점 차인가"가 아니라 "닿는가"다.
+ */
+const reachable = (gap: number, roundsLeft: number): number =>
+  clamp01(1 - gap / (REACH_PER_ROUND * Math.max(1, roundsLeft)));
+
+/**
+ * 순위 압박 — **사다리 전체**를 보고 낸다.
+ *
+ * ## 예전 식이 스스로를 지우고 있었다
+ *
+ * `lateness × (쫓는 압박 − 지키는 압박)`인데 둘 다 **바로 위·바로 아래 한 칸**만 봤고,
+ * 게다가 그냥 뺐다. 그래서 올라스 2위가 1위와 +30000, 3위와 −30000이면 두 항이 각각
+ * 1이 되어 **정확히 0("평시처럼 잘 치면 된다")** 이 나온다. 실제로는 2위가 굳어
+ * 있으므로 답은 "아무것도 걸지 마라"다. 파일 위에 적어 둔 목표("올라스 1위에 2만점
+ * 차 → 아무것도 안 하고 흘려 보낸다")와 정면으로 어긋난다.
+ *
+ * ## 무엇을 고쳤나
+ *
+ * 두 항을 **닿는가**로 다시 정의하고, 인접이 아니라 **위 전부·아래 전부**를 본다.
+ *
+ *  - `upside` — 내가 올라갈 수 있는 자리 중 가장 잘 닿는 것. 아무도 닿지 않으면 0.
+ *  - `downside` — 나를 넘어설 수 있는 사람 중 가장 잘 닿는 사람. 없으면 0.
+ *
+ * 그러면 30000점 차의 1위는 `upside = 0`(못 쫓는다)이 되어 헛되이 밀지 않고,
+ * 30000점 아래의 3위는 `downside = 0`(못 쫓긴다)이 되어 헛되이 접지 않는다.
+ *
+ * ## 그리고 '굳었다'는 상태에 이름을 준다
+ *
+ * 위도 아래도 닿지 않으면 이 국의 결과가 **내 순위를 바꾸지 못한다.** 그때 점수는
+ * 값어치가 없고 방총만 값어치가 있다(우마·점수 자체의 몫이 남는다). 그래서
+ * 뺄셈이 0으로 상쇄되는 대신 **음수**가 나오게 항을 하나 더 둔다 — 예전 식이
+ * "평시"라고 잘못 답하던 바로 그 자리다.
+ */
+function ladderAppetite(
+  sorted: readonly { id: PlayerId; score: number; seat: number }[],
+  rank: number,
+  myScore: number,
+  roundsLeft: number,
+  lateness: number,
+): number {
+  let upside = 0;
+  let downside = 0;
+  for (const [i, p] of sorted.entries()) {
+    const theirRank = i + 1;
+    if (theirRank < rank) upside = Math.max(upside, reachable(p.score - myScore, roundsLeft));
+    else if (theirRank > rank)
+      downside = Math.max(downside, reachable(myScore - p.score, roundsLeft));
+  }
+  // 위도 아래도 안 닿는다 = 이 국이 순위를 못 바꾼다 → 변동성을 줄이는 것이 이득이다
+  const locked = (1 - upside) * (1 - downside);
+  return lateness * (upside - downside - LOCKED_CAUTION * locked);
+}
+
+/** 순위가 굳었을 때 얼마나 몸을 사리는가 */
+const LOCKED_CAUTION = 0.5;
 
 /** 평시(점수판을 볼 수 없는 테스트 경로)용 중립 문맥 */
 export const NEUTRAL_MATCH: MatchContext = {

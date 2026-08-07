@@ -27,7 +27,7 @@ import type { TileId, TileKind } from "@majak/core";
 import { removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
-import { NOTEN_PENALTY, waitTilesOf } from "./value.js";
+import { NOTEN_PENALTY, NOTEN_WALL, waitTilesOf } from "./value.js";
 import type { ActionBid } from "./decide.js";
 
 /** 버림 후보 — 옵션과 그 패의 정보 */
@@ -69,39 +69,6 @@ export function scales(read: BotRead, profile: BotProfile): { gain: number; loss
     gain: Math.max(0.4, 1 + bias),
     loss: Math.max(0.35, 1 - bias),
   };
-}
-
-/**
- * 접는 비중 0(전력으로 민다) ~ 1(완전히 접는다).
- *
- * 이제 이 값은 규칙이 아니라 **위 두 기대값의 비율**이다 — 밀어서 얻을 것보다 잃을
- * 것이 크면 1에 가까워진다. `call.ts`가 "지금 울 판인가"를 물을 때 쓰는 한 줄 요약이다.
- */
-export function foldWeight(read: BotRead, profile: BotProfile): number {
-  if (read.threat <= 0) return 0;
-  if (read.riichiDeclared) return 0; // 이미 리치 — 선택권이 없다
-
-  const value = read.valueOf({ plan: null });
-  const u = ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts);
-  const gain =
-    read.winChanceOf({
-      shanten: Math.max(0, read.shanten),
-      waitTiles: read.waitTiles,
-      ukeireTiles: u.tiles,
-      open: read.meldCount > 0 ? { hand: read.hand, ukeireKinds: u.kinds } : undefined,
-    }) *
-    (value.points + read.match.potBonus);
-
-  // 지금 손에 든 패를 계속 흘려야 한다 — 그 평균 위험이 미는 값이다
-  let loss = 0;
-  for (const k of read.hand) loss += read.expectedLoss(k);
-  loss = (loss / Math.max(1, read.hand.length)) * PUSH_HORIZON;
-
-  const s = scales(read, profile);
-  const g = gain * s.gain;
-  const l = loss * s.loss;
-  if (g + l <= 0) return 0;
-  return Math.max(0, Math.min(1, l / (g + l)));
 }
 
 /**
@@ -279,12 +246,27 @@ function wobble(
   if (jitter === undefined || profile.noise <= 0 || scored.length < 2) return null;
   // 폭은 EV 규모에 비례하되, 모두가 0에 가까운 국면(가망 없는 손)에서도 작동하도록
   // 바닥을 둔다. 바닥이 크면 그런 국면에서 **모든 후보가 후보로 묶여** 성격 차이가
-  // 사라지므로 작게 잡는다. 성격이 그 폭을 정한다.
-  const band = profile.noise * Math.max(30, Math.abs(bestEV) * 0.06);
+  // 사라지므로 작게 잡는다. 성격이 그 폭을 정하고, 난이도가 그 위에 곱해진다.
+  /**
+   * **난이도가 붙는 유일한 자리**(`profile.skill`). 실력이 낮을수록 "엇비슷하다"고
+   * 보는 폭이 넓어져, 봇은 규칙을 몰라서가 아니라 **고르기를 흔들려서** 진다 —
+   * 사람이 실수하는 모습과 같다. `skill = 1`이면 곱이 정확히 1이라 종전과 같다.
+   */
+  const clumsy = 1 + (1 - Math.max(0, Math.min(1, profile.skill))) * BLUNDER_SPAN;
+  const band = profile.noise * clumsy * Math.max(30, Math.abs(bestEV) * 0.06);
   const near = scored.filter((x) => x.ev >= bestEV - band);
   if (near.length < 2) return null;
   return near[jitter.int(near.length)] ?? null;
 }
+
+/**
+ * 실력이 0일 때 흔들림 폭이 몇 배가 되는가.
+ *
+ * 5배면 초보 봇은 "손해 250점쯤까지는 아무거나" 고르는 셈이라, 안전패를 놔두고
+ * 무스지를 흘리는 일이 실제로 일어난다. 그래도 폭이 EV로 묶여 있는 성질은 그대로라
+ * **명백한 대형 실수는 여전히 하지 않는다** — 초보 사람도 그렇다.
+ */
+const BLUNDER_SPAN = 5;
 
 /** 타점 취향의 기준점 — 이 근처의 손은 어느 성격에서도 값이 그대로다 */
 const VALUE_REF = 5000;
@@ -368,7 +350,7 @@ export function bidDiscard(
 
   const shapes = shapesOf(read, cands);
   // 종반에 텐파이를 붙들면 노텐벌부를 피한다 — 화료와 별개로 값이 있는 결과다
-  const notenStake = read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
+  const notenStake = read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   const tsumoOnly = read.menzen && !hasYakuNow(read);
 
   const scored: { c: Candidate; ev: number }[] = [];

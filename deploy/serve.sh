@@ -10,6 +10,7 @@
 #   bash deploy/serve.sh restart
 #   bash deploy/serve.sh status
 #   bash deploy/serve.sh logs       # 실시간 로그(관리자 코드도 여기)
+#   bash deploy/serve.sh health     # 상태 점검(JSON — 연결·방·진행 중 게임 수)
 #
 # 처음 한 번:  cp deploy/majak.env.example deploy/majak.env  후 값 채우기.
 #
@@ -32,6 +33,13 @@ fi
 
 CMD="${1:-start}"
 PORT_SHOW="${PORT:-3001}"
+
+# 상태 점검 — 정적 파일이 아니라 WS 계층·방 개수까지 서버가 직접 답한다.
+# (감시 도구가 "HTML이 온다"만 보고 살아 있다고 착각하지 않게 하려고 뚫은 문이다.)
+if [ "$CMD" = "health" ]; then
+  curl -fsS "http://127.0.0.1:${PORT_SHOW}/healthz" && echo
+  exit $?
+fi
 
 if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
   if [ -n "${SIGNUP_CODE:-}" ]; then GATE="켜짐"; else GATE="꺼짐(누구나 가입)"; fi

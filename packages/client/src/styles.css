@@ -28,8 +28,12 @@
   /* 텍스트 — 상아에서 세이지로 내려가는 4단 */
   --ink-1: #ece4d2;
   --ink-2: #a8bcaf;
-  --ink-3: #7b9084;
-  --ink-4: #5f7469;
+  /* 2차·3차 텍스트는 펠트 위에서 4.5:1 을 넘겨 둔다.
+     예전 값(#7b9084 / #5f7469)은 가장 밝은 펠트(--felt-3) 위에서 4.18 / 2.84 로,
+     11px 로 쓰이는 자리가 아홉 군데 있었다 — 정보가 아니라 장식으로 보였다.
+     지금: ink-3 5.70:1, ink-4 4.73:1 (felt-3 기준). 단계 차이는 그대로 남는다. */
+  --ink-3: #93a99c;
+  --ink-4: #829a8f;
 
   /* 증강 전용 */
   --aug: #7c5cff;
@@ -173,7 +177,8 @@ button {
 }
 
 .lobby-card input:focus-visible {
-  outline: none;
+  /* outline: none 이었다 — 테두리 색만 1px 바뀌는 것으로는 3:1(WCAG 2.4.11)에 한참 못 미친다.
+     아래 전역 :focus-visible 규칙이 링을 세우고, 여기서는 테두리 강조만 얹는다. */
   border-color: var(--brass);
 }
 
@@ -714,6 +719,16 @@ button {
   background: var(--brass-bright);
   color: #2a2109;
   animation: turn-pulse 2.4s var(--ease-quart) infinite;
+}
+
+/* 오야(친) 표식이 **오야의 차례에 사라지던** 문제 (docs/19:124).
+   `.plate-turn .plate-wind`(특이성 0,2,0)가 `.plate-dealer`(0,1,0)를 덮어써서,
+   정작 오야가 둘 때 누가 오야인지 알 수 없었다. 두 정보를 겹쳐 쓴다 —
+   바탕은 오야의 붉은색으로 되돌리고, '차례'는 황동 링으로 따로 말한다. */
+.plate-turn .plate-wind.plate-dealer {
+  background: #9c392e;
+  color: #f7f3e8;
+  box-shadow: 0 0 0 2px var(--brass-bright);
 }
 
 @keyframes turn-pulse {
@@ -1791,7 +1806,8 @@ button {
   background: rgba(255, 255, 255, 0.02);
 }
 .rinshan-slot-spent .rinshan-pick-label {
-  color: rgba(226, 199, 147, 0.4);
+  /* 0.4 알파는 2.6:1 이었다 — '이미 썼다'를 흐림으로 말하되 읽히기는 해야 한다 */
+  color: rgba(226, 199, 147, 0.72);
 }
 .rinshan-spent-box {
   display: block;
@@ -4876,7 +4892,9 @@ button {
 
 .wr-start {
   background: linear-gradient(180deg, #b8975c, #9a7b42);
-  color: #4a3a22;
+  /* #4a3a22 는 이 황동 위에서 3.97:1 이다. 이름표 차례 표시(.plate-turn .plate-wind)에서
+     이미 같은 이유로 #2a2109 로 내렸는데 여기에는 반영이 안 돼 있었다. */
+  color: #2a2109;
 }
 
 .wr-ready {
@@ -7635,9 +7653,11 @@ button {
 .fb-body,
 .fb-reply-input { resize: vertical; line-height: 1.6; }
 
+/* outline: none 이었다 — 전역 :focus-visible 링이 서야 키보드로 어디 있는지 알 수 있다.
+   여기서는 테두리 강조만 얹는다(마우스로 클릭해 들어온 경우에도 보이는 신호). */
 .fb-title:focus,
 .fb-body:focus,
-.fb-reply-input:focus { outline: none; border-color: var(--brass); }
+.fb-reply-input:focus { border-color: var(--brass); }
 
 .fb-form-foot {
   display: flex;
@@ -9314,4 +9334,402 @@ body.peeking .overlay-peekable > * {
 
 @media (prefers-reduced-motion: reduce) {
   .result-close-urgent .result-close-count { animation: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   접근성·모바일 보강 (2026-08 UI 감사 대응)
+
+   여기 있는 것은 전부 **표현 계층**이다 — 어떤 패널이 무엇을 말하는지는 그대로다.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────── 1. 포커스 표시 (WCAG 2.4.7 / 2.4.11) ───────────────
+   여태 전역 :focus-visible 규칙이 **하나도 없었다**. 키보드로 Tab을 눌러도
+   지금 어디에 서 있는지 화면에 아무 표시가 없었고, 두 자리는 UA 기본 링을
+   지우기까지 했다(위에서 되돌렸다).
+
+   패에는 이미 장식용 outline이 붙어 있어 같은 자리에 링을 그리면 묻힌다 —
+   그래서 outline 대신 **밖으로 벌어지는 box-shadow 2겹**을 쓴다. 어두운 펠트에도
+   밝은 패널에도 보이도록 안쪽은 먹색, 바깥은 황동이다(어느 배경에서도 3:1 이상). */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  /* box-shadow 링은 요소 자신의 border-radius를 그대로 따라간다 — 둥근 칩도 알약도
+     각자 모양대로 감싼다. 그래서 여기서 radius를 지정하지 않는다(지정하면 모양이 튄다).
+     ⚠ position·z-index도 넣지 않는다: 이 규칙은 파일 끝에 있어 같은 특이성(0,1,0)의
+     `.icon-btn { position: absolute }` 같은 규칙을 이겨 버린다 — 포커스가 닿는 순간
+     버튼이 제자리에서 튀어나온다. */
+  box-shadow:
+    0 0 0 2px var(--felt-0),
+    0 0 0 4px var(--brass-bright);
+}
+
+/* 스크린리더 전용 — 화면에서는 안 보이되 읽히기는 하는 텍스트.
+   게임 사건(리치·후로·화료·증강 발동)을 보조기술에 흘리는 aria-live 영역이 쓴다. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─────────────── 2. 연출 건너뛰기 ───────────────
+   컷인·배너는 pointer-events:none 이라(판을 가리면 안 된다) 클릭을 못 받는다.
+   손잡이를 따로 세운다. 위치는 화면 아래 가운데 — 컷인 밴드(중앙)와 겹치지 않고,
+   액션 바보다 위다. */
+.prod-skip {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 250;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(236, 228, 210, 0.28);
+  background: rgba(9, 16, 13, 0.86);
+  color: var(--ink-1);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.prod-skip:hover {
+  background: rgba(21, 33, 26, 0.95);
+  border-color: var(--brass);
+}
+
+.prod-skip-more {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(184, 151, 92, 0.3);
+  color: #f0c86a;
+  font-variant-numeric: tabular-nums;
+}
+
+.prod-skip-key {
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(236, 228, 210, 0.22);
+  color: var(--ink-3);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* ─────────────── 3. 액션 단축키 칩 ───────────────
+   버튼마다 자기 숫자를 달고 있어 외울 것이 없다. 좁은 화면에서는 자리를 빼앗으므로 숨긴다. */
+.act-key {
+  margin-left: 7px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  opacity: 0.55;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────── 4. 📜 기록 (append-only) ─────────────── */
+.auglog-round {
+  margin: 8px 0 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+  color: var(--brass-bright);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.auglog-sec {
+  margin: 12px 0 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-strong);
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.auglog-ev {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.auglog-time {
+  flex: none;
+  color: var(--ink-4);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.auglog-ev-text {
+  color: var(--ink-1);
+  font-weight: 700;
+}
+
+.auglog-ev-sub {
+  color: var(--ink-3);
+}
+
+/* 톤별 색 — 컷인에서 쓰던 의미를 줄에서도 그대로 유지한다.
+   색만으로 구분하지 않도록 문구 자체가 이미 사건 이름이다("리치", "펑", "쯔모"…). */
+.auglog-tone-riichi .auglog-ev-text { color: #f08a7c; }
+.auglog-tone-win .auglog-ev-text,
+.auglog-tone-yakuman .auglog-ev-text { color: #f0c86a; }
+.auglog-tone-call .auglog-ev-text { color: #6bd6a0; }
+.auglog-tone-augment .auglog-ev-text { color: #c7bcff; }
+
+.auglog-empty {
+  padding: 10px 0;
+  color: var(--ink-4);
+  font-size: 12px;
+}
+
+/* ─────────────── 5. 화면 크기 설정 ─────────────── */
+.uiscale-auto {
+  flex: none;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.uiscale-auto-on {
+  border-color: var(--brass);
+  background: rgba(184, 151, 92, 0.2);
+  color: #f0c86a;
+}
+
+/* ─────────────── 6. 움직임 줄이기 (docs/18 §1.3.4) ───────────────
+   앞선 네 블록이 연출(컷인·배너·꽃잎)은 잡았지만, **끝나지 않는 반복 애니메이션 17개**가
+   그대로 돌고 있었다. 그중에는 가장 눈에 띄어야 할 경고들이 있다 — 방총 위험패의
+   danger-pulse(1.3s ∞), 오름패 강조 hl-pulse(6px↔16px 그림자), 차례 표시 turn-pulse.
+   전부 3Hz 아래지만 **넓은 면적의 밝기가 영원히 흔들리는 것**이 문제다.
+
+   왜 `*{animation:none}` 같은 전면 차단을 안 쓰나: 결정 제한시간 게이지(.prompt-timer-fill)가
+   `timer-run var(--timer-duration) forwards` 라는 **정보를 나르는 애니메이션**이다.
+   한 줄로 다 끄면 남은 시간을 못 보게 된다. 그래서 반복 연출만 이름을 불러 세운다.
+
+   멈춘 자리가 어두운 쪽이면 경고 자체가 사라지므로, 아래 것들은 전부 **애니메이션 없이도
+   보이는 정적 outline·box-shadow가 기본 규칙에 이미 있음을 확인하고** 껐다. */
+@media (prefers-reduced-motion: reduce) {
+  /* 차례 — 같은 turn-pulse를 쓰는 다섯 자리. 링·배경(=정보)은 남고 깜빡임만 선다. */
+  .plate-turn .plate-wind,
+  .nameplate-turn,
+  .np-turn,
+  .aug-btn-on,
+  .draft-timer-urgent { animation: none; opacity: 1; }
+  /* 중앙 패널의 차례 모서리 — 방향(어느 변이 빛나는가)이 정보다. 가장 밝은 값에 고정. */
+  .center-panel::after { animation: none; opacity: 1; }
+
+  /* 경고·강조 — 여기서 흐려지면 알림이 사라진다. 기본 규칙의 정적 테두리가 그대로 남는다. */
+  .hand-danger .tile-face,
+  .tile-hl .tile-face,
+  .rt-latest .tile-face,
+  .hand-riichi .tile-face,
+  .hand-armable,
+  .opp-armable,
+  .rt.rt-armable,
+  .rt.rt-win-armable,
+  .waits-badge-open,
+  .waits-badge-peek,
+  .rinshan-reopen,
+  .sbx-observe-bar.my-turn,
+  .nameplate-disconnected .np-conn { animation: none; opacity: 1; }
+
+  /* 패에 얹힌 상시 오버레이(소환패·적도라) — 색은 정보라 남기고 흐름만 멈춘다.
+     맥동의 밝은 쪽(opacity 1)에 고정해야 정보가 가장 잘 읽힌다. */
+  .tile-conjured::after,
+  .tile-red::after { animation: none; opacity: 1; }
+
+  /* 도라 표시패 아래 흐르는 광택 — 위 8675 블록이 ::before를 이미 지웠고, 여기서는
+     본체 맥동(dora-glow·dora-own-glow)까지 확실히 세운다. */
+  .tile-dora,
+  .tile-dora-own { animation: none; }
+
+  /* 드래프트 제목의 발광 — 순수 장식 */
+  .draft-title { animation: none; }
+
+  /* 회전 스피너는 방향에 뜻이 없다. 세워도 "재연결 중" 문구가 그대로 말해 준다. */
+  .reconnect-spin { animation: none; }
+
+  /* 역만·배만 컷인의 무한 셰이더 — 위 블록이 밴드 등장은 이미 0.01s로 눌렀지만
+     그 뒤로 계속 도는 shimmer·hue는 남아 있었다. */
+  .cutin-yakuman .cutin-band,
+  .cutin-yakuman .cutin-text,
+  .cutin-augment .cutin-band,
+  .cutin-limit[data-tier="baiman"] .cutin-band,
+  .cutin-limit[data-tier="sanbaiman"] .cutin-band { animation-iteration-count: 1; }
+}
+
+/* ─────────────── 7. 대비 강화 / 강제 색 모드 ───────────────
+   Windows 고대비를 켜면 배경 그라디언트·그림자가 전부 날아가 패의 정체가 사라졌다
+   (도라·적도라·소환패를 색으로만 말하고 있었기 때문이다). 색이 없어질 때를 대비해
+   **모양**으로 한 번 더 말한다. */
+@media (prefers-contrast: more) {
+  :root {
+    --ink-2: #cfded4;
+    --ink-3: #b6cabe;
+    --ink-4: #a3b8ab;
+    --line: rgba(236, 228, 210, 0.28);
+    --line-strong: rgba(236, 228, 210, 0.45);
+  }
+}
+
+@media (forced-colors: active) {
+  /* 패의 종류를 색이 아니라 테두리 굵기·점선으로 구분한다 */
+  .tile-dora,
+  .tile-dora-own {
+    forced-color-adjust: none;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .tile-dora-own {
+    outline-style: double;
+    outline-width: 4px;
+  }
+  .tile-red {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+  .tile-conjured {
+    outline: 2px dotted Highlight;
+    outline-offset: -2px;
+  }
+  /* 포커스 링은 시스템 색으로 */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    box-shadow: none;
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+/* ─────────────── 9. 폰 (docs/18 §1.4) ───────────────
+   여태 크기 기준 @media 가 **하나도 없었다**. 크기 규칙은 전부 `@container ui` 인데,
+   그 컨테이너는 body(=가상 뷰포트)라서 폰에서는 자동 축소가 아예 걸리지 않아
+   (computeScale이 coarse pointer에서 1을 돌려준다) 데스크톱 배치가 그대로 내려왔다.
+   가장 좁은 게임 규칙이 max-width:700px 하나뿐이라 375px 도 690px 과 같은 판을 받았다. */
+
+/* 9-1. 안전 영역 — iOS 홈 인디케이터 아래에 조작 버튼이 깔리던 것을 걷어 올린다.
+   (index.html 의 viewport-fit=cover 와 짝이다.) */
+.quick-toggles {
+  left: max(14px, env(safe-area-inset-left, 0px));
+  bottom: max(18px, calc(env(safe-area-inset-bottom, 0px) + 8px));
+}
+
+.icon-btn {
+  top: max(12px, env(safe-area-inset-top, 0px));
+}
+
+.leave-btn { right: max(14px, env(safe-area-inset-right, 0px)); }
+
+/* 9-2. 손가락 목표 크기 — 최소 44px (WCAG 2.5.8 은 24px, 애플·구글 권장은 44/48).
+   손패 한 장은 '되돌릴 수 없는 타패'라 특히 중요하다. 폭은 판이 정하므로
+   **세로로** 44px 를 확보하고, 패 사이 간격을 벌려 오탭을 줄인다. */
+@media (pointer: coarse) {
+  .icon-btn { min-width: 44px; min-height: 44px; }
+  .qt-item { min-height: 40px; padding: 8px 14px; }
+  .act { min-height: 46px; }
+  .aug-pill { min-height: 28px; }
+  /* 단축키 칩은 키보드가 없는 기기에서 자리만 먹는다 */
+  .act-key { display: none; }
+}
+
+/* 9-3. 폰 세로 (≤480px) — 데스크톱 배치를 그대로 쓸 수 없는 폭.
+   판은 남기고 주변 장식을 접는다. 손패는 세로 크기를 지켜 탭 목표를 확보한다. */
+@media (max-width: 480px) {
+  .quick-toggles { display: none; }
+  .quick-toggles-inline { display: flex; }
+  .icon-btn { width: 40px; height: 40px; font-size: 15px; }
+  .hand-tile { min-height: 46px; }
+  .hand { gap: 3px; }
+  .mode-badge,
+  .np-arch { display: none; }
+  .auglog,
+  .settings-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+  }
+  .prod-skip { font-size: 12px; padding: 8px 14px; }
+}
+
+/* 9-4. 화면 밖으로 나간 것에 닿을 수 있어야 한다 (WCAG 1.4.10).
+   `.game-root { overflow: hidden }` + body transform 조합이면 넘친 것은 **영영 못 본다**.
+   판 자체는 스크롤하면 안 되지만(패가 흘러다니면 못 둔다), 화면을 채우는 패널·오버레이는
+   반드시 스크롤이 열려 있어야 한다. */
+.screen-overlay,
+.auglog,
+.settings-panel,
+.result-panel,
+.codex {
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 9-5. 기기를 돌려 달라 — 폰 세로에서는 4방향 판이 물리적으로 안 들어간다.
+   LayoutHint 는 '브라우저 확대' 안내라서 coarse pointer 에서는 뜨지 않는다(맞는 판단이다).
+   여기서는 CSS 만으로 세운다 — 상태도 스크립트도 필요 없다. */
+.rotate-hint { display: none; }
+
+@media (max-width: 560px) and (orientation: portrait) and (pointer: coarse) {
+  .rotate-hint {
+    position: fixed;
+    inset: auto 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px;
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--r-lg);
+    border: 1px solid var(--brass-line);
+    background: rgba(9, 16, 13, 0.94);
+    color: var(--ink-1);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+}
+
+
+/* ─────────────── 10. 도감 카드 — 등급 대신 계열 ───────────────
+   `.codex-card-prism` 이 모든 카드에 무조건 붙어 있어 --rarity 가 상수였다
+   (폐기된 등급 체계의 잔재, docs/18 §4.1). 색이 아무 구분도 못 하던 자리에
+   실제로 존재하는 구분 — 계열 — 을 넣는다. 팔레트는 컷인·드래프트 칩과 같은 것이다. */
+.codex-card-cat { --rarity: var(--fx-color, #a8bcaf); }
+
+/* ─────────────── 11. 계열 아이콘 가독성 ───────────────
+   👁/🀄/⚡/🛡/✦ 는 pill 크기에서 서로 구분이 안 되고, OS마다 그림도 다르다
+   (코드에도 "임시 아이콘 — 추후 이미지로 교체"라고 적혀 있다). 그림은 그대로 두되,
+   **색 원반 위에 올려** 아이콘이 아니라 원반의 색·자리로 먼저 읽히게 한다.
+   글리프가 무엇으로 그려지든 원반은 항상 같은 크기·같은 자리다. */
+.aug-cat[class*="aug-cat-"] {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 50%;
+  /* 이모지는 OS 컬러 폰트라 color가 안 먹는 경우가 많다 — 원반이 그 몫을 대신한다 */
+  background: color-mix(in srgb, var(--fx-color) 26%, rgba(0, 0, 0, 0.5));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fx-color) 70%, transparent);
+  font-size: 0.78em;
+  text-shadow: none;
+  vertical-align: -0.18em;
 }

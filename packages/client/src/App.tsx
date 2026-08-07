@@ -1,5 +1,8 @@
 import {
   createContext,
+  Fragment,
+  memo,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -60,7 +63,17 @@ import type { GlossaryEntry } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
-import { isLayoutCramped, layoutViewport, subscribeUiScale, toLayoutPx } from "./uiScale.js";
+import {
+  getUiScale,
+  getUiScaleSetting,
+  isLayoutCramped,
+  layoutViewport,
+  setUiScaleSetting,
+  subscribeUiScale,
+  toLayoutPx,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
+} from "./uiScale.js";
 
 /**
  * FIXED_SURFACE_NOTE — `position: fixed` 표면은 **반드시 body 포털로 띄운다.**
@@ -1033,6 +1046,77 @@ interface Production {
   impact?: ImpactSpec;
 }
 
+/**
+ * 사건 기록 한 줄 — **일어난 순간 쌓이고 지워지지 않는다**.
+ *
+ * 왜 필요한가: 예전 📜 로그는 `augmentView`(현재 상태)를 매 렌더 훑어 만든 것이라
+ * 기록이 아니라 스냅샷이었다. 채널이 걷히면 줄도 같이 사라져서, 컷인을 놓치면
+ * (다른 탭·눈 깜빡임·컷인이 줄줄이 밀린 경우) 그 국 내내 무슨 일이 있었는지 알 길이 없었다.
+ * 후로·리치·화료에 이르면 스크롤백 자체가 없었다.
+ *
+ * 어디서 채우나: 후로·리치·화료·증강 발동은 **전부 연출 큐를 지난다**(showBanner/showCutIn).
+ * 그래서 enqueueProduction 한 곳에서 append하면 네 가지가 한꺼번에 들어온다 —
+ * 새 알림을 붙일 때 로그를 따로 챙길 필요가 없다는 뜻이기도 하다.
+ */
+interface LogEvent {
+  key: number;
+  /** 일어난 시각 (epoch ms) — 줄 앞에 시:분:초로 찍는다 */
+  at: number;
+  text: string;
+  sub?: string;
+  tone: string;
+  channel: "banner" | "cutin";
+  augId?: string;
+  /** 이 사건이 일어난 국 ("동1국 1본장") — 국이 바뀌는 자리에 구분선을 넣는다 */
+  round: string;
+}
+
+/** 기록 상한 — 한 판(동풍전 4~8국)이면 100줄 안쪽이다. 넘치면 오래된 것부터 버린다. */
+const LOG_MAX = 400;
+/** 기록이 없는 자리(리플레이 뷰어)용 고정 빈 배열 — 매번 새 []를 넘기면 memo가 헛돈다. */
+const EMPTY_LOG: LogEvent[] = [];
+
+/**
+ * 화면 효과를 끈 사람의 연출 체류 시간 비율.
+ * 파티클·섬광만 빼고 ttl은 그대로 두면 "효과 끄기"가 기다림을 전혀 줄여 주지 못한다 —
+ * 정작 끄는 이유의 절반이 그 기다림이다. 밴드·글자는 남기되 스치듯 지나가게 한다.
+ */
+const PROD_TTL_NO_FX = 0.42;
+/** 아무리 줄여도 글자를 읽을 시간은 남긴다 (읽기 전에 사라지면 정보가 통째로 날아간다). */
+const PROD_TTL_FLOOR_MS = 520;
+
+/** 이 연출이 실제로 화면에 머무는 시간 (화면 효과 설정 반영). */
+function effectiveProdTtl(ttl: number, screenFx: boolean): number {
+  if (screenFx) return ttl;
+  return Math.max(PROD_TTL_FLOOR_MS, Math.round(ttl * PROD_TTL_NO_FX));
+}
+
+/** 지금 글자를 치고 있는 칸인가 — 단축키가 타이핑을 가로채지 않게 한다. */
+function isTypingTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (el === null || typeof el.tagName !== "string") return false;
+  const tag = el.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable === true;
+}
+
+/**
+ * 겉모습(함수 객체)은 절대 안 바뀌고 속은 항상 최신인 콜백.
+ *
+ * 왜 필요한가: GameTable에 넘기던 콜백 스무 개가 전부 그 자리에서 만든 화살표 함수라
+ * 매 렌더 새 객체였다. 그러면 GameTable을 React.memo로 감싸도 **아무 효과가 없다** —
+ * props가 매번 달라 보이기 때문이다. 그래서 memo를 걸기 전에 이 손질이 먼저 와야 한다.
+ *
+ * useCallback + 의존성 배열로 하나하나 묶지 않는 이유: 이 콜백들은 App의 지역 함수
+ * (send·showToast·updateSetting…)를 부르는데, 그 함수들이 또 매 렌더 새로 만들어진다.
+ * 의존성에 넣으면 도로 매번 바뀌고, 빼면 스테일 클로저가 된다. ref로 최신을 가리키고
+ * 겉껍데기만 고정하면 둘 다 피한다.
+ */
+function useStableFn<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const ref = useRef(fn);
+  ref.current = fn;
+  return useCallback((...args: A) => ref.current(...args), []);
+}
+
 /** 시드 고정 난수 — 리렌더·StrictMode 이중 렌더에도 파티클 배치가 변하지 않는다 */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -1680,7 +1764,18 @@ function preloadTileImages(): void {
 
 preloadTileImages();
 
-function TileImg({
+/*
+ * ── 리렌더 차단막 (React.memo) ─────────────────────────────────────────
+ * 한 화면에 패가 150~250장 서 있는데, App의 상태가 하나만 바뀌어도(연출 시작·종료,
+ * 토스트 켜짐·꺼짐, 점수 이펙트…) 판 전체가 다시 그려졌다. 아래 넷 — 패 한 장, 바닥,
+ * 상대 손패 한 자리, 이름표 — 이 그 대부분을 차지하므로 여기에만 막을 세워도 크게 줄어든다.
+ *
+ * ⚠ memo가 막지 못하는 것 두 가지를 알고 써야 한다.
+ *  1) 컨텍스트: TileImg는 DoraContext를 읽는다 — 도라 정보가 바뀌면 전부 다시 그려진다(의도된 것).
+ *  2) 매번 새로 만드는 props: `tile={{ kind }}` 처럼 즉석 객체를 넘기면 막이 서지 않는다.
+ *     그런 자리(뱃지·툴팁의 종류만 보여주는 패)는 원래 몇 장 안 되므로 그대로 둔다.
+ */
+const TileImg = memo(function TileImg({
   tile,
   size,
   owner,
@@ -1713,7 +1808,7 @@ function TileImg({
       <img src={src} alt={formatTile(tile)} draggable={false} />
     </span>
   );
-}
+});
 
 /**
  * 창이 너무 작아 자동 축소(uiScale.ts)로도 배치가 안 풀릴 때 왼쪽 위에 뜨는 안내.
@@ -1733,7 +1828,7 @@ function LayoutHint(): JSX.Element | null {
         <b>
           {mod} + −
         </b>{" "}
-        로 화면을 줄이거나 창을 키워 보세요.
+        로 화면을 줄이거나, <b>설정 → 화면 크기</b>에서 배율을 직접 정해 보세요.
       </span>
       <button
         type="button"
@@ -1923,6 +2018,10 @@ export function App(): JSX.Element {
   const riichiBgmArmed = useRef(false);
   const [activeProd, setActiveProd] = useState<Production | null>(null);
   const [prodTick, setProdTick] = useState(0); // enqueue/변화 시 펌프 재실행 신호
+  /** 📜 사건 기록 (append-only) — 후로·리치·화료·증강 발동이 일어난 순서대로 쌓인다 */
+  const [logEvents, setLogEvents] = useState<LogEvent[]>([]);
+  /** 지금 국의 사람 읽는 라벨 — 기록 줄에 붙는다 (뷰 전이 감지에서 갱신) */
+  const roundLabelRef = useRef("");
   // 큐가 모두 빈 뒤에 열어야 하는 국 결과 (이전 국 연출이 끝난 뒤 결과창)
   const pendingResult = useRef<RoundOverMessage | null>(null);
   const [roundResult, setRoundResult] = useState<RoundOverMessage | null>(null);
@@ -1958,7 +2057,25 @@ export function App(): JSX.Element {
   // (유저 확정, 2026-07-22 53차). 지연을 줄이겠다고 enqueue 시점으로 앞당기면 소리가
   // 그림보다 먼저 나와 연출이 어긋난다. 재생은 activeProd 이펙트 한 곳에서만.
   function enqueueProduction(p: Omit<Production, "key">): void {
-    productionQueue.current.push({ ...p, key: ++prodSeq.current });
+    const key = ++prodSeq.current;
+    productionQueue.current.push({ ...p, key });
+    // 📜 기록에도 같은 순간 남긴다 — 연출을 놓쳐도(건너뛰기·백그라운드 탭) 정보는 남는다.
+    // 재생 시점이 아니라 **발생 시점**에 넣는 것이 중요하다: 큐가 밀리면 연출은 몇 초 뒤에
+    // 뜨지만 사건은 이미 일어났고, 로그의 시각은 사건의 시각이어야 한다.
+    setLogEvents((prev) => {
+      const ev: LogEvent = {
+        key,
+        at: Date.now(),
+        text: p.text,
+        tone: p.tone,
+        channel: p.channel,
+        round: roundLabelRef.current,
+        ...(p.sub !== undefined ? { sub: p.sub } : {}),
+        ...(p.augId !== undefined ? { augId: p.augId } : {}),
+      };
+      const next = [...prev, ev];
+      return next.length > LOG_MAX ? next.slice(next.length - LOG_MAX) : next;
+    });
     setProdTick((t) => t + 1); // 펌프 재실행
   }
 
@@ -2044,6 +2161,19 @@ export function App(): JSX.Element {
     }, SHAKE_MS[level] ?? 300);
   }
 
+  /**
+   * 지금 연출을 즉시 내린다 (건너뛰기). 큐에 남은 것은 그대로 이어서 재생된다 —
+   * 한 번 더 누르면 그것도 넘어간다. 큐째 버리지 않는 이유: 뒤에 오는 연출이
+   * "무엇이 왜 일어났는가"의 유일한 통지인 경우가 있어서다. 놓쳐도 📜 로그에 남는다.
+   */
+  function skipProduction(): void {
+    setActiveProd(null);
+  }
+
+  // 화면 효과를 끈 사람에게 파티클만 빼고 **기다림은 그대로** 물리는 건 말이 안 된다
+  // ("효과 끄기"를 누른 이유가 대개 기다림이다). 밴드·글자는 남기되 체류를 절반 아래로 줄인다.
+  const prodTtl = effectiveProdTtl(activeProd?.ttl ?? 0, settings.screenFx);
+
   // 현재 연출을 ttl 동안 띄우고, 뜨는 순간 효과음을(연출당 정확히 1회) 재생한 뒤 내린다.
   // 흔들림은 글자 슬램이 꽂히는 시점(임팩트)에 맞춰 지연 발동한다.
   useEffect(() => {
@@ -2058,8 +2188,27 @@ export function App(): JSX.Element {
       const delay = imp.delayMs ?? (activeProd.channel === "banner" ? BANNER_IMPACT_MS : CUTIN_IMPACT_MS);
       timers.push(window.setTimeout(() => shakeTable(imp.shake), delay));
     }
-    timers.push(window.setTimeout(() => setActiveProd(null), activeProd.ttl));
+    timers.push(
+      window.setTimeout(
+        () => setActiveProd(null),
+        effectiveProdTtl(activeProd.ttl, settingsRef.current.screenFx),
+      ),
+    );
     return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [activeProd]);
+
+  // 건너뛰기 단축키 — Esc(관례)와 Space(가장 가까운 손). 연출 중에만 먹는다.
+  // 입력 칸에 글자를 치는 중이면 가로채지 않는다.
+  useEffect(() => {
+    if (activeProd === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" && e.key !== " " && e.key !== "Spacebar") return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      skipProduction();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [activeProd]);
 
   // 효과음 설정 → 마스터 게인 동기화 (호출부 무수정 뮤트)
@@ -2094,6 +2243,9 @@ export function App(): JSX.Element {
     productionQueue.current = [];
     pendingResult.current = null;
     setActiveProd(null);
+    // 기록도 여기서만 비운다 — 판이 끝나 방을 나가거나 관전을 접는 자리다.
+    // 국이 바뀔 때는 비우지 않는다: 지난 국을 되짚는 것이 이 로그의 존재 이유다.
+    setLogEvents([]);
     riichiBgm.stop(); // 리셋 시 리치 BGM도 확실히 정지
     riichiBgmArmed.current = false;
   }
@@ -2808,6 +2960,11 @@ export function App(): JSX.Element {
   function detectTransitions(prev: PlayerView | null, next: PlayerView): void {
     const rk = roundKeyOf(next);
     const shown = bannerShown.current;
+    // 기록 줄에 붙일 국 이름. enqueueProduction보다 **먼저** 갱신돼야 새 국 배너부터
+    // 새 국으로 찍힌다 (아래 새 국 분기가 showBanner를 부른다).
+    roundLabelRef.current =
+      `${WIND_CHAR[next.round.prevalentWind - 1] ?? "?"}${next.round.roundNumber}국` +
+      (next.round.honba > 0 ? ` ${next.round.honba}본장` : "");
 
     // 첫 뷰(또는 리셋 후): 현재 국을 "이미 알림함"으로 시드만 하고 배너는 개막 연출에 맡긴다.
     // 리치·후로도 현재 상태를 시드해 재접속 중간 합류 시 헛알림을 막는다.
@@ -3238,11 +3395,44 @@ export function App(): JSX.Element {
     send({ type: "setGameMode", mode });
     sfx.pick();
   }
+  function setBotDifficulty(difficulty: string): void {
+    send({ type: "setBotDifficulty", difficulty });
+    sfx.pick();
+  }
   /** 자리 섞기 (방장) — 서버가 동남서북을 다시 뽑아 대기실에 그대로 반영한다 */
   function shuffleSeats(): void {
     send({ type: "shuffleSeats" });
     sfx.pick();
   }
+
+  /*
+   * GameTable에 넘기는 콜백 — 여기서 한 번만 만든다 (useStableFn).
+   * 예전에는 JSX 안에서 매 렌더 새 화살표 함수를 스무 개 만들었고, 그래서 App의 상태가
+   * 하나만 바뀌어도(연출 시작/끝 두 번, 토스트 켜짐/꺼짐, 점수 이펙트, prodTick…)
+   * 판 전체가 다시 그려졌다. 이제 GameTable은 memo 뒤에 있고, 판이 실제로 바뀔 때만 돈다.
+   */
+  const cbSandboxGrant = useStableFn((augmentId: string, target: string) =>
+    send({ type: "sandboxGrant", augmentId, target }),
+  );
+  const cbSandboxReset = useStableFn(
+    (augments: Record<string, string[]>, hands?: Record<string, string[]>) =>
+      send({ type: "sandboxReset", augments, ...(hands !== undefined ? { hands } : {}) }),
+  );
+  const cbSandboxViewAs = useStableFn((seat: string) => send({ type: "sandboxViewAs", seat }));
+  const cbSandboxBotRules = useStableFn((rules: SandboxBotRules) =>
+    send({ type: "sandboxBotRules", rules }),
+  );
+  const cbSandboxControl = useStableFn((enabled: boolean) =>
+    send({ type: "sandboxControl", enabled }),
+  );
+  const cbHandOrder = useStableFn((tileIds: number[]) => send({ type: "handOrder", tileIds }));
+  const cbSetting = useStableFn(updateSetting);
+  const cbSubmit = useStableFn(submitOption);
+  const cbLeave = useStableFn(returnHome);
+  const cbVoteAbort = useStableFn(voteAbort);
+  const cbOpenCodex = useStableFn(() => setCodexOpen(true));
+  const cbOpenHelp = useStableFn(() => setHelpOpen(true));
+  const cbGameToast = useStableFn((t: string) => showToast(t, "info"));
 
   // ── 화면 라우팅 ──
   const isSpectator = spectating !== null;
@@ -3255,6 +3445,13 @@ export function App(): JSX.Element {
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
     <div className="game-root" ref={gameRootRef}>
       <LayoutHint />
+      {/* 기기를 돌려 달라는 안내. LayoutHint 는 '브라우저 확대'를 말하는 것이라
+          터치 기기에서는 뜨지 않는다(맞는 판단이다) — 폰 세로에는 그래서 아무 안내도
+          없었다. 여기는 조건이 전부 CSS 미디어쿼리로 표현되므로 상태도 스크립트도 없다. */}
+      <div className="rotate-hint" role="status">
+        <span aria-hidden="true">⟳</span>
+        <span>가로로 돌리면 네 자리가 다 보입니다.</span>
+      </div>
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
@@ -3301,30 +3498,25 @@ export function App(): JSX.Element {
           settings={settings}
           spectator={isSpectator}
           spectateCode={spectating}
+          logEvents={logEvents}
           abortVote={abortVote}
-          onVoteAbort={voteAbort}
+          onVoteAbort={cbVoteAbort}
           sandbox={sandbox}
           controlling={controlling}
           selfPending={sandbox !== null && prompts[sandbox.seat] !== undefined}
-          onSandboxGrant={(augmentId, target) =>
-            send({ type: "sandboxGrant", augmentId, target })
-          }
-          onSandboxReset={(augments, hands) =>
-            send({ type: "sandboxReset", augments, ...(hands !== undefined ? { hands } : {}) })
-          }
-          onSandboxViewAs={(seat) => send({ type: "sandboxViewAs", seat })}
-          onSandboxBotRules={(rules) => send({ type: "sandboxBotRules", rules })}
-          onSandboxControl={(enabled) => send({ type: "sandboxControl", enabled })}
-          {...(isSpectator
-            ? {}
-            : { onHandOrder: (tileIds: number[]) => send({ type: "handOrder", tileIds }) })}
-          onSetting={updateSetting}
+          onSandboxGrant={cbSandboxGrant}
+          onSandboxReset={cbSandboxReset}
+          onSandboxViewAs={cbSandboxViewAs}
+          onSandboxBotRules={cbSandboxBotRules}
+          onSandboxControl={cbSandboxControl}
+          {...(isSpectator ? {} : { onHandOrder: cbHandOrder })}
+          onSetting={cbSetting}
           onRiichiMode={setRiichiMode}
-          onSubmit={submitOption}
-          onLeave={returnHome}
-          onOpenCodex={() => setCodexOpen(true)}
-          onOpenHelp={() => setHelpOpen(true)}
-          onToast={(t) => showToast(t, "info")}
+          onSubmit={cbSubmit}
+          onLeave={cbLeave}
+          onOpenCodex={cbOpenCodex}
+          onOpenHelp={cbOpenHelp}
+          onToast={cbGameToast}
         />
       ) : inWaiting ? (
         <WaitingRoom
@@ -3339,6 +3531,7 @@ export function App(): JSX.Element {
           onKick={kickPlayer}
           onStart={startGame}
           onSetGameMode={setGameMode}
+          onSetBotDifficulty={setBotDifficulty}
           onShuffleSeats={shuffleSeats}
           onLeave={returnHome}
           onToast={(t) => showToast(t, "info")}
@@ -3443,7 +3636,7 @@ export function App(): JSX.Element {
         <div
           key={activeProd.key}
           className="riichi-stage"
-          style={{ "--prod-ttl": `${activeProd.ttl}ms` } as CSSProperties}
+          style={{ "--prod-ttl": `${prodTtl}ms` } as CSSProperties}
         >
           <div className="riichi-vignette" />
           <div className="riichi-band">
@@ -3483,7 +3676,7 @@ export function App(): JSX.Element {
           {...(activeProd.augId !== undefined
             ? { "data-aug-cat": augmentCategory(activeProd.augId) }
             : {})}
-          style={{ "--prod-ttl": `${activeProd.ttl}ms` } as CSSProperties}
+          style={{ "--prod-ttl": `${prodTtl}ms` } as CSSProperties}
         >
           {settings.screenFx && AUGMENT_CUTIN_TONES.has(activeProd.tone) ? (
             <>
@@ -3531,6 +3724,30 @@ export function App(): JSX.Element {
           ) : null}
         </div>
       ) : null}
+      {/* 연출 건너뛰기 — 연출 자체는 pointer-events:none 이라 클릭을 안 받는다(판을 가리면 안 되므로).
+          손잡이를 이 버튼 하나로 따로 세운다. 뒤에 쌓인 개수도 같이 보여 준다 —
+          증강이 몰린 국에서는 컷인이 줄줄이 서서, 몇 번을 더 눌러야 하는지가 정보다. */}
+      {activeProd !== null ? (
+        <button
+          type="button"
+          className="prod-skip"
+          onClick={skipProduction}
+          title="연출 건너뛰기 (Esc · Space)"
+        >
+          건너뛰기
+          {productionQueue.current.length > 0 ? (
+            <span className="prod-skip-more">+{productionQueue.current.length}</span>
+          ) : null}
+          <span className="prod-skip-key" aria-hidden="true">Esc</span>
+        </button>
+      ) : null}
+      {/* 연출 텍스트를 보조기술에 읽어 주는 유일한 통로. 리치·후로·화료·증강 발동이
+          전부 이 큐를 지나므로, 여기 한 곳만 live로 열어 두면 게임 사건 전체가 들린다. */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {activeProd !== null
+          ? `${activeProd.text}${activeProd.sub !== undefined ? ` — ${activeProd.sub}` : ""}`
+          : ""}
+      </div>
       {roundResult !== null && view !== null ? (
         <RoundResultPanel
           result={roundResult}
@@ -3587,7 +3804,31 @@ function PeekButton(): JSX.Element | null {
   // null = 붙을 창이 없다(=버튼을 그리지 않는다)
   const [spot, setSpot] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  /*
+   * 붙을 창이 떠 있는가.
+   *
+   * 예전에는 아래 측정 인터벌이 **세션 내내, 로비에서까지** 10Hz로 돌았다. 창이 없을 때도
+   * querySelectorAll이 돌고, 창이 하나라도 뜨면 getBoundingClientRect가 초당 열 번
+   * 동기 레이아웃을 강제한다 — 패 200여 장이 같이 서 있는 화면에서 공짜가 아니다.
+   * 창이 뜨고 지는 것은 DOM 변화이므로 MutationObserver로 잡고, 인터벌은 **창이 떠 있는
+   * 동안만** 돈다(그때는 패널이 커지는 것을 따라가야 해서 감시가 아니라 추적이 필요하다).
+   */
+  const [hasPanel, setHasPanel] = useState(false);
   useEffect(() => {
+    const check = (): void => {
+      setHasPanel(document.querySelector(PEEK_OVERLAY_SEL) !== null);
+    };
+    check();
+    // 오버레이는 전부 body 직속 포털이다(FIXED_SURFACE_NOTE) — subtree까지 볼 필요가 없다.
+    const mo = new MutationObserver(check);
+    mo.observe(document.body, { childList: true });
+    return () => mo.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!hasPanel) {
+      setSpot((cur) => (cur === null ? cur : null));
+      return;
+    }
     const measure = (): void => {
       const panels = document.querySelectorAll(PEEK_PANEL_SEL);
       // 창이 겹쳐 뜨면 맨 나중 것이 위에 있다 (모달들은 body 끝으로 포탈된다)
@@ -3609,8 +3850,8 @@ function PeekButton(): JSX.Element | null {
       );
     };
     measure();
-    // 창이 뜨고 지는 것·패널이 커지는 것을 모두 잡아야 해서 주기적으로 잰다.
-    // 10Hz면 눈에 띄지 않고(위치는 CSS transition으로 이어 붙인다) 비용도 무시할 만하다.
+    // 패널이 내용에 따라 커지는 것을 따라가야 해서 주기적으로 잰다. 창이 떠 있는 동안만이다.
+    // 10Hz면 눈에 띄지 않고(위치는 CSS transition으로 이어 붙인다) 이 짧은 구간에서는 값싸다.
     const timer = window.setInterval(measure, 100);
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
@@ -3619,7 +3860,7 @@ function PeekButton(): JSX.Element | null {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
     };
-  }, []);
+  }, [hasPanel]);
   useEffect(() => {
     document.body.classList.toggle("peeking", peeking);
     return () => document.body.classList.remove("peeking");
@@ -4731,7 +4972,10 @@ function CodexScreen(props: {
             {cards.map((m) => (
               <button
                 key={m.cat.id}
-                className={`codex-card codex-card-prism${m.collected ? "" : " codex-card-locked"}`}
+                // 계열 색을 입힌다. 예전엔 모든 카드에 codex-card-prism 이 무조건 붙어
+                // --rarity 가 사실상 상수였다 — 폐기된 등급 체계(docs/18 §4.1)의 잔재라
+                // 색이 아무것도 말하지 않았다. 지금은 그 자리에 실제로 있는 정보(계열)를 넣는다.
+                className={`codex-card codex-card-cat aug-cat-${augmentCategory(m.cat.id)}${m.collected ? "" : " codex-card-locked"}`}
                 onClick={() => setSelected(m.cat.id)}
               >
                 <div className="codex-card-top">
@@ -5788,6 +6032,7 @@ function WaitingRoom(props: {
   onKick: (playerId: string) => void;
   onStart: () => void;
   onSetGameMode: (mode: GameMode) => void;
+  onSetBotDifficulty: (difficulty: string) => void;
   onShuffleSeats: () => void;
   onLeave: () => void;
   onToast?: (text: string) => void;
@@ -5879,6 +6124,33 @@ function WaitingRoom(props: {
                 disabled={!isHost}
                 onClick={() => isHost && !active && props.onSetGameMode(mode)}
                 title={isHost ? `${label}으로 변경` : "방장만 변경할 수 있습니다"}
+              >
+                <span className="mode-name">{label}</span>
+                <span className="mode-sub">{sub}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 봇 난이도 — 성향(원형)이 "어떻게 두는가"라면 이쪽은 "얼마나 잘 두는가"다.
+            기본 어려움이 종전 봇 그대로이고, 그 위로는 열지 않는다. */}
+        <div className="mode-select" role="radiogroup" aria-label="봇 난이도">
+          {([
+            ["easy", "쉬움", "실수를 자주 한다"],
+            ["normal", "보통", "가끔 흘린다"],
+            ["hard", "어려움", "봇의 최선"],
+          ] as const).map(([level, label, sub]) => {
+            const active = (lobby.botDifficulty ?? "hard") === level;
+            return (
+              <button
+                key={level}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                className={`mode-btn ${active ? "mode-active" : ""}`}
+                disabled={!isHost}
+                onClick={() => isHost && !active && props.onSetBotDifficulty(level)}
+                title={isHost ? `${label}으로 변경 (다음 판부터)` : "방장만 변경할 수 있습니다"}
               >
                 <span className="mode-name">{label}</span>
                 <span className="mode-sub">{sub}</span>
@@ -6050,7 +6322,13 @@ function ModeBadge(props: { mode: GameMode }): JSX.Element {
   );
 }
 
-function GameTable(props: {
+/*
+ * 게임판 — App 상태가 하나 바뀔 때마다 통째로 다시 그려지던 곳이라 memo를 씌운다.
+ * 성립 조건은 위(useStableFn)에서 만들어 뒀다: 콜백 props가 매 렌더 새 객체가 아니어야 한다.
+ * view·prompt·settings처럼 **진짜로 바뀌어야 다시 그릴 것들**만 남으므로,
+ * 연출 시작/종료·토스트·점수 이펙트는 이제 판을 건드리지 않는다.
+ */
+const GameTable = memo(function GameTable(props: {
   view: PlayerView;
   prompt: PromptMessage["prompt"] | null;
   promptSeq: number;
@@ -6092,6 +6370,8 @@ function GameTable(props: {
   onToast?: (text: string) => void;
   /** 내 손패 배치가 바뀌었을 때 서버에 알린다 (관전 모드에서는 없음) */
   onHandOrder?: (tileIds: number[]) => void;
+  /** 📜 사건 기록 (append-only). 리플레이 뷰어처럼 기록이 없는 자리에서는 생략된다. */
+  logEvents?: LogEvent[];
 }): JSX.Element {
   const { view, prompt, catalog } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -6253,6 +6533,7 @@ function GameTable(props: {
       <AugmentLog
         view={view}
         catalog={catalog}
+        events={props.logEvents ?? EMPTY_LOG}
         open={logOpen}
         onToggle={() => {
           setLogOpen((v) => !v);
@@ -6304,7 +6585,7 @@ function GameTable(props: {
     </HighlightContext.Provider>
     </SelectionContext.Provider>
   );
-}
+});
 
 /**
  * 액티브 증강 클릭 발동(무장) 상태를 만들어 SelectionContext에 넣을 값을 반환한다.
@@ -6456,7 +6737,7 @@ function QuickToggles(props: {
 }): JSX.Element {
   const items: { key: "autoSort" | "autoWin" | "autoNoMeld" | "autoDiscard"; label: string; desc: string }[] = [
     { key: "autoSort", label: "자동정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
-    { key: "autoWin", label: "자동화료", desc: "텐파이에서 화료 가능하면 자동으로 론·쯔모합니다" },
+    { key: "autoWin", label: "자동화료", desc: AUTO_WIN_DESC },
     { key: "autoNoMeld", label: "후로없음", desc: "치·펑·깡 기회를 자동으로 넘깁니다" },
     { key: "autoDiscard", label: "자동버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
   ];
@@ -6468,7 +6749,11 @@ function QuickToggles(props: {
           <button
             key={it.key}
             className={`qt-item${active ? " qt-on" : ""}`}
-            onClick={() => props.onSetting(it.key, !active)}
+            aria-pressed={active}
+            onClick={() => {
+              if (it.key === "autoWin" && !active && !confirmAutoWin()) return;
+              props.onSetting(it.key, !active);
+            }}
             title={`${it.label} — ${it.desc} (지금 ${active ? "켜짐" : "꺼짐"})`}
           >
             <span className="qt-dot" />
@@ -6477,6 +6762,29 @@ function QuickToggles(props: {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * 자동 화료 설명 — 되돌릴 수 없다는 사실을 먼저 말한다.
+ *
+ * 이 스위치는 판 위에서 한 번 눌리면 되묻지 않고 론·쯔모를 쏜다. 야쿠도 점수도 보지 않고,
+ * 하이테이·린샨을 노리고 흘려 보내던 손도 그냥 친다. 자동버림은 이미 같은 이유로
+ * "화료 가능하면 멈춘다"는 가드가 붙었는데(2026-08-02) 자동화료에는 아무것도 없었다.
+ * 엔진은 그대로 두고 — 켜는 자리에 한 번 되묻는다.
+ */
+const AUTO_WIN_DESC =
+  "화료 가능해지는 즉시 되묻지 않고 론·쯔모합니다 (점수·야쿠를 보지 않습니다)";
+
+/** 자동 화료를 켜기 전 한 번 되묻는다. 이미 켜진 것을 끌 때는 묻지 않는다. */
+function confirmAutoWin(): boolean {
+  return window.confirm(
+    "자동 화료를 켤까요?\n\n" +
+      "화료가 가능해지는 순간 확인 없이 바로 론·쯔모합니다.\n" +
+      "점수도 야쿠도 보지 않기 때문에,\n" +
+      "• 더 키우려고 들고 있던 싼 손을 그대로 치고\n" +
+      "• 하이테이·린샨을 노리던 순도 그냥 넘어갑니다.\n\n" +
+      "되돌릴 수 없습니다.",
   );
 }
 
@@ -6585,6 +6893,56 @@ function useDraggablePanel(): {
   };
 }
 
+/**
+ * 화면 크기(UI 배율) 설정 — 설정 패널 안의 한 줄.
+ *
+ * 왜 Settings가 아니라 uiScale.ts가 값을 들고 있나: 배율은 **첫 페인트 전에** 걸려야
+ * 한다(startUiScale은 React보다 먼저 돈다). 리액트 상태에 두면 한 프레임 늦게 적용돼
+ * 화면이 한 번 튄다. 그래서 저장·적용은 uiScale.ts가 하고, 여기서는 읽고 쓰기만 한다.
+ *
+ * "자동"은 예전부터 있던 창 크기 맞춤이고, 숫자는 사용자가 못 박는 값이다.
+ * 자동만 있던 시절에는 Ctrl + 로 키워도 자동 축소가 도로 줄여 버려 확대가 통하지 않았다.
+ */
+function UiScaleRow(): JSX.Element {
+  const [val, setVal] = useState<number | "auto">(getUiScaleSetting);
+  const pct = val === "auto" ? Math.round(getUiScale() * 100) : Math.round(val * 100);
+  const set = (v: number | "auto"): void => {
+    setUiScaleSetting(v);
+    setVal(getUiScaleSetting());
+  };
+  return (
+    <div className="settings-row settings-row-slider">
+      <div className="settings-text">
+        <span className="settings-label">화면 크기</span>
+        <span className="settings-desc">
+          UI 전체의 배율입니다. <b>자동</b>은 창 크기에 맞춰 줄입니다 — 직접 고르면
+          창 크기와 상관없이 그 배율로 고정됩니다. 브라우저 확대(Ctrl +)도 그대로 듣습니다.
+        </span>
+      </div>
+      <div className="settings-slider">
+        <button
+          type="button"
+          className={`uiscale-auto${val === "auto" ? " uiscale-auto-on" : ""}`}
+          aria-pressed={val === "auto"}
+          onClick={() => set(val === "auto" ? getUiScale() : "auto")}
+        >
+          자동
+        </button>
+        <input
+          type="range"
+          min={Math.round(UI_SCALE_MIN * 100)}
+          max={Math.round(UI_SCALE_MAX * 100)}
+          step={5}
+          value={pct}
+          onChange={(e) => set(Number(e.target.value) / 100)}
+          aria-label="화면 크기 배율(%)"
+        />
+        <span className="settings-slider-val">{pct}%</span>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPanel(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -6599,7 +6957,7 @@ function SettingsPanel(props: {
   }[keyof Settings];
   const rows: { key: BoolSettingKey; label: string; desc: string }[] = [
     { key: "autoSort", label: "자동 정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
-    { key: "autoWin", label: "자동 화료", desc: "텐파이에서 화료 가능하면 자동으로 론·쯔모합니다" },
+    { key: "autoWin", label: "자동 화료", desc: AUTO_WIN_DESC },
     { key: "autoNoMeld", label: "후로 없음", desc: "치·펑·깡 기회를 자동으로 넘깁니다" },
     { key: "autoDiscard", label: "자동 버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
     { key: "showMyWaits", label: "내 오름패 표시", desc: "텐파이면 손패 위에 화료패를 항상 표시합니다" },
@@ -6648,7 +7006,11 @@ function SettingsPanel(props: {
               className={`toggle${props.settings[r.key] ? " toggle-on" : ""}`}
               role="switch"
               aria-checked={props.settings[r.key]}
-              onClick={() => props.onSetting(r.key, !props.settings[r.key])}
+              onClick={() => {
+                // 자동 화료만 켜기 전에 되묻는다 — 한 번 켜지면 확인 없이 손이 나간다
+                if (r.key === "autoWin" && !props.settings.autoWin && !confirmAutoWin()) return;
+                props.onSetting(r.key, !props.settings[r.key]);
+              }}
             >
               <span className="toggle-knob" />
             </button>
@@ -6695,6 +7057,7 @@ function SettingsPanel(props: {
             </span>
           </div>
         </label>
+        <UiScaleRow />
         {props.onVoteAbort !== undefined ? (
           <div className="settings-abort">
             <div className="settings-text">
@@ -7201,43 +7564,100 @@ function augmentLogRows(
   return rows;
 }
 
+/** 사건 기록 줄의 시각 — 시:분:초. 국 안에서 순서만 가리면 되므로 날짜는 뺀다. */
+function logTime(at: number): string {
+  const d = new Date(at);
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 /**
- * 증강 정보 로그 — 우상단 📜 버튼 뒤에 접혀 있다(기본 닫힘).
+ * 기록 한 줄. 톤을 그대로 클래스로 실어 색을 나눈다 (화료=금, 리치=붉음, 후로=초록…).
+ * 컷인이 지나간 자리라 문구는 이미 사람이 읽는 말이다 — 다시 손볼 것이 없다.
+ */
+function LogEventRow({ ev }: { ev: LogEvent }): JSX.Element {
+  return (
+    <div className={`auglog-ev auglog-ev-${ev.channel} auglog-tone-${ev.tone}`}>
+      <span className="auglog-time">{logTime(ev.at)}</span>
+      <span className="auglog-ev-text">{ev.text}</span>
+      {ev.sub !== undefined ? <span className="auglog-ev-sub">{ev.sub}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * 📜 기록 — 우상단 버튼 뒤에 접혀 있다(기본 닫힘).
  * 열림 상태는 GameTable이 들고 있다(설정 패널과 같은 자리라 둘 중 하나만 열린다).
+ *
+ * 두 칸으로 나뉜다.
+ * - **기록**: 일어난 순서대로 쌓인 사건(후로·리치·화료·증강 발동). 지워지지 않는다.
+ * - **지금 상태**: `augmentView`가 지금 이 순간 들고 있는 잔여 정보(augmentLogRows).
+ *   상태는 바뀌면 사라지는 게 맞다 — 그래서 기록과 섞지 않고 아래에 따로 둔다.
  */
 function AugmentLog({
   view,
   catalog,
+  events,
   open,
   onToggle,
 }: {
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
+  events: LogEvent[];
   open: boolean;
   onToggle: () => void;
 }): JSX.Element | null {
-  const rows = augmentLogRows(view, catalog);
-  if (rows.length === 0) return null;
+  const rows = useMemo(() => augmentLogRows(view, catalog), [view, catalog]);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // 열 때·새 사건이 들어올 때 맨 아래(가장 최근)로. 스크롤백은 위로 올리면 그대로 있다.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el !== null) el.scrollTop = el.scrollHeight;
+  }, [open, events.length]);
+  if (rows.length === 0 && events.length === 0) return null;
   return (
     <>
       <button
         type="button"
         className={`icon-btn auglog-btn${open ? " auglog-btn-on" : ""}`}
         onClick={onToggle}
-        title="증강 정보 로그"
+        title="기록 — 후로·리치·화료·증강 발동"
+        aria-label="기록 열기"
       >
         📜
-        <span className="auglog-count">{rows.length}</span>
+        <span className="auglog-count">{events.length + rows.length}</span>
       </button>
       {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
       {open
         ? createPortal(
-            <div className="auglog">
+            <div className="auglog" role="dialog" aria-label="기록">
               <div className="auglog-head">
-                증강 정보
+                기록
                 <button type="button" className="auglog-close" onClick={onToggle} title="닫기">✕</button>
               </div>
-              <div className="auglog-body">{rows}</div>
+              <div className="auglog-body" ref={bodyRef}>
+                {events.length > 0 ? (
+                  <>
+                    {events.map((ev, i) => (
+                      <Fragment key={ev.key}>
+                        {/* 국이 바뀌는 자리에만 구분선 — 매 줄에 국 이름을 붙이면 읽는 눈이 지친다 */}
+                        {i === 0 || events[i - 1]?.round !== ev.round ? (
+                          <div className="auglog-round">{ev.round}</div>
+                        ) : null}
+                        <LogEventRow ev={ev} />
+                      </Fragment>
+                    ))}
+                  </>
+                ) : (
+                  <div className="auglog-empty">아직 기록된 사건이 없습니다.</div>
+                )}
+                {rows.length > 0 ? (
+                  <>
+                    <div className="auglog-sec">지금 상태</div>
+                    {rows}
+                  </>
+                ) : null}
+              </div>
             </div>,
             document.body,
           )
@@ -7836,7 +8256,7 @@ function CenterPanel({
 
 // ─────────────────────────── 바닥 (버림패) ───────────────────────────
 
-function River({
+const River = memo(function River({
   view,
   playerId,
   side,
@@ -7967,7 +8387,7 @@ function River({
       </div>
     </div>
   );
-}
+});
 
 // ─────────────────────────── 상대 영역 ───────────────────────────
 
@@ -7993,7 +8413,7 @@ function slotKey(s: OppSlot, i: number): string {
  *
  * `gap`은 쯔모패 자리 — 실제 탁자처럼 손패에서 한 칸 띄워 그린다.
  */
-function OppHandSlot({
+const OppHandSlot = memo(function OppHandSlot({
   slot,
   side,
   gap,
@@ -8036,7 +8456,7 @@ function OppHandSlot({
       </span>
     </span>
   );
-}
+});
 
 /**
  * 봉인술사·손패 강탈로 알아낸 **그 상대의 손패** — 그 사람의 손패 옆에 띄운다.
@@ -8601,7 +9021,7 @@ function augmentPillStatus(
   return null;
 }
 
-function NamePlate({
+const NamePlate = memo(function NamePlate({
   view,
   player,
   catalog,
@@ -8632,6 +9052,8 @@ function NamePlate({
   // 증강 툴팁의 "자세히" — Shift를 누르고 있거나(데스크톱), 툴팁 안의 칩을 눌렀거나(터치)
   const shiftHeld = useShiftHeld();
   const [detailFor, setDetailFor] = useState<string | null>(null);
+  /** 지금 툴팁을 펼쳐 놓은 증강 id — 이것 하나만 속을 그린다 (나머지는 pill만) */
+  const [tipFor, setTipFor] = useState<string | null>(null);
   // 상대 이름표의 표식에 손이 올라가 있고 그 관계가 나를 향하면 나도 같이 빛난다
   const linked =
     hovered !== null && myRelations.some((r) => r.key === hovered);
@@ -8684,10 +9106,25 @@ function NamePlate({
             return (
               // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
+              //
+              // 툴팁 속은 **올려놓기 전까지 만들지 않는다**(tipFor). 예전에는 pill마다
+              // 이름·계열·잠금·쿨다운·퀘스트·용어 쪼갠 설명·더보기 토글이 전부 DOM에
+              // 서 있고 CSS로 숨겨져만 있었다 — 이름표 4개 × 증강 4개면 16벌이 상시로
+              // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
                 className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}`}
                 tabIndex={0}
+                onMouseEnter={() => setTipFor(a)}
+                onMouseLeave={() => setTipFor((cur) => (cur === a ? null : cur))}
+                onFocus={() => setTipFor(a)}
+                onBlur={(e) => {
+                  // 툴팁 **안쪽**("자세히" 칩·용어 링크)으로 포커스가 옮겨간 것은 떠난 게 아니다.
+                  // React의 onBlur는 focusout이라 자식으로 옮겨도 올라온다 — 여기서 걸러야
+                  // 툴팁이 손가락 밑에서 사라지지 않는다(CSS의 :focus-within과 같은 뜻).
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                  setTipFor((cur) => (cur === a ? null : cur));
+                }}
               >
                 <AugCatIcon id={a} />
                 {locked ? "🔒 " : ""}
@@ -8706,6 +9143,7 @@ function NamePlate({
                     <span style={{ transform: `scaleX(${status.gauge})` }} />
                   </span>
                 ) : null}
+                {tipFor === a ? (
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
                   <span className="aug-tip-name">
                     <AugCatIcon id={a} />
@@ -8743,6 +9181,7 @@ function NamePlate({
                     onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
                   />
                 </span>
+                ) : null}
               </span>
             );
           })}
@@ -8778,7 +9217,7 @@ function NamePlate({
       {noYaku ? <span className="np-noyaku" title="텐파이지만 역이 없어 화료할 수 없습니다">역없음</span> : null}
     </div>
   );
-}
+});
 
 // ─────────────────────────── 후로 묶음 ───────────────────────────
 
@@ -9885,7 +10324,22 @@ function OwnArea(props: {
                   danger ? " hand-danger" : ""
                 }`}
                 style={tileDragStyle(id, idx)}
-                onPointerDown={(e) => beginDrag(e, id, idx)}
+                onPointerDown={(e) => {
+                  beginDrag(e, id, idx);
+                  // 터치에는 hover가 없다 — 손가락을 얹고 있는 동안을 hover로 친다.
+                  // 그래야 "이 패를 버리면 무엇을 기다리게 되는가"를 **떼기 전에** 볼 수 있다.
+                  // 이 미리보기는 여태 마우스 전용이었다(onMouseEnter/Leave).
+                  if (e.pointerType !== "mouse") setHoverId(id);
+                }}
+                /* 손을 떼면 미리보기를 내린다 — **터치만**이다. 마우스에서도 내리면
+                   클릭한 순간 hover 미리보기가 사라져 데스크톱 동작이 망가진다
+                   (마우스는 아래 onMouseLeave가 제자리에서 맡는다). */
+                onPointerUp={(e) => {
+                  if (e.pointerType !== "mouse") setHoverId((cur) => (cur === id ? null : cur));
+                }}
+                onPointerCancel={(e) => {
+                  if (e.pointerType !== "mouse") setHoverId((cur) => (cur === id ? null : cur));
+                }}
                 onMouseEnter={() => {
                   if (drag === null) {
                     setHoverId(id);
@@ -10239,8 +10693,17 @@ function WaitTip({
  * (이면투시 뒷도라, 복수자·덤터기 대상, 판돈 예치 상태, 영상정찰/도박사 영상패 등.)
  * 좌상단 증강 정보 패널은 작아서 안 보인다는 피드백에 대한 대응.
  */
-function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): JSX.Element | null {
+const ActiveInfoBadges = memo(function ActiveInfoBadges({
+  view,
+  me,
+}: {
+  view: PlayerView;
+  me: PlayerInfo;
+}): JSX.Element | null {
   const av = view.augmentView;
+  // 아래 분기들이 저마다 Object.entries(av)를 다시 돌던 것을 한 번으로 합친다.
+  // 순서는 그대로다 — 뱃지가 늘어서는 차례가 바뀌면 눈이 찾던 자리가 흔들린다.
+  const avEntries = Object.entries(av);
   const roundKeyStr = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
   const badges: JSX.Element[] = [];
 
@@ -10290,7 +10753,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
   if (typeof myNemesis === "string" && myNemesis !== "") {
     textBadge("avenger", "복수 대상", playerNameById(view, myNemesis));
   }
-  for (const [key, value] of Object.entries(av)) {
+  for (const [key, value] of avEntries) {
     if (!key.startsWith("avenger:") || value !== me.id) continue;
     const hunter = key.slice("avenger:".length);
     if (hunter === me.id) continue;
@@ -10310,7 +10773,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
   // 이름표 증강 pill 위에 잔량/게이지로 붙는다(aug-pill-chip·aug-pill-gauge).
   // 여기서도 띄우면 같은 값이 화면 두 곳에 겹친다.
   // 리치 봉인 / 이중 선언 — 내 리치가 잠겼으면 왜 잠겼는지 반드시 보여준다
-  for (const [key, value] of Object.entries(av)) {
+  for (const [key, value] of avEntries) {
     if (key.startsWith("riichi_seal:") && typeof value === "string") {
       const who = key.slice("riichi_seal:".length);
       if (who !== me.id) textBadge(key, "🔒 리치 봉인", `${playerNameById(view, who)}의 선제 리치 — 이번 국 리치 불가`);
@@ -10323,7 +10786,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
     }
   }
   // 미래를 보는 자 — 교환으로 **가져온 3장**(전원 공개). 무엇이 들어왔는지 안 보인다는 피드백 대응.
-  for (const [key, value] of Object.entries(av)) {
+  for (const [key, value] of avEntries) {
     if (!key.startsWith("future_sight:got:")) continue;
     if (!Array.isArray(value)) continue;
     const who = key.slice("future_sight:got:".length);
@@ -10339,7 +10802,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
     );
   }
   // 안개 덮인 바닥 — 선언되면 누가 걸었는지 상시로 보여 준다(내 바닥도 가려지므로)
-  for (const [key, value] of Object.entries(av)) {
+  for (const [key, value] of avEntries) {
     if (!key.startsWith("hidden_river:") || key.startsWith("hidden_river:last:")) continue;
     if (typeof value !== "string") continue;
     const who = key.slice("hidden_river:".length);
@@ -10354,7 +10817,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
   // 본장 사냥꾼의 본장 가치도 그 사람의 증강 pill에 붙는다.
   // 격(格) — 지목당했으면 그 국 내내 "싼 손으로는 못 오른다"를 상시로 보여준다
   // (지목형 공통 연출 규칙: 전면 컷인 + 상시 뱃지 + 관계 표식).
-  for (const [key, raw] of Object.entries(av)) {
+  for (const [key, raw] of avEntries) {
     if (!key.startsWith("rank_gate:")) continue;
     const mark = raw as { round?: string; by?: string; target?: string; minHan?: number } | null;
     if (mark === null || typeof mark !== "object") continue;
@@ -10371,7 +10834,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
   }
   // 무장해제 — 내 증강이 잠겼거나 내가 잠갔으면 그 국 내내 크게 보여준다.
   // (좌상단 패널에만 있으면 "잠긴 것 같지가 않다"는 인상이 남는다 — 2026-08-01 보고)
-  for (const [key, raw] of Object.entries(av)) {
+  for (const [key, raw] of avEntries) {
     if (!key.startsWith("disarm:")) continue;
     const m = raw as { target?: string; augmentId?: string } | null;
     if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
@@ -10394,7 +10857,7 @@ function ActiveInfoBadges({ view, me }: { view: PlayerView; me: PlayerInfo }): J
 
   if (badges.length === 0) return null;
   return <div className="active-info">{badges}</div>;
-}
+});
 
 // ─────────────────────────── 액티브 증강 버튼 ───────────────────────────
 
@@ -10669,6 +11132,18 @@ function ActiveAugmentControl(props: {
     const opt = foresightByKey.get(arr.join(","));
     if (opt !== undefined) sel.submit(opt);
     setForesightDragFrom(null);
+  };
+  /** from 자리의 패를 빼서 to 자리에 끼워 넣는다 (드래그·탭 두 경로가 함께 쓴다) */
+  const moveForesight = (from: number, to: number): void => {
+    setForesightDragFrom(null);
+    if (from === to) return;
+    setForesightArr((cur) => {
+      if (cur === null) return cur;
+      const next = [...cur];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved as number);
+      return next;
+    });
   };
 
   // ── 왕패의 주인 — 내 손패 ↔ 왕패를 **여러 쌍 한 번에** 고른다 ──
@@ -11130,26 +11605,39 @@ function ActiveAugmentControl(props: {
                   className={`foresight-cell${isMine ? " foresight-mine" : ""}${
                     foresightDragFrom === pos ? " foresight-dragging" : ""
                   }`}
-                  title={`${seatLabel} 쯔모${foresightReorderable ? " — 드래그로 순서 변경" : ""}`}
+                  title={`${seatLabel} 쯔모${foresightReorderable ? " — 끌거나, 두 자리를 차례로 눌러 순서 변경" : ""}`}
+                  /*
+                   * 재배열은 여태 HTML5 draggable 하나뿐이었다 — **모바일 브라우저는 터치에서
+                   * dragstart 를 아예 발생시키지 않아** 폰에서는 순서를 바꿀 방법이 없었다.
+                   * (손패 드래그는 pointer 이벤트라 잘 돈다 — 여기만 옛 방식으로 남아 있었다.)
+                   * 드래그는 그대로 두고, 어디서나 되는 길을 하나 더 낸다: 옮길 자리를 누르고
+                   * 놓을 자리를 누른다. 키보드로도 같은 두 번이면 된다.
+                   */
                   draggable={foresightReorderable}
+                  {...(foresightReorderable ? { tabIndex: 0, role: "button" } : {})}
                   onDragStart={() => setForesightDragFrom(pos)}
                   onDragOver={(e) => {
                     if (foresightReorderable) e.preventDefault();
                   }}
                   onDrop={() => {
                     const from = foresightDragFrom;
-                    setForesightDragFrom(null);
-                    if (from === null || from === pos) return;
-                    setForesightArr((cur) => {
-                      if (cur === null) return cur;
-                      const next = [...cur];
-                      // from 자리의 패를 빼서 pos 자리에 끼워 넣는다 (재배열)
-                      const [moved] = next.splice(from, 1);
-                      next.splice(pos, 0, moved as number);
-                      return next;
-                    });
+                    if (from === null) return;
+                    moveForesight(from, pos);
                   }}
                   onDragEnd={() => setForesightDragFrom(null)}
+                  onClick={() => {
+                    if (!foresightReorderable) return;
+                    // 첫 번째 누름 = 집기, 두 번째 = 놓기. 같은 자리를 다시 누르면 집기 취소.
+                    if (foresightDragFrom === null) setForesightDragFrom(pos);
+                    else moveForesight(foresightDragFrom, pos);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!foresightReorderable) return;
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    if (foresightDragFrom === null) setForesightDragFrom(pos);
+                    else moveForesight(foresightDragFrom, pos);
+                  }}
                 >
                   {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
                   <span className="foresight-cell-label">
@@ -11169,7 +11657,11 @@ function ActiveAugmentControl(props: {
                 이 순서로 확정
               </button>
             ) : (
-              <span className="foresight-strip-hint">드래그해 순서 바꾸기 (국에 1회)</span>
+              <span className="foresight-strip-hint">
+                {foresightDragFrom === null
+                  ? "끌거나, 옮길 패와 놓을 자리를 차례로 눌러 순서 바꾸기 (국에 1회)"
+                  : "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"}
+              </span>
             )
           ) : null}
         </div>
@@ -11201,13 +11693,32 @@ function ActionBar(props: {
   );
   if (buttons.length === 0 && !hasRiichi) return null;
 
+  /*
+   * 단축키 — 여태 게임을 키보드로 두는 길이 아예 없었다(포커스 표시조차 없었다).
+   *
+   * 배치: 숫자 1..9 가 **지금 보이는 버튼 순서 그대로** 대응한다. 론·쯔모·패스처럼
+   * 매번 나오는 것에는 글자도 따로 준다(R / P). 왜 고정 배치를 안 쓰나 — 후로 선택지는
+   * 같은 종류가 여러 벌 뜬다(치 3가지 등). 순서 대응이면 화면에 보이는 것과 손이 어긋나지 않는다.
+   * 각 버튼에 그 숫자를 찍어 두므로 외울 것도 없다.
+   */
+  const keyed: { key: string; run: () => void }[] = [];
+  if (props.riichiMode) {
+    keyed.push({ key: "1", run: () => props.onRiichiMode(false) });
+  } else {
+    if (hasRiichi) keyed.push({ key: "1", run: () => props.onRiichiMode(true) });
+    for (const o of buttons) keyed.push({ key: String(keyed.length + 1), run: () => props.onSubmit(o) });
+  }
+  const hotIndex = (i: number): string => String((hasRiichi ? 1 : 0) + i + 1);
+
   return (
     <div className="action-bar">
+      <ActionHotkeys keyed={keyed} buttons={buttons} riichiMode={props.riichiMode} />
       {props.riichiMode ? (
         <>
           <span className="action-hint">리치할 패를 선택하세요</span>
           <button className="act act-cancel" onClick={() => props.onRiichiMode(false)}>
             취소
+            <span className="act-key" aria-hidden="true">1</span>
           </button>
         </>
       ) : (
@@ -11215,6 +11726,7 @@ function ActionBar(props: {
           {hasRiichi ? (
             <button className="act act-riichi" onClick={() => props.onRiichiMode(true)}>
               리치
+              <span className="act-key" aria-hidden="true">1</span>
             </button>
           ) : null}
           {buttons.map((o, i) => {
@@ -11230,10 +11742,22 @@ function ActionBar(props: {
                     : "act-call";
             const detail = optionDetail(view, o);
             return (
-              <button key={`${o.type}-${i}`} className={`act ${tone}`} onClick={() => props.onSubmit(o)}>
+              <button
+                key={`${o.type}-${i}`}
+                className={`act ${tone}`}
+                onClick={() => props.onSubmit(o)}
+                title={
+                  o.type === "win"
+                    ? `${label} — 단축키 ${hotIndex(i)} 또는 R`
+                    : o.type === "pass"
+                      ? `${label} — 단축키 ${hotIndex(i)} 또는 P`
+                      : `${label} — 단축키 ${hotIndex(i)}`
+                }
+              >
                 {label}
                 {detail !== "" ? <span className="act-target">{detail}</span> : null}
                 <ActionTiles view={view} option={o} />
+                <span className="act-key" aria-hidden="true">{hotIndex(i)}</span>
               </button>
             );
           })}
@@ -11241,6 +11765,54 @@ function ActionBar(props: {
       )}
     </div>
   );
+}
+
+/**
+ * 액션 바 단축키 리스너 — 그리는 것은 없고 window keydown만 건다.
+ *
+ * 별도 컴포넌트인 이유: ActionBar는 프롬프트가 없을 때 일찍 return null 하는 자리가 있어
+ * (훅 규칙상) 그 위에서 useEffect를 걸 수 없다. 여기로 내리면 조건부 마운트가 곧 조건부 등록이다.
+ *
+ * ⚠ Esc·Space는 잡지 않는다 — 연출 건너뛰기가 이미 쓰고 있고, 그 둘이 겹치면
+ * 컷인을 넘기려던 손이 그대로 패스를 눌러 버린다.
+ */
+function ActionHotkeys({
+  keyed,
+  buttons,
+  riichiMode,
+}: {
+  keyed: { key: string; run: () => void }[];
+  buttons: ActionOption[];
+  riichiMode: boolean;
+}): null {
+  // 최신 핸들러를 ref로 들고 있으면 리스너를 매 렌더 다시 걸 필요가 없다.
+  const ref = useRef({ keyed, buttons, riichiMode });
+  ref.current = { keyed, buttons, riichiMode };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;
+      if (isTypingTarget(e.target)) return;
+      const cur = ref.current;
+      const hit = cur.keyed.find((k) => k.key === e.key);
+      if (hit !== undefined) {
+        e.preventDefault();
+        hit.run();
+        return;
+      }
+      if (cur.riichiMode) return;
+      // 매번 나오는 두 가지에는 글자 단축키도 준다 (론/쯔모, 패스).
+      const letter = e.key.toLowerCase();
+      const want = letter === "r" ? "win" : letter === "p" ? "pass" : null;
+      if (want === null) return;
+      const idx = cur.buttons.findIndex((o) => o.type === want);
+      if (idx < 0) return;
+      e.preventDefault();
+      cur.keyed[idx + (cur.keyed.length - cur.buttons.length)]?.run();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return null;
 }
 
 function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption }): JSX.Element | null {

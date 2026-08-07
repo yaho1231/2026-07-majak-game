@@ -62,11 +62,33 @@ function planHan(plan: HandPlan, menzen: boolean): number {
 /** 역없는 열린 손에 남기는 잔값 — 화료가 사실상 막혔다는 뜻 */
 const YAKULESS_OPEN = 0.15;
 
-/** 토이토이·자패 커쯔가 많은 손은 부수가 높다 — 만관 경계를 가르는 값이라 무시할 수 없다 */
-function estimateFu(plan: HandPlan, menzen: boolean): number {
+/**
+ * 이 손의 예상 부수.
+ *
+ * **예전에는 두 갈래가 같은 값이었다**(`menzen ? 30 : 30`) — 즉 분기가 죽어 있었고,
+ * 토이토이가 아닌 모든 손이 멘젠·후로를 가리지 않고 30부로 값매겨졌다. 30부와 40부는
+ * 4판에서 7700과 8000(만관)을 가르는 자리라 그냥 두면 만관 경계 판단이 통째로 한쪽으로
+ * 기운다.
+ *
+ * 값은 **연속 평균**으로 잡는다 — 이 파일이 판수를 반올림하지 않고 보간하는 것과 같은
+ * 이유다(`pointsForHan` 주석). 실제 부수는 분포이고, 판단은 그 분포의 기대값 위에서
+ * 내려야 경계에서 요동치지 않는다. `calculateScore`는 부수를 그대로 곱하므로
+ * 30·40 같은 표의 눈금이 아니어도 계산이 성립한다.
+ *
+ *   - 멘젠 론은 +10부가 확정으로 붙는다. 핑후(30부)가 대략 3분의 1이므로
+ *     0.33×30 + 0.67×40 ≈ **36**.
+ *   - 열린 손은 멘젠 보너스가 없고 대개 슌쯔 중심이라 **30**.
+ *   - 토이토이는 커쯔가 넷이라 **40** 이상이 보통이다(종전 그대로).
+ */
+function estimateFu(plan: HandPlan, menzen: boolean, menzenFu: boolean): number {
   if (plan !== null && plan.yaku === "toitoi") return 40;
-  return menzen ? 30 : 30;
+  return menzen && menzenFu ? MENZEN_FU : OPEN_FU;
 }
+
+/** 멘젠 손의 평균 부수 — 멘젠 론 +10부가 붙고, 셋 중 하나쯤은 핑후(30부)다 */
+const MENZEN_FU = 36;
+/** 열린 손의 평균 부수 — 멘젠 보너스가 없다 */
+const OPEN_FU = 30;
 
 /**
  * **기대 판수**를 점수로 옮긴다 — 반올림하지 않고 두 정수 판수 사이를 보간한다.
@@ -129,6 +151,32 @@ export interface HandValueInput {
    * "평범한 손 대비 기대 타점이 몇 배인가"라서 판수 축이 아니라 점수 축의 값이다.
    */
   augmentMultiplier?: number;
+  /**
+   * **역이 없어도 화료할 수 있는가** (무형화료 `yakuless_win` 등이 `win.requiresYaku`를 끈다).
+   *
+   * 열린 손에 걸리는 `YAKULESS_OPEN`(값의 15%)은 "역이 없으면 텐파이해도 못 먹는다"는
+   * 규칙에서 나온 값이다. 그 규칙을 지우는 증강을 든 봇에게 그대로 걸면, **그 증강이
+   * 열어 주려던 바로 그 후로들이 전부 실제 값의 15%로 값매겨져** 봇이 체계적으로
+   * 거절한다 — 증강을 뽑고도 없는 것처럼 논다. 켜지면 잔값 감액을 걸지 않는다.
+   */
+  noYakuRequired?: boolean;
+  /**
+   * **열린 손으로도 리치를 걸 수 있는가**, 걸면 리치가 몇 판인가 (개문선언 `open_riichi`).
+   *
+   * `riichiPoints`는 지금까지 `menzen ? base + RIICHI_HAN : base`였다 — 열린 손의
+   * 리치를 **0판**으로 셌다는 뜻이라, 개문선언 보유자의 리치 입찰은 언제나 평범한
+   * 버림에 진다. 값을 주면 그 판단이 비로소 열린다. 생략하면 종전대로(열린 손 리치 없음).
+   */
+  openRiichiHan?: number;
+  /**
+   * **멘젠 부수 분리를 켠다** (`menzenfu` 스위치 — 측정용 비계).
+   *
+   * 켜면 멘젠 손이 36부, 끄면 종전대로 멘젠·후로 모두 30부다. 켜는 쪽이 마작으로서
+   * 옳지만(멘젠 론 +10부), 값어치가 20% 오르는 변경이라 **후로 판단이 뒤집힌다** —
+   * 실제로 "역패 또이쯔는 펑한다"가 835 대 814(2.6% 차)로 아슬아슬하게 서 있었고,
+   * 부수를 올리면 패스가 이긴다. 그래서 기본을 종전으로 두고 2:2로 재는 자리를 만든다.
+   */
+  menzenFu?: boolean;
 }
 
 /**
@@ -147,9 +195,15 @@ export function estimateHandValue(input: HandValueInput): HandValue {
   const fromHand =
     input.kinds === undefined ? 0 : bestYakuHan(input.kinds, menzen, input.opts);
   const base = input.handDora + Math.max(fromPlan, fromHand);
-  const fu = estimateFu(input.plan, menzen);
+  const fu = estimateFu(input.plan, menzen, input.menzenFu === true);
 
-  const withRiichi = menzen ? base + RIICHI_HAN : base;
+  /**
+   * 리치가 얹는 판수. 열린 손은 원래 리치를 걸 수 없어 0이지만, **개문선언**을 들면
+   * 걸 수 있고 그 리치는 판수도 붙는다(`openRiichiHan`). 열린 손에는 일발·우라·
+   * 멘젠쯔모가 없으므로 멘젠의 2.2판을 그대로 쓰지 않고 증강이 정한 확정 판수를 쓴다.
+   */
+  const riichiHan = menzen ? RIICHI_HAN : (input.openRiichiHan ?? 0);
+  const withRiichi = base + riichiHan;
   const han = input.riichiDeclared ? withRiichi : base;
 
   /**
@@ -159,7 +213,8 @@ export function estimateHandValue(input: HandValueInput): HandValue {
    * 완전히 0으로 두지는 않는다: 남은 쯔모로 탕야오가 붙거나 해저가 걸리는 길이
    * 닫힌 것은 아니라, 아주 낮은 잔값만 남긴다.
    */
-  const yakuless = !menzen && Math.max(fromPlan, fromHand) === 0;
+  const yakuless =
+    !menzen && Math.max(fromPlan, fromHand) === 0 && input.noYakuRequired !== true;
   /**
    * 증강 배수는 **맨 마지막에** 곱한다 — 만관·하네만 경계를 넘겨 세지 않기 위해서다.
    * 판수에 얹으면 배수 1.3이 경계에서 두 배가 되기도 하고 아무 일도 아니기도 한다.
@@ -192,15 +247,36 @@ function unseenTiles(wallLeft: number): number {
 const TURNS_PER_ROUND = 18;
 
 /**
+ * 표준 길이를 넘긴 구간에서 인정하는 최대 쯔모 수.
+ *
+ * 패산이 남아 있다는 사실만 믿고 "아직 열 번 뽑는다"고 세면 종반에 가망 없는 손을
+ * 끝없이 민다. 그렇다고 0으로 두면 아래 주석의 붕괴가 일어난다 — 사이를 잡는다.
+ */
+const EXTENDED_DRAWS = 4;
+
+/**
  * 내 남은 쯔모 횟수.
  *
  * 넷이 한 번씩 돌아가므로 패산의 1/4이지만, **순목(`turnCount`)도 함께 본다.**
- * 깡·증강으로 패산이 늘거나 뷰가 패산을 정확히 못 실어 줄 때, 패산만 믿으면
- * 12순째에도 "아직 15번 뽑는다"고 착각해 가망 없는 손을 계속 민다.
- * 둘 중 작은 쪽이 현실이다.
+ * 뷰가 패산을 정확히 못 실어 줄 때(zone이 없으면 `wallLeftOf`가 70으로 폴백한다)
+ * 패산만 믿으면 12순째에도 "아직 15번 뽑는다"고 착각해 가망 없는 손을 계속 민다.
+ *
+ * **그런데 예전 식은 18순을 넘기면 항상 정확히 0을 돌려줬다** —
+ * `min(패산/4, 18 − 순목)`의 오른쪽이 음수가 되기 때문이다. 바로 위 주석이 "깡·증강으로
+ * 패산이 늘 수 있다"고 적어 놓고, 정작 그 늘어난 몫을 `min`이 통째로 버리고 있었다.
+ * 그러면 `winChance`가 절망 바닥값(≈0.004)으로 무너져 **연장된 구간 내내 봇이 아무것도
+ * 밀지 않는다** — 패산이 20장 남은 텐파이를 들고도 안전패만 흘린다.
+ *
+ * 그래서 순목 상한은 그대로 두되, **그 상한이 다 떨어진 뒤에는 패산이 말하게 한다.**
+ * 표준 18순 안에서는 계산이 예전과 한 글자도 다르지 않고(회귀 없음), 넘어간 뒤에만
+ * 0 대신 패산이 허락하는 만큼(상한 `EXTENDED_DRAWS`)을 인정한다.
  */
 function myDrawsLeft(wallLeft: number, turn: number): number {
-  return Math.max(0, Math.min(Math.floor(wallLeft / 4), TURNS_PER_ROUND - turn));
+  const fromWall = Math.max(0, Math.floor(wallLeft / 4));
+  const fromTurn = TURNS_PER_ROUND - turn;
+  if (fromTurn > 0) return Math.min(fromWall, fromTurn);
+  // 표준 길이를 넘겼다 — 여기서 0을 주면 남은 패산이 있어도 판단이 통째로 죽는다
+  return Math.min(fromWall, EXTENDED_DRAWS);
 }
 
 /**
@@ -367,6 +443,15 @@ export function winChance(input: WinChanceInput): number {
  * 4인 노텐벌부는 텐파이 인원에 따라 1000~3000점이고, 평균 1500점 근처다.
  */
 export const NOTEN_PENALTY = 1500;
+
+/**
+ * 노텐벌부가 판단에 들어오기 시작하는 **패산 잔량**.
+ *
+ * 예전에는 이 문턱이 세 군데에 각각 적혀 있었고 값이 어긋나 있었다 — 버림·콜 EV는 16,
+ * 후로의 형식텐파이 게이트만 12였다. 그 사이 네 순 동안 EV는 노텐벌부 회피를 값으로
+ * 세는데 게이트가 그 콜을 먼저 잘라, 세어 놓은 값이 쓰이지 않았다. 한 곳에 둔다.
+ */
+export const NOTEN_WALL = 16;
 
 /** 오름패의 남은 장수 합 */
 export function waitTilesOf(
