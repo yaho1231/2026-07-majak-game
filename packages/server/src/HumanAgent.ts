@@ -10,7 +10,7 @@
 
 import type { WebSocket } from "ws";
 import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
-import type { PlayerView } from "@majak/core/information/PlayerView.js";
+import type { PlayerView, SeatConnection } from "@majak/core/information/PlayerView.js";
 import type { ActionOption, DecisionPrompt } from "@majak/core/mahjong/flow/FlowController.js";
 import type { AugmentDef } from "@majak/core/augment/Augment.js";
 import type { DraftStage, ServerMessage, ClientMessage } from "@majak/core/network/protocol.js";
@@ -18,6 +18,20 @@ import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import { TIME_PRESSURE_CHANNEL } from "@majak/content";
 
 export const DECISION_TIMEOUT_MS = 30_000;
+
+/**
+ * 소켓이 끊긴 좌석의 결정 유예(ms).
+ *
+ * 탭을 닫으면 좌석은 그대로 남고(재접속을 위해) 게임 루프는 그 사실을 모른 채
+ * 매 결정마다 30초를 꽉 채워 기다렸다 — 한 국에 결정 지점이 60~70개라 남은 셋에게
+ * 게임이 사실상 멈춘 것으로 보였다(2026-08-07 QA P0-3).
+ *
+ * 그래서 소켓이 닫혀 있으면 짧게만 기다린다. 0이 아니라 5초인 이유:
+ * 새로고침·모바일 전환처럼 몇 초 안에 돌아오는 끊김이 흔한데, 그 사이의 리액션
+ * 프롬프트를 즉시 패스로 날려 버리면 돌아와도 이미 론이 사라진 뒤다.
+ * 유예 안에 돌아오면 `reconnect`가 타이머를 정상 제한 시간으로 되돌린다.
+ */
+export const DISCONNECT_GRACE_MS = 5_000;
 
 /**
  * **반드시 끝맺어야 하는 다단계 선택**의 액션 타입.
@@ -73,6 +87,15 @@ interface PendingDecision {
   prompt: DecisionPrompt;
   resolve: ResolveDecision;
   timer: ReturnType<typeof setTimeout>;
+  /** 자동 폴백이 터질 시각(epoch ms) — 재접속 시 남은 시간을 그대로 알려 주려고 둔다 */
+  deadlineAt: number;
+  /**
+   * 이 타이머가 **끊김 유예**로 짧게 걸린 것인가.
+   * 그렇다면 재접속 시 정상 제한 시간으로 되돌린다(못 본 프롬프트에 5초는 부당하다).
+   * 접속 상태에서 걸린 타이머는 재접속으로도 늘려 주지 않는다 — 늘려 주면
+   * 초읽기 국에서 껐다 켜기가 시간 연장 수단이 된다.
+   */
+  graced: boolean;
 }
 
 export class HumanAgent implements PlayerAgent {
@@ -92,6 +115,10 @@ export class HumanAgent implements PlayerAgent {
   private pendingDraftChoices: AugmentDef[] | null = null;
   private pendingDraftStage: DraftStage | null = null;
   private draftTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** 드래프트 자동 선택 시각(epoch ms) — 재접속 시 남은 시간을 알려 준다 */
+  private draftDeadlineAt = 0;
+  /** 이 드래프트 타이머가 끊김 유예로 짧게 걸렸는가 (재접속 시 정상 시간으로 복구) */
+  private draftGraced = false;
   /** 국 사이 "다음 국으로" 대기 resolver (결과 화면 닫힘 신호 대기) */
   private pendingContinue: (() => void) | null = null;
   private continueTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -106,6 +133,8 @@ export class HumanAgent implements PlayerAgent {
   private viewSeat: PlayerId | null = null;
   /** 재접속 시 재전송할 증강 카탈로그 */
   private lastCatalog: ServerMessage | null = null;
+  /** 방의 좌석별 접속 상태 조회 (RoomManager가 꽂는다). 없으면 뷰를 그대로 보낸다. */
+  private seatConnections: (() => Record<PlayerId, SeatConnection>) | null = null;
 
   constructor(
     id: PlayerId,
@@ -135,9 +164,35 @@ export class HumanAgent implements PlayerAgent {
       this.send({ type: "view", view: this.lastView });
     }
     if (this.pending.size > 0) {
-      // 대기 중인 프롬프트 전부 재전송 — 봇 좌석 조종 중이면 두 자리가 동시에 떠 있다
-      for (const p of this.pending.values()) this.send({ type: "prompt", prompt: p.prompt });
+      // 대기 중인 프롬프트 전부 재전송 — 봇 좌석 조종 중이면 두 자리가 동시에 떠 있다.
+      //
+      // 예전에는 프롬프트만 다시 보내고 서버 타이머는 그대로 뒀다. 끊긴 사이 시간이
+      // 흘러 갓 뜬 것처럼 보이는 프롬프트에 2초만 남아 있는 일이 생겼다. 지금은:
+      // - 끊김 유예(5초)로 걸렸던 것은 정상 제한 시간으로 **되돌리고**,
+      // - 접속 상태에서 걸렸던 것은 남은 시간을 그대로 유지해 정확히 알려 준다.
+      for (const [seat, p] of [...this.pending]) {
+        let leftMs: number;
+        if (p.graced) {
+          leftMs = this.decisionTimeoutMs();
+          clearTimeout(p.timer);
+          this.armDecision(seat, p.prompt, p.resolve, leftMs, false);
+        } else {
+          leftMs = Math.max(0, p.deadlineAt - Date.now());
+        }
+        this.send({ type: "prompt", prompt: p.prompt, deadlineMs: leftMs });
+      }
     } else if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
+      // 결정과 같은 규칙 — 유예로 걸렸던 타이머는 정상 시간으로 되돌리고,
+      // 아니면 실제 남은 시간을 알려 준다.
+      let leftMs: number;
+      if (this.draftGraced) {
+        leftMs = DECISION_TIMEOUT_MS;
+        this.clearDraftTimeout();
+        this.draftGraced = false;
+        this.armDraft(this.pendingDraftChoices, leftMs);
+      } else {
+        leftMs = Math.max(0, this.draftDeadlineAt - Date.now());
+      }
       this.send({
         type: "draftOffer",
         stage: this.pendingDraftStage ?? "gameStart",
@@ -147,7 +202,7 @@ export class HumanAgent implements PlayerAgent {
           name: c.name,
           description: c.description,
         })),
-        deadlineMs: DECISION_TIMEOUT_MS,
+        deadlineMs: leftMs,
       });
     }
   }
@@ -171,6 +226,49 @@ export class HumanAgent implements PlayerAgent {
   /** 이 플레이어가 게임을 포기했는지 (좌석은 남되 봇처럼 자동 진행). */
   get isAbandoned(): boolean {
     return this.abandoned;
+  }
+
+  /** 이 좌석의 접속 상태 — 뷰의 이름표에 실려 남들에게 보인다. */
+  connectionState(): SeatConnection {
+    if (this.abandoned) return "abandoned";
+    return this.isConnected() ? "connected" : "disconnected";
+  }
+
+  /**
+   * 소켓이 끊긴 것을 알았을 때 호출한다 (RoomManager.handleClose).
+   *
+   * 이미 걸려 있는 대기는 30초 그대로라, 하필 내 차례에 끊기면 그 한 번은 여전히
+   * 판을 30초 세운다. 남은 시간을 유예로 줄여 그 구멍을 막는다. `graced`로 표시해
+   * 두면 유예 안에 돌아왔을 때 `reconnect`가 정상 시간으로 되돌린다.
+   */
+  noticeDisconnect(): void {
+    if (this.abandoned || this.isConnected()) return;
+    const now = Date.now();
+    for (const [seat, p] of [...this.pending]) {
+      if (p.graced || p.deadlineAt - now <= DISCONNECT_GRACE_MS) continue;
+      clearTimeout(p.timer);
+      this.armDecision(seat, p.prompt, p.resolve, DISCONNECT_GRACE_MS, true);
+    }
+    if (
+      this.pendingDraft !== null &&
+      this.pendingDraftChoices !== null &&
+      !this.draftGraced &&
+      this.draftDeadlineAt - now > DISCONNECT_GRACE_MS
+    ) {
+      this.clearDraftTimeout();
+      this.draftGraced = true;
+      this.armDraft(this.pendingDraftChoices, DISCONNECT_GRACE_MS);
+    }
+  }
+
+  /**
+   * 이 방의 좌석별 접속 상태를 읽는 함수 (RoomManager가 게임 시작 시 꽂는다).
+   *
+   * 접속 상태는 엔진 상태가 아니라 방의 상태라 GameState·PlayerView 생성기에는
+   * 없다. 새 소켓 메시지를 만드는 대신, 어차피 결정마다 나가는 뷰에 얹는다.
+   */
+  setSeatConnectionSource(source: () => Record<PlayerId, SeatConnection>): void {
+    this.seatConnections = source;
   }
 
   /**
@@ -218,8 +316,25 @@ export class HumanAgent implements PlayerAgent {
   }
 
   sendView(view: PlayerView): void {
-    this.lastView = view;
-    this.send({ type: "view", view });
+    const decorated = this.withSeatConnections(view);
+    this.lastView = decorated;
+    this.send({ type: "view", view: decorated });
+  }
+
+  /**
+   * 이름표에 세울 좌석별 접속 상태를 뷰에 덧입힌다.
+   *
+   * 뷰는 좌석마다 새로 만들어지지만(buildPlayerView) 관전자 뷰처럼 공유되는 경우가
+   * 있어 원본을 건드리지 않고 얕은 복사로 얹는다. 값이 전부 connected면 그대로 둔다.
+   */
+  private withSeatConnections(view: PlayerView): PlayerView {
+    const map = this.seatConnections?.();
+    if (map === undefined) return view;
+    if (!view.players.some((p) => (map[p.id] ?? "connected") !== "connected")) return view;
+    return {
+      ...view,
+      players: view.players.map((p) => ({ ...p, connection: map[p.id] ?? "connected" })),
+    };
   }
 
   /**
@@ -276,22 +391,43 @@ export class HumanAgent implements PlayerAgent {
     if (this.abandoned) return Promise.resolve(safeFallbackOption(prompt.options));
     // 같은 좌석에 이전 대기가 남아 있으면(정상 흐름에는 없다) 폴백으로 정리한다
     this.cancelDecisionFor(seat);
-    const timeoutMs = this.decisionTimeoutMs();
-    // 초읽기가 걸린 국에만 마감을 실어 보낸다 — 클라이언트가 카운트다운을 그린다.
-    this.send(
-      timeoutMs < DECISION_TIMEOUT_MS
-        ? { type: "prompt", prompt, deadlineMs: timeoutMs }
-        : { type: "prompt", prompt },
-    );
+    // 소켓이 닫혀 있으면 짧은 유예만 준다 — 어차피 이 프롬프트는 전송되지 않는다.
+    const graced = !this.isConnected();
+    const timeoutMs = graced
+      ? Math.min(this.decisionTimeoutMs(), DISCONNECT_GRACE_MS)
+      : this.decisionTimeoutMs();
+    // 마감은 **항상** 실어 보낸다. 예전에는 초읽기 국에만 실어서, 평소 30초 제한이
+    // 화면에 전혀 안 보였다 — 자리를 비운 사람이 론을 조용히 흘렸다(QA P0-5).
+    this.send({ type: "prompt", prompt, deadlineMs: timeoutMs });
     return new Promise<ActionOption>((resolve) => {
-      const timer = setTimeout(() => {
-        // 제한 시간 초과 — 서버는 안전 폴백으로 진행한다. 클라이언트가 이걸 모르면
-        // 내 차례가 지나간 뒤에도 선택 모달·버튼이 계속 떠 있으므로 취소를 알린다.
-        this.pending.delete(seat);
-        this.send({ type: "promptCancel", seat });
-        resolve(safeFallbackOption(prompt.options));
-      }, timeoutMs);
-      this.pending.set(seat, { prompt, resolve, timer });
+      this.armDecision(seat, prompt, resolve, timeoutMs, graced);
+    });
+  }
+
+  /**
+   * 좌석의 결정 타이머를 (다시) 건다. 최초 요청과 재접속 복원이 공유한다.
+   * 만료되면 안전 폴백으로 resolve 하고 클라이언트에 취소를 알린다.
+   */
+  private armDecision(
+    seat: PlayerId,
+    prompt: DecisionPrompt,
+    resolve: ResolveDecision,
+    timeoutMs: number,
+    graced: boolean,
+  ): void {
+    const timer = setTimeout(() => {
+      // 제한 시간 초과 — 서버는 안전 폴백으로 진행한다. 클라이언트가 이걸 모르면
+      // 내 차례가 지나간 뒤에도 선택 모달·버튼이 계속 떠 있으므로 취소를 알린다.
+      this.pending.delete(seat);
+      this.send({ type: "promptCancel", seat });
+      resolve(safeFallbackOption(prompt.options));
+    }, timeoutMs);
+    this.pending.set(seat, {
+      prompt,
+      resolve,
+      timer,
+      deadlineAt: Date.now() + timeoutMs,
+      graced,
     });
   }
 
@@ -323,6 +459,10 @@ export class HumanAgent implements PlayerAgent {
     if (this.abandoned) return choices[0]!.id;
     this.pendingDraftChoices = choices;
     this.pendingDraftStage = stage;
+    // 드래프트는 네 사람이 다 고를 때까지 판 전체가 멈춘다 — 끊긴 좌석은 결정과
+    // 같은 이유로 짧게만 기다린다. 유예 안에 돌아오면 reconnect가 되돌린다.
+    this.draftGraced = !this.isConnected();
+    const timeoutMs = this.draftGraced ? DISCONNECT_GRACE_MS : DECISION_TIMEOUT_MS;
     this.send({
       type: "draftOffer",
       stage,
@@ -332,29 +472,41 @@ export class HumanAgent implements PlayerAgent {
         name: c.name,
         description: c.description,
       })),
-      deadlineMs: DECISION_TIMEOUT_MS,
+      deadlineMs: timeoutMs,
     });
 
     return new Promise<string>((resolve) => {
       this.pendingDraft = resolve;
-      this.draftTimeout = setTimeout(() => {
-        this.pendingDraft = null;
-        this.pendingDraftChoices = null;
-        this.pendingDraftStage = null;
-        this.draftTimeout = null;
-        resolve(choices[0]!.id);
-      }, DECISION_TIMEOUT_MS);
+      this.armDraft(choices, timeoutMs);
     });
+  }
+
+  /** 드래프트 자동 선택 타이머를 (다시) 건다. 최초 제안과 재접속 복원이 공유한다. */
+  private armDraft(choices: AugmentDef[], timeoutMs: number): void {
+    this.draftDeadlineAt = Date.now() + timeoutMs;
+    this.draftTimeout = setTimeout(() => {
+      const resolve = this.pendingDraft;
+      this.pendingDraft = null;
+      this.pendingDraftChoices = null;
+      this.pendingDraftStage = null;
+      this.draftTimeout = null;
+      resolve?.(choices[0]!.id);
+    }, timeoutMs);
   }
 
   /**
    * 국 결과 화면 닫힘 신호(roundContinue)를 기다린다.
    * 클라이언트가 "닫기"를 보내거나 자동으로 닫힐 때 resolve.
-   * maxWaitMs 초과 시(AFK·끊김) 자동 resolve — 남은 사람들의 진행이 막히지 않게.
-   * 이미 포기한 좌석은 즉시 resolve.
+   * maxWaitMs 초과 시(AFK) 자동 resolve — 남은 사람들의 진행이 막히지 않게.
+   *
+   * 이미 포기한 좌석, 그리고 **소켓이 끊긴 좌석은 즉시 resolve**한다. 결과 화면을
+   * 읽을 시간을 주려고 상한을 넉넉히 잡은 만큼(index.ts INTER_ROUND_DELAY_MS),
+   * 아무도 안 보고 있는 자리 하나가 매 국 그 시간을 통째로 세우면 나머지 셋이
+   * 대가를 치른다. 끊긴 좌석에는 애초에 닫을 화면이 없다 — 결정·드래프트에서
+   * 끊긴 좌석을 유예로 줄이는 것과 같은 이유다.
    */
   awaitContinue(maxWaitMs: number): Promise<void> {
-    if (this.abandoned) return Promise.resolve();
+    if (this.abandoned || !this.isConnected()) return Promise.resolve();
     return new Promise<void>((resolve) => {
       this.pendingContinue = resolve;
       this.continueTimeout = setTimeout(() => this.resolveContinue(), maxWaitMs);

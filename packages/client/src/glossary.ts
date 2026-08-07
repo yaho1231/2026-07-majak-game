@@ -473,7 +473,9 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     key: "chiitoi",
     label: "치또이쯔",
     short: "3장 덩어리 대신, 서로 다른 짝 7개로 완성하는 손.",
-    match: ["치또이쯔", "치또이"],
+    // 결과 화면의 역 이름은 "치토이츠"로 뜬다(App.tsx YAKU_NAMES) — 표기가 갈리면
+    // 정작 역이 뜬 자리에서 사전이 안 걸린다. 세 표기 모두 이 항목으로 보낸다.
+    match: ["치또이쯔", "치토이츠", "치또이"],
   },
   {
     key: "churen",

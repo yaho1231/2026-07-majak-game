@@ -184,6 +184,11 @@ export class SiteDb {
         score INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_game_players_user ON game_players(user_id);
+      -- 목록 조회(listAllGames·listGamesFor·getGame)는 게임마다 hydrate에서
+      -- game_id 조건 조회를 한 번씩 돌린다. 이 인덱스가 없으면 200판 목록 한 번이
+      -- game_players 전체 스캔 200회가 되고, node:sqlite는 동기라 그동안 진행 중인
+      -- 모든 대국이 멈춘다. 게임 수에 따라 2차로 악화된다.
+      CREATE INDEX IF NOT EXISTS idx_game_players_game ON game_players(game_id);
       CREATE TABLE IF NOT EXISTS config (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL

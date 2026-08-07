@@ -6140,6 +6140,8 @@ button {
   .leave-btn { right: 8px; }
   .settings-btn { right: 48px; }
   .auglog-btn { right: 88px; }
+  .codex-btn { right: 128px; }
+  .help-btn { right: 168px; }
 
   /* 이름표가 화면 폭을 거의 다 쓰므로 우상단 아이콘 버튼 아래로 내린다 */
   .opp-strip-top {
@@ -6288,6 +6290,8 @@ button {
   .leave-btn { right: 8px; }
   .settings-btn { right: 48px; }
   .auglog-btn { right: 88px; }
+  .codex-btn { right: 128px; }
+  .help-btn { right: 168px; }
   /* 가로에서는 폭이 넉넉하다 — 맞은편 상대는 다시 한 줄로 */
   .opp-strip-top { top: 8px; flex-direction: row; gap: 10px; }
   /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
@@ -6461,6 +6465,195 @@ button {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
 }
+
+/* ─────────────── 로그인 전 랜딩 ─────────────── */
+
+/* 랜딩 + 인증 카드가 함께 서므로 세로로 흐르는 문서가 된다 (기존 .lobby는 가운데 고정) */
+.lobby-landing {
+  display: block;
+  overflow-y: auto;
+  padding: 32px 16px 48px;
+  background: linear-gradient(180deg, var(--felt-2) 0%, var(--felt-1) 42%, var(--felt-0) 100%);
+}
+
+.landing {
+  /* 좌우 여백은 .lobby-landing의 padding이 이미 만든다 — 여기서 다시 cqw로 재면
+     둘이 합쳐져 가로 스크롤이 2px 남는다. 남은 폭을 그대로 채운다. */
+  width: min(560px, 100%);
+  margin: 0 auto 22px;
+  text-align: center;
+}
+
+.landing-title {
+  margin: 0;
+  font-size: 44px;
+  letter-spacing: 12px;
+  color: var(--brass-bright);
+}
+
+.landing-tag {
+  margin: -4px 0 18px;
+  color: #93a89b;
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+
+.landing-lead {
+  margin: 0 0 22px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #d6e0d8;
+}
+
+.landing-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.landing-guest {
+  flex: 1 1 220px;
+  padding: 14px 18px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--brass);
+  color: #241c0c;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 248, 230, 0.28);
+  transition: transform 0.14s var(--ease), background 0.14s var(--ease);
+}
+
+.landing-guest:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--brass-bright);
+}
+
+.landing-guest:disabled { opacity: 0.5; }
+
+.landing-help {
+  flex: 0 1 180px;
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brass-line);
+  background: rgba(255, 255, 255, 0.05);
+  color: #d6e0d8;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.landing-help:hover { background: rgba(255, 255, 255, 0.1); }
+
+.landing-guest-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #5f7469;
+}
+
+.lobby-landing .auth-card {
+  width: min(400px, 100%); /* .landing과 같은 이유 — cqw를 padding 위에 또 겹치지 않는다 */
+  margin: 0 auto;
+}
+
+.auth-required {
+  color: #f0c86a;
+  font-weight: 700;
+}
+
+.auth-rule {
+  margin: -4px 0 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #93a89b;
+}
+
+.auth-rule b { color: #d6e0d8; }
+
+.auth-gate-note {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(240, 200, 106, 0.1);
+  border-left: 3px solid rgba(240, 200, 106, 0.55);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #d8ceb4;
+}
+
+.auth-gate-note b { color: #f0c86a; }
+
+/* ─────────────── 게스트 체험 마무리 ─────────────── */
+
+.guest-note {
+  margin: 4px 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #93a89b;
+}
+
+.guest-note b { color: #d6e0d8; }
+
+.guest-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.guest-actions > button { flex: 1; }
+
+/* ─────────────── 전체화면 오버레이 (도감 · 규칙) ─────────────── */
+
+/* 도감·규칙은 홈에서도, 대국 중에도 같은 방식으로 뜬다 — 아래 화면은 그대로
+   살아 있고(게임 상태·타이머 유지) 이 층만 덮는다.
+
+   `fixed`가 아니라 `absolute`인 이유: body가 `container: ui / size` + transform이라
+   가상 뷰포트(uiScale.ts)를 만든다 — fixed의 기준이 실제 창이 아니게 되어 배율에
+   따라 어긋난다. 이 파일의 다른 전체화면 층(.intro-overlay 등)과 같은 규약을 쓴다. */
+.screen-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+}
+
+/* ─────────────── 규칙 · 도움말 ─────────────── */
+
+.help-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-bottom: 40px;
+}
+
+.help-section {
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.help-section-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #f0c86a;
+}
+
+.help-section .codex-para {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #d0dbd2;
+}
+
+.help-section .codex-para:last-child { margin-bottom: 0; }
+
+/* 인게임 도감·규칙 단추 — 나가기(14)·설정(64)·증강로그(114) 왼쪽으로 이어 붙인다.
+   좁은 화면 변형(@container)에서는 그쪽 간격(40px)에 맞춰 다시 잡는다. */
+.codex-btn { right: 164px; }
+.help-btn { right: 214px; }
 
 /* ─────────────── 홈 화면 ─────────────── */
 
@@ -8992,4 +9185,133 @@ body.peeking .overlay-peekable > * {
 
 @container ui (max-width: 620px) {
   .peek-btn { padding: 8px 12px; font-size: 11.5px; }
+}
+
+/* ─────────────── 좌석 접속 상태 (끊김·기권) ─────────────── */
+/* 자동 폴백을 기다리는 몇 초가 "멈춘 게임"으로 보이지 않게, 이름표에서 바로 읽히게 한다. */
+
+.nameplate-disconnected,
+.nameplate-abandoned {
+  opacity: 0.55;
+  filter: saturate(0.4);
+}
+
+.np-conn {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #ffd0d0;
+  background: rgba(190, 60, 60, 0.35);
+  border: 1px solid rgba(255, 120, 120, 0.45);
+}
+
+/* 끊김은 "돌아올 수 있는" 상태라 은은하게 숨을 쉰다. 기권은 확정이라 가만히 있는다. */
+.nameplate-disconnected .np-conn {
+  color: #ffe0b8;
+  background: rgba(180, 130, 50, 0.32);
+  border-color: rgba(240, 190, 110, 0.45);
+  animation: np-conn-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes np-conn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nameplate-disconnected .np-conn { animation: none; }
+}
+
+/* ─────────────── 결정 제한시간 게이지 — 조용하다 급해진다 ─────────────── */
+/* 마감은 이제 모든 프롬프트에 실려 온다. 매 타패마다 시계가 크게 뛰면 판보다
+   시계를 보게 되므로, 평소에는 가는 막대만 두고 5초 밑에서만 존재감을 키운다. */
+
+.prompt-timer-fill {
+  /* 남은 시간이 넉넉할 때는 차분한 색. 5초 밑에서 urgent 규칙이 덮어쓴다. */
+  background: linear-gradient(90deg, #8fb4d8, #f0c86a);
+  opacity: 0.75;
+}
+
+.prompt-timer-urgent .prompt-timer-fill {
+  opacity: 1;
+}
+
+.prompt-timer-urgent .prompt-timer-count {
+  animation: prompt-timer-tick 1s steps(1, end) infinite;
+}
+
+@keyframes prompt-timer-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-timer-urgent .prompt-timer-count { animation: none; }
+}
+
+/* ─────────────── 국 결과 — 확인 버튼과 남은 시간 ───────────────
+   결과 화면은 더 이상 5초 뒤 스스로 닫히지 않는다. 넘기는 손잡이가 이 버튼
+   하나뿐이므로 눈에 띄어야 하고, 서버 상한(autoContinueMs)이 다 되면 어차피
+   다음 국이 시작되므로 그 남은 시간을 버튼 위에서 세어 준다. */
+
+.result-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.result-close-count {
+  /* 버튼 본문은 letter-spacing이 넓다 — 숫자는 붙여 읽어야 초가 읽힌다 */
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82em;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0.85;
+}
+
+.result-close-urgent .result-close-count {
+  opacity: 1;
+  background: rgba(240, 138, 124, 0.32);
+  animation: result-close-tick 1s steps(1, end) infinite;
+}
+
+@keyframes result-close-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* 버튼 밑 한 줄 — "안 눌러도 넘어간다"를 말로도 적어 둔다. 이 문장이 없으면
+   숫자가 줄어드는 것이 재촉으로만 읽힌다. */
+.result-close-note {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #93a89b;
+}
+
+.result-close-note strong {
+  color: #cfe0d4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 역 이름이 용어 사전에 물렸다 — 밑줄(.gterm)이 판수와 붙어 보이지 않게 자리만 잡는다 */
+.result-yaku-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 2px;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-close-urgent .result-close-count { animation: none; }
 }

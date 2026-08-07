@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   1757 / 1757 통과 (실패 0)   ← 2026-08-07 갱신 (조커 회귀 19건 추가 포함)
+npm test                   1839 / 1839 통과 (실패 0)   ← 2026-08-07 갱신 (출시 전 QA P0 수정 회귀 82건 추가)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
@@ -26,6 +26,13 @@ npm run typecheck:client   0 errors
   (`pgrep -fl "bin/vitest"`로 확인 — 두 개 이상이면 그게 원인이다). 같은 변경으로 두 번 돌렸더니
   실패 목록이 9건 → 2건으로 **매번 달라졌고**, 파일 단독 실행은 44/44, `packages/server` 전체는
   251/251로 항상 통과했다. 실패 집합이 실행마다 바뀌면 결함이 아니다.
+
+- **(2026-08-07) 이 플레이크의 실제 원인 일부를 제거했다.** `game_players(game_id)`에 인덱스가
+  없어 `replayList`(→`hydrate`)가 게임마다 전체 스캔을 돌렸고, `node:sqlite`는 동기라 그동안
+  같은 프로세스의 다른 테스트가 전부 굶었다. 인덱스 하나(`SiteDb.ts`)로:
+  - `RoomManager.test.ts` 단독: 166초 → **38~44초**
+  - `npm test` 전체: 368초 → **165초**
+  게임 완주 계열이 여전히 무거워 전체 병렬 실행에서 간헐 실패가 남을 수 있지만 빈도는 크게 낮다.
 
 둘 다 **타이밍 플레이크**다. 파일 단독 실행에서는 항상 통과하고, 전체 병렬 실행에서 워커가 굶을 때만 터진다. 코드 결함이 아니므로 게이트에서 이 실패들은 예외로 둔다. 자주 재현되면 `RoomManager.test.ts:64`의 `waitFor` 타임아웃을 늘리고, Sandbox 쪽은 view 대신 배패 직후 상태를 재는 쪽이 맞다.
 

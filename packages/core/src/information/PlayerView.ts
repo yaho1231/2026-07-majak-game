@@ -75,6 +75,20 @@ export interface ZoneView {
   hiddenCount: number;
 }
 
+/**
+ * 좌석의 접속 상태 (표시 전용).
+ *
+ * - `connected`    : 정상 (봇도 항상 이 값)
+ * - `disconnected` : 소켓이 끊겼다. 재접속하면 그 자리로 돌아온다 — 그때까지
+ *                    이 좌석의 결정은 짧은 유예 뒤 안전 폴백으로 자동 처리된다.
+ * - `abandoned`    : 게임 중 나가기(기권). 좌석은 남되 봇처럼 자동 진행된다.
+ *
+ * 엔진 상태가 아니라 **접속의 문제**라 GameState에 담지 않는다. 서버(HumanAgent)가
+ * 뷰를 내보내기 직전에 좌석별로 덧입힌다. 그래서 선택 필드다 — 리플레이·테스트 뷰나
+ * 봇 시점에는 없을 수 있고, 없으면 `connected`로 읽으면 된다.
+ */
+export type SeatConnection = "connected" | "disconnected" | "abandoned";
+
 /** 플레이어 공개 정보 (점수·증강은 전원 공개) */
 export interface PlayerInfo {
   id: PlayerId;
@@ -91,6 +105,11 @@ export interface PlayerInfo {
    * 표시 전용이라 선택 필드다: 판단에 쓰이지 않으므로 테스트 뷰는 생략해도 된다.
    */
   archetype?: string | null;
+  /**
+   * 이 좌석의 접속 상태 (표시 전용, 서버가 뷰 전송 직전에 채운다).
+   * 없으면 `connected`로 취급한다.
+   */
+  connection?: SeatConnection;
 }
 
 export interface PublicTileView {

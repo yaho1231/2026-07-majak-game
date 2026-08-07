@@ -30,12 +30,23 @@ const REPLAY_DIR = resolve(process.cwd(), "../../replays");
 const STATS_PATH = resolve(REPLAY_DIR, "stats.json");
 const DB_PATH = process.env.DB_PATH ?? resolve(REPLAY_DIR, "majak.db");
 const CLIENT_DIST = process.env.CLIENT_DIST ?? resolve(process.cwd(), "../client/dist");
-// 국 사이 대기 상한(ms). 사람이 모두 결과 화면을 닫으면 그전에 다음 국으로
-// 넘어가고, 아무도 안 닫아도(AFK·끊김) 이 상한에서 진행한다. 결과 화면은
-// 클라이언트에서 5초 후 자동으로 닫히므로(컷인 포함 ≈6.3초) 상한을 그보다 넉넉히 둔다.
+/**
+ * 국 사이 대기 상한(ms). 사람이 모두 결과 화면을 닫으면 그전에 다음 국으로 넘어가고,
+ * 아무도 안 닫아도(AFK·끊김) 이 상한에서 진행한다.
+ *
+ * 결과 화면은 **스스로 닫히지 않는다** — 사람이 "다음 국으로"를 눌러야 넘어간다.
+ * 그래서 이 값은 "화면이 저절로 넘어가기까지의 시간"이자, 읽을 시간을 실제로 주는
+ * 유일한 예산이다. 20초는 화면 자체의 연출 예산에서 나온 값이다:
+ *   화료 컷인 1.4~2.6s(결과창은 컷인 큐가 빈 뒤에 열린다)
+ *   + 손패 스태거·역 스탬프 ~1.4s + 점수 카운트업(0.4s 지연 + 최대 2s) ≈ 2.4s
+ *   → 그리기만 끝나도 ≈5초. 남은 ~15초가 실제로 읽고 스크롤하는 시간이다.
+ * 황패유국은 네 사람의 손패를 한 화면에 싣고 `.result-panel`이 스크롤되므로
+ * 이보다 짧으면 다 읽기 전에 넘어간다. (끊긴 좌석은 HumanAgent.awaitContinue가
+ * 즉시 통과시키므로, 이 상한이 남은 사람들의 판을 매 국 붙잡지는 않는다.)
+ */
 const INTER_ROUND_DELAY_MS = process.env.INTER_ROUND_DELAY_MS
   ? parseInt(process.env.INTER_ROUND_DELAY_MS, 10)
-  : 7000;
+  : 20000;
 // 세션 토큰 수명(ms). 기본 30일 (SiteDb 기본값과 동일).
 const SESSION_TTL_MS = process.env.SESSION_TTL_MS
   ? parseInt(process.env.SESSION_TTL_MS, 10)

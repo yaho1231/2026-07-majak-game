@@ -60,7 +60,7 @@
  */
 
 import { kindKey } from "@majak/core";
-import type { TileKind } from "@majak/core";
+import type { DecomposeOptions, TileKind } from "@majak/core";
 
 const NUMBER_SUITS = ["man", "pin", "sou"] as const;
 const isNumber = (k: TileKind): boolean =>
@@ -140,10 +140,27 @@ export interface YakuGuess {
 }
 
 /** 같은 종류끼리 장수 세기 */
-function counts(kinds: readonly TileKind[]): Map<string, number> {
+function counts(
+  kinds: readonly TileKind[],
+  keyOf: (k: TileKind) => string = kindKey,
+): Map<string, number> {
   const m = new Map<string, number>();
-  for (const k of kinds) m.set(kindKey(k), (m.get(kindKey(k)) ?? 0) + 1);
+  for (const k of kinds) m.set(keyOf(k), (m.get(keyOf(k)) ?? 0) + 1);
   return m;
+}
+
+/**
+ * **증강이 "같은 패"의 범위를 넓혔을 때** 쓰는 묶음 열쇠 — 무늬를 무시하고 숫자만 본다.
+ *
+ * 동수의 결속(`mixedTriplets`)을 든 사람에게 2만·2통·2삭은 커쯔이고, 비대칭
+ * 치또이(`chiitoiMixedPairs`)를 든 사람에게 1만+1통은 한 쌍이다. 그 사람의 뷰에는
+ * 이 옵션이 실려 오고 샹텐·대기는 이미 그 규칙으로 계산되는데(read.ts), 값어치만
+ * 평범한 규칙으로 세면 **텐파이인 줄은 알면서 토이토이인 줄은 모르는** 상태가 된다.
+ *
+ * 자패는 무늬 개념이 없어 코어에서도 동일 패만 묶으므로 여기서도 그대로 둔다.
+ */
+function rankOnlyKey(k: TileKind): string {
+  return isNumber(k) ? `n${k.rank}` : kindKey(k);
 }
 
 /** 색깔별 rank 장수 (수패만) */
@@ -165,7 +182,15 @@ function bySuit(kinds: readonly TileKind[]): Map<string, number[]> {
  * 아홉 장 중 일곱 장이 이미 있어야 인정한다. 가능성만으로 세면 봇이 못 가는 손을
  * 비싸다고 착각한다.
  */
-export function guessYaku(kinds: readonly TileKind[], menzen: boolean): YakuGuess[] {
+export function guessYaku(
+  kinds: readonly TileKind[],
+  menzen: boolean,
+  /**
+   * 증강이 바꾼 화료형 규칙(`view.scoringOptions`). 생략하면 평범한 마작이고,
+   * 그때 이 함수의 결과는 **한 글자도 달라지지 않는다.**
+   */
+  opts: DecomposeOptions = {},
+): YakuGuess[] {
   const out: YakuGuess[] = [];
   const suits = bySuit(kinds);
   const numberTotal = kinds.filter(isNumber).length;
@@ -191,8 +216,11 @@ export function guessYaku(kinds: readonly TileKind[], menzen: boolean): YakuGues
 
   // ── 치또이 ── 멘젠 전용. 작두가 다섯이면 실제로 그 방향이다
   if (menzen) {
+    // 비대칭 치또이를 든 손은 1만+1통도 한 쌍이다 — 그 규칙으로 세지 않으면
+    // 이미 다섯 쌍이 모인 손을 "쌍이 둘뿐"이라고 읽는다
+    const pairKey = opts.chiitoiMixedPairs === true ? rankOnlyKey : kindKey;
     let pairs = 0;
-    for (const n of counts(kinds).values()) if (n >= 2) pairs++;
+    for (const n of counts(kinds, pairKey).values()) if (n >= 2) pairs++;
     if (pairs >= 5) out.push({ name: "chiitoitsu", han: hanOf("chiitoitsu", menzen) });
   }
 
@@ -266,11 +294,13 @@ export function guessYaku(kinds: readonly TileKind[], menzen: boolean): YakuGues
     out.push({ name: "tanyao", han: hanOf("tanyao", menzen) });
   }
 
-  // ── 커쯔 계열 ── 또이쯔·커쯔가 몇 벌이나 모였는가로 잰다
+  // ── 커쯔 계열 ── 또이쯔·커쯔가 몇 벌이나 모였는가로 잰다.
+  // 동수의 결속을 든 손은 무늬가 달라도 숫자가 같으면 한 몸통이라 그 눈으로 센다.
   const c = counts(kinds);
+  const setCounts = opts.mixedTriplets === true ? counts(kinds, rankOnlyKey) : c;
   let triplets = 0;
   let pairsOrBetter = 0;
-  for (const n of c.values()) {
+  for (const n of setCounts.values()) {
     if (n >= 3) triplets++;
     if (n >= 2) pairsOrBetter++;
   }
@@ -311,8 +341,12 @@ export function guessYaku(kinds: readonly TileKind[], menzen: boolean): YakuGues
  * 센다. 겹침을 다 더하면 추정이 낙관 쪽으로 크게 기울고, 그러면 못 가는 손을 붙들게
  * 된다. 과소평가가 과대평가보다 안전하다.
  */
-export function bestYakuHan(kinds: readonly TileKind[], menzen: boolean): number {
+export function bestYakuHan(
+  kinds: readonly TileKind[],
+  menzen: boolean,
+  opts: DecomposeOptions = {},
+): number {
   let best = 0;
-  for (const g of guessYaku(kinds, menzen)) if (g.han > best) best = g.han;
+  for (const g of guessYaku(kinds, menzen, opts)) if (g.han > best) best = g.han;
   return best;
 }

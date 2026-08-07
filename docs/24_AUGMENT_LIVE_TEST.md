@@ -77,7 +77,7 @@
 
 | 항목 | 문서 근거 | 재확인 내용 |
 |---|---|---|
-| `ankan_dora` × `aotenjou_ceiling` 조합 시 점수 지수 폭발 | docs/21 §H-1 | `aotenjou_ceiling.ts:29-31`이 `info.han`(이미 `extraHan` 합산됨)을 지수에 그대로 재사용 — 여전히 수정 안 됨 |
+| ~~`ankan_dora` × `aotenjou_ceiling` 조합 시 점수 지수 폭발~~ | docs/21 §H-1 | ✅ **해소됨 (2026-08-07 실측 확인).** `aotenjou_ceiling.ts:55-59` `aotenjouBase()`는 5판 이상에서 **선형**(`MANGAN_BASE + (effHan-5) * 1000`)이고 지수 분기는 5판 미만에만 남아 있다. 이 표가 지목한 `:29-31`은 현재 채점 코드조차 아니다. 890판 자기대국 실측: 뚫린 천장 단독 기여 **+15%**, 11종 스택에 얹어도 **+17%** — 지수가 아니다. ⚠ **단 증상은 남아 있고 원인이 다르다** — 측정된 최대 한 방 **126,000점**(seed 1401667179, 첫 국에 게임 종료)의 주 동력은 `jackpot` ×3의 **뱅크 발행 72,000**이고 천장 기여는 18,000이다. 밸런스 항목으로 재분류. |
 | `open_kokushi` — `kokushi_pon` 후 일반 펑·치를 하면 그 국 화료·텐파이 영구 소프트락 | docs/22 (미검증) | `helpers.ts:187-192`의 `kokushiOnly` 게이트가 국 전체에 걸리는데 `open_kokushi.ts`는 일반 펑·치를 막지 않음 — 여전히 수정 안 됨. 전용 테스트 없음 |
 | `broken_border` — 클라(App.tsx)가 서버에 없는 `opts.mixedTriplets`를 임의로 켜 대기 표시가 서버와 어긋남 | docs/22 §4 | `App.tsx:1113-1116`이 `mixedRuns`+`mixedTriplets` 둘 다 켜지만 서버(`broken_border.ts:42`)는 `mixedRuns`만 킴. 서버 자체는 `pair_fixes_60.test.ts`로 검증되어 정상이나 클라 전용 휴리스틱 미수정 |
 | `discard_lock` × `hand_swap3` — `view:{holder}:revealTiles:{target}#round` 키 완전 동일 → 동시 보유 시 서로 덮어씀 | docs/22 §12-20 (미검증) | `discard_lock.ts:82-83`와 `hand_swap3.ts:80-82`의 키 생성 함수가 동일 문자열을 생성 — 여전히 충돌 |
@@ -94,8 +94,8 @@
 | alchemist | ✅ |
 | all_or_nothing | ✅ |
 | always_tenpai | ✅ |
-| ankan_dora | 🔴 (기존 미해결, aotenjou_ceiling 조합) |
-| aotenjou_ceiling | 🔴 (기존 미해결, ankan_dora 조합) |
+| ankan_dora | ✅ (지수 폭발 해소 — 위 표 참조) |
+| aotenjou_ceiling | ✅ (지수 폭발 해소 — 위 표 참조. 한 방 상한은 밸런스 항목으로 별도) |
 | async_chiitoi | ✅ |
 | avenger | ✅ |
 | big_hand | ✅ |

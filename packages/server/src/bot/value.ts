@@ -23,7 +23,7 @@
  */
 
 import { calculateScore, kindKey } from "@majak/core";
-import type { TileKind } from "@majak/core";
+import type { DecomposeOptions, TileKind } from "@majak/core";
 import type { HandPlan } from "./read.js";
 import { bestYakuHan, hanOf } from "./yaku.js";
 
@@ -113,6 +113,22 @@ export interface HandValueInput {
    * 안 주면 예전처럼 `plan`이 아는 네 역만 센다.
    */
   kinds?: readonly TileKind[];
+  /**
+   * **증강이 바꾼 화료형 규칙** (`view.scoringOptions`).
+   *
+   * 샹텐·대기는 이미 이 옵션을 그대로 코어에 넘겨 계산한다(`read.ts`). 값어치만
+   * 안 넘기고 있어서, 봇은 **증강이 넓혀 준 모양으로 텐파이인 것은 알면서 값은
+   * 평범한 규칙으로 매겼다.** 여기서는 역 읽기(`bot/yaku.ts`)에 넘겨, 무늬가 섞인
+   * 커쯔·쌍을 그 규칙대로 세게 한다. 생략하면 평범한 마작 그대로다.
+   */
+  opts?: DecomposeOptions;
+  /**
+   * 내가 든 **상시 증강**이 이 손의 값어치에 거는 배수 (`augmentValueMultiplier`).
+   *
+   * 생략하면 1(증강 없는 손). 판수가 아니라 **점수에** 곱한다 — 표의 값은
+   * "평범한 손 대비 기대 타점이 몇 배인가"라서 판수 축이 아니라 점수 축의 값이다.
+   */
+  augmentMultiplier?: number;
 }
 
 /**
@@ -128,7 +144,8 @@ export function estimateHandValue(input: HandValueInput): HandValue {
   // 방향은 "무엇을 버릴까"의 기준이라 좁게 잡혀 있고, 그래서 청일색·치또이처럼
   // 방향이 모르는 비싼 역을 놓친다 — 그걸 여기서 메운다.
   const fromPlan = planHan(input.plan, menzen);
-  const fromHand = input.kinds === undefined ? 0 : bestYakuHan(input.kinds, menzen);
+  const fromHand =
+    input.kinds === undefined ? 0 : bestYakuHan(input.kinds, menzen, input.opts);
   const base = input.handDora + Math.max(fromPlan, fromHand);
   const fu = estimateFu(input.plan, menzen);
 
@@ -143,8 +160,14 @@ export function estimateHandValue(input: HandValueInput): HandValue {
    * 닫힌 것은 아니라, 아주 낮은 잔값만 남긴다.
    */
   const yakuless = !menzen && Math.max(fromPlan, fromHand) === 0;
+  /**
+   * 증강 배수는 **맨 마지막에** 곱한다 — 만관·하네만 경계를 넘겨 세지 않기 위해서다.
+   * 판수에 얹으면 배수 1.3이 경계에서 두 배가 되기도 하고 아무 일도 아니기도 한다.
+   * 표가 말하는 것은 "기대 타점이 몇 배"이므로 점수에 곱하는 것이 그 뜻 그대로다.
+   */
+  const augMult = input.augmentMultiplier ?? 1;
   const score = (h: number): number =>
-    pointsForHan(h, fu, input.isDealer) * (yakuless ? YAKULESS_OPEN : 1);
+    pointsForHan(h, fu, input.isDealer) * (yakuless ? YAKULESS_OPEN : 1) * augMult;
 
   return {
     han,

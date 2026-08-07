@@ -7,6 +7,7 @@
  */
 
 import {
+  augmentValueMultiplier,
   doraKindFor,
   handZone,
   kindKey,
@@ -54,6 +55,14 @@ export interface ValueQuery {
   doraDelta?: number;
   /** 그때의 후로 수 — 울고 난 뒤를 값매길 때 넣는다 (멘젠 판수가 사라진다) */
   meldCount?: number;
+  /**
+   * **내 증강 배수를 빼고** 값매긴다 — 증강 정책에 넘길 값을 뽑을 때만 쓴다.
+   *
+   * `botPlan.myHandPoints`(content)가 `ctx.handPoints`에 같은 배수를 스스로 곱하므로,
+   * 그 눈금에는 여기서 곱하지 않은 값이 들어가야 두 번 걸리지 않는다.
+   * 버림·리치·후로·깡은 이 값을 쓰지 않는다(증강을 얹은 값을 본다).
+   */
+  withoutAugments?: boolean;
 }
 
 export interface BotRead {
@@ -280,6 +289,18 @@ export function buildRead(
   };
 
   const mine = view.round.byPlayer[me];
+  /**
+   * **내가 든 상시 증강이 내 손 값어치에 거는 배수** (`AUGMENT_PLAY`, 코어).
+   *
+   * 뚫린 천장(상한 없음)·밀실의 도라(안깡당 +4판)·큰손(최소 만관)을 들고도 봇은
+   * 자기 손을 평범한 손으로 셌다 — 밀어야 할 자리에서 접고, 리치를 걸 자리에서
+   * 다마를 쳤다(docs/27 §5.2가 지정한 삽입 지점). 표에 없는 증강은 1.0이고 곱은
+   * 코어에서 0.4~2.2로 잘려 있다. **그 국에만 사는 효과는 표에 없으므로**
+   * 이미 꺼진 증강을 계속 비싸게 세는 일은 생기지 않는다.
+   */
+  const myAugmentValue = augmentValueMultiplier(
+    view.players.find((p) => p.id === me)?.augments ?? [],
+  );
   const match = readMatch(view, me, mode);
   const wallLeft = wallLeftOf(view);
   const furiten = mine?.furiten === true;
@@ -320,6 +341,10 @@ export function buildRead(
         plan: input.plan,
         isDealer: match.isDealer,
         riichiDeclared: mine?.riichiDeclared === true,
+        // 증강이 넓힌 화료형으로 텐파이인 것은 아는데 값은 평범한 규칙으로 매기던
+        // 구멍을 막는다 — 샹텐·대기와 **같은 옵션**을 값어치도 본다
+        opts,
+        augmentMultiplier: input.withoutAugments === true ? 1 : myAugmentValue,
       }),
     winChanceOf: (input) =>
       winChance({

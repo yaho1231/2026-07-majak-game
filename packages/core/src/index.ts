@@ -384,6 +384,7 @@ export type {
   GameAbortedMessage,
   ErrorMessage,
   PongMessage,
+  ServerInfoMessage,
   LobbyPlayerEntry,
   LobbyMessage,
   StatsEntry,

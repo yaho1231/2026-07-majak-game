@@ -57,6 +57,20 @@ export interface LogoutMessage {
   type: "logout";
 }
 
+/**
+ * 게스트 체험 — 계정 없이 봇 3명과의 1인 게임을 즉시 시작한다.
+ *
+ * 가입 게이트(SIGNUP_CODE)를 우회하는 것이 **아니다**. 게스트는 "놀 수 있을 뿐"
+ * 계정 공간에는 들어오지 못한다 — 서버가 임시 닉네임을 발급하고, 이 연결이
+ * 끊기면 신원과 판이 함께 사라진다. 방 만들기·코드 참가·리더보드·리플레이는
+ * 전부 막혀 있다 (서버 라우터의 게스트 화이트리스트).
+ */
+export interface GuestPlayMessage {
+  type: "guestPlay";
+  /** 반장전(기본)·동풍전. */
+  mode?: GameMode;
+}
+
 // ── 방 생성·참가 (15) ──
 
 /** 방 만들기 — 서버가 랜덤 코드를 생성하고 방장으로 입장시킨다. */
@@ -416,6 +430,7 @@ export type ClientMessage =
   | LoginMessage
   | TokenLoginMessage
   | LogoutMessage
+  | GuestPlayMessage
   | CreateRoomMessage
   | JoinRoomMessage
   | LeaveRoomMessage
@@ -536,6 +551,16 @@ export interface RoundOverMessage {
   tiles: Record<TileId, PublicTileView>;
   /** 화료자별 공개 손패 */
   revealedHands: Record<PlayerId, RevealedHand>;
+  /**
+   * 결과 화면을 열어 둘 수 있는 **상한**(ms) — 서버의 국 사이 대기(interRoundDelayMs)와
+   * 같은 값이다. 아무도 닫지 않으면 서버는 이 시간에 다음 국을 시작한다.
+   *
+   * 결과 화면은 스스로 닫히지 않으므로(사람이 "다음 국으로"를 누른다), 화면이 언제
+   * 저절로 넘어가는지 알려 줄 유일한 근거가 이 값이다. 클라이언트가 자기 숫자를 따로
+   * 들고 있으면 서버 상한과 어긋나 거짓 카운트다운이 되므로 **여기로만** 흘린다.
+   * 0·미지정이면 대기가 없다(테스트·봇 게임) — 카운트다운도 띄우지 않는다.
+   */
+  autoContinueMs?: number;
 }
 
 export interface RankingEntry {
@@ -591,6 +616,22 @@ export interface ErrorMessage {
 
 export interface PongMessage {
   type: "pong";
+}
+
+/**
+ * 서버 안내 — 연결 직후(인증 전) 서버가 먼저 한 번 보낸다.
+ *
+ * 로그인 화면이 **거짓말을 하지 않기 위해** 필요하다. 예전에는 클라이언트가
+ * 가입 게이트가 켜졌는지 알 수 없어 가입 코드 칸에 "서버에 설정된 경우 필요"
+ * 라고 얼버무렸고, 게이트가 켜진 공개 서버에서는 방문자가 폼을 다 채운 뒤에야
+ * 3.2초짜리 토스트로 거절당했다. 이제 폼이 미리 안다.
+ */
+export interface ServerInfoMessage {
+  type: "serverInfo";
+  /** 가입 코드가 필요한 서버인가 (SIGNUP_CODE 설정 여부). */
+  signupGate: boolean;
+  /** 게스트 체험을 받는 서버인가. */
+  guestPlay: boolean;
 }
 
 // ── 대기실(로비) 상태 (14) ──
@@ -771,8 +812,16 @@ export interface AuthOkMessage {
   type: "authOk";
   username: string;
   isAdmin: boolean;
-  /** 자동 로그인용 세션 토큰 (클라이언트가 저장) */
+  /**
+   * 자동 로그인용 세션 토큰 (클라이언트가 저장).
+   * 게스트는 빈 문자열 — 저장할 세션이 없다(연결이 끊기면 신원도 사라진다).
+   */
   sessionToken: string;
+  /**
+   * 게스트 체험 세션인가. 참이면 클라이언트는 홈·통계·리플레이를 요청하지 않고
+   * (서버가 어차피 거부한다) 게임이 끝나면 가입 안내를 보여 준다.
+   */
+  guest?: boolean;
 }
 
 /** 방 생성 완료 — 이어서 joined·lobby가 온다. */
@@ -888,6 +937,7 @@ export type ServerMessage =
   | GameAbortedMessage
   | ErrorMessage
   | PongMessage
+  | ServerInfoMessage
   | LobbyMessage
   | KickedMessage
   | StatsMessage
