@@ -7404,7 +7404,15 @@ function useDraggablePanel(): {
     style:
       pos === null
         ? undefined
-        : { left: pos.left, top: pos.top, right: "auto", bottom: "auto" },
+        : ({
+            left: pos.left,
+            top: pos.top,
+            right: "auto",
+            bottom: "auto",
+            // 패널 높이가 top을 빼고 잡히도록 (styles.css `.settings-panel`) —
+            // 옮긴 자리에서도 아래끝이 화면 밖으로 나가지 않는다.
+            "--panel-top": `${pos.top}px`,
+          } as React.CSSProperties),
     onPointerDown,
   };
 }
@@ -13143,7 +13151,7 @@ function DraftOverlay({
           {draft.choices.map((c, i) => (
             <button
               key={c.id}
-              className="draft-card tier-prism"
+              className={`draft-card draft-card-cat aug-cat-${augmentCategory(c.id)}`}
               style={{ animationDelay: `${i * 120}ms` }}
               onClick={() => onPick(c.id)}
               disabled={picked}
