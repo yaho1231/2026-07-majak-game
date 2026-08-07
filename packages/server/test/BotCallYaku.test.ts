@@ -17,7 +17,6 @@ import type { YakuName } from "../src/bot/yaku.js";
 import { bidCall } from "../src/bot/call.js";
 import { buildRead } from "../src/bot/read.js";
 import { NEUTRAL_PROFILE } from "../src/bot/profile.js";
-import { parseFlags } from "../src/bot/flags.js";
 import { botScene, h } from "./botTestView.js";
 import type { BotScene } from "./botTestView.js";
 
@@ -93,79 +92,111 @@ describe("판수 표는 하나뿐이다 — 열린 손의 쿠이사가리까지"
  * 예전에는 샹텐 → 우케이레 → 적도라 순의 고정 정렬로 골랐다. 즉 속도만 봤고,
  * 부른 뒤 손이 얼마짜리가 되는지는 선택에 들어가지 않았다. `bot/openTally.ts`의
  * 첫 측정이 "울고 난 손이 멘젠 손의 절반 이하 값"임을 보여 준 뒤에 손댄 자리다.
+ *
+ * ⚠️ **판을 강하게 만들지는 않는다** — 1200배패 두 시드에서 +0.0067 ± 0.0028 /
+ * −0.0029 ± 0.0027로 부호가 뒤집혔다(중립). 고정 우선순위 사슬을 지우려고 남긴
+ * 것이지 이득이라서가 아니다. 숫자는 `call.ts` 주석에 있다.
  */
 describe("콜 후보 고르기 — 속도만이 아니라 값도 본다", () => {
-  const opts = (scene: BotScene) => [
-    // 도라(적5p)를 멘쯔에 묻는 치
-    { type: "chi", payload: { tileIds: [scene.idOf("5p"), scene.idOf("6p")] } },
-    // 같은 값어치의 다른 치 — 도라를 안 쓴다
-    { type: "chi", payload: { tileIds: [scene.idOf("7p"), scene.idOf("8p")] } },
-    { type: "pass", payload: {} },
-  ];
+  /**
+   * 탕야오로 굳는 손. 5678p를 들고 6p를 받으면 **치가 두 가지**인데 남는 모양이
+   * 달라서 값이 갈린다(567p+8p 남김 vs 678p+5p 남김). 둘 다 샹텐도 우케이레도
+   * 같아서 **예전 고정 정렬로는 구분이 안 되던 자리**다.
+   *
+   * ⚠️ 이 장면을 고르는 데 품이 든 이유: 열린 손은 역이 없으면 게이트에서 잘린다.
+   * 앞선 판(9m을 들고 있던 손)은 세 경우가 전부 `null`이라 **비교가 공허했다** —
+   * `null === null`은 언제나 참이라 테스트가 통과하면서 아무것도 안 재고 있었다.
+   * 아래 두 값(663 / 1023)이 실제로 갈리는지가 이 테스트의 전제다.
+   */
+  const scene = () =>
+    botScene({ hand: "234m567s5678p33m", lastDiscard: { player: "p3", spec: "6p" } });
+  const pass = { type: "pass", payload: {} };
+  const chiLow = (s: BotScene) => ({
+    type: "chi",
+    payload: { tileIds: [s.idOf("5p"), s.idOf("7p")] },
+  });
+  const chiHigh = (s: BotScene) => ({
+    type: "chi",
+    payload: { tileIds: [s.idOf("7p"), s.idOf("8p")] },
+  });
+  const call = (s: BotScene, options: unknown[]) =>
+    bidCall(buildRead(s.view, "p0"), options as never, null, NEUTRAL_PROFILE);
 
-  it("스위치를 켜면 후보를 EV로 고른다 (기본은 예전 정렬 그대로)", () => {
-    const scene = botScene({
-      hand: "234m567s5678p99m",
-      lastDiscard: { player: "p3", spec: "6p" },
-      redAt: [7], // 5p를 적도라로
-    });
-    const withEv = buildRead(scene.view, "p0", { flags: parseFlags("callValue") });
-    const plain = buildRead(scene.view, "p0");
-    // 두 경로 다 무언가를 부르거나 둘 다 안 부른다 — 여기서 잡는 것은 '고르는 방식'이
-    // 바뀌어도 판단이 깨지지 않는다는 것이다 (구체적 선택은 EV가 정한다)
-    const a = bidCall(withEv, opts(scene) as never, null, NEUTRAL_PROFILE);
-    const b = bidCall(plain, opts(scene) as never, null, NEUTRAL_PROFILE);
-    expect(a === null).toBe(b === null);
-    if (a !== null && b !== null) {
-      // EV로 고른 쪽이 그 손에서 더 나쁜 값을 낼 수는 없다
-      expect(a.value).toBeGreaterThanOrEqual(b.value);
-    }
+  it("두 치의 값이 실제로 갈린다 (아래 테스트들의 전제)", () => {
+    const s = scene();
+    const low = call(s, [chiLow(s), pass]);
+    const high = call(s, [chiHigh(s), pass]);
+    expect(low).not.toBeNull();
+    expect(high).not.toBeNull();
+    expect(high?.value ?? 0).toBeGreaterThan(low?.value ?? 0);
   });
 
-  it("후보가 하나뿐이면 스위치가 아무것도 바꾸지 않는다", () => {
-    const scene = botScene({
-      hand: "234m567s5678p99m",
-      lastDiscard: { player: "p3", spec: "6p" },
+  /**
+   * **안커를 깨뜨리던 자리.** 실게임에서 EV 켠 쪽과 끈 쪽이 실제로 갈린 조합을
+   * 그대로 가져왔다 — 5555s 6789s를 들고 7s를 받으면 치가 두 가지인데,
+   * 5s+6s로 받으면 **555s 안커가 깨지고** 8s+9s로 받으면 남는다. 둘 다 샹텐이
+   * 같아서 예전 고정 정렬은 이 차이를 못 봤다.
+   *
+   * 이 장면을 실게임에서 건져 온 이유: 손으로 지어낸 장면 385개를 훑었는데 **단
+   * 하나도 두 정렬이 갈리지 않았다.** 실제로 갈리는 것은 콜 990번 중 4번뿐이다
+   * (`call.ts` 주석의 표). 지어내서는 이 테스트를 쓸 수 없었다.
+   */
+  it("안커를 깨는 치 대신 남기는 치를 고른다 — 고정 정렬은 못 보던 차이", () => {
+    const s = botScene({
+      hand: "27m677p55556789s",
+      lastDiscard: { player: "p3", spec: "7s" },
     });
-    const one = [
-      { type: "chi", payload: { tileIds: [scene.idOf("7p"), scene.idOf("8p")] } },
-      { type: "pass", payload: {} },
-    ];
-    const a = bidCall(
-      buildRead(scene.view, "p0", { flags: parseFlags("callValue") }),
-      one as never,
-      null,
-      NEUTRAL_PROFILE,
-    );
-    const b = bidCall(buildRead(scene.view, "p0"), one as never, null, NEUTRAL_PROFILE);
-    expect(a?.value).toBe(b?.value);
+    // 555s를 깨서 5s6s7s를 만든다
+    const breaksAnko = {
+      type: "chi",
+      payload: { tileIds: [s.idOf("5s"), s.idOf("6s")] },
+    };
+    // 7s8s9s를 만들어 555s를 남긴다
+    const keepsAnko = {
+      type: "chi",
+      payload: { tileIds: [s.idOf("8s"), s.idOf("9s")] },
+    };
+    const bid = (options: unknown[]) =>
+      bidCall(buildRead(s.view, "p0"), options as never, null, NEUTRAL_PROFILE);
+
+    // 전제: 둘 다 단독으로는 부를 수 있다 (여기가 null이면 아래가 공허해진다)
+    expect(bid([breaksAnko, pass])).not.toBeNull();
+    expect(bid([keepsAnko, pass])).not.toBeNull();
+
+    // 입력 순서를 어느 쪽으로 줘도 안커를 남기는 쪽이 뽑혀야 한다
+    expect(bid([breaksAnko, keepsAnko, pass])?.option).toEqual(keepsAnko);
+    expect(bid([keepsAnko, breaksAnko, pass])?.option).toEqual(keepsAnko);
+  });
+
+  it("후보가 하나뿐이면 그 후보가 그대로 뽑힌다", () => {
+    const s = scene();
+    expect(call(s, [chiLow(s), pass])?.option).toEqual(chiLow(s));
   });
 });
 
 describe("EV 재정렬이 전진 게이트를 깨뜨리지 않는다", () => {
-  it("전진하는 후보가 있으면 EV 정렬을 켜도 그 콜이 살아남는다", () => {
-    /**
-     * 정렬 기준을 바꾸면 `plans[0]`이 '가장 빠른 것'이 아니게 되는데, 전진 게이트는
-     * `plans[0]` 하나만 본다. 전진 후보들 안에서만 다시 세우지 않으면 여기서
-     * 멀쩡한 콜이 '전진 없음'으로 잘린다.
-     */
+  /**
+   * 정렬 기준을 EV로 바꾸면 `plans[0]`이 더 이상 '가장 빠른 것'이 아니게 되는데,
+   * 전진 게이트는 `plans[0]` 하나만 본다. 전진 후보들 안에서만 다시 세우지 않으면
+   * 멀쩡한 콜이 '전진 없음'으로 잘린다 — 첫 구현에서 실제로 낸 버그다.
+   *
+   * 잡는 방법: **후보를 더 준다고 콜이 사라질 수는 없다.** 하나만 줬을 때 불렀다면
+   * 둘을 줬을 때도 불러야 한다.
+   */
+  it("후보를 더 준다고 콜이 통째로 사라지지 않는다", () => {
     const scene = botScene({
-      hand: "234m567s5678p99m",
+      hand: "234m567s5678p33m",
       lastDiscard: { player: "p3", spec: "6p" },
     });
-    const options = [
-      { type: "chi", payload: { tileIds: [scene.idOf("5p"), scene.idOf("7p")] } },
-      { type: "chi", payload: { tileIds: [scene.idOf("7p"), scene.idOf("8p")] } },
-      { type: "pass", payload: {} },
-    ];
-    const on = bidCall(
-      buildRead(scene.view, "p0", { flags: parseFlags("callValue") }),
-      options as never,
-      null,
-      NEUTRAL_PROFILE,
-    );
-    const off = bidCall(buildRead(scene.view, "p0"), options as never, null, NEUTRAL_PROFILE);
-    // 스위치가 콜을 통째로 없애 버리면 안 된다
-    expect(on === null).toBe(off === null);
+    const a = { type: "chi", payload: { tileIds: [scene.idOf("5p"), scene.idOf("7p")] } };
+    const b = { type: "chi", payload: { tileIds: [scene.idOf("7p"), scene.idOf("8p")] } };
+    const pass = { type: "pass", payload: {} };
+    const call = (options: unknown[]) =>
+      bidCall(buildRead(scene.view, "p0"), options as never, null, NEUTRAL_PROFILE);
+
+    // 전제: 하나씩 주면 둘 다 부른다 (여기가 null이면 아래 비교가 공허해진다)
+    expect(call([a, pass])).not.toBeNull();
+    expect(call([b, pass])).not.toBeNull();
+    expect(call([a, b, pass])).not.toBeNull();
   });
 });
