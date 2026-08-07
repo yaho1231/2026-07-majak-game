@@ -384,7 +384,7 @@ defineAugment({
 - **관계는 대칭**이다 — 한쪽에만 선언해도 `excludeFor`가 두 방향을 함께 보므로
   역방향(그 증강 → 진짜 용)도 자동으로 막힌다. 상태(보유 증강)에서만 파생되므로
   리플레이에 안전하다.
-- 용례: **진짜 용**(5멘쯔·17장)은 `decompose`가 치토이·국사를 `totalSets===4 && hand===14`
+- 용례: **진짜 용**(5멘쯔·17장)은 `decompose`가 치또이·국사를 `totalSets===4 && hand===14`
   에서만 열거하는 탓에 14장/4멘쯔 전제 특수형을 전부 무력화한다 — 죽은 픽(조용한 무효)이나
   소프트락(우는 국사: 표준·국사 양쪽 봉인)이 되므로 `open_kokushi·giant_god·royal_kokushi·
   async_chiitoi·mixed_nine_gates·void_kan`을 conflicts로 잠근다.

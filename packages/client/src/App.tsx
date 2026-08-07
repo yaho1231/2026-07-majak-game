@@ -151,7 +151,7 @@ const YAKU_NAMES: Record<string, string> = {
   houtei: "하저로어",
   rinshan: "영상개화",
   chankan: "창깡",
-  chiitoitsu: "치또이츠",
+  chiitoitsu: "치또이쯔",
   toitoi: "또이또이",
   sanankou: "산안커",
   sankantsu: "산깡쯔",
@@ -5700,7 +5700,7 @@ const HELP_YAKU: YakuGroup[] = [
     items: [
       { name: "더블리치", han: "2판 · 멘젠", note: "첫 순번에, 아무도 울지 않은 채 건 리치." },
       {
-        name: "치또이츠",
+        name: "치또이쯔",
         han: "2판 · 멘젠",
         tiles: "11m 44m 77m 22p 99p 33s 55z",
         note: "같은 패 2장씩 일곱 쌍. 이것만 묶음 4개+머리 규칙에서 벗어납니다.",

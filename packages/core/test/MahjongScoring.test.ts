@@ -66,7 +66,7 @@ describe("decompose", () => {
     expect(types).toEqual([1, 4]); // 456p만 슌쯔 vs 123m×3+456p
   });
 
-  it("치토이·국사·불완성형", () => {
+  it("치또이·국사·불완성형", () => {
     expect(decompose(h("1122m3344p5566p77z"), 0)[0]?.form).toBe("chiitoitsu");
     expect(decompose(h("119m19p19s1234567z"), 0)[0]?.form).toBe("kokushi");
     expect(decompose(h("123m456p789s1245s3z"), 0)).toHaveLength(0);
@@ -137,7 +137,7 @@ describe("evaluateWin — 일반 역", () => {
     expect(r?.han).toBe(8);
   });
 
-  it("치또이츠: 2판 25부", () => {
+  it("치또이쯔: 2판 25부", () => {
     const r = evaluateWin(
       ctxOf({ hand: h("1122m3344p5566p77z"), winningTile: t("7z") }),
       registry,
@@ -146,7 +146,7 @@ describe("evaluateWin — 일반 역", () => {
     expect(r?.fu).toBe(25);
   });
 
-  it("량페코+핑후가 치토이 해석을 이긴다", () => {
+  it("량페코+핑후가 치또이 해석을 이긴다", () => {
     const r = evaluateWin(
       ctxOf({ hand: h("112233m445566p77s"), winningTile: t("6p") }),
       registry,

@@ -89,7 +89,7 @@ describe("조커 분해 — 기준 구현과 일치", () => {
     expect(positives).toBe(180);
   });
 
-  it("치토이·국사도 기준과 일치한다", () => {
+  it("치또이·국사도 기준과 일치한다", () => {
     const bad: string[] = [];
     const chiitoi: TileKind[] = [
       { suit: "man", rank: 1 }, { suit: "man", rank: 1 },

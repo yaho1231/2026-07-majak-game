@@ -1,6 +1,6 @@
 /**
  * decompose — 손패를 화료 형태로 분해한다.
- * 4멘쯔 1작두(standard) / 치토이 / 국사 세 형태를 전부 열거한다.
+ * 4멘쯔 1작두(standard) / 치또이 / 국사 세 형태를 전부 열거한다.
  *
  * "첫 번째 남은 패는 반드시 지금 소비된다" 기법으로 중복 없이 모든 분해를 얻는다.
  * 슌쯔 허용 suit는 파라미터 — 증강이 새 suit를 추가해도 동작한다.
@@ -27,7 +27,7 @@ export interface Decomposition {
   sets: DecompSet[];
   /**
    * 조커(`wildKinds`)를 **실제 패로 바꿔 놓은** 손패. 조커가 없으면 undefined.
-   * 채점은 이 손을 봐야 한다 — 치토이·국사는 sets/pair가 아니라 손패 전체로
+   * 채점은 이 손을 봐야 한다 — 치또이·국사는 sets/pair가 아니라 손패 전체로
    * 역을 판정하기 때문이다(`WinContext.allKinds`).
    */
   effectiveHand?: TileKind[];
@@ -76,7 +76,7 @@ export interface DecomposeOptions {
   mixedPairs?: boolean;
   /**
    * 국사 형태로만 화료 가능 (우는 국사무쌍: 특수 퐁을 한 순간 다른 길이 닫힌다).
-   * 표준형·치토이 분해를 아예 열거하지 않는다 — 화료·텐파이·대기·후리텐이
+   * 표준형·치또이 분해를 아예 열거하지 않는다 — 화료·텐파이·대기·후리텐이
    * 전부 이 분해를 통해 계산되므로, 여기서 막으면 모든 판정 지점에 일관 적용된다.
    */
   kokushiOnly?: boolean;
@@ -561,15 +561,15 @@ function freeKindUniverse(hand: readonly TileKind[]): TileKind[] {
   return all;
 }
 
-/** 치토이 한 가지 — 쌍 7개와 조커가 무엇이 됐는지 */
+/** 치또이 한 가지 — 쌍 7개와 조커가 무엇이 됐는지 */
 interface ChiitoiSolution {
   pairs: TileKind[];
   wildAs: TileKind[];
 }
 
 /**
- * 치토이 — 조커는 **혼자 남은 패의 짝**이 되거나, 둘이 모여 **새 쌍**이 된다.
- * 같은 패 3장 이상은 조커로도 못 고친다(치토이는 서로 다른 7종).
+ * 치또이 — 조커는 **혼자 남은 패의 짝**이 되거나, 둘이 모여 **새 쌍**이 된다.
+ * 같은 패 3장 이상은 조커로도 못 고친다(치또이는 서로 다른 7종).
  */
 function chiitoiWithWilds(counts: Counts, wilds: number, ctx: ExtractCtx): ChiitoiSolution[] {
   const pairs: TileKind[] = [];
@@ -858,7 +858,7 @@ function decomposeInternal(
     }
   }
 
-  // ── 치토이: 후로 없음, 서로 다른 7종 × 2장 (표준 4멘쯔 게임에서만) ──
+  // ── 치또이: 후로 없음, 서로 다른 7종 × 2장 (표준 4멘쯔 게임에서만) ──
   if (meldCount === 0 && hand.length === 14 && totalSets === 4 && !done()) {
     const counts = buildCounts(real);
     if (!kokushiOnly) {

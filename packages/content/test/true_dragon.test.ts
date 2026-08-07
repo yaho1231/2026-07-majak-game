@@ -135,7 +135,7 @@ describe("true_dragon (진짜 용)", () => {
   });
 
   it("드래프트 상호 배제: 진짜 용은 14장/4멘쯔 전제 특수형 증강과 conflicts로 잠긴다", () => {
-    // decompose가 치토이·국사를 totalSets===4 && hand===14에서만 열거하므로
+    // decompose가 치또이·국사를 totalSets===4 && hand===14에서만 열거하므로
     // 진짜 용(5멘쯔·17장)과 함께 있으면 죽거나(픽 낭비) 소프트락(우는 국사)이 된다.
     const locked = [
       "open_kokushi",

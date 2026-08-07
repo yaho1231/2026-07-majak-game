@@ -325,7 +325,7 @@ describe("양극 — 1·9 혼합 깡도 커쯔로 채점된다", () => {
 });
 
 describe("옵션 없는 표준 분해 회귀", () => {
-  it("표준형·치토이·국사가 종전과 동일", () => {
+  it("표준형·치또이·국사가 종전과 동일", () => {
     expect(decompose(h("123m456m789p234s55z"), 0)).toHaveLength(1);
     expect(decompose(h("1122m3344p5566p77z"), 0)[0]?.form).toBe("chiitoitsu");
     expect(decompose(h("119m19p19s1234567z"), 0)[0]?.form).toBe("kokushi");

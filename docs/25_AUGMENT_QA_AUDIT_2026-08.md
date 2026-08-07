@@ -255,7 +255,7 @@ detail에 명시) · 방해 #14(책임전가 — 오탐, 설명이 코드와 일
    `standardYaku.ts:93`(`=== 4` 하드코딩 — 안커 4 + 슌쯔 1로 역만, 5안커면 오히려 탈락), `:502`(장수 총합 미검사 — 17장 손으로 구련).
 
 9. **`open_kokushi` 요구패 중복 후로 → 그 국 영구 소프트락, 봇이 확정적으로 밟는다.**
-   `open_kokushi.ts:101-129` validate가 기존 melds와의 kind 중복을 안 본다. `meldSet.size !== 6` → 국사 분해 영구 실패 + `kokushiOnly`가 표준형·치토이 차단 → 화료·텐파이 모두 불가. 봇은 `committed`면 무조건 콜한다(`:167-170`).
+   `open_kokushi.ts:101-129` validate가 기존 melds와의 kind 중복을 안 본다. `meldSet.size !== 6` → 국사 분해 영구 실패 + `kokushiOnly`가 표준형·치또이 차단 → 화료·텐파이 모두 불가. 봇은 `committed`면 무조건 콜한다(`:167-170`).
 
 10. **파워 티어 가중치가 미배선 — 밸런싱 시스템 전체가 작동한 적이 없다.**
     `powerTier.ts:41-50`의 `POWER_TIER_WEIGHT`(SS+ ×0.15 ~ D ×1.20, 108종 전수 등재) 소비처가 재수출·관리자 표·테스트뿐. 드래프트는 `AugmentRegistry.ts:44-49` `prng.int(bucket.length)` **완전 균등**. docs/20의 "SS+ 11% → 1.8%"는 현실이 아니고 지금도 11%다.
