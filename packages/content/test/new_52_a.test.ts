@@ -302,7 +302,7 @@ describe("mixed_nine_gates (뒤섞인 아홉 개의 연꽃)", () => {
     // 1112345678999m + 9m = 순정 구련보등 14장 (9m 4장)
     const ev = evalHand("1112345678999m9m", true);
     expect(ev).not.toBeNull();
-    expect(ev!.yaku.some((y) => y.id === "chuuren")).toBe(true);
+    expect(ev!.yaku.some((y) => y.id.startsWith("chuuren"))).toBe(true);
     expect(ev!.yaku.some((y) => y.id === "mixed_nine_gates")).toBe(false);
   });
 

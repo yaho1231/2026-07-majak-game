@@ -106,6 +106,7 @@ describe("결과 화면 역 이름 — 사전이 전부 받는다", () => {
       "tenhou",
       "chihou",
       "kokushi_13",
+      "chuuren_junsei",
     ]) {
       expect(keys.has(k), k).toBe(true);
     }
