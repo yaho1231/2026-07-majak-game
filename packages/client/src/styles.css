@@ -4559,6 +4559,30 @@ button {
   margin: 0 0 16px;
 }
 
+/*
+ * 대기실의 선택 줄 머리말 — 같은 모양의 줄이 둘 이상 서면 라벨이 없이는
+ * 무엇을 고르는 자리인지 알 수 없다(2026-08-08 사용자 지적: 쉬움·보통·어려움이
+ * 봇 난이도인지 구별이 안 갔다). 버튼보다 작고 조용하게, 줄 바로 위에 붙인다.
+ */
+.lobby-group-label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px 2px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.lobby-group-hint {
+  color: var(--ink-4);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
 .mode-btn {
   flex: 1;
   display: flex;

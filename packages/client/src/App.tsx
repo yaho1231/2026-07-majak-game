@@ -6623,6 +6623,9 @@ function WaitingRoom(props: {
         </div>
         <p className="waitroom-room">코드를 친구에게 알려주세요 · {lobby.players.length}/4</p>
 
+        {/* 줄이 둘인데 둘 다 라벨이 없어, 아래 줄이 무엇을 정하는지 알 수 없었다
+            (2026-08-08 사용자 지적) — 각 줄에 무엇을 고르는 자리인지 붙인다. */}
+        <div className="lobby-group-label">판 길이</div>
         <div className="mode-select" role="radiogroup" aria-label="게임 모드">
           {([
             ["hanchan", "반장전", "동+남 · 남4국까지"],
@@ -6649,6 +6652,10 @@ function WaitingRoom(props: {
 
         {/* 봇 난이도 — 성향(원형)이 "어떻게 두는가"라면 이쪽은 "얼마나 잘 두는가"다.
             기본 어려움이 종전 봇 그대로이고, 그 위로는 열지 않는다. */}
+        <div className="lobby-group-label">
+          🤖 봇 난이도
+          <span className="lobby-group-hint">봇이 얼마나 잘 두는가 · 다음 판부터</span>
+        </div>
         <div className="mode-select" role="radiogroup" aria-label="봇 난이도">
           {([
             ["easy", "쉬움", "실수를 자주 한다"],
