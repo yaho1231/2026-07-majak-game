@@ -105,7 +105,7 @@ export const trueDragon: AugmentDef = defineAugment({
   detail:
     "(상시) 배패를 16장 받고 멘쯔 5개 + 머리 1개(총 17장)로 화료한다. 화료·텐파이·후리텐·대기 판정이 모두 5멘쯔 형태로 바뀌며 화료 시 +3판을 얻는다(역만에는 미적용). 14장·4멘쯔를 전제하는 국사·치또이·구련류 증강과는 함께 가질 수 없다. 무장해제로 잠기면 가장 쓸모없는 패 3장이 패산으로 돌아가 평범한 손패 장수로 복귀한다 — 용은 풀리지만 그 국을 계속 싸울 수는 있다.",
   // 5멘쯔·17장은 14장/4멘쯔를 전제하는 특수형 증강을 전부 무력화한다
-  // (decompose가 치토이·국사를 totalSets===4 && hand===14에서만 열거).
+  // (decompose가 치또이·국사를 totalSets===4 && hand===14에서만 열거).
   // 국사/구련류를 잡으면 조용히 죽거나(픽 낭비) 소프트락(우는 국사)이 되므로
   // 드래프트에서 상호 배제한다. 관계는 대칭이라 역방향(그 증강 → 진짜 용)도 함께 막힌다.
   //
@@ -115,7 +115,7 @@ export const trueDragon: AugmentDef = defineAugment({
     "open_kokushi", // kokushi_pon 순간 표준·국사 둘 다 봉인 → 그 국 화료·텐파이 영구 불능
     "giant_god", // 국사 텐파이를 소환하지만 totalSets=5라 화료 불가 → 손 벽돌
     "royal_kokushi", // 국사 분해가 totalSets===4에서만 → 무효
-    "async_chiitoi", // 치토이 분해가 totalSets===4에서만 → 무효
+    "async_chiitoi", // 치또이 분해가 totalSets===4에서만 → 무효
     "mixed_nine_gates", // isMixedNineGates가 hand.length===14 요구 → 17장 화료엔 미성립
     "void_kan", // forgeWait가 13-melds*3 텐파이를 하드코딩 → 16장 보유자에겐 영영 미발동
   ],

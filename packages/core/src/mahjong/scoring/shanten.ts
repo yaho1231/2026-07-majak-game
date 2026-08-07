@@ -5,7 +5,7 @@
  * 한다. 예전 봇은 이웃 유무만 보는 keepValue 하나로 버렸기 때문에, 같은 1샹텐이라도
  * 받는 패가 4장인 형태와 16장인 형태를 구분하지 못했다(사람은 당연히 후자를 남긴다).
  *
- * 계산은 **표준형(4멘쯔 1작두) · 치토이 · 국사** 셋을 각각 재고 최솟값을 쓴다.
+ * 계산은 **표준형(4멘쯔 1작두) · 치또이 · 국사** 셋을 각각 재고 최솟값을 쓴다.
  * 표준형은 무늬 그룹별로 (멘쯔·부분멘쯔·작두) 조합을 전부 열거해 합치는 정공법이고,
  * 그룹별 결과는 **패 개수 문자열로 메모**하기 때문에 한 국 전체가 수십 µs로 끝난다.
  *
@@ -200,7 +200,7 @@ function standardShanten(
   return best;
 }
 
-/** 치토이쯔 샹텐 (멘젠 전용) */
+/** 치또이쯔 샹텐 (멘젠 전용) */
 function chiitoiShanten(kinds: readonly TileKind[]): number {
   const counts = new Map<string, number>();
   for (const k of kinds) {
@@ -261,7 +261,7 @@ export function shantenOf(
   }
   const totalSets = opts?.totalSets ?? 4;
   let best = standardShanten(kinds, meldCount, totalSets);
-  // 치토이·국사는 멘젠 13/14장 전용. 특수 화료형 증강이 걸린 손은 표준형만 본다.
+  // 치또이·국사는 멘젠 13/14장 전용. 특수 화료형 증강이 걸린 손은 표준형만 본다.
   if (meldCount === 0 && totalSets === 4 && kinds.length >= 13) {
     best = Math.min(best, chiitoiShanten(kinds), kokushiShanten(kinds));
   }

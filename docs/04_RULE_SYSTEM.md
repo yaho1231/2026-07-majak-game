@@ -154,7 +154,7 @@ Modifier는 필요한 경우 읽기 전용으로만 사용해야 하며, state�
 `scoring.*` 계열은 `helpers.scoringOptionsOf(state, rules, player)`가 DecomposeOptions로
 묶어서 화료 판정·텐파이·후리텐·대기·치 후보 등 모든 판정 지점에 일관 적용한다.
 (`scoring.kokushiMeldAssist`가 켜지고 실제로 `kokushi_pon` 후로가 있으면 `kokushiOnly`가
-함께 켜져 표준형·치토이 분해를 아예 열거하지 않는다 — 우는 국사무쌍은 국사로만 화료한다.)
+함께 켜져 표준형·치또이 분해를 아예 열거하지 않는다 — 우는 국사무쌍은 국사로만 화료한다.)
 
 **분해 규칙을 바꾸는 증강은 클라이언트 `waitDecompOptions`도 함께 고쳐야 한다.** 클라는
 대기를 서버가 아니라 스스로 계산하므로, 여기만 고치면 화면의 오름패 표시가 실제 화료와 어긋난다.

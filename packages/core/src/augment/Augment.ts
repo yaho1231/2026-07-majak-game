@@ -360,7 +360,7 @@ export interface AugmentDef {
    * (DraftController.excludeFor가 두 방향을 함께 본다).
    *
    * 용례: 화료형·손패 장수를 통째로 바꾸는 증강이 다른 특수형을 무력화하거나
-   * 소프트락시킬 때. 예: 진짜 용(5멘쯔·17장)은 국사·치토이·구련(14장/4멘쯔 전제)을
+   * 소프트락시킬 때. 예: 진짜 용(5멘쯔·17장)은 국사·치또이·구련(14장/4멘쯔 전제)을
    * 전부 죽이므로 그 증강들을 conflicts로 잠근다.
    */
   conflicts?: readonly string[];
