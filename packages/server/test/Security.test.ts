@@ -5,7 +5,7 @@
  * FakeSocket으로 네트워크 없이 RoomManager 경로를 그대로 태운다.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -162,6 +162,38 @@ describe("미인증 연결", () => {
     sock.clientSend({ type: "logout" });
     // 응답도, 상태 변화도 없어야 한다 (조용히 무시)
     expect(sock.sent.length).toBe(0);
+  });
+
+  /*
+   * 로그인 화면은 아직 미인증이다. 유예가 짧으면 스쿼터가 아니라 **손님**이 걸린다 —
+   * 계정을 찾거나 규칙을 읽는 사이 소켓이 회수되고, 클라가 곧바로 다시 붙어
+   * 끊김/재연결이 주기적으로 반복된다(2026-08-07: 30초 유예로 실제 관측).
+   * 그 짧은 틈에 누른 버튼은 전송되지 못하고 조용히 사라진다.
+   */
+  it("로그인 화면을 1분 넘게 보고 있어도 끊기지 않는다", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = await newHarness();
+      const sock = new FakeSocket();
+      h.rm.handleConnection(sock.asWs(), "203.0.113.9", false);
+      vi.advanceTimersByTime(60_000);
+      expect(sock.closed).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("그래도 무한정 열어 두지는 못한다 — 스쿼팅은 여전히 회수된다", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = await newHarness();
+      const sock = new FakeSocket();
+      h.rm.handleConnection(sock.asWs(), "203.0.113.9", false);
+      vi.advanceTimersByTime(30 * 60_000);
+      expect(sock.closed?.code).toBe(1008);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("기형 프레임 3회면 연결이 끊긴다", async () => {
