@@ -549,6 +549,9 @@ describe("게임 완주·기록", () => {
       // ack가 없으면 국마다 30초를 기다려 20초 안에 못 끝난다 → ack 배선 검증
       await sock.waitFor((m) => m.type === "gameOver", 20_000);
       expect(sock.last("gameOver").rankings).toHaveLength(4);
+      // 결과 화면의 카운트다운 근거 — 서버가 실제로 쓰는 상한 그대로 실려 나간다.
+      // (클라가 자기 숫자를 따로 들면 "N초 뒤 진행"이 거짓말이 된다.)
+      expect(sock.last("roundOver").autoContinueMs).toBe(30_000);
       await sock.waitFor((m) => m.type === "stats", 20_000);
     },
     25_000,

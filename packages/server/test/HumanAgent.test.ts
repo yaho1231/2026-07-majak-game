@@ -59,6 +59,31 @@ describe("HumanAgent.awaitContinue — 다음 국 ack 게이트", () => {
     await agent.awaitContinue(10_000);
   });
 
+  /**
+   * 결과 화면이 스스로 닫히지 않게 되면서 서버 상한이 20초로 늘었다(index.ts).
+   * 그만큼, 아무도 보고 있지 않은 끊긴 좌석 하나가 매 국 20초를 통째로 세우면
+   * 나머지 셋이 그 값을 다 치른다 — 끊긴 좌석에는 애초에 닫을 화면이 없다.
+   */
+  it("소켓이 끊긴 좌석은 즉시 resolve 한다 (남은 셋을 붙잡지 않는다)", async () => {
+    const sock = new FakeSocket();
+    sock.readyState = 3; // CLOSED
+    const agent = new HumanAgent("p1", "Alice", sock.asWs());
+    const start = Date.now();
+    await agent.awaitContinue(30_000);
+    // 상한(30초)을 기다리지 않고 곧바로 통과한다
+    expect(Date.now() - start).toBeLessThan(1_000);
+  });
+
+  it("접속 중인 좌석은 여전히 신호를 기다린다 (끊김 예외가 전부를 삼키지 않는다)", async () => {
+    const agent = new HumanAgent("p1", "Alice", new FakeSocket().asWs());
+    let resolved = false;
+    void agent.awaitContinue(10_000).then(() => {
+      resolved = true;
+    });
+    await tick();
+    expect(resolved).toBe(false);
+  });
+
   it("대기 도중 포기하면 pending 대기가 즉시 해소된다", async () => {
     const agent = new HumanAgent("p1", "Alice", new FakeSocket().asWs());
     let resolved = false;

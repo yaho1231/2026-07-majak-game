@@ -536,6 +536,16 @@ export interface RoundOverMessage {
   tiles: Record<TileId, PublicTileView>;
   /** 화료자별 공개 손패 */
   revealedHands: Record<PlayerId, RevealedHand>;
+  /**
+   * 결과 화면을 열어 둘 수 있는 **상한**(ms) — 서버의 국 사이 대기(interRoundDelayMs)와
+   * 같은 값이다. 아무도 닫지 않으면 서버는 이 시간에 다음 국을 시작한다.
+   *
+   * 결과 화면은 스스로 닫히지 않으므로(사람이 "다음 국으로"를 누른다), 화면이 언제
+   * 저절로 넘어가는지 알려 줄 유일한 근거가 이 값이다. 클라이언트가 자기 숫자를 따로
+   * 들고 있으면 서버 상한과 어긋나 거짓 카운트다운이 되므로 **여기로만** 흘린다.
+   * 0·미지정이면 대기가 없다(테스트·봇 게임) — 카운트다운도 띄우지 않는다.
+   */
+  autoContinueMs?: number;
 }
 
 export interface RankingEntry {

@@ -795,3 +795,57 @@ describe("기본 시드 결정론", () => {
     expect(deal()).toEqual(deal());
   });
 });
+
+// ─────────────────────────── 국 사이 대기 (결과 화면 게이트) ───────────────────────────
+
+/**
+ * 결과 화면은 **스스로 닫히지 않는다** — 사람이 "다음 국으로"를 눌러야 넘어가고,
+ * 아무도 안 누르면 서버가 상한(interRoundDelayMs)에서 진행한다. 그 상한을 화면이
+ * 정직하게 세어 보여 주려면 값이 roundOver에 실려 나가야 한다(autoContinueMs).
+ * 클라이언트가 자기 숫자를 따로 들면 카운트다운이 서버와 어긋난다.
+ */
+describe("HanchanController — 국 사이 대기와 autoContinueMs", () => {
+  /** awaitContinue 호출을 기록하는 사람 대역 (즉시 resolve = 화면을 바로 닫은 사람) */
+  class ContinueSpyAgent extends TestBotAgent {
+    readonly waits: number[] = [];
+    readonly autoContinueSeen: (number | undefined)[] = [];
+    notify(msg: { type: string; autoContinueMs?: number }): void {
+      if (msg.type === "roundOver") this.autoContinueSeen.push(msg.autoContinueMs);
+    }
+    async awaitContinue(maxWaitMs: number): Promise<void> {
+      this.waits.push(maxWaitMs);
+    }
+  }
+
+  const cfg: Partial<HanchanConfig> = {
+    ...DEFAULT_HANCHAN_CONFIG,
+    maxWind: 1,
+    westEntry: false,
+    dobi: false,
+    draftSchedules: [],
+    seed: 42,
+  };
+
+  it("interRoundDelayMs가 있으면 그 값 그대로 게이트하고 roundOver에 실어 보낸다", async () => {
+    const spy = new ContinueSpyAgent("p0", 1);
+    const agents = [spy, new TestBotAgent("p1", 2), new TestBotAgent("p2", 3), new TestBotAgent("p3", 4)];
+    await new HanchanController(agents, { ...cfg, interRoundDelayMs: 12_345 }).run();
+
+    expect(spy.waits.length).toBeGreaterThan(0);
+    expect(new Set(spy.waits)).toEqual(new Set([12_345]));
+    expect(spy.autoContinueSeen.length).toBeGreaterThan(0);
+    expect(new Set(spy.autoContinueSeen)).toEqual(new Set([12_345]));
+  });
+
+  it("interRoundDelayMs=0이면 게이트 자체를 걷는다 (테스트·봇 게임은 지연 없음)", async () => {
+    const spy = new ContinueSpyAgent("p0", 1);
+    const agents = [spy, new TestBotAgent("p1", 2), new TestBotAgent("p2", 3), new TestBotAgent("p3", 4)];
+    await new HanchanController(agents, { ...cfg, interRoundDelayMs: 0 }).run();
+
+    // awaitContinue를 아예 부르지 않는다 — 상한이 0이면 기다릴 것도 없다
+    expect(spy.waits).toEqual([]);
+    // 화면 쪽도 "대기 없음"을 그대로 읽을 수 있어야 카운트다운을 띄우지 않는다
+    expect(spy.autoContinueSeen.length).toBeGreaterThan(0);
+    expect(new Set(spy.autoContinueSeen)).toEqual(new Set([0]));
+  });
+});

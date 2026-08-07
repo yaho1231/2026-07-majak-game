@@ -1671,6 +1671,15 @@ export function App(): JSX.Element {
   /** 이번 국 결과에 대해 roundContinue(다음 국 신호)를 이미 보냈는지 — 국마다 리셋 */
   const roundContinueSent = useRef(false);
   /**
+   * 서버가 다음 국을 그냥 시작해 버리는 시각(performance.now 기준). 결과 화면의
+   * "다음 국으로" 버튼이 세는 남은 시간이다.
+   *
+   * 서버의 대기는 **roundOver를 보낸 순간**부터 흐르는데 결과창은 화료 컷인이 다
+   * 끝난 뒤에야 열린다 — 그래서 창이 열릴 때 상한을 처음부터 다시 세면 카운트다운이
+   * 컷인 길이만큼 거짓말을 한다. 메시지가 도착한 이 자리에서 절대 시각으로 굳힌다.
+   */
+  const roundResultDeadline = useRef<number | null>(null);
+  /**
    * 연출 배너를 국 단위로 정확히 한 번만 띄우기 위한 "이미 알림한 상태" 추적.
    * detectTransitions가 중복·스테일 뷰로 같은 전환을 다시 받아도 재발동하지 않게 한다
    * (재발동이 누적되면 배너가 자기 타이머로도 안 사라지는 stuck 버그가 났었다).
@@ -2556,6 +2565,9 @@ export function App(): JSX.Element {
     riichiBgmArmed.current = false; // 국 종료 — 아직 안 뜬 리치 배너가 뒤늦게 브금을 켜지 않게
     // 새 국 결과 → 다음-국 신호 가드 리셋 (결과 화면이 실제로 뜰 때 열어 준다)
     roundContinueSent.current = false;
+    // 서버 상한(autoContinueMs)을 지금 시각에 얹어 굳힌다. 0·미지정이면 대기가 없다.
+    const autoMs = msg.autoContinueMs ?? 0;
+    roundResultDeadline.current = autoMs > 0 ? performance.now() + autoMs : null;
     const infos = (msg.settle.winInfos ?? []) as WinInfo[];
     if (msg.outcome === "win" && infos.length > 0) {
       // 더블론 대비: 역만/만관 각각 실제 최고 등급 화료를 헤드라인으로 (infos[0] 고정 X)
@@ -3334,6 +3346,7 @@ export function App(): JSX.Element {
           result={roundResult}
           view={view}
           catalog={catalog}
+          deadlineAt={roundResultDeadline.current}
           onClose={closeRoundResult}
         />
       ) : null}
@@ -10971,11 +10984,17 @@ function RoundResultPanel({
   result,
   view,
   catalog,
+  deadlineAt,
   onClose,
 }: {
   result: RoundOverMessage;
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
+  /**
+   * 서버가 다음 국을 시작하는 시각(performance.now 기준). null이면 대기가 없다
+   * (interRoundDelayMs=0 — 테스트·봇 게임). 카운트다운 표시에만 쓴다.
+   */
+  deadlineAt: number | null;
   onClose: () => void;
 }): JSX.Element {
   const { settle } = result;
@@ -10989,14 +11008,29 @@ function RoundResultPanel({
     return catalog["yakuless_win"]?.name ?? "무형화료";
   };
 
-  // 결과 화면은 최대 5초 노출 후 자동으로 닫힌다. 타이머는 이 결과(result)마다
-  // 한 번만 걸고, 부모 리렌더로 onClose 참조가 바뀌어도 리셋되지 않게 ref로 읽는다.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  /**
+   * 결과 화면은 **스스로 닫지 않는다.** 예전에는 5초 타이머가 창을 강제로 닫았는데,
+   * 이 화면 하나에 화료자·공개 손패(스태거 애니메이션)·역 목록·도라 줄·증강 점수
+   * 내역·판/부 원·점수 카운트업(0.4s 뒤 시작해 최대 2s)·증감표·다음 국 안내가 다
+   * 들어 있고, 황패유국은 네 사람의 손패를 싣는다. `.result-panel`은 스크롤까지
+   * 되는데 5초 안에 그걸 읽고 스크롤하라는 요구였다.
+   *
+   * 이제는 사람이 "다음 국으로"를 눌러야 닫힌다(작혼·천봉과 같은 관례). 아무도 안
+   * 누르면 서버가 상한(autoContinueMs)에서 다음 국을 시작하고, 새 국 뷰가 오면
+   * 그때 창이 정리된다 — 그 남은 시간을 버튼 위에 그대로 세어 보여 준다.
+   */
+  const [remainMs, setRemainMs] = useState<number>(() =>
+    deadlineAt === null ? 0 : Math.max(0, deadlineAt - performance.now()),
+  );
   useEffect(() => {
-    const t = window.setTimeout(() => onCloseRef.current(), 5000);
-    return () => window.clearTimeout(t);
-  }, [result]);
+    if (deadlineAt === null) return;
+    const tick = (): void => setRemainMs(Math.max(0, deadlineAt - performance.now()));
+    tick();
+    const timer = window.setInterval(tick, 200);
+    return () => window.clearInterval(timer);
+  }, [deadlineAt]);
+  const remainSec = Math.ceil(remainMs / 1000);
+  const showCountdown = deadlineAt !== null && remainSec > 0;
 
   // 역 스탬프 사운드 — CSS 스탬프 딜레이(0.15s + i*0.09s)와 동기한 펜타토닉 계단
   const headRows = infos[0] !== undefined
@@ -11143,7 +11177,10 @@ function RoundResultPanel({
                   className={`result-yaku${r.aug === true ? " result-yaku-aug" : ""}`}
                   style={{ animationDelay: `${0.15 + i * 0.09}s` }}
                 >
-                  <span>{r.label}</span>
+                  {/* 역 이름을 용어 사전에 물린다 — 결과 화면은 초보자가 "핑후"가
+                      무엇인지 물어볼 유일한 자리인데, 그동안은 이름만 스쳐 지나갔다.
+                      증강 설명과 같은 TermText라 설정의 "용어 설명" 토글도 그대로 따른다. */}
+                  <span className="result-yaku-name"><TermText text={r.label} /></span>
                   <span className="result-han">{r.han}</span>
                 </div>
               ))}
@@ -11274,9 +11311,26 @@ function RoundResultPanel({
           <p className="result-next">{nextRoundNote.join(" · ")}</p>
         ) : null}
 
-        <button className="lobby-join result-close" onClick={onClose}>
-          닫기 (다음 국)
+        {/* 확인 버튼 — 이 창을 넘기는 유일한 손잡이다. 남은 시간을 함께 달아
+            "왜 저절로 넘어가는가"를 화면 안에서 설명한다. 대기가 없는 판
+            (interRoundDelayMs=0)에서는 초 표시 없이 버튼만 남는다. */}
+        <button
+          className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
+          onClick={onClose}
+        >
+          다음 국으로
+          {showCountdown ? (
+            <span className="result-close-count" aria-hidden>
+              {remainSec}초
+            </span>
+          ) : null}
         </button>
+        {showCountdown ? (
+          <p className="result-close-note">
+            누르지 않아도 <strong>{remainSec}초</strong> 뒤 다음 국이 시작된다 —
+            천천히 읽어도 된다
+          </p>
+        ) : null}
       </div>
     </div>
   );

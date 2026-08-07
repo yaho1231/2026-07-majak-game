@@ -1069,6 +1069,9 @@ export class HanchanController {
       uraDoraIndicators: ura,
       tiles,
       revealedHands,
+      // 결과 화면의 "다음 국으로" 버튼이 세는 남은 시간의 근거 — pauseBetweenRounds가
+      // 실제로 쓰는 상한 그대로다. 클라이언트에 같은 숫자를 두 벌 두지 않기 위해 싣는다.
+      autoContinueMs: this.config.interRoundDelayMs ?? 0,
     };
     this.notifyAll(msg);
   }

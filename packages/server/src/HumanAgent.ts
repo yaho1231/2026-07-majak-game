@@ -497,11 +497,16 @@ export class HumanAgent implements PlayerAgent {
   /**
    * 국 결과 화면 닫힘 신호(roundContinue)를 기다린다.
    * 클라이언트가 "닫기"를 보내거나 자동으로 닫힐 때 resolve.
-   * maxWaitMs 초과 시(AFK·끊김) 자동 resolve — 남은 사람들의 진행이 막히지 않게.
-   * 이미 포기한 좌석은 즉시 resolve.
+   * maxWaitMs 초과 시(AFK) 자동 resolve — 남은 사람들의 진행이 막히지 않게.
+   *
+   * 이미 포기한 좌석, 그리고 **소켓이 끊긴 좌석은 즉시 resolve**한다. 결과 화면을
+   * 읽을 시간을 주려고 상한을 넉넉히 잡은 만큼(index.ts INTER_ROUND_DELAY_MS),
+   * 아무도 안 보고 있는 자리 하나가 매 국 그 시간을 통째로 세우면 나머지 셋이
+   * 대가를 치른다. 끊긴 좌석에는 애초에 닫을 화면이 없다 — 결정·드래프트에서
+   * 끊긴 좌석을 유예로 줄이는 것과 같은 이유다.
    */
   awaitContinue(maxWaitMs: number): Promise<void> {
-    if (this.abandoned) return Promise.resolve();
+    if (this.abandoned || !this.isConnected()) return Promise.resolve();
     return new Promise<void>((resolve) => {
       this.pendingContinue = resolve;
       this.continueTimeout = setTimeout(() => this.resolveContinue(), maxWaitMs);

@@ -8880,3 +8880,66 @@ body.peeking .overlay-peekable > * {
 @media (prefers-reduced-motion: reduce) {
   .prompt-timer-urgent .prompt-timer-count { animation: none; }
 }
+
+/* ─────────────── 국 결과 — 확인 버튼과 남은 시간 ───────────────
+   결과 화면은 더 이상 5초 뒤 스스로 닫히지 않는다. 넘기는 손잡이가 이 버튼
+   하나뿐이므로 눈에 띄어야 하고, 서버 상한(autoContinueMs)이 다 되면 어차피
+   다음 국이 시작되므로 그 남은 시간을 버튼 위에서 세어 준다. */
+
+.result-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.result-close-count {
+  /* 버튼 본문은 letter-spacing이 넓다 — 숫자는 붙여 읽어야 초가 읽힌다 */
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82em;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0.85;
+}
+
+.result-close-urgent .result-close-count {
+  opacity: 1;
+  background: rgba(240, 138, 124, 0.32);
+  animation: result-close-tick 1s steps(1, end) infinite;
+}
+
+@keyframes result-close-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* 버튼 밑 한 줄 — "안 눌러도 넘어간다"를 말로도 적어 둔다. 이 문장이 없으면
+   숫자가 줄어드는 것이 재촉으로만 읽힌다. */
+.result-close-note {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #93a89b;
+}
+
+.result-close-note strong {
+  color: #cfe0d4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 역 이름이 용어 사전에 물렸다 — 밑줄(.gterm)이 판수와 붙어 보이지 않게 자리만 잡는다 */
+.result-yaku-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 2px;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-close-urgent .result-close-count { animation: none; }
+}

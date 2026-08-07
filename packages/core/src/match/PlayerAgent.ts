@@ -61,7 +61,8 @@ export interface PlayerAgent {
   decideDraft(stage: DraftStage, choices: AugmentDef[]): Promise<string>;
   /**
    * 국 결과 화면을 닫고 다음 국으로 넘어갈 준비가 됐다는 신호를 기다린다.
-   * 사람이 "닫기"(또는 자동 닫힘) 신호를 보내면 resolve 한다.
+   * 사람이 "다음 국으로"를 누르면(roundContinue) resolve 한다 —
+   * 결과 화면은 스스로 닫히지 않는다.
    * 봇·미구현 에이전트는 이 메서드가 없으므로 즉시 진행된다.
    * @param maxWaitMs 이 시간이 지나면 응답이 없어도 자동 resolve (AFK·끊김 안전망).
    */
