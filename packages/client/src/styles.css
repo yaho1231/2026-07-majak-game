@@ -858,6 +858,13 @@ button {
   box-shadow: 0 0 10px rgba(246, 109, 118, 0.75);
 }
 
+/* 눕힌 패는 상자(--rt-h × --rt-h) 안에서 실제 그림이 위아래로
+   (--rt-h - --rt-w)/2 만큼 안쪽에 있다. 점을 상자 기준으로 찍으면 패 아래로
+   빠져나가므로 그 여백만큼 끌어올린다. */
+.rt-riichi .rt-tsumo-dot {
+  bottom: calc((var(--rt-h) - var(--rt-w)) / 2 + 2px);
+}
+
 /* 타패 슬램 — 위에서 내리꽂혀 착지 스쿼시(1.08, 0.9) 후 리바운드 (부피 보존) */
 @keyframes tile-in {
   0% { transform: translateY(-16px) scale(1.45); opacity: 0; }
