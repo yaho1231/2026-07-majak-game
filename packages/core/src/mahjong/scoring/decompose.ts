@@ -293,39 +293,158 @@ export function isHonorRun(kinds: readonly TileKind[]): boolean {
   return ranks.every((r, i) => i === 0 || r === (ranks[i - 1] as number) + 1);
 }
 
-/** counts에서 멘쯔만으로 전부 소진하는 모든 방법 (첫 남은 패 강제 소비로 중복 방지) */
+// ───────────────────────── 조커(wildKinds) — 재귀가 직접 안다 ─────────────────────────
+//
+// ⚠ 예전에는 조커를 **실제 패로 바꿔 놓은 손을 전부 만들어** 다시 분해했다. 후보 kind가
+//   34종이라 조커 W장이면 34^W개의 손이 되고, 대기 계산은 거기에 34를 또 곱한다 —
+//   `123456789백백백백`처럼 백 4장이면 한 번의 대기 계산이 5~10초였다(2026-08-07 사용자 보고).
+//
+// 지금은 **분해 재귀가 조커를 직접 안다**: 몸통을 만들다 모자란 자리를 조커로 메운다.
+// 조커가 무엇이 됐는지는 그 몸통이 결정하므로(빈자리의 kind) 후보를 훑을 일이 없다.
+// 조커만으로 이루는 몸통·머리만 kind가 자유롭고, 그때만 후보를 열거한다.
 
+/** 멘쯔 분해 한 가지 — 조커가 무엇이 됐는지를 함께 들고 다닌다 */
+interface SetSolution {
+  sets: DecompSet[];
+  wildAs: TileKind[];
+}
+
+interface ExtractCtx {
+  seqSuits: ReadonlySet<Suit>;
+  wrap: boolean;
+  mixed: boolean;
+  mixedTri: boolean;
+  polar: boolean;
+  honor: boolean;
+  /** 조커만으로 이루는 몸통·머리에 쓸 kind 후보 (표준 34종 + 손의 커스텀 무늬) */
+  freeKinds: readonly TileKind[];
+  /** 조커 전용 몸통·머리의 kind를 전부 열거하는가 (채점용). false면 대표 하나만 */
+  enumerateFree: boolean;
+  /** 해가 하나 나오면 즉시 멈춘다 (존재 판정 — isWinningShape) */
+  stopAtFirst: boolean;
+}
+
+/**
+ * 후보 몸통을 counts에서 꺼낸다 — **실제 패를 먼저 쓰고 모자란 만큼만** 조커를 쓴다.
+ *
+ * 실제 패 우선이 일반성을 잃지 않는 이유(교환 논증): 어떤 해가 실제 패 K를 남겨 둔 채
+ * 조커를 K로 썼다면, 그 조커와 남은 실제 K를 맞바꾼 해가 반드시 존재하고 두 해의 kind
+ * 구성은 완전히 같다. 그래서 "조커를 어디에 쓸까"를 따로 열거할 필요가 없다.
+ *
+ * @returns 불가능하면 null (조커가 모자라다)
+ */
+function takeGroup(
+  counts: Counts,
+  tiles: readonly TileKind[],
+  wilds: number,
+): { used: Map<string, number>; wildAs: TileKind[] } | null {
+  const need = new Map<string, { kind: TileKind; n: number }>();
+  for (const t of tiles) {
+    const key = kindKey(t);
+    const cur = need.get(key);
+    if (cur === undefined) need.set(key, { kind: t, n: 1 });
+    else cur.n += 1;
+  }
+  const used = new Map<string, number>();
+  const wildAs: TileKind[] = [];
+  for (const [key, want] of need) {
+    const have = Math.min(counts.n.get(key) ?? 0, want.n);
+    if (have > 0) used.set(key, have);
+    for (let i = have; i < want.n; i++) wildAs.push(want.kind);
+  }
+  if (wildAs.length > wilds) return null;
+  return { used, wildAs };
+}
+
+function applyUsed(counts: Counts, used: Map<string, number>, sign: number): void {
+  for (const [key, n] of used) counts.n.set(key, (counts.n.get(key) ?? 0) + sign * n);
+}
+
+/** 조커만으로 이루는 몸통 후보 (커쯔 + 슌쯔). 존재 판정이면 대표 하나면 충분하다 */
+function freeGroupCandidates(ctx: ExtractCtx): DecompSet[] {
+  const first = ctx.freeKinds[0] as TileKind;
+  if (!ctx.enumerateFree) return [{ type: "triplet", tiles: [first, first, first] }];
+  const out: DecompSet[] = ctx.freeKinds.map((k) => ({
+    type: "triplet" as const,
+    tiles: [k, k, k],
+  }));
+  for (const suit of ctx.seqSuits) {
+    for (let r = 1; r + 2 <= 9; r++) {
+      out.push({
+        type: "run",
+        tiles: [
+          { suit, rank: r },
+          { suit, rank: r + 1 },
+          { suit, rank: r + 2 },
+        ],
+      });
+    }
+  }
+  return out;
+}
+
+/** 남은 조커 3n장이 몸통 n개를 이룬다 (조커끼리는 순서가 없으므로 중복 조합) */
+function freeSets(n: number, ctx: ExtractCtx): SetSolution[] {
+  if (n === 0) return [{ sets: [], wildAs: [] }];
+  const cands = freeGroupCandidates(ctx);
+  const out: SetSolution[] = [];
+  const chosen: DecompSet[] = [];
+  const walk = (start: number): void => {
+    if (chosen.length === n) {
+      out.push({ sets: [...chosen], wildAs: chosen.flatMap((s) => s.tiles) });
+      return;
+    }
+    for (let i = start; i < cands.length; i++) {
+      chosen.push(cands[i] as DecompSet);
+      walk(i);
+      chosen.pop();
+      if (ctx.stopAtFirst && out.length > 0) return;
+    }
+  };
+  walk(0);
+  return out;
+}
+
+/**
+ * counts(실제 패)와 조커 `wilds`장으로 몸통 `setsLeft`개를 만드는 모든 방법.
+ * "첫 남은 실제 패는 반드시 지금 소비된다" 기법으로 중복 없이 모든 분해를 얻는다 —
+ * 조커가 붙어도 `takeGroup`이 그 패를 실제로 소비하므로 불변량이 유지된다.
+ */
 function extractSets(
   counts: Counts,
-  seqSuits: ReadonlySet<Suit>,
-  wrap: boolean,
-  mixed = false,
-  mixedTri = false,
-  polar = false,
-  honor = false,
-): DecompSet[][] {
+  wilds: number,
+  setsLeft: number,
+  ctx: ExtractCtx,
+): SetSolution[] {
   const firstKey = counts.order.find((key) => (counts.n.get(key) ?? 0) > 0);
-  if (firstKey === undefined) return [[]]; // 전부 소진 = 해 1개 (빈 목록)
+  if (firstKey === undefined) {
+    // 실제 패는 다 썼다 — 남은 조커가 남은 몸통을 **정확히** 채워야 한다
+    return wilds === setsLeft * 3 ? freeSets(setsLeft, ctx) : [];
+  }
+  if (setsLeft <= 0) return []; // 실제 패가 남았는데 채울 몸통이 없다
 
   const kind = counts.kindOf.get(firstKey) as TileKind;
-  const count = counts.n.get(firstKey) ?? 0;
-  const solutions: DecompSet[][] = [];
+  const solutions: SetSolution[] = [];
 
-  if (count >= 3) {
-    counts.n.set(firstKey, count - 3);
-    for (const rest of extractSets(counts, seqSuits, wrap, mixed, mixedTri, polar, honor)) {
-      solutions.push([{ type: "triplet", tiles: [kind, kind, kind] }, ...rest]);
-    }
-    counts.n.set(firstKey, count);
-  }
+  // 이 자리에서 시도할 몸통 후보 — 전부 firstKey를 품는다(중복 열거 방지).
+  // 장수는 보지 않는다: 모자란 자리는 takeGroup이 조커로 메운다.
+  const candidates: DecompSet[] = [];
+  const seen = new Set<string>();
+  const push = (set: DecompSet): void => {
+    if (!set.tiles.some((t) => kindKey(t) === firstKey)) return;
+    const key = `${set.type}|${set.tiles.map(kindKey).join("|")}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push(set);
+  };
+
+  push({ type: "triplet", tiles: [kind, kind, kind] });
 
   // 혼색 커쯔 (동수의 결속) — 랭크만 같으면 무늬가 섞여도 커쯔다.
   // 자패는 무늬 개념이 없으므로 수패(seqSuits)에만 적용한다.
   // 위의 순수 커쯔와 중복되지 않게 "무늬가 최소 2종"인 조합만 만든다.
-  if (mixedTri && seqSuits.has(kind.suit)) {
-    const suits = [...seqSuits];
-    const triCandidates: TileKind[][] = [];
-    const triSeen = new Set<string>();
+  if (ctx.mixedTri && ctx.seqSuits.has(kind.suit)) {
+    const suits = [...ctx.seqSuits];
     for (let i = 0; i < suits.length; i++) {
       for (let j = i; j < suits.length; j++) {
         for (let k = j; k < suits.length; k++) {
@@ -334,254 +453,219 @@ function extractSets(
             { suit: suits[j] as Suit, rank: kind.rank },
             { suit: suits[k] as Suit, rank: kind.rank },
           ];
-          // 순수 커쯔는 위에서 이미 처리했다
           if (new Set(tiles.map((t) => t.suit)).size < 2) continue;
-          // firstKey를 소비하지 않는 후보는 다른 재귀 단계가 이미 다룬다
-          if (!tiles.some((t) => kindKey(t) === firstKey)) continue;
-          const key = tiles.map(kindKey).sort().join("|");
-          if (triSeen.has(key)) continue;
-          triSeen.add(key);
-          triCandidates.push(tiles);
+          push({ type: "triplet", tiles });
         }
       }
-    }
-    for (const tiles of triCandidates) {
-      const keys = tiles.map(kindKey);
-      // 같은 kind가 두 번 들어갈 수 있으므로 필요 수량을 모아서 확인한다
-      const need = new Map<string, number>();
-      for (const k of keys) need.set(k, (need.get(k) ?? 0) + 1);
-      let ok = true;
-      for (const [k, want] of need) {
-        if ((counts.n.get(k) ?? 0) < want) {
-          ok = false;
-          break;
-        }
-      }
-      if (!ok) continue;
-      for (const [k, want] of need) counts.n.set(k, (counts.n.get(k) ?? 0) - want);
-      for (const rest of extractSets(counts, seqSuits, wrap, mixed, mixedTri, polar, honor)) {
-        solutions.push([{ type: "triplet", tiles }, ...rest]);
-      }
-      for (const [k, want] of need) counts.n.set(k, (counts.n.get(k) ?? 0) + want);
     }
   }
 
   // 양극(polar) — 같은 무늬의 1·9만으로 이루는 커쯔 몸통(199·191·911).
-  // 순수 커쯔(111·999)는 위에서 이미 처리했으므로, 여기서는 1과 9가 **둘 다 든** 혼합
-  // 몸통만 만든다. firstKey(현재 rank 1 또는 9)를 반드시 소비하는 후보만 남긴다.
-  if (polar && seqSuits.has(kind.suit) && (kind.rank === 1 || kind.rank === 9)) {
+  // 순수 커쯔(111·999)는 위에서 이미 다뤘으므로 1과 9가 **둘 다 든** 몸통만 만든다.
+  if (ctx.polar && ctx.seqSuits.has(kind.suit) && (kind.rank === 1 || kind.rank === 9)) {
     const one: TileKind = { suit: kind.suit, rank: 1 };
     const nine: TileKind = { suit: kind.suit, rank: 9 };
-    const oneKey = kindKey(one);
-    const nineKey = kindKey(nine);
-    // 1·9가 섞인 3장 조합: 1이 a개(1..2), 9가 3-a개. a=1 → 199, a=2 → 119.
     for (let ones = 1; ones <= 2; ones++) {
-      const nines = 3 - ones;
-      const tiles = [
-        ...Array.from({ length: ones }, () => one),
-        ...Array.from({ length: nines }, () => nine),
-      ];
-      // firstKey를 소비하지 않는 후보는 다른 재귀 단계가 이미 다룬다
-      if (!tiles.some((tk) => kindKey(tk) === firstKey)) continue;
-      if ((counts.n.get(oneKey) ?? 0) < ones) continue;
-      if ((counts.n.get(nineKey) ?? 0) < nines) continue;
-      counts.n.set(oneKey, (counts.n.get(oneKey) ?? 0) - ones);
-      counts.n.set(nineKey, (counts.n.get(nineKey) ?? 0) - nines);
-      for (const rest of extractSets(counts, seqSuits, wrap, mixed, mixedTri, polar, honor)) {
-        solutions.push([{ type: "triplet", tiles }, ...rest]);
-      }
-      counts.n.set(oneKey, (counts.n.get(oneKey) ?? 0) + ones);
-      counts.n.set(nineKey, (counts.n.get(nineKey) ?? 0) + nines);
+      push({
+        type: "triplet",
+        tiles: [
+          ...Array.from({ length: ones }, () => one),
+          ...Array.from({ length: 3 - ones }, () => nine),
+        ],
+      });
     }
   }
 
-  if (seqSuits.has(kind.suit)) {
-    // 시도할 슌쯔 후보(kind 3개)를 만든다.
+  if (ctx.seqSuits.has(kind.suit)) {
+    // 시도할 슌쯔 후보(kind 3개).
     //  - 표준: firstKey가 최소 rank이므로 (r, r+1, r+2)만 보면 된다.
     //  - wrap: firstKey가 순환 슌쯔의 중간·끝일 수 있어 세 위치 전부 시도한다.
-    //  - mixed(무너진 국경): 무늬 정렬이 랭크 순서와 무관해져 firstKey가 어느 위치든
-    //    될 수 있고, 나머지 두 자리의 무늬도 전부 시도해야 한다. firstKey를 반드시
-    //    소비하는 후보만 남겨 중복 열거를 막는다.
-    const candidates: TileKind[][] = [];
-    const seen = new Set<string>();
-    const push = (tiles: TileKind[]): void => {
-      const key = tiles.map(kindKey).join("|");
-      if (seen.has(key)) return;
-      seen.add(key);
-      candidates.push(tiles);
-    };
-    const positions = wrap || mixed ? [0, 1, 2] : [0];
+    //  - mixed(무너진 국경): 무늬 정렬이 랭크와 무관해져 firstKey가 어느 위치든 될 수 있다.
+    //  - **조커가 있으면** 앞자리를 조커가 메울 수 있으므로 firstKey가 최소 rank라는
+    //    전제가 깨진다 — 이때도 세 위치를 전부 시도한다.
+    const positions = ctx.wrap || ctx.mixed || wilds > 0 ? [0, 1, 2] : [0];
     for (const pos of positions) {
       const base = kind.rank - pos;
-      if (!wrap && (base < 1 || base + 2 > 9)) continue;
-      const ranks = wrap
+      if (!ctx.wrap && (base < 1 || base + 2 > 9)) continue;
+      const ranks = ctx.wrap
         ? [wrapRank(base), wrapRank(base + 1), wrapRank(base + 2)]
         : [base, base + 1, base + 2];
-      if (!mixed) {
-        push(ranks.map((r) => ({ suit: kind.suit, rank: r })));
+      if (!ctx.mixed) {
+        push({ type: "run", tiles: ranks.map((r) => ({ suit: kind.suit, rank: r })) });
         continue;
       }
-      for (const s0 of seqSuits) {
-        for (const s1 of seqSuits) {
-          for (const s2 of seqSuits) {
+      for (const s0 of ctx.seqSuits) {
+        for (const s1 of ctx.seqSuits) {
+          for (const s2 of ctx.seqSuits) {
             const tiles = [
               { suit: s0, rank: ranks[0] as number },
               { suit: s1, rank: ranks[1] as number },
               { suit: s2, rank: ranks[2] as number },
             ];
-            // firstKey를 소비하지 않는 후보는 다른 재귀 단계가 이미 다룬다
+            // firstKey를 그 자리에서 소비하지 않는 후보는 다른 재귀 단계가 다룬다
             if (kindKey(tiles[pos] as TileKind) !== firstKey) continue;
-            push(tiles);
+            push({ type: "run", tiles });
           }
         }
       }
     }
-
-    for (const tiles of candidates) {
-      const keys = tiles.map(kindKey);
-      const cs = keys.map((k) => counts.n.get(k) ?? 0);
-      // 같은 kind가 한 슌쯔에 두 번 들어갈 수 있다 (mixed에서는 불가하지만 방어적으로)
-      if (cs.some((c) => c <= 0)) continue;
-      keys.forEach((k, i) => counts.n.set(k, (cs[i] as number) - 1));
-      for (const rest of extractSets(counts, seqSuits, wrap, mixed, mixedTri, polar, honor)) {
-        solutions.push([{ type: "run", tiles }, ...rest]);
-      }
-      keys.forEach((k, i) => counts.n.set(k, cs[i] as number));
-    }
   }
 
   // 자패 슌쯔 (바람의 계보) — 같은 자패 suit 안에서 (r, r+1, r+2) 연속 3장.
-  // firstKey가 최소 rank이므로 pos 0(오름차순 시작)만 보면 된다. 순환·무늬혼합 없음.
-  // 바람: 1-2-3(동남서)·2-3-4(남서북) / 삼원: 1-2-3(백발중).
-  if (honor && (kind.suit === Suits.Wind || kind.suit === Suits.Dragon)) {
-    const base = kind.rank;
-    if (base + 2 <= honorMaxRank(kind.suit)) {
-      const tiles = [
-        { suit: kind.suit, rank: base },
-        { suit: kind.suit, rank: base + 1 },
-        { suit: kind.suit, rank: base + 2 },
-      ];
-      const keys = tiles.map(kindKey);
-      const cs = keys.map((k) => counts.n.get(k) ?? 0);
-      if (cs.every((c) => c > 0)) {
-        keys.forEach((k, i) => counts.n.set(k, (cs[i] as number) - 1));
-        for (const rest of extractSets(counts, seqSuits, wrap, mixed, mixedTri, polar, honor)) {
-          solutions.push([{ type: "run", tiles }, ...rest]);
-        }
-        keys.forEach((k, i) => counts.n.set(k, cs[i] as number));
-      }
+  // 바람: 1-2-3(동남서)·2-3-4(남서북) / 삼원: 1-2-3(백발중). 순환·무늬혼합 없음.
+  if (ctx.honor && (kind.suit === Suits.Wind || kind.suit === Suits.Dragon)) {
+    const max = honorMaxRank(kind.suit);
+    // 조커가 앞자리를 메울 수 있으므로 firstKey가 시작이 아닐 수도 있다
+    for (const pos of wilds > 0 ? [0, 1, 2] : [0]) {
+      const base = kind.rank - pos;
+      if (base < 1 || base + 2 > max) continue;
+      push({
+        type: "run",
+        tiles: [
+          { suit: kind.suit, rank: base },
+          { suit: kind.suit, rank: base + 1 },
+          { suit: kind.suit, rank: base + 2 },
+        ],
+      });
     }
+  }
+
+  for (const cand of candidates) {
+    const take = takeGroup(counts, cand.tiles, wilds);
+    if (take === null) continue;
+    applyUsed(counts, take.used, -1);
+    for (const rest of extractSets(counts, wilds - take.wildAs.length, setsLeft - 1, ctx)) {
+      solutions.push({
+        sets: [cand, ...rest.sets],
+        wildAs: [...take.wildAs, ...rest.wildAs],
+      });
+      if (ctx.stopAtFirst) break;
+    }
+    applyUsed(counts, take.used, 1);
+    if (ctx.stopAtFirst && solutions.length > 0) break;
   }
 
   return solutions;
 }
 
-// ───────────────────────── 조커 (wildKinds) ─────────────────────────
-
-/**
- * 조커가 시도할 kind 목록. 표준 34종 + 손에 실제로 있는 커스텀 무늬 전부를 쓴다 —
- * "무엇이든 될 수 있다"가 이 증강의 정의라 후보를 줄여 두면 조용히 안 되는 손이 생긴다.
- *
- * 다만 **순서**는 줄인다: 손패와 이웃한(±2) 후보를 앞세워, 존재만 보면 되는
- * `isWinningShape`가 대개 첫 몇 개에서 끝나게 한다.
- */
-function wildUniverse(
-  base: readonly TileKind[],
-  seqSuits: ReadonlySet<Suit>,
-): TileKind[] {
-  const nearKeys = new Set<string>();
-  for (const k of base) {
-    nearKeys.add(kindKey(k));
-    if (!seqSuits.has(k.suit)) continue;
-    for (let d = -2; d <= 2; d++) {
-      const r = k.rank + d;
-      if (r >= 1 && r <= 9) nearKeys.add(kindKey({ suit: k.suit, rank: r }));
-    }
-  }
+/** 조커가 자유롭게 될 수 있는 kind (표준 34종 + 손에 실제로 있는 커스텀 무늬) */
+function freeKindUniverse(hand: readonly TileKind[]): TileKind[] {
   const all = standardKinds();
   const seen = new Set(all.map(kindKey));
-  for (const k of base) {
+  for (const k of hand) {
     const key = kindKey(k);
     if (seen.has(key)) continue;
     seen.add(key);
     all.push(k);
   }
-  return [
-    ...all.filter((k) => nearKeys.has(kindKey(k))),
-    ...all.filter((k) => !nearKeys.has(kindKey(k))),
-  ];
+  return all;
+}
+
+/** 치토이 한 가지 — 쌍 7개와 조커가 무엇이 됐는지 */
+interface ChiitoiSolution {
+  pairs: TileKind[];
+  wildAs: TileKind[];
 }
 
 /**
- * "이 손이 화료형인가"의 메모. 조커가 있으면 한 번의 대기 계산(34종 × 조커 후보 34종)이
- * 1000번 넘게 분해를 부르는데, 그중 **같은 손이 절반**이다 — 조커가 a가 되고 후보가 b인
- * 손과 그 반대가 정확히 같은 손이기 때문이다. 국이 바뀌어도 같은 손은 같은 답이라
- * (순수 함수) 무효화가 필요 없고, 크기만 막는다.
+ * 치토이 — 조커는 **혼자 남은 패의 짝**이 되거나, 둘이 모여 **새 쌍**이 된다.
+ * 같은 패 3장 이상은 조커로도 못 고친다(치토이는 서로 다른 7종).
  */
-const wildShapeCache = new Map<string, boolean>();
-const WILD_CACHE_MAX = 200_000;
+function chiitoiWithWilds(counts: Counts, wilds: number, ctx: ExtractCtx): ChiitoiSolution[] {
+  const pairs: TileKind[] = [];
+  const wildAs: TileKind[] = [];
+  for (const key of counts.order) {
+    const c = counts.n.get(key) as number;
+    if (c > 2) return [];
+    const k = counts.kindOf.get(key) as TileKind;
+    pairs.push(k);
+    if (c === 1) wildAs.push(k);
+  }
+  const left = wilds - wildAs.length;
+  if (left < 0 || left % 2 !== 0) return [];
+  const extra = left / 2;
+  if (pairs.length + extra !== 7) return [];
+  if (extra === 0) return [{ pairs, wildAs }];
 
-/** 옵션 중 분해 결과를 바꾸는 값만 뽑은 서명 (조커 후보는 손에 이미 반영돼 있다) */
-function optionsSignature(norm: NormalizedOptions, meldCount: number): string {
-  return [
-    meldCount,
-    norm.totalSets,
-    norm.wrapRuns ? 1 : 0,
-    norm.mixedRuns ? 1 : 0,
-    norm.mixedTriplets ? 1 : 0,
-    norm.mixedPairs ? 1 : 0,
-    norm.polarEnds ? 1 : 0,
-    norm.chiitoiMixedPairs ? 1 : 0,
-    norm.honorRuns ? 1 : 0,
-    norm.kokushiOnly ? 1 : 0,
-    norm.kokushiDupes,
-    [...norm.sequenceSuits].sort().join("."),
-    (norm.kokushiMeldKinds ?? []).map(kindKey).sort().join("."),
-  ].join("/");
-}
-
-function isWinningShapeMemo(
-  hand: readonly TileKind[],
-  meldCount: number,
-  norm: NormalizedOptions,
-  signature: string,
-): boolean {
-  const key = `${signature}#${hand.map(kindKey).sort().join(",")}`;
-  const hit = wildShapeCache.get(key);
-  if (hit !== undefined) return hit;
-  const ok = decomposeExact(hand, meldCount, norm).length > 0;
-  if (wildShapeCache.size >= WILD_CACHE_MAX) wildShapeCache.clear();
-  wildShapeCache.set(key, ok);
-  return ok;
+  // 남는 조커는 **손에 없는 새 종류**로 쌍을 만든다 (7종은 서로 달라야 한다)
+  const used = new Set(counts.order);
+  const pool = ctx.freeKinds.filter((k) => !used.has(kindKey(k)));
+  const out: ChiitoiSolution[] = [];
+  const chosen: TileKind[] = [];
+  const walk = (start: number): void => {
+    if (chosen.length === extra) {
+      out.push({
+        pairs: [...pairs, ...chosen],
+        wildAs: [...wildAs, ...chosen.flatMap((k) => [k, k])],
+      });
+      return;
+    }
+    for (let i = start; i < pool.length; i++) {
+      chosen.push(pool[i] as TileKind);
+      walk(i + 1);
+      chosen.pop();
+      if (!ctx.enumerateFree && out.length > 0) return;
+    }
+  };
+  walk(0);
+  return out;
 }
 
 /**
- * 손패의 조커를 실제 패로 바꿔 놓은 손을 하나씩 만들어 `visit`에 넘긴다.
- * 조커끼리는 구분되지 않으므로 **중복 조합**(오름차순 인덱스)만 만든다.
- * `visit`가 true를 돌려주면 즉시 멈춘다 (존재 판정의 조기 종료).
+ * 비대칭 치또이(무늬 무관 rank 쌍) + 조커.
+ *
+ * 홀수로 남은 그룹(수패는 랭크, 자패는 종류)마다 조커 한 장을 넣어 짝수로 만들고,
+ * 남는 조커는 둘씩 새 종류의 쌍이 된다. 배치를 정한 뒤 **기존 판정기로 검증**하므로
+ * 규칙이 두 벌로 갈리지 않는다.
  */
-function forEachWildHand(
-  hand: readonly TileKind[],
-  norm: NormalizedOptions,
-  visit: (effectiveHand: TileKind[], wildAs: TileKind[]) => boolean,
-): void {
-  const wildKeys = new Set(norm.wildKinds.map(kindKey));
-  const base: TileKind[] = [];
-  let wilds = 0;
-  for (const k of hand) {
-    if (wildKeys.has(kindKey(k))) wilds++;
-    else base.push(k);
+function asyncChiitoiWithWilds(
+  real: readonly TileKind[],
+  wilds: number,
+  ctx: ExtractCtx,
+): ChiitoiSolution | null {
+  const count = new Map<string, number>();
+  for (const k of real) count.set(kindKey(k), (count.get(kindKey(k)) ?? 0) + 1);
+  const groupOf = (k: TileKind): string =>
+    NUMBER_SUITS.has(k.suit) ? `n${k.rank}` : kindKey(k);
+  const size = new Map<string, number>();
+  for (const k of real) size.set(groupOf(k), (size.get(groupOf(k)) ?? 0) + 1);
+
+  const wildAs: TileKind[] = [];
+  const bump = (k: TileKind): void => {
+    count.set(kindKey(k), (count.get(kindKey(k)) ?? 0) + 1);
+    wildAs.push(k);
+  };
+  for (const [g, s] of size) {
+    if (s % 2 === 0) continue;
+    // 같은 패 2장을 넘지 않는 자리를 그 그룹 안에서 고른다
+    const slot = ctx.freeKinds.find(
+      (k) => groupOf(k) === g && (count.get(kindKey(k)) ?? 0) < 2,
+    );
+    if (slot === undefined) return null;
+    bump(slot);
   }
-  if (wilds === 0) {
-    visit([...hand], []);
-    return;
+  const left = wilds - wildAs.length;
+  if (left < 0 || left % 2 !== 0) return null;
+  for (let i = 0; i < left / 2; i++) {
+    const fresh = ctx.freeKinds.find((k) => (count.get(kindKey(k)) ?? 0) === 0);
+    if (fresh === undefined) return null;
+    bump(fresh);
+    bump(fresh);
   }
-  const universe = wildUniverse(base, norm.sequenceSuits);
+  const pairs = asyncChiitoiPairs([...real, ...wildAs]);
+  return pairs === null ? null : { pairs, wildAs };
+}
+
+/**
+ * 국사 — 조커가 될 수 있는 것은 **요구패 13종뿐**이라 그대로 열거해도 싸다
+ * (조커 4장이라도 1820가지). 손패가 전부 요구패일 때만 불린다.
+ */
+function forEachOrphanFill(wilds: number, visit: (fill: TileKind[]) => boolean): void {
   const chosen: TileKind[] = [];
   const walk = (start: number): boolean => {
-    if (chosen.length === wilds) return visit([...base, ...chosen], [...chosen]);
-    for (let i = start; i < universe.length; i++) {
-      chosen.push(universe[i] as TileKind);
+    if (chosen.length === wilds) return visit([...chosen]);
+    for (let i = start; i < ORPHAN_KINDS.length; i++) {
+      chosen.push(ORPHAN_KINDS[i] as TileKind);
       const stop = walk(i);
       chosen.pop();
       if (stop) return true;
@@ -589,6 +673,35 @@ function forEachWildHand(
     return false;
   };
   walk(0);
+}
+
+/** 손패 14장이 국사인가 — 성립하면 머리 kind (kokushiDupes = 왕의 징표) */
+function kokushiPairOf(hand: readonly TileKind[], kokushiDupes: number): TileKind | null {
+  const counts = buildCounts(hand);
+  const missing = ORPHAN_KINDS.length - counts.order.length;
+  const doubled = counts.order.find((key) => (counts.n.get(key) ?? 0) >= 2);
+  if (missing > kokushiDupes || doubled === undefined) return null;
+  return counts.kindOf.get(doubled) as TileKind;
+}
+
+/** 울어 국사 — 후로가 3M종을 덮고 손이 나머지를 덮는가. 성립하면 머리 kind */
+function meldKokushiPairOf(
+  hand: readonly TileKind[],
+  meldSet: ReadonlySet<string>,
+  orphanKeys: ReadonlySet<string>,
+): TileKind | null {
+  const handKeys = hand.map(kindKey);
+  const handDistinct = new Set(handKeys);
+  const counts = new Map<string, number>();
+  for (const key of handKeys) counts.set(key, (counts.get(key) ?? 0) + 1);
+  const covered =
+    handKeys.every((key) => orphanKeys.has(key)) && // 손패 전부 요구패
+    [...handDistinct].every((key) => !meldSet.has(key)) && // 후로와 겹치지 않음(머리도 손패)
+    handDistinct.size + meldSet.size === 13 && // 후로+손 = 13종 전부
+    handKeys.length === handDistinct.size + 1; // 정확히 1종만 2장(머리)
+  if (!covered) return null;
+  const pairKey = [...counts.entries()].find(([, n]) => n === 2)?.[0];
+  return hand.find((k) => kindKey(k) === pairKey) ?? null;
 }
 
 /**
@@ -601,25 +714,30 @@ export function decompose(
   meldCount: number,
   opts?: DecomposeOptions | ReadonlySet<Suit>,
 ): Decomposition[] {
-  const norm = normalizeOptions(opts);
-  if (norm.wildKinds.length === 0) return decomposeExact(hand, meldCount, norm);
-
-  // 조커 — 바꿔 놓은 손마다 분해를 전부 모은다. 어느 것을 쓸지는 채점이 고른다.
-  const out: Decomposition[] = [];
-  forEachWildHand(hand, norm, (effectiveHand, wildAs) => {
-    for (const d of decomposeExact(effectiveHand, meldCount, norm)) {
-      out.push({ ...d, effectiveHand, wildAs });
-    }
-    return false;
-  });
-  return out;
+  return decomposeInternal(hand, meldCount, normalizeOptions(opts), false);
 }
 
-/** 조커를 이미 실제 패로 바꾼 손 하나를 분해한다 (조커를 모르는 원래 알고리즘) */
-function decomposeExact(
+/** 화료 형태인가 (분해가 하나라도 존재) */
+export function isWinningShape(
+  hand: readonly TileKind[],
+  meldCount: number,
+  opts?: DecomposeOptions | ReadonlySet<Suit>,
+): boolean {
+  // 존재만 보면 되므로 첫 해에서 멈춘다 — 대기 계산(winningKinds)이 34종을 훑으며
+  // 이 함수를 부르기 때문에 조기 종료가 곧 체감 속도다.
+  return decomposeInternal(hand, meldCount, normalizeOptions(opts), true).length > 0;
+}
+
+/**
+ * @param shapeOnly true면 **해 하나만** 찾고 멈춘다. 조커 전용 몸통·머리의 kind도
+ *   열거하지 않는다 — 화료형인지만 묻는 자리(텐파이·대기·후리텐)에서는 그 kind가
+ *   무엇이든 형태가 성립하는지에 영향이 없기 때문이다.
+ */
+function decomposeInternal(
   hand: readonly TileKind[],
   meldCount: number,
   norm: NormalizedOptions,
+  shapeOnly: boolean,
 ): Decomposition[] {
   const {
     sequenceSuits,
@@ -634,107 +752,157 @@ function decomposeExact(
     polarEnds,
     chiitoiMixedPairs,
     honorRuns,
+    wildKinds,
   } = norm;
+
+  // 조커와 실제 패를 가른다 — 조커는 kind가 아니라 **장수**로만 들고 다닌다
+  const wildKeys = new Set(wildKinds.map(kindKey));
+  const real: TileKind[] = [];
+  let wilds = 0;
+  for (const k of hand) {
+    if (wildKeys.has(kindKey(k))) wilds += 1;
+    else real.push(k);
+  }
+
+  const ctx: ExtractCtx = {
+    seqSuits: sequenceSuits,
+    wrap: wrapRuns,
+    mixed: mixedRuns,
+    mixedTri: mixedTriplets,
+    polar: polarEnds,
+    honor: honorRuns,
+    freeKinds: wilds > 0 ? freeKindUniverse(real) : [],
+    enumerateFree: !shapeOnly,
+    stopAtFirst: shapeOnly,
+  };
+
   const results: Decomposition[] = [];
+  const done = (): boolean => shapeOnly && results.length > 0;
+  const add = (d: Decomposition, wildAs: TileKind[]): void => {
+    if (wilds === 0) {
+      results.push(d);
+      return;
+    }
+    results.push({ ...d, wildAs, effectiveHand: [...real, ...wildAs] });
+  };
+
   const setsNeeded = totalSets - meldCount;
 
   // ── standard: 작두 후보마다 나머지를 멘쯔로 소진 ──
   if (!kokushiOnly && hand.length === setsNeeded * 3 + 2) {
-    const counts = buildCounts(hand);
+    const counts = buildCounts(real);
+
+    // 머리 — 실제 패를 먼저 쓰고 모자란 한 장만 조커로 채운다
     for (const pairKey of counts.order) {
-      const c = counts.n.get(pairKey) ?? 0;
-      if (c < 2) continue;
-      counts.n.set(pairKey, c - 2);
+      const c = counts.n.get(pairKey) as number;
+      const useReal = Math.min(c, 2);
+      const needWild = 2 - useReal;
+      if (needWild > wilds) continue;
       const pairKind = counts.kindOf.get(pairKey) as TileKind;
-      for (const sets of extractSets(
-        counts,
-        sequenceSuits,
-        wrapRuns,
-        mixedRuns,
-        mixedTriplets,
-        polarEnds,
-        honorRuns,
-      )) {
-        results.push({ form: "standard", pair: pairKind, sets });
+      counts.n.set(pairKey, c - useReal);
+      for (const sol of extractSets(counts, wilds - needWild, setsNeeded, ctx)) {
+        add(
+          { form: "standard", pair: pairKind, sets: sol.sets },
+          [...Array.from({ length: needWild }, () => pairKind), ...sol.wildAs],
+        );
+        if (done()) break;
       }
       counts.n.set(pairKey, c);
+      if (done()) break;
+    }
+
+    // 조커 둘이 곧 머리 — kind가 자유로우므로 후보를 훑는다(채점용)
+    if (!done() && wilds >= 2) {
+      for (const pk of ctx.freeKinds) {
+        for (const sol of extractSets(counts, wilds - 2, setsNeeded, ctx)) {
+          add({ form: "standard", pair: pk, sets: sol.sets }, [pk, pk, ...sol.wildAs]);
+          if (done()) break;
+        }
+        if (done() || !ctx.enumerateFree) break;
+      }
     }
 
     // 혼색 머리 — 랭크만 같으면 무늬가 달라도 작두다 (수패 한정).
     // 위의 순수 머리와 겹치지 않게 **서로 다른 두 kind**의 조합만 만든다.
-    if (mixedPairs) {
-      for (let i = 0; i < counts.order.length; i++) {
-        for (let j = i + 1; j < counts.order.length; j++) {
-          const ka = counts.order[i] as string;
-          const kb = counts.order[j] as string;
-          const a = counts.kindOf.get(ka) as TileKind;
-          const b = counts.kindOf.get(kb) as TileKind;
+    if (mixedPairs && !done()) {
+      const realKinds = counts.order.map((k) => counts.kindOf.get(k) as TileKind);
+      const partners = wilds > 0 ? [...realKinds, ...ctx.freeKinds] : realKinds;
+      const seenPair = new Set<string>();
+      outer: for (const a of realKinds) {
+        for (const b of partners) {
+          if (kindKey(a) === kindKey(b)) continue;
           if (a.rank !== b.rank) continue;
           if (!sequenceSuits.has(a.suit) || !sequenceSuits.has(b.suit)) continue;
-          if ((counts.n.get(ka) ?? 0) < 1 || (counts.n.get(kb) ?? 0) < 1) continue;
-          counts.n.set(ka, (counts.n.get(ka) as number) - 1);
-          counts.n.set(kb, (counts.n.get(kb) as number) - 1);
-          for (const sets of extractSets(
+          const key = [kindKey(a), kindKey(b)].sort().join("|");
+          if (seenPair.has(key)) continue;
+          seenPair.add(key);
+          const take = takeGroup(counts, [a, b], wilds);
+          if (take === null) continue;
+          applyUsed(counts, take.used, -1);
+          for (const sol of extractSets(
             counts,
-            sequenceSuits,
-            wrapRuns,
-            mixedRuns,
-            mixedTriplets,
-            polarEnds,
-            honorRuns,
+            wilds - take.wildAs.length,
+            setsNeeded,
+            ctx,
           )) {
-            results.push({ form: "standard", pair: a, sets });
+            add(
+              { form: "standard", pair: a, sets: sol.sets },
+              [...take.wildAs, ...sol.wildAs],
+            );
+            if (done()) break;
           }
-          counts.n.set(ka, (counts.n.get(ka) as number) + 1);
-          counts.n.set(kb, (counts.n.get(kb) as number) + 1);
+          applyUsed(counts, take.used, 1);
+          if (done()) break outer;
         }
       }
     }
   }
 
   // ── 치토이: 후로 없음, 서로 다른 7종 × 2장 (표준 4멘쯔 게임에서만) ──
-  if (meldCount === 0 && hand.length === 14 && totalSets === 4) {
-    const counts = buildCounts(hand);
-    const keys = counts.order;
+  if (meldCount === 0 && hand.length === 14 && totalSets === 4 && !done()) {
+    const counts = buildCounts(real);
     if (!kokushiOnly) {
       if (chiitoiMixedPairs) {
         // 비대칭 치또이 — 표준(7종×2)을 포함하는 상위집합이므로 이 분기만 돌린다
-        const pairs = asyncChiitoiPairs(hand);
-        if (pairs !== null) {
-          results.push({ form: "chiitoitsu", pair: null, pairs, sets: [] });
+        const sol =
+          wilds === 0
+            ? ((p) => (p === null ? null : { pairs: p, wildAs: [] }))(
+                asyncChiitoiPairs(real),
+              )
+            : asyncChiitoiWithWilds(real, wilds, ctx);
+        if (sol !== null) {
+          add({ form: "chiitoitsu", pair: null, pairs: sol.pairs, sets: [] }, sol.wildAs);
         }
-      } else if (keys.length === 7 && keys.every((key) => counts.n.get(key) === 2)) {
-        results.push({
-          form: "chiitoitsu",
-          pair: null,
-          pairs: keys.map((key) => counts.kindOf.get(key) as TileKind),
-          sets: [],
-        });
+      } else {
+        for (const sol of chiitoiWithWilds(counts, wilds, ctx)) {
+          add({ form: "chiitoitsu", pair: null, pairs: sol.pairs, sets: [] }, sol.wildAs);
+          if (done()) break;
+        }
       }
     }
 
     // ── 국사: 13종 요구패 전부 + 그중 하나 2장 ──
     // 왕의 징표(kokushiDupes>0)면 종류가 d개까지 빠져도 되고, 빠진 자리는 중복으로 메운다.
     const orphanKeys = new Set(ORPHAN_KINDS.map(kindKey));
-    const allOrphans = hand.every((k) => orphanKeys.has(kindKey(k)));
-    if (allOrphans) {
-      // allOrphans가 counts.order ⊆ orphanKeys를 보장하므로 빠진 종류 수는 13−distinct다.
-      const missing = ORPHAN_KINDS.length - counts.order.length;
-      const doubled = counts.order.find((key) => (counts.n.get(key) ?? 0) >= 2);
-      if (missing <= kokushiDupes && doubled !== undefined) {
-        results.push({
-          form: "kokushi",
-          pair: counts.kindOf.get(doubled) as TileKind,
-          sets: [],
-        });
-      }
+    if (!done() && real.every((k) => orphanKeys.has(kindKey(k)))) {
+      forEachOrphanFill(wilds, (fill) => {
+        const filled = [...real, ...fill];
+        const pair = kokushiPairOf(filled, kokushiDupes);
+        if (pair !== null) add({ form: "kokushi", pair, sets: [] }, fill);
+        return done();
+      });
     }
   }
 
   // ── 울어 국사 (특수 후로 지원): 서로 다른 요구패 3장 후로 M개가 3M종을 덮는다 ──
   // 후로가 3M종(전부 서로 다른 요구패)을 덮고, 손 (14−3M)장이 나머지 (13−3M)종을
   // 1장씩 + 머리(1종 2장)로 덮으면 국사 성립. 머리는 반드시 손패(울지 않은 패)다.
-  if (kokushiMeldKinds !== undefined && kokushiMeldKinds.length > 0 && meldCount > 0) {
+  if (
+    kokushiMeldKinds !== undefined &&
+    kokushiMeldKinds.length > 0 &&
+    meldCount > 0 &&
+    !done()
+  ) {
     const K = kokushiMeldKinds.length;
     const orphanKeys = new Set(ORPHAN_KINDS.map(kindKey));
     const meldKeys = kokushiMeldKinds.map(kindKey);
@@ -743,48 +911,16 @@ function decomposeExact(
       K === meldCount * 3 && // 후로마다 정확히 3종
       meldSet.size === K && // 후로 kind가 전부 서로 다르다
       meldKeys.every((key) => orphanKeys.has(key)) && // 전부 요구패
-      hand.length === 14 - K // 손패 장수
+      hand.length === 14 - K && // 손패 장수
+      real.every((k) => orphanKeys.has(kindKey(k)))
     ) {
-      const handKeys = hand.map(kindKey);
-      const handDistinct = new Set(handKeys);
-      const counts = new Map<string, number>();
-      for (const key of handKeys) counts.set(key, (counts.get(key) ?? 0) + 1);
-      const covered =
-        handKeys.every((key) => orphanKeys.has(key)) && // 손패 전부 요구패
-        [...handDistinct].every((key) => !meldSet.has(key)) && // 후로와 겹치지 않음(머리도 손패)
-        handDistinct.size + meldSet.size === 13 && // 후로+손 = 13종 전부
-        handKeys.length === handDistinct.size + 1; // 정확히 1종만 2장(머리)
-      if (covered) {
-        const pairKey = [...counts.entries()].find(([, n]) => n === 2)?.[0];
-        const pairKind = hand.find((k) => kindKey(k) === pairKey);
-        if (pairKind !== undefined) {
-          results.push({ form: "kokushi", pair: pairKind, sets: [] });
-        }
-      }
+      forEachOrphanFill(wilds, (fill) => {
+        const pair = meldKokushiPairOf([...real, ...fill], meldSet, orphanKeys);
+        if (pair !== null) add({ form: "kokushi", pair, sets: [] }, fill);
+        return done();
+      });
     }
   }
 
   return results;
-}
-
-/** 화료 형태인가 (분해가 하나라도 존재) */
-export function isWinningShape(
-  hand: readonly TileKind[],
-  meldCount: number,
-  opts?: DecomposeOptions | ReadonlySet<Suit>,
-): boolean {
-  const norm = normalizeOptions(opts);
-  if (norm.wildKinds.length === 0) {
-    return decomposeExact(hand, meldCount, norm).length > 0;
-  }
-  // 조커 — **존재만** 보면 되므로 첫 성공에서 멈춘다. 대기 계산(winningKinds)이
-  // 34종을 훑으며 이 함수를 부르기 때문에 조기 종료가 곧 체감 속도다.
-  const signature = optionsSignature(norm, meldCount);
-  let found = false;
-  forEachWildHand(hand, norm, (effectiveHand) => {
-    if (!isWinningShapeMemo(effectiveHand, meldCount, norm, signature)) return false;
-    found = true;
-    return true;
-  });
-  return found;
 }

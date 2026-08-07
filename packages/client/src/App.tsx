@@ -65,14 +65,10 @@ import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
 import {
   getUiScale,
-  getUiScaleSetting,
   isLayoutCramped,
   layoutViewport,
-  setUiScaleSetting,
   subscribeUiScale,
   toLayoutPx,
-  UI_SCALE_MAX,
-  UI_SCALE_MIN,
 } from "./uiScale.js";
 
 /**
@@ -1000,6 +996,10 @@ const SHAKE_MS: Record<number, number> = { 1: 180, 2: 300, 3: 420, 4: 620 };
 const CUTIN_IMPACT_MS = 230;
 const BANNER_IMPACT_MS = 180;
 
+/** 첫 페인트를 기다리는 상한(ms) — rAF가 오지 않는 백그라운드 탭에서 큐가 멈추지 않게 받친다.
+ *  앞에 보이는 탭이면 rAF가 한 프레임(≈16ms) 만에 오므로 이 타이머는 이길 일이 없다. */
+const PROD_PAINT_FALLBACK_MS = 400;
+
 /**
  * 패를 하나 버리는 액션 — 클릭 순간 바로 "탁"이 나야 하는 것들. 리치 선언도 패를 하나
  * 버리는 행위라 여기 포함된다(빠지면 클릭엔 무음, 에코 뷰에서 뒤늦게 소리가 난다).
@@ -1829,7 +1829,7 @@ function LayoutHint(): JSX.Element | null {
         <b>
           {mod} + −
         </b>{" "}
-        로 화면을 줄이거나, <b>설정 → 화면 크기</b>에서 배율을 직접 정해 보세요.
+        로 화면을 줄여 보세요.
       </span>
       <button
         type="button"
@@ -1866,6 +1866,18 @@ export function App(): JSX.Element {
   const activeSpectateRef = useRef<string | null>(null);
   /** 이번 국 결과에 대해 roundContinue(다음 국 신호)를 이미 보냈는지 — 국마다 리셋 */
   const roundContinueSent = useRef(false);
+  /**
+   * 이번 순에 이미 컷인을 띄운 증강 발동 (`{player}:{actionType}`).
+   *
+   * 서버는 **액션 1개 = 발동 1회**로 받는데, 발동 한 번이 액션 여럿으로 쪼개지는
+   * 증강이 있다 — 왕패의 주인은 한 번 확정에 교환 쌍만큼(최대 2개) dw_swap을
+   * 연달아 보낸다. 그대로 두면 한 번 쓴 것에 컷인이 두 번 떴다
+   * (2026-08-07 사용자 보고: 봇이 쓰면 알람 두 번). 순이 바뀌면 통째로 비운다.
+   */
+  const fxSeenRef = useRef<{ turn: string; keys: Set<string> }>({
+    turn: "",
+    keys: new Set(),
+  });
   /**
    * 서버가 다음 국을 그냥 시작해 버리는 시각(performance.now 기준). 결과 화면의
    * "다음 국으로" 버튼이 세는 남은 시간이다.
@@ -2177,25 +2189,48 @@ export function App(): JSX.Element {
 
   // 현재 연출을 ttl 동안 띄우고, 뜨는 순간 효과음을(연출당 정확히 1회) 재생한 뒤 내린다.
   // 흔들림은 글자 슬램이 꽂히는 시점(임팩트)에 맞춰 지연 발동한다.
+  //
+  // ⏱ 체류 시간은 **화면에 실제로 그려진 뒤부터** 잰다 (rAF 두 번 = 첫 페인트 뒤).
+  //   이펙트가 도는 시점부터 재면, 바로 뒤에 무거운 일이 한 번 끼는 순간 연출이 통째로
+  //   사라진다 — 메인 스레드가 막힌 동안에는 브라우저가 그리지 못하는데 타이머만 흘러서,
+  //   풀리자마자 ttl이 지난 채 지워진다. 화면에는 아무것도 안 뜬 것으로 보인다
+  //   (2026-08-07 사용자 보고: 조커를 백 여러 장과 함께 켜면 발동 연출이 안 나온다 —
+  //    원인이던 분해 폭발은 core에서 고쳤지만, 한 프레임만 밀려도 연출을 삼키는
+  //    이 구조 자체가 남아 있었다).
+  //
+  //   백그라운드 탭에서는 rAF가 아예 오지 않으므로 짧은 타이머로 받쳐 준다 —
+  //   안 그러면 큐가 그 자리에 멈춰 국 결과창까지 안 열린다.
   useEffect(() => {
     if (activeProd === null) return;
-    if (prodFiredKey.current !== activeProd.key) {
-      prodFiredKey.current = activeProd.key; // HMR 재마운트 등 effect 재실행 시 이중 재생 방지
-      activeProd.sfx?.();
-    }
+    const prod = activeProd;
     const timers: number[] = [];
-    const imp = activeProd.impact;
-    if (imp !== undefined && settingsRef.current.screenFx) {
-      const delay = imp.delayMs ?? (activeProd.channel === "banner" ? BANNER_IMPACT_MS : CUTIN_IMPACT_MS);
-      timers.push(window.setTimeout(() => shakeTable(imp.shake), delay));
-    }
-    timers.push(
-      window.setTimeout(
-        () => setActiveProd(null),
-        effectiveProdTtl(activeProd.ttl, settingsRef.current.screenFx),
-      ),
-    );
-    return () => timers.forEach((t) => window.clearTimeout(t));
+    const rafs: number[] = [];
+    let started = false;
+    const start = (): void => {
+      if (started) return;
+      started = true;
+      if (prodFiredKey.current !== prod.key) {
+        prodFiredKey.current = prod.key; // HMR 재마운트 등 effect 재실행 시 이중 재생 방지
+        prod.sfx?.();
+      }
+      const imp = prod.impact;
+      if (imp !== undefined && settingsRef.current.screenFx) {
+        const delay = imp.delayMs ?? (prod.channel === "banner" ? BANNER_IMPACT_MS : CUTIN_IMPACT_MS);
+        timers.push(window.setTimeout(() => shakeTable(imp.shake), delay));
+      }
+      timers.push(
+        window.setTimeout(
+          () => setActiveProd(null),
+          effectiveProdTtl(prod.ttl, settingsRef.current.screenFx),
+        ),
+      );
+    };
+    rafs.push(window.requestAnimationFrame(() => rafs.push(window.requestAnimationFrame(start))));
+    timers.push(window.setTimeout(start, PROD_PAINT_FALLBACK_MS));
+    return () => {
+      rafs.forEach((r) => window.cancelAnimationFrame(r));
+      timers.forEach((t) => window.clearTimeout(t));
+    };
   }, [activeProd]);
 
   // 건너뛰기 단축키 — Esc(관례)와 Space(가장 가까운 손). 연출 중에만 먹는다.
@@ -2656,6 +2691,17 @@ export function App(): JSX.Element {
         catalogRef.current[msg.actionType]?.name ??
         msg.actionType;
       const pv = prevViewRef.current;
+      // 같은 순에 같은 사람이 같은 액션을 또 보내면(왕패의 주인 2장 교환 = dw_swap 2개)
+      // 컷인은 **한 번만** 띄운다 — 사용자에게는 발동 한 번이다.
+      if (pv !== null) {
+        const r = pv.round;
+        const turn = `${r.prevalentWind}:${r.roundNumber}:${r.honba}:${r.turnCount}`;
+        const seen = fxSeenRef.current;
+        if (seen.turn !== turn) fxSeenRef.current = { turn, keys: new Set() };
+        const key = `${msg.player}:${msg.actionType}`;
+        if (fxSeenRef.current.keys.has(key)) return;
+        fxSeenRef.current.keys.add(key);
+      }
       const who = pv !== null ? playerNameById(pv, msg.player) : msg.player;
       // 증강 발동은 후로(타악)와 계열이 다른 "번개 스침" 사운드 — 소리만으로 구분된다
       showCutIn(label, "augment", `${who} — 증강 발동`, 1600, {
@@ -5215,10 +5261,98 @@ function GuestOutro(props: {
  */
 type HelpTab = "basics" | "augment";
 
-/** 한 절(제목 + 문단들). 문단에는 용어 풀이 링크(TermText)가 걸린다. */
+/**
+ * 그림 한 줄 — 실제 패 그림으로 보여 주는 예시.
+ *
+ * 글로만 적힌 "같은 종류의 연속 3장"은 마작을 모르는 사람에게 아무 그림도 그려 주지
+ * 못한다. 여기서 쓰는 패는 게임판과 **같은 이미지**(`/tiles/*.png`, TileImg)다 —
+ * 규칙 화면에서 본 그림이 게임 안에서 그대로 다시 나온다.
+ */
+interface HelpFigRow {
+  /** 왼쪽 라벨 (예: "슌츠", "대기", "표시패") */
+  label?: string;
+  /** 패 표기 — 묶음은 공백으로 나눈다. `234m 55p 1z` (z: 1~4 동남서북, 5~7 백발중) */
+  tiles: string;
+  /** `→` 뒤에 붙는 결과 묶음 (표시패→도라, 들고 있는 패→울어서 만든 묶음) */
+  then?: string;
+  /** 줄 아래 설명 한 줄 (용어 풀이 링크가 걸린다) */
+  note?: string;
+  /** 되는 예(○) / 안 되는 예(✕) 표식 */
+  mark?: "ok" | "no";
+}
+
+/** 한 절(제목 + 문단들 + 그림). 문단에는 용어 풀이 링크(TermText)가 걸린다. */
 interface HelpSection {
   title: string;
   paras: string[];
+  /** 문단 아래에 붙는 패 그림 */
+  figure?: HelpFigRow[];
+}
+
+/**
+ * `234m` `55p` `1z` 같은 표기를 패 종류로 푼다. 표준 마작 표기와 같다 —
+ * 숫자들 뒤에 무늬 한 글자(m 만 · p 통 · s 삭 · z 자패)가 붙는다.
+ * 알아볼 수 없는 조각은 조용히 버린다(문안 오타가 화면을 깨지 않게).
+ */
+function parseHelpTiles(group: string): TileKind[] {
+  const out: TileKind[] = [];
+  const m = /^([0-9]+)([mpsz])$/.exec(group.trim());
+  if (m === null) return out;
+  const [, digits, suit] = m as unknown as [string, string, string];
+  for (const ch of digits) {
+    const n = Number(ch);
+    if (suit === "z") {
+      if (n >= 1 && n <= 4) out.push({ suit: "wind", rank: n });
+      else if (n >= 5 && n <= 7) out.push({ suit: "dragon", rank: n - 4 });
+      continue;
+    }
+    if (n < 1 || n > 9) continue;
+    out.push({ suit: suit === "m" ? "man" : suit === "p" ? "pin" : "sou", rank: n });
+  }
+  return out;
+}
+
+/** 공백으로 나뉜 묶음들을 그린다 — 묶음 사이는 눈에 보이게 벌린다. */
+function HelpTileGroups({ tiles }: { tiles: string }): JSX.Element {
+  return (
+    <span className="help-fig-groups">
+      {tiles.split(/\s+/).filter((g) => g !== "").map((g, gi) => (
+        <span key={gi} className="help-fig-group">
+          {parseHelpTiles(g).map((kind, i) => (
+            <TileImg key={i} tile={{ kind }} size="mini" />
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function HelpFigure({ rows }: { rows: HelpFigRow[] }): JSX.Element {
+  return (
+    <div className="help-fig">
+      {rows.map((row, i) => (
+        <div key={i} className={row.mark === undefined ? "help-fig-row" : `help-fig-row help-fig-${row.mark}`}>
+          <div className="help-fig-line">
+            {/* 표식은 줄 맨 앞 — 뒤에 두면 좁은 화면에서 패 줄에 밀려 혼자 다음 줄로 떨어졌다 */}
+            {row.mark !== undefined ? (
+              <span className="help-fig-mark">{row.mark === "ok" ? "○" : "✕"}</span>
+            ) : null}
+            {row.label !== undefined ? <span className="help-fig-label">{row.label}</span> : null}
+            <HelpTileGroups tiles={row.tiles} />
+            {row.then !== undefined ? (
+              <>
+                <span className="help-fig-arrow">→</span>
+                <HelpTileGroups tiles={row.then} />
+              </>
+            ) : null}
+          </div>
+          {row.note !== undefined ? (
+            <p className="help-fig-note"><TermText text={row.note} /></p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const HELP_BASICS: HelpSection[] = [
@@ -5228,12 +5362,34 @@ const HELP_BASICS: HelpSection[] = [
       "네 사람이 각자 손에 패 13장을 쥐고, 차례마다 한 장을 가져와 한 장을 버립니다. 목표는 남보다 먼저 손패를 완성해 화료하는 것입니다.",
       "완성형은 언제나 같습니다 — 3장짜리 묶음 4개 + 같은 패 2장(머리) 1개. 묶음은 같은 패 3장(커츠) 또는 같은 종류의 연속 3장(슌츠)입니다.",
     ],
+    figure: [
+      { label: "슌츠", tiles: "456p", note: "같은 무늬의 연속 3장." },
+      { label: "커츠", tiles: "777s", note: "같은 패 3장. 자패로도 됩니다." },
+      { label: "머리", tiles: "55m", note: "같은 패 2장. 한 손에 하나뿐입니다." },
+      {
+        label: "완성형",
+        tiles: "234m 678m 345p 111s 99p",
+        note: "**묶음 4개 + 머리 1개 = 14장.** 어떤 화료형이든 결국 이 모양입니다.",
+      },
+    ],
   },
   {
     title: "역이 없으면 화료할 수 없다",
     paras: [
       "모양만 맞춘다고 끝이 아닙니다. 손패가 미리 정해진 조건(역) 중 하나 이상을 만족해야 화료를 선언할 수 있습니다. 리치·탕야오·핑후·역패 같은 것들입니다.",
       "모양을 완성하고도 역이 없으면 화료하지 못합니다.",
+    ],
+    figure: [
+      {
+        mark: "ok",
+        tiles: "234m 678m 345p 567s 55p",
+        note: "1·9와 자패가 하나도 없습니다 — **탕야오**. 역이 있으니 화료할 수 있습니다.",
+      },
+      {
+        mark: "no",
+        tiles: "111m 678m 345p 567s 55p",
+        note: "모양은 똑같이 완성입니다. 그런데 1만이 섞여 탕야오가 아니고, 커츠가 있어 핑후도 아닙니다 — 리치를 걸지 않았다면 **화료할 수 없습니다.**",
+      },
     ],
   },
   {
@@ -5242,12 +5398,29 @@ const HELP_BASICS: HelpSection[] = [
       "손패를 남에게 하나도 보이지 않은 채(멘젠) 한 장만 더 오면 완성인 상태(텐파이)가 되면, 1000점을 걸고 리치를 선언할 수 있습니다.",
       "리치를 걸면 그 뒤로는 손패를 바꿀 수 없습니다 — 가져온 패를 그대로 버립니다. 대신 역이 확정되고, 도라를 한 겹 더 받고(우라도라), 타점이 크게 뜁니다.",
     ],
+    figure: [
+      {
+        label: "텐파이",
+        tiles: "234m 678m 345p 55p 78s",
+        note: "13장. 78삭 자리만 채우면 완성입니다.",
+      },
+      {
+        label: "대기",
+        tiles: "6s 9s",
+        note: "이 둘 중 하나가 오면 화료. 이 상태에서 **리치**를 선언할 수 있습니다.",
+      },
+    ],
   },
   {
     title: "도라 — 보너스 패",
     paras: [
       "판마다 표시패 한 장이 공개되고, 그 다음 패가 도라가 됩니다. 도라를 몇 장 쥐고 있느냐가 그대로 타점이 됩니다.",
       "도라는 역이 아닙니다. 도라만 잔뜩 있어도 역이 없으면 화료할 수 없습니다.",
+    ],
+    figure: [
+      { label: "표시패", tiles: "5p", then: "6p", note: "표시패의 **다음** 패가 도라입니다." },
+      { label: "표시패", tiles: "9s", then: "1s", note: "9 다음은 1로 돌아옵니다." },
+      { label: "표시패", tiles: "4z", then: "1z", note: "바람은 동→남→서→북→동, 삼원패는 백→발→중→백 순으로 돕니다." },
     ],
   },
   {
@@ -5256,12 +5429,26 @@ const HELP_BASICS: HelpSection[] = [
       "남이 버린 패를 가져와 묶음을 완성할 수 있습니다. 연속 두 장을 들고 있으면 바로 위(상가)에게서만 치, 같은 패 2장을 들고 있으면 누구에게서든 퐁입니다. 같은 패 4장은 깡입니다.",
       "울면 그 묶음이 공개되고 멘젠이 깨집니다 — 리치를 걸 수 없고 쓸 수 있는 역이 줄어듭니다.",
     ],
+    figure: [
+      { label: "치", tiles: "34m", then: "234m", note: "연속 두 장을 들고 있을 때, **왼쪽 사람(상가)** 이 버린 2만이나 5만만 가져올 수 있습니다." },
+      { label: "퐁", tiles: "77p", then: "777p", note: "같은 패 두 장. 이쪽은 **누가 버려도** 가져옵니다." },
+      { label: "깡", tiles: "777s", then: "7777s", note: "같은 패 넷. 도라 표시패가 한 장 늘고 패를 한 장 더 가져옵니다." },
+    ],
   },
   {
     title: "후리텐 — 내가 버린 패로는 못 난다",
     paras: [
       "내 대기(화료할 수 있는 패) 중 하나라도 내 버림패에 있으면, 남이 버린 패로는 화료할 수 없습니다. 이것이 후리텐입니다.",
       "이때도 스스로 가져와서 나는 것(쯔모)은 됩니다. 리치 뒤에 후리텐이 되면 그 국 내내 풀리지 않습니다.",
+    ],
+    figure: [
+      { label: "내 대기", tiles: "3s 6s", note: "이 손패는 3삭·6삭으로 화료할 수 있습니다." },
+      {
+        label: "내 버림패",
+        tiles: "1p 9m 6s 2z",
+        mark: "no",
+        note: "대기 중 하나(6삭)가 내 버림패에 있습니다 — 이러면 3삭이 나와도 **론할 수 없습니다.** 쯔모는 그대로 됩니다.",
+      },
     ],
   },
   {
@@ -5302,6 +5489,14 @@ const HELP_AUGMENT: HelpSection[] = [
     paras: [
       "타점 보너스가 아니라 규칙을 바꾸는 카드입니다. 후리텐인 채로 론하고, 백을 만능패로 쓰고, 남의 버림패를 손으로 가져오고, 리치를 건 뒤에 손패를 바꿉니다.",
       `${AUGMENT_KINDS}종이 점수·손패 조작·화료형·정보·리치·수비·후로·교란 계열로 나뉩니다.`,
+    ],
+    figure: [
+      {
+        label: "예 · 백은 만능패",
+        tiles: "23m 5z",
+        then: "234m",
+        note: "백 한 장이 없는 4만 자리를 그대로 메웁니다. 타점이 아니라 **규칙**이 바뀐 것입니다.",
+      },
     ],
   },
   {
@@ -5377,6 +5572,7 @@ function HelpScreen(props: {
             {sec.paras.map((para, i) => (
               <p key={i} className="codex-para"><TermText text={para} /></p>
             ))}
+            {sec.figure !== undefined ? <HelpFigure rows={sec.figure} /> : null}
           </section>
         ))}
       </main>
@@ -6942,56 +7138,6 @@ function useDraggablePanel(): {
   };
 }
 
-/**
- * 화면 크기(UI 배율) 설정 — 설정 패널 안의 한 줄.
- *
- * 왜 Settings가 아니라 uiScale.ts가 값을 들고 있나: 배율은 **첫 페인트 전에** 걸려야
- * 한다(startUiScale은 React보다 먼저 돈다). 리액트 상태에 두면 한 프레임 늦게 적용돼
- * 화면이 한 번 튄다. 그래서 저장·적용은 uiScale.ts가 하고, 여기서는 읽고 쓰기만 한다.
- *
- * "자동"은 예전부터 있던 창 크기 맞춤이고, 숫자는 사용자가 못 박는 값이다.
- * 자동만 있던 시절에는 Ctrl + 로 키워도 자동 축소가 도로 줄여 버려 확대가 통하지 않았다.
- */
-function UiScaleRow(): JSX.Element {
-  const [val, setVal] = useState<number | "auto">(getUiScaleSetting);
-  const pct = val === "auto" ? Math.round(getUiScale() * 100) : Math.round(val * 100);
-  const set = (v: number | "auto"): void => {
-    setUiScaleSetting(v);
-    setVal(getUiScaleSetting());
-  };
-  return (
-    <div className="settings-row settings-row-slider">
-      <div className="settings-text">
-        <span className="settings-label">화면 크기</span>
-        <span className="settings-desc">
-          UI 전체의 배율입니다. <b>자동</b>은 창 크기에 맞춰 줄입니다 — 직접 고르면
-          창 크기와 상관없이 그 배율로 고정됩니다. 브라우저 확대(Ctrl +)도 그대로 듣습니다.
-        </span>
-      </div>
-      <div className="settings-slider">
-        <button
-          type="button"
-          className={`uiscale-auto${val === "auto" ? " uiscale-auto-on" : ""}`}
-          aria-pressed={val === "auto"}
-          onClick={() => set(val === "auto" ? getUiScale() : "auto")}
-        >
-          자동
-        </button>
-        <input
-          type="range"
-          min={Math.round(UI_SCALE_MIN * 100)}
-          max={Math.round(UI_SCALE_MAX * 100)}
-          step={5}
-          value={pct}
-          onChange={(e) => set(Number(e.target.value) / 100)}
-          aria-label="화면 크기 배율(%)"
-        />
-        <span className="settings-slider-val">{pct}%</span>
-      </div>
-    </div>
-  );
-}
-
 function SettingsPanel(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -7106,7 +7252,6 @@ function SettingsPanel(props: {
             </span>
           </div>
         </label>
-        <UiScaleRow />
         {props.onVoteAbort !== undefined ? (
           <div className="settings-abort">
             <div className="settings-text">
@@ -7679,6 +7824,24 @@ function AugmentLog({
     const el = bodyRef.current;
     if (el !== null) el.scrollTop = el.scrollHeight;
   }, [open, events.length]);
+
+  /*
+   * 뱃지 숫자는 **아직 안 본 것**만 센다 (2026-08-07 사용자 지시: "한 번 보면 숫자 사라지게").
+   * 전체 개수를 항상 달고 있으면 판이 길어질수록 숫자만 커지는데, 그 숫자로는
+   * 지금 열어 볼 이유가 있는지 알 수 없다 — 다 읽은 뒤에도 똑같이 크게 붙어 있어서다.
+   * 열어 둔 동안 새 사건이 들어오면 그건 눈앞에서 읽히는 것이므로 바로 본 것으로 친다.
+   */
+  const total = events.length + rows.length;
+  const [seen, setSeen] = useState(0);
+  useEffect(() => {
+    if (open) setSeen(total);
+  }, [open, total]);
+  // 판이 리셋돼 기록이 줄면 기준도 같이 내린다 (안 그러면 새 판 사건이 계속 안 보인다)
+  useEffect(() => {
+    setSeen((s) => (s > total ? total : s));
+  }, [total]);
+  const unseen = Math.max(0, total - seen);
+
   if (rows.length === 0 && events.length === 0) return null;
   return (
     <>
@@ -7687,10 +7850,10 @@ function AugmentLog({
         className={`icon-btn auglog-btn${open ? " auglog-btn-on" : ""}`}
         onClick={onToggle}
         title="기록 — 후로·리치·화료·증강 발동"
-        aria-label="기록 열기"
+        aria-label={unseen > 0 ? `기록 열기 — 새 사건 ${unseen}건` : "기록 열기"}
       >
         📜
-        <span className="auglog-count">{events.length + rows.length}</span>
+        {unseen > 0 ? <span className="auglog-count">{unseen}</span> : null}
       </button>
       {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
       {open
@@ -10324,8 +10487,14 @@ function OwnArea(props: {
             컨테이닝 블록**이 된다 — 그래서 `inset: 0`이 화면이 아니라 손패 영역을 가리켜
             모달이 화면 아래쪽에 처박히고 아래가 잘렸다(2026-08-06 사용자 보고: 분열).
             같은 클래스를 쓰는 다른 모달들은 `.own-area` 바깥이라 멀쩡했다. */}
+        {/* ⚠ `data-arm-zone`은 필수다. 무장 중에는 게임판 바깥을 누르면 무장이 풀리는데
+            (GameTable의 pointerdown 감시), 이 모달은 body로 포탈돼 `.own-area`의
+            arm-zone 밖에 있다 → 후보를 누르는 pointerdown이 먼저 무장을 풀고, 무장이
+            풀리면 armSub도 함께 비워져 **모달이 click 전에 사라졌다**. 그래서 후보가
+            둘 이상인 위조·분열·염색에서 아무리 눌러도 골라지지 않았다
+            (2026-08-07 사용자 보고: 선언 간파 — 새 탭에서 선택이 안 됨). */}
         {armSub !== null ? createPortal(
-          <div className="rinshan-pick-overlay">
+          <div className="rinshan-pick-overlay" data-arm-zone="1">
             <div className="rinshan-pick-panel">
               <div className="rinshan-pick-title">
                 ✦ {armName} — {armSub.options[0]?.type === "split_tile" ? "어떻게 쪼갤까요?" : "무엇으로 바꿀까요?"}
@@ -11846,7 +12015,10 @@ function ActionBar(props: {
    * 배치: 숫자 1..9 가 **지금 보이는 버튼 순서 그대로** 대응한다. 론·쯔모·패스처럼
    * 매번 나오는 것에는 글자도 따로 준다(R / P). 왜 고정 배치를 안 쓰나 — 후로 선택지는
    * 같은 종류가 여러 벌 뜬다(치 3가지 등). 순서 대응이면 화면에 보이는 것과 손이 어긋나지 않는다.
-   * 각 버튼에 그 숫자를 찍어 두므로 외울 것도 없다.
+   *
+   * 숫자는 버튼에 **찍지 않는다** (2026-08-07 사용자 지시) — 마우스로 두는 사람에게는
+   * 판이 아니라 키보드 이야기를 하는 칩이 매 순간 붙어 있는 셈이라 버튼이 시끄러웠다.
+   * 대신 title(툴팁)이 그대로 알려 준다.
    */
   const keyed: { key: string; run: () => void }[] = [];
   if (props.riichiMode) {
@@ -11863,17 +12035,15 @@ function ActionBar(props: {
       {props.riichiMode ? (
         <>
           <span className="action-hint">리치할 패를 선택하세요</span>
-          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)}>
+          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)} title="취소 — 단축키 1">
             취소
-            <span className="act-key" aria-hidden="true">1</span>
           </button>
         </>
       ) : (
         <>
           {hasRiichi ? (
-            <button className="act act-riichi" onClick={() => props.onRiichiMode(true)}>
+            <button className="act act-riichi" onClick={() => props.onRiichiMode(true)} title="리치 — 단축키 1">
               리치
-              <span className="act-key" aria-hidden="true">1</span>
             </button>
           ) : null}
           {buttons.map((o, i) => {
@@ -11904,7 +12074,6 @@ function ActionBar(props: {
                 {label}
                 {detail !== "" ? <span className="act-target">{detail}</span> : null}
                 <ActionTiles view={view} option={o} />
-                <span className="act-key" aria-hidden="true">{hotIndex(i)}</span>
               </button>
             );
           })}

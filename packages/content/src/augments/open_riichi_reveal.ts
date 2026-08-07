@@ -15,7 +15,7 @@
  * 배지로 강조한다. 직격 역만은 커스텀 역 open_riichi_strike(isYakuman) —
  * check가 state를 못 보므로 "이번 국에 선언했는가"는 win.blockedYaku Modifier로
  * 게이팅하고, 쏜 사람의 리치 여부는 코어가 채워 주는 WinContext.fromRiichi로 본다.
- * "리치 3판 취급"의 차액(+2판)은 addWinPointBonus + winPointsWithExtraHan으로 점수에 환산한다.
+ * "리치 3판 취급"의 차액(+2판)은 addWinHanBonus로 얹는다 — 정산창에도 "+2판"으로 적힌다.
  */
 
 import {
@@ -43,11 +43,10 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import {
-  addWinPointBonus,
+  addWinHanBonus,
   flagOf,
   roundKey,
   roundViewKey,
-  winPointsWithExtraHan,
   addYakuHolder,
   yakuHolders,
 } from "../util.js";
@@ -58,6 +57,8 @@ const ID = "open_riichi_reveal";
 const ACTION = "open_riichi";
 /** 공개된 오름패를 비(非)리치자가 버려 직격당했을 때의 역만 역 id */
 const STRIKE_YAKU = "open_riichi_strike";
+/** 리치를 3판으로 취급한 차액 (표준 리치 1판은 이미 손패에 들어 있다) */
+const RIICHI_UPGRADE_HAN = 2;
 /** 이번 국에 오픈 리치를 선언했는가 (roundKey 스코프 — 국이 바뀌면 자동 만료) */
 const declaredKey = (state: GameState, h: PlayerId): string =>
   `${ID}:declared:${roundKey(state)}:${h}`;
@@ -219,14 +220,14 @@ export const openRiichiReveal: AugmentDef = defineAugment({
 
     // 역만이 터지지 않는 화료(쯔모·리치자에게서 론)는 리치를 3판으로 취급한다(차액 +2판).
     // (리치 자체 1판은 winPointsWithExtraHan의 기준 info.han에 이미 포함되어 별개다.)
-    addWinPointBonus(ctx, (state, info) => {
+    addWinHanBonus(ctx, (state, info) => {
       if (!flagOf(state, declaredKey(state, holder))) return 0;
       const from = info.from;
       const fromRiichi =
         from != null && state.round.byPlayer[from]?.riichi != null;
       // 비리치 상대 론 = 직격 역만이 이미 적용됐다 → 추가 판을 얹지 않는다
       if (info.winType === "ron" && !fromRiichi) return 0;
-      return winPointsWithExtraHan(state, holder, info, 2);
+      return RIICHI_UPGRADE_HAN;
     });
 
     // 아직 리치 전이고 이번 국에 선언하지 않았을 때만, 버려도 텐파이가 유지되는
