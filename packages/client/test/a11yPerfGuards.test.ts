@@ -48,8 +48,16 @@ describe("연출 — 건너뛸 수 있고, 화면 효과를 끄면 짧아진다"
   it("화면 효과를 끄면 체류 시간이 실제로 줄어든다", () => {
     expect(APP).toContain("function effectiveProdTtl");
     // ttl을 그대로 타이머에 넣는 옛 형태로 되돌아가지 않게 한다
-    expect(APP).not.toMatch(/setTimeout\(\s*\(\) => setActiveProd\(null\),\s*activeProd\.ttl\s*\)/);
-    expect(APP).toContain("effectiveProdTtl(activeProd.ttl, settingsRef.current.screenFx)");
+    expect(APP).not.toMatch(/setTimeout\(\s*\(\) => setActiveProd\(null\),\s*(activeP|p)rod\.ttl\s*\)/);
+    expect(APP).toContain("effectiveProdTtl(prod.ttl, settingsRef.current.screenFx)");
+  });
+
+  it("체류 시간을 화면에 그려진 뒤부터 잰다 (막힌 프레임이 연출을 삼키지 않게)", () => {
+    // rAF 두 번 = 첫 페인트 뒤. 이펙트 시점부터 재면 메인 스레드가 막힌 사이 ttl이
+    // 흘러 연출이 통째로 사라진다 (2026-08-07 조커 발동 연출 실종 보고).
+    expect(APP).toContain("requestAnimationFrame(() => rafs.push(window.requestAnimationFrame(start)))");
+    // 백그라운드 탭에는 rAF가 오지 않는다 — 받침 타이머가 없으면 큐가 그 자리에 선다
+    expect(APP).toContain("PROD_PAINT_FALLBACK_MS");
   });
 
   it("CSS의 --prod-ttl도 줄어든 값을 받는다 (연출 길이와 체류가 어긋나지 않게)", () => {
@@ -83,20 +91,16 @@ describe("📜 기록 — 상태 스냅샷이 아니라 append-only 로그", () 
 
 // ─────────────────────────── 3. UI 배율 ───────────────────────────
 
-describe("UI 배율 — 사용자가 정할 수 있고 Ctrl + 를 되돌리지 않는다", () => {
-  it("명시적·영속 설정이 있다", () => {
-    expect(UISCALE).toContain("export function setUiScaleSetting");
-    expect(UISCALE).toContain("export function getUiScaleSetting");
-    expect(UISCALE).toContain("localStorage.setItem");
-    expect(APP).toContain("UiScaleRow");
+describe("UI 배율 — 자동 맞춤뿐이고 Ctrl + 를 되돌리지 않는다", () => {
+  it("설정 패널에 배율 손잡이가 없다 (2026-08-07 사용자 지시로 걷어냈다)", () => {
+    expect(APP).not.toContain("UiScaleRow");
+    expect(UISCALE).not.toContain("export function setUiScaleSetting");
+    expect(CSS).not.toContain(".uiscale-auto");
   });
 
-  it("사용자가 고른 배율이 자동 계산보다 먼저 반환된다", () => {
-    const fn = UISCALE.slice(UISCALE.indexOf("function computeScale()"));
-    const overrideAt = fn.indexOf("if (override !== null) return override;");
-    const autoAt = fn.indexOf("window.innerWidth");
-    expect(overrideAt).toBeGreaterThan(0);
-    expect(overrideAt).toBeLessThan(autoAt);
+  it("예전에 못 박아 둔 배율에 갇히지 않는다 — 부팅 때 지운다", () => {
+    expect(UISCALE).toContain("LEGACY_OVERRIDE_KEY");
+    expect(UISCALE).toContain("localStorage.removeItem(LEGACY_OVERRIDE_KEY)");
   });
 
   it("브라우저 확대를 감지해 자동 축소를 접는다 (WCAG 1.4.4)", () => {
@@ -226,7 +230,9 @@ describe("키보드로 둘 수 있고, 어디에 서 있는지 보인다", () =>
 
   it("액션 바에 단축키가 걸려 있다", () => {
     expect(APP).toContain("function ActionHotkeys");
-    expect(APP).toContain("act-key");
+    // 숫자 칩은 버튼에서 뺐다 (2026-08-07 사용자 지시) — 안내는 툴팁이 맡는다
+    expect(APP).not.toContain('className="act-key"');
+    expect(APP).toMatch(/단축키 \$\{hotIndex\(i\)\}/);
     // 연출 건너뛰기(Esc·Space)와 겹치면 컷인을 넘기려다 패스가 나간다
     const body = bodyOf("function ActionHotkeys(");
     expect(body).not.toContain('"Escape"');
