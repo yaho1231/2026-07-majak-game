@@ -671,4 +671,41 @@ describe("편식 (picky_eater)", () => {
     // 패산 장수도 그대로 (실물 1:1 교환)
     expect(after.zones[WALL]?.tileIds.length).toBe(state.zones[WALL]?.tileIds.length);
   });
+
+  /*
+   * 발동할 수 없는 국에는 퀘스트를 세지 않는다 (2026-08-08 사용자 지시).
+   * 쓴 직후는 '이 국 이미 사용' + 쿨다운 2국이 동시에 걸리는 자리라, 둘 다 이 검사에 걸린다.
+   */
+  it("이미 발동한 국에는 진행을 더 세지 않는다", () => {
+    const state = scene("123456789s123z");
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, pickyEater, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    flow.begin();
+    // 발동 전에는 12/12 달성 상태였다
+    expect(questProgress(game.engine.state, "p0").count).toBe(12);
+
+    flow.submit("p0", { type: "picky_unify", payload: { suit: "pin" } });
+
+    const p = questProgress(game.engine.state, "p0");
+    expect(p.count).toBe(0);
+    expect(p.suit).toBeNull();
+    expect(p.failed).toBe(false);
+    expect(p.ready).toBe(false);
+  });
+
+  it("발동 뒤에는 진행도 공개값도 지워진다", () => {
+    const state = scene("123456789s123z");
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, pickyEater, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    flow.begin();
+    flow.submit("p0", { type: "picky_unify", payload: { suit: "pin" } });
+
+    const key = Object.keys(game.engine.state.augmentData).find((k) =>
+      k.includes("picky_eater:progress:p0"),
+    );
+    // 키 자체가 없거나(아직 한 번도 안 실림) null이어야 한다 — 낡은 진행도가 남으면 안 된다
+    expect(key === undefined ? null : game.engine.state.augmentData[key]).toBeNull();
+  });
 });
