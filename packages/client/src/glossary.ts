@@ -531,6 +531,12 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     short: "한 무늬만으로 1112345678999 모양을 만드는 최고 등급 손.",
   },
   {
+    key: "chuuren_junsei",
+    label: "순정구련보등",
+    short:
+      "1112345678999를 그대로 세운 채 그 무늬 9종 전부로 기다린 구련보등. 2배 역만이다.",
+  },
+  {
     key: "daisangen",
     label: "대삼원",
     short: "백·발·중을 모두 3장씩 모으는 최고 등급 손.",

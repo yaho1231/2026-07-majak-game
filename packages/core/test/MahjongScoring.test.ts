@@ -326,6 +326,26 @@ describe("evaluateWin — 역만과 암각 판정", () => {
     expect(ids(r)).toEqual(["shousuushii"]);
   });
 
+  it("순정구련보등 — 뼈대 그대로의 9면 대기는 더블 역만 (chuuren과 배타)", () => {
+    // 1112345678999m을 세운 채 5m을 받았다 = 그 무늬 9종 어디로도 화료할 수 있던 손
+    const r = evaluateWin(
+      ctxOf({ hand: h("11123455678999m"), winningTile: t("5m") }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(2);
+    expect(ids(r)).toEqual(["chuuren_junsei"]);
+  });
+
+  it("구련보등 — 9면 대기가 아니면 단일 역만", () => {
+    // 같은 14장이지만 화료패가 1m — 화료 직전 손은 5m이 두 장인 뼈대 아닌 모양이었다
+    const r = evaluateWin(
+      ctxOf({ hand: h("11123455678999m"), winningTile: t("1m") }),
+      registry,
+    );
+    expect(r?.yakumanCount).toBe(1);
+    expect(ids(r)).toEqual(["chuuren"]);
+  });
+
   it("대삼원 — 역만이면 일반 역·도라를 세지 않는다", () => {
     const r = evaluateWin(
       ctxOf({

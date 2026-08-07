@@ -101,6 +101,50 @@ function isKokushi13(v: ScoringVariant, ctx: WinContext): boolean {
 }
 
 /**
+ * 구련보등 뼈대인가 — 맞으면 **뼈대(1112345678999)를 넘겨 남는 한 장의 랭크**를 준다.
+ *
+ * 화료형 14장은 언제나 "뼈대 13장 + 아무 랭크 한 장"이다. 그 남는 랭크가 곧 순정(9면 대기)
+ * 판정의 재료가 된다 — 화료패가 그 한 장이었다면 화료 직전 손이 순수한 뼈대였다는 뜻이다.
+ */
+function chuurenSurplus(
+  v: ScoringVariant,
+  ctx: WinContext,
+): { suit: string; rank: number } | null {
+  if (!isStd(v) || !v.isClosed || ctx.melds.length > 0) return null;
+  const p = suitProfile(v);
+  if (p.numberSuits.size !== 1 || p.hasHonor) return null;
+  const suit = [...p.numberSuits][0] as string;
+  const kinds = allKinds(v);
+  // 구련은 **정확히 14장**의 뼈대다. 장수를 안 보면 진짜 용의 17장 손
+  // (111p 999p + 슌쯔 3개 + 작두)이 1·9 셋씩 + 2~8 하나씩을 우연히 만족해
+  // 역만이 헛성립한다(docs/25 역/점수 #3).
+  if (kinds.length !== 14) return null;
+  const counts = new Array<number>(10).fill(0);
+  for (const k of kinds) counts[k.rank] = (counts[k.rank] ?? 0) + 1;
+  if ((counts[1] ?? 0) < 3 || (counts[9] ?? 0) < 3) return null;
+  for (let r = 2; r <= 8; r++) if ((counts[r] ?? 0) < 1) return null;
+  // 뼈대를 빼고 남는 한 장 — 14 = 13 + 1 이므로 초과분은 정확히 하나뿐이다.
+  for (let r = 1; r <= 9; r++) {
+    const base = r === 1 || r === 9 ? 3 : 1;
+    if ((counts[r] ?? 0) > base) return { suit, rank: r };
+  }
+  return null;
+}
+
+/**
+ * 순정구련보등(9면 대기)인가 — 더블 역만.
+ * 판정은 국사 13면과 같은 논리다: **뼈대를 넘어선 그 한 장이 곧 화료패**면 화료 직전 손이
+ * 순수한 1112345678999였고, 그 무늬 아홉 종 어느 것으로도 화료할 수 있었다는 뜻이 된다.
+ * 화료패가 그 무늬의 수패가 아니면(와일드로 채운 화료 등) 순정으로 보지 않는다.
+ */
+function isJunseiChuuren(v: ScoringVariant, ctx: WinContext): boolean {
+  const surplus = chuurenSurplus(v, ctx);
+  if (surplus === null) return false;
+  const win = ctx.winningTile;
+  return win.suit === surplus.suit && win.rank === surplus.rank;
+}
+
+/**
  * 스안커 뼈대 — 표준형 + **손 전체가 안커**.
  *
  * 샹퐁 대기를 론으로 채우면 그 커쯔는 명각이 되므로(buildVariants) 여기서 자동으로
@@ -542,21 +586,18 @@ export const standardYakuList: YakuDef[] = [
     closedHan: 13,
     openHan: null,
     isYakuman: true,
-    check: (v, ctx) => {
-      if (!isStd(v) || !v.isClosed || ctx.melds.length > 0) return false;
-      const p = suitProfile(v);
-      if (p.numberSuits.size !== 1 || p.hasHonor) return false;
-      const kinds = allKinds(v);
-      // 구련은 **정확히 14장**의 뼈대다. 장수를 안 보면 진짜 용의 17장 손
-      // (111p 999p + 슌쯔 3개 + 작두)이 1·9 셋씩 + 2~8 하나씩을 우연히 만족해
-      // 역만이 헛성립한다(docs/25 역/점수 #3).
-      if (kinds.length !== 14) return false;
-      const counts = new Array<number>(10).fill(0);
-      for (const k of kinds) counts[k.rank] = (counts[k.rank] ?? 0) + 1;
-      if ((counts[1] ?? 0) < 3 || (counts[9] ?? 0) < 3) return false;
-      for (let r = 2; r <= 8; r++) if ((counts[r] ?? 0) < 1) return false;
-      return true;
-    },
+    // 9면 대기는 chuuren_junsei(더블)가 잡는다 — 둘이 함께 서면 3배가 되므로 배타로 뺀다
+    check: (v, ctx) => chuurenSurplus(v, ctx) !== null && !isJunseiChuuren(v, ctx),
+  },
+  {
+    id: "chuuren_junsei",
+    name: "순정구련보등",
+    // 더블 역만 — 뼈대 1112345678999를 그대로 세운 채 그 무늬 **아홉 종 전부**로 기다리는 손이다.
+    closedHan: 26,
+    openHan: null,
+    isYakuman: true,
+    yakumanMultiplier: 2,
+    check: (v, ctx) => isJunseiChuuren(v, ctx),
   },
   {
     id: "suukantsu",

@@ -160,8 +160,16 @@ describe("표준 14장 역만은 그대로다 (회귀 방지)", () => {
     expect(eval14("111m222m333m444p99s", "1m")).toContain("suuankou");
   });
 
-  it("구련보등 (정확히 14장)", () => {
-    expect(eval14("1112345678999m1m", "1m")).toContain("chuuren");
+  it("구련보등 (정확히 14장) — 뼈대 그대로면 순정(9면 대기)", () => {
+    // 화료패 1m이 곧 뼈대 초과분이라 화료 직전 손이 순수 1112345678999 = 9면 대기
+    expect(eval14("1112345678999m1m", "1m")).toContain("chuuren_junsei");
+    expect(eval14("1112345678999m1m", "1m")).not.toContain("chuuren");
+  });
+
+  it("구련보등 (9면 대기가 아니면 단일 역만)", () => {
+    // 초과분은 1m인데 화료패는 5m — 화료 직전 손이 뼈대가 아니었다
+    expect(eval14("1112345678999m1m", "5m")).toContain("chuuren");
+    expect(eval14("1112345678999m1m", "5m")).not.toContain("chuuren_junsei");
   });
 });
 
