@@ -142,6 +142,15 @@ interface Room {
    * 리플레이 파일·게임 인덱스·누적 통계를 남기지 않는다(실대국 데이터 오염 방지).
    */
   sandbox: boolean;
+  /**
+   * 게스트 체험 방 — 계정 없는 손님 1명 + 봇 3명. 드래프트는 실전 그대로다
+   * (증강이 이 게임의 정체라 빼면 체험이 아니다).
+   *
+   * 샌드박스와 같은 이유로 **아무 기록도 남기지 않는다** — 리플레이 파일·게임
+   * 인덱스·누적 통계·증강 집계 전부. 손님의 판이 리더보드와 도감의 근거 데이터를
+   * 흔들면 계정 공간을 지키는 가입 게이트가 반쪽이 된다.
+   */
+  guest: boolean;
   /** 다음 판 시작 시 좌석별로 미리 지급할 증강 (샌드박스 전용) */
   sandboxAugments: Record<PlayerId, string[]>;
   /** 다음 판 시작 시 좌석별로 강제 배패할 손패 (kindKey 목록, 샌드박스 전용) */
@@ -162,6 +171,11 @@ interface Conn {
   id: string;
   ws: WebSocket;
   user: UserRow | null;
+  /**
+   * 계정 없는 게스트 세션인가. `user`는 DB에 없는 임시 신원(id = GUEST_USER_ID)이라
+   * 이 플래그로만 구별된다 — 라우터가 이걸 보고 허용 메시지를 좁힌다.
+   */
+  guest: boolean;
   sessionToken: string | null;
   room: Room | null;
   agent: HumanAgent | null;
@@ -277,6 +291,38 @@ const MAX_FEEDBACK_FIELD = 8000;
 const MAX_SANDBOX_AUGMENTS = 40;
 /** 강제 배패로 지정할 수 있는 장수 상한 (배패 13 + 여유). 넘치면 잘라 낸다. */
 const MAX_SANDBOX_HAND = 14;
+
+/**
+ * 게스트의 가짜 user id. DB의 `users.id`는 1부터 증가하므로 음수는 절대 실계정과
+ * 겹치지 않는다 — 어떤 코드가 실수로 이 신원을 DB 조회에 쓰더라도 아무 행에도
+ * 닿지 않는다(`evictUser`·`recordGame`의 userId 조회 등).
+ */
+const GUEST_USER_ID = -1;
+/**
+ * 게스트 닉네임 접두사. `#`는 계정 닉네임 정규식(한글·영문·숫자·_-)에 없는 문자라
+ * **게스트 이름으로 가입할 수 없다** — 손님이 실계정을 사칭하거나 그 반대가 되는
+ * 길이 처음부터 닫혀 있다.
+ */
+const GUEST_NAME_PREFIX = "손님#";
+/**
+ * 동시 게스트 방 상한. 게스트 방도 MAX_ROOMS를 먹지만, 그 200칸을 손님이 통째로
+ * 채워 실제 친구들이 방을 못 만드는 상황은 따로 막는다.
+ */
+const MAX_GUEST_ROOMS = 40;
+/**
+ * 게스트 연결이 인증 뒤에 보낼 수 있는 메시지. **여기 없는 것은 전부 거부**다.
+ *
+ * 판을 두는 데 필요한 것(액션·드래프트·손패 배치·결과 넘기기·나가기)만 들어 있다.
+ * `createRoom`/`joinRoom`이 빠져 있는 것이 핵심이다 — 게스트 게임은 서버가
+ * `guestPlay` 하나로 만들어 주며, 손님은 방을 만들지도 남의 방에 들어가지도 못한다.
+ */
+const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
+  "action",
+  "draftPick",
+  "roundContinue",
+  "handOrder",
+  "leaveRoom",
+]);
 
 /** 강제 배패에 쓸 수 있는 패 종류 (kindKey) — 표준 34종만. */
 const VALID_TILE_KEYS = new Set(
@@ -445,6 +491,7 @@ export class RoomManager {
       id: randomUUID(),
       ws,
       user: null,
+      guest: false,
       sessionToken: null,
       room: null,
       agent: null,
@@ -463,6 +510,14 @@ export class RoomManager {
 
     // 미인증 스쿼팅 차단 — 유예 안에 로그인하지 않으면 소켓을 회수한다.
     this.armAuthDeadline(conn);
+
+    // 로그인 화면이 이 서버의 실제 정책(가입 게이트 여부)을 알고 그리도록 먼저 알린다.
+    // 인증 정보가 아니라 "이 서버가 지금 가입을 받는가"라는 공개 사실이다.
+    this.send(ws, {
+      type: "serverInfo",
+      signupGate: this.signupCode !== "",
+      guestPlay: true,
+    });
 
     ws.on("message", (data) => {
       // 연결당 메시지 토큰 버킷 — 초과분은 조용히 버린다(응답 증폭 방지). 루프백은 제외.
@@ -565,7 +620,13 @@ export class RoomManager {
     if (room === null || conn.agent === null) return;
     // 재접속으로 이미 새 소켓이 붙었으면 이 close는 오래된 소켓 → 무시
     if (!conn.agent.isSocket(conn.ws)) return;
-    if (room.phase === "waiting") {
+    if (room.guest) {
+      // 게스트는 재접속할 수단이 없다 — 세션 토큰도, `joinRoom`도 없다. 좌석을
+      // 남겨 두면 봇 3명과 유령 1명이 30초 타임아웃마다 멎어 가며 판을 끝까지
+      // 돌린다. 손님이 창을 닫으면 그 판도 함께 사라지는 편이 맞다.
+      room.controller?.requestAbort();
+      this.rooms.delete(room.code);
+    } else if (room.phase === "waiting") {
       this.leaveWaiting(room, conn.agent);
     } else {
       // 지금 이 좌석이 붙들고 있는 결정이 있으면 30초를 다 기다리지 않게 줄인다.
@@ -673,6 +734,10 @@ export class RoomManager {
         // 영원히 갱신되어, 인증 없이 연결 슬롯을 무기한 점유할 수 있었다
         // (미인증 스쿼팅 차단을 스스로 무력화하는 경로).
         if (conn.user === null) return;
+        // 게스트가 로그아웃하면(=가입하러 나가면) 체험 판도 함께 접는다 —
+        // 돌아올 신원이 없는 좌석을 봇 셋과 남겨 둘 이유가 없다.
+        if (conn.guest) this.dropGuestRoom(conn);
+        conn.guest = false;
         if (conn.sessionToken !== null) this.db?.logout(conn.sessionToken);
         // 방·관전 상태를 정리한다 — 안 그러면 좌석/방장이 유령으로 남아
         // 대기실이 소프트락된다 (인증 게이트에 걸려 leaveRoom도 못 보냄).
@@ -684,6 +749,9 @@ export class RoomManager {
         this.armAuthDeadline(conn);
         return;
       }
+      // ── 게스트 체험 (계정 없이 봇 3명과 1인 게임) ──
+      case "guestPlay":
+        return this.guestPlay(conn, msg.mode);
       default:
         break;
     }
@@ -694,6 +762,20 @@ export class RoomManager {
       return this.fail(conn, "AUTH_REQUIRED", "로그인이 필요합니다");
     }
 
+    // ── 게스트는 "제 판을 두는 것"만 할 수 있다 ──
+    //
+    // 허용 목록을 화이트리스트로 둔 이유: 앞으로 새 메시지가 늘어도 **기본이 거부**여야
+    // 손님이 계정 공간(가입·리더보드·리플레이·제보)이나 남의 방에 새 나갈 길이 생기지
+    // 않는다. 특히 `createRoom`·`joinRoom`이 막혀 있어야 게스트가 방 코드 공간을 파거나
+    // 실계정들의 방에 익명으로 끼어들 수 없다.
+    if (conn.guest && !GUEST_ALLOWED_MESSAGES.has(msg.type)) {
+      return this.fail(
+        conn,
+        "GUEST_FORBIDDEN",
+        "게스트 체험에서는 사용할 수 없습니다 — 계정을 만들면 모든 기능이 열립니다",
+      );
+    }
+
     switch (msg.type) {
       case "createRoom":
         return this.createRoom(conn, user);
@@ -701,6 +783,11 @@ export class RoomManager {
         return this.joinRoom(conn, user, msg.code);
       case "leaveRoom": {
         const room = conn.room;
+        // 체험 판에서 나가기 = 그 판의 끝. 남겨 두어도 손님은 돌아올 수 없다.
+        if (conn.guest) {
+          this.dropGuestRoom(conn);
+          return;
+        }
         if (room !== null && conn.agent !== null) {
           if (room.phase === "waiting") this.leaveWaiting(room, conn.agent);
           // 게임 중 나가기 = 포기: 좌석은 봇처럼 자동 진행되어 게임이 완주된다.
@@ -801,8 +888,8 @@ export class RoomManager {
         this.send(conn.ws, {
           type: "liveGames",
           rooms: [...this.rooms.values()]
-            // 증강 테스트 방은 실대국이 아니므로 관전 목록에서 제외한다
-            .filter((r) => r.phase === "playing" && !r.sandbox)
+            // 증강 테스트·게스트 체험 방은 실대국이 아니므로 관전 목록에서 제외한다
+            .filter((r) => r.phase === "playing" && !r.sandbox && !r.guest)
             .map((r) => ({
               code: r.code,
               startedAt: r.startedAt ?? "",
@@ -1129,7 +1216,9 @@ export class RoomManager {
   }
 
   /** 새 방을 만들어 등록한다 (일반 방·샌드박스 공통 초기값). */
-  private newRoom(options: { sandbox?: boolean; gameMode?: GameMode } = {}): Room {
+  private newRoom(
+    options: { sandbox?: boolean; guest?: boolean; gameMode?: GameMode } = {},
+  ): Room {
     const code = this.generateCode();
     const room: Room = {
       code,
@@ -1145,6 +1234,7 @@ export class RoomManager {
       kicked: new Set(),
       gameMode: options.gameMode ?? "hanchan",
       sandbox: options.sandbox ?? false,
+      guest: options.guest ?? false,
       sandboxAugments: {},
       sandboxHands: {},
       botArchetypes: new Map(),
@@ -1167,8 +1257,9 @@ export class RoomManager {
       return this.fail(conn, "ROOM_NOT_FOUND", "존재하지 않는 방 코드입니다");
     }
 
-    // 증강 테스트 방은 1인 전용 — 방 주인의 재접속만 허용하고, 남에게는 방의 존재를 감춘다
-    if (room.sandbox && !room.agents.some((a) => this.isActiveHuman(a, user.username))) {
+    // 증강 테스트·게스트 체험 방은 1인 전용 — 방 주인의 재접속만 허용하고,
+    // 남에게는 방의 존재 자체를 감춘다(코드를 찍어 맞혀도 들어올 수 없다).
+    if ((room.sandbox || room.guest) && !room.agents.some((a) => this.isActiveHuman(a, user.username))) {
       return this.fail(conn, "ROOM_NOT_FOUND", "존재하지 않는 방 코드입니다");
     }
 
@@ -1839,6 +1930,104 @@ export class RoomManager {
     if (voters.length >= needed) room.controller?.requestAbort();
   }
 
+  // ─────────────────────────── 게스트 체험 ───────────────────────────
+
+  /** 이 연결이 붙들고 있는 게스트 방을 접는다 (좌석 분리 + 방 삭제). */
+  private dropGuestRoom(conn: Conn): void {
+    const room = conn.room;
+    conn.room = null;
+    conn.agent = null;
+    if (room === null || !room.guest) return;
+    room.controller?.requestAbort();
+    this.rooms.delete(room.code);
+  }
+
+  /**
+   * 지금 쓰이고 있지 않은 게스트 닉네임을 뽑는다 (`손님#0000`~`손님#9999`).
+   *
+   * 실계정과는 `#` 때문에 애초에 겹칠 수 없고(가입 정규식에 없는 문자), 같은 시각의
+   * 다른 손님과만 겹치지 않으면 된다. 그래서 검사 범위는 살아 있는 방의 좌석 이름뿐이다.
+   */
+  private newGuestName(): string {
+    const taken = new Set<string>();
+    for (const room of this.rooms.values()) {
+      for (const a of room.agents) taken.add(a.nickname);
+    }
+    for (let i = 0; i < 50; i++) {
+      const name = `${GUEST_NAME_PREFIX}${String(randomInt(10_000)).padStart(4, "0")}`;
+      if (!taken.has(name)) return name;
+    }
+    // 만 자리가 사실상 다 찼다 — 충돌만 피하면 되므로 더 넓은 꼬리를 붙인다.
+    return `${GUEST_NAME_PREFIX}${randomInt(1_000_000)}`;
+  }
+
+  /**
+   * 계정 없이 봇 3명과의 1인 게임을 즉시 시작한다 — 방문자가 "무엇인지" 알아보는 길.
+   *
+   * **가입 게이트를 여는 것이 아니다.** 손님은 임시 신원(DB 행 없음, 세션 토큰 없음)을
+   * 받아 제 판 하나만 둘 수 있고, 방 만들기·코드 참가·리더보드·리플레이·제보는
+   * 라우터의 화이트리스트에서 막힌다. 이 판은 아무 기록도 남기지 않는다.
+   *
+   * 남용 방어는 **새 장치를 만들지 않고 기존 것을 그대로 쓴다**:
+   * - `rateLimited` — 인증과 같은 창(연결당 12회/분, IP당 30회/분)
+   * - `roomCreateLimited` — 방 생성과 같은 창(IP당 20회/10분)
+   * - `MAX_ROOMS` + `MAX_GUEST_ROOMS`
+   */
+  private guestPlay(conn: Conn, mode?: GameMode): void {
+    // 이미 로그인한 연결은 게스트가 될 수 없다 — 계정 좌석을 임시 신원으로 갈아
+    // 끼우면 진행 중인 게임의 좌석 주인이 바뀐다.
+    if (conn.user !== null && !conn.guest) {
+      return this.fail(conn, "ALREADY_AUTHED", "이미 로그인되어 있습니다");
+    }
+    // 인증과 같은 레이트리밋 창 — 게스트가 스로틀을 우회하는 옆문이 되지 않게.
+    if (this.rateLimited(conn)) return;
+    if (this.roomCreateLimited(conn)) {
+      return this.fail(conn, "RATE_LIMITED", "체험 시작이 너무 잦습니다. 잠시 후 다시 시도하세요");
+    }
+    this.sweepGhostSeats();
+    if (this.rooms.size >= MAX_ROOMS) {
+      return this.fail(conn, "SERVER_BUSY", "서버가 혼잡합니다. 잠시 후 다시 시도하세요");
+    }
+    let guestRooms = 0;
+    for (const r of this.rooms.values()) if (r.guest) guestRooms++;
+    if (guestRooms >= MAX_GUEST_ROOMS) {
+      return this.fail(conn, "SERVER_BUSY", "체험 게임이 가득 찼습니다. 잠시 후 다시 시도하세요");
+    }
+    // 이 연결이 앞선 게스트 판을 붙들고 있으면 접는다 (연속 체험 — "한 판 더").
+    if (conn.guest) this.dropGuestRoom(conn);
+
+    const user: UserRow = {
+      id: GUEST_USER_ID,
+      username: this.newGuestName(),
+      isAdmin: false,
+    };
+    conn.user = user;
+    conn.guest = true;
+    conn.sessionToken = null;
+    if (conn.authDeadline !== null) {
+      clearTimeout(conn.authDeadline);
+      conn.authDeadline = null;
+    }
+    // 세션 토큰은 빈 문자열 — 저장할 세션이 없다(클라이언트도 저장하지 않는다).
+    this.send(conn.ws, {
+      type: "authOk",
+      username: user.username,
+      isAdmin: false,
+      sessionToken: "",
+      guest: true,
+    });
+    this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+
+    const room = this.newRoom({
+      guest: true,
+      gameMode: mode === "tonpuu" ? "tonpuu" : "hanchan",
+    });
+    this.send(conn.ws, { type: "roomCreated", code: room.code });
+    this.seat(conn, user, room);
+    this.addBots(room, MAX_PLAYERS - room.agents.length);
+    void this.startGame(room);
+  }
+
   // ─────────────────────────── 증강 테스트 (관리자) ───────────────────────────
 
   /**
@@ -2179,9 +2368,9 @@ export class RoomManager {
     room.startedAt = new Date().toISOString();
     // 자리는 대기실에서 이미 정해져 보이고 있다 — 여기서 다시 섞으면 그 표시가 거짓이 된다.
 
-    // 증강 테스트 방은 리플레이 파일을 남기지 않는다 — 판을 자주 갈아엎는 성격이라
-    // 파일만 쌓이고, 어차피 게임 인덱스·통계에도 기록하지 않는다.
-    const writer = room.sandbox ? null : new ReplayWriter(this.replayDir, room.code);
+    // 증강 테스트·게스트 체험 방은 리플레이 파일을 남기지 않는다 — 어차피 게임
+    // 인덱스·통계에도 기록하지 않으므로 열어 볼 길 없는 파일만 쌓인다.
+    const writer = room.sandbox || room.guest ? null : new ReplayWriter(this.replayDir, room.code);
     if (writer !== null) await writer.open();
     room.writer = writer;
 
@@ -2238,7 +2427,10 @@ export class RoomManager {
       },
       onGameOver: (rankings: RankingEntry[]) => {
         // 방은 그대로 남는다 — 결과 화면에서 "이어하기"로 같은 멤버와 다음 판을 간다.
-        const msg: ServerMessage = { type: "gameOver", rankings, canContinue: true };
+        // 게스트 판은 "이어하기"를 주지 않는다 — 대기실로 돌아가도 손님은 `startGame`을
+        // 보낼 수 없다(화이트리스트). 대신 클라이언트가 체험 종료 화면에서
+        // "한 판 더"(= 새 guestPlay)와 "계정 만들기"를 제시한다.
+        const msg: ServerMessage = { type: "gameOver", rankings, canContinue: !room.guest };
         for (const agent of room.agents) {
           if (agent instanceof HumanAgent) agent.notify(msg);
         }
@@ -2249,6 +2441,19 @@ export class RoomManager {
         this.endSpectating(room, "게임이 종료되었습니다", msg);
         if (room.sandbox) {
           this.resetRoomAfterGame(room);
+          return;
+        }
+        // 게스트 판도 아무 기록을 남기지 않는다 — 리플레이 인덱스·리더보드·증강 집계
+        // 어디에도 손님의 판이 섞이지 않는다. 결과 화면에 띄울 **이번 판** 통계만
+        // 만들어 보내고(영속화 없음), 방은 그대로 지운다.
+        if (room.guest) {
+          void this.finishStats(room, tracker, rankings, false)
+            .catch((err: unknown) => {
+              console.error("finishStats error:", err);
+            })
+            .finally(() => {
+              this.rooms.delete(room.code);
+            });
           return;
         }
         this.recordGame(room, rankings);
@@ -2371,6 +2576,8 @@ export class RoomManager {
     room: Room,
     tracker: StatsTracker,
     rankings: RankingEntry[],
+    /** 누적 통계(리더보드의 근거)에 영속화할지. 게스트 판은 false — 보여만 주고 남기지 않는다. */
+    persist = true,
   ): Promise<void> {
     tracker.recordGameEnd(rankings.map((r) => ({ playerId: r.playerId, rank: r.rank })));
     const snapshot = tracker.snapshot();
@@ -2384,7 +2591,7 @@ export class RoomManager {
     }));
 
     // 사람 통계만 닉네임(=계정) 키로 영속화
-    if (this.statsStore) {
+    if (persist && this.statsStore) {
       const humanEntries: { nickname: string; raw: PlayerStatsRaw }[] = [];
       for (const a of room.agents) {
         if (this.isBot(a)) continue;
@@ -2394,9 +2601,9 @@ export class RoomManager {
       if (humanEntries.length > 0) await this.statsStore.record(humanEntries);
     }
 
-    // 갱신된 누적 통계 (사람만)
+    // 갱신된 누적 통계 (사람만). 게스트에게는 누적이라는 개념이 없다.
     const career: StatsEntry[] = [];
-    if (this.statsStore) {
+    if (persist && this.statsStore) {
       for (const a of room.agents) {
         if (this.isBot(a)) continue;
         const raw = this.statsStore.get(a.nickname);

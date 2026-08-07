@@ -154,6 +154,9 @@ describe("미인증 연결", () => {
     const h = await newHarness();
     const sock = new FakeSocket();
     h.rm.handleConnection(sock.asWs(), "203.0.113.9", false);
+    // 연결 직후 서버가 보내는 안내(serverInfo)는 여기서 세지 않는다 — 이 테스트가
+    // 보는 것은 "logout에 대한 응답이 있는가"다.
+    sock.sent.length = 0;
     // 미인증 상태의 logout — 예전에는 여기서 유예가 되걸려 무기한 점유가 가능했다.
     sock.clientSend({ type: "logout" });
     sock.clientSend({ type: "logout" });

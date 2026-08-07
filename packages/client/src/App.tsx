@@ -36,6 +36,7 @@ import type {
   RoundOverMessage,
   SandboxMessage,
   SandboxBotRules,
+  ServerInfoMessage,
   ServerMessage,
   StatsEntry,
   StatsMessage,
@@ -1135,6 +1136,8 @@ const AUGMENT_CUTIN_TONES = new Set(["augment", "grave", "spy"]);
 interface AuthInfo {
   username: string;
   isAdmin: boolean;
+  /** 계정 없는 게스트 체험 세션인가. 홈·통계·리플레이가 전부 막혀 있다. */
+  guest: boolean;
 }
 
 interface Toast {
@@ -1721,6 +1724,23 @@ export function App(): JSX.Element {
 
   const [connection, setConnection] = useState<ConnectionState>("idle");
   const [auth, setAuth] = useState<AuthInfo | null>(null);
+  /**
+   * 서버가 연결 직후 알려 주는 정책 (가입 게이트 여부 등). 도착 전에는 null —
+   * 로그인 화면은 그 동안 게이트 문구를 **추측해서 쓰지 않는다**.
+   */
+  const [serverInfo, setServerInfo] = useState<ServerInfoMessage | null>(null);
+  /** 서버가 되돌려 준 인증 실패 사유 — 토스트가 아니라 로그인 폼 안에 남긴다. */
+  const [authError, setAuthError] = useState<string | null>(null);
+  /** 규칙·도움말 화면 열림 여부 (로그인 전·홈·게임 중 어디서나 열린다) */
+  const [helpOpen, setHelpOpen] = useState(false);
+  /**
+   * 지금 인증되어 있는가 — **live ref**. handleServerMessage는 마운트 시 소켓에
+   * 고정된 클로저라 auth state가 스테일하다. 서버 오류를 로그인 폼에 넣을지
+   * 토스트로 띄울지는 이 ref로만 판단한다.
+   */
+  const authedRef = useRef(false);
+  /** 지금이 게스트 세션인가 — live ref (위와 같은 이유). 계정 전용 요청을 막는다. */
+  const guestRef = useRef(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [joined, setJoined] = useState<JoinedMessage | null>(null);
   const [lobby, setLobby] = useState<LobbyMessage | null>(null);
@@ -2209,6 +2229,8 @@ export function App(): JSX.Element {
   }
 
   function refreshHome(): void {
+    // 게스트에게는 전부 막힌 요청이다 — 보내면 거절 토스트만 네 번 뜬다.
+    if (guestRef.current) return;
     send({ type: "statsRequest" });
     send({ type: "replayList" });
     send({ type: "leaderboard" });
@@ -2217,6 +2239,10 @@ export function App(): JSX.Element {
 
   function logout(): void {
     send({ type: "logout" });
+    authedRef.current = false;
+    guestRef.current = false;
+    setAuthError(null);
+    setHelpOpen(false);
     window.localStorage.removeItem(SESSION_KEY);
     window.localStorage.removeItem(SESSION_SERVER_KEY);
     window.localStorage.removeItem(LAST_ROOM_KEY);
@@ -2231,11 +2257,28 @@ export function App(): JSX.Element {
   }
 
   function handleServerMessage(msg: ServerMessage): void {
+    if (msg.type === "serverInfo") {
+      setServerInfo(msg);
+      return;
+    }
     if (msg.type === "authOk") {
-      window.localStorage.setItem(SESSION_KEY, msg.sessionToken);
-      // 발급처를 함께 남긴다 — 다음 접속 때 같은 서버에만 되돌려 보내기 위함.
-      window.localStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
-      setAuth({ username: msg.username, isAdmin: msg.isAdmin });
+      setAuthError(null);
+      authedRef.current = true;
+      guestRef.current = msg.guest === true;
+      const guest = msg.guest === true;
+      // 게스트에게는 저장할 세션이 없다 — 토큰이 빈 문자열이라 저장하면 다음 접속에
+      // 빈 tokenLogin을 보내고 TOKEN_INVALID로 로그인 화면이 한 번 깜빡인다.
+      if (!guest) {
+        window.localStorage.setItem(SESSION_KEY, msg.sessionToken);
+        // 발급처를 함께 남긴다 — 다음 접속 때 같은 서버에만 되돌려 보내기 위함.
+        window.localStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
+      }
+      setAuth({ username: msg.username, isAdmin: msg.isAdmin, guest });
+      if (guest) {
+        // 홈·통계·리플레이·제보는 게스트에게 전부 막혀 있다(서버 화이트리스트) —
+        // 요청하면 거절 토스트만 4개 뜬다. 아예 보내지 않는다.
+        return;
+      }
       // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
       // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
       if (activeRoomRef.current !== null) {
@@ -2262,8 +2305,17 @@ export function App(): JSX.Element {
         window.localStorage.removeItem(SESSION_KEY);
         activeRoomRef.current = null;
         activeSpectateRef.current = null;
+        authedRef.current = false;
+        guestRef.current = false;
         setAuth(null);
         resetGameState();
+        return;
+      }
+      // 로그인·가입 실패는 **폼 안에** 남긴다. 3.2초짜리 토스트로 스쳐 보내면
+      // "비밀번호에 닉네임을 포함할 수 없습니다" 같은 정정 가능한 사유를 읽기도 전에
+      // 사라져, 방문자는 같은 실수를 반복하다 떠난다.
+      if (!authedRef.current) {
+        setAuthError(msg.message);
         return;
       }
       // 재연결 후 자동 재입장했는데 그 방이 사라졌거나(게임이 오프라인 중 종료 등)
@@ -2293,6 +2345,8 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "roomCreated") {
+      // 게스트 방은 재접속할 수 없다 — 기억해 두면 홈에 죽은 방의 "재접속"이 남는다.
+      if (guestRef.current) return;
       window.localStorage.setItem(LAST_ROOM_KEY, msg.code);
       return; // 이어서 joined·lobby가 온다
     }
@@ -2362,7 +2416,9 @@ export function App(): JSX.Element {
     }
     if (msg.type === "joined") {
       setJoined(msg);
-      activeRoomRef.current = msg.roomId; // 재연결 시 자동 재입장 대상
+      // 게스트는 재접속할 수단이 없다(세션 토큰도 joinRoom 권한도 없다) — 재연결
+      // 자동 재입장 대상으로 기억하면 붙자마자 거절 토스트만 뜬다.
+      activeRoomRef.current = guestRef.current ? null : msg.roomId; // 재연결 시 자동 재입장 대상
       window.localStorage.setItem(LAST_ROOM_KEY, msg.roomId);
       return;
     }
@@ -3110,6 +3166,13 @@ export function App(): JSX.Element {
       {auth === null ? (
         <AuthScreen
           connection={connection}
+          serverInfo={serverInfo}
+          serverError={authError}
+          onGuest={() => {
+            setAuthError(null);
+            send({ type: "guestPlay" });
+          }}
+          onOpenHelp={() => setHelpOpen(true)}
           onLogin={(u, p) => send({ type: "login", username: u, password: p })}
           onRegister={(u, p, code, signup) =>
             send({
@@ -3162,6 +3225,8 @@ export function App(): JSX.Element {
           onRiichiMode={setRiichiMode}
           onSubmit={submitOption}
           onLeave={returnHome}
+          onOpenCodex={() => setCodexOpen(true)}
+          onOpenHelp={() => setHelpOpen(true)}
           onToast={(t) => showToast(t, "info")}
         />
       ) : inWaiting ? (
@@ -3187,13 +3252,15 @@ export function App(): JSX.Element {
           onRefresh={() => send({ type: "adminAugmentTiers" })}
           onClose={() => setTierOpen(false)}
         />
-      ) : codexOpen ? (
-        <CodexScreen
-          catalog={catalog}
-          career={stats?.career.find((e) => e.nickname === auth.username)?.stats ?? null}
-          leaderboard={leaderboard}
-          onRefresh={refreshHome}
-          onClose={() => setCodexOpen(false)}
+      ) : auth.guest ? (
+        // 게스트는 홈이 없다 — 홈의 카드는 전부 계정 기능이라 서버가 거절한다.
+        // 체험이 끝난 자리에서 다음 한 걸음(한 판 더 / 계정 만들기)만 제시한다.
+        <GuestOutro
+          username={auth.username}
+          onPlayAgain={() => send({ type: "guestPlay" })}
+          onOpenCodex={() => setCodexOpen(true)}
+          onOpenHelp={() => setHelpOpen(true)}
+          onSignUp={logout}
         />
       ) : (
         <HomeScreen
@@ -3222,6 +3289,7 @@ export function App(): JSX.Element {
           onJoinRoom={(code) => send({ type: "joinRoom", code })}
           onOpenReplay={(gameId) => send({ type: "replayGet", gameId })}
           onOpenCodex={() => { setCodexOpen(true); refreshHome(); }}
+          onOpenHelp={() => setHelpOpen(true)}
           onOpenTiers={() => { setTierOpen(true); send({ type: "adminAugmentTiers" }); }}
           augmentTiers={augmentTiers}
           onRefreshLive={() => send({ type: "liveGames" })}
@@ -3237,6 +3305,31 @@ export function App(): JSX.Element {
           onLogout={logout}
         />
       )}
+
+      {/* 도감·규칙은 **어느 화면 위에도** 뜨는 오버레이다.
+          예전에는 도감이 홈 라우팅 분기에 있어, 정작 필요한 순간 — 상대가 방금 공개한
+          증강이 무엇인지 궁금한 드래프트·대국 중 — 에 열 수 없었다. 아래 화면은 그대로
+          살아 있으므로 게임 상태도 결정 타이머도 건드리지 않는다. */}
+      {codexOpen ? (
+        <div className="screen-overlay">
+          <CodexScreen
+            catalog={catalog}
+            career={stats?.career.find((e) => e.nickname === auth?.username)?.stats ?? null}
+            leaderboard={leaderboard}
+            backLabel={inGame || inWaiting || auth?.guest === true ? "← 닫기" : "← 홈으로"}
+            onRefresh={() => { if (auth?.guest !== true) refreshHome(); }}
+            onClose={() => setCodexOpen(false)}
+          />
+        </div>
+      ) : null}
+      {helpOpen ? (
+        <div className="screen-overlay">
+          <HelpScreen
+            backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
+            onClose={() => setHelpOpen(false)}
+          />
+        </div>
+      ) : null}
 
       {inGame && intro && !isSpectator ? <IntroOverlay view={view!} /> : null}
       {draftVisible && draft !== null ? (
@@ -3497,10 +3590,25 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
 
 // ─────────────────────────── 로비 ───────────────────────────
 
+/**
+ * 로그인 전 첫 화면 — **랜딩 + 인증 폼**.
+ *
+ * 예전에는 여기가 로그인 폼과 여섯 글자짜리 태그라인이 전부였다. 처음 온 사람은
+ * 이게 무슨 게임인지, 왜 가입해야 하는지 알 도리가 없었고, 가입 게이트가 켜진
+ * 공개 서버에서는 폼을 다 채운 뒤에야 3.2초짜리 토스트로 거절당했다.
+ * 지금은 (1) 무엇인지 먼저 말하고, (2) 계정 없이 바로 한 판을 주고,
+ * (3) 가입이 초대제인지 서버가 알려 준 사실대로 적는다.
+ */
 function AuthScreen(props: {
   connection: ConnectionState;
+  /** 서버 정책 (가입 게이트·게스트 허용). 아직 안 왔으면 null — 추측해서 쓰지 않는다. */
+  serverInfo: ServerInfoMessage | null;
+  /** 서버가 되돌려 준 인증 실패 사유 (폼 안에 남는다) */
+  serverError: string | null;
   onLogin: (username: string, password: string) => void;
   onRegister: (username: string, password: string, adminCode: string, signupCode: string) => void;
+  onGuest: () => void;
+  onOpenHelp: () => void;
   onRetryConnect: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<"login" | "register">("login");
@@ -3520,10 +3628,22 @@ function AuthScreen(props: {
     setLocalError(null);
     if (username.trim().length < 2) return setLocalError("닉네임은 2자 이상이어야 합니다");
     if (password.length < 1) return setLocalError("비밀번호를 입력하세요");
-    // 신규 가입만 강화된 정책(8자+) — 로그인은 기존 계정의 짧은 비밀번호를 막지 않는다.
-    if (tab === "register" && password.length < 8) return setLocalError("비밀번호는 8자 이상이어야 합니다");
-    if (tab === "register" && password !== password2) {
-      return setLocalError("비밀번호 확인이 일치하지 않습니다");
+    // 신규 가입만 강화된 정책 — 로그인은 기존 계정의 짧은 비밀번호를 막지 않는다.
+    // 여기 규칙은 서버(SiteDb.register)와 같은 것을 미리 걸러 주는 것이다. 서버가
+    // 진짜 판정자이므로 이쪽이 느슨해도 뚫리지 않지만, 어긋나면 사용자는 통과한 줄
+    // 알고 보냈다가 거절당한다 — 셋 다 맞춰 둔다.
+    if (tab === "register") {
+      const name = username.trim();
+      if (password.length < 8) return setLocalError("비밀번호는 8자 이상이어야 합니다");
+      if (/^\d+$/.test(password)) {
+        return setLocalError("숫자로만 이루어진 비밀번호는 사용할 수 없습니다");
+      }
+      if (name.length >= 4 && password.toLowerCase().includes(name.toLowerCase())) {
+        return setLocalError("비밀번호에 닉네임을 포함할 수 없습니다");
+      }
+      if (password !== password2) {
+        return setLocalError("비밀번호 확인이 일치하지 않습니다");
+      }
     }
     if (tab === "login") props.onLogin(username.trim(), password);
     else props.onRegister(username.trim(), password, adminCode.trim(), signupCode.trim());
@@ -3551,12 +3671,37 @@ function AuthScreen(props: {
     window.location.reload();
   }
 
-  return (
-    <div className="lobby">
-      <div className="lobby-card auth-card">
-        <h1 className="lobby-title">MAJAK</h1>
-        <p className="lobby-tag">리치마작 × 증강</p>
+  const gateOn = props.serverInfo?.signupGate === true;
+  const guestOk = props.serverInfo?.guestPlay !== false && props.connection === "connected";
 
+  return (
+    <div className="lobby lobby-landing">
+      {/* 방문자에게 필요한 것은 딱 둘이다 — 이게 무엇인지 한 줄, 그리고 시작 버튼.
+          나머지는 게임이 말한다. 자세한 설명이 필요한 사람은 규칙 화면으로 간다. */}
+      <section className="landing">
+        <h1 className="landing-title">MAJAK</h1>
+        <p className="landing-tag">리치마작 × 증강</p>
+        <p className="landing-lead">기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요.</p>
+
+        <div className="landing-cta">
+          <button
+            className="landing-guest"
+            onClick={props.onGuest}
+            disabled={!guestOk}
+            title="계정 없이 봇 3명과 한 판 — 기록은 남지 않습니다"
+          >
+            ▶ 게스트로 바로 체험
+          </button>
+          <button className="landing-help" onClick={props.onOpenHelp}>
+            📘 규칙 · 증강 설명
+          </button>
+        </div>
+        <p className="landing-guest-note">
+          가입 없이 봇 3명과 한 판. 기록·순위에는 남지 않고, 창을 닫으면 사라집니다.
+        </p>
+      </section>
+
+      <div className="lobby-card auth-card">
         <div className="auth-tabs">
           <button className={tab === "login" ? "auth-tab active" : "auth-tab"} onClick={() => setTab("login")}>
             로그인
@@ -3588,6 +3733,9 @@ function AuthScreen(props: {
         </label>
         {tab === "register" ? (
           <>
+            <p className="auth-rule">
+              비밀번호 규칙 — <b>8자 이상</b>, 숫자로만 이루어질 수 없고, 닉네임을 포함할 수 없습니다.
+            </p>
             <label>
               비밀번호 확인
               <input
@@ -3597,15 +3745,20 @@ function AuthScreen(props: {
                 onKeyDown={(e) => e.key === "Enter" && submit()}
               />
             </label>
-            <label>
-              가입 코드 <span className="auth-optional">(서버에 설정된 경우 필요)</span>
-              <input
-                value={signupCode}
-                placeholder="공개 서버는 가입 코드가 필요할 수 있습니다"
-                onChange={(e) => setSignupCode(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-              />
-            </label>
+            {gateOn ? (
+              <label>
+                가입 코드 <span className="auth-required">(필수)</span>
+                <input
+                  value={signupCode}
+                  placeholder="초대받은 가입 코드"
+                  onChange={(e) => setSignupCode(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                />
+              </label>
+            ) : props.serverInfo === null ? (
+              // 서버 정책이 아직 안 왔다 — 있는지 없는지 모르는 칸을 그리지 않는다.
+              null
+            ) : null}
             <label>
               관리자 코드 <span className="auth-optional">(선택)</span>
               <input
@@ -3617,7 +3770,11 @@ function AuthScreen(props: {
           </>
         ) : null}
 
-        {localError !== null ? <p className="auth-error">{localError}</p> : null}
+        {/* 클라이언트 검증(localError)과 서버 판정(serverError)이 같은 자리에 뜬다 —
+            예전에는 서버 쪽만 3.2초 토스트라 읽기 전에 사라졌다. */}
+        {localError ?? props.serverError ? (
+          <p className="auth-error">{localError ?? props.serverError}</p>
+        ) : null}
 
         {disconnected ? (
           <button className="lobby-join auth-reconnect" onClick={props.onRetryConnect}>
@@ -3634,6 +3791,13 @@ function AuthScreen(props: {
               : props.connection === "reconnecting" ? "재연결 중…" : "서버 연결 중…"}
           </button>
         )}
+
+        {gateOn && tab === "register" ? (
+          <p className="auth-gate-note">
+            지금 이 서버는 <b>초대제</b>입니다 — 가입 코드가 있어야 계정을 만들 수 있습니다.
+            코드가 없다면 위의 <b>게스트로 바로 체험</b>으로 지금 바로 플레이할 수 있습니다.
+          </p>
+        ) : null}
 
         <button className="auth-advanced-toggle" onClick={() => setAdvanced((v) => !v)}>
           {advanced ? "▴ 고급 설정 닫기" : "▾ 고급 설정"}
@@ -4320,6 +4484,8 @@ function TierScreen(props: {
 }
 
 function CodexScreen(props: {
+  /** 왼쪽 위 되돌아가기 버튼 문구. 게임 중 오버레이로 열면 "← 닫기"다. */
+  backLabel?: string;
   catalog: AugCatalog;
   career: PlayerStatsView | null;
   leaderboard: LeaderboardEntry[];
@@ -4436,7 +4602,7 @@ function CodexScreen(props: {
   return (
     <div className="codex">
       <header className="home-nav codex-nav">
-        <button className="codex-back" onClick={props.onClose}>← 홈으로</button>
+        <button className="codex-back" onClick={props.onClose}>{props.backLabel ?? "← 홈으로"}</button>
         <span className="home-logo">증강 도감</span>
         <span className="codex-collect-badge">{collectedCount}/{total}종 수집</span>
         <span className="home-spacer" />
@@ -4592,6 +4758,217 @@ function CodexScreen(props: {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ─────────────────────────── 게스트 체험 마무리 ───────────────────────────
+
+/**
+ * 게스트가 게임 밖에 있을 때 보는 유일한 화면.
+ *
+ * 게스트에게 홈을 보여 줄 수는 없다 — 홈의 카드는 전부 계정 기능(통계·리플레이·
+ * 리더보드·제보)이라 서버가 하나하나 거절한다. 대신 지금 할 수 있는 것만 놓는다:
+ * 한 판 더, 도감, 규칙, 그리고 **계정 만들기**.
+ *
+ * 가입 게이트는 여기서도 열리지 않는다 — "계정 만들기"는 로그인 화면으로 돌려보낼
+ * 뿐이고, 코드가 필요한 서버에서는 여전히 코드가 필요하다.
+ */
+function GuestOutro(props: {
+  username: string;
+  onPlayAgain: () => void;
+  onOpenCodex: () => void;
+  onOpenHelp: () => void;
+  onSignUp: () => void;
+}): JSX.Element {
+  return (
+    <div className="lobby">
+      <div className="lobby-card auth-card">
+        <h1 className="lobby-title">MAJAK</h1>
+        <p className="lobby-tag">게스트 체험 — {props.username}</p>
+        <p className="guest-note">
+          체험 게임은 <b>기록에 남지 않습니다</b> — 리플레이·누적 통계·리더보드 어디에도
+          올라가지 않고, 창을 닫으면 이 손님 이름도 사라집니다.
+        </p>
+        <button className="lobby-join" onClick={props.onPlayAgain}>▶ 한 판 더 체험</button>
+        <div className="guest-actions">
+          <button className="wr-btn wr-bot" onClick={props.onOpenHelp}>📘 규칙 · 도움말</button>
+          <button className="wr-btn wr-bot" onClick={props.onOpenCodex}>📖 증강 도감</button>
+        </div>
+        <p className="guest-note">
+          계정을 만들면 친구와 방 코드로 함께 두고, 전적·리플레이·리더보드가 쌓이고,
+          제보 게시판으로 증강 아이디어를 낼 수 있습니다.
+        </p>
+        <button className="home-create" onClick={props.onSignUp}>계정 만들고 계속하기</button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────── 규칙 · 도움말 ───────────────────────────
+
+/**
+ * 처음 온 사람을 위한 규칙 화면 — **로그인 전·홈·게임 중** 어디서나 열린다.
+ *
+ * 이 제품에는 이런 화면이 아예 없었다. 리치마작은 배우기 어렵기로 유명한데,
+ * 여기에 규칙을 다시 쓰는 증강 104종이 얹혀 있고, "증강이 무엇이고 언제 뽑는가"를
+ * 설명하는 자리는 대기실 팁 한 줄이 전부였다.
+ *
+ * 목표는 규칙서가 아니라 **길을 잃지 않을 만큼**이다. 각 항목의 더 깊은 설명은
+ * 게임 안 용어 풀이(glossary)와 증강 도감이 이어받는다.
+ *
+ * 화면은 도감(`CodexScreen`)의 뼈대(.codex 계열)를 그대로 쓴다 — 새 디자인 언어를
+ * 만들지 않는다.
+ */
+type HelpTab = "basics" | "augment";
+
+/** 한 절(제목 + 문단들). 문단에는 용어 풀이 링크(TermText)가 걸린다. */
+interface HelpSection {
+  title: string;
+  paras: string[];
+}
+
+const HELP_BASICS: HelpSection[] = [
+  {
+    title: "무엇을 하는 게임인가",
+    paras: [
+      "네 사람이 각자 손에 패 13장을 쥐고, 차례마다 한 장을 가져와 한 장을 버립니다. 목표는 남보다 먼저 손패를 완성해 화료하는 것입니다.",
+      "완성형은 언제나 같습니다 — 3장짜리 묶음 4개 + 같은 패 2장(머리) 1개. 묶음은 같은 패 3장(커츠) 또는 같은 종류의 연속 3장(슌츠)입니다.",
+    ],
+  },
+  {
+    title: "역이 없으면 화료할 수 없다",
+    paras: [
+      "모양만 맞춘다고 끝이 아닙니다. 손패가 미리 정해진 조건(역) 중 하나 이상을 만족해야 화료를 선언할 수 있습니다. 리치·탕야오·핑후·역패 같은 것들입니다.",
+      "그래서 모양을 완성하고도 화료하지 못하는 일이 생깁니다. 무엇으로 날 것인지 미리 정하고 손패를 만드는 이유입니다.",
+    ],
+  },
+  {
+    title: "리치",
+    paras: [
+      "손패를 남에게 하나도 보이지 않은 채(멘젠) 한 장만 더 오면 완성인 상태(텐파이)가 되면, 1000점을 걸고 리치를 선언할 수 있습니다.",
+      "리치를 걸면 그 뒤로는 손패를 바꿀 수 없습니다 — 가져온 패를 그대로 버립니다. 대신 역이 확정되고, 도라를 한 겹 더 받고(우라도라), 타점이 크게 뜁니다.",
+    ],
+  },
+  {
+    title: "도라 — 보너스 패",
+    paras: [
+      "판마다 표시패 한 장이 공개되고, 그 다음 패가 도라가 됩니다. 도라를 몇 장 쥐고 있느냐가 그대로 타점이 됩니다.",
+      "도라만으로는 화료할 수 없습니다(역이 아닙니다). 역을 먼저 만들고, 도라는 그 위에 얹는 것입니다.",
+    ],
+  },
+  {
+    title: "울기 — 폰 · 치 · 캉",
+    paras: [
+      "남이 버린 패를 가져와 묶음을 완성할 수 있습니다. 같은 패 2장을 들고 있으면 누구에게서든 폰, 연속 두 장을 들고 있으면 바로 위(상가)에게서만 치입니다. 같은 패 4장은 캉입니다.",
+      "울면 진행이 훨씬 빨라지지만 손패가 공개되고 멘젠이 깨집니다 — 리치를 걸 수 없고 쓸 수 있는 역이 크게 줄어듭니다. 속도와 타점의 교환입니다.",
+    ],
+  },
+  {
+    title: "후리텐 — 내가 버린 패로는 못 난다",
+    paras: [
+      "내 대기(화료할 수 있는 패) 중 하나라도 내 버림패에 있으면, 남이 버린 패로는 화료할 수 없습니다. 이것이 후리텐입니다.",
+      "이때도 스스로 가져와서 나는 것(쯔모)은 됩니다. 리치 뒤에 후리텐이 되면 그 국 내내 풀리지 않습니다.",
+    ],
+  },
+  {
+    title: "점수는 대략 이렇게 정해진다",
+    paras: [
+      "판(역과 도라의 개수)과 부(손패 모양)로 점수가 정해집니다. 판이 커질수록 점수는 계단처럼 뜁니다 — 만관·하네만·배만·역만.",
+      "남이 버린 패로 나면 그 사람만 냅니다(론). 스스로 가져와서 나면 나머지 셋이 나눠 냅니다(쯔모). 친(동가)은 더 받고 더 냅니다.",
+    ],
+  },
+  {
+    title: "판은 언제 끝나는가",
+    paras: [
+      "동1국부터 시작합니다. 반장전은 남4국까지, 동풍전은 동4국까지 갑니다. 친이 화료하거나 텐파이로 유국하면 그 자리가 이어집니다(연장).",
+      "마지막 국이 끝나면 점수 순으로 1~4위가 정해집니다. 이 게임에서 중요한 것은 승패보다 순위입니다.",
+    ],
+  },
+];
+
+const HELP_AUGMENT: HelpSection[] = [
+  {
+    title: "증강이란",
+    paras: [
+      "이 게임이 보통 리치마작과 다른 점입니다. 증강은 점수 보너스가 아니라 규칙 자체를 바꾸는 카드입니다.",
+      "예를 들어 손패의 백을 무엇으로든 쓸 수 있게 하거나, 후리텐을 무시하게 하거나, 남의 버림패를 되돌립니다. 종류는 104가지입니다.",
+    ],
+  },
+  {
+    title: "언제, 몇 개 뽑는가",
+    paras: [
+      "한 게임에서 두 번입니다 — 게임 시작 때 한 번, 남장에 들어갈 때 한 번. 총 2개를 갖게 됩니다. (동풍전은 진행이 짧아 시점이 다릅니다.)",
+      "네 사람 전원이 같은 시점에 각자 선택지를 받아 하나씩 고릅니다.",
+    ],
+  },
+  {
+    title: "상대의 증강은 보인다",
+    paras: [
+      "각자의 이름표 옆에 그 사람이 고른 증강이 표시됩니다. 누가 무엇을 들고 있는지 감추지 않습니다.",
+      "게임 중 언제든 화면 위쪽의 📖 증강 도감을 열어 104종 전체의 상세 설명을 찾아볼 수 있습니다.",
+    ],
+  },
+  {
+    title: "발동에 대가는 없다",
+    paras: [
+      "증강을 쓴다고 점수를 잃거나 다른 손해를 보지 않습니다. 사용 제한은 횟수나 조건으로만 걸려 있으며, 각 증강의 설명에 적혀 있습니다.",
+    ],
+  },
+  {
+    title: "조작",
+    paras: [
+      "지금 할 수 있는 행동은 화면 아래에 버튼으로 나타납니다. 처음 보는 용어에는 밑줄이 그어져 있어, 누르면 풀이가 뜹니다.",
+      "손패는 끌어서 순서를 바꿀 수 있고, 설정(⚙)에서 자동 정렬·대기 표시 같은 것을 켜고 끌 수 있습니다.",
+    ],
+  },
+];
+
+function HelpScreen(props: {
+  /** 왼쪽 위 되돌아가기 버튼 문구 (기본 "← 닫기"). */
+  backLabel?: string;
+  onClose: () => void;
+}): JSX.Element {
+  const [tab, setTab] = useState<HelpTab>("basics");
+  const sections = tab === "basics" ? HELP_BASICS : HELP_AUGMENT;
+
+  return (
+    <div className="codex help-screen">
+      <header className="home-nav codex-nav">
+        <button className="codex-back" onClick={props.onClose}>{props.backLabel ?? "← 닫기"}</button>
+        <span className="home-logo">규칙 · 도움말</span>
+        <span className="home-spacer" />
+        <div className="codex-tabs">
+          <button
+            className={tab === "basics" ? "codex-tab codex-tab-on" : "codex-tab"}
+            onClick={() => setTab("basics")}
+          >
+            리치마작 기본
+          </button>
+          <button
+            className={tab === "augment" ? "codex-tab codex-tab-on" : "codex-tab"}
+            onClick={() => setTab("augment")}
+          >
+            증강이란
+          </button>
+        </div>
+      </header>
+
+      <main className="codex-main help-main">
+        <p className="codex-lead">
+          {tab === "basics"
+            ? "리치마작을 한 번도 해 본 적 없어도 길을 잃지 않을 만큼만 적었습니다. 게임 안에서는 처음 나오는 용어에 밑줄이 그어져 있어 누르면 풀이가 뜹니다."
+            : "증강이 무엇이고, 언제 뽑고, 어떻게 작동하는지."}
+        </p>
+        {sections.map((sec) => (
+          <section key={sec.title} className="help-section">
+            <h2 className="help-section-title">{sec.title}</h2>
+            {sec.paras.map((para, i) => (
+              <p key={i} className="codex-para"><TermText text={para} /></p>
+            ))}
+          </section>
+        ))}
+      </main>
     </div>
   );
 }
@@ -4821,6 +5198,8 @@ function HomeScreen(props: {
   onJoinRoom: (code: string) => void;
   onOpenReplay: (gameId: number) => void;
   onOpenCodex: () => void;
+  /** 규칙·도움말 화면 열기 */
+  onOpenHelp: () => void;
   onOpenTiers: () => void;
   onRefreshLive: () => void;
   onSpectate: (code: string) => void;
@@ -4991,6 +5370,9 @@ function HomeScreen(props: {
           <div className="home-card-head">
             <h2>내 증강 통계</h2>
             <div className="home-head-actions">
+              <button className="home-codex-btn" onClick={props.onOpenHelp}>
+                📘 규칙 · 도움말
+              </button>
               <button className="home-codex-btn" onClick={props.onOpenCodex}>
                 📖 증강 도감
               </button>
@@ -5564,6 +5946,10 @@ function GameTable(props: {
   onRiichiMode: (v: boolean) => void;
   onSubmit: (o: ActionOption) => void;
   onLeave: () => void;
+  /** 게임 중 증강 도감 열기 (오버레이) — 상대가 공개한 증강을 그 자리에서 찾아본다 */
+  onOpenCodex?: () => void;
+  /** 게임 중 규칙·도움말 열기 (오버레이) */
+  onOpenHelp?: () => void;
   onToast?: (text: string) => void;
   /** 내 손패 배치가 바뀌었을 때 서버에 알린다 (관전 모드에서는 없음) */
   onHandOrder?: (tileIds: number[]) => void;
@@ -5659,6 +6045,23 @@ function GameTable(props: {
         }}
         title="설정"
       >⚙</button>
+      {/* 게임 중에도 찾아볼 수 있어야 한다 — 상대 증강 위의 `title=` 툴팁은 터치에서
+          아예 뜨지 않아, 모바일에서는 그게 무엇인지 알 길이 전혀 없었다.
+          아래 화면은 그대로 살아 있으므로 결정 타이머도 게임 상태도 멈추지 않는다. */}
+      {props.onOpenCodex !== undefined ? (
+        <button
+          className="icon-btn codex-btn"
+          onClick={props.onOpenCodex}
+          title="증강 도감 (게임은 그대로 진행됩니다)"
+        >📖</button>
+      ) : null}
+      {props.onOpenHelp !== undefined ? (
+        <button
+          className="icon-btn help-btn"
+          onClick={props.onOpenHelp}
+          title="규칙 · 도움말 (게임은 그대로 진행됩니다)"
+        >📘</button>
+      ) : null}
       {/* 게임 중 나가기 = 포기(좌석은 자동 진행으로 완주한다) — 되돌릴 수 없으니 한 번 묻는다.
           관전은 그냥 화면을 닫는 것이라 묻지 않는다. */}
       <button
