@@ -452,6 +452,9 @@ const AUGMENT_ACTION_TYPES = new Set([
   "triple_peek_use",
   "dissolve_meld",
   "disarm_lock",
+  // 투시 — ACTION_LABEL·ACTION_AUGMENT에는 처음부터 있었는데 이 두 집합에만 빠져 있었다.
+  // 그래서 버튼이 액티브 메뉴가 아니라 일반 액션 바로 새어 나갔다(docs/25 §397).
+  "xray_reveal",
   "push_brand",
   "reload_use",
   "honor_recall",
@@ -527,6 +530,7 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "triple_peek",
   "meld_dissolve",
   "disarm",
+  "xray_hand",
   "push_riichi",
   "reload",
   "honor_return",
