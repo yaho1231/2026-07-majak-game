@@ -150,7 +150,7 @@ describe("봇 착석", () => {
       }).rooms.get(code);
       expect(room).toBeDefined();
       if (room !== undefined) room.phase = "waiting";
-      (h.rm as unknown as { seatBotProfiles: (r: unknown) => void }).seatBotProfiles(room);
+      (h.rm as unknown as { rerollBotProfiles: (r: unknown) => void }).rerollBotProfiles(room);
       seen.push(botProfiles(h.rm, code).map((p) => p.archetype).join(","));
     }
     // 여섯 번 뽑아서 전부 같은 조합이면 시드가 판 번호를 안 타는 것이다.

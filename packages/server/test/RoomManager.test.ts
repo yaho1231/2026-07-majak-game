@@ -423,6 +423,120 @@ describe("방 생성·참가 (코드)", () => {
     expect(botOf(host).archetype).toBe("defender");
   });
 
+  /**
+   * 봇 성향 겹침 회귀 가드.
+   *
+   * `rollTableProfiles`는 "이미 앉은 원형은 후보에서 뺀다"로 탁에 서로 다른 성향이
+   * 앉도록 만들어져 있었지만, **판 시작(`seatBotProfiles`) 때만** 불렸다. 대기실은
+   * `BotAgent` 생성자가 좌석 시드로 혼자 뽑은 원형을 보여 줬고, 봇은 한 명씩 추가되니
+   * 서로를 몰라 겹쳤다 — 실제로 남=변덕형·서=균형형·북=변덕형이 관측됐다.
+   *
+   * 아래 세 테스트가 지키는 것: 봇 추가·성향 지정·자리 섞기·판 종료 후 재생성 어느
+   * 경로로도 **대기실에 보이는 성향 셋이 서로 다르다.**
+   */
+  const lobbyArchetypes = (sock: FakeSocket): string[] =>
+    (sock.last("lobby").players as { isBot: boolean; archetype: string | null }[])
+      .filter((p) => p.isBot)
+      .map((p) => p.archetype ?? "");
+
+  it("봇을 하나씩 추가해도 성향이 겹치지 않는다 (자리 섞기·판 종료 뒤에도)", async () => {
+    const h = await newHarness();
+    // 방 코드가 시드라 방마다 결과가 다르다 — 한 방만 보면 우연히 통과할 수 있다
+    for (let n = 0; n < 4; n++) {
+      const host = await connectAndRegister(h, `Arch${n}`);
+      host.clientSend({ type: "createRoom" });
+      const code = host.last("roomCreated").code as string;
+      for (let i = 0; i < 3; i++) host.clientSend({ type: "addBot" });
+
+      const added = lobbyArchetypes(host);
+      expect(added).toHaveLength(3);
+      expect(new Set(added).size).toBe(3);
+
+      // 자리 섞기 — 성향은 봇을 따라 움직인다
+      host.clientSend({ type: "shuffleSeats" });
+      expect(new Set(lobbyArchetypes(host)).size).toBe(3);
+
+      // 판이 끝나 대기실로 돌아오는 경로 (봇을 새 인스턴스로 만든다)
+      const rooms = (h.rm as unknown as { rooms: Map<string, { phase: string }> }).rooms;
+      const room = rooms.get(code);
+      expect(room).toBeDefined();
+      if (room !== undefined) room.phase = "playing";
+      (h.rm as unknown as { resetRoomAfterGame: (r: unknown) => void }).resetRoomAfterGame(room);
+      const after = lobbyArchetypes(host);
+      expect(after).toHaveLength(3);
+      expect(new Set(after).size).toBe(3);
+    }
+  });
+
+  it("봇 하나를 지웠다 다시 추가해도 성향이 겹치지 않는다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "ArchRemove");
+    host.clientSend({ type: "createRoom" });
+    for (let i = 0; i < 3; i++) host.clientSend({ type: "addBot" });
+
+    const victim = (host.last("lobby").players as any[]).find((p) => p.isBot).playerId;
+    host.clientSend({ type: "removeBot", playerId: victim });
+    expect(new Set(lobbyArchetypes(host)).size).toBe(2);
+    host.clientSend({ type: "addBot" });
+    expect(new Set(lobbyArchetypes(host)).size).toBe(3);
+  });
+
+  it("방장이 지정한 성향은 그대로 두고, 나머지 봇이 그것과 겹치지 않는다", async () => {
+    const h = await newHarness();
+    for (let n = 0; n < 4; n++) {
+      const host = await connectAndRegister(h, `ArchForce${n}`);
+      host.clientSend({ type: "createRoom" });
+      for (let i = 0; i < 3; i++) host.clientSend({ type: "addBot" });
+
+      const bots = (host.last("lobby").players as any[]).filter((p) => p.isBot);
+      host.clientSend({
+        type: "setBotArchetype",
+        playerId: bots[0].playerId,
+        archetype: "wildcard",
+      });
+      host.clientSend({
+        type: "setBotArchetype",
+        playerId: bots[1].playerId,
+        archetype: "defender",
+      });
+
+      const kinds = lobbyArchetypes(host);
+      // 지정은 그대로 존중된다
+      const byId = new Map(
+        (host.last("lobby").players as any[]).map((p) => [p.playerId, p.archetype]),
+      );
+      expect(byId.get(bots[0].playerId)).toBe("wildcard");
+      expect(byId.get(bots[1].playerId)).toBe("defender");
+      // 지정되지 않은 자리는 그것들과 겹치지 않는다
+      expect(new Set(kinds).size).toBe(3);
+    }
+  });
+
+  it("대기실에 보이는 성향이 곧 그 판에 앉는 성향이다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "ArchStart");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code as string;
+    for (let i = 0; i < 3; i++) host.clientSend({ type: "addBot" });
+    const shown = lobbyArchetypes(host);
+
+    // `startGame`이 하는 착석 그대로 부른다 — 판 번호를 올리지 않으므로 대기실 표시와
+    // 같아야 한다. (판을 실제로 두면 이 파일이 타이밍 플레이크에 더 약해진다 —
+    // docs/23_TEST_BASELINE.md)
+    const room = (h.rm as unknown as {
+      rooms: Map<string, { agents: { botArchetype?: string }[]; botGeneration: number }>;
+    }).rooms.get(code);
+    expect(room).toBeDefined();
+    const genBefore = room?.botGeneration;
+    (h.rm as unknown as { seatBotProfiles: (r: unknown) => void }).seatBotProfiles(room);
+    expect(room?.botGeneration).toBe(genBefore);
+
+    const seated = (room?.agents ?? [])
+      .map((a) => a.botArchetype)
+      .filter((s): s is string => typeof s === "string");
+    expect(seated.sort()).toEqual([...shown].sort());
+  });
+
   it("자리 섞기 — 방장이 누르면 동남서북이 다시 뽑히고 대기실에 그대로 반영된다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");

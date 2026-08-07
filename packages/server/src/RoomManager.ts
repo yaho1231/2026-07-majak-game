@@ -1662,6 +1662,9 @@ export class RoomManager {
       if (id === null) break;
       room.agents.push(this.newBot(room, id));
     }
+    // 봇은 한 명씩 만들어지고 `BotAgent` 생성자는 제 시드에서 혼자 원형을 뽑는다 —
+    // 옆자리를 모르니 겹친다. 명단이 바뀔 때마다 탁 전체를 다시 앉힌다.
+    this.seatBotProfiles(room);
   }
 
   /**
@@ -1718,6 +1721,8 @@ export class RoomManager {
           // 지정도 같이 지운다 — 안 그러면 나중에 그 좌석 id로 들어온 봇이
           // 지운 봇의 성향을 물려받는다
           room.botArchetypes.delete(msg.playerId);
+          // 남은 봇을 다시 앉힌다 — 자리가 하나 빠진 탁은 다른 탁이다
+          this.seatBotProfiles(room);
           this.broadcastLobby(room);
         }
         return;
@@ -1739,6 +1744,8 @@ export class RoomManager {
         room.botArchetypes.set(msg.playerId, msg.archetype);
         // 성향은 생성 시점에 정해지므로 그 자리의 봇을 새로 만든다 (대기 중이라 안전하다)
         room.agents[idx] = this.newBot(room, msg.playerId);
+        // 지정된 원형이 나머지 후보에서 빠지도록 탁 전체를 다시 앉힌다
+        this.seatBotProfiles(room);
         if (room.sandbox) this.syncSandboxControl(room);
         this.broadcastLobby(room);
         return;
@@ -2597,6 +2604,7 @@ export class RoomManager {
     room.writer = null;
     room.abortVotes.clear();
     room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
+    this.rerollBotProfiles(room);
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.resetForNewGame();
     }
@@ -2631,6 +2639,8 @@ export class RoomManager {
     this.touch(room);
     // 봇은 새 인스턴스로 — 지난 판의 내부 상태(프로필·기억)를 다음 판에 끌고 가지 않는다
     room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
+    // 새 인스턴스는 저마다 혼자 원형을 뽑았다 — 다음 판 몫으로 탁을 다시 앉힌다
+    this.rerollBotProfiles(room);
     // 자리는 그대로 둔다 — 섞는 건 방장이 "자리 섞기"를 눌렀을 때만이다.
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.resetForNewGame();
@@ -2719,7 +2729,7 @@ export class RoomManager {
   }
 
   /**
-   * 판이 시작될 때 봇 셋의 성격을 **한 번에** 뽑아 앉힌다.
+   * 봇 셋의 성격을 **한 번에** 뽑아 앉힌다 — 지금 판 번호(`botGeneration`) 그대로.
    *
    * 좌석마다 따로 뽑던 예전 방식에는 두 가지가 없었다.
    *
@@ -2727,14 +2737,19 @@ export class RoomManager {
    *    확률이 약 44%다. 같은 원형끼리는 흔들림이 ±0.08뿐이라 사실상 같은 봇 둘을
    *    상대하게 된다. `rollTableProfiles`가 이미 앉은 원형을 후보에서 빼 준다.
    * 2. **판마다 달라진다는 보장** — 시드가 방 코드로만 정해져 있어 이어하기로 몇 판을
-   *    두든 같은 셋이 나왔다.
+   *    두든 같은 셋이 나왔다(`rerollBotProfiles`).
    *
    * 방장이 지정한 자리는 그대로 존중하고, 지정된 원형만 나머지 후보에서 뺀다.
+   *
+   * ⚠ 예전에는 이걸 `startGame`에서**만** 불렀다. 그래서 대기실은 `BotAgent` 생성자가
+   * 혼자 뽑은 원형을 보여 줬고 — 봇을 한 명씩 추가하니 서로를 몰라 겹쳤다(실제로
+   * 남=변덕형·서=균형형·북=변덕형) — 게다가 판이 시작되면 그 표시와 다른 셋이 앉았다.
+   * 지금은 **명단이 바뀔 때마다** 불러, 대기실에 보이는 성향이 곧 그 판에 앉을 성향이다.
+   * 같은 판 번호로 여러 번 불러도 결과가 같으므로(순수 함수) 몇 번 불려도 안전하다.
    */
   private seatBotProfiles(room: Room): void {
     const bots = room.agents.filter((a): a is BotAgent => a instanceof BotAgent);
     if (bots.length === 0) return;
-    room.botGeneration += 1;
     const rng = new Prng(tableSeed(room.code, room.botGeneration));
     const forced = bots.map((b) => room.botArchetypes.get(b.id));
     const profiles = rollTableProfiles(rng, bots.length, forced);
@@ -2743,6 +2758,17 @@ export class RoomManager {
       if (profile === undefined) return;
       bot.setProfile(withDifficulty(profile, room.botDifficulty));
     });
+  }
+
+  /**
+   * 판 번호를 올리고 다시 앉힌다 — **다음 판에는 다른 사람이 앉는다.**
+   *
+   * 판이 끝나 대기실로 돌아올 때만 부른다. 여기서 올려 두면 대기실이 보여 주는 성향이
+   * 곧 다음 판에 앉을 성향이 된다 — `startGame`에서 올리면 표시와 실제가 어긋난다.
+   */
+  private rerollBotProfiles(room: Room): void {
+    room.botGeneration += 1;
+    this.seatBotProfiles(room);
   }
 
   /**
