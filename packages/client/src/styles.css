@@ -4583,22 +4583,120 @@ button {
   font-style: italic;
 }
 
-/* 봇 성향 선택 (방장) — 성향 칩과 같은 자리·같은 색이되 고를 수 있다는 것만 더 알린다 */
+/*
+ * 봇 성향 선택 (방장) — 성향 칩과 같은 자리·같은 색이되 고를 수 있다는 것만 더 알린다.
+ *
+ * 네이티브 `<select>`는 목록이 OS 것이라 흰 판에 파란 하이라이트가 그대로 떴다
+ * (2026-08-07 사용자 지적). 버튼 + 포털 목록으로 바꿔 판과 같은 색을 입힌다.
+ */
 .seat-arch-pick {
-  padding: 2px 6px;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: 999px;
   border: 1px solid rgba(240, 200, 106, 0.32);
   background: rgba(240, 200, 106, 0.12);
   color: #e6c880;
   font-family: inherit;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), border-color 0.14s var(--ease);
+}
+
+.seat-arch-pick:hover,
+.seat-arch-open {
+  border-color: rgba(240, 200, 106, 0.62);
+  background: rgba(240, 200, 106, 0.2);
+}
+
+.seat-arch-pick:focus-visible {
+  outline: 2px solid var(--brass-bright);
+  outline-offset: 2px;
+}
+
+/* 캐럿 — 글리프(▾)는 폰트마다 크기가 튄다. 삼각형은 그리는 편이 안정적이다 */
+.seat-arch-caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: 0.75;
+  transition: transform 0.16s var(--ease-quart);
+}
+
+.seat-arch-open .seat-arch-caret {
+  transform: rotate(180deg);
+}
+
+/* 바깥 클릭 감지판 — 목록보다 한 겹 아래 */
+.arch-menu-catch {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+}
+
+.arch-menu {
+  position: fixed;
+  z-index: 2401;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brass-line);
+  background: var(--surface-3);
+  box-shadow: var(--shadow-3);
+  animation: arch-menu-in 0.14s var(--ease-quart);
+}
+
+@keyframes arch-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.arch-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-1);
+  font-family: inherit;
+  text-align: left;
   cursor: pointer;
 }
 
-.seat-arch-pick:hover {
-  border-color: rgba(240, 200, 106, 0.6);
-  background: rgba(240, 200, 106, 0.2);
+.arch-opt:hover {
+  background: rgba(240, 200, 106, 0.14);
+}
+
+.arch-opt:focus-visible {
+  outline: 2px solid var(--brass-bright);
+  outline-offset: -2px;
+}
+
+/* 지금 이 자리의 성향 — 황동으로 한 줄만 세운다 */
+.arch-opt-sel {
+  background: rgba(240, 200, 106, 0.12);
+  box-shadow: inset 2px 0 0 var(--brass-bright);
+}
+
+.arch-opt-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #e6c880;
+}
+
+.arch-opt-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-3);
+  max-width: 230px;
 }
 
 /* 봇 성향 칩 — 전적 칩 자리에 서지만 통계가 아니라 정체다. 황동 계열로 구분한다 */
