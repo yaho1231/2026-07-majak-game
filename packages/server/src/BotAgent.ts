@@ -449,6 +449,20 @@ export class BotAgent implements PlayerAgent {
    * (`bot/draft.ts`). 궁합은 파워를 뒤엎지 않고 비슷한 값 사이에서만 갈린다.
    */
   async decideDraft(_stage: DraftStage, choices: AugmentDef[]): Promise<string> {
+    /**
+     * **무작위 드래프트** — 티어표를 검증하기 위한 측정 전용 모드(`draftRandom`).
+     *
+     * 봇이 티어표를 보고 뽑는 한, 낮은 티어 증강은 "다른 둘이 더 나빴을 때"만 손에
+     * 들어온다. 그 표본으로 티어표를 검증하면 **표가 만든 표본으로 그 표를 검증하는**
+     * 순환이 된다. 무작위로 뽑으면 보유가 실력·판세와 독립이 되어, 보유 판의 평균
+     * 순위가 그 증강의 값어치를 편향 없이 잰다.
+     *
+     * 실대국은 이 스위치가 비어 있어 영향이 없다.
+     */
+    if (this.flags.has("draftRandom")) {
+      const pick = choices[this.botRng.int(choices.length)] ?? choices[0];
+      if (pick !== undefined) return pick.id;
+    }
     const held = this.lastView?.players.find((p) => p.id === this.id)?.augments ?? [];
     const picked = chooseDraft(
       choices,

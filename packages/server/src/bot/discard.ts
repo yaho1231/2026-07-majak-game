@@ -115,15 +115,26 @@ export function foldWeight(read: BotRead, profile: BotProfile): number {
 function directionGain(kind: TileKind, plan: HandPlan, handPoints: number): number {
   if (plan === null) return 0;
   const isNumber = kind.suit === "man" || kind.suit === "pin" || kind.suit === "sou";
-  if (plan.yaku === "honitsu") {
-    if (isNumber && kind.suit !== plan.suit) return handPoints * 0.18; // 딴 색은 최우선 정리
-    return handPoints * -0.03; // 같은 색·자패는 남긴다
+  const isCore = isNumber && kind.rank >= 4 && kind.rank <= 6;
+  switch (plan.yaku) {
+    case "honitsu":
+      if (isNumber && kind.suit !== plan.suit) return handPoints * 0.18; // 딴 색은 최우선 정리
+      return handPoints * -0.03; // 같은 색·자패는 남긴다
+    case "chinitsu":
+      // 청일색은 자패도 못 쓴다 — 혼일색보다 정리 압력이 세다
+      if (!isNumber || kind.suit !== plan.suit) return handPoints * 0.22;
+      return handPoints * -0.03;
+    case "tanyao":
+      return !isNumber || kind.rank === 1 || kind.rank === 9 ? handPoints * 0.2 : 0;
+    case "chanta":
+      // 4·5·6은 찬타의 어떤 몸통에도 못 들어간다
+      return isCore ? handPoints * 0.2 : 0;
+    case "junchan":
+      return isCore ? handPoints * 0.2 : !isNumber ? handPoints * 0.12 : 0;
+    default:
+      // 토이토이·산색·일통은 커쯔·특정 슌쯔 지향이라 샹텐 계산이 이미 반영한다
+      return 0;
   }
-  if (plan.yaku === "tanyao") {
-    return !isNumber || kind.rank === 1 || kind.rank === 9 ? handPoints * 0.2 : 0;
-  }
-  // 토이토이는 커쯔 지향이라 샹텐 계산이 이미 반영한다
-  return 0;
 }
 
 

@@ -38,8 +38,13 @@ function isPointerFine(): boolean {
   return window.matchMedia("(pointer: fine)").matches;
 }
 
+/** 창 크기를 잴 수 있나 — 숨은 탭·0×0 프레임에서는 0이 나온다(그땐 아무것도 하지 않는다). */
+function hasSize(): boolean {
+  return window.innerWidth > 0 && window.innerHeight > 0;
+}
+
 function computeScale(): number {
-  if (!isPointerFine()) return 1;
+  if (!isPointerFine() || !hasSize()) return 1;
   const w = window.innerWidth;
   const h = window.innerHeight;
   const raw = Math.min(1, w / BASE_W, h / BASE_H);
@@ -87,7 +92,7 @@ export function layoutViewport(): { w: number; h: number } {
  * 배율을 정할 때의 조건(둘 중 하나라도 모자라면 줄이지 않는다)과 방향이 반대다.
  */
 export function isLayoutCramped(): boolean {
-  if (!isPointerFine()) return false;
+  if (!isPointerFine() || !hasSize()) return false;
   const v = layoutViewport();
   return v.w < CRAMPED_W && v.h < CRAMPED_H;
 }

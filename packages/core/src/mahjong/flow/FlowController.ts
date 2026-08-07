@@ -29,6 +29,7 @@ import {
   nextSeat,
   playerAtSeat,
   playerOf,
+  furitenOptionsOf,
   scoringOptionsOf,
   sameCallKind,
   mixedTripletsFor,
@@ -710,11 +711,13 @@ export class FlowController {
     const targetKind = kindOf(state, target.tileId);
     for (const p of state.players) {
       if (p.id === target.player) continue;
+      // 조커가 넓힌 대기는 후리텐을 만들지 않는다 — 그 대기를 넘긴 것은 "화료를
+      // 넘긴 것"으로 세지 않는다(helpers.furitenOptionsOf와 같은 기준).
       const waits = winningKinds(
         winHandKindsOf(state, this.engine.rules, p.id),
         meldCountOf(state, p.id),
         undefined,
-        scoringOptionsOf(state, this.engine.rules, p.id),
+        furitenOptionsOf(state, this.engine.rules, p.id),
       );
       if (!waits.some((w) => sameKind(w, targetKind))) continue;
       this.sys("sys.markFuriten", {

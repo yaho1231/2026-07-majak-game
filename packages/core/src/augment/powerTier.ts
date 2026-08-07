@@ -1052,6 +1052,14 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     f: 3,
     note: "직전 국의 도라를 이번 국에 겹친다 — 도라 폭이 두 배. 2국에 1회, 첫 국엔 불가",
   },
+  joker: {
+    tier: "S",
+    p: 3,
+    s: 5,
+    u: 4,
+    f: 2,
+    note: "그 국 손패의 백이 만능패 — 머리도 몸통도 되고 가장 비싼 형태가 자동 채택. 2국에 1회이고 백을 실제로 쥐어야 값이 난다",
+  },
   picky_eater: {
     tier: "A",
     p: 4,

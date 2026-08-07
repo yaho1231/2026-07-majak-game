@@ -77,6 +77,11 @@ export interface BotViewOptions {
   oppMelds?: Partial<Record<string, string[]>>;
   /** 리치 선언패가 그 사람 바닥의 몇 번째인가 (= 몇 순에 걸었는가) */
   riichiTileIndex?: Partial<Record<string, number>>;
+  /**
+   * **쯔모기리로 버린 패**가 그 사람 바닥의 몇 번째인가 (인덱스 목록).
+   * 여기 없는 자리는 手出し(손에서 뺀 것)로 읽힌다 — 봇의 손동작 읽기가 보는 값이다.
+   */
+  tsumogiriAt?: Partial<Record<string, number[]>>;
 }
 
 export interface BotScene {
@@ -125,6 +130,7 @@ export function botScene(opts: BotViewOptions): BotScene {
   });
   zoneOf(`melds:${me}`, "melds", meldTiles, me);
 
+  const discardIdsByPlayer: Record<string, TileId[]> = {};
   const oppMeldViews: Record<string, { kind: "pon"; tileIds: TileId[] }[]> = {};
   for (const p of PLAYERS) {
     if (p !== me) {
@@ -136,7 +142,9 @@ export function botScene(opts: BotViewOptions): BotScene {
       });
       zoneOf(`melds:${p}`, "melds", ids, p);
     }
-    zoneOf(`discards:${p}`, "discards", h(opts.discards?.[p] ?? "").map((k) => add(k)), p);
+    const discardIds = h(opts.discards?.[p] ?? "").map((k) => add(k));
+    discardIdsByPlayer[p] = discardIds;
+    zoneOf(`discards:${p}`, "discards", discardIds, p);
   }
 
   const doraIndicators = opts.doraIndicator === undefined
@@ -156,6 +164,9 @@ export function botScene(opts: BotViewOptions): BotScene {
       ...(opts.riichiTileIndex?.[p] !== undefined
         ? { riichiTileIndex: opts.riichiTileIndex[p] }
         : {}),
+      tsumogiriIds: (opts.tsumogiriAt?.[p] ?? [])
+        .map((i) => discardIdsByPlayer[p]?.[i])
+        .filter((id): id is TileId => id !== undefined),
       ...(p === me
         ? {
             furiten: opts.furiten === true,

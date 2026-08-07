@@ -177,6 +177,14 @@ export function scoringOptionsOf(
   ) {
     opts.honorRuns = true;
   }
+  /**
+   * 조커 — 이 종류의 패는 손패에서 무엇이든 될 수 있다. 화료·텐파이·대기·후리텐이
+   * 전부 이 옵션 하나를 타므로, 규칙에 실어 두면 판정 지점마다 손댈 것이 없다.
+   */
+  if (rules.has("scoring.wildKinds")) {
+    const wild = rules.resolve<readonly TileKind[]>("scoring.wildKinds", ctx);
+    if (wild.length > 0) opts.wildKinds = wild;
+  }
   if (
     rules.has("scoring.kokushiMeldAssist") &&
     rules.resolve<boolean>("scoring.kokushiMeldAssist", ctx)
@@ -368,6 +376,40 @@ export function lockedDiscardIds(
   return hand.some((id) => !sealed.has(id)) ? sealed : new Set();
 }
 
+/**
+ * **후리텐 판정에 쓸** 분해 옵션 — 조커(`wildKinds`)가 넓힌 대기는 빼고 준다.
+ *
+ * 조커는 손의 빈자리를 스스로 메우므로 대기가 통째로 넓어진다. 그걸 그대로 후리텐에
+ * 세면 "무엇으로도 화료할 수 있는데 론만 못 한다"가 되어 **능력이 스스로를 잠근다** —
+ * 특히 조커가 자유롭게 뜨는 형태(4멘쯔 + 조커)는 34종 대기라 사실상 항상 후리텐이었다.
+ * 무페널티 원칙(docs/10 §0)에 따라 2026-08-07 사용자 지시로 뺐다.
+ *
+ * 기준은 **"조커가 없었어도 잡을 수 있었던 패인가"** 다 — 조커를 뺀 손의 대기만
+ * 후리텐을 만든다. 규칙 `win.furiten.countWildWaits`를 켜면 표준대로 전부 센다.
+ *
+ * 세 판정 지점(론 검증·뷰의 후리텐 사유·동순내 후리텐 마킹)이 **같은 답**을 내야
+ * 하므로 반드시 이 함수를 거친다.
+ */
+export function furitenOptionsOf(
+  state: GameState,
+  rules: RuleRegistry | undefined,
+  player: PlayerId,
+  opts?: DecomposeOptions,
+): DecomposeOptions {
+  const base =
+    opts ?? (rules !== undefined ? scoringOptionsOf(state, rules, player) : {});
+  if (base.wildKinds === undefined || base.wildKinds.length === 0) return base;
+  if (
+    rules !== undefined &&
+    rules.has("win.furiten.countWildWaits") &&
+    rules.resolve<boolean>("win.furiten.countWildWaits", { playerId: player, state })
+  ) {
+    return base;
+  }
+  const { wildKinds: _wild, ...withoutWild } = base;
+  return withoutWild;
+}
+
 export function isFuriten(
   state: GameState,
   id: PlayerId,
@@ -382,7 +424,7 @@ export function isFuriten(
     winHandKindsOf(state, rules, id),
     meldCountOf(state, id),
     undefined,
-    opts,
+    furitenOptionsOf(state, rules, id, opts),
   );
   if (waits.length === 0) return false;
   const waitKeys = new Set(waits.map(kindKey));
