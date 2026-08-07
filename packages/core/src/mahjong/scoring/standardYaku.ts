@@ -304,7 +304,7 @@ export const standardYakuList: YakuDef[] = [
   },
   {
     id: "haitei",
-    name: "해저모월",
+    name: "해저로월",
     closedHan: 1,
     openHan: 1,
     check: (_v, ctx) => ctx.flags?.haitei === true && ctx.winType === "tsumo",

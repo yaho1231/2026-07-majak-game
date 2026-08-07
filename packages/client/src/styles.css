@@ -4364,20 +4364,7 @@ button {
   border-color: rgba(199, 188, 255, 0.6);
 }
 
-.auglog-count {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: rgba(165, 145, 255, 0.95);
-  color: #14121f;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 17px;
-}
+/* (기록 버튼의 안 본 사건 수 뱃지 .auglog-count 는 2026-08-08에 없앴다) */
 
 .auglog {
   position: fixed;

@@ -147,7 +147,7 @@ const YAKU_NAMES: Record<string, string> = {
   yakuhai_chun: "역패 중",
   yakuhai_seat: "자풍패",
   yakuhai_prevalent: "장풍패",
-  haitei: "해저모월",
+  haitei: "해저로월",
   houtei: "하저로어",
   rinshan: "영상개화",
   chankan: "창깡",
@@ -831,7 +831,8 @@ const DEFAULT_SETTINGS: Settings = {
   autoNoMeld: false,
   autoDiscard: false,
   showMyWaits: true,
-  rightClickTsumogiri: true,
+  // 우클릭 쯔모기리는 기본 꺼짐 — 판 전체가 대상이라 모르고 켜져 있으면 실수로 패가 나간다.
+  rightClickTsumogiri: false,
   doraFx: true,
   screenFx: true,
   sfxOn: true,
@@ -5628,7 +5629,7 @@ function HelpActionBarMock(): JSX.Element {
 
 /**
  * 역 한 줄. `tiles`가 없는 역은 손 모양이 아니라 **상황**으로 성립하는 것들이다
- * (리치·일발·해저모월…) — 억지로 손패를 그려 봐야 아무것도 설명하지 못한다.
+ * (리치·일발·해저로월…) — 억지로 손패를 그려 봐야 아무것도 설명하지 못한다.
  */
 interface YakuEntry {
   name: string;
@@ -5686,7 +5687,7 @@ const HELP_YAKU: YakuGroup[] = [
         tiles: "111z 234m 678p 345s 99s",
         note: "내 자리 바람(자풍) 또는 그 판의 바람(장풍) 커쯔. 동장의 동가라면 동 커쯔 하나가 2판입니다.",
       },
-      { name: "해저모월 · 하저로어", han: "1판", note: "마지막 패로 쯔모(해저) 하거나, 마지막 버림패로 론(하저)." },
+      { name: "해저로월 · 하저로어", han: "1판", note: "마지막 패로 쯔모(해저) 하거나, 마지막 버림패로 론(하저)." },
       { name: "영상개화", han: "1판", note: "깡을 하고 가져온 영상패로 그대로 화료." },
       { name: "창깡", han: "1판", note: "남이 가깡하려는 패로 론." },
     ],
@@ -8220,21 +8221,9 @@ function AugmentLog({
   }, [open, events.length]);
 
   /*
-   * 뱃지 숫자는 **아직 안 본 것**만 센다 (2026-08-07 사용자 지시: "한 번 보면 숫자 사라지게").
-   * 전체 개수를 항상 달고 있으면 판이 길어질수록 숫자만 커지는데, 그 숫자로는
-   * 지금 열어 볼 이유가 있는지 알 수 없다 — 다 읽은 뒤에도 똑같이 크게 붙어 있어서다.
-   * 열어 둔 동안 새 사건이 들어오면 그건 눈앞에서 읽히는 것이므로 바로 본 것으로 친다.
+   * 뱃지(안 본 사건 수)는 없다 (2026-08-08 사용자 지시). 기록은 놓친 걸 되짚어 보는
+   * 자리지 재촉하는 자리가 아니다 — 숫자가 붙어 있으면 판을 보는 중에 눈이 그리 간다.
    */
-  const total = events.length + rows.length;
-  const [seen, setSeen] = useState(0);
-  useEffect(() => {
-    if (open) setSeen(total);
-  }, [open, total]);
-  // 판이 리셋돼 기록이 줄면 기준도 같이 내린다 (안 그러면 새 판 사건이 계속 안 보인다)
-  useEffect(() => {
-    setSeen((s) => (s > total ? total : s));
-  }, [total]);
-  const unseen = Math.max(0, total - seen);
 
   if (rows.length === 0 && events.length === 0) return null;
   return (
@@ -8244,10 +8233,9 @@ function AugmentLog({
         className={`icon-btn auglog-btn${open ? " auglog-btn-on" : ""}`}
         onClick={onToggle}
         title="기록 — 후로·리치·화료·증강 발동"
-        aria-label={unseen > 0 ? `기록 열기 — 새 사건 ${unseen}건` : "기록 열기"}
+        aria-label="기록 열기"
       >
         📜
-        {unseen > 0 ? <span className="auglog-count">{unseen}</span> : null}
       </button>
       {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
       {open

@@ -53,8 +53,11 @@ describe("우클릭 쯔모기리", () => {
     return fn.slice(0, fn.indexOf("\n  }"));
   })();
 
-  it("설정으로 끌 수 있고, 기본은 켜져 있다", () => {
-    expect(APP).toContain("rightClickTsumogiri: true"); // DEFAULT_SETTINGS
+  // 기본은 **꺼짐**이다 (2026-08-08 사용자 지시). 판 전체가 대상이라, 켜져 있는 줄 모르고
+  // 오른쪽 버튼을 누르면 의도 없이 패가 나간다 — 켜는 것은 설정에서 스스로 하게 둔다.
+  it("설정으로 켤 수 있고, 기본은 꺼져 있다", () => {
+    expect(APP).toContain("rightClickTsumogiri: false"); // DEFAULT_SETTINGS
+    expect(APP).not.toContain("rightClickTsumogiri: true");
     expect(APP).toContain('key: "rightClickTsumogiri"'); // 설정 패널의 한 줄
     expect(body).toContain("!props.settings.rightClickTsumogiri");
   });

@@ -296,6 +296,32 @@ describe("양극 — 1·9 혼합 깡도 커쯔로 채점된다", () => {
     expect(yakuIds(r)).not.toContain("pinfu");
     expect(yakuIds(r)).not.toContain("toitoi");
   });
+
+  /*
+   * 바람의 계보의 극단 — 동남서북 안깡 4개(바람 16장 전부) + 백 머리 단기 쯔모.
+   *
+   * 몸통이 전부 **슌쯔성**이라는 점이 여기서 한꺼번에 갈린다. 대사희·스안커는 "커쯔"를
+   * 요구하므로 붙지 않고(동남서북은 커쯔가 아니다), 장수·종류만 보는 자일색과 깡 수만
+   * 세는 스깡즈는 그대로 붙는다. meldToSet이 랭크 섞인 깡을 커쯔로 되돌리면 이 손이
+   * 한순간에 3배 역만이 되므로 네 방향을 함께 못박는다.
+   */
+  it("동남서북 안깡 4개 + 백 단기는 자일색·스깡즈만 (대사희·스안커 X)", () => {
+    const kan = meldOf("kan_closed", "1234z");
+    const r = evaluateWin(
+      ctxOf({
+        hand: h("55z"),
+        melds: [kan, kan, kan, kan],
+        winningTile: t("5z"),
+        winType: "tsumo",
+      }),
+      registry,
+    );
+    expect(yakuIds(r)).toContain("tsuuiisou"); // 자일색 — 전부 자패
+    expect(yakuIds(r)).toContain("suukantsu"); // 스깡즈 — 깡 4개
+    expect(yakuIds(r)).not.toContain("daisuushii"); // 대사희 — 바람 커쯔가 하나도 없다
+    expect(yakuIds(r)).not.toContain("suuankou"); // 스안커 — 몸통이 커쯔가 아니다
+    expect(yakuIds(r)).not.toContain("suuankou_tanki");
+  });
 });
 
 describe("옵션 없는 표준 분해 회귀", () => {
