@@ -65,14 +65,10 @@ import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
 import {
   getUiScale,
-  getUiScaleSetting,
   isLayoutCramped,
   layoutViewport,
-  setUiScaleSetting,
   subscribeUiScale,
   toLayoutPx,
-  UI_SCALE_MAX,
-  UI_SCALE_MIN,
 } from "./uiScale.js";
 
 /**
@@ -999,6 +995,10 @@ const SHAKE_MS: Record<number, number> = { 1: 180, 2: 300, 3: 420, 4: 620 };
 const CUTIN_IMPACT_MS = 230;
 const BANNER_IMPACT_MS = 180;
 
+/** 첫 페인트를 기다리는 상한(ms) — rAF가 오지 않는 백그라운드 탭에서 큐가 멈추지 않게 받친다.
+ *  앞에 보이는 탭이면 rAF가 한 프레임(≈16ms) 만에 오므로 이 타이머는 이길 일이 없다. */
+const PROD_PAINT_FALLBACK_MS = 400;
+
 /**
  * 패를 하나 버리는 액션 — 클릭 순간 바로 "탁"이 나야 하는 것들. 리치 선언도 패를 하나
  * 버리는 행위라 여기 포함된다(빠지면 클릭엔 무음, 에코 뷰에서 뒤늦게 소리가 난다).
@@ -1828,7 +1828,7 @@ function LayoutHint(): JSX.Element | null {
         <b>
           {mod} + −
         </b>{" "}
-        로 화면을 줄이거나, <b>설정 → 화면 크기</b>에서 배율을 직접 정해 보세요.
+        로 화면을 줄여 보세요.
       </span>
       <button
         type="button"
@@ -2188,25 +2188,48 @@ export function App(): JSX.Element {
 
   // 현재 연출을 ttl 동안 띄우고, 뜨는 순간 효과음을(연출당 정확히 1회) 재생한 뒤 내린다.
   // 흔들림은 글자 슬램이 꽂히는 시점(임팩트)에 맞춰 지연 발동한다.
+  //
+  // ⏱ 체류 시간은 **화면에 실제로 그려진 뒤부터** 잰다 (rAF 두 번 = 첫 페인트 뒤).
+  //   이펙트가 도는 시점부터 재면, 바로 뒤에 무거운 일이 한 번 끼는 순간 연출이 통째로
+  //   사라진다 — 메인 스레드가 막힌 동안에는 브라우저가 그리지 못하는데 타이머만 흘러서,
+  //   풀리자마자 ttl이 지난 채 지워진다. 화면에는 아무것도 안 뜬 것으로 보인다
+  //   (2026-08-07 사용자 보고: 조커를 백 여러 장과 함께 켜면 발동 연출이 안 나온다 —
+  //    원인이던 분해 폭발은 core에서 고쳤지만, 한 프레임만 밀려도 연출을 삼키는
+  //    이 구조 자체가 남아 있었다).
+  //
+  //   백그라운드 탭에서는 rAF가 아예 오지 않으므로 짧은 타이머로 받쳐 준다 —
+  //   안 그러면 큐가 그 자리에 멈춰 국 결과창까지 안 열린다.
   useEffect(() => {
     if (activeProd === null) return;
-    if (prodFiredKey.current !== activeProd.key) {
-      prodFiredKey.current = activeProd.key; // HMR 재마운트 등 effect 재실행 시 이중 재생 방지
-      activeProd.sfx?.();
-    }
+    const prod = activeProd;
     const timers: number[] = [];
-    const imp = activeProd.impact;
-    if (imp !== undefined && settingsRef.current.screenFx) {
-      const delay = imp.delayMs ?? (activeProd.channel === "banner" ? BANNER_IMPACT_MS : CUTIN_IMPACT_MS);
-      timers.push(window.setTimeout(() => shakeTable(imp.shake), delay));
-    }
-    timers.push(
-      window.setTimeout(
-        () => setActiveProd(null),
-        effectiveProdTtl(activeProd.ttl, settingsRef.current.screenFx),
-      ),
-    );
-    return () => timers.forEach((t) => window.clearTimeout(t));
+    const rafs: number[] = [];
+    let started = false;
+    const start = (): void => {
+      if (started) return;
+      started = true;
+      if (prodFiredKey.current !== prod.key) {
+        prodFiredKey.current = prod.key; // HMR 재마운트 등 effect 재실행 시 이중 재생 방지
+        prod.sfx?.();
+      }
+      const imp = prod.impact;
+      if (imp !== undefined && settingsRef.current.screenFx) {
+        const delay = imp.delayMs ?? (prod.channel === "banner" ? BANNER_IMPACT_MS : CUTIN_IMPACT_MS);
+        timers.push(window.setTimeout(() => shakeTable(imp.shake), delay));
+      }
+      timers.push(
+        window.setTimeout(
+          () => setActiveProd(null),
+          effectiveProdTtl(prod.ttl, settingsRef.current.screenFx),
+        ),
+      );
+    };
+    rafs.push(window.requestAnimationFrame(() => rafs.push(window.requestAnimationFrame(start))));
+    timers.push(window.setTimeout(start, PROD_PAINT_FALLBACK_MS));
+    return () => {
+      rafs.forEach((r) => window.cancelAnimationFrame(r));
+      timers.forEach((t) => window.clearTimeout(t));
+    };
   }, [activeProd]);
 
   // 건너뛰기 단축키 — Esc(관례)와 Space(가장 가까운 손). 연출 중에만 먹는다.
@@ -5485,7 +5508,7 @@ const HELP_AUGMENT: HelpSection[] = [
     paras: [
       "상시형은 가진 것만으로 적용됩니다. 규칙이 이미 바뀐 상태라 따로 쓸 것이 없습니다.",
       "액티브형은 조건이 맞는 순간 행동 버튼 줄에 그 증강의 버튼이 뜹니다. 누를지 말지, 언제 누를지가 선택입니다. 패를 고르는 증강은 선택창이 열리고 바뀔 결과를 먼저 보여 줍니다.",
-      "증강 버튼은 **보랏빛**이라 론·퐁·패스와 한눈에 구분됩니다. 넓은 화면에서는 버튼마다 단축키 숫자가 함께 붙습니다.",
+      "증강 버튼은 **보랏빛**이라 론·퐁·패스와 한눈에 구분됩니다.",
     ],
     mock: "action-bar",
   },
@@ -5517,21 +5540,12 @@ function HelpActionBarMock(): JSX.Element {
   return (
     <div className="help-actbar" aria-hidden="true">
       <div className="action-bar">
-        <button className="act act-win" type="button">
-          론<span className="act-key">1</span>
-        </button>
-        <button className="act act-call" type="button">
-          퐁<span className="act-key">2</span>
-        </button>
+        <button className="act act-win" type="button">론</button>
+        <button className="act act-call" type="button">퐁</button>
         {/* 실제로 있는 액티브 증강 이름을 쓴다 (ACTION_LABEL.bottom_deal) — 지어낸 이름을
             보여 주면 게임 안에서 찾을 수 없다 */}
-        <button className="act act-aug" type="button">
-          밑장빼기
-          <span className="act-key">3</span>
-        </button>
-        <button className="act act-pass" type="button">
-          패스<span className="act-key">4</span>
-        </button>
+        <button className="act act-aug" type="button">밑장빼기</button>
+        <button className="act act-pass" type="button">패스</button>
       </div>
     </div>
   );
@@ -7385,56 +7399,6 @@ function useDraggablePanel(): {
   };
 }
 
-/**
- * 화면 크기(UI 배율) 설정 — 설정 패널 안의 한 줄.
- *
- * 왜 Settings가 아니라 uiScale.ts가 값을 들고 있나: 배율은 **첫 페인트 전에** 걸려야
- * 한다(startUiScale은 React보다 먼저 돈다). 리액트 상태에 두면 한 프레임 늦게 적용돼
- * 화면이 한 번 튄다. 그래서 저장·적용은 uiScale.ts가 하고, 여기서는 읽고 쓰기만 한다.
- *
- * "자동"은 예전부터 있던 창 크기 맞춤이고, 숫자는 사용자가 못 박는 값이다.
- * 자동만 있던 시절에는 Ctrl + 로 키워도 자동 축소가 도로 줄여 버려 확대가 통하지 않았다.
- */
-function UiScaleRow(): JSX.Element {
-  const [val, setVal] = useState<number | "auto">(getUiScaleSetting);
-  const pct = val === "auto" ? Math.round(getUiScale() * 100) : Math.round(val * 100);
-  const set = (v: number | "auto"): void => {
-    setUiScaleSetting(v);
-    setVal(getUiScaleSetting());
-  };
-  return (
-    <div className="settings-row settings-row-slider">
-      <div className="settings-text">
-        <span className="settings-label">화면 크기</span>
-        <span className="settings-desc">
-          UI 전체의 배율입니다. <b>자동</b>은 창 크기에 맞춰 줄입니다 — 직접 고르면
-          창 크기와 상관없이 그 배율로 고정됩니다. 브라우저 확대(Ctrl +)도 그대로 듣습니다.
-        </span>
-      </div>
-      <div className="settings-slider">
-        <button
-          type="button"
-          className={`uiscale-auto${val === "auto" ? " uiscale-auto-on" : ""}`}
-          aria-pressed={val === "auto"}
-          onClick={() => set(val === "auto" ? getUiScale() : "auto")}
-        >
-          자동
-        </button>
-        <input
-          type="range"
-          min={Math.round(UI_SCALE_MIN * 100)}
-          max={Math.round(UI_SCALE_MAX * 100)}
-          step={5}
-          value={pct}
-          onChange={(e) => set(Number(e.target.value) / 100)}
-          aria-label="화면 크기 배율(%)"
-        />
-        <span className="settings-slider-val">{pct}%</span>
-      </div>
-    </div>
-  );
-}
-
 function SettingsPanel(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -7549,7 +7513,6 @@ function SettingsPanel(props: {
             </span>
           </div>
         </label>
-        <UiScaleRow />
         {props.onVoteAbort !== undefined ? (
           <div className="settings-abort">
             <div className="settings-text">
@@ -8106,6 +8069,24 @@ function AugmentLog({
     const el = bodyRef.current;
     if (el !== null) el.scrollTop = el.scrollHeight;
   }, [open, events.length]);
+
+  /*
+   * 뱃지 숫자는 **아직 안 본 것**만 센다 (2026-08-07 사용자 지시: "한 번 보면 숫자 사라지게").
+   * 전체 개수를 항상 달고 있으면 판이 길어질수록 숫자만 커지는데, 그 숫자로는
+   * 지금 열어 볼 이유가 있는지 알 수 없다 — 다 읽은 뒤에도 똑같이 크게 붙어 있어서다.
+   * 열어 둔 동안 새 사건이 들어오면 그건 눈앞에서 읽히는 것이므로 바로 본 것으로 친다.
+   */
+  const total = events.length + rows.length;
+  const [seen, setSeen] = useState(0);
+  useEffect(() => {
+    if (open) setSeen(total);
+  }, [open, total]);
+  // 판이 리셋돼 기록이 줄면 기준도 같이 내린다 (안 그러면 새 판 사건이 계속 안 보인다)
+  useEffect(() => {
+    setSeen((s) => (s > total ? total : s));
+  }, [total]);
+  const unseen = Math.max(0, total - seen);
+
   if (rows.length === 0 && events.length === 0) return null;
   return (
     <>
@@ -8114,10 +8095,10 @@ function AugmentLog({
         className={`icon-btn auglog-btn${open ? " auglog-btn-on" : ""}`}
         onClick={onToggle}
         title="기록 — 후로·리치·화료·증강 발동"
-        aria-label="기록 열기"
+        aria-label={unseen > 0 ? `기록 열기 — 새 사건 ${unseen}건` : "기록 열기"}
       >
         📜
-        <span className="auglog-count">{events.length + rows.length}</span>
+        {unseen > 0 ? <span className="auglog-count">{unseen}</span> : null}
       </button>
       {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
       {open
@@ -12197,7 +12178,10 @@ function ActionBar(props: {
    * 배치: 숫자 1..9 가 **지금 보이는 버튼 순서 그대로** 대응한다. 론·쯔모·패스처럼
    * 매번 나오는 것에는 글자도 따로 준다(R / P). 왜 고정 배치를 안 쓰나 — 후로 선택지는
    * 같은 종류가 여러 벌 뜬다(치 3가지 등). 순서 대응이면 화면에 보이는 것과 손이 어긋나지 않는다.
-   * 각 버튼에 그 숫자를 찍어 두므로 외울 것도 없다.
+   *
+   * 숫자는 버튼에 **찍지 않는다** (2026-08-07 사용자 지시) — 마우스로 두는 사람에게는
+   * 판이 아니라 키보드 이야기를 하는 칩이 매 순간 붙어 있는 셈이라 버튼이 시끄러웠다.
+   * 대신 title(툴팁)이 그대로 알려 준다.
    */
   const keyed: { key: string; run: () => void }[] = [];
   if (props.riichiMode) {
@@ -12214,17 +12198,15 @@ function ActionBar(props: {
       {props.riichiMode ? (
         <>
           <span className="action-hint">리치할 패를 선택하세요</span>
-          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)}>
+          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)} title="취소 — 단축키 1">
             취소
-            <span className="act-key" aria-hidden="true">1</span>
           </button>
         </>
       ) : (
         <>
           {hasRiichi ? (
-            <button className="act act-riichi" onClick={() => props.onRiichiMode(true)}>
+            <button className="act act-riichi" onClick={() => props.onRiichiMode(true)} title="리치 — 단축키 1">
               리치
-              <span className="act-key" aria-hidden="true">1</span>
             </button>
           ) : null}
           {buttons.map((o, i) => {
@@ -12255,7 +12237,6 @@ function ActionBar(props: {
                 {label}
                 {detail !== "" ? <span className="act-target">{detail}</span> : null}
                 <ActionTiles view={view} option={o} />
-                <span className="act-key" aria-hidden="true">{hotIndex(i)}</span>
               </button>
             );
           })}

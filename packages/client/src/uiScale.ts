@@ -30,38 +30,15 @@ const MIN_SCALE = 0.6;
 const CRAMPED_W = 900;
 const CRAMPED_H = 620;
 
-/** 사용자가 직접 고른 배율의 허용 범위 — 자동 하한(0.6)보다 넓게, 확대까지 연다. */
-export const UI_SCALE_MIN = 0.6;
-export const UI_SCALE_MAX = 1.4;
-const OVERRIDE_KEY = "majak.uiScale";
+/**
+ * 예전에 설정 패널에 있던 "화면 크기" 수동 배율이 남긴 localStorage 키.
+ * 설정이 사라졌으므로(2026-08-07 사용자 지시) 부팅할 때 지워 준다 —
+ * 안 지우면 예전에 배율을 못 박아 둔 사람이 그 값에 갇힌 채 손잡이가 없다.
+ */
+const LEGACY_OVERRIDE_KEY = "majak.uiScale";
 
 let scale = 1;
 const listeners = new Set<() => void>();
-
-/**
- * 사용자가 직접 고른 배율 (null = 자동).
- *
- * 자동 배율만 있던 시절의 문제: **Ctrl + 가 먹히지 않았다**. 확대하면 CSS 픽셀로 잰
- * 창이 좁아지고 → 자동 배율이 그만큼 내려가 → 둘이 곱해져 원래 크기로 돌아온다.
- * 저시력 사용자가 쓰는 표준 수단(WCAG 1.4.4)을 UI가 되돌려 버린 셈이다.
- * 그래서 (1) 명시적·영속 배율 설정을 두고, (2) 아래 zoom 감지로 Ctrl + 를 비켜 준다.
- */
-let override: number | null = readOverride();
-
-function clampScale(v: number): number {
-  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(v * 100) / 100));
-}
-
-function readOverride(): number | null {
-  try {
-    const raw = window.localStorage.getItem(OVERRIDE_KEY);
-    if (raw === null || raw === "auto") return null;
-    const v = Number(raw);
-    return Number.isFinite(v) ? clampScale(v) : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * 브라우저 확대율 감지 기준선 — 첫 측정 때의 devicePixelRatio.
@@ -89,8 +66,6 @@ function hasSize(): boolean {
 }
 
 function computeScale(): number {
-  // 사용자가 고른 배율이 항상 이긴다 — 폰·태블릿에서도(자동은 손대지 않는 기기다).
-  if (override !== null) return override;
   if (!isPointerFine() || !hasSize()) return 1;
   // Ctrl + 로 키운 화면을 자동 축소가 도로 줄이지 않는다 (WCAG 1.4.4).
   if (userZoomedIn()) return 1;
@@ -142,8 +117,6 @@ export function layoutViewport(): { w: number; h: number } {
  * 배율을 정할 때의 조건(둘 중 하나라도 모자라면 줄이지 않는다)과 방향이 반대다.
  */
 export function isLayoutCramped(): boolean {
-  // 배율을 직접 고른 사람에게 "Ctrl +/− 를 쓰세요"는 할 말이 아니다 — 이미 손잡이를 쥐고 있다.
-  if (override !== null) return false;
   if (!isPointerFine() || !hasSize()) return false;
   const v = layoutViewport();
   return v.w < CRAMPED_W && v.h < CRAMPED_H;
@@ -155,27 +128,13 @@ export function subscribeUiScale(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/**
- * 현재 배율 설정 — 숫자면 사용자가 고른 값, "auto"면 창 크기에 맞춰 자동.
- * 설정 화면이 라디오/슬라이더를 그릴 때 쓴다.
- */
-export function getUiScaleSetting(): number | "auto" {
-  return override ?? "auto";
-}
-
-/** 배율 설정을 바꾸고 즉시 반영한다 ("auto" = 자동). 값은 localStorage에 남는다. */
-export function setUiScaleSetting(v: number | "auto"): void {
-  override = v === "auto" ? null : clampScale(v);
-  try {
-    window.localStorage.setItem(OVERRIDE_KEY, override === null ? "auto" : String(override));
-  } catch {
-    /* 저장 실패는 무시 — 이번 세션 동안은 적용된다 */
-  }
-  apply();
-}
-
 /** 앱 부팅 시 1회. 첫 페인트 전에 배율을 걸고, 이후 창 크기를 따라간다. */
 export function startUiScale(): void {
+  try {
+    window.localStorage.removeItem(LEGACY_OVERRIDE_KEY);
+  } catch {
+    /* 저장소를 못 건드려도 배율은 어차피 자동이다 */
+  }
   baseDpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
   apply();
   window.addEventListener("resize", apply);

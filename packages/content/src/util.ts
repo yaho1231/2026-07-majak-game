@@ -472,17 +472,25 @@ export function settleInterceptor(
  *
  * 단계는 `BankTopUp` — 뱅크가 발행하는 가산이라 배수(Multiply) **뒤에** 와야 한다.
  * 앞에 오면 보전액에까지 일확천금 3배가 곱해져 폭발이 한 겹 더 쌓인다.
+ *
+ * @param points 얹을 점수, 또는 `{ points, han }`. han을 주면 결과 화면이 그 줄을
+ *               점수 대신 **판**으로 적는다(addWinPointTransfer와 같은 규약).
  */
 export function addWinPointBonus(
   ctx: AugmentContext,
-  points: (state: GameState, info: WinInfo) => number,
+  points: (
+    state: GameState,
+    info: WinInfo,
+  ) => number | { points: number; han?: number },
 ): void {
   settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event, ic) => {
     const p = event.payload as RoundSettledPayload;
     if (p.outcome !== "win") return event;
     const info = (p.winInfos ?? []).find((w) => w.winner === ctx.holder);
     if (info === undefined) return event;
-    const bonus = Math.max(0, Math.round(points(ic.state, info)));
+    const raw = points(ic.state, info);
+    const asObj = typeof raw === "number" ? { points: raw } : raw;
+    const bonus = Math.max(0, Math.round(asObj.points));
     if (bonus === 0) return event;
     const deltas = {
       ...p.deltas,
@@ -493,7 +501,7 @@ export function addWinPointBonus(
       payload: {
         ...p,
         deltas,
-        augPoints: withAugPoint(p, ctx, bonus),
+        augPoints: withAugPoint(p, ctx, bonus, asObj.han),
       },
     };
   });
@@ -672,6 +680,10 @@ export function winPointsWithExtraHan(
  *   +2000 → **2판** · +4500 → **3판** · +6000 → **4판** · 스택 1000점당 → **스택당 1판**
  *
  * 신규 증강도 점수가 아니라 이 판수 단위(2/3/4판)로 설계한다.
+ *
+ * **결과 화면에도 판으로 적는다** (2026-08-07 사용자 보고: "예지는 +2판인데 정산에
+ * +6000점이 붙는다"). 환산은 구현 내부 사정일 뿐이고, 플레이어가 읽는 단위는 증강
+ * 설명과 같은 "+N판"이어야 한다 — han을 augPoints 줄에 실어 그 줄만 판으로 적는다.
  */
 export function addWinHanBonus(
   ctx: AugmentContext,
@@ -679,7 +691,8 @@ export function addWinHanBonus(
 ): void {
   addWinPointBonus(ctx, (state, info) => {
     const n = Math.max(0, Math.round(han(state, info)));
-    return n === 0 ? 0 : winPointsWithExtraHan(state, ctx.holder, info, n);
+    if (n === 0) return 0;
+    return { points: winPointsWithExtraHan(state, ctx.holder, info, n), han: n };
   });
 }
 

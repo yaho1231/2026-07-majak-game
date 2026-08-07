@@ -70,7 +70,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   dora_conceal: { use: "상시", text: "도라 표시패가 상대에게는 덮인다 — 도라를 나만 안다." },
   eternal_dealer: { use: "상시", text: "나는 늘 오야 취급 — 점수가 1.5배가 되고 역패 동이 항상 붙는다." },
   even_world: { use: MODE_1_2, text: "손패의 홀수 수패가 전부 한 칸 위 짝수로 바뀐다." },
-  foresight: { use: "2순에 1회", text: "패산 다음 4장을 나만 본다. 국에 한 번은 그 순서까지 바꾼다." },
+  foresight: { use: "4순에 1회", text: "패산 다음 4장을 나만 본다. 국에 한 번은 그 순서까지 바꾼다." },
   frame_up: { use: "2국에 1회", text: "내가 버릴 패를 상대 바닥에 놓아 그 사람을 후리텐에 빠뜨린다." },
   free_riichi_discard: { use: "상시", text: "리치를 걸어도 오름패만 고정되고, 버리는 패는 계속 자유롭다." },
   full_hand_swap: { use: "게임 2회", text: "국 첫 순에 상대의 손패를 통째로 빼앗는다." },
