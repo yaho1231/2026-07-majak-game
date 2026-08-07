@@ -5232,10 +5232,98 @@ function GuestOutro(props: {
  */
 type HelpTab = "basics" | "augment";
 
-/** 한 절(제목 + 문단들). 문단에는 용어 풀이 링크(TermText)가 걸린다. */
+/**
+ * 그림 한 줄 — 실제 패 그림으로 보여 주는 예시.
+ *
+ * 글로만 적힌 "같은 종류의 연속 3장"은 마작을 모르는 사람에게 아무 그림도 그려 주지
+ * 못한다. 여기서 쓰는 패는 게임판과 **같은 이미지**(`/tiles/*.png`, TileImg)다 —
+ * 규칙 화면에서 본 그림이 게임 안에서 그대로 다시 나온다.
+ */
+interface HelpFigRow {
+  /** 왼쪽 라벨 (예: "슌츠", "대기", "표시패") */
+  label?: string;
+  /** 패 표기 — 묶음은 공백으로 나눈다. `234m 55p 1z` (z: 1~4 동남서북, 5~7 백발중) */
+  tiles: string;
+  /** `→` 뒤에 붙는 결과 묶음 (표시패→도라, 들고 있는 패→울어서 만든 묶음) */
+  then?: string;
+  /** 줄 아래 설명 한 줄 (용어 풀이 링크가 걸린다) */
+  note?: string;
+  /** 되는 예(○) / 안 되는 예(✕) 표식 */
+  mark?: "ok" | "no";
+}
+
+/** 한 절(제목 + 문단들 + 그림). 문단에는 용어 풀이 링크(TermText)가 걸린다. */
 interface HelpSection {
   title: string;
   paras: string[];
+  /** 문단 아래에 붙는 패 그림 */
+  figure?: HelpFigRow[];
+}
+
+/**
+ * `234m` `55p` `1z` 같은 표기를 패 종류로 푼다. 표준 마작 표기와 같다 —
+ * 숫자들 뒤에 무늬 한 글자(m 만 · p 통 · s 삭 · z 자패)가 붙는다.
+ * 알아볼 수 없는 조각은 조용히 버린다(문안 오타가 화면을 깨지 않게).
+ */
+function parseHelpTiles(group: string): TileKind[] {
+  const out: TileKind[] = [];
+  const m = /^([0-9]+)([mpsz])$/.exec(group.trim());
+  if (m === null) return out;
+  const [, digits, suit] = m as unknown as [string, string, string];
+  for (const ch of digits) {
+    const n = Number(ch);
+    if (suit === "z") {
+      if (n >= 1 && n <= 4) out.push({ suit: "wind", rank: n });
+      else if (n >= 5 && n <= 7) out.push({ suit: "dragon", rank: n - 4 });
+      continue;
+    }
+    if (n < 1 || n > 9) continue;
+    out.push({ suit: suit === "m" ? "man" : suit === "p" ? "pin" : "sou", rank: n });
+  }
+  return out;
+}
+
+/** 공백으로 나뉜 묶음들을 그린다 — 묶음 사이는 눈에 보이게 벌린다. */
+function HelpTileGroups({ tiles }: { tiles: string }): JSX.Element {
+  return (
+    <span className="help-fig-groups">
+      {tiles.split(/\s+/).filter((g) => g !== "").map((g, gi) => (
+        <span key={gi} className="help-fig-group">
+          {parseHelpTiles(g).map((kind, i) => (
+            <TileImg key={i} tile={{ kind }} size="mini" />
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function HelpFigure({ rows }: { rows: HelpFigRow[] }): JSX.Element {
+  return (
+    <div className="help-fig">
+      {rows.map((row, i) => (
+        <div key={i} className={row.mark === undefined ? "help-fig-row" : `help-fig-row help-fig-${row.mark}`}>
+          <div className="help-fig-line">
+            {/* 표식은 줄 맨 앞 — 뒤에 두면 좁은 화면에서 패 줄에 밀려 혼자 다음 줄로 떨어졌다 */}
+            {row.mark !== undefined ? (
+              <span className="help-fig-mark">{row.mark === "ok" ? "○" : "✕"}</span>
+            ) : null}
+            {row.label !== undefined ? <span className="help-fig-label">{row.label}</span> : null}
+            <HelpTileGroups tiles={row.tiles} />
+            {row.then !== undefined ? (
+              <>
+                <span className="help-fig-arrow">→</span>
+                <HelpTileGroups tiles={row.then} />
+              </>
+            ) : null}
+          </div>
+          {row.note !== undefined ? (
+            <p className="help-fig-note"><TermText text={row.note} /></p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 const HELP_BASICS: HelpSection[] = [
@@ -5245,12 +5333,34 @@ const HELP_BASICS: HelpSection[] = [
       "네 사람이 각자 손에 패 13장을 쥐고, 차례마다 한 장을 가져와 한 장을 버립니다. 목표는 남보다 먼저 손패를 완성해 화료하는 것입니다.",
       "완성형은 언제나 같습니다 — 3장짜리 묶음 4개 + 같은 패 2장(머리) 1개. 묶음은 같은 패 3장(커츠) 또는 같은 종류의 연속 3장(슌츠)입니다.",
     ],
+    figure: [
+      { label: "슌츠", tiles: "456p", note: "같은 무늬의 연속 3장." },
+      { label: "커츠", tiles: "777s", note: "같은 패 3장. 자패로도 됩니다." },
+      { label: "머리", tiles: "55m", note: "같은 패 2장. 한 손에 하나뿐입니다." },
+      {
+        label: "완성형",
+        tiles: "234m 678m 345p 111s 99p",
+        note: "**묶음 4개 + 머리 1개 = 14장.** 어떤 화료형이든 결국 이 모양입니다.",
+      },
+    ],
   },
   {
     title: "역이 없으면 화료할 수 없다",
     paras: [
       "모양만 맞춘다고 끝이 아닙니다. 손패가 미리 정해진 조건(역) 중 하나 이상을 만족해야 화료를 선언할 수 있습니다. 리치·탕야오·핑후·역패 같은 것들입니다.",
       "모양을 완성하고도 역이 없으면 화료하지 못합니다.",
+    ],
+    figure: [
+      {
+        mark: "ok",
+        tiles: "234m 678m 345p 567s 55p",
+        note: "1·9와 자패가 하나도 없습니다 — **탕야오**. 역이 있으니 화료할 수 있습니다.",
+      },
+      {
+        mark: "no",
+        tiles: "111m 678m 345p 567s 55p",
+        note: "모양은 똑같이 완성입니다. 그런데 1만이 섞여 탕야오가 아니고, 커츠가 있어 핑후도 아닙니다 — 리치를 걸지 않았다면 **화료할 수 없습니다.**",
+      },
     ],
   },
   {
@@ -5259,12 +5369,29 @@ const HELP_BASICS: HelpSection[] = [
       "손패를 남에게 하나도 보이지 않은 채(멘젠) 한 장만 더 오면 완성인 상태(텐파이)가 되면, 1000점을 걸고 리치를 선언할 수 있습니다.",
       "리치를 걸면 그 뒤로는 손패를 바꿀 수 없습니다 — 가져온 패를 그대로 버립니다. 대신 역이 확정되고, 도라를 한 겹 더 받고(우라도라), 타점이 크게 뜁니다.",
     ],
+    figure: [
+      {
+        label: "텐파이",
+        tiles: "234m 678m 345p 55p 78s",
+        note: "13장. 78삭 자리만 채우면 완성입니다.",
+      },
+      {
+        label: "대기",
+        tiles: "6s 9s",
+        note: "이 둘 중 하나가 오면 화료. 이 상태에서 **리치**를 선언할 수 있습니다.",
+      },
+    ],
   },
   {
     title: "도라 — 보너스 패",
     paras: [
       "판마다 표시패 한 장이 공개되고, 그 다음 패가 도라가 됩니다. 도라를 몇 장 쥐고 있느냐가 그대로 타점이 됩니다.",
       "도라는 역이 아닙니다. 도라만 잔뜩 있어도 역이 없으면 화료할 수 없습니다.",
+    ],
+    figure: [
+      { label: "표시패", tiles: "5p", then: "6p", note: "표시패의 **다음** 패가 도라입니다." },
+      { label: "표시패", tiles: "9s", then: "1s", note: "9 다음은 1로 돌아옵니다." },
+      { label: "표시패", tiles: "4z", then: "1z", note: "바람은 동→남→서→북→동, 삼원패는 백→발→중→백 순으로 돕니다." },
     ],
   },
   {
@@ -5273,12 +5400,26 @@ const HELP_BASICS: HelpSection[] = [
       "남이 버린 패를 가져와 묶음을 완성할 수 있습니다. 연속 두 장을 들고 있으면 바로 위(상가)에게서만 치, 같은 패 2장을 들고 있으면 누구에게서든 퐁입니다. 같은 패 4장은 깡입니다.",
       "울면 그 묶음이 공개되고 멘젠이 깨집니다 — 리치를 걸 수 없고 쓸 수 있는 역이 줄어듭니다.",
     ],
+    figure: [
+      { label: "치", tiles: "34m", then: "234m", note: "연속 두 장을 들고 있을 때, **왼쪽 사람(상가)** 이 버린 2만이나 5만만 가져올 수 있습니다." },
+      { label: "퐁", tiles: "77p", then: "777p", note: "같은 패 두 장. 이쪽은 **누가 버려도** 가져옵니다." },
+      { label: "깡", tiles: "777s", then: "7777s", note: "같은 패 넷. 도라 표시패가 한 장 늘고 패를 한 장 더 가져옵니다." },
+    ],
   },
   {
     title: "후리텐 — 내가 버린 패로는 못 난다",
     paras: [
       "내 대기(화료할 수 있는 패) 중 하나라도 내 버림패에 있으면, 남이 버린 패로는 화료할 수 없습니다. 이것이 후리텐입니다.",
       "이때도 스스로 가져와서 나는 것(쯔모)은 됩니다. 리치 뒤에 후리텐이 되면 그 국 내내 풀리지 않습니다.",
+    ],
+    figure: [
+      { label: "내 대기", tiles: "3s 6s", note: "이 손패는 3삭·6삭으로 화료할 수 있습니다." },
+      {
+        label: "내 버림패",
+        tiles: "1p 9m 6s 2z",
+        mark: "no",
+        note: "대기 중 하나(6삭)가 내 버림패에 있습니다 — 이러면 3삭이 나와도 **론할 수 없습니다.** 쯔모는 그대로 됩니다.",
+      },
     ],
   },
   {
@@ -5319,6 +5460,14 @@ const HELP_AUGMENT: HelpSection[] = [
     paras: [
       "타점 보너스가 아니라 규칙을 바꾸는 카드입니다. 후리텐인 채로 론하고, 백을 만능패로 쓰고, 남의 버림패를 손으로 가져오고, 리치를 건 뒤에 손패를 바꿉니다.",
       `${AUGMENT_KINDS}종이 점수·손패 조작·화료형·정보·리치·수비·후로·교란 계열로 나뉩니다.`,
+    ],
+    figure: [
+      {
+        label: "예 · 백은 만능패",
+        tiles: "23m 5z",
+        then: "234m",
+        note: "백 한 장이 없는 4만 자리를 그대로 메웁니다. 타점이 아니라 **규칙**이 바뀐 것입니다.",
+      },
     ],
   },
   {
@@ -5394,6 +5543,7 @@ function HelpScreen(props: {
             {sec.paras.map((para, i) => (
               <p key={i} className="codex-para"><TermText text={para} /></p>
             ))}
+            {sec.figure !== undefined ? <HelpFigure rows={sec.figure} /> : null}
           </section>
         ))}
       </main>

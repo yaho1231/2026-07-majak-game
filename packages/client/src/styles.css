@@ -6675,6 +6675,87 @@ button {
 
 .help-section .codex-para:last-child { margin-bottom: 0; }
 
+/* 패 그림 — 문단 아래에 붙는 예시. 게임판과 같은 패 이미지를 쓴다. */
+.help-fig {
+  margin: 12px 0 0;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.help-fig-row + .help-fig-row {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.help-fig-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 라벨 폭을 고정해 여러 줄의 패가 세로로 정렬된다 */
+.help-fig-label {
+  flex: 0 0 auto;
+  min-width: 58px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f0c86a;
+  letter-spacing: 0.02em;
+}
+
+.help-fig-groups {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+/* 한 묶음 안의 패는 붙이고, 묶음 사이만 벌린다 — 묶음 경계가 곧 설명이다 */
+.help-fig-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.help-fig-arrow {
+  font-size: 15px;
+  color: #9fb0a4;
+}
+
+/* ○는 전각이라 그냥 두면 ✕보다 넓어, 같은 장수인데 ○ 줄만 다음 줄로 접혔다 — 폭을 고정한다 */
+.help-fig-mark {
+  flex: 0 0 auto;
+  width: 15px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+.help-fig-ok .help-fig-mark { color: #7fd4a0; }
+.help-fig-no .help-fig-mark { color: #e88a8a; }
+
+.help-fig-note {
+  margin: 7px 0 0;
+  font-size: 12.6px;
+  line-height: 1.7;
+  color: #a9b7ac;
+}
+
+/* 좁은 화면 — 라벨을 윗줄로 올려 패 14장이 한 줄에 들어가게 한다.
+   (라벨과 같은 줄에 두면 완성형 마지막 두 장이 다음 줄로 떨어져 머리가 끊겨 보였다.) */
+@media (max-width: 640px) {
+  .help-fig-line { gap: 6px; }
+  .help-fig-label { flex: 0 0 100%; min-width: 0; margin-bottom: 2px; }
+  .help-fig-groups { gap: 5px; }
+  .help-fig { padding: 10px 8px; }
+  .help-fig .tile-mini { width: 17px; height: 26px; }
+  .help-fig-mark { width: 13px; font-size: 13px; }
+}
+
 /* 인게임 도감·규칙 단추 — 나가기(14)·설정(64)·증강로그(114) 왼쪽으로 이어 붙인다.
    좁은 화면 변형(@container)에서는 그쪽 간격(40px)에 맞춰 다시 잡는다. */
 .codex-btn { right: 164px; }
