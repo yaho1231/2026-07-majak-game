@@ -307,8 +307,29 @@ const GUEST_NAME_PREFIX = "손님#";
 /**
  * 동시 게스트 방 상한. 게스트 방도 MAX_ROOMS를 먹지만, 그 200칸을 손님이 통째로
  * 채워 실제 친구들이 방을 못 만드는 상황은 따로 막는다.
+ *
+ * **CPU가 진짜 상한이다.** 방 하나는 코드·좌석·타이머 정도만 붙들어 메모리는
+ * 무시할 수준이지만, 봇 3명의 판단은 이 서버의 **단일 이벤트 루프**에서 돈다.
+ * 이 저장소의 arena로 잰 값이 반장전 한 판(봇 4)에 CPU 13.6초 — 봇 3명이면
+ * 판당 약 10초다. 실제 판은 봇 생각 딜레이 때문에 벽시계로 10~15분이 걸리므로,
+ * 동시에 도는 게스트 판 하나가 코어의 약 1.5%를 계속 먹는 셈이다. 40판은
+ * 코어의 60%로, 실계정 대국·리더보드·정적 서빙이 쓸 몫을 손님이 가져간다.
+ * 16판이면 약 25% — 여기가 "손님을 받되 판을 굶기지 않는" 선이다.
  */
-const MAX_GUEST_ROOMS = 40;
+const MAX_GUEST_ROOMS = 16;
+/**
+ * IP당 동시 게스트 방 상한.
+ *
+ * 전역 상한만으로는 **한 사람이 손님 자리를 통째로 먹는 것**을 못 막는다.
+ * 연결당 게스트 방은 하나지만(새 `guestPlay`는 앞 판을 접는다) IP당 동시 연결은
+ * 16개까지 열리므로, 탭 16개면 게스트 슬롯 전부가 한 사람 것이 된다.
+ * 레이트리밋(10분 20회)도 여기엔 안 듣는다 — 만들고 **유지**하는 것이지
+ * 만들고 버리기를 반복하는 게 아니기 때문이다.
+ *
+ * 3으로 둔다: 폰·노트북으로 번갈아 보거나 탭을 하나 더 여는 정상 사용은 살리고,
+ * 한 사람이 손님 자리의 절반 이상을 붙드는 것만 막는다. 루프백/로컬은 예외.
+ */
+const MAX_GUEST_ROOMS_PER_IP = 3;
 /**
  * 게스트 연결이 인증 뒤에 보낼 수 있는 메시지. **여기 없는 것은 전부 거부**다.
  *
@@ -1971,7 +1992,7 @@ export class RoomManager {
    * 남용 방어는 **새 장치를 만들지 않고 기존 것을 그대로 쓴다**:
    * - `rateLimited` — 인증과 같은 창(연결당 12회/분, IP당 30회/분)
    * - `roomCreateLimited` — 방 생성과 같은 창(IP당 20회/10분)
-   * - `MAX_ROOMS` + `MAX_GUEST_ROOMS`
+   * - `MAX_ROOMS` + `MAX_GUEST_ROOMS` + `MAX_GUEST_ROOMS_PER_IP`
    */
   private guestPlay(conn: Conn, mode?: GameMode): void {
     // 이미 로그인한 연결은 게스트가 될 수 없다 — 계정 좌석을 임시 신원으로 갈아
@@ -1988,10 +2009,29 @@ export class RoomManager {
     if (this.rooms.size >= MAX_ROOMS) {
       return this.fail(conn, "SERVER_BUSY", "서버가 혼잡합니다. 잠시 후 다시 시도하세요");
     }
+    // 지금 이 연결이 붙들고 있는 판은 세지 않는다 — 바로 아래에서 접고 새로 여는
+    // 자리 바꿈이라, 세면 "한 판 더"가 만석일 때 제 자리를 두고도 거부당한다.
+    const mine = conn.guest && conn.room?.guest === true ? conn.room : null;
     let guestRooms = 0;
-    for (const r of this.rooms.values()) if (r.guest) guestRooms++;
+    for (const r of this.rooms.values()) if (r.guest && r !== mine) guestRooms++;
     if (guestRooms >= MAX_GUEST_ROOMS) {
       return this.fail(conn, "SERVER_BUSY", "체험 게임이 가득 찼습니다. 잠시 후 다시 시도하세요");
+    }
+    // IP당 동시 게스트 방 — 탭을 여러 개 열어 손님 자리를 통째로 먹는 것을 막는다.
+    // 게스트 방은 언제나 그 방을 연 연결 하나가 붙들고 있으므로(끊기면 방도 사라진다)
+    // 연결을 세는 것이 곧 방을 세는 것이다.
+    if (!conn.exempt) {
+      let sameIp = 0;
+      for (const c of this.conns) {
+        if (c !== conn && c.guest && c.key === conn.key && c.room !== null && c.room.guest) sameIp++;
+      }
+      if (sameIp >= MAX_GUEST_ROOMS_PER_IP) {
+        return this.fail(
+          conn,
+          "SERVER_BUSY",
+          `같은 곳에서 체험 게임을 ${MAX_GUEST_ROOMS_PER_IP}개까지 동시에 둘 수 있습니다 — 열어 둔 창을 닫고 다시 시도하세요`,
+        );
+      }
     }
     // 이 연결이 앞선 게스트 판을 붙들고 있으면 접는다 (연속 체험 — "한 판 더").
     if (conn.guest) this.dropGuestRoom(conn);

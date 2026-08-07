@@ -295,6 +295,51 @@ describe("게스트 — 레이트리밋", () => {
   });
 });
 
+describe("게스트 — 동시 판 상한", () => {
+  /**
+   * 배경: 전역 상한(MAX_GUEST_ROOMS)만 있을 때는 한 사람이 탭을 열어 두는 것만으로
+   * 손님 자리를 통째로 먹을 수 있었다. IP당 동시 연결이 16개까지 열리고, 방을
+   * 만들고 **유지**하는 것이라 방 생성 레이트리밋(10분 20회)도 듣지 않았다.
+   * 봇 3명의 판단은 단일 이벤트 루프에서 돌기 때문에 이건 그대로 CPU 점유가 된다.
+   */
+  it("같은 IP에서 동시에 열 수 있는 체험 판이 제한된다", async () => {
+    const h = await newHarness();
+    const ip = "203.0.113.9";
+    const socks = [];
+    for (let i = 0; i < 3; i++) socks.push(await connectGuest(h, { ip }));
+    for (const s of socks) expect(s.last("view")).toBeDefined();
+
+    // 네 번째 탭 — 앞의 셋을 열어 둔 채로는 거부된다.
+    const extra = await connectGuest(h, { ip });
+    expect(extra.last("error")?.code).toBe("SERVER_BUSY");
+    expect(extra.last("view")).toBeUndefined();
+
+    // 다른 IP는 영향을 받지 않는다 — 상한은 한 사람 몫이지 서버 전체가 아니다.
+    const other = await connectGuest(h, { ip: "198.51.100.4" });
+    expect(other.last("view")).toBeDefined();
+
+    // 열어 둔 탭 하나를 닫으면 그 자리가 곧바로 난다.
+    socks[0]!.close();
+    const again = await connectGuest(h, { ip });
+    expect(again.last("view")).toBeDefined();
+  });
+
+  it("만석이어도 '한 판 더'는 제 자리를 되쓴다", async () => {
+    // 자기 자신이 붙들고 있는 판을 세면, 새 판을 열 자리를 두고도 거부당한다.
+    const h = await newHarness();
+    const ip = "203.0.113.11";
+    const socks = [];
+    for (let i = 0; i < 3; i++) socks.push(await connectGuest(h, { ip }));
+
+    const mine = socks[2]!;
+    mine.sent.length = 0;
+    mine.clientSend({ type: "guestPlay", mode: "tonpuu" });
+    await mine.waitFor((m) => m.type === "view" || m.type === "error");
+    expect(mine.last("error")).toBeUndefined();
+    expect(mine.last("view")).toBeDefined();
+  });
+});
+
 describe("게스트 — 기록 없음", () => {
   it("판이 끝나도 리플레이·게임 인덱스·누적 통계 어디에도 남지 않는다", async () => {
     const h = await newHarness();
