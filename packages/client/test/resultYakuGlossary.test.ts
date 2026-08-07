@@ -41,11 +41,16 @@ function yakuNames(): { id: string; label: string }[] {
 }
 
 /**
- * 코드 어디에도 구현이 없는 이름표 — `gomonsei`·`sanshoku_tsuukan`·`isshoku_sanjun`은
- * 이 표에만 있고 그 id로 역을 세우는 코드가 없다(2026-08-07 확인). 무슨 역인지 코드가
- * 말해 주지 않으므로 사전에 뜻을 지어 넣지 않는다 — 역이 실제로 붙는 날 함께 싣는다.
+ * 구현 없는 이름표를 담아 두는 자리 — 지금은 비어 있다.
+ *
+ * 한때 `gomonsei`·`sanshoku_tsuukan`·`isshoku_sanjun` 셋이 이 표에만 있고 그 id로 역을
+ * 세우는 코드가 어디에도 없었다(2026-08-07 확인). 무슨 역인지 코드가 말해 주지 않아
+ * 사전에 뜻을 지어 넣을 수도 없었고, 사용자 판정으로 **이름표 자체를 지웠다.**
+ *
+ * 이 집합이 비어 있다는 것 자체가 규율이다 — 여기에 무언가를 넣으려 한다면 그 역은
+ * 이름만 있고 구현이 없다는 뜻이므로, 넣지 말고 구현하거나 이름표를 지워라.
  */
-const NOT_IMPLEMENTED = new Set(["gomonsei", "sanshoku_tsuukan", "isshoku_sanjun"]);
+const NOT_IMPLEMENTED = new Set<string>();
 
 /**
  * 이름표 안에 사전에 없는 꾸밈말이 섞이는 것들 — 핵심 낱말만 걸리면 된다.

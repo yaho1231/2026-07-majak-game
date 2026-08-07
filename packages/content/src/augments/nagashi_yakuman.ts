@@ -90,7 +90,7 @@ export const nagashiYakuman: AugmentDef = defineAugment({
     "이 증강이 바꾸는 것은 딱 하나 — **울림에 의한 무효화**다. 정통 규칙에서는 내 버림패를 누군가 치·펑·깡으로 가져가는 순간 유국만관이 사라지지만, 이 증강이 있으면 몇 번을 울려 가도 그대로 성립한다.\n\n" +
     "바꾸지 않는 것도 분명하다. 판정은 **내가 버린 모든 패**를 대상으로 하며, 울려 나가 바닥에 남지 않은 패도 그대로 센다. 따라서 요구패가 아닌 패를 한 장이라도 버렸다면 그 패가 울려 나갔더라도 성립하지 않는다.\n\n" +
     "지불은 쯔모 역만과 같아 오야면 각 16000점, 자면 오야에게 16000점·자에게 8000점씩 받는다. 노텐 벌점과는 별개로 함께 정산되며, 버림패가 하나도 없으면 성립하지 않는다.\n\n" +
-    "⚠ **역만 방어술(yakuman_shield)을 든 상대는 한 푼도 내지 않는다.** 유국역만도 역만이므로 그쪽의 완전 면역이 그대로 걸린다 — 그 사람 몫은 남에게 넘어가지도, 뱅크가 대신 내지도 않고 그냥 안 들어온다. 자 역만이 세 명에게서 32000을 받아야 할 자리에서 한 명이 방어막을 들고 있으면 실제 수령은 24000이다(무장해제로 잠긴 방어막은 면제되지 않는다).",
+    "역만 방어술(yakuman_shield)을 든 상대는 한 푼도 내지 않는다 — 유국역만도 역만이므로 그쪽의 완전 면역이 그대로 걸린다. 다만 **그 몫은 뱅크가 대신 내므로 내 수령액은 줄지 않는다.** 자 역만이면 방어막이 몇 개 있든 32000을 그대로 받는다(무장해제로 잠긴 방어막은 면제되지 않는다).",
   install(ctx) {
     const { holder } = ctx;
 
@@ -106,18 +106,24 @@ export const nagashiYakuman: AugmentDef = defineAugment({
       const deltas = { ...p.deltas };
       for (const pl of ic.state.players) {
         if (pl.id === holder) continue;
+        // 쯔모 역만: 오야 화료 = 전원 16000 / 자 화료 = 오야 16000·자 8000
+        const pay = holderIsDealer ? 16000 : pl.seat === dealerSeat ? 16000 : 8000;
+
         // 역만 방어술 보유자는 유국역만 지불에서 면제된다 (완전 면역 연동).
         // 단 **무장해제로 잠긴 방어막은 면제하지 않는다** — 보유 문자열만 보면 잠긴
         // 방어막까지 공짜로 막아 줬다(2026-07-29 감사).
-        if (
+        const shielded =
           pl.augments.includes("yakuman_shield") &&
-          !isSourceDisarmed(ic.state, augmentInstanceId(pl.id, "yakuman_shield"))
-        ) {
-          continue;
-        }
-        // 쯔모 역만: 오야 화료 = 전원 16000 / 자 화료 = 오야 16000·자 8000
-        const pay = holderIsDealer ? 16000 : pl.seat === dealerSeat ? 16000 : 8000;
-        deltas[pl.id] = (deltas[pl.id] ?? 0) - pay;
+          !isSourceDisarmed(ic.state, augmentInstanceId(pl.id, "yakuman_shield"));
+
+        // **면제분은 뱅크가 낸다** — 화료자 몫은 깎지 않는다.
+        //
+        // 예전에는 방어막 보유자를 건너뛰면서 화료자 수령까지 같이 줄였다. 자 역만이
+        // 32000을 받을 자리에서 남이 방어막을 뽑았다는 이유로 24000이 됐다 —
+        // 내 손과 무관한 남의 드래프트 결과가 내 타점을 33% 깎는 것이라
+        // 무페널티 원칙(PROJECT_CHARTER)에 어긋난다. 일확천금의 0.5배 굴림을 고칠
+        // 때와 같은 판단이다: **한쪽을 지키느라 다른 쪽을 손해 보게 하지 않는다.**
+        if (!shielded) deltas[pl.id] = (deltas[pl.id] ?? 0) - pay;
         deltas[holder] = (deltas[holder] ?? 0) + pay;
       }
       return { type: event.type, payload: { ...p, deltas } };

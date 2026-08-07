@@ -183,9 +183,6 @@ const YAKU_NAMES: Record<string, string> = {
   tanyao_break: "탕야오 해방",
   kokushi_open: "우는 국사무쌍",
   hidden_blade: "숨은 칼날",
-  gomonsei: "오문제",
-  sanshoku_tsuukan: "삼색통관",
-  isshoku_sanjun: "일색삼순",
 };
 
 const LIMIT_NAMES: Record<string, string> = {
