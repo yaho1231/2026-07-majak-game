@@ -804,7 +804,7 @@ interface Settings {
   autoDiscard: boolean;
   /** 내 오름패 표시 — 텐파이면 손패 위에 항상 화료패를 보여준다. */
   showMyWaits: boolean;
-  /** 우클릭 쯔모기리 — 손패 어디서든 오른쪽 버튼을 누르면 쯔모한 패를 그대로 버린다. */
+  /** 우클릭 쯔모기리 — 판 어디서든 오른쪽 버튼을 누르면 쯔모한 패를 그대로 버린다. */
   rightClickTsumogiri: boolean;
   /** 도라 반짝임 — 도라인 패를 금빛(전용 도라는 보랏금)으로 반짝이게 한다. */
   doraFx: boolean;
@@ -6941,12 +6941,50 @@ const GameTable = memo(function GameTable(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection.armedType]);
 
+  /**
+   * 우클릭 쯔모기리 — **판 어디서든** 오른쪽 버튼이면 방금 쯔모한 패를 그대로 버린다.
+   *
+   * 처음엔 손패 상자(`.own-hand`)에만 걸었는데(#192), 그 상자는 화면 맨 아래 80px 남짓한
+   * 띠라서 판을 보고 있다가 누르면 거의 다 빗나갔다 — "작동을 안 한다"로 읽힌 실체가 이것이다.
+   * 그래서 게임판 전체로 올린다. 어차피 **버려지는 패는 커서 아래가 아니라 쯔모패**라,
+   * 어디를 눌렀는지는 처음부터 결과에 영향이 없었다.
+   *
+   * 설정 패널·규칙·결과 화면 같은 오버레이는 전부 body 포털이라 이 판 밖이다(FIXED_SURFACE_NOTE).
+   * 여기서 걸리는 건 좌석·강·중앙 패널·손패 — 전부 게임판이다.
+   *
+   * 네 자리에서는 듣지 않는다. 앞의 셋은 **오른쪽 버튼이 이미 다른 뜻인** 상황이다:
+   *  - 리치할 패를 고르는 중: 손이 미끄러지면 고르려던 패가 아닌 것으로 리치가 나간다.
+   *  - 증강 무장 중: 지금 클릭은 '버리기'가 아니라 '증강의 대상 고르기'다.
+   *  - 관전·리플레이: 낼 패가 없다.
+   *  - 글자를 치는 칸: 붙여넣기 같은 표준 수단 자리다 (contextMenu.ts가 메뉴를 살려 두는 자리).
+   */
+  function rightClickTsumogiri(e: React.MouseEvent): void {
+    e.preventDefault();
+    if (!props.settings.rightClickTsumogiri) return;
+    if (props.spectator === true || view.playerId === SPECTATOR_ID) return;
+    if (props.riichiMode || selection.armedType !== null) return;
+    if (isTypingTarget(e.target)) return;
+    // 쯔모패는 **내 손패 안에 실제로 있을 때만** 나간다 — 후로 직후 버림처럼
+    // 쯔모가 없는 순에는 버릴 '그 패'가 없다.
+    const drawnId = view.round.myDrawnTile;
+    if (drawnId === null) return;
+    if (!(view.zones[`hand:${me.id}`]?.tileIds ?? []).includes(drawnId)) return;
+    const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
+    const opts = (myPrompt?.options ?? []).filter(
+      (o) => (o.payload as { tileId?: unknown }).tileId === drawnId,
+    );
+    // 손패 클릭과 같은 우선순위 (discard 먼저, 없으면 free_discard)
+    const opt = opts.find((o) => o.type === "discard") ?? opts.find((o) => o.type === "free_discard");
+    if (opt === undefined) return;
+    props.onSubmit(opt);
+  }
+
   return (
     <SelectionContext.Provider value={selection}>
     <HighlightContext.Provider value={hoverKind}>
     <DoraContext.Provider value={doraFx}>
     <RelationProvider view={view}>
-    <div className="table" ref={tableRef}>
+    <div className="table" ref={tableRef} onContextMenu={rightClickTsumogiri}>
       {props.spectator === true ? (
         <div className="spectate-bar">
           👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
@@ -7081,7 +7119,6 @@ const GameTable = memo(function GameTable(props: {
         catalog={catalog}
         autoSort={props.settings.autoSort}
         showMyWaits={props.settings.showMyWaits}
-        rightClickTsumogiri={props.settings.rightClickTsumogiri}
         {...(props.spectator !== true
           ? {
               quickToggles: (
@@ -7430,7 +7467,7 @@ function SettingsPanel(props: {
     {
       key: "rightClickTsumogiri",
       label: "우클릭 쯔모기리",
-      desc: "손패 위에서 오른쪽 버튼을 누르면 방금 쯔모한 패를 그대로 버립니다 (리치할 패를 고르는 중·증강 선택 중에는 듣지 않습니다)",
+      desc: "판 어디서든 오른쪽 버튼을 누르면 방금 쯔모한 패를 그대로 버립니다 (리치할 패를 고르는 중·증강 선택 중에는 듣지 않습니다)",
     },
     { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝입니다 (나만의 도라는 보랏금)" },
     { key: "screenFx", label: "화면 효과", desc: "화료·리치 때 화면 흔들림·번쩍임·파티클 (멀미·광과민이면 끄세요)" },
@@ -10173,8 +10210,6 @@ function OwnArea(props: {
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
   showMyWaits: boolean;
-  /** 우클릭 쯔모기리 (설정) — 손패에서 오른쪽 버튼 = 쯔모패 그대로 버리기 */
-  rightClickTsumogiri: boolean;
   /** 좁은 화면에서 손패 바로 위에 눕는 빠른 토글 (모바일 전용, CSS가 표시를 결정) */
   quickToggles?: JSX.Element;
   onRiichiMode: (v: boolean) => void;
@@ -10553,27 +10588,6 @@ function OwnArea(props: {
   const canDropDiscard = discardOptionFor(drag?.id ?? null) !== undefined;
 
   /**
-   * 우클릭 쯔모기리 — 손패 **어디서든** 오른쪽 버튼이면 방금 쯔모한 패를 그대로 버린다
-   * (2026-08-07 사용자 지시). 쯔모패를 정확히 겨냥하지 않아도 되는 것이 요점이라
-   * 개별 패가 아니라 손패 상자에 건다. 브라우저 기본 메뉴는 contextMenu.ts가 이미 막지만,
-   * 여기서도 preventDefault를 부른다 — 이 동작이 그 모듈의 존재에 기대지 않게.
-   *
-   * 세 자리에서는 듣지 않는다. 전부 **오른쪽 버튼이 이미 다른 뜻인** 상황이다:
-   *  - 리치할 패를 고르는 중: 손이 미끄러지면 고르려던 패가 아닌 것으로 리치가 나간다.
-   *  - 증강 무장 중: 지금 손패 클릭은 '버리기'가 아니라 '증강의 대상 고르기'다.
-   *  - 관전·리플레이: 낼 패가 없다.
-   */
-  function rightClickDiscard(e: React.MouseEvent): void {
-    e.preventDefault();
-    if (!props.rightClickTsumogiri) return;
-    if (isSpectator || props.riichiMode || armedAug !== null) return;
-    if (!hasDrawn || drawnId === null) return;
-    const opt = discardOptionFor(drawnId);
-    if (opt === undefined) return;
-    props.onSubmit(opt);
-  }
-
-  /**
    * 포인터 드래그 시작 — 시작 시점의 슬롯 중심 X를 한 번 측정해 둔다.
    * 실제 드래그(리프트·재정렬)는 임계값 이상 움직여야 시작하고, 그 전엔 클릭으로 처리된다.
    */
@@ -10896,7 +10910,6 @@ function OwnArea(props: {
             drag?.moved === true ? " own-hand-dragging" : ""
           }${committing ? " own-hand-nofx" : ""}`}
           style={handStyle}
-          onContextMenu={rightClickDiscard}
         >
           {displayIds.map((id, idx) => {
             const opts = optionsByTile.get(id) ?? [];
