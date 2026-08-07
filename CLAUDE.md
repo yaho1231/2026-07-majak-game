@@ -31,6 +31,14 @@
 - 작업은 워크트리에서 한다.
 - master 갱신 후 배포: `npm run serve` (클라 빌드 + 서버 재시작 포함). 확인은 서빙되는 에셋 해시가 방금 빌드한 `packages/client/dist/assets/` 와 일치하는지 본다.
 
+### 서버 감시자 (launchd)
+`npm run watchdog:install` 로 등록하면 1분마다 `/healthz`를 보고 응답이 없을 때 `serve.sh start`로 되살린다. 배포 중 `stop`만 되고 `start`가 오지 않아 서버가 조용히 꺼져 있던 구간(2026-08-08 새벽 53분·5시간)이 이걸 만든 이유다.
+
+- `npm stop` 은 `.majak/paused` 를 남긴다 → 감시자가 손대지 않는다. 다시 켜려면 `npm start`.
+- `npm run restart` / `serve.sh restart` 는 표식을 남기지 않는다 → 중간에 끊겨도 감시자가 이어서 세운다.
+- 15분 안에 3번 넘게 되살리면 멈추고 로그에 적는다(부팅 자체가 깨진 상황). 로그는 `.majak/watchdog.log`.
+- LaunchAgent라 **로그인 세션에서만** 돈다.
+
 ### 절대 하지 않는 것
 - `git push --force`, force-with-lease, master에 대한 강제 갱신
 - 브랜치·태그·원격 참조 삭제 (병합된 PR의 소스 브랜치 삭제는 예외)

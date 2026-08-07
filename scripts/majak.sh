@@ -17,6 +17,10 @@ RUNDIR="$ROOT/.majak"
 PIDFILE="$RUNDIR/server.pid"
 PORTFILE="$RUNDIR/server.port"
 LOG="$RUNDIR/server.log"
+# 사람이 **일부러** 껐다는 표식. 감시자(watchdog.sh)는 이 파일이 있으면 손대지 않는다.
+# `stop`이 만들고 `start`가 지운다. `restart`의 내부 stop은 만들지 않는다 —
+# 배포 도중(stop 직후) 세션이 끊겨도 감시자가 1분 안에 다시 세우게 하려는 것이다.
+PAUSEFILE="$RUNDIR/paused"
 PORT="${PORT:-3001}"
 
 mkdir -p "$RUNDIR"
@@ -55,6 +59,7 @@ start() {
     echo "이미 실행 중입니다 (pid $(cat "$PIDFILE")) — http://localhost:$(running_port)"
     exit 0
   fi
+  rm -f "$PAUSEFILE"
   echo "▶ 클라이언트 빌드 중…"
   if ! (cd "$ROOT" && npm run build:client >"$RUNDIR/build.log" 2>&1); then
     echo "✗ 클라이언트 빌드 실패:"; tail -20 "$RUNDIR/build.log"; exit 1
@@ -88,7 +93,12 @@ start() {
   fi
 }
 
+# stop [--for-restart]
+#   --for-restart 를 주면 일시정지 표식을 남기지 않는다(곧 start가 뒤따르므로).
 stop() {
+  local keep_paused=1
+  if [ "${1:-}" = "--for-restart" ]; then keep_paused=0; fi
+  if [ "$keep_paused" = "1" ]; then : >"$PAUSEFILE"; fi
   if is_running; then
     local pid; pid="$(cat "$PIDFILE")"
     kill "$pid" 2>/dev/null || true
@@ -106,14 +116,18 @@ stop() {
     rm -f "$PIDFILE" "$PORTFILE"
     echo "실행 중이 아닙니다."
   fi
+  if [ "$keep_paused" = "1" ]; then
+    echo "  (감시자는 이 상태를 건드리지 않습니다 — 다시 켜려면 npm start)"
+  fi
 }
 
 case "${1:-}" in
   start) start ;;
   stop) stop ;;
-  restart) stop; start ;;
+  restart) stop --for-restart; start ;;
   status)
     if is_running; then echo "실행 중 (pid $(cat "$PIDFILE")) — http://localhost:$(running_port)";
+    elif [ -f "$PAUSEFILE" ]; then echo "꺼짐 (사람이 끔 — 감시자가 되살리지 않습니다)";
     else echo "꺼짐"; fi ;;
   logs) exec tail -n 50 -f "$LOG" ;;
   *) echo "사용법: $0 {start|stop|restart|status|logs}"; exit 1 ;;
