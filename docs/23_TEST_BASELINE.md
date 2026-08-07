@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   1939 / 1939 통과 (실패 0)   ← 2026-08-07 갱신 (P1 A: 서버 견고성·봇·클라 회귀 94건 추가)
+npm test                   1955 / 1955 통과 (실패 0)   ← 2026-08-07 갱신 (조커 분해 성능·차등 검증 16건 추가)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
