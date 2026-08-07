@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -1212,22 +1220,110 @@ function BotArchetypePicker(props: {
 }): JSX.Element {
   const cur = props.archetype ?? "";
   const info = archetypeInfo(props.archetype);
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [box, setBox] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // 목록은 body 포털로 띄운다(FIXED_SURFACE_NOTE) — 좌석 줄 안에 두면 대기실 패널에
+  // 잘린다. 그래서 위치는 버튼의 화면 좌표에서 직접 잡는다.
+  const place = (): void => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r === undefined) return;
+    const width = Math.max(r.width, 168);
+    setBox({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - width - 8), width });
+  };
+
+  /**
+   * 띄운 뒤 **실제 높이를 재서** 화면 안으로 끌어들인다.
+   *
+   * 줄 수 × 대충 잡은 높이로 미리 계산했더니 마지막 좌석(북)에서 목록 끝이 화면
+   * 밖으로 나갔다 — 설명 줄이 몇 줄로 접히는지는 글꼴·폭에 따라 달라서 미리 알 수 없다.
+   * 페인트 전에 고치므로 튀어 보이지 않는다.
+   */
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    const r = btnRef.current?.getBoundingClientRect();
+    if (el === null || r === undefined || box === null) return;
+    const h = el.offsetHeight;
+    // 아래로 넘치면 버튼 위로 뒤집고, 그래도 안 들어가면 화면 안에 맞춘다
+    const want = r.bottom + 6 + h > window.innerHeight - 8 ? r.top - h - 6 : r.bottom + 6;
+    const top = Math.max(8, Math.min(want, window.innerHeight - h - 8));
+    if (Math.abs(top - box.top) > 1) setBox({ ...box, top });
+  }, [box]);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    const close = (): void => setOpen(false);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    // 스크롤·리사이즈로 버튼이 움직이면 목록만 남아 떠다닌다 — 그냥 닫는다
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <select
-      className="seat-arch-pick"
-      value={ARCHETYPE_ORDER.includes(cur) ? cur : ""}
-      title={info !== null ? `${info.label} 봇 — ${info.desc}` : "봇 성향 선택"}
-      aria-label="봇 성향"
-      onChange={(e) => props.onChange(e.target.value)}
-    >
-      {/* 서버가 모르는 원형을 보내 온 경우에만 잠깐 보이는 빈 항목 */}
-      {ARCHETYPE_ORDER.includes(cur) ? null : <option value="">성향</option>}
-      {ARCHETYPE_ORDER.map((id) => (
-        <option key={id} value={id}>
-          {ARCHETYPE_INFO[id]?.label ?? id}
-        </option>
-      ))}
-    </select>
+    <>
+      <button
+        type="button"
+        ref={btnRef}
+        className={`seat-arch-pick${open ? " seat-arch-open" : ""}`}
+        title={info !== null ? `${info.label} 봇 — ${info.desc}` : "봇 성향 선택"}
+        aria-label="봇 성향"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="seat-arch-label">{info?.label ?? "성향"}</span>
+        <span className="seat-arch-caret" aria-hidden="true" />
+      </button>
+      {open && box !== null
+        ? createPortal(
+            <>
+              {/* 바깥을 누르면 닫힌다 — 목록보다 아래에 깔린 투명 판 */}
+              <div className="arch-menu-catch" onClick={() => setOpen(false)} />
+              <div
+                className="arch-menu"
+                ref={menuRef}
+                role="listbox"
+                aria-label="봇 성향"
+                style={{ top: box.top, left: box.left, minWidth: box.width }}
+              >
+                {ARCHETYPE_ORDER.map((id) => {
+                  const opt = ARCHETYPE_INFO[id];
+                  const sel = id === cur;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="option"
+                      aria-selected={sel}
+                      className={`arch-opt${sel ? " arch-opt-sel" : ""}`}
+                      onClick={() => {
+                        setOpen(false);
+                        if (!sel) props.onChange(id);
+                      }}
+                    >
+                      <span className="arch-opt-name">{opt?.label ?? id}</span>
+                      {/* 이름만으로는 뭐가 다른지 모른다 — 고르는 자리에서 바로 읽히게 한다 */}
+                      <span className="arch-opt-desc">{opt?.desc ?? ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
