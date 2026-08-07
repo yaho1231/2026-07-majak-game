@@ -44,6 +44,8 @@ interface ViewOpts {
   hand?: TileKind[];
   score?: number;
   riichiOpponents?: string[];
+  /** 몇 번째 순인가 — 같은 값이면 같은 순(증강 1회 제한의 창) */
+  turnCount?: number;
 }
 
 /** BotAgent가 실제로 읽는 필드만 채운 최소 PlayerView (그 외는 캐스팅으로 생략). */
@@ -72,7 +74,7 @@ function makeView(opts: ViewOpts = {}): PlayerView {
     ],
     round: {
       prevalentWind: 1, roundNumber: 1, honba: 0, riichiPot: 0,
-      dealerSeat: 0, turnSeat: 0, turnCount: 3, phase: "turn.act", direction: 1,
+      dealerSeat: 0, turnSeat: 0, turnCount: opts.turnCount ?? 3, phase: "turn.act", direction: 1,
       doraIndicators: [], lastDiscard: null, myDrawnTile: null, uraDoraIndicators: null,
       byPlayer,
     },
@@ -271,5 +273,65 @@ describe("BotAgent — 액티브 2개가 동시에 발동을 원할 때", () => 
     ]);
     const decision = await bot.decide({ player: "p0", options });
     expect(decision.type).toBe("strong_aug");
+  });
+});
+
+// ─────────────────── 한 순에 1회 (왕패의 주인 알람 두 번) ───────────────────
+
+/**
+ * 증강 발동은 턴을 소비하지 않아서, 발동 뒤에 온 새 프롬프트에서 같은 정책이 또 이길 수
+ * 있었다. 왕패의 주인이 그랬다 — 교환 1회 = 액션 1개라 봇이 자기 첫 순에 dw_swap을
+ * 두 번 보냈고, 사람 화면에는 발동 컷인이 두 번 떴다(2026-08-07 사용자 보고).
+ */
+describe("BotAgent — 액티브 증강은 한 순에 한 번만 태운다", () => {
+  it("같은 순에 다시 물어도 이미 태운 액션은 고르지 않는다", async () => {
+    const defs = [alwaysFire("dw_swap")];
+    const bot = new BotAgent("p0", undefined, 1, defs);
+    const view = makeView({ augments: ["dw_swap"], hand: TENPAI_HAND, turnCount: 3 });
+    const options = optionsWith(view, [{ type: "dw_swap", payload: {} }]);
+
+    bot.sendView(view);
+    expect((await bot.decide({ player: "p0", options })).type).toBe("dw_swap");
+
+    // 교환이 반영된 새 뷰가 와도 **같은 순**이다 — 두 번째 발동은 없다
+    bot.sendView(makeView({ augments: ["dw_swap"], hand: TENPAI_HAND, turnCount: 3 }));
+    expect((await bot.decide({ player: "p0", options })).type).toBe("discard");
+  });
+
+  it("순이 넘어가면 다시 태울 수 있다", async () => {
+    const defs = [alwaysFire("dw_swap")];
+    const bot = new BotAgent("p0", undefined, 1, defs);
+    const view = makeView({ augments: ["dw_swap"], hand: TENPAI_HAND, turnCount: 3 });
+    const options = optionsWith(view, [{ type: "dw_swap", payload: {} }]);
+
+    bot.sendView(view);
+    expect((await bot.decide({ player: "p0", options })).type).toBe("dw_swap");
+
+    bot.sendView(makeView({ augments: ["dw_swap"], hand: TENPAI_HAND, turnCount: 4 }));
+    expect((await bot.decide({ player: "p0", options })).type).toBe("dw_swap");
+  });
+
+  it("발동 한 번이 액션 둘로 이어지는 흐름(공개 → 재배열)은 막지 않는다", async () => {
+    // 같은 증강이라도 **액션 타입이 다르면** 이어서 태울 수 있다 (예지·등가교환).
+    const defs = [alwaysFire("step_one"), alwaysFire("step_two")];
+    const bot = new BotAgent("p0", undefined, 1, defs);
+    const view = makeView({
+      augments: ["step_one", "step_two"], hand: TENPAI_HAND, turnCount: 3,
+    });
+    bot.sendView(view);
+    const first = await bot.decide({
+      player: "p0",
+      options: optionsWith(view, [{ type: "step_one", payload: {} }]),
+    });
+    expect(first.type).toBe("step_one");
+
+    bot.sendView(makeView({
+      augments: ["step_one", "step_two"], hand: TENPAI_HAND, turnCount: 3,
+    }));
+    const second = await bot.decide({
+      player: "p0",
+      options: optionsWith(view, [{ type: "step_two", payload: {} }]),
+    });
+    expect(second.type).toBe("step_two");
   });
 });

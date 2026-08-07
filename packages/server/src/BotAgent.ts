@@ -168,6 +168,20 @@ export class BotAgent implements PlayerAgent {
   private read: BotRead | null = null;
   /** 현재 국 식별자 (바뀌면 목표 역 초기화) */
   private roundKey = "";
+  /**
+   * **한 순에 같은 액티브 증강을 두 번 태우지 않는다.**
+   *
+   * 증강 발동은 턴을 소비하지 않아서(1층), 발동 뒤에 온 새 프롬프트에서 같은 정책이
+   * 또 이길 수 있다. 왕패의 주인이 그랬다 — 교환 1회 = 액션 1개라, 봇은 자기 첫 순에
+   * dw_swap을 연달아 두 번 보내고 사람 화면에는 발동 컷인이 두 번 떴다
+   * (2026-08-07 사용자 보고). 사람은 모달에서 쌍을 모아 **한 번에** 확정하므로,
+   * 봇도 한 순에 한 번으로 맞춘다.
+   *
+   * 막는 단위는 **액션 타입**이다 — 예지(공개 → 재배열)나 등가교환(넘기기 → 받기)처럼
+   * 발동 한 번이 서로 다른 액션 두 개로 이어지는 흐름은 그대로 둔다.
+   */
+  private turnKey = "";
+  private firedThisTurn = new Set<string>();
   /** 후로로 확정한 이번 국의 목표 역 */
   private plan: HandPlan = null;
   /**
@@ -312,6 +326,12 @@ export class BotAgent implements PlayerAgent {
       this.roundKey = rk;
       this.plan = null; // 새 국 → 목표 역 초기화
     }
+    // 순이 넘어가면 '이 순에 태운 증강' 기록을 비운다 (한 순 1회 제한의 창)
+    const tk = `${rk}-${view.round.turnCount}-${view.round.turnSeat}`;
+    if (tk !== this.turnKey) {
+      this.turnKey = tk;
+      this.firedThisTurn = new Set();
+    }
   }
 
   /**
@@ -434,9 +454,21 @@ export class BotAgent implements PlayerAgent {
     // 턴을 소비하지 않으므로 버림·리치와 경쟁하지 않는다. 이득이 눈에 보이면 먼저 한다.
     const extra = bestBid([
       bidKan(read, options, this.profile, this.plan),
-      ...this.augmentBids(read, options),
+      // 이 순에 이미 태운 액션은 후보에서 뺀다 — 정책은 남은 것 중에서 고른다
+      ...this.augmentBids(
+        read,
+        this.firedThisTurn.size === 0
+          ? options
+          : options.filter((o) => !this.firedThisTurn.has(o.type)),
+      ),
     ]);
-    if (extra !== null && extra.value > EXTRA_ACTION_FLOOR) return extra.option;
+    if (extra !== null && extra.value > EXTRA_ACTION_FLOOR) {
+      // 증강 발동이면 이 순에는 같은 액션을 다시 태우지 않는다 (위 firedThisTurn 주석)
+      if (!STANDARD_ACTION_TYPES.has(extra.option.type)) {
+        this.firedThisTurn.add(extra.option.type);
+      }
+      return extra.option;
+    }
 
     // ── 2층: 턴을 소비하는 행동 ──
     // 전부 "그 길로 갔을 때 이 판이 얼마짜리인가"(절대 EV)로 입찰하므로 직접 견줄 수 있다.

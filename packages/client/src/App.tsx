@@ -1866,6 +1866,18 @@ export function App(): JSX.Element {
   /** 이번 국 결과에 대해 roundContinue(다음 국 신호)를 이미 보냈는지 — 국마다 리셋 */
   const roundContinueSent = useRef(false);
   /**
+   * 이번 순에 이미 컷인을 띄운 증강 발동 (`{player}:{actionType}`).
+   *
+   * 서버는 **액션 1개 = 발동 1회**로 받는데, 발동 한 번이 액션 여럿으로 쪼개지는
+   * 증강이 있다 — 왕패의 주인은 한 번 확정에 교환 쌍만큼(최대 2개) dw_swap을
+   * 연달아 보낸다. 그대로 두면 한 번 쓴 것에 컷인이 두 번 떴다
+   * (2026-08-07 사용자 보고: 봇이 쓰면 알람 두 번). 순이 바뀌면 통째로 비운다.
+   */
+  const fxSeenRef = useRef<{ turn: string; keys: Set<string> }>({
+    turn: "",
+    keys: new Set(),
+  });
+  /**
    * 서버가 다음 국을 그냥 시작해 버리는 시각(performance.now 기준). 결과 화면의
    * "다음 국으로" 버튼이 세는 남은 시간이다.
    *
@@ -2655,6 +2667,17 @@ export function App(): JSX.Element {
         catalogRef.current[msg.actionType]?.name ??
         msg.actionType;
       const pv = prevViewRef.current;
+      // 같은 순에 같은 사람이 같은 액션을 또 보내면(왕패의 주인 2장 교환 = dw_swap 2개)
+      // 컷인은 **한 번만** 띄운다 — 사용자에게는 발동 한 번이다.
+      if (pv !== null) {
+        const r = pv.round;
+        const turn = `${r.prevalentWind}:${r.roundNumber}:${r.honba}:${r.turnCount}`;
+        const seen = fxSeenRef.current;
+        if (seen.turn !== turn) fxSeenRef.current = { turn, keys: new Set() };
+        const key = `${msg.player}:${msg.actionType}`;
+        if (fxSeenRef.current.keys.has(key)) return;
+        fxSeenRef.current.keys.add(key);
+      }
       const who = pv !== null ? playerNameById(pv, msg.player) : msg.player;
       // 증강 발동은 후로(타악)와 계열이 다른 "번개 스침" 사운드 — 소리만으로 구분된다
       showCutIn(label, "augment", `${who} — 증강 발동`, 1600, {
@@ -10220,8 +10243,14 @@ function OwnArea(props: {
             컨테이닝 블록**이 된다 — 그래서 `inset: 0`이 화면이 아니라 손패 영역을 가리켜
             모달이 화면 아래쪽에 처박히고 아래가 잘렸다(2026-08-06 사용자 보고: 분열).
             같은 클래스를 쓰는 다른 모달들은 `.own-area` 바깥이라 멀쩡했다. */}
+        {/* ⚠ `data-arm-zone`은 필수다. 무장 중에는 게임판 바깥을 누르면 무장이 풀리는데
+            (GameTable의 pointerdown 감시), 이 모달은 body로 포탈돼 `.own-area`의
+            arm-zone 밖에 있다 → 후보를 누르는 pointerdown이 먼저 무장을 풀고, 무장이
+            풀리면 armSub도 함께 비워져 **모달이 click 전에 사라졌다**. 그래서 후보가
+            둘 이상인 위조·분열·염색에서 아무리 눌러도 골라지지 않았다
+            (2026-08-07 사용자 보고: 선언 간파 — 새 탭에서 선택이 안 됨). */}
         {armSub !== null ? createPortal(
-          <div className="rinshan-pick-overlay">
+          <div className="rinshan-pick-overlay" data-arm-zone="1">
             <div className="rinshan-pick-panel">
               <div className="rinshan-pick-title">
                 ✦ {armName} — {armSub.options[0]?.type === "split_tile" ? "어떻게 쪼갤까요?" : "무엇으로 바꿀까요?"}
