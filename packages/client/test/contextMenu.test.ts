@@ -40,29 +40,44 @@ describe("우클릭 차단 — 글자 치는 칸은 예외", () => {
 });
 
 /**
- * 우클릭 쯔모기리 — 손패 어디서든 오른쪽 버튼이면 쯔모패가 나간다.
- * 실제 동작은 실게임에서 확인했고(우클릭한 패가 아니라 쯔모패가 버려진다),
- * 여기서는 **조용히 풀릴 수 있는 배선**만 못 박는다.
+ * 우클릭 쯔모기리 — **판 어디서든** 오른쪽 버튼이면 쯔모패가 나간다.
+ *
+ * 처음엔 손패 상자에만 걸려 있었는데, 그 상자는 화면 맨 아래 80px 남짓한 띠라
+ * 판을 보다가 누르면 거의 다 빗나갔다("작동을 안 한다"의 실체). 그래서 게임판 전체로
+ * 올렸고, 아래는 **그게 조용히 손패로 되돌아가지 않게** 못 박는 테스트다.
  */
 describe("우클릭 쯔모기리", () => {
+  /** rightClickTsumogiri 핸들러 본문 */
+  const body = (() => {
+    const fn = APP.slice(APP.indexOf("function rightClickTsumogiri("));
+    return fn.slice(0, fn.indexOf("\n  }"));
+  })();
+
   it("설정으로 끌 수 있고, 기본은 켜져 있다", () => {
     expect(APP).toContain("rightClickTsumogiri: true"); // DEFAULT_SETTINGS
     expect(APP).toContain('key: "rightClickTsumogiri"'); // 설정 패널의 한 줄
+    expect(body).toContain("!props.settings.rightClickTsumogiri");
   });
 
-  it("개별 패가 아니라 손패 상자에 걸린다 (겨냥하지 않아도 되는 것이 요점)", () => {
-    expect(APP).toContain("onContextMenu={rightClickDiscard}");
+  it("손패 상자가 아니라 **게임판 전체**에 걸린다", () => {
+    expect(APP).toContain('<div className="table" ref={tableRef} onContextMenu={rightClickTsumogiri}>');
+    // 손패 상자에 다시 걸리면 판 핸들러와 이중으로 제출된다
+    expect(APP).not.toContain("onContextMenu={rightClickDiscard}");
   });
 
-  it("버리는 것은 우클릭한 패가 아니라 **쯔모패**다", () => {
-    const fn = APP.slice(APP.indexOf("function rightClickDiscard("));
-    expect(fn.slice(0, fn.indexOf("\n  }"))).toContain("discardOptionFor(drawnId)");
+  it("버리는 것은 우클릭한 자리가 아니라 **쯔모패**다", () => {
+    expect(body).toContain("view.round.myDrawnTile");
+    expect(body).toContain("tileId?: unknown }).tileId === drawnId");
+  });
+
+  it("쯔모패가 손패에 없으면(후로 직후 등) 아무것도 내지 않는다", () => {
+    expect(body).toContain("hand:${me.id}");
+    expect(body).toContain("includes(drawnId)");
   });
 
   it("오른쪽 버튼이 이미 다른 뜻인 자리에서는 듣지 않는다", () => {
-    const fn = APP.slice(APP.indexOf("function rightClickDiscard("));
-    const body = fn.slice(0, fn.indexOf("\n  }"));
-    // 리치할 패 고르는 중 · 증강 무장 중 · 관전
-    expect(body).toContain("isSpectator || props.riichiMode || armedAug !== null");
+    expect(body).toContain("props.spectator === true || view.playerId === SPECTATOR_ID");
+    expect(body).toContain("props.riichiMode || selection.armedType !== null");
+    expect(body).toContain("isTypingTarget(e.target)"); // 글자 치는 칸
   });
 });
