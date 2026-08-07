@@ -16,7 +16,6 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { splitTerms } from "../src/glossary.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(join(HERE, "../src/App.tsx"), "utf8");
@@ -67,15 +66,13 @@ describe("국 결과 화면 — 스스로 닫지 않는다", () => {
   });
 });
 
-describe("국 결과 화면 — 역 이름을 용어 사전에 물린다", () => {
-  it("역 줄이 TermText를 쓴다", () => {
-    expect(panelSource()).toContain("<TermText text={r.label} />");
-  });
-
-  it("대표 역 이름이 실제로 사전에 걸린다", () => {
-    for (const label of ["핑후", "탕야오", "치토이츠", "일기통관", "국사무쌍"]) {
-      const terms = splitTerms(label).filter((c) => c.kind === "term");
-      expect(terms.length, `${label}이 용어로 안 걸린다`).toBeGreaterThan(0);
-    }
+describe("국 결과 화면 — 역 이름에는 밑줄을 긋지 않는다", () => {
+  // 한때 역 이름을 용어 사전(TermText)에 물렸는데, 역이 대여섯 줄 쌓이면 화면이
+  // 온통 점선 밑줄이 되어 정작 어느 역이 큰지가 안 보였다. 결과창은 점수를 읽는
+  // 자리다 — 용어 풀이는 도감과 규칙 설명이 맡는다.
+  it("역 줄이 TermText를 쓰지 않는다", () => {
+    const body = panelSource();
+    expect(body).toContain("<span className=\"result-yaku-name\">{r.label}</span>");
+    expect(body).not.toContain("<TermText text={r.label} />");
   });
 });

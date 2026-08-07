@@ -7317,6 +7317,49 @@ button {
   min-width: 200px;
 }
 
+/* 계열 필터 칩 — 검색줄 바로 아래 한 줄. 색은 계열 색(--fx-color)을 따라간다. */
+.codex-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px clamp(16px, 4cqw, 48px) 0;
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+}
+.codex-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.03);
+  color: #a8bcaf;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.codex-cat:hover { border-color: rgba(255, 255, 255, 0.28); color: #ddeade; }
+.codex-cat-ico { font-size: 12px; line-height: 1; }
+.codex-cat-n {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+.codex-cat-on {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #f7f3e8;
+}
+.codex-cat-on[class*="aug-cat-"] {
+  color: color-mix(in srgb, var(--fx-color) 78%, #f7f3e8);
+  background: color-mix(in srgb, var(--fx-color) 16%, rgba(0, 0, 0, 0.34));
+  border-color: color-mix(in srgb, var(--fx-color) 52%, transparent);
+}
+
 .codex-main {
   flex: 1;
   padding: 20px clamp(16px, 4cqw, 48px) 56px;
@@ -7522,6 +7565,8 @@ button {
     white-space: nowrap;
   }
   .codex-toolbar { gap: 8px; padding: 10px 12px; }
+  .codex-cats { padding: 8px 12px 0; gap: 5px; }
+  .codex-cat { padding: 5px 9px; font-size: 12px; }
   .codex-main { padding: 14px 12px 40px; }
   .codex-grid { grid-template-columns: minmax(0, 1fr); }
   .codex-filters { flex-wrap: wrap; }

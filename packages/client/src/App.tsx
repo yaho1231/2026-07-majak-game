@@ -51,7 +51,7 @@ import type {
   TileKind,
   WinInfo,
 } from "@majak/core";
-import { SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
+import { AUGMENT_CATEGORIES, SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
 import { contentAugments } from "@majak/content";
 import { briefOf, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
@@ -4593,6 +4593,8 @@ function CodexScreen(props: {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [onlyCollected, setOnlyCollected] = useState(false);
+  /** 계열 필터. null이면 전체 — 104종을 한 화면에서 훑기는 어려워 계열로 좁힌다. */
+  const [category, setCategory] = useState<AugmentCategory | null>(null);
   const [sortKey, setSortKey] = useState<CodexSortKey>("srvAvg");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -4629,12 +4631,31 @@ function CodexScreen(props: {
   const filtered = useMemo(() => {
     return merged.filter((m) => {
       if (onlyCollected && !m.collected) return false;
+      if (category !== null && m.cat.category !== category) return false;
       if (q !== "" && !m.cat.name.toLowerCase().includes(q) && !m.cat.id.includes(q)
         && !(m.cat.detail ?? "").toLowerCase().includes(q)
         && !m.cat.description.toLowerCase().includes(q)) return false;
       return true;
     });
+  }, [merged, onlyCollected, category, q]);
+
+  /** 계열 칩에 붙일 개수 — 계열 필터를 뺀 나머지 조건(수집·검색)까지 반영한 수다. */
+  const catCounts = useMemo(() => {
+    const counts = new Map<AugmentCategory, number>();
+    for (const m of merged) {
+      if (onlyCollected && !m.collected) continue;
+      if (q !== "" && !m.cat.name.toLowerCase().includes(q) && !m.cat.id.includes(q)
+        && !(m.cat.detail ?? "").toLowerCase().includes(q)
+        && !m.cat.description.toLowerCase().includes(q)) continue;
+      counts.set(m.cat.category, (counts.get(m.cat.category) ?? 0) + 1);
+    }
+    return counts;
   }, [merged, onlyCollected, q]);
+  const catTotal = useMemo(() => {
+    let n = 0;
+    for (const v of catCounts.values()) n += v;
+    return n;
+  }, [catCounts]);
 
   // 도감 그리드: 등급이 없어졌으므로 이름 가나다순 한 덩어리
   const cards = useMemo(
@@ -4721,6 +4742,28 @@ function CodexScreen(props: {
           placeholder="증강 이름·설명 검색"
           onChange={(e) => setQuery(e.target.value)}
         />
+      </div>
+
+      {/* 계열 필터 — 아이콘·라벨은 인게임 pill과 같은 CATEGORY_META를 쓴다.
+          지금 조건에서 하나도 없는 계열은 칩 자체를 감춘다(누를 이유가 없다). */}
+      <div className="codex-cats" role="group" aria-label="계열 필터">
+        <button
+          className={category === null ? "codex-cat codex-cat-on" : "codex-cat"}
+          onClick={() => setCategory(null)}
+        >
+          전체 <span className="codex-cat-n">{catTotal}</span>
+        </button>
+        {AUGMENT_CATEGORIES.filter((c) => (catCounts.get(c) ?? 0) > 0 || c === category).map((c) => (
+          <button
+            key={c}
+            className={`codex-cat aug-cat-${c}${category === c ? " codex-cat-on" : ""}`}
+            onClick={() => setCategory(category === c ? null : c)}
+          >
+            <span className="codex-cat-ico" aria-hidden="true">{CATEGORY_META[c].icon}</span>
+            {CATEGORY_META[c].label}
+            <span className="codex-cat-n">{catCounts.get(c) ?? 0}</span>
+          </button>
+        ))}
       </div>
 
       <main className="codex-main">
@@ -4958,9 +5001,9 @@ const HELP_BASICS: HelpSection[] = [
     ],
   },
   {
-    title: "울기 — 폰 · 치 · 캉",
+    title: "울기 — 치 · 퐁 · 깡",
     paras: [
-      "남이 버린 패를 가져와 묶음을 완성할 수 있습니다. 같은 패 2장을 들고 있으면 누구에게서든 폰, 연속 두 장을 들고 있으면 바로 위(상가)에게서만 치입니다. 같은 패 4장은 캉입니다.",
+      "남이 버린 패를 가져와 묶음을 완성할 수 있습니다. 연속 두 장을 들고 있으면 바로 위(상가)에게서만 치, 같은 패 2장을 들고 있으면 누구에게서든 퐁입니다. 같은 패 4장은 깡입니다.",
       "울면 그 묶음이 공개되고 멘젠이 깨집니다 — 리치를 걸 수 없고 쓸 수 있는 역이 줄어듭니다.",
     ],
   },
@@ -11720,10 +11763,9 @@ function RoundResultPanel({
                   className={`result-yaku${r.aug === true ? " result-yaku-aug" : ""}`}
                   style={{ animationDelay: `${0.15 + i * 0.09}s` }}
                 >
-                  {/* 역 이름을 용어 사전에 물린다 — 결과 화면은 초보자가 "핑후"가
-                      무엇인지 물어볼 유일한 자리인데, 그동안은 이름만 스쳐 지나갔다.
-                      증강 설명과 같은 TermText라 설정의 "용어 설명" 토글도 그대로 따른다. */}
-                  <span className="result-yaku-name"><TermText text={r.label} /></span>
+                  {/* 역 이름은 그냥 이름으로 둔다 — 결과 화면은 점수를 읽는 자리다.
+                      줄줄이 밑줄이 그어지면 어느 역이 큰지가 안 보인다. */}
+                  <span className="result-yaku-name">{r.label}</span>
                   <span className="result-han">{r.han}</span>
                 </div>
               ))}
