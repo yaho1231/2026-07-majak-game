@@ -5612,6 +5612,27 @@ function useDoraFx(view: PlayerView, enabled: boolean): DoraFx {
   }, [view, enabled]);
 }
 
+/**
+ * 모드 표시 (좌상단) — 지금 무슨 판이고 증강을 언제 받는지.
+ *
+ * 판 길이는 대기실에서 한 번 고르고 나면 화면 어디에도 안 남아서, 들어와 보면
+ * "이게 반장인가 동풍인가"를 국 번호로 역산해야 했다. 증강 획득 시점도 마찬가지다.
+ */
+const MODE_BADGE: Record<GameMode, { name: string; drafts: string }> = {
+  hanchan: { name: "반장전", drafts: "동1·동3·남1·남3국" },
+  tonpuu: { name: "동풍전", drafts: "동1·동3·동4국" },
+};
+
+function ModeBadge(props: { mode: GameMode }): JSX.Element {
+  const m = MODE_BADGE[props.mode] ?? MODE_BADGE.hanchan;
+  return (
+    <div className="mode-badge" title={`${m.name} — 증강 획득: ${m.drafts}`}>
+      <span className="mode-badge-name">{m.name}</span>
+      <span className="mode-badge-drafts">증강 {m.drafts}</span>
+    </div>
+  );
+}
+
 function GameTable(props: {
   view: PlayerView;
   prompt: PromptMessage["prompt"] | null;
@@ -5734,6 +5755,7 @@ function GameTable(props: {
           ) : null}
         </div>
       ) : null}
+      <ModeBadge mode={view.round.mode} />
       <button
         className="icon-btn settings-btn"
         onClick={() => {

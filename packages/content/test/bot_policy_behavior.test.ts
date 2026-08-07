@@ -68,6 +68,7 @@ function fakeView(holder: PlayerId, handSpec: string, players: FakePlayer[]): Pl
       isBot: true,
     })),
     round: {
+      mode: "hanchan",
       prevalentWind: 1,
       roundNumber: 1,
       honba: 0,

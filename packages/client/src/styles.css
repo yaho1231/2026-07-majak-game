@@ -352,6 +352,66 @@ button {
   right: 64px;
 }
 
+/* ─────────────── 모드 표시 (좌상단) ─────────────── */
+
+/* 지금 반장전인지 동풍전인지 + 증강을 언제 받는지. 읽히되 눈에 안 걸리게,
+   설정·나가기 버튼과 같은 높이(top:12px)에 왼쪽으로 세운다. */
+.mode-badge {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+  line-height: 1.2;
+}
+
+.mode-badge-name {
+  color: var(--ink-1);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.mode-badge-drafts {
+  color: var(--ink-3);
+  font-size: 11px;
+  letter-spacing: 0.2px;
+}
+
+/* 좁은 판(≤900cqw): 맞은편 상대 줄이 세로로 쌓이며 화면 폭을 거의 다 쓴다 —
+   배지를 한 단 줄이고, 그 줄은 배지·아이콘 버튼 아래로 내린다.
+   (700 이하에서는 아래쪽 기존 규칙이 48px로 더 올려 잡는다 — 배지 아래끝은 46px다.) */
+@container ui (max-width: 900px) {
+  .mode-badge {
+    top: 8px;
+    left: 8px;
+    padding: 4px 9px;
+  }
+  .mode-badge-name {
+    font-size: 12px;
+  }
+  .mode-badge-drafts {
+    font-size: 10px;
+  }
+}
+
+@container ui (max-width: 700px) {
+  /* 관전·관찰 바는 화면 가운데에 눕는다 — 좁은 폭에서는 두 줄짜리 배지의 오른쪽 끝과
+     닿는다. 그때만 획득 시점 줄을 접어 모드 이름만 남긴다. */
+  .spectate-bar ~ .mode-badge .mode-badge-drafts,
+  .sbx-observe-bar ~ .mode-badge .mode-badge-drafts {
+    display: none;
+  }
+}
+
 /* ─────────────── 인게임 빠른 토글 (좌하단) ─────────────── */
 
 .quick-toggles {
@@ -6022,6 +6082,9 @@ button {
     gap: 6px;
     max-width: calc(100cqw - 12px);
     --back-room-x: 24px;
+    /* 세로로 쌓인 줄은 폭을 거의 다 써서 좌상단 모드 표시와 같은 높이에서 부딪친다 —
+       배지(아래끝 46px)와 우상단 아이콘 버튼 아래로 내린다. */
+    top: 56px;
   }
 
   /* 좌하단 빠른 토글이 손패 왼쪽 끝을 덮는다 — 손패 위 가로 줄로 옮긴다 */
