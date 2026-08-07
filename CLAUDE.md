@@ -6,19 +6,20 @@
 
 1. **작업은 항상 브랜치에서.** master에 직접 커밋 금지.
 2. 커밋 후 `git push -u origin <branch>`.
-3. 게이트: **테스트 1585개 전부 통과 + 타입 에러 0**. 기준선과 알려진 플레이크는 [docs/23_TEST_BASELINE.md](docs/23_TEST_BASELINE.md).
+3. 게이트: **테스트 전부 통과 + 타입 에러 0**. 현재 기준선 개수와 알려진 플레이크는 [docs/23_TEST_BASELINE.md](docs/23_TEST_BASELINE.md)가 단일 진실이다 — 이 파일에 개수를 적어 두면 곧 낡는다.
    ```
    npm test
    npm run typecheck && npm run typecheck:content && npm run typecheck:server && npm run typecheck:client
    ```
    - 실패가 생기면 머지 금지. 원인을 고친다.
-   - 실패가 났을 때 **먼저 그 파일만 단독 실행해 본다** — 병렬 부하 탓 플레이크일 수 있다(기준선 문서에 알려진 1건 있음).
+   - 실패가 났을 때 **먼저 그 파일만 단독 실행해 본다** — 병렬 부하 탓 플레이크일 수 있다(기준선 문서에 알려진 것들이 있다).
    - 못 고치면 PR을 draft로 두고 사용자에게 보고한다.
-   - **워크트리의 vitest는 메인 체크아웃 core를 본다.** `node_modules`가 없어 `@majak/core`가 상위 심볼릭링크로 해석되기 때문이다. core를 고쳤다면 alias 설정으로 한 번 더 돌린다:
+   - **워크트리에서는 먼저 workspace 링크를 만든다 (필수).** 워크트리의 `node_modules`에는 vite 캐시만 있고 `@majak` 디렉터리가 없어서, `@majak/*` 해석이 상위 메인 체크아웃으로 올라가 **master의 소스**로 간다. 링크를 만들지 않으면 `npm test`와 **타입체크 4종 전부** 워크트리 코드가 아니라 master를 검사한다(`tsconfig.base.json`에는 `paths`가 없다 — 2026-08-07 확인):
      ```
-     npx vitest run --config vitest.core.config.ts
+     mkdir -p node_modules/@majak
+     for p in core content server client; do ln -sfn ../../packages/$p node_modules/@majak/$p; done
      ```
-     (타입체크는 tsconfig `paths` 덕에 워크트리 core를 본다 — 그대로 믿어도 된다.)
+     확인: `node -e "console.log(require('fs').realpathSync('node_modules/@majak/core'))"` 가 워크트리 경로를 찍어야 한다. `node_modules/`는 .gitignore 대상이라 커밋에 영향이 없다.
 4. `gh pr create --base master` — 제목은 Conventional Commits, 본문에 변경 요약·검증 결과(테스트/타입체크 통과 여부)를 적는다.
 5. `gh pr merge --squash --delete-branch` 로 즉시 병합. (auto-merge가 켜져 있으면 `--auto` 사용)
 6. 병합 후 `git checkout master && git pull` 로 로컬 master를 동기화하고, 결과 요약을 사용자에게 보고한다.

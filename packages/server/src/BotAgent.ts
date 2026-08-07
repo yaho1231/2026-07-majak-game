@@ -62,6 +62,22 @@ import type { BotFlags } from "./bot/flags.js";
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
 
 /**
+ * **content가 준 코드가 던진 예외를 여기서 끊는다.**
+ *
+ * 증강 정책(`AugmentDef.bot.choose`)은 content 패키지의 코드다. 그 함수 하나가
+ * 던지면 예외는 `HanchanController` → `RoomManager`로 올라가 GAME_CRASHED가 나가고
+ * **방이 삭제된다** — 사람의 반장전 하나가 통째로 사라진다. 증강 66종의 정책이
+ * 봇의 모든 결정마다 도는데, 그중 하나의 버그가 그 대가를 치를 이유가 없다.
+ *
+ * 그래서 정책의 실패는 "이 증강은 이번 순에 입찰하지 않는다"로 **강등**한다.
+ * 봇은 남은 판단(버림·리치·후로)으로 멀쩡히 계속 두고, 운영자는 로그에서
+ * 증강 id와 예외를 그대로 본다.
+ */
+function logContentFailure(where: string, err: unknown): void {
+  console.error(`[BotAgent] 증강 코드 실패 (${where}) — 이 판단만 건너뛴다:`, err);
+}
+
+/**
  * 표준 마작 액션 — 이 밖의 액션 타입은 전부 액티브 증강의 발동이다
  * (증강이 자기 이름의 액션을 등록한다). 봇 증강 금지 판정에 쓴다.
  */
@@ -265,7 +281,7 @@ export class BotAgent implements PlayerAgent {
    * 선택은 조금 더 길게 끈다. 패스(리액션 거절)는 화면에 아무 변화도 없어 즉시 넘긴다.
    */
   async decide(prompt: DecisionPrompt): Promise<ActionOption> {
-    const chosen = this.decideNow(prompt);
+    const chosen = this.decideSafely(prompt);
     if (this.thinkMs > 0 && chosen.type !== "pass") {
       const weighty =
         chosen.type === "riichi" ||
@@ -277,6 +293,42 @@ export class BotAgent implements PlayerAgent {
       await new Promise((resolve) => setTimeout(resolve, ms));
     }
     return chosen;
+  }
+
+  /**
+   * **마지막 안전망** — 판단이 어떤 이유로 던지더라도 방은 살아남는다.
+   *
+   * 정책 예외는 `augmentBids`가 이미 증강 단위로 잡는다. 여기 있는 것은 그 그물을
+   * 빠져나간 것(정책이 만든 이상한 옵션을 다른 평가자가 만졌다든지)까지도
+   * **합법적인 한 수**로 강등하기 위한 것이다. 봇이 한 순 바보처럼 두는 것과
+   * 사람의 반장전이 삭제되는 것은 비교할 수 있는 손해가 아니다.
+   *
+   * 조용히 삼키지는 않는다 — 로그에 그대로 남으므로 운영자가 찾을 수 있다.
+   */
+  private decideSafely(prompt: DecisionPrompt): ActionOption {
+    try {
+      return this.decideNow(prompt);
+    } catch (err) {
+      logContentFailure("decide", err);
+      // 제약을 다시 적용해 고른다 — 안전망이 금지된 수를 두면 그것대로 규칙 위반이다
+      return this.fallbackOption(restrictOptions(prompt.options, this.restrictions));
+    }
+  }
+
+  /**
+   * 아무 판단도 못 했을 때 두는 수 — 패스가 있으면 패스(판을 흔들지 않는다),
+   * 없으면 첫 선택지.
+   *
+   * 선택지가 **하나도 없으면** 봇이 낼 답이 없다. 예전에는 `options[0]!`로 단언해
+   * `undefined`가 흐름으로 흘러갔고, 거기서 나는 오류는 원인을 가리키지 않았다.
+   * 이건 봇의 잘못이 아니라 프롬프트가 잘못된 것이므로 그렇게 말하고 던진다.
+   */
+  private fallbackOption(options: readonly ActionOption[]): ActionOption {
+    const fallback = options.find((o) => o.type === "pass") ?? options[0];
+    if (fallback === undefined) {
+      throw new Error(`BotAgent(${this.id}): 선택지가 없는 프롬프트에는 답할 수 없다`);
+    }
+    return fallback;
   }
 
   /**
@@ -303,10 +355,7 @@ export class BotAgent implements PlayerAgent {
     if (win) return win;
 
     const read = this.currentRead();
-    if (read === null) {
-      const fallback = options.find((o) => o.type === "pass") ?? options[0];
-      return fallback ?? options[0]!;
-    }
+    if (read === null) return this.fallbackOption(options);
     this.plan = readPlan(read, this.plan);
 
     // ── 1층: 추가 행동 (깡 · 액티브 증강) ──
@@ -350,7 +399,7 @@ export class BotAgent implements PlayerAgent {
 
     // 아무도 입찰하지 않는 프롬프트(증강이 만든 강제 선택지 등)는 난수로
     const idx = this.rng.int(options.length);
-    return options[idx] ?? options[0]!;
+    return options[idx] ?? this.fallbackOption(options);
   }
 
   /** 이번 결정의 판 읽기 (뷰당 한 번만 계산) */
@@ -387,6 +436,16 @@ export class BotAgent implements PlayerAgent {
     const me = read.view.players.find((p) => p.id === this.id);
     if (me === undefined || me.augments.length === 0) return [];
 
+    /**
+     * 정책에 넘기는 손 값어치는 **증강 배수를 얹지 않은** 값이다.
+     *
+     * `botPlan.myHandPoints`가 `ctx.handPoints`에 `augmentValueMultiplier`를 스스로
+     * 곱한다(content). 여기서 이미 곱한 값을 넘기면 같은 배수가 두 번 걸린다 —
+     * 뚫린 천장 하나로 1.35가 아니라 1.8이 되어 증강 발동 문턱이 통째로 무너진다.
+     * 배수는 버림·리치가 보는 `read.valueOf`에서만 걸리고, 정책 쪽 눈금은 종전 그대로다.
+     */
+    const handPoints = read.valueOf({ plan: this.plan, withoutAugments: true }).points;
+
     const ctx: BotDecisionContext = {
       view: read.view,
       options,
@@ -406,35 +465,48 @@ export class BotAgent implements PlayerAgent {
         allLast: read.match.allLast,
         riskAppetite: read.match.riskAppetite,
       },
-      handPoints: read.valueOf({ plan: this.plan }).points,
+      handPoints,
       // 증강 정책의 판단도 스위치 뒤에 두고 2:2로 잴 수 있게 한다 (실대국은 항상 비어 있다)
       flags: this.flags,
     };
-    // 증강의 값어치는 손의 값어치에 매인다 — 만관 손에서의 '평시 발동'과
-    // 1000점 손에서의 '평시 발동'은 같은 강도라도 실제 값이 다르다
-    const handPoints = read.valueOf({ plan: this.plan }).points;
 
     const bids: ActionBid[] = [];
     for (const augId of me.augments) {
       const def = this.catalog.get(augId);
       const policy = def?.bot;
       if (def === undefined || policy === undefined) continue;
-      const picked = policy.choose(ctx);
-      if (picked === null) continue;
-      const weighted =
-        "option" in picked
-          ? picked
-          : { option: picked, weight: defaultBotWeight(augId, def.category) };
-      const key = JSON.stringify(weighted.option);
-      const match = options.find((o) => JSON.stringify(o) === key);
-      if (match === undefined) continue;
-      bids.push({
-        option: match,
-        // 참을성 있는 봇은 같은 강도라도 "지금 태우는 것"의 값을 낮게 본다 —
-        // 아껴 두었다 더 좋은 자리에서 쓰려 한다.
-        value: augmentPoints(weighted.weight, handPoints) * (1.15 - this.profile.patience * 0.3),
-        reason: `증강 ${augId} (강도 ${weighted.weight})`,
-      });
+      /**
+       * **정책 하나의 실패가 판을 죽이지 않는다.** 여기서 도는 것은 content의 코드고,
+       * 던지면 방이 삭제된다(파일 위 `logContentFailure` 주석). 실패는 "이 증강은
+       * 이번 순에 입찰하지 않는다"까지만 간다 — 나머지 65종과 버림·리치는 그대로 돈다.
+       *
+       * `choose` 밖의 후처리(`JSON.stringify`)도 같은 try 안에 둔다. 정책이 순환
+       * 참조가 든 옵션을 돌려주면 거기서 던지는데, 그것도 정책의 실패이지
+       * 봇의 실패가 아니다.
+       */
+      let bid: ActionBid | null = null;
+      try {
+        const picked = policy.choose(ctx);
+        if (picked === null) continue;
+        const weighted =
+          "option" in picked
+            ? picked
+            : { option: picked, weight: defaultBotWeight(augId, def.category) };
+        const key = JSON.stringify(weighted.option);
+        const match = options.find((o) => JSON.stringify(o) === key);
+        if (match === undefined) continue;
+        bid = {
+          option: match,
+          // 참을성 있는 봇은 같은 강도라도 "지금 태우는 것"의 값을 낮게 본다 —
+          // 아껴 두었다 더 좋은 자리에서 쓰려 한다.
+          value: augmentPoints(weighted.weight, handPoints) * (1.15 - this.profile.patience * 0.3),
+          reason: `증강 ${augId} (강도 ${weighted.weight})`,
+        };
+      } catch (err) {
+        logContentFailure(`정책 ${augId}`, err);
+        continue;
+      }
+      bids.push(bid);
     }
     // 동점은 먼저 본 쪽(보유 순서)이 이긴다 — bestBid가 순수 부등호라 그렇게 된다
     return bids;
@@ -463,19 +535,30 @@ export class BotAgent implements PlayerAgent {
       const pick = choices[this.botRng.int(choices.length)] ?? choices[0];
       if (pick !== undefined) return pick.id;
     }
-    const held = this.lastView?.players.find((p) => p.id === this.id)?.augments ?? [];
-    const picked = chooseDraft(
-      choices,
-      {
-        profile: this.profile,
-        held,
-        catalog: this.catalog,
-        powerOf,
-        unusable: BOT_UNUSABLE_AUGMENTS,
-      },
-      this.botRng,
-    );
-    return (picked ?? choices[0])?.id ?? "";
+    /**
+     * 픽 판단도 **content가 준 정의**(`AugmentDef`의 id·category)를 만진다.
+     * 발동 경로와 같은 이유로 여기서도 예외를 끊는다 — 드래프트에서 던지면
+     * 게임이 시작도 못 하고 방이 사라진다. 못 고르면 첫 후보를 뽑는다:
+     * 나쁜 픽은 한 판의 손해지만, 던지는 것은 판 전체의 손해다.
+     */
+    try {
+      const held = this.lastView?.players.find((p) => p.id === this.id)?.augments ?? [];
+      const picked = chooseDraft(
+        choices,
+        {
+          profile: this.profile,
+          held,
+          catalog: this.catalog,
+          powerOf,
+          unusable: BOT_UNUSABLE_AUGMENTS,
+        },
+        this.botRng,
+      );
+      return (picked ?? choices[0])?.id ?? "";
+    } catch (err) {
+      logContentFailure("draft", err);
+      return choices[0]?.id ?? "";
+    }
   }
 }
 

@@ -8814,3 +8814,69 @@ body.peeking .overlay-peekable > * {
 @container ui (max-width: 620px) {
   .peek-btn { padding: 8px 12px; font-size: 11.5px; }
 }
+
+/* ─────────────── 좌석 접속 상태 (끊김·기권) ─────────────── */
+/* 자동 폴백을 기다리는 몇 초가 "멈춘 게임"으로 보이지 않게, 이름표에서 바로 읽히게 한다. */
+
+.nameplate-disconnected,
+.nameplate-abandoned {
+  opacity: 0.55;
+  filter: saturate(0.4);
+}
+
+.np-conn {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #ffd0d0;
+  background: rgba(190, 60, 60, 0.35);
+  border: 1px solid rgba(255, 120, 120, 0.45);
+}
+
+/* 끊김은 "돌아올 수 있는" 상태라 은은하게 숨을 쉰다. 기권은 확정이라 가만히 있는다. */
+.nameplate-disconnected .np-conn {
+  color: #ffe0b8;
+  background: rgba(180, 130, 50, 0.32);
+  border-color: rgba(240, 190, 110, 0.45);
+  animation: np-conn-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes np-conn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nameplate-disconnected .np-conn { animation: none; }
+}
+
+/* ─────────────── 결정 제한시간 게이지 — 조용하다 급해진다 ─────────────── */
+/* 마감은 이제 모든 프롬프트에 실려 온다. 매 타패마다 시계가 크게 뛰면 판보다
+   시계를 보게 되므로, 평소에는 가는 막대만 두고 5초 밑에서만 존재감을 키운다. */
+
+.prompt-timer-fill {
+  /* 남은 시간이 넉넉할 때는 차분한 색. 5초 밑에서 urgent 규칙이 덮어쓴다. */
+  background: linear-gradient(90deg, #8fb4d8, #f0c86a);
+  opacity: 0.75;
+}
+
+.prompt-timer-urgent .prompt-timer-fill {
+  opacity: 1;
+}
+
+.prompt-timer-urgent .prompt-timer-count {
+  animation: prompt-timer-tick 1s steps(1, end) infinite;
+}
+
+@keyframes prompt-timer-tick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-timer-urgent .prompt-timer-count { animation: none; }
+}

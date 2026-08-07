@@ -22,7 +22,7 @@
  * 정확한 대기 추정이 아니라 **사람이 한눈에 쓰는 근거의 근사**다 — 그게 목적이다.
  */
 
-import { discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
+import { augmentThreatMultiplier, discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
 import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 import { pointsForHan } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
@@ -185,6 +185,21 @@ export function readThreats(
     const isDealer =
       view.players.find((x) => x.id === p.id)?.seat === view.round.dealerSeat;
 
+    /**
+     * **이 사람이 든 증강이 실점을 얼마나 바꾸는가** (`AUGMENT_PLAY`, 코어).
+     *
+     * 상대 증강은 `PlayerInfo.augments`로 뷰에 버젓이 공개돼 있는데(정보 비대칭을
+     * 깨지 않는다) 수비 계산은 여태 한 번도 안 봤다 — 만년 오야에게 쏘는 것과
+     * 평범한 상대에게 쏘는 것을 똑같이 셌고, 지불이 흩어지는 책임전가 상대에게는
+     * 필요 없이 접었다(docs/27 §5.1이 지정한 삽입 지점).
+     *
+     * `value`(예상 실점)에 곱하는 이유는 이 배수가 **점수 축의 값**이기 때문이다.
+     * `level`(텐파이 확률)에 곱하면 있지도 않은 텐파이를 만들어 내는 셈이 된다.
+     * 표에 없는 증강은 1.0이고, 곱은 코어에서 0.4~2.2로 잘려 있어 셋을 겹쳐 들어도
+     * 폭주하지 않는다.
+     */
+    const augMult = augmentThreatMultiplier(p.augments ?? []);
+
     out.push({
       player: p.id,
       level: Math.min(1, level),
@@ -192,7 +207,7 @@ export function readThreats(
       discardRanks,
       riichi,
       isDealer,
-      value: estimateThreatValue(view, p.id, {
+      value: augMult * estimateThreatValue(view, p.id, {
         riichi,
         melds,
         yakuhaiMeld,

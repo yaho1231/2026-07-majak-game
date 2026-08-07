@@ -32,6 +32,7 @@ import type { SpectatorSink } from "@majak/core/match/HanchanController.js";
 import type { GameMode } from "@majak/core/engine/state/GameState.js";
 import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
 import { SPECTATOR_ID } from "@majak/core/information/PlayerView.js";
+import type { SeatConnection } from "@majak/core/information/PlayerView.js";
 import { standardKinds } from "@majak/core/mahjong/tiles/Tile.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
@@ -566,10 +567,42 @@ export class RoomManager {
     if (!conn.agent.isSocket(conn.ws)) return;
     if (room.phase === "waiting") {
       this.leaveWaiting(room, conn.agent);
+    } else {
+      // 지금 이 좌석이 붙들고 있는 결정이 있으면 30초를 다 기다리지 않게 줄인다.
+      conn.agent.noticeDisconnect();
+      // 게임 중이면 좌석은 유지 — 같은 계정으로 joinRoom하면 재접속된다.
+      // 다만 **남은 사람들에게 알린다**: 이름표가 "생각 중"과 구분되지 않으면
+      // 자동 폴백까지의 몇 초가 그냥 멈춘 게임으로 보인다(QA P0-3b).
+      this.refreshSeatStatus(room);
     }
-    // 게임 중이면 유지 — 같은 계정으로 joinRoom하면 재접속된다
     conn.room = null;
     conn.agent = null;
+  }
+
+  /**
+   * 좌석별 접속 상태 스냅샷 — 이름표에 실어 보낸다.
+   * 봇은 언제나 connected(끊길 소켓이 없다).
+   */
+  private seatConnections(room: Room): Record<PlayerId, SeatConnection> {
+    const out: Record<PlayerId, SeatConnection> = {};
+    for (const a of room.agents) {
+      out[a.id] = a instanceof HumanAgent ? a.connectionState() : "connected";
+    }
+    return out;
+  }
+
+  /**
+   * 접속 상태가 바뀐 직후, 게임 중인 방의 사람들에게 뷰를 다시 밀어 준다.
+   *
+   * 새 메시지 타입을 만들지 않는다 — 상태는 이미 뷰의 이름표에 실려 있고
+   * (HumanAgent.sendView), 여기서는 그 뷰를 지금 한 번 더 보낼 뿐이다.
+   */
+  private refreshSeatStatus(room: Room): void {
+    const controller = room.controller;
+    if (controller === null || room.phase !== "playing") return;
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent && a.isConnected()) controller.resendViewTo(a.id);
+    }
   }
 
   // ─────────────────────────── 메시지 라우팅 ───────────────────────────
@@ -670,8 +703,12 @@ export class RoomManager {
         const room = conn.room;
         if (room !== null && conn.agent !== null) {
           if (room.phase === "waiting") this.leaveWaiting(room, conn.agent);
-          // 게임 중 나가기 = 포기: 좌석은 봇처럼 자동 진행되어 게임이 완주된다
-          else conn.agent.abandon();
+          // 게임 중 나가기 = 포기: 좌석은 봇처럼 자동 진행되어 게임이 완주된다.
+          // 남은 사람들의 이름표에 "기권"을 세워, 저 자리가 왜 즉답하는지 보이게 한다.
+          else {
+            conn.agent.abandon();
+            this.refreshSeatStatus(room);
+          }
         }
         conn.room = null;
         conn.agent = null;
@@ -1155,6 +1192,9 @@ export class RoomManager {
       conn.room = room;
       conn.agent = mine;
       this.send(conn.ws, { type: "joined", playerId: mine.id, roomId: code, token: "" });
+      // 돌아왔다는 사실을 나머지 좌석의 이름표에도 반영한다.
+      // (본인에게도 다시 나간다 — reconnect가 복원해 준 뷰에는 "접속 끊김"이 박혀 있다.)
+      this.refreshSeatStatus(room);
       return;
     }
 
@@ -1661,7 +1701,10 @@ export class RoomManager {
       if (c.user?.id !== userId) continue;
       if (c.room !== null && c.agent !== null) {
         if (c.room.phase === "waiting") this.leaveWaiting(c.room, c.agent);
-        else c.agent.abandon(); // 게임 중이면 좌석을 봇처럼 자동 진행시켜 완주하게 둔다
+        else {
+          c.agent.abandon(); // 게임 중이면 좌석을 봇처럼 자동 진행시켜 완주하게 둔다
+          this.refreshSeatStatus(c.room); // 남은 사람 이름표에 "기권"을 세운다
+        }
       }
       this.stopSpectating(c);
       c.room = null;
@@ -2150,6 +2193,10 @@ export class RoomManager {
     // 대기실에서 만들어질 땐 모드가 아직 바뀔 수 있어 시작 시점에 준다.
     for (const agent of room.agents) {
       if (agent instanceof BotAgent) agent.setGameMode(room.gameMode);
+      // 사람 좌석의 뷰에 좌석별 접속 상태를 실어 보내게 한다 (이름표 표시용).
+      if (agent instanceof HumanAgent) {
+        agent.setSeatConnectionSource(() => this.seatConnections(room));
+      }
     }
 
     room.controller = new HanchanController(room.agents, {

@@ -1753,9 +1753,9 @@ export function App(): JSX.Element {
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
   const prompt = view === null ? null : (prompts[view.playerId] ?? null);
   /**
-   * 초읽기(time_pressure)가 걸린 국의 **결정 마감 시각**(epoch ms).
-   * 서버가 프롬프트에 `deadlineMs`를 실어 보낼 때만 켜진다 — 평소의 30초 AFK
-   * 타임아웃에는 실리지 않으므로 화면에 시계가 뜨지 않는다.
+   * 이 결정의 **마감 시각**(epoch ms). 서버가 모든 프롬프트에 `deadlineMs`를 실어
+   * 보낸다 — 평소 30초, 초읽기(time_pressure) 국에는 그보다 짧게. 재접속 때는
+   * 진짜 남은 시간이 실려 온다.
    */
   const [promptDeadline, setPromptDeadline] = useState<number | null>(null);
   /** 좌석 하나의 프롬프트만 지운다 (제출·취소) */
@@ -2470,7 +2470,7 @@ export function App(): JSX.Element {
         sfx.callPrompt();
       }
       setPrompts((prev) => ({ ...prev, [msg.prompt.player]: msg.prompt }));
-      // 초읽기가 걸린 국에만 마감이 실려 온다 → 카운트다운을 켠다
+      // 모든 프롬프트에 마감이 실려 온다 → 카운트다운을 켠다 (구 서버면 null)
       setPromptDeadline(
         msg.deadlineMs !== undefined && msg.deadlineMs > 0
           ? Date.now() + msg.deadlineMs
@@ -8090,11 +8090,28 @@ function NamePlate({
   const dense = pills.length >= 5;
   // 봇이면 성향(원형) — 사람 좌석에는 붙지 않는다
   const arch = player.isBot ? archetypeInfo(player.archetype) : null;
+  // 접속 상태 — "생각 중"과 "끊김"과 "기권"이 화면에서 구분되지 않아, 자동 처리를
+  // 기다리는 몇 초가 그냥 멈춘 게임으로 보였다(QA P0-3b). 이름표에 세운다.
+  const conn = player.connection ?? "connected";
+  const connLabel =
+    conn === "disconnected" ? "접속 끊김" : conn === "abandoned" ? "기권" : null;
   return (
     <div
-      className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}`}
+      className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}${connLabel !== null ? ` nameplate-${conn}` : ""}`}
     >
       {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
+      {connLabel !== null ? (
+        <span
+          className="np-conn"
+          title={
+            conn === "disconnected"
+              ? "이 자리의 접속이 끊겼습니다 — 돌아올 때까지 결정이 자동 처리됩니다"
+              : "이 자리는 기권했습니다 — 남은 국은 자동 진행됩니다"
+          }
+        >
+          {connLabel}
+        </span>
+      ) : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
       {/* 봇 성향 — 이름만으로는 셋이 구분되지 않아서, 이름 옆에 원형을 세운다 */}
       {arch !== null ? (
@@ -8501,11 +8518,23 @@ function handReordered(order: number[], id: number, targetIdx: number): number[]
 /**
  * 프롬프트 제한시간 게이지.
  *
- * 평소에는 서버의 30초 AFK 타임아웃을 어림잡아 보여 주는 장식이다(마감이 안 실려 온다).
- * **초읽기(time_pressure)**가 걸린 국에는 서버가 실제 마감(`deadlineMs`)을 실어 보내므로,
- * 게이지 길이를 그 시간에 맞추고 **남은 초를 숫자로** 함께 띄운다 — 5초 안에 골라야 하는
- * 국에서 막대만 줄어드는 것으로는 얼마나 남았는지 읽히지 않는다.
+ * 서버는 **모든 프롬프트**에 실제 마감(`deadlineMs`)을 실어 보낸다. 예전에는
+ * 초읽기(time_pressure)가 걸린 국에만 실어서, 평소의 30초 제한이 화면 어디에도
+ * 없었다 — 자리를 잠깐 비운 사람이 론을 조용히 흘렸다(QA P0-5).
+ *
+ * 대신 **조용하게 시작해 급해질수록 커진다**. 매 타패마다 30초 시계가 큼직하게
+ * 뛰면 판보다 시계를 보게 된다:
+ * - 10초 넘게 남았으면 가는 막대만 (지금까지와 같은 모습)
+ * - 10초 이하로 남으면 남은 초를 숫자로 띄우고
+ * - 5초 이하면 막대를 굵게·붉게 하고 숫자를 맥동시킨다
+ * 초읽기 국(마감이 애초에 5~10초)에서는 뜨자마자 이 단계로 들어가므로, 예전의
+ * "굵은 붉은 게이지 + 숫자"가 그대로 재현된다.
  */
+/** 숫자를 띄우기 시작하는 잔여 시간 */
+const TIMER_COUNT_MS = 10_000;
+/** 굵게·붉게 전환하는 잔여 시간 */
+const TIMER_URGENT_MS = 5_000;
+
 function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Element {
   const { deadline } = props;
   const [left, setLeft] = useState<number | null>(
@@ -8528,9 +8557,12 @@ function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Eleme
     () => (deadline === null ? null : Math.max(0, deadline - Date.now())),
     [deadline],
   );
+  // 남은 시간에 따라 조용함 → 숫자 → 경고 순으로 단계가 올라간다.
+  const showCount = left !== null && left <= TIMER_COUNT_MS;
+  const urgent = left !== null && left <= TIMER_URGENT_MS;
   return (
     <div
-      className={`prompt-timer${deadline === null ? "" : " prompt-timer-urgent"}`}
+      className={`prompt-timer${urgent ? " prompt-timer-urgent" : ""}`}
       // 마감이 바뀌면 새로 마운트해 애니메이션을 처음부터 돌린다
       key={`${props.seq}:${deadline ?? "none"}`}
     >
@@ -8542,9 +8574,9 @@ function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Eleme
             : ({ "--timer-duration": `${total}ms` } as CSSProperties)
         }
       />
-      {left === null ? null : (
+      {showCount && left !== null ? (
         <span className="prompt-timer-count">{(left / 1000).toFixed(1)}초</span>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -17,6 +17,8 @@
  *   (future_sight의 FutureSightExchanged와 같은 패턴).
  * - ROUND_SETTLED 인터셉터: 그 국에 뽑힌 배수만큼 delta를 곱한다.
  *   **양수 델타만** 곱한다(무페널티 — 잃는 쪽은 그대로). 안 굴린 국은 배수 1.
+ *   1배 초과분은 뱅크가 발행하고, **1배 미만(0.5배)로 깎인 몫은 지불자에게 되돌린다**
+ *   (아래 settleInterceptor 주석 참조 — 2026-08-07 점수 보존 수정).
  * - 배수 키에 roundKey가 들어가 국이 바뀌면 자동 만료된다.
  */
 
@@ -56,7 +58,8 @@ const JACKPOT_ROLLED = "JackpotRolled";
  * ⚠ 0.5배는 획득이 **줄어드는** 결과다 — §0 무페널티 원칙의 예외이며,
  * **사용자가 명시적으로 지시한 밸런스 조정**이다(55차 피드백: "0.5배도 하나 넣어서
  * 밸런스 조절"). 도박형 예외로만 허용되며, 다른 증강에 이 패턴을 복제하지 말 것.
- * 곱셈은 여전히 **양수 델타에만** 적용하므로 잃는 국에는 아무 영향이 없다.
+ * 곱셈은 여전히 **양수 델타에만** 적용하므로 보유자가 잃는 국에는 아무 영향이 없다.
+ * 다만 깎인 몫은 **지불자에게 되돌려야** 한다 — settleInterceptor 주석 참조.
  *
  * 가중은 **정수 누적합 + prng.int(TOTAL)** 로 뽑는다 — float 비교를 쓰면 PRNG 구현이
  * 바뀔 때 경계가 흔들려 리플레이가 깨진다.
@@ -71,6 +74,48 @@ const WEIGHT_TOTAL = MULTIPLIER_WEIGHTS.reduce((s, m) => s + m.weight, 0);
 
 /** 점수는 100점 단위다 — 0.5배 같은 배수 뒤에는 반드시 격자로 되돌린다 */
 const round100 = (n: number): number => Math.round(n / 100) * 100;
+
+/**
+ * 깎인 몫을 지불자들에게 **낸 비율대로** 되돌린다 (100점 격자, 합계 정확).
+ *
+ * 남는 100점은 많이 낸 쪽부터 한 칸씩 얹어 결정적으로 배분한다(리플레이 안정).
+ * 각자에게 되돌리는 액수는 그 사람이 낸 액수를 절대 넘지 않는다 — 넘으면 지불자가
+ * 정산으로 오히려 점수를 버는 기이한 결과가 된다. 캡에 걸려 남은 몫은 배분하지
+ * 않고 버린다 — 호출 측이 `refunded` 합계만큼만 보유자에게서 깎으므로 총합은
+ * 그래도 보존된다.
+ *
+ * (util.ts의 splitOnGrid은 가중치가 1·2 같은 작은 정수일 때만 비례가 맞는다 —
+ *  여기서는 가중치가 지불액 자체라 별도 계산이 필요하다.)
+ */
+function refundShares(
+  payers: readonly { id: PlayerId; paid: number }[],
+  amount: number,
+): { id: PlayerId; amount: number }[] {
+  const sorted = [...payers]
+    .filter((p) => p.paid > 0)
+    .sort((a, b) => b.paid - a.paid || (a.id < b.id ? -1 : 1));
+  const total = sorted.reduce((s, p) => s + p.paid, 0);
+  const cap = Math.min(Math.max(0, amount), total);
+  if (cap <= 0) return [];
+  const out = sorted.map((p) => ({
+    id: p.id,
+    paid: p.paid,
+    amount: Math.min(p.paid, Math.floor((cap * p.paid) / total / 100) * 100),
+  }));
+  let left = cap - out.reduce((s, o) => s + o.amount, 0);
+  let stuck = 0;
+  for (let i = 0; left >= 100 && stuck < out.length; i = (i + 1) % out.length) {
+    const o = out[i];
+    if (o === undefined || o.amount + 100 > o.paid) {
+      stuck++;
+      continue;
+    }
+    o.amount += 100;
+    left -= 100;
+    stuck = 0;
+  }
+  return out.map(({ id, amount: a }) => ({ id, amount: a }));
+}
 
 /**
  * 지금이 이 플레이어의 **국 첫 순**인가 — 아직 아무것도 버리지 않은 자기 턴.
@@ -153,7 +198,7 @@ export const jackpot: AugmentDef = defineAugment({
   description:
     "(매 국 1회 · 국의 첫 순) 배패를 받은 직후 룰렛을 돌려 0.5·1·2·3배 중 하나를 뽑는다. 그 국에 얻는 점수에 뽑힌 배수가 곱해지며, 꽝(0.5배)도 있다.",
   detail:
-    "(매 국 1회 · 국의 첫 순) 아직 아무것도 버리지 않은 첫 순에만 룰렛을 돌릴 수 있다. 그 자리에서 0.5배(30%)·1배(30%)·2배(30%)·3배(10%) 중 하나가 뽑혀 전원에게 공개된다. 그 국의 정산에서 자신의 획득 점수가 양수이면 뽑힌 배수만큼 곱해지고(0.5배는 절반으로 줄고 소수점은 반올림, 1배는 그대로) 늘어난 몫은 뱅크가 지급한다. 지불로 끝난 국에는 적용되지 않으며, 굴리지 않은 국에는 아무 효과가 없다.",
+    "(매 국 1회 · 국의 첫 순) 아직 아무것도 버리지 않은 첫 순에만 룰렛을 돌릴 수 있다. 그 자리에서 0.5배(30%)·1배(30%)·2배(30%)·3배(10%) 중 하나가 뽑혀 전원에게 공개된다. 그 국의 정산에서 자신의 획득 점수가 양수이면 뽑힌 배수만큼 곱해지고(0.5배는 절반으로 줄고 소수점은 반올림, 1배는 그대로) 늘어난 몫은 뱅크가 지급한다. 0.5배로 줄어든 몫은 그만큼 지불자에게 되돌아가므로 상대는 어느 경우에도 원래보다 더 내지 않는다. 지불로 끝난 국에는 적용되지 않으며, 굴리지 않은 국에는 아무 효과가 없다.",
   // 봇: 기대값이 여전히 플러스다(0.5×.3 + 1×.3 + 2×.3 + 3×.1 = 1.35배) — 옵션이 뜨면 무조건 굴린다.
   bot: plan({
     intent: "score",
@@ -204,13 +249,59 @@ export const jackpot: AugmentDef = defineAugment({
       const base = Math.max(0, d - pot);
       // 0.5배가 있으므로 100점 격자로 맞춘다 — 안 맞추면 소지점이 100의 배수가
       // 아니게 되어 결과창·순위 표시가 깨진다(docs/25 역/점수 #7).
-      const after = round100(base * mult) + pot;
+      const scaled = round100(base * mult);
+
+      /*
+       * 배수의 **양쪽 방향을 다르게** 다룬다 (2026-08-07 점수 보존 수정).
+       *
+       * ① 1배 초과(2·3배) — 늘어난 몫은 **뱅크가 발행한다.** 지불자는 표준 정산
+       *    금액 그대로 낸다. 이것이 §0 무페널티가 요구하는 설계다: 남의 룰렛 운
+       *    때문에 방총자가 더 물어서는 안 된다. 이 경로는 그대로 둔다.
+       *
+       * ② 1배 미만(0.5배) — 예전에는 보유자의 델타만 줄이고 지불자의 델타는
+       *    표준 금액 그대로 뒀다. 그러면 그 차액이 **어디에도 가지 않고 사라진다.**
+       *    실측: p2 -48300 / p3 +24200 → 합계 -24100 (100,000점 총합이 80,300까지
+       *    떨어졌다). 게다가 방총자는 화료자가 받지도 않는 점수를 물게 되어
+       *    "증강이 없었을 때보다 나빠진다" — 무페널티 위반이다.
+       *
+       *    이제 깎인 몫을 **지금 실제로 내는 사람들에게 되돌린다.** 이동이 양쪽
+       *    모두에서 같은 금액만큼 줄어 총합이 보존되고, 지불자는 표준 금액보다
+       *    절대 더 내지 않는다(되돌려 받으므로 오히려 덜 낸다).
+       *
+       *    되돌릴 대상은 winInfo가 아니라 **현재 음수 델타**로 고른다 — 이 단계는
+       *    Redistribute(책임전가·덤터기) 뒤라, 실제로 내는 사람이 이미 바뀌었을 수
+       *    있다. 지불자가 아예 없으면(전액이 뱅크·공탁에서 온 경우) 깎지 않는다 —
+       *    되돌릴 곳이 없는데 깎으면 그게 곧 점수 소멸이다.
+       */
+      if (scaled >= base) {
+        const after = scaled + pot;
+        if (after === d) return event;
+        return {
+          type: event.type,
+          payload: {
+            ...p,
+            deltas: { ...p.deltas, [holder]: after },
+            augPoints: withAugPoint(p, ctx, after - d),
+          },
+        };
+      }
+
+      const payers = Object.entries(p.deltas)
+        .filter(([id, v]) => id !== holder && v < 0)
+        .map(([id, v]) => ({ id: id as PlayerId, paid: -v }));
+      const shares = refundShares(payers, base - scaled);
+      const refunded = shares.reduce((s, r) => s + r.amount, 0);
+      if (refunded <= 0) return event;
+
+      const deltas = { ...p.deltas };
+      for (const r of shares) deltas[r.id] = (deltas[r.id] ?? 0) + r.amount;
+      deltas[holder] = d - refunded;
       return {
         type: event.type,
         payload: {
           ...p,
-          deltas: { ...p.deltas, [holder]: after },
-          augPoints: withAugPoint(p, ctx, after - d),
+          deltas,
+          augPoints: withAugPoint(p, ctx, -refunded),
         },
       };
     });

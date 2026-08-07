@@ -5,9 +5,15 @@
  * 포기(abandon) 시 즉시 resolve 를 검증한다.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
-import { HumanAgent, safeFallbackOption } from "../src/HumanAgent.js";
+import { TIME_PRESSURE_CHANNEL, TIME_PRESSURE_SECONDS } from "@majak/content";
+import {
+  DECISION_TIMEOUT_MS,
+  DISCONNECT_GRACE_MS,
+  HumanAgent,
+  safeFallbackOption,
+} from "../src/HumanAgent.js";
 
 class FakeSocket {
   readyState = 1; // OPEN
@@ -182,5 +188,212 @@ describe("safeFallbackOption — 되돌릴 수 없는 다단계 선택은 무작
       safeFallbackOption([opt("discard", { tileId: 1 }), opt("discard", { tileId: 2 })])
         .payload,
     ).toEqual({ tileId: 2 });
+  });
+});
+
+/**
+ * 끊긴 좌석 — 게임 루프가 알아채야 한다 (QA P0-3).
+ *
+ * 탭을 닫으면 좌석은 남지만(재접속용) 아무도 그 사실을 게임 루프에 알려 주지 않아,
+ * 남은 셋이 그 자리의 결정마다 30초를 꽉 채워 기다렸다. 한 국에 결정 지점이 60~70개다.
+ */
+describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진행된다", () => {
+  const prompt = (player: string, ...types: string[]): any => ({
+    player,
+    options: types.map((t) => ({ type: t, payload: {} })),
+  });
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("소켓이 닫혀 있으면 5초 유예 뒤 안전 폴백으로 끝난다 (30초가 아니다)", async () => {
+    const sock = new FakeSocket();
+    sock.readyState = 3; // CLOSED
+    const agent = new HumanAgent("p0", "Ghost", sock.asWs());
+    let done: any = null;
+    void agent.decide(prompt("p0", "pass", "ron")).then((o) => (done = o));
+
+    await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS - 100);
+    expect(done).toBeNull(); // 유예 안에는 아직 기다린다 (새로고침 복귀 여지)
+    await vi.advanceTimersByTimeAsync(200);
+    expect(done?.type).toBe("pass"); // 절대 론을 대신 선언하지 않는다
+  });
+
+  it("접속된 좌석은 종전대로 30초를 기다린다", async () => {
+    const agent = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
+    let done: any = null;
+    void agent.decide(prompt("p0", "pass", "ron")).then((o) => (done = o));
+    await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS + 1000);
+    expect(done).toBeNull();
+    await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS);
+    expect(done?.type).toBe("pass");
+  });
+
+  it("유예 안에 재접속하면 제한 시간이 정상(30초)으로 되돌아온다", async () => {
+    const dead = new FakeSocket();
+    dead.readyState = 3;
+    const agent = new HumanAgent("p0", "Alice", dead.asWs());
+    let done: any = null;
+    void agent.decide(prompt("p0", "pass", "ron")).then((o) => (done = o));
+
+    await vi.advanceTimersByTimeAsync(3000);
+    const fresh = new FakeSocket();
+    agent.reconnect(fresh.asWs());
+    // 재전송된 프롬프트에는 되돌린 제한 시간이 실린다 (2초짜리 유령 프롬프트 금지)
+    const resent = fresh.sent.filter((m) => m.type === "prompt");
+    expect(resent).toHaveLength(1);
+    expect(resent[0].deadlineMs).toBe(DECISION_TIMEOUT_MS);
+
+    await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS);
+    expect(done).toBeNull(); // 유예 타이머는 해제됐다
+    agent.handleMessage({ type: "action", actionType: "ron", payload: {} } as never);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done?.type).toBe("ron");
+  });
+
+  it("접속 중에 걸린 타이머는 재접속으로 늘어나지 않고 남은 시간만 알려 준다", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    void agent.decide(prompt("p0", "pass"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    const fresh = new FakeSocket();
+    agent.reconnect(fresh.asWs());
+    const resent = fresh.sent.filter((m) => m.type === "prompt");
+    expect(resent[0].deadlineMs).toBeGreaterThan(19_000);
+    expect(resent[0].deadlineMs).toBeLessThanOrEqual(20_000);
+  });
+
+  it("포기(abandon)한 좌석은 유예도 없이 즉시 폴백한다", async () => {
+    const agent = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
+    agent.abandon();
+    expect((await agent.decide(prompt("p0", "pass", "pon"))).type).toBe("pass");
+  });
+
+  it("끊긴 좌석의 드래프트도 유예 뒤 자동 선택된다", async () => {
+    const sock = new FakeSocket();
+    sock.readyState = 3;
+    const agent = new HumanAgent("p0", "Ghost", sock.asWs());
+    let picked: string | null = null;
+    void agent
+      .decideDraft("gameStart", [{ id: "a" }, { id: "b" }] as never)
+      .then((id) => (picked = id));
+    await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS + 100);
+    expect(picked).toBe("a");
+  });
+});
+
+/** 제한 시간이 화면에 보여야 한다 (QA P0-5) — 안 보이면 자리를 비운 사람이 론을 흘린다. */
+describe("HumanAgent — 마감(deadlineMs)은 모든 프롬프트에 실린다", () => {
+  const prompt = (player: string, ...types: string[]): any => ({
+    player,
+    options: types.map((t) => ({ type: t, payload: {} })),
+  });
+
+  it("평범한 프롬프트에도 30초 마감이 실린다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    void agent.decide(prompt("p0", "discard"));
+    const sent = sock.sent.find((m) => m.type === "prompt");
+    expect(sent.deadlineMs).toBe(DECISION_TIMEOUT_MS);
+  });
+
+  it("초읽기(time_pressure)가 걸린 국에는 그 짧은 쪽이 이긴다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.sendView({
+      players: [{ id: "p0" }],
+      augmentView: { [TIME_PRESSURE_CHANNEL]: TIME_PRESSURE_SECONDS },
+    } as never);
+    void agent.decide(prompt("p0", "discard"));
+    const sent = sock.sent.find((m) => m.type === "prompt");
+    expect(sent.deadlineMs).toBe(TIME_PRESSURE_SECONDS * 1000);
+  });
+});
+
+/** 좌석 접속 상태는 뷰의 이름표로 실려 나간다 (QA P0-3b) — 새 메시지 타입 없이. */
+describe("HumanAgent — 좌석 접속 상태가 PlayerView에 실린다", () => {
+  it("끊김·기권이 players[].connection 으로 나간다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.setSeatConnectionSource(() => ({
+      p0: "connected",
+      p1: "disconnected",
+      p2: "abandoned",
+    }));
+    agent.sendView({ players: [{ id: "p0" }, { id: "p1" }, { id: "p2" }] } as never);
+    const view = sock.sent.find((m) => m.type === "view").view;
+    expect(view.players.map((p: any) => p.connection)).toEqual([
+      "connected",
+      "disconnected",
+      "abandoned",
+    ]);
+  });
+
+  it("전원이 정상이면 뷰를 건드리지 않는다 (불필요한 복사 없음)", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.setSeatConnectionSource(() => ({ p0: "connected" }));
+    const original: any = { players: [{ id: "p0" }] };
+    agent.sendView(original);
+    expect(sock.sent.find((m) => m.type === "view").view.players[0].connection).toBeUndefined();
+  });
+
+  it("connectionState()는 소켓 상태와 포기 여부를 그대로 비춘다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    expect(agent.connectionState()).toBe("connected");
+    sock.readyState = 3;
+    expect(agent.connectionState()).toBe("disconnected");
+    agent.abandon();
+    expect(agent.connectionState()).toBe("abandoned"); // 기권이 끊김보다 우선
+  });
+});
+
+/** 결정을 들고 있는 도중에 끊긴 경우 — 그 한 번도 30초를 세우면 안 된다. */
+describe("HumanAgent.noticeDisconnect — 대기 중이던 결정도 유예로 줄인다", () => {
+  const prompt = (player: string, ...types: string[]): any => ({
+    player,
+    options: types.map((t) => ({ type: t, payload: {} })),
+  });
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("내 차례에 탭을 닫으면 남은 30초가 아니라 유예 뒤에 폴백한다", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    let done: any = null;
+    void agent.decide(prompt("p0", "pass", "ron")).then((o) => (done = o));
+    await vi.advanceTimersByTimeAsync(1000);
+    sock.readyState = 3; // 소켓 사망
+    agent.noticeDisconnect();
+    await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS + 100);
+    expect(done?.type).toBe("pass");
+  });
+
+  it("소켓이 살아 있으면 아무 것도 건드리지 않는다", async () => {
+    const agent = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
+    let done: any = null;
+    void agent.decide(prompt("p0", "pass")).then((o) => (done = o));
+    agent.noticeDisconnect();
+    await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS + 1000);
+    expect(done).toBeNull();
+  });
+
+  it("줄인 뒤 재접속하면 정상 시간으로 되돌아온다", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    let done: any = null;
+    void agent.decide(prompt("p0", "pass", "ron")).then((o) => (done = o));
+    sock.readyState = 3;
+    agent.noticeDisconnect();
+    await vi.advanceTimersByTimeAsync(2000);
+    const fresh = new FakeSocket();
+    agent.reconnect(fresh.asWs());
+    expect(fresh.sent.filter((m) => m.type === "prompt")[0].deadlineMs).toBe(
+      DECISION_TIMEOUT_MS,
+    );
+    await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS);
+    expect(done).toBeNull();
   });
 });
