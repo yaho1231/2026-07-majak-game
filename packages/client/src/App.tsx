@@ -2384,6 +2384,19 @@ export function App(): JSX.Element {
       handleServerMessage(JSON.parse(event.data as string) as ServerMessage);
     });
     ws.addEventListener("close", () => {
+      /*
+       * **지금 쓰는 소켓이 아니면 아무 것도 하지 않는다.**
+       *
+       * 소켓 둘이 잠깐 겹치는 순간이 실제로 있다 — 개발 모드의 StrictMode 이중 마운트가
+       * 대표적이다(마운트 → 정리 → 재마운트로 A를 닫는 사이 B가 열린다). 그때 뒤늦게
+       * 도착한 A의 close가 이 자리에서 `wsRef.current = null`을 해 버리면, **살아 있는
+       * B의 참조가 지워진다.** send()는 wsRef가 null이면 조용히 버리므로(2297행) 그때부터
+       * 누른 것이 아무 일도 일으키지 않고, 게다가 재연결까지 예약해 소켓이 하나 더 늘었다.
+       * 그 새 소켓은 로그인을 안 한 채라 서버의 미인증 회수(UNAUTH_TIMEOUT_MS)에 30초마다
+       * 끊기고, 끊길 때마다 같은 일이 반복돼 **30초 주기의 무한 순환**이 된다
+       * (2026-08-07 확인: 서버 로그에 30초 간격 열림/닫힘, `동시 2`).
+       */
+      if (wsRef.current !== ws) return;
       wsRef.current = null;
       if (intentionalCloseRef.current) {
         setConnection("closed");
