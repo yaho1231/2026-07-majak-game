@@ -176,6 +176,7 @@ export const openKokushi: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "call",
+  complexity: 3,
   name: "우는 국사무쌍",
   description:
     "(상시) 서로 다른 요구패 3장(1만1통1삭 · 9만9통9삭 · 백발중 · 동남서북 중 3패)을 퐁해 국사를 완성할 수 있다. **한 번이라도 이 퐁을 하면 그 국은 국사 외길이 된다** — 다른 화료형도, 평범한 치·펑·깡도 전부 막힌다.",

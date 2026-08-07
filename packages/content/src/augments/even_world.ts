@@ -143,6 +143,7 @@ export const evenWorld: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "짝수의 세계",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 발동하면 손패의 홀수 수패가 한 칸 위 짝수로 다시 태어난다(1→2, 3→4, 5→6, 7→8, 9→8). 자패·도라, 그리고 **바꾸면 도라가 될 패**는 그대로 남는다.",

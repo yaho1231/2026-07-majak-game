@@ -112,6 +112,7 @@ export const pondSnatch: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "날치기",
   description:
     "(게임 내 3회) 자기 순에 쯔모하는 대신 상대가 최근에 버린 3장 중 1장을 주워 손에 넣는다. 후로로 치지 않아 멘젠·리치가 유지된다.",

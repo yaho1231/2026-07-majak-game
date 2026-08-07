@@ -97,6 +97,7 @@ export const bigHand: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "큰손",
   description:
     "(2국에 1회) 국의 첫 순에 액티브 버튼이 활성화되며, 선언하면 그 국에 화료했을 때 **내가 받는 총액**이 최소 만관(오야 12000 · 자 8000)이 된다 — 손의 값이 아니라 본장·공탁까지 합친 수령액 기준이다.",

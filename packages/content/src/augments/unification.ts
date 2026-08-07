@@ -64,6 +64,7 @@ export const unification: AugmentDef = defineAugment({
   id: "unification",
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "천하통일",
   description:
     "(상시) 내 점수가 목표에 도달하면 남은 국을 전부 무시하고 즉시 우승으로 게임이 끝난다. 목표는 50000점에서 시작하지만, 증강이 나에게 얹어 준 점수만큼 함께 올라간다 — 마작으로 벌어야 한다.",

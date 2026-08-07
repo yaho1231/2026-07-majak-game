@@ -60,6 +60,7 @@ export const scapegoat: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "disrupt",
+  complexity: 2,
   name: "덤터기",
   description:
     "(매 국 1회) 자기 순에 상대 1명을 공개 지목하면, 내 쯔모 화료 지불을 분담 없이 그 상대가 전액 부담한다(총액 불변).",

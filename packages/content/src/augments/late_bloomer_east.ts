@@ -30,6 +30,7 @@ export const lateBloomerEast: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 2,
   // 반장전판(late_bloomer)과 이름이 똑같으면 도감·통계·티어표가 둘을 구분하지 못한다
   // (모드 게이트 덕에 드래프트에는 하나만 뜨지만, 그 셋은 모드와 무관하게 전부 나열한다).
   // 만개 시점이 다른 별개의 증강이므로 이름에 그 시점을 붙여 갈라 둔다.

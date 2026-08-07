@@ -388,6 +388,7 @@ export const cliffBloom: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "call",
+  complexity: 3,
   name: "절벽 위에 피어난 꽃",
   description:
     "(상시) 깡을 할 때마다 영상패를 **남아 있는 영상패 전부**(처음 4장, 깡이 나올 때마다 한 장씩 줄어든다) 중에서 직접 고른다. 그리고 한 국에 깡을 두 번 하면 텐파이가 아니어도 그 자리에서 손이 만개해(지금 손과 가장 가까운 화료형으로) 즉시 영상개화로 화료하며, 그 영상개화는 4판으로 취급된다.",

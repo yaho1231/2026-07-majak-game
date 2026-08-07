@@ -55,6 +55,7 @@ export const avenger: AugmentDef = defineAugment({
   id: "avenger",
   tier: "silver",
   category: "shape",
+  complexity: 3,
   name: "복수자",
   description:
     "(상시) 론으로 방총당하면 그 상대가 '원수'로 전원에게 공개되며, 원수의 버림패에 한해 후리텐이어도 역이 없어도 론할 수 있다. 원수를 론하면 +2판을 얻고 원한이 풀린다.",

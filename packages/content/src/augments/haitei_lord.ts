@@ -53,6 +53,7 @@ export const haiteiLord: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 3,
   name: "해저의 지배자",
   description:
     "(상시) 텐파이 상태로 해저패(패산 마지막 패)를 쯔모하면 대기와 무관하게 그 패가 오름패로 바뀌어 무조건 해저로월로 화료하고 +3판을 얻는다.",

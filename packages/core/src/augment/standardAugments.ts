@@ -102,6 +102,7 @@ export const ironWall = defineAugment({
   id: "iron_wall",
   tier: "gold",
   category: "shape",
+  complexity: 2,
   name: "철벽",
   description:
     "(상시) 후리텐을 무시하고 론할 수 있다. 실제로 후리텐인 채 잡아내면 +3판을 얻는다.",
@@ -126,6 +127,7 @@ export const openRiichi = defineAugment({
   id: "open_riichi",
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "개문선언",
   description:
     "(상시) 리치의 멘젠 조건이 사라져 후로한 손으로도 리치를 선언할 수 있다. 후로한 채 리치로 화료하면 그 리치를 2판으로 취급한다. 손이 멘젠이 되는 것은 아니다.",
@@ -148,6 +150,7 @@ export const yakulessWin = defineAugment({
   id: "yakuless_win",
   tier: "prism",
   category: "shape",
+  complexity: 2,
   name: "무형화료",
   description:
     "(상시) 머리 1개와 몸통 4개가 완성된다면 역이 없이도 화료가 가능하다. 역이 없이 화료하면 그 화료를 2판으로 취급한다.",
@@ -245,6 +248,7 @@ export const discardRecall = defineAugment({
   id: "discard_recall",
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "회수",
   description:
     "(매 국 1회) 자기 순에 쯔모한 패를 내 바닥으로 내보내고, 자신의 과거 버림패 중 하나를 골라 손으로 되가져온다.",

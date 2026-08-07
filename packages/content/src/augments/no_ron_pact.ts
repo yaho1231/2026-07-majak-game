@@ -70,6 +70,7 @@ export const noRonPact: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "defense",
+  complexity: 3,
   name: "불가침 조약",
   description:
     "(상시) 매 국 첫 6순 동안 당신은 론당하지 않는다 — 위험패를 던져도 방총이 없다. 단, 리치를 걸거나 멘쯔가 하나라도 생기는 순간(안깡 포함) 조약은 즉시 파기된다. 조약이 살아 있는지는 전원에게 보인다.",

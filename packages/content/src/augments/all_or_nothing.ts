@@ -147,6 +147,7 @@ export const allOrNothing: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "모 아니면 도",
   description:
     "(동풍전 1회 · 반장전 2회) 리치를 선언할 때 '올인'을 함께 걸어 현재 점수의 절반을 판돈으로 내건다(전원 공개). 그 리치로 화료하면 판돈만큼을 통째로 더 받으며, 빗나가도 잃는 것은 없다.",

@@ -47,6 +47,7 @@ export const blindRon: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 1,
   name: "눈먼 총알",
   description:
     "뽑는 순간 자동 발동. 이번 국 동안 테이블의 모든 론이 쏜 사람이 아니라 네 명 중 무작위 한 명에게 청구된다 — 나도 25%로 맞는다.",

@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   1980 / 1980 통과 (실패 0)   ← 2026-08-07 갱신 (P1 B1: 증강 정직성·용어사전 회귀 41건 추가)
+npm test                   2026 / 2026 통과 (실패 0)   ← 2026-08-07 갱신 (P1 B2: 표류 방지 가드 4종·complexity 회귀 추가)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors

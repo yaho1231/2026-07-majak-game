@@ -91,6 +91,7 @@ export const hourglass: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 3,
   name: "뒤집힌 모래시계",
   description:
     "(2국에 1회) 황패유국이 선언되는 순간 내가 텐파이라면 국이 끝나지 않는다 — 남은 영상패(최대 4장, 그 국에 깡이 있었으면 그만큼 적다)가 패산으로 넘어오고 그것을 나 혼자 연속으로 쯔모한다.",

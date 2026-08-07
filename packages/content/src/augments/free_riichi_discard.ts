@@ -94,6 +94,7 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
   id: AUGMENT_ID,
   tier: "gold",
   category: "riichi",
+  complexity: 3,
   name: "자유 선언",
   description:
     "(상시) 리치를 걸면 그 순간의 손패로 오름패가 고정되고, 이후 자기 순마다 손패에서 아무 패나 자유롭게 버릴 수 있다. 화료 시 손패는 첫 리치 때의 모습으로 남는다.",

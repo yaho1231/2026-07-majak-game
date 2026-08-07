@@ -63,6 +63,7 @@ export const yakumanShield: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "defense",
+  complexity: 3,
   name: "역만 방어술",
   description:
     "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해를 막는다 — 역만 화료분을 전액 돌려받고 그만큼 화료자의 이득이 줄어든다. 본장·공탁 부담은 그대로 낸다. 막아낸 횟수는 전원에게 보인다.",

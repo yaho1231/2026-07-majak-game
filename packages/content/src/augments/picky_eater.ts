@@ -126,6 +126,7 @@ export const pickyEater: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "편식",
   description:
     "(2국에 1회) 국이 시작된 뒤 한 무늬의 수패(자패는 허용)만 12장 버리면 액티브가 열린다 — 발동하면 손패의 수패를 원하는 한 색으로 통일한다. 다른 무늬를 한 장이라도 버리면 그 국은 실패.",

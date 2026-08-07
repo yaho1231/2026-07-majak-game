@@ -140,6 +140,7 @@ export const deadWallMaster: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 3,
   name: "왕패의 주인",
   description:
     "(상시 열람 · 매 국 2회 교환) 왕패가 처음부터 전부 보이며(국 시작 14장 — 깡이 나올 때마다 영상패가 빠져 줄어든다), 국이 시작될 때 자기 첫 순에 왕패의 패와 손패를 최대 2장까지 1:1로 맞바꿔 손의 급소를 갈아 끼운다.",

@@ -32,6 +32,7 @@ export const lateBloomer: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 2,
   // 동풍전판(late_bloomer_east)과 짝을 이루는 이름 — 도감·통계·티어표에서 구분되도록
   // 만개 시점을 이름에 남긴다(둘 다 "대기만성"이면 어느 쪽 기록인지 알 수 없었다).
   name: "대기만성 (반장전)",

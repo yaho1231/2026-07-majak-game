@@ -215,6 +215,7 @@ export const futureSight: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "미래를 보는 자",
   description:
     "(3순에 1회) 액티브 버튼을 누르면 손패에서 무작위 3장이 뽑히고, 그중 바닥에 버릴 1장을 직접 고른 뒤(나머지 2장은 패산 맨 밑으로) 패산 위 3장을 가져온다. ⚠ 이렇게 가져온 3장은 상대에게도 공개된다. 쓸 때마다 층이 쌓여 그 국에 화료하면 층 하나당 +1판을 얻는다.",

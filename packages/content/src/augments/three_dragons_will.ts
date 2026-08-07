@@ -165,6 +165,7 @@ export const threeDragonsWill: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 3,
   name: "삼원의 의지",
   description:
     "(동풍전 1회 · 반장전 2회) 백·발·중 중 두 종류를 커쯔로 세우고 나머지 한 종류를 한 장이라도 쥐고 있으면, 자기 순에 발동해 그 한 장을 커쯔로 완성한다 — 삼원패 9장이 필요한 대삼원이 7장에서 선다.",

@@ -127,6 +127,7 @@ export const disarm: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 1,
   name: "무장해제",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 상대 한 명의 증강 하나를 지목해 이번 국 동안 완전히 무효화한다 — 규칙도, 발동 효과도, 액티브 버튼도 전부 잠긴다.",

@@ -85,6 +85,7 @@ export const bloodContract: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "핏빛 계약",
   description:
     "(매 국 1회) 자신의 첫 타패 전에 역 하나를 공개 계약할 수 있고, 계약한 역을 포함해 화료하면 그 국의 점수가 1.5배가 된다. 계약하지 않으면 평범한 국으로 진행된다.",

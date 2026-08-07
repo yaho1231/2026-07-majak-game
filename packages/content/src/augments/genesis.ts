@@ -182,6 +182,7 @@ export const genesis: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "개벽",
   description:
     "(동풍전 1회 · 반장전 2회 · 한 국에 1회) 자기 순에 발동하면 손패의 자패는 무작위 수패로, 수패는 무작위 자패로 통째로 뒤바뀐다. 새 패는 패산의 실물에서 오고 원래 손패는 패산으로 돌아간다.",

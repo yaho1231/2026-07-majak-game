@@ -53,6 +53,7 @@ export const eternalDealer: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "만년 오야",
   description:
     "(상시 · 연장은 게임 내 3회) 나는 계속 오야다 — 내가 화료하면 언제나 오야 점수(약 1.5배)로 계산되고, 내 자풍은 **'동'으로 덮어씌워진다**(동이 역패가 되는 대신 원래 자풍은 역패가 아니게 된다). 게다가 내가 화료하면 다음 국의 오야가 내 자리로 온다(게임 내 3회).",

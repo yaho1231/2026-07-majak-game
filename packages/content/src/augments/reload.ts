@@ -109,6 +109,7 @@ export const reload: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "etc",
+  complexity: 1,
   name: "재장전",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 사용 횟수를 이미 쓴 내 다른 증강 하나를 지목해 1회 복구한다.",

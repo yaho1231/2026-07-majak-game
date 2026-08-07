@@ -108,6 +108,7 @@ export const tableFlip: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "밥상 뒤엎기",
   description:
     "(매 국 1회) 배패 직후 첫 순에 손패를 전부 산에 반납하고 패산에서 새 손을 받는다. 엎어서 반납한 손패는 그 순간 전원에게 잠깐 공개된다.",

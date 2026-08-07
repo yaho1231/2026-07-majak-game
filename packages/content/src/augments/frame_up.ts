@@ -126,6 +126,7 @@ export const frameUp: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 3,
   name: "누명",
   description:
     "(2국에 1회) 자기 순에 내가 버릴 패를 지목한 상대의 바닥에 놓는다 — 그 사람이 버린 것으로 기록되어 후리텐에 걸리고, 내 바닥에는 남지 않아 내 후리텐은 회피된다.",

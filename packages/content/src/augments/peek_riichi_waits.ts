@@ -198,6 +198,7 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
   id: AUGMENT_ID,
   tier: "gold",
   category: "info",
+  complexity: 2,
   name: "선언 간파",
   description:
     "(매 국 1회 + 위조 1회) 자기 순에 리치 중인 상대 하나를 골라 그 오름패를 공짜로 확인한다. 간파한 국에 한해 1회, 내 손패 1장을 간파한 오름패로 바꿔 만들 수 있다.",

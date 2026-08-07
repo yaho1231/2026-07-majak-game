@@ -158,6 +158,7 @@ export const openRiichiReveal: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "riichi",
+  complexity: 3,
   name: "오픈 리치",
   description:
     "(매 국 1회 · 리치는 국당 한 번) 멘젠·텐파이 상태에서 공탁 1000점을 걸고 오픈 리치를 선언한다. 오름패가 전원에게 공개되며, 리치를 걸지 않은 사람이 그 오름패로 방총하면 그 화료는 역만이 된다.",

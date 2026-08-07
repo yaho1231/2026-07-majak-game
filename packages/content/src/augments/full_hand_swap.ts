@@ -124,6 +124,7 @@ export const fullHandSwap: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "통째로 바꾸기",
   description:
     "(게임 내 2회) 국의 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패(쯔모패 제외)는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다.",

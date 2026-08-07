@@ -114,6 +114,7 @@ export const conjureDraw: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "소환",
   description:
     "(매 국 1회) 자기 순에 손패 1장을 지목하면, 다음 내 쯔모가 그 패의 복제(생성패)로 허공에서 온다 — 내가 부른 패가 다음 쯔모가 된다.",

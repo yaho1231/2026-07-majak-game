@@ -155,6 +155,7 @@ export const northTrader: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "북풍 상인",
   description:
     "(상시) 삼인마작의 북빼기. 자기 순에 손의 北을 빼놓고 영상패로 보충하며, 빼놓은 北은 한 장당 도라 1판으로 값한다. 영상패가 떨어지면 더는 못 빼고, 뺄 때마다 패산이 한 장씩 줄어 국이 그만큼 빨리 끝난다.",

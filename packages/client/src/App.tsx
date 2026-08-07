@@ -3276,11 +3276,16 @@ export function App(): JSX.Element {
       if (def === null) continue;
       // 껐다 켜는 플래그형(밑장빼기 무장 해제 등)은 켜졌을 때만 알린다
       if (raw === false || raw === null || raw === undefined || raw === "") continue;
+      // ⚠ 꼬리가 **좌석 id인 채널만** 사건이다. AUG_EVENTS는 접두로 맞추는데, 같은 증강이
+      //   접두를 공유하는 다른 채널을 함께 쓰는 경우가 있다 — 염색·연금술사의 남은 횟수
+      //   `tile_dyeing:left`·`alchemist:left`가 그렇다. 거르지 않으면 횟수가 줄 때마다
+      //   컷인이 터지고, 컷인 문구의 사람 이름 자리에는 "left"가 앉는다.
+      const tail = key.slice(def.prefix.length + 1);
+      if (!(next.players ?? []).some((p) => p.id === tail)) continue;
       const seen = augEventSig(key, raw, shown.roundKey);
       if (shown.augEvents.has(seen)) continue;
       shown.augEvents.add(seen);
-      const holder = key.slice(def.prefix.length + 1);
-      const who = playerNameById(next, holder);
+      const who = playerNameById(next, tail);
       const tiles = augEventTiles(raw);
       showCutIn(def.title, def.tone ?? "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, def.ms ?? 2000, {
         sfx: () => sfx.augment(1),
@@ -7344,6 +7349,13 @@ const AUG_EVENTS: Record<
     ms: 3600, // 13장을 훑을 시간
   },
   meld_dissolve: { title: "후로 해체", sub: "이미 울어 둔 묶음이 풀렸다", augId: "meld_dissolve" },
+  // 염색·연금술사 — 채널 값이 "man3→pin3" 꼴이라 컷인에 **바뀌기 전과 후**가 나란히 뜬다
+  // (augEventTiles가 화살표를 풀어 두 장으로 만든다). 패는 손패 안에 남으므로 어디에
+  // 있는지는 안 새고, 상대가 읽는 것은 "무엇이 무엇이 됐다"는 사실뿐이다 — 설명이
+  // 약속한 그대로다. 발동 순간에만 의미가 있는 사건이라 상태 뱃지가 아니라 컷인이다.
+  // (남은 횟수는 별도 채널 `{id}:left`로 이름표 pill이 이미 그린다 — 겹치지 않는다.)
+  tile_dyeing: { title: "염색", sub: "손패 한 장이 다른 무늬로 물들었다", augId: "tile_dyeing" },
+  alchemist: { title: "연금술사", sub: "손패 한 장의 숫자가 한 칸 움직였다", augId: "alchemist" },
   "bottom_deal:armed": {
     title: "밑장빼기",
     sub: "다음에 뽑을 패를 패산 맨 밑에서 빼온다",
@@ -7399,6 +7411,15 @@ function augEventFor(key: string): AugEventDef | null {
  */
 function augEventTiles(raw: unknown): TileKind[] {
   if (typeof raw === "string") {
+    // "man3→pin3" — 염색·연금술사가 **바꾸기 전→후**를 한 문자열에 싣는다.
+    // 화살표를 먼저 풀어야 한다: 통째로 parseKindKey에 넣으면 null이라 컷인에 패가
+    // 한 장도 안 뜨고, 무엇이 무엇이 됐는지가 문구에만 남는다.
+    if (raw.includes("→")) {
+      return raw
+        .split("→")
+        .map(parseKindKey)
+        .filter((k): k is TileKind => k !== null);
+    }
     const k = parseKindKey(raw);
     return k === null ? [] : [k];
   }
@@ -8798,6 +8819,14 @@ type PillStatus = {
   gauge?: number;
   /** 툴팁에 붙는 한 줄 설명 */
   note: string;
+  /**
+   * 칩의 성격. 기본(없음)은 잔량·게이지처럼 "세는 값"이다.
+   *
+   * `guard`는 **상대의 선택을 지금 막고 있는 상태**다 — 불가침 조약·천하무적이 그렇다.
+   * 남은 횟수와 같은 회색 칩으로 서면 "왜 론 버튼이 안 뜨는가"를 찾는 눈에 안 걸린다.
+   * 색만 다르게 하고 움직이지는 않는다(판 위에서 깜빡이는 것은 이미 차례 표시가 한다).
+   */
+  tone?: "guard";
 };
 
 /** 카르마 청산선 — 이 값을 넘으면 게이지가 가득 찬다 */
@@ -8905,6 +8934,74 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     const ko = SUIT_KO[raw] ?? raw;
     return { chip: ko, note: `손패의 수패가 ${ko}로 통일됐다` };
   },
+  /*
+   * 천하통일 — 지금 넘어야 하는 **실제 문턱**(`unification:{보유자}` 전원 공개).
+   *
+   * 문턱은 증강이 얹어 준 점수만큼 올라가는데 그게 어디에도 안 보여서, 52,000점을
+   * 들고도 게임이 왜 안 끝나는지 아무도 몰랐다. 이건 **한순간 스치는 사건이 아니다** —
+   * 국이 갈 때마다 올라가는 값이라 컷인으로 한 번 보여주고 지우면 그 뒤로는 또 안 보인다.
+   * 매치 전체에 걸친 상태라 국 스코프가 아니고, 그래서 이름표 pill이 제자리다.
+   * (채널 값은 "목표 53000점" — 숫자만 뽑아 세 자리 끊어 다시 쓴다.)
+   */
+  unification: (raw) => {
+    if (typeof raw !== "string" || raw === "") return null;
+    const n = Number(/(\d+)/.exec(raw)?.[1] ?? "");
+    if (!Number.isFinite(n) || n <= 0) return { chip: raw, note: raw };
+    return {
+      chip: `목표 ${n.toLocaleString()}`,
+      note: `${n.toLocaleString()}점에 닿으면 남은 국을 무시하고 즉시 우승 — 증강이 얹어 준 점수만큼 이 목표도 함께 올라간다`,
+    };
+  },
+  /*
+   * 불가침 조약 — 지금 조약이 살아 있는가(`no_ron_pact:{보유자}` 국 스코프 전원 공개).
+   *
+   * 상대에게 론 버튼이 안 뜨는 것이 전부였다. **왜** 안 뜨는지 국 내내 계속 보여야
+   * 하는 정보라 컷인이 아니라 상태 뱃지다. 값은 서버가 만든 한 줄 그대로 툴팁에 싣고,
+   * 좁은 pill에는 앞머리만 줄여 박는다.
+   */
+  no_ron_pact: (raw) => {
+    if (typeof raw !== "string" || raw === "") return null;
+    if (raw.startsWith("조약 유효")) {
+      return { chip: "🤝 론 불가", note: raw, tone: "guard" };
+    }
+    // 파기·만료 — 사라뜨리지 않고 남긴다. "조약이 이미 깨졌다"는 것도 상대가 읽어야 할 정보다.
+    return { chip: raw.startsWith("조약 만료") ? "조약 만료" : "조약 파기", note: raw };
+  },
+  /*
+   * 천하무적 — 이번 국 이 사람에게는 론이 안 된다(`invincible:{보유자}` 국 스코프 전원 공개).
+   * 불가침 조약과 같은 이유로 상태 뱃지다.
+   */
+  invincible: (raw) =>
+    typeof raw === "string" && raw !== ""
+      ? { chip: "🛡 론 불가", note: `${raw} — 쯔모 화료와 유국 노텐 벌점은 그대로다`, tone: "guard" }
+      : null,
+  /*
+   * 붉은 손길 — 이 사람이 각인한 숫자(`red_five_touch:{보유자}` 전원 공개, 게임 내내 유지).
+   *
+   * 읽어야 하는 쪽이 **상대**라 상대가 보는 자리, 곧 그 사람의 이름표에 세운다.
+   * 각인된 적도라를 울어 가도 내 채점에는 안 들어간다 — 울기 전에 보여야 의미가 있다.
+   */
+  red_five_touch: (raw) => {
+    if (typeof raw !== "string" || raw === "") return null;
+    const rank = /(\d)/.exec(raw)?.[1];
+    if (rank === undefined) return { chip: raw, note: raw };
+    return {
+      chip: `${rank} 각인`,
+      note: `이 사람의 ${rank}만·${rank}통·${rank}삭은 이 사람에게만 적도라 — 버린 것을 울어 가도 도라가 붙지 않는다`,
+    };
+  },
+  /*
+   * 영상 정찰(끌어오기) — 이번 국 영상패 맨 앞이 이 사람의 쯔모패로 갈렸다는 사실.
+   *
+   * 컷인으로 하지 않았다. 이 정보가 필요한 순간은 발동한 그 순간이 아니라 **몇 순 뒤에
+   * 누군가 깡을 치는 순간**이다. 스쳐 지나가면 그때는 아무도 기억하지 못한다.
+   * 국 스코프라 국이 끝나면 서버가 지운다 — 뱃지도 함께 사라진다.
+   * ⚠ 넣은 패의 정체는 채널에 없고, 여기서도 만들어 붙이지 않는다.
+   */
+  rinshan_preview: (raw) =>
+    typeof raw === "string" && raw !== ""
+      ? { chip: "영상패 교체", note: `${raw} — 무슨 패인지는 공개되지 않는다` }
+      : null,
   honba_hunter: (raw) => {
     const m = raw as { honba?: number; value?: number } | null;
     if (m === null || typeof m !== "object" || (m.honba ?? 0) <= 0) return null;
@@ -9184,7 +9281,13 @@ const NamePlate = memo(function NamePlate({
                     🕐{cooldown}국
                   </span>
                 ) : null}
-                {status !== null ? <span className="aug-pill-chip">{status.chip}</span> : null}
+                {status !== null ? (
+                  <span
+                    className={`aug-pill-chip${status.tone !== undefined ? ` aug-pill-chip-${status.tone}` : ""}`}
+                  >
+                    {status.chip}
+                  </span>
+                ) : null}
                 {status?.gauge !== undefined ? (
                   <span className="aug-pill-gauge" aria-hidden="true">
                     <span style={{ transform: `scaleX(${status.gauge})` }} />

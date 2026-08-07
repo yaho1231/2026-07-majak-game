@@ -158,6 +158,7 @@ export const meldDissolve: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "call",
+  complexity: 3,
   name: "파혼",
   description:
     "(매 국 1회) 자기 순에 자신의 후로(치·펑) 하나를 해체한다 — 내가 냈던 2장만 손으로 돌아오고 남에게서 가져왔던 1장은 그 사람의 버림패로 되돌아가며, 빈 자리는 패산에서 1장 보충된다. 유일한 후로였다면 멘젠이 복구되어 다시 리치할 수 있다.",

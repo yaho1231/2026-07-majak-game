@@ -105,6 +105,7 @@ export const tenpaiScan: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "info",
+  complexity: 2,
   name: "천리안",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 그 순간 텐파이인 상대가 누구인지 당신에게만 밝혀진다. 손패 내용이나 대기패는 알 수 없다.",

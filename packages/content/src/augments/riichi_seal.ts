@@ -85,6 +85,7 @@ export const riichiSeal: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "리치 봉인",
   description:
     "(매 국 1회 — 그 국의 첫 리치를 내가 선언할 때) 내가 그 리치를 지고 있는 동안 다른 셋은 리치를 걸 수 없다. 리치를 풀면 봉인도 풀린다. 추가 점수는 붙지 않는다.",

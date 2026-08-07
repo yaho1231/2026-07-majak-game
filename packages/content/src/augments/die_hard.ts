@@ -50,6 +50,7 @@ export const dieHard: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "defense",
+  complexity: 1,
   name: "죽기살기",
   description:
     "(동풍전 1회 · 반장전 2회) 국 정산 결과 점수가 0 아래로 떨어지는 순간, 마이너스로 내려간 만큼을 그대로 플러스로 되돌려 받는다 — −8000점이 되면 즉시 +8000점.",

@@ -127,6 +127,7 @@ export const alchemist: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "연금술사",
   description:
     "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9 순환 없음). 리치 중에도 쓸 수 있고, 바뀐 패는 매번 전원에게 공개된다.",

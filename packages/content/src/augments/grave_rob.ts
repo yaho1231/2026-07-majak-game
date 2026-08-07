@@ -228,6 +228,7 @@ export const graveRob: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "무덤 도굴",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 상대들이 **최근에 버린 10장** 중 1장을 파내 그대로 화료한다. 지불은 쯔모 취급으로 세 명이 분담한다.",

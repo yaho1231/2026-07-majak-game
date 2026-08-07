@@ -44,6 +44,7 @@ export const hiddenBlade: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "scoring",
+  complexity: 3,
   name: "숨은 칼날",
   description:
     "(상시) 리치를 선언하지 않은 멘젠 론 화료에 +2판이 붙고, 리치를 걸지 않았어도 뒷도라가 적용된다.",

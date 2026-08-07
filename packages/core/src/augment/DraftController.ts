@@ -25,7 +25,7 @@
 import { Prng } from "../engine/random/Prng.js";
 import type { GameEngine } from "../engine/GameEngine.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
-import { installAugment } from "./Augment.js";
+import { FIRST_DRAFT_EXCLUDED_COMPLEXITY, installAugment } from "./Augment.js";
 import type { AugmentDef, AugmentExtras } from "./Augment.js";
 import { AugmentRegistry } from "./AugmentRegistry.js";
 import { synergyBias } from "./synergy.js";
@@ -109,8 +109,28 @@ export class DraftController {
   }
 
   /**
+   * **첫 드래프트에서 빼는 난도**인가 (`gameStart` 스테이지 한정).
+   *
+   * 처음 앉은 사람의 첫 선택은 30초 3지선다인데, 거기에 특수 역·부수·판 계산을 알아야
+   * 뜻이 서는 카드가 섞이면 읽지도 못한 채 시간이 지난다(`AugmentComplexity` 주석).
+   * 두 번째 스테이지부터는 한 국을 이미 쳐 봤으므로 아무것도 빼지 않는다.
+   *
+   * **왜 `tierAdjust`의 가중치 배관이 아니라 제외인가**: 그쪽은 드롭 "확률"을 움직이는
+   * 길이고 여기 필요한 것은 **확정 배제**다. 게다가 가중 추출은 눈금을
+   * `Math.max(1, …)`로 바닥을 깔아(`AugmentRegistry.pickWeighted`) 0을 줘도 안 사라지고,
+   * 가중치 덮어쓰기는 카탈로그(=게임) 단위라 스테이지별로 갈라 쓸 수도 없다.
+   * 그래서 이미 스테이지·플레이어 단위로 도는 `excludeFor`에 한 줄로 얹는다 —
+   * 새 경로를 만들지 않으므로 `pick`의 "제시된 것인가" 재계산 검증도 그대로 성립한다.
+   */
+  private tooHardForFirstDraft(def: AugmentDef, stage: DraftStage): boolean {
+    if (stage !== "gameStart") return false;
+    return (def.complexity ?? 2) >= FIRST_DRAFT_EXCLUDED_COMPLEXITY;
+  }
+
+  /**
    * 이 스테이지·플레이어에게 제외할 증강 id
-   * (보유 ∪ 스테이지/모드 부적합 ∪ 보유 증강과 상호 배제(conflicts) 관계).
+   * (보유 ∪ 스테이지/모드 부적합 ∪ 보유 증강과 상호 배제(conflicts) 관계
+   *  ∪ 첫 드래프트에 너무 어려운 것).
    */
   private excludeFor(stage: DraftStage, player: PlayerId): Set<string> {
     const state = this.engine.state;
@@ -127,7 +147,7 @@ export class DraftController {
     }
 
     for (const def of this.catalog.all()) {
-      if (!this.offerable(def, stage)) {
+      if (!this.offerable(def, stage) || this.tooHardForFirstDraft(def, stage)) {
         exclude.add(def.id);
         continue;
       }

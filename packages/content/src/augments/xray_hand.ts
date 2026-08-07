@@ -70,6 +70,7 @@ export const xrayHand: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "info",
+  complexity: 1,
   name: "투시",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 발동하면 그 국이 끝날 때까지 상대 세 명의 손패가 전부 나에게만 보인다.",

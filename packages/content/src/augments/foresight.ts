@@ -209,6 +209,7 @@ export const foresight: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "info",
+  complexity: 2,
   name: "예지",
   description:
     "(열람 2순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 그 순간 패산 다음 4장이 나에게만 공개되고(발동=공개, 취소 불가), 국에 한 번은 드래그로 순서를 바꿔 다음 한 바퀴를 설계한다. 발동한 국에 화료하면 +2판을 얻는다.",

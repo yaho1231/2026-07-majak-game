@@ -164,6 +164,7 @@ export {
   augmentInstanceId,
   TIER_LAYER,
   AUGMENT_CATEGORIES,
+  FIRST_DRAFT_EXCLUDED_COMPLEXITY,
   BOT_WEIGHT,
   botChosenOption,
 } from "./augment/Augment.js";
@@ -172,6 +173,7 @@ export type {
   AugmentTier,
   EffectOptions,
   AugmentCategory,
+  AugmentComplexity,
   AugmentContext,
   AugmentExtras,
   AugmentBotPolicy,
@@ -226,6 +228,8 @@ export {
   POWER_TIER_LABEL,
   TIER_CUTS,
   powerScore,
+  formulaTier,
+  deviatesFromFormula,
   defaultBotWeight,
 } from "./augment/powerTier.js";
 export type { PowerTier, PowerTierEntry } from "./augment/powerTier.js";

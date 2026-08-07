@@ -81,6 +81,7 @@ export const nagashiYakuman: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "유국역만",
   description:
     "(상시) 유국까지 요구패(1·9)와 자패만 버렸다면 유국만관이 역만이 된다. 원래는 그 버림패를 남이 울어 가면 무효가 되지만, 이 증강은 울려도 성립한다.",

@@ -153,6 +153,7 @@ export const tileSplit: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "분열",
   description:
     "(매 국 1회) 자기 순에 손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통 → 4통 + 5통). 두 번째 조각은 손패에서 가장 쓸모없는 잡패 한 장이 대신 바뀌어 채운다(손패 장수는 그대로).",

@@ -96,6 +96,7 @@ export const mixedNineGates: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 3,
   name: "뒤섞인 아홉 개의 연꽃",
   description:
     "(상시 · 멘젠 한정) 구련보등이 무늬를 가리지 않는다 — 만·통·삭을 하나로 보고 1112345678999 + 아무 수패 1장이면 역만이다. 자패는 한 장도 섞이면 안 되고, 한 번이라도 울면 성립하지 않는다.",

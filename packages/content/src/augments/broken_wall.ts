@@ -12,6 +12,7 @@ export const brokenWall: AugmentDef = defineAugment({
   id: "broken_wall",
   tier: "prism",
   category: "shape",
+  complexity: 2,
   name: "끝없는 윤회",
   description:
     "(상시) 슌쯔가 원을 그리며 순환한다 — 8-9-1, 9-1-2도 하나의 몸통으로 인정된다.",

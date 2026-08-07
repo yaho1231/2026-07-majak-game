@@ -93,6 +93,7 @@ export const noRetreat: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 3,
   name: "물러설 수 없는 선언",
   description:
     "(2국에 1회) 국의 첫 순에 액티브 버튼이 활성화되며, 선언하면 그 국에는 리치 공탁금을 내지 않고 리치·일발이 각각 2판, 뒷도라는 **장당 2판**이 된다. 역만 손에는 붙지 않는다.",

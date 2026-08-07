@@ -122,6 +122,7 @@ export const rinshanPreview: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "info",
+  complexity: 3,
   name: "영상 정찰",
   description:
     "(상시 열람 · 매 국 1회 교환) 다음 깡에서 가져올 영상패(왕패 맨 앞 1장)를 항상 미리 보고, 자기 순에 깡을 하지 않고도 그 영상패를 내 쯔모패와 즉시 맞바꾼다.",

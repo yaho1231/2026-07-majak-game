@@ -111,6 +111,7 @@ export const silentPact: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "call",
+  complexity: 3,
   name: "묵계",
   description:
     "(매 국 1회) ⚠ **이 증강으로 부른 퐁 1회만** 멘젠이 유지된다 — 그 퐁을 하고도 리치·멘젠쯔모·멘젠 론 부수가 그대로 살아 있다. 같은 국에 평범한 퐁·치·깡을 하나라도 더 하면 그 순간 손이 열려 전부 잃는다.",

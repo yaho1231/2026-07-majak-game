@@ -119,6 +119,7 @@ export const karma: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 2,
   name: "카르마",
   description:
     "(상시 적립 · 게이지 8,000 이상일 때 발동) 점수를 잃을 때마다 그 손실이 '업보' 게이지로 쌓이고(전원 공개), 자기 순에 게이지를 태워 상대 셋에게서 1/3씩 뜯는다 — 받는 것은 실제로 뜯긴 만큼이고, 상대의 남은 점수를 넘는 몫은 그냥 사라진다.",

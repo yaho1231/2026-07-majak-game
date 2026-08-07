@@ -76,6 +76,7 @@ export const palmFlip: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "손바닥 뒤집기",
   description:
     "(동풍전 1회 · 반장전 2회) 리치 중 자기 순에 리치를 해제한다 — 손이 풀리고 같은 국에 다시 리치를 걸 수 있으며, 이미 낸 리치봉이 그대로 살아 있어 재선언은 공짜다.",

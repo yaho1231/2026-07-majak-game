@@ -98,6 +98,7 @@ export const spy: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 2,
   name: "스파이",
   description:
     "(매 국 1회) 자기 순에 손패의 패 1종을 비밀리에 지정한다. 이후 상대가 그 종류를 오름패로 화료하면 그 화료의 점수가 전부 나에게 온다.",

@@ -138,6 +138,7 @@ export const counter: AugmentDef = defineAugment({
   id: "counter",
   tier: "silver",
   category: "scoring",
+  complexity: 3,
   name: "카운터",
   description:
     "(매 국 1회) 나보다 먼저 리치를 건 상대에게 추격 리치로 반격한다 — 내 공탁 1000점을 그 상대가 대납하고 그 상대의 일발이 즉시 사라진다. 그 국을 내가 먼저 화료하면 그 상대의 손이 올랐을 때 받았을 점수까지 뱅크에서 받고, 직격 론으로 잡았다면 +4판을 얻는다.",

@@ -135,6 +135,7 @@ export const silentSwap: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "정적의 손",
   description:
     "(매 국 1회 — 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 네 명 전원의 바닥에서 버림패 1장을 골라 손으로 가져온다(쯔모패는 패산으로). 발동한 국에 화료하면 +2판을 얻는다.",

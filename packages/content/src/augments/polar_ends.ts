@@ -39,6 +39,7 @@ export const polarEnds: AugmentDef = defineAugment({
   id: "polar_ends",
   tier: "prism",
   category: "shape",
+  complexity: 3,
   name: "양극",
   description:
     "(상시) 1과 9만으로 몸통을 이룰 수 있다 — 199·191·911도 하나의 커쯔다. 같은 무늬의 1과 9를 동일한 패로 취급하며 그 몸통으로 퐁까지 할 수 있다.",

@@ -147,6 +147,7 @@ export const uraPeek: AugmentDef = defineAugment({
   id: ID,
   tier: "silver",
   category: "info",
+  complexity: 2,
   name: "이면투시",
   description:
     "(매 국 1회 + 바꿔치기 1회) 자기 순에 뒷도라 표시패를 본인만 확인한다. 확인한 국에는 1회, 그 뒷도라 표시패를 왕패의 다른 패와 바꿔치기할 수 있다.",

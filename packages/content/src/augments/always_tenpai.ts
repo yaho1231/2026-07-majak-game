@@ -34,6 +34,7 @@ export const alwaysTenpai: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "defense",
+  complexity: 2,
   name: "승승장구",
   description:
     "(상시) 황패유국 시 손패가 어떻든 항상 텐파이로 취급된다 — 노텐 벌점을 내지 않고, 노텐인 상대 한 명당 2000점을 추가로 받는다(셋 다 노텐이면 +6000).",

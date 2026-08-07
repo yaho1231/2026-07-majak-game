@@ -88,6 +88,7 @@ export const rankGate: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 3,
   name: "격(格)",
   description:
     "(매 국 1회) 국의 첫 순에 상대 한 명을 지목하면, 그 사람은 이번 국에 4판 이하로는 화료할 수 없다.",

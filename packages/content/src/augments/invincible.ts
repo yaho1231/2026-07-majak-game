@@ -73,6 +73,7 @@ export const invincible: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "defense",
+  complexity: 1,
   name: "천하무적",
   description:
     "(2국에 1회) 자기 순에 선언하면 이번 국이 끝날 때까지 타가는 당신을 론할 수 없다. 무엇을 버려도 방총이 나지 않고, 선언은 전원에게 공개된다.",

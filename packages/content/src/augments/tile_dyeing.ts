@@ -119,6 +119,7 @@ export const tileDyeing: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "hand",
+  complexity: 1,
   name: "염색",
   description:
     "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",

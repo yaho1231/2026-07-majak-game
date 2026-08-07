@@ -116,6 +116,7 @@ export const takeBack: AugmentDef = defineAugment({
   id: ID,
   tier: "silver",
   category: "hand",
+  complexity: 1,
   name: "무르기",
   description:
     "(3순에 1회) 쯔모한 패를 전원에게 공개하고 패산 맨 밑에 되돌린 뒤 새로 1장을 뽑는다.",

@@ -84,6 +84,7 @@ export const timeStop: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 1,
   name: "시간 정지",
   description:
     "(매 국 1회) 사용하면 내 차례를 한 번 더 진행한다(연속 2순).",

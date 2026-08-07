@@ -26,6 +26,7 @@ export const mixedTriplet: AugmentDef = defineAugment({
   id: "mixed_triplet",
   tier: "prism",
   category: "shape",
+  complexity: 2,
   name: "동수의 결속",
   description:
     "(상시) 커쯔의 무늬 제한이 사라진다 — 1만·1통·1삭도 하나의 커쯔다. 슌쯔는 그대로이며 커쯔만 무늬를 가리지 않는다.",

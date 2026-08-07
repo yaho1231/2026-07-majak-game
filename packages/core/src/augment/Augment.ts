@@ -53,6 +53,28 @@ export type AugmentCategory =
   | "disrupt"
   | "etc";
 
+/**
+ * 이해 난도 1~3 — **첫 드래프트에서 무엇을 빼는가**의 단일 축.
+ *
+ * 처음 앉은 사람의 첫 드래프트는 30초 제한의 3지선다다. 그 자리에 리치마작 지식을
+ * 요구하는 카드가 섞이면 읽지도 못한 채 시간이 지나간다 — 그런데 이 저장소에는
+ * 난도를 나타내는 값이 **어디에도 없었다**(`synergy.ts`의 `tags`는 시너지 가중용이다).
+ *
+ * - `1` 리치마작을 몰라도 한 줄로 읽힌다 (쯔모 리롤·손패 교환·점수 배수 …)
+ * - `2` 리치마작 용어 하나를 안다는 전제 (후리텐·멘젠·도라·본장·공탁 …)
+ * - `3` 규칙 여럿이 겹치거나 특수 역·부수·판 계산을 알아야 뜻이 선다
+ *
+ * `3`은 **첫 스테이지(gameStart)에서만** 제외된다(`DraftController.excludeFor`).
+ * 두 번째 스테이지부터는 한 국을 이미 쳐 봤으므로 전부 나온다.
+ *
+ * 애매하면 **높게** 잡는다 — 잘못된 3은 제시 한 번을 잃지만, 잘못된 1은 첫 픽을
+ * 통째로 버리게 한다.
+ */
+export type AugmentComplexity = 1 | 2 | 3;
+
+/** 첫 드래프트(gameStart)에서 빼는 난도 */
+export const FIRST_DRAFT_EXCLUDED_COMPLEXITY: AugmentComplexity = 3;
+
 export const AUGMENT_CATEGORIES: readonly AugmentCategory[] = [
   "scoring",
   "info",
@@ -305,6 +327,11 @@ export interface AugmentDef {
   tier: AugmentTier;
   /** 계열 — 표시·연출 분류의 단일 진실. AugmentCategory 주석 참고 */
   category: AugmentCategory;
+  /**
+   * 이해 난도 1~3 — 첫 드래프트 제외 판단에 쓴다. `AugmentComplexity` 주석 참고.
+   * 생략하면 2(보통)로 본다. 새 증강은 반드시 자기 파일에 선언한다(커버리지 테스트가 강제).
+   */
+  complexity?: AugmentComplexity;
   name: string;
   description: string;
   /**
@@ -357,6 +384,9 @@ export function defineAugment(def: AugmentDef): AugmentDef {
   }
   if (!AUGMENT_CATEGORIES.includes(def.category)) {
     throw new Error(`Unknown augment category: ${def.category} (${def.id})`);
+  }
+  if (def.complexity !== undefined && ![1, 2, 3].includes(def.complexity)) {
+    throw new Error(`Augment complexity must be 1~3: ${def.complexity} (${def.id})`);
   }
   return def;
 }

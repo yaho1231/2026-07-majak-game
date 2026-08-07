@@ -139,6 +139,7 @@ export const triplePeek: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "info",
+  complexity: 1,
   name: "삼세 예지",
   description:
     "(매 국 1회) 자기 순에 선언하면 액티브 버튼을 누른 그 시점의 패산 기준으로 내 다음 쯔모 세 장의 종류가 나에게만 공개된다.",

@@ -12,6 +12,7 @@ export const omniChi: AugmentDef = defineAugment({
   id: "omni_chi",
   tier: "gold",
   category: "call",
+  complexity: 2,
   name: "사방치기",
   description:
     "(상시) 상가뿐 아니라 누구의 버림패로도 치를 할 수 있다.",

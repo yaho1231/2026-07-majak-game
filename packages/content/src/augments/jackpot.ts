@@ -194,6 +194,7 @@ export const jackpot: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 1,
   name: "일확천금",
   description:
     "(매 국 1회 · 국의 첫 순) 배패를 받은 직후 룰렛을 돌려 0.5·1·2·3배 중 하나를 뽑는다. 그 국에 얻는 점수(공탁 회수분 제외)에 뽑힌 배수가 곱해지며, 꽝(0.5배)도 있다.",

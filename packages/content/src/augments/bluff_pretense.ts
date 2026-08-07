@@ -160,6 +160,7 @@ export const bluffPretense: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "call",
+  complexity: 1,
   name: "허장성세",
   description:
     "(매 국 1회) 상대가 버린 패에 대해, 손에 같은 패가 1장뿐이어도 펑을 선언할 수 있다. 부족한 세 번째 장은 손패의 잡패 하나가 그 패로 변신해 채운다.",

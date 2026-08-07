@@ -94,6 +94,7 @@ export const voidKan: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "call",
+  complexity: 3,
   name: "성립하지 않는 깡",
   description:
     "(상시 · 리치 중에는 발동하지 않는다) 리치를 걸지 않은 텐파이라면, 타가가 깡을 선언하는 순간 그 깡패가 오름패인지와 상관없이 창깡으로 화료할 수 있다. 안깡도 예외가 아니다.",

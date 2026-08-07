@@ -151,6 +151,7 @@ export const giantGod: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 3,
   name: "마작의 거신병",
   description:
     "(동풍전 1회 · 반장전 2회) **조건: 국사무쌍 13종(1m9m·1p9p·1s9s·동남서북·백발중)을 내가 직접 전부 버려 둬야 한다.** 13종이 모두 내 바닥에 깔린 뒤 내 순이 오면 버튼이 켜지고, 발동하면 그 13장을 손으로 끌어올려 국사무쌍 13면 대기가 된다.",

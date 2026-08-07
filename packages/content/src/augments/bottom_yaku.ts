@@ -98,6 +98,7 @@ export const bottomYaku: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 3,
   name: "바닥의 족보",
   description:
     "(상시) 화료 시 내 바닥(버림패)이 판을 얹어 준다 — 한 무늬의 1~9를 모두 버렸으면 '역류 통관' 2판, 같은 패를 3장 이상 버렸으면 '미련 없음' 1판. 둘은 겹쳐 최대 3판. ⚠ 이 두 역만으로는 화료할 수 없다 — 손에 진짜 역이 하나는 있어야 한다.",

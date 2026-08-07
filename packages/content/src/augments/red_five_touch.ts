@@ -177,6 +177,7 @@ export const redFiveTouch: AugmentDef = defineAugment({
   id: ID,
   tier: "silver",
   category: "hand",
+  complexity: 2,
   name: "붉은 손길",
   description:
     "(게임 내 1회 · 리치 중에는 쓸 수 없다) 자기 순에 숫자 하나(1~9)를 지정하면, 그 뒤로 내 손에 들어오는 그 숫자가 게임이 끝날 때까지 전부 적도라가 된다. 이 적도라는 나만 쓸 수 있고, 어떤 숫자를 지정했는지는 전원에게 공개된다.",

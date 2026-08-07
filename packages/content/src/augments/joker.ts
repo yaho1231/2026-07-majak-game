@@ -121,6 +121,7 @@ export const joker: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 3,
   name: "조커",
   description:
     "(2국에 1회) 자기 순에 발동하면 이번 국 동안 손패의 백(白)이 조커가 되어, 손을 가장 비싸게 만드는 패로 알아서 변한다. 조커가 넓힌 대기는 후리텐이 되지 않는다.",

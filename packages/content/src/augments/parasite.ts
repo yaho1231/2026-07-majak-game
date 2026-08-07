@@ -74,6 +74,7 @@ export const parasite: AugmentDef = defineAugment({
   id: "parasite",
   tier: "prism",
   category: "disrupt",
+  complexity: 1,
   name: "기생충",
   description:
     "(국마다 1회) 자기 순에 상대 한 명에게 기생한다. 그 국 정산에서 숙주가 얻는 점수의 절반을 대신 가져온다.",

@@ -72,6 +72,7 @@ export const ankanDora: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "밀실의 도라",
   description:
     "(상시) 안깡을 할 때마다 그 깡의 네 장이 나만의 도라가 된다 — 표시패도 뒤집지 않고 화료 시 안깡 1묶음당 +4판. 손패에 있는 같은 패에는 붙지 않는다.",

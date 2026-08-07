@@ -66,6 +66,7 @@ export const letItRide: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "scoring",
+  complexity: 2,
   name: "판돈 굴리기",
   description:
     "(상시) 연속으로 화료할수록 **손의 점수**에 붙는 배수가 오른다 — 1번째 화료 1배, 2연속 2배, 3연속 3배, 4연속 이상 4배. 본장·공탁은 배수 대상이 아니다. 방총하거나 유국이면 다시 1배부터 시작한다.",

@@ -27,6 +27,7 @@ export const royalKokushi: AugmentDef = defineAugment({
   id: "royal_kokushi",
   tier: "prism",
   category: "shape",
+  complexity: 3,
   name: "왕의 징표",
   description:
     "(상시) 국사무쌍은 요구패 13종을 모두 갖추지 않아도 성립한다. 없는 한 종류의 요구패는 다른 요구패의 중복으로 대신할 수 있다.",
