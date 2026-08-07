@@ -6745,6 +6745,66 @@ button {
   color: #a9b7ac;
 }
 
+/* 역 목록 — 한 줄이 역 하나. 이름·판수 / 예시 손패 / 한 줄 설명 */
+.yaku-list {
+  margin-top: 10px;
+}
+
+.yaku-row {
+  padding: 11px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.yaku-row:first-child { border-top: none; padding-top: 4px; }
+
+.yaku-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 7px;
+}
+
+.yaku-name {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #f7f3e8;
+}
+
+.yaku-han {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(240, 200, 106, 0.13);
+  border: 1px solid rgba(240, 200, 106, 0.3);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #f0c86a;
+  white-space: nowrap;
+}
+
+.yaku-tiles { margin-bottom: 2px; }
+
+/* 액션 바 견본 — 게임 것과 같은 클래스라 크기만 줄이고, 등장 애니메이션은 끈다
+   (규칙 화면에서 문서를 읽는 중에 버튼이 튀어 오를 이유가 없다). */
+.help-actbar {
+  margin: 12px 0 0;
+  overflow-x: auto;
+}
+.help-actbar .action-bar {
+  display: inline-flex;
+  animation: none;
+  padding: 8px 10px;
+  gap: 8px;
+}
+.help-actbar .act {
+  padding: 8px 14px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  cursor: default;
+}
+@media (hover: hover) {
+  .help-actbar .act:hover { transform: none; filter: none; }
+}
+
 /* 좁은 화면 — 라벨을 윗줄로 올려 패 14장이 한 줄에 들어가게 한다.
    (라벨과 같은 줄에 두면 완성형 마지막 두 장이 다음 줄로 떨어져 머리가 끊겨 보였다.) */
 @media (max-width: 640px) {
@@ -6752,8 +6812,10 @@ button {
   .help-fig-label { flex: 0 0 100%; min-width: 0; margin-bottom: 2px; }
   .help-fig-groups { gap: 5px; }
   .help-fig { padding: 10px 8px; }
-  .help-fig .tile-mini { width: 17px; height: 26px; }
+  .help-fig .tile-mini,
+  .yaku-tiles .tile-mini { width: 17px; height: 26px; }
   .help-fig-mark { width: 13px; font-size: 13px; }
+  .yaku-tiles .help-fig-groups { gap: 5px; }
 }
 
 /* 인게임 도감·규칙 단추 — 나가기(14)·설정(64)·증강로그(114) 왼쪽으로 이어 붙인다.
