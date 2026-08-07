@@ -333,7 +333,7 @@ export const standardYakuList: YakuDef[] = [
   // ── 2판 ──
   {
     id: "chiitoitsu",
-    name: "치토이츠",
+    name: "치또이츠",
     closedHan: 2,
     openHan: null,
     check: (v) => v.form === "chiitoitsu",
