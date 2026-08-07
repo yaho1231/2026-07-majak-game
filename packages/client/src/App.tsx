@@ -3721,23 +3721,26 @@ export function App(): JSX.Element {
           예전에는 도감이 홈 라우팅 분기에 있어, 정작 필요한 순간 — 상대가 방금 공개한
           증강이 무엇인지 궁금한 드래프트·대국 중 — 에 열 수 없었다. 아래 화면은 그대로
           살아 있으므로 게임 상태도 결정 타이머도 건드리지 않는다. */}
+      {/* 도움말이 도감보다 **먼저** 그려진다 — 도움말의 "증강이란"에서 도감을 열면
+          도감이 그 위에 얹히고, 닫으면 읽던 자리로 그대로 돌아온다. */}
+      {helpOpen ? (
+        <div className="screen-overlay">
+          <HelpScreen
+            backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
+            onOpenCodex={() => setCodexOpen(true)}
+            onClose={() => setHelpOpen(false)}
+          />
+        </div>
+      ) : null}
       {codexOpen ? (
         <div className="screen-overlay">
           <CodexScreen
             catalog={catalog}
             career={stats?.career.find((e) => e.nickname === auth?.username)?.stats ?? null}
             leaderboard={leaderboard}
-            backLabel={inGame || inWaiting || auth?.guest === true ? "← 닫기" : "← 홈으로"}
+            backLabel={helpOpen || inGame || inWaiting || auth?.guest === true ? "← 닫기" : "← 홈으로"}
             onRefresh={() => { if (auth?.guest !== true) refreshHome(); }}
             onClose={() => setCodexOpen(false)}
-          />
-        </div>
-      ) : null}
-      {helpOpen ? (
-        <div className="screen-overlay">
-          <HelpScreen
-            backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
-            onClose={() => setHelpOpen(false)}
           />
         </div>
       ) : null}
@@ -5856,6 +5859,8 @@ function YakuTab(): JSX.Element {
 function HelpScreen(props: {
   /** 왼쪽 위 되돌아가기 버튼 문구 (기본 "← 닫기"). */
   backLabel?: string;
+  /** "증강이란" 탭에서 도감으로 건너가기. 도감은 이 화면 **위에** 뜨고, 닫으면 여기로 돌아온다. */
+  onOpenCodex?: () => void;
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<HelpTab>("basics");
@@ -5911,6 +5916,13 @@ function HelpScreen(props: {
             </section>
           ))
         )}
+        {/* "증강이란"을 다 읽은 사람이 다음에 궁금해하는 것은 **어떤 증강이 있는지**다.
+            여기서 도감으로 바로 건너뛴다 — 홈까지 나갔다 다시 들어올 이유가 없다. */}
+        {tab === "augment" && props.onOpenCodex !== undefined ? (
+          <button className="home-codex-cta" onClick={props.onOpenCodex}>
+            📖 증강 도감 열기 — {AUGMENT_KINDS}종 전체 상세 설명
+          </button>
+        ) : null}
       </main>
     </div>
   );
