@@ -5224,13 +5224,14 @@ function GuestOutro(props: {
  * 목표는 규칙서가 아니라 **길을 잃지 않을 만큼**이다. 각 항목의 더 깊은 설명은
  * 게임 안 용어 풀이(glossary)와 증강 도감이 이어받는다.
  *
- * 두 탭의 독자가 다르다 — basics는 리치마작을 모르는 사람, augment는 **아는 사람**이다.
+ * 탭마다 독자가 다르다 — basics는 리치마작을 모르는 사람, yaku는 "모양은 알겠는데
+ * 뭘 만들어야 하나" 하는 사람, augment는 마작을 **아는 사람**이다.
  * augment 탭에서 멘젠·텐파이·후리텐을 풀어 쓰지 않는 것은 의도다.
  *
  * 화면은 도감(`CodexScreen`)의 뼈대(.codex 계열)를 그대로 쓴다 — 새 디자인 언어를
  * 만들지 않는다.
  */
-type HelpTab = "basics" | "augment";
+type HelpTab = "basics" | "yaku" | "augment";
 
 /**
  * 그림 한 줄 — 실제 패 그림으로 보여 주는 예시.
@@ -5258,6 +5259,8 @@ interface HelpSection {
   paras: string[];
   /** 문단 아래에 붙는 패 그림 */
   figure?: HelpFigRow[];
+  /** 그림 대신(또는 함께) 붙는 화면 조각 — 게임 UI를 그대로 재현한 견본 */
+  mock?: "action-bar";
 }
 
 /**
@@ -5482,7 +5485,9 @@ const HELP_AUGMENT: HelpSection[] = [
     paras: [
       "상시형은 가진 것만으로 적용됩니다. 규칙이 이미 바뀐 상태라 따로 쓸 것이 없습니다.",
       "액티브형은 조건이 맞는 순간 행동 버튼 줄에 그 증강의 버튼이 뜹니다. 누를지 말지, 언제 누를지가 선택입니다. 패를 고르는 증강은 선택창이 열리고 바뀔 결과를 먼저 보여 줍니다.",
+      "증강 버튼은 **보랏빛**이라 론·퐁·패스와 한눈에 구분됩니다. 넓은 화면에서는 버튼마다 단축키 숫자가 함께 붙습니다.",
     ],
+    mock: "action-bar",
   },
   {
     title: "제한 — 이름표에 다 뜬다",
@@ -5501,6 +5506,264 @@ const HELP_AUGMENT: HelpSection[] = [
   },
 ];
 
+/**
+ * 액션 바 견본 — 게임 화면 아래에 뜨는 버튼 줄을 **같은 클래스로** 그대로 그린다.
+ *
+ * 그림 파일을 따로 두지 않는 이유: 버튼 색과 모양이 바뀌면 스크린샷은 그 자리에서
+ * 낡는다. `.action-bar`/`.act`를 그대로 쓰면 게임이 바뀔 때 이 견본도 같이 바뀐다.
+ * (`.help-actbar`가 크기만 줄인다. 등장 애니메이션도 여기서 끈다.)
+ */
+function HelpActionBarMock(): JSX.Element {
+  return (
+    <div className="help-actbar" aria-hidden="true">
+      <div className="action-bar">
+        <button className="act act-win" type="button">
+          론<span className="act-key">1</span>
+        </button>
+        <button className="act act-call" type="button">
+          퐁<span className="act-key">2</span>
+        </button>
+        {/* 실제로 있는 액티브 증강 이름을 쓴다 (ACTION_LABEL.bottom_deal) — 지어낸 이름을
+            보여 주면 게임 안에서 찾을 수 없다 */}
+        <button className="act act-aug" type="button">
+          밑장빼기
+          <span className="act-key">3</span>
+        </button>
+        <button className="act act-pass" type="button">
+          패스<span className="act-key">4</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 역 한 줄. `tiles`가 없는 역은 손 모양이 아니라 **상황**으로 성립하는 것들이다
+ * (리치·일발·해저모월…) — 억지로 손패를 그려 봐야 아무것도 설명하지 못한다.
+ */
+interface YakuEntry {
+  name: string;
+  /** 판수 표기 — 멘젠/후로가 다르면 그것까지 (예: "2판 · 울면 1판") */
+  han: string;
+  note: string;
+  /** 예시 손패 (`234m 55p` 표기, 묶음은 공백) */
+  tiles?: string;
+}
+
+interface YakuGroup {
+  title: string;
+  lead: string;
+  items: YakuEntry[];
+}
+
+/*
+ * 이 표는 서버가 실제로 판정하는 역(core의 standardYakuList)과 **같은 목록**이다.
+ * 이름과 판수를 바꾸려면 그쪽부터 본다 — 여기만 고치면 화면과 정산이 어긋난다.
+ * (증강이 역을 더 얹거나 조건을 바꾸는 경우가 있는데, 그건 도감이 맡는다.)
+ */
+const HELP_YAKU: YakuGroup[] = [
+  {
+    title: "1판",
+    lead: "가장 자주 나오는 것들. 이 줄만 알아도 판이 돈다.",
+    items: [
+      { name: "리치", han: "1판 · 멘젠", note: "멘젠 텐파이에서 1000점을 걸고 선언. 이후 손패를 바꿀 수 없습니다." },
+      { name: "일발", han: "1판 · 멘젠", note: "리치를 걸고 한 바퀴가 돌기 전에 화료. 중간에 울음이 들어가면 사라집니다." },
+      { name: "멘젠쯔모", han: "1판 · 멘젠", note: "한 번도 울지 않은 손으로 스스로 뽑아 화료." },
+      {
+        name: "핑후",
+        han: "1판 · 멘젠",
+        tiles: "234m 567m 345p 678s 99p",
+        note: "슌츠 4개 + 역패가 아닌 머리, 그리고 양쪽으로 기다리는 대기. 커츠가 하나라도 있으면 아닙니다.",
+      },
+      {
+        name: "탕야오",
+        han: "1판",
+        tiles: "234m 678m 345p 567s 55p",
+        note: "1·9와 자패가 하나도 없는 손. 울어도 됩니다.",
+      },
+      {
+        name: "이페코",
+        han: "1판 · 멘젠",
+        tiles: "234m 234m 678p 345s 99s",
+        note: "똑같은 슌츠 두 벌.",
+      },
+      {
+        name: "역패 — 백 · 발 · 중",
+        han: "1판",
+        tiles: "555z 234m 678p 345s 99s",
+        note: "삼원패(백·발·중) 커츠. 세 종류 각각이 1판이라 두 종류를 모으면 2판입니다.",
+      },
+      {
+        name: "역패 — 자풍 · 장풍",
+        han: "1판",
+        tiles: "111z 234m 678p 345s 99s",
+        note: "내 자리 바람(자풍) 또는 그 판의 바람(장풍) 커츠. 동장의 동가라면 동 커츠 하나가 2판입니다.",
+      },
+      { name: "해저모월 · 하저로어", han: "1판", note: "마지막 패로 쯔모(해저) 하거나, 마지막 버림패로 론(하저)." },
+      { name: "영상개화", han: "1판", note: "깡을 하고 가져온 영상패로 그대로 화료." },
+      { name: "창깡", han: "1판", note: "남이 가깡하려는 패로 론." },
+    ],
+  },
+  {
+    title: "2판",
+    lead: "손을 어느 정도 골라야 나오는 것들.",
+    items: [
+      { name: "더블리치", han: "2판 · 멘젠", note: "첫 순번에, 아무도 울지 않은 채 건 리치." },
+      {
+        name: "치토이츠",
+        han: "2판 · 멘젠",
+        tiles: "11m 44m 77m 22p 99p 33s 55z",
+        note: "같은 패 2장씩 일곱 쌍. 이것만 묶음 4개+머리 규칙에서 벗어납니다.",
+      },
+      {
+        name: "또이또이",
+        han: "2판",
+        tiles: "111m 444p 777s 333z 22m",
+        note: "묶음이 전부 커츠. 슌츠가 하나도 없습니다.",
+      },
+      {
+        name: "산안커",
+        han: "2판",
+        tiles: "111m 444p 777s 234s 99m",
+        note: "울지 않고 만든 커츠 3개. 퐁으로 만든 커츠는 세지 않습니다.",
+      },
+      {
+        name: "삼색동순",
+        han: "2판 · 울면 1판",
+        tiles: "234m 234p 234s 678m 99s",
+        note: "만·통·삭 세 무늬로 같은 숫자의 슌츠.",
+      },
+      {
+        name: "삼색동각",
+        han: "2판",
+        tiles: "333m 333p 333s 678m 99s",
+        note: "세 무늬로 같은 숫자의 커츠.",
+      },
+      {
+        name: "일기통관",
+        han: "2판 · 울면 1판",
+        tiles: "123m 456m 789m 234p 55s",
+        note: "한 무늬로 1~9를 쭉 잇습니다.",
+      },
+      {
+        name: "찬타",
+        han: "2판 · 울면 1판",
+        tiles: "123m 789p 123s 111z 99s",
+        note: "모든 묶음과 머리에 1·9나 자패가 하나씩 들어 있습니다.",
+      },
+      {
+        name: "소삼원",
+        han: "2판",
+        tiles: "555z 666z 77z 234m 678p",
+        note: "삼원패 중 둘은 커츠, 하나는 머리. 역패 2판이 같이 붙어 실제로는 4판부터 시작합니다.",
+      },
+      {
+        name: "혼노두",
+        han: "2판",
+        tiles: "111m 999p 111z 555z 99s",
+        note: "1·9와 자패만으로 이뤄진 손. 또이또이가 거의 항상 함께 붙습니다.",
+      },
+      { name: "산깡즈", han: "2판", tiles: "1111m 4444p 7777s 234s 99m", note: "깡 3개." },
+    ],
+  },
+  {
+    title: "3판 이상",
+    lead: "판이 크게 뛰는 자리. 여기부터는 만관을 노려볼 만합니다.",
+    items: [
+      {
+        name: "량페코",
+        han: "3판 · 멘젠",
+        tiles: "234m 234m 567p 567p 99s",
+        note: "이페코 두 벌. 멘젠이어야 합니다.",
+      },
+      {
+        name: "준찬타",
+        han: "3판 · 울면 2판",
+        tiles: "123m 789m 123p 789s 99s",
+        note: "모든 묶음과 머리에 1·9가 들어가되 자패는 하나도 없습니다.",
+      },
+      {
+        name: "혼일색",
+        han: "3판 · 울면 2판",
+        tiles: "123m 456m 789m 111z 55z",
+        note: "한 무늬 + 자패만.",
+      },
+      {
+        name: "청일색",
+        han: "6판 · 울면 5판",
+        tiles: "123m 456m 789m 234m 55m",
+        note: "자패 없이 한 무늬로만. 이것 하나로 하네만 이상입니다.",
+      },
+    ],
+  },
+  {
+    title: "역만",
+    lead: "한 판에 한 번 볼까 말까 한 것들. 점수는 판수와 상관없이 고정입니다.",
+    items: [
+      {
+        name: "국사무쌍",
+        han: "역만 · 멘젠",
+        tiles: "19m 19p 19s 1234z 567z 1m",
+        note: "1·9와 자패 13종류를 한 장씩, 그중 하나만 두 장. 13종 아무 패로나 기다리면 2배역만.",
+      },
+      {
+        name: "스안커",
+        han: "역만 · 멘젠",
+        tiles: "111m 444p 777s 333z 99m",
+        note: "울지 않고 만든 커츠 4개. 머리로 기다려서 나면 2배역만(단기).",
+      },
+      { name: "대삼원", han: "역만", tiles: "555z 666z 777z 234m 99p", note: "백·발·중 커츠 셋." },
+      {
+        name: "소사희 · 대사희",
+        han: "역만 / 2배역만",
+        tiles: "111z 222z 333z 44z 234m",
+        note: "바람 넷 중 셋이 커츠 + 나머지가 머리면 소사희, 넷 다 커츠면 대사희(2배역만).",
+      },
+      { name: "자일색", han: "역만", tiles: "111z 333z 555z 777z 22z", note: "자패만으로." },
+      { name: "녹일색", han: "역만", tiles: "234s 234s 666s 888s 66z", note: "초록만 있는 패(2·3·4·6·8삭과 발)로만." },
+      { name: "청노두", han: "역만", tiles: "111m 999m 111p 999s 99p", note: "1과 9만으로. 자패도 안 됩니다." },
+      {
+        name: "구련보등",
+        han: "역만 · 멘젠",
+        tiles: "1112345678999m 5m",
+        note: "한 무늬로 1112345678999. 이 모양은 그 무늬 아무 패로나 화료합니다.",
+      },
+      { name: "스깡즈", han: "역만", tiles: "1111m 4444p 7777s 2222z 99m", note: "깡 4개." },
+      { name: "천화 · 지화", han: "역만 · 멘젠", note: "친이 배패 그대로 화료하면 천화, 자식이 첫 쯔모로 화료하면 지화." },
+      { name: "국사무쌍 13면 · 스안커 단기", han: "2배역만", note: "위 두 역의 가장 어려운 대기 형태. 점수가 두 배가 됩니다." },
+    ],
+  },
+];
+
+function YakuTab(): JSX.Element {
+  return (
+    <>
+      {HELP_YAKU.map((group) => (
+        <section key={group.title} className="help-section">
+          <h2 className="help-section-title">{group.title}</h2>
+          <p className="codex-para">{group.lead}</p>
+          <div className="yaku-list">
+            {group.items.map((y) => (
+              <div key={y.name} className="yaku-row">
+                <div className="yaku-head">
+                  <span className="yaku-name">{y.name}</span>
+                  <span className="yaku-han">{y.han}</span>
+                </div>
+                {y.tiles !== undefined ? (
+                  <div className="help-fig-line yaku-tiles">
+                    <HelpTileGroups tiles={y.tiles} />
+                  </div>
+                ) : null}
+                <p className="help-fig-note"><TermText text={y.note} /></p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
 function HelpScreen(props: {
   /** 왼쪽 위 되돌아가기 버튼 문구 (기본 "← 닫기"). */
   backLabel?: string;
@@ -5508,6 +5771,12 @@ function HelpScreen(props: {
 }): JSX.Element {
   const [tab, setTab] = useState<HelpTab>("basics");
   const sections = tab === "basics" ? HELP_BASICS : HELP_AUGMENT;
+  const lead =
+    tab === "basics"
+      ? "리치마작을 한 번도 해 본 적 없어도 길을 잃지 않을 만큼만 적었습니다. 게임 안에서는 처음 나오는 용어에 밑줄이 그어져 있어 누르면 풀이가 뜹니다."
+      : tab === "yaku"
+        ? "모양을 완성해도 이 중 하나는 있어야 화료할 수 있습니다. 자주 나오는 것부터, 예시 손패와 함께."
+        : "증강이 무엇이고, 언제 뽑고, 어떻게 작동하는지.";
 
   return (
     <div className="codex help-screen">
@@ -5523,6 +5792,12 @@ function HelpScreen(props: {
             리치마작 기본
           </button>
           <button
+            className={tab === "yaku" ? "codex-tab codex-tab-on" : "codex-tab"}
+            onClick={() => setTab("yaku")}
+          >
+            역 목록
+          </button>
+          <button
             className={tab === "augment" ? "codex-tab codex-tab-on" : "codex-tab"}
             onClick={() => setTab("augment")}
           >
@@ -5532,20 +5807,21 @@ function HelpScreen(props: {
       </header>
 
       <main className="codex-main help-main">
-        <p className="codex-lead">
-          {tab === "basics"
-            ? "리치마작을 한 번도 해 본 적 없어도 길을 잃지 않을 만큼만 적었습니다. 게임 안에서는 처음 나오는 용어에 밑줄이 그어져 있어 누르면 풀이가 뜹니다."
-            : "증강이 무엇이고, 언제 뽑고, 어떻게 작동하는지."}
-        </p>
-        {sections.map((sec) => (
-          <section key={sec.title} className="help-section">
-            <h2 className="help-section-title">{sec.title}</h2>
-            {sec.paras.map((para, i) => (
-              <p key={i} className="codex-para"><TermText text={para} /></p>
-            ))}
-            {sec.figure !== undefined ? <HelpFigure rows={sec.figure} /> : null}
-          </section>
-        ))}
+        <p className="codex-lead">{lead}</p>
+        {tab === "yaku" ? (
+          <YakuTab />
+        ) : (
+          sections.map((sec) => (
+            <section key={sec.title} className="help-section">
+              <h2 className="help-section-title">{sec.title}</h2>
+              {sec.paras.map((para, i) => (
+                <p key={i} className="codex-para"><TermText text={para} /></p>
+              ))}
+              {sec.figure !== undefined ? <HelpFigure rows={sec.figure} /> : null}
+              {sec.mock === "action-bar" ? <HelpActionBarMock /> : null}
+            </section>
+          ))
+        )}
       </main>
     </div>
   );
