@@ -2976,27 +2976,26 @@ button {
   }
 }
 
-.tier-silver {
-  color: #c2d0c5;
-  border-color: #93a89b;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 22px rgba(168, 188, 175, 0.25);
+/* 카드 색 = 계열 색. 예전에는 세 장 모두 `.tier-prism`(보라 고정)이라 색이 아무
+   구분도 못 했다 — 폐기된 등급 체계의 잔재다(도감 카드도 같은 이유로 계열색으로
+   옮겼다, §10 참고). currentColor를 계열색으로 잡으면 상단 액센트 바(::before)와
+   등급 칩 테두리가 따라온다. */
+.draft-card-cat {
+  color: var(--fx-color, #c7bcff);
+  border-color: color-mix(in oklab, var(--fx-color, #a37ce8) 62%, transparent);
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 0%, color-mix(in oklab, var(--fx-color, #a37ce8) 22%, transparent), transparent 62%),
+    linear-gradient(165deg, #1c2b24 0%, #152119 45%, #0d1712 100%);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.55),
+    0 0 26px color-mix(in oklab, var(--fx-color, #a37ce8) 30%, transparent);
 }
-.tier-silver:hover { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 44px rgba(194, 208, 197, 0.6); }
-
-.tier-gold {
-  color: #f0c86a;
-  border-color: #b8975c;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 26px rgba(184, 151, 92, 0.3);
+.draft-card-cat:hover {
+  border-color: color-mix(in oklab, var(--fx-color, #a37ce8) 88%, transparent);
+  box-shadow:
+    0 20px 62px rgba(0, 0, 0, 0.6),
+    0 0 56px color-mix(in oklab, var(--fx-color, #a37ce8) 62%, transparent);
 }
-.tier-gold:hover { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 52px rgba(184, 151, 92, 0.65); }
-
-.tier-prism {
-  color: #c7bcff;
-  border-color: #a37ce8;
-  background: linear-gradient(165deg, #3a2b63 0%, #241a3d 45%, #0d1712 100%);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 30px rgba(199, 188, 255, 0.35);
-}
-.tier-prism:hover { box-shadow: 0 20px 62px rgba(0, 0, 0, 0.6), 0 0 60px rgba(199, 188, 255, 0.75); }
 
 .draft-card-head {
   display: flex;
@@ -5084,8 +5083,12 @@ button {
   right: 14px;
   z-index: 90;
   width: min(330px, calc(100cqw - 16px));
-  /* 헤더(고정) + 본문(스크롤) — 화면 높이를 넘지 않는다 */
-  max-height: min(78cqh, calc(100cqh - 24px));
+  /* 헤더(고정) + 본문(스크롤) — 화면 높이를 넘지 않는다.
+     높이는 **top을 뺀 나머지**로 잡는다. 화면 높이(100cqh)로 잡으면 top(기본 62px,
+     끌어 옮겼으면 그 위치)만큼 아래끝이 화면 밖으로 나가고, 본문 스크롤을 끝까지
+     내려도 마지막 항목이 화면 밖에 남는다. --panel-top 은 패널을 끌어 옮길 때
+     App.tsx의 useDraggablePanel이 인라인으로 갱신한다. */
+  max-height: calc(100cqh - var(--panel-top, 62px) - 14px);
   display: flex;
   flex-direction: column;
   padding: 10px 16px 14px;
@@ -9845,9 +9848,13 @@ body.peeking .overlay-peekable > * {
    `.game-root { overflow: hidden }` + body transform 조합이면 넘친 것은 **영영 못 본다**.
    판 자체는 스크롤하면 안 되지만(패가 흘러다니면 못 둔다), 화면을 채우는 패널·오버레이는
    반드시 스크롤이 열려 있어야 한다. */
+/* ⚠ .settings-panel 은 여기 없다 — 헤더(드래그 핸들)를 고정하고 본문만 스크롤하는
+   구조라 패널 자체에 overflow를 걸면 스크롤 통이 두 겹이 된다. 게다가 이 규칙의
+   `max-height: 100dvh` 가 위쪽 `min(78cqh, …)` 를 덮어써서, top(62px 또는 드래그
+   위치)만큼 패널 아래끝이 화면 밖으로 나가 **끝까지 스크롤해도 마지막 항목이 안
+   보였다**(2026-08-08 사용자 보고). 패널 높이는 top을 빼고 잡는다 — 5081행 참고. */
 .screen-overlay,
 .auglog,
-.settings-panel,
 .result-panel,
 .codex {
   max-height: 100dvh;
@@ -9886,21 +9893,12 @@ body.peeking .overlay-peekable > * {
    실제로 존재하는 구분 — 계열 — 을 넣는다. 팔레트는 컷인·드래프트 칩과 같은 것이다. */
 .codex-card-cat { --rarity: var(--fx-color, #a8bcaf); }
 
-/* ─────────────── 11. 계열 아이콘 가독성 ───────────────
-   👁/🀄/⚡/🛡/✦ 는 pill 크기에서 서로 구분이 안 되고, OS마다 그림도 다르다
-   (코드에도 "임시 아이콘 — 추후 이미지로 교체"라고 적혀 있다). 그림은 그대로 두되,
-   **색 원반 위에 올려** 아이콘이 아니라 원반의 색·자리로 먼저 읽히게 한다.
-   글리프가 무엇으로 그려지든 원반은 항상 같은 크기·같은 자리다. */
+/* ─────────────── 11. 계열 아이콘 ───────────────
+   한때 이모지를 **색 원반** 위에 올렸다(글리프가 OS마다 달라 아이콘 자체로는
+   구분이 안 된다는 이유). 원반이 이름표 pill 안에서 이물처럼 튀어 걷어냈다
+   (2026-08-08 사용자 지시). 계열 구분은 원반 대신 pill·카드 쪽 색이 진다 —
+   드래프트 카드는 §-계열색, 도감 카드는 §10, 이름표 pill은 아래 글로우. */
 .aug-cat[class*="aug-cat-"] {
-  display: inline-grid;
-  place-items: center;
-  width: 1.35em;
-  height: 1.35em;
-  border-radius: 50%;
-  /* 이모지는 OS 컬러 폰트라 color가 안 먹는 경우가 많다 — 원반이 그 몫을 대신한다 */
-  background: color-mix(in srgb, var(--fx-color) 26%, rgba(0, 0, 0, 0.5));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fx-color) 70%, transparent);
-  font-size: 0.78em;
-  text-shadow: none;
-  vertical-align: -0.18em;
+  font-size: 0.92em;
+  vertical-align: -0.02em;
 }
