@@ -137,7 +137,7 @@ describe("evaluateWin — 일반 역", () => {
     expect(r?.han).toBe(8);
   });
 
-  it("치토이츠: 2판 25부", () => {
+  it("치또이츠: 2판 25부", () => {
     const r = evaluateWin(
       ctxOf({ hand: h("1122m3344p5566p77z"), winningTile: t("7z") }),
       registry,

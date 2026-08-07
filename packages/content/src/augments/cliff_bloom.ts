@@ -301,7 +301,7 @@ function bloomChanges(
   if (concealed.length !== sets * 3 + 2) return null;
 
   const hand = concealed.map((id) => kindOf(state, id));
-  // 치토이츠는 후보로 두지 않는다 — 만개는 깡 두 번이 조건이라 이 시점의 손은
+  // 치또이츠는 후보로 두지 않는다 — 만개는 깡 두 번이 조건이라 이 시점의 손은
   // 반드시 후로 2개 이상이고, 멘젠 7작두는 애초에 성립하지 않는다.
   let target = bestStandardHand(hand, sets).kinds;
   // 화료형 판정 자체를 바꾸는 증강(우는 국사무쌍 등)과 겹치면 표준형이 화료가 아닐 수
