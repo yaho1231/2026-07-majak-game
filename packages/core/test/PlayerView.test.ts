@@ -204,6 +204,15 @@ describe("PlayerView — RoundView", () => {
     expect(view.round.uraDoraIndicators).toBeNull();
   });
 
+  it("게임 모드가 실린다 — 없으면 반장전으로 폴백", () => {
+    const rules = makeRules();
+    const state = makeState();
+    expect(buildPlayerView(state, "p0", rules).round.mode).toBe("hanchan");
+
+    const tonpuu: GameState = { ...state, config: { ...state.config, mode: "tonpuu" } };
+    expect(buildPlayerView(tonpuu, "p0", rules).round.mode).toBe("tonpuu");
+  });
+
   it("byPlayer: 본인은 furiten/ippatsu 포함, 타인은 없음", () => {
     const state = makeState();
     const rules = makeRules();

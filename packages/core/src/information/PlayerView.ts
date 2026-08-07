@@ -10,7 +10,7 @@
  */
 
 import { ROUND_SCOPED_MARK } from "../engine/state/GameState.js";
-import type { GameState, Meld, PlayerRoundState, RoundState } from "../engine/state/GameState.js";
+import type { GameMode, GameState, Meld, PlayerRoundState, RoundState } from "../engine/state/GameState.js";
 import type { RuleRegistry } from "../engine/rules/RuleRegistry.js";
 import type { PlayerId, ZoneId } from "../engine/zones/Zone.js";
 import { kindKey } from "../mahjong/tiles/Tile.js";
@@ -201,6 +201,11 @@ export interface DiscardOrigin {
 }
 
 export interface RoundView {
+  /**
+   * 게임 모드 (반장전·동풍전). 국마다 바뀌지 않지만 뷰에 실어 준다 —
+   * 클라이언트는 대기실을 거치지 않고도(재접속·관전·리플레이) 지금 무슨 판인지 알아야 한다.
+   */
+  mode: GameMode;
   prevalentWind: number;
   roundNumber: number;
   honba: number;
@@ -846,6 +851,7 @@ function buildRoundView(
       : null;
 
   return {
+    mode: state.config.mode ?? "hanchan",
     prevalentWind: round.prevalentWind,
     roundNumber: round.roundNumber,
     honba: round.honba,
