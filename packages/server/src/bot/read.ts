@@ -235,13 +235,7 @@ export function buildRead(
     if (k !== undefined) doraKinds.push(doraKindFor(k));
   }
   // 위협 읽기는 도라를 알아야 한다 — 상대 후로에 눕혀진 도라가 예상 실점을 바꾼다
-  const threats = readThreats(
-    view,
-    me,
-    doraKinds,
-    context.traitsOf ?? (() => NEUTRAL_TRAITS),
-    flags,
-  );
+  const threats = readThreats(view, me, doraKinds, context.traitsOf ?? (() => NEUTRAL_TRAITS));
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {
     const key = kindKey(d);

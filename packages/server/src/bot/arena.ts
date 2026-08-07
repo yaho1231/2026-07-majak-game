@@ -50,6 +50,7 @@ import type { ArchetypeName } from "./profile.js";
 import { NO_FLAGS } from "./flags.js";
 import type { BotFlags } from "./flags.js";
 import { CALL_OUTCOMES, CALL_OUTCOME_LABEL, CallTally } from "./callAudit.js";
+import { AUGMENT_POWER_TIERS, powerScore } from "@majak/core";
 import { OpenTally } from "./openTally.js";
 import type { OpenSplitView } from "./openTally.js";
 
@@ -109,6 +110,8 @@ export interface AugmentStatRow {
   games: number;
   /** 보유 판의 평균 순위 — **실제로 값을 했는가** (낮을수록 좋다) */
   avgPlacement: number;
+  /** 코어 티어표가 매긴 파워 (표에 없으면 undefined) */
+  power?: number;
 }
 
 export interface ArenaResult {
@@ -344,6 +347,9 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       pickRate: a.offered === 0 ? 0 : a.picked / a.offered,
       games: a.games,
       avgPlacement: a.games === 0 ? 0 : a.sum / a.games,
+      ...(AUGMENT_POWER_TIERS[id] === undefined
+        ? {}
+        : { power: powerScore(AUGMENT_POWER_TIERS[id]!) }),
     }))
     .sort((x, y) => y.pickRate - x.pickRate || y.offered - x.offered);
 
@@ -496,6 +502,58 @@ export function formatArena(r: ArenaResult): string {
           .map((a) => `${a.id}(${a.offered})`)
           .join(" · "),
       );
+      lines.push("");
+    }
+
+    /**
+     * **티어표 검증** — 표가 매긴 파워와 실측 평균 순위를 나란히 놓는다.
+     *
+     * 무작위 드래프트(`--flags draftRandom`)와 함께 써야 뜻이 있다. 봇이 표를 보고
+     * 뽑으면 낮은 티어는 "다른 둘이 더 나빴을 때"만 손에 들어오므로, 그 표본으로
+     * 표를 검증하면 **표가 만든 표본으로 그 표를 검증하는** 순환이 된다.
+     *
+     * 표가 옳다면 파워가 높은 구간일수록 평균 순위가 낮아야(좋아야) 한다.
+     * 구간별로 묶어 보는 이유는 증강 하나하나의 표본이 작아 순위가 요동치기 때문이다 —
+     * 100판을 들어도 표준오차가 ±0.11쯤이라 개별 증강의 미세한 차이는 못 가른다.
+     */
+    const rated = seen.filter((a) => a.power !== undefined && a.games >= 20);
+    if (rated.length >= 8) {
+      const byPower = [...rated].sort((a, b) => (a.power ?? 0) - (b.power ?? 0));
+      const q = Math.floor(byPower.length / 4);
+      lines.push(`티어표 검증 — 파워 구간별 실측 (보유 20판 이상 ${rated.length}종)`);
+      lines.push("파워 구간          종수   보유판   평균순위");
+      for (let i = 0; i < 4; i++) {
+        const part = byPower.slice(i * q, i === 3 ? byPower.length : (i + 1) * q);
+        if (part.length === 0) continue;
+        const games = part.reduce((n, a) => n + a.games, 0);
+        const sum = part.reduce((n, a) => n + a.avgPlacement * a.games, 0);
+        const lo = part[0]?.power ?? 0;
+        const hi = part.at(-1)?.power ?? 0;
+        lines.push(
+          `${`${lo}~${hi}`.padEnd(18)}${String(part.length).padStart(4)}` +
+            `${String(games).padStart(9)}${(sum / games).toFixed(3).padStart(11)}`,
+        );
+      }
+      /**
+       * 표와 가장 어긋나는 증강 — 파워 순위와 실측 순위의 **등수 차이**로 잰다.
+       * 값 자체가 아니라 등수를 쓰는 이유는 둘의 단위가 다르기 때문이다.
+       */
+      const powerRank = new Map(
+        [...rated].sort((a, b) => (b.power ?? 0) - (a.power ?? 0)).map((a, i) => [a.id, i]),
+      );
+      const realRank = new Map(
+        [...rated].sort((a, b) => a.avgPlacement - b.avgPlacement).map((a, i) => [a.id, i]),
+      );
+      const gap = rated
+        .map((a) => ({ a, d: (realRank.get(a.id) ?? 0) - (powerRank.get(a.id) ?? 0) }))
+        .sort((x, y) => y.d - x.d);
+      const line = (x: { a: AugmentStatRow; d: number }): string =>
+        `${x.a.id.slice(0, 22).padEnd(24)}파워${String(x.a.power).padStart(3)}` +
+        `  실측${x.a.avgPlacement.toFixed(2)}  보유${String(x.a.games).padStart(4)}  등수차${x.d > 0 ? "+" : ""}${x.d}`;
+      lines.push("표가 과대평가한 쪽 (파워는 높은데 성적이 나쁘다)");
+      for (const x of gap.slice(0, 6)) lines.push(`  ${line(x)}`);
+      lines.push("표가 과소평가한 쪽 (파워는 낮은데 성적이 좋다)");
+      for (const x of gap.slice(-6).reverse()) lines.push(`  ${line(x)}`);
       lines.push("");
     }
 
