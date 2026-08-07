@@ -5641,7 +5641,6 @@ interface YakuEntry {
 
 interface YakuGroup {
   title: string;
-  lead: string;
   items: YakuEntry[];
 }
 
@@ -5653,7 +5652,6 @@ interface YakuGroup {
 const HELP_YAKU: YakuGroup[] = [
   {
     title: "1판",
-    lead: "가장 자주 나오는 것들. 이 줄만 알아도 판이 돈다.",
     items: [
       { name: "리치", han: "1판 · 멘젠", note: "멘젠 텐파이에서 1000점을 걸고 선언. 이후 손패를 바꿀 수 없습니다." },
       { name: "일발", han: "1판 · 멘젠", note: "리치를 걸고 한 바퀴가 돌기 전에 화료. 중간에 울음이 들어가면 사라집니다." },
@@ -5695,7 +5693,6 @@ const HELP_YAKU: YakuGroup[] = [
   },
   {
     title: "2판",
-    lead: "손을 어느 정도 골라야 나오는 것들.",
     items: [
       { name: "더블리치", han: "2판 · 멘젠", note: "첫 순번에, 아무도 울지 않은 채 건 리치." },
       {
@@ -5757,7 +5754,6 @@ const HELP_YAKU: YakuGroup[] = [
   },
   {
     title: "3판 이상",
-    lead: "판이 크게 뛰는 자리. 여기부터는 만관을 노려볼 만합니다.",
     items: [
       {
         name: "량페코",
@@ -5787,7 +5783,6 @@ const HELP_YAKU: YakuGroup[] = [
   },
   {
     title: "역만",
-    lead: "한 판에 한 번 볼까 말까 한 것들. 점수는 판수와 상관없이 고정입니다.",
     items: [
       {
         name: "국사무쌍",
@@ -5836,7 +5831,6 @@ function YakuTab(): JSX.Element {
       {HELP_YAKU.map((group) => (
         <section key={group.title} className="help-section">
           <h2 className="help-section-title">{group.title}</h2>
-          <p className="codex-para">{group.lead}</p>
           <div className="yaku-list">
             {group.items.map((y) => (
               <div key={y.name} className="yaku-row">
