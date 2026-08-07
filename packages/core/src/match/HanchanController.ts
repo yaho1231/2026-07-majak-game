@@ -362,9 +362,16 @@ export class HanchanController {
   private lastDiscardFrom: DiscardOrigin | null = null;
   /** 전원 합의 무효 종료 요청 여부 */
   private aborted = false;
-  /** 무효 요청 시 즉시 resolve되는 신호 (결정 대기를 깨우는 용도) */
-  private readonly abortSignal: Promise<{ readonly abort: true }>;
-  private fireAbort: () => void = () => {};
+  /**
+   * 무효 요청을 기다리고 있는 대기자들 (결정·드래프트·강제수·국 사이 대기).
+   *
+   * ⚠ 예전에는 컨트롤러 하나에 **영구히 살아 있는 프로미스 하나**를 두고 매 대기마다
+   * `Promise.race([일, abortSignal])`를 걸었다. 진 쪽의 핸들러는 절대 떼어지지 않으므로,
+   * 그 프로미스에 리액션 핸들러가 **판을 두는 내내 계속 쌓였다** — 한 반장전이면 수천
+   * 개다(교과서적인 `Promise.race` 누수). 이제 대기마다 프로미스를 새로 만들고
+   * 레이스가 끝나면 곧바로 등록을 해제한다(`raceAbort`).
+   */
+  private readonly abortWaiters = new Set<(v: { readonly abort: true }) => void>();
 
   constructor(
     agents: PlayerAgent[],
@@ -374,9 +381,30 @@ export class HanchanController {
     this.agents = new Map(agents.map((a) => [a.id, a]));
     this.config = { ...DEFAULT_HANCHAN_CONFIG, ...config };
     this.events = events;
-    this.abortSignal = new Promise((resolve) => {
-      this.fireAbort = () => resolve({ abort: true });
+  }
+
+  /**
+   * 어떤 대기를 무효 신호와 레이스한다. 레이스가 끝나면 **반드시** 대기자를
+   * 등록 해제해, 대기 하나마다 리스너가 컨트롤러에 영구히 쌓이지 않게 한다.
+   * 이미 무효가 걸린 뒤라면 일을 기다리지 않고 곧바로 중단으로 답한다.
+   */
+  private async raceAbort<T>(work: Promise<T>): Promise<T | { readonly abort: true }> {
+    if (this.aborted) {
+      // 이미 무효다 — 남은 일은 기다리지 않지만, 그 거부가 처리되지 않은 채
+      // 프로세스로 새 나가지 않도록 삼킨다(예전 abortSignal 레이스와 동일).
+      void work.catch(() => undefined);
+      return { abort: true };
+    }
+    let waiter!: (v: { readonly abort: true }) => void;
+    const signal = new Promise<{ readonly abort: true }>((resolve) => {
+      waiter = resolve;
     });
+    this.abortWaiters.add(waiter);
+    try {
+      return await Promise.race([work, signal]);
+    } finally {
+      this.abortWaiters.delete(waiter);
+    }
   }
 
   /**
@@ -387,7 +415,11 @@ export class HanchanController {
   requestAbort(): void {
     if (this.aborted) return;
     this.aborted = true;
-    this.fireAbort();
+    // 지금 기다리고 있는 대기자만 깨우면 된다 — 이후의 대기는 raceAbort 입구에서
+    // aborted를 보고 곧바로 중단으로 답한다.
+    const waiters = [...this.abortWaiters];
+    this.abortWaiters.clear();
+    for (const w of waiters) w({ abort: true });
   }
 
   /**
@@ -729,7 +761,7 @@ export class HanchanController {
           this.agents.get(p.player)?.cancelDecision?.();
         }
       };
-      const raced = await Promise.race([
+      const raced = await this.raceAbort(
         Promise.all(
           prompts.map(async (prompt) => {
             const agent = this.agents.get(prompt.player);
@@ -742,8 +774,7 @@ export class HanchanController {
             return { player: prompt.player, option: chosen };
           }),
         ).then((decisions) => ({ decisions })),
-        this.abortSignal,
-      ]);
+      );
       // 무효 요청 — 반환 outcome은 runLoop이 aborted 체크로 즉시 무시한다
       if ("abort" in raced) return "abort";
 
@@ -808,7 +839,7 @@ export class HanchanController {
 
     // 전원에게 '동시에' 오퍼를 보내고 응답을 병렬로 기다린다 (순차 대기 X). runRound과 동일하게
     // abortSignal과 레이스 — 드래프트 대기 중 무효 투표가 와도 30초 타임아웃까지 멈추지 않게 한다.
-    const raced = await Promise.race([
+    const raced = await this.raceAbort(
       Promise.all(
         pending.map(async (agent) => {
           const choices = offered.get(agent.id) ?? draft.roll(stage, agent.id);
@@ -816,8 +847,7 @@ export class HanchanController {
           return { player: agent.id, pickedId };
         }),
       ).then((picks) => ({ picks })),
-      this.abortSignal,
-    ]);
+    );
 
     // 무효 요청 — 픽을 하나도 적용하지 않고 즉시 반환 (일부만 적용하면 리플레이가 비결정적).
     if ("abort" in raced) return;
@@ -842,10 +872,13 @@ export class HanchanController {
   private async pauseForAutoMove(): Promise<boolean> {
     const ms = this.config.autoMoveDelayMs ?? 0;
     if (ms <= 0) return this.aborted;
-    const raced = await Promise.race([
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-      this.abortSignal,
-    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const wait = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), ms);
+    });
+    const raced = await this.raceAbort(wait);
+    // 무효로 먼저 깨어났으면 남은 타이머를 거둔다.
+    if (timer !== undefined) clearTimeout(timer);
     return raced !== null;
   }
 
@@ -859,14 +892,13 @@ export class HanchanController {
     if (maxWait <= 0) return;
     // 봇·미구현 에이전트는 awaitContinue가 없어 즉시 통과 → 사람만 게이트한다.
     // 무효 요청이 오면 ack를 다 못 받아도 즉시 깨어난다.
-    await Promise.race([
+    await this.raceAbort(
       Promise.all(
         [...this.agents.values()].map((a) =>
           a.awaitContinue ? a.awaitContinue(maxWait) : Promise.resolve(),
         ),
       ),
-      this.abortSignal,
-    ]);
+    );
   }
 
   /**

@@ -42,29 +42,54 @@ export class SandboxBotAgent extends BotAgent {
     return this.controller;
   }
 
+  /**
+   * 조종자가 바뀌면(A→B) **새 조종자에게 다시 묻는다.**
+   *
+   * 예전에는 해제 신호를 받으면 곧장 봇 판단으로 넘어갔다. 시점을 A에서 B로 옮기는
+   * 것은 "조종을 놓는다"가 아니라 "조종자가 바뀐다"인데, 그 자리에서 진행 중이던
+   * 프롬프트가 **봇에게 떨어져** B는 자기가 잡은 좌석의 첫 결정을 보지도 못했다.
+   * 그래서 루프로 두고, 조종자가 아직 있으면 그 사람에게 다시 낸다.
+   */
   override async decide(prompt: DecisionPrompt): Promise<ActionOption> {
-    const human = this.controller;
-    if (human === null) return super.decide(prompt);
+    for (;;) {
+      const human = this.controller;
+      if (human === null) return super.decide(prompt);
 
-    const released = new Promise<null>((resolve) => {
-      this.releaseWaiters.push(() => resolve(null));
-    });
-    const answer = await Promise.race([
-      human.decideAs(this.id, prompt).then((option) => ({ option })),
-      released,
-    ]);
-    if (answer !== null) return answer.option;
+      /**
+       * 해제 신호를 기다리는 손잡이. **응답을 받으면 반드시 걷어낸다** — 예전에는
+       * 그냥 밀어 넣기만 해서 `releaseWaiters`가 결정마다 한 칸씩 자랐다. 배열은
+       * 조종을 놓을 때에만 비워지므로, 조종을 켠 채 한 반장전을 두면 수백 개의
+       * 죽은 클로저가 쌓인 채로 매번 전부 호출됐다.
+       */
+      let waiter: (() => void) | null = null;
+      const released = new Promise<null>((resolve) => {
+        waiter = (): void => resolve(null);
+        this.releaseWaiters.push(waiter);
+      });
+      const drop = (): void => {
+        const i = waiter === null ? -1 : this.releaseWaiters.indexOf(waiter);
+        if (i >= 0) this.releaseWaiters.splice(i, 1);
+      };
 
-    // 조종이 풀렸다 — 사람 쪽 대기를 접고 봇의 판단으로 잇는다
-    human.cancelDecisionFor(this.id);
-    return super.decide(prompt);
+      const answer = await Promise.race([
+        human.decideAs(this.id, prompt).then((option) => ({ option })),
+        released,
+      ]);
+      drop();
+      if (answer !== null) return answer.option;
+
+      // 조종이 풀렸다 — 사람 쪽 대기를 접는다. 새 조종자가 있으면 그쪽에 다시 묻고,
+      // 아무도 없으면 봇의 판단으로 잇는다(루프 첫머리의 null 분기).
+      human.cancelDecisionFor(this.id);
+    }
   }
 
   /**
-   * 상위 선언이 확정돼 이 결정이 무의미해졌다 — 조종 중이면 사람 쪽 프롬프트를 접는다.
-   * (봇 단독일 때는 즉시 답하므로 원래도 할 일이 없다.)
+   * 상위 선언이 확정돼 이 결정이 무의미해졌다 — 조종 중이면 사람 쪽 프롬프트를 접고,
+   * 봇이 스스로 두는 중이면 남은 생각 시간을 끊는다(`BotAgent.cancelDecision`).
    */
-  cancelDecision(): void {
+  override cancelDecision(): void {
     this.controller?.cancelDecisionFor(this.id);
+    super.cancelDecision();
   }
 }

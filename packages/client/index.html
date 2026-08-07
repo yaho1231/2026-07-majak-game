@@ -2,7 +2,11 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover — 노치·홈 인디케이터 영역까지 화면을 쓰고, 그 안쪽 여백은
+         styles.css 가 env(safe-area-inset-*) 로 직접 잡는다. 이게 없으면 iOS 에서
+         좌하단 빠른 토글이 홈 인디케이터 밑에 깔려 눌리지 않는다.
+         maximum-scale·user-scalable 은 **일부러 넣지 않는다** — 확대 금지는 WCAG 1.4.4 위반이다. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>MAJAK — 리치마작 × 증강</title>
     <!-- 공유된 링크가 "Majak" 한 단어로만 보이지 않게 한다. 이 게임이 무엇인지는
          제목이 아니라 설명 줄에서 결정된다. -->

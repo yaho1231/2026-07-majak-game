@@ -82,6 +82,13 @@ export interface BotViewOptions {
    * 여기 없는 자리는 手出し(손에서 뺀 것)로 읽힌다 — 봇의 손동작 읽기가 보는 값이다.
    */
   tsumogiriAt?: Partial<Record<string, number[]>>;
+  /**
+   * 플레이어별 보유 증강 id. 뷰의 `PlayerInfo.augments`는 **전원 공개**라
+   * (정보 비대칭을 깨지 않는다) 봇의 위협·값어치 계산이 그대로 읽는다.
+   */
+  augments?: Partial<Record<string, string[]>>;
+  /** 증강이 넓힌 화료형 옵션 (`view.scoringOptions`) */
+  scoringOptions?: PlayerView["scoringOptions"];
 }
 
 export interface BotScene {
@@ -195,7 +202,7 @@ export function botScene(opts: BotViewOptions): BotScene {
       id,
       seat,
       score: opts.scores?.[id] ?? 25000,
-      augments: [],
+      augments: opts.augments?.[id] ?? [],
       nickname: id,
       isBot: true,
     })),
@@ -216,7 +223,7 @@ export function botScene(opts: BotViewOptions): BotScene {
       byPlayer,
     },
     augmentView: {},
-    scoringOptions: {},
+    scoringOptions: opts.scoringOptions ?? {},
   };
 
   const idOf = (spec: string): TileId => {

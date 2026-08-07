@@ -139,3 +139,51 @@ describe("탁이 한 종류의 덱으로 채워지지 않는다", () => {
     expect(a).toBe(b);
   });
 });
+
+/**
+ * **파일 위의 불변식이 실제로는 깨져 있었다.**
+ *
+ * "궁합과 시너지는 파워를 대체하지 않고 기울인다"고 적어 놓고 두 배수를 그대로
+ * 곱했다 — 폭이 0.75~1.35 × 1~1.24 = 2.23배인데, 인접 파워 티어의 간격은 1.26배쯤이다.
+ * 즉 성격 하나로 티어 두 개가 뒤집혔다. 극단(SS+ vs D)에서만 불변식이 지켜지고
+ * 실제 선택이 일어나는 중간 구간에서는 지켜지지 않았다.
+ */
+describe("성격은 파워를 뒤엎지 않는다 — 폭의 상한", () => {
+  const scoreOf = (
+    def: AugmentDef,
+    archetype: ArchetypeName,
+    held: string[],
+    power: number,
+  ): number =>
+    draftScore(def, {
+      profile: profileOf(archetype),
+      held,
+      catalog: CATALOG,
+      powerOf: () => power,
+      unusable: [],
+    });
+
+  it("궁합과 시너지를 다 얹어도 파워 대비 폭이 인접 티어 하나를 크게 넘지 않는다", () => {
+    // 가장 유리한 자리: 속공형 + call 계열 + 같은 계열 셋 보유
+    const best = scoreOf(CALL, "speedster", ["aug_call", "aug_call", "aug_call"], 100);
+    // 가장 불리한 자리: 타점형 + call 계열 + 보유 없음
+    const worst = scoreOf(CALL, "valueHunter", [], 100);
+    expect(best / 100).toBeLessThan(1.35);
+    expect(worst / 100).toBeGreaterThan(0.8);
+    // 전체 폭 — 코어 티어표의 인접 티어 간격(≈1.26배)의 두 배를 넘지 않는다
+    expect(best / worst).toBeLessThan(1.26 * 2);
+  });
+
+  it("두 티어 차이는 어떤 궁합으로도 뒤집히지 않는다", () => {
+    /**
+     * 한 티어(≈1.26배)는 여전히 뒤집힐 수 있다 — 그게 "비슷한 것들 사이에서 갈린다"의
+     * 뜻이다. 고친 것은 **두 티어(≈1.59배)까지 넘어가던 것**이다. 예전 폭(2.23배)에서는
+     * 아래 두 값이 뒤집혔다.
+     */
+    const strong = scoreOf(CALL, "valueHunter", [], 159);
+    const weak = scoreOf(SCORING, "valueHunter", ["aug_scoring", "aug_scoring"], 100);
+    expect(strong).toBeGreaterThan(weak);
+    // 예전 폭(제곱근 없이 곱하던 것)이었다면 뒤집혔다는 것을 함께 못 박는다
+    expect(159 * 0.75).toBeLessThan(100 * 1.35 * 1.16);
+  });
+});

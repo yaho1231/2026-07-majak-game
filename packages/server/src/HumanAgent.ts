@@ -102,6 +102,11 @@ export class HumanAgent implements PlayerAgent {
   readonly id: PlayerId;
   readonly nickname: string;
   readonly isBot = false;
+  /**
+   * 이 좌석이 앉아 있는 방 코드 — 로그에만 쓴다. 타임아웃 폴백이 어느 판에서
+   * 났는지 없이는 "판이 저절로 진행됐다"는 제보를 확인할 방법이 없다.
+   */
+  roomCode = "";
 
   /**
    * 응답을 기다리는 결정들 — **좌석 id → 대기**.
@@ -418,6 +423,9 @@ export class HumanAgent implements PlayerAgent {
     const timer = setTimeout(() => {
       // 제한 시간 초과 — 서버는 안전 폴백으로 진행한다. 클라이언트가 이걸 모르면
       // 내 차례가 지나간 뒤에도 선택 모달·버튼이 계속 떠 있으므로 취소를 알린다.
+      console.log(
+        `[room ${this.roomCode}] ${this.nickname}(${seat}) 응답 없음 ${timeoutMs}ms — 안전 폴백으로 진행`,
+      );
       this.pending.delete(seat);
       this.send({ type: "promptCancel", seat });
       resolve(safeFallbackOption(prompt.options));

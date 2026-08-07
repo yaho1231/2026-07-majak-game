@@ -360,6 +360,18 @@ export interface SetBotArchetypeMessage {
 }
 
 /**
+ * 봇 난이도를 바꾼다 (방장 전용, 대기 중에만).
+ *
+ * 성향(원형)과는 다른 축이다 — 원형은 **어떻게 두는가**, 난이도는 **얼마나 잘 두는가**다.
+ * 기본은 `hard`(= 종전 봇 그대로)이고 그 위로는 열지 않는다. 적용은 판이 시작될 때다.
+ */
+export interface SetBotDifficultyMessage {
+  type: "setBotDifficulty";
+  /** `easy` · `normal` · `hard`. 서버가 모르는 값이면 무시한다. */
+  difficulty: string;
+}
+
+/**
  * 플레이어 강퇴 (방장 전용, 대기 중에만).
  *
  * 방장 자신은 대상이 될 수 없다. 강퇴된 사람은 **그 방에는 다시 들어올 수 없다** —
@@ -420,6 +432,7 @@ export type ClientMessage =
   | AddBotMessage
   | RemoveBotMessage
   | SetBotArchetypeMessage
+  | SetBotDifficultyMessage
   | KickPlayerMessage
   | StartGameMessage
   | SetGameModeMessage
@@ -680,6 +693,8 @@ export interface LobbyMessage {
   canStart: boolean;
   /** 선택된 게임 모드 (반장전/동풍전). 방장만 바꿀 수 있다. */
   gameMode: GameMode;
+  /** 봇 난이도 (`easy`·`normal`·`hard`). 방장만 바꿀 수 있다. */
+  botDifficulty: string;
   players: LobbyPlayerEntry[];
 }
 

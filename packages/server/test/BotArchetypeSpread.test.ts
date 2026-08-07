@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { BotAgent, seedFromId } from "../src/BotAgent.js";
+import { BotAgent, botSeed, seedFromId } from "../src/BotAgent.js";
 import { ARCHETYPE_NAMES } from "../src/bot/profile.js";
 import type { ArchetypeName } from "../src/bot/profile.js";
 
@@ -73,5 +73,33 @@ describe("방마다 봇 성격이 달라진다", () => {
   it("같은 방 안에서 좌석마다 시드가 다르다", () => {
     const seeds = ["p1", "p2", "p3"].map((id) => seatSeed("ABCD", id));
     expect(new Set(seeds).size).toBe(3);
+  });
+});
+
+/**
+ * **판마다 성격이 리롤되는가.**
+ *
+ * `RoomManager.botSeed(code, id)`는 방 코드와 좌석 이름만 섞는다. 둘 다 방이 사는
+ * 동안 변하지 않으므로 **같은 방 코드에서는 영원히 같은 성격 셋**이 앉고, 재대국에도
+ * 같은 시드가 들어가 리롤이 없다 — 친구들과 방 하나를 계속 쓰면 몇십 판을 두어도
+ * 상대 셋이 한 번도 안 바뀐다.
+ */
+describe("판마다 새 사람이 앉는다", () => {
+  const tableAt = (code: string, game: number): ArchetypeName[] =>
+    ["p1", "p2", "p3"].map(
+      (id) => new BotAgent(id, `Bot_${id}`, botSeed(code, id, game)).archetype,
+    );
+
+  it("같은 방 코드라도 판 번호가 다르면 조합이 달라진다", () => {
+    const tables = [0, 1, 2, 3, 4, 5].map((g) => tableAt("ABCD", g).join(","));
+    expect(new Set(tables).size).toBeGreaterThan(1);
+  });
+
+  it("같은 방·같은 판이면 늘 같다 (리플레이가 깨지지 않는다)", () => {
+    expect(tableAt("ABCD", 3)).toEqual(tableAt("ABCD", 3));
+  });
+
+  it("판 번호를 생략하면 예전 좌석 시드와 같은 자리에 선다", () => {
+    expect(botSeed("ABCD", "p1", 0)).toBe(botSeed("ABCD", "p1"));
   });
 });

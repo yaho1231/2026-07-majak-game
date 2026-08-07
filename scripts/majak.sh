@@ -21,6 +21,24 @@ PORT="${PORT:-3001}"
 
 mkdir -p "$RUNDIR"
 
+# 로그 1개 최대 크기(바이트)와 보관 세대 수. 작은 배포라 세대 3개면 충분하다.
+LOG_MAX_BYTES="${LOG_MAX_BYTES:-10485760}"   # 10 MiB
+LOG_KEEP="${LOG_KEEP:-3}"
+
+# 로그가 상한을 넘었으면 세대를 밀어 낸다 (server.log → .1 → .2 → .3, 마지막은 버림).
+rotate_log() {
+  [ -f "$LOG" ] || return 0
+  local size
+  size="$(wc -c <"$LOG" 2>/dev/null || echo 0)"
+  [ "$size" -lt "$LOG_MAX_BYTES" ] && return 0
+  rm -f "$LOG.$LOG_KEEP"
+  local i
+  for ((i = LOG_KEEP - 1; i >= 1; i--)); do
+    [ -f "$LOG.$i" ] && mv "$LOG.$i" "$LOG.$((i + 1))"
+  done
+  mv "$LOG" "$LOG.1"
+}
+
 is_running() {
   [ -f "$PIDFILE" ] || return 1
   local pid; pid="$(cat "$PIDFILE" 2>/dev/null || true)"
@@ -42,13 +60,22 @@ start() {
     echo "✗ 클라이언트 빌드 실패:"; tail -20 "$RUNDIR/build.log"; exit 1
   fi
   echo "▶ 서버 시작 (포트 $PORT)…"
+  # ⚠ 로그는 **덮어쓰지 않는다**(`>` → `>>`). 예전에는 재시작할 때마다 로그가 통째로
+  #   비워져서, 가장 흔한 진단 흐름("죽었다길래 재시작했는데 로그 좀 보자")이 구조적으로
+  #   불가능했다. 대신 크기가 차면 세대를 밀어 낸다.
+  rotate_log
+  {
+    echo ""
+    echo "──────── 서버 시작 $(date -u +%Y-%m-%dT%H:%M:%SZ) (포트 $PORT) ────────"
+  } >>"$LOG"
+  local started_at; started_at="$(wc -l <"$LOG" 2>/dev/null || echo 0)"
   # exec로 서브셸을 node로 치환 → $!가 node의 PID (stop이 정확히 그 프로세스를 종료)
-  ( cd "$ROOT/packages/server" && export PORT="$PORT" && exec node --import tsx/esm src/index.ts ) >"$LOG" 2>&1 &
+  ( cd "$ROOT/packages/server" && export PORT="$PORT" && exec node --import tsx/esm src/index.ts ) >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
   echo "$PORT" >"$PORTFILE"
-  # 부팅 대기 (관리자 코드가 로그에 찍히면 준비됨)
+  # 부팅 대기 (이번에 시작한 부분에서만 찾는다 — 로그가 누적되므로 지난 부팅의 줄에 속지 않게)
   for _ in $(seq 1 30); do
-    grep -q "listening on" "$LOG" 2>/dev/null && break
+    tail -n +"$started_at" "$LOG" 2>/dev/null | grep -q "listening on" && break
     is_running || { echo "✗ 시작 실패:"; tail -20 "$LOG"; rm -f "$PIDFILE"; exit 1; }
     sleep 0.2
   done
@@ -65,8 +92,14 @@ stop() {
   if is_running; then
     local pid; pid="$(cat "$PIDFILE")"
     kill "$pid" 2>/dev/null || true
-    for _ in $(seq 1 20); do is_running || break; sleep 0.2; done
-    if is_running; then kill -9 "$pid" 2>/dev/null || true; fi
+    # SIGTERM을 받은 서버는 진행 중인 판을 사람들에게 알리고 통계 저장을 마친 뒤
+    # 스스로 나간다(index.ts의 정상 종료). 예전의 4초는 그 여유를 주지 못해
+    # SIGKILL이 정리 도중을 잘랐다 — 서버 자체가 3초 안에 강제 탈출하므로 10초면 충분하다.
+    for _ in $(seq 1 50); do is_running || break; sleep 0.2; done
+    if is_running; then
+      echo "⚠ 정상 종료가 끝나지 않아 강제 종료합니다."
+      kill -9 "$pid" 2>/dev/null || true
+    fi
     rm -f "$PIDFILE" "$PORTFILE"
     echo "✓ 서버를 껐습니다."
   else

@@ -28,6 +28,8 @@ import { pointsForHan } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
 import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.js";
+import { NO_FLAGS } from "./flags.js";
+import type { BotFlags } from "./flags.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -121,6 +123,8 @@ export function readThreats(
   doraKinds: readonly TileKind[] = [],
   /** 지금까지 읽어 낸 이 사람의 성향 (없으면 '보통 사람') */
   traitsOf: (p: PlayerId) => OpponentTraits = () => NEUTRAL_TRAITS,
+  /** 실험 스위치 (2:2 정책 대전 전용 — `bot/flags.ts`) */
+  flags: BotFlags = NO_FLAGS,
 ): Threat[] {
   const out: Threat[] = [];
   const turn = view.round.turnCount;
@@ -170,9 +174,8 @@ export function readThreats(
       level *= 1 + (NEUTRAL_TRAITS.callRate - traits.callRate) * 0.6;
       // 종반에 중장패를 흘리는 열린 손은 손이 완성됐다는 신호다
       if (turn >= 9 && recentMiddleDiscards(discards) >= 2) level += 0.12;
-    } else if (turn >= 12) {
-      // 멘젠 무후로라도 종반이면 누구나 텐파이일 수 있다 (약한 상시 경계)
-      level = 0.15;
+    } else {
+      level = damatenLevel(turn, flags);
     }
 
     /**
@@ -229,6 +232,51 @@ export function readThreats(
     });
   }
   return out.sort((a, b) => b.level * b.value - a.level * a.value);
+}
+
+// ─────────────────────── 다마텐 — 보이지 않는 텐파이 ───────────────────────
+
+/**
+ * 리치도 후로도 없는 멘젠 상대의 위협도.
+ *
+ * ## 예전에는 11순까지 정확히 0이었다
+ *
+ * ```
+ * else if (turn >= 12) level = 0.15;
+ * ```
+ *
+ * 즉 **1~11순 동안 조용한 멘젠 상대는 위협이 하나도 없는 사람**이었다. 이 봇의 수비는
+ * 전부 `level × tileRisk × value`로 계산되므로, `level`이 0이면 그 상대에 대한 기대
+ * 실점도 0이다 — 11순째에 선언 없는 만관에 적5를 그냥 흘린다. 사람은 그렇게 두지
+ * 않는다. 리치가 없다고 텐파이가 없는 것이 아니라 **안 보일 뿐**이고, 순목이 갈수록
+ * 그 확률은 조금씩 자란다.
+ *
+ * 그리고 이건 순수 마작 쪽의 구멍이라 증강과 무관하게 매 판 작동한다 — 봇이 "생각
+ * 없이 밀어대는 기계"로 보이는 가장 흔한 장면이 여기였다.
+ *
+ * ## 왜 계단이 아니라 경사인가
+ *
+ * 계단은 **11순과 12순 사이에서 판단이 통째로 뒤집힌다.** 같은 패를 11순에는 태연히
+ * 흘리고 12순에는 접는데, 그 사이에 판에서 달라진 것은 아무것도 없다. 이 저장소가
+ * 판수 보간(`value.pointsForHan`)과 부수(`value.estimateFu`)에서 이미 세운 규율과
+ * 같다 — **연속인 것은 연속으로 센다.**
+ *
+ * ## 눈금
+ *
+ * 이 값은 "텐파이일 확률"이 아니라 **"리치를 안 건 채로 텐파이일 확률"**이다. 멘젠
+ * 텐파이의 대부분은 그 자리에서 리치가 되어 위쪽 분기로 빠지므로, 남는 것은 다마를
+ * 고른 손과 방금 막 텐파이가 된 손뿐이라 값이 작다. 종반 상한을 0.25로 두고 선형으로
+ * 올린다 — **11순에서 정확히 0.15**가 되어 예전 값과 이어지고, 그 아래로는 0까지
+ * 매끄럽게 내려간다(예전에는 절벽이었다).
+ */
+const DAMATEN_START = 2;
+const DAMATEN_FULL = 17;
+const DAMATEN_PEAK = 0.25;
+
+function damatenLevel(turn: number, flags: BotFlags): number {
+  if (!flags.has("damaten")) return turn >= 12 ? 0.15 : 0;
+  const t = (turn - DAMATEN_START) / (DAMATEN_FULL - DAMATEN_START);
+  return DAMATEN_PEAK * Math.max(0, Math.min(1, t));
 }
 
 /** 이 사람이 바닥에 버린 패들 (버린 순서) */

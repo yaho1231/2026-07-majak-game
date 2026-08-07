@@ -15,6 +15,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
 import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import { RoomManager, abuseKeyOf } from "./RoomManager.js";
@@ -103,6 +104,26 @@ const HEARTBEAT_INTERVAL_MS = process.env.HEARTBEAT_INTERVAL_MS
   ? parseInt(process.env.HEARTBEAT_INTERVAL_MS, 10)
   : 30_000;
 
+/**
+ * 모든 로그 줄 앞에 시각을 붙인다.
+ *
+ * **왜 여기서 console을 감싸는가**: 로그를 쓰는 자리는 서버 전체에 흩어져 있고
+ * (RoomManager·봇·리플레이 writer…), 그중 어느 하나도 시각을 찍지 않았다.
+ * 시각 없는 로그로는 "언제 무슨 일이 있었나"를 물을 수 없어 사실상 진단이
+ * 불가능하다. 진입점에서 한 번 감싸면 모든 호출 지점이 한꺼번에 고쳐진다.
+ */
+function stampConsole(): void {
+  const target = console as unknown as Record<string, (...args: unknown[]) => void>;
+  for (const level of ["log", "info", "warn", "error", "debug"] as const) {
+    const original = target[level];
+    if (typeof original !== "function") continue;
+    target[level] = (...args: unknown[]): void => {
+      original.call(console, `[${new Date().toISOString()}]`, ...args);
+    };
+  }
+}
+stampConsole();
+
 // 안전망: 떠 있는 Promise 거부나 예외 하나가 전체 서버(모든 게임)를 죽이지
 // 않게 한다. 메시지 처리·리듀서가 연결/이벤트 단위로 격리돼 있으므로,
 // 로그를 남기고 프로세스를 살려 두는 편이 전원 강제 종료보다 낫다.
@@ -185,6 +206,26 @@ const httpServer = createServer((req, res) => {
     return;
   }
   const url = (req.url ?? "/").split("?")[0] ?? "/";
+  /**
+   * 상태 점검 — 정적 파일만 서빙하던 시절에는 감시 도구가 "HTML이 돌아온다"까지만
+   * 확인할 수 있었다. 그건 WS 계층이나 게임 루프가 살아 있다는 증거가 아니다.
+   * 여기서는 방·연결 **개수만** 낸다(개인정보 없음).
+   */
+  if (url === "/healthz") {
+    const body = JSON.stringify({
+      ok: true,
+      uptimeSec: Math.round(process.uptime()),
+      wsClients: wss.clients.size,
+      ...roomManager.healthSnapshot(),
+    });
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end(req.method === "HEAD" ? undefined : body);
+    return;
+  }
   // 퍼센트 인코딩을 먼저 푼다 — 안 풀면 `%2e%2e%2f`가 정규화를 그대로 통과해
   // (join 뒤 startsWith 검사가 잡긴 하지만) 방어가 우연에 기대게 된다.
   let decoded: string;
@@ -453,3 +494,95 @@ httpServer.listen(PORT, HOST, () => {
   );
   console.log(`하트비트    : ${HEARTBEAT_INTERVAL_MS}ms 주기 — 무응답 연결 자동 종료`);
 });
+
+// ─────────────────────────── 오래된 리플레이 정리 ───────────────────────────
+
+/**
+ * 리플레이 보존 기간(일). `games` 행과 `.jsonl` 파일은 지금까지 아무도 지우지
+ * 않아 영원히 쌓이기만 했다. 0이면 정리하지 않는다(기존 동작).
+ * 기본값은 넉넉하게 잡는다 — 판이 사라지는 것은 되돌릴 수 없다.
+ */
+const GAME_RETENTION_DAYS = Number(process.env.GAME_RETENTION_DAYS ?? 365);
+
+async function pruneOldReplays(): Promise<void> {
+  if (!Number.isFinite(GAME_RETENTION_DAYS) || GAME_RETENTION_DAYS <= 0) return;
+  const cutoff = new Date(Date.now() - GAME_RETENTION_DAYS * 86_400_000).toISOString();
+  try {
+    const paths = db.pruneGamesBefore(cutoff);
+    if (paths.length === 0) return;
+    let removed = 0;
+    for (const p of paths) {
+      try {
+        await unlink(p);
+        removed++;
+      } catch {
+        // 이미 없는 파일 — 인덱스만 지우면 된다
+      }
+    }
+    console.log(`리플레이 정리: 게임 ${paths.length}건 · 파일 ${removed}개 삭제 (${GAME_RETENTION_DAYS}일 이전)`);
+  } catch (err) {
+    console.error("리플레이 정리 실패:", err);
+  }
+}
+
+void pruneOldReplays();
+// 하루에 한 번 — 오래 켜 두는 서버에서도 계속 정리된다.
+const pruneTimer = setInterval(() => void pruneOldReplays(), 24 * 60 * 60 * 1000);
+pruneTimer.unref();
+
+// ─────────────────────────── 정상 종료 ───────────────────────────
+
+/**
+ * SIGTERM/SIGINT — 배포 스크립트(`scripts/majak.sh stop`)가 보내는 신호다.
+ *
+ * 예전에는 핸들러가 아예 없었다. 그래서 재시작 때마다 진행 중이던 반장전이
+ * **아무 말 없이** 사라졌다: 사람들은 `gameAborted`도 못 받고 소켓만 끊겨
+ * 무한 재접속을 돌다가 `ROOM_NOT_FOUND`를 받았고, `games` 행이 쓰이지 않아
+ * 40분짜리 판이 리플레이 목록·리더보드 어디에도 남지 않았다.
+ *
+ * 여기서 하는 일은 세 가지다 — (1) 사람들에게 알리고, (2) 통계 저장소의
+ * 대기 중인 쓰기를 **끝까지 기다리고**(AugmentStatsStore.queueSave는
+ * 불붙여 놓고 잊는 방식이라 기다려 주지 않으면 마지막 판의 집계가 날아간다),
+ * (3) 소켓·서버를 닫고 나간다.
+ */
+let shuttingDown = false;
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} 수신 — 정상 종료를 시작한다`);
+  // 강제 탈출 밧줄: 어떤 이유로든 정리가 끝나지 않아도 프로세스는 반드시 나간다
+  // (여기서 매달리면 배포 스크립트가 4초 뒤 SIGKILL로 잘라 정리가 무의미해진다).
+  const bail = setTimeout(() => {
+    console.error("정상 종료가 지연됐다 — 강제 종료한다");
+    process.exit(1);
+  }, 3_000);
+  bail.unref();
+
+  try {
+    clearInterval(heartbeat);
+    roomManager.shutdown();
+    // 알림 프레임이 실제로 나가도록 한 틱 양보한 뒤 소켓을 닫는다.
+    await new Promise((r) => setTimeout(r, 100));
+    for (const ws of wss.clients) {
+      try {
+        ws.close(1001, "server restarting");
+      } catch {
+        /* 이미 닫힘 */
+      }
+    }
+    await Promise.allSettled([statsStore.flush(), augmentStats.flush()]);
+    wss.close();
+    httpServer.close();
+    console.log("정상 종료 완료");
+  } catch (err) {
+    console.error("정상 종료 중 오류:", err);
+  }
+  clearTimeout(bail);
+  process.exit(0);
+}
+
+for (const sig of ["SIGTERM", "SIGINT"] as const) {
+  process.on(sig, () => {
+    void gracefulShutdown(sig);
+  });
+}

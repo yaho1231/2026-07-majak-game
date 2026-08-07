@@ -20,7 +20,7 @@ import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
 import { scales } from "./discard.js";
 import type { ActionBid } from "./decide.js";
-import { NOTEN_PENALTY, waitTilesOf } from "./value.js";
+import { NOTEN_PENALTY, NOTEN_WALL, waitTilesOf } from "./value.js";
 import type { CallOutcome } from "./callAudit.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
@@ -245,12 +245,21 @@ export function bidCall(
     // 손이 전진하지 않는 콜은 부르지 않는다 (텐파이를 잡는 콜은 전진으로 친다)
     if (best.shanten >= before) return audit("no_progress");
 
-    // 종반 형식텐파이 — 역이 없어도 텐파이면 노텐벌부를 피한다
-    const lateTenpai = best.shanten === 0 && read.wallLeft <= 12;
+    /**
+     * 종반 형식텐파이 — 역이 없어도 텐파이면 노텐벌부를 피한다.
+     *
+     * 문턱을 `NOTEN_WALL`로 통일했다. 예전에는 이 게이트만 12였고 EV 쪽 보너스는
+     * 16이라(`evOfCall`·`evOfPass`) **13~16 구간에서 둘이 어긋났다** — EV는 노텐벌부
+     * 회피를 값으로 세는데 게이트가 그 콜을 먼저 잘라 버려, 세어 놓은 값이 쓰이지 않는
+     * 구간이 네 순 있었다.
+     */
+    const lateTenpai = best.shanten === 0 && read.wallLeft <= NOTEN_WALL;
 
-    // 열린 손은 역이 없으면 텐파이해도 못 먹는다 — 값어치가 0인 길이다
+    // 열린 손은 역이 없으면 텐파이해도 못 먹는다 — 값어치가 0인 길이다.
+    // 단 **무형화료**를 들었으면 그 규칙 자체가 없다 — 그 증강이 열어 주려던 콜을
+    // 여기서 잘라 버리면 봇은 증강을 뽑고도 없는 것처럼 논다(`read.noYakuRequired`).
     const found = best.yaku ?? (hasYakuhaiMeld ? ({ yaku: "yakuhai" } as const) : null);
-    if (found === null && !lateTenpai) return audit("no_yaku");
+    if (found === null && !lateTenpai && !read.noYakuRequired) return audit("no_yaku");
 
     picked = best;
     plan = found ?? committed;
@@ -334,7 +343,7 @@ function evOfCall(
   const appetite = 0.75 + profile.callLoose * 0.5;
   const gain = pWin * (value.points + read.match.potBonus) * appetite;
   // 종반에 텐파이가 걸리면 노텐벌부를 피한다
-  const noten = picked.shanten <= 0 && read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
+  const noten = picked.shanten <= 0 && read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   // 열린 손은 접기 어렵다 — 남은 국의 위험패를 계속 통과시켜야 한다
   const s = scales(read, profile);
   return (gain + noten) * s.gain - openRisk(read) * s.loss;
@@ -351,9 +360,9 @@ function evOfPass(read: BotRead, plan: HandPlan, profile: BotProfile): number {
     // 이미 열린 손이면 패스한 뒤에도 계속 부를 수 있다 — 콜 쪽과 같은 자로 재야 한다
     open: read.meldCount > 0 ? { hand: read.hand, ukeireKinds: u.kinds } : undefined,
   });
-  const noten = read.tenpai && read.wallLeft <= 16 ? NOTEN_PENALTY : 0;
+  const noten = read.tenpai && read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   const s = scales(read, profile);
-  return (pWin * (value.points + read.match.potBonus) + noten) * s.gain;
+  return (pWin * (value.points + read.match.potBonus) + noten) * s.gain - passRisk(read) * s.loss;
 }
 
 /**
@@ -361,14 +370,50 @@ function evOfPass(read: BotRead, plan: HandPlan, profile: BotProfile): number {
  * 위협이 없으면 0이다(열어도 잃을 것이 없다).
  */
 function openRisk(read: BotRead): number {
+  return handRisk(read, OPEN_HORIZON);
+}
+
+/**
+ * **울지 않고 가는 길의 대가.**
+ *
+ * ## 패스가 공짜로 모형화돼 있었다
+ *
+ * `evOfCall`은 `− openRisk × s.loss`를 빼는데 `evOfPass`에는 위험 항이 **한 줄도
+ * 없었다.** 즉 "안 부른다"는 아무 비용도 치르지 않는 선택으로 계산됐다. 그런데
+ * 패스해도 그 손은 사라지지 않는다 — 손패는 그대로 남고, 앞으로도 그 패들을 한 장씩
+ * 흘려야 한다. 봇의 후로율이 15%로 사람(30~40%)의 절반에 못 미치는 구조적 원인이
+ * 여기 있다: 한쪽에만 비용이 붙어 있으면 그 쪽은 언제나 진다.
+ *
+ * (문턱을 푸는 방식은 세 번 시도돼 세 번 다 판이 나빠졌다 — `yakuPathAfter` 주석.
+ * 그 셋은 전부 **게이트**를 건드렸고, 이건 **모형**을 고친다. 브레이크가 게이트가
+ * 아니라 EV에 있어야 한다는 이 파일의 설계 그대로다.)
+ *
+ * ## 왜 콜 쪽보다 짧은가
+ *
+ * 닫힌 손은 **접을 수 있다.** 위험해지면 그 손을 버리고 안전패로 돌아설 여지가
+ * 남아 있는 반면, 열린 손은 리치도 못 걸고 값도 싸서 끝까지 밀어야 하는 일이 잦다.
+ * 그 차이가 그대로 두 지평의 차이다 — 뺄셈으로 남는 `OPEN_HORIZON − PASS_HORIZON`이
+ * "손을 여는 것의 **추가** 비용"이고, 예전 모형은 그 추가 비용을 절대 비용으로
+ * 잘못 물리고 있었다.
+ */
+function passRisk(read: BotRead): number {
+  if (!read.flags.has("passrisk")) return 0;
+  return handRisk(read, PASS_HORIZON);
+}
+
+/** 손에 남은 패를 앞으로 `horizon`장 흘릴 때의 평균 기대 실점 */
+function handRisk(read: BotRead, horizon: number): number {
   if (read.threat <= 0) return 0;
   let loss = 0;
   for (const k of read.hand) loss += read.expectedLoss(k);
-  return (loss / Math.max(1, read.hand.length)) * OPEN_HORIZON;
+  return (loss / Math.max(1, read.hand.length)) * horizon;
 }
 
 /** 열린 손이 남은 국 동안 통과시켜야 하는 위험패의 몫 */
 const OPEN_HORIZON = 3;
+
+/** 닫힌 손이 그대로 갈 때 통과시켜야 하는 몫 — 접을 여지가 남아 있어 더 짧다 */
+const PASS_HORIZON = 1.5;
 
 /** 이 콜이 손에서 내주는 패의 kind 목록 */
 function usedKinds(read: BotRead, option: ActionOption): TileKind[] {

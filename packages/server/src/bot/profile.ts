@@ -78,9 +78,23 @@ export interface BotProfile {
   bluff: number;
   /** 생각 시간 배율 — 사람처럼 들쭉날쭉하게 */
   tempo: number;
+  /**
+   * 0(초보) ~ 1(숙련) — **난이도.** 기본 1이면 종전 봇과 한 치도 다르지 않다.
+   *
+   * 이 저장소에는 **난이도라는 개념 자체가 없었다**(`difficulty`로 검색해도 게임과
+   * 관련된 것이 하나도 나오지 않는다). 사람이 붙는 자리인데 세 봇이 언제나 같은
+   * 실력이면, 처음 앉은 사람은 이길 수 없고 익숙해진 사람은 이길 이유가 없다.
+   *
+   * **분기를 만들지 않는다** — 성격값과 같은 규율이다(파일 위 §"성격은 규칙이 아니라
+   * 저울이다"). 이 값이 하는 일은 하나뿐이다: `discard.wobble`이 "엇비슷하다"고 보는
+   * 폭을 넓힌다. 그러면 봇은 **판단을 못 하는 것이 아니라 고르기를 흔들려서** 진다 —
+   * 사람이 실수하는 모습과 같고, 규칙을 몰라 이상한 수를 두는 것과는 다르다.
+   * 값이 1이면 폭이 정확히 종전과 같아 기존 측정·테스트가 전부 그대로 유효하다.
+   */
+  skill: number;
 }
 
-type Archetype = Omit<BotProfile, "archetype" | "tempo">;
+type Archetype = Omit<BotProfile, "archetype" | "tempo" | "skill">;
 
 /**
  * 원형표. 값이 서로 **얽혀 있다는 것**이 핵심이다 —
@@ -198,12 +212,85 @@ export function rollProfile(rng: Prng, forced?: ArchetypeName): BotProfile {
     noise: shake(base.noise),
     bluff: shake(base.bluff),
     tempo: 0.6 + rng.next() * 0.9,
+    skill: 1,
   };
 }
 
 /** 이름으로 원형 하나를 그대로 만든다 (테스트·재현용 — 흔들림 없음) */
 export function profileOf(name: ArchetypeName, tempo = 1): BotProfile {
-  return { archetype: name, ...ARCHETYPES[name], tempo };
+  return { archetype: name, ...ARCHETYPES[name], tempo, skill: 1 };
+}
+
+// ─────────────────────────── 탁 전체를 한 번에 뽑는다 ───────────────────────────
+
+/**
+ * **탁에 앉는 봇 셋의 성격을 함께 뽑는다.**
+ *
+ * 예전에는 봇마다 따로 `rollProfile`을 불렀고, 원형은 여섯 중 균등 추첨이었다.
+ * 독립 추첨 셋이 서로 겹칠 확률은 1 − (6·5·4)/6³ = **44%** — 즉 두 판에 한 번 꼴로
+ * 탁에 같은 성향이 둘 앉는다. 게다가 같은 원형의 두 봇은 흔들림이 ±0.08뿐이라
+ * **거의 구별되지 않는다.** "탁에 여러 성향이 섞이는 것이 목적"이라고 적어 놓고
+ * 그 목적이 절반은 달성되지 않고 있었다.
+ *
+ * 한 자리씩 뽑되 **이미 앉은 원형은 후보에서 뺀다.** 자리 수(3)가 원형 수(6)보다
+ * 적으므로 언제나 서로 다른 셋이 나온다. 자리가 원형보다 많으면 다 쓴 뒤 다시 채운다.
+ *
+ * `forced`(방장이 지정한 자리)는 그대로 존중하고, 지정된 원형만 남은 후보에서 뺀다 —
+ * 지정이 있는 방에서도 나머지 자리가 그것과 겹치지 않는다.
+ */
+export function rollTableProfiles(
+  rng: Prng,
+  count: number,
+  forced: readonly (ArchetypeName | undefined)[] = [],
+): BotProfile[] {
+  let pool: ArchetypeName[] = [];
+  const take = (): ArchetypeName => {
+    if (pool.length === 0) pool = [...ARCHETYPE_NAMES];
+    const i = rng.int(pool.length);
+    return pool.splice(i, 1)[0] ?? "balanced";
+  };
+  const out: BotProfile[] = [];
+  for (let i = 0; i < count; i++) {
+    const fixed = forced[i];
+    if (fixed !== undefined) {
+      // 지정된 원형은 남은 후보에서 빼 둔다 (뽑기 난수는 소모하지 않는다)
+      if (pool.length === 0) pool = [...ARCHETYPE_NAMES];
+      const j = pool.indexOf(fixed);
+      if (j >= 0) pool.splice(j, 1);
+      out.push(rollProfile(rng, fixed));
+      continue;
+    }
+    out.push(rollProfile(rng, take()));
+  }
+  return out;
+}
+
+// ─────────────────────────── 난이도 ───────────────────────────
+
+/** 방 설정에 노출하는 난이도 이름 */
+export type BotDifficulty = "easy" | "normal" | "hard";
+
+/**
+ * 난이도 → `skill`.
+ *
+ * `hard`가 1.0(= 지금까지의 봇)이고 나머지는 그보다 아래다. **위로 열지 않는 것이
+ * 요점이다** — 지금의 봇이 이 저장소가 만들 수 있는 가장 잘 두는 봇이므로, `hard`를
+ * 1보다 크게 두면 존재하지 않는 실력을 파는 셈이 된다.
+ */
+export const DIFFICULTY_SKILL: Readonly<Record<BotDifficulty, number>> = {
+  easy: 0.35,
+  normal: 0.7,
+  hard: 1,
+};
+
+/** 성격에 난이도를 입힌다 (성격 자체는 그대로 — `skill` 한 칸만 바뀐다) */
+export function withDifficulty(profile: BotProfile, difficulty: BotDifficulty): BotProfile {
+  return { ...profile, skill: DIFFICULTY_SKILL[difficulty] };
+}
+
+/** 문자열이 난이도 이름인가 — 클라이언트가 보낸 값을 그대로 믿지 않으려고 쓴다 */
+export function isBotDifficulty(s: string): s is BotDifficulty {
+  return s === "easy" || s === "normal" || s === "hard";
 }
 
 /** 테스트·기본값용 중립 성격 */
