@@ -493,6 +493,10 @@ installAugment(engine, def, holder)  ──▶ Registry에 능력 등록        
   (`installAugment(engine, def, holder, { yaku })`; DraftController·ReplayReader가 전달).
   보유자 판별은 `WinContext.winnerId` + content의 `yakuHolders(yaku, id)` 패턴.
 - **조커(만능패)**: `scoring.wildKinds` — 여기 실린 종류의 패는 **손패에서 무엇이든 된다**.
+  구현은 **분해 재귀가 조커를 직접 안다** — 몸통을 만들다 모자란 자리를 조커로 메우고,
+  실제 패를 먼저 쓴다(교환 논증으로 일반성을 잃지 않는다). 조커를 실제 패로 바꾼 손을
+  전부 만들어 다시 분해하면 조커 W장에 34^W개가 되어 백 4장이면 한 순이 5~10초였다
+  (2026-08-07 사용자 보고 → `core/test/JokerPerf.test.ts`가 예산으로 못을 박는다).
   `decompose`가 조커 자리를 실제 패로 바꾼 손을 전부 만들어 분해하고, `scoringOptionsOf`가
   같은 옵션을 화료·텐파이·대기·후리텐에 흘린다. 무엇이 될지는 고르지 않고 `evaluateWin`이
   변형 전부를 재서 **가장 비싼 것**을 채택한다(조커). 도라는 물리적인 패로 세고,
