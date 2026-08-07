@@ -227,12 +227,19 @@ export {
   POWER_TIER_WEIGHT,
   POWER_TIER_LABEL,
   TIER_CUTS,
+  FORMULA_TIERS,
+  quantileCuts,
   powerScore,
   formulaTier,
+  shiftTier,
   deviatesFromFormula,
   defaultBotWeight,
 } from "./augment/powerTier.js";
-export type { PowerTier, PowerTierEntry } from "./augment/powerTier.js";
+export type {
+  PowerTier,
+  PowerTierEntry,
+  PowerTierSpec,
+} from "./augment/powerTier.js";
 export {
   AUGMENT_SYNERGY,
   SYNERGY_TAG_LABEL,

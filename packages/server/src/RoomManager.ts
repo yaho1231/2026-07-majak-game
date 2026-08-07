@@ -2903,7 +2903,7 @@ export class RoomManager {
           return;
         }
         this.recordGame(room, rankings);
-        this.recordAugmentResults(room, rankings);
+        this.recordAugmentResults(room, rankings, tracker);
         // ⚠ 방 정리는 통계 전송이 끝난 **뒤**에 한다 — finishStats는 room.agents를 훑어
         //    이번 판 통계를 보내는데, 먼저 정리하면 그 사이 좌석이 갈려(봇 교체·포기한
         //    좌석 제거) 통계가 엉뚱한 명단으로 나가거나 아예 도달하지 않는다.
@@ -3003,7 +3003,11 @@ export class RoomManager {
    * 조정 결과는 **다음에 만들어지는 방**부터 적용된다. 진행 중인 게임의 카탈로그를
    * 중간에 갈아 끼우면 같은 판에서 확률이 바뀌어 리플레이가 어긋난다.
    */
-  private recordAugmentResults(room: Room, rankings: RankingEntry[]): void {
+  private recordAugmentResults(
+    room: Room,
+    rankings: RankingEntry[],
+    tracker: StatsTracker,
+  ): void {
     if (this.augmentStats === undefined) return;
     try {
       const state = room.controller?.gameState;
@@ -3012,7 +3016,17 @@ export class RoomManager {
         augments: state.players.find((p) => p.id === r.playerId)?.augments ?? [],
         rank: r.rank,
       }));
-      if (this.augmentStats.record(results)) {
+      // 제시·선택 횟수는 좌석별 통계를 합쳐 얻는다 — 근거는 AUGMENT_OFFERED /
+      // AUGMENT_DRAFTED 이벤트라 리플레이만으로 재구성된다(PlayerStats).
+      const offers: Record<string, { offered: number; picked: number }> = {};
+      for (const raw of tracker.snapshot().values()) {
+        for (const [id, a] of Object.entries(raw.augments)) {
+          const o = (offers[id] ??= { offered: 0, picked: 0 });
+          o.offered += a.offered;
+          o.picked += a.picked;
+        }
+      }
+      if (this.augmentStats.record(results, offers)) {
         const p = this.augmentStats.progress();
         console.log(`[augment] 티어 자동 조정 #${p.adjustments} 적용 (${p.every}판 주기)`);
       }

@@ -56,7 +56,7 @@ describe("rollFrom — 가중 비복원 추출", () => {
   const ssId = idOfTier("SS+");
   const dId = idOfTier("D");
 
-  it("SS+는 D보다 확연히 덜 뽑힌다 (가중치 0.15 대 1.20 = 1:8)", () => {
+  it("SS+는 D보다 '조금' 덜 뽑힌다 — 사라지지는 않는다 (2026-08-08)", () => {
     const candidates = [defWithId(ssId), defWithId(dId)];
     let ss = 0;
     const trials = 4000;
@@ -65,9 +65,13 @@ describe("rollFrom — 가중 비복원 추출", () => {
       if (picked[0]?.id === ssId) ss++;
     }
     const ratio = ss / trials;
-    // 이론값 0.15/(0.15+1.20) ≈ 0.111. 균등이면 0.5가 나온다.
-    expect(ratio).toBeGreaterThan(0.07);
-    expect(ratio).toBeLessThan(0.16);
+    // 이론값 = w(SS+)/(w(SS+)+w(D)). 균등이면 0.5.
+    const expected =
+      POWER_TIER_WEIGHT["SS+"] / (POWER_TIER_WEIGHT["SS+"] + POWER_TIER_WEIGHT.D);
+    expect(ratio).toBeGreaterThan(expected - 0.04);
+    expect(ratio).toBeLessThan(expected + 0.04);
+    // 예전 값(0.15 대 1.20 = 1:8)은 최상위를 사실상 없앴다. 지금은 최소 4분의 1은 나온다.
+    expect(ratio).toBeGreaterThan(0.25);
   });
 
   it("같은 시드는 항상 같은 결과를 낸다 (리플레이 안전)", () => {

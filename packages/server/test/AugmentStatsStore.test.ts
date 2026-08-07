@@ -44,14 +44,43 @@ describe("집계", () => {
       { augments: [idB as string], rank: 3 },
     ]);
     const r = store.records();
-    expect(r[idA as string]).toEqual({ games: 1, wins: 1 });
-    expect(r[idB as string]).toEqual({ games: 1, wins: 0 });
+    expect(r[idA as string]).toMatchObject({ games: 1, wins: 1 });
+    expect(r[idB as string]).toMatchObject({ games: 1, wins: 0 });
   });
 
   it("한 사람이 같은 증강을 중복 보유해도 한 번만 센다", async () => {
     const store = await fresh();
     store.record([{ augments: [idA as string, idA as string], rank: 1 }]);
-    expect(store.records()[idA as string]).toEqual({ games: 1, wins: 1 });
+    expect(store.records()[idA as string]).toMatchObject({ games: 1, wins: 1 });
+  });
+
+  it("제시·선택 횟수는 보유와 무관하게 누적된다 (픽률의 분모)", async () => {
+    const store = await fresh();
+    // idB는 아무도 안 집었지만 세 번 제시됐다 — 그 사실이 픽률의 근거다.
+    store.record([{ augments: [idA as string], rank: 1 }], {
+      [idA as string]: { offered: 2, picked: 1 },
+      [idB as string]: { offered: 3, picked: 0 },
+    });
+    const r = store.records();
+    expect(r[idA as string]).toEqual({ games: 1, wins: 1, offered: 2, picked: 1 });
+    // 보유 게임이 0이어도 제시 기록만으로 행이 생긴다
+    expect(r[idB as string]).toEqual({ games: 0, wins: 0, offered: 3, picked: 0 });
+  });
+
+  it("여러 판의 제시·선택이 합산된다", async () => {
+    const store = await fresh();
+    for (let i = 0; i < 3; i++) {
+      store.record([], { [idA as string]: { offered: 2, picked: 1 } });
+    }
+    expect(store.records()[idA as string]).toMatchObject({ offered: 6, picked: 3 });
+  });
+
+  it("records()가 내부 상태를 내주지 않는다 (제자리 누적이라 복사가 필요하다)", async () => {
+    const store = await fresh();
+    store.record([{ augments: [idA as string], rank: 1 }]);
+    const snapshot = store.records();
+    (snapshot[idA as string] as { games: number }).games = 999;
+    expect(store.records()[idA as string]?.games).toBe(1);
   });
 });
 
@@ -91,7 +120,7 @@ describe("영속화", () => {
     const reloaded = new AugmentStatsStore(pathOf());
     await reloaded.load();
     opened.push(reloaded);
-    expect(reloaded.records()[idA as string]).toEqual({ games: 1, wins: 1 });
+    expect(reloaded.records()[idA as string]).toMatchObject({ games: 1, wins: 1 });
   });
 
   it("파일이 없으면 빈 상태로 시작한다 (게임 진행을 막지 않는다)", async () => {

@@ -1,21 +1,28 @@
 /**
  * 티어 자동 조정 (사용자 확정 2026-08-03).
- * "20판마다 / 티어별 승률 상위 10%는 반 단계 상향", 티어가 섞이도록 하위 10%는 하향.
+ * "20판마다 / 티어별 상위 10%는 반 단계 상향", 티어가 섞이도록 하위 10%는 하향.
+ *
+ * 2026-08-08: 순위 기준이 승률 하나에서 **승률 + 픽률**로, 최소 표본이 10 → 5로,
+ * 10%가 1종이 안 되는 작은 티어도 최소 1종씩 움직이도록 바뀌었다.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   ADJUST_EVERY_GAMES,
   MAX_HALF_STEPS,
+  MIN_OFFERS,
   MIN_SAMPLE,
+  MIN_TIER_SAMPLE,
   adjustedWeight,
   computeAdjustment,
+  strengthOf,
   weightForOffset,
   weightsFromOffsets,
 } from "../src/augment/tierAdjust.js";
 import type { AugmentRecord } from "../src/augment/tierAdjust.js";
 import {
   AUGMENT_POWER_TIERS,
+  POWER_TIER_ORDER,
   POWER_TIER_WEIGHT,
 } from "../src/augment/powerTier.js";
 import type { PowerTier } from "../src/augment/powerTier.js";
@@ -49,6 +56,35 @@ describe("weightForOffset — 반 단계는 이웃 티어와의 중간값이다"
   it("표의 양끝을 넘어가지 않는다", () => {
     expect(weightForOffset("SS+", 10)).toBe(POWER_TIER_WEIGHT["SS+"]);
     expect(weightForOffset("D", -10)).toBe(POWER_TIER_WEIGHT.D);
+  });
+});
+
+describe("strengthOf — 승률과 픽률을 함께 본다 (2026-08-08)", () => {
+  it("평범한 성적(1위율 25% · 픽률 1/3)이 1.0이다", () => {
+    expect(strengthOf({ games: 100, wins: 25, offered: 300, picked: 100 })).toBeCloseTo(
+      1,
+      10,
+    );
+  });
+
+  it("픽률 표본이 모자라면 승률만 본다 — 없는 값을 0으로 치지 않는다", () => {
+    const noOffers = { games: 100, wins: 25, offered: MIN_OFFERS - 1, picked: 0 };
+    // 픽률을 0으로 쳤다면 1.0보다 한참 낮았을 것이다
+    expect(strengthOf(noOffers)).toBeCloseTo(1, 10);
+    expect(strengthOf({ games: 100, wins: 25 })).toBeCloseTo(1, 10);
+  });
+
+  it("픽률이 높으면 조금 더 세게 잡힌다 — 승률이 같아도", () => {
+    const base = { games: 100, wins: 25, offered: 300, picked: 100 };
+    const loved = { games: 100, wins: 25, offered: 300, picked: 200 };
+    expect(strengthOf(loved)).toBeGreaterThan(strengthOf(base));
+  });
+
+  it("픽률은 승률을 뒤집지 못한다 — 재미로 집히는 것이 파워로 오인되면 안 된다", () => {
+    // 픽률 만점(전부 선택) + 평범한 승률  vs  픽률 0 + 승률 두 배
+    const funny = { games: 100, wins: 25, offered: 300, picked: 300 };
+    const strong = { games: 100, wins: 50, offered: 300, picked: 0 };
+    expect(strengthOf(strong)).toBeGreaterThan(strengthOf(funny));
   });
 });
 
@@ -122,5 +158,52 @@ describe("가중치 반영", () => {
 
   it("주기는 20판이다 (사용자 확정)", () => {
     expect(ADJUST_EVERY_GAMES).toBe(20);
+  });
+
+  it("최소 표본은 5판이다 (사용자 확정 2026-08-08)", () => {
+    // 10이던 시절 운영 집계에서 문턱을 넘은 증강이 하나도 없어 조정이 무효였다.
+    expect(MIN_SAMPLE).toBe(5);
+  });
+
+  it("가중치가 완만하다 — 최상위도 최하위의 절반 밑으로 내려가지 않는다", () => {
+    const top = POWER_TIER_WEIGHT["SS+"];
+    const bottom = POWER_TIER_WEIGHT.D;
+    expect(top / bottom).toBeGreaterThan(0.5);
+    // 그래도 순서는 지킨다 — 셀수록 조금 덜 나온다
+    const ordered = POWER_TIER_ORDER.map((t) => POWER_TIER_WEIGHT[t]);
+    for (let i = 1; i < ordered.length; i++) {
+      expect(ordered[i] as number).toBeGreaterThan(ordered[i - 1] as number);
+    }
+  });
+
+  it("상한까지 밀려도 노출이 사라지지 않는다", () => {
+    const worst = weightForOffset("SS+", MAX_HALF_STEPS);
+    expect(worst / POWER_TIER_WEIGHT.D).toBeGreaterThan(0.5);
+  });
+});
+
+describe("작은 티어도 움직인다 (2026-08-08)", () => {
+  /** 티어 안 표본이 n종일 때 조정이 몇 종을 움직이는가 */
+  function movedCount(tier: PowerTier, n: number): number {
+    const ids = idsOfTier(tier).slice(0, n);
+    if (ids.length < n) return -1; // 이 티어에 그만큼이 없다
+    const records: Record<string, AugmentRecord> = {};
+    ids.forEach((id, i) => {
+      records[id] = { games: MIN_SAMPLE, wins: n - i };
+    });
+    return Object.values(computeAdjustment(records)).filter((v) => v !== 0).length;
+  }
+
+  it("10종이 안 되는 티어도 위아래 한 종씩은 움직인다", () => {
+    // 예전에는 floor(n*0.1) < 1 이면 티어를 통째로 건너뛰어 영영 굳어 있었다.
+    const moved = movedCount("D", MIN_TIER_SAMPLE);
+    if (moved < 0) return; // D가 4종 미만이면 이 케이스는 확인할 수 없다
+    expect(moved).toBe(2);
+  });
+
+  it("너무 작은 티어(4종 미만)는 건드리지 않는다 — 매 주기 갈리기만 한다", () => {
+    const moved = movedCount("D", MIN_TIER_SAMPLE - 1);
+    if (moved < 0) return;
+    expect(moved).toBe(0);
   });
 });
