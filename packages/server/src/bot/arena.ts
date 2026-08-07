@@ -50,6 +50,9 @@ import type { ArchetypeName } from "./profile.js";
 import { NO_FLAGS } from "./flags.js";
 import type { BotFlags } from "./flags.js";
 import { CALL_OUTCOMES, CALL_OUTCOME_LABEL, CallTally } from "./callAudit.js";
+import { AUGMENT_POWER_TIERS, powerScore } from "@majak/core";
+import { OpenTally } from "./openTally.js";
+import type { OpenSplitView } from "./openTally.js";
 
 export interface ArenaOptions {
   /** 돌릴 판 수 */
@@ -84,6 +87,31 @@ export interface ArenaOptions {
   ab?: BotFlags;
   /** 콜 기회가 어디서 걸렸는지 집계한다 (`--calls`) */
   auditCalls?: boolean;
+  /**
+   * **네 자리 전부**에 거는 실험 스위치 (`--flags`).
+   *
+   * `ab`는 절반에만 걸어 강함을 재는 것이고, 이쪽은 "그 스위치를 켜면 판이 어떻게
+   * 달라지는가"를 보는 용도다 — 콜 기회 집계(`--calls`)와 함께 쓰면 새 판단이
+   * 어느 관문을 얼마나 열었는지가 그대로 보인다.
+   */
+  flags?: BotFlags;
+}
+
+/** 증강 하나의 아레나 성적 */
+export interface AugmentStatRow {
+  id: string;
+  /** 드래프트에 제시된 횟수 */
+  offered: number;
+  /** 그중 고른 횟수 */
+  picked: number;
+  /** 픽률 = picked / offered — **봇이 이걸 좋아하는가** */
+  pickRate: number;
+  /** 이 증강을 보유한 채 끝낸 판 수 */
+  games: number;
+  /** 보유 판의 평균 순위 — **실제로 값을 했는가** (낮을수록 좋다) */
+  avgPlacement: number;
+  /** 코어 티어표가 매긴 파워 (표에 없으면 undefined) */
+  power?: number;
 }
 
 export interface ArenaResult {
@@ -101,6 +129,19 @@ export interface ArenaResult {
    * 후로율이 낮은 원인을 문턱에서 찾을지 값매김에서 찾을지 가르는 자료다.
    */
   calls?: CallTally;
+  /**
+   * **울고 난 국 vs 안 운 국**의 성적 (`--calls`를 켰을 때만).
+   * "봇이 울고 난 뒤를 잘 못 두는가"를 처음으로 재는 자리다(`bot/openTally.ts`).
+   */
+  open?: { opened: OpenSplitView; closed: OpenSplitView };
+  /**
+   * **증강별 성적** (`--augments`를 켰을 때만).
+   *
+   * `StatsTracker`는 증강별 제시·선택·보유 판 순위를 국 내내 모으고 있었는데
+   * 아레나가 그걸 **한 줄도 출력하지 않았다** — 모아서 버리고 있었다. 그래서
+   * "봇이 증강을 전략에 맞게 쓰는가"에 답할 자료가 하나도 없었다.
+   */
+  augmentStats?: AugmentStatRow[];
   /** 2:2 정책 대전 결과 (ab를 켰을 때만) */
   ab?: {
     flags: string[];
@@ -185,6 +226,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       : [...standardAugments, ...opts.augments];
 
   const calls = opts.auditCalls === true ? new CallTally() : undefined;
+  const openTally = opts.auditCalls === true ? new OpenTally(SEATS) : undefined;
 
   // 2:2 대전은 같은 배패를 좌우 바꿔 두 번 돈다 — 그래서 실제 판수가 두 배다
   const mirrored = opts.ab !== undefined;
@@ -203,6 +245,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
       if (fixed !== undefined) bot.setProfile(profileOf(fixed));
       bot.setGameMode(mode === "tonpuu" ? "tonpuu" : "hanchan");
       // 같은 배패의 첫 번째 판은 0·2번, 두 번째 판은 1·3번이 스위치를 켠다
+      if (opts.flags !== undefined) bot.setFlags(opts.flags);
       if (opts.ab !== undefined && i % 2 === side) bot.setFlags(opts.ab);
       if (calls !== undefined) bot.setCallAudit(calls);
       archetypeOf.set(id, bot.archetype);
@@ -225,6 +268,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
           const event = JSON.parse(json) as { type: string; payload?: unknown };
           if (event.type === ROUND_STARTED) rounds++;
           tracker.consume(event);
+          openTally?.consume(event);
         },
       },
     );
@@ -276,6 +320,39 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
   // 유국률 — 전원 화료 수의 합이 곧 '누군가 이긴 국' 수다
   winRounds = bySeat.reduce((n, s) => n + s.stats.wins, 0);
 
+  /**
+   * 증강별 성적을 좌석 넷에서 합친다.
+   *
+   * **픽률과 평균 순위를 나란히 보는 것이 요점이다.** 픽률은 "봇이 좋아하는가",
+   * 평균 순위는 "실제로 값을 했는가"다. 둘이 어긋나는 증강이 곧 고칠 자리다 —
+   * 많이 집는데 성적이 나쁘면 드래프트 평가가 틀린 것이고, 안 집는데 성적이
+   * 좋으면 놓치고 있는 것이다.
+   */
+  const augRaw = new Map<string, { offered: number; picked: number; games: number; sum: number }>();
+  for (const raw of totals.values()) {
+    for (const [id, a] of Object.entries(raw.augments ?? {})) {
+      const cur = augRaw.get(id) ?? { offered: 0, picked: 0, games: 0, sum: 0 };
+      cur.offered += a.offered;
+      cur.picked += a.picked;
+      cur.games += a.games;
+      cur.sum += a.placementSum;
+      augRaw.set(id, cur);
+    }
+  }
+  const augmentStats: AugmentStatRow[] = [...augRaw]
+    .map(([id, a]) => ({
+      id,
+      offered: a.offered,
+      picked: a.picked,
+      pickRate: a.offered === 0 ? 0 : a.picked / a.offered,
+      games: a.games,
+      avgPlacement: a.games === 0 ? 0 : a.sum / a.games,
+      ...(AUGMENT_POWER_TIERS[id] === undefined
+        ? {}
+        : { power: powerScore(AUGMENT_POWER_TIERS[id]!) }),
+    }))
+    .sort((x, y) => y.pickRate - x.pickRate || y.offered - x.offered);
+
   const byArch = new Map<ArchetypeName, PlayerStatsRaw>();
   for (const seat of bySeat) {
     const raw = totals.get(seat.player);
@@ -293,6 +370,8 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
     })),
     drawRate: rounds === 0 ? 0 : Math.max(0, 1 - winRounds / rounds),
     ...(calls === undefined ? {} : { calls }),
+    ...(openTally === undefined ? {} : { open: openTally.view() }),
+    ...(augmentStats.length === 0 ? {} : { augmentStats }),
     ...(opts.ab !== undefined
       ? {
           ab: {
@@ -395,6 +474,129 @@ export function formatArena(r: ArenaResult): string {
       `1인당 점수 차 ${sg >= 0 ? "+" : ""}${sg.toFixed(0)} · ` +
         `표준오차 ±${sse.toFixed(0)} → ${sVerdict}`,
     );
+  }
+
+  const augs = r.augmentStats;
+  if (augs !== undefined && augs.length > 0) {
+    /**
+     * **픽률과 평균 순위를 나란히 놓는다.** 둘이 어긋나는 증강이 고칠 자리다 —
+     * 많이 집는데 성적이 나쁘면 드래프트 평가가 틀렸고, 안 집는데 성적이 좋으면
+     * 놓치고 있는 것이다. 표본이 적은 증강은 순위가 요동치므로 보유 판 수도 함께 본다.
+     */
+    const seen = augs.filter((a) => a.offered >= 3);
+    lines.push("");
+
+    /**
+     * **한 번도 안 고른 증강**을 먼저 세운다.
+     *
+     * 이게 표에서 제일 먼저 봐야 할 줄이다 — 정책이 있고 커버리지 테스트도 통과하는데
+     * 드래프트가 아예 안 집으면 그 증강은 **실전에 존재하지 않는다.** 평균 순위로는
+     * 안 보인다(보유 판이 0이라 순위 자체가 없다).
+     */
+    const never = seen.filter((a) => a.picked === 0).sort((a, b) => b.offered - a.offered);
+    if (never.length > 0) {
+      lines.push(`한 번도 안 고른 증강 ${never.length}종 (제시 3회 이상)`);
+      lines.push(
+        never
+          .slice(0, 20)
+          .map((a) => `${a.id}(${a.offered})`)
+          .join(" · "),
+      );
+      lines.push("");
+    }
+
+    /**
+     * **티어표 검증** — 표가 매긴 파워와 실측 평균 순위를 나란히 놓는다.
+     *
+     * 무작위 드래프트(`--flags draftRandom`)와 함께 써야 뜻이 있다. 봇이 표를 보고
+     * 뽑으면 낮은 티어는 "다른 둘이 더 나빴을 때"만 손에 들어오므로, 그 표본으로
+     * 표를 검증하면 **표가 만든 표본으로 그 표를 검증하는** 순환이 된다.
+     *
+     * 표가 옳다면 파워가 높은 구간일수록 평균 순위가 낮아야(좋아야) 한다.
+     * 구간별로 묶어 보는 이유는 증강 하나하나의 표본이 작아 순위가 요동치기 때문이다 —
+     * 100판을 들어도 표준오차가 ±0.11쯤이라 개별 증강의 미세한 차이는 못 가른다.
+     */
+    const rated = seen.filter((a) => a.power !== undefined && a.games >= 20);
+    if (rated.length >= 8) {
+      const byPower = [...rated].sort((a, b) => (a.power ?? 0) - (b.power ?? 0));
+      const q = Math.floor(byPower.length / 4);
+      lines.push(`티어표 검증 — 파워 구간별 실측 (보유 20판 이상 ${rated.length}종)`);
+      lines.push("파워 구간          종수   보유판   평균순위");
+      for (let i = 0; i < 4; i++) {
+        const part = byPower.slice(i * q, i === 3 ? byPower.length : (i + 1) * q);
+        if (part.length === 0) continue;
+        const games = part.reduce((n, a) => n + a.games, 0);
+        const sum = part.reduce((n, a) => n + a.avgPlacement * a.games, 0);
+        const lo = part[0]?.power ?? 0;
+        const hi = part.at(-1)?.power ?? 0;
+        lines.push(
+          `${`${lo}~${hi}`.padEnd(18)}${String(part.length).padStart(4)}` +
+            `${String(games).padStart(9)}${(sum / games).toFixed(3).padStart(11)}`,
+        );
+      }
+      /**
+       * 표와 가장 어긋나는 증강 — 파워 순위와 실측 순위의 **등수 차이**로 잰다.
+       * 값 자체가 아니라 등수를 쓰는 이유는 둘의 단위가 다르기 때문이다.
+       */
+      const powerRank = new Map(
+        [...rated].sort((a, b) => (b.power ?? 0) - (a.power ?? 0)).map((a, i) => [a.id, i]),
+      );
+      const realRank = new Map(
+        [...rated].sort((a, b) => a.avgPlacement - b.avgPlacement).map((a, i) => [a.id, i]),
+      );
+      const gap = rated
+        .map((a) => ({ a, d: (realRank.get(a.id) ?? 0) - (powerRank.get(a.id) ?? 0) }))
+        .sort((x, y) => y.d - x.d);
+      const line = (x: { a: AugmentStatRow; d: number }): string =>
+        `${x.a.id.slice(0, 22).padEnd(24)}파워${String(x.a.power).padStart(3)}` +
+        `  실측${x.a.avgPlacement.toFixed(2)}  보유${String(x.a.games).padStart(4)}  등수차${x.d > 0 ? "+" : ""}${x.d}`;
+      lines.push("표가 과대평가한 쪽 (파워는 높은데 성적이 나쁘다)");
+      for (const x of gap.slice(0, 6)) lines.push(`  ${line(x)}`);
+      lines.push("표가 과소평가한 쪽 (파워는 낮은데 성적이 좋다)");
+      for (const x of gap.slice(-6).reverse()) lines.push(`  ${line(x)}`);
+      lines.push("");
+    }
+
+    // 평균 순위는 보유 판이 어느 정도 쌓인 것만 — 한두 판짜리는 요동친다
+    const rows = seen.filter((a) => a.games >= 4).sort((a, b) => a.avgPlacement - b.avgPlacement);
+    if (rows.length === 0) return lines.join("\n");
+    lines.push(`증강 성적 (보유 4판 이상 ${rows.length}종) — 고르는가 · 골라서 값을 했는가`);
+    lines.push("증강                     제시   선택   픽률   보유판  평균순위");
+    const n = Math.min(8, Math.floor(rows.length / 2));
+    for (const [label, part] of [
+      ["── 성적이 좋은 쪽 ──", rows.slice(0, n)],
+      ["── 성적이 나쁜 쪽 ──", rows.slice(-n)],
+    ] as const) {
+      lines.push(label);
+      for (const a of part) {
+        lines.push(
+          `${a.id.slice(0, 22).padEnd(24)}` +
+            `${String(a.offered).padStart(5)}` +
+            `${String(a.picked).padStart(7)}` +
+            `${(a.pickRate * 100).toFixed(0).padStart(6)}%` +
+            `${String(a.games).padStart(8)}` +
+            `${a.avgPlacement.toFixed(2).padStart(10)}`,
+        );
+      }
+    }
+  }
+
+  const split = r.open;
+  if (split !== undefined && split.opened.rounds + split.closed.rounds > 0) {
+    lines.push("");
+    lines.push("울고 난 국 vs 안 운 국 — 후로가 실제로 값을 하는가");
+    lines.push("갈래        국       화료율   방총률  평균화료");
+    for (const [label, v] of [
+      ["울었다", split.opened],
+      ["안 울었다", split.closed],
+    ] as const) {
+      lines.push(
+        `${label.padEnd(10)}${String(v.rounds).padStart(6)}` +
+          `${(v.winRate * 100).toFixed(1).padStart(11)}%` +
+          `${(v.dealInRate * 100).toFixed(1).padStart(8)}%` +
+          `${v.avgWinPoints.toFixed(0).padStart(10)}`,
+      );
+    }
   }
 
   const calls = r.calls;

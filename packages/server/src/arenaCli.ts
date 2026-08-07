@@ -34,6 +34,8 @@ const result = await runArena({
   ...(seats !== undefined ? { seats } : {}),
   ...(process.argv.includes("--augments") ? { augments: contentAugments } : {}),
   ...(arg("ab") !== undefined ? { ab: parseFlags(arg("ab")) } : {}),
+  // --flags : 네 자리 전부에 스위치를 건다 (--ab와 달리 강함이 아니라 '판의 변화'를 본다)
+  ...(arg("flags") !== undefined ? { flags: parseFlags(arg("flags")) } : {}),
   // --calls : 콜 기회가 어디서 걸렸는지 집계한다 (bot/callAudit.ts)
   ...(process.argv.includes("--calls") ? { auditCalls: true } : {}),
 });
