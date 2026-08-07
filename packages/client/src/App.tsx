@@ -61,6 +61,8 @@ import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { splitTerms } from "./glossary.js";
 import type { GlossaryEntry } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
+import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
+import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
 import {
@@ -95,6 +97,7 @@ type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "c
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
 type Side = "bottom" | "right" | "top" | "left";
+
 
 /** 서버 WS 주소 — 배포(정적 서빙)면 same-origin, vite dev면 localhost:3001 */
 function defaultServerUrl(): string {
@@ -1865,6 +1868,10 @@ export function App(): JSX.Element {
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const intentionalCloseRef = useRef(false);
+  /** 끊긴 동안 밀린 재전송 대기열 (resendPolicy.ts ②). */
+  const pendingSends = useRef<QueuedSend[]>([]);
+  /** 이번 끊김에서 "보내지 못했다"를 이미 알렸는가 — 토스트가 연달아 쌓이지 않게. */
+  const sendFailNotified = useRef(false);
   /** 재연결 후 자동 복귀 대상 — 참가 중인 방 코드 / 관전 중인 방 코드. */
   const activeRoomRef = useRef<string | null>(null);
   const activeSpectateRef = useRef<string | null>(null);
@@ -2296,10 +2303,42 @@ export function App(): JSX.Element {
     window.setTimeout(() => setToast((cur) => (cur?.key === key ? null : cur)), ms);
   }
 
-  function send(msg: ClientMessage): void {
+  /**
+   * 서버로 보낸다. 소켓이 닫혀 있으면 **정책에 따라** 큐에 담거나 눈에 보이게 실패한다
+   * (판정과 큐 규칙은 resendPolicy.ts). 실제로 전송했으면 true.
+   *
+   * 예전에는 닫혀 있으면 그냥 `return`이었다 — 누른 것이 아무 일도 일으키지 않고
+   * 아무 말도 남기지 않았다. 재연결은 보통 1초 안에 끝나므로, 그 사이 누른 것이
+   * 통째로 사라지는 것이 이 함수의 가장 흔한 실패였다.
+   */
+  function send(msg: ClientMessage): boolean {
+    const ws = wsRef.current;
+    if (ws !== null && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+      return true;
+    }
+    if (!isResendable(msg.type)) {
+      // 지금 이 순간에 대한 응답 — 늦게 도착하면 **다른 상황에 적용된다**. 버리고 알린다.
+      // ping은 스스로 다시 오므로 조용히 버린다.
+      if (msg.type !== "ping" && !sendFailNotified.current) {
+        sendFailNotified.current = true;
+        showToast("서버와 연결이 끊겼습니다 — 다시 연결되면 눌러 주세요");
+      }
+      return false;
+    }
+    pendingSends.current = enqueueSend(pendingSends.current, msg, Date.now());
+    return false;
+  }
+
+  /** 다시 붙었다 — 큐에 남은 것을 담긴 순서대로 보낸다 (묵은 것은 resendPolicy가 걸러낸다). */
+  function flushPendingSends(): void {
+    const queued = pendingSends.current;
+    pendingSends.current = [];
     const ws = wsRef.current;
     if (ws === null || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify(msg));
+    for (const msg of dueForResend(queued, Date.now())) {
+      ws.send(JSON.stringify(msg));
+    }
   }
 
   /**
@@ -2376,9 +2415,18 @@ export function App(): JSX.Element {
       // 흘려보내면, 그 순간 계정이 통째로 넘어간다. 발급처가 다르면 어차피 그
       // 서버에서 쓸 수 없는 값이므로, 보내지 않아도 잃는 기능이 없다.
       const issuer = window.localStorage.getItem(SESSION_SERVER_KEY);
-      if (token !== null && token !== "" && issuer === url) {
+      const relogin = token !== null && token !== "" && issuer === url;
+      if (relogin) {
         send({ type: "tokenLogin", sessionToken: token });
       }
+      sendFailNotified.current = false; // 다음 끊김에는 다시 알린다
+      /*
+       * 밀린 것을 언제 보내나 — **인증이 끝난 뒤**다. 큐에는 방 입장처럼 로그인해야
+       * 통하는 요청이 들어 있는데, 토큰 로그인의 응답(authOk)보다 먼저 보내면
+       * 서버가 미인증으로 거절한다. 토큰이 없으면 기다릴 것이 없으니 지금 보낸다
+       * (그때 큐에 있을 수 있는 것은 로그인·가입·게스트 체험처럼 인증 전 메시지다).
+       */
+      if (!relogin) flushPendingSends();
     });
     ws.addEventListener("message", (event) => {
       handleServerMessage(JSON.parse(event.data as string) as ServerMessage);
@@ -2566,6 +2614,10 @@ export function App(): JSX.Element {
     if (msg.type === "authOk") {
       setAuthError(null);
       authedRef.current = true;
+      // 인증이 끝났다 — 끊긴 동안 밀렸던 요청을 이제 보낸다 (SEND_RESEND_POLICY ②).
+      // 아래 자동 복귀(joinRoom·statsRequest…)보다 **먼저** 보내, 사용자가 실제로
+      // 누른 것이 자동 복구보다 뒤로 밀리지 않게 한다.
+      flushPendingSends();
       guestRef.current = msg.guest === true;
       const guest = msg.guest === true;
       // 게스트에게는 저장할 세션이 없다 — 토큰이 빈 문자열이라 저장하면 다음 접속에
