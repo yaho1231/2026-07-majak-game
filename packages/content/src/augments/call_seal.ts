@@ -74,6 +74,7 @@ export const callSeal: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 2,
   name: "함구령",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 6순 동안 상대 셋의 후로(치·펑·대명깡)가 전부 봉인되어 아무도 울지 못한다. 안깡·가깡은 막지 않는다.",

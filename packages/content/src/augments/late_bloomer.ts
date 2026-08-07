@@ -32,7 +32,10 @@ export const lateBloomer: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
-  name: "대기만성",
+  complexity: 2,
+  // 동풍전판(late_bloomer_east)과 짝을 이루는 이름 — 도감·통계·티어표에서 구분되도록
+  // 만개 시점을 이름에 남긴다(둘 다 "대기만성"이면 어느 쪽 기록인지 알 수 없었다).
+  name: "대기만성 (반장전)",
   description:
     "(상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장) 남4국(서입 연장 포함)에 들어서면 만개한다 — 그 이후로는 후리텐을 무시하고 론할 수 있고, 역이 없어도 화료할 수 있다.",
   draftStages: ["gameStart"],

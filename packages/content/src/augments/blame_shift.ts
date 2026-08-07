@@ -46,6 +46,7 @@ export const blameShift: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 2,
   name: "책임전가",
   description:
     "(상시) 내가 론으로 화료하면 그 지불이 쏜 사람 혼자가 아니라 세 명에게 쯔모처럼 분담된다. 내가 받는 총액은 그대로 — 방총의 책임만 테이블 전체로 흩어진다.",

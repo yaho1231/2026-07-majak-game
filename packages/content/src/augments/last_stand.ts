@@ -73,6 +73,7 @@ export const lastStand: AugmentDef = defineAugment({
   id: "last_stand",
   tier: "gold",
   category: "defense",
+  complexity: 2,
   name: "승부수",
   description:
     "(매 국 1회) 리치 중이라면 자기 순에 언제든 자신의 리치를 취소할 수 있다. 취소하면 냈던 리치봉을 돌려받고 다시 자유롭게 버릴 수 있다.",

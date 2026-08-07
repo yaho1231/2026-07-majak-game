@@ -146,6 +146,7 @@ export const seatSwap: AugmentDef = defineAugment({
   id: "seat_swap",
   tier: "prism",
   category: "disrupt",
+  complexity: 3,
   name: "자리 바꿈",
   description:
     "(동풍전 2회 · 반장전 3회, 국당 1회) 내 첫 순에 상대 한 명을 지정하면 그 자리에서 즉시 자리와 손패를 통째로 맞바꾼다 — 자풍·오야·차례는 물론 상대의 손패·후로까지 가져온다.",

@@ -25,6 +25,7 @@ export const honbaHunter: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 2,
   name: "본장 사냥꾼",
   description:
     "(상시) 나에게만 본장 1개당 추가 점수가 300점이 아니라 1500점이 된다. 5본장이면 화료에 +7500점 — 상한은 없다.",

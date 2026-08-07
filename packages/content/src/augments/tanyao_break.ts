@@ -32,6 +32,7 @@ export const tanyaoBreak: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 2,
   name: "탕야오 해방",
   description:
     "(상시) 자패 없이 수패로만 이루어진 손이면 1·9가 섞여 있어도 탕야오로 인정되며, 그 탕야오를 2판으로 취급한다.",

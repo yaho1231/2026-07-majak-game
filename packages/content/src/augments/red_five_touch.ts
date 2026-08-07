@@ -54,6 +54,7 @@ import type {
   TileDrawnPayload,
   TileKindChangedPayload,
 } from "@majak/core";
+import { viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "red_five_touch";
@@ -61,6 +62,15 @@ const ACTION = "red_touch";
 const usedKey = (player: PlayerId): string => `${ID}:used:${player}`;
 /** 지정한 숫자 (게임 내내 유지 — 각인을 다시 새길 때 읽는다) */
 const rankKey = (player: PlayerId): string => `${ID}:rank:${player}`;
+/**
+ * 전원 공개: 이 사람이 어떤 숫자를 물들였는가.
+ *
+ * 각인은 손패 attrs에만 남아 **테이블에서 보이지 않았다**(Rule #2). 더 나쁜 것은
+ * 오해다 — 각인된 적도라를 버려 상대가 펑·치로 가져가면 상대 화면에는 빨간 5가
+ * 서 있는데 채점에는 안 들어간다. 지정 숫자를 공개해 두면 "저 사람의 5는 내 것이
+ * 아니다"가 처음부터 보인다. 각인은 게임 끝까지 유지되므로 국 스코프가 아니다.
+ */
+const markViewKey = (player: PlayerId): string => viewKey("*", `${ID}:${player}`);
 
 /** 이 사람이 지정해 둔 숫자 (아직 안 썼으면 null) */
 function markedRank(state: GameState, player: PlayerId): number | null {
@@ -157,6 +167,8 @@ const redTouchAction: ActionDef<{ rank: number }> = {
       augmentDataSet(usedKey(req.player), true),
       // 지정 숫자를 남겨 둔다 — 이후 뽑는 패·다음 국 배패에도 같은 각인을 다시 새긴다
       augmentDataSet(rankKey(req.player), req.payload.rank),
+      // 전원 공개 — 누가 어떤 숫자를 물들였는지. 그 사람의 적도라는 그 사람만 쓴다.
+      augmentDataSet(markViewKey(req.player), `${req.payload.rank} 각인 (본인 전용 적도라)`),
     ];
   },
 };
@@ -165,11 +177,12 @@ export const redFiveTouch: AugmentDef = defineAugment({
   id: ID,
   tier: "silver",
   category: "hand",
+  complexity: 2,
   name: "붉은 손길",
   description:
-    "(게임 내 1회) 자기 순에 숫자 하나(1~9)를 지정하면, 그 뒤로 내 손에 들어오는 그 숫자가 게임이 끝날 때까지 전부 적도라가 된다. 이 적도라는 나만 쓸 수 있다.",
+    "(게임 내 1회 · 리치 중에는 쓸 수 없다) 자기 순에 숫자 하나(1~9)를 지정하면, 그 뒤로 내 손에 들어오는 그 숫자가 게임이 끝날 때까지 전부 적도라가 된다. 이 적도라는 나만 쓸 수 있고, 어떤 숫자를 지정했는지는 전원에게 공개된다.",
   detail:
-    "(게임 내 1회) 자기 순에 발동하면서 1부터 9까지 중 숫자 하나를 고르면, 그 숫자의 수패(만·통·삭)가 내 손에 들어올 때마다 적도라가 된다 — 발동 시점의 손패는 물론, 이후 뽑는 패와 다음 국 배패까지 게임이 끝날 때까지 계속 적용된다. 이 적도라에는 소유자가 각인되어, 버린 패를 상대가 후로로 가져가도 상대의 점수로는 계산되지 않는다. 손에 없는 숫자는 고를 수 없다.",
+    "(게임 내 1회) 자기 순에 발동하면서 1부터 9까지 중 숫자 하나를 고르면, 그 숫자의 수패(만·통·삭)가 내 손에 들어올 때마다 적도라가 된다 — 발동 시점의 손패는 물론, 이후 뽑는 패와 다음 국 배패까지 게임이 끝날 때까지 계속 적용된다. 이 적도라에는 소유자가 각인되어, 버린 패를 상대가 후로로 가져가도 상대의 점수로는 계산되지 않는다 — 그래서 지정한 숫자는 발동 즉시 전원에게 공개된다(상대가 '내 것이 아닌 적도라'를 세지 않도록). 손에 없는 숫자는 고를 수 없고, 리치를 건 뒤에는 손이 잠겨 발동할 수 없다.",
   // 봇: 텐파이일 때, 손패에 가장 많은 랭크를 골라 발동한다 —
   //     그 시점 손에 쥔 패가 그대로 남아 적도라가 될 확률이 높다.
   //     (해당 랭크가 손에 없으면 애초에 후보로 뜨지 않는다.)

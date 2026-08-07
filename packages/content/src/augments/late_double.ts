@@ -33,6 +33,7 @@ export const lateDouble: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "뒤늦은 출진",
   description:
     "(상시) 7순까지 건 리치는 더블리치(2판)로 취급되며, 이렇게 취급된 더블리치에는 +1판이 붙는다.",

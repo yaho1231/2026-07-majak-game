@@ -148,8 +148,14 @@ describe("nagashi_yakuman (유국역만)", () => {
     expect(settled.deltas["p0"]).toBeGreaterThan(base.deltas["p0"] ?? 0);
   });
 
-  it("역만 방어술 보유자는 유국역만 지불에서 면제된다 (완전 면역 연동)", () => {
+  it("역만 방어술 보유자는 면제되지만, 그 몫은 뱅크가 내 화료자 수령액은 안 줄어든다", () => {
     // p0 유국역만(오야) + p1이 역만 방어술 보유 → p1은 0, p2·p3만 16000씩 낸다.
+    //
+    // 2026-08-07 변경: 예전에는 p0의 수령도 32000으로 같이 줄었다. 내 손과 무관한
+    // **남의 드래프트 결과가 내 타점을 33% 깎는 것**이라 무페널티 원칙에 어긋났다.
+    // 이제 면제분은 뱅크가 내고 p0는 방어막이 없을 때와 같은 48000을 받는다.
+    // (일확천금 0.5배 굴림을 고칠 때와 같은 판단 — 한쪽을 지키느라 다른 쪽을
+    // 손해 보게 하지 않는다.)
     const st = withAugments(
       withAugments(drawState(), "p0", ["nagashi_yakuman"]),
       "p1",
@@ -167,7 +173,7 @@ describe("nagashi_yakuman (유국역만)", () => {
     expect(diff("p1")).toBe(0); // 방어막 → 면제
     expect(diff("p2")).toBe(-16000);
     expect(diff("p3")).toBe(-16000);
-    expect(diff("p0")).toBe(32000); // p2·p3 몫만 수령
+    expect(diff("p0")).toBe(48000); // 면제분은 뱅크가 낸다 — 수령은 그대로
   });
 });
 

@@ -92,6 +92,7 @@ export const regret: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "미련",
   description:
     "(2국에 1회) 황패유국 시 당신이 멘젠 텐파이면 그 손패 13장이 그대로 다음 국의 배패가 된다 — 다음 국 첫 쯔모에 곧바로 리치가 나올 수 있다.",

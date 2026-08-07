@@ -47,6 +47,7 @@ export const cornucopia: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "etc",
+  complexity: 1,
   name: "수상한 주사위",
   description:
     "획득하는 순간 무작위 증강 2개가 함께 쏟아진다 — 한 칸으로 세 칸을 먹는다. 무엇이 나왔는지는 전원에게 공개된다.",

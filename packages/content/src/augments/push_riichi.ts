@@ -114,6 +114,7 @@ export const pushRiichi: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 2,
   name: "등 떠밀기",
   description:
     "(매 국 1회) 자기 순에 상대 한 명에게 낙인을 찍는다(전원 공개). 그가 리치 가능한 상태에서 패를 버리는 순간 그 버림이 자동으로 강제 리치가 된다.",

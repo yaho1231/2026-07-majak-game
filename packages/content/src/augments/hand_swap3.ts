@@ -288,6 +288,7 @@ export const handSwap3: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "등가교환",
   description:
     "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패가 나에게만 공개되고, 넘길 내 3장과 가져올 상대 3장을 각각 골라 통째로 맞바꾼다.",

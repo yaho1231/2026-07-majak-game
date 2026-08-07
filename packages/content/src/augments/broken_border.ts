@@ -34,6 +34,7 @@ export const brokenBorder: AugmentDef = defineAugment({
   id: "broken_border",
   tier: "prism",
   category: "shape",
+  complexity: 2,
   name: "무너진 국경",
   description:
     "(상시) 슌쯔의 무늬 제한이 사라진다 — 2만·3통·4삭도 하나의 몸통이다. 치도 무늬를 가리지 않는다.",

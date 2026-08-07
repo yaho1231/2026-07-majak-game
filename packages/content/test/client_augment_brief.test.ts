@@ -11,6 +11,8 @@
  * 노출된다. 그 조용한 퇴행을 여기서 막는다.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { standardAugments } from "@majak/core";
 import { describe, expect, it } from "vitest";
 import { contentAugments } from "../src/index.js";
@@ -18,6 +20,23 @@ import { AUGMENT_BRIEF, briefOf } from "../../client/src/augmentBrief.js";
 import { GLOSSARY, splitTerms } from "../../client/src/glossary.js";
 
 const ALL = [...standardAugments, ...contentAugments];
+
+/**
+ * 결과 화면에 뜨는 역 이름표(App.tsx의 `YAKU_NAMES`).
+ *
+ * App.tsx는 React 모듈이라 노드 테스트에서 import할 수 없다 — 소스에서 정적으로 읽는다
+ * (`packages/client/test/resultYakuGlossary.test.ts`가 같은 방식으로 이 표를 검사한다).
+ */
+function resultYakuLabels(): string[] {
+  const src = readFileSync(
+    fileURLToPath(new URL("../../client/src/App.tsx", import.meta.url)),
+    "utf8",
+  );
+  const at = src.indexOf("const YAKU_NAMES: Record<string, string> = {");
+  if (at < 0) throw new Error("App.tsx에서 YAKU_NAMES를 찾지 못했다");
+  const body = src.slice(at, src.indexOf("\n};", at));
+  return [...body.matchAll(/^\s*\w+:\s*"([^"]+)",/gm)].map((m) => m[1]!);
+}
 
 /** 툴팁·드래프트 카드에서 다섯 줄을 넘지 않는 상한 (좁은 쪽 기준 대략 20자/줄) */
 const BRIEF_MAX = 60;
@@ -122,9 +141,23 @@ describe("마작 용어 사전", () => {
       ...ALL.map((a) => a.description),
       ...ALL.map((a) => a.detail ?? ""),
       ...Object.values(AUGMENT_BRIEF).map((b) => b.text),
+      // 결과 화면의 역 이름표도 플레이어가 읽는 글이다 — 스안커·대사희는 증강 설명에
+      // 한 번도 안 나오지만 화료 한 번이면 그 자리에 뜬다.
+      ...resultYakuLabels(),
     ].join("\n");
     const hit = new Set<string>();
-    for (const c of splitTerms(corpus)) if (c.kind === "term") hit.add(c.entry.key);
-    expect(GLOSSARY.filter((g) => !hit.has(g.key)).map((g) => g.key)).toEqual([]);
+    const shown: string[] = [];
+    for (const c of splitTerms(corpus)) {
+      if (c.kind !== "term") continue;
+      hit.add(c.entry.key);
+      shown.push(c.text);
+    }
+    // 긴 표기에 통째로 먹힌 짧은 표기는 쓰인 것으로 친다 — "깡쯔"는 이제 늘
+    // "산깡쯔·스깡쯔" 안에서만 나오지만, 그 둘의 풀이가 여전히 그 말을 쓴다.
+    const swallowed = (g: (typeof GLOSSARY)[number]): boolean =>
+      shown.some((t) => t !== g.label && t.includes(g.label));
+    expect(
+      GLOSSARY.filter((g) => !hit.has(g.key) && !swallowed(g)).map((g) => g.key),
+    ).toEqual([]);
   });
 });

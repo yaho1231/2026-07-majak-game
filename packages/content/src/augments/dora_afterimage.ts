@@ -120,6 +120,7 @@ export const doraAfterimage: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 2,
   name: "잔상",
   description:
     "(2국에 1회) 자기 순에 발동하면 직전 국의 도라 표시패가 되살아나, 그 도라가 이번 국의 도라 위에 나만의 도라로 겹쳐진다.",

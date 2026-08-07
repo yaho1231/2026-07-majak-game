@@ -44,6 +44,7 @@ export const snakeKan: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "call",
+  complexity: 3,
   name: "장사진",
   description:
     "(상시) 같은 무늬 연속 4장(예: 3-4-5-6)을 '장사진'으로 선언해 깡으로 낼 수 있다 — 영상패를 뽑고 새로운 도라가 열린다.",

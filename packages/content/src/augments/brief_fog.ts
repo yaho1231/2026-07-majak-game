@@ -149,6 +149,7 @@ export const briefFog: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 1,
   name: "박무",
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 그 순간부터 6순 동안 네 사람 모두의 버림패가 가려지고, 오직 당신만 모든 바닥을 그대로 본다. 6순이 지나면 안개는 저절로 걷힌다.",

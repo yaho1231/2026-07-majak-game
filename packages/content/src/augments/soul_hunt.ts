@@ -33,6 +33,7 @@ export const soulHunt: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "혼 사냥",
   description:
     "(상시) 리치 중인 상대를 론하면 그의 리치를 통째로 강탈한다 — 리치를 걸지 않았어도 내 화료가 리치로 취급되며 뒷도라가 적용된다.",

@@ -69,6 +69,7 @@ export const aotenjouCeiling: AugmentDef = defineAugment({
   id: "aotenjou_ceiling",
   tier: "prism",
   category: "scoring",
+  complexity: 3,
   name: "뚫린 천장",
   description:
     "(상시) 내 화료에는 점수 상한이 없다. 보통은 아무리 판이 높아도 만관·하네만·배만에서 점수가 묶이지만, 나는 판이 오르는 만큼 점수가 계속 커진다 — 2판마다 만관이 하나씩 더 붙는다. 늘어난 점수는 진 사람이 낸다.",

@@ -90,6 +90,25 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
   });
 
   it("여러 시드에 걸쳐 카탈로그가 고르게 쓰인다 (한 좌석이 같은 증강에 고이지 않는다)", () => {
+    // 스테이지 전부를 돈다. 첫 스테이지(gameStart)만 세면 이해 난도 3이 빠져 있어
+    // (2026-08-07 초심자 필터) 카탈로그 커버리지가 아니라 '첫 드래프트 풀'을 재게 된다.
+    const stages = ["gameStart", "eastThird", "southEntry", "southThird"] as const;
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 40; seed++) {
+      const g = game(seed);
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
+      for (const stage of stages) {
+        for (const p of PLAYERS) {
+          for (const d of draft.roll(stage, p)) seen.add(d.id);
+        }
+      }
+    }
+    // 40게임 × 4스테이지 × 12장 — 113종 대부분이 한 번은 나온다
+    expect(seen.size).toBeGreaterThan(90);
+  });
+
+  it("첫 드래프트 풀만으로도 충분히 다양하다 (초심자 필터가 표를 좁히지 않는다)", () => {
+    // 난도 3을 뺀 뒤에도 첫 카드가 몇 종류로 고이면 안 된다.
     const seen = new Set<string>();
     for (let seed = 1; seed <= 40; seed++) {
       const g = game(seed);
@@ -98,7 +117,6 @@ describe("드래프트 다양성 — 실제 카탈로그", () => {
         for (const d of draft.roll("gameStart", p)) seen.add(d.id);
       }
     }
-    // 40게임 × 12장 = 480회 제시 — 108종 대부분이 한 번은 나온다
-    expect(seen.size).toBeGreaterThan(90);
+    expect(seen.size).toBeGreaterThan(60);
   });
 });

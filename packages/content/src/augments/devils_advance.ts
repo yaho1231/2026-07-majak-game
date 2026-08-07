@@ -53,6 +53,7 @@ export const devilsAdvance: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  complexity: 2,
   name: "가불 인생",
   draftStages: ["gameStart"],
   description:

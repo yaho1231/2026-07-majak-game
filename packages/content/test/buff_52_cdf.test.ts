@@ -490,6 +490,28 @@ describe("nagashi_yakuman (유국역만) — 무울림 조건 삭제", () => {
     }
   });
 
+  it("상대가 역만 방어술을 들어도 내 수령액은 줄지 않는다 (면제분은 뱅크가 낸다)", () => {
+    // 예전에는 방어막 보유자를 건너뛰면서 화료자 수령까지 같이 줄여, 자 역만이
+    // 32000을 받을 자리에서 남의 드래프트 결과 때문에 24000이 됐다.
+    const base = settleDraw(createStandardGameFromState(drawState()));
+    const game = createStandardGameFromState(
+      withAugments(drawState(), { p0: ["nagashi_yakuman"], p1: ["yakuman_shield"] }),
+    );
+    installAugment(game.engine, nagashiYakuman, "p0", { yaku: game.yaku });
+    const settled = settleDraw(game);
+
+    const diff = (id: PlayerId): number =>
+      (settled.deltas[id] ?? 0) - (base.deltas[id] ?? 0);
+
+    // 화료자는 방어막이 없을 때와 똑같이 48000을 받는다
+    expect(diff("p0")).toBe(48000);
+    // 방어막 보유자는 한 푼도 내지 않는다
+    expect(diff("p1")).toBe(0);
+    // 나머지는 그대로 낸다 — 남의 몫이 넘어오지도 않는다
+    expect(diff("p2")).toBe(-16000);
+    expect(diff("p3")).toBe(-16000);
+  });
+
   it("버림에 중장패가 섞이면 여전히 불성립", () => {
     const s = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },

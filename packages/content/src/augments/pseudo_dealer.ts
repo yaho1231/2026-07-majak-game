@@ -80,6 +80,7 @@ export const pseudoDealer: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "disrupt",
+  complexity: 3,
   name: "찬탈자",
   description:
     "(2국에 1회) 자기 순에 선언하면 그 자리에서 오야를 빼앗는다 — 오야 자리가 나에게 넘어오고 자풍이 나를 기준으로 다시 정해진다. 내가 오르면 진짜 연장(렌짱)이다.",

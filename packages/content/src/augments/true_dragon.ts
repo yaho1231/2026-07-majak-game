@@ -98,6 +98,7 @@ export const trueDragon: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 3,
   name: "진짜 용",
   description:
     "(상시) 배패를 16장 받고, 멘쯔 5개 + 머리 1개(총 17장)로 화료한다. 화료 시 +3판을 얻는다.",

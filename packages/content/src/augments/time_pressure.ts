@@ -38,6 +38,7 @@ export const timePressure: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 1,
   name: "초읽기",
   description:
     "뽑는 순간 자동 발동. 이번 국 동안 전원의 모든 결정에 5초 제한이 걸린다 — 나도 포함이다. 시간을 넘기면 쯔모기리·패스로 자동 진행된다.",

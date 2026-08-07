@@ -160,6 +160,7 @@ export const stealthRiichi: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "스텔스 리치",
   /**
    * **은닉을 자기 손 안에서 깨는 증강과는 함께 갖지 않는다** (2026-08-05 사용자 지시).

@@ -76,6 +76,7 @@ export const hiddenRiver: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
+  complexity: 2,
   name: "안개 덮인 바닥",
   description:
     "(게임 내 1회) 자기 순에 선언하면 게임 종료까지 안개가 지속된다. 모든 플레이어의 버림패는 최근 6장만 공개되며, 그 이전 버림패는 다른 플레이어에게 장수만 보이고 내용이 안개에 가려진다. 보유자는 모든 플레이어의 버림패를 끝까지 정상적으로 확인할 수 있다.",

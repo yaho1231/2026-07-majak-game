@@ -23,6 +23,7 @@ export const doraConceal: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "info",
+  complexity: 2,
   name: "가려진 도라",
   description:
     "(상시) 도라 표시패가 상대들에게는 뒷면으로 덮인다 — 이번 게임의 도라는 당신만 알 수 있다. 단 관련 증강으로 확인하는 도라는 확인할 수 없다.",

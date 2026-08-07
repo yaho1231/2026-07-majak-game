@@ -39,6 +39,7 @@ export const windLineage: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "shape",
+  complexity: 2,
   name: "바람의 계보",
   description:
     "(상시) 자패로 슌쯔를 만든다 — 동→남→서→북, 백→발→중이 연속으로 이어져 동남서·남서북·백발중이 하나의 몸통이 된다. 동·남·서·북 네 장을 모으면 하나의 깡으로 낼 수도 있다.",

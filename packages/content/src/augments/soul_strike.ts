@@ -188,6 +188,7 @@ export const soulStrike: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 3,
   name: "영혼의 일격",
   description:
     "(2국에 1회) 텐파이에서 발동하면 그 패로 리치를 걸고 연속 6쯔모에 들어간다. 그 리치는 2판(더블리치는 3판)으로 값하고, 폭주 중 쯔모 화료는 언제나 일발이다.",

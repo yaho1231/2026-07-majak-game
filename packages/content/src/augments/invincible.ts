@@ -22,7 +22,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { flagOf, roundKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "invincible";
@@ -35,6 +35,14 @@ const activeKey = (state: GameState, h: PlayerId): string =>
   `${ID}:active:${roundKey(state)}:${h}`;
 /** 남은 쿨다운(국 수). 0/미설정이면 사용 가능 */
 const cooldownKey = (h: PlayerId): string => `${ID}:cd:${h}`;
+/**
+ * 전원 공개: 이번 국에 무적이 켜져 있다.
+ *
+ * 예전엔 규칙 하나뿐이라 **상대에겐 론 버튼이 안 뜨는 것이 전부**였다 — 왜 안 뜨는지
+ * 알 수 없으니 대응도 없고 순간도 없다(Rule #2·#4). 켜진 국 동안 계속 보여야 하므로
+ * 발동 사건이 아니라 **상태**로 싣고, 국 스코프라 국이 끝나면 엔진이 지운다.
+ */
+const activeViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 
 const guardAction: ActionDef<Record<string, never>> = {
   type: ACTION,
@@ -56,6 +64,8 @@ const guardAction: ActionDef<Record<string, never>> = {
   toEvents: (req, { state }) => [
     augmentDataSet(activeKey(state, req.player), true),
     augmentDataSet(cooldownKey(req.player), COOLDOWN_ROUNDS),
+    // 전원 공개 — "이 사람에게는 이번 국 론이 안 된다"가 테이블에 보여야 한다
+    augmentDataSet(activeViewKey(req.player), "이번 국 론 불가"),
   ],
 };
 
@@ -63,11 +73,12 @@ export const invincible: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "defense",
+  complexity: 1,
   name: "천하무적",
   description:
-    "(2국에 1회) 자기 순에 선언하면 이번 국이 끝날 때까지 타가는 당신을 론할 수 없다. 무엇을 버려도 방총이 나지 않는다.",
+    "(2국에 1회) 자기 순에 선언하면 이번 국이 끝날 때까지 타가는 당신을 론할 수 없다. 무엇을 버려도 방총이 나지 않고, 선언은 전원에게 공개된다.",
   detail:
-    "(2국에 1회) 자기 순에 선언하면 그 국이 끝날 때까지 타가가 내 버림패로 론할 수 없다. 다만 상대의 쯔모 화료나 유국 노텐 벌점은 막지 못한다.",
+    "(2국에 1회) 자기 순에 선언하면 그 국이 끝날 때까지 타가가 내 버림패로 론할 수 없다. 선언한 사실은 국이 끝날 때까지 전원에게 표시되므로, 상대는 론 버튼이 왜 안 뜨는지 알고 쯔모·유국 쪽으로 방향을 튼다. 다만 상대의 쯔모 화료나 유국 노텐 벌점은 막지 못한다.",
   // 봇: 상대가 리치를 걸었을 때 켠다 — 방총 위험이 가장 큰 순간이 켤 값어치가 가장 크다.
   // 상대 리치가 실재할 때만 켠다 = 방어가 급한 국면. 예전에는 그 판정과 강도를
   // 이 파일이 직접 들고 있었는데, 둘 다 증강이 아니라 판의 문제라 planner가 맡는다.

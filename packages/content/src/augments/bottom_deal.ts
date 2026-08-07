@@ -125,6 +125,7 @@ export const bottomDeal: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "밑장빼기",
   description:
     "(상시 열람 · 매 순 1회) 패산 맨 밑 3장이 나에게만 보인다. 자기 순에 '밑장빼기'를 선언하면 다음 쯔모를 패산 위가 아니라 맨 밑에서 빼온다.",

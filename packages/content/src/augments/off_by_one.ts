@@ -40,6 +40,7 @@ export const offByOne: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "한 끗 차이",
   description:
     "(상시) 리치 후 쯔모한 패가 오름패의 ±1이면 그 패가 한 칸 밀려 오름패로 바뀐다. 3통 대기에 2통·4통을 잡아도 화료다.",

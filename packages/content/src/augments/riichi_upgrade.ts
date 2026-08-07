@@ -57,6 +57,7 @@ export const riichiUpgrade: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "riichi",
+  complexity: 3,
   name: "이중 선언",
   description:
     "(상시) 리치를 선언하면 언제나 더블리치가 되고, 동시에 내 하가(다음 차례 사람)는 그 국에 리치를 걸 수 없게 된다. 원래 더블리치 조건이었다면 트리플리치가 되어 4판으로 값한다.",

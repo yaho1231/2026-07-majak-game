@@ -14,6 +14,7 @@ import {
   defineAugment,
   handIdsOf,
   isNumberSuit,
+  kindKey,
   kindOf,
   playerAtSeat,
   tileKindChanged,
@@ -25,7 +26,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, roundKey, viewKey } from "../util.js";
+import { counterOf, roundKey, roundViewKey, viewKey } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -41,6 +42,15 @@ const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
 const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
 /** 남은 횟수를 보유자 화면에 노출하는 채널 — 게임 스코프라 국 스코프 키를 쓰지 않는다. */
 const leftViewKey = (h: PlayerId): string => viewKey(h, `${ID}:left`);
+/**
+ * 전원 공개: 이번 국에 무엇을 무엇으로 바꿨는가 ("man3→pin3").
+ *
+ * 설명이 "바뀐 패는 전원에게 공개되고"라고 약속하는데, 실제로는 손패 안에서 kind만
+ * 갈리고(숨은 정보) 남은 횟수만 보유자에게 나갔다 — 상대는 무엇이 바뀌었는지도,
+ * 바뀌었다는 사실조차도 알 수 없었다(Rule #2). 분열(tile_split)이 쓰는 것과 같은
+ * 국 스코프 공개 채널로 맞춘다.
+ */
+const revealViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 const usesLeft = (state: GameState, h: PlayerId): number =>
   Math.max(0, MAX_USES - counterOf(state, usedKey(h)));
 
@@ -96,6 +106,11 @@ const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
       augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
       // 남은 횟수 갱신 (위 usedKey 증가를 반영해 -1)
       augmentDataSet(leftViewKey(req.player), usesLeft(state, req.player) - 1),
+      // 전원 공개 — 무엇이 무엇으로 물들었는지. 문자열이라 클라이언트 폴백이 그대로 읽는다.
+      augmentDataSet(
+        revealViewKey(req.player),
+        `${kindKey(k)}→${kindKey({ suit: req.payload.suit, rank: k.rank })}`,
+      ),
     ];
   },
 };
@@ -104,11 +119,12 @@ export const tileDyeing: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "hand",
+  complexity: 1,
   name: "염색",
   description:
     "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",
   detail:
-    "(게임 내 5회 — 남은 횟수는 증강 표식에 상시 표시된다) 자기 순에 손패의 수패 1장을 숫자는 그대로 둔 채 다른 무늬로 바꾼다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 바뀐 패는 전원에게 공개되고 자패는 대상이 아니다.",
+    "(게임 내 5회 — 남은 횟수는 증강 표식에 상시 표시된다) 자기 순에 손패의 수패 1장을 숫자는 그대로 둔 채 다른 무늬로 바꾼다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 자패는 대상이 아니다.\n\n무엇을 무엇으로 바꿨는지는 전원에게 공개된다(그 국 동안, 가장 최근 한 번). 패 자체는 손패 안에 남으므로 상대가 보는 것은 '무엇이 무엇이 됐다'는 사실이지 그 패가 손패 어디에 있는지는 아니다.\n\n⚠ **적도라(빨간 5)를 물들이면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 무늬가 바뀌면 성립하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

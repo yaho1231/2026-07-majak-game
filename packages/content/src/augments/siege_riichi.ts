@@ -23,6 +23,7 @@ export const siegeRiichi: AugmentDef = defineAugment({
   id: "siege_riichi",
   tier: "prism",
   category: "riichi",
+  complexity: 2,
   name: "공성계",
   description:
     "(상시) 텐파이가 아니어도 리치를 선언할 수 있다. 단 텐파이가 아니라면 화료는 할 수 없다.",

@@ -25,6 +25,7 @@ export const asyncChiitoi: AugmentDef = defineAugment({
   id: "async_chiitoi",
   tier: "prism",
   category: "shape",
+  complexity: 2,
   name: "비대칭 치또이",
   description:
     "(상시) 치또이쯔에서 무늬가 달라도 숫자가 같으면 한 쌍으로 인정된다 — 1만+1통도 머리다.",

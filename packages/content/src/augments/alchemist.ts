@@ -13,6 +13,7 @@ import {
   defineAugment,
   handIdsOf,
   isNumberSuit,
+  kindKey,
   kindOf,
   playerAtSeat,
   tileKindChanged,
@@ -25,7 +26,7 @@ import type {
   TileAttrs,
   TileId,
 } from "@majak/core";
-import { counterOf, roundKey, viewKey } from "../util.js";
+import { counterOf, roundKey, roundViewKey, viewKey } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -41,6 +42,14 @@ const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
  * 아닌 고정 viewKey를 쓴다. 값은 **남은 횟수**(0이면 소진).
  */
 const leftViewKey = (h: PlayerId): string => viewKey(h, `${ID}:left`);
+/**
+ * 전원 공개: 이번 국에 무엇을 무엇으로 바꿨는가 ("man3→man4").
+ *
+ * 설명이 "바뀐 패는 매번 전원에게 공개된다"라고 약속하는데 채널은 **남은 횟수(본인
+ * 전용)뿐이었다** — 상대는 변환 사실조차 알 수 없었다. 염색(tile_dyeing)과 같은
+ * 국 스코프 공개 채널로 맞춘다.
+ */
+const revealViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 const usesLeft = (state: GameState, h: PlayerId): number =>
   Math.max(0, MAX_USES - counterOf(state, usedKey(h)));
 
@@ -105,6 +114,11 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
       augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
       // 남은 횟수 갱신 (위 usedKey 증가를 반영해 -1)
       augmentDataSet(leftViewKey(req.player), usesLeft(state, req.player) - 1),
+      // 전원 공개 — 무엇이 무엇이 됐는지. 문자열이라 클라이언트 폴백이 그대로 읽는다.
+      augmentDataSet(
+        revealViewKey(req.player),
+        `${kindKey(k)}→${kindKey({ suit: k.suit, rank: k.rank + req.payload.delta })}`,
+      ),
     ];
   },
 };
@@ -113,11 +127,12 @@ export const alchemist: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 1,
   name: "연금술사",
   description:
     "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9 순환 없음). 리치 중에도 쓸 수 있고, 바뀐 패는 매번 전원에게 공개된다.",
   detail:
-    "(게임 내 5회 — 남은 횟수는 액티브 버튼 옆에 상시 표시된다) 자기 순에 액티브 버튼으로 발동해 손패의 수패 1장을 골라 숫자를 ±1 이동한다 — 무늬는 그대로이고 1↔9 순환은 없으며 자패는 대상이 아니다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 바뀐 패는 매번 전원에게 공개된다.",
+    "(게임 내 5회 — 남은 횟수는 액티브 버튼 옆에 상시 표시된다) 자기 순에 액티브 버튼으로 발동해 손패의 수패 1장을 골라 숫자를 ±1 이동한다 — 무늬는 그대로이고 1↔9 순환은 없으며 자패는 대상이 아니다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 무엇이 무엇으로 바뀌었는지는 매번 전원에게 공개된다.\n\n⚠ **적도라(빨간 5)를 옮기면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 숫자가 바뀌면 성립하지 않는다. 적5를 4나 6으로 옮기는 것은 도라 하나를 버리는 선택이다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

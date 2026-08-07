@@ -115,6 +115,7 @@ export const honorReturn: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "귀환",
   description:
     "(동풍전 1회 · 반장전 2회) 액티브 버튼을 누른 그 시점까지 이번 국에 내가 버린 자패를 가장 최근 것부터 최대 4장까지 기억해, 다음 국 배패에 그대로 되받는다.",

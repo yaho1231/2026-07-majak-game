@@ -44,6 +44,7 @@ import type {
 import {
   flagOf,
   roundKey,
+  roundViewKey,
   widenPeek,
 } from "../util.js";
 import { plan } from "./botPlan.js";
@@ -55,6 +56,16 @@ const RINSHAN_PULLED = "RinshanPulled";
 /** 국당 1회 사용 플래그 (roundKey를 섞어 국마다 자동 만료) */
 const usedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:used:${roundKey(state)}:${h}`;
+
+/**
+ * 전원 공개: 이번 국에 영상패 맨 앞이 이 사람의 쯔모패로 갈렸다는 사실.
+ *
+ * 열람은 본인 정보라 숨겨도 되지만 **교환은 판을 바꾼다** — 다음에 깡을 치는 사람은
+ * 자기가 뽑는 영상패가 남의 손에서 온 패라는 걸 모른 채 뽑았다. 인과가 테이블에서
+ * 안 보이면 증강이 아니다(Rule #2). 넣은 패의 정체는 밝히지 않는다 — 그건 그 사람의
+ * 손패였고, 왕패는 원래 안 보이는 것이 맞다.
+ */
+const pullViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 
 interface RinshanPulledPayload {
   player: PlayerId;
@@ -102,6 +113,8 @@ const rinshanPullAction: ActionDef<Record<string, never>> = {
       } satisfies RinshanPulledPayload,
     },
     augmentDataSet(usedKey(state, req.player), true),
+    // 전원 공개 — 다음 깡을 치는 사람이 "맨 앞 영상패가 바뀌었다"를 알고 뽑는다
+    augmentDataSet(pullViewKey(req.player), "영상패 맨 앞을 자기 쯔모패와 맞바꿨다"),
   ],
 };
 
@@ -109,11 +122,12 @@ export const rinshanPreview: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "info",
+  complexity: 3,
   name: "영상 정찰",
   description:
     "(상시 열람 · 매 국 1회 교환) 다음 깡에서 가져올 영상패(왕패 맨 앞 1장)를 항상 미리 보고, 자기 순에 깡을 하지 않고도 그 영상패를 내 쯔모패와 즉시 맞바꾼다.",
   detail:
-    "(상시 열람 · 매 국 1회 교환) 왕패 맨 앞 1장, 곧 다음 영상패를 자신만 항상 볼 수 있다. 여기에 더해 자기 순에 국당 한 번, 그 영상패를 지금 막 쯔모한 패와 그 자리에서 맞바꾼다 — 깡을 할 필요가 없다. 바꿔 넣은 쯔모패가 왕패 맨 앞자리로 들어가므로 왕패 장수는 그대로이며, 다음 영상패는 방금 내가 넣은 그 패가 된다.",
+    "(상시 열람 · 매 국 1회 교환) 왕패 맨 앞 1장, 곧 다음 영상패를 자신만 항상 볼 수 있다. 여기에 더해 자기 순에 국당 한 번, 그 영상패를 지금 막 쯔모한 패와 그 자리에서 맞바꾼다 — 깡을 할 필요가 없다. 바꿔 넣은 쯔모패가 왕패 맨 앞자리로 들어가므로 왕패 장수는 그대로이며, 다음 영상패는 방금 내가 넣은 그 패가 된다.\n\n열람은 나만 하지만 **교환은 전원에게 공개된다** — 다음에 깡을 치는 사람이 자기가 뽑을 영상패가 갈렸다는 사실을 알고 뽑는다. 다만 내가 넣은 패가 무엇인지는 공개되지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

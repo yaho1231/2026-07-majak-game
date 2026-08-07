@@ -94,6 +94,7 @@ export const suitUnify: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "hand",
+  complexity: 2,
   name: "단색 세계",
   description:
     "(동풍전 1회 · 반장전 2회) 국의 첫 패를 받은 뒤 자기 첫 타패 전에 발동하며, 만·통·삭 중 원하는 색을 골라 손패의 수패를 전부 그 색으로 바꾼다. 숫자는 그대로 유지되고 청일색도 인정된다.",

@@ -189,6 +189,7 @@ export const discardLock: AugmentDef = defineAugment({
   id: "discard_lock",
   tier: "prism",
   category: "disrupt",
+  complexity: 2,
   name: "봉인술사",
   description:
     "(2국에 1회) 자기 순의 국 시작(아직 아무 패도 버리지 않은 시점)에 발동하면, 상대 각자의 손패에서 무작위 수패 2종류에 해당하는 그 순간의 패들이 이번 국 동안 봉인되어 버릴 수 없게 된다.",

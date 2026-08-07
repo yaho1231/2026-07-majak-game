@@ -125,6 +125,7 @@ export const dangerSense: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "info",
+  complexity: 1,
   name: "지뢰 탐지",
   description:
     "(매 국 1회) 자기 순에 선언하면 내 손패 중 지금 버리면 상대에게 쏘이는 패가 어느 것인지 나에게만 밝혀진다. 표시는 능력을 사용한 그 시점 기준이라 이후 상대의 대기가 바뀔 수 있다. 손은 바뀌지 않는 순수 정보 능력이다.",
