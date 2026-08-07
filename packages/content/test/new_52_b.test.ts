@@ -1,9 +1,9 @@
 /**
  * 52차 신규 증강 그룹 B 동작 테스트.
  *
- * - silent_swap (정적의 손): 리치 0인 국에서만, 네 명 전원의 바닥에서 1장 회수 + 화료 시 +3판
+ * - silent_swap (정적의 손): 리치 0인 국에서만, 네 명 전원의 바닥에서 1장 회수 + 화료 시 +2판
  * - ankan_dora (밀실의 도라): 안깡 1묶음(깡친 네 장)당 score.extraHan +4 (리치 무관)
- * - foresight (예지): 패산 앞 4장 재배열(23개 순열) + 2순 쿨다운 + 화료 시 +3판
+ * - foresight (예지): 패산 앞 4장 재배열(23개 순열) + 4순 쿨다운 + 화료 시 +2판
  * - rank_gate (격): 국 첫 순에 상대 1명 지목 → 그 사람의 win.minHan = 5
  */
 
@@ -212,7 +212,7 @@ describe("silent_swap (정적의 손)", () => {
     expect(game.engine.state.round.phase).toBe("turn.act");
   });
 
-  it("발동한 국에 화료하면 +3판", () => {
+  it("발동한 국에 화료하면 +2판 — 정산창에도 점수가 아니라 판으로 적힌다", () => {
     const state = silentScene();
     const target = state.zones[discardsZone("p1")]?.tileIds[0] as TileId;
     const { game, flow } = start(state, silentSwap);
@@ -230,9 +230,16 @@ describe("silent_swap (정적의 손)", () => {
     const settled = lastSettled(flow);
     const info = (settled.winInfos ?? []).find((w) => w.winner === "p0");
     expect(info).toBeDefined();
-    const bonus = hanBonusPoints(before, "p0", info!, 3);
+    const bonus = hanBonusPoints(before, "p0", info!, 2);
     expect(bonus).toBeGreaterThan(0);
     expect(settled.deltas.p0).toBe(info!.points + bonus);
+    // 2026-08-07 사용자 보고: "+2판인데 정산에 +6000점이 붙는다" — 표시 단위는 판이다.
+    const note = (settled.augPoints ?? []).find(
+      (a) => a.player === "p0" && a.augId === "silent_swap",
+    );
+    expect(note).toBeDefined();
+    expect(note!.han).toBe(2);
+    expect(note!.points).toBe(bonus);
   });
 
   it("여러 시드로 한 국을 완주한다", () => {
@@ -442,7 +449,7 @@ describe("foresight (예지)", () => {
     expect(after).toHaveLength(before.length);
   });
 
-  // 2026-08-02(사용자 지시) 너프: 열람은 2순 1회 그대로, **재배열은 국에 1회**.
+  // 2026-08-02(사용자 지시) 너프: 열람은 순 쿨다운, **재배열은 국에 1회**.
   it("재배열은 국에 1회 — 두 번째 발동에서는 order 후보가 없고 제출도 거부된다", () => {
     const { game, flow } = start(foresightScene(), foresight);
     flow.submit("p0", { type: "foresight_reveal", payload: {} });
@@ -481,7 +488,8 @@ describe("foresight (예지)", () => {
     ).toBe("reveal first");
   });
 
-  it("사용 후 2순 동안 비활성, 2순이 지나면 다시 열린다", () => {
+  // 2026-08-07(사용자 지시) 너프: 열람 쿨다운 2순 → 4순.
+  it("사용 후 4순 동안 비활성, 4순이 지나면 다시 열린다", () => {
     // 0순에 발동한 기록을 심고 turnCount를 옮겨 가며 발동 후보 수를 본다
     const scene = (turnCount: number): GameState => {
       const base = foresightScene();
@@ -494,15 +502,17 @@ describe("foresight (예지)", () => {
     for (const [turnCount, expected] of [
       [0, 0],
       [1, 0],
-      [2, 1],
-      [5, 1],
+      [2, 0],
+      [3, 0],
+      [4, 1],
+      [7, 1],
     ] as const) {
       const { prompt } = start(scene(turnCount), foresight);
       expect(optionsOf(prompt, "foresight_reveal")).toHaveLength(expected);
     }
   });
 
-  it("발동한 국에 화료하면 +3판", () => {
+  it("발동한 국에 화료하면 +2판 — 정산창에도 점수가 아니라 판으로 적힌다", () => {
     const { game, flow } = start(foresightScene(), foresight);
     // 발동(공개)만 해도 소진 플래그가 서고 화료 보너스 대상이 된다 (재배열은 선택)
     const status = flow.submit("p0", { type: "foresight_reveal", payload: {} });
@@ -514,9 +524,16 @@ describe("foresight (예지)", () => {
     const settled = lastSettled(flow);
     const info = (settled.winInfos ?? []).find((w) => w.winner === "p0");
     expect(info).toBeDefined();
-    const bonus = hanBonusPoints(before, "p0", info!, 3);
+    const bonus = hanBonusPoints(before, "p0", info!, 2);
     expect(bonus).toBeGreaterThan(0);
     expect(settled.deltas.p0).toBe(info!.points + bonus);
+    // 2026-08-07 사용자 보고: "+2판인데 정산에 +6000점이 붙는다" — 표시 단위는 판이다.
+    const note = (settled.augPoints ?? []).find(
+      (a) => a.player === "p0" && a.augId === "foresight",
+    );
+    expect(note).toBeDefined();
+    expect(note!.han).toBe(2);
+    expect(note!.points).toBe(bonus);
   });
 
   it("여러 시드로 한 국을 완주한다", () => {
