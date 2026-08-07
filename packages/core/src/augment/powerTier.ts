@@ -14,27 +14,44 @@
  * - `f` 빈도  : 실제로 몇 번 작동하는가 (상시 5 · 매 국 1회 4 · 2국당 1회 3 ·
  *               matchUses 1~2회 2 · 게임 1회/조건 희귀 1)
  *
- * 총점 = `p*3 + s*3 + u*2 + f*2` (최대 50). 티어 컷은 `TIER_CUTS`.
- * 조건이 극단적으로 드문 몇 종은 산식 총점보다 낮춰 잡았다(`rare: true`).
+ * 총점 = `p*3 + s*3 + u*2 + f*2` (최대 50).
  *
- * ## 산식과 다른 티어는 반드시 사유를 적는다 (2026-08-07)
+ * ## 티어 컷은 분위수다 — 수량이 저절로 맞는다 (2026-08-08)
  *
- * 티어는 장식이 아니라 **드롭 확률**이다(`POWER_TIER_WEIGHT`, SS+ ×0.15 … D ×1.20).
- * 산식 총점과 다른 티어를 손으로 박아 두면 그 증강은 최대 2배까지 다른 빈도로 나오는데,
- * 예전에는 그 사유가 어디에도 남지 않았다 — 2026-08-07 감사에서 **사유 없는 이탈 14종**이
- * 손으로 발견됐다. 이제 이탈은 전부 다음 둘 중 하나를 달아야 하고, 안 달면 테스트가 깨진다
- * (`content/test/power_tier_consistency.test.ts`).
+ * 예전 `TIER_CUTS`는 고정 점수(S+ 41점↑ · S 36↑ · A 29↑ …)였다. 점수 분포가 중간에
+ * 몰려 있어서 **A 한 티어가 표의 3분의 1**(117종 중 40종)이 되고, D는 2종뿐이었다.
+ * 티어가 곧 드롭 확률인데 티어 하나에 40종이 들어 있으면 "가중치를 티어로 준다"는
+ * 설계가 사실상 무의미하다 — 게다가 증강을 더 넣을수록 몰린 티어만 계속 불었다.
  *
- * - `rare: true` — "조건이 극단적으로 드물어 낮춰 잡았다". **낮추는 방향에만** 쓴다.
- * - `tierOverride` — 그 밖의 모든 이탈. 왜 산식이 이 증강을 못 담는지 한 줄로 적는다.
+ * 이제 컷은 **표의 실제 점수 분포에서 분위수로 계산한다**(`quantileCuts`). SS+를 뺀
+ * 6개 티어가 각각 전체의 1/6쯤을 가져가고, 증강을 추가하면 컷이 따라 움직인다.
+ * 같은 점수는 반드시 같은 티어라 동점 묶음 단위로 자르므로 수량은 "정확히 같다"가
+ * 아니라 "비슷하다"이다.
  *
- * 사유를 정직하게 못 적겠으면 `tierOverride`를 `⚠ 재평가 필요 —` 로 시작한다. 값을 함부로
- * 고치면 그게 곧 조용한 리밸런스이므로 **값은 그대로 두고 빚으로 남긴다**. 테스트가 그 개수를
- * 세어 두므로 늘어나지는 못하고 줄기만 한다.
+ * **SS+만 예외다.** SS+는 점수가 아니라 "발동 = 역만·배만 확정"이라는 성질로 지정하며
+ * (`fixed`), 분위수 계산의 모집단에서도 빠진다.
+ *
+ * ## 티어는 저장하지 않고 계산한다 — 이탈은 `shift`로 적는다
+ *
+ * 표의 각 행은 절대 티어를 들고 있지 않다. 들고 있으면 컷이 움직일 때마다 손으로 박은
+ * 값이 낡아, 무엇이 의도된 이탈이고 무엇이 방치인지 구분할 수 없다. 대신 각 행은
+ * **산식 티어에서 몇 칸 옮겼는가**만 적는다.
+ *
+ * - `shift` — 산식 티어에서 옮긴 칸 수. 양수 = 강한 쪽, 음수 = 약한 쪽. 0(생략)이 기본.
+ * - `rare: true` — 그 이동이 "조건이 극단적으로 드물어서"라는 표시. **음수 shift 전용**.
+ * - `tierOverride` — `rare`로 설명되지 않는 모든 이동의 사유. 왜 p·s·u·f 네 축이 이
+ *   증강을 못 담는지를 적는다. "강해 보여서"는 사유가 아니다.
+ * - `fixed` — 점수와 무관하게 못박은 티어(SS+ 전용). `tierOverride`로 성질을 적는다.
+ *
+ * 이동에 사유가 없거나, 사유만 있고 이동이 없으면 테스트가 깨진다
+ * (`content/test/power_tier_consistency.test.ts`). 사유를 정직하게 못 적겠으면
+ * `tierOverride`를 `⚠ 재평가 필요 —` 로 시작해 빚으로 남긴다 — 테스트가 그 목록을
+ * 못박고 있어 빚은 줄 수만 있고 늘지 못한다.
  *
  * ## 티어를 고칠 때
  * 증강을 추가·개편하면 여기 행을 같은 커밋에서 갱신한다. 누락된 id는 관리자 티어표에
- * **"미분류"** 로 뜨므로(카탈로그와 실시간 대조) 조용히 빠지지 않는다.
+ * **"미분류"** 로 뜨므로(카탈로그와 실시간 대조) 조용히 빠지지 않는다. 행을 추가하면
+ * 분위수 컷이 조금 움직여 다른 증강의 티어가 함께 바뀔 수 있다 — 그게 의도다.
  */
 
 import { BOT_WEIGHT } from "./Augment.js";
@@ -56,16 +73,22 @@ export const POWER_TIER_ORDER: readonly PowerTier[] = [
 
 /**
  * 드래프트 가중치 — 1.0이 기준(균등)이다.
- * 사용자 지시(2026-07-26): **B·C·D는 서로 비슷한 수준**으로 두고, 상위만 강하게 깎는다.
+ *
+ * 사용자 지시(2026-08-08): 센 증강도 **다른 것보다 아주 조금 덜 나오는** 정도로만 깎는다.
+ * 예전 값(SS+ ×0.15 … D ×1.20)은 양 끝이 **8배**여서 최상위 증강이 사실상 안 나왔다 —
+ * "50게임에 한 번 본다"(docs/20)는 뽑는 재미 자체를 없앤다. 지금 양 끝은 1.6배다.
+ *
+ * 티어 수량이 분위수 컷으로 비슷해졌으므로(`quantileCuts`) 이 배수는 그대로 티어별
+ * 노출 지분이 된다 — 최상위 티어가 약 11%, 최하위가 약 17%쯤을 가져간다.
  */
 export const POWER_TIER_WEIGHT: Readonly<Record<PowerTier, number>> = {
-  "SS+": 0.15,
-  "S+": 0.35,
-  S: 0.55,
-  A: 0.85,
-  B: 1.1,
-  C: 1.15,
-  D: 1.2,
+  "SS+": 0.7,
+  "S+": 0.82,
+  S: 0.9,
+  A: 0.96,
+  B: 1.02,
+  C: 1.07,
+  D: 1.12,
 };
 
 /** 티어별 한 줄 정의 (UI 헤더에 그대로 쓴다) */
@@ -79,19 +102,80 @@ export const POWER_TIER_LABEL: Readonly<Record<PowerTier, string>> = {
   D: "뽑아도 리치마작 그대로",
 };
 
-/** 총점 → 티어 하한 (SS+는 점수가 아니라 "발동=역만·배만 확정"이라는 성질로 지정한다) */
-export const TIER_CUTS: readonly { tier: PowerTier; min: number }[] = [
-  { tier: "S+", min: 41 },
-  { tier: "S", min: 36 },
-  { tier: "A", min: 29 },
-  { tier: "B", min: 23 },
-  { tier: "C", min: 17 },
-  { tier: "D", min: 0 },
-];
+/**
+ * 분위수 컷이 나눠 갖는 티어 — SS+는 빠진다(점수가 아니라 성질로 지정한다).
+ * 표의 모든 행은 이 6개 중 하나로 계산된 뒤 `shift`만큼 옮겨진다.
+ */
+export const FORMULA_TIERS: readonly PowerTier[] = ["S+", "S", "A", "B", "C", "D"];
 
-export interface PowerTierEntry {
-  /** 확정 티어 (rare 보정·SS+ 지정 반영 후) */
-  tier: PowerTier;
+/**
+ * 점수 분포를 티어 수만큼 **균등한 덩어리로 자르는 컷**을 만든다.
+ *
+ * 고정 점수 컷은 표가 커질수록 한 티어로 몰린다(실제로 A가 117종 중 40종이었다).
+ * 분위수 컷은 "상위 1/6 → 첫 티어" 식이라 표가 어떻게 변하든 수량이 따라온다.
+ *
+ * **같은 점수는 반드시 같은 티어다.** 34점짜리 둘이 서로 다른 티어로 갈리면 그건
+ * 산식이 아니라 사전 순서가 티어를 정하는 것이다. 그래서 자르는 단위는 개별 행이
+ * 아니라 **동점 묶음**이고, 목표치에 가장 가까운 묶음 경계에서 자른다 — 수량이
+ * "정확히 같다"가 아니라 "비슷하다"인 이유다.
+ *
+ * 반환값은 강한 티어부터의 `{tier, min}` 목록이라 `formulaTier`가 위에서부터 훑는다.
+ */
+export function quantileCuts(
+  scores: readonly number[],
+  tiers: readonly PowerTier[] = FORMULA_TIERS,
+): { tier: PowerTier; min: number }[] {
+  const k = tiers.length;
+  const last = tiers[k - 1] as PowerTier;
+  if (k === 0) return [];
+  if (scores.length === 0) return [{ tier: last, min: 0 }];
+
+  // 동점 묶음 (점수 내림차순)
+  const counts = new Map<number, number>();
+  for (const s of scores) counts.set(s, (counts.get(s) ?? 0) + 1);
+  const groups = [...counts.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([score, count]) => ({ score, count }));
+
+  const n = scores.length;
+  const cuts: { tier: PowerTier; min: number }[] = [];
+  let gi = 0;
+  let cum = 0;
+  for (let i = 0; i < k - 1; i++) {
+    // 남은 티어마다 묶음을 최소 하나씩 남긴다 — 그래야 빈 티어가 안 생긴다.
+    const limit = groups.length - (k - 1 - i);
+    if (gi >= limit) {
+      // 서로 다른 점수가 티어 수보다 적다 — 남은 티어는 바닥까지 비워 둔다.
+      break;
+    }
+    const target = Math.round(((i + 1) * n) / k);
+    let best = gi;
+    let running = cum + (groups[gi] as { count: number }).count;
+    let bestCum = running;
+    let bestDist = Math.abs(running - target);
+    for (let j = gi + 1; j < limit; j++) {
+      running += (groups[j] as { count: number }).count;
+      const dist = Math.abs(running - target);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = j;
+        bestCum = running;
+      }
+    }
+    cuts.push({ tier: tiers[i] as PowerTier, min: (groups[best] as { score: number }).score });
+    gi = best + 1;
+    cum = bestCum;
+  }
+  // 남은 티어들 — 마지막은 항상 바닥(0)을 받는다.
+  for (let i = cuts.length; i < k - 1; i++) {
+    cuts.push({ tier: tiers[i] as PowerTier, min: 0 });
+  }
+  cuts.push({ tier: last, min: 0 });
+  return cuts;
+}
+
+/** 표의 한 행이 손으로 들고 있는 값 — 티어는 여기 없다(계산한다) */
+export interface PowerTierSpec {
   /** 타점 1~5 */
   p: number;
   /** 속도 1~5 */
@@ -102,20 +186,33 @@ export interface PowerTierEntry {
   f: number;
   /** 한 줄 사유 */
   note: string;
-  /** 조건이 극단적으로 드물어 산식 총점보다 낮춘 항목 (낮추는 방향 전용) */
+  /**
+   * 산식 티어에서 옮긴 칸 수. **양수 = 강한 쪽 · 음수 = 약한 쪽**, 생략은 0.
+   *
+   * 0이 아니면 `rare` 또는 `tierOverride` 중 하나로 사유를 달아야 한다.
+   */
+  shift?: number;
+  /** 그 이동이 "조건이 극단적으로 드물어서"라는 표시 — **음수 shift 전용** */
   rare?: boolean;
   /**
-   * 산식 총점이 가리키는 티어와 **다른 티어를 손으로 지정한 사유**.
+   * `rare`로 설명되지 않는 모든 이동의 사유.
    *
-   * `rare`로 설명되지 않는 모든 이탈(올린 것 · 드물어서가 아닌 이유로 내린 것)에 붙인다.
    * 왜 p·s·u·f 네 축이 이 증강을 못 담는지를 적는 자리다 — "강해 보여서"는 사유가 아니다.
    * 정직하게 못 적는 값은 `⚠ 재평가 필요 —` 로 시작해 빚으로 남긴다(파일 머리말 참고).
    */
   tierOverride?: string;
+  /** 점수와 무관하게 못박은 티어 (SS+ 전용). 분위수 모집단에서도 빠진다. */
+  fixed?: PowerTier;
+}
+
+/** 티어까지 확정된 행 — 이 파일이 밖으로 내보내는 모양 */
+export interface PowerTierEntry extends PowerTierSpec {
+  /** 확정 티어 (분위수 컷 + shift/fixed 반영 후) */
+  tier: PowerTier;
 }
 
 /** 총점 = p*3 + s*3 + u*2 + f*2 */
-export function powerScore(e: PowerTierEntry): number {
+export function powerScore(e: PowerTierSpec): number {
   return e.p * 3 + e.s * 3 + e.u * 2 + e.f * 2;
 }
 
@@ -130,6 +227,14 @@ export function formulaTier(score: number): PowerTier {
     if (score >= cut.min) return cut.tier;
   }
   return "D";
+}
+
+/** 티어를 `steps`칸 옮긴다 (양수 = 강한 쪽). 표의 양끝을 넘어가지 않는다. */
+export function shiftTier(tier: PowerTier, steps: number): PowerTier {
+  const from = FORMULA_TIERS.indexOf(tier);
+  if (from < 0) return tier; // SS+ 등 산식 밖의 티어는 움직이지 않는다
+  const to = Math.min(FORMULA_TIERS.length - 1, Math.max(0, from - steps));
+  return FORMULA_TIERS[to] as PowerTier;
 }
 
 /** 이 행이 산식과 어긋나는가 (어긋나면 `rare` 또는 `tierOverride`가 있어야 한다) */
@@ -159,35 +264,39 @@ export function defaultBotWeight(
 }
 
 /**
- * 증강 id → 파워 티어. 표준 4종(open_riichi·iron_wall·yakuless_win·discard_recall) 포함.
- * 2026-07-26 밸런스 패스 반영본.
+ * 증강 id → 평가값. 표준 4종(open_riichi·iron_wall·yakuless_win·discard_recall) 포함.
+ *
+ * **티어는 여기 없다** — 점수에서 분위수로 계산한 뒤 `shift`만큼 옮긴 것이 티어다
+ * (파일 머리말 참고). 확정된 티어가 붙은 표는 아래 `AUGMENT_POWER_TIERS`.
+ *
+ * 아래 구획 주석(SS+ / S+ / …)은 2026-07-26 밸런스 패스 당시의 **묶음 이름**이고,
+ * 분위수 컷이 움직이면 실제 티어와 어긋날 수 있다 — 실시간 값은 관리자 티어표를 본다.
  */
-export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
+const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
   // ───────────────── SS+ — 발동 = 역만·배만 확정 ─────────────────
   genesis: {
-    tier: "SS+",
+    fixed: "SS+",
     p: 5,
     s: 5,
     u: 5,
     f: 2,
     note: "배패는 보통 자패 2~3 + 수패 10~11 — 뒤집으면 자패 10장 손이 된다. 수패 몇 장만 버리고 나머지를 울어 채우면 자일색(역만)이 사실상 확정",
     tierOverride:
-      "산식 44점(S+). SS+는 점수가 아니라 '발동 = 역만·배만 확정'이라는 성질로 지정한다(TIER_CUTS 주석) — 발동 국의 자일색이 사실상 확정이라 성질 기준을 만족한다",
+      "산식 44점. SS+는 점수가 아니라 '발동 = 역만·배만 확정'이라는 성질로 지정한다(TIER_CUTS 주석) — 발동 국의 자일색이 사실상 확정이라 성질 기준을 만족한다",
   },
   suit_unify: {
-    tier: "SS+",
+    fixed: "SS+",
     p: 5,
     s: 5,
     u: 5,
     f: 2,
     note: "발동 국은 청일색 확정 사거리. 셰텐이 2~4 줄고 배만·삼배만이 기본값이 된다",
     tierOverride:
-      "산식 44점(S+). genesis와 같은 SS+ 성질 지정 — 발동 국이 청일색 확정 사거리라 배만·삼배만이 기본값이 된다",
+      "산식 44점. genesis와 같은 SS+ 성질 지정 — 발동 국이 청일색 확정 사거리라 배만·삼배만이 기본값이 된다",
   },
 
   // ───────────────── S+ — 뽑는 순간 이겼다 ─────────────────
   true_dragon: {
-    tier: "S+",
     p: 5,
     s: 4,
     u: 5,
@@ -195,7 +304,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "상시 배패 16장(+3장 우위) + 화료마다 확정 +3판. 조건도 발동도 없다",
   },
   broken_border: {
-    tier: "S+",
     p: 3,
     s: 5,
     u: 5,
@@ -203,7 +311,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "무늬 제한 소멸 — 배패 13장이 '숫자 13개'가 되어 셰텐이 붕괴한다. 저타점 고반복의 극단이자 안전패 개념의 소멸",
   },
   mixed_triplet: {
-    tier: "S+",
     p: 3,
     s: 5,
     u: 5,
@@ -211,7 +318,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "커쯔 무늬 무관. 또이또이·삼암각·사암각까지 통째로 쉬워지고 혼일색·청일색 봉인도 안 걸린다",
   },
   royal_kokushi: {
-    tier: "S+",
     p: 5,
     s: 3,
     u: 5,
@@ -219,7 +325,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "국사무쌍 중복 허용 = 13종 수집이라는 유일한 관문 제거. 역만이 상시 사거리",
   },
   open_kokushi: {
-    tier: "S+",
     p: 5,
     s: 4,
     u: 5,
@@ -227,7 +332,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "요구패 3장을 퐁으로 조달 — 국사 최대 병목 제거. 성립 시 정식 역만(13판)",
   },
   silent_pact: {
-    tier: "S+",
     p: 4,
     s: 5,
     u: 5,
@@ -235,7 +339,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "매 국 멘젠 유지 퐁. 속도↔멘젠 타점이라는 리치마작의 근본 트레이드오프를 지운다",
   },
   open_riichi: {
-    tier: "S+",
     p: 4,
     s: 4,
     u: 4,
@@ -243,7 +346,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "표준 증강 '개문선언' = 후로 리치. 울어서 최속 텐파이 → 리치 1판·일발·뒷도라까지. 속도와 타점을 동시에 갖는 유일한 구조인데 상시·무조건",
   },
   eternal_dealer: {
-    tier: "S+",
     p: 5,
     s: 2,
     u: 5,
@@ -251,7 +353,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "모든 화료가 오야 계산(×1.5) + 채점 자풍 동 고정(+1~2판) + 연장 3회. 세 겹이 전부 상시 패시브",
   },
   grave_rob: {
-    tier: "S",
     p: 4,
     s: 4,
     u: 5,
@@ -259,19 +360,19 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "상대 바닥 **최근 10장** 안에 오름패가 있으면 확정 화료(2026-07-31 무덤 깊이 제한)",
   },
   cliff_bloom: {
-    tier: "S+",
+    shift: 1,
     p: 5,
     s: 3,
     u: 5,
     f: 2,
     note: "깡 2회 → 손패 무관 즉시 화료 + 만개 국의 영상개화를 4판 취급. 깡마다 영상패를 직접 고르는 것도 별개 이득",
     tierOverride:
-      "산식 38점(S). f=2가 총점을 누르지만, 만개는 '조건이 맞으면 유리하다'가 아니라 **텐파이 여부와 무관하게 그 국의 화료가 확정된다**는 뜻이다 — 산식의 f는 발동 횟수를 셀 뿐 한 번의 발동이 국을 끝내는지를 담지 못한다",
+      "산식 38점에서 한 단계 올렸다. f=2가 총점을 누르지만, 만개는 '조건이 맞으면 유리하다'가 아니라 **텐파이 여부와 무관하게 그 국의 화료가 확정된다**는 뜻이다 — 산식의 f는 발동 횟수를 셀 뿐 한 번의 발동이 국을 끝내는지를 담지 못한다",
   },
   aotenjou_ceiling: {
     // 티어는 S+ 유지 — 배율은 내려갔지만 **상시·무조건·무대응**이라는 성질이 그대로이고,
     // 이제 상대 점수까지 깎아 순위 스윙이 배율의 두 배로 온다.
-    tier: "S+",
+    shift: 2,
     p: 4,
     s: 1,
     u: 5,
@@ -280,42 +381,41 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     // 역만이 표준의 1.25배(만관 5개)까지 내려와 타점 5→4. 상한이 없다는 점은 그대로다.
     note: "청천정. 만관 위로 2판당 만관 하나씩 끝없이 붙고, 늘어난 몫은 타가가 낸다",
     tierOverride:
-      "산식 35점(A). 2026-08-02에 배율을 지수 → 선형으로 낮추며 p·s를 내렸지만 티어는 일부러 두었다 — 상한 없는 **상시·무조건·무대응** 배율이라는 성질과, 늘어난 몫을 타가가 내서 순위 스윙이 배율의 두 배로 오는 것을 네 축이 못 담는다",
+      "산식 35점에서 두 단계 올렸다. 2026-08-02에 배율을 지수 → 선형으로 낮추며 p·s를 내렸지만 티어는 일부러 두었다 — 상한 없는 **상시·무조건·무대응** 배율이라는 성질과, 늘어난 몫을 타가가 내서 순위 스윙이 배율의 두 배로 오는 것을 네 축이 못 담는다",
   },
 
   // ───────────────── S — 판을 지배한다 ─────────────────
   free_riichi_discard: {
-    tier: "S",
+    shift: -1,
     p: 4,
     s: 3,
     u: 5,
     f: 5,
     note: "리치의 유일한 대가(손 고정)를 지운다 — 리스크 없는 리치. 다만 손을 스스로 만들어야 해 S",
     tierOverride:
-      "산식 41점(S+)에서 한 단계 내렸다. u=5는 '내가 이미 텐파이일 때' 성립하는 값이고, 이 증강은 텐파이를 만들어 주지 않는다 — 리치를 걸 손은 스스로 만들어야 해 S+의 '뽑는 순간 이겼다'에 못 미친다. 코드상 대가도 남아 있다(리치 후 깡 금지, 대기패를 버리면 후리텐 그대로)",
+      "산식 41점에서 한 단계 내렸다. u=5는 '내가 이미 텐파이일 때' 성립하는 값이고, 이 증강은 텐파이를 만들어 주지 않는다 — 리치를 걸 손은 스스로 만들어야 해 S+의 '뽑는 순간 이겼다'에 못 미친다. 코드상 대가도 남아 있다(리치 후 깡 금지, 대기패를 버리면 후리텐 그대로)",
   },
   stealth_riichi: {
-    tier: "S",
+    shift: -1,
     p: 4,
     s: 3,
     u: 5,
     f: 5,
     note: "리치 타점 전부 + 공탁 면제 + 상대가 리치를 모른다. 텐파이는 스스로 만들어야 한다",
     tierOverride:
-      "산식 41점(S+)에서 한 단계 내렸다. 자유 선언과 같은 이유(텐파이는 스스로 만든다)에 더해, 은닉에는 코드로 박힌 대가가 있다 — 남들이 나를 비리치자로 보므로 손 교환 계열(통째로 바꾸기·등가교환·자리 바꿈)의 표적이 되고, 손이 바뀌면 그 리치가 풀린다(stealthBreak). u=5가 그리는 '대응 불가'가 실제로는 뚫린다",
+      "산식 41점에서 한 단계 내렸다. 자유 선언과 같은 이유(텐파이는 스스로 만든다)에 더해, 은닉에는 코드로 박힌 대가가 있다 — 남들이 나를 비리치자로 보므로 손 교환 계열(통째로 바꾸기·등가교환·자리 바꿈)의 표적이 되고, 손이 바뀌면 그 리치가 풀린다(stealthBreak). u=5가 그리는 '대응 불가'가 실제로는 뚫린다",
   },
   polar_ends: {
-    tier: "S",
+    shift: -1,
     p: 3,
     s: 4,
     u: 5,
     f: 5,
     note: "같은 무늬 1·9가 동일 패 — 커쯔 성립률이 오르고 찬타 계열로 타점도 붙는다. 적용 범위가 1·9로 좁아 S",
     tierOverride:
-      "산식 41점(S+)에서 한 단계 내렸다. s=4·u=5는 **1·9를 모으는 손에서만** 성립하는 값인데 f=5는 '규칙이 늘 켜져 있다'를 세고 있어, 둘을 곱하면 실전보다 부풀려진다. 커쯔에만 걸리고(머리·깡은 제외) 손 방향이 노두패로 읽히면 상대가 1·9를 쥐고 있을 수 있다",
+      "산식 41점에서 한 단계 내렸다. s=4·u=5는 **1·9를 모으는 손에서만** 성립하는 값인데 f=5는 '규칙이 늘 켜져 있다'를 세고 있어, 둘을 곱하면 실전보다 부풀려진다. 커쯔에만 걸리고(머리·깡은 제외) 손 방향이 노두패로 읽히면 상대가 1·9를 쥐고 있을 수 있다",
   },
   dead_wall_master: {
-    tier: "S",
     p: 3,
     s: 4,
     u: 5,
@@ -323,7 +423,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "매 국 배패 2장을 왕패와 교환 + 도라/뒷도라 표시패 조작 + 상시 열람 (2026-07-26: 4장→2장·+6000 삭제)",
   },
   async_chiitoi: {
-    tier: "S",
     p: 3,
     s: 4,
     u: 4,
@@ -331,7 +430,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "무늬 무관 숫자 쌍 = 치또이 성립률이 서너 배. 리치+치또이+뒷도라로 하네만이 상시",
   },
   conjure_draw: {
-    tier: "S",
     p: 2,
     s: 5,
     u: 5,
@@ -339,7 +437,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "매 국 1회 원하는 패를 확정 인수. 샤보·탄키 텐파이면 그 자리에서 쯔모 화료",
   },
   foresight: {
-    tier: "S",
     p: 3,
     s: 4,
     u: 5,
@@ -347,7 +444,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "패산 4장 열람(2순 1회) + 순서 재배열(국당 1회). 내 쯔모를 만들고 상대 쯔모를 망가뜨린다",
   },
   let_it_ride: {
-    tier: "S",
     p: 5,
     s: 1,
     u: 5,
@@ -355,7 +451,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "첫 화료부터 ×2, 연승 시 ×3~4. 조건이 '화료할 것'뿐인 상시 배율",
   },
   wind_lineage: {
-    tier: "S",
     p: 2,
     s: 4,
     u: 5,
@@ -363,7 +458,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "자패 슌쯔 + 동남서북 깡 — 죽은 패였던 자패가 전부 살아나 셰텐이 크게 준다",
   },
   off_by_one: {
-    tier: "S",
     p: 2,
     s: 4,
     u: 5,
@@ -371,27 +465,27 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "리치 후 쯔모 대기가 실질 3배. 상대는 알아도 못 막는다",
   },
   big_hand: {
-    tier: "S",
+    shift: 1,
     p: 5,
     s: 1,
     u: 5,
     f: 3,
     note: "선언 국의 화료는 최소 만관. 2국당 1회라 반장전에 4~6번 — 고타점을 가장 싸게 사는 증강",
     tierOverride:
-      "⚠ 재평가 필요 — 산식 34점(A)인데 표는 S다. 2026-07-26 밸런스 패스에서 손으로 올린 값이고 근거가 남아 있지 않다. 오히려 코드는 약한 쪽을 가리킨다: 하한이 걸리는 것은 손의 값이 아니라 **본장·회수한 공탁까지 합친 수령액**이라, 봉 두 개만 회수해도 뱅크 보전이 0이 된다. 값을 내리면 그대로 드롭률 변경이므로 그대로 두고 빚으로 남긴다",
+      "⚠ 재평가 필요 — 산식 34점에서 한 단계 올려 두었다. 2026-07-26 밸런스 패스에서 손으로 올린 값이고 근거가 남아 있지 않다. 오히려 코드는 약한 쪽을 가리킨다: 하한이 걸리는 것은 손의 값이 아니라 **본장·회수한 공탁까지 합친 수령액**이라, 봉 두 개만 회수해도 뱅크 보전이 0이 된다. 값을 내리면 그대로 드롭률 변경이므로 그대로 두고 빚으로 남긴다",
   },
   late_bloomer: {
-    tier: "S",
+    shift: 1,
     p: 2,
     s: 5,
     u: 5,
     f: 2,
     note: "오라스부터 후리텐 무시 + 무역 화료 — 저타점 고반복으로 가장 중요한 국을 지배한다",
     tierOverride:
-      "산식 35점 — A 상한(35)과 S 하한(36) 사이 한 점 차이다. f=2는 '만개 전이 길다'를 반영한 값이지만, 만개한 뒤에는 남4국·서입 연장 **전부**에서 후리텐과 역 제약이 동시에 사라진다. 한 점 차이라면 순위가 확정되는 국의 비중 쪽을 택했다",
+      "산식 35점에서 한 단계 올렸다 — 컷 경계에 한 점 차이로 걸리는 자리다. f=2는 '만개 전이 길다'를 반영한 값이지만, 만개한 뒤에는 남4국·서입 연장 **전부**에서 후리텐과 역 제약이 동시에 사라진다. 한 점 차이라면 순위가 확정되는 국의 비중 쪽을 택했다",
   },
   late_bloomer_east: {
-    tier: "S",
+    shift: 1,
     p: 2,
     s: 5,
     u: 5,
@@ -401,7 +495,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
       "late_bloomer와 같은 구현·같은 한 점 차이(산식 35점). 동풍전은 국이 적어 만개 후 비중이 오히려 더 크다",
   },
   bottom_deal: {
-    tier: "S",
     p: 3,
     s: 4,
     u: 4,
@@ -411,7 +504,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
 
   // ───────────────── A — 명확히 강하다 ─────────────────
   even_world: {
-    tier: "A",
     p: 3,
     s: 4,
     u: 5,
@@ -419,7 +511,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "홀수 수패가 짝수로 흡수돼 숫자 종류가 절반으로 압축. 다만 이후 필요한 홀수를 다시 뽑아 와야 해 S는 아니다",
   },
   hand_swap3: {
-    tier: "A",
     p: 3,
     s: 4,
     u: 5,
@@ -427,7 +518,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "상대 손패 열람 + 3장 통째 교환. 내 손 보강과 상대 파괴가 동시",
   },
   pond_snatch: {
-    tier: "A",
     p: 2,
     s: 5,
     u: 5,
@@ -435,7 +525,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "멘젠 유지 버림패 회수 3회. 각자 최근 3장까지 골라 잡는다(2026-07-31 버프)",
   },
   silent_swap: {
-    tier: "A",
     p: 3,
     s: 4,
     u: 4,
@@ -443,7 +532,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "네 바닥 전체에서 1장 + 2판. 화료패를 고르면 방총이라는 유일한 리스크",
   },
   regret: {
-    tier: "A",
     p: 3,
     s: 4,
     u: 5,
@@ -451,7 +539,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "유국 멘젠 텐파이 손을 다음 국 배패로. 다음 국 첫 쯔모 리치가 나온다",
   },
   no_retreat: {
-    tier: "A",
     p: 5,
     s: 1,
     u: 5,
@@ -459,7 +546,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "리치·일발·뒷도라가 각 2판 + 공탁 면제 — 평범한 리치 손이 하네만",
   },
   north_trader: {
-    tier: "A",
     p: 3,
     s: 3,
     u: 4,
@@ -467,7 +553,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "北 빼기로 손패를 압축하고 장당 개인 도라. 보충이 영상패라 영상개화도 노린다. 상한은 北 4장",
   },
   time_stop: {
-    tier: "A",
     p: 2,
     s: 4,
     u: 5,
@@ -475,7 +560,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "연속 2턴 = 쯔모 1회 선취. 매 국 1회",
   },
   bluff_pretense: {
-    tier: "A",
     p: 2,
     s: 4,
     u: 4,
@@ -483,7 +567,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "1장으로 퐁 — 매 국 1회, 커쯔 하나를 공짜로 만든다",
   },
   discard_recall: {
-    tier: "A",
     p: 2,
     s: 4,
     u: 4,
@@ -491,7 +574,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "표준 증강 '회수'. 매 국 내 바닥 아무 패나 회수 — 후리텐 해제와 유효패 회수를 겸한다",
   },
   take_back: {
-    tier: "A",
     p: 1,
     s: 4,
     u: 4,
@@ -499,7 +581,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "쯔모 리롤 (2026-07-26: 매 턴 → 3턴에 1회). 여전히 국당 3~4회 유효패 확률을 두 배로 굴린다",
   },
   blood_contract: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 4,
@@ -507,7 +588,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "계약 역 포함 화료 시 ×1.5 (2026-07-26: ×2 → ×1.5), 실패해도 무손실",
   },
   iron_wall: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 5,
@@ -515,7 +595,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "표준 증강 '철벽'. 후리텐 무시 론 + 3판 — 리치 후 흘린 오름패를 계속 잡는다",
   },
   broken_wall: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 4,
@@ -523,7 +602,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "8-9-1·9-1-2 슌쯔. 상시로 슌쯔 후보가 늘고 1·9의 가치가 바뀐다",
   },
   table_flip: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 4,
@@ -531,7 +609,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "매 국 배패 리롤 = 사고 배패 삭제. 분산을 줄이는 안정성 증강",
   },
   ankan_dora: {
-    tier: "A",
     p: 5,
     s: 1,
     u: 5,
@@ -539,7 +616,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "안깡 1묶음(깡친 네 장) = +4판 확정. 무대응이지만 안깡 자체가 자주 안 나온다",
   },
   all_or_nothing: {
-    tier: "A",
     p: 5,
     s: 1,
     u: 5,
@@ -547,7 +623,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "점수 절반 판돈 + 실패 무손실 = 순이득만 있는 도박. 성공하면 점수 1.5배",
   },
   hourglass: {
-    tier: "A",
     p: 3,
     s: 3,
     u: 5,
@@ -555,7 +630,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "유국을 거부하고 왕패 4장 솔로 쯔모. 텐파이면 추가 화료 기회 (2026-08-02: 매치 1~2회 → 2국에 1회)",
   },
   riichi_seal: {
-    tier: "A",
     p: 2,
     s: 2,
     u: 5,
@@ -563,7 +637,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "선제 리치 시 나머지 셋의 리치를 국 내내 봉인 — 상대 최대 화력 차단",
   },
   riichi_upgrade: {
-    tier: "A",
     p: 3,
     s: 1,
     u: 5,
@@ -571,7 +644,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "모든 리치가 더블리치 + 하가 리치 봉인. 자연 더블 조건이면 트리플리치 4판(2026-07-26)",
   },
   invincible: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 5,
@@ -579,7 +651,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "2국당 1회 국 전체 론 면역 = 무손실 전력 푸시",
   },
   jackpot: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 4,
@@ -587,7 +658,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "매 국 룰렛(기대값 약 1.6배). 꽝 0.5배가 유일한 브레이크",
   },
   soul_hunt: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 4,
@@ -595,7 +665,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "리치자를 론하면 리치 1판 + 뒷도라. 다마로 리치자를 노리는 손이 리치급 타점",
   },
   hidden_blade: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 4,
@@ -603,7 +672,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "멘젠 다마 론에 +2판 + 뒷도라. 리치를 안 걸어 들키지도 않는다",
   },
   alchemist: {
-    tier: "A",
     p: 2,
     s: 4,
     u: 4,
@@ -611,7 +679,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "±1 변환 5회, 리치 중에도. 텐파이 완성·대기 변경에 직결",
   },
   devils_advance: {
-    tier: "A",
     p: 5,
     s: 1,
     u: 5,
@@ -619,7 +686,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "시작 시 +10000(초기 점수의 40%) + 만관 시 각 3000. 1회성이지만 순위 게임에서 초반 1만 점은 크다",
   },
   hidden_river: {
-    tier: "A",
     p: 2,
     s: 2,
     u: 5,
@@ -627,7 +693,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "발동 후 게임 끝까지 전원의 바닥이 최근 6장만 공개된다(보유자는 전부) — 상대 셋의 수비를 영구 파괴",
   },
   late_double: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 4,
@@ -635,7 +700,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "7순까지의 리치가 전부 더블리치 + 그 더블리치에 +1판 (2026-08-02 상향 — 실전 리치 대부분이 +2판)",
   },
   tile_split: {
-    tier: "A",
     p: 2,
     s: 4,
     u: 4,
@@ -643,17 +707,16 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "1장을 유효패 2장으로. 잡패 하나가 몸통 재료로 바뀐다",
   },
   yakuless_win: {
-    tier: "A",
+    shift: -1,
     p: 2,
     s: 4,
     u: 5,
     f: 5,
     note: "표준 증강 '무형화료'. 역 제약 소멸 + 역 0개 화료를 2판 취급 — 후로 빌드 전체가 살아난다",
     tierOverride:
-      "산식 38점(S)에서 한 단계 내렸다. **후리텐은 그대로 남는다**(그건 철벽의 일이다) — 역 제약만 풀릴 뿐 대기는 넓어지지 않아 s=4가 그리는 화료율 증가가 실제로는 나오지 않는다. 보너스도 역이 0개인 화료에만 붙어(코드: `info.yaku.length === 0`) 역이 하나라도 있으면 아무것도 얹히지 않는다",
+      "산식 38점에서 한 단계 내렸다. **후리텐은 그대로 남는다**(그건 철벽의 일이다) — 역 제약만 풀릴 뿐 대기는 넓어지지 않아 s=4가 그리는 화료율 증가가 실제로는 나오지 않는다. 보너스도 역이 0개인 화료에만 붙어(코드: `info.yaku.length === 0`) 역이 하나라도 있으면 아무것도 얹히지 않는다",
   },
   tanyao_break: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 5,
@@ -661,7 +724,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "자패만 없으면 무조건 탕야오로 역 확보 (2026-07-26: 그 탕야오를 2판으로 취급)",
   },
   frame_up: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 5,
@@ -669,7 +731,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "내 후리텐 회피 + 상대 후리텐 강제. 위험패 처리와 방해를 동시에 (2026-08-02: 매치 1~2회 → 2국에 1회)",
   },
   palm_flip: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 5,
@@ -677,7 +738,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "리치 해제 후 무료 재리치 — 리치의 비가역성을 지운다",
   },
   pseudo_dealer: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 4,
@@ -685,7 +745,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "오야 강탈(×1.5) + 진짜 연장. 2국당 1회",
   },
   xray_hand: {
-    tier: "A",
     p: 2,
     s: 3,
     u: 5,
@@ -695,7 +754,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
 
   // ───────────────── B — 상황이 맞으면 강하다 ─────────────────
   future_sight: {
-    tier: "B",
     // 2026-08-02: 매 순 → 3순에 1회(빈도 5→3)로 조이고 대신 스택당 1판(타점 2→3).
     p: 3,
     s: 2,
@@ -704,7 +762,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "3순에 1회 3장 교체 + 발동당 +1판. 무작위 3장이 뽑혀 완성된 몸통이 깨질 수 있다",
   },
   meld_dissolve: {
-    tier: "B",
     p: 2,
     s: 2,
     u: 4,
@@ -712,7 +769,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "후로 해체·멘젠 복구. 후로 후 리치 전환이라는 좁은 창",
   },
   peek_riichi_waits: {
-    tier: "B",
     p: 2,
     s: 2,
     u: 4,
@@ -720,7 +776,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "대기 확인 + 그 패를 내 손에 생성 (2026-07-26: 상대별 1회 → 국당 1회). 상대가 리치를 안 걸면 무효",
   },
   snake_kan: {
-    tier: "B",
     p: 2,
     s: 2,
     u: 4,
@@ -728,37 +783,36 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "연속 4장을 깡. 영상패·새로운 도라는 얻지만 슌쯔 재료를 소모한다",
   },
   tile_dyeing: {
-    tier: "B",
+    shift: -1,
     p: 2,
     s: 3,
     u: 4,
     f: 4,
     note: "무늬 변환 5회(게임 전체). 확실하지만 한 번에 1장씩이라 폭이 좁다",
     tierOverride:
-      "산식 31점(A)에서 한 단계 내렸다. f=4는 '자기 순마다 버튼이 열려 있다'를 세지만 실제 총량은 **게임 전체 5회**다(MAX_USES). 총량으로 환산하면 f는 2에 가깝고 그러면 산식도 B가 된다 — 빈도 축이 매치 한도를 못 담는 자리다",
+      "산식 31점에서 한 단계 내렸다. f=4는 '자기 순마다 버튼이 열려 있다'를 세지만 실제 총량은 **게임 전체 5회**다(MAX_USES). 총량으로 환산하면 f는 2에 가깝고 그러면 산식도 한 단계 아래를 가리킨다 — 빈도 축이 매치 한도를 못 담는 자리다",
   },
   unification: {
-    tier: "B",
+    shift: -1,
     p: 3,
     s: 1,
     u: 4,
     f: 5,
     note: "50000점 즉시 우승. 도달하면 이미 1등이라 역전 방지 보험에 가깝다",
     tierOverride:
-      "산식 30점(A)에서 한 단계 내렸다. f=5는 '규칙이 켜져 있는 시간'이지 '판을 움직인 횟수'가 아니다 — 이 증강이 실제로 무언가를 하는 것은 게임당 최대 1회이고, 그 시점엔 이미 1등이라 순위를 바꾸지 않는다. 게다가 문턱이 전원에게 공개돼 있어 상대가 보유자를 직접 론해 되밀 수 있다",
+      "산식 30점에서 한 단계 내렸다. f=5는 '규칙이 켜져 있는 시간'이지 '판을 움직인 횟수'가 아니다 — 이 증강이 실제로 무언가를 하는 것은 게임당 최대 1회이고, 그 시점엔 이미 1등이라 순위를 바꾸지 않는다. 게다가 문턱이 전원에게 공개돼 있어 상대가 보유자를 직접 론해 되밀 수 있다",
   },
   omni_chi: {
-    tier: "B",
+    shift: -1,
     p: 1,
     s: 3,
     u: 4,
     f: 5,
     note: "누구에게서든 치. 속도는 붙지만 타점이 없다",
     tierOverride:
-      "산식 30점(A)에서 한 단계 내렸다. 얻는 것이 후로 속도뿐인데(p=1) 후로는 멘젠 타점을 내주는 거래라, 속도 s=3과 상시 f=5를 곱한 값이 실전 기여를 부풀린다. 펑 우선순위도 그대로라 노리던 패를 늘 가져오지도 못한다",
+      "산식 30점에서 한 단계 내렸다. 얻는 것이 후로 속도뿐인데(p=1) 후로는 멘젠 타점을 내주는 거래라, 속도 s=3과 상시 f=5를 곱한 값이 실전 기여를 부풀린다. 펑 우선순위도 그대로라 노리던 패를 늘 가져오지도 못한다",
   },
   counter: {
-    tier: "B",
     p: 4,
     s: 1,
     u: 3,
@@ -766,7 +820,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "추격 리치 반격 패키지. 상대의 선제 리치가 전제",
   },
   no_ron_pact: {
-    tier: "B",
     p: 1,
     s: 2,
     u: 4,
@@ -774,7 +827,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "첫 6순 론 면역. 리치·후로 즉시 파기라 공격과 양립하지 않는다",
   },
   honor_return: {
-    tier: "B",
     p: 2,
     s: 3,
     u: 4,
@@ -782,7 +834,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "버린 자패 4장을 다음 국 배패로. 역패·자패 빌드 전용",
   },
   spy: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 5,
@@ -790,7 +841,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "지정 패로 상대가 화료하면 전액 강탈. 매 국 다시 찍는다(2026-07-31 버프)",
   },
   parasite: {
-    tier: "B",
     p: 3,
     s: 1,
     u: 4,
@@ -798,7 +848,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "숙주 이득의 절반. 숙주 선택이 빗나가면 아무 일도 없다",
   },
   karma: {
-    tier: "B",
     p: 3,
     s: 1,
     u: 4,
@@ -806,7 +855,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "8000 이상 잃어야 발동 — 지고 있을 때만 켜진다",
   },
   void_kan: {
-    tier: "B",
     p: 3,
     s: 1,
     u: 5,
@@ -814,7 +862,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "텐파이 + 상대 깡이라는 이중 조건. 대신 테이블 전원의 깡을 묶는다",
   },
   last_stand: {
-    tier: "B",
     p: 1,
     s: 2,
     u: 4,
@@ -822,7 +869,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "리치 취소 + 리치봉 반환. 수비 전환용",
   },
   rinshan_preview: {
-    tier: "B",
     p: 1,
     s: 2,
     u: 4,
@@ -830,7 +876,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "영상패 열람 + 국당 1회 교환. 왕패 담당은 dead_wall_master, 패산 담당은 bottom_deal이라 무대가 겹치지 않는다",
   },
   ura_peek: {
-    tier: "B",
     p: 2,
     s: 1,
     u: 4,
@@ -838,7 +883,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "뒷도라 확인 + 표시패 바꿔치기 1회",
   },
   siege_riichi: {
-    tier: "B",
     p: 2,
     s: 2,
     u: 3,
@@ -846,17 +890,16 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "노텐 리치. 손이 잠긴 채 화료도 못 해 순수 블러프다",
   },
   open_riichi_reveal: {
-    tier: "B",
+    shift: -1,
     p: 4,
     s: 1,
     u: 3,
     f: 4,
     note: "비리치자 방총 시 역만이지만 오름패가 공개돼 있어 인간 상대에겐 잘 안 터진다",
     tierOverride:
-      "산식 29점(A 하한)에서 한 단계 내렸다. 역만 조건이 **오름패 전체 공개**를 대가로 하므로 u=3조차 낙관적이다 — 상대는 그 패만 안 버리면 되고, 스스로 리치를 걸어 역만을 +2판으로 떨어뜨리는 값싼 해제법까지 있다",
+      "산식 29점에서 한 단계 내렸다. 역만 조건이 **오름패 전체 공개**를 대가로 하므로 u=3조차 낙관적이다 — 상대는 그 패만 안 버리면 되고, 스스로 리치를 걸어 역만을 +2판으로 떨어뜨리는 값싼 해제법까지 있다",
   },
   discard_lock: {
-    tier: "B",
     p: 1,
     s: 2,
     u: 4,
@@ -864,7 +907,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "상대 3명 수패 2종 봉인 + 손패 열람. 방해 폭이 좁다",
   },
   dora_conceal: {
-    tier: "B",
     p: 1,
     s: 1,
     u: 4,
@@ -872,7 +914,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "도라를 나만 안다. 상시지만 정보 우위뿐",
   },
   full_hand_swap: {
-    tier: "B",
     p: 2,
     s: 2,
     u: 4,
@@ -880,7 +921,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "상대 손패가 안 보이는 블라인드 강탈이고 첫 순이라 남의 배패도 그냥 배패다 — 실효는 배패 리롤 + 방해",
   },
   honba_hunter: {
-    tier: "B",
     p: 3,
     s: 1,
     u: 4,
@@ -888,7 +928,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "본장당 1500. 본장이 쌓이는 국에서만",
   },
   rank_gate: {
-    tier: "B",
     p: 1,
     s: 1,
     u: 5,
@@ -896,7 +935,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "지목 1명 4판 이하 화료 금지. 나머지 둘은 자유",
   },
   red_five_touch: {
-    tier: "A",
     p: 3,
     s: 1,
     u: 5,
@@ -904,7 +942,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "지정 숫자가 게임 내내 내 적도라. 뽑는 족족 각인된다(2026-07-31 버프)",
   },
   reload: {
-    tier: "B",
     p: 2,
     s: 2,
     u: 4,
@@ -912,7 +949,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "다른 증강 1회 복구 — 보유 증강에 전적으로 의존",
   },
   seat_swap: {
-    tier: "B",
     p: 2,
     s: 2,
     u: 4,
@@ -920,7 +956,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "자리·손패 교환 2~3회(국당 1회). 내 첫 순이면 언제든. 오야 강탈이 본체",
   },
   push_riichi: {
-    tier: "B",
     p: 1,
     s: 2,
     u: 5,
@@ -930,7 +965,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
 
   // ───────────────── C — 소소하다 / 조건이 드물다 ─────────────────
   yakuman_shield: {
-    tier: "C",
     p: 2,
     s: 1,
     u: 5,
@@ -938,7 +972,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "역만 피해 완전 면역·횟수 무제한 (2026-07-26: 하네만 이상 2회 → 역만 전용 무제한). 역만 자체가 드물어 대부분의 게임에서 잠들어 있다",
   },
   haitei_lord: {
-    tier: "C",
+    shift: -1,
     p: 3,
     s: 2,
     u: 5,
@@ -947,7 +981,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "확정 화료 + 3판이지만 '해저패를 내가 쯔모 + 텐파이'라 게임당 한 번 볼까 말까",
   },
   three_dragons_will: {
-    tier: "C",
+    shift: -2,
     p: 5,
     s: 2,
     u: 5,
@@ -956,7 +990,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "발동 시 역만이지만 백·발·중 2커쯔(6장) 수집이 대삼원과 거의 같은 난이도",
   },
   giant_god: {
-    tier: "C",
+    shift: -1,
     p: 4,
     s: 1,
     u: 5,
@@ -965,7 +999,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "국사 13종이 내 바닥에 전부 깔려야 한다 — 실전 성립률 극저",
   },
   avenger: {
-    tier: "C",
     p: 2,
     s: 2,
     u: 3,
@@ -973,7 +1006,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "원수 한정 후리텐·무역 론. 그 상대가 안 던지면 끝",
   },
   blame_shift: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 3,
@@ -981,7 +1013,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "내 총수령액은 그대로 — 상대 체감만 바뀐다",
   },
   danger_sense: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 4,
@@ -989,7 +1020,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "위험패 스캔 1회. 순수 수비 정보",
   },
   triple_peek: {
-    tier: "C",
     p: 1,
     s: 2,
     u: 4,
@@ -997,7 +1027,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "다음 3쯔모 열람. 알아도 바꿀 수단이 없다",
   },
   always_tenpai: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 4,
@@ -1005,7 +1034,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "유국 시 항상 텐파이 취급. 유국 국에서만",
   },
   scapegoat: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 3,
@@ -1013,7 +1041,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "쯔모 지불자 변경 — 총액 불변",
   },
   nagashi_yakuman: {
-    tier: "C",
+    shift: -1,
     p: 5,
     s: 1,
     u: 4,
@@ -1022,7 +1050,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "성립 조건이 극단적이라 사실상 장식",
   },
   bottom_yaku: {
-    tier: "C",
     p: 1,
     s: 2,
     u: 3,
@@ -1030,7 +1057,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "한 무늬 1~9 전부 버리기 — 조건이 손과 정면 충돌",
   },
   disarm: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 4,
@@ -1038,7 +1064,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "상대 증강 1개 국 봉인. 상대가 뭘 가졌느냐에 좌우",
   },
   call_seal: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 4,
@@ -1046,7 +1071,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "6순 후로 봉인. 멘젠 상대에겐 무효",
   },
   brief_fog: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 4,
@@ -1054,7 +1078,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "6순 바닥 은닉. hidden_river의 하위호환",
   },
   tenpai_scan: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 4,
@@ -1064,7 +1087,7 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
 
   // ───────────────── D — 뽑아도 리치마작 그대로 ─────────────────
   mixed_nine_gates: {
-    tier: "D",
+    shift: -3,
     p: 5,
     s: 1,
     u: 5,
@@ -1073,7 +1096,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "무늬는 풀렸지만 1112345678999라는 랭크 배열 요구가 그대로 — 실전 성립률 ~0",
   },
   die_hard: {
-    tier: "D",
     p: 1,
     s: 1,
     u: 4,
@@ -1084,7 +1106,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
   // ───────────────── 2026-08-04 6차 사용자 발안 8종 ─────────────────
   // (파일은 티어 순으로 읽히지만 표는 런타임이 다시 정렬한다 — 배치 단위로 모아 둔다)
   cornucopia: {
-    tier: "S+",
     p: 3,
     s: 4,
     u: 5,
@@ -1092,7 +1113,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "무작위 증강 2개를 즉시 지급 — 한 칸으로 세 칸. 실효 파워는 나온 것에 달렸지만 기대값이 압도적",
   },
   mirror_dora: {
-    tier: "S",
     p: 5,
     s: 1,
     u: 5,
@@ -1100,17 +1120,16 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "표시패의 앞도 내 도라 — 상시로 도라 밀도가 두 배. 상대는 흘리지 않는 것 말고 대응이 없다",
   },
   soul_strike: {
-    tier: "S",
+    shift: -1,
     p: 4,
     s: 5,
     u: 4,
     f: 3,
     note: "리치(2판·더블 3판) + 연속 6쯔모, 그 사이 쯔모 화료는 전부 일발. 후로로 끊는 대응은 있다",
     tierOverride:
-      "산식 41점(S+)에서 한 단계 내렸다. S+의 정의는 '대응 수단 자체가 없다'인데 여기엔 값싼 대응이 둘 있다 — **타가가 한 번만 울면 폭주가 그 자리에서 끝나고**(CALL_MADE), 연속 쯔모 중 버리는 여섯 장은 전부 평소대로 론 대상이다. 패산도 실제로 소모한다",
+      "산식 41점에서 한 단계 내렸다. 산식이 가리킨 S+의 정의는 '대응 수단 자체가 없다'인데 여기엔 값싼 대응이 둘 있다 — **타가가 한 번만 울면 폭주가 그 자리에서 끝나고**(CALL_MADE), 연속 쯔모 중 버리는 여섯 장은 전부 평소대로 론 대상이다. 패산도 실제로 소모한다",
   },
   sign_flip: {
-    tier: "A",
     p: 5,
     s: 1,
     u: 5,
@@ -1118,7 +1137,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "그 국만 내 점수 부호 반전 — 큰 손에 일부러 쏘이면 그대로 이득. 국 하나뿐",
   },
   dora_afterimage: {
-    tier: "A",
     p: 4,
     s: 1,
     u: 5,
@@ -1126,7 +1144,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "직전 국의 도라를 이번 국에 겹친다 — 도라 폭이 두 배. 2국에 1회, 첫 국엔 불가",
   },
   joker: {
-    tier: "S",
     p: 3,
     s: 5,
     u: 4,
@@ -1134,18 +1151,16 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "그 국 손패의 백이 만능패 — 머리도 몸통도 되고 가장 비싼 형태가 자동 채택. 2국에 1회이고 백을 실제로 쥐어야 값이 난다",
   },
   picky_eater: {
-    tier: "A",
     p: 4,
     s: 3,
     u: 3,
     f: 2,
-    // `rare: true`가 붙어 있었지만 산식 31점 = A로 **이탈이 없다** — 낮춘 적이 없는데
+    // `rare: true`가 붙어 있었지만 shift가 0이라 **이탈이 없다** — 낮춘 적이 없는데
     // 낮췄다는 표식만 남아 관리자 티어표에 "희귀"로 떴다(2026-08-07 정리). 드문 조건은
     // 이미 f=2에 반영돼 있다. 티어·가중치는 그대로다.
     note: "한 무늬만 12장 버리는 퀘스트를 통과해야 단색 세계 — 국의 절반을 편식해야 하고 버림패로 다 보인다",
   },
   blind_ron: {
-    tier: "B",
     p: 3,
     s: 1,
     u: 5,
@@ -1153,7 +1168,6 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "그 국의 모든 론이 무작위 대상에게 — 내 손을 강하게 하진 않고 판을 흔든다. 나도 25%로 맞는다",
   },
   time_pressure: {
-    tier: "C",
     p: 1,
     s: 1,
     u: 4,
@@ -1161,3 +1175,33 @@ export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> = {
     note: "그 국 전원 5초 제한 — 점수에는 직접 관여하지 않는다. 봇에게는 사실상 무효",
   },
 };
+
+/**
+ * 총점 → 티어 하한. **표의 점수 분포에서 분위수로 계산한다** (`quantileCuts`).
+ *
+ * `fixed`(SS+)는 모집단에서 뺀다 — 점수와 무관하게 지정된 행이라 분위수 경계를
+ * 밀 이유가 없다. 표가 바뀌면 이 값도 바뀐다: 고정 상수가 아니다.
+ */
+export const TIER_CUTS: readonly { tier: PowerTier; min: number }[] = quantileCuts(
+  Object.values(AUGMENT_POWER_SPECS)
+    .filter((e) => e.fixed === undefined)
+    .map(powerScore),
+);
+
+/**
+ * 증강 id → 확정 파워 티어.
+ *
+ * `AUGMENT_POWER_SPECS`의 점수를 분위수 컷에 태우고 `shift`만큼 옮긴 결과다.
+ * `fixed`가 있으면 점수를 무시하고 그 값을 쓴다(SS+).
+ */
+export const AUGMENT_POWER_TIERS: Readonly<Record<string, PowerTierEntry>> =
+  Object.fromEntries(
+    Object.entries(AUGMENT_POWER_SPECS).map(([id, spec]) => [
+      id,
+      {
+        ...spec,
+        tier:
+          spec.fixed ?? shiftTier(formulaTier(powerScore(spec)), spec.shift ?? 0),
+      },
+    ]),
+  );

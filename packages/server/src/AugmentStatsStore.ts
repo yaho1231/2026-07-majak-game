@@ -53,6 +53,14 @@ export interface GameAugmentResult {
   rank: number;
 }
 
+/**
+ * 한 게임의 드래프트 노출 — 증강 id → 제시·선택 횟수 (좌석 전부를 합친 값).
+ * 픽률(`strengthOf`)의 근거이며, 근거는 리플레이 이벤트다(`AUGMENT_OFFERED`).
+ */
+export type GameAugmentOffers = Readonly<
+  Record<string, { offered: number; picked: number }>
+>;
+
 export class AugmentStatsStore {
   private data: AugmentStatsFile = emptyFile();
   private loaded = false;
@@ -72,6 +80,9 @@ export class AugmentStatsStore {
           next.records[id] = {
             games: Math.max(0, Math.trunc(r.games ?? 0)),
             wins: Math.max(0, Math.trunc(r.wins ?? 0)),
+            // 2026-08-08 이전 파일에는 없다 — 0으로 시작해 다시 쌓는다.
+            offered: Math.max(0, Math.trunc(r.offered ?? 0)),
+            picked: Math.max(0, Math.trunc(r.picked ?? 0)),
           };
         }
         for (const [id, v] of Object.entries(parsed.offsets ?? {})) {
@@ -97,9 +108,11 @@ export class AugmentStatsStore {
     return { ...this.data.offsets };
   }
 
-  /** 집계 원본 (관리자 화면용) */
+  /** 집계 원본 (관리자 화면용). 행을 제자리에서 누적하므로 복사해 내보낸다. */
   records(): Readonly<Record<string, AugmentRecord>> {
-    return { ...this.data.records };
+    const out: Record<string, AugmentRecord> = {};
+    for (const [id, r] of Object.entries(this.data.records)) out[id] = { ...r };
+    return out;
   }
 
   /** 조정 진행 상황 (관리자 화면용) */
@@ -115,17 +128,24 @@ export class AugmentStatsStore {
    * 한 게임의 결과를 기록한다. 주기가 차면 그 자리에서 조정을 돌린다.
    * @returns 이번 호출로 조정이 돌았으면 true
    */
-  record(results: readonly GameAugmentResult[]): boolean {
+  record(results: readonly GameAugmentResult[], offers: GameAugmentOffers = {}): boolean {
     if (!this.loaded) return false;
+    const bump = (id: string): AugmentRecord =>
+      (this.data.records[id] ??= { games: 0, wins: 0, offered: 0, picked: 0 });
     for (const r of results) {
       // 같은 증강을 두 번 세지 않는다 (한 사람이 중복 보유할 수 있다)
       for (const id of new Set(r.augments)) {
-        const rec = this.data.records[id] ?? { games: 0, wins: 0 };
-        this.data.records[id] = {
-          games: rec.games + 1,
-          wins: rec.wins + (r.rank === 1 ? 1 : 0),
-        };
+        const rec = bump(id);
+        rec.games++;
+        if (r.rank === 1) rec.wins++;
       }
+    }
+    // 제시·선택은 **보유와 무관하게** 센다 — 안 집힌 증강의 픽률이 곧 그 증강이
+    // 얼마나 매력 없는지의 근거라, 보유자에게만 세면 분모가 사라진다.
+    for (const [id, o] of Object.entries(offers)) {
+      const rec = bump(id);
+      rec.offered = (rec.offered ?? 0) + Math.max(0, Math.trunc(o.offered));
+      rec.picked = (rec.picked ?? 0) + Math.max(0, Math.trunc(o.picked));
     }
     this.data.gamesSinceAdjust++;
 
