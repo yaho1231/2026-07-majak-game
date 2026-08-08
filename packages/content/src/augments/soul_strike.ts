@@ -51,6 +51,7 @@ import {
   defineAugment,
   handIdsOf,
   kindOf,
+  lockedDiscardIds,
   meldCountOf,
   openMeldCountOf,
   playerAtSeat,
@@ -152,6 +153,11 @@ const soulStrikeAction: ActionDef<{ tileId: TileId }> = {
     }
     const handIds = handIdsOf(state, req.player);
     if (!handIds.includes(req.payload.tileId)) return "tile not in hand";
+    // 봉인된 패는 이 리치로도 못 버린다 — 표준 리치와 같은 규칙(docs/25 방해 #2).
+    // 이 검사가 빠져 있어 봉인술사에 잠긴 패를 한 번에 털어낼 수 있었다.
+    if (lockedDiscardIds(state, rules, req.player, handIds).has(req.payload.tileId)) {
+      return "tile is sealed";
+    }
     // 텐파이는 이 증강의 발동 조건이다 — 공성계(블러프 리치)로는 발동할 수 없다.
     const after = handIds
       .filter((t) => t !== req.payload.tileId)

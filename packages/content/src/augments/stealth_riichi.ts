@@ -24,6 +24,7 @@ import {
   defineAugment,
   handIdsOf,
   kindOf,
+  lockedDiscardIds,
   openMeldCountOf,
   playerAtSeat,
   scoringOptionsOf,
@@ -111,8 +112,19 @@ const stealthRiichiAction: ActionDef<{ tileId: TileId }> = {
     ) {
       return "not enough wall tiles";
     }
-    if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
+    const handIds = handIdsOf(state, req.player);
+    if (!handIds.includes(req.payload.tileId)) {
       return "tile not in hand";
+    }
+    /*
+     * 봉인된 패는 이 리치로도 못 버린다 — 표준 리치와 같은 규칙이다
+     * (`standardActions.ts` 리치 선언, docs/25 방해 #2). 이 검사가 빠져 있어서
+     * 봉인술사에 잠긴 패를 스텔스 리치 한 번으로 털어낼 수 있었다. 리치가 걸린
+     * 뒤에는 `lockedDiscardIds`가 빈 집합을 돌려주므로 나중에 잡을 방법도 없다
+     * (2026-08-08 QA 2-9).
+     */
+    if (lockedDiscardIds(state, rules, req.player, handIds).has(req.payload.tileId)) {
+      return "tile is sealed";
     }
     /*
      * 텐파이 요구는 **규칙에서 읽는다**(`riichi.requiresTenpai`) — 표준 리치 액션과 같다.
