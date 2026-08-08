@@ -66,8 +66,37 @@ describe("증강 강도 → 점수 환율", () => {
     }
   });
 
-  it("정보 계열도 '아무것도 안 하기'보다는 값이 있다 (공짜로 보는 것은 이득이다)", () => {
-    expect(augmentPoints(BOT_WEIGHT.info, HAND)).toBeGreaterThan(EXTRA_ACTION_FLOOR);
+  /**
+   * **이 테스트는 예전에 가장 유리한 한 점만 봤다** — `HAND = 8000`, 강도는 눈금 그대로
+   * 20, 참을성 보정 없음. 그 한 점에서는 145점이 나와 문턱 60을 여유롭게 넘는다.
+   * 실제 봇이 내는 입찰은 그 점에 거의 없다: 손은 대개 8000점보다 싸고, 강도는
+   * 적기(`botPlan`)가 0.55~1.0 배로 깎고, 참을성 있는 원형은 거기에 다시 0.85를 곱한다.
+   * 그 셋을 겹치면 손 3,333점 이하에서 **입찰 전 구간이 문턱 아래**였다 —
+   * 즉 이 테스트가 지키겠다고 선언한 성질이 실제로는 거짓인 채로 통과하고 있었다.
+   *
+   * 이제 **정책이 입찰을 만드는 전 구간**을 본다. 문턱은 "그럴듯한 한 점"이 아니라
+   * 가장 불리한 구석에서 지켜져야 성질이다.
+   */
+  it("정보 계열도 '아무것도 안 하기'보다는 값이 있다 — 싼 손·어중간한 적기·참을성 있는 봇까지", () => {
+    // botPlan: weight = BOT_WEIGHT.info × (0.55 + 0.45 × 적기), 적기 문턱은 inform 0.35
+    const weightAt = (fit: number): number => BOT_WEIGHT.info * (0.55 + 0.45 * fit);
+    // BotAgent: 가장 참을성 있는 원형이 곱하는 최악의 계수 (patience = 1)
+    const PATIENT = 1.15 - 1 * 0.3;
+    for (const hand of [1000, 2000, 3000, 5000, 8000]) {
+      for (const fit of [0.35, 0.5, 0.75, 1]) {
+        expect(augmentPoints(weightAt(fit), hand) * PATIENT).toBeGreaterThan(EXTRA_ACTION_FLOOR);
+      }
+    }
+  });
+
+  it("문턱을 넘는 것이 정책의 적기 문턱과 이어져 있다 (버려지는 입찰 구간이 없다)", () => {
+    // 적기가 문턱 바로 아래면 정책이 아예 입찰을 안 만든다 — 그 아래는 검사 대상이 아니다
+    const justBelow = BOT_WEIGHT.info * (0.55 + 0.45 * 0.34);
+    const justAbove = BOT_WEIGHT.info * (0.55 + 0.45 * 0.35);
+    const PATIENT = 1.15 - 1 * 0.3;
+    expect(augmentPoints(justAbove, 1000) * PATIENT).toBeGreaterThan(EXTRA_ACTION_FLOOR);
+    // 아래쪽은 '넘어야 한다'가 아니라 '정책이 만들지 않는다'로 막힌다 — 값만 확인
+    expect(augmentPoints(justBelow, 1000)).toBeLessThan(augmentPoints(justAbove, 1000));
   });
 
   it("화료급 발동은 손 값어치에 맞먹는 무게가 된다", () => {

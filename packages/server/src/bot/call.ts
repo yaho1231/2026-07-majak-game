@@ -395,9 +395,15 @@ function openRisk(read: BotRead): number {
  * 그 차이가 그대로 두 지평의 차이다 — 뺄셈으로 남는 `OPEN_HORIZON − PASS_HORIZON`이
  * "손을 여는 것의 **추가** 비용"이고, 예전 모형은 그 추가 비용을 절대 비용으로
  * 잘못 물리고 있었다.
+ *
+ * ## 채택 (2026-08-08, 300배패 2:2 듀플리케이트)
+ *
+ * `passrisk` 스위치 뒤에 두고 쟀다. 강함은 **바뀌지 않았다** —
+ * 순위 −0.0017 ± 0.0310 · 점수 +230 ± 677 (둘 다 판수 부족). 대신 겨냥한 것이 움직였다:
+ * **후로율 16.0% → 17.8%**, 방총률 11.71% → 11.58%. 강함을 잃지 않고 모형이 옳아졌으므로
+ * 스위치를 지우고 새 방식만 남긴다(`bot/flags.ts` — 스위치는 임시 비계다).
  */
 function passRisk(read: BotRead): number {
-  if (!read.flags.has("passrisk")) return 0;
   return handRisk(read, PASS_HORIZON);
 }
 

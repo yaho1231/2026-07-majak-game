@@ -85,7 +85,8 @@ describe("수비 — 남이 리치를 걸면 접는다", () => {
   });
 
   it("위협이 없으면 같은 손에서 효율대로 버린다 (접는 게 아니라 미는 게 기본)", () => {
-    const scene = botScene({ hand: FAR_HAND, discards: { p1: "9m" }, turnCount: 10 });
+    // 1순 — 다마텐 경사(2순부터 자란다)조차 아직 0인 유일한 구간이다
+    const scene = botScene({ hand: FAR_HAND, discards: { p1: "9m" }, turnCount: 1 });
     const read = buildRead(scene.view, "p0");
     expect(read.threat).toBe(0);
     const picked = chooseDiscard(read, scene.discardOptions(), null, profile());
@@ -149,17 +150,27 @@ describe("리치 — 걸 만할 때만 건다", () => {
     expect(chooseRiichi(read, scene.riichiOptions(), profile())).toBeNull();
   });
 
-  it("올라스 선두는 고타점이라도 다마텐으로 조용히 끝낸다", () => {
-    // 남4국(올라스), 나 혼자 12000점 앞선다. 여기서 추가 점수는 순위를 바꾸지 않는다 —
-    // 이기고 있는 사람이 원하는 건 **국이 조용히 끝나는 것**이다. 리치는 1000점을 내고
-    // 손을 고정시켜 남은 순의 위험패를 전부 통과시키는 거래인데, 살 이유가 없다.
+  /**
+   * 2026-08-08: 순위 압박이 **사다리 전체**를 보게 되면서(`bot/match.ts`) 이 두 장면의
+   * 자리가 서로 바뀌었다. 예전 식은 바로 아래 한 칸과의 차이를 9000점에서 포화시켜서
+   * **차가 클수록 더 지키라**고 답했다 — 4000점 선두(정말 위태롭다)보다 12000점 선두를
+   * 더 무서워한 것이다. 지금은 "저 사람이 나를 넘을 수 있는가"로 재므로 순서가 뒤집힌다.
+   *
+   *   - +4000 올라스 선두 → 압박 최대(−1.0). 한 국에 뒤집히는 거리라 성격도 못 뒤집는다.
+   *   - +12000 올라스 선두 → 압박 −0.775. 편안하지만 안심할 정도는 아닌 어중간한 자리라,
+   *     여기서 성격이 갈린다(리치 5426 대 다마 5393 — 0.6% 차이의 저울질이다).
+   */
+  it("아슬아슬한 올라스 선두는 고타점이라도 다마텐으로 조용히 끝낸다", () => {
+    // 남4국(올라스), 4000점 선두 — 싸구려 하나에도 뒤집힌다. 이기고 있는 사람이 원하는 건
+    // **국이 조용히 끝나는 것**이다. 리치는 1000점을 내고 손을 고정시켜 남은 순의 위험패를
+    // 전부 통과시키는 거래인데, 살 이유가 없다.
     const allLastLead = {
       hand: "333m456m789m11p56s1z",
       doraIndicator: "2m",
       turnCount: 5,
       prevalentWind: 2,
       roundNumber: 4,
-      scores: { p0: 37000, p1: 25000, p2: 20000, p3: 18000 },
+      scores: { p0: 29000, p1: 25000, p2: 24000, p3: 22000 },
     } as const;
     const scene = botScene(allLastLead);
     const read = buildRead(scene.view, "p0");
@@ -172,15 +183,15 @@ describe("리치 — 걸 만할 때만 건다", () => {
   });
 
   it("압박이 어중간하면 성격이 리치를 가른다 (성격은 규칙이 아니라 저울)", () => {
-    // 같은 올라스지만 선두 차가 4000점뿐 — 지켜야 할 것도 있고 벌어야 할 것도 있다.
-    // 이 어중간한 자리에서 무조건 리치파와 다마텐파가 갈린다.
+    // 같은 올라스지만 선두 차가 12000점 — 넉넉하되 만관 직격 한 방 거리다.
+    // 지켜야 할 것도 있고 벌어야 할 것도 있는 이 자리에서 무조건 리치파와 다마텐파가 갈린다.
     const scene = botScene({
       hand: "333m456m789m11p56s1z",
       doraIndicator: "2m",
       turnCount: 5,
       prevalentWind: 2,
       roundNumber: 4,
-      scores: { p0: 29000, p1: 25000, p2: 24000, p3: 22000 },
+      scores: { p0: 37000, p1: 25000, p2: 20000, p3: 18000 },
     });
     const read = buildRead(scene.view, "p0");
     expect(chooseRiichi(read, scene.riichiOptions(), profile({ riichiLoose: 0.4 }))).toBeNull();
@@ -290,8 +301,19 @@ describe("판 읽기", () => {
     expect(read.remainingOf(h("7s")[0]!)).toBe(4);
   });
 
+  /**
+   * 이 테스트는 이름과 달리 **조용한 판의 위협이 0인지**만 봤다(후로 쪽을 아예 안 세웠다).
+   * 2026-08-08에 다마텐 경사를 채택하면서 그 0이 깨졌는데, 그 김에 이름이 말하는 것을
+   * 실제로 재게 고친다 — 후로가 늘면 위협이 오르는가.
+   */
   it("후로가 늘어난 상대는 리치가 없어도 경계한다", () => {
-    const quiet = buildRead(botScene({ hand: "123m456m789m11p56s" }).view, "p0");
-    expect(quiet.threat).toBe(0);
+    const hand = "123m456m789m11p56s";
+    const quiet = buildRead(botScene({ hand }).view, "p0");
+    const one = buildRead(botScene({ hand, oppMelds: { p1: ["555s"] } }).view, "p0");
+    const two = buildRead(botScene({ hand, oppMelds: { p1: ["555s", "222p"] } }).view, "p0");
+    // 조용한 멘젠 상대에게도 다마텐 몫이 붙지만, 후로 손보다는 언제나 낮다
+    expect(quiet.threat).toBeGreaterThan(0);
+    expect(one.threat).toBeGreaterThan(quiet.threat);
+    expect(two.threat).toBeGreaterThan(one.threat);
   });
 });
