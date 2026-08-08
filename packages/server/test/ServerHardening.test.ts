@@ -110,6 +110,44 @@ async function roomWithBots(sock: FakeSocket): Promise<string> {
   return code;
 }
 
+/**
+ * 드래프트가 있으면 첫 카드로 넘기면서 뷰가 나올 때까지 기다린다.
+ * `wantHandOf`를 주면 그 좌석의 손패가 **실제로 채워진** 뷰까지 기다린다
+ * (배패 전 첫 뷰는 손패가 비어 있다).
+ */
+async function playUntilView(
+  sock: FakeSocket,
+  wantHandOf?: string,
+  timeoutMs = 20_000,
+): Promise<any> {
+  const deadline = Date.now() + timeoutMs;
+  let lastOffer: unknown = null;
+  while (Date.now() < deadline) {
+    const view = sock.last("view");
+    if (view !== undefined && (wantHandOf === undefined || myHandIds(view, wantHandOf).length > 3)) {
+      return view;
+    }
+    const offer = sock.last("draftOffer");
+    if (offer !== undefined && offer !== lastOffer) {
+      lastOffer = offer;
+      sock.clientSend({ type: "draftPick", stage: offer.stage, augmentId: offer.choices[0].id });
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error("view가 오지 않았다");
+}
+
+/** 이 뷰에서 그 좌석 손패 zone의 tileId 목록. */
+function myHandIds(view: any, playerId: string): number[] {
+  const zone = Object.values(view.view.zones as Record<string, any>).find(
+    (z: any) => z.kind === "hand" && z.owner === playerId,
+  );
+  return [...((zone as any)?.tileIds ?? [])];
+}
+
+const countViews = (sock: FakeSocket): number =>
+  sock.sent.filter((m) => m.type === "view").length;
+
 afterEach(async () => {
   for (const m of managers.splice(0)) m.stop();
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
@@ -280,4 +318,84 @@ describe("경계 검증·기록 원자성", () => {
     ).toThrow();
     expect(db.listAllGames().length).toBe(before);
   });
+});
+
+describe("handOrder 증폭 — 좌석 하나가 방 전체를 렉 걸 수 없다", () => {
+  it(
+    "번갈아 보낸 배치 폭주는 좌석당 초당 몇 번으로 접히고, 마지막 배치는 반영된다",
+    async () => {
+      const h = await newHarness();
+      const sock = await register(h, "Flood");
+      await roomWithBots(sock);
+      sock.clientSend({ type: "startGame" });
+      const me = sock.last("joined").playerId as string;
+      const view = await playUntilView(sock, me);
+      const orderA = myHandIds(view, me);
+      expect(orderA.length).toBeGreaterThan(3);
+      const orderB = [...orderA].reverse();
+
+      const before = countViews(sock);
+      // 토큰 버킷 한도(80)를 꽉 채워 두 배치를 번갈아 밀어 넣는다.
+      // 예전에는 `setHandOrder`가 **똑같은 반복**만 걸러서 80개가 전부 통과했다.
+      for (let i = 0; i < 80; i++) {
+        sock.clientSend({ type: "handOrder", tileIds: i % 2 === 0 ? orderA : orderB });
+      }
+      const burst = countViews(sock) - before;
+      expect(burst).toBeLessThanOrEqual(1);
+
+      // 마지막 배치(orderB)는 반드시 도착해야 한다 — 버리면 남의 화면이 어긋난다.
+      await sock.waitFor(
+        (m) => m.type === "view" && myHandIds(m, me).join(",") === orderB.join(","),
+        3_000,
+      );
+      // 폭주 전체가 만든 브로드캐스트는 손에 꼽는다 (예전엔 80회).
+      expect(countViews(sock) - before).toBeLessThanOrEqual(3);
+      h.rm.shutdown();
+    },
+    30_000,
+  );
+});
+
+describe("진행 중 재접속 — 예전 탭이 남의 자리를 포기시킬 수 없다", () => {
+  it(
+    "두 번째 탭이 좌석을 가져가면 첫 탭의 나가기·중단 투표는 그 좌석에 닿지 않는다",
+    async () => {
+      const h = await newHarness();
+      const tab1 = await register(h, "TwoTabs");
+      const token = tab1.last("authOk").sessionToken as string;
+      const code = await roomWithBots(tab1);
+      tab1.clientSend({ type: "startGame" });
+      await playUntilView(tab1);
+
+      // 두 번째 탭 — 끊지 않고 그대로 같은 방에 들어간다
+      const tab2 = new FakeSocket();
+      h.rm.handleConnection(tab2.asWs());
+      tab2.clientSend({ type: "tokenLogin", sessionToken: token });
+      await tab2.waitFor((m) => m.type === "authOk");
+      tab2.clientSend({ type: "joinRoom", code });
+      await tab2.waitFor((m) => m.type === "joined");
+
+      // 첫 탭이 "나가기" — 예전에는 여기서 두 번째 탭 사람의 좌석이 포기됐다
+      tab1.clientSend({ type: "leaveRoom" });
+      tab1.clientSend({ type: "voteAbort", vote: "agree" });
+
+      // 좌석은 살아 있다: 게임은 여전히 진행 중이고 중단되지 않았다
+      expect(h.rm.healthSnapshot().playing).toBe(1);
+      expect(tab2.has((m) => m.type === "gameAborted")).toBe(false);
+
+      // 그리고 결정적으로: 이 계정은 아직 이 방에 들어올 수 있다.
+      // (포기된 좌석이었다면 ROOM_PLAYING으로 영영 잠긴다.)
+      const tab3 = new FakeSocket();
+      h.rm.handleConnection(tab3.asWs());
+      tab3.clientSend({ type: "tokenLogin", sessionToken: token });
+      await tab3.waitFor((m) => m.type === "authOk");
+      tab3.clientSend({ type: "joinRoom", code });
+      await tab3.waitFor((m) => m.type === "joined" || m.type === "error");
+      expect(tab3.last("error")?.code).not.toBe("ROOM_PLAYING");
+      expect(tab3.last("joined")).toBeDefined();
+
+      h.rm.shutdown();
+    },
+    30_000,
+  );
 });

@@ -91,6 +91,28 @@ function buildAugmentCatalog(): AugmentCatalogEntry[] {
  */
 const MAX_HAND_ORDER = 24;
 
+/**
+ * 한 좌석이 손패 배치를 다시 뿌릴 수 있는 최소 간격(ms).
+ *
+ * `setHandOrder`는 **완전히 같은** 배치만 걸러낸다 — 두 배치를 번갈아 보내면
+ * 전부 통과해서, 40msg/s 버킷을 꽉 채운 소켓 하나가 초당 ~160회 4좌석 뷰 생성 +
+ * ~160프레임을 방 전체에 밀어 넣었다. `handOrder`는 게스트에게도 열려 있어
+ * **계정 없이** 같은 방 사람들을 리렌더 폭풍에 빠뜨릴 수 있었다.
+ *
+ * 사람이 패를 끌어다 놓는 속도에는 250ms면 넉넉하고, 폭주는 초당 4회로 접힌다.
+ */
+const HAND_ORDER_MIN_INTERVAL_MS = 250;
+
+/** 좌석 하나의 손패 배치 스로틀 상태. */
+interface HandOrderThrottle {
+  /** 실제로 컨트롤러에 반영한 마지막 시각(ms). */
+  lastAt: number;
+  /** 대기 중인 마무리 반영 타이머 (없으면 null). */
+  timer: ReturnType<typeof setTimeout> | null;
+  /** 아직 반영되지 않은 **가장 최근** 배치. 마지막 배치는 반드시 도착해야 한다. */
+  pending: number[] | null;
+}
+
 type RoomPhase = "waiting" | "playing";
 
 /**
@@ -189,6 +211,11 @@ interface Room {
    * 아니므로, 긴 반장전이 도중에 지워질 일은 없다.
    */
   lastActivityAt: number;
+  /**
+   * 좌석별 손패 배치 스로틀 상태 (`HAND_ORDER_MIN_INTERVAL_MS` 참고).
+   * 방이 사라져도 남은 타이머는 한 번 깨어나 자기 방이 아직 살아 있는지 보고 그만둔다.
+   */
+  handOrderThrottle: Map<PlayerId, HandOrderThrottle>;
 }
 
 /** 연결 1개의 상태 — 인증·방 참가·관전을 소켓 단위로 추적한다 */
@@ -1071,7 +1098,7 @@ export class RoomManager {
         // 증강 테스트에서 다른 좌석 시점을 보고 있으면 화면에 뜬 손패도 그 좌석의 것이다 —
         // 배치는 **지금 보고 있는 좌석**에 붙여야 맞다 (전체공개 시점은 클라이언트가 안 보낸다).
         const seat = conn.agent.viewSeatOverride?.() ?? conn.agent.id;
-        conn.room.controller?.setHandOrder(seat, ids);
+        this.applyHandOrder(conn.room, seat, ids);
         return;
       }
       // ── 게임 액션 · 결과 화면 닫기 ──
@@ -1372,6 +1399,61 @@ export class RoomManager {
     return agent instanceof HumanAgent && !agent.isAbandoned && agent.nickname === username;
   }
 
+  /**
+   * 손패 배치를 좌석당 `HAND_ORDER_MIN_INTERVAL_MS` 간격으로 눌러서 반영한다.
+   *
+   * 첫 배치는 곧바로 반영해 끌어다 놓는 손맛을 유지하고, 그 뒤 창 안에 들어온
+   * 것들은 **가장 마지막 하나만** 남겨 창이 끝날 때 한 번 더 반영한다. 그래서
+   * 아무리 빠르게 밀어 넣어도 브로드캐스트는 초당 4회로 접히지만, 최종 배치는
+   * 언제나 도착한다 — 마지막 것을 버리면 다른 사람 화면의 내 손패가 어긋난다.
+   */
+  private applyHandOrder(room: Room, seat: PlayerId, ids: number[]): void {
+    let st = room.handOrderThrottle.get(seat);
+    if (st === undefined) {
+      st = { lastAt: 0, timer: null, pending: null };
+      room.handOrderThrottle.set(seat, st);
+    }
+    const now = Date.now();
+    const wait = HAND_ORDER_MIN_INTERVAL_MS - (now - st.lastAt);
+    if (wait <= 0 && st.timer === null) {
+      st.lastAt = now;
+      room.controller?.setHandOrder(seat, ids);
+      return;
+    }
+    // 창 안 — 최신 배치만 들고 있다가 창이 끝나면 그것 하나만 반영한다.
+    st.pending = ids;
+    if (st.timer !== null) return;
+    const state = st;
+    const timer = setTimeout(() => {
+      state.timer = null;
+      const next = state.pending;
+      state.pending = null;
+      if (next === null) return;
+      state.lastAt = Date.now();
+      // 기다리는 사이에 방이 사라졌을 수 있다 (게임 종료·청소).
+      if (this.rooms.get(room.code) !== room) return;
+      room.controller?.setHandOrder(seat, next);
+    }, Math.max(wait, 0));
+    // 이 타이머가 프로세스를 붙들어 둘 이유는 없다.
+    timer.unref?.();
+    state.timer = timer;
+  }
+
+  /**
+   * 이 좌석을 붙들고 있던 **다른** 연결들에서 좌석을 떼어낸다 (`keep`은 남긴다).
+   *
+   * 한 좌석은 언제나 연결 하나만 몰아야 한다. 안 그러면 나가기·중단 투표 같은
+   * "좌석 단위" 행동을 유령이 된 예전 탭이 대신 저질러 버린다.
+   */
+  private detachStaleConns(agent: HumanAgent, keep: Conn): void {
+    for (const c of this.conns) {
+      if (c.agent === agent && c !== keep) {
+        c.room = null;
+        c.agent = null;
+      }
+    }
+  }
+
   /** 이 좌석을 지금 붙들고 있는 연결 (없으면 null). */
   private connOf(agent: HumanAgent): Conn | null {
     for (const c of this.conns) {
@@ -1497,6 +1579,7 @@ export class RoomManager {
       sandboxControl: true,
       sandboxRestarting: false,
       lastActivityAt: Date.now(),
+      handOrderThrottle: new Map(),
     };
     this.rooms.set(code, room);
     return room;
@@ -1533,6 +1616,14 @@ export class RoomManager {
       if (mine === undefined) {
         return this.fail(conn, "ROOM_PLAYING", "이미 게임이 시작된 방입니다");
       }
+      // 이 좌석을 아직 붙들고 있는 **예전 연결**을 먼저 떼어낸다.
+      //
+      // 대기실 경로(`reseat`)는 이걸 하는데 여기만 빠져 있어서, 두 번째 탭으로
+      // 들어오면 소켓 둘이 한 좌석을 몰았다. 예전 탭에서 "나가기"를 누르면
+      // 그쪽 `conn.agent.abandon()`이 **지금 앉아 있는 사람의 자리**를 포기시키고,
+      // 포기한 좌석은 재접속이 막혀(`ROOM_PLAYING`) 그 사람이 영영 못 들어왔다.
+      // 중단 투표도 예전 탭이 그 좌석 이름으로 던질 수 있었다.
+      this.detachStaleConns(mine, conn);
       // 증강 테스트 방이면, 뷰·프롬프트 복원 전에 sandbox 패널 상태를 먼저 보낸다
       // (sandbox 메시지가 클라이언트에서 프롬프트를 초기화하므로 순서가 중요하다).
       mine.reconnect(conn.ws, room.sandbox ? () => this.sendSandboxState(room) : undefined);
@@ -1578,11 +1669,7 @@ export class RoomManager {
    * 클라이언트가 방 상태만 잃었을 때 코드로 다시 들어오면 여기로 온다.
    */
   private reseat(conn: Conn, room: Room, agent: HumanAgent): void {
-    const prev = this.connOf(agent);
-    if (prev !== null && prev !== conn) {
-      prev.room = null;
-      prev.agent = null;
-    }
+    this.detachStaleConns(agent, conn);
     agent.reconnect(conn.ws);
     conn.room = room;
     conn.agent = agent;
