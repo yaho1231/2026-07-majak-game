@@ -389,6 +389,20 @@ const ACTION_AUGMENT: Record<string, string> = {
   joker_call: "joker",
 };
 
+/**
+ * 액티브 액션 타입 → 화면에 쓸 이름. 카탈로그(서버가 보내는 증강 정의)의 증강 이름을
+ * 우선 쓰고, 매칭이 없으면 액션 라벨로 떨어진다.
+ */
+function augActionName(
+  catalog: Record<string, AugmentCatalogEntry>,
+  type: string,
+): string {
+  const augId = ACTION_AUGMENT[type];
+  return (
+    (augId !== undefined ? catalog[augId]?.name : undefined) ?? ACTION_LABEL[type] ?? type
+  );
+}
+
 /** 플레이어가 버튼으로 발동하는 액티브 증강 액션 타입 (타일 클릭 액션은 제외). */
 const AUGMENT_ACTION_TYPES = new Set([
   "recall",
@@ -635,8 +649,18 @@ function armModeOf(type: string): ArmMode | undefined {
  * 이 액션들은 결국 "이 패를 버리며 리치를 건다"라서, 평소 리치와 손놀림이 같아야 한다 —
  * 액티브 버튼 → 손패를 바닥으로 드래그. 클릭 발동도 그대로 남긴다(둘 다 된다).
  * (2026-08-01 사용자 요청: 오픈 리치·스텔스 리치를 드래그로도 걸 수 있게)
+ * (2026-08-08 사용자 요청: 영혼의 일격도 리치 선언이라 같은 손놀림으로 — 여기 빠져 있었다)
+ *
+ * 이 집합은 곧 **증강 리치 목록**이기도 하다 — 액션 바가 평소 [리치] 버튼 옆에
+ * 이 액션들을 나란히 띄운다(`ActionBar`). 예전엔 "✦ 액티브 증강" 메뉴 안에만 있어서
+ * 쓸 수 있는 줄 모르고 그냥 리치를 걸어 버렸다(2026-08-08 사용자 보고).
  */
-const DRAG_DISCARD_ARM_TYPES = new Set(["open_riichi", "stealth_riichi", "all_in_riichi"]);
+const DRAG_DISCARD_ARM_TYPES = new Set([
+  "open_riichi",
+  "stealth_riichi",
+  "all_in_riichi",
+  "soul_strike",
+]);
 
 function armPromptText(mode: ArmMode | null, type?: string | null): string {
   if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
@@ -10808,10 +10832,18 @@ function OwnArea(props: {
       {canDropDiscard ? (
         <div
           ref={dropzoneRef}
-          className={`discard-dropzone${drag?.overDiscard === true ? " discard-dropzone-over" : ""}`}
+          className={`discard-dropzone${drag?.overDiscard === true ? " discard-dropzone-over" : ""}${
+            props.riichiMode || (armedAug !== null && DRAG_DISCARD_ARM_TYPES.has(armedAug))
+              ? " discard-dropzone-riichi"
+              : ""
+          }`}
         >
           <span className="discard-dropzone-label">
-            {armedAug !== null ? `✦ 여기에 놓아 ${armName}` : "🀫 여기에 놓아 버리기"}
+            {armedAug !== null
+              ? `✦ 여기에 놓아 ${armName}`
+              : props.riichiMode
+                ? "⚡ 여기에 놓아 리치"
+                : "🀫 여기에 놓아 버리기"}
           </span>
         </div>
       ) : null}
@@ -11024,7 +11056,12 @@ function OwnArea(props: {
                 key={id}
                 className={`hand-tile${clickable ? " hand-clickable" : " hand-locked"}${
                   dimmed ? " hand-dimmed" : ""
-                }${props.riichiMode && riichi !== undefined ? " hand-riichi" : ""}${
+                }${
+                  (props.riichiMode && riichi !== undefined) ||
+                  (armable && armedAug !== null && DRAG_DISCARD_ARM_TYPES.has(armedAug))
+                    ? " hand-riichi"
+                    : ""
+                }${
                   isDrawn ? " hand-drawn" : ""
                 }${freeDiscard !== undefined && discard === undefined ? " hand-free" : ""}${
                   drag?.id === id && drag.moved ? " hand-dragging" : ""
@@ -11726,10 +11763,7 @@ function ActiveAugmentControl(props: {
   // (byType에는 남아 있어 모달이 후보를 골라 제출한다.)
   const types = [...byType.keys()].filter((t) => t !== "foresight_order");
 
-  const augNameFor = (type: string): string => {
-    const augId = ACTION_AUGMENT[type];
-    return (augId ? props.catalog[augId]?.name : undefined) ?? ACTION_LABEL[type] ?? type;
-  };
+  const augNameFor = (type: string): string => augActionName(props.catalog, type);
 
   // 손패·상대·바닥을 '클릭'해 발동하는 액션 — 버튼 목록 대신 선택 모드(무장)로 넘긴다.
   const armType = (t: string): boolean => armModeOf(t) !== undefined;
@@ -12391,8 +12425,24 @@ function ActionBar(props: {
   onSubmit: (o: ActionOption) => void;
 }): JSX.Element | null {
   const { view, prompt } = props;
+  const sel = useContext(SelectionContext);
   const hasRiichi = prompt.options.some((o) => o.type === "riichi");
   const isMyTurn = view.round.phase === "turn.act";
+  /*
+   * 증강 리치(오픈 리치·스텔스 리치·올인 리치·영혼의 일격)를 **[리치] 바로 옆**에 띄운다.
+   *
+   * 여태 이것들은 "✦ 액티브 증강" 버튼 → 메뉴 → 선택 안에만 있었다. 리치를 걸 수 있는
+   * 순간에 눈이 가는 곳은 액션 바인데 거기엔 평범한 [리치]밖에 없어서, 증강을 들고도
+   * 모른 채 그냥 리치를 걸어 버렸다(2026-08-08 사용자 보고). 액티브 증강 메뉴에서도
+   * 그대로 고를 수 있다 — 여기 나오는 건 같은 액션으로 가는 지름길이다.
+   */
+  const riichiAugTypes = [
+    ...new Set(
+      prompt.options.filter((o) => DRAG_DISCARD_ARM_TYPES.has(o.type)).map((o) => o.type),
+    ),
+  ];
+  const armedRiichiAug =
+    sel.armedType !== null && DRAG_DISCARD_ARM_TYPES.has(sel.armedType) ? sel.armedType : null;
   // 타일 클릭으로 처리되는 액션과 액티브 증강(전용 버튼)은 액션 바에서 제외
   const buttons = prompt.options.filter(
     (o) =>
@@ -12401,7 +12451,13 @@ function ActionBar(props: {
       o.type !== "free_discard" &&
       !AUGMENT_ACTION_TYPES.has(o.type),
   );
-  if (buttons.length === 0 && !hasRiichi) return null;
+  if (buttons.length === 0 && !hasRiichi && riichiAugTypes.length === 0) return null;
+
+  /** 증강 리치 무장 — 이미 그 증강으로 무장 중이면 해제(토글). 리치 모드는 함께 푼다. */
+  const armRiichiAug = (type: string): void => {
+    props.onRiichiMode(false);
+    sel.arm(sel.armedType === type ? null : type);
+  };
 
   /*
    * 단축키 — 여태 게임을 키보드로 두는 길이 아예 없었다(포커스 표시조차 없었다).
@@ -12417,29 +12473,66 @@ function ActionBar(props: {
   const keyed: { key: string; run: () => void }[] = [];
   if (props.riichiMode) {
     keyed.push({ key: "1", run: () => props.onRiichiMode(false) });
+    // 리치 모드에서도 증강 리치로 갈아탈 수 있게 — 취소하고 다시 찾을 필요가 없다.
+    for (const t of riichiAugTypes) {
+      keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
+    }
   } else {
     if (hasRiichi) keyed.push({ key: "1", run: () => props.onRiichiMode(true) });
+    for (const t of riichiAugTypes) {
+      keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
+    }
     for (const o of buttons) keyed.push({ key: String(keyed.length + 1), run: () => props.onSubmit(o) });
   }
-  const hotIndex = (i: number): string => String((hasRiichi ? 1 : 0) + i + 1);
+  const hotIndex = (i: number): string =>
+    String((hasRiichi ? 1 : 0) + riichiAugTypes.length + i + 1);
 
   return (
     <div className="action-bar">
       <ActionHotkeys keyed={keyed} buttons={buttons} riichiMode={props.riichiMode} />
       {props.riichiMode ? (
         <>
-          <span className="action-hint">리치할 패를 선택하세요</span>
+          <span className="action-hint">리치할 패를 바닥으로 끌어 놓거나 클릭하세요</span>
           <button className="act act-cancel" onClick={() => props.onRiichiMode(false)} title="취소 — 단축키 1">
             취소
           </button>
+          {/* 그냥 리치를 걸려던 손을 여기서 한 번 더 붙잡는다 — 증강 리치가 있다는 걸
+              가장 늦게 알려 줄 수 있는 자리다. */}
+          {riichiAugTypes.map((t, i) => (
+            <button
+              key={t}
+              className="act act-riichi-aug"
+              onClick={() => armRiichiAug(t)}
+              title={`${augActionName(props.catalog, t)}(으)로 바꿔 걸기 — 단축키 ${i + 2}`}
+            >
+              ⚡ {augActionName(props.catalog, t)}
+            </button>
+          ))}
         </>
       ) : (
         <>
           {hasRiichi ? (
-            <button className="act act-riichi" onClick={() => props.onRiichiMode(true)} title="리치 — 단축키 1">
+            <button
+              className="act act-riichi"
+              onClick={() => {
+                sel.arm(null); // 증강 리치로 무장 중이었다면 풀고 평범한 리치로
+                props.onRiichiMode(true);
+              }}
+              title="리치 — 단축키 1"
+            >
               리치
             </button>
           ) : null}
+          {riichiAugTypes.map((t, i) => (
+            <button
+              key={t}
+              className={`act act-riichi-aug${armedRiichiAug === t ? " act-riichi-aug-on" : ""}`}
+              onClick={() => armRiichiAug(t)}
+              title={`${augActionName(props.catalog, t)} — 버릴 패를 바닥으로 끌어 놓거나 클릭 (단축키 ${(hasRiichi ? 1 : 0) + i + 1})`}
+            >
+              ⚡ {augActionName(props.catalog, t)}
+            </button>
+          ))}
           {buttons.map((o, i) => {
             const label =
               o.type === "win" ? (isMyTurn ? "쯔모" : "론") : (ACTION_LABEL[o.type] ?? props.catalog[o.type]?.name ?? o.type);
