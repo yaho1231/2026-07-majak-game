@@ -20,6 +20,7 @@ import type { TileId, TileKind } from "../src/mahjong/tiles/Tile.js";
 import {
   buildPlayerView,
   defineVisibilityRules,
+  isConcealedTileId,
   SPECTATOR_ID,
 } from "../src/information/PlayerView.js";
 import type { VisibilityRule } from "../src/information/PlayerView.js";
@@ -810,5 +811,93 @@ describe("쯔모패와 버림 자리 — 상대·관전자도 읽을 수 있어�
     expect(
       buildPlayerView(moved, "p1", rules, { lastDiscardFrom: origin }).round.lastDiscardFrom,
     ).toBeNull();
+  });
+});
+
+// ────────────── §12 가려진 도라 × 왕패 열람 — 자리는 맞고 정체는 가려진다 ──────────────
+
+/**
+ * 가려진 도라(dora_conceal)는 왕패를 여는 증강(왕패의 주인·이면투시 등)의 뷰에서
+ * **도라 표시패 실물**도 가려야 한다. 예전에는 배열에서 통째로 뺐는데, 왕패는
+ * 자리 번호가 곧 의미(0번=다음 영상패, 뒤 10장=표시패 블록)이고 왕패의 주인이
+ * 그 자리 번호를 그대로 서버에 보낸다 — 표시패 뒤의 모든 자리가 한 칸씩 밀려
+ * 화면에서 고른 것과 **다른 패**가 교환됐다(docs/28 §2-9).
+ *
+ * 지금은 자리표(음수 id)로 치환한다: 자리는 맞고, 정체는 여전히 전선에 없다.
+ */
+describe("PlayerView — 가려진 도라 × 왕패 열람", () => {
+  /** 왕패가 p0에게 전부 보이고, 그 p0에게만 도라 표시패가 가려진 규칙 */
+  function concealRules(): RuleRegistry {
+    const rules = makeRules();
+    rules.addModifier<VisibilityRule>("visibility.deadWall", {
+      source: "aug:p0:dead_wall_master",
+      layer: RuleLayer.Gold,
+      apply: (current, ctx) => (ctx.playerId === "p0" ? "public" : current),
+    });
+    rules.addModifier<boolean>("visibility.doraIndicators.hidden", {
+      source: "aug:p1:dora_conceal",
+      layer: RuleLayer.Silver,
+      apply: (current, ctx) => (ctx.playerId === "p0" ? true : current),
+    });
+    return rules;
+  }
+
+  it("왕패 뷰의 자리 수와 자리별 정렬이 실제 왕패와 같다", () => {
+    const state = makeState();
+    const real = state.zones[DEAD_WALL]?.tileIds ?? [];
+    const indicators = new Set(state.round.doraIndicators);
+    expect(indicators.size).toBeGreaterThan(0);
+
+    const view = buildPlayerView(state, "p0", concealRules());
+    const seen = view.zones[DEAD_WALL]?.tileIds ?? [];
+
+    // 자리 수가 같다 — 예전에는 표시패 수만큼 짧아져 뒷자리가 전부 밀렸다
+    expect(seen).toHaveLength(real.length);
+    for (const [i, id] of real.entries()) {
+      if (indicators.has(id)) {
+        expect(isConcealedTileId(seen[i] as TileId)).toBe(true);
+      } else {
+        expect(seen[i]).toBe(id);
+      }
+    }
+    // 장수 계산(tileIds + hiddenCount)도 실제 왕패 장수 그대로
+    expect(seen.length + (view.zones[DEAD_WALL]?.hiddenCount ?? 0)).toBe(real.length);
+  });
+
+  it("가려진 표시패의 정체는 뷰 어디에서도 유도할 수 없다", () => {
+    const state = makeState();
+    const view = buildPlayerView(state, "p0", concealRules());
+    const hiddenIds = state.round.doraIndicators;
+    expect(hiddenIds.length).toBeGreaterThan(0);
+
+    for (const id of hiddenIds) {
+      // ① 진짜 tile id가 뷰 어느 Zone에도 실려 있지 않다
+      //    (id는 덱 생성 순서라 그 자체로 종류를 드러낸다 — buildStandardTileSet)
+      for (const zone of Object.values(view.zones)) {
+        expect(zone.tileIds).not.toContain(id);
+      }
+      // ② tiles 맵에도 없다 → 종류·적도라 여부 어느 것도 알 수 없다
+      expect(view.tiles[id]).toBeUndefined();
+      // ③ RoundView의 도라 표시패 목록에서도 빠져 있다
+      expect(view.round.doraIndicators).not.toContain(id);
+      // ④ 직렬화한 전선 어디에도 그 id가 없다
+      expect(JSON.stringify(view)).not.toContain(`"id":${id},`);
+    }
+    // 자리표 id 역시 tiles 맵에 없다 (뒷면으로 그려질 뿐)
+    for (const seen of view.zones[DEAD_WALL]?.tileIds ?? []) {
+      if (isConcealedTileId(seen)) expect(view.tiles[seen]).toBeUndefined();
+    }
+  });
+
+  it("가려진 도라가 없는 뷰어는 왕패를 예전 그대로 본다", () => {
+    const state = makeState();
+    const rules = makeRules();
+    rules.addModifier<VisibilityRule>("visibility.deadWall", {
+      source: "aug:p0:dead_wall_master",
+      layer: RuleLayer.Gold,
+      apply: (current, ctx) => (ctx.playerId === "p0" ? "public" : current),
+    });
+    const view = buildPlayerView(state, "p0", rules);
+    expect(view.zones[DEAD_WALL]?.tileIds).toEqual(state.zones[DEAD_WALL]?.tileIds);
   });
 });

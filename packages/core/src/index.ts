@@ -94,6 +94,7 @@ export {
   SYSTEM_PLAYER,
   buildWinContext,
   isFuriten,
+  isFuritenAsRon,
   isRunQuad,
   sealedDiscardIds,
   lockedDiscardIds,
@@ -307,6 +308,9 @@ export {
   arrangeHandForDisplay,
   defineVisibilityRules,
   visibleTileIdsIn,
+  isConcealedTileId,
+  concealedTileIdAt,
+  CONCEALED_TILE_ID_BASE,
   SPECTATOR_ID,
 } from "./information/PlayerView.js";
 export type {
