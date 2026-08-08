@@ -495,10 +495,32 @@ export function installAugment(
             !held.has(d.id) &&
             !forbidden.has(d.id) &&
             !(d.conflicts ?? []).some((c) => held.has(c)) &&
-            (d.modes === undefined || d.modes.includes(mode)),
+            (d.modes === undefined || d.modes.includes(mode)) &&
+            // 드래프트 스테이지 제한을 지킨다. `DraftController`는 이걸 보는데
+            // 여기서만 빠져 있어, 수상한 주사위가 **게임 시작 전용** 증강(마왕의
+            // 진군 등)을 남3국에 뿌렸다 — "앞당겨 받는 10,000점"이 대가 없는
+            // +10,000이 됐다(2026-08-08 QA §2-9).
+            (d.draftStages === undefined || d.draftStages.includes("gameStart")),
         );
       const chosen = pick(available);
-      const augmentIds = [...new Set(chosen.map((d) => d.id))];
+      /*
+       * 준 것들끼리도 상호 배제를 검사한다. 예전에는 **이미 가진 것**과만 비교해서,
+       * 한 번에 상호 배타 쌍(`true_dragon` + `royal_kokushi` 등)을 그대로 넘겼다 —
+       * 20,000회 시뮬 중 72회(0.36%). 진짜 용의 conflicts는 17장/5멘쯔가 국사 계열을
+       * 벽돌로 만들기 때문에 존재하는 것이라, 그 조합은 그 국을 통째로 죽인다.
+       */
+      const accepted: string[] = [];
+      for (const d of chosen) {
+        if (accepted.includes(d.id)) continue;
+        const clashes = accepted.some(
+          (a) =>
+            (d.conflicts ?? []).includes(a) ||
+            (catalog.get(a)?.conflicts ?? []).includes(d.id),
+        );
+        if (clashes) continue;
+        accepted.push(d.id);
+      }
+      const augmentIds = accepted;
       const res = engine.submit({
         player: holder,
         type: "augmentGrant",
