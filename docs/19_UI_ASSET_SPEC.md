@@ -31,7 +31,7 @@ docs/18의 네온·홀로그램 방향은 **폐기**. 17번 C안(수묵) 계열�
 - 이미지 에셋은 **마작패 PNG 37장이 전부**다. `styles.css` 전체에 `url(...)` 참조 **0건**, 인라인 SVG 0건.
 - 아이콘은 전부 **이모지/유니코드 23종+**(⚙ ✕ ↻ ▶ 👑 🔒 ⚠ ✦ …) — OS마다 다르게 렌더된다. §6.6 교체표.
 - **웹폰트 미로드**: `font-family: "Pretendard", …` 선언만 있고 `@font-face`·CDN 링크가 없다 → 실제로는 OS 기본 고딕으로 렌더 중.
-- **파비콘·로고·OG 이미지·매니페스트 전무**. `<title>Majak</title>` 뿐. "MAJAK" 로고는 letter-spacing 걸린 텍스트 3곳.
+- **파비콘·로고·OG 이미지·매니페스트 전무**. `<title>Majak</title>` 뿐. "이능마작" 로고는 letter-spacing 걸린 텍스트 3곳.
 - **디자인 토큰 부재**: `:root` CSS 변수 0개. 색·radius(5~999px 12종)·그림자 전부 하드코딩. 컷인용 `--fx-color/--fx-glow`만 존재.
 - 애니메이션은 `@keyframes` **67종**이 CSS로 돌고 있음(§6). `prefers-reduced-motion` 대응 존재 → **모든 발광 에셋은 "가장 밝은 상태" 정지 프레임 버전 필요**.
 
@@ -342,7 +342,7 @@ docs/18의 네온·홀로그램 방향은 **폐기**. 17번 C안(수묵) 계열�
 | 점수 숫자 세트 | 신규 | 현재 `font-variant-numeric: tabular-nums` 12곳뿐 | `num-score-{0-9,comma,plus,minus}.png` 또는 전용 폰트 | PNG 시트/WOFF2 | 17 C-60. 대/중/소 3사이즈. 점수판 감성의 핵심 |
 | **캘리그래피 11종** | 신규 | 대형 연출 글자가 전부 시스템 고딕+letter-spacing 수동(10~26px) | `calli-{horyo\|ryukyoku\|abort\|riichi\|ron\|tsumo\|yakuman\|chi\|pon\|kan\|gamestart}.png` | PNG/SVG (투명) | 17 §7.4. **손글씨 이미지 — 수묵 피벗의 간판**. 남발 금지(이 11종만) |
 | 마우스 커서 | 신규 | `cursor:` 시스템 키워드만(pointer 24곳/grab/not-allowed/help) | `cursor-{default\|pointer\|grab\|grabbing\|denied}.png` | PNG 32px+@2x | 17 F-11 (선택 등급) |
-| 로고/워드마크 | 격상 | "MAJAK" 텍스트 3곳(`.lobby-title` `.home-logo`) + 태그라인 "리치마작 × 증강" | `logo-{h\|square\|symbol\|mono}.svg` | SVG | 17 G-1. 도감이 로고 슬롯을 제목으로 전용 중 — 락업 규칙 포함 |
+| 로고/워드마크 | 격상 | "이능마작" 텍스트 3곳(`.lobby-title` `.home-logo`) + 상단바 부제 "증강 리치마작" | `logo-{h\|square\|symbol\|mono}.svg` | SVG | 17 G-1. 도감이 로고 슬롯을 제목으로 전용 중 — 락업 규칙 포함 |
 | 파비콘/메타 | 신규 | `index.html` 12줄 — icon·OG·theme-color·manifest **전무**, body 배경 미지정(로드 시 **흰 플래시**) | `favicon-{16\|32\|180\|512}.png` + `og-image.png`(1200×630) | PNG | 17 G-2/G-3. 개발: `body{background:#0a1826}` 1줄 선행 |
 | 색 토큰 시스템 | 신규 | `:root` 변수 0개 — 전 색상 하드코딩 | `design-tokens.md` (문서) | 문서 | 17 G-6. 디자이너가 `--gold-500` 식 토큰표 제출 → 개발이 일괄 치환 |
 

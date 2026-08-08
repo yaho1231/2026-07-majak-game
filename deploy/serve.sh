@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# serve.sh — MAJAK 공개 배포 전용 실행 래퍼.
+# serve.sh — 이능마작 공개 배포 전용 실행 래퍼.
 #
 # deploy/majak.env(설정)를 읽어 환경변수로 주입하고 scripts/majak.sh를 호출한다.
 # 클라 빌드·백그라운드 실행·PID 관리·종료는 majak.sh가 그대로 담당한다.
@@ -43,7 +43,7 @@ fi
 
 if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
   if [ -n "${SIGNUP_CODE:-}" ]; then GATE="켜짐"; else GATE="꺼짐(누구나 가입)"; fi
-  echo "▶ MAJAK 공개 서버 — 포트 ${PORT_SHOW} · 가입게이트 ${GATE}"
+  echo "▶ 이능마작 공개 서버 — 포트 ${PORT_SHOW} · 가입게이트 ${GATE}"
 fi
 
 # 실제 실행은 기존 majak.sh에 위임 (env는 서브프로세스가 상속받는다)
