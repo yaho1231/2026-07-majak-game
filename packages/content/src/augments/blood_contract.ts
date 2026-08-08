@@ -114,9 +114,20 @@ export const bloodContract: AugmentDef = defineAugment({
       // 공탁(리치봉)은 배수 대상이 아니다 — 남이 낸 봉을 1.5배로 불리면 그만큼을
       // 뱅크가 새로 발행해 공탁 총량 불변식이 깨진다(docs/25 방해 #13).
       // 공탁은 첫 화료자에게 통째로 가므로 그 사람일 때만 떼어 놓고 곱한 뒤 되돌린다.
+      // 본장도 배수 대상이 아니다 — 공탁과 같은 이유다. 본장은 상대가 실제로
+      // 더 내는 돈인데, 여기서 1.5배로 불리면 그 차액을 뱅크가 새로 발행한다
+      // (3본장 론 900 → 1,350). 론 본장은 첫 화료자에게만 붙는다(standardActions).
+      const honbaPerStick = ic.rules.resolve<number>("score.honbaPerStick", {
+        playerId: holder,
+        state: ic.state,
+      });
+      const honba =
+        (p.winInfos ?? [])[0]?.winner === holder && info.winType === "ron"
+          ? Math.max(0, ic.state.round.honba * honbaPerStick)
+          : 0;
       const pot = (p.winInfos ?? [])[0]?.winner === holder ? p.riichiPot : 0;
-      const base = Math.max(0, d - pot);
-      const after = round100(base * mult) + pot;
+      const base = Math.max(0, d - pot - honba);
+      const after = round100(base * mult) + pot + honba;
       return {
         type: event.type,
         payload: {

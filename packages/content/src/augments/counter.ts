@@ -246,7 +246,13 @@ export const counter: AugmentDef = defineAugment({
         yaku === undefined ? 0 : bestWinValue(ic.state, target, ctx.engine.rules, yaku);
       // ② 그 선리치자에게서 직접 론으로 잡았다면 확정 +4판 (①과 중복)
       if (mine.winType === "ron" && mine.from === target) {
-        bonus += winPointsWithExtraHan(ic.state, holder, mine, DIRECT_HIT_BONUS_HAN);
+        bonus += winPointsWithExtraHan(
+          ic.state,
+          holder,
+          mine,
+          DIRECT_HIT_BONUS_HAN,
+          ctx.engine.rules,
+        );
       }
       if (bonus <= 0) return event;
       return {

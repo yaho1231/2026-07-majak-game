@@ -130,6 +130,10 @@ export const riichiUpgrade: AugmentDef = defineAugment({
       apply: (cur, rctx) => {
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return cur;
+        // 봉인의 근거는 **내가 지고 있는 리치**다. 취소하면 함께 풀려야 한다 —
+        // 예전에는 국 스코프 키만 봐서, 승부수로 공탁까지 돌려받고도 하가는
+        // 그 국 내내 리치를 못 걸었다(리치 봉인이 같은 이유로 고쳐진 적 있다).
+        if (state.round.byPlayer[holder]?.riichi == null) return cur;
         return stringOf(state, sealKey(state, holder)) === rctx.playerId
           ? true
           : cur;
@@ -145,6 +149,14 @@ export const riichiUpgrade: AugmentDef = defineAugment({
         if (rctx.playerId !== holder) return current;
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return current;
+        /*
+         * **살아 있는 리치에서 파생한다.** 트리플 플래그는 게임 스코프 키라
+         * ROUND_SETTLED까지 남는데, 승부수·손바닥 뒤집기로 그 국에 리치를 취소하면
+         * 리치가 없는 손에 리치 판수 +2가 그대로 붙었다. 판수는 리치의 값어치이므로
+         * 리치가 사라지면 함께 사라져야 한다 — 리치 봉인이 같은 이유로 이미
+         * 라이브 상태에서 파생한다(2026-08-08 QA §2-9).
+         */
+        if (state.round.byPlayer[holder]?.riichi == null) return current;
         return flagOf(state, tripleKey(holder)) ? current + 2 : current;
       },
     });

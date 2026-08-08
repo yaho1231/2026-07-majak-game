@@ -29,6 +29,7 @@ import type {
   PlayerId,
   ProposedEvent,
   RoundSettledPayload,
+  RuleRegistry,
   SettleStage,
   TileId,
   VisibilityRule,
@@ -656,8 +657,21 @@ export function winPointsWithExtraHan(
   holder: PlayerId,
   info: WinInfo,
   extraHan: number,
+  rules?: RuleRegistry,
 ): number {
-  const isDealer = playerAtSeat(state, state.round.dealerSeat).id === holder;
+  /*
+   * 오야 배율은 **자리만으로 정하지 않는다** — 정산(`sysSettleWin`)이
+   * `isDealer || win.treatAsDealer`로 정하므로 여기서도 같은 기준을 써야 한다.
+   * 예전에는 자리만 봐서, 만년 오야·찬탈자로 오야가 된 홀더의 "+N판"이 자 기준으로
+   * 계산됐고 `info.points`(오야 기준)와의 차가 산배만 위에서 0으로 무너졌다 —
+   * 카운터의 직격 +4판이 한 푼도 안 붙었다. 뚫린 천장·큰손은 각자 이 예외를
+   * 이미 갖고 있었는데 공용 헬퍼만 빠져 있었다(2026-08-08 QA §2-9).
+   *
+   * `rules`가 없으면 종전대로 자리만 본다 — 호출부가 점진적으로 넘기게 둔다.
+   */
+  const isDealer =
+    playerAtSeat(state, state.round.dealerSeat).id === holder ||
+    (rules?.resolve<boolean>("win.treatAsDealer", { playerId: holder, state }) ?? false);
   const boosted = calculateScore({
     han: info.han + extraHan,
     fu: info.fu,
@@ -692,7 +706,10 @@ export function addWinHanBonus(
   addWinPointBonus(ctx, (state, info) => {
     const n = Math.max(0, Math.round(han(state, info)));
     if (n === 0) return 0;
-    return { points: winPointsWithExtraHan(state, ctx.holder, info, n), han: n };
+    return {
+      points: winPointsWithExtraHan(state, ctx.holder, info, n, ctx.engine.rules),
+      han: n,
+    };
   });
 }
 
