@@ -4142,8 +4142,7 @@ function AuthScreen(props: {
       {/* 방문자에게 필요한 것은 딱 둘이다 — 이게 무엇인지 한 줄, 그리고 시작 버튼.
           나머지는 게임이 말한다. 자세한 설명이 필요한 사람은 규칙 화면으로 간다. */}
       <section className="landing">
-        <h1 className="landing-title">MAJAK</h1>
-        <p className="landing-tag">리치마작 × 증강</p>
+        <h1 className="landing-title">이능마작</h1>
         <p className="landing-lead">기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요.</p>
 
         <div className="landing-cta">
@@ -5293,7 +5292,7 @@ function GuestOutro(props: {
   return (
     <div className="lobby">
       <div className="lobby-card auth-card">
-        <h1 className="lobby-title">MAJAK</h1>
+        <h1 className="lobby-title">이능마작</h1>
         <p className="lobby-tag">게스트 체험 — {props.username}</p>
         <p className="guest-note">
           체험 게임은 <b>기록에 남지 않습니다</b> — 리플레이·누적 통계·리더보드 어디에도
@@ -6219,8 +6218,8 @@ function HomeScreen(props: {
   return (
     <div className="home">
       <header className="home-nav">
-        <span className="home-logo">MAJAK</span>
-        <span className="home-tagline">리치마작 × 증강</span>
+        <span className="home-logo">이능마작</span>
+        <span className="home-tagline">증강 리치마작</span>
         <span className="home-spacer" />
         {/* 게시판은 첫 화면 아래에 있어 있는 줄도 모르고 지나친다 — 상단에서 바로 간다. */}
         <button

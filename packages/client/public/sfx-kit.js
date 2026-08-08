@@ -1,4 +1,4 @@
-/* MAJAK 효과음 랩 — WebAudio 합성 킷
+/* 이능마작 효과음 랩 — WebAudio 합성 킷
  *
  * packages/client/src/sfx.ts 의 합성 어휘를 정적 랩용으로 포팅 + 확장한 것.
  * 게임 코드와 독립이다 — 여기서 고른 레시피를 나중에 sfx.ts 로 옮긴다.

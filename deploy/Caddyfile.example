@@ -1,20 +1,20 @@
-# MAJAK 리버스 프록시 (Caddy) — TLS(wss) 종단 예시
+# 이능마작 리버스 프록시 (Caddy) — TLS(wss) 종단 예시
 #
-# MAJAK 서버는 단일 포트에서 HTTP(정적 SPA) + WebSocket을 함께 서빙한다.
+# 이능마작 서버는 단일 포트에서 HTTP(정적 SPA) + WebSocket을 함께 서빙한다.
 # Caddy는 도메인의 인증서를 Let's Encrypt로 자동 발급/갱신하고, HTTP와
 # WebSocket 업그레이드를 그대로 프록시한다(별도 설정 불필요).
 #
 # 사용법:
 #   1) `your-domain.example`을 실제 도메인으로 바꾼다 (DuckDNS 등도 가능).
 #   2) 라우터에서 80·443 포트를 이 서버로 포워딩한다.
-#   3) MAJAK 서버를 PORT=3001로 띄운다 (npm start).
+#   3) 이능마작 서버를 PORT=3001로 띄운다 (npm start).
 #   4) `caddy run --config deploy/Caddyfile.example`  (또는 시스템 Caddy에 배치)
 #
 # 클라이언트는 same-origin(wss://your-domain.example)으로 자동 접속하므로
 # 추가 클라이언트 설정이 필요 없다.
 
 your-domain.example {
-	# MAJAK 서버(단일 포트). PORT를 바꿨다면 여기 포트도 맞춘다.
+	# 이능마작 서버(단일 포트). PORT를 바꿨다면 여기 포트도 맞춘다.
 	reverse_proxy localhost:3001
 
 	# (선택) 접근 로그

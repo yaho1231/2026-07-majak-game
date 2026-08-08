@@ -462,7 +462,7 @@ const heartbeat = setInterval(() => {
 heartbeat.unref();
 
 httpServer.listen(PORT, HOST, () => {
-  console.log(`MAJAK server listening on http://localhost:${PORT} (HTTP+WS)`);
+  console.log(`이능마작 server listening on http://localhost:${PORT} (HTTP+WS)`);
   console.log(`Client dist : ${CLIENT_DIST}${existsSync(CLIENT_DIST) ? "" : "  (없음 — 개발은 vite dev 사용)"}`);
   console.log(`Replays     : ${REPLAY_DIR}`);
   console.log(`Database    : ${DB_PATH}`);

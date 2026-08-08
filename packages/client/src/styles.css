@@ -1,4 +1,4 @@
-/* MAJAK — 게임 테이블 UI (작혼 스타일: 중앙 4방향 바닥 + 사각 인포 패널) */
+/* 이능마작 — 게임 테이블 UI (작혼 스타일: 중앙 4방향 바닥 + 사각 인포 패널) */
 
 /* ═══════════════ 디자인 토큰 ═══════════════
    먹빛 녹색 마작장. 원칙 세 가지만 지킨다.
@@ -146,8 +146,9 @@ button {
   margin: 0;
   text-align: center;
   font-size: 34px;
-  /* 자간은 넓게 유지(간판 글씨) 하되 글로우는 뺀다 — 무게는 굵기가 만든다 */
-  letter-spacing: 10px;
+  /* 자간은 넓게 유지(간판 글씨) 하되 글로우는 뺀다 — 무게는 굵기가 만든다.
+     한글 워드마크라 라틴만큼 벌리지 않는다 */
+  letter-spacing: 7px;
   color: var(--brass-bright);
 }
 
@@ -6538,19 +6539,14 @@ button {
 .landing-title {
   margin: 0;
   font-size: 44px;
-  letter-spacing: 12px;
+  /* 한글 네 글자 간판 — 라틴 워드마크만큼 벌리면 낱글자로 흩어진다 */
+  letter-spacing: 8px;
   color: var(--brass-bright);
 }
 
-.landing-tag {
-  margin: -4px 0 18px;
-  color: #93a89b;
-  font-size: 14px;
-  letter-spacing: 2px;
-}
-
 .landing-lead {
-  margin: 0 0 22px;
+  /* 부제 줄을 뺐다 — 제목과 붙지 않게 여기서 위 여백을 준다 */
+  margin: 14px 0 22px;
   font-size: 15px;
   line-height: 1.7;
   color: #d6e0d8;
@@ -6877,7 +6873,7 @@ button {
 .home-logo {
   font-size: 22px;
   font-weight: 900;
-  letter-spacing: 6px;
+  letter-spacing: 4px;
   color: var(--brass-bright);
 }
 
