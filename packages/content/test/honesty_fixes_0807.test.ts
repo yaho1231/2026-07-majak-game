@@ -472,9 +472,12 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
     expect(mixedNineGates.detail).toContain("자패");
   });
 
-  it("우는 국사무쌍: 특수 퐁 뒤 모든 후로가 잠긴다", () => {
-    expect(openKokushi.description).toContain("국사 외길");
+  it("우는 국사무쌍: 특수 퐁 뒤 화료형과 후로가 잠긴다", () => {
+    // 요약은 한 줄로 화료형 제한만 말한다 — 카드에 들어가는 분량이다.
+    expect(openKokushi.description).toContain("국사무쌍으로만 화료");
+    // 후로가 함께 잠기는 것과, 평범한 후로 뒤에는 아예 못 부르는 것은 detail의 몫.
     expect(openKokushi.detail).toContain("안깡 포함");
+    expect(openKokushi.detail).toContain("부를 수 없다");
   });
 
   it("유국역만: 역만 방어술 보유자는 내지 않는다", () => {
