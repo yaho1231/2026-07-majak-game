@@ -269,21 +269,21 @@ export const standardYakuList: YakuDef[] = [
   },
   {
     id: "yakuhai_haku",
-    name: "역패:백",
+    name: "역패 백",
     closedHan: 1,
     openHan: 1,
     check: (v) => hasTripletOf(v, Suits.Dragon, 1),
   },
   {
     id: "yakuhai_hatsu",
-    name: "역패:발",
+    name: "역패 발",
     closedHan: 1,
     openHan: 1,
     check: (v) => hasTripletOf(v, Suits.Dragon, 2),
   },
   {
     id: "yakuhai_chun",
-    name: "역패:중",
+    name: "역패 중",
     closedHan: 1,
     openHan: 1,
     check: (v) => hasTripletOf(v, Suits.Dragon, 3),
@@ -354,7 +354,7 @@ export const standardYakuList: YakuDef[] = [
   },
   {
     id: "sankantsu",
-    name: "산깡즈",
+    name: "산깡쯔",
     closedHan: 2,
     openHan: 2,
     check: (v) => v.sets.filter((s) => s.isKan).length === 3,
@@ -601,7 +601,7 @@ export const standardYakuList: YakuDef[] = [
   },
   {
     id: "suukantsu",
-    name: "스깡즈",
+    name: "스깡쯔",
     closedHan: 13,
     openHan: 13,
     isYakuman: true,
