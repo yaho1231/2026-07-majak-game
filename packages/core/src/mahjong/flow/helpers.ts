@@ -410,18 +410,20 @@ export function furitenOptionsOf(
   return withoutWild;
 }
 
-export function isFuriten(
+/** 주어진 '대기 손패'(화료패를 뺀 상태)를 기준으로 한 후리텐 판정 */
+function furitenAgainst(
   state: GameState,
   id: PlayerId,
-  opts?: DecomposeOptions,
-  rules?: RuleRegistry,
+  handKinds: TileKind[],
+  opts: DecomposeOptions | undefined,
+  rules: RuleRegistry | undefined,
 ): boolean {
   const rs = state.round.byPlayer[id];
   if (rs?.temporaryFuriten === true || rs?.riichiFuriten === true) return true;
   const discarded = rs?.discardedKinds ?? [];
   if (discarded.length === 0) return false;
   const waits = winningKinds(
-    winHandKindsOf(state, rules, id),
+    handKinds,
     meldCountOf(state, id),
     undefined,
     furitenOptionsOf(state, rules, id, opts),
@@ -429,6 +431,43 @@ export function isFuriten(
   if (waits.length === 0) return false;
   const waitKeys = new Set(waits.map(kindKey));
   return discarded.some((k) => waitKeys.has(k));
+}
+
+export function isFuriten(
+  state: GameState,
+  id: PlayerId,
+  opts?: DecomposeOptions,
+  rules?: RuleRegistry,
+): boolean {
+  return furitenAgainst(state, id, winHandKindsOf(state, rules, id), opts, rules);
+}
+
+/**
+ * **손에 든 그 패를 '론으로 받은 것'처럼 볼 때** 후리텐인가.
+ *
+ * `isFuriten`은 리액션(손패 13장)에서 부르는 것이라 손패를 그대로 쓴다. 자기 순에는
+ * 손패가 14장이라 대기가 0개로 나와 **항상 false**다 — 표준 쯔모에는 후리텐이 없으니
+ * 그래도 됐다. 그런데 바닥의 패를 주워 그 패로 나는 증강(날치기)은 이름만 쯔모일 뿐
+ * 실체가 "남이 버린 패로 화료"라, 그 판정에는 13장 기준 대기가 필요하다.
+ * (`win.tsumoFuriten` 규칙이 켜진 자리에서만 쓰인다.)
+ */
+export function isFuritenAsRon(
+  state: GameState,
+  id: PlayerId,
+  winTileId: TileId,
+  opts?: DecomposeOptions,
+  rules?: RuleRegistry,
+): boolean {
+  const ids = [...winHandIdsOf(state, rules, id)];
+  const at = ids.indexOf(winTileId);
+  if (at >= 0) ids.splice(at, 1);
+  return furitenAgainst(
+    state,
+    id,
+    ids.map((t) => kindOf(state, t)),
+    opts,
+    rules,
+  );
 }
 
 /**

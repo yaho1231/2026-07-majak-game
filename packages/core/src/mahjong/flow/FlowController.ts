@@ -16,7 +16,7 @@ import { WALL, discardsZone } from "../../engine/zones/Zone.js";
 import { sameKind, kindKey } from "../tiles/Tile.js";
 import type { TileId, TileKind } from "../tiles/Tile.js";
 import { winningKinds } from "../scoring/waits.js";
-import { DEFAULT_SEQUENCE_SUITS, honorMaxRank } from "../scoring/decompose.js";
+import { DEFAULT_SEQUENCE_SUITS, decompose, honorMaxRank } from "../scoring/decompose.js";
 import { ROUND_SETTLED, KAN_DECLARED } from "./flowEvents.js";
 import type { RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
 import type { SettleWinRequest } from "./standardActions.js";
@@ -694,11 +694,21 @@ export class FlowController {
    * 천하무적·불가침 조약(win.ronImmune)이 그렇다 — 예전에는 이 경우에도
    * 마킹이 돌아, 리치자가 **그 국 내내 아무에게서도 론할 수 없게** 됐다.
    * 설명에 없는 "리치자 전원 무력화"가 숨어 있던 셈이다(docs/25 최우선#4).
+   *
+   * **안깡**도 같은 이유로 예외다(docs/28 §2-1). KAN_DECLARED는 안깡에도
+   * `chankan`을 채우지만, 안깡은 표준상 국사무쌍만 창깡할 수 있다
+   * (standardActions의 "closed kan can only be robbed by kokushi").
+   * 국사가 아닌 사람은 애초에 론할 수 없었으니 넘긴 화료도 없다 —
+   * 여기서 마킹하면 리치자가 그 국 내내 론 불가가 된다.
    */
   private markPassFuriten(): void {
     const state = this.engine.state;
-    const target = state.round.lastDiscard ?? state.round.chankan;
+    const lastDiscard = state.round.lastDiscard;
+    const chankan = state.round.chankan;
+    const target = lastDiscard ?? chankan;
     if (target === null) return;
+    // 지나간 것이 '안깡패'인가 (버림패가 있으면 그쪽이 우선 — target과 같은 기준)
+    const closedKan = lastDiscard === null && chankan?.closedKan === true;
     // 이 사람의 패는 론당하지 않는다 → 아무도 화료를 넘긴 것이 아니다
     if (
       this.engine.rules.resolve<boolean>("win.ronImmune", {
@@ -720,11 +730,38 @@ export class FlowController {
         furitenOptionsOf(state, this.engine.rules, p.id),
       );
       if (!waits.some((w) => sameKind(w, targetKind))) continue;
+      // 안깡: 창깡할 수 있었던 사람(국사무쌍·성립하지 않는 깡 보유자)만 '넘긴' 것이다
+      if (closedKan && !this.couldRobClosedKan(p.id, targetKind)) continue;
       this.sys("sys.markFuriten", {
         player: p.id,
         permanent: state.round.byPlayer[p.id]?.riichi != null,
       });
     }
+  }
+
+  /**
+   * 이 사람이 방금의 **안깡**을 창깡할 수 있었는가 — win 액션의 안깡 게이트와
+   * 같은 기준이다(국사무쌍 형, 또는 `win.closedKanRobbable`을 여는 증강 보유).
+   * 판정 근거를 한 곳에 두려고 형태(decompose)로만 본다: 역·판수 게이트에 걸려
+   * 실제로 못 났더라도 "론 창구가 열려 있었다"는 사실은 같고, 그때는 표준 룰대로
+   * 후리텐이 붙는다.
+   */
+  private couldRobClosedKan(player: PlayerId, targetKind: TileKind): boolean {
+    const state = this.engine.state;
+    if (
+      this.engine.rules.resolve<boolean>("win.closedKanRobbable", {
+        playerId: player,
+        state,
+      })
+    ) {
+      return true;
+    }
+    const hand = [...winHandKindsOf(state, this.engine.rules, player), targetKind];
+    return decompose(
+      hand,
+      meldCountOf(state, player),
+      scoringOptionsOf(state, this.engine.rules, player),
+    ).some((d) => d.form === "kokushi");
   }
 }
 

@@ -47,6 +47,7 @@ import {
   handIdsOf,
   handKindsOf,
   isFuriten,
+  isFuritenAsRon,
   kindOf,
   meldCountOf,
   openMeldCountOf,
@@ -249,6 +250,27 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
       if (state.round.phase === "turn.act") {
         if (!isTurnPlayer(state, req.player)) return "not your turn";
         if (state.round.lastDrawnTile === null) return "no drawn tile";
+        // 바닥에서 주워 온 '쯔모패'라면 후리텐을 적용한다 (win.tsumoFuriten 주석 참고).
+        // 표준 쯔모는 이 규칙이 false라 예전과 완전히 같다.
+        if (
+          rules.resolve<boolean>("win.tsumoFuriten", {
+            playerId: req.player,
+            state,
+          }) &&
+          rules.resolve<boolean>("win.furiten.enabled", {
+            playerId: req.player,
+            state,
+          }) &&
+          isFuritenAsRon(
+            state,
+            req.player,
+            state.round.lastDrawnTile,
+            scoringOptionsOf(state, rules, req.player),
+            rules,
+          )
+        ) {
+          return "furiten";
+        }
         const ev = evaluateWin(
           buildWinContext(state, req.player, "tsumo", state.round.lastDrawnTile, {
             rules,
@@ -1201,6 +1223,17 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
    * playerId = 챤깡하려는 사람.
    */
   rules.define("win.closedKanRobbable", false);
+  /**
+   * **지금 손에 든 그 '쯔모패'가 사실은 남의 바닥에서 온 패**라 쯔모 화료에도
+   * 후리텐을 적용한다 (기본 false = 표준 쯔모는 후리텐과 무관).
+   * playerId = 화료하려는 사람.
+   *
+   * 후리텐은 "내가 이미 버린 종류로는 **남의 버림으로** 나지 못한다"는 벌이다.
+   * 패산에서 스스로 뽑은 패에는 걸리지 않는 것이 표준이지만, 바닥의 패를 주워
+   * 그 패로 나는 증강(날치기)은 이름만 쯔모일 뿐 실체가 "남이 버린 패로 화료"다.
+   * 그 증강이 자기 차례에만 이 규칙을 켠다.
+   */
+  rules.define("win.tsumoFuriten", false);
   /**
    * 본장 1개당 지불액 (론 기준, 기본 300 — 쯔모는 1/3씩 나눠 낸다).
    * playerId = 화료자. 본장 사냥꾼이 자기 화료에만 올린다.

@@ -14,6 +14,19 @@
  * 구현: 자기 턴(이미 쯔모한 상태)에서 쯔모패를 패산 맨 밑으로 되돌리고(take_back과
  * 동일) 상대의 최근 버림패를 손으로 가져와 lastDrawnTile로 삼는 커스텀 이벤트.
  * byPlayer.discardedKinds(후리텐 근거)는 건드리지 않아 원주인 후리텐이 보존된다.
+ *
+ * # 주운 패로 나는 것 (2026-08-08 감사, docs/28 §2-9)
+ *
+ * 주운 패가 `lastDrawnTile`이 되므로 그 패로 **쯔모 화료가 성립한다** — 무덤 도굴
+ * (grave_rob)·정적의 손(silent_swap)과 같은 계열이고, 이 엔진은 그 셋을 모두
+ * "지불은 쯔모 취급"으로 처리한다. 문제는 **후리텐이 통째로 빠져 있었다**는 것이다.
+ * 코어의 쯔모 분기에는 후리텐 검사가 없다(표준 룰: 쯔모는 후리텐과 무관). 그 결과
+ * 후리텐 플레이어가 자기 오름패가 강에 깔리기를 기다렸다가 주워 멘젠쯔모로 나고
+ * 상대 셋이 전부 지불했다.
+ *
+ * 이름은 쯔모지만 실체는 **남이 버린 패로 나는 것**이다. 후리텐은 바로 그 상황에
+ * 붙는 벌이므로, 주운 패가 지금의 쯔모패인 동안에만 코어 규칙 `win.tsumoFuriten`을
+ * 보유자에게 켠다. 다음 쯔모가 오면 자연히 꺼진다(패산에서 뽑은 패는 예전 그대로).
  */
 
 import {
@@ -35,6 +48,7 @@ import type {
 import {
   counterOf,
   replaceDrawnTile,
+  roundKey,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
@@ -46,6 +60,13 @@ const MAX_USES = 3;
 /** 손이 닿는 깊이 — 각 상대의 **최근 SNATCH_DEPTH장** (2026-07-31 버프: 1 → 3) */
 const SNATCH_DEPTH = 3;
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
+/**
+ * 이 국에서 **마지막으로 주운 패**의 id. 지금의 `lastDrawnTile`과 같을 때만
+ * "손에 든 쯔모패가 바닥에서 온 패"라는 뜻이다 — 다음 쯔모가 오면 자연히 어긋난다.
+ * 국을 섞어 오판하지 않게 국 키를 넣는다.
+ */
+const takenKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:taken:${roundKey(state)}:${h}`;
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;
 
@@ -115,9 +136,9 @@ export const pondSnatch: AugmentDef = defineAugment({
   complexity: 2,
   name: "날치기",
   description:
-    "(게임 내 3회) 자기 순에 쯔모하는 대신 상대가 최근에 버린 3장 중 1장을 주워 손에 넣는다. 후로로 치지 않아 멘젠·리치가 유지된다.",
+    "(게임 내 3회) 자기 순에 쯔모하는 대신 상대가 최근에 버린 3장 중 1장을 주워 손에 넣는다. 후로로 치지 않아 멘젠·리치가 유지되고, 그 패가 오름패면 쯔모로 화료한다 — 단 후리텐이면 그 화료는 인정되지 않는다.",
   detail:
-    "(게임 내 3회) 자기 순에 그 순의 쯔모패를 패산 맨 밑으로 되돌리고, 대신 상대 세 명이 각각 최근에 버린 3장(최대 9장) 중 1장을 골라 손에 넣는다. 후로로 치지 않으므로 멘젠이 유지되고 리치도 그대로 걸 수 있다. 원주인의 바닥 기록은 남아 그 상대의 후리텐 판정도 유지된다. 리치 중이거나 영상패를 잡은 순, 패산이 바닥난 국에는 쓸 수 없다.",
+    "(게임 내 3회) 자기 순에 그 순의 쯔모패를 패산 맨 밑으로 되돌리고, 대신 상대 세 명이 각각 최근에 버린 3장(최대 9장) 중 1장을 골라 손에 넣는다. 후로로 치지 않으므로 멘젠이 유지되고 리치도 그대로 걸 수 있다. 주운 패가 오름패라면 그 자리에서 쯔모로 화료할 수 있고 지불도 쯔모 취급(전원 분담)이지만, 남이 버린 패로 나는 것이므로 후리텐이면 화료할 수 없다 — 주운 패는 손에 남고 그 순에 한 장을 버려야 한다. 원주인의 바닥 기록은 남아 그 상대의 후리텐 판정도 유지된다. 리치 중이거나 영상패를 잡은 순, 패산이 바닥난 국에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -140,6 +161,8 @@ export const pondSnatch: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [usedKey(p.holder)]: counterOf(state, usedKey(p.holder)) + 1,
+            // 이 패로 화료하면 후리텐 판정을 받는다 (아래 win.tsumoFuriten Modifier)
+            [takenKey(state, p.holder)]: p.snatchId,
           },
         };
       });
@@ -147,6 +170,24 @@ export const pondSnatch: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(pondSnatchAction);
     }
+
+    /**
+     * 주운 패가 지금의 쯔모패인 동안, 이 보유자의 **쯔모 화료에 후리텐을 태운다**.
+     * 남이 버린 패로 나는 것이므로 표준 론과 같은 판정을 받아야 한다(파일 머리말).
+     * setHolderRule은 상수만 걸 수 있어 여기서는 Modifier로 직접 짠다.
+     */
+    ctx.engine.rules.addModifier<boolean>("win.tsumoFuriten", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        const taken = state.augmentData[takenKey(state, holder)];
+        if (typeof taken !== "number") return cur;
+        return state.round.lastDrawnTile === taken ? true : cur;
+      },
+    });
 
     ctx.holderTurnOptions((state) => {
       if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];

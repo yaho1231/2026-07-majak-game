@@ -57,6 +57,31 @@ export type VisibilityRule =
   | "count_only"
   | PeekVisibility;
 
+/**
+ * **자리는 있는데 정체는 가려진 패**의 자리표. 실제 tile id는 0 이상이므로
+ * 이 값들과 절대 겹치지 않고, `tiles` 맵에도 담기지 않는다(=정체가 전선에
+ * 실리지 않는다 — 뷰의 fail-closed 보장 그대로).
+ *
+ * 왜 자리를 남기나: 왕패는 **자리 번호 자체가 의미**다(0번=다음 영상패, 뒤 10장이
+ * 표시패 블록). 가려진 도라가 표시패를 배열에서 통째로 빼 버리면 그 뒤 자리가
+ * 전부 한 칸씩 밀려, 왕패의 주인이 보낸 `deadIndex`가 화면과 다른 패를 가리켰다
+ * (docs/28 §2-9 표 — 표시 슬롯 4를 눌렀는데 서버는 가려진 표시패를 교환했다).
+ *
+ * 자리표를 받은 쪽은 `tiles[id]`가 없으므로 뒷면으로 그리게 된다 — 종류는
+ * 여전히 알 수 없고, 자리만 맞는다.
+ */
+export const CONCEALED_TILE_ID_BASE = -1000;
+
+/** 왕패 index 자리의 자리표 id (자리마다 달라야 화면 키가 겹치지 않는다) */
+export function concealedTileIdAt(index: number): TileId {
+  return CONCEALED_TILE_ID_BASE - index;
+}
+
+/** 이 id가 자리표(정체가 가려진 자리)인가 */
+export function isConcealedTileId(id: TileId): boolean {
+  return id <= CONCEALED_TILE_ID_BASE;
+}
+
 /** 특수 관전자 playerId. 이 id를 사용하면 모든 정보가 공개된다 */
 export const SPECTATOR_ID: PlayerId = "__spectator";
 
@@ -478,22 +503,24 @@ export function buildPlayerView(
       // 판단하려면 뷰가 아니라 이 배치를 봐야 한다.
       arrangedHands[zone.owner] = zoneTileIds;
     }
-    let { tileIds, hiddenCount } = applyVisibility(
-      zoneTileIds,
-      zone.owner,
-      viewerId,
-      visibility,
-    );
+    const visible = applyVisibility(zoneTileIds, zone.owner, viewerId, visibility);
+    const hiddenCount = visible.hiddenCount;
+    let tileIds = visible.tileIds;
     // 가려진 도라(dora_conceal)는 RoundView.doraIndicators만 비웠다. 그런데 표시패
     // **실물은 왕패 Zone에 그대로 있어**, 왕패를 여는 증강(이면투시·왕패의 주인·
     // 절벽 위에 피어난 꽃·영상 정찰)을 가진 뷰어에게는 종류까지 그대로 새어 나갔다 —
     // prism 증강의 유일한 능력이 상대의 silver 하나로 무효화됐다(docs/25 정보 #3).
-    // 표시패를 별도 Zone으로 분리하는 대신, 여기서 그 tileId만 뺀다.
+    // 표시패를 별도 Zone으로 분리하는 대신, 여기서 그 tileId를 **자리표로 바꾼다**.
+    //
+    // 예전에는 배열에서 통째로 뺐다. 종류는 확실히 가려졌지만 **자리가 밀렸다** —
+    // 왕패는 자리 번호가 곧 의미(0번=다음 영상패, 뒤 10장=표시패 블록)이고
+    // 왕패의 주인은 그 자리 번호를 그대로 서버에 보낸다. 그래서 표시 슬롯 4를
+    // 눌렀는데 물리 4번(가려진 표시패)이 교환되어, 본 적 없는 패를 받고 도라가
+    // 조용히 바뀌었다(docs/28 §2-9). 자리표는 tiles 맵에 실리지 않으므로
+    // 정체는 여전히 전선에 없다 — 자리만 맞춘다.
     if (zone.kind === "deadWall" && hidesDoraIndicators) {
       const indicators = new Set(state.round.doraIndicators);
-      const kept = tileIds.filter((id) => !indicators.has(id));
-      hiddenCount += tileIds.length - kept.length;
-      tileIds = kept;
+      tileIds = tileIds.map((id, i) => (indicators.has(id) ? concealedTileIdAt(i) : id));
     }
     zones[zone.id] = {
       id: zone.id,
