@@ -107,6 +107,27 @@ const wallLen = (state: GameState): number => state.zones[WALL]?.tileIds.length 
  * (화료·텐파이 모두 불가 + 노텐 벌점 확정). 봇은 커밋 상태면 조건 없이 콜하므로
  * 반드시 이 함정을 밟았다(docs/25 역/점수 #4).
  */
+/**
+ * 국사 묶음이 **아닌** 후로를 이미 가지고 있는가.
+ *
+ * 잠금은 첫 kokushi_pon 시점부터 걸리므로, 그전에 만든 평범한 치·펑·깡은 손에
+ * 그대로 남는다. 그런데 국사는 요구패 묶음만으로 이루어져야 한다 — 요구패가 아닌
+ * 멘쯔가 섞이면 `decompose`의 멜드 국사 분기(`K === meldCount*3`)가 영영 안 맞고,
+ * 동시에 `kokushiOnly`가 표준형·치또이를 막아 **그 국이 통째로 잠긴다**(화료·텐파이
+ * 모두 불가 + 노텐 확정). 요구패 중복(`meldedOrphanKinds`)과 정확히 같은 함정이
+ * 반대 방향에서 열려 있던 셈이다(2026-08-08 QA BLOCKER-1).
+ *
+ * 국사 묶음은 "서로 다른 요구패 3장"이므로, 그 모양이 아닌 후로는 전부 평범한
+ * 후로다 — 안깡·가깡(4장)도 여기 걸린다.
+ */
+function hasNonKokushiMeld(state: GameState, player: PlayerId): boolean {
+  for (const meld of state.round.byPlayer[player]?.melds ?? []) {
+    const kinds = meld.tileIds.map((id) => kindOf(state, id));
+    if (!isKokushiGroup(kinds)) return true;
+  }
+  return false;
+}
+
 function meldedOrphanKinds(state: GameState, player: PlayerId): Set<string> {
   const out = new Set<string>();
   for (const meld of state.round.byPlayer[player]?.melds ?? []) {
@@ -148,6 +169,8 @@ const kokushiPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
     if (!hand.includes(a) || !hand.includes(b)) return "tiles not in hand";
     const kinds = [kindOf(state, last.tileId), kindOf(state, a), kindOf(state, b)];
     if (!isKokushiGroup(kinds)) return "not a valid kokushi group";
+    // 평범한 후로가 이미 있으면 국사는 완성될 수 없다 — 부르는 순간 그 국이 잠긴다
+    if (hasNonKokushiMeld(state, req.player)) return "already has a non-kokushi meld";
     // 이미 후로한 요구패를 또 울면 국사가 영영 완성되지 않는다 (그 국 소프트락)
     const already = meldedOrphanKinds(state, req.player);
     if (kinds.some((k) => already.has(kindKey(k)))) {
@@ -179,9 +202,9 @@ export const openKokushi: AugmentDef = defineAugment({
   complexity: 3,
   name: "우는 국사무쌍",
   description:
-    "(상시) 서로 다른 요구패 3장(1만1통1삭 · 9만9통9삭 · 백발중 · 동남서북 중 3패)을 퐁해 국사를 완성할 수 있다. **한 번이라도 이 퐁을 하면 그 국은 국사 외길이 된다** — 다른 화료형도, 평범한 치·펑·깡도 전부 막힌다. ⚠ **이미 평범한 후로가 하나라도 있으면 부르지 말 것** — 그 손은 국사도 표준형도 완성할 수 없어 그 국이 통째로 죽는다.",
+    "(상시) 서로 다른 요구패 3장(1만1통1삭 · 9만9통9삭 · 백발중 · 동남서북 중 3패)을 퐁해 국사를 완성할 수 있다. 이 퐁을 하면 그 국은 국사무쌍으로만 화료할 수 있다.",
   detail:
-    "(상시) 상대가 버린 요구패 1장과 손패의 요구패 2장을 합쳐, 서로 다른 요구패 3장(1만1통1삭 / 9만9통9삭 / 백발중 / 동남서북 중 3패)을 하나의 묶음으로 퐁할 수 있다. 이 특수 퐁은 횟수 제한이 없고 완성 시 정식 역만 13판이며, 머리(작두)는 반드시 울지 않은 손패로 만들어야 한다.\n\n⚠ **이 퐁을 한 번이라도 하면 그 국은 되돌릴 수 없는 국사 외길이 된다.**\n- 국사무쌍 외의 화료형으로는 오를 수 없다.\n- 그리고 **평범한 치·펑·깡(안깡 포함)이 전부 막힌다.** 요구패가 아닌 패로 멘쯔를 하나라도 만들면 국사도 표준형도 완성이 불가능해져 그 국이 통째로 죽기 때문에, 아예 부를 수 없게 잠근다.\n\n즉 첫 특수 퐁은 '국사로 간다'는 선언이다. 요구패가 안 모이면 그 국은 그대로 노텐으로 끝난다.\n\n☠ **평범한 후로를 이미 한 뒤에는 부르지 마라.** 잠금은 부른 시점부터 걸리므로 그 전에 만든 치·펑·깡은 손에 그대로 남는데, 국사는 요구패 묶음만으로 이루어져야 한다 — 요구패가 아닌 멘쯔가 하나라도 섞인 손은 **국사로도 표준형으로도 화료할 수 없다.** 텐파이조차 서지 않아 그 국은 확정 노텐이 된다. 되돌릴 방법은 없다.",
+    "(상시) 상대가 버린 요구패 1장과 손패의 요구패 2장을 합쳐, 서로 다른 요구패 3장(1만1통1삭 / 9만9통9삭 / 백발중 / 동남서북 중 3패)을 하나의 묶음으로 퐁할 수 있다. 이 특수 퐁은 횟수 제한이 없고 완성 시 정식 역만 13판이며, 머리(작두)는 반드시 울지 않은 손패로 만들어야 한다.\n\n⚠ **이 퐁을 한 번이라도 하면 그 국은 되돌릴 수 없는 국사 외길이 된다.**\n- 국사무쌍 외의 화료형으로는 오를 수 없다.\n- 그리고 **평범한 치·펑·깡(안깡 포함)이 전부 막힌다.** 요구패가 아닌 패로 멘쯔를 하나라도 만들면 국사도 표준형도 완성이 불가능해져 그 국이 통째로 죽기 때문에, 아예 부를 수 없게 잠근다.\n\n즉 첫 특수 퐁은 '국사로 간다'는 선언이다. 요구패가 안 모이면 그 국은 그대로 노텐으로 끝난다.\n\n평범한 치·펑·깡을 이미 한 뒤에는 이 퐁을 부를 수 없다 — 요구패가 아닌 멘쯔가 섞인 손은 국사가 성립하지 않는다.",
   /**
    * 봇: 이 콜을 한 번이라도 하면 **국사로만 화료**할 수 있게 손이 잠긴다. 그래서
    * ① 이미 우는 국사 묶음이 있으면(되돌릴 수 없으니) 계속 밀고,
@@ -245,6 +268,8 @@ export const openKokushi: AugmentDef = defineAugment({
     ctx.holderReactionOptions((state, discard) => {
       const dk = kindOf(state, discard.tileId);
       if (!isOrphan(dk)) return [];
+      // 평범한 후로가 있으면 버튼 자체를 띄우지 않는다 — 떠 있으면 봇이 누른다
+      if (hasNonKokushiMeld(state, holder)) return [];
       // 이미 후로한 요구패는 후보에서 통째로 뺀다 — 버튼이 떠 있으면 봇이 누른다
       const already = meldedOrphanKinds(state, holder);
       if (already.has(kindKey(dk))) return [];
