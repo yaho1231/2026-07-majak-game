@@ -2789,11 +2789,12 @@ export function App(): JSX.Element {
       // 전용 사건 컷인이 있는 증강은 그쪽이 결과까지 보여준다 — 여기서 또 띄우면
       // 한 번 발동에 컷인이 두 번 뜬다(2026-08-01 사용자 보고: 소환·무르기 연출 문제).
       if (AUG_EVENT_AUG_IDS.has(augId)) return;
-      // 액티브 증강 발동 연출 — 이름은 라벨 맵 → 카탈로그 순으로 찾는다
-      const label =
-        ACTION_LABEL[msg.actionType] ??
-        catalogRef.current[msg.actionType]?.name ??
-        msg.actionType;
+      // 액티브 증강 발동 연출 — **증강 이름**을 먼저 쓴다.
+      //
+      // 예전에는 액션 라벨이 우선이라, 화면 한가운데 큰 배너에 "미래 보기"가 뜨는데
+      // 이름표·도감·모달은 전부 "미래를 보는 자"였다. 플레이어가 아는 이름은 증강
+      // 이름 하나뿐이다 — 라벨은 버튼용 축약이므로 폴백으로만 둔다(2026-08-08 QA).
+      const label = augActionName(catalogRef.current, msg.actionType);
       const pv = prevViewRef.current;
       // 같은 순에 같은 사람이 같은 액션을 또 보내면(왕패의 주인 2장 교환 = dw_swap 2개)
       // 컷인은 **한 번만** 띄운다 — 사용자에게는 발동 한 번이다.
@@ -12822,6 +12823,11 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
     return `${playerNameById(view, who)} — ${augmentDisplayName(p.augmentId)}`;
   }
   if (typeof who === "string") return playerNameById(view, who);
+  // 증강만 고르는 액션(재장전 = 소진된 내 증강 하나 복구). 위 분기는 who까지
+  // 요구해서 여기 걸리지 못했고, 후보가 전부 라벨 없는 같은 버튼으로 떴다 —
+  // 재장전은 반장전에 두 번뿐인데 무엇을 되살리는지 모른 채 찍어야 했다
+  // (2026-08-08 QA §2-9).
+  if (typeof p.augmentId === "string") return augmentDisplayName(p.augmentId);
   if (typeof p.yaku === "string") return YAKU_NAMES[p.yaku] ?? p.yaku;
   // 분열 — 한 패에 후보가 여럿(9 → 1+8·2+7·3+6·4+5)이라 어느 분할인지 라벨로도 적는다
   if (option.type === "split_tile" && typeof p.a === "number" && typeof p.tileId === "number") {
