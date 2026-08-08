@@ -633,7 +633,7 @@ export class HumanAgent implements PlayerAgent {
         this.send({
           type: "error",
           code: "INVALID_ACTION",
-          message: "Not a valid option for this prompt",
+          message: "지금 고를 수 있는 선택지가 아닙니다 — 화면을 새로 받아 주세요.",
         });
       }
       return;
@@ -653,7 +653,7 @@ export class HumanAgent implements PlayerAgent {
         this.send({
           type: "error",
           code: "INVALID_DRAFT_PICK",
-          message: "Augment not in choices",
+          message: "제시되지 않은 증강입니다 — 화면을 새로 받아 주세요.",
         });
       }
       return;
