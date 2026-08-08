@@ -15,6 +15,25 @@ import { StatsStore } from "../src/StatsStore.js";
 import { SiteDb } from "../src/SiteDb.js";
 import { createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 
+/**
+ * 사람 1 + 봇 3 반장전 **한 판이 실제로 끝나는 데** 주는 예산(ms).
+ *
+ * 계측(2026-08-08, 이 저장소 c391192):
+ * - 유휴에 가까운 맥: 완주 13~17초.
+ * - 같은 맥에서 다른 vitest가 함께 도는 동안(로드 애버리지 18 / 8코어): 31~45초.
+ *
+ * 예전 예산은 20초·30초였다 — 유휴 상태에서도 여유가 20%뿐이라 조금만 부하가
+ * 붙으면 무작위로 터졌고, **어느 판이 터질지는 매번 달랐다**. 그게 "단독 실행인데도
+ * RoomManager.test.ts가 1건씩 waitFor timeout으로 죽는다"의 정체다(docs/23 참고).
+ *
+ * 이 값은 "느려도 봐준다"가 아니라 **한 판의 실제 원가**다. 정말로 멈춘 판은
+ * 여전히 이 예산 안에서 끝나지 못해 실패한다.
+ */
+const HANCHAN_MS = 90_000;
+
+/** 테스트 자체의 상한 — 한 판 예산 + 정리·검증 여유. */
+const HANCHAN_TEST_MS = HANCHAN_MS + 30_000;
+
 /** 테스트용 빈 원시 통계 (필드 오버라이드로 시나리오 구성). */
 function emptyRaw(): ReturnType<typeof createEmptyStats> {
   return createEmptyStats();
@@ -68,7 +87,7 @@ class FakeSocket {
     return [...this.sent].reverse().find((m) => m.type === type);
   }
 
-  waitFor(pred: (m: any) => boolean, timeoutMs = 30_000): Promise<void> {
+  waitFor(pred: (m: any) => boolean, timeoutMs = HANCHAN_MS): Promise<void> {
     if (this.sent.some(pred)) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("waitFor timeout")), timeoutMs);
@@ -108,6 +127,7 @@ class FakeSocket {
 
 const dirs: string[] = [];
 const dbs: SiteDb[] = [];
+const managers: RoomManager[] = [];
 
 interface Harness {
   rm: RoomManager;
@@ -122,7 +142,9 @@ async function newHarness(interRoundDelayMs = 0, signupCode = ""): Promise<Harne
   await store.load();
   const db = new SiteDb(":memory:");
   dbs.push(db);
-  return { rm: new RoomManager(replayDir, store, interRoundDelayMs, db, signupCode), db, store };
+  const manager = new RoomManager(replayDir, store, interRoundDelayMs, db, signupCode);
+  managers.push(manager);
+  return { rm: manager, db, store };
 }
 
 /**
@@ -156,7 +178,23 @@ async function connectAndLogin(h: Harness, username: string, password: string): 
   return sock;
 }
 
+/**
+ * 테스트가 끝나면 그 테스트의 서버를 **반드시 끈다**.
+ *
+ * 예전에는 `RoomManager`를 만들어 놓고 아무도 끄지 않았다. 판 도중에 끝나는
+ * 테스트(재접속·포기·무효 투표…)가 남긴 봇 반장전이 **같은 이벤트 루프 안에서**
+ * 계속 돌아, 뒤이어 실행되는 테스트의 CPU를 절반씩 가져갔다. 봇 한 판이 원래
+ * 10~20초짜리라, 20초 예산을 둔 `waitFor`들이 무작위로 굶어 터졌다 —
+ * 이것이 "단독 실행인데도 매번 다른 테스트가 waitFor timeout으로 죽는" 정체다.
+ * (계측: 죽은 테스트가 도는 동안 남의 진행 중 게임이 최대 1개 살아 있었다.)
+ */
 afterEach(async () => {
+  for (const m of managers.splice(0)) {
+    m.shutdown("테스트 정리");
+    m.stop();
+  }
+  // 중단된 게임 루프가 마무리 콜백을 흘려보낼 틈을 준다 (임시 디렉터리 삭제 레이스 방지)
+  await new Promise((r) => setTimeout(r, 0));
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
   for (const db of dbs.splice(0)) db.close();
 });
@@ -644,7 +682,7 @@ describe("게임 완주·기록", () => {
       expect(data.lines.length).toBeGreaterThan(100);
       expect(JSON.parse(data.lines[0]).type).toBe("__init__");
     },
-    40_000,
+    HANCHAN_TEST_MS,
   );
 
   it(
@@ -660,15 +698,18 @@ describe("게임 완주·기록", () => {
       for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
       sock.clientSend({ type: "startGame" });
 
-      // ack가 없으면 국마다 30초를 기다려 20초 안에 못 끝난다 → ack 배선 검증
-      await sock.waitFor((m) => m.type === "gameOver", 20_000);
+      // ack가 없으면 **국마다 30초**를 기다린다 — 반장전은 최소 7국이라 210초가 넘는다.
+      // 한 판 예산(90초) 안에 끝났다면 결과 화면 닫기 신호가 다음 국을 앞당긴 것이다.
+      // (예산을 판의 실제 원가에 맞춰 올렸다 — HANCHAN_MS 주석 참고. 20초로는
+      //  ack가 멀쩡해도 판 자체가 늦어 터졌다.)
+      await sock.waitFor((m) => m.type === "gameOver", HANCHAN_MS);
       expect(sock.last("gameOver").rankings).toHaveLength(4);
       // 결과 화면의 카운트다운 근거 — 서버가 실제로 쓰는 상한 그대로 실려 나간다.
       // (클라가 자기 숫자를 따로 들면 "N초 뒤 진행"이 거짓말이 된다.)
       expect(sock.last("roundOver").autoContinueMs).toBe(30_000);
-      await sock.waitFor((m) => m.type === "stats", 20_000);
+      await sock.waitFor((m) => m.type === "stats", HANCHAN_MS);
     },
-    25_000,
+    HANCHAN_TEST_MS,
   );
 
   it(
@@ -682,13 +723,13 @@ describe("게임 완주·기록", () => {
       for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
       sock.clientSend({ type: "startGame" });
 
-      await sock.waitFor((m) => m.type === "gameOver", 20_000);
+      await sock.waitFor((m) => m.type === "gameOver", HANCHAN_MS);
       // 방이 살아 있다는 신호 — 결과 화면이 "이어하기"를 띄우는 근거
       expect(sock.last("gameOver").canContinue).toBe(true);
       // 통계 영속화까지 기다린다 (임시 디렉터리 정리 레이스 방지)
-      await sock.waitFor((m) => m.type === "stats", 20_000);
+      await sock.waitFor((m) => m.type === "stats", HANCHAN_MS);
       // 대기실 상태가 다시 방송된다 (같은 방 코드·4인 그대로)
-      await sock.waitFor((m) => m.type === "lobby", 20_000);
+      await sock.waitFor((m) => m.type === "lobby", HANCHAN_MS);
       const lobby = sock.last("lobby");
       expect(lobby.roomId).toBe(code);
       expect(lobby.players).toHaveLength(4);
@@ -696,9 +737,9 @@ describe("게임 완주·기록", () => {
 
       // 그 방에서 곧바로 다음 판이 시작된다
       sock.clientSend({ type: "startGame" });
-      await sock.waitFor((m) => m.type === "view", 20_000);
+      await sock.waitFor((m) => m.type === "view", HANCHAN_MS);
     },
-    45_000,
+    HANCHAN_TEST_MS,
   );
 
   it(
@@ -743,13 +784,13 @@ describe("게임 완주·기록", () => {
       sock.clientSend({ type: "leaveRoom" }); // 게임 중 포기
 
       // 포기한 좌석은 봇처럼 자동 진행 → 30초 타임아웃 없이 게임이 끝난다
-      await sock.waitFor((m) => m.type === "gameOver", 40_000);
+      await sock.waitFor((m) => m.type === "gameOver", HANCHAN_MS);
       const over = sock.last("gameOver");
       expect(over.rankings).toHaveLength(4);
       // 통계 영속화까지 기다린다 (임시 디렉터리 정리 레이스 방지)
-      await sock.waitFor((m) => m.type === "stats", 40_000);
+      await sock.waitFor((m) => m.type === "stats", HANCHAN_MS);
     },
-    40_000,
+    HANCHAN_TEST_MS,
   );
 
   it(
@@ -777,7 +818,7 @@ describe("게임 완주·기록", () => {
       // 통계 영속화까지 기다린다 (임시 디렉터리 정리 레이스 방지)
       await sock2.waitFor((m) => m.type === "stats");
     },
-    40_000,
+    HANCHAN_TEST_MS,
   );
 });
 
@@ -801,10 +842,10 @@ describe("유령 좌석 정리 (접속 어긋남)", () => {
       guest.closeOnType = "gameOver";
       host.clientSend({ type: "startGame" });
 
-      await host.waitFor((m) => m.type === "gameOver", 60_000);
+      await host.waitFor((m) => m.type === "gameOver", HANCHAN_MS);
       expect(guest.readyState).toBe(3); // 닫혔다
       host.sent.length = 0; // 종국 뒤 대기실 방송만 본다
-      await host.waitFor((m) => m.type === "lobby", 20_000);
+      await host.waitFor((m) => m.type === "lobby", HANCHAN_MS);
 
       // 접속하지 않은 사람이 대기실에 앉아 있으면 안 된다 (방장은 시작도 못 하게 된다)
       const lobby = host.last("lobby");
@@ -820,7 +861,7 @@ describe("유령 좌석 정리 (접속 어긋남)", () => {
       expect(back.last("error")).toBeUndefined();
       expect(back.last("roomCreated")?.code).toMatch(/^[A-Z2-9]{6}$/);
     },
-    70_000,
+    HANCHAN_TEST_MS,
   );
 
   it("방을 떠난 것으로 아는 클라이언트가 새 방을 만들면 옛 좌석을 놓아 준다", async () => {
@@ -1034,11 +1075,11 @@ describe("관리자 관전", () => {
       expect(hands.every((z: any) => z.hiddenCount === 0)).toBe(true);
 
       // 게임 종료까지 관전 유지 → spectateEnded 수신
-      await admin.waitFor((m) => m.type === "spectateEnded", 40_000);
+      await admin.waitFor((m) => m.type === "spectateEnded", HANCHAN_MS);
       // 통계 영속화까지 기다린다 (임시 디렉터리 정리 레이스 방지)
-      await player.waitFor((m) => m.type === "stats", 40_000);
+      await player.waitFor((m) => m.type === "stats", HANCHAN_MS);
     },
-    60_000,
+    HANCHAN_TEST_MS,
   );
 });
 
@@ -1130,13 +1171,13 @@ describe("전체 통계·계정 관리 (32)", () => {
     await player.waitFor((m) => m.type === "roomCreated");
     for (let i = 0; i < 3; i++) player.clientSend({ type: "addBot" });
     player.clientSend({ type: "startGame" });
-    await player.waitFor((m) => m.type === "gameOver", 40_000);
-    await player.waitFor((m) => m.type === "stats", 40_000);
+    await player.waitFor((m) => m.type === "gameOver", HANCHAN_MS);
+    await player.waitFor((m) => m.type === "stats", HANCHAN_MS);
 
     // 관리자는 게임에 참가하지 않았지만 전체 리플레이를 본다
     const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
     admin.clientSend({ type: "replayList" });
     await admin.waitFor((m) => m.type === "replayList");
     expect(admin.last("replayList").games.length).toBeGreaterThanOrEqual(1);
-  }, 50_000);
+  }, HANCHAN_TEST_MS);
 });
