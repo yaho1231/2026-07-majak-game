@@ -28,8 +28,6 @@ import { pointsForHan } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
 import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.js";
-import { NO_FLAGS } from "./flags.js";
-import type { BotFlags } from "./flags.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
@@ -123,8 +121,6 @@ export function readThreats(
   doraKinds: readonly TileKind[] = [],
   /** 지금까지 읽어 낸 이 사람의 성향 (없으면 '보통 사람') */
   traitsOf: (p: PlayerId) => OpponentTraits = () => NEUTRAL_TRAITS,
-  /** 실험 스위치 (2:2 정책 대전 전용 — `bot/flags.ts`) */
-  flags: BotFlags = NO_FLAGS,
 ): Threat[] {
   const out: Threat[] = [];
   const turn = view.round.turnCount;
@@ -175,7 +171,7 @@ export function readThreats(
       // 종반에 중장패를 흘리는 열린 손은 손이 완성됐다는 신호다
       if (turn >= 9 && recentMiddleDiscards(discards) >= 2) level += 0.12;
     } else {
-      level = damatenLevel(turn, flags);
+      level = damatenLevel(turn);
     }
 
     /**
@@ -268,13 +264,20 @@ export function readThreats(
  * 고른 손과 방금 막 텐파이가 된 손뿐이라 값이 작다. 종반 상한을 0.25로 두고 선형으로
  * 올린다 — **11순에서 정확히 0.15**가 되어 예전 값과 이어지고, 그 아래로는 0까지
  * 매끄럽게 내려간다(예전에는 절벽이었다).
+ *
+ * ## 채택 (2026-08-08, 220배패 2:2 듀플리케이트)
+ *
+ * `damaten` 스위치 뒤에 두고 쟀다. 순위 −0.0023 ± 0.0553 · 점수 −255 ± 1272 —
+ * **강함은 재도 재도 같다.** 그럴 만하다: 넷이 다 같은 봇이라 다마텐을 무서워하는 쪽도
+ * 무섭게 하는 쪽도 함께 움직여 순위로는 상쇄된다. 그래도 채택하는 이유는 **눈금이 옳기
+ * 때문**이다 — 11순과 12순 사이에서 판단이 통째로 뒤집히던 절벽이 사라진다. 사람이 보는
+ * 것은 순위가 아니라 그 절벽이다.
  */
 const DAMATEN_START = 2;
 const DAMATEN_FULL = 17;
 const DAMATEN_PEAK = 0.25;
 
-function damatenLevel(turn: number, flags: BotFlags): number {
-  if (!flags.has("damaten")) return turn >= 12 ? 0.15 : 0;
+function damatenLevel(turn: number): number {
   const t = (turn - DAMATEN_START) / (DAMATEN_FULL - DAMATEN_START);
   return DAMATEN_PEAK * Math.max(0, Math.min(1, t));
 }

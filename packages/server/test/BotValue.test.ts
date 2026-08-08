@@ -94,7 +94,9 @@ describe("손 값어치 — 판수를 점수로 옮긴다", () => {
   /**
    * **부수 분기가 죽어 있었다** — `menzen ? 30 : 30`이라 토이토이가 아닌 모든 손이
    * 멘젠·후로를 가리지 않고 30부로 값매겨졌다. 30부와 40부는 4판에서 7700과 만관을
-   * 가르는 자리다. 지금은 `menzenfu` 스위치 뒤에 두고 2:2로 재는 중이다.
+   * 가르는 자리다. `menzenfu` 스위치로 204배패를 재고 **반려했다** — 강함은 그대로인데
+   * (순위 +0.0270 ± 0.0580) 후로율을 16.8% → 12.7%로 깎았다. 스위치는 다시 잴 수 있게
+   * 남아 있고, 판정 기록은 `bot/read.ts`의 `menzenFu` 주석에 있다.
    */
   it("멘젠 부수 분리 스위치를 켜면 멘젠 손이 후로 손보다 비싸진다", () => {
     const plain = estimateHandValue({ ...base, handDora: 2 });
@@ -198,8 +200,18 @@ describe("순위 읽기 — 이 국이 게임의 어디인가", () => {
 describe("위험은 확률이 아니라 확률 × 실점이다", () => {
   const HAND = "99m234m678p1z2z3z4z5z6z";
 
+  /**
+   * 2026-08-08: 다마텐 경사를 채택한 뒤로는 **셋 전부의 현물**이어야 0이 된다.
+   * 리치자에게만 안전한 패는 조용한 멘젠 둘에게는 여전히 값이 있다 — 예전에는
+   * 그 둘의 위협이 0이라 리치 현물 하나로 판 전체가 안전해졌다.
+   */
   it("현물은 아무리 위험한 상대에게도 0점이다", () => {
-    const s = botScene({ hand: HAND, riichi: ["p1"], discards: { p1: "9m" }, turnCount: 10 });
+    const s = botScene({
+      hand: HAND,
+      riichi: ["p1"],
+      discards: { p1: "9m", p2: "9m", p3: "9m" },
+      turnCount: 10,
+    });
     const read = buildRead(s.view, "p0");
     expect(read.expectedLoss({ suit: "man", rank: 9 })).toBe(0);
   });
@@ -221,8 +233,12 @@ describe("위험은 확률이 아니라 확률 × 실점이다", () => {
     expect(t?.value).toBeGreaterThan(2000);
   });
 
+  /**
+   * 2026-08-08: 다마텐 경사를 채택하면서 **위협이 정확히 0인 판이 1~2순으로 줄었다.**
+   * 6순의 조용한 멘젠 상대는 이제 작지만 0이 아닌 위협이다(그게 채택의 요점이다).
+   */
   it("위협이 없으면 어떤 패도 기대 실점이 0이다", () => {
-    const s = botScene({ hand: HAND, turnCount: 6 });
+    const s = botScene({ hand: HAND, turnCount: 1 });
     const read = buildRead(s.view, "p0");
     for (const k of read.hand) expect(read.expectedLoss(k)).toBe(0);
   });

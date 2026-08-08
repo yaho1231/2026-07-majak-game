@@ -21,8 +21,6 @@
  */
 
 import type { PlayerId, PlayerView } from "@majak/core";
-import { NO_FLAGS } from "./flags.js";
-import type { BotFlags } from "./flags.js";
 
 export type BotGameMode = "hanchan" | "tonpuu";
 
@@ -58,12 +56,6 @@ export interface MatchContext {
   riskAppetite: number;
 }
 
-/**
- * 순위 압박이 실재하기 시작하는 점수차. 이 값을 넘으면 압박이 최대가 된다.
- * 만관(8000)이 한 번에 뒤집을 수 있는 크기라 그 근처로 잡는다.
- */
-const PRESSURE_SPAN = 9000;
-
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
 /** 뷰의 점수판과 국 진행에서 이 봇의 처지를 읽는다 */
@@ -71,7 +63,6 @@ export function readMatch(
   view: PlayerView,
   me: PlayerId,
   mode: BotGameMode = "hanchan",
-  flags: BotFlags = NO_FLAGS,
 ): MatchContext {
   const scores = view.players.map((p) => ({ id: p.id, score: p.score, seat: p.seat }));
   const myScore = scores.find((p) => p.id === me)?.score ?? 25000;
@@ -97,10 +88,7 @@ export function readMatch(
   const seat = view.players.find((p) => p.id === me)?.seat ?? 0;
   const isDealer = seat === view.round.dealerSeat;
 
-  let riskAppetite = flags.has("place2")
-    ? ladderAppetite(sorted, rank, myScore, roundsLeft, lateness)
-    : // 예전 식 — 인접 순위만 보고 빼기 때문에 위아래가 둘 다 멀면 0으로 상쇄된다.
-      lateness * (clamp01(chase / PRESSURE_SPAN) - clamp01(lead / PRESSURE_SPAN));
+  let riskAppetite = ladderAppetite(sorted, rank, myScore, roundsLeft, lateness);
 
   // 오야는 화료하면 연장된다 — 뒤집을 기회가 한 번 더 생기므로 조금 더 민다.
   // 반대로 올라스 오야 선두는 **끝내는 것**이 이득이라 더 지킨다.
@@ -120,7 +108,7 @@ export function readMatch(
   };
 }
 
-// ─────────────────────── 순위 사다리 전체를 본다 (`place2`) ───────────────────────
+// ─────────────────────────── 순위 사다리 전체를 본다 ───────────────────────────
 
 /**
  * 남은 국에서 **뒤집을 수 있는 점수차**의 어림.
@@ -164,6 +152,18 @@ const reachable = (gap: number, roundsLeft: number): number =>
  * 값어치가 없고 방총만 값어치가 있다(우마·점수 자체의 몫이 남는다). 그래서
  * 뺄셈이 0으로 상쇄되는 대신 **음수**가 나오게 항을 하나 더 둔다 — 예전 식이
  * "평시"라고 잘못 답하던 바로 그 자리다.
+ *
+ * ## 채택 (2026-08-08, 340배패 2:2 듀플리케이트)
+ *
+ * `place2` 스위치 뒤에 두고 쟀다. 순위 −0.0206 ± 0.0434 · 점수 −269 ± 964 — 강함은
+ * 그대로다. 놀랄 일이 아니다: 순위 압박이 실재하는 것은 마지막 두 국뿐이고
+ * (`lateness`), 반장전 8국 중 6국에서는 두 식이 거의 같은 값을 낸다. 값이 갈리는 그
+ * 두 국의 판단이 옳아지는 것이 채택 이유다 — 굳은 2위가 "평시대로 치라"는 답을
+ * 받던 것은 이 파일 머리말이 스스로 세운 목표와 정면으로 어긋난다.
+ *
+ * 중간 경고 기록: 102배패 시점에 −0.1225 ± 0.0891로 뚜렷하게 나빠 보였는데 340배패에서
+ * −0.0206으로 되돌아왔다. docs/27 §4.2의 `draftsyn` 과 정확히 같은 함정이라, 작은
+ * 표본의 부호를 읽지 않은 것이 옳았다.
  */
 function ladderAppetite(
   sorted: readonly { id: PlayerId; score: number; seat: number }[],
@@ -180,8 +180,18 @@ function ladderAppetite(
     else if (theirRank > rank)
       downside = Math.max(downside, reachable(myScore - p.score, roundsLeft));
   }
-  // 위도 아래도 안 닿는다 = 이 국이 순위를 못 바꾼다 → 변동성을 줄이는 것이 이득이다
-  const locked = (1 - upside) * (1 - downside);
+  /**
+   * 위도 아래도 안 닿는다 = 이 국이 순위를 못 바꾼다 → 변동성을 줄이는 것이 이득이다.
+   *
+   * 단, **떨어질 자리가 있을 때만.** 꼴찌에게는 이 항이 뜻을 잃는다 — 방총해도 어차피
+   * 4위라 조심해서 지킬 것이 없고, 반대로 밀어야 할 이유(역만 한 방)만 남는다. 이걸
+   * 빼먹으면 올라스 꼴찌가 "몸을 사려라"는 답을 받는데, 그건 이 파일 머리말이
+   * ("올라스 4위에 2만점 차 → 밀어서 역만을 노린다") 스스로 세운 목표와 정반대다.
+   * 스위치를 떼고 기본으로 삼자마자 `BotValue.test.ts`의 올라스 꼴찌 장면이 이걸
+   * 잡아냈다 — 스위치 뒤에 있는 동안에는 아무도 안 밟던 자리다.
+   */
+  const canFall = rank < sorted.length;
+  const locked = canFall ? (1 - upside) * (1 - downside) : 0;
   return lateness * (upside - downside - LOCKED_CAUTION * locked);
 }
 

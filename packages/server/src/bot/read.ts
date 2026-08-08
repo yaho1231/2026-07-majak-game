@@ -98,8 +98,13 @@ export interface BotRead {
   /**
    * 이 패를 버릴 때 **잃을 것으로 기대되는 점수** (확률 × 실점).
    * `safetyOf`와 달리 점수 단위라 기대 획득(`gainIf`)과 직접 비교된다.
+   *
+   * `only`를 주면 **그 상대 한 사람에 대한 몫**만 센다. 판단에는 쓰지 않는다 —
+   * "이 패가 저 리치에게 현물인가" 같은 한 사람짜리 질문을 검증·설명에서 물을 때
+   * 쓴다. 다마텐 경사를 채택한 뒤로는 합계가 어느 판에서도 정확히 0이 아니라서,
+   * 사람 하나를 따로 떼어 보지 않으면 그 질문에 답할 자리가 없어졌다.
    */
-  expectedLoss(kind: TileKind): number;
+  expectedLoss(kind: TileKind, only?: PlayerId): number;
   /** 게임 전체에서 이 국의 처지 (순위·남은 국·판돈 → 위험 감수 성향) */
   match: MatchContext;
   /**
@@ -258,13 +263,7 @@ export function buildRead(
     if (k !== undefined) doraKinds.push(doraKindFor(k));
   }
   // 위협 읽기는 도라를 알아야 한다 — 상대 후로에 눕혀진 도라가 예상 실점을 바꾼다
-  const threats = readThreats(
-    view,
-    me,
-    doraKinds,
-    context.traitsOf ?? (() => NEUTRAL_TRAITS),
-    flags,
-  );
+  const threats = readThreats(view, me, doraKinds, context.traitsOf ?? (() => NEUTRAL_TRAITS));
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {
     const key = kindKey(d);
@@ -336,7 +335,7 @@ export function buildRead(
   const menzenAt = (assumed: number): boolean =>
     assumed > meldCount ? false : assumed < meldCount ? assumed <= closedKanCount : menzen;
 
-  const match = readMatch(view, me, mode, flags);
+  const match = readMatch(view, me, mode);
   const wallLeft = wallLeftOf(view);
   const furiten = mine?.furiten === true;
   const waitTiles = waitTilesOf(waits, remainingOf);
@@ -360,7 +359,13 @@ export function buildRead(
     doraKinds,
     remainingOf,
     safetyOf: (kind) => safetyOf(kind, threats, remainingOf, defense),
-    expectedLoss: (kind) => expectedLossOf(kind, threats, remainingOf, defense),
+    expectedLoss: (kind, only) =>
+      expectedLossOf(
+        kind,
+        only === undefined ? threats : threats.filter((t) => t.player === only),
+        remainingOf,
+        defense,
+      ),
     valueOf: (input) =>
       estimateHandValue({
         // 손을 직접 읽어 역을 잡는다 (`bot/yaku.ts`) — 청일색·치또이·일통·산색·찬타.
@@ -382,7 +387,22 @@ export function buildRead(
         // 증강이 **규칙 자체를 지운** 두 자리 — 역 요구와 리치의 멘젠 요구
         ...(rules.noYakuRequired ? { noYakuRequired: true } : {}),
         ...(rules.openRiichiHan > 0 ? { openRiichiHan: rules.openRiichiHan } : {}),
-        // 멘젠 부수 분리 (`menzenfu`) — 측정 중인 스위치라 기본은 종전 동작이다
+        /**
+         * 멘젠 부수 분리 (`menzenfu`) — **재 보고 반려한 스위치라 기본은 종전 동작이다.**
+         *
+         * 2026-08-08, 204배패 2:2 듀플리케이트: 순위 +0.0270 ± 0.0580 · 점수 +344 ± 1297.
+         * **강해지지 않았다.** 그런데 값을 치렀다 — **후로율 16.8% → 12.7%**(−4.2%p),
+         * 방총률 10.50% → 11.32%. 멘젠 손이 20% 비싸지니 `evOfPass`가 `evOfCall`을
+         * 더 자주 이긴다. `bot/value.ts`의 `MENZEN_FU` 주석이 예고한 그대로다.
+         *
+         * 하필 같은 판에서 `passRisk`가 후로율을 +1.8%p 올려 놓았는데, 이 스위치 하나가
+         * 그걸 두 배로 되돌린다(네 스위치 동시: 16.7% → 14.0%). 봇의 후로율 17.5%를
+         * 사람 구간 30~40%로 끌어올리는 것이 이번 작업의 목표라, **강함을 하나도 얻지
+         * 못하면서 목표를 뒤로 미는** 변경은 채택하지 않는다.
+         *
+         * 마작으로서는 이쪽이 옳다(멘젠 론 +10부). 다시 켜려면 후로 쪽 값매김을 함께
+         * 손봐야 한다 — 그때 이 스위치로 다시 재면 된다.
+         */
         menzenFu: flags.has("menzenfu"),
       }),
     winChanceOf: (input) =>

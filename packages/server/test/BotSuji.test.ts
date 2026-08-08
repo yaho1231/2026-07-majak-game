@@ -38,6 +38,20 @@ const BASE = "123m456m789m11p5s7z";
 const lossOf = (view: PlayerView, kind: TileKind, archetype = "balanced" as const) =>
   buildRead(view, "p0", { profile: profileOf(archetype) }).expectedLoss(kind);
 
+/**
+ * **한 상대에 대한 몫만** 센다.
+ *
+ * 2026-08-08에 다마텐 경사를 채택하면서 조용한 멘젠 상대의 위협이 더는 0이 아니게 됐다
+ * (그게 채택의 요점이다). 그래서 "이 패는 **저 리치에게** 현물이다"를 합계로 물으면
+ * 남은 둘의 몫이 섞여 영영 0이 안 나온다 — 질문을 그 사람에게 직접 한다.
+ */
+const lossVs = (
+  view: PlayerView,
+  kind: TileKind,
+  player: string,
+  archetype = "balanced" as const,
+) => buildRead(view, "p0", { profile: profileOf(archetype) }).expectedLoss(kind, player);
+
 describe("스지 표 — 이론 그대로인가", () => {
   it("버린 패가 지우는 짝이 1↔4 · 2↔5 · 3↔6 · 4↔1,7 · 5↔2,8 · 6↔3,9 · 7↔4 · 8↔5 · 9↔6", () => {
     expect(sujiPartners(1)).toEqual([4]);
@@ -89,8 +103,8 @@ describe("스지는 '안전'이 아니라 '조금 더 안전'이다", () => {
 
   it("현물은 언제나 스지보다 안전하다 (현물만이 0이다)", () => {
     const view = scene("1z2m8m5p");
-    expect(lossOf(view, p(5))).toBe(0); // p1이 직접 버린 패 = 현물
-    expect(lossOf(view, m(5))).toBeGreaterThan(0); // 양스지지만 0은 아니다
+    expect(lossVs(view, p(5), "p1")).toBe(0); // p1이 직접 버린 패 = 현물
+    expect(lossVs(view, m(5), "p1")).toBeGreaterThan(0); // 양스지지만 0은 아니다
   });
 
   it("스지가 지우는 것은 량면뿐이다 — 량면 몫만큼만 내려간다", () => {
@@ -233,11 +247,11 @@ describe("통과패 — 리치 뒤에 지나간 패는 현물과 같다", () => 
   }).view;
 
   it("리치 이후에 남이 버렸는데 론하지 않은 패는 100% 안전패다", () => {
-    expect(lossOf(view, { suit: "sou", rank: 8 })).toBe(0);
+    expect(lossVs(view, { suit: "sou", rank: 8 }, "p1")).toBe(0);
   });
 
   it("리치 이전에 지나간 패는 세지 않는다 — 그때는 텐파이가 아니었을 수 있다", () => {
-    expect(lossOf(view, p(5))).toBeGreaterThan(0);
+    expect(lossVs(view, p(5), "p1")).toBeGreaterThan(0);
   });
 
   it("통과패는 스지를 세우지 않는다 — 남이 버린 패는 그 사람의 후리텐이 아니다", () => {
@@ -249,8 +263,8 @@ describe("통과패 — 리치 뒤에 지나간 패는 현물과 같다", () => 
       discards: { p1: "1z2z" },
       turnCount: 10,
     }).view;
-    expect(lossOf(view, { suit: "sou", rank: 5 })).toBeCloseTo(
-      lossOf(naked, { suit: "sou", rank: 5 }),
+    expect(lossVs(view, { suit: "sou", rank: 5 }, "p1")).toBeCloseTo(
+      lossVs(naked, { suit: "sou", rank: 5 }, "p1"),
       5,
     );
   });
@@ -287,7 +301,7 @@ describe("성격 — 스지를 얼마나 믿는가", () => {
   it("성격은 스지의 신뢰도만 흔든다 — 현물은 누구에게나 0이다", () => {
     const genbutsu = m(2);
     for (const a of ["attacker", "defender", "valueHunter", "speedster"] as const) {
-      expect(lossOf(view, genbutsu, a)).toBe(0);
+      expect(lossVs(view, genbutsu, "p1", a)).toBe(0);
     }
   });
 
