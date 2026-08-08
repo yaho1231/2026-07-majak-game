@@ -1984,6 +1984,8 @@ export function App(): JSX.Element {
   const [authError, setAuthError] = useState<string | null>(null);
   /** 규칙·도움말 화면 열림 여부 (로그인 전·홈·게임 중 어디서나 열린다) */
   const [helpOpen, setHelpOpen] = useState(false);
+  /** "가로로 돌리세요" 안내를 닫았는가 — 한 번 읽으면 그만이다(docs/28 §2-2) */
+  const [rotateHintOff, setRotateHintOff] = useState(false);
   /**
    * 지금 인증되어 있는가 — **live ref**. handleServerMessage는 마운트 시 소켓에
    * 고정된 클로저라 auth state가 스테일하다. 서버 오류를 로그인 폼에 넣을지
@@ -3493,19 +3495,27 @@ export function App(): JSX.Element {
     }
     // 어느 좌석의 결정인가 — 봇 좌석을 조종 중이면 그 좌석(view.playerId)으로 답한다.
     const seat = view?.playerId;
-    send({
+    // 전송에 실패했으면(소켓이 닫혀 있었으면) **프롬프트를 그대로 둔다** — action은
+    // VOLATILE이라 큐에 담기지 않고 버려진다(resendPolicy ①). 여기서 프롬프트를 내리면
+    // 액티브 증강 발동이나 론/치·펑이 아무 흔적 없이 사라지고 다시 누를 수도 없다.
+    // send()가 토스트로 알렸으니, 다시 붙은 뒤 같은 버튼을 누르면 된다.
+    const sent = send({
       type: "action",
       actionType: option.type,
       payload: option.payload,
       ...(seat !== undefined ? { seat } : {}),
     } as ActionMessage);
+    if (!sent) return;
     if (seat !== undefined) dropPrompt(seat);
     setRiichiMode(false);
   }
 
   function pickDraft(augmentId: string): void {
     if (draft === null || draftPicked) return;
-    send({ type: "draftPick", stage: draft.stage, augmentId });
+    // draftPick도 VOLATILE이다 — 전송에 실패했는데 잠가 버리면 카드가
+    // pointer-events:none 으로 굳은 채 "✓ 선택 완료"만 뜨고, 정작 서버는 아무것도
+    // 받지 못해 타임아웃으로 대신 골라 준다. 실패하면 잠그지 않고 다시 누르게 둔다.
+    if (!send({ type: "draftPick", stage: draft.stage, augmentId })) return;
     // 오버레이는 닫지 않고 "다른 플레이어 대기 중"으로 전환 — 전원 선택이 끝나면
     // 서버가 다음 프롬프트/뷰를 보내 오버레이가 닫힌다(뷰 핸들러가 draftPickedRef로 감지).
     setDraftPicked(true);
@@ -3604,11 +3614,23 @@ export function App(): JSX.Element {
       <LayoutHint />
       {/* 기기를 돌려 달라는 안내. LayoutHint 는 '브라우저 확대'를 말하는 것이라
           터치 기기에서는 뜨지 않는다(맞는 판단이다) — 폰 세로에는 그래서 아무 안내도
-          없었다. 여기는 조건이 전부 CSS 미디어쿼리로 표현되므로 상태도 스크립트도 없다. */}
-      <div className="rotate-hint" role="status">
-        <span aria-hidden="true">⟳</span>
-        <span>가로로 돌리면 네 자리가 다 보입니다.</span>
-      </div>
+          없었다. 뜨는 조건은 전부 CSS 미디어쿼리라 여기에 상태가 없었는데, **닫을 수가
+          없어서** 한 번 읽고 나면 계속 자리를 차지했다(docs/28 §2-2). 닫기만 상태로 둔다 —
+          어디에 뜰지는 여전히 CSS가 정한다. */}
+      {rotateHintOff ? null : (
+        <div className="rotate-hint" role="status">
+          <span aria-hidden="true">⟳</span>
+          <span>가로로 돌리면 네 자리가 다 보입니다.</span>
+          <button
+            type="button"
+            className="rotate-hint-close"
+            aria-label="안내 닫기"
+            onClick={() => setRotateHintOff(true)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
@@ -10483,6 +10505,53 @@ function OwnArea(props: {
 
   const armName = armedAug !== null ? (ACTION_LABEL[armedAug] ?? armedAug) : "";
   const areaRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * 내 영역이 실제로 차지하는 아래쪽 띠 높이를 `--own-band`로 올려 준다.
+   * 중앙 보드(패널 + 네 바닥)는 이 값을 빼고 남는 자리 안에서만 크기와 위치를
+   * 잡는다(styles.css `.table` / `.table-center`) — 안 그러면 내 버림패가 내
+   * 이름표·액티브 증강 버튼·손패 밑으로 흘러들어가 읽히지 않는다(docs/28 §2-3·§2-4).
+   *
+   * **잠깐 떴다 사라지는 줄(액션 바·프롬프트 타이머·무장 안내)은 빼고 잰다.** 넣으면
+   * 치·펑 프롬프트가 뜰 때마다 보드 전체가 크기를 바꿔 판이 출렁인다. 그 줄들은
+   * 바닥 아래쪽 한두 단을 잠시 덮는 선에서 끝나고, 점수판(패널 안)에는 닿지 않는다.
+   *
+   * 되먹임은 없다: 손패·이름표 크기는 cqw/cqmin에만 걸려 있고 `--board`와 무관하다.
+   * 값이 그대로면 아무것도 쓰지 않으므로 리렌더가 잦아도 비용은 offsetHeight 읽기뿐이다.
+   */
+  const ownBandRef = useRef(-1);
+  // 렌더마다 다시 잰다(의존성 배열 없음). ResizeObserver를 먼저 써 봤는데, 손패가
+  // 채워지거나 화면 크기가 바뀌어 띠가 자라도 콜백이 오지 않는 경우가 있어 띠가 낡았다.
+  // 렌더는 뷰가 올 때마다 도므로 이쪽이 확실하다.
+  useLayoutEffect(() => {
+    const area = areaRef.current;
+    if (area === null) return;
+    const root = area.closest(".game-root");
+    if (!(root instanceof HTMLElement)) return;
+    const cs = getComputedStyle(area);
+    const gap = Number.parseFloat(cs.rowGap) || 0;
+    const inset = Number.parseFloat(cs.bottom) || 0;
+    let h = area.offsetHeight;
+    for (const el of area.children) {
+      if (!(el instanceof HTMLElement)) continue;
+      // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
+      if (!el.matches(".action-bar, .prompt-timer, .arm-hint")) continue;
+      h -= el.offsetHeight + gap;
+    }
+    const band = Math.max(0, Math.round(h + inset));
+    if (band === ownBandRef.current) return;
+    ownBandRef.current = band;
+    root.style.setProperty("--own-band", `${band}px`);
+  });
+
+  // 대국을 나가면 내 영역도 없다 — 띠를 남겨 두면 로비에서 rotate-hint가 붕 뜬다.
+  useLayoutEffect(() => {
+    const root = areaRef.current?.closest(".game-root") ?? null;
+    return () => {
+      ownBandRef.current = -1;
+      if (root instanceof HTMLElement) root.style.removeProperty("--own-band");
+    };
+  }, []);
 
   // 봉인되어 버릴 수 없는 내 손패(tileId) — 자물쇠 표시 + 클릭 안내용.
   // 서버가 종류 봉인·개별 패 봉인을 합쳐 최종 판정한 결과라 판정과 표시가 어긋나지 않는다.
