@@ -34,6 +34,32 @@ export const DECISION_TIMEOUT_MS = 30_000;
 export const DISCONNECT_GRACE_MS = 5_000;
 
 /**
+ * 유예 타임아웃을 **연속으로** 이만큼 흘리면 그 좌석을 이탈로 확정한다.
+ *
+ * 유예는 "몇 초 안에 돌아온다"는 가정이다. 돌아오지 않는 사람에게 그 가정을
+ * 끝까지 적용하면 매 결정이 5초씩 걸려 국이 24초 → 72초로 늘어나고(실측),
+ * 무엇보다 `handleVoteAbort`가 그 좌석을 정족수에 세는 동안 남은 사람은 판을
+ * 끝낼 방법이 없다(2026-08-08 QA BLOCKER-2·3). 이탈로 확정되면 이후 결정은
+ * 봇처럼 즉시 처리되고 중단 투표에서도 자동 동의로 빠진다.
+ *
+ * 좌석 자체는 그대로 남으므로 **재접속은 계속 가능하다** — 돌아오면 그 시점부터
+ * 다시 직접 두면 된다. 8회면 한 사람 기준 두 순 남짓이라, 새로고침·모바일
+ * 전환 같은 짧은 끊김은 여전히 여유롭게 통과한다.
+ */
+export const GRACE_TIMEOUTS_BEFORE_ABANDON = 8;
+
+/**
+ * 연결당 송신 버퍼 상한(bytes) — 수신자가 응답을 제때 읽지 않아(느린/악의적
+ * 소비자) ws 송신 큐가 이 상한을 넘으면 그 연결을 끊는다.
+ *
+ * RoomManager.send와 **HumanAgent.send 양쪽**에 걸어야 한다. 예전에는
+ * RoomManager에만 있었는데, 인게임 프레임(view·prompt·roundOver…)은 전부
+ * HumanAgent.send를 지나가므로 소켓을 읽지 않으면서 하트비트 pong만 답하면
+ * 서버 메모리가 프레임 생산 속도로 무한히 늘었다(2026-08-08 QA BLOCKER-6).
+ */
+export const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+
+/**
  * **반드시 끝맺어야 하는 다단계 선택**의 액션 타입.
  *
  * 등가교환은 대상을 지정하는 순간 상대 손패가 공개된다 — 거기서 빠져나올 길이 있으면
@@ -109,6 +135,18 @@ export class HumanAgent implements PlayerAgent {
   roomCode = "";
 
   /**
+   * 끊긴 채로 유예 타임아웃을 **연속으로** 흘린 횟수. 재접속하면 0으로 돌아간다.
+   * `GRACE_TIMEOUTS_BEFORE_ABANDON`에 닿으면 좌석을 이탈로 확정한다.
+   */
+  private graceTimeouts = 0;
+
+  /**
+   * 좌석이 이탈로 확정됐을 때 방에 알리는 콜백 (RoomManager가 꽂는다).
+   * 남은 사람들의 이름표를 갱신하고, 중단 투표가 걸려 있으면 다시 집계하게 한다.
+   */
+  private onAbandoned: (() => void) | null = null;
+
+  /**
    * 응답을 기다리는 결정들 — **좌석 id → 대기**.
    *
    * 평소에는 본인 좌석 하나뿐이지만, 증강 테스트에서 봇 좌석을 조종하면 내 좌석과
@@ -157,6 +195,9 @@ export class HumanAgent implements PlayerAgent {
    */
   reconnect(ws: WebSocket, afterAttach?: () => void): void {
     this.ws = ws;
+    // 돌아왔으니 유예 연속 카운터는 처음부터 다시 센다 — 끊김이 여러 번 있어도
+    // 그때마다 돌아오는 사람은 이탈로 확정되지 않는다.
+    this.graceTimeouts = 0;
     // 소켓을 붙인 뒤, 뷰·프롬프트를 복원하기 **전에** 호출자가 끼워 넣는 훅.
     // 증강 테스트에서 sandbox 상태 메시지를 여기서 보내야 한다 — 그 메시지는
     // 클라이언트에서 프롬프트·결과를 초기화하므로, 복원 전송보다 먼저 나가야
@@ -249,6 +290,11 @@ export class HumanAgent implements PlayerAgent {
   noticeDisconnect(): void {
     if (this.abandoned || this.isConnected()) return;
     const now = Date.now();
+    // 국 사이 결과 화면 대기는 유예가 아니라 **즉시** 해소한다. 예전에는
+    // awaitContinue가 호출 시점에만 연결을 봐서, 결과 화면이 뜬 뒤에 탭을 닫으면
+    // 남은 셋이 interRoundDelayMs(운영 20초)를 꽉 채워 기다렸다. 화면 뒤에
+    // 아무도 없는데 기다릴 이유가 없다(2026-08-08 QA 2-6).
+    if (this.pendingContinue !== null) this.resolveContinue();
     for (const [seat, p] of [...this.pending]) {
       if (p.graced || p.deadlineAt - now <= DISCONNECT_GRACE_MS) continue;
       clearTimeout(p.timer);
@@ -274,6 +320,26 @@ export class HumanAgent implements PlayerAgent {
    */
   setSeatConnectionSource(source: () => Record<PlayerId, SeatConnection>): void {
     this.seatConnections = source;
+  }
+
+  /** 이탈 확정 시 방에 알릴 콜백을 꽂는다 (RoomManager 전용). */
+  setAbandonedListener(fn: () => void): void {
+    this.onAbandoned = fn;
+  }
+
+  /**
+   * 끊긴 채로 유예를 흘렸다 — 연속 횟수를 세고, 상한에 닿으면 이탈로 확정한다.
+   * 돌아올 사람은 `reconnect`에서 카운터가 0으로 돌아가므로 여기 닿지 않는다.
+   */
+  private noteGraceTimeout(): void {
+    if (this.abandoned || this.isConnected()) return;
+    this.graceTimeouts += 1;
+    if (this.graceTimeouts < GRACE_TIMEOUTS_BEFORE_ABANDON) return;
+    console.log(
+      `[room ${this.roomCode}] ${this.nickname}(${this.id}) 유예 ${this.graceTimeouts}회 연속 초과 — 이탈로 확정`,
+    );
+    this.abandon();
+    this.onAbandoned?.();
   }
 
   /**
@@ -429,6 +495,9 @@ export class HumanAgent implements PlayerAgent {
       this.pending.delete(seat);
       this.send({ type: "promptCancel", seat });
       resolve(safeFallbackOption(prompt.options));
+      // 유예로 흘린 것만 센다. 접속한 채로 시간을 넘긴 것은 자리를 비운 것이지
+      // 연결이 끊긴 것이 아니므로 이탈로 확정하면 안 된다.
+      if (graced) this.noteGraceTimeout();
     }, timeoutMs);
     this.pending.set(seat, {
       prompt,
@@ -603,9 +672,18 @@ export class HumanAgent implements PlayerAgent {
   // ─────────────────────────── 내부 ───────────────────────────
 
   private send(msg: ServerMessage): void {
-    if (this.ws.readyState === 1 /* OPEN */) {
-      this.ws.send(JSON.stringify(msg));
+    if (this.ws.readyState !== 1 /* OPEN */) return;
+    // 백프레셔 가드 — RoomManager.send와 같은 상한. 인게임 프레임은 전부 여기를
+    // 지나가므로 이 가드가 없으면 안 읽는 소켓 하나가 서버 메모리를 무한히 먹는다.
+    if (this.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+      try {
+        this.ws.terminate();
+      } catch {
+        /* 이미 닫힘 */
+      }
+      return;
     }
+    this.ws.send(JSON.stringify(msg));
   }
 
   private clearDraftTimeout(): void {

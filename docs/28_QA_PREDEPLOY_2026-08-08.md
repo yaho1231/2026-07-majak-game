@@ -328,3 +328,57 @@ const target = state.round.lastDiscard ?? state.round.chankan;
 4. **모바일 레이아웃 2-2/2-3** — 폰에서 게임이 성립하지 않는다.
 5. **2-5/2-6** — 픽 유실·20초 정지. 둘 다 작은 수정.
 6. **증강 설명 불일치(2-9)** — 이 게임의 핵심이고, 대부분 텍스트 한 줄 또는 가드 한 줄이다.
+
+---
+
+## 7. 증강 설명 ≠ 동작 — 처리 계획 (보류, 별건 진행)
+
+§2-9 의 20여 건은 사용자 지시로 **BLOCKER·HIGH 를 먼저 처리한 뒤** 별도 패스로 진행한다.
+아래는 그 패스의 작업 순서다. 성격이 달라 한 덩어리로 묶으면 리뷰가 불가능하므로 4개 PR 로 나눈다.
+
+### PR-A. 규칙 구멍 (코드 수정, 게임에 영향 큼)
+설명이 맞고 **코드가 틀린** 것들. 각각 회귀 테스트를 함께 넣는다.
+
+| 대상 | 수정 방향 |
+|---|---|
+| `mirror_dora.ts:73` | `extraUraDoraKinds` 에는 **뒷도라 표시패**의 앞 패를 넣는다. 지금은 표도라 표시패를 재사용해 이중 계산 |
+| `void_kan.ts:120` | `p.kanKind !== "kan_open"` 가드 추가 (detail 이 이미 약속한 동작) |
+| `pond_snatch.ts:139` | 주운 패를 `lastDrawnTile` 로 만들지 않거나, 그 패의 쯔모 화료에 후리텐 검사를 태운다 |
+| `stealth_riichi.ts:86`, `soul_strike.ts:125` | 표준 `riichi` 와 같은 `lockedDiscardIds` 검사 추가 |
+| `red_five_touch.ts:233` | 각인 훅에 론 화료·후로 취득 경로 추가 |
+| `riichi_upgrade.ts:85,141` | 트리플 +2판·하가 봉인을 게임 스코프 키가 아니라 **살아 있는 리치 상태**에서 파생 (`riichi_seal.ts:78` 방식) |
+| `blood_contract.ts:117` | 본장 몫을 ×1.5 대상에서 제외 (공탁과 같은 처리) |
+| `util.ts:654` | `winPointsWithExtraHan` 이 `treatAsDealer` 를 반영 |
+| `Augment.ts:500` | `grantAugments` 가 ① `draftStages` 를 검사하고 ② 준 것끼리도 conflict 검사 |
+| `open_kokushi.ts:276`, `open_riichi_reveal.ts:189` | 커스텀 역을 **보유자별로** 등록 (첫 설치자 instanceId 공유 제거) |
+| `true_dragon.ts:94` | 반납할 손패가 모자라면 `totalSets` 를 되돌리지 않는다 |
+| `north_trader.ts:207` | `goAroundBroken` 대신 보유자 전용 플래그 |
+| `picky_eater.ts:101` | `discardedKinds` → `discardCount` 기반 카운트 (`frame_up` 이전과 동일) |
+
+### PR-B. conflicts 표 정리 (한 줄씩, 위험 낮음)
+- 추가: `silent_swap × stealth_riichi`, `riichi_upgrade × stealth_riichi`,
+  `open_riichi_reveal × tile_dyeing`, `riichi_upgrade × palm_flip/last_stand`,
+  `picky_eater × frame_up`
+- 삭제: `frame_up.ts:138` 의 낡은 4건 (대상이 전부 `discardCount` 로 이전 완료)
+
+### PR-C. 클라 인덱스·라벨 (UI)
+- `App.tsx:12140` 왕패 인덱스를 **물리 인덱스**로 보낸다 (가려진 도라와 어긋나는 문제)
+- `App.tsx:12686` `optionDetail` 에 `augmentId` 만 있는 payload 분기 추가 (재장전 후보가 무라벨 3개)
+- `augmentBrief.ts:138` 분열 배지를 "매 국 1회" 로
+- 증강 컷인 배너가 액션 라벨(`미래 보기`) 대신 **증강 이름**(`미래를 보는 자`)을 쓰게
+
+### PR-D. 문구만 (코드 변경 0, 가장 안전 — 먼저 내도 된다)
+동작이 의도대로인데 설명이 그 대가·조건을 안 알리는 것들. `detail` 에 한 문장씩 추가:
+`three_dragons_will`(재료 2장 소모·완성 몸통도 뽑힐 수 있음), `time_pressure`(봇에는 효과 없음),
+`reload`(복구 가능한 증강이 한정적), `silent_swap`(주운 패로 쯔모 화료 가능·스텔스 리치는 예외),
+`giant_god`(사실상 쯔모 전용), `polar_ends`(가깡은 가능), `palm_flip`(리치 후리텐도 함께 풀림),
+`scapegoat`(지목 대상이 마이너스로 떨어질 수 있음), `off_by_one`(화료를 안 누르면 오름패를 버린다),
+`seat_swap`(후로 수가 다르면 대상에서 빠짐), `wind_lineage`·`triple_peek`·`full_hand_swap`
+(발동 불가 조건), `soul_strike`·`picky_eater` detail 에 쿨다운 머리말 추가.
+같은 패스에서 `산깡즈/쯔`·`스깡즈/쯔`·`역패 백/역패:백` 표기를 하나로 모으고,
+`HumanAgent.ts:567,587` 의 영어 에러 문구 2개를 한국어로 바꾼다.
+
+### 남은 HIGH (이번 PR 범위 밖, 별도로 진행)
+안깡 거절 시 전원 후리텐(`FlowController.ts:700`), 폰 세로 회전 안내가 손패를 덮음,
+폰 가로·데스크톱에서 증강 UI 가 점수판·버림패를 덮음, 드래프트 픽 유실(`App.tsx:3471`),
+`handOrder` 증폭, 진행 중 방 재접속이 이전 연결을 안 떼어냄, 봇 개선 플래그 5개 미채택.
