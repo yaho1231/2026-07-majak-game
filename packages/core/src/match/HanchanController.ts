@@ -17,6 +17,7 @@ import {
 import type { StandardGame, StandardGameOptions } from "../mahjong/flow/standardGame.js";
 import { DraftController, rebuildAugments } from "../augment/DraftController.js";
 import { installAugment } from "../augment/Augment.js";
+import type { AugmentDef } from "../augment/Augment.js";
 import { draftDoneKey } from "../augment/events.js";
 import { RuleLayer } from "../engine/rules/RuleRegistry.js";
 import type { EffectFailure } from "../engine/effects/EventProcessor.js";
@@ -304,6 +305,19 @@ const STANDARD_ACTION_TYPES = new Set([
 const FX_SILENT_ACTION_TYPES = new Set(["future_arm"]);
 
 /**
+ * 에이전트 응답을 기다리는 **최후의** 상한(ms).
+ *
+ * 제한 시간을 스스로 거는 것은 HumanAgent(30초)뿐이다. 봇에는 없어서, 해결되지
+ * 않는 프로미스 하나면 방이 영원히 `playing`으로 남고 좀비 스위퍼는 컨트롤러가
+ * 살아 있는 방을 건너뛴다 — 재시작 없이 오래 켜 두는 운영에서 영구 소프트락이다
+ * (2026-08-08 QA BLOCKER-5).
+ *
+ * 사람의 30초보다 넉넉하게 잡아, 정상 흐름에서는 에이전트 자신의 타이머가 항상
+ * 먼저 터지게 한다. 여기까지 왔다면 그건 버그다 — 그래서 로그를 남긴다.
+ */
+const AGENT_DECIDE_TIMEOUT_MS = 90_000;
+
+/**
  * **발동 사실 자체가 비밀**인 액션 — 연출을 보유자(와 관전자)에게만 보낸다.
  *
  * ⚠ 2026-08-02 감사: 스텔스 리치가 여기 없어서 `actionFx`가 전원에게 나갔고,
@@ -388,6 +402,87 @@ export class HanchanController {
    * 등록 해제해, 대기 하나마다 리스너가 컨트롤러에 영구히 쌓이지 않게 한다.
    * 이미 무효가 걸린 뒤라면 일을 기다리지 않고 곧바로 중단으로 답한다.
    */
+  /**
+   * 한 좌석의 결정을 **절대 실패하지 않게** 감싼다 — 예외도, 무응답도 폴백으로 흡수한다.
+   *
+   * 예전에는 `agent.decide`를 그대로 await 했다. 컨트롤러 루프에는 try/catch가
+   * 하나도 없어서, 증강 봇 정책 하나가 던지면 예외가 RoomManager까지 올라가
+   * `GAME_CRASHED`와 함께 **방이 삭제**됐다 — 사람 셋의 반장전이 봇 하나의
+   * 버그로 사라졌다. 게다가 `Promise.all`이 첫 거부에서 단락돼 나머지 좌석의
+   * 진행 중 결정까지 함께 날아갔다(2026-08-08 QA BLOCKER-4).
+   *
+   * 무응답도 같은 자리에서 막는다. 제한 시간을 스스로 거는 것은 HumanAgent뿐이라,
+   * 해결되지 않는 봇 프로미스 하나면 방이 영원히 `playing`으로 남고 좀비 스위퍼는
+   * 그 방을 건너뛴다 — 재시작 없이 오래 켜 두는 운영에서 이건 영구 소프트락이다
+   * (BLOCKER-5). 여기서 거는 시간은 에이전트 자신의 제한(사람 30초)보다 넉넉한
+   * **최후의 안전망**이라, 정상 흐름에서는 절대 먼저 터지지 않는다.
+   *
+   * 폴백은 능동적 선언을 하지 않는다: 패스 > 마지막 버림 > 첫 옵션.
+   * (HumanAgent.safeFallbackOption의 축약판이다. 이 경로는 원래 방이 죽던
+   * 자리라, 여기서는 "무엇을 고르는가"보다 "판이 계속된다"가 중요하다.)
+   */
+  private async safeDecide(
+    agent: PlayerAgent,
+    prompt: DecisionPrompt,
+  ): Promise<ActionOption> {
+    const fallback = (): ActionOption => {
+      const opts = prompt.options;
+      return (
+        opts.find((o) => o.type === "pass") ??
+        [...opts].reverse().find((o) => o.type === "discard") ??
+        opts[0]!
+      );
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const guard = new Promise<ActionOption>((resolve) => {
+        timer = setTimeout(() => {
+          console.error(
+            `[hanchan] ${agent.id} decide 무응답 ${AGENT_DECIDE_TIMEOUT_MS}ms — 안전 폴백으로 진행`,
+          );
+          resolve(fallback());
+        }, AGENT_DECIDE_TIMEOUT_MS);
+      });
+      const chosen = await Promise.race([agent.decide(prompt), guard]);
+      // 목록 밖 응답도 폴백으로 되돌린다 — 그대로 submit하면 FlowController가 던진다.
+      return prompt.options.includes(chosen) ? chosen : fallback();
+    } catch (err) {
+      console.error(`[hanchan] ${agent.id} decide 예외 — 안전 폴백으로 진행`, err);
+      return fallback();
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  /** `safeDecide`의 드래프트판 — 예외·무응답·목록 밖 id를 첫 후보로 흡수한다. */
+  private async safeDecideDraft(
+    agent: PlayerAgent,
+    stage: DraftStage,
+    choices: AugmentDef[],
+  ): Promise<string> {
+    const first = choices[0]?.id;
+    // 후보가 비어 있으면 고를 것이 없다 — 호출부가 이 좌석을 건너뛰게 한다.
+    if (first === undefined) return "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const guard = new Promise<string>((resolve) => {
+        timer = setTimeout(() => {
+          console.error(
+            `[hanchan] ${agent.id} decideDraft 무응답 ${AGENT_DECIDE_TIMEOUT_MS}ms — 첫 후보로 진행`,
+          );
+          resolve(first);
+        }, AGENT_DECIDE_TIMEOUT_MS);
+      });
+      const picked = await Promise.race([agent.decideDraft(stage, choices), guard]);
+      return choices.some((c) => c.id === picked) ? picked : first;
+    } catch (err) {
+      console.error(`[hanchan] ${agent.id} decideDraft 예외 — 첫 후보로 진행`, err);
+      return first;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
   private async raceAbort<T>(work: Promise<T>): Promise<T | { readonly abort: true }> {
     if (this.aborted) {
       // 이미 무효다 — 남은 일은 기다리지 않지만, 그 거부가 처리되지 않은 채
@@ -768,7 +863,7 @@ export class HanchanController {
             if (agent === undefined) {
               throw new Error(`No agent for player ${prompt.player}`);
             }
-            const chosen = await agent.decide(prompt);
+            const chosen = await this.safeDecide(agent, prompt);
             decidedRank.set(prompt.player, reactionPriority(chosen.type));
             foldOutranked();
             return { player: prompt.player, option: chosen };
@@ -843,7 +938,7 @@ export class HanchanController {
       Promise.all(
         pending.map(async (agent) => {
           const choices = offered.get(agent.id) ?? draft.roll(stage, agent.id);
-          const pickedId = await agent.decideDraft(stage, choices);
+          const pickedId = await this.safeDecideDraft(agent, stage, choices);
           return { player: agent.id, pickedId };
         }),
       ).then((picks) => ({ picks })),
@@ -857,6 +952,9 @@ export class HanchanController {
     for (const agent of this.agents.values()) {
       const pickedId = pickById.get(agent.id);
       if (pickedId === undefined) continue; // 이미 완료돼 건너뛴 에이전트
+      // 빈 문자열 = 제시할 후보가 없었다. 예전에는 그대로 pick에 넘겨
+      // "Augment 가 제시되지 않았다"로 던졌고, 그 예외가 방을 삭제했다.
+      if (pickedId === "") continue;
       draft.pick(stage, agent.id, pickedId);
     }
 
@@ -959,13 +1057,23 @@ export class HanchanController {
       // 증강 테스트 시점 전환: override가 있으면 그 좌석 시점으로 뷰를 만든다.
       // 형식텐파이(noYaku) 등 '본인 뷰' 정보는 관찰 대상 좌석 기준으로 채워져,
       // 그 좌석이 실제로 보는 화면을 그대로 재현한다.
-      const viewerId = agent.viewSeatOverride?.() ?? agent.id;
-      agent.sendView(buildPlayerView(state, viewerId, rules, viewOpt));
+      // 한 좌석의 뷰 생성·전송이 던져도 나머지 좌석은 뷰를 받아야 한다. 예전에는
+      // 여기서 예외가 나면 루프 전체가 죽고 방이 삭제됐다(2026-08-08 QA BLOCKER-4).
+      try {
+        const viewerId = agent.viewSeatOverride?.() ?? agent.id;
+        agent.sendView(buildPlayerView(state, viewerId, rules, viewOpt));
+      } catch (err) {
+        console.error(`[hanchan] ${agent.id} 뷰 전송 실패 — 이 좌석만 건너뛴다`, err);
+      }
     }
     // 관전자 — 전체 공개 시점 (한 번만 만들어 공유). 형식텐파이는 본인 뷰 전용이라 불필요.
     if (this.spectators.size > 0) {
-      const specView = buildPlayerView(state, SPECTATOR_ID, rules, viewOpt);
-      for (const s of this.spectators.values()) s.sendView(specView);
+      try {
+        const specView = buildPlayerView(state, SPECTATOR_ID, rules, viewOpt);
+        for (const s of this.spectators.values()) s.sendView(specView);
+      } catch (err) {
+        console.error("[hanchan] 관전 뷰 전송 실패 — 대국은 계속한다", err);
+      }
     }
   }
 

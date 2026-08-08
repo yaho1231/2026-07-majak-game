@@ -51,7 +51,7 @@ import type {
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
-import { HumanAgent } from "./HumanAgent.js";
+import { HumanAgent, MAX_BUFFERED_BYTES } from "./HumanAgent.js";
 import { Prng } from "@majak/core/engine/random/Prng.js";
 import { BotAgent, seedFromId } from "./BotAgent.js";
 import { isArchetypeName, isBotDifficulty, rollTableProfiles, withDifficulty } from "./bot/profile.js";
@@ -267,12 +267,9 @@ const MAX_SCRYPT_CONCURRENCY = 4;
  * 상한을 넘으면 즉시 거부해 메모리 증가와 정상 로그인 무기한 지연을 막는다.
  */
 const MAX_SCRYPT_QUEUE = 64;
-/**
- * 연결당 송신 버퍼 상한(bytes) — 수신자가 응답을 제때 읽지 않아(느린/악의적
- * 소비자) ws 송신 큐가 이 상한을 넘으면 그 연결을 끊는다. replayGet 등 큰
- * 응답을 반복 요청하며 읽지 않는 방식의 메모리 고갈을 막는다.
- */
-const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+// 송신 버퍼 상한은 HumanAgent와 공유한다 — 예전에는 여기에만 있어서, 인게임
+// 프레임(view·prompt·roundOver…)이 전부 지나가는 HumanAgent.send가 가드 없이
+// 남아 있었다(2026-08-08 QA BLOCKER-6).
 /**
  * 전체 동시 방 개수 상한 — 방은 코드·좌석·타이머를 붙들므로 무제한 생성은
  * 메모리 고갈과 방 코드 공간(32^6) 잠식으로 이어진다.
@@ -880,6 +877,8 @@ export class RoomManager {
       // 다만 **남은 사람들에게 알린다**: 이름표가 "생각 중"과 구분되지 않으면
       // 자동 폴백까지의 몇 초가 그냥 멈춘 게임으로 보인다(QA P0-3b).
       this.refreshSeatStatus(room);
+      // 끊긴 좌석은 중단 투표 정족수에서 빠진다 — 걸려 있던 투표를 바로 다시 센다.
+      this.retallyAbortVotes(room);
     }
     conn.room = null;
     conn.agent = null;
@@ -2222,17 +2221,43 @@ export class RoomManager {
     // 폐기된 컨트롤러에 투표를 던져 봐야 아무 일도 일어나지 않는다.
     if (this.rooms.get(room.code) !== room || room.controller === null) return;
 
-    // 아직 게임에 남아 있는 사람들 (이탈 좌석은 봇처럼 자동 동의로 친다)
+    // 아직 게임에 남아 **있고 표를 낼 수 있는** 사람들.
+    //
+    // 이탈 좌석뿐 아니라 **연결이 끊긴 좌석도** 자동 동의로 친다. 예전에는
+    // `!isAbandoned`만 봐서, 소켓이 죽은 사람이 정족수에는 세지면서 표는 못 내는
+    // 상태가 됐다 — 남은 사람이 전원 찬성해도 `needed`에 영영 못 닿아 판을 끝낼
+    // 방법이 없었다(2026-08-08 QA BLOCKER-2, 실서버 재현). 끊긴 사람은 그
+    // 화면조차 못 보고 있으므로 붙잡아 둘 이유도 없다.
     const humans = room.agents.filter(
-      (a): a is HumanAgent => a instanceof HumanAgent && !a.isAbandoned,
+      (a): a is HumanAgent => a instanceof HumanAgent && !a.isAbandoned && a.isConnected(),
     );
-    const needed = humans.length;
-    if (needed === 0) return; // 사람이 없으면 봇 게임이 알아서 완주한다
+    if (humans.length === 0) return; // 사람이 없으면 봇 게임이 알아서 완주한다
 
     if (vote === "reject") room.abortVotes.clear(); // 거부 = 투표 전체 취소 (만장일치 불가)
     else if (vote === "agree") room.abortVotes.add(conn.agent.id);
     else room.abortVotes.delete(conn.agent.id); // withdraw = 내 동의 철회
-    // 떠난 사람의 표는 무효 처리 (남은 사람 표만 센다)
+
+    this.retallyAbortVotes(room);
+  }
+
+  /**
+   * 중단 투표를 다시 집계해 알리고, 정족수가 차면 무효를 요청한다.
+   *
+   * 투표가 들어올 때뿐 아니라 **정족수가 바뀔 때도** 불러야 한다 — 좌석 하나가
+   * 이탈로 확정되면 그 사람은 자동 동의로 빠지므로, 이미 모인 표만으로 무효가
+   * 성립할 수 있다. 다시 세지 않으면 남은 사람은 아무 일도 안 일어난 줄 안다.
+   */
+  private retallyAbortVotes(room: Room): void {
+    if (room.phase !== "playing" || room.controller === null) return;
+    if (this.rooms.get(room.code) !== room) return;
+
+    const humans = room.agents.filter(
+      (a): a is HumanAgent => a instanceof HumanAgent && !a.isAbandoned && a.isConnected(),
+    );
+    const needed = humans.length;
+    if (needed === 0) return;
+
+    // 떠난·끊긴 사람의 표는 무효 처리 (표를 낼 수 있는 사람 표만 센다)
     const voters = [...room.abortVotes].filter((id) => humans.some((h) => h.id === id));
     room.abortVotes = new Set(voters);
 
@@ -2244,7 +2269,7 @@ export class RoomManager {
     };
     for (const h of humans) h.notify(status);
 
-    // 사람 전원 동의 → 무효 종료 (onGameAborted가 정리한다)
+    // 표를 낼 수 있는 사람 전원 동의 → 무효 종료 (onGameAborted가 정리한다)
     if (voters.length >= needed) room.controller?.requestAbort();
   }
 
@@ -2825,6 +2850,13 @@ export class RoomManager {
       // 사람 좌석의 뷰에 좌석별 접속 상태를 실어 보내게 한다 (이름표 표시용).
       if (agent instanceof HumanAgent) {
         agent.setSeatConnectionSource(() => this.seatConnections(room));
+        // 돌아오지 않아 이탈로 확정된 좌석 — 이름표를 갱신하고, 걸려 있던 중단
+        // 투표를 다시 집계한다. 그 좌석이 정족수에서 빠지면서 이미 모인 표만으로
+        // 무효가 성립할 수 있는데, 다시 세지 않으면 아무도 그걸 모른다.
+        agent.setAbandonedListener(() => {
+          this.refreshSeatStatus(room);
+          this.retallyAbortVotes(room);
+        });
       }
     }
 
