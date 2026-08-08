@@ -113,6 +113,16 @@ button {
   width: 100%;
   height: 100cqh;
   overflow: hidden;
+  /* 아래쪽에서 내 영역(이름표 줄 + 손패)이 늘 차지하는 띠. 대국 중에는 OwnArea가
+     실측해 덮어쓰고(useLayoutEffect라 첫 페인트 전에 들어간다), 대국 밖(로그인·로비)
+     에서는 내 영역 자체가 없으므로 0이다. `.table`이 아니라 `.game-root`에 두는 이유:
+     `.rotate-hint`처럼 `.table` 바깥에 있는 오버레이도 같은 띠를 피해야 하기
+     때문이다(docs/28 §2-2). */
+  --own-band: 0px;
+  /* 위쪽에서 맞은편 이름표·뒷패 줄이 차지하는 띠. 보드의 위 한계이자, 세로 화면에서
+     "가로로 돌리세요" 안내가 앉는 자리다. 브레이크포인트마다 그 줄의 배치가 달라
+     아래 @container 블록에서 다시 잡는다. */
+  --top-band: 76px;
   /* 펠트: 위에서 조명이 하나 떨어지는 라사지.
      맨 위 두 겹은 아주 옅은 직조 결 — 단색 그라디언트만 깔면 판이 플라스틱처럼 보인다.
      결은 2px 주기라 화면을 채워도 비용이 거의 없다. */
@@ -220,8 +230,44 @@ button {
      비율(88→83)이 내려간 건 아래 --panel이 바닥 한 단 폭까지 커지면서 바닥이
      그만큼 바깥으로 밀렸기 때문이다. 보드를 같은 비율로 줄여 **중앙 덩어리가 차지하는
      자리는 예전 그대로** 두었다 — 안 그러면 좌·우 상대 손패를 침범한다.
-     63cqw 상한은 세로로 긴 창(예: 1000×860)에서 좌·우 이름표와 겹치던 것을 막는다. */
-  --board: min(83cqmin, 63cqw, 850px);
+     63cqw 상한은 세로로 긴 창(예: 1000×860)에서 좌·우 이름표와 겹치던 것을 막는다.
+     세로 상한(--board-fit-v)은 아래 "위·아래 띠" 주석을 보라 — 보드가 내 손패·이름표
+     줄을 덮지 않도록 남는 높이 안에서만 커진다. */
+  --board: min(83cqmin, 63cqw, 850px, var(--board-fit-v));
+
+  /* ── 위·아래 띠 — 보드가 절대 침범하면 안 되는 자리 ──
+     보드(패널+네 바닥)는 창 한가운데에 정사각으로 놓이는데, **아래쪽만** 내 이름표
+     줄과 손패가 늘 차지하고 있다. 그 몫을 빼지 않아서 바닥(버림패)이 손패·이름표·
+     액티브 증강 버튼 밑으로 흘러들어가 읽히지 않았다
+     (1280×800 실측: 내 바닥 y=493–608 위에 .own-aug 가 y=486–525로 올라탔다 —
+      docs/28 §2-4. 844×390 가로에서는 액션 바가 내 점수판까지 덮었다 — §2-3).
+
+     그래서 두 가지를 함께 건다:
+       ① --board 에 세로 상한을 하나 더 준다 (띠를 빼고 남는 높이에 들어갈 크기).
+       ② .table-center 의 중심을 그 남는 자리 안으로 clamp 한다.
+
+     --own-band 는 App(OwnArea)이 **실측해서** 덮어쓴다. 액션 바·무장 안내처럼 잠깐
+     떴다 사라지는 줄은 빼고 재는데, 넣으면 치·펑 프롬프트가 뜰 때마다 보드 전체가
+     크기를 바꿔 출렁이기 때문이다. 잠깐 뜨는 줄은 바닥 아래쪽 한두 단을 덮는 선에서
+     끝난다 — 점수판(패널 안)까지는 닿지 않는다.
+
+     --board-vspan 은 "보드가 세로로 실제 차지하는 길이 ÷ --board" 다
+     (= (--panel + 2×(--river-gap + --river-h)) / --board).
+     --board 를 정하는 데 쓰이므로 --panel 을 되먹일 수 없어 상수로 적는다 —
+     **--panel-min 비율을 바꾸는 브레이크포인트에서는 여기도 같이 바꿔야 한다.** */
+  /* --own-band·--top-band 는 .game-root 에서 상속받는다 —
+     여기서 다시 선언하면 실측값(--own-band)이 덮이고, .table 바깥에 있는
+     .rotate-hint 가 같은 띠를 못 본다. */
+  /* 띠와 보드 사이 숨통. 0으로 두면 액션 바가 떴을 때 그 위쪽 끝이 패널 아래 테두리를
+     몇 px 스치고, 내 점수판과도 딱 붙는다(845×390 실측: 여유 0px). */
+  --own-gutter: 16px;
+  --board-vspan: 0.9;
+  --board-fit-v: max(
+    200px,
+    calc((100cqh - var(--top-band) - var(--own-band) - var(--own-gutter)) / var(--board-vspan))
+  );
+  /* 보드 중심의 "원하는" 세로 위치. 실제 위치는 .table-center 에서 띠 안으로 clamp 된다. */
+  --board-cy: 46%;
   /* 중앙 패널의 "원하는" 크기. 실제 --panel은 아래에서 바닥 한 단 폭과 max()로 묶는다 —
      패널이 한 단보다 좁으면 네 바닥의 모서리가 서로 겹친다(2026-08-06 사용자 지적). */
   --panel-min: calc(var(--board) * 0.3);
@@ -507,7 +553,22 @@ button {
 .table-center {
   position: absolute;
   left: 50%;
-  top: 46%;
+  /* 보드가 세로로 뻗는 길이의 절반 — 패널 반쪽 + 바닥 한 칸(간격 포함).
+     .table-center 상자(--board 정사각형)보다 짧다: 모서리는 비어 있기 때문이다. */
+  --board-half: calc(var(--panel) / 2 + var(--river-gap) + var(--river-h));
+  /*
+   * 원하는 위치(--board-cy)는 그대로 두되, **위 띠와 아래 띠 사이**를 벗어나지 못하게
+   * 한다. 아래 상한이 내 이름표 줄·손패(--own-band)를 지켜 준다 — 예전에는 46%로
+   * 못 박혀 있어 낮은 창일수록 바닥이 손패 쪽으로 흘러내렸고, 브레이크포인트마다
+   * 44%·45%·42% 같은 손어림 값을 하나씩 더 얹어 막고 있었다(그래도 다 못 막았다).
+   * min > max 로 뒤집히면(창이 너무 낮아 어차피 다 못 들어가면) clamp 는 min 을
+   * 고른다 — 위쪽 상대를 지키고 아래로 넘치는 쪽을 택한다. 지금과 같은 동작이다.
+   */
+  top: clamp(
+    calc(var(--top-band) + var(--board-half)),
+    var(--board-cy),
+    calc(100cqh - var(--own-band) - var(--own-gutter) - var(--board-half))
+  );
   transform: translate(-50%, -50%);
   width: var(--board);
   height: var(--board);
@@ -1549,6 +1610,27 @@ button {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
+}
+
+/*
+ * 잠깐 떴다 사라지는 줄은 **맨 위로** 보낸다 (DOM 순서와 무관하게).
+ *
+ * 예전에는 액션 바가 이름표 줄과 손패 사이에 끼어 있어서, 치·펑 프롬프트가 뜰 때마다
+ * 이름표·액티브 증강 버튼 줄이 통째로 위로 밀렸다 — 그 줄이 내 버림패 위로 올라타고
+ * (1280×800: .own-aug y=486–525 × 내 바닥 y=493–608), 가로 폰에서는 액션 바 자신이
+ * 내 점수판까지 덮었다(844×390: .action-bar y=224–275 × .plate-bottom y=214–233).
+ * docs/28 §2-3·§2-4.
+ *
+ * 이제 늘 있는 줄(이름표·예지 스트립·손패)은 아래에 그대로 머물고 — 그 높이가
+ * `--own-band`로 보드에 통보되어 바닥이 침범하지 않는다 — 잠깐 뜨는 줄만 위로 자란다.
+ * 자라 봐야 바닥 아래쪽 한두 단을 잠시 덮을 뿐, 패널 안의 점수판에는 닿지 않는다.
+ *
+ * ⚠ 이 목록은 App(OwnArea)의 `--own-band` 실측에서 빼는 목록과 **같아야 한다**.
+ */
+.own-area > .action-bar,
+.own-area > .prompt-timer,
+.own-area > .arm-hint {
+  order: -1;
 }
 
 /* 내 이름표·증강·액티브 증강·오름패를 손패 위에 한 줄로 모은다 (예전엔 좌하단이라 잘렸다) */
@@ -6186,12 +6268,9 @@ button {
   .table {
     /* 세로 상한(53cqh) — 창이 낮으면 바닥(버림패) 아래쪽이 손패 영역까지 흘러내린다 */
     /* 위 .table과 같은 이유로 비율을 한 번 낮췄다 (90→85 · 58→55 · 560→530) */
-    --board: min(85cqmin, 55cqh, 530px);
+    --board: min(85cqmin, 55cqh, 530px, var(--board-fit-v));
     --hand-pref: clamp(32px, 6cqw, 50px);
-  }
-
-  .table-center {
-    top: 44%;
+    --board-cy: 44%;
   }
 
   .opp-strip-left .nameplate,
@@ -6234,10 +6313,13 @@ button {
   .table {
     /* 세로 화면: 폭이 board를 결정한다. 다만 board를 화면 폭까지 키우면 바닥(river)이
        좌·우 상대 영역과 겹치므로, 양옆에 상대 자리를 남기는 74cqw까지만 키운다. */
-    --board: min(74cqw, 48cqh, 460px);
+    --board: min(74cqw, 48cqh, 460px, var(--board-fit-v));
     /* 보드가 작아진 만큼 중앙 패널 비율은 키운다 — 안 그러면 국·점수 글자가 안 읽힌다
        (점수판 크기는 --panel에 비례하므로 따로 손댈 필요가 없다) */
     --panel-min: calc(var(--board) * 0.46);
+    /* --panel-min 이 바닥 한 단(0.348)을 앞지르므로 세로로 차지하는 비율도 커진다:
+       0.46 + 2×(0.014 + 0.261) = 1.01 */
+    --board-vspan: 1.01;
     /* 손패 14장이 반드시 한 줄에 들어가게 여백·간격까지 조인다 */
     --hand-pref: clamp(24px, 7cqw, 50px);
     --hand-gap: 2px;
@@ -6249,9 +6331,16 @@ button {
     --back-gap: 2px;
   }
 
-  /* 액션 바가 뜨면 내 영역이 위로 자라므로 보드를 살짝 올려 둔다 */
-  .table-center {
-    top: 45%;
+  /* 액션 바가 뜨면 내 영역이 위로 자라므로 보드를 살짝 올려 둔다
+     (실제 하한은 .table-center 의 clamp 가 --own-band 로 잡아 준다) */
+  .table {
+    --board-cy: 45%;
+  }
+
+  /* 세로 화면은 위쪽 이름표 줄이 두 줄로 접혀 더 두껍다
+     (.opp-strip-top top:48px + 두 줄 — 375×812 실측 아래끝 119px) */
+  .game-root {
+    --top-band: 124px;
   }
 
   /* 상단 아이콘 버튼을 줄이고, 상대 이름표가 그 아래로 내려오게 한다 */
@@ -6397,8 +6486,11 @@ button {
 @container ui (max-height: 560px) and (orientation: landscape) {
   .table {
     /* 세로가 병목: 보드 + 내 영역(이름표·액션바·손패)이 모두 들어가야 한다 */
-    --board: min(56cqh, 44cqw, 460px);
+    --board: min(56cqh, 44cqw, 460px, var(--board-fit-v));
     --panel-min: calc(var(--board) * 0.46);
+    /* 위와 같은 이유 — --panel-min 0.46 이면 세로 비율은 1.01 이다 */
+    --board-vspan: 1.01;
+    --board-cy: 42%;
     /* 패널이 아주 작아 글자 최소 크기(11px)가 비율을 앞지른다 — 판을 더 넓게 잡는다 */
     --plate-w: calc(var(--panel) * 0.76);
     --hand-pref: min(clamp(24px, 4.6cqw, 52px), 8.4cqh);
@@ -6407,7 +6499,6 @@ button {
     --mt-w: clamp(16px, 4cqh, 30px);
     --back-cap: clamp(14px, 3.6cqh, 26px);
   }
-  .table-center { top: 42%; }
   .own-area { bottom: 6px; gap: 6px; }
   .own-hand { padding: 6px var(--hand-pad) 5px; }
   .icon-btn { top: 8px; width: 34px; height: 34px; font-size: 15px; }
@@ -6418,6 +6509,8 @@ button {
   .help-btn { right: 168px; }
   /* 가로에서는 폭이 넉넉하다 — 맞은편 상대는 다시 한 줄로 */
   .opp-strip-top { top: 8px; flex-direction: row; gap: 10px; }
+  /* 한 줄이라 위 띠도 얇다 (845×390 실측 아래끝 63px) */
+  .game-root { --top-band: 64px; }
   /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
   .quick-toggles:not(.quick-toggles-inline) { display: flex; bottom: 8px; gap: 4px; }
   .quick-toggles-inline { display: none; }
@@ -9948,9 +10041,21 @@ body.peeking .overlay-peekable > * {
 .rotate-hint { display: none; }
 
 @media (max-width: 560px) and (orientation: portrait) and (pointer: coarse) {
+  /*
+   * 화면 **맨 아래**에 붙여 두었더니 정작 내 손패를 덮었다 — 375×812 실측으로
+   * 힌트 y=763–804, 손패 타일 y=747–793 이라 타일 높이의 65%가 가려졌고, 닫을
+   * 수도 없었다(docs/28 §2-2). 두 가지를 고친다:
+   *   ① 대국 중에는 **위 띠**(--top-band, 맞은편 이름표 줄 바로 아래)로 올린다.
+   *      세로 화면에서 그 아래 보드가 시작하기 전까지가 유일하게 비어 있는 자리다 —
+   *      아래쪽은 내 영역(이름표·액션 바·손패)이 전부 쓴다.
+   *   ② 눌러서 닫을 수 있게 한다(App의 rotateHintOff).
+   * 대국 밖(로그인·로비)에서는 가릴 것이 없으니 원래대로 화면 아래에 둔다.
+   */
   .rotate-hint {
     position: fixed;
-    inset: auto 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px;
+    left: 8px;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     z-index: 300;
     display: flex;
     align-items: center;
@@ -9962,6 +10067,27 @@ body.peeking .overlay-peekable > * {
     color: var(--ink-1);
     font-size: 12.5px;
     line-height: 1.5;
+    text-align: left;
+  }
+
+  /* 대국 화면에서만 위 띠로 올린다 (`.table`은 대국 중에만 있다) */
+  .game-root:has(.table) .rotate-hint {
+    top: calc(var(--top-band, 124px) + 8px);
+    bottom: auto;
+  }
+
+  /* 닫기 — 손가락이 닿는 크기를 지키되 문구를 밀어내지 않게 오른쪽 끝에 붙인다 */
+  .rotate-hint-close {
+    margin-left: auto;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--brass-line);
+    background: transparent;
+    color: var(--ink-1);
+    font-size: 15px;
+    line-height: 1;
   }
 }
 
