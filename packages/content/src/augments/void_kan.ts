@@ -117,7 +117,19 @@ export const voidKan: AugmentDef = defineAugment({
        * 리치는 "이 손을 더 안 바꾸겠다"는 선언이고 상대는 그 전제로 수비한다.
        */
       if (state.round.byPlayer[holder]?.riichi != null) return;
-      // 챤깡이 성립하는 깡(안깡·가깡)에서만 — 대명깡은 chankan이 서지 않는다
+      /*
+       * 챤깡이 성립하는 깡(안깡·가깡)에서만.
+       *
+       * 예전에는 `kanKind`를 안 보고 `chankan?.tileId ?? handTileIds[0]`로 폴백해서,
+       * **대명깡에도 발동**했다. 대명깡은 `chankan`이 null이라(flowEvents.ts) 론 창구가
+       * 아예 안 열리는데, 폴백이 깡 친 사람의 손패 1장을 집어 홀더의 대기를 그쪽으로
+       * 갈아 끼웠다 — 원래 대기는 사라지고 새 대기의 패는 이미 상대 후로에 다 나가 있어
+       * 그 국 화료가 불가능해졌다. detail은 정반대를 약속하고 있었다
+       * ("대명깡은 원래 창깡 대상이 아니므로 걸리지 않는다", 2026-08-08 QA 2-9).
+       */
+      if (p.kanKind === "kan_open") return;
+      // 안깡·가깡은 chankan이 서지만, 리액션이 리듀서보다 먼저 도는 경로가 있어
+      // 폴백은 남겨 둔다 — 막아야 할 것은 "chankan이 없는 것"이 아니라 대명깡이다.
       const chankanTile = state.round.chankan?.tileId ?? p.handTileIds[0];
       if (chankanTile === undefined) return;
       const target = kindOf(state, chankanTile);

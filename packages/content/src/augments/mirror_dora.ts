@@ -23,6 +23,7 @@ import {
   frontDoraKindFor,
   kindKey,
   kindOf,
+  uraIndicatorIds,
 } from "@majak/core";
 import type {
   AugmentDef,
@@ -43,6 +44,19 @@ function frontKinds(state: GameState): TileKind[] {
   return state.round.doraIndicators.map((t) => frontDoraKindFor(kindOf(state, t)));
 }
 
+/**
+ * **뒷도라** 표시패의 앞 패 종류.
+ *
+ * 예전에는 뒷도라 쪽에도 `frontKinds`(표도라 표시패)를 그대로 넣었다. 그래서
+ * 표시패가 4통이면 표도라로 3통이 붙고, 뒷도라에도 **같은 3통**이 또 붙어
+ * 한 장을 두 번 셌다 — 정작 진짜 뒷도라 표시패의 앞 패는 영영 안 붙었다.
+ * 설명("뒷도라 표시패에도 똑같이 적용된다")이 약속한 것과 다른 동작이었다
+ * (2026-08-08 QA 2-9).
+ */
+function uraFrontKinds(state: GameState): TileKind[] {
+  return uraIndicatorIds(state).map((t) => frontDoraKindFor(kindOf(state, t)));
+}
+
 export const mirrorDora: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
@@ -56,7 +70,7 @@ export const mirrorDora: AugmentDef = defineAugment({
   install(ctx) {
     const { holder } = ctx;
 
-    const addKinds = (rule: string): void => {
+    const addKinds = (rule: string, pick: (s: GameState) => TileKind[]): void => {
       ctx.engine.rules.addModifier<readonly TileKind[]>(rule, {
         source: ctx.instanceId,
         layer: ctx.layer,
@@ -64,14 +78,15 @@ export const mirrorDora: AugmentDef = defineAugment({
           if (rctx.playerId !== holder) return cur;
           const state = rctx.state as GameState | undefined;
           if (state === undefined) return cur;
-          return [...cur, ...frontKinds(state)];
+          return [...cur, ...pick(state)];
         },
       });
     };
-    // 표도라·깡도라 / 뒷도라 — 뒷도라 표시패는 표도라 표시패 바로 다음 왕패라
-    // 표시패 목록이 같은 길이만큼 늘어난다. 계산은 코어가 각각의 경로에서 한다.
-    addKinds("scoring.extraDoraKinds");
-    addKinds("scoring.extraUraDoraKinds");
+    // 표도라·깡도라는 표시패의 앞 패, 뒷도라는 **뒷도라 표시패**의 앞 패.
+    // 둘은 서로 다른 왕패이므로 각자 읽어야 한다 — 예전에는 양쪽 모두 표도라
+    // 표시패를 봐서 같은 패를 두 번 셌다.
+    addKinds("scoring.extraDoraKinds", frontKinds);
+    addKinds("scoring.extraUraDoraKinds", uraFrontKinds);
 
     // 표시패가 뒤집힐 때마다(배패 직후·깡도라) 내 앞도라가 무엇인지 전원에게 알린다.
     // 안 보이면 상대가 대응할 수 없고(Rule #4), 나도 무엇이 내 도라인지 못 센다.
