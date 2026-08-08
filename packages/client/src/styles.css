@@ -1535,6 +1535,22 @@ button {
   z-index: 10;
 }
 
+/*
+ * 드래그로 패를 버리는 동안 — 끌고 있는 패는 드롭존(110) 위에 있어야 하므로
+ * 내 영역을 통째로 그 위로 올린다. 그러면 이름표·액티브 증강·안내·액션 바까지
+ * 같이 올라와 드롭존 문구를 다시 가리므로, 손패만 남기고 투명하게 만든다.
+ * `display:none`이 아니라 `opacity`인 이유: 자리가 사라지면 손패가 위로 튄다.
+ */
+.own-area-dragging {
+  z-index: 111;
+}
+
+.own-area-dragging > *:not(.own-hand) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
 /* 내 이름표·증강·액티브 증강·오름패를 손패 위에 한 줄로 모은다 (예전엔 좌하단이라 잘렸다) */
 .own-top {
   display: flex;
@@ -1579,7 +1595,13 @@ button {
   transform: translateX(-50%);
   width: min(620px, 74cqw);
   height: clamp(150px, 34cqh, 330px);
-  z-index: 9;
+  /*
+   * 판 위의 어떤 것보다 위. 예전엔 9라 `.own-area`(10) 아래였고, 이름표·액티브 증강
+   * 버튼·무장 안내·액션 바·중앙 점수판이 죄다 문구를 가로질러 "여기에 놓아 …"가
+   * 읽히지 않았다(2026-08-08 사용자 보고). 모달(120)보다는 낮게 둔다.
+   * 끌고 있는 패는 `.own-area-dragging`이 이 위로 다시 올라선다.
+   */
+  z-index: 110;
   display: grid;
   place-items: center;
   border: 3px dashed rgba(240, 200, 106, 0.65);

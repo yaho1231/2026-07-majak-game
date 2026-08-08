@@ -662,6 +662,16 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
   "soul_strike",
 ]);
 
+/**
+ * 위 액션들을 내는 증강 id — 액션 바가 전담하므로 "✦ 액티브 증강" 쪽에서는
+ * 목록·개수·안내에서 전부 뺀다(같은 증강이 두 군데서 뜨지 않게).
+ */
+const RIICHI_AUG_IDS = new Set(
+  [...DRAG_DISCARD_ARM_TYPES]
+    .map((t) => ACTION_AUGMENT[t])
+    .filter((id): id is string => id !== undefined),
+);
+
 function armPromptText(mode: ArmMode | null, type?: string | null): string {
   if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
     return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
@@ -10826,9 +10836,16 @@ function OwnArea(props: {
     "--hand-n": String(Math.max(14, displayIds.length)),
   } as React.CSSProperties;
 
+  /*
+   * 드롭존은 **실제로 끌기 시작한 뒤에만** 띄운다(drag.moved).
+   * 예전엔 pointerdown 즉시 떠서, 패를 그냥 클릭하기만 해도 큰 점선 상자가 한 번
+   * 번쩍였다 — 이제 그 상자가 다른 UI 위로 올라오므로(z-index) 더 두드러진다.
+   */
+  const showDropzone = drag?.moved === true && canDropDiscard;
+
   return (
     <>
-      {canDropDiscard ? (
+      {showDropzone ? (
         <div
           ref={dropzoneRef}
           className={`discard-dropzone${drag?.overDiscard === true ? " discard-dropzone-over" : ""}${
@@ -10846,7 +10863,14 @@ function OwnArea(props: {
           </span>
         </div>
       ) : null}
-      <div className="own-area" ref={areaRef} data-arm-zone="1">
+      {/* 드래그 중에는 내 영역이 드롭존 위로 올라선다 — 끌고 있는 패가 드롭존에
+          가려지면 안 되기 때문. 대신 이름표·액티브 증강·안내·액션 바는 잠시 투명해져
+          드롭존 문구를 비켜 준다(자리는 그대로 둬서 손패가 튀지 않는다). */}
+      <div
+        className={`own-area${showDropzone ? " own-area-dragging" : ""}`}
+        ref={areaRef}
+        data-arm-zone="1"
+      >
         {props.quickToggles ?? null}
         <div className="own-top">
           <NamePlate view={view} player={me} catalog={props.catalog} tipUp />
@@ -11650,13 +11674,20 @@ function ActiveAugmentControl(props: {
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
-  const hasActive = me.augments.some((a) => ACTIVE_AUGMENT_IDS.has(a));
+  // 증강 리치만 들고 있다면 이 버튼은 아예 안 뜬다 — 그건 액션 바가 맡는다.
+  const hasActive = me.augments.some(
+    (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
+  );
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
   // 영상패 선택(bloom_pick)은 전용 모달이 담당하므로 이 버튼에서는 제외한다.
   // (예지 foresight_order는 byType에는 남겨 두되 아래 menuTypes에서 빼 메뉴엔 안 띄운다.)
+  // 증강 리치(오픈·스텔스·올인·영혼의 일격)는 액션 바가 [리치] 옆에 전용 버튼으로
+  // 세운다 — 여기까지 겹쳐 놓으면 같은 액션이 두 군데서 뜨고, 정작 이 메뉴에서만
+  // 고를 수 있는 다른 액티브 증강이 개수에 묻힌다 (2026-08-08 사용자 요청).
   const augOptions = (myPrompt?.options ?? []).filter(
     (o) =>
       AUGMENT_ACTION_TYPES.has(o.type) &&
+      !DRAG_DISCARD_ARM_TYPES.has(o.type) &&
       o.type !== "bloom_pick" &&
       o.type !== "swap3_give" &&
       o.type !== "swap3_take" &&
@@ -11752,7 +11783,7 @@ function ActiveAugmentControl(props: {
 
   const usable = augOptions.length > 0;
   const activeNames = me.augments
-    .filter((a) => ACTIVE_AUGMENT_IDS.has(a))
+    .filter((a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a))
     .map((a) => props.catalog[a]?.name ?? a);
 
   // 액션 타입별로 옵션을 묶는다 (타일 선택형은 개별 옵션이 아니라 '패 클릭'으로 발동)
@@ -11813,8 +11844,10 @@ function ActiveAugmentControl(props: {
 
   const click = (): void => {
     if (!usable) return;
-    if (sel.armedType !== null) {
-      sel.arm(sel.armedType); // 다시 눌러 선택 모드 취소(같은 타입이면 해제)
+    // 다시 눌러 선택 모드 취소(같은 타입이면 해제). 증강 리치 무장은 이 버튼 소관이
+    // 아니므로 여기서 가로채지 않는다 — 그냥 메뉴를 연다(무장은 sel.arm이 교체한다).
+    if (sel.armedType !== null && !DRAG_DISCARD_ARM_TYPES.has(sel.armedType)) {
+      sel.arm(sel.armedType);
       return;
     }
     if (open) {
@@ -12314,7 +12347,12 @@ function ActiveAugmentControl(props: {
         )
       ) : null}
       <button
-        className={`aug-btn${usable ? " aug-btn-on" : ""}${sel.armedType !== null ? " aug-btn-armed" : ""}`}
+        /* 증강 리치로 무장한 것은 액션 바의 몫이라 여기선 켜진 것처럼 보이지 않게 한다 */
+        className={`aug-btn${usable ? " aug-btn-on" : ""}${
+          sel.armedType !== null && !DRAG_DISCARD_ARM_TYPES.has(sel.armedType)
+            ? " aug-btn-armed"
+            : ""
+        }`}
         disabled={!usable}
         title={
           usable
