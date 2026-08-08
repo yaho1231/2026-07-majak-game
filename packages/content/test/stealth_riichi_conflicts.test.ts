@@ -22,11 +22,15 @@ const LEAKERS = [
   "soul_strike", // 남은 쯔모 수를 전원 공개
   "off_by_one", // 리치 필수 + 바뀐 패를 전원 공개
   "palm_flip", // 리치 중에만 발동 + 해제를 전원 공개
+  "riichi_upgrade", // 하가 봉인을 view:* 로 공개 + 하가 리치 버튼이 잠긴다
+  "silent_swap", // 리치로 잠긴 손을 바닥에서 갈아 끼운다 (은닉이 조건 판정도 통과)
 ] as const;
 
 /** 은닉과 공존해도 되는 리치 계열 (공개 채널이 없거나 스텔스를 인지한다) */
 const COMPATIBLE = [
-  "riichi_upgrade", // 스텔스면 트리플리치 표시를 홀더 전용 채널로 보낸다
+  // riichi_upgrade는 2026-08-08 QA에서 **누출원으로 재분류**됐다 — 트리플리치
+  // "표시"는 홀더 전용 채널로 가지만, 같은 리액션이 하가 봉인을 view:* 로
+  // 전원에게 알리고 하가의 리치 버튼을 눈에 보이게 잠근다. 아래 LEAKERS에 있다.
   "free_riichi_discard",
   "late_double",
   "no_retreat",

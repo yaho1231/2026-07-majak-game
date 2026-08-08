@@ -197,8 +197,17 @@ export const stealthRiichi: AugmentDef = defineAugment({
    *      - `palm_flip` 손바닥 뒤집기 — 리치 중에만 쓸 수 있고 해제를 전원 공개한다.
    *        (게다가 이 증강의 해제 경로는 `stealthBreak`를 안 거쳐 은닉 표식이 남는다.)
    *
-   * 반대로 **잠그지 않는 것**: `riichi_upgrade`(이중 선언)는 스텔스일 때 트리플리치
-   * 표시를 홀더 전용 채널로 보낸다. `free_riichi_discard`·`late_double`·`no_retreat`·
+   *      - `riichi_upgrade` 이중 선언 — 트리플리치 **표시**는 스텔스일 때 홀더 전용
+   *        채널로 보내지만, 같은 리액션이 하가 봉인을 `view:*` 로 전원에게 알리고
+   *        하가의 리치 버튼을 눈에 보이게 잠근다. 선언 즉시 "누가 리치를 걸었다"가
+   *        확정되므로 은닉이 통째로 무너진다(2026-08-08 QA §2-9).
+   *
+   * ③ **내가 리치인 동안 손을 갈아 끼울 수 있게 하는 것** — 은닉 자체는 안 깨지지만
+   *    리치로 잠긴 손을 자유롭게 바꾸는 조합이 되어 카드 두 장의 약속이 모두 거짓이 된다.
+   *      - `silent_swap` 정적의 손 — 홀더 자신의 리치를 막지 않고, "아무도 리치를 안
+   *        건 국"이라는 조건도 스텔스 리치를 세지 않아 그대로 통과한다.
+   *
+   * 반대로 **잠그지 않는 것**: `free_riichi_discard`·`late_double`·`no_retreat`·
    * `siege_riichi`는 공개 채널을 쓰지 않는다. `push_riichi`는 남을 리치시키는 것이라
    * 내 은닉과 무관하다.
    */
@@ -209,6 +218,8 @@ export const stealthRiichi: AugmentDef = defineAugment({
     "soul_strike",
     "off_by_one",
     "palm_flip",
+    "riichi_upgrade",
+    "silent_swap",
   ],
   description:
     "(매 국 1회 — 리치는 국당 한 번) 텐파이 상태에서 보이지 않는 리치를 건다. 타가에게는 평범한 타패로 보이지만 화료 시에는 리치로 취급되며(리치 1판·일발·뒷도라), 공탁 1000점도 내지 않는다.",
