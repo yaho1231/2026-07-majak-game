@@ -63,7 +63,7 @@ class FakeSocket {
     return this.sent.filter((m) => m.type === type);
   }
 
-  waitFor(pred: (m: any) => boolean, timeoutMs = 20_000): Promise<void> {
+  waitFor(pred: (m: any) => boolean, timeoutMs = TONPUU_MS): Promise<void> {
     if (this.sent.some(pred)) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("waitFor timeout")), timeoutMs);
@@ -104,8 +104,19 @@ class FakeSocket {
   }
 }
 
+/**
+ * 게스트 한 판(사람 1 + 봇 3 동풍전)이 **실제로 끝나는 데** 주는 예산(ms).
+ *
+ * 예전 20초는 한가한 머신 기준으로도 여유가 얇아, 전체 병렬 실행에서 이 파일이
+ * `waitFor timeout`으로 간헐 실패했다(단독 실행은 5초에 14/14 통과).
+ * `RoomManager.test.ts`가 같은 이유로 이미 넉넉한 상수로 옮겨 갔다 — 같은 값을 쓴다.
+ */
+const TONPUU_MS = 90_000;
+
 const dirs: string[] = [];
 const dbs: SiteDb[] = [];
+/** afterEach에서 반드시 멈춰야 하는 매니저들 (아래 주석 참고) */
+const managers: RoomManager[] = [];
 
 interface Harness {
   rm: RoomManager;
@@ -122,7 +133,9 @@ async function newHarness(signupCode = ""): Promise<Harness> {
   await store.load();
   const db = new SiteDb(":memory:");
   dbs.push(db);
-  return { rm: new RoomManager(replayDir, store, 0, db, signupCode), db, store, replayDir };
+  const rm = new RoomManager(replayDir, store, 0, db, signupCode);
+  managers.push(rm);
+  return { rm, db, store, replayDir };
 }
 
 /**
@@ -154,6 +167,19 @@ async function connectUser(h: Harness, username: string): Promise<FakeSocket> {
 }
 
 afterEach(async () => {
+  /*
+   * **매니저를 반드시 멈춘다.** 예전에는 임시 디렉터리와 DB만 정리하고 RoomManager는
+   * 그대로 뒀다. 게임 도중에 끝나는 테스트가 남긴 봇 대국이 같은 이벤트 루프에서
+   * 계속 돌며 뒤 테스트의 CPU를 훔쳤고, 그게 이 파일이 전체 실행에서만 간헐적으로
+   * `waitFor timeout`을 내던 이유다(단독 실행은 항상 통과).
+   * `RoomManager.test.ts`가 같은 원인으로 이미 고쳐졌다 — 같은 처방을 쓴다.
+   */
+  for (const m of managers.splice(0)) {
+    m.shutdown("테스트 정리");
+    m.stop();
+  }
+  // 중단된 게임 루프가 마무리 콜백을 흘려보낼 틈을 준다 (임시 디렉터리 삭제 레이스 방지)
+  await new Promise((r) => setTimeout(r, 0));
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
   for (const db of dbs.splice(0)) db.close();
 });

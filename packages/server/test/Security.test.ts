@@ -262,16 +262,32 @@ describe("회원가입 계정 열거", () => {
     const h = await newHarness();
     await h.db.register("Taken", "pw123456");
 
-    const measure = async (name: string): Promise<number> => {
+    const once = async (name: string): Promise<number> => {
       const t0 = process.hrtime.bigint();
       await h.db.register(name, "pw123456");
       return Number(process.hrtime.bigint() - t0) / 1e6;
     };
+    /*
+     * **최솟값으로 잰다.** 스케줄링 잡음은 시간을 늘리기만 하므로, 여러 번 재서
+     * 가장 빠른 값을 쓰면 부하와 무관한 하한이 남는다.
+     *
+     * 예전에는 각 경로를 한 번씩만 재고 `dup > fresh * 0.5`를 봤다. 전체 병렬
+     * 실행에서 CPU가 붐비면 `fresh` 한 번이 부풀어(실측 dup 44.3ms vs fresh 93.9ms)
+     * 비용을 제대로 치르고도 실패했다 — 단독 실행은 항상 통과.
+     * 재는 방식만 바꾸고 **검사 자체는 그대로 둔다**: 중복 경로가 scrypt를 건너뛰면
+     * 최솟값도 신규 경로의 절반 아래로 내려가므로 열거 채널은 여전히 잡힌다.
+     */
+    const minOf = async (name: (i: number) => string, n: number): Promise<number> => {
+      let best = Infinity;
+      for (let i = 0; i < n; i++) best = Math.min(best, await once(name(i)));
+      return best;
+    };
+    // 중복 경로는 같은 이름을 몇 번 넣어도 계속 중복이다 (등록이 성립하지 않으므로).
+    const dupMin = await minOf(() => "Taken", 3);
+    const freshMin = await minOf((i) => `Fresh${i}`, 3);
     // 중복 경로가 신규 경로보다 확연히 빠르면 그 차이가 곧 열거 채널이다.
     // scrypt 한 번이 수십 ms이므로, 절반 미만이면 비용을 건너뛴 것이다.
-    const dup = await measure("Taken");
-    const fresh = await measure("Fresh");
-    expect(dup).toBeGreaterThan(fresh * 0.5);
+    expect(dupMin).toBeGreaterThan(freshMin * 0.5);
   });
 
   it("동시에 같은 닉네임으로 가입해도 INTERNAL이 아니라 평범한 실패가 된다", async () => {
