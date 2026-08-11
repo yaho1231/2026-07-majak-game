@@ -16,8 +16,8 @@ import { fileURLToPath } from "node:url";
 import { standardAugments } from "@majak/core";
 import { describe, expect, it } from "vitest";
 import { contentAugments } from "../src/index.js";
-import { AUGMENT_BRIEF, briefOf } from "../../client/src/augmentBrief.js";
-import { GLOSSARY, splitTerms } from "../../client/src/glossary.js";
+import { AUGMENT_BRIEF, briefOf, expandParas } from "../../client/src/augmentBrief.js";
+import { GLOSSARY, GLOSSARY_GROUPS, splitTerms } from "../../client/src/glossary.js";
 
 const ALL = [...standardAugments, ...contentAugments];
 
@@ -73,6 +73,66 @@ describe("증강 요약 (클라이언트 기본 설명)", () => {
   });
 });
 
+/**
+ * 화면마다 펼치는 층이 다르다 (augmentBrief.ts 헤더의 표).
+ *   드래프트(카드·이름표 툴팁) → 요약 + **설명**. 판 중에 몇 초로 고르는 자리라 상세는 길다.
+ *   도감(도감 상세·샌드박스 상세) → 요약 + **상세**. 목록에 이미 요약이 있고 설명은 상세와 겹친다.
+ *
+ * 예전에는 도감 상세가 세 겹을 다 폈다 — 같은 얘기를 설명과 상세로 두 번 읽혔다.
+ * 어느 한쪽으로 되돌아가는 것을 여기서 막는다.
+ */
+describe("설명 층 나누기 (화면별)", () => {
+  const DESC = "(매 국 1회) 조건과 예외를 담은 정식 문장이다.";
+  const DETAIL = "작동 원리 문단.\n\n전략과 주의점 문단.";
+
+  it("드래프트는 설명만 편다 — 상세는 절대 섞이지 않는다", () => {
+    expect(expandParas("draft", DESC, DETAIL)).toEqual(["조건과 예외를 담은 정식 문장이다."]);
+  });
+
+  it("도감은 상세만 편다 — 설명은 섞이지 않는다", () => {
+    expect(expandParas("codex", DESC, DETAIL)).toEqual(["작동 원리 문단.", "전략과 주의점 문단."]);
+  });
+
+  it("상세가 없는 증강만 도감에서 설명이 그 자리를 대신한다", () => {
+    expect(expandParas("codex", DESC, undefined)).toEqual(["조건과 예외를 담은 정식 문장이다."]);
+    expect(expandParas("codex", DESC, "   ")).toEqual(["조건과 예외를 담은 정식 문장이다."]);
+  });
+
+  it("어느 쪽이든 머리말 괄호는 본문에 남지 않는다 (배지가 이미 말한다)", () => {
+    for (const v of ["draft", "codex"] as const) {
+      const bad = ALL.filter((a) => expandParas(v, a.description, a.detail).some((p) => p.startsWith("(")));
+      expect(bad.map((a) => a.id), v).toEqual([]);
+    }
+  });
+
+  it("실제 증강 전부에서 두 경로가 서로의 층을 끌어오지 않는다", () => {
+    const withDetail = ALL.filter((a) => (a.detail ?? "").trim() !== "");
+    // 상세를 가진 증강이 있어야 이 검사가 의미를 가진다
+    expect(withDetail.length).toBeGreaterThan(0);
+    for (const a of withDetail) {
+      const draft = expandParas("draft", a.description, a.detail).join("\n");
+      const codex = expandParas("codex", a.description, a.detail).join("\n");
+      // 드래프트에 상세 첫 문단이 실려 있으면 안 된다
+      const detailHead = a.detail!.trim().split(/\n\n+/)[0]!.trim();
+      expect(draft.includes(detailHead), `${a.id}: 드래프트에 상세가 샜다`).toBe(false);
+      // 도감에 설명 본문이 실려 있으면 안 된다
+      const descBody = a.description.replace(/^\([^)]*\)\s*/, "").trim();
+      expect(codex.includes(descBody), `${a.id}: 도감에 설명이 샜다`).toBe(false);
+    }
+  });
+
+  it("App.tsx의 모든 AugDesc 호출부가 variant를 명시한다", () => {
+    // 컴포넌트가 자기 위치를 추측하게 두면 화면이 늘 때마다 조용히 어긋난다
+    const src = readFileSync(
+      fileURLToPath(new URL("../../client/src/App.tsx", import.meta.url)),
+      "utf8",
+    );
+    const calls = [...src.matchAll(/<AugDesc\b[^>]*>/g)].map((m) => m[0]);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.filter((c) => !/\bvariant="(draft|codex)"/.test(c))).toEqual([]);
+  });
+});
+
 describe("마작 용어 사전", () => {
   it("항목 key가 중복되지 않는다", () => {
     const keys = GLOSSARY.map((g) => g.key);
@@ -81,6 +141,24 @@ describe("마작 용어 사전", () => {
 
   it("풀이는 한 문장이고 용어 자신을 되풀이하지 않는다", () => {
     const bad = GLOSSARY.filter((g) => g.short.trim() === "" || g.short.startsWith(g.label)).map((g) => g.key);
+    expect(bad).toEqual([]);
+  });
+
+  it("모든 항목이 설명집 분류에 속한다", () => {
+    // 용어 설명집(App.tsx `TermsTab`)은 GLOSSARY_GROUPS 순서대로만 그린다 —
+    // 목록에 없는 분류를 적으면 그 항목은 화면 어디에도 안 뜬다(조용히 사라진다).
+    const known = new Set(GLOSSARY_GROUPS.map((g) => g.id));
+    expect(GLOSSARY.filter((g) => !known.has(g.group)).map((g) => g.key)).toEqual([]);
+    // 빈 분류는 칩만 남고 내용이 없다 — 목록에서 빼야 한다
+    const used = new Set(GLOSSARY.map((g) => g.group));
+    expect(GLOSSARY_GROUPS.filter((g) => !used.has(g.id)).map((g) => g.id)).toEqual([]);
+  });
+
+  it("긴 풀이는 한 줄 풀이보다 실제로 더 말해 준다", () => {
+    // `long`은 설명집에서 `short`를 **대신한다**. 더 짧거나 같으면 붙일 이유가 없다.
+    const bad = GLOSSARY.filter((g) => g.long !== undefined && g.long.length <= g.short.length).map(
+      (g) => g.key,
+    );
     expect(bad).toEqual([]);
   });
 

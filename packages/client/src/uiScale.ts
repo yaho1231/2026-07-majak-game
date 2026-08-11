@@ -18,14 +18,32 @@
  * 좌표를 다루는 코드는 주의해야 한다. `getBoundingClientRect()`·`clientX`는 **화면 좌표**
  * (축소된 값)인데, 인라인 left/top·transform은 **레이아웃 좌표**(축소 전)로 해석된다.
  * 둘을 섞는 자리에서는 toLayoutPx()로 되돌려야 한다.
+ *
+ * ── 수동 손잡이 (2026-08-11) ──
+ * 자동 맞춤은 "창"만 본다. 사람 눈·모니터 거리·시력은 못 본다 — 같은 1440×900에서도
+ * 누구는 크게, 누구는 작게 보고 싶어 한다. 그래서 자동값 **위에 곱하는** 배수를
+ * 화면의 −/+ 버튼으로 열어 둔다. 자동 로직(computeAutoScale)은 손대지 않는다:
+ *
+ *     effective = clamp(auto × zoom, MIN_SCALE, MAX_SCALE)
+ *
+ * 그리고 이 effective 하나만 `scale`·`--ui-scale`이 된다. toLayoutPx()·layoutViewport()
+ * 가 전부 `scale`을 보므로 드래그 좌표도 자동으로 따라온다 — 여기 갈래를 늘리면 안 된다.
  */
 
 /** 이 크기 이상이면 배율 1 — 배치가 여유 있게 풀리는 기준 창.
  *  흔한 노트북(1280×720)은 그대로 두고, 그보다 좁아질 때부터 줄인다. */
 const BASE_W = 1100;
 const BASE_H = 680;
-/** 더 줄이면 글자가 안 읽힌다. 여기서 걸리면 대신 Ctrl +/− 안내를 띄운다. */
+/** 더 줄이면 글자가 안 읽힌다. 여기서 걸리면 대신 Ctrl +/− 안내를 띄운다.
+ *  수동 배수(−)도 이 아래로는 못 내려간다 — 자동 0.6 × 수동 0.7 = 0.42로
+ *  글자가 사라지는 조합은 애초에 사다리에서 빠진다(allowedSteps 참고). */
 const MIN_SCALE = 0.6;
+/** 최종 배율 상한. 자동은 1을 넘지 않으므로 이건 수동 확대 전용 뚜껑이다.
+ *  1.5면 1920×1080이 1280×720짜리 가상 뷰포트가 된다(데스크톱 배치가 아직 여유 있다).
+ *  기준 창(1100×680)에서 1.5를 걸면 733×453 — CRAMPED 아래라 좁은 화면 배치로 떨어진다.
+ *  그건 막지 않는다: 크게 보는 대가로 세로 배치를 받는 건 사용자가 고를 만한 거래고,
+ *  그 상태가 되면 LayoutHint가 "−로 줄여 보라"고 알려 준다. */
+const MAX_SCALE = 1.5;
 /** 이보다 좁은 가상 뷰포트는 데스크톱 배치가 어차피 깨진다 → 안내 대상. */
 const CRAMPED_W = 900;
 const CRAMPED_H = 620;
@@ -37,7 +55,22 @@ const CRAMPED_H = 620;
  */
 const LEGACY_OVERRIDE_KEY = "majak.uiScale";
 
+/**
+ * 지금 쓰는 수동 배수 키. **옛 키를 재활용하지 않는다** — 위 removeItem은 그대로 남아
+ * 있어야 하고(옛 값에 갇힌 사람 구제), 같은 키를 다시 쓰면 부팅할 때마다 지워진다.
+ */
+const ZOOM_KEY = "majak.uiZoom";
+
+/**
+ * 수동 배수 사다리. 10%p 등간격 — 한 번 눌러서 눈에 띄되 두 번 눌러도 안 망가지는 폭이다.
+ * 아래끝 0.7: 자동 하한 MIN_SCALE(0.6)과 같은 결의 "글자가 읽히는 마지노선".
+ * 위끝 1.5: MAX_SCALE과 같다(그 위는 가상 뷰포트가 좁은 화면 배치로 떨어진다).
+ */
+const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5] as const;
+const DEFAULT_ZOOM = 1;
+
 let scale = 1;
+let zoom: number = DEFAULT_ZOOM;
 const listeners = new Set<() => void>();
 
 /**
@@ -65,7 +98,8 @@ function hasSize(): boolean {
   return window.innerWidth > 0 && window.innerHeight > 0;
 }
 
-function computeScale(): number {
+/** 창만 보고 정하는 자동 배율. 수동 배수는 여기 끼어들지 않는다. */
+function computeAutoScale(): number {
   if (!isPointerFine() || !hasSize()) return 1;
   // Ctrl + 로 키운 화면을 자동 축소가 도로 줄이지 않는다 (WCAG 1.4.4).
   if (userZoomedIn()) return 1;
@@ -82,6 +116,38 @@ function computeScale(): number {
   return s;
 }
 
+/**
+ * 지금 창에서 **고를 수 있는** 사다리 칸들.
+ *
+ * [MIN_SCALE, MAX_SCALE]는 최종 배율이 아니라 **사다리 쪽에서** 잘라 낸다.
+ * 최종값을 자르면 사다리는 움직이는데 화면은 안 움직이는 구간이 생기고, 거기서
+ * "−도 +도 아무 일이 안 일어나는" 막다른 칸이 만들어진다(작은 창에서 실제로 나왔다).
+ * 여기서 자르면 눌리는 칸은 전부 눈에 보이는 변화를 만든다.
+ *
+ * 1은 언제나 들어 있다 — auto 자체가 [MIN_SCALE, 1] 안이므로.
+ */
+function allowedSteps(auto: number): number[] {
+  const ok = ZOOM_STEPS.filter((s) => auto * s >= MIN_SCALE - 1e-9 && auto * s <= MAX_SCALE + 1e-9);
+  return ok.length > 0 ? [...ok] : [DEFAULT_ZOOM];
+}
+
+/**
+ * 실제로 걸리는 배수 — 저장된 취향을 지금 창에서 고를 수 있는 범위로 당긴 값.
+ * 저장값 자체는 건드리지 않는다: 작은 창에 잠깐 들렀다고 큰 모니터의 취향을 잃으면 안 된다.
+ */
+function activeZoom(auto: number): number {
+  const steps = allowedSteps(auto);
+  return Math.min(steps[steps.length - 1] as number, Math.max(steps[0] as number, zoom));
+}
+
+/** 화면에 실제로 걸리는 배율 = 자동 × 수동. */
+function computeScale(): number {
+  const auto = computeAutoScale();
+  const z = activeZoom(auto);
+  if (z === 1) return auto;
+  return Math.round(auto * z * 1000) / 1000;
+}
+
 function apply(): void {
   const next = computeScale();
   if (next !== scale) {
@@ -93,9 +159,66 @@ function apply(): void {
   listeners.forEach((fn) => fn());
 }
 
-/** 현재 UI 배율 (1 = 축소 없음). */
+/** 현재 UI 배율 (1 = 축소 없음). 자동 × 수동을 이미 반영한 최종값이다. */
 export function getUiScale(): number {
   return scale;
+}
+
+// ── 수동 배수 (화면의 −/+ 버튼) ──
+
+/**
+ * 화면에 보여 줄 배수 — 지금 창에서 실제로 걸리는 값이다.
+ * 저장된 취향이 이 창에서 못 고르는 칸이면 당겨진 값이 나온다(그래야 표시가 거짓말을 안 한다).
+ */
+export function getUiZoom(): number {
+  return activeZoom(computeAutoScale());
+}
+
+/** 사다리에서 가장 가까운 칸으로 맞춘 값 (범위 밖은 잘라 낸다). */
+function snapZoom(v: number): number {
+  let best = ZOOM_STEPS[0] as number;
+  for (const s of ZOOM_STEPS) if (Math.abs(s - v) < Math.abs(best - v)) best = s;
+  return best;
+}
+
+function persistZoom(): void {
+  try {
+    if (zoom === DEFAULT_ZOOM) window.localStorage.removeItem(ZOOM_KEY);
+    else window.localStorage.setItem(ZOOM_KEY, String(zoom));
+  } catch {
+    /* 저장을 못 해도 이번 세션에서는 동작한다 */
+  }
+}
+
+/** 배수를 직접 지정 (사다리 칸으로 스냅). 화면이 바뀌었으면 true. */
+export function setUiZoom(v: number): boolean {
+  const before = scale;
+  zoom = snapZoom(v);
+  persistZoom();
+  apply();
+  return scale !== before;
+}
+
+/** 배수를 사다리에서 dir칸(+1 확대 / −1 축소) 옮긴다. 바뀌었으면 true. */
+export function stepUiZoom(dir: 1 | -1): boolean {
+  if (!canStepUiZoom(dir)) return false;
+  const steps = allowedSteps(computeAutoScale());
+  const next = steps[steps.indexOf(getUiZoom()) + dir];
+  return next === undefined ? false : setUiZoom(next);
+}
+
+/** 기본값(자동에 맡기기)으로 되돌린다. */
+export function resetUiZoom(): boolean {
+  return setUiZoom(DEFAULT_ZOOM);
+}
+
+/**
+ * 그 방향으로 아직 갈 데가 있는가 — 버튼을 끌 때 쓴다.
+ * 고를 수 있는 사다리(allowedSteps)의 끝이면 false. 눌리는 칸은 전부 화면을 움직인다.
+ */
+export function canStepUiZoom(dir: 1 | -1): boolean {
+  const steps = allowedSteps(computeAutoScale());
+  return steps[steps.indexOf(getUiZoom()) + dir] !== undefined;
 }
 
 /** 화면(visual) px → 레이아웃 px. 인라인 left/top·transform에 넣기 전에 거친다. */
@@ -122,10 +245,37 @@ export function isLayoutCramped(): boolean {
   return v.w < CRAMPED_W && v.h < CRAMPED_H;
 }
 
-/** 배율이 바뀔 때 알림 (창 크기 변경). 해제 함수를 돌려준다. */
+/** 배율이 바뀔 때 알림 (창 크기 변경·수동 −/+). 해제 함수를 돌려준다. */
 export function subscribeUiScale(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+/** 입력 중인가 — 단축키가 글자를 먹으면 안 된다. */
+function typingInField(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  if (t.isContentEditable) return true;
+  const tag = t.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+/**
+ * 단축키는 **Alt(Option) + − / + / 0**.
+ *
+ * Ctrl/⌘ + − 를 쓰지 않는 이유: 그건 브라우저 확대다. 가로채면 사용자가 늘 쓰던
+ * 손잡이를 뺏는 것이고(WCAG 1.4.4), 가로채지 않고 겹쳐 두면 한 번의 키로 두 배율이
+ * 동시에 움직인다. 게다가 브라우저 확대는 devicePixelRatio를 흔들어 userZoomedIn()을
+ * 켜고 **자동 축소를 접게** 되어 있으므로, 겹쳐 두면 "왜 두 배로 커지지"가 된다.
+ * 그래서 완전히 다른 조합을 쓰고 브라우저 쪽은 그대로 둔다 — 둘은 곱해져 공존한다.
+ */
+function onKey(e: KeyboardEvent): void {
+  if (!e.altKey || e.ctrlKey || e.metaKey) return;
+  if (typingInField(e.target)) return;
+  if (e.code === "Minus" || e.code === "NumpadSubtract") stepUiZoom(-1);
+  else if (e.code === "Equal" || e.code === "NumpadAdd") stepUiZoom(1);
+  else if (e.code === "Digit0" || e.code === "Numpad0") resetUiZoom();
+  else return;
+  e.preventDefault();
 }
 
 /** 앱 부팅 시 1회. 첫 페인트 전에 배율을 걸고, 이후 창 크기를 따라간다. */
@@ -135,8 +285,16 @@ export function startUiScale(): void {
   } catch {
     /* 저장소를 못 건드려도 배율은 어차피 자동이다 */
   }
+  try {
+    const raw = window.localStorage.getItem(ZOOM_KEY);
+    const v = raw === null ? NaN : Number(raw);
+    if (Number.isFinite(v) && v > 0) zoom = snapZoom(v);
+  } catch {
+    /* 못 읽으면 자동값 그대로 */
+  }
   baseDpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
   apply();
+  window.addEventListener("keydown", onKey);
   window.addEventListener("resize", apply);
   window.addEventListener("orientationchange", apply);
   // resize 이벤트가 안 오는 변화(브라우저 확대율 변경 등)까지 잡는다 —
