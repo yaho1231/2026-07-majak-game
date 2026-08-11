@@ -15,6 +15,7 @@ import {
   ROUND_STARTED,
   SETTLE_LAYER,
   SETTLE_STAGE,
+  settlePriority,
   augmentDataSet,
   augmentStageKey,
   calculateScore,
@@ -450,9 +451,11 @@ export function addHanBonus(
  * (docs/25 P6). 실제로 죽기살기 × 역만 방어술(둘 다 Shield)은 순서에 따라 최종
  * 점수와 남은 사용 횟수가 통째로 달라졌고, 서로 기생하는 기생충 둘도 마찬가지였다.
  *
- * 이제 **보유자의 자리(seat)** 를 하위 자릿수로 얹어 게임 상태만으로 순서가 정해진다.
- * 단계 간격이 100이고 자리는 0~3이라 단계 경계를 넘지 않는다. 재구성(resume·리플레이)
- * 으로 설치 순서가 달라져도 결과가 같다.
+ * 이제 **보유자의 자리(seat)** 와 **증강 id**를 하위 자릿수로 얹어 게임 상태만으로
+ * 순서가 정해진다(`settlePriority`). 자리만 얹던 시절에는 **한 사람이 같은 단계의
+ * 증강 둘을 쥐면** priority가 똑같아져 다시 픽 순서로 밀렸다 — 큰손 × 올인처럼
+ * `deltas` 현재값을 읽는 조합에서 수령액이 통째로 갈렸다. 이제 그 경우도 막힌다.
+ * 재구성(resume·리플레이)으로 설치 순서가 달라져도 결과가 같다.
  */
 export function settleInterceptor(
   ctx: AugmentContext,
@@ -462,7 +465,7 @@ export function settleInterceptor(
   const seat = ctx.engine.state.players.find((p) => p.id === ctx.holder)?.seat ?? 0;
   ctx.interceptor(ROUND_SETTLED, intercept, {
     layer: SETTLE_LAYER,
-    priority: stage + seat,
+    priority: settlePriority(stage, seat, ctx.augmentId),
   });
 }
 

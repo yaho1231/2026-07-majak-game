@@ -47,6 +47,14 @@
  *   "완전 면역"이 참이 된다.
  * - 새 정산 증강을 추가할 때는 여기 표에 어느 단계인지 적고 `settleInterceptor`로 등록한다.
  *   `ctx.interceptor(ROUND_SETTLED, …)`를 직접 부르면 다시 tier·픽 순서에 끌려간다.
+ *
+ * # 같은 단계 안의 순서
+ *
+ * priority는 `settlePriority(stage, seat, augmentId)`가 만든다 — 자세한 근거는 그
+ * 함수의 주석에. 요약하면 **단계 → 자리 → 증강 id** 순이고, 셋 다 게임 상태에서만
+ * 나오므로 드래프트 픽 순서·설치 순서·재구성(이어하기·리플레이)과 무관하다.
+ * 마지막 자리(id)는 *결정론*만 보장할 뿐 *의미*는 없다. 두 증강의 앞뒤가 규칙상
+ * 정해져야 한다면 단계를 나눠라.
  */
 
 import { RuleLayer } from "../engine/rules/RuleRegistry.js";
@@ -74,3 +82,49 @@ export const SETTLE_STAGE = {
 } as const;
 
 export type SettleStage = (typeof SETTLE_STAGE)[keyof typeof SETTLE_STAGE];
+
+/**
+ * 증강 id → `[0, 1)` 안의 안정적인 소수 (FNV-1a 32비트).
+ *
+ * 값 자체에 의미는 없다. 필요한 성질은 딱 두 가지다 —
+ * **id만 보고 정해진다**(설치 순서·픽 순서와 무관)와 **같은 단계 안에서 겹치지 않는다**.
+ * 후자는 카탈로그 전체를 훑는 테스트(`settle_order_determinism.test.ts`)가 강제한다.
+ */
+function idFraction(augmentId: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < augmentId.length; i++) {
+    h ^= augmentId.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  // 2^24 버킷 — 배정밀도에서 단계 번호(최대 900)에 더해도 손실 없이 구분된다.
+  return (h >>> 8) / 0x1000000;
+}
+
+/**
+ * 정산 인터셉터의 `priority` — **모든 등록 경로가 이걸 써야 한다.**
+ *
+ * `단계 + 자리 + id소수` 세 자리로 순서를 못 박는다.
+ *
+ * - **단계**(100 간격): 의미. `SETTLE_STAGE` 표가 단일 진실이다.
+ * - **자리**(0~3): 플레이어 간 순서. 게임 상태에서 나오므로 픽 순서와 무관하다.
+ * - **id소수**(<1): 같은 사람이 **같은 단계에 둘을 들고 있을 때**의 순서.
+ *
+ * 마지막 자리가 이 함수를 만든 이유다. 예전에는 `단계 + 자리`뿐이라 한 사람이 같은
+ * 단계의 증강 둘을 쥐면 priority가 완전히 똑같아졌고, 그러면 `EffectRegistry`가
+ * 등록 순서(seq) = **드래프트 픽 순서**로 밀었다 — `settleStages.ts`가 없애려던 바로
+ * 그 결함이 한 경우에만 살아남아 있었다. 실제로 결과가 갈린다: 큰손(big_hand)은
+ * `deltas`의 **현재값**을 읽어 만관까지 채우므로, 같은 BankTopUp 단계의 가산이
+ * 앞에 오느냐 뒤에 오느냐로 수령액이 통째로 달라진다.
+ *
+ * ⚠ 이 소수는 순서를 **결정론적으로 만들 뿐, 의미를 주지는 않는다.** 어떤 두 증강의
+ * 앞뒤가 규칙상 반드시 정해져야 한다면 소수에 기대지 말고 **단계를 나눠라.**
+ *
+ * 단계 간격이 100이고 `자리 + id소수 < 4`라 단계 경계는 절대 넘지 않는다.
+ */
+export function settlePriority(
+  stage: SettleStage,
+  seat: number,
+  augmentId: string,
+): number {
+  return stage + seat + idFraction(augmentId);
+}

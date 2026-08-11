@@ -16,6 +16,7 @@ import {
   SETTLE_STAGE,
   createStandardGameFromState,
   installAugment,
+  settlePriority,
 } from "@majak/core";
 import type { AugmentDef, GameState, PlayerId } from "@majak/core";
 import { craft } from "./helpers.js";
@@ -91,12 +92,22 @@ describe("같은 정산 단계의 순서는 설치 순서와 무관하다", () =
     expect(forward.indexOf("p1/")).toBeLessThan(forward.indexOf("p3/"));
   });
 
-  it("같은 사람이 두 증강을 가지면 종전대로 등록 순서를 따른다 (자리가 같으므로)", () => {
-    const t = traceOf([
+  /**
+   * 회귀 (2026-08-11): 자리만 얹던 시절에는 **한 사람이 같은 단계에 둘**을 쥐면
+   * priority가 완전히 동률이라 `EffectRegistry`가 등록 순서(seq) = 드래프트 픽 순서로
+   * 밀었다. 결과가 갈리는 조합이 실제로 있다 — 아래 큰손 테스트 참고.
+   */
+  it("같은 사람이 같은 단계의 증강 둘을 가져도 설치 순서와 무관하다", () => {
+    const forward = traceOf([
       [augA, "p2"],
       [augB, "p2"],
     ]);
-    expect(t).toBe("p2/mark_a;p2/mark_b;");
+    const reversed = traceOf([
+      [augB, "p2"],
+      [augA, "p2"],
+    ]);
+    expect(forward).toBe(reversed);
+    expect(forward.split(";").filter(Boolean)).toHaveLength(2);
   });
 
   it("SETTLE_LAYER는 그대로 유지된다 — 단계 경계를 넘지 않는다", () => {
@@ -109,6 +120,113 @@ describe("같은 정산 단계의 순서는 설치 순서와 무관하다", () =
     // 자리 3이 얹혀도 다음 단계(DrawPatch=500)를 침범하지 않는다
     expect(SETTLE_STAGE.Transfer + 3).toBeLessThan(SETTLE_STAGE.DrawPatch);
     expect(SETTLE_LAYER).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * 같은 단계·같은 사람 조합에서 **실제로 점수가 갈린다**는 증거.
+ *
+ * BankTopUp에는 열두 종이 앉아 있고 그중 큰손(big_hand)은 `deltas`의 **현재값**을 읽어
+ * 하한까지 채운다 — 다른 가산이 앞에 오면 이미 하한을 넘어 아무것도 안 채우고, 뒤에 오면
+ * 하한까지 채운 뒤 가산이 통째로 더 얹힌다. 여기서는 그 패턴을 최소로 재현한다.
+ * 자리만 얹던 시절에는 이 두 개가 완전 동률이라 결과가 **드래프트 픽 순서**로 갈렸다.
+ */
+describe("BankTopUp — 같은 사람이 '가산'과 '하한 보전'을 함께 쥔 경우", () => {
+  const FLOOR = 8000;
+  const ADD = 5000;
+
+  /** 정액 가산 (addWinPointBonus 계열) */
+  const adder = defineAugment({
+    id: "probe_flat_adder",
+    tier: "prism",
+    category: "scoring",
+    name: "adder",
+    description: "adder",
+    detail: "adder",
+    install(ctx) {
+      settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event) => {
+        const p = event.payload as { deltas: Record<string, number> };
+        return {
+          type: event.type,
+          payload: {
+            ...p,
+            deltas: { ...p.deltas, [ctx.holder]: (p.deltas[ctx.holder] ?? 0) + ADD },
+          },
+        };
+      });
+    },
+  });
+
+  /** 하한 보전 (big_hand 계열) — 현재값을 읽으므로 교환법칙이 성립하지 않는다 */
+  const floorer = defineAugment({
+    id: "probe_floor_topup",
+    tier: "prism",
+    category: "scoring",
+    name: "floorer",
+    description: "floorer",
+    detail: "floorer",
+    install(ctx) {
+      settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event) => {
+        const p = event.payload as { deltas: Record<string, number> };
+        const cur = p.deltas[ctx.holder] ?? 0;
+        if (cur >= FLOOR) return event;
+        return {
+          type: event.type,
+          payload: { ...p, deltas: { ...p.deltas, [ctx.holder]: FLOOR } },
+        };
+      });
+    },
+  });
+
+  function settledDelta(order: AugmentDef[]): number {
+    const game = createStandardGameFromState(scene(), undefined, [adder, floorer]);
+    for (const def of order) installAugment(game.engine, def, "p2", {});
+    let payload: { deltas: Record<string, number> } = { deltas: { p2: 1000 } };
+    for (const { intercept } of game.engine.effects.interceptorsFor(ROUND_SETTLED)) {
+      const out = intercept(
+        { type: ROUND_SETTLED, payload },
+        { state: game.engine.state, rules: game.engine.rules },
+      );
+      if (out !== null) payload = out.payload as { deltas: Record<string, number> };
+    }
+    return payload.deltas["p2"] ?? 0;
+  }
+
+  it("픽 순서를 뒤집어도 수령액이 같다", () => {
+    // 고치기 전: [adder, floorer] → 1000+5000=6000 → 하한 8000 보전 → 8000
+    //            [floorer, adder] → 하한 8000 보전 → +5000 → 13000  (5000점 차)
+    expect(settledDelta([adder, floorer])).toBe(settledDelta([floorer, adder]));
+  });
+});
+
+/**
+ * `settlePriority`의 하위 자리(증강 id 소수)가 **카탈로그 전체에서 겹치지 않는다.**
+ *
+ * 겹치면 그 두 증강은 같은 단계·같은 자리에서 다시 동률이 되어 픽 순서로 밀린다 —
+ * 이 소수는 해시라서 이론상 충돌이 가능하므로, 실제 카탈로그로 못 박아 둔다.
+ * 새 증강을 추가했을 때 하필 충돌하면 여기서 빨갛게 뜬다.
+ */
+describe("settlePriority — 카탈로그 전체에서 동률이 없다", () => {
+  it("모든 증강 id가 서로 다른 priority를 만든다", async () => {
+    const { contentAugments } = await import("../src/index.js");
+    const { standardAugments } = await import("@majak/core");
+    const ids = [
+      ...new Set(
+        [...(standardAugments as AugmentDef[]), ...contentAugments].map((d) => d.id),
+      ),
+    ];
+    expect(ids.length).toBeGreaterThan(100);
+    for (const stage of Object.values(SETTLE_STAGE)) {
+      for (const seat of [0, 1, 2, 3]) {
+        const prios = ids.map((id) => settlePriority(stage, seat, id));
+        expect(new Set(prios).size).toBe(ids.length);
+        // 자리·id를 얹어도 다음 자리를 침범하지 않는다
+        for (const p of prios) {
+          expect(p).toBeGreaterThanOrEqual(stage + seat);
+          expect(p).toBeLessThan(stage + seat + 1);
+        }
+      }
+    }
   });
 });
 

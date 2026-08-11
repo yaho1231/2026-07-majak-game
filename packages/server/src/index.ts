@@ -22,6 +22,7 @@ import { RoomManager, abuseKeyOf } from "./RoomManager.js";
 import { StatsStore } from "./StatsStore.js";
 import { AugmentStatsStore } from "./AugmentStatsStore.js";
 import { SiteDb } from "./SiteDb.js";
+import { pruneOrphanReplays } from "./pruneReplays.js";
 
 /**
  * 수치 환경변수를 **검증해서** 읽는다.
@@ -529,10 +530,10 @@ const GAME_RETENTION_DAYS = numEnv("GAME_RETENTION_DAYS", 365);
 
 async function pruneOldReplays(): Promise<void> {
   if (!Number.isFinite(GAME_RETENTION_DAYS) || GAME_RETENTION_DAYS <= 0) return;
-  const cutoff = new Date(Date.now() - GAME_RETENTION_DAYS * 86_400_000).toISOString();
+  const cutoffMs = Date.now() - GAME_RETENTION_DAYS * 86_400_000;
+  const cutoff = new Date(cutoffMs).toISOString();
   try {
     const paths = db.pruneGamesBefore(cutoff);
-    if (paths.length === 0) return;
     let removed = 0;
     for (const p of paths) {
       try {
@@ -542,7 +543,19 @@ async function pruneOldReplays(): Promise<void> {
         // 이미 없는 파일 — 인덱스만 지우면 된다
       }
     }
-    console.log(`리플레이 정리: 게임 ${paths.length}건 · 파일 ${removed}개 삭제 (${GAME_RETENTION_DAYS}일 이전)`);
+    /*
+     * 인덱스에 없는 `.jsonl`도 함께 쓸어 담는다.
+     *
+     * 위 루프는 `games` 행이 가리키는 파일만 지운다. 그런데 파일은 게임 시작 때
+     * 열리고 행은 정상 종료 때만 생기므로, SIGKILL·서버 재시작으로 끊긴 판은
+     * 행 없는 파일만 남긴다 — 열어 볼 길도 없고 지워지지도 않는 고아다.
+     * (무효·예외·시작 실패는 ReplayWriter.discard()가 그 자리에서 지운다.)
+     */
+    const orphans = await pruneOrphanReplays(REPLAY_DIR, db.allReplayPaths(), cutoffMs);
+    if (paths.length === 0 && orphans.removed === 0) return;
+    console.log(
+      `리플레이 정리: 게임 ${paths.length}건 · 파일 ${removed}개 · 고아 ${orphans.removed}개 삭제 (${GAME_RETENTION_DAYS}일 이전)`,
+    );
   } catch (err) {
     console.error("리플레이 정리 실패:", err);
   }

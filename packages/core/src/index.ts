@@ -184,7 +184,7 @@ export type {
   BotRng,
 } from "./augment/Augment.js";
 export { AugmentRegistry } from "./augment/AugmentRegistry.js";
-export { SETTLE_LAYER, SETTLE_STAGE } from "./augment/settleStages.js";
+export { SETTLE_LAYER, SETTLE_STAGE, settlePriority } from "./augment/settleStages.js";
 export type { SettleStage } from "./augment/settleStages.js";
 export {
   SCORE_CHANGED,

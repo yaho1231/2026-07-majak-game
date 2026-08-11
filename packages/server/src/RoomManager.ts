@@ -716,6 +716,9 @@ export class RoomManager {
       this.endSpectating(room, reason, room.phase === "playing" ? msg : undefined);
       // 컨트롤러 루프를 깨워 대기 중인 결정 프로미스를 붙들고 있지 않게 한다.
       room.controller?.requestAbort();
+      // 여기서는 **지우지 않고 닫기만** 한다 — 재시작에 끊긴 진짜 판이라, 이어하기를
+      // 붙인다면 유일한 근거가 이 파일이다. 인덱스에 없어 쌓이기만 하는 문제는
+      // index.ts의 `pruneOldReplays`가 보존 기간이 지난 뒤 쓸어 담는다.
       room.writer?.close();
       this.detachRoomConns(room);
       this.rooms.delete(room.code);
@@ -2913,9 +2916,26 @@ export class RoomManager {
    * 게스트 체험 방은 되돌릴 대기실이 없다(손님은 `startGame`을 보낼 수 없다) —
    * 그 방은 접는다. 샌드박스 재시작 중이었다면 그 플래그도 함께 푼다.
    */
+  /**
+   * 기록으로 남지 않을 게임의 리플레이 파일을 지운다 (무효·예외·시작 실패).
+   *
+   * `recordGame`을 부르지 않는 경로는 `games` 인덱스에 행을 만들지 않는데,
+   * `pruneOldReplays`는 **인덱스 행이 가리키는 파일만** 지운다. 그래서 예전에는
+   * 이 경로마다 `.jsonl`이 하나씩 쌓여 아무도 못 보고 아무도 안 지우는 파일이 됐다.
+   *
+   * 지우기는 비동기라 기다리지 않는다 — 실패해도 게임 정리를 막지 않는다.
+   */
+  private discardReplay(room: Room, writer: ReplayWriter | null): void {
+    if (writer === null) return;
+    void writer.discard().catch((err: unknown) => {
+      this.logError(room, "리플레이 파일 삭제 실패:", err);
+    });
+  }
+
   private rollbackFailedStart(room: Room, err: unknown): void {
     this.logError(room, "게임 시작 실패 — 방을 대기실로 되돌린다:", err);
-    room.writer?.close();
+    // 시작도 못 한 게임 — 기록되지 않으므로 파일도 남기지 않는다.
+    this.discardReplay(room, room.writer);
     room.writer = null;
     room.controller = null;
     room.startedAt = null;
@@ -3059,7 +3079,9 @@ export class RoomManager {
           });
       },
       onGameAborted: () => {
-        writer?.close();
+        // 무효 처리는 기록하지 않는다 → 리플레이 파일도 남기지 않는다. close()만 하면
+        // 인덱스에 없는 `.jsonl`이 디스크에 영원히 남는다(ReplayWriter.discard 주석).
+        this.discardReplay(room, writer);
         this.touch(room);
         // 증강 테스트 초기화 — 방·좌석을 유지한 채 새 판을 시작한다(무효 알림 없음)
         if (room.sandbox && room.sandboxRestarting) {
@@ -3091,7 +3113,8 @@ export class RoomManager {
     // 백그라운드로 실행 (프롬프트 대기는 각 HumanAgent가 소켓으로 처리)
     room.controller.run().catch((err: unknown) => {
       this.logError(room, "게임이 예외로 종료됐다:", err);
-      writer?.close();
+      // 예외 종료도 recordGame을 부르지 않는다 — 인덱스에 없는 고아 파일을 남기지 않는다.
+      this.discardReplay(room, writer);
       // 플레이어들에게도 반드시 알린다 — 안 그러면 마지막 화면에서 무한 대기.
       const crashMsg: ServerMessage = {
         type: "error",
