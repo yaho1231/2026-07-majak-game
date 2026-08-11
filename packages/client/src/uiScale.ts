@@ -19,32 +19,44 @@
  * (축소된 값)인데, 인라인 left/top·transform은 **레이아웃 좌표**(축소 전)로 해석된다.
  * 둘을 섞는 자리에서는 toLayoutPx()로 되돌려야 한다.
  *
- * ── 수동 손잡이 (2026-08-11) ──
+ * ── 수동 손잡이 (2026-08-11 도입 → 2026-08-12 다시 만듦) ──
  * 자동 맞춤은 "창"만 본다. 사람 눈·모니터 거리·시력은 못 본다 — 같은 1440×900에서도
- * 누구는 크게, 누구는 작게 보고 싶어 한다. 그래서 자동값 **위에 곱하는** 배수를
- * 화면의 −/+ 버튼으로 열어 둔다. 자동 로직(computeAutoScale)은 손대지 않는다:
+ * 누구는 크게, 누구는 작게 보고 싶어 한다. 그래서 −/+ 손잡이를 연다.
  *
- *     effective = clamp(auto × zoom, MIN_SCALE, MAX_SCALE)
+ * ⚠ 처음엔 이 배수를 `scale`에 곱해 transform 에 얹었는데, **그건 두 가지로 틀렸다**:
  *
- * 그리고 이 effective 하나만 `scale`·`--ui-scale`이 된다. toLayoutPx()·layoutViewport()
- * 가 전부 `scale`을 보므로 드래그 좌표도 자동으로 따라온다 — 여기 갈래를 늘리면 안 된다.
+ *  ① 아무것도 안 커졌다. 판·손패는 전부 `k·cqw` 꼴인데 cqw 는 가상 뷰포트 기준
+ *     (= 실제폭/scale)이라, 렌더에서 다시 ×scale 되면 실제 px = `k·실제폭` 이다 —
+ *     scale 과 **무관**하다. + 를 눌러도 패는 1px도 안 커졌다.
+ *  ② 커지는 건 고정 px(이름표·액션 바)뿐인데, 그건 컴포지터가 확대한 비트맵이라
+ *     글자·테두리가 뭉개졌다. 사용자가 본 "엄청 흐려진다"가 정확히 이것이다.
+ *
+ * 그래서 지금은 **두 손잡이를 완전히 갈라 놓는다**:
+ *
+ *   --ui-scale (자동, ≤1) : body 를 통째로 축소하는 transform. 좁은 창에서 고정 px를
+ *                           구제하는 장치다. 축소는 뭉개지지 않는다.
+ *   --ui-mag   (수동)      : transform 이 아니라 **크기 토큰을 곱하는 수**.
+ *                           styles.css 의 --board·--hand-pref·--mt-w·--back-cap 등이
+ *                           이 값을 곱해 커진다 → 레이아웃이 실제로 다시 풀리고,
+ *                           렌더는 1:1이라 글자·테두리가 네이티브 해상도로 선명하다.
+ *
+ * 즉 확대는 "화면을 늘리는" 것이 아니라 **"디자인 크기를 키우는"** 것이다. 커진 판이
+ * 위·아래 띠에 닿으면 --board-fit-v 가 받아 내고 레이아웃이 알아서 양보한다.
+ *
+ * `scale` 은 이제 자동값 하나뿐이다 — toLayoutPx()·layoutViewport() 가 보는 것도 그것
+ * 하나다. 수동 배수는 transform 에 없으므로 드래그 좌표에 끼어들지 않는다.
  */
 
 /** 이 크기 이상이면 배율 1 — 배치가 여유 있게 풀리는 기준 창.
  *  흔한 노트북(1280×720)은 그대로 두고, 그보다 좁아질 때부터 줄인다. */
 const BASE_W = 1100;
 const BASE_H = 680;
-/** 더 줄이면 글자가 안 읽힌다. 여기서 걸리면 대신 Ctrl +/− 안내를 띄운다.
- *  수동 배수(−)도 이 아래로는 못 내려간다 — 자동 0.6 × 수동 0.7 = 0.42로
- *  글자가 사라지는 조합은 애초에 사다리에서 빠진다(allowedSteps 참고). */
+/** 자동 축소의 바닥. 더 줄이면 글자가 안 읽힌다 —
+ *  여기서 걸리면 대신 Ctrl +/− 안내를 띄운다. **자동 전용** 하한이다:
+ *  수동 배수는 transform 에 없으므로 이 값과 곱해질 일이 없다. */
 const MIN_SCALE = 0.6;
-/** 최종 배율 상한. 자동은 1을 넘지 않으므로 이건 수동 확대 전용 뚜껑이다.
- *  1.5면 1920×1080이 1280×720짜리 가상 뷰포트가 된다(데스크톱 배치가 아직 여유 있다).
- *  기준 창(1100×680)에서 1.5를 걸면 733×453 — CRAMPED 아래라 좁은 화면 배치로 떨어진다.
- *  그건 막지 않는다: 크게 보는 대가로 세로 배치를 받는 건 사용자가 고를 만한 거래고,
- *  그 상태가 되면 LayoutHint가 "−로 줄여 보라"고 알려 준다. */
-const MAX_SCALE = 1.5;
-/** 이보다 좁은 가상 뷰포트는 데스크톱 배치가 어차피 깨진다 → 안내 대상. */
+/** 이보다 좁은 "디자인 공간"은 데스크톱 배치가 어차피 깨진다 → 안내 대상.
+ *  디자인 공간 = 가상 뷰포트 ÷ 수동 배수다 (isLayoutCramped 주석 참고). */
 const CRAMPED_W = 900;
 const CRAMPED_H = 620;
 
@@ -58,18 +70,28 @@ const LEGACY_OVERRIDE_KEY = "majak.uiScale";
 /**
  * 지금 쓰는 수동 배수 키. **옛 키를 재활용하지 않는다** — 위 removeItem은 그대로 남아
  * 있어야 하고(옛 값에 갇힌 사람 구제), 같은 키를 다시 쓰면 부팅할 때마다 지워진다.
+ * (2026-08-12에 의미가 transform 배율 → 크기 배수로 바뀌었지만 값의 범위가 겹치고
+ *  뜻도 "크게/작게"로 같아 키는 그대로 쓴다. 사다리에 없는 옛 값은 스냅된다.)
  */
 const ZOOM_KEY = "majak.uiZoom";
 
 /**
  * 수동 배수 사다리. 10%p 등간격 — 한 번 눌러서 눈에 띄되 두 번 눌러도 안 망가지는 폭이다.
- * 아래끝 0.7: 자동 하한 MIN_SCALE(0.6)과 같은 결의 "글자가 읽히는 마지노선".
- * 위끝 1.5: MAX_SCALE과 같다(그 위는 가상 뷰포트가 좁은 화면 배치로 떨어진다).
+ *
+ * 범위가 예전(0.7~1.5, transform 기준)과 달라진 이유:
+ *  · 위끝 1.6 — 이제 배수는 **디자인 토큰**을 곱한다. 손패 상한 84px×1.6 = 134px 인데,
+ *    2560폭 모니터에서 14장이 들어가는 물리적 한계(--hand-fit)가 약 153px 이라 아직
+ *    한 줄에 들어간다. 그보다 키우면 --hand-fit 이 이겨서 눌러도 아무 일이 안 일어난다.
+ *  · 아래끝 0.8 — 작은 화면·많은 것을 한눈에 보고 싶은 사람 몫. 20% 줄이면 손패 상한이
+ *    67px, 판은 그만큼 여유가 생긴다. 더 내리면 고정 px(이름표·액션 바)는 그대로인데
+ *    판만 작아져 화면이 텅 빈다 — 그쪽은 자동 축소(--ui-scale)가 할 일이다.
  */
-const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5] as const;
+const ZOOM_STEPS = [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6] as const;
 const DEFAULT_ZOOM = 1;
 
+/** 자동 배율 (transform). 항상 ≤ 1. */
 let scale = 1;
+/** 수동 크기 배수 (--ui-mag). transform 이 아니다. */
 let zoom: number = DEFAULT_ZOOM;
 const listeners = new Set<() => void>();
 
@@ -116,62 +138,33 @@ function computeAutoScale(): number {
   return s;
 }
 
-/**
- * 지금 창에서 **고를 수 있는** 사다리 칸들.
- *
- * [MIN_SCALE, MAX_SCALE]는 최종 배율이 아니라 **사다리 쪽에서** 잘라 낸다.
- * 최종값을 자르면 사다리는 움직이는데 화면은 안 움직이는 구간이 생기고, 거기서
- * "−도 +도 아무 일이 안 일어나는" 막다른 칸이 만들어진다(작은 창에서 실제로 나왔다).
- * 여기서 자르면 눌리는 칸은 전부 눈에 보이는 변화를 만든다.
- *
- * 1은 언제나 들어 있다 — auto 자체가 [MIN_SCALE, 1] 안이므로.
- */
-function allowedSteps(auto: number): number[] {
-  const ok = ZOOM_STEPS.filter((s) => auto * s >= MIN_SCALE - 1e-9 && auto * s <= MAX_SCALE + 1e-9);
-  return ok.length > 0 ? [...ok] : [DEFAULT_ZOOM];
-}
-
-/**
- * 실제로 걸리는 배수 — 저장된 취향을 지금 창에서 고를 수 있는 범위로 당긴 값.
- * 저장값 자체는 건드리지 않는다: 작은 창에 잠깐 들렀다고 큰 모니터의 취향을 잃으면 안 된다.
- */
-function activeZoom(auto: number): number {
-  const steps = allowedSteps(auto);
-  return Math.min(steps[steps.length - 1] as number, Math.max(steps[0] as number, zoom));
-}
-
-/** 화면에 실제로 걸리는 배율 = 자동 × 수동. */
-function computeScale(): number {
-  const auto = computeAutoScale();
-  const z = activeZoom(auto);
-  if (z === 1) return auto;
-  return Math.round(auto * z * 1000) / 1000;
-}
-
 function apply(): void {
-  const next = computeScale();
-  if (next !== scale) {
-    scale = next;
-  }
+  scale = computeAutoScale();
   // 값이 그대로여도 매번 쓴다 — 첫 적용(scale이 초기값 1과 같은 경우)에도 변수가 서야 한다.
   document.body.style.setProperty("--ui-scale", String(scale));
+  // 크기 토큰을 곱하는 수. transform 과 완전히 별개다 (파일 머리 주석 참고).
+  document.body.style.setProperty("--ui-mag", String(zoom));
   // 배율이 그대로여도(하한에 걸린 채 창만 조금 바뀐 경우) 안내 조건은 달라질 수 있다.
   listeners.forEach((fn) => fn());
 }
 
-/** 현재 UI 배율 (1 = 축소 없음). 자동 × 수동을 이미 반영한 최종값이다. */
+/**
+ * 현재 **transform 배율** (1 = 축소 없음). 자동값 하나뿐이다 —
+ * 수동 배수는 여기 곱해지지 않는다. 좌표 변환이 보는 값이 정확히 이것이다.
+ */
 export function getUiScale(): number {
   return scale;
 }
 
-// ── 수동 배수 (화면의 −/+ 버튼) ──
+// ── 수동 크기 배수 (화면의 −/+ 버튼) ──
 
 /**
- * 화면에 보여 줄 배수 — 지금 창에서 실제로 걸리는 값이다.
- * 저장된 취향이 이 창에서 못 고르는 칸이면 당겨진 값이 나온다(그래야 표시가 거짓말을 안 한다).
+ * 지금 걸린 크기 배수 (= --ui-mag). 창과 무관하다 —
+ * 크기 토큰을 곱할 뿐이라 어느 창에서든 모든 칸을 고를 수 있고, 넘치는 몫은
+ * CSS 쪽 한계(--board-fit-v·--hand-fit)가 받아 낸다.
  */
 export function getUiZoom(): number {
-  return activeZoom(computeAutoScale());
+  return zoom;
 }
 
 /** 사다리에서 가장 가까운 칸으로 맞춘 값 (범위 밖은 잘라 낸다). */
@@ -190,20 +183,18 @@ function persistZoom(): void {
   }
 }
 
-/** 배수를 직접 지정 (사다리 칸으로 스냅). 화면이 바뀌었으면 true. */
+/** 배수를 직접 지정 (사다리 칸으로 스냅). 값이 바뀌었으면 true. */
 export function setUiZoom(v: number): boolean {
-  const before = scale;
+  const before = zoom;
   zoom = snapZoom(v);
   persistZoom();
   apply();
-  return scale !== before;
+  return zoom !== before;
 }
 
 /** 배수를 사다리에서 dir칸(+1 확대 / −1 축소) 옮긴다. 바뀌었으면 true. */
 export function stepUiZoom(dir: 1 | -1): boolean {
-  if (!canStepUiZoom(dir)) return false;
-  const steps = allowedSteps(computeAutoScale());
-  const next = steps[steps.indexOf(getUiZoom()) + dir];
+  const next = ZOOM_STEPS[ZOOM_STEPS.indexOf(zoom as (typeof ZOOM_STEPS)[number]) + dir];
   return next === undefined ? false : setUiZoom(next);
 }
 
@@ -214,11 +205,12 @@ export function resetUiZoom(): boolean {
 
 /**
  * 그 방향으로 아직 갈 데가 있는가 — 버튼을 끌 때 쓴다.
- * 고를 수 있는 사다리(allowedSteps)의 끝이면 false. 눌리는 칸은 전부 화면을 움직인다.
+ * 사다리의 끝이면 false. 창 크기와 무관하다 — 예전에는 최종 배율이 [MIN,MAX]에
+ * 잘려서 "눌러도 아무 일이 없는 칸"이 생겼고 그래서 창별로 칸을 걸러야 했지만,
+ * 지금은 배수가 크기 토큰을 곱할 뿐이라 자를 이유가 없다.
  */
 export function canStepUiZoom(dir: 1 | -1): boolean {
-  const steps = allowedSteps(computeAutoScale());
-  return steps[steps.indexOf(getUiZoom()) + dir] !== undefined;
+  return ZOOM_STEPS[ZOOM_STEPS.indexOf(zoom as (typeof ZOOM_STEPS)[number]) + dir] !== undefined;
 }
 
 /** 화면(visual) px → 레이아웃 px. 인라인 left/top·transform에 넣기 전에 거친다. */
@@ -233,7 +225,12 @@ export function layoutViewport(): { w: number; h: number } {
 
 /**
  * 축소를 끝까지 해도 배치가 풀릴 만한 창이 아닌가.
- * 여기 걸리면 화면 구석에 Ctrl +/− 안내를 띄운다 (자동으로는 더 못 해 준다).
+ * 여기 걸리면 화면 구석에 안내를 띄운다 (자동으로는 더 못 해 준다).
+ *
+ * 재는 것은 가상 뷰포트가 아니라 **디자인 공간** = 가상 뷰포트 ÷ 수동 배수다.
+ * 크기 토큰이 전부 배수만큼 커지므로, 배수 1.6에서 1440px 창은 디자인이 보기에
+ * 900px 창과 같다. 예전 모델(배수가 transform)에서는 가상 뷰포트 자체가 줄어
+ * 이 나눗셈이 필요 없었다 — 그 자리를 여기가 이어받는다.
  *
  * 가로·세로가 **둘 다** 모자랄 때만이다. 한쪽만 좁은 창(세로로 긴 창)은
  * 좁은 화면 전용 배치가 제대로 받아 주므로 안내할 게 없다 —
@@ -242,7 +239,7 @@ export function layoutViewport(): { w: number; h: number } {
 export function isLayoutCramped(): boolean {
   if (!isPointerFine() || !hasSize()) return false;
   const v = layoutViewport();
-  return v.w < CRAMPED_W && v.h < CRAMPED_H;
+  return v.w / zoom < CRAMPED_W && v.h / zoom < CRAMPED_H;
 }
 
 /** 배율이 바뀔 때 알림 (창 크기 변경·수동 −/+). 해제 함수를 돌려준다. */

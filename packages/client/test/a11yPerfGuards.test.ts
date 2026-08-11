@@ -109,15 +109,47 @@ describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌
     expect(UISCALE).toContain("if (userZoomedIn()) return 1;");
   });
 
-  it("−/+ 버튼이 어느 화면에서나 뜬다 (게임 루트 최상단, 로그인·로비 포함)", () => {
+  it("−/+ 버튼이 대국 화면에 뜨고, 판 위가 아니라 body 로 portal 된다", () => {
     expect(APP).toContain("function ScaleControl(");
-    expect(APP).toContain("<ScaleControl />");
+    // 곱할 대상(판·손패)이 있는 화면에서만 — 홈·로비에서는 눌러도 아무 일이 없어
+    // "보이는데 반응 없음"이 된다 (2026-08-12)
+    expect(APP).toContain("{inGame ? <ScaleControl /> : null}");
     expect(CSS).toContain(".ui-zoom");
+    // 판 위 오버레이·흔들림에 딸려 다니지 않게 body 로 portal 한다
+    const sc = APP.slice(APP.indexOf("function ScaleControl("));
+    expect(sc.slice(0, sc.indexOf("\n}\n"))).toContain("document.body");
   });
 
-  it("버튼이 화면과 함께 작아지지 않는다 — 되돌리기 scale", () => {
-    // 가장 작아서 손잡이가 가장 필요한 순간에 손잡이도 작아지면 안 된다
-    expect(CSS).toContain("transform: scale(calc(1 / var(--ui-scale, 1)))");
+  it("−/+ 가 설정·도감과 같은 줄(우상단)에 선다", () => {
+    // 화면을 만지는 것들이 흩어져 있으면 찾으러 다녀야 한다 (2026-08-12 사용자 지시)
+    expect(CSS).toMatch(/\.ui-zoom \{[\s\S]*?right: 264px/);
+    // 좌하단을 비켜서던 우회는 전부 걷어냈다 — 안 걷으면 빈 띠만 남는다
+    expect(CSS).not.toContain("var(--ui-zoom-band");
+  });
+
+  it("손패가 실제로 커질 수 있다 — 죽은 예약(--hand-side 116px)이 없다", () => {
+    // 116px 은 렌더되지도 않는 좌하단 토글을 위한 예약이었고, 양옆 232px 을 먹어
+    // 1440×900 에서 패가 76.3px 에 묶여 있었다 (2026-08-12 실측).
+    expect(CSS).not.toMatch(/--hand-side:\s*116px/);
+    // 여백·간격은 배수에 반비례해야 한다 — 곱하면 패가 오히려 작아진다
+    expect(CSS).toMatch(/--hand-gap: max\(2px, calc\(5px \/ var\(--ui-mag\)\)\)/);
+    expect(CSS).toMatch(/--hand-side: max\(8px, calc\(14px \/ var\(--ui-mag\)\)\)/);
+  });
+
+  it("좌·우 상대 뒷패 줄이 내 손패 띠를 침범하지 않는다", () => {
+    // 예전에는 화면 전체 높이를 13등분해 줄이 손패 패널과 실제로 겹쳐 있었다
+    // (1440×900 실측: x 118.8–131.8, y 754.9–882.9)
+    expect(CSS).toContain("var(--opp-side-top) + var(--own-band, 0px)");
+    expect(CSS).toMatch(/100cqh - var\(--opp-side-top\) - var\(--own-band, 0px\)/);
+  });
+
+  it("확대가 body transform 을 건드리지 않는다 (뭉개짐 없음)", () => {
+    // --ui-scale 은 자동 축소 전용, 수동 배수는 --ui-mag 로 크기 토큰을 곱한다
+    expect(code(UISCALE)).toContain('setProperty("--ui-mag"');
+    expect(code(UISCALE)).toContain("scale = computeAutoScale();");
+    // 판·손패의 크기 토큰이 실제로 그 배수를 물고 있어야 "패가 커진다"
+    expect(CSS).toMatch(/--board: min\([\s\S]*?var\(--ui-mag\)/);
+    expect(CSS).toMatch(/--hand-pref: clamp\([^;]*var\(--ui-mag\)/);
   });
 
   it("단축키가 브라우저 확대(Ctrl/⌘ +/−)를 가로채지 않는다", () => {

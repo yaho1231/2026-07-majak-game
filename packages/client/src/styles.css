@@ -86,13 +86,22 @@ html {
    그래서 이 파일의 화면 비례 단위는 전부 vw/vh/vmin이 아니라 **cqw/cqh/cqmin**이고,
    크기 미디어쿼리도 전부 `@container ui`다. 둘 다 실제 창이 아니라 이 가상 뷰포트를
    기준으로 풀려야 배율을 바꿔도 배치가 그대로 따라온다.
-   --ui-scale 은 uiScale.ts가 인라인으로 넣는다 (없으면 1 = 지금까지와 동일). */
+   --ui-scale 은 uiScale.ts가 인라인으로 넣는다 (없으면 1 = 지금까지와 동일).
+
+   ⚠ --ui-scale 은 **자동 축소 전용**이다 (항상 ≤ 1). 사람이 −/+ 로 만지는 배수는
+   여기 곱해지지 않는다 — 그건 --ui-mag 로 따로 나가 **크기 토큰을 곱한다**.
+   이유는 uiScale.ts 머리 주석에 있다: 비례 단위(cqw)는 가상 뷰포트 기준이라
+   transform 을 아무리 키워도 실제 px 이 그대로고, 커지는 고정 px 만 컴포지터가
+   확대해 뭉갠다. 크기 토큰을 곱하면 레이아웃이 다시 풀리고 렌더는 1:1이라 선명하다. */
 body {
   width: calc(100% / var(--ui-scale, 1));
   height: calc(100% / var(--ui-scale, 1));
   transform: scale(var(--ui-scale, 1));
   transform-origin: 0 0;
   container: ui / size;
+  /* 수동 크기 배수. uiScale.ts 가 인라인으로 덮어쓴다(인라인이 이 선언을 이긴다).
+     여기 기본값이 있어서 아래 계산들은 var(--ui-mag) 를 폴백 없이 쓸 수 있다. */
+  --ui-mag: 1;
   /* 탭할 때 회색 사각형이 번쩍이지 않게 (모바일 크롬·사파리) */
   -webkit-tap-highlight-color: transparent;
 }
@@ -123,10 +132,6 @@ button {
      "가로로 돌리세요" 안내가 앉는 자리다. 브레이크포인트마다 그 줄의 배치가 달라
      아래 @container 블록에서 다시 잡는다. */
   --top-band: 76px;
-  /* 왼쪽 아래 화면 크기 −/+ 손잡이(.ui-zoom)가 차지하는 띠. **화면 px**이다 —
-     그 손잡이는 --ui-scale 을 되감아 실제 크기를 고정하므로, 레이아웃 좌표에서
-     비켜설 때는 --ui-scale 로 나눠 쓴다. 같은 구석에 서는 것들(빠른 토글 등)이 참조한다. */
-  --ui-zoom-band: 46px;
   /* 펠트: 위에서 조명이 하나 떨어지는 라사지.
      맨 위 두 겹은 아주 옅은 직조 결 — 단색 그라디언트만 깔면 판이 플라스틱처럼 보인다.
      결은 2px 주기라 화면을 채워도 비용이 거의 없다. */
@@ -236,8 +241,24 @@ button {
      자리는 예전 그대로** 두었다 — 안 그러면 좌·우 상대 손패를 침범한다.
      63cqw 상한은 세로로 긴 창(예: 1000×860)에서 좌·우 이름표와 겹치던 것을 막는다.
      세로 상한(--board-fit-v)은 아래 "위·아래 띠" 주석을 보라 — 보드가 내 손패·이름표
-     줄을 덮지 않도록 남는 높이 안에서만 커진다. */
-  --board: min(83cqmin, 63cqw, 850px, var(--board-fit-v));
+     줄을 덮지 않도록 남는 높이 안에서만 커진다.
+
+     ── 수동 배수(--ui-mag) ──
+     세로 비례 항(83cqmin)과 px 뚜껑(850px)에 곱한다. 뚜껑만 남기면 큰 모니터에서 판이
+     850px에 막혀 아무리 눌러도 안 커진다 — "큰 화면인데 작게 보인다"의 원인 중 하나가
+     이 뚜껑이었다.
+     **곱하지 않는 것 둘**은 둘 다 "취향이 아니라 실제로 남은 자리"라서다:
+       · 63cqw — 세로로 긴 창에서 좌·우 이름표와 겹치지 않게 막는 **가로 한계**.
+         (좁은 화면 블록의 74cqw·85cqmin·44cqw 도 같은 이유로 곱하지 않는다 —
+          곱했더니 375×812 에서 판이 444px 이 되어 화면 폭 375를 넘었다.)
+       · --board-fit-v — 위·아래 띠 사이에 남은 **세로 한계**. 곱하면 판이 손패·이름표를
+         덮는다. 확대가 이 한계에 닿으면 판은 멈추고 레이아웃이 양보한다. */
+  --board: min(
+    calc(83cqmin * var(--ui-mag)),
+    63cqw,
+    calc(850px * var(--ui-mag)),
+    var(--board-fit-v)
+  );
 
   /* ── 위·아래 띠 — 보드가 절대 침범하면 안 되는 자리 ──
      보드(패널+네 바닥)는 창 한가운데에 정사각으로 놓이는데, **아래쪽만** 내 이름표
@@ -283,7 +304,10 @@ button {
   /* 중앙 4방향 점수판 — 넓은 화면에선 기존 고정값(138×36·18px) 그대로지만,
      패널이 작아지면 비율을 따라 함께 줄어든다. 고정값만 쓰던 예전에는 좁은 화면에서
      점수판이 패널 밖으로 삐져나와 국 표시·바닥패와 겹쳤다. */
-  --plate-w: min(138px, calc(var(--panel) * 0.62));
+  /* px 뚜껑에는 --ui-mag 를 곱한다 — 비율(0.62 등)은 --panel 을 통해 이미 배수를
+     물려받으므로, 뚜껑을 안 올리면 확대해도 점수·풍 글자만 예전 크기에 갇힌다.
+     비율 자체는 어디에서도 건드리지 않는다(좁은 화면 실측으로 잡아 둔 값들이다). */
+  --plate-w: min(calc(138px * var(--ui-mag)), calc(var(--panel) * 0.62));
   /* 점수 **위**에 리치봉 한 줄이 서므로 상한만 36→40px 올렸다.
      **비율(0.17)은 건드리지 않는다** — 좁은 화면(패널 ≲212px)에서는 예전과 완전히
      같은 두께로 남는다. 거기서 한 픽셀이라도 두꺼워지면 아래·위 점수판이 도라
@@ -291,15 +315,15 @@ button {
      상한을 44px 까지 올리는 것도 안 된다 — 도라 5장은 .center-core 보다 좌우로
      3px씩 삐져나오는데 --plate-h 는 좌·우 점수판의 **두께**라, 44px이면 좌 점수판
      상자가 첫 도라 패에 올라탄다(1280×800 실측). */
-  --plate-h: min(40px, calc(var(--panel) * 0.17));
-  --plate-font: max(11px, min(18px, calc(var(--panel) * 0.105)));
-  --plate-wind: max(13px, min(30px, calc(var(--panel) * 0.15)));
+  --plate-h: min(calc(40px * var(--ui-mag)), calc(var(--panel) * 0.17));
+  --plate-font: max(11px, min(calc(18px * var(--ui-mag)), calc(var(--panel) * 0.105)));
+  --plate-wind: max(13px, min(calc(30px * var(--ui-mag)), calc(var(--panel) * 0.15)));
   /* 리치봉(각 자리에 걸린 1000점 막대). 점수 옆 26×5 로는 안 보인다는 지적을 받아
      점수 위로 올리고 키웠다 — 항상 이 높이만큼 자리를 비워 두므로(빈 그리드 행)
      리치를 선언해도 점수 숫자가 움직이지 않는다. */
   /* 26px 은 예전 고정 크기다 — 아주 좁은 화면에서도 그보다 작아지지는 않게 바닥을 깐다. */
-  --plate-stick-w: max(26px, min(52px, calc(var(--plate-w) * 0.36)));
-  --plate-stick-h: max(5px, min(10px, calc(var(--plate-h) * 0.24)));
+  --plate-stick-w: max(26px, min(calc(52px * var(--ui-mag)), calc(var(--plate-w) * 0.36)));
+  --plate-stick-h: max(5px, min(calc(10px * var(--ui-mag)), calc(var(--plate-h) * 0.24)));
   /* 바닥 타일 */
   --rt-w: calc(var(--board) * 0.058);
   --rt-h: calc(var(--rt-w) * 1.5);
@@ -329,12 +353,21 @@ button {
      --hand-slots(쯔모패를 뺀 장수)도 인라인으로 오며 레일 폭을 정한다. */
   --hand-n: 14;
   --hand-slots: 13;
-  --hand-pref: clamp(52px, 6cqw, 84px);
-  --hand-gap: 5px;
-  --hand-pad: 18px;
+  /* --ui-mag(수동 −/+)는 clamp 의 **세 항 전부**에 곱한다. 상한(84px)만 두고 비례 항을
+     안 올리면 큰 창에서 이미 상한에 붙어 있어 눌러도 안 커지고, 반대로 비례 항만 올리면
+     상한이 그대로라 역시 안 커진다. 실제로 커질 수 있는 한계는 --hand-fit(14장이 한 줄에
+     들어가는 폭)이 정한다 — 거기 닿으면 그 이상은 안 커진다(그게 맞다, 손패가 잘리면 안 된다).
+     --hand-gap/pad/side 에는 곱하지 않는다: 간격을 같이 키우면 그만큼 --hand-fit 이 줄어
+     **패가 오히려 작아진다**. 여백은 작을수록 패 몫이 커진다. */
+  --hand-pref: clamp(calc(52px * var(--ui-mag)), calc(6cqw * var(--ui-mag)), calc(84px * var(--ui-mag)));
+  /* 여백·간격은 배수에 **반비례**한다. 곱하면 --hand-fit 이 그만큼 줄어 패가 오히려
+     작아지기 때문이다 — "크게 보고 싶다"는 요구는 곧 "여백을 줄이고 패에 달라"는 뜻이다.
+     하한을 두어 패끼리 붙어 버리지는 않게 한다. */
+  --hand-gap: max(2px, calc(5px / var(--ui-mag)));
+  --hand-pad: max(9px, calc(18px / var(--ui-mag)));
   --hand-side: 8px;
   /* 후로 타일 */
-  --mt-w: clamp(38px, 5cqmin, 52px);
+  --mt-w: clamp(calc(38px * var(--ui-mag)), calc(5cqmin * var(--ui-mag)), calc(52px * var(--ui-mag)));
   --mt-h: calc(var(--mt-w) * 1.5);
   /* ── 상대 손패 뒷면 ──
      크기는 **그 상대의 실제 손패 장수**(--back-n, OpponentStrip이 인라인으로 준다)에
@@ -344,6 +377,10 @@ button {
      실제 계산은 축이 다르므로 .opp-strip-top / -left / -right에서 한다. */
   --back-n: 13;
   --back-gap: 3px;
+  /* ⚠ --back-cap 에는 --ui-mag 를 곱하지 않는다. 좌·우 자리의 뒷패 줄은 이미
+     "화면 높이 ÷ 장수"로 꽉 차 있어(.opp-strip-left/right 참고), 뚜껑을 올리면 줄이
+     화면보다 길어져 **그 위에 얹힌 이름표가 화면 밖으로 밀려난다**(1920×1080 실측:
+     1.2배부터 잘렸다). 게다가 뒷면은 그림이 없는 무지 패라 커져도 읽을 것이 없다. */
   --back-cap: clamp(38px, 4.9cqmin, 50px);
   --back-w: min(var(--back-cap), calc((100cqw - 84px) / 13));
   --back-h: calc(var(--back-w) * 1.36);
@@ -488,9 +525,10 @@ button {
 .quick-toggles {
   position: absolute;
   left: 14px;
-  /* 같은 구석에 화면 크기 −/+ 손잡이가 선다 — 그 위에 앉는다.
-     띠는 화면 px이라 레이아웃 좌표로 쓰려면 --ui-scale 로 되돌려야 한다. */
-  bottom: calc(18px + var(--ui-zoom-band, 0px) / var(--ui-scale, 1));
+  /* 예전에는 이 구석에 화면 크기 −/+ 손잡이가 함께 서서 그 띠(--ui-zoom-band)만큼
+     올라앉아 있었다. 손잡이가 우상단 아이콘 줄로 옮겨 갔으므로(2026-08-12) 구석을
+     통째로 되찾았다 — 빈 띠를 남기지 않는다. */
+  bottom: 18px;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -555,7 +593,7 @@ button {
 @container ui (max-width: 700px) {
   .quick-toggles {
     left: 8px;
-    bottom: calc(10px + var(--ui-zoom-band, 0px) / var(--ui-scale, 1));
+    bottom: 10px;
     gap: 6px;
   }
   .qt-item {
@@ -1074,10 +1112,30 @@ button {
 /* 좌·우 자리 — 뒷면이 **세로**로 늘어선다. 한 장이 차지하는 높이는 폭×1.36 + 간격이라
    화면 높이를 장수로 나눈 뒤 다시 1.36으로 되돌려야 폭이 나온다.
    같은 줄에 쌓이는 후로(--meld-n장, 한 장이 대략 --mt-h)의 몫은 미리 빼 둔다.
-   후로가 아주 많으면 남는 높이가 바닥나므로 14px 하한을 둔다(0 이하로 사라지지 않게). */
+   후로가 아주 많으면 남는 높이가 바닥나므로 14px 하한을 둔다(0 이하로 사라지지 않게).
+
+   ── 아래 띠를 침범하지 않는다 (2026-08-12) ──
+   예전에는 화면 **전체** 높이를 13등분해서 줄이 화면 맨 아래까지 내려왔고, 그래서
+   내 손패 패널과 실제로 겹쳐 있었다(1440×900 실측: 겹친 상자 x 118.8–131.8,
+   y 754.9–882.9). 그 겹침을 피하려고 손패 쪽에서 --hand-side 로 양옆 232px 을
+   비워 두고 있었는데 — 그게 손패가 못 커지는 진짜 이유였다.
+
+   그래서 줄이 **내 영역(--own-band) 위에서 끝나게** 한다: 세로 예산에서 그 띠를 빼고,
+   중심도 그 띠를 뺀 자리의 한가운데로 옮긴다. 그러면 좌·우 줄과 손패는 세로로 아예
+   만나지 않으므로 손패가 화면 폭을 거의 다 쓸 수 있다.
+   대가는 뒷면이 조금 작아지는 것인데, 뒷면은 그림이 없는 무지 패라 **장수만 보이면 된다**.
+   --own-band 는 App(OwnArea)이 실측해 넣는다(대국 밖에서는 0 → 예전과 같은 높이). */
 .opp-strip-left,
 .opp-strip-right {
-  --back-room-y: 40px;
+  /* 세로 예산에서 빼야 하는 것:
+       · 위 — 우상단 아이콘 줄(top 12 + 42 = 54, 숨통 6) = --opp-side-top
+       · 자기 이름표 한 줄(40) + 간격(10) + 숨통(14) = 64px
+       · 아래 — 내 영역 띠(--own-band)
+     40px 만 빼던 예전에는 줄이 세로 예산을 다 못 쓰고 있어서(back-cap 이 먼저 걸려서)
+     티가 안 났는데, 띠를 빼면서 예산이 빡빡해지자 이름표가 위로 삐져나갔다
+     (1920×1080 실측: 이름표 top −3.5px, 그다음엔 아이콘 줄 위로 8.4px). */
+  --opp-side-top: 60px;
+  --back-room-y: calc(64px + var(--opp-side-top) + var(--own-band, 0px));
   --back-w: min(
     var(--back-cap),
     max(
@@ -1095,7 +1153,10 @@ button {
 
 .opp-strip-left {
   left: 14px;
-  top: 50%;
+  /* 아이콘 줄과 아래 띠(--own-band) 사이의 한가운데 — 위 --back-room-y 주석 참고 */
+  top: calc(
+    var(--opp-side-top) + (100cqh - var(--opp-side-top) - var(--own-band, 0px)) / 2
+  );
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
@@ -1105,7 +1166,10 @@ button {
 
 .opp-strip-right {
   right: 14px;
-  top: 50%;
+  /* 아이콘 줄과 아래 띠(--own-band) 사이의 한가운데 — 위 --back-room-y 주석 참고 */
+  top: calc(
+    var(--opp-side-top) + (100cqh - var(--opp-side-top) - var(--own-band, 0px)) / 2
+  );
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
@@ -6693,12 +6757,24 @@ button {
 
 /* ─────────────── 반응형 ─────────────── */
 
-/* 빠른 토글이 좌하단에 뜨는 폭대(901px~)에서는 손패가 그 위를 덮지 않도록
-   양옆으로 토글 폭만큼 자리를 비운다. 손패가 원래 크기로도 여유가 있는
-   아주 넓은 화면(약 1530px~)에서는 --hand-pref가 이겨서 아무 영향이 없다. */
+/* ── 손패 양옆 여백 (901px~) ──
+   여기 116px 이 있었다. 명목은 "좌하단 빠른 토글을 덮지 않게"였는데, 실측해 보니
+   **둘 다 사실이 아니었다**:
+     ① 그 토글(비-inline `.quick-toggles`)은 App 이 아예 렌더하지 않는다 —
+        QuickToggles 는 `inline` 으로만 쓰이고, inline 판은 901px~ 에서 display:none 이다.
+        즉 901px 위에서는 좌하단에 아무것도 없다.
+     ② 설령 렌더돼도 `.quick-toggles` 의 위치 기준(offsetParent)은 화면이 아니라
+        `.own-area`(position:absolute)라, 손패가 좁아지면 토글도 같이 따라 들어온다.
+        비켜설 수가 없는 구조다.
+   그동안 이 232px(양쪽)이 손패가 못 커지는 진짜 병목이었다 — 1440×900 에서 패 한 장이
+   76.3px 에 묶여 확대해도 1px 도 안 움직였다.
+
+   실제로 비켜야 할 것은 좌·우 상대 뒷패 줄인데, 그건 이제 세로로 물러난다
+   (.opp-strip-left/right 의 --back-room-y 주석). 남은 것은 화면 가장자리 숨통뿐이고,
+   그마저 배수에 반비례로 조인다 — 확대는 여백을 내주고 패를 받는 거래다. */
 @container ui (min-width: 901px) {
   .table {
-    --hand-side: 116px;
+    --hand-side: max(8px, calc(14px / var(--ui-mag)));
   }
 }
 
@@ -6706,8 +6782,8 @@ button {
   .table {
     /* 세로 상한(53cqh) — 창이 낮으면 바닥(버림패) 아래쪽이 손패 영역까지 흘러내린다 */
     /* 위 .table과 같은 이유로 비율을 한 번 낮췄다 (90→85 · 58→55 · 560→530) */
-    --board: min(85cqmin, 55cqh, 530px, var(--board-fit-v));
-    --hand-pref: clamp(32px, 6cqw, 50px);
+    --board: min(85cqmin, 55cqh, calc(530px * var(--ui-mag)), var(--board-fit-v));
+    --hand-pref: clamp(calc(32px * var(--ui-mag)), calc(6cqw * var(--ui-mag)), calc(50px * var(--ui-mag)));
     --board-cy: 44%;
   }
 
@@ -6751,7 +6827,7 @@ button {
   .table {
     /* 세로 화면: 폭이 board를 결정한다. 다만 board를 화면 폭까지 키우면 바닥(river)이
        좌·우 상대 영역과 겹치므로, 양옆에 상대 자리를 남기는 74cqw까지만 키운다. */
-    --board: min(74cqw, 48cqh, 460px, var(--board-fit-v));
+    --board: min(74cqw, 48cqh, calc(460px * var(--ui-mag)), var(--board-fit-v));
     /* 보드가 작아진 만큼 중앙 패널 비율은 키운다 — 안 그러면 국·점수 글자가 안 읽힌다
        (점수판 크기는 --panel에 비례하므로 따로 손댈 필요가 없다) */
     --panel-min: calc(var(--board) * 0.46);
@@ -6759,11 +6835,15 @@ button {
        0.46 + 2×(0.014 + 0.261) = 1.01 */
     --board-vspan: 1.01;
     /* 손패 14장이 반드시 한 줄에 들어가게 여백·간격까지 조인다 */
-    --hand-pref: clamp(24px, 7cqw, 50px);
+    --hand-pref: clamp(calc(24px * var(--ui-mag)), calc(7cqw * var(--ui-mag)), calc(50px * var(--ui-mag)));
     --hand-gap: 2px;
     --hand-pad: 7px;
     --hand-side: 4px;
-    --mt-w: min(clamp(15px, 4.4cqw, 30px), calc((100cqw - 40px) / 13));
+    /* 뒤 항은 '13개가 줄에 들어가는 폭'이라 배수를 곱하지 않는다 — 그건 취향이 아니라 한계다 */
+    --mt-w: min(
+      clamp(calc(15px * var(--ui-mag)), calc(4.4cqw * var(--ui-mag)), calc(30px * var(--ui-mag))),
+      calc((100cqw - 40px) / 13)
+    );
     /* 장수에 맞춘 실제 폭 계산은 .opp-strip-*에서 한다 — 여기서는 상한만 조인다 */
     --back-cap: clamp(13px, 4.2cqw, 26px);
     --back-gap: 2px;
@@ -6924,17 +7004,20 @@ button {
 @container ui (max-height: 560px) and (orientation: landscape) {
   .table {
     /* 세로가 병목: 보드 + 내 영역(이름표·액션바·손패)이 모두 들어가야 한다 */
-    --board: min(56cqh, 44cqw, 460px, var(--board-fit-v));
+    --board: min(56cqh, 44cqw, calc(460px * var(--ui-mag)), var(--board-fit-v));
     --panel-min: calc(var(--board) * 0.46);
     /* 위와 같은 이유 — --panel-min 0.46 이면 세로 비율은 1.01 이다 */
     --board-vspan: 1.01;
     --board-cy: 42%;
     /* 패널이 아주 작아 글자 최소 크기(11px)가 비율을 앞지른다 — 판을 더 넓게 잡는다 */
     --plate-w: calc(var(--panel) * 0.76);
-    --hand-pref: min(clamp(24px, 4.6cqw, 52px), 8.4cqh);
+    --hand-pref: min(
+      clamp(calc(24px * var(--ui-mag)), calc(4.6cqw * var(--ui-mag)), calc(52px * var(--ui-mag))),
+      calc(8.4cqh * var(--ui-mag))
+    );
     --hand-gap: 3px;
     --hand-pad: 10px;
-    --mt-w: clamp(16px, 4cqh, 30px);
+    --mt-w: clamp(calc(16px * var(--ui-mag)), calc(4cqh * var(--ui-mag)), calc(30px * var(--ui-mag)));
     --back-cap: clamp(14px, 3.6cqh, 26px);
   }
   .own-area { bottom: 6px; gap: 6px; }
@@ -6952,7 +7035,7 @@ button {
   /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
   .quick-toggles:not(.quick-toggles-inline) {
     display: flex;
-    bottom: calc(8px + var(--ui-zoom-band, 0px) / var(--ui-scale, 1));
+    bottom: 8px;
     gap: 4px;
   }
   .quick-toggles-inline { display: none; }
@@ -8913,38 +8996,42 @@ button {
   color: var(--ink-1);
 }
 
-/* ─────────────── 화면 크기 −/+ (수동 배율) ───────────────
-   자동 맞춤(uiScale.ts) 위에 곱하는 배수를 만지는 손잡이. 어느 화면에서나 같은 자리에
-   있어야 찾으러 다니지 않는다 → 로그인·로비·대국 공통으로 **왼쪽 아래 구석**.
-   그 구석을 고른 이유: 판은 가운데, 손패·액션 바는 아래 **가운데**(.own-area 가
-   translateX(-50%)), 아이콘 줄은 오른쪽 위(right:14~214px), 모드 뱃지는 왼쪽 위 —
-   왼쪽 아래만 어느 화면에서도 비어 있다.
+/* ─────────────── 화면 크기 −/+ (수동 크기 배수) ───────────────
+   --ui-mag 를 만지는 손잡이. **오른쪽 위 아이콘 줄** — 설정(⚙)·도감(📖)·규칙(📘) 옆이다
+   (2026-08-12 사용자 지시). 예전엔 왼쪽 아래 구석에 떠 있었는데, 거기는 빠른 토글이
+   쓰는 자리라 서로 밀어내고 있었고 "화면을 만지는 것"들이 한 줄에 모여 있지 않아
+   찾기 어려웠다. 지금은 화면 설정류가 전부 같은 줄에 있다.
 
-   ⚠ 되돌리기 scale: body가 통째로 --ui-scale 만큼 줄어드는데, 그러면 **화면이 가장
-   작아 손잡이가 가장 필요한 순간에 손잡이도 같이 작아진다**. 1/--ui-scale 로 되감아
-   실제 크기를 고정한다. 원점은 왼쪽-아래 구석이라 되감아도 자리가 안 움직인다. */
+   아이콘 줄 왼쪽 끝에 이어 붙는다 (help-btn right:214 + 폭 42 다음).
+   **대국 중에만** 그려진다 — 곱할 대상(판·손패)이 없는 홈·로비에서는 눌러도 아무 일이
+   일어나지 않아 고장으로 읽힌다 (App.tsx ScaleControl 주석).
+
+   ⚠ 되감기 scale 은 걷어냈다. 이제 옆의 .icon-btn 들과 한 줄에 서므로, 혼자만 원래
+   크기로 남으면 줄이 어긋나고 이웃을 덮는다. 자동 축소는 화면 전체에 걸리는 것이고
+   이 손잡이도 그 화면의 일부다. */
 .ui-zoom {
   position: fixed;
-  left: max(8px, env(safe-area-inset-left, 0px));
-  bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  top: 12px;
+  right: 264px;
   /* 안내 배너(310)보다 아래, 판 위의 오버레이보다 위. 모달이 화면을 덮을 때는
      같이 덮이는 게 맞다 — 모달 위에서 배율을 만질 일은 없다. */
   z-index: 115;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 2px;
   padding: 3px;
+  height: 42px;
+  box-sizing: border-box;
   border-radius: 999px;
   border: 1px solid var(--brass-line);
-  background: rgba(13, 23, 18, 0.72);
+  background: rgba(13, 23, 18, 0.6);
   box-shadow: var(--shadow-2);
-  transform: scale(calc(1 / var(--ui-scale, 1)));
-  transform-origin: 0 100%;
   /* 판을 볼 때는 눈에 안 걸리게, 다가가면 또렷하게.
-     너무 흐리면 "있는 줄 몰랐다"가 되므로 쉬는 상태도 읽히는 선(0.7)까지만 낮춘다. */
-  opacity: 0.7;
+     너무 흐리면 "있는 줄 몰랐다"가 되므로 쉬는 상태도 읽히는 선(0.75)까지만 낮춘다. */
+  opacity: 0.75;
   transition: opacity 0.15s ease;
 }
+
 
 .ui-zoom:hover,
 .ui-zoom:focus-within {
@@ -8981,19 +9068,36 @@ button {
   color: var(--ink-1);
 }
 
-/* 사다리 끝이거나 최종 배율 하한/상한에 닿아 눌러도 안 바뀌는 상태 (canStepUiZoom) */
+/* 사다리 끝이라 눌러도 안 바뀌는 상태 (canStepUiZoom) */
 .ui-zoom-btn:disabled,
 .ui-zoom-now:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
-/* 터치 기기: 손가락이 닿을 크기로. 되감기 scale 때문에 실제 크기 = 여기 적힌 px 다.
-   커진 만큼 비켜설 띠도 넓어져야 한다 (--ui-zoom-band 를 같이 올린다). */
+/* 좁은 화면 — 아이콘 줄의 왼쪽 끝(help-btn: right 214 + 폭 40~44 = 258)보다 더 왼쪽에
+   붙어야 한다. 375px 폰에서 실측하니 216px 로는 📘 위에 올라탔다.
+   폭도 함께 조인다: 266px 자리에 100px 짜리가 서면 375px 폭에서 왼쪽으로 9px 남는다
+   (그 폭대에서는 좌상단 모드 뱃지가 이미 숨겨져 있어 부딪칠 것이 없다). */
+@container ui (max-width: 900px) {
+  .ui-zoom {
+    top: 8px;
+    right: 266px;
+    height: 38px;
+  }
+  .ui-zoom-btn { width: 26px; height: 26px; font-size: 16px; }
+  .ui-zoom-now { min-width: 0; padding: 0 2px; font-size: 9px; letter-spacing: -0.02em; }
+}
+
+/* 터치 기기: 손가락이 닿을 크기로. **세로로** 키운다 — 가로로 키우면 좁은 폰에서
+   손잡이가 왼쪽 아이콘(도감·규칙)까지 밀고 들어간다(375px 실측). */
 @media (pointer: coarse) {
-  .game-root { --ui-zoom-band: 56px; }
-  .ui-zoom-btn { width: 36px; height: 36px; font-size: 19px; }
-  .ui-zoom-now { min-width: 48px; font-size: 12.5px; }
+  .ui-zoom-btn { min-width: 30px; min-height: 30px; font-size: 18px; }
+  /* 숫자는 읽히기만 하면 된다 — 여기서 폭을 늘리면 좁은 폰에서 손잡이가 화면 밖으로 나간다 */
+  .ui-zoom-now { font-size: 12px; }
+  @container ui (max-width: 900px) {
+    .ui-zoom-now { font-size: 9.5px; }
+  }
   .ui-zoom { opacity: 1; }
 }
 
@@ -10561,14 +10665,16 @@ body.peeking .overlay-peekable > * {
    (index.html 의 viewport-fit=cover 와 짝이다.) */
 .quick-toggles {
   left: max(14px, env(safe-area-inset-left, 0px));
-  /* 안전 영역 + 화면 크기 −/+ 손잡이의 띠 (그 손잡이도 같은 구석·같은 안전 영역에 선다) */
-  bottom: calc(
-    max(18px, env(safe-area-inset-bottom, 0px) + 8px) + var(--ui-zoom-band, 0px) /
-      var(--ui-scale, 1)
-  );
+  /* 안전 영역만 피하면 된다 — 이 구석을 함께 쓰던 −/+ 손잡이는 우상단으로 옮겼다 */
+  bottom: max(18px, env(safe-area-inset-bottom, 0px) + 8px);
 }
 
 .icon-btn {
+  top: max(12px, env(safe-area-inset-top, 0px));
+}
+
+/* 같은 줄에 서므로 안전 영역도 같이 피한다 */
+.ui-zoom {
   top: max(12px, env(safe-area-inset-top, 0px));
 }
 
@@ -10643,10 +10749,8 @@ body.peeking .overlay-peekable > * {
     position: fixed;
     left: 8px;
     right: 8px;
-    /* 왼쪽 아래 −/+ 손잡이 위로 (대국 중에는 아래 규칙이 위 띠로 올려 버린다) */
-    bottom: calc(
-      8px + env(safe-area-inset-bottom, 0px) + var(--ui-zoom-band, 0px) / var(--ui-scale, 1)
-    );
+    /* (대국 중에는 아래 규칙이 위 띠로 올려 버린다) */
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     z-index: 300;
     display: flex;
     align-items: center;
