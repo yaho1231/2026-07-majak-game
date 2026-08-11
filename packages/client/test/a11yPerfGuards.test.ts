@@ -134,9 +134,11 @@ describe("리렌더 — 판 전체가 매번 다시 그려지지 않는다", () 
     expect(jsx).not.toMatch(/on[A-Z]\w*=\{\(/);
   });
 
-  it("증강 툴팁 속은 올려놨을 때만 만든다", () => {
+  it("증강 툴팁 속은 올려놨거나 고정했을 때만 만든다", () => {
     expect(APP).toContain("setTipFor");
-    expect(APP).toMatch(/\{tipFor === a \? \(/);
+    // 고정(📌)한 것도 그려야 하지만, 그 둘 말고는 여전히 아무것도 안 만든다 —
+    // 이름표 4개 × 증강 4개면 16벌이 상시로 살아 판을 다시 그릴 때마다 따라 그려진다.
+    expect(APP).toMatch(/\{tipFor === a \|\| pinned\.has\(a\) \? \(/);
   });
 
   it("ActiveInfoBadges가 augmentView를 한 번만 훑는다", () => {

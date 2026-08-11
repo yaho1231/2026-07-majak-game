@@ -1207,7 +1207,20 @@ button {
   border-color: var(--brass-bright);
   background: rgba(36, 53, 44, 0.92);
   box-shadow: var(--shadow-2), inset 0 0 0 1px rgba(240, 200, 106, 0.14);
-  animation: turn-pulse 2.4s var(--ease-quart) infinite;
+  /*
+   * 이름표만은 `turn-pulse`(opacity)를 쓰지 않는다. opacity < 1 은 **쌓임 맥락**을
+   * 만들어서, 안에 있는 증강 툴팁(`.aug-tip`, z-index 80)이 이름표 밖으로는 못 올라간다
+   * — 눌러 고정한 설명이 바로 위 액션 바 밑으로 깔려 읽히지 않았다. 게다가 고정해 둔
+   * 설명까지 2.4초 주기로 같이 흐려졌다. 안쪽 링만 굵어졌다 얇아지게 해서 같은 "지금
+   * 이 사람 차례"를 말하되, 투명도는 건드리지 않는다. (차례 뱃지 `.np-turn`은 그대로
+   * turn-pulse를 쓴다 — 그 안에는 아무것도 안 들어간다.)
+   */
+  animation: nameplate-turn-pulse 2.4s var(--ease-quart) infinite;
+}
+
+@keyframes nameplate-turn-pulse {
+  0%, 100% { box-shadow: var(--shadow-2), inset 0 0 0 1px rgba(240, 200, 106, 0.14); }
+  50% { box-shadow: var(--shadow-2), inset 0 0 0 2px rgba(240, 200, 106, 0.55); }
 }
 
 /* 현재 차례 뱃지 — 누구 차례인지 한눈에 */
@@ -2347,10 +2360,23 @@ button {
   background: linear-gradient(90deg, #f0c86a, #e05050);
 }
 
+/*
+ * 남은 초는 게이지 **오른쪽 옆**에 세운다.
+ *
+ * 예전에는 `bottom: 10px`으로 게이지 **위**에 띄웠는데, 액션 바가 바로 위에 있어서
+ * (`.own-area > .action-bar`가 order:-1로 타이머 바로 위에 붙는다) 그 숫자가 버튼 줄의
+ * 설명(`.act-target`) 자리를 6px 파고들었다 — 1280×800 실측: .prompt-timer-count
+ * y=528–544 × .action-bar 아래끝 y=534. 게이지는 5~8px짜리 실선이라 위아래로 숨통이
+ * 없다. 옆은 비어 있다(게이지 폭이 60cqw라 양옆에 각각 20cqw가 남는다).
+ */
 .prompt-timer-count {
   position: absolute;
-  right: 0;
-  bottom: 10px;
+  left: 100%;
+  margin-left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  /* 게이지 오른쪽 끝에서 시작하므로 남는 폭이 0으로 잡힌다 — 없으면 "3.2 / 초"로 접힌다 */
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -6023,13 +6049,45 @@ button {
    :focus-within은 툴팁 **안쪽**("자세히" 칩·용어)을 눌렀을 때 툴팁이 닫히지 않게 한다 */
 .aug-pill:hover .aug-tip,
 .aug-pill:focus .aug-tip,
-.aug-pill:focus-within .aug-tip {
+.aug-pill:focus-within .aug-tip,
+/* 눌러서 고정한 것 — 손을 떼도, 포커스가 딴 데로 가도 그대로 서 있는다 */
+.aug-pill-pinned .aug-tip {
   display: flex;
 }
 
 .aug-pill:focus {
   outline: 2px solid rgba(199, 188, 255, 0.85);
   outline-offset: 1px;
+}
+
+/* ── 눌러 고정한 pill ──
+   설명이 상시로 떠 있다는 사실이 pill 자신에도 보여야 한다. 안 그러면 판 위에 뜬
+   설명 상자가 어디서 나온 것인지 알 수 없다. */
+.aug-pill {
+  cursor: pointer;
+}
+
+.aug-pill-pinned {
+  border-color: rgba(240, 200, 106, 0.8);
+  box-shadow: 0 0 0 1px rgba(240, 200, 106, 0.35);
+}
+
+.aug-pill-pin-mark {
+  margin-left: 3px;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.aug-tip-pin {
+  margin-top: 2px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 10.5px;
+  color: #9fb0a4;
+}
+
+.aug-pill-pinned .aug-tip-pin {
+  color: #f0c86a;
 }
 
 .aug-tip-down {
