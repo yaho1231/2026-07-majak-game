@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   HanchanController,
@@ -847,5 +849,41 @@ describe("HanchanController — 국 사이 대기와 autoContinueMs", () => {
     // 화면 쪽도 "대기 없음"을 그대로 읽을 수 있어야 카운트다운을 띄우지 않는다
     expect(spy.autoContinueSeen.length).toBeGreaterThan(0);
     expect(new Set(spy.autoContinueSeen)).toEqual(new Set([0]));
+  });
+});
+
+/**
+ * 한 번의 발동 = 한 번의 알림.
+ *
+ * 다단계 액티브 증강(선언 → 고르기 → 실행)은 액션 타입이 여럿이라, 그대로 두면
+ * `actionFx`가 단계마다 나가 컷인이 단계 수만큼 뜬다. 클라이언트의 중복 제거는
+ * `{좌석}:{액션타입}` 키라 타입이 다르면 걸러 주지 못한다 — 여기서 걸러야 한다.
+ * (2026-08-01 "미래를 보는 자 연출 2번", 2026-08-12 "등가교환 알림 3번씩".)
+ *
+ * FX_SILENT_ACTION_TYPES는 모듈 내부 상수라 소스에서 정적으로 읽는다.
+ */
+describe("증강 발동 연출 — 다단계 증강은 한 단계만 알린다", () => {
+  const SRC = readFileSync(
+    fileURLToPath(new URL("../src/match/HanchanController.ts", import.meta.url)),
+    "utf8",
+  );
+  const silent = (() => {
+    const at = SRC.indexOf("const FX_SILENT_ACTION_TYPES = new Set([");
+    expect(at, "FX_SILENT_ACTION_TYPES를 못 찾았다").toBeGreaterThan(0);
+    const body = SRC.slice(at, SRC.indexOf("]);", at));
+    return new Set([...body.matchAll(/"([^"]+)"/g)].map((m) => m[1]!));
+  })();
+
+  it("미래를 보는 자 — 무장은 조용하고 실제 교환만 알린다", () => {
+    expect(silent.has("future_arm")).toBe(true);
+    expect(silent.has("future_exchange")).toBe(false);
+  });
+
+  it("등가교환 — 세 단계 중 대상 지정 하나만 알린다", () => {
+    // 지정(swap3)이 사용 횟수를 소비하는 되돌릴 수 없는 순간이고, 뒤 두 단계는
+    // 상대의 리치로 끝나지 않을 수도 있어 "항상 정확히 한 번"이 되지 않는다.
+    expect(silent.has("swap3")).toBe(false);
+    expect(silent.has("swap3_give")).toBe(true);
+    expect(silent.has("swap3_take")).toBe(true);
   });
 });
