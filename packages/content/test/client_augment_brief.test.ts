@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { standardAugments } from "@majak/core";
 import { describe, expect, it } from "vitest";
 import { contentAugments } from "../src/index.js";
-import { AUGMENT_BRIEF, briefOf, expandParas } from "../../client/src/augmentBrief.js";
+import { AUGMENT_BRIEF, briefOf, expandParas, forMode } from "../../client/src/augmentBrief.js";
 import { GLOSSARY, GLOSSARY_GROUPS, splitTerms } from "../../client/src/glossary.js";
 
 const ALL = [...standardAugments, ...contentAugments];
@@ -130,6 +130,53 @@ describe("설명 층 나누기 (화면별)", () => {
     const calls = [...src.matchAll(/<AugDesc\b[^>]*>/g)].map((m) => m[0]);
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.filter((c) => !/\bvariant="(draft|codex)"/.test(c))).toEqual([]);
+  });
+});
+
+/**
+ * "동풍전 1회 · 반장전 2회"는 도감에서는 두 숫자가 다 필요하지만, 판 중에는 지금 도는
+ * 판의 숫자 하나면 된다 — 안 쓰는 숫자가 옆에 서 있으면 몇 번 남았는지 한 번 더 셈해야
+ * 한다(2026-08-12 사용자 요청). 인게임(`variant="draft"`)만 줄이고 도감은 그대로 둔다.
+ */
+describe("모드별 횟수 표기", () => {
+  it("배지·머리말·본문 어디에 있든 그 판의 숫자 하나로 줄인다", () => {
+    expect(forMode("동풍전1·반장전2", "tonpuu")).toBe("게임 1회");
+    expect(forMode("동풍전1·반장전2", "hanchan")).toBe("게임 2회");
+    expect(forMode("(동풍전 1회 · 반장전 2회) 발동한다.", "tonpuu")).toBe("(게임 1회) 발동한다.");
+    expect(forMode("(동풍전 1회 · 반장전 2회) 발동한다.", "hanchan")).toBe("(게임 2회) 발동한다.");
+    // 1·2가 아닌 것(자리 바꾸기)과 뒤에 조건이 더 붙는 머리말도 같이 받는다
+    expect(forMode("(동풍전 2회 · 반장전 3회, 국당 1회)", "tonpuu")).toBe("(게임 2회, 국당 1회)");
+    expect(forMode("(동풍전 2회 · 반장전 3회, 국당 1회)", "hanchan")).toBe("(게임 3회, 국당 1회)");
+  });
+
+  it("도감(mode=null)은 두 숫자를 그대로 둔다", () => {
+    const raw = "(동풍전 1회 · 반장전 2회) 발동한다.";
+    expect(forMode(raw, null)).toBe(raw);
+  });
+
+  it("모드 전용 증강의 '반장전 전용' 같은 말은 건드리지 않는다", () => {
+    // 숫자가 붙은 횟수 표기만 줄인다 — 모드 이름 자체는 정보다
+    expect(forMode("상시(반장전)", "tonpuu")).toBe("상시(반장전)");
+    expect(forMode("(상시 · 동풍전 전용) 만개한다.", "hanchan")).toBe("(상시 · 동풍전 전용) 만개한다.");
+  });
+
+  it("실제 증강 전부 — 판 중에는 두 모드가 나란히 선 횟수가 남지 않는다", () => {
+    const both = /동풍전\s*\d+\s*회?\s*·\s*반장전\s*\d+/;
+    // 줄일 거리가 실제로 있어야 이 검사가 의미를 가진다
+    expect(ALL.filter((a) => both.test(a.description)).length).toBeGreaterThan(0);
+    for (const mode of ["tonpuu", "hanchan"] as const) {
+      const leftover = ALL.filter((a) => {
+        const brief = briefOf(a.id, a.description);
+        const texts = [
+          forMode(brief.use, mode),
+          forMode(brief.text, mode),
+          forMode(a.description, mode),
+          ...expandParas("draft", a.description, a.detail).map((p) => forMode(p, mode)),
+        ];
+        return texts.some((t) => both.test(t));
+      });
+      expect(leftover.map((a) => a.id), mode).toEqual([]);
+    }
   });
 });
 

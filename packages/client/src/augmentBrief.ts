@@ -39,6 +39,31 @@ export interface AugmentBrief {
 /** 동풍전 1회 · 반장전 2회 — 가장 흔한 배지라 상수로 둔다 */
 const MODE_1_2 = "동풍전1·반장전2";
 
+/** 표기를 줄일 때 기준이 되는 게임 모드 (core의 `GameMode`와 같은 값). */
+export type DisplayMode = "hanchan" | "tonpuu";
+
+/**
+ * "동풍전 1회 · 반장전 2회"처럼 두 모드를 나란히 적은 횟수 표기.
+ *
+ * 배지("동풍전1·반장전2")·원문 머리말("(동풍전 1회 · 반장전 2회)")·본문 어디에나
+ * 나오고, 띄어쓰기와 "회"의 유무가 제각각이라 하나의 패턴으로 받는다.
+ */
+const MODE_COUNT_RE = /동풍전\s*(\d+)\s*회?\s*·\s*반장전\s*(\d+)\s*회?/g;
+
+/**
+ * 인게임 표기를 **지금 도는 판**의 횟수 하나로 줄인다 — 동풍전이면 "게임 1회",
+ * 반장전이면 "게임 2회".
+ *
+ * 판 중에는 자기 판에 없는 숫자가 같이 서 있으면 몇 번 쓸 수 있는지 한 번 더
+ * 셈해야 한다. 반대로 증강 도감은 모드를 가리지 않고 읽는 자리라 두 숫자를 그대로
+ * 둔다 — 그래서 `mode`가 `null`이면 원문을 손대지 않는다.
+ */
+export function forMode(text: string, mode: DisplayMode | null): string {
+  if (mode === null) return text;
+  return text.replace(MODE_COUNT_RE, (_all, tonpuu: string, hanchan: string) =>
+    `게임 ${mode === "tonpuu" ? tonpuu : hanchan}회`);
+}
+
 export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   // 2026-08-04 6차 신규 8종
   blind_ron: { use: "이번 국만", text: "이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다." },

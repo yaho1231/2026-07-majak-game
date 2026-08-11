@@ -57,7 +57,7 @@ import type {
 } from "@majak/core";
 import { AUGMENT_CATEGORIES, SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
 import { contentAugments } from "@majak/content";
-import { type AugmentDescVariant, briefOf, expandParas, splitLead } from "./augmentBrief.js";
+import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
@@ -3746,6 +3746,9 @@ export function App(): JSX.Element {
 
   return (
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
+    {/* 판이 돌고 있을 때만 모드를 내려 준다 — 증강 설명의 "동풍전 N회 · 반장전 M회"가
+        그 판의 숫자 하나로 줄어든다. 홈·도감에서는 null이라 둘 다 그대로 보인다. */}
+    <GameModeContext.Provider value={view?.round.mode ?? null}>
     <div className="game-root" ref={gameRootRef}>
       <LayoutHint />
       <ScaleControl />
@@ -4102,6 +4105,7 @@ export function App(): JSX.Element {
       ) : null}
       <PeekButton />
     </div>
+    </GameModeContext.Provider>
     </GlossaryTipsContext.Provider>
   );
 }
@@ -4758,6 +4762,15 @@ function AugmentMeta({
  */
 const GlossaryTipsContext = createContext(true);
 
+/**
+ * 지금 도는 판의 모드. **인게임에서만** 값이 있고 그 밖(도감·샌드박스·테스트)은 null이다.
+ *
+ * "동풍전 1회 · 반장전 2회"처럼 두 모드를 나란히 적은 횟수를, 판 중에는 그 판의 숫자
+ * 하나("게임 2회")로 줄이는 데 쓴다(`forMode`). 도감은 모드를 가리지 않고 읽는 자리라
+ * 둘 다 그대로 둔다.
+ */
+const GameModeContext = createContext<DisplayMode | null>(null);
+
 /** 용어에 마우스를 올리고 툴팁이 뜰 때까지 (ms) — "길게 올려 두면" */
 const TERM_HOVER_MS = 450;
 
@@ -4904,9 +4917,14 @@ function AugDesc({
   variant: AugmentDescVariant;
   expanded: boolean;
 }): JSX.Element {
-  const brief = briefOf(id, description);
-  const lead = splitLead(description ?? "");
-  const paras = expandParas(variant, description, detail);
+  // 판 중이면 "동풍전 1회 · 반장전 2회"를 그 판의 숫자 하나로 줄인다(도감은 둘 다 둔다).
+  // 도감 변형은 판 안에서 열어도 모드를 가리지 않는 자리라 null로 못 박는다.
+  const ctxMode = useContext(GameModeContext);
+  const mode = variant === "draft" ? ctxMode : null;
+  const raw = briefOf(id, description);
+  const brief = { use: forMode(raw.use, mode), text: forMode(raw.text, mode) };
+  const lead = splitLead(forMode(description ?? "", mode));
+  const paras = expandParas(variant, description, detail).map((p) => forMode(p, mode));
   const showFull = expanded && paras.length > 0;
   // 원문 설명을 펼칠 때는 배지도 원문 머리말로 바꿔 단다 — 요약의 use보다 조건이 자세할
   // 때가 많고, 본문에 머리말을 남겨 두면 같은 말이 배지와 두 번 나온다. 상세(detail)에는
@@ -14138,6 +14156,8 @@ function DraftOverlay({
   // 원문 설명은 Shift를 누르고 있는 동안, 또는 카드의 "자세히"를 눌렀을 때만 펼친다.
   const shiftHeld = useShiftHeld();
   const [moreFor, setMoreFor] = useState<string | null>(null);
+  // 보유 중 알약의 title은 원문 그대로라, 여기서도 이 판의 횟수로 줄여 준다.
+  const mode = useContext(GameModeContext);
 
   return createPortal(
     // overlay-peekable — '누른 채로 게임판 보기' 버튼이 잠깐 투명하게 만드는 대상 표시.
@@ -14168,7 +14188,7 @@ function DraftOverlay({
                 <span
                   key={id}
                   className={`draft-owned-pill aug-cat-${augmentCategory(id)}`}
-                  title={entry?.description ?? id}
+                  title={entry === undefined ? id : forMode(entry.description, mode)}
                 >
                   <AugCatIcon id={id} />
                   {entry?.name ?? id}
