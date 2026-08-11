@@ -183,6 +183,19 @@ describe("PeekButton — 10Hz 측정이 오버레이가 떠 있을 때만 돈다
   it("오버레이가 없으면 곧바로 빠져나온다", () => {
     expect(body).toContain("if (!hasPanel)");
   });
+
+  /*
+   * 감시가 body의 **직속 자식**만 보므로(subtree: false), 버튼이 따라붙는 창은 전부
+   * body 포털이어야 한다. 증강 선택창이 앱 트리 안에 그려져 있어서 변화가 body에
+   * 안 잡혔고, 그 화면에서만 버튼이 통째로 사라져 있었다(2026-08-12 사용자 지적).
+   */
+  it("버튼이 따라붙는 창은 전부 body 직속 포털이다", () => {
+    expect(code(body)).toContain("{ childList: true }"); // subtree를 켰다면 이 가드는 무의미하다
+    const draft = code(bodyOf("function DraftOverlay("));
+    expect(draft).toContain('className="overlay overlay-peekable"');
+    expect(draft).toContain("createPortal(");
+    expect(draft).toContain("document.body,");
+  });
 });
 
 // ─────────────────────────── 5. 움직임 줄이기 ───────────────────────────

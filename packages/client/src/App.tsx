@@ -2430,6 +2430,13 @@ export function App(): JSX.Element {
     };
   }, [bgmShouldPlay]);
 
+  // 리치 브금 선행 다운로드 — 대국에 들어와 있고 볼륨이 0이 아닐 때 한 번.
+  // (평상시 BGM 이펙트와 섞지 않는다: 볼륨 슬라이더를 만질 때마다 bgm.stop()이 돌아
+  //  평상시 BGM이 처음으로 되감기는 일이 없어야 한다.)
+  useEffect(() => {
+    if (bgmShouldPlay) riichiBgm.prepare();
+  }, [bgmShouldPlay, settings.riichiBgmVolume]);
+
   /** 연출 큐·현재 연출·대기 결과를 모두 비운다 (리셋·관전 종료 시) */
   function clearProductions(): void {
     productionQueue.current = [];
@@ -13865,8 +13872,13 @@ function DraftOverlay({
   const shiftHeld = useShiftHeld();
   const [moreFor, setMoreFor] = useState<string | null>(null);
 
-  return (
-    // overlay-peekable — '누른 채로 게임판 보기' 버튼이 잠깐 투명하게 만드는 대상 표시
+  return createPortal(
+    // overlay-peekable — '누른 채로 게임판 보기' 버튼이 잠깐 투명하게 만드는 대상 표시.
+    //
+    // ⚠ **body 직속 포털이어야 한다**(FIXED_SURFACE_NOTE). 화면 고정 표면이라는 이유
+    // 말고도 하나 더 있다: PeekButton은 붙을 창이 떴는지를 body의 childList 변화로만
+    // 감시한다. 앱 트리 안에 그리면 그 변화가 body에 안 잡혀 '누른 채로 게임판 보기'
+    // 버튼이 증강 선택창에서 통째로 안 떴다(2026-08-12 사용자 지적).
     <div className="overlay overlay-peekable">
       <div className="draft-panel">
         <h2 className="draft-title">증강 선택</h2>
@@ -13934,7 +13946,8 @@ function DraftOverlay({
           <p className="draft-waiting">✓ 선택 완료 — 다른 플레이어를 기다리는 중…</p>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

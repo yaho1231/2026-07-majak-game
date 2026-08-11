@@ -936,6 +936,25 @@ const riichiBgmEls: (HTMLAudioElement | null)[] = RIICHI_BGM_SRCS.map(() => null
 let riichiBgmCurrent = -1;
 let riichiBgmVolume = 0.5; // 0~1, 설정에서 동기화
 
+/**
+ * 다음 리치에 쓸 트랙 — **미리 골라 미리 받아 둔다** (-1 = 아직 안 골랐다).
+ *
+ * 트랙 하나가 5~9MB다. 리치가 걸린 뒤에 Audio를 만들면 그때부터 받기 시작하므로
+ * 브금이 리치 컷인보다 몇 초 늦게 터져 나왔다 — 연출은 이미 지나갔는데 음악만
+ * 뒤늦게 시작되는 그림이다(2026-08-12 사용자 지적). 대국에 들어서는 조용한 순간에
+ * 다음 곡을 하나 정해 버퍼링을 걸어 두면, start()는 이미 받아 둔 것을 틀기만 한다.
+ */
+let riichiBgmNext = -1;
+/** load()를 이미 걸어 둔 트랙 — 다시 걸면 버퍼링이 처음부터 다시 시작된다. */
+const riichiBgmWarmed = new Set<number>();
+
+/** 지금 트랙과 겹치지 않게 다음 트랙을 고른다. */
+function riichiBgmPick(): number {
+  const n = RIICHI_BGM_SRCS.length;
+  if (riichiBgmCurrent < 0 || n <= 1) return Math.floor(Math.random() * n);
+  return (riichiBgmCurrent + 1 + Math.floor(Math.random() * (n - 1))) % n;
+}
+
 // 페이드아웃 상태 — 국 종료 시 뚝 끊지 않고 볼륨을 부드럽게 낮춰 정지한다.
 let riichiBgmFadeTimer: number | null = null;
 let riichiBgmFadeEl: HTMLAudioElement | null = null;
@@ -994,7 +1013,28 @@ function riichiBgmSync(restart: boolean): void {
 
 export const riichiBgm = {
   /**
-   * 리치 선언 시 호출 — 무작위 트랙을 처음부터 루프 재생.
+   * 다음 리치에 쓸 트랙을 미리 정하고 **미리 받아 둔다** — 대국에 들어설 때,
+   * 그리고 리치가 걸릴 때마다 다음 판을 위해 한 번 더 호출한다.
+   *
+   * 재생은 하지 않으므로 자동재생 정책과 무관하다. 이미 받아 둔 트랙은 건드리지
+   * 않는다(load()를 다시 걸면 버퍼링이 처음부터 다시 시작된다).
+   */
+  prepare(): void {
+    if (typeof window === "undefined" || typeof Audio === "undefined") return;
+    if (riichiBgmVolume <= 0) return; // 꺼 둔 사람에게 6MB를 미리 받게 하지 않는다
+    if (riichiBgmNext < 0 || riichiBgmNext === riichiBgmCurrent) {
+      riichiBgmNext = riichiBgmPick();
+    }
+    const i = riichiBgmNext;
+    if (riichiBgmWarmed.has(i)) return;
+    const el = riichiBgmAudio(i);
+    if (el === null) return;
+    riichiBgmWarmed.add(i);
+    el.load(); // preload="auto" — 재생 없이 앞부분부터 버퍼에 채운다
+  },
+
+  /**
+   * 리치 선언 시 호출 — 미리 받아 둔 트랙을 처음부터 루프 재생.
    * 이미 다른 트랙이 흐르는 중이면(연속 리치) 그것과 다른 트랙으로 갈아끼운다.
    * 볼륨이 0이어도 트랙 선택은 해 둔다 → 도중에 볼륨을 올리면 바로 재생된다.
    */
@@ -1002,15 +1042,12 @@ export const riichiBgm = {
     if (typeof window === "undefined") return;
     bgmSetDucked(true); // 평상시 BGM은 리치 동안 비켜준다
     riichiBgmEndFade(); // 페이드 중 새 리치가 오면 즉시 마무리하고 새 곡으로
-    const n = RIICHI_BGM_SRCS.length;
-    // 재생 중이면 현재 트랙을 제외하고 고른다 → 항상 "다른 곡"으로 전환된다.
-    let next: number;
-    if (riichiBgmCurrent < 0 || n <= 1) {
-      next = Math.floor(Math.random() * n);
-    } else {
-      const offset = 1 + Math.floor(Math.random() * (n - 1));
-      next = (riichiBgmCurrent + offset) % n;
-    }
+    // prepare()가 골라 둔 것이 있으면 그것을 쓴다 — 이미 버퍼에 들어와 있어
+    // 컷인과 같은 순간에 소리가 난다. 없으면(준비 전 리치) 그 자리에서 고른다.
+    const next =
+      riichiBgmNext >= 0 && riichiBgmNext !== riichiBgmCurrent
+        ? riichiBgmNext
+        : riichiBgmPick();
     // 이전 곡 완전 정지(되감기) 후 새 곡으로 전환
     if (riichiBgmCurrent >= 0) {
       const prev = riichiBgmEls[riichiBgmCurrent];
@@ -1020,7 +1057,9 @@ export const riichiBgm = {
       }
     }
     riichiBgmCurrent = next;
+    riichiBgmNext = -1;
     riichiBgmSync(true);
+    riichiBgm.prepare(); // 추격 리치가 바로 이어질 수 있다 — 다음 곡도 미리 받아 둔다
   },
 
   /**

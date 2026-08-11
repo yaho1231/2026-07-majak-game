@@ -266,6 +266,25 @@ describe("눈먼 총알 (blind_ron)", () => {
     expect(redirected).toBeGreaterThan(0);
   });
 
+  it("국이 끝나면 '발동 중' 표시를 내린다", () => {
+    /*
+     * 국 스코프 채널은 **다음 국이 시작될 때** 지워진다 — 그 사이에 정산 화면과 증강
+     * 드래프트가 통째로 끼어 있어, 효과가 끝난 표시가 이름표에 계속 서 있었다
+     * (2026-08-12 사용자 지적). 정산 시점에 값을 비워 화면에서 내린다.
+     */
+    const key = `view:*:${"blind_ron"}:p0#round`;
+    const base = ronScene();
+    const staged = withData(armed(base), { [key]: true });
+    const game = createStandardGameFromState(staged);
+    installAugment(game.engine, blindRon, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    flow.begin();
+    expect(game.engine.state.augmentData[key]).toBe(true); // 국 중에는 켜져 있다
+    expect(flow.submit("p0", { type: "win", payload: {} }).kind).toBe("roundOver");
+    // 빈 값 = PlayerView가 채널 자체를 안 내려보낸다
+    expect(game.engine.state.augmentData[key]).toBe("");
+  });
+
   it("발동한 국이 아니면 쏜 사람이 그대로 문다", () => {
     const base = ronScene();
     const settled = settleRon(withAugments(base, "p0", ["blind_ron"]), (game) => {
