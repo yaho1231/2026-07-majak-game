@@ -1,12 +1,15 @@
 /**
- * uiScale — 자동 맞춤 × 수동 −/+ 배수.
+ * uiScale — 자동 맞춤(transform) × 수동 크기 배수(--ui-mag).
  *
  * 이 패키지에는 jsdom이 없다(a11yPerfGuards.test.ts 참고). uiScale.ts가 건드리는
  * 전역이 몇 개 안 되므로 **손으로 만든 최소 window/document**를 세워 놓고 실제 함수를
  * 돌린다 — 소스 문자열 스캔이 아니라 계산 결과를 본다.
  *
- * 여기서 못 박는 것: 수동 배수가 자동값을 **덮지 않고 곱한다**, 최종 배율이 읽히는
- * 범위를 못 벗어난다, 새 localStorage 키를 쓰고 옛 키는 계속 지운다.
+ * 여기서 못 박는 것(2026-08-12 모델):
+ *  · 수동 배수는 **transform 에 곱해지지 않는다** — --ui-scale 은 자동값 하나뿐이다.
+ *    (곱해 두면 판·손패가 1px도 안 커지면서 고정 px만 뭉갠다. 그게 옛 모델의 버그였다.)
+ *  · 수동 배수는 --ui-mag 로 따로 나가고, 좌표 변환(toLayoutPx)은 그걸 보지 않는다.
+ *  · 사다리는 창과 무관하다 — 어느 창에서든 같은 칸을 고를 수 있다.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -67,6 +70,11 @@ function appliedScale(): number {
   return Number(cssVars["--ui-scale"]);
 }
 
+/** body에 실제로 쓰인 --ui-mag (styles.css의 크기 토큰들이 곱하는 수). */
+function appliedMag(): number {
+  return Number(cssVars["--ui-mag"]);
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -90,99 +98,119 @@ describe("자동 맞춤은 그대로다", () => {
   });
 });
 
-describe("수동 배수는 자동값을 덮지 않고 곱한다", () => {
-  it("자동 1인 창에서 +는 그대로 배수가 된다", async () => {
+describe("수동 배수는 transform 에 곱해지지 않는다 (뭉개짐 없음)", () => {
+  it("+ 를 눌러도 --ui-scale 은 자동값 그대로다", async () => {
     const m = await boot({ w: 1440, h: 900 });
     expect(m.stepUiZoom(1)).toBe(true);
     expect(m.getUiZoom()).toBe(1.1);
-    expect(m.getUiScale()).toBeCloseTo(1.1, 5);
-    expect(appliedScale()).toBeCloseTo(1.1, 5);
+    // 여기가 핵심 — 예전에는 1.1이 되면서 body 전체가 컴포지터 확대로 뭉갰다
+    expect(m.getUiScale()).toBe(1);
+    expect(appliedScale()).toBe(1);
+    expect(appliedMag()).toBeCloseTo(1.1, 5);
   });
 
-  it("자동으로 줄어든 창에서는 그 값에 곱해진다", async () => {
+  it("자동으로 줄어든 창에서도 두 값은 따로 논다", async () => {
     const m = await boot({ w: 990, h: 680 }); // 자동 0.9
-    m.setUiZoom(1.2);
-    expect(m.getUiScale()).toBeCloseTo(0.9 * 1.2, 3);
+    m.setUiZoom(1.4);
+    expect(m.getUiScale()).toBe(0.9);
+    expect(appliedScale()).toBe(0.9);
+    expect(appliedMag()).toBeCloseTo(1.4, 5);
   });
 
-  it("−는 자동값 아래로 내려간다 (넓은 창)", async () => {
-    const m = await boot({ w: 1440, h: 900 });
-    m.stepUiZoom(-1);
-    expect(m.getUiScale()).toBeCloseTo(0.9, 5);
+  it("최대 확대에서도 body 배율은 1을 넘지 않는다", async () => {
+    const m = await boot({ w: 1920, h: 1080 });
+    m.setUiZoom(1.6);
+    expect(m.getUiScale()).toBe(1);
+    expect(appliedMag()).toBeCloseTo(1.6, 5);
   });
 
-  it("기본값으로 되돌리면 자동값만 남는다", async () => {
+  it("기본값으로 되돌리면 배수가 1이 된다", async () => {
     const m = await boot({ w: 990, h: 680 });
     m.setUiZoom(1.4);
     expect(m.resetUiZoom()).toBe(true);
     expect(m.getUiZoom()).toBe(1);
+    expect(appliedMag()).toBe(1);
     expect(m.getUiScale()).toBe(0.9);
   });
 });
 
-describe("고를 수 있는 칸은 전부 화면을 움직인다 (막다른 칸 없음)", () => {
-  it("자동이 이미 하한(0.6)이면 −가 꺼진다", async () => {
-    // 660/1100 = 0.6 → 가상 뷰포트 1100×1033 (CRAMPED 위)
-    const m = await boot({ w: 660, h: 620 });
-    expect(m.getUiScale()).toBe(0.6);
-    expect(m.canStepUiZoom(-1)).toBe(false);
-    expect(m.stepUiZoom(-1)).toBe(false);
-    expect(m.getUiScale()).toBe(0.6);
-    // 그래도 +는 살아 있어야 한다 — 양쪽이 다 막히면 갇힌다
-    expect(m.canStepUiZoom(1)).toBe(true);
-    expect(m.stepUiZoom(1)).toBe(true);
-    expect(m.getUiScale()).toBeGreaterThan(0.6);
-  });
-
-  it("사다리 끝에서는 더 못 간다", async () => {
+describe("사다리 — 창과 무관하게 같은 칸을 고른다", () => {
+  it("양 끝에서만 멈춘다", async () => {
     const m = await boot({ w: 1440, h: 900 });
-    m.setUiZoom(1.5);
+    m.setUiZoom(1.6);
     expect(m.canStepUiZoom(1)).toBe(false);
     expect(m.stepUiZoom(1)).toBe(false);
-    m.setUiZoom(0.7);
+    m.setUiZoom(0.8);
     expect(m.canStepUiZoom(-1)).toBe(false);
+    expect(m.canStepUiZoom(1)).toBe(true);
   });
 
-  it("상한 1.5를 넘겨 달라고 해도 1.5에서 멈춘다", async () => {
+  it("범위 밖을 요청해도 사다리 안에서 멈춘다", async () => {
     const m = await boot({ w: 1440, h: 900 });
     m.setUiZoom(9);
-    expect(m.getUiZoom()).toBe(1.5);
-    expect(m.getUiScale()).toBeLessThanOrEqual(1.5);
+    expect(m.getUiZoom()).toBe(1.6);
+    m.setUiZoom(0.1);
+    expect(m.getUiZoom()).toBe(0.8);
   });
 
-  it("어느 창에서든 −/+ 를 눌러 봐도 배율이 [0.6, 1.5] 밖으로 안 나간다", async () => {
-    for (const [w, h] of [[1920, 1080], [1440, 900], [1100, 680], [990, 680], [660, 620]] as const) {
+  it("작은 창에서도 큰 창과 똑같은 칸이 열린다", async () => {
+    // 예전 모델은 자동 배율과 곱해져 작은 창에서 칸이 잘려 나갔다.
+    // 지금은 크기 토큰을 곱할 뿐이라(넘치는 몫은 CSS의 --board-fit-v·--hand-fit이
+    // 받아 낸다) 잘라 낼 이유가 없다 — 작은 화면 사람이야말로 축소가 필요하다.
+    for (const [w, h] of [[1920, 1080], [1100, 680], [660, 620]] as const) {
       const m = await boot({ w, h });
-      for (const dir of [-1, 1] as const) {
-        for (let i = 0; i < 12; i++) m.stepUiZoom(dir);
-        expect(m.getUiScale(), `${w}×${h} dir=${dir}`).toBeGreaterThanOrEqual(0.6);
-        expect(m.getUiScale(), `${w}×${h} dir=${dir}`).toBeLessThanOrEqual(1.5);
-      }
+      expect(m.canStepUiZoom(-1), `${w}×${h}`).toBe(true);
+      expect(m.canStepUiZoom(1), `${w}×${h}`).toBe(true);
+      for (let i = 0; i < 12; i++) m.stepUiZoom(-1);
+      expect(m.getUiZoom(), `${w}×${h}`).toBe(0.8);
+      for (let i = 0; i < 12; i++) m.stepUiZoom(1);
+      expect(m.getUiZoom(), `${w}×${h}`).toBe(1.6);
     }
   });
 
-  it("작은 창에서 잠깐 당겨져도 저장된 취향은 안 잃는다", async () => {
-    // 큰 모니터에서 140%로 맞춰 둔 사람이 작은 창을 열었다 (자동 0.6 → 최대 1.5/0.6 = 2.5,
-    // 즉 1.4도 그대로 고를 수 있다). 반대로 70%를 저장해 둔 사람은 당겨진다.
-    const m = await boot({ w: 660, h: 620, stored: "0.7" });
-    expect(m.getUiZoom()).toBe(1); // 이 창에서는 70%를 고를 수 없다 → 당겨서 보여 준다
-    expect(m.getUiScale()).toBe(0.6);
-    // 저장값은 그대로 — 넓은 창으로 돌아가면 다시 70%다
-    expect(store.get("majak.uiZoom")).toBe("0.7");
-    const wide = await boot({ w: 1440, h: 900, stored: "0.7" });
-    expect(wide.getUiZoom()).toBe(0.7);
+  it("저장된 취향은 어느 창에서도 그대로 보인다", async () => {
+    const m = await boot({ w: 660, h: 620, stored: "0.8" });
+    expect(m.getUiZoom()).toBe(0.8);
+    expect(store.get("majak.uiZoom")).toBe("0.8");
+    const wide = await boot({ w: 1920, h: 1080, stored: "0.8" });
+    expect(wide.getUiZoom()).toBe(0.8);
+  });
+
+  it("옛 사다리의 값(0.7)은 가장 가까운 칸으로 스냅된다", async () => {
+    const m = await boot({ w: 1440, h: 900, stored: "0.7" });
+    expect(m.getUiZoom()).toBe(0.8);
   });
 });
 
-describe("좌표 변환이 최종 배율 하나만 본다", () => {
-  it("toLayoutPx·layoutViewport가 수동 배수까지 반영한다", async () => {
+describe("좌표 변환은 자동 배율만 본다", () => {
+  it("확대해도 toLayoutPx·layoutViewport가 안 흔들린다", async () => {
     const m = await boot({ w: 1440, h: 900 });
-    m.setUiZoom(1.2);
-    const s = m.getUiScale();
-    expect(s).toBeCloseTo(1.2, 5);
-    // 화면 좌표 600px → 레이아웃 좌표 500px. 여기가 어긋나면 패 드래그가 밀린다.
-    expect(m.toLayoutPx(600)).toBeCloseTo(600 / s, 5);
-    expect(m.layoutViewport().w).toBeCloseTo(1440 / s, 5);
+    const before = m.toLayoutPx(600);
+    m.setUiZoom(1.6);
+    // 수동 배수는 transform 이 아니므로 화면↔레이아웃 좌표계가 그대로다.
+    // 여기가 어긋나면 확대 상태에서 패 드래그가 밀린다.
+    expect(m.toLayoutPx(600)).toBe(before);
+    expect(m.toLayoutPx(600)).toBe(600);
+    expect(m.layoutViewport().w).toBe(1440);
+  });
+
+  it("자동 축소가 걸린 창에서는 그 값만큼 되돌린다", async () => {
+    const m = await boot({ w: 990, h: 680 }); // 자동 0.9
+    m.setUiZoom(1.3);
+    expect(m.toLayoutPx(600)).toBeCloseTo(600 / 0.9, 5);
+    expect(m.layoutViewport().w).toBeCloseTo(990 / 0.9, 5);
+  });
+});
+
+describe("배치 안내는 '디자인 공간'을 본다", () => {
+  it("확대하면 넓은 창도 좁아진 것처럼 취급된다", async () => {
+    // 1100×680 가상 뷰포트를 1.6배로 키우면 디자인이 보기엔 688×425 — CRAMPED 아래다.
+    const m = await boot({ w: 1100, h: 680 });
+    expect(m.isLayoutCramped()).toBe(false);
+    m.setUiZoom(1.6);
+    expect(m.isLayoutCramped()).toBe(true);
+    m.resetUiZoom();
+    expect(m.isLayoutCramped()).toBe(false);
   });
 });
 
