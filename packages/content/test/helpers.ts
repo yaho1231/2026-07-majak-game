@@ -125,7 +125,10 @@ export const PLAYERS: PlayerId[] = ["p0", "p1", "p2", "p3"];
 export interface CraftConfig {
   hands: Record<PlayerId, string>;
   discards?: Record<PlayerId, string>;
-  melds?: Partial<Record<PlayerId, { kind: Meld["kind"]; spec: string }[]>>;
+  /** `from`은 그 후로를 누구에게서 울었는지 (파오 판정이 읽는 `Meld.calledFrom`) */
+  melds?: Partial<
+    Record<PlayerId, { kind: Meld["kind"]; spec: string; from?: PlayerId }[]>
+  >;
   phase: string;
   turnSeat: number;
   drawnLastFor?: PlayerId;
@@ -169,7 +172,13 @@ export function craft(cfg: CraftConfig): GameState {
     const melds: Meld[] = (cfg.melds?.[p] ?? []).map((m) => {
       const ids = h(m.spec).map(take);
       meldTiles.push(...ids);
-      return { kind: m.kind, tileIds: ids };
+      return {
+        kind: m.kind,
+        tileIds: ids,
+        ...(m.from !== undefined
+          ? { calledFrom: m.from, calledTileId: ids[ids.length - 1] as TileId }
+          : {}),
+      };
     });
     zones[meldsZone(p)] = {
       ...createZone(meldsZone(p), "melds", p),

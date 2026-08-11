@@ -115,6 +115,8 @@ export {
   uraIndicatorIds,
 } from "./mahjong/flow/helpers.js";
 export type { BuildWinContextOptions } from "./mahjong/flow/helpers.js";
+export { findPao } from "./mahjong/flow/pao.js";
+export type { PaoResult } from "./mahjong/flow/pao.js";
 export {
   ROUND_STARTED,
   TILE_DRAWN,

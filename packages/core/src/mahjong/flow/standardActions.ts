@@ -23,6 +23,7 @@ import { winningKinds } from "../scoring/waits.js";
 import { DEFAULT_SEQUENCE_SUITS, isHonorRun } from "../scoring/decompose.js";
 import type { DecomposeOptions } from "../scoring/decompose.js";
 import type { YakuRegistry } from "../scoring/YakuRegistry.js";
+import { findPao, round100 } from "./pao.js";
 import {
   CALL_MADE,
   ROUND_SETTLED,
@@ -903,23 +904,82 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
             state,
           }),
         );
+        /*
+         * 책임지불(파오) — 대삼원·대사희를 확정시킨 후로를 내준 사람 (01 §9).
+         *
+         * 역만이 여러 개 복합했으면 **파오 대상 역의 몫만** 넘긴다. 역만 점수는
+         * 배수에 정비례하므로 units 비율이 곧 금액 비율이다.
+         * 본장·공탁은 파오를 따라가지 않는다 — 본장은 "이 국을 끝낸 사람"에게
+         * 붙는 벌금이라 방총자(쯔모면 셋)의 몫으로 남긴다 (통용 룰).
+         */
+        const paoEnabled = rules.resolve<boolean>("score.pao", {
+          playerId: w.winner,
+          state,
+        });
+        const pao =
+          paoEnabled && ev.yakumanCount > 0
+            ? findPao(
+                state,
+                w.winner,
+                ev.yaku.map((y) => y.id),
+              )
+            : null;
+        // 파오분이 전체 화료점에서 차지하는 비율 (0이면 파오 없음)
+        const paoRatio =
+          pao === null
+            ? 0
+            : Math.min(1, pao.units / Math.max(1, ev.yakumanCount));
+        const paoTotal = pao === null ? 0 : round100(score.total * paoRatio);
+        /** 책임자가 실제로 문 금액 (표시·검증용) */
+        let paoCharged = 0;
+
         if (w.winType === "ron") {
           const honbaBonus = i === 0 ? state.round.honba * honbaPerStick : 0;
           const total = score.total + honbaBonus;
           deltas[w.winner] = (deltas[w.winner] ?? 0) + total;
-          if (w.from !== null) deltas[w.from] = (deltas[w.from] ?? 0) - total;
+          if (w.from !== null) {
+            /*
+             * 론 파오는 **책임자와 방총자가 파오분을 절반씩** 진다 (통용 룰,
+             * 천봉·대부분의 작장). 01 §9는 "확정시킨 후로에 적용"까지만 정하고
+             * 분담 방식을 정하지 않아 가장 널리 쓰이는 쪽을 택했다.
+             * 파오 대상이 아닌 부분·본장은 방총자가 전액 진다.
+             */
+            const paoHalf =
+              pao !== null && pao.responsible !== w.from
+                ? round100(paoTotal / 2)
+                : 0;
+            if (paoHalf > 0) {
+              deltas[pao!.responsible] =
+                (deltas[pao!.responsible] ?? 0) - paoHalf;
+              paoCharged = paoHalf;
+            }
+            deltas[w.from] = (deltas[w.from] ?? 0) - (total - paoHalf);
+          }
         } else {
           const honbaEach = Math.round((state.round.honba * honbaPerStick) / 3);
+          /*
+           * 쯔모 파오는 **책임자 혼자 파오분 전액**을 낸다 (3분할 없음).
+           * 남은 부분(다른 역만·본장)만 평소대로 나눈다.
+           */
+          let paoAssigned = 0;
           for (const p of state.players) {
             if (p.id === w.winner) continue;
-            const share =
+            const full =
               (scoresAsDealer
                 ? score.payments.others
                 : p.seat === state.round.dealerSeat
                   ? score.payments.dealer
                   : score.payments.others) ?? 0;
+            const share = pao === null ? full : round100(full * (1 - paoRatio));
+            paoAssigned += full - share;
             deltas[p.id] = (deltas[p.id] ?? 0) - share - honbaEach;
             deltas[w.winner] = (deltas[w.winner] ?? 0) + share + honbaEach;
+          }
+          if (pao !== null && paoAssigned > 0) {
+            deltas[pao.responsible] =
+              (deltas[pao.responsible] ?? 0) - paoAssigned;
+            deltas[w.winner] = (deltas[w.winner] ?? 0) + paoAssigned;
+            paoCharged = paoAssigned;
           }
         }
         winInfos.push({
@@ -937,6 +997,15 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
           redHan: ev.redHan,
           points: score.total,
           limit: score.limit,
+          ...(pao !== null && paoCharged > 0
+            ? {
+                pao: {
+                  responsible: pao.responsible,
+                  yakuId: pao.yakuId,
+                  points: paoCharged,
+                },
+              }
+            : {}),
         });
       });
 
@@ -1239,6 +1308,11 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
    * playerId = 화료자. 본장 사냥꾼이 자기 화료에만 올린다.
    */
   rules.define("score.honbaPerStick", 300);
+  /**
+   * 책임지불(파오) 적용 여부 (01 §9). playerId = 화료자.
+   * 대삼원·대사희를 확정시킨 후로를 내준 사람이 그 역만분을 책임진다.
+   */
+  rules.define("score.pao", true);
   /**
    * 채점상의 자풍 고정값 (1=동 … 4=북, 기본 null = 실제 자리에서 계산).
    * playerId = 화료자. 만년 오야가 자풍을 동으로 고정한다.
