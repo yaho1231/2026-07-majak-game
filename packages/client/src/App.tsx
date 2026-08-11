@@ -2018,6 +2018,19 @@ export function App(): JSX.Element {
   const [spectating, setSpectating] = useState<string | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
   /**
+   * 중앙 인포 패널이 그리는 **국 스냅샷** — 판의 나머지(`view`)와 따로 논다.
+   *
+   * 중앙 패널은 "새 국의 시작점"이다. 그런데 서버의 정산 뷰(phase=`round.over`)는
+   * ROUND_SETTLED가 국번호·장풍·본장·오야를 **미리 올려** 보내므로, 그대로 그리면
+   * 론 컷인도 점수표도 증강 선택창도 뜨기 전에 중앙 패널만 다음 국으로 홱 바뀐다
+   * (2026-08-11 사용자 보고). 그래서 `round.over` 뷰에서는 갱신하지 않고, 드래프트까지
+   * 모두 끝나 **진짜 다음 국이 시작된 뷰**(phase ≠ round.over)에서만 넘어간다.
+   *
+   * 점수판(plate)은 이 스냅샷을 쓰지 않는다 — 정산 즉시 오르내려야 점수표와 어긋나지
+   * 않는다. 여기서 얼리는 것은 국 정보(국번호·본장·공탁·도라·패산·자풍)뿐이다.
+   */
+  const [centerView, setCenterView] = useState<PlayerView | null>(null);
+  /**
    * 응답을 기다리는 프롬프트들 — **좌석 id → 프롬프트**.
    *
    * 평소에는 내 좌석 하나뿐이다. 증강 테스트에서 봇 좌석을 조종하면 내 좌석과 그 봇
@@ -2528,6 +2541,7 @@ export function App(): JSX.Element {
     setSandbox(null);
     setControlling(null);
     setView(null);
+    setCenterView(null);
     setPrompts({});
     setDraft(null);
     setDraftPicked(false);
@@ -2571,6 +2585,7 @@ export function App(): JSX.Element {
     setRoundResult(null);
     setPrompts({});
     setView(null);
+    setCenterView(null);
     clearProductions();
     setScoreFx({});
     prevViewRef.current = null;
@@ -2782,6 +2797,7 @@ export function App(): JSX.Element {
       // gameOver 모달이 떠 있으면 그대로 두고, 뷰·연출만 정리한다
       setSpectating(null);
       setView(null);
+      setCenterView(null);
       clearProductions();
       prevViewRef.current = null;
       return;
@@ -2851,6 +2867,7 @@ export function App(): JSX.Element {
       riichiBgm.stop();
       riichiBgmArmed.current = false;
       prevViewRef.current = null;
+      setCenterView(null); // 지난 판의 국 스냅샷이 새 판 첫 뷰까지 남지 않게
       roundContinueSent.current = false;
       // 재시작마다 개막 연출을 다시 트는 것은 방해만 되므로 건너뛴다
       introShown.current = true;
@@ -2905,6 +2922,10 @@ export function App(): JSX.Element {
       detectTransitions(prevViewRef.current, msg.view);
       prevViewRef.current = msg.view;
       setView(msg.view);
+      // 중앙 패널은 정산 뷰를 건너뛴다 (위 centerView 주석). 첫 뷰가 정산 중이면
+      // (재접속·중간 관전 합류) 얼려 둘 이전 국이 없으므로 그 뷰를 그대로 쓴다.
+      if (msg.view.round.phase !== "round.over") setCenterView(msg.view);
+      else setCenterView((cur) => cur ?? msg.view);
       return;
     }
     if (msg.type === "prompt") {
@@ -3668,6 +3689,7 @@ export function App(): JSX.Element {
       ) : inGame && view !== null ? (
         <GameTable
           view={view}
+          roundView={centerView ?? view}
           prompt={prompt}
           promptSeq={promptSeq}
           promptDeadline={promptDeadline}
@@ -6987,6 +7009,11 @@ function ModeBadge(props: { mode: GameMode }): JSX.Element {
  */
 const GameTable = memo(function GameTable(props: {
   view: PlayerView;
+  /**
+   * 중앙 인포 패널이 그릴 국 스냅샷 (없으면 `view`). 정산~증강 선택 동안은 지난 국에
+   * 머물러 있다가, 다음 국이 실제로 시작된 뷰에서만 넘어온다 (App의 centerView 주석).
+   */
+  roundView?: PlayerView;
   prompt: PromptMessage["prompt"] | null;
   promptSeq: number;
   /** 초읽기(time_pressure)가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
@@ -7222,7 +7249,12 @@ const GameTable = memo(function GameTable(props: {
         {seats.right !== null ? <River view={view} playerId={seats.right.id} side="right" /> : null}
         {seats.top !== null ? <River view={view} playerId={seats.top.id} side="top" /> : null}
         {seats.left !== null ? <River view={view} playerId={seats.left.id} side="left" /> : null}
-        <CenterPanel view={view} seats={seats} scoreFx={props.scoreFx} />
+        <CenterPanel
+          view={view}
+          roundView={props.roundView ?? view}
+          seats={seats}
+          scoreFx={props.scoreFx}
+        />
       </div>
 
       <AugmentLog
@@ -8829,16 +8861,44 @@ function SandboxBotSettings(props: {
 
 const DORA_SLOTS = 5;
 
+/**
+ * 중앙 인포 패널.
+ *
+ * `roundView`는 **국의 스냅샷**이다 — 정산부터 증강 선택이 끝날 때까지는 지난 국에
+ * 머물러 있고, 다음 국이 실제로 시작된 뒤에야 넘어온다. 중앙 패널이 "새 국의 시작점"이라
+ * 국번호·본장·공탁·오야(자풍)를 여기서 읽는다.
+ *
+ * 나머지는 live `view`다: 점수판의 점수는 정산 즉시 반영되고(점수표와 어긋나면 그게 더
+ * 헷갈린다), 뒷도라는 정산 뷰에서 처음 공개되므로 얼리면 아예 못 본다.
+ */
 function CenterPanel({
   view,
+  roundView,
   seats,
   scoreFx,
 }: {
   view: PlayerView;
+  roundView: PlayerView;
   seats: Record<Side, PlayerInfo | null>;
   scoreFx: Record<string, number>;
 }): JSX.Element {
-  const r = view.round;
+  // 스냅샷에서 가져오는 것은 **정산 뷰가 미리 올려 버리는 국 정보뿐**이다.
+  // 도라·뒷도라·패산·역행·리치봉은 live 뷰 그대로 둔다 — 특히 뒷도라는 정산 뷰에서
+  // 처음 공개되므로, 패널을 통째로 얼리면 이번 국의 뒷도라를 아무도 못 본다.
+  const snap = roundView.round;
+  const r: PlayerView["round"] =
+    roundView === view
+      ? view.round
+      : {
+          ...view.round,
+          prevalentWind: snap.prevalentWind,
+          roundNumber: snap.roundNumber,
+          honba: snap.honba,
+          riichiPot: snap.riichiPot,
+          dealerSeat: snap.dealerSeat,
+        };
+  // 자풍은 오야 자리에서 나오므로 스냅샷의 오야로 계산한다 (그래야 東이 안 돌아간다).
+  const windView = r === view.round ? view : { ...view, round: r };
   const wallLeft = (view.zones["wall"]?.hiddenCount ?? 0) + (view.zones["wall"]?.tileIds.length ?? 0);
   const turnSide = (Object.keys(seats) as Side[]).find(
     (s) => seats[s] !== null && seats[s]!.seat === r.turnSeat,
@@ -8849,7 +8909,7 @@ function CenterPanel({
       {(Object.keys(seats) as Side[]).map((side) => {
         const p = seats[side];
         if (p === null) return null;
-        const wind = seatWindChar(view, p);
+        const wind = seatWindChar(windView, p);
         const isTurn = r.turnSeat === p.seat;
         const riichi = r.byPlayer[p.id]?.riichiDeclared === true;
         const fx = scoreFx[p.id];
