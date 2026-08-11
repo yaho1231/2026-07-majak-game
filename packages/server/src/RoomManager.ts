@@ -253,21 +253,44 @@ interface Conn {
 }
 
 const MAX_PLAYERS = 4;
+
+/**
+ * 연출용 지연(ms) 환경변수를 **검증해서** 읽는다.
+ *
+ * 예전에는 `Number(process.env.X ?? 기본값)`이었다. 오타 하나(`BOT_THINK_MS=1s`)면
+ * `NaN`이 되는데, 이 값은 전부 `delay > 0` 꼴로만 쓰여서 `NaN > 0`이 false —
+ * **경고 한 줄 없이 봇이 즉답하고 강제 수가 앞 버림과 같은 프레임에 나갔다.**
+ * "봇이 기계 같다"는 제보의 원인이 설정 오타일 수 있는데 확인할 방법이 없었다
+ * (2026-08-08 QA §2-10). 음수도 같은 이유로 막는다.
+ *
+ * 못 읽으면 **기본값으로 되돌리고 반드시 로그를 남긴다** — 조용히 0이 되는 것보다
+ * 낫다. 상한도 둔다: 한 수에 1분을 기다리는 설정은 오타지 의도가 아니다.
+ */
+const MAX_DELAY_MS = 60_000;
+function delayEnv(name: string, fallback: number, min = 0, max = MAX_DELAY_MS): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    console.warn(
+      `[config] ${name}="${raw}" 는 ${min}~${max}ms 범위의 수가 아닙니다 — 기본값 ${fallback}ms 를 씁니다.`,
+    );
+    return fallback;
+  }
+  return n;
+}
+
 /**
  * 봇 행동 전 생각 시간(ms) — 즉시 타패하면 진행이 부자연스러워 한 박자 둔다.
  * 테스트(vitest)는 실제 대기를 피하려고 0, BOT_THINK_MS 환경변수로 덮어쓸 수 있다.
  */
-const BOT_THINK_MS = Number(
-  process.env.BOT_THINK_MS ?? (process.env.VITEST ? 0 : 1000),
-);
+const BOT_THINK_MS = delayEnv("BOT_THINK_MS", process.env.VITEST ? 0 : 1000);
 /**
  * 강제 수(리치 쯔모기리)를 서버가 대신 두기 전의 한 박자(ms) — 고민이 아니라
  * "패가 놓이는 것을 보는" 시간이라 봇 생각 시간보다 짧다. 이게 0이면 앞 사람의
  * 버림과 같은 프레임에 나가 리치가 무엇을 흘렸는지 화면에서 사라진다.
  */
-const AUTO_MOVE_MS = Number(
-  process.env.AUTO_MOVE_MS ?? (process.env.VITEST ? 0 : 450),
-);
+const AUTO_MOVE_MS = delayEnv("AUTO_MOVE_MS", process.env.VITEST ? 0 : 450);
 /** 방 코드 문자 집합 — 혼동 문자는 제외 (O/0, I/1) */
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LEN = 6;
@@ -321,11 +344,12 @@ const ROOM_CREATE_MAX_PER_IP = 20;
  * 진행 중인 게임은 대상이 아니다. 끊긴 사람의 재접속용 좌석도 게임 중인 방에
  * 들어 있으므로 함께 보호된다.
  */
-const ROOM_SWEEP_INTERVAL_MS = Number(process.env.ROOM_SWEEP_INTERVAL_MS ?? 60_000);
+// ⚠ NaN이면 setInterval이 즉시·반복 발화한다 — 1000ms 아래는 거부한다.
+const ROOM_SWEEP_INTERVAL_MS = delayEnv("ROOM_SWEEP_INTERVAL_MS", 60_000, 1000);
 /** 유휴 상한은 **호출할 때** 읽는다 — 테스트가 값을 바꿔 가며 청소를 검증할 수 있게. */
 function roomIdleTtlMs(): number {
-  const v = Number(process.env.ROOM_IDLE_TTL_MS ?? 30 * 60_000);
-  return Number.isFinite(v) ? v : 30 * 60_000;
+  // 유휴 상한은 시(hour) 단위까지 정당하므로 연출 지연 상한(MAX_DELAY_MS)을 쓰지 않는다.
+  return delayEnv("ROOM_IDLE_TTL_MS", 30 * 60_000, 0, 24 * 60 * 60_000);
 }
 /**
  * 컨트롤러 없이 `phase:"playing"`으로 굳은 방을 걷어내는 상한(ms).

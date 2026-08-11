@@ -23,7 +23,33 @@ import { StatsStore } from "./StatsStore.js";
 import { AugmentStatsStore } from "./AugmentStatsStore.js";
 import { SiteDb } from "./SiteDb.js";
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+/**
+ * 수치 환경변수를 **검증해서** 읽는다.
+ *
+ * 예전에는 `Number(process.env.X ?? 기본값)` / `parseInt(...)`를 그대로 썼다.
+ * 오타 하나면 `NaN`이 되는데, 이 값들은 전부 `a > LIMIT` 꼴 비교로만 쓰여서
+ * **`NaN`과의 비교는 언제나 false** — 즉 상한이 조용히 사라진다. 특히
+ * `CONN_RATE_MAX`·`MAX_HTTP_SOCKETS`는 남용 방어라, 오타 하나로 방어가 꺼진
+ * 채 뜨고 아무도 모른다. 주기(interval) 쪽은 반대로 `setInterval(NaN)`이
+ * 즉시·반복 발화라 CPU를 태운다(2026-08-08 QA §2-10과 같은 결함 부류).
+ *
+ * 못 읽으면 **기본값으로 되돌리고 반드시 경고를 남긴다.** 조용히 무력화되는 것보다
+ * 시끄럽게 기본값으로 도는 편이 낫다.
+ */
+function numEnv(name: string, fallback: number, min = 1): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min) {
+    console.warn(
+      `[config] ${name}="${raw}" 는 ${min} 이상의 수가 아닙니다 — 기본값 ${fallback} 을 씁니다.`,
+    );
+    return fallback;
+  }
+  return n;
+}
+
+const PORT = numEnv("PORT", 3001);
 // 바인드 호스트. 리버스 프록시(TLS)를 앞에 둘 때는 HOST=127.0.0.1로 로컬만 노출해
 // 평문 포트가 인터넷에 직접 뜨지 않게 한다. 비우면 모든 인터페이스(직접 포트포워딩 호환).
 const HOST = process.env.HOST;
@@ -45,12 +71,10 @@ const CLIENT_DIST = process.env.CLIENT_DIST ?? resolve(process.cwd(), "../client
  * 이보다 짧으면 다 읽기 전에 넘어간다. (끊긴 좌석은 HumanAgent.awaitContinue가
  * 즉시 통과시키므로, 이 상한이 남은 사람들의 판을 매 국 붙잡지는 않는다.)
  */
-const INTER_ROUND_DELAY_MS = process.env.INTER_ROUND_DELAY_MS
-  ? parseInt(process.env.INTER_ROUND_DELAY_MS, 10)
-  : 20000;
+const INTER_ROUND_DELAY_MS = numEnv("INTER_ROUND_DELAY_MS", 20000, 0);
 // 세션 토큰 수명(ms). 기본 30일 (SiteDb 기본값과 동일).
 const SESSION_TTL_MS = process.env.SESSION_TTL_MS
-  ? parseInt(process.env.SESSION_TTL_MS, 10)
+  ? numEnv("SESSION_TTL_MS", 30 * 24 * 60 * 60_000)
   : undefined;
 
 // 가입 게이트 코드. 설정하면 이 코드를 아는 사람만 회원가입할 수 있다.
@@ -100,9 +124,8 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "")
  * 소켓을 열린 채로 둔다. 이런 좀비 연결은 전체/IP별 연결 상한 슬롯과 좌석을
  * 영구 점유해, 정상 사용자를 밀어내는 자원 고갈로 이어진다.
  */
-const HEARTBEAT_INTERVAL_MS = process.env.HEARTBEAT_INTERVAL_MS
-  ? parseInt(process.env.HEARTBEAT_INTERVAL_MS, 10)
-  : 30_000;
+// ⚠ NaN이면 setInterval이 즉시·반복 발화해 CPU를 태운다 — 1000ms 아래는 거부한다.
+const HEARTBEAT_INTERVAL_MS = numEnv("HEARTBEAT_INTERVAL_MS", 30_000, 1000);
 
 /**
  * 모든 로그 줄 앞에 시각을 붙인다.
@@ -159,7 +182,7 @@ const roomManager = new RoomManager(
  * 연결까지 포함한 TCP 소켓 총량을 묶는다. 정적 파일은 요청당 수 ms면 끝나므로
  * 정상 트래픽은 이 수에 닿지 않는다.
  */
-const MAX_HTTP_SOCKETS = Number(process.env.MAX_HTTP_SOCKETS ?? 512);
+const MAX_HTTP_SOCKETS = numEnv("MAX_HTTP_SOCKETS", 512);
 
 /** dist의 실제 경로 — 심볼릭 링크 탈출 검사의 기준. */
 const CLIENT_REAL = existsSync(CLIENT_DIST) ? realpathSync(CLIENT_DIST) : CLIENT_DIST;
@@ -369,7 +392,7 @@ function clientIpOf(req: IncomingMessage): { ip: string; local: boolean } {
  * 상한에 걸리지 않고도 CPU와 전역 300 슬롯의 회전율을 잠식할 수 있다.
  */
 const CONN_RATE_WINDOW_MS = 10_000;
-const CONN_RATE_MAX = Number(process.env.CONN_RATE_MAX ?? 40);
+const CONN_RATE_MAX = numEnv("CONN_RATE_MAX", 40);
 const connRateHits = new Map<string, number[]>();
 
 function connRateLimited(key: string): boolean {
@@ -502,7 +525,7 @@ httpServer.listen(PORT, HOST, () => {
  * 않아 영원히 쌓이기만 했다. 0이면 정리하지 않는다(기존 동작).
  * 기본값은 넉넉하게 잡는다 — 판이 사라지는 것은 되돌릴 수 없다.
  */
-const GAME_RETENTION_DAYS = Number(process.env.GAME_RETENTION_DAYS ?? 365);
+const GAME_RETENTION_DAYS = numEnv("GAME_RETENTION_DAYS", 365);
 
 async function pruneOldReplays(): Promise<void> {
   if (!Number.isFinite(GAME_RETENTION_DAYS) || GAME_RETENTION_DAYS <= 0) return;
