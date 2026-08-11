@@ -146,6 +146,18 @@ export interface WinInfo {
   /** 화료자 총 획득점 (본장·공탁 제외) */
   points: number;
   limit: string | null;
+  /**
+   * 책임지불(파오, 01 §9) — 대삼원·대사희를 확정시킨 후로를 내준 사람이 있으면 그 정보.
+   * 없으면 필드 자체가 없다.
+   */
+  pao?: {
+    /** 책임을 진 사람 */
+    responsible: PlayerId;
+    /** 책임 대상 역 id (daisangen | daisuushii) */
+    yakuId: string;
+    /** 그 사람이 실제로 문 금액 (본장·공탁 제외) */
+    points: number;
+  };
 }
 
 /**
