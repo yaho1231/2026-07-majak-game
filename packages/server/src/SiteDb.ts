@@ -638,6 +638,19 @@ export class SiteDb {
     return rows.map((r) => r.replay_path);
   }
 
+  /**
+   * 인덱스에 남아 있는 모든 리플레이 파일 경로.
+   *
+   * 디스크의 `.jsonl` 중 **어느 게임도 가리키지 않는 것**(고아)을 찾는 데 쓴다 —
+   * `pruneReplays.ts` 주석 참고.
+   */
+  allReplayPaths(): string[] {
+    const rows = this.db.prepare("SELECT replay_path FROM games").all() as {
+      replay_path: string;
+    }[];
+    return rows.map((r) => r.replay_path);
+  }
+
   /** 해당 사용자가 참가한 게임 목록 (최신순, 최대 limit) */
   listGamesFor(userId: number, limit = 50): GameSummaryRow[] {
     const games = this.db

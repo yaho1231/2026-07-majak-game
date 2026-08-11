@@ -5,8 +5,8 @@
  * DB는 node:sqlite 인메모리(:memory:), 리플레이·통계는 임시 디렉터리.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WebSocket } from "ws";
@@ -133,6 +133,8 @@ interface Harness {
   rm: RoomManager;
   db: SiteDb;
   store: StatsStore;
+  /** 이 판의 리플레이가 떨어지는 디렉터리 — 고아 파일 검사에 쓴다 */
+  replayDir: string;
 }
 
 async function newHarness(interRoundDelayMs = 0, signupCode = ""): Promise<Harness> {
@@ -144,7 +146,7 @@ async function newHarness(interRoundDelayMs = 0, signupCode = ""): Promise<Harne
   dbs.push(db);
   const manager = new RoomManager(replayDir, store, interRoundDelayMs, db, signupCode);
   managers.push(manager);
-  return { rm: manager, db, store };
+  return { rm: manager, db, store, replayDir };
 }
 
 /**
@@ -753,6 +755,13 @@ describe("게임 완주·기록", () => {
       sock.clientSend({ type: "startGame" });
       await sock.waitFor((m) => m.type === "view"); // 게임 시작
 
+      // 리플레이 파일이 실제로 열렸는지 먼저 확인한다 — 이게 없으면 아래 "지워졌다"
+      // 검사가 그냥 통과해 회귀를 못 잡는다.
+      await vi.waitFor(async () => {
+        const f = (await readdir(h.replayDir)).filter((n) => n.endsWith(".jsonl"));
+        expect(f).toHaveLength(1);
+      }, 5_000);
+
       // 사람 1명뿐이므로 한 표로 전원 동의 → 무효 종료
       sock.clientSend({ type: "voteAbort", vote: "agree" });
 
@@ -765,6 +774,19 @@ describe("게임 완주·기록", () => {
       expect(vote?.needed).toBe(1);
       // 무효 게임은 gameOver·기록이 나오지 않는다
       expect(sock.last("gameOver")).toBeUndefined();
+
+      /*
+       * 회귀 (2026-08-11): 무효 게임은 `recordGame`을 부르지 않아 `games` 인덱스에
+       * 행이 없다. 그런데 예전에는 `writer.close()`만 해서 `.jsonl`이 그대로 남았고,
+       * `pruneOldReplays`는 **인덱스 행이 가리키는 파일만** 지운다 — 열어 볼 길도
+       * 없고 지워지지도 않는 파일이 무효 처리마다 하나씩 쌓였다.
+       * (운영 서버 실측 425개 중 292개가 그런 고아였다.)
+       */
+      await vi.waitFor(async () => {
+        const left = (await readdir(h.replayDir)).filter((f) => f.endsWith(".jsonl"));
+        expect(left).toEqual([]);
+      }, 5_000);
+      expect(h.db.allReplayPaths()).toEqual([]);
     },
     15_000,
   );

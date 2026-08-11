@@ -27,7 +27,7 @@ import {
 } from "../mahjong/flow/helpers.js";
 import { calculateScore } from "../mahjong/scoring/score.js";
 import { defineAugment } from "./Augment.js";
-import { SETTLE_LAYER, SETTLE_STAGE } from "./settleStages.js";
+import { SETTLE_LAYER, SETTLE_STAGE, settlePriority } from "./settleStages.js";
 import type { AugmentContext, AugmentDef } from "./Augment.js";
 import type { PlayerView } from "../information/PlayerView.js";
 
@@ -58,7 +58,13 @@ function addWinHanBonus(
    * 이 보너스는 뱅크가 발행하는 가산이므로 `BankTopUp` 단계다 — 배수(Multiply) 뒤.
    * (content/util.ts의 settleInterceptor와 동일한 규약. 코어는 그 헬퍼를 쓸 수 없어
    *  같은 layer·priority를 직접 지정한다.)
+   *
+   * ⚠ priority는 반드시 `settlePriority`로 만든다. 예전에는 단계 번호만 그대로 썼는데,
+   * 콘텐츠 쪽은 `단계 + 자리`라 이 인터셉터가 **모든 좌석의 BankTopUp보다 항상 먼저**
+   * 돌았고(자기 자신보다도), 개문선언·무형화료를 둘이 나눠 가지면 서로 완전히 동률이라
+   * 픽 순서로 갈렸다.
    */
+  const seat = ctx.engine.state.players.find((p) => p.id === ctx.holder)?.seat ?? 0;
   ctx.interceptor(
     ROUND_SETTLED,
     (event, ic) => {
@@ -87,7 +93,10 @@ function addWinHanBonus(
       },
     };
     },
-    { layer: SETTLE_LAYER, priority: SETTLE_STAGE.BankTopUp },
+    {
+      layer: SETTLE_LAYER,
+      priority: settlePriority(SETTLE_STAGE.BankTopUp, seat, ctx.augmentId),
+    },
   );
 }
 
