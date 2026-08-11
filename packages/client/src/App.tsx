@@ -11989,6 +11989,44 @@ function WaitTip({
 // ─────────────────────────── 내 증강 상시 정보 (액티브 버튼 옆) ───────────────────────────
 
 /**
+ * 등 떠밀기 낙인이 찍힌 당사자 기준 — **지금 패를 버리면 강제 리치가 걸리는가**.
+ *
+ * 낙인은 "찍혔다"만으로는 아무 일도 하지 않아서, 당하는 쪽이 그걸 규칙으로 읽지 못한다.
+ * 실제로 발이 묶이는 순간은 **멘젠 텐파이로 패를 버리려는 그 순간**이므로, 그때만
+ * 경고 문구를 바꿔 준다(2026-08-12 사용자 요청).
+ *
+ * 서버 판정(`riichiEligibleOnDiscard`)의 전부를 클라이언트가 볼 수는 없다 — 공탁
+ * 1000점 여유·`riichi.blocked`·벽 잔여는 규칙 레지스트리의 몫이다. 그래서 여기서는
+ * 클라이언트가 확실히 아는 조건(리치 미선언 + 멘젠 + 버리면 텐파이)만 보고,
+ * **문구의 강도만** 올린다. 뱃지 자체는 낙인이 살아 있는 동안 늘 떠 있다.
+ */
+function pushRiichiImminent(view: PlayerView, me: PlayerInfo): boolean {
+  const mine = view.round.byPlayer[me.id];
+  if (mine === undefined || mine.riichiDeclared) return false;
+  // 손을 열었으면(안깡 제외) 리치 조건이 서지 않는다 — 서버 isMenzen과 같은 기준
+  if (!mine.melds.every((m) => m.kind === "kan_closed")) return false;
+  const ids = view.zones[`hand:${me.id}`]?.tileIds ?? [];
+  const kinds = ids
+    .map((id) => view.tiles[id]?.kind)
+    .filter((k): k is TileKind => k !== undefined);
+  if (kinds.length !== ids.length || kinds.length === 0) return false;
+  const opts = waitDecompOptions(me, view, kinds);
+  const tenpai = (ks: TileKind[]): boolean => {
+    try {
+      return winningKinds(ks, mine.meldCount, undefined, opts).length > 0;
+    } catch {
+      return false;
+    }
+  };
+  // 13장(대기 상태)이면 이미 텐파이인지, 14장(내 차례)이면 버려서 텐파이가 되는 패가 있는지
+  if (kinds.length % 3 === 1) return tenpai(kinds);
+  if (kinds.length % 3 === 2) {
+    return kinds.some((_, i) => tenpai(kinds.filter((_, j) => j !== i)));
+  }
+  return false;
+}
+
+/**
  * 내 증강 중 "계속 보여줘야 하는 정보"를 액티브 버튼 옆에 크게 표시한다.
  * (이면투시 뒷도라, 복수자·덤터기 대상, 판돈 예치 상태, 영상정찰/도박사 영상패 등.)
  * 좌상단 증강 정보 패널은 작아서 안 보인다는 피드백에 대한 대응.
@@ -12084,6 +12122,28 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
       if (value === me.id) textBadge(key, "🔒 리치 봉인", `${playerNameById(view, who)}의 이중 선언 — 이번 국 리치 불가`);
       else if (who === me.id) textBadge(key, "🔒 이중 선언", `${playerNameById(view, value)}의 리치를 잠갔다`);
     }
+  }
+  /*
+   * 등 떠밀기 — **낙인이 찍힌 당사자**에게 규칙을 알려 준다.
+   *
+   * 관계 표식(이름표의 🤚)만으로는 "무슨 일이 예약됐는지"가 안 읽힌다. 당하는 쪽은
+   * 다마텐으로 숨을 수 없다는 것을 **버리기 전에** 알아야 대응(후로로 손 열기·텐파이
+   * 늦추기)을 고를 수 있다 — 2026-08-12 사용자 요청. 지금 당장 걸리는 상황이면
+   * 문구를 그 순간의 말로 바꾼다(pushRiichiImminent).
+   */
+  for (const [key, value] of avEntries) {
+    if (!key.startsWith("push_riichi:") || key.startsWith("push_riichi:fired:")) continue;
+    if (typeof value !== "string" || value !== me.id) continue;
+    const by = key.slice("push_riichi:".length);
+    if (by === me.id) continue;
+    // 누가 찍었는지는 이름표의 관계 표식(🤚)이 이미 말한다 — 여기서는 **규칙**만 짧게.
+    textBadge(
+      key,
+      "🤚 등 떠밀기",
+      pushRiichiImminent(view, me)
+        ? "지금 버리면 자동 리치"
+        : "멘젠 텐파이로 버리면 자동 리치",
+    );
   }
   // 미래를 보는 자 — 교환으로 **가져온 3장**(전원 공개). 무엇이 들어왔는지 안 보인다는 피드백 대응.
   for (const [key, value] of avEntries) {
