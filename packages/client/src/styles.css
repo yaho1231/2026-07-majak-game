@@ -1697,13 +1697,45 @@ button {
   order: -1;
 }
 
-/* 내 이름표·증강·액티브 증강·오름패를 손패 위에 한 줄로 모은다 (예전엔 좌하단이라 잘렸다) */
+/* 내 이름표·증강·액티브 증강을 손패 위에 한 줄로 모은다 (예전엔 좌하단이라 잘렸다) */
 .own-top {
   display: flex;
   align-items: flex-end;
   justify-content: center;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+/*
+ * 내 오름패 줄 — **높이를 못 박아 늘 같은 자리를 차지한다**.
+ *
+ * 이 줄이 `.own-top` 안에 이름표와 나란히 있던 시절에는, 텐파이가 붙었다 떨어질
+ * 때마다(=쯔모·타패 한 번마다) 뱃지 높이만큼 아래쪽 띠가 늘었다 줄었다.
+ * 띠(`--own-band`)는 `--board`를 정하고 `--board`는 바닥 타일(--rt-w)까지 정하므로,
+ * 결과는 **매 순 크기가 달라지는 버림패**였다(2026-08-12 사용자 지적: "어지럽다").
+ * 좁은 창에서는 뱃지가 이름표 줄을 두 줄로 접으면서 더 크게 튀었다.
+ *
+ * 그래서 줄을 따로 떼고 높이를 상수로 고정한다. 텐파이가 아니면 빈 줄로 남지만,
+ * 그 대가로 보드·바닥 타일 크기가 국 내내 한 번도 변하지 않는다.
+ *
+ * ⚠ --waits-row-h 는 `.waits-badge-mine`의 실제 높이다 =
+ *    타일 높이 + 위아래 패딩(5+6) + 테두리(1+1). 뱃지 크기를 바꾸면 여기도 바꾼다.
+ *    (종류가 6개 이상이면 뱃지가 한 단계 작아지지만, 줄 높이는 큰 쪽으로 잡아 둔다.)
+ */
+.own-waits-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--waits-row-h, 75px);
+  max-width: calc(100cqw - 8px);
+}
+
+@container ui (max-width: 900px) {
+  .own-waits-row { height: 63px; }
+}
+
+@container ui (max-width: 700px) {
+  .own-waits-row { height: 54px; }
 }
 
 /*
@@ -6285,24 +6317,41 @@ button {
 }
 
 /* ── 남은 장수 ──
-   패 오른쪽 위 모서리. 아래는 "역없음" 꼬리표 자리라 비워 둔다.
+   **패 아래쪽 가운데**에 "N장" 띠로 붙인다. 예전에는 오른쪽 위 모서리의 작은
+   동그라미였는데, 패들이 3px 간격으로 붙어 있어 옆 패 그림 위에 얹히고 숫자만
+   덩그러니 떠 있어 무슨 수인지 읽히지 않았다(2026-08-12 사용자 요청).
    숫자는 "아직 보이지 않은 장수"이지 "확정 잔량"이 아니다 — 라벨 옆 힌트와
-   패의 title이 그 뜻을 말한다. */
+   패의 title이 그 뜻을 말한다.
+   (이 자리를 쓰던 "역없음" 꼬리표는 패 위쪽으로 올라갔다.) */
 .wait-left {
   position: absolute;
-  top: -5px;
-  right: -5px;
-  min-width: 15px;
-  padding: 0 3px;
-  border-radius: 999px;
+  left: 50%;
+  bottom: -4px;
+  transform: translateX(-50%);
+  padding: 0 4px;
+  border-radius: 5px;
   background: rgba(13, 23, 18, 0.96);
   border: 1px solid rgba(226, 199, 147, 0.65);
   color: #e2c793;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
-  line-height: 15px;
+  line-height: 14px;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
   text-align: center;
   pointer-events: none;
+}
+
+/* 내 오름패는 패가 커서(42×62) 띠도 같이 키운다 — 여기가 매 순 읽는 자리다.
+   좁은 화면에서는 그 패가 34·28px로 줄어드는데(위 @container 규칙) 띠가 그대로면
+   패보다 넓어져 옆 패를 덮으므로, 넓은 화면에서만 키운다. */
+@container ui (min-width: 901px) {
+  .waits-badge-mine:not(.waits-badge-wide) .wait-left {
+    padding: 0 5px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 17px;
+  }
 }
 
 /* 0장 — 그 패로는 못 난다. 색만 바꾸면 색각에 안 잡히므로 패 자체도 죽인다. */
@@ -9676,10 +9725,11 @@ button {
 .wait-tile-noyaku .tile-face {
   filter: grayscale(1) brightness(0.72);
 }
+/* 패 **위쪽** — 아래는 "남은 N장" 띠의 자리다(예전엔 여기가 아래였다) */
 .wait-noyaku-tag {
   position: absolute;
   left: 50%;
-  bottom: -2px;
+  top: -2px;
   transform: translateX(-50%);
   padding: 0 3px;
   border-radius: 3px;
