@@ -229,12 +229,12 @@ function yakumanHanLabel(han: number): string {
 
 const ACTION_LABEL: Record<string, string> = {
   win: "화료",
-  pon: "펑",
+  pon: "퐁",
   chi: "치",
-  bluff_pon: "허장성세 — 펑",
-  silent_pon: "묵계 — 멘젠 펑",
+  bluff_pon: "허장성세 — 퐁",
+  silent_pon: "묵계 — 멘젠 퐁",
   // 우는 국사무쌍의 특수 후로 — 버려진 요구패 1장 + 손패 2장(서로 다른 요구패 3종)
-  kokushi_pon: "우는 국사무쌍 — 요구패 펑",
+  kokushi_pon: "우는 국사무쌍 — 요구패 퐁",
   minkan: "깡",
   ankan: "안깡",
   shouminkan: "가깡",
@@ -3461,7 +3461,7 @@ export function App(): JSX.Element {
           const isKan =
             m.kind === "kan_open" || m.kind === "kan_closed" || m.kind === "kan_added";
           const label =
-            m.kind === "chi" ? "치" : isKan ? "깡" : m.kind === "kokushi_pon" ? "국사 펑" : "펑";
+            m.kind === "chi" ? "치" : isKan ? "깡" : m.kind === "kokushi_pon" ? "국사 퐁" : "퐁";
           const tone = m.kind === "chi" ? "chi" : isKan ? "kan" : "pon";
           const who = playerNameById(next, p.id);
           // 부른 패(없으면 후로 첫 패)를 컷인에 함께 보여준다
@@ -7747,7 +7747,7 @@ function QuickToggles(props: {
   const items: { key: "autoSort" | "autoWin" | "autoNoMeld" | "autoDiscard"; label: string; desc: string }[] = [
     { key: "autoSort", label: "자동정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
     { key: "autoWin", label: "자동화료", desc: AUTO_WIN_DESC },
-    { key: "autoNoMeld", label: "후로없음", desc: "치·펑·깡 기회를 자동으로 넘깁니다" },
+    { key: "autoNoMeld", label: "후로없음", desc: "치·퐁·깡 기회를 자동으로 넘깁니다" },
     { key: "autoDiscard", label: "자동버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
   ];
   return (
@@ -7925,7 +7925,7 @@ function SettingsPanel(props: {
   const rows: { key: BoolSettingKey; label: string; desc: string }[] = [
     { key: "autoSort", label: "자동 정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
     { key: "autoWin", label: "자동 화료", desc: AUTO_WIN_DESC },
-    { key: "autoNoMeld", label: "후로 없음", desc: "치·펑·깡 기회를 자동으로 넘깁니다" },
+    { key: "autoNoMeld", label: "후로 없음", desc: "치·퐁·깡 기회를 자동으로 넘깁니다" },
     { key: "autoDiscard", label: "자동 버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
     {
       key: "showMyWaits",
@@ -9122,7 +9122,7 @@ function SandboxBotSettings(props: {
   onControl?: (enabled: boolean) => void;
 }): JSX.Element {
   const items: Array<[keyof SandboxBotRules, string, string]> = [
-    ["noCall", "후로 불가", "봇이 펑·치·대명깡을 하지 않는다"],
+    ["noCall", "후로 불가", "봇이 퐁·치·대명깡을 하지 않는다"],
     ["noRiichi", "리치 불가", "봇이 리치를 선언하지 않는다 (다마텐은 친다)"],
     ["noWin", "화료 불가", "봇이 론·쯔모를 하지 않는다 — 판이 끝까지 흐른다"],
     ["noAugment", "증강 사용 불가", "봇이 액티브 증강을 발동하지 않는다"],
