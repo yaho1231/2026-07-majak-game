@@ -9808,6 +9808,33 @@ const NamePlate = memo(function NamePlate({
   const [detailFor, setDetailFor] = useState<string | null>(null);
   /** 지금 툴팁을 펼쳐 놓은 증강 id — 이것 하나만 속을 그린다 (나머지는 pill만) */
   const [tipFor, setTipFor] = useState<string | null>(null);
+  /**
+   * 눌러서 **고정해 둔** 증강 id들 — 손을 떼도 설명이 그대로 서 있는다.
+   *
+   * hover/focus만으로는 "지금 이 증강이 무슨 조건이었지"를 판을 보면서 확인할 수가 없다.
+   * 마우스를 떼는 순간 설명이 사라지므로, 설명을 읽는 동안에는 판을 못 보고 판을 보는
+   * 동안에는 설명을 못 본다. 눌러 고정하면 둘을 나란히 놓을 수 있다.
+   * 여러 개를 동시에 고정할 수 있다(다시 누르면 풀린다, Esc는 전부 푼다).
+   */
+  const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
+  const togglePin = (a: string): void =>
+    setPinned((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(a)) next.add(a);
+      return next;
+    });
+  // Esc — 고정한 설명이 판을 가릴 때 한 번에 걷는 손잡이. 고정한 게 없으면 안 건다
+  // (연출 건너뛰기·모달 닫기 같은 다른 Esc 임자를 가로채지 않게).
+  const hasPinned = pinned.size > 0;
+  useEffect(() => {
+    if (!hasPinned) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      setPinned(new Set());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasPinned]);
   // 상대 이름표의 표식에 손이 올라가 있고 그 관계가 나를 향하면 나도 같이 빛난다
   const linked =
     hovered !== null && myRelations.some((r) => r.key === hovered);
@@ -9867,8 +9894,14 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}`}
                 tabIndex={0}
+                // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
+                // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
+                onClick={(e) => {
+                  if (e.target !== e.currentTarget && (e.target as HTMLElement).closest(".aug-tip") !== null) return;
+                  togglePin(a);
+                }}
                 onMouseEnter={() => setTipFor(a)}
                 onMouseLeave={() => setTipFor((cur) => (cur === a ? null : cur))}
                 onFocus={() => setTipFor(a)}
@@ -9903,7 +9936,11 @@ const NamePlate = memo(function NamePlate({
                     <span style={{ transform: `scaleX(${status.gauge})` }} />
                   </span>
                 ) : null}
-                {tipFor === a ? (
+                {pinned.has(a) ? (
+                  <span className="aug-pill-pin-mark" aria-hidden="true">📌</span>
+                ) : null}
+                {/* 고정해 둔 것은 손을 떼도 그린다 — 그래야 판과 설명을 나란히 볼 수 있다 */}
+                {tipFor === a || pinned.has(a) ? (
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
                   <span className="aug-tip-name">
                     <AugCatIcon id={a} />
@@ -9940,6 +9977,11 @@ const NamePlate = memo(function NamePlate({
                     open={shiftHeld || detailFor === a}
                     onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
                   />
+                  <span className="aug-tip-pin">
+                    {pinned.has(a)
+                      ? "📌 고정됨 — 다시 누르면 내린다 (Esc: 전부)"
+                      : "📌 누르면 이대로 띄워 둔다"}
+                  </span>
                 </span>
                 ) : null}
               </span>
