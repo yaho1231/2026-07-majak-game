@@ -3,11 +3,21 @@
  *
  * 설명이 세 겹이라는 것만 기억하면 된다.
  *
- * | 층 | 내용 | 사는 곳 | 보이는 때 |
- * |----|------|---------|-----------|
- * | 요약 | "이게 뭘 하는 증강인가" 딱 한 문장 | **이 파일** | 항상 |
- * | 설명 | 조건·예외까지 포함한 정식 문장 | `AugmentDef.description` | Shift를 누르거나 "자세히"를 눌렀을 때 |
- * | 상세 | 작동 원리·전략·주의점 | `AugmentDef.detail` | 도감/샌드박스 상세 |
+ * | 층 | 내용 | 사는 곳 |
+ * |----|------|---------|
+ * | 요약 | "이게 뭘 하는 증강인가" 딱 한 문장 | **이 파일** |
+ * | 설명 | 조건·예외까지 포함한 정식 문장 | `AugmentDef.description` |
+ * | 상세 | 작동 원리·전략·주의점 | `AugmentDef.detail` |
+ *
+ * **어느 층을 펼치는지는 화면마다 다르다** (`AugmentDescVariant`). 요약은 어디서나 늘 보이고,
+ * 그 아래 펼쳐지는 것만 갈린다.
+ *
+ * | 화면 | 펼쳤을 때 | 왜 |
+ * |------|-----------|-----|
+ * | 드래프트 카드·인게임 이름표 툴팁 (`"draft"`) | 요약 + **설명** | 판 중에 몇 초 안에 고르는 자리다. 상세는 길어서 방해가 된다 |
+ * | 증강 도감 상세·샌드박스 상세 (`"codex"`) | 요약 + **상세** | 목록에 이미 요약이 서 있고, 설명은 상세와 말이 겹친다 |
+ *
+ * 상세가 아직 없는 증강은 도감에서도 설명이 그 자리를 대신한다 — 빈 패널을 두지 않는다.
  *
  * 드래프트 카드와 이름표 툴팁은 좁다 — 요약이 길어지면 그 자리에서 다섯 줄을 넘긴다.
  * 그래서 요약은 **60자 안쪽**을 지킨다(`test/augmentBrief.test.ts`가 지킨다).
@@ -175,4 +185,38 @@ export function briefOf(id: string, description: string | undefined): AugmentBri
   const { use, body } = splitLead(description ?? "");
   const first = /^[^.。]*[.。]?/.exec(body)?.[0] ?? body;
   return { use, text: first.trim() };
+}
+
+/**
+ * 설명을 펼치는 자리가 어디인가 — 화면마다 보여주는 층이 다르다.
+ *
+ * 렌더 컴포넌트가 자기 위치를 추측하지 않게, **호출부가 명시**한다.
+ * - `"draft"` — 증강 선택 카드, 인게임 이름표 툴팁. 요약 + 설명.
+ * - `"codex"` — 증강 도감 상세, 샌드박스 상세 패널. 요약 + 상세.
+ */
+export type AugmentDescVariant = "draft" | "codex";
+
+/**
+ * "자세히"를 펼쳤을 때 요약 **아래에** 붙일 문단들.
+ *
+ * 어느 층이 오는지는 위 표대로 `variant`가 정한다. 원문 머리말 `(상시)`은 떼어낸다 —
+ * 그 말은 이미 배지가 하고 있다. 상세는 빈 줄로 나뉜 여러 문단일 수 있다.
+ */
+export function expandParas(
+  variant: AugmentDescVariant,
+  description: string | undefined,
+  detail?: string | undefined,
+): string[] {
+  const body = splitLead(description ?? "").body.trim();
+  const fallback = body === "" ? [] : [body];
+  if (variant === "draft") return fallback;
+  const paras = (detail ?? "")
+    .trim()
+    .split(/\n\n+/)
+    // 상세도 첫 문단에 머리말 `(2국에 1회)`을 달고 있는 것이 많다 — 요약 배지가 이미
+    // 하는 말이라 여기서도 뗀다(예전엔 배지·설명·상세가 같은 말을 세 번 했다).
+    .map((p, i) => (i === 0 ? splitLead(p).body : p).trim())
+    .filter((p) => p !== "");
+  // 상세가 아직 없는 증강 — 도감 상세를 비워 두는 것보다 설명이라도 보여준다
+  return paras.length > 0 ? paras : fallback;
 }

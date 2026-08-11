@@ -91,8 +91,8 @@ describe("📜 기록 — 상태 스냅샷이 아니라 append-only 로그", () 
 
 // ─────────────────────────── 3. UI 배율 ───────────────────────────
 
-describe("UI 배율 — 자동 맞춤뿐이고 Ctrl + 를 되돌리지 않는다", () => {
-  it("설정 패널에 배율 손잡이가 없다 (2026-08-07 사용자 지시로 걷어냈다)", () => {
+describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌리지 않는다", () => {
+  it("배율 손잡이는 설정 패널이 아니라 화면 위에 있다 (2026-08-07 지시로 설정에서 걷어냈다)", () => {
     expect(APP).not.toContain("UiScaleRow");
     expect(UISCALE).not.toContain("export function setUiScaleSetting");
     expect(CSS).not.toContain(".uiscale-auto");
@@ -107,6 +107,26 @@ describe("UI 배율 — 자동 맞춤뿐이고 Ctrl + 를 되돌리지 않는다
     expect(UISCALE).toContain("function userZoomedIn");
     expect(UISCALE).toContain("devicePixelRatio");
     expect(UISCALE).toContain("if (userZoomedIn()) return 1;");
+  });
+
+  it("−/+ 버튼이 어느 화면에서나 뜬다 (게임 루트 최상단, 로그인·로비 포함)", () => {
+    expect(APP).toContain("function ScaleControl(");
+    expect(APP).toContain("<ScaleControl />");
+    expect(CSS).toContain(".ui-zoom");
+  });
+
+  it("버튼이 화면과 함께 작아지지 않는다 — 되돌리기 scale", () => {
+    // 가장 작아서 손잡이가 가장 필요한 순간에 손잡이도 작아지면 안 된다
+    expect(CSS).toContain("transform: scale(calc(1 / var(--ui-scale, 1)))");
+  });
+
+  it("단축키가 브라우저 확대(Ctrl/⌘ +/−)를 가로채지 않는다", () => {
+    expect(code(UISCALE)).toContain("if (!e.altKey || e.ctrlKey || e.metaKey) return;");
+  });
+
+  it("옛 키를 재활용하지 않는다 — 새 키를 쓴다", () => {
+    expect(UISCALE).toContain('const ZOOM_KEY = "majak.uiZoom"');
+    expect(code(UISCALE)).not.toMatch(/ZOOM_KEY\s*=\s*LEGACY_OVERRIDE_KEY/);
   });
 
   it("viewport에 확대 금지가 걸려 있지 않다", () => {

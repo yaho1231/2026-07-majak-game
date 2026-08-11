@@ -5,6 +5,14 @@
  * 여기 등록된 표기는 본문에서 자동으로 밑줄이 그이고, 마우스를 잠시 올려 두면
  * `short` 한 줄이 뜬다. 표시 로직은 App.tsx의 `TermText`.
  *
+ * ## 읽는 곳이 둘이다
+ * 1. **툴팁** — 본문에서 그 말을 만났을 때. 언제나 `short` 한 줄이다.
+ * 2. **용어 설명집** — 규칙·도움말의 "용어" 탭(App.tsx `TermsTab`). 이 표를 그대로
+ *    읽어 분류별로 늘어놓는다. 긴 풀이(`long`)가 있으면 그쪽을 보여 준다.
+ *
+ * 설명집은 이 파일을 **단일 진실로** 읽는다 — 문안을 App.tsx에 옮겨 적지 마라.
+ * 두 벌이 되면 한쪽만 고쳐져 갈린다.
+ *
  * ## 무엇을 싣고 무엇을 뺐나
  * **이 게임의 텍스트에 실제로 나오는 말만** 싣는다. 마작 용어 전체를 옮겨 오면
  * 게임에서 한 번도 안 쓰는 말(간짱·마와시우치·오카…)이 사전의 대부분을 차지하고,
@@ -29,6 +37,9 @@
  * ## 항목을 추가할 때
  * - `short`는 **한 문장**. 마작을 처음 하는 사람이 읽고 바로 그림이 그려져야 한다.
  *   설명 안에서 또 다른 전문 용어를 쓰지 않는다(쓰면 또 모른다).
+ * - `group`은 필수다. 배열의 구획 주석과 같은 분류를 적는다 — 설명집이 이걸로 묶는다.
+ * - `long`은 **필요할 때만.** 한 줄로는 그림이 안 그려지는 개념에만 붙인다.
+ *   툴팁에는 안 뜬다(판을 가린다) — 설명집에서만 읽힌다.
  * - `match`는 **정규식 소스**다. 생략하면 `label` 하나만 찾는다.
  *   캡처 그룹 `( )`을 쓰면 안 된다 — 매칭된 항목을 그룹 번호로 되찾기 때문에
  *   깨진다. 조건이 필요하면 전방탐색 `(?!…)` / `(?=…)`만 쓴다.
@@ -42,13 +53,53 @@
  * 설정의 **용어 설명** 토글(`Settings.glossaryTips`)이 꺼지면 밑줄도 툴팁도 없이
  * 맨 글자로 흐른다. 용어를 이미 아는 사람에게는 밑줄이 글을 읽는 데 방해가 된다.
  */
+/**
+ * 설명집의 분류. 배열 안의 구획 주석과 **같은 순서**로 세운다 —
+ * 주석만 있고 필드가 없으면 화면에서 분류를 되찾을 길이 없다.
+ */
+export type GlossaryGroup =
+  | "hand"
+  | "tile"
+  | "dora"
+  | "flow"
+  | "seat"
+  | "win"
+  | "call"
+  | "riichi"
+  | "score"
+  | "game"
+  | "yaku";
+
+/** 설명집에 뜨는 분류 이름과 순서 (App.tsx의 용어 탭이 그대로 읽는다) */
+export const GLOSSARY_GROUPS: readonly { id: GlossaryGroup; label: string }[] = [
+  { id: "hand", label: "손의 모양" },
+  { id: "tile", label: "패의 종류" },
+  { id: "dora", label: "도라" },
+  { id: "flow", label: "국의 진행" },
+  { id: "seat", label: "자리" },
+  { id: "win", label: "이기는 방법" },
+  { id: "call", label: "울기·깡" },
+  { id: "riichi", label: "리치" },
+  { id: "score", label: "점수" },
+  { id: "game", label: "이 게임이 만든 말" },
+  { id: "yaku", label: "역 이름" },
+];
+
 export interface GlossaryEntry {
   /** 안정적인 식별자 (툴팁 key) */
   key: string;
+  /** 설명집에서 묶이는 분류 */
+  group: GlossaryGroup;
   /** 툴팁 제목 — 기본 매칭 표기이기도 하다 */
   label: string;
   /** 초보자용 한 줄 풀이 */
   short: string;
+  /**
+   * 설명집에서만 쓰는 긴 풀이. 툴팁은 언제나 `short`다 — 손패 위에 뜨는 말풍선에
+   * 세 줄을 넣으면 판이 가려진다. 처음 하는 사람이 한 줄로는 못 그리는 개념
+   * (리치·후리텐·부수처럼)에만 붙인다. 전부에 붙일 필요가 없다.
+   */
+  long?: string;
   /** 본문에서 이 용어로 인식할 표기들(정규식 소스). 생략하면 label 하나. */
   match?: readonly string[];
 }
@@ -57,33 +108,41 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 손의 모양 ──────────────────────────────────────────────
   {
     key: "shuntsu",
+    group: "hand",
     label: "슌쯔",
     short: "같은 무늬로 숫자가 이어지는 3장(예: 3만 4만 5만).",
   },
   {
     key: "koutsu",
+    group: "hand",
     label: "커쯔",
     short: "똑같은 패 3장(예: 5통 5통 5통).",
   },
   {
     key: "kantsu",
+    group: "hand",
     label: "깡쯔",
     short: "똑같은 패 4장을 한 덩어리로 낸 것. 깡을 선언해야 깡쯔가 된다.",
   },
   {
     key: "mentsu",
+    group: "hand",
     label: "멘쯔",
     short: "손을 이루는 3장짜리 덩어리. 완성하려면 이것 4개와 머리 1개가 필요하다.",
+    long:
+      "손을 완성하려면 3장짜리 덩어리 4개와 똑같은 패 2장(머리) 1개, 모두 14장이 필요하다. 덩어리는 두 가지뿐이다 — 같은 무늬로 숫자가 이어지는 3장, 아니면 똑같은 패 3장. 어떤 손도 결국 이 모양으로 끝난다.",
     match: ["멘쯔", "몸통"],
   },
   {
     key: "head",
+    group: "hand",
     label: "머리",
     short: "손에 딱 하나 필요한 똑같은 패 2장. 덩어리 4개 + 머리 1개가 완성형이다.",
     match: ["머리(?![카말])"],
   },
   {
     key: "junk_tile",
+    group: "hand",
     label: "잡패",
     short: "어느 덩어리에도 끼지 못해 버려도 그만인 패.",
   },
@@ -91,31 +150,37 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 패의 종류 ──────────────────────────────────────────────
   {
     key: "suits",
+    group: "tile",
     label: "무늬",
     short: "숫자패의 세 종류 — 만(萬)·통(筒)·삭(索).",
   },
   {
     key: "number_tile",
+    group: "tile",
     label: "수패",
     short: "1~9 숫자가 적힌 패. 만·통·삭 세 무늬로 각 4장씩 있다.",
   },
   {
     key: "honor_tile",
+    group: "tile",
     label: "자패",
     short: "숫자가 없는 패 — 동·남·서·북과 백·발·중, 모두 7종류.",
   },
   {
     key: "terminal",
+    group: "tile",
     label: "요구패",
     short: "1과 9, 그리고 자패를 통틀어 부르는 말. 손의 '끝자락' 패다.",
   },
   {
     key: "wind_tile",
+    group: "tile",
     label: "풍패",
     short: "동·남·서·북 네 종류. 내 자리나 판에 걸린 것만 점수가 된다.",
   },
   {
     key: "sanyuan",
+    group: "tile",
     label: "삼원패",
     short: "백·발·중 세 종류. 어느 것이든 3장 모으면 그 자체로 점수가 된다.",
   },
@@ -123,33 +188,41 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 도라 ──────────────────────────────────────────────────
   {
     key: "dora_indicator",
+    group: "dora",
     label: "도라 표시패",
     short: "뒤집어 놓은 안내패. 이 패의 '다음' 패가 진짜 보너스 패가 된다.",
+    long:
+      "판에 한 장 뒤집어 놓는 안내패다. 보너스가 되는 것은 이 패 자신이 아니라 **다음 패**다 — 3만이 뒤집혀 있으면 4만이 보너스, 9만이면 1만으로 돌아간다. 바람패는 동→남→서→북→동, 백발중은 백→발→중→백 순으로 돈다.",
     match: ["도라 표시패", "표시패"],
   },
   {
     key: "ura_dora",
+    group: "dora",
     label: "뒷도라",
     short: "리치를 걸고 화료했을 때만 추가로 열어 보는 보너스 패.",
   },
   {
     key: "red_dora",
+    group: "dora",
     label: "적도라",
     short: "빨갛게 칠한 5. 한 장당 점수가 한 단계 오르지만, 적도라만으로는 이길 수 없다.",
   },
   {
     key: "kan_dora",
+    group: "dora",
     label: "깡도라",
     short: "깡을 할 때마다 새로 열리는 보너스 패.",
     match: ["깡도라"],
   },
   {
     key: "dora",
+    group: "dora",
     label: "도라",
     short: "보너스 패. 한 장당 점수가 한 단계 오르지만, 도라만으로는 이길 수 없다.",
   },
   {
     key: "nuki_dora",
+    group: "dora",
     label: "북빼기",
     short: "손의 北을 옆에 빼놓고 새 패를 뽑는 규칙. 빼놓은 北은 보너스로 값한다.",
     match: ["북빼기"],
@@ -158,59 +231,72 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 진행 ──────────────────────────────────────────────────
   {
     key: "wall",
+    group: "flow",
     label: "패산",
     short: "아직 아무도 뽑지 않은 패 더미. 여기서 한 장씩 가져온다.",
   },
   {
     key: "dead_wall",
+    group: "flow",
     label: "왕패",
     short: "패산 끝에 떼어 둔 14장. 도라 표시패와 영상패가 여기서 나온다.",
   },
   {
     key: "haipai",
+    group: "flow",
     label: "배패",
     short: "국이 시작할 때 처음 받는 13장.",
   },
   {
     key: "rinshan_tile",
+    group: "flow",
     label: "영상패",
     short: "깡을 하면 왕패 끝에서 대신 뽑아 오는 보충 패.",
   },
   {
     key: "haitei",
+    group: "flow",
     label: "해저",
     short: "패산의 맨 마지막 패.",
     match: ["해저패", "해저(?![로모])"],
   },
   {
     key: "river",
+    group: "flow",
     label: "바닥",
     short: "자기 앞에 버린 패가 줄지어 놓이는 자리.",
     match: ["버림패", "바닥(?=[의에을은이과와도만])"],
   },
   {
     key: "honba",
+    group: "flow",
     label: "본장",
     short: "국이 다시 치러질 때마다 쌓이는 카운터. 1개당 이긴 사람이 300점을 더 받는다.",
+    long:
+      "아무도 못 이겨 국이 다시 치러지거나 오야가 이겨 자리를 이어 갈 때마다 하나씩 쌓이는 카운터. 1개당 이긴 사람이 300점을 더 받는다. 오래 끌린 판일수록 한 방이 커진다.",
   },
   {
     key: "renchan",
+    group: "flow",
     label: "연장",
     short: "오야가 이겨서 오야 자리를 그대로 한 번 더 맡는 것.",
     match: ["연장\\(렌짱\\)", "렌짱", "연장(?![된하])"],
   },
   {
     key: "tonpuu",
+    group: "flow",
     label: "동풍전",
     short: "동1국~동4국만 도는 짧은 대국.",
   },
   {
     key: "hanchan",
+    group: "flow",
     label: "반장전",
     short: "동장과 남장을 모두 도는 긴 대국. 동풍전의 두 배 길이다.",
   },
   {
     key: "extra_round",
+    group: "flow",
     label: "서입",
     short: "마지막 국까지 아무도 기준 점수를 못 넘겨 국을 더 이어 가는 것.",
     match: ["서입", "남입"],
@@ -219,38 +305,47 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 자리 ──────────────────────────────────────────────────
   {
     key: "oya",
+    group: "seat",
     label: "오야",
     short: "그 국에서 맨 먼저 패를 뽑는 사람. 점수를 1.5배로 주고받는다.",
+    long:
+      "그 국에서 맨 먼저 패를 뽑는 사람. 이겼을 때 1.5배로 받고, 대신 남이 스스로 뽑아 이기면 혼자 두 배를 문다. 이기거나 완성 직전 상태로 국이 끝나면 그 자리를 한 번 더 맡는다.",
   },
   {
     key: "seat_wind",
+    group: "seat",
     label: "자풍",
     short: "내 자리에 걸린 바람패. 나만 그 패를 3장 모으면 점수가 된다.",
     match: ["자풍패", "자풍"],
   },
   {
     key: "round_wind",
+    group: "seat",
     label: "장풍",
     short: "판 전체에 걸린 바람패(동장이면 東). 누구든 3장 모으면 점수가 된다.",
     match: ["장풍패", "장풍"],
   },
   {
     key: "taka",
+    group: "seat",
     label: "타가",
     short: "나를 뺀 나머지 세 사람.",
   },
   {
     key: "kamicha",
+    group: "seat",
     label: "상가",
     short: "내 바로 앞 차례인 왼쪽 사람. 이 사람이 버린 패로만 치를 할 수 있다.",
   },
   {
     key: "shimocha",
+    group: "seat",
     label: "하가",
     short: "내 바로 다음 차례인 오른쪽 사람.",
   },
   {
     key: "toimen",
+    group: "seat",
     label: "대가",
     short: "내 반대편(정면)에 위치한 사람. '대면'이라고도 한다.",
     // `대가`는 "그 상대가"에 통째로 파묻힌다 — 앞이 한글이면 잡지 않는다.
@@ -261,76 +356,96 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 이기는 방법 ────────────────────────────────────────────
   {
     key: "agari",
+    group: "win",
     label: "화료",
     short: "손을 완성해 점수를 받는 것. 이 게임을 승리한다.",
   },
   {
     key: "tsumo",
+    group: "win",
     label: "쯔모",
     short: "패산에서 스스로 뽑은 패로 이기는 것. 셋 모두에게서 점수를 받는다.",
     match: ["쯔모(?![기])"],
   },
   {
     key: "tsumogiri",
+    group: "win",
     label: "쯔모기리",
     short: "방금 뽑은 패를 손에 넣지 않고 그대로 버리는 것.",
   },
   {
     key: "dahai",
+    group: "win",
     label: "타패",
     short: "패를 하나 골라 버리는 것. 매 차례 뽑고 나서 반드시 한 장을 버린다.",
   },
   {
     key: "ron",
+    group: "win",
     label: "론",
     short: "남이 버린 패를 가로채 이기는 것. 그 한 사람이 점수를 전부 낸다.",
     match: ["론(?![스])"],
   },
   {
     key: "houjuu",
+    group: "win",
     label: "방총",
     short: "내가 버린 패로 남이 이기는 것. 그 점수를 나 혼자 물어낸다.",
   },
   {
     key: "winning_tile",
+    group: "win",
     label: "오름패",
     short: "그 한 장만 더 들어오면 손이 완성되는 패.",
     match: ["오름패", "화료패"],
   },
   {
     key: "wait",
+    group: "win",
     label: "대기",
     short: "지금 어떤 패를 기다리고 있는지, 그 오름패의 모양.",
     match: ["대기(?![만])"],
   },
   {
     key: "tenpai",
+    group: "win",
     label: "텐파이",
     short: "오름패 한 장만 남은 완성 직전 상태.",
+    long:
+      "한 장만 더 들어오면 손이 완성되는 상태. 리치를 걸 수 있는 것도, 국이 그냥 끝났을 때 벌점을 안 내는 것도 이 상태여야 한다. 다만 완성해도 역이 하나도 없으면 모양만 갖췄을 뿐 이기지는 못한다.",
   },
   {
     key: "noten",
+    group: "win",
     label: "노텐",
     short: "완성 직전이 아닌 상태. 국이 그냥 끝나면 벌점을 낸다.",
   },
   {
     key: "furiten",
+    group: "win",
     label: "후리텐",
     short: "내 오름패에 포함되는 패를 내가 이미 버려서, 남의 패로는 못 이기게 된 상태. 쯔모는 가능하다.",
+    long:
+      "내가 기다리는 패 가운데 하나라도 내 앞에 이미 버려져 있으면 이 상태가 된다. 남이 그 패를 버려도 가로챌 수 없고, 스스로 뽑아서만 이길 수 있다. 기다리는 패가 여러 종류일 때 그중 **하나만** 버려져 있어도 전부 막힌다 — 손을 바꿔 기다림이 달라지면 풀린다.",
   },
   {
     key: "genbutsu",
+    group: "win",
     label: "현물",
     short: "그 사람이 이미 버린 패. 그 사람에게는 절대 쏘이지 않는 안전패다.",
   },
   {
     key: "ryuukyoku",
+    group: "win",
     label: "유국",
     short: "아무도 못 이긴 채 패산이 떨어져 국이 끝나는 것.",
+    long:
+      "아무도 이기지 못한 채 뽑을 패가 떨어져 국이 끝나는 것. 이때 완성 직전이던 사람과 아니던 사람 사이에 3000점이 오간다 — 아무도 완성 직전이 아니거나 모두가 그렇다면 점수는 움직이지 않는다.",
     match: ["황패유국", "유국(?![만])"],
   },
   {
     key: "nagashi",
+    group: "win",
     label: "유국만관",
     short: "버린 패가 전부 1·9와 자패였을 때, 유국인데도 만관을 받는 규칙.",
   },
@@ -338,55 +453,69 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 울기 ──────────────────────────────────────────────────
   {
     key: "menzen",
+    group: "call",
     label: "멘젠",
     short: "한 번도 남의 패를 울지 않은 상태. 리치를 걸 수 있는 조건이다.",
   },
   {
     key: "furo",
+    group: "call",
     label: "후로",
     short: "남이 버린 패를 가져와 앞에 펼쳐 두는 것. 손이 빨라지지만 멘젠이 깨진다.",
+    long:
+      "남이 버린 패를 가져와 자기 앞에 펼쳐 놓는 것. 덩어리 하나가 즉시 완성되니 손이 훨씬 빨라지지만, 대신 리치를 걸 수 없고 점수가 크게 깎이는 역이 많다. 펼쳐 둔 패는 모두에게 보이므로 무엇을 노리는지도 들킨다.",
     match: ["후로", "울음"],
   },
   {
     key: "chi",
+    group: "call",
     label: "치",
     short: "왼쪽 사람이 버린 패로 이어지는 3장을 만드는 울기.",
     match: ["치(?=[·를은도])"],
   },
   {
     key: "pon",
+    group: "call",
     label: "퐁",
     short: "남이 버린 패로 같은 패 3장을 만드는 울기. 누구에게서든 가져올 수 있다.",
     match: ["퐁", "펑"],
   },
   {
     key: "kan",
+    group: "call",
     label: "깡",
     short: "같은 패 4장을 한 덩어리로 내는 것. 보너스가 하나 더 열리고 패를 한 장 더 뽑는다.",
+    long:
+      "같은 패 4장을 한 덩어리로 내는 것. 보너스 패가 하나 더 열리고 보충으로 한 장을 더 뽑는다. 다만 새로 열린 보너스는 나만 쓰는 게 아니라 **모두에게** 붙으므로, 남의 리치에 깡을 해 주면 그쪽 점수만 키우는 일이 된다.",
     match: ["깡(?![패])"],
   },
   {
     key: "ankan",
+    group: "call",
     label: "안깡",
     short: "내 손패만으로 만든 깡. 울지 않은 것으로 쳐서 멘젠이 유지된다.",
   },
   {
     key: "kakan",
+    group: "call",
     label: "가깡",
     short: "이미 퐁해 둔 자리에 4장째를 얹어 만든 깡.",
   },
   {
     key: "daiminkan",
+    group: "call",
     label: "대명깡",
     short: "남이 버린 패를 가져와 만든 깡.",
   },
   {
     key: "chankan",
+    group: "call",
     label: "창깡",
     short: "남이 깡하려고 내민 그 패를 가로채 이기는 것.",
   },
   {
     key: "rinshan_kaihou",
+    group: "call",
     label: "영상개화",
     short: "깡을 하고 보충으로 뽑은 패로 곧바로 이기는 것.",
   },
@@ -394,28 +523,35 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 리치 ──────────────────────────────────────────────────
   {
     key: "riichi",
+    group: "riichi",
     label: "리치",
     short: "완성 직전에 1000점을 걸고 하는 선언. 이후 손을 못 바꾸는 대신 점수가 크게 붙는다.",
+    long:
+      "완성 직전에 1000점을 판에 걸고 하는 선언이다. 선언한 뒤에는 뽑은 패를 그대로 버려야 하고 손을 바꿀 수 없다 — 그 대신 점수가 크게 붙고, 이겼을 때 뒷도라까지 열어 본다. 남이 보기에도 위험한 사람이 되므로 그때부터 아무도 위험한 패를 안 버린다.",
     match: ["리치(?![봉])"],
   },
   {
     key: "double_riichi",
+    group: "riichi",
     label: "더블리치",
     short: "첫 한 바퀴 안에 거는 리치. 보통 리치의 두 배로 값한다.",
   },
   {
     key: "ippatsu",
+    group: "riichi",
     label: "일발",
     short: "리치를 걸고 한 바퀴 안에 이기면 붙는 보너스. 누가 울면 사라진다.",
   },
   {
     key: "damaten",
+    group: "riichi",
     label: "다마텐",
     short: "완성 직전인데 리치를 걸지 않고 조용히 기다리는 것. 상대가 눈치채지 못한다.",
     match: ["다마텐", "야미텐"],
   },
   {
     key: "kyoutaku",
+    group: "riichi",
     label: "공탁",
     short: "리치할 때 판에 내놓는 1000점. 다음에 이긴 사람이 통째로 가져간다.",
     match: ["공탁금", "공탁", "리치봉"],
@@ -424,44 +560,58 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 점수 ──────────────────────────────────────────────────
   {
     key: "yaku",
+    group: "score",
     label: "역",
     short: "이기려면 반드시 하나는 있어야 하는 '족보'. 없으면 모양이 완성돼도 못 이긴다.",
+    long:
+      "모양을 완성했다고 이길 수 있는 게 아니다. 정해진 '족보' 가운데 최소 하나는 갖춰야 화료가 인정된다. 가장 흔한 것은 1·9와 자패를 안 쓰는 손(탕야오), 리치, 그리고 스스로 뽑아 완성한 손(멘젠쯔모)이다. 보너스 패는 아무리 많아도 역으로 쳐 주지 않는다.",
     match: ["역(?![만패류])"],
   },
   {
     key: "yakuhai",
+    group: "score",
     label: "역패",
     short: "3장만 모아도 그 자체로 점수가 되는 패 — 백·발·중과 내 바람패.",
   },
   {
     key: "han",
+    group: "score",
     label: "판",
     short: "점수의 단위. 1판 오를 때마다 받는 점수가 대략 두 배가 된다.",
+    long:
+      "점수의 큰 단위다. 갖춘 역마다 몇 판씩 붙고, 보너스 패도 한 장에 1판씩 더한다. 1판 오를 때마다 받는 점수가 대략 두 배가 되며, 5판이면 만관 등급에 닿는다.",
     match: ["\\d+판"],
   },
   {
     key: "fu",
+    group: "score",
     label: "부수",
     short: "판과 함께 점수를 정하는 잔돈 단위. 손의 모양에 따라 조금씩 붙는다.",
+    long:
+      "판이 큰 단위라면 이쪽은 잔돈이다. 기본 20에서 시작해 손의 모양에 따라 조금씩 붙는다 — 같은 패 3장 덩어리, 1·9·자패로 만든 덩어리, 머리로 쓴 역패 같은 것들. 판수가 낮은 손일수록 이 잔돈이 최종 점수를 크게 좌우한다.",
   },
   {
     key: "mangan",
+    group: "score",
     label: "만관",
     short: "점수 등급의 첫 문턱. 8000점(오야는 12000점).",
   },
   {
     key: "haneman",
+    group: "score",
     label: "하네만",
     short: "만관 바로 위 등급. 12000점(오야는 18000점).",
   },
   {
     key: "baiman",
+    group: "score",
     label: "배만",
     short: "하네만 위 등급. 16000점(오야는 24000점). 그 위는 삼배만이다.",
     match: ["삼배만", "배만"],
   },
   {
     key: "yakuman",
+    group: "score",
     label: "역만",
     short: "최고 등급의 손. 32000점(오야는 48000점)으로 한 방에 판이 뒤집힌다.",
   },
@@ -470,41 +620,55 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // 마작에는 없고 증강이 만들어 낸 개념들. 정의가 여기밖에 없다.
   {
     key: "bank",
+    group: "game",
     label: "뱅크",
     short: "점수를 새로 찍어 내는 가상의 금고. 여기서 나오는 점수는 상대 주머니에서 빠지지 않는다.",
+    long:
+      "이 게임이 만든 개념이다. 보통 마작에서 점수는 누군가 잃어야 누군가 얻지만, 여기서 나오는 점수는 아무의 주머니에서도 빠지지 않고 새로 찍혀 나온다 — 그래서 전체 점수 합이 늘어난다.",
   },
   {
     key: "stake",
+    group: "game",
     label: "판돈",
     short: "이겼을 때 그만큼 더 받으려고 미리 걸어 두는 점수.",
   },
   {
     key: "karma_gauge",
+    group: "game",
     label: "업보 게이지",
     short: "잃은 점수가 그대로 쌓이는 눈금. 태우면 쌓인 만큼을 상대에게서 되받는다.",
+    long:
+      "이 게임이 만든 개념이다. 점수를 잃을 때마다 그만큼이 눈금에 쌓인다. 쌓인 것을 태우면 그 크기만큼을 상대에게서 되받는다 — 얻어맞고 버틴 만큼이 나중의 한 방이 되는 구조다.",
   },
   {
     key: "conjured_tile",
+    group: "game",
     label: "생성패",
     short: "패산에 없던 패를 증강이 그 자리에서 만들어 낸 것. 화면에 보라색으로 뜬다.",
+    long:
+      "이 게임이 만든 개념이다. 패산에 원래 없던 패를 증강이 그 자리에서 만들어 손에 넣어 준다. 화면에서 보라색 테두리로 구분되며, 그만큼 같은 패가 세상에 네 장보다 많아질 수 있다.",
   },
   {
     key: "triple_riichi",
+    group: "game",
     label: "트리플리치",
     short: "증강으로만 나오는 리치. 더블리치 조건에서 한 단계 더 올라 4판으로 값한다.",
   },
   {
     key: "snake_kan",
+    group: "game",
     label: "장사진",
     short: "증강으로만 되는 깡. 같은 무늬 연속 4장(3-4-5-6)을 한 덩어리로 낸다.",
   },
   {
     key: "sanma",
+    group: "game",
     label: "삼인마작",
     short: "셋이서 하는 마작. 이 게임은 넷이서 하고, 북빼기 같은 규칙만 증강으로 들여온다.",
   },
   {
     key: "kazoe_yakuman",
+    group: "game",
     label: "셈수역만",
     short: "역만 족보가 없어도 판이 13판을 넘어 역만으로 값하게 된 손.",
     match: ["셈수역만", "헤아림 역만"],
@@ -513,12 +677,14 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // ── 자주 나오는 족보 ────────────────────────────────────────
   {
     key: "kokushi",
+    group: "yaku",
     label: "국사무쌍",
     short: "1·9와 자패 13종을 한 장씩 다 모으는 최고 등급 손.",
     match: ["국사무쌍", "국사(?![를])"],
   },
   {
     key: "chiitoi",
+    group: "yaku",
     label: "치또이쯔",
     short: "3장 덩어리 대신, 서로 다른 짝 7개로 완성하는 손.",
     // 결과 화면의 역 이름도 "치또이쯔"다(App.tsx YAKU_NAMES) — 표기가 갈리면
@@ -527,74 +693,88 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     key: "churen",
+    group: "yaku",
     label: "구련보등",
     short: "한 무늬만으로 1112345678999 모양을 만드는 최고 등급 손.",
   },
   {
     key: "chuuren_junsei",
+    group: "yaku",
     label: "순정구련보등",
     short:
       "1112345678999를 그대로 세운 채 그 무늬 9종 전부로 기다린 구련보등. 2배 역만이다.",
   },
   {
     key: "daisangen",
+    group: "yaku",
     label: "대삼원",
     short: "백·발·중을 모두 3장씩 모으는 최고 등급 손.",
   },
   {
     key: "sanankou",
+    group: "yaku",
     label: "산안커",
     short: "남의 패를 받지 않고 내 힘만으로 모은 '같은 패 3장' 덩어리가 3개인 손.",
   },
   {
     key: "toitoi",
+    group: "yaku",
     label: "또이또이",
     short: "덩어리 넷을 전부 '같은 패 3장'으로만 채운 손.",
   },
   {
     key: "tanyao",
+    group: "yaku",
     label: "탕야오",
     short: "1·9와 자패를 하나도 쓰지 않은 손. 가장 흔한 족보다.",
   },
   {
     key: "chinitsu",
+    group: "yaku",
     label: "청일색",
     short: "손 전체를 한 무늬로만 채운 손.",
   },
   {
     key: "honitsu",
+    group: "yaku",
     label: "혼일색",
     short: "한 무늬 + 자패만으로 채운 손.",
   },
   {
     key: "honroutou",
+    group: "yaku",
     label: "혼노두",
     short: "1·9와 자패만으로 채운 손.",
   },
   {
     key: "chanta",
+    group: "yaku",
     label: "찬타",
     short: "모든 덩어리와 머리에 1·9나 자패가 한 장씩은 들어간 손.",
     match: ["준찬타", "찬타"],
   },
   {
     key: "ittsu",
+    group: "yaku",
     label: "일기통관",
     short: "같은 무늬로 123·456·789를 한 줄로 갖춘 손.",
     match: ["일기통관"],
   },
   {
     key: "pinfu",
+    group: "yaku",
     label: "핑후",
     short: "덩어리가 전부 이어지는 3장이고 별다른 가점이 없는 얌전한 손.",
   },
   {
     key: "menzen_tsumo",
+    group: "yaku",
     label: "멘젠쯔모",
     short: "한 번도 울지 않은 손을 스스로 뽑은 패로 완성한 것.",
   },
   {
     key: "haitei_raoyue",
+    group: "yaku",
     label: "해저로월",
     short: "패산의 마지막 패로 이기는 것. 반대로 마지막 버림패로 이기면 하저로어.",
     match: ["해저로월", "해저모월", "하저로어"],
@@ -605,93 +785,111 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // (`test/resultYakuGlossary.test.ts`가 YAKU_NAMES 전부를 여기와 대조한다)
   {
     key: "iipeiko",
+    group: "yaku",
     label: "이페코",
     short: "같은 무늬로 똑같이 이어지는 3장을 두 벌 갖춘 손(예: 234 234). 울면 사라진다.",
   },
   {
     key: "ryanpeiko",
+    group: "yaku",
     label: "량페코",
     short: "이페코를 두 벌 갖춘 손(예: 234 234 567 567). 울면 사라진다.",
   },
   {
     key: "sanshoku",
+    group: "yaku",
     label: "삼색동순",
     short: "만·통·삭 세 무늬로 같은 숫자의 이어지는 3장을 하나씩 갖춘 손(예: 456을 세 무늬로).",
   },
   {
     key: "sanshoku_doukou",
+    group: "yaku",
     label: "삼색동각",
     short: "만·통·삭 세 무늬로 같은 숫자를 3장씩 모은 손(예: 5만·5통·5삭을 각 3장).",
   },
   {
     key: "shousangen",
+    group: "yaku",
     label: "소삼원",
     short: "백·발·중 가운데 둘을 3장씩 모으고 남은 하나를 머리로 쓴 손.",
   },
   {
     key: "sankantsu",
+    group: "yaku",
     label: "산깡쯔",
     short: "한 손에 깡을 세 번 해서 깡쯔가 3개인 손.",
     match: ["산깡쯔", "산깡즈"],
   },
   {
     key: "suukantsu",
+    group: "yaku",
     label: "스깡쯔",
     short: "한 손에 깡을 네 번 해서 깡쯔가 4개인 최고 등급 손.",
     match: ["스깡쯔", "스깡즈"],
   },
   {
     key: "suuankou",
+    group: "yaku",
     label: "스안커",
     short: "남의 패를 받지 않고 내 힘만으로 모은 '같은 패 3장' 덩어리가 4개인 최고 등급 손.",
   },
   {
     key: "suuankou_tanki",
+    group: "yaku",
     label: "스안커 단기",
     short: "스안커를 머리 한 장만 기다려 완성한 것. 두 배로 값한다.",
   },
   {
     key: "kokushi_13",
+    group: "yaku",
     label: "13면 대기",
     short: "국사무쌍 13종을 이미 다 모아 그 13종 어느 것으로도 이길 수 있는 대기. 두 배로 값한다.",
   },
   {
     key: "shousuushii",
+    group: "yaku",
     label: "소사희",
     short: "동·남·서·북 가운데 셋을 3장씩 모으고 남은 하나를 머리로 쓴 최고 등급 손.",
   },
   {
     key: "daisuushii",
+    group: "yaku",
     label: "대사희",
     short: "동·남·서·북을 모두 3장씩 모으는 최고 등급 손. 두 배로 값한다.",
   },
   {
     key: "tsuuiisou",
+    group: "yaku",
     label: "자일색",
     short: "손 전체를 자패만으로 채운 최고 등급 손.",
   },
   {
     key: "ryuuiisou",
+    group: "yaku",
     label: "녹일색",
     short: "초록빛 패(2·3·4·6·8삭과 발)만으로 채운 최고 등급 손.",
   },
   {
     key: "chinroutou",
+    group: "yaku",
     label: "청노두",
     short: "손 전체를 1과 9만으로 채운 최고 등급 손.",
   },
   {
     key: "tenhou",
+    group: "yaku",
     label: "천화",
     short: "오야가 처음 받은 13장 그대로 첫 쯔모에 이기는 것. 최고 등급이다.",
   },
   {
     key: "chihou",
+    group: "yaku",
     label: "지화",
     short: "오야가 아닌 사람이 첫 쯔모로 곧바로 이기는 것. 최고 등급이다.",
   },
   {
     key: "hidden_blade",
+    group: "yaku",
     label: "숨은 칼날",
     short: "증강으로만 붙는 역. 리치를 걸지 않은 멘젠 론 화료에 2판이 얹힌다.",
   },

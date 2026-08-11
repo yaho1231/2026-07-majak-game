@@ -7,6 +7,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from "react";
@@ -56,19 +57,24 @@ import type {
 } from "@majak/core";
 import { AUGMENT_CATEGORIES, SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
 import { contentAugments } from "@majak/content";
-import { briefOf, splitLead } from "./augmentBrief.js";
+import { type AugmentDescVariant, briefOf, expandParas, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
-import { splitTerms } from "./glossary.js";
-import type { GlossaryEntry } from "./glossary.js";
+import { GLOSSARY, GLOSSARY_GROUPS, splitTerms } from "./glossary.js";
+import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
+import { remainingCounter } from "./waitCounts.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
 import {
+  canStepUiZoom,
   getUiScale,
+  getUiZoom,
   isLayoutCramped,
   layoutViewport,
+  resetUiZoom,
+  stepUiZoom,
   subscribeUiScale,
   toLayoutPx,
 } from "./uiScale.js";
@@ -642,6 +648,14 @@ function armModeOf(type: string): ArmMode | undefined {
   return ARM_MODE[type];
 }
 
+/**
+ * **상대의 손패를 조작하는** 액션 — 리치를 선언한 상대는 대상이 될 수 없다.
+ * 서버가 후보에서 빼므로 클릭은 애초에 막혀 있고, 화면은 그 빈자리에 이유만 적는다
+ * (아무 표시가 없으면 "왜 안 눌리지?"로 보인다). 서버 쪽 같은 표는
+ * `HumanAgent.HAND_MANIP_ACTION_TYPES`.
+ */
+const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
+
 /** 무장 안내 문구 — 무엇을 클릭해야 하는지. */
 /**
  * 무장한 뒤 **패를 버리면서** 발동하는 리치 계열 액션.
@@ -927,6 +941,11 @@ interface SelectionCtx {
   oppArmable: (pid: string) => boolean;
   /** 상대 클릭 — opp면 제출, swap3면 상대 지정. */
   clickOpp: (pid: string) => void;
+  /**
+   * 손패를 건드리는 증강을 무장한 채로, 이 상대가 **리치라서** 대상이 될 수 없는가.
+   * (리치 선언은 공개 정보다 — 숨은 리치는 riichiDeclared가 false라 여기 걸리지 않는다.)
+   */
+  oppRiichiBlocked: (pid: string) => boolean;
   /** 이 바닥 패가 지금 무장 액션의 클릭 대상이면 그 옵션(아니면 undefined). */
   riverOptionFor: (
     ownerId: string,
@@ -951,6 +970,7 @@ const NO_SELECTION: SelectionCtx = {
   submit: () => {},
   oppArmable: () => false,
   clickOpp: () => {},
+  oppRiichiBlocked: () => false,
   riverOptionFor: () => undefined,
   swapTarget: null,
   swapGive: [],
@@ -1358,11 +1378,17 @@ function BotArchetypePicker(props: {
 
   // 목록은 body 포털로 띄운다(FIXED_SURFACE_NOTE) — 좌석 줄 안에 두면 대기실 패널에
   // 잘린다. 그래서 위치는 버튼의 화면 좌표에서 직접 잡는다.
+  // rect·window.inner*는 **화면 좌표**, 인라인 top/left는 **레이아웃 좌표**다 —
+  // 배율이 걸린 채로 섞으면 목록이 버튼에서 떨어져 나간다 (uiScale.ts 참고).
   const place = (): void => {
     const r = btnRef.current?.getBoundingClientRect();
     if (r === undefined) return;
-    const width = Math.max(r.width, 168);
-    setBox({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - width - 8), width });
+    const width = Math.max(toLayoutPx(r.width), 168);
+    setBox({
+      top: toLayoutPx(r.bottom) + 6,
+      left: Math.min(toLayoutPx(r.left), layoutViewport().w - width - 8),
+      width,
+    });
   };
 
   /**
@@ -1376,10 +1402,13 @@ function BotArchetypePicker(props: {
     const el = menuRef.current;
     const r = btnRef.current?.getBoundingClientRect();
     if (el === null || r === undefined || box === null) return;
+    // offsetHeight는 이미 레이아웃 px, rect·창 크기는 화면 px — 레이아웃 쪽으로 맞춘다
     const h = el.offsetHeight;
+    const vh = layoutViewport().h;
+    const below = toLayoutPx(r.bottom) + 6;
     // 아래로 넘치면 버튼 위로 뒤집고, 그래도 안 들어가면 화면 안에 맞춘다
-    const want = r.bottom + 6 + h > window.innerHeight - 8 ? r.top - h - 6 : r.bottom + 6;
-    const top = Math.max(8, Math.min(want, window.innerHeight - h - 8));
+    const want = below + h > vh - 8 ? toLayoutPx(r.top) - h - 6 : below;
+    const top = Math.max(8, Math.min(want, vh - h - 8));
     if (Math.abs(top - box.top) > 1) setBox({ ...box, top });
   }, [box]);
 
@@ -1856,22 +1885,30 @@ const TileImg = memo(function TileImg({
 /**
  * 창이 너무 작아 자동 축소(uiScale.ts)로도 배치가 안 풀릴 때 왼쪽 위에 뜨는 안내.
  * 브라우저 확대율은 스크립트로 못 건드린다 — 여기서부터는 사람이 눌러야 한다.
+ *
+ * 단, 사람이 −/+ 로 **직접 키워서** 좁아진 것이라면 원인도 해법도 브라우저가 아니다.
+ * 그땐 방금 누른 그 버튼을 가리킨다 (안 그러면 "줄이라"는 안내가 엉뚱한 손잡이를 가리킨다).
  */
 function LayoutHint(): JSX.Element | null {
   const [cramped, setCramped] = useState(isLayoutCramped);
   const [dismissed, setDismissed] = useState(false);
   useEffect(() => subscribeUiScale(() => setCramped(isLayoutCramped())), []);
   if (!cramped || dismissed) return null;
+  const zoomedByHand = getUiZoom() > 1;
   const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
   return createPortal(
     <div className="layout-hint" role="status">
       <span className="layout-hint-icon">⤢</span>
       <span>
-        창이 좁아 배치가 겹칠 수 있습니다 —{" "}
-        <b>
-          {mod} + −
-        </b>{" "}
-        로 화면을 줄여 보세요.
+        {zoomedByHand ? (
+          <>
+            화면을 키워 배치가 겹칠 수 있습니다 — 왼쪽 아래 <b>−</b> 로 줄여 보세요.
+          </>
+        ) : (
+          <>
+            창이 좁아 배치가 겹칠 수 있습니다 — <b>{mod} + −</b> 로 화면을 줄여 보세요.
+          </>
+        )}
       </span>
       <button
         type="button"
@@ -1880,6 +1917,64 @@ function LayoutHint(): JSX.Element | null {
         aria-label="안내 닫기"
       >
         ×
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * 화면 확대/축소 손잡이 — 자동 맞춤(uiScale.ts) **위에 곱하는** 배수를 사람이 만진다.
+ *
+ * 자동은 창만 본다. 눈·모니터 거리·시력은 못 본다 — 같은 창에서도 누구는 크게,
+ * 누구는 작게 보고 싶어 한다. 2026-08-07에 설정 패널의 "화면 크기"를 없앤 뒤로는
+ * 그 손잡이가 아예 없었다.
+ *
+ * 자리는 **왼쪽 아래 구석**이다. 판(가운데)·손패와 액션 바(아래 가운데, `.own-area`는
+ * translateX(-50%)로 가운데 정렬)·오른쪽 위 아이콘 줄(나가기·설정·도감·규칙, 이미
+ * right:214px까지 차 있다)·왼쪽 위 모드 뱃지를 전부 피한다. 로그인·로비·대국 어디서나
+ * 같은 자리라서 찾으러 다닐 필요가 없다.
+ *
+ * 화면이 줄어들면 이 버튼도 같이 줄어드는 게 정상이지만, 그러면 **가장 작아서 안 보일 때
+ * 손잡이도 가장 작아진다**. 그래서 CSS에서 1/--ui-scale 로 되돌려 실제 크기를 고정한다.
+ */
+function ScaleControl(): JSX.Element {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => subscribeUiScale(bump), []);
+  const zoom = getUiZoom();
+  const pct = Math.round(zoom * 100);
+  const mod = navigator.userAgent.includes("Mac") ? "⌥" : "Alt";
+  return createPortal(
+    <div className="ui-zoom" role="group" aria-label="화면 크기">
+      <button
+        type="button"
+        className="ui-zoom-btn"
+        onClick={() => stepUiZoom(-1)}
+        disabled={!canStepUiZoom(-1)}
+        aria-label="화면 축소"
+        title={`화면 축소 (${mod} + −)`}
+      >
+        −
+      </button>
+      <button
+        type="button"
+        className="ui-zoom-now"
+        onClick={() => resetUiZoom()}
+        disabled={zoom === 1}
+        aria-label={`화면 크기 ${pct}% — 눌러서 기본값으로`}
+        title={`기본 크기로 되돌리기 (${mod} + 0)`}
+      >
+        {pct}%
+      </button>
+      <button
+        type="button"
+        className="ui-zoom-btn"
+        onClick={() => stepUiZoom(1)}
+        disabled={!canStepUiZoom(1)}
+        aria-label="화면 확대"
+        title={`화면 확대 (${mod} + +)`}
+      >
+        +
       </button>
     </div>,
     document.body,
@@ -3633,6 +3728,7 @@ export function App(): JSX.Element {
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
     <div className="game-root" ref={gameRootRef}>
       <LayoutHint />
+      <ScaleControl />
       {/* 기기를 돌려 달라는 안내. LayoutHint 는 '브라우저 확대'를 말하는 것이라
           터치 기기에서는 뜨지 않는다(맞는 판단이다) — 폰 세로에는 그래서 아무 안내도
           없었다. 뜨는 조건은 전부 CSS 미디어쿼리라 여기에 상태가 없었는데, **닫을 수가
@@ -4613,8 +4709,13 @@ function AugmentMeta({
 //
 // 화면에 뜨는 증강 설명은 세 겹이다.
 //   1) 요약  — augmentBrief.ts의 한 문장. **기본으로 보이는 것은 이것뿐**이다.
-//   2) 설명  — AugmentDef.description 원문. Shift를 누르거나 "자세히"를 눌러야 열린다.
-//   3) 상세  — AugmentDef.detail. 도감·샌드박스의 상세 패널에만 있다.
+//   2) 설명  — AugmentDef.description 원문. 조건·예외까지 담은 정식 문장.
+//   3) 상세  — AugmentDef.detail. 작동 원리·전략·주의점.
+//
+// 펼쳤을 때 (2)가 오는지 (3)이 오는지는 **화면마다 다르고, 호출부가 정한다**
+// (`AugmentDescVariant` — augmentBrief.ts의 표를 보라).
+//   · "draft" (드래프트 카드·이름표 툴팁) → 1 + 2. 판 중에 몇 초로 고르는 자리라 3은 길다.
+//   · "codex" (도감 상세·샌드박스 상세)   → 1 + 3. 목록에 이미 요약이 있고 2는 3과 겹친다.
 //
 // 원래는 (2)가 곧바로 드래프트 카드와 이름표 툴팁에 박혀 있었다. 조건·예외까지 담은
 // 문장이라 좁은 카드에서 열 줄 가까이 흘렀고, 고르는 3초 동안 읽을 수 있는 분량이
@@ -4754,7 +4855,10 @@ function TermText({ text }: { text: string }): JSX.Element {
 }
 
 /**
- * 증강 설명 본문 — 기본은 요약 한 줄, `expanded`면 원문 설명.
+ * 증강 설명 본문 — 기본은 요약 한 줄, `expanded`면 그 아래 층을 편다.
+ *
+ * 펼쳐서 **무엇이** 나오는지는 `variant`가 정한다(호출부가 명시한다).
+ * 이 컴포넌트가 자기가 어디에 서 있는지 추측하지 않는다.
  *
  * `use`(사용 빈도)는 원문 머리말 `(상시)` `(매 국 1회)`를 배지로 떼어낸 것이라
  * 요약 본문은 순수하게 효과만 말한다. 그 덕에 좁은 카드에서도 다섯 줄을 넘지 않는다.
@@ -4762,23 +4866,33 @@ function TermText({ text }: { text: string }): JSX.Element {
 function AugDesc({
   id,
   description,
+  detail,
+  variant,
   expanded,
 }: {
   id: string;
   description: string | undefined;
+  detail?: string | undefined;
+  variant: AugmentDescVariant;
   expanded: boolean;
 }): JSX.Element {
   const brief = briefOf(id, description);
   const lead = splitLead(description ?? "");
-  const showFull = expanded && lead.body !== "";
-  // 펼쳤을 때는 배지도 원문 머리말로 바꿔 단다 — 요약의 use보다 조건이 자세할 때가 많고,
-  // 본문에 머리말을 남겨 두면 같은 말이 배지와 두 번 나온다.
-  const use = showFull && lead.use !== "" ? lead.use : brief.use;
+  const paras = expandParas(variant, description, detail);
+  const showFull = expanded && paras.length > 0;
+  // 원문 설명을 펼칠 때는 배지도 원문 머리말로 바꿔 단다 — 요약의 use보다 조건이 자세할
+  // 때가 많고, 본문에 머리말을 남겨 두면 같은 말이 배지와 두 번 나온다. 상세(detail)에는
+  // 그런 머리말이 없으므로 요약 배지를 그대로 둔다.
+  const use = showFull && variant === "draft" && lead.use !== "" ? lead.use : brief.use;
   return (
     <span className="augdesc">
       {use !== "" ? <span className="augdesc-use">{use}</span> : null}
       <span className={`augdesc-body${showFull ? " augdesc-body-full" : ""}`}>
-        <TermText text={showFull ? lead.body : brief.text} />
+        {showFull
+          ? paras.map((p, i) => (
+              <span key={i} className="augdesc-para"><TermText text={p} /></span>
+            ))
+          : <TermText text={brief.text} />}
       </span>
     </span>
   );
@@ -5151,15 +5265,11 @@ function CodexScreen(props: {
   const selSrv = selected !== null ? srvMap.get(selected) : undefined;
   const selMaster = selected !== null ? masters.get(selected) : undefined;
   const selBadges = sel !== undefined ? codexBadges(sel) : [];
-  // 상세 오버레이는 세 겹을 모두 편다 — 요약(리드) → 원문 설명 → 상세.
-  // detail이 없으면 원문 설명이 그 자리를 대신한다.
+  // 도감 상세는 요약(리드) → **상세** 두 겹이다. 원문 설명은 넣지 않는다 — 카드/표에
+  // 이미 요약이 서 있고, 설명은 상세와 말이 겹쳐 같은 얘기를 두 번 읽히게 했다.
+  // 상세가 아직 없는 증강만 설명이 그 자리를 대신한다(`expandParas`).
   const selBrief = sel !== undefined ? briefOf(sel.id, sel.description) : null;
-  const selDetail = (sel?.detail ?? "").trim();
-  // 원문 머리말은 리드 문단의 배지가 이미 말하고 있다 — 본문에서는 뗀다
-  const selParas = [
-    splitLead(sel?.description ?? "").body,
-    ...(selDetail !== "" ? selDetail.split(/\n\n+/) : []),
-  ].filter((p) => p.trim() !== "");
+  const selParas = expandParas("codex", sel?.description, sel?.detail);
 
   return (
     <div className="codex">
@@ -5230,7 +5340,7 @@ function CodexScreen(props: {
                 <div className="codex-card-name">{m.cat.name}</div>
                 {/* 카드는 요약만 — 원문과 상세는 카드를 눌러 여는 상세 오버레이에 있다 */}
                 <div className="codex-card-desc">
-                  <AugDesc id={m.cat.id} description={m.cat.description} expanded={false} />
+                  <AugDesc id={m.cat.id} description={m.cat.description} variant="codex" expanded={false} />
                 </div>
                 {m.srv !== undefined && m.srv.games > 0 ? (
                   <div className="codex-card-foot">
@@ -5404,14 +5514,15 @@ function GuestOutro(props: {
  * 목표는 규칙서가 아니라 **길을 잃지 않을 만큼**이다. 각 항목의 더 깊은 설명은
  * 게임 안 용어 풀이(glossary)와 증강 도감이 이어받는다.
  *
- * 탭마다 독자가 다르다 — basics는 리치마작을 모르는 사람, yaku는 "모양은 알겠는데
+ * 탭마다 독자가 다르다 — basics는 리치마작을 모르는 사람, terms는 읽다가 모르는 말에
+ * 걸린 사람(툴팁은 그 말을 마주쳐야 뜬다 — 나중에 되찾을 자리가 여기다), yaku는 "모양은 알겠는데
  * 뭘 만들어야 하나" 하는 사람, augment는 마작을 **아는 사람**이다.
  * augment 탭에서 멘젠·텐파이·후리텐을 풀어 쓰지 않는 것은 의도다.
  *
  * 화면은 도감(`CodexScreen`)의 뼈대(.codex 계열)를 그대로 쓴다 — 새 디자인 언어를
  * 만들지 않는다.
  */
-type HelpTab = "basics" | "yaku" | "augment";
+type HelpTab = "basics" | "yaku" | "terms" | "augment";
 
 /**
  * 그림 한 줄 — 실제 패 그림으로 보여 주는 예시.
@@ -5551,6 +5662,7 @@ const HELP_BASICS: HelpSection[] = [
     paras: [
       "손패를 남에게 하나도 보이지 않은 채(멘젠) 한 장만 더 오면 완성인 상태(텐파이)가 되면, 1000점을 걸고 리치를 선언할 수 있습니다.",
       "리치를 걸면 그 뒤로는 손패를 바꿀 수 없습니다 — 가져온 패를 그대로 버립니다. 대신 역이 확정되고, 도라를 한 겹 더 받고(우라도라), 타점이 크게 뜁니다.",
+      "화면에 뜨는 오름패에는 작은 숫자가 붙습니다 — 그 패가 **아직 보이지 않은 장수**입니다. 기본 4장에서 버림패·울음·도라 표시패·내 손패에 이미 나온 만큼을 뺀 값이고(증강이 만들어 낸 패는 세지 않습니다), **0이면 그 패는 다 나가서 그것으로는 날 수 없습니다.**",
     ],
     figure: [
       {
@@ -5935,6 +6047,117 @@ function YakuTab(): JSX.Element {
   );
 }
 
+/** 탭마다 맨 위에 서는 한 줄 — 여기 읽는 사람이 누구인지 먼저 말한다. */
+const HELP_LEAD: Record<HelpTab, string> = {
+  basics:
+    "리치마작을 한 번도 해 본 적 없어도 길을 잃지 않을 만큼만 적었습니다. 게임 안에서는 처음 나오는 용어에 밑줄이 그어져 있어 누르면 풀이가 뜹니다.",
+  yaku: "모양을 완성해도 이 중 하나는 있어야 화료할 수 있습니다. 자주 나오는 것부터, 예시 손패와 함께.",
+  terms:
+    "게임 안에서 밑줄 그어진 말에 마우스를 올리면 뜨는 풀이를 한자리에 모았습니다. 검색하거나 분류로 좁혀 찾으세요.",
+  augment: "증강이 무엇이고, 언제 뽑고, 어떻게 작동하는지.",
+};
+
+/**
+ * 용어 설명집 — `glossary.ts`를 **그대로** 읽어 분류별로 늘어놓는다.
+ *
+ * 본문에서 용어에 마우스를 올리면 한 줄 풀이가 뜨지만, 그건 그 말을 **마주쳤을 때**만
+ * 열린다. "후리텐이 뭐였더라"를 나중에 다시 찾아볼 자리가 없었다 — 여기가 그 자리다.
+ *
+ * 문안은 여기 한 줄도 적지 않는다. 툴팁과 설명집이 같은 표를 읽으므로 갈릴 수 없다.
+ * 툴팁은 언제나 `short`(판을 가리면 안 되니까), 설명집은 `long`이 있으면 그쪽이다.
+ */
+/** 매칭 표기 가운데 정규식이 아닌 것 — 화면에 "다른 표기"로 보여 주고 검색어로도 받는다 */
+function plainAliases(entry: GlossaryEntry): string[] {
+  return (entry.match ?? []).filter((m) => /^[가-힣A-Za-z0-9·]+$/.test(m) && m !== entry.label);
+}
+
+function TermsTab(): JSX.Element {
+  const [query, setQuery] = useState("");
+  const [group, setGroup] = useState<GlossaryGroup | null>(null);
+
+  const needle = query.trim().toLowerCase();
+  // 검색은 표기(별칭 포함)와 풀이 본문 전부를 훑는다 — "1000점"으로 리치를 찾을 수 있어야 한다
+  const matched = useMemo(
+    () =>
+      needle === ""
+        ? GLOSSARY
+        : GLOSSARY.filter((e) =>
+            [e.label, ...plainAliases(e), e.short, e.long ?? ""]
+              .join(" ")
+              .toLowerCase()
+              .includes(needle),
+          ),
+    [needle],
+  );
+  const counts = useMemo(() => {
+    const m = new Map<GlossaryGroup, number>();
+    for (const e of matched) m.set(e.group, (m.get(e.group) ?? 0) + 1);
+    return m;
+  }, [matched]);
+  const shown = group === null ? matched : matched.filter((e) => e.group === group);
+
+  return (
+    <>
+      <div className="terms-bar">
+        <input
+          className="codex-search terms-search"
+          value={query}
+          placeholder="용어 검색 (예: 후리텐, 1000점)"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="codex-cats terms-cats" role="group" aria-label="분류 필터">
+          <button
+            className={group === null ? "codex-cat codex-cat-on" : "codex-cat"}
+            onClick={() => setGroup(null)}
+          >
+            전체 <span className="codex-cat-n">{matched.length}</span>
+          </button>
+          {/* 지금 조건에서 하나도 없는 분류는 칩을 감춘다 — 누를 이유가 없다 (도감과 같은 규칙) */}
+          {GLOSSARY_GROUPS.filter((g) => (counts.get(g.id) ?? 0) > 0 || g.id === group).map((g) => (
+            <button
+              key={g.id}
+              className={group === g.id ? "codex-cat codex-cat-on" : "codex-cat"}
+              onClick={() => setGroup(group === g.id ? null : g.id)}
+            >
+              {g.label} <span className="codex-cat-n">{counts.get(g.id) ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="home-empty">찾는 용어가 없습니다.</p>
+      ) : (
+        GLOSSARY_GROUPS.map((g) => {
+          const rows = shown.filter((e) => e.group === g.id);
+          if (rows.length === 0) return null;
+          return (
+            <section key={g.id} className="help-section">
+              <h2 className="help-section-title">{g.label}</h2>
+              <div className="term-list">
+                {rows.map((e) => {
+                  const alias = plainAliases(e);
+                  return (
+                    <div key={e.key} className="term-row">
+                      <div className="term-head">
+                        <span className="term-name">{e.label}</span>
+                        {alias.length > 0 ? (
+                          <span className="term-alias">{alias.join(" · ")}</span>
+                        ) : null}
+                      </div>
+                      <p className="term-body"><TermText text={e.long ?? e.short} /></p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })
+      )}
+    </>
+  );
+}
+
 function HelpScreen(props: {
   /** 왼쪽 위 되돌아가기 버튼 문구 (기본 "← 닫기"). */
   backLabel?: string;
@@ -5944,12 +6167,7 @@ function HelpScreen(props: {
 }): JSX.Element {
   const [tab, setTab] = useState<HelpTab>("basics");
   const sections = tab === "basics" ? HELP_BASICS : HELP_AUGMENT;
-  const lead =
-    tab === "basics"
-      ? "리치마작을 한 번도 해 본 적 없어도 길을 잃지 않을 만큼만 적었습니다. 게임 안에서는 처음 나오는 용어에 밑줄이 그어져 있어 누르면 풀이가 뜹니다."
-      : tab === "yaku"
-        ? "모양을 완성해도 이 중 하나는 있어야 화료할 수 있습니다. 자주 나오는 것부터, 예시 손패와 함께."
-        : "증강이 무엇이고, 언제 뽑고, 어떻게 작동하는지.";
+  const lead = HELP_LEAD[tab];
 
   return (
     <div className="codex help-screen">
@@ -5971,6 +6189,12 @@ function HelpScreen(props: {
             역 목록
           </button>
           <button
+            className={tab === "terms" ? "codex-tab codex-tab-on" : "codex-tab"}
+            onClick={() => setTab("terms")}
+          >
+            용어 설명집
+          </button>
+          <button
             className={tab === "augment" ? "codex-tab codex-tab-on" : "codex-tab"}
             onClick={() => setTab("augment")}
           >
@@ -5983,6 +6207,8 @@ function HelpScreen(props: {
         <p className="codex-lead">{lead}</p>
         {tab === "yaku" ? (
           <YakuTab />
+        ) : tab === "terms" ? (
+          <TermsTab />
         ) : (
           sections.map((sec) => (
             <section key={sec.title} className="help-section">
@@ -7091,6 +7317,17 @@ const GameTable = memo(function GameTable(props: {
   // ── 도라 반짝임 — 게임판 전체가 같은 도라 정보를 본다(DoraContext) ──
   const doraFx = useDoraFx(view, props.settings.doraFx);
 
+  /**
+   * ── 오름패 남은 장수 — 판 전체가 같은 셈을 본다(WaitCountContext) ──
+   *
+   * 손패를 세는 사람은 **하단 시점의 좌석 하나뿐**이다(`me`). 보통은 나 자신이고,
+   * 관전·리플레이에서는 화면 아래에 손패가 펼쳐져 있는 그 좌석이다 — 화면에 이미
+   * 보이는 것만 센다는 규칙이 두 경우 모두에서 지켜진다. 나머지 좌석의 손패는
+   * 관전이라 뷰에 실려 와도 세지 않는다: 관전자가 보는 숫자가 대국자가 보는 숫자와
+   * 다르면 "내 화면의 3"과 "관전 화면의 1"이 서로를 거짓말로 만든다.
+   */
+  const waitRemaining = useMemo(() => remainingCounter(view, me.id), [view, me.id]);
+
   // ── 액티브 증강 클릭 발동(무장) 상태 — 게임판 전체가 공유(SelectionContext) ──
   const selection = useSelection(view, prompt, props.onSubmit);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -7152,6 +7389,7 @@ const GameTable = memo(function GameTable(props: {
     <SelectionContext.Provider value={selection}>
     <HighlightContext.Provider value={hoverKind}>
     <DoraContext.Provider value={doraFx}>
+    <WaitCountContext.Provider value={waitRemaining}>
     <RelationProvider view={view}>
     <div className="table" ref={tableRef} onContextMenu={rightClickTsumogiri}>
       {props.spectator === true ? (
@@ -7308,6 +7546,7 @@ const GameTable = memo(function GameTable(props: {
       />
     </div>
     </RelationProvider>
+    </WaitCountContext.Provider>
     </DoraContext.Provider>
     </HighlightContext.Provider>
     </SelectionContext.Provider>
@@ -7381,6 +7620,20 @@ function useSelection(
     return false;
   };
 
+  /**
+   * 손패를 조작하는 증강(통째로 바꾸기·등가교환·자리 바꿈)을 무장했는데 이 상대가
+   * 후보에 없고 **리치를 선언해 둔** 경우 — 왜 못 고르는지 화면에 적어 준다.
+   * 서버는 리치 상대를 후보에서 아예 빼므로(riichiBlocksSwap), 클라이언트는 그
+   * 빈자리에 이유만 채운다. 숨은 리치는 riichiDeclared가 false라 여기 걸리지 않는다 —
+   * 걸리면 그 표시가 곧 은닉을 깨는 누설이 된다.
+   */
+  const oppRiichiBlocked = (pid: string): boolean => {
+    if (armedType === null || !HAND_MANIP_ACTIONS.has(armedType)) return false;
+    if (armMode === "swap3" && swapTarget !== null) return false;
+    if (oppArmable(pid)) return false;
+    return view.round.byPlayer[pid]?.riichiDeclared === true;
+  };
+
   const clickOpp = (pid: string): void => {
     if (armMode === "opp") {
       const o = oppOptionFor(pid);
@@ -7439,6 +7692,7 @@ function useSelection(
     submit,
     oppArmable,
     clickOpp,
+    oppRiichiBlocked,
     riverOptionFor,
     swapTarget,
     swapGive,
@@ -7645,7 +7899,11 @@ function SettingsPanel(props: {
     { key: "autoWin", label: "자동 화료", desc: AUTO_WIN_DESC },
     { key: "autoNoMeld", label: "후로 없음", desc: "치·펑·깡 기회를 자동으로 넘깁니다" },
     { key: "autoDiscard", label: "자동 버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
-    { key: "showMyWaits", label: "내 오름패 표시", desc: "텐파이면 손패 위에 화료패를 항상 표시합니다" },
+    {
+      key: "showMyWaits",
+      label: "내 오름패 표시",
+      desc: "텐파이면 손패 위에 화료패를 항상 표시합니다. 패 위 숫자는 아직 보이지 않은 그 패의 장수(기본 4장 − 버림패·후로·도라 표시패·내 손패에 나온 수)이며, 증강 생성패는 세지 않습니다. 0이면 그 패로는 날 수 없습니다",
+    },
     {
       key: "rightClickTsumogiri",
       label: "우클릭 쯔모기리",
@@ -8657,7 +8915,7 @@ function SandboxPanel(props: {
                     {isActiveAugment(c.id) ? <ActiveBadge /> : null}
                   </span>
                   <span className="sbx-desc">
-                    <AugDesc id={c.id} description={c.description} expanded={false} />
+                    <AugDesc id={c.id} description={c.description} variant="codex" expanded={false} />
                   </span>
                 </button>
               </div>
@@ -8678,9 +8936,11 @@ function SandboxPanel(props: {
           {codexBadges(detail).map((b) => (
             <span key={b} className="sbx-badge">{b}</span>
           ))}
-          <p className="sbx-detail-body">
-            <TermText text={(detail.detail ?? "").trim() !== "" ? detail.detail! : detail.description} />
-          </p>
+          {/* 샌드박스 상세는 도감과 같은 취급이다 — 목록 줄에 이미 요약이 서 있고,
+              여기 오는 사람은 증강이 실제로 어떻게 도는지 보러 온다(= 상세). */}
+          {expandParas("codex", detail.description, detail.detail).map((p, i) => (
+            <p key={i} className="sbx-detail-body"><TermText text={p} /></p>
+          ))}
         </div>
       ) : null}
 
@@ -9322,6 +9582,9 @@ function OpponentStrip({
   // 액티브 증강 무장 중 — 이 상대가 클릭 대상이면 강조하고 클릭 시 발동한다.
   const sel = useContext(SelectionContext);
   const oppArmable = sel.oppArmable(player.id);
+  // 손패를 건드리는 증강을 무장했는데 이 상대가 리치라 대상이 될 수 없다 —
+  // 강조도 클릭도 없는 자리에 이유만 적어 준다 (없으면 "왜 안 눌리지?"가 된다).
+  const oppRiichiBlocked = sel.oppRiichiBlocked(player.id);
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
     ? {
@@ -9361,7 +9624,11 @@ function OpponentStrip({
         style={sizeVars}
         {...armProps}
       >
-        {oppArmable ? <div className="opp-arm-tag">✦ 여기 클릭</div> : null}
+        {oppArmable ? (
+          <div className="opp-arm-tag">✦ 여기 클릭</div>
+        ) : oppRiichiBlocked ? (
+          <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
+        ) : null}
         {waits.length > 0 ? (
           <WaitsBadge
             waits={waits}
@@ -9401,7 +9668,11 @@ function OpponentStrip({
       style={sizeVars}
       {...armProps}
     >
-      {oppArmable ? <div className="opp-arm-tag">✦ 여기 클릭</div> : null}
+      {oppArmable ? (
+          <div className="opp-arm-tag">✦ 여기 클릭</div>
+        ) : oppRiichiBlocked ? (
+          <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
+        ) : null}
       {waits.length > 0 ? (
           <WaitsBadge
             waits={waits}
@@ -10031,7 +10302,7 @@ const NamePlate = memo(function NamePlate({
                     <span className="aug-tip-active">⚡ 액티브 증강 (직접 발동)</span>
                   ) : null}
                   <span className="aug-tip-desc">
-                    <AugDesc id={a} description={entry?.description} expanded={shiftHeld || detailFor === a} />
+                    <AugDesc id={a} description={entry?.description} variant="draft" expanded={shiftHeld || detailFor === a} />
                   </span>
                   <MoreToggle
                     open={shiftHeld || detailFor === a}
@@ -10496,6 +10767,35 @@ function OwnArea(props: {
   // 재정렬 확정 순간 한 프레임만 트랜지션을 끈다 (DOM 재정렬 + transform 제거가
   // 동시에 일어날 때 생기는 튐 방지). 다음 프레임에 다시 켠다.
   const [committing, setCommitting] = useState(false);
+  /*
+   * 쯔모패가 손패를 떠날 때(쯔모기리·버려서 나감) 170ms만 남기는 잔상.
+   * 레일이 그 자리를 비워 둔 채로 두므로 잔상이 사라져도 나머지 패는 안 움직인다 —
+   * 잔상은 "방금 여기 있던 패가 나갔다"를 보여 주기만 한다.
+   * 다른 패를 버려 쯔모패가 손에 남은 경우(손버림)에는 잔상이 없다.
+   */
+  const [ghostDrawn, setGhostDrawn] = useState<number | null>(null);
+  const prevDrawnRef = useRef<number | null>(null);
+  const rawHandRef = useRef(rawHand);
+  rawHandRef.current = rawHand;
+  useEffect(() => {
+    const prev = prevDrawnRef.current;
+    prevDrawnRef.current = hasDrawn ? drawnId : null;
+    // 새 쯔모가 들어오면 지난 잔상은 즉시 접는다 (자리가 겹치지 않게)
+    if (hasDrawn) {
+      setGhostDrawn(null);
+      return;
+    }
+    if (prev === null) return;
+    // 손에 남아 있으면(손버림) 나간 게 아니다. 국이 끝나 손패가 통째로 비면 잔상도 없다.
+    const hand = rawHandRef.current;
+    if (hand.length === 0 || hand.includes(prev)) return;
+    setGhostDrawn(prev);
+  }, [drawnId, hasDrawn]);
+  useEffect(() => {
+    if (ghostDrawn === null) return;
+    const t = window.setTimeout(() => setGhostDrawn(null), 170);
+    return () => window.clearTimeout(t);
+  }, [ghostDrawn]);
   // 손패 클릭 선택 모드: 액티브 증강(염색 등)을 고르면 손패를 클릭해 대상을 정한다.
   // 무장 상태는 게임판 전체가 공유하므로 SelectionContext에서 읽는다
   // (상대·바닥 클릭도 같은 무장을 소비). armSub만 손패 국지 상태로 남긴다
@@ -11001,11 +11301,25 @@ function OwnArea(props: {
     return () => cancelAnimationFrame(raf);
   }, [committing]);
 
-  // 진짜 용(17장) 등 넓은 손패도 화면 안에 들어오게 타일 폭을 조인다.
-  // --hand-n(장수)만 넘기면 styles.css의 --hand-fit이 폭을 자동으로 계산한다.
-  // 14 미만으로는 내리지 않는다 — 후로로 손패가 줄었다고 타일이 커지면 안 된다.
+  /*
+   * 손패 블록의 폭 기준. 레일(.own-hand-rail)이 **쯔모패 자리를 늘 비워 두므로**
+   * 13→14장이 되어도 이미 있던 패가 밀리지 않는다.
+   *
+   * handRest = 쯔모패를 뺀 "쉬는" 손패 장수. 내 시점에서는 hasDrawn이 알려 주지만,
+   * 관전 시점에는 myDrawnTile이 없다 — 그래서 장수 나머지로도 판단한다.
+   * 마작 손패는 쉴 때 3n+1(13·10·7…, 진짜 용은 16), 쯔모를 쥐면 3n+2다.
+   *
+   * --hand-n(타일 폭 계산용 장수)은 14 미만으로 내리지 않는다 — 후로로 손패가
+   * 줄었다고 타일이 커지면 안 된다. 진짜 용(17장)처럼 넓은 손패는 그만큼 조인다.
+   * 쯔모 전후로 값이 같아야 타일 폭까지 고정된다(예전엔 16↔17로 흔들렸다).
+   */
+  const handRest =
+    hasDrawn || displayIds.length % 3 === 2
+      ? Math.max(1, displayIds.length - 1)
+      : displayIds.length;
   const handStyle = {
-    "--hand-n": String(Math.max(14, displayIds.length)),
+    "--hand-n": String(Math.max(14, handRest + 1)),
+    "--hand-slots": String(handRest),
   } as React.CSSProperties;
 
   /*
@@ -11211,13 +11525,15 @@ function OwnArea(props: {
             ))}
           </div>
         ) : null}
+        {/* 레일이 쯔모패 자리까지 미리 차지해 손패 블록의 왼쪽 끝을 고정한다
+            (쯔모할 때 손패가 통째로 밀리지 않게 — styles.css .own-hand-rail 주석 참고) */}
+        <div className="own-hand-rail" style={handStyle}>
         <div
           key={roundKeyStr}
           ref={handRef}
           className={`own-hand${isMyTurn ? " own-hand-turn" : ""}${
             drag?.moved === true ? " own-hand-dragging" : ""
           }${committing ? " own-hand-nofx" : ""}`}
-          style={handStyle}
         >
           {displayIds.map((id, idx) => {
             const opts = optionsByTile.get(id) ?? [];
@@ -11343,6 +11659,12 @@ function OwnArea(props: {
               </button>
             );
           })}
+          {ghostDrawn !== null && !hasDrawn ? (
+            <span className="hand-ghost" aria-hidden="true">
+              <TileImg tile={view.tiles[ghostDrawn]} size="hand" owner={me.id} />
+            </span>
+          ) : null}
+        </div>
         </div>
       </div>
       {myMelds.length > 0 || myPulled.length > 0 ? (
@@ -11525,6 +11847,18 @@ function OwnArea(props: {
 const WAIT_TILE_CAP = 9;
 
 /**
+ * 오름패 옆에 붙는 **남은 장수** 계산기 — 게임판 전체가 같은 셈을 본다.
+ *
+ * 값은 `waitCounts.remainingCounter`가 만든다(보이는 곳만 세고, 증강 생성패는 빼는
+ * 규칙은 그쪽 주석에 있다). 컨텍스트로 두는 이유는 오름패 뱃지가 **내 손패 위**와
+ * **상대 셋의 스트립** 네 군데에서 따로 그려지기 때문이다 — 자리마다 다른 기준으로
+ * 세면 같은 패에 다른 숫자가 뜬다. 판마다 하나만 만들어 전부 그걸 쓴다.
+ *
+ * null이면 숫자를 아예 그리지 않는다(뷰가 없는 미리보기·헬프 화면).
+ */
+const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null);
+
+/**
  * 상시 표시용 오름패 뱃지 — 선언 간파(상대 위)와 내 오름패(손패 위)에 공용.
  * WaitTip과 달리 hover 없이 계속 떠 있는다.
  */
@@ -11557,8 +11891,21 @@ function WaitsBadge({
   const allDead = waits.length > 0 && waits.every(dead);
   const shown = waits.slice(0, WAIT_TILE_CAP);
   const hidden = waits.length - shown.length;
+  // 남은 장수 — 보이는 곳에 안 나온 그 종류의 장수(기본 4장 기준, 증강 생성패 제외).
+  const remaining = useContext(WaitCountContext);
+  // 종류가 많으면 타일을 한 단계 줄인다 — 크게 키운 뱃지가 판을 가로지르면
+  // 그게 곧 "판을 가리는 배치"다(docs/28 §2-2~§2-5).
+  const wide = shown.length > 5 ? " waits-badge-wide" : "";
+  const tipOf = (k: TileKind, left: number | null): string | undefined => {
+    const parts: string[] = [];
+    if (left !== null) {
+      parts.push(left === 0 ? "남은 0장 — 이 패로는 날 수 없습니다" : `남은 ${left}장 (보이지 않는 장수)`);
+    }
+    if (dead(k)) parts.push("역이 없어 론할 수 없습니다");
+    return parts.length === 0 ? undefined : parts.join(" · ");
+  };
   return (
-    <div className={`waits-badge${cls}`}>
+    <div className={`waits-badge${cls}${wide}`}>
       <span className="waits-badge-label">
         {openRiichi === true ? "오픈 리치" : mine === true ? "내 오름패" : "간파"}
         {owner !== undefined && mine !== true ? <span className="waits-badge-owner">{owner}</span> : null}
@@ -11566,18 +11913,29 @@ function WaitsBadge({
           <span className="waits-badge-count">{waits.length}종</span>
         ) : null}
         {allDead ? <span className="waits-badge-noyaku">역없음</span> : null}
+        {remaining !== null ? (
+          <span className="waits-badge-hint" title="패 위 숫자 = 아직 보이지 않은 그 패의 장수 (기본 4장 기준, 증강 생성패는 세지 않음)">
+            남은 장수
+          </span>
+        ) : null}
       </span>
       <span className="waits-badge-tiles">
-        {shown.map((k) => (
-          <span
-            key={`${k.suit}${k.rank}`}
-            className={`wait-tile${dead(k) ? " wait-tile-noyaku" : ""}`}
-            title={dead(k) ? "역이 없어 론할 수 없습니다" : undefined}
-          >
-            <TileImg tile={{ kind: k }} size="mini" />
-            {dead(k) ? <span className="wait-noyaku-tag">역없음</span> : null}
-          </span>
-        ))}
+        {shown.map((k) => {
+          const left = remaining === null ? null : remaining(k);
+          return (
+            <span
+              key={`${k.suit}${k.rank}`}
+              className={`wait-tile${dead(k) ? " wait-tile-noyaku" : ""}${left === 0 ? " wait-tile-gone" : ""}`}
+              title={tipOf(k, left)}
+            >
+              <TileImg tile={{ kind: k }} size="mini" />
+              {left !== null ? (
+                <span className={`wait-left${left === 0 ? " wait-left-gone" : ""}`}>{left}</span>
+              ) : null}
+              {dead(k) ? <span className="wait-noyaku-tag">역없음</span> : null}
+            </span>
+          );
+        })}
         {hidden > 0 ? (
           <span className="wait-more" title={waits.map((k) => formatTile({ kind: k })).join(" ")}>
             +{hidden}
@@ -13560,7 +13918,7 @@ function DraftOverlay({
               </span>
               <strong className="draft-name">{c.name}</strong>
               <span className="draft-desc">
-                <AugDesc id={c.id} description={c.description} expanded={shiftHeld || moreFor === c.id} />
+                <AugDesc id={c.id} description={c.description} variant="draft" expanded={shiftHeld || moreFor === c.id} />
               </span>
               <MoreToggle
                 open={shiftHeld || moreFor === c.id}

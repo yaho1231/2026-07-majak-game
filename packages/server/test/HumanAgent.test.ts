@@ -422,3 +422,70 @@ describe("HumanAgent.noticeDisconnect — 대기 중이던 결정도 유예로 �
     expect(done).toBeNull();
   });
 });
+
+/**
+ * 리치를 선언한 상대의 손패는 건드릴 수 없다 — 서버가 한국어로 거절한다.
+ *
+ * 판정 자체는 증강의 validate(riichiBlocksSwap)가 하고, FlowController가 통과한 후보만
+ * 프롬프트에 담으므로 리치 상대는 애초에 목록에 없다. 그래도 요청이 들어왔을 때
+ * (구 화면·조작된 클라이언트) "화면을 새로 받아 주세요"는 거짓말이 된다 — 새로 받아도
+ * 리치가 풀리기 전까지 그 상대는 영영 대상이 아니다.
+ */
+describe("HumanAgent — 리치 상대에게 손패 조작 증강을 쓰려 하면", () => {
+  const prompt = (player: string, ...types: string[]): any => ({
+    player,
+    options: types.map((t) => ({ type: t, payload: {} })),
+  });
+
+  /** p1이 (보이는) 리치를 선언해 둔 뷰 */
+  const riichiView = {
+    players: [{ id: "p0" }, { id: "p1" }],
+    round: { byPlayer: { p0: { riichiDeclared: false }, p1: { riichiDeclared: true } } },
+  } as never;
+
+  for (const actionType of ["hand_swap", "swap3", "seat_swap"]) {
+    it(`${actionType} — 이유를 밝힌 한국어 오류로 거절한다`, () => {
+      const sock = new FakeSocket();
+      const agent = new HumanAgent("p0", "Alice", sock.asWs());
+      agent.sendView(riichiView);
+      void agent.decide(prompt("p0", "discard"));
+      agent.handleMessage({ type: "action", actionType, payload: { target: "p1" } } as never);
+      const err = sock.sent.filter((m) => m.type === "error").at(-1);
+      expect(err.code).toBe("TARGET_IN_RIICHI");
+      expect(err.message).toContain("리치");
+    });
+  }
+
+  it("리치가 아닌 상대에게는 종전의 일반 오류가 나간다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.sendView(riichiView);
+    void agent.decide(prompt("p0", "discard"));
+    agent.handleMessage({
+      type: "action",
+      actionType: "hand_swap",
+      payload: { target: "p0" },
+    } as never);
+    expect(sock.sent.filter((m) => m.type === "error").at(-1).code).toBe("INVALID_ACTION");
+  });
+
+  /**
+   * 숨은 리치(스텔스)는 남의 뷰에서 riichiDeclared가 false다 — 이 문구가 나가면
+   * 그 자체가 "저 사람이 리치다"라는 누설이 된다.
+   */
+  it("숨은 리치는 이 문구를 끌어내지 못한다 (문구가 곧 누설이므로)", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.sendView({
+      players: [{ id: "p0" }, { id: "p1" }],
+      round: { byPlayer: { p1: { riichiDeclared: false } } },
+    } as never);
+    void agent.decide(prompt("p0", "discard"));
+    agent.handleMessage({
+      type: "action",
+      actionType: "hand_swap",
+      payload: { target: "p1" },
+    } as never);
+    expect(sock.sent.filter((m) => m.type === "error").at(-1).code).toBe("INVALID_ACTION");
+  });
+});

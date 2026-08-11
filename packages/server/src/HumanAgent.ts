@@ -69,6 +69,21 @@ export const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
  */
 const FORCED_ACTION_TYPES = new Set(["swap3_give", "swap3_take"]);
 
+/**
+ * **상대의 손패를 조작하는** 액션 — 리치를 선언한 상대에게는 쓸 수 없다.
+ *
+ * 리치는 "이 손으로 텐파이 고정"이 전제라, 남이 그 손패를 건드리면 리치 플레이어는
+ * 아무 대응도 못 한 채(강제 쯔모기리) 손이 망가진다. 그래서 리치 선언자는 이 간섭의
+ * 대상에서 빠진다 — 판정 자체는 각 증강의 `validate`(riichiBlocksSwap)가 하고,
+ * FlowController가 validate를 통과한 후보만 프롬프트에 담으므로 **리치 상대는 애초에
+ * 대상 목록에 뜨지 않는다.** 여기 있는 표는 그래도 요청이 들어왔을 때(구 화면·조작된
+ * 클라이언트) 무엇이 막혔는지 **한국어로 말해 주기 위한 것**이다.
+ *
+ * ⚠ 숨은 리치(스텔스)는 여기 걸리지 않는다 — `riichiDeclared`는 남의 뷰에서 false라
+ * 이 문구가 나갈 일이 없고, 나가서도 안 된다(그 문구가 곧 "저 사람 리치다"가 된다).
+ */
+const HAND_MANIP_ACTION_TYPES = new Set(["hand_swap", "swap3", "seat_swap"]);
+
 /** 후보 목록에서 뽑는 결정론적 해시 (FNV-1a) — 같은 상황이면 항상 같은 값 */
 function hashOptions(options: ActionOption[]): number {
   const text = JSON.stringify(options);
@@ -602,6 +617,23 @@ export class HumanAgent implements PlayerAgent {
   }
 
   /**
+   * 거절된 액션이 **리치를 선언한 상대의 손패를 건드리려는 것**이었는가.
+   * 맞으면 그 상대의 좌석을, 아니면 null을 돌려준다.
+   *
+   * 판단은 마지막으로 내보낸 뷰의 `riichiDeclared` 하나만 본다 — 이건 공개 정보이고,
+   * 숨은 리치는 남의 뷰에서 false라 여기 걸리지 않는다(걸리면 그 문구가 은닉을 깬다).
+   */
+  private riichiTargetOf(msg: ClientMessage): PlayerId | null {
+    if (msg.type !== "action") return null;
+    if (!HAND_MANIP_ACTION_TYPES.has(msg.actionType)) return null;
+    const target = (msg.payload as { target?: unknown } | undefined)?.target;
+    if (typeof target !== "string") return null;
+    const view = this.lastView;
+    if (view === null) return null;
+    return view.round.byPlayer[target]?.riichiDeclared === true ? target : null;
+  }
+
+  /**
    * 클라이언트 메시지 수신 처리.
    * Room이 소켓 메시지를 받으면 이 메서드를 호출한다.
    */
@@ -629,6 +661,15 @@ export class HumanAgent implements PlayerAgent {
         clearTimeout(entry.timer);
         this.pending.delete(seat);
         entry.resolve(matched);
+      } else if (this.riichiTargetOf(msg) !== null) {
+        // 리치를 선언한 상대의 손패를 건드리려 했다 — 무엇이 막혔는지 그대로 말한다.
+        // (일반 문구 "화면을 새로 받아 주세요"는 여기서 거짓말이 된다. 화면을 새로
+        //  받아도 그 상대는 리치가 풀리기 전까지 영영 대상이 되지 않는다.)
+        this.send({
+          type: "error",
+          code: "TARGET_IN_RIICHI",
+          message: "리치를 선언한 상대의 손패는 건드릴 수 없습니다.",
+        });
       } else {
         this.send({
           type: "error",
