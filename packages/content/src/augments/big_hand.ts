@@ -115,14 +115,18 @@ export const bigHand: AugmentDef = defineAugment({
 
     // 업사이드 — 선언한 국에 화료 수령액이 만관 미만이면 뱅크에서 채워 받는다.
     //
-    // 하한은 **배수가 다 적용된 최종 수령액** 기준이다(BankTopUp은 Multiply 뒤).
+    // 하한은 **배수도 가산도 다 끝난 최종 수령액** 기준이다.
+    // 그래서 배수(Multiply)·가산(BankTopUp) 다음인 전용 단계 `BankFloor`에서 돈다 —
+    // 같은 BankTopUp에 두면 판수 가산 12종과 순서가 엉켜 수령액이 5000점까지 갈렸다
+    // (2026-08-12). "그 국에 내가 받는 것이 최소 만관"은 더 얹힐 것이 다 얹힌 뒤에야
+    // 판정할 수 있다.
     // 예전에는 배수 전 값(info.points)으로 차액을 계산해, 일확천금 0.5배와 겹치면
     // 1000 → 500(배수) → +7000(차액) = **7500**으로 만관 하한이 무너지고, 3배와
     // 겹치면 3000 + 7000 = **10000**으로 만관을 넘겨 줬다(docs/25 역/점수 #6).
     //
     // 기준을 deltas로 잡으면 공탁·본장 수령분도 함께 세어진다 — "그 국에 내가
     // 받는 것이 최소 만관"이라는 단순한 규칙으로 확정한다.
-    settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event, ic) => {
+    settleInterceptor(ctx, SETTLE_STAGE.BankFloor, (event, ic) => {
       const p = event.payload as RoundSettledPayload;
       if (p.outcome !== "win") return event;
       if (!declaredThisRound(ic.state, holder)) return event;

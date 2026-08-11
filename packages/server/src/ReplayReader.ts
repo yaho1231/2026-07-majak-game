@@ -7,7 +7,6 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import {
   AUGMENT_DRAFTED,
   buildPlayerView,
@@ -23,7 +22,6 @@ import type {
   GameState,
   InitialStateOptions,
   PlayerId,
-  StandardGame,
 } from "@majak/core";
 
 export interface ReplayInitLine {
@@ -129,68 +127,29 @@ export function buildReplayView(
   return buildPlayerView(state, viewer, game.engine.rules);
 }
 
-// ─────────────────────────── 이어하기(resume) 재구성 ───────────────────────────
-
-export interface ResumeReconstruction {
-  /** 최종 상태 + 증강 재설치 + 로그 시드까지 끝나 바로 이어 돌릴 수 있는 게임 */
-  game: StandardGame;
-  /** 재구성에 사용한 확정 이벤트 수 (= 엔진 로그 시드 길이) */
-  eventCount: number;
-}
-
-/**
- * 리플레이 JSONL 라인들로 "이어 돌릴 수 있는" StandardGame을 재구성한다 (동기).
+/*
+ * ─────────────────────────── 이어하기(resume) 재구성 — 제거됨 ───────────────────────────
  *
- * 1) 리듀서로 최종 GameState를 재구성한다 (PRNG·왕패·손패 전부 상태에 담김).
- * 2) 그 최종 상태로 엔진을 만들고 로그를 과거 이벤트로 시드한다 (새 이벤트만 append).
- * 3) state.players[].augments 기준으로 증강 효과를 재설치한다 (rebuildAugments).
+ * `ResumeReconstruction` · `reconstructGame` · `reconstructGameFromFile` 과 그 테스트
+ * (`test/Resume.test.ts`)를 **임시로 들어냈다** (2026-08-12, 사용자 결정).
  *
- * 이후 HanchanController.resume(game)이 FlowController로 현재 페이즈에서 이어간다.
+ * 구현도 테스트도 있었지만 **프로덕션에서 한 번도 불린 적이 없다** — `git log -S`로
+ * 확인한 결과 호출 지점이 추가된 적도 제거된 적도 없는, 배선되지 않은 미완성 기능이었다.
+ * 지금 켤 수도 없었다. 라이브 경로가 하는 일 중 재개 경로에 없는 것들:
+ *
+ *   - 리플레이 `__init__` 줄에 `HanchanConfig`가 없다 (uma·oka·서입·`draftSchedules`).
+ *     그런데 `HanchanController.resume()`은 `draftSchedules`를 읽어 어느 드래프트가
+ *     끝났는지 판단한다.
+ *   - `createStandardGameFromState`가 `setWeightOverrides`를 부르지 않는다 →
+ *     재개한 판은 실적 반영 없는 정적 티어표로 드래프트한다.
+ *   - `processor: { onEffectError }`가 안 실려 증강 훅 예외가 로그 없이 삼켜진다.
+ *   - `ReplayWriter`에 append 모드가 없고 `StatsTracker`는 빈 상태로 다시 시작한다.
+ *   - 방·좌석·에이전트·재접속 토큰·관전자가 어디에도 영속되지 않는다 (DB에 방 테이블 없음).
+ *
+ * 그래서 유지비(단독 실행 100~200초짜리 테스트)만 계속 나가고 있었다.
+ * **되살리려면** `git log --diff-filter=D -- packages/server/test/Resume.test.ts` 로
+ * 이 커밋을 찾아 되돌리고, 위 다섯 가지를 먼저 채워야 한다.
+ *
+ * 엔진 쪽 `HanchanController.resume()` 자체는 **남겨 두었다** — 코어 API이고
+ * `packages/core/test/Hanchan.test.ts`가 독립적으로 덮고 있다.
  */
-export function reconstructGame(
-  lines: readonly string[],
-  extraAugments?: readonly AugmentDef[],
-): ResumeReconstruction {
-  const clean = lines.map((l) => l.trim()).filter((l) => l.length > 0);
-  if (clean.length === 0) throw new Error("Replay is empty");
-  const init = JSON.parse(clean[0] as string) as ReplayInitLine;
-  if (init.type !== "__init__") throw new Error("Replay first line must be __init__");
-
-  // 1차: 임시 게임의 리듀서로 최종 상태를 계산 (엔진 상태는 건드리지 않는다)
-  let state = createInitialGameState(init.payload.config, init.payload.options);
-  const tmp = createStandardGameFromState(state, undefined, extraAugments);
-  const events: GameEvent[] = [];
-  for (const line of clean.slice(1)) {
-    const event = JSON.parse(line) as GameEvent;
-    state = tmp.engine.reducers.dispatch(state, event);
-    state = { ...state, lastEventSeq: event.seq };
-    // ⚠ readReplay와 같은 규약: 증강은 자기 이벤트 타입의 Reducer를 install에서
-    // 등록한다(CounterStruck·RecallPerformed 등). 드래프트되는 순간 설치하지 않으면
-    // 이후 그 증강이 만든 이벤트에서 "No reducer registered"로 재구성이 통째로 죽는다.
-    if (event.type === AUGMENT_DRAFTED) {
-      const p = event.payload as { player: PlayerId; augmentId: string };
-      const def = tmp.augments.get(p.augmentId);
-      if (def !== undefined) {
-        installAugment(tmp.engine, def, p.player, { yaku: tmp.yaku });
-      }
-    }
-    events.push(event);
-  }
-
-  // 2차: 최종 상태를 담은 재개용 엔진 + 로그 시드 + 증강 재설치
-  const game = createStandardGameFromState(state, undefined, extraAugments, events);
-  rebuildAugments(game.engine, game.augments, {
-    yaku: game.yaku,
-    catalog: game.augments,
-  });
-  return { game, eventCount: events.length };
-}
-
-/** 리플레이 파일을 동기로 읽어 재구성한다 (resume 트리거는 레이스 방지를 위해 동기 처리) */
-export function reconstructGameFromFile(
-  path: string,
-  extraAugments?: readonly AugmentDef[],
-): ResumeReconstruction {
-  const text = readFileSync(path, "utf-8");
-  return reconstructGame(text.split(/\r?\n/), extraAugments);
-}

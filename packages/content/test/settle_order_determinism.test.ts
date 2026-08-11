@@ -21,6 +21,11 @@ import {
 import type { AugmentDef, GameState, PlayerId } from "@majak/core";
 import { craft } from "./helpers.js";
 import { settleInterceptor } from "../src/util.js";
+import { bigHand } from "../src/augments/big_hand.js";
+import { counter } from "../src/augments/counter.js";
+import { foresight } from "../src/augments/foresight.js";
+import { haiteiLord } from "../src/augments/haitei_lord.js";
+import { allOrNothing } from "../src/augments/all_or_nothing.js";
 import { defineAugment } from "@majak/core";
 
 /** 정산 deltas에 자기 이름을 이어 붙이는 표식용 증강 (같은 단계에 여러 개 앉힌다) */
@@ -166,7 +171,8 @@ describe("BankTopUp — 같은 사람이 '가산'과 '하한 보전'을 함께 �
     description: "floorer",
     detail: "floorer",
     install(ctx) {
-      settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event) => {
+      // big_hand과 같은 단계 — 가산이 전부 끝난 뒤에 하한을 본다.
+      settleInterceptor(ctx, SETTLE_STAGE.BankFloor, (event) => {
         const p = event.payload as { deltas: Record<string, number> };
         const cur = p.deltas[ctx.holder] ?? 0;
         if (cur >= FLOOR) return event;
@@ -196,6 +202,44 @@ describe("BankTopUp — 같은 사람이 '가산'과 '하한 보전'을 함께 �
     // 고치기 전: [adder, floorer] → 1000+5000=6000 → 하한 8000 보전 → 8000
     //            [floorer, adder] → 하한 8000 보전 → +5000 → 13000  (5000점 차)
     expect(settledDelta([adder, floorer])).toBe(settledDelta([floorer, adder]));
+  });
+
+  /**
+   * 결정론만으로는 부족했다 — 어느 순서로 굳느냐가 **규칙상** 옳아야 한다.
+   *
+   * 큰손이 약속하는 것은 "그 국에 내가 **받는 것**이 최소 만관"이므로, 뱅크 가산이
+   * 전부 얹힌 **뒤에** 하한을 봐야 한다. 하한이 먼저 서면 "만관 + 가산"이 되어
+   * 카드의 약속과 달라진다.
+   *
+   * ⚠ 프로브 두 개로 "픽 순서를 뒤집어도 같다"만 보는 것으로는 이걸 못 잡는다 —
+   * 같은 단계에 둬도 id소수가 우연히 유리한 쪽으로 정렬되면 그냥 통과한다(실제로
+   * 그랬다). 그래서 **진짜 카탈로그 증강**을 여러 개 깔고 순서를 직접 확인한다.
+   */
+  it("큰손은 모든 뱅크 가산 뒤에 돈다 (실제 증강으로 확인)", () => {
+    const topUps = [counter, foresight, haiteiLord, allOrNothing];
+    const game = createStandardGameFromState(scene(), undefined, [bigHand, ...topUps]);
+    // 같은 사람이 전부 들고 있을 때가 가장 까다롭다 — 자리 항이 순서를 못 가른다.
+    for (const def of [bigHand, ...topUps]) installAugment(game.engine, def, "p2", {});
+
+    // interceptorsFor는 (layer, priority, 등록순) 으로 **정렬된** 목록을 준다.
+    const order = game.engine.effects
+      .interceptorsFor(ROUND_SETTLED)
+      .map((e) => e.source);
+    const at = (id: string): number => order.indexOf(`aug:p2:${id}`);
+
+    expect(at("big_hand")).toBeGreaterThanOrEqual(0);
+    for (const def of topUps) {
+      expect(at(def.id), `${def.id} 보다 큰손이 먼저 돈다`).toBeGreaterThanOrEqual(0);
+      expect(at("big_hand"), `큰손이 ${def.id} 보다 앞선다`).toBeGreaterThan(at(def.id));
+    }
+  });
+
+  it("BankFloor는 BankTopUp 뒤, Transfer 앞이다", () => {
+    expect(SETTLE_STAGE.BankTopUp).toBeLessThan(SETTLE_STAGE.BankFloor);
+    expect(SETTLE_STAGE.BankFloor).toBeLessThan(SETTLE_STAGE.Transfer);
+    // 자리(0~3) + id소수(<1)를 더해도 단계 경계를 넘지 않는다
+    expect(SETTLE_STAGE.BankTopUp + 4).toBeLessThanOrEqual(SETTLE_STAGE.BankFloor);
+    expect(SETTLE_STAGE.BankFloor + 4).toBeLessThanOrEqual(SETTLE_STAGE.Transfer);
   });
 });
 
