@@ -33,6 +33,7 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
+  publishUsesLeft,
   settleInterceptor,
   viewKey,
 } from "../util.js";
@@ -61,6 +62,12 @@ export const eternalDealer: AugmentDef = defineAugment({
     "(상시 · 연장은 게임 내 3회) 세 가지가 한꺼번에 걸린다. ① 자리가 어디든 내 화료는 오야 화료로 계산되어 점수가 약 1.5배가 된다. ② 점수 계산에서 내 자풍이 항상 '동'이 된다 — 동을 커쯔로 모으면 늘 역패 1판이 붙고, 장풍까지 동인 국이면 더블동(2판)이 된다. ⚠ **이것은 추가가 아니라 교체다.** 자풍은 하나뿐이라, 남가에 앉아 南을 커쯔로 모아도 그 南은 더 이상 내 자풍이 아니어서 역패가 붙지 않는다(장풍 南인 국이라면 장풍 몫 1판은 남는다). 자풍 역패를 노리는 손이라면 이 증강이 오히려 판을 깎을 수 있다. ③ 내가 화료하면 다음 국의 오야가 내 자리로 옮겨 온다(연장). 다만 국이 무한히 늘어나지 않게 ③은 게임 내 3회까지만 발동하고, 남은 횟수는 전원에게 보인다. 내가 진짜 오야인 국에 화료한 것은 원래 규칙대로의 연장이므로 횟수를 쓰지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, MAX_KEEPS - counterOf(state, keepsKey(holder))),
+      total: MAX_KEEPS,
+    }));
 
     // 1) 보유자의 화료를 오야로 채점
     engine.rules.addModifier<boolean>("win.treatAsDealer", {

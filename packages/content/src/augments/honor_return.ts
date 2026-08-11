@@ -34,7 +34,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, viewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "honor_return";
@@ -123,6 +123,12 @@ export const honorReturn: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 자기 순에 발동하면 **발동 시점까지** 이번 국에 버린 자패(바람·삼원)가 가장 최근 것부터 최대 네 장까지 기억되어 다음 국 배패에 그대로 섞여 돌아온다. 기억은 버튼을 누른 순간에 확정되므로, 그 뒤에 버리는 자패는 아무리 늘려도 되받는 목록에 추가되지 않는다 — 자패를 몇 장 흘려 둔 뒤에 누를수록 값이 커진다. 되받는 자패는 배패 13장 안에서 교체되므로 손패 장수는 그대로이며, 무엇이 부활하는지는 발동 즉시 전원에게 공개된다. 자패를 한 장도 버리지 않았다면 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(recallAction);

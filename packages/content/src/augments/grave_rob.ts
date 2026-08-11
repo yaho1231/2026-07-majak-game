@@ -47,6 +47,7 @@ import type {
 import {
   counterOf,
   matchUses,
+  publishUsesLeft,
   replaceDrawnTile,
   roundViewKey,
 } from "../util.js";
@@ -236,6 +237,12 @@ export const graveRob: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 자기 순에 상대 세 명이 최근에 버린 10장 안에서 화료가 성립하는 패 1장을 골라 그대로 화료한다. 화료가 되는 패만 후보로 제시되며, 그보다 더 오래전에 흘린 패는 무덤 깊이 묻혀 파낼 수 없다. 그 순의 쯔모패는 패산으로 돌아가고, 한참 전에 버린 사람에게 책임을 묻지 않도록 지불은 쯔모와 같이 세 명이 분담한다. 자기 바닥은 후리텐 존중을 위해 대상이 아니며, 원주인의 바닥 기록은 남아 그 사람의 후리텐 판정도 유지된다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       // YakuRegistry는 게임 전체가 공유하는 단일 객체라 첫 설치 시점의 것을 잡아도 안전하다.

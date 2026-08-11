@@ -16,7 +16,7 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, flagOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, flagOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "reload";
@@ -117,6 +117,12 @@ export const reload: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 자기 순에, 이미 한 번 이상 쓴 내 다른 증강 하나를 지목해 사용 횟수를 한 번 되돌린다. '게임 내 1회'라는 절대 한도조차 무너뜨릴 수 있다. 복구 순간은 전원에게 공개되며, 사용 횟수 규약을 따르는 증강만 되살릴 수 있고 재장전 자신은 대상이 아니다.\n\n⚠ 복구할 수 있는 것은 게임 단위 사용 횟수를 쓰는 증강뿐이다. 국 단위 쿨다운으로 도는 증강은 눈에 띄게 소진돼 보여도 후보에 뜨지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(reloadAction);

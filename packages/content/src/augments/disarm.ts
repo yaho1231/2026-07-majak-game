@@ -34,7 +34,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 import { threatWeightOf } from "./botHelpers.js";
 
@@ -135,6 +135,12 @@ export const disarm: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 자기 순에 상대 한 명의 증강 하나를 지목하면 그 증강이 이번 국이 끝날 때까지 완전히 잠긴다. 상시 규칙(만년 오야의 오야 고정·천하무적의 무방총)도, 정산 개입도, 액티브 버튼도 전부 사라진다. 손패 장수처럼 그 증강이 이미 바꿔 놓은 것이 있으면 잠기는 순간 원래대로 되돌아간다 — 진짜 용을 잠그면 필요 없는 패 3장이 패산으로 돌아가며 평범한 손패로 복귀한다. 한 국에 한 명의 증강 하나만 잠글 수 있고, 지목은 전원에게 공개되며 국이 끝나면 증강도 원래대로 돌아온다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(disarmAction);

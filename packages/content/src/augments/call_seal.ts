@@ -14,7 +14,7 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, roundKey, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "call_seal";
@@ -88,6 +88,12 @@ export const callSeal: AugmentDef = defineAugment({
   }),
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) engine.actions.register(sealAction);
 

@@ -45,6 +45,7 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
+  publishUsesLeft,
   replaceDrawnTile,
   roundKey,
   roundViewKey,
@@ -296,6 +297,12 @@ export const handSwap3: AugmentDef = defineAugment({
     "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패 전체가 나에게만 진짜 패로 공개된다. 이어서 넘길 내 3장과 가져올 상대 3장을 각각 한 번에 골라 맞바꾸며, 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로 유지된다. 리치한 상대는 지정할 수 없고 지정한 뒤 상대가 리치하면 교환이 중단된다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다. 한 번 교환을 마친 국에는 그 국이 끝날 때까지 다시 쓸 수 없어 두 번째 사용은 다음 국 이후로 미뤄진다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, MAX_USES - counterOf(state, usedKey(holder))),
+      total: MAX_USES,
+    }));
 
     // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
     ensureStealthBreakReducer(engine);

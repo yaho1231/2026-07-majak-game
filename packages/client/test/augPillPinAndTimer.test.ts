@@ -76,6 +76,25 @@ describe("증강 pill — 눌러서 설명을 고정한다", () => {
     expect(APP_CODE).toContain("setPinned(new Set())");
   });
 
+  /*
+   * 2026-08-12 사용자 보고 — "고정이 이상하다, 열려 있는 탭 말고 다른 데를 눌러도 안 꺼진다".
+   * 내리는 길이 **그 pill을 정확히 다시 누르기**와 Esc 둘뿐이었는데, 펼쳐진 툴팁이 그 pill을
+   * 덮고 있고 툴팁 안쪽 클릭은 토글로 올라오지 않게 막혀 있어 사실상 Esc밖에 없었다.
+   */
+  it("바깥을 누르면 내려간다", () => {
+    // pointerdown으로 들어야 click보다 먼저다 — 다른 pill로 옮겨 갈 때 순서가 어긋나지 않는다
+    expect(APP_CODE).toContain('document.addEventListener("pointerdown", onDown)');
+    // 펼쳐진 툴팁 안쪽(자세히 칩·용어 링크)은 '바깥'이 아니다
+    expect(APP_CODE).toContain('closest(".aug-pill-pinned")');
+  });
+
+  it("툴팁 안의 고정 손잡이가 실제 버튼이라 거기서도 내릴 수 있다", () => {
+    expect(APP_CODE).toMatch(/className="aug-tip-pin"[\s\S]{0,200}togglePin\(a\)/);
+    // 버튼 클릭이 pill의 토글까지 타고 올라가면 두 번 토글돼 아무 일도 안 일어난다
+    expect(APP_CODE).toMatch(/className="aug-tip-pin"[\s\S]{0,120}stopPropagation\(\)/);
+    expect(rule(".aug-tip-pin")).toContain("cursor: pointer");
+  });
+
   it("차례 이름표가 opacity로 깜빡이지 않는다 (쌓임 맥락)", () => {
     const r = rule(".nameplate-turn");
     // turn-pulse는 opacity 애니메이션이다 — 이름표에 걸면 안쪽 툴팁이 갇힌다

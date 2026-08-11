@@ -1105,6 +1105,14 @@ interface Production {
   sfx?: () => void;
   /** 알림에 함께 보여줄 관련 패 (예: 리치 선언패) */
   tiles?: TileKind[];
+  /**
+   * `tiles`의 이 자리 **앞에** "→"를 끼운다 — 바뀌기 전과 후를 가르는 자리다.
+   *
+   * 연금술사·염색·분열은 "전 → 후"를 한 줄에 늘어놓는데, 그냥 붙여 놓으면 6만·7만이
+   * 나란히 선 **두 장짜리 손패**로 읽힌다("6만이 7만이 됐다"가 아니라 "6만 7만을 얻었다").
+   * 2026-08-12 사용자 보고가 정확히 이것이다.
+   */
+  tileArrowAt?: number;
   /** 화면 흔들림 (screenFx 설정이 켜져 있을 때만 발동) */
   impact?: ImpactSpec;
 }
@@ -2278,6 +2286,7 @@ export function App(): JSX.Element {
       tier?: LimitTier;
       sfx?: () => void;
       tiles?: TileKind[];
+      tileArrowAt?: number;
       impact?: ImpactSpec;
       augId?: string;
     } = {},
@@ -2292,6 +2301,7 @@ export function App(): JSX.Element {
       ...(opts.augId !== undefined ? { augId: opts.augId } : {}),
       ...(opts.sfx !== undefined ? { sfx: opts.sfx } : {}),
       ...(opts.tiles !== undefined && opts.tiles.length > 0 ? { tiles: opts.tiles } : {}),
+      ...(opts.tileArrowAt !== undefined ? { tileArrowAt: opts.tileArrowAt } : {}),
       ...(opts.impact !== undefined ? { impact: opts.impact } : {}),
     });
   }
@@ -3560,10 +3570,13 @@ export function App(): JSX.Element {
       shown.augEvents.add(seen);
       const who = playerNameById(next, tail);
       const tiles = augEventTiles(raw);
+      // "전 → 후"를 한 줄에 늘어놓는 사건(염색·연금술사·분열)은 가운데를 화살표로 가른다.
+      const arrowAt = augEventArrowAt(raw);
       showCutIn(def.title, def.tone ?? "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, def.ms ?? 2000, {
         sfx: () => sfx.augment(1),
         augId: def.augId,
         ...(tiles.length > 0 ? { tiles } : {}),
+        ...(arrowAt !== undefined && arrowAt < tiles.length ? { tileArrowAt: arrowAt } : {}),
         impact: { shake: def.shake ?? 2 },
       });
     }
@@ -4011,7 +4024,15 @@ export function App(): JSX.Element {
             {activeProd.sub !== undefined ? <span className="cutin-sub">{activeProd.sub}</span> : null}
             {activeProd.tiles !== undefined ? (
               <span className="cutin-tiles">
-                {activeProd.tiles.map((kind, i) => <TileImg key={i} tile={{ kind }} size="result" />)}
+                {activeProd.tiles.map((kind, i) => (
+                  <Fragment key={i}>
+                    {/* 바뀌기 전 ↔ 후를 가르는 화살표. 없으면 그냥 늘어놓는다. */}
+                    {i === activeProd.tileArrowAt ? (
+                      <span className="cutin-tiles-arrow" aria-hidden="true">→</span>
+                    ) : null}
+                    <TileImg tile={{ kind }} size="result" />
+                  </Fragment>
+                ))}
               </span>
             ) : null}
           </div>
@@ -8354,6 +8375,29 @@ function augEventTiles(raw: unknown): TileKind[] {
 }
 
 /**
+ * `augEventTiles`가 만든 줄에서 **"바뀌기 전"이 몇 장까지인가** — 그 자리에 "→"가 들어간다.
+ *
+ * 값이 "man6→man7"(염색·연금술사)이거나 `{kind, to:[…]}`(분열 등)이면 앞쪽이 원래 패,
+ * 뒤쪽이 새 패다. 화살표 없이 붙여 놓으면 "6만 7만"이라는 **두 장짜리 손패**로 읽힌다
+ * (2026-08-12 사용자 보고). 가를 자리가 없으면 undefined.
+ */
+function augEventArrowAt(raw: unknown): number | undefined {
+  if (typeof raw === "string") {
+    if (!raw.includes("→")) return undefined;
+    const before = raw.split("→")[0];
+    if (before === undefined || parseKindKey(before) === null) return undefined;
+    return 1;
+  }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const m = raw as { kind?: unknown; from?: unknown; to?: unknown };
+  if (!Array.isArray(m.to) || m.to.length === 0) return undefined;
+  const before = [m.kind, m.from].filter(
+    (v) => typeof v === "string" && parseKindKey(v) !== null,
+  ).length;
+  return before > 0 ? before : undefined;
+}
+
+/**
  * 전용 사건 컷인을 가진 증강 id.
  *
  * 이 증강들은 **발동 결과**를 자기 컷인으로 보여준다. 그런데 액티브 액션은 서버가
@@ -8466,6 +8510,9 @@ function augmentLogRows(
     if (head === "sealed" || head === "revealTiles" || head === "discardLockReveal") continue;
     // 잔량·게이지·발동 여부는 그 사람의 이름표 증강 pill이 대신 보여준다.
     if (PILL_OWNED_HEADS.has(head)) continue;
+    // 남은 사용 횟수(`uses:{증강id}`)도 그 증강의 pill이 "n회"로 직접 보여준다.
+    // 여기 남겨 두면 사람 이름 자리에 증강 id가, 값 자리에 `{left:1,total:2}`가 찍힌다.
+    if (head === "uses") continue;
     // 내부 쿨다운(`cooldown:{증강id}`)은 그 증강의 pill이 "N국"으로 직접 보여준다.
     // 여기 남겨 두면 사람 이름 자리에 증강 id가, 값 자리에 "스택 0"이 찍힌다.
     if (head === "cooldown") continue;
@@ -9773,8 +9820,11 @@ type PillStatus = {
    * `guard`는 **상대의 선택을 지금 막고 있는 상태**다 — 불가침 조약·천하무적이 그렇다.
    * 남은 횟수와 같은 회색 칩으로 서면 "왜 론 버튼이 안 뜨는가"를 찾는 눈에 안 걸린다.
    * 색만 다르게 하고 움직이지는 않는다(판 위에서 깜빡이는 것은 이미 차례 표시가 한다).
+   *
+   * `spent`는 **남은 횟수가 0**이다 — 아직 pill에는 서 있지만 이제 아무 일도 하지 않는
+   * 증강이라, 남은 잔량과 같은 색으로 두면 "0회"가 "3회"처럼 읽힌다.
    */
-  tone?: "guard";
+  tone?: "guard" | "spent";
 };
 
 /** 카르마 청산선 — 이 값을 넘으면 게이지가 가득 찬다 */
@@ -10098,7 +10148,37 @@ function augmentPillStatus(
   }
 
   const raw = av[`${augId}:${playerId}`];
-  if (raw === undefined) return null;
+
+  /*
+   * 남은 사용 횟수 — 횟수형 증강 공용 채널(`uses:{증강id}`, content/util publishUsesLeft).
+   *
+   * "게임 내 2회"라고 적힌 증강이 몇 번 남았는지가 화면 어디에도 없어서, 액티브 버튼이
+   * 사라지고 나서야 소진을 알 수 있었다(2026-08-12 사용자 지적). 보유자 본인 채널이라
+   * 남의 pill에는 애초에 값이 없다.
+   *
+   * 아래 개별 분기(PILL_CUSTOM 등)보다 **뒤**에 두면 상태 뱃지가 있는 국에는 잔량이
+   * 통째로 묻힌다. 그래서 개별 분기에 실을 값이 없을 때만 잔량을 세운다.
+   */
+  if (raw === undefined) {
+    const uses = av[`uses:${augId}`] as
+      | { left?: unknown; total?: unknown; scope?: unknown }
+      | undefined;
+    if (uses !== undefined && uses !== null && typeof uses.left === "number") {
+      const left = uses.left;
+      const total = typeof uses.total === "number" ? uses.total : left;
+      const where = uses.scope === "round" ? "이번 국" : "게임 내";
+      return {
+        chip: `${left}회`,
+        note:
+          left > 0
+            ? `${where} ${total}회 중 ${left}회 남음`
+            : `${where} ${total}회를 모두 썼다 — 더 쓸 수 없다`,
+        ...(left === 0 ? { tone: "spent" as const } : {}),
+        ...(total > 0 ? { gauge: left / total } : {}),
+      };
+    }
+    return null;
+  }
 
   const custom = PILL_CUSTOM[augId];
   if (custom !== undefined) return custom(raw);
@@ -10172,6 +10252,28 @@ const NamePlate = memo(function NamePlate({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [hasPinned]);
+  /*
+   * 바깥을 누르면 고정을 전부 내린다.
+   *
+   * 예전에는 내리는 길이 **그 pill을 정확히 다시 누르기**와 Esc 둘뿐이었다. 열어 둔
+   * 설명은 판 위를 덮는데, 판을 보려고 아무 데나 눌러도 그대로 서 있어서 "고정이 이상하다,
+   * 안 꺼진다"가 됐다(2026-08-12 사용자 보고). 이제 펼쳐진 툴팁 **안쪽**이 아닌 곳을
+   * 누르면 내려간다 — 툴팁 안의 "자세히" 칩·용어 링크는 그대로 눌린다.
+   *
+   * pointerdown으로 듣는다: click보다 먼저라, 다른 pill을 눌러 옮겨 갈 때
+   * "이전 것 내리기 → 누른 것 고정하기"가 순서대로 일어난다.
+   * 이름표마다 pinned가 따로라, 다른 자리의 pill을 눌러도 이 자리 것은 함께 내려간다.
+   */
+  useEffect(() => {
+    if (!hasPinned) return;
+    const onDown = (e: PointerEvent): void => {
+      const el = e.target as HTMLElement | null;
+      if (el !== null && el.closest(".aug-pill-pinned") !== null) return;
+      setPinned(new Set());
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
   }, [hasPinned]);
   // 상대 이름표의 표식에 손이 올라가 있고 그 관계가 나를 향하면 나도 같이 빛난다
   const linked =
@@ -10315,11 +10417,22 @@ const NamePlate = memo(function NamePlate({
                     open={shiftHeld || detailFor === a}
                     onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
                   />
-                  <span className="aug-tip-pin">
+                  {/* 고정 손잡이 — 툴팁 안에서도 내릴 수 있어야 한다. 툴팁이 pill을
+                      덮고 있어 "다시 누르기"가 사실상 툴팁을 누르는 것이 되는데, 툴팁
+                      안쪽 클릭은 고정 토글로 올라가지 않게 막혀 있어서 내릴 방법이
+                      없어 보였다(2026-08-12 사용자 보고). 여기서 직접 토글한다. */}
+                  <button
+                    type="button"
+                    className="aug-tip-pin"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePin(a);
+                    }}
+                  >
                     {pinned.has(a)
-                      ? "📌 고정됨 — 다시 누르면 내린다 (Esc: 전부)"
-                      : "📌 누르면 이대로 띄워 둔다"}
-                  </span>
+                      ? "📌 고정됨 — 눌러서 내리기 (Esc: 전부, 바깥을 눌러도 내려간다)"
+                      : "📌 눌러서 이대로 띄워 두기"}
+                  </button>
                 </span>
                 ) : null}
               </span>
@@ -11501,8 +11614,10 @@ function OwnArea(props: {
             <PromptTimer seq={props.promptSeq} deadline={props.promptDeadline} />
           </>
         ) : null}
+        {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
+            맞는다). 국 끝물에 내 몫의 쯔모가 모자라면 두 칸·한 칸으로 줄어든다. */}
         {nextTsumoKinds.length > 0 ? (
-          <div className="next-tsumo-strip" title="삼세 예지 — 내 다음 쯔모 세 장">
+          <div className="next-tsumo-strip" title="삼세 예지 — 내 다음 쯔모 (실시간, 최대 세 장)">
             <span className="next-tsumo-tag">삼세 예지 · 다음 쯔모</span>
             {nextTsumoKinds.map((kind, i) => (
               <span key={i} className="next-tsumo-cell">
@@ -12258,6 +12373,15 @@ function ActiveAugmentControl(props: {
   // 예지 — 재배열 드래그 중인 순서. arr[newPos] = 원래 인덱스. null이면 손대지 않은 상태.
   const [foresightArr, setForesightArr] = useState<number[] | null>(null);
   const [foresightDragFrom, setForesightDragFrom] = useState<number | null>(null);
+  /**
+   * 예지 재배열 탭이 열려 있는가.
+   *
+   * 재배열은 여태 액티브 버튼 옆의 **작은 스트립 안에서** 해야 했다. 미니 패 넉 장이
+   * 손가락보다 작고, 판 구석에 붙어 있어 무엇을 어디로 끌고 있는지 보이지 않았다
+   * (2026-08-12 사용자 보고: "예지 조작이 어색하다"). 분열·염색처럼 **전용 탭**을
+   * 크게 띄운다. 닫아도 스트립은 남아 공개된 패는 계속 보인다.
+   */
+  const [foresightTab, setForesightTab] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   // 메뉴가 열려 있을 때 바깥을 누르면 닫는다 (실수로 눌러도 다른 곳 클릭으로 취소)
   useEffect(() => {
@@ -12333,6 +12457,11 @@ function ActiveAugmentControl(props: {
       setForesightArr(null);
     }
   }, [foresightReorderable, foresightArr]);
+  // 재배열이 열리면 전용 탭을 곧바로 띄우고, 닫히면(제출·턴 종료·소진) 탭도 접는다.
+  // 발동=공개는 취소할 수 없으므로, 열자마자 크게 보여주는 편이 흐름에 맞는다.
+  useEffect(() => {
+    setForesightTab(foresightReorderable);
+  }, [foresightReorderable]);
 
   // 모달이 떠 있는 동안 그 액션이 프롬프트에서 사라지면(교환 소진·턴 종료·리치 등)
   // 탭을 자동으로 닫는다. 예전엔 남아 있어서 이미 끝난 선택창을 손으로 닫아야 했다.
@@ -12967,12 +13096,16 @@ function ActiveAugmentControl(props: {
         예전에는 재배열 후보가 있을 때만 뜨는 모달이 유일한 표시 수단이라,
         재배열을 이미 쓴 국에 다시 발동하면(열람만 가능) 이펙트만 나오고
         정작 본 패는 어디에도 안 보였다 — 정보 증강이 정보를 안 주는 셈이었다.
-        이제 공개 채널이 살아 있는 동안 계속 보이고, 재배열이 열려 있을 때만 드래그된다.
+        이제 공개 채널이 살아 있는 동안 계속 보인다.
+
+        조작(재배열)은 여기서 하지 않는다 — 미니 패 넉 장이 손가락보다 작고 판 구석에
+        붙어 있어 무엇을 어디로 끄는지 보이지 않았다(2026-08-12 사용자 보고).
+        분열·염색처럼 아래 전용 탭에서 크게 고른다. 여기는 "지금 무엇이 오는가"만 읽는 자리다.
       */}
       {foresightPeek.length > 0 ? (
         <div className="foresight-strip">
           <span className="foresight-strip-tag">🔮 예지</span>
-          <div className={`foresight-strip-tiles${foresightReorderable ? " foresight-drag" : ""}`}>
+          <div className="foresight-strip-tiles">
             {foresightOrder.map((origIdx, pos) => {
               const kind = foresightPeek[origIdx];
               const seatLabel = foresightSeatLabels[pos] ?? "";
@@ -12980,42 +13113,8 @@ function ActiveAugmentControl(props: {
               return (
                 <div
                   key={pos}
-                  className={`foresight-cell${isMine ? " foresight-mine" : ""}${
-                    foresightDragFrom === pos ? " foresight-dragging" : ""
-                  }`}
-                  title={`${seatLabel} 쯔모${foresightReorderable ? " — 끌거나, 두 자리를 차례로 눌러 순서 변경" : ""}`}
-                  /*
-                   * 재배열은 여태 HTML5 draggable 하나뿐이었다 — **모바일 브라우저는 터치에서
-                   * dragstart 를 아예 발생시키지 않아** 폰에서는 순서를 바꿀 방법이 없었다.
-                   * (손패 드래그는 pointer 이벤트라 잘 돈다 — 여기만 옛 방식으로 남아 있었다.)
-                   * 드래그는 그대로 두고, 어디서나 되는 길을 하나 더 낸다: 옮길 자리를 누르고
-                   * 놓을 자리를 누른다. 키보드로도 같은 두 번이면 된다.
-                   */
-                  draggable={foresightReorderable}
-                  {...(foresightReorderable ? { tabIndex: 0, role: "button" } : {})}
-                  onDragStart={() => setForesightDragFrom(pos)}
-                  onDragOver={(e) => {
-                    if (foresightReorderable) e.preventDefault();
-                  }}
-                  onDrop={() => {
-                    const from = foresightDragFrom;
-                    if (from === null) return;
-                    moveForesight(from, pos);
-                  }}
-                  onDragEnd={() => setForesightDragFrom(null)}
-                  onClick={() => {
-                    if (!foresightReorderable) return;
-                    // 첫 번째 누름 = 집기, 두 번째 = 놓기. 같은 자리를 다시 누르면 집기 취소.
-                    if (foresightDragFrom === null) setForesightDragFrom(pos);
-                    else moveForesight(foresightDragFrom, pos);
-                  }}
-                  onKeyDown={(e) => {
-                    if (!foresightReorderable) return;
-                    if (e.key !== "Enter" && e.key !== " ") return;
-                    e.preventDefault();
-                    if (foresightDragFrom === null) setForesightDragFrom(pos);
-                    else moveForesight(foresightDragFrom, pos);
-                  }}
+                  className={`foresight-cell${isMine ? " foresight-mine" : ""}`}
+                  title={`${seatLabel} 쯔모`}
                 >
                   {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
                   <span className="foresight-cell-label">
@@ -13026,24 +13125,108 @@ function ActiveAugmentControl(props: {
               );
             })}
           </div>
-          {foresightReorderable ? (
-            foresightMoved ? (
-              <button
-                className="foresight-strip-confirm"
-                onClick={() => confirmForesight(foresightOrder)}
-              >
-                이 순서로 확정
-              </button>
-            ) : (
-              <span className="foresight-strip-hint">
-                {foresightDragFrom === null
-                  ? "끌거나, 옮길 패와 놓을 자리를 차례로 눌러 순서 바꾸기 (국에 1회)"
-                  : "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"}
-              </span>
-            )
+          {foresightReorderable && !foresightTab ? (
+            <button className="foresight-strip-confirm" onClick={() => setForesightTab(true)}>
+              순서 바꾸기 (국에 1회)
+            </button>
           ) : null}
         </div>
       ) : null}
+      {/*
+        예지 재배열 탭 — 분열·염색의 선택 탭(`rinshan-pick-*`)과 같은 자리·같은 뼈대다.
+        ⚠ 포털은 필수다: 이 컨트롤의 조상 중에 transform을 가진 것이 있으면
+        `position: fixed`의 기준이 화면이 아니라 그 상자가 된다(2026-08-06 분열 사례).
+        `data-arm-zone`도 함께 — 무장 중 판 바깥 pointerdown이 무장을 풀어 탭이 클릭
+        전에 사라지는 것을 막는다.
+      */}
+      {foresightTab && foresightReorderable
+        ? createPortal(
+            <div className="rinshan-pick-overlay" data-arm-zone="1">
+              <div className="rinshan-pick-panel foresight-tab">
+                <div className="rinshan-pick-title">🔮 예지 — 다음 한 바퀴를 어떻게 놓을까요?</div>
+                <div className="rinshan-pick-sub">
+                  왼쪽부터 차례로 뽑혀 갑니다. 옮길 패를 끌어다 놓거나, 옮길 패와 놓을 자리를
+                  차례로 누르세요. <b>재배열은 이 국에 한 번뿐</b>입니다 — 그대로 두고 닫아도
+                  열람은 이미 끝났습니다.
+                </div>
+                <div className="foresight-tab-row">
+                  {foresightOrder.map((origIdx, pos) => {
+                    const kind = foresightPeek[origIdx];
+                    const seatLabel = foresightSeatLabels[pos] ?? "";
+                    const isMine = seatLabel === "나";
+                    const picked = foresightDragFrom === pos;
+                    return (
+                      <button
+                        key={pos}
+                        type="button"
+                        className={`foresight-tab-cell${isMine ? " foresight-mine" : ""}${
+                          picked ? " foresight-dragging" : ""
+                        }`}
+                        title={`${seatLabel}의 다음 쯔모 — 끌거나, 두 자리를 차례로 눌러 순서 변경`}
+                        /*
+                         * 드래그(마우스)와 두 번 누르기(터치·키보드)를 함께 연다.
+                         * 모바일 브라우저는 터치에서 dragstart를 아예 내지 않아,
+                         * 드래그만 두면 폰에서는 순서를 바꿀 길이 없다.
+                         */
+                        draggable
+                        onDragStart={() => setForesightDragFrom(pos)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => {
+                          const from = foresightDragFrom;
+                          if (from === null) return;
+                          moveForesight(from, pos);
+                        }}
+                        onDragEnd={() => setForesightDragFrom(null)}
+                        onClick={() => {
+                          // 첫 번째 누름 = 집기, 두 번째 = 놓기. 같은 자리면 집기 취소.
+                          if (foresightDragFrom === null) setForesightDragFrom(pos);
+                          else moveForesight(foresightDragFrom, pos);
+                        }}
+                      >
+                        <span className="foresight-tab-ord">{pos + 1}번째</span>
+                        {kind !== undefined ? <TileImg tile={{ kind }} size="hand" /> : null}
+                        <span className="foresight-tab-label">
+                          {seatLabel}
+                          {isMine ? " ★ 내 쯔모" : " 쯔모"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="foresight-tab-hint">
+                  {foresightDragFrom !== null
+                    ? "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
+                    : foresightMoved
+                      ? "이 순서로 확정하면 패산이 그대로 다시 놓입니다."
+                      : "아직 손대지 않았습니다 — 옮길 패를 먼저 고르세요."}
+                </div>
+                <div className="foresight-tab-actions">
+                  <button
+                    className="foresight-tab-confirm"
+                    disabled={!foresightMoved}
+                    onClick={() => {
+                      confirmForesight(foresightOrder);
+                      setForesightTab(false);
+                    }}
+                  >
+                    이 순서로 확정
+                  </button>
+                  <button
+                    className="rinshan-pick-skip"
+                    onClick={() => {
+                      setForesightDragFrom(null);
+                      setForesightArr([0, 1, 2, 3]);
+                      setForesightTab(false);
+                    }}
+                  >
+                    그대로 두기 (닫기)
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

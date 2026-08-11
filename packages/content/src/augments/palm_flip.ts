@@ -28,7 +28,7 @@ import type {
   GameState,
   PlayerId,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, roundKey, roundViewKey } from "../util.js";
+import { counterOf, flagOf, matchUses, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { waitTilesLeft } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -84,6 +84,12 @@ export const palmFlip: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 리치 중 자기 순에 선언을 취소하면 잠겼던 손이 풀려 무엇이든 버릴 수 있고, 대기를 갈아엎은 뒤 같은 국에 다시 리치를 걸 수 있다. 처음 낸 리치봉이 그대로 남아 있어 재선언에는 공탁을 다시 내지 않는다. 해제 사실은 전원에게 공개된다.\n\n리치를 풀면 리치로 생긴 후리텐(오름패를 넘겨 생긴 영구 후리텐 포함)도 함께 풀린다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(flipAction);

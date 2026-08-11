@@ -51,7 +51,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, roundKey, sameHandSize } from "../util.js";
+import { counterOf, flagOf, matchUses, publishUsesLeft, roundKey, sameHandSize } from "../util.js";
 import {
   breakStealthRiichiEvents,
   ensureStealthBreakReducer,
@@ -154,6 +154,12 @@ export const seatSwap: AugmentDef = defineAugment({
     "(동풍전 2회 · 반장전 3회, 한 국에는 1회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다. 리치한 상대는 지정할 수 없지만, **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손이 바뀌는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다.\n\n손패 장수와 후로 개수가 나와 같은 상대만 대상이 된다 — 이미 울어 둔 상대는 목록에 뜨지 않는다.",
   install(ctx) {
     const { engine } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, maxUses(state) - counterOf(state, usesKey(ctx.holder))),
+      total: maxUses(state),
+    }));
 
     // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
     ensureStealthBreakReducer(engine);

@@ -29,6 +29,7 @@ import type {
 import {
   counterOf,
   matchUses,
+  publishUsesLeft,
   roundViewKey,
   settleInterceptor,
   withAugPoint,
@@ -63,6 +64,12 @@ export const dieHard: AugmentDef = defineAugment({
   conflicts: ["yakuman_shield"],
   install(ctx) {
     const { holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     // 방어는 반드시 마지막 단계 — 어떤 경로로 생긴 손실이든 **최종값**을 봐야 한다.
     settleInterceptor(ctx, SETTLE_STAGE.Shield, (event, ic) => {
