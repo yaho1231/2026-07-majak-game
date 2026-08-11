@@ -11060,7 +11060,13 @@ function OwnArea(props: {
       if (!el.matches(".action-bar, .prompt-timer, .arm-hint")) continue;
       h -= el.offsetHeight + gap;
     }
-    const band = Math.max(0, Math.round(h + inset));
+    /*
+     * 4px 격자로 올림한다. 실측값은 글꼴·소수점 높이 탓에 같은 화면에서도 289↔290px로
+     * 1px씩 떨린다(2026-08-12 실측). 그 1px이 그대로 --board로, 다시 바닥 타일 폭으로
+     * 내려가면 버림패가 매 순 미세하게 크기를 바꾼다 — 사람 눈에는 "판이 흔들린다"로
+     * 읽힌다. 올림이라 자리가 모자라는 쪽으로는 절대 틀리지 않는다(최대 3px 더 비운다).
+     */
+    const band = Math.max(0, Math.ceil((h + inset) / 4) * 4);
     if (band === ownBandRef.current) return;
     ownBandRef.current = band;
     root.style.setProperty("--own-band", `${band}px`);
@@ -11480,14 +11486,6 @@ function OwnArea(props: {
         {props.quickToggles ?? null}
         <div className="own-top">
           <NamePlate view={view} player={me} catalog={props.catalog} tipUp />
-          {myWaits.length > 0 ? (
-            <WaitsBadge
-              waits={myWaits}
-              mine={!isSpectator}
-              noYaku={noYakuWaitSet}
-              {...(isSpectator ? { owner: playerName(view, me) } : {})}
-            />
-          ) : null}
           {!isSpectator ? (
             <ActiveAugmentControl
               view={view}
@@ -11497,6 +11495,29 @@ function OwnArea(props: {
             />
           ) : null}
           {!isSpectator ? <ActiveInfoBadges view={view} me={me} /> : null}
+        </div>
+        {/*
+         * 오름패 줄 — **텐파이가 아닐 때도 자리를 비워 둔다**(빈 줄로 렌더).
+         *
+         * 예전엔 이 뱃지가 `.own-top` 안에 이름표와 나란히 있었다. 그래서 쯔모·타패로
+         * 텐파이가 붙었다 떨어질 때마다 아래쪽 띠(`--own-band`)가 뱃지 높이만큼
+         * 늘었다 줄었고, 그 띠로 `--board`가 정해지므로 **바닥에 깔린 버림패 크기가
+         * 매 순 달라졌다**(2026-08-12 사용자 지적: "어지럽다"). 좁은 창에서는 뱃지가
+         * 이름표 줄을 밀어 두 줄로 접히면서 더 크게 튀었다.
+         *
+         * 줄을 따로 떼고 높이를 `--waits-row-h`로 못 박으면 띠가 상수가 된다 —
+         * 뱃지가 나타나고 사라져도 보드·바닥 타일 크기는 1px도 움직이지 않는다.
+         * (자리 값은 styles.css `.own-waits-row` 주석 참고.)
+         */}
+        <div className="own-waits-row">
+          {myWaits.length > 0 ? (
+            <WaitsBadge
+              waits={myWaits}
+              mine={!isSpectator}
+              noYaku={noYakuWaitSet}
+              {...(isSpectator ? { owner: playerName(view, me) } : {})}
+            />
+          ) : null}
         </div>
         {armedAug === "swap3" ? (
           <div className="arm-hint arm-swap">
@@ -12051,8 +12072,11 @@ function WaitsBadge({
               title={tipOf(k, left)}
             >
               <TileImg tile={{ kind: k }} size="mini" />
+              {/* 남은 장수는 **패 아래쪽에** 띠로 붙인다 — 오른쪽 위 작은 동그라미는
+                  옆 패의 그림과 겹쳐 읽히지 않았다(2026-08-12 사용자 요청).
+                  "3"만으로는 무슨 수인지 모르므로 단위까지 적는다. */}
               {left !== null ? (
-                <span className={`wait-left${left === 0 ? " wait-left-gone" : ""}`}>{left}</span>
+                <span className={`wait-left${left === 0 ? " wait-left-gone" : ""}`}>{left}장</span>
               ) : null}
               {dead(k) ? <span className="wait-noyaku-tag">역없음</span> : null}
             </span>
