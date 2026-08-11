@@ -34,7 +34,7 @@ import type {
   TileKind,
   TileKindChangedPayload,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -151,6 +151,12 @@ export const evenWorld: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 자기 순에 발동하면 손패의 홀수 수패가 짝수로 바뀐다. 1→2, 3→4, 5→6, 7→8이 되고 9만은 위가 없어 8로 내려온다. 무늬는 그대로이며 자패(바람·삼원)와 이미 짝수인 패는 건드리지 않는다.\n\n바뀌지 않는 패가 셋 있다.\n① 지금 도라인 홀수 패 — 도라 값을 잃지 않도록 지킨다.\n② 적도라(빨간 5) — 같은 이유다.\n③ **바꾼 결과가 도라가 되는 패.** 도라가 8통인 국에서 7통·9통은 그대로 남는다 — 안 막으면 7·9를 많이 쥘수록 도라가 공짜로 생겨, '도라는 지켜 준다'는 원칙이 반대로 뒤집힌다.\n\n리치 중에는 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(evenWorldAction);

@@ -44,7 +44,7 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, matchUses, roundKey, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "brief_fog";
@@ -170,6 +170,12 @@ export const briefFog: AugmentDef = defineAugment({
   }),
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) {

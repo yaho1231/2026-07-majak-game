@@ -30,7 +30,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, roundViewKey, sameHandSize } from "../util.js";
+import { counterOf, publishUsesLeft, roundViewKey, sameHandSize } from "../util.js";
 import {
   breakStealthRiichiEvents,
   ensureStealthBreakReducer,
@@ -132,6 +132,12 @@ export const fullHandSwap: AugmentDef = defineAugment({
     "(게임 내 2회) 국의 첫 순에 상대 한 명을 지정해 그 손패를 통째로 가져온다. 교환이 아니라 강탈이라 내 손패(쯔모패 제외)는 상대가 아니라 패산 맨 밑으로 들어가고, 상대는 패산 위에서 같은 장수를 새로 받는다. 내 배패가 상대를 강화하는 일은 없다. 리치한 상대와 손패 장수가 다른 상대는 지정할 수 없다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손을 뺏기는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다.\n\n쯔모패가 없는 상태(치·펑 직후)나 패산이 모자랄 때는 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, MAX_USES - counterOf(state, usedKey(holder))),
+      total: MAX_USES,
+    }));
 
     // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
     ensureStealthBreakReducer(engine);

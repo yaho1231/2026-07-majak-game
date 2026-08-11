@@ -38,7 +38,7 @@ import type {
   PlayerId,
   RuleRegistry,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "tenpai_scan";
@@ -115,6 +115,12 @@ export const tenpaiScan: AugmentDef = defineAugment({
   //     정보만 주므로 잘못 써도 자해가 없다 — 판단이 필요한 액티브라 봇에게 맡기지 않는다.
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) engine.actions.register(scanAction);

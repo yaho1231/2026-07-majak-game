@@ -45,6 +45,7 @@ import {
   counterOf,
   flagOf,
   matchUses,
+  publishUsesLeft,
   replaceDrawnTile,
   roundKey,
   roundViewKey,
@@ -190,6 +191,12 @@ export const genesis: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회 — 다만 **한 국에는 한 번까지만** 쓸 수 있다. 개벽은 턴을 넘기지 않아서, 이 제한이 없으면 같은 순에 남은 횟수를 전부 태울 수 있다) 자기 순에 발동하면 손패의 자패는 수패로, 수패는 자패로 통째로 뒤바뀐다. 새 패는 패산에서 실물로 가져오고(패산에 그 분류가 모자랄 때만 생성) 원래 손패는 패산 맨 밑으로 들어가 계속 돈다. 어떤 패가 오는지는 완전히 무작위다. 리치 중에는 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
     if (!engine.reducers.has(GENESIS_FLIP_PERFORMED)) {
       engine.reducers.register(GENESIS_FLIP_PERFORMED, (state, event) => {
         const p = event.payload as GenesisFlipPayload;

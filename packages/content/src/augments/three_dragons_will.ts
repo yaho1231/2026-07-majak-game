@@ -33,7 +33,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -173,6 +173,12 @@ export const threeDragonsWill: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 백·발·중 중 두 종류를 커쯔로 세우고 나머지 한 종류를 한 장이라도 쥔 상태에서 발동하면, 부족한 두 장이 손패의 가장 쓸모없는 잡패에서 물질화해 커쯔를 채운다. 손패 장수는 변하지 않고 세 커쯔가 실제로 손에 서므로 대삼원이 정식으로 성립한다. 재료로 쓸 잡패가 손에 2장 없거나 리치 중이면 발동할 수 없다.\n\n⚠ 재료는 손패에서 자동으로 골라 덮어쓴다 — 이웃 패가 적은 순으로 뽑으므로 이미 완성된 몸통의 패가 나갈 수도 있다. 미리 보거나 고를 수는 없다. 세 번째 삼원패를 2장 쥐고 있으면 필요한 재료도 1장뿐이다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(willAction);

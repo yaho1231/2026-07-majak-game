@@ -34,6 +34,7 @@ import type {
 import {
   counterOf,
   matchUses,
+  publishUsesLeft,
   roundKey,
   roundViewKey,
   settleInterceptor,
@@ -155,6 +156,12 @@ export const allOrNothing: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 리치 선언과 동시에 올인을 건다. 현재 점수의 절반(1000점 단위 내림)이 판돈으로 전원에게 공개되고, 그 리치로 화료하면 판돈과 같은 금액을 뱅크에서 추가로 받는다. 유국이나 타가 화료로 국이 끝나도 점수는 한 푼도 줄지 않으며, 그 리치가 풀리면(승부수·손바닥 뒤집기) 판돈도 함께 사라진다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(allInRiichiAction);

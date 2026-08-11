@@ -15,6 +15,8 @@ import {
   ROUND_STARTED,
   SETTLE_LAYER,
   SETTLE_STAGE,
+  TILE_DISCARDED,
+  TILE_DRAWN,
   settlePriority,
   augmentDataSet,
   augmentStageKey,
@@ -84,6 +86,67 @@ export function viewKey(player: PlayerId | "*", key: string): string {
  */
 export function roundViewKey(player: PlayerId | "*", key: string): string {
   return `${viewKey(player, key)}${ROUND_SCOPED_MARK}`;
+}
+
+/**
+ * 남은 사용 횟수 뱃지 채널 (보유자 전용, 고정 키).
+ *
+ * 값은 `{ left, total, scope }` — 클라이언트 이름표 pill이 "n회"로 그리고 툴팁에
+ * "게임 내 n/N회 남음"을 적는다. `roundViewKey`가 아니라 **고정 키**다: 매치 스코프
+ * 카운터("게임 내 2회")는 국을 넘어 살아 있어야 하고, 국 스코프 카운터는 국이 바뀔 때
+ * `publishUsesLeft`가 새 값으로 덮어쓴다.
+ */
+export function usesViewKey(holder: PlayerId, augmentId: string): string {
+  return viewKey(holder, `uses:${augmentId}`);
+}
+
+/** `usesViewKey` 채널에 실리는 값 */
+export interface UsesLeftView {
+  /** 앞으로 몇 번 더 쓸 수 있는가 */
+  left: number;
+  /** 최대 몇 번인가 */
+  total: number;
+  /** 카운터가 게임(매치) 전체인가, 국 단위인가 */
+  scope: "match" | "round";
+}
+
+/**
+ * **남은 사용 횟수를 보유자 화면에 상시 노출한다** (횟수형 증강 공용).
+ *
+ * 왜 필요한가: "게임 내 2회"라고 적힌 증강이 몇 번 남았는지가 화면 어디에도 없었다.
+ * 등가교환·간파·안개처럼 카운터가 `augmentData` 안에만 있는 증강은, 액티브 버튼이
+ * 사라지고 나서야 "아, 다 썼구나"를 알 수 있었다(2026-08-12 사용자 지적).
+ * 연금술사·염색이 각자 손으로 만들어 두었던 `{id}:left` 채널을 규약으로 끌어올린 것이다.
+ *
+ * 동기화 시점: 쯔모·버림·국 시작. 값이 달라질 때만 발행하므로 그 외에는 no-op다.
+ * (ROUND_STARTED만으로는 부족하다 — 게임 시작 드래프트는 1국 배패 **뒤에** 설치돼
+ *  첫 국 내내 채널이 비어 있다. 쯔모·버림은 매 순 일어나 곧바로 값이 선다.)
+ *
+ * @param compute 지금 상태에서 `{left, total}` — 아직 알 수 없으면 null
+ */
+export function publishUsesLeft(
+  ctx: AugmentContext,
+  compute: (state: GameState) => { left: number; total: number } | null,
+  scope: "match" | "round" = "match",
+): void {
+  const key = usesViewKey(ctx.holder, ctx.augmentId);
+  const sync = (_event: unknown, rc: { state: GameState; emit: (e: ProposedEvent) => void }): void => {
+    const next = compute(rc.state);
+    if (next === null) return;
+    const cur = rc.state.augmentData[key] as UsesLeftView | undefined;
+    if (
+      cur !== undefined &&
+      cur.left === next.left &&
+      cur.total === next.total &&
+      cur.scope === scope
+    ) {
+      return;
+    }
+    rc.emit(augmentDataSet(key, { left: next.left, total: next.total, scope }));
+  };
+  ctx.reaction(TILE_DRAWN, sync);
+  ctx.reaction(TILE_DISCARDED, sync);
+  ctx.reaction(ROUND_STARTED, sync);
 }
 
 /**

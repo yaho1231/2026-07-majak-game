@@ -47,6 +47,7 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
+  publishUsesLeft,
   replaceDrawnTile,
   roundKey,
 } from "../util.js";
@@ -141,6 +142,12 @@ export const pondSnatch: AugmentDef = defineAugment({
     "(게임 내 3회) 자기 순에 그 순의 쯔모패를 패산 맨 밑으로 되돌리고, 대신 상대 세 명이 각각 최근에 버린 3장(최대 9장) 중 1장을 골라 손에 넣는다. 후로로 치지 않으므로 멘젠이 유지되고 리치도 그대로 걸 수 있다. 주운 패가 오름패라면 그 자리에서 쯔모로 화료할 수 있고 지불도 쯔모 취급(전원 분담)이지만, 남이 버린 패로 나는 것이므로 후리텐이면 화료할 수 없다 — 주운 패는 손에 남고 그 순에 한 장을 버려야 한다. 원주인의 바닥 기록은 남아 그 상대의 후리텐 판정도 유지된다. 리치 중이거나 영상패를 잡은 순, 패산이 바닥난 국에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, MAX_USES - counterOf(state, usedKey(holder))),
+      total: MAX_USES,
+    }));
 
     if (!engine.reducers.has(EVENT)) {
       engine.reducers.register(EVENT, (state, event) => {

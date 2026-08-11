@@ -45,7 +45,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "giant_god";
@@ -159,6 +159,12 @@ export const giantGod: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회)\n\n**증강이 요구패를 깔아 주지 않는다 — 내가 손수 버려서 모아야 한다.** 조건은 내 바닥(버림패 더미)에 국사무쌍의 요구패 13종(1m·9m·1p·9p·1s·9s·동·남·서·북·백·발·중)이 한 장씩 전부 이미 쌓여 있는 것이고, 그러려면 그 13종을 국 안에서 내가 전부 버려 놓아야 한다. 그 전까지는 액티브 버튼이 아예 나타나지 않는다. 남의 바닥은 세지 않는다.\n\n조건이 갖춰지고 내 순(turn.act)이 되면 버튼이 켜진다. 발동하면 바닥의 그 13장이 손으로 올라오고 지금 손패 13장이 그 자리로 내려가 손패 장수는 그대로 유지된다. 배패 상태(손패 13장)에서 발동하면 순수 국사무쌍 13면 대기 텐파이가 되어 요구패 13종 어느 것으로도 화료할 수 있고, 막 쯔모한 14장 상태라면 뽑은 한 장이 남는다. 리치 중에는 손이 잠겨 발동할 수 없으며, 발동은 전원에게 공개된다.\n\n⚠ 바닥에 깔아 둔 요구패가 후리텐으로 남아, 실제로는 론이 서지 않고 쯔모로만 화료하게 되는 경우가 대부분이다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(giantGodAction);

@@ -32,7 +32,7 @@ import type {
   ProposedEvent,
   Suit,
 } from "@majak/core";
-import { counterOf, matchUses, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import {
   NUMBER_SUITS,
   monoWorldEvent,
@@ -102,6 +102,12 @@ export const suitUnify: AugmentDef = defineAugment({
     "(동풍전 1회 · 반장전 2회) 어느 국이든 첫 패를 받은 뒤 자기 첫 타패 전에 액티브 버튼이 뜬다. 만·통·삭 중 색을 직접 골라 손패의 수패를 숫자는 그대로 둔 채 전부 그 색으로 바꾸며, 통일된 색으로 청일색까지 그대로 인정된다. 새 패는 패산에 있는 같은 숫자의 실물과 맞바꿔 오고(내 패는 패산 맨 밑으로 돌아간다), 패산에 그 숫자가 남아 있지 않을 때만 그 자리에서 새로 만들어진다. 어느 색으로 물들였는지는 전원에게 공개된다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
+      total: matchUses(state),
+    }));
 
     // 이벤트·액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능).
     // 실물 패 교환 리듀서는 편식(picky_eater)과 공유한다.
