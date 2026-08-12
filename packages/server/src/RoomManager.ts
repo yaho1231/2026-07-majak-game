@@ -239,6 +239,11 @@ interface Conn {
   spectating: Room | null;
   /** 최근 인증 시도 타임스탬프(ms) — 레이트리밋용 슬라이딩 윈도우 */
   authAttempts: number[];
+  /**
+   * **비싼 조회**의 종류별 슬라이딩 윈도우 (`HEAVY_MESSAGES` 참고).
+   * 토큰버킷은 개수만 세는데 메시지들의 실제 비용은 세 자릿수로 갈린다.
+   */
+  heavyHits: Map<string, number[]>;
   /** 이 연결의 원격 IP (핸드셰이크 시점). 로그·표시용. */
   ip: string;
   /** 남용 방어 버킷 키 (IPv4=주소, IPv6=/64 프리픽스). 상한·스로틀은 전부 이 키로 센다. */
@@ -375,6 +380,45 @@ const MAX_CONNECTIONS_PER_IP = 16;
 /** 연결당 메시지 토큰 버킷 — 한 연결이 메시지로 이벤트 루프를 폭주시키지 못하게. 루프백은 예외. */
 const MSG_BUCKET_CAPACITY = 80;
 const MSG_BUCKET_REFILL_PER_SEC = 40;
+/**
+ * **비싼 조회**들 — 종류마다 따로 세는 별도 창을 둔다 (감사 2026-08-12 §M-1).
+ *
+ * 토큰버킷은 메시지 **개수**만 센다. 그런데 실제 비용은 세 자릿수로 갈린다:
+ *
+ * | 메시지 | 1회 비용 |
+ * |---|---|
+ * | `ping` | 무시할 수준 |
+ * | `replayList`(일반) | **동기** SQLite 쿼리 51회 (목록 1 + hydrate 50) |
+ * | `replayList`(관리자) | **동기** SQLite 쿼리 201회 |
+ * | `replayGet` | 최대 수백 KB 파일 읽기 + split + 배열 직렬화 |
+ * | `adminUsers` | 계정마다 상관 서브쿼리, 동기 |
+ *
+ * `node:sqlite`는 **동기**다. 계정 하나가 `replayList`를 초당 40회 보내면 초당 약
+ * 2,000회(관리자면 8,000회)의 동기 쿼리가 이벤트 루프에서 돈다. 이벤트 루프가 멈추면
+ * **그 서버에서 진행 중인 모든 대국이 함께 멈춘다** — 봇 판단·타이머·뷰 브로드캐스트가
+ * 전부 같은 루프에 있기 때문이다. 백프레셔 가드는 도움이 안 된다: 공격자가 응답을
+ * 정상적으로 읽으면 버퍼가 차지 않고, 비용은 이미 서버가 다 치른 뒤다.
+ *
+ * 사람의 실제 사용은 화면을 열 때 종류별로 1회다(클라이언트가 인증 직후 한 번씩 보낸다).
+ * 창당 5회면 재연결·새로고침이 겹쳐도 넉넉하고, 폭주는 40/s → 0.5/s로 접힌다.
+ */
+const HEAVY_MESSAGES: ReadonlySet<string> = new Set([
+  "replayList",
+  "replayGet",
+  "leaderboard",
+  "feedbackList",
+  "adminUsers",
+  "adminAugmentTiers",
+  "liveGames",
+]);
+const HEAVY_WINDOW_MS = 10_000;
+const HEAVY_MAX_PER_WINDOW = 5;
+/**
+ * `replayGet`이 한 프레임으로 내보낼 수 있는 리플레이 파일 크기 상한(bytes).
+ * 운영 실측 최대는 250KB 남짓이라 정상 리플레이는 근처에도 오지 않는다 —
+ * 어딘가 비정상적으로 커진 파일을 split·직렬화해 소켓에 밀어 넣지 않기 위한 그물이다.
+ */
+const MAX_REPLAY_BYTES = 4 * 1024 * 1024;
 /** 동시 scrypt 상한 — 인증 폭주가 libuv 스레드풀을 독점해 게임 fs I/O를 굶기지 못하게. */
 const MAX_SCRYPT_CONCURRENCY = 4;
 /**
@@ -861,6 +905,7 @@ export class RoomManager {
       agent: null,
       spectating: null,
       authAttempts: [],
+      heavyHits: new Map(),
       ip,
       key,
       exempt,
@@ -1215,6 +1260,11 @@ export class RoomManager {
       );
     }
 
+    // ── 비싼 조회는 개수가 아니라 비용으로 막는다 ──
+    if (this.heavyLimited(conn, msg.type)) {
+      return this.fail(conn, "RATE_LIMITED", "조회가 너무 잦습니다. 잠시 후 다시 시도하세요");
+    }
+
     switch (msg.type) {
       case "createRoom":
         return this.createRoom(conn, user);
@@ -1460,6 +1510,29 @@ export class RoomManager {
       this.authIpHits.set(conn.key, ipHits);
       this.pruneAuthIpHits(now);
     }
+    return false;
+  }
+
+  /**
+   * 비싼 조회의 종류별 슬라이딩 윈도우. 한도를 넘으면 true(거부).
+   *
+   * **왜 종류별인가**: 클라이언트는 인증 직후 `replayList`·`leaderboard`·`feedbackList`를
+   * (관리자면 셋 더) **한꺼번에** 보낸다. 하나의 공용 창으로 묶으면 정상 로그인 한 번이
+   * 창을 다 먹어 버려, 그 뒤 사람이 누른 조회가 거부된다. 종류마다 따로 세면 정상
+   * 사용은 종류당 1회씩이라 여유가 그대로 남고, 폭주만 접힌다.
+   *
+   * 루프백/로컬(개발·테스트)은 면제한다 — 다른 남용 방어와 같은 기준이다.
+   */
+  private heavyLimited(conn: Conn, type: string): boolean {
+    if (conn.exempt || !HEAVY_MESSAGES.has(type)) return false;
+    const now = Date.now();
+    const hits = (conn.heavyHits.get(type) ?? []).filter((t) => now - t < HEAVY_WINDOW_MS);
+    if (hits.length >= HEAVY_MAX_PER_WINDOW) {
+      conn.heavyHits.set(type, hits);
+      return true;
+    }
+    hits.push(now);
+    conn.heavyHits.set(type, hits);
     return false;
   }
 
@@ -2407,6 +2480,13 @@ export class RoomManager {
       text = await readFile(game.replayPath, "utf-8");
     } catch {
       return this.fail(conn, "REPLAY_FILE_MISSING", "리플레이 파일이 유실되었습니다");
+    }
+    // 파일 하나가 통째로 프레임 하나가 된다 — 어디선가 비정상적으로 커졌다면
+    // 그걸 split·직렬화해서 소켓에 밀어 넣는 대신 여기서 멈춘다. 실측 최대는
+    // 250KB 남짓이라 정상 리플레이는 이 상한 근처에도 오지 않는다.
+    if (text.length > MAX_REPLAY_BYTES) {
+      this.logError(null, `리플레이가 너무 크다 (${text.length}B): ${game.replayPath}`);
+      return this.fail(conn, "REPLAY_TOO_LARGE", "리플레이가 너무 커서 열 수 없습니다");
     }
     const lines = text
       .split(/\r?\n/)
