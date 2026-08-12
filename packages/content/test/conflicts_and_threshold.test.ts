@@ -106,8 +106,8 @@ describe("천하통일 — 증강이 만든 점수는 문턱에 세지 않는다
       state: g.engine.state,
     });
 
-  it("기본 문턱은 50000이다", () => {
-    expect(threshold(game())).toBe(50000);
+  it("기본 문턱은 45000이다", () => {
+    expect(threshold(game())).toBe(45000);
   });
 
   it("증강이 얹어 준 점수만큼 문턱이 올라간다", () => {
@@ -136,7 +136,7 @@ describe("천하통일 — 증강이 만든 점수는 문턱에 세지 않는다
         },
       );
     }
-    expect(threshold(g)).toBe(50000 + 32000);
+    expect(threshold(g)).toBe(45000 + 32000);
   });
 });
 

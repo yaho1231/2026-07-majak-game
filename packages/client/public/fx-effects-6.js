@@ -10,8 +10,8 @@ import {
   drawHooks, fade, fallParticles, flash, flyTile, glowTiles, handTiles, hexShield, later, linkTo,
   meter, mk, mkSvg, opps, orbitRing, pick, ponds, ring, rnd, sRect, sTone, seatMark, setTile, sfx,
   shake, sleep, sparkBurst, stamp, svgEl, tileEl, veil,
-} from "/fx-kit.js?v=9";
-import { def } from "/fx-registry.js?v=9";
+} from "/fx-kit.js?v=10";
+import { def } from "/fx-registry.js?v=10";
 
 const FAM = "점수 · 경로";
 
@@ -793,7 +793,7 @@ def({
 
     // 선을 넘는다
     m.set(1, 1300);
-    countUp(num, 25000, 50000, 1300, (n) => Math.round(n).toLocaleString());
+    countUp(num, 25000, 45000, 1300, (n) => Math.round(n).toLocaleString());
     anim(num, [{ scale: "1" }, { scale: "1.35" }], { duration: 1300, easing: EASE });
     await sleep(1350);
     if (!alive(tok)) return;

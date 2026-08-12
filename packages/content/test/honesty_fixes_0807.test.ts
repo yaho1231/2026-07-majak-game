@@ -398,7 +398,7 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
   it("천하통일: 지금 넘어야 하는 목표 점수가 전원에게 공개된다", () => {
     const state = withAugments(scene(), { p0: ["unification"] });
     const game = gameWith(state, [[unification, "p0"]]);
-    // 증강이 3000점을 얹은 국이 정산되면 문턱이 53000으로 올라가고 그 값이 공개된다
+    // 증강이 3000점을 얹은 국이 정산되면 문턱이 48000으로 올라가고 그 값이 공개된다
     runReactions(game, {
       type: ROUND_SETTLED,
       payload: {
@@ -408,7 +408,7 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
       },
     });
     expect(game.engine.state.augmentData["unification:auggain:p0"]).toBe(3000);
-    expect(game.engine.state.augmentData["view:*:unification:p0"]).toBe("목표 53000점");
+    expect(game.engine.state.augmentData["view:*:unification:p0"]).toBe("목표 48000점");
 
     // 그리고 규칙이 실제로 그 문턱을 돌려준다 — 채널과 엔진이 같은 수를 말해야 한다
     expect(
@@ -416,11 +416,11 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
         playerId: "p0",
         state: game.engine.state,
       }),
-    ).toBe(53000);
+    ).toBe(48000);
 
     // 설명이 "문턱이 오른다"를 밝힌다 — 채널 배선과 무관하게 이건 계약이다
     expect(unification.description).toContain("증강이 나에게 얹어 준 점수");
-    expect(unification.detail).toContain("50000");
+    expect(unification.detail).toContain("45000");
   });
 });
 

@@ -315,7 +315,7 @@ const base = info.fu * 2 ** (2 + effHan);
 
 ## B-2. 천하통일 = 위 전부가 "첫 국 즉시 우승" 버튼이 된다
 
-`unification`은 `match.instantWinScore = 50000`. 한 국 정산 직후 5만을 넘으면 남은 국을
+`unification`은 `match.instantWinScore = 45000`. 한 국 정산 직후 4만 5천을 넘으면 남은 국을
 전부 무시하고 게임이 끝난다.
 
 - B-1의 어떤 조합이든 **한 방에 5만을 훨씬 넘는다.**

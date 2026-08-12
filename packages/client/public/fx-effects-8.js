@@ -12,8 +12,8 @@ import {
   countUp, drawHooks, fade, fallParticles, flash, flyTile, glowTiles, handTiles, hexShield, later,
   linkTo, meter, mk, mkSvg, opps, orbitRing, pick, ponds, ring, rnd, sRect, sTone, seatMark,
   setTile, sfx, shake, sleep, sparkBurst, stamp, svgEl, tileEl, veil,
-} from "/fx-kit.js?v=9";
-import { def } from "/fx-registry.js?v=9";
+} from "/fx-kit.js?v=10";
+import { def } from "/fx-registry.js?v=10";
 
 const CALL = "후로 · 손길";
 const DISRUPT = "교란 · 낙인";
