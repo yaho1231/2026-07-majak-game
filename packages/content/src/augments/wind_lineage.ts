@@ -37,6 +37,8 @@ const ID = "wind_lineage";
 /** 자풍/장풍이 낀 바람 슌쯔에 붙는 역 id (자풍·장풍 각각 1판 — 표준 역패와 같은 꼴) */
 const SEAT_YAKU = "wind_lineage_seat";
 const PREVALENT_YAKU = "wind_lineage_prevalent";
+/** 백발중(삼원 슌쯔)에 붙는 역 id — 몸통이 몇 개든 1판이다 */
+const DRAGON_YAKU = "wind_lineage_dragon";
 
 /**
  * 이 몸통이 **그 바람이 낀 바람 슌쯔**인가 — 동남서·남서북 안의 한 장이 자풍/장풍이면 참.
@@ -53,6 +55,23 @@ function windRunHas(variant: ScoringVariant, rank: number): boolean {
       isHonorRun(s.tiles) &&
       s.tiles.every((t) => t.suit === Suits.Wind) &&
       s.tiles.some((t) => t.rank === rank),
+  );
+}
+
+/**
+ * 백발중(삼원 슌쯔)을 몸통으로 들고 있는가.
+ *
+ * 삼원패는 셋 다 역패라 "낀 역패마다 1판"을 그대로 적용하면 3판이 되는데, 백발중은
+ * 대삼원 계열의 값을 따로 받는 몸통이라 값이 두 겹으로 붙는다. 그렇다고 0판이면
+ * 자패 셋을 모으고도 손이 싸다 — **몸통 하나에 1판**으로 못을 박는다
+ * (2026-08-12 사용자 지시).
+ */
+function hasDragonRun(variant: ScoringVariant): boolean {
+  return variant.sets.some(
+    (s) =>
+      s.type === "run" &&
+      isHonorRun(s.tiles) &&
+      s.tiles.every((t) => t.suit === Suits.Dragon),
   );
 }
 
@@ -79,9 +98,9 @@ export const windLineage: AugmentDef = defineAugment({
   complexity: 2,
   name: "바람의 계보",
   description:
-    "(상시) 자패로 슌쯔를 만든다 — 동→남→서→북, 백→발→중이 연속으로 이어져 동남서·남서북·백발중이 하나의 몸통이 된다. 그 바람 슌쯔에 자풍·장풍이 끼어 있으면 각각 1판이 붙는다. 동·남·서·북 네 장을 모으면 하나의 깡으로 낼 수도 있다.",
+    "(상시) 자패로 슌쯔를 만든다 — 동→남→서→북, 백→발→중이 연속으로 이어져 동남서·남서북·백발중이 하나의 몸통이 된다. 바람 슌쯔에 낀 자풍·장풍은 각각 1판, 백발중은 1판으로 값한다. 동·남·서·북 네 장을 모으면 하나의 깡으로 낼 수도 있다.",
   detail:
-    "(상시) 자패에 순서가 생겨 동→남→서→북, 백→발→중으로 이어지는 석 장이 슌쯔로 인정된다 — 동남서, 남서북, 백발중이 각각 하나의 몸통이다. 이 몸통은 손 안에서만이 아니라 상가(왼쪽)의 버림패를 치해서도 만들 수 있다. 여기에 더해 동·남·서·북 네 바람을 각각 한 장씩 모으면 그 넷을 하나의 안깡(동남서북 깡)으로 선언할 수 있고 영상패도 정상적으로 뽑는다. 바람 슌쯔 안에 자풍(내 바람)이나 장풍(그 국의 바람)이 들어 있으면 커쯔로 낸 역패와 똑같이 **각각 1판**이 붙는다 — 동1국의 서가가 동남서를 만들면 장풍 동·자풍 서가 함께 걸려 2판이다(같은 바람은 몸통이 몇 개든 한 번만 센다). 백발중에는 이 판이 붙지 않는다. 자패 슌쯔는 청일색·삼색·일기통관에는 관여하지 않고 찬타·혼노두·자일색 쪽으로 값이 붙는다.\n\n리치 중에는 이 안깡을 선언할 수 없다 — 깡이 대기를 바꾸기 때문이다.",
+    "(상시) 자패에 순서가 생겨 동→남→서→북, 백→발→중으로 이어지는 석 장이 슌쯔로 인정된다 — 동남서, 남서북, 백발중이 각각 하나의 몸통이다. 이 몸통은 손 안에서만이 아니라 상가(왼쪽)의 버림패를 치해서도 만들 수 있다. 여기에 더해 동·남·서·북 네 바람을 각각 한 장씩 모으면 그 넷을 하나의 안깡(동남서북 깡)으로 선언할 수 있고 영상패도 정상적으로 뽑는다. 바람 슌쯔 안에 자풍(내 바람)이나 장풍(그 국의 바람)이 들어 있으면 커쯔로 낸 역패와 똑같이 **각각 1판**이 붙는다 — 동1국의 서가가 동남서를 만들면 장풍 동·자풍 서가 함께 걸려 2판이다(같은 바람은 몸통이 몇 개든 한 번만 센다). 백발중은 삼원패 셋이 모두 역패지만 **몸통 하나에 1판**으로 값한다. 자패 슌쯔는 청일색·삼색·일기통관에는 관여하지 않고 찬타·혼노두·자일색 쪽으로 값이 붙는다.\n\n리치 중에는 이 안깡을 선언할 수 없다 — 깡이 대기를 바꾸기 때문이다.",
   install(ctx) {
     ctx.setHolderRule("scoring.honorRuns", true);
 
@@ -91,8 +110,9 @@ export const windLineage: AugmentDef = defineAugment({
      * 표준 역패(`yakuhai_seat`/`yakuhai_prevalent`)를 슌쯔로 넓힌 것이라 **보조역이
      * 아니다** — 동남서를 울어 만든 손도 역패 커쯔를 울어 만든 손처럼 그 자체로 역이
      * 선다. 동1국의 서가가 동남서를 만들면 동(장풍)·서(자풍) 둘이 걸려 2판이다.
-     * 삼원 슌쯔(백발중)는 여기 얹지 않는다 — 백발중은 그 자체로 대삼원 계열의 값을
-     * 따로 받는 몸통이라, 여기에 3판을 더 얹으면 값이 두 겹으로 붙는다.
+     * 백발중(삼원 슌쯔)도 **1판**이다(2026-08-12 사용자 지시). 삼원패는 셋 다 역패지만
+     * 한 장당 1판으로 세면 3판이 되고, 백발중은 대삼원 계열의 값을 따로 받는 몸통이라
+     * 값이 두 겹으로 붙는다 — 그래서 장수를 세지 않고 몸통 하나에 1판으로 고정한다.
      *
      * 한 바람은 몸통이 몇 개든 한 번만 센다(동남서 + 남서북을 함께 들어도 서는 1판).
      * 표준 역패도 커쯔 하나가 곧 1판이고, 바람 슌쯔 둘을 세우려면 자패 여섯 장이라
@@ -124,7 +144,21 @@ export const windLineage: AugmentDef = defineAugment({
           holderHasWindRun(holders, variant, wctx, wctx.prevalentWind),
       });
     }
-    addYakuHolder(ctx, yaku, SEAT_YAKU, PREVALENT_YAKU);
+    if (yaku.get(DRAGON_YAKU) === undefined) {
+      const holders = yakuHolders(yaku, DRAGON_YAKU);
+      yaku.register({
+        source: ctx.instanceId,
+        id: DRAGON_YAKU,
+        name: "계보 삼원패",
+        closedHan: 1,
+        openHan: 1,
+        check: (variant, wctx) =>
+          wctx.winnerId !== undefined &&
+          holders.has(wctx.winnerId) &&
+          hasDragonRun(variant),
+      });
+    }
+    addYakuHolder(ctx, yaku, SEAT_YAKU, PREVALENT_YAKU, DRAGON_YAKU);
   },
   /**
    * 봇: 분해 규칙 자체는 패시브지만 **동남서북 깡**은 표준 `ankan` 옵션으로 제시된다.
