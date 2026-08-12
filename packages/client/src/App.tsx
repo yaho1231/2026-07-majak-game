@@ -2035,6 +2035,17 @@ export function App(): JSX.Element {
     keys: new Set(),
   });
   /**
+   * 판이 바뀌면 그 기억을 비운다 — **순 서명은 판을 가리지 않는다.**
+   *
+   * 서명이 `東:1:0:{순}`이라 새 판의 첫 순은 지난 판의 첫 순과 글자까지 같다. 그래서
+   * 판을 다시 시작하고 같은 증강을 같은 순에 쓰면 "이미 띄웠다"로 걸려 컷인이 통째로
+   * 사라졌다 — 증강 테스트에서 새 판을 돌려가며 같은 증강을 눌러 보면 두 번째부터
+   * 아무 알림도 안 뜬다(2026-08-12 사용자 보고: "조커 — 능력 사용했는데 알림이 안 나옴").
+   */
+  const resetFxSeen = (): void => {
+    fxSeenRef.current = { turn: "", keys: new Set() };
+  };
+  /**
    * 서버가 다음 국을 그냥 시작해 버리는 시각(performance.now 기준). 결과 화면의
    * "다음 국으로" 버튼이 세는 남은 시간이다.
    *
@@ -2673,6 +2684,7 @@ export function App(): JSX.Element {
     clearProductions();
     setScoreFx({});
     prevViewRef.current = null;
+    resetFxSeen(); // 판이 바뀌면 컷인 중복 기억도 비운다
     introShown.current = false;
     activeRoomRef.current = null;
     activeSpectateRef.current = null;
@@ -2708,6 +2720,7 @@ export function App(): JSX.Element {
     clearProductions();
     setScoreFx({});
     prevViewRef.current = null;
+    resetFxSeen(); // 판이 바뀌면 컷인 중복 기억도 비운다
     introShown.current = false;
     bannerShown.current = {
       roundKey: "",
@@ -2919,6 +2932,7 @@ export function App(): JSX.Element {
       setCenterView(null);
       clearProductions();
       prevViewRef.current = null;
+      resetFxSeen(); // 판이 바뀌면 컷인 중복 기억도 비운다
       return;
     }
     if (msg.type === "actionFx") {
@@ -2986,6 +3000,7 @@ export function App(): JSX.Element {
       riichiBgm.stop();
       riichiBgmArmed.current = false;
       prevViewRef.current = null;
+      resetFxSeen(); // 판이 바뀌면 컷인 중복 기억도 비운다
       setCenterView(null); // 지난 판의 국 스냅샷이 새 판 첫 뷰까지 남지 않게
       roundContinueSent.current = false;
       // 재시작마다 개막 연출을 다시 트는 것은 방해만 되므로 건너뛴다

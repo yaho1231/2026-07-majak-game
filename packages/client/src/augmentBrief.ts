@@ -111,7 +111,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   full_hand_swap: { use: "게임 2회", text: "국 첫 순에 상대의 손패를 통째로 빼앗는다." },
   future_sight: { use: "3순에 1회", text: "손패 3장을 패산 위 3장과 바꾼다. 쓸수록 그 국 화료에 판이 붙는다." },
   genesis: { use: MODE_1_2, text: "손패의 자패는 수패로, 수패는 자패로 통째로 뒤바뀐다." },
-  giant_god: { use: MODE_1_2, text: "내 바닥에 국사무쌍 13종이 다 깔리면 그것을 손으로 끌어올려 텐파이한다." },
+  giant_god: { use: "상시", text: "내 바닥의 국사무쌍 13종을 손으로 끌어올려 텐파이 — 다음 순에 화료한다." },
   grave_rob: { use: MODE_1_2, text: "상대가 최근 버린 10장 중 1장을 파내 그대로 화료한다." },
   haitei_lord: { use: "상시", text: "텐파이로 해저패를 쯔모하면 대기와 상관없이 무조건 화료한다." },
   hand_swap3: { use: "게임 2회", text: "상대 손패를 들여다보고 내 3장과 상대 3장을 맞바꾼다." },
