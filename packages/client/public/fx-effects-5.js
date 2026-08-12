@@ -12,8 +12,8 @@ import {
   drawHooks, fade, flash, flyTile, glowTiles, handTiles, hexShield, later, linkTo, meter, mk,
   mkSvg, opps, orbitRing, pick, ring, rnd, sRect, sTone, seatMark, setTile, sfx, shake, sleep,
   sparkBurst, stamp, svgEl, tileEl, veil,
-} from "/fx-kit.js?v=9";
-import { def } from "/fx-registry.js?v=9";
+} from "/fx-kit.js?v=10";
+import { def } from "/fx-registry.js?v=10";
 
 const RIICHI = "리치 · 선언";
 const DEFENSE = "수비 · 결계";

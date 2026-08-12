@@ -44,7 +44,7 @@ export {
   svgEl,
   tileEl,
   veil,
-} from "/fx-core.js?v=9";
+} from "/fx-core.js?v=10";
 
 import {
   EASE,
@@ -62,7 +62,7 @@ import {
   svgEl,
   tileEl,
   token,
-} from "/fx-core.js?v=9";
+} from "/fx-core.js?v=10";
 
 /* ─────────────── 색 ─────────────── */
 

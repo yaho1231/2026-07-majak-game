@@ -3,18 +3,18 @@
  * 연출 정의는 fx-effects-*.js 에 있다. 여기는 목록·재생·속도만 다룬다.
  */
 
-import { S, alive, anim, buildStage, fitCanvas, fitStage, resetStage, setSpeed, token } from "/fx-core.js?v=9";
-import { EFFECTS } from "/fx-registry.js?v=9";
+import { S, alive, anim, buildStage, fitCanvas, fitStage, resetStage, setSpeed, token } from "/fx-core.js?v=10";
+import { EFFECTS } from "/fx-registry.js?v=10";
 // 등록만 하면 되는 모듈들 — import 자체가 부수효과다
-import "/fx-effects-1.js?v=9";
-import "/fx-effects-2.js?v=9";
-import "/fx-effects-3.js?v=9";
-import "/fx-effects-4.js?v=9";
-import "/fx-effects-5.js?v=9";
-import "/fx-effects-6.js?v=9";
-import "/fx-effects-7.js?v=9";
-import "/fx-effects-8.js?v=9";
-import "/fx-effects-9.js?v=9";
+import "/fx-effects-1.js?v=10";
+import "/fx-effects-2.js?v=10";
+import "/fx-effects-3.js?v=10";
+import "/fx-effects-4.js?v=10";
+import "/fx-effects-5.js?v=10";
+import "/fx-effects-6.js?v=10";
+import "/fx-effects-7.js?v=10";
+import "/fx-effects-8.js?v=10";
+import "/fx-effects-9.js?v=10";
 
 const FAM_ORDER = [
   "3D · 물리",

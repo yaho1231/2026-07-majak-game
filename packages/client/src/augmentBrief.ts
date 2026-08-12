@@ -174,7 +174,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   time_stop: { use: "매 국 1회", text: "그 국에서 내 차례를 한 번 더 진행한다." },
   triple_peek: { use: "2국에 1회", text: "내 다음 쯔모 세 장이 무엇인지 나에게만 보인다." },
   true_dragon: { use: "상시", text: "배패를 16장 받고 몸통 5개로 화료한다. 화료 시 +3판." },
-  // 문턱은 고정 50000이 아니다 — 증강이 얹어 준 점수만큼 함께 올라간다(unification.ts).
+  // 문턱은 고정 45000이 아니다 — 증강이 얹어 준 점수만큼 함께 올라간다(unification.ts).
   unification: { use: "상시", text: "목표 점수에 닿는 순간 즉시 우승. 목표는 증강이 준 점수만큼 올라간다." },
   ura_peek: { use: "매 국 1회", text: "뒷도라 표시패를 나만 확인하고, 한 번은 다른 패로 바꿔치기한다." },
   void_kan: { use: "상시", text: "내가 텐파이면 상대의 깡을 오름패와 상관없이 창깡으로 가로챈다." },
