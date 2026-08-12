@@ -222,6 +222,11 @@ interface Room {
 interface Conn {
   id: string;
   ws: WebSocket;
+  /**
+   * 이 소켓이 열린 시각(epoch ms). 익명 슬롯이 넘칠 때 **가장 오래 익명으로 앉아
+   * 있던 연결부터** 회수하는 기준이다(`ANON_EVICT_GRACE_MS`).
+   */
+  openedAt: number;
   user: UserRow | null;
   /**
    * 계정 없는 게스트 세션인가. `user`는 DB에 없는 임시 신원(id = GUEST_USER_ID)이라
@@ -234,6 +239,11 @@ interface Conn {
   spectating: Room | null;
   /** 최근 인증 시도 타임스탬프(ms) — 레이트리밋용 슬라이딩 윈도우 */
   authAttempts: number[];
+  /**
+   * **비싼 조회**의 종류별 슬라이딩 윈도우 (`HEAVY_MESSAGES` 참고).
+   * 토큰버킷은 개수만 세는데 메시지들의 실제 비용은 세 자릿수로 갈린다.
+   */
+  heavyHits: Map<string, number[]>;
   /** 이 연결의 원격 IP (핸드셰이크 시점). 로그·표시용. */
   ip: string;
   /** 남용 방어 버킷 키 (IPv4=주소, IPv6=/64 프리픽스). 상한·스로틀은 전부 이 키로 센다. */
@@ -266,6 +276,24 @@ const MAX_PLAYERS = 4;
  * 못 읽으면 **기본값으로 되돌리고 반드시 로그를 남긴다** — 조용히 0이 되는 것보다
  * 낫다. 상한도 둔다: 한 수에 1분을 기다리는 설정은 오타지 의도가 아니다.
  */
+/**
+ * 개수 환경변수를 **검증해서** 읽는다 (`delayEnv`의 개수 판, 문구만 다르다).
+ * 못 읽으면 기본값으로 되돌리고 경고를 남긴다 — 남용 방어의 상한이 오타 하나로
+ * 조용히 사라지는 것보다 시끄럽게 기본값으로 도는 편이 낫다.
+ */
+function countEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    console.warn(
+      `[config] ${name}="${raw}" 는 ${min}~${max} 범위의 정수가 아닙니다 — 기본값 ${fallback} 을 씁니다.`,
+    );
+    return fallback;
+  }
+  return n;
+}
+
 const MAX_DELAY_MS = 60_000;
 function delayEnv(name: string, fallback: number, min = 0, max = MAX_DELAY_MS): number {
   const raw = process.env[name];
@@ -305,11 +333,92 @@ const AUTH_IP_WINDOW_MS = 60_000;
 const AUTH_IP_MAX_ATTEMPTS = 30;
 /** 전체 동시 WS 연결 상한 (자원 고갈 방지). */
 const MAX_CONNECTIONS = 300;
+/**
+ * **익명 연결**(로그인 전 + 게스트)이 동시에 쥘 수 있는 슬롯 상한.
+ *
+ * **왜 따로 세는가** (감사 2026-08-12 §H-1). `UNAUTH_TIMEOUT_MS`가 30초에서 10분으로
+ * 오른 것은 정당했다 — 30초는 스쿼터가 아니라 로그인 화면을 읽는 손님을 잡고 있었다.
+ * 그런데 그러면서 미인증 스쿼팅의 비용이 **20배** 싸졌는데, 그걸 받아 주는 전역
+ * 상한(`MAX_CONNECTIONS`)은 인증 여부를 구분하지 않았다.
+ *
+ * 그래서 IPv6 `/64` 19개에서 16개씩(=IP당 상한) 열어 두기만 하면 300칸이 전부 찬다.
+ * 신규 연결 속도 제한에도 걸리지 않는다 — 버킷당 16개를 열 뿐이다. 잃는 것은 신규
+ * 접속만이 아니다: **진행 중인 반장전에서 잠깐 끊긴 사람이 재접속할 자리가 없어져**
+ * 유예 8회 초과로 이탈 확정되고, 40분짜리 판이 봇 자동 진행으로 흘러간다.
+ *
+ * 이 상한이 있으면 최소 `MAX_CONNECTIONS - MAX_ANON_CONNECTIONS`칸은 **언제나**
+ * 로그인한 사람 몫으로 남는다 — 재접속이 익명 소켓에 밀리지 않는다.
+ *
+ * 게스트를 익명으로 세는 것이 중요하다. 게스트는 `conn.user`에 DB에 없는 임시 신원이
+ * 들어가므로 "인증됨"처럼 보이지만, 실제로는 계정 없이 누구나 될 수 있는 상태다 —
+ * 안 세면 `guestPlay` 한 번으로 이 상한을 통째로 빠져나간다.
+ */
+const MAX_ANON_CONNECTIONS_DEFAULT = Math.floor(MAX_CONNECTIONS * 0.4);
+/** 상한은 **호출할 때** 읽는다 — 테스트가 값을 바꿔 가며 회수 동작을 검증할 수 있게. */
+function maxAnonConnections(): number {
+  return countEnv("MAX_ANON_CONNECTIONS", MAX_ANON_CONNECTIONS_DEFAULT, 1, MAX_CONNECTIONS);
+}
+/**
+ * 익명 슬롯이 꽉 찼을 때 **오래된 익명 연결부터 회수**하되, 갓 들어온 연결은 이만큼
+ * 보호한다(ms).
+ *
+ * 상한만 두면 공격자가 익명 슬롯을 붙들고 있는 동안 **아무도 로그인 화면에 못 온다** —
+ * 새 손님도 로그인 전에는 익명이라 같은 슬롯이 필요하기 때문이다. 그래서 익명 슬롯을
+ * "고정 자리"가 아니라 **회전하는 풀**로 만든다: 넘치면 가장 오래 익명으로 앉아 있던
+ * 연결을 끊고 자리를 내준다. 붙들고만 있는 소켓이 먼저 나가고, 실제로 로그인하는
+ * 사람은 몇 초 만에 인증되어 이 풀을 빠져나가므로 회수 대상이 되지 않는다.
+ *
+ * 유예가 필요한 이유: 이게 없으면 연결 폭주가 **방금 도착한 정상 손님**을 로그인
+ * 화면을 그리기도 전에 밀어낸다. 유예보다 젊은 연결밖에 없으면 회수하지 않고
+ * 새 연결을 거절한다.
+ */
+function anonEvictGraceMs(): number {
+  return delayEnv("ANON_EVICT_GRACE_MS", 15_000, 0);
+}
 /** IP당 동시 WS 연결 상한 (연결 폭주·레이트리밋 우회 방지). 루프백/로컬은 예외. */
 const MAX_CONNECTIONS_PER_IP = 16;
 /** 연결당 메시지 토큰 버킷 — 한 연결이 메시지로 이벤트 루프를 폭주시키지 못하게. 루프백은 예외. */
 const MSG_BUCKET_CAPACITY = 80;
 const MSG_BUCKET_REFILL_PER_SEC = 40;
+/**
+ * **비싼 조회**들 — 종류마다 따로 세는 별도 창을 둔다 (감사 2026-08-12 §M-1).
+ *
+ * 토큰버킷은 메시지 **개수**만 센다. 그런데 실제 비용은 세 자릿수로 갈린다:
+ *
+ * | 메시지 | 1회 비용 |
+ * |---|---|
+ * | `ping` | 무시할 수준 |
+ * | `replayList`(일반) | **동기** SQLite 쿼리 51회 (목록 1 + hydrate 50) |
+ * | `replayList`(관리자) | **동기** SQLite 쿼리 201회 |
+ * | `replayGet` | 최대 수백 KB 파일 읽기 + split + 배열 직렬화 |
+ * | `adminUsers` | 계정마다 상관 서브쿼리, 동기 |
+ *
+ * `node:sqlite`는 **동기**다. 계정 하나가 `replayList`를 초당 40회 보내면 초당 약
+ * 2,000회(관리자면 8,000회)의 동기 쿼리가 이벤트 루프에서 돈다. 이벤트 루프가 멈추면
+ * **그 서버에서 진행 중인 모든 대국이 함께 멈춘다** — 봇 판단·타이머·뷰 브로드캐스트가
+ * 전부 같은 루프에 있기 때문이다. 백프레셔 가드는 도움이 안 된다: 공격자가 응답을
+ * 정상적으로 읽으면 버퍼가 차지 않고, 비용은 이미 서버가 다 치른 뒤다.
+ *
+ * 사람의 실제 사용은 화면을 열 때 종류별로 1회다(클라이언트가 인증 직후 한 번씩 보낸다).
+ * 창당 5회면 재연결·새로고침이 겹쳐도 넉넉하고, 폭주는 40/s → 0.5/s로 접힌다.
+ */
+const HEAVY_MESSAGES: ReadonlySet<string> = new Set([
+  "replayList",
+  "replayGet",
+  "leaderboard",
+  "feedbackList",
+  "adminUsers",
+  "adminAugmentTiers",
+  "liveGames",
+]);
+const HEAVY_WINDOW_MS = 10_000;
+const HEAVY_MAX_PER_WINDOW = 5;
+/**
+ * `replayGet`이 한 프레임으로 내보낼 수 있는 리플레이 파일 크기 상한(bytes).
+ * 운영 실측 최대는 250KB 남짓이라 정상 리플레이는 근처에도 오지 않는다 —
+ * 어딘가 비정상적으로 커진 파일을 split·직렬화해 소켓에 밀어 넣지 않기 위한 그물이다.
+ */
+const MAX_REPLAY_BYTES = 4 * 1024 * 1024;
 /** 동시 scrypt 상한 — 인증 폭주가 libuv 스레드풀을 독점해 게임 fs I/O를 굶기지 못하게. */
 const MAX_SCRYPT_CONCURRENCY = 4;
 /**
@@ -523,6 +632,21 @@ export function abuseKeyOf(ip: string): string {
   // IPv4-mapped IPv6(::ffff:1.2.3.4)는 IPv4로 취급한다.
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
   if (mapped !== null) return mapped[1] as string;
+  /*
+   * 같은 주소의 **16진 표기**(`::ffff:0102:0304`)도 IPv4로 푼다.
+   *
+   * 안 풀면 IPv6 경로로 흘러가는데, 그 주소들은 앞 4그룹이 전부 0이라 **모든
+   * IPv4 클라이언트가 `0:0:0:0::/64` 한 버킷으로 뭉친다**. 그러면 서로 모르는
+   * 사용자들이 IP당 동시 연결 16·인증 30회/분·방 20개/10분을 나눠 쓰게 되어
+   * 서로를 밀어낸다 — 뚫리는 쪽이 아니라 **과도 차단** 쪽 고장이다.
+   * Node는 점 표기를 주지만 프록시 헤더에서 오는 값은 우리가 정하지 않는다.
+   */
+  const hexMapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(ip);
+  if (hexMapped !== null) {
+    const hi = parseInt(hexMapped[1] as string, 16);
+    const lo = parseInt(hexMapped[2] as string, 16);
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  }
   if (!ip.includes(":")) return ip; // IPv4 또는 "local" 등 비-IP 라벨
   const zoneless = (ip.split("%")[0] as string).toLowerCase();
   // 축약(`::`)을 먼저 편다 — 실제 배포에서 들어오는 주소는 대부분 축약형이라,
@@ -624,6 +748,9 @@ export class RoomManager {
    */
   healthSnapshot(): {
     connections: number;
+    /** 그중 익명(로그인 전 + 게스트) — 익명 슬롯 고갈 공격이 눈에 보이게 한다. */
+    anonymous: number;
+    anonymousMax: number;
     rooms: number;
     playing: number;
     waiting: number;
@@ -632,6 +759,8 @@ export class RoomManager {
     for (const r of this.rooms.values()) if (r.phase === "playing") playing++;
     return {
       connections: this.conns.size,
+      anonymous: this.anonCount(),
+      anonymousMax: maxAnonConnections(),
       rooms: this.rooms.size,
       playing,
       waiting: this.rooms.size - playing,
@@ -769,10 +898,21 @@ export class RoomManager {
       }
       return;
     }
+    // 익명 슬롯 확보 — 로그인한 사람 몫의 자리를 익명 소켓이 먹지 못하게 한다.
+    // 회수할 자리도 없으면 이 연결은 받지 않는다.
+    if (!exempt && !this.makeRoomForAnonConn()) {
+      try {
+        ws.close(1013, "too many anonymous connections");
+      } catch {
+        /* 이미 닫힘 */
+      }
+      return;
+    }
 
     const conn: Conn = {
       id: randomUUID(),
       ws,
+      openedAt: Date.now(),
       user: null,
       guest: false,
       sessionToken: null,
@@ -780,6 +920,7 @@ export class RoomManager {
       agent: null,
       spectating: null,
       authAttempts: [],
+      heavyHits: new Map(),
       ip,
       key,
       exempt,
@@ -847,6 +988,62 @@ export class RoomManager {
   }
 
   /**
+   * 이 연결이 **익명**인가 — 로그인 전이거나 게스트 체험 중.
+   *
+   * 게스트를 익명으로 세는 것이 핵심이다. 게스트는 `conn.user`에 DB에 없는 임시
+   * 신원(`GUEST_USER_ID`)이 들어가 있어 "인증됨"처럼 보이지만, 실제로는 계정 없이
+   * 누구나 될 수 있는 상태다 — 안 세면 `guestPlay` 한 번으로 익명 상한을 빠져나간다.
+   */
+  private isAnon(conn: Conn): boolean {
+    return conn.user === null || conn.guest;
+  }
+
+  /** 지금 익명 상태인 연결 수. */
+  private anonCount(): number {
+    let n = 0;
+    for (const c of this.conns) if (this.isAnon(c)) n++;
+    return n;
+  }
+
+  /**
+   * 새 익명 연결을 받을 자리를 만든다 (만들었으면 true, 못 만들면 false).
+   *
+   * 상한에 여유가 있으면 그대로 통과. 꽉 찼으면 **가장 오래 익명으로 앉아 있던**
+   * 연결 하나를 회수한다 — 단, 유예(`ANON_EVICT_GRACE_MS`)보다 젊은 연결은 건드리지
+   * 않는다. 갓 도착한 손님이 로그인 화면을 그리기도 전에 밀려나면 상한이 공격자가
+   * 아니라 손님을 잡는 장치가 되기 때문이다.
+   *
+   * 회수 대상이 전부 유예 안이면 새 연결을 거절한다 — 그 상황은 "지금 막 몰려들었다"는
+   * 뜻이고, 이미 앉은 쪽을 지키는 편이 무작정 자리를 바꾸는 것보다 낫다.
+   */
+  private makeRoomForAnonConn(): boolean {
+    const limit = maxAnonConnections();
+    if (this.anonCount() < limit) return true;
+    const now = Date.now();
+    const grace = anonEvictGraceMs();
+    let oldest: Conn | null = null;
+    for (const c of this.conns) {
+      if (!this.isAnon(c)) continue;
+      if (now - c.openedAt < grace) continue;
+      if (oldest === null || c.openedAt < oldest.openedAt) oldest = c;
+    }
+    if (oldest === null) return false;
+    this.log(
+      null,
+      `익명 연결 상한(${limit}) — ${oldest.key} 의 오래된 익명 연결을 회수한다`,
+    );
+    try {
+      oldest.ws.close(1013, "anonymous slot recycled");
+    } catch {
+      /* 이미 닫힘 */
+    }
+    // 소켓의 close 이벤트는 비동기로 온다 — 그때까지 기다리면 같은 연결이 여러 번
+    // 회수 대상으로 뽑히므로 지금 정리한다. `handleClose`는 두 번 불려도 안전하다.
+    this.handleClose(oldest);
+    return true;
+  }
+
+  /**
    * 미인증 유예 타이머를 (재)설정한다. 유예 안에 인증하지 않으면 소켓을 끊어
    * 연결 상한 슬롯을 회수한다. unref로 프로세스 종료를 막지 않게 한다.
    */
@@ -897,7 +1094,11 @@ export class RoomManager {
   }
 
   private handleClose(conn: Conn): void {
-    this.conns.delete(conn);
+    // 두 번 불릴 수 있다 — 익명 슬롯 회수(`makeRoomForAnonConn`)가 소켓을 닫으면서
+    // 여기를 먼저 부르고, 잠시 뒤 소켓의 close 이벤트가 한 번 더 부른다. 그때
+    // 좌석 정리·IP 카운터 감소를 두 번 하면 안 된다(카운터가 음수로 새면 IP당
+    // 동시 연결 상한이 조용히 헐거워진다). Set에서 실제로 빠진 첫 호출만 진행한다.
+    if (!this.conns.delete(conn)) return;
     this.log(
       conn.room,
       `연결 닫힘 ${conn.user?.username ?? conn.key} (동시 ${this.conns.size})`,
@@ -1072,6 +1273,11 @@ export class RoomManager {
         "GUEST_FORBIDDEN",
         "게스트 체험에서는 사용할 수 없습니다 — 계정을 만들면 모든 기능이 열립니다",
       );
+    }
+
+    // ── 비싼 조회는 개수가 아니라 비용으로 막는다 ──
+    if (this.heavyLimited(conn, msg.type)) {
+      return this.fail(conn, "RATE_LIMITED", "조회가 너무 잦습니다. 잠시 후 다시 시도하세요");
     }
 
     switch (msg.type) {
@@ -1319,6 +1525,29 @@ export class RoomManager {
       this.authIpHits.set(conn.key, ipHits);
       this.pruneAuthIpHits(now);
     }
+    return false;
+  }
+
+  /**
+   * 비싼 조회의 종류별 슬라이딩 윈도우. 한도를 넘으면 true(거부).
+   *
+   * **왜 종류별인가**: 클라이언트는 인증 직후 `replayList`·`leaderboard`·`feedbackList`를
+   * (관리자면 셋 더) **한꺼번에** 보낸다. 하나의 공용 창으로 묶으면 정상 로그인 한 번이
+   * 창을 다 먹어 버려, 그 뒤 사람이 누른 조회가 거부된다. 종류마다 따로 세면 정상
+   * 사용은 종류당 1회씩이라 여유가 그대로 남고, 폭주만 접힌다.
+   *
+   * 루프백/로컬(개발·테스트)은 면제한다 — 다른 남용 방어와 같은 기준이다.
+   */
+  private heavyLimited(conn: Conn, type: string): boolean {
+    if (conn.exempt || !HEAVY_MESSAGES.has(type)) return false;
+    const now = Date.now();
+    const hits = (conn.heavyHits.get(type) ?? []).filter((t) => now - t < HEAVY_WINDOW_MS);
+    if (hits.length >= HEAVY_MAX_PER_WINDOW) {
+      conn.heavyHits.set(type, hits);
+      return true;
+    }
+    hits.push(now);
+    conn.heavyHits.set(type, hits);
     return false;
   }
 
@@ -2255,17 +2484,26 @@ export class RoomManager {
 
   private async sendReplayData(conn: Conn, user: UserRow, gameId: number): Promise<void> {
     const game = this.db?.getGame(gameId) ?? null;
-    if (game === null) {
+    // "없다"와 "볼 권한이 없다"를 **같은 응답으로 합친다** (감사 2026-08-12 §L-4).
+    //
+    // 예전에는 없는 id에 REPLAY_NOT_FOUND, 남의 판에 FORBIDDEN을 돌려줬다. 판 내용은
+    // 새지 않지만 id를 훑으면 "지금까지 몇 판이 치러졌는가"와 "어느 id가 실재하는가"를
+    // 알 수 있었다. 볼 수 없는 것은 없는 것과 구분되지 않아야 한다.
+    if (game === null || (!user.isAdmin && !game.participantUserIds.includes(user.id))) {
       return this.fail(conn, "REPLAY_NOT_FOUND", "리플레이를 찾을 수 없습니다");
-    }
-    if (!user.isAdmin && !game.participantUserIds.includes(user.id)) {
-      return this.fail(conn, "FORBIDDEN", "본인이 참가한 게임만 볼 수 있습니다");
     }
     let text: string;
     try {
       text = await readFile(game.replayPath, "utf-8");
     } catch {
       return this.fail(conn, "REPLAY_FILE_MISSING", "리플레이 파일이 유실되었습니다");
+    }
+    // 파일 하나가 통째로 프레임 하나가 된다 — 어디선가 비정상적으로 커졌다면
+    // 그걸 split·직렬화해서 소켓에 밀어 넣는 대신 여기서 멈춘다. 실측 최대는
+    // 250KB 남짓이라 정상 리플레이는 이 상한 근처에도 오지 않는다.
+    if (text.length > MAX_REPLAY_BYTES) {
+      this.logError(null, `리플레이가 너무 크다 (${text.length}B): ${game.replayPath}`);
+      return this.fail(conn, "REPLAY_TOO_LARGE", "리플레이가 너무 커서 열 수 없습니다");
     }
     const lines = text
       .split(/\r?\n/)

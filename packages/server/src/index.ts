@@ -19,6 +19,8 @@ import { unlink } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import { RoomManager, abuseKeyOf } from "./RoomManager.js";
+import { headerValue, resolveClientOrigin } from "./trustProxy.js";
+import type { ClientOrigin } from "./trustProxy.js";
 import { StatsStore } from "./StatsStore.js";
 import { AugmentStatsStore } from "./AugmentStatsStore.js";
 import { SiteDb } from "./SiteDb.js";
@@ -185,6 +187,12 @@ const roomManager = new RoomManager(
  */
 const MAX_HTTP_SOCKETS = numEnv("MAX_HTTP_SOCKETS", 512);
 
+/**
+ * `/healthz`를 외부에도 열지 (기본 꺼짐 — 이 머신에서 직접 온 요청에만 답한다).
+ * 외부 감시 도구(UptimeRobot 등)를 붙여야 할 때만 1로 켠다.
+ */
+const HEALTHZ_PUBLIC = (process.env.HEALTHZ_PUBLIC ?? "") === "1";
+
 /** dist의 실제 경로 — 심볼릭 링크 탈출 검사의 기준. */
 const CLIENT_REAL = existsSync(CLIENT_DIST) ? realpathSync(CLIENT_DIST) : CLIENT_DIST;
 
@@ -201,9 +209,48 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+/**
+ * `connect-src` 목록 — 이 페이지의 스크립트가 접속할 수 있는 곳.
+ *
+ * **왜 좁히는가** (감사 2026-08-12 §L-3). 예전에는 `'self' ws: wss:` 였다 — 즉
+ * **아무 WebSocket 서버로나** 연결할 수 있었다. `form-action 'none'`으로 폼 경로는
+ * 이미 닫아 두었으므로, 스크립트 주입에 성공했을 때 자격증명을 밖으로 내보내는
+ * 마지막 통로가 바로 여기였다.
+ *
+ * 그렇다고 `'self'` 하나로 못 줄인다: 고급 설정의 "서버 주소 수동 지정"과 vite dev
+ * 서버(5170번대 → ws://localhost:3001)가 막힌다. 그래서 **실제로 필요한 곳만** 적는다.
+ *
+ * - `ALLOWED_ORIGINS`가 설정된 공개 배포: 그 오리진의 ws/wss + 로컬 개발 주소만.
+ *   (`'self'`가 same-origin ws를 덮는지는 브라우저마다 역사가 갈려 명시적으로 적는다.)
+ * - 비어 있는 로컬·개발: 종전대로 열어 둔다 — 여기서 조이면 개발이 막히고,
+ *   로컬 페이지에서 나갈 자격증명도 없다.
+ *
+ * 원격 서버를 수동 지정해야 하면 `CONNECT_SRC_EXTRA`에 콤마로 적는다.
+ */
+const CONNECT_SRC_EXTRA = (process.env.CONNECT_SRC_EXTRA ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s !== "");
+
+function buildConnectSrc(): string {
+  if (ALLOWED_ORIGINS.length === 0 && CONNECT_SRC_EXTRA.length === 0) {
+    return "connect-src 'self' ws: wss:"; // 로컬·개발 기본 (종전 동작)
+  }
+  const out = new Set<string>(["'self'"]);
+  for (const origin of ALLOWED_ORIGINS) {
+    out.add(origin);
+    // https://x → wss://x, http://x → ws://x
+    out.add(origin.replace(/^http/, "ws"));
+  }
+  // vite dev·로컬 서버 수동 지정은 남겨 둔다 (밖으로 나가는 통로가 아니다).
+  out.add("ws://localhost:*");
+  out.add("ws://127.0.0.1:*");
+  for (const extra of CONNECT_SRC_EXTRA) out.add(extra);
+  return `connect-src ${[...out].join(" ")}`;
+}
+
 // 정적 응답 보안 헤더. CSP는 React 인라인 스타일(style={{…}}) 때문에 style-src에
-// 'unsafe-inline'이 필요하다. connect-src에 ws/wss를 허용해 same-origin WS와
-// 서버 주소 수동 지정(고급 설정)을 유지한다.
+// 'unsafe-inline'이 필요하다.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -211,7 +258,7 @@ const CSP = [
   "img-src 'self' data:",
   "media-src 'self'",
   "font-src 'self' data:",
-  "connect-src 'self' ws: wss:",
+  buildConnectSrc(),
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -236,6 +283,21 @@ const httpServer = createServer((req, res) => {
    * 여기서는 방·연결 **개수만** 낸다(개인정보 없음).
    */
   if (url === "/healthz") {
+    /**
+     * 상태 점검은 **이 머신에서 직접 온 요청에만** 답한다 (감사 2026-08-12 §L-1).
+     *
+     * 담는 값에 개인정보는 없지만, 연결 수·익명 수·방 수·진행 중 게임 수는 자원
+     * 고갈 공격자에게 **"내가 슬롯을 몇 개나 먹었는지"를 실시간으로 보여 주는
+     * 계기판**이 된다. 이걸 여는 대가로 얻는 것은 없다 — 실제 사용자는
+     * `deploy/serve.sh health`와 `watchdog.sh`뿐이고 둘 다 127.0.0.1로 부른다.
+     *
+     * 없는 경로처럼 404를 준다(403은 "여기 뭔가 있다"를 알려 준다).
+     * 외부 감시 도구를 붙여야 하면 HEALTHZ_PUBLIC=1로 되돌릴 수 있다.
+     */
+    if (!HEALTHZ_PUBLIC && !clientIpOf(req).direct) {
+      res.writeHead(404).end();
+      return;
+    }
     const body = JSON.stringify({
       ok: true,
       uptimeSec: Math.round(process.uptime()),
@@ -334,54 +396,33 @@ httpServer.on("clientError", (_err, socket) => {
 
 // ─────────────────────────── WebSocket ───────────────────────────
 
-/** 소켓 상대가 루프백(=같은 머신의 리버스 프록시)인지. */
-function isLoopback(ip: string): boolean {
-  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-}
-
-/** 헤더를 단일 문자열로 정규화 (중복 헤더는 첫 값만 취한다). */
-function headerValue(raw: string | string[] | undefined): string | undefined {
-  if (raw === undefined) return undefined;
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  const trimmed = (v ?? "").trim();
-  return trimmed === "" ? undefined : trimmed;
-}
+/** 신뢰 프록시 헤더가 빠진 채 들어온 연결을 알린 마지막 시각 — 로그 폭주 방지용. */
+let missingProxyHeaderWarnedAt = 0;
+const PROXY_WARN_INTERVAL_MS = 60_000;
 
 /**
- * 실제 클라이언트 IP를 판정한다 — IP 기반 방어 전부(연결 상한·토큰버킷·인증
- * 무차별대입 차단)가 이 값을 키로 쓰므로 정확도가 곧 보안이다.
+ * 실제 클라이언트 IP와 신뢰 등급을 판정한다 (판정 규칙은 `trustProxy.ts`가 단일 진실).
  *
- * 스푸핑 방지: 프록시 헤더는 **소켓 상대가 루프백일 때만** 신뢰한다. 외부에서
- * 포트에 직접 붙어 CF-Connecting-IP를 위조해도, 그 연결의 소켓 주소는 루프백이
- * 아니므로 헤더가 무시되고 진짜 원격 주소가 쓰인다.
+ * 여기서는 그 결과에 **로그 부작용만** 얹는다: `TRUST_PROXY`를 켜 두었는데 그 헤더가
+ * 없는 연결은 프록시 설정이 깨졌다는 유일한 신호이므로 반드시 알려야 하는데,
+ * 매 연결마다 찍으면 로그가 잠기므로 1분에 한 줄로 접는다.
  */
-function clientIpOf(req: IncomingMessage): { ip: string; local: boolean } {
-  const socketIp = req.socket.remoteAddress ?? "unknown";
-  const socketLocal = isLoopback(socketIp);
-  if (TRUST_PROXY === "" || !socketLocal) return { ip: socketIp, local: socketLocal };
-
-  // 헤더에서 복원한 IP는 **절대 면제 대상이 아니다**(local: false).
-  //
-  // ⚠ 여기가 예전에 조용히 뚫려 있던 자리다: 복원된 값이 `127.0.0.1`처럼 보이기만
-  // 하면 RoomManager가 그 연결을 "로컬"로 보고 연결 상한·메시지 토큰버킷·인증
-  // 무차별대입 차단·방 생성 제한을 **전부** 꺼 줬다. 프록시가 헤더를 덮어쓴다는
-  // 전제 하나가 깨지면(설정 실수, xff 모드, 터널 우회) 그걸 아는 사람 하나가
-  // 서버의 모든 남용 방어 바깥에 서게 된다. 이제 면제는 "소켓 상대가 진짜
-  // 루프백이고 프록시 헤더를 쓰지 않았을 때"만이다.
-  if (TRUST_PROXY === "cloudflare") {
-    const cf = headerValue(req.headers["cf-connecting-ip"]);
-    // Cloudflare가 항상 덮어써 주는 헤더 — 클라이언트가 위조해도 엣지에서 교체된다.
-    return cf !== undefined ? { ip: cf, local: false } : { ip: socketIp, local: true };
+function clientIpOf(req: IncomingMessage): ClientOrigin {
+  const who = resolveClientOrigin(
+    { socketIp: req.socket.remoteAddress, headers: req.headers },
+    TRUST_PROXY,
+  );
+  if (who.missingHeader !== null) {
+    const now = Date.now();
+    if (now - missingProxyHeaderWarnedAt >= PROXY_WARN_INTERVAL_MS) {
+      missingProxyHeaderWarnedAt = now;
+      console.warn(
+        `[proxy] TRUST_PROXY=${TRUST_PROXY} 인데 ${who.missingHeader} 헤더가 없는 연결이 ` +
+          `들어왔습니다 — 프록시 설정을 확인하세요. 이 연결은 소켓 주소로 제한을 겁니다(면제 없음).`,
+      );
+    }
   }
-  if (TRUST_PROXY === "xff") {
-    // 마지막 홉 = 바로 앞 프록시가 붙인 값. 앞쪽 항목은 클라이언트가 위조할 수 있다.
-    const xff = headerValue(req.headers["x-forwarded-for"]);
-    if (xff === undefined) return { ip: socketIp, local: true };
-    const hops = xff.split(",").map((s) => s.trim()).filter((s) => s !== "");
-    const last = hops[hops.length - 1];
-    return last !== undefined ? { ip: last, local: false } : { ip: socketIp, local: true };
-  }
-  return { ip: socketIp, local: socketLocal };
+  return who;
 }
 
 /**
@@ -433,7 +474,7 @@ const alive = new WeakMap<object, boolean>();
 httpServer.on("upgrade", (req, socket, head) => {
   // 연결 수립 속도 제한 — 101을 내주기 전에 자른다. 진짜 루프백(로컬 개발)은 면제.
   const who = clientIpOf(req);
-  if (!who.local && connRateLimited(abuseKeyOf(who.ip))) {
+  if (!who.exempt && connRateLimited(abuseKeyOf(who.ip))) {
     socket.write("HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n");
     socket.destroy();
     return;
@@ -457,11 +498,11 @@ httpServer.on("upgrade", (req, socket, head) => {
 });
 
 wss.on("connection", (ws, req: IncomingMessage) => {
-  const { ip, local } = clientIpOf(req);
+  const { ip, exempt } = clientIpOf(req);
   alive.set(ws, true);
   ws.on("pong", () => alive.set(ws, true));
 
-  roomManager.handleConnection(ws, ip, local);
+  roomManager.handleConnection(ws, ip, exempt);
   ws.on("error", console.error);
 });
 
@@ -485,6 +526,50 @@ const heartbeat = setInterval(() => {
 // 이 타이머가 프로세스 종료를 막지 않게 한다.
 heartbeat.unref();
 
+/**
+ * 운영자가 정한 비밀이 약하면 부팅 때 크게 알린다 (감사 2026-08-12 §M-4).
+ *
+ * **왜 거부하지 않고 경고인가**: 이 값들을 서버가 마음대로 바꾸면 이미 코드를 받아 둔
+ * 사람들이 한꺼번에 가입하지 못하게 된다 — 교체 시점은 운영자가 정해야 한다. 대신
+ * 부팅 로그에서 절대 놓칠 수 없게 만든다.
+ *
+ * 가입 코드는 이 서비스에서 계정 공간을 지키는 1차 방어선이다. 통과하면 리더보드·
+ * 제보 게시판·리플레이 목록·방 생성이 열리고, 비싼 조회도 그때부터 쏠 수 있다.
+ * 게다가 **초대받은 사람 전원이 아는 공유 비밀**이라 대화방·스크린샷으로 새기 쉽고,
+ * 샜다는 사실을 알 방법도 회전할 방법도 없다 — 그래서 길이가 곧 수명이다.
+ */
+const MIN_SECRET_LEN = 16;
+/** 문서·샘플에 실려 있어 사실상 공개된 값들. */
+const SAMPLE_SECRETS = new Set(["change-me", "changeme", "password", "majak", "test"]);
+
+function warnWeakSecrets(): void {
+  const complain = (name: string, extra: string): void => {
+    console.warn(
+      `⚠ [보안] ${name} 가 ${extra} — 새 값으로 바꾸세요.\n` +
+        `         생성: openssl rand -base64 24\n` +
+        `         적용: deploy/majak.env 의 ${name} 수정 후 npm run serve:restart`,
+    );
+  };
+  if (SIGNUP_CODE !== "") {
+    if (SAMPLE_SECRETS.has(SIGNUP_CODE.toLowerCase())) {
+      complain("SIGNUP_CODE", "샘플 파일의 값 그대로입니다(공개된 값)");
+    } else if (SIGNUP_CODE.length < MIN_SECRET_LEN) {
+      complain(
+        "SIGNUP_CODE",
+        `${SIGNUP_CODE.length}자로 너무 짧습니다(권장 ${MIN_SECRET_LEN}자 이상)`,
+      );
+    }
+  }
+  if (ADMIN_CODE !== "" && ADMIN_CODE.length < MIN_SECRET_LEN) {
+    // 관리자 권한은 전 계정 조회·삭제 + 모든 리플레이 열람 + 진행 중 대국 관전
+    // (전원 손패가 보이는 완전정보) — 사실상 이 서버의 마스터 키다.
+    complain(
+      "ADMIN_CODE",
+      `${ADMIN_CODE.length}자로 너무 짧습니다 — 이 값은 사실상 서버의 마스터 키입니다`,
+    );
+  }
+}
+
 httpServer.listen(PORT, HOST, () => {
   console.log(`이능마작 server listening on http://localhost:${PORT} (HTTP+WS)`);
   console.log(`Client dist : ${CLIENT_DIST}${existsSync(CLIENT_DIST) ? "" : "  (없음 — 개발은 vite dev 사용)"}`);
@@ -506,9 +591,10 @@ httpServer.listen(PORT, HOST, () => {
       ? `가입 게이트 : 켜짐 — 가입 코드를 아는 사람만 회원가입 가능`
       : `가입 게이트 : 꺼짐 — 누구나 회원가입 가능 (공개 배포 시 SIGNUP_CODE 설정 권장)`,
   );
+  warnWeakSecrets();
   console.log(
     TRUST_PROXY !== ""
-      ? `신뢰 프록시 : ${TRUST_PROXY} — 실제 클라이언트 IP로 연결·요청 제한 적용`
+      ? `신뢰 프록시 : ${TRUST_PROXY} — 실제 클라이언트 IP로 제한 적용 · 면제 대상 없음`
       : `신뢰 프록시 : 꺼짐 — 소켓 원격주소를 클라이언트 IP로 사용 (프록시 뒤라면 TRUST_PROXY 설정 필수)`,
   );
   console.log(

@@ -13,7 +13,7 @@
 import { createRequire } from "node:module";
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
-import type { DatabaseSync as DatabaseSyncT } from "node:sqlite";
+import type { DatabaseSync as DatabaseSyncT, StatementSync } from "node:sqlite";
 
 // 비동기 scrypt — libuv 스레드풀에서 실행되어 공유 이벤트 루프를 블록하지 않는다.
 // (동기 scryptSync는 인증 요청 하나가 모든 진행 게임을 수십 ms씩 멈춘다.)
@@ -144,6 +144,28 @@ export class SiteDb {
   private readonly db: DatabaseSyncT;
   /** 계정 집합이 바뀔 때마다 오르는 세대 번호 (가입·삭제). */
   private usersRev = 0;
+  /**
+   * 준비된 구문 캐시 — SQL 문자열 하나당 한 번만 컴파일한다.
+   *
+   * **왜** (감사 2026-08-12 §M-1): 예전에는 호출마다 `db.prepare()`를 새로 했다.
+   * 그런데 `hydrate`는 목록 조회 한 번에 게임 수만큼 불린다 — 리플레이 목록 1회가
+   * 일반 사용자 51회, 관리자 201회의 **구문 컴파일 + 실행**이 됐다. `node:sqlite`는
+   * 동기라 그 시간 동안 이벤트 루프가 멈추고, 곧 서버의 모든 대국이 함께 멈춘다.
+   *
+   * SQL 문자열은 전부 이 파일 안의 리터럴이고 값은 파라미터로만 들어가므로(인젝션
+   * 없음) 캐시 키로 그대로 쓸 수 있다. `close()` 뒤에는 이 객체 자체가 버려진다.
+   */
+  private readonly stmts = new Map<string, StatementSync>();
+
+  /** 같은 SQL이면 컴파일된 구문을 재사용한다. */
+  private stmt(sql: string): StatementSync {
+    let s = this.stmts.get(sql);
+    if (s === undefined) {
+      s = this.db.prepare(sql);
+      this.stmts.set(sql, s);
+    }
+    return s;
+  }
 
   constructor(
     path: string,
@@ -223,21 +245,19 @@ export class SiteDb {
    */
   adminCode(): string {
     if (this.adminCodeOverride !== "") return this.adminCodeOverride;
-    const row = this.db
-      .prepare("SELECT value FROM config WHERE key = 'admin_code'")
+    const row = this.stmt("SELECT value FROM config WHERE key = 'admin_code'")
       .get() as { value: string } | undefined;
     if (row !== undefined) return row.value;
     // 48비트는 온라인 추측에는 충분하지만 유출 내성이 없다 — 128비트로 올린다.
     const code = randomBytes(16).toString("base64url");
-    this.db
-      .prepare("INSERT INTO config (key, value) VALUES ('admin_code', ?)")
+    this.stmt("INSERT INTO config (key, value) VALUES ('admin_code', ?)")
       .run(code);
     return code;
   }
 
   /** 관리자 계정이 하나라도 있는지 (부팅 로그에 코드를 노출할지 판단용). */
   hasAdmin(): boolean {
-    const row = this.db.prepare("SELECT 1 AS n FROM users WHERE is_admin = 1 LIMIT 1").get();
+    const row = this.stmt("SELECT 1 AS n FROM users WHERE is_admin = 1 LIMIT 1").get();
     return row !== undefined;
   }
 
@@ -256,8 +276,7 @@ export class SiteDb {
   /** 관리자 코드를 새 값으로 회전한다 (승급이 실제로 일어난 뒤에 호출). */
   private rotateAdminCode(): void {
     if (this.adminCodeOverride !== "") return; // 운영자가 env로 고정한 값은 건드리지 않는다
-    this.db
-      .prepare("UPDATE config SET value = ? WHERE key = 'admin_code'")
+    this.stmt("UPDATE config SET value = ? WHERE key = 'admin_code'")
       .run(randomBytes(16).toString("base64url"));
   }
 
@@ -291,8 +310,7 @@ export class SiteDb {
     const salt = randomBytes(16).toString("hex");
     const hash = (await scryptAsync(password, salt, 64)).toString("hex");
 
-    const exists = this.db
-      .prepare("SELECT id FROM users WHERE username = ?")
+    const exists = this.stmt("SELECT id FROM users WHERE username = ?")
       .get(username);
     if (exists !== undefined) {
       return { ok: false, error: "이미 사용 중인 닉네임입니다" };
@@ -304,8 +322,7 @@ export class SiteDb {
     }
     let res: { lastInsertRowid: number | bigint };
     try {
-      res = this.db
-        .prepare(
+      res = this.stmt(
           "INSERT INTO users (username, pass_salt, pass_hash, is_admin, created_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run(username, salt, hash, isAdmin ? 1 : 0, new Date().toISOString());
@@ -328,8 +345,7 @@ export class SiteDb {
 
   async login(username: string, password: string): Promise<AuthResult> {
     const pw = typeof password === "string" ? password : "";
-    const row = this.db
-      .prepare("SELECT id, username, pass_salt, pass_hash, is_admin FROM users WHERE username = ?")
+    const row = this.stmt("SELECT id, username, pass_salt, pass_hash, is_admin FROM users WHERE username = ?")
       .get(username) as
       | { id: number; username: string; pass_salt: string; pass_hash: string; is_admin: number }
       | undefined;
@@ -348,8 +364,7 @@ export class SiteDb {
   }
 
   loginByToken(token: string): UserRow | null {
-    const row = this.db
-      .prepare(
+    const row = this.stmt(
         `SELECT u.id, u.username, u.is_admin, s.created_at FROM sessions s
          JOIN users u ON u.id = s.user_id WHERE s.token = ?`,
       )
@@ -359,24 +374,22 @@ export class SiteDb {
     if (row === undefined) return null;
     // TTL 만료 검사 — 지난 토큰은 무효화하고 정리한다 (지연 삭제)
     if (Date.now() - Date.parse(row.created_at) > this.sessionTtlMs) {
-      this.db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+      this.stmt("DELETE FROM sessions WHERE token = ?").run(token);
       return null;
     }
     return { id: row.id, username: row.username, isAdmin: row.is_admin === 1 };
   }
 
   logout(token: string): void {
-    this.db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+    this.stmt("DELETE FROM sessions WHERE token = ?").run(token);
   }
 
   private createSession(userId: number): string {
     const token = randomUUID() + randomBytes(16).toString("hex");
-    this.db
-      .prepare("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)")
+    this.stmt("INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)")
       .run(token, userId, new Date().toISOString());
     // 세션 무한 증식 방지 — 사용자당 최신 MAX_SESSIONS_PER_USER개만 남기고 오래된 세션을 정리한다.
-    this.db
-      .prepare(
+    this.stmt(
         `DELETE FROM sessions WHERE user_id = ? AND token NOT IN (
            SELECT token FROM sessions WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
          )`,
@@ -389,8 +402,7 @@ export class SiteDb {
 
   /** 전체 계정 목록 (관리자용) — 가입순, 참가 게임 수 포함. */
   listUsers(): AdminUserRow[] {
-    const rows = this.db
-      .prepare(
+    const rows = this.stmt(
         `SELECT u.id, u.username, u.is_admin, u.created_at,
            (SELECT COUNT(DISTINCT gp.game_id) FROM game_players gp WHERE gp.user_id = u.id) AS games
          FROM users u ORDER BY u.id ASC`,
@@ -419,7 +431,7 @@ export class SiteDb {
   }
 
   listUsernames(): string[] {
-    const rows = this.db.prepare("SELECT username FROM users").all() as {
+    const rows = this.stmt("SELECT username FROM users").all() as {
       username: string;
     }[];
     return rows.map((r) => r.username);
@@ -432,19 +444,18 @@ export class SiteDb {
    */
   deleteUser(userId: number): { ok: boolean; username?: string; error?: string } {
     if (!Number.isInteger(userId)) return { ok: false, error: "잘못된 사용자 ID입니다" };
-    const row = this.db
-      .prepare("SELECT username FROM users WHERE id = ?")
+    const row = this.stmt("SELECT username FROM users WHERE id = ?")
       .get(userId) as { username: string } | undefined;
     if (row === undefined) return { ok: false, error: "존재하지 않는 계정입니다" };
     // 세션·게임참조·계정을 원자적으로 정리 (한 단계라도 실패하면 전부 롤백)
     this.db.exec("BEGIN");
     try {
-      this.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
-      this.db.prepare("UPDATE game_players SET user_id = NULL WHERE user_id = ?").run(userId);
+      this.stmt("DELETE FROM sessions WHERE user_id = ?").run(userId);
+      this.stmt("UPDATE game_players SET user_id = NULL WHERE user_id = ?").run(userId);
       // 제보는 남기되 주인을 끊는다 — 관리자에게는 계속 보이고(처리 이력 보존),
       // 나중에 같은 닉네임으로 재가입한 다른 사람에게는 보이지 않는다.
-      this.db.prepare("UPDATE feedback SET user_id = NULL WHERE user_id = ?").run(userId);
-      this.db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+      this.stmt("UPDATE feedback SET user_id = NULL WHERE user_id = ?").run(userId);
+      this.stmt("DELETE FROM users WHERE id = ?").run(userId);
       this.db.exec("COMMIT");
       this.usersRev++;
     } catch (err) {
@@ -455,8 +466,7 @@ export class SiteDb {
   }
 
   userByName(username: string): UserRow | null {
-    const row = this.db
-      .prepare("SELECT id, username, is_admin FROM users WHERE username = ?")
+    const row = this.stmt("SELECT id, username, is_admin FROM users WHERE username = ?")
       .get(username) as { id: number; username: string; is_admin: number } | undefined;
     return row === undefined
       ? null
@@ -487,14 +497,12 @@ export class SiteDb {
       return { ok: false, error: `내용은 ${FEEDBACK_BODY_MAX}자 이내여야 합니다` };
     }
     const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const recent = this.db
-      .prepare("SELECT COUNT(*) AS n FROM feedback WHERE user_id = ? AND created_at > ?")
+    const recent = this.stmt("SELECT COUNT(*) AS n FROM feedback WHERE user_id = ? AND created_at > ?")
       .get(user.id, since) as { n: number };
     if (Number(recent.n) >= FEEDBACK_PER_HOUR) {
       return { ok: false, error: "제보가 너무 잦습니다. 잠시 후 다시 시도해 주세요" };
     }
-    const res = this.db
-      .prepare(
+    const res = this.stmt(
         `INSERT INTO feedback (user_id, author, kind, title, body, status, reply, created_at, replied_at)
          VALUES (?, ?, ?, ?, ?, 'open', '', ?, NULL)`,
       )
@@ -510,11 +518,9 @@ export class SiteDb {
    */
   listFeedback(user: UserRow, limit = 200): FeedbackRow[] {
     const rows = user.isAdmin
-      ? (this.db
-          .prepare("SELECT * FROM feedback ORDER BY id DESC LIMIT ?")
+      ? (this.stmt("SELECT * FROM feedback ORDER BY id DESC LIMIT ?")
           .all(limit) as Record<string, unknown>[])
-      : (this.db
-          .prepare("SELECT * FROM feedback WHERE user_id = ? ORDER BY id DESC LIMIT ?")
+      : (this.stmt("SELECT * FROM feedback WHERE user_id = ? ORDER BY id DESC LIMIT ?")
           .all(user.id, limit) as Record<string, unknown>[]);
     return rows.map((r) => this.toFeedbackRow(r));
   }
@@ -522,7 +528,7 @@ export class SiteDb {
   /** 제보 1건 조회 — 권한 판정은 호출자가 한다 (작성자 본인 또는 관리자). */
   getFeedback(id: number): FeedbackRow | null {
     if (!Number.isInteger(id)) return null;
-    const row = this.db.prepare("SELECT * FROM feedback WHERE id = ?").get(id) as
+    const row = this.stmt("SELECT * FROM feedback WHERE id = ?").get(id) as
       | Record<string, unknown>
       | undefined;
     return row === undefined ? null : this.toFeedbackRow(row);
@@ -545,8 +551,7 @@ export class SiteDb {
     if (reply.length > FEEDBACK_REPLY_MAX) {
       return { ok: false, error: `답변은 ${FEEDBACK_REPLY_MAX}자 이내여야 합니다` };
     }
-    this.db
-      .prepare("UPDATE feedback SET status = ?, reply = ?, replied_at = ? WHERE id = ?")
+    this.stmt("UPDATE feedback SET status = ?, reply = ?, replied_at = ? WHERE id = ?")
       .run(patch.status ?? cur.status, reply, new Date().toISOString(), id);
     return { ok: true };
   }
@@ -558,7 +563,7 @@ export class SiteDb {
     if (!user.isAdmin && cur.userId !== user.id) {
       return { ok: false, error: "삭제 권한이 없습니다" };
     }
-    this.db.prepare("DELETE FROM feedback WHERE id = ?").run(id);
+    this.stmt("DELETE FROM feedback WHERE id = ?").run(id);
     return { ok: true };
   }
 
@@ -589,13 +594,12 @@ export class SiteDb {
   recordGame(rec: GameRecord): number {
     this.db.exec("BEGIN");
     try {
-      const res = this.db
-        .prepare(
+      const res = this.stmt(
           "INSERT INTO games (code, replay_path, started_at, ended_at) VALUES (?, ?, ?, ?)",
         )
         .run(rec.code, rec.replayPath, rec.startedAt, rec.endedAt);
       const gameId = Number(res.lastInsertRowid);
-      const insert = this.db.prepare(
+      const insert = this.stmt(
         "INSERT INTO game_players (game_id, user_id, nickname, is_bot, rank, score) VALUES (?, ?, ?, ?, ?, ?)",
       );
       for (const p of rec.players) {
@@ -618,14 +622,13 @@ export class SiteDb {
    * (index.ts의 `GAME_RETENTION_DAYS` — 기본은 넉넉하게 잡혀 있다).
    */
   pruneGamesBefore(cutoffIso: string): string[] {
-    const rows = this.db
-      .prepare("SELECT id, replay_path FROM games WHERE ended_at < ?")
+    const rows = this.stmt("SELECT id, replay_path FROM games WHERE ended_at < ?")
       .all(cutoffIso) as { id: number; replay_path: string }[];
     if (rows.length === 0) return [];
     this.db.exec("BEGIN");
     try {
-      const delPlayers = this.db.prepare("DELETE FROM game_players WHERE game_id = ?");
-      const delGame = this.db.prepare("DELETE FROM games WHERE id = ?");
+      const delPlayers = this.stmt("DELETE FROM game_players WHERE game_id = ?");
+      const delGame = this.stmt("DELETE FROM games WHERE id = ?");
       for (const r of rows) {
         delPlayers.run(r.id);
         delGame.run(r.id);
@@ -645,7 +648,7 @@ export class SiteDb {
    * `pruneReplays.ts` 주석 참고.
    */
   allReplayPaths(): string[] {
-    const rows = this.db.prepare("SELECT replay_path FROM games").all() as {
+    const rows = this.stmt("SELECT replay_path FROM games").all() as {
       replay_path: string;
     }[];
     return rows.map((r) => r.replay_path);
@@ -653,8 +656,7 @@ export class SiteDb {
 
   /** 해당 사용자가 참가한 게임 목록 (최신순, 최대 limit) */
   listGamesFor(userId: number, limit = 50): GameSummaryRow[] {
-    const games = this.db
-      .prepare(
+    const games = this.stmt(
         `SELECT DISTINCT g.id, g.code, g.ended_at, g.replay_path FROM games g
          JOIN game_players gp ON gp.game_id = g.id
          WHERE gp.user_id = ? ORDER BY g.id DESC LIMIT ?`,
@@ -665,8 +667,7 @@ export class SiteDb {
 
   /** 모든 게임 목록 (최신순, 최대 limit) — 관리자 리플레이 조회용. */
   listAllGames(limit = 200): GameSummaryRow[] {
-    const games = this.db
-      .prepare("SELECT id, code, ended_at, replay_path FROM games ORDER BY id DESC LIMIT ?")
+    const games = this.stmt("SELECT id, code, ended_at, replay_path FROM games ORDER BY id DESC LIMIT ?")
       .all(limit) as { id: number; code: string; ended_at: string; replay_path: string }[];
     return games.map((g) => this.hydrate(g));
   }
@@ -675,20 +676,17 @@ export class SiteDb {
   getGame(gameId: number): (GameSummaryRow & { participantUserIds: number[] }) | null {
     // 신뢰할 수 없는 입력 방어 — 정수가 아니면 바인딩이 던지므로 여기서 차단
     if (!Number.isInteger(gameId)) return null;
-    const g = this.db
-      .prepare("SELECT id, code, ended_at, replay_path FROM games WHERE id = ?")
+    const g = this.stmt("SELECT id, code, ended_at, replay_path FROM games WHERE id = ?")
       .get(gameId) as { id: number; code: string; ended_at: string; replay_path: string } | undefined;
     if (g === undefined) return null;
     const row = this.hydrate(g);
-    const ids = this.db
-      .prepare("SELECT user_id FROM game_players WHERE game_id = ? AND user_id IS NOT NULL")
+    const ids = this.stmt("SELECT user_id FROM game_players WHERE game_id = ? AND user_id IS NOT NULL")
       .all(gameId) as { user_id: number }[];
     return { ...row, participantUserIds: ids.map((r) => r.user_id) };
   }
 
   private hydrate(g: { id: number; code: string; ended_at: string; replay_path: string }): GameSummaryRow {
-    const players = this.db
-      .prepare(
+    const players = this.stmt(
         "SELECT nickname, is_bot, rank, score FROM game_players WHERE game_id = ? ORDER BY rank",
       )
       .all(g.id) as { nickname: string; is_bot: number; rank: number; score: number }[];
@@ -707,6 +705,8 @@ export class SiteDb {
   }
 
   close(): void {
+    // 캐시된 구문은 이 DB에 묶여 있다 — 닫기 전에 참조를 놓는다.
+    this.stmts.clear();
     this.db.close();
   }
 }
