@@ -222,6 +222,11 @@ interface Room {
 interface Conn {
   id: string;
   ws: WebSocket;
+  /**
+   * 이 소켓이 열린 시각(epoch ms). 익명 슬롯이 넘칠 때 **가장 오래 익명으로 앉아
+   * 있던 연결부터** 회수하는 기준이다(`ANON_EVICT_GRACE_MS`).
+   */
+  openedAt: number;
   user: UserRow | null;
   /**
    * 계정 없는 게스트 세션인가. `user`는 DB에 없는 임시 신원(id = GUEST_USER_ID)이라
@@ -266,6 +271,24 @@ const MAX_PLAYERS = 4;
  * 못 읽으면 **기본값으로 되돌리고 반드시 로그를 남긴다** — 조용히 0이 되는 것보다
  * 낫다. 상한도 둔다: 한 수에 1분을 기다리는 설정은 오타지 의도가 아니다.
  */
+/**
+ * 개수 환경변수를 **검증해서** 읽는다 (`delayEnv`의 개수 판, 문구만 다르다).
+ * 못 읽으면 기본값으로 되돌리고 경고를 남긴다 — 남용 방어의 상한이 오타 하나로
+ * 조용히 사라지는 것보다 시끄럽게 기본값으로 도는 편이 낫다.
+ */
+function countEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min || n > max) {
+    console.warn(
+      `[config] ${name}="${raw}" 는 ${min}~${max} 범위의 정수가 아닙니다 — 기본값 ${fallback} 을 씁니다.`,
+    );
+    return fallback;
+  }
+  return n;
+}
+
 const MAX_DELAY_MS = 60_000;
 function delayEnv(name: string, fallback: number, min = 0, max = MAX_DELAY_MS): number {
   const raw = process.env[name];
@@ -305,6 +328,48 @@ const AUTH_IP_WINDOW_MS = 60_000;
 const AUTH_IP_MAX_ATTEMPTS = 30;
 /** 전체 동시 WS 연결 상한 (자원 고갈 방지). */
 const MAX_CONNECTIONS = 300;
+/**
+ * **익명 연결**(로그인 전 + 게스트)이 동시에 쥘 수 있는 슬롯 상한.
+ *
+ * **왜 따로 세는가** (감사 2026-08-12 §H-1). `UNAUTH_TIMEOUT_MS`가 30초에서 10분으로
+ * 오른 것은 정당했다 — 30초는 스쿼터가 아니라 로그인 화면을 읽는 손님을 잡고 있었다.
+ * 그런데 그러면서 미인증 스쿼팅의 비용이 **20배** 싸졌는데, 그걸 받아 주는 전역
+ * 상한(`MAX_CONNECTIONS`)은 인증 여부를 구분하지 않았다.
+ *
+ * 그래서 IPv6 `/64` 19개에서 16개씩(=IP당 상한) 열어 두기만 하면 300칸이 전부 찬다.
+ * 신규 연결 속도 제한에도 걸리지 않는다 — 버킷당 16개를 열 뿐이다. 잃는 것은 신규
+ * 접속만이 아니다: **진행 중인 반장전에서 잠깐 끊긴 사람이 재접속할 자리가 없어져**
+ * 유예 8회 초과로 이탈 확정되고, 40분짜리 판이 봇 자동 진행으로 흘러간다.
+ *
+ * 이 상한이 있으면 최소 `MAX_CONNECTIONS - MAX_ANON_CONNECTIONS`칸은 **언제나**
+ * 로그인한 사람 몫으로 남는다 — 재접속이 익명 소켓에 밀리지 않는다.
+ *
+ * 게스트를 익명으로 세는 것이 중요하다. 게스트는 `conn.user`에 DB에 없는 임시 신원이
+ * 들어가므로 "인증됨"처럼 보이지만, 실제로는 계정 없이 누구나 될 수 있는 상태다 —
+ * 안 세면 `guestPlay` 한 번으로 이 상한을 통째로 빠져나간다.
+ */
+const MAX_ANON_CONNECTIONS_DEFAULT = Math.floor(MAX_CONNECTIONS * 0.4);
+/** 상한은 **호출할 때** 읽는다 — 테스트가 값을 바꿔 가며 회수 동작을 검증할 수 있게. */
+function maxAnonConnections(): number {
+  return countEnv("MAX_ANON_CONNECTIONS", MAX_ANON_CONNECTIONS_DEFAULT, 1, MAX_CONNECTIONS);
+}
+/**
+ * 익명 슬롯이 꽉 찼을 때 **오래된 익명 연결부터 회수**하되, 갓 들어온 연결은 이만큼
+ * 보호한다(ms).
+ *
+ * 상한만 두면 공격자가 익명 슬롯을 붙들고 있는 동안 **아무도 로그인 화면에 못 온다** —
+ * 새 손님도 로그인 전에는 익명이라 같은 슬롯이 필요하기 때문이다. 그래서 익명 슬롯을
+ * "고정 자리"가 아니라 **회전하는 풀**로 만든다: 넘치면 가장 오래 익명으로 앉아 있던
+ * 연결을 끊고 자리를 내준다. 붙들고만 있는 소켓이 먼저 나가고, 실제로 로그인하는
+ * 사람은 몇 초 만에 인증되어 이 풀을 빠져나가므로 회수 대상이 되지 않는다.
+ *
+ * 유예가 필요한 이유: 이게 없으면 연결 폭주가 **방금 도착한 정상 손님**을 로그인
+ * 화면을 그리기도 전에 밀어낸다. 유예보다 젊은 연결밖에 없으면 회수하지 않고
+ * 새 연결을 거절한다.
+ */
+function anonEvictGraceMs(): number {
+  return delayEnv("ANON_EVICT_GRACE_MS", 15_000, 0);
+}
 /** IP당 동시 WS 연결 상한 (연결 폭주·레이트리밋 우회 방지). 루프백/로컬은 예외. */
 const MAX_CONNECTIONS_PER_IP = 16;
 /** 연결당 메시지 토큰 버킷 — 한 연결이 메시지로 이벤트 루프를 폭주시키지 못하게. 루프백은 예외. */
@@ -624,6 +689,9 @@ export class RoomManager {
    */
   healthSnapshot(): {
     connections: number;
+    /** 그중 익명(로그인 전 + 게스트) — 익명 슬롯 고갈 공격이 눈에 보이게 한다. */
+    anonymous: number;
+    anonymousMax: number;
     rooms: number;
     playing: number;
     waiting: number;
@@ -632,6 +700,8 @@ export class RoomManager {
     for (const r of this.rooms.values()) if (r.phase === "playing") playing++;
     return {
       connections: this.conns.size,
+      anonymous: this.anonCount(),
+      anonymousMax: maxAnonConnections(),
       rooms: this.rooms.size,
       playing,
       waiting: this.rooms.size - playing,
@@ -769,10 +839,21 @@ export class RoomManager {
       }
       return;
     }
+    // 익명 슬롯 확보 — 로그인한 사람 몫의 자리를 익명 소켓이 먹지 못하게 한다.
+    // 회수할 자리도 없으면 이 연결은 받지 않는다.
+    if (!exempt && !this.makeRoomForAnonConn()) {
+      try {
+        ws.close(1013, "too many anonymous connections");
+      } catch {
+        /* 이미 닫힘 */
+      }
+      return;
+    }
 
     const conn: Conn = {
       id: randomUUID(),
       ws,
+      openedAt: Date.now(),
       user: null,
       guest: false,
       sessionToken: null,
@@ -847,6 +928,62 @@ export class RoomManager {
   }
 
   /**
+   * 이 연결이 **익명**인가 — 로그인 전이거나 게스트 체험 중.
+   *
+   * 게스트를 익명으로 세는 것이 핵심이다. 게스트는 `conn.user`에 DB에 없는 임시
+   * 신원(`GUEST_USER_ID`)이 들어가 있어 "인증됨"처럼 보이지만, 실제로는 계정 없이
+   * 누구나 될 수 있는 상태다 — 안 세면 `guestPlay` 한 번으로 익명 상한을 빠져나간다.
+   */
+  private isAnon(conn: Conn): boolean {
+    return conn.user === null || conn.guest;
+  }
+
+  /** 지금 익명 상태인 연결 수. */
+  private anonCount(): number {
+    let n = 0;
+    for (const c of this.conns) if (this.isAnon(c)) n++;
+    return n;
+  }
+
+  /**
+   * 새 익명 연결을 받을 자리를 만든다 (만들었으면 true, 못 만들면 false).
+   *
+   * 상한에 여유가 있으면 그대로 통과. 꽉 찼으면 **가장 오래 익명으로 앉아 있던**
+   * 연결 하나를 회수한다 — 단, 유예(`ANON_EVICT_GRACE_MS`)보다 젊은 연결은 건드리지
+   * 않는다. 갓 도착한 손님이 로그인 화면을 그리기도 전에 밀려나면 상한이 공격자가
+   * 아니라 손님을 잡는 장치가 되기 때문이다.
+   *
+   * 회수 대상이 전부 유예 안이면 새 연결을 거절한다 — 그 상황은 "지금 막 몰려들었다"는
+   * 뜻이고, 이미 앉은 쪽을 지키는 편이 무작정 자리를 바꾸는 것보다 낫다.
+   */
+  private makeRoomForAnonConn(): boolean {
+    const limit = maxAnonConnections();
+    if (this.anonCount() < limit) return true;
+    const now = Date.now();
+    const grace = anonEvictGraceMs();
+    let oldest: Conn | null = null;
+    for (const c of this.conns) {
+      if (!this.isAnon(c)) continue;
+      if (now - c.openedAt < grace) continue;
+      if (oldest === null || c.openedAt < oldest.openedAt) oldest = c;
+    }
+    if (oldest === null) return false;
+    this.log(
+      null,
+      `익명 연결 상한(${limit}) — ${oldest.key} 의 오래된 익명 연결을 회수한다`,
+    );
+    try {
+      oldest.ws.close(1013, "anonymous slot recycled");
+    } catch {
+      /* 이미 닫힘 */
+    }
+    // 소켓의 close 이벤트는 비동기로 온다 — 그때까지 기다리면 같은 연결이 여러 번
+    // 회수 대상으로 뽑히므로 지금 정리한다. `handleClose`는 두 번 불려도 안전하다.
+    this.handleClose(oldest);
+    return true;
+  }
+
+  /**
    * 미인증 유예 타이머를 (재)설정한다. 유예 안에 인증하지 않으면 소켓을 끊어
    * 연결 상한 슬롯을 회수한다. unref로 프로세스 종료를 막지 않게 한다.
    */
@@ -897,7 +1034,11 @@ export class RoomManager {
   }
 
   private handleClose(conn: Conn): void {
-    this.conns.delete(conn);
+    // 두 번 불릴 수 있다 — 익명 슬롯 회수(`makeRoomForAnonConn`)가 소켓을 닫으면서
+    // 여기를 먼저 부르고, 잠시 뒤 소켓의 close 이벤트가 한 번 더 부른다. 그때
+    // 좌석 정리·IP 카운터 감소를 두 번 하면 안 된다(카운터가 음수로 새면 IP당
+    // 동시 연결 상한이 조용히 헐거워진다). Set에서 실제로 빠진 첫 호출만 진행한다.
+    if (!this.conns.delete(conn)) return;
     this.log(
       conn.room,
       `연결 닫힘 ${conn.user?.username ?? conn.key} (동시 ${this.conns.size})`,
