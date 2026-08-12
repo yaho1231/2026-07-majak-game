@@ -83,6 +83,17 @@ describe("§2-3·2-4 — 중앙 보드는 아래 띠를 침범하지 않는다",
     expect(APP_CODE).toContain('root.style.setProperty("--own-band"');
   });
 
+  it("텐파이가 아니면 오름패 줄은 접히되, 띠에서는 그 자리를 계속 뺀다", () => {
+    // 접지 않으면 이름표·타이머가 손패에서 99px 떠 있다(2026-08-12 사용자 보고).
+    expect(CSS_CODE).toContain(".own-waits-row-empty");
+    expect(CSS_CODE).toMatch(/\.own-waits-row-empty\s*\{[^}]*height:\s*0/);
+    expect(APP_CODE).toContain("own-waits-row-empty");
+    // 그래도 띠는 상수여야 한다 — 접힌 줄의 몫을 실측에서 도로 더한다.
+    // (안 더하면 텐파이가 붙었다 떨어질 때마다 바닥 타일 크기가 흔들린다 = "어지럽다")
+    expect(APP_CODE).toContain('cs.getPropertyValue("--waits-row-h")');
+    expect(CSS_CODE).toMatch(/\.game-root\s*\{[^}]*--waits-row-h:/);
+  });
+
   it(".table-center 는 위·아래 띠 사이로 clamp 된다 (46% 못 박기 금지)", () => {
     const start = CSS_CODE.indexOf(".table-center {");
     expect(start).toBeGreaterThan(0);

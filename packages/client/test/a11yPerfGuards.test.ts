@@ -109,47 +109,28 @@ describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌
     expect(UISCALE).toContain("if (userZoomedIn()) return 1;");
   });
 
-  it("−/+ 버튼이 대국 화면에 뜨고, 판 위가 아니라 body 로 portal 된다", () => {
+  it("−/+ 버튼이 어느 화면에서나 뜬다 (게임 루트 최상단, 로그인·로비 포함)", () => {
     expect(APP).toContain("function ScaleControl(");
-    // 곱할 대상(판·손패)이 있는 화면에서만 — 홈·로비에서는 눌러도 아무 일이 없어
-    // "보이는데 반응 없음"이 된다 (2026-08-12)
-    expect(APP).toContain("{inGame ? <ScaleControl /> : null}");
+    expect(APP).toContain("<ScaleControl />");
     expect(CSS).toContain(".ui-zoom");
-    // 판 위 오버레이·흔들림에 딸려 다니지 않게 body 로 portal 한다
-    const sc = APP.slice(APP.indexOf("function ScaleControl("));
-    expect(sc.slice(0, sc.indexOf("\n}\n"))).toContain("document.body");
   });
 
-  it("−/+ 가 설정·도감과 같은 줄(우상단)에 선다", () => {
-    // 화면을 만지는 것들이 흩어져 있으면 찾으러 다녀야 한다 (2026-08-12 사용자 지시)
-    expect(CSS).toMatch(/\.ui-zoom \{[\s\S]*?right: 264px/);
-    // 좌하단을 비켜서던 우회는 전부 걷어냈다 — 안 걷으면 빈 띠만 남는다
-    expect(CSS).not.toContain("var(--ui-zoom-band");
+  it("배율은 body의 zoom 하나로 화면 전체에 균일하게 걸린다 (transform: scale 아님)", () => {
+    // `transform: scale()` 은 그린 화면을 컴포지터가 늘려서 **글자를 뭉갠다**.
+    // `zoom` 은 레이아웃을 다시 풀고 최종 크기로 다시 래스터화한다 — 확대해도 선명하다.
+    expect(CSS).toContain("zoom: var(--ui-scale, 1)");
+    // 되돌리기 scale 금지: 손잡이만 배율에서 빼면 옆 아이콘 줄과 높이가 어긋난다.
+    expect(CSS).not.toContain("transform: scale(calc(1 / var(--ui-scale, 1)))");
+    // transform 은 zoom 미지원 브라우저 대비 @supports 안에만 남아 있어야 한다.
+    const scaleUses = [...CSS.matchAll(/transform: scale\(var\(--ui-scale/g)].length;
+    expect(scaleUses).toBe(1);
+    expect(CSS).toContain("@supports not (zoom: 2)");
   });
 
-  it("손패가 실제로 커질 수 있다 — 죽은 예약(--hand-side 116px)이 없다", () => {
-    // 116px 은 렌더되지도 않는 좌하단 토글을 위한 예약이었고, 양옆 232px 을 먹어
-    // 1440×900 에서 패가 76.3px 에 묶여 있었다 (2026-08-12 실측).
-    expect(CSS).not.toMatch(/--hand-side:\s*116px/);
-    // 여백·간격은 배수에 반비례해야 한다 — 곱하면 패가 오히려 작아진다
-    expect(CSS).toMatch(/--hand-gap: max\(2px, calc\(5px \/ var\(--ui-mag\)\)\)/);
-    expect(CSS).toMatch(/--hand-side: max\(8px, calc\(14px \/ var\(--ui-mag\)\)\)/);
-  });
-
-  it("좌·우 상대 뒷패 줄이 내 손패 띠를 침범하지 않는다", () => {
-    // 예전에는 화면 전체 높이를 13등분해 줄이 손패 패널과 실제로 겹쳐 있었다
-    // (1440×900 실측: x 118.8–131.8, y 754.9–882.9)
-    expect(CSS).toContain("var(--opp-side-top) + var(--own-band, 0px)");
-    expect(CSS).toMatch(/100cqh - var\(--opp-side-top\) - var\(--own-band, 0px\)/);
-  });
-
-  it("확대가 body transform 을 건드리지 않는다 (뭉개짐 없음)", () => {
-    // --ui-scale 은 자동 축소 전용, 수동 배수는 --ui-mag 로 크기 토큰을 곱한다
-    expect(code(UISCALE)).toContain('setProperty("--ui-mag"');
-    expect(code(UISCALE)).toContain("scale = computeAutoScale();");
-    // 판·손패의 크기 토큰이 실제로 그 배수를 물고 있어야 "패가 커진다"
-    expect(CSS).toMatch(/--board: min\([\s\S]*?var\(--ui-mag\)/);
-    expect(CSS).toMatch(/--hand-pref: clamp\([^;]*var\(--ui-mag\)/);
+  it("크기 토큰을 골라 곱하는 배율은 없다 (PR #239 되돌림)", () => {
+    // 손패·보드만 키우고 상대 뒷패를 줄이는 '거래'는 사용자가 거부했다.
+    expect(CSS).not.toContain("--ui-mag");
+    expect(UISCALE).not.toContain("--ui-mag");
   });
 
   it("단축키가 브라우저 확대(Ctrl/⌘ +/−)를 가로채지 않는다", () => {
