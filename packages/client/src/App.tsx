@@ -2609,7 +2609,17 @@ export function App(): JSX.Element {
       if (!relogin) flushPendingSends();
     });
     ws.addEventListener("message", (event) => {
-      handleServerMessage(JSON.parse(event.data as string) as ServerMessage);
+      // 파싱 실패를 잡는다 — 서버가 정상이면 오지 않는 프레임이지만, 중간 프록시나
+      // 확장 프로그램이 끼어들면 여기서 예외가 나고 그 뒤 처리가 통째로 멈춘다.
+      // 한 프레임을 버리고 다음 프레임을 계속 받는 편이 낫다 (감사 2026-08-12 §L-7).
+      let msg: ServerMessage;
+      try {
+        msg = JSON.parse(event.data as string) as ServerMessage;
+      } catch {
+        console.warn("서버 메시지를 해석하지 못했습니다 — 이 프레임은 버립니다");
+        return;
+      }
+      handleServerMessage(msg);
     });
     ws.addEventListener("close", () => {
       /*

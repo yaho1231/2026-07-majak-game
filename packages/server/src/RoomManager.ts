@@ -632,6 +632,21 @@ export function abuseKeyOf(ip: string): string {
   // IPv4-mapped IPv6(::ffff:1.2.3.4)는 IPv4로 취급한다.
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
   if (mapped !== null) return mapped[1] as string;
+  /*
+   * 같은 주소의 **16진 표기**(`::ffff:0102:0304`)도 IPv4로 푼다.
+   *
+   * 안 풀면 IPv6 경로로 흘러가는데, 그 주소들은 앞 4그룹이 전부 0이라 **모든
+   * IPv4 클라이언트가 `0:0:0:0::/64` 한 버킷으로 뭉친다**. 그러면 서로 모르는
+   * 사용자들이 IP당 동시 연결 16·인증 30회/분·방 20개/10분을 나눠 쓰게 되어
+   * 서로를 밀어낸다 — 뚫리는 쪽이 아니라 **과도 차단** 쪽 고장이다.
+   * Node는 점 표기를 주지만 프록시 헤더에서 오는 값은 우리가 정하지 않는다.
+   */
+  const hexMapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(ip);
+  if (hexMapped !== null) {
+    const hi = parseInt(hexMapped[1] as string, 16);
+    const lo = parseInt(hexMapped[2] as string, 16);
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+  }
   if (!ip.includes(":")) return ip; // IPv4 또는 "local" 등 비-IP 라벨
   const zoneless = (ip.split("%")[0] as string).toLowerCase();
   // 축약(`::`)을 먼저 편다 — 실제 배포에서 들어오는 주소는 대부분 축약형이라,
@@ -2469,11 +2484,13 @@ export class RoomManager {
 
   private async sendReplayData(conn: Conn, user: UserRow, gameId: number): Promise<void> {
     const game = this.db?.getGame(gameId) ?? null;
-    if (game === null) {
+    // "없다"와 "볼 권한이 없다"를 **같은 응답으로 합친다** (감사 2026-08-12 §L-4).
+    //
+    // 예전에는 없는 id에 REPLAY_NOT_FOUND, 남의 판에 FORBIDDEN을 돌려줬다. 판 내용은
+    // 새지 않지만 id를 훑으면 "지금까지 몇 판이 치러졌는가"와 "어느 id가 실재하는가"를
+    // 알 수 있었다. 볼 수 없는 것은 없는 것과 구분되지 않아야 한다.
+    if (game === null || (!user.isAdmin && !game.participantUserIds.includes(user.id))) {
       return this.fail(conn, "REPLAY_NOT_FOUND", "리플레이를 찾을 수 없습니다");
-    }
-    if (!user.isAdmin && !game.participantUserIds.includes(user.id)) {
-      return this.fail(conn, "FORBIDDEN", "본인이 참가한 게임만 볼 수 있습니다");
     }
     let text: string;
     try {

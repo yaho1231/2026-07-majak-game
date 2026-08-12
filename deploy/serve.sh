@@ -22,6 +22,13 @@ ENV_FILE="$HERE/majak.env"
 
 # 설정 로드 (KEY=VALUE 자동 export). 없으면 경고 후 기본값으로 진행.
 if [ -f "$ENV_FILE" ]; then
+  # 이 파일에는 SIGNUP_CODE(·ADMIN_CODE)가 들어 있다 — 같은 머신의 다른 사용자·
+  # 프로세스가 읽을 수 있으면 안 된다. 0644로 만들어져 있던 것을 여기서 조인다
+  # (감사 2026-08-12 §L-2). stat 문법은 macOS(BSD)와 리눅스(GNU)가 다르다.
+  PERM="$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null || stat -c '%a' "$ENV_FILE" 2>/dev/null || echo '')"
+  if [ -n "$PERM" ] && [ "$PERM" != "600" ]; then
+    chmod 600 "$ENV_FILE" && echo "🔒 $ENV_FILE 권한을 $PERM → 600 으로 조였습니다 (비밀 파일)"
+  fi
   set -a
   # shellcheck disable=SC1090
   . "$ENV_FILE"

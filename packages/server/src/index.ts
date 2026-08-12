@@ -187,6 +187,12 @@ const roomManager = new RoomManager(
  */
 const MAX_HTTP_SOCKETS = numEnv("MAX_HTTP_SOCKETS", 512);
 
+/**
+ * `/healthz`를 외부에도 열지 (기본 꺼짐 — 이 머신에서 직접 온 요청에만 답한다).
+ * 외부 감시 도구(UptimeRobot 등)를 붙여야 할 때만 1로 켠다.
+ */
+const HEALTHZ_PUBLIC = (process.env.HEALTHZ_PUBLIC ?? "") === "1";
+
 /** dist의 실제 경로 — 심볼릭 링크 탈출 검사의 기준. */
 const CLIENT_REAL = existsSync(CLIENT_DIST) ? realpathSync(CLIENT_DIST) : CLIENT_DIST;
 
@@ -203,9 +209,48 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+/**
+ * `connect-src` 목록 — 이 페이지의 스크립트가 접속할 수 있는 곳.
+ *
+ * **왜 좁히는가** (감사 2026-08-12 §L-3). 예전에는 `'self' ws: wss:` 였다 — 즉
+ * **아무 WebSocket 서버로나** 연결할 수 있었다. `form-action 'none'`으로 폼 경로는
+ * 이미 닫아 두었으므로, 스크립트 주입에 성공했을 때 자격증명을 밖으로 내보내는
+ * 마지막 통로가 바로 여기였다.
+ *
+ * 그렇다고 `'self'` 하나로 못 줄인다: 고급 설정의 "서버 주소 수동 지정"과 vite dev
+ * 서버(5170번대 → ws://localhost:3001)가 막힌다. 그래서 **실제로 필요한 곳만** 적는다.
+ *
+ * - `ALLOWED_ORIGINS`가 설정된 공개 배포: 그 오리진의 ws/wss + 로컬 개발 주소만.
+ *   (`'self'`가 same-origin ws를 덮는지는 브라우저마다 역사가 갈려 명시적으로 적는다.)
+ * - 비어 있는 로컬·개발: 종전대로 열어 둔다 — 여기서 조이면 개발이 막히고,
+ *   로컬 페이지에서 나갈 자격증명도 없다.
+ *
+ * 원격 서버를 수동 지정해야 하면 `CONNECT_SRC_EXTRA`에 콤마로 적는다.
+ */
+const CONNECT_SRC_EXTRA = (process.env.CONNECT_SRC_EXTRA ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s !== "");
+
+function buildConnectSrc(): string {
+  if (ALLOWED_ORIGINS.length === 0 && CONNECT_SRC_EXTRA.length === 0) {
+    return "connect-src 'self' ws: wss:"; // 로컬·개발 기본 (종전 동작)
+  }
+  const out = new Set<string>(["'self'"]);
+  for (const origin of ALLOWED_ORIGINS) {
+    out.add(origin);
+    // https://x → wss://x, http://x → ws://x
+    out.add(origin.replace(/^http/, "ws"));
+  }
+  // vite dev·로컬 서버 수동 지정은 남겨 둔다 (밖으로 나가는 통로가 아니다).
+  out.add("ws://localhost:*");
+  out.add("ws://127.0.0.1:*");
+  for (const extra of CONNECT_SRC_EXTRA) out.add(extra);
+  return `connect-src ${[...out].join(" ")}`;
+}
+
 // 정적 응답 보안 헤더. CSP는 React 인라인 스타일(style={{…}}) 때문에 style-src에
-// 'unsafe-inline'이 필요하다. connect-src에 ws/wss를 허용해 same-origin WS와
-// 서버 주소 수동 지정(고급 설정)을 유지한다.
+// 'unsafe-inline'이 필요하다.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -213,7 +258,7 @@ const CSP = [
   "img-src 'self' data:",
   "media-src 'self'",
   "font-src 'self' data:",
-  "connect-src 'self' ws: wss:",
+  buildConnectSrc(),
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -238,6 +283,21 @@ const httpServer = createServer((req, res) => {
    * 여기서는 방·연결 **개수만** 낸다(개인정보 없음).
    */
   if (url === "/healthz") {
+    /**
+     * 상태 점검은 **이 머신에서 직접 온 요청에만** 답한다 (감사 2026-08-12 §L-1).
+     *
+     * 담는 값에 개인정보는 없지만, 연결 수·익명 수·방 수·진행 중 게임 수는 자원
+     * 고갈 공격자에게 **"내가 슬롯을 몇 개나 먹었는지"를 실시간으로 보여 주는
+     * 계기판**이 된다. 이걸 여는 대가로 얻는 것은 없다 — 실제 사용자는
+     * `deploy/serve.sh health`와 `watchdog.sh`뿐이고 둘 다 127.0.0.1로 부른다.
+     *
+     * 없는 경로처럼 404를 준다(403은 "여기 뭔가 있다"를 알려 준다).
+     * 외부 감시 도구를 붙여야 하면 HEALTHZ_PUBLIC=1로 되돌릴 수 있다.
+     */
+    if (!HEALTHZ_PUBLIC && !clientIpOf(req).direct) {
+      res.writeHead(404).end();
+      return;
+    }
     const body = JSON.stringify({
       ok: true,
       uptimeSec: Math.round(process.uptime()),
