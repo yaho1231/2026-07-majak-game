@@ -10002,24 +10002,8 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     const ko = SUIT_KO[raw] ?? raw;
     return { chip: ko, note: `손패의 수패가 ${ko}로 통일됐다` };
   },
-  /*
-   * 천하통일 — 지금 넘어야 하는 **실제 문턱**(`unification:{보유자}` 전원 공개).
-   *
-   * 문턱은 증강이 얹어 준 점수만큼 올라가는데 그게 어디에도 안 보여서, 52,000점을
-   * 들고도 게임이 왜 안 끝나는지 아무도 몰랐다. 이건 **한순간 스치는 사건이 아니다** —
-   * 국이 갈 때마다 올라가는 값이라 컷인으로 한 번 보여주고 지우면 그 뒤로는 또 안 보인다.
-   * 매치 전체에 걸친 상태라 국 스코프가 아니고, 그래서 이름표 pill이 제자리다.
-   * (채널 값은 "목표 53000점" — 숫자만 뽑아 세 자리 끊어 다시 쓴다.)
-   */
-  unification: (raw) => {
-    if (typeof raw !== "string" || raw === "") return null;
-    const n = Number(/(\d+)/.exec(raw)?.[1] ?? "");
-    if (!Number.isFinite(n) || n <= 0) return { chip: raw, note: raw };
-    return {
-      chip: `목표 ${n.toLocaleString()}`,
-      note: `${n.toLocaleString()}점에 닿으면 남은 국을 무시하고 즉시 우승 — 증강이 얹어 준 점수만큼 이 목표도 함께 올라간다`,
-    };
-  },
+  // 천하통일은 문턱이 45000 고정이라 공개 채널이 없다 — 카드 문구가 곧 목표다.
+  // (증강 발행분만큼 문턱이 올라가던 시절에는 "지금 목표"를 pill로 계속 띄웠다.)
   /*
    * 불가침 조약 — 지금 조약이 살아 있는가(`no_ron_pact:{보유자}` 국 스코프 전원 공개).
    *

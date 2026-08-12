@@ -11,7 +11,8 @@
  *
  * ② **설명이 "전원 공개"라고 써 놓고 공개 채널이 없던 것** (Rule #2 — 발동이 테이블에서
  *    보이지 않는 증강은 증강이 아니다): 염색·연금술사·붉은 손길·천하무적·불가침 조약·
- *    영상 정찰(교환)·천하통일(목표 점수).
+ *    영상 정찰(교환)·천하통일. (천하통일의 목표 공개 채널은 2026-08-12에 걷어냈다 —
+ *    문턱이 45000 고정이 되어 카드 문구가 곧 목표다.)
  *
  * ③ **설명이 숨기던 한계**: 여기서는 문구가 그 한계를 실제로 담고 있는지만 본다
  *    (도감·드래프트 카드가 읽는 것은 이 문자열 하나뿐이라, 문자열이 곧 계약이다).
@@ -395,10 +396,10 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
     expect(noRonPact.description).toContain("안깡");
   });
 
-  it("천하통일: 지금 넘어야 하는 목표 점수가 전원에게 공개된다", () => {
+  it("천하통일: 목표는 45000 고정이고, 증강이 얹어 준 점수도 그대로 센다", () => {
     const state = withAugments(scene(), { p0: ["unification"] });
     const game = gameWith(state, [[unification, "p0"]]);
-    // 증강이 3000점을 얹은 국이 정산되면 문턱이 48000으로 올라가고 그 값이 공개된다
+    // 증강이 3000점을 얹은 국이 정산돼도 문턱은 움직이지 않는다 (사용자 확정 2026-08-12)
     runReactions(game, {
       type: ROUND_SETTLED,
       payload: {
@@ -407,19 +408,15 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
         augPoints: [{ player: "p0", points: 3000, augmentId: "x" }],
       },
     });
-    expect(game.engine.state.augmentData["unification:auggain:p0"]).toBe(3000);
-    expect(game.engine.state.augmentData["view:*:unification:p0"]).toBe("목표 48000점");
-
-    // 그리고 규칙이 실제로 그 문턱을 돌려준다 — 채널과 엔진이 같은 수를 말해야 한다
     expect(
       game.engine.rules.resolve<number>("match.instantWinScore", {
         playerId: "p0",
         state: game.engine.state,
       }),
-    ).toBe(48000);
+    ).toBe(45000);
 
-    // 설명이 "문턱이 오른다"를 밝힌다 — 채널 배선과 무관하게 이건 계약이다
-    expect(unification.description).toContain("증강이 나에게 얹어 준 점수");
+    // 문구가 곧 계약이다 — 카드에 적힌 수와 엔진이 쓰는 수가 같아야 한다
+    expect(unification.description).toContain("45000");
     expect(unification.detail).toContain("45000");
   });
 });
