@@ -72,29 +72,53 @@ body,
 html {
   /* 모바일: 주소창 여닫힘에 따라 실제 보이는 높이를 쓴다 (100vh는 잘린다) */
   height: 100dvh;
-  /* 아래 body는 창보다 클 수 있다(축소 배율). 문서가 스크롤되면 안 된다 —
+  /* 아래 body는 창보다 클 수 있다(축소 배율·확대 배수). 문서가 스크롤되면 안 된다 —
      스크롤이 필요한 화면(.home 등)은 저마다 안에서 스크롤한다. */
   overflow: hidden;
 }
 
 /* ── 가상 뷰포트 ──
-   창이 디자인 기준(uiScale.ts BASE)보다 좁거나 낮으면 body를 "기준 크기만큼 큰 창"으로
-   잡고 통째로 축소한다. 브라우저 Ctrl +/− 를 대신하는 장치다 —
-   OS 배율 125%·작은 창에서 고정 px(이름표·액션바·여백)이 자리를 다 먹어
-   배치가 겹쳐 보이던 것을 진입 시점에 자동으로 풀어 준다.
+   화면 전체에 **하나의 배율**을 균일하게 건다. 브라우저 Ctrl +/− 를 대신하는 장치다 —
+   자동(창 크기 기준) × 수동(오른쪽 위 −/+)을 곱한 최종값 하나가 `--ui-scale`로 오고,
+   그게 body의 `zoom`이 된다. 손패·바닥패·상대 뒷패·이름표·보드가 **전부 같은 비율로**
+   같이 커지고 같이 작아진다. 무엇을 키우려고 무엇을 줄이는 거래는 하지 않는다
+   (2026-08-12 사용자 지시: "+- 해도 바닥패의 크기는 그대로잖아 … 완전 이상해졌어").
+
+   ⚠ `transform: scale()`이 아니라 **`zoom`**인 이유: transform은 이미 그린 화면을
+   컴포지터가 늘리는 것이라 글자가 뭉갠다. `zoom`은 진짜 브라우저 확대와 같아서
+   레이아웃을 다시 풀고 글자를 최종 크기로 다시 래스터화한다 — 확대해도 선명하다.
+   (Chrome 128+ / Safari 18+ / Firefox 126+. 아래 @supports가 그 이전 판을 받는다.)
+
+   ⚠ `width/height`는 그냥 100%다. `zoom` 아래에서 퍼센트는 **자기 zoom 단위**로
+   풀리므로 `100%` 하나로 body의 레이아웃 크기가 저절로 `창 / --ui-scale`이 된다
+   (1280×800·zoom 2 → body.clientWidth 640, 2026-08-12 실측). 예전 transform 시절의
+   `calc(100% / var(--ui-scale))` 를 남기면 보정이 두 번 걸려 배율이 제곱된다.
 
    그래서 이 파일의 화면 비례 단위는 전부 vw/vh/vmin이 아니라 **cqw/cqh/cqmin**이고,
    크기 미디어쿼리도 전부 `@container ui`다. 둘 다 실제 창이 아니라 이 가상 뷰포트를
-   기준으로 풀려야 배율을 바꿔도 배치가 그대로 따라온다.
+   기준으로 풀려야 배율을 바꿔도 배치가 그대로 따라온다. (`container: ui / size`가
+   body 자신의 상자를 재므로 zoom 아래에서도 그대로 성립한다 — 실측 확인.)
    --ui-scale 은 uiScale.ts가 인라인으로 넣는다 (없으면 1 = 지금까지와 동일). */
 body {
-  width: calc(100% / var(--ui-scale, 1));
-  height: calc(100% / var(--ui-scale, 1));
-  transform: scale(var(--ui-scale, 1));
-  transform-origin: 0 0;
+  width: 100%;
+  height: 100%;
+  zoom: var(--ui-scale, 1);
   container: ui / size;
   /* 탭할 때 회색 사각형이 번쩍이지 않게 (모바일 크롬·사파리) */
   -webkit-tap-highlight-color: transparent;
+}
+
+/* 표준 `zoom` 이 없는 브라우저(Firefox 125 이하)만 예전 transform 방식으로 받는다.
+   결과는 같고 글자만 덜 선명하다 — 배치가 깨지는 것보다는 낫다.
+   좌표계는 둘이 같다: 어느 쪽이든 getBoundingClientRect()·clientX 는 화면 px,
+   인라인 left/top 은 레이아웃 px 이라 toLayoutPx() 가 그대로 맞는다. */
+@supports not (zoom: 2) {
+  body {
+    width: calc(100% / var(--ui-scale, 1));
+    height: calc(100% / var(--ui-scale, 1));
+    transform: scale(var(--ui-scale, 1));
+    transform-origin: 0 0;
+  }
 }
 
 #root {
@@ -119,14 +143,19 @@ button {
      `.rotate-hint`처럼 `.table` 바깥에 있는 오버레이도 같은 띠를 피해야 하기
      때문이다(docs/28 §2-2). */
   --own-band: 0px;
+  /* 우상단 아이콘 줄 **아래** 한 줄을 배율 손잡이(.ui-zoom)가 쓴다. 좌·우 상대 줄이
+     그만큼 비켜서야 오른쪽 이름표와 안 겹친다. 손잡이가 아이콘 줄 안으로 되돌아가는
+     좁은 판(≤900cqw)에서는 0 — 아래 @container 블록에서 끈다. */
+  --side-strip-reserve: 56px;
+  /* 내 오름패 줄이 늘 차지하는 높이 (`.own-waits-row`). 텐파이가 아니면 줄은 접히지만
+     `--own-band` 실측이 이 값을 도로 더해 띠를 상수로 유지한다 — 그래서 JS가 읽을 수
+     있도록 CSS 변수로 둔다(App.tsx OwnArea). 값 = `.waits-badge-mine`의 실제 높이 =
+     타일 높이 + 위아래 패딩(5+6) + 테두리(1+1). 뱃지 크기를 바꾸면 여기도 바꾼다. */
+  --waits-row-h: 75px;
   /* 위쪽에서 맞은편 이름표·뒷패 줄이 차지하는 띠. 보드의 위 한계이자, 세로 화면에서
      "가로로 돌리세요" 안내가 앉는 자리다. 브레이크포인트마다 그 줄의 배치가 달라
      아래 @container 블록에서 다시 잡는다. */
   --top-band: 76px;
-  /* 왼쪽 아래 화면 크기 −/+ 손잡이(.ui-zoom)가 차지하는 띠. **화면 px**이다 —
-     그 손잡이는 --ui-scale 을 되감아 실제 크기를 고정하므로, 레이아웃 좌표에서
-     비켜설 때는 --ui-scale 로 나눠 쓴다. 같은 구석에 서는 것들(빠른 토글 등)이 참조한다. */
-  --ui-zoom-band: 46px;
   /* 펠트: 위에서 조명이 하나 떨어지는 라사지.
      맨 위 두 겹은 아주 옅은 직조 결 — 단색 그라디언트만 깔면 판이 플라스틱처럼 보인다.
      결은 2px 주기라 화면을 채워도 비용이 거의 없다. */
@@ -423,6 +452,15 @@ button {
   right: 64px;
 }
 
+/* 인게임 도감·규칙 단추 — 나가기(14)·설정(64)·증강로그(114) 왼쪽으로 이어 붙인다.
+   좁은 화면 변형(@container)에서는 그쪽 간격(40px)에 맞춰 다시 잡는다.
+   ⚠ 여기(파일 앞쪽)에 있어야 한다 — 예전에는 홈 화면 규칙 사이(7500줄대)에 있어서
+   @container 의 좁은 화면 값(128/168)을 **덮어 버렸다**. 그 탓에 좁은 판에서 두 단추가
+   214px까지 튀어나와 우상단이 늘 모자랐다(2026-08-12 실측: vv 640 에서 규칙 단추가
+   x 392부터 시작). */
+.codex-btn { right: 164px; }
+.help-btn { right: 214px; }
+
 /* ─────────────── 모드 표시 (좌상단) ─────────────── */
 
 /* 지금 반장전인지 동풍전인지 + 증강을 언제 받는지. 읽히되 눈에 안 걸리게,
@@ -488,9 +526,7 @@ button {
 .quick-toggles {
   position: absolute;
   left: 14px;
-  /* 같은 구석에 화면 크기 −/+ 손잡이가 선다 — 그 위에 앉는다.
-     띠는 화면 px이라 레이아웃 좌표로 쓰려면 --ui-scale 로 되돌려야 한다. */
-  bottom: calc(18px + var(--ui-zoom-band, 0px) / var(--ui-scale, 1));
+  bottom: 18px;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -555,7 +591,7 @@ button {
 @container ui (max-width: 700px) {
   .quick-toggles {
     left: 8px;
-    bottom: calc(10px + var(--ui-zoom-band, 0px) / var(--ui-scale, 1));
+    bottom: 10px;
     gap: 6px;
   }
   .qt-item {
@@ -1075,9 +1111,14 @@ button {
    화면 높이를 장수로 나눈 뒤 다시 1.36으로 되돌려야 폭이 나온다.
    같은 줄에 쌓이는 후로(--meld-n장, 한 장이 대략 --mt-h)의 몫은 미리 빼 둔다.
    후로가 아주 많으면 남는 높이가 바닥나므로 14px 하한을 둔다(0 이하로 사라지지 않게). */
+/* ⚠ 위쪽에서 배율 손잡이(.ui-zoom)가 아이콘 줄 **아래 한 줄**을 쓴다(≥901cqw).
+   그만큼 좌·우 상대 줄을 아래로 밀고(가운데 정렬을 반만큼 옮긴다) 높이 예산에서도
+   뺀다 — 안 그러면 오른쪽 상대 이름표가 손잡이와 겹친다(1280×800 실측: 이름표 y
+   83~151 × 손잡이 y 60~94). 아래로 미는 값은 절반(=--side-strip-reserve/2)이라
+   아래끝은 그만큼만 내려간다. */
 .opp-strip-left,
 .opp-strip-right {
-  --back-room-y: 40px;
+  --back-room-y: calc(40px + var(--side-strip-reserve, 0px));
   --back-w: min(
     var(--back-cap),
     max(
@@ -1095,7 +1136,7 @@ button {
 
 .opp-strip-left {
   left: 14px;
-  top: 50%;
+  top: calc(50% + var(--side-strip-reserve, 0px) / 2);
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
@@ -1105,7 +1146,7 @@ button {
 
 .opp-strip-right {
   right: 14px;
-  top: 50%;
+  top: calc(50% + var(--side-strip-reserve, 0px) / 2);
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
@@ -1715,27 +1756,38 @@ button {
  * 결과는 **매 순 크기가 달라지는 버림패**였다(2026-08-12 사용자 지적: "어지럽다").
  * 좁은 창에서는 뱃지가 이름표 줄을 두 줄로 접으면서 더 크게 튀었다.
  *
- * 그래서 줄을 따로 떼고 높이를 상수로 고정한다. 텐파이가 아니면 빈 줄로 남지만,
+ * 그래서 줄을 따로 떼고 높이를 상수(`--waits-row-h`, .game-root 에 선언)로 못 박는다.
  * 그 대가로 보드·바닥 타일 크기가 국 내내 한 번도 변하지 않는다.
- *
- * ⚠ --waits-row-h 는 `.waits-badge-mine`의 실제 높이다 =
- *    타일 높이 + 위아래 패딩(5+6) + 테두리(1+1). 뱃지 크기를 바꾸면 여기도 바꾼다.
- *    (종류가 6개 이상이면 뱃지가 한 단계 작아지지만, 줄 높이는 큰 쪽으로 잡아 둔다.)
+ * (텐파이가 아닐 때 이 줄을 어떻게 접는지는 바로 아래 `.own-waits-row-empty` 참고.)
  */
 .own-waits-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: var(--waits-row-h, 75px);
+  height: var(--waits-row-h);
   max-width: calc(100cqw - 8px);
 }
 
+/*
+ * 텐파이가 아닐 때는 **줄을 접는다**. 자리를 비워 두는 건 띠(`--own-band`)를 상수로
+ * 만들기 위해서지, 화면에 빈 구멍을 내기 위해서가 아니었다 — 접지 않으면 이름표·타이머가
+ * 손패에서 99px(1280×800 실측: `.own-top` 아래끝 552 · `.own-hand-rail` 위끝 651)
+ * 떨어져 붕 뜬다(2026-08-12 사용자 보고: "타이머와 내 이름표가 손패보다 한참 위에").
+ *
+ * 띠는 그대로 상수다: OwnArea 의 `--own-band` 실측이 접힌 줄의 몫(--waits-row-h)을
+ * **도로 더한다**. 그래서 보드·바닥 타일 크기는 텐파이가 붙었다 떨어져도 안 움직이고,
+ * 뱃지는 비워 둔 그 자리로 위로 자란다. ⚠ 이 규칙과 그 실측은 짝이다.
+ */
+.own-waits-row-empty {
+  height: 0;
+}
+
 @container ui (max-width: 900px) {
-  .own-waits-row { height: 63px; }
+  .game-root { --waits-row-h: 63px; }
 }
 
 @container ui (max-width: 700px) {
-  .own-waits-row { height: 54px; }
+  .game-root { --waits-row-h: 54px; }
 }
 
 /*
@@ -6952,7 +7004,7 @@ button {
   /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
   .quick-toggles:not(.quick-toggles-inline) {
     display: flex;
-    bottom: calc(8px + var(--ui-zoom-band, 0px) / var(--ui-scale, 1));
+    bottom: 8px;
     gap: 4px;
   }
   .quick-toggles-inline { display: none; }
@@ -7501,11 +7553,6 @@ button {
   .help-fig-mark { width: 13px; font-size: 13px; }
   .yaku-tiles .help-fig-groups { gap: 5px; }
 }
-
-/* 인게임 도감·규칙 단추 — 나가기(14)·설정(64)·증강로그(114) 왼쪽으로 이어 붙인다.
-   좁은 화면 변형(@container)에서는 그쪽 간격(40px)에 맞춰 다시 잡는다. */
-.codex-btn { right: 164px; }
-.help-btn { right: 214px; }
 
 /* ─────────────── 홈 화면 ─────────────── */
 
@@ -8870,7 +8917,9 @@ button {
 
 .layout-hint {
   position: fixed;
-  top: 8px;
+  /* 좌상단 모드 뱃지(top 12 · 아래끝 46~57) 아래로 — 둘 다 왼쪽 위라 예전에는
+     겹쳐서 둘 다 안 읽혔다(2026-08-12 실측: 뱃지 y 16~93 × 안내 y 16~118). */
+  top: 62px;
   left: 8px;
   z-index: 310;
   display: flex;
@@ -8914,22 +8963,35 @@ button {
 }
 
 /* ─────────────── 화면 크기 −/+ (수동 배율) ───────────────
-   자동 맞춤(uiScale.ts) 위에 곱하는 배수를 만지는 손잡이. 어느 화면에서나 같은 자리에
-   있어야 찾으러 다니지 않는다 → 로그인·로비·대국 공통으로 **왼쪽 아래 구석**.
-   그 구석을 고른 이유: 판은 가운데, 손패·액션 바는 아래 **가운데**(.own-area 가
-   translateX(-50%)), 아이콘 줄은 오른쪽 위(right:14~214px), 모드 뱃지는 왼쪽 위 —
-   왼쪽 아래만 어느 화면에서도 비어 있다.
+   자동 맞춤(uiScale.ts) 위에 곱하는 배수를 만지는 손잡이. 포털로 body에 붙으므로
+   로그인·홈·도감·대국 어디서나 뜬다.
 
-   ⚠ 되돌리기 scale: body가 통째로 --ui-scale 만큼 줄어드는데, 그러면 **화면이 가장
-   작아 손잡이가 가장 필요한 순간에 손잡이도 같이 작아진다**. 1/--ui-scale 로 되감아
-   실제 크기를 고정한다. 원점은 왼쪽-아래 구석이라 되감아도 자리가 안 움직인다. */
+   자리는 화면마다 다르다 — 사용자는 "인게임 기준 설정이나 증강도감 있는 쪽"을
+   지정했고(2026-08-12), 그건 **대국 화면의 우상단 아이콘 줄**이다:
+
+     · 대국(우상단 아이콘 줄이 있는 화면) + 넓은 판(≥901cqw)
+         → ⚙📖📘 **바로 아래 줄**, 같은 오른쪽 끝.
+           같은 줄에 못 넣은 이유는 실측이다(1280×800): 맞은편 상대 줄이 x 246~1034 를
+           쓰고 아이콘 줄이 x 1024 에서 시작한다 — 이미 맞닿아 있어서 92px짜리 손잡이가
+           들어갈 폭이 **음수**다. 넣으려면 상대 뒷패를 39→18px 로 줄여야 하는데
+           그게 이번에 되돌린 거래다. 이 줄이 먹는 높이는 `--side-strip-reserve` 로
+           좌·우 상대 줄에 통보한다.
+     · 그 밖(홈·로그인·도감, 또는 ≤900cqw)
+         → **오른쪽 아래 구석**. 홈은 상단 바(.home-nav)가 폭을 다 쓰고, 좁은 판은
+           위 줄이 이미 모드 뱃지·상대 이름표·아이콘으로 겹쳐 있다(가상 853×533 실측).
+           그 폭에서는 좌·우 상대 이름표가 숨고 손패는 가운데 정렬이라 구석이 빈다.
+
+   ⚠ 되감기 scale은 **없다**. 배율은 화면 전체에 균일하게 걸리는 것이고(body의 zoom),
+   이 손잡이만 예외로 두면 옆의 아이콘 버튼들과 높이가 어긋난다. 확대하면 이 버튼도
+   같이 커진다 — 브라우저 Ctrl+ 와 같은 동작이다. */
 .ui-zoom {
   position: fixed;
-  left: max(8px, env(safe-area-inset-left, 0px));
-  bottom: max(8px, env(safe-area-inset-bottom, 0px));
-  /* 안내 배너(310)보다 아래, 판 위의 오버레이보다 위. 모달이 화면을 덮을 때는
-     같이 덮이는 게 맞다 — 모달 위에서 배율을 만질 일은 없다. */
-  z-index: 115;
+  bottom: 8px;
+  right: 14px;
+  /* 설정·증강로그 패널(90)보다 **아래**. 그 패널들이 손잡이를 덮는 건 맞다 —
+     패널을 열어 둔 채 배율을 만질 일은 없고, 반투명한 손잡이가 패널 위에 떠 있으면
+     그게 더 이상하다. 판 위 오버레이(1~40)보다는 위다. */
+  z-index: 85;
   display: flex;
   align-items: stretch;
   gap: 2px;
@@ -8938,12 +9000,19 @@ button {
   border: 1px solid var(--brass-line);
   background: rgba(13, 23, 18, 0.72);
   box-shadow: var(--shadow-2);
-  transform: scale(calc(1 / var(--ui-scale, 1)));
-  transform-origin: 0 100%;
   /* 판을 볼 때는 눈에 안 걸리게, 다가가면 또렷하게.
      너무 흐리면 "있는 줄 몰랐다"가 되므로 쉬는 상태도 읽히는 선(0.7)까지만 낮춘다. */
   opacity: 0.7;
   transition: opacity 0.15s ease;
+}
+
+/* 대국 화면 + 넓은 판 → 우상단 아이콘 줄 바로 아래.
+   `:has(.icon-btn)` 으로 "그 줄이 있는 화면"을 가린다 — 홈·로그인에는 없다. */
+@container ui (min-width: 901px) {
+  body:has(.icon-btn) .ui-zoom {
+    top: 60px;
+    bottom: auto;
+  }
 }
 
 .ui-zoom:hover,
@@ -8988,13 +9057,23 @@ button {
   cursor: default;
 }
 
-/* 터치 기기: 손가락이 닿을 크기로. 되감기 scale 때문에 실제 크기 = 여기 적힌 px 다.
-   커진 만큼 비켜설 띠도 넓어져야 한다 (--ui-zoom-band 를 같이 올린다). */
+/* 좁은 판: 아이콘 줄과 같은 눈금으로 작아진다 (구석 자리는 그대로) */
+@container ui (max-width: 900px) {
+  .game-root { --side-strip-reserve: 0px; }
+  .ui-zoom-btn { font-size: 15px; }
+  .ui-zoom-now { min-width: 38px; font-size: 10.5px; }
+}
+
+/* 더 좁아지면 구석도 좁다 — 백분율을 접는다.
+   (−/+ 두 칸이면 배율은 만질 수 있고, 지금 값은 툴팁·단축키로 안다.) */
+@container ui (max-width: 700px) {
+  .ui-zoom-now { display: none; }
+}
+
+/* 터치 기기: 손가락이 닿을 크기로. */
 @media (pointer: coarse) {
-  .game-root { --ui-zoom-band: 56px; }
-  .ui-zoom-btn { width: 36px; height: 36px; font-size: 19px; }
-  .ui-zoom-now { min-width: 48px; font-size: 12.5px; }
   .ui-zoom { opacity: 1; }
+  .ui-zoom-btn { width: 36px; height: 36px; font-size: 19px; }
 }
 
 /* ─────────────── 재연결 인디케이터 ─────────────── */
@@ -10561,11 +10640,7 @@ body.peeking .overlay-peekable > * {
    (index.html 의 viewport-fit=cover 와 짝이다.) */
 .quick-toggles {
   left: max(14px, env(safe-area-inset-left, 0px));
-  /* 안전 영역 + 화면 크기 −/+ 손잡이의 띠 (그 손잡이도 같은 구석·같은 안전 영역에 선다) */
-  bottom: calc(
-    max(18px, env(safe-area-inset-bottom, 0px) + 8px) + var(--ui-zoom-band, 0px) /
-      var(--ui-scale, 1)
-  );
+  bottom: max(18px, env(safe-area-inset-bottom, 0px) + 8px);
 }
 
 .icon-btn {
@@ -10573,6 +10648,26 @@ body.peeking .overlay-peekable > * {
 }
 
 .leave-btn { right: max(14px, env(safe-area-inset-right, 0px)); }
+
+@container ui (max-width: 900px) {
+  /* 좁은 판의 아이콘 줄은 8px 간격으로 잡혀 있는데(위 @container 블록) 바로 위 안전
+     영역 규칙이 14px 로 덮어써서 나가기 단추가 설정 단추에 붙어 있었다 — 되돌린다. */
+  .leave-btn { right: max(8px, env(safe-area-inset-right, 0px)); }
+}
+
+/* 배율 손잡이의 안전 영역. 자리는 화면·폭마다 다르다(위 .ui-zoom 주석) —
+   구석 쪽에 top 을 주면 bottom 과 둘 다 서서 손잡이가 세로로 늘어난다. */
+.ui-zoom {
+  bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  right: max(14px, env(safe-area-inset-right, 0px));
+}
+
+@container ui (min-width: 901px) {
+  body:has(.icon-btn) .ui-zoom {
+    top: max(60px, env(safe-area-inset-top, 0px) + 48px);
+    bottom: auto;
+  }
+}
 
 /* 9-2. 손가락 목표 크기 — 최소 44px (WCAG 2.5.8 은 24px, 애플·구글 권장은 44/48).
    손패 한 장은 '되돌릴 수 없는 타패'라 특히 중요하다. 폭은 판이 정하므로
@@ -10643,10 +10738,7 @@ body.peeking .overlay-peekable > * {
     position: fixed;
     left: 8px;
     right: 8px;
-    /* 왼쪽 아래 −/+ 손잡이 위로 (대국 중에는 아래 규칙이 위 띠로 올려 버린다) */
-    bottom: calc(
-      8px + env(safe-area-inset-bottom, 0px) + var(--ui-zoom-band, 0px) / var(--ui-scale, 1)
-    );
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     z-index: 300;
     display: flex;
     align-items: center;

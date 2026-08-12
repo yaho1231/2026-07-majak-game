@@ -115,9 +115,22 @@ describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌
     expect(CSS).toContain(".ui-zoom");
   });
 
-  it("버튼이 화면과 함께 작아지지 않는다 — 되돌리기 scale", () => {
-    // 가장 작아서 손잡이가 가장 필요한 순간에 손잡이도 작아지면 안 된다
-    expect(CSS).toContain("transform: scale(calc(1 / var(--ui-scale, 1)))");
+  it("배율은 body의 zoom 하나로 화면 전체에 균일하게 걸린다 (transform: scale 아님)", () => {
+    // `transform: scale()` 은 그린 화면을 컴포지터가 늘려서 **글자를 뭉갠다**.
+    // `zoom` 은 레이아웃을 다시 풀고 최종 크기로 다시 래스터화한다 — 확대해도 선명하다.
+    expect(CSS).toContain("zoom: var(--ui-scale, 1)");
+    // 되돌리기 scale 금지: 손잡이만 배율에서 빼면 옆 아이콘 줄과 높이가 어긋난다.
+    expect(CSS).not.toContain("transform: scale(calc(1 / var(--ui-scale, 1)))");
+    // transform 은 zoom 미지원 브라우저 대비 @supports 안에만 남아 있어야 한다.
+    const scaleUses = [...CSS.matchAll(/transform: scale\(var\(--ui-scale/g)].length;
+    expect(scaleUses).toBe(1);
+    expect(CSS).toContain("@supports not (zoom: 2)");
+  });
+
+  it("크기 토큰을 골라 곱하는 배율은 없다 (PR #239 되돌림)", () => {
+    // 손패·보드만 키우고 상대 뒷패를 줄이는 '거래'는 사용자가 거부했다.
+    expect(CSS).not.toContain("--ui-mag");
+    expect(UISCALE).not.toContain("--ui-mag");
   });
 
   it("단축키가 브라우저 확대(Ctrl/⌘ +/−)를 가로채지 않는다", () => {

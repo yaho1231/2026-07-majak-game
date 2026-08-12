@@ -136,33 +136,33 @@ describe("고를 수 있는 칸은 전부 화면을 움직인다 (막다른 칸 
 
   it("사다리 끝에서는 더 못 간다", async () => {
     const m = await boot({ w: 1440, h: 900 });
-    m.setUiZoom(1.5);
+    m.setUiZoom(2);
     expect(m.canStepUiZoom(1)).toBe(false);
     expect(m.stepUiZoom(1)).toBe(false);
-    m.setUiZoom(0.7);
+    m.setUiZoom(0.6);
     expect(m.canStepUiZoom(-1)).toBe(false);
   });
 
-  it("상한 1.5를 넘겨 달라고 해도 1.5에서 멈춘다", async () => {
+  it("상한 2.0을 넘겨 달라고 해도 2.0에서 멈춘다", async () => {
     const m = await boot({ w: 1440, h: 900 });
     m.setUiZoom(9);
-    expect(m.getUiZoom()).toBe(1.5);
-    expect(m.getUiScale()).toBeLessThanOrEqual(1.5);
+    expect(m.getUiZoom()).toBe(2);
+    expect(m.getUiScale()).toBeLessThanOrEqual(2);
   });
 
-  it("어느 창에서든 −/+ 를 눌러 봐도 배율이 [0.6, 1.5] 밖으로 안 나간다", async () => {
+  it("어느 창에서든 −/+ 를 눌러 봐도 배율이 [0.6, 2.0] 밖으로 안 나간다", async () => {
     for (const [w, h] of [[1920, 1080], [1440, 900], [1100, 680], [990, 680], [660, 620]] as const) {
       const m = await boot({ w, h });
       for (const dir of [-1, 1] as const) {
-        for (let i = 0; i < 12; i++) m.stepUiZoom(dir);
+        for (let i = 0; i < 14; i++) m.stepUiZoom(dir);
         expect(m.getUiScale(), `${w}×${h} dir=${dir}`).toBeGreaterThanOrEqual(0.6);
-        expect(m.getUiScale(), `${w}×${h} dir=${dir}`).toBeLessThanOrEqual(1.5);
+        expect(m.getUiScale(), `${w}×${h} dir=${dir}`).toBeLessThanOrEqual(2);
       }
     }
   });
 
   it("작은 창에서 잠깐 당겨져도 저장된 취향은 안 잃는다", async () => {
-    // 큰 모니터에서 140%로 맞춰 둔 사람이 작은 창을 열었다 (자동 0.6 → 최대 1.5/0.6 = 2.5,
+    // 큰 모니터에서 140%로 맞춰 둔 사람이 작은 창을 열었다 (자동 0.6 → 최대 2.0/0.6 = 3.3,
     // 즉 1.4도 그대로 고를 수 있다). 반대로 70%를 저장해 둔 사람은 당겨진다.
     const m = await boot({ w: 660, h: 620, stored: "0.7" });
     expect(m.getUiZoom()).toBe(1); // 이 창에서는 70%를 고를 수 없다 → 당겨서 보여 준다

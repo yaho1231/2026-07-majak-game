@@ -1910,7 +1910,7 @@ function LayoutHint(): JSX.Element | null {
       <span>
         {zoomedByHand ? (
           <>
-            화면을 키워 배치가 겹칠 수 있습니다 — 왼쪽 아래 <b>−</b> 로 줄여 보세요.
+            화면을 키워 배치가 겹칠 수 있습니다 — 오른쪽 위 <b>−</b> 로 줄여 보세요.
           </>
         ) : (
           <>
@@ -1938,13 +1938,13 @@ function LayoutHint(): JSX.Element | null {
  * 누구는 작게 보고 싶어 한다. 2026-08-07에 설정 패널의 "화면 크기"를 없앤 뒤로는
  * 그 손잡이가 아예 없었다.
  *
- * 자리는 **왼쪽 아래 구석**이다. 판(가운데)·손패와 액션 바(아래 가운데, `.own-area`는
- * translateX(-50%)로 가운데 정렬)·오른쪽 위 아이콘 줄(나가기·설정·도감·규칙, 이미
- * right:214px까지 차 있다)·왼쪽 위 모드 뱃지를 전부 피한다. 로그인·로비·대국 어디서나
- * 같은 자리라서 찾으러 다닐 필요가 없다.
+ * 자리는 **오른쪽 위 아이콘 줄**(설정 ⚙ · 도감 📖 · 규칙 📘)의 왼쪽 끝이다 —
+ * 2026-08-12에 사용자가 "인게임 기준 설정이나 증강도감 있는 쪽"으로 지정했다.
+ * 포털로 body에 붙으므로 로그인·로비·대국 어디서나 같은 자리다.
  *
- * 화면이 줄어들면 이 버튼도 같이 줄어드는 게 정상이지만, 그러면 **가장 작아서 안 보일 때
- * 손잡이도 가장 작아진다**. 그래서 CSS에서 1/--ui-scale 로 되돌려 실제 크기를 고정한다.
+ * 배율은 body의 `zoom` 하나로 화면 전체에 균일하게 걸린다(styles.css 가상 뷰포트 주석).
+ * 이 손잡이도 예외가 아니다 — 확대하면 같이 커진다. 브라우저 Ctrl+ 와 같은 동작이고,
+ * 옆 아이콘 버튼과 높이도 어긋나지 않는다.
  */
 function ScaleControl(): JSX.Element {
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -11074,6 +11074,17 @@ function OwnArea(props: {
     let h = area.offsetHeight;
     for (const el of area.children) {
       if (!(el instanceof HTMLElement)) continue;
+      /*
+       * 텐파이가 아니라 접혀 있는 오름패 줄은 **펼쳐진 것으로 치고** 잰다.
+       * 줄 자체는 접어야 이름표·타이머가 손패에 붙지만(styles.css `.own-waits-row-empty`),
+       * 띠까지 같이 줄면 텐파이가 붙었다 떨어질 때마다 보드와 바닥 타일이 크기를 바꾼다 —
+       * 그게 이 줄을 따로 뗀 이유였다("어지럽다"). 그래서 자리는 계속 비워 둔다.
+       * ⚠ 여기 더하는 값은 styles.css 의 `.own-waits-row` 높이와 **같아야 한다**.
+       */
+      if (el.classList.contains("own-waits-row-empty")) {
+        h += Number.parseFloat(cs.getPropertyValue("--waits-row-h")) || 0;
+        continue;
+      }
       // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
       if (!el.matches(".action-bar, .prompt-timer, .arm-hint")) continue;
       h -= el.offsetHeight + gap;
@@ -11525,9 +11536,13 @@ function OwnArea(props: {
          *
          * 줄을 따로 떼고 높이를 `--waits-row-h`로 못 박으면 띠가 상수가 된다 —
          * 뱃지가 나타나고 사라져도 보드·바닥 타일 크기는 1px도 움직이지 않는다.
+         *
+         * 다만 **빈 줄을 그대로 두면 안 된다**: 이름표·타이머가 손패에서 99px 떨어져
+         * 붕 뜬다(2026-08-12 사용자 보고). 그래서 비었을 때는 줄을 접고(`-empty`),
+         * 대신 아래 `--own-band` 실측이 접힌 몫을 도로 더해 띠를 상수로 유지한다.
          * (자리 값은 styles.css `.own-waits-row` 주석 참고.)
          */}
-        <div className="own-waits-row">
+        <div className={`own-waits-row${myWaits.length > 0 ? "" : " own-waits-row-empty"}`}>
           {myWaits.length > 0 ? (
             <WaitsBadge
               waits={myWaits}
