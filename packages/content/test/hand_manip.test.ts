@@ -15,9 +15,10 @@ import {
   handZone,
   installAugment,
   isNumberSuit,
+  kindKey,
   kindOf,
 } from "@majak/core";
-import type { GameState, PlayerId, TileId } from "@majak/core";
+import type { GameState, PlayerId, TileId, TileKind } from "@majak/core";
 import { craft } from "./helpers.js";
 import { roundKey, roundViewKey, viewKey } from "../src/util.js";
 import { suitUnify } from "../src/augments/suit_unify.js";
@@ -469,6 +470,65 @@ describe("hand_swap3 — 등가교환", () => {
     const again = give(game, triple(handIdsOf(after, "p0")));
     expect(again.ok).toBe(false);
     if (!again.ok) expect(again.reason).toBe("already swapped this round");
+  });
+
+  /**
+   * 무엇이 오갔는지가 **당사자 둘 다**에게 통보된다 (2026-08-12 사용자 지적:
+   * "알림도 없어서 티가 안 난다"). 각자 기준으로 준 것/받은 것이 뒤집혀 실리고,
+   * 제3자 채널에는 아무것도 실리지 않는다.
+   */
+  it("교환이 성사되면 준 패·받은 패가 당사자 둘에게만 통보된다", () => {
+    const game = createStandardGameFromState(craftSwapState());
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+    expect(aim(game, "p1").ok).toBe(true);
+
+    const gives = triple(handIdsOf(game.engine.state, "p0"));
+    const takes = triple(handIdsOf(game.engine.state, "p1"));
+    const kindsOf = (s: GameState, ids: readonly TileId[]): string[] =>
+      ids.map((id) => kindKey(s.tiles[id]!.kind));
+    const giveKinds = kindsOf(game.engine.state, gives);
+    const takeKinds = kindsOf(game.engine.state, takes);
+
+    expect(give(game, gives).ok).toBe(true);
+    expect(take(game, takes).ok).toBe(true);
+
+    const after = game.engine.state;
+    const noticeOf = (viewer: PlayerId): unknown =>
+      after.augmentData[roundViewKey(viewer, "hand_swap3:swapped")];
+
+    const mine = noticeOf("p0") as {
+      with: PlayerId;
+      gave: TileKind[];
+      got: TileKind[];
+      holder: boolean;
+    };
+    expect(mine.with).toBe("p1");
+    expect(mine.holder).toBe(true);
+    expect(mine.gave.map(kindKey)).toEqual(giveKinds);
+    expect(mine.got.map(kindKey)).toEqual(takeKinds);
+
+    // 지정당한 쪽은 방향이 뒤집힌다 — 자기가 넘긴 것이 gave다
+    const theirs = noticeOf("p1") as {
+      with: PlayerId;
+      gave: TileKind[];
+      got: TileKind[];
+      holder: boolean;
+    };
+    expect(theirs.with).toBe("p0");
+    expect(theirs.holder).toBe(false);
+    expect(theirs.gave.map(kindKey)).toEqual(takeKinds);
+    expect(theirs.got.map(kindKey)).toEqual(giveKinds);
+
+    // 제3자에게는 새지 않는다
+    expect(noticeOf("p2")).toBeUndefined();
+    expect(noticeOf("p3")).toBeUndefined();
+
+    // 뷰까지 실제로 내려간다 — 국 스코프 표식이 떨어진 채널 이름으로 (클라가 읽는 이름)
+    const viewOf = (viewer: PlayerId): Record<string, unknown> =>
+      buildPlayerView(after, viewer, game.engine.rules).augmentView;
+    expect(viewOf("p0")["hand_swap3:swapped"]).toEqual(mine);
+    expect(viewOf("p1")["hand_swap3:swapped"]).toEqual(theirs);
+    expect(viewOf("p2")["hand_swap3:swapped"]).toBeUndefined();
   });
 
   it("내 손패·상대 손패에 없는 패는 고를 수 없고, 지정 전에는 교환할 수 없다", () => {
