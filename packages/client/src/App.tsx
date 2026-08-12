@@ -9354,9 +9354,7 @@ const River = memo(function River({
   // 보이는 패를 먼저 그리면 최근 6장이 오래된 뒷면들 앞에 서 버린다 — 섞여 있을 때는
   // 뒷면을 먼저 깐다. (전부 가려진 박무의 count_only는 ids가 비어 순서가 무의미하다.)
   const backsFirst = hidden > 0 && ids.length > 0;
-  const tilesEl = (
-    <>
-      {ids.map((id, i) => {
+  const tileCells = ids.map((id, i) => {
         const latest =
           last !== null && last.player === playerId && last.tileId === id && i === ids.length - 1;
         // 리치 선언패의 가로 눕힘은 **바닥 전체가 보일 때만** 맞다 — 안개로 앞부분이
@@ -9389,13 +9387,9 @@ const River = memo(function River({
             {winArm ? <span className="rt-win-tag">화료</span> : null}
           </span>
         );
-      })}
-    </>
-  );
+  });
   // 안개 바닥(가려진 버림패) — 뒷면으로 표시.
-  const backsEl = (
-    <>
-      {Array.from({ length: hidden }, (_, i) => {
+  const backCells = Array.from({ length: hidden }, (_, i) => {
         // 바닥이 통째로 가려졌을 때(박무의 count_only)에 한해, **이 사람의 마지막
         // 버림패**는 안개 속에서도 보인다 — 테이블 전체의 최신 버림(round.lastDiscard)
         // 이거나, 박무가 전원 공개로 실어 주는 "각자의 마지막 한 장"(brief_fog:last:*).
@@ -9423,23 +9417,30 @@ const River = memo(function River({
             </span>
           </span>
         );
-      })}
-    </>
+  });
+  /*
+   * 단(段) 나누기 — 6장씩 두 단, **남는 건 전부 셋째 단**에 붙인다.
+   *
+   * 예전에는 한 줄을 flex-wrap 에 맡겨 6장마다 접었다. 그러면 19장째부터 넷째 단이
+   * 생기고, 상자 밖으로 흘러나온 그 단이 **각자 앞쪽**으로 자란다 — 맞은편 자리에서는
+   * 그게 곧 그 사람의 손패 줄이라 뒷패 위에 버림패가 겹쳐 얹혔다
+   * (2026-08-12 사용자 보고: "대면의 패가 겹쳐짐").
+   *
+   * 실제 탁자에서도 셋째 단은 접지 않고 옆으로 늘인다. 그쪽(모서리)은 어차피
+   * --river-h 만큼 비어 있는 자리라, 늘어난 단이 이웃 바닥이나 손패를 건드리지 않는다.
+   */
+  const cells = backsFirst ? [...backCells, ...tileCells] : [...tileCells, ...backCells];
+  const rows = [cells.slice(0, 6), cells.slice(6, 12), cells.slice(12)].filter(
+    (r) => r.length > 0,
   );
   return (
     <div className={`river-wrap river-${side}`}>
       <div className="river">
-        {backsFirst ? (
-          <>
-            {backsEl}
-            {tilesEl}
-          </>
-        ) : (
-          <>
-            {tilesEl}
-            {backsEl}
-          </>
-        )}
+        {rows.map((row, i) => (
+          <div className="river-row" key={i}>
+            {row}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -11060,17 +11061,6 @@ function OwnArea(props: {
     let h = area.offsetHeight;
     for (const el of area.children) {
       if (!(el instanceof HTMLElement)) continue;
-      /*
-       * 텐파이가 아니라 접혀 있는 오름패 줄은 **펼쳐진 것으로 치고** 잰다.
-       * 줄 자체는 접어야 이름표·타이머가 손패에 붙지만(styles.css `.own-waits-row-empty`),
-       * 띠까지 같이 줄면 텐파이가 붙었다 떨어질 때마다 보드와 바닥 타일이 크기를 바꾼다 —
-       * 그게 이 줄을 따로 뗀 이유였다("어지럽다"). 그래서 자리는 계속 비워 둔다.
-       * ⚠ 여기 더하는 값은 styles.css 의 `.own-waits-row` 높이와 **같아야 한다**.
-       */
-      if (el.classList.contains("own-waits-row-empty")) {
-        h += Number.parseFloat(cs.getPropertyValue("--waits-row-h")) || 0;
-        continue;
-      }
       // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
       if (!el.matches(".action-bar, .prompt-timer, .arm-hint")) continue;
       h -= el.offsetHeight + gap;
@@ -11499,44 +11489,44 @@ function OwnArea(props: {
         data-arm-zone="1"
       >
         {props.quickToggles ?? null}
-        <div className="own-top">
-          <NamePlate view={view} player={me} catalog={props.catalog} tipUp />
-          {!isSpectator ? (
-            <ActiveAugmentControl
-              view={view}
-              me={me}
-              prompt={prompt}
-              catalog={props.catalog}
-            />
-          ) : null}
-          {!isSpectator ? <ActiveInfoBadges view={view} me={me} /> : null}
-        </div>
         {/*
-         * 오름패 줄 — **텐파이가 아닐 때도 자리를 비워 둔다**(빈 줄로 렌더).
+         * 내 이름표 줄 — 이름표·액티브 증강 버튼은 가운데(`.own-top-main`),
+         * 오름패 뱃지는 **그 바로 옆**(`.own-top-waits`)에 선다
+         * (2026-08-12 사용자 요청: "오름패 표시를 액티브 증강 버튼 옆으로").
          *
-         * 예전엔 이 뱃지가 `.own-top` 안에 이름표와 나란히 있었다. 그래서 쯔모·타패로
+         * 뱃지 자리는 **텐파이가 아닐 때도 비워 둔다**(`.own-top-waits`의 min-height).
          * 텐파이가 붙었다 떨어질 때마다 아래쪽 띠(`--own-band`)가 뱃지 높이만큼
-         * 늘었다 줄었고, 그 띠로 `--board`가 정해지므로 **바닥에 깔린 버림패 크기가
-         * 매 순 달라졌다**(2026-08-12 사용자 지적: "어지럽다"). 좁은 창에서는 뱃지가
-         * 이름표 줄을 밀어 두 줄로 접히면서 더 크게 튀었다.
+         * 늘었다 줄면, 그 띠로 `--board`가 정해지므로 **바닥에 깔린 버림패 크기가
+         * 매 순 달라진다**(2026-08-12 사용자 지적: "어지럽다").
          *
-         * 줄을 따로 떼고 높이를 `--waits-row-h`로 못 박으면 띠가 상수가 된다 —
-         * 뱃지가 나타나고 사라져도 보드·바닥 타일 크기는 1px도 움직이지 않는다.
-         *
-         * 다만 **빈 줄을 그대로 두면 안 된다**: 이름표·타이머가 손패에서 99px 떨어져
-         * 붕 뜬다(2026-08-12 사용자 보고). 그래서 비었을 때는 줄을 접고(`-empty`),
-         * 대신 아래 `--own-band` 실측이 접힌 몫을 도로 더해 띠를 상수로 유지한다.
-         * (자리 값은 styles.css `.own-waits-row` 주석 참고.)
+         * 옆자리(3열 그리드의 오른쪽 칸)라 뱃지가 떴다 사라져도 이름표·증강 버튼은
+         * 가로로도 움직이지 않는다 — 한 줄에 그냥 끼워 넣으면 가운데 정렬이라
+         * 뱃지 폭의 절반만큼 이름표가 매번 옆으로 튄다. (자세한 자리 값은
+         * styles.css `.own-top` 주석.)
          */}
-        <div className={`own-waits-row${myWaits.length > 0 ? "" : " own-waits-row-empty"}`}>
-          {myWaits.length > 0 ? (
-            <WaitsBadge
-              waits={myWaits}
-              mine={!isSpectator}
-              noYaku={noYakuWaitSet}
-              {...(isSpectator ? { owner: playerName(view, me) } : {})}
-            />
-          ) : null}
+        <div className="own-top">
+          <div className="own-top-main">
+            <NamePlate view={view} player={me} catalog={props.catalog} tipUp />
+            {!isSpectator ? (
+              <ActiveAugmentControl
+                view={view}
+                me={me}
+                prompt={prompt}
+                catalog={props.catalog}
+              />
+            ) : null}
+            {!isSpectator ? <ActiveInfoBadges view={view} me={me} /> : null}
+          </div>
+          <div className="own-top-waits">
+            {myWaits.length > 0 ? (
+              <WaitsBadge
+                waits={myWaits}
+                mine={!isSpectator}
+                noYaku={noYakuWaitSet}
+                {...(isSpectator ? { owner: playerName(view, me) } : {})}
+              />
+            ) : null}
+          </div>
         </div>
         {armedAug === "swap3" ? (
           <div className="arm-hint arm-swap">
