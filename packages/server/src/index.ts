@@ -466,6 +466,50 @@ const heartbeat = setInterval(() => {
 // 이 타이머가 프로세스 종료를 막지 않게 한다.
 heartbeat.unref();
 
+/**
+ * 운영자가 정한 비밀이 약하면 부팅 때 크게 알린다 (감사 2026-08-12 §M-4).
+ *
+ * **왜 거부하지 않고 경고인가**: 이 값들을 서버가 마음대로 바꾸면 이미 코드를 받아 둔
+ * 사람들이 한꺼번에 가입하지 못하게 된다 — 교체 시점은 운영자가 정해야 한다. 대신
+ * 부팅 로그에서 절대 놓칠 수 없게 만든다.
+ *
+ * 가입 코드는 이 서비스에서 계정 공간을 지키는 1차 방어선이다. 통과하면 리더보드·
+ * 제보 게시판·리플레이 목록·방 생성이 열리고, 비싼 조회도 그때부터 쏠 수 있다.
+ * 게다가 **초대받은 사람 전원이 아는 공유 비밀**이라 대화방·스크린샷으로 새기 쉽고,
+ * 샜다는 사실을 알 방법도 회전할 방법도 없다 — 그래서 길이가 곧 수명이다.
+ */
+const MIN_SECRET_LEN = 16;
+/** 문서·샘플에 실려 있어 사실상 공개된 값들. */
+const SAMPLE_SECRETS = new Set(["change-me", "changeme", "password", "majak", "test"]);
+
+function warnWeakSecrets(): void {
+  const complain = (name: string, extra: string): void => {
+    console.warn(
+      `⚠ [보안] ${name} 가 ${extra} — 새 값으로 바꾸세요.\n` +
+        `         생성: openssl rand -base64 24\n` +
+        `         적용: deploy/majak.env 의 ${name} 수정 후 npm run serve:restart`,
+    );
+  };
+  if (SIGNUP_CODE !== "") {
+    if (SAMPLE_SECRETS.has(SIGNUP_CODE.toLowerCase())) {
+      complain("SIGNUP_CODE", "샘플 파일의 값 그대로입니다(공개된 값)");
+    } else if (SIGNUP_CODE.length < MIN_SECRET_LEN) {
+      complain(
+        "SIGNUP_CODE",
+        `${SIGNUP_CODE.length}자로 너무 짧습니다(권장 ${MIN_SECRET_LEN}자 이상)`,
+      );
+    }
+  }
+  if (ADMIN_CODE !== "" && ADMIN_CODE.length < MIN_SECRET_LEN) {
+    // 관리자 권한은 전 계정 조회·삭제 + 모든 리플레이 열람 + 진행 중 대국 관전
+    // (전원 손패가 보이는 완전정보) — 사실상 이 서버의 마스터 키다.
+    complain(
+      "ADMIN_CODE",
+      `${ADMIN_CODE.length}자로 너무 짧습니다 — 이 값은 사실상 서버의 마스터 키입니다`,
+    );
+  }
+}
+
 httpServer.listen(PORT, HOST, () => {
   console.log(`이능마작 server listening on http://localhost:${PORT} (HTTP+WS)`);
   console.log(`Client dist : ${CLIENT_DIST}${existsSync(CLIENT_DIST) ? "" : "  (없음 — 개발은 vite dev 사용)"}`);
@@ -487,6 +531,7 @@ httpServer.listen(PORT, HOST, () => {
       ? `가입 게이트 : 켜짐 — 가입 코드를 아는 사람만 회원가입 가능`
       : `가입 게이트 : 꺼짐 — 누구나 회원가입 가능 (공개 배포 시 SIGNUP_CODE 설정 권장)`,
   );
+  warnWeakSecrets();
   console.log(
     TRUST_PROXY !== ""
       ? `신뢰 프록시 : ${TRUST_PROXY} — 실제 클라이언트 IP로 제한 적용 · 면제 대상 없음`
