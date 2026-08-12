@@ -7,7 +7,7 @@
  * 같은 자패 계열 안에서 연속 3장이면 하나의 몸통이다. 자패로 대기가 서고, 화료 공개에서
  * 동·남·서 석 장이 슌쯔 자리에 눕는다 — "그게 멘쯔라고?"
  *
- * 구현: 순수 패시브. 코어 규칙 `scoring.honorRuns`(보유자 전용)를 켜면 `decompose`가
+ * 구현: 코어 규칙 `scoring.honorRuns`(보유자 전용)를 켜면 `decompose`가
  * 자패 suit(바람 rank 1-4, 삼원 rank 1-3) 안에서 (r, r+1, r+2) 슌쯔를 열거한다. 화료·텐파이·
  * 대기·후리텐이 전부 이 분해를 통과하므로 한 곳만 열면 전 판정에 일관 적용된다(broken_border 계열).
  * 클라이언트 대기 표시(`waitDecompOptions`)도 같은 옵션을 미러링한다.
@@ -21,12 +21,49 @@
  * 헛성립하지 않는다.
  */
 
-import { defineAugment } from "@majak/core";
-import type { AugmentDef, TileKind } from "@majak/core";
+import { Suits, defineAugment, isHonorRun } from "@majak/core";
+import type {
+  AugmentDef,
+  PlayerId,
+  ScoringVariant,
+  TileKind,
+  WinContext,
+} from "@majak/core";
+import { addYakuHolder, yakuHolders } from "../util.js";
 import { handKindsOf } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
 const ID = "wind_lineage";
+/** 자풍/장풍이 낀 바람 슌쯔에 붙는 역 id (자풍·장풍 각각 1판 — 표준 역패와 같은 꼴) */
+const SEAT_YAKU = "wind_lineage_seat";
+const PREVALENT_YAKU = "wind_lineage_prevalent";
+
+/**
+ * 이 몸통이 **그 바람이 낀 바람 슌쯔**인가 — 동남서·남서북 안의 한 장이 자풍/장풍이면 참.
+ *
+ * 표준 역패는 커쯔(같은 패 3장)만 본다. 그래서 계보로 만든 동남서는, 그 안에 내 자풍이
+ * 버젓이 들어 있어도 값이 0이었다 — 자패 셋을 모아 울고도 손이 싸다는 뜻이라
+ * "너무 약하다"는 말이 나왔다(2026-08-12 사용자 지적). 슌쯔 안의 역패도 커쯔와 같이
+ * 한 장당 1판으로 센다.
+ */
+function windRunHas(variant: ScoringVariant, rank: number): boolean {
+  return variant.sets.some(
+    (s) =>
+      s.type === "run" &&
+      isHonorRun(s.tiles) &&
+      s.tiles.every((t) => t.suit === Suits.Wind) &&
+      s.tiles.some((t) => t.rank === rank),
+  );
+}
+
+/** 이 화료자가 계보 보유자이고, 지정한 바람이 낀 바람 슌쯔를 들고 있는가 */
+const holderHasWindRun = (
+  holders: Set<PlayerId>,
+  variant: ScoringVariant,
+  ctx: WinContext,
+  rank: number,
+): boolean =>
+  ctx.winnerId !== undefined && holders.has(ctx.winnerId) && windRunHas(variant, rank);
 
 /** 이 옵션이 '동남서북 깡'(서로 다른 네 바람 한 장씩)인가 */
 function isFourWindKan(kinds: TileKind[]): boolean {
@@ -42,11 +79,52 @@ export const windLineage: AugmentDef = defineAugment({
   complexity: 2,
   name: "바람의 계보",
   description:
-    "(상시) 자패로 슌쯔를 만든다 — 동→남→서→북, 백→발→중이 연속으로 이어져 동남서·남서북·백발중이 하나의 몸통이 된다. 동·남·서·북 네 장을 모으면 하나의 깡으로 낼 수도 있다.",
+    "(상시) 자패로 슌쯔를 만든다 — 동→남→서→북, 백→발→중이 연속으로 이어져 동남서·남서북·백발중이 하나의 몸통이 된다. 그 바람 슌쯔에 자풍·장풍이 끼어 있으면 각각 1판이 붙는다. 동·남·서·북 네 장을 모으면 하나의 깡으로 낼 수도 있다.",
   detail:
-    "(상시) 자패에 순서가 생겨 동→남→서→북, 백→발→중으로 이어지는 석 장이 슌쯔로 인정된다 — 동남서, 남서북, 백발중이 각각 하나의 몸통이다. 이 몸통은 손 안에서만이 아니라 상가(왼쪽)의 버림패를 치해서도 만들 수 있다. 여기에 더해 동·남·서·북 네 바람을 각각 한 장씩 모으면 그 넷을 하나의 안깡(동남서북 깡)으로 선언할 수 있고 영상패도 정상적으로 뽑는다. 자패 슌쯔는 청일색·삼색·일기통관에는 관여하지 않고 찬타·혼노두·자일색 쪽으로 값이 붙는다.\n\n리치 중에는 이 안깡을 선언할 수 없다 — 깡이 대기를 바꾸기 때문이다.",
+    "(상시) 자패에 순서가 생겨 동→남→서→북, 백→발→중으로 이어지는 석 장이 슌쯔로 인정된다 — 동남서, 남서북, 백발중이 각각 하나의 몸통이다. 이 몸통은 손 안에서만이 아니라 상가(왼쪽)의 버림패를 치해서도 만들 수 있다. 여기에 더해 동·남·서·북 네 바람을 각각 한 장씩 모으면 그 넷을 하나의 안깡(동남서북 깡)으로 선언할 수 있고 영상패도 정상적으로 뽑는다. 바람 슌쯔 안에 자풍(내 바람)이나 장풍(그 국의 바람)이 들어 있으면 커쯔로 낸 역패와 똑같이 **각각 1판**이 붙는다 — 동1국의 서가가 동남서를 만들면 장풍 동·자풍 서가 함께 걸려 2판이다(같은 바람은 몸통이 몇 개든 한 번만 센다). 백발중에는 이 판이 붙지 않는다. 자패 슌쯔는 청일색·삼색·일기통관에는 관여하지 않고 찬타·혼노두·자일색 쪽으로 값이 붙는다.\n\n리치 중에는 이 안깡을 선언할 수 없다 — 깡이 대기를 바꾸기 때문이다.",
   install(ctx) {
     ctx.setHolderRule("scoring.honorRuns", true);
+
+    /*
+     * 자풍·장풍이 낀 바람 슌쯔 = 1판씩 (2026-08-12 사용자 상향).
+     *
+     * 표준 역패(`yakuhai_seat`/`yakuhai_prevalent`)를 슌쯔로 넓힌 것이라 **보조역이
+     * 아니다** — 동남서를 울어 만든 손도 역패 커쯔를 울어 만든 손처럼 그 자체로 역이
+     * 선다. 동1국의 서가가 동남서를 만들면 동(장풍)·서(자풍) 둘이 걸려 2판이다.
+     * 삼원 슌쯔(백발중)는 여기 얹지 않는다 — 백발중은 그 자체로 대삼원 계열의 값을
+     * 따로 받는 몸통이라, 여기에 3판을 더 얹으면 값이 두 겹으로 붙는다.
+     *
+     * 한 바람은 몸통이 몇 개든 한 번만 센다(동남서 + 남서북을 함께 들어도 서는 1판).
+     * 표준 역패도 커쯔 하나가 곧 1판이고, 바람 슌쯔 둘을 세우려면 자패 여섯 장이라
+     * 실전에서 갈리는 자리가 아니다.
+     */
+    const yaku = ctx.yaku;
+    if (yaku === undefined) return;
+    if (yaku.get(SEAT_YAKU) === undefined) {
+      const holders = yakuHolders(yaku, SEAT_YAKU);
+      yaku.register({
+        source: ctx.instanceId,
+        id: SEAT_YAKU,
+        name: "계보 자풍패",
+        closedHan: 1,
+        openHan: 1,
+        check: (variant, wctx) =>
+          holderHasWindRun(holders, variant, wctx, wctx.seatWind),
+      });
+    }
+    if (yaku.get(PREVALENT_YAKU) === undefined) {
+      const holders = yakuHolders(yaku, PREVALENT_YAKU);
+      yaku.register({
+        source: ctx.instanceId,
+        id: PREVALENT_YAKU,
+        name: "계보 장풍패",
+        closedHan: 1,
+        openHan: 1,
+        check: (variant, wctx) =>
+          holderHasWindRun(holders, variant, wctx, wctx.prevalentWind),
+      });
+    }
+    addYakuHolder(ctx, yaku, SEAT_YAKU, PREVALENT_YAKU);
   },
   /**
    * 봇: 분해 규칙 자체는 패시브지만 **동남서북 깡**은 표준 `ankan` 옵션으로 제시된다.

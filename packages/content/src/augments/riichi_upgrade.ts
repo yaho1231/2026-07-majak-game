@@ -2,7 +2,8 @@
  * 이중 선언 (riichi_upgrade) — 리치를 진짜로 두 번 선언한다.
  *
  * 1. 보유자의 리치는 몇 번째 버림이든 **언제나 더블리치**로 승격된다.
- *    (원래부터 더블리치 조건이었다면 **트리플리치 = 4판**으로 취급된다.)
+ *    (이 증강이 아니었어도 더블리치였다면 **트리플리치 = 4판**으로 취급된다 —
+ *     표준 조건인 첫 버림뿐 아니라 **뒤늦은 출진**이 밀어 올린 더블도 포함한다.)
  * 2. 52차 개편 — 리치를 선언하는 순간 **내 하가(다음 차례 사람)의 그 국 리치를 봉인**한다.
  *    "사실상 보이지 않는 +1판"이던 증강에 상대가 대응해야 하는 순간을 붙였다.
  *
@@ -17,7 +18,8 @@
  *
  * 구현 지점:
  * - TILE_DISCARDED Interceptor: 보유자의 리치 버림에 riichiDouble=true를 강제.
- * - TILE_DISCARDED Reaction: 자연 더블 조건이면 트리플 플래그 기록 + 하가 봉인 기록.
+ * - TILE_DISCARDED Reaction: 자연 더블 조건(또는 뒤늦은 출진의 승격)이면 트리플 플래그
+ *   기록 + 하가 봉인 기록.
  * - ROUND_SETTLED Reaction: 트리플 플래그 해제(봉인 키는 roundKey가 섞여 자동 만료).
  * - `riichi.blocked` Modifier: 이번 국에 봉인된 대상에게 true.
  * - `score.extraHan` Modifier: 트리플 상태의 보유자 화료에 +2판(더블리치 2판 + 2 = 4판).
@@ -39,6 +41,7 @@ import type {
   TileDiscardedPayload,
 } from "@majak/core";
 import { flagOf, roundKey, stringOf, viewKey } from "../util.js";
+import { lateDoublePromotes } from "./late_double.js";
 
 const ID = "riichi_upgrade";
 
@@ -60,9 +63,9 @@ export const riichiUpgrade: AugmentDef = defineAugment({
   complexity: 3,
   name: "이중 선언",
   description:
-    "(상시) 리치를 선언하면 언제나 더블리치가 되고, 동시에 내 하가(다음 차례 사람)는 그 국에 리치를 걸 수 없게 된다. 원래 더블리치 조건이었다면 트리플리치가 되어 4판으로 값한다.",
+    "(상시) 리치를 선언하면 언제나 더블리치가 되고, 동시에 내 하가(다음 차례 사람)는 그 국에 리치를 걸 수 없게 된다. 이 증강이 없었어도 더블리치였을 리치라면 트리플리치가 되어 4판으로 값한다.",
   detail:
-    "(상시) 리치를 선언하면 몇 번째 버림이든 언제나 더블리치(2판)로 승격된다. 동시에 자신의 하가의 리치가 그 국 동안 봉인되어 그 사람은 리치·일발·뒷도라를 통째로 잃는다. 이미 리치를 건 사람에게는 소급하지 않으며 봉인 대상은 전원에게 공개된다. 자연 더블리치 조건을 갖춘 상태에서 걸면 트리플리치가 되어 리치가 4판으로 값한다(추가 판은 역만에 적용되지 않는다).",
+    "(상시) 리치를 선언하면 몇 번째 버림이든 언제나 더블리치(2판)로 승격된다. 동시에 자신의 하가의 리치가 그 국 동안 봉인되어 그 사람은 리치·일발·뒷도라를 통째로 잃는다. 이미 리치를 건 사람에게는 소급하지 않으며 봉인 대상은 전원에게 공개된다. 이 증강이 없었어도 더블리치였을 리치(첫 버림, 또는 뒤늦은 출진이 승격시킨 7순 이내의 리치)라면 트리플리치가 되어 리치가 4판으로 값한다(추가 판은 역만에 적용되지 않는다).",
   install(ctx) {
     const { holder } = ctx;
 
@@ -80,8 +83,19 @@ export const riichiUpgrade: AugmentDef = defineAugment({
       const rs = state.round.byPlayer[holder];
       if (rs?.riichi == null) return;
 
-      // 자연 더블리치 조건(첫 버림 + 첫 바퀴 무후로)이었다면 트리플 플래그 기록
-      if (rs.riichi.discardIndex === 0 && state.round.goAroundBroken === false) {
+      /*
+       * **나 말고 다른 이유로도 더블리치였는가** — 그러면 트리플이다.
+       *
+       * ① 표준 더블리치 조건: 첫 버림 + 첫 바퀴 무후로.
+       * ② 뒤늦은 출진(late_double): 7순까지의 리치를 더블로 밀어 올린다.
+       *
+       * 결과 플래그(`riichi.double`)로는 판정할 수 없다 — 이 증강 자신이 모든 리치를
+       * 더블로 만들어 언제나 true다. 그래서 예전에는 ①만 봤고, 뒤늦은 출진으로 만든
+       * 더블리치는 이중 선언을 함께 들고도 트리플이 되지 않았다(2026-08-12 사용자 보고).
+       */
+      const naturalDouble =
+        rs.riichi.discardIndex === 0 && state.round.goAroundBroken === false;
+      if (naturalDouble || lateDoublePromotes(state, holder)) {
         rc.emit(augmentDataSet(tripleKey(holder), true));
         // 선언 순간 "트리플리치"로 보이게 — 정산에서만 드러나는 패시브가 되지 않도록.
         const stealth =

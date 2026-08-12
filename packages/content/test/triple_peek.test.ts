@@ -2,8 +2,8 @@
  * 삼세 예지 (triple_peek) 동작 테스트.
  *
  * 핵심 계약:
- *  1. 자기 턴(turn.act)에 선언할 수 있고, 선언은 **매 국 1회**다(2026-08-01 버프 —
- *     예전엔 동풍전 1·반장전 2회로 매치 전체에 걸쳐 소진됐다).
+ *  1. 자기 턴(turn.act)에 선언할 수 있고, 선언은 **2국에 1회**다(2026-08-12 하향 —
+ *     매 국 1회였다). "N국에 1회" 공용 배관(trackRoundSeq/cooldownReady)을 쓴다.
  *  2. 선언하면 내 다음 쯔모 3장의 **종류(kindKey 문자열)**가 보유자 전용 채널로 나간다.
  *  3. 그 3개는 패산에서 보유자가 실제로 뽑게 될 패의 kind다(자리 회전으로 검증).
  *  4. 그 값은 **스냅샷이 아니라 실시간**이다 — 쯔모·버림·후로마다 다시 계산된다
@@ -220,14 +220,13 @@ describe("삼세 예지 (triple_peek)", () => {
     expect(game.engine.state.augmentData[key]).toEqual([1, 5, 9].map(kindAt));
   });
 
-  it("이번 국 1회 — 두 번째 선언은 거부되고 옵션도 사라진다", () => {
+  it("2국에 1회 — 선언하면 쿨다운 2국이 걸리고 두 번째 선언은 거부된다", () => {
     const scn = scene();
     const { game, flow } = startFlow(scn);
     const status = flow.submit("p0", { type: ACTION, payload: {} });
-    // 카운터 키에는 국 식별자가 섞인다 (국이 바뀌면 다른 키 = 다시 1회)
-    const r = scn.round;
-    const roundK = `${r.prevalentWind}-${r.roundNumber}-${r.honba}`;
-    expect(game.engine.state.augmentData[`${ID}:uses:${roundK}:p0`]).toBe(1);
+    // 공용 쿨다운 배관 — 마지막으로 쓴 국 순번을 찍고 잔량(2국)을 표시 채널에 올린다
+    expect(game.engine.state.augmentData[`${ID}:usedSeq:p0`]).toBe(0);
+    expect(game.engine.state.augmentData[`view:p0:cooldown:${ID}`]).toBe(2);
 
     // 선언 후 여전히 p0 턴이면 옵션이 더는 제시되지 않는다
     const prompt =
@@ -237,32 +236,44 @@ describe("삼세 예지 (triple_peek)", () => {
     expect(
       prompt?.options.filter((o) => o.type === ACTION) ?? [],
     ).toHaveLength(0);
-    // 반장전이어도 같은 국에 두 번은 안 된다 (매치 잔여 횟수가 아니라 국 단위다)
     const def = game.engine.actions.get(ACTION);
     expect(
       def?.validate(
         { player: "p0", type: ACTION, payload: {} },
         { state: game.engine.state, rules: game.engine.rules },
       ),
-    ).toBe("no uses left this round");
+    ).toBe("on cooldown (once per 2 rounds)");
   });
 
-  it("국이 바뀌면 다시 1회 쓸 수 있다 (2026-08-01 버프)", () => {
+  it("바로 다음 국은 막히고, 그 다음 국에 다시 열린다", () => {
     const scn = scene();
     const { game, flow } = startFlow(scn);
     flow.submit("p0", { type: ACTION, payload: {} });
-
-    // 다음 국으로 넘어간 상태를 흉내낸다 (본장만 올려도 국 키가 달라진다)
-    const advanced = {
-      ...game.engine.state,
-      round: { ...game.engine.state.round, roundNumber: game.engine.state.round.roundNumber + 1 },
-    };
     const def = game.engine.actions.get(ACTION);
+
+    // 국이 하나 지나간 상태 — ROUND_STARTED가 국 순번을 1로 올린다 (아직 1국뿐)
+    const nextRound: GameState = {
+      ...game.engine.state,
+      augmentData: { ...game.engine.state.augmentData, [`${ID}:seq:p0`]: 1 },
+    };
     expect(
       def?.validate(
         { player: "p0", type: ACTION, payload: {} },
-        { state: advanced, rules: game.engine.rules },
+        { state: nextRound, rules: game.engine.rules },
+      ),
+    ).toBe("on cooldown (once per 2 rounds)");
+
+    // 한 국 더 — 사용 시점에서 2국이 지나면 다시 열린다
+    const afterTwo: GameState = {
+      ...game.engine.state,
+      augmentData: { ...game.engine.state.augmentData, [`${ID}:seq:p0`]: 2 },
+    };
+    expect(
+      def?.validate(
+        { player: "p0", type: ACTION, payload: {} },
+        { state: afterTwo, rules: game.engine.rules },
       ),
     ).toBeNull();
   });
+
 });

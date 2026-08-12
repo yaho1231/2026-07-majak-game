@@ -22,6 +22,7 @@ import { riichiUpgrade } from "../src/augments/riichi_upgrade.js";
 import { freeRiichiDiscard } from "../src/augments/free_riichi_discard.js";
 import { peekRiichiWaits } from "../src/augments/peek_riichi_waits.js";
 import { lastStand } from "../src/augments/last_stand.js";
+import { lateDouble } from "../src/augments/late_double.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -134,6 +135,41 @@ describe("riichi_upgrade (이중 선언)", () => {
     });
     expect(result.ok).toBe(true);
     expect(resolveExtra("p0")).toBe(0);
+  });
+
+  /**
+   * 뒤늦은 출진 × 이중 선언 — 7순 이내의 리치는 뒤늦은 출진이 더블로 밀어 올리므로,
+   * 이중 선언이 아니었어도 더블이었다 = 트리플이다. 예전에는 표준 조건(첫 버림)만
+   * 봐서 이 조합이 더블에서 멈췄다(2026-08-12 사용자 보고).
+   */
+  it("뒤늦은 출진이 만든 더블리치도 이중 선언이 트리플로 올린다", () => {
+    const state = withAugments(craftRiichiState(false), "p0", [
+      "riichi_upgrade",
+      "late_double",
+    ]);
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, lateDouble, "p0", { yaku: game.yaku });
+    installAugment(game.engine, riichiUpgrade, "p0", { yaku: game.yaku });
+    declareRiichi(game);
+
+    expect(game.engine.state.round.byPlayer["p0"]?.riichi?.double).toBe(true);
+    expect(game.engine.state.augmentData["riichi_upgrade:triple:p0"]).toBe(true);
+    // 이중 선언 +2 (트리플) 와 뒤늦은 출진 +1 이 함께 붙는다
+    expect(
+      game.engine.rules.resolve<number>("score.extraHan", {
+        playerId: "p0",
+        state: game.engine.state,
+      }),
+    ).toBe(3);
+  });
+
+  it("뒤늦은 출진이 없으면 같은 리치는 더블에서 멈춘다 (대조군)", () => {
+    const game = createStandardGameFromState(
+      withAugments(craftRiichiState(false), "p0", ["riichi_upgrade"]),
+    );
+    installAugment(game.engine, riichiUpgrade, "p0", { yaku: game.yaku });
+    declareRiichi(game);
+    expect(game.engine.state.augmentData["riichi_upgrade:triple:p0"]).toBeUndefined();
   });
 });
 

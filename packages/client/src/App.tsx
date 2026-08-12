@@ -7778,7 +7778,6 @@ function QuickToggles(props: {
             className={`qt-item${active ? " qt-on" : ""}`}
             aria-pressed={active}
             onClick={() => {
-              if (it.key === "autoWin" && !active && !confirmAutoWin()) return;
               props.onSetting(it.key, !active);
             }}
             title={`${it.label} — ${it.desc} (지금 ${active ? "켜짐" : "꺼짐"})`}
@@ -7796,24 +7795,14 @@ function QuickToggles(props: {
  * 자동 화료 설명 — 되돌릴 수 없다는 사실을 먼저 말한다.
  *
  * 이 스위치는 판 위에서 한 번 눌리면 되묻지 않고 론·쯔모를 쏜다. 야쿠도 점수도 보지 않고,
- * 하이테이·린샨을 노리고 흘려 보내던 손도 그냥 친다. 자동버림은 이미 같은 이유로
- * "화료 가능하면 멈춘다"는 가드가 붙었는데(2026-08-02) 자동화료에는 아무것도 없었다.
- * 엔진은 그대로 두고 — 켜는 자리에 한 번 되묻는다.
+ * 하이테이·린샨을 노리고 흘려 보내던 손도 그냥 친다.
+ *
+ * 2026-08-12(사용자 지시): 켤 때 뜨던 `window.confirm` 되묻기를 **없앴다**. 좌하단 빠른
+ * 토글은 판이 도는 중에 한 손으로 켜고 끄는 자리인데, 켤 때마다 브라우저 모달이 판을
+ * 가로막아 정작 그 순간의 결정을 놓쳤다. 설명은 툴팁으로 그대로 남는다.
  */
 const AUTO_WIN_DESC =
   "화료 가능해지는 즉시 되묻지 않고 론·쯔모합니다 (점수·야쿠를 보지 않습니다)";
-
-/** 자동 화료를 켜기 전 한 번 되묻는다. 이미 켜진 것을 끌 때는 묻지 않는다. */
-function confirmAutoWin(): boolean {
-  return window.confirm(
-    "자동 화료를 켤까요?\n\n" +
-      "화료가 가능해지는 순간 확인 없이 바로 론·쯔모합니다.\n" +
-      "점수도 야쿠도 보지 않기 때문에,\n" +
-      "• 더 키우려고 들고 있던 싼 손을 그대로 치고\n" +
-      "• 하이테이·린샨을 노리던 순도 그냥 넘어갑니다.\n\n" +
-      "되돌릴 수 없습니다.",
-  );
-}
 
 // ─────────────────────────── 설정 패널 ───────────────────────────
 
@@ -7940,11 +7929,10 @@ function SettingsPanel(props: {
   type BoolSettingKey = {
     [K in keyof Settings]: Settings[K] extends boolean ? K : never;
   }[keyof Settings];
+  // ⚠ 자동정렬·자동화료·후로없음·자동버림은 여기 없다 — 좌하단 빠른 토글(QuickToggles)이
+  //   판 위에서 바로 켜고 끄는 자리라 설정창에 같은 스위치를 한 벌 더 두면 두 곳을 오가며
+  //   무엇이 켜졌는지 확인하게 된다(2026-08-12 사용자 지시). 저장 형식(Settings)은 그대로다.
   const rows: { key: BoolSettingKey; label: string; desc: string }[] = [
-    { key: "autoSort", label: "자동 정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
-    { key: "autoWin", label: "자동 화료", desc: AUTO_WIN_DESC },
-    { key: "autoNoMeld", label: "후로 없음", desc: "치·퐁·깡 기회를 자동으로 넘깁니다" },
-    { key: "autoDiscard", label: "자동 버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
     {
       key: "showMyWaits",
       label: "내 오름패 표시",
@@ -8001,8 +7989,6 @@ function SettingsPanel(props: {
               role="switch"
               aria-checked={props.settings[r.key]}
               onClick={() => {
-                // 자동 화료만 켜기 전에 되묻는다 — 한 번 켜지면 확인 없이 손이 나간다
-                if (r.key === "autoWin" && !props.settings.autoWin && !confirmAutoWin()) return;
                 props.onSetting(r.key, !props.settings[r.key]);
               }}
             >
@@ -10190,7 +10176,7 @@ function augmentPillStatus(
         note:
           left > 0
             ? `${where} ${total}회 중 ${left}회 남음`
-            : `${where} ${total}회를 모두 썼다 — 더 쓸 수 없다`,
+            : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
         ...(left === 0 ? { tone: "spent" as const } : {}),
         ...(total > 0 ? { gauge: left / total } : {}),
       };
@@ -13162,25 +13148,35 @@ function ActiveAugmentControl(props: {
       {foresightPeek.length > 0 ? (
         <div className="foresight-strip">
           <span className="foresight-strip-tag">🔮 예지</span>
+          {/*
+            **뒤에서 앞으로** 그린다 — 마지막(내 쯔모)이 왼쪽 끝, 가장 먼저 뽑히는 패가
+            오른쪽 끝이다. 공개된 패는 뽑히는 대로 **앞에서** 사라지므로, 순서대로
+            그리면 줄이 줄어들 때마다 남은 패가 통째로 왼쪽으로 밀렸다 — 방금 보던
+            "내 패"가 매 순 자리를 옮겼다(2026-08-12 사용자 지적). 뒤집어 그리면
+            사라지는 쪽이 오른쪽 끝이라 내 패는 늘 같은 자리에 서 있는다.
+          */}
           <div className="foresight-strip-tiles">
-            {foresightOrder.map((origIdx, pos) => {
-              const kind = foresightPeek[origIdx];
-              const seatLabel = foresightSeatLabels[pos] ?? "";
-              const isMine = seatLabel === "나";
-              return (
-                <div
-                  key={pos}
-                  className={`foresight-cell${isMine ? " foresight-mine" : ""}`}
-                  title={`${seatLabel} 쯔모`}
-                >
-                  {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
-                  <span className="foresight-cell-label">
-                    {seatLabel}
-                    {isMine ? " ★" : ""}
-                  </span>
-                </div>
-              );
-            })}
+            {foresightOrder
+              .map((origIdx, pos) => ({ origIdx, pos }))
+              .reverse()
+              .map(({ origIdx, pos }) => {
+                const kind = foresightPeek[origIdx];
+                const seatLabel = foresightSeatLabels[pos] ?? "";
+                const isMine = seatLabel === "나";
+                return (
+                  <div
+                    key={pos}
+                    className={`foresight-cell${isMine ? " foresight-mine" : ""}`}
+                    title={`${pos + 1}번째 쯔모 — ${seatLabel}`}
+                  >
+                    {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
+                    <span className="foresight-cell-label">
+                      {seatLabel}
+                      {isMine ? " ★" : ""}
+                    </span>
+                  </div>
+                );
+              })}
           </div>
           {foresightReorderable && !foresightTab ? (
             <button className="foresight-strip-confirm" onClick={() => setForesightTab(true)}>
@@ -14166,7 +14162,12 @@ function DraftOverlay({
   }, [total, draft.stage]);
   const remainSec = Math.ceil(remainMs / 1000);
   const showTimer = total !== undefined && !picked;
-  const urgent = showTimer && remainSec <= 5;
+  /**
+   * 10초 아래부터 경고다 — 5초는 너무 늦었다. 시간이 다 되면 서버가 후보 중 하나를
+   * **랜덤으로** 골라 버리므로(HumanAgent.armDraft), 그 사실을 미리 크게 알린다
+   * (2026-08-12 사용자 지시).
+   */
+  const urgent = showTimer && remainSec <= 10;
   // 카드는 기본적으로 요약 한 줄만 보여준다 — 고르는 몇 초 안에 읽히는 분량이어야 한다.
   // 원문 설명은 Shift를 누르고 있는 동안, 또는 카드의 "자세히"를 눌렀을 때만 펼친다.
   const shiftHeld = useShiftHeld();
@@ -14188,9 +14189,16 @@ function DraftOverlay({
           {DRAFT_STAGE_HEADLINE[draft.stage] ?? "증강 획득"}
         </p>
         {showTimer ? (
-          <div className={`draft-timer${urgent ? " draft-timer-urgent" : ""}`}>
-            ⏳ 남은 시간 <strong>{remainSec}</strong>초
-          </div>
+          <>
+            <div className={`draft-timer${urgent ? " draft-timer-urgent" : ""}`}>
+              ⏳ 남은 시간 <strong>{remainSec}</strong>초
+            </div>
+            <p className={`draft-timer-note${urgent ? " draft-timer-note-urgent" : ""}`}>
+              {urgent
+                ? "🎲 10초 남았다 — 시간이 다 되면 랜덤으로 결정된다"
+                : "시간이 다 되면 랜덤으로 결정된다"}
+            </p>
+          </>
         ) : null}
         {/* 지금까지 고른 증강 — 새 증강은 기존 증강과 맞물릴 때 값하므로, 무엇을
             들고 있는지 보이지 않으면 고를 수가 없다 (2026-08-04 사용자 요청). */}
