@@ -42,6 +42,7 @@ import type {
   GameState,
   PlayerId,
   TileId,
+  TileKind,
 } from "@majak/core";
 import {
   counterOf,
@@ -92,6 +93,30 @@ const doneKey = (state: GameState, holder: PlayerId): string =>
 /** 보유자 전용 '실제 패' 공개 키 (revealTiles:* 채널 → 진짜 패 메타데이터 노출) */
 const revealKey = (holder: PlayerId, target: PlayerId): string =>
   roundViewKey(holder, `revealTiles:${target}`);
+/**
+ * 교환 결과 통보 채널 — **당사자 둘에게만**.
+ *
+ * 3장이 소리 없이 갈리는 것이 이 증강의 전부인데, 화면에는 아무 말도 안 나왔다.
+ * 보유자는 자기가 고른 것이라 그나마 알지만 **지정당한 쪽은 손패가 언제 어떻게
+ * 바뀌었는지 알 길이 없었다**(2026-08-12 사용자 지적). 무엇이 나가고 무엇이 들어왔는지를
+ * 양쪽에 한 번 크게 보여준다.
+ *
+ * 제3자에게는 여전히 새지 않는다 — 대상 지정 사실만 공개(actionFx)이고, 갈린 패는
+ * 당사자 전용 채널이다.
+ */
+const noticeKey = (viewer: PlayerId): string => roundViewKey(viewer, `${ID}:swapped`);
+
+/** `noticeKey` 채널에 실리는 값 (클라이언트 컷인이 그대로 읽는다) */
+interface Swap3Notice {
+  /** 교환 상대 */
+  with: PlayerId;
+  /** 내가 넘긴 패 */
+  gave: TileKind[];
+  /** 내가 받은 패 */
+  got: TileKind[];
+  /** 내가 지정한 쪽인가 (문구가 갈린다) */
+  holder: boolean;
+}
 
 interface HandSwap3SwappedPayload {
   holder: PlayerId;
@@ -294,7 +319,7 @@ export const handSwap3: AugmentDef = defineAugment({
   description:
     "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패가 나에게만 공개되고, 넘길 내 3장과 가져올 상대 3장을 각각 골라 통째로 맞바꾼다. 리치를 선언한 상대에게는 쓸 수 없다.",
   detail:
-    "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패 전체가 나에게만 진짜 패로 공개된다. 이어서 넘길 내 3장과 가져올 상대 3장을 각각 한 번에 골라 맞바꾸며, 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로 유지된다. 리치한 상대는 지정할 수 없고 지정한 뒤 상대가 리치하면 교환이 중단된다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다. 한 번 교환을 마친 국에는 그 국이 끝날 때까지 다시 쓸 수 없어 두 번째 사용은 다음 국 이후로 미뤄진다.",
+    "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패 전체가 나에게만 진짜 패로 공개된다. 이어서 넘길 내 3장과 가져올 상대 3장을 각각 한 번에 골라 맞바꾸며, 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로 유지된다. 리치한 상대는 지정할 수 없고 지정한 뒤 상대가 리치하면 교환이 중단된다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다. 한 번 교환을 마친 국에는 그 국이 끝날 때까지 다시 쓸 수 없어 두 번째 사용은 다음 국 이후로 미뤄진다.\n\n교환이 성사되면 **무엇이 오갔는지가 당사자 둘에게만** 화면에 뜬다 — 지정한 쪽도 지정당한 쪽도 넘긴 3장과 받은 3장을 그 자리에서 확인한다. 제3자는 대상 지정 사실만 알 뿐 갈린 패는 보지 못한다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -324,6 +349,23 @@ export const handSwap3: AugmentDef = defineAugment({
         const drawn = state.round.lastDrawnTile;
         const nextDrawn =
           drawn !== null && p.gives.includes(drawn) ? (p.takes[0] as TileId) : drawn;
+        // 무엇이 오갔는지 — 당사자 둘에게만. 각자 자기 기준으로 "준 것 / 받은 것"이다.
+        const kindsOf = (ids: readonly TileId[]): TileKind[] =>
+          ids.map((id) => state.tiles[id]?.kind).filter((k): k is TileKind => k !== undefined);
+        const gaveKinds = kindsOf(p.gives);
+        const tookKinds = kindsOf(p.takes);
+        const holderNotice: Swap3Notice = {
+          with: p.target,
+          gave: gaveKinds,
+          got: tookKinds,
+          holder: true,
+        };
+        const targetNotice: Swap3Notice = {
+          with: p.holder,
+          gave: tookKinds,
+          got: gaveKinds,
+          holder: false,
+        };
         // 교환이 끝나면 공개는 거기서 끝난다 — 채널을 비운다.
         // (2026-08-02 사용자 지시: "3개씩 교환하고 끝이야. 따로 더 보여줄 필요는 없어".
         //  예전엔 교환 후 상대의 새 손패를 계속 실어 둬서, 그 상대 옆에 남은 국 내내
@@ -343,6 +385,8 @@ export const handSwap3: AugmentDef = defineAugment({
             // 이 국에는 다시 지정할 수 없다 (사용자 피드백: 발동한 국 재사용 금지)
             [doneKey(state, p.holder)]: true,
             [revealKey(p.holder, p.target)]: [],
+            [noticeKey(p.holder)]: holderNotice,
+            [noticeKey(p.target)]: targetNotice,
           },
         };
         return next;

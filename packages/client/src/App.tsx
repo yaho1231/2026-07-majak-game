@@ -489,6 +489,13 @@ const AUGMENT_ACTION_TYPES = new Set([
 ]);
 
 /**
+ * 등가교환 결과 통보 채널 — 당사자 둘에게만 실리는 `{with, gave, got, holder}`.
+ * (AUG_EVENTS 표를 안 쓴다: 표에 넣으면 AUG_EVENT_AUG_IDS에 hand_swap3가 들어가
+ *  **대상 지정 단계의 공개 발동 컷인**까지 함께 사라진다.)
+ */
+const SWAP3_NOTICE_KEY = "hand_swap3:swapped";
+
+/**
  * 버튼으로 발동하는 액티브 증강 id — 보유 시 액티브 증강 버튼을 노출.
  * (free_riichi_discard는 타일 클릭으로 발동하므로 제외)
  */
@@ -3286,7 +3293,9 @@ export function App(): JSX.Element {
       // 재접속·중간 합류: 이미 벌어진 증강 사건이 한꺼번에 터지지 않게 시드한다.
       shown.augEvents = new Set();
       for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
-        if (augEventFor(key) === null) continue;
+        // 표에 없는 전용 사건(등가교환 통보)도 같은 집합을 쓰므로 함께 시드한다 —
+        // 빠뜨리면 재접속할 때마다 이미 끝난 교환 컷인이 다시 터진다.
+        if (augEventFor(key) === null && key !== SWAP3_NOTICE_KEY) continue;
         shown.augEvents.add(augEventSig(key, raw, shown.roundKey));
       }
       return;
@@ -3602,6 +3611,46 @@ export function App(): JSX.Element {
         `${playerNameById(next, mark.by ?? "")}에게 손을 빼앗겨 숨은 리치가 풀렸다`,
         2400,
         { sfx: () => sfx.augment(1), augId: "stealth_riichi", impact: { shake: 2 } },
+      );
+    }
+
+    /*
+     * 등가교환이 성사됐다 — **당사자 둘에게만** 무엇이 오갔는지 보여준다.
+     *
+     * 3장이 소리 없이 갈리는데 화면에 아무 말도 안 나와, 지정당한 쪽은 손패가 언제
+     * 어떻게 바뀌었는지 알 수 없었다(2026-08-12 사용자 지적). 준 3장 → 받은 3장을
+     * 화살표로 갈라 한 줄에 띄운다. 제3자에게는 여전히 새지 않는다(당사자 전용 채널).
+     */
+    for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
+      if (key !== SWAP3_NOTICE_KEY) continue;
+      const n = raw as {
+        with?: string;
+        gave?: TileKind[];
+        got?: TileKind[];
+        holder?: boolean;
+      } | null;
+      if (n === null || typeof n !== "object") continue;
+      const gave = Array.isArray(n.gave) ? n.gave : [];
+      const got = Array.isArray(n.got) ? n.got : [];
+      if (gave.length === 0 && got.length === 0) continue;
+      const seen = augEventSig(key, raw, shown.roundKey);
+      if (shown.augEvents.has(seen)) continue;
+      shown.augEvents.add(seen);
+      const who = playerNameById(next, n.with ?? "");
+      showCutIn(
+        "등가교환",
+        "augment",
+        n.holder === true
+          ? `${who}와 3장을 맞바꿨다 — 넘긴 패 → 받은 패`
+          : `${who}에게 3장을 빼앗겼다 — 넘어간 패 → 받은 패`,
+        3200, // 6장을 훑을 시간
+        {
+          sfx: () => sfx.augment(1),
+          augId: "hand_swap3",
+          tiles: [...gave, ...got],
+          tileArrowAt: gave.length,
+          impact: { shake: 2 },
+        },
       );
     }
 
@@ -8419,6 +8468,7 @@ const AUG_EVENT_HEADS: ReadonlySet<string> = new Set([
   // 표를 만들기 전부터 전용 컷인이 있던 둘 — 로그에 다시 찍히지 않게 함께 넣는다
   "void_kan", // 성립하지 않는 깡
   "spy", // 스파이 적발
+  "hand_swap3", // 등가교환 결과 통보 (SWAP3_NOTICE_KEY — 전용 컷인이 보여준다)
 ]);
 
 // ─────────────────────────── 증강 정보 로그 ───────────────────────────

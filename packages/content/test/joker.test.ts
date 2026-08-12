@@ -201,6 +201,56 @@ describe("조커 — 화료와 채점", () => {
     expect(ev).not.toBeNull();
     expect(ev?.ok).toBe(true);
   });
+
+  /**
+   * 순정구련보등 — **화료패가 조커여도** 붙는다 (2026-08-12 사용자 보고).
+   *
+   * 순정 판정의 프록시는 "뼈대를 넘어선 한 장 = 화료패"인데, 조커로 화료하면 화료패가
+   * 백(자패)이라 그 프록시가 무조건 깨진다. 정작 화료 직전 손은 순수한 1112345678999로
+   * 아홉 종 어느 것으로도 날 수 있었는데 구련보등(단일 역만)에서 멈췄다.
+   */
+  it("1112345678999m을 들고 백을 잡으면 순정구련보등이다", () => {
+    const game = mk("1112345678999m");
+    fire(game);
+    const ev = evaluateWin(
+      buildWinContext(game.engine.state, "p0", "tsumo", outsideTile(game, HAKU), {
+        rules: game.engine.rules,
+      }),
+      game.yaku,
+    );
+    expect(ev?.yaku.map((y) => y.id)).toContain("chuuren_junsei");
+    expect(ev?.yaku.map((y) => y.id)).not.toContain("chuuren");
+  });
+
+  it("조커가 뼈대의 빈자리를 메운 손도 실제 화료패가 남는 한 장이면 순정이다", () => {
+    // 111234567899m + 백 → 백이 9만 자리를 메워 1112345678999m, 5만으로 화료
+    const game = mk("111234567899m5z");
+    fire(game);
+    const ev = evaluateWin(
+      buildWinContext(
+        game.engine.state,
+        "p0",
+        "tsumo",
+        outsideTile(game, { suit: "man", rank: 5 }),
+        { rules: game.engine.rules },
+      ),
+      game.yaku,
+    );
+    expect(ev?.yaku.map((y) => y.id)).toContain("chuuren_junsei");
+  });
+
+  it("직전 손이 뼈대가 아니면 조커로 화료해도 순정이 아니다", () => {
+    // 11123456789m + 99m 대신 5만5만 — 뼈대(9가 3장)가 아니다
+    const game = mk("1112345678955m");
+    fire(game);
+    const ev = evaluateWin(
+      buildWinContext(game.engine.state, "p0", "tsumo", outsideTile(game, HAKU), {
+        rules: game.engine.rules,
+      }),
+      game.yaku,
+    );
+    expect(ev?.yaku.map((y) => y.id) ?? []).not.toContain("chuuren_junsei");
+  });
 });
 
 // ───────────────────────── 4b. 후리텐 ─────────────────────────

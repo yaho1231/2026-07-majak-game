@@ -132,16 +132,50 @@ function chuurenSurplus(
 }
 
 /**
+ * 화료패를 뺀 **직전 손 13장**이 조커(wildKinds)를 써서 순수한 뼈대 1112345678999를
+ * 세울 수 있는가.
+ *
+ * 조커로 화료하면 화료패가 백이라 "화료패 = 남는 한 장"이라는 프록시가 깨진다
+ * (1112345678999 + 백 쯔모 → 순정이 안 붙던 자리). 그럴 때는 프록시 대신 정의
+ * 자체를 본다 — 직전 손이 뼈대면 그 무늬 아홉 종 어느 것으로도 화료할 수 있었다.
+ * 조커가 아닌 실제 패는 전부 그 무늬의 수패여야 하고 뼈대 장수를 넘지 않아야 한다.
+ */
+function wildSkeletonBeforeWin(ctx: WinContext, suit: string): boolean {
+  const wilds = ctx.options?.wildKinds ?? [];
+  if (wilds.length === 0) return false;
+  const isWild = (k: TileKind): boolean => wilds.some((w) => kindKey(w) === kindKey(k));
+  // 화료패 한 장을 뺀 직전 손
+  const before = [...ctx.hand];
+  const at = before.findIndex((k) => kindKey(k) === kindKey(ctx.winningTile));
+  if (at < 0) return false;
+  before.splice(at, 1);
+  if (before.length !== 13) return false;
+  const counts = new Array<number>(10).fill(0);
+  for (const k of before) {
+    if (isWild(k)) continue; // 조커는 빈 자리를 메우므로 뼈대의 어디든 될 수 있다
+    if (k.suit !== suit) return false;
+    counts[k.rank] = (counts[k.rank] ?? 0) + 1;
+  }
+  // 실제 패가 뼈대 장수를 넘지 않으면 남은 자리는 전부 조커가 메운다 (13 = 뼈대 13장)
+  for (let r = 1; r <= 9; r++) {
+    if ((counts[r] ?? 0) > (r === 1 || r === 9 ? 3 : 1)) return false;
+  }
+  return true;
+}
+
+/**
  * 순정구련보등(9면 대기)인가 — 더블 역만.
  * 판정은 국사 13면과 같은 논리다: **뼈대를 넘어선 그 한 장이 곧 화료패**면 화료 직전 손이
  * 순수한 1112345678999였고, 그 무늬 아홉 종 어느 것으로도 화료할 수 있었다는 뜻이 된다.
- * 화료패가 그 무늬의 수패가 아니면(와일드로 채운 화료 등) 순정으로 보지 않는다.
+ * 화료패가 그 무늬의 수패가 아니면(조커로 채운 화료 등) 프록시가 통하지 않으므로
+ * 직전 손을 직접 본다(`wildSkeletonBeforeWin`).
  */
 function isJunseiChuuren(v: ScoringVariant, ctx: WinContext): boolean {
   const surplus = chuurenSurplus(v, ctx);
   if (surplus === null) return false;
   const win = ctx.winningTile;
-  return win.suit === surplus.suit && win.rank === surplus.rank;
+  if (win.suit === surplus.suit && win.rank === surplus.rank) return true;
+  return wildSkeletonBeforeWin(ctx, surplus.suit);
 }
 
 /**

@@ -6475,6 +6475,7 @@ button {
 
 .waits-badge-tiles {
   display: inline-flex;
+  align-items: flex-start;
   gap: 3px;
 }
 
@@ -6511,17 +6512,15 @@ button {
 }
 
 /* ── 남은 장수 ──
-   **패 아래쪽 가운데**에 "N장" 띠로 붙인다. 예전에는 오른쪽 위 모서리의 작은
-   동그라미였는데, 패들이 3px 간격으로 붙어 있어 옆 패 그림 위에 얹히고 숫자만
-   덩그러니 떠 있어 무슨 수인지 읽히지 않았다(2026-08-12 사용자 요청).
+   **패 그림 바로 아래**에 "N장" 띠로 놓는다. 겹치지 않는다 — 띠가 패 위에 얹혀
+   있던 동안은 패의 아랫부분(무늬가 끝나는 자리)이 가려져 무슨 패인지 읽는 데
+   방해가 됐다(2026-08-12 사용자 지적). 흐름 안에 두고 `.wait-tile`을 세로
+   플렉스로 만들어 자리를 실제로 차지하게 한다.
    숫자는 "아직 보이지 않은 장수"이지 "확정 잔량"이 아니다 — 라벨 옆 힌트와
    패의 title이 그 뜻을 말한다.
    (이 자리를 쓰던 "역없음" 꼬리표는 패 위쪽으로 올라갔다.) */
 .wait-left {
-  position: absolute;
-  left: 50%;
-  bottom: -4px;
-  transform: translateX(-50%);
+  margin-top: 2px;
   padding: 0 4px;
   border-radius: 5px;
   background: rgba(13, 23, 18, 0.96);
@@ -9940,6 +9939,8 @@ button {
 .wait-tile {
   position: relative;
   display: inline-flex;
+  flex-direction: column;
+  align-items: center;
 }
 /* 패 그림만 죽인다 — span 전체에 걸면 위에 얹힌 남은 장수 배지까지 회색이 된다.
    "역없음"과 "남은 0장"은 서로 다른 정보라 둘 다 읽혀야 한다. */
