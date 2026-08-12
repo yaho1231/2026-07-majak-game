@@ -13763,6 +13763,36 @@ function carryOverOf(
   return out;
 }
 
+/**
+ * 유국 정산 화면에서 그 사람의 **오름패(대기)**.
+ *
+ * 유국은 "텐파이였다"까지만 알려 주고 끝났다 — 무엇을 기다리고 있었는지는 공개된
+ * 손패를 보고 각자 눈으로 세라는 뜻이었다. 정작 그게 이 화면의 핵심 정보다
+ * (왜 저 사람이 안 접었는지, 내 버림패가 통과한 게 운이었는지가 여기서 갈린다).
+ *
+ * 우선순위는 판 위의 오름패 표시(OpponentHand)와 같다 — 공개/고정된 대기가 있으면
+ * 물리 손패로 다시 계산하지 않는다. 자유 선언은 손패와 대기가 어긋나 있고, 오픈
+ * 리치는 서버가 이미 확정해 공개한 값이다.
+ */
+function drawWaitsOf(
+  view: PlayerView,
+  player: PlayerInfo,
+  revealedHand: readonly PublicTileView[],
+): TileKind[] {
+  const open = openRiichiWaits(view, player.id);
+  if (open.length > 0) return open;
+  const frozen = freeDeclareWaits(view, player.id);
+  if (frozen.length > 0) return frozen;
+  const kinds = revealedHand.map((t) => t.kind);
+  if (kinds.length % 3 !== 1) return [];
+  const meldCount = view.round.byPlayer[player.id]?.meldCount ?? 0;
+  try {
+    return winningKinds(kinds, meldCount, undefined, waitDecompOptions(player, view, kinds));
+  } catch {
+    return [];
+  }
+}
+
 /** 이 사람에게 증강이 얹은(또는 뺀) 점수 합 — 결과창의 최종 획득점 계산용 */
 function augPointsOf(
   settle: RoundOverMessage["settle"],
@@ -14052,6 +14082,35 @@ function RoundResultPanel({
                   ) : (
                     <div className="result-draw-hidden">패를 공개하지 않았다</div>
                   )}
+                  {/* 오름패 — "텐파이였다"만으로는 무엇을 기다렸는지 알 수 없다.
+                      공개된 손패를 각자 눈으로 세게 두지 않고 여기서 바로 보여준다. */}
+                  {tenpai && revealed !== undefined ? (
+                    (() => {
+                      const waits = drawWaitsOf(view, p, revealed.hand);
+                      return (
+                        <div className="result-draw-waits">
+                          <span className="result-draw-waits-label">오름패</span>
+                          {waits.length > 0 ? (
+                            <span className="result-draw-waits-tiles">
+                              {waits.map((k, ki) => (
+                                <span
+                                  key={`${k.suit}${k.rank}`}
+                                  className="result-draw-wait"
+                                  style={{ animationDelay: `${0.22 + pi * 0.12 + ki * 0.03}s` }}
+                                >
+                                  <TileImg tile={{ kind: k }} size="mini" />
+                                </span>
+                              ))}
+                            </span>
+                          ) : (
+                            // 서버는 텐파이로 쳤는데 클라 계산이 못 잡는 손 — 증강이 분해
+                            // 규칙을 바꾼 경우다. 빈칸으로 두면 "대기가 없었다"로 읽힌다.
+                            <span className="result-draw-waits-none">화면에서는 셀 수 없는 대기</span>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : null}
                   {carryOverOf(view, p.id).map((c) => (
                     <div key={c.label} className="result-carry">
                       <span className="result-carry-tag">{c.label}</span>
