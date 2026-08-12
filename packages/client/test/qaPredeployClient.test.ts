@@ -145,3 +145,26 @@ describe("§2-2 — '가로로 돌리세요' 안내", () => {
     expect(CSS_CODE).not.toMatch(/\.rotate-hint\s*\{[^}]*inset:\s*auto/);
   });
 });
+
+// ─────────── 2026-08-12. 새 판을 시작하면 컷인 중복 기억을 비운다 ───────────
+
+/**
+ * 증강 발동 컷인은 `{좌석}:{액션}`을 **순 서명**(`東:1:0:{순}`) 단위로 한 번만 띄운다.
+ * 그런데 그 서명에는 판을 가르는 것이 없어서, 판을 다시 시작하면 새 판의 첫 순이
+ * 지난 판의 첫 순과 글자까지 같다 — 같은 증강을 같은 순에 또 쓰면 컷인이 통째로
+ * 사라졌다(사용자 보고: "조커 — 능력 사용했는데 알림이 안 나옴").
+ *
+ * 판을 걷어내는 자리마다 `prevViewRef`와 **함께** 비우는 것이 계약이다.
+ */
+describe("판 전환 — 증강 컷인 중복 기억(fxSeenRef)", () => {
+  it("prevViewRef를 비우는 모든 자리에서 함께 비운다", () => {
+    const lines = APP_CODE.split("\n");
+    const at = lines
+      .map((l, i) => (l.includes("prevViewRef.current = null;") ? i : -1))
+      .filter((i) => i >= 0);
+    expect(at.length).toBeGreaterThan(0);
+    for (const i of at) {
+      expect(lines[i + 1] ?? "", `${i + 1}번째 줄 뒤`).toContain("resetFxSeen()");
+    }
+  });
+});

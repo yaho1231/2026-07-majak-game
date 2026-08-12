@@ -1,6 +1,6 @@
 /**
- * 마작의 거신병 (giant_god, prism) — 동풍전 1·반장전 2회, 내 바닥에 잠든 국사무쌍 13종을
- * 통째로 손으로 끌어올려 그 자리에서 국사무쌍 텐파이를 완성한다.
+ * 마작의 거신병 (giant_god, prism) — 상시(횟수 제한 없음). 내 바닥에 잠든 국사무쌍 13종을
+ * 통째로 손으로 끌어올려 국사무쌍 텐파이를 완성하고, **다음 순에 반드시 화료한다**.
  *
  * 부수는 상식: "버린 패는 죽은 패". 이 증강은 내 강(버림패 더미)에 흩어져 쌓인
  * 1m9m·1p9p·1s9s·동남서북·백발중 **13종이 한 장씩 전부** 깔리는 순간, 그 13장을
@@ -16,46 +16,65 @@
  * - 손패 14장(막 쯔모)이면 앞 13장만 나가고 뽑은 1장이 남아 14장(국사 13종+여분 1장)이 된다.
  *   어느 쪽이든 "13 OUT / 13 IN"이라 손패 총량은 그대로다.
  *
- * 설계 결정:
- * - **바닥 종류 기록(byPlayer.discardedKinds)은 건드리지 않는다** — 밥상 뒤엎기·무덤 도굴과 같은
- *   규율. 물리 타일만 옮기고 후리텐/버림 순서 메타는 그대로 둔다(엔진 불변).
- * - 결정적(prng 없음): moveTiles 두 번. 리플레이·재개 안전.
- * - 리미트는 게임 1회라는 **횟수뿐**(무페널티 원칙).
+ * **다음 순의 화료 예약** (2026-08-12 사용자 지시): 각성한 거신병은 텐파이에서 멈추지
+ * 않는다. 발동하면 `giant_god:tsumo:<국>:<보유자>` 예약이 서고, 그 국의 **다음 정상 쯔모**
+ * 한 장이 요구패(오름패)로 물질화된다 — 소환(conjure_draw)과 같은 방식으로 이미 뽑은
+ * 실물 패의 kind만 바꾸므로 난수도 손패 장수도 건드리지 않는다. 13면 대기 손에 오름패가
+ * 오므로 그 순의 쯔모 화료(국사무쌍)가 보장된다.
+ * (남이 먼저 화료하거나 유국이면 예약은 국과 함께 사라진다. 스스로 요구패를 버려
+ *  손을 무너뜨린 경우에는 부를 수 있는 오름패가 없으므로 아무 일도 일어나지 않는다.)
  *
- * 구현: 커스텀 액션 하나 + 리듀서 하나.
+ * 설계 결정:
+ * - **횟수 제한이 없다(상시).** 발동하면 바닥의 요구패 13장이 통째로 손으로 올라오므로
+ *   조건("내 바닥에 13종")이 스스로 무너진다 — 다시 쓰려면 13종을 다시 버려 쌓아야 한다.
+ *   조건 자체가 리미트라 별도 카운터를 두지 않는다.
+ * - 결정적(prng 없음): moveTiles 두 번 + 쯔모패 kind 변경. 리플레이·재개 안전.
+ *
+ * 구현: 커스텀 액션 하나 + 리듀서 하나 + 쯔모 반응 하나.
  * - moveTiles(discards→hand, 국사 13장) 후 moveTiles(hand→discards, 손패 앞 13장).
  *   국사 13장은 바닥 출신, 내보낼 13장은 손패 출신이라 타일 id가 서로 겹치지 않는다.
  * - 발동은 전원 공개(view:*:giant_god:<holder>) — 거신병 각성은 이 증강의 구경거리다.
  */
 
 import {
+  TILE_DRAWN,
+  augmentDataSet,
   defineAugment,
   discardsZone,
   handIdsOf,
   handZone,
   kindKey,
   kindOf,
+  meldCountOf,
   moveTiles,
   playerAtSeat,
+  scoringOptionsOf,
+  tileKindChanged,
+  winningKinds,
 } from "@majak/core";
 import type {
   ActionDef,
   AugmentDef,
   GameState,
   PlayerId,
+  TileDrawnPayload,
   TileId,
 } from "@majak/core";
-import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "giant_god";
 const ACTION = "giant_god";
 const EVENT = "GiantGodAwakened";
 
-/** 매치당 사용 횟수 카운터 (게임 단위). 동풍전 1·반장전 2회. */
-const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
-const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
-  counterOf(state, usesKey(h)) < matchUses(state);
+/**
+ * "다음 정상 쯔모를 오름패로" 예약 — **국 스코프**다.
+ *
+ * 게임 스코프로 두면 소비 전에 국이 끝났을 때(남의 화료·유국) 예약이 다음 국의 첫
+ * 쯔모를 강탈한다 — 소환(conjure_draw)이 같은 이유로 국 스코프를 쓴다.
+ */
+const tsumoKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:tsumo:${roundKey(state)}:${h}`;
 
 /** 국사무쌍 13종 (1·9 수패 + 동남서북 + 백발중) */
 const KOKUSHI_KINDS = [
@@ -91,9 +110,8 @@ function pickKokushiIds(state: GameState, holder: PlayerId): TileId[] | null {
   return out;
 }
 
-/** 지금 거신병을 깨울 수 있는가 (게임 1회 · 자기 턴 · 손패 ≥13 · 바닥에 국사 13종 완비) */
+/** 지금 거신병을 깨울 수 있는가 (자기 턴 · 손패 ≥13 · 바닥에 국사 13종 완비) */
 function canAwaken(state: GameState, holder: PlayerId): boolean {
-  if (!hasUsesLeft(state, holder)) return false;
   if (state.round.phase !== "turn.act") return false;
   if (playerAtSeat(state, state.round.turnSeat).id !== holder) return false;
   if (handIdsOf(state, holder).length < 13) return false;
@@ -115,7 +133,6 @@ const giantGodAction: ActionDef<Record<string, never>> = {
     if (player === undefined || !player.augments.includes(ID)) {
       return "no giant_god augment";
     }
-    if (!hasUsesLeft(state, req.player)) return "no uses left";
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
@@ -154,17 +171,11 @@ export const giantGod: AugmentDef = defineAugment({
   complexity: 3,
   name: "마작의 거신병",
   description:
-    "(동풍전 1회 · 반장전 2회) **조건: 국사무쌍 13종(1m9m·1p9p·1s9s·동남서북·백발중)을 내가 직접 전부 버려 둬야 한다.** 13종이 모두 내 바닥에 깔린 뒤 내 순이 오면 버튼이 켜지고, 발동하면 그 13장을 손으로 끌어올려 국사무쌍 13면 대기가 된다.",
+    "(상시) **조건: 국사무쌍 13종(1m9m·1p9p·1s9s·동남서북·백발중)을 내가 직접 전부 버려 둬야 한다.** 13종이 모두 내 바닥에 깔린 뒤 내 순이 오면 버튼이 켜지고, 발동하면 그 13장을 손으로 끌어올려 국사무쌍 텐파이가 된 뒤 **다음 순에 반드시 화료한다**.",
   detail:
-    "(동풍전 1회 · 반장전 2회)\n\n**증강이 요구패를 깔아 주지 않는다 — 내가 손수 버려서 모아야 한다.** 조건은 내 바닥(버림패 더미)에 국사무쌍의 요구패 13종(1m·9m·1p·9p·1s·9s·동·남·서·북·백·발·중)이 한 장씩 전부 이미 쌓여 있는 것이고, 그러려면 그 13종을 국 안에서 내가 전부 버려 놓아야 한다. 그 전까지는 액티브 버튼이 아예 나타나지 않는다. 남의 바닥은 세지 않는다.\n\n조건이 갖춰지고 내 순(turn.act)이 되면 버튼이 켜진다. 발동하면 바닥의 그 13장이 손으로 올라오고 지금 손패 13장이 그 자리로 내려가 손패 장수는 그대로 유지된다. 배패 상태(손패 13장)에서 발동하면 순수 국사무쌍 13면 대기 텐파이가 되어 요구패 13종 어느 것으로도 화료할 수 있고, 막 쯔모한 14장 상태라면 뽑은 한 장이 남는다. 리치 중에는 손이 잠겨 발동할 수 없으며, 발동은 전원에게 공개된다.\n\n⚠ 바닥에 깔아 둔 요구패가 후리텐으로 남아, 실제로는 론이 서지 않고 쯔모로만 화료하게 되는 경우가 대부분이다.",
+    "(상시 · 횟수 제한 없음)\n\n**증강이 요구패를 깔아 주지 않는다 — 내가 손수 버려서 모아야 한다.** 조건은 내 바닥(버림패 더미)에 국사무쌍의 요구패 13종(1m·9m·1p·9p·1s·9s·동·남·서·북·백·발·중)이 한 장씩 전부 이미 쌓여 있는 것이고, 그러려면 그 13종을 국 안에서 내가 전부 버려 놓아야 한다. 그 전까지는 액티브 버튼이 아예 나타나지 않는다. 남의 바닥은 세지 않는다.\n\n조건이 갖춰지고 내 순(turn.act)이 되면 버튼이 켜진다. 발동하면 바닥의 그 13장이 손으로 올라오고 지금 손패 13장이 그 자리로 내려가 손패 장수는 그대로 유지된다. 배패 상태(손패 13장)에서 발동하면 순수 국사무쌍 13면 대기 텐파이가 되고, 막 쯔모한 14장 상태라면 뽑은 한 장이 남으므로 그 한 장을 버려 13면 대기를 세운다.\n\n**그리고 다음 순, 내 쯔모가 반드시 오름패로 온다.** 거신병이 요구패를 불러오므로 그 순에 국사무쌍 쯔모 화료가 성립한다(쯔모 선언은 평소대로 내가 한다). 되가져온 요구패는 후리텐도 풀리므로 그 전에 상대가 요구패를 버리면 론으로 먼저 끝낼 수도 있다.\n\n횟수 제한은 없지만, 발동과 동시에 바닥의 요구패 13장이 손으로 올라가 조건이 스스로 무너진다 — 다시 쓰려면 13종을 처음부터 다시 버려 쌓아야 한다. 리치 중에는 손이 잠겨 발동할 수 없으며, 발동은 전원에게 공개된다.",
   install(ctx) {
     const { engine, holder } = ctx;
-
-    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
-    publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
-      total: matchUses(state),
-    }));
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(giantGodAction);
@@ -214,13 +225,47 @@ export const giantGod: AugmentDef = defineAugment({
           round: { ...state.round, byPlayer },
           augmentData: {
             ...state.augmentData,
-            [usesKey(p.holder)]: counterOf(state, usesKey(p.holder)) + 1,
+            // 다음 정상 쯔모를 오름패로 — "다음 순에 반드시 화료한다"
+            [tsumoKey(state, p.holder)]: true,
             // 전원 공개 — 거신병 각성
             [roundViewKey("*", `${ID}:${p.holder}`)]: true,
           },
         };
       });
     }
+
+    /**
+     * 각성 다음 순 — 정상 쯔모 한 장을 오름패로 물질화한다.
+     *
+     * 이미 뽑힌 실물 패의 kind만 바꾼다(소환과 같은 방식) — 난수를 소비하지 않고
+     * 손패 장수도 그대로다. 오름패는 **지금 손으로 화료가 되는 요구패**만 고르므로,
+     * 13면 대기든 요구패 한 장을 흘린 뒤든 그 순의 쯔모 화료가 성립한다.
+     */
+    ctx.reaction(TILE_DRAWN, (event, rc) => {
+      const p = event.payload as TileDrawnPayload;
+      if (p.player !== holder) return;
+      if (p.rinshan) return; // 영상패(깡 후 쯔모)가 아니라 정상 쯔모 한 장이다
+      if (!flagOf(rc.state, tsumoKey(rc.state, holder))) return;
+      // 예약은 한 번뿐 — 부를 수 있는 패가 없어도 여기서 비운다
+      rc.emit(augmentDataSet(tsumoKey(rc.state, holder), null));
+      // 쯔모패를 뺀 손패로 화료가 되는 요구패
+      const hand13 = handIdsOf(rc.state, holder)
+        .filter((id) => id !== p.tileId)
+        .map((id) => kindOf(rc.state, id));
+      const wins = winningKinds(
+        hand13,
+        meldCountOf(rc.state, holder),
+        KOKUSHI_KINDS,
+        scoringOptionsOf(rc.state, rc.rules, holder),
+      );
+      const target = wins[0];
+      // 스스로 요구패를 버려 손을 무너뜨렸다면 부를 패가 없다 — 아무 일도 하지 않는다
+      if (target === undefined) return;
+      if (kindKey(kindOf(rc.state, p.tileId)) === kindKey(target)) return; // 이미 오름패다
+      rc.emit(
+        tileKindChanged([{ tileId: p.tileId, kind: target, attrs: { conjured: true } }]),
+      );
+    });
 
     ctx.holderTurnOptions((state) =>
       canAwaken(state, holder) ? [{ type: ACTION, payload: {} }] : [],

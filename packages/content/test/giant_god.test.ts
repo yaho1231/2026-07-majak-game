@@ -5,7 +5,8 @@
  *  1. 내 바닥에 국사무쌍 13종이 다 깔리지 않으면 버튼이 켜지지 않는다.
  *  2. 13종이 전부 깔리면 액티브가 제시된다.
  *  3. 발동하면 그 13장이 손으로 올라오고 손패는 그대로 13장 — 국사 13면 대기가 된다.
- *  4. 게임당 1회 — 발동 후에는 다시 제시되지 않는다.
+ *  4. 상시(횟수 제한 없음) — 다만 발동으로 바닥이 비어 조건이 스스로 무너진다.
+ *  5. 발동 다음 순의 정상 쯔모가 오름패로 와서 화료가 보장된다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -75,6 +76,10 @@ function scene(pondSpec: string): GameState {
 /** 국사 13종 전부 (z1~4=동남서북, z5~7=백발중) */
 const FULL_POND = "19m19p19s1234z567z";
 
+/** "다음 쯔모를 오름패로" 예약 키 (국 스코프) */
+const tsumoKeyOf = (st: GameState): string =>
+  `giant_god:tsumo:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0`;
+
 function startWithGiantGod(state: GameState) {
   const game = createStandardGameFromState(state);
   installAugment(game.engine, giantGod, "p0", { yaku: game.yaku });
@@ -118,7 +123,7 @@ describe("마작의 거신병 (giant_god)", () => {
     expect(handKeys).toHaveLength(13); // 중복 없음 = 순수 국사
   });
 
-  it("게임당 1회 — 발동 후에는 다시 제시되지 않는다", () => {
+  it("상시지만 — 발동으로 바닥이 비어 조건이 스스로 무너진다", () => {
     const { flow, prompt } = startWithGiantGod(scene(FULL_POND));
     const status = flow.submit("p0", godOptions(prompt)[0] as {
       type: string;
@@ -128,16 +133,65 @@ describe("마작의 거신병 (giant_god)", () => {
     expect(status.kind).toBe("awaiting");
     if (status.kind !== "awaiting") return;
     const next = status.prompts.find((p) => p.player === "p0");
+    // 요구패 13장이 손으로 올라갔으니 바닥에는 더 이상 13종이 없다 → 버튼이 꺼진다
     expect(godOptions(next as { options: { type: string }[] })).toHaveLength(0);
   });
 
-  it("소진 플래그가 서 있으면 제시되지 않는다", () => {
+  it("횟수 카운터는 없다 — 예전 소진 플래그가 있어도 그대로 제시된다", () => {
     const state = scene(FULL_POND);
     const used: GameState = {
       ...state,
       augmentData: { ...state.augmentData, "giant_god:uses:p0": 2 },
     };
     const { prompt } = startWithGiantGod(used);
-    expect(godOptions(prompt)).toHaveLength(0);
+    expect(godOptions(prompt)).toHaveLength(1);
+  });
+
+  it("발동하면 '다음 쯔모를 오름패로' 예약이 선다", () => {
+    const { game, flow, prompt } = startWithGiantGod(scene(FULL_POND));
+    flow.submit("p0", godOptions(prompt)[0] as { type: string; payload: unknown });
+    expect(game.engine.state.augmentData[tsumoKeyOf(game.engine.state)]).toBe(true);
+  });
+
+  it("다음 정상 쯔모가 오름패로 와서 국사무쌍 화료가 선다", () => {
+    // p0는 이미 국사 13면 대기(순수 요구패 13장). 예약만 세워 두고 p3의 버림 뒤
+    // 자연 쯔모까지 몬다 — 뽑히는 실물 패가 무엇이든 오름패로 물질화되어야 한다.
+    const base = craft({
+      hands: { p0: "19m19p19s1234567z", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 3,
+      drawnLastFor: "p3",
+    });
+    const primed: GameState = {
+      ...withAugments(base, "p0", ["giant_god"]),
+      augmentData: { [tsumoKeyOf(base)]: true },
+    };
+    const game = createStandardGameFromState(primed);
+    installAugment(game.engine, giantGod, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    let status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+
+    // p3가 쯔모패를 버리고, 리액션은 전부 패스 → 턴이 p0에게 넘어가 자연 쯔모
+    const p3drawn = game.engine.state.round.lastDrawnTile as TileId;
+    status = flow.submit("p3", { type: "discard", payload: { tileId: p3drawn } });
+    for (let i = 0; i < 8 && status.kind === "awaiting"; i++) {
+      const pr = status.prompts[0];
+      if (pr === undefined) break;
+      if (!pr.options.some((o) => o.type === "pass")) break; // p0의 턴 프롬프트 도달
+      status = flow.submit(pr.player, { type: "pass", payload: {} });
+    }
+
+    const st = game.engine.state;
+    expect(st.round.turnSeat).toBe(0);
+    const drawn = st.round.lastDrawnTile as TileId;
+    // 뽑은 패가 요구패(국사 13종 중 하나)로 물질화됐다
+    expect(KOKUSHI_KEYS.has(kindKey(kindOf(st, drawn)))).toBe(true);
+    // 예약은 한 번으로 소비된다
+    expect(st.augmentData[tsumoKeyOf(st)]).toBeNull();
+    // 그 손으로 실제 화료(쯔모)가 성립한다
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const mine = status.prompts.find((p) => p.player === "p0");
+    expect(mine?.options.some((o) => o.type === "win")).toBe(true);
   });
 });
