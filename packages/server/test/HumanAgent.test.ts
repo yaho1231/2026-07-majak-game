@@ -294,6 +294,8 @@ describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진
     expect((await agent.decide(prompt("p0", "pass", "pon"))).type).toBe("pass");
   });
 
+  // 자동 선택은 **랜덤**이다(armDraft) — 자리를 비운 사람이 매번 맨 왼쪽 카드를 받아
+  // 가지 않도록 2026-08-12에 바뀌었다. 그래서 어느 하나가 뽑혔는지만 본다.
   it("끊긴 좌석의 드래프트도 유예 뒤 자동 선택된다", async () => {
     const sock = new FakeSocket();
     sock.readyState = 3;
@@ -303,7 +305,7 @@ describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진
       .decideDraft("gameStart", [{ id: "a" }, { id: "b" }] as never)
       .then((id) => (picked = id));
     await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS + 100);
-    expect(picked).toBe("a");
+    expect(["a", "b"]).toContain(picked);
   });
 });
 

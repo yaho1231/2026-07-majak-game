@@ -305,9 +305,15 @@ describe("바람의 계보 — 바람 슌쯔에 낀 역패 (2026-08-12 상향)",
     expect(ids).not.toContain("wind_lineage_prevalent");
   });
 
-  it("백발중(삼원 슌쯔)에는 붙지 않는다 — 바람 슌쯔 전용이다", () => {
+  it("백발중(삼원 슌쯔)은 1판이다 — 바람 쪽 역은 붙지 않는다", () => {
     const ids = winWith("5z6z7z123m456m789m99p");
+    // 삼원패 셋이 모두 역패지만 장수를 세지 않고 몸통 하나에 1판이다
+    expect(ids.filter((id) => id === "wind_lineage_dragon")).toHaveLength(1);
     expect(ids).not.toContain("wind_lineage_seat");
     expect(ids).not.toContain("wind_lineage_prevalent");
+  });
+
+  it("바람 슌쯔에는 삼원 역이 붙지 않는다 (대조군)", () => {
+    expect(winWith("1z2z3z123m456m789m99p")).not.toContain("wind_lineage_dragon");
   });
 });
