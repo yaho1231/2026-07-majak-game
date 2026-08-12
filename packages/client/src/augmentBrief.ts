@@ -172,7 +172,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   tile_dyeing: { use: "게임 5회", text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다. 리치 중에도 사용 가능하다." },
   tile_split: { use: "매 국 1회", text: "손패의 수패 1장을 합이 같은 두 장으로 쪼갠다(9통 → 4통+5통)." },
   time_stop: { use: "매 국 1회", text: "그 국에서 내 차례를 한 번 더 진행한다." },
-  triple_peek: { use: "매 국 1회", text: "내 다음 쯔모 세 장이 무엇인지 나에게만 보인다." },
+  triple_peek: { use: "2국에 1회", text: "내 다음 쯔모 세 장이 무엇인지 나에게만 보인다." },
   true_dragon: { use: "상시", text: "배패를 16장 받고 몸통 5개로 화료한다. 화료 시 +3판." },
   // 문턱은 고정 50000이 아니다 — 증강이 얹어 준 점수만큼 함께 올라간다(unification.ts).
   unification: { use: "상시", text: "목표 점수에 닿는 순간 즉시 우승. 목표는 증강이 준 점수만큼 올라간다." },

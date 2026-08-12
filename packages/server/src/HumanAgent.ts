@@ -573,7 +573,15 @@ export class HumanAgent implements PlayerAgent {
     });
   }
 
-  /** 드래프트 자동 선택 타이머를 (다시) 건다. 최초 제안과 재접속 복원이 공유한다. */
+  /**
+   * 드래프트 자동 선택 타이머를 (다시) 건다. 최초 제안과 재접속 복원이 공유한다.
+   *
+   * 시간이 다 되면 **후보 중 하나를 랜덤으로** 고른다. 예전에는 언제나 `choices[0]`
+   * ─ 화면 맨 왼쪽 카드 ─ 였는데, 자리를 비운 사람이 매번 같은 자리 증강을 받아
+   * 가는 것은 결정이라기보다 사고였다(2026-08-12 사용자 지시: 선택창에도 "시간이
+   * 다 되면 랜덤으로 결정된다"고 적는다 — 화면 문구와 실제 동작을 맞춘다).
+   * 재현성이 필요한 경로가 아니다(게임 PRNG가 아니라 사람의 부재를 메우는 자리다).
+   */
   private armDraft(choices: AugmentDef[], timeoutMs: number): void {
     this.draftDeadlineAt = Date.now() + timeoutMs;
     this.draftTimeout = setTimeout(() => {
@@ -582,7 +590,8 @@ export class HumanAgent implements PlayerAgent {
       this.pendingDraftChoices = null;
       this.pendingDraftStage = null;
       this.draftTimeout = null;
-      resolve?.(choices[0]!.id);
+      const pick = choices[Math.floor(Math.random() * choices.length)] ?? choices[0]!;
+      resolve?.(pick.id);
     }, timeoutMs);
   }
 

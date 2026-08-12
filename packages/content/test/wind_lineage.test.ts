@@ -273,3 +273,41 @@ describe("바람의 계보 — 동남서북 깡 ×4 화료의 역", () => {
     expect(ids).not.toContain("suuankou");
   });
 });
+
+describe("바람의 계보 — 바람 슌쯔에 낀 역패 (2026-08-12 상향)", () => {
+  /**
+   * 동남서를 몸통으로 쓴 손. 동1국·동가면 장풍(동)과 자풍(동)이 모두 그 슌쯔 안에 있다.
+   * 표준 역패는 커쯔만 보므로, 이 판수는 계보가 등록한 두 역이 만든다.
+   */
+  function winWith(handSpec: string): string[] {
+    const base = craft({
+      hands: { p0: handSpec, p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const game = createStandardGameFromState(withAug(base, "p0", ["wind_lineage"]));
+    installAugment(game.engine, windLineage, "p0", { yaku: game.yaku });
+    const st = game.engine.state;
+    const winTile = (st.zones["hand:p0"]?.tileIds ?? []).at(-1) as TileId;
+    const ctx = buildWinContext(st, "p0", "tsumo", winTile, { rules: game.engine.rules });
+    return (evaluateWin(ctx, game.yaku)?.yaku ?? []).map((y) => y.id);
+  }
+
+  it("동가·동장의 동남서는 자풍·장풍 두 판이 붙는다", () => {
+    const ids = winWith("1z2z3z123m456m789m99p");
+    expect(ids).toContain("wind_lineage_seat");
+    expect(ids).toContain("wind_lineage_prevalent");
+  });
+
+  it("남서북에는 붙지 않는다 (동가·동장이라 동이 없다)", () => {
+    const ids = winWith("2z3z4z123m456m789m99p");
+    expect(ids).not.toContain("wind_lineage_seat");
+    expect(ids).not.toContain("wind_lineage_prevalent");
+  });
+
+  it("백발중(삼원 슌쯔)에는 붙지 않는다 — 바람 슌쯔 전용이다", () => {
+    const ids = winWith("5z6z7z123m456m789m99p");
+    expect(ids).not.toContain("wind_lineage_seat");
+    expect(ids).not.toContain("wind_lineage_prevalent");
+  });
+});

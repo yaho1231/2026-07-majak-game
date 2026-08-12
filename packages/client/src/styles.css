@@ -3324,31 +3324,91 @@ button {
 }
 
 /* 드래프트 카운트다운 */
+/* 증강 선택 타이머 — 카드 넉 장이 화면을 채우는 창이라, 예전의 얇은 알약은 눈에 아예
+   안 들어왔다. 금빛 후광을 상시로 두르고 숫자를 키워 "지금 재고 있다"를 먼저 읽힌다.
+   10초 아래(=draft-timer-urgent)로 내려가면 붉게 갈아입고 크게 뛴다 — 그때부터는
+   시간이 다 되면 랜덤으로 결정되기 때문이다(2026-08-12 사용자 지시). */
 .draft-timer {
-  margin: 0 auto 22px;
+  margin: 0 auto 6px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 16px;
+  gap: 8px;
+  padding: 7px 22px;
   border-radius: 999px;
   background: rgba(11, 19, 16, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #ece4d2;
-  font-size: 15px;
+  border: 1px solid rgba(240, 200, 106, 0.55);
+  box-shadow:
+    0 0 14px rgba(240, 200, 106, 0.35),
+    inset 0 0 12px rgba(240, 200, 106, 0.12);
+  color: #f4ecda;
+  font-size: 16px;
+  font-weight: 700;
   letter-spacing: 0.5px;
+  animation: draft-timer-glow 1.8s ease-in-out infinite;
 }
 .draft-timer strong {
-  font-size: 19px;
+  font-size: 24px;
   color: #f0c86a;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(240, 200, 106, 0.7);
 }
 .draft-timer-urgent {
   border-color: #f08a7c;
   color: #fcd4cd;
-  animation: turn-pulse 0.9s ease-in-out infinite;
+  box-shadow:
+    0 0 22px rgba(240, 138, 124, 0.6),
+    inset 0 0 14px rgba(240, 138, 124, 0.2);
+  animation: draft-timer-alarm 0.7s ease-in-out infinite;
 }
 .draft-timer-urgent strong {
-  color: #f08a7c;
+  color: #ff9c8d;
+  text-shadow: 0 0 12px rgba(240, 138, 124, 0.9);
+}
+@keyframes draft-timer-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 12px rgba(240, 200, 106, 0.28),
+      inset 0 0 10px rgba(240, 200, 106, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 0 24px rgba(240, 200, 106, 0.55),
+      inset 0 0 16px rgba(240, 200, 106, 0.18);
+  }
+}
+@keyframes draft-timer-alarm {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 16px rgba(240, 138, 124, 0.45),
+      inset 0 0 12px rgba(240, 138, 124, 0.16);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow:
+      0 0 32px rgba(240, 138, 124, 0.8),
+      inset 0 0 18px rgba(240, 138, 124, 0.28);
+  }
+}
+/* "시간이 다 되면 랜덤" — 타이머가 왜 위험한지 한 줄로 붙는다. 자동 선택은 맨 왼쪽
+   카드가 아니라 랜덤이다(HumanAgent.armDraft). */
+.draft-timer-note {
+  margin: 0 auto 18px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: rgba(226, 199, 147, 0.75);
+}
+.draft-timer-note-urgent {
+  color: #ffb3a6;
+  font-weight: 700;
+  font-size: 13px;
+}
+/* 멀미·광과민 대비 — 흔들지 않고 색만 남긴다 */
+@media (prefers-reduced-motion: reduce) {
+  .draft-timer,
+  .draft-timer-urgent {
+    animation: none;
+  }
 }
 
 /* 내가 지금까지 고른 증강 띠 — 카드 위에 한 줄. 계열 색(--fx-color)을 그대로 쓴다. */
@@ -6912,7 +6972,8 @@ button {
   /* 드래프트: 카드 3장을 가로로 못 놓으니 세로로 쌓고 화면 폭에 맞춘다 */
   .draft-title { letter-spacing: 6px; text-indent: 6px; }
   .draft-stage { margin: 6px 0 10px; font-size: 13px; }
-  .draft-timer { margin-bottom: 12px; }
+  .draft-timer { margin-bottom: 4px; }
+  .draft-timer-note { margin-bottom: 10px; }
   .draft-cards {
     flex-direction: column;
     align-items: center;

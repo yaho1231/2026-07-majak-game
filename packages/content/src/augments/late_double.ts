@@ -22,12 +22,34 @@
  */
 
 import { TILE_DISCARDED, defineAugment } from "@majak/core";
-import type { AugmentDef, TileDiscardedPayload } from "@majak/core";
+import type {
+  AugmentDef,
+  GameState,
+  PlayerId,
+  TileDiscardedPayload,
+} from "@majak/core";
 import { addHanBonus } from "../util.js";
 
 const ID = "late_double";
 /** 이 순(turnCount)까지의 리치는 더블로 승격된다 */
 const DOUBLE_UNTIL_TURN = 7;
+
+/**
+ * **이 사람의 지금 리치를 뒤늦은 출진이 더블로 밀어 올리는가.**
+ *
+ * 이중 선언(riichi_upgrade)이 트리플리치를 판정할 때 쓴다. 이중 선언은 자기 손으로
+ * 모든 리치를 더블로 만들기 때문에, 결과 플래그(`riichi.double`)만 보면 "나 말고
+ * 다른 이유로도 더블인가"를 영영 알 수 없다 — 그래서 표준 더블 조건(첫 버림)만
+ * 트리플로 쳤고, 뒤늦은 출진으로 만든 더블리치는 트리플이 되지 못했다
+ * (2026-08-12 사용자 보고). 승격의 근거는 이 파일이 쥐고 있으므로 판정도 여기서 판다.
+ *
+ * 상태만 보는 순수 함수다 — 증강 보유 여부와 순(turnCount)만 본다.
+ */
+export function lateDoublePromotes(state: GameState, player: PlayerId): boolean {
+  const p = state.players.find((x) => x.id === player);
+  if (p === undefined || !p.augments.includes(ID)) return false;
+  return state.round.turnCount <= DOUBLE_UNTIL_TURN;
+}
 
 export const lateDouble: AugmentDef = defineAugment({
   id: ID,

@@ -1,7 +1,7 @@
 /**
  * 삼세 예지 (triple_peek, prism) — "내 앞에 놓일 세 장을 미리 읽는다".
  *
- * **매 국 1회**, 자기 턴(turn.act)에 선언하면 그 국이 끝날 때까지 **내 다음 쯔모 세 장의
+ * **2국에 1회**, 자기 턴(turn.act)에 선언하면 그 국이 끝날 때까지 **내 다음 쯔모 세 장의
  * 종류**가 나에게만 계속 보인다. 실제 타일이 아니라 '종류(kind)'만 — 패산은 뒷면이라
  * 클라이언트가 tileId를 그릴 수 없으므로, kindKey 문자열 세 개를 보유자 전용
  * 채널에 실어 미니 패로 렌더한다. 예지(foresight)가 '한 바퀴(네 자리)'를 재배열해
@@ -14,7 +14,7 @@
  * 주는 셈이었다. 이제 패산·차례가 움직일 때마다(쯔모·버림·후로·깡) 다시 계산해 올린다.
  *
  * 설계 결정:
- * - 액션 `triple_peek_use {}` 하나. turn.act·자기 턴·이번 국 미사용·패산이 충분할 때만.
+ * - 액션 `triple_peek_use {}` 하나. turn.act·자기 턴·재사용 대기 없음·패산이 충분할 때만.
  * - 다음 쯔모 순서는 패산(state.zones[WALL].tileIds)을 index 0=바로 다음 뽑을 패로 보고,
  *   **다음에 뽑을 자리**부터 turn.direction 방향으로 돌리며 정한다. 그 "다음 자리"는
  *   페이즈가 가른다 — `turn.draw`면 아직 안 뽑은 현재 자리 자신이고, 그 밖(act·reaction)
@@ -24,9 +24,10 @@
  *   안 되면 그만큼만 실린다(국 끝물에는 두 장·한 장으로 줄어든다).
  * - 무엇을 봤는지는 **보유자만** 안다(viewKey(holder,...)). 발동 사실 자체는
  *   전원 공개 마커로 알린다(상대는 예지가 일어났다는 것만 안다, 내용은 모른다).
- * - 사용 플래그는 **국 단위**다(`triple_peek:uses:<roundKey>:<holder>`) — 2026-08-01
- *   사용자 버프로 "동풍전 1·반장전 2회(매치 전체)"에서 **매 국 1회**가 됐다.
- *   국이 바뀌면 키가 달라져 자동으로 다시 채워진다(별도 리셋 불필요).
+ * - 사용 제한은 **2국에 1회**다(2026-08-12 사용자 하향 — 그전에는 매 국 1회였다).
+ *   "N국에 1회" 공용 배관(`trackRoundSeq`/`cooldownReady`/`cooldownUse`)을 그대로 쓴다 —
+ *   roundKey("장-국-본장") 산술로는 국 수를 셀 수 없어(연장은 본장만 오른다) 국이
+ *   시작될 때마다 +1 하는 순번을 따로 센다. 자세한 이유는 util.ts의 `roundSeqKey` 주석.
  */
 
 import {
@@ -51,11 +52,12 @@ import type {
   RuleRegistry,
 } from "@majak/core";
 import {
-  counterOf,
+  cooldownReady,
+  cooldownUse,
   flagOf,
-  publishUsesLeft,
   roundKey,
   roundViewKey,
+  trackRoundSeq,
 } from "../util.js";
 import { plan } from "./botPlan.js";
 
@@ -64,13 +66,11 @@ const ACTION = "triple_peek_use";
 /** 미리 읽는 다음 쯔모 장수 */
 const PEEK = 3;
 
-/** 국당 사용 횟수 (매 국 1회 — roundKey가 섞여 국이 바뀌면 자동으로 다시 찬다) */
-const USES_PER_ROUND = 1;
-const usesKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:uses:${roundKey(state)}:${holder}`;
-/** 이번 국에 아직 사용 횟수가 남았는가 */
+/** 몇 국에 한 번 쓸 수 있는가 — **2국에 1회**(2026-08-12 사용자 하향) */
+const COOLDOWN_ROUNDS = 2;
+/** 지금 쓸 수 있는가 (마지막 사용에서 2국이 지났는가) */
 const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
-  counterOf(state, usesKey(state, holder)) < USES_PER_ROUND;
+  cooldownReady(state, ID, holder, COOLDOWN_ROUNDS);
 /** 예지 결과(kindKey 최대 3개)를 담는 보유자 전용 채널 — 판이 움직일 때마다 다시 쓰인다 */
 const resultKey = (holder: PlayerId): string => roundViewKey(holder, ID);
 /**
@@ -141,7 +141,7 @@ const peekAction: ActionDef<Record<string, never>> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (!hasUsesLeft(state, req.player)) return "no uses left this round";
+    if (!hasUsesLeft(state, req.player)) return "on cooldown (once per 2 rounds)";
     // 다음 세 쯔모를 온전히 읽을 수 없으면(패산이 얕음) 발동 불가
     if (peekMyDrawKinds(state, rules, req.player).length < PEEK) {
       return "not enough wall tiles";
@@ -151,10 +151,8 @@ const peekAction: ActionDef<Record<string, never>> = {
   toEvents: (req, { state, rules }) => {
     const kinds = peekMyDrawKinds(state, rules, req.player);
     return [
-      augmentDataSet(
-        usesKey(state, req.player),
-        counterOf(state, usesKey(state, req.player)) + 1,
-      ),
+      // 쿨다운 기준점 + 잔량 표시 (공용 배관)
+      ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
       // 이번 국 동안 실시간 갱신을 켠다
       augmentDataSet(activeKey(state, req.player), true),
       // 내용(kind 3개)은 보유자만 본다 — 이후 판이 움직일 때마다 다시 계산해 덮어쓴다
@@ -175,9 +173,9 @@ export const triplePeek: AugmentDef = defineAugment({
   complexity: 1,
   name: "삼세 예지",
   description:
-    "(매 국 1회) 자기 순에 선언하면 그 국이 끝날 때까지 내 다음 쯔모 세 장의 종류가 나에게만 실시간으로 보인다. 후로로 차례가 밀려도 그때그때 다시 계산돼 항상 맞는다.",
+    "(2국에 1회) 자기 순에 선언하면 그 국이 끝날 때까지 내 다음 쯔모 세 장의 종류가 나에게만 실시간으로 보인다. 후로로 차례가 밀려도 그때그때 다시 계산돼 항상 맞는다.",
   detail:
-    "(매 국 1회) 자기 순에 선언하면 앞으로 내게 배정될 다음 쯔모 세 장의 '종류'가 나에게만 공개된다 — 실제 패가 아니라 무엇이 올지 그 종류만 안다. 한 번 켜면 **그 국이 끝날 때까지 계속** 보이고, 쯔모·버림·후로로 판이 움직일 때마다 **지금 기준으로 다시 계산**된다. 내가 한 장 뽑으면 앞의 한 장이 빠지고 뒤에서 새 한 장이 들어오며, 누군가 퐁·치·깡을 해 쯔모 차례가 밀려도 그 자리에서 배정을 다시 잡아 어긋나지 않는다. 국 끝물에 내 몫의 쯔모가 세 장이 안 남으면 남은 만큼만 보인다. 무엇을 봤는지는 나만 알고 상대에게는 발동 사실만 공개되며, 사용 횟수는 국이 바뀌면 다시 채워진다.\n\n선언 시점에 내 몫의 쯔모가 3장 남지 않았으면 발동할 수 없다.",
+    "(2국에 1회) 자기 순에 선언하면 앞으로 내게 배정될 다음 쯔모 세 장의 '종류'가 나에게만 공개된다 — 실제 패가 아니라 무엇이 올지 그 종류만 안다. 한 번 켜면 **그 국이 끝날 때까지 계속** 보이고, 쯔모·버림·후로로 판이 움직일 때마다 **지금 기준으로 다시 계산**된다. 내가 한 장 뽑으면 앞의 한 장이 빠지고 뒤에서 새 한 장이 들어오며, 누군가 퐁·치·깡을 해 쯔모 차례가 밀려도 그 자리에서 배정을 다시 잡아 어긋나지 않는다. 국 끝물에 내 몫의 쯔모가 세 장이 안 남으면 남은 만큼만 보인다. 무엇을 봤는지는 나만 알고 상대에게는 발동 사실만 공개된다. 한 번 쓰면 **다음 국은 건너뛰고** 그 다음 국에 다시 채워진다.\n\n선언 시점에 내 몫의 쯔모가 3장 남지 않았으면 발동할 수 없다.",
   // 봇: 자해 위험이 전혀 없다 — 옵션이 뜨면 곧바로 선언한다.
   bot: plan({
     intent: "inform",
@@ -190,15 +188,12 @@ export const triplePeek: AugmentDef = defineAugment({
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) engine.actions.register(peekAction);
 
-    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
-    publishUsesLeft(
-      ctx,
-      (state) => ({
-        left: Math.max(0, USES_PER_ROUND - counterOf(state, usesKey(state, holder))),
-        total: USES_PER_ROUND,
-      }),
-      "round",
-    );
+    /*
+     * 국 진행 순번 + 쿨다운 잔량 표시를 국 경계마다 갱신한다 (공용 배관).
+     * 잔량은 이름표 pill이 "🕐N국"으로 직접 그린다 — 횟수형(`publishUsesLeft`)의
+     * "n회"는 2국에 1회짜리에는 맞지 않는다("이번 국 1회를 모두 썼다"로 읽힌다).
+     */
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     /**
      * **실시간 갱신** — 판이 움직일 때마다 "지금 기준 내 다음 세 쯔모"를 다시 올린다.
