@@ -19,6 +19,8 @@ import { unlink } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import { RoomManager, abuseKeyOf } from "./RoomManager.js";
+import { headerValue, resolveClientOrigin } from "./trustProxy.js";
+import type { ClientOrigin } from "./trustProxy.js";
 import { StatsStore } from "./StatsStore.js";
 import { AugmentStatsStore } from "./AugmentStatsStore.js";
 import { SiteDb } from "./SiteDb.js";
@@ -334,54 +336,33 @@ httpServer.on("clientError", (_err, socket) => {
 
 // ─────────────────────────── WebSocket ───────────────────────────
 
-/** 소켓 상대가 루프백(=같은 머신의 리버스 프록시)인지. */
-function isLoopback(ip: string): boolean {
-  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-}
-
-/** 헤더를 단일 문자열로 정규화 (중복 헤더는 첫 값만 취한다). */
-function headerValue(raw: string | string[] | undefined): string | undefined {
-  if (raw === undefined) return undefined;
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  const trimmed = (v ?? "").trim();
-  return trimmed === "" ? undefined : trimmed;
-}
+/** 신뢰 프록시 헤더가 빠진 채 들어온 연결을 알린 마지막 시각 — 로그 폭주 방지용. */
+let missingProxyHeaderWarnedAt = 0;
+const PROXY_WARN_INTERVAL_MS = 60_000;
 
 /**
- * 실제 클라이언트 IP를 판정한다 — IP 기반 방어 전부(연결 상한·토큰버킷·인증
- * 무차별대입 차단)가 이 값을 키로 쓰므로 정확도가 곧 보안이다.
+ * 실제 클라이언트 IP와 신뢰 등급을 판정한다 (판정 규칙은 `trustProxy.ts`가 단일 진실).
  *
- * 스푸핑 방지: 프록시 헤더는 **소켓 상대가 루프백일 때만** 신뢰한다. 외부에서
- * 포트에 직접 붙어 CF-Connecting-IP를 위조해도, 그 연결의 소켓 주소는 루프백이
- * 아니므로 헤더가 무시되고 진짜 원격 주소가 쓰인다.
+ * 여기서는 그 결과에 **로그 부작용만** 얹는다: `TRUST_PROXY`를 켜 두었는데 그 헤더가
+ * 없는 연결은 프록시 설정이 깨졌다는 유일한 신호이므로 반드시 알려야 하는데,
+ * 매 연결마다 찍으면 로그가 잠기므로 1분에 한 줄로 접는다.
  */
-function clientIpOf(req: IncomingMessage): { ip: string; local: boolean } {
-  const socketIp = req.socket.remoteAddress ?? "unknown";
-  const socketLocal = isLoopback(socketIp);
-  if (TRUST_PROXY === "" || !socketLocal) return { ip: socketIp, local: socketLocal };
-
-  // 헤더에서 복원한 IP는 **절대 면제 대상이 아니다**(local: false).
-  //
-  // ⚠ 여기가 예전에 조용히 뚫려 있던 자리다: 복원된 값이 `127.0.0.1`처럼 보이기만
-  // 하면 RoomManager가 그 연결을 "로컬"로 보고 연결 상한·메시지 토큰버킷·인증
-  // 무차별대입 차단·방 생성 제한을 **전부** 꺼 줬다. 프록시가 헤더를 덮어쓴다는
-  // 전제 하나가 깨지면(설정 실수, xff 모드, 터널 우회) 그걸 아는 사람 하나가
-  // 서버의 모든 남용 방어 바깥에 서게 된다. 이제 면제는 "소켓 상대가 진짜
-  // 루프백이고 프록시 헤더를 쓰지 않았을 때"만이다.
-  if (TRUST_PROXY === "cloudflare") {
-    const cf = headerValue(req.headers["cf-connecting-ip"]);
-    // Cloudflare가 항상 덮어써 주는 헤더 — 클라이언트가 위조해도 엣지에서 교체된다.
-    return cf !== undefined ? { ip: cf, local: false } : { ip: socketIp, local: true };
+function clientIpOf(req: IncomingMessage): ClientOrigin {
+  const who = resolveClientOrigin(
+    { socketIp: req.socket.remoteAddress, headers: req.headers },
+    TRUST_PROXY,
+  );
+  if (who.missingHeader !== null) {
+    const now = Date.now();
+    if (now - missingProxyHeaderWarnedAt >= PROXY_WARN_INTERVAL_MS) {
+      missingProxyHeaderWarnedAt = now;
+      console.warn(
+        `[proxy] TRUST_PROXY=${TRUST_PROXY} 인데 ${who.missingHeader} 헤더가 없는 연결이 ` +
+          `들어왔습니다 — 프록시 설정을 확인하세요. 이 연결은 소켓 주소로 제한을 겁니다(면제 없음).`,
+      );
+    }
   }
-  if (TRUST_PROXY === "xff") {
-    // 마지막 홉 = 바로 앞 프록시가 붙인 값. 앞쪽 항목은 클라이언트가 위조할 수 있다.
-    const xff = headerValue(req.headers["x-forwarded-for"]);
-    if (xff === undefined) return { ip: socketIp, local: true };
-    const hops = xff.split(",").map((s) => s.trim()).filter((s) => s !== "");
-    const last = hops[hops.length - 1];
-    return last !== undefined ? { ip: last, local: false } : { ip: socketIp, local: true };
-  }
-  return { ip: socketIp, local: socketLocal };
+  return who;
 }
 
 /**
@@ -433,7 +414,7 @@ const alive = new WeakMap<object, boolean>();
 httpServer.on("upgrade", (req, socket, head) => {
   // 연결 수립 속도 제한 — 101을 내주기 전에 자른다. 진짜 루프백(로컬 개발)은 면제.
   const who = clientIpOf(req);
-  if (!who.local && connRateLimited(abuseKeyOf(who.ip))) {
+  if (!who.exempt && connRateLimited(abuseKeyOf(who.ip))) {
     socket.write("HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n");
     socket.destroy();
     return;
@@ -457,11 +438,11 @@ httpServer.on("upgrade", (req, socket, head) => {
 });
 
 wss.on("connection", (ws, req: IncomingMessage) => {
-  const { ip, local } = clientIpOf(req);
+  const { ip, exempt } = clientIpOf(req);
   alive.set(ws, true);
   ws.on("pong", () => alive.set(ws, true));
 
-  roomManager.handleConnection(ws, ip, local);
+  roomManager.handleConnection(ws, ip, exempt);
   ws.on("error", console.error);
 });
 
@@ -508,7 +489,7 @@ httpServer.listen(PORT, HOST, () => {
   );
   console.log(
     TRUST_PROXY !== ""
-      ? `신뢰 프록시 : ${TRUST_PROXY} — 실제 클라이언트 IP로 연결·요청 제한 적용`
+      ? `신뢰 프록시 : ${TRUST_PROXY} — 실제 클라이언트 IP로 제한 적용 · 면제 대상 없음`
       : `신뢰 프록시 : 꺼짐 — 소켓 원격주소를 클라이언트 IP로 사용 (프록시 뒤라면 TRUST_PROXY 설정 필수)`,
   );
   console.log(
