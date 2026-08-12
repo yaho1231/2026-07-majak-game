@@ -83,15 +83,20 @@ describe("§2-3·2-4 — 중앙 보드는 아래 띠를 침범하지 않는다",
     expect(APP_CODE).toContain('root.style.setProperty("--own-band"');
   });
 
-  it("텐파이가 아니면 오름패 줄은 접히되, 띠에서는 그 자리를 계속 뺀다", () => {
-    // 접지 않으면 이름표·타이머가 손패에서 99px 떠 있다(2026-08-12 사용자 보고).
-    expect(CSS_CODE).toContain(".own-waits-row-empty");
-    expect(CSS_CODE).toMatch(/\.own-waits-row-empty\s*\{[^}]*height:\s*0/);
-    expect(APP_CODE).toContain("own-waits-row-empty");
-    // 그래도 띠는 상수여야 한다 — 접힌 줄의 몫을 실측에서 도로 더한다.
-    // (안 더하면 텐파이가 붙었다 떨어질 때마다 바닥 타일 크기가 흔들린다 = "어지럽다")
-    expect(APP_CODE).toContain('cs.getPropertyValue("--waits-row-h")');
+  it("오름패 뱃지 자리는 텐파이가 아니어도 그대로 비워 둔다 (띠가 상수)", () => {
+    // 뱃지는 액티브 증강 버튼 옆(.own-top-waits)에 선다. 자리를 안 비워 두면
+    // 텐파이가 붙었다 떨어질 때마다 띠가 변해 바닥 타일 크기가 흔들린다("어지럽다").
+    expect(APP_CODE).toContain("own-top-waits");
+    const start = CSS_CODE.indexOf(".own-top-waits {");
+    expect(start).toBeGreaterThan(0);
+    const rule = CSS_CODE.slice(start, CSS_CODE.indexOf("}", start));
+    expect(rule).toMatch(/min-height:\s*var\(--waits-row-h\)/);
     expect(CSS_CODE).toMatch(/\.game-root\s*\{[^}]*--waits-row-h:/);
+    // 비는 자리는 이름표 **위**여야 한다 — 아래에 두면 이름표가 손패에서 떠 버린다
+    // (2026-08-12 사용자 보고: "타이머와 내 이름표가 손패보다 한참 위에").
+    const topStart = CSS_CODE.indexOf(".own-top {");
+    const topRule = CSS_CODE.slice(topStart, CSS_CODE.indexOf("}", topStart));
+    expect(topRule).toMatch(/align-items:\s*end/);
   });
 
   it(".table-center 는 위·아래 띠 사이로 clamp 된다 (46% 못 박기 금지)", () => {
