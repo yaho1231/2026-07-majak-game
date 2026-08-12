@@ -54,7 +54,9 @@ const AUG_EVENT_KEYS = topKeys(block("const AUG_EVENTS: Record<", "\n};"));
  * - `cutin`: 그 순간에만 뜻이 있는 **사건**. 무엇이 무엇으로 바뀌었는지가 전부다.
  */
 const CHANNELS: { id: string; where: "pill" | "cutin" }[] = [
-  { id: "unification", where: "pill" },
+  // 천하통일은 여기 있었다 — 문턱이 증강 발행분만큼 올라가던 시절에는 "지금 목표"가
+  // 화면에 없으면 왜 안 끝나는지 알 길이 없었다. 2026-08-12에 문턱이 45000 고정이
+  // 되면서 카드 문구가 곧 목표가 됐고, 채널과 pill을 함께 걷어냈다.
   { id: "no_ron_pact", where: "pill" },
   { id: "invincible", where: "pill" },
   { id: "red_five_touch", where: "pill" },

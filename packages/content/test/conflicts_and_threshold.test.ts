@@ -3,7 +3,8 @@
  *
  * conflicts는 104종 중 2종에만 선언돼 있어, 드래프트가 "조용히 죽는 픽"과
  * "게임을 끝내는 픽"을 계속 제시했다. A급(게임 파괴) 5건과 B급(조용한 무효) 5건을
- * 선언하고, 천하통일은 conflicts 대신 **문턱을 증강 발행분만큼 올리는** 방식으로 막는다.
+ * 선언한다. 천하통일은 한때 **문턱을 증강 발행분만큼 올리는** 방식으로 같은 문제를 막았지만,
+ * 2026-08-12 사용자 확정으로 **45000 고정**이 됐다 — 점수의 출처를 따지지 않는다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -81,7 +82,7 @@ describe("conflicts가 가리키는 id는 전부 실재한다", () => {
   });
 });
 
-describe("천하통일 — 증강이 만든 점수는 문턱에 세지 않는다", () => {
+describe("천하통일 — 문턱은 45000 고정이다", () => {
   function game(): ReturnType<typeof createStandardGameFromState> {
     const base = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
@@ -110,10 +111,9 @@ describe("천하통일 — 증강이 만든 점수는 문턱에 세지 않는다
     expect(threshold(game())).toBe(45000);
   });
 
-  it("증강이 얹어 준 점수만큼 문턱이 올라간다", () => {
+  it("증강이 발행한 점수가 있어도 문턱은 그대로다 (출처를 따지지 않는다)", () => {
     const g = game();
-    // 유국역만·승승장구 등이 뱅크에서 발행한 32000점을 흉내낸다
-    g.engine.reducers.register("__test_settled", (s) => s);
+    // 유국역만·승승장구 등이 뱅크에서 발행한 32000점을 흉내낸다 — 문턱은 반응하지 않는다
     const reactions = g.engine.effects.reactionsFor(ROUND_SETTLED);
     for (const { react } of reactions) {
       react(
@@ -136,7 +136,7 @@ describe("천하통일 — 증강이 만든 점수는 문턱에 세지 않는다
         },
       );
     }
-    expect(threshold(g)).toBe(45000 + 32000);
+    expect(threshold(g)).toBe(45000);
   });
 });
 
