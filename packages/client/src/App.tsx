@@ -1910,7 +1910,7 @@ function LayoutHint(): JSX.Element | null {
       <span>
         {zoomedByHand ? (
           <>
-            화면을 키워 배치가 겹칠 수 있습니다 — 오른쪽 위 <b>−</b> 로 줄여 보세요.
+            화면을 키워 배치가 겹칠 수 있습니다 — 왼쪽 아래 <b>−</b> 로 줄여 보세요.
           </>
         ) : (
           <>
@@ -1932,26 +1932,19 @@ function LayoutHint(): JSX.Element | null {
 }
 
 /**
- * 화면 확대/축소 손잡이 — 크기 배수(--ui-mag)를 사람이 만진다.
+ * 화면 확대/축소 손잡이 — 자동 맞춤(uiScale.ts) **위에 곱하는** 배수를 사람이 만진다.
  *
- * 자동 맞춤(uiScale.ts)은 창만 본다. 눈·모니터 거리·시력은 못 본다 — 같은 창에서도
- * 누구는 크게, 누구는 작게 보고 싶어 한다.
+ * 자동은 창만 본다. 눈·모니터 거리·시력은 못 본다 — 같은 창에서도 누구는 크게,
+ * 누구는 작게 보고 싶어 한다. 2026-08-07에 설정 패널의 "화면 크기"를 없앤 뒤로는
+ * 그 손잡이가 아예 없었다.
  *
- * ⚠ 이건 **화면을 확대하는 버튼이 아니다**. transform 배율이 아니라 판·손패의 크기
- * 토큰을 곱하는 수라서, 누르면 레이아웃이 다시 풀리며 패가 실제로 커진다(그리고
- * 글자는 네이티브 해상도 그대로다). 예전 모델과 왜 다른지는 uiScale.ts 머리 주석.
+ * 자리는 **왼쪽 아래 구석**이다. 판(가운데)·손패와 액션 바(아래 가운데, `.own-area`는
+ * translateX(-50%)로 가운데 정렬)·오른쪽 위 아이콘 줄(나가기·설정·도감·규칙, 이미
+ * right:214px까지 차 있다)·왼쪽 위 모드 뱃지를 전부 피한다. 로그인·로비·대국 어디서나
+ * 같은 자리라서 찾으러 다닐 필요가 없다.
  *
- * 자리는 **오른쪽 위 아이콘 줄** — 설정(⚙)·도감(📖)·규칙(📘) 옆이다. 화면을 만지는
- * 것들이 한 줄에 모여 있어야 찾으러 다니지 않는다(2026-08-12 사용자 지시).
- * `.game-root` 안이 아니라 body 로 portal 한다 — 판 위의 오버레이·흔들림에 딸려
- * 다니면 안 되기 때문이다.
- *
- * ⚠ **대국 중에만 그린다.** 이 손잡이가 곱하는 것은 판·손패의 크기 토큰이라, 홈·로비·
- * 로그인에는 크기가 바뀔 대상이 아예 없다. 예전 모델(transform)에서는 거기서도 화면이
- * 통째로 줄어 반응이 보였지만 지금은 아무 일도 안 일어난다 — **보이는데 안 눌리는 것이
- * 아니라, 보이는데 아무 반응이 없는 것**이 훨씬 나쁜 고장으로 읽힌다. 그래서 대상이
- * 있는 화면에만 둔다. 단축키(Alt +/−/0)는 부팅 때 window 에 걸리므로 어디서나 살아
- * 있어서, 미리 맞춰 두고 들어가는 길도 막히지 않는다.
+ * 화면이 줄어들면 이 버튼도 같이 줄어드는 게 정상이지만, 그러면 **가장 작아서 안 보일 때
+ * 손잡이도 가장 작아진다**. 그래서 CSS에서 1/--ui-scale 로 되돌려 실제 크기를 고정한다.
  */
 function ScaleControl(): JSX.Element {
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -1960,14 +1953,14 @@ function ScaleControl(): JSX.Element {
   const pct = Math.round(zoom * 100);
   const mod = navigator.userAgent.includes("Mac") ? "⌥" : "Alt";
   return createPortal(
-    <div className="ui-zoom" role="group" aria-label="판·손패 크기">
+    <div className="ui-zoom" role="group" aria-label="화면 크기">
       <button
         type="button"
         className="ui-zoom-btn"
         onClick={() => stepUiZoom(-1)}
         disabled={!canStepUiZoom(-1)}
-        aria-label="판과 손패를 작게"
-        title={`판·손패를 작게 (${mod} + −)`}
+        aria-label="화면 축소"
+        title={`화면 축소 (${mod} + −)`}
       >
         −
       </button>
@@ -1976,7 +1969,7 @@ function ScaleControl(): JSX.Element {
         className="ui-zoom-now"
         onClick={() => resetUiZoom()}
         disabled={zoom === 1}
-        aria-label={`판·손패 크기 ${pct}% — 눌러서 기본값으로`}
+        aria-label={`화면 크기 ${pct}% — 눌러서 기본값으로`}
         title={`기본 크기로 되돌리기 (${mod} + 0)`}
       >
         {pct}%
@@ -1986,8 +1979,8 @@ function ScaleControl(): JSX.Element {
         className="ui-zoom-btn"
         onClick={() => stepUiZoom(1)}
         disabled={!canStepUiZoom(1)}
-        aria-label="판과 손패를 크게"
-        title={`판·손패를 크게 (${mod} + +)`}
+        aria-label="화면 확대"
+        title={`화면 확대 (${mod} + +)`}
       >
         +
       </button>
@@ -3758,8 +3751,7 @@ export function App(): JSX.Element {
     <GameModeContext.Provider value={view?.round.mode ?? null}>
     <div className="game-root" ref={gameRootRef}>
       <LayoutHint />
-      {/* 판·손패가 있는 화면에서만 — 이유는 ScaleControl 주석 참고 */}
-      {inGame ? <ScaleControl /> : null}
+      <ScaleControl />
       {/* 기기를 돌려 달라는 안내. LayoutHint 는 '브라우저 확대'를 말하는 것이라
           터치 기기에서는 뜨지 않는다(맞는 판단이다) — 폰 세로에는 그래서 아무 안내도
           없었다. 뜨는 조건은 전부 CSS 미디어쿼리라 여기에 상태가 없었는데, **닫을 수가
