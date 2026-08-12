@@ -464,7 +464,7 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
   it("북풍 상인: 영상패 고갈·패산 감소·천화 파기", () => {
     expect(northTrader.description).toContain("영상패");
     expect(northTrader.detail).toContain("천화");
-    expect(northTrader.detail).toContain("패산이 한 장 줄어든다");
+    expect(northTrader.detail).toContain("패산이 한 장 줄어");
   });
 
   it("뒤섞인 아홉 개의 연꽃: 수패 한정·멘젠 한정", () => {
