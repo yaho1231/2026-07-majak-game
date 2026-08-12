@@ -76,3 +76,33 @@ describe("국 결과 화면 — 역 이름에는 밑줄을 긋지 않는다", ()
     expect(body).not.toContain("<TermText text={r.label} />");
   });
 });
+
+describe("유국 결과 화면 — 오름패까지 보여준다", () => {
+  // "텐파이였다"만 찍고 끝나면 무엇을 기다렸는지는 공개된 손패를 각자 눈으로 세라는
+  // 뜻이 된다. 정작 그게 이 화면의 핵심 정보다 — 왜 저 사람이 안 접었는지, 내
+  // 버림패가 통과한 게 운이었는지가 여기서 갈린다.
+  it("텐파이 행에 오름패 줄을 그린다", () => {
+    const body = panelSource();
+    expect(body).toContain("drawWaitsOf(view, p, revealed.hand)");
+    expect(body).toContain("result-draw-waits");
+    expect(body).toContain("오름패");
+  });
+
+  it("대기를 못 잡으면 빈칸이 아니라 그 사실을 적는다", () => {
+    // 증강이 분해 규칙을 바꾼 손은 클라 계산이 못 잡을 수 있다. 빈칸으로 두면
+    // "대기가 없었다"로 읽힌다 — 화면이 거짓말을 하는 쪽이 가장 나쁘다.
+    expect(panelSource()).toContain("result-draw-waits-none");
+  });
+
+  it("공개·고정된 대기가 물리 손패 계산보다 우선한다", () => {
+    // 자유 선언은 손패와 대기가 어긋나 있고, 오픈 리치는 서버가 확정해 공개한 값이다.
+    // 판 위의 오름패 표시(OpponentHand)와 같은 우선순위를 쓴다.
+    const start = SRC.indexOf("function drawWaitsOf(");
+    expect(start).toBeGreaterThan(0);
+    const fn = SRC.slice(start, SRC.indexOf("\nfunction ", start + 1));
+    expect(fn.indexOf("openRiichiWaits")).toBeLessThan(fn.indexOf("freeDeclareWaits"));
+    expect(fn.indexOf("freeDeclareWaits")).toBeLessThan(fn.indexOf("winningKinds"));
+    // 멘쯔 수는 뷰에서 가져온다 — 공개 손패 장수로 되짚으면 깡이 섞일 때 틀린다.
+    expect(fn).toContain("meldCount");
+  });
+});
