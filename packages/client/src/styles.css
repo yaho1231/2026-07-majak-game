@@ -1825,6 +1825,10 @@ button {
 
 @container ui (max-width: 900px) {
   .game-root { --waits-row-h: 63px; }
+  /* 라벨은 한 줄(nowrap)이라, 태그가 늘면 좁은 화면에서 뱃지가 판을 가로지른다.
+     제일 먼저 접는 건 설명용 범례인 "남은 장수" — 숫자 자체와 그 툴팁은 그대로 남는다.
+     후리텐·역없음은 칠지 말지를 바꾸는 정보라 좁아져도 남긴다. */
+  .waits-badge-hint { display: none; }
 }
 
 @container ui (max-width: 700px) {
@@ -9971,6 +9975,27 @@ button {
   color: #f7f3e8;
   font-size: 10px;
   font-weight: 800;
+}
+
+/* ── 후리텐 ──
+   후리텐이면 여기 뜬 오름패가 **전부** 론 불가다. 낱장 표시(역없음)와 달리 뱃지
+   전체에 걸리는 상태라, 라벨 옆 태그 + 뱃지 테두리 둘로 말한다. 이름표(np-furiten)와
+   같은 색을 써서 두 자리가 같은 말을 하고 있다는 게 보이게 한다. */
+.waits-badge-furiten-tag {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(240, 138, 124, 0.92);
+  color: #2b1512;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: help;
+}
+/* 내 오름패 뱃지는 평소에도 살구색 테두리라, 테두리만으로는 후리텐이 티가 안 난다
+   (2026-08-13 확인). 바탕을 붉게 깔아 평소 상태와 한눈에 갈라 둔다. */
+.waits-badge-furiten {
+  border-color: rgba(240, 138, 124, 0.85);
+  background: linear-gradient(rgba(120, 40, 34, 0.5), rgba(120, 40, 34, 0.5)), rgba(13, 23, 18, 0.95);
 }
 
 /* ── 대기가 너무 넓을 때 ──
