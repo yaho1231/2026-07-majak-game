@@ -1747,11 +1747,22 @@ function deadWallSlotInfo(
   return { label: `뒷도라 ${n}`, cls: "ura" };
 }
 
-/** "man5" 같은 kindKey → TileKind (증강 정보 패널 렌더용) */
+/**
+ * "man5" 같은 kindKey → TileKind (증강 정보 패널 렌더용)
+ *
+ * 무늬는 **그릴 수 있는 다섯 종류**로 못 박는다. 예전에는 `[a-z]+숫자`면 무엇이든
+ * 패로 봤는데, 좌석 id `p1`이 그 모양에 그대로 걸려 "p1"이라 적힌 패가 컷인에
+ * 떴다(2026-08-13 사용자 보고 — 정적의 손). 못 그리는 무늬는 어차피 글자 폴백으로
+ * 내부값을 노출할 뿐이라, 여기서 걸러 아예 패로 세지 않는다.
+ */
+const DRAWABLE_SUITS: ReadonlySet<string> = new Set(["man", "pin", "sou", "wind", "dragon"]);
+
 function parseKindKey(key: string): TileKind | null {
   const m = /^([a-z]+)(\d+)$/.exec(key);
   if (m === null) return null;
-  return { suit: m[1] as string, rank: Number(m[2]) };
+  const suit = m[1] as string;
+  if (!DRAWABLE_SUITS.has(suit)) return null;
+  return { suit, rank: Number(m[2]) };
 }
 
 /**
@@ -4985,12 +4996,19 @@ function AugDesc({
   detail,
   variant,
   expanded,
+  useOverride,
 }: {
   id: string;
   description: string | undefined;
   detail?: string | undefined;
   variant: AugmentDescVariant;
   expanded: boolean;
+  /**
+   * 사용 빈도 배지를 대신할 글. 효과가 이미 끝난 선발동형("이번 국만")처럼 **배지가
+   * 지금은 거짓말이 되는** 자리에서만 넘긴다 — 그대로 두면 지나간 국의 효과가 아직
+   * 걸려 있는 것으로 읽힌다(2026-08-13 사용자 보고).
+   */
+  useOverride?: string | undefined;
 }): JSX.Element {
   // 판 중이면 "동풍전 1회 · 반장전 2회"를 그 판의 숫자 하나로 줄인다(도감은 둘 다 둔다).
   // 도감 변형은 판 안에서 열어도 모드를 가리지 않는 자리라 null로 못 박는다.
@@ -5004,10 +5022,17 @@ function AugDesc({
   // 원문 설명을 펼칠 때는 배지도 원문 머리말로 바꿔 단다 — 요약의 use보다 조건이 자세할
   // 때가 많고, 본문에 머리말을 남겨 두면 같은 말이 배지와 두 번 나온다. 상세(detail)에는
   // 그런 머리말이 없으므로 요약 배지를 그대로 둔다.
-  const use = showFull && variant === "draft" && lead.use !== "" ? lead.use : brief.use;
+  const use =
+    useOverride !== undefined && useOverride !== ""
+      ? useOverride
+      : showFull && variant === "draft" && lead.use !== "" ? lead.use : brief.use;
   return (
     <span className="augdesc">
-      {use !== "" ? <span className="augdesc-use">{use}</span> : null}
+      {use !== "" ? (
+        <span className={`augdesc-use${useOverride !== undefined && useOverride !== "" ? " augdesc-use-spent" : ""}`}>
+          {use}
+        </span>
+      ) : null}
       <span className={`augdesc-body${showFull ? " augdesc-body-full" : ""}`}>
         {showFull
           ? paras.map((p, i) => (
@@ -7158,7 +7183,6 @@ function WaitingRoom(props: {
             기본 어려움이 종전 봇 그대로이고, 그 위로는 열지 않는다. */}
         <div className="lobby-group-label">
           🤖 봇 난이도
-          <span className="lobby-group-hint">봇이 얼마나 잘 두는가 · 다음 판부터</span>
         </div>
         <div className="mode-select" role="radiogroup" aria-label="봇 난이도">
           {([
@@ -8596,6 +8620,8 @@ function augmentLogRows(
     // 내부 쿨다운(`cooldown:{증강id}`)은 그 증강의 pill이 "N국"으로 직접 보여준다.
     // 여기 남겨 두면 사람 이름 자리에 증강 id가, 값 자리에 "스택 0"이 찍힌다.
     if (head === "cooldown") continue;
+    // 선발동형이 끝났다는 표식(`spent:{증강id}:{좌석}`)도 그 증강의 pill이 "종료"로 그린다.
+    if (head === "spent") continue;
     // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
     // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 표식으로 못 쓰므로 뱃지 줄에 남는다.
     if (RELATION_HEADS.has(head)) continue;
@@ -10112,6 +10138,16 @@ function augmentPillStatus(
 ): PillStatus | null {
   const av = view.augmentView;
 
+  /*
+   * 선발동형("뽑자마자 이번 국만") — 그 국이 지나가면 콘텐츠가 `spent:{id}:{좌석}`을
+   * 올린다. 효과 표시는 국 스코프라 조용히 사라지는데 pill은 그대로 서 있어서, 이미
+   * 끝난 증강이 아직 걸려 있는 것처럼 보였다(2026-08-13 사용자 보고).
+   * 다른 어떤 분기보다 먼저 본다 — 끝난 증강에 살아 있는 상태를 붙일 이유가 없다.
+   */
+  if (av[`spent:${augId}:${playerId}`] === true) {
+    return { chip: "종료", tone: "spent", note: "이번 국 전용 — 그 국이 지나 효과가 남아 있지 않다" };
+  }
+
   // 보유자 화면에만 실리는 잔량 채널 — 남의 pill에는 애초에 값이 없다.
   if (augId === "alchemist") {
     const left = av["alchemist:left"];
@@ -10389,6 +10425,8 @@ const NamePlate = memo(function NamePlate({
             const status = augmentPillStatus(view, player.id, a);
             // 내부 쿨다운 잔량 — 보유자 본인 화면에만 실린다(view:{나}:cooldown:{id}).
             const cooldown = cooldownRoundsLeft(view, a);
+            // 선발동형("이번 국만")이 이미 지나갔는가 — 설명 배지도 함께 갈아 끼운다.
+            const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
             return (
               // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
@@ -10476,7 +10514,13 @@ const NamePlate = memo(function NamePlate({
                     <span className="aug-tip-active">⚡ 액티브 증강 (직접 발동)</span>
                   ) : null}
                   <span className="aug-tip-desc">
-                    <AugDesc id={a} description={entry?.description} variant="draft" expanded={shiftHeld || detailFor === a} />
+                    <AugDesc
+                      id={a}
+                      description={entry?.description}
+                      variant="draft"
+                      expanded={shiftHeld || detailFor === a}
+                      useOverride={spent ? "효과 종료" : undefined}
+                    />
                   </span>
                   <MoreToggle
                     open={shiftHeld || detailFor === a}

@@ -201,6 +201,21 @@ describe("silent_swap (정적의 손)", () => {
     ]);
   });
 
+  it("전원 공개 채널에 좌석 id를 `from`으로 싣지 않는다 (컷인이 패로 읽는 자리다)", () => {
+    // `{kind, from}`의 from은 클라이언트 사건 컷인에서 "바뀌기 전 패"다. 좌석 id "p1"이
+    // 거기 실려 `p1`이라 적힌 패가 한 장 더 떴다(2026-08-13 사용자 보고).
+    const state = silentScene();
+    const target = state.zones[discardsZone("p1")]?.tileIds[0] as TileId;
+    const { game, flow } = start(state, silentSwap);
+    flow.submit("p0", { type: "silent_take", payload: { tileId: target } });
+    const shown = buildPlayerView(game.engine.state, "p2", game.engine.rules)
+      .augmentView["silent_swap:p0"] as Record<string, unknown>;
+    expect(shown).toBeDefined();
+    expect(shown["from"]).toBeUndefined();
+    expect(shown["fromPlayer"]).toBe("p1");
+    expect(shown["kind"]).toBe("man3");
+  });
+
   it("국당 1회 — 발동 뒤에는 후보가 사라진다", () => {
     const state = silentScene();
     const target = state.zones[discardsZone("p1")]?.tileIds[0] as TileId;
