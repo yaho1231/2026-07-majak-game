@@ -31,6 +31,7 @@ import type {
   FeedbackEntry,
   FeedbackKind,
   FeedbackStatus,
+  FuritenReason,
   GameMode,
   JoinedMessage,
   LiveRoomSummary,
@@ -11345,6 +11346,11 @@ function OwnArea(props: {
     [view.round.byPlayer, me.id],
   );
 
+  // 후리텐 — 이름표에도 뜨지만, 정작 오름패를 보는 동안에는 시선 밖이라 안 보였다.
+  // 후리텐이면 여기 뜬 오름패 전부가 론 불가라 표시가 붙는 자리는 오름패 옆이 맞다.
+  // 본인 뷰에만 실리므로 관전자에게는 자연히 비어 있다.
+  const myFuritenReasons = view.round.byPlayer[me.id]?.furitenReasons ?? [];
+
   /** 이 패를 (드래그·클릭으로) 지금 낼 수 있는 옵션 — 클릭 동작과 동일 규칙. */
   function discardOptionFor(id: number | null): ActionOption | undefined {
     if (id === null) return undefined;
@@ -11582,6 +11588,7 @@ function OwnArea(props: {
                 waits={myWaits}
                 mine={!isSpectator}
                 noYaku={noYakuWaitSet}
+                furiten={myFuritenReasons}
                 {...(isSpectator ? { owner: playerName(view, me) } : {})}
               />
             ) : null}
@@ -12058,6 +12065,16 @@ function OwnArea(props: {
 const WAIT_TILE_CAP = 9;
 
 /**
+ * 후리텐 사유 → 사람 말. 이름표의 "후리텐"만으로는 **왜** 걸렸는지 알 수 없어서,
+ * 오름패 뱃지의 툴팁에서 사유까지 풀어 준다(PlayerRoundView.furitenReasons).
+ */
+const FURITEN_REASON_TEXT: Record<FuritenReason, string> = {
+  discard: "내가 이미 버린 패가 오름패에 있습니다",
+  temporary: "남이 낸 오름패를 넘겨 일시 후리텐입니다 (다음 내 쯔모까지)",
+  riichi: "리치 뒤 오름패를 넘겨 이 국 내내 후리텐입니다",
+};
+
+/**
  * 오름패 옆에 붙는 **남은 장수** 계산기 — 게임판 전체가 같은 셈을 본다.
  *
  * 값은 `waitCounts.remainingCounter`가 만든다(보이는 곳만 세고, 증강 생성패는 빼는
@@ -12080,6 +12097,7 @@ function WaitsBadge({
   openRiichi,
   peek,
   noYaku,
+  furiten,
 }: {
   waits: TileKind[];
   owner?: string;
@@ -12089,6 +12107,12 @@ function WaitsBadge({
   peek?: boolean;
   /** 역이 없어 론이 안 되는 대기 종류(kindKey) — 오름패 표시의 오해를 막는다 */
   noYaku?: ReadonlySet<string>;
+  /**
+   * 후리텐 사유 — 본인 뷰에만 온다(PlayerRoundView.furitenReasons).
+   * 후리텐이면 **오름패 전부가 론 불가**라, 이름표에만 적어 두면 정작 오름패를
+   * 보고 있는 동안에는 안 보인다. 그래서 오름패 자리에도 같이 적는다.
+   */
+  furiten?: readonly FuritenReason[];
 }): JSX.Element {
   const cls =
     openRiichi === true
@@ -12100,6 +12124,10 @@ function WaitsBadge({
           : "";
   const dead = (k: TileKind): boolean => noYaku?.has(kindKey(k)) === true;
   const allDead = waits.length > 0 && waits.every(dead);
+  const furitenOn = furiten !== undefined && furiten.length > 0;
+  const furitenTip = furitenOn
+    ? `${furiten.map((r) => FURITEN_REASON_TEXT[r]).join(" · ")} — 론은 안 되고 쯔모로만 화료할 수 있습니다`
+    : undefined;
   const shown = waits.slice(0, WAIT_TILE_CAP);
   const hidden = waits.length - shown.length;
   // 남은 장수 — 보이는 곳에 안 나온 그 종류의 장수(기본 4장 기준, 증강 생성패 제외).
@@ -12112,16 +12140,22 @@ function WaitsBadge({
     if (left !== null) {
       parts.push(left === 0 ? "남은 0장 — 이 패로는 날 수 없습니다" : `남은 ${left}장 (보이지 않는 장수)`);
     }
+    if (furitenOn) parts.push("후리텐 — 론 불가, 쯔모만 가능합니다");
     if (dead(k)) parts.push("역이 없어 론할 수 없습니다");
     return parts.length === 0 ? undefined : parts.join(" · ");
   };
   return (
-    <div className={`waits-badge${cls}${wide}`}>
+    <div className={`waits-badge${cls}${wide}${furitenOn ? " waits-badge-furiten" : ""}`}>
       <span className="waits-badge-label">
         {openRiichi === true ? "오픈 리치" : mine === true ? "내 오름패" : "간파"}
         {owner !== undefined && mine !== true ? <span className="waits-badge-owner">{owner}</span> : null}
         {waits.length > WAIT_TILE_CAP ? (
           <span className="waits-badge-count">{waits.length}종</span>
+        ) : null}
+        {furitenOn ? (
+          <span className="waits-badge-furiten-tag" title={furitenTip}>
+            후리텐
+          </span>
         ) : null}
         {allDead ? <span className="waits-badge-noyaku">역없음</span> : null}
         {remaining !== null ? (
