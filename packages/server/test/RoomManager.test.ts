@@ -792,27 +792,57 @@ describe("게임 완주·기록", () => {
   );
 
   it(
-    "게임 중 방 나가기(포기)하면 봇 자동진행으로 게임이 완주된다",
+    "다른 사람이 남아 있으면 게임 중 나가기(포기)는 봇 자동진행으로 완주된다",
     async () => {
       const h = await newHarness();
-      // autoRespond 없음 — 사람이 프롬프트에 응답하지 않아도 완주해야 한다
+      // autoRespond 없음 — 나간 사람이 프롬프트에 응답하지 않아도 완주해야 한다
       const sock = await connectAndRegister(h, "Quitter");
+      // 남는 사람 — 이 좌석이 있으니 판을 접지 않는다 (자동 응답으로 완주시킨다)
+      const stay = await connectAndRegister(h, "Stayer", { autoRespond: true });
       sock.clientSend({ type: "createRoom" });
-      await sock.waitFor((m) => m.type === "roomCreated");
-      for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
+      const code = sock.last("roomCreated").code as string;
+      stay.clientSend({ type: "joinRoom", code });
+      await stay.waitFor((m) => m.type === "lobby");
+      stay.clientSend({ type: "ready", ready: true });
+      for (let i = 0; i < 2; i++) sock.clientSend({ type: "addBot" });
       sock.clientSend({ type: "startGame" });
       await sock.waitFor((m) => m.type === "view");
 
       sock.clientSend({ type: "leaveRoom" }); // 게임 중 포기
 
       // 포기한 좌석은 봇처럼 자동 진행 → 30초 타임아웃 없이 게임이 끝난다
-      await sock.waitFor((m) => m.type === "gameOver", HANCHAN_MS);
-      const over = sock.last("gameOver");
+      await stay.waitFor((m) => m.type === "gameOver", HANCHAN_MS);
+      const over = stay.last("gameOver");
       expect(over.rankings).toHaveLength(4);
       // 통계 영속화까지 기다린다 (임시 디렉터리 정리 레이스 방지)
-      await sock.waitFor((m) => m.type === "stats", HANCHAN_MS);
+      await stay.waitFor((m) => m.type === "stats", HANCHAN_MS);
     },
     HANCHAN_TEST_MS,
+  );
+
+  it(
+    "혼자 하던 판(봇전·증강 테스트)에서 나가면 게임이 무효로 접힌다",
+    async () => {
+      // 회귀: 예전에는 나간 뒤에도 봇들끼리 판이 계속 돌아, 홈으로 나온 화면 위로
+      // 그 게임의 연출·소리가 계속 튀어나왔다.
+      const h = await newHarness();
+      const sock = await connectAndRegister(h, "Solo");
+      sock.clientSend({ type: "createRoom" });
+      const code = sock.last("roomCreated").code as string;
+      for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
+      sock.clientSend({ type: "startGame" });
+      await sock.waitFor((m) => m.type === "view");
+
+      sock.clientSend({ type: "leaveRoom" });
+
+      // 무효 종료가 끝나면 방 자체가 사라진다 (봇들끼리 계속 두지 않는다)
+      const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
+      await vi.waitFor(() => {
+        expect(rooms.has(code)).toBe(false);
+      }, 10_000);
+      expect(sock.last("gameOver")).toBeUndefined();
+    },
+    15_000,
   );
 
   it(
