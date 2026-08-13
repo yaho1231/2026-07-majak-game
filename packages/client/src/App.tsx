@@ -3807,6 +3807,13 @@ export function App(): JSX.Element {
   const cbSetting = useStableFn(updateSetting);
   const cbSubmit = useStableFn(submitOption);
   const cbLeave = useStableFn(returnHome);
+  // 사람이 나뿐인 판에서 나가기 = 무효 처리. 동의를 **먼저** 보내야 한다 —
+  // 같은 소켓이라 서버가 순서대로 읽고, 내 동의로 정족수가 차 그 자리에서 판이 끝난다.
+  // 반대로 leaveRoom이 먼저 가면 내 좌석이 자동 진행으로 넘어가 게임이 계속 돌아간다.
+  const cbAbortLeave = useStableFn(() => {
+    send({ type: "voteAbort", vote: "agree" });
+    returnHome();
+  });
   const cbVoteAbort = useStableFn(voteAbort);
   const cbOpenCodex = useStableFn(() => setCodexOpen(true));
   const cbOpenHelp = useStableFn(() => setHelpOpen(true));
@@ -3909,6 +3916,7 @@ export function App(): JSX.Element {
           onRiichiMode={setRiichiMode}
           onSubmit={cbSubmit}
           onLeave={cbLeave}
+          onAbortLeave={cbAbortLeave}
           onOpenCodex={cbOpenCodex}
           onOpenHelp={cbOpenHelp}
           onToast={cbGameToast}
@@ -7394,6 +7402,11 @@ const GameTable = memo(function GameTable(props: {
   onRiichiMode: (v: boolean) => void;
   onSubmit: (o: ActionOption) => void;
   onLeave: () => void;
+  /**
+   * 무효 처리하고 나가기 — 사람이 나 혼자인 판(증강 테스트·봇전)에서만 쓴다.
+   * 무효 동의를 보내고 곧바로 방을 뜬다 (동의가 나 하나면 서버가 즉시 무효 처리).
+   */
+  onAbortLeave?: () => void;
   /** 게임 중 증강 도감 열기 (오버레이) — 상대가 공개한 증강을 그 자리에서 찾아본다 */
   onOpenCodex?: () => void;
   /** 게임 중 규칙·도움말 열기 (오버레이) */
@@ -7417,6 +7430,10 @@ const GameTable = memo(function GameTable(props: {
   const driving = props.controlling != null && props.controlling === view.playerId;
   // 관찰 중인데 내 실제 좌석에 결정 프롬프트가 와 있으면 "내 차례" 복귀를 안내한다.
   const myTurnWhileObserving = observing && props.selfPending === true;
+  // 사람이 나 혼자인 판인가 (증강 테스트·봇전) — 나가기가 곧 무효 처리가 되는 조건.
+  // 다른 사람이 한 명이라도 앉아 있으면 내 마음대로 판을 없앨 수 없으므로 평소대로 묻는다.
+  // (시점 전환 중이면 view.playerId가 봇 좌석이므로 "내 좌석"이 아니라 사람 수를 센다)
+  const soloWithBots = props.spectator !== true && view.players.filter((p) => !p.isBot).length <= 1;
   // 내 손패에 마우스를 올리면 그 종류의 공개패(버림·후로)를 강조하기 위한 hover 종류
   const [hoverKind, setHoverKind] = useState<TileKind | null>(null);
   // 관전자·리플레이는 자리가 없으므로 현재 오야(친)를 하단 시점으로 삼아
@@ -7564,14 +7581,26 @@ const GameTable = memo(function GameTable(props: {
         >📘</button>
       ) : null}
       {/* 게임 중 나가기 = 포기(좌석은 자동 진행으로 완주한다) — 되돌릴 수 없으니 한 번 묻는다.
-          관전은 그냥 화면을 닫는 것이라 묻지 않는다. */}
+          관전은 그냥 화면을 닫는 것이라 묻지 않는다.
+
+          사람이 나 혼자인 판(증강 테스트·봇전)은 그냥 나가면 안 된다 — 내 좌석이
+          자동 진행으로 남아 게임이 계속 돌고, 홈으로 나온 화면 위로 그 판의 연출과
+          소리가 계속 튀어나온다. 이 경우 확인 한 번으로 무효 처리까지 같이 한다
+          (동의할 사람이 나뿐이라 서버가 즉시 무효로 끝낸다). */}
       <button
         className="icon-btn leave-btn"
         onClick={() => {
-          if (
-            props.spectator === true ||
-            window.confirm("게임을 포기하고 나갈까요?\n남은 판은 자동으로 진행되며 다시 들어올 수 없습니다.")
-          ) {
+          if (props.spectator === true) {
+            props.onLeave();
+            return;
+          }
+          if (soloWithBots) {
+            if (window.confirm("게임을 무효 처리하고 나갈까요?\n사람이 나뿐이라 판은 그 자리에서 무효가 됩니다.")) {
+              (props.onAbortLeave ?? props.onLeave)();
+            }
+            return;
+          }
+          if (window.confirm("게임을 포기하고 나갈까요?\n남은 판은 자동으로 진행되며 다시 들어올 수 없습니다.")) {
             props.onLeave();
           }
         }}

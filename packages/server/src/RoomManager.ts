@@ -1299,6 +1299,10 @@ export class RoomManager {
           else {
             conn.agent.abandon();
             this.refreshSeatStatus(room);
+            // 마지막 사람이 나갔으면 판을 무효로 접는다 — 남는 건 봇뿐이라 볼 사람도,
+            // 기록할 이유도 없다. 예전에는 그 판이 계속 돌면서, 홈으로 나온 화면 위로
+            // 그 게임의 연출과 소리가 계속 튀어나왔다(봇전·증강 테스트에서 특히).
+            this.abortIfNoHumansLeft(room);
           }
         }
         conn.room = null;
@@ -2623,6 +2627,23 @@ export class RoomManager {
 
     // 표를 낼 수 있는 사람 전원 동의 → 무효 종료 (onGameAborted가 정리한다)
     if (voters.length >= needed) room.controller?.requestAbort();
+  }
+
+  /**
+   * 사람이 한 명도 남지 않은 판을 무효로 접는다 (기권으로 마지막 좌석이 빠졌을 때).
+   *
+   * 끊긴 좌석은 세어 준다 — 재접속하면 이어서 둘 사람이다. 나가기(abandon)로
+   * 확정된 좌석만 빠진 것으로 본다.
+   */
+  private abortIfNoHumansLeft(room: Room): void {
+    if (room.phase !== "playing" || room.controller === null) return;
+    if (this.rooms.get(room.code) !== room) return;
+    const humans = room.agents.filter(
+      (a): a is HumanAgent => a instanceof HumanAgent && !a.isAbandoned,
+    );
+    if (humans.length > 0) return;
+    this.log(room, "사람이 모두 나갔다 — 판을 무효로 접는다");
+    room.controller.requestAbort();
   }
 
   // ─────────────────────────── 게스트 체험 ───────────────────────────
