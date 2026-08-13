@@ -9760,8 +9760,10 @@ function OpponentStrip({
   const handCount = slots.length;
   const melds = pr?.melds ?? [];
   const meldCount = pr?.meldCount ?? 0;
-  // 좌·우 자리는 후로도 **같은 세로줄**에 쌓인다 — 후로가 먹는 높이를 빼고 남은
-  // 만큼으로 뒷면 크기를 정해야 손패가 화면 밖으로 밀려나지 않는다 (CSS --meld-n).
+  // 후로는 손패와 **같은 줄**에 붙는다(위 자리는 가로, 좌·우 자리는 세로) — 그래서
+  // 손패 뒷면과 후로 타일이 한 예산을 나눠 갖는다 (CSS --meld-n → --row-unit/--col-unit).
+  // 후로 타일 크기가 고정이던 시절엔 깡 서너 번에 예산을 다 먹어 뒷면만 하한까지
+  // 쪼그라들었다 (2026-08-13 보고).
   const meldTileCount =
     melds.reduce((n, m) => n + m.tileIds.length, 0) + pulledMeldTileIds(view, player.id).length;
   const sizeVars = {
