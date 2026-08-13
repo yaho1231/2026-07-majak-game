@@ -427,6 +427,17 @@ const armedRoundKey = (augmentId: string, holder: PlayerId): string =>
   `${augmentId}:armedRound:${holder}`;
 
 /**
+ * **효과가 이미 지나갔음**을 알리는 전원 공개 채널 (`spent:{증강id}:{보유자}` = true).
+ *
+ * 선발동형은 효과 표시가 국 스코프라 국이 끝나면 조용히 사라진다. 그런데 이름표에는
+ * 증강이 그대로 서 있고 설명 배지도 "이번 국만"이라, 이미 죽은 증강이 아직 살아 있는
+ * 것처럼 읽혔다(2026-08-13 사용자 보고). 국을 넘어 남아야 하는 사실이라 `roundViewKey`가
+ * 아니라 고정 키를 쓴다.
+ */
+export const spentViewKey = (augmentId: string, holder: PlayerId): string =>
+  viewKey("*", `spent:${augmentId}:${holder}`);
+
+/**
  * **획득 직후의 국 하나에만** 효과를 켜는 증강의 공용 배선 (`install`에서 호출).
  *
  * 드래프트는 국과 국 사이에만 열리므로, 획득 뒤 **처음 시작되는 국**이 곧 사용자가
@@ -448,7 +459,12 @@ export function armOnNextRound(
 ): void {
   ctx.reaction(ROUND_STARTED, (_event, rc) => {
     const key = armedRoundKey(augmentId, ctx.holder);
-    if (rc.state.augmentData[key] !== undefined) return;
+    if (rc.state.augmentData[key] !== undefined) {
+      // 켜졌던 국이 지나갔다 — 이름표가 "이번 국만"인 채로 남지 않게 끝났음을 알린다.
+      const spent = spentViewKey(augmentId, ctx.holder);
+      if (rc.state.augmentData[spent] !== true) rc.emit(augmentDataSet(spent, true));
+      return;
+    }
     rc.emit(augmentDataSet(key, roundKey(rc.state)));
     for (const e of onArm?.(rc.state) ?? []) rc.emit(e);
   });

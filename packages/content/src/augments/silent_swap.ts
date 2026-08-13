@@ -165,9 +165,12 @@ export const silentSwap: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,
-            // 전원 공개 — 누구의 바닥에서 무엇이 걸어 나왔는지가 이 증강의 구경거리다
+            // 전원 공개 — 누구의 바닥에서 무엇이 걸어 나왔는지가 이 증강의 구경거리다.
+            // ⚠ 좌석 id를 `from`으로 실으면 안 된다 — 사건 컷인(App.tsx augEventTiles)에서
+            // `{kind, from}`의 `from`은 "바뀌기 전 패"라는 뜻이라, 좌석 id "p1"이 패 키로
+            // 읽혀 컷인에 `p1`이라 적힌 패가 한 장 더 떴다(2026-08-13 사용자 보고).
             [roundViewKey("*", `${ID}:${p.holder}`)]: {
-              from: p.fromPlayer,
+              fromPlayer: p.fromPlayer,
               kind: kindKey(kindOf(state, p.takenId)),
             },
           },

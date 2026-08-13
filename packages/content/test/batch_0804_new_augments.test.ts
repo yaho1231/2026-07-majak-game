@@ -231,6 +231,23 @@ describe("초읽기 (time_pressure)", () => {
     );
     expect(armed?.[1]).toBe(TIME_PRESSURE_SECONDS);
   });
+
+  it("그 국이 지나가면 '끝났다'를 전원 공개 채널에 남긴다", () => {
+    // 효과 표시는 국 스코프라 조용히 사라지는데 이름표의 증강은 그대로 서 있어서,
+    // 이미 죽은 증강이 "이번 국만"인 채로 남아 보였다(2026-08-13 사용자 보고).
+    const game = createStandardGameFromState(craft({
+      hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+    }));
+    installAugment(game.engine, timePressure, "p0", { yaku: game.yaku });
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    // 발동한 국 안에서는 아직 끝나지 않았다
+    expect(game.engine.state.augmentData["view:*:spent:time_pressure:p0"]).toBeUndefined();
+    // 다음 국이 시작되면 끝났다는 표식이 선다
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    expect(game.engine.state.augmentData["view:*:spent:time_pressure:p0"]).toBe(true);
+  });
 });
 
 // ─────────────────────────── 4. 눈먼 총알 ───────────────────────────
