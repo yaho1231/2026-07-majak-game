@@ -5,9 +5,15 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createStandardGameFromState, installAugment } from "@majak/core";
+import {
+  DraftController,
+  createStandardGame,
+  createStandardGameFromState,
+  installAugment,
+} from "@majak/core";
 import type { GameState, PlayerId } from "@majak/core";
 import { craft } from "./helpers.js";
+import { contentAugments } from "../src/index.js";
 import { reload } from "../src/augments/reload.js";
 
 function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
@@ -104,5 +110,26 @@ describe("재장전 (reload)", () => {
     const provider2 = game2.engine.turnOptionProviders[0];
     const opts2 = provider2 ? provider2(game2.engine.state, "p0") : [];
     expect(opts2.some((o) => o.type === "reload_use")).toBe(false);
+  });
+
+  // 첫 스테이지에는 되살릴 증강이 아직 없다 — 그 자리에서 집으면 한 칸을 빈손으로 쓴다.
+  it("첫 드래프트(gameStart)에는 제시되지 않고, 이후 스테이지에는 제시될 수 있다", () => {
+    const players: PlayerId[] = ["p0", "p1", "p2", "p3"];
+    let laterOffers = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const g = createStandardGame({
+        seed,
+        mode: "hanchan",
+        extraAugments: contentAugments,
+      });
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
+      for (const p of players) {
+        expect(draft.roll("gameStart", p).map((d) => d.id)).not.toContain("reload");
+        for (const stage of ["eastThird", "southEntry", "southThird"] as const) {
+          if (draft.roll(stage, p).some((d) => d.id === "reload")) laterOffers++;
+        }
+      }
+    }
+    expect(laterOffers).toBeGreaterThan(0);
   });
 });
