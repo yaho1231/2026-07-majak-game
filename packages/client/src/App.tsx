@@ -201,6 +201,28 @@ const LIMIT_NAMES: Record<string, string> = {
   yakuman: "역만",
 };
 
+/**
+ * "그 방에 속해 있어야만 의미가 있는" 메시지 — 방을 뜬 뒤에 도착하면 버린다.
+ *
+ * 나가기 직후에도 이미 날아오던 뷰·연출이 몇 개 더 도착한다. 받아 버리면 홈 화면인
+ * 채로 `view`가 되살아나 대국 BGM과 컷인 효과음만 흐른다(무엇이 소리를 내는지 화면
+ * 어디에도 없다). `gameAborted`·`kicked`·`error` 같은 **정리 신호**는 여기 넣지
+ * 않는다 — 나간 뒤에 오는 것이 정상이고, 그게 마지막 정리를 해 준다.
+ */
+const GAME_STREAM_MESSAGES: ReadonlySet<ServerMessage["type"]> = new Set([
+  "view",
+  "prompt",
+  "promptCancel",
+  "draftOffer",
+  "roundOver",
+  "gameOver",
+  "abortVote",
+  "actionFx",
+  "lobby",
+  "sandbox",
+  "sandboxConfig",
+]);
+
 /** 도중유국 사유 (RoundSettledPayload.abortReason) — 결과 화면 부제 */
 const ABORT_REASONS: Record<string, string> = {
   kyushuKyuhai: "구종구패 — 배패에 요구패·자패가 9종 이상이라 국을 물렸다",
@@ -2032,6 +2054,14 @@ export function App(): JSX.Element {
   /** 재연결 후 자동 복귀 대상 — 참가 중인 방 코드 / 관전 중인 방 코드. */
   const activeRoomRef = useRef<string | null>(null);
   const activeSpectateRef = useRef<string | null>(null);
+  /**
+   * 지금 방에 앉아 있는가 (`joined`로 켜고, 방을 뜨면 끈다).
+   *
+   * `activeRoomRef`와 따로 두는 이유: 그쪽은 **재연결 자동 재입장 대상**이라
+   * 게스트 체험 판에서는 처음부터 null이다(게스트는 joinRoom을 못 쓴다).
+   * 그걸로 게임 스트림을 걸러 내면 손님 화면에는 아무것도 그려지지 않는다.
+   */
+  const inRoomRef = useRef(false);
   /** 이번 국 결과에 대해 roundContinue(다음 국 신호)를 이미 보냈는지 — 국마다 리셋 */
   const roundContinueSent = useRef(false);
   /**
@@ -2460,8 +2490,12 @@ export function App(): JSX.Element {
 
   // 평상시 대국 BGM 수명 — 대국 화면에 있는 동안만 흐른다.
   // 최종 순위(rankings)가 뜨면 게임이 끝난 것이므로 멈춘다. 리치 중 덕킹은 sfx.ts가 맡는다.
-  // (아래 화면 라우팅의 `inGame`과 이름만 다를 뿐 같은 뜻 — 그건 선언이 한참 뒤라 못 쓴다.)
-  const bgmShouldPlay = view !== null && rankings === null;
+  //
+  // 방(joined)·관전(spectating)까지 함께 보는 것은 화면 라우팅의 `inGame`과 조건을
+  // 정확히 맞추기 위해서다(그건 선언이 한참 뒤라 못 쓴다). 예전에는 `view`만 봐서,
+  // 방을 뜬 뒤 뒤늦게 도착한 뷰 하나가 view를 되살리면 **홈 화면인 채로 BGM만**
+  // 흘렀다 — 화면 어디에도 대국이 없으니 끌 방법이 없었다.
+  const bgmShouldPlay = view !== null && rankings === null && (joined !== null || spectating !== null);
   useEffect(() => {
     if (bgmShouldPlay) bgm.start();
     else bgm.stop();
@@ -2710,6 +2744,7 @@ export function App(): JSX.Element {
     introShown.current = false;
     activeRoomRef.current = null;
     activeSpectateRef.current = null;
+    inRoomRef.current = false;
     bannerShown.current = {
         roundKey: "",
         riichi: new Set(),
@@ -2813,6 +2848,20 @@ export function App(): JSX.Element {
   }
 
   function handleServerMessage(msg: ServerMessage): void {
+    /*
+     * 방을 뜬 뒤에 도착한 **게임 스트림**은 버린다.
+     *
+     * 나가기(leaveRoom)를 보낸 직후에도 이미 날아오던 뷰·연출이 몇 개 더 도착한다.
+     * 그걸 그대로 받으면 `view`가 다시 채워지는데, 화면 라우팅은 `joined`도 함께
+     * 보므로 **홈/로비 화면인 채로** 대국 BGM(`bgmShouldPlay = view !== null`)과
+     * 컷인 효과음만 되살아난다 — 어디서 나는지 알 수 없는 소리가 계속 흐른다.
+     * (판이 무효로 접히기까지의 짧은 틈에도 이 창이 열린다.)
+     *
+     * 판정은 반드시 live ref로 한다 — 이 콜백은 소켓에 고정된 클로저라 state는 낡는다.
+     */
+    if (GAME_STREAM_MESSAGES.has(msg.type) && !inRoomRef.current && activeSpectateRef.current === null) {
+      return;
+    }
     if (msg.type === "serverInfo") {
       setServerInfo(msg);
       return;
@@ -2990,6 +3039,7 @@ export function App(): JSX.Element {
     }
     if (msg.type === "joined") {
       setJoined(msg);
+      inRoomRef.current = true;
       // 게스트는 재접속할 수단이 없다(세션 토큰도 joinRoom 권한도 없다) — 재연결
       // 자동 재입장 대상으로 기억하면 붙자마자 거절 토스트만 뜬다.
       activeRoomRef.current = guestRef.current ? null : msg.roomId; // 재연결 시 자동 재입장 대상
