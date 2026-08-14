@@ -191,7 +191,8 @@ describe("증강 테스트 — 시작", () => {
 
     const sbx = admin.last("sandbox");
     expect(sbx).toBeDefined();
-    expect(sbx.mode).toBe("hanchan");
+    // 모드를 안 적어 보내면 방 기본값 — 동풍전이다 (2026-08-14)
+    expect(sbx.mode).toBe("tonpuu");
     expect(sbx.augments).toEqual({});
     // 증강 선택창(드래프트)은 뜨지 않는다
     expect(admin.last("draftOffer")).toBeUndefined();

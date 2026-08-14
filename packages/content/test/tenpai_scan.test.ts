@@ -2,10 +2,10 @@
  * 천리안 (tenpai_scan) 동작 테스트.
  *
  * 핵심 계약:
- *  1. 자기 턴에 선언할 수 있고(게임당 1회), 선언하면 텐파이인 상대 목록이
+ *  1. 자기 턴에 선언할 수 있고(매 국 1회), 선언하면 텐파이인 상대 목록이
  *     보유자 전용 채널(view:{holder}:tenpai_scan)에 `{ players, turn }`으로만 실린다.
  *  2. 텐파이인 상대(p1)는 목록에 들고, 노텐인 상대(p2)는 들지 않는다.
- *  3. 게임당 1회 — 한 번 쓰면 다시 제시되지 않는다.
+ *  3. 매 국 1회 — 같은 국에 두 번은 못 쓰고, 국이 바뀌면 다시 열린다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -98,15 +98,17 @@ describe("천리안 (tenpai_scan)", () => {
     expect(result.turn).toBe(7);
   });
 
-  it("동풍전 1회 — 한 번 쓰면 다시 제시되지 않는다", () => {
-    // 동풍전(tonpuu)이면 사용 1회 → 소진 후 후보 사라짐
-    const base = scene();
-    const tonpuu: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };
-    const { game, flow } = startFlow(tonpuu);
+  it("같은 국에는 한 번 쓰면 다시 제시되지 않는다", () => {
+    const { game, flow } = startFlow(scene());
     flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
 
-    // 사용 카운터가 1 올랐다
-    expect(game.engine.state.augmentData["tenpai_scan:uses:p0"]).toBe(1);
+    // 사용 카운터는 **국 단위 키**에 선다 (`{id}:uses:{roundKey}:{holder}`)
+    const usesKeys = Object.keys(game.engine.state.augmentData).filter((k) =>
+      k.startsWith("tenpai_scan:uses:"),
+    );
+    expect(usesKeys).toHaveLength(1);
+    expect(usesKeys[0]!.endsWith(":p0")).toBe(true);
+    expect(game.engine.state.augmentData[usesKeys[0]!]).toBe(1);
 
     // 사용 후의 state를 새 게임에 재설치 → p0 턴이어도 스캔 후보가 뜨지 않는다
     const used = withAugments(game.engine.state, "p0", ["tenpai_scan"]);
@@ -121,5 +123,24 @@ describe("천리안 (tenpai_scan)", () => {
     expect(
       prompt?.options.filter((o) => o.type === "tenpai_scan_use") ?? [],
     ).toHaveLength(0);
+  });
+
+  it("국이 바뀌면 다시 쓸 수 있다 (매 국 1회)", () => {
+    const { game, flow } = startFlow(scene());
+    flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+
+    // 다음 국(동2국)으로 넘어간 상태 — 사용 카운터 키가 달라져 후보가 되살아난다
+    const used = withAugments(game.engine.state, "p0", ["tenpai_scan"]);
+    const game2 = createStandardGameFromState({
+      ...used,
+      round: { ...used.round, phase: "turn.act", turnSeat: 0, roundNumber: 2 },
+    });
+    installAugment(game2.engine, tenpaiScan, "p0", { yaku: game2.yaku });
+    const status2 = new FlowController(game2.engine).begin();
+    if (status2.kind !== "awaiting") throw new Error("expected awaiting");
+    const prompt = status2.prompts.find((p) => p.player === "p0");
+    expect(
+      prompt?.options.filter((o) => o.type === "tenpai_scan_use") ?? [],
+    ).toHaveLength(1);
   });
 });

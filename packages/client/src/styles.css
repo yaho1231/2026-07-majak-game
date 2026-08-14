@@ -125,6 +125,24 @@ body {
   height: 100%;
 }
 
+/* ── 빈 곳을 끌어도 파랗게 긁히지 않는다 ──
+   웹 문서의 기본 동작(드래그 = 텍스트 선택)이 게임 화면에서는 늘 사고다. 패를 끌어
+   옮기거나 버튼을 눌렀다 떼는 동작마다 이름표·안내문이 통째로 파랗게 잡혔다
+   (2026-08-14 사용자 요청). 선택이 실제로 쓸모 있는 자리 — 입력칸과 사람이 쓴 긴 글
+   (제보 본문·답변) — 만 `.selectable` 로 되돌린다. */
+.game-root {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 button {
   font-family: inherit;
   cursor: pointer;
@@ -5164,10 +5182,20 @@ button {
 
 /* ─────────────── 대기실 ─────────────── */
 
+/* 카드가 화면보다 길어질 수 있다 — 판 길이·봇 난이도·좌석 4줄·꿀팁이 다 세로로 쌓이고,
+   낮은 창(또는 확대 배수)에서는 시작 버튼과 준비 버튼이 통째로 잘렸다. `.game-root`가
+   overflow:hidden이라 그렇게 잘린 것은 영영 못 본다(§9-4와 같은 이유).
+
+   ⚠ `place-items: center`를 그대로 두면 스크롤을 열어도 소용이 없다 — 카드가 통보다
+   클 때 center는 위쪽으로도 넘쳐 잘린 머리를 스크롤로 되돌릴 수 없다. `safe center`는
+   넘치는 순간 start로 떨어져 위끝이 통 안에 남는다. */
 .waitroom {
   height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-content: safe center;
   padding: 16px;
 }
 
@@ -10950,14 +10978,18 @@ body.peeking .overlay-peekable > * {
    반드시 스크롤이 열려 있어야 한다. */
 /* ⚠ .settings-panel 은 여기 없다 — 헤더(드래그 핸들)를 고정하고 본문만 스크롤하는
    구조라 패널 자체에 overflow를 걸면 스크롤 통이 두 겹이 된다. 게다가 이 규칙의
-   `max-height: 100dvh` 가 위쪽 `min(78cqh, …)` 를 덮어써서, top(62px 또는 드래그
+   `max-height` 가 위쪽 `min(78cqh, …)` 를 덮어써서, top(62px 또는 드래그
    위치)만큼 패널 아래끝이 화면 밖으로 나가 **끝까지 스크롤해도 마지막 항목이 안
    보였다**(2026-08-08 사용자 보고). 패널 높이는 top을 빼고 잡는다 — 5081행 참고. */
+/* ⚠ 단위는 `dvh`가 아니라 **`cqh`**다. body에 `zoom: --ui-scale`이 걸려 있는데 뷰포트
+   단위는 zoom을 타지 않는다 — 배율 0.6에서 `100dvh`짜리 층은 화면의 60%만 덮었고,
+   전체화면 도감을 열어도 아래쪽 40%에 홈 화면(제보 게시판)이 그대로 남아 있었다
+   (2026-08-14 사용자 보고). cqh는 body 상자를 재므로 배율과 무관하게 화면 전체다. */
 .screen-overlay,
 .auglog,
 .result-panel,
 .codex {
-  max-height: 100dvh;
+  max-height: 100cqh;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;

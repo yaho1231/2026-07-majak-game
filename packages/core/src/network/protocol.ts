@@ -67,7 +67,7 @@ export interface LogoutMessage {
  */
 export interface GuestPlayMessage {
   type: "guestPlay";
-  /** 반장전(기본)·동풍전. */
+  /** 동풍전(기본)·반장전. */
   mode?: GameMode;
 }
 
