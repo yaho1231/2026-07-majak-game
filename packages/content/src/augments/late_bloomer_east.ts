@@ -5,16 +5,19 @@
  * 동4국(남입 연장 포함)에 들어서는 순간 만개해서, 그 이후로는
  *   - 후리텐을 무시하고 론할 수 있고(`win.furiten.enabled` = false)
  *   - 역이 없어도 화료할 수 있다(`win.requiresYaku` = false)
- * 점수 배율은 없다 — 규칙 두 개가 보상이다.
+ *   - 만개 구간의 화료에 +2판이 붙는다 (반장전판은 +3판 — 게임 전체를 버틴 값이 더 크다)
+ * 정산 배율은 없다 — 규칙 두 개가 본체고 판수는 덤이다.
  *
  * 구현은 반장전판과 동일하되, 만개 판정만 동풍전 종반(동4국 이후 또는 남입)으로 바꾼다.
  */
 
 import { ROUND_STARTED, augmentDataSet, defineAugment } from "@majak/core";
 import type { AugmentDef, GameState } from "@majak/core";
-import { stringOf, viewKey } from "../util.js";
+import { addWinHanBonus, stringOf, viewKey } from "../util.js";
 
 const ID = "late_bloomer_east";
+/** 만개 구간의 화료에 얹는 판수 (반장전판은 +3판) */
+const BLOOM_HAN = 2;
 
 /**
  * 지금이 만개 구간인가 — 동4국 이후 또는 남입(장≥2).
@@ -36,11 +39,11 @@ export const lateBloomerEast: AugmentDef = defineAugment({
   // 만개 시점이 다른 별개의 증강이므로 이름에 그 시점을 붙여 갈라 둔다.
   name: "대기만성 (동풍전)",
   description:
-    "(상시 · 동풍전 전용 · 게임 시작 드래프트에서만 등장) 동4국(남입 연장 포함)에 들어서면 만개한다 — 그 이후로는 후리텐을 무시하고 론할 수 있고, 역이 없어도 화료할 수 있다.",
+    "(상시 · 동풍전 전용 · 게임 시작 드래프트에서만 등장) 동4국(남입 연장 포함)에 들어서면 만개한다 — 그 이후로는 후리텐을 무시하고 론할 수 있고, 머리 1개와 몸통 4개가 완성된다면 역이 없어도 화료할 수 있다. 만개 후의 화료에는 +2판이 붙는다.",
   draftStages: ["gameStart"],
   modes: ["tonpuu"],
   detail:
-    "(상시 · 동풍전 전용 · 게임 시작 드래프트에서만 등장) 동4국(남입 연장 포함)에 들어서는 순간 만개해, 그 이후의 모든 국에서 후리텐이 적용되지 않고 역 없이도 화료할 수 있다. 점수 배율은 붙지 않으며 만개 사실은 전원에게 공개된다. 만개 전까지는 아무 효과도 없다.",
+    "(상시 · 동풍전 전용 · 게임 시작 드래프트에서만 등장) 동4국(남입 연장 포함)에 들어서는 순간 만개해, 그 이후의 모든 국에서 후리텐이 적용되지 않는다. 또한 머리 1개와 몸통 4개(4멘쯔)로 손이 완성되면 역이 하나도 없어도 그대로 화료할 수 있다. 만개 후의 화료에는 +2판이 붙는다. 만개 사실은 전원에게 공개되며, 만개 전까지는 아무 효과도 없다.",
   install(ctx) {
     const { holder } = ctx;
     const vKey = viewKey("*", `${ID}:${holder}`);
@@ -62,6 +65,9 @@ export const lateBloomerEast: AugmentDef = defineAugment({
         return inBloom(rctx.state as GameState | undefined) ? false : cur;
       },
     });
+
+    // 만개 구간의 화료 보상 — 만개 전 화료에는 0판이라 전반에는 아무것도 얹히지 않는다.
+    addWinHanBonus(ctx, (state) => (inBloom(state) ? BLOOM_HAN : 0));
 
     // 후반에 들어서는 그 순간이 테이블에 보이게 — 전원 공개
     ctx.reaction(ROUND_STARTED, (_event, rc) => {

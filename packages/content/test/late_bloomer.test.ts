@@ -121,8 +121,14 @@ describe("late_bloomer (대기만성)", () => {
     ).toBe(true);
   });
 
-  it("획득 점수에는 더 이상 배율이 붙지 않는다 (52차: 배율 폐지)", () => {
+  it("만개 구간 화료에는 +3판이 붙는다 (배율이 아니라 판수)", () => {
     const { base, aug } = settleDeltas(atRound(craftTanyaoTsumo(), 2, 4));
+    expect(base).toBeGreaterThan(0);
+    expect(aug).toBeGreaterThan(base);
+  });
+
+  it("만개 전 화료에는 아무것도 붙지 않는다 (동1국 delta 동일)", () => {
+    const { base, aug } = settleDeltas(atRound(craftTanyaoTsumo(), 1, 1));
     expect(base).toBeGreaterThan(0);
     expect(aug).toBe(base);
   });

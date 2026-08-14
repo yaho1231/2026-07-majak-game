@@ -136,6 +136,12 @@ describe("late_bloomer_east (대기만성 · 동풍전)", () => {
     expect(aug).toBe(base);
   });
 
+  it("동4국(만개) 화료에는 +2판이 붙는다", () => {
+    const { base, aug } = settleDeltas(atRound(craftTanyaoTsumo(), 1, 4), lateBloomerEast);
+    expect(base).toBeGreaterThan(0);
+    expect(aug).toBeGreaterThan(base);
+  });
+
   it("남입 연장(장=2)에서도 만개한다", () => {
     const r = bloomedRules(atRound(craftTanyaoTsumo(), 2, 1));
     expect(r.furiten).toBe(false);
