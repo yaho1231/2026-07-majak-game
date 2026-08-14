@@ -280,15 +280,18 @@ export class FlowController {
       }
       
       // 4연속 안깡 (장사진) — 같은 무늬 연속 4장을 한 깡으로 (시작 랭크당 한 번만 제시)
+      // 끝없는 윤회를 함께 들고 있으면 7-8-9-1·8-9-1-2·9-1-2-3까지 이어서 제시한다.
       if (snakeKanFor(state, this.engine.rules, player)) {
+        const snakeWrap =
+          scoringOptionsOf(state, this.engine.rules, player).wrapRuns === true;
         for (const suit of DEFAULT_SEQUENCE_SUITS) {
-          for (let start = 1; start + 3 <= 9; start++) {
+          for (let start = 1; start <= (snakeWrap ? 9 : 6); start++) {
             const seenKey = `snake:${suit}${start}`;
             if (ankanKindsSeen.has(seenKey)) continue;
             const ids = [0, 1, 2, 3].map((d) =>
               hand.find((t) => {
                 const kk = kindOf(state, t);
-                return kk.suit === suit && kk.rank === start + d;
+                return kk.suit === suit && kk.rank === ((start - 1 + d) % 9) + 1;
               }),
             );
             if (!ids.every((x): x is number => x !== undefined)) continue;

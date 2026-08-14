@@ -10336,44 +10336,59 @@ function augmentPillStatus(
    * 남은 사용 횟수 — 횟수형 증강 공용 채널(`uses:{증강id}`, content/util publishUsesLeft).
    *
    * "게임 내 2회"라고 적힌 증강이 몇 번 남았는지가 화면 어디에도 없어서, 액티브 버튼이
-   * 사라지고 나서야 소진을 알 수 있었다(2026-08-12 사용자 지적). 보유자 본인 채널이라
-   * 남의 pill에는 애초에 값이 없다.
+   * 사라지고 나서야 소진을 알 수 있었다(2026-08-12 지적). 보유자 본인 채널이라 남의
+   * pill에는 애초에 값이 없다.
    *
-   * 아래 개별 분기(PILL_CUSTOM 등)보다 **뒤**에 두면 상태 뱃지가 있는 국에는 잔량이
-   * 통째로 묻힌다. 그래서 개별 분기에 실을 값이 없을 때만 잔량을 세운다.
+   * 예전에는 `raw === undefined`일 때만 세웠다 — 상태 뱃지를 함께 쓰는 증강(붉은 손길·
+   * 일확천금·조커…)은 **발동한 국에 잔량이 통째로 묻혔다**(2026-08-15 "횟수류가 안
+   * 나온다"). 이제 둘 다 있으면 상태 뱃지 뒤에 `·n회`로 붙여 함께 보여준다.
    */
-  if (raw === undefined) {
-    const uses = av[`uses:${augId}`] as
-      | { left?: unknown; total?: unknown; scope?: unknown }
-      | undefined;
-    if (uses !== undefined && uses !== null && typeof uses.left === "number") {
-      const left = uses.left;
-      const total = typeof uses.total === "number" ? uses.total : left;
-      const where = uses.scope === "round" ? "이번 국" : "게임 내";
-      return {
-        chip: `${left}회`,
-        note:
-          left > 0
-            ? `${where} ${total}회 중 ${left}회 남음`
-            : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
-        ...(left === 0 ? { tone: "spent" as const } : {}),
-        ...(total > 0 ? { gauge: left / total } : {}),
-      };
-    }
-    return null;
-  }
+  const uses = av[`uses:${augId}`] as
+    | { left?: unknown; total?: unknown; scope?: unknown }
+    | undefined;
+  const usesStatus: PillStatus | null =
+    uses !== undefined && uses !== null && typeof uses.left === "number"
+      ? (() => {
+          const left = uses.left as number;
+          const total = typeof uses.total === "number" ? uses.total : left;
+          const where = uses.scope === "round" ? "이번 국" : "게임 내";
+          return {
+            chip: `${left}회`,
+            note:
+              left > 0
+                ? `${where} ${total}회 중 ${left}회 남음`
+                : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
+            ...(left === 0 ? { tone: "spent" as const } : {}),
+            ...(total > 0 ? { gauge: left / total } : {}),
+          };
+        })()
+      : null;
+
+  /** 상태 뱃지와 잔량을 한 pill에 합친다 (상태가 앞, 잔량이 뒤). */
+  const withUses = (base: PillStatus | null): PillStatus | null => {
+    if (usesStatus === null) return base;
+    if (base === null) return usesStatus;
+    return {
+      ...base,
+      chip: `${base.chip} · ${usesStatus.chip}`,
+      note: `${base.note} — ${usesStatus.note}`,
+      ...(usesStatus.gauge !== undefined ? { gauge: usesStatus.gauge } : {}),
+    };
+  };
+
+  if (raw === undefined) return usesStatus;
 
   const custom = PILL_CUSTOM[augId];
-  if (custom !== undefined) return custom(raw);
+  if (custom !== undefined) return withUses(custom(raw));
   const asNumber = PILL_NUMBER[augId];
-  if (asNumber !== undefined && typeof raw === "number") return asNumber(raw);
+  if (asNumber !== undefined && typeof raw === "number") return withUses(asNumber(raw));
   if (PILL_TEXT.has(augId) && typeof raw === "string" && raw !== "") {
-    return { chip: raw, note: raw };
+    return withUses({ chip: raw, note: raw });
   }
   if (PILL_FLAG.has(augId) && raw === true) {
-    return { chip: "발동", note: "이번 국에 발동했다" };
+    return withUses({ chip: "발동", note: "이번 국에 발동했다" });
   }
-  return null;
+  return usesStatus;
 }
 
 const NamePlate = memo(function NamePlate({
@@ -10382,10 +10397,16 @@ const NamePlate = memo(function NamePlate({
   catalog,
   tipUp,
   tipAlign,
+  glow,
 }: {
   view: PlayerView;
   player: PlayerInfo;
   catalog: Record<string, AugmentCatalogEntry>;
+  /**
+   * 지금 빛낼 증강 id들 — 액티브 증강 버튼에 손을 올린 동안 "그 버튼이 쓰는 증강"을
+   * 가리킨다(내 이름표 전용). null이면 아무것도 빛나지 않는다.
+   */
+  glow?: ReadonlySet<string> | null;
   /** 증강 툴팁이 위로 뜨는지 (내 이름표는 화면 하단이라 위로). 기본 아래. */
   tipUp?: boolean;
   /** 툴팁 가로 정렬 — 화면 가장자리(좌·우 자리)에서 잘리지 않게 중앙 쪽으로 편다. 기본 center. */
@@ -10519,7 +10540,7 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
@@ -10739,14 +10760,22 @@ function MeldGroup({
   const rel = fromSeat !== undefined ? (((fromSeat - owner.seat) % n) + n) % n : 0;
   const cls = layout === "row" ? "meld meld-row" : "meld meld-col";
 
+  /*
+   * 안깡 — 양끝 두 장은 엎어 놓는 것이 마작의 표기다. 그런데 랭크가 섞이는 깡
+   * (장사진의 1-2-3-4, 바람의 계보의 동남서북)은 가운데 두 장만 남으면 화면이
+   * `( )2 3( )` · `( )남 서( )`가 되어 **무슨 깡인지 읽을 수 없었다**
+   * (2026-08-15 사용자 지적). 네 장의 정체는 선언 시점에 이미 전원 공개라
+   * 가리는 것이 규칙도 아니다 — 엎은 패 위에 실제 패를 옅게 겹쳐, "엎여 있다"는
+   * 표기는 지키면서 무엇인지는 알아볼 수 있게 한다.
+   */
   if (meld.kind === "kan_closed") {
     const s = sortTileIds(meld.tileIds, view.tiles);
     return (
       <span className={cls}>
-        <MeldTile layout={layout} colSide={colSide} back />
+        <MeldTile layout={layout} colSide={colSide} back ghost={view.tiles[s[0] ?? -1]} />
         <MeldTile layout={layout} colSide={colSide} tile={view.tiles[s[1] ?? -1]} owner={owner.id} />
         <MeldTile layout={layout} colSide={colSide} tile={view.tiles[s[2] ?? -1]} owner={owner.id} />
-        <MeldTile layout={layout} colSide={colSide} back />
+        <MeldTile layout={layout} colSide={colSide} back ghost={view.tiles[s[3] ?? -1]} />
       </span>
     );
   }
@@ -10832,6 +10861,7 @@ function MeldTile({
   colSide,
   called,
   back,
+  ghost,
   owner,
 }: {
   tile?: PublicTileView | undefined;
@@ -10839,6 +10869,12 @@ function MeldTile({
   colSide?: "left" | "right" | undefined;
   called?: boolean;
   back?: boolean;
+  /**
+   * 엎어 놓은 패 위에 **옅게** 겹쳐 그릴 실제 패 (안깡의 양끝).
+   * 엎여 있다는 표기는 그대로 두고 정체만 읽히게 한다 — 안깡 네 장은 선언과 함께
+   * 이미 전원 공개라 새로 새는 정보가 없다.
+   */
+  ghost?: PublicTileView | undefined;
   /** 후로의 주인 — 도라 반짝임 판정용 (뒷면 패는 필요 없다). */
   owner?: string | undefined;
 }): JSX.Element {
@@ -10857,7 +10893,14 @@ function MeldTile({
     <span className={`${cls}${match ? " tile-hl" : ""}`}>
       <span className="mtile-inner">
         {back === true ? (
-          <span className="tile-back-face" />
+          <>
+            <span className="tile-back-face" />
+            {ghost !== undefined ? (
+              <span className="mtile-ghost" aria-hidden="true">
+                <TileImg tile={ghost} size="fill" />
+              </span>
+            ) : null}
+          </>
         ) : (
           <TileImg tile={tile} size="fill" {...(owner !== undefined ? { owner } : {})} />
         )}
@@ -11413,6 +11456,16 @@ function OwnArea(props: {
       (o) => o.type === "discard" || o.type === "free_discard" || o.type === "riichi",
     ) ?? false;
 
+  /**
+   * 액티브 증강 버튼에 손이 올라가 있는 동안 **지금 쓸 수 있는 증강 id들**.
+   *
+   * "액티브 증강 (2)"의 2가 넷 중 어느 둘인지가 화면 어디에도 없었다 — 버튼을 눌러
+   * 메뉴를 열어야 알 수 있었고, 그러면 판을 보면서 확인할 수가 없다(2026-08-15 요청).
+   * 버튼과 이름표 pill은 같은 줄(.own-top-main)에 나란히 서 있으므로, 올려놓는 동안
+   * 그 pill들을 빛내면 둘 사이가 눈으로 이어진다.
+   */
+  const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
+
   // 자유 선언으로 고정된 오름패 (있으면 물리 손패와 무관하게 이게 진짜 대기다)
   const frozenWaits = useMemo<TileKind[]>(
     () => (isSpectator ? [] : freeDeclareWaits(view, me.id)),
@@ -11440,6 +11493,41 @@ function OwnArea(props: {
       return [];
     }
   }, [hoverId, rawHand, view.tiles, myMeldCount, frozenWaits, me]);
+
+  /**
+   * 내가 이미 버린 패의 종류 — hover 미리보기의 후리텐 판정에 쓴다.
+   *
+   * 서버의 `furitenReasons`는 **지금 손** 기준이라, "이 패를 버리면 후리텐이 되는가"는
+   * 여기서 따로 봐야 한다. 바닥은 전원 공개라 클라이언트가 세어도 정보 규칙에 어긋나지
+   * 않는다. 한계: 후로로 바닥을 떠난 패는 세지 못한다(서버의 버림 이력과 달리 zone만
+   * 본다) — 그래서 이 표시는 "적어도 후리텐"이고, 서버 판정이 더 넓을 수 있다.
+   */
+  const myDiscardKeys = useMemo<ReadonlySet<string>>(() => {
+    const out = new Set<string>();
+    for (const id of view.zones[`discards:${me.id}`]?.tileIds ?? []) {
+      const k = view.tiles[id]?.kind;
+      if (k !== undefined) out.add(kindKey(k));
+    }
+    return out;
+  }, [view.zones, view.tiles, me.id]);
+
+  /**
+   * hover한 패를 버리면 후리텐이 되는가 — 버리는 그 패도 내 바닥에 들어가므로 함께 센다
+   * (쯔모한 패가 곧 대기패인 "버리자마자 후리텐"이 실제로 자주 나온다).
+   * 이미 후리텐이면(리치 후 넘김·일시 후리텐) 무엇을 버려도 후리텐이라 그대로 참이다.
+   */
+  const hoverFuriten = useMemo<boolean>(() => {
+    if (hoverId === null || hoverWaits.length === 0) return false;
+    if ((view.round.byPlayer[me.id]?.furitenReasons ?? []).length > 0) return true;
+    const droppedKey = (() => {
+      const k = view.tiles[hoverId]?.kind;
+      return k === undefined ? null : kindKey(k);
+    })();
+    return hoverWaits.some((k) => {
+      const key = kindKey(k);
+      return key === droppedKey || myDiscardKeys.has(key);
+    });
+  }, [hoverId, hoverWaits, myDiscardKeys, view.tiles, view.round.byPlayer, me.id]);
 
   // hover 중인 패 종류를 상위로 올려 공개패(버림·후로) 강조에 사용
   useEffect(() => {
@@ -11697,13 +11785,20 @@ function OwnArea(props: {
          */}
         <div className="own-top">
           <div className="own-top-main">
-            <NamePlate view={view} player={me} catalog={props.catalog} tipUp />
+            <NamePlate
+              view={view}
+              player={me}
+              catalog={props.catalog}
+              tipUp
+              glow={usableHint}
+            />
             {!isSpectator ? (
               <ActiveAugmentControl
                 view={view}
                 me={me}
                 prompt={prompt}
                 catalog={props.catalog}
+                onUsableHint={(ids) => setUsableHint(ids === null ? null : new Set(ids))}
               />
             ) : null}
             {!isSpectator ? <ActiveInfoBadges view={view} me={me} /> : null}
@@ -11999,7 +12094,9 @@ function OwnArea(props: {
                     ⚠
                   </span>
                 ) : null}
-                {showWaits ? <WaitTip waits={hoverWaits} noYaku={noYakuWaitSet} /> : null}
+                {showWaits ? (
+                  <WaitTip waits={hoverWaits} noYaku={noYakuWaitSet} furiten={hoverFuriten} />
+                ) : null}
               </button>
             );
           })}
@@ -12320,39 +12417,79 @@ function WaitsBadge({
   );
 }
 
-/** 리치 대기패(화료패) 미리보기 툴팁. */
+/**
+ * 리치 대기패(화료패) 미리보기 툴팁 — "이 패를 버리면 무엇을 기다리는가".
+ *
+ * 상시 뱃지(WaitsBadge)와 **같은 것을 보여준다**: 오름패 그림 + 남은 장수 + 후리텐.
+ * 예전에는 그림뿐이라, 버리기 전에는 "몇 장 남았는지"도 "론이 되는지"도 알 수 없고
+ * 버리고 난 뒤에야 상시 뱃지에서 확인할 수 있었다(2026-08-15 사용자 요청).
+ * 고를 때 필요한 정보를 고른 뒤에 주는 셈이었다.
+ */
 function WaitTip({
   waits,
   noYaku,
+  furiten,
 }: {
   waits: TileKind[];
   /** 역이 없어 론이 안 되는 대기 종류(kindKey) — "오름패인데 왜 못 먹지?" 방지 */
   noYaku?: ReadonlySet<string>;
+  /**
+   * 이 패를 버리면 후리텐이 되는가 — **버린 뒤의** 상태다(버리는 그 패도 내 바닥에
+   * 들어가므로 함께 센다). 서버가 주는 현재 손 기준 후리텐과 달리 가정 계산이라
+   * 계산도 판정도 클라이언트가 한다(HandArea).
+   */
+  furiten?: boolean;
 }): JSX.Element {
   const dead = (k: TileKind): boolean => noYaku?.has(kindKey(k)) === true;
   const allDead = waits.length > 0 && waits.every(dead);
   const shown = waits.slice(0, WAIT_TILE_CAP);
   const hidden = waits.length - shown.length;
+  // 남은 장수 — 판 전체가 같은 셈을 본다(WaitsBadge와 같은 컨텍스트).
+  const remaining = useContext(WaitCountContext);
+  const furitenOn = furiten === true;
+  const tipOf = (k: TileKind, left: number | null): string | undefined => {
+    const parts: string[] = [];
+    if (left !== null) {
+      parts.push(left === 0 ? "남은 0장 — 이 패로는 날 수 없습니다" : `남은 ${left}장 (보이지 않는 장수)`);
+    }
+    if (furitenOn) parts.push("후리텐 — 론 불가, 쯔모만 가능합니다");
+    if (dead(k)) parts.push("역이 없어 론할 수 없습니다");
+    return parts.length === 0 ? undefined : parts.join(" · ");
+  };
   return (
-    <span className="wait-tip">
+    <span className={`wait-tip${furitenOn ? " wait-tip-furiten" : ""}`}>
       <span className="wait-tip-label">
         {waits.length === 0 ? "형식 텐파이" : allDead ? "대기 (역없음)" : "대기"}
         {waits.length > WAIT_TILE_CAP ? (
           <span className="waits-badge-count">{waits.length}종</span>
         ) : null}
+        {furitenOn ? (
+          <span
+            className="waits-badge-furiten-tag"
+            title="이 패를 버리면 후리텐입니다 — 론은 안 되고 쯔모로만 화료할 수 있습니다"
+          >
+            후리텐
+          </span>
+        ) : null}
       </span>
       {waits.length > 0 ? (
         <span className="wait-tip-tiles">
-          {shown.map((k) => (
-            <span
-              key={`${k.suit}${k.rank}`}
-              className={`wait-tile${dead(k) ? " wait-tile-noyaku" : ""}`}
-              title={dead(k) ? "역이 없어 론할 수 없습니다" : undefined}
-            >
-              <TileImg tile={{ kind: k }} size="mini" />
-              {dead(k) ? <span className="wait-noyaku-tag">역없음</span> : null}
-            </span>
-          ))}
+          {shown.map((k) => {
+            const left = remaining === null ? null : remaining(k);
+            return (
+              <span
+                key={`${k.suit}${k.rank}`}
+                className={`wait-tile${dead(k) ? " wait-tile-noyaku" : ""}${left === 0 ? " wait-tile-gone" : ""}`}
+                title={tipOf(k, left)}
+              >
+                <TileImg tile={{ kind: k }} size="mini" />
+                {left !== null ? (
+                  <span className={`wait-left${left === 0 ? " wait-left-gone" : ""}`}>{left}장</span>
+                ) : null}
+                {dead(k) ? <span className="wait-noyaku-tag">역없음</span> : null}
+              </span>
+            );
+          })}
           {hidden > 0 ? <span className="wait-more">+{hidden}</span> : null}
         </span>
       ) : null}
@@ -12606,6 +12743,12 @@ function ActiveAugmentControl(props: {
   me: PlayerInfo;
   prompt: PromptMessage["prompt"] | null;
   catalog: Record<string, AugmentCatalogEntry>;
+  /**
+   * 버튼에 손이 올라가 있는 동안 **지금 쓸 수 있는 증강 id들**을 위로 올린다
+   * (떠나면 null). 이름표 pill이 그 증강을 빛내 "액티브(2)의 2가 무엇인지"를
+   * 버튼과 pill 사이에 선으로 잇는다 (2026-08-15 사용자 요청).
+   */
+  onUsableHint?: (ids: readonly string[] | null) => void;
 }): JSX.Element | null {
   const { view, me, prompt } = props;
   // 무장(클릭 발동) 상태는 게임판 전체가 공유하므로 SelectionContext에서 읽는다.
@@ -12818,7 +12961,8 @@ function ActiveAugmentControl(props: {
   // 예전엔 후보 옵션 수를 셌다 — 회수(버림패마다 후보 1개)·연금술(패×방향)처럼 후보가
   // 패 수만큼 나오는 증강이 "액티브 증강 (17)"처럼 떠 패 개수로 읽혔다(2026-08-01 보고).
   // 한 증강이 액션 타입을 둘 이상 낼 수 있으므로(예지의 발동·재배열) 증강 id로 접는다.
-  const displayCount = new Set(types.map((t) => ACTION_AUGMENT[t] ?? t)).size;
+  const usableAugIds = [...new Set(types.map((t) => ACTION_AUGMENT[t] ?? t))];
+  const displayCount = usableAugIds.length;
 
   const click = (): void => {
     if (!usable) return;
@@ -13340,6 +13484,12 @@ function ActiveAugmentControl(props: {
             : `지금은 사용할 수 없습니다 — ${activeNames.join(", ")}`
         }
         onClick={click}
+        /* 손을 올리면 그 개수가 **어느 증강인지** 이름표 pill이 빛나 알려 준다.
+           터치에는 hover가 없어 포커스(탭)로도 같은 신호를 준다. */
+        onMouseEnter={() => props.onUsableHint?.(usableAugIds)}
+        onMouseLeave={() => props.onUsableHint?.(null)}
+        onFocus={() => props.onUsableHint?.(usableAugIds)}
+        onBlur={() => props.onUsableHint?.(null)}
       >
         ✦ 액티브 증강{usable ? ` (${displayCount})` : ""}
       </button>

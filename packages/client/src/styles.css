@@ -1566,6 +1566,20 @@ button {
   inset: 0;
 }
 
+/* ── 안깡 양끝의 '엎힌 패' 위에 옅게 겹치는 실제 패 ──
+   `( )2 3( )`처럼 가운데 두 장만 보이면 1-2-3-4 장사진도 동남서북 깡도 무슨 깡인지
+   읽히지 않는다(2026-08-15 사용자 지적). 네 장은 선언과 함께 이미 전원 공개이므로
+   가려서 지키는 정보가 없다 — 엎여 있다는 표기(뒷면 무늬)는 그대로 두고, 그 위에
+   얼굴을 옅게 얹어 정체만 알아볼 수 있게 한다. 진짜로 열린 패(가운데 둘)와 확실히
+   구분되도록 불투명도를 낮추고 살짝 눌러 둔다. */
+.mtile-ghost {
+  position: absolute;
+  inset: 0;
+  opacity: 0.34;
+  filter: saturate(0.65) contrast(0.9);
+  pointer-events: none;
+}
+
 /* row: 세움 기본, 호출패 눕힘(하단 정렬) */
 .mtile-row {
   width: var(--mt-w);
@@ -6396,6 +6410,17 @@ button {
   height: 40px;
 }
 
+/* 이 패를 버리면 후리텐 — 상시 뱃지(.waits-badge-furiten)와 같은 색으로 말한다.
+   "버리면 론이 막힌다"는 **버리기 전에** 읽혀야 하는 정보라 자리가 여기다. */
+.wait-tip-furiten {
+  border-color: rgba(240, 138, 124, 0.9);
+  background: linear-gradient(rgba(120, 40, 34, 0.55), rgba(120, 40, 34, 0.55)), rgba(11, 19, 16, 0.97);
+}
+
+.wait-tip-furiten::after {
+  border-top-color: rgba(63, 30, 26, 0.98);
+}
+
 /* ─────────────── 상시 오름패 뱃지 (선언 간파 · 내 오름패) ─────────────── */
 
 .waits-badge {
@@ -6680,6 +6705,36 @@ button {
 .aug-pill-pinned {
   border-color: rgba(240, 200, 106, 0.8);
   box-shadow: 0 0 0 1px rgba(240, 200, 106, 0.35);
+}
+
+/* ── 액티브 증강 버튼이 가리키는 pill ──
+   "액티브 증강 (2)"의 2가 어느 둘인지는 여태 메뉴를 열어야만 알 수 있었다
+   (2026-08-15 사용자 요청). 버튼에 손을 올린 동안 그 둘을 빛낸다 — 버튼 색
+   (`.aug-btn-on`의 보랏빛)과 같은 계열이라 둘이 한 쌍이라는 게 읽힌다.
+   숨쉬듯 뛰게 두면 "지금 누르면 이것"이라는 신호가 정지 화면에서도 잡힌다. */
+.aug-pill-usable {
+  border-color: rgba(199, 188, 255, 0.95);
+  background: linear-gradient(rgba(120, 106, 190, 0.35), rgba(120, 106, 190, 0.35)),
+    var(--aug-pill-bg, rgba(30, 27, 45, 0.9));
+  box-shadow: 0 0 0 1px rgba(199, 188, 255, 0.5), 0 0 12px rgba(160, 145, 255, 0.55);
+  animation: aug-pill-usable-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes aug-pill-usable-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(199, 188, 255, 0.5), 0 0 10px rgba(160, 145, 255, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(220, 212, 255, 0.85), 0 0 18px rgba(180, 168, 255, 0.8);
+  }
+}
+
+/* 연출을 줄여 달라고 한 사람에게는 깜빡임 없이 테두리만 남긴다 */
+@media (prefers-reduced-motion: reduce) {
+  .aug-pill-usable {
+    animation: none;
+  }
 }
 
 .aug-pill-pin-mark {

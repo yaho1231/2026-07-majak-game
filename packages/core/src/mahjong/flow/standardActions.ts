@@ -501,7 +501,10 @@ const ankanAction: ActionDef<{ tileIds: [TileId, TileId, TileId, TileId] }> = {
     const fourWinds =
       honorRunsFor(state, rules, req.player) && isFourWinds(kinds);
     // 장사진(call.snakeKan) 보유자는 같은 무늬 연속 4장(3-4-5-6)을 한 깡으로 낼 수 있다.
-    const snake = snakeKanFor(state, rules, req.player) && isRunQuad(kinds);
+    // 끝없는 윤회(scoring.wrapRuns)를 함께 들고 있으면 8-9-1-2처럼 9를 넘는 연속도 깡이 된다.
+    const snake =
+      snakeKanFor(state, rules, req.player) &&
+      isRunQuad(kinds, scoringOptionsOf(state, rules, req.player).wrapRuns === true);
     if (!allSame && !fourWinds && !snake) {
       return "tiles are not identical";
     }

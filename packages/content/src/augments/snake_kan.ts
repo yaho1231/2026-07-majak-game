@@ -49,7 +49,7 @@ export const snakeKan: AugmentDef = defineAugment({
   description:
     "(상시) 같은 무늬 연속 4장(예: 3-4-5-6)을 '장사진'으로 선언해 깡으로 낼 수 있다 — 영상패를 뽑고 새로운 도라가 열린다.",
   detail:
-    "(상시) 같은 무늬 연속 4장(3-4-5-6 등)을 손에 모으면 장사진으로 선언해 눕힐 수 있고, 영상패 보충 쯔모와 새로운 도라 개봉이 표준 깡과 똑같이 따라온다. 다만 채점에서는 커쯔가 아니라 슌쯔로 취급되어 또이또이·산안커 같은 커쯔 역은 붙지 않으며, 깡 자체로는 세어 산깡쯔·스깡쯔에는 포함된다. 리치 중에는 선언할 수 없다.",
+    "(상시) 같은 무늬 연속 4장(3-4-5-6 등)을 손에 모으면 장사진으로 선언해 눕힐 수 있고, 영상패 보충 쯔모와 새로운 도라 개봉이 표준 깡과 똑같이 따라온다. 다만 채점에서는 커쯔가 아니라 슌쯔로 취급되어 또이또이·산안커 같은 커쯔 역은 붙지 않으며, 깡 자체로는 세어 산깡쯔·스깡쯔에는 포함된다. 리치 중에는 선언할 수 없다.\n\n끝없는 윤회를 함께 들고 있으면 **9와 1을 넘는 연속**도 장사진이 된다 — 8-9-1-2, 9-1-2-3도 하나의 깡이다.",
   install(ctx) {
     ctx.setHolderRule("call.snakeKan", true);
   },
@@ -81,7 +81,9 @@ export const snakeKan: AugmentDef = defineAugment({
           const k = ctx.view.tiles[id]?.kind;
           if (k !== undefined) kinds.push(k);
         }
-        if (!isRunQuad(kinds)) continue; // 같은 패 4장은 BotAgent의 일반 규칙 담당
+        // 끝없는 윤회를 함께 들고 있으면 8-9-1-2 같은 순환 4연속도 이 정책이 맡는다
+        if (!isRunQuad(kinds, ctx.view.scoringOptions?.wrapRuns === true)) continue;
+        // (같은 패 4장은 BotAgent의 일반 규칙 담당)
         const rest = without(hand, kinds);
         const waits = winningKinds(rest, meldCount + 1, undefined, ctx.view.scoringOptions);
         if (waits.length > 0) return o;

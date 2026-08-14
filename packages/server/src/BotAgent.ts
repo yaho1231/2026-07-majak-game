@@ -338,6 +338,11 @@ export class BotAgent implements PlayerAgent {
    * 결정 자체는 즉시 나오지만, 사람이 보기에 자연스럽도록 생각 시간을 둔다.
    * 성격(tempo)과 난수로 매번 조금씩 달라지고, 후로·리치처럼 실제로 고민할 만한
    * 선택은 조금 더 길게 끈다. 패스(리액션 거절)는 화면에 아무 변화도 없어 즉시 넘긴다.
+   *
+   * **리치를 건 뒤의 버림은 고민이 아니다** — 뽑은 패를 그대로 버리는 것 말고 다른
+   * 수가 없다(쯔모기리). 그런데도 매 순 같은 시간을 끌어서, 리치 봇이 넷 중 둘만
+   * 돼도 판이 눈에 띄게 늘어졌다(2026-08-15 사용자 요청). 손이 정해져 있는 순은
+   * 짧게 지나간다 — 깡·쯔모·증강 발동처럼 실제로 판이 바뀌는 결정은 그대로 둔다.
    */
   async decide(prompt: DecisionPrompt): Promise<ActionOption> {
     const chosen = this.decideSafely(prompt);
@@ -348,10 +353,22 @@ export class BotAgent implements PlayerAgent {
         chosen.type === "pon" ||
         chosen.type === "win";
       const jitter = 0.65 + this.rng.next() * 0.8;
-      const ms = Math.round(this.thinkMs * this.profile.tempo * jitter * (weighty ? 1.4 : 1));
+      const forced = this.isForcedRiichiDiscard(chosen);
+      const ms = Math.round(
+        this.thinkMs * this.profile.tempo * jitter * (weighty ? 1.4 : forced ? 0.25 : 1),
+      );
       await this.think(ms);
     }
     return chosen;
+  }
+
+  /**
+   * 이미 리치를 건 자리의 **단순 버림**인가 — 고를 것이 없는 순.
+   * (리치 중에도 깡·화료·일부 증강은 선택지가 되므로 버림만 본다.)
+   */
+  private isForcedRiichiDiscard(chosen: ActionOption): boolean {
+    if (chosen.type !== "discard") return false;
+    return this.lastView?.round.byPlayer[this.id]?.riichiDeclared === true;
   }
 
   /**

@@ -42,6 +42,7 @@ import type {
 import {
   addWinHanBonus,
   flagOf,
+  publishUsesLeft,
   replaceDrawnTile,
   riichiHidden,
   roundKey,
@@ -143,6 +144,15 @@ export const silentSwap: AugmentDef = defineAugment({
     "(매 국 1회 — 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 네 사람의 바닥 전체에서 한 장을 골라 손으로 가져오고, 그 순의 쯔모패는 패산 맨 밑으로 돌아간다. 리치가 하나라도 걸린 국에서는 발동할 수 없다. 가져온 뒤 이어지는 같은 순의 버림에는 방총 위험이 그대로 적용된다. 원래 주인의 바닥 기록은 남아 그 사람의 후리텐은 유지되고, 내 바닥에서 가져와도 내 후리텐은 풀리지 않는다. 발동한 국에 화료하면 +2판을 얻는다.\n\n가져온 패는 그 순의 쯔모패가 된다 — 그 패로 화료할 수 있고, 그때는 쯔모 화료로 값한다. 또한 '리치가 걸리지 않은 국' 조건은 **보이는 리치**만 센다: 스텔스 리치가 서 있어도 발동된다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고
+    // 나서야 소진을 알 수 있었다(2026-08-15 사용자 지적: "횟수류 전부 안 나온다").
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(state, holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     // 액션·리듀서는 게임당 한 번만 등록 (여러 명이 같은 증강을 가질 수 있다)
     if (!engine.actions.has(ACTION)) {

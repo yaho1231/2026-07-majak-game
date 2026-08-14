@@ -35,7 +35,7 @@ import type {
   PlayerId,
   VisibilityRule,
 } from "@majak/core";
-import { flagOf, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "hidden_river";
@@ -90,6 +90,14 @@ export const hiddenRiver: AugmentDef = defineAugment({
   }),
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // 선언 전에는 화면에 아무 흔적이 없어, 이 증강을 들고 있다는 것 말고는
+    // "아직 쓸 수 있다"를 읽을 길이 없었다.
+    publishUsesLeft(ctx, (state) => ({
+      left: fogDeclared(state, holder) ? 0 : 1,
+      total: 1,
+    }));
 
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) engine.actions.register(declareFogAction);
