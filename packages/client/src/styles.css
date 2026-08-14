@@ -6712,25 +6712,38 @@ button {
    (2026-08-15 사용자 요청). 버튼에 손을 올린 동안 그 둘을 빛낸다 — 버튼 색
    (`.aug-btn-on`의 보랏빛)과 같은 계열이라 둘이 한 쌍이라는 게 읽힌다.
    숨쉬듯 뛰게 두면 "지금 누르면 이것"이라는 신호가 정지 화면에서도 잡힌다. */
+/* ⚠ 여기서 **밝기를 낮추면 안 된다.** pill 바탕(.aug-pill)이 이미 보랏빛
+   rgba(165,145,255,0.25)이라, 그 위에 어두운 판을 한 겹 깔면 빛나기는커녕 옆
+   pill보다 가라앉는다 — 첫 판이 정확히 그랬고 "올려도 안 빛난다"는 보고를 받았다
+   (2026-08-15). 바탕을 통째로 밝은 보라로 갈고, 테두리·글자·잔량 칩까지 함께
+   올려 "지금 이것"이 색만 봐도 잡히게 한다. */
 .aug-pill-usable {
-  border-color: rgba(199, 188, 255, 0.95);
-  background: linear-gradient(rgba(120, 106, 190, 0.35), rgba(120, 106, 190, 0.35)),
-    var(--aug-pill-bg, rgba(30, 27, 45, 0.9));
-  box-shadow: 0 0 0 1px rgba(199, 188, 255, 0.5), 0 0 12px rgba(160, 145, 255, 0.55);
-  animation: aug-pill-usable-pulse 1.1s ease-in-out infinite;
+  background: rgba(196, 182, 255, 0.62);
+  border-color: #f2eeff;
+  color: #17142b;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(214, 205, 255, 0.9), 0 0 16px 3px rgba(170, 152, 255, 0.85);
+  animation: aug-pill-usable-pulse 1.15s ease-in-out infinite;
+}
+
+/* 잔량 칩은 평소 밝은 바탕(rgba(199,188,255,0.9))이라 밝아진 pill에 묻힌다 —
+   빛나는 동안에는 반대로 어둡게 눌러 글자가 계속 읽히게 한다. */
+.aug-pill-usable .aug-pill-chip {
+  background: rgba(35, 28, 66, 0.92);
+  color: #efeaff;
 }
 
 @keyframes aug-pill-usable-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 1px rgba(199, 188, 255, 0.5), 0 0 10px rgba(160, 145, 255, 0.45);
+    box-shadow: 0 0 0 2px rgba(214, 205, 255, 0.75), 0 0 12px 2px rgba(170, 152, 255, 0.6);
   }
   50% {
-    box-shadow: 0 0 0 1px rgba(220, 212, 255, 0.85), 0 0 18px rgba(180, 168, 255, 0.8);
+    box-shadow: 0 0 0 2px rgba(245, 241, 255, 1), 0 0 22px 6px rgba(190, 175, 255, 1);
   }
 }
 
-/* 연출을 줄여 달라고 한 사람에게는 깜빡임 없이 테두리만 남긴다 */
+/* 연출을 줄여 달라고 한 사람에게는 깜빡임 없이 밝기·테두리만 남긴다 */
 @media (prefers-reduced-motion: reduce) {
   .aug-pill-usable {
     animation: none;
