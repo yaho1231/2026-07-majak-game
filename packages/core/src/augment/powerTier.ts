@@ -1081,7 +1081,8 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     p: 1,
     s: 1,
     u: 4,
-    f: 2,
+    // 2026-08-14: matchUses(1~2회) → 매 국 1회로 상향, 빈도 2→4.
+    f: 4,
     note: "텐파이 여부만. 대기도 손패도 모른다",
   },
 

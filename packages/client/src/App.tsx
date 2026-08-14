@@ -6580,14 +6580,14 @@ function FeedbackBoard(props: {
                 </button>
                 {open ? (
                   <div className="fb-detail">
-                    <p className="fb-body-text" style={FEEDBACK_TEXT_STYLE}>{e.body}</p>
+                    <p className="fb-body-text selectable" style={FEEDBACK_TEXT_STYLE}>{e.body}</p>
                     {e.reply !== "" ? (
                       <div className="fb-reply">
                         <b>관리자 답변</b>
                         {e.repliedAt !== null ? (
                           <span className="fb-date"> {new Date(e.repliedAt).toLocaleDateString()}</span>
                         ) : null}
-                        <p style={FEEDBACK_TEXT_STYLE}>{e.reply}</p>
+                        <p className="selectable" style={FEEDBACK_TEXT_STYLE}>{e.reply}</p>
                       </div>
                     ) : null}
                     {props.auth.isAdmin ? (
@@ -6675,7 +6675,8 @@ function HomeScreen(props: {
 }): JSX.Element {
   const [code, setCode] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sandboxMode, setSandboxMode] = useState<GameMode>("hanchan");
+  // 방 기본값과 같은 쪽으로 맞춘다 — 동풍전 (RoomManager.newRoom 참고)
+  const [sandboxMode, setSandboxMode] = useState<GameMode>("tonpuu");
   const career = props.stats?.career.find((e) => e.nickname === props.auth.username) ?? null;
 
   function joinByCode(): void {

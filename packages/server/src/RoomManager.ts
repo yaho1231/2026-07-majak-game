@@ -1827,7 +1827,9 @@ export class RoomManager {
       spectators: new Set(),
       abortVotes: new Set(),
       kicked: new Set(),
-      gameMode: options.gameMode ?? "hanchan",
+      // 새 방의 기본은 **동풍전**이다 (2026-08-14 사용자 지시) — 한 판이 짧아
+      // 처음 온 사람이 끝까지 가 보기 쉽다. 방장은 대기실에서 반장전으로 바꿀 수 있다.
+      gameMode: options.gameMode ?? "tonpuu",
       sandbox: options.sandbox ?? false,
       guest: options.guest ?? false,
       sandboxAugments: {},
@@ -2755,7 +2757,8 @@ export class RoomManager {
 
     const room = this.newRoom({
       guest: true,
-      gameMode: mode === "tonpuu" ? "tonpuu" : "hanchan",
+      // 안 적어 보내면 방 기본값과 같은 동풍전 (newRoom 참고)
+      gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
     });
     this.send(conn.ws, { type: "roomCreated", code: room.code });
     this.seat(conn, user, room);
@@ -2787,7 +2790,8 @@ export class RoomManager {
     }
     const room = this.newRoom({
       sandbox: true,
-      gameMode: mode === "tonpuu" ? "tonpuu" : "hanchan",
+      // 안 적어 보내면 방 기본값과 같은 동풍전 (newRoom 참고)
+      gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
     });
     this.send(conn.ws, { type: "roomCreated", code: room.code });
     this.seat(conn, user, room);
