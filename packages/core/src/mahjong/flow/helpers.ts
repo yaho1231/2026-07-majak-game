@@ -15,7 +15,7 @@ import { doraKindFor } from "../scoring/dora.js";
 import { winningKinds } from "../scoring/waits.js";
 import { evaluateWin } from "../scoring/evaluate.js";
 import type { YakuRegistry } from "../scoring/YakuRegistry.js";
-import { DEFAULT_SEQUENCE_SUITS } from "../scoring/decompose.js";
+import { DEFAULT_SEQUENCE_SUITS, runQuadStart } from "../scoring/decompose.js";
 import type { DecomposeOptions } from "../scoring/decompose.js";
 import type { MeldInfo, WinContext } from "../scoring/WinContext.js";
 
@@ -297,14 +297,17 @@ export function snakeKanFor(
 /**
  * 이 네 패가 **같은 수패 무늬의 연속 4장**(예: 3-4-5-6)인가 — 장사진의 '4연속 깡' 재료.
  * 자패는 순서 개념이 없으므로 제외한다(자패 4연속은 바람의 계보의 동남서북 깡이 담당).
+ *
+ * @param wrap 끝없는 윤회(scoring.wrapRuns)를 함께 들고 있으면 9→1을 넘는 8-9-1-2·
+ *             9-1-2-3도 하나의 연속으로 본다. 슌쯔가 순환하는 사람에게 4연속만
+ *             순환하지 않을 이유가 없다(2026-08-15 사용자 요청).
  */
-export function isRunQuad(kinds: readonly TileKind[]): boolean {
+export function isRunQuad(kinds: readonly TileKind[], wrap = false): boolean {
   if (kinds.length !== 4) return false;
   const suit = kinds[0]?.suit;
   if (suit === undefined || !DEFAULT_SEQUENCE_SUITS.has(suit)) return false;
   if (!kinds.every((k) => k.suit === suit)) return false;
-  const ranks = [...kinds.map((k) => k.rank)].sort((a, b) => a - b);
-  return ranks.every((r, i) => i === 0 || r === (ranks[i - 1] as number) + 1);
+  return runQuadStart(kinds.map((k) => k.rank), wrap) !== null;
 }
 
 /**

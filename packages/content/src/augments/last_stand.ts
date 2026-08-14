@@ -21,7 +21,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, PlayerId } from "@majak/core";
-import { flagOf } from "../util.js";
+import { flagOf, publishUsesLeft } from "../util.js";
 import { waitTilesLeft } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -81,6 +81,14 @@ export const lastStand: AugmentDef = defineAugment({
     "(매 국 1회) 리치를 건 뒤 아무 때나, 자기 순이면 자신의 리치를 취소한다. 냈던 리치봉을 돌려받고 리치 후리텐도 풀려 다시 자유롭게 버릴 수 있다. 패산이 얼마나 남았든 상관없으며, 사용 횟수는 매 국 시작 시 초기화된다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // 매 국 초기화되는 1회라 "이번 국에 이미 썼나"가 판단의 전부다.
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     if (!engine.reducers.has(RIICHI_CANCELED)) {
       engine.reducers.register(RIICHI_CANCELED, (state, event) => {

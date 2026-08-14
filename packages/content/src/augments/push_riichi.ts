@@ -43,7 +43,7 @@ import type {
   TileDiscardedPayload,
   TileKind,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey, stringOf } from "../util.js";
+import { flagOf, publishUsesLeft, roundKey, roundViewKey, stringOf } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "push_riichi";
@@ -134,6 +134,15 @@ export const pushRiichi: AugmentDef = defineAugment({
     "(매 국 1회) 자기 순에 상대 한 명에게 낙인을 찍는다. 낙인자가 멘젠 텐파이 상태로 패를 버리려 하면 그 버림이 자동으로 리치가 되어 리치봉이 강제로 던져진다 — 다마텐으로 숨을 수 없다. 낙인은 찍은 국 동안만 살아 있고, 한 번 터지거나 국이 끝나면 소멸한다. 후로해 멘젠이 깨진 손에는 조건이 서지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고
+    // 나서야 소진을 알 수 있었다(2026-08-15 사용자 지적: "횟수류 전부 안 나온다").
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(state, holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(brandAction);

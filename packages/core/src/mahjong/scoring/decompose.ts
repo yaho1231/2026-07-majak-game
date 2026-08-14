@@ -42,6 +42,52 @@ export const DEFAULT_SEQUENCE_SUITS: ReadonlySet<Suit> = new Set([
 ]);
 
 /**
+ * 이 네 랭크가 연속 4장이면 **그 시작 랭크**, 아니면 null (장사진의 4연속 깡 판정).
+ * `wrap`이면 9를 넘어 이어지는 시작(7·8·9)도 답이 된다 — 8-9-1-2의 시작은 8이다.
+ *
+ * 시작 랭크를 돌려주는 이유: 순환 깡은 정렬만으로 순서를 복원할 수 없다
+ * (8-9-1-2를 오름차순으로 늘어놓으면 1-2-8-9가 된다). 후보 생성·validate·채점의
+ * 대표 3장(`runQuadRepr`)이 같은 한 곳에서 순서를 얻어야 어긋나지 않는다.
+ */
+export function runQuadStart(
+  ranks: readonly number[],
+  wrap = false,
+): number | null {
+  if (ranks.length !== 4) return null;
+  const have = new Set(ranks);
+  if (have.size !== 4) return null;
+  const last = wrap ? 9 : 6; // 순환이 없으면 시작은 6까지(6-7-8-9)
+  for (let start = 1; start <= last; start++) {
+    let ok = true;
+    for (let d = 0; d < 4; d++) {
+      if (!have.has(((start - 1 + d) % 9) + 1)) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return start;
+  }
+  return null;
+}
+
+/**
+ * 4연속 깡의 **대표 3장**(랭크 순서대로 앞 셋). 순환 깡(8-9-1-2)의 대표는 8-9-1이다.
+ * 연속이 아니면(사풍깡 등) null — 그쪽은 오름차순 앞 3장이 종전 규약이다.
+ */
+export function runQuadRepr(kinds: readonly TileKind[]): TileKind[] | null {
+  const start = runQuadStart(kinds.map((k) => k.rank), true);
+  if (start === null) return null;
+  const byRank = new Map(kinds.map((k) => [k.rank, k]));
+  const out: TileKind[] = [];
+  for (let d = 0; d < 3; d++) {
+    const k = byRank.get(((start - 1 + d) % 9) + 1);
+    if (k === undefined) return null;
+    out.push(k);
+  }
+  return out;
+}
+
+/**
  * 분해 동작을 바꾸는 옵션. 증강이 RuleRegistry 값에서 만들어 넘긴다
  * (helpers.scoringOptionsOf). 생략 시 표준 리치마작.
  */

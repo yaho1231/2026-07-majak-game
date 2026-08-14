@@ -54,7 +54,7 @@ import type {
   TileDrawnPayload,
   TileKindChangedPayload,
 } from "@majak/core";
-import { viewKey } from "../util.js";
+import { flagOf, publishUsesLeft, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "red_five_touch";
@@ -215,6 +215,13 @@ export const redFiveTouch: AugmentDef = defineAugment({
   }),
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // 각인 뒤에는 '숫자 각인' 뱃지가 대신 서므로, 이 뱃지가 보이는 것은 각인 전뿐이다.
+    publishUsesLeft(ctx, (state) => ({
+      left: flagOf(state, usedKey(holder)) ? 0 : 1,
+      total: 1,
+    }));
 
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) {

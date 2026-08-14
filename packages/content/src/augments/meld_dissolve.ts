@@ -59,6 +59,7 @@ import type {
 } from "@majak/core";
 import {
   flagOf,
+  publishUsesLeft,
   replaceDrawnTile,
   roundKey,
   roundViewKey,
@@ -166,6 +167,15 @@ export const meldDissolve: AugmentDef = defineAugment({
     "(매 국 1회) 자기 순에 자신의 치·퐁 하나를 골라 해체한다. 손에서 냈던 2장은 손패로 돌아오고 남에게서 가져왔던 1장은 그 사람의 버림패 더미로 되돌아가며, 부족한 한 장은 패산에서 보충되어 손패 장수가 정확히 맞는다. 후로가 하나뿐이었다면 그 순간 손이 다시 멘젠이 되어 리치를 걸 수 있다. 해체는 전원에게 공개된다. 깡은 대상이 아니고 패산이 비면 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고
+    // 나서야 소진을 알 수 있었다(2026-08-15 사용자 지적: "횟수류 전부 안 나온다").
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(state, holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(dissolveAction);

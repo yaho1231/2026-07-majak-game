@@ -10,7 +10,7 @@
 
 import { Suits, kindKey, sameKind } from "../tiles/Tile.js";
 import type { TileKind } from "../tiles/Tile.js";
-import { decompose } from "./decompose.js";
+import { decompose, runQuadRepr } from "./decompose.js";
 import type { DecompSet, DecomposeOptions } from "./decompose.js";
 
 export interface MeldInfo {
@@ -145,10 +145,14 @@ function meldToSet(meld: MeldInfo): ScoringSet {
    * 둘을 kind/랭크만으로 걸러 내면 또이또이·산안커가 통째로 날아간다.
    */
   if (isKanKind && meld.tiles.some((t) => t.rank !== first.rank) && !isPolarBody(meld.tiles)) {
-    const sorted = [...meld.tiles].sort((a, b) => a.rank - b.rank);
+    // 순환 4연속(끝없는 윤회 + 장사진의 8-9-1-2)은 오름차순 정렬로 순서가 복원되지
+    // 않는다 — 1-2-8이 대표가 되어 존재하지 않는 몸통이 나온다. 시작 랭크에서 세어
+    // 8-9-1을 내보낸다. 연속이 아닌 깡(사풍깡)은 종전대로 오름차순 앞 3장이다.
+    const repr =
+      runQuadRepr(meld.tiles) ?? [...meld.tiles].sort((a, b) => a.rank - b.rank).slice(0, 3);
     return {
       type: "run",
-      tiles: sorted.slice(0, 3),
+      tiles: repr,
       concealed: meld.kind === "kan_closed",
       isKan: true,
     };

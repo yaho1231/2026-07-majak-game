@@ -16,6 +16,7 @@ import {
 import type { ActionOption, GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
 import { snakeKan } from "../src/augments/snake_kan.js";
+import { brokenWall } from "../src/augments/broken_wall.js";
 
 function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
   return {
@@ -97,6 +98,70 @@ describe("장사진 (snake_kan)", () => {
         // 대표 3장이 실제로 연속이다
         const ranks = meldSet.tiles.map((t) => t.rank);
         expect(ranks).toEqual([3, 4, 5]);
+      }
+    }
+  });
+});
+
+/**
+ * 끝없는 윤회(broken_wall)를 함께 들면 9→1을 넘는 4연속도 장사진이다
+ * (2026-08-15 사용자 요청: "8912 깡 가능하게").
+ */
+describe("장사진 + 끝없는 윤회 — 순환 4연속 깡", () => {
+  /** p0 손: 8901p가 아니라 8p9p1p2p(순환 4연속) + 나머지. 14장 자기 턴 */
+  function wrapScene(augs: string[]): GameState {
+    return withAug(
+      craft({
+        hands: { p0: "8912p123m456m789m1s", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
+      }),
+      "p0",
+      augs,
+    );
+  }
+
+  const ranksOf = (game: ReturnType<typeof setup>, o: ActionOption): string =>
+    (o.payload as { tileIds: number[] }).tileIds
+      .map((id) => kindOf(game.engine.state, id).rank)
+      .sort((a, b) => a - b)
+      .join(",");
+
+  it("장사진만 있으면 8-9-1-2는 깡이 아니다 (대조군)", () => {
+    const game = setup(wrapScene(["snake_kan"]), true);
+    installAugment(game.engine, brokenWall, "p1", { yaku: game.yaku }); // 남이 들어도 무관
+    expect(ankanOptions(game).map((o) => ranksOf(game, o))).not.toContain("1,2,8,9");
+  });
+
+  it("끝없는 윤회를 함께 들면 8-9-1-2 안깡 후보가 선다", () => {
+    const game = setup(wrapScene(["snake_kan", "broken_wall"]), true);
+    installAugment(game.engine, brokenWall, "p0", { yaku: game.yaku });
+    expect(ankanOptions(game).map((o) => ranksOf(game, o))).toContain("1,2,8,9");
+  });
+
+  it("채점 대표 3장은 8-9-1이다 (오름차순 1-2-8이 아니라)", () => {
+    const game = setup(wrapScene(["snake_kan", "broken_wall"]), true);
+    installAugment(game.engine, brokenWall, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    const status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("awaiting");
+    const opt = (status.prompts.find((p) => p.player === "p0")?.options ?? []).find(
+      (o) => o.type === "ankan" && ranksOf(game, o) === "1,2,8,9",
+    );
+    expect(opt).toBeDefined();
+    flow.submit("p0", opt!);
+
+    const st = game.engine.state;
+    const hand = st.zones["hand:p0"]?.tileIds ?? [];
+    const ctx = buildWinContext(st, "p0", "tsumo", hand.at(-1) as TileId, {
+      rules: game.engine.rules,
+    });
+    for (const v of buildVariants(ctx)) {
+      const meldSet = v.sets.find((s) => s.isKan);
+      if (meldSet !== undefined) {
+        expect(meldSet.type).toBe("run");
+        expect(meldSet.tiles.map((t) => t.rank)).toEqual([8, 9, 1]);
       }
     }
   });

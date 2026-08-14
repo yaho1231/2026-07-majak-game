@@ -44,7 +44,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -122,6 +122,15 @@ export const conjureDraw: AugmentDef = defineAugment({
     "(매 국 1회) 자기 순에 손패 1장을 지목해 그 패의 종류를 목표로 삼는다. 다음 내 쯔모는 패산이 아니라 허공에서 생성되어 그 패의 복제(생성패)로 손에 들어오며, 손패 장수는 정상 그대로다. 무엇을 불렀는지는 발동 즉시 전원에게 공개된다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고
+    // 나서야 소진을 알 수 있었다(2026-08-15 사용자 지적: "횟수류 전부 안 나온다").
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(state, holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(conjureAction);

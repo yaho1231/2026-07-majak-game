@@ -43,6 +43,7 @@ import type {
 } from "@majak/core";
 import {
   flagOf,
+  publishUsesLeft,
   roundKey,
   roundViewKey,
   widenPeek,
@@ -130,6 +131,15 @@ export const rinshanPreview: AugmentDef = defineAugment({
     "(상시 열람 · 매 국 1회 교환) 왕패 맨 앞 1장, 곧 다음 영상패를 자신만 항상 볼 수 있다. 여기에 더해 자기 순에 국당 한 번, 그 영상패를 지금 막 쯔모한 패와 그 자리에서 맞바꾼다 — 깡을 할 필요가 없다. 바꿔 넣은 쯔모패가 왕패 맨 앞자리로 들어가므로 왕패 장수는 그대로이며, 다음 영상패는 방금 내가 넣은 그 패가 된다.\n\n열람은 나만 하지만 **교환은 전원에게 공개된다** — 다음에 깡을 치는 사람이 자기가 뽑을 영상패가 갈렸다는 사실을 알고 뽑는다. 다만 내가 넣은 패가 무엇인지는 공개되지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고
+    // 나서야 소진을 알 수 있었다(2026-08-15 사용자 지적: "횟수류 전부 안 나온다").
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(state, holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     // 액션·리듀서는 게임당 한 번만 등록 (여러 명이 같은 증강을 가질 수 있다)
     if (!engine.actions.has(ACTION_PULL)) {

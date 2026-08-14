@@ -34,7 +34,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 import { handIdsOfView, handKindsOf, isolatedIndex, shantenIfChanged } from "./botHelpers.js";
 
@@ -161,6 +161,15 @@ export const tileSplit: AugmentDef = defineAugment({
     "(매 국 1회) 손패의 수패 한 장을 골라 두 숫자로 쪼갠다 — 두 숫자의 합이 원래 숫자가 되고 무늬는 그대로다(예: 9통 → 4통 + 5통). 쪼갤 수 있는 것은 랭크 2 이상의 수패이며, 두 번째 조각은 손패에서 가장 고립된 잡패 하나가 그 조각으로 바뀌어 채우므로 손패 장수는 변하지 않는다. 결과는 전원에게 공개되고 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고
+    // 나서야 소진을 알 수 있었다(2026-08-15 사용자 지적: "횟수류 전부 안 나온다").
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(state, holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(splitAction);

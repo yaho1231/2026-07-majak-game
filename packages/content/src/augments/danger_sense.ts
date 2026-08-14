@@ -42,7 +42,7 @@ import type {
   PlayerId,
   RuleRegistry,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "danger_sense";
@@ -144,6 +144,15 @@ export const dangerSense: AugmentDef = defineAugment({
   }),
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고
+    // 나서야 소진을 알 수 있었다(2026-08-15 사용자 지적: "횟수류 전부 안 나온다").
+    publishUsesLeft(
+      ctx,
+      (state) => ({ left: flagOf(state, usedKey(state, holder)) ? 0 : 1, total: 1 }),
+      "round",
+    );
 
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) engine.actions.register(dangerSenseAction);
