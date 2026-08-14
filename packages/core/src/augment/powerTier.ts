@@ -480,7 +480,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 5,
     u: 5,
     f: 2,
-    note: "오라스부터 후리텐 무시 + 무역 화료 — 저타점 고반복으로 가장 중요한 국을 지배한다",
+    note: "오라스부터 후리텐 무시 + 무역 화료 + 화료 시 +3판 — 가장 중요한 국을 지배한다",
     tierOverride:
       "산식 35점에서 한 단계 올렸다 — 컷 경계에 한 점 차이로 걸리는 자리다. f=2는 '만개 전이 길다'를 반영한 값이지만, 만개한 뒤에는 남4국·서입 연장 **전부**에서 후리텐과 역 제약이 동시에 사라진다. 한 점 차이라면 순위가 확정되는 국의 비중 쪽을 택했다",
   },
@@ -490,7 +490,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 5,
     u: 5,
     f: 2,
-    note: "동4국부터 후리텐 무시 + 무역 화료 (동풍전 전용)",
+    note: "동4국부터 후리텐 무시 + 무역 화료 + 화료 시 +2판 (동풍전 전용)",
     tierOverride:
       "late_bloomer와 같은 구현·같은 한 점 차이(산식 35점). 동풍전은 국이 적어 만개 후 비중이 오히려 더 크다",
   },

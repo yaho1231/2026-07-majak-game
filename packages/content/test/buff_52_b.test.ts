@@ -249,7 +249,7 @@ describe("late_bloomer (대기만성 · 반장전) — 배율 대신 규칙 두 
     expect(game.engine.state.augmentData["view:*:late_bloomer:p0"]).toBe("만개");
   });
 
-  it("획득 점수 3배는 사라졌다", () => {
+  it("획득 점수 3배는 사라지고, 만개 후 화료에 +3판이 붙는다", () => {
     const base = withAugment(
       atRound(craftTanyaoTsumo(), 2, 4),
       "p0",
@@ -260,9 +260,10 @@ describe("late_bloomer (대기만성 · 반장전) — 배율 대신 규칙 두 
     installAugment(augmented.engine, lateBloomer, "p0");
     runTsumoWin(baseline);
     runTsumoWin(augmented);
-    expect(lastSettled(augmented).deltas["p0"]).toBe(
-      lastSettled(baseline).deltas["p0"],
-    );
+    const baseGain = lastSettled(baseline).deltas["p0"] ?? 0;
+    const augGain = lastSettled(augmented).deltas["p0"] ?? 0;
+    expect(baseGain).toBeGreaterThan(0);
+    expect(augGain).toBeGreaterThan(baseGain); // 배율이 아니라 +3판 환산분
   });
 });
 

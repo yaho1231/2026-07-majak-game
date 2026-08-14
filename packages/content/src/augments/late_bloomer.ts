@@ -5,7 +5,8 @@
  * 남4국(서입 연장 포함)에 들어서는 순간 만개해서, 그 이후로는
  *   - 후리텐을 무시하고 론할 수 있고(`win.furiten.enabled` = false)
  *   - 역이 없어도 화료할 수 있다(`win.requiresYaku` = false)
- * 즉 철벽과 무형화료를 한꺼번에 얻는다. 점수 배율은 1도 없다 — 규칙이 보상이다.
+ *   - 만개 구간의 화료에 +3판이 붙는다
+ * 즉 철벽과 무형화료를 한꺼번에 얻는다. 정산 배율은 없다 — 규칙이 본체고 판수는 덤이다.
  *
  * 구현:
  * - 두 규칙 모두 `rules.addModifier`로 **state를 보고 동적으로** 켠다.
@@ -17,9 +18,11 @@
 
 import { ROUND_STARTED, augmentDataSet, defineAugment } from "@majak/core";
 import type { AugmentDef, GameState } from "@majak/core";
-import { stringOf, viewKey } from "../util.js";
+import { addWinHanBonus, stringOf, viewKey } from "../util.js";
 
 const ID = "late_bloomer";
+/** 만개 구간의 화료에 얹는 판수 (동풍전판은 국이 적어 +2판) */
+const BLOOM_HAN = 3;
 
 /** 지금이 만개 구간인가 — 남4국 이후 또는 서입(장≥3) */
 function inBloom(state: GameState | undefined): boolean {
@@ -37,12 +40,12 @@ export const lateBloomer: AugmentDef = defineAugment({
   // 만개 시점을 이름에 남긴다(둘 다 "대기만성"이면 어느 쪽 기록인지 알 수 없었다).
   name: "대기만성 (반장전)",
   description:
-    "(상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장) 남4국(서입 연장 포함)에 들어서면 만개한다 — 그 이후로는 후리텐을 무시하고 론할 수 있고, 역이 없어도 화료할 수 있다.",
+    "(상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장) 남4국(서입 연장 포함)에 들어서면 만개한다 — 그 이후로는 후리텐을 무시하고 론할 수 있고, 머리 1개와 몸통 4개가 완성된다면 역이 없어도 화료할 수 있다. 만개 후의 화료에는 +3판이 붙는다.",
   draftStages: ["gameStart"],
   // 남4국 템포는 반장전 전용 — 동풍전에는 동4국판(late_bloomer_east)이 대신 나온다.
   modes: ["hanchan"],
   detail:
-    "(상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장) 남4국(서입 연장 포함)에 들어서는 순간 만개해, 그 이후의 모든 국에서 후리텐이 적용되지 않고 역 없이도 화료할 수 있다. 점수 배율은 붙지 않으며 만개 사실은 전원에게 공개된다. 만개 전까지는 아무 효과도 없다.",
+    "(상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장) 남4국(서입 연장 포함)에 들어서는 순간 만개해, 그 이후의 모든 국에서 후리텐이 적용되지 않는다. 또한 머리 1개와 몸통 4개(4멘쯔)로 손이 완성되면 역이 하나도 없어도 그대로 화료할 수 있다. 만개 후의 화료에는 +3판이 붙는다. 만개 사실은 전원에게 공개되며, 만개 전까지는 아무 효과도 없다.",
   install(ctx) {
     const { holder } = ctx;
     const vKey = viewKey("*", `${ID}:${holder}`);
@@ -66,6 +69,10 @@ export const lateBloomer: AugmentDef = defineAugment({
         return inBloom(rctx.state as GameState | undefined) ? false : cur;
       },
     });
+
+    // 만개 구간의 화료 보상 — 규칙 두 개만으로는 "그래서 뭐가 커졌나"가 정산에 안 보였다.
+    // 만개 전 화료에는 0판이므로 전반의 손에는 아무것도 얹히지 않는다.
+    addWinHanBonus(ctx, (state) => (inBloom(state) ? BLOOM_HAN : 0));
 
     // 후반에 들어서는 그 순간이 테이블에 보이게 — 전원 공개
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
