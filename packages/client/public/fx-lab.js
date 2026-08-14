@@ -12,7 +12,7 @@ import "/fx-effects-3.js?v=10";
 import "/fx-effects-4.js?v=10";
 import "/fx-effects-5.js?v=10";
 import "/fx-effects-6.js?v=10";
-import "/fx-effects-7.js?v=10";
+import "/fx-effects-7.js?v=11";
 import "/fx-effects-8.js?v=10";
 import "/fx-effects-9.js?v=10";
 

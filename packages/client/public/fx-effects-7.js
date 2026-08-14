@@ -96,10 +96,10 @@ function bendRule(x = 500, y = 300, col = C.brass) {
   ring(x, y, 16, 260, 640, `${col}cc`, 3);
 }
 
-/* ══════════════════ 비대칭 치또이 ══════════════════ */
+/* ══════════════════ 비대칭 ══════════════════ */
 
 def({
-  id: "async_chiitoi", name: "비대칭 치또이", tier: "prism", fam: FAM,
+  id: "async_chiitoi", name: "비대칭", tier: "prism", fam: FAM,
   tag: "무늬가 달라도 숫자가 같으면 한 쌍이다",
   tech: "쌍을 잇는 <b>아치 7개</b>가 동시에 그어진다. 치또이는 '7쌍'이라는 <b>수</b>가 정체성이라 " +
         "하나씩 보여주면 안 된다 — 한꺼번에 그어져야 '치또이가 섰다'로 읽힌다.",
@@ -138,7 +138,7 @@ def({
     }
     sfx.chime();
     bigGlyph("七対", { y: 270, col: C.brass, size: 68, ms: 1400 });
-    banner("비대칭 치또이", "7 PAIRS", 1600);
+    banner("비대칭", "7 PAIRS", 1600);
     await sleep(1700);
     for (const el of els) el.style.outline = "";
     fade([h, dark, ...svs]);
