@@ -12771,13 +12771,19 @@ function ActiveAugmentControl(props: {
   prompt: PromptMessage["prompt"] | null;
   catalog: Record<string, AugmentCatalogEntry>;
   /**
-   * 버튼에 손이 올라가 있는 동안 **지금 쓸 수 있는 증강 id들**을 위로 올린다
-   * (떠나면 null). 이름표 pill이 그 증강을 빛내 "액티브(2)의 2가 무엇인지"를
-   * 버튼과 pill 사이에 선으로 잇는다 (2026-08-15 사용자 요청).
+   * 지금 이름표 pill에 빛낼 증강 id들을 위로 올린다 (없으면 null).
+   *
+   * - 버튼에 손을 올리면: 쓸 수 있는 **전부** — "액티브(2)의 2가 무엇인지"를 잇는다.
+   * - 열린 메뉴의 한 줄에 올리면: **그 하나만** — 메뉴에 뜨는 것은 액션 이름이라
+   *   (되돌리기 ↔ 미련) 이름만으로는 내가 가진 증강과 이어지지 않았다.
+   * (2026-08-15 사용자 요청)
    */
   onUsableHint?: (ids: readonly string[] | null) => void;
 }): JSX.Element | null {
   const { view, me, prompt } = props;
+  // pill 발광 신호를 보내는 콜백 — 훅(effect) 안에서도 써야 해서 여기서 한 번 꺼낸다.
+  // (아래 hintOne/hintAll/hintNone은 조기 반환 뒤에 선언되므로 훅에서는 못 쓴다.)
+  const onHint = props.onUsableHint;
   // 무장(클릭 발동) 상태는 게임판 전체가 공유하므로 SelectionContext에서 읽는다.
   const sel = useContext(SelectionContext);
   const [open, setOpen] = useState(false);
@@ -12812,11 +12818,14 @@ function ActiveAugmentControl(props: {
       if (rootRef.current !== null && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
         setMenuType(null);
+        // 메뉴가 사라지면 pill 발광도 함께 끈다 — 안 그러면 손을 뗄 자리가 없어져
+        // 빛이 그대로 남는다(마우스가 이미 메뉴 밖에 있으니 onMouseLeave가 안 온다).
+        onHint?.(null);
       }
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, [open]);
+  }, [open, onHint]);
   // 증강 리치만 들고 있다면 이 버튼은 아예 안 뜬다 — 그건 액션 바가 맡는다.
   const hasActive = me.augments.some(
     (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
@@ -12941,6 +12950,23 @@ function ActiveAugmentControl(props: {
   // (byType에는 남아 있어 모달이 후보를 골라 제출한다.)
   const types = [...byType.keys()].filter((t) => t !== "foresight_order");
 
+  // 지금 쓸 수 있는 **증강 id** — 한 증강이 액션 타입을 둘 이상 낼 수 있으므로
+  // (예지의 발동·재배열) 증강 id로 접는다. 버튼 옆 개수와 pill 발광이 같은 목록을 본다.
+  const usableAugIds = [...new Set(types.map((t) => ACTION_AUGMENT[t] ?? t))];
+
+  /*
+   * 이름표 pill 발광 신호 — 지금 보고 있는 것이 **어느 증강인지**를 pill로 되짚는다.
+   *
+   * 버튼에 올리면 쓸 수 있는 전부(hintAll), 메뉴에서 한 줄에 올리면 그 하나만(hintOne).
+   * 메뉴 밖으로 나가거나 발동해서 메뉴가 닫히면 끈다(hintNone). 메뉴 항목의 이름만으로는
+   * "이게 내가 가진 그 증강"이 바로 안 이어져서, 액션 이름(예: '되돌리기')과 증강 이름이
+   * 다른 것들은 특히 헷갈렸다 (2026-08-15 사용자 요청).
+   */
+  const hintOne = (type: string): void =>
+    props.onUsableHint?.([ACTION_AUGMENT[type] ?? type]);
+  const hintAll = (): void => props.onUsableHint?.(usableAugIds);
+  const hintNone = (): void => props.onUsableHint?.(null);
+
   const augNameFor = (type: string): string => augActionName(props.catalog, type);
 
   // 손패·상대·바닥을 '클릭'해 발동하는 액션 — 버튼 목록 대신 선택 모드(무장)로 넘긴다.
@@ -12969,26 +12995,29 @@ function ActiveAugmentControl(props: {
     setMenuType(null);
     if (armType(type)) {
       sel.arm(type);
+      hintNone();
       return;
     }
     if (MODAL_PICK_TYPES.has(type)) {
       setPickModal(type);
+      hintNone();
       return;
     }
     const opts = byType.get(type) ?? [];
     if (opts.length === 1) {
       sel.submit(opts[0]!);
+      hintNone();
       return;
     }
+    // 2단계로 파고든다 — 메뉴는 그대로 열려 있으므로 그 증강만 계속 빛낸다.
     setMenuType(type);
     setOpen(true);
+    hintOne(type);
   };
 
-  // 버튼 옆 개수 = **지금 쓸 수 있는 액티브 증강의 수**.
+  // 버튼 옆 개수 = **지금 쓸 수 있는 액티브 증강의 수**(위 usableAugIds).
   // 예전엔 후보 옵션 수를 셌다 — 회수(버림패마다 후보 1개)·연금술(패×방향)처럼 후보가
   // 패 수만큼 나오는 증강이 "액티브 증강 (17)"처럼 떠 패 개수로 읽혔다(2026-08-01 보고).
-  // 한 증강이 액션 타입을 둘 이상 낼 수 있으므로(예지의 발동·재배열) 증강 id로 접는다.
-  const usableAugIds = [...new Set(types.map((t) => ACTION_AUGMENT[t] ?? t))];
   const displayCount = usableAugIds.length;
 
   const click = (): void => {
@@ -13002,6 +13031,8 @@ function ActiveAugmentControl(props: {
     if (open) {
       setOpen(false);
       setMenuType(null);
+      // 손은 아직 버튼 위다 — 메뉴만 접히므로 발광은 '쓸 수 있는 전부'로 되돌린다.
+      hintAll();
       return;
     }
     if (types.length === 1) {
@@ -13435,7 +13466,8 @@ function ActiveAugmentControl(props: {
       {open && usable ? (
         menuType !== null ? (
           // 2단계 — 고른 증강의 후보들. 이름은 머리글에 한 번만 쓰고 후보만 나열한다.
-          <div className="aug-menu">
+          // 이 층은 통째로 한 증강의 이야기라, 열려 있는 동안 그 pill을 계속 빛낸다.
+          <div className="aug-menu" onMouseEnter={() => hintOne(menuType)} onMouseLeave={hintNone}>
             <div className="aug-menu-head">{augNameFor(menuType)}</div>
             {(byType.get(menuType) ?? []).map((o, i) => {
               const detail = optionDetail(view, o);
@@ -13447,6 +13479,7 @@ function ActiveAugmentControl(props: {
                     sel.submit(o);
                     setOpen(false);
                     setMenuType(null);
+                    hintNone();
                   }}
                 >
                   <strong className="aug-menu-name">
@@ -13460,6 +13493,9 @@ function ActiveAugmentControl(props: {
               <button
                 className="aug-menu-item aug-menu-back"
                 onClick={() => setMenuType(null)}
+                // 목록으로 돌아가는 줄에서는 그 증강 하나가 아니라 전부를 다시 비춘다
+                onMouseEnter={hintAll}
+                onMouseLeave={() => hintOne(menuType)}
               >
                 <strong className="aug-menu-name">← 증강 다시 고르기</strong>
               </button>
@@ -13467,7 +13503,9 @@ function ActiveAugmentControl(props: {
           </div>
         ) : (
           // 1단계 — 지금 쓸 수 있는 증강 목록. 후보가 여럿인 증강은 눌러서 파고든다.
-          <div className="aug-menu">
+          // 한 줄에 손을 올리면 **그 증강의 pill만** 빛난다 — 메뉴에 뜨는 것은 액션
+          // 이름이라(예: 되돌리기 ↔ 미련) 이름만으로는 내 증강과 안 이어졌다.
+          <div className="aug-menu" onMouseEnter={hintAll} onMouseLeave={hintNone}>
             <div className="aug-menu-head">사용할 증강 선택</div>
             {types.map((type) => {
               const opts = byType.get(type) ?? [];
@@ -13483,6 +13521,12 @@ function ActiveAugmentControl(props: {
                   key={type}
                   className="aug-menu-item"
                   onClick={() => activate(type)}
+                  onMouseEnter={() => hintOne(type)}
+                  // 줄에서 벗어나면 메뉴 전체(= 쓸 수 있는 전부)로 되돌린다.
+                  // 메뉴 밖으로 나가는 경우는 위 컨테이너의 onMouseLeave가 끈다.
+                  onMouseLeave={hintAll}
+                  onFocus={() => hintOne(type)}
+                  onBlur={hintAll}
                 >
                   <strong className="aug-menu-name">{augNameFor(type)}</strong>
                   {hint !== "" ? <span className="act-target">{hint}</span> : null}
@@ -13512,11 +13556,12 @@ function ActiveAugmentControl(props: {
         }
         onClick={click}
         /* 손을 올리면 그 개수가 **어느 증강인지** 이름표 pill이 빛나 알려 준다.
-           터치에는 hover가 없어 포커스(탭)로도 같은 신호를 준다. */
-        onMouseEnter={() => props.onUsableHint?.(usableAugIds)}
-        onMouseLeave={() => props.onUsableHint?.(null)}
-        onFocus={() => props.onUsableHint?.(usableAugIds)}
-        onBlur={() => props.onUsableHint?.(null)}
+           터치에는 hover가 없어 포커스(탭)로도 같은 신호를 준다.
+           메뉴가 열려 있으면 메뉴 쪽 핸들러가 이어받는다(한 줄에 올리면 그 하나만). */
+        onMouseEnter={hintAll}
+        onMouseLeave={hintNone}
+        onFocus={hintAll}
+        onBlur={hintNone}
       >
         ✦ 액티브 증강{usable ? ` (${displayCount})` : ""}
       </button>
