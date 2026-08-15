@@ -3,9 +3,14 @@
  *
  * 52차 개편: "점수만 오야 배율"이라는 보이지 않는 정산 보정에, **눈에 보이는 규칙 파괴**를 더했다.
  *   1. `win.treatAsDealer` — 내 화료는 언제나 오야 화료로 계산된다 (기존 유지).
- *   2. `scoring.seatWind` = 1 — **채점 자풍이 언제나 동으로 고정된다.**
- *      역패 동이 늘 성립하고, 장풍이 동이면 더블동이 된다.
+ *   2. 커스텀 역 "역패 동" — **동 커쯔가 언제나 1판이 된다.**
  *   3. `round.keepDealer` — **내가 화료하면 오야가 유지된다(렌짱).**
+ *
+ * ⚠ 2번은 예전에 `scoring.seatWind` = 1(채점 자풍을 동으로 **교체**)이었다. 그러면 남가가
+ * 南 커쯔를 모아도 자풍패가 안 붙어, 얻는 것 하나에 잃는 것 하나가 딸려 왔다. 지금은
+ * **추가**다 — 자풍은 실제 자리 그대로 두고 동만 역패로 하나 더 얹는다(2026-08-15 사용자 지시).
+ * 자풍이 이미 동인 동가에게는 아무것도 더 붙지 않는다(중복 지급 방지). 장풍이 동인 국에
+ * 동 커쯔를 모으면 장풍패 1판 + 이 역 1판 = 더블동으로, 진짜 오야가 받는 값과 같아진다.
  *
  * ⚠ 무한 국 방지 안전장치: 3번 연장은 **게임당 최대 3회**다. augmentData 카운터로 세고,
  *   한도를 넘으면 modifier가 false를 돌려준다. 무페널티 원칙이 허용하는 억제 수단은
@@ -24,23 +29,45 @@ import {
   playerOf,
   ROUND_SETTLED,
   SETTLE_STAGE,
+  Suits,
 } from "@majak/core";
 import type {
   AugmentDef,
   GameState,
   PlayerId,
   RoundSettledPayload,
+  ScoringVariant,
 } from "@majak/core";
 import {
+  addYakuHolder,
   counterOf,
   publishUsesLeft,
   settleInterceptor,
   viewKey,
+  yakuHolders,
 } from "../util.js";
 
 const ID = "eternal_dealer";
 /** 게임당 허용되는 연장(렌짱) 횟수 — 무한 국 방지 안전장치 */
 const MAX_KEEPS = 3;
+/** 바람패 랭크의 동 (1동 2남 3서 4북) */
+const EAST = 1;
+/** 덧붙는 역패 동의 역 id */
+const EAST_YAKU = `${ID}_east`;
+
+/**
+ * 순수한 동 커쯔(깡 포함)를 들고 있는가.
+ *
+ * 무늬·랭크가 섞인 몸통(동수의 결속·바람의 계보의 동남서북 깡)은 제외한다 — 표준
+ * 역패가 `isPureTriplet`·`isSameRankTriplet`으로 거르는 것과 같은 기준이다.
+ */
+function hasEastTriplet(variant: ScoringVariant): boolean {
+  return variant.sets.some(
+    (s) =>
+      s.type === "triplet" &&
+      s.tiles.every((t) => t.suit === Suits.Wind && t.rank === EAST),
+  );
+}
 
 /** 이 게임에서 이미 소모한 연장 횟수 (게임 단위 — roundKey를 섞지 않는다) */
 const keepsKey = (h: PlayerId): string => `${ID}:keeps:${h}`;
@@ -57,9 +84,9 @@ export const eternalDealer: AugmentDef = defineAugment({
   complexity: 3,
   name: "만년 오야",
   description:
-    "(상시 · 연장은 게임 내 3회) 나는 계속 오야다 — 내가 화료하면 언제나 오야 점수(약 1.5배)로 계산되고, 내 자풍은 **'동'으로 덮어씌워진다**(동이 역패가 되는 대신 원래 자풍은 역패가 아니게 된다). 게다가 내가 화료하면 다음 국의 오야가 내 자리로 온다(게임 내 3회).",
+    "(상시 · 연장은 게임 내 3회) 나는 계속 오야다 — 내가 화료하면 언제나 오야 점수(약 1.5배)로 계산되고, 자풍은 그대로인 채 **역패 '동'이 하나 더 붙는다**. 게다가 내가 화료하면 다음 국의 오야가 내 자리로 온다(게임 내 3회).",
   detail:
-    "(상시 · 연장은 게임 내 3회) 세 가지가 한꺼번에 걸린다. ① 자리가 어디든 내 화료는 오야 화료로 계산되어 점수가 약 1.5배가 된다. ② 점수 계산에서 내 자풍이 항상 '동'이 된다 — 동을 커쯔로 모으면 늘 역패 1판이 붙고, 장풍까지 동인 국이면 더블동(2판)이 된다. ⚠ **이것은 추가가 아니라 교체다** — 남가에 앉아 南을 커쯔로 모아도 그 南은 더 이상 내 자풍이 아니어서 역패가 붙지 않는다(장풍 南인 국이라면 장풍 몫 1판은 남는다). ③ 내가 화료하면 다음 국의 오야가 내 자리로 옮겨 온다(연장). 다만 국이 무한히 늘어나지 않게 ③은 게임 내 3회까지만 발동하고, 남은 횟수는 전원에게 보인다. 내가 진짜 오야인 국에 화료한 것은 원래 규칙대로의 연장이므로 횟수를 쓰지 않는다.",
+    "(상시 · 연장은 게임 내 3회) 세 가지가 한꺼번에 걸린다. ① 자리가 어디든 내 화료는 오야 화료로 계산되어 점수가 약 1.5배가 된다. ② 원래 자풍은 그대로 두고 역패가 하나 늘어난다 — 동 커쯔에 1판이 붙는다. 남가라면 南과 東 둘 다 역패로 쓸 수 있고, 장풍이 동인 국이면 장풍 몫과 겹쳐 더블동(2판)이 된다. 자풍이 이미 동인 동가에게는 더 붙지 않는다. ③ 내가 화료하면 다음 국의 오야가 내 자리로 옮겨 온다(연장). 다만 국이 무한히 늘어나지 않게 ③은 게임 내 3회까지만 발동하고, 남은 횟수는 전원에게 보인다. 내가 진짜 오야인 국에 화료한 것은 원래 규칙대로의 연장이므로 횟수를 쓰지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -76,8 +103,27 @@ export const eternalDealer: AugmentDef = defineAugment({
       apply: (cur, rctx) => (rctx.playerId === holder ? true : cur),
     });
 
-    // 2) 채점 자풍을 동으로 고정 — 역패 동 상시 성립, 장풍 동이면 더블동
-    ctx.setHolderRule("scoring.seatWind", 1);
+    // 2) 역패 '동'을 하나 더 얹는다 — 자풍은 실제 자리 그대로다(교체가 아니라 추가).
+    const yaku = ctx.yaku;
+    if (yaku !== undefined) {
+      if (yaku.get(EAST_YAKU) === undefined) {
+        const holders = yakuHolders(yaku, EAST_YAKU);
+        yaku.register({
+          source: ctx.instanceId,
+          id: EAST_YAKU,
+          name: "역패 동",
+          closedHan: 1,
+          openHan: 1,
+          check: (variant, wctx) =>
+            wctx.winnerId !== undefined &&
+            holders.has(wctx.winnerId) &&
+            // 자풍이 이미 동이면 표준 자풍패가 이미 1판을 준다 — 두 번 주지 않는다.
+            wctx.seatWind !== EAST &&
+            hasEastTriplet(variant),
+        });
+      }
+      addYakuHolder(ctx, yaku, EAST_YAKU);
+    }
 
     // 3) 내가 화료하면 연장 — 단, 게임당 MAX_KEEPS회까지
     engine.rules.addModifier<boolean>("round.keepDealer", {

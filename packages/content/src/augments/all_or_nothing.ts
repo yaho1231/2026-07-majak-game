@@ -1,11 +1,16 @@
 /**
  * 모 아니면 도 (all_or_nothing, prism).
- * 동풍전 1·반장전 2회, 리치 선언 시 '올인'을 함께 선언해 현재 점수의 절반(1000점 단위 내림)을
- * 추가 공탁한다. 그 리치로 화료하면 공탁금을 돌려받고 같은 금액을 뱅크에서 추가로
- * 받으며, 화료하지 못하면(유국·타가 화료 포함) 공탁금은 전부 뱅크로 사라진다.
+ * **매 국 1회**, 리치 선언 시 '올인'을 함께 선언해 현재 점수의 절반(1000점 단위 내림)을
+ * 판돈으로 건다. 그 리치로 화료하면 판돈만큼을 뱅크에서 더 받고, **타가가 론·쯔모로
+ * 화료하면 판돈의 절반을 뱅크에 잃는다**(절반만 돌려받는 셈). 유국은 잃지 않는다.
  *
- * 구현: 표준 리치와 같은 검증 + 올인 금액을 즉시 차감(ScoreChanged)하고 국·금액을
- * 기록하는 커스텀 액션. 정산 인터셉터(BankTopUp)에서 화료 시 판돈만큼 가산한다.
+ * 2026-08-15 사용자 지시로 두 곳이 바뀌었다. ① 횟수가 게임당(동풍전1·반장전2)에서
+ * **국당 1회**로 — 매 국 걸 수 있는 대신, ② "빗나가도 잃는 것이 없다"는 무손실이
+ * 사라졌다. 타가 화료에만 벌금이 붙는다 — 유국은 아무도 이기지 않은 국이라 그대로다.
+ *
+ * 구현: 표준 리치와 같은 검증 + 국 단위 카운터·금액을 기록하는 커스텀 액션(선언 시점에
+ * 점수를 깎지는 않는다 — 순 결과가 같고 도중 점수가 왜곡되지 않는다). 정산 인터셉터
+ * (BankTopUp)에서 내 화료면 판돈만큼 가산, 타가 화료면 절반만큼 차감한다.
  */
 
 import {
@@ -33,7 +38,6 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
-  matchUses,
   publishUsesLeft,
   roundKey,
   roundViewKey,
@@ -45,9 +49,13 @@ import { plan } from "./botPlan.js";
 
 const ID = "all_or_nothing";
 const ACTION = "all_in_riichi";
-const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
+/** 국당 허용 횟수 */
+const USES_PER_ROUND = 1;
+/** 이번 국에 이미 걸었는가 — **국 스코프** 카운터라 국이 바뀌면 다시 1회다 */
+const usesKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:uses:${roundKey(state)}:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
-  counterOf(state, usesKey(h)) < matchUses(state);
+  counterOf(state, usesKey(state, h)) < USES_PER_ROUND;
 /**
  * 이번 국에 건 올인 금액 (국 스코프 — 국이 바뀌면 자동 만료).
  *
@@ -135,9 +143,12 @@ const allInRiichiAction: ActionDef<{ tileId: TileId }> = {
           }),
         },
       },
-      // 48차 무페널티: 걸어 두는 금액을 차감하지 않는다 — 빗나가도 잃는 것은 없다.
-      // 기록만 남기고(동풍전 1·반장전 2회 소진), 화료하면 그 금액만큼 뱅크에서 받는다.
-      augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+      // 선언 시점에는 차감하지 않는다 — 기록만 남기고(국당 1회 소진), 정산에서
+      // 내 화료면 판돈만큼 받고 타가 화료면 절반을 잃는다(순 결과가 같다).
+      augmentDataSet(
+        usesKey(state, req.player),
+        counterOf(state, usesKey(state, req.player)) + 1,
+      ),
       augmentDataSet(activeKey(state, req.player), allIn),
       augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), allIn),
     ];
@@ -151,17 +162,25 @@ export const allOrNothing: AugmentDef = defineAugment({
   complexity: 2,
   name: "모 아니면 도",
   description:
-    "(동풍전 1회 · 반장전 2회) 리치를 선언할 때 '올인'을 함께 걸어 현재 점수의 절반을 판돈으로 내건다(전원 공개). 그 리치로 화료하면 판돈만큼을 통째로 더 받으며, 빗나가도 잃는 것은 없다.",
+    "(매 국 1회) 리치를 선언할 때 '올인'을 함께 걸어 현재 점수의 절반을 판돈으로 내건다(전원 공개). 그 리치로 화료하면 판돈만큼을 통째로 더 받고, 타가가 화료하면 판돈의 절반을 잃는다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 리치 선언과 동시에 올인을 건다. 현재 점수의 절반(1000점 단위 내림)이 판돈으로 전원에게 공개되고, 그 리치로 화료하면 판돈과 같은 금액을 뱅크에서 추가로 받는다. 유국이나 타가 화료로 국이 끝나도 점수는 한 푼도 줄지 않으며, 그 리치가 풀리면(승부수·손바닥 뒤집기) 판돈도 함께 사라진다.",
+    "(매 국 1회) 리치 선언과 동시에 올인을 건다. 현재 점수의 절반(1000점 단위 내림)이 판돈으로 전원에게 공개되고, 그 리치로 화료하면 판돈과 같은 금액을 뱅크에서 추가로 받는다. 반대로 타가가 론이나 쯔모로 화료하면 판돈의 절반이 뱅크로 넘어간다 — 절반만 돌려받는 셈이다. 유국으로 끝난 국은 아무도 이기지 않았으므로 잃지 않으며, 그 리치가 풀리면(승부수·손바닥 뒤집기) 판돈도 함께 사라진다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
-    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
-    publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
-      total: matchUses(state),
-    }));
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+    // 국 스코프라 국이 바뀌면 publishUsesLeft가 새 값(1회)으로 덮어쓴다.
+    publishUsesLeft(
+      ctx,
+      (state) => ({
+        left: Math.max(
+          0,
+          USES_PER_ROUND - counterOf(state, usesKey(state, holder)),
+        ),
+        total: USES_PER_ROUND,
+      }),
+      "round",
+    );
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(allInRiichiAction);
@@ -171,10 +190,28 @@ export const allOrNothing: AugmentDef = defineAugment({
     // 일확천금 등에 판돈까지 곱해지지 않는다. deltas에 얹으므로 결과 화면 증감에도 그대로 뜬다.
     settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event, ic) => {
       const p = event.payload as RoundSettledPayload;
+      // 유국은 아무도 이기지 않은 국이다 — 받지도 잃지도 않는다.
       if (p.outcome !== "win") return event;
-      if (!(p.winInfos ?? []).some((w) => w.winner === holder)) return event;
       const allIn = counterOf(ic.state, activeKey(ic.state, holder));
       if (allIn <= 0) return event;
+      const iWon = (p.winInfos ?? []).some((w) => w.winner === holder);
+      /*
+       * 타가 화료 — 판돈의 절반이 뱅크로 넘어간다(절반만 돌려받는 셈).
+       * 판돈은 1000점 단위라 절반은 항상 100점 단위로 떨어진다.
+       * 리치가 살아 있어야 판돈이 걸려 있는 것이므로, 지급과 같은 게이트를 쓴다.
+       */
+      if (!iWon) {
+        if (ic.state.round.byPlayer[holder]?.riichi == null) return event;
+        const lost = allIn / 2;
+        return {
+          type: event.type,
+          payload: {
+            ...p,
+            deltas: { ...p.deltas, [holder]: (p.deltas[holder] ?? 0) - lost },
+            augPoints: withAugPoint(p, ctx, -lost),
+          },
+        };
+      }
       /*
        * **그 리치가 아직 살아 있어야** 판돈이 나온다.
        *
@@ -201,12 +238,16 @@ export const allOrNothing: AugmentDef = defineAugment({
       }));
     });
   },
-  // 리치에 올인을 얹는다 — 빗나가도 잃는 것이 없는 순수 상방 도박이라, 텐파이면
-  // 발동한다. 남은 손의 대기를 가장 덜 해치는(가장 고립된) 패로 선언한다.
+  /*
+   * 리치에 올인을 얹는다. 남은 손의 대기를 가장 덜 해치는(가장 고립된) 패로 선언한다.
+   *
+   * 예전에는 `fleeting: true`로 적기 판단을 건너뛰었다 — 빗나가도 잃는 것이 없어
+   * "텐파이면 무조건"이 옳은 답이었기 때문이다. 타가 화료에 판돈 절반을 잃게 된
+   * 지금은 그 답이 틀렸다(2026-08-15). 적기 문턱을 다시 켜서, 손이 값하고 자리가
+   * 맞을 때만 건다. 국당 1회라 이번 순을 넘겨도 기회는 남아 있다.
+   */
   bot: plan({
     intent: "score",
-    fleeting: true,
-    oneShot: true,
     pick: ({ options, view, holder, tenpai }) =>
       tenpai ? pickIsolatedDiscard(view, holder, options, ACTION) : null,
   }),

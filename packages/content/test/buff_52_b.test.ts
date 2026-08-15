@@ -299,24 +299,78 @@ function craftNonDealerWin(): GameState {
   return { ...s, round: { ...s.round, dealerSeat: 1, rotationSeat: 1 } };
 }
 
-describe("eternal_dealer (만년 오야) — 자풍 동 고정 + 연장 3회", () => {
-  it("채점 자풍이 항상 동(1)으로 고정된다", () => {
+/** 동 커쯔가 든 p0 멘젠쯔모 직전 상태 (111z + 234m + 345p + 456s + 22s 단기) */
+function craftEastTripletTsumo(): GameState {
+  const s = craft({
+    hands: { p0: "111z234m345p456s22s", p1: "*", p2: "*", p3: "*" },
+    phase: "turn.act",
+    turnSeat: 0,
+    drawnLastFor: "p0",
+  });
+  // p0를 오야가 아닌 자리로 — 자풍이 동이 아니어야 추가 역패가 의미를 갖는다
+  return { ...s, round: { ...s.round, dealerSeat: 1, rotationSeat: 1 } };
+}
+
+describe("eternal_dealer (만년 오야) — 역패 동 추가 + 연장 3회", () => {
+  /**
+   * 2026-08-15 사용자 지시: 자풍 **교체**(`scoring.seatWind` = 1)를 걷어내고 역패 동을
+   * **추가**한다. 교체 시절에는 남가가 南 커쯔를 모아도 값이 0이라, 얻는 것 하나에
+   * 잃는 것 하나가 딸려 왔다.
+   */
+  it("자풍은 실제 자리 그대로다 — 덮어쓰지 않는다", () => {
     const base = withAugment(craftNonDealerWin(), "p0", "eternal_dealer");
     const game = createStandardGameFromState(structuredClone(base));
-    installAugment(game.engine, eternalDealer, "p0");
+    installAugment(game.engine, eternalDealer, "p0", { yaku: game.yaku });
     const state = game.engine.state;
-    expect(
-      game.engine.rules.resolve<number | null>("scoring.seatWind", {
-        playerId: "p0",
-        state,
+    for (const id of ["p0", "p1"]) {
+      expect(
+        game.engine.rules.resolve<number | null>("scoring.seatWind", {
+          playerId: id,
+          state,
+        }),
+      ).toBe(null);
+    }
+  });
+
+  it("자풍이 동이 아니어도 동 커쯔에 역패 1판이 더 붙는다", () => {
+    const base = withAugment(craftEastTripletTsumo(), "p0", "eternal_dealer");
+
+    const baseline = createStandardGameFromState(structuredClone(base));
+    runTsumoWin(baseline);
+    const b = lastSettled(baseline).winInfos?.[0];
+    expect(b?.yaku.map((y) => y.name)).not.toContain("역패 동");
+
+    const game = createStandardGameFromState(structuredClone(base));
+    installAugment(game.engine, eternalDealer, "p0", { yaku: game.yaku });
+    runTsumoWin(game);
+    const a = lastSettled(game).winInfos?.[0];
+    expect(a?.yaku.map((y) => y.name)).toContain("역패 동");
+    // 장풍 동(동장)과 겹쳐 더블동이 된다 — 정확히 1판만 늘어난다
+    expect(a?.han).toBe((b?.han ?? 0) + 1);
+  });
+
+  it("자풍이 이미 동인 동가에게는 두 번 주지 않는다", () => {
+    // dealerSeat = 0 → p0의 자풍이 동이라 표준 자풍패가 이미 1판을 준다
+    const base = withAugment(
+      craft({
+        hands: { p0: "111z234m345p456s22s", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
       }),
-    ).toBe(1);
-    expect(
-      game.engine.rules.resolve<number | null>("scoring.seatWind", {
-        playerId: "p1",
-        state,
-      }),
-    ).toBe(null);
+      "p0",
+      "eternal_dealer",
+    );
+    const baseline = createStandardGameFromState(structuredClone(base));
+    runTsumoWin(baseline);
+    const b = lastSettled(baseline).winInfos?.[0];
+
+    const game = createStandardGameFromState(structuredClone(base));
+    installAugment(game.engine, eternalDealer, "p0", { yaku: game.yaku });
+    runTsumoWin(game);
+    const a = lastSettled(game).winInfos?.[0];
+    expect(a?.yaku.map((y) => y.name)).not.toContain("역패 동");
+    expect(a?.han).toBe(b?.han);
   });
 
   it("오야가 아닌데 화료하면 오야 자리를 자기 자리로 가져오고 횟수가 1 소모된다", () => {
@@ -387,7 +441,11 @@ describe("devils_advance (가불 인생) — 빚이 보이고, 만관에 터진�
     );
   });
 
-  it("만관 이상 화료 순간 상대 셋에게서 각 3000점을 강탈한다 (제로섬)", () => {
+  /**
+   * 2026-08-15 사용자 지시: 걷은 9000점은 **빚을 갚는 돈**이라 뱅크로 간다.
+   * 예전에는 보유자가 +9000을 함께 받아(제로섬) 만관 한 방이 두 배로 커졌다.
+   */
+  it("만관 이상 화료 순간 상대 셋만 3000점씩 낸다 — 내 점수는 그대로다", () => {
     const base = withAugment(craftBigTsumo(), "p0", "devils_advance");
     const baseline = createStandardGameFromState(structuredClone(base));
     runTsumoWin(baseline);
@@ -398,14 +456,14 @@ describe("devils_advance (가불 인생) — 빚이 보이고, 만관에 터진�
     installAugment(game.engine, devilsAdvance, "p0");
     runTsumoWin(game);
     const a = lastSettled(game);
-    expect(a.deltas["p0"]).toBe((b.deltas["p0"] ?? 0) + 9000);
+    expect(a.deltas["p0"]).toBe(b.deltas["p0"] ?? 0);
     for (const id of ["p1", "p2", "p3"]) {
       expect(a.deltas[id]).toBe((b.deltas[id] ?? 0) - 3000);
     }
-    // 제로섬 — 총합이 변하지 않는다
+    // 걷은 9000은 뱅크로 빠진다 — 총합이 그만큼 줄어든다
     const sum = (d: Record<string, number>): number =>
       Object.values(d).reduce((x, y) => x + y, 0);
-    expect(sum(a.deltas)).toBe(sum(b.deltas));
+    expect(sum(a.deltas)).toBe(sum(b.deltas) - 9000);
     expect(game.engine.state.augmentData["devils_advance:exempt:p0"]).toBe(true);
     expect(game.engine.state.augmentData["view:*:devils_advance:p0"]).toBe(
       "청산",
