@@ -735,7 +735,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 3,
     u: 5,
     f: 2,
-    note: "리치를 유지한 채 손패 1장을 패산 위 패와 교환 — 대기의 비가역성을 지운다 (2026-08-15 개편)",
+    note: "리치 중 1회 자유 타패(텐파이 유지) — 대기의 비가역성을 지운다 (2026-08-15 개편)",
   },
   pseudo_dealer: {
     p: 4,

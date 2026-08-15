@@ -330,7 +330,7 @@ const ACTION_LABEL: Record<string, string> = {
   split_tile: "분열 — 패 쪼개기",
   frame_discard: "누명 — 심기",
   dragons_will: "삼원의 의지 — 발동",
-  flip_riichi: "손바닥 뒤집기 — 대기 교체",
+  flip_riichi: "손바닥 뒤집기 — 손 풀기",
   north_pull: "북풍 상인 — 북빼기",
   // 2026-08-04 (6차) 신규
   dora_recall: "도라의 잔상 — 되살리기",
@@ -669,7 +669,7 @@ const ARM_MODE: Record<string, ArmMode> = {
   frame_discard: "hand",
   // 소환 — 내 손패를 클릭해 다음 쯔모로 불러올 패(종류)를 지목한다
   conjure_tsumo: "hand",
-  // 손바닥 뒤집기 — 리치 중, 패산 맨 위 패와 맞바꿀 손패를 클릭한다 (2026-08-15)
+  // 손바닥 뒤집기 — 리치 중, 쯔모기리 대신 버릴 손패를 클릭한다 (2026-08-15)
   flip_riichi: "hand",
   // 정적의 손 — 새 탭 없이 실제 바닥패(네 사람 전부)를 직접 클릭해 주울 패를 고른다
   silent_take: "any-river",
