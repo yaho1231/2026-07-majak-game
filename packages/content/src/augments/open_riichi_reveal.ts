@@ -177,7 +177,9 @@ export const openRiichiReveal: AugmentDef = defineAugment({
    * 않는다**. 그래서 리치 중에 손패를 바꿀 수 있는 증강이 함께 있으면, 공개 목록을
    * 믿고 안전패를 버린 상대가 대응 불가능한 역만을 맞는다.
    *
-   * `last_stand`·`palm_flip`은 리치 자체를 무르는 쪽이고, `tile_dyeing`은 스스로
+   * `last_stand`는 리치 자체를 무르는 쪽이고, `palm_flip`은 리치를 유지한 채 손패를
+   * 갈아 대기를 바꾼다(2026-08-15 개편 — 공개 목록과 실제 대기가 어긋나는 것은 같다).
+   * `tile_dyeing`은 스스로
    * "리치 중에도 쓸 수 있다"고 적어 둔 유일한 손패 변경 증강이다(2026-08-08 QA §2-9).
    */
   conflicts: ["last_stand", "palm_flip", "tile_dyeing"],

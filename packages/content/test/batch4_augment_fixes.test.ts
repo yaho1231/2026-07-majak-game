@@ -51,18 +51,19 @@ function countKind(game: Game, spec: TileKind): number {
     .length;
 }
 
-describe("짝수의 세계 — 도라를 만들지 않는다", () => {
-  it("변환 결과가 도라가 되는 패는 그대로 둔다", () => {
-    // 표시패 7p → 도라는 8p. 손의 7p·9p는 짝수로 바꾸면 8p가 되어 도라가 생긴다.
+describe("짝수의 세계 — 도라는 지키되, 도라를 만드는 것은 막지 않는다", () => {
+  it("변환 결과가 도라가 되는 패도 그대로 바뀐다 (2026-08-15 조건 삭제)", () => {
+    // 표시패 7p → 도라는 8p. 손의 7p·9p는 짝수로 바꾸면 8p가 되어 도라가 생긴다 —
+    // 예전에는 이걸 막았지만 지금은 의도된 이득이다.
+    // (지켜지는 것은 "지금 도라인 패", 즉 8p뿐이다. 표시패 7p는 도라가 아니다.)
     const game = gameWithDoraIndicator("77p99p123m456m11s", { suit: "pin", rank: 7 });
     const before8p = countKind(game, { suit: "pin", rank: 8 });
 
     const res = game.engine.submit({ player: "p0", type: "even_world_flip", payload: {} });
-    // 바꿀 패가 하나도 없으면 발동 자체가 막힌다 — 어느 쪽이든 도라는 늘지 않는다
-    if (res.ok) {
-      expect(countKind(game, { suit: "pin", rank: 8 })).toBe(before8p);
-    }
-    expect(countKind(game, { suit: "pin", rank: 8 })).toBe(before8p);
+    if (!res.ok) throw new Error(`even_world_flip rejected: ${res.reason}`);
+    // 7p 두 장·9p 두 장이 모두 8p(도라)가 된다
+    expect(countKind(game, { suit: "pin", rank: 8 })).toBe(before8p + 4);
+    expect(countKind(game, { suit: "pin", rank: 7 })).toBe(0);
   });
 
   it("도라와 무관한 홀수 패는 종전대로 짝수가 된다", () => {

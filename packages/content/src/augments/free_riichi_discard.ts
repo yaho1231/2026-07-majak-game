@@ -105,7 +105,10 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
   // 계산되어 **그 국이 통째로 벽돌**이 된다. 리치를 푸는 두 증강을 배제한다.
   conflicts: [
     "last_stand", // cancel_riichi로 리치 해제 → 스냅샷만 남는다
-    "palm_flip", // RiichiFlipped로 리치 해제 → 동일
+    // 손바닥 뒤집기는 2026-08-15부터 리치를 풀지 않고 **대기만 갈아탄다**. 그런데 이쪽은
+    // 리치 시점 손패를 스냅샷으로 고정하므로 오름패가 아예 갱신되지 않는다 —
+    // 갈아탄 대기가 한 번도 반영되지 않아 그 증강이 통째로 죽은 픽이 된다(B급 무효).
+    "palm_flip",
   ],
   install(ctx) {
     const { engine, holder, layer, instanceId } = ctx;

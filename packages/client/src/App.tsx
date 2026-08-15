@@ -276,7 +276,7 @@ const ACTION_LABEL: Record<string, string> = {
   seat_swap: "자리 바꿈",
   cancel_riichi: "리치 취소",
   bloom_pick: "영상패 고르기",
-  declare_no_retreat: "불퇴 선언",
+  no_retreat_riichi: "불퇴 리치",
   declare_big_hand: "큰손 선언",
   // 2026-07-18 신규 배치
   ura_peek_reveal: "이면투시",
@@ -330,7 +330,7 @@ const ACTION_LABEL: Record<string, string> = {
   split_tile: "분열 — 패 쪼개기",
   frame_discard: "누명 — 심기",
   dragons_will: "삼원의 의지 — 발동",
-  flip_riichi: "손바닥 뒤집기 — 리치 해제",
+  flip_riichi: "손바닥 뒤집기 — 대기 교체",
   north_pull: "북풍 상인 — 북빼기",
   // 2026-08-04 (6차) 신규
   dora_recall: "도라의 잔상 — 되살리기",
@@ -355,7 +355,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   seat_swap: "seat_swap",
   cancel_riichi: "last_stand",
   bloom_pick: "cliff_bloom",
-  declare_no_retreat: "no_retreat",
+  no_retreat_riichi: "no_retreat",
   declare_big_hand: "big_hand",
   ura_peek_reveal: "ura_peek",
   take_back: "take_back",
@@ -447,7 +447,7 @@ const AUGMENT_ACTION_TYPES = new Set([
   "seat_swap",
   "cancel_riichi",
   "bloom_pick",
-  "declare_no_retreat",
+  "no_retreat_riichi",
   "declare_big_hand",
   "ura_peek_reveal",
   "take_back",
@@ -658,6 +658,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   // 2026-07-22 (52차) — 격: 상대를 지목한다 / 스텔스 리치: 리치처럼 버릴 패를 직접 클릭
   rank_gate_mark: "opp",
   stealth_riichi: "hand",
+  // 물러설 수 없는 선언 — 스텔스 리치와 같은 꼴의 버튼형 액티브 리치(2026-08-15)
+  no_retreat_riichi: "hand",
   // 선언 간파 위조 — 새 탭이 아니라 **실제 내 손패**를 클릭해 바꿀 패를 고른다.
   // 한 패에 후보(간파한 대기 종류)가 여럿이면 armSub 모달이 전→후를 보여 준다.
   peek_forge: "hand",
@@ -667,6 +669,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   frame_discard: "hand",
   // 소환 — 내 손패를 클릭해 다음 쯔모로 불러올 패(종류)를 지목한다
   conjure_tsumo: "hand",
+  // 손바닥 뒤집기 — 리치 중, 패산 맨 위 패와 맞바꿀 손패를 클릭한다 (2026-08-15)
+  flip_riichi: "hand",
   // 정적의 손 — 새 탭 없이 실제 바닥패(네 사람 전부)를 직접 클릭해 주울 패를 고른다
   silent_take: "any-river",
   // 영혼의 일격 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
@@ -704,6 +708,7 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
   "stealth_riichi",
   "all_in_riichi",
   "soul_strike",
+  "no_retreat_riichi",
 ]);
 
 /**
@@ -8410,7 +8415,7 @@ function relationsAt(relations: readonly Relation[], playerId: string): Relation
  * 없고, 채널이 싣는 것도 tileId가 아니라 패 '종류'라 어느 패였는지 특정할 수도 없다.
  * 바닥에 남는 증강 상태는 안개(revealTiles:fog)뿐이고 그건 이미 River가 그린다.
  *
- * 키는 채널 접두다. 더 긴 접두가 먼저 맞는다(`conjure_draw:done` > `conjure_draw`).
+ * 키는 채널 접두다. 더 긴 접두가 먼저 맞는다(`bottom_deal:armed` > `bottom_deal`).
  */
 const AUG_EVENTS: Record<
   string,
@@ -8424,7 +8429,9 @@ const AUG_EVENTS: Record<
     ms?: number;
   }
 > = {
-  "conjure_draw:done": { title: "소환 성공", sub: "부른 패가 그대로 왔다", augId: "conjure_draw" },
+  // 소환은 **발동 알림 하나뿐**이다. 예전에는 도착 시점의 `conjure_draw:done`
+  // ("소환 성공")이 따로 있어 한 번의 소환에 컷인이 두 번 터졌다 —
+  // 2026-08-15 사용자 지시로 도착 알림을 없앴다(콘텐츠 쪽 채널도 함께 삭제).
   conjure_draw: { title: "소환", sub: "다음 쯔모로 이 패를 부른다", augId: "conjure_draw" },
   three_dragons_will: { title: "삼원패의 의지", sub: "삼원패가 손으로 걸어 들어온다", augId: "three_dragons_will" },
   haitei_lord: { title: "해저의 주인", sub: "마지막 한 장을 손에 넣었다", augId: "haitei_lord" },
@@ -11425,8 +11432,8 @@ function OwnArea(props: {
     });
   };
 
-  // 미래를 보는 자 — 무작위로 뽑힌 3장 중 '바닥에 버릴' 한 장을 모달에서 고른다.
-  // (예전엔 액티브 버튼 → 드롭다운 메뉴라 무엇을 고르는지 패가 안 보였다.)
+  // 미래를 보는 자 — 패산 위 3장과 바꿀 손패를 모달에서 **한 장씩 세 번** 고른다.
+  // (2026-08-15 이전에는 무작위 3장 중 '바닥에 버릴' 한 장을 고르는 창이었다.)
   const futurePick = useMemo(() => {
     const byTile = new Map<number, ActionOption>();
     for (const o of myPrompt?.options ?? []) {
@@ -12186,17 +12193,18 @@ function OwnArea(props: {
       ) : null}
       {/* '다시 열기' 버튼은 없다 — 이제 dismissed는 "방금 제출했다"는 뜻뿐이고
           (닫기가 사라졌다), 다음 단계 프롬프트가 오면 모달이 알아서 다시 뜬다. */}
-      {/* 미래를 보는 자 — 뽑힌 3장을 보여주고 바닥에 버릴 1장을 고르게 한다.
+      {/* 미래를 보는 자 — 손패를 보여주고 패산 위 3장과 바꿀 패를 한 장씩 고르게 한다
+          (3장을 채우면 그 자리에서 교환이 일어난다).
           ⚠ 닫기가 없다. 버튼을 누른 순간 발동은 확정이고(사용자 확정 2026-08-01
           "사용하면 무조건 패가 바뀌어야 한다"), 고르기 싫으면 랜덤으로 맡긴다. */}
       {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
       {canPickFuture && !futureDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
-            <div className="rinshan-pick-title">🔮 미래를 보는 자 — 버릴 패 선택</div>
+            <div className="rinshan-pick-title">🔮 미래를 보는 자 — 교체할 패 선택</div>
             <div className="rinshan-pick-sub">
-              손에서 이 세 장이 뽑혔습니다. 바닥에 버릴 한 장을 고르세요 — 나머지 두 장은
-              패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다.
+              패산 위 3장과 바꿀 손패를 고르세요 — 한 장씩 세 번 고르면 그 3장이 패산 맨
+              밑으로 가고 패산 위 3장이 손에 들어옵니다. 바닥에 버려지는 패는 없습니다.
             </div>
             <div className="rinshan-pick-tiles">
               {sortTileIds([...futurePick.keys()], view.tiles).map((id) => {
@@ -12213,7 +12221,7 @@ function OwnArea(props: {
                     }}
                   >
                     <TileImg tile={tile} size="hand" />
-                    <span className="rinshan-pick-label">이 패를 버린다</span>
+                    <span className="rinshan-pick-label">이 패를 바꾼다</span>
                   </button>
                 );
               })}
@@ -12228,7 +12236,7 @@ function OwnArea(props: {
                 setFutureDismissed(true);
               }}
             >
-              🎲 아무거나 (랜덤으로 버리기)
+              🎲 아무거나 (랜덤으로 고르기)
             </button>
           </div>
         </div>,

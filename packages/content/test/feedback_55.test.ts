@@ -153,7 +153,10 @@ function playOneRound(aug: AugmentDef, seed: number): void {
 // ─────────────────────────── 1. hidden_river ───────────────────────────
 
 describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
-  const FOG_KEY = "hidden_river:fog:p0";
+  // 안개 플래그는 **국 스코프**다 (2026-08-15: 게임 1회 → 동풍전 1·반장전 2회로 바뀌며
+  // 수명이 국으로 내려왔다). 키를 손으로 적지 않고 상태에서 뽑는다.
+  const fogKeyOf = (game: Game): string =>
+    `hidden_river:fog:${roundKey(game.engine.state)}:p0`;
 
   function setup(): Game {
     const state = withAugment(
@@ -179,7 +182,7 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
     const view = buildPlayerView(game.engine.state, "p1", game.engine.rules);
     expect(zoneOf(view, discardsZone("p0")).tileIds).toHaveLength(8);
     expect(zoneOf(view, discardsZone("p0")).hiddenCount).toBe(0);
-    expect(game.engine.state.augmentData[FOG_KEY]).toBeUndefined();
+    expect(game.engine.state.augmentData[fogKeyOf(game)]).toBeUndefined();
   });
 
   it("보유자 턴에 declare_fog 후보가 뜨고, 선언하면 그때부터 안개가 낀다", () => {
@@ -194,7 +197,7 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
     expect(r.ok).toBe(true);
 
     const s = game.engine.state;
-    expect(s.augmentData[FOG_KEY]).toBe(true);
+    expect(s.augmentData[fogKeyOf(game)]).toBe(true);
     expect(s.augmentData[roundViewKey("*", "hidden_river:p0")]).toBe("안개");
 
     // 타인 뷰: 최근 6장만 보이고 그 앞은 장수만 (6장 이하인 바닥은 그대로 보인다)
@@ -210,7 +213,7 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
     expect(zoneOf(mine, discardsZone("p1")).tileIds).toHaveLength(1);
   });
 
-  it("게임당 1회 — 두 번째 선언은 거부되고 후보에서도 사라진다", () => {
+  it("같은 국에 두 번은 못 건다 — 두 번째 선언은 거부되고 후보에서도 사라진다", () => {
     const game = setup();
     expect(
       game.engine.submit({ player: "p0", type: "declare_fog", payload: {} }).ok,
@@ -397,6 +400,27 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
     return game;
   }
 
+  /**
+   * 교환을 끝까지 진행한다 — 2026-08-15부터 **내가 고른 3장**이라, 후보를 세 번 골라야
+   * 비로소 교환이 일어난다. 고른 tileId 목록을 돌려준다.
+   */
+  function exchangeThree(game: Game): TileId[] {
+    const out: TileId[] = [];
+    for (let i = 0; i < 3; i++) {
+      const opt = turnOptions(game).find((o) => o.type === "future_exchange");
+      if (opt === undefined) throw new Error("no future_exchange option");
+      const { tileId } = opt.payload as { tileId: TileId };
+      const r = game.engine.submit({
+        player: "p0",
+        type: "future_exchange",
+        payload: { tileId },
+      });
+      expect(r.ok).toBe(true);
+      out.push(tileId);
+    }
+    return out;
+  }
+
   it("턴 시작에는 future_arm만 뜬다 — 교환 프롬프트가 곧바로 뜨지 않는다", () => {
     const game = setup();
     const opts = turnOptions(game);
@@ -415,7 +439,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("무장하면 그때 교환 후보 3장이 제시된다", () => {
+  it("무장하면 그때 손패 전체가 교환 후보로 제시된다", () => {
     const game = setup();
     expect(
       game.engine.submit({ player: "p0", type: "future_arm", payload: {} }).ok,
@@ -426,7 +450,8 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
 
     const opts = turnOptions(game);
     const ex = opts.filter((o) => o.type === "future_exchange");
-    expect(ex).toHaveLength(3);
+    // 2026-08-15: 무작위 3장이 아니라 **내가 고르는** 3장 — 손패 전부가 후보다
+    expect(ex).toHaveLength(14);
     // 손패는 아직 전혀 움직이지 않았다 (무장은 선언일 뿐)
     expect(handIdsOf(game.engine.state, "p0")).toHaveLength(14);
     expect(opts.some((o) => o.type === "future_arm")).toBe(false);
@@ -435,14 +460,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   it("교환하면 가져온 3장이 전원 공개 채널에 실리고 무장이 풀린다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
-    const opt = turnOptions(game).find((o) => o.type === "future_exchange")!;
-
-    const r = game.engine.submit({
-      player: "p0",
-      type: "future_exchange",
-      payload: opt.payload as { tileId: TileId },
-    });
-    expect(r.ok).toBe(true);
+    exchangeThree(game);
 
     const s = game.engine.state;
     const got = s.augmentData[GOT_KEY] as TileId[];
@@ -463,12 +481,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   it("한 순에 한 번뿐 — 교환 뒤에는 깡을 쳐도 다시 무장할 수 없다 (2026-08-01)", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
-    const opt = turnOptions(game).find((o) => o.type === "future_exchange")!;
-    game.engine.submit({
-      player: "p0",
-      type: "future_exchange",
-      payload: opt.payload as { tileId: TileId },
-    });
+    exchangeThree(game);
     const handAfter = handIdsOf(game.engine.state, "p0").length;
 
     // 교환 직후에는 무장 후보가 사라진다
@@ -497,12 +510,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   it("내가 버리면 순이 하나 오르지만, 쿨다운(3순)은 아직 안 풀린다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
-    const opt = turnOptions(game).find((o) => o.type === "future_exchange")!;
-    game.engine.submit({
-      player: "p0",
-      type: "future_exchange",
-      payload: opt.payload as { tileId: TileId },
-    });
+    exchangeThree(game);
     const toss = handIdsOf(game.engine.state, "p0")[0] as TileId;
     expect(
       game.engine.submit({ player: "p0", type: "discard", payload: { tileId: toss } }).ok,

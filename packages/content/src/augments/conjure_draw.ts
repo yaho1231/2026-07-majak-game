@@ -151,8 +151,11 @@ export const conjureDraw: AugmentDef = defineAugment({
         ]),
       );
       // 소비했으니 대기열을 비운다 (한 번의 소환 = 한 번의 쯔모)
+      //
+      // ⚠ "소환 성공" 공개 채널(`{id}:done:{holder}`)은 2026-08-15 사용자 지시로 없앴다.
+      // 발동 알림(위 conjureAction)이 이미 무엇을 불렀는지 전원에게 알리므로, 도착까지
+      // 두 번 알리면 같은 사건에 컷인이 두 번 터진다 — 첫 사용 알림 하나만 남긴다.
       rc.emit(augmentDataSet(pendingKey(rc.state, holder), null));
-      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:done:${holder}`), kindKey(target)));
     });
 
     // 발동 후보 — 손패 종류당 하나만 제시(같은 종류를 여러 번 내지 않는다).

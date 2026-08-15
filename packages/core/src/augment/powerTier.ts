@@ -543,7 +543,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 1,
     u: 5,
     f: 3,
-    note: "리치·일발·뒷도라가 각 2판 + 공탁 면제 — 평범한 리치 손이 하네만",
+    note: "리치·일발·뒷도라가 각 2판 + 공탁 면제 — 평범한 리치 손이 하네만. 선언이 곧 리치다 (2026-08-15: 첫 순 제한 삭제)",
   },
   north_trader: {
     p: 3,
@@ -690,7 +690,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 2,
     u: 5,
     f: 4,
-    note: "발동 후 게임 끝까지 전원의 바닥이 최근 6장만 공개된다(보유자는 전부) — 상대 셋의 수비를 영구 파괴",
+    note: "발동한 국 동안 전원의 바닥이 최근 6장만 공개된다(보유자는 전부). 동풍전 1·반장전 2회 (2026-08-15)",
   },
   late_double: {
     p: 4,
@@ -735,7 +735,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 3,
     u: 5,
     f: 2,
-    note: "리치 해제 후 무료 재리치 — 리치의 비가역성을 지운다",
+    note: "리치를 유지한 채 손패 1장을 패산 위 패와 교환 — 대기의 비가역성을 지운다 (2026-08-15 개편)",
   },
   pseudo_dealer: {
     p: 4,
@@ -759,7 +759,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 2,
     u: 3,
     f: 3,
-    note: "3순에 1회 3장 교체 + 발동당 +1판. 무작위 3장이 뽑혀 완성된 몸통이 깨질 수 있다",
+    note: "3순에 1회, 고른 손패 3장을 패산 위 3장과 교체 + 발동당 +1판. 가져온 3장은 전원 공개된다 (2026-08-15)",
   },
   meld_dissolve: {
     p: 2,
@@ -1075,7 +1075,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 1,
     u: 4,
     f: 2,
-    note: "6순 바닥 은닉. hidden_river의 하위호환",
+    note: "6순 바닥 은닉(내용 전체를 가린다). hidden_river는 국 내내 최근 6장만 남긴다",
   },
   tenpai_scan: {
     p: 1,

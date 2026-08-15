@@ -31,7 +31,7 @@ function excludes(a: string, b: string): boolean {
 describe("A급 — 게임 파괴 조합은 함께 뽑히지 않는다", () => {
   const cases: [string, string, string][] = [
     ["free_riichi_discard", "last_stand", "리치 취소 후 스냅샷이 남아 그 국 벽돌"],
-    ["free_riichi_discard", "palm_flip", "같은 경로 (RiichiFlipped)"],
+    ["free_riichi_discard", "palm_flip", "손패 스냅샷이 갈아탄 대기를 지운다"],
     ["open_riichi_reveal", "last_stand", "취소 후 다른 대기로도 직격 역만 성립"],
     ["open_riichi_reveal", "palm_flip", "같은 경로"],
     ["die_hard", "yakuman_shield", "같은 Shield 단계 동률이 픽 순서로 갈린다"],
@@ -56,7 +56,6 @@ describe("B급 — 조용히 사표가 되는 조합도 막는다", () => {
   const cases: [string, string][] = [
     ["invincible", "no_ron_pact"],
     ["riichi_seal", "riichi_upgrade"],
-    ["no_retreat", "palm_flip"],
     ["hidden_blade", "soul_hunt"],
     ["avenger", "late_bloomer"],
     ["avenger", "late_bloomer_east"],

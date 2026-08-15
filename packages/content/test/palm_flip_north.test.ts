@@ -14,7 +14,7 @@ import {
   kindOf,
   meldsZone,
 } from "@majak/core";
-import type { GameState, PlayerId, TileId } from "@majak/core";
+import type { GameState, PlayerId, TileId, TileKind } from "@majak/core";
 import { craft } from "./helpers.js";
 import { palmFlip } from "../src/augments/palm_flip.js";
 import { northTrader } from "../src/augments/north_trader.js";
@@ -28,15 +28,40 @@ function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
   };
 }
 
+/**
+ * 손바닥 뒤집기 — 2026-08-15 개편.
+ * 리치 **해제**가 아니라 리치를 유지한 채 손패 1장을 패산 맨 위 1장과 맞바꾼다.
+ */
 describe("손바닥 뒤집기 (palm_flip)", () => {
-  function scene(riichi: boolean): GameState {
+  const P2 = kindKey({ suit: "pin", rank: 2 });
+  const P4 = kindKey({ suit: "pin", rank: 4 });
+
+  /**
+   * p0: 123m456m789m 11p 23p + 쯔모 5p (리치 중이라 5p를 쯔모기리한다).
+   * 패산 맨 위를 **4p로 고정**해 "2p를 내보내고 4p를 받으면 텐파이 유지"를 결정적으로 만든다
+   * (2p→4p: 11p + 34p 대기로 갈아탄다).
+   */
+  function scene(riichi: boolean, incoming: TileKind = { suit: "pin", rank: 4 }): GameState {
     const base = craft({
-      hands: { p0: "123m456m789m11p23p", p1: "*", p2: "*", p3: "*" },
+      hands: { p0: "123m456m789m11p235p", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
       turnSeat: 0,
       drawnLastFor: "p0",
     });
-    const s = withAug(base, "p0", ["palm_flip"]);
+    // 패산 맨 위 한 장을 4p로 못박는다 (무엇이 들어오는지 결정적으로 만들기 위해)
+    const top = base.zones[WALL]?.tileIds[0];
+    if (top === undefined) throw new Error("패산이 비었다");
+    const s = withAug(
+      {
+        ...base,
+        tiles: {
+          ...base.tiles,
+          [top]: { ...base.tiles[top]!, kind: incoming },
+        },
+      },
+      "p0",
+      ["palm_flip"],
+    );
     if (!riichi) return s;
     return {
       ...s,
@@ -44,7 +69,11 @@ describe("손바닥 뒤집기 (palm_flip)", () => {
         ...s.round,
         byPlayer: {
           ...s.round.byPlayer,
-          p0: { ...s.round.byPlayer["p0"]!, riichi: { double: false, ippatsu: false, discardIndex: 0 } },
+          p0: {
+            ...s.round.byPlayer["p0"]!,
+            riichi: { double: false, ippatsu: false, discardIndex: 0 },
+            riichiFuriten: true,
+          },
         },
       },
     };
@@ -55,38 +84,90 @@ describe("손바닥 뒤집기 (palm_flip)", () => {
     return game;
   }
 
-  it("리치를 해제하고 재리치가 무료가 된다 (공탁 환급 없음)", () => {
+  /** 손패에서 그 종류의 첫 패 */
+  function handTile(state: GameState, key: string): TileId {
+    const id = handIdsOf(state, "p0").find((t) => kindKey(kindOf(state, t)) === key);
+    if (id === undefined) throw new Error(`손패에 ${key}가 없다`);
+    return id;
+  }
+
+  it("리치를 유지한 채 손패 1장과 패산 맨 위 1장을 맞바꾼다", () => {
     const game = setup(scene(true));
-    const potBefore = game.engine.state.round.riichiPot;
-    const r = game.engine.submit({ player: "p0", type: "flip_riichi", payload: {} });
+    const st0 = game.engine.state;
+    const potBefore = st0.round.riichiPot;
+    const wallBefore = [...(st0.zones[WALL]?.tileIds ?? [])];
+    const out = handTile(st0, P2);
+    const incoming = wallBefore[0] as TileId;
+
+    const r = game.engine.submit({
+      player: "p0",
+      type: "flip_riichi",
+      payload: { tileId: out },
+    });
     expect(r.ok).toBe(true);
-    // 리치 해제
-    expect(game.engine.state.round.byPlayer["p0"]?.riichi).toBeNull();
-    // 공탁은 그대로 (환급 없음 — 승부수와의 차이)
-    expect(game.engine.state.round.riichiPot).toBe(potBefore);
-    // 재리치 공탁이 0
-    expect(
-      game.engine.rules.resolve<number>("riichi.cost", {
-        playerId: "p0",
-        state: game.engine.state,
-      }),
-    ).toBe(0);
+
+    const st = game.engine.state;
+    // 리치는 그대로 서 있다 (해제가 아니다 — 승부수와의 차이)
+    expect(st.round.byPlayer["p0"]?.riichi).not.toBeNull();
+    // 공탁도 그대로 (환급 없음)
+    expect(st.round.riichiPot).toBe(potBefore);
+    // 패가 맞바뀌었다: 내보낸 패는 패산 맨 밑, 받은 패는 손에
+    expect(handIdsOf(st, "p0")).not.toContain(out);
+    expect(handIdsOf(st, "p0")).toContain(incoming);
+    expect(st.zones[WALL]?.tileIds).toHaveLength(wallBefore.length);
+    expect(st.zones[WALL]?.tileIds.at(-1)).toBe(out);
+    // 대기가 통째로 바뀌었으므로 리치 후리텐은 풀린다
+    expect(st.round.byPlayer["p0"]?.riichiFuriten).toBe(false);
+    // 손패 장수는 그대로
+    expect(handIdsOf(st, "p0")).toHaveLength(handIdsOf(st0, "p0").length);
+  });
+
+  it("바꾸면 텐파이가 깨지는 패는 고를 수 없다", () => {
+    // 들어올 패가 고립 자패(동)면 무엇을 내보내도 텐파이가 깨진다 — 후보가 하나도 없다
+    const game = setup(scene(true, { suit: "wind", rank: 1 }));
+    const st0 = game.engine.state;
+    const bad = handTile(st0, P2);
+    const r = game.engine.submit({
+      player: "p0",
+      type: "flip_riichi",
+      payload: { tileId: bad },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("not tenpai after swap");
+  });
+
+  it("쯔모패 자체는 바꿀 수 없다 (그건 무르기의 몫이다)", () => {
+    const game = setup(scene(true));
+    const drawn = game.engine.state.round.lastDrawnTile as TileId;
+    const r = game.engine.submit({
+      player: "p0",
+      type: "flip_riichi",
+      payload: { tileId: drawn },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("cannot swap the drawn tile");
   });
 
   it("리치 중이 아니면 발동할 수 없다", () => {
     const game = setup(scene(false));
-    expect(game.engine.submit({ player: "p0", type: "flip_riichi", payload: {} }).ok).toBe(false);
+    const out = handTile(game.engine.state, P2);
+    expect(
+      game.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } }).ok,
+    ).toBe(false);
   });
 
-  it("타가의 재리치 공탁은 그대로다", () => {
+  it("리치 공탁에는 손대지 않는다 (재리치 무료가 아니다)", () => {
     const game = setup(scene(true));
-    game.engine.submit({ player: "p0", type: "flip_riichi", payload: {} });
-    expect(
-      game.engine.rules.resolve<number>("riichi.cost", {
-        playerId: "p1",
-        state: game.engine.state,
-      }),
-    ).toBe(1000);
+    const out = handTile(game.engine.state, P2);
+    game.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } });
+    for (const p of ["p0", "p1"] as PlayerId[]) {
+      expect(
+        game.engine.rules.resolve<number>("riichi.cost", {
+          playerId: p,
+          state: game.engine.state,
+        }),
+      ).toBe(1000);
+    }
   });
 });
 

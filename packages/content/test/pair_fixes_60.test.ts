@@ -552,7 +552,7 @@ describe("리치 봉인 — 커스텀 리치 액션까지 전부 막는다", () 
 
 describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
   /**
-   * p0 = 리치 봉인 + 손바닥 뒤집기. 텐파이 14장으로 자기 턴에 서 있다.
+   * p0 = 리치 봉인 + 승부수. 텐파이 14장으로 자기 턴에 서 있다.
    * (두 증강 다 보유자가 같아야 "걸었다가 푸는" 한 사람의 흐름을 볼 수 있다)
    */
   function scene(): Game {
@@ -563,11 +563,11 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
         turnSeat: 0,
         drawnLastFor: "p0",
       }),
-      { p0: ["riichi_seal", "palm_flip"] },
+      { p0: ["riichi_seal", "last_stand"] },
     );
     return mk(base, [
       { def: C.riichiSeal, holder: "p0" },
-      { def: C.palmFlip, holder: "p0" },
+      { def: C.lastStand, holder: "p0" },
     ]);
   }
 
@@ -608,7 +608,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
 
   /**
    * 이미 선제 리치를 걸어 봉인이 선 상태 + 보유자의 턴(turn.act).
-   * 손바닥 뒤집기는 자기 턴에만 눌리므로, 리치 선언 직후가 아니라
+   * 승부수는 자기 턴에만 눌리므로, 리치 선언 직후가 아니라
    * "리치를 지고 한 바퀴 돌아온 내 순"을 재현해야 한다.
    */
   function sealedOnMyTurn(): Game {
@@ -635,19 +635,19 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
           },
         },
       },
-      { p0: ["riichi_seal", "palm_flip"] },
+      { p0: ["riichi_seal", "last_stand"] },
     );
     return mk(base, [
       { def: C.riichiSeal, holder: "p0" },
-      { def: C.palmFlip, holder: "p0" },
+      { def: C.lastStand, holder: "p0" },
     ]);
   }
 
-  it("손바닥 뒤집기로 리치를 풀면 그 자리에서 봉인이 풀린다", () => {
+  it("승부수로 리치를 풀면 그 자리에서 봉인이 풀린다", () => {
     const g = sealedOnMyTurn();
     expect(blockedFor(g, "p1")).toBe(true);
 
-    const res = g.engine.submit({ player: "p0", type: "flip_riichi", payload: {} });
+    const res = g.engine.submit({ player: "p0", type: "cancel_riichi", payload: {} });
     expect(res.ok).toBe(true);
     expect(g.engine.state.round.byPlayer["p0"]?.riichi).toBeNull();
 
@@ -661,7 +661,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
     const g = sealedOnMyTurn();
     expect(banner(g)).toBe("봉인");
 
-    g.engine.submit({ player: "p0", type: "flip_riichi", payload: {} });
+    g.engine.submit({ player: "p0", type: "cancel_riichi", payload: {} });
     // 해제 후 이어지는 자유 타패에서 배너가 정리된다
     const tileId = handIdsOf(g.engine.state, "p0")[0] as number;
     const res = g.engine.submit({
@@ -676,7 +676,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
   it("푼 사이에 상대가 리치를 걸었다면, 같은 국에 다시 걸어도 봉인은 돌아오지 않는다", () => {
     const g = scene();
     declareFirstRiichi(g);
-    g.engine.submit({ player: "p0", type: "flip_riichi", payload: {} });
+    g.engine.submit({ player: "p0", type: "cancel_riichi", payload: {} });
 
     // 봉인이 풀린 사이 p1이 리치를 건 상태를 만든다
     const s = g.engine.state;
@@ -699,7 +699,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
     };
     const g2 = mk(withRival, [
       { def: C.riichiSeal, holder: "p0" },
-      { def: C.palmFlip, holder: "p0" },
+      { def: C.lastStand, holder: "p0" },
     ]);
     // p0가 다시 리치 중이어도 p1이 이미 리치라 '선제'가 아니다 → 봉인 없음
     expect(

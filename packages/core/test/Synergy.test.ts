@@ -128,7 +128,6 @@ describe("역시너지 — 문서화된 나머지 관계 (docs/21)", () => {
     expect(synergyBias(["hidden_river"])["brief_fog"]).toBe(SYNERGY_PENALTY);
     expect(synergyBias(["rinshan_preview"])["dead_wall_master"]).toBe(SYNERGY_PENALTY);
     expect(synergyBias(["riichi_seal"])["riichi_upgrade"]).toBe(SYNERGY_PENALTY);
-    expect(synergyBias(["no_retreat"])["palm_flip"]).toBe(SYNERGY_PENALTY);
   });
 
   it("리치 봉인 × 상대 리치를 먹는 증강 (C-2)", () => {
@@ -158,9 +157,9 @@ describe("여러 개를 보유했을 때", () => {
   });
 
   it("한 장이라도 역시너지를 걸면 눌린다", () => {
-    // no_retreat는 리치 축이라 원래 오르지만, 스텔스가 아니라 palm_flip이 눌러야 한다
-    expect(synergyBias(["late_double"])["no_retreat"]).toBeGreaterThan(1);
-    expect(synergyBias(["late_double", "palm_flip"])["no_retreat"]).toBe(
+    // palm_flip은 리치 축이라 원래 오르지만, 은닉을 깨므로 스텔스 리치가 눌러야 한다
+    expect(synergyBias(["late_double"])["palm_flip"]).toBeGreaterThan(1);
+    expect(synergyBias(["late_double", "stealth_riichi"])["palm_flip"]).toBe(
       SYNERGY_PENALTY,
     );
   });

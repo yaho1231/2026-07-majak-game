@@ -21,7 +21,7 @@ const LEAKERS = [
   "all_or_nothing", // 판돈을 전원 공개
   "soul_strike", // 남은 쯔모 수를 전원 공개
   "off_by_one", // 리치 필수 + 바뀐 패를 전원 공개
-  "palm_flip", // 리치 중에만 발동 + 해제를 전원 공개
+  "palm_flip", // 리치 중에만 발동 + 발동을 전원 공개 (2026-08-15부터 해제가 아니라 대기 교체)
   "riichi_upgrade", // 하가 봉인을 view:* 로 공개 + 하가 리치 버튼이 잠긴다
   "silent_swap", // 리치로 잠긴 손을 바닥에서 갈아 끼운다 (은닉이 조건 판정도 통과)
 ] as const;
