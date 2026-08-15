@@ -531,6 +531,39 @@ describe("hand_swap3 — 등가교환", () => {
     expect(viewOf("p2")["hand_swap3:swapped"]).toBeUndefined();
   });
 
+  /**
+   * 지정과 실제 교환 사이(넘길 3장을 고르는 동안)에는 "누구와 바꾸기로 했는지"가
+   * 화면 어디에도 없었다(2026-08-15 사용자 요청). 공개 채널에 대상만 실어 이름표
+   * pill에 세우고, 교환이 끝나는 순간 비운다.
+   */
+  it("지정하면 대상이 전원 공개 채널에 실리고, 교환이 끝나면 비워진다", () => {
+    const game = createStandardGameFromState(craftSwapState());
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+
+    const aimView = (viewer: PlayerId): unknown =>
+      buildPlayerView(game.engine.state, viewer, game.engine.rules).augmentView[
+        "hand_swap3:p0"
+      ];
+
+    // 지정 전에는 아무에게도 안 보인다
+    expect(aimView("p0")).toBeUndefined();
+
+    expect(aim(game, "p1").ok).toBe(true);
+    // 지정 사실은 원래 전원 공개(actionFx)라 제3자에게도 그대로 실린다
+    expect(aimView("p0")).toBe("p1");
+    expect(aimView("p1")).toBe("p1");
+    expect(aimView("p2")).toBe("p1");
+
+    expect(give(game, triple(handIdsOf(game.engine.state, "p0"))).ok).toBe(true);
+    // 넘길 3장을 고르는 동안에도 표식은 그대로 서 있다
+    expect(aimView("p0")).toBe("p1");
+
+    expect(take(game, triple(handIdsOf(game.engine.state, "p1"))).ok).toBe(true);
+    // 교환이 끝나면 사라진다 (빈 값은 buildPlayerView가 잘라 낸다)
+    expect(aimView("p0")).toBeUndefined();
+    expect(aimView("p2")).toBeUndefined();
+  });
+
   it("내 손패·상대 손패에 없는 패는 고를 수 없고, 지정 전에는 교환할 수 없다", () => {
     const game = createStandardGameFromState(craftSwapState());
     installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });

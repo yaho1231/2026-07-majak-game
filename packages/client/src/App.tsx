@@ -10377,6 +10377,24 @@ function augmentPillStatus(
     };
   };
 
+  /*
+   * 등가교환 — **누구와 바꾸기로 했는가**. 지정(swap3)한 순간부터 교환이 성사될
+   * 때까지만 pill에 선다.
+   *
+   * 지정과 실제 교환 사이에는 순서가 몇 번 돌 수 있는데(넘길 3장을 고민하다 물러나면
+   * 다음 순으로 넘어간다), 그동안 "누구를 찍어 뒀는지"가 화면 어디에도 없었다
+   * (2026-08-15 사용자 요청). 교환이 끝나면 콘텐츠가 채널을 비우므로 이 칩도 함께
+   * 사라진다 — 남은 잔량("n회")만 도로 남는다.
+   */
+  if (augId === "hand_swap3") {
+    if (typeof raw !== "string" || raw === "") return usesStatus;
+    const who = playerNameById(view, raw);
+    return withUses({
+      chip: `→ ${who}`,
+      note: `${who}와(과) 바꾸기로 지정했다 — 넘길 내 3장과 가져올 상대 3장을 고르면 교환이 끝난다`,
+    });
+  }
+
   if (raw === undefined) return usesStatus;
 
   const custom = PILL_CUSTOM[augId];

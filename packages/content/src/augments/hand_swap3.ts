@@ -94,6 +94,21 @@ const doneKey = (state: GameState, holder: PlayerId): string =>
 const revealKey = (holder: PlayerId, target: PlayerId): string =>
   roundViewKey(holder, `revealTiles:${target}`);
 /**
+ * **누구를 지정했는가** — 전원 공개, 양쪽 이름표의 지목 표식(np-rel)이 그린다.
+ *
+ * 지정과 교환 사이에는 순서가 몇 번 돌 수 있는데(넘길 3장을 고민하다 물러나면 다음
+ * 순으로 넘어간다), 그동안 화면에는 "누구와 바꾸기로 했는지"가 어디에도 없었다
+ * (2026-08-15 사용자 요청). 대상 지정 사실 자체는 원래 actionFx로 전원에게 알리는
+ * 정보라 공개 채널에 그대로 실을 수 있다 — 갈릴 **패**는 여전히 당사자 전용이다.
+ *
+ * 교환이 성사되는 순간 비운다(표식은 '앞으로 바꾼다'는 예고이므로 끝나면 남을 이유가
+ * 없다). 교환하지 못한 채 국이 끝나면 국 스코프 키라 알아서 사라진다.
+ *
+ * ⚠ 대상이 리치를 걸어 교환이 막혔을 때는 **비우지 않는다** — 표식이 사라지는 것
+ * 자체가 "저 사람 숨은 리치다"가 되기 때문이다(docs/25 P3, 대상 목록과 같은 이유).
+ */
+const aimViewKey = (holder: PlayerId): string => roundViewKey("*", `${ID}:${holder}`);
+/**
  * 교환 결과 통보 채널 — **당사자 둘에게만**.
  *
  * 3장이 소리 없이 갈리는 것이 이 증강의 전부인데, 화면에는 아무 말도 안 나왔다.
@@ -247,6 +262,8 @@ const aimAction: ActionDef<{ target: PlayerId }> = {
     augmentDataSet(revealKey(req.player, req.payload.target), [
       ...handIdsOf(state, req.payload.target),
     ]),
+    // 누구와 바꾸기로 했는지 — 양쪽 이름표에 표식으로 선다 (교환이 끝나면 걷힌다)
+    augmentDataSet(aimViewKey(req.player), req.payload.target),
   ],
 };
 
@@ -385,6 +402,8 @@ export const handSwap3: AugmentDef = defineAugment({
             // 이 국에는 다시 지정할 수 없다 (사용자 피드백: 발동한 국 재사용 금지)
             [doneKey(state, p.holder)]: true,
             [revealKey(p.holder, p.target)]: [],
+            // 교환이 끝났으니 '누구와 바꾼다'는 예고 표식도 함께 걷는다
+            [aimViewKey(p.holder)]: "",
             [noticeKey(p.holder)]: holderNotice,
             [noticeKey(p.target)]: targetNotice,
           },
