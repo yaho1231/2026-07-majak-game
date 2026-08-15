@@ -496,9 +496,15 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
     expect(evenWorld.description).toContain("바꾸면 도라가 될 패");
   });
 
-  it("만년 오야: 자풍이 덮어씌워진다(추가가 아니다)", () => {
-    expect(eternalDealer.description).toContain("덮어씌워진다");
-    expect(eternalDealer.detail).toContain("교체");
+  /**
+   * 2026-08-15 사용자 지시로 뒤집힌 항목 — 자풍 **교체**가 자풍 **유지 + 역패 동 추가**가
+   * 됐다. 글이 아직 교체를 말하면 남가가 南 커쯔를 헛되이 버린다.
+   */
+  it("만년 오야: 자풍은 그대로이고 역패 동이 추가된다(교체가 아니다)", () => {
+    expect(eternalDealer.description).toContain("하나 더 붙는다");
+    expect(eternalDealer.description).not.toContain("덮어씌워진다");
+    expect(eternalDealer.detail).toContain("원래 자풍은 그대로");
+    expect(eternalDealer.detail).not.toContain("교체");
   });
 });
 
