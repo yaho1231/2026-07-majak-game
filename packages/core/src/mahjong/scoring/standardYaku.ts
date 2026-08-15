@@ -242,25 +242,40 @@ const GREEN_KEYS = new Set(
 
 export const standardYakuList: YakuDef[] = [
   // ── 1판 ──
+  /*
+   * 리치 3종(리치·더블리치·일발)의 openHan이 **null이 아닌** 이유.
+   *
+   * 이 셋은 "손이 멘젠인가"로 정의되는 역이 아니라 **"리치를 선언했는가"** 로만
+   * 정의되는 역이다. 멘젠 요구는 선언 시점의 규칙(`riichi.requiresClosed`)이 이미
+   * 강제하므로, 채점에서 한 번 더 막을 필요가 없다. 그런데 openHan: null로 막고
+   * 있었던 탓에, 개문선언(`open_riichi`)이 그 규칙을 풀어 후로 손 리치를 열어 줘도
+   * **화료 순간 리치 역이 통째로 사라져** 다른 역이 없으면 "역 없음"으로 화료가
+   * 거부됐다 — 리치봉 1000점만 내고 손이 잠긴 채 절대 이길 수 없는 손이 됐다
+   * (2026-08-15 시뮬레이션으로 확인. 쯔모·론 양쪽 다 `no yaku`).
+   *
+   * 후로 손에 `ctx.riichi`가 붙어 있다는 것 자체가 곧 "어떤 증강이 멘젠 조건을
+   * 풀어 줬다"는 뜻이므로, 여기서는 그대로 판수를 준다. 멘젠으로 정의되는 역
+   * (멘젠쯔모·핑후·치또이)은 아래 그대로 openHan: null을 유지한다.
+   */
   {
     id: "riichi",
     name: "리치",
     closedHan: 1,
-    openHan: null,
+    openHan: 1,
     check: (_v, ctx) => ctx.riichi !== null && !ctx.riichi.double,
   },
   {
     id: "double_riichi",
     name: "더블리치",
     closedHan: 2,
-    openHan: null,
+    openHan: 2,
     check: (_v, ctx) => ctx.riichi?.double === true,
   },
   {
     id: "ippatsu",
     name: "일발",
     closedHan: 1,
-    openHan: null,
+    openHan: 1,
     check: (_v, ctx) => ctx.riichi?.ippatsu === true,
   },
   {

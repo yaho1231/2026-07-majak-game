@@ -199,8 +199,9 @@ export function estimateHandValue(input: HandValueInput): HandValue {
 
   /**
    * 리치가 얹는 판수. 열린 손은 원래 리치를 걸 수 없어 0이지만, **개문선언**을 들면
-   * 걸 수 있고 그 리치는 판수도 붙는다(`openRiichiHan`). 열린 손에는 일발·우라·
-   * 멘젠쯔모가 없으므로 멘젠의 2.2판을 그대로 쓰지 않고 증강이 정한 확정 판수를 쓴다.
+   * 걸 수 있고 그 리치는 판수도 붙는다(`openRiichiHan`). 열린 손에는 멘젠쯔모가 없어
+   * 멘젠의 2.2판을 그대로 쓰지 않고 증강이 정한 확정 판수(2판)를 쓴다 — 일발·뒷도라는
+   * 열린 손에서도 붙지만(리치 선언만으로 정해지는 것들이다) 기대값이라 여기 안 센다.
    */
   const riichiHan = menzen ? RIICHI_HAN : (input.openRiichiHan ?? 0);
   const withRiichi = base + riichiHan;

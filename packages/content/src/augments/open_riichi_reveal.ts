@@ -239,7 +239,15 @@ export const openRiichiReveal: AugmentDef = defineAugment({
         from != null && state.round.byPlayer[from]?.riichi != null;
       // 비리치 상대 론 = 직격 역만이 이미 적용됐다 → 추가 판을 얹지 않는다
       if (info.winType === "ron" && !fromRiichi) return 0;
-      return RIICHI_UPGRADE_HAN;
+      /*
+       * 차액이므로 **이미 붙어 있는 리치 판수**를 빼고 얹는다. 개문선언(open_riichi)을
+       * 함께 들고 후로 손으로 선언하면 그쪽이 리치를 2판으로 만들어 두므로, 여기서
+       * 2를 더 얹으면 "3판 취급"이 4판이 된다.
+       */
+      const alreadyOpenRiichi =
+        openMeldCountOf(state, holder) > 0 &&
+        playerOf(state, holder).augments.includes("open_riichi");
+      return alreadyOpenRiichi ? RIICHI_UPGRADE_HAN - 1 : RIICHI_UPGRADE_HAN;
     });
 
     // 아직 리치 전이고 이번 국에 선언하지 않았을 때만, 버려도 텐파이가 유지되는
