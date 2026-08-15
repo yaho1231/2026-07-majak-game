@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEAD_WALL,
+  FlowController,
   WALL,
   createStandardGameFromState,
   discardsZone,
@@ -14,7 +15,7 @@ import {
   kindOf,
   meldsZone,
 } from "@majak/core";
-import type { GameState, PlayerId, TileId, TileKind } from "@majak/core";
+import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
 import { palmFlip } from "../src/augments/palm_flip.js";
 import { northTrader } from "../src/augments/north_trader.js";
@@ -30,38 +31,25 @@ function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
 
 /**
  * 손바닥 뒤집기 — 2026-08-15 개편.
- * 리치 **해제**가 아니라 리치를 유지한 채 손패 1장을 패산 맨 위 1장과 맞바꾼다.
+ * 리치 **해제**가 아니라, 리치로 잠긴 손이 한 번 풀려 쯔모기리 대신 원하는 패를 버린다.
+ * (첫 개편의 "패산 위 패와 맞바꾸기"는 후보가 사실상 늘 비어 폐기했다.)
  */
 describe("손바닥 뒤집기 (palm_flip)", () => {
-  const P2 = kindKey({ suit: "pin", rank: 2 });
-  const P4 = kindKey({ suit: "pin", rank: 4 });
+  const S4 = kindKey({ suit: "sou", rank: 4 });
+  const M1 = kindKey({ suit: "man", rank: 1 });
 
   /**
-   * p0: 123m456m789m 11p 23p + 쯔모 5p (리치 중이라 5p를 쯔모기리한다).
-   * 패산 맨 위를 **4p로 고정**해 "2p를 내보내고 4p를 받으면 텐파이 유지"를 결정적으로 만든다
-   * (2p→4p: 11p + 34p 대기로 갈아탄다).
+   * p0: 123m456m789m 11p 46s = 5삭 칸짱 텐파이. 거기에 **7삭을 쯔모**했다.
+   * 4삭을 버리면 67s 량면(5·8삭)으로 갈아탄다 — 이 증강이 쓰이는 바로 그 장면이다.
    */
-  function scene(riichi: boolean, incoming: TileKind = { suit: "pin", rank: 4 }): GameState {
+  function scene(riichi: boolean): GameState {
     const base = craft({
-      hands: { p0: "123m456m789m11p235p", p1: "*", p2: "*", p3: "*" },
+      hands: { p0: "123m456m789m11p467s", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
       turnSeat: 0,
       drawnLastFor: "p0",
     });
-    // 패산 맨 위 한 장을 4p로 못박는다 (무엇이 들어오는지 결정적으로 만들기 위해)
-    const top = base.zones[WALL]?.tileIds[0];
-    if (top === undefined) throw new Error("패산이 비었다");
-    const s = withAug(
-      {
-        ...base,
-        tiles: {
-          ...base.tiles,
-          [top]: { ...base.tiles[top]!, kind: incoming },
-        },
-      },
-      "p0",
-      ["palm_flip"],
-    );
+    const s = withAug(base, "p0", ["palm_flip"]);
     if (!riichi) return s;
     return {
       ...s,
@@ -91,52 +79,64 @@ describe("손바닥 뒤집기 (palm_flip)", () => {
     return id;
   }
 
-  it("리치를 유지한 채 손패 1장과 패산 맨 위 1장을 맞바꾼다", () => {
+  /** p0 턴에 뜨는 flip_riichi 후보 */
+  function flipOptions(game: ReturnType<typeof setup>) {
+    const st = new FlowController(game.engine).begin();
+    if (st.kind !== "awaiting") throw new Error("expected awaiting");
+    return (st.prompts.find((p) => p.player === "p0")?.options ?? []).filter(
+      (o) => o.type === "flip_riichi",
+    );
+  }
+
+  it("후보는 '버려도 텐파이가 남는 패'뿐이다 — 여기서는 4삭 하나", () => {
+    const game = setup(scene(true));
+    const opts = flipOptions(game);
+    expect(opts).toHaveLength(1);
+    expect((opts[0]!.payload as { tileId: TileId }).tileId).toBe(
+      handTile(game.engine.state, S4),
+    );
+  });
+
+  it("리치를 유지한 채 고른 패를 버린다 (오름패가 갈린다)", () => {
     const game = setup(scene(true));
     const st0 = game.engine.state;
     const potBefore = st0.round.riichiPot;
-    const wallBefore = [...(st0.zones[WALL]?.tileIds ?? [])];
-    const out = handTile(st0, P2);
-    const incoming = wallBefore[0] as TileId;
+    const out = handTile(st0, S4);
 
     const r = game.engine.submit({
       player: "p0",
       type: "flip_riichi",
       payload: { tileId: out },
     });
-    expect(r.ok).toBe(true);
+    expect(r.ok, r.ok ? "" : r.reason).toBe(true);
 
     const st = game.engine.state;
     // 리치는 그대로 서 있다 (해제가 아니다 — 승부수와의 차이)
     expect(st.round.byPlayer["p0"]?.riichi).not.toBeNull();
     // 공탁도 그대로 (환급 없음)
     expect(st.round.riichiPot).toBe(potBefore);
-    // 패가 맞바뀌었다: 내보낸 패는 패산 맨 밑, 받은 패는 손에
+    // 고른 패가 실제로 바닥으로 갔고, 쯔모패(7삭)는 손에 남았다
     expect(handIdsOf(st, "p0")).not.toContain(out);
-    expect(handIdsOf(st, "p0")).toContain(incoming);
-    expect(st.zones[WALL]?.tileIds).toHaveLength(wallBefore.length);
-    expect(st.zones[WALL]?.tileIds.at(-1)).toBe(out);
+    expect(st.zones[discardsZone("p0")]?.tileIds).toContain(out);
+    expect(handIdsOf(st, "p0")).toContain(st0.round.lastDrawnTile as TileId);
+    expect(handIdsOf(st, "p0")).toHaveLength(13);
     // 대기가 통째로 바뀌었으므로 리치 후리텐은 풀린다
     expect(st.round.byPlayer["p0"]?.riichiFuriten).toBe(false);
-    // 손패 장수는 그대로
-    expect(handIdsOf(st, "p0")).toHaveLength(handIdsOf(st0, "p0").length);
   });
 
-  it("바꾸면 텐파이가 깨지는 패는 고를 수 없다", () => {
-    // 들어올 패가 고립 자패(동)면 무엇을 내보내도 텐파이가 깨진다 — 후보가 하나도 없다
-    const game = setup(scene(true, { suit: "wind", rank: 1 }));
-    const st0 = game.engine.state;
-    const bad = handTile(st0, P2);
+  it("텐파이가 깨지는 패는 고를 수 없다", () => {
+    const game = setup(scene(true));
+    const bad = handTile(game.engine.state, M1);
     const r = game.engine.submit({
       player: "p0",
       type: "flip_riichi",
       payload: { tileId: bad },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("not tenpai after swap");
+    if (!r.ok) expect(r.reason).toBe("not tenpai after discard");
   });
 
-  it("쯔모패 자체는 바꿀 수 없다 (그건 무르기의 몫이다)", () => {
+  it("쯔모패는 후보가 아니다 (그건 그냥 쯔모기리다)", () => {
     const game = setup(scene(true));
     const drawn = game.engine.state.round.lastDrawnTile as TileId;
     const r = game.engine.submit({
@@ -145,12 +145,12 @@ describe("손바닥 뒤집기 (palm_flip)", () => {
       payload: { tileId: drawn },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("cannot swap the drawn tile");
+    if (!r.ok) expect(r.reason).toBe("drawn tile must use the normal discard");
   });
 
   it("리치 중이 아니면 발동할 수 없다", () => {
     const game = setup(scene(false));
-    const out = handTile(game.engine.state, P2);
+    const out = handTile(game.engine.state, S4);
     expect(
       game.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } }).ok,
     ).toBe(false);
@@ -158,7 +158,7 @@ describe("손바닥 뒤집기 (palm_flip)", () => {
 
   it("리치 공탁에는 손대지 않는다 (재리치 무료가 아니다)", () => {
     const game = setup(scene(true));
-    const out = handTile(game.engine.state, P2);
+    const out = handTile(game.engine.state, S4);
     game.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } });
     for (const p of ["p0", "p1"] as PlayerId[]) {
       expect(

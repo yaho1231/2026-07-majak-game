@@ -139,7 +139,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   omni_chi: { use: "상시", text: "상가뿐 아니라 누구의 버림패로든 치를 할 수 있다." },
   open_kokushi: { use: "상시", text: "요구패를 퐁해서도 국사무쌍을 완성할 수 있다." },
   open_riichi_reveal: { use: "매 국 1회", text: "오름패를 공개하고 리치. 리치 안 건 사람이 쏘면 그 화료가 역만이 된다." },
-  palm_flip: { use: MODE_1_2, text: "리치를 유지한 채 손패 1장을 패산 위 패와 바꿔 대기를 갈아탄다." },
+  palm_flip: { use: MODE_1_2, text: "리치 중 한 번, 쯔모기리 대신 원하는 패를 버려 대기를 갈아탄다." },
   parasite: { use: "국마다 1회", text: "상대 하나에 기생해, 그 국에 그가 버는 점수의 절반을 가져온다." },
   peek_riichi_waits: { use: "매 국 1회", text: "리치한 상대의 오름패를 확인하고, 한 번은 내 패를 그것으로 바꾼다." },
   polar_ends: { use: "상시", text: "1과 9의 구별이 사라진다 — 같은 무늬의 199·911도 한 커쯔." },
