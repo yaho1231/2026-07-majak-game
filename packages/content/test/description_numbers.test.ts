@@ -94,10 +94,11 @@ describe("설명 ↔ 구현 수치 대조 ① 숫자 실재", () => {
 /**
  * ② 한도 표기 — 설명 첫머리 괄호와 코드가 맞는가.
  *
- * `hidden_river`·`devils_advance`의 "게임 내 1회"는 숫자가 아니라 **한 번 쓰면 굳는
- * 플래그**로 구현돼 있어 코드에 `1`이 없다. 배관이 다른 것이지 한도가 없는 게 아니다.
+ * `devils_advance`의 "게임 내 1회"는 숫자가 아니라 **한 번 쓰면 굳는 플래그**로 구현돼
+ * 있어 코드에 `1`이 없다. 배관이 다른 것이지 한도가 없는 게 아니다.
+ * (`hidden_river`는 2026-08-15부터 matchUses 쪽으로 옮겨 갔다.)
  */
-const ONE_SHOT_FLAG = new Set(["hidden_river", "devils_advance"]);
+const ONE_SHOT_FLAG = new Set(["devils_advance"]);
 
 describe("설명 ↔ 구현 수치 대조 ② 한도 표기", () => {
   it("'N국에 1회'는 쿨다운 배관과 같은 N을 쓴다", () => {

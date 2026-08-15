@@ -166,7 +166,8 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   stealth_riichi: e(["riichi", "riichi_value", "menzen"], {
     anti: ["riichi_open", "riichi_deny"],
   }),
-  no_retreat: e(["riichi", "riichi_value"], { antiIds: ["palm_flip"] }),
+  // 2026-08-15: 손바닥 뒤집기와의 상호 무효(둘 다 riichi.cost 0)가 사라져 antiIds를 뺐다.
+  no_retreat: e(["riichi", "riichi_value"]),
   late_double: e(["riichi", "riichi_value", "menzen"]),
   free_riichi_discard: e(["riichi", "menzen"]),
   off_by_one: e(["riichi", "riichi_open", "shape"]),

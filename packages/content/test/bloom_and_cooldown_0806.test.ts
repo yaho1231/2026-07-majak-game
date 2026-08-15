@@ -173,7 +173,7 @@ describe("N국에 1회 — 남은 국 수가 보유자 화면에 실린다", () 
     const start = flow.begin();
     if (start.kind !== "awaiting") throw new Error("expected awaiting");
     const declare = (start.prompts.find((p) => p.player === "p0")?.options ?? []).find(
-      (o) => o.type === "declare_no_retreat",
+      (o) => o.type === "no_retreat_riichi",
     );
     expect(declare).toBeDefined();
     flow.submit("p0", declare!);

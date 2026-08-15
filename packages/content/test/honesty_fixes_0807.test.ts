@@ -492,8 +492,9 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
     expect(deadWallMaster.detail).toContain("줄어든다");
   });
 
-  it("짝수의 세계: '바꾸면 도라가 되는 패'도 그대로 남는다", () => {
-    expect(evenWorld.description).toContain("바꾸면 도라가 될 패");
+  it("짝수의 세계: 도라·적도라는 그대로 남는다 (변환 결과가 도라가 되는 것은 막지 않는다)", () => {
+    expect(evenWorld.description).toContain("도라는 그대로 남는다");
+    expect(evenWorld.detail).toContain("바꾼 **결과**가 도라가 되는 것은 막지 않는다");
   });
 
   it("만년 오야: 자풍이 덮어씌워진다(추가가 아니다)", () => {

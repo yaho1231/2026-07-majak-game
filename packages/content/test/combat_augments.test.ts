@@ -292,7 +292,9 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
     );
   }
 
-  it("첫 턴에 declare_no_retreat가 노출되고 선언하면 플래그가 선다", () => {
+  // 2026-08-15: 첫 순 제한이 사라지고 **선언이 곧 리치**가 됐다 (버튼형 액티브 리치).
+  // 그래서 후보는 "버려도 텐파이가 유지되는 손패"마다 하나씩 뜬다.
+  it("텐파이면 no_retreat_riichi가 노출되고 선언하면 플래그가 선다", () => {
     const game = createStandardGameFromState(firstTurn());
     installAugment(game.engine, noRetreat, "p0", { yaku: game.yaku });
     const flow = new FlowController(game.engine);
@@ -300,7 +302,7 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
     if (s0.kind !== "awaiting") throw new Error("expected awaiting");
     const declare = s0.prompts
       .find((p) => p.player === "p0")
-      ?.options.find((o) => o.type === "declare_no_retreat");
+      ?.options.find((o) => o.type === "no_retreat_riichi");
     expect(declare).toBeDefined();
 
     flow.submit("p0", declare!);
@@ -317,7 +319,7 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
     if (s0.kind !== "awaiting") throw new Error("expected awaiting");
     const declare = s0.prompts
       .find((p) => p.player === "p0")
-      ?.options.find((o) => o.type === "declare_no_retreat");
+      ?.options.find((o) => o.type === "no_retreat_riichi");
     expect(declare).toBeUndefined();
   });
 
@@ -337,7 +339,7 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
     };
   }
 
-  /** 그 상태에서 declare_no_retreat 후보가 노출되는가 */
+  /** 그 상태에서 no_retreat_riichi 후보가 노출되는가 */
   function declareAvailable(state: GameState): boolean {
     const game = createStandardGameFromState(state);
     installAugment(game.engine, noRetreat, "p0", { yaku: game.yaku });
@@ -346,7 +348,7 @@ describe("no_retreat (물러설 수 없는 선언)", () => {
     return (
       s0.prompts
         .find((p) => p.player === "p0")
-        ?.options.some((o) => o.type === "declare_no_retreat") ?? false
+        ?.options.some((o) => o.type === "no_retreat_riichi") ?? false
     );
   }
 
@@ -494,6 +496,6 @@ describe("여러 액티브 증강 동시 보유", () => {
     const opts = status.prompts.find((p) => p.player === "p0")?.options ?? [];
     // 클라이언트가 액티브 메뉴로 골라 쓸 수 있도록 두 증강의 액션이 모두 프롬프트에 있다
     expect(opts.some((o) => o.type === "mono_world")).toBe(true);
-    expect(opts.some((o) => o.type === "declare_no_retreat")).toBe(true);
+    expect(opts.some((o) => o.type === "no_retreat_riichi")).toBe(true);
   });
 });

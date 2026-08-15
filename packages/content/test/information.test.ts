@@ -24,6 +24,7 @@ import type {
   ZoneView,
 } from "@majak/core";
 import { craft } from "./helpers.js";
+import { roundKey } from "../src/util.js";
 import { xrayHand } from "../src/augments/xray_hand.js";
 import { uraPeek } from "../src/augments/ura_peek.js";
 import { rinshanPreview } from "../src/augments/rinshan_preview.js";
@@ -127,7 +128,8 @@ describe("rinshan_preview — 영상 정찰", () => {
 });
 
 describe("hidden_river — 안개 바닥", () => {
-  // 52차 후속(사용자 피드백): 상시 패시브 → **게임당 1회 선언하는 액티브**.
+  // 52차 후속(사용자 피드백): 상시 패시브 → **선언하는 액티브**.
+  // (2026-08-15: 게임 1회·게임 끝까지 → 동풍전 1·반장전 2회·그 국 동안. 플래그가 국 스코프다.)
   // 선언(declare_fog) 전에는 바닥이 정상적으로 보이므로, 테스트도 선언 상태를 만들어야 한다.
   function setup(declared = true) {
     const state = craft({
@@ -140,7 +142,13 @@ describe("hidden_river — 안개 바닥", () => {
     });
     const game = createStandardGameFromState(
       declared
-        ? { ...state, augmentData: { ...state.augmentData, "hidden_river:fog:p0": true } }
+        ? {
+            ...state,
+            augmentData: {
+              ...state.augmentData,
+              [`hidden_river:fog:${roundKey(state)}:p0`]: true,
+            },
+          }
         : state,
     );
     installAugment(game.engine, hiddenRiver, "p0", { yaku: game.yaku });
