@@ -18,7 +18,11 @@ import { discardsZone, handZone, moveTiles } from "../engine/zones/Zone.js";
 import type { TileId, TileKind } from "../mahjong/tiles/Tile.js";
 import type { ActionDef } from "../engine/actions/ActionRegistry.js";
 import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
-import type { RoundSettledPayload, WinInfo } from "../mahjong/flow/flowEvents.js";
+import type {
+  AugPointNote,
+  RoundSettledPayload,
+  WinInfo,
+} from "../mahjong/flow/flowEvents.js";
 import {
   isFuriten,
   openMeldCountOf,
@@ -85,11 +89,26 @@ function addWinHanBonus(
     }).total;
     const bonus = Math.max(0, boosted - info.points);
     if (bonus === 0) return event;
+    /*
+     * 결과 화면에 "이 증강이 +N판을 얹었다" 한 줄을 남긴다 (content/util.ts withAugPoint와
+     * 같은 규약). 예전에는 deltas만 고치고 지나가, 무형화료로 역 없이 화료하면 화면에는
+     * "0판 30부 500점"만 뜨고 실제로 받은 2판어치는 어디에도 안 적혔다 —
+     * 사용자가 "2판이 적용 안 된다"고 읽은 것이 이 자리다(2026-08-17).
+     */
+    const prev = p.augPoints ?? [];
+    const at = prev.findIndex((n) => n.player === ctx.holder && n.augId === ctx.augmentId);
+    const note: AugPointNote = {
+      player: ctx.holder,
+      augId: ctx.augmentId,
+      points: (at >= 0 ? (prev[at]?.points ?? 0) : 0) + bonus,
+      han: (at >= 0 ? (prev[at]?.han ?? 0) : 0) + extraHan,
+    };
     return {
       type: event.type,
       payload: {
         ...p,
         deltas: { ...p.deltas, [ctx.holder]: (p.deltas[ctx.holder] ?? 0) + bonus },
+        augPoints: at < 0 ? [...prev, note] : prev.map((n, i) => (i === at ? note : n)),
       },
     };
     },
@@ -171,9 +190,10 @@ export const yakulessWin = defineAugment({
   install(ctx) {
     ctx.setHolderRule("win.requiresYaku", false);
     // 역 없는 손은 싸구려라 폭발력이 중간급이라는 판정(docs/16 §1b E).
-    // 이 증강이 실제로 성립시킨 화료(역 0개)에만 확정 보상을 붙인다.
-    // 역이 0개면 판수도 0이므로, +2판이 곧 "이 화료를 2판으로 취급"이다.
-    addWinHanBonus(ctx, (_state, info) => (info.yaku.length === 0 ? YAKULESS_HAN : 0));
+    // 이 증강이 실제로 성립시킨 화료(실역 0개)에만 확정 보상을 붙인다.
+    // 판정은 `yakuless` 플래그로 한다 — 역 목록이 비었는지로는 이제 알 수 없다.
+    // 역 없는 손도 도라·적도라·보조역으로 판을 세므로 목록에 줄이 설 수 있다.
+    addWinHanBonus(ctx, (_state, info) => (info.yakuless === true ? YAKULESS_HAN : 0));
   },
 });
 

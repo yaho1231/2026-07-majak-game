@@ -473,6 +473,16 @@ export function isFuritenAsRon(
   );
 }
 
+/** 이 사람의 화료에 역이 필요한가 (`win.requiresYaku`. 규칙이 없으면 표준대로 true) */
+function requiresYakuFor(
+  state: GameState,
+  id: PlayerId,
+  rules: RuleRegistry,
+): boolean {
+  if (!rules.has("win.requiresYaku")) return true;
+  return rules.resolve<boolean>("win.requiresYaku", { playerId: id, state });
+}
+
 /**
  * 형식텐파이(역없음) 판정: 텐파이지만 어떤 오름패로 화료해도 역이 없는가.
  *
@@ -486,6 +496,9 @@ export function tenpaiNoYaku(
   rules: RuleRegistry,
   yaku: YakuRegistry,
 ): boolean {
+  // 역이 필요 없는 사람(무형화료 계열)에게는 '역없음'이라는 상태 자체가 없다 —
+  // 그 손은 그냥 화료한다. 경고를 띄우면 증강이 켜 준 길을 화면이 막는 셈이다.
+  if (!requiresYakuFor(state, id, rules)) return false;
   const melds = state.round.byPlayer[id]?.melds ?? [];
   // 안깡(kan_closed)·묵계(silent)는 손을 열지 않는다 — 그 외 후로가 있어야 열린 손
   const isOpen = melds.some((m) => m.kind !== "kan_closed" && m.silent !== true);
@@ -541,6 +554,8 @@ export function yakulessWaits(
   rules: RuleRegistry,
   yaku: YakuRegistry,
 ): string[] {
+  // 역이 필요 없으면 역 때문에 막히는 대기도 없다 (tenpaiNoYaku와 같은 이유).
+  if (!requiresYakuFor(state, id, rules)) return [];
   const opts = scoringOptionsOf(state, rules, id);
   const waits = winningKinds(
     winHandKindsOf(state, rules, id),
@@ -739,6 +754,14 @@ export function buildWinContext(
                 state,
               })
             : [],
+          // 역이 필요 없는 화료(무형화료 계열)에는 도라·적도라·뒷도라·보조역이 붙는다.
+          // 채점기가 그 사실을 알아야 하므로 규칙 값을 그대로 실어 보낸다.
+          requiresYaku: rules.has("win.requiresYaku")
+            ? rules.resolve<boolean>("win.requiresYaku", {
+                playerId: winner,
+                state,
+              })
+            : true,
           options: scoringOptionsOf(state, rules, winner),
         }
       : {}),

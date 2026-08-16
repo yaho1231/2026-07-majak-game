@@ -2216,6 +2216,16 @@ export function App(): JSX.Element {
   const [prompts, setPrompts] = useState<Record<string, PromptMessage["prompt"]>>({});
   const [promptSeq, setPromptSeq] = useState(0);
   const [draft, setDraft] = useState<DraftOfferMessage | null>(null);
+  /**
+   * 이 드래프트의 **자동 선택 시각**(performance.now 기준). 오퍼가 **도착한 순간**
+   * 굳힌다 — 선택창이 실제로 뜨는 시각이 아니다.
+   *
+   * 예전에는 창이 마운트될 때부터 30초를 다시 셌다. 그런데 오퍼는 개막 연출(2.1초)이나
+   * 아직 안 닫힌 결과 화면 뒤에서 먼저 도착해 있어, 화면은 "3초 남음"인데 서버 타이머는
+   * 이미 0이었다 — 남은 시간이 있는데 랜덤으로 결정돼 버리는 것처럼 보였다
+   * (2026-08-17 사용자 보고). 프롬프트 마감(promptDeadline)과 같은 방식으로 맞춘다.
+   */
+  const draftDeadline = useRef<number | null>(null);
   /** 내가 이번 드래프트에서 이미 골랐는가 — 고른 뒤 "다른 플레이어 대기 중" 표시용 */
   const [draftPicked, setDraftPicked] = useState(false);
   // handleServerMessage는 마운트 시 고정된 스테일 클로저라 draftPicked state를
@@ -3201,9 +3211,18 @@ export function App(): JSX.Element {
     }
     if (msg.type === "draftOffer") {
       setDraft(msg);
+      // 마감은 도착 시각 기준으로 굳힌다 (draftDeadline 주석).
+      draftDeadline.current =
+        msg.deadlineMs !== undefined && msg.deadlineMs > 0
+          ? performance.now() + msg.deadlineMs
+          : null;
       setDraftPicked(false);
       draftPickedRef.current = false;
       setPrompts({});
+      // 오퍼가 왔다 = 서버가 국 사이 대기를 이미 지나왔다 — 아직 떠 있는 결과 화면은
+      // 선택창을 가리기만 하고, 그동안 자동 선택 타이머는 계속 흐른다. 지금 걷는다.
+      setRoundResult(null);
+      pendingResult.current = null;
       sfx.draft();
       return;
     }
@@ -4189,6 +4208,7 @@ export function App(): JSX.Element {
       {draftVisible && draft !== null ? (
         <DraftOverlay
           draft={draft}
+          deadlineAt={draftDeadline.current}
           onPick={pickDraft}
           onReroll={rerollDraft}
           picked={draftPicked}
@@ -10968,15 +10988,28 @@ function MeldGroup({
    * (2026-08-15 사용자 지적). 네 장의 정체는 선언 시점에 이미 전원 공개라
    * 가리는 것이 규칙도 아니다 — 엎은 패 위에 실제 패를 옅게 겹쳐, "엎여 있다"는
    * 표기는 지키면서 무엇인지는 알아볼 수 있게 한다.
+   *
+   * 단 **같은 패 넉 장인 평범한 안깡에는 겹치지 않는다** — 가운데 둘만 봐도
+   * 무엇의 깡인지 다 읽히는 자리에 반투명 얼굴을 얹으면 특수깡과 구별이 사라진다
+   * (2026-08-17 사용자 지적). 반투명은 "여기 뭔가 다르다"는 신호로만 남긴다.
    */
   if (meld.kind === "kan_closed") {
     const s = sortTileIds(meld.tileIds, view.tiles);
+    const first = view.tiles[s[0] ?? -1]?.kind;
+    const mixed =
+      first === undefined ||
+      s.some((id) => {
+        const k = view.tiles[id]?.kind;
+        return k === undefined || kindKey(k) !== kindKey(first);
+      });
+    const hidden = (id: number | undefined): PublicTileView | undefined =>
+      mixed ? view.tiles[id ?? -1] : undefined;
     return (
       <span className={cls}>
-        <MeldTile layout={layout} colSide={colSide} back ghost={view.tiles[s[0] ?? -1]} />
+        <MeldTile layout={layout} colSide={colSide} back ghost={hidden(s[0])} />
         <MeldTile layout={layout} colSide={colSide} tile={view.tiles[s[1] ?? -1]} owner={owner.id} />
         <MeldTile layout={layout} colSide={colSide} tile={view.tiles[s[2] ?? -1]} owner={owner.id} />
-        <MeldTile layout={layout} colSide={colSide} back ghost={view.tiles[s[3] ?? -1]} />
+        <MeldTile layout={layout} colSide={colSide} back ghost={hidden(s[3])} />
       </span>
     );
   }
@@ -14442,11 +14475,20 @@ function RoundResultPanel({
   const { settle } = result;
   const infos = settle.winInfos ?? [];
   const nameOf = (id: string): string => playerNameById(view, id);
-  // 무형화료(yakuless_win) 등으로 역이 하나도 없이 화료하면 역 리스트가 비어 결과창이
-  // 텅 비어 보인다 — 그 화료를 가능케 한 증강을 대신 표시한다.
+  /**
+   * 실역 없이 화료했을 때(무형화료 등) "무엇이 이 화료를 성립시켰는가" 한 줄.
+   *
+   * 그 증강이 정산에 판을 얹었으면(augPoints) 그 줄이 이름과 판수를 이미 말하므로
+   * 여기서는 아무것도 내지 않는다 — 안 그러면 "무형화료 · 역 없음"과
+   * "무형화료 · +2판"이 나란히 서서 같은 이야기를 두 번 한다.
+   */
   const yakulessLabel = (winner: string): string | null => {
     const augs = view.players.find((p) => p.id === winner)?.augments ?? [];
     if (!augs.includes("yakuless_win")) return null;
+    const noted = (settle.augPoints ?? []).some(
+      (a) => a.player === winner && a.augId === "yakuless_win" && a.points !== 0,
+    );
+    if (noted) return null;
     return catalog["yakuless_win"]?.name ?? "무형화료";
   };
 
@@ -14477,7 +14519,7 @@ function RoundResultPanel({
   // 역 스탬프 사운드 — CSS 스탬프 딜레이(0.15s + i*0.09s)와 동기한 펜타토닉 계단
   const headRows = infos[0] !== undefined
     ? infos[0].yaku.length +
-      (infos[0].yaku.length === 0 && yakulessLabel(infos[0].winner) !== null ? 1 : 0) +
+      (infos[0].yakuless === true && yakulessLabel(infos[0].winner) !== null ? 1 : 0) +
       (infos[0].doraHan > 0 ? 1 : 0) +
       (infos[0].uraHan > 0 ? 1 : 0) +
       (infos[0].redHan > 0 ? 1 : 0) +
@@ -14541,7 +14583,9 @@ function RoundResultPanel({
 
         {infos.map((w, wi) => {
           // 역 리스트를 하나의 배열로 모아 스탬프 스태거 딜레이를 일관되게 준다
-          const yakulessName = w.yaku.length === 0 ? yakulessLabel(w.winner) : null;
+          // 역 목록이 비었는지가 아니라 **실역 0개 화료였는지**로 본다 — 역 없는 손도
+          // 도라·적도라로 판을 세므로 목록에 줄이 설 수 있다(2026-08-17).
+          const yakulessName = w.yakuless === true ? yakulessLabel(w.winner) : null;
           const yakuRows: { key: string; label: string; han: string; aug?: boolean }[] = [
             ...(yakulessName !== null
               ? [{ key: "yakuless", label: yakulessName, han: "역 없음", aug: true }]
@@ -14810,6 +14854,7 @@ function RoundResultPanel({
 
 function DraftOverlay({
   draft,
+  deadlineAt,
   onPick,
   onReroll,
   picked,
@@ -14817,6 +14862,11 @@ function DraftOverlay({
   catalog,
 }: {
   draft: DraftOfferMessage;
+  /**
+   * 자동 선택 시각(performance.now 기준) — 오퍼가 **도착한** 시각에 굳힌 값이다.
+   * null이면 마감이 없다(구 서버). 이 창이 늦게 떠도 남은 시간은 늘어나지 않는다.
+   */
+  deadlineAt: number | null;
   onPick: (id: string) => void;
   /** 슬롯 하나를 새로고침한다 (슬롯당 1회) */
   onReroll: (slot: number) => void;
@@ -14826,23 +14876,20 @@ function DraftOverlay({
   owned: readonly string[];
   catalog: Record<string, AugmentCatalogEntry>;
 }): JSX.Element {
-  // 남은 시간 카운트다운 — 서버가 보낸 deadlineMs(자동 선택까지)를 받은 시점부터 센다.
-  // draft.stage가 바뀌면(다음 스테이지) 타이머를 다시 시작한다.
-  const total = draft.deadlineMs;
-  const [remainMs, setRemainMs] = useState<number>(total ?? 0);
+  // 남은 시간 카운트다운 — 오퍼 **도착 시각**에 굳힌 마감까지 센다. 이 창이 개막
+  // 연출·결과 화면 뒤에서 늦게 떠도 화면의 숫자와 서버 타이머가 어긋나지 않는다.
+  const [remainMs, setRemainMs] = useState<number>(() =>
+    deadlineAt === null ? 0 : Math.max(0, deadlineAt - performance.now()),
+  );
   useEffect(() => {
-    if (total === undefined) return;
-    const start = performance.now();
-    setRemainMs(total);
-    const timer = window.setInterval(() => {
-      const left = Math.max(0, total - (performance.now() - start));
-      setRemainMs(left);
-      if (left <= 0) window.clearInterval(timer);
-    }, 200);
+    if (deadlineAt === null) return;
+    const tick = (): void => setRemainMs(Math.max(0, deadlineAt - performance.now()));
+    tick();
+    const timer = window.setInterval(tick, 200);
     return () => window.clearInterval(timer);
-  }, [total, draft.stage]);
+  }, [deadlineAt]);
   const remainSec = Math.ceil(remainMs / 1000);
-  const showTimer = total !== undefined && !picked;
+  const showTimer = deadlineAt !== null && !picked;
   /**
    * 10초 아래부터 경고다 — 5초는 너무 늦었다. 시간이 다 되면 서버가 후보 중 하나를
    * **랜덤으로** 골라 버리므로(HumanAgent.armDraft), 그 사실을 미리 크게 알린다
