@@ -2897,6 +2897,40 @@ button {
   }
 }
 
+/*
+ * 스스로 넘어가는 통보 — 남은 시간을 버튼이 직접 그린다.
+ *
+ * 고를 것이 패스뿐인 프롬프트는 잠깐 떴다 사라진다. 아무 예고 없이 사라지면 "봤는데
+ * 뭐였지"가 남으므로, 왼쪽에서 오른쪽으로 빠지는 띠 하나로 남은 시간을 말한다.
+ * 길이는 App.tsx의 LOCK_NOTICE_MS와 맞춘다.
+ */
+.act-locked-timed {
+  position: relative;
+  overflow: hidden;
+}
+
+.act-locked-timed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(250, 188, 173, 0.85);
+  transform-origin: left center;
+  animation: lock-notice-drain 1.8s linear forwards;
+}
+
+@keyframes lock-notice-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 움직임을 줄이는 사람에게는 띠를 고정으로 남긴다 — 사라지는 것은 그대로다 */
+  .act-locked-timed::after { animation: none; }
+}
+
 .act-call {
   background: #2c5a88;
 }
