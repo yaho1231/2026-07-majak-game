@@ -29,6 +29,7 @@ import type { ClientMessage } from "@majak/core";
 export const VOLATILE_MESSAGES: ReadonlySet<string> = new Set([
   "action", // 프롬프트에 대한 답 (타패·후로·화료·증강 발동)
   "draftPick", // 지금 떠 있는 드래프트 제안에 대한 답
+  "draftReroll", // 지금 떠 있는 그 슬롯을 갈아 달라 — 늦게 가면 다음 스테이지의 슬롯을 갈아 버린다
   "voteAbort", // 지금 진행 중인 무효 투표에 대한 답
   "roundContinue", // "이 결과창을 닫는다" — 늦게 가면 다음 국 결과창을 건너뛴다
   "ping", // 스스로 다시 온다

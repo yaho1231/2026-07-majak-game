@@ -170,7 +170,15 @@ export class HumanAgent implements PlayerAgent {
    */
   private readonly pending = new Map<PlayerId, PendingDecision>();
   private pendingDraft: ResolveDraft | null = null;
+  /**
+   * 지금 **화면에 서 있는** 후보 — 새로고침으로 갈아 낀 슬롯은 교체분으로 바뀐다.
+   * 픽 검증·자동 선택·재접속 복원이 전부 이 배열 하나를 본다.
+   */
   private pendingDraftChoices: AugmentDef[] | null = null;
+  /** 슬롯별 새로고침 교체분 (컨트롤러가 제시와 함께 미리 뽑아 넘긴 것) */
+  private pendingDraftRerolls: readonly AugmentDef[] = [];
+  /** 이번 드래프트에 이미 새로고침을 쓴 슬롯 — 슬롯당 1회뿐이다 */
+  private draftRerollUsed = new Set<number>();
   private pendingDraftStage: DraftStage | null = null;
   private draftTimeout: ReturnType<typeof setTimeout> | null = null;
   /** 드래프트 자동 선택 시각(epoch ms) — 재접속 시 남은 시간을 알려 준다 */
@@ -250,21 +258,11 @@ export class HumanAgent implements PlayerAgent {
         leftMs = DECISION_TIMEOUT_MS;
         this.clearDraftTimeout();
         this.draftGraced = false;
-        this.armDraft(this.pendingDraftChoices, leftMs);
+        this.armDraft(leftMs);
       } else {
         leftMs = Math.max(0, this.draftDeadlineAt - Date.now());
       }
-      this.send({
-        type: "draftOffer",
-        stage: this.pendingDraftStage ?? "gameStart",
-        choices: this.pendingDraftChoices.map((c) => ({
-          id: c.id,
-          tier: c.tier,
-          name: c.name,
-          description: c.description,
-        })),
-        deadlineMs: leftMs,
-      });
+      this.send(this.draftOfferMessage(leftMs));
     }
   }
 
@@ -323,7 +321,7 @@ export class HumanAgent implements PlayerAgent {
     ) {
       this.clearDraftTimeout();
       this.draftGraced = true;
-      this.armDraft(this.pendingDraftChoices, DISCONNECT_GRACE_MS);
+      this.armDraft(DISCONNECT_GRACE_MS);
     }
   }
 
@@ -374,6 +372,7 @@ export class HumanAgent implements PlayerAgent {
       this.clearDraftTimeout();
       this.pendingDraft = null;
       this.pendingDraftChoices = null;
+      this.pendingDraftRerolls = [];
       this.pendingDraftStage = null;
       resolve(firstId);
     }
@@ -395,6 +394,8 @@ export class HumanAgent implements PlayerAgent {
     }
     this.pendingDraft = null;
     this.pendingDraftChoices = null;
+    this.pendingDraftRerolls = [];
+    this.draftRerollUsed = new Set();
     this.pendingDraftStage = null;
     this.pendingContinue = null;
     this.lastView = null;
@@ -547,29 +548,81 @@ export class HumanAgent implements PlayerAgent {
     return this.pending.has(seat);
   }
 
-  async decideDraft(stage: DraftStage, choices: AugmentDef[]): Promise<string> {
+  async decideDraft(
+    stage: DraftStage,
+    choices: AugmentDef[],
+    rerolls: readonly AugmentDef[] = [],
+  ): Promise<string> {
     if (this.abandoned) return choices[0]!.id;
-    this.pendingDraftChoices = choices;
+    // 화면에 서는 배열은 **여기서 복사**한다 — 새로고침이 이 배열을 제자리에서 갈아 끼우는데,
+    // 원본은 컨트롤러가 오퍼 기록에 쓰는 것이라 건드리면 안 된다.
+    this.pendingDraftChoices = [...choices];
+    this.pendingDraftRerolls = rerolls;
+    this.draftRerollUsed = new Set();
     this.pendingDraftStage = stage;
     // 드래프트는 네 사람이 다 고를 때까지 판 전체가 멈춘다 — 끊긴 좌석은 결정과
     // 같은 이유로 짧게만 기다린다. 유예 안에 돌아오면 reconnect가 되돌린다.
     this.draftGraced = !this.isConnected();
     const timeoutMs = this.draftGraced ? DISCONNECT_GRACE_MS : DECISION_TIMEOUT_MS;
-    this.send({
+    this.send(this.draftOfferMessage(timeoutMs));
+
+    return new Promise<string>((resolve) => {
+      this.pendingDraft = resolve;
+      this.armDraft(timeoutMs);
+    });
+  }
+
+  /** 이번 스테이지에 새로고침으로 갈아 낀 슬롯 (컨트롤러가 픽 직후에 읽는다). */
+  rerolledDraftSlots(): readonly number[] {
+    return [...this.draftRerollUsed].sort((a, b) => a - b);
+  }
+
+  /**
+   * 지금 화면에 서야 할 증강 선택창 메시지. 최초 제안과 재접속 복원이 공유한다 —
+   * 그래서 끊겼다 돌아와도 **갈아 낀 카드와 소진된 새로고침 버튼**이 그대로 복원된다.
+   */
+  private draftOfferMessage(deadlineMs: number): ServerMessage {
+    const choices = this.pendingDraftChoices ?? [];
+    return {
       type: "draftOffer",
-      stage,
+      stage: this.pendingDraftStage ?? "gameStart",
       choices: choices.map((c) => ({
         id: c.id,
         tier: c.tier,
         name: c.name,
         description: c.description,
       })),
-      deadlineMs: timeoutMs,
-    });
+      deadlineMs,
+      rerollable: choices.map(
+        (_, i) => !this.draftRerollUsed.has(i) && this.pendingDraftRerolls[i] !== undefined,
+      ),
+    };
+  }
 
-    return new Promise<string>((resolve) => {
-      this.pendingDraft = resolve;
-      this.armDraft(choices, timeoutMs);
+  /**
+   * 슬롯 하나를 새로고침한다 — 미리 뽑아 둔 교체분으로 갈아 끼우고 본인에게만 알린다.
+   *
+   * 조용히 무시하는 경우(대기 중이 아님·범위 밖·이미 쓴 슬롯·교체분 없음)에 오류를
+   * 돌려주지 않는 이유: 화면이 이미 버튼을 잠갔으므로 정상 흐름에서는 올 수 없는
+   * 요청이고, 여기서 에러 토스트를 띄우면 30초짜리 선택창 위에 잡음만 얹는다.
+   */
+  private handleDraftReroll(slot: number): void {
+    if (this.pendingDraft === null || this.pendingDraftChoices === null) return;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= this.pendingDraftChoices.length) return;
+    if (this.draftRerollUsed.has(slot)) return;
+    const swap = this.pendingDraftRerolls[slot];
+    if (swap === undefined) return;
+    this.draftRerollUsed.add(slot);
+    this.pendingDraftChoices[slot] = swap;
+    this.send({
+      type: "draftRerolled",
+      slot,
+      choice: {
+        id: swap.id,
+        tier: swap.tier,
+        name: swap.name,
+        description: swap.description,
+      },
     });
   }
 
@@ -581,17 +634,25 @@ export class HumanAgent implements PlayerAgent {
    * 가는 것은 결정이라기보다 사고였다(2026-08-12 사용자 지시: 선택창에도 "시간이
    * 다 되면 랜덤으로 결정된다"고 적는다 — 화면 문구와 실제 동작을 맞춘다).
    * 재현성이 필요한 경로가 아니다(게임 PRNG가 아니라 사람의 부재를 메우는 자리다).
+   *
+   * 후보는 인자로 받지 않고 **터지는 순간의 `pendingDraftChoices`**를 읽는다 —
+   * 새로고침으로 갈아 낀 뒤 시간이 다 되면 화면에 없는 옛 카드가 아니라 지금 보이는
+   * 카드 중에서 골라야 한다.
    */
-  private armDraft(choices: AugmentDef[], timeoutMs: number): void {
+  private armDraft(timeoutMs: number): void {
     this.draftDeadlineAt = Date.now() + timeoutMs;
     this.draftTimeout = setTimeout(() => {
+      const choices = this.pendingDraftChoices ?? [];
       const resolve = this.pendingDraft;
       this.pendingDraft = null;
       this.pendingDraftChoices = null;
+      this.pendingDraftRerolls = [];
       this.pendingDraftStage = null;
       this.draftTimeout = null;
-      const pick = choices[Math.floor(Math.random() * choices.length)] ?? choices[0]!;
-      resolve?.(pick.id);
+      // 후보가 비었을 리는 없지만(컨트롤러가 빈 목록으로는 부르지 않는다), 그래도
+      // resolve는 반드시 한다 — 안 하면 이 좌석 하나가 판 전체를 세운다.
+      const pick = choices[Math.floor(Math.random() * choices.length)] ?? choices[0];
+      resolve?.(pick?.id ?? "");
     }, timeoutMs);
   }
 
@@ -689,7 +750,14 @@ export class HumanAgent implements PlayerAgent {
       return;
     }
 
+    if (msg.type === "draftReroll") {
+      this.handleDraftReroll(msg.slot);
+      return;
+    }
+
     if (msg.type === "draftPick" && this.pendingDraft !== null) {
+      // 지금 **화면에 서 있는** 후보만 유효하다 — 새로고침으로 갈아 낸 옛 카드는
+      // pendingDraftChoices에서 이미 빠졌으므로 여기서 자동으로 거부된다.
       const choices = this.pendingDraftChoices ?? [];
       const valid = choices.find((c) => c.id === msg.augmentId);
       if (valid) {
@@ -697,6 +765,7 @@ export class HumanAgent implements PlayerAgent {
         const resolve = this.pendingDraft;
         this.pendingDraft = null;
         this.pendingDraftChoices = null;
+        this.pendingDraftRerolls = [];
         this.pendingDraftStage = null;
         resolve(valid.id);
       } else {

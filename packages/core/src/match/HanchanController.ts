@@ -468,15 +468,22 @@ export class HanchanController {
     }
   }
 
-  /** `safeDecide`의 드래프트판 — 예외·무응답·목록 밖 id를 첫 후보로 흡수한다. */
+  /**
+   * `safeDecide`의 드래프트판 — 예외·무응답·목록 밖 id를 첫 후보로 흡수한다.
+   *
+   * 유효한 답은 `choices` ∪ `rerolls`다. 슬롯을 새로고침한 좌석은 화면에 없던
+   * `choices[i]` 대신 `rerolls[i]`를 답하는데, 어느 슬롯을 갈았는지는 좌석만 안다.
+   */
   private async safeDecideDraft(
     agent: PlayerAgent,
     stage: DraftStage,
     choices: AugmentDef[],
+    rerolls: readonly AugmentDef[] = [],
   ): Promise<string> {
     const first = choices[0]?.id;
     // 후보가 비어 있으면 고를 것이 없다 — 호출부가 이 좌석을 건너뛰게 한다.
     if (first === undefined) return "";
+    const valid = new Set([...choices, ...rerolls].map((d) => d.id));
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const guard = new Promise<string>((resolve) => {
@@ -487,8 +494,11 @@ export class HanchanController {
           resolve(first);
         }, AGENT_DECIDE_TIMEOUT_MS);
       });
-      const picked = await Promise.race([agent.decideDraft(stage, choices), guard]);
-      return choices.some((c) => c.id === picked) ? picked : first;
+      const picked = await Promise.race([
+        agent.decideDraft(stage, choices, rerolls),
+        guard,
+      ]);
+      return valid.has(picked) ? picked : first;
     } catch (err) {
       console.error(`[hanchan] ${agent.id} decideDraft 예외 — 첫 후보로 진행`, err);
       return first;
@@ -936,14 +946,12 @@ export class HanchanController {
       (agent) => game.engine.state.augmentData[draftDoneKey(stage, agent.id)] !== true,
     );
 
-    // 오퍼(3지선다)를 픽보다 먼저, 고정 에이전트 순서로 로그에 남긴다.
-    // AUGMENT_OFFERED는 상태 불변 정보 이벤트라 픽률·등급 통계 전용이며, 시드에서
-    // 결정적으로 재현되므로 리플레이·재개에서도 순서·내용이 동일하다.
-    const offered = new Map<string, ReturnType<typeof draft.roll>>();
+    // 화면분 3장 + 슬롯별 새로고침 교체분 3장을 **한 추첨에서** 함께 뽑는다.
+    // 교체분을 미리 확정해야 새로고침으로 갈아 낀 카드에도 좌석 간 겹침 금지가 걸린다
+    // (DraftController.rollWithRerolls 주석).
+    const offered = new Map<string, ReturnType<typeof draft.rollWithRerolls>>();
     for (const agent of pending) {
-      const choices = draft.roll(stage, agent.id);
-      offered.set(agent.id, choices);
-      draft.recordOffer(stage, agent.id, choices);
+      offered.set(agent.id, draft.rollWithRerolls(stage, agent.id));
     }
 
     // 전원에게 '동시에' 오퍼를 보내고 응답을 병렬로 기다린다 (순차 대기 X). runRound과 동일하게
@@ -951,9 +959,16 @@ export class HanchanController {
     const raced = await this.raceAbort(
       Promise.all(
         pending.map(async (agent) => {
-          const choices = offered.get(agent.id) ?? draft.roll(stage, agent.id);
-          const pickedId = await this.safeDecideDraft(agent, stage, choices);
-          return { player: agent.id, pickedId };
+          const pool = offered.get(agent.id) ?? draft.rollWithRerolls(stage, agent.id);
+          const pickedId = await this.safeDecideDraft(
+            agent,
+            stage,
+            pool.choices,
+            pool.rerolls,
+          );
+          // 새로고침 여부는 **응답 직후에만** 읽을 수 있다 (좌석이 다음 스테이지에 덮어쓴다).
+          const rerolled = agent.rerolledDraftSlots?.() ?? [];
+          return { player: agent.id, pickedId, rerolled };
         }),
       ).then((picks) => ({ picks })),
     );
@@ -961,10 +976,34 @@ export class HanchanController {
     // 무효 요청 — 픽을 하나도 적용하지 않고 즉시 반환 (일부만 적용하면 리플레이가 비결정적).
     if ("abort" in raced) return;
 
-    // 결정론: 픽은 응답 도착 순서가 아니라 항상 고정된 에이전트 순서로 적용 → 이벤트 로그 동일.
-    const pickById = new Map(raced.picks.map((p) => [p.player, p.pickedId] as const));
+    const answers = new Map(raced.picks.map((p) => [p.player, p] as const));
+
+    // 오퍼를 픽보다 먼저, 고정 에이전트 순서로 로그에 남긴다.
+    // AUGMENT_OFFERED는 상태 불변 정보 이벤트라 픽률·등급 통계 전용이다.
+    //
+    // 기록하는 것은 **화면에 최종적으로 서 있던 3장**이다 — 새로고침으로 갈아 낸 슬롯은
+    // 교체 후의 카드로 바뀐다. 6장 전부를 적으면 픽률의 기준값(1/3, tierAdjust의
+    // BASELINE_PICK_RATE)이 무너지고, 갈아 내기 전 3장만 적으면 교체분을 고른 픽이
+    // 분모 없는 분자가 돼 픽률이 1을 넘는다.
+    //
+    // 그래서 추첨이 아니라 **응답을 기다린 뒤에** 적는다. 순서는 여전히 (전원 오퍼 →
+    // 전원 픽)이고 고정 에이전트 순서이므로 이벤트 로그의 결정성은 그대로다. 무효로
+    // 빠지면 픽과 함께 오퍼도 남지 않는다 — 예전에는 오퍼만 남아 통계를 오염시켰다.
     for (const agent of this.agents.values()) {
-      const pickedId = pickById.get(agent.id);
+      const answer = answers.get(agent.id);
+      const pool = offered.get(agent.id);
+      if (answer === undefined || pool === undefined) continue;
+      const shown = [...pool.choices];
+      for (const slot of answer.rerolled) {
+        const swap = pool.rerolls[slot];
+        if (swap !== undefined && slot < shown.length) shown[slot] = swap;
+      }
+      draft.recordOffer(stage, agent.id, shown);
+    }
+
+    // 결정론: 픽은 응답 도착 순서가 아니라 항상 고정된 에이전트 순서로 적용 → 이벤트 로그 동일.
+    for (const agent of this.agents.values()) {
+      const pickedId = answers.get(agent.id)?.pickedId;
       if (pickedId === undefined) continue; // 이미 완료돼 건너뛴 에이전트
       // 빈 문자열 = 제시할 후보가 없었다. 예전에는 그대로 pick에 넘겨
       // "Augment 가 제시되지 않았다"로 던졌고, 그 예외가 방을 삭제했다.

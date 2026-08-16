@@ -440,13 +440,41 @@ describe("DraftController — 개인별 3지선다", () => {
   });
 
   it("제시되지 않은 증강 픽은 거부된다", () => {
-    const game = createStandardGame({ seed: 77 });
+    // 표준 4종만으로는 이 검증을 세울 수 없다 — 새로고침 교체분까지 6장을 뽑으므로
+    // 카탈로그가 통째로 "닿을 수 있는" 범위에 들어온다. 채움 카탈로그로 넉넉히 만든다.
+    const game = createStandardGame({ seed: 77, extraAugments: fillers });
     const draft = new DraftController(game.engine, game.augments);
-    const offered = new Set(draft.roll("gameStart", "p1").map((d) => d.id));
-    const notOffered = standardAugments.find((a) => !offered.has(a.id));
-    if (notOffered !== undefined) {
-      expect(() => draft.pick("gameStart", "p1", notOffered.id)).toThrow("not offered");
+    // 픽이 허용하는 범위 = 화면 3장 + 슬롯별 새로고침 교체분 3장 (닿을 수 있는 전부)
+    const { choices, rerolls } = draft.rollWithRerolls("gameStart", "p1");
+    const reachable = new Set([...choices, ...rerolls].map((d) => d.id));
+    expect(reachable.size).toBe(6);
+    const notOffered = game.augments.all().find((a) => !reachable.has(a.id));
+    expect(notOffered).toBeDefined();
+    expect(() => draft.pick("gameStart", "p1", notOffered!.id)).toThrow("not offered");
+  });
+
+  it("새로고침 교체분은 화면 3장과 겹치지 않고, 앞 3장은 roll과 같다", () => {
+    const game = createStandardGame({ seed: 77, extraAugments: fillers });
+    const draft = new DraftController(game.engine, game.augments);
+    for (const player of ["p0", "p1", "p2", "p3"] as PlayerId[]) {
+      const { choices, rerolls } = draft.rollWithRerolls("gameStart", player);
+      // 새로고침을 얹었다고 원래 제시가 달라지면 안 된다 (비복원 추출의 앞부분)
+      expect(choices.map((d) => d.id)).toEqual(
+        draft.roll("gameStart", player).map((d) => d.id),
+      );
+      expect(rerolls).toHaveLength(3);
+      const all = [...choices, ...rerolls].map((d) => d.id);
+      expect(new Set(all).size).toBe(6); // 갈아 낀 카드가 옆 카드와 겹치지 않는다
     }
+  });
+
+  it("새로고침으로 갈아 낀 카드도 픽할 수 있다", () => {
+    const game = createStandardGame({ seed: 77, extraAugments: fillers });
+    const draft = new DraftController(game.engine, game.augments);
+    const { rerolls } = draft.rollWithRerolls("gameStart", "p0");
+    const swapped = rerolls[1]?.id as string;
+    expect(() => draft.pick("gameStart", "p0", swapped)).not.toThrow();
+    expect(game.engine.state.players[0]?.augments).toEqual([swapped]);
   });
 
   it("픽 후 실제 효과가 작동한다 (iron_wall을 강제로 픽)", () => {

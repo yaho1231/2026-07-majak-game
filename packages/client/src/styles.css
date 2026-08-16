@@ -3548,7 +3548,63 @@ button {
   display: flex;
   gap: 26px;
   justify-content: center;
+  align-items: flex-start;
   flex-wrap: wrap;
+}
+
+/* 카드 한 장 + 그 아래 새로고침 버튼을 한 덩이로 묶는다. 카드가 <button>이라
+   버튼을 그 안에 넣을 수 없어 한 겹이 생겼다 (2026-08-17). */
+.draft-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+
+/* ── 슬롯 새로고침 — 마음에 안 드는 카드 한 장을 갈아 끼운다 (슬롯당 1회) ──
+   카드 밑에 작게 둔다. 그 아래에 '누른 채로 게임판 보기'가 패널 바깥으로 붙으므로
+   (App.tsx PeekButton이 .draft-panel을 재서 따라온다) 세로 순서는
+   카드 → 새로고침 → 게임판 보기가 된다. */
+.draft-reroll {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(184, 151, 92, 0.5);
+  background: linear-gradient(180deg, rgba(58, 44, 24, 0.92), rgba(34, 26, 15, 0.92));
+  color: #f0c86a;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+@media (hover: hover) {
+  .draft-reroll:not(:disabled):hover {
+    border-color: rgba(240, 200, 106, 0.9);
+    background: linear-gradient(180deg, rgba(78, 60, 30, 0.95), rgba(46, 35, 19, 0.95));
+    transform: translateY(-1px);
+  }
+}
+.draft-reroll:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* 이미 쓴 자리 — 버튼을 지우지 않고 잠근다. 지우면 카드 세 장의 아래 끝이 어긋난다. */
+.draft-reroll-spent {
+  cursor: default;
+  opacity: 0.3;
+  box-shadow: none;
+}
+
+.draft-reroll-icon {
+  display: block;
+  /* 돌아가는 화살표는 세로 중심이 살짝 위에 있다 — 눈으로 맞춘다 */
+  transform: translateY(-0.5px);
 }
 
 /* 선택 완료 후 카드 잠금 */
@@ -7210,6 +7266,9 @@ button {
     align-items: center;
     gap: 12px;
   }
+  /* 세로로 쌓이면 카드 사이 간격이 곧 새로고침 버튼의 자리다 — 더 좁힌다 */
+  .draft-slot { gap: 6px; }
+  .draft-reroll { width: 64px; height: 24px; font-size: 14px; }
   .draft-card {
     width: min(320px, calc(100cqw - 24px));
     min-height: 0;

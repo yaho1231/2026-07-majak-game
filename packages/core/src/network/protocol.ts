@@ -297,6 +297,21 @@ export interface DraftPickMessage {
   augmentId: string;
 }
 
+/**
+ * 증강 선택창의 **슬롯 하나를 새로고침**한다 — 그 자리의 카드를 미리 뽑아 둔 교체분으로
+ * 갈아 끼운다. 슬롯당 1회뿐이고, 교체분은 좌석별 후보 칸에서 제시와 함께 뽑혀 있어
+ * 다른 사람의 카드·보유 증강과 겹치지 않는다(DraftController.rollWithRerolls).
+ *
+ * 서버는 성공하면 `draftRerolled`로 새 카드를 돌려준다. 이미 쓴 슬롯·범위 밖 슬롯은
+ * 조용히 무시한다 — 화면이 이미 버튼을 잠갔으므로 정상 흐름에서 올 수 없는 요청이다.
+ */
+export interface DraftRerollMessage {
+  type: "draftReroll";
+  stage: DraftStage;
+  /** 갈아 끼울 슬롯 (0-based, 화면 왼쪽부터) */
+  slot: number;
+}
+
 export interface PingMessage {
   type: "ping";
 }
@@ -425,6 +440,7 @@ export type ClientMessage =
   | JoinMessage
   | ActionMessage
   | DraftPickMessage
+  | DraftRerollMessage
   | PingMessage
   | HandOrderMessage
   | RoundContinueMessage
@@ -520,6 +536,29 @@ export interface DraftOfferMessage {
   }>;
   /** 자동 선택까지 남은 시간(ms) — 클라이언트 카운트다운 표시용. 없으면 표시 안 함. */
   deadlineMs?: number;
+  /**
+   * 슬롯별 **새로고침이 아직 남았는가** (choices와 같은 길이·순서).
+   *
+   * 재접속 복원에도 그대로 실려 나가므로, 끊겼다 돌아와도 이미 쓴 슬롯의 버튼은
+   * 잠긴 채로 뜬다. 없으면(구 서버) 새로고침 자체가 없는 것으로 본다.
+   */
+  rerollable?: boolean[];
+}
+
+/**
+ * 새로고침 결과 — 그 슬롯의 카드를 이것으로 갈아 끼운다. 요청한 본인에게만 간다.
+ * 이 메시지를 받은 슬롯의 새로고침은 소진된 것으로 본다(슬롯당 1회).
+ */
+export interface DraftRerolledMessage {
+  type: "draftRerolled";
+  /** 갈아 끼운 슬롯 (0-based) */
+  slot: number;
+  choice: {
+    id: string;
+    tier: AugmentTier;
+    name: string;
+    description: string;
+  };
 }
 
 /** 증강 카탈로그 항목 (표시용 — 클라이언트가 id→이름을 얻는 유일한 경로) */
@@ -945,6 +984,7 @@ export type ServerMessage =
   | PromptMessage
   | PromptCancelMessage
   | DraftOfferMessage
+  | DraftRerolledMessage
   | CatalogMessage
   | RoundOverMessage
   | GameOverMessage
