@@ -76,6 +76,40 @@ describe("드래프트 분포 — 같은 축이 더 자주 뜬다", () => {
     expect(withRate).toBeGreaterThan(baseRate * 1.5);
   });
 
+  it("두 번째로 노선을 갈아타면 세 번째 제시가 그쪽으로 기운다 (최신성)", () => {
+    // 축이 서로 겹치지 않는 두 빌드: 깡·도라(ankan_dora) ↔ 국사(royal_kokushi).
+    const isKan = (id: string): boolean =>
+      (AUGMENT_SYNERGY[id]?.tags ?? []).includes("kan");
+    const isKokushi = (id: string): boolean =>
+      (AUGMENT_SYNERGY[id]?.tags ?? []).includes("kokushi");
+
+    // 깡 → 국사 순으로 집었다 (최근이 국사)
+    const kanFirst = { kan: 0, kokushi: 0 };
+    // 국사 → 깡 순으로 집었다 (최근이 깡)
+    const kokushiFirst = { kan: 0, kokushi: 0 };
+    for (let seed = 1; seed <= 200; seed++) {
+      for (const [held, tally] of [
+        [["ankan_dora", "royal_kokushi"], kanFirst],
+        [["royal_kokushi", "ankan_dora"], kokushiFirst],
+      ] as const) {
+        const g = game(seed);
+        hold(g, "p0", [...held]);
+        const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
+        for (const d of draft.roll("southEntry", "p0")) {
+          if (isKan(d.id)) tally.kan++;
+          if (isKokushi(d.id)) tally.kokushi++;
+        }
+      }
+    }
+    // 축끼리 직접 비교하지 않는다 — 카탈로그에 깡 증강이 국사보다 훨씬 많다.
+    // 같은 축을 **순서만 바꿔** 비교한다: 나중에 집었을 때 더 많이 제시돼야 한다.
+    expect(kanFirst.kokushi).toBeGreaterThan(kokushiFirst.kokushi);
+    expect(kokushiFirst.kan).toBeGreaterThan(kanFirst.kan);
+    // 예전 픽도 죽지 않는다 — 여전히 제시된다
+    expect(kanFirst.kan).toBeGreaterThan(0);
+    expect(kokushiFirst.kokushi).toBeGreaterThan(0);
+  });
+
   it("스텔스 리치를 집으면 은닉을 깨는 리치 증강은 오히려 덜 제시된다", () => {
     // conflicts로 완전히 잠긴 6종을 뺀, 소프트하게 눌리기만 하는 것들
     const SOFT = ["riichi_upgrade"];

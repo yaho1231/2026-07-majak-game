@@ -5,6 +5,12 @@
  * 리치를 먼저 집었으면 리치를 키우는 것들이, 깡을 집었으면 깡·도라가 조금 더 자주 온다 —
  * "한 게임에 하나의 빌드를 완성한다"는 감각을 만드는 장치다.
  *
+ * **최신성(2026-08-17)**: 보유 전부가 같은 무게로 끄는 게 아니라, **가장 최근에 고른
+ * 증강이 가장 세게** 끈다(`SYNERGY_RECENCY_DECAY`, 한 칸 예전마다 ×0.5). 첫 픽으로
+ * 화료형을 잡으면 화료형이 따라오고, 두 번째로 노선을 갈아타면 세 번째 제시는 곧바로
+ * 새 노선 쪽으로 기운다 — 예전 픽도 계속 영향을 주되 주도권은 최근 픽에 있다.
+ * 상한이 있어(`SYNERGY_MAX_BONUS`) 어디까지나 "확률업"이고, 무엇도 확정되지 않는다.
+ *
  * 설계·전수조사 결과 전문은 **docs/26_AUGMENT_SYNERGY.md**. 이 파일은 그 문서의
  * 기계가 읽는 사본이다.
  *
@@ -348,24 +354,56 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   cornucopia: e([]),
 };
 
-/** 겹치는 축 수 → 드래프트 가중치 배수. 0개는 1.0(그대로). */
-export const SYNERGY_BONUS: readonly number[] = [1, 2.0, 3.0, 4.0];
+/** 축 하나가 겹칠 때(가장 최근 픽 기준) 오르는 폭 — 1.0이면 배수 2.0이 된다 */
+export const SYNERGY_PER_TAG = 1.0;
+
+/** 시너지 배수의 상한. 아무리 겹쳐도 여기서 멈춘다 — "확률업"이지 확정이 아니다 */
+export const SYNERGY_MAX_BONUS = 4.0;
+
+/**
+ * **최신성 감쇠** — 한 칸 예전에 집은 증강의 영향력 배수(2026-08-17).
+ *
+ * 드래프트가 "연계되는 느낌"을 주려면 **방금 고른 것**이 다음 제시를 가장 크게 끌어야 한다.
+ * 가장 최근 픽이 1.0, 그 앞이 0.5, 그 앞이 0.25 … 로 줄어든다 — 예전 픽도 계속 영향을
+ * 주지만(합산된다) 노선을 갈아타면 새 노선이 곧바로 주도권을 갖는다.
+ *
+ * **0.5인 이유는 감각뿐이 아니다**: 2의 거듭제곱이라 부동소수 오차가 없다. 이 값이 곧
+ * 드래프트 가중치 눈금(`AugmentRegistry.pickWeighted`, ×100 반올림)에 들어가므로,
+ * 오차 없는 값이어야 리플레이·재계산이 플랫폼을 건너 같은 결과를 낸다.
+ */
+export const SYNERGY_RECENCY_DECAY = 0.5;
 
 /** 역시너지(축 또는 개별 지정)일 때의 배수 — 보너스를 무조건 이긴다 */
 export const SYNERGY_PENALTY = 0.25;
 
-/** 겹치는 축 수 n에 대한 배수 (표 밖은 마지막 값) */
+/** 겹침 점수(가중 합)에 대한 배수. 0이면 1.0(그대로), 상한에서 멈춘다. */
 export function synergyBonusFor(shared: number): number {
-  const capped = Math.min(shared, SYNERGY_BONUS.length - 1);
-  return SYNERGY_BONUS[capped] as number;
+  return Math.min(1 + SYNERGY_PER_TAG * shared, SYNERGY_MAX_BONUS);
+}
+
+/**
+ * 보유 증강별 **최신성 가중치** — 마지막 원소(가장 최근 픽)가 1.0, 앞으로 갈수록 감쇠.
+ * `held`는 픽 순서로 쌓인 목록이다(`player.augments`).
+ */
+function recencyWeights(held: readonly string[]): number[] {
+  const last = held.length - 1;
+  return held.map((_, i) => SYNERGY_RECENCY_DECAY ** (last - i));
 }
 
 /**
  * 보유 증강 목록으로부터 **증강 id → 드래프트 가중치 배수**를 만든다.
  *
+ * `held`는 **픽 순서**로 주어야 한다 — 뒤쪽(최근)일수록 크게 반영된다
+ * (`SYNERGY_RECENCY_DECAY`). 첫 증강으로 화료형 계열을 집으면 그 축이 다음 제시를
+ * 끌어올리고, 두 번째로 다른 축을 집으면 세 번째 제시는 **그 두 번째 쪽으로** 더 기운다.
+ *
+ * - 축이 겹칠 때마다 `그 보유의 최신성 가중치`만큼 점수가 쌓이고, 배수는
+ *   `1 + 점수`(상한 `SYNERGY_MAX_BONUS`)다. 같은 축을 여러 장 들고 있으면 합산돼
+ *   더 세게 끌린다.
  * - 배수가 1.0인 항목은 넣지 않는다(호출자는 `?? 1`로 읽는다).
  * - 이미 보유한 것은 넣지 않는다(어차피 제외된다).
- * - 역시너지는 보너스를 이긴다 — 축이 셋 겹쳐도 anti 하나면 0.25다.
+ * - 역시너지는 보너스를 이긴다 — 축이 셋 겹쳐도 anti 하나면 0.25다. **역시너지는
+ *   감쇠하지 않는다**: "함께 들면 서로 죽는다"는 언제 집었는지와 무관하기 때문이다.
  *
  * 결정적이다(입력이 같으면 출력이 같다). 순수 함수라 드래프트 밖에서도 안전하다.
  */
@@ -374,17 +412,20 @@ export function synergyBias(
 ): Readonly<Record<string, number>> {
   if (held.length === 0) return {};
 
+  const weights = recencyWeights(held);
   const heldSet = new Set(held);
-  const heldTags = new Set<SynergyTag>();
+  /** 축 → 최신성 가중 합. 최근에 민 축일수록 크다. */
+  const tagWeight = new Map<SynergyTag, number>();
   const heldAnti = new Set<SynergyTag>();
   const heldAntiIds = new Set<string>();
-  for (const id of held) {
+  held.forEach((id, i) => {
     const entry = AUGMENT_SYNERGY[id];
-    if (entry === undefined) continue; // 표에 없는 id는 축이 없는 것으로 본다
-    for (const t of entry.tags) heldTags.add(t);
+    if (entry === undefined) return; // 표에 없는 id는 축이 없는 것으로 본다
+    const w = weights[i] as number;
+    for (const t of entry.tags) tagWeight.set(t, (tagWeight.get(t) ?? 0) + w);
     for (const t of entry.anti ?? []) heldAnti.add(t);
     for (const other of entry.antiIds ?? []) heldAntiIds.add(other);
-  }
+  });
 
   const out: Record<string, number> = {};
   for (const [id, entry] of Object.entries(AUGMENT_SYNERGY)) {
@@ -395,13 +436,13 @@ export function synergyBias(
       heldAntiIds.has(id) ||
       (entry.antiIds ?? []).some((other) => heldSet.has(other)) ||
       entry.tags.some((t) => heldAnti.has(t)) ||
-      (entry.anti ?? []).some((t) => heldTags.has(t));
+      (entry.anti ?? []).some((t) => tagWeight.has(t));
     if (anti) {
       out[id] = SYNERGY_PENALTY;
       continue;
     }
 
-    const shared = entry.tags.filter((t) => heldTags.has(t)).length;
+    const shared = entry.tags.reduce((sum, t) => sum + (tagWeight.get(t) ?? 0), 0);
     if (shared > 0) out[id] = synergyBonusFor(shared);
   }
   return out;
