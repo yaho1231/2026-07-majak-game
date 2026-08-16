@@ -7172,10 +7172,15 @@ function StatsChips({ s }: { s: PlayerStatsView }): JSX.Element {
   );
 }
 
-/** 통계 상세 그리드 (게임 종료 화면). */
-function StatsGrid({ s }: { s: PlayerStatsView }): JSX.Element {
+/**
+ * 통계 상세 그리드 (게임 종료 화면·홈 내 통계).
+ *
+ * 첫 칸의 표본 크기는 보는 맥락에 맞춘다 — 누적 전적에서 알고 싶은 건 "몇 판 했나"이고,
+ * 방금 끝난 한 판에서 판수는 항상 1이라 의미가 없으므로 그때만 국수를 쓴다.
+ */
+function StatsGrid({ s, scope = "career" }: { s: PlayerStatsView; scope?: "career" | "game" }): JSX.Element {
   const rows: [string, string][] = [
-    ["국수", `${s.roundsPlayed}`],
+    scope === "career" ? ["판수", `${s.games}`] : ["국수", `${s.roundsPlayed}`],
     ["화료율", pct(s.winRate)],
     ["방총률", pct(s.dealInRate)],
     ["리치율", pct(s.riichiRate)],
@@ -15096,7 +15101,7 @@ function GameOverModal({
                     ) : null}
                   </div>
                   <div className="stats-sec-label">이번 판</div>
-                  <StatsGrid s={e.stats} />
+                  <StatsGrid s={e.stats} scope="game" />
                   {career !== null ? (
                     <>
                       <div className="stats-sec-label">누적</div>
