@@ -71,6 +71,30 @@ describe("증강 요약 (클라이언트 기본 설명)", () => {
     expect(b.use).toBe("매 국 1회");
     expect(b.text).toBe("첫 문장이다.");
   });
+
+  /*
+   * 배지가 원문보다 **넓은 범위**를 말하면 안 된다.
+   *
+   * 등 떠밀기는 구현도 설명도 "매 국 1회"인데 배지만 MODE_1_2였다. 인게임에서는
+   * forMode가 그걸 "게임 1회"로 줄이므로, 요약은 판당 한 번이라 하고 상세를 펼치면
+   * 국당 한 번이라 하는 정면 모순이 됐다(2026-08-17 사용자 지적). 손바닥 뒤집기도
+   * 사양이 2국 쿨다운으로 바뀐 뒤 배지만 남아 같은 상태였다.
+   *
+   * 반대 방향(원문은 매치 단위인데 배지가 국 단위)은 막지 않는다 — 자리 바꿈처럼
+   * 두 제약을 함께 지는 증강은 **좁은 쪽**을 배지로 쓰는 것이 맞다.
+   */
+  it("배지가 원문에 없는 '매치 단위 횟수'를 지어내지 않는다", () => {
+    const matchScoped = (t: string): boolean =>
+      /동풍전\s*\d/.test(t) || /반장전\s*\d/.test(t) || /게임\s*(내\s*)?\d+\s*회/.test(t);
+    const bad = ALL.filter((a) => {
+      const brief = AUGMENT_BRIEF[a.id];
+      if (brief === undefined || !matchScoped(brief.use)) return false;
+      const head = /^\(([^)]*)\)/.exec(a.description);
+      // 머리말이 없는 증강은 비교할 원문이 없다 — 이 검사의 대상이 아니다
+      return head !== null && !matchScoped(head[1] ?? "");
+    }).map((a) => `${a.id}: 배지 "${AUGMENT_BRIEF[a.id]?.use}" ↔ 원문 "${/^\(([^)]*)\)/.exec(a.description)?.[1]}"`);
+    expect(bad).toEqual([]);
+  });
 });
 
 /**
