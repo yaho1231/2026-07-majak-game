@@ -7626,6 +7626,23 @@ const MODE_BADGE: Record<GameMode, { name: string; drafts: string }> = {
 };
 
 /**
+ * 손의 **모양 규칙**을 바꾸는 패시브 증강 — 결과창이 "왜 이게 손이 되는가"를 적을 때 쓴다.
+ *
+ * 전부 `setHolderRule` 하나짜리라 뷰 채널이 없다. 대기 계산은 클라이언트가 미러링해
+ * 정확하지만(waitDecompOptions), 화료해서 손이 공개되는 순간에는 근거가 어디에도 없었다.
+ * 자기 이름을 가진 역으로 뜨는 것(우는 국사무쌍·진짜 용)은 역 목록이 이미 말하므로 뺀다.
+ */
+const SHAPE_RULE_AUGMENTS = new Set<string>([
+  "mixed_triplet", // 동수의 결속 — 커쯔의 무늬 제한 해제
+  "broken_border", // 무너진 국경 — 슌쯔의 무늬 제한 해제
+  "polar_ends", // 양극 — 1과 9를 같은 패로 본다
+  "async_chiitoi", // 비대칭 — 치또이의 무늬 무관
+  "royal_kokushi", // 왕의 징표 — 국사 중복 허용
+  "wind_lineage", // 바람의 계보 — 자패 슌쯔
+  "snake_kan", // 장사진 — 연속 네 장 깡
+]);
+
+/**
  * 봇 난이도 표기 — 대기실 라디오와 게임 중 칩이 같은 말을 쓴다.
  *
  * 난이도는 `LobbyMessage`에만 실려서 게임에 들어가는 순간 확인할 데가 없었다. 성향
@@ -14753,12 +14770,16 @@ function RoundResultPanel({
   const drawDetail = isDraw && tenpaiPlayers !== undefined;
   const tenpaiSet = new Set(tenpaiPlayers ?? []);
   // 다음 국 안내 — 유국·도중유국은 여기가 유일한 "그래서 어떻게 되는가" 정보다.
+  // …화료에도 붙인다. `dealerContinues`는 화료 정산에도 실려 오는데 예전에는 `!isWin`
+  // 안에서만 조립해서, 친이 화료해 연장인지 넘어가는지·본장이 몇 개가 되는지를
+  // 결과 화면에서 알 수 없었다.
   const nextRoundNote: string[] = [];
-  if (!isWin) {
+  {
     // 도중유국은 친이 "연장"된 게 아니라 같은 국을 다시 치는 것이라 표현을 나눈다
-    if (settle.dealerContinues === true) nextRoundNote.push(isDraw ? "친 연장" : "친 유지");
+    if (settle.dealerContinues === true) nextRoundNote.push(isDraw || isWin ? "친 연장" : "친 유지");
     else if (settle.dealerContinues === false) nextRoundNote.push("친 넘어감");
-    nextRoundNote.push(`${settle.honba}본장`);
+    // 화료로 친이 넘어가면 본장은 0으로 돌아간다 — "0본장"은 알려 줄 것이 없다.
+    if (!isWin || settle.honba > 0) nextRoundNote.push(`${settle.honba}본장`);
     if (settle.riichiPot > 0) {
       nextRoundNote.push(`리치봉 ${settle.riichiPot.toLocaleString()}점 이월`);
     }
@@ -14868,6 +14889,25 @@ function RoundResultPanel({
                 ))}
               </div>
             ) : null}
+
+            {/* 이 손을 성립시킨 증강 — 손 모양 규칙을 바꾸는 패시브는 view 채널이 없어
+                화면에 아무 흔적도 안 남는다. 그래서 결과창에 1만1통1삭 커쯔, 동남서 슌쯔,
+                3-4-5-6 깡처럼 **규칙 위반으로 보이는 손**이 근거 없이 공개됐다.
+                역 이름이 따로 서는 것(우는 국사무쌍 등)은 여기 넣지 않는다 — 같은 말을
+                두 번 하게 된다. */}
+            {(() => {
+              const augs = view.players.find((p) => p.id === w.winner)?.augments ?? [];
+              const shapes = augs.filter((a) => SHAPE_RULE_AUGMENTS.has(a));
+              if (shapes.length === 0) return null;
+              return (
+                <div className="result-shape-augs">
+                  <span className="result-shape-label">이 손을 성립시킨 증강</span>
+                  <span className="result-shape-names">
+                    {shapes.map((a) => catalog[a]?.name ?? a).join(" · ")}
+                  </span>
+                </div>
+              );
+            })()}
 
             <div className="result-yaku-list">
               {yakuRows.map((r, i) => (

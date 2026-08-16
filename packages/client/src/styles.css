@@ -4795,9 +4795,28 @@ button {
   width: min(880px, 94cqw);
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas: "name name" "hand hand" "yaku circle";
+  grid-template-areas: "name name" "shape shape" "hand hand" "yaku circle";
   align-items: center;
   gap: clamp(8px, 1.6cqh, 16px) clamp(20px, 4cqw, 52px);
+}
+
+.result-shape-augs {
+  grid-area: shape;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+
+.result-shape-label {
+  color: #7f9488;
+}
+
+.result-shape-names {
+  color: #c7bcff;
+  font-weight: 700;
 }
 
 .result-winner-row {
@@ -7350,7 +7369,7 @@ button {
   /* 국 결과 — 역 목록(최소 320px)과 판수 원이 가로로 나란히 서면 넘친다. 세로로 쌓는다. */
   .result-win {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "name" "hand" "circle" "yaku";
+    grid-template-areas: "name" "shape" "hand" "circle" "yaku";
     justify-items: center;
   }
   .result-yaku-list {
