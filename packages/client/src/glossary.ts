@@ -102,6 +102,14 @@ export interface GlossaryEntry {
   long?: string;
   /** 본문에서 이 용어로 인식할 표기들(정규식 소스). 생략하면 label 하나. */
   match?: readonly string[];
+  /**
+   * **판 위에만** 뜨는 표기 — 증강 설명·요약에는 한 번도 안 나온다.
+   *
+   * 수록 기준은 "플레이어가 실제로 읽는 글"이지, "증강 설명에 나오는 말"이 아니다.
+   * 대국 화면이 직접 찍는 말(형식 텐파이 등)도 처음 보면 모르기는 마찬가지인데,
+   * 미사용 항목을 잡는 테스트가 증강 텍스트만 코퍼스로 보므로 여기서 갈라 준다.
+   */
+  hudOnly?: boolean;
 }
 
 export const GLOSSARY: readonly GlossaryEntry[] = [
@@ -419,6 +427,13 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     group: "win",
     label: "노텐",
     short: "완성 직전이 아닌 상태. 국이 그냥 끝나면 벌점을 낸다.",
+  },
+  {
+    key: "keishiki_tenpai",
+    group: "win",
+    label: "형식 텐파이",
+    short: "역이 없어 이기지는 못하지만, 국이 그냥 끝날 때는 텐파이로 쳐 주는 손.",
+    hudOnly: true,
   },
   {
     key: "furiten",
@@ -915,6 +930,22 @@ const PATTERNS: readonly Pattern[] = GLOSSARY.flatMap((entry) =>
  * 어느 항목이 걸렸는지 그룹 번호로 되찾는다.
  */
 const TERM_RE = new RegExp(PATTERNS.map((p) => `(${p.source})`).join("|"), "g");
+
+const BY_KEY: Record<string, GlossaryEntry> = Object.fromEntries(
+  GLOSSARY.map((e) => [e.key, e]),
+);
+
+/**
+ * 판 위의 짧은 표기(`供`·`본장`·`×N`)에 붙일 `title` 문안.
+ *
+ * `TermText`는 문장 안에서만 쓸 수 있는데, HUD의 그 표기들은 문장이 아니라 한두 글자다.
+ * 그렇다고 문안을 App.tsx에 옮겨 적으면 두 벌이 되어 한쪽만 고쳐진다 — 이 파일이 단일
+ * 진실이라는 헤더의 약속을 지키려고 키로 끌어 쓴다.
+ */
+export function glossaryTitle(key: string): string {
+  const e = BY_KEY[key];
+  return e === undefined ? "" : `${e.label} — ${e.short}`;
+}
 
 export type TermChunk =
   | { kind: "text"; text: string }

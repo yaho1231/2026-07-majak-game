@@ -60,7 +60,7 @@ import { AUGMENT_CATEGORIES, SPECTATOR_ID, doraKindFor, kindKey, standardKinds, 
 import { contentAugments } from "@majak/content";
 import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
-import { GLOSSARY, GLOSSARY_GROUPS, splitTerms } from "./glossary.js";
+import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
 import { remainingCounter } from "./waitCounts.js";
@@ -2249,6 +2249,10 @@ export function App(): JSX.Element {
   // handleServerMessage는 마운트 시 고정된 스테일 클로저라 draftPicked state를
   // 못 읽는다 → 뷰 핸들러에서 "이미 골랐는가"를 판정할 ref를 따로 둔다.
   const draftPickedRef = useRef(false);
+  /** 직전 대기실 스냅샷 — 설정이 무엇에서 무엇으로 바뀌었는지 알려 주려고 둔다(같은 이유로 ref) */
+  const prevLobby = useRef<LobbyMessage | null>(null);
+  /** 중단 투표를 이미 알렸는가 — 투표가 갱신될 때마다 토스트가 쌓이지 않게 한 번만 띄운다 */
+  const abortVoteNoticed = useRef(false);
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
   const prompt = view === null ? null : (prompts[view.playerId] ?? null);
   /**
@@ -2765,6 +2769,8 @@ export function App(): JSX.Element {
   function resetGameState(): void {
     setJoined(null);
     setLobby(null);
+    prevLobby.current = null;
+    abortVoteNoticed.current = false;
     setSandbox(null);
     setControlling(null);
     setView(null);
@@ -3142,6 +3148,29 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "lobby") {
+      // 방장이 바꾼 설정은 값만 조용히 갈렸다 — 동풍전으로 준비를 눌렀는데 반장전으로
+      // 시작하거나, 친이던 내 자리가 자리 섞기로 바뀐 것을 모른 채 판이 열렸다.
+      // (handleServerMessage는 마운트 시 고정된 클로저라 state가 아니라 ref로 비교한다.)
+      const prev = prevLobby.current;
+      prevLobby.current = msg;
+      if (prev !== null && prev.roomId === msg.roomId) {
+        if (prev.gameMode !== msg.gameMode) {
+          showToast(`판 길이가 ${MODE_BADGE[msg.gameMode]?.name ?? msg.gameMode}으로 바뀌었습니다`, "info");
+        }
+        if (prev.botDifficulty !== msg.botDifficulty) {
+          showToast(`봇 난이도: ${BOT_DIFFICULTY_LABEL[msg.botDifficulty] ?? msg.botDifficulty}`, "info");
+        }
+        const seatOf = (m: LobbyMessage): number | null =>
+          m.players.find((p) => p.playerId === m.youId)?.seat ?? null;
+        const before = seatOf(prev);
+        const after = seatOf(msg);
+        if (before !== null && after !== null && before !== after) {
+          showToast(`자리를 다시 뽑았습니다 — 당신은 ${WIND_KO[after] ?? "?"}가입니다`, "info");
+        }
+        if (prev.hostId !== msg.hostId && msg.hostId === msg.youId) {
+          showToast("당신이 방장이 되었습니다", "info");
+        }
+      }
       setLobby(msg);
       return;
     }
@@ -3291,6 +3320,17 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "abortVote") {
+      // 투표 현황은 설정 패널 맨 아래에만 있어서, 남이 판을 접자고 해도 나는 몰랐다.
+      // 처음 한 번만 알린다 — 갱신마다 띄우면 잡음이 된다.
+      if (msg.votes > 0 && !abortVoteNoticed.current) {
+        abortVoteNoticed.current = true;
+        showToast(
+          `게임 무효 투표가 올라왔습니다 (${msg.votes}/${msg.needed}) — 설정 맨 아래에서 응답할 수 있습니다`,
+          "info",
+          5000,
+        );
+      }
+      if (msg.votes === 0) abortVoteNoticed.current = false;
       setAbortVote(msg);
       return;
     }
@@ -3457,8 +3497,21 @@ export function App(): JSX.Element {
       }
       // 국 시작에 저절로 켜지는 증강(초읽기·눈먼 총알·반전)도 같은 집합을 쓴다.
       // 빠뜨리면 국 도중에 재접속할 때마다 이미 켜져 있던 발동 컷인이 다시 터진다.
-      for (const n of armedRoundNotices(next)) {
+      const armed = armedRoundNotices(next);
+      for (const n of armed) {
         shown.augEvents.add(augEventSig(n.key, n.raw, shown.roundKey));
+      }
+      // …다만 **아무 말도 없이** 시드만 하면, 돌아온 사람은 이 국에 초읽기(5초)가
+      // 걸렸다는 사실을 한 번도 못 본다 — 초읽기를 시계로만 알 수 있었던 그 문제가
+      // 재접속 경로에 그대로 남아 있었다. 컷인이 아니라 요약 배너로 한 번만 알린다
+      // (컷인은 "지금 터졌다"로 읽혀 오해가 된다).
+      if (armed.length > 0) {
+        showBanner(
+          "이번 국 적용 중",
+          "info",
+          armed.map((n) => n.title).join(" · "),
+          2000,
+        );
       }
       return;
     }
@@ -4107,6 +4160,7 @@ export function App(): JSX.Element {
           spectator={isSpectator}
           spectateCode={spectating}
           logEvents={logEvents}
+          botDifficulty={isSpectator ? null : (lobby?.botDifficulty ?? null)}
           abortVote={abortVote}
           onVoteAbort={cbVoteAbort}
           sandbox={sandbox}
@@ -7246,6 +7300,10 @@ const WAITROOM_TIPS: readonly string[] = [
   "보라색으로 계속 반짝이는 패는 원래의 4개 패가 아니라 증강 등으로 새로 만들어진 패입니다.",
   "상대가 타패한 뒤 점선 표시를 보면 그 패를 어디서 냈는지 알 수 있습니다.",
   "게임 무효 투표는 설정 맨 아래에 있습니다.",
+  "시작 25,000점 · 반환점 30,000점 · 적5는 무늬마다 1장씩 들어 있습니다.",
+  "최종 순위 점수에는 우마 +15/+5/−5/−15가 더해집니다.",
+  "마지막 국에서 1위가 30,000점에 못 미치면 장이 하나 더 붙습니다(서든데스).",
+  "누군가 0점 아래로 떨어지면 그 자리에서 판이 끝납니다.",
   "화면 배치가 겹치거나 어색하면 오른쪽 위 +/− 버튼이나 Ctrl + −(+)로 크기를 맞춰 보세요.",
 ];
 
@@ -7394,11 +7452,7 @@ function WaitingRoom(props: {
           🤖 봇 난이도
         </div>
         <div className="mode-select" role="radiogroup" aria-label="봇 난이도">
-          {([
-            ["easy", "쉬움", "실수를 자주 한다"],
-            ["normal", "보통", "가끔 흘린다"],
-            ["hard", "어려움", "봇의 최선"],
-          ] as const).map(([level, label, sub]) => {
+          {BOT_DIFFICULTY.map(([level, label, sub]) => {
             const active = (lobby.botDifficulty ?? "hard") === level;
             return (
               <button
@@ -7571,6 +7625,23 @@ const MODE_BADGE: Record<GameMode, { name: string; drafts: string }> = {
   tonpuu: { name: "동풍전", drafts: "동1·동3·동4국" },
 };
 
+/**
+ * 봇 난이도 표기 — 대기실 라디오와 게임 중 칩이 같은 말을 쓴다.
+ *
+ * 난이도는 `LobbyMessage`에만 실려서 게임에 들어가는 순간 확인할 데가 없었다. 성향
+ * (원형)은 이름표·순위표에 상시로 서 있는데 난이도만 사라져, 전적에 남는 판인데도
+ * "봇이 쉬움이었나"를 사후에 알 수 없었다. 게스트 체험 방은 대기실을 안 거쳐 한 번도
+ * 못 본다.
+ */
+const BOT_DIFFICULTY: readonly (readonly [string, string, string])[] = [
+  ["easy", "쉬움", "실수를 자주 한다"],
+  ["normal", "보통", "가끔 흘린다"],
+  ["hard", "어려움", "봇의 최선"],
+];
+const BOT_DIFFICULTY_LABEL: Record<string, string> = Object.fromEntries(
+  BOT_DIFFICULTY.map(([id, label]) => [id, label]),
+);
+
 function ModeBadge(props: { mode: GameMode }): JSX.Element {
   const m = MODE_BADGE[props.mode] ?? MODE_BADGE.hanchan;
   return (
@@ -7644,6 +7715,11 @@ const GameTable = memo(function GameTable(props: {
   onHandOrder?: (tileIds: number[]) => void;
   /** 📜 사건 기록 (append-only). 리플레이 뷰어처럼 기록이 없는 자리에서는 생략된다. */
   logEvents?: LogEvent[];
+  /**
+   * 이 판의 봇 난이도 (`LobbyMessage.botDifficulty`). 대기실을 거치지 않은 판
+   * (게스트 체험·리플레이)에서는 null이라 칩을 세우지 않는다.
+   */
+  botDifficulty?: string | null;
 }): JSX.Element {
   const { view, prompt, catalog } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -7783,6 +7859,16 @@ const GameTable = memo(function GameTable(props: {
         </div>
       ) : null}
       <ModeBadge mode={view.round.mode} />
+      {/* 봇 난이도 — 대기실에서만 보이고 판에 들어오면 사라지던 값. 봇이 없는 판에서는
+          띄우지 않는다. */}
+      {props.botDifficulty != null && view.players.some((p) => p.isBot) ? (
+        <div
+          className="mode-badge bot-diff-badge"
+          title={`봇 난이도 — ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
+        >
+          <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? props.botDifficulty}</span>
+        </div>
+      ) : null}
       <button
         className="icon-btn settings-btn"
         onClick={() => {
@@ -9660,7 +9746,7 @@ function CenterPanel({
         <div className="center-sub">
           <span
             className="wall-count"
-            title={`남은 패산 ${wallLeft}장 · 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
+            title={`${glossaryTitle("wall")}\n남은 ${wallLeft}장 · 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
           >
             ×{wallLeft}
           </span>
@@ -9676,8 +9762,12 @@ function CenterPanel({
               오라스
             </span>
           ) : null}
-          {r.honba > 0 ? <span title="본장">{r.honba}본장</span> : null}
-          {r.riichiPot > 0 ? <span className="pot" title="공탁">供{r.riichiPot / 1000}</span> : null}
+          {r.honba > 0 ? <span title={glossaryTitle("honba")}>{r.honba}본장</span> : null}
+          {r.riichiPot > 0 ? (
+            <span className="pot" title={glossaryTitle("kyoutaku")}>
+              供{r.riichiPot / 1000}
+            </span>
+          ) : null}
           {r.direction < 0 ? <span className="rev-dir" title="역행하는 세계">역행</span> : null}
         </div>
         <div className="center-dora" title="도라 표시패">
@@ -9693,6 +9783,20 @@ function CenterPanel({
             ),
           )}
         </div>
+        {/* 가려진 도라 — 표시패가 한 장도 없으면 "아직 안 열린 것"과 그림이 같다.
+            숨긴 사람은 증강 보유가 공개라 여기서 바로 찾을 수 있다. */}
+        {(() => {
+          if (r.doraIndicators.length > 0) return null;
+          const holder = view.players.find(
+            (p) => p.augments.includes("dora_conceal") && p.id !== view.playerId,
+          );
+          if (holder === undefined) return null;
+          return (
+            <div className="dora-concealed" title="가려진 도라 — 이번 국의 도라 표시패는 그 사람만 본다">
+              🌑 가려진 도라 — {holder.nickname}
+            </div>
+          );
+        })()}
         {r.uraDoraIndicators !== null && r.uraDoraIndicators.length > 0 ? (
           <div className="center-dora center-ura" title="뒷도라">
             {r.uraDoraIndicators.map((id) => (
@@ -10458,11 +10562,17 @@ const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
 /**
  * 내부 쿨다운("2국에 1회")이 몇 국 남았는가 — 0이면 지금 쓸 수 있다.
  *
- * 콘텐츠 쪽 `cooldownViewKey`(util.ts)가 **보유자 본인 채널**로만 올려 주므로, 남의
- * pill에는 애초에 값이 없다. 예전에는 이 정보가 어디에도 없어서, 잠긴 증강이 그냥
- * "아무 일도 안 일어나는 증강"으로 보였다(2026-08-06 사용자 지적).
+ * 콘텐츠 쪽 `cooldownViewKey`(util.ts)가 **보유자 본인 채널**로만 올려 주므로 채널에는
+ * 좌석이 안 붙는다. 예전에는 이 정보가 어디에도 없어서, 잠긴 증강이 그냥 "아무 일도
+ * 안 일어나는 증강"으로 보였다(2026-08-06 사용자 지적).
+ *
+ * **좌석 인자가 필요한 이유**: 이름표는 좌석마다 그려지는데 채널은 뷰어 것 하나뿐이라,
+ * 같은 증강을 나와 남이 함께 들면 내 잔여 쿨다운이 **남의 pill에** 찍힌다. 드래프트는
+ * 중복을 막지만 수상한 주사위의 `grantAugments`는 자기 보유분만 걸러서 중복이 실제로
+ * 성립한다(core/Augment.ts). 그러면 상대가 그 증강을 쓸 수 있는지를 정반대로 읽는다.
  */
-function cooldownRoundsLeft(view: PlayerView, augId: string): number {
+function cooldownRoundsLeft(view: PlayerView, playerId: string, augId: string): number {
+  if (playerId !== view.playerId) return 0;
   const left = view.augmentView[`cooldown:${augId}`];
   return typeof left === "number" && left > 0 ? left : 0;
 }
@@ -10484,16 +10594,19 @@ function augmentPillStatus(
     return { chip: "종료", tone: "spent", note: "이번 국 전용 — 그 국이 지나 효과가 남아 있지 않다" };
   }
 
-  // 보유자 화면에만 실리는 잔량 채널 — 남의 pill에는 애초에 값이 없다.
+  // 보유자 화면에만 실리는 잔량 채널 — 채널 이름에 좌석이 없으므로 **뷰어 자신의
+  // pill에만** 붙인다. 같은 증강을 남도 들면 내 잔량이 남의 pill에 찍힌다
+  // (cooldownRoundsLeft 주석의 중복 보유 경로).
+  const isSelf = playerId === view.playerId;
   if (augId === "alchemist") {
     const left = av["alchemist:left"];
-    if (typeof left !== "number") return null;
+    if (!isSelf || typeof left !== "number") return null;
     return { chip: `${left}회`, note: `연금술 ${left}회 남음` };
   }
   // 염색 — 연금술사와 같은 게임 전체 5회 자원 (2026-08-04 국당 1회에서 개편)
   if (augId === "tile_dyeing") {
     const left = av["tile_dyeing:left"];
-    if (typeof left !== "number") return null;
+    if (!isSelf || typeof left !== "number") return null;
     return { chip: `${left}회`, note: `염색 ${left}회 남음` };
   }
   if (augId === "dead_wall_master") {
@@ -10597,7 +10710,7 @@ function augmentPillStatus(
    * 일확천금·조커…)은 **발동한 국에 잔량이 통째로 묻혔다**(2026-08-15 "횟수류가 안
    * 나온다"). 이제 둘 다 있으면 상태 뱃지 뒤에 `·n회`로 붙여 함께 보여준다.
    */
-  const uses = av[`uses:${augId}`] as
+  const uses = (isSelf ? av[`uses:${augId}`] : undefined) as
     | { left?: unknown; total?: unknown; scope?: unknown }
     | undefined;
   const usesStatus: PillStatus | null =
@@ -10688,6 +10801,13 @@ const NamePlate = memo(function NamePlate({
   const isTurn = view.round.turnSeat === player.seat;
   const furiten = isMe && view.round.byPlayer[player.id]?.furiten === true;
   const noYaku = isMe && view.round.byPlayer[player.id]?.noYaku === true;
+  // 후리텐 사유 — 같은 두 글자가 "한 순만 참으면 풀리는 일시 후리텐"과 "이 국은 끝난
+  // 리치 후리텐"을 함께 가리켰다. 사유 문안은 이미 있는데(FURITEN_REASON_TEXT) 오름패
+  // 뱃지에서만 쓰였고, 그 뱃지는 쯔모해서 14장인 내 차례에는 사라진다.
+  const furitenReasons = isMe ? (view.round.byPlayer[player.id]?.furitenReasons ?? []) : [];
+  // 일발이 살아 있는가 — 본인 뷰에만 오는 값이라 전원 공개 자리에는 못 놓는다.
+  // 누가 울어서 일발이 깨졌는지가 화면에 남지 않아, 1판이 조용히 사라졌다.
+  const ippatsu = isMe && view.round.byPlayer[player.id]?.ippatsu === true;
   // 무장해제로 이번 국 잠긴 이 사람의 증강 — 이름표의 pill에 쇠사슬을 채운다.
   // 잠금이 화면 어디에도 드러나지 않아 "무장해제가 안 먹는다"로 보였다(2026-08-01).
   const disarmed = disarmedAugmentsOf(view, player.id);
@@ -10799,7 +10919,7 @@ const NamePlate = memo(function NamePlate({
             const locked = disarmed.has(a);
             const status = augmentPillStatus(view, player.id, a);
             // 내부 쿨다운 잔량 — 보유자 본인 화면에만 실린다(view:{나}:cooldown:{id}).
-            const cooldown = cooldownRoundsLeft(view, a);
+            const cooldown = cooldownRoundsLeft(view, player.id, a);
             // 선발동형("이번 국만")이 이미 지나갔는가 — 설명 배지도 함께 갈아 끼운다.
             const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
             return (
@@ -10950,7 +11070,19 @@ const NamePlate = memo(function NamePlate({
           })}
         </span>
       ) : null}
-      {furiten ? <span className="np-furiten">후리텐</span> : null}
+      {ippatsu ? <span className="np-ippatsu" title="일발이 살아 있습니다 — 누가 울면 사라집니다">일발</span> : null}
+      {furiten ? (
+        <span
+          className="np-furiten"
+          title={
+            furitenReasons.length > 0
+              ? `${furitenReasons.map((r) => FURITEN_REASON_TEXT[r]).join(" · ")} — 론은 안 되고 쯔모로만 화료할 수 있습니다`
+              : "론은 안 되고 쯔모로만 화료할 수 있습니다"
+          }
+        >
+          후리텐
+        </span>
+      ) : null}
       {noYaku ? <span className="np-noyaku" title="텐파이지만 역이 없어 화료할 수 없습니다">역없음</span> : null}
     </div>
   );
@@ -12758,7 +12890,10 @@ function WaitTip({
   };
   return (
     <span className={`wait-tip${furitenOn ? " wait-tip-furiten" : ""}`}>
-      <span className="wait-tip-label">
+      <span
+        className="wait-tip-label"
+        title={waits.length === 0 ? glossaryTitle("keishiki_tenpai") : undefined}
+      >
         {waits.length === 0 ? "형식 텐파이" : allDead ? "대기 (역없음)" : "대기"}
         {waits.length > WAIT_TILE_CAP ? (
           <span className="waits-badge-count">{waits.length}종</span>
@@ -12985,6 +13120,29 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
       "🌫 안개 덮인 바닥",
       `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 최근 6장만 보인다`,
     );
+  }
+  // 박무 — 안개 덮인 바닥과 같은 계열인데 이쪽만 상시 표식이 없었다. 선언 컷인은 뜨지만
+  // 6순 지속 상태는 채널 head가 어느 표에도 없어 접힌 📜 로그의 글줄 하나로만 떨어졌다.
+  // 값이 "안개 (3순 남음)"이라 남은 순도 그대로 실려 있다.
+  for (const [key, value] of avEntries) {
+    if (!key.startsWith("brief_fog:") || key.startsWith("brief_fog:last:")) continue;
+    if (typeof value !== "string" || value === "") continue;
+    const who = key.slice("brief_fog:".length);
+    if (!view.players.some((p) => p.id === who)) continue;
+    textBadge(
+      key,
+      "🌁 박무",
+      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 모두의 바닥이 가려진다 · ${value.replace(/^안개\s*\(|\)$/g, "")}`,
+    );
+  }
+  // 가려진 도라 — 뷰 채널이 없는 순수 Modifier라, 비보유자 화면에서는 도라 표시패가
+  // 그냥 빈 뒷면으로만 뜬다. "아직 안 열린 슬롯"과 그림이 똑같아 버그로 읽혔다.
+  // 증강 보유 자체는 공개 정보이므로 보유자를 여기서 바로 찾아 쓴다.
+  if (view.round.doraIndicators.length === 0) {
+    const holder = view.players.find((p) => p.augments.includes("dora_conceal"));
+    if (holder !== undefined && holder.id !== me.id) {
+      textBadge("dora_conceal", "🌑 가려진 도라", `${holder.nickname} — 이번 국 도라는 그 사람만 안다`);
+    }
   }
   // 역만 방어술 방어 횟수 · 연금술 잔여 · 왕패 교환 잔여도 이름표 pill로 옮겼다
   // (그 증강이 몇 번 남았는지는 그 증강 위에 붙는 게 맞다).
@@ -15123,7 +15281,18 @@ function GameOverModal({
                   {/* 어느 성향이 이겼는지 — 순위표에서 그게 읽혀야 다음 판이 달라진다 */}
                   {r.isBot ? <BotArchetypeChip archetype={r.archetype} /> : null}
                 </span>
-                <span className="rank-raw">{r.rawScore.toLocaleString()}점</span>
+                {/* 원점 → 우마·오카 → 최종. 세 값 모두 서버가 이미 보내 주는데(RankingEntry)
+                    예전에는 원점과 최종만 찍어서, 25000점이 왜 -5가 되는지 역산할 수 없었다. */}
+                <span className="rank-raw">
+                  {r.rawScore.toLocaleString()}점
+                  {r.uma !== 0 || r.oka !== 0 ? (
+                    <span className="rank-umaoka">
+                      {r.uma !== 0 ? `우마 ${r.uma > 0 ? "+" : ""}${r.uma}` : null}
+                      {r.uma !== 0 && r.oka !== 0 ? " · " : null}
+                      {r.oka !== 0 ? `오카 ${r.oka > 0 ? "+" : ""}${r.oka}` : null}
+                    </span>
+                  ) : null}
+                </span>
                 <span
                   className={`rank-final ${
                     r.score > 0 ? "rank-final-plus" : r.score < 0 ? "rank-final-minus" : "rank-final-zero"

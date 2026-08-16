@@ -518,6 +518,18 @@ button {
   line-height: 1.2;
 }
 
+/* 봇 난이도 — 모드 뱃지 바로 아래 같은 줄맞춤으로 선다 (둘 다 absolute라 겹치지 않게) */
+.bot-diff-badge {
+  top: 60px;
+  cursor: help;
+  pointer-events: auto;
+}
+
+.bot-diff-badge .mode-badge-name {
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
 .mode-badge-name {
   color: var(--ink-1);
   font-size: 13px;
@@ -766,6 +778,16 @@ button {
   display: flex;
   justify-content: center;
   gap: 2px;
+}
+
+/* 도라가 "안 열린 것"이 아니라 "가려진 것"임을 도라 자리에서 바로 말해 준다 */
+.dora-concealed {
+  margin-top: 2px;
+  text-align: center;
+  font-size: max(9px, calc(var(--panel) * 0.058));
+  font-weight: 700;
+  color: #c7bcff;
+  cursor: help;
 }
 
 .dora-slot {
@@ -1491,7 +1513,19 @@ button {
   cursor: help;
 }
 
+/* 일발 — 살아 있는 동안만 선다. 사라지는 것 자체가 정보다. */
+.np-ippatsu {
+  color: #93dfa8;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(147, 223, 168, 0.6);
+  border-radius: 4px;
+  padding: 0 6px;
+  cursor: help;
+}
+
 .np-furiten {
+  cursor: help;
   color: #f08a7c;
   font-size: 11px;
   font-weight: 700;
@@ -4026,8 +4060,18 @@ button {
 }
 
 .rank-raw {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
   color: #a8bcaf;
   font-variant-numeric: tabular-nums;
+}
+
+/* 원점과 최종 점수 사이의 계산 근거 — 작게, 원점 아래에 붙인다 */
+.rank-umaoka {
+  font-size: 11px;
+  color: #7f9488;
 }
 
 .rank-final {
