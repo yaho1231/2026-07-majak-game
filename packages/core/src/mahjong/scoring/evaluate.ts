@@ -122,7 +122,17 @@ export function evaluateWin(
       const hasRealYaku = matched.some(
         (y) => registry.get(y.id)?.auxiliary !== true,
       );
-      const applied = hasRealYaku
+      /*
+       * 판만 더하는 것들(도라·적도라·뒷도라·보조역)이 붙는가.
+       *
+       * 표준 룰에서 이것들이 실역 없이는 안 붙는 이유는 "역이 없으면 그 손은 애초에
+       * 화료가 아니다"이지, 도라가 특별히 까다로워서가 아니다. 무형화료 계열이
+       * `win.requiresYaku`를 끄면 그 전제가 사라진다 — 화료는 성립하는데 도라만
+       * 통째로 증발해, 붉은손길로 물들인 적도라를 쥐고도 0판 30부로 정산됐다
+       * (2026-08-17 사용자 보고). 화료가 성립하는 자리에서는 다 센다.
+       */
+      const countsExtras = hasRealYaku || ctx.requiresYaku === false;
+      const applied = countsExtras
         ? matched
         : matched.filter((y) => registry.get(y.id)?.auxiliary !== true);
       const yakuHan = applied.reduce((sum, y) => sum + y.han, 0);
@@ -131,7 +141,7 @@ export function evaluateWin(
       let doraHan = 0;
       let uraHan = 0;
       let redHan = 0;
-      if (hasRealYaku) {
+      if (countsExtras) {
         const kinds = fullKinds(ctx);
         doraHan = countDora(kinds, ctx.doraKinds ?? []);
         // 뒷도라는 원래 리치한 손만의 보상이다 — uraAlways(숨은 칼날)가 그 문을 연다

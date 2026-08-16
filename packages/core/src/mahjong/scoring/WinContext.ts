@@ -50,6 +50,16 @@ export interface WinContext {
   uraAlways?: boolean;
   /** 적도라 수 (attrs.red인 패의 수 — 호출자가 센다) */
   redCount?: number;
+  /**
+   * 이 화료에 역이 필요한가 (`win.requiresYaku`). 생략하면 true(표준 룰).
+   *
+   * false면 **역 0개로도 화료가 성립**하므로(무형화료·대기만성 만개·복수자),
+   * 도라·적도라·뒷도라와 보조역이 그대로 붙는다. 표준 룰에서 이것들이 안 붙는
+   * 이유는 "역이 없으면 애초에 화료가 아니다"였는데, 그 전제가 사라진 자리다 —
+   * 예전에는 붉은손길로 만든 적도라를 손에 쥐고도 0판 30부로 정산됐다
+   * (2026-08-17 사용자 보고).
+   */
+  requiresYaku?: boolean;
   /** 화료자 id — 증강이 만든 역이 보유자를 판별할 때 사용 */
   winnerId?: string;
   /** 론이면 쏜 사람 id (창깡이면 깡 선언자). 쯔모면 undefined */

@@ -152,6 +152,14 @@ export interface WinInfo {
   doraHan: number;
   uraHan: number;
   redHan: number;
+  /**
+   * 실역 0개로 성립한 화료인가 (무형화료 계열이 `win.requiresYaku`를 껐다).
+   *
+   * "역 목록이 비었는가"로는 이제 판별할 수 없다 — 이런 손도 도라·보조역으로
+   * 판을 세므로 목록에 줄이 설 수 있다. 정산 보상(무형화료 2판)과 결과 화면의
+   * "왜 역 없이 화료가 됐는가" 표시가 이 값을 본다.
+   */
+  yakuless?: boolean;
   /** 화료자 총 획득점 (본장·공탁 제외) */
   points: number;
   limit: string | null;

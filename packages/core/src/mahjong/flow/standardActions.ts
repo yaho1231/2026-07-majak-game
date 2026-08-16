@@ -998,6 +998,8 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
           doraHan: ev.doraHan,
           uraHan: ev.uraHan,
           redHan: ev.redHan,
+          // 실역 0개 화료 — 여기까지 왔다는 건 needYaku가 꺼져 있었다는 뜻이다
+          ...(ev.ok ? {} : { yakuless: true }),
           points: score.total,
           limit: score.limit,
           ...(pao !== null && paoCharged > 0
