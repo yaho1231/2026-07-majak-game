@@ -65,6 +65,7 @@ import { GLOSSARY, GLOSSARY_GROUPS, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
 import { remainingCounter } from "./waitCounts.js";
+import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
@@ -960,6 +961,7 @@ function lockedReasonText(l: LockedOption): string {
 function lockedReasonShort(l: LockedOption): string {
   return l.reason === "minHan" ? `${l.minHan ?? 5}판 이상` : "론 불가";
 }
+
 
 /** 후로없음: 치·펑·깡만 있는(론 없는) 후로 프롬프트인가. */
 function isCallOnlyPrompt(opts: ActionOption[]): boolean {
@@ -2750,6 +2752,35 @@ export function App(): JSX.Element {
     if (prompt !== null && tryAutoRespond(prompt, settings)) dropPrompt(prompt.player);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings, prompt]);
+
+  /*
+   * 잠금 통보 프롬프트 — 잠깐 보여 준 뒤 스스로 패스한다.
+   *
+   * 타이머를 매번 전부 걷고 다시 건다. 의존성이 바뀌는 때는 프롬프트 메시지가
+   * 도착했을 때뿐이라 낭비가 없고, "취소된 프롬프트의 타이머가 살아남아 다음
+   * 프롬프트에 패스를 쏘는" 사고가 구조적으로 불가능해진다.
+   *
+   * 봇 좌석을 조종하는 증강 테스트에서도 그 좌석의 통보는 같은 규칙으로 넘어간다 —
+   * 어차피 고를 것이 없는 프롬프트다.
+   */
+  useEffect(() => {
+    const timers: number[] = [];
+    for (const [seat, p] of Object.entries(prompts)) {
+      if (!isLockNoticeOnly(p)) continue;
+      const pass = p.options.find((o) => o.type === "pass");
+      if (pass === undefined) continue;
+      timers.push(
+        window.setTimeout(() => {
+          send({ type: "action", actionType: "pass", payload: pass.payload, seat });
+          dropPrompt(seat);
+        }, LOCK_NOTICE_MS),
+      );
+    }
+    return () => {
+      for (const t of timers) window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompts, promptSeq]);
 
   // 마운트 시 1회 자동 접속
   useEffect(() => {
@@ -13998,6 +14029,8 @@ function ActionBar(props: {
       !AUGMENT_ACTION_TYPES.has(o.type),
   );
   const locked = prompt.locked ?? [];
+  /** 고를 것이 패스뿐이라 잠시 뒤 스스로 넘어가는 통보인가 (버튼이 시간을 그린다) */
+  const autoPassing = isLockNoticeOnly(prompt);
   if (
     buttons.length === 0 &&
     locked.length === 0 &&
@@ -14088,17 +14121,22 @@ function ActionBar(props: {
             </button>
           ))}
           {/* 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
-              여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다. */}
+              여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
+              고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
           {locked.map((l) => {
             const label = l.type === "win" ? (isMyTurn ? "쯔모" : "론") : l.type;
             return (
               <button
                 key={`locked-${l.type}-${l.reason}`}
-                className="act act-win act-locked"
+                className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
                 type="button"
                 disabled
                 aria-disabled="true"
-                title={lockedReasonText(l)}
+                title={
+                  autoPassing
+                    ? `${lockedReasonText(l)} — 잠시 뒤 자동으로 넘어갑니다`
+                    : lockedReasonText(l)
+                }
               >
                 🔒 {label}
                 <span className="act-target">{lockedReasonShort(l)}</span>
