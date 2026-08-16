@@ -20,6 +20,7 @@ import { DEFAULT_SEQUENCE_SUITS, decompose, honorMaxRank } from "../scoring/deco
 import { ROUND_SETTLED, KAN_DECLARED } from "./flowEvents.js";
 import type { RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
 import type { SettleWinRequest } from "./standardActions.js";
+import { WIN_BLOCKED_MIN_HAN, WIN_BLOCKED_RON_IMMUNE } from "./standardActions.js";
 import {
   SYSTEM_PLAYER,
   handIdsOf,
@@ -43,9 +44,34 @@ export interface ActionOption {
   payload: unknown;
 }
 
+/**
+ * **규칙이 막아 지금은 누를 수 없는 선언** — 화면에 자물쇠로 세우기 위한 표시다.
+ *
+ * 왜 `options`가 아니라 따로인가: 여기 실린 것은 **고를 수 없는 것**이다. options에
+ * 섞으면 봇·안전폴백·`submit`의 "제시된 것인가" 검사가 전부 이것을 고를 수 있는
+ * 수로 오해한다. 별도 필드라 기존 소비자는 아무 것도 바꾸지 않아도 되고, 그리는
+ * 쪽(클라이언트)만 읽는다.
+ *
+ * 지금 실리는 것은 화료(`win`) 하나이며, 사유는 **증강이 막은 경우로 한정**한다 —
+ * 후리텐·역 없음처럼 표준 규칙이 막는 것은 예전처럼 조용히 건너뛴다.
+ */
+export interface LockedOption {
+  /** 잠긴 선언의 액션 타입 (지금은 "win"뿐) */
+  type: string;
+  /** 왜 잠겼는가 — 클라이언트가 문구로 옮긴다 */
+  reason: "minHan" | "ronImmune";
+  /** reason="minHan"일 때 요구되는 최소 판 (격/rank_gate) */
+  minHan?: number;
+}
+
 export interface DecisionPrompt {
   player: PlayerId;
   options: ActionOption[];
+  /**
+   * 잠긴 선언 — 있으면 화면이 자물쇠 버튼을 세운다. 규칙 판정과는 무관하며
+   * (`options`에 없으므로 고를 수 없다), 없을 때는 필드 자체가 붙지 않는다.
+   */
+  locked?: LockedOption[];
   /**
    * 물어볼 것이 없는 강제 수 — 리치로 손이 잠겨 쯔모기리 외에는 둘 수 있는 수가
    * 하나도 없을 때만 붙는다(안깡·쯔모·리치 취소 같은 증강 선택지가 하나라도
@@ -87,7 +113,8 @@ export function reactionPriority(type: string): number {
 }
 
 export class FlowController {
-  private pending = new Map<PlayerId, ActionOption[]>();
+  /** 대기 중인 프롬프트 — 자물쇠까지 그대로 들고 있어야 다시 내보낼 때 사라지지 않는다 */
+  private pending = new Map<PlayerId, DecisionPrompt>();
   private decisions = new Map<PlayerId, ActionOption>();
 
   constructor(private readonly engine: GameEngine) {}
@@ -106,16 +133,16 @@ export class FlowController {
     if (offered === undefined) throw new Error(`No pending decision for ${player}`);
     if (this.decisions.has(player)) throw new Error(`${player} already decided`);
     const key = JSON.stringify(option);
-    if (!offered.some((o) => JSON.stringify(o) === key)) {
+    if (!offered.options.some((o) => JSON.stringify(o) === key)) {
       throw new Error(`Option was not offered to ${player}: ${key}`);
     }
     this.decisions.set(player, option);
     if (this.decisions.size < this.pending.size) {
       return {
         kind: "awaiting",
-        prompts: [...this.pending.entries()]
-          .filter(([id]) => !this.decisions.has(id))
-          .map(([id, options]) => ({ player: id, options })),
+        prompts: [...this.pending.values()].filter(
+          (p) => !this.decisions.has(p.player),
+        ),
       };
     }
     return this.resolve();
@@ -131,14 +158,46 @@ export class FlowController {
   }
 
   private validateOk(player: PlayerId, type: string, payload: unknown): boolean {
+    return this.validateReason(player, type, payload) === null;
+  }
+
+  /** validate가 돌려준 사유 (합법이면 null) */
+  private validateReason(
+    player: PlayerId,
+    type: string,
+    payload: unknown,
+  ): string | null {
     const def = this.engine.actions.get(type);
-    if (def === undefined) return false;
-    return (
-      def.validate(
-        { player, type, payload },
-        { state: this.engine.state, rules: this.engine.rules },
-      ) === null
+    if (def === undefined) return "unknown action";
+    return def.validate(
+      { player, type, payload },
+      { state: this.engine.state, rules: this.engine.rules },
     );
+  }
+
+  /**
+   * 화료가 **증강 때문에** 막혔는가 — 막혔으면 자물쇠 표시를, 아니면 null.
+   *
+   * 손이 다 됐는데 남의 증강이 막은 경우만 잡는다(격의 최소 판, 천하무적·불가침
+   * 조약의 론 면역). 후리텐·역 없음·애초에 화료형이 아님 같은 표준 사유는 여기서
+   * null이 되어 예전처럼 조용히 지나간다 — 자물쇠가 텐파이 여부를 흘리지 않는다.
+   */
+  private winLock(player: PlayerId): LockedOption | null {
+    const reason = this.validateReason(player, "win", {});
+    if (reason === WIN_BLOCKED_RON_IMMUNE) {
+      return { type: "win", reason: "ronImmune" };
+    }
+    if (reason === WIN_BLOCKED_MIN_HAN) {
+      return {
+        type: "win",
+        reason: "minHan",
+        minHan: this.engine.rules.resolve<number>("win.minHan", {
+          playerId: player,
+          state: this.engine.state,
+        }),
+      };
+    }
+    return null;
   }
 
   private runAuto(): FlowStatus {
@@ -212,7 +271,7 @@ export class FlowController {
   }
 
   private awaitDecisions(prompts: DecisionPrompt[]): FlowStatus {
-    this.pending = new Map(prompts.map((p) => [p.player, p.options]));
+    this.pending = new Map(prompts.map((p) => [p.player, p]));
     this.decisions = new Map();
     return { kind: "awaiting", prompts };
   }
@@ -316,8 +375,13 @@ export class FlowController {
         }
       }
     }
+    // 쯔모 — 증강이 막았을 뿐이라면 버튼을 지우지 않고 자물쇠로 남긴다
+    const locked: LockedOption[] = [];
     if (this.validateOk(player, "win", {})) {
       options.push({ type: "win", payload: {} });
+    } else {
+      const lock = this.winLock(player);
+      if (lock !== null) locked.push(lock);
     }
     if (this.validateOk(player, "kyushuKyuhai", {})) {
       options.push({ type: "kyushuKyuhai", payload: {} });
@@ -335,14 +399,19 @@ export class FlowController {
     }
     // 리치 중 강제 쯔모기리 — 손패가 잠겨 버릴 패를 고를 수 없고, 위에서 모은
     // 선택지(안깡·쯔모·증강 액션)도 하나도 없다면 물어볼 것이 남지 않는다.
+    //
+    // 단 **자물쇠가 있으면 자동으로 넘기지 않는다.** 리치 중에 화료패를 쥐고도 격에
+    // 막힌 순간이 바로 이 사람이 알아야 하는 순간인데, auto로 넘기면 화면이 그 패를
+    // 소리 없이 버린다 — 잠긴 버튼을 보여 주려고 남긴 것이 통째로 안 보이게 된다.
     if (
       state.round.byPlayer[player]?.riichi != null &&
       options.length === 1 &&
-      options[0]?.type === "discard"
+      options[0]?.type === "discard" &&
+      locked.length === 0
     ) {
       return { player, options, auto: true };
     }
-    return { player, options };
+    return locked.length > 0 ? { player, options, locked } : { player, options };
   }
 
   private reactionPrompts(): DecisionPrompt[] {
@@ -355,6 +424,12 @@ export class FlowController {
         if (p.id === state.round.chankan.player) continue;
         if (this.validateOk(p.id, "win", {})) {
           prompts.push({ player: p.id, options: [{ type: "win", payload: {} }, PASS] });
+          continue;
+        }
+        // 창깡이 증강에 막혔다 — 패스만 있는 프롬프트를 세워 자물쇠를 보여 준다
+        const lock = this.winLock(p.id);
+        if (lock !== null) {
+          prompts.push({ player: p.id, options: [PASS], locked: [lock] });
         }
       }
       return prompts;
@@ -366,9 +441,15 @@ export class FlowController {
     for (const p of state.players) {
       if (p.id === last.player) continue;
       const options: ActionOption[] = [];
+      const locked: LockedOption[] = [];
 
       if (this.validateOk(p.id, "win", {})) {
         options.push({ type: "win", payload: {} });
+      } else {
+        // 론이 증강에 막혔다 — 건너뛰지 않고 잠긴 론 버튼으로 남긴다.
+        // (후리텐·역 없음처럼 표준 규칙이 막은 것은 winLock이 null을 준다)
+        const lock = this.winLock(p.id);
+        if (lock !== null) locked.push(lock);
       }
 
       // 무너진 국경이면 무늬를 안 가리고 랭크만, 양극이면 같은 무늬 1·9를 같은 패로 본다.
@@ -418,7 +499,14 @@ export class FlowController {
 
       if (options.length > 0) {
         options.push(PASS);
-        prompts.push({ player: p.id, options });
+        prompts.push(
+          locked.length > 0
+            ? { player: p.id, options, locked }
+            : { player: p.id, options },
+        );
+      } else if (locked.length > 0) {
+        // 고를 것이 패스뿐이어도 물어본다 — 이 한 번이 "막혔다"를 알리는 유일한 자리다
+        prompts.push({ player: p.id, options: [PASS], locked });
       }
     }
     return prompts;
