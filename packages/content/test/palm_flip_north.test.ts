@@ -17,6 +17,7 @@ import {
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
+import { cooldownReady } from "../src/util.js";
 import { palmFlip } from "../src/augments/palm_flip.js";
 import { northTrader } from "../src/augments/north_trader.js";
 
@@ -154,6 +155,66 @@ describe("손바닥 뒤집기 (palm_flip)", () => {
     expect(
       game.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } }).ok,
     ).toBe(false);
+  });
+
+  /*
+   * 2026-08-16: 리미트가 매치 횟수(동풍1·반장2) → **2국에 1회** 쿨다운이 됐다.
+   * 발동한 국과 바로 다음 국이 잠기고, 그 다음 국에 다시 열린다.
+   */
+  it("2국에 1회 — 쓴 국은 잠기고, 잔량이 보유자 화면에 실린다", () => {
+    const game = setup(scene(true));
+    const out = handTile(game.engine.state, S4);
+    expect(
+      game.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } }).ok,
+    ).toBe(true);
+
+    // 쿨다운 기준점이 찍혔다 — 이 국과 다음 국은 잠긴다
+    expect(cooldownReady(game.engine.state, "palm_flip", "p0", 2)).toBe(false);
+    // 잔량 표시는 발동하는 그 자리에서 선다 — 다음 국을 기다리지 않는다
+    expect(game.engine.state.augmentData["view:p0:cooldown:palm_flip"]).toBe(2);
+
+    // 자기 순이 다시 오더라도 거절 사유는 쿨다운이다
+    const def = game.engine.actions.get("flip_riichi");
+    if (def === undefined) throw new Error("no flip_riichi action");
+    const base = scene(true);
+    expect(
+      def.validate(
+        { player: "p0", type: "flip_riichi", payload: { tileId: out } },
+        {
+          state: { ...base, augmentData: { "palm_flip:usedSeq:p0": 0 } },
+          rules: game.engine.rules,
+        },
+      ),
+    ).toBe("on cooldown");
+  });
+
+  it("쿨다운이 2국 지나면 다시 열린다", () => {
+    const game = setup(scene(true));
+    const s = game.engine.state;
+    // 발동 이력만 심어 국 경과를 흉내 낸다 (roundSeq는 ROUND_STARTED가 올린다)
+    const withHistory = {
+      ...s,
+      augmentData: {
+        ...s.augmentData,
+        "palm_flip:usedSeq:p0": 1,
+        "palm_flip:seq:p0": 2, // 1국 지남 — 아직 잠김
+      },
+    };
+    const g1 = createStandardGameFromState(withHistory);
+    installAugment(g1.engine, palmFlip, "p0", { yaku: g1.yaku });
+    const out = handTile(g1.engine.state, S4);
+    expect(
+      g1.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } }).ok,
+    ).toBe(false);
+
+    const g2 = createStandardGameFromState({
+      ...withHistory,
+      augmentData: { ...withHistory.augmentData, "palm_flip:seq:p0": 3 }, // 2국 지남
+    });
+    installAugment(g2.engine, palmFlip, "p0", { yaku: g2.yaku });
+    expect(
+      g2.engine.submit({ player: "p0", type: "flip_riichi", payload: { tileId: out } }).ok,
+    ).toBe(true);
   });
 
   it("리치 공탁에는 손대지 않는다 (재리치 무료가 아니다)", () => {

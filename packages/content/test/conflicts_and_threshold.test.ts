@@ -145,8 +145,11 @@ describe("폐기한 누명 conflicts — 근거가 실제로 사라졌는지 지
    * 0에 고정한다. 예전에는 그 필드를 "내 첫 순"의 근거로 쓰는 증강 넷을 함께
    * 잠갔는데, 넷 다 `discardCount`로 옮겨져 근거가 없어졌다. 누가 되돌리면
    * conflicts를 다시 세워야 하므로 여기서 못박는다.
+   *
+   * suit_unify(단색 세계)는 2026-08-16에 발동창이 개벽과 같아져(자기 순이면 언제든)
+   * 순을 세지 않게 됐다 — 이 목록에서 빠진 이유다. 애초에 그 필드를 읽지 않는다.
    */
-  const moved = ["seat_swap", "suit_unify", "alchemist", "take_back"];
+  const moved = ["seat_swap", "alchemist", "take_back"];
   for (const id of moved) {
     it(`${id} 는 discardedKinds 가 아니라 discardCount 로 순을 센다`, async () => {
       const src = await import("node:fs").then((fs) =>

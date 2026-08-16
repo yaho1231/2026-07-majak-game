@@ -1,6 +1,8 @@
 /**
  * suit_unify (단색 세계) 테스트.
  * (1) 발동창이 동1국이 아니라 '각 국의 첫 순'에 열린다(게임당 1회는 usedKey로 유지, 46차).
+ *     → 2026-08-16: **개벽과 같은 창**으로 다시 넓혔다 — 자기 순이면 언제든, 리치 중
+ *       제외, 한 국에 1회. 아래 테스트가 그 세 조건을 지킨다.
  * (2) 48차: 청일색 봉인 삭제 — 발동 전후 어느 시점에도 역을 봉인하지 않는다
  *     (리미트는 횟수로만 준다, 10_AUGMENT_SYSTEM §0).
  */
@@ -63,7 +65,8 @@ describe("suit_unify (단색 세계)", () => {
     expect(monoValidate(game, "p0")).toBeNull();
   });
 
-  it("이미 버린 뒤(첫 순이 지남)에는 발동할 수 없다", () => {
+  /** 이미 몇 순 지난 자기 턴 (버림 이력이 있다) */
+  function midRoundState(round: Partial<GameState["round"]> = {}): GameState {
     const base = craft({
       hands: { p0: "123m456m789m123p1s", p1: "*", p2: "*", p3: "*" },
       discards: { p0: "9m" },
@@ -71,15 +74,50 @@ describe("suit_unify (단색 세계)", () => {
       turnSeat: 0,
       drawnLastFor: "p0",
     });
-    const game = createStandardGameFromState(
-      withAugment(
-        { ...base, round: { ...base.round, prevalentWind: 2, roundNumber: 1 } },
-        "p0",
-        "suit_unify",
-      ),
+    return withAugment(
+      { ...base, round: { ...base.round, prevalentWind: 2, roundNumber: 1, ...round } },
+      "p0",
+      "suit_unify",
     );
+  }
+
+  // 2026-08-16 "개벽처럼 원할 때 발동 가능하게" — 첫 순 제한이 사라졌다
+  it("이미 버린 뒤(첫 순이 지남)에도 자기 순이면 발동할 수 있다", () => {
+    const game = createStandardGameFromState(midRoundState());
     installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
-    expect(monoValidate(game, "p0")).toBe("only on the first hand");
+    expect(monoValidate(game, "p0")).toBeNull();
+  });
+
+  it("리치 중에는 발동할 수 없다 (개벽과 같은 조건)", () => {
+    const base = midRoundState();
+    const game = createStandardGameFromState({
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p0: {
+            ...base.round.byPlayer["p0"]!,
+            riichi: { double: false, ippatsu: false, discardIndex: 0 },
+          },
+        },
+      },
+    });
+    installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
+    expect(monoValidate(game, "p0")).toBe(
+      "not your turn (or riichi, or already this round)",
+    );
+  });
+
+  it("반장전이라 2회 남아 있어도 한 국에는 한 번뿐이다 (같은 순 연타 방지)", () => {
+    const game = createStandardGameFromState(midRoundState());
+    installAugment(game.engine, suitUnify, "p0", { yaku: game.yaku });
+    expect(game.engine.submit({ player: "p0", type: "mono_world", payload: { suit: "pin" } }).ok).toBe(true);
+    // 매치 횟수는 아직 1회 남았다 — 막는 것은 국당 1회 쪽이다
+    expect(game.engine.state.augmentData["suit_unify:uses:p0"]).toBe(1);
+    expect(monoValidate(game, "p0")).toBe(
+      "not your turn (or riichi, or already this round)",
+    );
   });
 
   it("발동 전후 어느 쪽도 역을 봉인하지 않는다 — 청일색까지 그대로 (동풍전 1회)", () => {

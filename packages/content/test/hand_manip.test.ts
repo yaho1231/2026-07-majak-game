@@ -137,7 +137,7 @@ describe("suit_unify — 단색 세계", () => {
     expect(state.augmentData["suit_unify:uses:p0"]).toBe(1);
   });
 
-  it("동풍전 1회만·첫 패에만 발동한다", () => {
+  it("동풍전 1회만 발동한다 — 첫 순이 지난 뒤에도 자기 순이면 열려 있다", () => {
     // 발동 → 사용 카운터 → 재사용 거부 (동풍전이라 1회)
     const first0 = craftFirstHand();
     const game = createStandardGameFromState({
@@ -151,12 +151,11 @@ describe("suit_unify — 단색 세계", () => {
     expect(again.ok).toBe(false);
     if (!again.ok) expect(again.reason).toBe("already used");
 
-    // 이미 한 번 버린 뒤(첫 패가 아님)엔 발동할 수 없다
+    // 2026-08-16: 이미 버린 뒤(첫 순이 지남)에도 자기 순이면 발동한다 (개벽과 같은 창)
     const g2 = createStandardGameFromState(craftFirstHand("1z"));
     installAugment(g2.engine, suitUnify, "p0", { yaku: g2.yaku });
     const late = g2.engine.submit({ player: "p0", type: "mono_world", payload: { suit: "pin" } });
-    expect(late.ok).toBe(false);
-    if (!late.ok) expect(late.reason).toBe("only on the first hand");
+    expect(late.ok).toBe(true);
   });
 });
 
