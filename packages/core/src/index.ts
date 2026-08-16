@@ -153,6 +153,7 @@ export type {
   ActionOption,
   DecisionPrompt,
   FlowStatus,
+  LockedOption,
 } from "./mahjong/flow/FlowController.js";
 export {
   createStandardGame,

@@ -122,6 +122,19 @@ function isKokushiEvaluation(ev: WinEvaluation): boolean {
 }
 
 /**
+ * **증강이 막아서** 화료가 성립하지 않을 때 win.validate가 돌려주는 사유.
+ *
+ * 이 두 가지는 "손이 안 됐다·후리텐이다" 같은 표준 사유와 다르다 — 손은 다 됐는데
+ * 남의 증강이 막은 것이라, 조용히 건너뛰면 당한 쪽은 **왜 론 버튼이 안 뜨는지 영영
+ * 모른다**(no_ron_pact 주석의 그 문제다). FlowController가 이 사유를 자물쇠 표시
+ * (`DecisionPrompt.locked`)로 옮겨 화면에 잠긴 론/쯔모 버튼을 세운다.
+ *
+ * ⚠ 문자열을 바꾸면 자물쇠가 조용히 사라진다 — 반드시 이 상수를 통해 쓴다.
+ */
+export const WIN_BLOCKED_MIN_HAN = "below minimum han";
+export const WIN_BLOCKED_RON_IMMUNE = "discarder is immune to ron";
+
+/**
  * 최소 판 게이트(win.minHan — 격/rank_gate)에 걸리는가.
  * 역만은 면제한다 — 막고 싶은 것은 "싼 손 속공"이지 최상급 손이 아니다.
  * 증강이 얹는 추가 판(score.extraHan)도 함께 세어, 판을 올려 주는 증강과 모순되지 않게 한다.
@@ -280,7 +293,7 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
         );
         if (ev === null) return "not a winning hand";
         if (needYaku && !ev.ok) return "no yaku";
-        if (belowMinHan(ev, state, rules, req.player)) return "below minimum han";
+        if (belowMinHan(ev, state, rules, req.player)) return WIN_BLOCKED_MIN_HAN;
         return null;
       }
       if (state.round.phase === "reaction") {
@@ -291,14 +304,6 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
           return "cannot ron own kan";
         }
         if (last?.player === req.player) return "cannot ron own discard";
-        // 이 사람의 버림은 론당하지 않는다 (천하무적) — playerId는 '쏘일 사람'
-        const source = last?.player ?? chankan?.player;
-        if (
-          source !== undefined &&
-          rules.resolve<boolean>("win.ronImmune", { playerId: source, state })
-        ) {
-          return "discarder is immune to ron";
-        }
         if (
           rules.resolve<boolean>("win.furiten.enabled", {
             playerId: req.player,
@@ -327,7 +332,22 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
           return "closed kan can only be robbed by kokushi";
         }
         if (needYaku && !ev.ok) return "no yaku";
-        if (belowMinHan(ev, state, rules, req.player)) return "below minimum han";
+        /*
+         * 이 사람의 버림은 론당하지 않는다 (천하무적·불가침 조약) — playerId는 '쏘일 사람'.
+         *
+         * 이 검사는 **손이 실제로 화료형인지 다 본 뒤**에 온다. 예전엔 evaluateWin보다
+         * 앞이라, 텐파이도 아닌 사람이 물어도 "면역"이 돌아왔다 — 판정 결과는 어차피
+         * 거부라 같았지만, 지금은 이 사유가 곧 화면의 자물쇠라서 위치가 곧 정보가 된다.
+         * 앞에 두면 **아무 관계 없는 사람에게까지 잠긴 론 버튼**이 뜬다.
+         */
+        const source = last?.player ?? chankan?.player;
+        if (
+          source !== undefined &&
+          rules.resolve<boolean>("win.ronImmune", { playerId: source, state })
+        ) {
+          return WIN_BLOCKED_RON_IMMUNE;
+        }
+        if (belowMinHan(ev, state, rules, req.player)) return WIN_BLOCKED_MIN_HAN;
         return null;
       }
       return "not a winning phase";

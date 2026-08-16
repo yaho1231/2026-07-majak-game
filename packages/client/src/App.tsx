@@ -27,6 +27,7 @@ import type {
   ClientMessage,
   DecomposeOptions,
   LeaderboardEntry,
+  LockedOption,
   DraftOfferMessage,
   FeedbackEntry,
   FeedbackKind,
@@ -940,6 +941,24 @@ function loadSettings(): Settings {
     /* 손상된 값은 무시하고 기본값 */
   }
   return DEFAULT_SETTINGS;
+}
+
+/**
+ * 잠긴 론·쯔모 버튼에 붙는 설명.
+ *
+ * 손은 다 됐는데 남의 증강이 막은 순간이다 — 예전엔 버튼이 아예 안 떠서 당한 사람은
+ * "왜 화료가 안 되지"만 남았다(2026-08-17 사용자 요청). 무엇이 막았는지까지 말한다.
+ */
+function lockedReasonText(l: LockedOption): string {
+  if (l.reason === "minHan") {
+    return `잠김 — 이번 국은 ${l.minHan ?? 5}판 이상이어야 화료할 수 있습니다 (격(格)에 지목당했습니다)`;
+  }
+  return "잠김 — 이 사람의 버림패는 지금 론당하지 않습니다 (천하무적·불가침 조약)";
+}
+
+/** 버튼 안에 한 줄로 들어가는 짧은 사유 */
+function lockedReasonShort(l: LockedOption): string {
+  return l.reason === "minHan" ? `${l.minHan ?? 5}판 이상` : "론 불가";
 }
 
 /** 후로없음: 치·펑·깡만 있는(론 없는) 후로 프롬프트인가. */
@@ -13973,7 +13992,15 @@ function ActionBar(props: {
       o.type !== "free_discard" &&
       !AUGMENT_ACTION_TYPES.has(o.type),
   );
-  if (buttons.length === 0 && !hasRiichi && riichiAugTypes.length === 0) return null;
+  const locked = prompt.locked ?? [];
+  if (
+    buttons.length === 0 &&
+    locked.length === 0 &&
+    !hasRiichi &&
+    riichiAugTypes.length === 0
+  ) {
+    return null;
+  }
 
   /** 증강 리치 무장 — 이미 그 증강으로 무장 중이면 해제(토글). 리치 모드는 함께 푼다. */
   const armRiichiAug = (type: string): void => {
@@ -14055,6 +14082,24 @@ function ActionBar(props: {
               ⚡ {augActionName(props.catalog, t)}
             </button>
           ))}
+          {/* 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
+              여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다. */}
+          {locked.map((l) => {
+            const label = l.type === "win" ? (isMyTurn ? "쯔모" : "론") : l.type;
+            return (
+              <button
+                key={`locked-${l.type}-${l.reason}`}
+                className="act act-win act-locked"
+                type="button"
+                disabled
+                aria-disabled="true"
+                title={lockedReasonText(l)}
+              >
+                🔒 {label}
+                <span className="act-target">{lockedReasonShort(l)}</span>
+              </button>
+            );
+          })}
           {buttons.map((o, i) => {
             const label =
               o.type === "win" ? (isMyTurn ? "쯔모" : "론") : (ACTION_LABEL[o.type] ?? props.catalog[o.type]?.name ?? o.type);
