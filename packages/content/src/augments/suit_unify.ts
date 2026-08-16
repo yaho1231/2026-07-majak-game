@@ -1,10 +1,14 @@
 /**
- * suit_unify (단색 세계) — 동풍전 1·반장전 2회, 어느 국이든 첫 패를 받은 직후 액티브 버튼으로 발동한다.
+ * suit_unify (단색 세계) — 동풍전 1·반장전 2회, **자기 순이면 언제든** 액티브 버튼으로 발동한다.
  * **만·통·삭 중 원하는 색을 직접 골라** 손패의 수패를 전부 그 색으로 바꾼다.
  * **청일색까지 그대로 인정된다.**
  *
- * 버튼은 각 국에서 자기 첫 타패 전(자기 턴)에 뜨며, 동풍전 1·반장전 2회만 쓸 수 있다(usedKey). 어느
- * 국의 첫 순에 쓸지 스스로 고르며, 한 국의 첫 순을 넘겨도 다음 국의 첫 순에 다시 기회가 온다.
+ * 2026-08-16: **발동창을 개벽(genesis)과 같게 열었다** (사용자 지시 "개벽처럼 원할 때").
+ * 예전에는 "각 국의 첫 타패 전"에만 버튼이 떴다. 그런데 첫 순에는 어느 색으로 몰아야
+ * 이득인지 정보가 가장 적다 — 손이 어떻게 굴러갈지 보이기 전에 게임당 한 번뿐인 자원을
+ * 태우거나, 아니면 그 국을 통째로 건너뛰는 수밖에 없었다. 지금은 개벽과 같은 조건이다:
+ * 자기 순(turn.act) · 리치 중이 아님 · **한 국에 한 번까지**. 국당 1회 제한도 개벽과 같은
+ * 이유다 — 이 액션은 턴을 넘기지 않아서, 없으면 같은 순에 남은 횟수를 전부 태울 수 있다.
  *
  * 2026-07-22 (48차): **청일색 봉인 삭제 + 색 무작위 → 플레이어 선택.** "동풍전 1·반장전 2회"라는 횟수 제한이 이미 리미트이므로
  * 능력에 페널티를 겹쳐 붙이지 않는다 — 수패를 한 색으로 만들어 주면서 청일색을 막는 것은
@@ -32,7 +36,14 @@ import type {
   ProposedEvent,
   Suit,
 } from "@majak/core";
-import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import {
+  counterOf,
+  flagOf,
+  matchUses,
+  publishUsesLeft,
+  roundKey,
+  roundViewKey,
+} from "../util.js";
 import {
   NUMBER_SUITS,
   monoWorldEvent,
@@ -49,13 +60,23 @@ const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(h)) < matchUses(state);
 
-/** 지금이 '첫 패를 받은 직후'인가 — 어느 국이든 자기 턴·아직 이 국에서 안 버렸을 때 */
-function atFirstHand(state: GameState, holder: PlayerId): boolean {
+/**
+ * 이번 국에 이미 물들였는가 (국 스코프).
+ *
+ * 이 액션은 손패를 통째로 바꾸면서도 **턴을 넘기지 않는다**. 국당 1회로 묶지 않으면
+ * 같은 순에 남은 매치 횟수를 전부 태울 수 있다 (개벽 genesis와 같은 이유·같은 배관).
+ */
+const unifiedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:unified:${roundKey(state)}:${h}`;
+
+/** 지금 발동할 수 있는가 — 자기 순(turn.act)·리치 중이 아님·이 국에 아직 안 씀 */
+function canUnify(state: GameState, holder: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== holder) return false;
-  // 누명이 discardedKinds를 남의 이력으로 돌리므로 실제 버림 횟수로 센다(docs/25 P5)
-  return (r.byPlayer[holder]?.discardCount ?? 0) === 0;
+  if (r.byPlayer[holder]?.riichi != null) return false;
+  if (flagOf(state, unifiedKey(state, holder))) return false; // 국당 1회
+  return true;
 }
 
 /**
@@ -70,6 +91,7 @@ function unifyEvents(
   return [
     monoWorldEvent(state, holder, suit),
     augmentDataSet(usesKey(holder), counterOf(state, usesKey(holder)) + 1),
+    augmentDataSet(unifiedKey(state, holder), true),
     // 어떤 색으로 통일됐는지 전원 공개
     augmentDataSet(roundViewKey("*", `${ID}:${holder}`), suit),
   ];
@@ -83,7 +105,7 @@ const monoWorldAction: ActionDef<{ suit: Suit }> = {
       return "no suit_unify augment";
     }
     if (!hasUsesLeft(state, req.player)) return "already used";
-    if (!atFirstHand(state, req.player)) return "only on the first hand";
+    if (!canUnify(state, req.player)) return "not your turn (or riichi, or already this round)";
     if (!NUMBER_SUITS.includes(req.payload.suit)) return "invalid suit";
     return null;
   },
@@ -97,9 +119,9 @@ export const suitUnify: AugmentDef = defineAugment({
   complexity: 2,
   name: "단색 세계",
   description:
-    "(동풍전 1회 · 반장전 2회) 국의 첫 패를 받은 뒤 자기 첫 타패 전에 발동하며, 만·통·삭 중 원하는 색을 골라 손패의 수패를 전부 그 색으로 바꾼다. 숫자는 그대로 유지되고 청일색도 인정된다.",
+    "(동풍전 1회 · 반장전 2회 · 한 국에 1회) 자기 순이면 언제든 발동하며, 만·통·삭 중 원하는 색을 골라 손패의 수패를 전부 그 색으로 바꾼다. 숫자는 그대로 유지되고 청일색도 인정된다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 어느 국이든 첫 패를 받은 뒤 자기 첫 타패 전에 액티브 버튼이 뜬다. 만·통·삭 중 색을 직접 골라 손패의 수패를 숫자는 그대로 둔 채 전부 그 색으로 바꾸며, 통일된 색으로 청일색까지 그대로 인정된다. 새 패는 패산에 있는 같은 숫자의 실물과 맞바꿔 오고(내 패는 패산 맨 밑으로 돌아간다), 패산에 그 숫자가 남아 있지 않을 때만 그 자리에서 새로 만들어진다. 어느 색으로 물들였는지는 전원에게 공개된다.",
+    "(동풍전 1회 · 반장전 2회 — 다만 **한 국에는 한 번까지만** 쓸 수 있다. 이 액션은 턴을 넘기지 않아서, 이 제한이 없으면 같은 순에 남은 횟수를 전부 태울 수 있다) 자기 순이면 언제든 액티브 버튼이 뜬다. 만·통·삭 중 색을 직접 골라 손패의 수패를 숫자는 그대로 둔 채 전부 그 색으로 바꾸며, 통일된 색으로 청일색까지 그대로 인정된다. 새 패는 패산에 있는 같은 숫자의 실물과 맞바꿔 오고(내 패는 패산 맨 밑으로 돌아간다), 패산에 그 숫자가 남아 있지 않을 때만 그 자리에서 새로 만들어진다. 어느 색으로 물들였는지는 전원에게 공개된다. 리치 중에는 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -118,10 +140,10 @@ export const suitUnify: AugmentDef = defineAugment({
 
     // 규칙 봉인 없음 — 통일해 준 색으로 청일색까지 그대로 노릴 수 있다 (48차).
 
-    // 첫 국 첫 패를 받은 자기 턴에만 발동 버튼을 노출한다 (합법성은 validate가 최종 판정)
+    // 자기 순이면 언제든 발동 버튼을 노출한다 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) => {
       if (!hasUsesLeft(state, holder)) return [];
-      if (!atFirstHand(state, holder)) return [];
+      if (!canUnify(state, holder)) return [];
       // 만·통·삭 세 후보를 제시 — 어떤 색으로 통일할지 플레이어가 고른다
       return NUMBER_SUITS.map((suit) => ({ type: ACTION, payload: { suit } }));
     });
@@ -131,8 +153,12 @@ export const suitUnify: AugmentDef = defineAugment({
   bot: plan({
     // 손패의 수패를 통째로 한 색으로 바꾼다 — 갈아엎기다
     intent: "rewrite",
-    // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
-    fleeting: true,
+    /*
+     * 2026-08-16: `fleeting`을 뗐다. 발동창이 "첫 순 한 번"에서 "자기 순이면 언제든"으로
+     * 넓어졌으므로 더 이상 "지금 아니면 없는" 발동이 아니다 — 적기는 planner의 `rewrite`
+     * 판정(잡손일수록 값이 난다)에 맡긴다. 게임당 1~2회뿐이라 문턱은 한 칸 더 올린다.
+     */
+    oneShot: true,
     pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null;
       const counts: Record<string, number> = { man: 0, pin: 0, sou: 0 };

@@ -699,9 +699,14 @@ const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
  * (2026-08-01 사용자 요청: 오픈 리치·스텔스 리치를 드래그로도 걸 수 있게)
  * (2026-08-08 사용자 요청: 영혼의 일격도 리치 선언이라 같은 손놀림으로 — 여기 빠져 있었다)
  *
+ * (2026-08-16 사용자 요청: 손바닥 뒤집기도 결국 "이 패를 버린다"라 같은 손놀림이어야 한다.
+ *  리치 중에는 손패가 통째로 어두워져 있어서, 버튼을 눌러도 정말 바꿀 수 있는 건지
+ *  손이 멎었다 — 드래그를 열고 액션 바에 전용 버튼을 세운다.)
+ *
  * 이 집합은 곧 **증강 리치 목록**이기도 하다 — 액션 바가 평소 [리치] 버튼 옆에
  * 이 액션들을 나란히 띄운다(`ActionBar`). 예전엔 "✦ 액티브 증강" 메뉴 안에만 있어서
  * 쓸 수 있는 줄 모르고 그냥 리치를 걸어 버렸다(2026-08-08 사용자 보고).
+ * 손바닥 뒤집기는 리치 중에만 뜨므로 [리치] 버튼과 자리를 다투지 않는다.
  */
 const DRAG_DISCARD_ARM_TYPES = new Set([
   "open_riichi",
@@ -709,6 +714,8 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
   "all_in_riichi",
   "soul_strike",
   "no_retreat_riichi",
+  // 손바닥 뒤집기 — 리치를 **거는** 것은 아니지만 "무장 → 버릴 패를 끌어 놓기"가 같다
+  "flip_riichi",
 ]);
 
 /**
@@ -12006,12 +12013,27 @@ function OwnArea(props: {
             const riichi = opts.find((o) => o.type === "riichi");
             const freeDiscard = opts.find((o) => o.type === "free_discard");
             const active = props.riichiMode ? riichi : (discard ?? freeDiscard);
-            const clickable = active !== undefined && (!props.riichiMode || riichi !== undefined);
+            // 등가교환: 상대를 정한 뒤엔 모든 손패가 선택 대상, 고른 3장은 강조
+            const swapPicking = armedAug === "swap3" && swapTarget !== null;
+            const swapChosen = swapPicking && swapGive.includes(id);
+            const armable =
+              armedAug === "swap3" ? swapPicking : armedAug !== null && armedByTile.has(id);
+            // 무장 대상도 '지금 누를 수 있는 패'다 — 커서·hover 들림을 함께 준다
+            const clickable =
+              armable ||
+              (active !== undefined && (!props.riichiMode || riichi !== undefined));
             // 리치 선언 후 버릴 수 없는(옵션 없는) 패 + 리치 모드에서 리치 불가 패를 어둡게
             const noDiscard = discard === undefined && freeDiscard === undefined;
+            /*
+             * 무장한 증강의 대상이 되는 패는 **어둡게 두지 않는다.**
+             * 리치 중에는 손패 전부가 잠겨 어두운데, 손바닥 뒤집기로 무장해도 고를 수 있는
+             * 패까지 그대로 어두워서 "정말 바꿀 수 있는 건가"를 화면이 답해 주지 못했다
+             * (2026-08-16 사용자 보고). 지금 누를 수 있는 패는 밝아야 한다.
+             */
             const dimmed =
-              (props.riichiMode && riichi === undefined) ||
-              (riichiDeclared && !props.riichiMode && noDiscard);
+              !armable &&
+              ((props.riichiMode && riichi === undefined) ||
+                (riichiDeclared && !props.riichiMode && noDiscard));
             const isDrawn = hasDrawn && id === drawnId;
             // 봉인된 패(봉인술사 등) — 자물쇠 표시. 소프트락 해제 등으로 버릴 수
             // 있게 된 경우(clickable)에도 봉인 상태 자체는 계속 보여준다.
@@ -12022,11 +12044,6 @@ function OwnArea(props: {
               dangerSet.size > 0 && tileKind !== undefined && dangerSet.has(kindKey(tileKind));
             // 텐파이면 이 패를 버렸을 때의 대기패를 hover 시 표시 (리치 모드 아니어도)
             const showWaits = hoverId === id && hoverWaits.length > 0;
-            // 등가교환: 상대를 정한 뒤엔 모든 손패가 선택 대상, 고른 3장은 강조
-            const swapPicking = armedAug === "swap3" && swapTarget !== null;
-            const swapChosen = swapPicking && swapGive.includes(id);
-            const armable =
-              armedAug === "swap3" ? swapPicking : armedAug !== null && armedByTile.has(id);
             return (
               <button
                 key={id}

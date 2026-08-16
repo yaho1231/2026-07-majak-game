@@ -15,8 +15,6 @@ import {
   ROUND_STARTED,
   SETTLE_LAYER,
   SETTLE_STAGE,
-  TILE_DISCARDED,
-  TILE_DRAWN,
   settlePriority,
   augmentDataSet,
   augmentStageKey,
@@ -118,9 +116,18 @@ export interface UsesLeftView {
  * 사라지고 나서야 "아, 다 썼구나"를 알 수 있었다(2026-08-12 사용자 지적).
  * 연금술사·염색이 각자 손으로 만들어 두었던 `{id}:left` 채널을 규약으로 끌어올린 것이다.
  *
- * 동기화 시점: 쯔모·버림·국 시작. 값이 달라질 때만 발행하므로 그 외에는 no-op다.
- * (ROUND_STARTED만으로는 부족하다 — 게임 시작 드래프트는 1국 배패 **뒤에** 설치돼
- *  첫 국 내내 채널이 비어 있다. 쯔모·버림은 매 순 일어나 곧바로 값이 선다.)
+ * 동기화 시점: **모든 이벤트**(`"*"`). 값이 달라질 때만 발행하므로 그 외에는 no-op다.
+ *
+ * 예전에는 쯔모·버림·국 시작 세 이벤트에만 걸려 있었다. 그런데 액티브 증강을 쓰는
+ * 순간에 일어나는 것은 그 증강의 **자기 이벤트**(PondSnatchPerformed·mono_world …)라,
+ * 카운터는 그 자리에서 줄어드는데 화면의 "n회"는 **다음 쯔모나 버림이 올 때까지**
+ * 그대로 서 있었다 — "날치기·단색 세계 횟수가 안 줄어든다", "카운트가 나중에 줄어든다"
+ * (2026-08-16 사용자 보고)가 전부 이 한 가지였다. 발동 직후에 갱신되어야 하는데 그
+ * 시점을 이벤트 이름으로 열거하는 방식은 증강마다 새로 빠뜨리게 된다(날치기는 카운터를
+ * 리듀서 안에서 직접 올려 augmentData 이벤트조차 나지 않는다).
+ *
+ * 값이 같으면 아무것도 내지 않으므로 연쇄는 한 겹에서 멈춘다 — 발행한 AugmentDataSet을
+ * 다시 보고도 계산 결과가 같아 재발행이 없다.
  *
  * @param compute 지금 상태에서 `{left, total}` — 아직 알 수 없으면 null
  */
@@ -144,9 +151,7 @@ export function publishUsesLeft(
     }
     rc.emit(augmentDataSet(key, { left: next.left, total: next.total, scope }));
   };
-  ctx.reaction(TILE_DRAWN, sync);
-  ctx.reaction(TILE_DISCARDED, sync);
-  ctx.reaction(ROUND_STARTED, sync);
+  ctx.reaction("*", sync);
 }
 
 /**

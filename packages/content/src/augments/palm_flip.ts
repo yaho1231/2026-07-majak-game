@@ -1,9 +1,16 @@
 /**
  * 손바닥 뒤집기 (palm_flip, prism) — "리치로 잠긴 손이 딱 한 번 풀린다."
  *
- * 동풍전 1·반장전 2회. **리치 중** 자기 순에, 쯔모기리 대신 **손패에서 아무 패나 골라
+ * **2국에 1회.** **리치 중** 자기 순에, 쯔모기리 대신 **손패에서 아무 패나 골라
  * 버린다.** 버린 뒤에도 텐파이여야 하므로 리치는 그대로 서 있고, 대신 **오름패가 바뀐다** —
  * 첫 리치를 기준으로 짠 세 사람의 안전패 계산이 그 자리에서 휴지조각이 된다.
+ *
+ * ## 2026-08-16 — 리미트를 매치 횟수에서 **2국에 1회**로 (사용자 지시)
+ *
+ * 매치 횟수(동풍1·반장2)는 "언제 써도 되지만 게임 전체에 한두 번"이라 리치를 걸어 둔
+ * 국마다 쓸지 말지를 고민하게 만들지 못했다. 2국에 1회는 **쓴 국과 바로 다음 국이 잠기는**
+ * 리듬이라, 리치를 언제 거는지와 이 버튼을 언제 태우는지가 같은 판단이 된다.
+ * 배관은 큰손(big_hand)·도라 잔상과 같다 — `trackRoundSeq` + `cooldownReady/cooldownUse`.
  *
  * ## 2026-08-15 ① — 승부수와 겹쳐서 갈랐다
  *
@@ -37,7 +44,7 @@
  *
  * 구현: `free_riichi_discard`의 `free_discard`와 같은 배관이다. 커스텀 액션이
  * 표준 `TILE_DISCARDED{riichi:false}`를 직접 내고(리치 상태·공탁은 그대로), 그 앞에
- * 작은 이벤트 하나로 리치 후리텐만 내린다. 자유 선언과 다른 점은 **횟수 제한(matchUses)**과
+ * 작은 이벤트 하나로 리치 후리텐만 내린다. 자유 선언과 다른 점은 **쿨다운(2국에 1회)**과
  * **텐파이 유지 검사**, 그리고 무엇보다 **오름패가 실제로 갱신된다**는 것이다
  * (자유 선언은 리치 시점 손패를 스냅샷으로 고정해 대기가 영영 안 바뀐다 — 그래서 conflicts).
  */
@@ -62,11 +69,11 @@ import type {
   TileId,
 } from "@majak/core";
 import {
-  counterOf,
-  matchUses,
-  publishUsesLeft,
+  cooldownReady,
+  cooldownUse,
   roundKey,
   roundViewKey,
+  trackRoundSeq,
 } from "../util.js";
 import { waitTilesLeft } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
@@ -76,10 +83,8 @@ const ACTION = "flip_riichi";
 /** 리치 후리텐만 내리는 작은 이벤트 (리치 자체·공탁은 건드리지 않는다) */
 const EVENT = "RiichiPalmFlipped";
 
-/** 매치당 사용 횟수 (동풍1/반장2) */
-const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
-const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
-  counterOf(state, usesKey(h)) < matchUses(state);
+/** 2국에 1회 — 쓴 국과 바로 다음 국이 잠긴다 (큰손·도라 잔상과 같은 배관) */
+const COOLDOWN_ROUNDS = 2;
 
 interface FlipPayload {
   player: PlayerId;
@@ -109,7 +114,7 @@ function commonReject(state: GameState, player: PlayerId): string | null {
   if (state.round.phase !== "turn.act") return "not in act phase";
   if (playerAtSeat(state, state.round.turnSeat).id !== player) return "not your turn";
   if (state.round.byPlayer[player]?.riichi == null) return "not in riichi";
-  if (!hasUsesLeft(state, player)) return "no uses left this game";
+  if (!cooldownReady(state, ID, player, COOLDOWN_ROUNDS)) return "on cooldown";
   return null;
 }
 
@@ -156,7 +161,8 @@ const flipAction: ActionDef<{ tileId: TileId }> = {
      * (이 버림이 새 대기패를 흘리는 것이라면 코어가 그 자리에서 다시 세운다 — 맞는 동작이다.)
      */
     { type: EVENT, payload: { player: req.player } satisfies FlipPayload },
-    augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+    // 2국에 1회 — 기준점을 찍고 잔량 표시도 그 자리에서 갱신한다
+    ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
     // 전원 공개 — 상대는 이 사람의 리치 정보에 유통기한이 있다는 걸 알아야 한다
     augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), roundKey(state)),
     {
@@ -178,9 +184,9 @@ export const palmFlip: AugmentDef = defineAugment({
   complexity: 2,
   name: "손바닥 뒤집기",
   description:
-    "(동풍전 1회 · 반장전 2회) 리치로 잠긴 손이 한 번 풀린다 — 쯔모기리 대신 손패에서 아무 패나 골라 버려 오름패를 갈아탄다. 버린 뒤에도 텐파이여야 하므로 리치는 그대로 선다.",
+    "(2국에 1회) 리치로 잠긴 손이 한 번 풀린다 — 쯔모기리 대신 손패에서 아무 패나 골라 버려 오름패를 갈아탄다. 버린 뒤에도 텐파이여야 하므로 리치는 그대로 선다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 리치 중 자기 순에 발동하면 그 순만 손패가 풀려, 쯔모패를 그냥 흘리는 대신 손에서 원하는 패를 골라 버릴 수 있다. 리치도 공탁도 그대로이고 바뀌는 것은 오름패뿐이다 — 첫 리치를 보고 짠 상대의 안전패 계산이 그 자리에서 무너진다.\n\n고를 수 있는 패는 **버린 뒤에도 텐파이가 남는 패**뿐이다(텐파이가 깨지는 버림은 후보에 뜨지 않는다). 그래서 쯔모한 패가 쓸모 있을 때 — 예를 들어 4·6삭 칸짱에 7삭을 쯔모했을 때 4삭을 버려 6·7삭 량면으로 갈아탈 때 — 비로소 후보가 열린다. 쯔모패 자체를 고르는 것은 그냥 쯔모기리라 후보가 아니고, 봉인된 패도 이 경로로는 버릴 수 없다.\n\n리치로 생긴 후리텐(오름패를 넘겨 생긴 영구 후리텐 포함)은 함께 풀린다 — 대기가 통째로 바뀌었기 때문이다. 발동 사실은 전원에게 공개된다.",
+    "(2국에 1회) 리치 중 자기 순에 발동하면 그 순만 손패가 풀려, 쯔모패를 그냥 흘리는 대신 손에서 원하는 패를 골라 버릴 수 있다. 리치도 공탁도 그대로이고 바뀌는 것은 오름패뿐이다 — 첫 리치를 보고 짠 상대의 안전패 계산이 그 자리에서 무너진다.\n\n고를 수 있는 패는 **버린 뒤에도 텐파이가 남는 패**뿐이다(텐파이가 깨지는 버림은 후보에 뜨지 않는다). 그래서 쯔모한 패가 쓸모 있을 때 — 예를 들어 4·6삭 칸짱에 7삭을 쯔모했을 때 4삭을 버려 6·7삭 량면으로 갈아탈 때 — 비로소 후보가 열린다. 쯔모패 자체를 고르는 것은 그냥 쯔모기리라 후보가 아니고, 봉인된 패도 이 경로로는 버릴 수 없다.\n\n리치로 생긴 후리텐(오름패를 넘겨 생긴 영구 후리텐 포함)은 함께 풀린다 — 대기가 통째로 바뀌었기 때문이다. 발동 사실은 전원에게 공개된다.",
   /**
    * 스텔스 리치와는 함께 갖지 않는다 — 저쪽의 conflicts에도 같은 이유가 적혀 있다.
    * 이 증강은 발동을 **전원에게 공개**하고, 그 공개는 곧 "저 사람 리치였구나"의 확정이다.
@@ -188,11 +194,9 @@ export const palmFlip: AugmentDef = defineAugment({
   install(ctx) {
     const { engine, holder } = ctx;
 
-    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
-    publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
-      total: matchUses(state),
-    }));
+    // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다).
+    // 잔량(`cooldown:palm_flip`)은 이름표 pill이 "N국 뒤"로 읽어 준다.
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(flipAction);
