@@ -491,3 +491,129 @@ describe("HumanAgent — 리치 상대에게 손패 조작 증강을 쓰려 하�
     expect(sock.sent.filter((m) => m.type === "error").at(-1).code).toBe("INVALID_ACTION");
   });
 });
+
+/**
+ * 슬롯별 새로고침 (2026-08-17) — 마음에 안 드는 카드 한 장을 **한 번씩만** 갈아 끼운다.
+ *
+ * 교체분은 컨트롤러가 제시와 같은 추첨에서 미리 뽑아 넘긴다(좌석 간 겹침 금지가
+ * 교체된 카드에도 걸린다 — 검증은 content/draft_reroll_diversity). 여기서 보는 것은
+ * **좌석이 그 교체분을 어떻게 쓰는가**다: 슬롯당 1회, 화면과 서버의 후보가 어긋나지 않기,
+ * 재접속·자동 선택이 갈아 낀 뒤의 화면을 따라가기.
+ */
+describe("HumanAgent — 드래프트 슬롯 새로고침", () => {
+  const def = (id: string): any => ({ id, tier: "prism", name: id, description: `${id} 설명` });
+  const CHOICES = [def("a"), def("b"), def("c")];
+  const REROLLS = [def("x"), def("y"), def("z")];
+
+  function armed(): { sock: FakeSocket; agent: HumanAgent; picked: () => string | null } {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    let picked: string | null = null;
+    void agent.decideDraft("gameStart", CHOICES, REROLLS).then((id) => (picked = id));
+    return { sock, agent, picked: () => picked };
+  }
+
+  it("제안에 슬롯별 새로고침 가능 여부가 실린다", () => {
+    const { sock } = armed();
+    const offer = sock.sent.find((m) => m.type === "draftOffer");
+    expect(offer.rerollable).toEqual([true, true, true]);
+  });
+
+  it("새로고침하면 그 슬롯만 교체분으로 바뀐다", () => {
+    const { sock, agent } = armed();
+    agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 1 } as never);
+    const rerolled = sock.sent.filter((m) => m.type === "draftRerolled");
+    expect(rerolled).toHaveLength(1);
+    expect(rerolled[0].slot).toBe(1);
+    expect(rerolled[0].choice.id).toBe("y");
+  });
+
+  it("같은 슬롯을 두 번은 못 간다 (연타해도 한 번)", () => {
+    const { sock, agent } = armed();
+    for (let i = 0; i < 5; i++) {
+      agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 0 } as never);
+    }
+    expect(sock.sent.filter((m) => m.type === "draftRerolled")).toHaveLength(1);
+    expect(agent.rerolledDraftSlots()).toEqual([0]);
+  });
+
+  it("범위 밖·정수가 아닌 슬롯은 조용히 무시한다", () => {
+    const { sock, agent } = armed();
+    for (const slot of [-1, 3, 99, 1.5, NaN, "1" as never]) {
+      agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot } as never);
+    }
+    expect(sock.sent.filter((m) => m.type === "draftRerolled")).toHaveLength(0);
+    expect(sock.sent.filter((m) => m.type === "error")).toHaveLength(0);
+  });
+
+  it("갈아 낸 옛 카드는 더 이상 픽할 수 없고, 새 카드는 픽된다", async () => {
+    const { sock, agent, picked } = armed();
+    agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 2 } as never);
+    // 화면에서 사라진 c
+    agent.handleMessage({ type: "draftPick", stage: "gameStart", augmentId: "c" } as never);
+    await tick();
+    expect(picked()).toBeNull();
+    expect(sock.sent.at(-1).code).toBe("INVALID_DRAFT_PICK");
+    // 갈아 낀 z
+    agent.handleMessage({ type: "draftPick", stage: "gameStart", augmentId: "z" } as never);
+    await tick();
+    expect(picked()).toBe("z");
+  });
+
+  it("자동 선택은 갈아 낀 뒤의 화면에서 고른다 (사라진 카드를 주지 않는다)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { agent, picked } = armed();
+      agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 0 } as never);
+      agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 1 } as never);
+      agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 2 } as never);
+      await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS + 100);
+      expect(["x", "y", "z"]).toContain(picked());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("재접속하면 갈아 낀 카드와 소진된 버튼이 그대로 복원된다", () => {
+    const { agent } = armed();
+    agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 1 } as never);
+    const fresh = new FakeSocket();
+    agent.reconnect(fresh.asWs());
+    const offer = fresh.sent.find((m) => m.type === "draftOffer");
+    expect(offer.choices.map((c: any) => c.id)).toEqual(["a", "y", "c"]);
+    expect(offer.rerollable).toEqual([true, false, true]);
+  });
+
+  it("대기 중이 아니면 새로고침 요청이 아무 일도 하지 않는다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 0 } as never);
+    expect(sock.sent).toHaveLength(0);
+  });
+
+  it("교체분을 안 넘긴 판(봇 전용 경로)에서는 새로고침이 아예 없다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    void agent.decideDraft("gameStart", CHOICES);
+    expect(sock.sent.find((m) => m.type === "draftOffer").rerollable).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 0 } as never);
+    expect(sock.sent.filter((m) => m.type === "draftRerolled")).toHaveLength(0);
+  });
+
+  it("다음 스테이지는 새로고침이 다시 3칸 모두 살아난다", async () => {
+    const { agent } = armed();
+    agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 0 } as never);
+    agent.handleMessage({ type: "draftPick", stage: "gameStart", augmentId: "x" } as never);
+    await tick();
+    const sock2 = new FakeSocket();
+    agent.reconnect(sock2.asWs());
+    void agent.decideDraft("eastThird", CHOICES, REROLLS);
+    const offer = sock2.sent.filter((m) => m.type === "draftOffer").at(-1);
+    expect(offer.rerollable).toEqual([true, true, true]);
+    expect(agent.rerolledDraftSlots()).toEqual([]);
+  });
+});

@@ -558,6 +558,7 @@ const MAX_GUEST_ROOMS_PER_IP = 3;
 const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
   "action",
   "draftPick",
+  "draftReroll",
   "roundContinue",
   "handOrder",
   "leaveRoom",
@@ -1341,6 +1342,7 @@ export class RoomManager {
       // ── 게임 액션 · 결과 화면 닫기 ──
       case "action":
       case "draftPick":
+      case "draftReroll":
       case "roundContinue": {
         conn.agent?.handleMessage(msg);
         return;

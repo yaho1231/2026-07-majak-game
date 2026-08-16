@@ -19,6 +19,10 @@
  * 리치를 집었으면 리치를 키우는 것이 더 자주 오되, 스텔스 리치처럼 **은닉이 존재 이유인** 증강에는
  * 리치를 드러내는 것들이 오히려 덜 온다. 근거가 내 보유 목록뿐이라 위 두 장치의 결정성을 깨지 않는다.
  *
+ * **슬롯 새로고침(2026-08-17)**: 마음에 안 드는 카드는 슬롯당 한 번 갈아 끼울 수 있다
+ * (`rollWithRerolls`). 교체분은 **제시와 같은 추첨에서 미리 함께 뽑으므로** 위 ①②의
+ * 겹침 금지가 교체된 카드에도 그대로 걸린다 — 새로고침으로 남과 같은 증강이 뜨는 일이 없다.
+ *
  * 설계: docs/10_AUGMENT_SYSTEM.md §3~4
  */
 
@@ -184,6 +188,20 @@ export class DraftController {
   }
 
   /**
+   * 한 슬롯을 새로고침할 수 있는 횟수. 마음에 안 드는 카드 한 장을 **한 번씩만**
+   * 갈아 끼운다(2026-08-17 사용자 요청). 곧 한 사람이 이 스테이지에 볼 수 있는
+   * 증강은 최대 `choices × (1 + 이 값)`장이고, 교체분까지 **미리 뽑아 두므로**
+   * 좌석 간 겹침 금지가 새로고침에도 그대로 적용된다.
+   */
+  static readonly REROLLS_PER_SLOT = 1;
+
+  /** 이 스테이지에 한 좌석이 볼 수 있는 총 장수 (화면 3장 + 교체분 3장) */
+  private drawCount(): number {
+    const count = this.engine.rules.resolve<number>("augment.draft.choices");
+    return count * (1 + DraftController.REROLLS_PER_SLOT);
+  }
+
+  /**
    * 이 스테이지의 **좌석별 후보 칸(cell)** — 좌석마다 서로 겹치지 않는 후보 묶음.
    *
    * 한 게임에서 증강이 최대한 다양하게 나오도록, 스테이지가 열릴 때 제시 가능한 풀을
@@ -208,14 +226,17 @@ export class DraftController {
     if (seatIdx < 0 || seats <= 1) return null;
 
     const count = this.engine.rules.resolve<number>("augment.draft.choices");
-    // 칸 크기는 제시 수의 6배(최소 18) — 스테이지가 4회(반장전)로 늘면서 마지막 스테이지에는
-    // 남들이 이미 가진 것(최대 3×3=9)과 내가 가진 것(3)이 내 칸에서 빠질 수 있다. 그래도
-    // 3개를 채우려면 3+9+3=15가 필요하므로 18로 잡아 여유를 둔다. 칸이 마르면 칸 밖에서
-    // 보충하는데(아래 roll), 그 경로는 남의 보유분을 걸러 내지 못해 중복이 새어 나간다.
-    // 칸 밖에는 보충용 나머지가 최소 count개 남아야 한다.
-    const cellSize = Math.max(count * 6, 18);
+    const draw = this.drawCount();
+    // 칸 크기는 제시 수의 8배(최소 24) — 스테이지가 4회(반장전)로 늘면서 마지막 스테이지에는
+    // 남들이 이미 가진 것(최대 3×3=9)과 내가 가진 것(3)이 내 칸에서 빠질 수 있다. 슬롯별
+    // 새로고침(REROLLS_PER_SLOT)까지 미리 뽑으므로 채워야 할 장수는 3이 아니라 **6**이다 —
+    // 6+9+3=18이 최소치라 24로 잡아 상호 배제(conflicts)만큼의 여유를 둔다.
+    // (예전 18은 새로고침 없이 3장만 뽑던 시절의 값이고, 그때도 최소치 15에 3장 여유였다.)
+    // 칸이 마르면 칸 밖에서 보충하는데(아래 draw), 그 경로는 남의 보유분을 걸러 내지 못해
+    // 중복이 새어 나간다. 칸 밖에는 보충용 나머지가 최소 draw개 남아야 한다.
+    const cellSize = Math.max(count * 8, 24);
     const pool = this.catalog.all().filter((d) => this.offerable(d, stage));
-    if (pool.length < seats * cellSize + count) return null; // 카탈로그가 작다 → 기존 방식
+    if (pool.length < seats * cellSize + draw) return null; // 카탈로그가 작다 → 기존 방식
 
     // (시드 ⊕ 스테이지)로 결정적 셔플 — 플레이어에 의존하지 않는다(칸 경계가 흔들리면 안 된다).
     const prng = new Prng(
@@ -238,20 +259,49 @@ export class DraftController {
    * (한 게임에 같은 증강이 둘 있지 않게).
    */
   roll(stage: DraftStage, player: PlayerId): AugmentDef[] {
+    const count = this.engine.rules.resolve<number>("augment.draft.choices");
+    return this.draw(stage, player).slice(0, count);
+  }
+
+  /**
+   * 화면에 서는 `count`장과, **슬롯별 새로고침으로 갈아 끼울** `count`장을 함께 준다.
+   *
+   * 교체분을 그 자리에서 새로 뽑지 않고 **여기서 미리 확정**하는 이유가 이 기능의 핵심이다:
+   * `draw`가 한 번에 6장을 뽑으므로 교체분도 내 좌석 칸 안에 있고 남의 보유분이 걸러진
+   * 상태다 — 곧 **새로고침으로 갈아 낀 카드도 다른 사람과 겹치지 않는다**(2026-08-17
+   * 사용자 요청). 나중에 뽑으면 그 시점의 보유 현황이 달라져 있어 이 성질이 깨진다.
+   *
+   * 비복원 추출이라 앞 `count`장은 `roll`이 주는 것과 **글자 그대로 같다** — 새로고침을
+   * 얹었다고 원래 제시가 달라지지 않는다.
+   */
+  rollWithRerolls(
+    stage: DraftStage,
+    player: PlayerId,
+  ): { choices: AugmentDef[]; rerolls: AugmentDef[] } {
+    const count = this.engine.rules.resolve<number>("augment.draft.choices");
+    const drawn = this.draw(stage, player);
+    return { choices: drawn.slice(0, count), rerolls: drawn.slice(count) };
+  }
+
+  /**
+   * 이 스테이지·플레이어의 후보를 `drawCount()`장 뽑는다 (화면분 + 교체분).
+   * 결정적이므로 몇 번 호출해도 같은 결과이며, 앞에서부터 잘라 쓰면 된다.
+   */
+  private draw(stage: DraftStage, player: PlayerId): AugmentDef[] {
     const state = this.engine.state;
     const exclude = this.excludeFor(stage, player);
     const seed = (state.config.seed ^ hashString(`${stage}:${player}`)) >>> 0;
     const prng = new Prng(seed);
-    const count = this.engine.rules.resolve<number>("augment.draft.choices");
+    const total = this.drawCount();
     const bias = this.synergyBiasFor(player);
 
     const cell = this.cellFor(stage, player);
-    if (cell === null) return this.catalog.rollUniform(prng, count, exclude, bias);
+    if (cell === null) return this.catalog.rollUniform(prng, total, exclude, bias);
 
     // 내 칸에서 뽑는다 — 기존 제외 + 남이 이미 가진 것(게임 내 중복 금지).
     const banned = new Set([...exclude, ...this.heldByOthers(stage, player)]);
-    const chosen = this.catalog.rollFromCell(prng, count, cell, banned, bias);
-    if (chosen.length >= count) return chosen;
+    const chosen = this.catalog.rollFromCell(prng, total, cell, banned, bias);
+    if (chosen.length >= total) return chosen;
 
     // 칸이 말라붙은 극단적 경우에만 칸 밖에서 보충한다. 보충분에도 **같은 금지 목록**을
     // 건다 — 금지 목록이 스테이지 내내 고정(스냅샷)이라 pick 검증이 흔들리지 않는다.
@@ -262,7 +312,7 @@ export class DraftController {
       .filter((d) => !banned.has(d.id) && !picked.has(d.id));
     return [
       ...chosen,
-      ...this.catalog.rollFromCell(prng, count - chosen.length, rest, new Set(), bias),
+      ...this.catalog.rollFromCell(prng, total - chosen.length, rest, new Set(), bias),
     ];
   }
 
@@ -296,9 +346,17 @@ export class DraftController {
     if (!result.ok) throw new Error(`draftOffer failed: ${result.reason}`);
   }
 
-  /** 픽 확정: 제시된 것 중 하나여야 하며, 상태 갱신 후 설치까지 한다 */
+  /**
+   * 픽 확정: 제시된 것 중 하나여야 하며, 상태 갱신 후 설치까지 한다.
+   *
+   * "제시"에는 **슬롯별 새로고침으로 닿을 수 있는 교체분까지** 포함한다 — 실제로
+   * 새로고침을 눌렀는지는 여기서 알 수 없고(그 상태는 좌석의 것이다), 화면에 실제로
+   * 무엇이 서 있었는지는 `HumanAgent`가 이미 검증한다. 여기 검증의 목적은 픽이
+   * **이 좌석의 후보 칸에서 나왔는가**이며, 그 성질은 교체분에도 그대로 성립한다.
+   */
   pick(stage: DraftStage, player: PlayerId, augmentId: string): void {
-    const offered = this.roll(stage, player).map((d) => d.id);
+    const { choices, rerolls } = this.rollWithRerolls(stage, player);
+    const offered = [...choices, ...rerolls].map((d) => d.id);
     if (!offered.includes(augmentId)) {
       throw new Error(`Augment ${augmentId} was not offered to ${player}`);
     }

@@ -214,6 +214,7 @@ const GAME_STREAM_MESSAGES: ReadonlySet<ServerMessage["type"]> = new Set([
   "prompt",
   "promptCancel",
   "draftOffer",
+  "draftRerolled",
   "roundOver",
   "gameOver",
   "abortVote",
@@ -3206,6 +3207,20 @@ export function App(): JSX.Element {
       sfx.draft();
       return;
     }
+    if (msg.type === "draftRerolled") {
+      // 그 슬롯만 갈아 끼우고 새로고침을 소진 처리한다. 서버가 이미 같은 판단을
+      // 하고 보낸 것이므로 여기서 다시 검사하지 않는다 — 슬롯 번호만 맞춘다.
+      setDraft((cur) => {
+        if (cur === null || msg.slot < 0 || msg.slot >= cur.choices.length) return cur;
+        const choices = [...cur.choices];
+        choices[msg.slot] = msg.choice;
+        const rerollable = [...(cur.rerollable ?? choices.map(() => false))];
+        rerollable[msg.slot] = false;
+        return { ...cur, choices, rerollable };
+      });
+      sfx.draft();
+      return;
+    }
     if (msg.type === "roundOver") {
       handleRoundOver(msg);
       return;
@@ -3863,6 +3878,20 @@ export function App(): JSX.Element {
     sfx.pick();
   }
 
+  /**
+   * 슬롯 하나 새로고침 — 마음에 안 드는 카드 한 장을 갈아 끼운다 (슬롯당 1회).
+   *
+   * 버튼을 여기서 잠그지 않는다. 잠그는 것은 **서버가 새 카드를 보내 줬을 때**다
+   * (`draftRerolled` 핸들러) — 전송이 실패했는데 미리 잠그면 이 슬롯의 한 번뿐인
+   * 기회가 아무 일도 없이 사라진다. 연타는 서버가 슬롯당 1회로 막는다.
+   */
+  function rerollDraft(slot: number): void {
+    if (draft === null || draftPicked) return;
+    if (draft.rerollable?.[slot] !== true) return;
+    if (!send({ type: "draftReroll", stage: draft.stage, slot })) return;
+    sfx.pick();
+  }
+
   /** 게임 무효(중단) 투표 — 전원 동의 시 서버가 게임을 무효 처리한다 */
   function voteAbort(vote: "agree" | "withdraw" | "reject"): void {
     send({ type: "voteAbort", vote });
@@ -4161,6 +4190,7 @@ export function App(): JSX.Element {
         <DraftOverlay
           draft={draft}
           onPick={pickDraft}
+          onReroll={rerollDraft}
           picked={draftPicked}
           owned={view?.players.find((p) => p.id === view.playerId)?.augments ?? []}
           catalog={catalog}
@@ -14781,12 +14811,15 @@ function RoundResultPanel({
 function DraftOverlay({
   draft,
   onPick,
+  onReroll,
   picked,
   owned,
   catalog,
 }: {
   draft: DraftOfferMessage;
   onPick: (id: string) => void;
+  /** 슬롯 하나를 새로고침한다 (슬롯당 1회) */
+  onReroll: (slot: number) => void;
   /** 이미 골랐는가 — 카드 비활성 + "다른 플레이어 대기 중" 표시 */
   picked: boolean;
   /** 지금까지 내가 고른 증강 — 무엇을 이어 붙일지 판단하려면 눈앞에 있어야 한다 */
@@ -14869,36 +14902,65 @@ function DraftOverlay({
           </div>
         ) : null}
         <div className={`draft-cards${picked ? " draft-cards-locked" : ""}`}>
-          {draft.choices.map((c, i) => (
-            <button
-              key={c.id}
-              className={`draft-card draft-card-cat aug-cat-${augmentCategory(c.id)}`}
-              style={{ animationDelay: `${i * 120}ms` }}
-              onClick={() => onPick(c.id)}
-              disabled={picked}
-            >
-              <span className="draft-card-head">
-                <span className="draft-head-left">
-                  <span className={`draft-cat aug-cat-${augmentCategory(c.id)}`}>
-                    {CATEGORY_META[augmentCategory(c.id)].icon} {CATEGORY_META[augmentCategory(c.id)].label}
+          {draft.choices.map((c, i) => {
+            const canReroll = !picked && draft.rerollable?.[i] === true;
+            // 새로고침이 있는 판(서버가 rerollable을 보낸 판)에서는 이미 쓴 슬롯에도
+            // 잠긴 버튼을 남긴다 — 버튼이 사라지면 카드 세 장의 아래 끝이 어긋난다.
+            const hasRerollRow = draft.rerollable !== undefined;
+            return (
+              <div className="draft-slot" key={i}>
+                <button
+                  // key를 카드 id로 잡아 새로고침 때 카드가 새로 등장하는 연출을 다시 태운다
+                  key={c.id}
+                  className={`draft-card draft-card-cat aug-cat-${augmentCategory(c.id)}`}
+                  style={{ animationDelay: `${i * 120}ms` }}
+                  onClick={() => onPick(c.id)}
+                  disabled={picked}
+                >
+                  <span className="draft-card-head">
+                    <span className="draft-head-left">
+                      <span className={`draft-cat aug-cat-${augmentCategory(c.id)}`}>
+                        {CATEGORY_META[augmentCategory(c.id)].icon} {CATEGORY_META[augmentCategory(c.id)].label}
+                      </span>
+                      <QuestBadge id={c.id} />
+                      {isActiveAugment(c.id) ? <ActiveBadge /> : null}
+                    </span>
                   </span>
-                  <QuestBadge id={c.id} />
-                  {isActiveAugment(c.id) ? <ActiveBadge /> : null}
-                </span>
-              </span>
-              <strong className="draft-name">{c.name}</strong>
-              <span className="draft-desc">
-                <AugDesc id={c.id} description={c.description} variant="draft" expanded={shiftHeld || moreFor === c.id} />
-              </span>
-              <MoreToggle
-                open={shiftHeld || moreFor === c.id}
-                onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
-              />
-              {isActiveAugment(c.id) ? (
-                <span className="draft-active-note">⚡ 액티브 증강 — 내 턴에 직접 발동</span>
-              ) : null}
-            </button>
-          ))}
+                  <strong className="draft-name">{c.name}</strong>
+                  <span className="draft-desc">
+                    <AugDesc id={c.id} description={c.description} variant="draft" expanded={shiftHeld || moreFor === c.id} />
+                  </span>
+                  <MoreToggle
+                    open={shiftHeld || moreFor === c.id}
+                    onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
+                  />
+                  {isActiveAugment(c.id) ? (
+                    <span className="draft-active-note">⚡ 액티브 증강 — 내 턴에 직접 발동</span>
+                  ) : null}
+                </button>
+                {hasRerollRow ? (
+                  <button
+                    type="button"
+                    className={`draft-reroll${canReroll ? "" : " draft-reroll-spent"}`}
+                    onClick={() => onReroll(i)}
+                    disabled={!canReroll}
+                    title={
+                      canReroll
+                        ? "이 자리의 증강을 다른 것으로 바꾼다 (한 번뿐)"
+                        : "이미 새로고침한 자리다"
+                    }
+                    aria-label={
+                      canReroll
+                        ? `${c.name} 대신 다른 증강 보기 (한 번뿐)`
+                        : `${c.name} — 새로고침을 이미 썼다`
+                    }
+                  >
+                    <span className="draft-reroll-icon" aria-hidden="true">↻</span>
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
         {picked ? (
           <p className="draft-waiting">✓ 선택 완료 — 다른 플레이어를 기다리는 중…</p>

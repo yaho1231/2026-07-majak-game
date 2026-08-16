@@ -55,10 +55,25 @@ export interface PlayerAgent {
    */
   cancelDecision?(): void;
   /**
-   * 드래프트 선택 요청. choices 중 하나의 id를 반환.
+   * 드래프트 선택 요청. choices(또는 갈아 낀 rerolls) 중 하나의 id를 반환.
    * 타임아웃 시 자동 선택(구현체 책임).
+   *
+   * @param rerolls 슬롯별 **새로고침 교체분** — `rerolls[i]`가 `choices[i]`를 대신한다.
+   *   컨트롤러가 제시와 같은 추첨에서 미리 뽑아 넘긴다(좌석 간 겹침 금지가 여기에도 걸린다).
+   *   봇처럼 새로고침을 쓰지 않는 구현체는 그냥 무시하면 된다.
    */
-  decideDraft(stage: DraftStage, choices: AugmentDef[]): Promise<string>;
+  decideDraft(
+    stage: DraftStage,
+    choices: AugmentDef[],
+    rerolls?: readonly AugmentDef[],
+  ): Promise<string>;
+  /**
+   * 방금 끝난 드래프트에서 **새로고침으로 갈아 낀 슬롯 번호**.
+   *
+   * 컨트롤러가 `decideDraft` 직후에 읽어, 픽률 통계의 분모(=화면에 실제로 서 있던 3장)를
+   * 맞춘다. 구현하지 않으면 "아무것도 안 갈았다"로 본다 — 봇이 그렇다.
+   */
+  rerolledDraftSlots?(): readonly number[];
   /**
    * 국 결과 화면을 닫고 다음 국으로 넘어갈 준비가 됐다는 신호를 기다린다.
    * 사람이 "다음 국으로"를 누르면(roundContinue) resolve 한다 —
