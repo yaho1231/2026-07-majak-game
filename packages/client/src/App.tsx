@@ -3394,8 +3394,19 @@ export function App(): JSX.Element {
       for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
         // 표에 없는 전용 사건(등가교환 통보)도 같은 집합을 쓰므로 함께 시드한다 —
         // 빠뜨리면 재접속할 때마다 이미 끝난 교환 컷인이 다시 터진다.
-        if (augEventFor(key) === null && key !== SWAP3_NOTICE_KEY) continue;
+        if (
+          augEventFor(key) === null &&
+          key !== SWAP3_NOTICE_KEY &&
+          !key.startsWith("push_riichi:fired:")
+        ) {
+          continue;
+        }
         shown.augEvents.add(augEventSig(key, raw, shown.roundKey));
+      }
+      // 국 시작에 저절로 켜지는 증강(초읽기·눈먼 총알·반전)도 같은 집합을 쓴다.
+      // 빠뜨리면 국 도중에 재접속할 때마다 이미 켜져 있던 발동 컷인이 다시 터진다.
+      for (const n of armedRoundNotices(next)) {
+        shown.augEvents.add(augEventSig(n.key, n.raw, shown.roundKey));
       }
       return;
     }
@@ -3485,6 +3496,51 @@ export function App(): JSX.Element {
       setScoreFx(deltas);
       sfx.score();
       window.setTimeout(() => setScoreFx({}), 2600);
+    }
+
+    /*
+     * 자동 발동 증강 — 국이 시작하자마자 "이번 국에 걸렸다"를 크게 알린다.
+     *
+     * 초읽기·눈먼 총알·반전은 뽑는 순간 무장해 다음 국 하나에만 켜지는데, 화면에 남는
+     * 흔적이 이름표 pill 하나뿐이라 판이 이미 굴러간 뒤에야 알아차렸다 — 5초 제한은
+     * 모르고 있으면 그대로 쯔모기리로 흘러간다(2026-08-17 사용자 요청).
+     *
+     * 새 국 배너 바로 뒤에 붙도록 **리치·후로 감지보다 먼저** 큐에 넣는다.
+     * 채널은 국 내내 값을 들고 있으므로 augEvents 서명으로 한 번만 재생한다.
+     */
+    for (const arm of armedRoundNotices(next)) {
+      const seen = augEventSig(arm.key, arm.raw, shown.roundKey);
+      if (shown.augEvents.has(seen)) continue;
+      shown.augEvents.add(seen);
+      showCutIn(arm.title, "augment", arm.line, arm.ms, {
+        sfx: () => sfx.augment(1),
+        augId: arm.augId,
+        impact: { shake: 2 },
+      });
+    }
+
+    /*
+     * 등 떠밀기가 터졌다 — **리치 연출보다 먼저** 발동 컷인을 세운다.
+     *
+     * 강제 리치는 화면상 평범한 리치와 구별이 없어서, 당한 쪽도 보는 쪽도 "왜 갑자기
+     * 리치가 걸렸는지"를 읽을 수 없었다(2026-08-17 사용자 요청). 채널(`fired`)은 콘텐츠가
+     * **강제일 때만** 쏘므로 자발적 리치에는 뜨지 않는다. 아래 리치 배너와 같은 뷰에서
+     * 감지되니, 여기서 먼저 큐에 넣으면 "등 떠밀기 → 리치" 순으로 재생된다.
+     */
+    for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
+      if (!key.startsWith("push_riichi:fired:")) continue;
+      if (typeof raw !== "string" || raw === "") continue;
+      const seen = augEventSig(key, raw, shown.roundKey);
+      if (shown.augEvents.has(seen)) continue;
+      shown.augEvents.add(seen);
+      const by = key.slice("push_riichi:fired:".length);
+      showCutIn(
+        "등 떠밀기",
+        "augment",
+        `${playerNameById(next, by)} — ${playerNameById(next, raw)}는 숨을 수 없다`,
+        2000,
+        { sfx: () => sfx.augment(1), augId: "push_riichi", impact: { shake: 3 } },
+      );
     }
 
     for (const p of next.players) {
@@ -8485,6 +8541,75 @@ const AUG_EVENTS: Record<
 };
 
 /**
+ * **국이 시작하는 순간 저절로 켜지는** 증강 하나 — 그 국 시작 컷인 재료.
+ *
+ * 초읽기·눈먼 총알·반전은 뽑는 순간 무장해 다음 국 하나에만 켜진다(content/util
+ * `armOnNextRound`). 켜졌다는 사실은 이름표 pill에만 있어서, 정작 규칙이 바뀐 그 국을
+ * 모른 채 두는 일이 잦았다 — 특히 초읽기는 모르고 있으면 5초가 그냥 지나간다
+ * (2026-08-17 사용자 요청). 그래서 국 배너 직후에 한 번 크게 세운다.
+ *
+ * 사건이 아니라 **국 내내 켜져 있는 상태**라 AUG_EVENTS 표에는 넣지 않는다(그쪽은
+ * "터지고 끝나는" 채널 전용이고, 여기 셋은 pill·뱃지가 그 국 내내 함께 그린다).
+ * 중복 재생은 같은 augEvents 서명 집합이 막는다.
+ */
+type ArmedRoundNotice = {
+  key: string;
+  raw: unknown;
+  title: string;
+  augId: string;
+  line: string;
+  /** 컷인이 떠 있는 시간(ms) */
+  ms: number;
+};
+
+function armedRoundNotices(view: PlayerView): ArmedRoundNotice[] {
+  const av = view.augmentView ?? {};
+  const out: ArmedRoundNotice[] = [];
+  // 초읽기 — 제한이 테이블 전원에게 같아서 채널에 보유자가 없다.
+  // ⚠ 이 컷인만 유독 짧다. 서버의 5초 시계는 프롬프트를 보낸 순간부터 흐르는데
+  // (HumanAgent.decideFor) 새 국 배너 1.6초가 이미 그 앞에 서 있어서, 여기서 길게
+  // 잡으면 오야의 첫 결정이 연출에 다 먹힌다. 컷인 자체는 pointer-events:none이라
+  // 그 동안에도 손패는 누를 수 있지만, 가려 두는 시간은 짧을수록 좋다.
+  const sec = av["time_pressure"];
+  if (typeof sec === "number" && sec > 0) {
+    out.push({
+      key: "time_pressure",
+      raw: sec,
+      title: "초읽기",
+      augId: "time_pressure",
+      line: `이번 국 전원의 모든 결정이 ${sec}초 제한이다`,
+      ms: 1600,
+    });
+  }
+  for (const [key, raw] of Object.entries(av)) {
+    if (raw !== true) continue;
+    const [head, tail] = key.split(":") as [string, string | undefined];
+    if (tail === undefined || !view.players.some((p) => p.id === tail)) continue;
+    const who = playerNameById(view, tail);
+    if (head === "blind_ron") {
+      out.push({
+        key,
+        raw,
+        title: "눈먼 총알",
+        augId: head,
+        line: `${who} — 이번 국의 모든 론이 무작위 한 명에게 청구된다`,
+        ms: 2400,
+      });
+    } else if (head === "sign_flip") {
+      out.push({
+        key,
+        raw,
+        title: "반전",
+        augId: head,
+        line: `${who} — 이번 국 이 사람의 점수 부호가 뒤집힌다`,
+        ms: 2400,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * 사건 컷인 중복 방지 서명 — `채널=값@국`.
  *
  * ⚠ **국 키는 "마지막으로 실제 시작된 국"(bannerShown.roundKey)이어야 한다.**
@@ -9551,12 +9676,23 @@ const River = memo(function River({
   // 보이는 패를 먼저 그리면 최근 6장이 오래된 뒷면들 앞에 서 버린다 — 섞여 있을 때는
   // 뒷면을 먼저 깐다. (전부 가려진 박무의 count_only는 ids가 비어 순서가 무의미하다.)
   const backsFirst = hidden > 0 && ids.length > 0;
+  /*
+   * 이 자리가 리치 선언패인가 — 인덱스는 **바닥 전체 기준**(riichiTileIndex, 공개 정보)이다.
+   *
+   * 가려진 패는 언제나 바닥의 앞쪽이므로(안개 덮인 바닥의 peek pick:"back" · 박무의
+   * count_only), 뒷면 칸의 진짜 자리는 `i`, 보이는 칸의 진짜 자리는 `hidden + i`다.
+   *
+   * ⚠ 예전에는 `hidden === 0`일 때만 눕혔다. 인덱스가 밀리는 것을 막으려던 것인데,
+   * 그 탓에 **안개가 끼는 순간 이미 꺾여 있던 리치패가 평범한 패로 돌아갔다**
+   * (2026-08-17 사용자 보고). 리치를 걸었다는 사실도 그 자리도 원래 전원 공개라,
+   * 내용이 가려진 뒷면이어도 눕힘은 그대로 남는 것이 맞다.
+   */
+  const isRiichiSlot = (riverIndex: number): boolean =>
+    riichiIdx !== undefined && riverIndex === riichiIdx;
   const tileCells = ids.map((id, i) => {
         const latest =
           last !== null && last.player === playerId && last.tileId === id && i === ids.length - 1;
-        // 리치 선언패의 가로 눕힘은 **바닥 전체가 보일 때만** 맞다 — 안개로 앞부분이
-        // 잘려 있으면 인덱스가 밀려 엉뚱한 패가 눕는다.
-        const rotated = hidden === 0 && riichiIdx !== undefined && i === riichiIdx;
+        const rotated = isRiichiSlot(hidden + i);
         const match = kindMatches(view.tiles[id], highlight);
         const tk = view.tiles[id]?.kind;
         // 무장된 액션의 클릭 대상 버림패인지 — 대상이면 옵션을 잡아 강조·클릭 발동
@@ -9598,9 +9734,11 @@ const River = memo(function River({
           i === hidden - 1 &&
           ownLastId !== undefined &&
           view.tiles[ownLastId] !== undefined;
+        // 뒷면 칸은 언제나 바닥의 앞쪽이라 자리 번호가 곧 바닥 인덱스다.
+        const rot = isRiichiSlot(i) ? " rt-riichi" : "";
         if (revealLast) {
           return (
-            <span key={`h${i}`} className="rt rt-latest">
+            <span key={`h${i}`} className={`rt rt-latest${rot}`}>
               <span className="rt-inner">
                 <TileImg tile={view.tiles[ownLastId]} size="fill" owner={playerId} />
               </span>
@@ -9608,7 +9746,7 @@ const River = memo(function River({
           );
         }
         return (
-          <span key={`h${i}`} className="rt">
+          <span key={`h${i}`} className={`rt${rot}`}>
             <span className="rt-inner">
               <span className="tile-back-face rt-hidden" />
             </span>
@@ -12721,10 +12859,13 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     if (!key.startsWith("hidden_river:") || key.startsWith("hidden_river:last:")) continue;
     if (typeof value !== "string") continue;
     const who = key.slice("hidden_river:".length);
+    // 문구는 **최근 6장**이다. 2026-08-02에 공개 범위가 "각자의 마지막 1장"에서 최근 6장으로
+    // 넓어졌는데 이 뱃지만 옛 문구로 남아 있어서, 상대는 실제로 보이는 현물을 두고
+    // "한 장밖에 못 본다"고 읽었다(2026-08-17 사용자 지적).
     textBadge(
       key,
       "🌫 안개 덮인 바닥",
-      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 마지막 한 장만 보인다`,
+      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 최근 6장만 보인다`,
     );
   }
   // 역만 방어술 방어 횟수 · 연금술 잔여 · 왕패 교환 잔여도 이름표 pill로 옮겼다

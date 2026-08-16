@@ -156,7 +156,12 @@ export const pushRiichi: AugmentDef = defineAugment({
       if (target === null || p.player !== target) return event;
       if (!riichiEligibleOnDiscard(ic.state, ic.rules, target, p.tileId)) return event;
       const cost = ic.rules.resolve<number>("riichi.cost", { playerId: target, state: ic.state });
-      return { type: event.type, payload: { ...p, riichi: true, riichiCost: cost } };
+      // `riichiForced`는 "이건 내가 밀어서 걸린 리치"라는 표식이다 — 아래 reaction이
+      // 이걸 보고 **강제일 때만** 발동 연출 채널을 쏜다(자발적 리치와 구별).
+      return {
+        type: event.type,
+        payload: { ...p, riichi: true, riichiCost: cost, riichiForced: holder },
+      };
     });
 
     // 낙인 대상이 리치를 성립시키면(강제든 자발이든) 낙인을 소멸시킨다.
@@ -176,6 +181,15 @@ export const pushRiichi: AugmentDef = defineAugment({
        * 터진 낙인은 여기서 비워야 한다. 클라이언트는 빈 문자열을 관계 없음으로 읽는다.
        */
       rc.emit(augmentDataSet(brandViewKey(holder), ""));
+      /*
+       * 발동 연출 채널 — **내가 밀어서 걸린 리치일 때만** 쏜다.
+       *
+       * 낙인은 자발적 리치로도 소진되므로(위 참고), 여기까지는 두 경우 모두 온다.
+       * 예전에는 그 구별 없이 채널을 쏴서, 낙인 대상이 스스로 건 리치에도 "등 떠밀기"
+       * 관계선이 그어졌다. 클라이언트는 이 채널을 보고 리치 연출 **앞에** 발동 컷인을
+       * 끼워 넣으므로(2026-08-17 사용자 요청), 강제가 아닐 때 쏘면 없는 사건을 그린다.
+       */
+      if (p.riichiForced !== holder) return;
       rc.emit(augmentDataSet(roundViewKey("*", `${ID}:fired:${holder}`), target));
     });
 

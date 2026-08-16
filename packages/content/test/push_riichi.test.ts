@@ -204,3 +204,38 @@ describe("등 떠밀기 — 터진 낙인은 화면에서도 내려간다", () =
     expect(game.engine.state.augmentData[PUBLIC_KEY]).toBe("");
   });
 });
+
+describe("등 떠밀기 — 발동 연출은 강제 리치에만", () => {
+  /*
+   * 클라이언트는 이 채널을 보고 **리치 연출 앞에** "등 떠밀기" 컷인을 끼워 넣는다
+   * (2026-08-17 사용자 요청). 낙인은 자발적 리치로도 소진되므로, 채널을 조건 없이
+   * 쏘면 낙인 대상이 스스로 건 리치에도 없는 사건이 그려진다.
+   */
+  const FIRED_KEY = `view:*:push_riichi:fired:p0${ROUND_SCOPED_MARK}`;
+
+  it("강제 리치면 발동 채널에 대상이 실린다", () => {
+    const game = start(scene({ brand: "p1" }));
+    game.engine.submit({
+      player: "p1",
+      type: "discard",
+      payload: { tileId: lastTile(game) },
+    });
+    expect(game.engine.state.round.byPlayer["p1"]?.riichi).not.toBeNull();
+    expect(game.engine.state.augmentData[FIRED_KEY]).toBe("p1");
+  });
+
+  it("낙인 대상이 스스로 리치를 걸면 낙인만 소진되고 발동 채널은 뜨지 않는다", () => {
+    const game = start(scene({ brand: "p1" }));
+    const r = game.engine.submit({
+      player: "p1",
+      type: "riichi",
+      payload: { tileId: lastTile(game) },
+    });
+    expect(r.ok).toBe(true);
+    expect(game.engine.state.round.byPlayer["p1"]?.riichi).not.toBeNull();
+    // 리치 가능 상태에 도달했으므로 낙인은 소진된다
+    expect(game.engine.state.augmentData[brandKeyOf(game.engine.state)]).toBe("");
+    // 그러나 밀어서 걸린 리치가 아니다 — 연출 채널은 비어 있어야 한다
+    expect(game.engine.state.augmentData[FIRED_KEY]).toBeUndefined();
+  });
+});
