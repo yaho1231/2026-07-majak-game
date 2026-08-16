@@ -756,6 +756,12 @@ button {
   color: #f7a186;
 }
 
+/* 마지막 국(오라스)·서든데스 — 여기서부터 순위 계산이 달라지므로 눈에 걸리게 둔다 */
+.center-sub .last-round {
+  color: #ffd98a;
+  font-weight: 700;
+}
+
 .center-dora {
   display: flex;
   justify-content: center;

@@ -141,6 +141,23 @@ function serverUrlToUse(): string {
 const WIND_CHAR = ["東", "南", "西", "北"];
 const WIND_KO = ["동", "남", "서", "북"];
 
+/**
+ * 봉인된 패 안내 — **국 스코프**다. 봉인 목록은 `roundViewKey`로 저장돼(discard_lock.ts)
+ * 국이 끝나면 채널과 함께 사라진다. 예전 문구가 "이 게임 동안"이라 영구 봉인으로 읽혔고,
+ * 그러면 그 패를 안고 손을 다시 짤 이유가 없어져 판단이 통째로 어긋났다.
+ */
+const SEAL_HINT = "🔒 봉인된 패 — 이번 국 동안 버릴 수 없습니다";
+
+/**
+ * 그 모드의 마지막 장(場) — 동풍전은 동장(1), 반장전은 남장(2)까지가 정규 구간이다.
+ * 이 값을 넘긴 장은 전부 서든데스(서입·남입)다: `westEntry`가 두 모드 모두 켜져 있어
+ * (HanchanController `hanchanConfigForMode`) 정규 구간이 끝나도 1위가 반환점(30000)에
+ * 못 미치면 장이 하나 더 붙는다. 로비가 "남4국까지"라고 단언했던 근거가 여기서 깨진다.
+ */
+function maxWindOf(mode: GameMode): number {
+  return mode === "tonpuu" ? 1 : 2;
+}
+
 const YAKU_NAMES: Record<string, string> = {
   riichi: "리치",
   double_riichi: "더블리치",
@@ -402,6 +419,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   dissolve_meld: "meld_dissolve",
   disarm_lock: "disarm",
   silent_pon: "silent_pact",
+  bluff_pon: "bluff_pretense",
   kokushi_pon: "open_kokushi",
   xray_reveal: "xray_hand",
   push_brand: "push_riichi",
@@ -3487,7 +3505,18 @@ export function App(): JSX.Element {
       // 에코가 끝내 안 온 타패 id(접속 끊김 등)가 다음 국까지 남아 정상 타패음을 먹지 않게
       pendingOwnDiscards.current.clear();
       const label = `${WIND_CHAR[next.round.prevalentWind - 1] ?? "?"}${next.round.roundNumber}국`;
-      const sub = next.round.honba > 0 ? `${next.round.honba}본장` : undefined;
+      // 부제에 "이 국이 어떤 국인가"를 싣는다. 서든데스(서입·남입)로 넘어온 것도, 지금이
+      // 오라스라는 것도 예전에는 화면 어디에도 없었다 — 봇은 setGameMode로 올라스를
+      // 명시적으로 받는데(RoomManager) 사람만 국 번호로 역산해야 했다.
+      const maxWind = maxWindOf(next.round.mode);
+      const subParts: string[] = [];
+      if (next.round.prevalentWind > maxWind) {
+        subParts.push("서든데스 — 30000점을 먼저 넘기면 종료");
+      } else if (next.round.prevalentWind === maxWind && next.round.roundNumber === 4) {
+        subParts.push("오라스");
+      }
+      if (next.round.honba > 0) subParts.push(`${next.round.honba}본장`);
+      const sub = subParts.length > 0 ? subParts.join(" · ") : undefined;
       // 새 국 배너는 큐 뒤에 붙어, 이전 국의 연출(화료 컷인 등)이 모두 끝난 뒤에 뜬다.
       // 아직 안 열린 이전 국 결과(pendingResult)가 다음 국으로 새어 나오지 않게 함께 정리한다.
       setRoundResult(null);
@@ -7335,8 +7364,10 @@ function WaitingRoom(props: {
         <div className="lobby-group-label">판 길이</div>
         <div className="mode-select" role="radiogroup" aria-label="게임 모드">
           {([
-            ["hanchan", "반장전", "동+남 · 남4국까지"],
-            ["tonpuu", "동풍전", "동장만 · 동4국까지"],
+            // 서든데스를 적어 둔다 — westEntry가 두 모드 모두 켜져 있어(maxWindOf 주석)
+            // "남4국까지"는 거짓이었다. 오라스라 믿고 짠 순위 계산이 통째로 틀어진다.
+            ["hanchan", "반장전", "동+남 · 남4국 뒤 1위가 30000 미만이면 서장"],
+            ["tonpuu", "동풍전", "동장만 · 동4국 뒤 1위가 30000 미만이면 남장"],
           ] as const).map(([mode, label, sub]) => {
             const active = lobby.gameMode === mode;
             return (
@@ -7543,7 +7574,10 @@ const MODE_BADGE: Record<GameMode, { name: string; drafts: string }> = {
 function ModeBadge(props: { mode: GameMode }): JSX.Element {
   const m = MODE_BADGE[props.mode] ?? MODE_BADGE.hanchan;
   return (
-    <div className="mode-badge" title={`${m.name} — 증강 획득: ${m.drafts}`}>
+    <div
+      className="mode-badge"
+      title={`${m.name} — 증강 획득: ${m.drafts}\n정규 구간이 끝나도 1위가 30000점에 못 미치면 장이 하나 더 붙는다(서든데스). 그 장에는 증강 획득이 없다.`}
+    >
       <span className="mode-badge-name">{m.name}</span>
       <span className="mode-badge-drafts">증강 {m.drafts}</span>
     </div>
@@ -9624,7 +9658,24 @@ function CenterPanel({
           {r.roundNumber}국
         </div>
         <div className="center-sub">
-          <span className="wall-count" title="남은 패산">×{wallLeft}</span>
+          <span
+            className="wall-count"
+            title={`남은 패산 ${wallLeft}장 · 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
+          >
+            ×{wallLeft}
+          </span>
+          {/* 지금이 마지막 국인가 — 봇은 이 정보를 명시적으로 받는데(RoomManager의
+              setGameMode) 사람만 국 번호로 역산해야 했다. 서든데스 구간은 "몇 국까지"가
+              정해져 있지 않으므로 오라스 대신 그 사실을 적는다. */}
+          {r.prevalentWind > maxWindOf(r.mode) ? (
+            <span className="last-round" title="정규 구간이 끝난 서든데스 — 30000점을 먼저 넘기면 종료">
+              서든데스
+            </span>
+          ) : r.prevalentWind === maxWindOf(r.mode) && r.roundNumber === 4 ? (
+            <span className="last-round" title="이 판의 마지막 국(오라스)">
+              오라스
+            </span>
+          ) : null}
           {r.honba > 0 ? <span title="본장">{r.honba}본장</span> : null}
           {r.riichiPot > 0 ? <span className="pot" title="공탁">供{r.riichiPot / 1000}</span> : null}
           {r.direction < 0 ? <span className="rev-dir" title="역행하는 세계">역행</span> : null}
@@ -12322,12 +12373,16 @@ function OwnArea(props: {
                   }
                   // 봉인된 패를 버리려고 클릭 — 왜 안 되는지 안내 (내 버림 차례일 때만)
                   if (sealed && promptHasDiscard && !props.riichiMode) {
-                    props.onToast?.("🔒 봉인된 패 — 이 게임 동안 버릴 수 없습니다");
+                    props.onToast?.(SEAL_HINT);
                   }
                 }}
               >
                 <TileImg tile={view.tiles[id]} size="hand" owner={me.id} />
-                {sealed ? <span className="hand-seal-badge">🔒</span> : null}
+                {sealed ? (
+                  <span className="hand-seal-badge" title={SEAL_HINT}>
+                    🔒
+                  </span>
+                ) : null}
                 {danger ? (
                   <span
                     className="hand-danger-badge"
