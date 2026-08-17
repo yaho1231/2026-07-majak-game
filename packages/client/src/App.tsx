@@ -66,6 +66,12 @@ import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { rebuildReplay, replaySettlements, replayViewAt } from "./replayRebuild.js";
 import { remainingCounter } from "./waitCounts.js";
+import {
+  backlogProdTtl,
+  insertByPriority,
+  PROD_PRIORITY_RIICHI,
+  PROD_TTL_FLOOR_MS,
+} from "./productionQueue.js";
 import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
@@ -1199,6 +1205,18 @@ interface Production {
   tileArrowAt?: number;
   /** 화면 흔들림 (screenFx 설정이 켜져 있을 때만 발동) */
   impact?: ImpactSpec;
+  /**
+   * 큐에서 앞질러 나갈 수 있는 등급 — 클수록 먼저 재생된다(기본 0, 같은 등급끼리는 FIFO).
+   *
+   * 왜 필요한가: 큐는 한 번에 하나씩만 재생하는데 증강 컷인이 2초씩 줄줄이 서면, 그
+   * 뒤에 들어온 **리치 배너가 몇 초 뒤에야** 뜬다 — 실제로는 상대가 리치를 건 지 한참
+   * 지나 내가 버릴 패를 고르고 있을 때, 심하면 론 직전에 뜬다(2026-08-17 사용자 보고).
+   * 리치는 "알고 나서 버려야 하는" 유일한 통지라 지연이 곧 오판이 된다.
+   *
+   * ⚠ 순서가 바뀌어도 **기록은 안 바뀐다** — 📜 로그는 재생 시점이 아니라 `enqueue`
+   * 시점에 쌓이므로(아래 enqueueProduction) 실제로 일어난 순서 그대로 남는다.
+   */
+  priority?: number;
 }
 
 /**
@@ -1244,8 +1262,9 @@ const EMPTY_PAST_ROUNDS: PastRound[] = [];
  * 정작 끄는 이유의 절반이 그 기다림이다. 밴드·글자는 남기되 스치듯 지나가게 한다.
  */
 const PROD_TTL_NO_FX = 0.42;
-/** 아무리 줄여도 글자를 읽을 시간은 남긴다 (읽기 전에 사라지면 정보가 통째로 날아간다). */
-const PROD_TTL_FLOOR_MS = 520;
+
+/** 배너는 톤으로 큐 등급이 정해진다 — 호출부는 아무것도 더 넘기지 않는다 */
+const BANNER_PRIORITY: Partial<Record<BannerTone, number>> = { riichi: PROD_PRIORITY_RIICHI };
 
 /** 이 연출이 실제로 화면에 머무는 시간 (화면 효과 설정 반영). */
 function effectiveProdTtl(ttl: number, screenFx: boolean): number {
@@ -2374,7 +2393,9 @@ export function App(): JSX.Element {
   // 그림보다 먼저 나와 연출이 어긋난다. 재생은 activeProd 이펙트 한 곳에서만.
   function enqueueProduction(p: Omit<Production, "key">): void {
     const key = ++prodSeq.current;
-    productionQueue.current.push({ ...p, key });
+    // 등급이 낮은 대기열은 앞질러 들어간다 — 같은 등급 뒤에는 그대로 붙으므로
+    // 등급 안에서는 넣은 순서가 유지된다(등 떠밀기 → 리치처럼 짝지은 연출이 안 갈린다).
+    insertByPriority(productionQueue.current, { ...p, key });
     // 📜 기록에도 같은 순간 남긴다 — 연출을 놓쳐도(건너뛰기·백그라운드 탭) 정보는 남는다.
     // 재생 시점이 아니라 **발생 시점**에 넣는 것이 중요하다: 큐가 밀리면 연출은 몇 초 뒤에
     // 뜨지만 사건은 이미 일어났고, 로그의 시각은 사건의 시각이어야 한다.
@@ -2409,6 +2430,8 @@ export function App(): JSX.Element {
       text,
       tone,
       ttl: ms,
+      // 리치 배너는 톤만으로 등급이 정해진다 — 호출부가 따로 넘길 것이 없다
+      ...(BANNER_PRIORITY[tone] !== undefined ? { priority: BANNER_PRIORITY[tone] } : {}),
       ...(sub !== undefined ? { sub } : {}),
       ...(sfxFn !== undefined ? { sfx: sfxFn } : {}),
       ...(tiles !== undefined && tiles.length > 0 ? { tiles } : {}),
@@ -2428,6 +2451,8 @@ export function App(): JSX.Element {
       tileArrowAt?: number;
       impact?: ImpactSpec;
       augId?: string;
+      /** 큐를 앞질러 나가는 등급 (Production.priority) — 리치와 짝지은 컷인만 쓴다 */
+      priority?: number;
     } = {},
   ): void {
     enqueueProduction({
@@ -2435,6 +2460,7 @@ export function App(): JSX.Element {
       text,
       tone,
       ttl: ms,
+      ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
       ...(sub !== undefined ? { sub } : {}),
       ...(opts.tier !== undefined ? { tier: opts.tier } : {}),
       ...(opts.augId !== undefined ? { augId: opts.augId } : {}),
@@ -2457,7 +2483,15 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (activeProd !== null) return;
     if (productionQueue.current.length > 0) {
-      setActiveProd(productionQueue.current.shift() ?? null);
+      const next = productionQueue.current.shift();
+      // 뒤에 몇 개가 밀려 있는지는 **꺼내는 이 순간**에 정해진다 — 그 수만큼 체류를
+      // 줄여 큐가 벽이 되지 않게 한다. ttl을 여기서 확정해 두면 CSS(`--prod-ttl`)와
+      // 내리는 타이머가 같은 값을 본다(둘이 갈리면 연출이 끝나기 전에 사라진다).
+      setActiveProd(
+        next === undefined
+          ? null
+          : { ...next, ttl: backlogProdTtl(next.ttl, productionQueue.current.length) },
+      );
       return;
     }
     if (pendingResult.current !== null) {
@@ -3802,7 +3836,14 @@ export function App(): JSX.Element {
         "augment",
         `${playerNameById(next, by)} — ${playerNameById(next, raw)}는 숨을 수 없다`,
         2000,
-        { sfx: () => sfx.augment(1), augId: "push_riichi", impact: { shake: 3 } },
+        {
+          sfx: () => sfx.augment(1),
+          augId: "push_riichi",
+          impact: { shake: 3 },
+          // 바로 뒤 리치 배너와 **같은 등급**이라야 짝이 안 갈린다 — 리치만 앞질러
+          // 나가면 "리치 → (뒤늦게) 등 떠밀기"가 되어 인과가 뒤집힌다.
+          priority: PROD_PRIORITY_RIICHI,
+        },
       );
     }
 
