@@ -1024,6 +1024,8 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
           extraHan,
           ...(extraHanBy.length > 0 ? { extraHanBy } : {}),
           yaku: ev.yaku.map((y) => ({ id: y.id, name: y.name, han: y.han })),
+          // 채점이 고른 몸통 구성 — 결과 화면이 손을 몸통 단위로 끊어 그린다
+          ...(ev.shape !== undefined ? { shape: ev.shape } : {}),
           doraHan: ev.doraHan,
           uraHan: ev.uraHan,
           redHan: ev.redHan,

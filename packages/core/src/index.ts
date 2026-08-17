@@ -89,6 +89,12 @@ export type { ScoreArgs, ScoreResult, LimitName } from "./mahjong/scoring/score.
 export { doraKindFor, frontDoraKindFor, countDora } from "./mahjong/scoring/dora.js";
 export { evaluateWin } from "./mahjong/scoring/evaluate.js";
 export type { WinEvaluation, YakuResult } from "./mahjong/scoring/evaluate.js";
+export { winShapeOf } from "./mahjong/scoring/winShape.js";
+export type {
+  WinShape,
+  WinShapeGroup,
+  WinShapeGroupType,
+} from "./mahjong/scoring/winShape.js";
 
 export {
   SYSTEM_PLAYER,

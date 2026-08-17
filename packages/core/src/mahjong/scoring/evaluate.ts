@@ -11,6 +11,8 @@ import { buildVariants } from "./WinContext.js";
 import type { ScoringVariant, WaitType, WinContext } from "./WinContext.js";
 import { countDora } from "./dora.js";
 import { calculateFu } from "./fu.js";
+import { winShapeOf } from "./winShape.js";
+import type { WinShape } from "./winShape.js";
 import type { YakuDef, YakuRegistry } from "./YakuRegistry.js";
 
 export interface YakuResult {
@@ -39,6 +41,12 @@ export interface WinEvaluation {
   han: number;
   fu: number;
   waitType: WaitType;
+  /**
+   * 채택된 변형의 **몸통 구성** (표시 전용). 결과 화면이 화료한 손을 몸통 단위로
+   * 끊어 보여 주는 근거 — 증강으로 모양 규칙이 바뀐 손은 정렬만 해서는 왜 화료인지
+   * 읽을 수 없다. 손패로 복원이 안 되면 없다.
+   */
+  shape?: WinShape;
 }
 
 interface Candidate extends WinEvaluation {
@@ -185,8 +193,11 @@ export function evaluateWin(
   }
 
   if (best === null) return null;
-  const { variant: _variant, ...evaluation } = best;
-  return evaluation;
+  const { variant, ...evaluation } = best;
+  // 채택된 변형의 몸통 구성 — 결과 화면이 "어떻게 화료가 됐는지"를 그리는 근거다.
+  // 채점에는 쓰지 않는다(표시 전용).
+  const shape = winShapeOf(variant, ctx);
+  return shape === null ? evaluation : { ...evaluation, shape };
 }
 
 /**
