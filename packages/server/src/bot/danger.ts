@@ -25,6 +25,7 @@
 import { augmentThreatMultiplier, discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
 import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 import { pointsForHan } from "./value.js";
+import { readCollect } from "./collect.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
 import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.js";
@@ -69,6 +70,15 @@ export interface Threat {
   value: number;
   /** 이 사람이 오야인가 (실점이 1.5배가 된다) */
   isDealer: boolean;
+  /**
+   * **이 사람이 무엇을 모으는가**에서 나온 패 종류별 위험 배수 (1 = 중립).
+   *
+   * 스지·벽·장수 셈은 "이 패로 대기가 설 수 있는가"를 판형에서 계산한다 — 그건
+   * 어느 상대에게나 같은 계산이다. 여기 배수는 그 위에 **이 사람 사정**을 얹는다:
+   * 개벽으로 손패가 통째로 자패가 된 사람에게 자패는 남은 장수와 무관하게 위험하다
+   * (`bot/collect.ts`).
+   */
+  kindRisk: (kind: TileKind) => number;
 }
 
 /**
@@ -175,6 +185,20 @@ export function readThreats(
     }
 
     /**
+     * **이 사람이 무엇을 모으고 있는가** (`bot/collect.ts`).
+     *
+     * `minLevel`을 여기서 먹이는 이유: 개벽을 쓴 사람은 리치도 후로도 없어 위 분기의
+     * `damatenLevel`(0.1 남짓)에 머문다. 배수를 아무리 키워도 0.1을 곱하면 기대
+     * 실점이 작아 봇은 그냥 민다. 손패가 통째로 자패로 바뀌는 것을 **봤다**는 것
+     * 자체가 텐파이 확률에 대한 정보다.
+     *
+     * 접기 판정(바로 아래)보다 **앞에** 둔다 — 접은 사람은 하한을 세워 준 뒤에도
+     * 함께 깎여야 한다. 뒤에 두면 접은 사람이 다시 살아난다.
+     */
+    const collect = readCollect(view, p.id);
+    if (collect.minLevel > level) level = collect.minLevel;
+
+    /**
      * **접은 사람은 위험하지 않다.** 남의 리치에 현물만 골라 내고 있는 사람은
      * 이미 화료를 포기한 것이다. 예전 봇은 후로 둘을 눕힌 채 접은 사람을 끝까지
      * 무서워해서, 아무도 노리지 않는 패를 못 버리고 자기 손만 망쳤다.
@@ -206,7 +230,9 @@ export function readThreats(
       discardRanks,
       riichi,
       isDealer,
+      kindRisk: collect.riskOf,
       value: augMult * estimateThreatValue(view, p.id, {
+        collectHan: collect.hanBonus,
         riichi,
         melds,
         yakuhaiMeld,
@@ -432,6 +458,11 @@ function estimateThreatValue(
     doubleRiichi: boolean;
     /** 지금이 이 사람의 **일발권**인가 (아래 유도 참고) */
     ippatsu: boolean;
+    /**
+     * "무엇을 모으는가" 읽기가 얹는 판수 (`bot/collect.ts`).
+     * 개벽으로 손패가 통째로 자패가 됐다면 그 손은 평범한 1300점이 아니다.
+     */
+    collectHan: number;
   },
 ): number {
   const meldKinds: TileKind[] = [];
@@ -449,6 +480,9 @@ function estimateThreatValue(
   han += Math.min(2, view.round.doraIndicators.length * 0.9);
   // 후로에 눕혀 보이는 도라는 확정이다
   for (const k of meldKinds) if (info.doraSet.has(kindKey(k))) han += 1;
+
+  // 무엇을 모으는가 — 개벽·단색 세계·국사 계열·자패 무버림 (bot/collect.ts)
+  han += info.collectHan;
 
   // 혼일색 읽기 — 눕힌 패가 한 색(+자패)으로만 이루어져 있다
   if (info.melds > 0 && isOneSuitOrHonors(meldKinds)) han += 2;
@@ -640,7 +674,17 @@ function tileRisk(
     : // 자패는 량면·간짱·변짱이 없다 — 샤보·단기뿐이라 남은 장수가 곧 위험이다
       pairWaitFactor(remainingOf(kind));
 
-  return Math.min(1, baseRisk(kind) * factor * doraProximity(kind, doraSet));
+  /*
+   * **이 사람이 모으고 있는 분류인가** (`bot/collect.ts`).
+   *
+   * 도라 근처 배수와 같은 자리에 둔다 — 스지·벽으로 깎은 **뒤에** 곱해야 한다.
+   * 앞에 두면 스지 한 줄이 "저 사람 손은 통째로 자패다"라는 경고를 도로 지운다.
+   * 현물은 위에서 이미 0으로 빠져나갔으므로 여기서 되살아나지 않는다.
+   */
+  return Math.min(
+    1,
+    baseRisk(kind) * factor * doraProximity(kind, doraSet) * threat.kindRisk(kind),
+  );
 }
 
 const EMPTY_RANKS: ReadonlySet<number> = new Set<number>();

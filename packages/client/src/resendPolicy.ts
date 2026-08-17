@@ -39,7 +39,7 @@ export const VOLATILE_MESSAGES: ReadonlySet<string> = new Set([
 /** ② 큐에 담았다가 재전송한다 — 상태에 대한 요청·의사표시 */
 export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 인증·입장
-  "register", "login", "tokenLogin", "logout", "guestPlay",
+  "register", "login", "tokenLogin", "logout", "guestPlay", "practicePlay",
   "createRoom", "joinRoom", "leaveRoom", "join",
   // 대기실 조작
   "ready", "startGame", "setGameMode", "shuffleSeats",

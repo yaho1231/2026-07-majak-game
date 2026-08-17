@@ -72,6 +72,8 @@ import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { safeStorage } from "./storage.js";
+import { LESSONS, TUTORIAL_KEY, pickLesson } from "./tutorial.js";
+import type { CoachCtx, Lesson } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
 import {
   backlogProdTtl,
@@ -2446,6 +2448,22 @@ export function App(): JSX.Element {
   const [authError, setAuthError] = useState<string | null>(null);
   /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  /**
+   * 첫 판 코치가 켜져 있는가.
+   *
+   * 켜지는 자리는 둘이다 — **갓 가입한 사람**(가입 성공 직후 연습 대국으로 들어간다)과
+   * **처음 게스트 체험을 누른 사람**. 둘 다 "이 게임을 처음 보는 사람"이라는 같은
+   * 사실의 두 얼굴이다. 한 번 끝까지 봤거나 그만 보기를 누르면 저장해 두고 다시
+   * 안 띄운다 — 두 번째 판에서 같은 안내가 또 뜨면 그건 방해다.
+   */
+  const [coachOn, setCoachOn] = useState(false);
+  /** 튜토리얼을 이미 마쳤는가 (저장된 사실) */
+  const tutorialDone = useRef(safeStorage.getItem(TUTORIAL_KEY) === "1");
+  /**
+   * 방금 **가입 폼**으로 들어왔는가 — 로그인과 구별하려고 둔다.
+   * 서버의 `authOk`는 둘을 구별해 주지 않는다(같은 메시지다).
+   */
+  const justRegistered = useRef(false);
   /** 방금 도착한 정형구들 — EMOTE_SHOW_MS 뒤 스스로 사라진다. */
   const [emotes, setEmotes] = useState<EmoteEntry[]>([]);
   /** 규칙·도움말 화면 열림 여부 (로그인 전·홈·게임 중 어디서나 열린다) */
@@ -3364,8 +3382,29 @@ export function App(): JSX.Element {
        * 코드는 한 번 쓰고 주소창에서 지운다: 남겨 두면 새로고침할 때마다 그 방으로
        * 끌려가고, 그 방이 사라진 뒤에는 매번 실패 토스트만 본다.
        */
+      /*
+       * **갓 가입한 사람은 홈이 아니라 판으로 보낸다** (2026-08-18 사용자 지시).
+       *
+       * 가입 직후의 홈은 "방 만들기 / 코드로 참가"다. 마작을 처음 보는 사람에게 그
+       * 둘은 아무 뜻이 없고, 방을 만들어도 봇을 채우고 시작을 눌러야 한다 — 배우기
+       * 전에 세 단계가 있다. 대신 봇 3명과의 연습 대국을 곧바로 열고, 그 판 위에
+       * 코치를 얹는다(`tutorial.ts`). 기록에 남지 않는 판이라 첫 성적이 망가지지도
+       * 않는다.
+       *
+       * 초대 링크보다 뒤에 두지 않는다 — 방금 가입한 사람의 다음 화면은 하나뿐이라
+       * 초대·복귀와 겹칠 수가 없다(둘 다 있으면 아래 분기가 그대로 이긴다).
+       */
       const invited = pendingInviteRef.current;
-      if (invited !== null) {
+      if (
+        justRegistered.current &&
+        invited === null &&
+        activeRoomRef.current === null &&
+        !tutorialDone.current
+      ) {
+        justRegistered.current = false;
+        setCoachOn(true);
+        send({ type: "practicePlay" });
+      } else if (invited !== null) {
         pendingInviteRef.current = null;
         clearRoomFromUrl();
         send({ type: "joinRoom", code: invited });
@@ -4702,6 +4741,22 @@ export function App(): JSX.Element {
   const inGame = (joined !== null || isSpectator) && view !== null;
   const inWaiting = joined !== null && view === null && rankings === null && !isSpectator;
   const draftVisible = inGame && draft !== null && !intro && roundResult === null && !isSpectator;
+  /*
+   * 첫 판 코치가 보는 것 — 지금 고를 수 있는 선택지의 **종류**뿐이다.
+   * (`prompt`가 바뀔 때만 다시 만든다: 코치는 매 프레임 이걸 훑는다.)
+   */
+  const promptOptionTypes = useMemo(
+    () => new Set((prompt?.options ?? []).map((o) => o.type)),
+    [prompt],
+  );
+  /** 그중 액티브 증강 발동이 있는가 — 액션 바의 색 판정(`act-aug`)과 같은 기준 */
+  const promptHasAugment = useMemo(
+    () =>
+      (prompt?.options ?? []).some(
+        (o) => ACTION_LABEL[o.type] === undefined || AUGMENT_ACTION_TYPES.has(o.type),
+      ),
+    [prompt],
+  );
   const lastRoomCode = safeStorage.getItem(LAST_ROOM_KEY);
 
   return (
@@ -4746,19 +4801,23 @@ export function App(): JSX.Element {
           invitedCode={pendingInviteRef.current}
           onGuest={() => {
             setAuthError(null);
+            // 계정 없이 처음 눌러 본 사람 — 가입한 사람만큼이나 이 게임이 처음이다.
+            if (!tutorialDone.current) setCoachOn(true);
             send({ type: "guestPlay" });
           }}
           onOpenHelp={() => setHelpOpen(true)}
           onLogin={(u, p) => send({ type: "login", username: u, password: p })}
-          onRegister={(u, p, code, signup) =>
+          onRegister={(u, p, code, signup) => {
+            // authOk는 가입과 로그인을 구별해 주지 않는다 — 여기서 표시해 둔다.
+            justRegistered.current = true;
             send({
               type: "register",
               username: u,
               password: p,
               ...(code !== "" ? { adminCode: code } : {}),
               ...(signup !== "" ? { signupCode: signup } : {}),
-            })
-          }
+            });
+          }}
           onRetryConnect={connect}
         />
       ) : replayData !== null ? (
@@ -4876,6 +4935,12 @@ export function App(): JSX.Element {
           onSpectate={(code) => send({ type: "spectate", code })}
           onRefreshUsers={() => send({ type: "adminUsers" })}
           onStartSandbox={(mode) => send({ type: "sandboxStart", mode })}
+          onPractice={() => {
+            // 홈에서 직접 누른 사람은 **다시 배우고 싶다**는 뜻이다 — 저장된
+            // "이미 봤다"와 무관하게 코치를 켠다.
+            setCoachOn(true);
+            send({ type: "practicePlay" });
+          }}
           onDeleteUser={(userId, username) => {
             if (window.confirm(`'${username}' 계정을 삭제할까요?\n계정과 누적 통계가 삭제되며 되돌릴 수 없습니다.`)) {
               send({ type: "adminDeleteUser", userId });
@@ -4916,6 +4981,22 @@ export function App(): JSX.Element {
       ) : null}
 
       {inGame && intro && !isSpectator ? <IntroOverlay view={view!} /> : null}
+      {/* 첫 판 코치 — 개막 연출 중에는 비켜 둔다(그 3초는 판을 보라고 있는 시간이다) */}
+      {coachOn && inGame && !intro && !isSpectator ? (
+        <TutorialCoach
+          ctx={{
+            view,
+            optionTypes: promptOptionTypes,
+            draftOpen: draftVisible,
+            augmentReady: promptHasAugment,
+          }}
+          onFinish={() => {
+            setCoachOn(false);
+            tutorialDone.current = true;
+            safeStorage.setItem(TUTORIAL_KEY, "1");
+          }}
+        />
+      ) : null}
       {draftVisible && draft !== null ? (
         <DraftOverlay
           draft={draft}
@@ -5232,6 +5313,133 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
   );
 }
 
+// ─────────────────────────── 첫 판 코치 (튜토리얼) ───────────────────────────
+
+/**
+ * 진행 중인 판 위에 얹히는 안내 — 강조 링 + 말풍선.
+ *
+ * 무엇을 언제 말할지는 전부 `tutorial.ts`가 정한다. 이 컴포넌트가 하는 일은 셋뿐이다:
+ * 지금 꺼낼 강의를 붙들고, 그 강의가 가리키는 요소를 화면에서 찾아 링을 씌우고,
+ * 사용자가 그 조작을 마치면(`done`) 다음으로 넘긴다.
+ *
+ * **판을 가리지도, 막지도 않는다.** 오버레이 전체가 `pointer-events: none`이고
+ * 말풍선의 버튼만 클릭을 받는다 — "이 패를 누르세요"라고 해 놓고 그 패를 못 누르게
+ * 만드는 것만큼 나쁜 안내가 없다.
+ *
+ * 좌표는 `toLayoutPx`로 되돌린다. `getBoundingClientRect()`는 UI 배율이 곱해진 화면
+ * 좌표인데 인라인 `left/top`은 레이아웃 좌표라, 안 되돌리면 배율이 1이 아닌 화면에서
+ * 링이 엉뚱한 데로 간다 (`uiScale.ts` 참고).
+ */
+function TutorialCoach(props: {
+  ctx: Omit<CoachCtx, "seen">;
+  /** 끝까지 봤거나 사용자가 그만 보기를 눌렀다 */
+  onFinish: () => void;
+}): JSX.Element | null {
+  const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [ring, setRing] = useState<{ top: number; left: number; w: number; h: number } | null>(null);
+
+  const ctx: CoachCtx = { ...props.ctx, seen };
+  const active: Lesson | null =
+    activeId === null ? null : (LESSONS.find((l) => l.id === activeId) ?? null);
+
+  // 다음 강의를 집는다 — 붙들고 있는 것이 없을 때만.
+  useEffect(() => {
+    if (activeId !== null) return;
+    const next = pickLesson(ctx);
+    if (next !== null) setActiveId(next.id);
+  });
+
+  const retire = useStableFn((id: string) => {
+    setSeen((prev) => new Set(prev).add(id));
+    setActiveId(null);
+    if (id === "outro") props.onFinish();
+  });
+
+  // 사용자가 그 조작을 실제로 마쳤으면 저절로 넘어간다
+  useEffect(() => {
+    if (active?.done?.(ctx) === true) retire(active.id);
+  });
+
+  /*
+   * 강조 링의 자리. 손패 레일도 액션 바도 애니메이션으로 움직이므로 한 번 재고 마는
+   * 것으로는 곧 어긋난다 — 강의가 떠 있는 동안만 짧은 주기로 다시 잰다(리스너를
+   * 늘리는 것보다 이쪽이 단순하고, 안 뜰 때는 아무것도 안 돈다).
+   */
+  const anchor = active?.anchor;
+  useEffect(() => {
+    if (anchor === undefined) {
+      setRing(null);
+      return;
+    }
+    const measure = (): void => {
+      const el = document.querySelector(anchor);
+      if (el === null) return setRing(null);
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return setRing(null);
+      const pad = 6;
+      setRing({
+        top: toLayoutPx(r.top) - pad,
+        left: toLayoutPx(r.left) - pad,
+        w: toLayoutPx(r.width) + pad * 2,
+        h: toLayoutPx(r.height) + pad * 2,
+      });
+    };
+    measure();
+    const timer = window.setInterval(measure, 160);
+    return () => window.clearInterval(timer);
+  }, [anchor]);
+
+  if (active === null) return null;
+
+  /*
+   * 말풍선은 강조한 자리의 **반대쪽 끝**에 붙인다 — 바로 옆이 아니라.
+   *
+   * 처음에는 링 바로 위/아래에 뒀는데, 강조가 손패일 때 말풍선이 정확히 **액션 바
+   * 자리**에 앉았다(2026-08-18 실측). 치·퐁·리치 버튼이 뜨는 그 줄이 판에서 가장
+   * 중요한 자리라, 하필 안내가 그걸 가린다. 화면 끝으로 밀면 링과 조금 떨어지지만
+   * 링이 금색으로 맥동하고 있어 무엇을 가리키는지는 잃지 않는다.
+   */
+  const v = layoutViewport();
+  /*
+   * 기본은 **위쪽**이다. 아래쪽 절반에는 손패와 액션 바(치·퐁·리치·론)가 있고, 그
+   * 줄은 판에서 가장 중요한 자리라 잠깐도 가리면 안 된다. 위쪽은 이름표와 패산이라
+   * 잠시 덮여도 잃는 것이 없다.
+   *
+   * 예외는 강조가 **화면 맨 위에 붙어 있을 때**뿐 — 그때만 아래로 내려간다.
+   * (가리킬 것이 없는 환영·마무리 강의도 위쪽이다.)
+   */
+  const atTop = ring === null || ring.top + ring.h >= v.h * 0.28;
+  const bubble: CSSProperties = atTop
+    ? { top: 12, left: "50%", transform: "translateX(-50%)" }
+    : { bottom: 16, left: "50%", transform: "translateX(-50%)" };
+
+  return (
+    <div className="coach-layer" role="dialog" aria-live="polite" aria-label="튜토리얼 안내">
+      {ring !== null ? (
+        <div
+          className="coach-ring"
+          style={{ top: ring.top, left: ring.left, width: ring.w, height: ring.h }}
+        />
+      ) : null}
+      <div className="coach-bubble" style={bubble}>
+        <p className="coach-title">{active.title}</p>
+        <p className="coach-body">{active.body}</p>
+        <div className="coach-actions">
+          {/* `done`이 있는 강의는 조작을 마치면 저절로 넘어간다 — 그래도 버튼을 둔다.
+              읽기만 하고 넘어가고 싶은 사람에게 출구가 없으면 안내가 감옥이 된다. */}
+          <button className="coach-next" onClick={() => retire(active.id)}>
+            알겠어요
+          </button>
+          <button className="coach-quit" onClick={props.onFinish}>
+            그만 보기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────── 로비 ───────────────────────────
 
 /**
@@ -5251,25 +5459,52 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
  * 마작을 알든 모르든 규칙이 흔들린다는 게 보이는가"다.
  *
  * 패 그림은 도움말과 같은 컴포넌트(HelpTileGroups)·같은 에셋을 쓴다.
+ *
+ * # 왜 **바뀌기 전 → 바뀐 뒤** 인가 (2026-08-18)
+ *
+ * 예전에는 증강마다 패 세 장을 그냥 늘어놓았다(사방치기 456m · 단색 세계 123p ·
+ * 함구령 777s). 그 패들은 효과와 아무 상관이 없어서, 보는 사람에게는 **무엇을
+ * 설명하는 그림인지 알 수 없는 장식**이었다 — "사진이 빈약해서 오히려 별로다,
+ * 뭘 설명하는 건지 모르게 됐다"(사용자 지적).
+ *
+ * 규칙이 바뀐다는 것은 정지 화면으로는 보여 줄 수 없다. **무엇이 무엇으로 바뀌는지**
+ * 두 상태를 나란히 놓아야 비로소 그림이 말을 한다. 그래서 셋을 전부 "이랬던 것이
+ * 이렇게 된다"로 세웠고, 그 형태에 맞는 증강만 골랐다 — 셋 다 실제 구현된 것이다.
  */
-const LANDING_SHOWCASE: { name: string; kind: string; tiles: string; desc: string }[] = [
+const LANDING_SHOWCASE: {
+  name: string;
+  kind: string;
+  /** 바뀌기 전 */
+  before: string;
+  /** 바뀐 뒤 */
+  after: string;
+  /** 그림 밑에 붙는 한 줄 — 그림이 무엇을 보여 준 것인지 못 박는다 */
+  cap: string;
+  desc: string;
+}[] = [
   {
     name: "사방치기",
     kind: "상시",
-    tiles: "456m",
-    desc: "상가뿐 아니라 누구의 버림패로도 치를 할 수 있습니다.",
+    before: "46m",
+    after: "456m",
+    cap: "누가 버린 5만이든 치",
+    desc: "치는 원래 왼쪽(상가) 사람의 버림패로만 됩니다. 이 증강은 그 제한을 지웁니다.",
   },
   {
     name: "단색 세계",
     kind: "액티브",
-    tiles: "123p",
-    desc: "손패의 수패를 숫자는 그대로 둔 채 원하는 한 색으로 물들입니다.",
+    before: "1m 5p 9s",
+    after: "159p",
+    cap: "숫자는 그대로, 색만 통일",
+    desc: "손패의 수패가 원하는 한 색으로 물듭니다. 청일색이 한 번에 섭니다.",
   },
   {
-    name: "함구령",
+    name: "개벽",
     kind: "액티브",
-    tiles: "777s",
-    desc: "6순 동안 상대 셋의 치·퐁·대명깡을 통째로 봉인합니다.",
+    before: "3m 7p 2s",
+    after: "123z",
+    cap: "수패가 통째로 자패로",
+    desc: "손패의 수패는 자패로, 자패는 수패로 뒤집힙니다. 자일색이 터지기도, 전부 쓰레기가 되기도 합니다.",
   },
 ];
 
@@ -5404,13 +5639,25 @@ function AuthScreen(props: {
                   <span className="landing-show-name">{s.name}</span>
                   <span className="landing-show-kind">{s.kind}</span>
                 </div>
-                <HelpTileGroups tiles={s.tiles} />
+                <div className="landing-show-fig">
+                  <span className="landing-show-before">
+                    <HelpTileGroups tiles={s.before} />
+                  </span>
+                  {/* 화살표 글자는 CSS가 넣는다 — 칸이 좁으면 세로(↓), 넓으면 가로(→)로
+                      쌓이는데 방향이 어긋나면 그림이 거짓말을 한다 */}
+                  <span className="landing-show-arrow" aria-hidden="true" />
+                  <span className="landing-show-after">
+                    <HelpTileGroups tiles={s.after} />
+                  </span>
+                </div>
+                <p className="landing-show-cap">{s.cap}</p>
                 <p className="landing-show-desc">{s.desc}</p>
               </li>
             ))}
           </ul>
           <p className="landing-show-foot">
-            매 국 시작에 세 장 중 하나를 고릅니다. 전부 100종이 넘습니다.
+            매 국 시작에 세 장 중 하나를 고릅니다. 상대의 울기를 봉인하거나 점수 계산을
+            통째로 뒤집는 것까지, 전부 100종이 넘습니다.
           </p>
         </div>
       </section>
@@ -7628,6 +7875,11 @@ function HomeScreen(props: {
   onSpectate: (code: string) => void;
   onRefreshUsers: () => void;
   onStartSandbox: (mode: GameMode) => void;
+  /**
+   * 연습 대국 — 봇 3명과 곧바로 한 판(기록에 안 남는다). 첫 판 코치가 함께 뜬다.
+   * 가입 직후 자동으로 한 번 열리지만, 나중에 다시 익히고 싶은 사람에게도 문이 있어야 한다.
+   */
+  onPractice: () => void;
   onDeleteUser: (userId: number, username: string) => void;
   onRefresh: () => void;
   onLogout: () => void;
@@ -7750,6 +8002,11 @@ function HomeScreen(props: {
             방을 만들면 6자리 코드가 발급됩니다. 친구에게 코드를 알려주고, 모두
             준비되면 방장이 시작하세요. 빈 자리는 봇으로 채울 수 있습니다.
           </p>
+          {/* 혼자 익히는 문 — 대기실을 거치지 않고 봇 3명과 바로 시작한다.
+              이 판은 리플레이·통계·순위 어디에도 남지 않는다. */}
+          <button className="home-practice" onClick={props.onPractice}>
+            🎓 튜토리얼 · 연습 대국 (봇 3명 · 기록 안 남음)
+          </button>
         </section>
 
         <section className="home-card">
@@ -13572,7 +13829,13 @@ function OwnArea(props: {
           ref={handRef}
           className={`own-hand${isMyTurn ? " own-hand-turn" : ""}${
             drag?.moved === true ? " own-hand-dragging" : ""
-          }${committing ? " own-hand-nofx" : ""}`}
+          }${committing ? " own-hand-nofx" : ""}${
+            /* 배패 전(증강 선택 중)에는 손패가 0장이다. 상자만 남으면 이름표 밑에
+               **빈 알약**이 떠 있는 것으로 보인다(2026-08-18 사용자 지적) — 무엇을
+               담는 자리인지 알 수 없는 테두리는 없느니만 못하다. 패가 들어오는
+               순간 테두리도 함께 나타난다. */
+            displayIds.length === 0 ? " own-hand-empty" : ""
+          }`}
         >
           {displayIds.map((id, idx) => {
             const opts = optionsByTile.get(id) ?? [];

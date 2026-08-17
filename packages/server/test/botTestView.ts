@@ -87,6 +87,12 @@ export interface BotViewOptions {
    * (정보 비대칭을 깨지 않는다) 봇의 위협·값어치 계산이 그대로 읽는다.
    */
   augments?: Partial<Record<string, string[]>>;
+  /**
+   * 증강 **공개 채널**(`view.augmentView`). 개벽이 터졌다·단색 세계가 어느 색을
+   * 골랐다처럼 화면에 배너로 뜨는 사건이 여기로 온다 — 봇의 "무엇을 모으는가"
+   * 읽기(`bot/collect.ts`)가 그대로 읽는다.
+   */
+  augmentView?: Record<string, unknown>;
   /** 증강이 넓힌 화료형 옵션 (`view.scoringOptions`) */
   scoringOptions?: PlayerView["scoringOptions"];
 }
@@ -222,7 +228,7 @@ export function botScene(opts: BotViewOptions): BotScene {
       uraDoraIndicators: null,
       byPlayer,
     },
-    augmentView: {},
+    augmentView: opts.augmentView ?? {},
     scoringOptions: opts.scoringOptions ?? {},
   };
 

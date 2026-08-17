@@ -71,6 +71,24 @@ export interface GuestPlayMessage {
   mode?: GameMode;
 }
 
+/**
+ * **연습 대국** — 로그인한 사람이 봇 3명과 곧바로 한 판.
+ *
+ * 게스트 체험(`guestPlay`)과 같은 방을 계정 있는 사람에게 준다: 방 코드를 만들고
+ * 사람을 기다리는 단계가 통째로 없고, **기록도 남지 않는다**(리플레이·리더보드·증강
+ * 통계 어디에도 안 들어간다).
+ *
+ * 이걸 따로 둔 이유는 **첫 사용자 튜토리얼** 때문이다. 갓 가입한 사람에게 필요한 것은
+ * "방을 만들고 봇을 채우고 시작을 누르세요"가 아니라 **지금 당장 한 판**이다
+ * (`client/src/tutorial.ts`). `guestPlay`는 로그인한 연결을 거절하므로(계정 좌석을
+ * 임시 신원으로 갈아 끼우면 진행 중인 게임의 주인이 바뀐다) 그 길을 쓸 수 없었다.
+ */
+export interface PracticePlayMessage {
+  type: "practicePlay";
+  /** 동풍전(기본)·반장전. */
+  mode?: GameMode;
+}
+
 // ── 방 생성·참가 (15) ──
 
 /** 방 만들기 — 서버가 랜덤 코드를 생성하고 방장으로 입장시킨다. */
@@ -504,6 +522,7 @@ export type ClientMessage =
   | TokenLoginMessage
   | LogoutMessage
   | GuestPlayMessage
+  | PracticePlayMessage
   | CreateRoomMessage
   | JoinRoomMessage
   | LeaveRoomMessage
