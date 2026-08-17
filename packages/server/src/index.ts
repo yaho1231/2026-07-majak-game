@@ -14,12 +14,14 @@
 
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
-import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
-import { createGzip } from "node:zlib";
+import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { createGzip, gzipSync } from "node:zlib";
 import { unlink } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
-import { RoomManager, abuseKeyOf } from "./RoomManager.js";
+import { RoomManager, abuseKeyOf, isRoomCodeShape } from "./RoomManager.js";
+import { ogCardFor } from "./ogCard.js";
+import { injectInviteMeta } from "./ogMeta.js";
 import { headerValue, resolveClientOrigin } from "./trustProxy.js";
 import type { ClientOrigin } from "./trustProxy.js";
 import { StatsStore } from "./StatsStore.js";
@@ -244,6 +246,36 @@ const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg", ".txt", "
  * 이 응답을 압축해서 보낼 것인가 — 클라이언트가 받겠다고 했고, 압축이 이득인 종류이고,
  * 아주 작지 않을 때(작은 파일은 헤더 오버헤드가 이득을 먹는다).
  */
+/**
+ * 질의문자열에서 초대 코드를 꺼낸다 — 방 코드 꼴이 아니면 없는 것으로 본다.
+ * (여기서 나온 값은 HTML 에 그대로 박히므로, 꼴 검사가 곧 이스케이프다.)
+ */
+function roomParamOf(query: string): string | null {
+  for (const part of query.split("&")) {
+    if (!part.startsWith("room=")) continue;
+    try {
+      const value = decodeURIComponent(part.slice(5));
+      return isRoomCodeShape(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * index.html 원본 — 초대 메타를 갈아 끼우려면 통째로 들고 있어야 한다.
+ * 배포로 파일이 바뀌면 mtime 이 달라져 다시 읽는다.
+ */
+let indexCache: { mtimeMs: number; html: string } | null = null;
+function indexHtml(path: string): string {
+  const mtimeMs = statSync(path).mtimeMs;
+  if (indexCache === null || indexCache.mtimeMs !== mtimeMs) {
+    indexCache = { mtimeMs, html: readFileSync(path, "utf8") };
+  }
+  return indexCache.html;
+}
+
 function encodingFor(req: IncomingMessage, ext: string, size: number): "gzip" | null {
   if (!COMPRESSIBLE.has(ext)) return null;
   if (size < 1024) return null;
@@ -318,7 +350,34 @@ const httpServer = createServer((req, res) => {
     req.resume(); // 남은 본문을 흘려보내 소켓을 깨끗이 비운다
     return;
   }
-  const url = (req.url ?? "/").split("?")[0] ?? "/";
+  const rawUrl = req.url ?? "/";
+  const queryAt = rawUrl.indexOf("?");
+  const url = (queryAt === -1 ? rawUrl : rawUrl.slice(0, queryAt)) || "/";
+  const query = queryAt === -1 ? "" : rawUrl.slice(queryAt + 1);
+  /**
+   * 초대 카드 — `/og/room/<코드>.png`. 코드마다 다른 그림이라 그 자리에서 그린다
+   * (자세한 이유는 ogCard.ts). 방이 실제로 있는지는 **묻지 않는다** — 크롤러는
+   * 링크를 붙인 직후에 오는데 그때 방이 살아 있으리라는 보장이 없고, 방 존재
+   * 여부를 응답으로 흘리면 코드 대입 탐색기가 생긴다.
+   */
+  const cardMatch = /^\/og\/room\/([^/]+)\.png$/.exec(url);
+  if (cardMatch !== null) {
+    const code = cardMatch[1] as string;
+    if (!isRoomCodeShape(code)) {
+      res.writeHead(404).end();
+      return;
+    }
+    const png = ogCardFor(code);
+    res.writeHead(200, {
+      "Content-Type": "image/png",
+      "Content-Length": png.length,
+      // 코드마다 주소가 다르고 그림은 영원히 같다 — 크롤러가 다시 받아 갈 이유가 없다.
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end(req.method === "HEAD" ? undefined : png);
+    return;
+  }
   /**
    * 상태 점검 — 정적 파일만 서빙하던 시절에는 감시 도구가 "HTML이 돌아온다"까지만
    * 확인할 수 있었다. 그건 WS 계층이나 게임 루프가 살아 있다는 증거가 아니다.
@@ -406,6 +465,32 @@ const httpServer = createServer((req, res) => {
   }
   if (realPath !== CLIENT_REAL && !realPath.startsWith(CLIENT_REAL + sep)) {
     res.writeHead(403).end();
+    return;
+  }
+  /**
+   * 초대 링크(`/?room=<코드>`)로 온 HTML — 공유 카드 메타만 갈아 끼워 내준다.
+   *
+   * 크롤러는 스크립트를 돌리지 않으므로 클라이언트가 나중에 `<meta>` 를 고쳐 봐야
+   * 소용이 없다. 갈아 끼우는 자리는 ogMeta.ts 에 적어 두었다.
+   */
+  const inviteCode = roomParamOf(query);
+  if (inviteCode !== null && realPath.endsWith(sep + "index.html")) {
+    const body = Buffer.from(injectInviteMeta(indexHtml(realPath), inviteCode), "utf8");
+    const gzipped = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
+    const out = gzipped ? gzipSync(body) : body;
+    res.writeHead(200, {
+      "Content-Type": MIME[".html"] as string,
+      "Content-Length": out.length,
+      "Cache-Control": "no-cache",
+      Vary: "Accept-Encoding",
+      ...(gzipped ? { "Content-Encoding": "gzip" } : {}),
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+      "Content-Security-Policy": CSP,
+    });
+    res.end(req.method === "HEAD" ? undefined : out);
     return;
   }
   const ext = extname(filePath);
