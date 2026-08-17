@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   2113 / 2113 통과 (실패 0)   ← 2026-08-08 갱신 (서버 2-7·2-8 + RoomManager 플레이크)
+npm test                   2423 / 2423 통과 (실패 0)   ← 2026-08-17 갱신 (230 파일, 255초)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
