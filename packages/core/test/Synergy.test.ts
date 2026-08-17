@@ -149,6 +149,39 @@ describe("역시너지 — 문서화된 나머지 관계 (docs/21)", () => {
   });
 });
 
+describe("최신성 — 가장 최근에 집은 것이 가장 세게 끈다", () => {
+  it("두 빌드를 하나씩 들면 나중에 집은 쪽이 더 크게 오른다", () => {
+    // 먼저 깡·도라 → 나중에 리치. 세 번째 제시는 리치 쪽으로 더 기울어야 한다.
+    const bias = synergyBias(["ankan_dora", "late_double"]);
+    expect(bias["ura_peek"]).toBeGreaterThan(bias["snake_kan"] as number); // 리치 > 깡
+    // 순서를 뒤집으면 결과도 뒤집힌다 — 이게 "가장 최근"의 정의다.
+    const flipped = synergyBias(["late_double", "ankan_dora"]);
+    expect(flipped["snake_kan"]).toBeGreaterThan(flipped["ura_peek"] as number);
+  });
+
+  it("예전 픽도 계속 영향을 준다 (덮어쓰기가 아니라 감쇠다)", () => {
+    const bias = synergyBias(["ankan_dora", "late_double"]);
+    expect(bias["snake_kan"]).toBeGreaterThan(1); // 깡 축은 살아 있다
+  });
+
+  it("같은 축을 거듭 집으면 그 축이 더 세게 끌린다", () => {
+    const once = synergyBias(["ankan_dora"]);
+    const twice = synergyBias(["ankan_dora", "snake_kan"]);
+    expect(twice["cliff_bloom"]).toBeGreaterThan(once["cliff_bloom"] as number);
+  });
+
+  it("상한이 있다 — 아무리 겹쳐도 확정이 되지 않는다", () => {
+    const bias = synergyBias(["ankan_dora", "snake_kan", "mirror_dora", "red_five_touch"]);
+    for (const v of Object.values(bias)) expect(v).toBeLessThanOrEqual(4);
+  });
+
+  it("역시너지는 감쇠하지 않는다 (오래된 픽이 건 anti도 그대로 눌린다)", () => {
+    // 스텔스 리치를 맨 처음 집어도, 은닉을 깨는 증강은 계속 최저 배수다.
+    const bias = synergyBias(["stealth_riichi", "ankan_dora", "snake_kan"]);
+    expect(bias["riichi_upgrade"]).toBe(SYNERGY_PENALTY);
+  });
+});
+
 describe("여러 개를 보유했을 때", () => {
   it("축이 합쳐진다 — 두 빌드 양쪽의 시너지를 모두 본다", () => {
     const bias = synergyBias(["ankan_dora", "royal_kokushi"]);

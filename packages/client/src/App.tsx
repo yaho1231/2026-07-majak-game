@@ -27,6 +27,7 @@ import type {
   ClientMessage,
   DecomposeOptions,
   LeaderboardEntry,
+  LockedOption,
   DraftOfferMessage,
   FeedbackEntry,
   FeedbackKind,
@@ -65,6 +66,7 @@ import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { rebuildReplay, replaySettlements, replayViewAt } from "./replayRebuild.js";
 import { remainingCounter } from "./waitCounts.js";
+import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
@@ -961,6 +963,25 @@ function loadSettings(): Settings {
   }
   return DEFAULT_SETTINGS;
 }
+
+/**
+ * 잠긴 론·쯔모 버튼에 붙는 설명.
+ *
+ * 손은 다 됐는데 남의 증강이 막은 순간이다 — 예전엔 버튼이 아예 안 떠서 당한 사람은
+ * "왜 화료가 안 되지"만 남았다(2026-08-17 사용자 요청). 무엇이 막았는지까지 말한다.
+ */
+function lockedReasonText(l: LockedOption): string {
+  if (l.reason === "minHan") {
+    return `잠김 — 이번 국은 ${l.minHan ?? 5}판 이상이어야 화료할 수 있습니다 (격(格)에 지목당했습니다)`;
+  }
+  return "잠김 — 이 사람의 버림패는 지금 론당하지 않습니다 (천하무적·불가침 조약)";
+}
+
+/** 버튼 안에 한 줄로 들어가는 짧은 사유 */
+function lockedReasonShort(l: LockedOption): string {
+  return l.reason === "minHan" ? `${l.minHan ?? 5}판 이상` : "론 불가";
+}
+
 
 /** 후로없음: 치·펑·깡만 있는(론 없는) 후로 프롬프트인가. */
 function isCallOnlyPrompt(opts: ActionOption[]): boolean {
@@ -2767,6 +2788,35 @@ export function App(): JSX.Element {
     if (prompt !== null && tryAutoRespond(prompt, settings)) dropPrompt(prompt.player);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings, prompt]);
+
+  /*
+   * 잠금 통보 프롬프트 — 잠깐 보여 준 뒤 스스로 패스한다.
+   *
+   * 타이머를 매번 전부 걷고 다시 건다. 의존성이 바뀌는 때는 프롬프트 메시지가
+   * 도착했을 때뿐이라 낭비가 없고, "취소된 프롬프트의 타이머가 살아남아 다음
+   * 프롬프트에 패스를 쏘는" 사고가 구조적으로 불가능해진다.
+   *
+   * 봇 좌석을 조종하는 증강 테스트에서도 그 좌석의 통보는 같은 규칙으로 넘어간다 —
+   * 어차피 고를 것이 없는 프롬프트다.
+   */
+  useEffect(() => {
+    const timers: number[] = [];
+    for (const [seat, p] of Object.entries(prompts)) {
+      if (!isLockNoticeOnly(p)) continue;
+      const pass = p.options.find((o) => o.type === "pass");
+      if (pass === undefined) continue;
+      timers.push(
+        window.setTimeout(() => {
+          send({ type: "action", actionType: "pass", payload: pass.payload, seat });
+          dropPrompt(seat);
+        }, LOCK_NOTICE_MS),
+      );
+    }
+    return () => {
+      for (const t of timers) window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prompts, promptSeq]);
 
   // 마운트 시 1회 자동 접속
   useEffect(() => {
@@ -7391,10 +7441,15 @@ function StatsChips({ s }: { s: PlayerStatsView }): JSX.Element {
   );
 }
 
-/** 통계 상세 그리드 (게임 종료 화면). */
-function StatsGrid({ s }: { s: PlayerStatsView }): JSX.Element {
+/**
+ * 통계 상세 그리드 (게임 종료 화면·홈 내 통계).
+ *
+ * 첫 칸의 표본 크기는 보는 맥락에 맞춘다 — 누적 전적에서 알고 싶은 건 "몇 판 했나"이고,
+ * 방금 끝난 한 판에서 판수는 항상 1이라 의미가 없으므로 그때만 국수를 쓴다.
+ */
+function StatsGrid({ s, scope = "career" }: { s: PlayerStatsView; scope?: "career" | "game" }): JSX.Element {
   const rows: [string, string][] = [
-    ["국수", `${s.roundsPlayed}`],
+    scope === "career" ? ["판수", `${s.games}`] : ["국수", `${s.roundsPlayed}`],
     ["화료율", pct(s.winRate)],
     ["방총률", pct(s.dealInRate)],
     ["리치율", pct(s.riichiRate)],
@@ -14593,7 +14648,17 @@ function ActionBar(props: {
       o.type !== "free_discard" &&
       !AUGMENT_ACTION_TYPES.has(o.type),
   );
-  if (buttons.length === 0 && !hasRiichi && riichiAugTypes.length === 0) return null;
+  const locked = prompt.locked ?? [];
+  /** 고를 것이 패스뿐이라 잠시 뒤 스스로 넘어가는 통보인가 (버튼이 시간을 그린다) */
+  const autoPassing = isLockNoticeOnly(prompt);
+  if (
+    buttons.length === 0 &&
+    locked.length === 0 &&
+    !hasRiichi &&
+    riichiAugTypes.length === 0
+  ) {
+    return null;
+  }
 
   /** 증강 리치 무장 — 이미 그 증강으로 무장 중이면 해제(토글). 리치 모드는 함께 푼다. */
   const armRiichiAug = (type: string): void => {
@@ -14675,6 +14740,29 @@ function ActionBar(props: {
               ⚡ {augActionName(props.catalog, t)}
             </button>
           ))}
+          {/* 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
+              여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
+              고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
+          {locked.map((l) => {
+            const label = l.type === "win" ? (isMyTurn ? "쯔모" : "론") : l.type;
+            return (
+              <button
+                key={`locked-${l.type}-${l.reason}`}
+                className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
+                type="button"
+                disabled
+                aria-disabled="true"
+                title={
+                  autoPassing
+                    ? `${lockedReasonText(l)} — 잠시 뒤 자동으로 넘어갑니다`
+                    : lockedReasonText(l)
+                }
+              >
+                🔒 {label}
+                <span className="act-target">{lockedReasonShort(l)}</span>
+              </button>
+            );
+          })}
           {buttons.map((o, i) => {
             const label =
               o.type === "win" ? (isMyTurn ? "쯔모" : "론") : (ACTION_LABEL[o.type] ?? props.catalog[o.type]?.name ?? o.type);
@@ -15919,7 +16007,7 @@ function GameOverModal({
                     ) : null}
                   </div>
                   <div className="stats-sec-label">이번 판</div>
-                  <StatsGrid s={e.stats} />
+                  <StatsGrid s={e.stats} scope="game" />
                   {career !== null ? (
                     <>
                       <div className="stats-sec-label">누적</div>

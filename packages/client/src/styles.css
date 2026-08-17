@@ -2939,6 +2939,66 @@ button {
   .act-riichi-aug { animation: none; }
 }
 
+/*
+ * 잠긴 선언 — 증강(격·천하무적·불가침 조약)이 막은 론/쯔모.
+ *
+ * 색은 화료 그대로 두되 **꺼진 화료**로 보이게 한다: 채도를 빼고 어둡게 깔고,
+ * 빗금으로 "이 자리는 막혔다"를 덧그린다. 자리를 비우지 않는 것이 요점이라
+ * 크기·위치는 살아 있는 버튼과 같다. 눌리지도, 떠오르지도 않는다.
+ */
+.act-locked {
+  background: repeating-linear-gradient(
+    135deg,
+    #5c3a33 0 8px,
+    #4a2f2a 8px 16px
+  );
+  color: rgba(247, 243, 232, 0.62);
+  cursor: not-allowed;
+  box-shadow: inset 0 0 0 1px rgba(247, 243, 232, 0.18);
+}
+
+@media (hover: hover) {
+  /* 살아 있는 버튼만 떠오른다 — 잠긴 것이 반응하면 눌릴 것처럼 보인다 */
+  .act-locked:hover {
+    transform: none;
+    filter: none;
+  }
+}
+
+/*
+ * 스스로 넘어가는 통보 — 남은 시간을 버튼이 직접 그린다.
+ *
+ * 고를 것이 패스뿐인 프롬프트는 잠깐 떴다 사라진다. 아무 예고 없이 사라지면 "봤는데
+ * 뭐였지"가 남으므로, 왼쪽에서 오른쪽으로 빠지는 띠 하나로 남은 시간을 말한다.
+ * 길이는 App.tsx의 LOCK_NOTICE_MS와 맞춘다.
+ */
+.act-locked-timed {
+  position: relative;
+  overflow: hidden;
+}
+
+.act-locked-timed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(250, 188, 173, 0.85);
+  transform-origin: left center;
+  animation: lock-notice-drain 1.8s linear forwards;
+}
+
+@keyframes lock-notice-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 움직임을 줄이는 사람에게는 띠를 고정으로 남긴다 — 사라지는 것은 그대로다 */
+  .act-locked-timed::after { animation: none; }
+}
+
 .act-call {
   background: #2c5a88;
 }

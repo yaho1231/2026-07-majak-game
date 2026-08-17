@@ -153,6 +153,7 @@ export type {
   ActionOption,
   DecisionPrompt,
   FlowStatus,
+  LockedOption,
 } from "./mahjong/flow/FlowController.js";
 export {
   createStandardGame,
@@ -246,7 +247,9 @@ export type {
 export {
   AUGMENT_SYNERGY,
   SYNERGY_TAG_LABEL,
-  SYNERGY_BONUS,
+  SYNERGY_PER_TAG,
+  SYNERGY_MAX_BONUS,
+  SYNERGY_RECENCY_DECAY,
   SYNERGY_PENALTY,
   synergyBonusFor,
   synergyBias,
