@@ -880,17 +880,21 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
             playerId: w.winner,
             state,
           });
-        // 증강이 더하는 추가 판 (score.extraHan) — 역만에는 적용하지 않는다
-        const extraHan =
+        // 증강이 더하는 추가 판 (score.extraHan) — 역만에는 적용하지 않는다.
+        // 어느 증강이 몇 판을 얹었는지도 함께 받아 둔다: 여러 증강이 공유하는 합계라
+        // 둘 이상 겹치면 결과 화면의 "증강 보너스 3판" 한 줄로는 출처를 알 수 없었다.
+        const extraBreakdown =
           ev.yakumanCount > 0
-            ? 0
-            : Math.max(
-                0,
-                rules.resolve<number>("score.extraHan", {
-                  playerId: w.winner,
-                  state,
-                }),
-              );
+            ? { total: 0, parts: [] as { source: string; delta: number }[] }
+            : rules.resolveBreakdown("score.extraHan", { playerId: w.winner, state });
+        const extraHan = ev.yakumanCount > 0 ? 0 : Math.max(0, extraBreakdown.total);
+        /** 증강별 기여 — source(`aug:{좌석}:{증강id}`)에서 증강 id만 떼어 낸다 */
+        const extraHanBy = extraBreakdown.parts
+          .map((part) => {
+            const m = /^aug:[^:]+:(.+)$/.exec(part.source);
+            return m === null ? null : { augId: m[1] as string, han: part.delta };
+          })
+          .filter((x): x is { augId: string; han: number } => x !== null && x.han > 0);
         const totalHan = ev.han + extraHan;
         const score = calculateScore({
           han: totalHan,
@@ -998,10 +1002,12 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
           fu: ev.fu,
           yakumanCount: ev.yakumanCount,
           extraHan,
+          ...(extraHanBy.length > 0 ? { extraHanBy } : {}),
           yaku: ev.yaku.map((y) => ({ id: y.id, name: y.name, han: y.han })),
           doraHan: ev.doraHan,
           uraHan: ev.uraHan,
           redHan: ev.redHan,
+          ...(ev.augDoraHan > 0 ? { augDoraHan: ev.augDoraHan } : {}),
           // 실역 0개 화료 — 여기까지 왔다는 건 needYaku가 꺼져 있었다는 뜻이다
           ...(ev.ok ? {} : { yakuless: true }),
           points: score.total,

@@ -62,10 +62,6 @@ const PUBLIC_RULE_TELLS: Readonly<Record<string, string>> = {
  * 새 증강이 여기 오려면 "왜 보일 수 없는가"를 설명해야 한다 — 그냥 추가는 금지.
  */
 const SILENT_ALLOWED: Readonly<Record<string, string>> = {
-  blame_shift:
-    "론 지불이 세 명에게 갈라지는 것이 결과창 증감에 그대로 뜬다. 총액이 안 변해 augPoints 한 줄로 적을 것이 없을 뿐, 누가 얼마를 냈는지는 전원이 본다",
-  nagashi_yakuman:
-    "유국만관이 역만으로 격상되는 것은 유국 정산 그 자체다 — 지불액으로 전원에게 드러난다",
   unification:
     "발동이 곧 매치 종료다 — 45000점에 닿는 순간 남은 국을 무시하고 게임이 끝나는 것보다 더 크게 보이는 표식은 없다. 문턱은 고정 수치라 카드 문구가 곧 목표이고, 점수봉은 원래 전원에게 보인다",
   late_double:
@@ -79,7 +75,13 @@ function tellsOf(id: string): string[] {
   if (/(?:round)?[Vv]iewKey\(\s*"\*"/.test(src)) found.push("A:공개채널");
   if (/holderTurnOptions|holderReactionOptions/.test(src)) found.push("B:액션");
   if (/yaku\.register|addYakuHolder/.test(src)) found.push("C:커스텀역");
-  if (/withAugPoint|addWinPointBonus|addWinPointTransfer|addWinHanBonus/.test(src)) {
+  // 호출부만 센다 — 이름 뒤에 `(`를 요구하지 않으면 **주석에 적힌 이름**까지 표식으로
+  // 잡힌다(실제로 그랬다: "withAugPoint에는 남길 것이 없다"는 설명이 표식이 됐다).
+  if (
+    /\b(?:withAugPoint|withAugNoteFor|addWinPointBonus|addWinPointTransfer|addWinHanBonus)\(/.test(
+      src,
+    )
+  ) {
     found.push("D:정산표기");
   }
   for (const rule of Object.keys(PUBLIC_RULE_TELLS)) {

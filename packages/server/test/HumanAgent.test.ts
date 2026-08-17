@@ -142,9 +142,10 @@ describe("HumanAgent — 좌석별 결정 대기 (봇 좌석 조종)", () => {
     const bots = agent.decideAs("p2" as never, prompt("p2", "pass", "chi"));
     agent.cancelDecisionFor("p2" as never);
     expect((await bots).type).toBe("pass"); // 안전 폴백
-    // 취소 통지에는 좌석이 실려, 클라이언트가 내 프롬프트를 지우지 않는다
+    // 취소 통지에는 좌석이 실려, 클라이언트가 내 프롬프트를 지우지 않는다.
+    // 사유도 함께 간다 — 시간이 남았는데 접힌 것이므로 "더 높은 선언이 확정됐다"다.
     expect(sock.sent.filter((m) => m.type === "promptCancel")).toEqual([
-      { type: "promptCancel", seat: "p2" },
+      { type: "promptCancel", seat: "p2", reason: "preempted" },
     ]);
     agent.handleMessage({ type: "action", actionType: "pon", payload: {}, seat: "p0" } as never);
     expect((await mine).type).toBe("pon");

@@ -5108,11 +5108,27 @@ button {
   justify-content: space-between;
   /* 이름과 숫자가 붙어 "봇 하나-1,500"으로 읽히던 것을 막는다 (긴 닉네임은 말줄임) */
   gap: 12px;
+  /* 증강 내역 줄이 이름/숫자 아래로 접혀 들어간다 */
+  flex-wrap: wrap;
   font-size: 14px;
   padding: 5px 12px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.045);
   font-variant-numeric: tabular-nums;
+}
+
+/* 이 사람의 ±가 왜 그 숫자인지 — 줄 전체를 차지하고 이름/숫자 아래에 붙는다 */
+.result-delta-augs {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 11px;
+  color: #c7bcff;
+}
+
+.result-draw-row .result-delta-augs {
+  padding: 0 2px 2px;
 }
 
 .result-delta-name {

@@ -44,6 +44,16 @@ export interface WinContext {
   /** 리치 화료 시에만 적용 */
   uraDoraKinds?: TileKind[];
   /**
+   * `doraKinds`·`uraDoraKinds`의 앞에서 **몇 개까지가 판 위의 표시패에서 온 것인가**.
+   *
+   * 증강이 얹는 개인 도라는 표준 도라 뒤에 그대로 이어 붙는다(helpers의 doraKinds 조립).
+   * 그러면 합계만 남아, 화면에 뜬 표시패 한 장으로 설명되지 않는 판수가 나와도 근거를
+   * 찾을 데가 없었다. 이 경계를 알려 주면 채점이 표준분과 증강분을 갈라 셀 수 있다.
+   * 생략하면 전부 표준분으로 본다(종전 동작).
+   */
+  standardDoraCount?: number;
+  standardUraCount?: number;
+  /**
    * 리치를 걸지 않았어도 뒷도라를 센다 (숨은 칼날).
    * 기본은 "리치한 손만 뒷도라"이므로 증강이 이 문을 열 때만 true다.
    */

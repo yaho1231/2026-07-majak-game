@@ -52,6 +52,7 @@ import {
   settleInterceptor,
   stringOf,
   viewKey,
+  withAugNoteFor,
 } from "../util.js";
 import { plan } from "./botPlan.js";
 
@@ -146,16 +147,20 @@ export const spy: AugmentDef = defineAugment({
       if (hits.length === 0) return event;
 
       const deltas = { ...p.deltas };
+      let notes = p.augPoints ?? [];
       let stolen = 0;
       for (const hit of hits) {
         const gain = deltas[hit.winner] ?? 0;
         if (gain <= 0) continue; // 받을 것이 없으면 훔칠 것도 없다
         deltas[hit.winner] = 0;
         stolen += gain;
+        // 화료자의 큰 숫자는 그대로 굴러가는데 증감표에는 0이 뜬다 — 그 줄에 이유를 남긴다.
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, hit.winner, -gain);
       }
       if (stolen === 0) return event;
       deltas[holder] = (deltas[holder] ?? 0) + stolen;
-      return { type: event.type, payload: { ...p, deltas } };
+      notes = withAugNoteFor({ ...p, augPoints: notes }, ID, holder, stolen);
+      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
     });
 
     // 적발 순간은 전원 공개 — 정산 화면에서 점수가 엉뚱한 곳으로 흘러가는 장면이 본체다

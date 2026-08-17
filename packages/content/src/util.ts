@@ -614,6 +614,31 @@ function augIdOf(ctx: AugmentContext): string {
  * 증강(판돈·연승 배수·부활·역만 방어·강탈)은 래퍼를 안 거치므로 직접 호출해야 한다
  * — 안 하면 결과 화면 합계와 실제 증감이 어긋난다(docs/25 P9). 소스 스캔이 강제한다.
  */
+/**
+ * **다른 사람의** 정산 줄에 증강 내역을 한 줄 남긴다 (보유자 몫은 `withAugPoint`).
+ *
+ * 지불자를 재배선하는 증강들(눈먼 총알·책임전가·희생양·밀정)은 총액도 보유자 수령액도
+ * 그대로라 `withAugPoint`에 남길 것이 없었다. 그래서 화료패를 버리지도 않은 사람이
+ * 8,000점을 무는 장면에 화면 어디에도 설명이 없었다 — 이제 그 사람의 증감표 줄 아래에
+ * 근거가 붙는다. `points`는 **그 사람에게 실제로 옮겨간 금액**(음수면 무는 쪽)이다.
+ */
+export function withAugNoteFor(
+  p: RoundSettledPayload,
+  augId: string,
+  player: PlayerId,
+  points: number,
+): AugPointNote[] {
+  const prev = p.augPoints ?? [];
+  const at = prev.findIndex((n) => n.player === player && n.augId === augId);
+  const merged: AugPointNote = {
+    player,
+    augId,
+    points: (at >= 0 ? (prev[at]?.points ?? 0) : 0) + points,
+  };
+  if (at < 0) return [...prev, merged];
+  return prev.map((n, i) => (i === at ? merged : n));
+}
+
 export function withAugPoint(
   p: RoundSettledPayload,
   ctx: AugmentContext,

@@ -22,7 +22,7 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { roundKey, roundViewKey, settleInterceptor, stringOf } from "../util.js";
+import { roundKey, roundViewKey, settleInterceptor, stringOf, withAugNoteFor } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "scapegoat";
@@ -85,14 +85,19 @@ export const scapegoat: AugmentDef = defineAugment({
       if (target === null || target === holder) return event;
       // 나머지 두 명(보유자·대상 제외)의 지불을 대상에게 이전
       const deltas = { ...p.deltas };
+      // 총액도 내 수령액도 그대로라 `withAugPoint`에 남길 것은 없지만, 대신 무는 사람과
+      // 면제된 사람의 줄에는 근거가 있어야 한다.
+      let notes = p.augPoints ?? [];
       for (const pl of ic.state.players) {
         if (pl.id === holder || pl.id === target) continue;
         const owed = deltas[pl.id] ?? 0;
         if (owed >= 0) continue; // 지불(음수)만 이전
         deltas[target] = (deltas[target] ?? 0) + owed;
         deltas[pl.id] = 0;
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, target, owed);
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, pl.id, -owed);
       }
-      return { type: event.type, payload: { ...p, deltas } };
+      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
     });
 
     // 매 국 1회만 지목 — 이번 국에 이미 지목했으면 버튼을 내리지 않는다

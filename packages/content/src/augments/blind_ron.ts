@@ -31,6 +31,7 @@ import {
   roundKey,
   roundViewKey,
   settleInterceptor,
+  withAugNoteFor,
 } from "../util.js";
 
 const ID = "blind_ron";
@@ -97,6 +98,7 @@ export const blindRon: AugmentDef = defineAugment({
 
       const seats = ic.state.players.map((pl) => pl.id);
       const deltas = { ...p.deltas };
+      let notes = p.augPoints ?? [];
       let moved = 0;
       for (const shooter of shooters) {
         const owed = -(deltas[shooter] ?? 0);
@@ -111,11 +113,14 @@ export const blindRon: AugmentDef = defineAugment({
         deltas[shooter] = (deltas[shooter] ?? 0) + owed;
         deltas[victim] = (deltas[victim] ?? 0) - owed;
         moved += owed;
+        // 지불자만 바뀌었고 총액도 보유자 수령액도 그대로라 `withAugPoint`에는 남길 것이
+        // 없다. 그래도 **당사자 둘의 증감표 줄에는 근거가 있어야 한다** — 쏜 사람은 왜
+        // 안 내는지, 엉뚱한 사람은 왜 무는지가 화면에 한 글자도 없었다.
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, victim, -owed);
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, shooter, owed);
       }
       if (moved === 0) return event;
-      // 지불자만 바뀌었고 총액도 보유자 수령액도 그대로다 — 책임전가와 같은 재배선이라
-      // augPoints(내 점수를 이만큼 움직였다)에 남길 것이 없다.
-      return { type: event.type, payload: { ...p, deltas } };
+      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
     });
   },
   // 봇 정책 없음 — 자동 발동이라 선택 지점이 없다.

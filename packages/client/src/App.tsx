@@ -3439,9 +3439,23 @@ export function App(): JSX.Element {
         });
       }
     } else {
-      showCutIn(msg.outcome === "draw" ? "유 국" : "도중 유국", "draw", undefined, 1300, {
-        sfx: sfx.draw,
-      });
+      // 평범한 유국이 아니면 컷인부터 다르게 말한다 (유국역만 등).
+      const special = msg.outcome === "draw" ? msg.settle.drawSpecial : undefined;
+      if (special !== undefined) {
+        showCutIn(
+          special.label.split(" — ")[0] ?? special.label,
+          "yakuman",
+          special.holder !== undefined && prevViewRef.current !== null
+            ? playerNameById(prevViewRef.current, special.holder)
+            : undefined,
+          2200,
+          { sfx: sfx.draw, impact: { shake: 4 } },
+        );
+      } else {
+        showCutIn(msg.outcome === "draw" ? "유 국" : "도중 유국", "draw", undefined, 1300, {
+          sfx: sfx.draw,
+        });
+      }
     }
     // 결과창은 연출 큐가 다 빈 뒤에 연다 (이전 국 연출을 모두 마무리하고 결과 표시)
     scheduleRoundResult(msg);
@@ -14786,6 +14800,42 @@ function augPointsOf(
     .reduce((sum, a) => sum + a.points, 0);
 }
 
+/**
+ * 증감표 한 줄 아래에 붙는 **증강 내역** — 이 사람의 ±가 왜 그 숫자인지.
+ *
+ * 예전에는 augPoints를 쓰는 코드가 두 곳뿐이었고 둘 다 `w.winner`로 걸렀다. 그래서
+ * ① 유국 정산의 노트는 렌더 경로가 아예 없었고 ② 지불자·패자 쪽 노트(역만 방어술 환급·
+ * 죽기살기·반전·일확천금 환급·핏빛 계약…)는 계산되어 전송된 뒤 그대로 버려졌다.
+ * 화료패를 버리지도 않은 사람이 큰 마이너스를 무는 장면에 설명이 한 줄도 없었던 이유다.
+ *
+ * 화료자 몫은 위 승자 블록이 이미 적으므로 여기서 건너뛴다(같은 말을 두 번 하지 않는다).
+ * `points === 0`인 노트도 싣는다 — 마왕의 진군처럼 **총액이 0이어도 재배선 자체가
+ * 설명**인 경우가 있다.
+ */
+function AugDeltaNotes({
+  settle,
+  player,
+  skipWinners,
+}: {
+  settle: RoundOverMessage["settle"];
+  player: string;
+  skipWinners?: ReadonlySet<string>;
+}): JSX.Element | null {
+  if (skipWinners?.has(player) === true) return null;
+  const notes = (settle.augPoints ?? []).filter((a) => a.player === player);
+  if (notes.length === 0) return null;
+  return (
+    <span className="result-delta-augs">
+      {notes.map((a) => (
+        <span key={`${a.augId}:${a.player}`} className="result-delta-aug">
+          {augmentDisplayName(a.augId)}
+          {a.points !== 0 ? ` ${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}` : ""}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function RoundResultPanel({
   result,
   view,
@@ -14865,6 +14915,8 @@ function RoundResultPanel({
 
   const isWin = result.outcome === "win";
   const isDraw = result.outcome === "draw";
+  /** 화료자 — 이 사람들의 증강 내역은 위 승자 블록이 이미 적으므로 표에서는 건너뛴다 */
+  const winnerIds = new Set(infos.map((w) => w.winner));
   // 텐파이 집계가 실리지 않은 정산(구 버전 로그 이어받기)은 전원 "노텐"으로 오표기하느니
   // 예전 점수표로 물러난다 — delta 부호로 텐파이를 추정하면 유국 증강이 섞일 때 틀린다.
   const tenpaiPlayers = settle.tenpaiPlayers;
@@ -14913,7 +14965,15 @@ function RoundResultPanel({
         {!isWin ? (
           <p className="result-subtitle">
             {isDraw
-              ? "패산 소진 — 텐파이한 사람만 손을 공개한다"
+              ? // 평범한 유국이 아니면 그 사실을 말한다 — 유국역만이 32,000점을 옮겨도
+                // 부제는 고정 문구 "패산 소진"이라 역만이라는 말조차 없었다.
+                settle.drawSpecial !== undefined
+                ? `${settle.drawSpecial.label}${
+                    settle.drawSpecial.holder !== undefined
+                      ? ` (${nameOf(settle.drawSpecial.holder)})`
+                      : ""
+                  }`
+                : "패산 소진 — 텐파이한 사람만 손을 공개한다"
               : (ABORT_REASONS[settle.abortReason ?? ""] ?? "국이 중단됐다")}
           </p>
         ) : null}
@@ -14933,12 +14993,34 @@ function RoundResultPanel({
               // 역만 손의 역 줄은 판수 대신 배수로 — 대사희·국사 13면은 한 줄이 "더블 역만"이다
               han: w.yakumanCount > 0 ? yakumanHanLabel(y.han) : `${y.han}판`,
             })),
-            ...(w.doraHan > 0 ? [{ key: "dora", label: "도라", han: `${w.doraHan}판` }] : []),
+            // 증강 도라는 표준 도라와 합산돼 한 줄로만 떴다 — 화면에 뜬 표시패로
+            // 설명되지 않는 판수의 출처를 따로 적는다.
+            ...(w.doraHan > 0
+              ? [
+                  {
+                    key: "dora",
+                    label:
+                      w.augDoraHan !== undefined && w.augDoraHan > 0
+                        ? `도라 (증강 ${w.augDoraHan}판 포함)`
+                        : "도라",
+                    han: `${w.doraHan}판`,
+                  },
+                ]
+              : []),
             ...(w.uraHan > 0 ? [{ key: "ura", label: "뒷도라", han: `${w.uraHan}판` }] : []),
             ...(w.redHan > 0 ? [{ key: "red", label: "적도라", han: `${w.redHan}판` }] : []),
-            ...(w.extraHan > 0
-              ? [{ key: "extra", label: "증강 보너스", han: `${w.extraHan}판`, aug: true }]
-              : []),
+            // 증강이 얹은 추가 판 — 어느 증강이 몇 판인지 알 수 있으면 그렇게 적는다.
+            // (합계만 아는 구 리플레이는 예전처럼 익명 한 줄로 떨어진다.)
+            ...(w.extraHanBy !== undefined && w.extraHanBy.length > 0
+              ? w.extraHanBy.map((e) => ({
+                  key: `extra:${e.augId}`,
+                  label: augmentDisplayName(e.augId),
+                  han: `+${e.han}판`,
+                  aug: true,
+                }))
+              : w.extraHan > 0
+                ? [{ key: "extra", label: "증강 보너스", han: `${w.extraHan}판`, aug: true }]
+                : []),
             /**
              * 증강이 정산에서 **점수를 직접 움직인 내역**(augPoints).
              *
@@ -15145,6 +15227,9 @@ function RoundResultPanel({
                       {d.toLocaleString()}
                     </span>
                   </div>
+                  {/* 유국 정산의 증강 내역 — 예전에는 렌더 경로가 아예 없어(승자 필터)
+                      승승장구·유국역만처럼 유국에서만 움직이는 점수가 통째로 사라졌다. */}
+                  <AugDeltaNotes settle={settle} player={p.id} />
                   {revealed !== undefined ? (
                     <div className="result-draw-hand">
                       {sortTileViews(revealed.hand).map((t, ti) => (
@@ -15247,6 +15332,7 @@ function RoundResultPanel({
                     {d > 0 ? "+" : ""}
                     {d.toLocaleString()}
                   </span>
+                  <AugDeltaNotes settle={settle} player={p.id} skipWinners={winnerIds} />
                 </div>
               );
             })}

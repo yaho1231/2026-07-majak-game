@@ -30,6 +30,11 @@ export interface WinEvaluation {
   doraHan: number;
   uraHan: number;
   redHan: number;
+  /**
+   * 표·뒷도라 판수 중 **증강이 얹은 개인 도라에서 온 몫** (표시 전용, doraHan/uraHan에 포함).
+   * 화면에 뜬 표시패로 설명되지 않는 판수의 출처가 여기다.
+   */
+  augDoraHan: number;
   /** yakuHan + 도라 계 */
   han: number;
   fu: number;
@@ -111,6 +116,7 @@ export function evaluateWin(
         doraHan: 0,
         uraHan: 0,
         redHan: 0,
+        augDoraHan: 0,
         han: 0,
         fu: 0,
         waitType: variant.waitType,
@@ -141,15 +147,23 @@ export function evaluateWin(
       let doraHan = 0;
       let uraHan = 0;
       let redHan = 0;
+      let augDoraHan = 0;
       if (countsExtras) {
         const kinds = fullKinds(ctx);
-        doraHan = countDora(kinds, ctx.doraKinds ?? []);
+        const dora = ctx.doraKinds ?? [];
+        const ura = ctx.uraDoraKinds ?? [];
+        doraHan = countDora(kinds, dora);
         // 뒷도라는 원래 리치한 손만의 보상이다 — uraAlways(숨은 칼날)가 그 문을 연다
-        uraHan =
-          ctx.riichi !== null || ctx.uraAlways === true
-            ? countDora(kinds, ctx.uraDoraKinds ?? [])
-            : 0;
+        const countsUra = ctx.riichi !== null || ctx.uraAlways === true;
+        uraHan = countsUra ? countDora(kinds, ura) : 0;
         redHan = ctx.redCount ?? 0;
+        // 표준분만 따로 한 번 더 세어 차이를 증강 몫으로 돌린다 (경계를 모르면 0).
+        const stdDora = ctx.standardDoraCount ?? dora.length;
+        const stdUra = ctx.standardUraCount ?? ura.length;
+        augDoraHan =
+          doraHan -
+          countDora(kinds, dora.slice(0, stdDora)) +
+          (countsUra ? uraHan - countDora(kinds, ura.slice(0, stdUra)) : 0);
       }
       candidate = {
         ok: hasRealYaku,
@@ -158,6 +172,7 @@ export function evaluateWin(
         yakuHan,
         doraHan,
         uraHan,
+        augDoraHan,
         redHan,
         han: yakuHan + doraHan + uraHan + redHan,
         fu,
