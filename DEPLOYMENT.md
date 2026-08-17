@@ -182,6 +182,21 @@ npm run backup             # 지금 한 번
 npm run backup:verify      # 마지막 백업이 진짜 열리는지 검사
 ```
 
+### 무엇을 담는가 (2026-08-18 실측)
+
+| 대상 | 크기 | 내용 | 보관 |
+|---|---|---|---|
+| `majak.db` | 144 KB (gzip 48 KB) | 계정·세션·게임 인덱스·제보 | 14 세대 |
+| `stats.json` | 256 KB | **플레이어 34명의 누적 전적** — 화료율·방총률·평균순위·판수 | 14 세대 |
+| `stats.augments.json` | 12 KB | 증강별 실전 성적 + 티어 오프셋 (20판마다 도는 밸런스 자동 조정의 기억 전체) | 14 세대 |
+| `replays/*.jsonl` | 21 MB (462판) | 판별 전체 이벤트 로그 — 리플레이 재생의 원본 | 누적 |
+
+**총 ~21 MB.** 대부분이 리플레이고, 판마다 파일 하나씩 늘어난다(한 판 ≈ 46 KB).
+
+⚠ **누적 전적은 SQLite가 아니라 JSON 파일에 있다.** 처음 이 스크립트를 쓸 때 이 둘을
+빠뜨렸고, DB 스냅샷만 보고 "백업이 있다"고 믿을 뻔했다 — DB만 복구해도 전적은 0이 된다.
+`packages/server/test/BackupCoverage.test.ts` 가 이 누락을 막는다.
+
 `scripts/backup.sh` 가 하는 일:
 
 1. `sqlite3 .backup` 으로 **일관된** DB 스냅샷을 뜬다. 서버가 돌고 있어도 안전하다.
@@ -192,7 +207,10 @@ npm run backup:verify      # 마지막 백업이 진짜 열리는지 검사
 3. 저널 모드를 DELETE로 바꾸고 gzip 한다(보관본은 곁파일 없이 혼자 완결되게).
 4. `replays/*.jsonl` 을 증분 미러한다. `--delete` 는 **쓰지 않는다** — 원본에서
    사라진 것이 사본에서도 사라지면 백업의 의미가 없다.
-5. DB 스냅샷은 `BACKUP_KEEP`(기본 14) 세대만 남긴다.
+5. `stats.json`·`stats.augments.json` 은 JSON 파싱을 확인한 뒤 날짜를 붙여 복사한다.
+   이 둘은 **덮어쓰기로 갱신**되므로(리플레이와 달리 불변이 아니다) 세대를 남긴다 —
+   마지막 하나만 두면 손상된 저장이 그대로 유일본이 된다.
+6. DB·통계 스냅샷은 `BACKUP_KEEP`(기본 14) 세대만 남긴다.
 
 설정은 `deploy/majak.env` 의 `BACKUP_DIR`·`BACKUP_KEEP`.
 ★ `BACKUP_DIR` 은 되도록 **다른 물리 디스크**(외장/NAS)를 가리켜라. 같은 디스크 안의
@@ -210,6 +228,12 @@ npm start
 ```
 
 리플레이는 `~/majak-backups/replays/` 에서 `replays/` 로 복사하면 된다(파일명이 곧 키다).
+**누적 전적도 잊지 마라** — 이걸 빼면 계정은 살아 있는데 전적만 0이 된다:
+
+```
+cp ~/majak-backups/stats/stats-<날짜>.json           replays/stats.json
+cp ~/majak-backups/stats/stats.augments-<날짜>.json  replays/stats.augments.json
+```
 
 ## 6-1. 자동으로 도는 것들
 
