@@ -82,6 +82,7 @@ export const STORAGE_KEYS = [
   "majak.serverUrl",
   "majak.sessionToken",
   "majak.sessionServer",
+  "majak.guestToken",
   "majak.lastRoomCode",
   "majak.settings",
   "majak.uiZoom",

@@ -196,6 +196,15 @@ const SESSION_KEY = "majak.sessionToken";
 /** 이 세션 토큰을 **발급한 서버 주소**. 다른 서버에는 토큰을 보내지 않는다. */
 const SESSION_SERVER_KEY = "majak.sessionServer";
 const LAST_ROOM_KEY = "majak.lastRoomCode";
+/**
+ * 끊긴 체험 대국으로 돌아오는 열쇠 (감사 §2-5).
+ *
+ * 세션 토큰과 달리 **발급 서버를 함께 저장하지 않는다.** 그 규칙이 있는 이유는
+ * "고급 설정에 남이 부른 주소를 넣는 순간 계정이 통째로 넘어간다"였는데, 이
+ * 토큰이 여는 것은 봇 셋과의 체험 판 하나뿐이다 — 넘어갈 계정이 없다. 통하지
+ * 않는 서버에 보내면 `GUEST_SESSION_GONE`이 오고 그 자리에서 지운다.
+ */
+const GUEST_TOKEN_KEY = "majak.guestToken";
 
 /**
  * 접속할 서버 주소 — 고급 설정의 수동 지정(있으면)을 쓰고, 없으면 same-origin.
@@ -3112,6 +3121,14 @@ export function App(): JSX.Element {
       if (relogin) {
         send({ type: "tokenLogin", sessionToken: token });
       }
+      // 계정이 없는 사람이 체험 판을 두다 끊겼다면 그 판으로 돌려보낸다 (§2-5).
+      // 계정 로그인이 우선이다 — 둘 다 있으면 계정이 이긴다(체험 토큰은 어차피
+      // 그 판이 끝나면 죽고, 계정 쪽에 잃을 것이 훨씬 많다).
+      const guestToken = relogin ? null : safeStorage.getItem(GUEST_TOKEN_KEY);
+      const guestResuming = guestToken !== null && guestToken !== "";
+      if (guestResuming) {
+        send({ type: "guestResume", token: guestToken });
+      }
       sendFailNotified.current = false; // 다음 끊김에는 다시 알린다
       /*
        * 밀린 것을 언제 보내나 — **인증이 끝난 뒤**다. 큐에는 방 입장처럼 로그인해야
@@ -3119,7 +3136,7 @@ export function App(): JSX.Element {
        * 서버가 미인증으로 거절한다. 토큰이 없으면 기다릴 것이 없으니 지금 보낸다
        * (그때 큐에 있을 수 있는 것은 로그인·가입·게스트 체험처럼 인증 전 메시지다).
        */
-      if (!relogin) flushPendingSends();
+      if (!relogin && !guestResuming) flushPendingSends();
       startHeartbeat(ws);
     });
     ws.addEventListener("message", (event) => {
@@ -3399,6 +3416,9 @@ export function App(): JSX.Element {
     safeStorage.removeItem(SESSION_KEY);
     safeStorage.removeItem(SESSION_SERVER_KEY);
     safeStorage.removeItem(LAST_ROOM_KEY);
+    // 체험을 끝내고 나가는 길(가입하러 가기 포함)도 여기를 지난다 — 열쇠를
+    // 남겨 두면 다음 접속에서 이미 접힌 판으로 끌려간다.
+    safeStorage.removeItem(GUEST_TOKEN_KEY);
     setAuth(null);
     resetGameState();
     setReplayData(null);
@@ -3443,6 +3463,12 @@ export function App(): JSX.Element {
         safeStorage.setItem(SESSION_KEY, msg.sessionToken);
         // 발급처를 함께 남긴다 — 다음 접속 때 같은 서버에만 되돌려 보내기 위함.
         safeStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
+        // 계정으로 들어왔으니 체험 열쇠는 버린다 — 안 그러면 로그아웃한 뒤
+        // 다음 접속에서 남의(자기 옛) 체험 판으로 끌려간다.
+        safeStorage.removeItem(GUEST_TOKEN_KEY);
+      } else if (typeof msg.guestToken === "string" && msg.guestToken !== "") {
+        // 끊겨도 이 판으로 돌아올 수 있게 열쇠를 보관한다 (감사 §2-5).
+        safeStorage.setItem(GUEST_TOKEN_KEY, msg.guestToken);
       }
       setAuth({ username: msg.username, isAdmin: msg.isAdmin, guest });
       if (guest) {
@@ -3514,6 +3540,14 @@ export function App(): JSX.Element {
         guestRef.current = false;
         setAuth(null);
         resetGameState();
+        return;
+      }
+      if (msg.code === "GUEST_SESSION_GONE") {
+        // 열쇠가 가리키던 체험 판이 이미 끝났다(또는 보유 시한이 지났다).
+        // 조용히 버리고 첫 화면 그대로 둔다 — 이 사람은 방금 사이트를 다시 열었을
+        // 뿐이고, 그 앞에 놓아야 할 것은 오류 문구가 아니라 "체험 시작" 버튼이다.
+        safeStorage.removeItem(GUEST_TOKEN_KEY);
+        flushPendingSends();
         return;
       }
       // 로그인·가입 실패는 **폼 안에** 남긴다. 3.2초짜리 토스트로 스쳐 보내면
@@ -3927,6 +3961,9 @@ export function App(): JSX.Element {
         activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
         safeStorage.removeItem(LAST_ROOM_KEY);
       }
+      // 체험 판이 끝났으면 그 판으로 돌아오는 열쇠도 여기서 죽는다 — 결과 화면에서
+      // 새로고침했을 때 이미 없는 판으로 붙었다가 튕기는 길을 막는다.
+      if (guestRef.current) safeStorage.removeItem(GUEST_TOKEN_KEY);
       return;
     }
     if (msg.type === "kicked") {

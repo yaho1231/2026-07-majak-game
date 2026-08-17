@@ -211,9 +211,13 @@ describe("무엇이 익명인가", () => {
     expect(guest.last("authOk").guest).toBe(true);
     expect(h.rm.healthSnapshot()).toMatchObject({ connections: 1, anonymous: 1 });
 
-    // 뒷정리 — 소켓을 닫으면 체험 판도 함께 접힌다.
+    // 소켓을 닫아도 **판은 남는다** — 손님이 돌아올 수 있게 세워 둔다(감사 §2-5).
+    // 예전에는 여기서 방이 즉시 삭제됐고, 그게 곧 "모바일 앱 전환 한 번이면
+    // 첫인상이 증발한다"였다. 이 파일이 지키는 선은 방 개수가 아니라 **익명 계정**
+    // 이므로, 그쪽만 확인한다.
     guest.close();
-    expect(h.rm.healthSnapshot().rooms).toBe(0);
+    expect(h.rm.healthSnapshot().rooms).toBe(1);
+    expect(h.rm.healthSnapshot().anonymous).toBe(0); // 연결이 닫혔으니 익명 슬롯은 반납된다
   });
 
   it("로그아웃하면 다시 익명으로 센다", async () => {

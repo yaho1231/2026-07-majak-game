@@ -237,3 +237,54 @@ describe("정형구는 목록 그대로만 나간다", () => {
     expect(APP_CODE).toMatch(/isSpectator \? \{\} : \{ onEmote: sendEmote \}/);
   });
 });
+
+// ─────────────────── 9. 끊긴 체험 판으로 돌아오기 (§2-5) ───────────────────
+
+describe("손님이 자기 판을 되찾는다", () => {
+  it("체험 열쇠를 저장하고, 다음 접속에 그대로 되돌려 보낸다", () => {
+    expect(APP_CODE).toContain('GUEST_TOKEN_KEY = "majak.guestToken"');
+    expect(APP_CODE).toMatch(/safeStorage\.setItem\(GUEST_TOKEN_KEY, msg\.guestToken\)/);
+    expect(APP_CODE).toMatch(/send\(\{ type: "guestResume", token: guestToken \}\)/);
+  });
+
+  it("계정 로그인이 이긴다 — 둘 다 있으면 체험 열쇠는 안 보낸다", () => {
+    // 계정 쪽에 잃을 것이 훨씬 많고, 체험 열쇠는 그 판이 끝나면 어차피 죽는다.
+    expect(APP_CODE).toMatch(/relogin \? null : safeStorage\.getItem\(GUEST_TOKEN_KEY\)/);
+  });
+
+  it("인증이 끝나기 전에 밀린 요청을 흘려보내지 않는다", () => {
+    // 토큰 로그인과 같은 이유 — 서버가 미인증으로 거절한다.
+    expect(APP_CODE).toContain("if (!relogin && !guestResuming) flushPendingSends();");
+  });
+
+  it("열쇠가 죽으면 그 자리에서 버린다 (오류 문구를 남기지 않는다)", () => {
+    const at = APP_CODE.indexOf('msg.code === "GUEST_SESSION_GONE"');
+    expect(at).toBeGreaterThan(0);
+    const block = APP_CODE.slice(at, at + 320);
+    expect(block).toContain("safeStorage.removeItem(GUEST_TOKEN_KEY)");
+    expect(block).toContain("flushPendingSends()");
+  });
+
+  it("판이 끝나거나 계정으로 들어오면 열쇠를 지운다", () => {
+    // 남겨 두면 다음 접속에서 이미 접힌 판으로 끌려간다.
+    expect(APP_CODE).toMatch(/guestRef\.current\) safeStorage\.removeItem\(GUEST_TOKEN_KEY\)/);
+  });
+
+  it("지워야 할 저장 키 목록에도 들어 있다", () => {
+    const storage = readFileSync(join(HERE, "../src/storage.ts"), "utf8");
+    expect(storage).toContain('"majak.guestToken"');
+  });
+
+  it("서버는 1인 방만 세워 둔다 (남은 사람이 있는 방은 그대로 유예 5초)", () => {
+    expect(ROOM_CODE).toMatch(/room\.guest && room\.phase === "playing" && room\.controller !== null/);
+    expect(ROOM_CODE).toContain("conn.agent.suspend(SOLO_HOLD_MS)");
+    // 시한이 있어야 세워 둔 방이 방 예산을 영구히 물지 않는다.
+    expect(ROOM_CODE).toMatch(/room\.holdUntil !== null && now > room\.holdUntil/);
+  });
+
+  it("돌아오는 길은 기존 재접속 경로를 그대로 쓴다 (새 경로를 만들지 않는다)", () => {
+    const at = ROOM_CODE.indexOf("private guestResume(");
+    expect(at).toBeGreaterThan(0);
+    expect(ROOM_CODE.slice(at, at + 1800)).toContain("this.joinRoom(conn, user, room.code)");
+  });
+});
