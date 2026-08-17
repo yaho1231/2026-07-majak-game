@@ -835,3 +835,73 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
     expect(status).toEqual({ kind: "roundOver", outcome: "abort" });
   });
 });
+
+describe("유국만관 (流し満貫)", () => {
+  /**
+   * 버림패가 전부 요구패·자패이고 아무도 울지 않았으면, 유국인데도 만관을 받는다.
+   *
+   * 이 규칙은 용어사전이 오래도록 설명하고 있었는데 엔진에는 판정이 없었다 —
+   * 요구패만 버린 플레이어는 사전이 알려 준 대로 기대했지만 아무것도 못 받았다.
+   */
+  const HANDS: Record<PlayerId, string> = {
+    p0: "147m147p147s11z22z",
+    p1: "258m258p258s33z44z",
+    p2: "369m369p369s12z34z",
+    p3: "147m258p369s55z66z",
+  };
+
+  /** 패산을 비우고 유국 정산을 돌린다 (황패유국 경로) */
+  function settleDrawWith(discards: Record<PlayerId, string>): StandardGame {
+    const state = craft({ hands: HANDS, discards, phase: "turn.draw", turnSeat: 0 });
+    const game = createStandardGameFromState({
+      ...state,
+      zones: { ...state.zones, [WALL]: { ...state.zones[WALL]!, tileIds: [] } },
+    });
+    const res = game.engine.submit({
+      player: SYSTEM_PLAYER,
+      type: "sys.settleDraw",
+      payload: {},
+    });
+    expect(res.ok).toBe(true);
+    return game;
+  }
+
+  const gained = (game: StandardGame, id: PlayerId): number =>
+    game.engine.state.players.find((p) => p.id === id)!.score - 25000;
+
+  it("요구패·자패만 버렸고 아무도 울지 않으면 자 만관(8000)을 받는다", () => {
+    // p1은 자(seat 1) — 오야 4000 + 자 2000 × 2 = 8000
+    const game = settleDrawWith({ p0: "5m", p1: "119p9s", p2: "5s", p3: "5p" });
+    expect(gained(game, "p1")).toBe(8000);
+    expect(gained(game, "p0")).toBe(-4000); // p0 = 오야
+    expect(gained(game, "p2")).toBe(-2000);
+    expect(gained(game, "p3")).toBe(-2000);
+    // 총합은 보존된다
+    expect(totalPoints(game)).toBe(100000);
+  });
+
+  it("오야가 성립하면 전원에게 4000씩 받는다 (12000)", () => {
+    const game = settleDrawWith({ p0: "119p9s", p1: "5m", p2: "5s", p3: "5p" });
+    expect(gained(game, "p0")).toBe(12000);
+    for (const id of ["p1", "p2", "p3"] as PlayerId[]) expect(gained(game, id)).toBe(-4000);
+    expect(totalPoints(game)).toBe(100000);
+  });
+
+  it("요구패가 아닌 패를 한 장이라도 버렸으면 성립하지 않는다", () => {
+    const game = settleDrawWith({ p0: "5m", p1: "119p5s", p2: "5s", p3: "5p" });
+    for (const id of ["p0", "p1", "p2", "p3"] as PlayerId[]) expect(gained(game, id)).toBe(0);
+  });
+
+  it("버림이 한 장도 없으면 성립하지 않는다", () => {
+    const game = settleDrawWith({ p0: "", p1: "", p2: "", p3: "" });
+    for (const id of ["p0", "p1", "p2", "p3"] as PlayerId[]) expect(gained(game, id)).toBe(0);
+  });
+
+  it("결과 payload가 유국만관임을 밝힌다 (결과 화면 부제)", () => {
+    const game = settleDrawWith({ p0: "5m", p1: "119p9s", p2: "5s", p3: "5p" });
+    const settled = game.engine.eventLog.find((e) => e.type === "RoundSettled");
+    const payload = settled?.payload as { drawSpecial?: { augId: string; holder?: string } };
+    expect(payload.drawSpecial?.augId).toBe("nagashi_mangan");
+    expect(payload.drawSpecial?.holder).toBe("p1");
+  });
+});

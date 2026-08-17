@@ -523,6 +523,33 @@ export interface PromptCancelMessage {
    * 한쪽만 접히도록 가른다.
    */
   seat?: PlayerId;
+  /**
+   * 왜 접혔는가 — 생략하면 이유를 모른다(구 동작).
+   *
+   * 예전에는 이 메시지가 UI를 **말없이** 닫기만 했다. 그래서 "제한 시간이 지나 서버가
+   * 대신 골랐다"와 "더 높은 선언이 확정돼 내 선택이 결과를 못 바꾼다"가 화면에서 똑같이
+   * 보였고, 플레이어에게는 둘 다 "누르려던 론 버튼이 그냥 사라졌다"였다. 초읽기
+   * (time_pressure) 국은 제한이 5초라 이 일이 상시로 일어난다.
+   *
+   * - `timeout`  : 마감을 넘겨 `safeFallbackOption`으로 대신 진행했다.
+   * - `preempted`: 우선순위가 더 높은 선언이 이미 확정됐다.
+   */
+  reason?: "timeout" | "preempted";
+  /** 서버가 대신 고른 선택의 표시 이름 (`timeout`일 때만, 예: "쯔모기리"·"패스") */
+  chosen?: string;
+}
+
+/**
+ * 증강 선택 시간이 다 되어 서버가 대신 골랐다 — **무엇이 뽑혔는지** 알린다.
+ *
+ * 선택창은 "시간이 다 되면 랜덤으로 결정된다"고 미리 적어 두면서 결과는 말하지 않았다.
+ * 그래서 자리를 잠깐 비운 사람에게는 "안 고른 증강이 생겼다"로만 보였다.
+ */
+export interface DraftAutoPickedMessage {
+  type: "draftAutoPicked";
+  augmentId: string;
+  /** 표시 이름 — 클라이언트가 카탈로그를 못 찾는 경우에도 이름은 말할 수 있게 함께 보낸다 */
+  name: string;
 }
 
 export interface DraftOfferMessage {
@@ -598,6 +625,12 @@ export interface RoundOverMessage {
   /** 정산 상세 — 점수 변동·화료 정보(역 목록·판·부·점수) 포함 */
   settle: RoundSettledPayload;
   /** 화료 시 공개되는 뒷도라 표시패 */
+  /**
+   * 표도라 표시패 — 결과 화면이 `도라 N판`만 적고 표시패를 안 보여 줘서, 판수의 근거를
+   * 그 자리에서 확인할 수 없었다(결과 오버레이가 판을 완전히 덮어 뒤의 도라 줄도 못 본다).
+   * 구 리플레이에는 없으므로 선택 필드다.
+   */
+  doraIndicators?: TileId[];
   uraDoraIndicators: TileId[];
   /** 이 메시지가 참조하는 패의 메타데이터 (뒷도라 표시패·화료패) */
   tiles: Record<TileId, PublicTileView>;
@@ -632,9 +665,31 @@ export interface RankingEntry {
   rank: 1 | 2 | 3 | 4;
 }
 
+/**
+ * 판이 끝난 이유 — 결과 화면이 한 줄로 말해 준다.
+ *
+ * 예전에는 "대국 종료"뿐이라, 남2국에서 갑자기 순위표가 뜨면(도비) 버그로 읽혔다.
+ * 아가리야메는 오야가 한 국 더 있는 줄 알고 노린 연장이 그대로 종국이 되는 경우가 있어,
+ * 설명이 없으면 특히 억울하다.
+ *
+ * - `normal`           : 정규 구간을 다 쳤다.
+ * - `dobi`             : 누군가 0점 아래로 떨어졌다.
+ * - `agariYame`        : 오라스에서 오야가 연장하며 단독 1위라 그대로 끝냈다.
+ * - `westEntryDecided` : 서든데스 구간에서 반환점을 넘겼다.
+ * - `instantWin`       : 즉시 종료 증강(천하통일)의 문턱 점수에 닿았다.
+ */
+export type GameEndReason =
+  | "normal"
+  | "dobi"
+  | "agariYame"
+  | "westEntryDecided"
+  | "instantWin";
+
 export interface GameOverMessage {
   type: "gameOver";
   rankings: RankingEntry[];
+  /** 왜 끝났는가 (생략되면 평범한 종국으로 본다 — 구 리플레이 호환) */
+  reason?: GameEndReason;
   /**
    * 방이 살아 있어 그대로 한 판 더 갈 수 있다 — 결과 화면의 "이어하기"가 이 값으로 뜬다.
    * 방은 종국과 함께 **대기실 상태**로 돌아가므로, 이어하기는 그 대기실로 되돌아가는 것이고
@@ -984,6 +1039,7 @@ export type ServerMessage =
   | PromptMessage
   | PromptCancelMessage
   | DraftOfferMessage
+  | DraftAutoPickedMessage
   | DraftRerolledMessage
   | CatalogMessage
   | RoundOverMessage

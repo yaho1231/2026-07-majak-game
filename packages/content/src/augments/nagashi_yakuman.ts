@@ -50,7 +50,7 @@ import type {
   RoundSettledPayload,
   TileKind,
 } from "@majak/core";
-import { settleInterceptor } from "../util.js";
+import { settleInterceptor, withAugNoteFor } from "../util.js";
 
 const ID = "nagashi_yakuman";
 
@@ -92,6 +92,10 @@ export const nagashiYakuman: AugmentDef = defineAugment({
   install(ctx) {
     const { holder } = ctx;
 
+    // 표준 유국만관을 보유자에게만 끈다 — 이 증강은 그 자리를 **역만으로** 대신한다.
+    // 안 끄면 같은 유국에서 만관과 역만을 겹쳐 받는다.
+    ctx.setHolderRule("draw.nagashiMangan", false);
+
     // 유국 정산: 성립 시 쯔모 역만 지불을 얹는다
     // 정산 단계: DrawPatch — 유국 전용 재정산.
     settleInterceptor(ctx, SETTLE_STAGE.DrawPatch, (event, ic) => {
@@ -102,6 +106,9 @@ export const nagashiYakuman: AugmentDef = defineAugment({
       const dealerSeat = ic.state.round.dealerSeat;
       const holderIsDealer = playerOf(ic.state, holder).seat === dealerSeat;
       const deltas = { ...p.deltas };
+      // 유국 정산의 증강 내역 — 유국에는 승자 블록이 없으므로, 여기 남기지 않으면
+      // ±32,000이 오간 화면에 근거가 한 줄도 없다.
+      let notes = p.augPoints ?? [];
       for (const pl of ic.state.players) {
         if (pl.id === holder) continue;
         // 쯔모 역만: 오야 화료 = 전원 16000 / 자 화료 = 오야 16000·자 8000
@@ -121,10 +128,28 @@ export const nagashiYakuman: AugmentDef = defineAugment({
         // 내 손과 무관한 남의 드래프트 결과가 내 타점을 33% 깎는 것이라
         // 무페널티 원칙(PROJECT_CHARTER)에 어긋난다. 일확천금의 0.5배 굴림을 고칠
         // 때와 같은 판단이다: **한쪽을 지키느라 다른 쪽을 손해 보게 하지 않는다.**
-        if (!shielded) deltas[pl.id] = (deltas[pl.id] ?? 0) - pay;
+        if (!shielded) {
+          deltas[pl.id] = (deltas[pl.id] ?? 0) - pay;
+          notes = withAugNoteFor({ ...p, augPoints: notes }, ID, pl.id, -pay);
+        }
         deltas[holder] = (deltas[holder] ?? 0) + pay;
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, holder, pay);
       }
-      return { type: event.type, payload: { ...p, deltas } };
+      // 결과 화면의 부제를 갈아 끼운다 — 예전에는 32,000점이 오가는 화면에도
+      // 컷인은 그냥 "유 국", 부제는 "패산 소진"이라 역만이라는 말조차 없었다.
+      return {
+        type: event.type,
+        payload: {
+          ...p,
+          deltas,
+          augPoints: notes,
+          drawSpecial: {
+            augId: ID,
+            label: "유국역만 — 버림패가 전부 요구패·자패",
+            holder,
+          },
+        },
+      };
     });
   },
 });

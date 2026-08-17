@@ -37,6 +37,7 @@ import type { PlayerAgent } from "./PlayerAgent.js";
 import type {
   RankingEntry,
   DraftStage,
+  GameEndReason,
   RevealedHand,
   RoundOverMessage,
   ServerMessage,
@@ -255,7 +256,7 @@ export interface HanchanEvents {
   /** 드래프트 완료 */
   onDraftEnd?: (stage: DraftStage) => void;
   /** 반장전 전체 종료 */
-  onGameOver?: (rankings: RankingEntry[]) => void;
+  onGameOver?: (rankings: RankingEntry[], reason: GameEndReason) => void;
   /** 게임 이벤트 로그 — 리플레이 저장용 */
   onEvent?: (eventJson: string) => void;
   /** 전원 합의로 게임이 무효 종료됨 (requestAbort) — 정산·기록 없이 즉시 종료 */
@@ -753,6 +754,8 @@ export class HanchanController {
   /** 국 루프 — run()과 resume()이 공유한다. 현재 상태에서 종국까지 진행. */
   private async runLoop(game: StandardGame, startRoundIndex: number): Promise<RankingEntry[]> {
     let roundIndex = startRoundIndex;
+    // 왜 끝났는지 — 결과 화면이 한 줄로 말해 준다. 루프를 빠져나오는 길목마다 채운다.
+    let endReason: GameEndReason = "normal";
     while (true) {
       if (this.aborted) return this.finishAborted();
       this.events.onRoundStart?.(game, roundIndex);
@@ -782,7 +785,10 @@ export class HanchanController {
       // 도비 체크 — 0점 '미만'이면 즉시 종국 (정확히 0점은 속행, 01_GAME_RULES §1)
       if (this.config.dobi) {
         const bankrupt = game.engine.state.players.some((p) => p.score < 0);
-        if (bankrupt) break;
+        if (bankrupt) {
+          endReason = "dobi";
+          break;
+        }
       }
 
       // 중반 드래프트 진입 체크 (드래프트) — 스테이지당 1회만.
@@ -801,10 +807,9 @@ export class HanchanController {
       }
 
       // 종료 조건 판정 (일반 종국 또는 아가리야메)
-      if (
-        this.shouldEnd(game.engine.state, game.engine.rules) ||
-        this.isAgariYame(game.engine.state, playedRound)
-      ) {
+      const reason = this.endReason(game.engine.state, game.engine.rules, playedRound);
+      if (reason !== null) {
+        endReason = reason;
         break;
       }
 
@@ -820,7 +825,7 @@ export class HanchanController {
 
     this.flushEvents(game); // 안전: 남은 이벤트 방출
     const rankings = this.calcRankings(game.engine.state, game.engine.rules);
-    this.events.onGameOver?.(rankings);
+    this.events.onGameOver?.(rankings, endReason);
     return rankings;
   }
 
@@ -1217,6 +1222,11 @@ export class HanchanController {
       if (v !== null) tiles[id] = v;
     };
     for (const id of ura) includeTile(id);
+    // 표도라 표시패 — 결과 화면은 `도라 N판`만 적고 표시패는 안 보여 줬다. 그 화면이
+    // 판을 완전히 덮으므로 뒤의 도라 줄을 훔쳐볼 수도 없어, 뒷도라 1장으로 설명되지
+    // 않는 판수가 나와도 근거를 찾을 데가 없었다.
+    const doraIndicators = [...state.round.doraIndicators];
+    for (const id of doraIndicators) includeTile(id);
     for (const info of settle.winInfos ?? []) includeTile(info.winningTileId);
 
     // 화료자 손패 공개 (실제 마작처럼 결과 화면에서 오른 손을 보여준다).
@@ -1259,6 +1269,7 @@ export class HanchanController {
       type: "roundOver",
       outcome,
       settle,
+      doraIndicators,
       uraDoraIndicators: ura,
       tiles,
       revealedHands,
@@ -1280,6 +1291,30 @@ export class HanchanController {
    * - 서입 불허이면 남장 4국 후 무조건 종료
    * - 서입 허용 시 남장 후 1위가 returnScore 미만이면 서장(wind=3) 1국 추가, 이후 종료
    */
+  /**
+   * 왜 끝났는가 — `shouldEnd`와 같은 판정을 하되 **사유까지** 돌려준다.
+   *
+   * 결과 화면이 "대국 종료" 한 줄만 띄우던 시절에는, 남2국에서 갑자기 순위표가 뜨면
+   * (도비) 버그로 읽혔다. 특히 아가리야메는 오야가 "한 국 더 있는 줄 알고" 노린 연장이
+   * 그대로 종국이 되는 경우가 있어 설명이 없으면 억울하다.
+   */
+  private endReason(
+    state: GameState,
+    rules: import("../engine/rules/RuleRegistry.js").RuleRegistry,
+    played: { wind: number; roundNumber: number; dealerSeat: number },
+  ): GameEndReason | null {
+    if (!this.shouldEnd(state, rules)) {
+      return this.isAgariYame(state, played) ? "agariYame" : null;
+    }
+    for (const p of state.players) {
+      const threshold = rules.resolve<number>("match.instantWinScore", { playerId: p.id, state });
+      if (threshold > 0 && p.score >= threshold) return "instantWin";
+    }
+    // 방금 친 국이 이미 서든데스 구간이었으면, 그 국이 반환점을 넘겨 끝난 것이다.
+    // 정규 구간의 마지막 국에서 끝난 것은 평범한 종국이다.
+    return played.wind > this.config.maxWind ? "westEntryDecided" : "normal";
+  }
+
   private shouldEnd(
     state: GameState,
     rules: import("../engine/rules/RuleRegistry.js").RuleRegistry,

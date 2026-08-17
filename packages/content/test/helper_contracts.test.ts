@@ -86,7 +86,9 @@ describe("augPoints 기록 계약 (docs/25 P9)", () => {
       if (!src.includes("settleInterceptor")) continue;
       // deltas를 payload에 실어 돌려주는가 (직접 수정)
       if (!/deltas[,:]/.test(src)) continue;
-      if (src.includes("withAugPoint")) continue;
+      // 호출부만 센다 — 이름만 보면 주석에 적힌 설명까지 기록으로 잡힌다.
+      // `withAugNoteFor`는 **남의 줄에** 남기는 같은 계약의 짝이다(지불자 재배선).
+      if (/\b(?:withAugPoint|withAugNoteFor)\(/.test(src)) continue;
       // 래퍼만 쓰는 경우는 통과 (래퍼가 내부에서 기록한다)
       if (WRAPPERS.some((w) => src.includes(w))) continue;
       offenders.push(f);

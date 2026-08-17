@@ -18,7 +18,7 @@ import type { AugmentDef } from "@majak/core";
 import { roundViewKey } from "../util.js";
 
 const ID = "honba_hunter";
-/** 본장 1개당 지불액 (표준 300) */
+/** 보유자의 본장 1개당 지불액 — 표준은 300이고 이 증강이 그 값을 이만큼으로 올린다 */
 const HONBA_PER_STICK = 1500;
 
 export const honbaHunter: AugmentDef = defineAugment({

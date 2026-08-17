@@ -22,7 +22,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { cooldownViewKey, flagOf, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "invincible";
@@ -66,6 +66,9 @@ const guardAction: ActionDef<Record<string, never>> = {
     augmentDataSet(cooldownKey(req.player), COOLDOWN_ROUNDS),
     // 전원 공개 — "이 사람에게는 이번 국 론이 안 된다"가 테이블에 보여야 한다
     augmentDataSet(activeViewKey(req.player), "이번 국 론 불가"),
+    // 잔여 쿨다운도 공용 채널로 — 자체 카운터만 쓰던 탓에 이름표의 `🕐N국` 칩이
+    // 서지 않아, 버튼이 사라진 이유를 화면에서 알 수 없었다.
+    augmentDataSet(cooldownViewKey(ID, req.player), COOLDOWN_ROUNDS),
   ],
 };
 
@@ -113,9 +116,17 @@ export const invincible: AugmentDef = defineAugment({
       const cooldown = rc.state.augmentData[cooldownKey(holder)];
       if (typeof cooldown === "number" && cooldown > 0) {
         rc.emit(augmentDataSet(cooldownKey(holder), cooldown - 1));
+        rc.emit(augmentDataSet(cooldownViewKey(ID, holder), cooldown - 1));
       }
     });
 
-    ctx.holderTurnOptions(() => [{ type: ACTION, payload: {} }]);
+    // 쿨다운 중에는 버튼을 내리지 않는다 — 예전에는 무조건 옵션을 내보내, 눌러도
+    // validate가 조용히 반려하는 **작동하지 않는 버튼**이 떠 있었다.
+    ctx.holderTurnOptions((state) => {
+      if (flagOf(state, activeKey(state, holder))) return [];
+      const cooldown = state.augmentData[cooldownKey(holder)];
+      if (typeof cooldown === "number" && cooldown > 0) return [];
+      return [{ type: ACTION, payload: {} }];
+    });
   },
 });

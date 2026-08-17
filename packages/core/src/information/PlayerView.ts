@@ -19,13 +19,15 @@ import { winningKinds } from "../mahjong/scoring/waits.js";
 import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
 import {
   furitenOptionsOf,
+  openMeldCountOf,
+  playerOf,
   scoringOptionsOf,
   lockedDiscardIds,
   tenpaiNoYaku,
   yakulessWaits,
 } from "../mahjong/flow/helpers.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
-import { discardsZone, handZone, meldsZone } from "../engine/zones/Zone.js";
+import { WALL, discardsZone, handZone, meldsZone } from "../engine/zones/Zone.js";
 
 // ─────────────────────────── 가시성 타입 ───────────────────────────
 
@@ -176,6 +178,19 @@ export interface PlayerRoundView {
   furiten?: boolean;
   /** 후리텐 사유 (본인 뷰에서만 포함) */
   furitenReasons?: FuritenReason[];
+  /**
+   * 리치를 지금 걸 수 없는 이유 (본인 뷰에만, 걸 수 있으면 없음).
+   *
+   * 리치가 막히는 사유는 엔진에 다섯 가지가 명시돼 있지만(standardActions의 riichi
+   * validate) 그건 `validate` 반환값이라, **옵션이 애초에 제시되지 않는 경로**에서는
+   * 클라이언트에 한 글자도 가지 않았다. 화면에는 버튼이 그냥 없었고, 점수가 1000점
+   * 아래로 떨어진 순간부터 리치가 영영 안 뜨는데 그 인과가 어디에도 없었다.
+   *
+   * 증강이 막는 경우(리치 봉인)는 이미 상시 뱃지가 알려 준다. 손을 열어서 막힌 것도
+   * 여기 담지 않는다 — 내 후로는 내 자리에 펼쳐져 있어 스스로 설명하고, 담으면 후로한
+   * 사람에게 국 내내 같은 뱃지가 서 있게 된다.
+   */
+  riichiBlocked?: "notEnoughPoints" | "wallTooShort";
   /**
    * 형식텐파이(역없음) — 텐파이지만 어떤 오름패로도 역이 없어 화료할 수 없는 상태.
    * 본인 뷰에서만, 그리고 yaku 레지스트리가 주어졌을 때만 채워진다.
@@ -854,6 +869,7 @@ function buildRoundView(
       const noYaku = yaku !== undefined && tenpaiNoYaku(state, pid, rules, yaku);
       // 역이 없어 론이 안 되는 대기패 종류 — "오름패인데 왜 못 먹지?"를 미리 알려 준다
       const noYakuWaits = yaku !== undefined ? yakulessWaits(state, pid, rules, yaku) : [];
+      const riichiBlocked = riichiBlockReason(state, rules, pid, riichiDeclared);
       // 본인 뷰: 전체 정보 공개
       byPlayer[pid] = {
         riichiDeclared,
@@ -863,6 +879,7 @@ function buildRoundView(
         furitenReasons,
         ...(noYaku ? { noYaku: true } : {}),
         ...(noYakuWaits.length > 0 ? { noYakuWaits } : {}),
+        ...(riichiBlocked !== null ? { riichiBlocked } : {}),
         ...(riichiIsHidden ? { riichiHidden: true } : {}),
         meldCount,
         melds,
@@ -935,6 +952,42 @@ function buildRoundView(
     uraDoraIndicators,
     byPlayer,
   };
+}
+
+/**
+ * 리치를 지금 걸 수 없는 **상태 조건**을 하나 고른다 (걸 수 있으면 null).
+ *
+ * 텐파이 여부는 여기서 보지 않는다 — 그건 손을 바꾸면 그 순에 풀리는 것이고, 오름패
+ * 뱃지가 이미 대기를 말해 준다. 여기서 알려야 할 것은 "손을 아무리 잘 짜도 지금은
+ * 리치가 안 열린다"는 쪽, 그중에서도 **화면을 봐서는 알 수 없는** 두 가지다.
+ *
+ * 판정은 액션 검증(standardActions의 riichi validate)과 같은 규칙을 본다 — 클라이언트가
+ * 자기 나름의 셈을 흉내내면 언젠가 화면과 엔진이 갈라진다.
+ */
+function riichiBlockReason(
+  state: GameState,
+  rules: RuleRegistry,
+  pid: PlayerId,
+  riichiDeclared: boolean,
+): "notEnoughPoints" | "wallTooShort" | null {
+  if (riichiDeclared) return null;
+  // 손을 열어서 막힌 것은 알리지 않는다 (위 필드 주석 참고).
+  if (
+    rules.has("riichi.requiresClosed") &&
+    rules.resolve<boolean>("riichi.requiresClosed", { playerId: pid }) &&
+    openMeldCountOf(state, pid) > 0
+  ) {
+    return null;
+  }
+  if (rules.has("riichi.cost")) {
+    const cost = rules.resolve<number>("riichi.cost", { playerId: pid, state });
+    if (playerOf(state, pid).score < cost) return "notEnoughPoints";
+  }
+  if (rules.has("riichi.minWallTiles")) {
+    const left = state.zones[WALL]?.tileIds.length ?? 0;
+    if (left < rules.resolve<number>("riichi.minWallTiles")) return "wallTooShort";
+  }
+  return null;
 }
 
 function buildFuritenReasons(

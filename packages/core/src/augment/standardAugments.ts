@@ -78,8 +78,21 @@ function addWinHanBonus(
     if (info === undefined) return event;
     const extraHan = Math.max(0, Math.round(han(ic.state, info)));
     if (extraHan === 0) return event;
+    /*
+     * 오야 취급 증강(만년 오야·찬탈자)을 함께 본다.
+     *
+     * 예전에는 좌석만 비교했다. 그래서 오야 배율로 채점된 화료에 이 보너스를 얹으면서
+     * 다시 자(子) 배율로 계산해, `boosted`가 실제 `info.points`보다 작아지고
+     * `Math.max(0, …)`가 **보너스를 통째로 0으로 만들었다** — 철벽 +3판, 개문선언·
+     * 무형화료의 2판 취급이 그 조합에서 한 푼도 안 붙었다.
+     * (채점 본체는 standardActions가 `win.treatAsDealer`를 함께 보므로, 여기만 어긋나 있었다.)
+     */
     const isDealer =
-      playerAtSeat(ic.state, ic.state.round.dealerSeat).id === ctx.holder;
+      playerAtSeat(ic.state, ic.state.round.dealerSeat).id === ctx.holder ||
+      ic.rules.resolve<boolean>("win.treatAsDealer", {
+        playerId: ctx.holder,
+        state: ic.state,
+      });
     const boosted = calculateScore({
       han: info.han + extraHan,
       fu: info.fu,
@@ -222,6 +235,9 @@ const recallAction: ActionDef<{ recallTileId: TileId }> = {
     if (state.augmentData[recallUsedKey(state, req.player)] === true) return "recall already used this round";
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (state.round.turnSeat !== player.seat) return "not your turn";
+    // 리치 중에는 손이 잠긴다 — 손패를 바꾸는 증강의 공통 규약(content/util의
+    // riichiBlocksSwap과 같은 판단). 가드가 없어 리치를 걸어 둔 채로 손을 갈 수 있었다.
+    if (state.round.byPlayer[req.player]?.riichi != null) return "riichi: hand is frozen";
     if (state.round.lastDrawnTile === null) return "no drawn tile to trade";
     const discards = state.zones[discardsZone(req.player)]?.tileIds ?? [];
     if (discards.length === 0) return "no discards to recall";
@@ -327,7 +343,13 @@ export const discardRecall = defineAugment({
         return {
           ...state,
           zones,
-          round: { ...state.round, lastDrawnTile: p.recallTileId },
+          round: {
+            ...state.round,
+            lastDrawnTile: p.recallTileId,
+            // 바닥에서 되가져온 패는 **영상패가 아니다.** 이 플래그를 끄지 않아,
+            // 깡 직후에 회수하면 되가져온 패로도 영상개화(+1판)가 붙었다.
+            lastDrawRinshan: false,
+          },
           augmentData: { ...state.augmentData, [recallUsedKey(state, p.player)]: true },
         };
       });

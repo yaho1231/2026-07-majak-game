@@ -36,6 +36,7 @@ import type {
   TileId,
 } from "@majak/core";
 import {
+  cooldownTurnsViewKey,
   replaceDrawnTile,
   roundKey,
   roundViewKey,
@@ -124,6 +125,24 @@ export const takeBack: AugmentDef = defineAugment({
     "(3순에 1회) 방금 쯔모한 패를 전원에게 공개한 뒤 패산 맨 밑으로 되돌리고 패산 위에서 1장을 새로 뽑는다. 한 번 쓰면 내 순이 세 번 지나야 다시 열리며 국이 바뀌면 즉시 초기화된다. 패산의 총량은 변하지 않는다. 리치 중이거나 영상깡으로 뽑은 패, 패산이 비었을 때는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    /*
+     * 남은 쿨다운(순)을 이름표 pill에 상시로 낸다.
+     *
+     * 채널이 아예 없어서 **버튼이 사라지는 것으로만** 다시 쓸 수 없다는 걸 알 수 있었다 —
+     * 왜 사라졌는지도, 언제 돌아오는지도 화면에 없었다. 값이 같으면 아무것도 내지
+     * 않으므로 반응 연쇄는 한 겹에서 멈춘다.
+     */
+    ctx.reaction("*", (_event, rc) => {
+      const last = rc.state.augmentData[lastUsedKey(rc.state, holder)];
+      const left =
+        typeof last === "number"
+          ? Math.max(0, COOLDOWN_TURNS - (turnNo(rc.state, holder) - last))
+          : 0;
+      if (rc.state.augmentData[cooldownTurnsViewKey(ID, holder)] !== left) {
+        rc.emit(augmentDataSet(cooldownTurnsViewKey(ID, holder), left));
+      }
+    });
 
     if (!engine.reducers.has(EVENT)) {
       engine.reducers.register(EVENT, (state, event) => {

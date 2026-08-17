@@ -705,6 +705,9 @@ export function buildWinContext(
       ...state.round.doraIndicators.map((t) => doraKindFor(kindOf(state, t))),
       ...extraDoraKinds(state, rules, winner, "scoring.extraDoraKinds"),
     ],
+    // 표준분과 증강분의 경계 — 채점이 둘을 갈라 세어 결과 화면이 출처를 적을 수 있게 한다
+    standardDoraCount: state.round.doraIndicators.length,
+    standardUraCount: options.includeUra === true ? uraIndicatorIds(state).length : 0,
     uraDoraKinds:
       options.includeUra === true
         ? [

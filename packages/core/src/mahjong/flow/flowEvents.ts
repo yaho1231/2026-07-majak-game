@@ -148,10 +148,22 @@ export interface WinInfo {
   yakumanCount: number;
   /** score.extraHan 규칙으로 더해진 판 (han에 이미 포함) */
   extraHan: number;
+  /**
+   * 그 추가 판을 **어느 증강이 몇 판씩** 얹었는가 (표시 전용, 합은 `extraHan`).
+   *
+   * `extraHan`은 여러 증강이 공유하는 합계라, 둘 이상 겹치면 결과 화면의 익명 한 줄
+   * "증강 보너스 3판"으로는 출처를 알 수 없었다.
+   */
+  extraHanBy?: { augId: string; han: number }[];
   yaku: { id: string; name: string; han: number }[];
   doraHan: number;
   uraHan: number;
   redHan: number;
+  /**
+   * 표·뒷도라 판수 중 **증강이 얹은 개인 도라 몫** (doraHan/uraHan에 이미 포함).
+   * 화면의 표시패로 설명되지 않는 판수의 출처를 결과 화면이 적을 수 있게 한다.
+   */
+  augDoraHan?: number;
   /**
    * 실역 0개로 성립한 화료인가 (무형화료 계열이 `win.requiresYaku`를 껐다).
    *
@@ -162,6 +174,28 @@ export interface WinInfo {
   yakuless?: boolean;
   /** 화료자 총 획득점 (본장·공탁 제외) */
   points: number;
+  /**
+   * 본장 가산분 — 이 화료로 더 받는 점수(본장 수 × 본장 단가).
+   *
+   * `points`가 본장·공탁을 빼고 세는 값이라, 결과 화면의 큰 숫자와 바로 아래 증감표가
+   * 서로 다른 숫자를 말했다(2본장·리치봉 1개면 `8,000점` 뒤에 `+9,600`). 단가는
+   * `score.honbaPerStick` 규칙이라 본장 사냥꾼이 바꾸므로 300을 가정하면 안 된다.
+   */
+  honbaBonus?: number;
+  /** 이 화료로 회수한 리치봉(공탁) 총액. 더블론이면 첫 화료자만 가져간다. */
+  riichiPotGain?: number;
+  /**
+   * 지불 분담 — 쯔모의 "친 3,900 / 자 2,000씩"이 화면 어디에도 없었다. 증감표는
+   * 본장·공탁·증강 이동이 뒤섞인 순증감 하나뿐이라 표준 분담을 되짚을 수 없다.
+   */
+  payments?: {
+    /** 론 — 쏜 사람이 무는 금액 */
+    discarder?: number;
+    /** 쯔모 — 친이 무는 금액 */
+    dealer?: number;
+    /** 쯔모 — 자가 각각 무는 금액 */
+    others?: number;
+  };
   limit: string | null;
   /**
    * 책임지불(파오, 01 §9) — 대삼원·대사희를 확정시킨 후로를 내준 사람이 있으면 그 정보.
@@ -234,6 +268,21 @@ export interface RoundSettledPayload {
    * 각 증강이 자기 몫을 한 줄씩 남겨 결과 화면이 그대로 읽어 준다.
    */
   augPoints?: AugPointNote[];
+  /**
+   * 유국인데 **평범한 유국이 아니다** — 결과 화면의 부제를 갈아 끼운다.
+   *
+   * 유국역만이 32,000점을 옮겨도 컷인은 그냥 "유 국"이고 부제는 고정 문구
+   * "패산 소진 — 텐파이한 사람만 손을 공개한다"였다. 한 사람이 +32,000, 다른 사람이
+   * −16,000인 화면에 "역만"이라는 말도 증강 이름도 없었다.
+   */
+  drawSpecial?: {
+    /** 이 유국을 특별하게 만든 증강·규칙 id */
+    augId: string;
+    /** 결과 화면에 그대로 뜨는 한 줄 */
+    label: string;
+    /** 그 주인공 (있으면 이름을 함께 적는다) */
+    holder?: PlayerId;
+  };
 }
 
 /** 증강이 정산에 얹은 점수 한 줄 (결과 화면 표시용) */

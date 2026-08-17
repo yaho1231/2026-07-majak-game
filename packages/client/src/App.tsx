@@ -33,6 +33,7 @@ import type {
   FeedbackKind,
   FeedbackStatus,
   FuritenReason,
+  GameEndReason,
   GameMode,
   JoinedMessage,
   LiveRoomSummary,
@@ -61,9 +62,9 @@ import { AUGMENT_CATEGORIES, SPECTATOR_ID, doraKindFor, kindKey, standardKinds, 
 import { contentAugments } from "@majak/content";
 import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
-import { GLOSSARY, GLOSSARY_GROUPS, splitTerms } from "./glossary.js";
+import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
-import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
+import { rebuildReplay, replaySettlements, replayViewAt } from "./replayRebuild.js";
 import { remainingCounter } from "./waitCounts.js";
 import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
@@ -143,6 +144,23 @@ function serverUrlToUse(): string {
 const WIND_CHAR = ["東", "南", "西", "北"];
 const WIND_KO = ["동", "남", "서", "북"];
 
+/**
+ * 봉인된 패 안내 — **국 스코프**다. 봉인 목록은 `roundViewKey`로 저장돼(discard_lock.ts)
+ * 국이 끝나면 채널과 함께 사라진다. 예전 문구가 "이 게임 동안"이라 영구 봉인으로 읽혔고,
+ * 그러면 그 패를 안고 손을 다시 짤 이유가 없어져 판단이 통째로 어긋났다.
+ */
+const SEAL_HINT = "🔒 봉인된 패 — 이번 국 동안 버릴 수 없습니다";
+
+/**
+ * 그 모드의 마지막 장(場) — 동풍전은 동장(1), 반장전은 남장(2)까지가 정규 구간이다.
+ * 이 값을 넘긴 장은 전부 서든데스(서입·남입)다: `westEntry`가 두 모드 모두 켜져 있어
+ * (HanchanController `hanchanConfigForMode`) 정규 구간이 끝나도 1위가 반환점(30000)에
+ * 못 미치면 장이 하나 더 붙는다. 로비가 "남4국까지"라고 단언했던 근거가 여기서 깨진다.
+ */
+function maxWindOf(mode: GameMode): number {
+  return mode === "tonpuu" ? 1 : 2;
+}
+
 const YAKU_NAMES: Record<string, string> = {
   riichi: "리치",
   double_riichi: "더블리치",
@@ -216,6 +234,7 @@ const GAME_STREAM_MESSAGES: ReadonlySet<ServerMessage["type"]> = new Set([
   "prompt",
   "promptCancel",
   "draftOffer",
+  "draftAutoPicked",
   "draftRerolled",
   "roundOver",
   "gameOver",
@@ -404,6 +423,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   dissolve_meld: "meld_dissolve",
   disarm_lock: "disarm",
   silent_pon: "silent_pact",
+  bluff_pon: "bluff_pretense",
   kokushi_pon: "open_kokushi",
   xray_reveal: "xray_hand",
   push_brand: "push_riichi",
@@ -1193,6 +1213,12 @@ interface Production {
  * 그래서 enqueueProduction 한 곳에서 append하면 네 가지가 한꺼번에 들어온다 —
  * 새 알림을 붙일 때 로그를 따로 챙길 필요가 없다는 뜻이기도 하다.
  */
+/** 지나간 국의 정산 한 건 — 라벨은 받을 때의 뷰에서 딴다(settle은 다음 국을 가리킨다) */
+interface PastRound {
+  label: string;
+  result: RoundOverMessage;
+}
+
 interface LogEvent {
   key: number;
   /** 일어난 시각 (epoch ms) — 줄 앞에 시:분:초로 찍는다 */
@@ -1210,6 +1236,7 @@ interface LogEvent {
 const LOG_MAX = 400;
 /** 기록이 없는 자리(리플레이 뷰어)용 고정 빈 배열 — 매번 새 []를 넘기면 memo가 헛돈다. */
 const EMPTY_LOG: LogEvent[] = [];
+const EMPTY_PAST_ROUNDS: PastRound[] = [];
 
 /**
  * 화면 효과를 끈 사람의 연출 체류 시간 비율.
@@ -2252,6 +2279,10 @@ export function App(): JSX.Element {
   // handleServerMessage는 마운트 시 고정된 스테일 클로저라 draftPicked state를
   // 못 읽는다 → 뷰 핸들러에서 "이미 골랐는가"를 판정할 ref를 따로 둔다.
   const draftPickedRef = useRef(false);
+  /** 직전 대기실 스냅샷 — 설정이 무엇에서 무엇으로 바뀌었는지 알려 주려고 둔다(같은 이유로 ref) */
+  const prevLobby = useRef<LobbyMessage | null>(null);
+  /** 중단 투표를 이미 알렸는가 — 투표가 갱신될 때마다 토스트가 쌓이지 않게 한 번만 띄운다 */
+  const abortVoteNoticed = useRef(false);
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
   const prompt = view === null ? null : (prompts[view.playerId] ?? null);
   /**
@@ -2301,12 +2332,16 @@ export function App(): JSX.Element {
   const [prodTick, setProdTick] = useState(0); // enqueue/변화 시 펌프 재실행 신호
   /** 📜 사건 기록 (append-only) — 후로·리치·화료·증강 발동이 일어난 순서대로 쌓인다 */
   const [logEvents, setLogEvents] = useState<LogEvent[]>([]);
+  /** 이 판에서 지나간 국의 정산 (📜 기록에서 다시 열어 본다) */
+  const [roundHistory, setRoundHistory] = useState<PastRound[]>([]);
   /** 지금 국의 사람 읽는 라벨 — 기록 줄에 붙는다 (뷰 전이 감지에서 갱신) */
   const roundLabelRef = useRef("");
   // 큐가 모두 빈 뒤에 열어야 하는 국 결과 (이전 국 연출이 끝난 뒤 결과창)
   const pendingResult = useRef<RoundOverMessage | null>(null);
   const [roundResult, setRoundResult] = useState<RoundOverMessage | null>(null);
   const [rankings, setRankings] = useState<RankingEntry[] | null>(null);
+  /** 판이 끝난 이유 — 결과 화면 헤더 아래 한 줄. 예전에는 "대국 종료"뿐이었다. */
+  const [gameEndReason, setGameEndReason] = useState<GameEndReason>("normal");
   /** 종국 뒤에도 방이 살아 있어 같은 멤버로 한 판 더 갈 수 있는가 (결과 화면의 "이어하기") */
   const [canContinue, setCanContinue] = useState(false);
   const [abortVote, setAbortVote] = useState<AbortVoteMessage | null>(null);
@@ -2563,6 +2598,7 @@ export function App(): JSX.Element {
     // 기록도 여기서만 비운다 — 판이 끝나 방을 나가거나 관전을 접는 자리다.
     // 국이 바뀔 때는 비우지 않는다: 지난 국을 되짚는 것이 이 로그의 존재 이유다.
     setLogEvents([]);
+    setRoundHistory([]);
     riichiBgm.stop(); // 리셋 시 리치 BGM도 확실히 정지
     riichiBgmArmed.current = false;
   }
@@ -2797,6 +2833,8 @@ export function App(): JSX.Element {
   function resetGameState(): void {
     setJoined(null);
     setLobby(null);
+    prevLobby.current = null;
+    abortVoteNoticed.current = false;
     setSandbox(null);
     setControlling(null);
     setView(null);
@@ -3174,6 +3212,29 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "lobby") {
+      // 방장이 바꾼 설정은 값만 조용히 갈렸다 — 동풍전으로 준비를 눌렀는데 반장전으로
+      // 시작하거나, 친이던 내 자리가 자리 섞기로 바뀐 것을 모른 채 판이 열렸다.
+      // (handleServerMessage는 마운트 시 고정된 클로저라 state가 아니라 ref로 비교한다.)
+      const prev = prevLobby.current;
+      prevLobby.current = msg;
+      if (prev !== null && prev.roomId === msg.roomId) {
+        if (prev.gameMode !== msg.gameMode) {
+          showToast(`판 길이가 ${MODE_BADGE[msg.gameMode]?.name ?? msg.gameMode}으로 바뀌었습니다`, "info");
+        }
+        if (prev.botDifficulty !== msg.botDifficulty) {
+          showToast(`봇 난이도: ${BOT_DIFFICULTY_LABEL[msg.botDifficulty] ?? msg.botDifficulty}`, "info");
+        }
+        const seatOf = (m: LobbyMessage): number | null =>
+          m.players.find((p) => p.playerId === m.youId)?.seat ?? null;
+        const before = seatOf(prev);
+        const after = seatOf(msg);
+        if (before !== null && after !== null && before !== after) {
+          showToast(`자리를 다시 뽑았습니다 — 당신은 ${WIND_KO[after] ?? "?"}가입니다`, "info");
+        }
+        if (prev.hostId !== msg.hostId && msg.hostId === msg.youId) {
+          showToast("당신이 방장이 되었습니다", "info");
+        }
+      }
       setLobby(msg);
       return;
     }
@@ -3253,6 +3314,21 @@ export function App(): JSX.Element {
     if (msg.type === "promptCancel") {
       // 제한 시간 초과 등으로 내 차례가 서버에서 이미 지나갔다 — 떠 있는 선택 UI를 닫는다.
       // seat이 실려 오면 그 좌석 것만 접는다(봇 좌석 조종 중 내 프롬프트를 살리기 위해).
+      //
+      // …그리고 **왜 접혔는지 말한다.** 예전에는 말없이 닫기만 해서, 시간이 지나
+      // 서버가 대신 고른 것과 상대의 선언이 우선한 것이 둘 다 "누르려던 버튼이 그냥
+      // 사라졌다"로만 보였다. 초읽기 국은 5초라 상시로 일어난다.
+      if (msg.reason === "timeout") {
+        showToast(
+          msg.chosen !== undefined
+            ? `시간 초과 — ${msg.chosen}로 자동 진행했습니다`
+            : "시간 초과 — 자동으로 진행했습니다",
+          "error",
+          3600,
+        );
+      } else if (msg.reason === "preempted") {
+        showToast("다른 사람의 선언이 우선합니다", "info", 2600);
+      }
       if (msg.seat !== undefined) dropPrompt(msg.seat);
       else setPrompts({});
       setPromptDeadline(null);
@@ -3274,6 +3350,15 @@ export function App(): JSX.Element {
       setRoundResult(null);
       pendingResult.current = null;
       sfx.draft();
+      return;
+    }
+    if (msg.type === "draftAutoPicked") {
+      // 시간이 다 되어 서버가 대신 골랐다. 선택창은 곧 닫히므로(다음 뷰/프롬프트)
+      // 여기서 결과를 남겨 두지 않으면 "안 고른 증강이 생겼다"로만 남는다.
+      setDraft(null);
+      setDraftPicked(false);
+      draftPickedRef.current = false;
+      showBanner("자동 선택", "info", `시간 초과 — ${msg.name} 획득`, 2200);
       return;
     }
     if (msg.type === "draftRerolled") {
@@ -3298,6 +3383,7 @@ export function App(): JSX.Element {
       riichiBgm.stop(); // 게임 종료 — 혹시 남아 있을 BGM 확실히 정지
       riichiBgmArmed.current = false;
       setRankings(msg.rankings);
+      setGameEndReason(msg.reason ?? "normal");
       setCanContinue(msg.canContinue === true);
       setPrompts({});
       setDraft(null);
@@ -3323,6 +3409,17 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "abortVote") {
+      // 투표 현황은 설정 패널 맨 아래에만 있어서, 남이 판을 접자고 해도 나는 몰랐다.
+      // 처음 한 번만 알린다 — 갱신마다 띄우면 잡음이 된다.
+      if (msg.votes > 0 && !abortVoteNoticed.current) {
+        abortVoteNoticed.current = true;
+        showToast(
+          `게임 무효 투표가 올라왔습니다 (${msg.votes}/${msg.needed}) — 설정 맨 아래에서 응답할 수 있습니다`,
+          "info",
+          5000,
+        );
+      }
+      if (msg.votes === 0) abortVoteNoticed.current = false;
       setAbortVote(msg);
       return;
     }
@@ -3338,6 +3435,21 @@ export function App(): JSX.Element {
   /** 국 종료 — 화료 컷인(만관 이상은 별도 연출) → 결과 화면 순서로 연출.
    *  결과창은 연출 큐가 모두 빈 뒤에 열리므로(scheduleRoundResult) 컷인과 겹치지 않는다. */
   function handleRoundOver(msg: RoundOverMessage): void {
+    /*
+     * 이 국의 정산을 **기록에 쌓아 둔다** — 결과 화면은 스스로 닫히고 다시 여는 길이
+     * 없어서, 서버 상한(최대 20초) 안에 못 읽으면 그 국의 역·판·부·증감이 영구히
+     * 사라졌다. 📜 기록에서 지난 국을 다시 열 수 있게 한다.
+     *
+     * 국 이름은 **지금 뷰**에서 딴다 — `settle`의 국 번호는 이미 다음 국을 가리킨다.
+     */
+    const pvNow = prevViewRef.current;
+    const label =
+      pvNow === null
+        ? "지난 국"
+        : `${WIND_CHAR[pvNow.round.prevalentWind - 1] ?? "?"}${pvNow.round.roundNumber}국${
+            pvNow.round.honba > 0 ? ` ${pvNow.round.honba}본장` : ""
+          }`;
+    setRoundHistory((prev) => [...prev, { label, result: msg }]);
     // 정산 화면은 무음 — 배경 BGM을 붙들어(되감지 않음) 새 국에서 이어서 재개한다.
     // (holdForResult가 target을 0으로 잡으므로, 아래 fadeOut의 언덕킹이 배경 BGM을
     //  다시 불러오지 못한다 — 론·쯔모 후 정산 내내 아무 BGM도 나지 않는다.)
@@ -3402,9 +3514,23 @@ export function App(): JSX.Element {
         });
       }
     } else {
-      showCutIn(msg.outcome === "draw" ? "유 국" : "도중 유국", "draw", undefined, 1300, {
-        sfx: sfx.draw,
-      });
+      // 평범한 유국이 아니면 컷인부터 다르게 말한다 (유국역만 등).
+      const special = msg.outcome === "draw" ? msg.settle.drawSpecial : undefined;
+      if (special !== undefined) {
+        showCutIn(
+          special.label.split(" — ")[0] ?? special.label,
+          "yakuman",
+          special.holder !== undefined && prevViewRef.current !== null
+            ? playerNameById(prevViewRef.current, special.holder)
+            : undefined,
+          2200,
+          { sfx: sfx.draw, impact: { shake: 4 } },
+        );
+      } else {
+        showCutIn(msg.outcome === "draw" ? "유 국" : "도중 유국", "draw", undefined, 1300, {
+          sfx: sfx.draw,
+        });
+      }
     }
     // 결과창은 연출 큐가 다 빈 뒤에 연다 (이전 국 연출을 모두 마무리하고 결과 표시)
     scheduleRoundResult(msg);
@@ -3481,7 +3607,8 @@ export function App(): JSX.Element {
         if (
           augEventFor(key) === null &&
           key !== SWAP3_NOTICE_KEY &&
-          !key.startsWith("push_riichi:fired:")
+          !key.startsWith("push_riichi:fired:") &&
+          RELATION_CUTINS[key.split(":")[0] ?? ""] === undefined
         ) {
           continue;
         }
@@ -3489,8 +3616,21 @@ export function App(): JSX.Element {
       }
       // 국 시작에 저절로 켜지는 증강(초읽기·눈먼 총알·반전)도 같은 집합을 쓴다.
       // 빠뜨리면 국 도중에 재접속할 때마다 이미 켜져 있던 발동 컷인이 다시 터진다.
-      for (const n of armedRoundNotices(next)) {
+      const armed = armedRoundNotices(next);
+      for (const n of armed) {
         shown.augEvents.add(augEventSig(n.key, n.raw, shown.roundKey));
+      }
+      // …다만 **아무 말도 없이** 시드만 하면, 돌아온 사람은 이 국에 초읽기(5초)가
+      // 걸렸다는 사실을 한 번도 못 본다 — 초읽기를 시계로만 알 수 있었던 그 문제가
+      // 재접속 경로에 그대로 남아 있었다. 컷인이 아니라 요약 배너로 한 번만 알린다
+      // (컷인은 "지금 터졌다"로 읽혀 오해가 된다).
+      if (armed.length > 0) {
+        showBanner(
+          "이번 국 적용 중",
+          "info",
+          armed.map((n) => n.title).join(" · "),
+          2000,
+        );
       }
       return;
     }
@@ -3537,7 +3677,18 @@ export function App(): JSX.Element {
       // 에코가 끝내 안 온 타패 id(접속 끊김 등)가 다음 국까지 남아 정상 타패음을 먹지 않게
       pendingOwnDiscards.current.clear();
       const label = `${WIND_CHAR[next.round.prevalentWind - 1] ?? "?"}${next.round.roundNumber}국`;
-      const sub = next.round.honba > 0 ? `${next.round.honba}본장` : undefined;
+      // 부제에 "이 국이 어떤 국인가"를 싣는다. 서든데스(서입·남입)로 넘어온 것도, 지금이
+      // 오라스라는 것도 예전에는 화면 어디에도 없었다 — 봇은 setGameMode로 올라스를
+      // 명시적으로 받는데(RoomManager) 사람만 국 번호로 역산해야 했다.
+      const maxWind = maxWindOf(next.round.mode);
+      const subParts: string[] = [];
+      if (next.round.prevalentWind > maxWind) {
+        subParts.push("서든데스 — 30000점을 먼저 넘기면 종료");
+      } else if (next.round.prevalentWind === maxWind && next.round.roundNumber === 4) {
+        subParts.push("오라스");
+      }
+      if (next.round.honba > 0) subParts.push(`${next.round.honba}본장`);
+      const sub = subParts.length > 0 ? subParts.join(" · ") : undefined;
       // 새 국 배너는 큐 뒤에 붙어, 이전 국의 연출(화료 컷인 등)이 모두 끝난 뒤에 뜬다.
       // 아직 안 열린 이전 국 결과(pendingResult)가 다음 국으로 새어 나오지 않게 함께 정리한다.
       setRoundResult(null);
@@ -3627,6 +3778,8 @@ export function App(): JSX.Element {
       );
     }
 
+    // 이 패스에서 누군가의 리치가 풀렸는가 (BGM 정리를 그때만 한다)
+    let riichiWasCancelled = false;
     for (const p of next.players) {
       const sub = p.id === next.playerId ? undefined : playerNameById(next, p.id);
 
@@ -3699,6 +3852,24 @@ export function App(): JSX.Element {
         );
       }
 
+      /*
+       * 리치가 **풀렸다** — 승부수(last_stand)·손바닥 뒤집기가 리치를 물릴 수 있다.
+       *
+       * 예전에는 이 경우를 아무도 정리하지 않았다. 그래서 ① 리치 BGM이 국이 끝날
+       * 때까지 계속 흘렀고(stop은 국 종료·새 국에만 있다) ② `shown.riichi`에 좌석이
+       * 남아, **같은 국에 다시 리치를 걸면 컷인도 BGM도 아예 안 나왔다**.
+       */
+      if (!nowRiichi && shown.riichi.has(p.id)) {
+        shown.riichi.delete(p.id);
+        riichiWasCancelled = true;
+        showBanner(
+          "리치 해제",
+          "info",
+          p.id === next.playerId ? "리치를 물렀다 — 리치봉이 돌아온다" : `${playerNameById(next, p.id)} — 리치를 물렀다`,
+          1400,
+        );
+      }
+
       // 후로 (치/펑/깡) — 후로 수가 이전 알림보다 늘었을 때만. 화료·리치처럼 컷인 연출.
       const nextMelds = next.round.byPlayer[p.id]?.melds ?? [];
       const shownCount = shown.melds[p.id] ?? 0;
@@ -3745,6 +3916,18 @@ export function App(): JSX.Element {
           impact: { shake: 2 },
         });
       }
+    }
+
+    /*
+     * 살아 있는 리치가 하나도 없으면 리치 BGM을 끈다.
+     *
+     * 예전에는 `riichiBgm.stop()`이 국 종료·새 국·게임 종료에만 있었다. 그래서
+     * 승부수·손바닥 뒤집기로 리치를 물러도 브금이 국이 끝날 때까지 계속 흘렀다 —
+     * 무엇이 소리를 내는지 화면 어디에도 없는 상태로.
+     */
+    if (riichiWasCancelled && shown.riichi.size === 0) {
+      riichiBgm.stop();
+      riichiBgmArmed.current = false;
     }
 
     // 패 봉인 (봉인술사 등) — 내 봉인 패 수가 이전 알림보다 늘었을 때만.
@@ -3889,6 +4072,39 @@ export function App(): JSX.Element {
           tiles: [...gave, ...got],
           tileArrowAt: gave.length,
           impact: { shake: 2 },
+        },
+      );
+    }
+
+    /*
+     * 당사자 전용 컷인 — 손패를 통째로 빼앗기거나, 일발이 지워지거나, 내가 버리지도
+     * 않은 패가 내 바닥에 심어지는 순간. 제3자에게는 이름표 관계 표식이 그대로 남는다.
+     */
+    for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
+      const head = key.split(":")[0] ?? "";
+      const def = RELATION_CUTINS[head];
+      if (def === undefined) continue;
+      const holderId = key.slice(head.length + 1);
+      const targetId = typeof raw === "string" ? raw : "";
+      if (targetId === "" || holderId === "" || holderId === targetId) continue;
+      const iAmHolder = next.playerId === holderId;
+      const iAmTarget = next.playerId === targetId;
+      if (!iAmHolder && !iAmTarget) continue;
+      if (!next.players.some((p) => p.id === holderId)) continue;
+      if (!next.players.some((p) => p.id === targetId)) continue;
+      const seen = augEventSig(key, raw, shown.roundKey);
+      if (shown.augEvents.has(seen)) continue;
+      shown.augEvents.add(seen);
+      const other = playerNameById(next, iAmHolder ? targetId : holderId);
+      showCutIn(
+        def.title,
+        "augment",
+        iAmHolder ? def.holder(other) : def.target(other),
+        def.ms ?? 2400,
+        {
+          sfx: () => sfx.augment(1),
+          augId: head,
+          ...(def.shake !== undefined ? { impact: { shake: def.shake } } : {}),
         },
       );
     }
@@ -4128,6 +4344,8 @@ export function App(): JSX.Element {
           spectator={isSpectator}
           spectateCode={spectating}
           logEvents={logEvents}
+          botDifficulty={isSpectator ? null : (lobby?.botDifficulty ?? null)}
+          pastRounds={roundHistory}
           abortVote={abortVote}
           onVoteAbort={cbVoteAbort}
           sandbox={sandbox}
@@ -4403,6 +4621,7 @@ export function App(): JSX.Element {
       {rankings !== null ? (
         <GameOverModal
           rankings={rankings}
+          endReason={gameEndReason}
           stats={stats}
           onClose={returnHome}
           {...(canContinue && !isSpectator
@@ -4427,7 +4646,7 @@ export function App(): JSX.Element {
 /** 잠깐 보기 버튼이 따라붙는 창들 — 이게 떠 있을 때만 버튼이 나온다 */
 const PEEK_OVERLAY_SEL = ".overlay-peekable, .rinshan-pick-overlay";
 /** 버튼을 바로 아래에 붙일 패널 (창의 실제 내용 상자) */
-const PEEK_PANEL_SEL = ".draft-panel, .rinshan-pick-panel";
+const PEEK_PANEL_SEL = ".draft-panel, .rinshan-pick-panel, .result-panel";
 /** 패널과 버튼 사이 간격 (px) */
 const PEEK_GAP = 10;
 
@@ -7272,6 +7491,10 @@ const WAITROOM_TIPS: readonly string[] = [
   "보라색으로 계속 반짝이는 패는 원래의 4개 패가 아니라 증강 등으로 새로 만들어진 패입니다.",
   "상대가 타패한 뒤 점선 표시를 보면 그 패를 어디서 냈는지 알 수 있습니다.",
   "게임 무효 투표는 설정 맨 아래에 있습니다.",
+  "시작 25,000점 · 반환점 30,000점 · 적5는 무늬마다 1장씩 들어 있습니다.",
+  "최종 순위 점수에는 우마 +15/+5/−5/−15가 더해집니다.",
+  "마지막 국에서 1위가 30,000점에 못 미치면 장이 하나 더 붙습니다(서든데스).",
+  "누군가 0점 아래로 떨어지면 그 자리에서 판이 끝납니다.",
   "화면 배치가 겹치거나 어색하면 오른쪽 위 +/− 버튼이나 Ctrl + −(+)로 크기를 맞춰 보세요.",
 ];
 
@@ -7390,8 +7613,10 @@ function WaitingRoom(props: {
         <div className="lobby-group-label">판 길이</div>
         <div className="mode-select" role="radiogroup" aria-label="게임 모드">
           {([
-            ["hanchan", "반장전", "동+남 · 남4국까지"],
-            ["tonpuu", "동풍전", "동장만 · 동4국까지"],
+            // 서든데스를 적어 둔다 — westEntry가 두 모드 모두 켜져 있어(maxWindOf 주석)
+            // "남4국까지"는 거짓이었다. 오라스라 믿고 짠 순위 계산이 통째로 틀어진다.
+            ["hanchan", "반장전", "동+남 · 남4국 뒤 1위가 30000 미만이면 서장"],
+            ["tonpuu", "동풍전", "동장만 · 동4국 뒤 1위가 30000 미만이면 남장"],
           ] as const).map(([mode, label, sub]) => {
             const active = lobby.gameMode === mode;
             return (
@@ -7418,11 +7643,7 @@ function WaitingRoom(props: {
           🤖 봇 난이도
         </div>
         <div className="mode-select" role="radiogroup" aria-label="봇 난이도">
-          {([
-            ["easy", "쉬움", "실수를 자주 한다"],
-            ["normal", "보통", "가끔 흘린다"],
-            ["hard", "어려움", "봇의 최선"],
-          ] as const).map(([level, label, sub]) => {
+          {BOT_DIFFICULTY.map(([level, label, sub]) => {
             const active = (lobby.botDifficulty ?? "hard") === level;
             return (
               <button
@@ -7595,10 +7816,63 @@ const MODE_BADGE: Record<GameMode, { name: string; drafts: string }> = {
   tonpuu: { name: "동풍전", drafts: "동1·동3·동4국" },
 };
 
+/**
+ * 손의 **모양 규칙**을 바꾸는 패시브 증강 — 결과창이 "왜 이게 손이 되는가"를 적을 때 쓴다.
+ *
+ * 전부 `setHolderRule` 하나짜리라 뷰 채널이 없다. 대기 계산은 클라이언트가 미러링해
+ * 정확하지만(waitDecompOptions), 화료해서 손이 공개되는 순간에는 근거가 어디에도 없었다.
+ * 자기 이름을 가진 역으로 뜨는 것(우는 국사무쌍·진짜 용)은 역 목록이 이미 말하므로 뺀다.
+ */
+const SHAPE_RULE_AUGMENTS = new Set<string>([
+  "mixed_triplet", // 동수의 결속 — 커쯔의 무늬 제한 해제
+  "broken_border", // 무너진 국경 — 슌쯔의 무늬 제한 해제
+  "polar_ends", // 양극 — 1과 9를 같은 패로 본다
+  "async_chiitoi", // 비대칭 — 치또이의 무늬 무관
+  "royal_kokushi", // 왕의 징표 — 국사 중복 허용
+  "wind_lineage", // 바람의 계보 — 자패 슌쯔
+  "snake_kan", // 장사진 — 연속 네 장 깡
+]);
+
+/**
+ * 봇 난이도 표기 — 대기실 라디오와 게임 중 칩이 같은 말을 쓴다.
+ *
+ * 난이도는 `LobbyMessage`에만 실려서 게임에 들어가는 순간 확인할 데가 없었다. 성향
+ * (원형)은 이름표·순위표에 상시로 서 있는데 난이도만 사라져, 전적에 남는 판인데도
+ * "봇이 쉬움이었나"를 사후에 알 수 없었다. 게스트 체험 방은 대기실을 안 거쳐 한 번도
+ * 못 본다.
+ */
+/**
+ * 종국 사유 한 줄. 평범한 종국(`normal`)은 비워 둔다 — 설명할 것이 없다.
+ */
+/** 리치가 막힌 평범한 사유 — 엔진의 riichi validate와 같은 판정을 서버가 실어 준다 */
+const RIICHI_BLOCK_TEXT: Record<"notEnoughPoints" | "wallTooShort", string> = {
+  notEnoughPoints: "점수가 리치봉(1,000점)에 못 미쳐 리치를 걸 수 없습니다",
+  wallTooShort: "패산이 얼마 안 남아 리치를 걸 수 없습니다",
+};
+
+const GAME_END_NOTE: Partial<Record<GameEndReason, string>> = {
+  dobi: "도비 — 누군가 0점 아래로 떨어져 그 자리에서 끝났습니다",
+  agariYame: "아가리야메 — 마지막 국에서 오야가 연장하며 단독 1위라 그대로 끝났습니다",
+  westEntryDecided: "서든데스 종료 — 30000점을 넘긴 사람이 나왔습니다",
+  instantWin: "천하통일 — 문턱 점수에 닿아 남은 국 없이 끝났습니다",
+};
+
+const BOT_DIFFICULTY: readonly (readonly [string, string, string])[] = [
+  ["easy", "쉬움", "실수를 자주 한다"],
+  ["normal", "보통", "가끔 흘린다"],
+  ["hard", "어려움", "봇의 최선"],
+];
+const BOT_DIFFICULTY_LABEL: Record<string, string> = Object.fromEntries(
+  BOT_DIFFICULTY.map(([id, label]) => [id, label]),
+);
+
 function ModeBadge(props: { mode: GameMode }): JSX.Element {
   const m = MODE_BADGE[props.mode] ?? MODE_BADGE.hanchan;
   return (
-    <div className="mode-badge" title={`${m.name} — 증강 획득: ${m.drafts}`}>
+    <div
+      className="mode-badge"
+      title={`${m.name} — 증강 획득: ${m.drafts}\n정규 구간이 끝나도 1위가 30000점에 못 미치면 장이 하나 더 붙는다(서든데스). 그 장에는 증강 획득이 없다.`}
+    >
       <span className="mode-badge-name">{m.name}</span>
       <span className="mode-badge-drafts">증강 {m.drafts}</span>
     </div>
@@ -7665,6 +7939,13 @@ const GameTable = memo(function GameTable(props: {
   onHandOrder?: (tileIds: number[]) => void;
   /** 📜 사건 기록 (append-only). 리플레이 뷰어처럼 기록이 없는 자리에서는 생략된다. */
   logEvents?: LogEvent[];
+  /**
+   * 이 판의 봇 난이도 (`LobbyMessage.botDifficulty`). 대기실을 거치지 않은 판
+   * (게스트 체험·리플레이)에서는 null이라 칩을 세우지 않는다.
+   */
+  botDifficulty?: string | null;
+  /** 지나간 국의 정산 — 📜 기록에서 다시 열어 본다 (리플레이 뷰어에는 없다) */
+  pastRounds?: PastRound[];
 }): JSX.Element {
   const { view, prompt, catalog } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -7804,6 +8085,16 @@ const GameTable = memo(function GameTable(props: {
         </div>
       ) : null}
       <ModeBadge mode={view.round.mode} />
+      {/* 봇 난이도 — 대기실에서만 보이고 판에 들어오면 사라지던 값. 봇이 없는 판에서는
+          띄우지 않는다. */}
+      {props.botDifficulty != null && view.players.some((p) => p.isBot) ? (
+        <div
+          className="mode-badge bot-diff-badge"
+          title={`봇 난이도 — ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
+        >
+          <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? props.botDifficulty}</span>
+        </div>
+      ) : null}
       <button
         className="icon-btn settings-btn"
         onClick={() => {
@@ -7898,6 +8189,7 @@ const GameTable = memo(function GameTable(props: {
         view={view}
         catalog={catalog}
         events={props.logEvents ?? EMPTY_LOG}
+        pastRounds={props.pastRounds ?? EMPTY_PAST_ROUNDS}
         open={logOpen}
         onToggle={() => {
           setLogOpen((v) => !v);
@@ -8492,6 +8784,51 @@ const RELATION_META: Record<string, { icon: string; label: string; color: string
 /** 이 표식들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
 const RELATION_HEADS: ReadonlySet<string> = new Set(Object.keys(RELATION_META));
 
+/**
+ * 지목 관계 중 **당사자에게는 표식으로 부족한** 것들 — 한 번 크게 알린다.
+ *
+ * 이름표 옆 관계 표식(RELATION_META)은 제3자에게 판을 읽히려고 있는 것이지, 당한
+ * 사람에게 "무슨 일이 일어났는가"를 알려 주는 자리가 아니다. 손패가 통째로 바뀌거나
+ * 내가 버리지도 않은 패로 후리텐이 되는 것을 작은 아이콘 하나로 알아채라는 것은
+ * 무리다 — 실제로 3장 교환(등가교환)은 이미 같은 이유로 전용 컷인이 붙어 있다.
+ *
+ * 채널 값이 **대상 좌석 id인 것만** 여기 넣는다(`{증강id}:{보유자}` = 대상).
+ */
+const RELATION_CUTINS: Record<
+  string,
+  {
+    title: string;
+    /** 보유자에게 보이는 문구 */
+    holder: (other: string) => string;
+    /** 대상에게 보이는 문구 */
+    target: (other: string) => string;
+    ms?: number;
+    shake?: ImpactSpec["shake"];
+  }
+> = {
+  full_hand_swap: {
+    title: "통째로 바꾸기",
+    holder: (o) => `${o}의 손패를 통째로 빼앗았다`,
+    target: (o) => `${o}에게 손패를 통째로 빼앗겼다 — 패산에서 새 손을 받는다`,
+    ms: 2600,
+    shake: 3,
+  },
+  counter: {
+    title: "카운터",
+    holder: (o) => `${o}의 선제 리치를 받아쳤다 — 공탁을 대신 물리고 일발을 지웠다`,
+    target: (o) => `${o}의 추격 리치 — 공탁을 대납하고 일발이 사라졌다`,
+    ms: 2400,
+    shake: 2,
+  },
+  frame_up: {
+    title: "누명",
+    holder: (o) => `${o}의 바닥에 패를 심었다`,
+    target: (o) => `${o}가 내 바닥에 패를 심었다 — 그 패로는 론할 수 없다`,
+    ms: 2400,
+    shake: 2,
+  },
+};
+
 /** augmentView에서 지금 살아 있는 지목 관계를 뽑는다 */
 function relationsOf(view: PlayerView): Relation[] {
   const out: Relation[] = [];
@@ -8631,6 +8968,16 @@ const AUG_EVENTS: Record<
     ms: 3600, // 13장을 훑을 시간
   },
   meld_dissolve: { title: "후로 해체", sub: "이미 울어 둔 묶음이 풀렸다", augId: "meld_dissolve" },
+  // 뒤집힌 모래시계 — 판이 가장 크게 뒤집히는 순간인데 신호가 이름표 pill "4장"
+  // 하나뿐이었다. 전원이 유국을 기다리는데 국이 안 끝나고 한 사람만 계속 뽑는다.
+  // (ROUND_SETTLED 인터셉터라 액션 컷인 경로를 타지 않는다.)
+  hourglass: {
+    title: "뒤집힌 모래시계",
+    sub: "유국이 취소됐다 — 왕패에서 넘어온 패를 혼자 뽑는다",
+    augId: "hourglass",
+    shake: 3,
+    ms: 2600,
+  },
   // 염색·연금술사 — 채널 값이 "man3→pin3" 꼴이라 컷인에 **바뀌기 전과 후**가 나란히 뜬다
   // (augEventTiles가 화살표를 풀어 두 장으로 만든다). 패는 손패 안에 남으므로 어디에
   // 있는지는 안 새고, 상대가 읽는 것은 "무엇이 무엇이 됐다"는 사실뿐이다 — 설명이
@@ -9046,16 +9393,21 @@ function AugmentLog({
   view,
   catalog,
   events,
+  pastRounds,
   open,
   onToggle,
 }: {
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
   events: LogEvent[];
+  /** 지나간 국의 정산 — 결과 화면을 읽기 전용으로 다시 연다 */
+  pastRounds?: PastRound[];
   open: boolean;
   onToggle: () => void;
 }): JSX.Element | null {
   const rows = useMemo(() => augmentLogRows(view, catalog), [view, catalog]);
+  /** 지금 다시 열어 둔 지난 국 (없으면 null) */
+  const [reopened, setReopened] = useState<PastRound | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   // 열 때·새 사건이 들어올 때 맨 아래(가장 최근)로. 스크롤백은 위로 올리면 그대로 있다.
   useEffect(() => {
@@ -9068,7 +9420,8 @@ function AugmentLog({
    * 자리지 재촉하는 자리가 아니다 — 숫자가 붙어 있으면 판을 보는 중에 눈이 그리 간다.
    */
 
-  if (rows.length === 0 && events.length === 0) return null;
+  const past = pastRounds ?? [];
+  if (rows.length === 0 && events.length === 0 && past.length === 0) return null;
   return (
     <>
       <button
@@ -9110,8 +9463,46 @@ function AugmentLog({
                     {rows}
                   </>
                 ) : null}
+                {/* 지난 국 정산 — 결과 화면은 스스로 닫히고 다시 여는 길이 없어서,
+                    서버 상한(최대 20초) 안에 못 읽으면 그 국의 역·판·부·증감이
+                    영구히 사라졌다. 여기서 그대로 다시 연다. */}
+                {past.length > 0 ? (
+                  <>
+                    <div className="auglog-sec">지난 국 정산</div>
+                    {past.map((r, i) => (
+                      <button
+                        key={`${r.label}:${i}`}
+                        type="button"
+                        className="auglog-past"
+                        onClick={() => setReopened(r)}
+                      >
+                        <span className="auglog-past-round">{r.label}</span>
+                        <span className="auglog-past-kind">
+                          {r.result.outcome === "win"
+                            ? "화료"
+                            : r.result.outcome === "draw"
+                              ? "유국"
+                              : "도중 유국"}
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                ) : null}
               </div>
             </div>,
+            document.body,
+          )
+        : null}
+      {reopened !== null
+        ? createPortal(
+            <RoundResultPanel
+              result={reopened.result}
+              view={view}
+              catalog={catalog}
+              deadlineAt={null}
+              historical
+              onClose={() => setReopened(null)}
+            />,
             document.body,
           )
         : null}
@@ -9679,9 +10070,33 @@ function CenterPanel({
           {r.roundNumber}국
         </div>
         <div className="center-sub">
-          <span className="wall-count" title="남은 패산">×{wallLeft}</span>
-          {r.honba > 0 ? <span title="본장">{r.honba}본장</span> : null}
-          {r.riichiPot > 0 ? <span className="pot" title="공탁">供{r.riichiPot / 1000}</span> : null}
+          <span
+            className="wall-count"
+            title={`${glossaryTitle("wall")}\n남은 ${wallLeft}장 · 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
+          >
+            ×{wallLeft}
+          </span>
+          {/* 지금이 마지막 국인가 — 봇은 이 정보를 명시적으로 받는데(RoomManager의
+              setGameMode) 사람만 국 번호로 역산해야 했다. 서든데스 구간은 "몇 국까지"가
+              정해져 있지 않으므로 오라스 대신 그 사실을 적는다. */}
+          {r.prevalentWind > maxWindOf(r.mode) ? (
+            <span className="last-round" title="정규 구간이 끝난 서든데스 — 30000점을 먼저 넘기면 종료">
+              서든데스
+            </span>
+          ) : r.prevalentWind === maxWindOf(r.mode) && r.roundNumber === 4 ? (
+            <span className="last-round" title="이 판의 마지막 국(오라스)">
+              오라스
+            </span>
+          ) : null}
+          {r.honba > 0 ? <span title={glossaryTitle("honba")}>{r.honba}본장</span> : null}
+          {r.riichiPot > 0 ? (
+            <span className="pot" title={glossaryTitle("kyoutaku")}>
+              供{r.riichiPot / 1000}
+            </span>
+          ) : null}
+          {/* 역행 — 2026-08-17 확인: `turn.direction`을 −1로 바꾸는 콘텐츠는 아직 없다.
+              규칙은 엔진·봇·삼세 예지까지 배선돼 있으므로 표시만 미리 서 있는 상태다.
+              (뒤집는 증강이 생기면 이 칩이 그대로 살아난다.) */}
           {r.direction < 0 ? <span className="rev-dir" title="역행하는 세계">역행</span> : null}
         </div>
         <div className="center-dora" title="도라 표시패">
@@ -9697,6 +10112,20 @@ function CenterPanel({
             ),
           )}
         </div>
+        {/* 가려진 도라 — 표시패가 한 장도 없으면 "아직 안 열린 것"과 그림이 같다.
+            숨긴 사람은 증강 보유가 공개라 여기서 바로 찾을 수 있다. */}
+        {(() => {
+          if (r.doraIndicators.length > 0) return null;
+          const holder = view.players.find(
+            (p) => p.augments.includes("dora_conceal") && p.id !== view.playerId,
+          );
+          if (holder === undefined) return null;
+          return (
+            <div className="dora-concealed" title="가려진 도라 — 이번 국의 도라 표시패는 그 사람만 본다">
+              🌑 가려진 도라 — {holder.nickname}
+            </div>
+          );
+        })()}
         {r.uraDoraIndicators !== null && r.uraDoraIndicators.length > 0 ? (
           <div className="center-dora center-ura" title="뒷도라">
             {r.uraDoraIndicators.map((id) => (
@@ -10373,6 +10802,22 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     if (typeof raw !== "string" || raw === "") return null;
     return { chip: raw, note: `이번 국 화료 점수 ${raw}` };
   },
+  // 천하통일 — 문턱까지 남은 점수. 이 증강은 view 채널이 하나도 없어서, 동2국에
+  // 갑자기 순위표가 떠도 아무도 이유를 몰랐다. 게이지가 서야 "홀더에게만 안 쏜다"는
+  // 대응이 성립한다.
+  unification: (raw) => {
+    const m = raw as { threshold?: number; left?: number } | null;
+    if (m === null || typeof m !== "object" || typeof m.left !== "number") return null;
+    const total = m.threshold ?? 45000;
+    if (m.left <= 0) {
+      return { chip: "도달", note: `${total.toLocaleString()}점 도달 — 이 국으로 게임이 끝난다` };
+    }
+    return {
+      chip: `${m.left.toLocaleString()}점`,
+      note: `${total.toLocaleString()}점까지 ${m.left.toLocaleString()}점 — 닿으면 남은 국 없이 끝난다`,
+      gauge: Math.min(1, Math.max(0, (total - m.left) / total)),
+    };
+  },
   // 편식 — 통일한 무늬 (발동 뒤). 진행도는 아래 전용 분기가 그린다.
   picky_eater: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
@@ -10462,12 +10907,28 @@ const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
 /**
  * 내부 쿨다운("2국에 1회")이 몇 국 남았는가 — 0이면 지금 쓸 수 있다.
  *
- * 콘텐츠 쪽 `cooldownViewKey`(util.ts)가 **보유자 본인 채널**로만 올려 주므로, 남의
- * pill에는 애초에 값이 없다. 예전에는 이 정보가 어디에도 없어서, 잠긴 증강이 그냥
- * "아무 일도 안 일어나는 증강"으로 보였다(2026-08-06 사용자 지적).
+ * 콘텐츠 쪽 `cooldownViewKey`(util.ts)가 **보유자 본인 채널**로만 올려 주므로 채널에는
+ * 좌석이 안 붙는다. 예전에는 이 정보가 어디에도 없어서, 잠긴 증강이 그냥 "아무 일도
+ * 안 일어나는 증강"으로 보였다(2026-08-06 사용자 지적).
+ *
+ * **좌석 인자가 필요한 이유**: 이름표는 좌석마다 그려지는데 채널은 뷰어 것 하나뿐이라,
+ * 같은 증강을 나와 남이 함께 들면 내 잔여 쿨다운이 **남의 pill에** 찍힌다. 드래프트는
+ * 중복을 막지만 수상한 주사위의 `grantAugments`는 자기 보유분만 걸러서 중복이 실제로
+ * 성립한다(core/Augment.ts). 그러면 상대가 그 증강을 쓸 수 있는지를 정반대로 읽는다.
  */
-function cooldownRoundsLeft(view: PlayerView, augId: string): number {
+function cooldownRoundsLeft(view: PlayerView, playerId: string, augId: string): number {
+  if (playerId !== view.playerId) return 0;
   const left = view.augmentView[`cooldown:${augId}`];
+  return typeof left === "number" && left > 0 ? left : 0;
+}
+
+/**
+ * 남은 쿨다운이 **순** 단위인 증강 (예지·무르기 계열). 국 단위와 같은 자리에 그리되
+ * 단위만 다르다 — 채널이 아예 없던 시절에는 버튼이 사라진 것으로만 알 수 있었다.
+ */
+function cooldownTurnsLeft(view: PlayerView, playerId: string, augId: string): number {
+  if (playerId !== view.playerId) return 0;
+  const left = view.augmentView[`cooldownTurns:${augId}`];
   return typeof left === "number" && left > 0 ? left : 0;
 }
 
@@ -10488,17 +10949,33 @@ function augmentPillStatus(
     return { chip: "종료", tone: "spent", note: "이번 국 전용 — 그 국이 지나 효과가 남아 있지 않다" };
   }
 
-  // 보유자 화면에만 실리는 잔량 채널 — 남의 pill에는 애초에 값이 없다.
+  // 보유자 화면에만 실리는 잔량 채널 — 채널 이름에 좌석이 없으므로 **뷰어 자신의
+  // pill에만** 붙인다. 같은 증강을 남도 들면 내 잔량이 남의 pill에 찍힌다
+  // (cooldownRoundsLeft 주석의 중복 보유 경로).
+  const isSelf = playerId === view.playerId;
   if (augId === "alchemist") {
     const left = av["alchemist:left"];
-    if (typeof left !== "number") return null;
+    if (!isSelf || typeof left !== "number") return null;
     return { chip: `${left}회`, note: `연금술 ${left}회 남음` };
   }
   // 염색 — 연금술사와 같은 게임 전체 5회 자원 (2026-08-04 국당 1회에서 개편)
   if (augId === "tile_dyeing") {
     const left = av["tile_dyeing:left"];
-    if (typeof left !== "number") return null;
+    if (!isSelf || typeof left !== "number") return null;
     return { chip: `${left}회`, note: `염색 ${left}회 남음` };
+  }
+  /*
+   * 예지 — 재배열은 **국에 1회**다. 소진되면 열람은 되는데 드래그 확정이 안 열리는데,
+   * 그 이유가 화면 어디에도 없었다("증강이 고장 났다"로 읽힌다).
+   * 이 채널은 보유자 전용이고 값이 그냥 true라, 공개 열람 채널을 읽는 아래 일반
+   * 경로(`av[augId:좌석]`)로는 볼 수 없어 여기서 따로 본다.
+   */
+  if (augId === "foresight" && isSelf && av["foresight:reorderSpent"] === true) {
+    return {
+      chip: "재배열 완료",
+      tone: "spent",
+      note: "이번 국 재배열은 이미 썼다 — 앞을 보는 것만 된다",
+    };
   }
   if (augId === "dead_wall_master") {
     const left = av[`dead_wall_master:remaining:${playerId}`];
@@ -10601,7 +11078,7 @@ function augmentPillStatus(
    * 일확천금·조커…)은 **발동한 국에 잔량이 통째로 묻혔다**(2026-08-15 "횟수류가 안
    * 나온다"). 이제 둘 다 있으면 상태 뱃지 뒤에 `·n회`로 붙여 함께 보여준다.
    */
-  const uses = av[`uses:${augId}`] as
+  const uses = (isSelf ? av[`uses:${augId}`] : undefined) as
     | { left?: unknown; total?: unknown; scope?: unknown }
     | undefined;
   const usesStatus: PillStatus | null =
@@ -10690,8 +11167,27 @@ const NamePlate = memo(function NamePlate({
 }): JSX.Element {
   const isMe = player.id === view.playerId;
   const isTurn = view.round.turnSeat === player.seat;
+  /*
+   * 지금 판이 **선언을 기다리는 중**인가 (reaction 페이즈).
+   *
+   * 타패 뒤에도 `turnSeat`은 버린 사람 그대로다 — 차례 표시가 전부 그 값만 보므로,
+   * 누군가 론·펑을 최대 30초 고민하는 동안 **방금 버린 사람에게 "차례"가 켜진 채**
+   * 판이 멈춰 보였다. 접속 상태 칩은 "생각 중과 끊김을 구분하려고" 세워 뒀으면서,
+   * 정작 그 "생각 중"에 해당하는 표시가 없었다.
+   *
+   * 누가 고민 중인지는 뷰에 없다(에이전트 계층의 정보다). 알 수 있는 것 — 지금이
+   * 선언 대기 구간이라는 사실 — 만 정직하게 말한다.
+   */
+  const awaitingCall = view.round.phase === "reaction";
   const furiten = isMe && view.round.byPlayer[player.id]?.furiten === true;
   const noYaku = isMe && view.round.byPlayer[player.id]?.noYaku === true;
+  // 후리텐 사유 — 같은 두 글자가 "한 순만 참으면 풀리는 일시 후리텐"과 "이 국은 끝난
+  // 리치 후리텐"을 함께 가리켰다. 사유 문안은 이미 있는데(FURITEN_REASON_TEXT) 오름패
+  // 뱃지에서만 쓰였고, 그 뱃지는 쯔모해서 14장인 내 차례에는 사라진다.
+  const furitenReasons = isMe ? (view.round.byPlayer[player.id]?.furitenReasons ?? []) : [];
+  // 일발이 살아 있는가 — 본인 뷰에만 오는 값이라 전원 공개 자리에는 못 놓는다.
+  // 누가 울어서 일발이 깨졌는지가 화면에 남지 않아, 1판이 조용히 사라졌다.
+  const ippatsu = isMe && view.round.byPlayer[player.id]?.ippatsu === true;
   // 무장해제로 이번 국 잠긴 이 사람의 증강 — 이름표의 pill에 쇠사슬을 채운다.
   // 잠금이 화면 어디에도 드러나지 않아 "무장해제가 안 먹는다"로 보였다(2026-08-01).
   const disarmed = disarmedAugmentsOf(view, player.id);
@@ -10778,7 +11274,15 @@ const NamePlate = memo(function NamePlate({
     <div
       className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}${connLabel !== null ? ` nameplate-${conn}` : ""}`}
     >
-      {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
+      {isTurn ? (
+        awaitingCall ? (
+          <span className="np-turn np-turn-wait" title="다른 자리의 선언(론·펑·치·깡)을 기다리는 중입니다">
+            선언 대기
+          </span>
+        ) : (
+          <span className="np-turn" aria-label="현재 차례">차례</span>
+        )
+      ) : null}
       {connLabel !== null ? (
         <span
           className="np-conn"
@@ -10803,7 +11307,8 @@ const NamePlate = memo(function NamePlate({
             const locked = disarmed.has(a);
             const status = augmentPillStatus(view, player.id, a);
             // 내부 쿨다운 잔량 — 보유자 본인 화면에만 실린다(view:{나}:cooldown:{id}).
-            const cooldown = cooldownRoundsLeft(view, a);
+            const cooldown = cooldownRoundsLeft(view, player.id, a);
+            const cooldownTurns = cooldownTurnsLeft(view, player.id, a);
             // 선발동형("이번 국만")이 이미 지나갔는가 — 설명 배지도 함께 갈아 끼운다.
             const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
             return (
@@ -10816,7 +11321,7 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 || cooldownTurns > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
@@ -10844,6 +11349,12 @@ const NamePlate = memo(function NamePlate({
                 {cooldown > 0 ? (
                   <span className="aug-pill-cd-chip" title={`쿨다운 — ${cooldown}국 남음`}>
                     🕐{cooldown}국
+                  </span>
+                ) : null}
+                {/* 순 단위 쿨다운 — 국 단위와 같은 자리, 단위만 다르다 */}
+                {cooldownTurns > 0 ? (
+                  <span className="aug-pill-cd-chip" title={`쿨다운 — ${cooldownTurns}순 남음`}>
+                    🕐{cooldownTurns}순
                   </span>
                 ) : null}
                 {status !== null ? (
@@ -10875,6 +11386,11 @@ const NamePlate = memo(function NamePlate({
                   {cooldown > 0 ? (
                     <span className="aug-tip-cd">
                       🕐 쿨다운 — 지금은 쓸 수 없다 (앞으로 {cooldown}국)
+                    </span>
+                  ) : null}
+                  {cooldownTurns > 0 ? (
+                    <span className="aug-tip-cd">
+                      🕐 쿨다운 — 지금은 쓸 수 없다 (앞으로 {cooldownTurns}순)
                     </span>
                   ) : null}
                   {reloaded.has(a) ? (
@@ -10954,7 +11470,19 @@ const NamePlate = memo(function NamePlate({
           })}
         </span>
       ) : null}
-      {furiten ? <span className="np-furiten">후리텐</span> : null}
+      {ippatsu ? <span className="np-ippatsu" title="일발이 살아 있습니다 — 누가 울면 사라집니다">일발</span> : null}
+      {furiten ? (
+        <span
+          className="np-furiten"
+          title={
+            furitenReasons.length > 0
+              ? `${furitenReasons.map((r) => FURITEN_REASON_TEXT[r]).join(" · ")} — 론은 안 되고 쯔모로만 화료할 수 있습니다`
+              : "론은 안 되고 쯔모로만 화료할 수 있습니다"
+          }
+        >
+          후리텐
+        </span>
+      ) : null}
       {noYaku ? <span className="np-noyaku" title="텐파이지만 역이 없어 화료할 수 없습니다">역없음</span> : null}
     </div>
   );
@@ -11306,7 +11834,12 @@ const TIMER_COUNT_MS = 10_000;
 /** 굵게·붉게 전환하는 잔여 시간 */
 const TIMER_URGENT_MS = 5_000;
 
-function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Element {
+function PromptTimer(props: {
+  seq: number;
+  deadline: number | null;
+  /** 시간이 다 되면 서버가 대신 하는 일 (없으면 안내하지 않는다) */
+  onTimeout?: string | null;
+}): JSX.Element {
   const { deadline } = props;
   const [left, setLeft] = useState<number | null>(
     deadline === null ? null : Math.max(0, deadline - Date.now()),
@@ -11336,6 +11869,7 @@ function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Eleme
       className={`prompt-timer${urgent ? " prompt-timer-urgent" : ""}`}
       // 마감이 바뀌면 새로 마운트해 애니메이션을 처음부터 돌린다
       key={`${props.seq}:${deadline ?? "none"}`}
+      {...(props.onTimeout != null ? { title: props.onTimeout } : {})}
     >
       <div
         className="prompt-timer-fill"
@@ -11347,6 +11881,10 @@ function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Eleme
       />
       {showCount && left !== null ? (
         <span className="prompt-timer-count">{(left / 1000).toFixed(1)}초</span>
+      ) : null}
+      {/* 급해진 구간에서만 실제로 띄운다 — 상시로 세워 두면 판을 가리기만 한다 */}
+      {urgent && props.onTimeout != null ? (
+        <span className="prompt-timer-note">{props.onTimeout}</span>
       ) : null}
     </div>
   );
@@ -12217,7 +12755,21 @@ function OwnArea(props: {
               onRiichiMode={props.onRiichiMode}
               onSubmit={props.onSubmit}
             />
-            <PromptTimer seq={props.promptSeq} deadline={props.promptDeadline} />
+            <PromptTimer
+              seq={props.promptSeq}
+              deadline={props.promptDeadline}
+              // 시간이 다 되면 무슨 일이 일어나는지를 **미리** 말한다. 드래프트 창은
+              // "시간이 다 되면 랜덤으로 결정된다"를 상시로 적어 두는데 여기만 없어서,
+              // 되돌릴 수 없는 손실(론 흘림·의도치 않은 타패)이 예고 없이 일어났다.
+              // 폴백 순서는 서버의 safeFallbackOption과 같다: 패스가 있으면 패스.
+              onTimeout={
+                myPrompt.options.some((o) => o.type === "pass")
+                  ? "시간이 다 되면 자동으로 패스합니다"
+                  : myPrompt.options.some((o) => o.type === "discard")
+                    ? "시간이 다 되면 쯔모한 패가 그대로 나갑니다"
+                    : null
+              }
+            />
           </>
         ) : null}
         {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
@@ -12377,12 +12929,16 @@ function OwnArea(props: {
                   }
                   // 봉인된 패를 버리려고 클릭 — 왜 안 되는지 안내 (내 버림 차례일 때만)
                   if (sealed && promptHasDiscard && !props.riichiMode) {
-                    props.onToast?.("🔒 봉인된 패 — 이 게임 동안 버릴 수 없습니다");
+                    props.onToast?.(SEAL_HINT);
                   }
                 }}
               >
                 <TileImg tile={view.tiles[id]} size="hand" owner={me.id} />
-                {sealed ? <span className="hand-seal-badge">🔒</span> : null}
+                {sealed ? (
+                  <span className="hand-seal-badge" title={SEAL_HINT}>
+                    🔒
+                  </span>
+                ) : null}
                 {danger ? (
                   <span
                     className="hand-danger-badge"
@@ -12681,8 +13237,15 @@ function WaitsBadge({
           </span>
         ) : null}
         {allDead ? <span className="waits-badge-noyaku">역없음</span> : null}
+        {/* 문구를 "아직 보이지 않은 장수"에서 **세는 곳을 밝히는 쪽**으로 고친다.
+            엿보기·투시로 상대 손패가 화면에 그려져도 이 셈은 그 패를 세지 않는다
+            (waitCounts는 zone 화이트리스트를 방어선으로 삼는다) — 짧은 문구만 보면
+            화면과 어긋나 보였다. */}
         {remaining !== null ? (
-          <span className="waits-badge-hint" title="패 위 숫자 = 아직 보이지 않은 그 패의 장수 (기본 4장 기준, 증강 생성패는 세지 않음)">
+          <span
+            className="waits-badge-hint"
+            title="패 위 숫자 = 기본 4장에서 버림패·후로·도라 표시패·내 손패에 나온 만큼을 뺀 수 (증강 생성패는 세지 않음)"
+          >
             남은 장수
           </span>
         ) : null}
@@ -12758,7 +13321,10 @@ function WaitTip({
   };
   return (
     <span className={`wait-tip${furitenOn ? " wait-tip-furiten" : ""}`}>
-      <span className="wait-tip-label">
+      <span
+        className="wait-tip-label"
+        title={waits.length === 0 ? glossaryTitle("keishiki_tenpai") : undefined}
+      >
         {waits.length === 0 ? "형식 텐파이" : allDead ? "대기 (역없음)" : "대기"}
         {waits.length > WAIT_TILE_CAP ? (
           <span className="waits-badge-count">{waits.length}종</span>
@@ -12921,6 +13487,17 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   // 카르마 업보 게이지 · 대기만성 만개 · 가불 인생 · 만년 오야는 이제 그 사람의
   // 이름표 증강 pill 위에 잔량/게이지로 붙는다(aug-pill-chip·aug-pill-gauge).
   // 여기서도 띄우면 같은 값이 화면 두 곳에 겹친다.
+  /*
+   * 리치가 **평범한 이유로** 막혔을 때 — 증강 봉인은 아래에서 따로 알린다.
+   *
+   * 액션 바는 서버가 준 옵션만 그리므로, 리치가 막히면 버튼이 그냥 없다. 점수가
+   * 1000점 아래로 떨어진 순간부터 리치가 영영 안 뜨는데 화면 어디에도 그 인과가
+   * 없었다. 증강 봉인·손패 조작 차단은 이미 이유를 적어 주는데 표준 규칙만 구멍이었다.
+   */
+  const riichiBlocked = view.round.byPlayer[me.id]?.riichiBlocked;
+  if (riichiBlocked !== undefined) {
+    textBadge("riichi-blocked", "리치 불가", RIICHI_BLOCK_TEXT[riichiBlocked]);
+  }
   // 리치 봉인 / 이중 선언 — 내 리치가 잠겼으면 왜 잠겼는지 반드시 보여준다
   for (const [key, value] of avEntries) {
     if (key.startsWith("riichi_seal:") && typeof value === "string") {
@@ -12985,6 +13562,29 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
       "🌫 안개 덮인 바닥",
       `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 최근 6장만 보인다`,
     );
+  }
+  // 박무 — 안개 덮인 바닥과 같은 계열인데 이쪽만 상시 표식이 없었다. 선언 컷인은 뜨지만
+  // 6순 지속 상태는 채널 head가 어느 표에도 없어 접힌 📜 로그의 글줄 하나로만 떨어졌다.
+  // 값이 "안개 (3순 남음)"이라 남은 순도 그대로 실려 있다.
+  for (const [key, value] of avEntries) {
+    if (!key.startsWith("brief_fog:") || key.startsWith("brief_fog:last:")) continue;
+    if (typeof value !== "string" || value === "") continue;
+    const who = key.slice("brief_fog:".length);
+    if (!view.players.some((p) => p.id === who)) continue;
+    textBadge(
+      key,
+      "🌁 박무",
+      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 모두의 바닥이 가려진다 · ${value.replace(/^안개\s*\(|\)$/g, "")}`,
+    );
+  }
+  // 가려진 도라 — 뷰 채널이 없는 순수 Modifier라, 비보유자 화면에서는 도라 표시패가
+  // 그냥 빈 뒷면으로만 뜬다. "아직 안 열린 슬롯"과 그림이 똑같아 버그로 읽혔다.
+  // 증강 보유 자체는 공개 정보이므로 보유자를 여기서 바로 찾아 쓴다.
+  if (view.round.doraIndicators.length === 0) {
+    const holder = view.players.find((p) => p.augments.includes("dora_conceal"));
+    if (holder !== undefined && holder.id !== me.id) {
+      textBadge("dora_conceal", "🌑 가려진 도라", `${holder.nickname} — 이번 국 도라는 그 사람만 안다`);
+    }
   }
   // 역만 방어술 방어 횟수 · 연금술 잔여 · 왕패 교환 잔여도 이름표 pill로 옮겼다
   // (그 증강이 몇 번 남았는지는 그 증강 위에 붙는 게 맞다).
@@ -13215,9 +13815,29 @@ function ActiveAugmentControl(props: {
   if (!hasActive && augOptions.length === 0) return null;
 
   const usable = augOptions.length > 0;
-  const activeNames = me.augments
-    .filter((a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a))
-    .map((a) => props.catalog[a]?.name ?? a);
+  const activeIds = me.augments.filter(
+    (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
+  );
+  /*
+   * 못 쓰는 이유 — 예전에는 `지금은 사용할 수 없습니다 — {이름들}`이 전부였다.
+   *
+   * 잔량·쿨다운은 서버가 보유자 채널로 실어 주므로 그대로 읽어 붙인다. 상태 조건
+   * ("국의 첫 순에만"·"리치 중 불가"처럼)은 서버가 이유를 실어 주지 않으므로 지어내지
+   * 않는다 — 틀린 이유를 대느니 아는 것만 말하는 편이 낫다.
+   */
+  const blockedNote = (id: string): string => {
+    const name = props.catalog[id]?.name ?? id;
+    const rounds = cooldownRoundsLeft(view, me.id, id);
+    if (rounds > 0) return `${name} — 쿨다운 ${rounds}국`;
+    const turns = cooldownTurnsLeft(view, me.id, id);
+    if (turns > 0) return `${name} — 쿨다운 ${turns}순`;
+    const uses = view.augmentView[`uses:${id}`] as { left?: unknown } | undefined;
+    if (uses !== undefined && typeof uses.left === "number" && uses.left <= 0) {
+      return `${name} — 남은 횟수 없음`;
+    }
+    if (disarmedAugmentsOf(view, me.id).has(id)) return `${name} — 무장해제로 잠김`;
+    return name;
+  };
 
   // 액션 타입별로 옵션을 묶는다 (타일 선택형은 개별 옵션이 아니라 '패 클릭'으로 발동)
   const byType = new Map<string, ActionOption[]>();
@@ -13828,7 +14448,7 @@ function ActiveAugmentControl(props: {
             ? types.length > 1
               ? "액티브 증강 선택"
               : `${augNameFor(types[0]!)} 사용`
-            : `지금은 사용할 수 없습니다 — ${activeNames.join(", ")}`
+            : `지금은 사용할 수 없습니다\n${activeIds.map(blockedNote).join("\n")}`
         }
         onClick={click}
         /* 손을 올리면 그 개수가 **어느 증강인지** 이름표 pill이 빛나 알려 준다.
@@ -14543,16 +15163,60 @@ function augPointsOf(
     .reduce((sum, a) => sum + a.points, 0);
 }
 
+/**
+ * 증감표 한 줄 아래에 붙는 **증강 내역** — 이 사람의 ±가 왜 그 숫자인지.
+ *
+ * 예전에는 augPoints를 쓰는 코드가 두 곳뿐이었고 둘 다 `w.winner`로 걸렀다. 그래서
+ * ① 유국 정산의 노트는 렌더 경로가 아예 없었고 ② 지불자·패자 쪽 노트(역만 방어술 환급·
+ * 죽기살기·반전·일확천금 환급·핏빛 계약…)는 계산되어 전송된 뒤 그대로 버려졌다.
+ * 화료패를 버리지도 않은 사람이 큰 마이너스를 무는 장면에 설명이 한 줄도 없었던 이유다.
+ *
+ * 화료자 몫은 위 승자 블록이 이미 적으므로 여기서 건너뛴다(같은 말을 두 번 하지 않는다).
+ * `points === 0`인 노트도 싣는다 — 마왕의 진군처럼 **총액이 0이어도 재배선 자체가
+ * 설명**인 경우가 있다.
+ */
+function AugDeltaNotes({
+  settle,
+  player,
+  skipWinners,
+}: {
+  settle: RoundOverMessage["settle"];
+  player: string;
+  skipWinners?: ReadonlySet<string>;
+}): JSX.Element | null {
+  if (skipWinners?.has(player) === true) return null;
+  const notes = (settle.augPoints ?? []).filter((a) => a.player === player);
+  if (notes.length === 0) return null;
+  return (
+    <span className="result-delta-augs">
+      {notes.map((a) => (
+        <span key={`${a.augId}:${a.player}`} className="result-delta-aug">
+          {augmentDisplayName(a.augId)}
+          {a.points !== 0 ? ` ${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}` : ""}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function RoundResultPanel({
   result,
   view,
   catalog,
   deadlineAt,
   onClose,
+  historical,
 }: {
   result: RoundOverMessage;
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
+  /**
+   * **지나간 국을 다시 열어 보는 중**인가 (📜 기록). 카운트다운도 없고 버튼도 "닫기"다.
+   * 그리고 이 판의 지금 상태로는 알 수 없는 것(그 국에 무슨 증강을 들고 있었는가)은
+   * 그리지 않는다 — 증강은 판이 갈수록 늘어나므로, 지금 목록으로 과거를 설명하면
+   * 그 국에 없던 증강을 있었던 것처럼 말하게 된다.
+   */
+  historical?: boolean;
   /**
    * 서버가 다음 국을 시작하는 시각(performance.now 기준). null이면 대기가 없다
    * (interRoundDelayMs=0 — 테스트·봇 게임). 카운트다운 표시에만 쓴다.
@@ -14622,25 +15286,33 @@ function RoundResultPanel({
 
   const isWin = result.outcome === "win";
   const isDraw = result.outcome === "draw";
+  /** 화료자 — 이 사람들의 증강 내역은 위 승자 블록이 이미 적으므로 표에서는 건너뛴다 */
+  const winnerIds = new Set(infos.map((w) => w.winner));
   // 텐파이 집계가 실리지 않은 정산(구 버전 로그 이어받기)은 전원 "노텐"으로 오표기하느니
   // 예전 점수표로 물러난다 — delta 부호로 텐파이를 추정하면 유국 증강이 섞일 때 틀린다.
   const tenpaiPlayers = settle.tenpaiPlayers;
   const drawDetail = isDraw && tenpaiPlayers !== undefined;
   const tenpaiSet = new Set(tenpaiPlayers ?? []);
   // 다음 국 안내 — 유국·도중유국은 여기가 유일한 "그래서 어떻게 되는가" 정보다.
+  // …화료에도 붙인다. `dealerContinues`는 화료 정산에도 실려 오는데 예전에는 `!isWin`
+  // 안에서만 조립해서, 친이 화료해 연장인지 넘어가는지·본장이 몇 개가 되는지를
+  // 결과 화면에서 알 수 없었다.
   const nextRoundNote: string[] = [];
-  if (!isWin) {
+  {
     // 도중유국은 친이 "연장"된 게 아니라 같은 국을 다시 치는 것이라 표현을 나눈다
-    if (settle.dealerContinues === true) nextRoundNote.push(isDraw ? "친 연장" : "친 유지");
+    if (settle.dealerContinues === true) nextRoundNote.push(isDraw || isWin ? "친 연장" : "친 유지");
     else if (settle.dealerContinues === false) nextRoundNote.push("친 넘어감");
-    nextRoundNote.push(`${settle.honba}본장`);
+    // 화료로 친이 넘어가면 본장은 0으로 돌아간다 — "0본장"은 알려 줄 것이 없다.
+    if (!isWin || settle.honba > 0) nextRoundNote.push(`${settle.honba}본장`);
     if (settle.riichiPot > 0) {
       nextRoundNote.push(`리치봉 ${settle.riichiPot.toLocaleString()}점 이월`);
     }
   }
 
   return (
-    <div className={`overlay result-overlay result-outcome-${result.outcome}`}>
+    // `overlay-peekable` — 결과 화면도 판을 통째로 덮는다. 표도라·버림패를 다시 보려
+    // 해도 볼 수가 없어서, 훔쳐보기 버튼이 붙는 창 목록에 넣는다(증강 선택창과 같다).
+    <div className={`overlay overlay-peekable result-overlay result-outcome-${result.outcome}`}>
       {/* 축하 꽃잎은 화료에만 — 유국·도중유국에 뿌리면 진 사람에게도 축포가 된다 */}
       {isWin ? (
         <div className="result-petals" aria-hidden>
@@ -14664,7 +15336,15 @@ function RoundResultPanel({
         {!isWin ? (
           <p className="result-subtitle">
             {isDraw
-              ? "패산 소진 — 텐파이한 사람만 손을 공개한다"
+              ? // 평범한 유국이 아니면 그 사실을 말한다 — 유국역만이 32,000점을 옮겨도
+                // 부제는 고정 문구 "패산 소진"이라 역만이라는 말조차 없었다.
+                settle.drawSpecial !== undefined
+                ? `${settle.drawSpecial.label}${
+                    settle.drawSpecial.holder !== undefined
+                      ? ` (${nameOf(settle.drawSpecial.holder)})`
+                      : ""
+                  }`
+                : "패산 소진 — 텐파이한 사람만 손을 공개한다"
               : (ABORT_REASONS[settle.abortReason ?? ""] ?? "국이 중단됐다")}
           </p>
         ) : null}
@@ -14684,12 +15364,34 @@ function RoundResultPanel({
               // 역만 손의 역 줄은 판수 대신 배수로 — 대사희·국사 13면은 한 줄이 "더블 역만"이다
               han: w.yakumanCount > 0 ? yakumanHanLabel(y.han) : `${y.han}판`,
             })),
-            ...(w.doraHan > 0 ? [{ key: "dora", label: "도라", han: `${w.doraHan}판` }] : []),
+            // 증강 도라는 표준 도라와 합산돼 한 줄로만 떴다 — 화면에 뜬 표시패로
+            // 설명되지 않는 판수의 출처를 따로 적는다.
+            ...(w.doraHan > 0
+              ? [
+                  {
+                    key: "dora",
+                    label:
+                      w.augDoraHan !== undefined && w.augDoraHan > 0
+                        ? `도라 (증강 ${w.augDoraHan}판 포함)`
+                        : "도라",
+                    han: `${w.doraHan}판`,
+                  },
+                ]
+              : []),
             ...(w.uraHan > 0 ? [{ key: "ura", label: "뒷도라", han: `${w.uraHan}판` }] : []),
             ...(w.redHan > 0 ? [{ key: "red", label: "적도라", han: `${w.redHan}판` }] : []),
-            ...(w.extraHan > 0
-              ? [{ key: "extra", label: "증강 보너스", han: `${w.extraHan}판`, aug: true }]
-              : []),
+            // 증강이 얹은 추가 판 — 어느 증강이 몇 판인지 알 수 있으면 그렇게 적는다.
+            // (합계만 아는 구 리플레이는 예전처럼 익명 한 줄로 떨어진다.)
+            ...(w.extraHanBy !== undefined && w.extraHanBy.length > 0
+              ? w.extraHanBy.map((e) => ({
+                  key: `extra:${e.augId}`,
+                  label: augmentDisplayName(e.augId),
+                  han: `+${e.han}판`,
+                  aug: true,
+                }))
+              : w.extraHan > 0
+                ? [{ key: "extra", label: "증강 보너스", han: `${w.extraHan}판`, aug: true }]
+                : []),
             /**
              * 증강이 정산에서 **점수를 직접 움직인 내역**(augPoints).
              *
@@ -14712,6 +15414,32 @@ function RoundResultPanel({
                     : `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
                 aug: true,
               })),
+            /*
+             * 본장·리치봉 — 점수는 이미 받고 있었는데 화면에 줄이 없었다. 큰 숫자가
+             * `points`(둘을 뺀 값)라 아래 증감표와 숫자가 어긋났고, 리치봉 1000점을
+             * 누가 왜 가져갔는지도 어디에도 안 적혔다. 본장 단가는 규칙(본장 사냥꾼이
+             * 바꾼다)이라 서버가 계산해 실어 준 값을 그대로 쓴다.
+             */
+            ...(w.honbaBonus !== undefined && w.honbaBonus > 0
+              ? [
+                  {
+                    key: "honba",
+                    // `settle.honba`는 **다음 국**의 본장이라 몇 본을 받았는지는 못 센다.
+                    // 금액만 적는다 — 그게 알려 줄 것의 전부다.
+                    label: "본장",
+                    han: `+${w.honbaBonus.toLocaleString()}점`,
+                  },
+                ]
+              : []),
+            ...(w.riichiPotGain !== undefined && w.riichiPotGain > 0
+              ? [
+                  {
+                    key: "pot",
+                    label: "리치봉 회수",
+                    han: `+${w.riichiPotGain.toLocaleString()}점`,
+                  },
+                ]
+              : []),
           ];
           return (
           <div key={w.winner} className="result-win">
@@ -14722,6 +15450,36 @@ function RoundResultPanel({
               </span>
               {w.from !== null ? <span className="result-from">← {nameOf(w.from)}</span> : null}
             </div>
+
+            {/* 지불 분담 — 쯔모의 "친 3,900 / 자 2,000씩"이 화면 어디에도 없었다.
+                증감표는 본장·공탁·증강 이동이 뒤섞인 순증감 하나뿐이다. */}
+            {(() => {
+              const pay = w.payments;
+              if (pay === undefined) return null;
+              const parts: string[] = [];
+              if (pay.dealer !== undefined && pay.dealer > 0) {
+                parts.push(`친 ${pay.dealer.toLocaleString()}`);
+              }
+              if (pay.others !== undefined && pay.others > 0) {
+                const n = w.winType === "tsumo" ? (pay.dealer !== undefined ? 2 : 3) : 1;
+                parts.push(`자 ${pay.others.toLocaleString()}${n > 1 ? `×${n}` : ""}`);
+              }
+              if (pay.discarder !== undefined && pay.discarder > 0) {
+                parts.push(`${pay.discarder.toLocaleString()}점`);
+              }
+              if (parts.length === 0) return null;
+              return <div className="result-payments">{parts.join(" · ")}</div>;
+            })()}
+
+            {/* 책임지불(파오) — 엔진은 진작 계산하고 있었는데 클라이언트에는 이 말이
+                한 번도 없었다. 대삼원을 확정시킨 후로를 내준 사람이 16,000을 무는데
+                화면에는 자기가 쏘지도 않은 큰 마이너스만 떴다. */}
+            {w.pao !== undefined ? (
+              <div className="result-pao">
+                책임지불 {nameOf(w.pao.responsible)} — {YAKU_NAMES[w.pao.yakuId] ?? w.pao.yakuId}{" "}
+                {w.pao.points.toLocaleString()}점
+              </div>
+            ) : null}
 
             {result.revealedHands[w.winner] !== undefined ? (
               <div className="result-hand">
@@ -14743,6 +15501,26 @@ function RoundResultPanel({
                 ))}
               </div>
             ) : null}
+
+            {/* 이 손을 성립시킨 증강 — 손 모양 규칙을 바꾸는 패시브는 view 채널이 없어
+                화면에 아무 흔적도 안 남는다. 그래서 결과창에 1만1통1삭 커쯔, 동남서 슌쯔,
+                3-4-5-6 깡처럼 **규칙 위반으로 보이는 손**이 근거 없이 공개됐다.
+                역 이름이 따로 서는 것(우는 국사무쌍 등)은 여기 넣지 않는다 — 같은 말을
+                두 번 하게 된다. */}
+            {(() => {
+              if (historical === true) return null;
+              const augs = view.players.find((p) => p.id === w.winner)?.augments ?? [];
+              const shapes = augs.filter((a) => SHAPE_RULE_AUGMENTS.has(a));
+              if (shapes.length === 0) return null;
+              return (
+                <div className="result-shape-augs">
+                  <span className="result-shape-label">이 손을 성립시킨 증강</span>
+                  <span className="result-shape-names">
+                    {shapes.map((a) => catalog[a]?.name ?? a).join(" · ")}
+                  </span>
+                </div>
+              );
+            })()}
 
             <div className="result-yaku-list">
               {yakuRows.map((r, i) => (
@@ -14775,8 +15553,18 @@ function RoundResultPanel({
                 </i>
               </span>
               {/* 증강이 점수를 움직였으면 **최종 획득점**으로 굴린다 — 표준 점수만 크게
-                  띄우면 위 증강 줄과 아래 ±점수가 서로 다른 이야기를 한다. */}
-              <CountUpPoints value={w.points + augPointsOf(settle, w.winner)} mute={wi > 0} />
+                  띄우면 위 증강 줄과 아래 ±점수가 서로 다른 이야기를 한다.
+                  본장·리치봉도 같은 이유로 더한다: `w.points`는 둘을 빼고 세는 값이라
+                  2본장·리치봉 1개면 `8,000점`이 굴러간 뒤 표에는 `+9,600`이 떴다. */}
+              <CountUpPoints
+                value={
+                  w.points +
+                  (w.honbaBonus ?? 0) +
+                  (w.riichiPotGain ?? 0) +
+                  augPointsOf(settle, w.winner)
+                }
+                mute={wi > 0}
+              />
             </div>
           </div>
           );
@@ -14811,6 +15599,9 @@ function RoundResultPanel({
                       {d.toLocaleString()}
                     </span>
                   </div>
+                  {/* 유국 정산의 증강 내역 — 예전에는 렌더 경로가 아예 없어(승자 필터)
+                      승승장구·유국역만처럼 유국에서만 움직이는 점수가 통째로 사라졌다. */}
+                  <AugDeltaNotes settle={settle} player={p.id} />
                   {revealed !== undefined ? (
                     <div className="result-draw-hand">
                       {sortTileViews(revealed.hand).map((t, ti) => (
@@ -14879,6 +15670,18 @@ function RoundResultPanel({
           </div>
         ) : null}
 
+        {/* 표도라 — 결과 화면이 판을 완전히 덮어 뒤의 도라 줄을 훔쳐볼 수 없다.
+            뒷도라만 실물로 뜨던 탓에, 표시패 1장으로 설명되지 않는 판수가 나와도
+            근거를 찾을 데가 없었다. */}
+        {(result.doraIndicators ?? []).length > 0 ? (
+          <div className="result-ura">
+            <span className="result-ura-label">도라</span>
+            {(result.doraIndicators ?? []).map((id) => (
+              <TileImg key={id} tile={result.tiles[id]} size="mini" />
+            ))}
+          </div>
+        ) : null}
+
         {result.uraDoraIndicators.length > 0 ? (
           <div className="result-ura">
             <span className="result-ura-label">뒷도라</span>
@@ -14901,6 +15704,7 @@ function RoundResultPanel({
                     {d > 0 ? "+" : ""}
                     {d.toLocaleString()}
                   </span>
+                  <AugDeltaNotes settle={settle} player={p.id} skipWinners={winnerIds} />
                 </div>
               );
             })}
@@ -14920,7 +15724,7 @@ function RoundResultPanel({
           className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
           onClick={onClose}
         >
-          다음 국으로
+          {historical === true ? "닫기" : "다음 국으로"}
           {showCountdown ? (
             <span className="result-close-count" aria-hidden>
               {remainSec}초
@@ -15110,12 +15914,15 @@ function DraftOverlay({
 
 function GameOverModal({
   rankings,
+  endReason,
   stats,
   onClose,
   onContinue,
   sandbox = false,
 }: {
   rankings: RankingEntry[];
+  /** 왜 끝났는가 — 헤더 아래 한 줄 */
+  endReason?: GameEndReason;
   stats: StatsMessage | null;
   onClose: () => void;
   /** 방이 살아 있을 때만 — 같은 멤버 그대로 다음 판으로 (증강 테스트는 즉시 새 판) */
@@ -15134,6 +15941,11 @@ function GameOverModal({
     <div className="overlay">
       <div className="gameover-panel">
         <h2>대국 종료</h2>
+        {/* 왜 끝났는지 — 남2국에서 갑자기 순위표가 뜨면(도비) 버그로 읽혔다.
+            평범한 종국에는 붙이지 않는다(설명할 것이 없다). */}
+        {endReason !== undefined && GAME_END_NOTE[endReason] !== undefined ? (
+          <p className="gameover-reason">{GAME_END_NOTE[endReason]}</p>
+        ) : null}
         {gameStats.length > 0 ? (
           <div className="go-tabs">
             <button className={tab === "rank" ? "go-tab active" : "go-tab"} onClick={() => setTab("rank")}>
@@ -15156,7 +15968,18 @@ function GameOverModal({
                   {/* 어느 성향이 이겼는지 — 순위표에서 그게 읽혀야 다음 판이 달라진다 */}
                   {r.isBot ? <BotArchetypeChip archetype={r.archetype} /> : null}
                 </span>
-                <span className="rank-raw">{r.rawScore.toLocaleString()}점</span>
+                {/* 원점 → 우마·오카 → 최종. 세 값 모두 서버가 이미 보내 주는데(RankingEntry)
+                    예전에는 원점과 최종만 찍어서, 25000점이 왜 -5가 되는지 역산할 수 없었다. */}
+                <span className="rank-raw">
+                  {r.rawScore.toLocaleString()}점
+                  {r.uma !== 0 || r.oka !== 0 ? (
+                    <span className="rank-umaoka">
+                      {r.uma !== 0 ? `우마 ${r.uma > 0 ? "+" : ""}${r.uma}` : null}
+                      {r.uma !== 0 && r.oka !== 0 ? " · " : null}
+                      {r.oka !== 0 ? `오카 ${r.oka > 0 ? "+" : ""}${r.oka}` : null}
+                    </span>
+                  ) : null}
+                </span>
                 <span
                   className={`rank-final ${
                     r.score > 0 ? "rank-final-plus" : r.score < 0 ? "rank-final-minus" : "rank-final-zero"
@@ -15245,6 +16068,14 @@ function ReplayViewer(props: {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const total = replay !== null ? replay.states.length - 1 : 0;
+  /** 열어 둔 정산 (없으면 null) — 리플레이는 판만 그려서 역·판·부를 되짚을 수 없었다 */
+  const [openSettle, setOpenSettle] = useState<number | null>(null);
+  const settlements = useMemo(
+    () => (replay !== null ? replaySettlements(replay) : []),
+    [replay],
+  );
+  /** 지금 프레임까지 이미 끝난 국들의 정산 (아직 안 온 국의 결과를 미리 보여 주지 않는다) */
+  const shownSettlements = settlements.filter((sx) => sx.index <= idx);
 
   // 자동 재생
   useEffect(() => {
@@ -15332,7 +16163,27 @@ function ReplayViewer(props: {
         >
           {REPLAY_SPEEDS[speed]?.label}
         </button>
+        {/* 정산 보기 — 지금까지 끝난 국 중 **가장 최근** 것을 연다. 리플레이가 판만
+            그려서 역·판·부·증감을 어디서도 되짚을 수 없었다. */}
+        <button
+          className="rp-btn"
+          disabled={shownSettlements.length === 0}
+          onClick={() => setOpenSettle(shownSettlements.length - 1)}
+          title="이 국까지의 정산 보기"
+        >
+          🧾
+        </button>
       </div>
+      {openSettle !== null && shownSettlements[openSettle] !== undefined ? (
+        <RoundResultPanel
+          result={shownSettlements[openSettle]!.result}
+          view={view}
+          catalog={replay.catalog as Record<string, AugmentCatalogEntry>}
+          deadlineAt={null}
+          historical
+          onClose={() => setOpenSettle(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -26,8 +26,9 @@
  * 선택이며, 필요해지면 conflicts 선언으로 막는 쪽이 카드 문구를 지키는 방법이다.
  */
 
-import { defineAugment } from "@majak/core";
-import type { AugmentDef } from "@majak/core";
+import { augmentDataSet, defineAugment } from "@majak/core";
+import type { AugmentDef, GameState, ProposedEvent } from "@majak/core";
+import { viewKey } from "../util.js";
 
 /** 즉시 우승 문턱 점수 (밸런스는 실테스트로 조정) */
 const THRESHOLD = 45000;
@@ -39,9 +40,9 @@ export const unification: AugmentDef = defineAugment({
   complexity: 3,
   name: "천하통일",
   description:
-    "(상시) 내 점수가 45000점에 도달하면 남은 국을 전부 무시하고 즉시 우승으로 게임이 끝난다.",
+    "(상시) 내 점수가 45000점에 도달하면 남은 국을 전부 무시하고 그 자리에서 게임이 끝난다.",
   detail:
-    "(상시) 내 점수가 45000점에 도달하면 그 국의 정산 직후 남은 국을 전부 무시하고 게임이 즉시 끝나며 내가 우승한다.\n\n점수의 출처는 따지지 않는다 — 마작으로 벌었든 다른 증강이 얹어 줬든, 점수판이 45000이면 그대로 끝이다.",
+    "(상시) 내 점수가 45000점에 도달하면 그 국의 정산 직후 남은 국을 전부 무시하고 게임이 즉시 끝난다. 끝내는 것이 내 능력이지 우승이 보장되는 것은 아니다 — 같은 정산에서 나보다 높은 사람이 있으면 그쪽이 1위다.\n\n점수의 출처는 따지지 않는다 — 마작으로 벌었든 다른 증강이 얹어 줬든, 점수판이 45000이면 그대로 끝이다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -50,5 +51,26 @@ export const unification: AugmentDef = defineAugment({
       layer: ctx.layer,
       apply: (cur, rctx) => (rctx.playerId === holder ? THRESHOLD : cur),
     });
+
+    /*
+     * 문턱까지 얼마나 남았는가 — **전원 공개**.
+     *
+     * 예전에는 이 증강이 view 채널을 하나도 내지 않았다. 그래서 동2국에서 갑자기 최종
+     * 순위표가 뜨는데 아무 설명이 없었고("통일 사이렌"은 주석에만 있었다), 대응 수단이
+     * 명확하다는 설계(홀더에게만 안 쏘는 연합 수비)도 성립할 수 없었다 — 언제 붙었는지
+     * 아무도 몰랐기 때문이다. 점수판은 원래 전원이 보는 것이므로 숨길 이유가 없다.
+     */
+    const key = viewKey("*", `unification:${holder}`);
+    ctx.reaction(
+      "*",
+      (_event: unknown, rc: { state: GameState; emit: (e: ProposedEvent) => void }) => {
+        const score = rc.state.players.find((p) => p.id === holder)?.score ?? 0;
+        const next = { threshold: THRESHOLD, left: Math.max(0, THRESHOLD - score) };
+        const cur = rc.state.augmentData[key] as { left?: number } | undefined;
+        // 값이 같으면 아무것도 내지 않는다 — 반응 연쇄가 한 겹에서 멈춘다
+        if (cur !== undefined && cur.left === next.left) return;
+        rc.emit(augmentDataSet(key, next));
+      },
+    );
   },
 });

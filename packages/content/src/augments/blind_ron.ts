@@ -31,6 +31,7 @@ import {
   roundKey,
   roundViewKey,
   settleInterceptor,
+  withAugNoteFor,
 } from "../util.js";
 
 const ID = "blind_ron";
@@ -53,7 +54,7 @@ export const blindRon: AugmentDef = defineAugment({
   description:
     "증강을 뽑은 국에만 적용되며, 이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다. 화료자도 포함될 수 있으며 이 경우 그 화료는 ±0점이 된다.",
   detail:
-    "대상은 자리에 앉은 넷 전부에서 고르므로 보유자도 25%로 맞는다. 쯔모에는 적용되지 않고, 더블론처럼 한 사람이 여럿에게 물 때는 그 지불 전체가 같은 한 명에게 옮겨 간다. 켜지는 순간 전원에게 공개되고 국이 끝나면 저절로 꺼진다.",
+    "대상은 자리에 앉은 넷 전부에서 고르므로 보유자도 25%로 맞는다. 쯔모에는 적용되지 않고, 더블론처럼 한 사람이 여럿에게 물 때는 그 지불 전체가 같은 한 명에게 옮겨 간다. 옮겨 가는 것은 손의 지불분이며 공탁·본장은 원래대로 정산된다. 켜지는 순간 전원에게 공개되고 국이 끝나면 저절로 꺼진다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -97,6 +98,7 @@ export const blindRon: AugmentDef = defineAugment({
 
       const seats = ic.state.players.map((pl) => pl.id);
       const deltas = { ...p.deltas };
+      let notes = p.augPoints ?? [];
       let moved = 0;
       for (const shooter of shooters) {
         const owed = -(deltas[shooter] ?? 0);
@@ -111,11 +113,14 @@ export const blindRon: AugmentDef = defineAugment({
         deltas[shooter] = (deltas[shooter] ?? 0) + owed;
         deltas[victim] = (deltas[victim] ?? 0) - owed;
         moved += owed;
+        // 지불자만 바뀌었고 총액도 보유자 수령액도 그대로라 `withAugPoint`에는 남길 것이
+        // 없다. 그래도 **당사자 둘의 증감표 줄에는 근거가 있어야 한다** — 쏜 사람은 왜
+        // 안 내는지, 엉뚱한 사람은 왜 무는지가 화면에 한 글자도 없었다.
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, victim, -owed);
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, shooter, owed);
       }
       if (moved === 0) return event;
-      // 지불자만 바뀌었고 총액도 보유자 수령액도 그대로다 — 책임전가와 같은 재배선이라
-      // augPoints(내 점수를 이만큼 움직였다)에 남길 것이 없다.
-      return { type: event.type, payload: { ...p, deltas } };
+      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
     });
   },
   // 봇 정책 없음 — 자동 발동이라 선택 지점이 없다.

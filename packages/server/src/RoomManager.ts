@@ -38,6 +38,7 @@ import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
   ClientMessage,
   ServerMessage,
+  GameEndReason,
   RankingEntry,
   LobbyPlayerEntry,
   ReplayGameSummary,
@@ -1899,6 +1900,13 @@ export class RoomManager {
       // 돌아왔다는 사실을 나머지 좌석의 이름표에도 반영한다.
       // (본인에게도 다시 나간다 — reconnect가 복원해 준 뷰에는 "접속 끊김"이 박혀 있다.)
       this.refreshSeatStatus(room);
+      // 진행 중인 중단 투표를 다시 집계해 전원에게 보낸다.
+      //
+      // `needed`는 접속한 사람 수라 재접속과 동시에 조용히 +1 된다. 여기서 다시 보내지
+      // 않으면 ① 돌아온 사람은 걸려 있는 투표를 아예 못 보고(클라 상태는 비어 있다)
+      // ② 남은 사람들의 화면은 낡은 정족수를 계속 띄운다 — 판을 접자는 합의가 아무
+      // 설명 없이 성립하지 않는다.
+      this.retallyAbortVotes(room);
       return;
     }
 
@@ -3293,12 +3301,17 @@ export class RoomManager {
           // 통계 집계 실패는 게임 진행을 막지 않는다
         }
       },
-      onGameOver: (rankings: RankingEntry[]) => {
+      onGameOver: (rankings: RankingEntry[], endReason: GameEndReason) => {
         // 방은 그대로 남는다 — 결과 화면에서 "이어하기"로 같은 멤버와 다음 판을 간다.
         // 게스트 판은 "이어하기"를 주지 않는다 — 대기실로 돌아가도 손님은 `startGame`을
         // 보낼 수 없다(화이트리스트). 대신 클라이언트가 체험 종료 화면에서
         // "한 판 더"(= 새 guestPlay)와 "계정 만들기"를 제시한다.
-        const msg: ServerMessage = { type: "gameOver", rankings, canContinue: !room.guest };
+        const msg: ServerMessage = {
+          type: "gameOver",
+          rankings,
+          canContinue: !room.guest,
+          reason: endReason,
+        };
         for (const agent of room.agents) {
           if (agent instanceof HumanAgent) agent.notify(msg);
         }

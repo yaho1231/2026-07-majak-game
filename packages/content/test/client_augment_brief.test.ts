@@ -305,8 +305,12 @@ describe("마작 용어 사전", () => {
     // "산깡쯔·스깡쯔" 안에서만 나오지만, 그 둘의 풀이가 여전히 그 말을 쓴다.
     const swallowed = (g: (typeof GLOSSARY)[number]): boolean =>
       shown.some((t) => t !== g.label && t.includes(g.label));
+    // 판 위에만 뜨는 표기(hudOnly)는 이 코퍼스에 없는 것이 정상이다 — 증강 텍스트가
+    // 아니라 대국 화면이 직접 찍는 말이라 여기서 걸릴 수가 없다.
     expect(
-      GLOSSARY.filter((g) => !hit.has(g.key) && !swallowed(g)).map((g) => g.key),
+      GLOSSARY.filter((g) => !hit.has(g.key) && !swallowed(g) && g.hudOnly !== true).map(
+        (g) => g.key,
+      ),
     ).toEqual([]);
   });
 });

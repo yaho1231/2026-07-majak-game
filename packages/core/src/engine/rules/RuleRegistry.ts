@@ -128,4 +128,39 @@ export class RuleRegistry {
     }
     return value as T;
   }
+
+  /**
+   * `resolve`와 같은 합성을 하되, **각 Modifier가 얼마를 움직였는지**를 함께 돌려준다.
+   *
+   * 결과 화면이 "증강 보너스 3판"이라고만 적던 자리를 증강별로 펼치기 위한 것이다.
+   * `score.extraHan`은 여러 증강이 공유하는 합계라, 둘 이상 겹치면 어느 증강이 몇 판을
+   * 얹었는지 알 방법이 없었다.
+   *
+   * 숫자 규칙 전용이다 — `delta`는 그 Modifier 전후의 차이이므로, 값이 숫자가 아니면
+   * 의미가 없다. 합성 순서·게이트는 `resolve`와 완전히 같아 총합도 같다.
+   */
+  resolveBreakdown(
+    key: RuleKey,
+    ctx: RuleContext = {},
+  ): { total: number; parts: { source: string; delta: number }[] } {
+    if (!this.base.has(key)) {
+      throw new Error(`Unknown rule: ${key}`);
+    }
+    const list = this.modifiers.get(key);
+    let value = this.base.get(key);
+    const parts: { source: string; delta: number }[] = [];
+    if (list !== undefined && list.length > 0) {
+      const sorted = [...list].sort(
+        (a, b) => a.layer - b.layer || a.priority - b.priority || a.seq - b.seq,
+      );
+      for (const mod of sorted) {
+        if (this.sourceGate !== null && !this.sourceGate(mod.source, ctx)) continue;
+        const before = typeof value === "number" ? value : 0;
+        value = mod.apply(value, ctx);
+        const after = typeof value === "number" ? value : 0;
+        if (after !== before) parts.push({ source: mod.source, delta: after - before });
+      }
+    }
+    return { total: typeof value === "number" ? value : 0, parts };
+  }
 }

@@ -24,7 +24,7 @@ import type {
   PlayerId,
   RoundSettledPayload,
 } from "@majak/core";
-import { settleInterceptor } from "../util.js";
+import { settleInterceptor, withAugNoteFor } from "../util.js";
 
 const ID = "blame_shift";
 
@@ -51,7 +51,7 @@ export const blameShift: AugmentDef = defineAugment({
   description:
     "(상시) 내가 론으로 화료하면 그 지불이 쏜 사람 혼자가 아니라 세 명에게 쯔모처럼 분담된다. 내가 받는 총액은 그대로 — 방총의 책임만 테이블 전체로 흩어진다.",
   detail:
-    "(상시) 론으로 화료할 때마다 쏜 사람이 전액 물던 점수가 나를 뺀 세 명에게 쯔모처럼 고르게 3분할된다. 내가 받는 총액은 변하지 않으며 손해를 보는 사람도 이득을 보는 사람도 없이 지불자만 분산된다. 쯔모 화료는 이미 분담이므로 관여하지 않고, 100점 단위로 떨어지지 않는 끝수는 원래 쏜 사람이 흡수한다.",
+    "(상시) 론으로 화료할 때마다 쏜 사람이 전액 물던 점수가 나를 뺀 세 명에게 쯔모처럼 고르게 3분할된다. 내가 받는 총액은 변하지 않으며 손해를 보는 사람도 이득을 보는 사람도 없이 지불자만 분산된다. 더블론이면 화료자를 뺀 나머지끼리 나누므로 3분할이 아니라 2분할이 된다. 쯔모 화료는 이미 분담이므로 관여하지 않고, 100점 단위로 떨어지지 않는 끝수는 원래 쏜 사람이 흡수한다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -96,10 +96,17 @@ export const blameShift: AugmentDef = defineAugment({
       const deltas = { ...p.deltas };
       // 쏜 사람의 기존 지불을 원상복구한 뒤, 세 명에게 새 몫을 부과한다.
       deltas[discarder] = (deltas[discarder] ?? 0) + owed;
+      // 총액도 내 수령액도 그대로라 `withAugPoint`에는 남길 것이 없지만, **지불자들의
+      // 줄에는 근거가 있어야 한다** — 쏘지도 화료하지도 않은 두 사람이 점수를 잃는데
+      // 결과 화면 어디에도 이유가 없었다.
+      let notes = p.augPoints ?? [];
+      notes = withAugNoteFor({ ...p, augPoints: notes }, ID, discarder, owed);
       losers.forEach((id, i) => {
-        deltas[id] = (deltas[id] ?? 0) - (shares[i] as number);
+        const share = shares[i] as number;
+        deltas[id] = (deltas[id] ?? 0) - share;
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, id, -share);
       });
-      return { type: event.type, payload: { ...p, deltas } };
+      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
     });
   },
   // 봇 정책 없음 — 패시브라 발동 판단이 없다.

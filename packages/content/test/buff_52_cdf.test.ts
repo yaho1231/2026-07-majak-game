@@ -484,9 +484,11 @@ describe("nagashi_yakuman (유국역만) — 무울림 조건 삭제", () => {
     installAugment(game.engine, nagashiYakuman, "p0", { yaku: game.yaku });
     const settled = settleDraw(game);
 
+    // 기준선에는 **표준 유국만관**(오야 12000 = 전원 4000)이 이미 들어 있다 — 이 증강은
+    // 그 자리를 역만으로 갈아 끼우므로 차이가 그만큼 줄어든다(48000 − 12000 = 36000).
     for (const id of ["p0", "p1", "p2", "p3"] as PlayerId[]) {
       const diff = (settled.deltas[id] ?? 0) - (base.deltas[id] ?? 0);
-      expect(diff).toBe(id === "p0" ? 48000 : -16000);
+      expect(diff).toBe(id === "p0" ? 36000 : -12000);
     }
   });
 
@@ -503,13 +505,14 @@ describe("nagashi_yakuman (유국역만) — 무울림 조건 삭제", () => {
     const diff = (id: PlayerId): number =>
       (settled.deltas[id] ?? 0) - (base.deltas[id] ?? 0);
 
+    // 기준선에 표준 유국만관(전원 4000)이 이미 들어 있어 차이가 그만큼 줄어든다.
     // 화료자는 방어막이 없을 때와 똑같이 48000을 받는다
-    expect(diff("p0")).toBe(48000);
-    // 방어막 보유자는 한 푼도 내지 않는다
-    expect(diff("p1")).toBe(0);
+    expect(diff("p0")).toBe(36000);
+    // 방어막 보유자는 역만 지불을 한 푼도 내지 않는다 (기준선의 4000을 도로 안 낸다)
+    expect(diff("p1")).toBe(4000);
     // 나머지는 그대로 낸다 — 남의 몫이 넘어오지도 않는다
-    expect(diff("p2")).toBe(-16000);
-    expect(diff("p3")).toBe(-16000);
+    expect(diff("p2")).toBe(-12000);
+    expect(diff("p3")).toBe(-12000);
   });
 
   it("버림에 중장패가 섞이면 여전히 불성립", () => {

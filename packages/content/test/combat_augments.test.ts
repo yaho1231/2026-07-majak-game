@@ -110,11 +110,22 @@ describe("nagashi_yakuman (유국역만)", () => {
     installAugment(game.engine, nagashiYakuman, "p0", { yaku: game.yaku });
     const settled = settleDraw(game);
 
-    // p0는 오야(seat 0) → 전원 16000씩, 총 +48000 (노텐 정산 위에 얹힘)
+    // p0는 오야(seat 0) → 전원 16000씩, 총 +48000.
+    //
+    // 기준선에는 이제 **표준 유국만관**(오야 12000 = 전원 4000)이 이미 들어 있다 —
+    // 이 증강은 그 자리를 역만으로 **갈아 끼우는** 것이지 위에 얹는 것이 아니므로,
+    // 차이는 48000 − 12000 = 36000 (내는 쪽은 16000 − 4000 = 12000)이다.
     for (const id of ["p0", "p1", "p2", "p3"] as PlayerId[]) {
       const diff = (settled.deltas[id] ?? 0) - (base.deltas[id] ?? 0);
-      expect(diff).toBe(id === "p0" ? 48000 : -16000);
+      expect(diff).toBe(id === "p0" ? 36000 : -12000);
     }
+    // 겹쳐 받지 않는다 — 보유자에게는 표준 규칙이 꺼져 있다
+    expect(
+      game.engine.rules.resolve<boolean>("draw.nagashiMangan", {
+        playerId: "p0",
+        state: game.engine.state,
+      }),
+    ).toBe(false);
   });
 
   it("버림에 요구패가 아닌 패가 섞이면 성립하지 않는다", () => {
@@ -170,10 +181,12 @@ describe("nagashi_yakuman (유국역만)", () => {
 
     const diff = (id: PlayerId): number =>
       (settled.deltas[id] ?? 0) - (base.deltas[id] ?? 0);
-    expect(diff("p1")).toBe(0); // 방어막 → 면제
-    expect(diff("p2")).toBe(-16000);
-    expect(diff("p3")).toBe(-16000);
-    expect(diff("p0")).toBe(48000); // 면제분은 뱅크가 낸다 — 수령은 그대로
+    // 기준선은 표준 유국만관(전원 4000)이 이미 적용된 상태다 — 방어막으로 역만 지불이
+    // 0이 된 p1은 그 4000을 도로 안 내게 되므로 차이가 +4000으로 잡힌다.
+    expect(diff("p1")).toBe(4000); // 방어막 → 면제
+    expect(diff("p2")).toBe(-12000);
+    expect(diff("p3")).toBe(-12000);
+    expect(diff("p0")).toBe(36000); // 면제분은 뱅크가 낸다 — 수령은 그대로 48000
   });
 });
 

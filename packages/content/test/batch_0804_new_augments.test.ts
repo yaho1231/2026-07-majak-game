@@ -103,6 +103,25 @@ function ronScene(): GameState {
   });
 }
 
+/** 그 좌석에 살아 있는 리치를 세운다 (판수 보너스가 리치 생존을 보는 증강용) */
+function withRiichi(state: GameState, player: string): GameState {
+  const rs = state.round.byPlayer[player];
+  if (rs === undefined) throw new Error(`no round state for ${player}`);
+  return {
+    ...state,
+    round: {
+      ...state.round,
+      byPlayer: {
+        ...state.round.byPlayer,
+        [player]: {
+          ...rs,
+          riichi: { double: false, ippatsu: false, discardIndex: 0, cost: 1000 },
+        },
+      },
+    },
+  };
+}
+
 /** 화료까지 진행해 정산 payload를 얻는다 */
 function settleRon(
   state: GameState,
@@ -563,7 +582,9 @@ describe("영혼의 일격 (soul_strike)", () => {
   });
 
   it("이 리치로 화료하면 리치를 2판으로 취급한다 (+1판만큼 점수가 오른다)", () => {
-    const base = ronScene();
+    // 이 보너스는 **리치의 값어치**라 살아 있는 리치를 전제한다 — 발동 플래그만
+    // 세우면 승부수로 리치를 물린 손에도 판수가 붙는다(2026-08-17 수정).
+    const base = withRiichi(ronScene(), "p0");
     const declared = `soul_strike:declared:${roundKeyOf(base)}:p0`;
     const plain = settleRon(base);
     const boosted = settleRon(
@@ -575,6 +596,21 @@ describe("영혼의 일격 (soul_strike)", () => {
     // 뱅크 발행이라 상대가 더 내지는 않는다 — 내 수령만 늘어난다
     expect(boosted.deltas["p0"] ?? 0).toBeGreaterThan(plain.deltas["p0"] ?? 0);
     expect(boosted.deltas["p1"]).toBe(plain.deltas["p1"]);
+  });
+
+  it("리치를 물리면(승부수·손바닥 뒤집기) 판수 보너스도 함께 사라진다", () => {
+    // 발동 플래그는 국 스코프라 정산까지 남는다. 그것만 보면 **리치가 없는 손에**
+    // 리치 판수가 그대로 붙었다 — 판수는 리치의 값어치이므로 함께 사라져야 한다.
+    const base = ronScene(); // 리치를 세우지 않은(=물린 뒤의) 상태
+    const declared = `soul_strike:declared:${roundKeyOf(base)}:p0`;
+    const plain = settleRon(base);
+    const cancelled = settleRon(
+      withData(withAugments(base, "p0", ["soul_strike"]), { [declared]: true }),
+      (game) => {
+        installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
+      },
+    );
+    expect(cancelled.deltas["p0"]).toBe(plain.deltas["p0"]);
   });
 
   it("발동하지 않은 국에는 판수 보너스가 붙지 않는다", () => {
