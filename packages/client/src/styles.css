@@ -8665,21 +8665,8 @@ button {
   margin-left: 6px;
 }
 
-/* 등급 칩 */
-.aug-tier-chip {
-  display: inline-block;
-  font-size: 0.66rem;
-  font-weight: 800;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  margin-right: 6px;
-  vertical-align: middle;
-  opacity: 0.92;
-}
-.aug-tier-silver { color: #c2d0c5; }
-.aug-tier-gold { color: #f0c86a; }
-.aug-tier-prism { color: #c7bcff; }
+/* (등급 칩 `.aug-tier-chip`·`.aug-tier-silver/gold/prism` 도 함께 제거했다 —
+   등급 체계는 폐기됐고 붙이는 코드가 없다, 2026-08-18) */
 
 /* 평균순위 색 (낮을수록 좋음) */
 .aug-good { color: #93dfa8; font-weight: 700; }
@@ -8705,36 +8692,7 @@ button {
 .aug-sig-name { font-weight: 700; color: #f7f3e8; }
 .aug-sig-meta { font-size: 0.76rem; color: #a8bcaf; }
 
-/* 등급 분포 막대 */
-.aug-tier-dist {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.aug-tier-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.aug-tier-bar-track {
-  flex: 1;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-}
-.aug-tier-bar-fill { height: 100%; border-radius: 999px; }
-.aug-tier-fill-silver { background: linear-gradient(90deg, #93a89b, #c2d0c5); }
-.aug-tier-fill-gold { background: linear-gradient(90deg, #b8975c, #f0c86a); }
-.aug-tier-fill-prism { background: linear-gradient(90deg, #a37ce8, #c7bcff); }
-.aug-tier-bar-n {
-  font-size: 0.74rem;
-  color: #a8bcaf;
-  min-width: 66px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
+/* (등급 분포 막대 `.aug-tier-*` 는 등급 체계 폐기와 함께 제거했다 — 2026-08-18) */
 /* 함정 경고 */
 .aug-trap-title { color: #cfae76; }
 .aug-trap-row {
@@ -8989,9 +8947,9 @@ button {
   transform: translateY(-2px);
   border-color: color-mix(in oklab, var(--rarity) 62%, transparent);
 }
-.codex-card-silver { --rarity: #a8bcaf; }
-.codex-card-gold { --rarity: #c2a068; }
-.codex-card-prism { --rarity: #a37ce8; }
+/* 폐기된 등급 체계(Silver/Gold/Prism)의 잔재를 걷어낸다 — docs/17 §288이 데드라고
+   지적한 지 오래고, App.tsx는 계열 클래스(.aug-cat-*)만 붙인다. 남겨 두면 다음 사람이
+   "등급이 있었나?" 하고 찾아다닌다. (.codex-card-locked 는 살아 있다 — 미수집 표시.) */
 .codex-card-locked { opacity: 0.5; filter: saturate(0.55); }
 .codex-card-locked:hover { opacity: 0.8; }
 .codex-card-top { display: flex; align-items: center; justify-content: space-between; }

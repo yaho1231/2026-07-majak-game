@@ -15,6 +15,17 @@
   **기존에 미해결로 남아있던 게 재확인된 것은 5건**(open_kokushi, broken_border, discard_lock×hand_swap3,
   stealth_riichi, red_five_touch), 나머지 95종은 설명·구현·테스트가 일치해 문제를 찾지 못했다.
 
+> **2026-08-18 재확인 — "기존 미해결 재확인" 5건 중 3건은 그 뒤 해소됐다.**
+> 이 문서는 조사 시점(2026-08)의 기록으로 남기되, 아래는 코드로 다시 확인한 결과다:
+>
+> | 항목 | 지금 상태 |
+> |---|---|
+> | `discard_lock` × `hand_swap3` 키 충돌 | ✅ **해소.** 키 공간이 완전히 분리됐다 — `discard_lock`은 `discard_lock:seq/used/sealed:{holder}`, `hand_swap3`은 `${ID}:target\|left\|give\|done:{roundKey}:{holder}` |
+> | `stealth_riichi` — `riichi.hidden` 무조건 켜짐 | ✅ **해소.** 조건부 모디파이어가 됐다 — 이 국의 리치가 **스텔스 액션으로 선언됐을 때만** 가린다(표준 리치로 걸면 안 가린다) |
+> | `honor_return` · `red_five_touch` — 리치 가드 없음 | ✅ **해소.** 둘 다 `riichi: hand is frozen` 으로 반려한다(`giant_god`도 동일) |
+>
+> 나머지(`open_kokushi` 소프트락, `broken_border` 클라 desync)는 이번 재확인 범위 밖이다.
+
 ## 신규 발견 버그
 
 ### 1. 🔴 seat_swap(자리 바꿈) — 리치 중인 상대와도 손패를 통째로 맞바꿀 수 있어 리치=텐파이 불변식이 깨짐
