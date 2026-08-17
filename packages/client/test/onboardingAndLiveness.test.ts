@@ -179,8 +179,15 @@ describe("클릭하기 전에 이 게임이 무엇인지 보인다", () => {
     const at = APP_CODE.indexOf("LANDING_SHOWCASE");
     const block = APP_CODE.slice(at, at + 900);
     // 도움말과 같은 컴포넌트·같은 에셋 — 광고용 그림을 따로 만들지 않는다.
-    expect(APP_CODE).toMatch(/LANDING_SHOWCASE\.map[\s\S]{0,400}HelpTileGroups/);
+    // (창은 넉넉히 잡는다: 2026-08-18에 그림이 "바뀌기 전 → 바뀐 뒤" 두 벌로 늘면서
+    //  .map과 첫 HelpTileGroups 사이의 마크업이 길어졌다. 여기서 재는 것은 거리가
+    //  아니라 **같은 컴포넌트를 쓰는가**다.)
+    expect(APP_CODE).toMatch(/LANDING_SHOWCASE\.map[\s\S]{0,900}HelpTileGroups/);
     expect(block).toContain("사방치기");
+    // 규칙이 무엇에서 무엇으로 바뀌는지 두 상태를 나란히 보여 준다 — 패만 늘어놓으면
+    // 무엇을 설명하는 그림인지 알 수 없다(2026-08-18 사용자 지적).
+    expect(block).toContain("before");
+    expect(block).toContain("after");
   });
 
   it("로그인 칸이 첫 화면을 가로채지 않는다", () => {

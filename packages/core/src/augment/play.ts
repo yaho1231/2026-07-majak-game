@@ -69,7 +69,30 @@ export interface AugmentPlay {
    * 상시 효과만 센다 — 조건부는 그 조건이 붙을 확률만큼 깎아서 적는다.
    */
   value?: number;
+  /**
+   * 이 증강을 든 사람이 **어떤 패를 모으는가**.
+   *
+   * `threat`·`value`는 점수 축의 스칼라라 "얼마나 비싼가"만 말한다. 그런데 수비에서
+   * 정작 필요한 것은 **어느 패가 비싼가**다 — 자패를 그러모으는 상대에게 자패를
+   * 흘리는 것과 5통을 흘리는 것은 전혀 다른 일인데, 배수 하나로는 둘을 구별할 수
+   * 없다(2026-08-18 사용자 보고: 개벽 쓴 상대에게 봇 셋이 자패를 다 내주고 더블
+   * 역만을 헌납했다).
+   *
+   * 적지 않으면 중립이다 — 빠뜨려도 봇이 이상해지지 않는다.
+   */
+  collect?: CollectHint;
 }
+
+/**
+ * 그 증강이 노리는 패의 분류.
+ *
+ * - `honor` — 자패(풍패·삼원패)를 모은다. 자일색·대삼원·대사희 계열.
+ * - `terminal` — 요구패(1·9·자패)를 모은다. 국사무쌍 계열.
+ *
+ * 색 계열(혼일색·청일색·구련)은 **어느 색인지가 국마다 다르므로** 여기 적지 않는다.
+ * 그건 표가 아니라 그 국의 버림패를 읽어야 아는 것이다(`bot/collect.ts`).
+ */
+export type CollectHint = "honor" | "terminal";
 
 /**
  * 증강 id → 배수. **값이 붙는 것만** 적는다(나머지는 중립).
@@ -162,18 +185,20 @@ export const AUGMENT_PLAY: Readonly<Record<string, AugmentPlay>> = {
   /** 복수자 — 원수를 론하면 +2판. 내가 그를 쏜 적이 있어야 산다 */
   avenger: { threat: 1.12, value: 1.08 },
   /** 유국역만 — 유국만관이 역만이 된다 */
+  // (`collect`를 안 적는다 — 유국역만은 **버림패**로 나는 역이라, 요구패를 쥐여 준다고
+  //  위험해지지 않는다. `collect`는 "이 사람에게 이 패를 주면 아프다"만 뜻한다.)
   nagashi_yakuman: { threat: 1.15 },
 
   // ───────────────────────── 역만 ─────────────────────────
   // 역만은 드물지만 한 방이 국이 아니라 게임을 끝낸다. 확률로 깎되 0으로 두지 않는다.
   /** 우는 국사무쌍 — 퐁으로 국사를 완성한다 */
-  open_kokushi: { threat: 1.25, value: 1.2 },
+  open_kokushi: { threat: 1.25, value: 1.2, collect: "terminal" },
   /** 왕의 징표 — 국사가 13종을 다 안 갖춰도 성립 */
-  royal_kokushi: { threat: 1.25, value: 1.2 },
+  royal_kokushi: { threat: 1.25, value: 1.2, collect: "terminal" },
   /** 마작의 거신병 — 조건이 맞으면 국사가 손에 들어온다 */
-  giant_god: { threat: 1.2, value: 1.15 },
+  giant_god: { threat: 1.2, value: 1.15, collect: "terminal" },
   /** 삼원의 의지 — 대삼원이 9장이 아니라 7장으로 선다 */
-  three_dragons_will: { threat: 1.2, value: 1.15 },
+  three_dragons_will: { threat: 1.2, value: 1.15, collect: "honor" },
   /** 뒤섞인 아홉 개의 연꽃 — 구련이 무늬를 안 가린다 */
   mixed_nine_gates: { threat: 1.12, value: 1.1 },
 
@@ -228,4 +253,19 @@ export function augmentThreatMultiplier(augments: readonly string[]): number {
  */
 export function augmentValueMultiplier(augments: readonly string[]): number {
   return combine(augments, (p) => p.value);
+}
+
+/**
+ * 이 사람이 **모으고 있을 만한 패의 분류**들 (표에 적힌 것만).
+ *
+ * 인자는 `PlayerInfo.augments` 그대로 — 뷰에 공개된 정보다. 표에 없는 증강은 아무것도
+ * 내지 않으므로 모르는 증강이 섞여도 안전하다. 중복은 지운다.
+ */
+export function augmentCollectHints(augments: readonly string[]): CollectHint[] {
+  const out = new Set<CollectHint>();
+  for (const id of augments) {
+    const hint = AUGMENT_PLAY[id]?.collect;
+    if (hint !== undefined) out.add(hint);
+  }
+  return [...out];
 }

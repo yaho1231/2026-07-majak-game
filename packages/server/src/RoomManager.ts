@@ -1304,6 +1304,8 @@ export class RoomManager {
     switch (msg.type) {
       case "createRoom":
         return this.createRoom(conn, user);
+      case "practicePlay":
+        return this.practicePlay(conn, user, msg.mode);
       case "joinRoom":
         return this.joinRoom(conn, user, msg.code);
       case "emote": {
@@ -2898,6 +2900,71 @@ export class RoomManager {
       // 마작을 아는 사람이 이 게임을 보러 왔을 때 봇이 헛수를 두면 게임 자체가
       // 얕아 보인다. normal은 초심자에게 이길 여지를 주면서 봇이 바보처럼 보이지는
       // 않는 자리다. 계정을 만들고 방을 열면 그때부터는 기본이 hard다.
+      botDifficulty: "normal",
+    });
+    this.send(conn.ws, { type: "roomCreated", code: room.code });
+    this.seat(conn, user, room);
+    this.addBots(room, MAX_PLAYERS - room.agents.length);
+    void this.startGame(room);
+  }
+
+  // ─────────────────────────── 연습 대국 (튜토리얼) ───────────────────────────
+
+  /**
+   * 연습 대국 — 로그인한 사람에게 **게스트 체험과 같은 판**을 준다.
+   *
+   * 갓 가입한 사람이 처음 마주치는 홈 화면은 "방 만들기 / 코드로 참가"다. 마작을
+   * 처음 보는 사람에게 그 둘은 아무 뜻이 없고, 방을 만들어도 봇을 채우고 시작을
+   * 눌러야 한다 — 배우기도 전에 세 단계가 있다. 튜토리얼(`client/src/tutorial.ts`)이
+   * 서려면 **지금 당장 시작하는 한 판**이 필요하다.
+   *
+   * `guestPlay`를 그대로 쓸 수 없는 이유: 그쪽은 로그인한 연결을 명시적으로
+   * 거절한다(계정 좌석을 임시 신원으로 갈아 끼우면 진행 중인 게임의 주인이 바뀐다).
+   * 그래서 신원은 그대로 두고 **방만** 게스트 방으로 연다.
+   *
+   * 방을 `guest: true`로 두는 것이 요점이다 — 리플레이·게임 인덱스·리더보드·증강
+   * 집계 어디에도 안 들어간다(`openGame`·`onGameOver`가 그 플래그 하나를 본다).
+   * 연습으로 둔 판이 통계에 섞이면 "내 전적"이 연습판으로 오염된다.
+   *
+   * 대신 게스트 방의 성질도 함께 따라온다 — **끊기면 그 판은 사라진다**(재접속
+   * 없음). 아무것도 기록하지 않는 판이라 되살릴 것도 없다.
+   */
+  private practicePlay(conn: Conn, user: UserRow, mode?: GameMode): void {
+    this.sweepGhostSeats();
+    let existing = this.membershipOf(user.username);
+    if (existing !== null && this.releaseOwnStaleSeat(conn, existing, user.username)) {
+      existing = this.membershipOf(user.username);
+    }
+    if (existing !== null) {
+      return this.fail(
+        conn,
+        existing.phase === "playing" ? "ALREADY_IN_GAME" : "ALREADY_IN_ROOM",
+        `이미 방(${existing.code})에 참가 중입니다 — 나간 뒤 다시 시도하세요`,
+      );
+    }
+    // 방 생성과 같은 레이트리밋 창 — 연습 대국이 방 생성 스로틀의 옆문이 되지 않게.
+    if (this.roomCreateLimited(conn)) {
+      return this.fail(conn, "RATE_LIMITED", "연습 대국 시작이 너무 잦습니다. 잠시 후 다시 시도하세요");
+    }
+    if (this.rooms.size >= MAX_ROOMS) {
+      return this.fail(conn, "SERVER_BUSY", "서버가 혼잡합니다. 잠시 후 다시 시도하세요");
+    }
+    /*
+     * 연습 방도 `guest: true`라 **손님용 방 예산을 같이 쓴다.** 여기서 안 세면
+     * 계정 사용자들의 연습 판이 그 예산을 통째로 먹고, 정작 처음 온 손님이
+     * "체험 게임이 가득 찼습니다"를 본다 — 그건 이 게임이 가장 잃으면 안 되는
+     * 첫 손님이다.
+     */
+    let guestRooms = 0;
+    for (const r of this.rooms.values()) if (r.guest) guestRooms++;
+    if (guestRooms >= MAX_GUEST_ROOMS) {
+      return this.fail(conn, "SERVER_BUSY", "연습 대국이 가득 찼습니다. 잠시 후 다시 시도하세요");
+    }
+    const room = this.newRoom({
+      guest: true,
+      gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
+      // 체험판과 같은 이유로 한 칸 낮춘다 — 대기실을 안 거치므로 난이도를 고를
+      // 화면 자체가 없고, 배우는 자리에서 봇이 최선을 두면 배우기 전에 끝난다.
       botDifficulty: "normal",
     });
     this.send(conn.ws, { type: "roomCreated", code: room.code });
