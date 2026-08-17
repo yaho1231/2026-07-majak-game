@@ -170,9 +170,85 @@ your-domain.example {
 
 ## 6. 데이터 & 백업
 
-- 계정/게임 인덱스: `DB_PATH`(기본 `replays/majak.db`).
+- 계정/게임 인덱스: `DB_PATH`(기본 `replays/majak.db`). 서버가 부팅할 때 이 파일과
+  `-wal`/`-shm` 곁파일을 **0600으로 조인다** — 세션 토큰이 평문으로 들어 있다.
 - 리플레이 JSONL·통계: `replays/`.
-- 백업은 `replays/` 디렉터리(+DB)만 보관하면 된다.
+
+### 백업 — 자동
+
+```
+npm run agents:install     # 감시자 + 매일 04:30 백업 등록
+npm run backup             # 지금 한 번
+npm run backup:verify      # 마지막 백업이 진짜 열리는지 검사
+```
+
+`scripts/backup.sh` 가 하는 일:
+
+1. `sqlite3 .backup` 으로 **일관된** DB 스냅샷을 뜬다. 서버가 돌고 있어도 안전하다.
+   ⚠ `cp majak.db` 는 쓰지 마라 — WAL 모드라 최근 커밋이 `-wal` 에만 있어 **손상된
+   스냅샷**이 만들어지고, 복구하려는 날에야 그걸 알게 된다.
+2. 스냅샷을 열어 `PRAGMA integrity_check` + 테이블 개수를 확인한다. 검사하지 않은
+   백업은 백업이 아니다.
+3. 저널 모드를 DELETE로 바꾸고 gzip 한다(보관본은 곁파일 없이 혼자 완결되게).
+4. `replays/*.jsonl` 을 증분 미러한다. `--delete` 는 **쓰지 않는다** — 원본에서
+   사라진 것이 사본에서도 사라지면 백업의 의미가 없다.
+5. DB 스냅샷은 `BACKUP_KEEP`(기본 14) 세대만 남긴다.
+
+설정은 `deploy/majak.env` 의 `BACKUP_DIR`·`BACKUP_KEEP`.
+★ `BACKUP_DIR` 은 되도록 **다른 물리 디스크**(외장/NAS)를 가리켜라. 같은 디스크 안의
+사본은 실수 삭제만 막고 디스크 고장은 막지 못한다. 같은 디스크면 백업할 때마다 경고한다.
+
+### 복구
+
+```
+gunzip -c ~/majak-backups/db/majak-<날짜>.db.gz > /tmp/restore.db
+sqlite3 /tmp/restore.db 'PRAGMA integrity_check;'      # ok 확인
+npm stop                                                # 서버 정지
+cp /tmp/restore.db replays/majak.db                     # 곁파일은 지운다
+rm -f replays/majak.db-wal replays/majak.db-shm
+npm start
+```
+
+리플레이는 `~/majak-backups/replays/` 에서 `replays/` 로 복사하면 된다(파일명이 곧 키다).
+
+## 6-1. 자동으로 도는 것들
+
+```
+npm run agents:install     # 감시자 + 백업 한 번에 등록
+npm run agents             # 등록 여부 + **실제로 도는지** + 마지막 백업 시각
+npm run agents:uninstall
+```
+
+| 에이전트 | 주기 | 하는 일 |
+|---|---|---|
+| `watchdog` | 로그인 시 + 60초 | `/healthz` 점검, 응답 없으면 서버를 세운다. **RunAtLoad 라 이것이 재부팅 후 자동 기동 경로다** |
+| `backup` | 매일 04:30 | DB 스냅샷 + 리플레이 미러 |
+
+- **등록됐다 ≠ 돈다.** `agents:install` 은 등록 직후 한 번 강제 실행해 **종료코드까지**
+  확인한다. 2026-08-17 감사에서 감시자가 "설치돼 있다"고 문서에 적혀 있는데 실제로는
+  한 번도 돈 적이 없었다(TCC 차단, 로그 파일 자체가 없었다). `npm run agents` 도 등록
+  여부가 아니라 마지막 실행의 종료코드를 본다.
+- **TCC 함정**: 저장소가 `~/Documents`·`~/Desktop`·`~/Downloads` 아래면 launchd로 뜬
+  프로세스의 파일 접근이 막혀 에이전트가 exit 126으로 죽는다. 해결:
+  ```
+  bash deploy/relocate.sh ~/majak     # 권장 — 원인 자체를 없앤다
+  ```
+  또는 시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한에 `/bin/bash` 추가
+  (이 권한은 launchd·cron으로 도는 **모든** 셸 스크립트에 적용된다는 점을 알고 켤 것).
+- **LaunchAgent는 로그인 세션에서만 돈다.** 재부팅 후 자동 로그인이 꺼져 있으면 로그인
+  전까지 서버도 없다. 무인 운용을 원하면 시스템 설정 → 사용자 및 그룹 → 자동 로그인.
+
+## 6-2. 알림 — 조용한 실패를 없앤다
+
+감시자가 재시작을 포기했거나, 다시 세우기에 실패했거나, 백업이 실패하면 알린다.
+
+- 항상: `.majak/alerts.log` + macOS 알림 센터
+- 선택: `deploy/majak.env` 에 `NOTIFY_WEBHOOK_URL`(Discord/Slack) — 맥 앞에 없을 때
+  이게 유일한 통로다.
+
+`/healthz` 는 예외 발생 횟수를 함께 낸다. 5분 안에 예외가 5번을 넘으면 `ok:false` + HTTP 500이라
+감시자가 "응답은 오는데 정상이 아니다"를 구분한다 — 예전에는 예외를 삼키고도 계속
+`ok:true` 를 내서 좀비 상태를 아무도 몰랐다.
 
 ## 7. 알려진 한계 (배포에 지장 없음)
 

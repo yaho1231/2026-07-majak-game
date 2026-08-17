@@ -32,6 +32,13 @@ RESTART_LIMIT="${WATCHDOG_RESTART_LIMIT:-3}"
 
 mkdir -p "$RUNDIR"
 
+# 알림 통로. 예전에는 "손이 필요하다"를 파일에 쓰고 정상 종료했고, 그 파일을 보는 사람이
+# 없었다 — 감시자가 포기한 것을 아무도 모르는 게 이 시스템의 지배적 고장 모드였다.
+ENV_FILE="$ROOT/deploy/majak.env"
+if [ -f "$ENV_FILE" ]; then set -a; . "$ENV_FILE"; set +a; fi
+# shellcheck source=scripts/notify.sh
+. "$ROOT/scripts/notify.sh"
+
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >>"$WLOG"; }
 
 # 사람이 일부러 끈 상태는 존중한다.
@@ -63,6 +70,19 @@ if [ -f "$RESTARTS" ]; then
 fi
 if [ "${recent:-0}" -ge "$RESTART_LIMIT" ]; then
   log "최근 $((RESTART_WINDOW_SEC / 60))분간 ${recent}회 재시작 — 부팅 자체가 깨진 것으로 보고 멈춘다. 손이 필요하다."
+  # 여기가 감시자가 포기하는 유일한 지점이다. 조용히 끝내면 서버가 죽은 채로 방치된다.
+  # 같은 창 안에서 여러 회차가 계속 도니까 알림은 창당 한 번만 보낸다.
+  GAVEUP="$RUNDIR/watchdog.gaveup"
+  if [ ! -f "$GAVEUP" ] || [ -z "$(find "$GAVEUP" -newermt "-${RESTART_WINDOW_SEC} seconds" 2>/dev/null)" ]; then
+    : >"$GAVEUP"
+    notify "감시자가 포기했습니다 — 서버가 꺼져 있습니다" \
+"$((RESTART_WINDOW_SEC / 60))분 안에 ${recent}번 다시 세웠는데 계속 죽습니다.
+부팅 자체가 깨진 상황이라 자동 복구를 멈췄습니다.
+
+확인:  bash deploy/serve.sh status
+로그:  tail -50 $RUNDIR/server.log
+재개:  원인을 고친 뒤 rm $RESTARTS && bash deploy/serve.sh start"
+  fi
   exit 0
 fi
 
@@ -70,6 +90,15 @@ log "응답 없음 — 서버를 다시 세운다 (최근 ${recent}회)"
 echo "$now" >>"$RESTARTS"
 if bash "$ROOT/deploy/serve.sh" start >>"$WLOG" 2>&1; then
   log "다시 세움 완료"
+  rm -f "$RUNDIR/watchdog.gaveup"
+  # 되살아났다는 사실 자체가 신호다 — 왜 누웠는지 사람이 봐야 한다.
+  notify "서버가 누워 있어 다시 세웠습니다" \
+"자동 복구는 성공했지만 원인은 남아 있습니다 (최근 $((RESTART_WINDOW_SEC / 60))분간 $((recent + 1))회).
+로그: tail -50 $RUNDIR/server.log"
 else
   log "✗ 다시 세우기 실패 — 위 출력과 .majak/server.log 를 볼 것"
+  notify "서버를 다시 세우지 못했습니다" \
+"자동 복구가 실패했습니다. 지금 서버는 꺼져 있습니다.
+로그: tail -50 $WLOG
+      tail -50 $RUNDIR/server.log"
 fi

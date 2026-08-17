@@ -11,6 +11,7 @@
  */
 
 import { createRequire } from "node:module";
+import { chmodSync, existsSync, statSync } from "node:fs";
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { DatabaseSync as DatabaseSyncT, StatementSync } from "node:sqlite";
@@ -28,6 +29,31 @@ const scryptAsync = promisify(scrypt) as (
 const { DatabaseSync } = createRequire(import.meta.url)(
   "node:sqlite",
 ) as typeof import("node:sqlite");
+
+/**
+ * DB 파일을 소유자만 읽을 수 있게 조인다.
+ *
+ * **왜** (감사 2026-08-17 §1-7): 이 파일에는 세션 토큰이 **평문**으로 들어 있고
+ * (`sessions.token`은 그대로 `tokenLogin`에 넣으면 로그인된다, TTL 30일) 비밀번호
+ * scrypt 해시도 있다. 그런데 실측 권한은 0644였다 — 같은 머신의 아무 프로세스나
+ * 읽을 수 있었다. `deploy/majak.env`는 이미 0600으로 조이면서 정작 더 민감한 DB만
+ * 열려 있었다.
+ *
+ * WAL·SHM 곁파일도 같이 조인다. 최근 커밋이 `-wal`에만 있는 구간이 있으므로
+ * 본체만 조이면 구멍이 남는다. 실패는 치명적이지 않으므로(권한을 못 바꾸는
+ * 파일시스템도 있다) 경고만 남기고 계속 간다.
+ */
+function tightenDbPermissions(path: string): void {
+  for (const p of [path, `${path}-wal`, `${path}-shm`]) {
+    try {
+      if (!existsSync(p)) continue;
+      const mode = statSync(p).mode & 0o777;
+      if (mode !== 0o600) chmodSync(p, 0o600);
+    } catch (err) {
+      console.warn(`[db] 파일 권한을 조이지 못했습니다: ${p} — ${String(err)}`);
+    }
+  }
+}
 
 export interface UserRow {
   id: number;
@@ -177,6 +203,7 @@ export class SiteDb {
     private readonly adminCodeOverride: string = "",
   ) {
     this.db = new DatabaseSync(path);
+    tightenDbPermissions(path);
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS users (
@@ -231,6 +258,9 @@ export class SiteDb {
       );
       CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
     `);
+    // WAL·SHM 곁파일은 위 `journal_mode = WAL` 이 실행된 **뒤에야** 생긴다.
+    // 그래서 한 번 더 조인다 — 앞의 호출은 기존 파일용, 이쪽이 새로 생긴 곁파일용이다.
+    tightenDbPermissions(path);
   }
 
   // ─────────────────────────── 관리자 코드 ───────────────────────────

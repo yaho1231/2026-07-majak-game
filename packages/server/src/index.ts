@@ -153,10 +153,28 @@ stampConsole();
 // 안전망: 떠 있는 Promise 거부나 예외 하나가 전체 서버(모든 게임)를 죽이지
 // 않게 한다. 메시지 처리·리듀서가 연결/이벤트 단위로 격리돼 있으므로,
 // 로그를 남기고 프로세스를 살려 두는 편이 전원 강제 종료보다 낫다.
+//
+// ⚠ 삼키는 것과 숨기는 것은 다르다 (감사 2026-08-17 §2-9): 예전에는 예외를 로그로만
+// 남기고 `/healthz`는 여전히 `ok: true`를 냈다. 그래서 게임 루프가 예외로 반쯤 죽은
+// "좀비" 상태에서도 감시자는 정상으로 보고 아무도 개입하지 않았다. 이제 몇 번 터졌고
+// 마지막이 언제였는지를 세어 상태 점검에 싣는다 — 프로세스는 계속 살리되,
+// **살아 있다고 거짓말하지는 않는다**.
+// 임계치는 일부러 보수적이다. 어쩌다 하나 튄 예외로 감시자가 서버를 갈아 끼우면
+// 사람이 겪는 손해(진행 중 대국 전멸)가 더 크다. 5분 안에 5번이면 그건 사고다.
+const HEALTH_FAULT_WINDOW_MS = 5 * 60_000;
+const HEALTH_FAULT_LIMIT = 5;
+const faults = { uncaught: 0, rejection: 0, lastAt: "" as string, lastMessage: "" as string };
+function noteFault(kind: "uncaught" | "rejection", err: unknown): void {
+  faults[kind] += 1;
+  faults.lastAt = new Date().toISOString();
+  faults.lastMessage = err instanceof Error ? err.message : String(err);
+}
 process.on("unhandledRejection", (reason) => {
+  noteFault("rejection", reason);
   console.error("Unhandled promise rejection:", reason);
 });
 process.on("uncaughtException", (err) => {
+  noteFault("uncaught", err);
   console.error("Uncaught exception:", err);
 });
 
@@ -298,13 +316,23 @@ const httpServer = createServer((req, res) => {
       res.writeHead(404).end();
       return;
     }
+    // 최근 창 안에서 예외가 임계치를 넘으면 `ok: false`다. 감시자는 이 값을 보고
+    // "응답은 오는데 정상이 아니다"를 구분할 수 있다 — 예전에는 그럴 수 없었다.
+    const faultsRecent =
+      faults.lastAt !== "" && Date.now() - Date.parse(faults.lastAt) < HEALTH_FAULT_WINDOW_MS;
+    const degraded = faultsRecent && faults.uncaught + faults.rejection >= HEALTH_FAULT_LIMIT;
     const body = JSON.stringify({
-      ok: true,
+      ok: !degraded,
       uptimeSec: Math.round(process.uptime()),
       wsClients: wss.clients.size,
+      faults: {
+        uncaught: faults.uncaught,
+        rejection: faults.rejection,
+        ...(faults.lastAt === "" ? {} : { lastAt: faults.lastAt, lastMessage: faults.lastMessage }),
+      },
       ...roomManager.healthSnapshot(),
     });
-    res.writeHead(200, {
+    res.writeHead(degraded ? 500 : 200, {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",

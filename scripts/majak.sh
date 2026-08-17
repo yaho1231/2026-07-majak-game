@@ -54,15 +54,25 @@ running_port() {
   if [ -f "$PORTFILE" ]; then cat "$PORTFILE"; else echo "$PORT"; fi
 }
 
+# 클라이언트를 빌드한다. 실패하면 여기서 끝난다 — **서버를 내리기 전에** 부른다.
+build_client() {
+  echo "▶ 클라이언트 빌드 중…"
+  if ! (cd "$ROOT" && npm run build:client >"$RUNDIR/build.log" 2>&1); then
+    echo "✗ 클라이언트 빌드 실패:"; tail -20 "$RUNDIR/build.log"
+    return 1
+  fi
+  return 0
+}
+
 start() {
   if is_running; then
     echo "이미 실행 중입니다 (pid $(cat "$PIDFILE")) — http://localhost:$(running_port)"
     exit 0
   fi
   rm -f "$PAUSEFILE"
-  echo "▶ 클라이언트 빌드 중…"
-  if ! (cd "$ROOT" && npm run build:client >"$RUNDIR/build.log" 2>&1); then
-    echo "✗ 클라이언트 빌드 실패:"; tail -20 "$RUNDIR/build.log"; exit 1
+  # restart는 이미 빌드를 마치고 들어온다(아래 case 참고). 두 번 빌드하지 않는다.
+  if [ "${MAJAK_SKIP_BUILD:-0}" != "1" ]; then
+    build_client || exit 1
   fi
   echo "▶ 서버 시작 (포트 $PORT)…"
   # ⚠ 로그는 **덮어쓰지 않는다**(`>` → `>>`). 예전에는 재시작할 때마다 로그가 통째로
@@ -124,7 +134,14 @@ stop() {
 case "${1:-}" in
   start) start ;;
   stop) stop ;;
-  restart) stop --for-restart; start ;;
+  # ⚠ 순서가 중요하다. 예전에는 stop → 빌드 → start 였고, 빌드가 깨진 커밋을 배포하면
+  #   서버가 **내려간 채로** 남았다(빌드 실패로 start가 exit 1). 지금은 빌드를 먼저 하고
+  #   성공했을 때만 서버를 교체한다 — 빌드가 깨져도 돌던 서버는 계속 돈다.
+  restart)
+    build_client || { echo "✗ 빌드가 실패해 재시작을 중단합니다 — 돌고 있던 서버는 그대로 둡니다."; exit 1; }
+    stop --for-restart
+    MAJAK_SKIP_BUILD=1 start
+    ;;
   status)
     if is_running; then echo "실행 중 (pid $(cat "$PIDFILE")) — http://localhost:$(running_port)";
     elif [ -f "$PAUSEFILE" ]; then echo "꺼짐 (사람이 끔 — 감시자가 되살리지 않습니다)";
