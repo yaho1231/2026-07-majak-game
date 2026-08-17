@@ -1815,7 +1815,12 @@ export class RoomManager {
 
   /** 새 방을 만들어 등록한다 (일반 방·샌드박스 공통 초기값). */
   private newRoom(
-    options: { sandbox?: boolean; guest?: boolean; gameMode?: GameMode } = {},
+    options: {
+      sandbox?: boolean;
+      guest?: boolean;
+      gameMode?: GameMode;
+      botDifficulty?: BotDifficulty;
+    } = {},
   ): Room {
     const code = this.generateCode();
     const room: Room = {
@@ -1839,7 +1844,11 @@ export class RoomManager {
       sandboxHands: {},
       botArchetypes: new Map(),
       botGeneration: 0,
-      botDifficulty: "hard",
+      // 방을 직접 만든 사람은 대기실에서 난이도를 고른다 — 기본은 지금까지대로
+      // 봇의 최선(hard)이다. 다만 **게스트 체험만은 예외**로 낮춰 들어온다:
+      // 그 사람은 대기실을 거치지 않아 고를 화면 자체가 없고, 마작을 처음 보는
+      // 사람의 첫 판이 최선을 두는 봇 셋이면 배우기 전에 끝난다 (감사 §3-3).
+      botDifficulty: options.botDifficulty ?? "hard",
       sandboxBotRules: {},
       sandboxControl: true,
       sandboxRestarting: false,
@@ -1889,14 +1898,22 @@ export class RoomManager {
       // 포기한 좌석은 재접속이 막혀(`ROOM_PLAYING`) 그 사람이 영영 못 들어왔다.
       // 중단 투표도 예전 탭이 그 좌석 이름으로 던질 수 있었다.
       this.detachStaleConns(mine, conn);
+      conn.room = room;
+      conn.agent = mine;
+      /*
+       * `joined` 를 **복원 전송보다 먼저** 보낸다.
+       *
+       * 클라이언트는 `joined` 를 "여기부터가 진짜다 — 지금 떠 있는 선택지는 전부
+       * 낡았다"는 신호로 쓰고 프롬프트를 비운다(감사 §2-4: 재접속 뒤 남아 있던
+       * 유령 프롬프트). 순서가 뒤집히면 방금 복원한 프롬프트가 그 초기화에
+       * 지워져, 진짜로 기다리는 중인 선택지가 화면에서 사라진다.
+       */
+      this.send(conn.ws, { type: "joined", playerId: mine.id, roomId: code, token: "" });
       // 증강 테스트 방이면, 뷰·프롬프트 복원 전에 sandbox 패널 상태를 먼저 보낸다
       // (sandbox 메시지가 클라이언트에서 프롬프트를 초기화하므로 순서가 중요하다).
       mine.reconnect(conn.ws, room.sandbox ? () => this.sendSandboxState(room) : undefined);
-      conn.room = room;
-      conn.agent = mine;
       this.touch(room);
       this.log(room, `${user.username} 재접속 (${mine.id})`);
-      this.send(conn.ws, { type: "joined", playerId: mine.id, roomId: code, token: "" });
       // 돌아왔다는 사실을 나머지 좌석의 이름표에도 반영한다.
       // (본인에게도 다시 나간다 — reconnect가 복원해 준 뷰에는 "접속 끊김"이 박혀 있다.)
       this.refreshSeatStatus(room);
@@ -2769,6 +2786,11 @@ export class RoomManager {
       guest: true,
       // 안 적어 보내면 방 기본값과 같은 동풍전 (newRoom 참고)
       gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
+      // 체험판은 봇을 한 칸 낮춘다(skill 1.0 → 0.7). easy(0.35)까지 내리지 않는 이유:
+      // 마작을 아는 사람이 이 게임을 보러 왔을 때 봇이 헛수를 두면 게임 자체가
+      // 얕아 보인다. normal은 초심자에게 이길 여지를 주면서 봇이 바보처럼 보이지는
+      // 않는 자리다. 계정을 만들고 방을 열면 그때부터는 기본이 hard다.
+      botDifficulty: "normal",
     });
     this.send(conn.ws, { type: "roomCreated", code: room.code });
     this.seat(conn, user, room);
