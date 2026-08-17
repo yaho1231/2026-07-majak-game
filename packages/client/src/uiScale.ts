@@ -124,11 +124,41 @@ const listeners = new Set<() => void>();
  */
 let baseDpr = 0;
 
-/** 사용자가 이 세션에서 Ctrl + 로 확대했는가 — 그렇다면 자동 축소를 접는다. */
+/**
+ * "이 사람은 브라우저 확대를 쓴다"는 기억 (세션을 넘어간다).
+ * 자세한 이유는 아래 `userZoomedIn()` 주석 참고.
+ */
+const ZOOMED_KEY = "majak.browserZoomed";
+let zoomedInSticky = false;
+
+/**
+ * 사용자가 확대해 두었는가 — 그렇다면 자동 축소를 접는다.
+ *
+ * **이 세션의 dpr 변화만으로는 부족하다** (감사 2026-08-17 §6-4, WCAG 1.4.4).
+ * `baseDpr`은 **부팅 시점** 값이라, 브라우저 확대를 200%로 켜 **둔 채** 페이지를 열면
+ * 그 200%가 그대로 기준선이 된다 → `userZoomedIn()`이 false → 자동 축소가 걸린다.
+ * 1280×800 @200% 실측: scale 0.6이 곱해져 **요구한 200%가 실질 120%로 깎였다.**
+ * 확대를 켜 둔 사람은 대개 그게 필요해서 켜 둔 것이고, 새로고침 한 번에 그걸
+ * 되돌리는 것은 접근성 도구를 무력화하는 일이다.
+ *
+ * 그래서 **기억한다**: 한 번이라도 확대한 것을 보면 그 사실을 저장해 두고, 다음
+ * 세션에서는 부팅 시점 dpr이 무엇이든 자동 축소를 걸지 않는다. Ctrl+0 으로 확대를
+ * 원래대로 되돌리면(= 기준선 아래로 내려오면) 표식을 지워 자동 축소가 돌아온다 —
+ * 한 번 켜면 영영 못 돌아가는 상태를 만들지 않는다.
+ */
 function userZoomedIn(): boolean {
-  if (baseDpr <= 0) return false;
+  if (baseDpr <= 0) return zoomedInSticky;
   // 1.02 여유 — 모니터 전환·소수 오차로 dpr이 미세하게 흔들리는 것을 무시한다.
-  return window.devicePixelRatio > baseDpr * 1.02;
+  const nowZoomed = window.devicePixelRatio > baseDpr * 1.02;
+  if (nowZoomed && !zoomedInSticky) {
+    zoomedInSticky = true;
+    safeStorage.setItem(ZOOMED_KEY, "1");
+  } else if (zoomedInSticky && window.devicePixelRatio < baseDpr * 0.99) {
+    // 기준선 **아래**로 내려왔다 = Ctrl− 또는 Ctrl+0 으로 확대를 접었다.
+    zoomedInSticky = false;
+    safeStorage.removeItem(ZOOMED_KEY);
+  }
+  return nowZoomed || zoomedInSticky;
 }
 
 /** 마우스 쓰는 기기인가 — 폰·태블릿은 좁은 화면 전용 배치가 따로 있어 손대지 않는다. */
@@ -336,6 +366,8 @@ export function startUiScale(): void {
     /* 못 읽으면 자동값 그대로 */
   }
   baseDpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+  // 지난 세션에서 확대를 쓰던 사람이면 부팅 시점 dpr과 무관하게 자동 축소를 접는다.
+  zoomedInSticky = safeStorage.getItem(ZOOMED_KEY) === "1";
   apply();
   window.addEventListener("keydown", onKey);
   window.addEventListener("resize", apply);

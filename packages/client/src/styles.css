@@ -2079,8 +2079,12 @@ button {
   background: none;
   border-radius: 7px;
   transition: transform 0.12s ease, filter 0.12s ease;
-  /* 포인터 드래그로 재정렬/버리기 — 터치에서 스크롤 제스처로 가로채지 않게 */
-  touch-action: none;
+  /* 포인터 드래그로 재정렬/버리기 — 터치에서 스크롤 제스처로 가로채지 않게.
+     ⚠ `none` 이 아니라 `pinch-zoom` 이다 (감사 §6-11): `none` 은 **핀치 확대까지**
+     막아서, 저시력 사용자가 자기 패를 키워 보려는 동작이 하필 손패 위에서만
+     통하지 않았다. `pinch-zoom` 은 한 손가락 드래그(재정렬·버리기)는 그대로 우리가
+     받고 두 손가락 확대만 브라우저에 넘긴다. */
+  touch-action: pinch-zoom;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -11447,7 +11451,11 @@ body.peeking .overlay-peekable > * {
    여기서는 CSS 만으로 세운다 — 상태도 스크립트도 필요 없다. */
 .rotate-hint { display: none; }
 
-@media (max-width: 560px) and (orientation: portrait) and (pointer: coarse) {
+/* ⚠ 상한이 560px 이라 **561~900px 세로 태블릿이 사각지대**였다 (감사 §6-12).
+   iPad 세로(768×1024)는 이 안내에도 안 걸리고, 좁은 화면 전용 배치(@container 700px)
+   에도 안 걸려서 4방향 판이 세로 화면에 그대로 눌려 들어갔다. 900px 까지 올린다 —
+   그 위(가로 태블릿·데스크톱)는 판이 실제로 들어가므로 안내가 방해만 된다. */
+@media (max-width: 900px) and (orientation: portrait) and (pointer: coarse) {
   /*
    * 화면 **맨 아래**에 붙여 두었더니 정작 내 손패를 덮었다 — 375×812 실측으로
    * 힌트 y=763–804, 손패 타일 y=747–793 이라 타일 높이의 65%가 가려졌고, 닫을
