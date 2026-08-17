@@ -109,7 +109,13 @@ export interface ScoringVariant {
   form: "standard" | "chiitoitsu" | "kokushi";
   pair: TileKind | null;
   pairs?: TileKind[];
-  /** kokushi: 손패 14장 전체 (sets/pair로 표현이 안 되므로) */
+  /**
+   * 이 변형이 보는 **손패 전체**(후로 제외, 조커는 변한 뒤의 kind).
+   *
+   * 치또이·국사는 sets/pair로 표현이 안 되므로 채점이 이걸 본다(`allKinds`).
+   * 표준형에도 싣는데, 그쪽은 채점이 쓰지 않고 **결과 화면의 몸통 복원**(winShape)이
+   * 쓴다 — 혼색 머리(2만+2통)는 `pair` 한 kind로는 짝을 되살릴 수 없다.
+   */
   handKinds?: TileKind[];
   /** standard: 손패 멘쯔 + 후로 멘쯔 통합 */
   sets: ScoringSet[];
@@ -257,6 +263,7 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
         variants.push({
           form: "standard",
           pair: decomp.pair,
+          handKinds,
           sets: [
             ...baseSets.map((s) => ({
               type: s.type,
@@ -278,6 +285,7 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
         variants.push({
           form: "standard",
           pair: decomp.pair,
+          handKinds,
           sets: [
             ...baseSets.map((s, j) => ({
               type: s.type,

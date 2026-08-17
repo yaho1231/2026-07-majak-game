@@ -5035,6 +5035,72 @@ button {
   border-left: 1px solid rgba(255, 255, 255, 0.18);
 }
 
+/* ── 화료 손을 몸통 단위로 끊어 보여 준다 (WinHand) ──
+   증강이 손 모양 규칙을 바꾸면(동수의 결속·비대칭·부숴진 벽…) 정렬만 한 손패로는
+   왜 화료인지 읽을 수 없다. 몸통 사이를 벌리고, 표준으로 설명 안 되는 몸통에는
+   테두리와 이름표를 붙인다. */
+.result-hand-shaped {
+  gap: 9px;
+}
+
+.result-group {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.result-group-tiles {
+  display: inline-flex;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+
+/* 표준 마작으로는 성립하지 않는 몸통 — 이 손을 성립시킨 자리다 */
+.result-group-odd .result-group-tiles {
+  border-color: rgba(150, 214, 255, 0.5);
+  background: rgba(96, 165, 214, 0.14);
+}
+
+.result-group-label {
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 0.04em;
+  color: rgba(200, 220, 208, 0.6);
+}
+
+.result-group-odd .result-group-label {
+  color: rgba(168, 216, 255, 0.9);
+}
+
+/* 조커가 무엇이 됐는가 — 그림은 백 그대로라 글자로 적지 않으면 알 수 없다 */
+.result-tile {
+  position: relative;
+}
+
+.result-tile-as {
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  transform: translateX(-50%);
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(24, 34, 28, 0.9);
+  border: 1px solid rgba(196, 160, 255, 0.7);
+  color: #e5d4ff;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.result-tile-wild .tile-face {
+  outline: 1px solid rgba(196, 160, 255, 0.8);
+  outline-offset: 1px;
+}
+
 .result-yaku-list {
   grid-area: yaku;
   display: flex;

@@ -21,6 +21,7 @@ import {
 import type { PlayerId } from "../../engine/zones/Zone.js";
 import { kindKey } from "../tiles/Tile.js";
 import type { TileId } from "../tiles/Tile.js";
+import type { WinShape } from "../scoring/winShape.js";
 import { playerAtSeat } from "./helpers.js";
 
 /**
@@ -156,6 +157,12 @@ export interface WinInfo {
    */
   extraHanBy?: { augId: string; han: number }[];
   yaku: { id: string; name: string; han: number }[];
+  /**
+   * 채점이 채택한 **몸통 구성** (표시 전용). 결과 화면이 화료한 손을 몸통 단위로 끊어
+   * 보여 준다 — 손 모양 규칙을 바꾸는 증강(동수의 결속·비대칭·부숴진 벽…)으로 난 손은
+   * 정렬만 늘어놓으면 왜 화료인지 화면에 아무 근거도 안 남는다.
+   */
+  shape?: WinShape;
   doraHan: number;
   uraHan: number;
   redHan: number;

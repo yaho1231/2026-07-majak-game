@@ -47,6 +47,7 @@ import type {
   PromptMessage,
   RankingEntry,
   ReplayDataMessage,
+  RevealedHand,
   ReplayGameSummary,
   RoundOverMessage,
   SandboxMessage,
@@ -77,6 +78,7 @@ import { safeStorage } from "./storage.js";
 import { LESSONS, TUTORIAL_KEY, pickLesson } from "./tutorial.js";
 import type { CoachCtx, Lesson } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
+import { groupWinHand, shapeGroupLabel } from "./winShapeView.js";
 import {
   backlogProdTtl,
   insertByPriority,
@@ -16535,6 +16537,101 @@ function AugDeltaNotes({
   );
 }
 
+/**
+ * 화료한 손 — 채점이 채택한 **몸통대로 끊어서** 보여 준다.
+ *
+ * 예전에는 손패를 그냥 정렬해서 늘어놓았다. 표준 손이면 그것으로 읽히지만, 손 모양
+ * 규칙을 바꾸는 증강(동수의 결속·비대칭·부숴진 벽·양극·조커)으로 난 손은 정렬만 하면
+ * **왜 이게 화료인지 화면에 아무 근거도 안 남는다** — 2만2삭·5만5통·6만6삭·8만8통이
+ * 2만5만6만8만2삭6삭5통8통으로 늘어서서, 텐파이도 아닌 손이 난 것처럼 보였다
+ * (2026-08-18 사용자 보고).
+ *
+ * 이름표(슌쯔·커쯔·머리)는 **표준으로 설명이 안 되는 몸통이 하나라도 있을 때만** 붙인다.
+ * 평범한 손에까지 붙이면 결과 화면이 설명서가 된다.
+ *
+ * shape가 없거나(옛 리플레이) 공개된 손패로 복원이 안 되면(자유 선언의 리치 스냅샷)
+ * 종전대로 정렬만 해서 보여 준다.
+ */
+function WinHand({
+  hand,
+  melds,
+  shape,
+  winningTileId,
+}: {
+  hand: PublicTileView[];
+  melds: RevealedHand["melds"];
+  shape: WinInfo["shape"];
+  winningTileId: number;
+}): JSX.Element {
+  const groups = shape === undefined ? null : groupWinHand(shape, hand);
+  const meldRow = melds.map((m, i) => (
+    <span key={`m${i}`} className="result-meld">
+      {m.tiles.map((t) => (
+        <TileImg key={t.id} tile={t} size="result" />
+      ))}
+    </span>
+  ));
+
+  if (groups === null || shape === undefined) {
+    return (
+      <div className="result-hand">
+        {sortTileViews(hand).map((t, ti) => (
+          <span
+            key={t.id}
+            className={`result-tile${t.id === winningTileId ? " result-tile-win" : ""}`}
+            style={{ animationDelay: `${ti * 0.035}s` }}
+          >
+            <TileImg tile={t} size="result" />
+          </span>
+        ))}
+        {meldRow}
+      </div>
+    );
+  }
+
+  const labeled = groups.some((g) => g.unusual);
+  let seq = 0;
+  return (
+    <div className={`result-hand result-hand-shaped${labeled ? " result-hand-labeled" : ""}`}>
+      {groups.map((g, gi) => {
+        const label = shapeGroupLabel(g.type, shape.form);
+        return (
+          <span
+            key={`g${gi}`}
+            className={`result-group${g.unusual ? " result-group-odd" : ""}`}
+          >
+            <span className="result-group-tiles">
+              {g.slots.map((s) => {
+                const delay = seq++;
+                return (
+                  <span
+                    key={s.tile.id}
+                    className={`result-tile${s.tile.id === winningTileId ? " result-tile-win" : ""}${
+                      s.as !== undefined ? " result-tile-wild" : ""
+                    }`}
+                    style={{ animationDelay: `${delay * 0.035}s` }}
+                    // 조커가 무엇이 됐는지는 그림으로는 알 수 없다 — 패 아래 작게 적는다
+                    title={s.as !== undefined ? `조커 → ${formatTile({ kind: s.as })}` : undefined}
+                  >
+                    <TileImg tile={s.tile} size="result" />
+                    {s.as !== undefined ? (
+                      <i className="result-tile-as">{formatTile({ kind: s.as })}</i>
+                    ) : null}
+                  </span>
+                );
+              })}
+            </span>
+            {labeled && label !== "" ? (
+              <i className="result-group-label">{label}</i>
+            ) : null}
+          </span>
+        );
+      })}
+      {meldRow}
+    </div>
+  );
+}
+
 function RoundResultPanel({
   result,
   view,
@@ -16818,24 +16915,12 @@ function RoundResultPanel({
             ) : null}
 
             {result.revealedHands[w.winner] !== undefined ? (
-              <div className="result-hand">
-                {sortTileViews(result.revealedHands[w.winner]!.hand).map((t, ti) => (
-                  <span
-                    key={t.id}
-                    className={`result-tile${t.id === w.winningTileId ? " result-tile-win" : ""}`}
-                    style={{ animationDelay: `${ti * 0.035}s` }}
-                  >
-                    <TileImg tile={t} size="result" />
-                  </span>
-                ))}
-                {result.revealedHands[w.winner]!.melds.map((m, i) => (
-                  <span key={`m${i}`} className="result-meld">
-                    {m.tiles.map((t) => (
-                      <TileImg key={t.id} tile={t} size="result" />
-                    ))}
-                  </span>
-                ))}
-              </div>
+              <WinHand
+                hand={result.revealedHands[w.winner]!.hand}
+                melds={result.revealedHands[w.winner]!.melds}
+                shape={w.shape}
+                winningTileId={w.winningTileId}
+              />
             ) : null}
 
             {/* 이 손을 성립시킨 증강 — 손 모양 규칙을 바꾸는 패시브는 view 채널이 없어
