@@ -43,7 +43,7 @@ import type {
   TileDrawnPayload,
   TileId,
 } from "@majak/core";
-import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
+import { addWinHanBonus, cooldownTurnsViewKey, flagOf, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "foresight";
@@ -120,6 +120,11 @@ function isValidOrder(order: unknown): order is number[] {
   }
   return seen.size === PEEK;
 }
+
+/** 잔여 쿨다운 순 수를 담는 보유자 전용 채널 (이름표 pill이 `N순`으로 그린다) */
+const cdTurnsKey = (h: PlayerId): string => cooldownTurnsViewKey(ID, h);
+/** 이번 국 재배열이 소진됐음을 알리는 보유자 전용 채널 */
+const reorderSpentKey = (h: PlayerId): string => roundViewKey(h, `${ID}:reorderSpent`);
 
 /** 남은 쿨다운 순 수 (0이면 발동 가능) */
 function cooldownLeft(state: GameState, h: PlayerId): number {
@@ -283,6 +288,24 @@ export const foresight: AugmentDef = defineAugment({
         return ALL_ORDERS.map((order) => ({ type: ORDER, payload: { order: [...order] } }));
       }
       return [];
+    });
+
+    /*
+     * 잔여 쿨다운(순)과 재배열 소진 여부를 이름표 pill에 상시로 낸다.
+     *
+     * 예전에는 둘 다 화면에 없었다 — 열람 버튼이 사라진 이유도, 두 번째 발동에서
+     * **드래그가 안 먹히는 이유**도(재배열은 국에 1회) 알 방법이 없었다.
+     * 값이 같으면 아무것도 내지 않아 반응 연쇄는 한 겹에서 멈춘다.
+     */
+    ctx.reaction("*", (_event, rc) => {
+      const left = cooldownLeft(rc.state, holder);
+      if (rc.state.augmentData[cdTurnsKey(holder)] !== left) {
+        rc.emit(augmentDataSet(cdTurnsKey(holder), left));
+      }
+      const spent = flagOf(rc.state, orderUsedKey(rc.state, holder));
+      if (spent && rc.state.augmentData[reorderSpentKey(holder)] !== true) {
+        rc.emit(augmentDataSet(reorderSpentKey(holder), true));
+      }
     });
 
     // 발동한 국에 화료하면 +2판

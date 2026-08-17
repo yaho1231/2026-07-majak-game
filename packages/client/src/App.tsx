@@ -3532,7 +3532,8 @@ export function App(): JSX.Element {
         if (
           augEventFor(key) === null &&
           key !== SWAP3_NOTICE_KEY &&
-          !key.startsWith("push_riichi:fired:")
+          !key.startsWith("push_riichi:fired:") &&
+          RELATION_CUTINS[key.split(":")[0] ?? ""] === undefined
         ) {
           continue;
         }
@@ -3964,6 +3965,39 @@ export function App(): JSX.Element {
           tiles: [...gave, ...got],
           tileArrowAt: gave.length,
           impact: { shake: 2 },
+        },
+      );
+    }
+
+    /*
+     * 당사자 전용 컷인 — 손패를 통째로 빼앗기거나, 일발이 지워지거나, 내가 버리지도
+     * 않은 패가 내 바닥에 심어지는 순간. 제3자에게는 이름표 관계 표식이 그대로 남는다.
+     */
+    for (const [key, raw] of Object.entries(next.augmentView ?? {})) {
+      const head = key.split(":")[0] ?? "";
+      const def = RELATION_CUTINS[head];
+      if (def === undefined) continue;
+      const holderId = key.slice(head.length + 1);
+      const targetId = typeof raw === "string" ? raw : "";
+      if (targetId === "" || holderId === "" || holderId === targetId) continue;
+      const iAmHolder = next.playerId === holderId;
+      const iAmTarget = next.playerId === targetId;
+      if (!iAmHolder && !iAmTarget) continue;
+      if (!next.players.some((p) => p.id === holderId)) continue;
+      if (!next.players.some((p) => p.id === targetId)) continue;
+      const seen = augEventSig(key, raw, shown.roundKey);
+      if (shown.augEvents.has(seen)) continue;
+      shown.augEvents.add(seen);
+      const other = playerNameById(next, iAmHolder ? targetId : holderId);
+      showCutIn(
+        def.title,
+        "augment",
+        iAmHolder ? def.holder(other) : def.target(other),
+        def.ms ?? 2400,
+        {
+          sfx: () => sfx.augment(1),
+          augId: head,
+          ...(def.shake !== undefined ? { impact: { shake: def.shake } } : {}),
         },
       );
     }
@@ -8634,6 +8668,51 @@ const RELATION_META: Record<string, { icon: string; label: string; color: string
 /** 이 표식들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
 const RELATION_HEADS: ReadonlySet<string> = new Set(Object.keys(RELATION_META));
 
+/**
+ * 지목 관계 중 **당사자에게는 표식으로 부족한** 것들 — 한 번 크게 알린다.
+ *
+ * 이름표 옆 관계 표식(RELATION_META)은 제3자에게 판을 읽히려고 있는 것이지, 당한
+ * 사람에게 "무슨 일이 일어났는가"를 알려 주는 자리가 아니다. 손패가 통째로 바뀌거나
+ * 내가 버리지도 않은 패로 후리텐이 되는 것을 작은 아이콘 하나로 알아채라는 것은
+ * 무리다 — 실제로 3장 교환(등가교환)은 이미 같은 이유로 전용 컷인이 붙어 있다.
+ *
+ * 채널 값이 **대상 좌석 id인 것만** 여기 넣는다(`{증강id}:{보유자}` = 대상).
+ */
+const RELATION_CUTINS: Record<
+  string,
+  {
+    title: string;
+    /** 보유자에게 보이는 문구 */
+    holder: (other: string) => string;
+    /** 대상에게 보이는 문구 */
+    target: (other: string) => string;
+    ms?: number;
+    shake?: ImpactSpec["shake"];
+  }
+> = {
+  full_hand_swap: {
+    title: "통째로 바꾸기",
+    holder: (o) => `${o}의 손패를 통째로 빼앗았다`,
+    target: (o) => `${o}에게 손패를 통째로 빼앗겼다 — 패산에서 새 손을 받는다`,
+    ms: 2600,
+    shake: 3,
+  },
+  counter: {
+    title: "카운터",
+    holder: (o) => `${o}의 선제 리치를 받아쳤다 — 공탁을 대신 물리고 일발을 지웠다`,
+    target: (o) => `${o}의 추격 리치 — 공탁을 대납하고 일발이 사라졌다`,
+    ms: 2400,
+    shake: 2,
+  },
+  frame_up: {
+    title: "누명",
+    holder: (o) => `${o}의 바닥에 패를 심었다`,
+    target: (o) => `${o}가 내 바닥에 패를 심었다 — 그 패로는 론할 수 없다`,
+    ms: 2400,
+    shake: 2,
+  },
+};
+
 /** augmentView에서 지금 살아 있는 지목 관계를 뽑는다 */
 function relationsOf(view: PlayerView): Relation[] {
   const out: Relation[] = [];
@@ -8773,6 +8852,16 @@ const AUG_EVENTS: Record<
     ms: 3600, // 13장을 훑을 시간
   },
   meld_dissolve: { title: "후로 해체", sub: "이미 울어 둔 묶음이 풀렸다", augId: "meld_dissolve" },
+  // 뒤집힌 모래시계 — 판이 가장 크게 뒤집히는 순간인데 신호가 이름표 pill "4장"
+  // 하나뿐이었다. 전원이 유국을 기다리는데 국이 안 끝나고 한 사람만 계속 뽑는다.
+  // (ROUND_SETTLED 인터셉터라 액션 컷인 경로를 타지 않는다.)
+  hourglass: {
+    title: "뒤집힌 모래시계",
+    sub: "유국이 취소됐다 — 왕패에서 넘어온 패를 혼자 뽑는다",
+    augId: "hourglass",
+    shake: 3,
+    ms: 2600,
+  },
   // 염색·연금술사 — 채널 값이 "man3→pin3" 꼴이라 컷인에 **바뀌기 전과 후**가 나란히 뜬다
   // (augEventTiles가 화살표를 풀어 두 장으로 만든다). 패는 손패 안에 남으므로 어디에
   // 있는지는 안 새고, 상대가 읽는 것은 "무엇이 무엇이 됐다"는 사실뿐이다 — 설명이
@@ -10550,6 +10639,22 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     if (typeof raw !== "string" || raw === "") return null;
     return { chip: raw, note: `이번 국 화료 점수 ${raw}` };
   },
+  // 천하통일 — 문턱까지 남은 점수. 이 증강은 view 채널이 하나도 없어서, 동2국에
+  // 갑자기 순위표가 떠도 아무도 이유를 몰랐다. 게이지가 서야 "홀더에게만 안 쏜다"는
+  // 대응이 성립한다.
+  unification: (raw) => {
+    const m = raw as { threshold?: number; left?: number } | null;
+    if (m === null || typeof m !== "object" || typeof m.left !== "number") return null;
+    const total = m.threshold ?? 45000;
+    if (m.left <= 0) {
+      return { chip: "도달", note: `${total.toLocaleString()}점 도달 — 이 국으로 게임이 끝난다` };
+    }
+    return {
+      chip: `${m.left.toLocaleString()}점`,
+      note: `${total.toLocaleString()}점까지 ${m.left.toLocaleString()}점 — 닿으면 남은 국 없이 끝난다`,
+      gauge: Math.min(1, Math.max(0, (total - m.left) / total)),
+    };
+  },
   // 편식 — 통일한 무늬 (발동 뒤). 진행도는 아래 전용 분기가 그린다.
   picky_eater: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
@@ -10654,6 +10759,16 @@ function cooldownRoundsLeft(view: PlayerView, playerId: string, augId: string): 
   return typeof left === "number" && left > 0 ? left : 0;
 }
 
+/**
+ * 남은 쿨다운이 **순** 단위인 증강 (예지·무르기 계열). 국 단위와 같은 자리에 그리되
+ * 단위만 다르다 — 채널이 아예 없던 시절에는 버튼이 사라진 것으로만 알 수 있었다.
+ */
+function cooldownTurnsLeft(view: PlayerView, playerId: string, augId: string): number {
+  if (playerId !== view.playerId) return 0;
+  const left = view.augmentView[`cooldownTurns:${augId}`];
+  return typeof left === "number" && left > 0 ? left : 0;
+}
+
 function augmentPillStatus(
   view: PlayerView,
   playerId: string,
@@ -10685,6 +10800,19 @@ function augmentPillStatus(
     const left = av["tile_dyeing:left"];
     if (!isSelf || typeof left !== "number") return null;
     return { chip: `${left}회`, note: `염색 ${left}회 남음` };
+  }
+  /*
+   * 예지 — 재배열은 **국에 1회**다. 소진되면 열람은 되는데 드래그 확정이 안 열리는데,
+   * 그 이유가 화면 어디에도 없었다("증강이 고장 났다"로 읽힌다).
+   * 이 채널은 보유자 전용이고 값이 그냥 true라, 공개 열람 채널을 읽는 아래 일반
+   * 경로(`av[augId:좌석]`)로는 볼 수 없어 여기서 따로 본다.
+   */
+  if (augId === "foresight" && isSelf && av["foresight:reorderSpent"] === true) {
+    return {
+      chip: "재배열 완료",
+      tone: "spent",
+      note: "이번 국 재배열은 이미 썼다 — 앞을 보는 것만 된다",
+    };
   }
   if (augId === "dead_wall_master") {
     const left = av[`dead_wall_master:remaining:${playerId}`];
@@ -11017,6 +11145,7 @@ const NamePlate = memo(function NamePlate({
             const status = augmentPillStatus(view, player.id, a);
             // 내부 쿨다운 잔량 — 보유자 본인 화면에만 실린다(view:{나}:cooldown:{id}).
             const cooldown = cooldownRoundsLeft(view, player.id, a);
+            const cooldownTurns = cooldownTurnsLeft(view, player.id, a);
             // 선발동형("이번 국만")이 이미 지나갔는가 — 설명 배지도 함께 갈아 끼운다.
             const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
             return (
@@ -11029,7 +11158,7 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 || cooldownTurns > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
@@ -11057,6 +11186,12 @@ const NamePlate = memo(function NamePlate({
                 {cooldown > 0 ? (
                   <span className="aug-pill-cd-chip" title={`쿨다운 — ${cooldown}국 남음`}>
                     🕐{cooldown}국
+                  </span>
+                ) : null}
+                {/* 순 단위 쿨다운 — 국 단위와 같은 자리, 단위만 다르다 */}
+                {cooldownTurns > 0 ? (
+                  <span className="aug-pill-cd-chip" title={`쿨다운 — ${cooldownTurns}순 남음`}>
+                    🕐{cooldownTurns}순
                   </span>
                 ) : null}
                 {status !== null ? (
@@ -11088,6 +11223,11 @@ const NamePlate = memo(function NamePlate({
                   {cooldown > 0 ? (
                     <span className="aug-tip-cd">
                       🕐 쿨다운 — 지금은 쓸 수 없다 (앞으로 {cooldown}국)
+                    </span>
+                  ) : null}
+                  {cooldownTurns > 0 ? (
+                    <span className="aug-tip-cd">
+                      🕐 쿨다운 — 지금은 쓸 수 없다 (앞으로 {cooldownTurns}순)
                     </span>
                   ) : null}
                   {reloaded.has(a) ? (
@@ -13505,9 +13645,29 @@ function ActiveAugmentControl(props: {
   if (!hasActive && augOptions.length === 0) return null;
 
   const usable = augOptions.length > 0;
-  const activeNames = me.augments
-    .filter((a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a))
-    .map((a) => props.catalog[a]?.name ?? a);
+  const activeIds = me.augments.filter(
+    (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
+  );
+  /*
+   * 못 쓰는 이유 — 예전에는 `지금은 사용할 수 없습니다 — {이름들}`이 전부였다.
+   *
+   * 잔량·쿨다운은 서버가 보유자 채널로 실어 주므로 그대로 읽어 붙인다. 상태 조건
+   * ("국의 첫 순에만"·"리치 중 불가"처럼)은 서버가 이유를 실어 주지 않으므로 지어내지
+   * 않는다 — 틀린 이유를 대느니 아는 것만 말하는 편이 낫다.
+   */
+  const blockedNote = (id: string): string => {
+    const name = props.catalog[id]?.name ?? id;
+    const rounds = cooldownRoundsLeft(view, me.id, id);
+    if (rounds > 0) return `${name} — 쿨다운 ${rounds}국`;
+    const turns = cooldownTurnsLeft(view, me.id, id);
+    if (turns > 0) return `${name} — 쿨다운 ${turns}순`;
+    const uses = view.augmentView[`uses:${id}`] as { left?: unknown } | undefined;
+    if (uses !== undefined && typeof uses.left === "number" && uses.left <= 0) {
+      return `${name} — 남은 횟수 없음`;
+    }
+    if (disarmedAugmentsOf(view, me.id).has(id)) return `${name} — 무장해제로 잠김`;
+    return name;
+  };
 
   // 액션 타입별로 옵션을 묶는다 (타일 선택형은 개별 옵션이 아니라 '패 클릭'으로 발동)
   const byType = new Map<string, ActionOption[]>();
@@ -14118,7 +14278,7 @@ function ActiveAugmentControl(props: {
             ? types.length > 1
               ? "액티브 증강 선택"
               : `${augNameFor(types[0]!)} 사용`
-            : `지금은 사용할 수 없습니다 — ${activeNames.join(", ")}`
+            : `지금은 사용할 수 없습니다\n${activeIds.map(blockedNote).join("\n")}`
         }
         onClick={click}
         /* 손을 올리면 그 개수가 **어느 증강인지** 이름표 pill이 빛나 알려 준다.

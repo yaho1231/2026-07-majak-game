@@ -356,6 +356,16 @@ export const cooldownUsedKey = (augmentId: string, holder: PlayerId): string =>
  * 남에게는 공개하지 않는다 — 발동 자체는 어차피 보이지만, "지금 잠겨 있다"는 것은
  * 상대가 마음 놓고 밀 수 있다는 뜻이라 보유자만 아는 편이 대칭적이다.
  */
+/**
+ * **순 단위** 쿨다운 잔량 채널 (보유자 전용) — 이름표 pill이 `N순`으로 그린다.
+ *
+ * 국 단위(`cooldownViewKey`)와 나란한 짝이다. 순 단위로 잠기는 증강(예지·무르기·
+ * 미래를 보는 자)은 채널 자체가 없어서, 다시 열릴 때까지 **버튼이 사라진 것으로만**
+ * 알 수 있었다 — 왜 사라졌는지도, 언제 돌아오는지도 화면에 없었다.
+ */
+export const cooldownTurnsViewKey = (augmentId: string, holder: PlayerId): string =>
+  viewKey(holder, `cooldownTurns:${augmentId}`);
+
 export const cooldownViewKey = (augmentId: string, holder: PlayerId): string =>
   viewKey(holder, `cooldown:${augmentId}`);
 

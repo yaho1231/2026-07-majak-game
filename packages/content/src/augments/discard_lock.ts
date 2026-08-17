@@ -41,7 +41,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { roundViewKey, statePrng } from "../util.js";
+import { cooldownViewKey, roundViewKey, statePrng } from "../util.js";
 import { plan } from "./botPlan.js";
 
 /** 봉인 확정 이벤트 (증강 id에서 파생한 이름 — 다른 증강과 충돌 방지) */
@@ -223,7 +223,13 @@ export const discardLock: AugmentDef = defineAugment({
     // 지난 국의 tileId가 다음 국 내내 보유자에게 노출되던 문제(2026-07-29 감사)와
     // 봉인이 국을 넘어 살아남던 문제(2026-07-31)가 여기서 함께 끝난다.
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
-      rc.emit(augmentDataSet(seqKey(holder), roundSeq(rc.state, holder) + 1));
+      const seq = roundSeq(rc.state, holder) + 1;
+      rc.emit(augmentDataSet(seqKey(holder), seq));
+      // 남은 쿨다운을 공용 채널로도 낸다 — 자체 카운터만 쓰던 탓에 이름표의 `🕐N국`
+      // 칩이 서지 않아, 버튼이 사라진 이유를 화면에서 알 수 없었다.
+      const used = rc.state.augmentData[usedKey(holder)];
+      const left = typeof used === "number" ? Math.max(0, COOLDOWN_ROUNDS - (seq - used)) : 0;
+      rc.emit(augmentDataSet(cooldownViewKey("discard_lock", holder), left));
     });
 
     // 발동 조건이 충족된 자기 턴에만 봉인 선택지(액티브 버튼)를 노출

@@ -55,6 +55,7 @@ import type {
 } from "@majak/core";
 import {
   addWinHanBonus,
+  cooldownTurnsViewKey,
   counterOf,
   flagOf,
   replaceDrawnTile,
@@ -224,6 +225,22 @@ export const futureSight: AugmentDef = defineAugment({
     "(3순에 1회) 자기 순에 버튼을 누르면 손패에서 바꿀 패를 고르라는 창이 뜬다. 원하는 패를 3장 고르면 그 3장이 패산 맨 밑으로 내려가고 패산 위에서 3장이 그대로 손에 들어온다. 바닥에 버려지는 패는 없으므로 이 교환으로는 후리텐이 생기지 않고, 손패 장수도 변하지 않는다.\n\n⚠ **가져온 3장은 상대에게도 그대로 공개된다** — 쓸수록 내 손이 읽힌다.\n\n교환할 때마다 층이 1씩 쌓여 그 국에 화료하면 층 하나당 +1판을 얻고, 층은 국이 바뀌면 초기화된다. 한 번 쓰면 내 순이 세 번 지나야 다시 열리며, 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    /*
+     * 남은 쿨다운(순)을 이름표 pill에 상시로 낸다 — 채널이 없어서 **버튼이 사라지는
+     * 것으로만** 다시 쓸 수 없다는 걸 알 수 있었다. 값이 같으면 아무것도 내지 않으므로
+     * 반응 연쇄는 한 겹에서 멈춘다.
+     */
+    ctx.reaction("*", (_event, rc) => {
+      const last = rc.state.augmentData[lastUsedKey(rc.state, holder)];
+      const left =
+        typeof last === "number"
+          ? Math.max(0, COOLDOWN_TURNS - (turnNo(rc.state, holder) - last))
+          : 0;
+      if (rc.state.augmentData[cooldownTurnsViewKey(ID, holder)] !== left) {
+        rc.emit(augmentDataSet(cooldownTurnsViewKey(ID, holder), left));
+      }
+    });
 
     // 이벤트·액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.reducers.has(FUTURE_SIGHT_EXCHANGED)) {

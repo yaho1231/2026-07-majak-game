@@ -32,6 +32,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { plan } from "./botPlan.js";
+import { cooldownViewKey } from "../util.js";
 
 const ID = "pseudo_dealer";
 const ACTION = "claim_dealer";
@@ -73,6 +74,9 @@ const claimDealerAction: ActionDef<Record<string, never>> = {
       } satisfies DealerUsurpedPayload,
     },
     augmentDataSet(cooldownKey(req.player), COOLDOWN_ROUNDS),
+    // 잔여 쿨다운을 공용 채널로도 낸다 — 자체 카운터만 쓰던 탓에 이름표의 `🕐N국`
+    // 칩이 서지 않아, 버튼이 사라진 이유를 화면에서 알 수 없었다.
+    augmentDataSet(cooldownViewKey(ID, req.player), COOLDOWN_ROUNDS),
   ],
 };
 
@@ -117,10 +121,24 @@ export const pseudoDealer: AugmentDef = defineAugment({
       const cooldown = rc.state.augmentData[cooldownKey(holder)];
       if (typeof cooldown === "number" && cooldown > 0) {
         rc.emit(augmentDataSet(cooldownKey(holder), cooldown - 1));
+        rc.emit(augmentDataSet(cooldownViewKey(ID, holder), cooldown - 1));
       }
     });
 
-    // 보유자 턴 프롬프트에 선언 후보 노출 (validate가 최종 판정)
-    ctx.holderTurnOptions(() => [{ type: ACTION, payload: {} }]);
+    /*
+     * 선언할 수 **있을 때만** 버튼을 낸다.
+     *
+     * 예전에는 무조건 옵션을 내보내고 판정을 validate에만 맡겼다. 그래서 쿨다운
+     * 중에도, 이미 내가 오야인 국에도 버튼이 그대로 떠 있었고 누르면 조용히
+     * 반려됐다 — 정보가 부족한 정도가 아니라 **작동하지 않는 버튼**이었다.
+     * (validate는 그대로 둔다 — 옛 클라이언트·직접 제출에 대한 최종 방어선이다.)
+     */
+    ctx.holderTurnOptions((state) => {
+      const cooldown = state.augmentData[cooldownKey(holder)];
+      if (typeof cooldown === "number" && cooldown > 0) return [];
+      const me = state.players.find((p) => p.id === holder);
+      if (me === undefined || state.round.dealerSeat === me.seat) return [];
+      return [{ type: ACTION, payload: {} }];
+    });
   },
 });

@@ -62,8 +62,6 @@ const PUBLIC_RULE_TELLS: Readonly<Record<string, string>> = {
  * 새 증강이 여기 오려면 "왜 보일 수 없는가"를 설명해야 한다 — 그냥 추가는 금지.
  */
 const SILENT_ALLOWED: Readonly<Record<string, string>> = {
-  unification:
-    "발동이 곧 매치 종료다 — 45000점에 닿는 순간 남은 국을 무시하고 게임이 끝나는 것보다 더 크게 보이는 표식은 없다. 문턱은 고정 수치라 카드 문구가 곧 목표이고, 점수봉은 원래 전원에게 보인다",
   late_double:
     "7순 이내 리치가 결과창 역 목록에 '더블리치'로 뜬다. 리치 선언 자체는 이미 공개이고 승격은 정산에서 밝혀진다",
 };
