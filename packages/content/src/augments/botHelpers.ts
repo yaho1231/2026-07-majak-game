@@ -285,7 +285,18 @@ export function shantenIfChanged(
  * 두 벌이 되면 어긋나므로, 봇 쪽 계산은 여기 한 곳에 둔다(같은 정의를 두 파일에 쓰지 않게).
  */
 export function isolatedIndex(kinds: readonly TileKind[], exceptIdx: number): number {
-  const usefulness = (i: number): number => {
+  /**
+   * 값이 낮을수록 먼저 재료가 된다.
+   *
+   * 1순위는 **이어짐**(같은 패·이웃 패가 손에 몇 장 붙어 있는가). 여기까지는 예전과 같다.
+   *
+   * 2순위가 새로 생긴 자리다 — 예전에는 이어짐이 같으면 **손패 순서 앞쪽**이 그냥 뽑혔다.
+   * 그래서 한 장만 남은 자패와 외톨이 수패가 나란히 0점이 되면, 자패가 아니라 앞에 있던
+   * 수패가 사라졌다("한 장 남은 한자패가 안 사라지고 다른 게 사라진다", 2026-08-17 보고).
+   * 같은 외톨이라도 자패는 슌쯔가 아예 불가능하고 노두패는 한쪽으로만 이어지므로,
+   * 자패 → 노두패(1·9) → 그 밖의 수패 순으로 먼저 태운다.
+   */
+  const cost = (i: number): number => {
     const k = kinds[i] as TileKind;
     let n = 0;
     for (let j = 0; j < kinds.length; j++) {
@@ -295,12 +306,13 @@ export function isolatedIndex(kinds: readonly TileKind[], exceptIdx: number): nu
       if (o.rank === k.rank) n += 2;
       else if (isNum(k) && Math.abs(o.rank - k.rank) <= 2) n += 1;
     }
-    return n;
+    const rank = !isNum(k) ? 0 : k.rank === 1 || k.rank === 9 ? 1 : 2;
+    return n * 10 + rank;
   };
   let best = -1;
   for (let i = 0; i < kinds.length; i++) {
     if (i === exceptIdx) continue;
-    if (best < 0 || usefulness(i) < usefulness(best)) best = i;
+    if (best < 0 || cost(i) < cost(best)) best = i;
   }
   return best;
 }

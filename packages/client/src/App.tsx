@@ -2466,6 +2466,34 @@ export function App(): JSX.Element {
     }
   }, [activeProd, prodTick]);
 
+  /*
+   * 도라 반짝임을 **한 박자로 맞춘다**.
+   *
+   * `dora-glow`·`dora-own-glow`·`dora-shine`은 전부 2.2초 한 주기로 같은 속도인데,
+   * CSS 애니메이션은 그 요소에 클래스가 붙는 **그 순간부터** 돌기 시작한다. 손에 원래
+   * 있던 도라, 방금 쯔모한 도라, 새 도라 표시패가 막 뒤집혀 도라가 된 패는 시작 시각이
+   * 제각각이라 위상이 어긋나고, 나란히 놓고 보면 "패마다 반짝이는 속도가 다르다"로
+   * 읽힌다(2026-08-17 사용자 보고). 주기가 같으니 **시작점만 하나로 모으면** 된다 —
+   * 새로 생긴 애니메이션의 startTime을 문서 타임라인 원점(0)으로 옮겨 전부 같은 위상에
+   * 세운다. 이미 0인 것은 건드리지 않으므로 도는 중인 패는 튀지 않는다.
+   *
+   * 뷰가 바뀔 때만 훑는다 — 도라가 새로 생기는 계기(쯔모·버림·깡·증강)는 전부 새 뷰로
+   * 온다. `getAnimations`가 없는 환경에서는 조용히 넘어간다(연출만 예전대로 어긋난다).
+   */
+  useEffect(() => {
+    if (typeof document.getAnimations !== "function") return;
+    for (const anim of document.getAnimations()) {
+      const name = (anim as { animationName?: unknown }).animationName;
+      if (name !== "dora-glow" && name !== "dora-own-glow" && name !== "dora-shine") continue;
+      if (anim.startTime === 0) continue;
+      try {
+        anim.startTime = 0;
+      } catch {
+        /* 아직 준비되지 않은 애니메이션 — 다음 뷰에서 다시 맞춘다 */
+      }
+    }
+  }, [view]);
+
   /** 화면 흔들림 — game-root의 data-shake 속성만 토글, CSS가 .table을 흔든다.
    *  리렌더 없이 발동하고, 컷인·배너(형제 오버레이)는 흔들리지 않아 글자가 또렷하다. */
   function shakeTable(level: 1 | 2 | 3 | 4): void {
@@ -3786,9 +3814,21 @@ export function App(): JSX.Element {
       // 리치 선언 — 이 국에서 이 플레이어를 아직 알림하지 않았을 때만
       const nowRiichi = next.round.byPlayer[p.id]?.riichiDeclared === true;
       if (nowRiichi && !shown.riichi.has(p.id)) {
-        // 이미 이 국에 리치 선언자가 있으면 이번은 "추격 리치" — 기세를 빼앗아오는 연출.
-        // (BGM도 이 시점의 start()에서 다른 트랙으로 갈아끼워 흐름 전환을 함께 준다.)
-        const isChase = shown.riichi.size > 0;
+        /*
+         * 이미 이 국에 **다른 사람의 리치가 서 있으면** 이번은 "추격 리치" — 기세를
+         * 빼앗아오는 연출이다. (BGM도 이 시점의 start()에서 다른 트랙으로 갈아끼운다.)
+         *
+         * ⚠ 근거는 지금 이 뷰의 판 상태(`riichiDeclared`)다. 예전에는 "이 국에 리치를
+         * 몇 개 알렸는가"(`shown.riichi.size`)를 봤는데, 그 집합은 연출 이력이라 판과
+         * 어긋나는 자리가 여럿이었다 — ① 아래 스텔스 리치도 (알림은 안 하면서) 집합에는
+         * 들어가므로, 아무 리치도 보이지 않는 화면에서 다음 리치가 "추격"으로 떴고
+         * ② 국이 끝나고 다음 국 첫 뷰가 오기 전(phase가 round.over인 동안)에는 집합이
+         * 비워지지 않아 지난 국의 리치가 그대로 셈에 남았다. 판 상태에서 바로 읽으면
+         * 취소된 리치·숨은 리치가 저절로 빠진다(남의 스텔스 리치는 내 뷰에서 false다).
+         */
+        const isChase = next.players.some(
+          (o) => o.id !== p.id && next.round.byPlayer[o.id]?.riichiDeclared === true,
+        );
         shown.riichi.add(p.id);
         /*
          * 스텔스 리치 — 이 리치는 타가에게 보이지 않는다(본인 뷰에만 riichiHidden이 온다).
@@ -10952,11 +10992,7 @@ function augmentPillStatus(
   // pill에만** 붙인다. 같은 증강을 남도 들면 내 잔량이 남의 pill에 찍힌다
   // (cooldownRoundsLeft 주석의 중복 보유 경로).
   const isSelf = playerId === view.playerId;
-  if (augId === "alchemist") {
-    const left = av["alchemist:left"];
-    if (!isSelf || typeof left !== "number") return null;
-    return { chip: `${left}회`, note: `연금술 ${left}회 남음` };
-  }
+  // (연금술사는 2026-08-17에 공용 잔량 채널 `uses:alchemist`로 옮겼다 — 아래 usesStatus가 읽는다)
   // 염색 — 연금술사와 같은 게임 전체 5회 자원 (2026-08-04 국당 1회에서 개편)
   if (augId === "tile_dyeing") {
     const left = av["tile_dyeing:left"];
@@ -11932,6 +11968,17 @@ function OwnArea(props: {
   useEffect(() => {
     setManualOrder([]);
   }, [roundKeyStr]);
+  /*
+   * 자동정렬을 **켜면** 손수 섞어 둔 배치를 버린다.
+   *
+   * 예전에는 `manualOrder`가 그대로 살아 있어서, 자동정렬을 껐다 켰다 다시 꺼도 예전에
+   * 섞어 둔 그 배치가 되살아났다 — "자동정렬을 껐는데 정리가 안 된다"로 보인다
+   * (2026-08-17 사용자 보고). 자동정렬은 "지금 배치를 버리고 규칙대로 세운다"는 뜻이므로
+   * 켜는 순간이 곧 초기화 시점이다. 그래서 다시 끄면 방금 정렬된 순서에서 새로 시작한다.
+   */
+  useEffect(() => {
+    if (autoSort) setManualOrder([]);
+  }, [autoSort]);
   const [hoverId, setHoverId] = useState<number | null>(null);
   // 포인터 드래그 상태 (손패 재정렬 + 바닥 버리기). state는 렌더용, ref는 핸들러용.
   const [drag, setDrag] = useState<HandDragState | null>(null);

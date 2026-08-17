@@ -8,7 +8,6 @@
  */
 
 import {
-  TILE_DRAWN,
   augmentDataSet,
   defineAugment,
   handIdsOf,
@@ -26,7 +25,7 @@ import type {
   TileAttrs,
   TileId,
 } from "@majak/core";
-import { counterOf, roundKey, roundViewKey, viewKey } from "../util.js";
+import { counterOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -36,12 +35,6 @@ const MAX_USES = 5;
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
 /** 마지막으로 사용한 '턴'의 서명 (한 턴에 한 번만 쓰게 막는다) */
 const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
-/**
- * 남은 횟수를 보유자 화면에 노출하는 채널 — "몇 번 남았는지 안 보인다"는 보고
- * (2026-08-01)에 대한 대응. 게임 전체 5회라 국을 넘어 유지돼야 하므로 국 스코프가
- * 아닌 고정 viewKey를 쓴다. 값은 **남은 횟수**(0이면 소진).
- */
-const leftViewKey = (h: PlayerId): string => viewKey(h, `${ID}:left`);
 /**
  * 전원 공개: 이번 국에 무엇을 무엇으로 바꿨는가 ("man3→man4").
  *
@@ -112,8 +105,6 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
       augmentDataSet(usedKey(req.player), counterOf(state, usedKey(req.player)) + 1),
       // 이번 턴에 썼음을 기록 → 같은 턴 재사용 차단 (버림으로 턴이 넘어가면 자동 해제)
       augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
-      // 남은 횟수 갱신 (위 usedKey 증가를 반영해 -1)
-      augmentDataSet(leftViewKey(req.player), usesLeft(state, req.player) - 1),
       // 전원 공개 — 무엇이 무엇이 됐는지. 문자열이라 클라이언트 폴백이 그대로 읽는다.
       augmentDataSet(
         revealViewKey(req.player),
@@ -140,15 +131,17 @@ export const alchemist: AugmentDef = defineAugment({
       engine.actions.register(alchemyAction);
     }
 
-    // 남은 횟수 채널 동기화 — 값이 어긋날 때만 발행한다.
-    // ROUND_STARTED로는 부족하다: 게임 시작 드래프트는 1국 배패 **뒤에** 설치되므로
-    // 첫 국 내내 채널이 비어 "몇 번 남았는지 안 보인다"가 그대로 남는다(2026-08-01 보고).
-    // 쯔모는 매 순 일어나므로 획득 직후 첫 쯔모에 곧바로 값이 선다(그 뒤로는 no-op).
-    ctx.reaction(TILE_DRAWN, (_event, rc) => {
-      const left = usesLeft(rc.state, holder);
-      if (rc.state.augmentData[leftViewKey(holder)] === left) return;
-      rc.emit(augmentDataSet(leftViewKey(holder), left));
-    });
+    /*
+     * 남은 횟수는 **횟수형 증강 공용 채널**(`uses:alchemist`)로 낸다.
+     *
+     * 예전에는 이 증강만 쓰는 `alchemist:left`에 숫자를 직접 실었고, 동기화도 쯔모
+     * (`TILE_DRAWN`) 한 곳에만 걸려 있었다. 그래서 ① 남은 횟수를 읽는 자리(액티브 메뉴의
+     * "남은 횟수 없음" 안내·pill 게이지)가 전부 공용 채널만 보므로 연금술사만 빠졌고,
+     * ② 발동 직후에는 쯔모가 올 때까지 숫자가 그대로 서 있었다(2026-08-17 사용자 보고:
+     * "연금술사 남은 횟수 안 나옴"). `publishUsesLeft`는 모든 이벤트에서 값이 달라질
+     * 때만 발행하므로 두 문제가 함께 사라진다.
+     */
+    publishUsesLeft(ctx, (state) => ({ left: usesLeft(state, holder), total: MAX_USES }));
 
     ctx.holderTurnOptions((state) => {
       if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];

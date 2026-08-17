@@ -32,7 +32,6 @@ import type {
   GameState,
   PlayerId,
   TileId,
-  TileKind,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
@@ -53,35 +52,26 @@ const inRiichi = (state: GameState, h: PlayerId): boolean =>
 
 /**
  * 재료로 쓸 잡패 하나 — 가장 고립된 패(주변에 이어지는 손패가 가장 적은 패).
- * 쪼갤 대상(targetId)은 제외한다. 결정적(동점은 손패 순서 앞쪽).
- * (허장성세 `pickSacrifice`와 같은 계열 — 그쪽은 목표패 종류도 제외하지만
- *  여기서는 재료가 어떤 종류든 상관없으므로 대상 한 장만 뺀다.)
+ * 쪼갤 대상(targetId)은 제외한다. 결정적이다.
+ *
+ * 판정 규칙은 `botHelpers.isolatedIndex` **한 곳**에 있다 — 예전에는 같은 계산을 여기에
+ * 한 벌 더 적어 두었는데, 봇이 "쪼개면 손이 어떻게 되는가"를 셀 때 쓰는 쪽만 고치면
+ * 두 벌이 조용히 갈라진다. 순위는 ① 손패에 이어지는 정도 ② 자패 → 노두패 → 그 밖의 수패
+ * ③ 손패 순서 앞쪽이다.
  */
 function pickMaterial(
   state: GameState,
   holder: PlayerId,
   targetId: TileId,
 ): TileId | undefined {
-  const hand = handIdsOf(state, holder).filter((id) => id !== targetId);
-  if (hand.length === 0) return undefined;
-  const kinds = hand.map((id) => kindOf(state, id));
-  const usefulness = (i: number): number => {
-    const k = kinds[i] as TileKind;
-    let n = 0;
-    for (let j = 0; j < hand.length; j++) {
-      if (j === i) continue;
-      const o = kinds[j] as TileKind;
-      if (o.suit !== k.suit) continue;
-      if (o.rank === k.rank) n += 2; // 같은 패(또이쯔 씨앗)
-      else if (isNumberSuit(k) && Math.abs(o.rank - k.rank) <= 2) n += 1; // 슌쯔 이웃
-    }
-    return n;
-  };
-  let best = 0;
-  for (let i = 1; i < hand.length; i++) {
-    if (usefulness(i) < usefulness(best)) best = i;
-  }
-  return hand[best];
+  const hand = handIdsOf(state, holder);
+  const targetIdx = hand.indexOf(targetId);
+  if (hand.length <= 1) return undefined;
+  const idx = isolatedIndex(
+    hand.map((id) => kindOf(state, id)),
+    targetIdx,
+  );
+  return idx < 0 ? undefined : hand[idx];
 }
 
 /** 쪼갤 수 있는 손패인가 — 수패이면서 랭크 2 이상 */
