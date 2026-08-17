@@ -119,7 +119,7 @@ function bus(): GainNode | null {
     clip.curve = softClipCurve();
     clip.oversample = "none"; // 오버샘플링은 구현에 따라 리샘플러 지연이 붙는다 — 쓰지 않는다
     masterBus = ac.createGain();
-    masterBus.gain.value = sfxEnabled ? 0.9 : 0;
+    masterBus.gain.value = targetGain();
     masterBus.connect(comp).connect(clip).connect(ac.destination);
   }
   return masterBus;
@@ -136,15 +136,35 @@ export function resumeAudio(): void {
 }
 
 /** 효과음 전체 on/off — 마스터 게인 뮤트라 호출부는 손대지 않는다. */
+/**
+ * 효과음 음량 (0~1). 예전에는 on/off 뿐이었다 (감사 2026-08-17 §5-4) —
+ * BGM은 슬라이더가 둘인데 효과음만 이분법이라, "소리는 듣고 싶은데 이렇게 크진
+ * 않다"는 자리가 없었다. **마스터 게인은 이미 있었고 손잡이만 없던 것이다.**
+ */
+let sfxVolume = 1;
+
+/** 지금 걸려야 할 실제 게인 — 꺼져 있으면 0, 아니면 기준(0.9) × 사용자 음량. */
+function targetGain(): number {
+  return sfxEnabled ? 0.9 * sfxVolume : 0;
+}
+
+function rampMaster(): void {
+  if (masterBus === null || ctx === null) return;
+  // 짧은 램프로 뮤트/해제 — 순간 게인 점프의 "딱" 클릭 방지.
+  // 램프는 직전 스케줄 이벤트부터 시작하므로 현재값 앵커를 먼저 찍어야 실제로 램프가 된다.
+  masterBus.gain.cancelScheduledValues(ctx.currentTime);
+  masterBus.gain.setValueAtTime(masterBus.gain.value, ctx.currentTime);
+  masterBus.gain.linearRampToValueAtTime(targetGain(), ctx.currentTime + 0.05);
+}
+
 export function setSfxEnabled(v: boolean): void {
   sfxEnabled = v;
-  if (masterBus !== null && ctx !== null) {
-    // 짧은 램프로 뮤트/해제 — 순간 게인 점프의 "딱" 클릭 방지.
-    // 램프는 직전 스케줄 이벤트부터 시작하므로 현재값 앵커를 먼저 찍어야 실제로 램프가 된다.
-    masterBus.gain.cancelScheduledValues(ctx.currentTime);
-    masterBus.gain.setValueAtTime(masterBus.gain.value, ctx.currentTime);
-    masterBus.gain.linearRampToValueAtTime(v ? 0.9 : 0, ctx.currentTime + 0.05);
-  }
+  rampMaster();
+}
+
+export function setSfxVolume(v: number): void {
+  sfxVolume = Math.max(0, Math.min(1, v));
+  rampMaster();
 }
 
 /**
@@ -538,11 +558,6 @@ export const sfx = {
     nakiClack(1060, 0.22, 0.04);
   },
 
-  /** 치/펑/깡 공용 별칭 — 종류 구분이 없는 후로 알림용 */
-  call(): void {
-    sfx.callPon();
-  },
-
   /**
    * 증강 발동 — **큰 북을 한 번 치는 "둥"**. 묵직하고 짧다.
    *
@@ -615,11 +630,6 @@ export const sfx = {
       { freq: 1318, at: 0.58, dur: 0.28, type: "square", gain: 0.04 },
     ]);
     sparkle(0.62, { count: 6, base: 2400, spread: 1800, span: 0.22, gain: 0.05 });
-  },
-
-  /** 하위호환 별칭 */
-  win(): void {
-    sfx.ron();
   },
 
   /**

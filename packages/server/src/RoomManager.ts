@@ -3503,11 +3503,20 @@ export class RoomManager {
         // 게스트 판은 "이어하기"를 주지 않는다 — 대기실로 돌아가도 손님은 `startGame`을
         // 보낼 수 없다(화이트리스트). 대신 클라이언트가 체험 종료 화면에서
         // "한 판 더"(= 새 guestPlay)와 "계정 만들기"를 제시한다.
+        /*
+         * 기록을 **먼저** 남긴다 — 그래야 결과 화면에 "이 판 다시 보기"를 줄 수 있다
+         * (감사 2026-08-17 §5-10: 방금 진 판을 보려면 로비로 나가 목록에서 찾아야 했다).
+         * `recordGame` 은 리플레이 **경로만** 읽으므로 writer 를 닫기 전이어도 된다.
+         * 샌드박스·게스트 판은 애초에 기록하지 않으므로 id 도 없다.
+         */
+        const recordedId =
+          room.sandbox || room.guest ? undefined : this.recordGame(room, rankings);
         const msg: ServerMessage = {
           type: "gameOver",
           rankings,
           canContinue: !room.guest,
           reason: endReason,
+          ...(recordedId === undefined ? {} : { gameId: recordedId }),
         };
         for (const agent of room.agents) {
           if (agent instanceof HumanAgent) agent.notify(msg);
@@ -3540,7 +3549,7 @@ export class RoomManager {
             });
           return;
         }
-        this.recordGame(room, rankings);
+        // recordGame 은 위(메시지 조립 전)에서 이미 불렀다 — id 를 결과 화면에 실어야 해서다.
         this.recordAugmentResults(room, rankings, tracker);
         // ⚠ 방 정리는 통계 전송이 끝난 **뒤**에 한다 — finishStats는 room.agents를 훑어
         //    이번 판 통계를 보내는데, 먼저 정리하면 그 사이 좌석이 갈려(봇 교체·포기한
@@ -3612,10 +3621,10 @@ export class RoomManager {
   }
 
   /** 게임 결과를 SQLite 인덱스에 기록 (내 리플레이 목록의 근거) */
-  private recordGame(room: Room, rankings: RankingEntry[]): void {
-    if (this.db === undefined || room.writer === null) return;
+  private recordGame(room: Room, rankings: RankingEntry[]): number | undefined {
+    if (this.db === undefined || room.writer === null) return undefined;
     try {
-      this.db.recordGame({
+      return this.db.recordGame({
         code: room.code,
         replayPath: room.writer.path,
         startedAt: room.startedAt ?? new Date().toISOString(),
@@ -3635,6 +3644,7 @@ export class RoomManager {
       });
     } catch (err) {
       console.error("Failed to record game:", err);
+      return undefined;
     }
   }
 

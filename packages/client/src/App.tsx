@@ -71,6 +71,8 @@ import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMod
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
+import { askConfirm, ConfirmHost } from "./confirm.js";
+import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
 import { LESSONS, TUTORIAL_KEY, pickLesson } from "./tutorial.js";
 import type { CoachCtx, Lesson } from "./tutorial.js";
@@ -85,7 +87,7 @@ import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
-import { sfx, setSfxEnabled, riichiBgm, bgm, resumeAudio } from "./sfx.js";
+import { sfx, setSfxEnabled, setSfxVolume, riichiBgm, bgm, resumeAudio } from "./sfx.js";
 import {
   canStepUiZoom,
   getUiScale,
@@ -342,6 +344,26 @@ function yakumanName(count: number): string {
 /** 결과창 역 한 줄의 배수 표기 — 역만 역의 판수는 13×배수로 등록돼 있다 */
 function yakumanHanLabel(han: number): string {
   return yakumanName(Math.max(1, Math.round(han / 13)));
+}
+
+/**
+ * 액션 버튼에 쓸 이름.
+ *
+ * **왜 함수로 뺐나** (감사 2026-08-17 §5-18): 예전에는 부르는 자리에서
+ * `ACTION_LABEL[t] ?? catalog[t]?.name ?? t` 로 폴백을 이어 붙였다. 등록을 빠뜨리면
+ * `swap3_give` 같은 **내부 id가 조용히 버튼에 찍혔고**, 타입도 테스트도 그걸 막지
+ * 않았다. 실제 사용자에게는 "이게 무슨 버튼이지"로 보인다.
+ *
+ * 이제 폴백이 한 곳이라 개발 중에는 콘솔로 시끄럽게 알린다. 운영에서는 여전히
+ * id 라도 보여 준다 — 버튼이 사라지는 것보다는 낫다.
+ */
+function actionLabel(type: string, catalog: Record<string, AugmentCatalogEntry>): string {
+  const known = ACTION_LABEL[type] ?? catalog[type]?.name;
+  if (known !== undefined) return known;
+  if (import.meta.env.DEV) {
+    console.warn(`[ui] 액션 "${type}" 의 한글 이름이 없습니다 — ACTION_LABEL 에 추가하세요.`);
+  }
+  return type;
 }
 
 const ACTION_LABEL: Record<string, string> = {
@@ -1007,8 +1029,20 @@ interface Settings {
   doraFx: boolean;
   /** 화면 효과 — 화료·리치 때 화면 흔들림·플래시·파티클 연출. */
   screenFx: boolean;
+  /**
+   * 연출 속도 배수 (감사 2026-08-17 §5-15).
+   *
+   * 예전에는 화면 효과 on/off 뿐이라, 100판째 사람에게 매 국 같은 컷인이 통과의례가
+   * 됐다. Esc 건너뛰기는 있었지만 **매번 눌러야 하는** 것이지 "항상 빠르게"가 아니다.
+   * 1 = 그대로 · 0.6 = 빠르게 · 0.35 = 최소.
+   */
+  prodSpeed: number;
   /** 효과음 on/off. */
   sfxOn: boolean;
+  /** 효과음 음량 (0~1). sfxOn 과 곱해진다 — BGM 처럼 손잡이를 연다(감사 §5-4). */
+  sfxVolume: number;
+  /** 진동 — 폰에서 타패·화료를 손끝으로 알린다 (감사 §5-3). */
+  haptics: boolean;
   /** 용어 설명 — 증강 설명 안의 마작 용어에 밑줄을 긋고 풀이 툴팁을 띄운다. */
   glossaryTips: boolean;
   /** 리치 BGM 볼륨 (0~1). 0이면 재생하지 않음. 효과음(sfxOn)과 독립. */
@@ -1034,7 +1068,11 @@ const DEFAULT_SETTINGS: Settings = {
   rightClickTsumogiri: false,
   doraFx: true,
   screenFx: true,
+  prodSpeed: 1,
   sfxOn: true,
+  sfxVolume: 1,
+  // 진동 장치가 있는 기기에서만 기본으로 켠다 — 노트북에 죽은 스위치를 보여 주지 않는다.
+  haptics: true,
   glossaryTips: true,
   riichiBgmVolume: 0.5,
   bgmVolume: 0.35,
@@ -1347,9 +1385,11 @@ const PROD_TTL_NO_FX = 0.42;
 const BANNER_PRIORITY: Partial<Record<BannerTone, number>> = { riichi: PROD_PRIORITY_RIICHI };
 
 /** 이 연출이 실제로 화면에 머무는 시간 (화면 효과 설정 반영). */
-function effectiveProdTtl(ttl: number, screenFx: boolean): number {
-  if (screenFx) return ttl;
-  return Math.max(PROD_TTL_FLOOR_MS, Math.round(ttl * PROD_TTL_NO_FX));
+function effectiveProdTtl(ttl: number, screenFx: boolean, speed = 1): number {
+  // 화면 효과를 끈 것과 연출을 짧게 하는 것은 **다른 요구**다 — 전자는 멀미·광과민,
+  // 후자는 "이미 다 아는 연출"이다. 그래서 곱으로 겹친다.
+  const base = screenFx ? ttl : Math.round(ttl * PROD_TTL_NO_FX);
+  return Math.max(PROD_TTL_FLOOR_MS, Math.round(base * speed));
 }
 
 /** 지금 글자를 치고 있는 칸인가 — 단축키가 타이핑을 가로채지 않게 한다. */
@@ -1632,6 +1672,15 @@ interface Toast {
   text: string;
   tone: "error" | "info";
 }
+
+/**
+ * 동시에 띄울 수 있는 토스트 수 (감사 2026-08-17 §5-8).
+ *
+ * 예전에는 **슬롯이 하나**여서 뒤에 온 것이 앞엣것을 덮었다. 하필 겹치기 쉬운 조합이
+ * "시간 초과 — 패스로 자동 진행했습니다" + "지금 고를 수 있는 선택지가 아닙니다" 처럼
+ * **둘 다 알아야 하는** 통지들이라, 초읽기 국에서는 무엇이 일어났는지 절반만 봤다.
+ */
+const TOAST_MAX = 3;
 
 /** 자풍 인덱스 (0=東/친). 역행하는 세계(direction -1)도 반영 */
 function seatWindIdx(view: PlayerView, player: PlayerInfo): number {
@@ -2478,7 +2527,9 @@ export function App(): JSX.Element {
   const authedRef = useRef(false);
   /** 지금이 게스트 세션인가 — live ref (위와 같은 이유). 계정 전용 요청을 막는다. */
   const guestRef = useRef(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  /** 방금 끝난 판의 리플레이 id — 결과 화면의 "이 판 다시 보기"(감사 §5-10). */
+  const [lastGameId, setLastGameId] = useState<number | null>(null);
   const [joined, setJoined] = useState<JoinedMessage | null>(null);
   const [lobby, setLobby] = useState<LobbyMessage | null>(null);
   const [stats, setStats] = useState<StatsMessage | null>(null);
@@ -2623,6 +2674,22 @@ export function App(): JSX.Element {
   spectatingRef.current = spectating !== null;
 
   function updateSetting<K extends keyof Settings>(key: K, value: Settings[K]): void {
+    /*
+     * 소리·진동 설정은 **바꾸는 순간 들려 준다** (감사 2026-08-17 §5-16).
+     * 예전에는 효과음을 켜도 아무 소리가 안 나서 켜졌는지 알 수 없었고,
+     * 음량 슬라이더는 더더욱 — 귀로 맞추는 값인데 소리 없이 끌어야 했다.
+     * (끌 때는 내지 않는다. 끄겠다는 사람에게 소리로 답하는 건 앞뒤가 안 맞는다.)
+     */
+    if (key === "sfxOn" && value === true) {
+      setSfxEnabled(true);
+      sfx.pick();
+    } else if (key === "sfxVolume" && typeof value === "number") {
+      setSfxVolume(value);
+      if (value > 0) sfx.pick();
+    } else if (key === "haptics" && value === true) {
+      setHapticsEnabled(true);
+      haptics.declare();
+    }
     setSettings((prev) => {
       const next = { ...prev, [key]: value };
       try {
@@ -2801,7 +2868,7 @@ export function App(): JSX.Element {
 
   // 화면 효과를 끈 사람에게 파티클만 빼고 **기다림은 그대로** 물리는 건 말이 안 된다
   // ("효과 끄기"를 누른 이유가 대개 기다림이다). 밴드·글자는 남기되 체류를 절반 아래로 줄인다.
-  const prodTtl = effectiveProdTtl(activeProd?.ttl ?? 0, settings.screenFx);
+  const prodTtl = effectiveProdTtl(activeProd?.ttl ?? 0, settings.screenFx, settings.prodSpeed);
 
   // 현재 연출을 ttl 동안 띄우고, 뜨는 순간 효과음을(연출당 정확히 1회) 재생한 뒤 내린다.
   // 흔들림은 글자 슬램이 꽂히는 시점(임팩트)에 맞춰 지연 발동한다.
@@ -2837,7 +2904,7 @@ export function App(): JSX.Element {
       timers.push(
         window.setTimeout(
           () => setActiveProd(null),
-          effectiveProdTtl(prod.ttl, settingsRef.current.screenFx),
+          effectiveProdTtl(prod.ttl, settingsRef.current.screenFx, settingsRef.current.prodSpeed),
         ),
       );
     };
@@ -2866,6 +2933,8 @@ export function App(): JSX.Element {
   // 효과음 설정 → 마스터 게인 동기화 (호출부 무수정 뮤트)
   useEffect(() => {
     setSfxEnabled(settings.sfxOn);
+    setSfxVolume(settings.sfxVolume);
+    setHapticsEnabled(settings.haptics && hapticsSupported());
   }, [settings.sfxOn]);
 
   // 리치 BGM 볼륨 동기화 (효과음과 독립된 자체 볼륨)
@@ -2916,8 +2985,12 @@ export function App(): JSX.Element {
 
   function showToast(text: string, tone: Toast["tone"] = "error", ms = 3200): void {
     const key = ++toastSeq.current;
-    setToast({ key, text, tone });
-    window.setTimeout(() => setToast((cur) => (cur?.key === key ? null : cur)), ms);
+    // 같은 문장이 연달아 오면 새로 쌓지 않는다 — 재연결 실패처럼 반복되는 통지가
+    // 화면을 세 줄로 덮는 것을 막는다.
+    setToasts((cur) =>
+      cur[cur.length - 1]?.text === text ? cur : [...cur, { key, text, tone }].slice(-TOAST_MAX),
+    );
+    window.setTimeout(() => setToasts((cur) => cur.filter((t) => t.key !== key)), ms);
   }
 
   /**
@@ -2996,6 +3069,7 @@ export function App(): JSX.Element {
       );
       if (disc !== undefined) {
         sfx.discard();
+        haptics.discard();
         rememberOwnDiscard(disc.payload);
         send({ type: "action", actionType: disc.type, payload: disc.payload, seat });
         return true;
@@ -3838,6 +3912,7 @@ export function App(): JSX.Element {
       riichiBgm.stop(); // 게임 종료 — 혹시 남아 있을 BGM 확실히 정지
       riichiBgmArmed.current = false;
       setRankings(msg.rankings);
+      setLastGameId(msg.gameId ?? null);
       setGameEndReason(msg.reason ?? "normal");
       setCanContinue(msg.canContinue === true);
       setPrompts({});
@@ -4318,6 +4393,7 @@ export function App(): JSX.Element {
           () => {
             // 연출(리치 배너)이 화면에 뜨는 이 순간에 브금을 시작한다 — 연출 → 브금 순서.
             sfx.riichi();
+            haptics.declare();
             if (riichiBgmArmed.current) riichiBgm.start();
           },
           riichiKind !== undefined ? [riichiKind] : undefined,
@@ -4605,6 +4681,9 @@ export function App(): JSX.Element {
     // 소리를 가장 먼저 — 직렬화·전송·리렌더가 클릭과 소리 사이에 끼면 그만큼 늦게 들린다.
     if (DISCARD_LIKE.has(option.type)) {
       sfx.discard();
+      // 진동은 소리와 **짝이 아니라 별개다** — 폰에서 소리를 끄고 하는 사람에게
+      // 타패가 나갔다는 신호가 화면 말고 하나도 없었다(감사 §5-3).
+      haptics.discard();
       rememberOwnDiscard(option.payload);
     }
     // 어느 좌석의 결정인가 — 봇 좌석을 조종 중이면 그 좌석(view.playerId)으로 답한다.
@@ -4787,6 +4866,8 @@ export function App(): JSX.Element {
         </div>
       )}
       <EmoteFeed entries={emotes} />
+      {/* 되묻는 창 — window.confirm 과 달리 메인 스레드를 멈추지 않는다(감사 §5-9) */}
+      <ConfirmHost />
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
@@ -4917,9 +4998,14 @@ export function App(): JSX.Element {
           onRefreshFeedback={() => send({ type: "feedbackList" })}
           onUpdateFeedback={(id, patch) => send({ type: "feedbackUpdate", id, ...patch })}
           onDeleteFeedback={(id) => {
-            if (window.confirm("이 제보를 삭제할까요? 되돌릴 수 없습니다.")) {
-              send({ type: "feedbackDelete", id });
-            }
+            void askConfirm({
+              title: "이 제보를 삭제할까요?",
+              body: "되돌릴 수 없습니다.",
+              confirmLabel: "삭제",
+              danger: true,
+            }).then((ok) => {
+              if (ok) send({ type: "feedbackDelete", id });
+            });
           }}
           lastRoomCode={lastRoomCode}
           settings={settings}
@@ -4942,9 +5028,14 @@ export function App(): JSX.Element {
             send({ type: "practicePlay" });
           }}
           onDeleteUser={(userId, username) => {
-            if (window.confirm(`'${username}' 계정을 삭제할까요?\n계정과 누적 통계가 삭제되며 되돌릴 수 없습니다.`)) {
-              send({ type: "adminDeleteUser", userId });
-            }
+            void askConfirm({
+              title: `'${username}' 계정을 삭제할까요?`,
+              body: "계정과 누적 전적이 함께 지워집니다. 되돌릴 수 없습니다.",
+              confirmLabel: "계정 삭제",
+              danger: true,
+            }).then((ok) => {
+              if (ok) send({ type: "adminDeleteUser", userId });
+            });
           }}
           onRefresh={refreshHome}
           onLogout={logout}
@@ -5144,6 +5235,9 @@ export function App(): JSX.Element {
       ) : null}
       {rankings !== null ? (
         <GameOverModal
+          {...(lastGameId === null
+            ? {}
+            : { onOpenReplay: () => send({ type: "replayGet", gameId: lastGameId }) })}
           rankings={rankings}
           endReason={gameEndReason}
           stats={stats}
@@ -5153,9 +5247,19 @@ export function App(): JSX.Element {
             : {})}
         />
       ) : null}
-      {toast !== null ? (
-        <div key={toast.key} className={`toast toast-${toast.tone}`}>
-          {toast.text}
+      {/*
+        `role="status"`(= aria-live polite)로 연다 (감사 §5-8). 예전에는 아무 역할도
+        없어서, "시간 초과 — 패스로 자동 진행했습니다" 같은 **가장 중요한 통보**가
+        보조기술에 전혀 가지 않았다. 연출 텍스트는 sr-only live region으로 제대로
+        열어 뒀는데 정작 토스트만 빠져 있었다.
+      */}
+      {toasts.length > 0 ? (
+        <div className="toast-stack" role="status" aria-live="polite" aria-atomic="false">
+          {toasts.map((t) => (
+            <div key={t.key} className={`toast toast-${t.tone}`}>
+              {t.text}
+            </div>
+          ))}
         </div>
       ) : null}
       <PeekButton />
@@ -5539,9 +5643,21 @@ function AuthScreen(props: {
     safeStorage.getItem(SERVER_OVERRIDE_KEY) ?? "",
   );
   const [localError, setLocalError] = useState<string | null>(null);
+  /**
+   * 보내 놓고 답을 기다리는 중인가 (감사 §5-7).
+   *
+   * 로그인·가입은 서버 왕복이 있는데 버튼이 계속 눌렸다 — 느린 회선에서 두 번 누르면
+   * 인증 레이트리밋(연결당 12회/분)만 먹는다. 서버가 답하면(authOk 로 화면이 바뀌거나
+   * serverError 가 들어오거나) 풀린다.
+   */
+  const [sending, setSending] = useState(false);
+  useEffect(() => {
+    if (props.serverError !== null) setSending(false);
+  }, [props.serverError]);
   const disconnected = props.connection === "closed";
 
   function submit(): void {
+    if (sending) return;
     setLocalError(null);
     if (username.trim().length < 2) return setLocalError("닉네임은 2자 이상이어야 합니다");
     if (password.length < 1) return setLocalError("비밀번호를 입력하세요");
@@ -5562,6 +5678,7 @@ function AuthScreen(props: {
         return setLocalError("비밀번호 확인이 일치하지 않습니다");
       }
     }
+    setSending(true);
     if (tab === "login") props.onLogin(username.trim(), password);
     else props.onRegister(username.trim(), password, adminCode.trim(), signupCode.trim());
   }
@@ -5750,11 +5867,17 @@ function AuthScreen(props: {
           <button
             className="lobby-join"
             onClick={submit}
-            disabled={props.connection !== "connected"}
+            disabled={props.connection !== "connected" || sending}
           >
-            {props.connection === "connected"
-              ? tab === "login" ? "로그인" : "가입하고 시작"
-              : props.connection === "reconnecting" ? "재연결 중…" : "서버 연결 중…"}
+            {props.connection !== "connected"
+              ? props.connection === "reconnecting"
+                ? "재연결 중…"
+                : "서버 연결 중…"
+              : sending
+                ? "확인 중…"
+                : tab === "login"
+                  ? "로그인"
+                  : "가입하고 시작"}
           </button>
         )}
 
@@ -6439,7 +6562,7 @@ function TierScreen(props: {
           <button className={!flat ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setFlat(false)}>티어별</button>
           <button className={flat ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setFlat(true)}>전체 표</button>
         </div>
-        <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
       </header>
 
       <div className="codex-toolbar">
@@ -6645,7 +6768,7 @@ function CodexScreen(props: {
           <button className={tab === "codex" ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setTab("codex")}>도감</button>
           <button className={tab === "stats" ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setTab("stats")}>전체 통계</button>
         </div>
-        <button className="home-refresh" onClick={props.onRefresh} title="통계 새로 고침">↻</button>
+        <RefreshButton onRefresh={props.onRefresh} title="통계 새로 고침" />
       </header>
 
       <div className="codex-toolbar">
@@ -7662,7 +7785,16 @@ function FeedbackBoard(props: {
     }
   }, [props.entries]);
 
-  const canSubmit = title.trim() !== "" && body.trim() !== "";
+  /*
+   * 제출 중에는 다시 눌리지 않는다 (감사 2026-08-17 §5-7).
+   *
+   * 액션 제출은 "전송에 성공했을 때만 프롬프트를 내린다"는 규율을 지키는데,
+   * **로비·인증·제보에는 그 규율이 오지 않았다.** 목록이 돌아올 때까지 몇 백 ms가
+   * 비어 있고 버튼은 그대로 눌려서, 느린 회선에서 같은 제보가 두 번 올라갔다.
+   * `submittedRef` 가 이미 "성공하면 비운다"를 알고 있으므로 그 값을 그대로 쓴다.
+   */
+  const sending = submittedRef.current !== null;
+  const canSubmit = title.trim() !== "" && body.trim() !== "" && !sending;
 
   function submit(): void {
     if (!canSubmit) return;
@@ -7674,7 +7806,7 @@ function FeedbackBoard(props: {
     <section className="home-card home-feedback">
       <div className="home-card-head">
         <h2>📮 제보 게시판</h2>
-        <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
       </div>
       <p className="home-hint">
         버그를 발견했거나 새 증강 아이디어가 떠올랐다면 남겨 주세요.
@@ -7717,7 +7849,7 @@ function FeedbackBoard(props: {
         <div className="fb-form-foot">
           <span className="codex-dim">{body.length} / 4000</span>
           <button className="home-create fb-submit" disabled={!canSubmit} onClick={submit}>
-            제출
+            {sending ? "올리는 중…" : "제출"}
           </button>
         </div>
       </div>
@@ -7823,6 +7955,41 @@ function FeedbackBoard(props: {
  * (감사 2026-08-17 §5-1). 관리자 티어표만 유일하게 이 구분을 하고 있었다 —
  * 패턴은 이미 있었고 나머지에 적용만 안 됐다.
  */
+/**
+ * 새로 고침 단추 — 누른 것이 **눌렸다는 표시**를 준다 (감사 2026-08-17 §5-6).
+ *
+ * 예전에는 아무 상태도 없었다. `refreshHome()` 은 한 번에 네 요청을 보내는데 화면은
+ * 그대로라, 사람들이 반응이 없다고 여겨 계속 눌렀다 — 그 사이 요청만 배로 늘었다.
+ *
+ * ⚠ 이 회전은 **"완료"가 아니라 "접수"의 표시다.** 요청별 완료 신호를 버튼까지
+ * 끌어오려면 아홉 자리에 각각 배선을 해야 하는데, 그 복잡도가 얻는 것보다 크다.
+ * 대신 짧게 돌고 그동안 다시 눌리지 않게 잠근다 — 연타를 막는 것이 실제 목적이다.
+ */
+function RefreshButton(props: { onRefresh: () => void; title?: string }): JSX.Element {
+  const [busy, setBusy] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, []);
+  return (
+    <button
+      className={busy ? "home-refresh home-refresh-busy" : "home-refresh"}
+      disabled={busy}
+      onClick={() => {
+        props.onRefresh();
+        setBusy(true);
+        timer.current = window.setTimeout(() => setBusy(false), 900);
+      }}
+      title={props.title ?? "새로 고침"}
+      aria-label={props.title ?? "새로 고침"}
+    >
+      ↻
+    </button>
+  );
+}
+
 function ListCard<T>(props: {
   items: T[] | null;
   /** 정말로 비었을 때의 문장 */
@@ -7903,7 +8070,7 @@ function HomeScreen(props: {
         <h2>{props.auth.isAdmin ? "모든 리플레이" : "내 리플레이"}
           {props.auth.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
         </h2>
-        <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
       </div>
       <ListCard
         items={props.replays}
@@ -8012,7 +8179,7 @@ function HomeScreen(props: {
         <section className="home-card">
           <div className="home-card-head">
             <h2>내 통계</h2>
-            <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+            <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
           </div>
           {career !== null ? (
             <StatsGrid s={career.stats} />
@@ -8061,7 +8228,7 @@ function HomeScreen(props: {
               <button className="home-codex-btn" onClick={props.onOpenCodex}>
                 📖 증강 도감
               </button>
-              <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+              <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
             </div>
           </div>
           <PersonalAugmentStats stats={career?.stats ?? null} catalog={props.catalog} />
@@ -8087,7 +8254,7 @@ function HomeScreen(props: {
         <section className="home-card home-leaderboard">
           <div className="home-card-head">
             <h2>전체 플레이어 통계<span className="home-admin-badge">관리자</span></h2>
-            <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+            <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
           </div>
           <ListCard items={props.leaderboard} empty="아직 집계된 플레이어가 없습니다.">
             {(rows) => (
@@ -8133,7 +8300,7 @@ function HomeScreen(props: {
         <section className="home-card home-leaderboard">
           <div className="home-card-head">
             <h2>증강 메타</h2>
-            <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
+            <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
           </div>
           <AugmentMeta leaderboard={props.leaderboard} catalog={props.catalog} />
         </section>
@@ -8145,7 +8312,7 @@ function HomeScreen(props: {
           <section className="home-card home-admin">
             <div className="home-card-head">
               <h2>진행 중인 게임 <span className="home-admin-badge">관리자</span></h2>
-              <button className="home-refresh" onClick={props.onRefreshLive} title="새로 고침">↻</button>
+              <RefreshButton onRefresh={props.onRefreshLive} title="새로 고침" />
             </div>
             <ListCard items={props.liveRooms} empty="지금 진행 중인 게임이 없습니다.">
               {(rows) => (
@@ -8211,7 +8378,7 @@ function HomeScreen(props: {
           <section className="home-card home-admin home-users">
             <div className="home-card-head">
               <h2>플레이어 관리 <span className="home-admin-badge">관리자</span></h2>
-              <button className="home-refresh" onClick={props.onRefreshUsers} title="새로 고침">↻</button>
+              <RefreshButton onRefresh={props.onRefreshUsers} title="새로 고침" />
             </div>
             <ListCard items={props.adminUsers} empty="등록된 계정이 없습니다.">
               {(rows) => (
@@ -8557,19 +8724,28 @@ function WaitingRoom(props: {
                       <span className="badge badge-wait">대기중</span>
                     )}
                     {isHost && p.isBot ? (
-                      <button className="seat-kick" onClick={() => props.onRemoveBot(p.playerId)} title="봇 제거">✕</button>
+                      <button
+                        className="seat-kick"
+                        onClick={() => {
+                          // 자리에서 봇이 사라지는 것 말고는 아무 신호가 없던 자리다.
+                          sfx.slide();
+                          props.onRemoveBot(p.playerId);
+                        }}
+                        title="봇 제거"
+                      >✕</button>
                     ) : isHost && !p.isHost ? (
                       // 강퇴는 되돌릴 수 없다(그 사람은 이 방에 다시 못 들어온다) — 한 번 묻는다
                       <button
                         className="seat-kick"
                         onClick={() => {
-                          if (
-                            window.confirm(
-                              `'${p.nickname}' 님을 방에서 내보낼까요?\n이 방에는 다시 들어올 수 없습니다.`,
-                            )
-                          ) {
-                            props.onKick(p.playerId);
-                          }
+                          void askConfirm({
+                            title: `'${p.nickname}' 님을 내보낼까요?`,
+                            body: "이 방에는 다시 들어올 수 없습니다.",
+                            confirmLabel: "내보내기",
+                            danger: true,
+                          }).then((ok) => {
+                            if (ok) props.onKick(p.playerId);
+                          });
                         }}
                         title="강퇴"
                       >✕</button>
@@ -8995,14 +9171,24 @@ const GameTable = memo(function GameTable(props: {
             return;
           }
           if (soloWithBots) {
-            if (window.confirm("게임을 무효 처리하고 나갈까요?\n사람이 나뿐이라 판은 그 자리에서 무효가 됩니다.")) {
-              (props.onAbortLeave ?? props.onLeave)();
-            }
+            void askConfirm({
+              title: "게임을 무효 처리하고 나갈까요?",
+              body: "사람이 나뿐이라 판은 그 자리에서 무효가 됩니다. 기록도 남지 않습니다.",
+              confirmLabel: "무효 처리하고 나가기",
+              danger: true,
+            }).then((ok) => {
+              if (ok) (props.onAbortLeave ?? props.onLeave)();
+            });
             return;
           }
-          if (window.confirm("게임을 포기하고 나갈까요?\n남은 판은 자동으로 진행되며 다시 들어올 수 없습니다.")) {
-            props.onLeave();
-          }
+          void askConfirm({
+            title: "게임을 포기하고 나갈까요?",
+            body: "남은 판은 자동으로 진행되고, 그 대국에는 다시 들어올 수 없습니다. 순위와 전적은 그대로 기록됩니다.",
+            confirmLabel: "포기하고 나가기",
+            danger: true,
+          }).then((ok) => {
+            if (ok) props.onLeave();
+          });
         }}
         title="나가기"
       >✕</button>
@@ -9017,7 +9203,7 @@ const GameTable = memo(function GameTable(props: {
         />
       ) : null}
       {props.spectator !== true ? (
-        <QuickToggles settings={props.settings} onSetting={props.onSetting} />
+        <QuickToggles settings={props.settings} onSetting={props.onSetting} {...(props.onToast === undefined ? {} : { onToast: props.onToast })} />
       ) : null}
       {props.spectator !== true && props.onEmote !== undefined ? (
         <EmoteBar onSend={props.onEmote} />
@@ -9089,7 +9275,7 @@ const GameTable = memo(function GameTable(props: {
         {...(props.spectator !== true
           ? {
               quickToggles: (
-                <QuickToggles settings={props.settings} onSetting={props.onSetting} inline />
+                <QuickToggles settings={props.settings} onSetting={props.onSetting} inline {...(props.onToast === undefined ? {} : { onToast: props.onToast })} />
               ),
             }
           : {})}
@@ -9346,6 +9532,8 @@ function QuickToggles(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   inline?: boolean;
+  /** 켠 순간 무슨 일이 일어나는지 알린다 (자동화료·자동버림 전용) */
+  onToast?: (text: string) => void;
 }): JSX.Element {
   const items: { key: "autoSort" | "autoWin" | "autoNoMeld" | "autoDiscard"; label: string; desc: string }[] = [
     { key: "autoSort", label: "자동정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
@@ -9363,9 +9551,26 @@ function QuickToggles(props: {
             className={`qt-item${active ? " qt-on" : ""}`}
             aria-pressed={active}
             onClick={() => {
-              props.onSetting(it.key, !active);
+              const next = !active;
+              props.onSetting(it.key, next);
+              /*
+               * 되돌릴 수 없는 자동 진행 둘은 **켠 순간 말해 준다** (감사 §5-14).
+               *
+               * 되묻는 모달은 일부러 쓰지 않는다 — 2026-08-12에 사용자 지시로 없앴다.
+               * 판이 도는 중에 한 손으로 켜고 끄는 자리인데 모달이 판을 가로막아
+               * 정작 그 순간의 결정을 놓쳤기 때문이다. 문제는 "되묻지 않는 것"이
+               * 아니라 **켜진 줄 모르는 것**이었으므로, 막지 않고 알리기만 한다.
+               */
+              if (next && (it.key === "autoDiscard" || it.key === "autoWin")) {
+                props.onToast?.(
+                  it.key === "autoDiscard"
+                    ? "자동버림 켜짐 — 쯔모한 패가 그대로 나갑니다"
+                    : "자동화료 켜짐 — 화료 가능해지면 바로 냅니다",
+                );
+              }
             }}
             title={`${it.label} — ${it.desc} (지금 ${active ? "켜짐" : "꺼짐"})`}
+            aria-label={`${it.label} ${active ? "켜짐" : "꺼짐"} — ${it.desc}`}
           >
             <span className="qt-dot" />
             <span className="qt-label">{it.label}</span>
@@ -9536,6 +9741,16 @@ function SettingsPanel(props: {
     { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝입니다 (나만의 도라는 보랏금)" },
     { key: "screenFx", label: "화면 효과", desc: "화료·리치 때 화면 흔들림·번쩍임·파티클 (멀미·광과민이면 끄세요)" },
     { key: "sfxOn", label: "효과음", desc: "모든 게임 효과음을 켭니다" },
+    // 진동 장치가 없는 기기에서는 아예 보여 주지 않는다 — 죽은 스위치를 두지 않는다.
+    ...(hapticsSupported()
+      ? [
+          {
+            key: "haptics" as const,
+            label: "진동",
+            desc: "패를 버리거나 선언할 때 짧게 진동합니다. 효과음과 별개라 소리를 꺼도 남습니다 (움직임 줄이기를 켜 두면 진동도 함께 꺼집니다)",
+          },
+        ]
+      : []),
     {
       key: "glossaryTips",
       label: "용어 설명",
@@ -9607,6 +9822,60 @@ function SettingsPanel(props: {
             </button>
           </label>
         ))}
+        {/* 연출 속도 — on/off 사이의 자리 (감사 §5-15). 화면 효과를 끄는 것과는
+            다른 요구다: 저쪽은 멀미·광과민이고 이쪽은 "이미 다 아는 연출"이다. */}
+        <label className="settings-row settings-row-slider">
+          <div className="settings-text">
+            <span className="settings-label">연출 속도</span>
+            <span className="settings-desc">
+              화료·리치·증강 컷인이 화면에 머무는 시간입니다. 짧게 둘수록 판이 빨리
+              넘어갑니다 (Esc 로 그때그때 건너뛰는 것은 그대로 됩니다).
+            </span>
+          </div>
+          <div className="settings-seg" role="group" aria-label="연출 속도">
+            {([
+              { v: 1, label: "보통" },
+              { v: 0.6, label: "빠르게" },
+              { v: 0.35, label: "최소" },
+            ] as const).map((o) => (
+              <button
+                key={o.v}
+                className={
+                  Math.abs(props.settings.prodSpeed - o.v) < 0.01
+                    ? "settings-seg-btn on"
+                    : "settings-seg-btn"
+                }
+                aria-pressed={Math.abs(props.settings.prodSpeed - o.v) < 0.01}
+                onClick={() => props.onSetting("prodSpeed", o.v)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </label>
+        {/* 효과음 음량 — 마스터 게인은 이미 있었고 손잡이만 없었다 (감사 §5-4).
+            BGM은 슬라이더가 둘인데 효과음만 on/off 뿐이라, "소리는 듣고 싶은데
+            이렇게 크진 않다"는 자리가 없었다. */}
+        <label className="settings-row settings-row-slider">
+          <div className="settings-text">
+            <span className="settings-label">효과음 음량</span>
+            <span className="settings-desc">
+              패를 놓는 소리·선언·화료 등 게임 효과음의 음량입니다. 위의 "효과음"을 끄면
+              이 값과 무관하게 들리지 않습니다.
+            </span>
+          </div>
+          <div className="settings-slider">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(props.settings.sfxVolume * 100)}
+              onChange={(e) => props.onSetting("sfxVolume", Number(e.target.value) / 100)}
+              aria-label="효과음 음량"
+            />
+            <span className="settings-slider-val">{Math.round(props.settings.sfxVolume * 100)}</span>
+          </div>
+        </label>
         <label className="settings-row settings-row-slider">
           <div className="settings-text">
             <span className="settings-label">배경음악 음량</span>
@@ -15832,7 +16101,7 @@ function ActionBar(props: {
           })}
           {buttons.map((o, i) => {
             const label =
-              o.type === "win" ? (isMyTurn ? "쯔모" : "론") : (ACTION_LABEL[o.type] ?? props.catalog[o.type]?.name ?? o.type);
+              o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
             const tone =
               o.type === "win"
                 ? "act-win"
@@ -16985,6 +17254,7 @@ function GameOverModal({
   stats,
   onClose,
   onContinue,
+  onOpenReplay,
   sandbox = false,
 }: {
   rankings: RankingEntry[];
@@ -16994,6 +17264,12 @@ function GameOverModal({
   onClose: () => void;
   /** 방이 살아 있을 때만 — 같은 멤버 그대로 다음 판으로 (증강 테스트는 즉시 새 판) */
   onContinue?: () => void;
+  /**
+   * 방금 끝난 이 판을 그 자리에서 다시 보기 (감사 §5-10).
+   * 예전에는 로비로 나가 목록에서 찾아야 했다 — 방금 진 판이 가장 보고 싶은 판인데.
+   * 기록을 남기지 않는 판(증강 테스트·게스트)에는 없다.
+   */
+  onOpenReplay?: () => void;
   sandbox?: boolean;
 }): JSX.Element {
   const [tab, setTab] = useState<"rank" | "stats">("rank");
@@ -17091,6 +17367,11 @@ function GameOverModal({
           {onContinue !== undefined ? (
             <button className="lobby-join" onClick={onContinue}>
               {sandbox ? "새 판 시작" : "이어하기 (방 유지)"}
+            </button>
+          ) : null}
+          {onOpenReplay !== undefined ? (
+            <button className="lobby-join go-replay" onClick={onOpenReplay}>
+              이 판 다시 보기
             </button>
           ) : null}
           <button
@@ -17200,6 +17481,45 @@ function ReplayViewer(props: {
     [replay, idx, mod],
   );
 
+  /*
+   * 키보드 조작 (감사 2026-08-17 §5-12).
+   *
+   * 되짚어 보는 화면인데 손이 마우스에 묶여 있었다 — 한 수씩 앞뒤로 가는 일을
+   * 수백 번 하는 자리라 여기가 키보드가 가장 필요한 화면이다. 영상 플레이어의
+   * 관습을 그대로 쓴다: Space 재생/정지, ←/→ 한 수, Shift+←/→ 열 수, Home/End 처음·끝.
+   *
+   * 글자를 치는 칸에서는 듣지 않는다 — 리플레이 화면에 입력칸이 생겨도 안전하게.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const el = e.target as HTMLElement | null;
+      if (el !== null && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
+      const step = e.shiftKey ? 10 : 1;
+      if (e.key === " ") {
+        e.preventDefault();
+        setPlaying((v) => !v);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setPlaying(false);
+        setIdx((c) => Math.min(total, c + step));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setPlaying(false);
+        setIdx((c) => Math.max(0, c - step));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setPlaying(false);
+        setIdx(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setPlaying(false);
+        setIdx(total);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [total]);
+
   if (replay === null || view === null) {
     return (
       <div className="lobby">
@@ -17258,7 +17578,19 @@ function ReplayViewer(props: {
           value={idx}
           onChange={(e) => { setIdx(Number(e.target.value)); setPlaying(false); }}
         />
-        <span className="replayer-pos">{idx} / {total}</span>
+        {/*
+          "137 / 842" 는 **사람에게 뜻이 없는 수**다 (감사 §5-11). 어느 국 어디쯤인지가
+          알고 싶은 것이지 배열 인덱스가 아니다. 국 표시는 이미 화면 위에 있으므로
+          여기서는 **그 국 안에서 몇 번째 사건인가**를 보여 준다. 전체 대비 위치는
+          바로 왼쪽 슬라이더가 이미 말해 준다.
+        */}
+        <span
+          className="replayer-pos"
+          title={`전체 ${idx} / ${total}`}
+          aria-label={`${roundLabel} ${idx - (replay.roundStarts[currentRound - 1] ?? 0)}번째 사건, 전체 ${idx} / ${total}`}
+        >
+          {roundLabel} · {idx - (replay.roundStarts[currentRound - 1] ?? 0)}
+        </span>
         <button
           className="rp-btn rp-speed"
           onClick={() => setSpeed((s) => (s + 1) % REPLAY_SPEEDS.length)}

@@ -47,7 +47,13 @@ describe("연출 큐 배선", () => {
 
   it("화면에 쓰는 시간과 내리는 타이머가 같은 값을 본다", () => {
     // 둘이 갈리면 CSS 연출이 끝나기 전에 사라지거나, 끝난 뒤에도 남는다.
-    expect(APP_CODE).toContain("effectiveProdTtl(activeProd?.ttl ?? 0, settings.screenFx)");
-    expect(APP_CODE).toContain("effectiveProdTtl(prod.ttl, settingsRef.current.screenFx)");
+    // 인자가 늘어도(2026-08-18: 연출 속도 배수) 검사의 뜻은 같다 — 두 자리가
+    // **같은 함수에 같은 설정을 넣는가**다.
+    expect(APP_CODE).toMatch(/effectiveProdTtl\(activeProd\?\.ttl \?\? 0, settings\.screenFx/);
+    expect(APP_CODE).toMatch(/effectiveProdTtl\(prod\.ttl, settingsRef\.current\.screenFx/);
+    // 그리고 둘이 **같은 배수**를 본다 — 갈리면 화면과 타이머가 어긋난다.
+    const a = /effectiveProdTtl\(activeProd\?\.ttl \?\? 0, settings\.screenFx, ([\w.]+)\)/.exec(APP_CODE)?.[1];
+    const b = /effectiveProdTtl\(prod\.ttl, settingsRef\.current\.screenFx, ([\w.]+)\)/.exec(APP_CODE)?.[1];
+    expect(a?.replace("settings.", "")).toBe(b?.replace("settingsRef.current.", ""));
   });
 });
