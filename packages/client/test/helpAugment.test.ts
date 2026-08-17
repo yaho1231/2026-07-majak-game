@@ -20,11 +20,17 @@ import { contentAugments } from "@majak/content";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(join(HERE, "../src/App.tsx"), "utf8");
 
-/** `const HELP_AUGMENT` 선언 본문만 잘라 낸다. */
+/**
+ * 증강 도움말 문안 본문만 잘라 낸다.
+ *
+ * 2026-08-18에 `const HELP_AUGMENT` 배열이 `helpAugmentSections(kinds)` 함수가 됐다 —
+ * 종수를 `contentAugments.length`로 세던 한 줄 때문에 증강 구현 전체가 클라이언트
+ * 번들에 딸려 들어왔기 때문이다(감사 §7-1). 문안 자체는 그대로다.
+ */
 function helpAugmentSource(): string {
-  const start = SRC.indexOf("const HELP_AUGMENT");
-  expect(start).toBeGreaterThan(0);
-  const end = SRC.indexOf("\n];", start);
+  const start = SRC.indexOf("function helpAugmentSections");
+  expect(start, "도움말 문안 선언을 못 찾았다").toBeGreaterThan(0);
+  const end = SRC.indexOf("\n  ];\n}", start);
   expect(end).toBeGreaterThan(start);
   return SRC.slice(start, end);
 }
@@ -32,14 +38,20 @@ function helpAugmentSource(): string {
 describe("증강 도움말 문안", () => {
   const body = helpAugmentSource();
 
-  it("종수를 문장에 박지 않고 카탈로그에서 센다", () => {
+  it("종수를 문장에 박지 않고 넘겨받은 값을 쓴다", () => {
     // 옛 문안의 실패 방식: "104가지"가 코드와 무관하게 굳어 있었다.
-    expect(body).toContain("AUGMENT_KINDS");
+    expect(body).toContain("${kinds}종");
     expect(body).not.toMatch(/\d+\s*(종|가지)/);
   });
 
-  it("AUGMENT_KINDS는 실제 카탈로그 수다", () => {
-    expect(SRC).toContain("const AUGMENT_KINDS = contentAugments.length;");
+  it("종수의 출처는 서버 카탈로그다 (클라가 직접 세지 않는다)", () => {
+    // 직접 세려면 @majak/content 를 들여와야 하고, 그러면 증강 117개가 첫 화면
+    // 번들로 돌아온다. 서버는 카탈로그와 **같은 출처**로 이 값을 만든다.
+    expect(SRC).toContain("serverInfo?.augmentKinds");
+    // 주석은 뺀다 — 왜 그렇게 했는지 적어 둔 설명까지 걸리면 기록을 못 남긴다.
+    const withoutComments = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    expect(withoutComments).not.toContain("contentAugments.length");
+    // 실제로 셀 것이 있기는 한지 — 이 테스트 파일에서는 들여와도 된다(번들 밖).
     expect(contentAugments.length).toBeGreaterThan(0);
   });
 

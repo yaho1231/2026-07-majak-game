@@ -960,6 +960,9 @@ export class RoomManager {
       type: "serverInfo",
       signupGate: this.signupCode !== "",
       guestPlay: true,
+      // 도움말이 "N종"을 말할 때 쓴다 — 클라가 직접 세면 증강 구현 전체가
+      // 번들에 딸려 들어온다(감사 §7-1). 카탈로그와 같은 출처라 어긋나지 않는다.
+      augmentKinds: this.augmentCatalog.length,
     });
 
     ws.on("message", (data) => {

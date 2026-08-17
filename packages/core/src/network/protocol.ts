@@ -797,6 +797,15 @@ export interface ServerInfoMessage {
   signupGate: boolean;
   /** 게스트 체험을 받는 서버인가. */
   guestPlay: boolean;
+  /**
+   * 이 서버가 굴리는 증강 종수.
+   *
+   * 도움말이 "N종"을 말할 때 쓴다. 클라이언트가 직접 세지 않는 이유는 그 한 줄
+   * (`contentAugments.length`) 때문에 증강 구현 전체가 번들에 딸려 들어왔기
+   * 때문이다(감사 §7-1). **인증 전에도** 오는 값이라 랜딩에서 규칙을 펼친
+   * 사람에게도 올바른 숫자가 보인다.
+   */
+  augmentKinds: number;
 }
 
 // ── 대기실(로비) 상태 (14) ──

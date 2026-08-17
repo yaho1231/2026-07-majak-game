@@ -67,12 +67,10 @@ import {
   standardKinds,
   winningKinds,
 } from "@majak/core";
-import { contentAugments } from "@majak/content";
 import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
-import { rebuildReplay, replaySettlements, replayViewAt } from "./replayRebuild.js";
 import { safeStorage } from "./storage.js";
 import { remainingCounter } from "./waitCounts.js";
 import {
@@ -3149,6 +3147,16 @@ export function App(): JSX.Element {
    *   계속하기"로 나가는 사람에게는 가입 탭을 보여 준다 — 그게 그 사람이 방금 누른
    *   버튼의 뜻이다.
    */
+  /**
+   * 증강 종수 — 카탈로그가 왔으면 그걸 세고, 아직이면 serverInfo가 알려 준 값을 쓴다.
+   *
+   * serverInfo는 **인증 전에** 오므로 랜딩에서 규칙을 펼친 사람에게도 올바른 숫자가
+   * 보인다. 클라이언트가 직접 세지 않는 이유는 helpAugmentSections 위 주석 참고.
+   */
+  const augmentKinds = Object.keys(catalog).length > 0
+    ? Object.keys(catalog).length
+    : (serverInfo?.augmentKinds ?? 0);
+
   /** 정형구 보내기 — 목록에 있는 id만 서버가 받는다(검증은 서버 몫). */
   function sendEmote(id: string): void {
     send({ type: "emote", id });
@@ -4754,6 +4762,7 @@ export function App(): JSX.Element {
       {helpOpen ? (
         <div className="screen-overlay">
           <HelpScreen
+            augmentKinds={augmentKinds}
             backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
             onOpenCodex={() => setCodexOpen(true)}
             onClose={() => setHelpOpen(false)}
@@ -6719,17 +6728,21 @@ const HELP_BASICS: HelpSection[] = [
 // 풀어 쓰지 않는다. 규칙 설명은 basics 탭이 맡는다.
 //
 // 수치를 문장에 박아 두지 않는다 — 예전 문안이 "총 2개"·"104종"에 멈춰 있었다.
-// 종수는 카탈로그에서 직접 세고(AUGMENT_KINDS), 획득 시점은 HanchanController의
-// draftSchedules(반장전 gameStart·eastThird·southEntry·southThird / 동풍전
-// gameStart·eastThird·eastFourth)와 같은 값을 쓴다.
-const AUGMENT_KINDS = contentAugments.length;
-
-const HELP_AUGMENT: HelpSection[] = [
+// 종수는 **서버가 보내 준 카탈로그에서** 센다. 예전에는 `contentAugments.length`로
+// 셌는데, 그 한 줄 때문에 증강 구현 117개(1.2MB)와 그 전이 의존(HanchanController·
+// standardActions 등 **서버 전용 엔진**)이 통째로 클라이언트 번들에 딸려 들어왔다.
+// 트리셰이킹도 안 됐다 — defineAugment가 검증 실패 시 throw 하는 부수효과 함수라
+// 롤업이 각 모듈을 순수로 판정하지 못한다 (감사 2026-08-17 §7-1).
+//
+// 획득 시점은 HanchanController의 draftSchedules(반장전 gameStart·eastThird·
+// southEntry·southThird / 동풍전 gameStart·eastThird·eastFourth)와 같은 값을 쓴다.
+function helpAugmentSections(kinds: number): HelpSection[] {
+  return [
   {
     title: "증강",
     paras: [
       "타점 보너스가 아니라 규칙을 바꾸는 카드입니다. 후리텐인 채로 론하고, 백을 만능패로 쓰고, 남의 버림패를 손으로 가져오고, 리치를 건 뒤에 손패를 바꿉니다.",
-      `${AUGMENT_KINDS}종이 점수·손패 조작·화료형·정보·리치·수비·후로·교란 계열로 나뉩니다.`,
+      `${kinds}종이 점수·손패 조작·화료형·정보·리치·수비·후로·교란 계열로 나뉩니다.`,
     ],
     figure: [
       {
@@ -6768,10 +6781,11 @@ const HELP_AUGMENT: HelpSection[] = [
     title: "상대의 증강은 전부 공개된다",
     paras: [
       "누가 무엇을 들고 있는지 이름표 옆에 그대로 보입니다. 감춰지는 정보가 아닙니다.",
-      `게임 중 아무 때나 📖 도감에서 ${AUGMENT_KINDS}종 전체를 찾아볼 수 있습니다.`,
+      `게임 중 아무 때나 📖 도감에서 ${kinds}종 전체를 찾아볼 수 있습니다.`,
     ],
   },
-];
+  ];
+}
 
 /**
  * 액션 바 견본 — 게임 화면 아래에 뜨는 버튼 줄을 **같은 클래스로** 그대로 그린다.
@@ -7134,6 +7148,11 @@ function TermsTab(): JSX.Element {
 }
 
 function HelpScreen(props: {
+  /**
+   * 증강 종수 — **서버 카탈로그에서 센 값**을 받는다.
+   * 여기서 직접 세지 않는 이유는 helpAugmentSections 위 주석 참고(번들 §7-1).
+   */
+  augmentKinds: number;
   /** 왼쪽 위 되돌아가기 버튼 문구 (기본 "← 닫기"). */
   backLabel?: string;
   /** "증강이란" 탭에서 도감으로 건너가기. 도감은 이 화면 **위에** 뜨고, 닫으면 여기로 돌아온다. */
@@ -7141,7 +7160,8 @@ function HelpScreen(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<HelpTab>("basics");
-  const sections = tab === "basics" ? HELP_BASICS : HELP_AUGMENT;
+  const augSections = useMemo(() => helpAugmentSections(props.augmentKinds), [props.augmentKinds]);
+  const sections = tab === "basics" ? HELP_BASICS : augSections;
   const lead = HELP_LEAD[tab];
 
   return (
@@ -7200,7 +7220,7 @@ function HelpScreen(props: {
             여기서 도감으로 바로 건너뛴다 — 홈까지 나갔다 다시 들어올 이유가 없다. */}
         {tab === "augment" && props.onOpenCodex !== undefined ? (
           <button className="home-codex-cta" onClick={props.onOpenCodex}>
-            📖 증강 도감 열기 — {AUGMENT_KINDS}종 전체 상세 설명
+            📖 증강 도감 열기 — {props.augmentKinds}종 전체 상세 설명
           </button>
         ) : null}
       </main>
@@ -16623,6 +16643,25 @@ const REPLAY_SPEEDS = [
   { label: "4×", ms: 70 },
 ] as const;
 
+/**
+ * 리플레이 재구성 모듈을 **필요할 때** 불러온다 (감사 §7-1·7-3).
+ *
+ * `replayRebuild`는 증강 구현 전체(@majak/content — 117개 모듈, 1.2MB)를 끌고 온다.
+ * 판을 되짚으려면 그때 그 증강들이 실제로 있어야 하므로 그 의존 자체는 옳다. 문제는
+ * 그것이 **첫 화면 번들에** 들어 있었다는 것이다 — 로그인 화면 하나 그리는 데
+ * 서버 엔진과 증강 117개를 전부 파싱했다.
+ *
+ * 트리셰이킹으로는 못 뺀다: 배열이 참조되는 이상 117개가 전부 살아 있어야 하고,
+ * defineAugment가 검증 실패 시 throw 하는 부수효과 함수라 롤업이 각 모듈을 순수로
+ * 판정하지도 못한다. 그래서 **경계를 옮긴다** — 리플레이를 여는 사람만 받아 간다.
+ */
+type ReplayRebuildModule = typeof import("./replayRebuild.js");
+let replayModulePromise: Promise<ReplayRebuildModule> | null = null;
+function loadReplayModule(): Promise<ReplayRebuildModule> {
+  replayModulePromise ??= import("./replayRebuild.js");
+  return replayModulePromise;
+}
+
 function ReplayViewer(props: {
   data: ReplayDataMessage;
   settings: Settings;
@@ -16630,14 +16669,31 @@ function ReplayViewer(props: {
   onClose: () => void;
 }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
+  const [mod, setMod] = useState<ReplayRebuildModule | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadReplayModule().then(
+      (m) => {
+        if (alive) setMod(m);
+      },
+      (e: unknown) => {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const replay = useMemo<RebuiltReplay | null>(() => {
+    if (mod === null) return null;
     try {
-      return rebuildReplay(props.data.lines);
+      return mod.rebuildReplay(props.data.lines);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return null;
     }
-  }, [props.data]);
+  }, [props.data, mod]);
 
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -16646,8 +16702,8 @@ function ReplayViewer(props: {
   /** 열어 둔 정산 (없으면 null) — 리플레이는 판만 그려서 역·판·부를 되짚을 수 없었다 */
   const [openSettle, setOpenSettle] = useState<number | null>(null);
   const settlements = useMemo(
-    () => (replay !== null ? replaySettlements(replay) : []),
-    [replay],
+    () => (replay !== null && mod !== null ? mod.replaySettlements(replay) : []),
+    [replay, mod],
   );
   /** 지금 프레임까지 이미 끝난 국들의 정산 (아직 안 온 국의 결과를 미리 보여 주지 않는다) */
   const shownSettlements = settlements.filter((sx) => sx.index <= idx);
@@ -16668,8 +16724,8 @@ function ReplayViewer(props: {
   }, [playing, speed, total, replay]);
 
   const view = useMemo(
-    () => (replay !== null ? replayViewAt(replay, idx) : null),
-    [replay, idx],
+    () => (replay !== null && mod !== null ? mod.replayViewAt(replay, idx) : null),
+    [replay, idx, mod],
   );
 
   if (replay === null || view === null) {

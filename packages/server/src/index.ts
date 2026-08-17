@@ -15,6 +15,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
 import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
+import { createGzip } from "node:zlib";
 import { unlink } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
@@ -228,6 +229,29 @@ const MIME: Record<string, string> = {
 };
 
 /**
+ * 압축해서 보낼 확장자.
+ *
+ * **왜** (감사 2026-08-17 §7-2): 정적 파일이 전부 무압축으로 나갔다 — styles.css
+ * 175KB, 번들 JS 489KB가 원본 그대로였다. 이 종류의 텍스트는 gzip으로 4~6배 줄어든다
+ * (실측: CSS 175→36KB, JS 489→171KB). 그동안 브라우저는 매번 다섯 배를 받았다.
+ *
+ * 이미 압축된 것(png·woff2·ico)은 목록에 없다 — 다시 압축하면 CPU만 쓰고 크기는
+ * 오히려 늘거나 그대로다.
+ */
+const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg", ".txt", ".webmanifest"]);
+
+/**
+ * 이 응답을 압축해서 보낼 것인가 — 클라이언트가 받겠다고 했고, 압축이 이득인 종류이고,
+ * 아주 작지 않을 때(작은 파일은 헤더 오버헤드가 이득을 먹는다).
+ */
+function encodingFor(req: IncomingMessage, ext: string, size: number): "gzip" | null {
+  if (!COMPRESSIBLE.has(ext)) return null;
+  if (size < 1024) return null;
+  const accept = String(req.headers["accept-encoding"] ?? "");
+  return /\bgzip\b/.test(accept) ? "gzip" : null;
+}
+
+/**
  * `connect-src` 목록 — 이 페이지의 스크립트가 접속할 수 있는 곳.
  *
  * **왜 좁히는가** (감사 2026-08-12 §L-3). 예전에는 `'self' ws: wss:` 였다 — 즉
@@ -384,9 +408,14 @@ const httpServer = createServer((req, res) => {
     res.writeHead(403).end();
     return;
   }
+  const ext = extname(filePath);
+  const encoding = encodingFor(req, ext, statSync(realPath).size);
   res.writeHead(200, {
-    "Content-Type": MIME[extname(filePath)] ?? "application/octet-stream",
+    "Content-Type": MIME[ext] ?? "application/octet-stream",
     "Cache-Control": filePath.includes("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+    // 압축 여부가 Accept-Encoding에 따라 갈리므로 중간 캐시가 섞지 않게 알린다.
+    Vary: "Accept-Encoding",
+    ...(encoding === null ? {} : { "Content-Encoding": encoding }),
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
@@ -405,6 +434,16 @@ const httpServer = createServer((req, res) => {
   stream.on("error", () => res.destroy());
   // 클라이언트가 중간에 끊으면 열린 fd가 남지 않게 스트림도 같이 닫는다.
   res.on("close", () => stream.destroy());
+  if (encoding === "gzip") {
+    // 요청마다 압축한다. 캐시를 두지 않는 이유: 해시 붙은 에셋은 브라우저가 1년간
+    // 다시 안 받아 가고(immutable), 이 규모에서 gzip 한 번은 수 ms다. 메모리 캐시를
+    // 얹으면 무효화 규칙이 새로 생기는데, 그 복잡도가 이득보다 크다.
+    const gz = createGzip();
+    gz.on("error", () => res.destroy());
+    res.on("close", () => gz.destroy());
+    stream.pipe(gz).pipe(res);
+    return;
+  }
   stream.pipe(res);
 });
 
