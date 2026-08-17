@@ -21,8 +21,14 @@
      ```
      확인: `node -e "console.log(require('fs').realpathSync('node_modules/@majak/core'))"` 가 워크트리 경로를 찍어야 한다. `node_modules/`는 .gitignore 대상이라 커밋에 영향이 없다.
 4. `gh pr create --base master` — 제목은 Conventional Commits, 본문에 변경 요약·검증 결과(테스트/타입체크 통과 여부)를 적는다.
-5. `gh pr merge --squash --delete-branch` 로 즉시 병합. (auto-merge가 켜져 있으면 `--auto` 사용)
+5. `gh pr merge --squash --delete-branch` 로 즉시 병합. **CI를 기다리지 않는다** — `--auto` 금지, `gh pr checks` 대기 금지.
 6. 병합 후 `git checkout master && git pull` 로 로컬 master를 동기화하고, 결과 요약을 사용자에게 보고한다.
+
+### GitHub Actions CI는 꺼져 있다 (2026-08-17)
+Actions 무료 한도를 다 써서 런이 계속 실패 메일을 보냈다. `.github/workflows/ci.yml` 은 **수동 비활성화** 상태다(`gh workflow disable CI`). 유일한 게이트는 위 3번의 **로컬** `npm test` + 타입체크 4종이다 — 이건 그대로 지킨다.
+
+- 다시 켜려면: `gh workflow enable CI`
+- 워크플로 파일은 남겨 둔다(한도가 리셋되거나 저장소를 공개로 바꾸면 그대로 쓴다).
 
 ### 메인 체크아웃은 항상 master (필수)
 `/Users/skul/Documents/newMajak` 는 **공개 서버가 서빙하는 코드**다(`deploy/serve.sh` → `majak.yaho1231.com`). 여기서 다른 브랜치를 체크아웃하면 그 브랜치가 그대로 배포된다 — 실제로 이 저장소가 `c45dbab`(막다른 커밋)에 며칠간 서 있어서 PR #1·#5·#4·#3 이 전부 서버에 반영되지 않았다.
