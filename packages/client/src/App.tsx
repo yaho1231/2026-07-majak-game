@@ -63,7 +63,7 @@ import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMod
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
-import { rebuildReplay, replayViewAt } from "./replayRebuild.js";
+import { rebuildReplay, replaySettlements, replayViewAt } from "./replayRebuild.js";
 import { remainingCounter } from "./waitCounts.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
@@ -1192,6 +1192,12 @@ interface Production {
  * 그래서 enqueueProduction 한 곳에서 append하면 네 가지가 한꺼번에 들어온다 —
  * 새 알림을 붙일 때 로그를 따로 챙길 필요가 없다는 뜻이기도 하다.
  */
+/** 지나간 국의 정산 한 건 — 라벨은 받을 때의 뷰에서 딴다(settle은 다음 국을 가리킨다) */
+interface PastRound {
+  label: string;
+  result: RoundOverMessage;
+}
+
 interface LogEvent {
   key: number;
   /** 일어난 시각 (epoch ms) — 줄 앞에 시:분:초로 찍는다 */
@@ -1209,6 +1215,7 @@ interface LogEvent {
 const LOG_MAX = 400;
 /** 기록이 없는 자리(리플레이 뷰어)용 고정 빈 배열 — 매번 새 []를 넘기면 memo가 헛돈다. */
 const EMPTY_LOG: LogEvent[] = [];
+const EMPTY_PAST_ROUNDS: PastRound[] = [];
 
 /**
  * 화면 효과를 끈 사람의 연출 체류 시간 비율.
@@ -2304,6 +2311,8 @@ export function App(): JSX.Element {
   const [prodTick, setProdTick] = useState(0); // enqueue/변화 시 펌프 재실행 신호
   /** 📜 사건 기록 (append-only) — 후로·리치·화료·증강 발동이 일어난 순서대로 쌓인다 */
   const [logEvents, setLogEvents] = useState<LogEvent[]>([]);
+  /** 이 판에서 지나간 국의 정산 (📜 기록에서 다시 열어 본다) */
+  const [roundHistory, setRoundHistory] = useState<PastRound[]>([]);
   /** 지금 국의 사람 읽는 라벨 — 기록 줄에 붙는다 (뷰 전이 감지에서 갱신) */
   const roundLabelRef = useRef("");
   // 큐가 모두 빈 뒤에 열어야 하는 국 결과 (이전 국 연출이 끝난 뒤 결과창)
@@ -2568,6 +2577,7 @@ export function App(): JSX.Element {
     // 기록도 여기서만 비운다 — 판이 끝나 방을 나가거나 관전을 접는 자리다.
     // 국이 바뀔 때는 비우지 않는다: 지난 국을 되짚는 것이 이 로그의 존재 이유다.
     setLogEvents([]);
+    setRoundHistory([]);
     riichiBgm.stop(); // 리셋 시 리치 BGM도 확실히 정지
     riichiBgmArmed.current = false;
   }
@@ -3375,6 +3385,21 @@ export function App(): JSX.Element {
   /** 국 종료 — 화료 컷인(만관 이상은 별도 연출) → 결과 화면 순서로 연출.
    *  결과창은 연출 큐가 모두 빈 뒤에 열리므로(scheduleRoundResult) 컷인과 겹치지 않는다. */
   function handleRoundOver(msg: RoundOverMessage): void {
+    /*
+     * 이 국의 정산을 **기록에 쌓아 둔다** — 결과 화면은 스스로 닫히고 다시 여는 길이
+     * 없어서, 서버 상한(최대 20초) 안에 못 읽으면 그 국의 역·판·부·증감이 영구히
+     * 사라졌다. 📜 기록에서 지난 국을 다시 열 수 있게 한다.
+     *
+     * 국 이름은 **지금 뷰**에서 딴다 — `settle`의 국 번호는 이미 다음 국을 가리킨다.
+     */
+    const pvNow = prevViewRef.current;
+    const label =
+      pvNow === null
+        ? "지난 국"
+        : `${WIND_CHAR[pvNow.round.prevalentWind - 1] ?? "?"}${pvNow.round.roundNumber}국${
+            pvNow.round.honba > 0 ? ` ${pvNow.round.honba}본장` : ""
+          }`;
+    setRoundHistory((prev) => [...prev, { label, result: msg }]);
     // 정산 화면은 무음 — 배경 BGM을 붙들어(되감지 않음) 새 국에서 이어서 재개한다.
     // (holdForResult가 target을 0으로 잡으므로, 아래 fadeOut의 언덕킹이 배경 BGM을
     //  다시 불러오지 못한다 — 론·쯔모 후 정산 내내 아무 BGM도 나지 않는다.)
@@ -4270,6 +4295,7 @@ export function App(): JSX.Element {
           spectateCode={spectating}
           logEvents={logEvents}
           botDifficulty={isSpectator ? null : (lobby?.botDifficulty ?? null)}
+          pastRounds={roundHistory}
           abortVote={abortVote}
           onVoteAbort={cbVoteAbort}
           sandbox={sandbox}
@@ -7863,6 +7889,8 @@ const GameTable = memo(function GameTable(props: {
    * (게스트 체험·리플레이)에서는 null이라 칩을 세우지 않는다.
    */
   botDifficulty?: string | null;
+  /** 지나간 국의 정산 — 📜 기록에서 다시 열어 본다 (리플레이 뷰어에는 없다) */
+  pastRounds?: PastRound[];
 }): JSX.Element {
   const { view, prompt, catalog } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -8106,6 +8134,7 @@ const GameTable = memo(function GameTable(props: {
         view={view}
         catalog={catalog}
         events={props.logEvents ?? EMPTY_LOG}
+        pastRounds={props.pastRounds ?? EMPTY_PAST_ROUNDS}
         open={logOpen}
         onToggle={() => {
           setLogOpen((v) => !v);
@@ -9309,16 +9338,21 @@ function AugmentLog({
   view,
   catalog,
   events,
+  pastRounds,
   open,
   onToggle,
 }: {
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
   events: LogEvent[];
+  /** 지나간 국의 정산 — 결과 화면을 읽기 전용으로 다시 연다 */
+  pastRounds?: PastRound[];
   open: boolean;
   onToggle: () => void;
 }): JSX.Element | null {
   const rows = useMemo(() => augmentLogRows(view, catalog), [view, catalog]);
+  /** 지금 다시 열어 둔 지난 국 (없으면 null) */
+  const [reopened, setReopened] = useState<PastRound | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   // 열 때·새 사건이 들어올 때 맨 아래(가장 최근)로. 스크롤백은 위로 올리면 그대로 있다.
   useEffect(() => {
@@ -9331,7 +9365,8 @@ function AugmentLog({
    * 자리지 재촉하는 자리가 아니다 — 숫자가 붙어 있으면 판을 보는 중에 눈이 그리 간다.
    */
 
-  if (rows.length === 0 && events.length === 0) return null;
+  const past = pastRounds ?? [];
+  if (rows.length === 0 && events.length === 0 && past.length === 0) return null;
   return (
     <>
       <button
@@ -9373,8 +9408,46 @@ function AugmentLog({
                     {rows}
                   </>
                 ) : null}
+                {/* 지난 국 정산 — 결과 화면은 스스로 닫히고 다시 여는 길이 없어서,
+                    서버 상한(최대 20초) 안에 못 읽으면 그 국의 역·판·부·증감이
+                    영구히 사라졌다. 여기서 그대로 다시 연다. */}
+                {past.length > 0 ? (
+                  <>
+                    <div className="auglog-sec">지난 국 정산</div>
+                    {past.map((r, i) => (
+                      <button
+                        key={`${r.label}:${i}`}
+                        type="button"
+                        className="auglog-past"
+                        onClick={() => setReopened(r)}
+                      >
+                        <span className="auglog-past-round">{r.label}</span>
+                        <span className="auglog-past-kind">
+                          {r.result.outcome === "win"
+                            ? "화료"
+                            : r.result.outcome === "draw"
+                              ? "유국"
+                              : "도중 유국"}
+                        </span>
+                      </button>
+                    ))}
+                  </>
+                ) : null}
               </div>
             </div>,
+            document.body,
+          )
+        : null}
+      {reopened !== null
+        ? createPortal(
+            <RoundResultPanel
+              result={reopened.result}
+              view={view}
+              catalog={catalog}
+              deadlineAt={null}
+              historical
+              onClose={() => setReopened(null)}
+            />,
             document.body,
           )
         : null}
@@ -15044,10 +15117,18 @@ function RoundResultPanel({
   catalog,
   deadlineAt,
   onClose,
+  historical,
 }: {
   result: RoundOverMessage;
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
+  /**
+   * **지나간 국을 다시 열어 보는 중**인가 (📜 기록). 카운트다운도 없고 버튼도 "닫기"다.
+   * 그리고 이 판의 지금 상태로는 알 수 없는 것(그 국에 무슨 증강을 들고 있었는가)은
+   * 그리지 않는다 — 증강은 판이 갈수록 늘어나므로, 지금 목록으로 과거를 설명하면
+   * 그 국에 없던 증강을 있었던 것처럼 말하게 된다.
+   */
+  historical?: boolean;
   /**
    * 서버가 다음 국을 시작하는 시각(performance.now 기준). null이면 대기가 없다
    * (interRoundDelayMs=0 — 테스트·봇 게임). 카운트다운 표시에만 쓴다.
@@ -15339,6 +15420,7 @@ function RoundResultPanel({
                 역 이름이 따로 서는 것(우는 국사무쌍 등)은 여기 넣지 않는다 — 같은 말을
                 두 번 하게 된다. */}
             {(() => {
+              if (historical === true) return null;
               const augs = view.players.find((p) => p.id === w.winner)?.augments ?? [];
               const shapes = augs.filter((a) => SHAPE_RULE_AUGMENTS.has(a));
               if (shapes.length === 0) return null;
@@ -15554,7 +15636,7 @@ function RoundResultPanel({
           className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
           onClick={onClose}
         >
-          다음 국으로
+          {historical === true ? "닫기" : "다음 국으로"}
           {showCountdown ? (
             <span className="result-close-count" aria-hidden>
               {remainSec}초
@@ -15898,6 +15980,14 @@ function ReplayViewer(props: {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const total = replay !== null ? replay.states.length - 1 : 0;
+  /** 열어 둔 정산 (없으면 null) — 리플레이는 판만 그려서 역·판·부를 되짚을 수 없었다 */
+  const [openSettle, setOpenSettle] = useState<number | null>(null);
+  const settlements = useMemo(
+    () => (replay !== null ? replaySettlements(replay) : []),
+    [replay],
+  );
+  /** 지금 프레임까지 이미 끝난 국들의 정산 (아직 안 온 국의 결과를 미리 보여 주지 않는다) */
+  const shownSettlements = settlements.filter((sx) => sx.index <= idx);
 
   // 자동 재생
   useEffect(() => {
@@ -15985,7 +16075,27 @@ function ReplayViewer(props: {
         >
           {REPLAY_SPEEDS[speed]?.label}
         </button>
+        {/* 정산 보기 — 지금까지 끝난 국 중 **가장 최근** 것을 연다. 리플레이가 판만
+            그려서 역·판·부·증감을 어디서도 되짚을 수 없었다. */}
+        <button
+          className="rp-btn"
+          disabled={shownSettlements.length === 0}
+          onClick={() => setOpenSettle(shownSettlements.length - 1)}
+          title="이 국까지의 정산 보기"
+        >
+          🧾
+        </button>
       </div>
+      {openSettle !== null && shownSettlements[openSettle] !== undefined ? (
+        <RoundResultPanel
+          result={shownSettlements[openSettle]!.result}
+          view={view}
+          catalog={replay.catalog as Record<string, AugmentCatalogEntry>}
+          deadlineAt={null}
+          historical
+          onClose={() => setOpenSettle(null)}
+        />
+      ) : null}
     </div>
   );
 }

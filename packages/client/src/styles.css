@@ -10999,6 +10999,35 @@ body.peeking .overlay-peekable > * {
   font-weight: 800;
 }
 
+/* 지난 국 정산 — 누르면 그 국의 결과 화면이 읽기 전용으로 다시 열린다 */
+.auglog-past {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin: 2px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-1);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.auglog-past:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.auglog-past-round {
+  font-weight: 700;
+}
+
+.auglog-past-kind {
+  color: var(--ink-3);
+}
+
 .auglog-ev {
   display: flex;
   align-items: baseline;
