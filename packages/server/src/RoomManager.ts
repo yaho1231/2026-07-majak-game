@@ -14,7 +14,7 @@
  * 설계: docs/12_NETWORK_REPLAY.md §6, docs/15_ACCOUNTS_SITE.md
  */
 
-import { randomUUID, randomInt } from "node:crypto";
+import { randomUUID, randomInt, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { WebSocket } from "ws";
 import { contentAugments } from "@majak/content";
@@ -53,7 +53,7 @@ import type {
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
-import { HumanAgent, MAX_BUFFERED_BYTES } from "./HumanAgent.js";
+import { HumanAgent, MAX_BUFFERED_BYTES, SOLO_HOLD_MS } from "./HumanAgent.js";
 import { Prng } from "@majak/core/engine/random/Prng.js";
 import { BotAgent, seedFromId } from "./BotAgent.js";
 import { isArchetypeName, isBotDifficulty, rollTableProfiles, withDifficulty } from "./bot/profile.js";
@@ -192,6 +192,26 @@ interface Room {
    * 흔들면 계정 공간을 지키는 가입 게이트가 반쪽이 된다.
    */
   guest: boolean;
+  /**
+   * **이 체험 판으로 돌아오는 열쇠** (게스트 방 전용, 그 외에는 null).
+   *
+   * 손님에게는 계정이 없어 `joinRoom`이 쓰는 신원(username)을 다음 접속까지
+   * 가져갈 방법이 없었다 — 그래서 재접속 수단이 구조적으로 0이었고, 소켓이
+   * 닫히면 방을 지우는 것 말고 할 수 있는 일이 없었다(감사 §2-5).
+   *
+   * 이 토큰은 **방 하나만** 가리킨다. 방이 사라지면 함께 죽고, 다른 방·다른
+   * 기능에는 통하지 않는다. `guestResume`이 이걸 받아 그 방의 좌석 이름으로
+   * 임시 신원을 복원하면, 그다음은 기존 `joinRoom` 재접속 경로가 그대로 받는다.
+   */
+  guestToken: string | null;
+  /**
+   * 사람이 돌아오기를 기다리며 **판을 세워 둔** 시한(epoch ms). null이면 안 세웠다.
+   *
+   * 1인 방(게스트 체험·연습)에서만 켜진다 — 봇 셋은 기다려도 잃는 것이 없다.
+   * 시한이 지나면 유휴 청소가 방을 접는다. 돌아오면 `joinRoom`/`guestResume`이
+   * null로 되돌린다.
+   */
+  holdUntil: number | null;
   /** 다음 판 시작 시 좌석별로 미리 지급할 증강 (샌드박스 전용) */
   sandboxAugments: Record<PlayerId, string[]>;
   /** 다음 판 시작 시 좌석별로 강제 배패할 손패 (kindKey 목록, 샌드박스 전용) */
@@ -799,7 +819,18 @@ export class RoomManager {
       if (room.phase === "playing") {
         // 진행 중인 게임은 손대지 않는다. 다만 컨트롤러가 없는 "playing"은
         // 게임이 아니라 잔해다 — 방치하면 그 사람들이 영영 방을 못 만든다.
-        if (room.controller !== null) continue;
+        if (room.controller !== null) {
+          // 사람을 기다리며 세워 둔 1인 방(§2-5)은 시한이 있다. 안 돌아오면
+          // 접는다 — 안 그러면 세워 둔 방이 방 예산을 영구히 물고 있는다.
+          if (room.holdUntil !== null && now > room.holdUntil) {
+            this.log(room, "세워 둔 판의 보유 시한 초과 — 접는다");
+            room.controller.requestAbort();
+            room.holdUntil = null;
+            this.detachRoomConns(room);
+            this.rooms.delete(room.code);
+          }
+          continue;
+        }
         if (now - room.lastActivityAt < ZOMBIE_ROOM_TTL_MS) continue;
         this.logError(room, "컨트롤러 없이 playing으로 굳은 방을 회수한다");
         this.closeRoom(room, "ROOM_CLOSED", "방이 정리되었습니다 — 홈에서 다시 시작하세요");
@@ -1137,10 +1168,28 @@ export class RoomManager {
     if (room === null || conn.agent === null) return;
     // 재접속으로 이미 새 소켓이 붙었으면 이 close는 오래된 소켓 → 무시
     if (!conn.agent.isSocket(conn.ws)) return;
-    if (room.guest) {
-      // 게스트는 재접속할 수단이 없다 — 세션 토큰도, `joinRoom`도 없다. 좌석을
-      // 남겨 두면 봇 3명과 유령 1명이 30초 타임아웃마다 멎어 가며 판을 끝까지
-      // 돌린다. 손님이 창을 닫으면 그 판도 함께 사라지는 편이 맞다.
+    if (room.guest && room.phase === "playing" && room.controller !== null) {
+      /*
+       * 1인 방(체험·연습)은 **판을 세워 두고 기다린다** (감사 §2-5).
+       *
+       * 예전에는 여기서 방을 즉시 지웠다. 근거는 "게스트는 재접속할 수단이 없다"
+       * 였고 그건 사실이었다 — 세션 토큰이 없으니 `joinRoom`이 쓸 신원이 없다.
+       * 그래서 **모바일에서 알림 하나 확인하고 돌아오면 판이 없었다.** 이 게임을
+       * 처음 보는 사람에게, 가장 중요한 첫 판에서.
+       *
+       * 이제 그 수단을 준다(`room.guestToken` → `guestResume`). 그리고 기다리는
+       * 쪽도 바꿨다: 남은 셋이 없는 방이라 유예를 5초로 줄일 이유가 없다 —
+       * 봇은 기다려도 아무것도 잃지 않는다. 세워 둔 시한이 지나면 유휴 청소가
+       * 접는다(`sweepIdleRooms`).
+       */
+      conn.agent.suspend(SOLO_HOLD_MS);
+      room.holdUntil = Date.now() + SOLO_HOLD_MS;
+      this.log(
+        room,
+        `${conn.agent.nickname} 접속 끊김 — 판을 ${Math.round(SOLO_HOLD_MS / 1000)}초간 세워 두고 기다린다`,
+      );
+    } else if (room.guest) {
+      // 아직 시작 전이거나 컨트롤러가 없는 체험 방 — 세워 둘 판 자체가 없다.
       room.controller?.requestAbort();
       this.rooms.delete(room.code);
     } else if (room.phase === "waiting") {
@@ -1272,6 +1321,10 @@ export class RoomManager {
       // ── 게스트 체험 (계정 없이 봇 3명과 1인 게임) ──
       case "guestPlay":
         return this.guestPlay(conn, msg.mode);
+      // 끊겼던 손님이 자기 판으로 돌아온다 — 인증 **전에** 오는 메시지다
+      // (그 토큰이 곧 이 연결의 신원이 된다).
+      case "guestResume":
+        return this.guestResume(conn, msg.token);
       default:
         break;
     }
@@ -1866,6 +1919,8 @@ export class RoomManager {
       gameMode: options.gameMode ?? "tonpuu",
       sandbox: options.sandbox ?? false,
       guest: options.guest ?? false,
+      guestToken: null,
+      holdUntil: null,
       sandboxAugments: {},
       sandboxHands: {},
       botArchetypes: new Map(),
@@ -1941,6 +1996,9 @@ export class RoomManager {
       }
       // 끊겨서 확정됐던 좌석이면 여기서 되돌린다 — 다음 결정부터 다시 직접 둔다.
       mine.reinstate();
+      // 이 사람을 기다리며 세워 둔 판이었다면 시한을 푼다 (§2-5). `mine.reconnect`가
+      // 아래에서 타이머를 정상 시간으로 되돌리므로 방 쪽 표식만 걷으면 된다.
+      room.holdUntil = null;
       // 이 좌석을 아직 붙들고 있는 **예전 연결**을 먼저 떼어낸다.
       //
       // 대기실 경로(`reseat`)는 이걸 하는데 여기만 빠져 있어서, 두 번째 탭으로
@@ -2882,13 +2940,16 @@ export class RoomManager {
       clearTimeout(conn.authDeadline);
       conn.authDeadline = null;
     }
-    // 세션 토큰은 빈 문자열 — 저장할 세션이 없다(클라이언트도 저장하지 않는다).
+    // 세션 토큰은 빈 문자열 — 손님에게는 계정이 없으므로 계정 세션도 없다.
+    // 대신 **그 판 하나로 돌아오는 열쇠**(guestToken)를 준다 (감사 §2-5).
+    const guestToken = randomBytes(16).toString("hex");
     this.send(conn.ws, {
       type: "authOk",
       username: user.username,
       isAdmin: false,
       sessionToken: "",
       guest: true,
+      guestToken,
     });
     this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
 
@@ -2902,10 +2963,61 @@ export class RoomManager {
       // 않는 자리다. 계정을 만들고 방을 열면 그때부터는 기본이 hard다.
       botDifficulty: "normal",
     });
+    room.guestToken = guestToken;
     this.send(conn.ws, { type: "roomCreated", code: room.code });
     this.seat(conn, user, room);
     this.addBots(room, MAX_PLAYERS - room.agents.length);
     void this.startGame(room);
+  }
+
+  /**
+   * 끊겼던 손님이 자기 체험 판으로 돌아온다 (감사 §2-5).
+   *
+   * **새 재접속 경로를 만들지 않는 것이 요점이다.** 여기서 하는 일은 토큰으로
+   * "그 방의 손님이 누구였는지"를 되살리는 것뿐이고, 좌석 복구·뷰 복원·유령
+   * 프롬프트 정리는 전부 기존 `joinRoom`의 게임 중 재접속 경로가 한다.
+   *
+   * 토큰이 통하지 않는 경우를 **하나의 문구로 묶는다** — 방이 이미 끝났는지,
+   * 시한이 지났는지, 애초에 없는 토큰인지는 손님에게 아무 차이가 없고, 구분해
+   * 답하면 그것 자체가 "이 토큰은 존재한다"는 정보가 된다.
+   */
+  private guestResume(conn: Conn, rawToken: string): void {
+    if (conn.user !== null && !conn.guest) {
+      return this.fail(conn, "ALREADY_AUTHED", "이미 로그인되어 있습니다");
+    }
+    // 인증과 같은 레이트리밋 창 — 토큰 추측을 인증 스로틀 밖으로 빼지 않는다.
+    if (this.rateLimited(conn)) return;
+    const token = typeof rawToken === "string" ? rawToken : "";
+    const room =
+      token.length > 0
+        ? [...this.rooms.values()].find((r) => r.guest && r.guestToken === token)
+        : undefined;
+    const seat =
+      room === undefined
+        ? undefined
+        : room.agents.find((a): a is HumanAgent => a instanceof HumanAgent);
+    if (room === undefined || seat === undefined || room.phase !== "playing") {
+      return this.fail(conn, "GUEST_SESSION_GONE", "체험 대국이 이미 끝났습니다");
+    }
+    const user: UserRow = { id: GUEST_USER_ID, username: seat.nickname, isAdmin: false };
+    conn.user = user;
+    conn.guest = true;
+    conn.sessionToken = null;
+    if (conn.authDeadline !== null) {
+      clearTimeout(conn.authDeadline);
+      conn.authDeadline = null;
+    }
+    this.send(conn.ws, {
+      type: "authOk",
+      username: user.username,
+      isAdmin: false,
+      sessionToken: "",
+      guest: true,
+      guestToken: token,
+    });
+    this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+    this.send(conn.ws, { type: "roomCreated", code: room.code });
+    this.joinRoom(conn, user, room.code);
   }
 
   // ─────────────────────────── 연습 대국 (튜토리얼) ───────────────────────────
@@ -3402,10 +3514,31 @@ export class RoomManager {
     });
   }
 
+  /**
+   * **예외로 끝난 판의 기록은 지우지 않고 `replays/crashed/`로 옮긴다** (감사 §2-6).
+   *
+   * 위 `discardReplay`가 하던 일을 크래시 경로에서만 갈랐다. 고아 파일을 만들지
+   * 않겠다는 원래 목적은 폴더를 나누는 것으로 달성되고(인덱스 밖에 있는 것이
+   * 정상인 자리를 따로 둔다), 대신 **재현 증거가 남는다.** 예전에는 정확히
+   * 크래시한 판만 골라 증거를 없애고 있었다.
+   */
+  private preserveCrashedReplay(room: Room, writer: ReplayWriter | null): void {
+    if (writer === null) return;
+    void writer
+      .preserveCrashed()
+      .then((dest) => {
+        this.logError(room, `크래시한 판의 리플레이를 남겼다: ${dest}`);
+      })
+      .catch((err: unknown) => {
+        this.logError(room, "크래시 리플레이 보존 실패(파일은 그대로 둔다):", err);
+      });
+  }
+
   private rollbackFailedStart(room: Room, err: unknown): void {
     this.logError(room, "게임 시작 실패 — 방을 대기실로 되돌린다:", err);
-    // 시작도 못 한 게임 — 기록되지 않으므로 파일도 남기지 않는다.
-    this.discardReplay(room, room.writer);
+    // 시작도 못 한 게임이지만 그 실패 자체가 결함이다 — 지우지 않고 남긴다(§2-6).
+    // (배패·증강 지급까지의 줄만 들어 있어도 무엇이 던졌는지는 거기서 보인다.)
+    this.preserveCrashedReplay(room, room.writer);
     room.writer = null;
     room.controller = null;
     room.startedAt = null;
@@ -3597,8 +3730,10 @@ export class RoomManager {
     // 백그라운드로 실행 (프롬프트 대기는 각 HumanAgent가 소켓으로 처리)
     room.controller.run().catch((err: unknown) => {
       this.logError(room, "게임이 예외로 종료됐다:", err);
-      // 예외 종료도 recordGame을 부르지 않는다 — 인덱스에 없는 고아 파일을 남기지 않는다.
-      this.discardReplay(room, writer);
+      // 예외 종료는 recordGame을 부르지 않는다. 그렇다고 지우면 **크래시한 판만
+      // 골라 재현 증거를 없애는** 셈이라(감사 §2-6), 인덱스 밖이 정상인 자리
+      // (`replays/crashed/`)로 옮겨 남긴다.
+      this.preserveCrashedReplay(room, writer);
       // 플레이어들에게도 반드시 알린다 — 안 그러면 마지막 화면에서 무한 대기.
       const crashMsg: ServerMessage = {
         type: "error",

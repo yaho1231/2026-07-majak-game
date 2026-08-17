@@ -470,6 +470,47 @@ export class HanchanController {
   }
 
   /**
+   * `flow.submit()`을 감싼다 — 상태 전이가 던지면 **안전 폴백으로 한 번 더** 넣는다.
+   *
+   * **무엇이 문제였나** (감사 2026-08-17 §2-7): `safeDecide`는 에이전트의 예외·무응답·
+   * 범위 밖 응답을 완벽히 흡수하는데, 정작 그 결정을 엔진에 넣는 **다음 한 줄**이
+   * 맨몸이었다. 여기서 던지면 `run()`의 프로미스가 거부되고 방이 통째로 삭제된다 —
+   * 사람 넷의 40분짜리 반장전이 점수·기록·리플레이 없이 사라진다.
+   *
+   * **왜 폴백 재시도인가**: 이 자리에서 현실적으로 던지는 원인은 "제시할 때는
+   * 합법이었는데 넣을 때는 아니게 된 수"다(증강의 `validate`가 두 시점 사이에
+   * 상태를 보고 답을 바꾸는 경우). 그 수 하나를 포기하면 판은 멀쩡히 이어진다.
+   * 패스는 어떤 상황에서도 규칙이 막지 않으므로 거의 언제나 통한다.
+   *
+   * **폴백까지 던지면 그대로 올려 보낸다.** 엔진이 어떤 선택도 못 받는 상태라면
+   * 그건 이 판이 진짜로 깨진 것이고, 억지로 이어 봐야 다음 국의 점수가 거짓이 된다.
+   * 그때도 기록은 남는다 — 크래시 리플레이는 `replays/crashed/`로 보존된다(§2-6).
+   */
+  private submitGuarded(
+    flow: FlowController,
+    player: PlayerId,
+    option: ActionOption,
+    options: readonly ActionOption[],
+  ): FlowStatus {
+    try {
+      return flow.submit(player, option);
+    } catch (err) {
+      const fallback =
+        options.find((o) => o.type === "pass") ??
+        [...options].reverse().find((o) => o.type === "discard");
+      console.error(
+        `[hanchan] ${player} submit(${option.type}) 예외 — ` +
+          (fallback === undefined || fallback === option
+            ? "되돌릴 수 있는 선택이 없다"
+            : `${fallback.type}(으)로 다시 넣는다`),
+        err,
+      );
+      if (fallback === undefined || fallback === option) throw err;
+      return flow.submit(player, fallback);
+    }
+  }
+
+  /**
    * `safeDecide`의 드래프트판 — 예외·무응답·목록 밖 id를 첫 후보로 흡수한다.
    *
    * 유효한 답은 `choices` ∪ `rerolls`다. 슬롯을 새로고침한 좌석은 화면에 없던
@@ -854,7 +895,7 @@ export class HanchanController {
       if (auto?.auto === true) {
         if (await this.pauseForAutoMove()) return "abort";
         this.trackDiscardOrigin(game, auto.player, auto.options[0]!);
-        status = flow.submit(auto.player, auto.options[0]!);
+        status = this.submitGuarded(flow, auto.player, auto.options[0]!, auto.options);
         this.broadcastViews(game);
         continue;
       }
@@ -906,7 +947,12 @@ export class HanchanController {
       for (const { player, option } of raced.decisions) {
         if (flow.isPending(player)) {
           this.trackDiscardOrigin(game, player, option);
-          status = flow.submit(player, option);
+          status = this.submitGuarded(
+            flow,
+            player,
+            option,
+            prompts.find((p) => p.player === player)?.options ?? [option],
+          );
           // 특수 액션(액티브 증강 등) 실행 연출 — 표준 액션이 아닌 것만.
           // 비표준 타입은 턴 프롬프트에서만 나오므로 결정 = 실행이 보장된다.
           if (

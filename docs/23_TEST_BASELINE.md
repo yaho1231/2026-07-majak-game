@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   2534 / 2534 통과 (실패 0)   ← 2026-08-18 갱신 (238 파일, 약 300초)
+npm test                   2589 / 2589 통과 (실패 0)   ← 2026-08-18 갱신 (243 파일, 약 350초)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
@@ -14,6 +14,12 @@ npm run typecheck:client   0 errors
 ```
 
 전체 실행에서 간헐적으로 1건 실패가 나올 수 있다:
+
+- `packages/server/test/Guest.test.ts > 게스트 — 기록 없음 > 판이 끝나도 …` — `Test timed out in 60000ms`
+  (2026-08-18 추가) 사람 1 + 봇 3 동풍전을 **끝까지** 굴리는 테스트라, 아래 `RoomManager.test.ts`
+  항목과 정확히 같은 원인이다(다른 vitest가 함께 돌면 한 판 비용이 13~17초 → 31~45초).
+  단독 실행 14/14 통과. **판별법은 아래와 같다** — 단독으로 돌려 보고, 그래도 의심스러우면
+  변경을 되돌리고 전체를 한 번 더 돌린다.
 
 - `packages/server/test/Sandbox.test.ts > 증강 테스트 — 손패 지정 > 지정한 손패로 배패되고, 그 지정이 sandbox 상태로 돌아온다` — `expected 2 to be greater than or equal to 3`
   (2026-08-04 추가) 지정 손패의 장수를 **마지막으로 받은 view**로 세는데, 부하가 걸리면 그 사이 한 순이 지나가 지정 패가 이미 버려져 있다. 단독 실행 23/23 통과.

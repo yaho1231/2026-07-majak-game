@@ -49,6 +49,21 @@ export const DISCONNECT_GRACE_MS = 5_000;
 export const GRACE_TIMEOUTS_BEFORE_ABANDON = 8;
 
 /**
+ * **판을 세워 두고 기다리는** 시간(ms) — 1인 방(게스트 체험·연습)에서만 쓴다.
+ *
+ * 유예(`DISCONNECT_GRACE_MS`)가 5초로 짧은 이유는 **남은 사람들**이 기다리기
+ * 때문이다. 사람이 한 명뿐인 방에는 그 이유가 없다 — 봇 셋은 기다려도 아무것도
+ * 잃지 않는다. 그런데 예전에는 그 방이 오히려 가장 가혹했다: 소켓이 닫히는
+ * 즉시 방을 삭제했다(감사 §2-5). 모바일에서 알림 하나 확인하고 돌아오면 판이
+ * 없어져 있었고, 그 사람은 대개 이 게임을 **처음 보는 사람**이었다.
+ *
+ * 3분인 이유: 앱 전환·전화·잠금화면은 대개 1분 안쪽이고, 그보다 길어지면 돌아와도
+ * 무슨 상황이었는지 기억나지 않는다. 그 사이 방 하나가 자리를 잡고 있지만
+ * `MAX_GUEST_ROOMS`·`MAX_GUEST_ROOMS_PER_IP`가 이미 총량을 묶고 있다.
+ */
+export const SOLO_HOLD_MS = 180_000;
+
+/**
  * 연결당 송신 버퍼 상한(bytes) — 수신자가 응답을 제때 읽지 않아(느린/악의적
  * 소비자) ws 송신 큐가 이 상한을 넘으면 그 연결을 끊는다.
  *
@@ -217,6 +232,16 @@ export class HumanAgent implements PlayerAgent {
    * 적고 있었다 — 의도는 처음부터 이쪽이었고 구현만 어긋나 있었다.
    */
   private abandonReason: "left" | "evicted" | "timeout" | null = null;
+  /**
+   * **판을 세워 둔 상태**의 만료 시각(epoch ms). 0이면 세워 두지 않았다.
+   *
+   * `suspend()`가 켜고 `reconnect()`가 끈다. 켜져 있는 동안 이 좌석의 모든 결정은
+   * 5초 유예가 아니라 남은 대기 시간을 그대로 제한 시간으로 받는다 — 그동안
+   * 기다리는 사람이 아무도 없기 때문이다(1인 방 전용, `SOLO_HOLD_MS` 참고).
+   */
+  private heldUntil = 0;
+  /** 국 사이 대기의 원래 상한 — 세워 뒀다 돌아왔을 때 그대로 다시 건다. */
+  private continueMaxWaitMs = 0;
   /** 재접속 시 즉시 복원해 줄 마지막 뷰 */
   private lastView: PlayerView | null = null;
   /**
@@ -248,6 +273,14 @@ export class HumanAgent implements PlayerAgent {
     // 돌아왔으니 유예 연속 카운터는 처음부터 다시 센다 — 끊김이 여러 번 있어도
     // 그때마다 돌아오는 사람은 이탈로 확정되지 않는다.
     this.graceTimeouts = 0;
+    // 세워 뒀던 판을 다시 돌린다. 아래 복원 로직이 `graced`를 보고 정상 제한
+    // 시간으로 되돌리므로 여기서는 표식만 걷으면 된다 — `suspend()`가 세워 둘 때
+    // 그 표식을 남긴 이유가 이것이다(재접속 복원 경로를 새로 만들지 않는다).
+    this.heldUntil = 0;
+    if (this.pendingContinue !== null && this.continueTimeout === null) {
+      // 결과 화면에서 멈춰 있었다 — 원래 상한으로 다시 건다.
+      this.continueTimeout = setTimeout(() => this.resolveContinue(), this.continueMaxWaitMs);
+    }
     // 소켓을 붙인 뒤, 뷰·프롬프트를 복원하기 **전에** 호출자가 끼워 넣는 훅.
     // 증강 테스트에서 sandbox 상태 메시지를 여기서 보내야 한다 — 그 메시지는
     // 클라이언트에서 프롬프트·결과를 초기화하므로, 복원 전송보다 먼저 나가야
@@ -374,6 +407,50 @@ export class HumanAgent implements PlayerAgent {
       this.draftGraced = true;
       this.armDraft(DISCONNECT_GRACE_MS);
     }
+  }
+
+  /**
+   * **판을 세워 두고 이 좌석을 기다린다** — 1인 방(게스트 체험·연습) 전용.
+   *
+   * `noticeDisconnect()`의 정반대다. 저쪽은 "남은 셋을 위해 이 자리를 5초로
+   * 줄인다"이고, 이쪽은 "기다리는 사람이 없으니 돌아올 때까지 세워 둔다"이다
+   * (감사 §2-5 — 예전에는 이 자리에서 방을 즉시 삭제했다).
+   *
+   * 대기 중이던 것들은 **폴백으로 해소하지 않고** 타이머만 뗀다. 돌아오면
+   * `reconnect()`가 그 프롬프트·선택창을 그대로 다시 세운다 — 손님이 보던 화면이
+   * 그 자리에 있다는 것이 이 기능의 전부다.
+   *
+   * `graced`로 표시해 두는 이유: 재접속 복원 경로가 이미 "유예로 짧게 걸렸던 것은
+   * 정상 시간으로 되돌린다"를 하고 있다. 세워 둔 것도 정확히 그 처지다.
+   */
+  suspend(holdMs: number = SOLO_HOLD_MS): void {
+    if (this.abandoned) return;
+    this.heldUntil = Date.now() + holdMs;
+    for (const [seat, p] of [...this.pending]) {
+      clearTimeout(p.timer);
+      this.armDecision(seat, p.prompt, p.resolve, this.holdLeftMs(), true);
+    }
+    if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
+      this.clearDraftTimeout();
+      this.draftGraced = true;
+      this.armDraft(this.holdLeftMs());
+    }
+    if (this.continueTimeout !== null) {
+      // 결과 화면은 아예 멈춰 세운다 — 돌아왔을 때 무엇을 놓쳤는지 읽을 수 있어야
+      // 한다. `pendingContinue`는 남겨 두고 타이머만 뗀다(reconnect가 다시 건다).
+      clearTimeout(this.continueTimeout);
+      this.continueTimeout = null;
+    }
+  }
+
+  /** 세워 둔 판이 아직 유효하면 남은 시간, 아니면 0. */
+  private holdLeftMs(): number {
+    return Math.max(0, this.heldUntil - Date.now());
+  }
+
+  /** 지금 이 좌석 때문에 판이 세워져 있는가. */
+  get isHeld(): boolean {
+    return this.holdLeftMs() > 0 && !this.isConnected();
   }
 
   /**
@@ -532,10 +609,16 @@ export class HumanAgent implements PlayerAgent {
     // 같은 좌석에 이전 대기가 남아 있으면(정상 흐름에는 없다) 폴백으로 정리한다
     this.cancelDecisionFor(seat);
     // 소켓이 닫혀 있으면 짧은 유예만 준다 — 어차피 이 프롬프트는 전송되지 않는다.
+    // **판이 세워져 있을 때만 예외**다(1인 방): 그때는 기다리는 사람이 없으므로
+    // 남은 대기 시간을 그대로 준다. 5초로 잘라 폴백을 흘리면 손님이 돌아왔을 때
+    // 세워 둔 화면 대신 이미 지나간 판을 보게 된다.
     const graced = !this.isConnected();
-    const timeoutMs = graced
-      ? Math.min(this.decisionTimeoutMs(), DISCONNECT_GRACE_MS)
-      : this.decisionTimeoutMs();
+    const held = this.isHeld;
+    const timeoutMs = held
+      ? this.holdLeftMs()
+      : graced
+        ? Math.min(this.decisionTimeoutMs(), DISCONNECT_GRACE_MS)
+        : this.decisionTimeoutMs();
     // 마감은 **항상** 실어 보낸다. 예전에는 초읽기 국에만 실어서, 평소 30초 제한이
     // 화면에 전혀 안 보였다 — 자리를 비운 사람이 론을 조용히 흘렸다(QA P0-5).
     this.send({ type: "prompt", prompt, deadlineMs: timeoutMs });
@@ -625,7 +708,12 @@ export class HumanAgent implements PlayerAgent {
     // 드래프트는 네 사람이 다 고를 때까지 판 전체가 멈춘다 — 끊긴 좌석은 결정과
     // 같은 이유로 짧게만 기다린다. 유예 안에 돌아오면 reconnect가 되돌린다.
     this.draftGraced = !this.isConnected();
-    const timeoutMs = this.draftGraced ? DISCONNECT_GRACE_MS : DECISION_TIMEOUT_MS;
+    // 결정과 같은 규칙 — 판이 세워져 있으면(1인 방) 남은 대기 시간을 그대로 준다.
+    const timeoutMs = this.isHeld
+      ? this.holdLeftMs()
+      : this.draftGraced
+        ? DISCONNECT_GRACE_MS
+        : DECISION_TIMEOUT_MS;
     this.send(this.draftOfferMessage(timeoutMs));
 
     return new Promise<string>((resolve) => {
@@ -735,10 +823,16 @@ export class HumanAgent implements PlayerAgent {
    * 끊긴 좌석을 유예로 줄이는 것과 같은 이유다.
    */
   awaitContinue(maxWaitMs: number): Promise<void> {
-    if (this.abandoned || !this.isConnected()) return Promise.resolve();
+    if (this.abandoned) return Promise.resolve();
+    // 세워 둔 1인 방은 예외 — 끊겨 있어도 기다린다. 여기서 즉시 resolve하면 손님이
+    // 자리를 비운 사이 국이 계속 넘어가, 돌아왔을 때 판이 통째로 지나가 있다.
+    if (!this.isConnected() && !this.isHeld) return Promise.resolve();
+    this.continueMaxWaitMs = maxWaitMs;
     return new Promise<void>((resolve) => {
       this.pendingContinue = resolve;
-      this.continueTimeout = setTimeout(() => this.resolveContinue(), maxWaitMs);
+      // 세워 둔 동안에는 타이머를 걸지 않는다 — `reconnect()`가 돌아온 시점에
+      // 원래 상한으로 다시 건다. 아무도 안 돌아오면 방 쪽 보유 시한이 판을 접는다.
+      this.continueTimeout = this.isHeld ? null : setTimeout(() => this.resolveContinue(), maxWaitMs);
     });
   }
 

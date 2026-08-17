@@ -34,6 +34,10 @@ export const VOLATILE_MESSAGES: ReadonlySet<string> = new Set([
   "roundContinue", // "이 결과창을 닫는다" — 늦게 가면 다음 국 결과창을 건너뛴다
   "ping", // 스스로 다시 온다
   "emote", // 인사는 그 순간의 것이다 — 늦게 도착하면 뜻이 어긋난다
+  // 체험 판 복귀는 **소켓이 열리는 순간** 연결 핸들러가 스스로 보낸다(tokenLogin과 같다).
+  // 큐에 담아 두면 다음 연결에서 두 번 나가고, 그중 하나는 이미 로그인한 연결에
+  // 도착해 `ALREADY_AUTHED`가 된다.
+  "guestResume",
 ]);
 
 /** ② 큐에 담았다가 재전송한다 — 상태에 대한 요청·의사표시 */

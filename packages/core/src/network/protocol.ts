@@ -61,14 +61,31 @@ export interface LogoutMessage {
  * 게스트 체험 — 계정 없이 봇 3명과의 1인 게임을 즉시 시작한다.
  *
  * 가입 게이트(SIGNUP_CODE)를 우회하는 것이 **아니다**. 게스트는 "놀 수 있을 뿐"
- * 계정 공간에는 들어오지 못한다 — 서버가 임시 닉네임을 발급하고, 이 연결이
- * 끊기면 신원과 판이 함께 사라진다. 방 만들기·코드 참가·리더보드·리플레이는
- * 전부 막혀 있다 (서버 라우터의 게스트 화이트리스트).
+ * 계정 공간에는 들어오지 못한다 — 서버가 임시 닉네임을 발급하고, 방 만들기·코드
+ * 참가·리더보드·리플레이는 전부 막혀 있다 (서버 라우터의 게스트 화이트리스트).
  */
 export interface GuestPlayMessage {
   type: "guestPlay";
   /** 동풍전(기본)·반장전. */
   mode?: GameMode;
+}
+
+/**
+ * **체험 대국으로 돌아오기** — 끊긴 게스트가 자기 판을 되찾는다 (감사 §2-5).
+ *
+ * 예전에는 손님의 소켓이 닫히는 순간 방이 삭제됐다. 게스트에게는 세션 토큰이 없어
+ * 재접속 수단이 **구조적으로 0**이었기 때문인데, 결과적으로 **모바일에서 앱을 한 번
+ * 전환하면 첫인상이 그대로 증발**했다 — 이 게임을 처음 보는 사람에게 가장 나쁜 순간에
+ * 가장 나쁜 일이 일어났다.
+ *
+ * 그래서 계정을 만들지 않고도 **그 판 하나만** 되찾을 수 있는 열쇠를 준다. 이 토큰은
+ * 계정이 아니라 **방 하나**를 가리킨다: 그 방이 사라지면 같이 죽고, 다른 방·다른
+ * 기능에는 쓸 수 없다. 세션 토큰(30일·계정 전체)과 섞이지 않도록 별도 필드·별도
+ * 저장 키를 쓴다.
+ */
+export interface GuestResumeMessage {
+  type: "guestResume";
+  token: string;
 }
 
 /**
@@ -522,6 +539,7 @@ export type ClientMessage =
   | TokenLoginMessage
   | LogoutMessage
   | GuestPlayMessage
+  | GuestResumeMessage
   | PracticePlayMessage
   | CreateRoomMessage
   | JoinRoomMessage
@@ -1014,7 +1032,7 @@ export interface AuthOkMessage {
   isAdmin: boolean;
   /**
    * 자동 로그인용 세션 토큰 (클라이언트가 저장).
-   * 게스트는 빈 문자열 — 저장할 세션이 없다(연결이 끊기면 신원도 사라진다).
+   * 게스트는 빈 문자열 — 게스트에게는 계정이 없으므로 계정 세션도 없다.
    */
   sessionToken: string;
   /**
@@ -1022,6 +1040,14 @@ export interface AuthOkMessage {
    * (서버가 어차피 거부한다) 게임이 끝나면 가입 안내를 보여 준다.
    */
   guest?: boolean;
+  /**
+   * **그 체험 판 하나로 돌아오는 열쇠** (`guestResume`에 그대로 되돌려 보낸다).
+   *
+   * 계정 세션과 뜻이 완전히 다르다 — 가리키는 것이 사람이 아니라 **방 하나**이고,
+   * 그 방이 끝나면 함께 죽는다. 그래서 `sessionToken`에 얹지 않고 별도 필드로 둔다:
+   * 한 필드에 두 가지 수명·두 가지 권한을 담으면 언젠가 한쪽 규칙이 다른 쪽에 샌다.
+   */
+  guestToken?: string;
 }
 
 /** 방 생성 완료 — 이어서 joined·lobby가 온다. */
