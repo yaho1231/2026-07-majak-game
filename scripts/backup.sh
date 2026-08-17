@@ -76,6 +76,16 @@ if [ "${1:-}" = "--verify" ]; then
   else
     fail "백업이 깨졌습니다: $latest — $msg"
   fi
+  # DB만 멀쩡하고 통계가 없으면 "백업이 있다"는 말은 절반만 참이다 — 전적이 통째로 빠진다.
+  for f in stats stats.augments; do
+    newest="$(ls -1t "$BACKUP_DIR/stats/$f-"*.json 2>/dev/null | head -1 || true)"
+    if [ -z "$newest" ]; then
+      fail "$f.json 백업이 없습니다 — 누적 전적이 백업에 빠져 있습니다"
+    fi
+    python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$newest" 2>/dev/null \
+      || fail "$f.json 백업이 깨졌습니다: $newest"
+    echo "✓ $(basename "$newest") — JSON ok"
+  done
   exit 0
 fi
 
@@ -118,13 +128,44 @@ if [ -d "$REPLAY_DIR" ]; then
   rep_n="$(find "$BACKUP_DIR/replays" -name '*.jsonl' | wc -l | tr -d ' ')"
 fi
 
-# 3) 오래된 DB 스냅샷 정리 (리플레이 미러는 누적 — 판마다 파일이 하나라 증가가 완만하다)
+# 3) 누적 통계 JSON — **DB에 없는 데이터다.**
+#
+# ⚠ 처음 이 스크립트를 쓸 때 이 둘을 빠뜨렸다(2026-08-18 실측에서 발견). `.jsonl`만
+#   미러하고 DB만 스냅샷했는데, 정작 사람들의 **누적 전적은 SQLite가 아니라 JSON 파일**에
+#   있다. 실측 시점 stats.json 에 플레이어 34명의 화료율·방총률·평균순위·판수가 들어
+#   있었고, 그게 백업에서 통째로 빠져 있었다. DB만 살아 돌아와도 전적은 0이 된다.
+#
+# stats.json          플레이어별 누적 전적 (roundsPlayed·wins·placements…)
+# stats.augments.json 증강별 실전 성적 + 티어 오프셋 — 20판마다 도는 밸런스 자동 조정의
+#                     기억 전체다. 잃으면 지금까지의 조정이 리셋된다.
+#
+# 세대를 남긴다: 이 둘은 **덮어쓰기로 갱신**되는 파일이라(리플레이와 달리 불변이 아니다)
+# 마지막 하나만 두면 손상된 저장이 그대로 유일본이 된다.
+stats_n=0
+mkdir -p "$BACKUP_DIR/stats"
+for f in stats.json stats.augments.json; do
+  src="$REPLAY_DIR/$f"
+  [ -f "$src" ] || continue
+  # JSON이 깨진 채 저장된 것을 백업하지 않는다 — 검사 없이 넣으면 복구할 때 알게 된다.
+  if ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$src" 2>/dev/null; then
+    fail "통계 파일이 깨졌습니다: $src (이번 백업은 남기지 않는다)"
+  fi
+  cp "$src" "$BACKUP_DIR/stats/${f%.json}-$stamp.json"
+  chmod 600 "$BACKUP_DIR/stats/${f%.json}-$stamp.json" 2>/dev/null || true
+  stats_n=$((stats_n + 1))
+  # 같은 종류의 옛 세대 정리 (DB와 같은 보관 수)
+  ls -1t "$BACKUP_DIR/stats/${f%.json}-"*.json 2>/dev/null | tail -n +"$((BACKUP_KEEP + 1))" \
+    | while read -r old; do rm -f "$old"; done
+done
+chmod 700 "$BACKUP_DIR/stats" 2>/dev/null || true
+
+# 4) 오래된 DB 스냅샷 정리 (리플레이 미러는 누적 — 판마다 파일이 하나라 증가가 완만하다)
 ls -1t "$BACKUP_DIR"/db/majak-*.db.gz 2>/dev/null | tail -n +"$((BACKUP_KEEP + 1))" | while read -r old; do
   rm -f "$old"
 done
 
 total="$(du -sh "$BACKUP_DIR" 2>/dev/null | cut -f1 || echo '?')"
-log "✓ 백업 완료 — DB $(printf '%s' "$db_size") bytes → $(basename "$dest") · 리플레이 ${rep_n}판 · 총 $total ($BACKUP_DIR)"
+log "✓ 백업 완료 — DB $(printf '%s' "$db_size") bytes → $(basename "$dest") · 리플레이 ${rep_n}판 · 통계 ${stats_n}종 · 총 $total ($BACKUP_DIR)"
 
 # 백업 위치가 저장소와 같은 디스크면 한 번은 말해 준다 (디스크 고장은 못 막는다).
 src_dev="$(df -P "$ROOT" | awk 'NR==2{print $1}')"
