@@ -1376,6 +1376,139 @@ function useStableFn<A extends unknown[], R>(fn: (...args: A) => R): (...args: A
   return useCallback((...args: A) => ref.current(...args), []);
 }
 
+/**
+ * `<span>`·`<div>` 를 버튼처럼 쓸 때 필요한 것을 **한 벌로** 준다 —
+ * `role` · `tabIndex` · 클릭 · **Enter/Space 키**.
+ *
+ * **왜** (감사 2026-08-17 §6-1): `role="button"` 과 `onClick` 만 붙은 자리가 여럿
+ * 있었다. 그러면 스크린리더는 "버튼"이라고 읽어 주는데 **포커스가 가지 않아 누를
+ * 수가 없다** — 아무것도 안 붙은 것보다 나쁘다. 회수·무덤 도굴·날치기 같은 지목형
+ * 증강이 키보드만으로는 발동 불가였다.
+ *
+ * 새 자리를 만들 때 이걸 쓰면 넷 중 하나를 빠뜨릴 수 없다. `<button>` 을 쓸 수 있는
+ * 곳에서는 그냥 `<button>` 을 쓴다 — 이 헬퍼는 패·이름표처럼 이미 복잡한 레이아웃
+ * 안에 버튼을 넣을 수 없는 자리를 위한 것이다.
+ */
+function clickableProps(
+  onActivate: () => void,
+  label?: string,
+): {
+  role: "button";
+  tabIndex: 0;
+  onClick: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  "aria-label"?: string;
+} {
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      // Space 는 기본 동작이 스크롤이라 반드시 막는다 — 안 막으면 누를 때마다 판이 튄다.
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+        onActivate();
+      }
+    },
+    ...(label === undefined ? {} : { "aria-label": label }),
+  };
+}
+
+/**
+ * 화면을 덮는 오버레이(도감·규칙) — **뒤의 화면을 진짜로 비활성으로 만든다.**
+ *
+ * **왜** (감사 2026-08-17 §6-2·6-5): 예전에는 그냥 `<div className="screen-overlay">`
+ * 였다. 시각적으로만 덮여 있고 뒤의 게임판은 **탭 순서에 그대로 남아 있었다** —
+ * 도감에서 Tab을 계속 누르면 보이지 않는 손패 버튼으로 넘어가고, 거기서 Enter를
+ * 누르면 그대로 타패가 나갔다. 화면에 없는 것을 눌러 패를 버리는 셈이다.
+ *
+ * 해법은 포커스 트랩을 손으로 짜는 게 아니라 `inert` 다. 형제 요소에 걸면 그 안의
+ * 모든 것이 포커스·클릭·스크린리더에서 한꺼번에 빠진다 — 트랩을 직접 구현할 때
+ * 늘 생기는 구멍(shadow DOM·iframe·브라우저 UI 왕복)이 애초에 없다.
+ *
+ * 함께 갖춘 것: `aria-modal`(보조기술에 "뒤는 없는 셈"이라고 알린다) · Esc 로 닫기 ·
+ * 닫을 때 **원래 포커스로 복귀**(안 하면 닫은 뒤 포커스가 body로 떨어져 Tab이 맨
+ * 처음부터 다시 시작한다).
+ */
+function ScreenOverlay(props: {
+  label: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const onCloseStable = useStableFn(props.onClose);
+  useEffect(() => {
+    const el = ref.current;
+    const parent = el?.parentElement;
+    if (el == null || parent == null) return;
+    const restore = document.activeElement as HTMLElement | null;
+    // 이미 inert 인 형제(오버레이가 겹쳐 뜬 경우)는 건드리지 않는다 — 걷을 때
+    // 남의 것을 벗겨 버리면 아래 오버레이의 뒤 화면이 되살아난다.
+    const covered = [...parent.children].filter(
+      (c): c is HTMLElement => c !== el && c instanceof HTMLElement && !c.hasAttribute("inert"),
+    );
+    for (const c of covered) c.setAttribute("inert", "");
+    // 오버레이 안 첫 조작점으로 포커스를 옮긴다(없으면 오버레이 자신).
+    const first = el.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    (first ?? el).focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onCloseStable();
+    };
+    el.addEventListener("keydown", onKey);
+    return () => {
+      for (const c of covered) c.removeAttribute("inert");
+      el.removeEventListener("keydown", onKey);
+      restore?.focus?.({ preventScroll: true });
+    };
+  }, [onCloseStable]);
+  return (
+    <div
+      ref={ref}
+      className="screen-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={props.label}
+      tabIndex={-1}
+    >
+      {props.children}
+    </div>
+  );
+}
+
+/**
+ * 게임 위에 뜨는 **비모달** 패널(설정·기록)용 — Esc로 닫고, 열 때 포커스를 옮긴다.
+ *
+ * 이쪽에는 `aria-modal`도 `inert`도 걸지 않는다. 판은 뒤에서 계속 돌고 결정 타이머도
+ * 흐르므로, "뒤는 없는 셈"이라고 말하면 그건 거짓이다. 대신 Esc와 포커스만 챙긴다.
+ */
+function useDismissablePanel(onClose: () => void): React.MutableRefObject<HTMLDivElement | null> {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const onCloseStable = useStableFn(onClose);
+  useEffect(() => {
+    const el = ref.current;
+    if (el == null) return;
+    const restore = document.activeElement as HTMLElement | null;
+    const first = el.querySelector<HTMLElement>('button:not([disabled]), input:not([disabled])');
+    (first ?? el).focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onCloseStable();
+    };
+    el.addEventListener("keydown", onKey);
+    return () => {
+      el.removeEventListener("keydown", onKey);
+      restore?.focus?.({ preventScroll: true });
+    };
+  }, [onCloseStable]);
+  return ref;
+}
+
 /** 시드 고정 난수 — 리렌더·StrictMode 이중 렌더에도 파티클 배치가 변하지 않는다 */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -4760,17 +4893,17 @@ export function App(): JSX.Element {
       {/* 도움말이 도감보다 **먼저** 그려진다 — 도움말의 "증강이란"에서 도감을 열면
           도감이 그 위에 얹히고, 닫으면 읽던 자리로 그대로 돌아온다. */}
       {helpOpen ? (
-        <div className="screen-overlay">
+        <ScreenOverlay label="규칙 · 도움말" onClose={() => setHelpOpen(false)}>
           <HelpScreen
             augmentKinds={augmentKinds}
             backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
             onOpenCodex={() => setCodexOpen(true)}
             onClose={() => setHelpOpen(false)}
           />
-        </div>
+        </ScreenOverlay>
       ) : null}
       {codexOpen ? (
-        <div className="screen-overlay">
+        <ScreenOverlay label="증강 도감" onClose={() => setCodexOpen(false)}>
           <CodexScreen
             catalog={catalog}
             career={stats?.career.find((e) => e.nickname === auth?.username)?.stats ?? null}
@@ -4779,7 +4912,7 @@ export function App(): JSX.Element {
             onRefresh={() => { if (auth?.guest !== true) refreshHome(); }}
             onClose={() => setCodexOpen(false)}
           />
-        </div>
+        </ScreenOverlay>
       ) : null}
 
       {inGame && intro && !isSpectator ? <IntroOverlay view={view!} /> : null}
@@ -5887,8 +6020,7 @@ function MoreToggle({ open, onToggle }: { open: boolean; onToggle: () => void })
   return (
     <span
       className={`augdesc-more${open ? " augdesc-more-on" : ""}`}
-      role="button"
-      tabIndex={-1}
+      {...clickableProps(onToggle, open ? "간단히 보기" : "자세히 보기")}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
     >
       {open ? "간단히 ▴" : "자세히 ▾"}
@@ -9168,6 +9300,18 @@ function SettingsPanel(props: {
       {...(drag.style !== undefined ? { style: drag.style } : {})}
       role="dialog"
       aria-label="설정"
+      tabIndex={-1}
+      /*
+       * Esc 로 닫는다 (감사 §6-5). `aria-modal`은 **붙이지 않는다** — 판은 뒤에서
+       * 계속 돌고 결정 타이머도 흐르므로 "뒤는 없는 셈"이라고 말하면 거짓이다.
+       * ref 자리는 드래그가 이미 쓰고 있어 여기서는 핸들러만 단다.
+       */
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          props.onClose();
+        }
+      }}
     >
       <div
         className="settings-head"
@@ -9183,12 +9327,21 @@ function SettingsPanel(props: {
           <label key={r.key} className="settings-row">
             <div className="settings-text">
               <span className="settings-label">{r.label}</span>
-              <span className="settings-desc">{r.desc}</span>
+              <span className="settings-desc" id={`set-desc-${r.key}`}>{r.desc}</span>
             </div>
             <button
               className={`toggle${props.settings[r.key] ? " toggle-on" : ""}`}
               role="switch"
               aria-checked={props.settings[r.key]}
+              /*
+               * 이름을 명시한다 (감사 §6-6). 버튼 내용이 빈 `<span class="toggle-knob">`
+               * 이라 이름이 없었고, 감싼 `<label>` 은 **button 에 이름을 주지 못한다**
+               * (label 의 암묵 연결은 폼 컨트롤에만 적용된다). 그래서 스크린리더가
+               * "스위치, 켬" 만 읽었다 — 무엇의 스위치인지가 빠진다.
+               * 바로 아래 음량 슬라이더는 aria-label 이 제대로 붙어 있어 대비된다.
+               */
+              aria-label={r.label}
+              aria-describedby={`set-desc-${r.key}`}
               onClick={() => {
                 props.onSetting(r.key, !props.settings[r.key]);
               }}
@@ -9965,6 +10118,8 @@ function AugmentLog({
   /** 지금 다시 열어 둔 지난 국 (없으면 null) */
   const [reopened, setReopened] = useState<PastRound | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // Esc 로 닫고, 열면 포커스를 안으로, 닫으면 원래 자리로 되돌린다 (감사 §6-5).
+  const panelRef = useDismissablePanel(onToggle);
   // 열 때·새 사건이 들어올 때 맨 아래(가장 최근)로. 스크롤백은 위로 올리면 그대로 있다.
   useEffect(() => {
     const el = bodyRef.current;
@@ -9992,7 +10147,7 @@ function AugmentLog({
       {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
       {open
         ? createPortal(
-            <div className="auglog" role="dialog" aria-label="기록">
+            <div className="auglog" role="dialog" aria-label="기록" tabIndex={-1} ref={panelRef}>
               <div className="auglog-head">
                 기록
                 <button type="button" className="auglog-close" onClick={onToggle} title="닫기">✕</button>
@@ -10629,6 +10784,8 @@ function CenterPanel({
           <span
             className="wall-count"
             title={`${glossaryTitle("wall")}\n남은 ${wallLeft}장 · 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
+            /* "×57" 만으로는 무엇의 57인지 알 수 없다 — 라벨이 `title` 에만 있었다(감사 §6-7) */
+            aria-label={`패산에 남은 패 ${wallLeft}장, 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
           >
             ×{wallLeft}
           </span>
@@ -10800,7 +10957,15 @@ const River = memo(function River({
             className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}${tsumo ? " rt-tsumogiri" : ""}`}
             title={tsumo ? "쯔모기리 (쯔모한 패를 그대로 버림)" : "손버림 (손패에서 꺼내 버림)"}
             {...(armable
-              ? { "data-arm-zone": "1", role: "button" as const, onClick: () => sel.submit(armOpt) }
+              ? {
+                  "data-arm-zone": "1",
+                  // 이름을 준다 — 안 주면 스크린리더가 "버튼"이라고만 읽는다.
+                  // 바닥에는 같은 그림의 패가 여럿이라 그것만으로는 고를 수가 없다.
+                  ...clickableProps(
+                    () => sel.submit(armOpt),
+                    `${formatTile(view.tiles[id])} — 이 버림패 고르기`,
+                  ),
+                }
               : {})}
           >
             <span className="rt-inner">
@@ -11075,8 +11240,7 @@ function OpponentStrip({
   const armProps = oppArmable
     ? {
         "data-arm-zone": "1",
-        onClick: () => sel.clickOpp(player.id),
-        role: "button" as const,
+        ...clickableProps(() => sel.clickOpp(player.id), `${player.nickname} 고르기`),
       }
     : {};
   // 선언 간파로 알아낸 이 상대의 화료패 — 발동한 본인에게만 상시 노출
@@ -12479,6 +12643,23 @@ function OwnArea(props: {
   const drawnId = view.round.myDrawnTile;
   const hasDrawn = drawnId !== null && rawHand.includes(drawnId);
 
+  /*
+   * 보조기술에 **차례를 알린다** (감사 §6-3).
+   *
+   * 예전에는 live region이 연출 큐 하나뿐이었다. 리치·후로·화료처럼 큐를 지나는
+   * 사건은 들렸지만, 정작 **내 차례가 왔다 · 무엇을 쯔모했다** 는 맥동과 게이지로만
+   * 표현돼 화면을 못 보는 사람에게는 아무 신호가 없었다. 게임에서 가장 자주,
+   * 가장 중요하게 알아야 할 두 가지가 빠져 있던 셈이다.
+   *
+   * 문장을 만들 때만 값이 바뀌게 묶어 둔다 — 매 렌더 같은 문자열을 새로 넣으면
+   * 스크린리더가 같은 말을 반복해서 읽는다.
+   */
+  const turnAnnounce = useMemo(() => {
+    if (isSpectator || !isMyTurn) return "";
+    const drawn = hasDrawn && drawnId !== null ? formatTile(view.tiles[drawnId]) : null;
+    return drawn !== null ? `내 차례입니다. ${drawn} 쯔모.` : "내 차례입니다.";
+  }, [isSpectator, isMyTurn, hasDrawn, drawnId, view.tiles]);
+
   // 수동 정렬용 순서 (자동정렬 OFF일 때만 사용).
   // 패 id는 게임 내내 0~135로 고정 재사용되므로 국이 바뀌어도 자동 초기화되지 않는다 →
   // 국이 바뀌면(roundKey 변경) 지난 국의 정렬이 새 손패로 새어 들어가지 않게 직접 비운다.
@@ -13168,6 +13349,10 @@ function OwnArea(props: {
         ref={areaRef}
         data-arm-zone="1"
       >
+        {/* 차례·쯔모를 보조기술에만 읽어 준다 (감사 §6-3 — 화면에는 이미 맥동·게이지로 보인다) */}
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {turnAnnounce}
+        </div>
         {props.quickToggles ?? null}
         {/*
          * 내 이름표 줄 — 이름표·액티브 증강 버튼은 가운데(`.own-top-main`),
@@ -13429,6 +13614,24 @@ function OwnArea(props: {
             return (
               <button
                 key={id}
+                /*
+                 * 상태를 **이름에 싣는다** (감사 §6-8). 예전에는 이름이 패 이름뿐이라
+                 * 잠김·쯔모패·위험패·봉인이 전부 클래스=색으로만 표현됐다 — 화면을
+                 * 못 보는 사람에게는 열네 장이 전부 똑같이 들렸다.
+                 * 잠긴 패는 `aria-disabled` 로도 알린다(포커스는 남겨 둔다 —
+                 * 왜 못 버리는지 읽을 수 있어야 하므로 `disabled` 로 빼지 않는다).
+                 */
+                aria-label={[
+                  formatTile(view.tiles[id]),
+                  isDrawn ? "방금 쯔모" : null,
+                  sealed ? "봉인됨" : null,
+                  danger ? "위험패" : null,
+                  armedTileId === id ? "선택됨 — 한 번 더 누르면 버립니다" : null,
+                  !clickable ? "지금 버릴 수 없음" : null,
+                ]
+                  .filter((x) => x !== null)
+                  .join(", ")}
+                aria-disabled={!clickable}
                 className={`hand-tile${clickable ? " hand-clickable" : " hand-locked"}${
                   armedTileId === id ? " hand-armed" : ""
                 }${
@@ -13471,6 +13674,14 @@ function OwnArea(props: {
                   }
                 }}
                 onMouseLeave={() => setHoverId((cur) => (cur === id ? null : cur))}
+                /*
+                 * 키보드에도 같은 미리보기를 준다 (감사 §6-10).
+                 * 증강 pill·액션 메뉴·관계 칩은 전부 `onFocus` 를 짝으로 달았는데
+                 * **손패만 빠져 있었다** — 정작 "이 패를 버리면 무엇을 기다리게
+                 * 되는가"가 가장 필요한 자리다. 탭으로 훑는 사람에게는 이게 유일한 통로다.
+                 */
+                onFocus={() => setHoverId(id)}
+                onBlur={() => setHoverId((cur) => (cur === id ? null : cur))}
                 onClick={() => {
                   // 드래그로 재정렬/버리기를 한 직후 딸려온 click은 무시한다
                   if (suppressClickRef.current) {
