@@ -1417,6 +1417,18 @@ button {
   animation: turn-pulse 2.4s var(--ease-quart) infinite;
 }
 
+/* 선언 대기 — 이 사람의 차례가 아니라 **다른 자리의 응답**을 기다리는 구간이다.
+   같은 자리·같은 모양이되 색을 낮춰 "내가 둘 차례"와 구분한다. */
+.np-turn-wait {
+  background: rgba(240, 200, 106, 0.18);
+  color: #f0c86a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  animation: none;
+  cursor: help;
+}
+
 .np-name {
   font-weight: 700;
   color: #ece4d2;
@@ -2805,6 +2817,22 @@ button {
  * y=528–544 × .action-bar 아래끝 y=534. 게이지는 5~8px짜리 실선이라 위아래로 숨통이
  * 없다. 옆은 비어 있다(게이지 폭이 60cqw라 양옆에 각각 20cqw가 남는다).
  */
+/* 시간이 다 되면 무슨 일이 일어나는지 — 게이지 **위쪽**에 세운다. 오른쪽은 초 표시가
+   이미 쓰고 있고, 아래는 액션 바가 붙어 있다. 급한 구간(≤5초)에만 뜬다. */
+.prompt-timer-note {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffd9a0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
 .prompt-timer-count {
   position: absolute;
   left: 100%;
@@ -4026,6 +4054,13 @@ button {
   letter-spacing: 6px;
 }
 
+/* 왜 끝났는가 — 제목 바로 아래 한 줄. 평범한 종국에는 뜨지 않는다. */
+.gameover-reason {
+  margin: -10px 0 16px;
+  font-size: 13px;
+  color: #a8bcaf;
+}
+
 .rank-list {
   display: flex;
   flex-direction: column;
@@ -4795,9 +4830,27 @@ button {
   width: min(880px, 94cqw);
   display: grid;
   grid-template-columns: 1fr auto;
-  grid-template-areas: "name name" "shape shape" "hand hand" "yaku circle";
+  grid-template-areas: "name name" "pay pay" "pao pao" "shape shape" "hand hand" "yaku circle";
   align-items: center;
   gap: clamp(8px, 1.6cqh, 16px) clamp(20px, 4cqw, 52px);
+}
+
+/* 표준 지불 분담 — 화료자 줄 바로 아래, 작게 */
+.result-payments {
+  grid-area: pay;
+  text-align: center;
+  font-size: 12px;
+  color: #a8bcaf;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 책임지불(파오) — 쏘지 않은 사람이 무는 이유라 눈에 걸려야 한다 */
+.result-pao {
+  grid-area: pao;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f0c86a;
 }
 
 .result-shape-augs {
@@ -7369,7 +7422,7 @@ button {
   /* 국 결과 — 역 목록(최소 320px)과 판수 원이 가로로 나란히 서면 넘친다. 세로로 쌓는다. */
   .result-win {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "name" "shape" "hand" "circle" "yaku";
+    grid-template-areas: "name" "pay" "pao" "shape" "hand" "circle" "yaku";
     justify-items: center;
   }
   .result-yaku-list {

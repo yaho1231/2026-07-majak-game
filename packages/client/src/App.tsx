@@ -32,6 +32,7 @@ import type {
   FeedbackKind,
   FeedbackStatus,
   FuritenReason,
+  GameEndReason,
   GameMode,
   JoinedMessage,
   LiveRoomSummary,
@@ -231,6 +232,7 @@ const GAME_STREAM_MESSAGES: ReadonlySet<ServerMessage["type"]> = new Set([
   "prompt",
   "promptCancel",
   "draftOffer",
+  "draftAutoPicked",
   "draftRerolled",
   "roundOver",
   "gameOver",
@@ -2308,6 +2310,8 @@ export function App(): JSX.Element {
   const pendingResult = useRef<RoundOverMessage | null>(null);
   const [roundResult, setRoundResult] = useState<RoundOverMessage | null>(null);
   const [rankings, setRankings] = useState<RankingEntry[] | null>(null);
+  /** 판이 끝난 이유 — 결과 화면 헤더 아래 한 줄. 예전에는 "대국 종료"뿐이었다. */
+  const [gameEndReason, setGameEndReason] = useState<GameEndReason>("normal");
   /** 종국 뒤에도 방이 살아 있어 같은 멤버로 한 판 더 갈 수 있는가 (결과 화면의 "이어하기") */
   const [canContinue, setCanContinue] = useState(false);
   const [abortVote, setAbortVote] = useState<AbortVoteMessage | null>(null);
@@ -3250,6 +3254,21 @@ export function App(): JSX.Element {
     if (msg.type === "promptCancel") {
       // 제한 시간 초과 등으로 내 차례가 서버에서 이미 지나갔다 — 떠 있는 선택 UI를 닫는다.
       // seat이 실려 오면 그 좌석 것만 접는다(봇 좌석 조종 중 내 프롬프트를 살리기 위해).
+      //
+      // …그리고 **왜 접혔는지 말한다.** 예전에는 말없이 닫기만 해서, 시간이 지나
+      // 서버가 대신 고른 것과 상대의 선언이 우선한 것이 둘 다 "누르려던 버튼이 그냥
+      // 사라졌다"로만 보였다. 초읽기 국은 5초라 상시로 일어난다.
+      if (msg.reason === "timeout") {
+        showToast(
+          msg.chosen !== undefined
+            ? `시간 초과 — ${msg.chosen}로 자동 진행했습니다`
+            : "시간 초과 — 자동으로 진행했습니다",
+          "error",
+          3600,
+        );
+      } else if (msg.reason === "preempted") {
+        showToast("다른 사람의 선언이 우선합니다", "info", 2600);
+      }
       if (msg.seat !== undefined) dropPrompt(msg.seat);
       else setPrompts({});
       setPromptDeadline(null);
@@ -3271,6 +3290,15 @@ export function App(): JSX.Element {
       setRoundResult(null);
       pendingResult.current = null;
       sfx.draft();
+      return;
+    }
+    if (msg.type === "draftAutoPicked") {
+      // 시간이 다 되어 서버가 대신 골랐다. 선택창은 곧 닫히므로(다음 뷰/프롬프트)
+      // 여기서 결과를 남겨 두지 않으면 "안 고른 증강이 생겼다"로만 남는다.
+      setDraft(null);
+      setDraftPicked(false);
+      draftPickedRef.current = false;
+      showBanner("자동 선택", "info", `시간 초과 — ${msg.name} 획득`, 2200);
       return;
     }
     if (msg.type === "draftRerolled") {
@@ -3295,6 +3323,7 @@ export function App(): JSX.Element {
       riichiBgm.stop(); // 게임 종료 — 혹시 남아 있을 BGM 확실히 정지
       riichiBgmArmed.current = false;
       setRankings(msg.rankings);
+      setGameEndReason(msg.reason ?? "normal");
       setCanContinue(msg.canContinue === true);
       setPrompts({});
       setDraft(null);
@@ -4436,6 +4465,7 @@ export function App(): JSX.Element {
       {rankings !== null ? (
         <GameOverModal
           rankings={rankings}
+          endReason={gameEndReason}
           stats={stats}
           onClose={returnHome}
           {...(canContinue && !isSpectator
@@ -4460,7 +4490,7 @@ export function App(): JSX.Element {
 /** 잠깐 보기 버튼이 따라붙는 창들 — 이게 떠 있을 때만 버튼이 나온다 */
 const PEEK_OVERLAY_SEL = ".overlay-peekable, .rinshan-pick-overlay";
 /** 버튼을 바로 아래에 붙일 패널 (창의 실제 내용 상자) */
-const PEEK_PANEL_SEL = ".draft-panel, .rinshan-pick-panel";
+const PEEK_PANEL_SEL = ".draft-panel, .rinshan-pick-panel, .result-panel";
 /** 패널과 버튼 사이 간격 (px) */
 const PEEK_GAP = 10;
 
@@ -7650,6 +7680,22 @@ const SHAPE_RULE_AUGMENTS = new Set<string>([
  * "봇이 쉬움이었나"를 사후에 알 수 없었다. 게스트 체험 방은 대기실을 안 거쳐 한 번도
  * 못 본다.
  */
+/**
+ * 종국 사유 한 줄. 평범한 종국(`normal`)은 비워 둔다 — 설명할 것이 없다.
+ */
+/** 리치가 막힌 평범한 사유 — 엔진의 riichi validate와 같은 판정을 서버가 실어 준다 */
+const RIICHI_BLOCK_TEXT: Record<"notEnoughPoints" | "wallTooShort", string> = {
+  notEnoughPoints: "점수가 리치봉(1,000점)에 못 미쳐 리치를 걸 수 없습니다",
+  wallTooShort: "패산이 얼마 안 남아 리치를 걸 수 없습니다",
+};
+
+const GAME_END_NOTE: Partial<Record<GameEndReason, string>> = {
+  dobi: "도비 — 누군가 0점 아래로 떨어져 그 자리에서 끝났습니다",
+  agariYame: "아가리야메 — 마지막 국에서 오야가 연장하며 단독 1위라 그대로 끝났습니다",
+  westEntryDecided: "서든데스 종료 — 30000점을 넘긴 사람이 나왔습니다",
+  instantWin: "천하통일 — 문턱 점수에 닿아 남은 국 없이 끝났습니다",
+};
+
 const BOT_DIFFICULTY: readonly (readonly [string, string, string])[] = [
   ["easy", "쉬움", "실수를 자주 한다"],
   ["normal", "보통", "가끔 흘린다"],
@@ -10816,6 +10862,18 @@ const NamePlate = memo(function NamePlate({
 }): JSX.Element {
   const isMe = player.id === view.playerId;
   const isTurn = view.round.turnSeat === player.seat;
+  /*
+   * 지금 판이 **선언을 기다리는 중**인가 (reaction 페이즈).
+   *
+   * 타패 뒤에도 `turnSeat`은 버린 사람 그대로다 — 차례 표시가 전부 그 값만 보므로,
+   * 누군가 론·펑을 최대 30초 고민하는 동안 **방금 버린 사람에게 "차례"가 켜진 채**
+   * 판이 멈춰 보였다. 접속 상태 칩은 "생각 중과 끊김을 구분하려고" 세워 뒀으면서,
+   * 정작 그 "생각 중"에 해당하는 표시가 없었다.
+   *
+   * 누가 고민 중인지는 뷰에 없다(에이전트 계층의 정보다). 알 수 있는 것 — 지금이
+   * 선언 대기 구간이라는 사실 — 만 정직하게 말한다.
+   */
+  const awaitingCall = view.round.phase === "reaction";
   const furiten = isMe && view.round.byPlayer[player.id]?.furiten === true;
   const noYaku = isMe && view.round.byPlayer[player.id]?.noYaku === true;
   // 후리텐 사유 — 같은 두 글자가 "한 순만 참으면 풀리는 일시 후리텐"과 "이 국은 끝난
@@ -10911,7 +10969,15 @@ const NamePlate = memo(function NamePlate({
     <div
       className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}${connLabel !== null ? ` nameplate-${conn}` : ""}`}
     >
-      {isTurn ? <span className="np-turn" aria-label="현재 차례">차례</span> : null}
+      {isTurn ? (
+        awaitingCall ? (
+          <span className="np-turn np-turn-wait" title="다른 자리의 선언(론·펑·치·깡)을 기다리는 중입니다">
+            선언 대기
+          </span>
+        ) : (
+          <span className="np-turn" aria-label="현재 차례">차례</span>
+        )
+      ) : null}
       {connLabel !== null ? (
         <span
           className="np-conn"
@@ -11451,7 +11517,12 @@ const TIMER_COUNT_MS = 10_000;
 /** 굵게·붉게 전환하는 잔여 시간 */
 const TIMER_URGENT_MS = 5_000;
 
-function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Element {
+function PromptTimer(props: {
+  seq: number;
+  deadline: number | null;
+  /** 시간이 다 되면 서버가 대신 하는 일 (없으면 안내하지 않는다) */
+  onTimeout?: string | null;
+}): JSX.Element {
   const { deadline } = props;
   const [left, setLeft] = useState<number | null>(
     deadline === null ? null : Math.max(0, deadline - Date.now()),
@@ -11481,6 +11552,7 @@ function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Eleme
       className={`prompt-timer${urgent ? " prompt-timer-urgent" : ""}`}
       // 마감이 바뀌면 새로 마운트해 애니메이션을 처음부터 돌린다
       key={`${props.seq}:${deadline ?? "none"}`}
+      {...(props.onTimeout != null ? { title: props.onTimeout } : {})}
     >
       <div
         className="prompt-timer-fill"
@@ -11492,6 +11564,10 @@ function PromptTimer(props: { seq: number; deadline: number | null }): JSX.Eleme
       />
       {showCount && left !== null ? (
         <span className="prompt-timer-count">{(left / 1000).toFixed(1)}초</span>
+      ) : null}
+      {/* 급해진 구간에서만 실제로 띄운다 — 상시로 세워 두면 판을 가리기만 한다 */}
+      {urgent && props.onTimeout != null ? (
+        <span className="prompt-timer-note">{props.onTimeout}</span>
       ) : null}
     </div>
   );
@@ -12362,7 +12438,21 @@ function OwnArea(props: {
               onRiichiMode={props.onRiichiMode}
               onSubmit={props.onSubmit}
             />
-            <PromptTimer seq={props.promptSeq} deadline={props.promptDeadline} />
+            <PromptTimer
+              seq={props.promptSeq}
+              deadline={props.promptDeadline}
+              // 시간이 다 되면 무슨 일이 일어나는지를 **미리** 말한다. 드래프트 창은
+              // "시간이 다 되면 랜덤으로 결정된다"를 상시로 적어 두는데 여기만 없어서,
+              // 되돌릴 수 없는 손실(론 흘림·의도치 않은 타패)이 예고 없이 일어났다.
+              // 폴백 순서는 서버의 safeFallbackOption과 같다: 패스가 있으면 패스.
+              onTimeout={
+                myPrompt.options.some((o) => o.type === "pass")
+                  ? "시간이 다 되면 자동으로 패스합니다"
+                  : myPrompt.options.some((o) => o.type === "discard")
+                    ? "시간이 다 되면 쯔모한 패가 그대로 나갑니다"
+                    : null
+              }
+            />
           </>
         ) : null}
         {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
@@ -13073,6 +13163,17 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   // 카르마 업보 게이지 · 대기만성 만개 · 가불 인생 · 만년 오야는 이제 그 사람의
   // 이름표 증강 pill 위에 잔량/게이지로 붙는다(aug-pill-chip·aug-pill-gauge).
   // 여기서도 띄우면 같은 값이 화면 두 곳에 겹친다.
+  /*
+   * 리치가 **평범한 이유로** 막혔을 때 — 증강 봉인은 아래에서 따로 알린다.
+   *
+   * 액션 바는 서버가 준 옵션만 그리므로, 리치가 막히면 버튼이 그냥 없다. 점수가
+   * 1000점 아래로 떨어진 순간부터 리치가 영영 안 뜨는데 화면 어디에도 그 인과가
+   * 없었다. 증강 봉인·손패 조작 차단은 이미 이유를 적어 주는데 표준 규칙만 구멍이었다.
+   */
+  const riichiBlocked = view.round.byPlayer[me.id]?.riichiBlocked;
+  if (riichiBlocked !== undefined) {
+    textBadge("riichi-blocked", "리치 불가", RIICHI_BLOCK_TEXT[riichiBlocked]);
+  }
   // 리치 봉인 / 이중 선언 — 내 리치가 잠겼으면 왜 잠겼는지 반드시 보여준다
   for (const [key, value] of avEntries) {
     if (key.startsWith("riichi_seal:") && typeof value === "string") {
@@ -14786,7 +14887,9 @@ function RoundResultPanel({
   }
 
   return (
-    <div className={`overlay result-overlay result-outcome-${result.outcome}`}>
+    // `overlay-peekable` — 결과 화면도 판을 통째로 덮는다. 표도라·버림패를 다시 보려
+    // 해도 볼 수가 없어서, 훔쳐보기 버튼이 붙는 창 목록에 넣는다(증강 선택창과 같다).
+    <div className={`overlay overlay-peekable result-overlay result-outcome-${result.outcome}`}>
       {/* 축하 꽃잎은 화료에만 — 유국·도중유국에 뿌리면 진 사람에게도 축포가 된다 */}
       {isWin ? (
         <div className="result-petals" aria-hidden>
@@ -14858,6 +14961,32 @@ function RoundResultPanel({
                     : `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
                 aug: true,
               })),
+            /*
+             * 본장·리치봉 — 점수는 이미 받고 있었는데 화면에 줄이 없었다. 큰 숫자가
+             * `points`(둘을 뺀 값)라 아래 증감표와 숫자가 어긋났고, 리치봉 1000점을
+             * 누가 왜 가져갔는지도 어디에도 안 적혔다. 본장 단가는 규칙(본장 사냥꾼이
+             * 바꾼다)이라 서버가 계산해 실어 준 값을 그대로 쓴다.
+             */
+            ...(w.honbaBonus !== undefined && w.honbaBonus > 0
+              ? [
+                  {
+                    key: "honba",
+                    // `settle.honba`는 **다음 국**의 본장이라 몇 본을 받았는지는 못 센다.
+                    // 금액만 적는다 — 그게 알려 줄 것의 전부다.
+                    label: "본장",
+                    han: `+${w.honbaBonus.toLocaleString()}점`,
+                  },
+                ]
+              : []),
+            ...(w.riichiPotGain !== undefined && w.riichiPotGain > 0
+              ? [
+                  {
+                    key: "pot",
+                    label: "리치봉 회수",
+                    han: `+${w.riichiPotGain.toLocaleString()}점`,
+                  },
+                ]
+              : []),
           ];
           return (
           <div key={w.winner} className="result-win">
@@ -14868,6 +14997,36 @@ function RoundResultPanel({
               </span>
               {w.from !== null ? <span className="result-from">← {nameOf(w.from)}</span> : null}
             </div>
+
+            {/* 지불 분담 — 쯔모의 "친 3,900 / 자 2,000씩"이 화면 어디에도 없었다.
+                증감표는 본장·공탁·증강 이동이 뒤섞인 순증감 하나뿐이다. */}
+            {(() => {
+              const pay = w.payments;
+              if (pay === undefined) return null;
+              const parts: string[] = [];
+              if (pay.dealer !== undefined && pay.dealer > 0) {
+                parts.push(`친 ${pay.dealer.toLocaleString()}`);
+              }
+              if (pay.others !== undefined && pay.others > 0) {
+                const n = w.winType === "tsumo" ? (pay.dealer !== undefined ? 2 : 3) : 1;
+                parts.push(`자 ${pay.others.toLocaleString()}${n > 1 ? `×${n}` : ""}`);
+              }
+              if (pay.discarder !== undefined && pay.discarder > 0) {
+                parts.push(`${pay.discarder.toLocaleString()}점`);
+              }
+              if (parts.length === 0) return null;
+              return <div className="result-payments">{parts.join(" · ")}</div>;
+            })()}
+
+            {/* 책임지불(파오) — 엔진은 진작 계산하고 있었는데 클라이언트에는 이 말이
+                한 번도 없었다. 대삼원을 확정시킨 후로를 내준 사람이 16,000을 무는데
+                화면에는 자기가 쏘지도 않은 큰 마이너스만 떴다. */}
+            {w.pao !== undefined ? (
+              <div className="result-pao">
+                책임지불 {nameOf(w.pao.responsible)} — {YAKU_NAMES[w.pao.yakuId] ?? w.pao.yakuId}{" "}
+                {w.pao.points.toLocaleString()}점
+              </div>
+            ) : null}
 
             {result.revealedHands[w.winner] !== undefined ? (
               <div className="result-hand">
@@ -14940,8 +15099,18 @@ function RoundResultPanel({
                 </i>
               </span>
               {/* 증강이 점수를 움직였으면 **최종 획득점**으로 굴린다 — 표준 점수만 크게
-                  띄우면 위 증강 줄과 아래 ±점수가 서로 다른 이야기를 한다. */}
-              <CountUpPoints value={w.points + augPointsOf(settle, w.winner)} mute={wi > 0} />
+                  띄우면 위 증강 줄과 아래 ±점수가 서로 다른 이야기를 한다.
+                  본장·리치봉도 같은 이유로 더한다: `w.points`는 둘을 빼고 세는 값이라
+                  2본장·리치봉 1개면 `8,000점`이 굴러간 뒤 표에는 `+9,600`이 떴다. */}
+              <CountUpPoints
+                value={
+                  w.points +
+                  (w.honbaBonus ?? 0) +
+                  (w.riichiPotGain ?? 0) +
+                  augPointsOf(settle, w.winner)
+                }
+                mute={wi > 0}
+              />
             </div>
           </div>
           );
@@ -15041,6 +15210,18 @@ function RoundResultPanel({
                 </div>
               );
             })}
+          </div>
+        ) : null}
+
+        {/* 표도라 — 결과 화면이 판을 완전히 덮어 뒤의 도라 줄을 훔쳐볼 수 없다.
+            뒷도라만 실물로 뜨던 탓에, 표시패 1장으로 설명되지 않는 판수가 나와도
+            근거를 찾을 데가 없었다. */}
+        {(result.doraIndicators ?? []).length > 0 ? (
+          <div className="result-ura">
+            <span className="result-ura-label">도라</span>
+            {(result.doraIndicators ?? []).map((id) => (
+              <TileImg key={id} tile={result.tiles[id]} size="mini" />
+            ))}
           </div>
         ) : null}
 
@@ -15275,12 +15456,15 @@ function DraftOverlay({
 
 function GameOverModal({
   rankings,
+  endReason,
   stats,
   onClose,
   onContinue,
   sandbox = false,
 }: {
   rankings: RankingEntry[];
+  /** 왜 끝났는가 — 헤더 아래 한 줄 */
+  endReason?: GameEndReason;
   stats: StatsMessage | null;
   onClose: () => void;
   /** 방이 살아 있을 때만 — 같은 멤버 그대로 다음 판으로 (증강 테스트는 즉시 새 판) */
@@ -15299,6 +15483,11 @@ function GameOverModal({
     <div className="overlay">
       <div className="gameover-panel">
         <h2>대국 종료</h2>
+        {/* 왜 끝났는지 — 남2국에서 갑자기 순위표가 뜨면(도비) 버그로 읽혔다.
+            평범한 종국에는 붙이지 않는다(설명할 것이 없다). */}
+        {endReason !== undefined && GAME_END_NOTE[endReason] !== undefined ? (
+          <p className="gameover-reason">{GAME_END_NOTE[endReason]}</p>
+        ) : null}
         {gameStats.length > 0 ? (
           <div className="go-tabs">
             <button className={tab === "rank" ? "go-tab active" : "go-tab"} onClick={() => setTab("rank")}>

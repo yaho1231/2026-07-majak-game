@@ -396,6 +396,7 @@ export type {
   RevealedHand,
   RoundOverMessage,
   RankingEntry,
+  GameEndReason,
   GameOverMessage,
   AbortVoteMessage,
   GameAbortedMessage,

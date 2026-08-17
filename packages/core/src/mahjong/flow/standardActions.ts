@@ -936,8 +936,11 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
         /** 책임자가 실제로 문 금액 (표시·검증용) */
         let paoCharged = 0;
 
+        /** 이 화료가 받는 본장 가산분 — 결과 화면이 큰 숫자에 함께 굴린다 */
+        let honbaGain = 0;
         if (w.winType === "ron") {
           const honbaBonus = i === 0 ? state.round.honba * honbaPerStick : 0;
+          honbaGain = honbaBonus;
           const total = score.total + honbaBonus;
           deltas[w.winner] = (deltas[w.winner] ?? 0) + total;
           if (w.from !== null) {
@@ -977,6 +980,7 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
             paoAssigned += full - share;
             deltas[p.id] = (deltas[p.id] ?? 0) - share - honbaEach;
             deltas[w.winner] = (deltas[w.winner] ?? 0) + share + honbaEach;
+            honbaGain += honbaEach;
           }
           if (pao !== null && paoAssigned > 0) {
             deltas[pao.responsible] =
@@ -1001,6 +1005,18 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
           // 실역 0개 화료 — 여기까지 왔다는 건 needYaku가 꺼져 있었다는 뜻이다
           ...(ev.ok ? {} : { yakuless: true }),
           points: score.total,
+          ...(honbaGain > 0 ? { honbaBonus: honbaGain } : {}),
+          // 표준 분담 — 쯔모의 "친 3,900 / 자 2,000씩"이 화면 어디에도 없었다.
+          // 오야 취급 증강이 걸리면 친 몫이 따로 없으므로(scoresAsDealer) 자 몫만 싣는다.
+          payments:
+            w.winType === "ron"
+              ? { discarder: score.payments.discarder ?? score.total }
+              : scoresAsDealer
+                ? { others: score.payments.others ?? 0 }
+                : {
+                    dealer: score.payments.dealer ?? 0,
+                    others: score.payments.others ?? 0,
+                  },
           limit: score.limit,
           ...(pao !== null && paoCharged > 0
             ? {
@@ -1040,8 +1056,14 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
         }
       }
       const firstWinner = first.winner;
-      deltas[firstWinner] =
-        (deltas[firstWinner] ?? 0) + state.round.riichiPot - riichiRefund;
+      const riichiPotGain = state.round.riichiPot - riichiRefund;
+      deltas[firstWinner] = (deltas[firstWinner] ?? 0) + riichiPotGain;
+      // 공탁은 **첫 화료자에게만** 간다. 더블론이면 두 번째 화료자는 못 받는데 그
+      // 사실도 화면에 없었다 — 받은 사람 쪽에만 실어 준다.
+      if (riichiPotGain > 0) {
+        const firstInfo = winInfos.find((info) => info.winner === firstWinner);
+        if (firstInfo !== undefined) firstInfo.riichiPotGain = riichiPotGain;
+      }
 
       const next = dealerWon
         ? {

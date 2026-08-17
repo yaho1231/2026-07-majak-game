@@ -120,6 +120,19 @@ export function safeFallbackOption(options: ActionOption[]): ActionOption {
   return options[0]!;
 }
 
+/**
+ * 폴백으로 대신 고른 선택을 사람 말로 — 클라이언트 토스트에 그대로 실린다.
+ *
+ * 액션 표시 이름의 단일 진실은 클라이언트(`ACTION_LABEL`)지만 여기서는 **폴백이 고를 수
+ * 있는 세 가지**뿐이라(safeFallbackOption 참고) 그 셋만 적는다. 그 밖은 이름을 지어내지
+ * 말고 비워 둔다 — 틀린 이름을 알리느니 "자동 진행"까지만 말하는 편이 낫다.
+ */
+function fallbackLabel(o: ActionOption): string | undefined {
+  if (o.type === "pass") return "패스";
+  if (o.type === "discard") return "쯔모기리";
+  return undefined;
+}
+
 type ResolveDecision = (option: ActionOption) => void;
 type ResolveDraft = (id: string) => void;
 
@@ -509,8 +522,16 @@ export class HumanAgent implements PlayerAgent {
         `[room ${this.roomCode}] ${this.nickname}(${seat}) 응답 없음 ${timeoutMs}ms — 안전 폴백으로 진행`,
       );
       this.pending.delete(seat);
-      this.send({ type: "promptCancel", seat });
-      resolve(safeFallbackOption(prompt.options));
+      const picked = safeFallbackOption(prompt.options);
+      // 무엇이 대신 골라졌는지까지 알린다 — "안 눌렀는데 패가 나갔다"의 정체가 이것이다.
+      const label = fallbackLabel(picked);
+      this.send({
+        type: "promptCancel",
+        seat,
+        reason: "timeout",
+        ...(label !== undefined ? { chosen: label } : {}),
+      });
+      resolve(picked);
       // 유예로 흘린 것만 센다. 접속한 채로 시간을 넘긴 것은 자리를 비운 것이지
       // 연결이 끊긴 것이 아니므로 이탈로 확정하면 안 된다.
       if (graced) this.noteGraceTimeout();
@@ -539,7 +560,8 @@ export class HumanAgent implements PlayerAgent {
     if (p === undefined) return;
     clearTimeout(p.timer);
     this.pending.delete(seat);
-    this.send({ type: "promptCancel", seat });
+    // 시간이 남았는데 접힌 것이므로 사유가 다르다 — 더 높은 선언이 이미 확정됐다.
+    this.send({ type: "promptCancel", seat, reason: "preempted" });
     p.resolve(safeFallbackOption(p.prompt.options));
   }
 
@@ -652,6 +674,11 @@ export class HumanAgent implements PlayerAgent {
       // 후보가 비었을 리는 없지만(컨트롤러가 빈 목록으로는 부르지 않는다), 그래도
       // resolve는 반드시 한다 — 안 하면 이 좌석 하나가 판 전체를 세운다.
       const pick = choices[Math.floor(Math.random() * choices.length)] ?? choices[0];
+      // 무엇이 뽑혔는지 알린다 — 선택창은 "랜덤으로 결정된다"를 미리 적어 두면서
+      // 결과는 말하지 않아, 돌아온 사람에게는 안 고른 증강이 그냥 생겨 있었다.
+      if (pick !== undefined) {
+        this.send({ type: "draftAutoPicked", augmentId: pick.id, name: pick.name });
+      }
       resolve?.(pick?.id ?? "");
     }, timeoutMs);
   }
