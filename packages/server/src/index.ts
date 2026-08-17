@@ -15,6 +15,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage } from "node:http";
 import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
+import { createGzip } from "node:zlib";
 import { unlink } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
@@ -153,10 +154,28 @@ stampConsole();
 // 안전망: 떠 있는 Promise 거부나 예외 하나가 전체 서버(모든 게임)를 죽이지
 // 않게 한다. 메시지 처리·리듀서가 연결/이벤트 단위로 격리돼 있으므로,
 // 로그를 남기고 프로세스를 살려 두는 편이 전원 강제 종료보다 낫다.
+//
+// ⚠ 삼키는 것과 숨기는 것은 다르다 (감사 2026-08-17 §2-9): 예전에는 예외를 로그로만
+// 남기고 `/healthz`는 여전히 `ok: true`를 냈다. 그래서 게임 루프가 예외로 반쯤 죽은
+// "좀비" 상태에서도 감시자는 정상으로 보고 아무도 개입하지 않았다. 이제 몇 번 터졌고
+// 마지막이 언제였는지를 세어 상태 점검에 싣는다 — 프로세스는 계속 살리되,
+// **살아 있다고 거짓말하지는 않는다**.
+// 임계치는 일부러 보수적이다. 어쩌다 하나 튄 예외로 감시자가 서버를 갈아 끼우면
+// 사람이 겪는 손해(진행 중 대국 전멸)가 더 크다. 5분 안에 5번이면 그건 사고다.
+const HEALTH_FAULT_WINDOW_MS = 5 * 60_000;
+const HEALTH_FAULT_LIMIT = 5;
+const faults = { uncaught: 0, rejection: 0, lastAt: "" as string, lastMessage: "" as string };
+function noteFault(kind: "uncaught" | "rejection", err: unknown): void {
+  faults[kind] += 1;
+  faults.lastAt = new Date().toISOString();
+  faults.lastMessage = err instanceof Error ? err.message : String(err);
+}
 process.on("unhandledRejection", (reason) => {
+  noteFault("rejection", reason);
   console.error("Unhandled promise rejection:", reason);
 });
 process.on("uncaughtException", (err) => {
+  noteFault("uncaught", err);
   console.error("Uncaught exception:", err);
 });
 
@@ -208,6 +227,29 @@ const MIME: Record<string, string> = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
 };
+
+/**
+ * 압축해서 보낼 확장자.
+ *
+ * **왜** (감사 2026-08-17 §7-2): 정적 파일이 전부 무압축으로 나갔다 — styles.css
+ * 175KB, 번들 JS 489KB가 원본 그대로였다. 이 종류의 텍스트는 gzip으로 4~6배 줄어든다
+ * (실측: CSS 175→36KB, JS 489→171KB). 그동안 브라우저는 매번 다섯 배를 받았다.
+ *
+ * 이미 압축된 것(png·woff2·ico)은 목록에 없다 — 다시 압축하면 CPU만 쓰고 크기는
+ * 오히려 늘거나 그대로다.
+ */
+const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg", ".txt", ".webmanifest"]);
+
+/**
+ * 이 응답을 압축해서 보낼 것인가 — 클라이언트가 받겠다고 했고, 압축이 이득인 종류이고,
+ * 아주 작지 않을 때(작은 파일은 헤더 오버헤드가 이득을 먹는다).
+ */
+function encodingFor(req: IncomingMessage, ext: string, size: number): "gzip" | null {
+  if (!COMPRESSIBLE.has(ext)) return null;
+  if (size < 1024) return null;
+  const accept = String(req.headers["accept-encoding"] ?? "");
+  return /\bgzip\b/.test(accept) ? "gzip" : null;
+}
 
 /**
  * `connect-src` 목록 — 이 페이지의 스크립트가 접속할 수 있는 곳.
@@ -298,13 +340,23 @@ const httpServer = createServer((req, res) => {
       res.writeHead(404).end();
       return;
     }
+    // 최근 창 안에서 예외가 임계치를 넘으면 `ok: false`다. 감시자는 이 값을 보고
+    // "응답은 오는데 정상이 아니다"를 구분할 수 있다 — 예전에는 그럴 수 없었다.
+    const faultsRecent =
+      faults.lastAt !== "" && Date.now() - Date.parse(faults.lastAt) < HEALTH_FAULT_WINDOW_MS;
+    const degraded = faultsRecent && faults.uncaught + faults.rejection >= HEALTH_FAULT_LIMIT;
     const body = JSON.stringify({
-      ok: true,
+      ok: !degraded,
       uptimeSec: Math.round(process.uptime()),
       wsClients: wss.clients.size,
+      faults: {
+        uncaught: faults.uncaught,
+        rejection: faults.rejection,
+        ...(faults.lastAt === "" ? {} : { lastAt: faults.lastAt, lastMessage: faults.lastMessage }),
+      },
       ...roomManager.healthSnapshot(),
     });
-    res.writeHead(200, {
+    res.writeHead(degraded ? 500 : 200, {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
@@ -356,9 +408,14 @@ const httpServer = createServer((req, res) => {
     res.writeHead(403).end();
     return;
   }
+  const ext = extname(filePath);
+  const encoding = encodingFor(req, ext, statSync(realPath).size);
   res.writeHead(200, {
-    "Content-Type": MIME[extname(filePath)] ?? "application/octet-stream",
+    "Content-Type": MIME[ext] ?? "application/octet-stream",
     "Cache-Control": filePath.includes("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+    // 압축 여부가 Accept-Encoding에 따라 갈리므로 중간 캐시가 섞지 않게 알린다.
+    Vary: "Accept-Encoding",
+    ...(encoding === null ? {} : { "Content-Encoding": encoding }),
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
@@ -377,6 +434,16 @@ const httpServer = createServer((req, res) => {
   stream.on("error", () => res.destroy());
   // 클라이언트가 중간에 끊으면 열린 fd가 남지 않게 스트림도 같이 닫는다.
   res.on("close", () => stream.destroy());
+  if (encoding === "gzip") {
+    // 요청마다 압축한다. 캐시를 두지 않는 이유: 해시 붙은 에셋은 브라우저가 1년간
+    // 다시 안 받아 가고(immutable), 이 규모에서 gzip 한 번은 수 ms다. 메모리 캐시를
+    // 얹으면 무효화 규칙이 새로 생기는데, 그 복잡도가 이득보다 크다.
+    const gz = createGzip();
+    gz.on("error", () => res.destroy());
+    res.on("close", () => gz.destroy());
+    stream.pipe(gz).pipe(res);
+    return;
+  }
   stream.pipe(res);
 });
 

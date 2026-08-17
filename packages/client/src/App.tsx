@@ -58,13 +58,20 @@ import type {
   TileKind,
   WinInfo,
 } from "@majak/core";
-import { AUGMENT_CATEGORIES, SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
-import { contentAugments } from "@majak/content";
+import {
+  AUGMENT_CATEGORIES,
+  EMOTES,
+  SPECTATOR_ID,
+  doraKindFor,
+  kindKey,
+  standardKinds,
+  winningKinds,
+} from "@majak/core";
 import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
-import { rebuildReplay, replaySettlements, replayViewAt } from "./replayRebuild.js";
+import { safeStorage } from "./storage.js";
 import { remainingCounter } from "./waitCounts.js";
 import {
   backlogProdTtl,
@@ -112,6 +119,16 @@ type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "c
 /** 자동 재연결 백오프 (ms) — 0.5s부터 두 배씩, 최대 10s. 무한 재시도. */
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
+/**
+ * 연결 생존 확인 주기와 응답 마감.
+ *
+ * 10초 주기 / 8초 마감 = 죽은 소켓을 **최대 18초** 안에 알아챈다. 예전에는 서버
+ * 하트비트가 끊어 줄 때까지 최대 60초였고, 그 사이 내 차례가 5초 유예로 자동
+ * 진행됐다(결정 하나가 그냥 지나간다). 더 짧게 잡지 않는 이유: 지하철처럼 잠깐
+ * 끊겼다 붙는 회선에서 멀쩡한 연결을 우리가 먼저 끊어 버리면 손해다.
+ */
+const HEARTBEAT_INTERVAL_MS = 10_000;
+const HEARTBEAT_TIMEOUT_MS = 8_000;
 type Side = "bottom" | "right" | "top" | "left";
 
 
@@ -121,6 +138,53 @@ function defaultServerUrl(): string {
   if (/^517\d$/.test(loc.port)) return "ws://localhost:3001";
   return `${loc.protocol === "https:" ? "wss" : "ws"}://${loc.host}`;
 }
+/**
+ * 초대 링크 — `https://…/?room=7Q79FM`.
+ *
+ * 방 코드는 6자 영숫자다(서버 generateCode). 링크에 그대로 실어도 비밀이 새지 않는다:
+ * 코드를 아는 사람은 어차피 들어올 수 있고, 그게 코드의 존재 이유다.
+ */
+const ROOM_PARAM = "room";
+const ROOM_CODE_RE = /^[A-Z0-9]{4,8}$/;
+
+function inviteLinkFor(code: string): string {
+  const u = new URL(window.location.href);
+  // 검색 파라미터만 갈아 끼운다 — 해시·기타 파라미터를 지우면 다른 링크가 된다.
+  u.searchParams.set(ROOM_PARAM, code);
+  u.hash = "";
+  return u.toString();
+}
+
+/**
+ * 주소창에 실려 온 방 코드를 꺼낸다. 형식이 아니면 없는 것으로 친다 —
+ * 이 값은 남이 만든 링크에서 오므로 **그대로 믿지 않는다**.
+ */
+function roomCodeFromUrl(): string | null {
+  try {
+    const raw = new URL(window.location.href).searchParams.get(ROOM_PARAM);
+    if (raw === null) return null;
+    const code = raw.trim().toUpperCase();
+    return ROOM_CODE_RE.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 주소창에서 방 코드를 지운다 — 들어간 뒤에도 남아 있으면 새로고침할 때마다
+ * 그 방으로 끌려가고, 그 방이 이미 사라졌으면 매번 실패 토스트만 본다.
+ */
+function clearRoomFromUrl(): void {
+  try {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has(ROOM_PARAM)) return;
+    u.searchParams.delete(ROOM_PARAM);
+    window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+  } catch {
+    /* history를 못 쓰는 환경이면 그냥 둔다 — 기능에는 지장이 없다 */
+  }
+}
+
 const SERVER_OVERRIDE_KEY = "majak.serverUrl";
 const SESSION_KEY = "majak.sessionToken";
 /** 이 세션 토큰을 **발급한 서버 주소**. 다른 서버에는 토큰을 보내지 않는다. */
@@ -135,7 +199,7 @@ const LAST_ROOM_KEY = "majak.lastRoomCode";
  * 값이 이미 들어와 있다는 전제로 읽어야 한다.
  */
 function serverUrlToUse(): string {
-  const raw = window.localStorage.getItem(SERVER_OVERRIDE_KEY);
+  const raw = safeStorage.getItem(SERVER_OVERRIDE_KEY);
   if (raw === null || raw.trim() === "") return defaultServerUrl();
   try {
     const u = new URL(raw.trim());
@@ -143,7 +207,7 @@ function serverUrlToUse(): string {
   } catch {
     /* 형식 불량 — 기본값으로 */
   }
-  window.localStorage.removeItem(SERVER_OVERRIDE_KEY);
+  safeStorage.removeItem(SERVER_OVERRIDE_KEY);
   return defaultServerUrl();
 }
 
@@ -925,6 +989,14 @@ interface Settings {
   autoNoMeld: boolean;
   /** 자동 버림 — 쯔모한 패를 자동으로 버린다(쯔모기리). 화료 가능하면 먼저 화료한다. */
   autoDiscard: boolean;
+  /**
+   * 두 번 탭으로 버리기 — 첫 탭은 패를 들어 올리고 두 번째 탭에 나간다.
+   *
+   * 기본은 **터치 기기에서만 켜진다**(마우스는 정확하므로 데스크톱의 한 번 클릭
+   * 감각을 바꾸지 않는다). 폰에서 패 하나는 폭 26px에 간격 2px이라 옆 패를 짚기
+   * 쉬운데, 짚으면 되돌릴 수 없는 타패가 그대로 나갔다 (감사 §5-2).
+   */
+  tapTwiceToDiscard: boolean;
   /** 내 오름패 표시 — 텐파이면 손패 위에 항상 화료패를 보여준다. */
   showMyWaits: boolean;
   /** 우클릭 쯔모기리 — 판 어디서든 오른쪽 버튼을 누르면 쯔모한 패를 그대로 버린다. */
@@ -949,6 +1021,12 @@ const DEFAULT_SETTINGS: Settings = {
   autoWin: false,
   autoNoMeld: false,
   autoDiscard: false,
+  // 터치 기기에서만 기본 켜짐 — 오타패가 실제로 일어나는 곳이 거기다.
+  // (matchMedia가 없는 환경에서는 꺼진 쪽으로 — 예전 동작 그대로.)
+  tapTwiceToDiscard:
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(pointer: coarse)").matches
+      : false,
   showMyWaits: true,
   // 우클릭 쯔모기리는 기본 꺼짐 — 판 전체가 대상이라 모르고 켜져 있으면 실수로 패가 나간다.
   rightClickTsumogiri: false,
@@ -962,7 +1040,7 @@ const DEFAULT_SETTINGS: Settings = {
 
 function loadSettings(): Settings {
   try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
+    const raw = safeStorage.getItem(SETTINGS_KEY);
     if (raw !== null) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
   } catch {
     /* 손상된 값은 무시하고 기본값 */
@@ -2127,6 +2205,14 @@ export function App(): JSX.Element {
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const intentionalCloseRef = useRef(false);
+  /** 연결 생존 확인 — 주기 타이머와 "답을 기다리는 중인 ping"의 발신 시각. */
+  const heartbeatTimerRef = useRef<number | null>(null);
+  const pingSentAtRef = useRef<number | null>(null);
+  /**
+   * 초대 링크(`?room=CODE`)로 들어왔다 — 인증이 끝나면 이 방으로 들어간다.
+   * 부팅 시 한 번만 읽는다: 그 뒤 주소창은 지워지고, 이 값은 한 번 쓰면 비워진다.
+   */
+  const pendingInviteRef = useRef<string | null>(roomCodeFromUrl());
   /** 끊긴 동안 밀린 재전송 대기열 (resendPolicy.ts ②). */
   const pendingSends = useRef<QueuedSend[]>([]);
   /** 이번 끊김에서 "보내지 못했다"를 이미 알렸는가 — 토스트가 연달아 쌓이지 않게. */
@@ -2225,6 +2311,10 @@ export function App(): JSX.Element {
   const [serverInfo, setServerInfo] = useState<ServerInfoMessage | null>(null);
   /** 서버가 되돌려 준 인증 실패 사유 — 토스트가 아니라 로그인 폼 안에 남긴다. */
   const [authError, setAuthError] = useState<string | null>(null);
+  /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
+  const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  /** 방금 도착한 정형구들 — EMOTE_SHOW_MS 뒤 스스로 사라진다. */
+  const [emotes, setEmotes] = useState<EmoteEntry[]>([]);
   /** 규칙·도움말 화면 열림 여부 (로그인 전·홈·게임 중 어디서나 열린다) */
   const [helpOpen, setHelpOpen] = useState(false);
   /** "가로로 돌리세요" 안내를 닫았는가 — 한 번 읽으면 그만이다(docs/28 §2-2) */
@@ -2241,7 +2331,15 @@ export function App(): JSX.Element {
   const [joined, setJoined] = useState<JoinedMessage | null>(null);
   const [lobby, setLobby] = useState<LobbyMessage | null>(null);
   const [stats, setStats] = useState<StatsMessage | null>(null);
-  const [myReplays, setMyReplays] = useState<ReplayGameSummary[]>([]);
+  /**
+   * 홈 카드의 목록들은 **`null`로 시작한다** — `[]`가 아니다 (감사 2026-08-17 §5-1).
+   *
+   * `[]`로 시작하면 로그인 직후 서버 왕복이 끝나기 전까지 "저장된 리플레이가
+   * 없습니다" 같은 **거짓말**이 뜬다. 신규 유저는 그걸 첫인상으로 받고, 기존 유저는
+   * "내 기록이 날아갔나?"로 읽는다. null은 "아직 모른다"이고 []는 "없다"이다 —
+   * 화면에서 그 둘은 완전히 다른 문장이어야 한다.
+   */
+  const [myReplays, setMyReplays] = useState<ReplayGameSummary[] | null>(null);
   const [replayData, setReplayData] = useState<ReplayDataMessage | null>(null);
   /** 증강 도감 전체화면 페이지 열림 여부 (홈에서만 진입) */
   const [codexOpen, setCodexOpen] = useState(false);
@@ -2249,15 +2347,15 @@ export function App(): JSX.Element {
   const [tierOpen, setTierOpen] = useState(false);
   /** 서버가 카탈로그와 실시간으로 조인해 준 파워 티어표 (관리자 전용) */
   const [augmentTiers, setAugmentTiers] = useState<AdminAugmentTiersMessage | null>(null);
-  const [liveRooms, setLiveRooms] = useState<LiveRoomSummary[]>([]);
+  const [liveRooms, setLiveRooms] = useState<LiveRoomSummary[] | null>(null);
   /** 증강 테스트(샌드박스) 게임 상태 — null이면 일반 게임. 관리자만 받는다. */
   const [sandbox, setSandbox] = useState<SandboxMessage | null>(null);
   /** 지금 내가 조종 중인 봇 좌석 (증강 테스트 · 없으면 null) — 서버가 알려 준다 */
   const [controlling, setControlling] = useState<string | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [adminUsers, setAdminUsers] = useState<AdminUserEntry[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null);
+  const [adminUsers, setAdminUsers] = useState<AdminUserEntry[] | null>(null);
   /** 제보 게시판 — 내가 볼 수 있는 글만 온다(내 글, 관리자면 전체). */
-  const [feedback, setFeedback] = useState<FeedbackEntry[]>([]);
+  const [feedback, setFeedback] = useState<FeedbackEntry[] | null>(null);
   const [spectating, setSpectating] = useState<string | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
   /**
@@ -2377,7 +2475,7 @@ export function App(): JSX.Element {
     setSettings((prev) => {
       const next = { ...prev, [key]: value };
       try {
-        window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+        safeStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
       } catch {
         /* 저장 실패는 무시 (세션 내 설정은 유지) */
       }
@@ -2775,14 +2873,14 @@ export function App(): JSX.Element {
     ws.addEventListener("open", () => {
       setConnection("connected");
       reconnectAttemptsRef.current = 0;
-      const token = window.localStorage.getItem(SESSION_KEY);
+      const token = safeStorage.getItem(SESSION_KEY);
       // 토큰은 **그걸 발급한 서버에만** 되돌려 보낸다.
       //
       // 고급 설정의 서버 주소는 사람이 붙여넣는 값이다 — "이 주소로 바꾸면 더
       // 빨라요" 한 마디에 바뀔 수 있는 자리에서 저장된 세션 토큰을 자동으로
       // 흘려보내면, 그 순간 계정이 통째로 넘어간다. 발급처가 다르면 어차피 그
       // 서버에서 쓸 수 없는 값이므로, 보내지 않아도 잃는 기능이 없다.
-      const issuer = window.localStorage.getItem(SESSION_SERVER_KEY);
+      const issuer = safeStorage.getItem(SESSION_SERVER_KEY);
       const relogin = token !== null && token !== "" && issuer === url;
       if (relogin) {
         send({ type: "tokenLogin", sessionToken: token });
@@ -2795,6 +2893,7 @@ export function App(): JSX.Element {
        * (그때 큐에 있을 수 있는 것은 로그인·가입·게스트 체험처럼 인증 전 메시지다).
        */
       if (!relogin) flushPendingSends();
+      startHeartbeat(ws);
     });
     ws.addEventListener("message", (event) => {
       // 파싱 실패를 잡는다 — 서버가 정상이면 오지 않는 프레임이지만, 중간 프록시나
@@ -2824,12 +2923,54 @@ export function App(): JSX.Element {
        */
       if (wsRef.current !== ws) return;
       wsRef.current = null;
+      stopHeartbeat();
       if (intentionalCloseRef.current) {
         setConnection("closed");
         return;
       }
       scheduleReconnect(); // 예기치 않은 끊김 → 자동 재연결
     });
+  }
+
+  /*
+   * ── 연결 생존 확인 (감사 2026-08-17 §2-3) ──
+   *
+   * 프로토콜에 ping/pong이 있고 서버도 답하는데, **클라이언트는 한 번도 보내지
+   * 않았다.** 그래서 모바일 NAT 만료·경로 단절처럼 TCP가 조용히 죽는 경우
+   * `close` 이벤트가 오지 않고, 화면은 `connected`인 채로 허공에 액션을 쐈다.
+   * 복구는 서버 하트비트(30초 주기, 최대 60초)가 끊어 줄 때까지 기다려야 했고,
+   * 그동안 내 차례는 5초 유예로 자동 진행됐다. "눌렀는데 아무 일도 안 일어남"의
+   * 정체가 이것이다.
+   *
+   * 답이 없으면 **우리가 먼저 끊는다** — 그러면 기존 재연결 경로(지수 백오프)가
+   * 그대로 이어받는다. 새 길을 내지 않는 게 요점이다.
+   */
+  function stopHeartbeat(): void {
+    if (heartbeatTimerRef.current !== null) {
+      window.clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+    pingSentAtRef.current = null;
+  }
+
+  function startHeartbeat(ws: WebSocket): void {
+    stopHeartbeat();
+    heartbeatTimerRef.current = window.setInterval(() => {
+      if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
+      const sentAt = pingSentAtRef.current;
+      if (sentAt !== null && Date.now() - sentAt > HEARTBEAT_TIMEOUT_MS) {
+        // 앞선 ping이 끝내 답을 못 받았다 = 이 소켓은 죽었다.
+        console.warn("[ws] 하트비트 응답 없음 — 연결을 끊고 다시 붙습니다");
+        pingSentAtRef.current = null;
+        ws.close();
+        return;
+      }
+      if (sentAt === null) {
+        pingSentAtRef.current = Date.now();
+        // 큐를 태우지 않는다 — 재전송 정책상 ping은 "스스로 다시 오는" 메시지다.
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   /** 지수 백오프로 재연결을 예약한다 (무한 재시도, 최대 10초 간격). */
@@ -3001,23 +3142,44 @@ export function App(): JSX.Element {
     send({ type: "feedbackList" });
   }
 
-  function logout(): void {
+  /**
+   * @param nextTab 로그인 화면을 어느 탭으로 열 것인가. 체험을 마치고 "계정 만들고
+   *   계속하기"로 나가는 사람에게는 가입 탭을 보여 준다 — 그게 그 사람이 방금 누른
+   *   버튼의 뜻이다.
+   */
+  /**
+   * 증강 종수 — 카탈로그가 왔으면 그걸 세고, 아직이면 serverInfo가 알려 준 값을 쓴다.
+   *
+   * serverInfo는 **인증 전에** 오므로 랜딩에서 규칙을 펼친 사람에게도 올바른 숫자가
+   * 보인다. 클라이언트가 직접 세지 않는 이유는 helpAugmentSections 위 주석 참고.
+   */
+  const augmentKinds = Object.keys(catalog).length > 0
+    ? Object.keys(catalog).length
+    : (serverInfo?.augmentKinds ?? 0);
+
+  /** 정형구 보내기 — 목록에 있는 id만 서버가 받는다(검증은 서버 몫). */
+  function sendEmote(id: string): void {
+    send({ type: "emote", id });
+  }
+
+  function logout(nextTab: "login" | "register" = "login"): void {
+    setAuthTab(nextTab);
     send({ type: "logout" });
     authedRef.current = false;
     guestRef.current = false;
     setAuthError(null);
     setHelpOpen(false);
-    window.localStorage.removeItem(SESSION_KEY);
-    window.localStorage.removeItem(SESSION_SERVER_KEY);
-    window.localStorage.removeItem(LAST_ROOM_KEY);
+    safeStorage.removeItem(SESSION_KEY);
+    safeStorage.removeItem(SESSION_SERVER_KEY);
+    safeStorage.removeItem(LAST_ROOM_KEY);
     setAuth(null);
     resetGameState();
     setReplayData(null);
     setStats(null);
-    setMyReplays([]);
-    setLeaderboard([]);
-    setAdminUsers([]);
-    setFeedback([]);
+    setMyReplays(null);
+    setLeaderboard(null);
+    setAdminUsers(null);
+    setFeedback(null);
   }
 
   function handleServerMessage(msg: ServerMessage): void {
@@ -3051,9 +3213,9 @@ export function App(): JSX.Element {
       // 게스트에게는 저장할 세션이 없다 — 토큰이 빈 문자열이라 저장하면 다음 접속에
       // 빈 tokenLogin을 보내고 TOKEN_INVALID로 로그인 화면이 한 번 깜빡인다.
       if (!guest) {
-        window.localStorage.setItem(SESSION_KEY, msg.sessionToken);
+        safeStorage.setItem(SESSION_KEY, msg.sessionToken);
         // 발급처를 함께 남긴다 — 다음 접속 때 같은 서버에만 되돌려 보내기 위함.
-        window.localStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
+        safeStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
       }
       setAuth({ username: msg.username, isAdmin: msg.isAdmin, guest });
       if (guest) {
@@ -3061,9 +3223,22 @@ export function App(): JSX.Element {
         // 요청하면 거절 토스트만 4개 뜬다. 아예 보내지 않는다.
         return;
       }
-      // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
-      // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
-      if (activeRoomRef.current !== null) {
+      /*
+       * 초대 링크로 들어온 사람은 그 방으로 바로 넣는다 (감사 §3-5).
+       *
+       * 재연결 복귀(activeRoomRef)보다 **먼저** 본다 — 링크는 방금 사람이 누른
+       * 의도이고, 복귀는 이전 상태다. 둘이 다르면 방금 누른 쪽이 이긴다.
+       * 코드는 한 번 쓰고 주소창에서 지운다: 남겨 두면 새로고침할 때마다 그 방으로
+       * 끌려가고, 그 방이 사라진 뒤에는 매번 실패 토스트만 본다.
+       */
+      const invited = pendingInviteRef.current;
+      if (invited !== null) {
+        pendingInviteRef.current = null;
+        clearRoomFromUrl();
+        send({ type: "joinRoom", code: invited });
+      } else if (activeRoomRef.current !== null) {
+        // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
+        // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
         send({ type: "joinRoom", code: activeRoomRef.current });
       } else if (activeSpectateRef.current !== null) {
         send({ type: "spectate", code: activeSpectateRef.current });
@@ -3084,7 +3259,7 @@ export function App(): JSX.Element {
       // 스테일하다. 판단은 반드시 live ref(activeRoomRef 등)나 setter로만 한다.
       if (msg.code === "TOKEN_INVALID") {
         // 세션 만료(자동 로그인/재연결 실패) — 로그인 화면으로 정리
-        window.localStorage.removeItem(SESSION_KEY);
+        safeStorage.removeItem(SESSION_KEY);
         activeRoomRef.current = null;
         activeSpectateRef.current = null;
         authedRef.current = false;
@@ -3108,8 +3283,21 @@ export function App(): JSX.Element {
         activeRoomRef.current !== null
       ) {
         activeRoomRef.current = null;
+        /*
+         * 서버가 왜 거절했는지를 그대로 전한다.
+         *
+         * 예전에는 세 경우를 뭉뚱그려 "진행 중이던 게임이 **종료**되었습니다"라고
+         * 했는데, `ROOM_PLAYING`은 대개 게임이 **아직 돌고 있다**는 뜻이다
+         * (감사 §2-2). 끊겨서 자리를 잃은 사람이 "끝났구나" 하고 물러나게 만드는
+         * 문장이었다 — 지금은 끊긴 좌석이면 다시 들어갈 수 있으므로 더더욱
+         * 사실대로 말해야 한다.
+         */
         showToast(
-          msg.code === "KICKED" ? "방장이 방에서 내보냈습니다" : "진행 중이던 게임이 종료되었습니다",
+          msg.code === "KICKED"
+            ? "방장이 방에서 내보냈습니다"
+            : msg.code === "ROOM_NOT_FOUND"
+              ? "그 방은 이미 사라졌습니다"
+              : msg.message,
           "info",
         );
         resetGameState();
@@ -3129,7 +3317,7 @@ export function App(): JSX.Element {
     if (msg.type === "roomCreated") {
       // 게스트 방은 재접속할 수 없다 — 기억해 두면 홈에 죽은 방의 "재접속"이 남는다.
       if (guestRef.current) return;
-      window.localStorage.setItem(LAST_ROOM_KEY, msg.code);
+      safeStorage.setItem(LAST_ROOM_KEY, msg.code);
       return; // 이어서 joined·lobby가 온다
     }
     if (msg.type === "replayList") {
@@ -3210,13 +3398,46 @@ export function App(): JSX.Element {
       });
       return;
     }
+    if (msg.type === "emoteFrom") {
+      const key = Date.now() + Math.random();
+      setEmotes((prev) => [...prev, { key, nickname: msg.nickname, id: msg.id }].slice(-EMOTE_FEED_MAX));
+      window.setTimeout(() => {
+        setEmotes((prev) => prev.filter((e) => e.key !== key));
+      }, EMOTE_SHOW_MS);
+      return;
+    }
+    if (msg.type === "pong") {
+      // 살아 있다는 증거. 이걸 안 지우면 다음 회차가 "답이 없다"로 판정해 **멀쩡한
+      // 연결을 스스로 끊는다** — 브라우저 실측에서 정확히 그 일이 났다(20초마다
+      // 끊김/재접속 반복, 서버 로그에 그대로 남았다). 하트비트를 넣는다는 것은
+      // 곧 그 답을 처리한다는 뜻이다.
+      pingSentAtRef.current = null;
+      return;
+    }
     if (msg.type === "joined") {
       setJoined(msg);
       inRoomRef.current = true;
+      /*
+       * 방에 (다시) 들어왔다 = **지금 화면에 떠 있는 선택지는 전부 낡았다.**
+       *
+       * 내 차례에 끊기면 서버는 5초 뒤 대신 진행하고 `promptCancel`을 보내는데,
+       * 그 프레임은 이미 죽은 소켓으로 나가 사라진다. 재접속하면 서버는 뷰를
+       * 복원하고 **지금 실제로 기다리는 것만** 다시 보낸다 — 그런데 예전에는
+       * 클라가 옛 프롬프트를 지우지 않아, 이미 지나간 선택 UI가 그대로 떠 있었다.
+       * 누르면 서버가 "지금 고를 수 있는 선택지가 아닙니다 — 화면을 새로 받아
+       * 주세요"를 돌려주는데, **화면을 새로 받는 방법이 프로토콜에 없다.**
+       * 탈출구는 새로고침뿐이었고 안내는 그 말을 하지 않았다 (감사 §2-4).
+       *
+       * 지우는 편이 항상 안전하다: 서버가 정말 기다리는 중이면 곧바로 다시 보낸다.
+       */
+      setPrompts({});
+      setDraft(null);
+      setDraftPicked(false);
+      draftPickedRef.current = false;
       // 게스트는 재접속할 수단이 없다(세션 토큰도 joinRoom 권한도 없다) — 재연결
       // 자동 재입장 대상으로 기억하면 붙자마자 거절 토스트만 뜬다.
       activeRoomRef.current = guestRef.current ? null : msg.roomId; // 재연결 시 자동 재입장 대상
-      window.localStorage.setItem(LAST_ROOM_KEY, msg.roomId);
+      safeStorage.setItem(LAST_ROOM_KEY, msg.roomId);
       return;
     }
     if (msg.type === "catalog") {
@@ -3455,7 +3676,7 @@ export function App(): JSX.Element {
       // 새로고침·재연결로 돌아와도 같은 대기실에 다시 앉는다.
       if (msg.canContinue !== true) {
         activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
-        window.localStorage.removeItem(LAST_ROOM_KEY);
+        safeStorage.removeItem(LAST_ROOM_KEY);
       }
       return;
     }
@@ -3463,8 +3684,8 @@ export function App(): JSX.Element {
       // 방장이 대기실에서 내보냈다 — 이 방에는 다시 못 들어가므로 재입장 대상에서도 지운다
       showToast("방장이 방에서 내보냈습니다", "info", 4000);
       activeRoomRef.current = null;
-      if (window.localStorage.getItem(LAST_ROOM_KEY) === msg.roomId) {
-        window.localStorage.removeItem(LAST_ROOM_KEY);
+      if (safeStorage.getItem(LAST_ROOM_KEY) === msg.roomId) {
+        safeStorage.removeItem(LAST_ROOM_KEY);
       }
       resetGameState();
       refreshHome();
@@ -3488,7 +3709,7 @@ export function App(): JSX.Element {
     if (msg.type === "gameAborted") {
       showToast(msg.reason, "info", 4000);
       activeRoomRef.current = null;
-      window.localStorage.removeItem(LAST_ROOM_KEY);
+      safeStorage.removeItem(LAST_ROOM_KEY);
       returnHome();
       return;
     }
@@ -4348,7 +4569,7 @@ export function App(): JSX.Element {
   const inGame = (joined !== null || isSpectator) && view !== null;
   const inWaiting = joined !== null && view === null && rankings === null && !isSpectator;
   const draftVisible = inGame && draft !== null && !intro && roundResult === null && !isSpectator;
-  const lastRoomCode = window.localStorage.getItem(LAST_ROOM_KEY);
+  const lastRoomCode = safeStorage.getItem(LAST_ROOM_KEY);
 
   return (
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
@@ -4377,6 +4598,7 @@ export function App(): JSX.Element {
           </button>
         </div>
       )}
+      <EmoteFeed entries={emotes} />
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
@@ -4387,6 +4609,8 @@ export function App(): JSX.Element {
           connection={connection}
           serverInfo={serverInfo}
           serverError={authError}
+          initialTab={authTab}
+          invitedCode={pendingInviteRef.current}
           onGuest={() => {
             setAuthError(null);
             send({ type: "guestPlay" });
@@ -4414,6 +4638,7 @@ export function App(): JSX.Element {
       ) : inGame && view !== null ? (
         <GameTable
           view={view}
+          {...(isSpectator ? {} : { onEmote: sendEmote })}
           roundView={centerView ?? view}
           prompt={prompt}
           promptSeq={promptSeq}
@@ -4464,6 +4689,9 @@ export function App(): JSX.Element {
           onShuffleSeats={shuffleSeats}
           onLeave={returnHome}
           onToast={(t) => showToast(t, "info")}
+          onOpenHelp={() => setHelpOpen(true)}
+          onOpenCodex={() => setCodexOpen(true)}
+          onEmote={sendEmote}
         />
       ) : tierOpen ? (
         <TierScreen
@@ -4479,7 +4707,7 @@ export function App(): JSX.Element {
           onPlayAgain={() => send({ type: "guestPlay" })}
           onOpenCodex={() => setCodexOpen(true)}
           onOpenHelp={() => setHelpOpen(true)}
-          onSignUp={logout}
+          onSignUp={() => logout("register")}
         />
       ) : (
         <HomeScreen
@@ -4534,6 +4762,7 @@ export function App(): JSX.Element {
       {helpOpen ? (
         <div className="screen-overlay">
           <HelpScreen
+            augmentKinds={augmentKinds}
             backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
             onOpenCodex={() => setCodexOpen(true)}
             onClose={() => setHelpOpen(false)}
@@ -4881,19 +5110,57 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
  * 지금은 (1) 무엇인지 먼저 말하고, (2) 계정 없이 바로 한 판을 주고,
  * (3) 가입이 초대제인지 서버가 알려 준 사실대로 적는다.
  */
+/**
+ * 랜딩에서 보여 줄 증강 셋 — **실제로 구현된 것**만 쓴다.
+ *
+ * 여기 적힌 이름·효과는 `packages/content` 의 것을 그대로 옮긴 것이다. 광고용으로
+ * 없는 기능을 지어내면 첫 판에서 바로 들통난다. 셋을 고른 기준은 "한 줄로 이해되고,
+ * 마작을 알든 모르든 규칙이 흔들린다는 게 보이는가"다.
+ *
+ * 패 그림은 도움말과 같은 컴포넌트(HelpTileGroups)·같은 에셋을 쓴다.
+ */
+const LANDING_SHOWCASE: { name: string; kind: string; tiles: string; desc: string }[] = [
+  {
+    name: "사방치기",
+    kind: "상시",
+    tiles: "456m",
+    desc: "상가뿐 아니라 누구의 버림패로도 치를 할 수 있습니다.",
+  },
+  {
+    name: "단색 세계",
+    kind: "액티브",
+    tiles: "123p",
+    desc: "손패의 수패를 숫자는 그대로 둔 채 원하는 한 색으로 물들입니다.",
+  },
+  {
+    name: "함구령",
+    kind: "액티브",
+    tiles: "777s",
+    desc: "6순 동안 상대 셋의 치·퐁·대명깡을 통째로 봉인합니다.",
+  },
+];
+
 function AuthScreen(props: {
   connection: ConnectionState;
+  /** 초대 링크(`?room=…`)로 들어왔다면 그 코드 — 로그인하면 바로 그 방으로 간다. */
+  invitedCode: string | null;
   /** 서버 정책 (가입 게이트·게스트 허용). 아직 안 왔으면 null — 추측해서 쓰지 않는다. */
   serverInfo: ServerInfoMessage | null;
   /** 서버가 되돌려 준 인증 실패 사유 (폼 안에 남는다) */
   serverError: string | null;
+  /** 어느 탭으로 열 것인가. 체험 뒤 "계정 만들고 계속하기"로 오면 가입 탭이다. */
+  initialTab?: "login" | "register";
   onLogin: (username: string, password: string) => void;
   onRegister: (username: string, password: string, adminCode: string, signupCode: string) => void;
   onGuest: () => void;
   onOpenHelp: () => void;
   onRetryConnect: () => void;
 }): JSX.Element {
-  const [tab, setTab] = useState<"login" | "register">("login");
+  // 어느 탭으로 열리는가는 **여기 오기까지 무엇을 눌렀는지**가 정한다.
+  // 예전에는 무조건 로그인 탭이었다: 체험 뒤 "계정 만들고 계속하기"를 누른 사람이
+  // 로그인 폼을 보고 다시 "회원가입"을 눌러야 했다 — 전환 퍼널의 마지막 한 클릭을
+  // 스스로 버리고 있었다 (감사 §3-8).
+  const [tab, setTab] = useState<"login" | "register">(props.initialTab ?? "login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -4901,7 +5168,7 @@ function AuthScreen(props: {
   const [signupCode, setSignupCode] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [serverUrl, setServerUrl] = useState(
-    window.localStorage.getItem(SERVER_OVERRIDE_KEY) ?? "",
+    safeStorage.getItem(SERVER_OVERRIDE_KEY) ?? "",
   );
   const [localError, setLocalError] = useState<string | null>(null);
   const disconnected = props.connection === "closed";
@@ -4934,7 +5201,7 @@ function AuthScreen(props: {
   function saveServer(): void {
     const v = serverUrl.trim();
     if (v === "") {
-      window.localStorage.removeItem(SERVER_OVERRIDE_KEY);
+      safeStorage.removeItem(SERVER_OVERRIDE_KEY);
     } else {
       // ws/wss만 받는다 — http(s)·javascript: 등 다른 스킴은 여기서 거른다.
       let ok = false;
@@ -4948,7 +5215,7 @@ function AuthScreen(props: {
         setLocalError("서버 주소는 ws:// 또는 wss:// 로 시작해야 합니다");
         return;
       }
-      window.localStorage.setItem(SERVER_OVERRIDE_KEY, v);
+      safeStorage.setItem(SERVER_OVERRIDE_KEY, v);
     }
     window.location.reload();
   }
@@ -4963,6 +5230,12 @@ function AuthScreen(props: {
       <section className="landing">
         <h1 className="landing-title">이능마작</h1>
         <p className="landing-lead">기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요.</p>
+
+        {props.invitedCode !== null ? (
+          <p className="landing-invite">
+            <b>{props.invitedCode}</b> 방에 초대받았습니다 — 로그인하면 바로 들어갑니다.
+          </p>
+        ) : null}
 
         <div className="landing-cta">
           <button
@@ -4980,6 +5253,33 @@ function AuthScreen(props: {
         <p className="landing-guest-note">
           가입 없이 봇 3명과 한 판. 기록·순위에는 남지 않고, 창을 닫으면 사라집니다.
         </p>
+
+        {/*
+          이 게임의 유일한 차별점은 "규칙을 바꾸는 증강"인데, 예전에는 그것이
+          **클릭하기 전에는 한 문장으로만** 전달됐다 (감사 §3-4). 시작 버튼을 누를지
+          말지가 여기서 갈리므로, 말 대신 실제 패로 보여 준다.
+
+          쓰는 것은 도움말과 **같은 컴포넌트·같은 에셋**이다 — 광고용 그림을 따로
+          만들면 화면과 다른 것을 약속하게 된다.
+        */}
+        <div className="landing-show">
+          <p className="landing-show-head">증강은 규칙 자체를 바꿉니다</p>
+          <ul className="landing-show-list">
+            {LANDING_SHOWCASE.map((s) => (
+              <li key={s.name} className="landing-show-item">
+                <div className="landing-show-top">
+                  <span className="landing-show-name">{s.name}</span>
+                  <span className="landing-show-kind">{s.kind}</span>
+                </div>
+                <HelpTileGroups tiles={s.tiles} />
+                <p className="landing-show-desc">{s.desc}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="landing-show-foot">
+            매 국 시작에 세 장 중 하나를 고릅니다. 전부 100종이 넘습니다.
+          </p>
+        </div>
       </section>
 
       <div className="lobby-card auth-card">
@@ -4994,10 +5294,15 @@ function AuthScreen(props: {
 
         <label>
           닉네임
+          {/*
+            autoFocus 는 **일부러 뺐다**. 브라우저는 포커스된 칸을 화면 안으로
+            끌어오는데, 랜딩이 한 화면보다 길어지면서 그 동작이 **제목과 시작
+            버튼을 위로 밀어냈다**(2026-08-18 실측: 열자마자 scrollTop 142).
+            처음 온 사람이 가장 먼저 봐야 할 것은 로그인 칸이 아니다.
+          */}
           <input
             value={username}
             maxLength={12}
-            autoFocus
             placeholder="게임에서 표시되는 이름"
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -5276,13 +5581,20 @@ function AugmentMeta({
   leaderboard,
   catalog,
 }: {
-  leaderboard: LeaderboardEntry[];
+  /** null = 아직 못 받았다. 그때는 "없다"가 아니라 "불러오는 중"이라고 말해야 한다. */
+  leaderboard: LeaderboardEntry[] | null;
   catalog: AugCatalog;
 }): JSX.Element {
-  const { rows, masters } = useMemo(() => aggregateAugments(leaderboard, catalog), [leaderboard, catalog]);
+  const { rows, masters } = useMemo(
+    () => aggregateAugments(leaderboard ?? [], catalog),
+    [leaderboard, catalog],
+  );
   const MIN_GAMES = 5;
   const ranked = rows.filter((r) => r.games >= MIN_GAMES).sort((a, b) => a.avgPlacement - b.avgPlacement);
 
+  if (leaderboard === null) {
+    return <p className="home-empty home-loading">불러오는 중…</p>;
+  }
   if (ranked.length === 0) {
     return <p className="home-empty">증강 메타를 집계할 표본이 아직 부족합니다 (증강별 {MIN_GAMES}판 이상 필요).</p>;
   }
@@ -5815,7 +6127,7 @@ function CodexScreen(props: {
   backLabel?: string;
   catalog: AugCatalog;
   career: PlayerStatsView | null;
-  leaderboard: LeaderboardEntry[];
+  leaderboard: LeaderboardEntry[] | null;
   onRefresh: () => void;
   onClose: () => void;
 }): JSX.Element {
@@ -5835,7 +6147,7 @@ function CodexScreen(props: {
   }, [props.career, props.catalog]);
 
   const { srvMap, masters } = useMemo(() => {
-    const agg = aggregateAugments(props.leaderboard, props.catalog);
+    const agg = aggregateAugments(props.leaderboard ?? [], props.catalog);
     const m = new Map<string, AugRow>();
     for (const r of agg.rows) m.set(r.id, r);
     return { srvMap: m, masters: agg.masters };
@@ -6416,17 +6728,21 @@ const HELP_BASICS: HelpSection[] = [
 // 풀어 쓰지 않는다. 규칙 설명은 basics 탭이 맡는다.
 //
 // 수치를 문장에 박아 두지 않는다 — 예전 문안이 "총 2개"·"104종"에 멈춰 있었다.
-// 종수는 카탈로그에서 직접 세고(AUGMENT_KINDS), 획득 시점은 HanchanController의
-// draftSchedules(반장전 gameStart·eastThird·southEntry·southThird / 동풍전
-// gameStart·eastThird·eastFourth)와 같은 값을 쓴다.
-const AUGMENT_KINDS = contentAugments.length;
-
-const HELP_AUGMENT: HelpSection[] = [
+// 종수는 **서버가 보내 준 카탈로그에서** 센다. 예전에는 `contentAugments.length`로
+// 셌는데, 그 한 줄 때문에 증강 구현 117개(1.2MB)와 그 전이 의존(HanchanController·
+// standardActions 등 **서버 전용 엔진**)이 통째로 클라이언트 번들에 딸려 들어왔다.
+// 트리셰이킹도 안 됐다 — defineAugment가 검증 실패 시 throw 하는 부수효과 함수라
+// 롤업이 각 모듈을 순수로 판정하지 못한다 (감사 2026-08-17 §7-1).
+//
+// 획득 시점은 HanchanController의 draftSchedules(반장전 gameStart·eastThird·
+// southEntry·southThird / 동풍전 gameStart·eastThird·eastFourth)와 같은 값을 쓴다.
+function helpAugmentSections(kinds: number): HelpSection[] {
+  return [
   {
     title: "증강",
     paras: [
       "타점 보너스가 아니라 규칙을 바꾸는 카드입니다. 후리텐인 채로 론하고, 백을 만능패로 쓰고, 남의 버림패를 손으로 가져오고, 리치를 건 뒤에 손패를 바꿉니다.",
-      `${AUGMENT_KINDS}종이 점수·손패 조작·화료형·정보·리치·수비·후로·교란 계열로 나뉩니다.`,
+      `${kinds}종이 점수·손패 조작·화료형·정보·리치·수비·후로·교란 계열로 나뉩니다.`,
     ],
     figure: [
       {
@@ -6465,10 +6781,11 @@ const HELP_AUGMENT: HelpSection[] = [
     title: "상대의 증강은 전부 공개된다",
     paras: [
       "누가 무엇을 들고 있는지 이름표 옆에 그대로 보입니다. 감춰지는 정보가 아닙니다.",
-      `게임 중 아무 때나 📖 도감에서 ${AUGMENT_KINDS}종 전체를 찾아볼 수 있습니다.`,
+      `게임 중 아무 때나 📖 도감에서 ${kinds}종 전체를 찾아볼 수 있습니다.`,
     ],
   },
-];
+  ];
+}
 
 /**
  * 액션 바 견본 — 게임 화면 아래에 뜨는 버튼 줄을 **같은 클래스로** 그대로 그린다.
@@ -6831,6 +7148,11 @@ function TermsTab(): JSX.Element {
 }
 
 function HelpScreen(props: {
+  /**
+   * 증강 종수 — **서버 카탈로그에서 센 값**을 받는다.
+   * 여기서 직접 세지 않는 이유는 helpAugmentSections 위 주석 참고(번들 §7-1).
+   */
+  augmentKinds: number;
   /** 왼쪽 위 되돌아가기 버튼 문구 (기본 "← 닫기"). */
   backLabel?: string;
   /** "증강이란" 탭에서 도감으로 건너가기. 도감은 이 화면 **위에** 뜨고, 닫으면 여기로 돌아온다. */
@@ -6838,7 +7160,8 @@ function HelpScreen(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<HelpTab>("basics");
-  const sections = tab === "basics" ? HELP_BASICS : HELP_AUGMENT;
+  const augSections = useMemo(() => helpAugmentSections(props.augmentKinds), [props.augmentKinds]);
+  const sections = tab === "basics" ? HELP_BASICS : augSections;
   const lead = HELP_LEAD[tab];
 
   return (
@@ -6897,7 +7220,7 @@ function HelpScreen(props: {
             여기서 도감으로 바로 건너뛴다 — 홈까지 나갔다 다시 들어올 이유가 없다. */}
         {tab === "augment" && props.onOpenCodex !== undefined ? (
           <button className="home-codex-cta" onClick={props.onOpenCodex}>
-            📖 증강 도감 열기 — {AUGMENT_KINDS}종 전체 상세 설명
+            📖 증강 도감 열기 — {props.augmentKinds}종 전체 상세 설명
           </button>
         ) : null}
       </main>
@@ -6932,7 +7255,8 @@ const FEEDBACK_TEXT_STYLE: CSSProperties = { whiteSpace: "pre-wrap" };
  */
 function FeedbackBoard(props: {
   auth: AuthInfo;
-  entries: FeedbackEntry[];
+  /** null = 아직 못 받았다 (ListCard가 '불러오는 중'을 낸다) */
+  entries: FeedbackEntry[] | null;
   onSubmit: (kind: FeedbackKind, title: string, body: string) => void;
   onRefresh: () => void;
   onUpdate: (id: number, patch: { status?: FeedbackStatus; reply?: string }) => void;
@@ -6952,7 +7276,7 @@ function FeedbackBoard(props: {
   // (실패 시에는 error 토스트만 오므로 쓴 글이 날아가지 않는다).
   useEffect(() => {
     if (submittedRef.current === null) return;
-    if (props.entries.some((e) => e.title === submittedRef.current && e.mine)) {
+    if (props.entries?.some((e) => e.title === submittedRef.current && e.mine) === true) {
       submittedRef.current = null;
       setTitle("");
       setBody("");
@@ -7019,11 +7343,14 @@ function FeedbackBoard(props: {
         </div>
       </div>
 
-      {props.entries.length === 0 ? (
-        <p className="home-empty">아직 등록된 제보가 없습니다.</p>
-      ) : (
+      <ListCard
+        items={props.entries}
+        empty="아직 등록된 제보가 없습니다."
+        emptyHint="증강 아이디어나 버그를 적어 주세요 — 위 칸에 쓰면 바로 올라갑니다."
+      >
+        {(rows) => (
         <ul className="fb-list">
-          {props.entries.map((e) => {
+          {rows.map((e) => {
             const open = openId === e.id;
             const canDelete = e.mine || props.auth.isAdmin;
             return (
@@ -7102,21 +7429,53 @@ function FeedbackBoard(props: {
             );
           })}
         </ul>
-      )}
+        )}
+      </ListCard>
     </section>
   );
+}
+
+/**
+ * 목록 카드의 세 가지 상태를 한 곳에서 정한다 — **아직 모른다 / 비었다 / 있다**.
+ *
+ * 예전에는 목록이 `[]`로 시작해서 두 번째와 첫 번째가 구분되지 않았다. 로그인 직후
+ * 서버 왕복이 끝나기 전까지 "저장된 리플레이가 없습니다"가 떴고, 잠시 뒤 목록이
+ * 갑자기 채워졌다. 사용자에게 그건 로딩이 아니라 **거짓말 한 번**이다
+ * (감사 2026-08-17 §5-1). 관리자 티어표만 유일하게 이 구분을 하고 있었다 —
+ * 패턴은 이미 있었고 나머지에 적용만 안 됐다.
+ */
+function ListCard<T>(props: {
+  items: T[] | null;
+  /** 정말로 비었을 때의 문장 */
+  empty: string;
+  /** 비어 있을 때 다음 행동을 제시한다(있으면). 신규 유저의 홈이 "없습니다"로만
+   *  덮이지 않게 하려는 것이다. */
+  emptyHint?: string;
+  children: (rows: T[]) => JSX.Element;
+}): JSX.Element {
+  if (props.items === null) return <p className="home-empty home-loading">불러오는 중…</p>;
+  if (props.items.length === 0) {
+    return (
+      <p className="home-empty">
+        {props.empty}
+        {props.emptyHint !== undefined ? <span className="home-empty-hint">{props.emptyHint}</span> : null}
+      </p>
+    );
+  }
+  return props.children(props.items);
 }
 
 function HomeScreen(props: {
   auth: AuthInfo;
   stats: StatsMessage | null;
-  replays: ReplayGameSummary[];
-  liveRooms: LiveRoomSummary[];
-  leaderboard: LeaderboardEntry[];
+  /** null = 아직 서버 응답을 못 받았다. [] = 정말 없다. 화면에서 둘은 다른 문장이다. */
+  replays: ReplayGameSummary[] | null;
+  liveRooms: LiveRoomSummary[] | null;
+  leaderboard: LeaderboardEntry[] | null;
   catalog: Record<string, AugmentCatalogEntry>;
-  adminUsers: AdminUserEntry[];
+  adminUsers: AdminUserEntry[] | null;
   /** 제보 게시판 — 내 글(관리자면 전체) */
-  feedback: FeedbackEntry[];
+  feedback: FeedbackEntry[] | null;
   onSubmitFeedback: (kind: FeedbackKind, title: string, body: string) => void;
   onRefreshFeedback: () => void;
   onUpdateFeedback: (id: number, patch: { status?: FeedbackStatus; reply?: string }) => void;
@@ -7162,11 +7521,14 @@ function HomeScreen(props: {
         </h2>
         <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
       </div>
-      {props.replays.length === 0 ? (
-        <p className="home-empty">저장된 리플레이가 없습니다.</p>
-      ) : (
+      <ListCard
+        items={props.replays}
+        empty="저장된 리플레이가 없습니다."
+        emptyHint="한 판 두고 나면 여기에 쌓입니다 — 끝난 판은 처음부터 다시 볼 수 있습니다."
+      >
+        {(rows) => (
         <ul className="replay-list">
-          {props.replays.map((g) => {
+          {rows.map((g) => {
             const me = g.players.find((p) => p.nickname === props.auth.username);
             const date = new Date(g.endedAt);
             return (
@@ -7189,7 +7551,8 @@ function HomeScreen(props: {
             );
           })}
         </ul>
-      )}
+        )}
+      </ListCard>
     </section>
   );
 
@@ -7337,9 +7700,8 @@ function HomeScreen(props: {
             <h2>전체 플레이어 통계<span className="home-admin-badge">관리자</span></h2>
             <button className="home-refresh" onClick={props.onRefresh} title="새로 고침">↻</button>
           </div>
-          {props.leaderboard.length === 0 ? (
-            <p className="home-empty">아직 집계된 플레이어가 없습니다.</p>
-          ) : (
+          <ListCard items={props.leaderboard} empty="아직 집계된 플레이어가 없습니다.">
+            {(rows) => (
             <div className="lb-scroll">
               <table className="lb-table">
                 <thead>
@@ -7354,7 +7716,7 @@ function HomeScreen(props: {
                   </tr>
                 </thead>
                 <tbody>
-                  {props.leaderboard.map((e, i) => {
+                  {rows.map((e, i) => {
                     const me = e.nickname === props.auth.username;
                     return (
                       <tr key={e.nickname} className={me ? "lb-me" : ""}>
@@ -7374,7 +7736,8 @@ function HomeScreen(props: {
                 </tbody>
               </table>
             </div>
-          )}
+            )}
+          </ListCard>
         </section>
         ) : null}
 
@@ -7395,11 +7758,10 @@ function HomeScreen(props: {
               <h2>진행 중인 게임 <span className="home-admin-badge">관리자</span></h2>
               <button className="home-refresh" onClick={props.onRefreshLive} title="새로 고침">↻</button>
             </div>
-            {props.liveRooms.length === 0 ? (
-              <p className="home-empty">지금 진행 중인 게임이 없습니다.</p>
-            ) : (
+            <ListCard items={props.liveRooms} empty="지금 진행 중인 게임이 없습니다.">
+              {(rows) => (
               <ul className="replay-list">
-                {props.liveRooms.map((r) => (
+                {rows.map((r) => (
                   <li key={r.code} className="replay-row">
                     <span className="live-code">{r.code}</span>
                     <span className="replay-meta">
@@ -7413,7 +7775,8 @@ function HomeScreen(props: {
                   </li>
                 ))}
               </ul>
-            )}
+              )}
+            </ListCard>
           </section>
         ) : null}
 
@@ -7461,11 +7824,10 @@ function HomeScreen(props: {
               <h2>플레이어 관리 <span className="home-admin-badge">관리자</span></h2>
               <button className="home-refresh" onClick={props.onRefreshUsers} title="새로 고침">↻</button>
             </div>
-            {props.adminUsers.length === 0 ? (
-              <p className="home-empty">등록된 계정이 없습니다.</p>
-            ) : (
+            <ListCard items={props.adminUsers} empty="등록된 계정이 없습니다.">
+              {(rows) => (
               <ul className="user-list">
-                {props.adminUsers.map((u) => {
+                {rows.map((u) => {
                   const isMe = u.username === props.auth.username;
                   return (
                     <li key={u.id} className="user-row">
@@ -7490,7 +7852,8 @@ function HomeScreen(props: {
                   );
                 })}
               </ul>
-            )}
+              )}
+            </ListCard>
           </section>
         ) : null}
       </main>
@@ -7616,28 +7979,47 @@ function WaitingRoom(props: {
   onShuffleSeats: () => void;
   onLeave: () => void;
   onToast?: (text: string) => void;
+  /**
+   * 규칙·도감 — 랜딩·홈·게임 중·게스트 종료 화면에는 전부 있는데 **대기실에만
+   * 없었다** (감사 §3-9). 친구를 기다리는 이 시간이 규칙을 읽기 가장 좋은 시간이다.
+   */
+  onOpenHelp?: () => void;
+  onOpenCodex?: () => void;
+  /** 정형구 — 사람을 기다리는 자리에서도 인사는 오간다 */
+  onEmote?: (id: string) => void;
 }): JSX.Element {
   const { lobby } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   function copyCode(): void {
     const code = props.roomId;
+    /*
+     * 복사되는 것은 **코드가 아니라 링크**다 (감사 §3-5).
+     *
+     * 예전에는 여섯 글자만 복사됐다. 받은 사람은 사이트를 찾아 들어가서, 방 코드
+     * 칸을 찾고, 여섯 글자를 옮겨 적어야 했다 — 친구를 부르는 일이 세 단계였다.
+     * 링크를 누르면 그 방으로 바로 들어간다.
+     *
+     * 코드 자체가 필요한 사람(음성으로 불러 주는 경우)을 위해 링크 안에 코드가
+     * 그대로 보이게 둔다: …/?room=7Q79FM
+     */
+    const link = inviteLinkFor(code);
     const ok = (): void =>
-      props.onToast?.("방 코드가 복사되었습니다 — 친구에게 공유하세요!");
+      props.onToast?.("초대 링크가 복사되었습니다 — 친구에게 보내면 바로 들어옵니다!");
     const fail = (): void => props.onToast?.(`방 코드: ${code}`);
     // navigator.clipboard는 보안 컨텍스트(HTTPS·localhost)에서만 존재한다.
     // 평문 HTTP(LAN·gol.n-e.kr:포트) 배포에서는 undefined라 무반응이었다 → execCommand로 폴백.
     if (navigator.clipboard?.writeText !== undefined) {
       void navigator.clipboard
-        .writeText(code)
+        .writeText(link)
         .then(ok)
         .catch(() => {
-          if (!legacyCopy(code)) fail();
+          if (!legacyCopy(link)) fail();
           else ok();
         });
       return;
     }
-    if (legacyCopy(code)) ok();
+    if (legacyCopy(link)) ok();
     else fail();
   }
 
@@ -7673,6 +8055,13 @@ function WaitingRoom(props: {
       <div className="waitroom-card">
         <button className="icon-btn settings-btn" onClick={() => setSettingsOpen((v) => !v)} title="설정">⚙</button>
         <button className="icon-btn leave-btn" onClick={props.onLeave} title="나가기">✕</button>
+        {props.onOpenCodex !== undefined ? (
+          <button className="icon-btn codex-btn" onClick={props.onOpenCodex} title="증강 도감">📖</button>
+        ) : null}
+        {props.onEmote !== undefined ? <EmoteBar onSend={props.onEmote} /> : null}
+        {props.onOpenHelp !== undefined ? (
+          <button className="icon-btn help-btn" onClick={props.onOpenHelp} title="규칙 · 도움말">📘</button>
+        ) : null}
         {settingsOpen ? (
           <SettingsPanel
             settings={props.settings}
@@ -8014,6 +8403,8 @@ const GameTable = memo(function GameTable(props: {
   onOpenCodex?: () => void;
   /** 게임 중 규칙·도움말 열기 (오버레이) */
   onOpenHelp?: () => void;
+  /** 정형구 보내기 (관전자에게는 없다 — 자리에 앉은 사람들의 대화다) */
+  onEmote?: (id: string) => void;
   onToast?: (text: string) => void;
   /** 내 손패 배치가 바뀌었을 때 서버에 알린다 (관전 모드에서는 없음) */
   onHandOrder?: (tileIds: number[]) => void;
@@ -8239,6 +8630,9 @@ const GameTable = memo(function GameTable(props: {
       {props.spectator !== true ? (
         <QuickToggles settings={props.settings} onSetting={props.onSetting} />
       ) : null}
+      {props.spectator !== true && props.onEmote !== undefined ? (
+        <EmoteBar onSend={props.onEmote} />
+      ) : null}
       {props.spectator !== true && props.abortVote != null && props.abortVote.votes > 0 ? (
         <AbortVoteBanner
           abortVote={props.abortVote}
@@ -8302,6 +8696,7 @@ const GameTable = memo(function GameTable(props: {
         catalog={catalog}
         autoSort={props.settings.autoSort}
         showMyWaits={props.settings.showMyWaits}
+        tapTwiceToDiscard={props.settings.tapTwiceToDiscard}
         {...(props.spectator !== true
           ? {
               quickToggles: (
@@ -8482,6 +8877,84 @@ function useSelection(
  * inline: 좁은 화면(모바일)용 — 좌하단 절대배치 대신 내 손패 바로 위에 가로 줄로 눕는다.
  * 두 벌 다 렌더하고 CSS 미디어쿼리가 한쪽만 보여준다 (상태는 없는 컴포넌트라 안전).
  */
+/** 문구 하나가 화면에 머무는 시간. 읽고 흘려보내기 딱 좋은 길이. */
+const EMOTE_SHOW_MS = 4500;
+/** 동시에 보여 줄 최대 개수 — 넷이 한꺼번에 인사해도 화면을 덮지 않는다. */
+const EMOTE_FEED_MAX = 4;
+
+interface EmoteEntry {
+  key: number;
+  nickname: string;
+  id: string;
+}
+
+/**
+ * 받은 정형구를 흘려보내는 자리.
+ *
+ * 이름표 옆 말풍선이 아니라 **한 곳에 모아** 띄운다. 말풍선은 좌석 위치를 알아야
+ * 하고, 대기실·게임·관전에서 그 위치가 전부 다르다 — 화면마다 다른 코드를 두면
+ * 셋 중 하나는 반드시 어긋난다. 한 자리에 모으면 어디서든 같은 것이 보인다.
+ */
+function EmoteFeed({ entries }: { entries: EmoteEntry[] }): JSX.Element | null {
+  if (entries.length === 0) return null;
+  return (
+    <div className="emote-feed" aria-live="polite">
+      {entries.map((e) => {
+        const def = EMOTES.find((x) => x.id === e.id);
+        return (
+          <div key={e.key} className="emote-bubble">
+            <span className="emote-bubble-icon" aria-hidden="true">{def?.icon ?? "💬"}</span>
+            <span className="emote-bubble-name">{e.nickname}</span>
+            <span className="emote-bubble-text">{def?.text ?? e.id}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 정형구 보내기 (감사 §4-9).
+ *
+ * 평소에는 말풍선 단추 하나만 떠 있고, 누르면 문구 여덟 개가 펼쳐진다. 항상 펼쳐
+ * 두지 않는 이유: 이 자리는 판 위이고, 상시로 자리를 먹으면 정작 게임이 좁아진다.
+ *
+ * 보낸 뒤에는 스스로 접는다 — 인사 한 번 하려고 두 번 누르게 하지 않는다.
+ */
+function EmoteBar({ onSend }: { onSend: (id: string) => void }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={open ? "emote-bar open" : "emote-bar"}>
+      {open ? (
+        <div className="emote-list" role="group" aria-label="정형구">
+          {EMOTES.map((e) => (
+            <button
+              key={e.id}
+              className="emote-btn"
+              onClick={() => {
+                onSend(e.id);
+                setOpen(false);
+              }}
+            >
+              <span className="emote-icon" aria-hidden="true">{e.icon}</span>
+              <span className="emote-text">{e.text}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <button
+        className="emote-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={open ? "정형구 닫기" : "정형구 보내기"}
+        title="정형구 보내기"
+      >
+        {open ? "✕" : "💬"}
+      </button>
+    </div>
+  );
+}
+
 function QuickToggles(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -8658,6 +9131,11 @@ function SettingsPanel(props: {
   //   판 위에서 바로 켜고 끄는 자리라 설정창에 같은 스위치를 한 벌 더 두면 두 곳을 오가며
   //   무엇이 켜졌는지 확인하게 된다(2026-08-12 사용자 지시). 저장 형식(Settings)은 그대로다.
   const rows: { key: BoolSettingKey; label: string; desc: string }[] = [
+    {
+      key: "tapTwiceToDiscard",
+      label: "두 번 눌러 버리기",
+      desc: "첫 번째로 누른 패가 들어 올려지고, 한 번 더 눌러야 실제로 나갑니다. 다른 패를 누르면 그쪽으로 옮겨 갑니다 (폰에서는 기본으로 켜져 있습니다 — 패 사이가 좁아 옆 패를 짚기 쉽습니다)",
+    },
     {
       key: "showMyWaits",
       label: "내 오름패 표시",
@@ -11977,6 +12455,8 @@ function OwnArea(props: {
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
   showMyWaits: boolean;
+  /** 두 번 눌러 버리기 — 첫 탭은 패를 들어 올리고 두 번째에 나간다 (감사 §5-2) */
+  tapTwiceToDiscard: boolean;
   /** 좁은 화면에서 손패 바로 위에 눕는 빠른 토글 (모바일 전용, CSS가 표시를 결정) */
   quickToggles?: JSX.Element;
   onRiichiMode: (v: boolean) => void;
@@ -12021,6 +12501,12 @@ function OwnArea(props: {
     if (autoSort) setManualOrder([]);
   }, [autoSort]);
   const [hoverId, setHoverId] = useState<number | null>(null);
+  /**
+   * "두 번 눌러 버리기"에서 첫 번째로 눌린 패 — 한 번 더 누르면 이 패가 나간다.
+   * 프롬프트가 바뀌면 비운다(아래 effect): 지난 순에 들어 올려 둔 패가 다음 순까지
+   * 남아 있으면, 무심코 한 번 누른 것이 곧바로 타패가 된다.
+   */
+  const [armedTileId, setArmedTileId] = useState<number | null>(null);
   // 포인터 드래그 상태 (손패 재정렬 + 바닥 버리기). state는 렌더용, ref는 핸들러용.
   const [drag, setDrag] = useState<HandDragState | null>(null);
   const dragRef = useRef<HandDragState | null>(null);
@@ -12301,6 +12787,9 @@ function OwnArea(props: {
   useEffect(() => {
     setSwap3Sel([]);
     setSwapTakeDismissed(false);
+    // 들어 올려 둔 패도 함께 내린다. 지난 순의 선택이 다음 순까지 남아 있으면
+    // 무심코 한 번 누른 것이 곧바로 타패가 된다 — 두 번 누르게 한 이유가 사라진다.
+    setArmedTileId(null);
   }, [props.promptSeq]);
   // 3장을 채우면 그 조합에 해당하는 옵션을 그대로 제출한다.
   const toggleSwap3 = (id: number): void => {
@@ -12943,6 +13432,8 @@ function OwnArea(props: {
               <button
                 key={id}
                 className={`hand-tile${clickable ? " hand-clickable" : " hand-locked"}${
+                  armedTileId === id ? " hand-armed" : ""
+                }${
                   dimmed ? " hand-dimmed" : ""
                 }${
                   (props.riichiMode && riichi !== undefined) ||
@@ -13011,6 +13502,23 @@ function OwnArea(props: {
                     return;
                   }
                   if (clickable && active !== undefined) {
+                    /*
+                     * 한 번 탭 = 되돌릴 수 없는 타패. 375px 폰에서 패 하나는 폭 26px에
+                     * 간격 2px이라(감사 §5-2) 엄지로는 옆 패를 짚기 쉽고, 짚으면 그대로
+                     * 나간다. 리치 선언에는 2단계 게이트가 있는데 평범한 타패에는
+                     * 아무 장치도 없었다.
+                     *
+                     * 그래서 **두 번 탭**: 첫 번째는 그 패를 들어 올리고, 두 번째에
+                     * 나간다. 다른 패를 누르면 그쪽으로 옮겨 간다. 마우스는 정확하므로
+                     * 기본은 터치 기기에서만 켜지고(설정에서 바꿀 수 있다), 데스크톱의
+                     * 한 번 클릭 감각은 그대로다.
+                     */
+                    if (props.tapTwiceToDiscard && armedTileId !== id) {
+                      setArmedTileId(id);
+                      sfx.pick();
+                      return;
+                    }
+                    setArmedTileId(null);
                     props.onSubmit(active);
                     return;
                   }
@@ -16135,6 +16643,25 @@ const REPLAY_SPEEDS = [
   { label: "4×", ms: 70 },
 ] as const;
 
+/**
+ * 리플레이 재구성 모듈을 **필요할 때** 불러온다 (감사 §7-1·7-3).
+ *
+ * `replayRebuild`는 증강 구현 전체(@majak/content — 117개 모듈, 1.2MB)를 끌고 온다.
+ * 판을 되짚으려면 그때 그 증강들이 실제로 있어야 하므로 그 의존 자체는 옳다. 문제는
+ * 그것이 **첫 화면 번들에** 들어 있었다는 것이다 — 로그인 화면 하나 그리는 데
+ * 서버 엔진과 증강 117개를 전부 파싱했다.
+ *
+ * 트리셰이킹으로는 못 뺀다: 배열이 참조되는 이상 117개가 전부 살아 있어야 하고,
+ * defineAugment가 검증 실패 시 throw 하는 부수효과 함수라 롤업이 각 모듈을 순수로
+ * 판정하지도 못한다. 그래서 **경계를 옮긴다** — 리플레이를 여는 사람만 받아 간다.
+ */
+type ReplayRebuildModule = typeof import("./replayRebuild.js");
+let replayModulePromise: Promise<ReplayRebuildModule> | null = null;
+function loadReplayModule(): Promise<ReplayRebuildModule> {
+  replayModulePromise ??= import("./replayRebuild.js");
+  return replayModulePromise;
+}
+
 function ReplayViewer(props: {
   data: ReplayDataMessage;
   settings: Settings;
@@ -16142,14 +16669,31 @@ function ReplayViewer(props: {
   onClose: () => void;
 }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
+  const [mod, setMod] = useState<ReplayRebuildModule | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadReplayModule().then(
+      (m) => {
+        if (alive) setMod(m);
+      },
+      (e: unknown) => {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const replay = useMemo<RebuiltReplay | null>(() => {
+    if (mod === null) return null;
     try {
-      return rebuildReplay(props.data.lines);
+      return mod.rebuildReplay(props.data.lines);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return null;
     }
-  }, [props.data]);
+  }, [props.data, mod]);
 
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -16158,8 +16702,8 @@ function ReplayViewer(props: {
   /** 열어 둔 정산 (없으면 null) — 리플레이는 판만 그려서 역·판·부를 되짚을 수 없었다 */
   const [openSettle, setOpenSettle] = useState<number | null>(null);
   const settlements = useMemo(
-    () => (replay !== null ? replaySettlements(replay) : []),
-    [replay],
+    () => (replay !== null && mod !== null ? mod.replaySettlements(replay) : []),
+    [replay, mod],
   );
   /** 지금 프레임까지 이미 끝난 국들의 정산 (아직 안 온 국의 결과를 미리 보여 주지 않는다) */
   const shownSettlements = settlements.filter((sx) => sx.index <= idx);
@@ -16180,8 +16724,8 @@ function ReplayViewer(props: {
   }, [playing, speed, total, replay]);
 
   const view = useMemo(
-    () => (replay !== null ? replayViewAt(replay, idx) : null),
-    [replay, idx],
+    () => (replay !== null && mod !== null ? mod.replayViewAt(replay, idx) : null),
+    [replay, idx, mod],
   );
 
   if (replay === null || view === null) {

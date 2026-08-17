@@ -36,9 +36,14 @@ Actions 무료 한도를 다 써서 런이 계속 실패 메일을 보냈다. `.
 - 메인 체크아웃은 `master` 고정. 갱신은 `git pull` 만.
 - 작업은 워크트리에서 한다.
 - master 갱신 후 배포: `npm run serve` (클라 빌드 + 서버 재시작 포함). 확인은 서빙되는 에셋 해시가 방금 빌드한 `packages/client/dist/assets/` 와 일치하는지 본다.
+- `restart` 는 **빌드를 먼저 하고 성공했을 때만** 서버를 교체한다(2026-08-17). 예전에는 stop → 빌드 → start 순서라 빌드가 깨진 커밋을 배포하면 서버가 내려간 채로 남았다.
 
-### 서버 감시자 (launchd)
-`npm run watchdog:install` 로 등록하면 1분마다 `/healthz`를 보고 응답이 없을 때 `serve.sh start`로 되살린다. 배포 중 `stop`만 되고 `start`가 오지 않아 서버가 조용히 꺼져 있던 구간(2026-08-08 새벽 53분·5시간)이 이걸 만든 이유다.
+### 서버 감시자 + 백업 (launchd)
+`npm run agents:install` 로 **감시자와 백업을 함께** 등록한다. 감시자는 1분마다 `/healthz`를 보고 응답이 없을 때 `serve.sh start`로 되살리고(RunAtLoad라 로그인 직후에도 한 번 돈다 = 재부팅 후 자동 기동 경로), 백업은 매일 04:30에 DB 스냅샷 + 리플레이 미러를 뜬다. 배포 중 `stop`만 되고 `start`가 오지 않아 서버가 조용히 꺼져 있던 구간(2026-08-08 새벽 53분·5시간)이 감시자를 만든 이유다.
+
+- **등록됐다 ≠ 돈다.** `npm run agents` 는 등록 여부가 아니라 **마지막 실행의 종료코드**를 본다. 2026-08-17 감사에서 감시자가 등록돼 있다고 문서에 적혀 있는데 실제로는 한 번도 돈 적이 없었다(TCC 차단). 이 저장소가 `~/Documents` 아래에 있는 한 같은 함정이 남아 있다 — `bash deploy/relocate.sh ~/majak` 이 근본 해결이다.
+- 조용한 실패를 없애려고 알림을 붙였다: 감시자 포기·복구 실패·백업 실패는 `.majak/alerts.log` + macOS 알림 센터, `NOTIFY_WEBHOOK_URL`을 설정하면 웹훅으로도 나간다.
+- 백업 상세와 복구 절차는 [DEPLOYMENT.md §6](DEPLOYMENT.md).
 
 - `npm stop` 은 `.majak/paused` 를 남긴다 → 감시자가 손대지 않는다. 다시 켜려면 `npm start`.
 - `npm run restart` / `serve.sh restart` 는 표식을 남기지 않는다 → 중간에 끊겨도 감시자가 이어서 세운다.

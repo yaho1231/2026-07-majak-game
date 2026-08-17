@@ -318,6 +318,9 @@ export {
   CONCEALED_TILE_ID_BASE,
   SPECTATOR_ID,
 } from "./information/PlayerView.js";
+
+// 정형구 — 목록과 검증을 클라이언트·서버가 **한 벌로** 공유한다.
+export { EMOTES, isEmoteId } from "./network/protocol.js";
 export type {
   VisibilityRule,
   PeekVisibility,
@@ -382,6 +385,8 @@ export type {
   LiveGamesRequestMessage,
   SpectateMessage,
   SpectateStopMessage,
+  EmoteMessage,
+  EmoteBroadcastMessage,
   SandboxStartMessage,
   SandboxGrantMessage,
   SandboxResetMessage,

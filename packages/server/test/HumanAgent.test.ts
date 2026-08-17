@@ -618,3 +618,68 @@ describe("HumanAgent — 드래프트 슬롯 새로고침", () => {
     expect(agent.rerolledDraftSlots()).toEqual([]);
   });
 });
+
+/**
+ * 끊겨서 잃은 자리는 돌아올 수 있어야 한다 (감사 2026-08-17 §2-2).
+ *
+ * 예전에는 이탈 사유를 구분하지 않았고 joinRoom이 `!isAbandoned`로 걸러서,
+ * 지하철·엘리베이터에서 2~3분 끊긴 사람이 **영영 못 돌아왔다**. 좌석은 봇처럼
+ * 자동 진행돼 판은 완주되고 그 사람 이름으로 순위·전적까지 남았다.
+ * `GRACE_TIMEOUTS_BEFORE_ABANDON`의 주석은 줄곧 "재접속은 계속 가능하다"고
+ * 적고 있었다 — 의도는 처음부터 이쪽이었고 구현만 어긋나 있었다.
+ */
+describe("HumanAgent — 이탈 사유에 따라 돌아올 수 있는지가 갈린다", () => {
+  it("끊겨서 확정된 이탈은 돌아올 수 있다", () => {
+    const agent = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
+    agent.abandon("timeout");
+    expect(agent.isAbandoned).toBe(true);
+    expect(agent.canRejoin).toBe(true);
+  });
+
+  it("스스로 나간 사람과 계정이 지워진 사람은 돌아오지 않는다", () => {
+    const left = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
+    left.abandon("left");
+    expect(left.canRejoin).toBe(false);
+
+    const evicted = new HumanAgent("p1", "Bob", new FakeSocket().asWs());
+    evicted.abandon("evicted");
+    expect(evicted.canRejoin).toBe(false);
+  });
+
+  it("사유를 안 적으면 '스스로 나감'이다 (되돌리지 않는 쪽이 안전한 기본값)", () => {
+    const agent = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
+    agent.abandon();
+    expect(agent.canRejoin).toBe(false);
+  });
+
+  it("reinstate() 는 끊긴 좌석만 되돌린다", () => {
+    const timed = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
+    timed.abandon("timeout");
+    timed.reinstate();
+    expect(timed.isAbandoned).toBe(false);
+    expect(timed.connectionState()).toBe("connected");
+
+    const left = new HumanAgent("p1", "Bob", new FakeSocket().asWs());
+    left.abandon("left");
+    left.reinstate();
+    expect(left.isAbandoned, "스스로 나간 자리는 되돌리지 않는다").toBe(true);
+  });
+
+  it("되돌린 좌석은 다시 사람이 둔다 (즉시 폴백하지 않는다)", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.abandon("timeout");
+    agent.reinstate();
+
+    let settled = false;
+    void agent
+      .decide({ player: "p0", options: [{ type: "discard", payload: {} }] } as never)
+      .then(() => {
+        settled = true;
+      });
+    await tick();
+    // 포기 상태였다면 여기서 이미 폴백으로 끝나 있다.
+    expect(settled, "되돌렸는데도 자동 폴백했다").toBe(false);
+    expect(sock.sent.some((m) => m.type === "prompt"), "프롬프트가 나가지 않았다").toBe(true);
+  });
+});

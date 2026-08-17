@@ -14,6 +14,17 @@
 # 추가 클라이언트 설정이 필요 없다.
 
 your-domain.example {
+	# 전송 압축. 서버도 스스로 gzip을 하지만(packages/server/src/index.ts), 여기서
+	# 한 번 더 선언해 두면 **zstd**를 쓸 수 있는 브라우저에게는 더 작게 나간다.
+	# Caddy는 업스트림이 이미 Content-Encoding을 붙여 보낸 응답은 건드리지 않으므로
+	# 이중 압축이 되지 않는다.
+	#
+	# 왜 굳이 양쪽에 두는가: 배포 경로가 둘이다 — Caddy를 쓰는 구성과, Cloudflare
+	# Tunnel이 서버로 곧장 붙는 구성. 서버 쪽에만 두면 Caddy 구성에서 zstd를 놓치고,
+	# Caddy 쪽에만 두면 터널 구성에서 압축이 통째로 빠진다(실제로 빠져 있었다 —
+	# 감사 2026-08-17 §7-2: styles.css 175KB가 원본 그대로 나갔다).
+	encode zstd gzip
+
 	# 이능마작 서버(단일 포트). PORT를 바꿨다면 여기 포트도 맞춘다.
 	reverse_proxy localhost:3001
 

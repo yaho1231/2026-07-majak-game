@@ -1,0 +1,13 @@
+# 이능마작 — https://majak.yaho1231.com
+#
+# 이 파일이 없으면 /robots.txt 요청도 SPA 폴백으로 **HTML을 200으로** 받는다.
+# 크롤러 입장에서는 "규칙이 없다"가 아니라 "규칙 파일이 깨졌다"로 보인다.
+
+User-agent: *
+Allow: /
+
+# 개발용 실험실 — 사용자용 화면이 아니다. 검색 결과에 뜨면 곤란하다.
+# (각 파일에도 <meta name="robots" content="noindex"> 를 넣어 뒀다. robots.txt는
+#  권고일 뿐이고 링크로 직접 들어오는 크롤러는 이걸 안 볼 수 있어서다.)
+Disallow: /fx-lab.html
+Disallow: /sfx-lab.html

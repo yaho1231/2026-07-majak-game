@@ -203,6 +203,20 @@ export class HumanAgent implements PlayerAgent {
   private continueTimeout: ReturnType<typeof setTimeout> | null = null;
   /** 게임 중 포기(중도 이탈) — 이후 모든 결정을 즉시 안전 폴백으로 자동 처리한다 */
   private abandoned = false;
+  /**
+   * **왜** 이탈했는가. 돌아올 수 있는지가 여기서 갈린다 (감사 2026-08-17 §2-2).
+   *
+   * - `"left"`   스스로 나가기를 눌렀다 → 돌아오지 않는다. 그게 그 사람의 결정이다.
+   * - `"evicted"` 계정이 삭제됐다 → 돌아올 계정이 없다.
+   * - `"timeout"` 끊긴 채 유예를 연속으로 흘렸다 → **돌아올 수 있다.**
+   *
+   * 예전에는 셋을 구분하지 않았고 `joinRoom`이 `!isAbandoned`로 걸러서, 지하철·
+   * 엘리베이터에서 2~3분 끊긴 사람이 **영영 못 돌아왔다**. 좌석은 봇처럼 자동
+   * 진행돼 판은 완주되고, 그 사람 이름으로 순위·전적까지 기록됐다.
+   * `GRACE_TIMEOUTS_BEFORE_ABANDON`의 주석은 줄곧 "재접속은 계속 가능하다"고
+   * 적고 있었다 — 의도는 처음부터 이쪽이었고 구현만 어긋나 있었다.
+   */
+  private abandonReason: "left" | "evicted" | "timeout" | null = null;
   /** 재접속 시 즉시 복원해 줄 마지막 뷰 */
   private lastView: PlayerView | null = null;
   /**
@@ -300,6 +314,30 @@ export class HumanAgent implements PlayerAgent {
     return this.abandoned;
   }
 
+  /**
+   * 이 좌석으로 돌아올 수 있는가.
+   *
+   * 끊겨서 확정된 이탈만 해당한다. 스스로 나간 사람과 계정이 지워진 사람은
+   * 돌아오지 않는다 — 전자는 그게 본인의 결정이고, 후자는 돌아올 계정이 없다.
+   */
+  get canRejoin(): boolean {
+    return this.abandoned && this.abandonReason === "timeout";
+  }
+
+  /**
+   * 끊겨서 확정됐던 좌석을 되돌린다 — 그 사람이 돌아왔다.
+   *
+   * `abandon()`은 대기 중이던 결정을 이미 폴백으로 해소했으므로 남아 있는
+   * 찌꺼기가 없다. 여기서 표식만 걷으면 다음 결정부터 다시 사람이 둔다.
+   */
+  reinstate(): void {
+    if (!this.canRejoin) return;
+    this.abandoned = false;
+    this.abandonReason = null;
+    this.graceTimeouts = 0;
+    console.log(`[room ${this.roomCode}] ${this.nickname}(${this.id}) 복귀 — 좌석을 되돌린다`);
+  }
+
   /** 이 좌석의 접속 상태 — 뷰의 이름표에 실려 남들에게 보인다. */
   connectionState(): SeatConnection {
     if (this.abandoned) return "abandoned";
@@ -364,7 +402,8 @@ export class HumanAgent implements PlayerAgent {
     console.log(
       `[room ${this.roomCode}] ${this.nickname}(${this.id}) 유예 ${this.graceTimeouts}회 연속 초과 — 이탈로 확정`,
     );
-    this.abandon();
+    // 끊겨서 확정된 이탈 — 돌아오면 좌석을 되돌려 준다(reinstate).
+    this.abandon("timeout");
     this.onAbandoned?.();
   }
 
@@ -373,9 +412,10 @@ export class HumanAgent implements PlayerAgent {
    * 대기 중이던 결정/드래프트가 있으면 지금 바로 안전 폴백으로 해소해
    * 남은 사람들의 게임이 30초 타임아웃마다 멈추지 않게 한다.
    */
-  abandon(): void {
+  abandon(reason: "left" | "evicted" | "timeout" = "left"): void {
     if (this.abandoned) return;
     this.abandoned = true;
+    this.abandonReason = reason;
     // 국 사이 대기 중이었다면 즉시 해소 (봇처럼 다음 국으로 넘어가게)
     if (this.pendingContinue !== null) this.resolveContinue();
     for (const seat of [...this.pending.keys()]) this.cancelDecisionFor(seat);
@@ -771,7 +811,12 @@ export class HumanAgent implements PlayerAgent {
         this.send({
           type: "error",
           code: "INVALID_ACTION",
-          message: "지금 고를 수 있는 선택지가 아닙니다 — 화면을 새로 받아 주세요.",
+          // "화면을 새로 받아 주세요"라고 적어 두었었는데, **화면을 새로 받는
+          // 방법이 프로토콜에 없었다** — 사용자가 할 수 있는 일이 아닌 것을
+          // 지시하는 문장이었다(감사 §2-4). 지금은 재접속 시 클라이언트가 낡은
+          // 선택지를 스스로 비우므로 이 오류 자체가 거의 나지 않지만, 남는
+          // 경우(연타·시차)에는 무엇이 일어났는지만 사실대로 말한다.
+          message: "이미 지나간 선택입니다 — 다음 차례를 기다려 주세요.",
         });
       }
       return;

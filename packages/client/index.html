@@ -9,29 +9,119 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>이능마작 — 증강 리치마작</title>
     <!-- 공유된 링크가 이름 한 단어로만 보이지 않게 한다. 이 게임이 무엇인지는
-         제목이 아니라 설명 줄에서 결정된다. -->
+         제목이 아니라 설명 줄에서 결정된다.
+         ⚠ 증강 개수 같은 **변하는 수치를 문장에 박지 않는다** — 예전에 "104종"으로
+         박아 두었다가 실제 113종이 되면서 공유 카드와 화면이 다른 말을 했다. -->
     <meta
       name="description"
-      content="기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요. 온라인 4인 일본 리치마작 + 증강 104종."
+      content="규칙을 바꾸는 증강을 뽑아 두는 온라인 4인 리치마작. 가입 없이 봇 3명과 바로 한 판."
     />
     <meta name="theme-color" content="#0b1310" />
+    <!-- 다크 전용 화면이다. 선언하지 않으면 UA가 스크롤바·입력칸 기본 UI·자동완성
+         배경을 라이트로 그려 도감 검색·제보 폼에서 흰 조각이 튄다. -->
+    <meta name="color-scheme" content="dark" />
+
+    <!-- 아이콘 — 없으면 탭에 기본 문서 아이콘이 뜨고, 링크를 붙였을 때 그림이 없다.
+         /favicon.ico 는 링크 태그를 안 보는 도구가 루트에서 곧장 찾는 자리다(없으면
+         SPA 폴백이 HTML을 200으로 내준다). -->
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- 정규 주소 — SPA 폴백이 모든 미지의 경로에 index.html을 200으로 내주므로,
+         이게 없으면 /aaa · /bbb 가 전부 같은 내용으로 색인될 수 있다. -->
+    <link rel="canonical" href="https://majak.yaho1231.com/" />
+
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="이능마작" />
+    <meta property="og:url" content="https://majak.yaho1231.com/" />
     <meta property="og:title" content="이능마작 — 증강 리치마작" />
     <meta
       property="og:description"
-      content="기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요. 가입 없이 봇 3명과 바로 한 판."
+      content="규칙을 바꾸는 증강을 뽑아 두는 온라인 4인 리치마작. 가입 없이 봇 3명과 바로 한 판."
     />
     <meta property="og:locale" content="ko_KR" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="https://majak.yaho1231.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="이능마작 — 마작패 아홉 장 위에 증강을 뜻하는 보라색 불꽃" />
+    <!-- 이미지가 생겼으므로 큰 카드로 올린다(summary는 작은 정사각 썸네일이다). -->
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="이능마작 — 증강 리치마작" />
     <meta
       name="twitter:description"
-      content="기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요. 가입 없이 봇 3명과 바로 한 판."
+      content="규칙을 바꾸는 증강을 뽑아 두는 온라인 4인 리치마작. 가입 없이 봇 3명과 바로 한 판."
     />
+    <meta name="twitter:image" content="https://majak.yaho1231.com/og.png" />
+
+    <!-- 첫 페인트 전 화면 — JS가 평가될 때까지는 아무것도 없어 흰(검은) 화면이었다.
+         스크립트가 없거나 느린 회선에서도 "여기가 무엇인지"는 보이게 한다.
+         React가 #root 를 채우면 이 내용은 통째로 교체된다. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0b1310;
+        color: #a8bcaf;
+      }
+      .boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font-family: "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+        text-align: center;
+      }
+      .boot-mark {
+        width: 64px;
+        height: 64px;
+      }
+      .boot-title {
+        font-size: 17px;
+        font-weight: 600;
+        color: #ece4d2;
+        letter-spacing: 1px;
+      }
+      .boot-sub {
+        font-size: 13px;
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .boot-mark {
+          animation: boot-pulse 1.6s ease-in-out infinite;
+        }
+      }
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot">
+        <img class="boot-mark" src="/icon.svg" alt="" width="64" height="64" />
+        <div class="boot-title">이능마작</div>
+        <div class="boot-sub">불러오는 중…</div>
+      </div>
+    </div>
+    <noscript>
+      <div class="boot">
+        <div class="boot-title">이능마작</div>
+        <div class="boot-sub">
+          이 게임은 자바스크립트가 필요합니다.<br />브라우저 설정에서 켠 뒤 새로고침해 주세요.
+        </div>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
