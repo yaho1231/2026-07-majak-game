@@ -3703,6 +3703,8 @@ export function App(): JSX.Element {
       );
     }
 
+    // 이 패스에서 누군가의 리치가 풀렸는가 (BGM 정리를 그때만 한다)
+    let riichiWasCancelled = false;
     for (const p of next.players) {
       const sub = p.id === next.playerId ? undefined : playerNameById(next, p.id);
 
@@ -3775,6 +3777,24 @@ export function App(): JSX.Element {
         );
       }
 
+      /*
+       * 리치가 **풀렸다** — 승부수(last_stand)·손바닥 뒤집기가 리치를 물릴 수 있다.
+       *
+       * 예전에는 이 경우를 아무도 정리하지 않았다. 그래서 ① 리치 BGM이 국이 끝날
+       * 때까지 계속 흘렀고(stop은 국 종료·새 국에만 있다) ② `shown.riichi`에 좌석이
+       * 남아, **같은 국에 다시 리치를 걸면 컷인도 BGM도 아예 안 나왔다**.
+       */
+      if (!nowRiichi && shown.riichi.has(p.id)) {
+        shown.riichi.delete(p.id);
+        riichiWasCancelled = true;
+        showBanner(
+          "리치 해제",
+          "info",
+          p.id === next.playerId ? "리치를 물렀다 — 리치봉이 돌아온다" : `${playerNameById(next, p.id)} — 리치를 물렀다`,
+          1400,
+        );
+      }
+
       // 후로 (치/펑/깡) — 후로 수가 이전 알림보다 늘었을 때만. 화료·리치처럼 컷인 연출.
       const nextMelds = next.round.byPlayer[p.id]?.melds ?? [];
       const shownCount = shown.melds[p.id] ?? 0;
@@ -3821,6 +3841,18 @@ export function App(): JSX.Element {
           impact: { shake: 2 },
         });
       }
+    }
+
+    /*
+     * 살아 있는 리치가 하나도 없으면 리치 BGM을 끈다.
+     *
+     * 예전에는 `riichiBgm.stop()`이 국 종료·새 국·게임 종료에만 있었다. 그래서
+     * 승부수·손바닥 뒤집기로 리치를 물러도 브금이 국이 끝날 때까지 계속 흘렀다 —
+     * 무엇이 소리를 내는지 화면 어디에도 없는 상태로.
+     */
+    if (riichiWasCancelled && shown.riichi.size === 0) {
+      riichiBgm.stop();
+      riichiBgmArmed.current = false;
     }
 
     // 패 봉인 (봉인술사 등) — 내 봉인 패 수가 이전 알림보다 늘었을 때만.
@@ -9934,6 +9966,9 @@ function CenterPanel({
               供{r.riichiPot / 1000}
             </span>
           ) : null}
+          {/* 역행 — 2026-08-17 확인: `turn.direction`을 −1로 바꾸는 콘텐츠는 아직 없다.
+              규칙은 엔진·봇·삼세 예지까지 배선돼 있으므로 표시만 미리 서 있는 상태다.
+              (뒤집는 증강이 생기면 이 칩이 그대로 살아난다.) */}
           {r.direction < 0 ? <span className="rev-dir" title="역행하는 세계">역행</span> : null}
         </div>
         <div className="center-dora" title="도라 표시패">
@@ -13074,8 +13109,15 @@ function WaitsBadge({
           </span>
         ) : null}
         {allDead ? <span className="waits-badge-noyaku">역없음</span> : null}
+        {/* 문구를 "아직 보이지 않은 장수"에서 **세는 곳을 밝히는 쪽**으로 고친다.
+            엿보기·투시로 상대 손패가 화면에 그려져도 이 셈은 그 패를 세지 않는다
+            (waitCounts는 zone 화이트리스트를 방어선으로 삼는다) — 짧은 문구만 보면
+            화면과 어긋나 보였다. */}
         {remaining !== null ? (
-          <span className="waits-badge-hint" title="패 위 숫자 = 아직 보이지 않은 그 패의 장수 (기본 4장 기준, 증강 생성패는 세지 않음)">
+          <span
+            className="waits-badge-hint"
+            title="패 위 숫자 = 기본 4장에서 버림패·후로·도라 표시패·내 손패에 나온 만큼을 뺀 수 (증강 생성패는 세지 않음)"
+          >
             남은 장수
           </span>
         ) : null}

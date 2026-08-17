@@ -477,13 +477,24 @@ export function installAugment(
       if (engine.state.augmentData[augmentGrantKey(holder, def.id)] !== undefined) {
         return;
       }
-      const held = new Set(
-        engine.state.players.find((p) => p.id === holder)?.augments ?? [],
-      );
-      // 상호 배제(conflicts)는 지급에서도 지킨다 — 드래프트에서 못 만나게 막아 둔 조합이
-      // 지급으로 뚫리면 손패 장수·화료형이 어긋나 그 국이 통째로 벽돌이 된다.
+      /*
+       * 중복 제외는 **테이블 전체** 기준이다.
+       *
+       * 예전에는 보유자 자신의 증강만 걸렀다. 그래서 드래프트가 게임 내내 지키는
+       * "같은 증강은 한 판에 하나"(DraftController)라는 규칙이 이 지급 경로로만
+       * 뚫렸다. 중복이 성립하면 보유자 전용 채널(잔량·쿨다운)이 좌석을 구분하지
+       * 못해, 이름표 pill에 **남의 값이 내 값으로** 찍히기도 했다.
+       */
+      const heldByAnyone = new Set(engine.state.players.flatMap((p) => p.augments));
+      /*
+       * 상호 배제(conflicts)는 **내 것끼리만** 본다 — "함께 가질 수 없다"는 한 사람의
+       * 손 안에서의 제약이라, 남이 뭘 들었는지로 내 후보를 막으면 안 된다.
+       * (지급에서도 지키는 이유: 드래프트에서 못 만나게 막아 둔 조합이 지급으로
+       *  뚫리면 손패 장수·화료형이 어긋나 그 국이 통째로 벽돌이 된다.)
+       */
+      const mine = new Set(engine.state.players.find((p) => p.id === holder)?.augments ?? []);
       const forbidden = new Set<string>();
-      for (const id of held) {
+      for (const id of mine) {
         for (const c of catalog.get(id)?.conflicts ?? []) forbidden.add(c);
       }
       const mode = engine.state.config.mode ?? "hanchan";
@@ -492,9 +503,9 @@ export function installAugment(
         .filter(
           (d) =>
             d.id !== def.id &&
-            !held.has(d.id) &&
+            !heldByAnyone.has(d.id) &&
             !forbidden.has(d.id) &&
-            !(d.conflicts ?? []).some((c) => held.has(c)) &&
+            !(d.conflicts ?? []).some((c) => mine.has(c)) &&
             (d.modes === undefined || d.modes.includes(mode)) &&
             // 드래프트 스테이지 제한을 지킨다. `DraftController`는 이걸 보는데
             // 여기서만 빠져 있어, 수상한 주사위가 **게임 시작 전용** 증강(마왕의
