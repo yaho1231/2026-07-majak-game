@@ -92,6 +92,10 @@ export const nagashiYakuman: AugmentDef = defineAugment({
   install(ctx) {
     const { holder } = ctx;
 
+    // 표준 유국만관을 보유자에게만 끈다 — 이 증강은 그 자리를 **역만으로** 대신한다.
+    // 안 끄면 같은 유국에서 만관과 역만을 겹쳐 받는다.
+    ctx.setHolderRule("draw.nagashiMangan", false);
+
     // 유국 정산: 성립 시 쯔모 역만 지불을 얹는다
     // 정산 단계: DrawPatch — 유국 전용 재정산.
     settleInterceptor(ctx, SETTLE_STAGE.DrawPatch, (event, ic) => {

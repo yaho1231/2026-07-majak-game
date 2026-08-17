@@ -12,7 +12,7 @@ import {
 } from "../../engine/state/GameState.js";
 import type { GameState } from "../../engine/state/GameState.js";
 import type { RuleRegistry } from "../../engine/rules/RuleRegistry.js";
-import { DEAD_WALL, WALL } from "../../engine/zones/Zone.js";
+import { DEAD_WALL, WALL, discardsZone } from "../../engine/zones/Zone.js";
 import type { PlayerId } from "../../engine/zones/Zone.js";
 import { Suits, isTerminalOrHonor, kindKey, sameKind } from "../tiles/Tile.js";
 import type { TileId, TileKind } from "../tiles/Tile.js";
@@ -1099,6 +1099,49 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
   };
 }
 
+/**
+ * 유국만관(流し満貫) 성립 좌석 — 황패유국 시 판정한다.
+ *
+ * 조건은 정통 규칙 그대로다.
+ * ① 그 국에 버린 패가 **한 장도 빠짐없이** 요구패(1·9 수패)나 자패이고, 한 장 이상이다.
+ * ② 그 버림패를 **아무도 울어 가지 않았다.**
+ *
+ * ②는 바닥에 남은 장수와 버린 이력의 길이를 견줘 본다 — 울려 나간 패는 바닥에서
+ * 빠지지만 이력에는 남는다. (누명처럼 명의가 옮겨 가는 경우도 둘이 같은 사람에게
+ * 기록되므로 이 비교가 그대로 성립한다.)
+ *
+ * 판정을 `draw.nagashiMangan` 규칙으로 감싸 두는 이유: 유국역만 증강은 ②를 없애고
+ * 만관 대신 역만을 지불하는 **다른 규칙**이라, 보유자에게는 이 표준 경로가 돌면 안 된다.
+ * 그 증강이 자기 규칙을 꺼서 중복 지불을 막는다.
+ */
+function kindFromDiscardKey(key: string): TileKind | null {
+  const m = /^([a-z]+)(\d+)$/.exec(key);
+  return m === null ? null : { suit: m[1] as TileKind["suit"], rank: Number(m[2]) };
+}
+
+function nagashiManganSeats(state: GameState, rules: RuleRegistry): PlayerId[] {
+  const out: PlayerId[] = [];
+  for (const p of state.players) {
+    if (!rules.resolve<boolean>("draw.nagashiMangan", { playerId: p.id, state })) continue;
+    const history = state.round.byPlayer[p.id]?.discardedKinds ?? [];
+    if (history.length === 0) continue;
+    // 이력은 문자열 스냅샷이라 tileId가 없다 — 종류만 알면 요구패 판정에는 충분하다.
+    // 파싱에 실패한 키는 요구패가 아닌 것으로 본다(성립을 넓히지 않는 쪽으로 막는다).
+    if (
+      !history.every((key) => {
+        const k = kindFromDiscardKey(key);
+        return k !== null && isTerminalOrHonor(k);
+      })
+    ) {
+      continue;
+    }
+    // 하나라도 울려 나갔으면 불성립
+    if ((state.zones[discardsZone(p.id)]?.tileIds.length ?? 0) !== history.length) continue;
+    out.push(p.id);
+  }
+  return out;
+}
+
 const sysSettleDraw: ActionDef<Record<string, never>> = {
   type: "sys.settleDraw",
   validate: (req, { state }) => {
@@ -1135,6 +1178,31 @@ const sysSettleDraw: ActionDef<Record<string, never>> = {
       for (const p of payingNoten) deltas[p.id] = -penalty / payingNoten.length;
       for (const p of tenpai) deltas[p.id] = penalty / tenpai.length;
     }
+    /*
+     * 유국만관 — 노텐 벌점을 정산한 **뒤에** 쯔모 만관 지불을 얹는다(표준 처리).
+     *
+     * 용어사전이 오래도록 이 규칙을 설명하고 있었는데 엔진에는 판정이 없었다.
+     * 요구패만 버린 플레이어는 사전이 알려 준 대로 만관을 기대했지만 아무것도
+     * 받지 못했다 — 화면이 규칙을 거짓으로 말한 자리였다.
+     */
+    const nagashi = nagashiManganSeats(state, rules);
+    for (const id of nagashi) {
+      const seat = playerOf(state, id).seat;
+      const isDealer = seat === state.round.dealerSeat;
+      const score = calculateScore({ han: 5, fu: 30, isDealer, winType: "tsumo" });
+      for (const p of state.players) {
+        if (p.id === id) continue;
+        const pay =
+          (isDealer
+            ? score.payments.others
+            : p.seat === state.round.dealerSeat
+              ? score.payments.dealer
+              : score.payments.others) ?? 0;
+        deltas[p.id] = (deltas[p.id] ?? 0) - pay;
+        deltas[id] = (deltas[id] ?? 0) + pay;
+      }
+    }
+
     const dealerTenpai = tenpai.some((p) => p.seat === state.round.dealerSeat);
     const next = dealerTenpai
       ? {
@@ -1157,6 +1225,15 @@ const sysSettleDraw: ActionDef<Record<string, never>> = {
       // 유국 증강이 "누가 노텐인가"를 delta 부호로 추정하지 않도록 실제 집계를 싣는다
       tenpaiPlayers: tenpai.map((p) => p.id),
       dealerContinues: dealerTenpai,
+      ...(nagashi.length > 0
+        ? {
+            drawSpecial: {
+              augId: "nagashi_mangan",
+              label: "유국만관 — 버림패가 전부 요구패·자패",
+              ...(nagashi[0] !== undefined ? { holder: nagashi[0] } : {}),
+            },
+          }
+        : {}),
     };
     return [{ type: ROUND_SETTLED, payload }];
   },
@@ -1219,6 +1296,8 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("win.treatAsDealer", false);
   /** 화료 시 추가 판 (역만 제외) — 동적 Modifier가 state에서 계산한다 */
   rules.define("score.extraHan", 0);
+  // 유국만관 — 표준 규칙(01_GAME_RULES). 유국역만 증강이 보유자에게만 끈다.
+  rules.define("draw.nagashiMangan", true);
   /** 리치를 걸지 않은 손도 뒷도라를 센다 (숨은 칼날). ctx에 winType·isClosed가 온다 */
   rules.define("scoring.uraWithoutRiichi", false);
   /**

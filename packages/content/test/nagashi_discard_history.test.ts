@@ -92,3 +92,27 @@ describe("버림이 하나도 없으면 성립하지 않는다", () => {
     expect(drawDelta(game([], ""))).toBe(0);
   });
 });
+
+describe("표준 유국만관과 겹치지 않는다", () => {
+  /**
+   * 엔진에도 표준 유국만관(`draw.nagashiMangan`)이 있다. 이 증강은 그 자리를
+   * **역만으로 대신하는** 규칙이므로, 보유자에게는 표준 경로가 꺼져 있어야 한다 —
+   * 안 그러면 같은 유국에서 만관과 역만을 겹쳐 받는다.
+   */
+  it("보유자에게는 표준 유국만관 규칙이 꺼져 있다", () => {
+    const g = game(["man1", "sou9", "wind1"], "1m9s1z");
+    expect(
+      g.engine.rules.resolve<boolean>("draw.nagashiMangan", {
+        playerId: "p0",
+        state: g.engine.state,
+      }),
+    ).toBe(false);
+    // 다른 좌석은 그대로 표준 규칙을 받는다
+    expect(
+      g.engine.rules.resolve<boolean>("draw.nagashiMangan", {
+        playerId: "p1",
+        state: g.engine.state,
+      }),
+    ).toBe(true);
+  });
+});
