@@ -9574,20 +9574,31 @@ button {
 
 /* ─────────────── 토스트 ─────────────── */
 
-.toast {
+/* 토스트가 여러 줄 쌓인다 (감사 §5-8 — 예전에는 슬롯이 하나라 뒤엣것이 앞엣것을
+   덮었고, 하필 둘 다 알아야 하는 통지들이 서로를 지웠다). 위치는 스택이 잡고
+   낱장은 모양만 갖는다. */
+.toast-stack {
   position: absolute;
   left: 50%;
   bottom: 28px;
   transform: translateX(-50%);
   z-index: 100;
+  display: flex;
+  flex-direction: column-reverse; /* 새 것이 아래(눈이 가는 쪽)에 */
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 90cqw;
+}
+
+.toast {
   padding: 13px 24px;
   border-radius: 12px;
   font-size: 14px;
   font-weight: 700;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
   animation: toast-in 0.25s var(--ease);
-  pointer-events: none;
-  max-width: 90cqw;
+  max-width: 100%;
   text-align: center;
 }
 
@@ -11985,4 +11996,123 @@ body.peeking .overlay-peekable > * {
 }
 .home-practice:hover {
   background: rgba(240, 200, 106, 0.12);
+}
+
+/* ─────────────── 14. 되묻는 창 (감사 §5-9) ───────────────
+   `window.confirm` 을 대신한다. 네이티브 모달은 **메인 스레드를 멈추는데 서버의
+   결정 타이머는 그대로 흐른다** — "정말 나갈까요?"를 읽는 사이 내 차례가 폴백으로
+   지나갔다. 생김새를 화면과 맞추는 것은 덤이고, 진짜 이유는 그것이다. */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 9, 7, 0.62);
+  backdrop-filter: blur(2px);
+}
+.confirm-box {
+  width: min(420px, 100%);
+  padding: 22px 22px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-3);
+}
+.confirm-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+.confirm-body {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.confirm-btn {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  color: var(--ink-1);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.confirm-btn:hover {
+  background: var(--felt-3);
+  border-color: var(--brass-line);
+}
+.confirm-ok {
+  border-color: var(--brass-line);
+  background: linear-gradient(180deg, rgba(154, 123, 66, 0.3), rgba(154, 123, 66, 0.16));
+}
+.confirm-danger {
+  border-color: rgba(232, 160, 160, 0.45);
+  background: linear-gradient(180deg, rgba(180, 70, 70, 0.34), rgba(180, 70, 70, 0.18));
+  color: #f3d9d9;
+}
+.confirm-danger:hover {
+  background: linear-gradient(180deg, rgba(200, 78, 78, 0.44), rgba(200, 78, 78, 0.24));
+  border-color: rgba(232, 160, 160, 0.66);
+}
+
+/* 새로 고침 중 — 누른 것이 눌렸다는 표시 (감사 §5-6). 완료 신호가 아니라 접수 표시다. */
+.home-refresh-busy {
+  opacity: 0.6;
+  cursor: default;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .home-refresh-busy {
+    animation: refresh-spin 0.9s linear;
+  }
+}
+@keyframes refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 설정의 3단 선택 (연출 속도) — 슬라이더로 하기엔 값이 셋뿐이고, 토글로 하기엔
+   상태가 둘이 아니다. */
+.settings-seg {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.settings-seg-btn {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  color: var(--ink-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+.settings-seg-btn:hover {
+  color: var(--ink-1);
+  border-color: var(--line-strong);
+}
+.settings-seg-btn.on {
+  border-color: var(--brass-line);
+  background: rgba(154, 123, 66, 0.2);
+  color: var(--ink-1);
+  font-weight: 600;
 }

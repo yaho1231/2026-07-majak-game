@@ -49,7 +49,10 @@ describe("연출 — 건너뛸 수 있고, 화면 효과를 끄면 짧아진다"
     expect(APP).toContain("function effectiveProdTtl");
     // ttl을 그대로 타이머에 넣는 옛 형태로 되돌아가지 않게 한다
     expect(APP).not.toMatch(/setTimeout\(\s*\(\) => setActiveProd\(null\),\s*(activeP|p)rod\.ttl\s*\)/);
-    expect(APP).toContain("effectiveProdTtl(prod.ttl, settingsRef.current.screenFx)");
+    // 인자가 늘어도(2026-08-18: 연출 속도 배수 추가) 뜻은 같다 — **화면 효과 설정이
+    // 체류 시간 계산에 들어가는가**만 본다. 호출 형태를 통째로 못 박으면 정당한
+    // 확장에도 깨진다.
+    expect(APP).toMatch(/effectiveProdTtl\(prod\.ttl, settingsRef\.current\.screenFx/);
   });
 
   it("체류 시간을 화면에 그려진 뒤부터 잰다 (막힌 프레임이 연출을 삼키지 않게)", () => {
