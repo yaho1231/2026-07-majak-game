@@ -143,16 +143,13 @@ describe("even_world (짝수의 세계)", () => {
       }
     }
 
-    // 발동됐음을 전원 공개, 사용 카운터 +1
+    // 발동됐음을 전원 공개, 2국 쿨다운 시작
     expect(state.augmentData["view:*:even_world:p0#round"]).toBe(true);
-    expect(state.augmentData["even_world:uses:p0"]).toBe(1);
+    expect(state.augmentData["view:p0:cooldown:even_world"]).toBe(2);
   });
 
-  it("동풍전 1회 — 두 번째 발동은 버튼으로 제시되지 않고 validate도 거부한다", () => {
-    // 동풍전(tonpuu)이면 사용 횟수가 1회 → 두 번째는 거부
-    const base = craftHand();
-    const tonpuu: GameState = { ...base, config: { ...base.config, mode: "tonpuu" } };
-    const game = createStandardGameFromState(tonpuu);
+  it("2국에 1회 — 같은 국의 두 번째 발동은 버튼으로 제시되지 않고 validate도 거부한다", () => {
+    const game = createStandardGameFromState(craftHand());
     installAugment(game.engine, evenWorld, "p0", { yaku: game.yaku });
 
     // 처음엔 발동 가능
@@ -168,8 +165,41 @@ describe("even_world (짝수의 세계)", () => {
 
     flow.submit("p0", option as { type: string; payload: unknown });
 
-    // 동풍전 1회 — 두 번째는 거부
-    expect(evenValidate(game, "p0")).toBe("no uses left this game");
+    // 2국 쿨다운 — 두 번째는 거부
+    expect(evenValidate(game, "p0")).toBe("on cooldown");
+  });
+
+  /*
+   * 2국 쿨다운 — 국이 두 번 지나면 다시 열린다.
+   *
+   * 판 길이에 따라 총 횟수가 갈리던 매치 스코프 한도(동풍1·반장2)를 2026-08-17 사용자
+   * 지시로 큰손과 같은 "2국에 1회"로 바꿨다. 국 진행은 `trackRoundSeq`가 ROUND_STARTED로
+   * 세므로, 국이 두 번 시작하면 잔량이 0이 되어 다시 발동할 수 있어야 한다.
+   */
+  it("한 번 쓰면 잠기고, 국이 두 번 지나면 다시 열린다", () => {
+    const game = createStandardGameFromState(craftHand());
+    installAugment(game.engine, evenWorld, "p0", { yaku: game.yaku });
+    expect(game.engine.submit({ player: "p0", type: "even_world_flip", payload: {} }).ok).toBe(true);
+    expect(evenValidate(game, "p0")).toBe("on cooldown");
+
+    // 발동 시점의 국 순번이 기준점으로 남는다 (국 진행 카운터는 trackRoundSeq가 올린다)
+    const carried = game.engine.state.augmentData;
+    expect(carried["even_world:usedSeq:p0"]).toBe(0);
+
+    /** 국이 `n`번 지난 상태로 새 판을 깐다 (쿨다운 데이터는 그대로 들고 간다) */
+    const afterRounds = (n: number): Game => {
+      const g = createStandardGameFromState({
+        ...craftHand(),
+        augmentData: { ...carried, "even_world:seq:p0": n },
+      });
+      installAugment(g.engine, evenWorld, "p0", { yaku: g.yaku });
+      return g;
+    };
+
+    // 국이 한 번만 지났으면 아직 잠겨 있다
+    expect(evenValidate(afterRounds(1), "p0")).toBe("on cooldown");
+    // 두 번 지나면 다시 열린다
+    expect(evenValidate(afterRounds(2), "p0")).toBeNull();
   });
 
   it("바꿀 홀수 수패가 없으면(짝수·자패뿐) 발동할 수 없다", () => {

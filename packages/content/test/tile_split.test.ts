@@ -131,6 +131,46 @@ describe("분열 (tile_split)", () => {
     ).toBe(true);
   });
 
+  /*
+   * 재료 고르기 — 이어짐이 같으면 **자패가 먼저** 탄다.
+   *
+   * 예전에는 이어짐만 보고 동점이면 손패 순서 앞쪽을 뽑았다. 그래서 외톨이 5삭이
+   * 한 장 남은 1z보다 앞에 있으면 5삭이 사라졌다("한 장 남은 한자패가 안 사라지고
+   * 다른 게 사라진다", 2026-08-17 사용자 보고). 자패는 슌쯔가 아예 불가능하니 같은
+   * 외톨이라도 먼저 태우는 것이 맞다.
+   */
+  it("이어짐이 같으면 외톨이 수패가 아니라 한 장 남은 자패가 재료가 된다", () => {
+    const game = setup(
+      withAug(
+        craft({
+          // 9p(대상) · 5s(외톨이 수패, 손패에서 자패보다 앞) · 1z(한 장 남은 자패)
+          hands: { p0: "123m456m789m9p5s1z", p1: "*", p2: "*", p3: "*" },
+          phase: "turn.act",
+          turnSeat: 0,
+          drawnLastFor: "p0",
+        }),
+        "p0",
+        ["tile_split"],
+      ),
+    );
+    const target = findTile(game, K.p9);
+    expect(target).toBeDefined();
+    expect(handKeys(game)).toContain(K.e); // 1z가 손에 있다
+
+    const r = game.engine.submit({
+      player: "p0",
+      type: "split_tile",
+      payload: { tileId: target!, a: 4 },
+    });
+    expect(r.ok).toBe(true);
+
+    const after = handKeys(game);
+    expect(after).not.toContain(K.e); // 자패가 재료로 소모됐다
+    expect(after).toContain(kindKey({ suit: "sou", rank: 5 })); // 외톨이 수패는 남았다
+    expect(after).toContain(K.p4);
+    expect(after).toContain(K.p5);
+  });
+
   it("합이 맞지 않는 분할은 거부된다", () => {
     const game = setup(scene());
     const target = findTile(game, K.p9)!;

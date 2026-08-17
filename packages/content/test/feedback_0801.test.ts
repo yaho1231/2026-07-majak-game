@@ -50,7 +50,7 @@ describe("연금술사 — 남은 횟수 채널", () => {
     return withAugments(s, { p0: ["alchemist"] });
   }
 
-  it("쯔모가 한 번 일어나면 남은 횟수(5)가 보유자 채널에 선다", () => {
+  it("설치 직후 남은 횟수(5)가 보유자 채널에 선다", () => {
     const game = createStandardGameFromState(scene());
     installAugment(game.engine, alchemist, "p0", { yaku: game.yaku });
     const flow = new FlowController(game.engine);
@@ -68,7 +68,11 @@ describe("연금술사 — 남은 횟수 채널", () => {
       if (game.engine.eventLog.some((e) => e.type === "TileDrawn")) break;
     }
     expect(game.engine.eventLog.some((e) => e.type === "TileDrawn")).toBe(true);
-    expect(game.engine.state.augmentData["view:p0:alchemist:left"]).toBe(5);
+    expect(game.engine.state.augmentData["view:p0:uses:alchemist"]).toEqual({
+      left: 5,
+      total: 5,
+      scope: "match",
+    });
   });
 
   it("한 번 쓰면 4로 줄어든다", () => {
@@ -81,7 +85,11 @@ describe("연금술사 — 남은 횟수 채널", () => {
       payload: { tileId: hand[0] as TileId, delta: 1 },
     });
     expect(res.ok).toBe(true);
-    expect(game.engine.state.augmentData["view:p0:alchemist:left"]).toBe(4);
+    expect(game.engine.state.augmentData["view:p0:uses:alchemist"]).toEqual({
+      left: 4,
+      total: 5,
+      scope: "match",
+    });
   });
 });
 
