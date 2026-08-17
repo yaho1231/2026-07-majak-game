@@ -1,0 +1,18 @@
+{
+  "name": "이능마작 — 증강 리치마작",
+  "short_name": "이능마작",
+  "description": "규칙을 바꾸는 증강을 뽑아 두는 온라인 4인 리치마작. 가입 없이 봇 3명과 바로 한 판.",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1310",
+  "theme_color": "#0b1310",
+  "categories": ["games"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

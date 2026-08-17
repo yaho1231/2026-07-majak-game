@@ -62,6 +62,8 @@
  * 가 전부 `scale`을 보므로 드래그 좌표도 자동으로 따라온다 — 여기 갈래를 늘리면 안 된다.
  */
 
+import { safeStorage } from "./storage.js";
+
 /** 이 크기 이상이면 배율 1 — 배치가 여유 있게 풀리는 기준 창.
  *  흔한 노트북(1280×720)은 그대로 두고, 그보다 좁아질 때부터 줄인다. */
 const BASE_W = 1100;
@@ -224,8 +226,8 @@ function snapZoom(v: number): number {
 
 function persistZoom(): void {
   try {
-    if (zoom === DEFAULT_ZOOM) window.localStorage.removeItem(ZOOM_KEY);
-    else window.localStorage.setItem(ZOOM_KEY, String(zoom));
+    if (zoom === DEFAULT_ZOOM) safeStorage.removeItem(ZOOM_KEY);
+    else safeStorage.setItem(ZOOM_KEY, String(zoom));
   } catch {
     /* 저장을 못 해도 이번 세션에서는 동작한다 */
   }
@@ -322,12 +324,12 @@ function onKey(e: KeyboardEvent): void {
 /** 앱 부팅 시 1회. 첫 페인트 전에 배율을 걸고, 이후 창 크기를 따라간다. */
 export function startUiScale(): void {
   try {
-    window.localStorage.removeItem(LEGACY_OVERRIDE_KEY);
+    safeStorage.removeItem(LEGACY_OVERRIDE_KEY);
   } catch {
     /* 저장소를 못 건드려도 배율은 어차피 자동이다 */
   }
   try {
-    const raw = window.localStorage.getItem(ZOOM_KEY);
+    const raw = safeStorage.getItem(ZOOM_KEY);
     const v = raw === null ? NaN : Number(raw);
     if (Number.isFinite(v) && v > 0) zoom = snapZoom(v);
   } catch {

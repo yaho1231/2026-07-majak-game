@@ -11434,3 +11434,130 @@ body.peeking .overlay-peekable > * {
   font-size: 0.92em;
   vertical-align: -0.02em;
 }
+
+/* ─────────────── 12. 렌더 실패 화면 (ErrorBoundary) ───────────────
+   화면을 그리다 터졌을 때 나오는 마지막 화면이다. 여기까지 온 사람은 이미
+   한 번 실패를 겪었으므로, 요구할 것은 하나뿐이다 — **다음에 뭘 눌러야 하는지**.
+   그래서 버튼 셋을 "잃는 것이 적은 순서"로 왼쪽부터 세우고, 각각이 무엇을
+   잃는지 아래 한 줄에 적는다.
+
+   이 블록은 앱의 다른 CSS에 기대지 않는다. 렌더가 깨진 상황에서 다른 스타일이
+   같이 깨져 있을 수 있어서다 — 여기서 쓰는 토큰은 :root 에만 의존한다. */
+.crash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 35%, var(--felt-2), var(--felt-0) 70%);
+  overflow: auto;
+}
+.crash-card {
+  width: min(560px, 100%);
+  padding: 28px 28px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-3);
+  text-align: center;
+}
+.crash-icon {
+  font-size: 34px;
+  line-height: 1;
+  color: var(--brass-bright);
+}
+.crash-title {
+  margin: 14px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.crash-lead {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+.crash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 22px;
+}
+.crash-btn {
+  min-height: 44px; /* §9-2 터치 최소 크기 — 손 떨리는 상황에서 더 중요하다 */
+  padding: 0 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  color: var(--ink-1);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.crash-btn:hover {
+  background: var(--felt-3);
+  border-color: var(--brass-line);
+}
+.crash-btn.primary {
+  border-color: var(--brass-line);
+  background: linear-gradient(180deg, rgba(154, 123, 66, 0.28), rgba(154, 123, 66, 0.14));
+  color: var(--ink-1);
+}
+.crash-btn.danger {
+  color: var(--ink-3);
+}
+.crash-btn.danger:hover {
+  color: #e8a0a0;
+  border-color: rgba(232, 160, 160, 0.4);
+}
+.crash-note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-4);
+}
+.crash-note b {
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.crash-report {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.crash-link {
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.crash-link:hover {
+  color: var(--ink-1);
+}
+.crash-stack {
+  margin: 14px 0 0;
+  padding: 12px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--felt-0);
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

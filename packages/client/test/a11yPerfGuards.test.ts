@@ -100,7 +100,9 @@ describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌
 
   it("예전에 못 박아 둔 배율에 갇히지 않는다 — 부팅 때 지운다", () => {
     expect(UISCALE).toContain("LEGACY_OVERRIDE_KEY");
-    expect(UISCALE).toContain("localStorage.removeItem(LEGACY_OVERRIDE_KEY)");
+    // 저장소 접근은 safeStorage 를 거친다(2026-08-17 §2-8). 지운다는 사실만 못 박고
+    // 어느 래퍼를 쓰는지는 묶지 않는다 — 래퍼가 또 바뀌어도 이 가드의 뜻은 같다.
+    expect(UISCALE).toMatch(/removeItem\(LEGACY_OVERRIDE_KEY\)/);
   });
 
   it("브라우저 확대를 감지해 자동 축소를 접는다 (WCAG 1.4.4)", () => {

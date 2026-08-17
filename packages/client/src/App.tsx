@@ -65,6 +65,7 @@ import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { rebuildReplay, replaySettlements, replayViewAt } from "./replayRebuild.js";
+import { safeStorage } from "./storage.js";
 import { remainingCounter } from "./waitCounts.js";
 import {
   backlogProdTtl,
@@ -135,7 +136,7 @@ const LAST_ROOM_KEY = "majak.lastRoomCode";
  * 값이 이미 들어와 있다는 전제로 읽어야 한다.
  */
 function serverUrlToUse(): string {
-  const raw = window.localStorage.getItem(SERVER_OVERRIDE_KEY);
+  const raw = safeStorage.getItem(SERVER_OVERRIDE_KEY);
   if (raw === null || raw.trim() === "") return defaultServerUrl();
   try {
     const u = new URL(raw.trim());
@@ -143,7 +144,7 @@ function serverUrlToUse(): string {
   } catch {
     /* 형식 불량 — 기본값으로 */
   }
-  window.localStorage.removeItem(SERVER_OVERRIDE_KEY);
+  safeStorage.removeItem(SERVER_OVERRIDE_KEY);
   return defaultServerUrl();
 }
 
@@ -962,7 +963,7 @@ const DEFAULT_SETTINGS: Settings = {
 
 function loadSettings(): Settings {
   try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
+    const raw = safeStorage.getItem(SETTINGS_KEY);
     if (raw !== null) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
   } catch {
     /* 손상된 값은 무시하고 기본값 */
@@ -2377,7 +2378,7 @@ export function App(): JSX.Element {
     setSettings((prev) => {
       const next = { ...prev, [key]: value };
       try {
-        window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+        safeStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
       } catch {
         /* 저장 실패는 무시 (세션 내 설정은 유지) */
       }
@@ -2775,14 +2776,14 @@ export function App(): JSX.Element {
     ws.addEventListener("open", () => {
       setConnection("connected");
       reconnectAttemptsRef.current = 0;
-      const token = window.localStorage.getItem(SESSION_KEY);
+      const token = safeStorage.getItem(SESSION_KEY);
       // 토큰은 **그걸 발급한 서버에만** 되돌려 보낸다.
       //
       // 고급 설정의 서버 주소는 사람이 붙여넣는 값이다 — "이 주소로 바꾸면 더
       // 빨라요" 한 마디에 바뀔 수 있는 자리에서 저장된 세션 토큰을 자동으로
       // 흘려보내면, 그 순간 계정이 통째로 넘어간다. 발급처가 다르면 어차피 그
       // 서버에서 쓸 수 없는 값이므로, 보내지 않아도 잃는 기능이 없다.
-      const issuer = window.localStorage.getItem(SESSION_SERVER_KEY);
+      const issuer = safeStorage.getItem(SESSION_SERVER_KEY);
       const relogin = token !== null && token !== "" && issuer === url;
       if (relogin) {
         send({ type: "tokenLogin", sessionToken: token });
@@ -3007,9 +3008,9 @@ export function App(): JSX.Element {
     guestRef.current = false;
     setAuthError(null);
     setHelpOpen(false);
-    window.localStorage.removeItem(SESSION_KEY);
-    window.localStorage.removeItem(SESSION_SERVER_KEY);
-    window.localStorage.removeItem(LAST_ROOM_KEY);
+    safeStorage.removeItem(SESSION_KEY);
+    safeStorage.removeItem(SESSION_SERVER_KEY);
+    safeStorage.removeItem(LAST_ROOM_KEY);
     setAuth(null);
     resetGameState();
     setReplayData(null);
@@ -3051,9 +3052,9 @@ export function App(): JSX.Element {
       // 게스트에게는 저장할 세션이 없다 — 토큰이 빈 문자열이라 저장하면 다음 접속에
       // 빈 tokenLogin을 보내고 TOKEN_INVALID로 로그인 화면이 한 번 깜빡인다.
       if (!guest) {
-        window.localStorage.setItem(SESSION_KEY, msg.sessionToken);
+        safeStorage.setItem(SESSION_KEY, msg.sessionToken);
         // 발급처를 함께 남긴다 — 다음 접속 때 같은 서버에만 되돌려 보내기 위함.
-        window.localStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
+        safeStorage.setItem(SESSION_SERVER_KEY, serverUrlToUse());
       }
       setAuth({ username: msg.username, isAdmin: msg.isAdmin, guest });
       if (guest) {
@@ -3084,7 +3085,7 @@ export function App(): JSX.Element {
       // 스테일하다. 판단은 반드시 live ref(activeRoomRef 등)나 setter로만 한다.
       if (msg.code === "TOKEN_INVALID") {
         // 세션 만료(자동 로그인/재연결 실패) — 로그인 화면으로 정리
-        window.localStorage.removeItem(SESSION_KEY);
+        safeStorage.removeItem(SESSION_KEY);
         activeRoomRef.current = null;
         activeSpectateRef.current = null;
         authedRef.current = false;
@@ -3129,7 +3130,7 @@ export function App(): JSX.Element {
     if (msg.type === "roomCreated") {
       // 게스트 방은 재접속할 수 없다 — 기억해 두면 홈에 죽은 방의 "재접속"이 남는다.
       if (guestRef.current) return;
-      window.localStorage.setItem(LAST_ROOM_KEY, msg.code);
+      safeStorage.setItem(LAST_ROOM_KEY, msg.code);
       return; // 이어서 joined·lobby가 온다
     }
     if (msg.type === "replayList") {
@@ -3216,7 +3217,7 @@ export function App(): JSX.Element {
       // 게스트는 재접속할 수단이 없다(세션 토큰도 joinRoom 권한도 없다) — 재연결
       // 자동 재입장 대상으로 기억하면 붙자마자 거절 토스트만 뜬다.
       activeRoomRef.current = guestRef.current ? null : msg.roomId; // 재연결 시 자동 재입장 대상
-      window.localStorage.setItem(LAST_ROOM_KEY, msg.roomId);
+      safeStorage.setItem(LAST_ROOM_KEY, msg.roomId);
       return;
     }
     if (msg.type === "catalog") {
@@ -3455,7 +3456,7 @@ export function App(): JSX.Element {
       // 새로고침·재연결로 돌아와도 같은 대기실에 다시 앉는다.
       if (msg.canContinue !== true) {
         activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
-        window.localStorage.removeItem(LAST_ROOM_KEY);
+        safeStorage.removeItem(LAST_ROOM_KEY);
       }
       return;
     }
@@ -3463,8 +3464,8 @@ export function App(): JSX.Element {
       // 방장이 대기실에서 내보냈다 — 이 방에는 다시 못 들어가므로 재입장 대상에서도 지운다
       showToast("방장이 방에서 내보냈습니다", "info", 4000);
       activeRoomRef.current = null;
-      if (window.localStorage.getItem(LAST_ROOM_KEY) === msg.roomId) {
-        window.localStorage.removeItem(LAST_ROOM_KEY);
+      if (safeStorage.getItem(LAST_ROOM_KEY) === msg.roomId) {
+        safeStorage.removeItem(LAST_ROOM_KEY);
       }
       resetGameState();
       refreshHome();
@@ -3488,7 +3489,7 @@ export function App(): JSX.Element {
     if (msg.type === "gameAborted") {
       showToast(msg.reason, "info", 4000);
       activeRoomRef.current = null;
-      window.localStorage.removeItem(LAST_ROOM_KEY);
+      safeStorage.removeItem(LAST_ROOM_KEY);
       returnHome();
       return;
     }
@@ -4348,7 +4349,7 @@ export function App(): JSX.Element {
   const inGame = (joined !== null || isSpectator) && view !== null;
   const inWaiting = joined !== null && view === null && rankings === null && !isSpectator;
   const draftVisible = inGame && draft !== null && !intro && roundResult === null && !isSpectator;
-  const lastRoomCode = window.localStorage.getItem(LAST_ROOM_KEY);
+  const lastRoomCode = safeStorage.getItem(LAST_ROOM_KEY);
 
   return (
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
@@ -4901,7 +4902,7 @@ function AuthScreen(props: {
   const [signupCode, setSignupCode] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [serverUrl, setServerUrl] = useState(
-    window.localStorage.getItem(SERVER_OVERRIDE_KEY) ?? "",
+    safeStorage.getItem(SERVER_OVERRIDE_KEY) ?? "",
   );
   const [localError, setLocalError] = useState<string | null>(null);
   const disconnected = props.connection === "closed";
@@ -4934,7 +4935,7 @@ function AuthScreen(props: {
   function saveServer(): void {
     const v = serverUrl.trim();
     if (v === "") {
-      window.localStorage.removeItem(SERVER_OVERRIDE_KEY);
+      safeStorage.removeItem(SERVER_OVERRIDE_KEY);
     } else {
       // ws/wss만 받는다 — http(s)·javascript: 등 다른 스킴은 여기서 거른다.
       let ok = false;
@@ -4948,7 +4949,7 @@ function AuthScreen(props: {
         setLocalError("서버 주소는 ws:// 또는 wss:// 로 시작해야 합니다");
         return;
       }
-      window.localStorage.setItem(SERVER_OVERRIDE_KEY, v);
+      safeStorage.setItem(SERVER_OVERRIDE_KEY, v);
     }
     window.location.reload();
   }
