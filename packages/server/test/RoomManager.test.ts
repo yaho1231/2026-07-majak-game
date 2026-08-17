@@ -401,14 +401,24 @@ describe("방 생성·참가 (코드)", () => {
     expect(guest.last("joined")?.roomId).toBe(code);
   });
 
-  it("같은 계정의 중복 참가는 거부된다", async () => {
+  it("같은 계정의 두 번째 연결은 새 자리가 아니라 **그 자리를 이어받는다**", async () => {
+    /*
+     * 예전에는 DUPLICATE_JOIN 으로 거절했다. 그 탓에 **폰에서 대기실에 앉아 있다가
+     * 컴퓨터로 옮겨 앉는 것이 불가능했다**(2026-08-18 사용자 보고). 게임 중 경로는
+     * 이미 이어받기로 동작하는데, 같은 의도가 대기 중이냐 진행 중이냐로 갈릴 이유가 없다.
+     */
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
     host.clientSend({ type: "createRoom" });
     const code = host.last("roomCreated").code;
+    const seatId = host.last("joined")?.playerId;
+
     const dup = await connectAndLogin(h, "Host", "pw123456");
     dup.clientSend({ type: "joinRoom", code });
-    expect(dup.last("error")?.code).toBe("DUPLICATE_JOIN");
+
+    expect(dup.last("error")).toBeUndefined();
+    expect(dup.last("joined").playerId).toBe(seatId); // 원래 자리 그대로
+    expect(dup.last("lobby").players).toHaveLength(1); // 자리가 늘어나지 않는다
   });
 
   it("봇 추가로 자리가 꽉 차도 자리는 그대로다 — 섞기는 '자리 섞기'를 눌렀을 때만", async () => {
@@ -951,17 +961,37 @@ describe("유령 좌석 정리 (접속 어긋남)", () => {
     expect(host.last("lobby").players).toHaveLength(2); // 자리가 늘어나지 않는다
   });
 
-  it("다른 연결(다른 탭)의 중복 참가는 그대로 거부된다", async () => {
+  it("다른 기기(다른 연결)로 들어오면 늦게 온 쪽이 자리를 가져간다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
     host.clientSend({ type: "createRoom" });
     const code = host.last("roomCreated").code;
-    const guest = await connectAndRegister(h, "Guest");
-    guest.clientSend({ type: "joinRoom", code });
+    const phone = await connectAndRegister(h, "Guest");
+    phone.clientSend({ type: "joinRoom", code });
+    const seatId = phone.last("joined").playerId;
 
-    const otherTab = await connectAndLogin(h, "Guest", "pw123456");
-    otherTab.clientSend({ type: "joinRoom", code });
-    expect(otherTab.last("error")?.code).toBe("DUPLICATE_JOIN");
+    // 폰 소켓은 아직 살아 있다 — 브라우저를 닫아도 바로 죽지 않는다.
+    const desktop = await connectAndLogin(h, "Guest", "pw123456");
+    desktop.clientSend({ type: "joinRoom", code });
+
+    expect(desktop.last("error")).toBeUndefined();
+    expect(desktop.last("joined").playerId).toBe(seatId); // 같은 자리
+    expect(host.last("lobby").players).toHaveLength(2); // 자리는 늘지 않는다
+  });
+
+  it("남의 자리는 가져갈 수 없다 — 계정이 다르면 제 자리를 따로 받는다", async () => {
+    // 이어받기는 `isActiveHuman`이 **닉네임(=계정)이 같은 좌석**만 고르기 때문에
+    // 성립한다. 계정이 다르면 남의 자리에 앉는 길이 없어야 한다.
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const hostSeat = host.last("joined")?.playerId;
+
+    const other = await connectAndRegister(h, "Other");
+    other.clientSend({ type: "joinRoom", code });
+
+    expect(other.last("joined").playerId).not.toBe(hostSeat);
     expect(host.last("lobby").players).toHaveLength(2);
   });
 });

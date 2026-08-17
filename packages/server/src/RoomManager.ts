@@ -1981,12 +1981,24 @@ export class RoomManager {
       (a): a is HumanAgent => this.isActiveHuman(a, user.username),
     );
     if (mineHere !== undefined) {
-      // 이 연결이 이미 붙들고 있는 좌석이면 새 자리를 주는 대신 **그 자리에 도로 앉힌다**.
-      // (클라이언트만 방 상태를 잃은 경우 — 코드로 다시 들어오면 조용히 복구된다.)
-      if (mineHere.isSocket(conn.ws) || !mineHere.isConnected()) {
-        return this.reseat(conn, room, mineHere);
-      }
-      return this.fail(conn, "DUPLICATE_JOIN", "이미 이 방에 참가 중입니다 (다른 탭 확인)");
+      /*
+       * 내 계정의 좌석이면 **언제나 그 자리에 도로 앉힌다** — 새 자리를 주지 않는다.
+       *
+       * 예전에는 예전 소켓이 아직 살아 있으면 `DUPLICATE_JOIN`으로 거절했다. 그래서
+       * **폰에서 대기실에 앉아 있다가 컴퓨터로 옮겨 앉는 것이 불가능했다** —
+       * "이미 이 방에 참가 중입니다 (다른 탭 확인)"만 돌아왔다. 폰 브라우저를 닫아도
+       * 소켓이 바로 죽지 않아(백그라운드 유지) 한참을 기다려야 했고, 기다렸는지
+       * 아닌지도 화면에 안 보였다 (2026-08-18 사용자 보고).
+       *
+       * **게임 중 경로는 이미 이렇게 동작한다**(위 `detachStaleConns` → 재접속).
+       * 같은 계정이 같은 방에 들어오는 같은 의도인데 대기 중이냐 진행 중이냐로
+       * 결과가 갈릴 이유가 없다. 늦게 온 연결이 자리를 가져가고 예전 연결은
+       * 떨어져 나간다(`reseat`이 `detachStaleConns`를 부른다).
+       *
+       * 남의 자리를 뺏는 길이 열리는 것은 아니다 — `isActiveHuman`이 닉네임(=계정)이
+       * 같은 좌석만 고른다.
+       */
+      return this.reseat(conn, room, mineHere);
     }
     let other = this.membershipOf(user.username);
     // 이 연결이 붙들고 있던 다른 방의 대기실 좌석이면 놓아 주고 진행한다
