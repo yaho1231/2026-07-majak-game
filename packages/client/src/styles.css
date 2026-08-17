@@ -11662,14 +11662,18 @@ body.peeking .overlay-peekable > * {
   align-items: flex-end;
   gap: 8px;
 }
+/* 글자 단추다 — 이모지를 쓰지 않으므로 원이 아니라 알약이어야 "대화"가 들어간다.
+   높이 44px는 그대로 둔다(§9-2 터치 목표). */
 .emote-toggle {
-  width: 44px;
+  min-width: 56px;
   height: 44px;
+  padding: 0 14px;
   border: 1px solid var(--line-strong);
-  border-radius: 50%;
+  border-radius: 999px;
   background: var(--surface-2);
   color: var(--ink-1);
-  font-size: 18px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   box-shadow: var(--shadow-2);
   transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
@@ -11693,7 +11697,7 @@ body.peeking .overlay-peekable > * {
   align-items: center;
   gap: 8px;
   min-height: 36px;
-  padding: 0 12px 0 8px;
+  padding: 0 12px;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
@@ -11707,10 +11711,6 @@ body.peeking .overlay-peekable > * {
   background: var(--felt-3);
   color: var(--ink-1);
 }
-.emote-icon {
-  font-size: 15px;
-}
-
 /* 받은 문구 — 좌석 옆 말풍선이 아니라 한 자리에 모아 띄운다(화면마다 좌석 위치가
    다르므로, 한 곳으로 모아야 대기실·게임·관전에서 같은 것이 보인다). */
 .emote-feed {

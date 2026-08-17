@@ -8903,7 +8903,6 @@ function EmoteFeed({ entries }: { entries: EmoteEntry[] }): JSX.Element | null {
         const def = EMOTES.find((x) => x.id === e.id);
         return (
           <div key={e.key} className="emote-bubble">
-            <span className="emote-bubble-icon" aria-hidden="true">{def?.icon ?? "💬"}</span>
             <span className="emote-bubble-name">{e.nickname}</span>
             <span className="emote-bubble-text">{def?.text ?? e.id}</span>
           </div>
@@ -8936,7 +8935,6 @@ function EmoteBar({ onSend }: { onSend: (id: string) => void }): JSX.Element {
                 setOpen(false);
               }}
             >
-              <span className="emote-icon" aria-hidden="true">{e.icon}</span>
               <span className="emote-text">{e.text}</span>
             </button>
           ))}
@@ -8949,7 +8947,7 @@ function EmoteBar({ onSend }: { onSend: (id: string) => void }): JSX.Element {
         aria-label={open ? "정형구 닫기" : "정형구 보내기"}
         title="정형구 보내기"
       >
-        {open ? "✕" : "💬"}
+        {open ? "닫기" : "대화"}
       </button>
     </div>
   );
