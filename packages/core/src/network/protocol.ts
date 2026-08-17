@@ -117,15 +117,15 @@ export interface EmoteMessage {
  * 것. "빨리 두세요"·"?" 같은 재촉·조롱은 넣지 않는다 — 고정 문구의 장점은 나쁜 말을
  * 애초에 만들 수 없다는 것인데, 목록에 넣으면 그 장점을 스스로 버린다.
  */
-export const EMOTES: readonly { id: string; icon: string; text: string }[] = [
-  { id: "greet", icon: "🙇", text: "잘 부탁드립니다" },
-  { id: "thanks", icon: "🙏", text: "감사합니다" },
-  { id: "sorry", icon: "😅", text: "미안합니다" },
-  { id: "nice", icon: "👏", text: "좋은 판이었습니다" },
-  { id: "wow", icon: "😮", text: "대단하네요" },
-  { id: "lucky", icon: "🍀", text: "운이 좋았습니다" },
-  { id: "wait", icon: "⏳", text: "잠깐만요" },
-  { id: "gg", icon: "🫡", text: "수고하셨습니다" },
+export const EMOTES: readonly { id: string; text: string }[] = [
+  { id: "greet", text: "잘 부탁드립니다" },
+  { id: "thanks", text: "감사합니다" },
+  { id: "sorry", text: "미안합니다" },
+  { id: "nice", text: "좋은 판이었습니다" },
+  { id: "wow", text: "대단하네요" },
+  { id: "lucky", text: "운이 좋았습니다" },
+  { id: "wait", text: "잠깐만요" },
+  { id: "gg", text: "수고하셨습니다" },
 ] as const;
 
 /** 이 문구가 목록에 있는가 — 서버가 받은 값을 그대로 믿지 않으려고 쓴다. */
