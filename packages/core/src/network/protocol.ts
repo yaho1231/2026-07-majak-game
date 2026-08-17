@@ -90,6 +90,50 @@ export interface LeaveRoomMessage {
   type: "leaveRoom";
 }
 
+// ── 정형구 (2026-08-18) ──
+
+/**
+ * 정형구 — 미리 정해진 문구 하나를 같은 방 사람들에게 보낸다.
+ *
+ * **자유 입력이 아니다.** 4인 대전인데 "리치", "감사합니다", "좋은 판" 같은 최소한의
+ * 사교 신호조차 없어서 외부 음성채팅이 사실상 필수였다(감사 2026-08-17 §4-9).
+ * 그렇다고 자유 채팅을 열면 욕설·인신공격을 걸러야 하는데, 그건 이 규모의 운영이
+ * 감당할 일이 아니다. 고정 문구 세트는 그 둘 사이의 답이다 — 사교는 되고
+ * 모더레이션은 필요 없다.
+ *
+ * `id`는 `EMOTES`의 것만 유효하다. 서버가 목록에 없는 값을 거른다 —
+ * 클라이언트가 보낸 문자열을 그대로 남에게 뿌리는 길은 열어 두지 않는다.
+ */
+export interface EmoteMessage {
+  type: "emote";
+  id: string;
+}
+
+/**
+ * 보낼 수 있는 문구 전부. 클라이언트가 버튼을 그리고, 서버가 검증에 쓴다 —
+ * **목록이 한 벌이어야** 화면에 없는 문구가 남에게 도착하는 일이 없다.
+ *
+ * 고른 기준: 마작 자리에서 실제로 오가는 말이면서, **상대를 몰아붙이는 데 쓸 수 없는**
+ * 것. "빨리 두세요"·"?" 같은 재촉·조롱은 넣지 않는다 — 고정 문구의 장점은 나쁜 말을
+ * 애초에 만들 수 없다는 것인데, 목록에 넣으면 그 장점을 스스로 버린다.
+ */
+export const EMOTES: readonly { id: string; icon: string; text: string }[] = [
+  { id: "greet", icon: "🙇", text: "잘 부탁드립니다" },
+  { id: "thanks", icon: "🙏", text: "감사합니다" },
+  { id: "sorry", icon: "😅", text: "미안합니다" },
+  { id: "nice", icon: "👏", text: "좋은 판이었습니다" },
+  { id: "wow", icon: "😮", text: "대단하네요" },
+  { id: "lucky", icon: "🍀", text: "운이 좋았습니다" },
+  { id: "wait", icon: "⏳", text: "잠깐만요" },
+  { id: "gg", icon: "🫡", text: "수고하셨습니다" },
+] as const;
+
+/** 이 문구가 목록에 있는가 — 서버가 받은 값을 그대로 믿지 않으려고 쓴다. */
+export function isEmoteId(id: string): boolean {
+  return EMOTES.some((e) => e.id === id);
+}
+
+
 // ── 리플레이 (15) ──
 
 /** 내 리플레이 목록 요청. */
@@ -463,6 +507,7 @@ export type ClientMessage =
   | CreateRoomMessage
   | JoinRoomMessage
   | LeaveRoomMessage
+  | EmoteMessage
   | ReplayListRequestMessage
   | ReplayGetMessage
   | LeaderboardRequestMessage
@@ -719,6 +764,19 @@ export interface ErrorMessage {
   type: "error";
   code: string;
   message: string;
+}
+
+/**
+ * 정형구가 도착했다 — 같은 방 사람들에게 나간다(보낸 사람 포함).
+ *
+ * ⚠ **서버 → 클라이언트 구간에 있어야 한다.** 앞 구간에 두면 재전송 정책 테스트가
+ * 이걸 클라이언트 메시지로 세어 "분류되지 않았다"고 잡는다(실제로 그렇게 잡혔다).
+ */
+export interface EmoteBroadcastMessage {
+  type: "emoteFrom";
+  player: PlayerId;
+  nickname: string;
+  id: string;
 }
 
 export interface PongMessage {
@@ -1047,6 +1105,7 @@ export type ServerMessage =
   | AbortVoteMessage
   | GameAbortedMessage
   | ErrorMessage
+  | EmoteBroadcastMessage
   | PongMessage
   | ServerInfoMessage
   | LobbyMessage

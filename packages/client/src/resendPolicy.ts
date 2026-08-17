@@ -33,6 +33,7 @@ export const VOLATILE_MESSAGES: ReadonlySet<string> = new Set([
   "voteAbort", // 지금 진행 중인 무효 투표에 대한 답
   "roundContinue", // "이 결과창을 닫는다" — 늦게 가면 다음 국 결과창을 건너뛴다
   "ping", // 스스로 다시 온다
+  "emote", // 인사는 그 순간의 것이다 — 늦게 도착하면 뜻이 어긋난다
 ]);
 
 /** ② 큐에 담았다가 재전송한다 — 상태에 대한 요청·의사표시 */
@@ -55,6 +56,11 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 표시용 (마지막 것만 뜻이 있다 — 큐에서 앞엣것을 지운다)
   "handOrder",
 ]);
+
+/*
+ * `emote`는 **볼라틸 쪽**이다(위 목록). "잘 부탁드립니다"가 15초 뒤 남의 화면에
+ * 뜨면 그건 인사가 아니라 유령이다 — 대화는 그 순간에만 뜻이 있다.
+ */
 
 /** 큐가 이보다 오래 묵으면 보내지 않는다 — 그건 복구가 아니라 유령 조작이다. */
 export const RESEND_TTL_MS = 15_000;

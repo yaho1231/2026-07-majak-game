@@ -34,6 +34,7 @@ import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
 import { SPECTATOR_ID } from "@majak/core/information/PlayerView.js";
 import type { SeatConnection } from "@majak/core/information/PlayerView.js";
 import { standardKinds } from "@majak/core/mahjong/tiles/Tile.js";
+import { isEmoteId } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
   ClientMessage,
@@ -240,6 +241,8 @@ interface Conn {
   spectating: Room | null;
   /** 최근 인증 시도 타임스탬프(ms) — 레이트리밋용 슬라이딩 윈도우 */
   authAttempts: number[];
+  /** 최근 정형구 전송 시각(ms) — 도배 방지용 슬라이딩 윈도우 */
+  emoteHits: number[];
   /**
    * **비싼 조회**의 종류별 슬라이딩 윈도우 (`HEAVY_MESSAGES` 참고).
    * 토큰버킷은 개수만 세는데 메시지들의 실제 비용은 세 자릿수로 갈린다.
@@ -556,6 +559,15 @@ const MAX_GUEST_ROOMS_PER_IP = 3;
  * `createRoom`/`joinRoom`이 빠져 있는 것이 핵심이다 — 게스트 게임은 서버가
  * `guestPlay` 하나로 만들어 주며, 손님은 방을 만들지도 남의 방에 들어가지도 못한다.
  */
+/**
+ * 정형구 속도 제한 — 10초에 5번.
+ *
+ * 넉넉해 보이지만 이 정도가 대화의 리듬이다("잘 부탁드립니다" → 화료 → "대단하네요").
+ * 도배는 그보다 훨씬 빠른 속도로 일어나므로 이 선에서 걸린다.
+ */
+const EMOTE_WINDOW_MS = 10_000;
+const EMOTE_MAX_IN_WINDOW = 5;
+
 const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
   "action",
   "draftPick",
@@ -563,6 +575,9 @@ const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
   "roundContinue",
   "handOrder",
   "leaveRoom",
+  // 손님도 인사는 할 수 있어야 한다. 봇전이라 받는 사람이 없을 때도 있지만,
+  // 사람이 낀 판을 나중에 열더라도 이 목록을 다시 손보지 않게 지금 넣어 둔다.
+  "emote",
 ]);
 
 /** 강제 배패에 쓸 수 있는 패 종류 (kindKey) — 표준 34종만. */
@@ -922,6 +937,7 @@ export class RoomManager {
       agent: null,
       spectating: null,
       authAttempts: [],
+      emoteHits: [],
       heavyHits: new Map(),
       ip,
       key,
@@ -1287,6 +1303,10 @@ export class RoomManager {
         return this.createRoom(conn, user);
       case "joinRoom":
         return this.joinRoom(conn, user, msg.code);
+      case "emote": {
+        this.handleEmote(conn, msg.id);
+        return;
+      }
       case "leaveRoom": {
         const room = conn.room;
         // 체험 판에서 나가기 = 그 판의 끝. 남겨 두어도 손님은 돌아올 수 없다.
@@ -1299,7 +1319,8 @@ export class RoomManager {
           // 게임 중 나가기 = 포기: 좌석은 봇처럼 자동 진행되어 게임이 완주된다.
           // 남은 사람들의 이름표에 "기권"을 세워, 저 자리가 왜 즉답하는지 보이게 한다.
           else {
-            conn.agent.abandon();
+            // 스스로 누른 나가기 — 되돌리지 않는다. 그게 이 사람의 결정이다.
+            conn.agent.abandon("left");
             this.refreshSeatStatus(room);
             // 마지막 사람이 나갔으면 판을 무효로 접는다 — 남는 건 봇뿐이라 볼 사람도,
             // 기록할 이유도 없다. 예전에는 그 판이 계속 돌면서, 홈으로 나온 화면 위로
@@ -1881,15 +1902,40 @@ export class RoomManager {
       return this.fail(conn, "KICKED", "방장이 내보낸 방입니다");
     }
 
-    // 게임 중 — 같은 계정이면 신원 기준 재접속 (포기한 좌석은 재접속 불가)
+    /*
+     * 게임 중 — 같은 계정이면 신원 기준 재접속.
+     *
+     * **끊겨서 확정된 이탈은 되돌린다** (감사 §2-2). 예전에는 `!isAbandoned`로
+     * 걸러서, 2~3분 끊긴 사람이 영영 못 돌아왔다 — 지하철·엘리베이터·와이파이↔LTE
+     * 전환 한 번에 반장전 하나가 통째로 날아갔고, 좌석은 봇처럼 자동 진행돼 그
+     * 사람 이름으로 순위와 전적까지 남았다.
+     *
+     * 스스로 나간 사람과 계정이 지워진 사람은 여전히 못 돌아온다(`canRejoin`).
+     * 전자는 그게 본인의 결정이고, 후자는 돌아올 계정이 없다.
+     */
     if (room.phase === "playing") {
       const mine = room.agents.find(
         (a): a is HumanAgent =>
-          a instanceof HumanAgent && !a.isAbandoned && a.nickname === user.username,
+          a instanceof HumanAgent &&
+          (!a.isAbandoned || a.canRejoin) &&
+          a.nickname === user.username,
       );
       if (mine === undefined) {
-        return this.fail(conn, "ROOM_PLAYING", "이미 게임이 시작된 방입니다");
+        // 왜 못 들어오는지 구분해 말한다. 이 문구는 클라이언트가 그대로 보여 준다.
+        const left = room.agents.some(
+          (a): a is HumanAgent =>
+            a instanceof HumanAgent && a.isAbandoned && a.nickname === user.username,
+        );
+        return this.fail(
+          conn,
+          "ROOM_PLAYING",
+          left
+            ? "이 방에서 이미 나갔습니다 — 그 대국에는 다시 들어갈 수 없습니다"
+            : "이미 게임이 시작된 방입니다",
+        );
       }
+      // 끊겨서 확정됐던 좌석이면 여기서 되돌린다 — 다음 결정부터 다시 직접 둔다.
+      mine.reinstate();
       // 이 좌석을 아직 붙들고 있는 **예전 연결**을 먼저 떼어낸다.
       //
       // 대기실 경로(`reseat`)는 이걸 하는데 여기만 빠져 있어서, 두 번째 탭으로
@@ -2210,6 +2256,52 @@ export class RoomManager {
     }
   }
 
+  // ─────────────────────────── 정형구 ───────────────────────────
+
+  /**
+   * 정형구 하나를 같은 방 사람들에게 보낸다 (감사 2026-08-17 §4-9).
+   *
+   * 지키는 것 셋:
+   *  · **목록에 있는 id만** 나간다. 클라이언트가 보낸 문자열을 남에게 그대로
+   *    뿌리는 길을 만들지 않는다 — 그 길이 곧 자유 채팅이고, 그러면 고정 문구를
+   *    고른 이유가 사라진다.
+   *  · 같은 방 사람에게만 간다. 방 밖으로는 한 글자도 나가지 않는다.
+   *  · 속도를 제한한다. 문구가 여덟 개뿐이어도 초당 스무 번이면 그건 도배다.
+   */
+  private handleEmote(conn: Conn, id: unknown): void {
+    const room = conn.room;
+    const agent = conn.agent;
+    if (room === null || agent === null) {
+      return this.fail(conn, "NOT_IN_ROOM", "방에 있지 않습니다");
+    }
+    if (typeof id !== "string" || !isEmoteId(id)) {
+      return this.fail(conn, "INVALID_ACTION", "없는 문구입니다");
+    }
+    const now = Date.now();
+    const recent = conn.emoteHits.filter((t) => now - t < EMOTE_WINDOW_MS);
+    if (recent.length >= EMOTE_MAX_IN_WINDOW) {
+      conn.emoteHits = recent;
+      // 조용히 버리지 않고 말해 준다 — 눌렀는데 아무 일도 안 일어나면 고장으로 읽는다.
+      return this.fail(conn, "RATE_LIMITED", "잠시 후에 다시 보낼 수 있습니다");
+    }
+    recent.push(now);
+    conn.emoteHits = recent;
+
+    const out = {
+      type: "emoteFrom" as const,
+      player: agent.id,
+      nickname: agent.nickname,
+      id,
+    };
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify(out);
+    }
+    // 관전자에게도 보인다 — 자리에 앉은 사람들이 무슨 말을 주고받는지 보이지 않으면
+    // 관전은 소리 없는 화면이 된다.
+    for (const s of room.spectators) this.send(s.ws, out);
+    this.touch(room);
+  }
+
   // ─────────────────────────── 통계·리플레이 ───────────────────────────
 
   /** 요청한 본인의 누적(career) 통계만 전송. */
@@ -2483,7 +2575,8 @@ export class RoomManager {
       if (c.room !== null && c.agent !== null) {
         if (c.room.phase === "waiting") this.leaveWaiting(c.room, c.agent);
         else {
-          c.agent.abandon(); // 게임 중이면 좌석을 봇처럼 자동 진행시켜 완주하게 둔다
+          // 계정이 사라졌다 — 돌아올 계정이 없으므로 재입장 대상이 아니다.
+          c.agent.abandon("evicted"); // 게임 중이면 좌석을 봇처럼 자동 진행시켜 완주하게 둔다
           this.refreshSeatStatus(c.room); // 남은 사람 이름표에 "기권"을 세운다
         }
       }

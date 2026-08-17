@@ -138,3 +138,95 @@ describe("아직 모르는 것을 '없다'고 말하지 않는다", () => {
     expect(css).toContain(".home-loading");
   });
 });
+
+// ─────────────────── 5. 초대 링크 (§3-5) ───────────────────
+
+describe("친구를 부르는 일이 한 단계다", () => {
+  it("복사되는 것은 코드가 아니라 링크다", () => {
+    const at = APP_CODE.indexOf("function copyCode()");
+    expect(at).toBeGreaterThan(0);
+    const block = APP_CODE.slice(at, at + 1200);
+    expect(block).toContain("inviteLinkFor(code)");
+    // 클립보드로 나가는 값이 링크여야 한다 — 코드 문자열을 복사하면 예전 그대로다.
+    expect(block).toMatch(/writeText\(link\)/);
+  });
+
+  it("주소창의 방 코드는 형식 검사를 거친다", () => {
+    // 이 값은 **남이 만든 링크**에서 온다. 그대로 서버에 넘기지 않는다.
+    expect(APP_CODE).toContain("ROOM_CODE_RE");
+    expect(APP_CODE).toMatch(/ROOM_CODE_RE\s*=\s*\/\^\[A-Z0-9\]\{4,8\}\$\//);
+  });
+
+  it("한 번 쓴 코드는 주소창에서 지운다", () => {
+    // 남겨 두면 새로고침마다 그 방으로 끌려가고, 방이 사라진 뒤에는 매번 실패한다.
+    expect(APP_CODE).toContain("clearRoomFromUrl()");
+  });
+
+  it("초대가 재연결 복귀보다 먼저다", () => {
+    // 링크는 방금 사람이 누른 의도이고, 복귀는 이전 상태다.
+    const invited = APP_CODE.indexOf("pendingInviteRef.current");
+    const active = APP_CODE.indexOf("activeRoomRef.current !== null");
+    expect(invited).toBeGreaterThan(0);
+    expect(invited).toBeLessThan(active);
+  });
+});
+
+// ─────────────────── 6. 랜딩 (§3-4) ───────────────────
+
+describe("클릭하기 전에 이 게임이 무엇인지 보인다", () => {
+  it("랜딩이 실제 패로 증강을 보여 준다", () => {
+    expect(APP_CODE).toContain("LANDING_SHOWCASE");
+    const at = APP_CODE.indexOf("LANDING_SHOWCASE");
+    const block = APP_CODE.slice(at, at + 900);
+    // 도움말과 같은 컴포넌트·같은 에셋 — 광고용 그림을 따로 만들지 않는다.
+    expect(APP_CODE).toMatch(/LANDING_SHOWCASE\.map[\s\S]{0,400}HelpTileGroups/);
+    expect(block).toContain("사방치기");
+  });
+
+  it("로그인 칸이 첫 화면을 가로채지 않는다", () => {
+    // autoFocus 는 포커스된 칸을 화면 안으로 끌어와 제목·시작 버튼을 밀어냈다.
+    expect(APP_CODE).not.toContain("autoFocus");
+  });
+});
+
+// ─────────────────── 7. 오타패 방지 (§5-2) ───────────────────
+
+describe("한 번 잘못 짚은 것이 그대로 나가지 않는다", () => {
+  it("두 번 눌러 버리기 설정이 있고 터치에서 기본 켜짐이다", () => {
+    expect(APP_CODE).toContain("tapTwiceToDiscard");
+    expect(APP_CODE).toMatch(/matchMedia\("\(pointer: coarse\)"\)\.matches/);
+  });
+
+  it("첫 번째 탭은 제출하지 않는다", () => {
+    const at = APP_CODE.indexOf("if (props.tapTwiceToDiscard && armedTileId !== id)");
+    expect(at, "두 번 탭 분기가 타패 직전에 없다").toBeGreaterThan(0);
+    const block = APP_CODE.slice(at, at + 200);
+    expect(block).toContain("setArmedTileId(id)");
+    expect(block).toContain("return;");
+  });
+
+  it("순이 바뀌면 들어 올린 패를 내린다", () => {
+    // 지난 순의 선택이 남아 있으면 무심코 한 번 누른 것이 곧바로 타패가 된다.
+    expect(APP_CODE).toMatch(/setArmedTileId\(null\);\s*\n\s*\}, \[props\.promptSeq\]\)/);
+  });
+
+  it("탭 목표는 세로로만 넓힌다", () => {
+    const css = readFileSync(join(HERE, "../src/styles.css"), "utf8");
+    // 가로로 넓히면 간격이 2px뿐이라 옆 패의 목표와 겹친다 — 오히려 나빠진다.
+    expect(css).toMatch(/\.hand-tile::before[\s\S]{0,220}top: -10px;[\s\S]{0,80}bottom: -10px;/);
+  });
+});
+
+// ─────────────────── 8. 정형구 (§4-9) ───────────────────
+
+describe("정형구는 목록 그대로만 나간다", () => {
+  it("클라이언트가 EMOTES 를 그대로 그린다 (자체 목록을 만들지 않는다)", () => {
+    expect(APP_CODE).toContain("EMOTES.map");
+    // 화면에만 있고 서버가 모르는 문구가 생기면 눌러도 아무 일이 안 일어난다.
+    expect(APP_CODE).not.toMatch(/const\s+\w*EMOTE_LIST\s*=/);
+  });
+
+  it("관전자는 보낼 수 없다", () => {
+    expect(APP_CODE).toMatch(/isSpectator \? \{\} : \{ onEmote: sendEmote \}/);
+  });
+});

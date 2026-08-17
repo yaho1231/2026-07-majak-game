@@ -7819,6 +7819,92 @@ button {
   color: #5f7469;
 }
 
+/* 초대 링크로 온 사람에게 — 왜 여기 왔는지, 로그인하면 무슨 일이 생기는지. */
+.landing-invite {
+  margin: 12px auto 0;
+  padding: 8px 14px;
+  max-width: 420px;
+  border: 1px solid var(--brass-line);
+  border-radius: var(--r-md);
+  background: rgba(154, 123, 66, 0.12);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.landing-invite b {
+  color: var(--brass-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 1px;
+}
+
+/* ── 증강이 무엇인지 클릭 전에 보여 주는 자리 (감사 §3-4) ──
+   말로만 "규칙을 바꾼다"고 하면 아무 그림도 안 그려진다. 실제 패와 실제 증강
+   셋으로 보여 준다. 광고용 그림을 따로 만들지 않는 것이 요점이다 — 화면과 다른
+   것을 약속하는 순간 첫 판에서 들통난다. */
+.landing-show {
+  margin: 18px auto 0;
+  max-width: 720px;
+}
+.landing-show-head {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: 0.5px;
+}
+.landing-show-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.landing-show-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  text-align: left;
+}
+.landing-show-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.landing-show-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.landing-show-kind {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.16);
+  color: #b9a8ff;
+  font-size: 10px;
+}
+.landing-show-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+.landing-show-foot {
+  margin: 9px 0 0;
+  font-size: 12px;
+  color: var(--ink-4);
+}
+
+/* 좁은 화면에서는 셋을 세로로 — 3열을 유지하면 패 그림이 뭉개져 오히려 안 보인다. */
+@container ui (max-width: 700px) {
+  .landing-show-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .lobby-landing .auth-card {
   width: min(400px, 100%); /* .landing과 같은 이유 — cqw를 padding 위에 또 겹치지 않는다 */
   margin: 0 auto;
@@ -11600,4 +11686,172 @@ body.peeking .overlay-peekable > * {
   text-align: left;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ─────────────── 13. 정형구 (감사 §4-9) ───────────────
+   4인 대전인데 "감사합니다" 한 마디를 건넬 방법이 없었다. 자유 채팅을 열면
+   걸러야 할 것이 생기므로 고정 문구만 둔다 — 사교는 되고 모더레이션은 없다.
+
+   자리: 오른쪽 아래. 왼쪽 아래는 빠른 토글이, 위쪽은 아이콘 바가 이미 쓰고 있다.
+   손패(화면 하단 가운데)와 겹치지 않도록 세로 위치를 손패 레일 위로 잡는다. */
+.emote-bar {
+  position: absolute;
+  right: 14px;
+  bottom: 132px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.emote-toggle {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--ink-1);
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: var(--shadow-2);
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.emote-toggle:hover {
+  background: var(--surface-3);
+  border-color: var(--brass-line);
+}
+.emote-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-3);
+}
+.emote-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px 0 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.emote-btn:hover {
+  background: var(--felt-3);
+  color: var(--ink-1);
+}
+.emote-icon {
+  font-size: 15px;
+}
+
+/* 받은 문구 — 좌석 옆 말풍선이 아니라 한 자리에 모아 띄운다(화면마다 좌석 위치가
+   다르므로, 한 곳으로 모아야 대기실·게임·관전에서 같은 것이 보인다). */
+.emote-feed {
+  position: fixed;
+  left: 50%;
+  top: 84px;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.emote-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .emote-bubble {
+    animation: emote-in 0.22s var(--ease);
+  }
+}
+@keyframes emote-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.emote-bubble-name {
+  color: var(--brass-bright);
+  font-weight: 600;
+}
+.emote-bubble-text {
+  color: var(--ink-1);
+}
+
+/* 대기실에서는 판이 없으므로 아이콘 바 아래에 붙인다. */
+.waitroom-card .emote-bar {
+  right: 14px;
+  bottom: auto;
+  top: 64px;
+}
+
+/* 폰 — 손패가 더 위로 올라오므로 정형구도 함께 올린다. */
+@container ui (max-width: 700px) {
+  .emote-bar {
+    right: 8px;
+    bottom: 150px;
+  }
+  .emote-btn {
+    min-height: 40px; /* §9-2 터치 목표 */
+  }
+}
+
+/* ── 두 번 눌러 버리기 (감사 §5-2) ──
+   첫 번째로 누른 패를 들어 올려, 다음 한 번이 무엇을 버릴지 눈으로 확인시킨다.
+   색이 아니라 **위치**로 알린다 — 색만 바꾸면 도라 반짝임·위험패 표시와 섞인다. */
+.hand-armed {
+  transform: translateY(-14px);
+  z-index: 3;
+}
+.hand-armed::after {
+  content: "한 번 더";
+  position: absolute;
+  left: 50%;
+  bottom: -17px;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--brass);
+  color: #14100a;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 손패 탭 목표 넓히기.
+   가로로는 넓힐 수 없다 — 패 사이 간격이 2px뿐이라 옆 패의 목표와 겹치고, 겹치면
+   "엉뚱한 패가 나간다"가 오히려 늘어난다. 대신 **세로로** 넓힌다: 위아래는 비어
+   있어 누구와도 겹치지 않고, 엄지가 패보다 조금 위/아래를 짚는 흔한 빗나감을 받아 준다. */
+.hand-tile::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  bottom: -10px;
 }

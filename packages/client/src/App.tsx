@@ -58,7 +58,15 @@ import type {
   TileKind,
   WinInfo,
 } from "@majak/core";
-import { AUGMENT_CATEGORIES, SPECTATOR_ID, doraKindFor, kindKey, standardKinds, winningKinds } from "@majak/core";
+import {
+  AUGMENT_CATEGORIES,
+  EMOTES,
+  SPECTATOR_ID,
+  doraKindFor,
+  kindKey,
+  standardKinds,
+  winningKinds,
+} from "@majak/core";
 import { contentAugments } from "@majak/content";
 import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
@@ -132,6 +140,53 @@ function defaultServerUrl(): string {
   if (/^517\d$/.test(loc.port)) return "ws://localhost:3001";
   return `${loc.protocol === "https:" ? "wss" : "ws"}://${loc.host}`;
 }
+/**
+ * 초대 링크 — `https://…/?room=7Q79FM`.
+ *
+ * 방 코드는 6자 영숫자다(서버 generateCode). 링크에 그대로 실어도 비밀이 새지 않는다:
+ * 코드를 아는 사람은 어차피 들어올 수 있고, 그게 코드의 존재 이유다.
+ */
+const ROOM_PARAM = "room";
+const ROOM_CODE_RE = /^[A-Z0-9]{4,8}$/;
+
+function inviteLinkFor(code: string): string {
+  const u = new URL(window.location.href);
+  // 검색 파라미터만 갈아 끼운다 — 해시·기타 파라미터를 지우면 다른 링크가 된다.
+  u.searchParams.set(ROOM_PARAM, code);
+  u.hash = "";
+  return u.toString();
+}
+
+/**
+ * 주소창에 실려 온 방 코드를 꺼낸다. 형식이 아니면 없는 것으로 친다 —
+ * 이 값은 남이 만든 링크에서 오므로 **그대로 믿지 않는다**.
+ */
+function roomCodeFromUrl(): string | null {
+  try {
+    const raw = new URL(window.location.href).searchParams.get(ROOM_PARAM);
+    if (raw === null) return null;
+    const code = raw.trim().toUpperCase();
+    return ROOM_CODE_RE.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 주소창에서 방 코드를 지운다 — 들어간 뒤에도 남아 있으면 새로고침할 때마다
+ * 그 방으로 끌려가고, 그 방이 이미 사라졌으면 매번 실패 토스트만 본다.
+ */
+function clearRoomFromUrl(): void {
+  try {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has(ROOM_PARAM)) return;
+    u.searchParams.delete(ROOM_PARAM);
+    window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+  } catch {
+    /* history를 못 쓰는 환경이면 그냥 둔다 — 기능에는 지장이 없다 */
+  }
+}
+
 const SERVER_OVERRIDE_KEY = "majak.serverUrl";
 const SESSION_KEY = "majak.sessionToken";
 /** 이 세션 토큰을 **발급한 서버 주소**. 다른 서버에는 토큰을 보내지 않는다. */
@@ -936,6 +991,14 @@ interface Settings {
   autoNoMeld: boolean;
   /** 자동 버림 — 쯔모한 패를 자동으로 버린다(쯔모기리). 화료 가능하면 먼저 화료한다. */
   autoDiscard: boolean;
+  /**
+   * 두 번 탭으로 버리기 — 첫 탭은 패를 들어 올리고 두 번째 탭에 나간다.
+   *
+   * 기본은 **터치 기기에서만 켜진다**(마우스는 정확하므로 데스크톱의 한 번 클릭
+   * 감각을 바꾸지 않는다). 폰에서 패 하나는 폭 26px에 간격 2px이라 옆 패를 짚기
+   * 쉬운데, 짚으면 되돌릴 수 없는 타패가 그대로 나갔다 (감사 §5-2).
+   */
+  tapTwiceToDiscard: boolean;
   /** 내 오름패 표시 — 텐파이면 손패 위에 항상 화료패를 보여준다. */
   showMyWaits: boolean;
   /** 우클릭 쯔모기리 — 판 어디서든 오른쪽 버튼을 누르면 쯔모한 패를 그대로 버린다. */
@@ -960,6 +1023,12 @@ const DEFAULT_SETTINGS: Settings = {
   autoWin: false,
   autoNoMeld: false,
   autoDiscard: false,
+  // 터치 기기에서만 기본 켜짐 — 오타패가 실제로 일어나는 곳이 거기다.
+  // (matchMedia가 없는 환경에서는 꺼진 쪽으로 — 예전 동작 그대로.)
+  tapTwiceToDiscard:
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(pointer: coarse)").matches
+      : false,
   showMyWaits: true,
   // 우클릭 쯔모기리는 기본 꺼짐 — 판 전체가 대상이라 모르고 켜져 있으면 실수로 패가 나간다.
   rightClickTsumogiri: false,
@@ -2141,6 +2210,11 @@ export function App(): JSX.Element {
   /** 연결 생존 확인 — 주기 타이머와 "답을 기다리는 중인 ping"의 발신 시각. */
   const heartbeatTimerRef = useRef<number | null>(null);
   const pingSentAtRef = useRef<number | null>(null);
+  /**
+   * 초대 링크(`?room=CODE`)로 들어왔다 — 인증이 끝나면 이 방으로 들어간다.
+   * 부팅 시 한 번만 읽는다: 그 뒤 주소창은 지워지고, 이 값은 한 번 쓰면 비워진다.
+   */
+  const pendingInviteRef = useRef<string | null>(roomCodeFromUrl());
   /** 끊긴 동안 밀린 재전송 대기열 (resendPolicy.ts ②). */
   const pendingSends = useRef<QueuedSend[]>([]);
   /** 이번 끊김에서 "보내지 못했다"를 이미 알렸는가 — 토스트가 연달아 쌓이지 않게. */
@@ -2241,6 +2315,8 @@ export function App(): JSX.Element {
   const [authError, setAuthError] = useState<string | null>(null);
   /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  /** 방금 도착한 정형구들 — EMOTE_SHOW_MS 뒤 스스로 사라진다. */
+  const [emotes, setEmotes] = useState<EmoteEntry[]>([]);
   /** 규칙·도움말 화면 열림 여부 (로그인 전·홈·게임 중 어디서나 열린다) */
   const [helpOpen, setHelpOpen] = useState(false);
   /** "가로로 돌리세요" 안내를 닫았는가 — 한 번 읽으면 그만이다(docs/28 §2-2) */
@@ -3073,6 +3149,11 @@ export function App(): JSX.Element {
    *   계속하기"로 나가는 사람에게는 가입 탭을 보여 준다 — 그게 그 사람이 방금 누른
    *   버튼의 뜻이다.
    */
+  /** 정형구 보내기 — 목록에 있는 id만 서버가 받는다(검증은 서버 몫). */
+  function sendEmote(id: string): void {
+    send({ type: "emote", id });
+  }
+
   function logout(nextTab: "login" | "register" = "login"): void {
     setAuthTab(nextTab);
     send({ type: "logout" });
@@ -3134,9 +3215,22 @@ export function App(): JSX.Element {
         // 요청하면 거절 토스트만 4개 뜬다. 아예 보내지 않는다.
         return;
       }
-      // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
-      // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
-      if (activeRoomRef.current !== null) {
+      /*
+       * 초대 링크로 들어온 사람은 그 방으로 바로 넣는다 (감사 §3-5).
+       *
+       * 재연결 복귀(activeRoomRef)보다 **먼저** 본다 — 링크는 방금 사람이 누른
+       * 의도이고, 복귀는 이전 상태다. 둘이 다르면 방금 누른 쪽이 이긴다.
+       * 코드는 한 번 쓰고 주소창에서 지운다: 남겨 두면 새로고침할 때마다 그 방으로
+       * 끌려가고, 그 방이 사라진 뒤에는 매번 실패 토스트만 본다.
+       */
+      const invited = pendingInviteRef.current;
+      if (invited !== null) {
+        pendingInviteRef.current = null;
+        clearRoomFromUrl();
+        send({ type: "joinRoom", code: invited });
+      } else if (activeRoomRef.current !== null) {
+        // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
+        // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
         send({ type: "joinRoom", code: activeRoomRef.current });
       } else if (activeSpectateRef.current !== null) {
         send({ type: "spectate", code: activeSpectateRef.current });
@@ -3181,8 +3275,21 @@ export function App(): JSX.Element {
         activeRoomRef.current !== null
       ) {
         activeRoomRef.current = null;
+        /*
+         * 서버가 왜 거절했는지를 그대로 전한다.
+         *
+         * 예전에는 세 경우를 뭉뚱그려 "진행 중이던 게임이 **종료**되었습니다"라고
+         * 했는데, `ROOM_PLAYING`은 대개 게임이 **아직 돌고 있다**는 뜻이다
+         * (감사 §2-2). 끊겨서 자리를 잃은 사람이 "끝났구나" 하고 물러나게 만드는
+         * 문장이었다 — 지금은 끊긴 좌석이면 다시 들어갈 수 있으므로 더더욱
+         * 사실대로 말해야 한다.
+         */
         showToast(
-          msg.code === "KICKED" ? "방장이 방에서 내보냈습니다" : "진행 중이던 게임이 종료되었습니다",
+          msg.code === "KICKED"
+            ? "방장이 방에서 내보냈습니다"
+            : msg.code === "ROOM_NOT_FOUND"
+              ? "그 방은 이미 사라졌습니다"
+              : msg.message,
           "info",
         );
         resetGameState();
@@ -3281,6 +3388,14 @@ export function App(): JSX.Element {
         sfx: () => sfx.augment(0),
         augId,
       });
+      return;
+    }
+    if (msg.type === "emoteFrom") {
+      const key = Date.now() + Math.random();
+      setEmotes((prev) => [...prev, { key, nickname: msg.nickname, id: msg.id }].slice(-EMOTE_FEED_MAX));
+      window.setTimeout(() => {
+        setEmotes((prev) => prev.filter((e) => e.key !== key));
+      }, EMOTE_SHOW_MS);
       return;
     }
     if (msg.type === "pong") {
@@ -4475,6 +4590,7 @@ export function App(): JSX.Element {
           </button>
         </div>
       )}
+      <EmoteFeed entries={emotes} />
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
@@ -4486,6 +4602,7 @@ export function App(): JSX.Element {
           serverInfo={serverInfo}
           serverError={authError}
           initialTab={authTab}
+          invitedCode={pendingInviteRef.current}
           onGuest={() => {
             setAuthError(null);
             send({ type: "guestPlay" });
@@ -4513,6 +4630,7 @@ export function App(): JSX.Element {
       ) : inGame && view !== null ? (
         <GameTable
           view={view}
+          {...(isSpectator ? {} : { onEmote: sendEmote })}
           roundView={centerView ?? view}
           prompt={prompt}
           promptSeq={promptSeq}
@@ -4565,6 +4683,7 @@ export function App(): JSX.Element {
           onToast={(t) => showToast(t, "info")}
           onOpenHelp={() => setHelpOpen(true)}
           onOpenCodex={() => setCodexOpen(true)}
+          onEmote={sendEmote}
         />
       ) : tierOpen ? (
         <TierScreen
@@ -4982,8 +5101,40 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
  * 지금은 (1) 무엇인지 먼저 말하고, (2) 계정 없이 바로 한 판을 주고,
  * (3) 가입이 초대제인지 서버가 알려 준 사실대로 적는다.
  */
+/**
+ * 랜딩에서 보여 줄 증강 셋 — **실제로 구현된 것**만 쓴다.
+ *
+ * 여기 적힌 이름·효과는 `packages/content` 의 것을 그대로 옮긴 것이다. 광고용으로
+ * 없는 기능을 지어내면 첫 판에서 바로 들통난다. 셋을 고른 기준은 "한 줄로 이해되고,
+ * 마작을 알든 모르든 규칙이 흔들린다는 게 보이는가"다.
+ *
+ * 패 그림은 도움말과 같은 컴포넌트(HelpTileGroups)·같은 에셋을 쓴다.
+ */
+const LANDING_SHOWCASE: { name: string; kind: string; tiles: string; desc: string }[] = [
+  {
+    name: "사방치기",
+    kind: "상시",
+    tiles: "456m",
+    desc: "상가뿐 아니라 누구의 버림패로도 치를 할 수 있습니다.",
+  },
+  {
+    name: "단색 세계",
+    kind: "액티브",
+    tiles: "123p",
+    desc: "손패의 수패를 숫자는 그대로 둔 채 원하는 한 색으로 물들입니다.",
+  },
+  {
+    name: "함구령",
+    kind: "액티브",
+    tiles: "777s",
+    desc: "6순 동안 상대 셋의 치·퐁·대명깡을 통째로 봉인합니다.",
+  },
+];
+
 function AuthScreen(props: {
   connection: ConnectionState;
+  /** 초대 링크(`?room=…`)로 들어왔다면 그 코드 — 로그인하면 바로 그 방으로 간다. */
+  invitedCode: string | null;
   /** 서버 정책 (가입 게이트·게스트 허용). 아직 안 왔으면 null — 추측해서 쓰지 않는다. */
   serverInfo: ServerInfoMessage | null;
   /** 서버가 되돌려 준 인증 실패 사유 (폼 안에 남는다) */
@@ -5071,6 +5222,12 @@ function AuthScreen(props: {
         <h1 className="landing-title">이능마작</h1>
         <p className="landing-lead">기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요.</p>
 
+        {props.invitedCode !== null ? (
+          <p className="landing-invite">
+            <b>{props.invitedCode}</b> 방에 초대받았습니다 — 로그인하면 바로 들어갑니다.
+          </p>
+        ) : null}
+
         <div className="landing-cta">
           <button
             className="landing-guest"
@@ -5087,6 +5244,33 @@ function AuthScreen(props: {
         <p className="landing-guest-note">
           가입 없이 봇 3명과 한 판. 기록·순위에는 남지 않고, 창을 닫으면 사라집니다.
         </p>
+
+        {/*
+          이 게임의 유일한 차별점은 "규칙을 바꾸는 증강"인데, 예전에는 그것이
+          **클릭하기 전에는 한 문장으로만** 전달됐다 (감사 §3-4). 시작 버튼을 누를지
+          말지가 여기서 갈리므로, 말 대신 실제 패로 보여 준다.
+
+          쓰는 것은 도움말과 **같은 컴포넌트·같은 에셋**이다 — 광고용 그림을 따로
+          만들면 화면과 다른 것을 약속하게 된다.
+        */}
+        <div className="landing-show">
+          <p className="landing-show-head">증강은 규칙 자체를 바꿉니다</p>
+          <ul className="landing-show-list">
+            {LANDING_SHOWCASE.map((s) => (
+              <li key={s.name} className="landing-show-item">
+                <div className="landing-show-top">
+                  <span className="landing-show-name">{s.name}</span>
+                  <span className="landing-show-kind">{s.kind}</span>
+                </div>
+                <HelpTileGroups tiles={s.tiles} />
+                <p className="landing-show-desc">{s.desc}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="landing-show-foot">
+            매 국 시작에 세 장 중 하나를 고릅니다. 전부 100종이 넘습니다.
+          </p>
+        </div>
       </section>
 
       <div className="lobby-card auth-card">
@@ -5101,10 +5285,15 @@ function AuthScreen(props: {
 
         <label>
           닉네임
+          {/*
+            autoFocus 는 **일부러 뺐다**. 브라우저는 포커스된 칸을 화면 안으로
+            끌어오는데, 랜딩이 한 화면보다 길어지면서 그 동작이 **제목과 시작
+            버튼을 위로 밀어냈다**(2026-08-18 실측: 열자마자 scrollTop 142).
+            처음 온 사람이 가장 먼저 봐야 할 것은 로그인 칸이 아니다.
+          */}
           <input
             value={username}
             maxLength={12}
-            autoFocus
             placeholder="게임에서 표시되는 이름"
             onChange={(e) => setUsername(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -7776,28 +7965,41 @@ function WaitingRoom(props: {
    */
   onOpenHelp?: () => void;
   onOpenCodex?: () => void;
+  /** 정형구 — 사람을 기다리는 자리에서도 인사는 오간다 */
+  onEmote?: (id: string) => void;
 }): JSX.Element {
   const { lobby } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   function copyCode(): void {
     const code = props.roomId;
+    /*
+     * 복사되는 것은 **코드가 아니라 링크**다 (감사 §3-5).
+     *
+     * 예전에는 여섯 글자만 복사됐다. 받은 사람은 사이트를 찾아 들어가서, 방 코드
+     * 칸을 찾고, 여섯 글자를 옮겨 적어야 했다 — 친구를 부르는 일이 세 단계였다.
+     * 링크를 누르면 그 방으로 바로 들어간다.
+     *
+     * 코드 자체가 필요한 사람(음성으로 불러 주는 경우)을 위해 링크 안에 코드가
+     * 그대로 보이게 둔다: …/?room=7Q79FM
+     */
+    const link = inviteLinkFor(code);
     const ok = (): void =>
-      props.onToast?.("방 코드가 복사되었습니다 — 친구에게 공유하세요!");
+      props.onToast?.("초대 링크가 복사되었습니다 — 친구에게 보내면 바로 들어옵니다!");
     const fail = (): void => props.onToast?.(`방 코드: ${code}`);
     // navigator.clipboard는 보안 컨텍스트(HTTPS·localhost)에서만 존재한다.
     // 평문 HTTP(LAN·gol.n-e.kr:포트) 배포에서는 undefined라 무반응이었다 → execCommand로 폴백.
     if (navigator.clipboard?.writeText !== undefined) {
       void navigator.clipboard
-        .writeText(code)
+        .writeText(link)
         .then(ok)
         .catch(() => {
-          if (!legacyCopy(code)) fail();
+          if (!legacyCopy(link)) fail();
           else ok();
         });
       return;
     }
-    if (legacyCopy(code)) ok();
+    if (legacyCopy(link)) ok();
     else fail();
   }
 
@@ -7836,6 +8038,7 @@ function WaitingRoom(props: {
         {props.onOpenCodex !== undefined ? (
           <button className="icon-btn codex-btn" onClick={props.onOpenCodex} title="증강 도감">📖</button>
         ) : null}
+        {props.onEmote !== undefined ? <EmoteBar onSend={props.onEmote} /> : null}
         {props.onOpenHelp !== undefined ? (
           <button className="icon-btn help-btn" onClick={props.onOpenHelp} title="규칙 · 도움말">📘</button>
         ) : null}
@@ -8180,6 +8383,8 @@ const GameTable = memo(function GameTable(props: {
   onOpenCodex?: () => void;
   /** 게임 중 규칙·도움말 열기 (오버레이) */
   onOpenHelp?: () => void;
+  /** 정형구 보내기 (관전자에게는 없다 — 자리에 앉은 사람들의 대화다) */
+  onEmote?: (id: string) => void;
   onToast?: (text: string) => void;
   /** 내 손패 배치가 바뀌었을 때 서버에 알린다 (관전 모드에서는 없음) */
   onHandOrder?: (tileIds: number[]) => void;
@@ -8405,6 +8610,9 @@ const GameTable = memo(function GameTable(props: {
       {props.spectator !== true ? (
         <QuickToggles settings={props.settings} onSetting={props.onSetting} />
       ) : null}
+      {props.spectator !== true && props.onEmote !== undefined ? (
+        <EmoteBar onSend={props.onEmote} />
+      ) : null}
       {props.spectator !== true && props.abortVote != null && props.abortVote.votes > 0 ? (
         <AbortVoteBanner
           abortVote={props.abortVote}
@@ -8468,6 +8676,7 @@ const GameTable = memo(function GameTable(props: {
         catalog={catalog}
         autoSort={props.settings.autoSort}
         showMyWaits={props.settings.showMyWaits}
+        tapTwiceToDiscard={props.settings.tapTwiceToDiscard}
         {...(props.spectator !== true
           ? {
               quickToggles: (
@@ -8648,6 +8857,84 @@ function useSelection(
  * inline: 좁은 화면(모바일)용 — 좌하단 절대배치 대신 내 손패 바로 위에 가로 줄로 눕는다.
  * 두 벌 다 렌더하고 CSS 미디어쿼리가 한쪽만 보여준다 (상태는 없는 컴포넌트라 안전).
  */
+/** 문구 하나가 화면에 머무는 시간. 읽고 흘려보내기 딱 좋은 길이. */
+const EMOTE_SHOW_MS = 4500;
+/** 동시에 보여 줄 최대 개수 — 넷이 한꺼번에 인사해도 화면을 덮지 않는다. */
+const EMOTE_FEED_MAX = 4;
+
+interface EmoteEntry {
+  key: number;
+  nickname: string;
+  id: string;
+}
+
+/**
+ * 받은 정형구를 흘려보내는 자리.
+ *
+ * 이름표 옆 말풍선이 아니라 **한 곳에 모아** 띄운다. 말풍선은 좌석 위치를 알아야
+ * 하고, 대기실·게임·관전에서 그 위치가 전부 다르다 — 화면마다 다른 코드를 두면
+ * 셋 중 하나는 반드시 어긋난다. 한 자리에 모으면 어디서든 같은 것이 보인다.
+ */
+function EmoteFeed({ entries }: { entries: EmoteEntry[] }): JSX.Element | null {
+  if (entries.length === 0) return null;
+  return (
+    <div className="emote-feed" aria-live="polite">
+      {entries.map((e) => {
+        const def = EMOTES.find((x) => x.id === e.id);
+        return (
+          <div key={e.key} className="emote-bubble">
+            <span className="emote-bubble-icon" aria-hidden="true">{def?.icon ?? "💬"}</span>
+            <span className="emote-bubble-name">{e.nickname}</span>
+            <span className="emote-bubble-text">{def?.text ?? e.id}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 정형구 보내기 (감사 §4-9).
+ *
+ * 평소에는 말풍선 단추 하나만 떠 있고, 누르면 문구 여덟 개가 펼쳐진다. 항상 펼쳐
+ * 두지 않는 이유: 이 자리는 판 위이고, 상시로 자리를 먹으면 정작 게임이 좁아진다.
+ *
+ * 보낸 뒤에는 스스로 접는다 — 인사 한 번 하려고 두 번 누르게 하지 않는다.
+ */
+function EmoteBar({ onSend }: { onSend: (id: string) => void }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={open ? "emote-bar open" : "emote-bar"}>
+      {open ? (
+        <div className="emote-list" role="group" aria-label="정형구">
+          {EMOTES.map((e) => (
+            <button
+              key={e.id}
+              className="emote-btn"
+              onClick={() => {
+                onSend(e.id);
+                setOpen(false);
+              }}
+            >
+              <span className="emote-icon" aria-hidden="true">{e.icon}</span>
+              <span className="emote-text">{e.text}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <button
+        className="emote-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={open ? "정형구 닫기" : "정형구 보내기"}
+        title="정형구 보내기"
+      >
+        {open ? "✕" : "💬"}
+      </button>
+    </div>
+  );
+}
+
 function QuickToggles(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -8824,6 +9111,11 @@ function SettingsPanel(props: {
   //   판 위에서 바로 켜고 끄는 자리라 설정창에 같은 스위치를 한 벌 더 두면 두 곳을 오가며
   //   무엇이 켜졌는지 확인하게 된다(2026-08-12 사용자 지시). 저장 형식(Settings)은 그대로다.
   const rows: { key: BoolSettingKey; label: string; desc: string }[] = [
+    {
+      key: "tapTwiceToDiscard",
+      label: "두 번 눌러 버리기",
+      desc: "첫 번째로 누른 패가 들어 올려지고, 한 번 더 눌러야 실제로 나갑니다. 다른 패를 누르면 그쪽으로 옮겨 갑니다 (폰에서는 기본으로 켜져 있습니다 — 패 사이가 좁아 옆 패를 짚기 쉽습니다)",
+    },
     {
       key: "showMyWaits",
       label: "내 오름패 표시",
@@ -12143,6 +12435,8 @@ function OwnArea(props: {
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
   showMyWaits: boolean;
+  /** 두 번 눌러 버리기 — 첫 탭은 패를 들어 올리고 두 번째에 나간다 (감사 §5-2) */
+  tapTwiceToDiscard: boolean;
   /** 좁은 화면에서 손패 바로 위에 눕는 빠른 토글 (모바일 전용, CSS가 표시를 결정) */
   quickToggles?: JSX.Element;
   onRiichiMode: (v: boolean) => void;
@@ -12187,6 +12481,12 @@ function OwnArea(props: {
     if (autoSort) setManualOrder([]);
   }, [autoSort]);
   const [hoverId, setHoverId] = useState<number | null>(null);
+  /**
+   * "두 번 눌러 버리기"에서 첫 번째로 눌린 패 — 한 번 더 누르면 이 패가 나간다.
+   * 프롬프트가 바뀌면 비운다(아래 effect): 지난 순에 들어 올려 둔 패가 다음 순까지
+   * 남아 있으면, 무심코 한 번 누른 것이 곧바로 타패가 된다.
+   */
+  const [armedTileId, setArmedTileId] = useState<number | null>(null);
   // 포인터 드래그 상태 (손패 재정렬 + 바닥 버리기). state는 렌더용, ref는 핸들러용.
   const [drag, setDrag] = useState<HandDragState | null>(null);
   const dragRef = useRef<HandDragState | null>(null);
@@ -12467,6 +12767,9 @@ function OwnArea(props: {
   useEffect(() => {
     setSwap3Sel([]);
     setSwapTakeDismissed(false);
+    // 들어 올려 둔 패도 함께 내린다. 지난 순의 선택이 다음 순까지 남아 있으면
+    // 무심코 한 번 누른 것이 곧바로 타패가 된다 — 두 번 누르게 한 이유가 사라진다.
+    setArmedTileId(null);
   }, [props.promptSeq]);
   // 3장을 채우면 그 조합에 해당하는 옵션을 그대로 제출한다.
   const toggleSwap3 = (id: number): void => {
@@ -13109,6 +13412,8 @@ function OwnArea(props: {
               <button
                 key={id}
                 className={`hand-tile${clickable ? " hand-clickable" : " hand-locked"}${
+                  armedTileId === id ? " hand-armed" : ""
+                }${
                   dimmed ? " hand-dimmed" : ""
                 }${
                   (props.riichiMode && riichi !== undefined) ||
@@ -13177,6 +13482,23 @@ function OwnArea(props: {
                     return;
                   }
                   if (clickable && active !== undefined) {
+                    /*
+                     * 한 번 탭 = 되돌릴 수 없는 타패. 375px 폰에서 패 하나는 폭 26px에
+                     * 간격 2px이라(감사 §5-2) 엄지로는 옆 패를 짚기 쉽고, 짚으면 그대로
+                     * 나간다. 리치 선언에는 2단계 게이트가 있는데 평범한 타패에는
+                     * 아무 장치도 없었다.
+                     *
+                     * 그래서 **두 번 탭**: 첫 번째는 그 패를 들어 올리고, 두 번째에
+                     * 나간다. 다른 패를 누르면 그쪽으로 옮겨 간다. 마우스는 정확하므로
+                     * 기본은 터치 기기에서만 켜지고(설정에서 바꿀 수 있다), 데스크톱의
+                     * 한 번 클릭 감각은 그대로다.
+                     */
+                    if (props.tapTwiceToDiscard && armedTileId !== id) {
+                      setArmedTileId(id);
+                      sfx.pick();
+                      return;
+                    }
+                    setArmedTileId(null);
                     props.onSubmit(active);
                     return;
                   }
