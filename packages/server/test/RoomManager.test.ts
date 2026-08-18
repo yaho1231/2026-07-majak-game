@@ -758,10 +758,26 @@ describe("게임 완주·기록", () => {
     "게임 중 무효 투표에 사람 전원이 동의하면 게임이 무효 처리된다 (봇 자동 동의)",
     async () => {
       const h = await newHarness();
+      /*
+       * **사람이 둘이어야 한다** (감사 §10-3).
+       *
+       * 예전에는 사람 1 + 봇 3으로 한 표를 던져 무효를 확인했다. 그런데 그 시나리오
+       * 자체가 성적 세탁 구멍이었다 — 지는 판마다 눌러 없앨 수 있었다. 이제 혼자
+       * 두는 기록 대국은 무효로 지울 수 없다(`SOLO_ABORT_FORBIDDEN`).
+       *
+       * 이 테스트가 지키려는 것은 무효 **정족수**가 아니라 그 뒤의 정리다 —
+       * 무효 처리에 고아 `.jsonl`이 남지 않는다(2026-08-11 회귀). 그 뜻은 사람이
+       * 둘이어도 그대로이므로, 사람 수만 바꾼다.
+       */
       const sock = await connectAndRegister(h, "Voter", { autoRespond: true });
+      const other = await connectAndRegister(h, "Voter2", { autoRespond: true });
       sock.clientSend({ type: "createRoom" });
       await sock.waitFor((m) => m.type === "roomCreated");
-      for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
+      const code = sock.last("roomCreated").code as string;
+      other.clientSend({ type: "joinRoom", code });
+      await other.waitFor((m) => m.type === "lobby");
+      other.clientSend({ type: "ready", ready: true });
+      for (let i = 0; i < 2; i++) sock.clientSend({ type: "addBot" });
       sock.clientSend({ type: "startGame" });
       await sock.waitFor((m) => m.type === "view"); // 게임 시작
 
@@ -772,16 +788,17 @@ describe("게임 완주·기록", () => {
         expect(f).toHaveLength(1);
       }, 5_000);
 
-      // 사람 1명뿐이므로 한 표로 전원 동의 → 무효 종료
+      // 사람 둘이 모두 동의해야 무효다 (봇은 자동 동의)
       sock.clientSend({ type: "voteAbort", vote: "agree" });
+      other.clientSend({ type: "voteAbort", vote: "agree" });
 
       await sock.waitFor((m) => m.type === "gameAborted", 10_000);
       const aborted = sock.last("gameAborted");
       expect(aborted).toBeDefined();
-      // 무효 투표 현황도 전달된다 (1/1)
+      // 무효 투표 현황도 전달된다 (2/2)
       const vote = sock.last("abortVote");
-      expect(vote?.votes).toBe(1);
-      expect(vote?.needed).toBe(1);
+      expect(vote?.votes).toBe(2);
+      expect(vote?.needed).toBe(2);
       // 무효 게임은 gameOver·기록이 나오지 않는다
       expect(sock.last("gameOver")).toBeUndefined();
 

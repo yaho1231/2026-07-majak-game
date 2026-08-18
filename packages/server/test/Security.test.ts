@@ -91,9 +91,21 @@ describe("남용 방어 면제는 소켓이 진짜 루프백일 때만", () => {
 
     for (let i = 0; i < 200; i++) sock.clientSend({ type: "ping" });
 
-    // 버킷 용량(80)만큼만 응답한다 — 200개 전부면 방어가 꺼진 것이다.
-    expect(sock.count("pong")).toBeLessThanOrEqual(80);
+    /*
+     * 버킷 용량(80) 근처에서 멎어야 한다 — 200개 전부면 방어가 꺼진 것이다.
+     *
+     * **정확히 80으로 못 박지 않는 이유**: 토큰은 시간에 비례해 다시 찬다
+     * (`MSG_BUCKET_REFILL_PER_SEC = 40`). 이 200번의 루프가 부하 때문에 몇십 ms만
+     * 늘어져도 그 사이 토큰이 한두 개 더 차서 81~82가 나온다 — 실제로 전체 실행에서
+     * 81이 나와 이 단정이 깨졌다(단독 실행은 정확히 80). 그건 방어가 헐거워진 것이
+     * 아니라 **시계가 흐른 것**이다.
+     *
+     * 여유는 1초치 리필로 잡는다. 방어가 정말 꺼지면 200이 나오므로 이 여유로는
+     * 절대 통과하지 못한다.
+     */
+    expect(sock.count("pong")).toBeLessThanOrEqual(80 + 40);
     expect(sock.count("pong")).toBeGreaterThan(0);
+    expect(sock.count("pong")).toBeLessThan(200);
   });
 
   it("진짜 로컬 연결(exempt=true)은 종전처럼 면제된다 (개발·테스트 경로 유지)", async () => {

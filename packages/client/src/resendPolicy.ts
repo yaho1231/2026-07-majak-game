@@ -44,13 +44,16 @@ export const VOLATILE_MESSAGES: ReadonlySet<string> = new Set([
 export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 인증·입장
   "register", "login", "tokenLogin", "logout", "guestPlay", "practicePlay",
+  // 비밀번호 변경·다른 기기 로그아웃 (§10-2) — 전송에 실패한 것만 큐에 담기므로
+  // 중복 실행이 되지 않고, 늦게 도착해도 뜻이 그대로다.
+  "changePassword", "logoutOthers",
   "createRoom", "joinRoom", "leaveRoom", "join",
   // 대기실 조작
   "ready", "startGame", "setGameMode", "shuffleSeats",
   "addBot", "removeBot", "setBotArchetype", "setBotDifficulty", "kickPlayer",
   // 조회
   "statsRequest", "replayList", "replayGet", "leaderboard", "liveGames",
-  "feedbackList", "adminUsers", "adminAugmentTiers",
+  "feedbackList", "adminUsers", "adminAugmentTiers", "adminAnalytics",
   // 도감 카탈로그 — 로그인 전에도 통하는 유일한 조회다(§3-7). 끊긴 사이 눌렀다면
   // 다시 붙었을 때 도감이 여전히 비어 있으므로, 늦게 도착해도 뜻이 그대로다.
   "catalogRequest",

@@ -19,6 +19,7 @@ import type {
   ActionMessage,
   AdminAugmentTiersMessage,
   AdminUserEntry,
+  AnalyticsDayEntry,
   AugmentCatalogEntry,
   AugmentTierEntry,
   AugmentCategory,
@@ -1284,6 +1285,31 @@ const NO_DORA: DoraFx = { common: new Set(), personal: {} };
 const DoraContext = createContext<DoraFx>(NO_DORA);
 
 /**
+ * **이 패가 그 주인에게 적도라인가** (감사 2026-08-17 §10-1).
+ *
+ * `TileAttrs.redFor`는 "이 적도라는 이 사람에게만 적도라"라는 뜻이다(붉은 손길 등).
+ * 코어 채점부는 처음부터 그렇게 세고 있었는데 — `buildWinContext`가 `redFor`가
+ * 자기 것이 아닌 적도라를 빼고 센다 — **클라이언트는 그 필드를 한 번도 읽지 않았다.**
+ * 그래서 남이 물들인 5를 울어 가면 내 화면에는 빨간 5가 서 있는데 점수에는 안
+ * 들어갔다. 코어에 데이터가 다 와 있는데 화면이 거짓말을 하는 유일한 자리였다.
+ *
+ * 판정 기준을 **채점과 똑같이** 맞춘다: 각인된 주인이 지금 이 패를 들고 있을 때만
+ * 붉다. 뷰어가 누구냐와 무관하다 — 그래야 네 사람의 화면이 같은 것을 말한다.
+ *
+ * `owner`를 모르는 자리(뱃지·툴팁처럼 **종류만** 보여 주는 패)는 채점 문맥이 아니므로
+ * 원래 속성을 그대로 존중한다.
+ */
+function tileIsRed(
+  tile: { attrs?: Record<string, unknown> } | undefined,
+  owner?: string | undefined,
+): boolean {
+  if (tile?.attrs?.red !== true) return false;
+  const only = tile.attrs["redFor"];
+  if (typeof only !== "string") return true; // 패산에서 나온 진짜 적도라 — 누구에게나 붉다
+  return owner === undefined || only === owner;
+}
+
+/**
  * 이 패에 붙일 도라 연출 클래스 — 전원 공통 도라는 금빛, 그 사람 전용 도라는 보랏금.
  * owner(패의 주인)를 받는 이유는 전용 도라를 남의 패에 붙이지 않기 위해서다.
  */
@@ -1293,8 +1319,9 @@ function doraClassOf(
   fx: DoraFx,
 ): string {
   if (tile === undefined) return "";
-  // 적도라는 그림이 이미 붉지만 "판이 붙는 패"라는 점은 같으므로 함께 반짝인다
-  if (tile.attrs?.red === true) return " tile-dora";
+  // 적도라는 그림이 이미 붉지만 "판이 붙는 패"라는 점은 같으므로 함께 반짝인다.
+  // **각인된 주인이 아닌 사람의 손에서는 반짝이지 않는다** (§10-1).
+  if (tileIsRed(tile, owner)) return " tile-dora";
   const kk = kindKey(tile.kind);
   if (fx.common.has(kk)) return " tile-dora";
   if (fx.personal[owner]?.has(kk) === true) return " tile-dora-own";
@@ -2227,10 +2254,17 @@ function freeDeclareWaits(view: PlayerView, playerId: string): TileKind[] {
   return (raw as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null);
 }
 
-function formatTile(tile: { kind: TileKind; attrs?: Record<string, unknown> } | undefined): string {
+/**
+ * 패 이름 한 조각. `owner`를 주면 각인 적도라(§10-1)를 **그 주인에게만** 赤으로 읽는다 —
+ * 스크린리더에도 화면과 같은 사실이 가야 한다.
+ */
+function formatTile(
+  tile: { kind: TileKind; attrs?: Record<string, unknown> } | undefined,
+  owner?: string | undefined,
+): string {
   if (tile === undefined) return "?";
   const rank = tile.kind.rank;
-  const red = tile.attrs?.red === true ? "赤" : "";
+  const red = tileIsRed(tile, owner) ? "赤" : "";
   if (tile.kind.suit === "man") return `${red}${rank}만`;
   if (tile.kind.suit === "pin") return `${red}${rank}통`;
   if (tile.kind.suit === "sou") return `${red}${rank}삭`;
@@ -2326,7 +2360,9 @@ const TileImg = memo(function TileImg({
   owner?: string | undefined;
 }): JSX.Element {
   const doraFx = useContext(DoraContext);
-  const isRed = tile?.attrs?.red === true;
+  // 각인 적도라(redFor)는 **그 주인의 손에서만** 붉게 그린다 (§10-1) — 남이 울어
+  // 간 뒤에도 빨간 그림이 서 있으면 화면이 점수와 다른 말을 한다.
+  const isRed = tileIsRed(tile, owner);
   const src = tile === undefined ? null : tileImageSrcOf(tile.kind, isRed);
   // 증강이 새로 만들어낸 패(색 변환 등)는 원본과 구분되게 별도 이펙트로 표시한다
   const conjured = tile?.attrs?.conjured === true ? " tile-conjured" : "";
@@ -2336,7 +2372,7 @@ const TileImg = memo(function TileImg({
   if (src === null) {
     return (
       <span className={`tile-face tile-${size} tile-text${conjured}${red}${dora}`}>
-        {formatTile(tile)}
+        {formatTile(tile, owner)}
       </span>
     );
   }
@@ -2574,6 +2610,8 @@ export function App(): JSX.Element {
   const [serverInfo, setServerInfo] = useState<ServerInfoMessage | null>(null);
   /** 친구 목록 (§4-6). null = 아직 못 받았다 — `[]`(정말 없다)와 화면에서 다르다. */
   const [friends, setFriends] = useState<FriendEntry[] | null>(null);
+  /** 자체 방문 집계 (관리자 전용, §8-6). */
+  const [analytics, setAnalytics] = useState<AnalyticsDayEntry[] | null>(null);
   /** 서버가 되돌려 준 인증 실패 사유 — 토스트가 아니라 로그인 폼 안에 남긴다. */
   const [authError, setAuthError] = useState<string | null>(null);
   /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
@@ -3530,6 +3568,7 @@ export function App(): JSX.Element {
     setMyReplays(null);
     setLeaderboard(null);
     setFriends(null);
+    setAnalytics(null);
     setAdminUsers(null);
     setFeedback(null);
   }
@@ -3635,6 +3674,7 @@ export function App(): JSX.Element {
         send({ type: "liveGames" });
         send({ type: "adminUsers" });
         send({ type: "adminAugmentTiers" });
+        send({ type: "adminAnalytics" });
       }
       return;
     }
@@ -3711,6 +3751,10 @@ export function App(): JSX.Element {
       if (guestRef.current) return;
       safeStorage.setItem(LAST_ROOM_KEY, msg.code);
       return; // 이어서 joined·lobby가 온다
+    }
+    if (msg.type === "adminAnalytics") {
+      setAnalytics(msg.days);
+      return;
     }
     if (msg.type === "friendList") {
       setFriends(msg.friends);
@@ -5200,6 +5244,12 @@ export function App(): JSX.Element {
         <HomeScreen
           auth={auth}
           serverInfo={serverInfo}
+          onChangePassword={(current, next) =>
+            send({ type: "changePassword", currentPassword: current, newPassword: next })
+          }
+          onLogoutOthers={() => send({ type: "logoutOthers" })}
+          analytics={analytics}
+          onRefreshAnalytics={() => send({ type: "adminAnalytics" })}
           friends={friends}
           onAddFriend={(n) => send({ type: "friendAdd", nickname: n })}
           onRemoveFriend={(n) => send({ type: "friendRemove", nickname: n })}
@@ -8610,6 +8660,128 @@ function FriendsCard(props: {
   );
 }
 
+/**
+ * 자체 집계 카드 (관리자 전용, §8-6).
+ *
+ * **왜 외부 분석 도구를 넣지 않았나**: CSP가 `script-src 'self'`다. 외부 스크립트를
+ * 넣으려면 그 한 줄을 열어야 하는데, 그건 곧 **제3자에게 우리 화면의 실행 권한을
+ * 주는 일**이다 — 이 게임에는 계정과 세션 토큰이 있다. 서버가 직접 센 수로 충분하다.
+ *
+ * 보이는 수가 "하한"이라는 사실을 화면에 적어 둔다. 캐시·프리페치 때문에 문서
+ * 요청이 사람 수보다 적게 잡히는데, 그걸 모르면 숫자를 잘못 읽는다.
+ */
+function AnalyticsCard(props: {
+  days: AnalyticsDayEntry[] | null;
+  onRefresh: () => void;
+}): JSX.Element {
+  const recent = props.days === null ? null : props.days.slice(-14);
+  const peak = Math.max(1, ...(recent ?? []).map((d) => d.views));
+  return (
+    <section className="home-card home-analytics">
+      <div className="home-card-head">
+        <h2>방문 집계<span className="home-admin-badge">관리자</span></h2>
+        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+      </div>
+      <p className="home-hint">
+        서버가 직접 셉니다(외부 분석 도구 없음 · IP·UA는 저장하지 않습니다).
+        캐시 때문에 실제보다 <b>적게</b> 잡히는 하한값입니다.
+      </p>
+      <ListCard
+        items={recent}
+        empty="아직 집계된 방문이 없습니다."
+        emptyHint="첫 방문이 들어오면 여기에 날짜별로 쌓입니다."
+      >
+        {(rows) => (
+          <ul className="analytics-list">
+            {rows.map((d) => (
+              <li key={d.date} className="analytics-row">
+                <span className="analytics-date">{d.date.slice(5)}</span>
+                <span className="analytics-bar" aria-hidden="true">
+                  <span style={{ transform: `scaleX(${d.views / peak})` }} />
+                </span>
+                <span className="analytics-nums">
+                  <b>{d.visitors}</b>명 · {d.views}회 · 접속 {d.sockets}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ListCard>
+    </section>
+  );
+}
+
+/**
+ * 계정 카드 (감사 §10-2) — 비밀번호 변경 · 다른 기기 로그아웃.
+ *
+ * 감사 26·29가 두 번 지적한 자리다. 세션 TTL이 30일인데 회수 수단이 **계정 삭제**
+ * 뿐이었다 — 공용 PC에서 로그아웃을 깜빡했다는 이유로 전적을 통째로 버리게 하는
+ * 것은 회수가 아니라 벌이다.
+ *
+ * 둘을 한 카드에 둔 이유: 사람이 이 화면을 찾는 이유가 하나다("누가 내 계정을 봤을지도
+ * 모른다"). 그 순간에 필요한 두 행동이 서로 다른 화면에 있으면 하나를 놓친다.
+ */
+function AccountCard(props: {
+  onChangePassword: (current: string, next: string) => void;
+  onLogoutOthers: () => void;
+}): JSX.Element {
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const mismatch = again !== "" && next !== again;
+  const ready = cur !== "" && next !== "" && next === again;
+  return (
+    <section className="home-card home-account">
+      <div className="home-card-head">
+        <h2>계정</h2>
+      </div>
+      <p className="home-hint">
+        비밀번호를 바꾸면 <b>다른 기기의 로그인이 전부 끊깁니다.</b> 이 기기는 그대로 남습니다.
+      </p>
+      <input
+        className="fb-input"
+        type="password"
+        value={cur}
+        placeholder="지금 비밀번호"
+        autoComplete="current-password"
+        onChange={(e) => setCur(e.target.value)}
+      />
+      <input
+        className="fb-input"
+        type="password"
+        value={next}
+        placeholder="새 비밀번호 (8자 이상)"
+        autoComplete="new-password"
+        onChange={(e) => setNext(e.target.value)}
+      />
+      <input
+        className="fb-input"
+        type="password"
+        value={again}
+        placeholder="새 비밀번호 확인"
+        autoComplete="new-password"
+        onChange={(e) => setAgain(e.target.value)}
+      />
+      {mismatch ? <p className="home-empty-hint">새 비밀번호가 서로 다릅니다.</p> : null}
+      <button
+        className="lobby-join"
+        disabled={!ready}
+        onClick={() => {
+          props.onChangePassword(cur, next);
+          setCur("");
+          setNext("");
+          setAgain("");
+        }}
+      >
+        비밀번호 바꾸기
+      </button>
+      <button className="home-account-others" onClick={props.onLogoutOthers}>
+        다른 기기에서 로그아웃 (이 기기는 유지)
+      </button>
+    </section>
+  );
+}
+
 function HomeScreen(props: {
   auth: AuthInfo;
   /** 서버 상태 — 여기서 쓰는 것은 운영자 공지뿐이다 (§4-3). */
@@ -8623,6 +8795,12 @@ function HomeScreen(props: {
   leaderboard: LeaderboardEntry[] | null;
   catalog: Record<string, AugmentCatalogEntry>;
   adminUsers: AdminUserEntry[] | null;
+  /** 비밀번호 변경 · 다른 기기 로그아웃 (§10-2). */
+  onChangePassword: (current: string, next: string) => void;
+  onLogoutOthers: () => void;
+  /** 자체 방문 집계 (관리자 전용, §8-6). null이면 아직 못 받았다. */
+  analytics: AnalyticsDayEntry[] | null;
+  onRefreshAnalytics: () => void;
   /** 친구 목록 — null이면 아직 못 받았다 (§4-6). */
   friends: FriendEntry[] | null;
   onAddFriend: (nickname: string) => void;
@@ -8850,6 +9028,7 @@ function HomeScreen(props: {
               notice={props.serverInfo?.notice}
               onSave={props.onSetNotice}
             />
+            <AnalyticsCard days={props.analytics} onRefresh={props.onRefreshAnalytics} />
             <section className="home-card home-sandbox">
               <div className="home-card-head">
                 <h2>🧪 증강 테스트<span className="home-admin-badge">관리자</span></h2>
@@ -8967,6 +9146,10 @@ function HomeScreen(props: {
           <AugmentMeta leaderboard={props.leaderboard} catalog={props.catalog} />
         </section>
 
+        <AccountCard
+          onChangePassword={props.onChangePassword}
+          onLogoutOthers={props.onLogoutOthers}
+        />
         {props.auth.isAdmin ? replaysCard : null}
 
 

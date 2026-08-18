@@ -205,17 +205,14 @@ export interface PlayerRoundView {
    */
   noYakuWaits?: string[];
   /**
-   * 봉인되어 버릴 수 없는 패 종류(kindKey 목록) — discard.blockedKinds 규칙의
-   * 해석 결과. 본인 뷰(관전자는 전원 뷰)에서만 포함. 클라이언트가 봉인 패에
-   * 자물쇠 표시를 그리는 용도 (봉인 여부는 클릭해 보면 드러나므로 숨길 정보가 아니다).
-   */
-  sealedKinds?: string[];
-  /**
    * 봉인되어 버릴 수 없는 **개별 손패**(tileId 목록) — `discard.blockedKinds`와
    * `discard.blockedTileIds`를 합친 최종 판정 결과. 본인 뷰(관전자는 전원)에만 실린다.
    *
-   * `sealedKinds`만으로는 "종류는 잠겼지만 이 한 장은 안 잠긴" 개별 봉인을 그릴 수 없다 —
-   * 자물쇠는 이 목록으로 그려야 서버 판정과 정확히 일치한다.
+   * ⚠ 예전에는 종류 목록(`sealedKinds`)도 함께 실었다. **아무도 읽지 않았다**
+   * (감사 §10-11) — 그럴 만한 이유가 있다: 종류만으로는 "종류는 잠겼지만 이 한
+   * 장은 안 잠긴" 개별 봉인을 그릴 수 없어서, 자물쇠는 처음부터 이 목록으로만
+   * 그렸다. 읽는 사람 없는 배열이 **매 프레임 네 좌석에** 실려 나가고 있었으므로
+   * 걷어냈다(§7-6과 같은 결의 정리다).
    */
   sealedTileIds?: TileId[];
   /** 후로 수 — melds Zone 장수로 계산 가능하지만 편의용 */
@@ -842,20 +839,14 @@ function buildRoundView(
     // 쯔모기리 표식·분리 여부는 실제 탁자에서 전원이 보는 정보다 (본인·타인 공통)
     const publicDraw = { tsumogiriIds: [...pr.tsumogiriIds], drawnSeparated };
 
-    // 봉인된 패 — 본인(관전자는 전원)에게만 노출. 규칙 미정의 상태(비표준 게임) 폴백 [].
-    const showSealed = pid === viewerId || viewerId === SPECTATOR_ID;
-    const sealedKinds =
-      showSealed && rules.has("discard.blockedKinds")
-        ? [...new Set(rules.resolve<string[]>("discard.blockedKinds", { playerId: pid, state }))]
-        : [];
+    // 봉인된 패 — 본인(관전자는 전원)에게만 노출.
+    //
     // 실제로 잠긴 손패 — 리치 예외·소프트락 예외까지 얹은 **버림 액션과 같은 판정**.
     // 원재료(sealedDiscardIds)를 그대로 실으면 화면에는 자물쇠가 걸렸는데 실제로는
     // 버려지는 거짓 UI가 된다(docs/25 방해 #7).
+    const showSealed = pid === viewerId || viewerId === SPECTATOR_ID;
     const sealedTileIds = showSealed ? [...lockedDiscardIds(state, rules, pid)] : [];
-    const sealed = {
-      ...(sealedKinds.length > 0 ? { sealedKinds } : {}),
-      ...(sealedTileIds.length > 0 ? { sealedTileIds } : {}),
-    };
+    const sealed = { ...(sealedTileIds.length > 0 ? { sealedTileIds } : {}) };
 
     // 이 사람의 리치가 은닉 대상인가 (본인 뷰 표시 + 타인 뷰 마스킹의 단일 판정)
     const riichiIsHidden =

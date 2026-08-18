@@ -28,6 +28,8 @@ import { StatsStore } from "./StatsStore.js";
 import { AugmentStatsStore } from "./AugmentStatsStore.js";
 import { SiteDb } from "./SiteDb.js";
 import { pruneOrphanReplays } from "./pruneReplays.js";
+import { cacheControlFor } from "./httpCache.js";
+import { AnalyticsStore } from "./analytics.js";
 
 /**
  * 수치 환경변수를 **검증해서** 읽는다.
@@ -189,6 +191,16 @@ const augmentStats = new AugmentStatsStore(
 );
 await augmentStats.load();
 
+/**
+ * 자체 집계 (§8-6) — 외부 스크립트가 없으므로 CSP를 손대지 않는다.
+ * IP·UA는 저장하지 않는다(analytics.ts 머리말 참고).
+ */
+const analytics = new AnalyticsStore(STATS_PATH.replace(/\.json$/, "") + ".analytics.json");
+await analytics.load();
+// 30초마다 한 번만 디스크에 쓴다 — 요청마다 쓰면 그게 곧 부하가 된다.
+const analyticsTimer = setInterval(() => void analytics.flush(), 30_000);
+analyticsTimer.unref();
+
 const db = new SiteDb(DB_PATH, SESSION_TTL_MS, ADMIN_CODE);
 const roomManager = new RoomManager(
   REPLAY_DIR,
@@ -197,6 +209,7 @@ const roomManager = new RoomManager(
   db,
   SIGNUP_CODE,
   augmentStats,
+  analytics,
 );
 
 // ─────────────────────────── 정적 파일 서버 ───────────────────────────
@@ -277,34 +290,57 @@ function indexHtml(path: string): string {
 }
 
 /**
- * 해시가 붙지 않은 정적 파일을 **재검증만 하고 재다운로드는 안 하게** 만든다
- * (감사 2026-08-17 §7-11).
+ * 진짜 404 응답 (감사 §8-2).
  *
- * 예전에는 `/assets/`(빌드 해시 있음)만 1년 immutable이고 나머지는 전부
- * `no-cache`였다. 그런데 나머지에 **타일 PNG 37장과 효과음**이 들어 있다 —
- * 매 방문마다 조건부 요청 37개가 나갔고, 모바일 회선에서는 그 왕복이 곧
- * 첫 화면 지연이다.
+ * **왜 정적 파일이 아니라 문자열인가**: 이 페이지는 클라이언트 번들과 아무 관계가
+ * 없다 — JS도 CSS도 불러오지 않는다(불러오면 404 하나가 번들 하나를 받아 가고,
+ * 그 번들이 다시 앱을 띄워 "없는 주소인데 로비가 뜬다"가 된다). 그래서 빌드
+ * 산출물에 두지 않고 여기서 완결한다. 색은 앱과 같은 값을 손으로 적는다.
  *
- * 셋으로 가른다.
- *
- * | 무엇 | 정책 | 왜 |
- * |---|---|---|
- * | `/assets/` | 1년 immutable | 파일 이름에 내용 해시가 있다. 바뀌면 이름이 바뀐다 |
- * | 타일·효과음·아이콘 | 1일 + `stale-while-revalidate` | 이름이 고정이라 immutable은 못 쓴다. 바뀌어도 하루면 퍼지고, 그 사이에도 화면은 뜬다 |
- * | 나머지(html·manifest·robots) | `no-cache` | 배포 즉시 바뀌어야 하는 것들 |
- *
- * ⚠ **immutable을 주면 안 된다.** 이 파일들은 이름이 고정이라, 한 번 잘못 준
- * 1년짜리 캐시는 그 브라우저에서 되돌릴 방법이 없다. 실제로 이 저장소는
- * `public/` 손수 작성 파일이 Cloudflare 캐시에 4시간 갇히는 문제를 이미 겪었다.
+ * `noindex`를 붙인다 — 크롤러가 이 페이지 자체를 색인할 이유가 없다.
  */
-const LONG_CACHE_DIRS = ["/tiles/", "/sfx/", "/icons/", "/brand/"] as const;
-export function cacheControlFor(filePath: string): string {
-  if (filePath.includes("/assets/")) return "public, max-age=31536000, immutable";
-  if (LONG_CACHE_DIRS.some((d) => filePath.includes(d))) {
-    // 하루가 지나면 백그라운드에서 다시 받아 오되, 그동안 화면은 옛것으로 즉시 뜬다.
-    return "public, max-age=86400, stale-while-revalidate=604800";
-  }
-  return "no-cache";
+const NOT_FOUND_HTML = `<!doctype html>
+<html lang="ko"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>이능마작 — 없는 주소</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center;
+         background:#0b1310; color:#ece4d2;
+         font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; }
+  main { text-align:center; padding:32px; }
+  h1 { margin:0 0 8px; font-size:20px; letter-spacing:2px; color:#f0c86a; }
+  p { margin:0 0 20px; font-size:14px; line-height:1.8; color:#b6cabe; }
+  a { display:inline-block; padding:10px 22px; border-radius:999px;
+      border:1px solid rgba(240,200,106,.5); background:rgba(240,200,106,.12);
+      color:#ece4d2; text-decoration:none; font-size:14px; font-weight:600; }
+  a:hover { background:rgba(240,200,106,.22); }
+</style>
+</head><body><main>
+<h1>이능마작</h1>
+<p>그 주소에는 아무것도 없습니다.<br />방 초대와 리플레이 공유는 주소 뒤에 <code>?room=</code>·<code>?replay=</code>로 붙습니다.</p>
+<a href="/">처음 화면으로</a>
+</main></body></html>
+`;
+
+function sendNotFound(req: IncomingMessage, res: import("node:http").ServerResponse): void {
+  const body = Buffer.from(NOT_FOUND_HTML, "utf8");
+  const gzipped = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
+  const out = gzipped ? gzipSync(body) : body;
+  res.writeHead(404, {
+    "Content-Type": MIME[".html"] as string,
+    "Content-Length": out.length,
+    "Cache-Control": "no-cache",
+    Vary: "Accept-Encoding",
+    ...(gzipped ? { "Content-Encoding": "gzip" } : {}),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": CSP,
+  });
+  res.end(req.method === "HEAD" ? undefined : out);
 }
 
 function encodingFor(req: IncomingMessage, ext: string, size: number): "gzip" | null {
@@ -478,10 +514,34 @@ const httpServer = createServer((req, res) => {
     return;
   }
   if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-    // SPA 폴백 — 알 수 없는 경로는 index.html
+    /*
+     * **없는 경로에는 진짜 404를 준다** (감사 2026-08-17 §8-2).
+     *
+     * 예전에는 알 수 없는 경로 전부에 index.html을 **200으로** 줬다(SPA 폴백).
+     * 그 결과가 둘이다.
+     *
+     * ① 검색엔진 입장에서 soft-404다. `/aaa`·`/bbb`가 전부 200에 같은 내용이라
+     *    무한히 색인될 수 있었다(§8-1이 canonical로 절반을 막았지만, 200을 주는
+     *    것 자체가 "이 주소는 유효하다"는 말이다).
+     * ② 오타 링크를 받은 사람이 **아무 안내 없이 로비를 본다.** 자기가 어디로
+     *    가려 했는지도, 무엇이 잘못됐는지도 모른 채.
+     *
+     * **이 앱에는 경로 라우팅이 없다.** 방 초대도 리플레이 공유도 전부 쿼리
+     * 파라미터(`?room=`·`?replay=`)이고, 클라이언트에 `pathname`을 읽는 곳이
+     * 하나도 없다. 그래서 유효한 문서 경로는 `/`와 `/index.html` 둘뿐이고,
+     * 나머지는 진짜로 없는 주소다 — 폴백이 애초에 필요 없었다.
+     *
+     * 나중에 경로 라우팅을 들이면 여기 목록에 더하면 된다. 그때 이 주석이
+     * "왜 폴백이 없나"에 답한다.
+     */
+    const wantsDocument = safePath === "" || safePath === "." || safePath === sep;
     filePath = join(CLIENT_DIST, "index.html");
     if (!existsSync(filePath)) {
       res.writeHead(404).end("client build not found — run: npm run build:client");
+      return;
+    }
+    if (!wantsDocument) {
+      sendNotFound(req, res);
       return;
     }
   }
@@ -504,6 +564,16 @@ const httpServer = createServer((req, res) => {
    * 크롤러는 스크립트를 돌리지 않으므로 클라이언트가 나중에 `<meta>` 를 고쳐 봐야
    * 소용이 없다. 갈아 끼우는 자리는 ogMeta.ts 에 적어 두었다.
    */
+  /*
+   * 첫 화면 문서 한 번 = 방문 한 번 (§8-6).
+   *
+   * 여기서 세는 이유: 정적 자산(타일 png·번들)까지 세면 "방문"이 브라우저 캐시
+   * 상태에 따라 요동친다. 문서 요청 하나가 사람 한 번에 가장 가깝다.
+   * `HEAD`는 세지 않는다 — 크롤러·헬스체크가 쓰는 방식이다.
+   */
+  if (req.method !== "HEAD" && realPath.endsWith(sep + "index.html")) {
+    analytics.noteView(clientIpOf(req).ip, headerValue(req.headers["user-agent"]) ?? "");
+  }
   const inviteCode = roomParamOf(query);
   if (inviteCode !== null && realPath.endsWith(sep + "index.html")) {
     const body = Buffer.from(injectInviteMeta(indexHtml(realPath), inviteCode), "utf8");
@@ -679,6 +749,8 @@ const wss = new WebSocketServer({
 const alive = new WeakMap<object, boolean>();
 
 httpServer.on("upgrade", (req, socket, head) => {
+  // 실제로 게임 화면까지 간 사람의 하한 (§8-6). 오리진·레이트 검사 **전에** 세면
+  // 거절된 연결까지 섞이므로, 아래 통과 지점에서 센다.
   // 연결 수립 속도 제한 — 101을 내주기 전에 자른다. 진짜 루프백(로컬 개발)은 면제.
   const who = clientIpOf(req);
   if (!who.exempt && connRateLimited(abuseKeyOf(who.ip))) {
@@ -699,6 +771,7 @@ httpServer.on("upgrade", (req, socket, head) => {
       return;
     }
   }
+  analytics.noteSocket();
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit("connection", ws, req);
   });
@@ -916,7 +989,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
         /* 이미 닫힘 */
       }
     }
-    await Promise.allSettled([statsStore.flush(), augmentStats.flush()]);
+    await Promise.allSettled([statsStore.flush(), augmentStats.flush(), analytics.flush()]);
     wss.close();
     httpServer.close();
     console.log("정상 종료 완료");

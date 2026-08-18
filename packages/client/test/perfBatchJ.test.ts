@@ -18,6 +18,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const APP = readFileSync(join(HERE, "../src/App.tsx"), "utf8");
 const CSS = readFileSync(join(HERE, "../src/styles.css"), "utf8");
 const SERVER_INDEX = readFileSync(join(HERE, "../../server/src/index.ts"), "utf8");
+// §L 에서 이 판단을 `httpCache.ts` 로 갈라 냈다 — index.ts 를 import 하면 서버가
+// 통째로 뜨는 탓에 테스트가 못 부르기 때문이다. 지키려는 뜻은 그대로다.
+const HTTP_CACHE = readFileSync(join(HERE, "../../server/src/httpCache.ts"), "utf8");
 const HUMAN_AGENT = readFileSync(join(HERE, "../../server/src/HumanAgent.ts"), "utf8");
 const HELPERS = readFileSync(
   join(HERE, "../../core/src/mahjong/flow/helpers.ts"),
@@ -195,14 +198,15 @@ describe("첫 화면이 안 쓰는 것을 받지 않는다", () => {
   });
 
   it("해시 없는 정적 파일에 재검증 캐시를 준다 (immutable 은 주지 않는다)", () => {
-    expect(SERVER_INDEX).toContain("function cacheControlFor");
-    expect(SERVER_INDEX).toContain("stale-while-revalidate");
+    expect(HTTP_CACHE).toContain("function cacheControlFor");
+    expect(HTTP_CACHE).toContain("stale-while-revalidate");
+    // 응답 헤더가 실제로 이 판단을 지나는지 — 갈라 낸 뒤에도 배선이 남아 있어야 한다.
+    expect(SERVER_INDEX).toContain('"Cache-Control": cacheControlFor(filePath)');
     // 이름이 고정인 파일에 1년 immutable 을 주면 되돌릴 방법이 없다.
-    const at = SERVER_INDEX.indexOf("const LONG_CACHE_DIRS");
-    const block = SERVER_INDEX.slice(at, SERVER_INDEX.indexOf("function encodingFor"));
-    expect(block).toContain('"/tiles/"');
-    expect(block).toContain('"/sfx/"');
-    expect(block.match(/immutable/g) ?? []).toHaveLength(1); // /assets/ 하나뿐
+    expect(HTTP_CACHE).toContain('"/tiles/"');
+    expect(HTTP_CACHE).toContain('"/sfx/"');
+    // 주석은 걷어내고 센다 — 이 파일의 머리말이 immutable 을 여러 번 **설명**한다.
+    expect(code(HTTP_CACHE).match(/immutable/g) ?? []).toHaveLength(1); // /assets/ 하나뿐
   });
 
   it("개발용 랩은 색인되지 않는다", () => {

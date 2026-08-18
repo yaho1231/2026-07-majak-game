@@ -554,6 +554,100 @@ export class SiteDb {
 
   // ─────────────────────────── 계정 ───────────────────────────
 
+  /**
+   * 비밀번호 규칙 위반 사유 (없으면 null).
+   *
+   * **왜 함수로 뽑았나** (감사 §10-2): 비밀번호 변경이 생기면서 같은 규칙을 보는
+   * 자리가 둘이 됐다. 두 벌로 두면 한쪽만 고쳐져 갈리고, 그 갈림은 **약한 쪽이
+   * 통과되는 방향**으로만 드러난다.
+   */
+  private passwordProblem(username: string, password: string): string | null {
+    if (typeof password !== "string" || password.length < 8 || password.length > 72) {
+      return "비밀번호는 8자 이상이어야 합니다";
+    }
+    // 온라인 무차별 대입 완화 — 숫자로만 이루어진(PIN) 비밀번호를 거부한다.
+    if (/^\d+$/.test(password)) {
+      return "숫자로만 이루어진 비밀번호는 사용할 수 없습니다";
+    }
+    if (username.length >= 4 && password.toLowerCase().includes(username.toLowerCase())) {
+      return "비밀번호에 닉네임을 포함할 수 없습니다";
+    }
+    return null;
+  }
+
+  /**
+   * 비밀번호 변경 (감사 26·29가 두 번 지적, §10-2).
+   *
+   * **모든 세션을 함께 끊는다.** 비밀번호를 바꾸는 이유는 대개 "누가 내 계정을
+   * 봤을지도 모른다"이고, 그때 필요한 것은 새 비밀번호가 아니라 **남의 손에 있는
+   * 세션이 죽는 것**이다. 세션 TTL이 30일이라 안 끊으면 한 달 동안 그대로 열려 있다.
+   *
+   * 지금 쓰던 연결에는 새 세션 토큰을 돌려준다 — 비밀번호를 바꿨다고 자기 자신이
+   * 로그아웃되면, 그 불편 때문에 사람들이 바꾸기를 미룬다.
+   */
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<AuthResult> {
+    const row = this.stmt(
+      "SELECT id, username, pass_salt, pass_hash, is_admin FROM users WHERE id = ?",
+    ).get(userId) as
+      | { id: number; username: string; pass_salt: string; pass_hash: string; is_admin: number }
+      | undefined;
+    if (row === undefined) return { ok: false, error: "계정을 찾을 수 없습니다" };
+
+    const current = (await scryptAsync(currentPassword ?? "", row.pass_salt, 64)).toString("hex");
+    if (!safeEqual(current, row.pass_hash)) {
+      return { ok: false, error: "지금 비밀번호가 올바르지 않습니다" };
+    }
+    const problem = this.passwordProblem(row.username, newPassword);
+    if (problem !== null) return { ok: false, error: problem };
+    if (newPassword === currentPassword) {
+      return { ok: false, error: "지금 쓰는 비밀번호와 같습니다" };
+    }
+
+    const salt = randomBytes(16).toString("hex");
+    const hash = (await scryptAsync(newPassword, salt, 64)).toString("hex");
+    this.db.exec("BEGIN");
+    try {
+      this.stmt("UPDATE users SET pass_salt = ?, pass_hash = ? WHERE id = ?").run(
+        salt,
+        hash,
+        userId,
+      );
+      // 남의 손에 있을지 모르는 세션을 전부 끊는다.
+      this.stmt("DELETE FROM sessions WHERE user_id = ?").run(userId);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    return {
+      ok: true,
+      user: { id: row.id, username: row.username, isAdmin: row.is_admin === 1 },
+      sessionToken: this.createSession(userId),
+    };
+  }
+
+  /**
+   * 이 계정의 **다른 모든 세션**을 끊는다 (§10-2). 지금 쓰는 토큰만 남긴다.
+   *
+   * 비밀번호를 바꾸지 않고도 "다른 기기에서 로그아웃"을 할 수 있어야 한다 —
+   * 공용 PC에서 로그아웃을 깜빡한 경우가 정확히 그 상황이고, 그때 비밀번호까지
+   * 바꾸게 하면 그건 회수가 아니라 벌이다.
+   */
+  logoutOthers(userId: number, keepToken: string): number {
+    const before = this.stmt("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").get(userId) as {
+      n: number;
+    };
+    this.stmt("DELETE FROM sessions WHERE user_id = ? AND token != ?").run(userId, keepToken);
+    const after = this.stmt("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").get(userId) as {
+      n: number;
+    };
+    return before.n - after.n;
+  }
+
   async register(username: string, password: string, adminCode?: string): Promise<AuthResult> {
     if (!USERNAME_RE.test(username)) {
       return { ok: false, error: "닉네임은 2~12자 (한글·영문·숫자·_-)만 가능합니다" };
@@ -562,16 +656,8 @@ export class SiteDb {
     if (/^bot_/i.test(username) || RESERVED_NAMES.has(username.toLowerCase())) {
       return { ok: false, error: "사용할 수 없는 닉네임입니다" };
     }
-    if (typeof password !== "string" || password.length < 8 || password.length > 72) {
-      return { ok: false, error: "비밀번호는 8자 이상이어야 합니다" };
-    }
-    // 온라인 무차별 대입 완화 — 숫자로만 이루어진(PIN) 비밀번호와 닉네임을 포함한 비밀번호를 거부한다.
-    if (/^\d+$/.test(password)) {
-      return { ok: false, error: "숫자로만 이루어진 비밀번호는 사용할 수 없습니다" };
-    }
-    if (username.length >= 4 && password.toLowerCase().includes(username.toLowerCase())) {
-      return { ok: false, error: "비밀번호에 닉네임을 포함할 수 없습니다" };
-    }
+    const problem = this.passwordProblem(username, password);
+    if (problem !== null) return { ok: false, error: problem };
     // ⚠ scrypt를 **닉네임 중복 검사보다 먼저** 돌린다 (순서가 곧 방어다).
     //
     // 예전에는 중복이면 곧바로 반환했다 — 그래서 "이미 있는 닉네임"은 즉시,
