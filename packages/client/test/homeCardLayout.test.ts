@@ -83,8 +83,14 @@ describe("입력칸은 카드와 같은 톤이다", () => {
     const block = CSS_CODE.slice(at, CSS_CODE.indexOf("}", at));
     expect(block).toContain(".fb-input");
     expect(block).toContain(".fb-textarea");
-    expect(block).toMatch(/background:\s*var\(--felt-1\)/);
-    expect(block).toMatch(/border:\s*1px solid var\(--line-strong\)/);
+    // 값 자체보다 **토큰을 쓴다**는 것이 요점이다 — 색을 하드코딩하면 다음에
+    // 바닥색을 조정할 때 여기만 조용히 남는다.
+    // (2026-08-19: --felt-1 → --field-fill. 입력칸 바닥은 패널 면보다 한 단 깊어야
+    //  '적어 넣는 자리'로 보인다는 것이 클라이언트 셸 정리에서 정해졌다.)
+    expect(block).toMatch(/background:\s*var\(--field-fill\)/);
+    // 테두리도 같은 이유로 토큰 (2026-08-19: --line-strong → --chrome-line,
+    // 판 밖 화면이 공용 셸의 선 색 하나를 쓰게 되면서).
+    expect(block).toMatch(/border:\s*1px solid var\(--chrome-line\)/);
   });
 
   it("포커스가 보인다", () => {
@@ -221,15 +227,30 @@ describe("홈 오른쪽 카드는 탭으로 갈아 끼운다", () => {
 
   it("규칙·도감은 탭 밖(상단 바)에 있다", () => {
     // 카드 안에만 두면 다른 탭을 보는 사람에게는 없는 문이 된다.
-    expect(APP_CODE).toMatch(/home-nav-link"\s+onClick=\{props\.onOpenHelp\}/);
-    expect(APP_CODE).toMatch(/home-nav-link"\s+onClick=\{props\.onOpenCodex\}/);
+    // 2026-08-19: 클래스가 `home-nav-link` → `btn-ghost site-bar-btn` 으로 바뀌었다
+    // (상단 바가 첫 화면과 공용인 `.site-bar` 가 되면서). 지키려는 것은 클래스 이름이
+    // 아니라 **두 문이 상단 바에 있다**는 것이므로 새 클래스로 옮겨 건다.
+    expect(APP_CODE).toMatch(/site-bar-btn"\s+onClick=\{props\.onOpenHelp\}/);
+    expect(APP_CODE).toMatch(/site-bar-btn"\s+onClick=\{props\.onOpenCodex\}/);
+    // 상단 바 안이어야 한다 — 카드 안으로 되돌아가면 이 헤더 밖으로 나간다.
+    const navAt = APP_CODE.indexOf('<header className="site-bar home-nav">');
+    expect(navAt).toBeGreaterThanOrEqual(0);
+    const navEnd = APP_CODE.indexOf("</header>", navAt);
+    const nav = APP_CODE.slice(navAt, navEnd);
+    expect(nav).toContain("props.onOpenHelp");
+    expect(nav).toContain("props.onOpenCodex");
   });
 
-  it("좁은 화면 상단 바 축소는 `.home-nav` 기본 규칙보다 **뒤**에 있다", () => {
+  it("좁은 화면 상단 바 축소는 기본 규칙보다 **뒤**에 있다", () => {
     // 앞에 두면 뒤에 오는 기본값이 이겨서 조용히 죽는다(실측 375px, gap 12px).
+    // 2026-08-19: gap 은 이제 `.home-nav` 가 아니라 공용 `.site-bar` 가 준다 —
+    // 축소 규칙이 이겨야 할 상대가 그쪽이므로 둘 다 앞에 있는지 본다.
     const base = CSS_CODE.indexOf(".home-nav {");
-    const shrink = CSS_CODE.indexOf(".home-nav { gap: 6px");
+    const shared = CSS_CODE.indexOf(".site-bar {");
+    const shrink = CSS_CODE.indexOf(".home-nav { gap: 5px");
     expect(base).toBeGreaterThanOrEqual(0);
+    expect(shared).toBeGreaterThanOrEqual(0);
     expect(shrink).toBeGreaterThan(base);
+    expect(shrink).toBeGreaterThan(shared);
   });
 });
