@@ -12,8 +12,8 @@
 
 import { describe, expect, it } from "vitest";
 import type { PlayerView } from "@majak/core";
-import { LESSONS, pickLesson, pickUrgent } from "../src/tutorial.js";
-import type { CoachCtx } from "../src/tutorial.js";
+import { LESSONS, pickLesson, pickUrgent, placeBubble } from "../src/tutorial.js";
+import type { CoachCtx, CoachRect } from "../src/tutorial.js";
 
 /**
  * 손패 n장 + 내가 버린 패 d장이 들어 있는 최소 뷰 — 코치가 보는 것은 이 정도뿐이다.
@@ -253,5 +253,118 @@ describe("강의가 지키는 규약", () => {
     for (const id of required) expect(ids.has(id), `${id} 강의가 사라졌다`).toBe(true);
     const seen = new Set(required);
     expect(lesson("outro").when(ctx({ seen }))).toBe(true);
+  });
+});
+
+
+// ─────────────────────── 말풍선이 가리키는 것을 따라간다 ───────────────────────
+
+describe("말풍선 자리 (placeBubble)", () => {
+  /** 1280×720 데스크톱 + 아래쪽에 손패·액션 바 줄 */
+  const view = { w: 1280, h: 720 };
+  const size = { w: 420, h: 150 };
+  const ownArea: CoachRect = { top: 520, left: 140, w: 1000, h: 200 };
+  const keep = [ownArea];
+
+  /**
+   * 자리(top 또는 bottom + left)를 **화면 위 실제 사각형**으로 되돌린다.
+   * 테스트가 보는 것은 필드 이름이 아니라 "말풍선이 결국 어디에 그려지는가"다.
+   */
+  const boxOf = (
+    spot: ReturnType<typeof placeBubble>,
+    bubble = size,
+    v = view,
+  ): CoachRect => ({
+    top: spot.top ?? v.h - (spot.bottom ?? 0) - bubble.h,
+    left: spot.left,
+    ...bubble,
+  });
+  const hits = (a: CoachRect, b: CoachRect): boolean =>
+    a.left < b.left + b.w && b.left < a.left + a.w && a.top < b.top + b.h && b.top < a.top + a.h;
+  /** 말풍선 가운데와 강조 가운데 사이 거리 */
+  const gap = (a: CoachRect, b: CoachRect): number =>
+    Math.hypot(a.left + a.w / 2 - (b.left + b.w / 2), a.top + a.h / 2 - (b.top + b.h / 2));
+
+  it("오른쪽 위 아이콘을 가리키면 그 바로 밑에 붙는다", () => {
+    // 예전에는 화면 위쪽 **가운데**에 못 박혀 있어서, 📖를 가리키면서 글은
+    // 화면 반대편에 있었다 (2026-08-18 사용자 지적).
+    const icon: CoachRect = { top: 10, left: 1070, w: 44, h: 40 };
+    const box = boxOf(placeBubble(icon, size, view, keep));
+    expect(box.top).toBeGreaterThanOrEqual(icon.top + icon.h);
+    expect(hits(box, icon)).toBe(false);
+    const band = boxOf({ top: 12, left: (view.w - size.w) / 2 });
+    expect(gap(box, icon)).toBeLessThan(gap(band, icon)); // 위쪽 가운데보다 가깝다
+  });
+
+  it("가운데(도라 표시)를 가리키면 그 위에 붙는다", () => {
+    const dora: CoachRect = { top: 300, left: 600, w: 60, h: 80 };
+    const box = boxOf(placeBubble(dora, size, view, keep));
+    expect(box.top + box.h).toBeLessThanOrEqual(dora.top);
+    expect(hits(box, ownArea)).toBe(false);
+  });
+
+  it("손패를 가리킬 때는 손패도 액션 바도 덮지 않는다", () => {
+    // 여기가 이 함수의 존재 이유다 — "이 패를 누르세요"라고 해 놓고 그 패를 덮으면 안 된다.
+    expect(hits(boxOf(placeBubble(ownArea, size, view, keep)), ownArea)).toBe(false);
+  });
+
+  it("액션 바를 가리키면 버튼 바로 위에 선다 — 버튼은 안 가린다", () => {
+    const bar: CoachRect = { top: 520, left: 400, w: 480, h: 70 };
+    const box = boxOf(placeBubble(bar, size, view, [ownArea]));
+    expect(box.top + box.h).toBeLessThanOrEqual(bar.top);
+    expect(hits(box, bar)).toBe(false);
+  });
+
+  it("위에 붙을 때는 아래쪽 끝을 붙들어 둔다 — 글이 길어져도 아래로 자라지 않는다", () => {
+    // 폰 세로에서 실제로 물었던 자리다: 높이를 재고 나서 글이 한 줄 늘면
+    // `top` 고정은 그만큼 아래로 자라 치·패스 버튼을 덮는다.
+    const bar: CoachRect = { top: 430, left: 20, w: 340, h: 60 };
+    const phone = { w: 375, h: 812 };
+    const spot = placeBubble(bar, { w: 343, h: 145 }, phone, []);
+    expect(spot.bottom).toBeDefined();
+    expect(spot.top).toBeUndefined();
+    // 같은 자리에 20px 더 높은 말풍선을 그려도 여전히 버튼을 안 문다
+    const taller = boxOf(spot, { w: 343, h: 165 }, phone);
+    expect(taller.top + taller.h).toBeLessThanOrEqual(bar.top);
+  });
+
+  it("화면을 거의 다 덮는 강조(증강 선택창)에는 옆에 설 자리가 없다 — 위쪽 띠로 물러난다", () => {
+    const panel: CoachRect = { top: 40, left: 60, w: 1160, h: 640 };
+    expect(placeBubble(panel, size, view, keep)).toEqual({
+      top: 12,
+      left: (view.w - size.w) / 2,
+    });
+  });
+
+  it("가리킬 것이 없으면 위쪽 띠 가운데", () => {
+    expect(placeBubble(null, size, view, keep)).toEqual({
+      top: 12,
+      left: (view.w - size.w) / 2,
+    });
+  });
+
+  it("어디에 놓든 화면 밖으로는 안 나간다", () => {
+    const corners: CoachRect[] = [
+      { top: 0, left: 0, w: 30, h: 30 },
+      { top: 690, left: 1250, w: 30, h: 30 },
+      { top: 0, left: 1250, w: 30, h: 30 },
+      { top: 690, left: 0, w: 30, h: 30 },
+    ];
+    for (const r of corners) {
+      const box = boxOf(placeBubble(r, size, view, keep));
+      expect(box.left).toBeGreaterThanOrEqual(0);
+      expect(box.top).toBeGreaterThanOrEqual(0);
+      expect(box.left + box.w).toBeLessThanOrEqual(view.w);
+      expect(box.top + box.h).toBeLessThanOrEqual(view.h);
+    }
+  });
+
+  it("좁은 폰 화면에서도 말풍선이 잘리지 않는다", () => {
+    const phone = { w: 375, h: 812 };
+    const small = { w: 343, h: 210 };
+    const icon: CoachRect = { top: 8, left: 320, w: 40, h: 38 };
+    const box = boxOf(placeBubble(icon, small, phone, []), small, phone);
+    expect(box.left).toBeGreaterThanOrEqual(0);
+    expect(box.left + box.w).toBeLessThanOrEqual(phone.w);
   });
 });
