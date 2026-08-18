@@ -12695,14 +12695,21 @@ body:has(.overlay) .emote-bar {
 }
 
 /* ─────────────── 운영자 공지 (§4-3) ───────────────
-   홈과 로그인 화면 맨 위에 서는 띠. 화면을 가리지 않으면서 눈에는 들어와야 해서
-   한 줄 높이를 지키고, 본문은 눌러야 펼쳐진다. */
+   로그인 화면 맨 위, 홈에서는 **대국 카드 바로 위**에 서는 띠. 화면을 가리지
+   않으면서 눈에는 들어와야 해서 한 줄 높이를 지키고, 본문은 눌러야 펼쳐진다. */
 .notice-banner {
   margin: 0 0 12px;
   padding: 10px 14px;
   border-radius: var(--r-md, 10px);
   border: 1px solid rgba(240, 200, 106, 0.4);
   background: rgba(240, 200, 106, 0.1);
+}
+/* 홈 왼쪽 열은 이미 `gap: 18px`으로 카드 사이를 벌린다 — 띠의 아래 여백을 그대로
+   두면 30px이 되어 공지가 대국 카드에서 떨어져 나온 별개의 것처럼 보인다.
+   `flex: none`은 열이 좁아질 때 띠가 눌려 글자가 겹치지 않게 하는 못이다. */
+.home-top-left > .notice-banner {
+  margin: 0;
+  flex: none;
 }
 .notice-head {
   display: flex;
