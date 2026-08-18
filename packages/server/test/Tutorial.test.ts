@@ -22,6 +22,7 @@ import { RoomManager } from "../src/RoomManager.js";
 import { StatsStore } from "../src/StatsStore.js";
 import { SiteDb } from "../src/SiteDb.js";
 import { DECISION_TIMEOUT_MS, TUTORIAL_DECISION_TIMEOUT_MS } from "../src/HumanAgent.js";
+import { winningKinds } from "@majak/core";
 
 class FakeSocket {
   readyState = 1; // OPEN
@@ -147,19 +148,125 @@ describe("튜토리얼 판 — 배우기 좋게 고정돼 있다", () => {
     expect(me.augments).toContain("alchemist");
   });
 
-  it("손패가 고정 배패다 — 1샹텐에서 시작한다", async () => {
+  it("손패가 고정 배패다 — 코치의 대본이 손패로 적혀 있다", async () => {
     const h = await newHarness();
     const sock = await connect(h, true);
     const counts = handCounts(await pickDraftAndPlay(sock));
-    // 234m 567m 4567p 22s 9s (13장) + 첫 쯔모 man1.
-    // man1이 첫 쯔모로 깔리는 것이 "필요 없는 패를 버립니다" 강의의 근거다.
-    const want = ["man1", "man2", "man3", "man4", "man5", "man6", "man7",
-                  "pin4", "pin5", "pin6", "pin7", "sou9"];
+    // 234m 567m 456p 7p 22s 9s (13장) + 첫 쯔모 1s.
+    const want = ["man2", "man3", "man4", "man5", "man6", "man7",
+                  "pin4", "pin5", "pin6", "pin7", "sou1", "sou9"];
     for (const key of want) expect(counts[key], `${key}가 손에 없다`).toBe(1);
     expect(counts["sou2"]).toBe(2);
     // 14장 정확히 — 지정 못 한 자리가 무작위로 채워지면 이 수가 어긋난다
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(14);
   });
+
+  it("대본이 실제로 성립한다 — 9삭을 버리고 1삭을 2삭으로 바꾸면 텐파이다", async () => {
+    /*
+     * 이 테스트가 지키는 것은 배패의 **철자**가 아니라 대본이다. 코치는
+     * "9삭을 버리세요 → 1삭을 2삭으로 바꾸세요 → 리치"라고 지목해서 말하므로
+     * (`tutorial.ts`의 SCRIPT_NOTE), 그 말대로 했을 때 정말 텐파이가 서야 한다.
+     * 패 한 장만 잘못 고쳐도 코치는 막다른 길을 가리키게 된다.
+     */
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    const counts = handCounts(await pickDraftAndPlay(sock));
+    const hand: string[] = [];
+    for (const [key, n] of Object.entries(counts)) for (let i = 0; i < n; i++) hand.push(key);
+
+    // 9삭을 버린다
+    const afterDiscard = [...hand];
+    afterDiscard.splice(afterDiscard.indexOf("sou9"), 1);
+    // 연금술사로 1삭 → 2삭 (1삭은 방향이 +1 하나뿐이라 후보가 하나로 떨어진다)
+    const afterAlchemy = afterDiscard.map((k) => (k === "sou1" ? "sou2" : k));
+
+    const kinds = afterAlchemy.map((k) => {
+      const suit = k.slice(0, 3) as "man" | "pin" | "sou";
+      return { suit, rank: Number(k.slice(3)) };
+    });
+    expect(kinds).toHaveLength(13);
+    // 234m 567m 222s + 4567p — 4통·7통 양쪽으로 기다린다(각 3장씩 살아 있다).
+    expect(winningKinds(kinds, 0).map((k) => `${k.suit}${k.rank}`)).toEqual(["pin4", "pin7"]);
+  });
+
+  it("대본대로 두면 리치를 걸고 **론까지** 간다", async () => {
+    /*
+     * 튜토리얼이 데려가려는 결승선을 그대로 걸어 본다 (2026-08-18 사용자 지시:
+     * "플레이어가 리치 이후 론을 할 때까지 튜토리얼을 진행해").
+     *
+     * 여기가 무너지는 방식은 조용하다: 리치까지는 멀쩡히 가 놓고 봇 셋이 안전패만
+     * 돌려 유국으로 끝난다 — 화면에는 아무 오류도 없고, 배우는 사람만 "리치를
+     * 걸었는데 아무 일도 안 일어난다"를 겪는다. 그래서 배급(`TUTORIAL_FEED_NOTE`)이
+     * 실제로 도는지를 판으로 확인한다.
+     */
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    await pickDraftAndPlay(sock);
+
+    const promptCount = (): number => sock.sent.filter((m: any) => m.type === "prompt").length;
+    /** 새 프롬프트가 올 때까지 기다린다 */
+    const nextPrompt = async (seen: number): Promise<any> => {
+      await sock.waitFor((m) => m.type === "prompt" && promptCount() > seen);
+      return sock.last("prompt").prompt;
+    };
+    const view = (): any => sock.last("view").view;
+    const kindOf = (id: number): string => {
+      const k = view().tiles[id]?.kind;
+      return `${k.suit}${k.rank}`;
+    };
+    const send = (o: any): void => {
+      sock.clientSend({ type: "action", actionType: o.type, payload: o.payload });
+    };
+    const find = (prompt: any, pick: (o: any) => boolean): any => prompt.options.find(pick);
+
+    /*
+     * 프롬프트는 내 차례의 것만 오지 않는다 — 봇이 버릴 때마다 치·퐁 기회가 끼어든다.
+     * 그래서 대본을 순서대로 밀지 않고 **지금 온 프롬프트에 다음 한 수가 있으면 둔다**로
+     * 적는다(사람이 화면 앞에서 하는 일과 같다). 없으면 패스하고 다음을 기다린다.
+     */
+    const steps = [
+      { name: "9삭 버리기", pick: (o: any) => o.type === "discard" && kindOf(o.payload.tileId) === "sou9" },
+      { name: "연금술사 1삭→2삭", pick: (o: any) => o.type === "alchemy" && kindOf(o.payload.tileId) === "sou1" },
+      { name: "리치", pick: (o: any) => o.type === "riichi" },
+      { name: "론", pick: (o: any) => o.type === "win" },
+    ];
+
+    let step = 0;
+    let prompt = sock.last("prompt").prompt;
+    let seen = promptCount();
+    for (let i = 0; i < 80 && step < steps.length; i++) {
+      const want = find(prompt, steps[step]!.pick);
+      if (want !== undefined) {
+        send(want);
+        step++;
+      } else {
+        // 대본에 없는 프롬프트 — 후로는 넘기고, 리치 뒤의 강제 쯔모기리는 그대로 낸다
+        const other =
+          find(prompt, (o: any) => o.type === "pass") ??
+          find(prompt, (o: any) => o.type === "discard");
+        expect(
+          other,
+          `${steps[step]!.name} 앞에서 답할 수 없는 프롬프트가 왔다: ${prompt.options
+            .map((o: any) => o.type)
+            .join(",")}`,
+        ).toBeDefined();
+        send(other);
+      }
+      if (step >= steps.length) break;
+      seen = promptCount();
+      prompt = await nextPrompt(seen);
+    }
+    expect(step, `대본이 «${steps[Math.min(step, 3)]!.name}»에서 막혔다`).toBe(steps.length);
+
+    await sock.waitFor((m) => m.type === "roundOver");
+    const over = sock.last("roundOver");
+    expect(over.outcome).toBe("win");
+    const info = over.settle.winInfos?.[0];
+    expect(info?.winner).toBe(view().playerId);
+    // **론**이어야 한다 — 쯔모로 끝났다면 배급이 돌았다는 증거가 되지 못한다
+    expect(info?.winType).toBe("ron");
+    expect(info?.yaku.map((y: any) => y.id)).toContain("riichi");
+  }, 30_000);
 
   it("첫 순부터 액티브 증강을 쓸 수 있다 — ⚡ 강의가 성립한다", async () => {
     const h = await newHarness();
