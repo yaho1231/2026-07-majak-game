@@ -30,7 +30,20 @@ export class ReplayWriter {
   constructor(
     private readonly replayDir: string,
     roomId: string,
+    /**
+     * **이미 있는 파일을 이어 쓴다** (서버 재시작 후 이어하기 전용, 감사 §2-10).
+     *
+     * 새 파일을 열면 안 되는 이유가 두 가지다. ① `__init__`과 지금까지의 확정
+     * 이벤트가 없는 반쪽 파일이 생겨 리플레이로 열 수 없다. ② 원본이 인덱스에
+     * 없는 고아로 남는다. 스트림은 원래부터 `flags: "a"`라, 경로만 그대로 주면
+     * 이어 쓰기가 된다.
+     */
+    existingPath?: string,
   ) {
+    if (existingPath !== undefined) {
+      this.filePath = existingPath;
+      return;
+    }
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     this.filePath = join(replayDir, `${roomId}_${timestamp}.jsonl`);
   }
@@ -47,9 +60,20 @@ export class ReplayWriter {
     this.stream?.write(line + "\n");
   }
 
-  close(): void {
-    this.stream?.end();
+  /**
+   * 스트림을 닫는다. **디스크에 다 나갈 때까지의 프로미스를 돌려준다.**
+   *
+   * 예전에는 `end()`만 부르고 끝이었다. 그건 큐를 비우라는 요청일 뿐이라, 그
+   * 직후 프로세스가 나가면 **마지막 몇 줄이 사라진다.** 평소에는 리플레이 꼬리가
+   * 조금 잘리는 정도지만, 이어하기(§2-10)에서는 그 꼬리가 곧 "어디까지 뒀는가"다 —
+   * 종료 경로가 기다릴 수 있도록 프로미스를 준다. 기다리지 않는 호출부(종국·무효)는
+   * 그대로 둬도 된다: 그쪽은 프로세스가 계속 살아 있으므로 큐가 알아서 비워진다.
+   */
+  close(): Promise<void> {
+    const stream = this.stream;
     this.stream = null;
+    if (stream === null) return Promise.resolve();
+    return new Promise<void>((resolve) => stream.end(resolve));
   }
 
   /**

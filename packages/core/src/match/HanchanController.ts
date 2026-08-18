@@ -177,6 +177,42 @@ export function hanchanConfigForMode(
 }
 
 /**
+ * 이어하기가 **파일에서 읽어야 하는** 진행 설정만 추린다 (리플레이 `__init__`용).
+ *
+ * 판을 다시 세울 때 반드시 원본과 같아야 하는 것은 **규칙**이다 — 몇 장까지 가는지,
+ * 서입이 있는지, 우마·오카가 얼마인지, 드래프트를 언제 하는지. 이게 어긋나면
+ * 재개한 판이 원본과 다른 점수로 끝난다.
+ *
+ * 반대로 **담지 않는 것**에도 이유가 있다:
+ * - `seed` — 난수 상태는 이미 `GameState`에 있다. 여기 적힌 시드를 다시 쓰면
+ *   오히려 이미 뽑은 패를 되풀이하게 된다.
+ * - `extraAugments`·`onEffectError`·`interRoundDelayMs`·`autoMoveDelayMs` —
+ *   판의 규칙이 아니라 **그 판을 돌리는 서버의 설정**이다. 재개하는 쪽이 정한다.
+ * - `preset*` — 증강 테스트 전용이고, 그 방은 애초에 이어하기 대상이 아니다.
+ */
+export type ResumableHanchanConfig = Pick<
+  HanchanConfig,
+  "mode" | "startScore" | "returnScore" | "dobi" | "maxWind" | "westEntry" | "uma" | "oka"
+> &
+  Partial<Pick<HanchanConfig, "agariYame" | "draftSchedules" | "redFivesPerSuit">>;
+
+export function resumableHanchanConfig(config: HanchanConfig): ResumableHanchanConfig {
+  return {
+    mode: config.mode,
+    startScore: config.startScore,
+    returnScore: config.returnScore,
+    dobi: config.dobi,
+    maxWind: config.maxWind,
+    westEntry: config.westEntry,
+    uma: config.uma,
+    oka: config.oka,
+    ...(config.agariYame !== undefined ? { agariYame: config.agariYame } : {}),
+    ...(config.draftSchedules !== undefined ? { draftSchedules: config.draftSchedules } : {}),
+    ...(config.redFivesPerSuit !== undefined ? { redFivesPerSuit: config.redFivesPerSuit } : {}),
+  };
+}
+
+/**
  * 아가리야메(+텐파이야메) 종국 판정 (순수 함수 — 테스트 용이).
  *
  * 최종 국(오라스 — maxWind의 마지막 국: 반장=남4·동풍=동4)에서 오야가 연장(렌짱)하고
@@ -896,6 +932,7 @@ export class HanchanController {
         if (await this.pauseForAutoMove()) return "abort";
         this.trackDiscardOrigin(game, auto.player, auto.options[0]!);
         status = this.submitGuarded(flow, auto.player, auto.options[0]!, auto.options);
+        this.flushEvents(game);
         this.broadcastViews(game);
         continue;
       }
@@ -974,6 +1011,18 @@ export class HanchanController {
         }
       }
 
+      /*
+       * **매 결정마다** 확정 이벤트를 흘려보낸다 (감사 §2-10 이어하기).
+       *
+       * 예전에는 국이 끝나야 흘렀다. 리플레이를 나중에 보는 용도로는 그걸로
+       * 충분했지만, **이어하기의 정확도가 곧 이 주기**다 — 국 중간에 서버가
+       * 죽으면 그 국이 통째로 되감겼다. 사람들이 20순을 두고 리치까지 건 상태가
+       * 배패 직후로 돌아가는 것은 "이어하기"라고 부를 수 없다.
+       *
+       * 비용은 늘지 않는다. 같은 이벤트를 같은 횟수만큼 쓰는 것이고, 자리만
+       * 국 경계에서 결정 경계로 옮겼다. 리플레이 내용도 순서도 그대로다.
+       */
+      this.flushEvents(game);
       this.broadcastViews(game); // 결정 반영 후 매 턴 뷰 갱신
     }
 
@@ -1493,6 +1542,16 @@ export class HanchanController {
             startScore: options.startScore ?? 25000,
             redFivesPerSuit: options.redFivesPerSuit ?? 1,
           },
+          // **이어하기가 읽는 진행 설정** (감사 §2-10).
+          //
+          // 예전에는 이 줄에 `HanchanConfig`가 없었고, 그게 이어하기를 켤 수 없던
+          // 이유 중 하나였다 — `resume()`은 `draftSchedules`를 읽어 어느 드래프트가
+          // 끝났는지 판단하는데, 그 값을 파일에서 알 길이 없었다.
+          //
+          // 담는 것은 **판의 규칙**만이다. 시드는 PRNG 상태가 이미 GameState에
+          // 들어 있어 필요 없고, 지연 시간·`extraAugments`·`onEffectError`는
+          // 판의 규칙이 아니라 그 판을 돌리는 서버의 설정이라 재개하는 쪽이 정한다.
+          hanchan: resumableHanchanConfig(this.config),
         },
       }),
     );

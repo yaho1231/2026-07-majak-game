@@ -7,13 +7,16 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import {
   AUGMENT_DRAFTED,
   buildPlayerView,
   createInitialGameState,
   createStandardGameFromState,
+  hanchanConfigForMode,
   installAugment,
   rebuildAugments,
+  DEFAULT_HANCHAN_CONFIG,
 } from "@majak/core";
 import type {
   AugmentDef,
@@ -22,6 +25,9 @@ import type {
   GameState,
   InitialStateOptions,
   PlayerId,
+  ProcessorOptions,
+  ResumableHanchanConfig,
+  StandardGame,
 } from "@majak/core";
 
 export interface ReplayInitLine {
@@ -29,6 +35,14 @@ export interface ReplayInitLine {
   payload: {
     config: GameConfig;
     options: InitialStateOptions;
+    /**
+     * 이어하기가 읽는 진행 설정 (우마·오카·서입·드래프트 스케줄 등).
+     *
+     * **없을 수 있다** — 2026-08-18 이전에 시작된 판의 파일에는 이 필드가 없다.
+     * 그때는 모드에서 한 벌을 다시 만든다(`hanchanConfigForMode`). 우마·오카가
+     * 기본값이 아닌 방을 운영한 적이 없으므로 그 복원은 정확하다.
+     */
+    hanchan?: ResumableHanchanConfig;
   };
 }
 
@@ -127,29 +141,144 @@ export function buildReplayView(
   return buildPlayerView(state, viewer, game.engine.rules);
 }
 
+// ─────────────────────────── 이어하기(resume) 재구성 ───────────────────────────
+
 /*
- * ─────────────────────────── 이어하기(resume) 재구성 — 제거됨 ───────────────────────────
+ * 이 블록은 2026-08-12에 **일부러 들어냈다가** 2026-08-18에 되살린 것이다.
  *
- * `ResumeReconstruction` · `reconstructGame` · `reconstructGameFromFile` 과 그 테스트
- * (`test/Resume.test.ts`)를 **임시로 들어냈다** (2026-08-12, 사용자 결정).
+ * 들어낸 이유는 "배선되지 않은 미완성 기능"이었다 — 구현도 테스트도 있었지만
+ * 프로덕션 호출자가 한 번도 없었고, 켜려면 다섯 가지가 선행돼야 했다. 그 다섯
+ * 가지를 이번에 전부 채웠으므로(감사 §2-10, 사용자 결정 "완전 이어하기"),
+ * 무엇을 어떻게 채웠는지 여기 남긴다. 다음에 이 자리를 의심하는 사람이 있으면
+ * 이 목록부터 확인하면 된다.
  *
- * 구현도 테스트도 있었지만 **프로덕션에서 한 번도 불린 적이 없다** — `git log -S`로
- * 확인한 결과 호출 지점이 추가된 적도 제거된 적도 없는, 배선되지 않은 미완성 기능이었다.
- * 지금 켤 수도 없었다. 라이브 경로가 하는 일 중 재개 경로에 없는 것들:
- *
- *   - 리플레이 `__init__` 줄에 `HanchanConfig`가 없다 (uma·oka·서입·`draftSchedules`).
- *     그런데 `HanchanController.resume()`은 `draftSchedules`를 읽어 어느 드래프트가
- *     끝났는지 판단한다.
- *   - `createStandardGameFromState`가 `setWeightOverrides`를 부르지 않는다 →
- *     재개한 판은 실적 반영 없는 정적 티어표로 드래프트한다.
- *   - `processor: { onEffectError }`가 안 실려 증강 훅 예외가 로그 없이 삼켜진다.
- *   - `ReplayWriter`에 append 모드가 없고 `StatsTracker`는 빈 상태로 다시 시작한다.
- *   - 방·좌석·에이전트·재접속 토큰·관전자가 어디에도 영속되지 않는다 (DB에 방 테이블 없음).
- *
- * 그래서 유지비(단독 실행 100~200초짜리 테스트)만 계속 나가고 있었다.
- * **되살리려면** `git log --diff-filter=D -- packages/server/test/Resume.test.ts` 로
- * 이 커밋을 찾아 되돌리고, 위 다섯 가지를 먼저 채워야 한다.
- *
- * 엔진 쪽 `HanchanController.resume()` 자체는 **남겨 두었다** — 코어 API이고
- * `packages/core/test/Hanchan.test.ts`가 독립적으로 덮고 있다.
+ *   1. 리플레이 `__init__`에 `HanchanConfig`가 없었다
+ *      → `resumableHanchanConfig`가 우마·오카·서입·`draftSchedules`를 싣는다.
+ *        옛 파일에는 없으므로 모드에서 되만든다(`resumeConfigOf`).
+ *   2. `setWeightOverrides`를 안 불러 정적 티어표로 드래프트했다
+ *      → 재개 쪽(`RoomManager.restoreLiveGames`)이 살아 있는 실적 가중치를 건다.
+ *        **파일에 굳혀 담지 않는다** — 티어는 20판마다 움직이는 값이라, 재개한
+ *        판만 몇 시간 전 표를 쓰는 편이 오히려 어긋난다.
+ *   3. `processor: { onEffectError }`가 안 실려 증강 훅 예외가 조용히 사라졌다
+ *      → `reconstructGame(… , { processor })`로 받는다.
+ *   4. `ReplayWriter`에 append 모드가 없고 `StatsTracker`가 빈 상태로 시작했다
+ *      → 같은 파일을 이어 쓴다(`ReplayWriter.reopen`), 통계는 읽은 줄을 그대로
+ *        `tracker.consume`에 다시 먹여 되세운다(그 메서드의 계약이다).
+ *   5. 방·좌석이 어디에도 영속되지 않았다
+ *      → `live_games` 테이블(SiteDb). 좌석 이름·봇 여부·원형까지 담는다.
  */
+
+export interface ResumeReconstruction {
+  /** 최종 상태 + 증강 재설치 + 로그 시드까지 끝나 바로 이어 돌릴 수 있는 게임 */
+  game: StandardGame;
+  /** 재구성에 사용한 확정 이벤트 수 (= 엔진 로그 시드 길이) */
+  eventCount: number;
+  /** 이 판의 진행 설정 (파일에 없으면 모드에서 되만든 것) */
+  hanchan: ResumableHanchanConfig;
+  /** 읽은 이벤트 줄 원본 — 누적 통계(StatsTracker)를 되세우는 데 그대로 쓴다 */
+  eventLines: string[];
+}
+
+/** `__init__`에 진행 설정이 없는 옛 파일을 위해 모드에서 한 벌을 되만든다. */
+function resumeConfigOf(init: ReplayInitLine): ResumableHanchanConfig {
+  const saved = init.payload.hanchan;
+  if (saved !== undefined) return saved;
+  const mode = init.payload.config.mode ?? "hanchan";
+  return {
+    ...DEFAULT_HANCHAN_CONFIG,
+    ...hanchanConfigForMode(mode),
+    startScore: init.payload.options.startScore ?? DEFAULT_HANCHAN_CONFIG.startScore,
+    ...(init.payload.options.redFivesPerSuit !== undefined
+      ? { redFivesPerSuit: init.payload.options.redFivesPerSuit }
+      : {}),
+  };
+}
+
+/**
+ * 리플레이 JSONL 라인들로 "이어 돌릴 수 있는" StandardGame을 재구성한다 (동기).
+ *
+ * 1) 리듀서로 최종 GameState를 재구성한다 (PRNG·왕패·손패 전부 상태에 담김).
+ * 2) 그 최종 상태로 엔진을 만들고 로그를 과거 이벤트로 시드한다 (새 이벤트만 append).
+ * 3) state.players[].augments 기준으로 증강 효과를 재설치한다 (rebuildAugments).
+ *
+ * 이후 HanchanController.resume(game)이 FlowController로 현재 페이즈에서 이어간다.
+ *
+ * **동기인 이유**: 재개는 부팅 중 한 번, 방을 만들기 **전에** 끝나야 한다. 중간에
+ * await가 끼면 그 틈에 같은 코드의 방이 새로 생기거나 사람이 붙을 수 있다.
+ */
+export function reconstructGame(
+  lines: readonly string[],
+  opts: {
+    extraAugments?: readonly AugmentDef[];
+    /** 증강 훅 예외를 남길 곳 — 없으면 격리는 되지만 흔적이 사라진다 */
+    processor?: ProcessorOptions;
+  } = {},
+): ResumeReconstruction {
+  const clean = lines.map((l) => l.trim()).filter((l) => l.length > 0);
+  if (clean.length === 0) throw new Error("Replay is empty");
+  const init = JSON.parse(clean[0] as string) as ReplayInitLine;
+  if (init.type !== "__init__") throw new Error("Replay first line must be __init__");
+  const extraAugments = opts.extraAugments;
+
+  // 1차: 임시 게임의 리듀서로 최종 상태를 계산 (엔진 상태는 건드리지 않는다)
+  let state = createInitialGameState(init.payload.config, init.payload.options);
+  const tmp = createStandardGameFromState(state, undefined, extraAugments);
+  const events: GameEvent[] = [];
+  const eventLines: string[] = [];
+  for (const line of clean.slice(1)) {
+    /*
+     * **마지막 줄이 반만 써져 있을 수 있다.**
+     *
+     * 이 파일은 프로세스가 살아 있는 동안 계속 append되며, 서버가 SIGKILL로
+     * 죽으면 마지막 write가 중간에서 끊긴다. 그 한 줄에서 던지면 **판 전체를**
+     * 못 되살린다 — 마지막 한 수를 잃는 것과 40분을 잃는 것 중 하나를 고르는
+     * 문제다. 거기서 끊고 지금까지의 상태로 이어간다.
+     *
+     * 중간 줄이 상하는 경우는 이렇게 조용히 넘기면 안 되지만, append-only
+     * 파일에서 그런 일은 디스크가 상했다는 뜻이고 그때는 뒤 줄들도 성하지 않다.
+     */
+    let event: GameEvent;
+    try {
+      event = JSON.parse(line) as GameEvent;
+    } catch {
+      console.warn(
+        `[replay] 마지막 줄이 온전하지 않다 — ${events.length}개 이벤트까지만 되살린다`,
+      );
+      break;
+    }
+    state = tmp.engine.reducers.dispatch(state, event);
+    state = { ...state, lastEventSeq: event.seq };
+    // ⚠ readReplay와 같은 규약: 증강은 자기 이벤트 타입의 Reducer를 install에서
+    // 등록한다(CounterStruck·RecallPerformed 등). 드래프트되는 순간 설치하지 않으면
+    // 이후 그 증강이 만든 이벤트에서 "No reducer registered"로 재구성이 통째로 죽는다.
+    if (event.type === AUGMENT_DRAFTED) {
+      const p = event.payload as { player: PlayerId; augmentId: string };
+      const def = tmp.augments.get(p.augmentId);
+      if (def !== undefined) {
+        installAugment(tmp.engine, def, p.player, { yaku: tmp.yaku });
+      }
+    }
+    events.push(event);
+    eventLines.push(line);
+  }
+
+  // 2차: 최종 상태를 담은 재개용 엔진 + 로그 시드 + 증강 재설치
+  const game = createStandardGameFromState(state, opts.processor, extraAugments, events);
+  rebuildAugments(game.engine, game.augments, {
+    yaku: game.yaku,
+    catalog: game.augments,
+  });
+  return { game, eventCount: events.length, hanchan: resumeConfigOf(init), eventLines };
+}
+
+/** 리플레이 파일을 동기로 읽어 재구성한다 (resume 트리거는 레이스 방지를 위해 동기 처리) */
+export function reconstructGameFromFile(
+  path: string,
+  opts: {
+    extraAugments?: readonly AugmentDef[];
+    processor?: ProcessorOptions;
+  } = {},
+): ResumeReconstruction {
+  const text = readFileSync(path, "utf-8");
+  return reconstructGame(text.split(/\r?\n/), opts);
+}

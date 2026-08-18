@@ -448,10 +448,13 @@ export {
   HanchanController,
   DEFAULT_HANCHAN_CONFIG,
   DEFAULT_SEED,
+  hanchanConfigForMode,
+  resumableHanchanConfig,
 } from "./match/HanchanController.js";
 export type {
   HanchanConfig,
   HanchanEvents,
+  ResumableHanchanConfig,
   SpectatorSink,
 } from "./match/HanchanController.js";
 export type { PlayerAgent } from "./match/PlayerAgent.js";

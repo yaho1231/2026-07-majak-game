@@ -799,6 +799,20 @@ async function pruneOldReplays(): Promise<void> {
   }
 }
 
+/*
+ * 끊긴 대국 이어하기 (감사 §2-10, 사용자 결정 "완전 이어하기").
+ *
+ * **리플레이 정리보다 먼저** 돌린다. 정리는 인덱스에 없는 `.jsonl`을 보존 기간
+ * 기준으로 지우는데, 되살릴 판의 파일이 바로 그 "인덱스에 없는 파일"이다.
+ * 보존 기간(기본 365일)이 훨씬 길어 실제로 겹칠 일은 없지만, 순서가 곧 의도다.
+ *
+ * `await` 하지 않고 띄운다 — 되살리기가 늦어져도 서버는 지금 열려 있어야 한다.
+ * 사람들이 돌아오는 데는 어차피 몇 초가 걸리고, 그 사이 방이 서면 된다.
+ */
+void roomManager.restoreLiveGames().catch((err: unknown) => {
+  console.error("끊긴 대국 이어하기 실패:", err);
+});
+
 void pruneOldReplays();
 // 하루에 한 번 — 오래 켜 두는 서버에서도 계속 정리된다.
 const pruneTimer = setInterval(() => void pruneOldReplays(), 24 * 60 * 60 * 1000);
@@ -834,9 +848,12 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   try {
     clearInterval(heartbeat);
-    roomManager.shutdown();
+    // 리플레이가 **디스크에 다 나갈 때까지** 기다린다 — 그 꼬리가 곧 다음 부팅의
+    // 이어하기가 읽을 "어디까지 뒀는가"다 (§2-10). 기다리지 않으면 마지막 몇 줄이
+    // 사라지고, 되살린 판이 몇 수 전으로 되돌아간다.
+    const flushed = roomManager.shutdown();
     // 알림 프레임이 실제로 나가도록 한 틱 양보한 뒤 소켓을 닫는다.
-    await new Promise((r) => setTimeout(r, 100));
+    await Promise.all([flushed, new Promise((r) => setTimeout(r, 100))]);
     for (const ws of wss.clients) {
       try {
         ws.close(1001, "server restarting");
