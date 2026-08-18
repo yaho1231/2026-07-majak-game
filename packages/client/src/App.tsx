@@ -8601,6 +8601,27 @@ function useFold(id: string): [boolean, () => void] {
   return [folded, toggle];
 }
 
+/**
+ * 홈 오른쪽 탭 (2026-08-18 사용자 요청).
+ *
+ * **무엇을 푸는가**: 홈이 카드를 세로로 계속 쌓는 구조라 일반 유저 기준 화면 네 개
+ * 분량으로 길어졌고, 왼쪽 열이 좁은 만큼 오른쪽에는 아무것도 없는 빈칸이 그만큼
+ * 남았다(사용자 스크린샷). 카드는 그대로 두고 **놓는 자리**만 바꾼다 — 왼쪽은 지금
+ * 누르러 온 것(대국·친구) 고정, 오른쪽은 나머지를 한 자리에서 갈아 끼우는 탭이다.
+ *
+ * 탭을 고른 상태는 localStorage에 남는다 — 전적을 보러 오는 사람은 늘 전적을 보러
+ * 온다. 관리자 탭은 관리자에게만 있으므로, 저장된 값이 지금 권한에 없으면 첫 탭으로
+ * 되돌린다(관리자로 보다가 로그아웃한 브라우저에서 빈 패널이 뜨지 않게).
+ */
+type HomeTabId = "record" | "meta" | "feedback" | "account" | "admin";
+const HOME_TAB_KEY = "majak.homeTab";
+
+function readHomeTab(isAdmin: boolean): HomeTabId {
+  const raw = safeStorage.getItem(HOME_TAB_KEY);
+  const ok: HomeTabId[] = ["record", "meta", "feedback", "account", ...(isAdmin ? (["admin"] as const) : [])];
+  return ok.find((t) => t === raw) ?? "record";
+}
+
 function FoldButton(props: { folded: boolean; onToggle: () => void; label: string }): JSX.Element {
   const what = props.folded ? `${props.label} 펼치기` : `${props.label} 접기`;
   return (
@@ -9046,6 +9067,21 @@ function HomeScreen(props: {
   const [replaysFolded, toggleReplaysFold] = useFold("replays");
   const career = props.stats?.career.find((e) => e.nickname === props.auth.username) ?? null;
 
+  // 오른쪽 탭 (readHomeTab 주석 참고)
+  const [tab, setTab] = useState<HomeTabId>(() => readHomeTab(props.auth.isAdmin));
+  const tabs: { id: HomeTabId; label: string }[] = [
+    { id: "record", label: "📊 전적" },
+    { id: "meta", label: "📈 증강 메타" },
+    { id: "feedback", label: "📮 제보" },
+    { id: "account", label: "🔑 계정" },
+    ...(props.auth.isAdmin ? [{ id: "admin" as const, label: "🛠 관리" }] : []),
+  ];
+  /** 저장은 setState updater 밖에서 (useFold와 같은 이유) */
+  function pickTab(id: HomeTabId): void {
+    setTab(id);
+    safeStorage.setItem(HOME_TAB_KEY, id);
+  }
+
   function joinByCode(): void {
     const c = code.trim().toUpperCase();
     if (c.length >= 4) props.onJoinRoom(c);
@@ -9108,17 +9144,13 @@ function HomeScreen(props: {
         <span className="home-logo">이능마작</span>
         <span className="home-tagline">증강 리치마작</span>
         <span className="home-spacer" />
-        {/* 게시판은 첫 화면 아래에 있어 있는 줄도 모르고 지나친다 — 상단에서 바로 간다. */}
-        <button
-          className="home-logout home-feedback-jump"
-          onClick={() =>
-            // 즉시 이동(behavior 생략) — 홈은 .home이 스크롤 컨테이너라 smooth가
-            // 중간에 멈추는 환경이 있었다. 목적지는 확실히 도착하는 편이 낫다.
-            document.querySelector(".home-feedback")?.scrollIntoView({ block: "start" })
-          }
-          title="버그 제보 · 증강 아이디어"
-        >
-          📮 제보
+        {/* 규칙·도감은 어느 탭에 있든 손에 닿아야 한다 — 카드 안에만 두면 탭을
+            바꾼 사람에게는 없는 문이 된다. 제보는 탭 줄에 서 있으니 여기서 뺐다. */}
+        <button className="home-logout home-nav-link" onClick={props.onOpenHelp} title="규칙 · 도움말">
+          📘<span className="home-nav-link-t"> 규칙</span>
+        </button>
+        <button className="home-logout home-nav-link" onClick={props.onOpenCodex} title="증강 도감">
+          📖<span className="home-nav-link-t"> 도감</span>
         </button>
         <span className="home-user">
           {props.auth.username}
@@ -9192,6 +9224,33 @@ function HomeScreen(props: {
           onRefresh={props.onRefreshFriends}
         />
 
+          </div>
+
+          {/* 오른쪽 = 탭 하나. 카드를 세로로 쌓지 않는다 (readHomeTab 주석 참고). */}
+          <div className="home-tabs">
+            <div className="home-tabbar" role="tablist" aria-label="홈">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  id={`home-tab-${t.id}`}
+                  aria-selected={tab === t.id}
+                  aria-controls="home-tabpanel"
+                  className={`home-tab${tab === t.id ? " home-tab-on" : ""}`}
+                  onClick={() => pickTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div
+              className="home-tabpanel"
+              id="home-tabpanel"
+              role="tabpanel"
+              aria-labelledby={`home-tab-${tab}`}
+            >
+              {tab === "record" ? (
+                <>
         <section className={`home-card home-mystats${statsFolded ? " home-card-folded" : ""}`}>
           <div className="home-card-head">
             <h2>내 통계</h2>
@@ -9221,53 +9280,11 @@ function HomeScreen(props: {
           )}
         </section>
 
-          {props.auth.isAdmin ? (
-            <>
-            <NoticeEditor
-              notice={props.serverInfo?.notice}
-              onSave={props.onSetNotice}
-            />
-            <AnalyticsCard days={props.analytics} onRefresh={props.onRefreshAnalytics} />
-            <section className="home-card home-sandbox">
-              <div className="home-card-head">
-                <h2>🧪 증강 테스트<span className="home-admin-badge">관리자</span></h2>
-              </div>
-              <p className="home-hint">
-                봇 3명과 함께 드래프트 없이 바로 시작합니다. 게임 안의 테스트 패널에서
-                구현된 증강을 골라 즉시 획득하고, 언제든 초기화할 수 있습니다.
-                이 게임은 리플레이·통계·도감 기록에 남지 않습니다.
-              </p>
-              <div className="sandbox-mode-pick">
-                {(["hanchan", "tonpuu"] as GameMode[]).map((m) => (
-                  <button
-                    key={m}
-                    className={sandboxMode === m ? "sandbox-mode on" : "sandbox-mode"}
-                    onClick={() => setSandboxMode(m)}
-                  >
-                    {m === "hanchan" ? "반장전" : "동풍전"}
-                  </button>
-                ))}
-              </div>
-              <button className="home-create" onClick={() => props.onStartSandbox(sandboxMode)}>
-                🧪 증강 테스트 시작
-              </button>
-            </section>
-            </>
-          ) : (
-            replaysCard
-          )}
-          </div>
-
         <section className="home-card home-augment">
           <div className="home-card-head">
             <h2>내 증강 통계</h2>
+            {/* 규칙·도감 단추는 상단 바로 옮겼다 — 탭을 바꿔도 없어지지 않게. */}
             <div className="home-head-actions">
-              <button className="home-codex-btn" onClick={props.onOpenHelp}>
-                📘 규칙 · 도움말
-              </button>
-              <button className="home-codex-btn" onClick={props.onOpenCodex}>
-                📖 증강 도감
-              </button>
               <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
             </div>
           </div>
@@ -9276,19 +9293,13 @@ function HomeScreen(props: {
             📖 증강 도감 전체 보기 — {Object.keys(props.catalog).length || "?"}종 상세 설명 · 서버 전체 통계
           </button>
         </section>
-        </div>
 
-        {/* 제보 게시판은 상단 바로 아래 — 맨 아래에 두면 일반 유저는 증강 메타 카드를
-            두 화면 넘게 지나야 만나서, 게시판이 있는 줄도 모른다. */}
-        <FeedbackBoard
-          auth={props.auth}
-          entries={props.feedback}
-          onSubmit={props.onSubmitFeedback}
-          onRefresh={props.onRefreshFeedback}
-          onUpdate={props.onUpdateFeedback}
-          onDelete={props.onDeleteFeedback}
-        />
+        {replaysCard}
+                </>
+              ) : null}
 
+              {tab === "meta" ? (
+                <>
         {/* 닉네임별 성적표는 관리자 전용 (서버도 비관리자에겐 닉네임을 지워 보낸다) */}
         {props.auth.isAdmin ? (
         <section className="home-card home-leaderboard">
@@ -9344,13 +9355,55 @@ function HomeScreen(props: {
           </div>
           <AugmentMeta leaderboard={props.leaderboard} catalog={props.catalog} />
         </section>
+                </>
+              ) : null}
 
+              {tab === "feedback" ? (
+        <FeedbackBoard
+          auth={props.auth}
+          entries={props.feedback}
+          onSubmit={props.onSubmitFeedback}
+          onRefresh={props.onRefreshFeedback}
+          onUpdate={props.onUpdateFeedback}
+          onDelete={props.onDeleteFeedback}
+        />
+              ) : null}
+
+              {tab === "account" ? (
         <AccountCard
           onChangePassword={props.onChangePassword}
           onLogoutOthers={props.onLogoutOthers}
         />
-        {props.auth.isAdmin ? replaysCard : null}
+              ) : null}
 
+              {tab === "admin" && props.auth.isAdmin ? (
+                <>
+        <NoticeEditor notice={props.serverInfo?.notice} onSave={props.onSetNotice} />
+        <AnalyticsCard days={props.analytics} onRefresh={props.onRefreshAnalytics} />
+        <section className="home-card home-sandbox">
+          <div className="home-card-head">
+            <h2>🧪 증강 테스트<span className="home-admin-badge">관리자</span></h2>
+          </div>
+          <p className="home-hint">
+            봇 3명과 함께 드래프트 없이 바로 시작합니다. 게임 안의 테스트 패널에서
+            구현된 증강을 골라 즉시 획득하고, 언제든 초기화할 수 있습니다.
+            이 게임은 리플레이·통계·도감 기록에 남지 않습니다.
+          </p>
+          <div className="sandbox-mode-pick">
+            {(["hanchan", "tonpuu"] as GameMode[]).map((m) => (
+              <button
+                key={m}
+                className={sandboxMode === m ? "sandbox-mode on" : "sandbox-mode"}
+                onClick={() => setSandboxMode(m)}
+              >
+                {m === "hanchan" ? "반장전" : "동풍전"}
+              </button>
+            ))}
+          </div>
+          <button className="home-create" onClick={() => props.onStartSandbox(sandboxMode)}>
+            🧪 증강 테스트 시작
+          </button>
+        </section>
 
         {props.auth.isAdmin ? (
           <section className="home-card home-admin">
@@ -9456,6 +9509,11 @@ function HomeScreen(props: {
             </ListCard>
           </section>
         ) : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
       </main>
     </div>
   );

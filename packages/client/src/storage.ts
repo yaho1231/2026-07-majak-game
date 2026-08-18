@@ -88,6 +88,7 @@ export const STORAGE_KEYS = [
   "majak.uiZoom",
   "majak.browserZoomed",
   "majak.homeFolded",
+  "majak.homeTab",
 ] as const;
 
 /** 방 복귀 정보만 지운다 — 로그인은 유지한 채 "그 판"에서만 빠져나오는 용도. */
