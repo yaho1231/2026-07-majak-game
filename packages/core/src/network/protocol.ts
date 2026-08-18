@@ -89,6 +89,25 @@ export interface GuestResumeMessage {
 }
 
 /**
+ * **증강 도감을 로그인 전에도 연다** (감사 §3-7).
+ *
+ * 예전에는 카탈로그를 인증 뒤에만 보냈다. 그런데 랜딩 → 규칙 → "증강이란" 탭의
+ * `📖 증강 도감 열기` 버튼은 인증과 **무관하게** 렌더된다 — 누르면 "0/0종 ·
+ * 증강이 없습니다"가 떴다. 이 게임의 유일한 차별점을 보러 온 사람에게 가장
+ * 나쁜 대답이다.
+ *
+ * **`serverInfo`에 얹지 않은 이유**: 카탈로그는 상세 설명까지 포함해 수십 KB다.
+ * 모든 연결이 자동으로 받으면 도감을 안 여는 사람까지 그 비용을 낸다. 요청은
+ * 도감을 실제로 열 때 한 번만 나간다.
+ *
+ * 감출 것이 없는 정보다 — 랜딩이 종수를 광고하고, 게임에 들어가면 어차피 전부
+ * 받는다. 그래도 비싼 조회 목록(`HEAVY_MESSAGES`)에 넣어 연타를 막는다.
+ */
+export interface CatalogRequestMessage {
+  type: "catalogRequest";
+}
+
+/**
  * **연습 대국** — 로그인한 사람이 봇 3명과 곧바로 한 판.
  *
  * 게스트 체험(`guestPlay`)과 같은 방을 계정 있는 사람에게 준다: 방 코드를 만들고
@@ -540,6 +559,7 @@ export type ClientMessage =
   | LogoutMessage
   | GuestPlayMessage
   | GuestResumeMessage
+  | CatalogRequestMessage
   | PracticePlayMessage
   | CreateRoomMessage
   | JoinRoomMessage

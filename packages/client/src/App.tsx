@@ -4850,7 +4850,22 @@ export function App(): JSX.Element {
     returnHome();
   });
   const cbVoteAbort = useStableFn(voteAbort);
-  const cbOpenCodex = useStableFn(() => setCodexOpen(true));
+  /**
+   * 도감을 연다 — **카탈로그가 없으면 그때 요청한다** (감사 2026-08-17 §3-7).
+   *
+   * 예전에는 서버가 인증 뒤에만 카탈로그를 보냈다. 그런데 랜딩 → 규칙 → "증강이란"
+   * 탭의 `📖 증강 도감 열기` 버튼은 인증과 무관하게 렌더돼서, 로그인 전에 누르면
+   * **"0/0종 · 증강이 없습니다"**가 떴다 — 이 게임의 유일한 차별점을 보러 온
+   * 사람에게 가장 나쁜 대답이다.
+   *
+   * 열 때 요청하는 이유: 카탈로그는 상세 설명까지 수십 KB다. `serverInfo`에 얹어
+   * 모든 연결에 자동으로 보내면 도감을 안 여는 사람까지 그 비용을 낸다.
+   */
+  const openCodex = useStableFn(() => {
+    if (Object.keys(catalog).length === 0) send({ type: "catalogRequest" });
+    setCodexOpen(true);
+  });
+  const cbOpenCodex = openCodex;
   const cbOpenHelp = useStableFn(() => setHelpOpen(true));
   const cbGameToast = useStableFn((t: string) => showToast(t, "info"));
 
@@ -5002,7 +5017,7 @@ export function App(): JSX.Element {
           onLeave={returnHome}
           onToast={(t) => showToast(t, "info")}
           onOpenHelp={() => setHelpOpen(true)}
-          onOpenCodex={() => setCodexOpen(true)}
+          onOpenCodex={openCodex}
           onEmote={sendEmote}
         />
       ) : tierOpen ? (
@@ -5017,7 +5032,7 @@ export function App(): JSX.Element {
         <GuestOutro
           username={auth.username}
           onPlayAgain={() => send({ type: "guestPlay" })}
-          onOpenCodex={() => setCodexOpen(true)}
+          onOpenCodex={openCodex}
           onOpenHelp={() => setHelpOpen(true)}
           onSignUp={() => logout("register")}
         />
@@ -5052,7 +5067,7 @@ export function App(): JSX.Element {
           onCreateRoom={() => send({ type: "createRoom" })}
           onJoinRoom={(code) => send({ type: "joinRoom", code })}
           onOpenReplay={(gameId) => send({ type: "replayGet", gameId })}
-          onOpenCodex={() => { setCodexOpen(true); refreshHome(); }}
+          onOpenCodex={() => { openCodex(); refreshHome(); }}
           onOpenHelp={() => setHelpOpen(true)}
           onOpenTiers={() => { setTierOpen(true); send({ type: "adminAugmentTiers" }); }}
           augmentTiers={augmentTiers}
@@ -5092,7 +5107,7 @@ export function App(): JSX.Element {
           <HelpScreen
             augmentKinds={augmentKinds}
             backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
-            onOpenCodex={() => setCodexOpen(true)}
+            onOpenCodex={openCodex}
             onClose={() => setHelpOpen(false)}
           />
         </ScreenOverlay>
@@ -8222,7 +8237,16 @@ function HomeScreen(props: {
           {career !== null ? (
             <StatsGrid s={career.stats} />
           ) : (
-            <p className="home-empty">아직 완료한 대국이 없습니다. 첫 대국을 시작해 보세요!</p>
+            /* 빈 상태에는 **누를 것**을 준다 (감사 §3-12). "첫 대국을 시작해 보세요!"는
+               서술이지 다음 걸음이 아니다 — 방을 만들지 코드를 받을지 연습을 할지를
+               다시 사람이 정해야 했다. 여기서 갈 곳은 하나뿐이다: 봇과 한 판. */
+            <p className="home-empty">
+              아직 완료한 대국이 없습니다.
+              <span className="home-empty-hint">한 판 두고 나면 승률·평균 순위가 여기에 쌓입니다.</span>
+              <button className="home-empty-cta" onClick={props.onPractice}>
+                🎓 연습 대국으로 한 판
+              </button>
+            </p>
           )}
         </section>
 
@@ -17277,6 +17301,26 @@ function DraftOverlay({
             </p>
           </>
         ) : null}
+        {/*
+          **첫 드래프트에는 이게 무엇인지부터 말한다** (감사 2026-08-17 §3-6).
+
+          게임 시작 30초 만에 규칙을 바꾸는 카드 세 장을 고르게 하면서, 오버레이에는
+          아무 안내가 없었다. "Shift로 상세 보기"는 대기실 팁에만 적혀 있었는데
+          **체험·연습으로 들어온 사람은 대기실을 거치지 않는다** — 이 게임을 처음
+          보는 사람이 정확히 안내를 못 받는 경로였다.
+
+          안내는 첫 판(보유 0)에만 크게 낸다. 두 번째부터는 조작 한 줄이면 된다 —
+          매번 같은 문단을 읽히면 그건 안내가 아니라 방해다.
+        */}
+        {owned.length === 0 ? (
+          <p className="draft-intro">
+            <TermText text="**증강**은 이 판의 규칙을 바꿉니다. 고른 것은 판이 끝날 때까지 따라오고, 상대가 무엇을 골랐는지는 대개 보이지 않습니다." />
+          </p>
+        ) : null}
+        <p className="draft-howto">
+          카드의 <b>자세히 ▾</b>를 누르면 원문 설명이 열립니다
+          <span className="draft-howto-key"> · Shift를 누르고 있으면 전부 펼쳐집니다</span>
+        </p>
         {/* 지금까지 고른 증강 — 새 증강은 기존 증강과 맞물릴 때 값하므로, 무엇을
             들고 있는지 보이지 않으면 고를 수가 없다 (2026-08-04 사용자 요청). */}
         {owned.length > 0 ? (
@@ -17433,14 +17477,22 @@ function GameOverModal({
                   {r.isBot ? <BotArchetypeChip archetype={r.archetype} /> : null}
                 </span>
                 {/* 원점 → 우마·오카 → 최종. 세 값 모두 서버가 이미 보내 주는데(RankingEntry)
-                    예전에는 원점과 최종만 찍어서, 25000점이 왜 -5가 되는지 역산할 수 없었다. */}
+                    예전에는 원점과 최종만 찍어서, 25000점이 왜 -5가 되는지 역산할 수 없었다.
+                    ⚠ 숫자를 보여 주는 것만으로는 여전히 부족했다 (감사 §3-10): "우마"·"오카"가
+                    무엇인지 어디에도 설명이 없었다. `TermText`를 통과시켜 용어집에 이어 준다 —
+                    새 문구를 지어내지 않고 이미 있는 설명 경로에 얹는다. */}
                 <span className="rank-raw">
                   {r.rawScore.toLocaleString()}점
                   {r.uma !== 0 || r.oka !== 0 ? (
                     <span className="rank-umaoka">
-                      {r.uma !== 0 ? `우마 ${r.uma > 0 ? "+" : ""}${r.uma}` : null}
-                      {r.uma !== 0 && r.oka !== 0 ? " · " : null}
-                      {r.oka !== 0 ? `오카 ${r.oka > 0 ? "+" : ""}${r.oka}` : null}
+                      <TermText
+                        text={[
+                          r.uma !== 0 ? `우마 ${r.uma > 0 ? "+" : ""}${r.uma}` : null,
+                          r.oka !== 0 ? `오카 ${r.oka > 0 ? "+" : ""}${r.oka}` : null,
+                        ]
+                          .filter((s) => s !== null)
+                          .join(" · ")}
+                      />
                     </span>
                   ) : null}
                 </span>

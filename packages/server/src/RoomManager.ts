@@ -461,6 +461,9 @@ const HEAVY_MESSAGES: ReadonlySet<string> = new Set([
   "adminUsers",
   "adminAugmentTiers",
   "liveGames",
+  // 인증 **전에도** 받는 유일한 비싼 조회 (§3-7 도감). 목록 자체는 메모리에 있지만
+  // 상세 설명까지 담아 수십 KB를 직렬화하므로, 연타는 여기서 접는다.
+  "catalogRequest",
 ]);
 const HEAVY_WINDOW_MS = 10_000;
 const HEAVY_MAX_PER_WINDOW = 5;
@@ -1404,6 +1407,22 @@ export class RoomManager {
       // (그 토큰이 곧 이 연결의 신원이 된다).
       case "guestResume":
         return this.guestResume(conn, msg.token);
+      /*
+       * 증강 도감 — **로그인 전에도 준다** (감사 §3-7).
+       *
+       * 랜딩의 "📖 증강 도감 열기"는 인증과 무관하게 렌더되는데 카탈로그는 인증
+       * 뒤에만 갔다. 그래서 이 게임의 유일한 차별점을 보러 온 사람이 "0/0종 ·
+       * 증강이 없습니다"를 봤다. 감출 것이 없는 정보다 — 랜딩이 종수를 광고하고,
+       * 판에 들어가면 어차피 전부 받는다.
+       *
+       * 인증 게이트 뒤의 `heavyLimited`가 여기까지 오지 않으므로 직접 건다.
+       */
+      case "catalogRequest": {
+        if (this.heavyLimited(conn, msg.type)) {
+          return this.fail(conn, "RATE_LIMITED", "조회가 너무 잦습니다. 잠시 후 다시 시도하세요");
+        }
+        return this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+      }
       default:
         break;
     }
