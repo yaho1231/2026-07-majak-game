@@ -87,3 +87,53 @@ describe("배급이 봇의 판단보다 앞이다", () => {
     expect(await bot.decide({ player: "p1", options: [win, discard(1)] })).toEqual(win);
   });
 });
+
+describe("판 세워 두기 (setTutorialHold)", () => {
+  const view = {
+    playerId: "p1",
+    tiles: { 1: { id: 1, ...tiles[1] }, 2: { id: 2, ...tiles[2] } },
+    zones: {},
+    players: [],
+    round: {},
+    augmentView: {},
+    scoringOptions: {},
+  } as unknown as PlayerView;
+
+  const newBot = (): BotAgent => {
+    const bot = new BotAgent("p1", "Bot_p1", 7);
+    bot.sendView(view);
+    return bot;
+  };
+
+  it("세워 두라고 하는 동안에는 답을 내지 않는다", async () => {
+    // 이게 없으면 배우는 사람이 한 문단을 읽는 사이 판이 두세 순 지나간다
+    // (`RoomManager.TUTORIAL_HOLD_NOTE`).
+    const bot = newBot();
+    let holding = true;
+    bot.setTutorialHold(() => holding);
+    bot.setTutorialFeed(() => new Set(["pin7"]));
+
+    let answered = false;
+    const decision = bot.decide({ player: "p1", options: [discard(1)] }).then((o) => {
+      answered = true;
+      return o;
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(answered, "세워 둔 동안 답이 나갔다").toBe(false);
+
+    holding = false;
+    expect(await decision).toEqual(discard(1));
+  });
+
+  it("풀어 주면 곧바로 이어서 둔다", async () => {
+    const bot = newBot();
+    bot.setTutorialHold(() => false);
+    expect(await bot.decide({ player: "p1", options: [discard(1)] })).toBeDefined();
+  });
+
+  it("손잡이를 안 꽂은 봇(=실대국 전부)은 기다리지 않는다", async () => {
+    const bot = newBot();
+    bot.setTutorialFeed(() => new Set(["pin7"]));
+    expect(await bot.decide({ player: "p1", options: [discard(1)] })).toEqual(discard(1));
+  });
+});

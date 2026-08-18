@@ -82,6 +82,7 @@ import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
 import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent, placeBubble } from "./tutorial.js";
+import { DRAWN_TILE } from "./tutorial.js";
 import type { BubbleSpot, CoachCtx, CoachRect, Lesson, LessonLock } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
 import { groupWinHand, shapeGroupLabel } from "./winShapeView.js";
@@ -3247,6 +3248,14 @@ export function App(): JSX.Element {
     ws.addEventListener("open", () => {
       setConnection("connected");
       reconnectAttemptsRef.current = 0;
+      /*
+       * 새 소켓에는 **판을 세워 두라는 신호가 남아 있지 않다** (`tutorialHold`는
+       * 재전송 큐에 담지 않는다 — `resendPolicy.ts`). 보낸 적 있다는 기억만 남으면
+       * 다시는 안 보내게 되므로, 여기서 그 기억을 지운다. 말풍선이 아직 떠 있으면
+       * 코치가 곧바로 다시 알린다(`cbCoachHold`의 이펙트가 매 강의마다 부른다).
+       */
+      coachHoldSent.current = false;
+      if (coachHoldWanted.current) send({ type: "tutorialHold", hold: true });
       const token = safeStorage.getItem(SESSION_KEY);
       // 토큰은 **그걸 발급한 서버에만** 되돌려 보낸다.
       //
@@ -5089,6 +5098,41 @@ export function App(): JSX.Element {
   const myRiichiDeclared =
     view !== null && view.round.byPlayer[view.playerId]?.riichiDeclared === true;
   const cbCoachLock = useStableFn((lock: LessonLock | null) => setCoachLock(lock));
+  /**
+   * 말풍선이 떠 있는 동안 서버에 "기다려 달라"고 알린다
+   * (`RoomManager.TUTORIAL_HOLD_NOTE`). **바뀔 때만** 보낸다 — 강의는 매 프레임
+   * 다시 판정되므로 그대로 흘려보내면 같은 말을 초당 몇 번씩 하게 된다.
+   *
+   * **놓아 주는 쪽만 조금 늦춘다.** 강의 하나가 물러나고 다음 강의를 집기까지는
+   * 한 프레임이 비는데, 그 틈에 "이제 둬도 된다"를 보내면 봇이 그 순간을 비집고
+   * 한 수를 둔다. 열몇 개의 강의를 지나는 동안 그 틈이 쌓여, 아직 화면 도구를
+   * 절반도 안 짚었는데 국이 끝나 있었다(2026-08-18 실측). 잡는 것은 즉시,
+   * 놓는 것은 잠깐 두고 본다 — 그 사이에 다음 강의가 서면 아예 안 놓는다.
+   */
+  const coachHoldSent = useRef(false);
+  /** 코치가 **원하는** 값 (보낸 값이 아니라) — 재접속 직후 다시 알릴 때 쓴다 */
+  const coachHoldWanted = useRef(false);
+  const coachHoldRelease = useRef<number | null>(null);
+  const cbCoachHold = useStableFn((holding: boolean) => {
+    coachHoldWanted.current = holding;
+    if (coachHoldRelease.current !== null) {
+      window.clearTimeout(coachHoldRelease.current);
+      coachHoldRelease.current = null;
+    }
+    const push = (v: boolean): void => {
+      if (coachHoldSent.current === v) return;
+      coachHoldSent.current = v;
+      send({ type: "tutorialHold", hold: v });
+    };
+    if (holding) {
+      push(true);
+      return;
+    }
+    coachHoldRelease.current = window.setTimeout(() => {
+      coachHoldRelease.current = null;
+      push(false);
+    }, COACH_HOLD_RELEASE_MS);
+  });
 
   const lastRoomCode = safeStorage.getItem(LAST_ROOM_KEY);
 
@@ -5385,9 +5429,11 @@ export function App(): JSX.Element {
           // 도감·규칙이 판을 덮는 동안은 그림만 걷는다 (컴포넌트 주석 참고)
           hidden={helpOpen || codexOpen}
           onLock={cbCoachLock}
+          onHold={cbCoachHold}
           onFinish={() => {
             setCoachOn(false);
             setCoachLock(null);
+            cbCoachHold(false);
             tutorialDone.current = true;
             safeStorage.setItem(TUTORIAL_KEY, "1");
           }}
@@ -5742,8 +5788,14 @@ const CoachLockContext = createContext<LessonLock | null>(null);
  * `augment` 잠금은 버리기까지 막는다: 증강을 쓰기 전에 버려 버리면 그 순이 그냥
  * 지나가고, 다시 그 자리를 만들 방법이 없다.
  */
-function coachBlocks(lock: LessonLock | null, kind: TileKind | undefined): boolean {
+function coachBlocks(
+  lock: LessonLock | null,
+  kind: TileKind | undefined,
+  isDrawn: boolean,
+): boolean {
   if (lock === null) return false;
+  // "방금 가져온 그 한 장"은 종류가 아니라 자리로 지목한다 (`DRAWN_TILE`)
+  if (lock.kind === DRAWN_TILE) return !isDrawn;
   return kind === undefined || kindKey(kind) !== lock.kind;
 }
 
@@ -5756,15 +5808,21 @@ function coachBlocks(lock: LessonLock | null, kind: TileKind | undefined): boole
  * 사라진 채로 강의만 남는다. 배우는 사람 입장에서는 시킨 대로 눌렀는데 엉뚱한 일이
  * 일어난 것이라 더 나쁘다.
  */
-function coachBlocksDiscard(lock: LessonLock | null, kind: TileKind | undefined): boolean {
+function coachBlocksDiscard(
+  lock: LessonLock | null,
+  kind: TileKind | undefined,
+  isDrawn: boolean,
+): boolean {
   if (lock === null) return false;
-  return lock.how === "augment" || coachBlocks(lock, kind);
+  return lock.how === "augment" || coachBlocks(lock, kind, isDrawn);
 }
 
 /** 잠긴 패를 눌렀을 때 알려 줄 말 — 왜 안 눌리는지가 화면 어디에도 없으면 고장으로 읽힌다 */
 function coachBlockHint(lock: LessonLock): string {
   return lock.how === "discard"
-    ? "튜토리얼 — 지금은 빛나는 패만 버릴 수 있습니다"
+    ? lock.kind === DRAWN_TILE
+      ? "튜토리얼 — 방금 가져온 패(오른쪽 끝)를 버려야 합니다"
+      : "튜토리얼 — 지금은 빛나는 패만 버릴 수 있습니다"
     : "튜토리얼 — 먼저 «✦ 액티브 증강»을 누르고 그 패를 고르세요";
 }
 
@@ -5805,6 +5863,30 @@ const ACTION_BAR_RESERVE = 100;
 
 /** 강조 링·딤 구멍이 가리키는 것보다 얼마나 넉넉한가 (레이아웃 px) */
 const RING_PAD = 6;
+
+/**
+ * 강의와 강의 **사이**에 판을 놓아 주기까지의 여유 (ms).
+ * 다음 강의가 이 안에 서면 판은 계속 멈춰 있는다 (`cbCoachHold` 주석).
+ */
+const COACH_HOLD_RELEASE_MS = 450;
+
+/**
+ * 두 자리가 **눈에 같은가**. 매 프레임 재는 값이라 이 비교가 곧 리렌더 차단막이다
+ * (§강조 링은 매 프레임). 반 픽셀 미만의 흔들림은 화면에서 구별되지 않으므로 같다고 본다.
+ */
+function sameRect(a: CoachRect | null, b: CoachRect | null): boolean {
+  if (a === null || b === null) return a === b;
+  const near = (x: number, y: number): boolean => Math.abs(x - y) < 0.5;
+  return near(a.top, b.top) && near(a.left, b.left) && near(a.w, b.w) && near(a.h, b.h);
+}
+
+/** 말풍선 자리도 같은 이유로 비교한다 — `top`/`bottom` 중 무엇을 쓰는지까지 봐야 한다. */
+function sameSpot(a: BubbleSpot | null, b: BubbleSpot | null): boolean {
+  if (a === null || b === null) return a === b;
+  const near = (x: number | undefined, y: number | undefined): boolean =>
+    x === undefined || y === undefined ? x === y : Math.abs(x - y) < 0.5;
+  return near(a.top, b.top) && near(a.bottom, b.bottom) && near(a.left, b.left);
+}
 
 /**
  * 말풍선이 **덮으면 안 되는** 자리 — 내 손패 줄과 그 위 액션 바.
@@ -5875,12 +5957,23 @@ function TutorialCoach(props: {
    * 강의가 바뀔 때마다 부른다: 잠금은 **그 강의가 떠 있는 동안만** 살아야 한다.
    */
   onLock: (lock: LessonLock | null) => void;
+  /**
+   * 지금 말풍선을 띄우고 있는가 — 서버가 이걸 보고 **봇을 세워 둔다**
+   * (`RoomManager.TUTORIAL_HOLD_NOTE`). 설명을 읽는 동안 판이 저 혼자 지나가면
+   * 가리키던 것이 화면에서 사라진다.
+   */
+  onHold: (holding: boolean) => void;
   /** 끝까지 봤거나 사용자가 그만 보기를 눌렀다 */
   onFinish: () => void;
 }): JSX.Element | null {
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set<string>());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [ring, setRing] = useState<CoachRect | null>(null);
+  /**
+   * 방금 잰 강조 자리 — 매 프레임 도는 측정이 **직전 값과 비교**할 자리다.
+   * state만으로는 그 비교를 못 한다(같은 프레임 안에서는 아직 옛 값이다).
+   */
+  const ringRef = useRef<CoachRect | null>(null);
   /** 말풍선이 앉을 자리 (`placeBubble`이 정한다). 아직 못 쟀으면 null. */
   const [spot, setSpot] = useState<BubbleSpot | null>(null);
   const bubbleRef = useRef<HTMLDivElement | null>(null);
@@ -5940,6 +6033,20 @@ function TutorialCoach(props: {
   }, [onLock, lock]);
 
   /*
+   * 말풍선이 떠 있는 동안 **판을 세워 둔다** (`RoomManager.TUTORIAL_HOLD_NOTE`).
+   *
+   * `props.hidden`(도감·규칙이 덮은 상태)에도 세워 둔 채로 둔다 — 도감을 열어 보라고
+   * 해 놓고 그 사이에 판이 세 순 지나가면 닫고 돌아왔을 때 다른 판이다.
+   * 강의가 없을 때만 놓아 준다: 그때가 곧 "다음 일이 일어나도 되는 순간"이다.
+   */
+  const { onHold } = props;
+  const holding = active !== null;
+  useEffect(() => {
+    onHold(holding);
+    return () => onHold(false);
+  }, [onHold, holding]);
+
+  /*
    * 읽던 강의를 밀어내고 끼어드는 강의 — 지금 화면에서 벌어지는 일이 먼저다.
    *
    * 밀려난 강의는 **`seen`에 넣지 않는다.** 기회가 지나가면 픽커가 다시 집어
@@ -5962,46 +6069,71 @@ function TutorialCoach(props: {
     return () => window.clearInterval(timer);
   }, [watching]);
 
-  /*
-   * 강조 링과 말풍선의 자리. 손패 레일도 액션 바도 애니메이션으로 움직이므로 한 번
-   * 재고 마는 것으로는 곧 어긋난다 — 강의가 떠 있는 동안만 짧은 주기로 다시 잰다
-   * (리스너를 늘리는 것보다 이쪽이 단순하고, 안 뜰 때는 아무것도 안 돈다).
-   *
-   * `useLayoutEffect`인 이유: 말풍선 크기를 재서 자리를 정하는데, 그리고 나서
-   * 재면 한 프레임 동안 엉뚱한 자리에 떴다가 옮겨 간다(눈에 띈다). 그리기 전에
-   * 재고 옮겨 놓는다.
-   */
   const anchor = props.hidden ? undefined : active?.anchor;
   const shown = active !== null && !props.hidden;
+
+  /*
+   * 강조 링은 **매 프레임** 다시 잰다.
+   *
+   * 예전에는 160ms 주기였는데, 가리키는 것이 손가락을 따라 움직일 때 그 간격이
+   * 그대로 눈에 띈다 — 패를 끌어 버리는 동안 노란 테두리가 한 박자 늦게 쫓아왔다
+   * (2026-08-18 사용자 지적). 애니메이션을 쫓아가는 값은 애니메이션과 같은 리듬으로
+   * 재야 한다.
+   *
+   * 값이 **변했을 때만** state에 넣는다. 안 그러면 가만히 있는 강의가 초당 60번
+   * 리렌더를 일으켜, 판 전체(패 150~250장)가 그 장단에 맞춰 다시 그려진다.
+   * 탭이 가려지면 rAF 자체가 멈추므로 배경에서는 아무것도 안 돈다.
+   */
   useLayoutEffect(() => {
     if (!shown) {
+      ringRef.current = null;
       setRing(null);
       return;
     }
-    const measure = (): void => {
+    let raf = 0;
+    const track = (): void => {
       /*
        * 강조는 가리키는 것보다 **조금 크게** 잡는다(RING_PAD). 딤에 뚫는 구멍이
        * 요소에 딱 맞으면 테두리가 대상의 가장자리를 물어 잘려 보인다 — 손패 한 장처럼
        * 작은 것을 가리킬 때 특히 그렇다.
        */
       const next = anchor === undefined ? null : rectOf(anchor, RING_PAD);
-      setRing(next);
+      if (!sameRect(ringRef.current, next)) {
+        ringRef.current = next;
+        setRing(next);
+      }
+      raf = requestAnimationFrame(track);
+    };
+    track();
+    return () => cancelAnimationFrame(raf);
+  }, [anchor, shown]);
+
+  /*
+   * 말풍선의 자리. **링과 달리 매 프레임 옮기지 않는다** — 링이 손가락을 따라가는
+   * 동안 글까지 같이 쫓아다니면 읽던 문장이 도망간다. 짧은 주기면 충분하다.
+   *
+   * `useLayoutEffect`인 이유: 말풍선 크기를 재서 자리를 정하는데, 그리고 나서
+   * 재면 한 프레임 동안 엉뚱한 자리에 떴다가 옮겨 간다(눈에 띈다). 그리기 전에
+   * 재고 옮겨 놓는다.
+   */
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const place = (): void => {
       const el = bubbleRef.current;
       if (el === null) return;
       const b = el.getBoundingClientRect();
-      setSpot(
-        placeBubble(
-          next,
-          { w: toLayoutPx(b.width), h: toLayoutPx(b.height) },
-          layoutViewport(),
-          keepClearRects(),
-        ),
+      const next = placeBubble(
+        ringRef.current,
+        { w: toLayoutPx(b.width), h: toLayoutPx(b.height) },
+        layoutViewport(),
+        keepClearRects(),
       );
+      setSpot((prev) => (sameSpot(prev, next) ? prev : next));
     };
-    measure();
-    const timer = window.setInterval(measure, 160);
+    place();
+    const timer = window.setInterval(place, 160);
     return () => window.clearInterval(timer);
-  }, [anchor, shown, active?.id]);
+  }, [shown, active?.id]);
 
   if (active === null || props.hidden) return null;
 
@@ -6020,26 +6152,27 @@ function TutorialCoach(props: {
        * 남고 바깥이 전부 덮인다. 덮개를 네 조각(위·아래·좌·우)으로 붙이는 방법도
        * 있지만 그러면 이동할 때 네 조각이 따로 움직여 이음매가 번쩍인다.
        *
-       * 가리킬 것이 없는 강의(인사말·마무리)에서는 그냥 전체를 덮는다.
+       * **가리킬 것이 없으면 딤도 없다.** 처음에는 그런 강의(인사말·리치 대기·마무리)도
+       * 화면 전체를 덮었는데, 그건 집중시키는 것이 아니라 그냥 판을 못 보게 하는 것이다
+       * — 어두워졌는데 밝은 구멍이 없으니 눈이 갈 곳이 없다(2026-08-18 사용자 지적:
+       * "항상 딤을 넣는게 아니라 강조하고싶은게 있을때"). 그런 강의는 말풍선만 뜬다.
        *
        * ⚠ 클릭은 한 톨도 먹지 않는다 — `.coach-layer`가 `pointer-events: none`이고
        * 이 요소는 그것을 물려받는다. "이 패를 누르세요"라고 해 놓고 그 패를 못 누르게
        * 만드는 것만큼 나쁜 안내가 없다.
        */}
-      <div
-        className={ring === null ? "coach-scrim coach-scrim-full" : "coach-scrim"}
-        aria-hidden="true"
-        style={
-          ring === null
-            ? undefined
-            : { top: ring.top, left: ring.left, width: ring.w, height: ring.h }
-        }
-      />
       {ring !== null ? (
-        <div
-          className="coach-ring"
-          style={{ top: ring.top, left: ring.left, width: ring.w, height: ring.h }}
-        />
+        <>
+          <div
+            className="coach-scrim"
+            aria-hidden="true"
+            style={{ top: ring.top, left: ring.left, width: ring.w, height: ring.h }}
+          />
+          <div
+            className="coach-ring"
+            style={{ top: ring.top, left: ring.left, width: ring.w, height: ring.h }}
+          />
+        </>
       ) : null}
       {/* 자리를 재기 전(첫 렌더)에는 위쪽 띠 가운데에 둔다 — 레이아웃 이펙트가
           그리기 전에 옮기므로 이 값이 화면에 보이는 일은 없다. */}
@@ -14276,7 +14409,7 @@ function OwnArea(props: {
    * 튜토리얼 대본이 지목한 패 (`CoachLockContext`) — 없으면 null(평소).
    * 있으면 그 패 말고는 클릭도 드래그도 받지 않는다.
    */
-  const coachLock = useContext(CoachLockContext);
+  const coachLockRaw = useContext(CoachLockContext);
 
   /*
    * 보조기술에 **차례를 알린다** (감사 §6-3).
@@ -14449,6 +14582,28 @@ function OwnArea(props: {
 
   // 무장 무효화(프롬프트 변경)·swap3 상태 정리는 SelectionContext(GameTable)가 소유한다.
   // armed 액션이 사라지면 손패 국지 상태(armSub)만 여기서 함께 정리한다.
+  /*
+   * **잠금은 지킬 수 있을 때만 건다.**
+   *
+   * "방금 가져온 패로 리치를 거세요"(`DRAWN_TILE`)는 그 패가 실제로 낼 수 있는
+   * 수일 때만 뜻이 있다. 가져온 패가 손을 좋게 만들어 그 패로는 리치를 못 거는 순도
+   * 있는데, 그때까지 잠가 두면 **아무 패도 안 눌리는 판**이 된다 — 안내가 아니라
+   * 함정이다(2026-08-18 실측). 그런 순에는 조용히 잠금을 놓는다.
+   *
+   * 판정은 화면과 같은 기준으로 한다: 리치 모드면 리치 후보인가, 아니면 버릴 수 있는가.
+   */
+  const coachLock = useMemo(() => {
+    if (coachLockRaw === null || coachLockRaw.kind !== DRAWN_TILE) return coachLockRaw;
+    if (drawnId === null || !hasDrawn) return null;
+    const opts = optionsByTile.get(drawnId) ?? [];
+    const usable = opts.some((o) =>
+      props.riichiMode
+        ? o.type === "riichi"
+        : o.type === "discard" || o.type === "free_discard",
+    );
+    return usable ? coachLockRaw : null;
+  }, [coachLockRaw, drawnId, hasDrawn, optionsByTile, props.riichiMode]);
+
   useEffect(() => {
     if (armedAug === null) setArmSub(null);
   }, [armedAug]);
@@ -14790,7 +14945,7 @@ function OwnArea(props: {
      * 클릭만 막으면 잠금이 반쪽이 된다 — 이 판은 드래그로도, 단축키로도 버릴 수 있다.
      * 여기 한 곳이면 드롭존 표시(`canDropDiscard`)까지 함께 꺼진다.
      */
-    if (coachBlocksDiscard(coachLock, view.tiles[id]?.kind)) return undefined;
+    if (coachBlocksDiscard(coachLock, view.tiles[id]?.kind, id === drawnId)) return undefined;
     // 오픈 리치·스텔스 리치 등으로 무장한 동안에는 그 액션이 곧 '이 패를 버리는' 수단이다
     if (armedAug !== null) {
       return DRAG_DISCARD_ARM_TYPES.has(armedAug)
@@ -15236,7 +15391,11 @@ function OwnArea(props: {
              * 튜토리얼 대본이 이 패를 막고 있는가 (`CoachLockContext`).
              * 코치가 꺼져 있으면 언제나 false라 실대국 판정은 종전과 같다.
              */
-            const coachLocked = coachBlocks(coachLock, view.tiles[id]?.kind);
+            const coachLocked = coachBlocks(
+              coachLock,
+              view.tiles[id]?.kind,
+              hasDrawn && id === drawnId,
+            );
             // 무장 대상도 '지금 누를 수 있는 패'다 — 커서·hover 들림을 함께 준다
             const clickable =
               !coachLocked &&

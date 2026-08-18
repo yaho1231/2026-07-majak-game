@@ -42,6 +42,17 @@
  * 묶음이 열린다. 판이 실제로 움직여야 다음 이야기가 나오므로 "해 보고 → 배우고"의
  * 리듬이 생기고, 판이 빨리 끝나도 남은 강의가 뒤를 막지 않는다(안 나올 뿐이다).
  *
+ * ## 판이 코치를 기다린다
+ *
+ * 반대 방향의 문제도 있었다. 코치가 "증강 이름을 눌러 고정해 보세요"라고 말하는
+ * 사이에도 봇 셋은 제 차례가 오면 패를 버린다 — 한 문단을 읽는 동안 판이 두세 순
+ * 지나가고, 가리키던 것이 화면에서 사라지기까지 했다(2026-08-18 사용자 보고).
+ *
+ * 그래서 말풍선이 떠 있는 동안에는 **서버가 봇을 세워 둔다**(`onHold` →
+ * `RoomManager.TUTORIAL_HOLD_NOTE`). 튜토리얼에서는 화면이 먼저고 판이 뒤다.
+ * 덕분에 리치를 걸고 기다리는 동안 화면 도구를 전부 짚을 수 있게 됐고,
+ * 그 사이 봇이 오름패를 쏴 버려 강의가 통째로 건너뛰어지는 일도 없어졌다.
+ *
  * ## 기회 목록 안의 **대본** — 지목하고, 잠근다
  *
  * 기회 목록이라고 해서 문장까지 두루뭉술할 이유는 없다. "필요 없는 패를 버리세요"는
@@ -125,7 +136,10 @@ export interface CoachCtx {
  * 물러나면서 함께 풀리므로, 안내가 감옥이 되는 일은 없다.
  */
 export interface LessonLock {
-  /** 누를 수 있는 유일한 패 종류 (kindKey) */
+  /**
+   * 누를 수 있는 유일한 패 종류 (kindKey). **`DRAWN_TILE`**이면 종류가 아니라
+   * "방금 가져온 그 한 장"을 뜻한다 — 종류로는 지목할 수 없는 자리가 있다.
+   */
   kind: string;
   /**
    * 무엇을 하라고 잠근 것인가.
@@ -160,6 +174,16 @@ const SCRIPT_ALCHEMY_TO = "2삭";
 
 /** 손패에서 그 종류의 패를 가리키는 선택자 (`data-kind`는 App.tsx가 붙인다) */
 const handTile = (kind: string): string => `.own-hand .hand-tile[data-kind="${kind}"]`;
+
+/**
+ * **방금 가져온 그 한 장** — 종류가 아니라 자리로 지목하는 잠금 (`LessonLock.kind`).
+ *
+ * 리치에 필요하다. 텐파이를 유지하는 패는 대개 여럿이고(대본에서는 4통·7통·그리고
+ * 가져온 패), 그중 **내 오름패를 버리면 그 국 내내 론을 못 한다**(후리텐). 코치가
+ * "가져온 패를 버리세요"라고 말해 놓고 옆의 4통이 눌리게 두면, 시킨 대로 하지 않은
+ * 사람은 아무리 기다려도 아무 일이 일어나지 않는 판에 갇힌다.
+ */
+export const DRAWN_TILE = "*drawn*";
 
 export interface Lesson {
   id: string;
@@ -220,6 +244,30 @@ function turns(view: PlayerView | null): number {
   if (view === null) return 0;
   return view.zones[discardsZone(view.playerId)]?.tileIds.length ?? 0;
 }
+
+/**
+ * **첫 패를 버려 본 뒤인가** — 판을 읽는 이야기(도라·바닥·증강 알약)를 여는 문.
+ *
+ * 판의 사실만 본다. 한때 "타패 강의를 봤는가"(`seen`)도 함께 봤는데, 그러면
+ * **«건너뛰기»로 넘긴 것**까지 버린 것으로 쳐서 아직 제 차례인 사람에게 바닥 이야기가
+ * 시작됐다(2026-08-18 실측). 본 것과 한 것은 다르다.
+ */
+const afterFirstDiscard = (c: CoachCtx): boolean => turns(c.view) >= 1;
+
+/**
+ * **손이 비는 때인가** — 화면 도구(⚙·📖·📘·배율·좌하단 토글)를 여는 문.
+ *
+ * 이것들은 몰라도 판을 둘 수 있는 이야기라, 배우는 사람이 **할 일이 없을 때** 꺼내야
+ * 한다. 리치를 걸고 나면 딱 그 자리가 생긴다 — 손이 잠겨 가져온 패가 그대로 나가므로
+ * 정말 아무것도 안 해도 된다.
+ *
+ * 첫 타패 직후에 열지 않는 이유: 그러면 도구 다섯 개가 판을 읽는 강의 넷과 한 줄로
+ * 붙어 말풍선 열 개를 연달아 닫게 된다(2026-08-18 실측). 판이 코치를 기다려 주는
+ * 만큼, 어디서 쉬어 갈지는 코치가 정해야 한다.
+ *
+ * 대본을 벗어나 리치가 안 오는 판에서는 순 수로 연다.
+ */
+const handsFree = (c: CoachCtx): boolean => c.riichiDeclared || turns(c.view) >= 3;
 
 /** 지금 무언가를 답해야 하는가 */
 const prompting = (c: CoachCtx): boolean => c.optionTypes.size > 0;
@@ -301,7 +349,11 @@ export const LESSONS: readonly Lesson[] = [
     id: "hand",
     chapter: "기본 조작",
     title: "아래 줄이 내 손패입니다",
-    body: "13장을 쥐고 시작합니다. 만·통·삭·자패 순으로 정렬되어 있고, 끌어서 순서를 바꿀 수도 있습니다.",
+    // ⚠ "끌어서 순서를 바꿀 수 있다"고만 적어 두면 **거짓말이 된다**: 자동정렬이 기본
+    // 켜짐이라, 그 상태에서 끌면 순서가 안 바뀌고 버려지기만 한다(App.tsx `OwnArea`의
+    // `autoSort` 분기). 2026-08-18 사용자 지적 — 켜져 있다는 사실부터 말하고,
+    // 순서를 손수 잡으려면 무엇을 꺼야 하는지까지 한 줄로 준다.
+    body: "13장을 쥐고 시작합니다. 지금은 «자동정렬»이 켜져 있어 만·통·삭·자패 순으로 저절로 정리됩니다 — 손수 배열을 잡고 싶으면 왼쪽 아래 «자동정렬»을 끄세요. 그때부터 끌어서 순서를 바꿀 수 있습니다.",
     anchor: ".own-hand",
     when: (c) => !c.draftOpen && handSize(c.view) >= 13,
   },
@@ -318,7 +370,19 @@ export const LESSONS: readonly Lesson[] = [
     chapter: "기본 조작",
     title: "내 차례 — 이번에는 9삭을 버립니다",
     body: "손에 안 쓰는 패가 둘 있습니다: 1삭과 9삭. 1삭은 2삭 두 장에 붙어 쓸모가 남지만, 9삭은 아무 데도 안 붙습니다. 그래서 9삭입니다.",
-    todo: "빛나는 9삭(🀙 아홉 개짜리 대나무)을 눌러 버리세요. 지금은 다른 패가 눌리지 않습니다.",
+    /*
+     * 버리는 **방법**을 여기서 처음 말한다 — 이 판은 눌러서도, 바닥으로 끌어다
+     * 놓아도 버려진다(2026-08-18 사용자 지시). 한쪽만 알려 주면 나머지 하나는
+     * 판을 다 두도록 모르는 채로 남는다.
+     *
+     * 터치 기기의 "두 번 탭"까지 적는 이유: 폰에서는 한 번 눌러도 패가 들리기만
+     * 하고 안 나간다(`tapTwiceToDiscard`는 `pointer: coarse`에서 기본 켜짐).
+     * 그 사실을 안 적으면 "눌렀는데 아무 일도 안 일어난다"가 된다 — 실제로 겪었다.
+     *
+     * ⚠ 이 줄은 **그대로 화면에 찍힌다.** 말풍선은 마크다운을 해석하지 않으므로
+     * `**굵게**`라고 쓰면 별표가 그대로 보인다(2026-08-18 실측).
+     */
+    todo: "빛나는 9삭(대나무 아홉 개)을 눌러서 버리거나, 바닥으로 끌어다 놓으세요. 폰·태블릿에서는 한 번 눌러 들어 올린 뒤 한 번 더 눌러야 나갑니다.",
     anchor: handTile(SCRIPT_DISCARD),
     lock: { kind: SCRIPT_DISCARD, how: "discard" },
     when: (c) => myTurn(c) && c.handKinds.has(SCRIPT_DISCARD) && turns(c.view) === 0,
@@ -335,7 +399,15 @@ export const LESSONS: readonly Lesson[] = [
     body: "오른쪽 끝에 방금 가져온 패가 떨어져 붙어 있습니다. 이걸 반복하며 손을 완성해 갑니다.",
     todo: "필요 없는 패를 눌러 버리세요.",
     anchor: ".own-hand",
-    when: (c) => myTurn(c) && !(c.handKinds.has(SCRIPT_DISCARD) && turns(c.view) === 0),
+    /*
+     * 리치를 건 뒤에는 꺼내지 않는다. 그때도 매 순 버리기는 하지만 고를 것이 없다
+     * (가져온 패가 그대로 나간다) — "필요 없는 패를 눌러 버리세요"는 손이 잠긴
+     * 사람에게 할 말이 아니다(2026-08-18 실측: 리치 대기 중에 이 안내가 떴다).
+     */
+    when: (c) =>
+      myTurn(c) &&
+      !c.riichiDeclared &&
+      !(c.handKinds.has(SCRIPT_DISCARD) && turns(c.view) === 0),
     done: (c) => !myTurn(c),
   },
 
@@ -425,6 +497,9 @@ export const LESSONS: readonly Lesson[] = [
     body: "한 장만 더 맞으면 완성이라는 뜻입니다. 리치는 1000점을 걸고 점수를 크게 올립니다. 대신 손이 잠겨, 이후에는 가져온 패를 그대로 버리게 됩니다.",
     todo: "«리치»를 누른 뒤, 오른쪽 끝에 떨어져 있는 방금 가져온 패를 누르세요.",
     anchor: ".act-riichi",
+    // 가져온 패 말고는 못 버리게 한다 — 옆의 4통·7통을 버리면 텐파이는 유지되지만
+    // 그게 곧 내 오름패라 후리텐이 된다(`DRAWN_TILE` 주석).
+    lock: { kind: DRAWN_TILE, how: "discard" },
     when: (c) => c.optionTypes.has("riichi"),
     done: (c) => c.riichiDeclared || !c.optionTypes.has("riichi"),
   },
@@ -464,7 +539,7 @@ export const LESSONS: readonly Lesson[] = [
     title: "버린 패는 가운데 바닥에 쌓입니다",
     body: "누가 무엇을 버렸는지가 전부 남습니다. 패 오른쪽 아래 동그라미는 쯔모기리(가져와서 그대로 버린 패)이고, 점선은 그 패가 어디서 왔는지 알려 줍니다.",
     anchor: ".river-bottom",
-    when: (c) => !c.draftOpen && turns(c.view) >= 1,
+    when: (c) => !c.draftOpen && afterFirstDiscard(c),
   },
 
   // ─────────── 증강 읽기 — 이 게임의 정체 ───────────
@@ -475,7 +550,7 @@ export const LESSONS: readonly Lesson[] = [
     body: "지금 내가 가진 증강입니다. 상대 이름표에도 그 사람이 공개한 증강이 같은 모양으로 붙습니다.",
     todo: "증강 이름에 마우스를 올려 설명을 띄워 보세요.",
     anchor: ".own-top-main .np-augs",
-    when: (c) => !c.draftOpen && c.hit(MY_PILLS) && turns(c.view) >= 1,
+    when: (c) => !c.draftOpen && c.hit(MY_PILLS) && afterFirstDiscard(c),
     done: (c) => c.hit(MY_TIP),
   },
   {
@@ -485,7 +560,7 @@ export const LESSONS: readonly Lesson[] = [
     body: "마우스를 떼면 설명이 사라져서, 읽는 동안에는 판을 못 봅니다. 눌러서 고정하면 둘을 나란히 볼 수 있어요. 여러 개를 동시에 고정할 수 있고, 다시 누르거나 Esc를 누르면 풀립니다.",
     todo: "증강 이름을 한 번 눌러 설명을 고정해 보세요 (📌 표시가 붙습니다).",
     anchor: ".own-top-main .np-augs",
-    when: (c) => !c.draftOpen && c.hit(MY_PILLS) && turns(c.view) >= 1,
+    when: (c) => !c.draftOpen && c.hit(MY_PILLS) && afterFirstDiscard(c),
     done: (c) => c.hit(".aug-pill-pinned"),
   },
   {
@@ -546,7 +621,7 @@ export const LESSONS: readonly Lesson[] = [
     title: "상대 이름표의 표식도 읽어 두세요",
     body: "🔒은 상대의 무장해제로 이번 국만 잠긴 것, 🕐N국은 쿨다운, ♻는 재장전, 🎲는 주사위로 얻은 증강입니다. 🎯 퀘스트 증강은 게이지가 조건 진행도예요.",
     anchor: ".nameplate",
-    when: (c) => !c.draftOpen && turns(c.view) >= 3,
+    when: (c) => !c.draftOpen && handsFree(c),
   },
 
   // ─────────── 화면 도구 ───────────
@@ -570,7 +645,7 @@ export const LESSONS: readonly Lesson[] = [
     // (`uiScale.ts`), 즉 둘은 서로 먹히는 게 아니라 각자 따로 듣는다.
     todo: "+ 나 − 를 눌러 보세요. ⌥(Alt) + − / + 로도 되고, 그래도 안 되면 브라우저 확대 Ctrl(⌘) + − / + 를 쓰세요.",
     anchor: ".ui-zoom",
-    when: (c) => !c.draftOpen && c.hit(".ui-zoom") && turns(c.view) >= 2,
+    when: (c) => !c.draftOpen && c.hit(".ui-zoom") && handsFree(c),
     // 실제로 배율을 바꿨는가 = 가운데 % 버튼이 **눌리는 상태가 되었는가**. 그 버튼은
     // 100%일 때만 disabled다(App.tsx `ScaleControl`) — 새 표식을 붙이지 않고 이미
     // 화면에 있는 진실을 읽는다(§판정은 전부 화면에서 온다).
@@ -581,10 +656,10 @@ export const LESSONS: readonly Lesson[] = [
     chapter: "화면 도구",
     // 종 수를 적지 않는다 — 서버마다 다르고(도감이 직접 세어 보여 준다) 늘 때마다 낡는다.
     title: "📖 증강 도감 — 있는 증강 전부",
-    body: "상대가 방금 공개한 증강이 무엇인지 궁금할 때 판 위에서 바로 열 수 있습니다. 여는 동안에도 게임은 그대로 진행됩니다.",
+    body: "상대가 방금 공개한 증강이 무엇인지 궁금할 때 판 위에서 바로 열 수 있습니다. 실제 대국에서는 여는 동안에도 판이 그대로 진행되지만, 튜토리얼에서는 다 볼 때까지 기다려 줍니다.",
     todo: "오른쪽 위 📖를 눌러 열어 보세요 (닫으면 판으로 돌아옵니다).",
     anchor: ".codex-btn",
-    when: (c) => !c.draftOpen && turns(c.view) >= 2,
+    when: (c) => !c.draftOpen && handsFree(c),
     done: (c) => c.overlay === "codex",
   },
   {
@@ -594,7 +669,7 @@ export const LESSONS: readonly Lesson[] = [
     body: "리치마작을 처음 해도 길을 잃지 않을 만큼만 적어 두었습니다. «용어» 탭에는 이 게임에 나오는 말이 전부 풀이돼 있어요.",
     todo: "오른쪽 위 📘를 눌러 열어 보세요.",
     anchor: ".help-btn",
-    when: (c) => !c.draftOpen && turns(c.view) >= 2,
+    when: (c) => !c.draftOpen && handsFree(c),
     done: (c) => c.overlay === "help",
   },
   {
@@ -619,7 +694,7 @@ export const LESSONS: readonly Lesson[] = [
     body: "«자동정렬»을 끄면 손패를 끌어 순서를 바꿀 수 있고, «후로없음»은 치·퐁 기회를 자동으로 넘깁니다. «자동화료»·«자동버림»은 대신 눌러 주는 것이라 배우는 동안에는 꺼 두세요. 좁은 화면에서는 이 줄이 손패 바로 위에 눕습니다.",
     todo: "«자동정렬»을 한 번 눌러 꺼 보세요 — 손패를 직접 끌어 옮길 수 있게 됩니다.",
     anchor: ".quick-toggles",
-    when: (c) => !c.draftOpen && c.hit(".quick-toggles") && turns(c.view) >= 2,
+    when: (c) => !c.draftOpen && c.hit(".quick-toggles") && handsFree(c),
     // 실제로 껐는가 = 그 칸의 불이 꺼졌는가. 넷 중 자동정렬만 기본이 켜짐이라
     // 이 표식(`qt-autoSort`)이 없으면 다른 칸의 꺼짐이 완료로 오인된다.
     done: (c) => c.hit(".quick-toggles .qt-autoSort:not(.qt-on)"),
@@ -633,7 +708,7 @@ export const LESSONS: readonly Lesson[] = [
     body: "자동 화료, 후로 안 하기, 효과음, 용어 설명 켜고 끄기가 전부 여기 있습니다. 맨 아래에는 게임 무효 투표도 있어요. 자동으로 대신 눌러 주는 설정들은 튜토리얼 동안만 쉽니다 — 직접 눌러 보셔야 하니까요.",
     todo: "오른쪽 위 ⚙를 눌러 열어 보세요.",
     anchor: ".settings-btn",
-    when: (c) => !c.draftOpen && turns(c.view) >= 3,
+    when: (c) => !c.draftOpen && handsFree(c),
     done: (c) => c.hit(".settings-panel"),
   },
 
@@ -652,8 +727,31 @@ export const LESSONS: readonly Lesson[] = [
     chapter: "한 판 끝내기",
     title: "화료 성공 — 여기까지가 기본입니다",
     body: "리치를 걸고 화료까지 해 보셨습니다. 나머지는 두면서 익히면 됩니다. 이 판은 계속 두셔도 되고, «🎓 튜토리얼» 버튼으로 언제든 다시 오실 수 있어요 — 로그인 화면과 홈 양쪽에 있습니다.",
-    when: (c) => c.seen.has("ron") || c.seen.has("win"),
+    when: (c) => OUTRO_NEEDS.every((id) => c.seen.has(id)) && (c.seen.has("ron") || c.seen.has("win")),
   },
+];
+
+/**
+ * 마무리 전에 **반드시 지나야 하는** 강의들.
+ *
+ * 화료만으로 끝내지 않는 이유: 대본대로 가면 리치가 둘째 순, 론이 그 직후라
+ * 화면 도구(⚙·📖·📘·좌하단 토글)를 한 번도 안 짚고 튜토리얼이 닫힌다 —
+ * 실제로 그렇게 끝났다(2026-08-18 사용자 지적: "아직 왼쪽아래 세팅들 가이드
+ * 안알려줬어"). 판이 코치를 기다려 주므로(`TUTORIAL_HOLD_NOTE`) 리치 뒤의
+ * 기다리는 시간에 이것들을 다 짚고 나서 론이 온다.
+ *
+ * 여기 담는 것은 **언제나 성립하는 강의만**이다. 후로(`call`)나 용어(`aug-terms`)처럼
+ * 기회가 안 올 수도 있는 것을 넣으면 튜토리얼이 영영 안 끝난다.
+ */
+const OUTRO_NEEDS: readonly string[] = [
+  "hand",
+  "dora",
+  "aug-pill",
+  "zoom",
+  "quick-toggles",
+  "codex",
+  "help",
+  "settings",
 ];
 
 /** 지금 꺼낼 강의 — 아직 안 본 것 중 기회가 성립하는 첫 번째 */

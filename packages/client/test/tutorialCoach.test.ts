@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { PlayerView } from "@majak/core";
-import { LESSONS, pickLesson, pickUrgent, placeBubble } from "../src/tutorial.js";
+import { DRAWN_TILE, LESSONS, pickLesson, pickUrgent, placeBubble } from "../src/tutorial.js";
 import type { CoachCtx, CoachRect } from "../src/tutorial.js";
 
 /**
@@ -142,10 +142,12 @@ describe("속도 조절 — 한 순에 두세 마디", () => {
     expect(openAtStart()).toEqual(["welcome", "hand", "dora"]);
   });
 
-  it("한 순 지나면 다음 묶음이 열린다", () => {
+  it("첫 패를 **실제로** 버리고 나서야 다음 묶음이 열린다", () => {
     expect(openAtStart({ view: viewWith(13, 1) })).toContain("river");
-    expect(openAtStart({ view: viewWith(13, 1) })).not.toContain("aug-others");
-    expect(openAtStart({ view: viewWith(13, 3) })).toContain("aug-others");
+    expect(openAtStart()).not.toContain("river");
+    // 타패 강의를 «건너뛰기»로 넘긴 것은 버린 것이 아니다 — 본 것과 한 것은 다르다
+    // (그렇게 세면 아직 제 차례인 사람에게 바닥 이야기가 시작된다).
+    expect(openAtStart({ seen: new Set(["discard-script"]) })).not.toContain("river");
   });
 
   it("증강 선택창이 떠 있는 동안에는 판 강의를 꺼내지 않는다", () => {
@@ -229,8 +231,11 @@ describe("배율 손잡이 강의", () => {
     expect(tools[0]).toBe("zoom");
   });
 
-  it("손잡이가 화면에 있을 때만, 그리고 두 순 지난 뒤에 나온다", () => {
-    expect(LESSONS.filter((l) => l.when(seeing(2))).map((l) => l.id)).toContain("zoom");
+  it("손잡이가 화면에 있을 때만, 그리고 손이 빌 때 나온다", () => {
+    // 화면 도구는 **할 일이 없을 때**의 이야기다(`handsFree`) — 리치를 걸었거나
+    // 몇 순 지난 뒤. 첫 타패 직후에 열면 말풍선 열 개가 한 줄로 붙는다.
+    const riichi = { ...seeing(1), riichiDeclared: true };
+    expect(LESSONS.filter((l) => l.when(riichi)).map((l) => l.id)).toContain("zoom");
     expect(LESSONS.filter((l) => l.when(seeing(1))).map((l) => l.id)).not.toContain("zoom");
     // 손잡이가 없는 화면에서는 없는 버튼을 가리키지 않는다
     expect(LESSONS.filter((l) => l.when(ctx({ view: viewWith(13, 4) }))).map((l) => l.id)).not.toContain("zoom");
@@ -364,10 +369,22 @@ describe("대본 강의 (`SCRIPT_NOTE`)", () => {
 
   it("잠근 강의는 잠근 그 패를 가리킨다 — 다른 것을 빛내면 안 된다", () => {
     for (const l of LESSONS.filter((x) => x.lock !== undefined)) {
+      if (l.lock!.kind === DRAWN_TILE) {
+        // 종류가 아니라 자리로 잠근 것(리치) — 먼저 눌러야 할 버튼을 가리키고,
+        // 어느 패를 버릴지는 «해 보세요»가 말한다.
+        expect(l.todo, `${l.id}: 어느 패를 버릴지 말해 줘야 한다`).toContain("가져온 패");
+        continue;
+      }
       expect(l.anchor, `${l.id}: 잠갔으면 어느 패인지도 가리켜야 한다`).toContain(
         `data-kind="${l.lock!.kind}"`,
       );
     }
+  });
+
+  it("리치는 가져온 패로만 걸게 한다 — 옆 패를 버리면 후리텐이다", () => {
+    // 텐파이를 유지하는 패는 여럿이지만 그중 내 오름패를 버리면 그 국 내내 론이
+    // 안 된다. 그러면 "이제 기다리세요"라고 해 놓고 영영 아무 일도 안 일어난다.
+    expect(lesson("riichi").lock).toEqual({ kind: DRAWN_TILE, how: "discard" });
   });
 });
 
@@ -375,8 +392,10 @@ describe("좌하단 빠른 토글 강의", () => {
   const c = (discards: number): CoachCtx =>
     ctx({ view: viewWith(13, discards), hit: onScreen(".quick-toggles") });
 
-  it("화면에 그 줄이 있을 때, 두 순 지난 뒤에 나온다", () => {
-    expect(LESSONS.filter((l) => l.when(c(2))).map((l) => l.id)).toContain("quick-toggles");
+  it("화면에 그 줄이 있을 때, 손이 빌 때 나온다", () => {
+    expect(
+      LESSONS.filter((l) => l.when({ ...c(1), riichiDeclared: true })).map((l) => l.id),
+    ).toContain("quick-toggles");
     expect(LESSONS.filter((l) => l.when(c(1))).map((l) => l.id)).not.toContain("quick-toggles");
     expect(
       LESSONS.filter((l) => l.when(ctx({ view: viewWith(13, 4) }))).map((l) => l.id),
@@ -406,12 +425,40 @@ describe("강의가 지키는 규약", () => {
     }
   });
 
-  it("마무리가 요구하는 강의는 전부 실재한다", () => {
-    // outro의 `when`은 id 문자열로 앞 강의를 참조한다 — 이름을 고치면 조용히
-    // "영영 안 끝나는 튜토리얼"이 된다. 요구 목록이 실제 id인지 확인한다.
+  it("마무리가 요구하는 강의는 전부 실재한다 — 그리고 언젠가 반드시 성립한다", () => {
+    /*
+     * outro의 `when`은 id 문자열로 앞 강의를 참조한다 — 이름을 고치면 조용히
+     * "영영 안 끝나는 튜토리얼"이 된다.
+     *
+     * 실재 여부만으로는 부족하다. 요구 목록에 **기회가 안 올 수도 있는 강의**
+     * (후로·용어처럼 판이 안 만들어 주면 안 나오는 것)를 넣으면 그것도 끝나지 않는
+     * 튜토리얼이 된다. 그래서 "늘 참인 강의"만 요구하는지까지 본다.
+     */
     const ids = new Set(LESSONS.map((l) => l.id));
     for (const id of ["ron", "win"]) expect(ids.has(id), `${id} 강의가 사라졌다`).toBe(true);
-    expect(lesson("outro").when(ctx({ seen: new Set(["ron"]) }))).toBe(true);
+
+    // 판이 몇 순 돌고 화면 도구가 다 떠 있는 상태 — 여기서 성립하지 않는 강의를
+    // 마무리가 요구하고 있으면 그 튜토리얼은 못 끝난다.
+    const late = ctx({
+      view: viewWith(13, 3),
+      hit: () => true,
+      augmentReady: true,
+      riichiDeclared: true,
+    });
+    const openLate = new Set(LESSONS.filter((l) => l.when(late)).map((l) => l.id));
+    const needed = LESSONS.filter((l) => l.id === "outro")[0]!;
+    const all = new Set(LESSONS.map((l) => l.id));
+    // 전부 봤다고 하면 마무리가 선다
+    expect(needed.when({ ...late, seen: all })).toBe(true);
+    // 화료만으로는 안 선다 (화면 도구를 안 짚고 끝나던 것이 이 조건의 이유다)
+    expect(needed.when({ ...late, seen: new Set(["ron"]) })).toBe(false);
+    // 마무리가 요구하는 것들은 이 국면에서 전부 성립한다 = 언젠가 반드시 볼 수 있다
+    for (const id of all) {
+      if (id === "outro") continue;
+      if (!needed.when({ ...late, seen: new Set([...all].filter((x) => x !== id)) })) {
+        expect(openLate.has(id), `${id}: 마무리가 요구하는데 기회가 안 올 수 있다`).toBe(true);
+      }
+    }
   });
 });
 
@@ -553,5 +600,32 @@ describe("말풍선 자리 (placeBubble)", () => {
     const box = boxOf(placeBubble(icon, small, phone, []), small, phone);
     expect(box.left).toBeGreaterThanOrEqual(0);
     expect(box.left + box.w).toBeLessThanOrEqual(phone.w);
+  });
+});
+
+describe("리치를 건 뒤에는 조용해진다", () => {
+  const ctxAfterRiichi = (over: Partial<CoachCtx> = {}): CoachCtx => ({
+    view: viewWith(13, 2),
+    optionTypes: new Set(["discard"]),
+    draftOpen: false,
+    augmentReady: false,
+    overlay: null,
+    hit: () => false,
+    handKinds: new Set<string>(),
+    riichiDeclared: true,
+    seen: new Set<string>(["welcome", "hand", "discard-script"]),
+    ...over,
+  });
+
+  it("타패 강의를 다시 꺼내지 않는다 — 고를 것이 없는 순이다", () => {
+    // 리치 중에도 매 순 버리기는 한다(쯔모기리). 그때 "필요 없는 패를 눌러
+    // 버리세요"가 뜨면 손이 잠긴 사람에게 고르라고 하는 셈이다(2026-08-18 실측).
+    expect(LESSONS.filter((l) => l.when(ctxAfterRiichi())).map((l) => l.id)).not.toContain(
+      "discard",
+    );
+    // 리치 전에는 그대로 나온다
+    expect(
+      LESSONS.filter((l) => l.when(ctxAfterRiichi({ riichiDeclared: false }))).map((l) => l.id),
+    ).toContain("discard");
   });
 });
