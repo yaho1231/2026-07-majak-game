@@ -396,12 +396,21 @@ export const LESSONS: readonly Lesson[] = [
     chapter: "증강 읽기",
     title: "⚡ 증강을 직접 써 봅시다 — 1삭을 2삭으로",
     body: `내 증강 «연금술사»는 손패 한 장의 숫자를 ±1 옮깁니다. 1삭을 ${SCRIPT_ALCHEMY_TO}으로 만들면 2삭이 세 장이 되어 한 장만 더 맞으면 완성인 손이 됩니다.`,
-    todo: "먼저 «✦ 액티브 증강»을 누르고, 빛나는 1삭을 클릭하세요.",
+    // 쓸 수 있는 액티브 증강이 둘 이상이면(시작 증강 + 이번 국에 고른 것) 버튼을 누른
+    // 뒤에 **고르는 줄이 한 번 더** 뜬다. 그 단계를 안 적어 두면 목록 앞에서 멈춘다
+    // (2026-08-18 실측 — 첫 국부터 둘인 경우가 흔하다).
+    todo: "«✦ 액티브 증강»을 누르고(목록이 뜨면 «연금술사»), 빛나는 1삭을 클릭하세요.",
     anchor: handTile(SCRIPT_ALCHEMY),
     lock: { kind: SCRIPT_ALCHEMY, how: "augment" },
     when: (c) =>
       c.augmentReady && c.handKinds.has(SCRIPT_ALCHEMY) && turns(c.view) >= 1 && !c.riichiDeclared,
-    done: (c) => !c.handKinds.has(SCRIPT_ALCHEMY),
+    /*
+     * 끝난 신호는 **보라 생성패가 생겼는가**가 먼저다. "1삭이 손에서 사라졌는가"만
+     * 보면 그 순에 1삭을 한 장 더 쯔모했을 때(실제로 일어난다) 이미 바꿔 놓고도
+     * 강의가 그대로 서 있다 — 같은 일을 또 하라는 말로 읽힌다(2026-08-18 실측).
+     * 둘째 갈래는 대본을 벗어난 경우(버렸거나 애초에 없었다)를 위한 것이다.
+     */
+    done: (c) => c.hit(".tile-conjured") || !c.handKinds.has(SCRIPT_ALCHEMY),
   },
   {
     /**

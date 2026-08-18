@@ -5747,11 +5747,25 @@ function coachBlocks(lock: LessonLock | null, kind: TileKind | undefined): boole
   return kind === undefined || kindKey(kind) !== lock.kind;
 }
 
+/**
+ * 이 패를 지금 **버릴** 수 있는가 — 클릭이든 드래그든.
+ *
+ * `augment` 잠금에서는 **지목한 그 패도 못 버린다.** 그 패는 "증강으로 바꿀 대상"이지
+ * "버릴 패"가 아니기 때문이다. 이걸 안 막아 두면 실제로 이렇게 된다(2026-08-18 실측):
+ * 증강 버튼을 누르기 전에 빛나는 패를 먼저 눌러 **그 패를 버리고**, 바꿀 대상이
+ * 사라진 채로 강의만 남는다. 배우는 사람 입장에서는 시킨 대로 눌렀는데 엉뚱한 일이
+ * 일어난 것이라 더 나쁘다.
+ */
+function coachBlocksDiscard(lock: LessonLock | null, kind: TileKind | undefined): boolean {
+  if (lock === null) return false;
+  return lock.how === "augment" || coachBlocks(lock, kind);
+}
+
 /** 잠긴 패를 눌렀을 때 알려 줄 말 — 왜 안 눌리는지가 화면 어디에도 없으면 고장으로 읽힌다 */
 function coachBlockHint(lock: LessonLock): string {
   return lock.how === "discard"
     ? "튜토리얼 — 지금은 빛나는 패만 버릴 수 있습니다"
-    : "튜토리얼 — 지금은 빛나는 패를 증강으로 바꿔 봅시다";
+    : "튜토리얼 — 먼저 «✦ 액티브 증강»을 누르고 그 패를 고르세요";
 }
 
 /**
@@ -5788,6 +5802,9 @@ function rectOf(selector: string, pad = 0): CoachRect | null {
  * 것보다 나쁘다. 실측(1280×720, 치·패스 두 칸): 바 85 + `.own-area`의 줄 간격 12.
  */
 const ACTION_BAR_RESERVE = 100;
+
+/** 강조 링·딤 구멍이 가리키는 것보다 얼마나 넉넉한가 (레이아웃 px) */
+const RING_PAD = 6;
 
 /**
  * 말풍선이 **덮으면 안 되는** 자리 — 내 손패 줄과 그 위 액션 바.
@@ -5962,7 +5979,12 @@ function TutorialCoach(props: {
       return;
     }
     const measure = (): void => {
-      const next = anchor === undefined ? null : rectOf(anchor);
+      /*
+       * 강조는 가리키는 것보다 **조금 크게** 잡는다(RING_PAD). 딤에 뚫는 구멍이
+       * 요소에 딱 맞으면 테두리가 대상의 가장자리를 물어 잘려 보인다 — 손패 한 장처럼
+       * 작은 것을 가리킬 때 특히 그렇다.
+       */
+      const next = anchor === undefined ? null : rectOf(anchor, RING_PAD);
       setRing(next);
       const el = bubbleRef.current;
       if (el === null) return;
@@ -5985,6 +6007,34 @@ function TutorialCoach(props: {
 
   return (
     <div className="coach-layer" role="dialog" aria-live="polite" aria-label="튜토리얼 안내">
+      {/*
+       * 딤 — 판 전체를 어둡게 덮되, **가리키는 것 한 자리만 뚫어 둔다**.
+       *
+       * 링만으로는 부족했다: 이 판은 열네 장의 손패 · 세 사람의 이름표 · 바닥 ·
+       * 아이콘 줄이 한 화면에 동시에 서 있어서, 금색 테두리 하나는 그 소음 속의
+       * 또 하나의 장식으로 읽힌다(2026-08-18 사용자 요청: "사용자가 확실하게
+       * 튜토리얼에 집중할 수 있게"). 어둡게 만든 판 위에 밝은 구멍이 하나 있으면
+       * 어디를 봐야 하는지가 **읽지 않아도** 보인다.
+       *
+       * 구멍은 그림자로 낸다 — 사각형 하나에 화면보다 큰 spread를 주면 그 안쪽만
+       * 남고 바깥이 전부 덮인다. 덮개를 네 조각(위·아래·좌·우)으로 붙이는 방법도
+       * 있지만 그러면 이동할 때 네 조각이 따로 움직여 이음매가 번쩍인다.
+       *
+       * 가리킬 것이 없는 강의(인사말·마무리)에서는 그냥 전체를 덮는다.
+       *
+       * ⚠ 클릭은 한 톨도 먹지 않는다 — `.coach-layer`가 `pointer-events: none`이고
+       * 이 요소는 그것을 물려받는다. "이 패를 누르세요"라고 해 놓고 그 패를 못 누르게
+       * 만드는 것만큼 나쁜 안내가 없다.
+       */}
+      <div
+        className={ring === null ? "coach-scrim coach-scrim-full" : "coach-scrim"}
+        aria-hidden="true"
+        style={
+          ring === null
+            ? undefined
+            : { top: ring.top, left: ring.left, width: ring.w, height: ring.h }
+        }
+      />
       {ring !== null ? (
         <div
           className="coach-ring"
@@ -14678,11 +14728,11 @@ function OwnArea(props: {
   function discardOptionFor(id: number | null): ActionOption | undefined {
     if (id === null) return undefined;
     /*
-     * 대본 강의가 다른 패를 막고 있으면 **끌어서도** 안 나간다.
+     * 대본 강의가 막고 있으면 **끌어서도** 안 나간다.
      * 클릭만 막으면 잠금이 반쪽이 된다 — 이 판은 드래그로도, 단축키로도 버릴 수 있다.
      * 여기 한 곳이면 드롭존 표시(`canDropDiscard`)까지 함께 꺼진다.
      */
-    if (coachBlocks(coachLock, view.tiles[id]?.kind)) return undefined;
+    if (coachBlocksDiscard(coachLock, view.tiles[id]?.kind)) return undefined;
     // 오픈 리치·스텔스 리치 등으로 무장한 동안에는 그 액션이 곧 '이 패를 버리는' 수단이다
     if (armedAug !== null) {
       return DRAG_DISCARD_ARM_TYPES.has(armedAug)
@@ -15272,6 +15322,16 @@ function OwnArea(props: {
                       sel.arm(null);
                       setArmSub(null);
                     }
+                    return;
+                  }
+                  /*
+                   * 증강으로 바꾸라고 지목해 둔 패다 — **버리기로 새지 않게** 한다.
+                   * 여기서 막지 않으면 증강 버튼을 누르기 전에 그 패를 눌러 그대로
+                   * 버려 버린다(2026-08-18 실측). 시킨 대로 눌렀는데 대본이 무너지는
+                   * 것이라, 아무 반응이 없는 것보다 나쁘다.
+                   */
+                  if (coachLock !== null && coachLock.how === "augment") {
+                    props.onToast?.(coachBlockHint(coachLock));
                     return;
                   }
                   if (clickable && active !== undefined) {

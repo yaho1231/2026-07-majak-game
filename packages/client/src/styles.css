@@ -2192,7 +2192,10 @@ button {
    물러나 있어야 어디를 눌러야 하는지가 **보인다**. 코치의 강조 링(.coach-ring)이
    그 한 장을 감싸므로 둘이 한 쌍으로 읽힌다. (App.tsx `CoachLockContext`) */
 .hand-coach-locked {
-  filter: brightness(0.5) saturate(0.5);
+  /* 딤(.coach-scrim)이 이 위를 한 번 더 덮으므로 여기서는 살짝만 물러난다 —
+     둘을 각각 세게 주면 나머지 손패가 아예 안 보여, 내가 무엇을 쥐고 있는지를
+     못 본 채로 한 장만 누르게 된다(그건 배우는 것이 아니라 시키는 대로 하는 것이다). */
+  filter: brightness(0.72) saturate(0.6);
   transition: filter 0.18s ease;
 }
 
@@ -12205,6 +12208,35 @@ body:has(.overlay) .emote-bar {
   inset: 0;
   z-index: 320;
   pointer-events: none;
+  /* 딤이 화면보다 큰 그림자로 그려지므로(.coach-scrim) 여기서 잘라 둔다 —
+     안 자르면 그 그림자만큼 문서가 넓어져 스크롤바가 생긴다. */
+  overflow: hidden;
+}
+
+/* ── 딤(스크림) — 판을 어둡게 덮고 가리키는 것 한 자리만 뚫는다 ──
+   구멍은 **화면보다 큰 spread를 가진 그림자**로 낸다. 요소 자신은 칠하지 않으므로
+   그 안쪽(=강조할 것)은 원래 밝기 그대로 남고 바깥이 전부 덮인다.
+   자세한 근거는 App.tsx의 `.coach-scrim` 주석. */
+.coach-scrim {
+  position: absolute;
+  border-radius: 16px;
+  box-shadow: 0 0 0 9999px rgba(4, 9, 7, 0.58);
+  /* 강의가 바뀌어 구멍이 옮겨 갈 때 뚝 끊기지 않게 — 자리는 매 160ms 다시 재므로
+     이 전환이 없으면 손패 애니메이션마다 구멍이 툭툭 튄다. */
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+
+/* 가리킬 것이 없는 강의(인사말·리치 대기·마무리) — 구멍 없이 통째로 덮는다.
+   말풍선 하나만 밝게 남으므로 읽는 데 방해가 없다. */
+.coach-scrim-full {
+  inset: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: rgba(4, 9, 7, 0.58);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-scrim { transition: none; }
 }
 
 /* 강조 링 — 채우지 않는다. 안을 덮으면 정작 봐야 할 것이 가려진다. */
@@ -12225,60 +12257,67 @@ body:has(.overlay) .emote-bar {
   .coach-ring { animation: none; }
 }
 
+/* 말풍선 — **읽으라고 있는 상자**다. 판 위에 얹히는 칩이나 뱃지처럼 빡빡하게
+   두면(예전 12/14px) 딤으로 판을 어둡게 만들어 놓고 정작 유일하게 밝은 것이
+   비좁아 보인다. 여백을 키우고, 딤 위에 뜨는 만큼 그림자도 깊게 준다. */
 .coach-bubble {
   position: absolute;
   pointer-events: auto;
-  width: min(420px, calc(100cqw - 32px));
-  padding: 12px 14px 11px;
-  border-radius: 14px;
-  border: 1px solid rgba(240, 200, 106, 0.45);
-  background: rgba(14, 22, 19, 0.97);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+  width: min(440px, calc(100cqw - 28px));
+  padding: 18px 20px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(240, 200, 106, 0.5);
+  background: rgba(14, 22, 19, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(4, 9, 7, 0.6),
+    0 18px 48px rgba(0, 0, 0, 0.62);
 }
 
 /* 장(章) 이름 — 제목 위 한 낱말. 진행률 막대 대신 쓴다(App.tsx 주석 참고). */
 .coach-chapter {
-  margin: 0 0 4px;
-  font-size: 10px;
+  margin: 0 0 7px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--ink-4);
   text-transform: none;
 }
 
 .coach-title {
-  margin: 0 0 5px;
-  font-size: 15px;
+  margin: 0 0 8px;
+  font-size: 16px;
   font-weight: 700;
+  line-height: 1.45;
   color: #f0c86a;
 }
 
 .coach-body {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 13.5px;
+  line-height: 1.75;
   color: var(--ink-2);
 }
 
 /* "해 보세요" 줄 — 읽고 넘기는 문장과 **눈으로** 갈려야 한다. 본문과 같은 색·
-   같은 크기로 두면 아무도 자기가 뭘 해야 하는지 모른 채 버튼만 누른다. */
+   같은 크기로 두면 아무도 자기가 뭘 해야 하는지 모른 채 버튼만 누른다.
+   딤 위에서는 이 줄이 사실상 유일한 지시문이라, 본문보다 더 넉넉히 띄운다. */
 .coach-todo {
   display: flex;
   align-items: baseline;
-  gap: 7px;
-  margin: 9px 0 0;
-  padding: 7px 9px;
-  border-radius: 9px;
-  border: 1px solid rgba(240, 200, 106, 0.3);
-  background: rgba(240, 200, 106, 0.09);
-  font-size: 12.5px;
-  line-height: 1.5;
+  gap: 9px;
+  margin: 14px 0 0;
+  padding: 11px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(240, 200, 106, 0.32);
+  background: rgba(240, 200, 106, 0.1);
+  font-size: 13px;
+  line-height: 1.65;
   color: #f4dca6;
 }
 
 .coach-todo-tag {
   flex: 0 0 auto;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: rgba(240, 200, 106, 0.9);
   color: #14100a;
@@ -12287,15 +12326,20 @@ body:has(.overlay) .emote-bar {
   white-space: nowrap;
 }
 
+/* 버튼 줄은 글에서 확실히 떨어뜨린다 — 붙어 있으면 본문의 마지막 줄로 읽힌다.
+   위에 실선을 하나 그어 "읽는 곳"과 "누르는 곳"을 나눈다. */
 .coach-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(240, 200, 106, 0.16);
 }
 
 .coach-next {
-  padding: 6px 14px;
+  min-height: 34px;
+  padding: 7px 18px;
   border: 0;
   border-radius: 999px;
   background: var(--brass);
@@ -12318,7 +12362,7 @@ body:has(.overlay) .emote-bar {
    출구가 제일 커 보이면 아무도 안내를 안 읽는다. */
 .coach-quit {
   margin-left: auto;
-  padding: 6px 8px;
+  padding: 7px 6px;
   border: 0;
   background: none;
   color: var(--ink-4);
