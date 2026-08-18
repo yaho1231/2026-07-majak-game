@@ -7779,6 +7779,9 @@ button {
   .home-logo {
     font-size: 17px;
     letter-spacing: 3px;
+    /* 375px에서 로고가 "이/능/마/작" 네 줄로 접혀 상단 바가 세 배 높이가 됐다 */
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
   .home-tagline {
     display: none;
@@ -7799,6 +7802,10 @@ button {
     padding: 7px 10px;
     white-space: nowrap;
   }
+  /* 좁은 상단 바에서는 규칙·도감을 아이콘만 남긴다 — 글자까지 두면 닉네임이 밀려
+     로고가 세로로 접힌다(375px 실측). */
+  .home-nav-link-t { display: none; }
+  .home-nav-link { padding: 7px 8px; }
 
   .home-main {
     grid-template-columns: minmax(0, 1fr);
@@ -8528,6 +8535,24 @@ button {
 
 .home-logout:hover { background: rgba(255, 255, 255, 0.12); }
 
+/* 규칙·도감 — 로그아웃과 같은 모양이지만 성격이 다르다(여는 문이지 나가는 문이 아니다).
+   글자를 황동으로 조금 띄워 둔다. */
+.home-nav-link {
+  color: var(--brass-bright);
+  border-color: var(--brass-line);
+  background: rgba(184, 151, 92, 0.1);
+}
+.home-nav-link:hover { background: rgba(184, 151, 92, 0.22); }
+
+/* ⚠ 좁은 화면용 상단 바 축소는 **여기**에 있어야 한다.
+   위쪽 `@container ui (max-width: 700px)` 블록(모바일 묶음)은 파일에서 `.home-nav`
+   기본 규칙보다 **앞**에 있어서, 같은 속성을 적으면 뒤에 오는 기본값이 이긴다
+   (실측: 375px에서 gap이 계속 12px이었다). 겹치지 않는 속성만 그쪽에서 먹는다. */
+@container ui (max-width: 700px) {
+  .home-nav { gap: 6px; padding: 10px 10px; }
+  .home-nav-link { padding: 7px 8px; }
+}
+
 /* 홈 설정 — 패널은 position:fixed(화면 기준)라 앵커가 필요 없다.
    대국·대기실과 같은 자리(오른쪽 위)에서 뜨고, 헤더를 끌어 옮길 수 있다. */
 .home-settings { position: relative; }
@@ -8605,11 +8630,80 @@ button {
 }
 .home-top-left > .home-replays .home-empty { margin: auto 0; }
 
+/* ── 홈 오른쪽 탭 ──
+
+   왼쪽 열이 짧아진 만큼(대국·친구 두 장) 오른쪽이 남는다 — 그 자리를 **한 장씩
+   갈아 끼우는 탭**이 채운다. 예전에는 카드가 세로로 계속 쌓여서 일반 유저 홈이
+   네 화면 길이였고, 오른쪽에는 그만큼의 빈칸이 남았다(2026-08-18 사용자 보고).
+
+   패널은 카드가 아니다 — 안에 든 것이 이미 카드라, 테두리를 한 겹 더 두르면
+   상자 속 상자가 된다. 대신 **격자**로 두어 짧은 카드 둘이 한 줄에 선다. */
+.home-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  /* `.home-top`은 align-items: start다(빈 카드가 늘어나지 않게). 탭 패널만은
+     예외로 늘린다 — 탭을 바꿀 때마다 상자 높이가 튀면 눌러야 할 것이 움직인다. */
+  align-self: stretch;
+}
+
+.home-tabbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.home-tab {
+  padding: 8px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: #c2d0c5;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home-tab:hover { background: rgba(255, 255, 255, 0.1); color: var(--ink-1); }
+
+.home-tab-on {
+  background: rgba(240, 200, 106, 0.16);
+  border-color: var(--brass-line);
+  color: var(--brass-bright);
+}
+
+.home-tabpanel {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 18px;
+  align-content: start;
+}
+
+.home-tabpanel > * { min-width: 0; }
+
+/* 리플레이 목록은 탭 안에서도 스스로 상한을 갖는다 — 판이 쌓여도 탭이 안 길어진다. */
+.home-tabpanel .home-replays .replay-list {
+  min-height: 90px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+/* 계정 카드는 입력칸 세 줄이 전부다 — 폭을 다 주면 비밀번호 칸이 화면을 가로지른다. */
+.home-tabpanel .home-account { max-width: 520px; }
+
 @container ui (max-width: 900px) {
   .home-top {
     grid-template-columns: 1fr;
   }
   .home-top-left > .home-replays .replay-list { max-height: 320px; }
+  /* 좁은 화면에서는 한 줄에 한 장 — 290px 두 장을 억지로 끼우면 표가 무너진다. */
+  .home-tabpanel { grid-template-columns: 1fr; }
+  .home-tabpanel .home-account { max-width: none; }
 }
 
 .home-card h2 {

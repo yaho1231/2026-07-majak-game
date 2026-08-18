@@ -136,3 +136,54 @@ describe("홈 카드를 접어 둘 수 있다", () => {
     expect(APP_CODE).toMatch(/useState\(\(\) => readFolded\(\)\[id\] === true\)/);
   });
 });
+
+// ─────────────────── 4. 오른쪽은 탭이다 ───────────────────
+
+describe("홈 오른쪽 카드는 탭으로 갈아 끼운다", () => {
+  it("탭 다섯 갈래가 있다", () => {
+    for (const id of ['"record"', '"meta"', '"feedback"', '"account"', '"admin"']) {
+      expect(APP_CODE, `${id} 탭이 없다`).toContain(id);
+    }
+    expect(APP_CODE).toContain('className="home-tabpanel"');
+  });
+
+  it("고른 탭만 렌더한다", () => {
+    // 전부 그려 놓고 CSS로 감추면 안 보이는 표·목록을 계속 그린다.
+    for (const t of ["record", "meta", "feedback", "account"]) {
+      expect(APP_CODE).toContain(`tab === "${t}" ?`);
+    }
+  });
+
+  it("관리 탭은 관리자에게만 열린다", () => {
+    // 탭 목록에서 빠지는 것만으로는 부족하다 — 저장된 값이 "admin"일 수 있다.
+    expect(APP_CODE).toContain('tab === "admin" && props.auth.isAdmin');
+    expect(APP_CODE).toMatch(/ok\.find\(\(t\) => t === raw\) \?\? "record"/);
+  });
+
+  it("고른 탭은 localStorage에 남고, 지우는 목록에도 들어 있다", () => {
+    expect(APP_CODE).toContain('"majak.homeTab"');
+    expect(STORAGE).toContain('"majak.homeTab"');
+  });
+
+  it("패널은 격자로 서고, 짧은 탭에서 상자가 튀지 않는다", () => {
+    const panel = rule(".home-tabpanel");
+    expect(panel).toMatch(/display:\s*grid/);
+    expect(panel).toMatch(/align-content:\s*start/);
+    // `.home-top`은 align-items: start다 — 탭 열만 예외로 늘려 높이가 안 튀게 한다.
+    expect(rule(".home-tabs")).toMatch(/align-self:\s*stretch/);
+  });
+
+  it("규칙·도감은 탭 밖(상단 바)에 있다", () => {
+    // 카드 안에만 두면 다른 탭을 보는 사람에게는 없는 문이 된다.
+    expect(APP_CODE).toMatch(/home-nav-link"\s+onClick=\{props\.onOpenHelp\}/);
+    expect(APP_CODE).toMatch(/home-nav-link"\s+onClick=\{props\.onOpenCodex\}/);
+  });
+
+  it("좁은 화면 상단 바 축소는 `.home-nav` 기본 규칙보다 **뒤**에 있다", () => {
+    // 앞에 두면 뒤에 오는 기본값이 이겨서 조용히 죽는다(실측 375px, gap 12px).
+    const base = CSS_CODE.indexOf(".home-nav {");
+    const shrink = CSS_CODE.indexOf(".home-nav { gap: 6px");
+    expect(base).toBeGreaterThanOrEqual(0);
+    expect(shrink).toBeGreaterThan(base);
+  });
+});
