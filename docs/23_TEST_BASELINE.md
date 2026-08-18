@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   2734 / 2734 통과 (실패 0)   ← 2026-08-18 갱신 (252 파일, 약 400초)
+npm test                   2747 / 2747 통과 (실패 0)   ← 2026-08-18 갱신 (253 파일, 약 400~800초)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
@@ -20,6 +20,11 @@ npm run typecheck:client   0 errors
   항목과 정확히 같은 원인이다(다른 vitest가 함께 돌면 한 판 비용이 13~17초 → 31~45초).
   단독 실행 14/14 통과. **판별법은 아래와 같다** — 단독으로 돌려 보고, 그래도 의심스러우면
   변경을 되돌리고 전체를 한 번 더 돌린다.
+
+- `packages/server/test/Resume.test.ts > 진행 중인 대국이 디스크에 남는다 > 판이 끝나면 그 자리에서 지워진다 …` — `Test timed out in 90000ms`
+  (2026-08-18 추가) 위 `Guest.test.ts`와 **같은 부류**다 — 한 판을 끝까지 굴린다.
+  실측: 전체 실행에서 90초 초과(같은 회차에 436초·280초짜리 크래시 스위프 두 개가
+  같이 돌았다), **단독 실행 6.2초 / 10건 전부 통과**. 부하 배수가 14배쯤 된다.
 
 - `packages/server/test/Sandbox.test.ts > 증강 테스트 — 손패 지정 > 지정한 손패로 배패되고, 그 지정이 sandbox 상태로 돌아온다` — `expected 2 to be greater than or equal to 3`
   (2026-08-04 추가) 지정 손패의 장수를 **마지막으로 받은 view**로 세는데, 부하가 걸리면 그 사이 한 순이 지나가 지정 패가 이미 버려져 있다. 단독 실행 23/23 통과.
