@@ -5730,10 +5730,33 @@ const ACTION_BAR_RESERVE = 100;
  * (자세한 배치는 styles.css `.own-area`).
  */
 function keepClearRects(): CoachRect[] {
-  const own = rectOf(".own-area");
-  if (own === null) return [];
-  const reserve = rectOf(".action-bar") === null ? ACTION_BAR_RESERVE : 0;
-  return [{ top: own.top - reserve, left: own.left, w: own.w, h: own.h + reserve }];
+  const out: CoachRect[] = [];
+  /*
+   * 판 위에 전체 화면 창(증강 선택·정산)이 떠 있으면 **판 쪽은 비워야 할 곳이 아니다** —
+   * 그 아래 것은 어차피 못 누른다. 그대로 세면 손패 줄의 넓이가 아래쪽 띠의 비용을
+   * 항상 이겨서, 말풍선이 위쪽 띠(=증강 선택창의 제목·타이머 자리)에 못 박힌다.
+   */
+  const overlaid = document.querySelector(".overlay") !== null;
+  const own = overlaid ? null : rectOf(".own-area");
+  if (own !== null) {
+    const reserve = rectOf(".action-bar") === null ? ACTION_BAR_RESERVE : 0;
+    out.push({ top: own.top - reserve, left: own.left, w: own.w, h: own.h + reserve });
+  }
+  /*
+   * 증강 선택창의 머리줄 — 제목·단계·남은 시간.
+   *
+   * 이 창은 화면을 거의 다 덮어서 `placeBubble`이 링 옆에 설 자리를 못 찾고 늘 띠로
+   * 물러나는데, 위쪽 띠가 정확히 이 줄 위다. 넘겨 주지 않으면 "증강 선택"과
+   * "남은 시간 N초"가 통째로 가려진다(2026-08-18 PC 실측). 카드가 아니라 머리줄만
+   * 넘긴다 — 카드까지 넘기면 어느 띠도 비용이 같아져 다시 위쪽으로 돌아온다.
+   */
+  const head = rectOf(".draft-title");
+  const tail = rectOf(".draft-timer-note") ?? rectOf(".draft-stage");
+  if (head !== null) {
+    const bottom = tail === null ? head.top + head.h : tail.top + tail.h;
+    out.push({ top: head.top, left: head.left, w: head.w, h: bottom - head.top });
+  }
+  return out;
 }
 
 /**

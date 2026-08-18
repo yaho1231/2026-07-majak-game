@@ -343,6 +343,34 @@ describe("말풍선 자리 (placeBubble)", () => {
     });
   });
 
+  /*
+   * 띠로 물러날 때도 **덜 가리는 쪽**을 고른다 (2026-08-18 PC 실측).
+   *
+   * 증강 선택창은 화면을 거의 다 덮어서 늘 이 경로로 오는데, 예전에는 무조건 위쪽
+   * 띠였고 그 자리에 정확히 "증강 선택" 제목과 남은 시간 타이머가 있었다 —
+   * 420×43px이 겹쳐 제목·타이머가 통째로 안 보였다.
+   */
+  it("위쪽 띠가 가리면 안 되는 줄을 물면 아래쪽 띠로 비켜선다", () => {
+    const panel: CoachRect = { top: 40, left: 60, w: 1160, h: 640 };
+    const draftHead: CoachRect = { top: 20, left: 180, w: 920, h: 140 };
+    const box = boxOf(placeBubble(panel, size, view, [draftHead]));
+    expect(hits(box, draftHead)).toBe(false);
+    // 아래쪽 띠다 — 위로만 자라도록 bottom을 붙들어 둔다
+    expect(box.top + box.h).toBeLessThanOrEqual(view.h);
+  });
+
+  it("가리킬 것이 없어도 같은 규칙이 적용된다", () => {
+    const draftHead: CoachRect = { top: 20, left: 180, w: 920, h: 140 };
+    expect(hits(boxOf(placeBubble(null, size, view, [draftHead])), draftHead)).toBe(false);
+  });
+
+  it("위·아래 어느 쪽도 안 가리면 위쪽 띠가 이긴다 (아래에는 손패가 있다)", () => {
+    expect(placeBubble(null, size, view, [])).toEqual({
+      top: 12,
+      left: (view.w - size.w) / 2,
+    });
+  });
+
   it("어디에 놓든 화면 밖으로는 안 나간다", () => {
     const corners: CoachRect[] = [
       { top: 0, left: 0, w: 30, h: 30 },

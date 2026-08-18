@@ -532,8 +532,33 @@ export function placeBubble(
     Math.min(Math.max(y, EDGE_PAD), Math.max(EDGE_PAD, view.h - bubble.h - EDGE_PAD));
   /** 위쪽 띠 가운데 — 가리킬 것이 없거나 옆에 설 자리가 없을 때의 자리 */
   const band = { top: clampY(12), left: clampX((view.w - bubble.w) / 2) };
-  if (ring === null) return band;
-  if (ring.w * ring.h > view.w * view.h * HUGE_RING_RATIO) return band;
+  /** 아래쪽 띠 가운데 — 위쪽 띠가 덮으면 안 되는 것을 물 때의 대안 */
+  const lowBand = { top: clampY(view.h - bubble.h - 12), left: band.left };
+
+  /**
+   * 띠로 물러날 때도 **위/아래 중 덜 가리는 쪽**을 고른다.
+   *
+   * ⚠ 예전에는 무조건 위쪽 띠였다. 증강 선택창처럼 강조가 화면을 거의 다 덮는 화면에서는
+   * 링 옆에 설 자리가 없어 늘 이 경로로 오는데, 그 위쪽 띠 자리에 정확히 "증강 선택"
+   * 제목과 남은 시간 타이머가 있다 — 제목·타이머가 통째로 안 보였다(2026-08-18 PC 실측:
+   * 420×43px 겹침, `elementFromPoint`가 제목 자리에서 말풍선을 돌려줬다).
+   * 이제 `keepClear`가 그 줄을 넘겨 주면 아래쪽 띠로 비켜선다.
+   */
+  const pickBand = (): BubbleSpot => {
+    const cost = (b: { top: number; left: number }): number => {
+      const box = { top: b.top, left: b.left, w: bubble.w, h: bubble.h };
+      let c = 0;
+      for (const r of keepClear) c += overlapArea(box, r);
+      return c;
+    };
+    // 같으면 위쪽이 이긴다 — 아래쪽 절반에는 손패·액션 바가 있는 것이 기본 전제다.
+    return cost(lowBand) < cost(band)
+      ? { bottom: view.h - (lowBand.top + bubble.h), left: lowBand.left }
+      : band;
+  };
+
+  if (ring === null) return pickBand();
+  if (ring.w * ring.h > view.w * view.h * HUGE_RING_RATIO) return pickBand();
 
   const midX = clampX(ring.left + ring.w / 2 - bubble.w / 2);
   const midY = clampY(ring.top + ring.h / 2 - bubble.h / 2);
