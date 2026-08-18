@@ -90,7 +90,9 @@ describe("첫 방문자가 막히는 자리를 막지 않는다", () => {
     const at = ROOM_CODE.indexOf("private guestPlay(");
     expect(at).toBeGreaterThan(0);
     const block = ROOM_CODE.slice(at, at + 4000);
-    expect(block).toMatch(/botDifficulty:\s*"(easy|normal)"/);
+    // 튜토리얼이면 한 칸 더 낮춘다 — 어느 쪽이든 hard(봇의 최선)로는 시작하지 않는다.
+    expect(block).toMatch(/botDifficulty:\s*(tutorial \? )?"(easy|normal)"/);
+    expect(block).not.toMatch(/botDifficulty:\s*"hard"/);
   });
 
   it("방을 직접 만들면 기본은 그대로 봇의 최선이다", () => {
