@@ -75,7 +75,7 @@ import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
-import { LESSONS, TUTORIAL_KEY, pickLesson } from "./tutorial.js";
+import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent } from "./tutorial.js";
 import type { CoachCtx, Lesson } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
 import { groupWinHand, shapeGroupLabel } from "./winShapeView.js";
@@ -2526,14 +2526,25 @@ export function App(): JSX.Element {
   /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
   /**
-   * 첫 판 코치가 켜져 있는가.
+   * 튜토리얼 코치가 켜져 있는가.
    *
-   * 켜지는 자리는 둘이다 — **갓 가입한 사람**(가입 성공 직후 연습 대국으로 들어간다)과
-   * **처음 게스트 체험을 누른 사람**. 둘 다 "이 게임을 처음 보는 사람"이라는 같은
-   * 사실의 두 얼굴이다. 한 번 끝까지 봤거나 그만 보기를 누르면 저장해 두고 다시
-   * 안 띄운다 — 두 번째 판에서 같은 안내가 또 뜨면 그건 방해다.
+   * **코치는 튜토리얼 방에서만 돈다.** 강의가 그 방의 고정분(연금술사·고정 배패·
+   * 시간 제한 없음) 위에 서 있기 때문이다 — 서버의 `TUTORIAL_ROOM_NOTE` 참고.
+   * 켜지는 자리는 셋: 로그인 화면의 «🎓 튜토리얼», 홈의 같은 버튼, 그리고 **갓
+   * 가입한 사람**(가입 직후 튜토리얼 판으로 바로 들어간다).
+   *
+   * 갓 가입한 사람에게만 저장된 사실(`tutorialDone`)을 본다 — 두 번째 가입도 아닌데
+   * 매번 안내가 뜨면 방해다. 반대로 버튼을 **직접 누른** 사람에게는 저장된 사실과
+   * 무관하게 켠다: 그건 "다시 보고 싶다"는 뜻이다.
    */
   const [coachOn, setCoachOn] = useState(false);
+  /**
+   * 코치가 켜져 있는가를 **소켓 콜백에서** 읽기 위한 ref.
+   * `handleServerMessage`는 마운트 시 소켓에 고정된 클로저라 state가 낡는다
+   * (`tryAutoRespond`가 이 값을 본다 — 이유는 그쪽 주석).
+   */
+  const coachOnRef = useRef(false);
+  coachOnRef.current = coachOn;
   /** 튜토리얼을 이미 마쳤는가 (저장된 사실) */
   const tutorialDone = useRef(safeStorage.getItem(TUTORIAL_KEY) === "1");
   /**
@@ -3065,6 +3076,20 @@ export function App(): JSX.Element {
    * 쓴다 — 론/후로 버튼이 이미 뜬 뒤 설정을 켜도 즉시 반영되도록.
    */
   function tryAutoRespond(p: PromptMessage["prompt"], auto: Settings): boolean {
+    /*
+     * **튜토리얼 중에는 자동응답을 걸지 않는다** (2026-08-18 실측으로 드러난 함정).
+     *
+     * 자동 화료·후로없음·자동버림은 저장되는 설정이다. 예전에 켜 둔 사람이 나중에
+     * "튜토리얼"을 누르면, 코치가 "필요 없는 패를 눌러 버리세요"·"치·펑을 눌러
+     * 보세요"·"론 버튼을 누르세요"라고 말하는 동안 **클라이언트가 먼저 답해 버린다.**
+     * 배우러 온 사람에게 손을 대 볼 기회 자체가 안 오는 것이라, 튜토리얼의 절반이
+     * 조용히 죽는다(실제로 이 브라우저에서 그렇게 됐다 — 첫 쯔모가 손에 닿기 전에
+     * 나갔다).
+     *
+     * 설정 값을 건드리지 않고 **적용만 멈춘다** — 튜토리얼이 끝나면 원래 쓰던
+     * 자동응답이 그대로 돌아온다. 사람의 설정을 몰래 바꿔 두는 것보다 낫다.
+     */
+    if (coachOnRef.current) return false;
     // 증강 테스트에서 봇 좌석을 조종하는 중이면 자동응답을 걸지 않는다 —
     // 그 좌석을 직접 두려고 들어간 것인데 자동 화료·쯔모기리가 대신 쳐 버리면 곤란하다.
     const sbx = sandboxRef.current;
@@ -3526,7 +3551,7 @@ export function App(): JSX.Element {
       ) {
         justRegistered.current = false;
         setCoachOn(true);
-        send({ type: "practicePlay" });
+        send({ type: "practicePlay", tutorial: true });
       } else if (invited !== null) {
         pendingInviteRef.current = null;
         clearRoomFromUrl();
@@ -4957,9 +4982,26 @@ export function App(): JSX.Element {
           invitedCode={pendingInviteRef.current}
           onGuest={() => {
             setAuthError(null);
-            // 계정 없이 처음 눌러 본 사람 — 가입한 사람만큼이나 이 게임이 처음이다.
-            if (!tutorialDone.current) setCoachOn(true);
+            /*
+             * 체험에는 **코치를 얹지 않는다** (2026-08-18).
+             *
+             * 예전에는 처음 온 손님에게 자동으로 코치를 붙였다 — 안내로 가는 문이
+             * 이것 하나뿐이었기 때문이다. 이제 옆에 튜토리얼 버튼이 따로 있고,
+             * 랜딩이 "체험은 설명 없이 바로 한 판"이라고 적어 놓았다. 적어 놓은 것과
+             * 실제가 달라지면 안 된다.
+             *
+             * 기술적인 이유도 있다: 코치의 증강 강의(⚡ 버튼·발광·보라 생성패)는
+             * 튜토리얼 방이 **연금술사를 고정 지급한다**는 사실 위에 서 있다
+             * (`TUTORIAL_ROOM_NOTE`). 무작위 판에서는 그 강의들이 성립하지 않거나
+             * 없는 증강 이름을 부른다.
+             */
             send({ type: "guestPlay" });
+          }}
+          onTutorial={() => {
+            setAuthError(null);
+            // **일부러 누른 사람**이다 — 저장된 "이미 봤다"와 무관하게 코치를 켠다.
+            setCoachOn(true);
+            send({ type: "guestPlay", tutorial: true });
           }}
           onOpenHelp={() => setHelpOpen(true)}
           onLogin={(u, p) => send({ type: "login", username: u, password: p })}
@@ -5096,11 +5138,12 @@ export function App(): JSX.Element {
           onSpectate={(code) => send({ type: "spectate", code })}
           onRefreshUsers={() => send({ type: "adminUsers" })}
           onStartSandbox={(mode) => send({ type: "sandboxStart", mode })}
-          onPractice={() => {
-            // 홈에서 직접 누른 사람은 **다시 배우고 싶다**는 뜻이다 — 저장된
-            // "이미 봤다"와 무관하게 코치를 켠다.
-            setCoachOn(true);
-            send({ type: "practicePlay" });
+          onPractice={(tutorial) => {
+            // 튜토리얼을 **직접 누른** 사람은 다시 배우고 싶다는 뜻이다 — 저장된
+            // "이미 봤다"와 무관하게 코치를 켠다. 연습 대국 쪽은 안내를 붙이지
+            // 않는다(그 버튼의 약속이 "안내 없음"이다).
+            setCoachOn(tutorial);
+            send({ type: "practicePlay", ...(tutorial ? { tutorial: true } : {}) });
           }}
           onDeleteUser={(userId, username) => {
             void askConfirm({
@@ -5155,7 +5198,10 @@ export function App(): JSX.Element {
             optionTypes: promptOptionTypes,
             draftOpen: draftVisible,
             augmentReady: promptHasAugment,
+            overlay: helpOpen ? "help" : codexOpen ? "codex" : null,
           }}
+          // 도감·규칙이 판을 덮는 동안은 그림만 걷는다 (컴포넌트 주석 참고)
+          hidden={helpOpen || codexOpen}
           onFinish={() => {
             setCoachOn(false);
             tutorialDone.current = true;
@@ -5510,7 +5556,17 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
  * 링이 엉뚱한 데로 간다 (`uiScale.ts` 참고).
  */
 function TutorialCoach(props: {
-  ctx: Omit<CoachCtx, "seen">;
+  ctx: Omit<CoachCtx, "seen" | "hit">;
+  /**
+   * 판 위에 전체 화면(도감·규칙)이 떠 있다 — 말풍선을 **그리지 않는다**.
+   *
+   * 언마운트가 아니라 숨김인 것이 요점이다. `ScreenOverlay`가 형제 요소에 `inert`를
+   * 걸므로 코치는 z-index로는 위에 있으면서 클릭은 안 받는 유령이 된다. 그렇다고
+   * 통째로 언마운트하면 여태 본 강의(`seen`)가 통째로 날아가 튜토리얼이 처음부터
+   * 다시 시작한다. 상태 기계는 계속 돌리고 그림만 걷는다 — 그래야 "도감을 열었다"가
+   * 완료로 잡히고, 닫는 순간 다음 강의가 이어진다.
+   */
+  hidden: boolean;
   /** 끝까지 봤거나 사용자가 그만 보기를 눌렀다 */
   onFinish: () => void;
 }): JSX.Element | null {
@@ -5518,13 +5574,31 @@ function TutorialCoach(props: {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [ring, setRing] = useState<{ top: number; left: number; w: number; h: number } | null>(null);
 
-  const ctx: CoachCtx = { ...props.ctx, seen };
+  /*
+   * 화면에 그 요소가 지금 떠 있는가 — 강의의 성립/완료 판정에 쓰는 유일한 통로.
+   *
+   * `tick`으로 일부러 다시 만든다. `hit`은 DOM을 읽는 함수라 값이 변해도 리액트는
+   * 알 길이 없다 — 예전처럼 매 렌더 판정만 하면, 설명을 고정하거나 액티브 버튼에
+   * 손을 올려도 **리렌더가 없으면** 코치가 그걸 영영 모른다. 강의가 떠 있는 동안만
+   * 도는 짧은 주기 하나로 링 측정과 같은 리듬을 맞춘다.
+   */
+  const [, setTick] = useState(0);
+  const hit = useStableFn((selector: string): boolean => {
+    const el = document.querySelector(selector);
+    if (el === null) return false;
+    // `display:none`으로 숨긴 것은 "떠 있다"가 아니다 (반응형에서 통째로 꺼지는 줄이 있다)
+    return (el as HTMLElement).offsetParent !== null || el.getClientRects().length > 0;
+  });
+
+  const ctx: CoachCtx = { ...props.ctx, seen, hit };
   const active: Lesson | null =
     activeId === null ? null : (LESSONS.find((l) => l.id === activeId) ?? null);
 
   // 다음 강의를 집는다 — 붙들고 있는 것이 없을 때만.
+  // 가려져 있는 동안(도감·규칙)에는 집지 않는다: 안 보이는 채로 강의가 흘러가면
+  // 닫고 돌아왔을 때 이미 몇 개가 지나가 있다.
   useEffect(() => {
-    if (activeId !== null) return;
+    if (activeId !== null || props.hidden) return;
     const next = pickLesson(ctx);
     if (next !== null) setActiveId(next.id);
   });
@@ -5541,11 +5615,34 @@ function TutorialCoach(props: {
   });
 
   /*
+   * 읽던 강의를 밀어내고 끼어드는 강의 — 지금 화면에서 벌어지는 일이 먼저다.
+   *
+   * 밀려난 강의는 **`seen`에 넣지 않는다.** 기회가 지나가면 픽커가 다시 집어
+   * 준다 — 끼어들기로 잃는 내용이 없다는 것이 이 방식의 요점이다.
+   */
+  useEffect(() => {
+    if (props.hidden || active === null || active.urgent === true) return;
+    const cut = pickUrgent(ctx);
+    if (cut !== null) setActiveId(cut.id);
+  });
+
+  /*
+   * DOM만 봐서 알 수 있는 조작(고정·발광·생성패…)을 놓치지 않게 짧은 주기로 깨운다.
+   * 강의를 붙들고 있을 때만 돈다 — 튜토리얼이 끝나면 아무것도 안 돈다.
+   */
+  const watching = activeId !== null;
+  useEffect(() => {
+    if (!watching) return;
+    const timer = window.setInterval(() => setTick((t) => t + 1), 200);
+    return () => window.clearInterval(timer);
+  }, [watching]);
+
+  /*
    * 강조 링의 자리. 손패 레일도 액션 바도 애니메이션으로 움직이므로 한 번 재고 마는
    * 것으로는 곧 어긋난다 — 강의가 떠 있는 동안만 짧은 주기로 다시 잰다(리스너를
    * 늘리는 것보다 이쪽이 단순하고, 안 뜰 때는 아무것도 안 돈다).
    */
-  const anchor = active?.anchor;
+  const anchor = props.hidden ? undefined : active?.anchor;
   useEffect(() => {
     if (anchor === undefined) {
       setRing(null);
@@ -5569,7 +5666,7 @@ function TutorialCoach(props: {
     return () => window.clearInterval(timer);
   }, [anchor]);
 
-  if (active === null) return null;
+  if (active === null || props.hidden) return null;
 
   /*
    * 말풍선은 강조한 자리의 **반대쪽 끝**에 붙인다 — 바로 옆이 아니라.
@@ -5581,17 +5678,20 @@ function TutorialCoach(props: {
    */
   const v = layoutViewport();
   /*
-   * 기본은 **위쪽**이다. 아래쪽 절반에는 손패와 액션 바(치·퐁·리치·론)가 있고, 그
-   * 줄은 판에서 가장 중요한 자리라 잠깐도 가리면 안 된다. 위쪽은 이름표와 패산이라
-   * 잠시 덮여도 잃는 것이 없다.
+   * 말풍선은 **언제나 위쪽 띠**에 있는다. 아래쪽 절반에는 손패와 액션 바(치·퐁·
+   * 리치·론)가 있고, 그 줄은 판에서 가장 중요한 자리라 잠깐도 가리면 안 된다.
+   * 위쪽은 이름표와 패산이라 잠시 덮여도 잃는 것이 없다.
    *
-   * 예외는 강조가 **화면 맨 위에 붙어 있을 때**뿐 — 그때만 아래로 내려간다.
-   * (가리킬 것이 없는 환영·마무리 강의도 위쪽이다.)
+   * 예전에는 강조가 화면 맨 위에 붙어 있으면 말풍선을 **아래로** 내렸다. 오른쪽 위
+   * 아이콘 줄(⚙ 📖 📘)을 가리키는 강의가 생기면서 그 예외가 정확히 하지 말자던 일을
+   * 했다 — 손패와 액션 바를 통째로 덮었다(2026-08-18 실측). 이제 그런 경우에는
+   * 아래로 가는 대신 **강조 바로 밑**에 붙는다. 여전히 위쪽 띠 안이고, 가리키는
+   * 것과 설명이 붙어 있어 오히려 읽기 쉽다.
    */
-  const atTop = ring === null || ring.top + ring.h >= v.h * 0.28;
-  const bubble: CSSProperties = atTop
-    ? { top: 12, left: "50%", transform: "translateX(-50%)" }
-    : { bottom: 16, left: "50%", transform: "translateX(-50%)" };
+  const topBandRing = ring !== null && ring.top + ring.h < v.h * 0.28;
+  const bubble: CSSProperties = topBandRing
+    ? { top: ring.top + ring.h + 10, left: "50%", transform: "translateX(-50%)" }
+    : { top: 12, left: "50%", transform: "translateX(-50%)" };
 
   return (
     <div className="coach-layer" role="dialog" aria-live="polite" aria-label="튜토리얼 안내">
@@ -5602,13 +5702,29 @@ function TutorialCoach(props: {
         />
       ) : null}
       <div className="coach-bubble" style={bubble}>
+        {/* 장(章) 이름 — "지금 무슨 이야기 중인지"를 한 낱말로 준다.
+            진행률 막대는 일부러 안 쓴다: 안 오는 기회(후로·화료)는 그냥 안 나오므로
+            분모가 거짓말이 되고, 100%에 못 닿는 막대는 안 끝난 것처럼 보인다. */}
+        <p className="coach-chapter">{active.chapter}</p>
         <p className="coach-title">{active.title}</p>
         <p className="coach-body">{active.body}</p>
+        {/* 직접 해 보라는 줄 — 읽고 넘기는 강의와 눈으로 갈린다 */}
+        {active.todo !== undefined ? (
+          <p className="coach-todo">
+            <span className="coach-todo-tag" aria-hidden="true">해 보세요</span>
+            {active.todo}
+          </p>
+        ) : null}
         <div className="coach-actions">
           {/* `done`이 있는 강의는 조작을 마치면 저절로 넘어간다 — 그래도 버튼을 둔다.
-              읽기만 하고 넘어가고 싶은 사람에게 출구가 없으면 안내가 감옥이 된다. */}
-          <button className="coach-next" onClick={() => retire(active.id)}>
-            알겠어요
+              읽기만 하고 넘어가고 싶은 사람에게 출구가 없으면 안내가 감옥이 된다.
+              대신 글자를 갈아 끼운다: 해 보라고 해 놓고 "알겠어요"라고 적으면
+              누른 사람은 자기가 그걸 했다고 오해한다. */}
+          <button
+            className={active.todo === undefined ? "coach-next" : "coach-next coach-skip"}
+            onClick={() => retire(active.id)}
+          >
+            {active.todo === undefined ? "알겠어요" : "건너뛰기"}
           </button>
           <button className="coach-quit" onClick={props.onFinish}>
             그만 보기
@@ -5700,6 +5816,8 @@ function AuthScreen(props: {
   onLogin: (username: string, password: string) => void;
   onRegister: (username: string, password: string, adminCode: string, signupCode: string) => void;
   onGuest: () => void;
+  /** 튜토리얼 판으로 들어간다 — 게스트 체험과 같은 문이지만 판이 고정돼 있다 */
+  onTutorial: () => void;
   onOpenHelp: () => void;
   onRetryConnect: () => void;
 }): JSX.Element {
@@ -5798,6 +5916,24 @@ function AuthScreen(props: {
         ) : null}
 
         <div className="landing-cta">
+          {/*
+            **튜토리얼이 첫 버튼이다** (2026-08-18 사용자 지시: "튜토리얼을 언제든
+            다시 할 수 있게 로그인창에 튜토리얼 전용 버튼").
+
+            체험과 나란히 두되 앞에 세운 이유: 마작을 아는 사람은 어차피 오른쪽
+            버튼을 찾아 누르지만, 처음 온 사람은 "체험"이 무엇을 뜻하는지 모른 채
+            눌렀다가 아무 설명 없는 판 한가운데 떨어진다. 예전에는 안내가 **처음
+            온 사람에게 딱 한 번만** 따라붙어서(localStorage), 한 번 닫고 나면
+            다시 볼 길이 아예 없었다.
+          */}
+          <button
+            className="landing-tutorial"
+            onClick={props.onTutorial}
+            disabled={!guestOk}
+            title="화면 보는 법부터 증강 쓰는 법까지 — 판 위에서 순서대로 (5~10분)"
+          >
+            🎓 튜토리얼 (5~10분)
+          </button>
           <button
             className="landing-guest"
             onClick={props.onGuest}
@@ -5811,7 +5947,9 @@ function AuthScreen(props: {
           </button>
         </div>
         <p className="landing-guest-note">
-          가입 없이 봇 3명과 한 판. 기록·순위에는 남지 않고, 창을 닫으면 사라집니다.
+          <b>튜토리얼</b>은 손패와 증강을 고정해 두고 화면 조작을 하나씩 짚어 줍니다 —
+          시간 제한이 없어 천천히 봐도 됩니다. <b>체험</b>은 설명 없이 바로 한 판입니다.
+          둘 다 가입이 필요 없고, 기록·순위에는 남지 않습니다.
         </p>
 
         {/*
@@ -8120,7 +8258,8 @@ function HomeScreen(props: {
    * 연습 대국 — 봇 3명과 곧바로 한 판(기록에 안 남는다). 첫 판 코치가 함께 뜬다.
    * 가입 직후 자동으로 한 번 열리지만, 나중에 다시 익히고 싶은 사람에게도 문이 있어야 한다.
    */
-  onPractice: () => void;
+  /** 봇 3명과 바로 한 판. `tutorial`이면 판을 고정하고 코치를 얹는다. */
+  onPractice: (tutorial: boolean) => void;
   onDeleteUser: (userId: number, username: string) => void;
   onRefresh: () => void;
   onLogout: () => void;
@@ -8243,10 +8382,19 @@ function HomeScreen(props: {
             방을 만들면 6자리 코드가 발급됩니다. 친구에게 코드를 알려주고, 모두
             준비되면 방장이 시작하세요. 빈 자리는 봇으로 채울 수 있습니다.
           </p>
-          {/* 혼자 익히는 문 — 대기실을 거치지 않고 봇 3명과 바로 시작한다.
-              이 판은 리플레이·통계·순위 어디에도 남지 않는다. */}
-          <button className="home-practice" onClick={props.onPractice}>
-            🎓 튜토리얼 · 연습 대국 (봇 3명 · 기록 안 남음)
+          {/* 혼자 익히는 두 문 — 둘 다 대기실을 거치지 않고 봇 3명과 바로 시작하고,
+              리플레이·통계·순위 어디에도 남지 않는다.
+
+              예전에는 이 둘이 버튼 하나에 "🎓 튜토리얼 · 연습 대국"으로 묶여 있었다.
+              누르는 사람 입장에서는 전혀 다른 두 가지다 — 하나는 **배우러** 오는
+              것이고(판이 고정되고 안내가 붙는다), 하나는 그냥 **한 판 두러** 오는
+              것이다(무작위 실전). 한 버튼에 묶여 있으면 안내를 다시 보고 싶은 사람도,
+              안내 없이 두고 싶은 사람도 원하는 것을 못 고른다. */}
+          <button className="home-practice" onClick={() => props.onPractice(true)}>
+            🎓 튜토리얼 (화면 조작 안내 · 5~10분)
+          </button>
+          <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
+            연습 대국 (봇 3명 · 안내 없음 · 기록 안 남음)
           </button>
         </section>
 
@@ -8264,8 +8412,10 @@ function HomeScreen(props: {
             <p className="home-empty">
               아직 완료한 대국이 없습니다.
               <span className="home-empty-hint">한 판 두고 나면 승률·평균 순위가 여기에 쌓입니다.</span>
-              <button className="home-empty-cta" onClick={props.onPractice}>
-                🎓 연습 대국으로 한 판
+              {/* 전적이 0인 사람 = 아직 한 판도 안 끝낸 사람이다. 두 문(튜토리얼·
+                  연습 대국) 중 여기서 권할 것은 **안내가 붙는 쪽**이다. */}
+              <button className="home-empty-cta" onClick={() => props.onPractice(true)}>
+                🎓 튜토리얼로 한 판
               </button>
             </p>
           )}
