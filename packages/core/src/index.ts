@@ -327,7 +327,7 @@ export {
 } from "./information/PlayerView.js";
 
 // 정형구 — 목록과 검증을 클라이언트·서버가 **한 벌로** 공유한다.
-export { EMOTES, isEmoteId } from "./network/protocol.js";
+export { EMOTES, isEmoteId, NOTICE_TITLE_MAX, NOTICE_BODY_MAX } from "./network/protocol.js";
 export type {
   VisibilityRule,
   PeekVisibility,
@@ -417,7 +417,12 @@ export type {
   GameAbortedMessage,
   ErrorMessage,
   PongMessage,
+  FriendEntry,
+  FriendListMessage,
+  PeriodStats,
   ServerInfoMessage,
+  ServerNotice,
+  AdminSetNoticeMessage,
   LobbyPlayerEntry,
   LobbyMessage,
   StatsEntry,

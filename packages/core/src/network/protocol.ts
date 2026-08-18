@@ -206,11 +206,38 @@ export interface ReplayListRequestMessage {
   type: "replayList";
 }
 
-/** 리플레이 이벤트 로그 요청 (본인 게임 또는 관리자). */
+/**
+ * 리플레이 이벤트 로그 요청 (본인 게임 또는 관리자).
+ *
+ * `shareToken`이 오면 **그 토큰이 곧 권한**이다 (감사 §4-8, 사용자 결정 "링크 있는
+ * 사람만"). 그때는 `gameId`를 보지 않는다 — 토큰이 어느 판을 가리키는지 서버가
+ * 안다. 로그인하지 않은 연결도 이 경로로만 리플레이 하나를 볼 수 있다.
+ */
 export interface ReplayGetMessage {
   type: "replayGet";
-  gameId: number;
+  gameId?: number;
+  /** 공유 링크의 토큰. 있으면 계정 대신 이 값이 권한이 된다. */
+  shareToken?: string;
 }
+
+/**
+ * **이 판의 공유 링크를 만든다** (참가자·관리자 전용, §4-8).
+ *
+ * 이미 있으면 그 토큰을 그대로 돌려준다 — 누를 때마다 새 링크가 나오면 앞서
+ * 뿌린 링크가 조용히 죽는다. 내리고 싶으면 `revoke`를 준다.
+ *
+ * **왜 "공개/비공개" 두 상태가 아니라 토큰인가**: 이 게임의 최대 무기는 "이 증강
+ * 조합 봐라"인데(감사 §4-8), 그걸 자랑하려면 **계정이 없는 사람에게도** 보여 줄 수
+ * 있어야 한다. 반대로 전체 공개 목록을 만들면 남의 판이 검색·목록에 노출되므로
+ * 그건 다른 결정이 필요하다. 토큰은 그 사이의 답이다 — 링크를 받은 사람만 본다.
+ */
+export interface ReplayShareMessage {
+  type: "replayShare";
+  gameId: number;
+  /** 참이면 링크를 **내린다** (기존 토큰이 죽는다). */
+  revoke?: boolean;
+}
+
 
 // ── 제보 게시판 (버그·증강 아이디어) ──
 
@@ -254,6 +281,34 @@ export interface FeedbackUpdateMessage {
 export interface FeedbackDeleteMessage {
   type: "feedbackDelete";
   id: number;
+}
+
+// ── 친구 (§4-6) ──
+
+/**
+ * 친구 추가·삭제 (§4-6).
+ *
+ * **무엇을 풀려는 문제인가**: 방을 만들고 코드를 부를 사람이 지금 접속해 있는지
+ * 알 방법이 없었다. 그래서 사람들은 방을 만들어 두고(TTL 30분) 기다리다 닫았다.
+ * 필요한 것은 소셜 그래프가 아니라 **"지금 있나?" 한 줄**이다.
+ *
+ * 그래서 이 기능에는 **승인 절차가 없다.** 맞팔 개념도, 요청 알림도 없다 —
+ * 여기서 얻는 것은 상대의 온라인 여부뿐이고, 그건 방 코드를 나눌 사이라면
+ * 이미 서로 아는 사실이다. 승인 흐름을 만들면 그 대가로 화면과 상태가 배로 는다.
+ */
+export interface FriendAddMessage {
+  type: "friendAdd";
+  nickname: string;
+}
+
+export interface FriendRemoveMessage {
+  type: "friendRemove";
+  nickname: string;
+}
+
+/** 내 친구 목록 요청. */
+export interface FriendListRequestMessage {
+  type: "friendList";
 }
 
 // ── 관리자 관전 (15) ──
@@ -578,11 +633,16 @@ export type ClientMessage =
   | EmoteMessage
   | ReplayListRequestMessage
   | ReplayGetMessage
+  | ReplayShareMessage
   | LeaderboardRequestMessage
+  | FriendAddMessage
+  | FriendRemoveMessage
+  | FriendListRequestMessage
   | FeedbackSubmitMessage
   | FeedbackListRequestMessage
   | FeedbackUpdateMessage
   | FeedbackDeleteMessage
+  | AdminSetNoticeMessage
   | AdminUsersRequestMessage
   | AdminAugmentTiersRequestMessage
   | AdminDeleteUserMessage
@@ -879,6 +939,47 @@ export interface ServerInfoMessage {
    * 사람에게도 올바른 숫자가 보인다.
    */
   augmentKinds: number;
+  /**
+   * 운영자 공지 (없으면 필드 자체가 붙지 않는다) — 감사 §4-3.
+   *
+   * **왜 `serverInfo`에 얹었나**: 이 메시지는 소켓이 열리는 즉시, **인증 전에**
+   * 나간다. 공지가 필요한 순간(점검 예고·규칙 변경·서버 이전)은 대개 사람들이
+   * 로그인하기 **전에** 알아야 하는 순간이다. 별도 요청으로 두면 그 순간에만
+   * 딱 안 오는 값이 된다.
+   *
+   * 길이 상한이 있고(`NOTICE_MAX`) 서버가 자른다 — 여기 담기는 값은 매 연결에
+   * 나가므로, 누가 실수로 긴 글을 넣으면 전원의 첫 프레임이 무거워진다.
+   */
+  notice?: ServerNotice;
+}
+
+/**
+ * 공지 한 건. 증강 117종이 20판마다 자동 티어 조정되는 게임인데 "뭐가 바뀌었는지"를
+ * 알릴 채널이 하나도 없었다(감사 §4-3). 저장소는 이미 있던 `config` 테이블이다.
+ */
+export interface ServerNotice {
+  /** 한 줄 제목 — 홈 상단 띠에 그대로 뜬다. */
+  title: string;
+  /** 본문 (여러 줄 가능). 비어 있으면 제목만 보여 준다. */
+  body: string;
+  /** 마지막으로 고친 시각(ISO). 사람이 "언제 적인 공지인가"를 판단하는 근거다. */
+  updatedAt: string;
+}
+
+/** 공지 길이 상한 — 매 연결에 나가는 값이라 서버가 자른다. */
+export const NOTICE_TITLE_MAX = 120;
+export const NOTICE_BODY_MAX = 2000;
+
+/**
+ * 공지 설정 (관리자 전용). 제목을 비우면 공지를 **내린다**.
+ *
+ * 삭제를 별도 메시지로 두지 않은 이유: "제목 없는 공지"는 존재할 수 없으므로
+ * 빈 제목이 곧 삭제다. 두 경로를 두면 한쪽만 고쳐진 자리가 생긴다.
+ */
+export interface AdminSetNoticeMessage {
+  type: "adminSetNotice";
+  title: string;
+  body: string;
 }
 
 // ── 대기실(로비) 상태 (14) ──
@@ -943,6 +1044,26 @@ export interface StatsEntry {
   stats: PlayerStatsView;
 }
 
+/**
+ * 기간 성적 한 칸 (감사 §4-7).
+ *
+ * **왜 별도 구조인가**: `PlayerStatsRaw`에는 타임스탬프가 **한 개도 없다**. 그래서
+ * "이번 주 성적"·"오늘 세 판" 같은 기간 기반 동기가 구조적으로 불가능했다. 누적
+ * 통계에 시간을 넣으려면 기록 형식을 바꿔야 하고 그건 과거 데이터를 못 살린다 —
+ * 대신 **이미 시각을 갖고 있는 `games.ended_at`에서 되만든다.** 판수·순위 분포처럼
+ * 게임 인덱스만으로 셀 수 있는 것만 담는 이유가 이것이다(화료율·방총률은 그 표에 없다).
+ */
+export interface PeriodStats {
+  /** 며칠 치인가 (7·30). */
+  days: number;
+  /** 그 기간의 완료 판수. */
+  games: number;
+  /** 1~4위 횟수 (인덱스 0이 1위). */
+  placements: [number, number, number, number];
+  /** 평균 순위 (판수 0이면 0). */
+  avgRank: number;
+}
+
 /** 통계 전송 — 게임 종료 시(이번 판 + 누적) 또는 요청 응답. */
 export interface StatsMessage {
   type: "stats";
@@ -950,6 +1071,11 @@ export interface StatsMessage {
   game?: StatsEntry[];
   /** 누적(career) 통계. */
   career: StatsEntry[];
+  /**
+   * **요청한 본인의** 기간 성적 (§4-7). 로그인한 요청에만 실린다.
+   * 최근 것부터 — 지금은 7일·30일 둘이다.
+   */
+  periods?: PeriodStats[];
 }
 
 // ── 전체 통계 · 계정 관리 (32) ──
@@ -1109,6 +1235,39 @@ export interface ReplayDataMessage {
   lines: string[];
 }
 
+/**
+ * 공유 링크 상태 — `replayShare` 의 응답.
+ *
+ * ⚠ **서버 → 클라이언트 메시지다.** 클라이언트 구간에 두면 재전송 정책 테스트가
+ * 이걸 "분류되지 않은 클라이언트 메시지"로 잡는다(2026-08-18 `EmoteBroadcastMessage`가
+ * 같은 함정에 걸렸다). 정의 위치가 곧 방향이다.
+ */
+export interface ReplayShareTokenMessage {
+  type: "replayShareToken";
+  gameId: number;
+  /** null이면 링크가 없다(내려갔거나 아직 안 만들었다). */
+  token: string | null;
+}
+
+/**
+ * 친구 한 명의 지금 상태 (§4-6).
+ *
+ * ⚠ **서버 → 클라이언트 메시지 구간이다** — 클라이언트 구간에 두면 재전송 정책
+ * 테스트가 "분류되지 않은 클라이언트 메시지"로 잡는다.
+ */
+export interface FriendEntry {
+  nickname: string;
+  /** 지금 이 서버에 붙어 있는가. */
+  online: boolean;
+  /** 지금 대국 중인가 (온라인이면서 방에 앉아 있다). */
+  playing: boolean;
+}
+
+export interface FriendListMessage {
+  type: "friendList";
+  friends: FriendEntry[];
+}
+
 /** 진행 중 게임 1건 요약 (관리자 목록용). */
 export interface LiveRoomSummary {
   code: string;
@@ -1209,6 +1368,8 @@ export type ServerMessage =
   | RoomCreatedMessage
   | ReplayListMessage
   | ReplayDataMessage
+  | ReplayShareTokenMessage
+  | FriendListMessage
   | LiveGamesMessage
   | SpectateStartedMessage
   | SpectateEndedMessage

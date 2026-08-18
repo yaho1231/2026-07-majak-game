@@ -48,7 +48,9 @@ import type {
   AugmentCatalogEntry,
   AugmentTierEntry,
   FeedbackEntry,
+  PeriodStats,
   SandboxBotRules,
+  ServerNotice,
 } from "@majak/core/network/protocol.js";
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
@@ -901,6 +903,8 @@ export class RoomManager {
     // 유휴 방 청소 — 타이머가 프로세스 종료(테스트 포함)를 붙잡지 않게 unref한다.
     this.sweepTimer = setInterval(() => this.sweepIdleRooms(), ROOM_SWEEP_INTERVAL_MS);
     this.sweepTimer.unref?.();
+    // 공지는 부팅 때 한 번 읽어 들고 있는다 (§4-3) — 연결마다 DB를 두드리지 않는다.
+    this.notice = this.db?.notice() ?? null;
   }
 
   // ─────────────────────────── 운영 로그 ───────────────────────────
@@ -1012,6 +1016,24 @@ export class RoomManager {
     this.rooms.delete(room.code);
   }
 
+  /**
+   * 공지가 바뀌었다 — 접속 중인 **모든** 연결에 `serverInfo`를 다시 보낸다 (§4-3).
+   *
+   * 새 메시지 타입을 만들지 않는다. 이미 "이 서버가 지금 어떤 상태인가"를 말하는
+   * 메시지가 있고, 공지는 정확히 그 종류의 사실이다. 클라이언트도 그 하나만
+   * 처리하면 되므로 "공지가 오는 길"이 둘로 갈리지 않는다.
+   */
+  private broadcastServerInfo(): void {
+    const msg: ServerMessage = {
+      type: "serverInfo",
+      signupGate: this.signupCode !== "",
+      guestPlay: true,
+      augmentKinds: this.augmentCatalog.length,
+      ...(this.notice !== null ? { notice: this.notice } : {}),
+    };
+    for (const c of this.conns) this.send(c.ws, msg);
+  }
+
   /** 이 방을 가리키던 연결의 방·좌석 링크를 끊는다 (방 객체는 건드리지 않는다). */
   private detachRoomConns(room: Room): void {
     for (const c of this.conns) {
@@ -1077,6 +1099,13 @@ export class RoomManager {
    * 홈 화면 통계가 증강 id→이름·등급을 게임 전에도 표시할 수 있게 한다.
    */
   private readonly augmentCatalog: AugmentCatalogEntry[] = buildAugmentCatalog();
+
+  /**
+   * 지금 걸려 있는 운영자 공지 (§4-3). 메모리에 들고 있는 이유는 이 값이
+   * **연결마다** 나가기 때문이다 — 접속 폭주에 DB 조회를 곱하지 않는다.
+   * 관리자가 바꿀 때만 갱신되고, 그 순간 접속 중인 사람들에게도 바로 밀어 준다.
+   */
+  private notice: ServerNotice | null = null;
 
   /** 카탈로그 id 집합 — 증강 테스트 요청의 id 검증용. */
   private readonly augmentIds: Set<string> = new Set(
@@ -1155,6 +1184,9 @@ export class RoomManager {
       // 도움말이 "N종"을 말할 때 쓴다 — 클라가 직접 세면 증강 구현 전체가
       // 번들에 딸려 들어온다(감사 §7-1). 카탈로그와 같은 출처라 어긋나지 않는다.
       augmentKinds: this.augmentCatalog.length,
+      // 운영자 공지 (§4-3). 인증 **전에** 나가는 자리라, 로그인하기 전에 알아야
+      // 하는 순간(점검 예고·서버 이전)에도 제때 닿는다.
+      ...(this.notice !== null ? { notice: this.notice } : {}),
     });
 
     ws.on("message", (data) => {
@@ -1496,6 +1528,28 @@ export class RoomManager {
        *
        * 인증 게이트 뒤의 `heavyLimited`가 여기까지 오지 않으므로 직접 건다.
        */
+      /*
+       * 공유 링크로 열린 리플레이 (§4-8, 사용자 결정 "링크 있는 사람만").
+       *
+       * **인증 전에 받는다.** 이 게임의 최대 무기는 "이 증강 조합 봐라"인데, 그걸
+       * 자랑하려면 계정이 없는 사람에게도 보여 줄 수 있어야 한다. 토큰이 곧
+       * 권한이고, 목록이 없으므로 추측이 유일한 공격 경로다 — 128비트 토큰 +
+       * 비싼 조회 제한으로 막는다.
+       *
+       * `shareToken`이 없는 `replayGet`은 여기서 처리하지 않는다 — 그건 계정
+       * 기반 조회라 아래 인증 게이트를 지나야 한다.
+       */
+      case "replayGet": {
+        if (typeof msg.shareToken !== "string" || msg.shareToken === "") break;
+        if (this.heavyLimited(conn, msg.type)) {
+          return this.fail(conn, "RATE_LIMITED", "조회가 너무 잦습니다. 잠시 후 다시 시도하세요");
+        }
+        void this.sendSharedReplay(conn, msg.shareToken).catch((err: unknown) => {
+          console.error("replayGet(share) error:", err);
+          this.fail(conn, "INTERNAL", "리플레이 조회 중 오류가 발생했습니다");
+        });
+        return;
+      }
       case "catalogRequest": {
         if (this.heavyLimited(conn, msg.type)) {
           return this.fail(conn, "RATE_LIMITED", "조회가 너무 잦습니다. 잠시 후 다시 시도하세요");
@@ -1620,19 +1674,67 @@ export class RoomManager {
       case "replayList":
         return this.sendReplayList(conn, user);
       case "replayGet": {
-        if (!Number.isInteger(msg.gameId)) {
+        const gameId = msg.gameId;
+        if (!Number.isInteger(gameId)) {
           return this.fail(conn, "BAD_REQUEST", "잘못된 게임 ID입니다");
         }
         // 떠 있는(floating) Promise의 거부가 프로세스를 죽이지 않도록 반드시 잡는다
-        void this.sendReplayData(conn, user, msg.gameId).catch((err: unknown) => {
+        void this.sendReplayData(conn, user, gameId as number).catch((err: unknown) => {
           console.error("replayGet error:", err);
           this.fail(conn, "INTERNAL", "리플레이 조회 중 오류가 발생했습니다");
+        });
+        return;
+      }
+      /*
+       * 공유 링크 만들기·내리기 (§4-8). **참가자와 관리자만** 만들 수 있다 —
+       * 남의 판을 대신 공개하는 길을 열지 않는다.
+       */
+      case "replayShare": {
+        if (!Number.isInteger(msg.gameId)) {
+          return this.fail(conn, "BAD_REQUEST", "잘못된 게임 ID입니다");
+        }
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        const game = db.getGame(msg.gameId);
+        // "없다"와 "권한이 없다"를 합친다 — `sendReplayData`와 같은 이유다(§L-4).
+        if (game === null || (!user.isAdmin && !game.participantUserIds.includes(user.id))) {
+          return this.fail(conn, "REPLAY_NOT_FOUND", "리플레이를 찾을 수 없습니다");
+        }
+        if (msg.revoke === true) {
+          db.unshareGame(msg.gameId);
+          this.send(conn.ws, { type: "replayShareToken", gameId: msg.gameId, token: null });
+          return;
+        }
+        this.send(conn.ws, {
+          type: "replayShareToken",
+          gameId: msg.gameId,
+          token: db.shareGame(msg.gameId),
         });
         return;
       }
       // ── 전체 통계 (누구나) ──
       case "leaderboard":
         return this.sendLeaderboard(conn);
+      // ── 친구 (§4-6) ──
+      case "friendAdd": {
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (typeof msg.nickname !== "string" || msg.nickname.trim() === "") {
+          return this.fail(conn, "BAD_REQUEST", "닉네임을 입력해 주세요");
+        }
+        const res = db.addFriend(user.id, msg.nickname.trim());
+        if (!res.ok) return this.fail(conn, "FRIEND_ADD_FAILED", res.error ?? "추가하지 못했습니다");
+        return this.sendFriends(conn, user);
+      }
+      case "friendRemove": {
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (typeof msg.nickname !== "string") return;
+        db.removeFriend(user.id, msg.nickname);
+        return this.sendFriends(conn, user);
+      }
+      case "friendList":
+        return this.sendFriends(conn, user);
       // ── 제보 게시판 ──
       case "feedbackSubmit":
         return this.submitFeedback(conn, user, msg.kind, msg.title, msg.body);
@@ -1656,6 +1758,26 @@ export class RoomManager {
       case "adminDeleteUser": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
         return this.adminDeleteUser(conn, user, msg.userId);
+      }
+      /*
+       * 공지 세우기·내리기 (§4-3).
+       *
+       * 바꾼 즉시 **접속 중인 모두에게** 다시 밀어 준다. 다음 접속까지 기다리게
+       * 하면 정작 공지가 필요한 순간(점검 5분 전)에 아무에게도 닿지 않는다.
+       * 대기실·게임 중인 사람도 받는다 — `serverInfo`는 화면을 갈아엎지 않고
+       * 상단 띠만 바꾸는 메시지라 판을 방해하지 않는다.
+       */
+      case "adminSetNotice": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (typeof msg.title !== "string" || typeof msg.body !== "string") {
+          return this.fail(conn, "BAD_REQUEST", "공지 형식이 올바르지 않습니다");
+        }
+        this.notice = db.setNotice(msg.title, msg.body);
+        this.log(null, this.notice === null ? "공지를 내렸다" : `공지 갱신: ${this.notice.title}`);
+        this.broadcastServerInfo();
+        return;
       }
       // ── 관리자 관전 ──
       case "liveGames": {
@@ -2583,6 +2705,37 @@ export class RoomManager {
     this.touch(room);
   }
 
+  /**
+   * 친구 목록 + **지금 상태** (§4-6).
+   *
+   * 온라인 판정은 DB가 아니라 **살아 있는 연결 집합**에서 나온다 — 그게 유일한
+   * 진실이다. "마지막 접속 시각"을 DB에 쓰는 방식은 갱신 지점이 여러 곳(접속·끊김·
+   * 크래시)이고 크래시에서 반드시 어긋난다.
+   *
+   * 이 목록은 요청할 때만 나간다. 친구가 접속·이탈할 때마다 밀어 주는 실시간
+   * 프레즌스는 만들지 않았다 — 사람이 서른 명대인 서버에서 그 스트림이 벌 값보다,
+   * 홈에서 한 번 보고 방을 만드는 흐름이 충분하다. (새로 고침 버튼이 있다.)
+   */
+  private sendFriends(conn: Conn, user: UserRow): void {
+    const db = this.db;
+    if (db === undefined) return;
+    const online = new Map<string, boolean>();
+    for (const c of this.conns) {
+      if (c.user === null || c.guest) continue;
+      // 한 사람이 여러 탭을 열어 뒀으면 **하나라도 대국 중이면** 대국 중으로 본다.
+      const playing = c.room !== null && c.room.phase === "playing";
+      online.set(c.user.username, (online.get(c.user.username) ?? false) || playing);
+    }
+    this.send(conn.ws, {
+      type: "friendList",
+      friends: db.friendNames(user.id).map((nickname) => ({
+        nickname,
+        online: online.has(nickname),
+        playing: online.get(nickname) === true,
+      })),
+    });
+  }
+
   // ─────────────────────────── 통계·리플레이 ───────────────────────────
 
   /** 요청한 본인의 누적(career) 통계만 전송. */
@@ -2593,7 +2746,29 @@ export class RoomManager {
       raw !== null
         ? [{ nickname: conn.user.username, isBot: false, stats: deriveStats(raw) }]
         : [];
-    this.send(conn.ws, { type: "stats", career });
+    this.send(conn.ws, { type: "stats", career, periods: this.periodsFor(conn.user) });
+  }
+
+  /**
+   * 이 사람의 기간 성적 (§4-7) — 게스트·저장소 없음이면 빈 배열.
+   *
+   * 7일·30일 둘만 낸다. 더 잘게 쪼개면(오늘/어제/이번 주…) 판수가 적은 이 서버에서는
+   * 대부분 0이 되어, 화면이 "아무것도 안 했다"고 말하는 칸으로 덮인다.
+   */
+  private periodsFor(user: UserRow): PeriodStats[] {
+    const db = this.db;
+    if (db === undefined || user.id === GUEST_USER_ID) return [];
+    try {
+      return [7, 30].map((days) => {
+        const { games, placements } = db.periodStats(user.id, days);
+        const sum = placements.reduce((acc, n, i) => acc + n * (i + 1), 0);
+        return { days, games, placements, avgRank: games === 0 ? 0 : sum / games };
+      });
+    } catch (err) {
+      // 기간 성적을 못 세는 것이 누적 통계까지 막을 이유는 없다.
+      this.logError(null, "기간 성적 집계 실패:", err);
+      return [];
+    }
   }
 
   /**
@@ -2889,6 +3064,25 @@ export class RoomManager {
     this.send(conn.ws, { type: "replayList", games });
   }
 
+  /**
+   * 공유 토큰으로 리플레이를 내준다 — **계정을 보지 않는다** (§4-8).
+   *
+   * 토큰이 통하지 않는 모든 경우를 한 문구로 묶는다(없는 토큰·내려간 링크·지워진
+   * 판). 구분해 답하면 그 자체가 "이 토큰은 존재한다"는 정보가 된다.
+   */
+  private async sendSharedReplay(conn: Conn, token: string): Promise<void> {
+    const db = this.db;
+    const gameId = db?.gameIdByShareToken(token) ?? null;
+    if (db === undefined || gameId === null) {
+      return this.fail(conn, "REPLAY_NOT_FOUND", "리플레이를 찾을 수 없습니다");
+    }
+    const game = db.getGame(gameId);
+    if (game === null) {
+      return this.fail(conn, "REPLAY_NOT_FOUND", "리플레이를 찾을 수 없습니다");
+    }
+    return this.deliverReplay(conn, gameId, game);
+  }
+
   private async sendReplayData(conn: Conn, user: UserRow, gameId: number): Promise<void> {
     const game = this.db?.getGame(gameId) ?? null;
     // "없다"와 "볼 권한이 없다"를 **같은 응답으로 합친다** (감사 2026-08-12 §L-4).
@@ -2899,6 +3093,15 @@ export class RoomManager {
     if (game === null || (!user.isAdmin && !game.participantUserIds.includes(user.id))) {
       return this.fail(conn, "REPLAY_NOT_FOUND", "리플레이를 찾을 수 없습니다");
     }
+    return this.deliverReplay(conn, gameId, game);
+  }
+
+  /** 권한 판정이 끝난 리플레이를 실제로 읽어 보낸다 (계정 경로·공유 경로 공용). */
+  private async deliverReplay(
+    conn: Conn,
+    gameId: number,
+    game: NonNullable<ReturnType<SiteDb["getGame"]>>,
+  ): Promise<void> {
     let text: string;
     try {
       text = await readFile(game.replayPath, "utf-8");

@@ -52,7 +52,10 @@ import type {
   RoundOverMessage,
   SandboxMessage,
   SandboxBotRules,
+  FriendEntry,
+  PeriodStats,
   ServerInfoMessage,
+  ServerNotice,
   ServerMessage,
   StatsEntry,
   StatsMessage,
@@ -62,6 +65,8 @@ import type {
 import {
   AUGMENT_CATEGORIES,
   EMOTES,
+  NOTICE_BODY_MAX,
+  NOTICE_TITLE_MAX,
   SPECTATOR_ID,
   doraKindFor,
   kindKey,
@@ -188,6 +193,47 @@ function clearRoomFromUrl(): void {
     window.history.replaceState(null, "", u.pathname + u.search + u.hash);
   } catch {
     /* history를 못 쓰는 환경이면 그냥 둔다 — 기능에는 지장이 없다 */
+  }
+}
+
+/**
+ * 리플레이 공유 링크 — `https://…/?replay=<토큰>` (감사 §4-8).
+ *
+ * 방 초대(`?room=`)와 같은 자리를 쓰되 **뜻이 다르다**: 방 코드는 알아도 되는
+ * 값이지만 이 토큰은 그 자체가 열람 권한이다. 그래서 형식 검사도 다르다 —
+ * base64url 이라 대소문자를 보존해야 하고(초대 코드처럼 대문자로 올리면 죽는다),
+ * 들어간 뒤에는 주소창에서 지운다(어깨너머·스크린샷으로 새지 않게).
+ */
+const REPLAY_PARAM = "replay";
+const REPLAY_TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
+
+function replayLinkFor(token: string): string {
+  const u = new URL(window.location.href);
+  u.searchParams.delete(ROOM_PARAM); // 방 초대와 섞이면 둘 다 안 통한다
+  u.searchParams.set(REPLAY_PARAM, token);
+  u.hash = "";
+  return u.toString();
+}
+
+function replayTokenFromUrl(): string | null {
+  try {
+    const raw = new URL(window.location.href).searchParams.get(REPLAY_PARAM);
+    if (raw === null) return null;
+    const t = raw.trim();
+    return REPLAY_TOKEN_RE.test(t) ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearReplayFromUrl(): void {
+  try {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has(REPLAY_PARAM)) return;
+    u.searchParams.delete(REPLAY_PARAM);
+    window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+  } catch {
+    /* history를 못 쓰는 환경이면 그냥 둔다 */
   }
 }
 
@@ -2425,6 +2471,11 @@ export function App(): JSX.Element {
    * 부팅 시 한 번만 읽는다: 그 뒤 주소창은 지워지고, 이 값은 한 번 쓰면 비워진다.
    */
   const pendingInviteRef = useRef<string | null>(roomCodeFromUrl());
+  /**
+   * 공유 링크(`?replay=토큰`)로 들어왔다 — **인증을 기다리지 않는다** (§4-8).
+   * 토큰이 곧 권한이므로 소켓이 열리는 즉시 요청한다.
+   */
+  const pendingReplayRef = useRef<string | null>(replayTokenFromUrl());
   /** 끊긴 동안 밀린 재전송 대기열 (resendPolicy.ts ②). */
   const pendingSends = useRef<QueuedSend[]>([]);
   /** 이번 끊김에서 "보내지 못했다"를 이미 알렸는가 — 토스트가 연달아 쌓이지 않게. */
@@ -2521,6 +2572,8 @@ export function App(): JSX.Element {
    * 로그인 화면은 그 동안 게이트 문구를 **추측해서 쓰지 않는다**.
    */
   const [serverInfo, setServerInfo] = useState<ServerInfoMessage | null>(null);
+  /** 친구 목록 (§4-6). null = 아직 못 받았다 — `[]`(정말 없다)와 화면에서 다르다. */
+  const [friends, setFriends] = useState<FriendEntry[] | null>(null);
   /** 서버가 되돌려 준 인증 실패 사유 — 토스트가 아니라 로그인 폼 안에 남긴다. */
   const [authError, setAuthError] = useState<string | null>(null);
   /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
@@ -3163,6 +3216,14 @@ export function App(): JSX.Element {
       if (relogin) {
         send({ type: "tokenLogin", sessionToken: token });
       }
+      // 공유 링크로 들어왔다면 인증과 무관하게 그 리플레이부터 청한다 (§4-8).
+      // 한 번 쓰면 비운다 — 재연결마다 다시 열면 보던 화면이 튄다.
+      const sharedReplay = pendingReplayRef.current;
+      if (sharedReplay !== null) {
+        pendingReplayRef.current = null;
+        clearReplayFromUrl();
+        send({ type: "replayGet", shareToken: sharedReplay });
+      }
       // 계정이 없는 사람이 체험 판을 두다 끊겼다면 그 판으로 돌려보낸다 (§2-5).
       // 계정 로그인이 우선이다 — 둘 다 있으면 계정이 이긴다(체험 토큰은 어차피
       // 그 판이 끝나면 죽고, 계정 쪽에 잃을 것이 훨씬 많다).
@@ -3426,6 +3487,7 @@ export function App(): JSX.Element {
     send({ type: "replayList" });
     send({ type: "leaderboard" });
     send({ type: "feedbackList" });
+    send({ type: "friendList" });
   }
 
   /**
@@ -3467,6 +3529,7 @@ export function App(): JSX.Element {
     setStats(null);
     setMyReplays(null);
     setLeaderboard(null);
+    setFriends(null);
     setAdminUsers(null);
     setFeedback(null);
   }
@@ -3567,6 +3630,7 @@ export function App(): JSX.Element {
       send({ type: "replayList" });
       send({ type: "leaderboard" });
       send({ type: "feedbackList" });
+      send({ type: "friendList" });
       if (msg.isAdmin) {
         send({ type: "liveGames" });
         send({ type: "adminUsers" });
@@ -3648,12 +3712,34 @@ export function App(): JSX.Element {
       safeStorage.setItem(LAST_ROOM_KEY, msg.code);
       return; // 이어서 joined·lobby가 온다
     }
+    if (msg.type === "friendList") {
+      setFriends(msg.friends);
+      return;
+    }
     if (msg.type === "replayList") {
       setMyReplays(msg.games);
       return;
     }
     if (msg.type === "replayData") {
       setReplayData(msg);
+      return;
+    }
+    /*
+     * 공유 링크가 만들어졌다 (§4-8) — 그 자리에서 클립보드에 넣는다.
+     *
+     * 화면에 링크를 띄워 놓고 "복사하세요"라고 하지 않는 이유: 초대 링크가 이미
+     * 같은 흐름이고(누르면 복사된다), 여기서만 다르면 같은 동작을 두 벌로 배워야 한다.
+     */
+    if (msg.type === "replayShareToken") {
+      if (msg.token === null) {
+        showToast("공유 링크를 내렸습니다 — 기존 링크는 더 이상 열리지 않습니다", "info", 4000);
+        return;
+      }
+      const url = replayLinkFor(msg.token);
+      void navigator.clipboard
+        ?.writeText(url)
+        .then(() => showToast("공유 링크를 복사했습니다 — 링크를 가진 사람만 볼 수 있습니다", "info", 4000))
+        .catch(() => showToast(`공유 링크: ${url}`, "info", 8000));
       return;
     }
     if (msg.type === "liveGames") {
@@ -4973,7 +5059,17 @@ export function App(): JSX.Element {
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
         </div>
       ) : null}
-      {auth === null ? (
+      {/* 공유 링크로 들어온 리플레이는 **로그인 화면보다 먼저** 선다 (§4-8).
+          토큰이 곧 권한이라 계정이 필요 없다 — 여기서 auth 게이트를 먼저 통과시키면
+          "링크 있는 사람만"이 "링크 있고 계정도 있는 사람만"이 된다. */}
+      {auth === null && replayData !== null ? (
+        <ReplayViewer
+          data={replayData}
+          settings={settings}
+          onSetting={updateSetting}
+          onClose={() => setReplayData(null)}
+        />
+      ) : auth === null ? (
         <AuthScreen
           connection={connection}
           serverInfo={serverInfo}
@@ -5024,6 +5120,7 @@ export function App(): JSX.Element {
           settings={settings}
           onSetting={updateSetting}
           onClose={() => setReplayData(null)}
+          onShare={() => send({ type: "replayShare", gameId: replayData.gameId })}
         />
       ) : inGame && view !== null ? (
         <GameTable
@@ -5102,6 +5199,12 @@ export function App(): JSX.Element {
       ) : (
         <HomeScreen
           auth={auth}
+          serverInfo={serverInfo}
+          friends={friends}
+          onAddFriend={(n) => send({ type: "friendAdd", nickname: n })}
+          onRemoveFriend={(n) => send({ type: "friendRemove", nickname: n })}
+          onRefreshFriends={() => send({ type: "friendList" })}
+          onSetNotice={(title, body) => send({ type: "adminSetNotice", title, body })}
           stats={stats}
           replays={myReplays}
           liveRooms={liveRooms}
@@ -5903,6 +6006,9 @@ function AuthScreen(props: {
 
   return (
     <div className="lobby lobby-landing">
+      {/* 공지는 **로그인 화면에도** 선다 (§4-3) — 점검 예고·서버 이전처럼 로그인하기
+          전에 알아야 하는 것이 대부분이다. `serverInfo`가 인증 전에 오므로 가능하다. */}
+      <NoticeBanner notice={props.serverInfo?.notice} />
       {/* 방문자에게 필요한 것은 딱 둘이다 — 이게 무엇인지 한 줄, 그리고 시작 버튼.
           나머지는 게임이 말한다. 자세한 설명이 필요한 사람은 규칙 화면으로 간다. */}
       <section className="landing">
@@ -6690,6 +6796,11 @@ function TierScreen(props: {
   data: AdminAugmentTiersMessage | null;
   onRefresh: () => void;
   onClose: () => void;
+  /**
+   * 공유 링크 만들기 (§4-8). **만들 수 있는 사람에게만** 준다 — 공유 링크로 열린
+   * 리플레이(로그인 전)에는 이 함수가 오지 않으므로 버튼도 뜨지 않는다.
+   */
+  onShare?: () => void;
 }): JSX.Element {
   const [query, setQuery] = useState("");
   const [flat, setFlat] = useState(false);
@@ -8223,8 +8334,220 @@ function ListCard<T>(props: {
   return props.children(props.items);
 }
 
+/**
+ * 운영자 공지 띠 (감사 §4-3).
+ *
+ * **왜 홈과 랜딩 양쪽에 서는가**: 공지가 필요한 순간은 대개 "점검 5분 전"·"서버를
+ * 옮깁니다"처럼 **로그인하기 전에** 알아야 하는 순간이다. `serverInfo`가 인증 전에
+ * 오므로 두 화면 모두 같은 값을 그릴 수 있다.
+ *
+ * 접는 상태를 저장하지 않는다. 공지는 운영자가 **일부러** 세운 것이고, 내려야 할
+ * 때는 운영자가 내린다 — "한 번 닫으면 다시 안 보임"을 만들면 정작 중요한 공지를
+ * 못 본 사람이 생긴다. 대신 본문은 기본으로 접어 두어 자리를 적게 차지한다.
+ */
+function NoticeBanner({ notice }: { notice: ServerNotice | undefined }): JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  if (notice === undefined) return null;
+  const hasBody = notice.body.trim() !== "";
+  const when = notice.updatedAt === "" ? null : new Date(notice.updatedAt);
+  return (
+    <div className="notice-banner" role="status">
+      <div className="notice-head">
+        <span className="notice-tag">공지</span>
+        <span className="notice-title">{notice.title}</span>
+        {when !== null && !Number.isNaN(when.getTime()) ? (
+          <span className="notice-date">{when.toLocaleDateString()}</span>
+        ) : null}
+        {hasBody ? (
+          <button className="notice-more" onClick={() => setOpen((v) => !v)}>
+            {open ? "접기 ▴" : "자세히 ▾"}
+          </button>
+        ) : null}
+      </div>
+      {hasBody && open ? <p className="notice-body">{notice.body}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * 공지 편집기 (관리자 전용, §4-3).
+ *
+ * **제목을 비우면 내린다.** 삭제 버튼을 따로 두지 않은 이유: "제목 없는 공지"는
+ * 존재할 수 없으므로 빈 제목이 곧 삭제이고, 경로가 둘이면 한쪽만 고쳐진 자리가 생긴다.
+ * 서버도 같은 규칙을 쓴다(`SiteDb.setNotice`).
+ *
+ * 저장하면 **접속 중인 모두에게** 바로 나간다. 그래서 저장 버튼 옆에 그 사실을
+ * 적어 둔다 — 초안을 적다가 실수로 내보내는 자리이기 때문이다.
+ */
+function NoticeEditor({
+  notice,
+  onSave,
+}: {
+  notice: ServerNotice | undefined;
+  onSave: (title: string, body: string) => void;
+}): JSX.Element {
+  const [title, setTitle] = useState(notice?.title ?? "");
+  const [body, setBody] = useState(notice?.body ?? "");
+  // 서버가 준 값이 바뀌면(다른 관리자가 고쳤다) 편집 중이 아닐 때만 따라간다.
+  const serverKey = `${notice?.title ?? ""}\u0000${notice?.body ?? ""}`;
+  const lastKey = useRef(serverKey);
+  useEffect(() => {
+    if (lastKey.current === serverKey) return;
+    lastKey.current = serverKey;
+    setTitle(notice?.title ?? "");
+    setBody(notice?.body ?? "");
+  }, [serverKey, notice]);
+
+  return (
+    <section className="home-card home-notice-edit">
+      <div className="home-card-head">
+        <h2>📢 공지<span className="home-admin-badge">관리자</span></h2>
+      </div>
+      <p className="home-hint">
+        홈과 로그인 화면 맨 위에 뜹니다. <b>제목을 비우고 저장하면 내려갑니다.</b>
+      </p>
+      <input
+        className="fb-input"
+        value={title}
+        maxLength={NOTICE_TITLE_MAX}
+        placeholder="한 줄 제목 (비우면 공지를 내린다)"
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <textarea
+        className="fb-textarea"
+        value={body}
+        maxLength={NOTICE_BODY_MAX}
+        rows={4}
+        placeholder="본문 (선택) — '자세히'를 눌러야 펼쳐집니다"
+        onChange={(e) => setBody(e.target.value)}
+      />
+      <button className="lobby-join" onClick={() => onSave(title, body)}>
+        저장 — 지금 접속 중인 모두에게 바로 나갑니다
+      </button>
+    </section>
+  );
+}
+
+/**
+ * 기간 성적 한 줄 (감사 §4-7).
+ *
+ * **왜 이 두 칸뿐인가**: 누적 통계에는 타임스탬프가 하나도 없어서, 되만들 수 있는
+ * 것은 게임 인덱스가 가진 것(판수·순위)뿐이다. 화료율·방총률까지 보이려면 리플레이를
+ * 전부 다시 읽어야 하고, 그건 이 기능이 값하는 비용이 아니다.
+ *
+ * 판수가 0이면 그 칸을 **회색 한 줄로** 둔다 — 숫자를 0으로 채우면 "평균 순위 0위"
+ * 같은 없는 사실이 화면에 뜬다.
+ */
+function PeriodStatsRow({ periods }: { periods: PeriodStats[] | undefined }): JSX.Element | null {
+  if (periods === undefined || periods.length === 0) return null;
+  return (
+    <div className="period-stats">
+      {periods.map((p) => (
+        <div key={p.days} className="period-card">
+          <span className="period-label">최근 {p.days}일</span>
+          {p.games === 0 ? (
+            <span className="period-none">둔 판 없음</span>
+          ) : (
+            <>
+              <span className="period-games">{p.games}판</span>
+              <span className="period-avg">평균 {p.avgRank.toFixed(2)}위</span>
+              <span className="period-places">
+                {p.placements.map((n, i) => (
+                  <span key={i} className={`period-place period-place-${i + 1}`}>
+                    {i + 1}위 {n}
+                  </span>
+                ))}
+              </span>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 친구 카드 (감사 §4-6).
+ *
+ * **무엇을 풀려는 문제인가**: 방을 만들고 코드를 부를 사람이 지금 접속해 있는지
+ * 알 방법이 없었다. 그래서 방을 만들어 두고(TTL 30분) 기다리다 닫는 일이 반복됐다.
+ * 필요한 것은 소셜 그래프가 아니라 **"지금 있나?" 한 줄**이다 — 그래서 이 화면에는
+ * 요청·승인·알림이 없고, 목록과 상태 점만 있다.
+ */
+function FriendsCard(props: {
+  friends: FriendEntry[] | null;
+  onAdd: (nickname: string) => void;
+  onRemove: (nickname: string) => void;
+  onRefresh: () => void;
+}): JSX.Element {
+  const [name, setName] = useState("");
+  const add = (): void => {
+    const n = name.trim();
+    if (n === "") return;
+    props.onAdd(n);
+    setName("");
+  };
+  return (
+    <section className="home-card home-friends">
+      <div className="home-card-head">
+        <h2>친구</h2>
+        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+      </div>
+      <div className="friend-add">
+        <input
+          className="fb-input"
+          value={name}
+          maxLength={12}
+          placeholder="닉네임으로 추가"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add();
+          }}
+        />
+        <button className="lobby-join" onClick={add} disabled={name.trim() === ""}>
+          추가
+        </button>
+      </div>
+      <ListCard
+        items={props.friends}
+        empty="아직 추가한 친구가 없습니다."
+        emptyHint="닉네임을 넣어 두면 방을 만들기 전에 지금 접속해 있는지 볼 수 있습니다."
+      >
+        {(rows) => (
+          <ul className="friend-list">
+            {rows.map((f) => (
+              <li key={f.nickname} className="friend-row">
+                <span
+                  className={`friend-dot${f.online ? (f.playing ? " friend-dot-playing" : " friend-dot-on") : ""}`}
+                  aria-hidden="true"
+                />
+                <span className="friend-name">{f.nickname}</span>
+                <span className="friend-state">
+                  {f.online ? (f.playing ? "대국 중" : "접속 중") : "오프라인"}
+                </span>
+                <button
+                  className="friend-del"
+                  onClick={() => props.onRemove(f.nickname)}
+                  aria-label={`${f.nickname} 친구에서 빼기`}
+                  title="친구에서 빼기"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ListCard>
+    </section>
+  );
+}
+
 function HomeScreen(props: {
   auth: AuthInfo;
+  /** 서버 상태 — 여기서 쓰는 것은 운영자 공지뿐이다 (§4-3). */
+  serverInfo: ServerInfoMessage | null;
+  /** 공지 세우기·내리기 (관리자 전용 카드가 쓴다). 제목이 비면 내린다. */
+  onSetNotice: (title: string, body: string) => void;
   stats: StatsMessage | null;
   /** null = 아직 서버 응답을 못 받았다. [] = 정말 없다. 화면에서 둘은 다른 문장이다. */
   replays: ReplayGameSummary[] | null;
@@ -8232,6 +8555,11 @@ function HomeScreen(props: {
   leaderboard: LeaderboardEntry[] | null;
   catalog: Record<string, AugmentCatalogEntry>;
   adminUsers: AdminUserEntry[] | null;
+  /** 친구 목록 — null이면 아직 못 받았다 (§4-6). */
+  friends: FriendEntry[] | null;
+  onAddFriend: (nickname: string) => void;
+  onRemoveFriend: (nickname: string) => void;
+  onRefreshFriends: () => void;
   /** 제보 게시판 — 내 글(관리자면 전체) */
   feedback: FeedbackEntry[] | null;
   onSubmitFeedback: (kind: FeedbackKind, title: string, body: string) => void;
@@ -8322,6 +8650,7 @@ function HomeScreen(props: {
 
   return (
     <div className="home">
+      <NoticeBanner notice={props.serverInfo?.notice} />
       <header className="home-nav">
         <span className="home-logo">이능마작</span>
         <span className="home-tagline">증강 리치마작</span>
@@ -8398,13 +8727,26 @@ function HomeScreen(props: {
           </button>
         </section>
 
+        {/* 친구는 **방을 만들기 직전에** 보는 것이다 (§4-6) — "지금 있나?"를 확인하고
+            방을 만들지 말지를 정하는 자리라, 대국 카드 바로 아래여야 뜻이 산다.
+            아래쪽(리플레이·관리자 카드 옆)에 두었더니 두 화면을 스크롤해야 만났다. */}
+        <FriendsCard
+          friends={props.friends}
+          onAdd={props.onAddFriend}
+          onRemove={props.onRemoveFriend}
+          onRefresh={props.onRefreshFriends}
+        />
+
         <section className="home-card">
           <div className="home-card-head">
             <h2>내 통계</h2>
             <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
           </div>
           {career !== null ? (
-            <StatsGrid s={career.stats} />
+            <>
+              <StatsGrid s={career.stats} />
+              <PeriodStatsRow periods={props.stats?.periods} />
+            </>
           ) : (
             /* 빈 상태에는 **누를 것**을 준다 (감사 §3-12). "첫 대국을 시작해 보세요!"는
                서술이지 다음 걸음이 아니다 — 방을 만들지 코드를 받을지 연습을 할지를
@@ -8422,6 +8764,11 @@ function HomeScreen(props: {
         </section>
 
           {props.auth.isAdmin ? (
+            <>
+            <NoticeEditor
+              notice={props.serverInfo?.notice}
+              onSave={props.onSetNotice}
+            />
             <section className="home-card home-sandbox">
               <div className="home-card-head">
                 <h2>🧪 증강 테스트<span className="home-admin-badge">관리자</span></h2>
@@ -8446,6 +8793,7 @@ function HomeScreen(props: {
                 🧪 증강 테스트 시작
               </button>
             </section>
+            </>
           ) : (
             replaysCard
           )}
@@ -17763,6 +18111,11 @@ function ReplayViewer(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   onClose: () => void;
+  /**
+   * 공유 링크 만들기 (§4-8). **만들 수 있는 사람에게만** 준다 — 공유 링크로 열린
+   * 리플레이(로그인 전)에는 이 함수가 오지 않으므로 버튼도 뜨지 않는다.
+   */
+  onShare?: () => void;
 }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [mod, setMod] = useState<ReplayRebuildModule | null>(null);
@@ -17951,6 +18304,17 @@ function ReplayViewer(props: {
         >
           🧾
         </button>
+        {/* 공유 링크 (§4-8) — 이 게임의 최대 무기는 "이 증강 조합 봐라"인데
+            자랑할 방법이 없었다. 만들 수 있는 사람에게만 뜬다(참가자·관리자). */}
+        {props.onShare !== undefined ? (
+          <button
+            className="rp-btn"
+            onClick={props.onShare}
+            title="이 판을 볼 수 있는 링크를 만든다 — 링크를 가진 사람만 볼 수 있습니다"
+          >
+            🔗
+          </button>
+        ) : null}
       </div>
       {openSettle !== null && shownSettlements[openSettle] !== undefined ? (
         <RoundResultPanel

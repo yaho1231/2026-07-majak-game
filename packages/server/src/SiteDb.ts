@@ -15,6 +15,8 @@ import { chmodSync, existsSync, statSync } from "node:fs";
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { DatabaseSync as DatabaseSyncT, StatementSync } from "node:sqlite";
+import { NOTICE_BODY_MAX, NOTICE_TITLE_MAX } from "@majak/core/network/protocol.js";
+import type { ServerNotice } from "@majak/core/network/protocol.js";
 
 // 비동기 scrypt — libuv 스레드풀에서 실행되어 공유 이벤트 루프를 블록하지 않는다.
 // (동기 scryptSync는 인증 요청 하나가 모든 진행 게임을 수십 ms씩 멈춘다.)
@@ -191,6 +193,12 @@ const RESERVED_NAMES = new Set([
 /** 기본 세션 수명 30일 — 이후 tokenLogin이 거부된다 (재로그인 필요). */
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * 친구 목록 상한 (§4-6). 이 목록은 접속할 때마다 통째로 나가고, 온라인 판정이
+ * 목록 크기만큼 돈다 — 이 규모의 서버에서 100명이면 넉넉하다.
+ */
+const MAX_FRIENDS = 100;
+
 /** 사용자당 유지할 최대 세션 수 — 초과 시 오래된 세션부터 정리(무한 증식 방지). */
 const MAX_SESSIONS_PER_USER = 10;
 
@@ -274,6 +282,7 @@ export class SiteDb {
         started_at TEXT NOT NULL,
         ended_at TEXT NOT NULL
       );
+      -- 공유 링크 토큰 (§4-8) — 아래 ALTER 로도 붙인다(기존 DB 이행용).
       CREATE TABLE IF NOT EXISTS game_players (
         game_id INTEGER NOT NULL REFERENCES games(id),
         user_id INTEGER,
@@ -305,6 +314,15 @@ export class SiteDb {
         replied_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
+      -- 친구 (§4-6). **단방향이고 승인이 없다** — 여기서 얻는 것은 상대의 온라인
+      -- 여부 한 줄뿐이고, 그건 방 코드를 나눌 사이라면 이미 서로 아는 사실이다.
+      -- 맞팔·요청 알림을 만들면 그 대가로 화면과 상태가 배로 는다.
+      CREATE TABLE IF NOT EXISTS friends (
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        friend_id INTEGER NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, friend_id)
+      );
       -- 진행 중인 대국 (감사 §2-10 이어하기).
       --
       -- games 표가 **끝난** 판의 인덱스인 것과 대칭으로, 이 표는 **아직 도는** 판을
@@ -327,6 +345,22 @@ export class SiteDb {
         updated_at TEXT NOT NULL
       );
     `);
+    /*
+     * 공유 링크 토큰 열 (§4-8) — **기존 DB에도 붙여야 한다.**
+     *
+     * `CREATE TABLE IF NOT EXISTS`는 이미 있는 표에 열을 더해 주지 않는다. 운영
+     * DB에는 `games` 표가 이미 있으므로 ALTER가 유일한 길이고, 이미 있으면
+     * SQLite가 던진다 — 그건 정상이므로 삼킨다. (마이그레이션 프레임워크를
+     * 들이지 않은 이유: 지금까지 스키마 변경이 이 한 건이다.)
+     */
+    try {
+      this.db.exec("ALTER TABLE games ADD COLUMN share_token TEXT");
+    } catch {
+      /* 이미 있다 */
+    }
+    this.db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_games_share ON games(share_token) WHERE share_token IS NOT NULL",
+    );
     // WAL·SHM 곁파일은 위 `journal_mode = WAL` 이 실행된 **뒤에야** 생긴다.
     // 그래서 한 번 더 조인다 — 앞의 호출은 기존 파일용, 이쪽이 새로 생긴 곁파일용이다.
     tightenDbPermissions(path);
@@ -377,6 +411,145 @@ export class SiteDb {
     if (this.adminCodeOverride !== "") return; // 운영자가 env로 고정한 값은 건드리지 않는다
     this.stmt("UPDATE config SET value = ? WHERE key = 'admin_code'")
       .run(randomBytes(16).toString("base64url"));
+  }
+
+  // ─────────────────────────── 친구 (§4-6) ───────────────────────────
+
+  /**
+   * 친구를 더한다. 돌려주는 값은 **실제 저장된 닉네임**(대소문자 원본)이거나,
+   * 더할 수 없는 이유다.
+   *
+   * 자기 자신은 더할 수 없다 — 목록에 내가 있으면 "지금 있나?"라는 질문에 아무
+   * 뜻이 없다. 상한(`MAX_FRIENDS`)을 두는 이유: 이 목록은 접속할 때마다 통째로
+   * 나가고, 온라인 판정이 목록 크기만큼 돈다.
+   */
+  addFriend(userId: number, nickname: string): { ok: boolean; nickname?: string; error?: string } {
+    const row = this.stmt("SELECT id, username FROM users WHERE username = ?").get(nickname) as
+      | { id: number; username: string }
+      | undefined;
+    if (row === undefined) return { ok: false, error: "그런 닉네임의 계정이 없습니다" };
+    if (row.id === userId) return { ok: false, error: "자기 자신은 추가할 수 없습니다" };
+    const count = this.stmt("SELECT COUNT(*) AS n FROM friends WHERE user_id = ?").get(userId) as {
+      n: number;
+    };
+    if (count.n >= MAX_FRIENDS) {
+      return { ok: false, error: `친구는 ${MAX_FRIENDS}명까지 추가할 수 있습니다` };
+    }
+    this.stmt(
+      "INSERT INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+    ).run(userId, row.id, new Date().toISOString());
+    return { ok: true, nickname: row.username };
+  }
+
+  removeFriend(userId: number, nickname: string): void {
+    this.stmt(
+      "DELETE FROM friends WHERE user_id = ? AND friend_id = (SELECT id FROM users WHERE username = ?)",
+    ).run(userId, nickname);
+  }
+
+  /** 내 친구들의 닉네임 (가나다순). 온라인 판정은 호출자가 붙인다. */
+  friendNames(userId: number): string[] {
+    const rows = this.stmt(
+      `SELECT u.username AS username
+         FROM friends f JOIN users u ON u.id = f.friend_id
+        WHERE f.user_id = ?
+        ORDER BY u.username`,
+    ).all(userId) as { username: string }[];
+    return rows.map((r) => r.username);
+  }
+
+  // ─────────────────────────── 리플레이 공유 링크 (§4-8) ───────────────────────────
+
+  /**
+   * 이 판의 공유 토큰을 만들거나(없으면) 그대로 돌려준다.
+   *
+   * **이미 있으면 새로 만들지 않는다.** 누를 때마다 새 값이 나오면 앞서 뿌린
+   * 링크가 조용히 죽는다 — 공유는 "이미 남에게 건넨 문자열"이 살아 있어야 뜻이 있다.
+   */
+  shareGame(gameId: number): string | null {
+    const row = this.stmt("SELECT share_token FROM games WHERE id = ?").get(gameId) as
+      | { share_token: string | null }
+      | undefined;
+    if (row === undefined) return null;
+    if (row.share_token !== null && row.share_token !== "") return row.share_token;
+    // 128비트 — 목록이 없으므로 추측이 유일한 공격이고, 그 앞에서 충분한 길이다.
+    const token = randomBytes(16).toString("base64url");
+    this.stmt("UPDATE games SET share_token = ? WHERE id = ?").run(token, gameId);
+    return token;
+  }
+
+  /** 공유 링크를 내린다 — 이미 뿌린 링크가 그 자리에서 죽는다. */
+  unshareGame(gameId: number): void {
+    this.stmt("UPDATE games SET share_token = NULL WHERE id = ?").run(gameId);
+  }
+
+  /** 지금 걸려 있는 공유 토큰 (없으면 null). */
+  shareTokenOf(gameId: number): string | null {
+    const row = this.stmt("SELECT share_token FROM games WHERE id = ?").get(gameId) as
+      | { share_token: string | null }
+      | undefined;
+    const t = row?.share_token;
+    return t === undefined || t === null || t === "" ? null : t;
+  }
+
+  /** 이 토큰이 가리키는 게임 id (없으면 null). */
+  gameIdByShareToken(token: string): number | null {
+    if (token === "") return null;
+    const row = this.stmt("SELECT id FROM games WHERE share_token = ?").get(token) as
+      | { id: number }
+      | undefined;
+    return row?.id ?? null;
+  }
+
+  // ─────────────────────────── 공지 (§4-3) ───────────────────────────
+
+  /**
+   * 운영자 공지 — 없으면 null.
+   *
+   * 새 테이블을 만들지 않고 `config`에 담는다. 공지는 언제나 **한 건**이고
+   * (여러 건을 쌓으면 "어느 것이 지금 것인가"를 정하는 규칙이 새로 필요해진다)
+   * 이 표는 정확히 그런 단일값을 담으려고 이미 있던 자리다.
+   */
+  notice(): ServerNotice | null {
+    const row = this.stmt("SELECT value FROM config WHERE key = 'notice'").get() as
+      | { value: string }
+      | undefined;
+    if (row === undefined) return null;
+    try {
+      const parsed = JSON.parse(row.value) as Partial<ServerNotice>;
+      if (typeof parsed.title !== "string" || parsed.title === "") return null;
+      return {
+        title: parsed.title,
+        body: typeof parsed.body === "string" ? parsed.body : "",
+        updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
+      };
+    } catch {
+      // 손으로 고치다 깨진 값 — 공지가 안 뜨는 것이지 서버가 죽을 일은 아니다.
+      return null;
+    }
+  }
+
+  /**
+   * 공지를 세우거나(제목이 있으면) 내린다(제목이 비면).
+   *
+   * 삭제를 별도 경로로 두지 않은 이유: "제목 없는 공지"는 존재할 수 없으므로
+   * 빈 제목이 곧 삭제다. 두 경로를 두면 한쪽만 고쳐진 자리가 생긴다.
+   */
+  setNotice(title: string, body: string): ServerNotice | null {
+    const t = title.trim().slice(0, NOTICE_TITLE_MAX);
+    if (t === "") {
+      this.stmt("DELETE FROM config WHERE key = 'notice'").run();
+      return null;
+    }
+    const notice: ServerNotice = {
+      title: t,
+      body: body.trim().slice(0, NOTICE_BODY_MAX),
+      updatedAt: new Date().toISOString(),
+    };
+    this.stmt(
+      "INSERT INTO config (key, value) VALUES ('notice', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(JSON.stringify(notice));
+    return notice;
   }
 
   // ─────────────────────────── 계정 ───────────────────────────
@@ -833,6 +1006,42 @@ export class SiteDb {
     const games = this.stmt("SELECT id, code, ended_at, replay_path FROM games ORDER BY id DESC LIMIT ?")
       .all(limit) as { id: number; code: string; ended_at: string; replay_path: string }[];
     return games.map((g) => this.hydrate(g));
+  }
+
+  /**
+   * 기간 성적 — `games.ended_at`에서 되만든다 (감사 §4-7).
+   *
+   * **왜 여기서 세는가**: 누적 통계(`PlayerStatsRaw`)에는 타임스탬프가 한 개도
+   * 없어서 "이번 주 성적"이 구조적으로 불가능했다. 그런데 게임 인덱스는 처음부터
+   * 시각을 갖고 있다 — 기록 형식을 바꾸지 않고도, **이미 쌓인 과거 데이터까지**
+   * 그대로 되살릴 수 있는 유일한 길이다.
+   *
+   * 담기는 것은 판수와 순위 분포뿐이다. 화료율·방총률은 이 표에 없고, 있는 척하려면
+   * 리플레이를 전부 다시 읽어야 한다 — 그건 이 기능이 값하는 비용이 아니다.
+   *
+   * 한 쿼리로 끝낸다(집계는 SQLite가 한다). `node:sqlite`는 동기라, 판수만큼
+   * 왕복하면 그동안 서버의 모든 대국이 함께 멈춘다.
+   */
+  periodStats(userId: number, days: number): {
+    games: number;
+    placements: [number, number, number, number];
+  } {
+    const since = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+    const rows = this.stmt(
+      `SELECT gp.rank AS rank, COUNT(*) AS n
+         FROM game_players gp
+         JOIN games g ON g.id = gp.game_id
+        WHERE gp.user_id = ? AND g.ended_at >= ?
+        GROUP BY gp.rank`,
+    ).all(userId, since) as { rank: number; n: number }[];
+    const placements: [number, number, number, number] = [0, 0, 0, 0];
+    let games = 0;
+    for (const r of rows) {
+      games += r.n;
+      const at = r.rank - 1;
+      if (at >= 0 && at <= 3) placements[at as 0 | 1 | 2 | 3] += r.n;
+    }
+    return { games, placements };
   }
 
   /** 게임 1건 조회 — 접근 권한 판정은 호출자(참가자 본인 또는 관리자)가 한다 */
