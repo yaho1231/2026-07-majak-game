@@ -34,14 +34,31 @@ case "$DEST/" in
     exit 1 ;;
 esac
 
-# 워크트리가 붙어 있으면 이동이 깨진다(.git 경로가 절대경로로 박혀 있다).
-WT="$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c '^worktree ' || echo 1)"
-if [ "${WT:-1}" -gt 1 ]; then
-  echo "✗ git 워크트리가 $((WT - 1))개 붙어 있습니다. 먼저 정리하세요:"
-  git -C "$ROOT" worktree list | tail -n +2 | sed 's/^/    /'
-  echo "    git worktree remove <경로>"
-  exit 1
-fi
+# 워크트리는 **지우지 않는다.**
+#
+# 예전에는 워크트리가 하나라도 붙어 있으면 여기서 멈추고 "먼저 정리하세요"라고 했다.
+# 근거는 옳았다 — 워크트리의 `.git` 파일과 본체의 `.git/worktrees/<이름>/gitdir` 이
+# 서로를 **절대경로로** 가리키므로, 통째로 옮기면 양쪽이 다 어긋난다.
+#
+# 그런데 그 처방은 이 저장소에서 쓸 수 없다. 실측(2026-08-18)으로 워크트리가 **22개**
+# 붙어 있었고 그중 둘에는 **커밋되지 않은 변경**이, 여럿에는 아직 안 올린 작업이 있었다.
+# 다른 세션이 지금 쓰고 있는 작업 사본을 지우게 만드는 안내는 이전을 돕는 것이 아니라
+# 막는 것이다 — 그래서 실제로 이전이 미뤄지고, 그동안 감시자·백업은 계속 안 돌았다.
+#
+# `git worktree repair` 가 정확히 이 어긋남을 고치라고 있는 명령이다. 옮긴 **뒤** 새
+# 자리에서 한 번 부르면 양쪽 링크가 전부 새 경로로 다시 쓰인다. 지울 것이 없다.
+WT_COUNT="$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c '^worktree ' || echo 1)"
+WT_COUNT=$((WT_COUNT - 1))
+# 커밋되지 않은 변경이 있는 워크트리는 **이름을 불러 준다.** 파일은 그대로 따라가지만,
+# 그 세션의 터미널은 옛 경로를 보고 있으므로 사람이 알고 있어야 한다.
+DIRTY=""
+while IFS= read -r wt; do
+  [ -z "$wt" ] && continue
+  [ "$wt" = "$ROOT" ] && continue
+  if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+    DIRTY="$DIRTY\n    $wt"
+  fi
+done <<< "$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')"
 
 echo "── 할 일"
 echo "  1. 서버를 정상 종료합니다 (진행 중인 대국은 사람들에게 알린 뒤 끝납니다)"
@@ -52,6 +69,16 @@ echo "  4. 새 자리에서 에이전트를 다시 등록하고 서버를 세웁
 echo
 echo "  ⚠ 옮긴 뒤에는 예전 경로로 열어 둔 터미널·에디터가 전부 무효가 됩니다."
 echo "  ⚠ cloudflared 설정이 경로를 참조한다면 따로 고쳐야 합니다(포트만 참조하면 무관)."
+if [ "$WT_COUNT" -gt 0 ]; then
+  echo
+  echo "  ℹ git 워크트리 ${WT_COUNT}개가 함께 따라갑니다 (지우지 않습니다)."
+  echo "    옮긴 뒤 'git worktree repair' 로 링크를 새 경로에 다시 씁니다."
+  if [ -n "$DIRTY" ]; then
+    echo "  ⚠ 커밋되지 않은 변경이 있는 워크트리 — 파일은 그대로 따라가지만"
+    echo "    그 세션의 터미널은 옛 경로를 보게 됩니다:"
+    printf "%b\n" "$DIRTY"
+  fi
+fi
 echo
 printf '진행하려면 정확히 "옮긴다" 라고 입력하세요: '
 read -r ANSWER
@@ -67,8 +94,36 @@ echo "▶ 이동…"
 mkdir -p "$(dirname "$DEST")"
 mv "$ROOT" "$DEST"
 
-echo "▶ 새 자리에서 다시 세우기…"
+echo "▶ 워크트리 링크 고치기…"
 cd "$DEST"
+#
+# ⚠ **새 경로를 직접 짚어 줘야 한다.** 인자 없이 `git worktree repair` 만 부르면
+#   아무것도 안 고쳐진다 — 본체의 `.git/worktrees/<이름>/gitdir` 이 아직 옛 경로를
+#   가리키고 있어 git 이 워크트리가 어디로 갔는지 모르기 때문이다. `worktree list`
+#   에서 경로를 읽어 넘기는 것도 같은 이유로 소용없다(그 목록이 곧 옛 경로다).
+#
+#   실측(2026-08-18, 임시 저장소로 재현): 인자 없이 부르면 목록이 계속 옛 경로를
+#   `prunable` 로 보여 주고 워크트리 안에서 `git status` 가 "깃 저장소가 아닙니다"
+#   로 죽는다. 새 경로를 인자로 주면 양쪽 링크가 다 고쳐지고 **커밋되지 않은
+#   파일도 그대로 남는다.**
+#
+if [ -d "$DEST/.claude/worktrees" ]; then
+  git -C "$DEST" worktree repair "$DEST"/.claude/worktrees/* || true
+fi
+git -C "$DEST" worktree prune || true
+# 고쳐졌는지 실제로 확인한다 — 여기서 조용히 실패하면 다른 세션이 그때서야 깨진 걸 안다.
+BROKEN=0
+while IFS= read -r wt; do
+  [ -z "$wt" ] && continue
+  git -C "$wt" rev-parse --git-dir >/dev/null 2>&1 || { echo "  ✗ 링크가 깨졌습니다: $wt"; BROKEN=1; }
+done <<< "$(git -C "$DEST" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')"
+if [ "$BROKEN" -eq 0 ]; then
+  echo "  ✓ 워크트리 $(($(git -C "$DEST" worktree list | wc -l | tr -d ' ') - 1))개 정상"
+else
+  echo "  ⚠ 새 경로에서 직접 고치세요:  git -C $DEST worktree repair $DEST/.claude/worktrees/*"
+fi
+
+echo "▶ 새 자리에서 다시 세우기…"
 bash "$DEST/deploy/agents.sh" install || true
 bash "$DEST/deploy/serve.sh" start
 
