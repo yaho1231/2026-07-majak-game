@@ -401,24 +401,20 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   }
 
   /**
-   * 교환을 끝까지 진행한다 — 2026-08-15부터 **내가 고른 3장**이라, 후보를 세 번 골라야
-   * 비로소 교환이 일어난다. 고른 tileId 목록을 돌려준다.
+   * 무장 뒤 제시된 무작위 3장 중 하나를 골라 교환을 끝낸다 (한 번의 제출로 끝난다).
+   * 바닥에 버려진 tileId를 돌려준다.
    */
-  function exchangeThree(game: Game): TileId[] {
-    const out: TileId[] = [];
-    for (let i = 0; i < 3; i++) {
-      const opt = turnOptions(game).find((o) => o.type === "future_exchange");
-      if (opt === undefined) throw new Error("no future_exchange option");
-      const { tileId } = opt.payload as { tileId: TileId };
-      const r = game.engine.submit({
-        player: "p0",
-        type: "future_exchange",
-        payload: { tileId },
-      });
-      expect(r.ok).toBe(true);
-      out.push(tileId);
-    }
-    return out;
+  function exchangeOne(game: Game): TileId {
+    const opt = turnOptions(game).find((o) => o.type === "future_exchange");
+    if (opt === undefined) throw new Error("no future_exchange option");
+    const { tileId } = opt.payload as { tileId: TileId };
+    const r = game.engine.submit({
+      player: "p0",
+      type: "future_exchange",
+      payload: { tileId },
+    });
+    expect(r.ok).toBe(true);
+    return tileId;
   }
 
   it("턴 시작에는 future_arm만 뜬다 — 교환 프롬프트가 곧바로 뜨지 않는다", () => {
@@ -439,7 +435,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("무장하면 그때 손패 전체가 교환 후보로 제시된다", () => {
+  it("무장하면 그때 교환 후보 3장이 제시된다", () => {
     const game = setup();
     expect(
       game.engine.submit({ player: "p0", type: "future_arm", payload: {} }).ok,
@@ -450,8 +446,8 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
 
     const opts = turnOptions(game);
     const ex = opts.filter((o) => o.type === "future_exchange");
-    // 2026-08-15: 무작위 3장이 아니라 **내가 고르는** 3장 — 손패 전부가 후보다
-    expect(ex).toHaveLength(14);
+    // 손패에서 무작위로 뽑힌 3장만 후보다 (그중 바닥에 버릴 한 장을 고른다)
+    expect(ex).toHaveLength(3);
     // 손패는 아직 전혀 움직이지 않았다 (무장은 선언일 뿐)
     expect(handIdsOf(game.engine.state, "p0")).toHaveLength(14);
     expect(opts.some((o) => o.type === "future_arm")).toBe(false);
@@ -460,7 +456,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   it("교환하면 가져온 3장이 전원 공개 채널에 실리고 무장이 풀린다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
-    exchangeThree(game);
+    exchangeOne(game);
 
     const s = game.engine.state;
     const got = s.augmentData[GOT_KEY] as TileId[];
@@ -481,7 +477,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   it("한 순에 한 번뿐 — 교환 뒤에는 깡을 쳐도 다시 무장할 수 없다 (2026-08-01)", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
-    exchangeThree(game);
+    exchangeOne(game);
     const handAfter = handIdsOf(game.engine.state, "p0").length;
 
     // 교환 직후에는 무장 후보가 사라진다
@@ -510,7 +506,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   it("내가 버리면 순이 하나 오르지만, 쿨다운(3순)은 아직 안 풀린다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
-    exchangeThree(game);
+    exchangeOne(game);
     const toss = handIdsOf(game.engine.state, "p0")[0] as TileId;
     expect(
       game.engine.submit({ player: "p0", type: "discard", payload: { tileId: toss } }).ok,

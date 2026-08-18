@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEAD_WALL,
   FlowController,
+  Prng,
   ROUND_SETTLED,
   TILE_DISCARDED,
   WALL,
@@ -85,15 +86,17 @@ describe("future_sight — 미래를 보는 자", () => {
     return withAugments(s, "p0", ["future_sight"]);
   }
 
-  it("내가 고른 3장을 내보내고 패산 위 3장을 가져온다 (스택·뷰 기록, 턴당 1회)", () => {
+  it("무작위 3장을 내보내고 패산 위 3장을 가져온다 (스택·뷰 기록, 턴당 1회)", () => {
     const game = createStandardGameFromState(craftFutureState());
     installAugment(game.engine, futureSight, "p0", { yaku: game.yaku });
 
     const st0 = game.engine.state;
     const handBefore = [...handIdsOf(st0, "p0")];
     const wallBefore = [...(st0.zones[WALL]?.tileIds ?? [])];
-    // 2026-08-15: 무작위가 아니라 **내가 고른** 3장이 나간다 (난수를 쓰지 않는다)
-    const expectedOut = handBefore.slice(0, 3);
+    // toEvents와 같은 방식으로 난수를 재현해 기대값을 계산 (결정론 검증)
+    const prng = new Prng(0);
+    prng.setState(st0.prngState);
+    const expectedOut = prng.shuffle([...handBefore]).slice(0, 3);
     const expectedIn = wallBefore.slice(0, 3);
 
     // 52차 후속(사용자 피드백): 턴이 시작되자마자 교환 프롬프트가 뜨던 것을 막았다 —
@@ -104,16 +107,11 @@ describe("future_sight — 미래를 보는 자", () => {
     const armed = flow.submit("p0", { type: "future_arm", payload: {} });
     if (armed.kind !== "awaiting") throw new Error("expected awaiting after arm");
     const armedPrompt = armed.prompts.find((p) => p.player === "p0");
-    // 무장하면 아직 안 고른 손패 전부가 후보로 뜬다
-    expect(
-      armedPrompt?.options.filter((o) => o.type === "future_exchange"),
-    ).toHaveLength(handBefore.length);
+    expect(armedPrompt?.options.some((o) => o.type === "future_exchange")).toBe(true);
 
-    // 한 장씩 세 번 고른다 — 셋을 채운 순간 교환이 일어난다
-    let status: ReturnType<typeof flow.submit> = armed;
-    for (const tileId of expectedOut) {
-      status = flow.submit("p0", { type: "future_exchange", payload: { tileId } });
-    }
+    // 48차: 무작위 3장 중 바닥에 버릴 패를 내가 고른다 — 여기서는 [1]번을 골라 본다
+    const chosen = expectedOut[1] as TileId;
+    const status = flow.submit("p0", { type: "future_exchange", payload: { tileId: chosen } });
 
     const st1 = game.engine.state;
     const hand = st1.zones[handZone("p0")]?.tileIds ?? [];
@@ -124,15 +122,14 @@ describe("future_sight — 미래를 보는 자", () => {
     expect(hand).toHaveLength(handBefore.length);
     for (const id of expectedIn) expect(hand).toContain(id);
     for (const id of expectedOut) expect(hand).not.toContain(id);
-    // 바닥에는 아무것도 놓이지 않는다 (순수 교환 — 후리텐이 생기지 않는다)
-    expect(discards).toEqual([]);
-    // 고른 3장은 패산 맨 밑으로 (고른 순서 그대로), 총량은 그대로
-    expect(wall.slice(-3)).toEqual(expectedOut);
-    expect(wall).toHaveLength(wallBefore.length);
+    // 내가 고른 패가 바닥으로, 나머지 2장이 패산 맨 밑으로 (원래 순서 유지)
+    expect(discards).toEqual([chosen]);
+    expect(wall.slice(-2)).toEqual([expectedOut[0], expectedOut[2]]);
+    expect(wall).toHaveLength(wallBefore.length - 1); // 3장 빠지고 2장 돌아옴
     // 마지막으로 들어온 패가 새 쯔모패
     expect(st1.round.lastDrawnTile).toBe(expectedIn[2]);
-    // 난수를 쓰지 않는다(결정적) + 스택·뷰 기록
-    expect(st1.prngState).toBe(st0.prngState);
+    // 난수 소비 반영 + 스택·뷰 기록
+    expect(st1.prngState).not.toBe(st0.prngState);
     expect(st1.augmentData[STACKS_KEY]).toBe(1);
     // 쌓인 판수는 전원 공개 채널로 나간다 — 이름표 증강 pill이 "+N판"으로 띄운다
     expect(
@@ -179,21 +176,24 @@ describe("future_sight — 미래를 보는 자", () => {
     expect(armOk(3, 0)).toBe(true); // 세 순이 지났다
   });
 
-  it("순 카운터는 **내 버림**에만 오른다 — 교환 자체는 순을 넘기지 않는다", () => {
+  it("순 카운터는 **내 버림**에만 오른다 — 교환이 바닥에 놓는 한 장은 세지 않는다", () => {
     const game = createStandardGameFromState(craftFutureState());
     installAugment(game.engine, futureSight, "p0", { yaku: game.yaku });
     const turns = (): unknown => game.engine.state.augmentData[TURNS_KEY];
 
     game.engine.submit({ player: "p0", type: "future_arm", payload: {} });
-    const three = handIdsOf(game.engine.state, "p0").slice(0, 3);
-    for (const tileId of three) {
-      expect(
-        game.engine.submit({ player: "p0", type: "future_exchange", payload: { tileId } }).ok,
-      ).toBe(true);
-    }
-    // 교환은 순을 넘기는 사건이 아니다
+    const three = handIdsOf(game.engine.state, "p0");
+    const opt = new FlowController(game.engine)
+      .begin();
+    if (opt.kind !== "awaiting") throw new Error("expected awaiting");
+    const ex = opt.prompts
+      .find((p) => p.player === "p0")
+      ?.options.find((o) => o.type === "future_exchange");
+    expect(ex).toBeDefined();
+    game.engine.submit({ player: "p0", type: "future_exchange", payload: ex!.payload });
+    // 교환은 바닥에 한 장을 놓지만 그건 내 '순'이 아니다
     expect(turns()).toBeUndefined();
-    expect(three).toHaveLength(3);
+    expect(three.length).toBeGreaterThan(0);
 
     // 진짜 버림이 있어야 순이 넘어간다
     const tileId = handIdsOf(game.engine.state, "p0")[0] as TileId;

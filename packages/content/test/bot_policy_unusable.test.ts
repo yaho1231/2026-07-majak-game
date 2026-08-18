@@ -171,20 +171,23 @@ describe("미래를 보는 자 — 두 단계는 서로 다른 질문이다", ()
     expect(fire(futureSight, ctx(v, [ARM], { shanten: 3, tenpai: false }))).toEqual(ARM);
   });
 
-  /**
-   * 2026-08-15부터 교환은 **바닥에 아무것도 놓지 않는다** — 그래서 안전패 문제가 아니라
-   * 순수한 손패 문제다. 손에 쓸모없는 패부터 내보낸다.
-   */
-  it("교환 단계에서는 **손에 쓸모없는 패**를 먼저 내보낸다", () => {
-    const v = view("123m456p789s1125z");
-    const uselessId = idOf(v, "5z"); // 고립 자패 — 짝도 이웃도 없다
-    const usefulId = idOf(v, "4p"); // 456p 몸통의 일부
+  it("교환 단계에서는 **가장 안전한 패**를 바닥에 놓는다", () => {
+    const v = view("123m456p789s1122z");
+    const safeId = idOf(v, "1z");
+    const dangerId = idOf(v, "4p");
     const opts = [
-      { type: "future_exchange", payload: { tileId: usefulId } },
-      { type: "future_exchange", payload: { tileId: uselessId } },
+      { type: "future_exchange", payload: { tileId: dangerId } },
+      { type: "future_exchange", payload: { tileId: safeId } },
     ];
-    const picked = fire(futureSight, ctx(v, opts, { shanten: 2, tenpai: false }));
-    expect((picked?.payload as { tileId?: number }).tileId).toBe(uselessId);
+    const picked = fire(
+      futureSight,
+      ctx(v, opts, {
+        shanten: 2,
+        tenpai: false,
+        safety: (k: TileKind) => (kindKey(k) === kindKey(h("1z")[0] as TileKind) ? 1 : 0),
+      }),
+    );
+    expect((picked?.payload as { tileId?: number }).tileId).toBe(safeId);
   });
 
   it("교환 단계는 미룰 수 없다 — 적기와 무관하게 반드시 고른다", () => {
