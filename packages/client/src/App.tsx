@@ -8313,6 +8313,66 @@ function RefreshButton(props: { onRefresh: () => void; title?: string }): JSX.El
   );
 }
 
+/**
+ * 홈 카드 접기 (2026-08-18 사용자 요청).
+ *
+ * **무엇을 푸는가**: 홈 왼쪽 열에 카드가 네 장(대국·친구·내 통계·리플레이) 쌓이면서
+ * 지금 안 보는 것까지 화면을 차지한다. 방을 만들러 온 사람에게 통계는 소음이고,
+ * 전적을 보러 온 사람에게는 반대다. 무엇을 접을지는 사람마다 다르니 **접는 문만**
+ * 준다 — 기본은 전부 펼침이고, 접은 상태만 localStorage에 남는다.
+ *
+ * 새로 고침 단추와 같은 줄(`.home-card-head`)에 선다. 카드 제목 전체를 누르게
+ * 하지 않은 이유: 제목 옆 새로 고침을 누르려다 카드가 접히는 사고가 난다.
+ */
+const FOLD_KEY = "majak.homeFolded";
+
+function readFolded(): Record<string, boolean> {
+  try {
+    const raw = safeStorage.getItem(FOLD_KEY);
+    if (raw === null) return {};
+    const v: unknown = JSON.parse(raw);
+    if (typeof v !== "object" || v === null) return {};
+    return v as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * 카드 하나의 접힘 상태. `id`는 저장 키라 카드마다 달라야 한다.
+ *
+ * ⚠ 저장은 **updater 밖에서** 한다. `setFolded(prev => { ...저장...; return !prev })`
+ * 로 짰다가 StrictMode가 updater를 두 번 부르는 개발 모드에서 저장이 어긋났다
+ * (접었는데 localStorage에는 안 남는 판이 생겼다). updater는 순수해야 한다.
+ */
+function useFold(id: string): [boolean, () => void] {
+  const [folded, setFolded] = useState(() => readFolded()[id] === true);
+  const toggle = (): void => {
+    const next = !folded;
+    setFolded(next);
+    const all = readFolded();
+    if (next) all[id] = true;
+    else delete all[id];
+    safeStorage.setItem(FOLD_KEY, JSON.stringify(all));
+  };
+  return [folded, toggle];
+}
+
+function FoldButton(props: { folded: boolean; onToggle: () => void; label: string }): JSX.Element {
+  const what = props.folded ? `${props.label} 펼치기` : `${props.label} 접기`;
+  return (
+    <button
+      className={`home-fold${props.folded ? " home-fold-on" : ""}`}
+      onClick={props.onToggle}
+      title={what}
+      aria-label={what}
+      aria-expanded={!props.folded}
+    >
+      ▾
+    </button>
+  );
+}
+
 function ListCard<T>(props: {
   items: T[] | null;
   /** 정말로 비었을 때의 문장 */
@@ -8481,6 +8541,7 @@ function FriendsCard(props: {
   onRefresh: () => void;
 }): JSX.Element {
   const [name, setName] = useState("");
+  const [folded, toggleFold] = useFold("friends");
   const add = (): void => {
     const n = name.trim();
     if (n === "") return;
@@ -8488,56 +8549,63 @@ function FriendsCard(props: {
     setName("");
   };
   return (
-    <section className="home-card home-friends">
+    <section className={`home-card home-friends${folded ? " home-card-folded" : ""}`}>
       <div className="home-card-head">
         <h2>친구</h2>
-        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+        <div className="home-card-tools">
+          <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+          <FoldButton folded={folded} onToggle={toggleFold} label="친구" />
+        </div>
       </div>
-      <div className="friend-add">
-        <input
-          className="fb-input"
-          value={name}
-          maxLength={12}
-          placeholder="닉네임으로 추가"
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") add();
-          }}
-        />
-        <button className="lobby-join" onClick={add} disabled={name.trim() === ""}>
-          추가
-        </button>
-      </div>
-      <ListCard
-        items={props.friends}
-        empty="아직 추가한 친구가 없습니다."
-        emptyHint="닉네임을 넣어 두면 방을 만들기 전에 지금 접속해 있는지 볼 수 있습니다."
-      >
-        {(rows) => (
-          <ul className="friend-list">
-            {rows.map((f) => (
-              <li key={f.nickname} className="friend-row">
-                <span
-                  className={`friend-dot${f.online ? (f.playing ? " friend-dot-playing" : " friend-dot-on") : ""}`}
-                  aria-hidden="true"
-                />
-                <span className="friend-name">{f.nickname}</span>
-                <span className="friend-state">
-                  {f.online ? (f.playing ? "대국 중" : "접속 중") : "오프라인"}
-                </span>
-                <button
-                  className="friend-del"
-                  onClick={() => props.onRemove(f.nickname)}
-                  aria-label={`${f.nickname} 친구에서 빼기`}
-                  title="친구에서 빼기"
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </ListCard>
+      {folded ? null : (
+        <>
+          <div className="friend-add">
+            <input
+              className="fb-input"
+              value={name}
+              maxLength={12}
+              placeholder="닉네임으로 추가"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") add();
+              }}
+            />
+            <button className="lobby-join" onClick={add} disabled={name.trim() === ""}>
+              추가
+            </button>
+          </div>
+          <ListCard
+            items={props.friends}
+            empty="아직 추가한 친구가 없습니다."
+            emptyHint="닉네임을 넣어 두면 방을 만들기 전에 지금 접속해 있는지 볼 수 있습니다."
+          >
+            {(rows) => (
+              <ul className="friend-list">
+                {rows.map((f) => (
+                  <li key={f.nickname} className="friend-row">
+                    <span
+                      className={`friend-dot${f.online ? (f.playing ? " friend-dot-playing" : " friend-dot-on") : ""}`}
+                      aria-hidden="true"
+                    />
+                    <span className="friend-name">{f.nickname}</span>
+                    <span className="friend-state">
+                      {f.online ? (f.playing ? "대국 중" : "접속 중") : "오프라인"}
+                    </span>
+                    <button
+                      className="friend-del"
+                      onClick={() => props.onRemove(f.nickname)}
+                      aria-label={`${f.nickname} 친구에서 빼기`}
+                      title="친구에서 빼기"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ListCard>
+        </>
+      )}
     </section>
   );
 }
@@ -8596,6 +8664,9 @@ function HomeScreen(props: {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 방 기본값과 같은 쪽으로 맞춘다 — 동풍전 (RoomManager.newRoom 참고)
   const [sandboxMode, setSandboxMode] = useState<GameMode>("tonpuu");
+  // 접어 둘 수 있는 카드들 — 지금 안 보는 것이 화면을 차지하지 않게 (useFold 주석 참고)
+  const [statsFolded, toggleStatsFold] = useFold("mystats");
+  const [replaysFolded, toggleReplaysFold] = useFold("replays");
   const career = props.stats?.career.find((e) => e.nickname === props.auth.username) ?? null;
 
   function joinByCode(): void {
@@ -8603,16 +8674,20 @@ function HomeScreen(props: {
     if (c.length >= 4) props.onJoinRoom(c);
   }
 
-  /* 리플레이 카드: 일반 유저는 왼쪽 열(증강 카드와 높이 맞춤),
-     관리자는 섹션이 많고 목록도 길어 하단 전체 폭에 따로 둔다. */
+  /* 리플레이 카드: 일반 유저는 왼쪽 열, 관리자는 섹션이 많고 목록도 길어
+     하단 전체 폭에 따로 둔다. */
   const replaysCard = (
-    <section className="home-card home-replays">
+    <section className={`home-card home-replays${replaysFolded ? " home-card-folded" : ""}`}>
       <div className="home-card-head">
         <h2>{props.auth.isAdmin ? "모든 리플레이" : "내 리플레이"}
           {props.auth.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
         </h2>
-        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+        <div className="home-card-tools">
+          <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+          <FoldButton folded={replaysFolded} onToggle={toggleReplaysFold} label="리플레이" />
+        </div>
       </div>
+      {replaysFolded ? null : (
       <ListCard
         items={props.replays}
         empty="저장된 리플레이가 없습니다."
@@ -8645,6 +8720,7 @@ function HomeScreen(props: {
         </ul>
         )}
       </ListCard>
+      )}
     </section>
   );
 
@@ -8686,7 +8762,9 @@ function HomeScreen(props: {
 
       <main className="home-main">
         <div className="home-top">
-          <div className={`home-top-left${props.auth.isAdmin ? " home-top-left-admin" : ""}`}>
+          {/* 예전에는 관리자일 때 `home-top-left-admin`을 붙여 높이 잠금을 풀었다.
+              잠금 자체를 없앴으니(styles.css `.home-top-left` 주석) 갈래가 필요 없다. */}
+          <div className="home-top-left">
         <section className="home-card home-play">
           <h2>대국</h2>
           <button className="home-create" onClick={props.onCreateRoom}>
@@ -8737,12 +8815,15 @@ function HomeScreen(props: {
           onRefresh={props.onRefreshFriends}
         />
 
-        <section className="home-card">
+        <section className={`home-card home-mystats${statsFolded ? " home-card-folded" : ""}`}>
           <div className="home-card-head">
             <h2>내 통계</h2>
-            <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+            <div className="home-card-tools">
+              <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+              <FoldButton folded={statsFolded} onToggle={toggleStatsFold} label="내 통계" />
+            </div>
           </div>
-          {career !== null ? (
+          {statsFolded ? null : career !== null ? (
             <>
               <StatsGrid s={career.stats} />
               <PeriodStatsRow periods={props.stats?.periods} />
@@ -17819,22 +17900,10 @@ function DraftOverlay({
             </p>
           </>
         ) : null}
-        {/*
-          **첫 드래프트에는 이게 무엇인지부터 말한다** (감사 2026-08-17 §3-6).
-
-          게임 시작 30초 만에 규칙을 바꾸는 카드 세 장을 고르게 하면서, 오버레이에는
-          아무 안내가 없었다. "Shift로 상세 보기"는 대기실 팁에만 적혀 있었는데
-          **체험·연습으로 들어온 사람은 대기실을 거치지 않는다** — 이 게임을 처음
-          보는 사람이 정확히 안내를 못 받는 경로였다.
-
-          안내는 첫 판(보유 0)에만 크게 낸다. 두 번째부터는 조작 한 줄이면 된다 —
-          매번 같은 문단을 읽히면 그건 안내가 아니라 방해다.
-        */}
-        {owned.length === 0 ? (
-          <p className="draft-intro">
-            <TermText text="**증강**은 이 판의 규칙을 바꿉니다. 고른 것은 판이 끝날 때까지 따라오고, 상대가 무엇을 골랐는지는 대개 보이지 않습니다." />
-          </p>
-        ) : null}
+        {/* 첫 드래프트에 "증강은 이 판의 규칙을 바꿉니다…" 한 문단을 크게 냈었다
+            (감사 2026-08-17 §3-6). 뺐다 — 카드 세 장이 이미 그 말을 하고 있고,
+            고르려고 온 자리에서 읽을 것을 더 얹는 건 안내가 아니라 방해다
+            (2026-08-18 사용자 요청). 조작 한 줄(아래)만 남긴다. */}
         <p className="draft-howto">
           카드의 <b>자세히 ▾</b>를 누르면 원문 설명이 열립니다
           <span className="draft-howto-key"> · Shift를 누르고 있으면 전부 펼쳐집니다</span>

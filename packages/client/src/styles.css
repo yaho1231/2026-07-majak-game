@@ -3571,19 +3571,8 @@ button {
   letter-spacing: 1px;
 }
 
-/* 첫 드래프트 안내 (감사 §3-6) — 이게 무엇인지 모른 채 고르게 두지 않는다.
-   보유 0일 때만 뜨므로 두 번째 판부터는 자리를 차지하지 않는다. */
-.draft-intro {
-  margin: 0 auto 10px;
-  max-width: 46em;
-  padding: 8px 14px;
-  border-radius: 10px;
-  background: rgba(11, 19, 16, 0.55);
-  border: 1px solid rgba(240, 200, 106, 0.25);
-  color: #cbd8ce;
-  font-size: 13px;
-  line-height: 1.6;
-}
+/* `.draft-intro`(첫 드래프트 안내 문단, 감사 §3-6)는 뺐다 — 2026-08-18 사용자 요청.
+   카드가 이미 무엇인지 말한다. */
 
 /* 조작 한 줄 — 이 안내가 대기실 팁에만 있어서, 대기실을 안 거치는 체험·연습
    사용자는 '자세히'가 있다는 것 자체를 몰랐다. */
@@ -8523,7 +8512,9 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
   gap: 18px;
-  align-items: stretch;
+  /* stretch였다 — 증강 기록이 없는 계정에서는 오른쪽 카드가 왼쪽 열 높이(약 990px)
+     까지 늘어나 텅 빈 상자가 됐다. 두 열 다 제 내용만큼만 선다. */
+  align-items: start;
 }
 
 .home-top-left {
@@ -8535,40 +8526,29 @@ button {
 
 .home-top-left > .home-card { flex: 0 0 auto; }
 
-/* 리플레이 카드가 오른쪽 증강 카드와 높이를 맞춰 남는 공간을 채운다 */
 .home-top-left > .home-replays {
-  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
+
+/* ⚠ 여기에 **높이를 못 박지 않는다.**
+
+   예전에는 `.home-top-left`가 `height: 0; min-height: 100%; overflow: hidden`으로
+   오른쪽 증강 카드의 높이에 묶여 있었다(그리고 `.home-top`에 `min-height: 640px`).
+   왼쪽에 대국·리플레이 두 장뿐일 때는 들어맞았지만, 친구 카드(§4-6)가 들어와
+   네 장이 되자 내용이 잠금을 338px 넘겼고 `overflow: hidden`이 그만큼을 잘라 냈다
+   — 내 통계 카드가 중간에서 끊기고 리플레이 카드는 통째로 사라졌다
+   (2026-08-18 사용자 보고, 실측 978 vs 640).
+
+   지금은 두 열 다 제 내용만큼 선다(`.home-top { align-items: start }`). 대신
+   리플레이 목록만 스스로 상한을 갖는다 — 판이 쌓여도 열이 한없이 길어지지 않게. */
 .home-top-left > .home-replays .replay-list {
-  flex: 1 1 auto;
-  max-height: none;
-  min-height: 0;
+  min-height: 90px;
+  max-height: 420px;
+  overflow-y: auto;
 }
 .home-top-left > .home-replays .home-empty { margin: auto 0; }
-
-/* 2열 배치일 때: 왼쪽 열은 행 높이 계산에 기여하지 않고(height:0) 오른쪽
-   증강 카드가 정한 높이에 맞춘다. 리플레이가 많아도 열이 늘어나지 않고
-   목록 안쪽에서만 스크롤된다. */
-@container ui (min-width: 901px) {
-  .home-top { min-height: 640px; }
-  .home-top-left {
-    height: 0;
-    min-height: 100%;
-    /* 만약을 대비한 안전장치: 넘쳐도 아래 섹션을 덮지 않는다 */
-    overflow: hidden;
-  }
-  .home-top-left > .home-replays .replay-list { min-height: 90px; }
-  /* 관리자 홈은 왼쪽 열에 리플레이(가변 목록) 대신 고정 크기 카드(대국·내 통계·
-     증강 테스트)만 담는다 → 높이 잠금을 풀어 열이 내용만큼 늘어나게 한다.
-     (잠근 채로 두면 증강 테스트 카드의 시작 버튼이 잘린다) */
-  .home-top-left-admin {
-    height: auto;
-    overflow: visible;
-  }
-}
 
 @container ui (max-width: 900px) {
   .home-top {
@@ -8594,6 +8574,37 @@ button {
 }
 
 .home-card-head h2 { margin-bottom: 14px; }
+
+/* 제목 오른쪽 단추 묶음 (새로 고침 · 접기) */
+.home-card-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+/* 접기 단추 — 새로 고침과 같은 크기·같은 톤. 다른 모양을 주면 두 단추가
+   서로 다른 무게로 읽혀 제목 줄이 시끄러워진다. */
+.home-fold {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: #a8bcaf;
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 0.16s var(--ease), background 0.14s var(--ease);
+}
+
+.home-fold:hover { background: rgba(255, 255, 255, 0.12); color: var(--ink-1); }
+/* 접힌 상태에서는 삼각형이 오른쪽(▸)을 가리킨다 — 누르면 열린다는 뜻 */
+.home-fold-on { transform: rotate(-90deg); }
+
+/* 접힌 카드는 제목 한 줄만 남는다 — 아래 여백까지 줄여야 정말 접힌 것처럼 보인다 */
+.home-card-folded { padding-bottom: 8px; }
+.home-card-folded .home-card-head h2,
+.home-card-folded .home-card-tools { margin-bottom: 0; }
 
 .home-refresh {
   width: 30px;
@@ -9426,10 +9437,20 @@ button {
   color: #f0c86a;
 }
 
+/* 입력칸 한 벌 — 제보 폼(`.fb-title`·`.fb-body`)과 그 밖의 곳에서 쓰는
+   `.fb-input`·`.fb-textarea`가 **같은 모양**이어야 한다.
+
+   ⚠ `.fb-input`·`.fb-textarea`는 App.tsx(공지 편집기·친구 추가)에서 쓰이는데
+   여기에 규칙이 하나도 없었다 — 브라우저 기본 입력칸(회색 상자)이 어두운 카드
+   위에 그대로 떠 있었다(2026-08-18 사용자 보고). 폭 지정(`.home-notice-edit`)만
+   따로 있어서 "스타일이 있다"고 착각하기 쉬웠다. */
 .fb-title,
 .fb-body,
-.fb-reply-input {
+.fb-reply-input,
+.fb-input,
+.fb-textarea {
   width: 100%;
+  box-sizing: border-box;
   padding: 10px 12px;
   border-radius: var(--r-sm);
   border: 1px solid var(--line-strong);
@@ -9437,16 +9458,29 @@ button {
   color: var(--ink-1);
   font: inherit;
   font-size: 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .fb-body,
-.fb-reply-input { resize: vertical; line-height: 1.6; }
+.fb-reply-input,
+.fb-textarea { resize: vertical; line-height: 1.6; }
+
+.fb-title::placeholder,
+.fb-body::placeholder,
+.fb-reply-input::placeholder,
+.fb-input::placeholder,
+.fb-textarea::placeholder { color: var(--ink-4); }
+
+.fb-input:hover,
+.fb-textarea:hover { border-color: var(--line-strong); background: var(--surface-1); }
 
 /* outline: none 이었다 — 전역 :focus-visible 링이 서야 키보드로 어디 있는지 알 수 있다.
    여기서는 테두리 강조만 얹는다(마우스로 클릭해 들어온 경우에도 보이는 신호). */
 .fb-title:focus,
 .fb-body:focus,
-.fb-reply-input:focus { border-color: var(--brass); }
+.fb-reply-input:focus,
+.fb-input:focus,
+.fb-textarea:focus { border-color: var(--brass); }
 
 .fb-form-foot {
   display: flex;
@@ -12425,8 +12459,19 @@ body.peeking .overlay-peekable > * {
 /* ─────────────── 친구 (§4-6) ───────────────
    여기서 필요한 것은 소셜 그래프가 아니라 "지금 있나?" 한 줄이다 —
    그래서 점 하나 + 이름 + 상태 세 글자로 끝낸다. */
-.friend-add { display: flex; gap: 8px; margin-bottom: 10px; }
-.friend-add .fb-input { flex: 1 1 auto; margin: 0; }
+.friend-add { display: flex; gap: 8px; margin-bottom: 10px; align-items: stretch; }
+.friend-add .fb-input { flex: 1 1 auto; min-width: 0; margin: 0; }
+/* 버튼은 글자 폭 그대로 — 안 잡아 두면 입력칸이 자리를 다 가져가 "추 가"로 접혔다.
+   `.lobby-join`의 `margin-top: 10px`도 지운다(안 지우면 입력칸보다 10px 내려앉는다). */
+.friend-add .lobby-join {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 0 18px;
+  font-size: 14px;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
 .friend-list { list-style: none; margin: 0; padding: 0; }
 .friend-row {
   display: flex;
