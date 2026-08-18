@@ -103,7 +103,7 @@ npm run typecheck:client   0 errors
 이 기준선은 한때 "87 실패 / 타입 에러 8"로 잘못 기록돼 있었다. 둘 다 **측정 환경 문제였고 코드에는 문제가 없었다.** 같은 함정에 다시 빠지지 않도록 기록해 둔다.
 
 1. **vitest가 워크트리까지 긁었다.** 설정 파일이 없어 기본 exclude에 `.claude/`가 빠져 있었고, `.claude/worktrees/` 아래 사본 10개의 테스트를 전부 실행했다 — 테스트 파일 99 → 981개, 165초 → 879초. 사본들이 같은 임시 디렉터리 이름을 동시에 써서 `ENOTEMPTY`로 무관한 파일이 줄줄이 실패했다. → 루트 `vitest.config.ts`에서 `**/.claude/**` 제외.
-2. **워크트리에서 잰 타입체크는 낡은 코드를 봤다.** 워크트리에 `node_modules`가 없어 `@majak/core`가 상위 `/Users/skul/Documents/newMajak/node_modules/@majak/core` 심볼릭링크로 해석됐고, 그 시점 메인 체크아웃은 `c45dbab`(구 커밋)에 서 있었다. 그래서 `RoundSettledPayload.dealerContinues` 처럼 **실제로 존재하는** 필드가 "없다"고 나왔다.
+2. **워크트리에서 잰 타입체크는 낡은 코드를 봤다.** 워크트리에 `node_modules`가 없어 `@majak/core`가 상위 `<저장소 루트>/node_modules/@majak/core` 심볼릭링크로 해석됐고, 그 시점 메인 체크아웃은 `c45dbab`(구 커밋)에 서 있었다. 그래서 `RoundSettledPayload.dealerContinues` 처럼 **실제로 존재하는** 필드가 "없다"고 나왔다.
 
 교훈: **메인 체크아웃은 항상 master에 두고, 측정은 메인 체크아웃에서 한다.** 메인 체크아웃은 서버가 서빙하는 코드이기도 하므로 다른 브랜치로 옮기면 배포까지 함께 어긋난다.
 
