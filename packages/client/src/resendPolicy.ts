@@ -54,6 +54,12 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 도감 카탈로그 — 로그인 전에도 통하는 유일한 조회다(§3-7). 끊긴 사이 눌렀다면
   // 다시 붙었을 때 도감이 여전히 비어 있으므로, 늦게 도착해도 뜻이 그대로다.
   "catalogRequest",
+  // 공유 링크 만들기 (§4-8) — 늦게 도착해도 뜻이 그대로다(이미 있으면 그 토큰을
+  // 다시 돌려준다). 누를 때마다 새 링크가 나오지 않으므로 중복 전송도 안전하다.
+  "replayShare",
+  // 친구 (§4-6) — 목록 조회는 물론이고 추가·삭제도 "상태를 이렇게 바꿔 달라"는
+  // 요청이라 늦게 도착해도 뜻이 그대로다. 서버가 중복 추가를 흡수한다.
+  "friendAdd", "friendRemove", "friendList",
   // 쓰기 요청 (전송 실패한 것만 큐에 담기므로 중복 등록이 되지 않는다)
   "feedbackSubmit", "feedbackUpdate", "feedbackDelete", "adminDeleteUser",
   // 관전·증강 테스트

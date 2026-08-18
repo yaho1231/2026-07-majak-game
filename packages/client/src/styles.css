@@ -12329,3 +12329,132 @@ body.peeking .overlay-peekable > * {
   color: var(--ink-1);
   font-weight: 600;
 }
+
+/* ─────────────── 운영자 공지 (§4-3) ───────────────
+   홈과 로그인 화면 맨 위에 서는 띠. 화면을 가리지 않으면서 눈에는 들어와야 해서
+   한 줄 높이를 지키고, 본문은 눌러야 펼쳐진다. */
+.notice-banner {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid rgba(240, 200, 106, 0.4);
+  background: rgba(240, 200, 106, 0.1);
+}
+.notice-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.notice-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(240, 200, 106, 0.25);
+  border: 1px solid rgba(240, 200, 106, 0.5);
+  color: var(--ink-1);
+  font-size: 11px;
+  font-weight: 700;
+}
+.notice-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ink-1);
+  font-size: 14px;
+  font-weight: 600;
+}
+.notice-date { flex: none; color: var(--ink-4); font-size: 11px; }
+.notice-more {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 11px;
+  cursor: pointer;
+}
+.notice-more:hover { color: var(--ink-1); border-color: var(--line-strong); }
+.notice-body {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+/* 공지 편집기 (관리자) — 제보 입력칸과 같은 모양을 쓰되 **폭은 카드에 맞춘다**.
+   `.fb-input`은 제보 폼의 그리드 안에서 폭을 얻는데, 여기에는 그 그리드가 없어
+   내용 크기로 쪼그라들었다(실측 382px 카드에 151px 입력칸). */
+.home-notice-edit .fb-input,
+.home-notice-edit .fb-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 8px;
+}
+.home-notice-edit .lobby-join { width: 100%; }
+
+/* ─────────────── 기간 성적 (§4-7) ───────────────
+   누적 통계 아래 두 칸. 판수가 0인 칸은 숫자를 채우지 않고 한 줄로 둔다 —
+   "평균 0위" 같은 없는 사실을 만들지 않기 위함이다. */
+.period-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.period-card {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm, 8px);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+}
+.period-label { color: var(--ink-3); font-size: 12px; font-weight: 600; }
+.period-none { color: var(--ink-4); font-size: 12px; }
+.period-games { color: var(--ink-1); font-size: 14px; font-weight: 700; }
+.period-avg { color: var(--ink-2); font-size: 12px; }
+.period-places { display: inline-flex; gap: 6px; margin-left: auto; }
+.period-place { color: var(--ink-4); font-size: 11px; }
+.period-place-1 { color: #f0c86a; }
+
+/* ─────────────── 친구 (§4-6) ───────────────
+   여기서 필요한 것은 소셜 그래프가 아니라 "지금 있나?" 한 줄이다 —
+   그래서 점 하나 + 이름 + 상태 세 글자로 끝낸다. */
+.friend-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.friend-add .fb-input { flex: 1 1 auto; margin: 0; }
+.friend-list { list-style: none; margin: 0; padding: 0; }
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.friend-row:last-child { border-bottom: none; }
+.friend-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  opacity: 0.45;
+}
+.friend-dot-on { background: #6fd08a; opacity: 1; }
+.friend-dot-playing { background: #f0c86a; opacity: 1; }
+.friend-name { flex: 1 1 auto; color: var(--ink-1); font-size: 13px; }
+.friend-state { flex: none; color: var(--ink-4); font-size: 11px; }
+.friend-del {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--ink-4);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.friend-del:hover { color: var(--ink-1); }
