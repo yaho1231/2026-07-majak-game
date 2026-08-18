@@ -454,5 +454,115 @@ export function pickUrgent(c: CoachCtx): Lesson | null {
   return null;
 }
 
+// ─────────────────────────── 말풍선 자리 ───────────────────────────
+
+/** 화면 위의 사각형 — **레이아웃 좌표** px (`uiScale.toLayoutPx`로 되돌린 값) */
+export interface CoachRect {
+  top: number;
+  left: number;
+  w: number;
+  h: number;
+}
+
+/** 말풍선과 강조 사이 틈 */
+const BUBBLE_GAP = 10;
+/** 화면 가장자리 여백 */
+const EDGE_PAD = 8;
+/**
+ * 강조가 화면의 이만큼을 넘게 차지하면 **옆에 설 자리가 없다**고 본다.
+ *
+ * 증강 선택창(`.draft-panel`)이 그렇다 — 화면을 거의 다 덮으므로 어느 쪽에 붙여도
+ * 결국 그 위에 얹힌다. 그때는 따라다니려 애쓰지 말고 위쪽 띠로 물러난다.
+ */
+const HUGE_RING_RATIO = 0.6;
+
+/** 두 사각형이 겹치는 넓이 (안 겹치면 0) */
+function overlapArea(a: CoachRect, b: CoachRect): number {
+  const x = Math.min(a.left + a.w, b.left + b.w) - Math.max(a.left, b.left);
+  const y = Math.min(a.top + a.h, b.top + b.h) - Math.max(a.top, b.top);
+  return x > 0 && y > 0 ? x * y : 0;
+}
+
+/**
+ * 말풍선이 앉을 자리 — CSS `top`/`bottom` 중 하나 + `left`.
+ *
+ * **위에 붙을 때만 `bottom`을 쓴다.** 말풍선 높이는 글 길이와 화면 폭에 따라
+ * 달라지는데, `top`으로 고정해 두면 높이가 커지는 순간 아래로 자라 **가리키던 것을
+ * 덮는다**(2026-08-18 폰 세로 실측: 치·패스 버튼의 윗줄을 물었다). 아래쪽 끝을
+ * 붙들어 두면 위로만 자라므로 그 일이 구조적으로 생기지 않는다.
+ */
+export interface BubbleSpot {
+  top?: number;
+  bottom?: number;
+  left: number;
+}
+
+/**
+ * 말풍선을 **가리키는 것 옆에** 놓는다 — 위·아래·왼·오 중 아무것도 가리지 않는 쪽.
+ *
+ * ## 왜 이게 필요했나
+ *
+ * 처음에는 말풍선을 늘 화면 위쪽 가운데에 못 박아 두었다. 이유는 있었다: 아래쪽
+ * 절반에는 손패와 액션 바(치·퐁·리치·론)가 있고, "이 버튼을 누르세요"라고 해 놓고
+ * 그 버튼을 덮는 것만큼 나쁜 안내가 없다. 그런데 그 규칙을 화면 전체에 걸어 두니
+ * 이번엔 **가리키는 것과 설명이 늘 멀리 떨어져** 있었다 — 오른쪽 위 📖를 가리키면서
+ * 글은 화면 반대편 가운데에 있는 식이다 (2026-08-18 사용자 지적).
+ *
+ * 그래서 "위쪽 고정"을 "**가려서는 안 되는 곳만** 피한다"로 바꾼다. 피할 곳은
+ * 호출부가 `keepClear`로 넘긴다(손패·액션 바 줄). 그 밖에는 강조 바로 옆에 선다.
+ *
+ * ## 고르는 법
+ *
+ * 위 → 아래 → 왼 → 오 → 위쪽 띠(안전한 기본) 순으로 후보를 만들고, **가리는 넓이가
+ * 가장 작은** 것을 고른다. 같으면 앞선 후보가 이긴다(= 따라가기를 기본으로 둔다).
+ * 강조 자신을 덮는 것은 네 배로 친다 — 무엇을 보라고 한 건지가 사라지는 쪽이
+ * 손패가 조금 가려지는 것보다 나쁘다.
+ *
+ * 순수 함수다(DOM을 모른다) — 재는 것은 호출부, 정하는 것은 여기.
+ */
+export function placeBubble(
+  ring: CoachRect | null,
+  bubble: { w: number; h: number },
+  view: { w: number; h: number },
+  keepClear: readonly CoachRect[],
+): BubbleSpot {
+  const clampX = (x: number): number =>
+    Math.min(Math.max(x, EDGE_PAD), Math.max(EDGE_PAD, view.w - bubble.w - EDGE_PAD));
+  const clampY = (y: number): number =>
+    Math.min(Math.max(y, EDGE_PAD), Math.max(EDGE_PAD, view.h - bubble.h - EDGE_PAD));
+  /** 위쪽 띠 가운데 — 가리킬 것이 없거나 옆에 설 자리가 없을 때의 자리 */
+  const band = { top: clampY(12), left: clampX((view.w - bubble.w) / 2) };
+  if (ring === null) return band;
+  if (ring.w * ring.h > view.w * view.h * HUGE_RING_RATIO) return band;
+
+  const midX = clampX(ring.left + ring.w / 2 - bubble.w / 2);
+  const midY = clampY(ring.top + ring.h / 2 - bubble.h / 2);
+  /** 후보 하나 — `top`은 점수를 매기는 데 쓰고, `spot`이 실제로 화면에 나가는 값이다 */
+  const above = clampY(ring.top - BUBBLE_GAP - bubble.h);
+  const candidates: { top: number; left: number; spot: BubbleSpot }[] = [
+    // 위 — 아래쪽 끝을 붙들어 둔다(`BubbleSpot` 주석)
+    { top: above, left: midX, spot: { bottom: view.h - (above + bubble.h), left: midX } },
+    ...[
+      { top: clampY(ring.top + ring.h + BUBBLE_GAP), left: midX }, // 아래
+      { top: midY, left: clampX(ring.left - BUBBLE_GAP - bubble.w) }, // 왼쪽
+      { top: midY, left: clampX(ring.left + ring.w + BUBBLE_GAP) }, // 오른쪽
+      band,
+    ].map((c) => ({ ...c, spot: { top: c.top, left: c.left } })),
+  ];
+
+  let best = candidates[0]!;
+  let bestCost = Infinity;
+  for (const c of candidates) {
+    const box = { top: c.top, left: c.left, w: bubble.w, h: bubble.h };
+    let cost = overlapArea(box, ring) * 4;
+    for (const r of keepClear) cost += overlapArea(box, r);
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = c;
+    }
+  }
+  return best.spot;
+}
+
 /** 튜토리얼을 이미 마쳤는가 (localStorage 키) */
 export const TUTORIAL_KEY = "majak.tutorialDone";

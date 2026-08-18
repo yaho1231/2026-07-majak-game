@@ -81,8 +81,8 @@ import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
-import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent } from "./tutorial.js";
-import type { CoachCtx, Lesson } from "./tutorial.js";
+import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent, placeBubble } from "./tutorial.js";
+import type { BubbleSpot, CoachCtx, CoachRect, Lesson } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
 import { groupWinHand, shapeGroupLabel } from "./winShapeView.js";
 import {
@@ -5694,6 +5694,49 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
 // ─────────────────────────── 첫 판 코치 (튜토리얼) ───────────────────────────
 
 /**
+ * 선택자로 화면의 사각형을 잰다 — **레이아웃 좌표**로 되돌려서.
+ *
+ * `getBoundingClientRect()`는 UI 배율이 곱해진 화면 좌표인데 인라인 `left/top`은
+ * 레이아웃 좌표다. 안 되돌리면 배율이 1이 아닌 화면에서 링도 말풍선도 엉뚱한 데로
+ * 간다 (`uiScale.ts`). 화면에 없거나 접혀 있으면 null.
+ */
+function rectOf(selector: string, pad = 0): CoachRect | null {
+  const el = document.querySelector(selector);
+  if (el === null) return null;
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return null;
+  return {
+    top: toLayoutPx(r.top) - pad,
+    left: toLayoutPx(r.left) - pad,
+    w: toLayoutPx(r.width) + pad * 2,
+    h: toLayoutPx(r.height) + pad * 2,
+  };
+}
+
+/**
+ * 액션 바(치·퐁·리치·론)가 **없을 때에도 비워 둘** 높이(레이아웃 px).
+ *
+ * 그 줄은 프롬프트가 있을 때만 뜬다. 없을 때 그 자리를 내주면 말풍선이 거기 앉았다가
+ * 버튼이 뜨는 순간 옆으로 튄다 — 읽는 중에 글이 움직이는 것이 잠깐 자리를 남겨 두는
+ * 것보다 나쁘다. 실측(1280×720, 치·패스 두 칸): 바 85 + `.own-area`의 줄 간격 12.
+ */
+const ACTION_BAR_RESERVE = 100;
+
+/**
+ * 말풍선이 **덮으면 안 되는** 자리 — 내 손패 줄과 그 위 액션 바.
+ *
+ * "이 버튼을 누르세요"라고 해 놓고 그 버튼을 가리는 것만큼 나쁜 안내가 없다.
+ * `.own-area`가 액션 바·이름표 줄·손패를 한 덩어리로 담고 있으므로 그것 하나면 된다
+ * (자세한 배치는 styles.css `.own-area`).
+ */
+function keepClearRects(): CoachRect[] {
+  const own = rectOf(".own-area");
+  if (own === null) return [];
+  const reserve = rectOf(".action-bar") === null ? ACTION_BAR_RESERVE : 0;
+  return [{ top: own.top - reserve, left: own.left, w: own.w, h: own.h + reserve }];
+}
+
+/**
  * 진행 중인 판 위에 얹히는 안내 — 강조 링 + 말풍선.
  *
  * 무엇을 언제 말할지는 전부 `tutorial.ts`가 정한다. 이 컴포넌트가 하는 일은 셋뿐이다:
@@ -5725,7 +5768,10 @@ function TutorialCoach(props: {
 }): JSX.Element | null {
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set<string>());
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [ring, setRing] = useState<{ top: number; left: number; w: number; h: number } | null>(null);
+  const [ring, setRing] = useState<CoachRect | null>(null);
+  /** 말풍선이 앉을 자리 (`placeBubble`이 정한다). 아직 못 쟀으면 null. */
+  const [spot, setSpot] = useState<BubbleSpot | null>(null);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
 
   /*
    * 화면에 그 요소가 지금 떠 있는가 — 강의의 성립/완료 판정에 쓰는 유일한 통로.
@@ -5791,60 +5837,42 @@ function TutorialCoach(props: {
   }, [watching]);
 
   /*
-   * 강조 링의 자리. 손패 레일도 액션 바도 애니메이션으로 움직이므로 한 번 재고 마는
-   * 것으로는 곧 어긋난다 — 강의가 떠 있는 동안만 짧은 주기로 다시 잰다(리스너를
-   * 늘리는 것보다 이쪽이 단순하고, 안 뜰 때는 아무것도 안 돈다).
+   * 강조 링과 말풍선의 자리. 손패 레일도 액션 바도 애니메이션으로 움직이므로 한 번
+   * 재고 마는 것으로는 곧 어긋난다 — 강의가 떠 있는 동안만 짧은 주기로 다시 잰다
+   * (리스너를 늘리는 것보다 이쪽이 단순하고, 안 뜰 때는 아무것도 안 돈다).
+   *
+   * `useLayoutEffect`인 이유: 말풍선 크기를 재서 자리를 정하는데, 그리고 나서
+   * 재면 한 프레임 동안 엉뚱한 자리에 떴다가 옮겨 간다(눈에 띈다). 그리기 전에
+   * 재고 옮겨 놓는다.
    */
   const anchor = props.hidden ? undefined : active?.anchor;
-  useEffect(() => {
-    if (anchor === undefined) {
+  const shown = active !== null && !props.hidden;
+  useLayoutEffect(() => {
+    if (!shown) {
       setRing(null);
       return;
     }
     const measure = (): void => {
-      const el = document.querySelector(anchor);
-      if (el === null) return setRing(null);
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return setRing(null);
-      const pad = 6;
-      setRing({
-        top: toLayoutPx(r.top) - pad,
-        left: toLayoutPx(r.left) - pad,
-        w: toLayoutPx(r.width) + pad * 2,
-        h: toLayoutPx(r.height) + pad * 2,
-      });
+      const next = anchor === undefined ? null : rectOf(anchor);
+      setRing(next);
+      const el = bubbleRef.current;
+      if (el === null) return;
+      const b = el.getBoundingClientRect();
+      setSpot(
+        placeBubble(
+          next,
+          { w: toLayoutPx(b.width), h: toLayoutPx(b.height) },
+          layoutViewport(),
+          keepClearRects(),
+        ),
+      );
     };
     measure();
     const timer = window.setInterval(measure, 160);
     return () => window.clearInterval(timer);
-  }, [anchor]);
+  }, [anchor, shown, active?.id]);
 
   if (active === null || props.hidden) return null;
-
-  /*
-   * 말풍선은 강조한 자리의 **반대쪽 끝**에 붙인다 — 바로 옆이 아니라.
-   *
-   * 처음에는 링 바로 위/아래에 뒀는데, 강조가 손패일 때 말풍선이 정확히 **액션 바
-   * 자리**에 앉았다(2026-08-18 실측). 치·퐁·리치 버튼이 뜨는 그 줄이 판에서 가장
-   * 중요한 자리라, 하필 안내가 그걸 가린다. 화면 끝으로 밀면 링과 조금 떨어지지만
-   * 링이 금색으로 맥동하고 있어 무엇을 가리키는지는 잃지 않는다.
-   */
-  const v = layoutViewport();
-  /*
-   * 말풍선은 **언제나 위쪽 띠**에 있는다. 아래쪽 절반에는 손패와 액션 바(치·퐁·
-   * 리치·론)가 있고, 그 줄은 판에서 가장 중요한 자리라 잠깐도 가리면 안 된다.
-   * 위쪽은 이름표와 패산이라 잠시 덮여도 잃는 것이 없다.
-   *
-   * 예전에는 강조가 화면 맨 위에 붙어 있으면 말풍선을 **아래로** 내렸다. 오른쪽 위
-   * 아이콘 줄(⚙ 📖 📘)을 가리키는 강의가 생기면서 그 예외가 정확히 하지 말자던 일을
-   * 했다 — 손패와 액션 바를 통째로 덮었다(2026-08-18 실측). 이제 그런 경우에는
-   * 아래로 가는 대신 **강조 바로 밑**에 붙는다. 여전히 위쪽 띠 안이고, 가리키는
-   * 것과 설명이 붙어 있어 오히려 읽기 쉽다.
-   */
-  const topBandRing = ring !== null && ring.top + ring.h < v.h * 0.28;
-  const bubble: CSSProperties = topBandRing
-    ? { top: ring.top + ring.h + 10, left: "50%", transform: "translateX(-50%)" }
-    : { top: 12, left: "50%", transform: "translateX(-50%)" };
 
   return (
     <div className="coach-layer" role="dialog" aria-live="polite" aria-label="튜토리얼 안내">
@@ -5854,7 +5882,13 @@ function TutorialCoach(props: {
           style={{ top: ring.top, left: ring.left, width: ring.w, height: ring.h }}
         />
       ) : null}
-      <div className="coach-bubble" style={bubble}>
+      {/* 자리를 재기 전(첫 렌더)에는 위쪽 띠 가운데에 둔다 — 레이아웃 이펙트가
+          그리기 전에 옮기므로 이 값이 화면에 보이는 일은 없다. */}
+      <div
+        ref={bubbleRef}
+        className="coach-bubble"
+        style={spot ?? { top: 12, left: "50%", transform: "translateX(-50%)" }}
+      >
         {/* 장(章) 이름 — "지금 무슨 이야기 중인지"를 한 낱말로 준다.
             진행률 막대는 일부러 안 쓴다: 안 오는 기회(후로·화료)는 그냥 안 나오므로
             분모가 거짓말이 되고, 100%에 못 닿는 막대는 안 끝난 것처럼 보인다. */}
