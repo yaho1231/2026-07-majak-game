@@ -417,6 +417,8 @@ export type {
   GameAbortedMessage,
   ErrorMessage,
   PongMessage,
+  AdminAnalyticsMessage,
+  AnalyticsDayEntry,
   FriendEntry,
   FriendListMessage,
   PeriodStats,

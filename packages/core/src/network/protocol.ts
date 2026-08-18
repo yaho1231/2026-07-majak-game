@@ -323,6 +323,17 @@ export interface AdminUsersRequestMessage {
   type: "adminUsers";
 }
 
+/**
+ * 자체 집계 요청 (관리자 전용, §8-6).
+ *
+ * 이 서버는 외부 분석 스크립트를 넣지 않는다(CSP `script-src 'self'`를 손대야 하고,
+ * 그 한 줄이 곧 제3자에게 우리 화면의 실행 권한을 주는 일이다). 대신 서버가 직접
+ * 센 수를 관리자에게만 돌려준다.
+ */
+export interface AdminAnalyticsRequestMessage {
+  type: "adminAnalytics";
+}
+
 /** 증강 파워 티어표 요청 (관리자 전용). */
 export interface AdminAugmentTiersRequestMessage {
   type: "adminAugmentTiers";
@@ -645,6 +656,7 @@ export type ClientMessage =
   | AdminSetNoticeMessage
   | AdminUsersRequestMessage
   | AdminAugmentTiersRequestMessage
+  | AdminAnalyticsRequestMessage
   | AdminDeleteUserMessage
   | LiveGamesRequestMessage
   | SpectateMessage
@@ -1268,6 +1280,23 @@ export interface FriendListMessage {
   friends: FriendEntry[];
 }
 
+/** 하루치 집계 한 줄 (§8-6). IP·UA는 어디에도 남지 않는다 — 서버 analytics.ts 참고. */
+export interface AnalyticsDayEntry {
+  /** YYYY-MM-DD */
+  date: string;
+  /** 첫 화면 문서 요청 수 */
+  views: number;
+  /** 그날의 서로 다른 방문자 수 (날짜가 바뀌면 키가 갈려 추적이 이어지지 않는다) */
+  visitors: number;
+  /** WebSocket 연결 수 — 실제로 게임까지 간 사람의 하한 */
+  sockets: number;
+}
+
+export interface AdminAnalyticsMessage {
+  type: "adminAnalytics";
+  days: AnalyticsDayEntry[];
+}
+
 /** 진행 중 게임 1건 요약 (관리자 목록용). */
 export interface LiveRoomSummary {
   code: string;
@@ -1364,6 +1393,7 @@ export type ServerMessage =
   | FeedbackListMessage
   | AdminUsersMessage
   | AdminAugmentTiersMessage
+  | AdminAnalyticsMessage
   | AuthOkMessage
   | RoomCreatedMessage
   | ReplayListMessage

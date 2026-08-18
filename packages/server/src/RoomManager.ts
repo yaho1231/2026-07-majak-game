@@ -47,6 +47,7 @@ import type {
   LeaderboardEntry,
   AugmentCatalogEntry,
   AugmentTierEntry,
+  AnalyticsDayEntry,
   FeedbackEntry,
   PeriodStats,
   SandboxBotRules,
@@ -899,6 +900,10 @@ export class RoomManager {
      * 없으면 정적 티어표를 그대로 쓴다(테스트·로컬 기본).
      */
     private augmentStats?: AugmentStatsStore,
+    /**
+     * 자체 집계 (§8-6). 없으면 관리자 조회가 빈 목록을 돌려준다 — 테스트·로컬 기본.
+     */
+    private analytics?: { recent: (days?: number) => AnalyticsDayEntry[] },
   ) {
     // 유휴 방 청소 — 타이머가 프로세스 종료(테스트 포함)를 붙잡지 않게 unref한다.
     this.sweepTimer = setInterval(() => this.sweepIdleRooms(), ROOM_SWEEP_INTERVAL_MS);
@@ -1754,6 +1759,12 @@ export class RoomManager {
       case "adminAugmentTiers": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
         return this.sendAugmentTiers(conn);
+      }
+      // 자체 집계 (§8-6) — 외부 스크립트 없이 서버가 직접 센 수.
+      case "adminAnalytics": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        this.send(conn.ws, { type: "adminAnalytics", days: this.analytics?.recent(30) ?? [] });
+        return;
       }
       case "adminDeleteUser": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
