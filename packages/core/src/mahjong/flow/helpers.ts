@@ -34,7 +34,14 @@ export function playerAtSeat(state: GameState, seat: number): PlayerState {
   return p;
 }
 
-/** @param direction 1=시계(표준), -1=역방향 (turn.direction 규칙) */
+/**
+ * @param direction 1=시계(표준), -1=역방향 (`turn.direction` 규칙)
+ *
+ * ⚠ **−1을 쓰는 콘텐츠는 아직 없다** (감사 §10-11). 그래도 이 갈래는 죽은 코드가
+ * 아니다 — 자리 순서·대기 계산·플로우가 전부 이 값을 읽고 있고, 지금은 전원이 1을
+ * 받는다. 걷어내면 다섯 파일의 순서 계산을 손으로 풀어야 하고, 되살릴 때 그걸 다시
+ * 짜야 한다. 값이 1일 때의 비용은 곱셈 한 번이다.
+ */
 export function nextSeat(state: GameState, seat: number, direction = 1): number {
   const n = state.players.length;
   return (((seat + direction) % n) + n) % n;

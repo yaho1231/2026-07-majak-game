@@ -58,6 +58,30 @@ export interface LogoutMessage {
 }
 
 /**
+ * 비밀번호 변경 (감사 §10-2 — 감사 26·29가 두 번 지적한 자리).
+ *
+ * 성공하면 **이 계정의 모든 세션이 끊긴다.** 비밀번호를 바꾸는 이유는 대개 "누가
+ * 내 계정을 봤을지도 모른다"이고, 그때 필요한 것은 새 비밀번호가 아니라 남의 손에
+ * 있는 세션이 죽는 것이다(세션 TTL이 30일이라 안 끊으면 한 달 열려 있다).
+ * 지금 쓰는 연결에는 새 토큰이 `authOk`로 온다.
+ */
+export interface ChangePasswordMessage {
+  type: "changePassword";
+  currentPassword: string;
+  newPassword: string;
+}
+
+/**
+ * **다른 기기에서 로그아웃** (§10-2). 지금 쓰는 세션만 남기고 전부 끊는다.
+ *
+ * 비밀번호를 바꾸지 않고도 회수할 수 있어야 한다 — 공용 PC에서 로그아웃을 깜빡한
+ * 경우가 정확히 그 상황이고, 그때 비밀번호까지 바꾸게 하면 회수가 아니라 벌이다.
+ */
+export interface LogoutOthersMessage {
+  type: "logoutOthers";
+}
+
+/**
  * 게스트 체험 — 계정 없이 봇 3명과의 1인 게임을 즉시 시작한다.
  *
  * 가입 게이트(SIGNUP_CODE)를 우회하는 것이 **아니다**. 게스트는 "놀 수 있을 뿐"
@@ -634,6 +658,8 @@ export type ClientMessage =
   | LoginMessage
   | TokenLoginMessage
   | LogoutMessage
+  | ChangePasswordMessage
+  | LogoutOthersMessage
   | GuestPlayMessage
   | GuestResumeMessage
   | CatalogRequestMessage

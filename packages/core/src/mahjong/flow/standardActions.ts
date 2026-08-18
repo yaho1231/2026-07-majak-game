@@ -1403,6 +1403,18 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
    * 순위 계산(calcRankings) 직전에 playerId·state를 넘겨 resolve하며, 계약 위약금·
    * 가불 상환·이면 장부 등 "게임 끝에 정산되는" 증강이 동적 Modifier로 얹는다.
    */
+  /*
+   * 게임 **종국 시** 점수 보정 (계약 위약금·가불 상환 등).
+   *
+   * 지금 이 값을 건드리는 증강은 하나도 없다 — 감사 §10-11이 "죽은 확장점"으로
+   * 지목한 자리다. **그래도 남긴다**, 이유는 셋이다.
+   *   ① 소비 지점이 이미 정확히 한 곳(`HanchanController`의 최종 정산)이고,
+   *      값이 0이면 그 자리는 덧셈 한 번이다 — 비용이 사실상 0이다.
+   *   ② 걷어내면 되살릴 때 정산 순서를 다시 정해야 한다. 정산 단계는 이 저장소가
+   *      가장 여러 번 틀렸던 자리다(`settleStages.ts` 이력).
+   *   ③ `unification.ts`가 "증강별 하드코딩 없이 규칙으로 얹는" 본보기로 이 키를
+   *      가리키고 있다 — 지우면 그 주석이 없는 것을 가리킨다.
+   */
   rules.define("score.finalAdjust", 0);
 
   // ── 52차(2026-07-22) 신규 훅 — docs/16 §1b·§1c 증강이 쓰는 확장 지점 ──

@@ -44,6 +44,9 @@ export const VOLATILE_MESSAGES: ReadonlySet<string> = new Set([
 export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 인증·입장
   "register", "login", "tokenLogin", "logout", "guestPlay", "practicePlay",
+  // 비밀번호 변경·다른 기기 로그아웃 (§10-2) — 전송에 실패한 것만 큐에 담기므로
+  // 중복 실행이 되지 않고, 늦게 도착해도 뜻이 그대로다.
+  "changePassword", "logoutOthers",
   "createRoom", "joinRoom", "leaveRoom", "join",
   // 대기실 조작
   "ready", "startGame", "setGameMode", "shuffleSeats",
