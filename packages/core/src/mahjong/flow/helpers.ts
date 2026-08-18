@@ -483,6 +483,66 @@ function requiresYakuFor(
   return rules.resolve<boolean>("win.requiresYaku", { playerId: id, state });
 }
 
+/*
+ * ─────────────── 상태별 판정 캐시 (감사 2026-08-17 §7-5) ───────────────
+ *
+ * **무엇이 문제였나**: 뷰를 만들 때마다 `tenpaiNoYaku`와 `yakulessWaits`가 각각
+ * `winningKinds`(34종 화형 판정)를 돌리고, 그 결과 대기마다 `evaluateWin`을 한 번씩
+ * 더 돌렸다. 셋이 같은 상태·같은 손을 본다. 게다가 같은 상태가 여러 번 방송된다 —
+ * `broadcastViews`는 11곳에서 불리고, 접속 상태가 바뀌면 `resendViewTo`가 또 부른다.
+ *
+ * **왜 WeakMap<GameState, …> 인가**: `GameState`는 불변이고 이벤트마다 새 객체로
+ * 갈린다. 그래서 상태 객체 자체가 곧 완벽한 캐시 키다 — 무효화 규칙을 따로 만들
+ * 필요가 없고("언제 지우나"가 이런 캐시의 진짜 위험이다), 상태가 버려지면 캐시도
+ * 함께 수거된다. 값이 바뀌었는데 캐시가 남는 경우가 **구조적으로 없다.**
+ *
+ * 캐시하지 않는 것: 규칙(`rules`)·역 레지스트리(`yaku`)가 다르면 결과도 다를 수
+ * 있다. 실서버에서 한 상태는 한 게임에 속하고 그 게임의 레지스트리는 하나뿐이라
+ * 실제로는 어긋나지 않지만, 테스트가 같은 상태를 다른 레지스트리로 두 번 볼 수는
+ * 있다. 그래서 캐시는 **한 게임 안에서만** 뜻이 있는 값(대기·역 유무)에만 건다.
+ */
+function stateCache<T>(bag: WeakMap<GameState, Map<string, T>>, state: GameState): Map<string, T> {
+  let m = bag.get(state);
+  if (m === undefined) {
+    m = new Map<string, T>();
+    bag.set(state, m);
+  }
+  return m;
+}
+
+function memoOn<T>(
+  bag: WeakMap<GameState, Map<string, T>>,
+  state: GameState,
+  key: string,
+  compute: () => T,
+): T {
+  const m = stateCache(bag, state);
+  const hit = m.get(key);
+  if (hit !== undefined) return hit;
+  const value = compute();
+  m.set(key, value);
+  return value;
+}
+
+/** 대기 목록 캐시 — 같은 상태·같은 손에서 34종 화형 판정을 한 번만 돈다. */
+const WAITS_CACHE = new WeakMap<GameState, Map<string, TileKind[]>>();
+/** 가상 론 평가 캐시 — `${좌석}|${패id}` 로 `tenpaiNoYaku`와 `yakulessWaits`가 나눠 쓴다. */
+const WIN_EVAL_CACHE = new WeakMap<GameState, Map<string, boolean>>();
+
+/** 이 대기패로 론했을 때 역이 나는가 (같은 상태에서 한 번만 평가한다). */
+function hasYakuOnWait(
+  state: GameState,
+  id: PlayerId,
+  rules: RuleRegistry,
+  yaku: YakuRegistry,
+  tileId: TileId,
+): boolean {
+  return memoOn(WIN_EVAL_CACHE, state, `${id}|${tileId}`, () => {
+    const ev = evaluateWin(buildWinContext(state, id, "ron", tileId, { rules }), yaku);
+    return ev !== null && ev.ok;
+  });
+}
+
 /**
  * 형식텐파이(역없음) 판정: 텐파이지만 어떤 오름패로 화료해도 역이 없는가.
  *
@@ -503,15 +563,23 @@ export function tenpaiNoYaku(
   // 안깡(kan_closed)·묵계(silent)는 손을 열지 않는다 — 그 외 후로가 있어야 열린 손
   const isOpen = melds.some((m) => m.kind !== "kan_closed" && m.silent !== true);
   if (!isOpen) return false;
-  const opts = scoringOptionsOf(state, rules, id);
-  const waits = winningKinds(handKindsOf(state, id), meldCountOf(state, id), undefined, opts);
+  // 대기 계산과 가상 론 평가는 `yakulessWaits`와 **같은 상태에서 같은 답**이라
+  // 캐시를 나눠 쓴다 (§7-5). 손패 출처(handKindsOf)는 그대로 둔다 — 여기를
+  // `winHandKindsOf`로 바꾸는 것은 성능이 아니라 판정의 변경이다.
+  const waits = memoOn(WAITS_CACHE, state, `${id}|hand`, () =>
+    winningKinds(
+      handKindsOf(state, id),
+      meldCountOf(state, id),
+      undefined,
+      scoringOptionsOf(state, rules, id),
+    ),
+  );
   if (waits.length === 0) return false;
   const outside = outsideHandTileFinder(state, rules, id);
   for (const waitKind of waits) {
     const tileId = outside(waitKind);
     if (tileId === undefined) continue; // 그 종류 패가 상태에 없을 순 없지만 방어적으로
-    const ev = evaluateWin(buildWinContext(state, id, "ron", tileId, { rules }), yaku);
-    if (ev !== null && ev.ok) return false; // 하나라도 역이 나면 형식텐파이 아님
+    if (hasYakuOnWait(state, id, rules, yaku, tileId)) return false; // 하나라도 역이 나면 형식텐파이 아님
   }
   return true;
 }
@@ -556,12 +624,13 @@ export function yakulessWaits(
 ): string[] {
   // 역이 필요 없으면 역 때문에 막히는 대기도 없다 (tenpaiNoYaku와 같은 이유).
   if (!requiresYakuFor(state, id, rules)) return [];
-  const opts = scoringOptionsOf(state, rules, id);
-  const waits = winningKinds(
-    winHandKindsOf(state, rules, id),
-    meldCountOf(state, id),
-    undefined,
-    opts,
+  const waits = memoOn(WAITS_CACHE, state, `${id}|win`, () =>
+    winningKinds(
+      winHandKindsOf(state, rules, id),
+      meldCountOf(state, id),
+      undefined,
+      scoringOptionsOf(state, rules, id),
+    ),
   );
   if (waits.length === 0) return [];
   const outside = outsideHandTileFinder(state, rules, id);
@@ -569,8 +638,7 @@ export function yakulessWaits(
   for (const waitKind of waits) {
     const tileId = outside(waitKind);
     if (tileId === undefined) continue;
-    const ev = evaluateWin(buildWinContext(state, id, "ron", tileId, { rules }), yaku);
-    if (ev === null || !ev.ok) out.push(kindKey(waitKind));
+    if (!hasYakuOnWait(state, id, rules, yaku, tileId)) out.push(kindKey(waitKind));
   }
   return out;
 }

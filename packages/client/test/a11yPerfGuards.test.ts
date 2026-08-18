@@ -242,7 +242,10 @@ describe("prefers-reduced-motion — 끝나지 않는 애니메이션이 남지 
     const r = reduceBlocks();
     for (const sel of [
       ".hand-danger .tile-face", // 방총 위험패 (1.3s ∞)
-      ".tile-hl .tile-face", // 오름패 강조 (6px↔16px)
+      // 오름패 강조 (6px↔16px). §7-4에서 이 강조가 클래스(.tile-hl)가 아니라
+      // 속성 짝맞춤(data-hl × data-k)으로 바뀌었다 — 지키려는 뜻은 그대로다:
+      // **hover 강조의 무한 맥동이 reduce에서 선다.**
+      ".table[data-hl] [data-k] .tile-face",
       ".rt.rt-win-armable", // 무덤에서 화료
       ".hand-armable",
       ".opp-armable",

@@ -233,12 +233,65 @@ function kokushiShanten(kinds: readonly TileKind[]): number {
  * 손패의 샹텐 — 0이면 텐파이, -1이면 화료형.
  * 13장·14장 어느 쪽을 넣어도 된다(블록 계산이라 남는 한 장은 자연히 무시된다).
  */
+/*
+ * ─────────────── 샹텐 캐시 (감사 2026-08-17 §7-9) ───────────────
+ *
+ * **무엇이 문제였나**: 봇의 결정 1회에 `shantenOf`가 180번 넘게 불린다
+ * (`14 + 34k` — 버릴 후보 14장 각각, 그리고 우케이레가 34종을 훑는다).
+ * `thinkMs` 지연 뒤에 숨어 있어 그 방에서는 안 보이지만, 이 계산은 **동기**라
+ * 이벤트 루프를 그동안 통째로 잡는다 — 그 시간이 곧 **다른 방의 지연**이다.
+ *
+ * `shantenOf`는 순수 함수이고, 실제로 들어오는 손은 매우 잘 겹친다:
+ *  - 우케이레는 같은 손에 한 장씩 더해 34번 재는데, 손 하나가 순마다 거의 그대로다.
+ *  - 네 좌석의 봇이 같은 국을 돌며 비슷한 손을 훑는다.
+ *  - `discard`·`call`·`kan`·`read`가 같은 손을 각자 다시 잰다.
+ *
+ * **키를 어떻게 만드나**: 샹텐은 패의 **순서와 무관**하므로 종류키를 정렬해 잇는다.
+ * 그래야 "같은 손인데 배치만 다른" 경우가 같은 키로 모인다(손패 배치는 사람이
+ * 언제든 바꾼다). 정렬·연결 비용은 13~14개의 짧은 문자열이라 블록 DP보다 훨씬 싸다.
+ *
+ * **캐시하지 않는 경우**: `opts`에 `Set`(`sequenceSuits`)이 들어오면 JSON으로
+ * 구별할 수 없다 — 서로 다른 옵션이 같은 키가 되면 **틀린 답을 준다**. 그때는
+ * 그냥 계산한다. 조용히 틀리느니 느린 편이 낫다.
+ */
+const SHANTEN_CACHE = new Map<string, number>();
+/**
+ * 상한. 한 판이 도는 동안 실제로 쌓이는 서로 다른 손은 수천 개 수준이라 넉넉하다.
+ * 넘치면 통째로 비운다 — LRU를 흉내 내는 것보다 예측 가능하고, 다시 채우는 비용이
+ * 어차피 원래 한 번의 비용이다.
+ */
+const SHANTEN_CACHE_MAX = 20000;
+
+/** 옵션을 캐시 키로 쓸 수 있는가 (Set이 섞이면 구별이 안 된다). */
+function cacheableOpts(opts?: DecomposeOptions): boolean {
+  return opts?.sequenceSuits === undefined;
+}
+
 export function shantenOf(
   kinds: readonly TileKind[],
   meldCount: number,
   opts?: DecomposeOptions,
 ): number {
   if (kinds.length === 0) return 8;
+  if (cacheableOpts(opts)) {
+    const key = `${kinds.map(kindKey).sort().join(",")}|${meldCount}|${
+      opts === undefined ? "" : JSON.stringify(opts)
+    }`;
+    const hit = SHANTEN_CACHE.get(key);
+    if (hit !== undefined) return hit;
+    const value = shantenUncached(kinds, meldCount, opts);
+    if (SHANTEN_CACHE.size >= SHANTEN_CACHE_MAX) SHANTEN_CACHE.clear();
+    SHANTEN_CACHE.set(key, value);
+    return value;
+  }
+  return shantenUncached(kinds, meldCount, opts);
+}
+
+function shantenUncached(
+  kinds: readonly TileKind[],
+  meldCount: number,
+  opts?: DecomposeOptions,
+): number {
   /**
    * 조커(조커) — 무엇이든 될 수 있는 패는 **어떤 한 장을 뽑은 것과 같다**. 어떤 손이든
    * 한 장을 더해 줄어드는 샹텐은 최대 1이므로, 조커를 빼고 잰 값에서 장수만큼 뺀다.

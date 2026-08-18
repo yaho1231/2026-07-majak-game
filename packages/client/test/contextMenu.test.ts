@@ -63,7 +63,15 @@ describe("우클릭 쯔모기리", () => {
   });
 
   it("손패 상자가 아니라 **게임판 전체**에 걸린다", () => {
-    expect(APP).toContain('<div className="table" ref={tableRef} onContextMenu={rightClickTsumogiri}>');
+    /*
+     * 예전에는 이 자리의 JSX 한 줄을 **문자열 그대로** 박아 두었다. 그래서 판
+     * 루트에 속성이 하나 늘어(§7-4의 `data-hl`) 줄이 여러 줄로 갈리자, 배선은
+     * 그대로인데 이 가드가 깨졌다. 지키려는 뜻은 "판 루트에 걸려 있는가"이므로
+     * 그 뜻만 본다 — `className="table"` 여는 태그 안에 핸들러가 있는가.
+     */
+    const open = /<div\s+className="table"[\s\S]{0,300}?>/.exec(APP)?.[0] ?? "";
+    expect(open).toContain("ref={tableRef}");
+    expect(open).toContain("onContextMenu={rightClickTsumogiri}");
     // 손패 상자에 다시 걸리면 판 핸들러와 이중으로 제출된다
     expect(APP).not.toContain("onContextMenu={rightClickDiscard}");
   });

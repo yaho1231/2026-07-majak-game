@@ -245,6 +245,13 @@ export class HumanAgent implements PlayerAgent {
   /** 재접속 시 즉시 복원해 줄 마지막 뷰 */
   private lastView: PlayerView | null = null;
   /**
+   * 마지막으로 **실제로 내보낸** 뷰 프레임의 직렬화 결과 (§7-6 무변경 스킵).
+   *
+   * 재접속·소켓 교체 때는 반드시 비운다 — 새 소켓은 그 프레임을 받은 적이 없다.
+   * 안 비우면 돌아온 사람이 "같은 뷰라서" 아무 화면도 못 받는다.
+   */
+  private lastViewFrame: string | null = null;
+  /**
    * 증강 테스트 시점 전환 — 이 좌석(또는 SPECTATOR_ID) 시점으로 뷰를 받는다.
    * null이면 본인 좌석 기준(평소). 관찰 전용이며 결정(decide)에는 영향이 없다.
    */
@@ -270,6 +277,9 @@ export class HumanAgent implements PlayerAgent {
    */
   reconnect(ws: WebSocket, afterAttach?: () => void): void {
     this.ws = ws;
+    // 새 소켓은 지금까지의 뷰 프레임을 하나도 받은 적이 없다 — 무변경 스킵(§7-6)의
+    // 기준을 비워야 아래 복원 전송이 "같은 뷰라서" 조용히 잘리지 않는다.
+    this.lastViewFrame = null;
     // 돌아왔으니 유예 연속 카운터는 처음부터 다시 센다 — 끊김이 여러 번 있어도
     // 그때마다 돌아오는 사람은 이탈로 확정되지 않는다.
     this.graceTimeouts = 0;
@@ -529,13 +539,34 @@ export class HumanAgent implements PlayerAgent {
     this.pendingDraftStage = null;
     this.pendingContinue = null;
     this.lastView = null;
+    this.lastViewFrame = null;
     this.viewSeat = null; // 새 판은 본인 시점에서 시작
   }
 
   sendView(view: PlayerView): void {
     const decorated = this.withSeatConnections(view);
     this.lastView = decorated;
-    this.send({ type: "view", view: decorated });
+    /*
+     * **아무것도 안 바뀐 뷰는 보내지 않는다** (감사 2026-08-17 §7-6).
+     *
+     * `broadcastViews()`는 11곳에서 불리고, 접속 상태가 바뀌면 `resendViewTo`가
+     * 또 부른다. 중반 이후 한 뷰가 수 KB~10KB대인데 그중 상당수가 **직전과 완전히
+     * 같은 프레임**이다 — 리액션 프롬프트가 여러 명에게 나갈 때, 자기 차례가 아닌
+     * 좌석은 남의 결정이 확정될 때까지 보이는 것이 하나도 달라지지 않는다.
+     *
+     * **델타를 만들지 않은 이유**: 델타는 클라이언트에 "이전 상태"라는 새 개념을
+     * 들여오고, 그 상태가 어긋나는 순간(재접속·프레임 유실) 화면이 조용히 거짓말을
+     * 한다. 지금 이 프로토콜은 매 프레임이 **완결된 진실**이라는 성질로 재접속
+     * 복원을 공짜로 얻고 있다(`reconnect`가 `lastView`를 그대로 다시 보낸다).
+     * 그 성질을 지키면서 얻을 수 있는 것만 가져간다 — 같으면 안 보낸다.
+     *
+     * 직렬화 비용은 새로 생기지 않는다: 어차피 `send`가 `JSON.stringify`를 한다.
+     * 여기서 한 번 만들어 비교하고, 다를 때만 그 문자열을 그대로 흘려보낸다.
+     */
+    const frame = JSON.stringify({ type: "view", view: decorated });
+    if (frame === this.lastViewFrame) return;
+    this.lastViewFrame = frame;
+    this.sendRaw(frame);
   }
 
   /**
@@ -957,6 +988,11 @@ export class HumanAgent implements PlayerAgent {
   // ─────────────────────────── 내부 ───────────────────────────
 
   private send(msg: ServerMessage): void {
+    this.sendRaw(JSON.stringify(msg));
+  }
+
+  /** 이미 직렬화된 프레임을 그대로 보낸다 (뷰 무변경 스킵이 문자열을 재사용한다). */
+  private sendRaw(frame: string): void {
     if (this.ws.readyState !== 1 /* OPEN */) return;
     // 백프레셔 가드 — RoomManager.send와 같은 상한. 인게임 프레임은 전부 여기를
     // 지나가므로 이 가드가 없으면 안 읽는 소켓 하나가 서버 메모리를 무한히 먹는다.
@@ -968,7 +1004,7 @@ export class HumanAgent implements PlayerAgent {
       }
       return;
     }
-    this.ws.send(JSON.stringify(msg));
+    this.ws.send(frame);
   }
 
   private clearDraftTimeout(): void {

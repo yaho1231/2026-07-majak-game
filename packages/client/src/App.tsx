@@ -1135,7 +1135,6 @@ function isCallOnlyPrompt(opts: ActionOption[]): boolean {
  * 손패에 마우스를 올렸을 때, 그 종류의 패를 강조할 대상(공개된 버림패·후로)에
  * 알려주는 컨텍스트. null이면 강조 없음.
  */
-const HighlightContext = createContext<TileKind | null>(null);
 
 /**
  * 액티브 증강의 '클릭 발동(무장)' 상태를 게임판 전체가 공유하는 컨텍스트.
@@ -1199,13 +1198,24 @@ const NO_SELECTION: SelectionCtx = {
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
 
-function kindMatches(tile: PublicTileView | undefined, hl: TileKind | null): boolean {
-  return (
-    hl !== null &&
-    tile !== undefined &&
-    tile.kind.suit === hl.suit &&
-    tile.kind.rank === hl.rank
-  );
+/**
+ * 강조 대조용 **패 종류 키** — `data-k` 속성으로 DOM에 찍는다 (감사 §7-4).
+ *
+ * **왜 React가 아니라 DOM 속성인가**: 예전에는 hover한 종류를 `HighlightContext`로
+ * 내려보내고, 공개패마다 그 값과 자기 종류를 비교해 클래스를 붙였다. 컨텍스트 값이
+ * 바뀌면 **소비자 전부가 다시 그려진다** — 화면에 패가 150~250장인데 그게 손패 위로
+ * 마우스가 지날 때마다, 즉 **매 순** 일어났다.
+ *
+ * 지금은 패마다 자기 종류를 속성으로 달아 두고, 강조 여부는 판 루트의 `data-hl`
+ * 하나와 CSS가 짝을 맞춘다(styles.css의 "손패 hover → 공개패 강조"). React 입장에서는
+ * 아무 상태도 바뀌지 않으므로 리렌더가 **0**이다.
+ *
+ * 적도라는 종류가 아니라 표식이라 여기 섞지 않는다 — 예전 `kindMatches`도 suit·rank만
+ * 비교했으므로 강조되는 집합은 그대로다.
+ */
+function highlightKey(tile: PublicTileView | undefined): string | undefined {
+  const k = tile?.kind;
+  return k === undefined ? undefined : `${k.suit}${k.rank}`;
 }
 
 /**
@@ -2208,8 +2218,16 @@ function tileImageSrcOf(kind: TileKind, red: boolean): string | null {
 }
 
 /**
- * 모든 타일 이미지를 앱 로드 시 미리 받아 브라우저 캐시에 넣는다.
+ * 모든 타일 이미지를 미리 받아 브라우저 캐시에 넣는다.
  * (안 하면 패가 처음 보일 때 png 로딩 전까지 흰 타일이 잠깐 번쩍인다.)
+ *
+ * **언제 부르는가가 요점이다** (감사 2026-08-17 §7-12). 예전에는 모듈 최상위에서
+ * 즉시 실행했다 — 그래서 **로그인 화면 하나를 보는 데 타일 38장**을 받았다.
+ * 로그인·가입만 하고 나가는 사람, 랜딩만 보고 떠나는 사람이 전부 그 비용을 냈다.
+ *
+ * 지금은 판에 들어갈 것이 확실해진 시점(인증 성공)에 한 번만 부른다. 그 시점부터
+ * 첫 배패까지는 방을 만들고 사람을 기다리는 시간이 있어, 미리 받는 목적은 그대로
+ * 달성된다. 두 번 불려도 브라우저 캐시가 받아 주므로 가드는 두지 않는다.
  */
 function preloadTileImages(): void {
   if (typeof window === "undefined") return;
@@ -2236,7 +2254,6 @@ function preloadTileImages(): void {
   }
 }
 
-preloadTileImages();
 
 /*
  * ── 리렌더 차단막 (React.memo) ─────────────────────────────────────────
@@ -3451,6 +3468,10 @@ export function App(): JSX.Element {
     if (msg.type === "authOk") {
       setAuthError(null);
       authedRef.current = true;
+      // 이제 판에 들어갈 것이 확실하다 — 타일 38장을 여기서 미리 받는다 (§7-12).
+      // 예전에는 모듈 최상위에서 즉시 받아, 로그인 화면만 보고 나가는 사람까지
+      // 그 비용을 냈다.
+      preloadTileImages();
       // 인증이 끝났다 — 끊긴 동안 밀렸던 요청을 이제 보낸다 (SEND_RESEND_POLICY ②).
       // 아래 자동 복귀(joinRoom·statsRequest…)보다 **먼저** 보내, 사용자가 실제로
       // 누른 것이 자동 복구보다 뒤로 밀리지 않게 한다.
@@ -9153,11 +9174,19 @@ const GameTable = memo(function GameTable(props: {
 
   return (
     <SelectionContext.Provider value={selection}>
-    <HighlightContext.Provider value={hoverKind}>
     <DoraContext.Provider value={doraFx}>
     <WaitCountContext.Provider value={waitRemaining}>
     <RelationProvider view={view}>
-    <div className="table" ref={tableRef} onContextMenu={rightClickTsumogiri}>
+    {/* `data-hl` — 손패 hover 강조를 **CSS 짝맞추기**로 넘긴 자리 (감사 §7-4).
+        예전에는 이 값을 컨텍스트로 내려보내 공개패마다 비교했고, 그래서 마우스가
+        손패 위를 지날 때마다 화면의 패 150~250장이 전부 다시 그려졌다. 지금은
+        여기 속성 **하나**만 바뀌고 React는 그 아래를 건드리지 않는다. */}
+    <div
+      className="table"
+      ref={tableRef}
+      onContextMenu={rightClickTsumogiri}
+      data-hl={hoverKind === null ? undefined : `${hoverKind.suit}${hoverKind.rank}`}
+    >
       {props.spectator === true ? (
         <div className="spectate-bar">
           👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
@@ -9351,7 +9380,6 @@ const GameTable = memo(function GameTable(props: {
     </RelationProvider>
     </WaitCountContext.Provider>
     </DoraContext.Provider>
-    </HighlightContext.Provider>
     </SelectionContext.Provider>
   );
 });
@@ -11503,7 +11531,6 @@ const River = memo(function River({
     }
     return undefined;
   }, [view.augmentView, playerId]);
-  const highlight = useContext(HighlightContext);
   // 액티브 증강 무장 중 — 이 바닥의 특정 버림패가 클릭 대상이면 강조·클릭 발동한다.
   // (회수=내 바닥 / 날치기·무덤 도굴=상대 바닥)
   const sel = useContext(SelectionContext);
@@ -11528,7 +11555,6 @@ const River = memo(function River({
         const latest =
           last !== null && last.player === playerId && last.tileId === id && i === ids.length - 1;
         const rotated = isRiichiSlot(hidden + i);
-        const match = kindMatches(view.tiles[id], highlight);
         const tk = view.tiles[id]?.kind;
         // 무장된 액션의 클릭 대상 버림패인지 — 대상이면 옵션을 잡아 강조·클릭 발동
         const armOpt = sel.riverOptionFor(playerId, id, tk);
@@ -11542,7 +11568,8 @@ const River = memo(function River({
         return (
           <span
             key={id}
-            className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${match ? " tile-hl" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}${tsumo ? " rt-tsumogiri" : ""}`}
+            className={`rt${rotated ? " rt-riichi" : ""}${latest ? " rt-latest" : ""}${armable ? " rt-armable" : ""}${winArm ? " rt-win-armable" : ""}${tsumo ? " rt-tsumogiri" : ""}`}
+            data-k={highlightKey(view.tiles[id])}
             title={tsumo ? "쯔모기리 (쯔모한 패를 그대로 버림)" : "손버림 (손패에서 꺼내 버림)"}
             {...(armable
               ? {
@@ -11654,14 +11681,12 @@ const OppHandSlot = memo(function OppHandSlot({
   gap,
   view,
   owner,
-  highlight,
 }: {
   slot: OppSlot;
   side: "top" | "left" | "right";
   gap: boolean;
   view: PlayerView;
   owner: string;
-  highlight: TileKind | null;
 }): JSX.Element {
   const gapCls = gap ? " slot-drawn" : "";
   if (slot.kind === "gone") {
@@ -11676,16 +11701,16 @@ const OppHandSlot = memo(function OppHandSlot({
     return <span className={`${side === "top" ? "back-v" : "back-h"}${gapCls}`} />;
   }
   const tile = view.tiles[slot.id];
-  const hl = kindMatches(tile, highlight) ? " tile-hl" : "";
+  const hk = highlightKey(tile);
   if (side === "top") {
     return (
-      <span className={`open-tile${hl}${gapCls}`}>
+      <span className={`open-tile${gapCls}`} data-k={hk}>
         <TileImg tile={tile} size="fill" owner={owner} />
       </span>
     );
   }
   return (
-    <span className={`open-tile-lying open-${side}${hl}${gapCls}`}>
+    <span className={`open-tile-lying open-${side}${gapCls}`} data-k={hk}>
       <span className="open-tile-inner">
         <TileImg tile={tile} size="fill" owner={owner} />
       </span>
@@ -11817,7 +11842,6 @@ function OpponentStrip({
     "--back-n": Math.max(1, handCount),
     "--meld-n": meldTileCount,
   } as CSSProperties;
-  const highlight = useContext(HighlightContext);
   // 액티브 증강 무장 중 — 이 상대가 클릭 대상이면 강조하고 클릭 시 발동한다.
   const sel = useContext(SelectionContext);
   const oppArmable = sel.oppArmable(player.id);
@@ -11891,7 +11915,6 @@ function OpponentStrip({
               gap={i === gapAt}
               view={view}
               owner={player.id}
-              highlight={highlight}
             />
           ))}
         </div>
@@ -11930,7 +11953,6 @@ function OpponentStrip({
             gap={i === gapAt}
             view={view}
             owner={player.id}
-            highlight={highlight}
           />
         ))}
       </div>
@@ -12999,9 +13021,7 @@ function MeldTile({
   /** 후로의 주인 — 도라 반짝임 판정용 (뒷면 패는 필요 없다). */
   owner?: string | undefined;
 }): JSX.Element {
-  const highlight = useContext(HighlightContext);
   const lying = layout === "row" ? called === true : called !== true;
-  const match = back !== true && kindMatches(tile, highlight);
   const cls =
     layout === "row"
       ? lying
@@ -13011,7 +13031,7 @@ function MeldTile({
         ? `mtile mtile-col-lying mtile-${colSide ?? "left"}`
         : "mtile mtile-col";
   return (
-    <span className={`${cls}${match ? " tile-hl" : ""}`}>
+    <span className={cls} data-k={back === true ? undefined : highlightKey(tile)}>
       <span className="mtile-inner">
         {back === true ? (
           <>
