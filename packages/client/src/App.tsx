@@ -8488,25 +8488,31 @@ function ListCard<T>(props: {
  * 접는 상태를 저장하지 않는다. 공지는 운영자가 **일부러** 세운 것이고, 내려야 할
  * 때는 운영자가 내린다 — "한 번 닫으면 다시 안 보임"을 만들면 정작 중요한 공지를
  * 못 본 사람이 생긴다. 대신 본문은 기본으로 접어 두어 자리를 적게 차지한다.
+ *
+ * 펼치는 과녁은 **띠 전체**다. "자세히 ▾"는 작아서 조준이 필요했는데, 정작 사람은
+ * 제목을 보고 누른다. 그래서 머리줄 자체가 버튼이고 "자세히 ▾"는 그 안의 **표시**로만
+ * 남긴다 — 버튼 안에 버튼을 넣으면 클릭이 두 번 세어져 펼쳤다 바로 접힌다.
  */
 function NoticeBanner({ notice }: { notice: ServerNotice | undefined }): JSX.Element | null {
   const [open, setOpen] = useState(false);
   if (notice === undefined) return null;
   const hasBody = notice.body.trim() !== "";
   const when = notice.updatedAt === "" ? null : new Date(notice.updatedAt);
+  const toggle = (): void => setOpen((v) => !v);
   return (
     <div className="notice-banner" role="status">
-      <div className="notice-head">
+      <div
+        className={hasBody ? "notice-head notice-head-clickable" : "notice-head"}
+        {...(hasBody
+          ? { ...clickableProps(toggle, open ? "공지 접기" : "공지 자세히 보기"), "aria-expanded": open }
+          : {})}
+      >
         <span className="notice-tag">공지</span>
         <span className="notice-title">{notice.title}</span>
         {when !== null && !Number.isNaN(when.getTime()) ? (
           <span className="notice-date">{when.toLocaleDateString()}</span>
         ) : null}
-        {hasBody ? (
-          <button className="notice-more" onClick={() => setOpen((v) => !v)}>
-            {open ? "접기 ▴" : "자세히 ▾"}
-          </button>
-        ) : null}
+        {hasBody ? <span className="notice-more">{open ? "접기 ▴" : "자세히 ▾"}</span> : null}
       </div>
       {hasBody && open ? <p className="notice-body">{notice.body}</p> : null}
     </div>
