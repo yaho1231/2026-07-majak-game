@@ -293,11 +293,6 @@ interface Conn {
   authAttempts: number[];
   /** 최근 정형구 전송 시각(ms) — 도배 방지용 슬라이딩 윈도우 */
   emoteHits: number[];
-  /**
-   * **비싼 조회**의 종류별 슬라이딩 윈도우 (`HEAVY_MESSAGES` 참고).
-   * 토큰버킷은 개수만 세는데 메시지들의 실제 비용은 세 자릿수로 갈린다.
-   */
-  heavyHits: Map<string, number[]>;
   /** 이 연결의 원격 IP (핸드셰이크 시점). 로그·표시용. */
   ip: string;
   /** 남용 방어 버킷 키 (IPv4=주소, IPv6=/64 프리픽스). 상한·스로틀은 전부 이 키로 센다. */
@@ -968,6 +963,7 @@ export class RoomManager {
    */
   sweepIdleRooms(): void {
     const now = Date.now();
+    this.pruneHeavyHits(now);
     const ttl = roomIdleTtlMs();
     for (const room of [...this.rooms.values()]) {
       if (room.phase === "playing") {
@@ -1164,7 +1160,6 @@ export class RoomManager {
       spectating: null,
       authAttempts: [],
       emoteHits: [],
-      heavyHits: new Map(),
       ip,
       key,
       exempt,
@@ -1514,6 +1509,60 @@ export class RoomManager {
         // 다시 미인증 상태이므로 유예 타이머를 되건다 — 로그인 후 로그아웃으로
         // 타이머만 소모하고 소켓을 계속 붙들고 있는 우회를 막는다.
         this.armAuthDeadline(conn);
+        return;
+      }
+      /*
+       * 비밀번호 변경 · 다른 기기 로그아웃 (감사 §10-2).
+       *
+       * 인증 게이트 **뒤**에 두지 않고 여기 둔 이유는 없다 — 아래 `user === null`
+       * 검사를 지나야 하므로 로그인 상태에서만 온다. 다만 인증과 같은 레이트리밋
+       * 창을 태워야 한다: 지금 비밀번호를 맞히는 시도가 여기로도 들어온다.
+       */
+      case "changePassword": {
+        if (conn.user === null || conn.guest) {
+          return this.fail(conn, "AUTH_REQUIRED", "로그인이 필요합니다");
+        }
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        if (this.rateLimited(conn)) return;
+        const userId = conn.user.id;
+        void db
+          .changePassword(userId, msg.currentPassword, msg.newPassword)
+          .then((res) => {
+            if (!res.ok || res.user === undefined || res.sessionToken === undefined) {
+              return this.fail(conn, "PASSWORD_CHANGE_FAILED", res.error ?? "바꾸지 못했습니다");
+            }
+            // 이 연결의 세션도 갈렸다 — 새 토큰을 쥐여 주지 않으면 다음 재연결에서
+            // 자기 자신이 로그아웃된다.
+            conn.sessionToken = res.sessionToken;
+            this.send(conn.ws, {
+              type: "authOk",
+              username: res.user.username,
+              isAdmin: res.user.isAdmin,
+              sessionToken: res.sessionToken,
+            });
+            this.log(null, `${res.user.username} 비밀번호 변경 — 다른 세션을 전부 끊었다`);
+          })
+          .catch((err: unknown) => {
+            this.logError(null, "비밀번호 변경 실패:", err);
+            this.fail(conn, "INTERNAL", "비밀번호를 바꾸지 못했습니다");
+          });
+        return;
+      }
+      case "logoutOthers": {
+        if (conn.user === null || conn.guest) {
+          return this.fail(conn, "AUTH_REQUIRED", "로그인이 필요합니다");
+        }
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        const removed = db.logoutOthers(conn.user.id, conn.sessionToken ?? "");
+        this.fail(
+          conn,
+          "SESSIONS_CLEARED",
+          removed === 0
+            ? "다른 기기에 로그인된 세션이 없습니다"
+            : `다른 기기 ${removed}곳의 로그인을 끊었습니다`,
+        );
         return;
       }
       // ── 게스트 체험 (계정 없이 봇 3명과 1인 게임) ──
@@ -1937,14 +1986,57 @@ export class RoomManager {
   private heavyLimited(conn: Conn, type: string): boolean {
     if (conn.exempt || !HEAVY_MESSAGES.has(type)) return false;
     const now = Date.now();
-    const hits = (conn.heavyHits.get(type) ?? []).filter((t) => now - t < HEAVY_WINDOW_MS);
+    const bucket = this.heavyBucketOf(conn);
+    const hits = (bucket.get(type) ?? []).filter((t) => now - t < HEAVY_WINDOW_MS);
     if (hits.length >= HEAVY_MAX_PER_WINDOW) {
-      conn.heavyHits.set(type, hits);
+      bucket.set(type, hits);
       return true;
     }
     hits.push(now);
-    conn.heavyHits.set(type, hits);
+    bucket.set(type, hits);
     return false;
+  }
+
+  /**
+   * 이 요청을 **무엇 단위로** 셀 것인가 (감사 2026-08-17 §10-4).
+   *
+   * 예전에는 `conn.heavyHits` — 연결마다 따로 셌다. 그런데 IP당 동시 연결이 16개
+   * 허용되므로 탭을 열기만 하면 상한이 **연결 수만큼 곱해졌다**: 16 × 5회/10초 =
+   * 8 req/s, 그리고 `replayList` 한 번이 동기 SQLite 51쿼리다. 이벤트 루프가 멈추면
+   * 그 서버의 **모든 대국이 함께 멈춘다** — 상한이 있는데 없는 것과 같았다.
+   *
+   * 이제 로그인한 요청은 **계정 단위**로 센다. 탭을 몇 개 열어도 한 사람은 한 몫이다.
+   * 인증 전 요청(`catalogRequest`)은 계정이 없으므로 **남용 방어 키(IP)** 로 센다 —
+   * 연결 단위로 두면 그쪽이 같은 구멍으로 남는다.
+   *
+   * 사람의 실제 사용은 화면을 열 때 종류별 1회다. 계정 단위 5회/10초는 여러 탭을
+   * 동시에 새로고침해도 넉넉하다.
+   */
+  private heavyBucketOf(conn: Conn): Map<string, number[]> {
+    const key = conn.user !== null && !conn.guest ? `u:${conn.user.id}` : `k:${conn.key}`;
+    let bucket = this.heavyHits.get(key);
+    if (bucket === undefined) {
+      bucket = new Map<string, number[]>();
+      this.heavyHits.set(key, bucket);
+    }
+    return bucket;
+  }
+
+  /**
+   * 비싼 조회 창을 **계정·IP 단위로** 모아 둔다 (§10-4). 연결이 닫혀도 남으므로
+   * 주기적으로 완전히 지난 항목을 걷어낸다 — 유휴 방 청소와 같은 시계를 쓴다.
+   */
+  private readonly heavyHits = new Map<string, Map<string, number[]>>();
+
+  /** 창이 완전히 지난 비싼 조회 항목을 걷어낸다 (메모리 상한). */
+  private pruneHeavyHits(now: number): void {
+    if (this.heavyHits.size < 1024) return;
+    for (const [key, bucket] of this.heavyHits) {
+      for (const [type, hits] of bucket) {
+        if (hits.every((t) => now - t >= HEAVY_WINDOW_MS)) bucket.delete(type);
+      }
+      if (bucket.size === 0) this.heavyHits.delete(key);
+    }
   }
 
   /** authIpHits 맵이 커지면 창이 완전히 지난 IP 항목을 정리한다(메모리 상한). */
@@ -3205,6 +3297,29 @@ export class RoomManager {
       (a): a is HumanAgent => a instanceof HumanAgent && !a.isAbandoned && a.isConnected(),
     );
     if (humans.length === 0) return; // 사람이 없으면 봇 게임이 알아서 완주한다
+
+    /*
+     * **혼자 두는 기록 대국은 무효로 지울 수 없다** (감사 §10-3).
+     *
+     * 정족수가 "표를 낼 수 있는 사람 수"라, 사람 1 + 봇 3인 방은 **한 표로** 무효가
+     * 됐다. 무효는 정산·기록을 남기지 않으므로 지는 판마다 눌러 없애면 전적이
+     * 세탁된다 — 실제로 그렇게 쓸 수 있는 상태였다.
+     *
+     * 나가는 길은 막지 않는다. "나가기"는 그대로 되고, 그 판은 봇 자동 진행으로
+     * 완주해 **기록에 남는다.** 그게 무효와 나가기의 차이다.
+     *
+     * 기록하지 않는 방(연습·증강 테스트)은 예외다 — 세탁할 전적이 없고, 그 방들은
+     * 무효로 접는 것이 유일한 정리 수단이다. (**체험 방은 여기까지 오지도 않는다** —
+     * `voteAbort`가 게스트 화이트리스트에 없어 그 앞에서 걸린다. 손님은 창을 닫으면
+     * 된다.)
+     */
+    if (humans.length < 2 && !room.guest && !room.sandbox) {
+      return this.fail(
+        conn,
+        "SOLO_ABORT_FORBIDDEN",
+        "혼자 두는 대국은 무효로 지울 수 없습니다 — 나가면 남은 판은 자동으로 진행되고 기록에 남습니다",
+      );
+    }
 
     if (vote === "reject") room.abortVotes.clear(); // 거부 = 투표 전체 취소 (만장일치 불가)
     else if (vote === "agree") room.abortVotes.add(conn.agent.id);
