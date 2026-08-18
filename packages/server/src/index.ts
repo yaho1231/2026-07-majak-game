@@ -276,6 +276,37 @@ function indexHtml(path: string): string {
   return indexCache.html;
 }
 
+/**
+ * 해시가 붙지 않은 정적 파일을 **재검증만 하고 재다운로드는 안 하게** 만든다
+ * (감사 2026-08-17 §7-11).
+ *
+ * 예전에는 `/assets/`(빌드 해시 있음)만 1년 immutable이고 나머지는 전부
+ * `no-cache`였다. 그런데 나머지에 **타일 PNG 37장과 효과음**이 들어 있다 —
+ * 매 방문마다 조건부 요청 37개가 나갔고, 모바일 회선에서는 그 왕복이 곧
+ * 첫 화면 지연이다.
+ *
+ * 셋으로 가른다.
+ *
+ * | 무엇 | 정책 | 왜 |
+ * |---|---|---|
+ * | `/assets/` | 1년 immutable | 파일 이름에 내용 해시가 있다. 바뀌면 이름이 바뀐다 |
+ * | 타일·효과음·아이콘 | 1일 + `stale-while-revalidate` | 이름이 고정이라 immutable은 못 쓴다. 바뀌어도 하루면 퍼지고, 그 사이에도 화면은 뜬다 |
+ * | 나머지(html·manifest·robots) | `no-cache` | 배포 즉시 바뀌어야 하는 것들 |
+ *
+ * ⚠ **immutable을 주면 안 된다.** 이 파일들은 이름이 고정이라, 한 번 잘못 준
+ * 1년짜리 캐시는 그 브라우저에서 되돌릴 방법이 없다. 실제로 이 저장소는
+ * `public/` 손수 작성 파일이 Cloudflare 캐시에 4시간 갇히는 문제를 이미 겪었다.
+ */
+const LONG_CACHE_DIRS = ["/tiles/", "/sfx/", "/icons/", "/brand/"] as const;
+export function cacheControlFor(filePath: string): string {
+  if (filePath.includes("/assets/")) return "public, max-age=31536000, immutable";
+  if (LONG_CACHE_DIRS.some((d) => filePath.includes(d))) {
+    // 하루가 지나면 백그라운드에서 다시 받아 오되, 그동안 화면은 옛것으로 즉시 뜬다.
+    return "public, max-age=86400, stale-while-revalidate=604800";
+  }
+  return "no-cache";
+}
+
 function encodingFor(req: IncomingMessage, ext: string, size: number): "gzip" | null {
   if (!COMPRESSIBLE.has(ext)) return null;
   if (size < 1024) return null;
@@ -497,7 +528,7 @@ const httpServer = createServer((req, res) => {
   const encoding = encodingFor(req, ext, statSync(realPath).size);
   res.writeHead(200, {
     "Content-Type": MIME[ext] ?? "application/octet-stream",
-    "Cache-Control": filePath.includes("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+    "Cache-Control": cacheControlFor(filePath),
     // 압축 여부가 Accept-Encoding에 따라 갈리므로 중간 캐시가 섞지 않게 알린다.
     Vary: "Accept-Encoding",
     ...(encoding === null ? {} : { "Content-Encoding": encoding }),
@@ -615,9 +646,33 @@ function connRateLimited(key: string): boolean {
 const wss = new WebSocketServer({
   noServer: true,
   maxPayload: 64 * 1024,
-  // 압축은 명시적으로 끈다 — 작은 프레임에 이득이 없고, 압축 해제는 보내는 쪽이
-  // 싸게 만들 수 있는 비대칭 비용(zip bomb)이다.
-  perMessageDeflate: false,
+  /*
+   * **나가는 프레임만 압축한다** (감사 2026-08-17 §7-7).
+   *
+   * 예전 근거는 "작은 프레임에 이득이 없다"였는데, 그 전제가 틀렸다. 이 서버가
+   * 가장 많이 보내는 프레임은 `view`이고 중반 이후 한 개가 수 KB~10KB대다.
+   * 게다가 **극도로 반복적인 JSON**이다 — 같은 키 이름 수백 개, 같은 타일
+   * 구조가 34종씩. deflate가 가장 잘 먹는 모양이고, 그것이 국마다 수백 번
+   * 브로드캐스트된다.
+   *
+   * 우려의 절반은 그대로 유효했다: 압축 해제는 **보내는 쪽이 싸게 만들 수 있는
+   * 비대칭 비용**이다(zip bomb). 그래서 방향을 갈랐다.
+   *
+   * - `zlibDeflateOptions` — 우리가 보내는 쪽. level 6은 기본값이고, memLevel을
+   *   낮춰 연결당 메모리를 줄인다(300 연결 × 컨텍스트라 이쪽이 실제 비용이다).
+   * - `clientNoContextTakeover: true` — 클라이언트가 압축 컨텍스트를 이어 가지
+   *   못하게 한다. 이어 가면 작은 프레임 하나로 큰 사전을 참조하는 증폭이 가능하다.
+   * - `threshold` — 이보다 작은 프레임은 그냥 보낸다. `pong`·`promptCancel`처럼
+   *   짧은 프레임에 압축을 걸면 헤더가 본문보다 커진다.
+   * - `maxPayload`(64KB)는 그대로다. 압축 해제 결과가 이 값을 넘으면 ws가 끊는다 —
+   *   zip bomb의 실질적 상한이 이것이다.
+   */
+  perMessageDeflate: {
+    zlibDeflateOptions: { level: 6, memLevel: 7 },
+    clientNoContextTakeover: true,
+    serverNoContextTakeover: false,
+    threshold: 1024,
+  },
 });
 
 /** 하트비트 생존 표시 — pong을 받을 때마다 갱신된다. */

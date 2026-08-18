@@ -1063,8 +1063,36 @@ export type TermChunk =
   | { kind: "text"; text: string }
   | { kind: "term"; text: string; entry: GlossaryEntry };
 
+/**
+ * 이미 갈라 본 문장의 결과 (감사 2026-08-17 §7-10).
+ *
+ * `TERM_RE`는 이 파일의 표기 전부를 `|`로 이은 **거대한 단일 정규식**이다. 그런데
+ * `splitTerms`는 뷰가 그려질 때마다 16~20회씩 불렸다 — 이름표에 붙은 증강 설명이
+ * CSS hover로만 숨겨져 있어 **상시 마운트**되기 때문이다. 마우스를 올리지 않아도
+ * 매 뷰마다 그 정규식이 스무 번 돌았다.
+ *
+ * 이 함수는 **입력이 같으면 결과가 같은 순수 함수**이고, 들어오는 문자열의 가짓수는
+ * 사실상 고정이다(증강 설명 117종 + 요약 + 화면 문구). 그래서 결과를 그대로 들고
+ * 있으면 두 번째부터는 Map 조회 한 번이다.
+ *
+ * 상한을 두는 이유: 이론상 무한히 다른 문자열이 들어올 수 있다(닉네임이 섞인 문구
+ * 등). 넘치면 통째로 비운다 — LRU를 흉내 내는 것보다 이쪽이 예측 가능하고, 어차피
+ * 다시 채우는 비용이 원래 한 번의 비용이다.
+ */
+const SPLIT_CACHE = new Map<string, TermChunk[]>();
+const SPLIT_CACHE_MAX = 2000;
+
 /** 문장을 일반 텍스트 조각과 용어 조각으로 가른다 (TermText가 그대로 렌더한다) */
 export function splitTerms(text: string): TermChunk[] {
+  const cached = SPLIT_CACHE.get(text);
+  if (cached !== undefined) return cached;
+  const chunks = splitTermsUncached(text);
+  if (SPLIT_CACHE.size >= SPLIT_CACHE_MAX) SPLIT_CACHE.clear();
+  SPLIT_CACHE.set(text, chunks);
+  return chunks;
+}
+
+function splitTermsUncached(text: string): TermChunk[] {
   const out: TermChunk[] = [];
   let last = 0;
   TERM_RE.lastIndex = 0;

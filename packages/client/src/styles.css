@@ -3147,27 +3147,27 @@ button {
   z-index: 2;
 }
 
-/* 전원 공통 도라(표시패가 가리키는 패·적도라) — 금빛 */
+/* ── 도라 글로우는 **정지 상태**다 (감사 2026-08-17 §7-8) ──────────────
+   예전에는 `box-shadow` 네 겹을 2.2초 주기로 애니메이션했다. box-shadow는
+   합성(composite)이 불가능해 **매 프레임 페인트**를 부르고, 그게 도라인 패
+   **전부**에 붙어 있었다 — 중반 이후 화면에 도라가 6~10장이면 그만큼의 페인트가
+   매 프레임 돈다. 손패를 훑기만 해도 프레임이 흔들리던 원인 중 하나다.
+
+   "반짝인다"는 신호는 없애지 않았다. 아래 `::before`의 광택 훑기(dora-shine)가
+   `transform`·`opacity`만 쓰는 **합성 가능한** 애니메이션이고, 같은 파일 안에
+   이미 있던 올바른 예다. 맥동을 걷어내도 그 훑기가 2.2초마다 지나가므로 정지
+   화면에서도 도라는 여전히 눈에 들어온다.
+
+   그림자 값은 옛 맥동의 **밝은 쪽**으로 고정했다 — 어두운 쪽에 맞추면 정지 상태의
+   도라가 예전보다 흐려 보인다. (`prefers-reduced-motion`이 이미 같은 판단을
+   내리고 있었다: "맥동의 밝은 쪽에 고정해야 정보가 가장 잘 읽힌다".) */
 .tile-dora {
   border-color: #b8975c;
-  animation: dora-glow 2.2s ease-in-out infinite;
-}
-
-@keyframes dora-glow {
-  0%, 100% {
-    box-shadow:
-      0 3px 5px rgba(0, 0, 0, 0.35),
-      inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(207, 174, 118, 0.85),
-      0 0 6px 1px rgba(184, 151, 92, 0.6);
-  }
-  50% {
-    box-shadow:
-      0 3px 5px rgba(0, 0, 0, 0.35),
-      inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(226, 199, 147, 1),
-      0 0 13px 3px rgba(184, 151, 92, 0.95);
-  }
+  box-shadow:
+    0 3px 5px rgba(0, 0, 0, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px rgba(226, 199, 147, 1),
+    0 0 13px 3px rgba(184, 151, 92, 0.95);
 }
 
 /* 그 사람에게만 도라인 종류(곁불·도라 옹립·이면투시로 나만 본 뒷도라) — 장미금.
@@ -3175,24 +3175,12 @@ button {
    붙어 있어도 색으로 갈리도록 보라가 아닌 마젠타 쪽으로 민다. */
 .tile-dora-own {
   border-color: #f9a0d7;
-  animation: dora-own-glow 2.2s ease-in-out infinite;
-}
-
-@keyframes dora-own-glow {
-  0%, 100% {
-    box-shadow:
-      0 3px 5px rgba(0, 0, 0, 0.35),
-      inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(207, 174, 118, 0.85),
-      0 0 6px 1px rgba(245, 100, 188, 0.6);
-  }
-  50% {
-    box-shadow:
-      0 3px 5px rgba(0, 0, 0, 0.35),
-      inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(226, 199, 147, 1),
-      0 0 13px 3px rgba(246, 114, 198, 0.95);
-  }
+  /* 위 .tile-dora와 같은 이유로 정지 — 색만 장미금이다 (§7-8) */
+  box-shadow:
+    0 3px 5px rgba(0, 0, 0, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px rgba(226, 199, 147, 1),
+    0 0 13px 3px rgba(246, 114, 198, 0.95);
 }
 
 /* 패 표면을 훑고 지나가는 광택 — 도라의 "반짝" 그 자체 */
@@ -7379,8 +7367,55 @@ button {
 
 /* ─────────────── 손패 hover → 공개패 강조 ─────────────── */
 
-/* 내 손패에 마우스를 올리면 같은 종류의 버림패·후로가 청록으로 반짝인다 */
-.tile-hl .tile-face {
+/*
+ * 내 손패에 마우스를 올리면 같은 종류의 버림패·후로가 청록으로 반짝인다.
+ *
+ * **왜 선택자가 34줄인가** (감사 2026-08-17 §7-4): 예전에는 hover한 종류를 React
+ * 컨텍스트로 내려보내 패마다 자기 종류와 비교하고 `.tile-hl` 클래스를 붙였다.
+ * 컨텍스트 값이 바뀌면 소비자 전부가 다시 그려지므로, 마우스가 손패 위를 지날
+ * 때마다 화면의 패 150~250장이 통째로 리렌더됐다 — 그것도 **매 순** 하는 동작에서.
+ *
+ * 지금은 판 루트의 `data-hl` 하나와 패의 `data-k`를 CSS가 짝맞춘다. 34종이니
+ * 34줄이고, CSS 선택자에는 변수를 쓸 수 없어 이 되풀이를 피할 방법이 없다.
+ * 대신 hover 한 번의 비용이 **DOM 속성 하나 쓰기**로 내려간다(React 리렌더 0).
+ *
+ * 짝을 맞추는 대상은 예전 `kindMatches`와 정확히 같다 — `data-k`를 다는 곳이
+ * 공개패(버림·후로·상대 공개패)뿐이고, 값도 suit+rank라 적도라는 5로 함께 걸린다.
+ */
+.table[data-hl="man1"] [data-k="man1"] .tile-face,
+.table[data-hl="man2"] [data-k="man2"] .tile-face,
+.table[data-hl="man3"] [data-k="man3"] .tile-face,
+.table[data-hl="man4"] [data-k="man4"] .tile-face,
+.table[data-hl="man5"] [data-k="man5"] .tile-face,
+.table[data-hl="man6"] [data-k="man6"] .tile-face,
+.table[data-hl="man7"] [data-k="man7"] .tile-face,
+.table[data-hl="man8"] [data-k="man8"] .tile-face,
+.table[data-hl="man9"] [data-k="man9"] .tile-face,
+.table[data-hl="pin1"] [data-k="pin1"] .tile-face,
+.table[data-hl="pin2"] [data-k="pin2"] .tile-face,
+.table[data-hl="pin3"] [data-k="pin3"] .tile-face,
+.table[data-hl="pin4"] [data-k="pin4"] .tile-face,
+.table[data-hl="pin5"] [data-k="pin5"] .tile-face,
+.table[data-hl="pin6"] [data-k="pin6"] .tile-face,
+.table[data-hl="pin7"] [data-k="pin7"] .tile-face,
+.table[data-hl="pin8"] [data-k="pin8"] .tile-face,
+.table[data-hl="pin9"] [data-k="pin9"] .tile-face,
+.table[data-hl="sou1"] [data-k="sou1"] .tile-face,
+.table[data-hl="sou2"] [data-k="sou2"] .tile-face,
+.table[data-hl="sou3"] [data-k="sou3"] .tile-face,
+.table[data-hl="sou4"] [data-k="sou4"] .tile-face,
+.table[data-hl="sou5"] [data-k="sou5"] .tile-face,
+.table[data-hl="sou6"] [data-k="sou6"] .tile-face,
+.table[data-hl="sou7"] [data-k="sou7"] .tile-face,
+.table[data-hl="sou8"] [data-k="sou8"] .tile-face,
+.table[data-hl="sou9"] [data-k="sou9"] .tile-face,
+.table[data-hl="wind1"] [data-k="wind1"] .tile-face,
+.table[data-hl="wind2"] [data-k="wind2"] .tile-face,
+.table[data-hl="wind3"] [data-k="wind3"] .tile-face,
+.table[data-hl="wind4"] [data-k="wind4"] .tile-face,
+.table[data-hl="dragon1"] [data-k="dragon1"] .tile-face,
+.table[data-hl="dragon2"] [data-k="dragon2"] .tile-face,
+.table[data-hl="dragon3"] [data-k="dragon3"] .tile-face {
   outline: 3px solid #6fd0f3;
   outline-offset: 0;
   border-radius: 4px;
@@ -10592,25 +10627,12 @@ button {
   .cutin-yakuman .cutin-body { animation-duration: 0.01s; animation-delay: 0s; }
   .riichi-vignette { animation: none; opacity: 1; }
   .rt { animation: none; }
-  /* 도라 표시는 정보라 남기되, 맥동·광택 흐름은 멈추고 가장 밝은 상태로 고정한다 */
+  /* 도라 표시는 정보라 남기되 광택 흐름만 멈춘다.
+     **맥동을 여기서 고정할 필요가 없어졌다** — §7-8에서 본체 글로우를 아예 정적으로
+     바꿨고(매 프레임 페인트 제거), 그 값이 이미 옛 맥동의 가장 밝은 쪽이다.
+     같은 값을 여기 한 벌 더 두면 나중에 한쪽만 고쳐져 갈린다. */
   .tile-dora::before,
   .tile-dora-own::before { display: none; }
-  .tile-dora {
-    animation: none;
-    box-shadow:
-      0 3px 5px rgba(0, 0, 0, 0.35),
-      inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(226, 199, 147, 1),
-      0 0 10px 2px rgba(184, 151, 92, 0.9);
-  }
-  .tile-dora-own {
-    animation: none;
-    box-shadow:
-      0 3px 5px rgba(0, 0, 0, 0.35),
-      inset 0 -3px 0 rgba(0, 0, 0, 0.12),
-      inset 0 0 0 1px rgba(226, 199, 147, 1),
-      0 0 10px 2px rgba(246, 114, 198, 0.9);
-  }
   .rt-latest::before,
   .rt-latest::after { display: none; }
   /* 인라인 스태거 딜레이(style)보다 세게 — 스탬프·팝을 즉시 표시 */
@@ -11441,7 +11463,7 @@ body.peeking .overlay-peekable > * {
 
   /* 경고·강조 — 여기서 흐려지면 알림이 사라진다. 기본 규칙의 정적 테두리가 그대로 남는다. */
   .hand-danger .tile-face,
-  .tile-hl .tile-face,
+  .table[data-hl] [data-k] .tile-face,
   .rt-latest .tile-face,
   .hand-riichi .tile-face,
   .hand-armable,
@@ -11459,8 +11481,10 @@ body.peeking .overlay-peekable > * {
   .tile-conjured::after,
   .tile-red::after { animation: none; opacity: 1; }
 
-  /* 도라 표시패 아래 흐르는 광택 — 위 8675 블록이 ::before를 이미 지웠고, 여기서는
-     본체 맥동(dora-glow·dora-own-glow)까지 확실히 세운다. */
+  /* 도라 표시패 아래 흐르는 광택 — 위 블록이 ::before를 이미 지웠다.
+     본체 맥동은 §7-8에서 아예 없앴으므로(정지 글로우) 여기서 더 세울 것이 없다.
+     그래도 규칙은 남긴다: 나중에 누가 본체에 애니메이션을 다시 붙이면 그 순간
+     이 블록이 조용히 받아 준다. */
   .tile-dora,
   .tile-dora-own { animation: none; }
 
