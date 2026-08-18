@@ -654,3 +654,34 @@ describe("리치를 건 뒤에는 조용해진다", () => {
     ).toContain("discard");
   });
 });
+
+describe("대본의 순서를 운이 앞지르지 않는다", () => {
+  /** 운 좋게 텐파이가 서서 리치와 연금술이 **동시에** 열린 순 */
+  const both = (over: Partial<CoachCtx> = {}): CoachCtx =>
+    ctx({
+      view: viewWith(14, 1),
+      optionTypes: new Set(["discard", "riichi", "alchemy"]),
+      augmentReady: true,
+      handKinds: new Set(["sou1", "sou2", "pin7"]),
+      seen: new Set(["welcome", "hand", "discard-script"]),
+      ...over,
+    });
+
+  it("연금술을 아직 안 가르쳤으면 리치보다 먼저다", () => {
+    /*
+     * 2삭을 뽑으면 연금술 없이도 텐파이가 선다(실측). 그때 리치를 먼저 집으면
+     * 연금술 마디는 **영영 안 나온다** — 리치 뒤에는 손이 잠겨 대상을 못 고른다.
+     */
+    expect(pickUrgent(both())?.id).toBe("aug-script");
+    expect(lesson("riichi").when(both())).toBe(false);
+  });
+
+  it("연금술을 가르친 뒤에는 리치가 열린다", () => {
+    const after = both({ seen: new Set(["welcome", "hand", "discard-script", "aug-script"]) });
+    expect(lesson("riichi").when(after)).toBe(true);
+  });
+
+  it("대본과 무관한 판(1삭이 없다)에서는 그냥 리치가 열린다", () => {
+    expect(lesson("riichi").when(both({ handKinds: new Set(["pin7"]) }))).toBe(true);
+  });
+});
