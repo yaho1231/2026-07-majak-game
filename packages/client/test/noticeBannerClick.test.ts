@@ -55,3 +55,35 @@ describe("공지 띠는 어디를 눌러도 펼쳐진다", () => {
     expect(CSS).toMatch(/\.notice-head-clickable:focus-visible/);
   });
 });
+
+/**
+ * 서는 자리 회귀 가드.
+ *
+ * 홈 맨 위(로고 줄보다 위)에 있던 시절, 띠는 화면 꼭대기 여백에 얇게 얹혀 있어서
+ * 있어도 못 보고 없어져도 몰랐다(2026-08-19 사용자 보고). 지금은 **누르러 오는 것
+ * 바로 위** — 대국 카드 위다.
+ */
+describe("공지 띠가 서는 자리", () => {
+  it("홈에서는 대국 카드 바로 위에 선다", () => {
+    const col = APP.indexOf('className="home-top-left"');
+    expect(col).toBeGreaterThan(0);
+    const play = APP.indexOf('className="home-card home-play"', col);
+    expect(play).toBeGreaterThan(col);
+    const banner = APP.indexOf("<NoticeBanner", col);
+    expect(banner).toBeGreaterThan(col);
+    expect(banner).toBeLessThan(play);
+  });
+
+  it("홈 맨 위(상태 줄 위)로 되돌아가지 않는다", () => {
+    const home = APP.indexOf('<div className="home">');
+    expect(home).toBeGreaterThan(0);
+    const bar = APP.indexOf("<header", home);
+    const banner = APP.indexOf("<NoticeBanner", home);
+    expect(bar).toBeGreaterThan(home);
+    expect(banner).toBeGreaterThan(bar);
+  });
+
+  it("왼쪽 열 안에서는 아래 여백을 열의 gap에 맡긴다", () => {
+    expect(CSS).toMatch(/\.home-top-left\s*>\s*\.notice-banner\s*\{[^}]*margin:\s*0/);
+  });
+});
