@@ -344,8 +344,13 @@ const BOT_THINK_MS = delayEnv("BOT_THINK_MS", process.env.VITEST ? 0 : 1000);
  */
 const AUTO_MOVE_MS = delayEnv("AUTO_MOVE_MS", process.env.VITEST ? 0 : 450);
 /** 방 코드 문자 집합 — 혼동 문자는 제외 (O/0, I/1) */
-const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const CODE_LEN = 6;
+export const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const CODE_LEN = 6;
+
+/** 방 코드로 **생길 수 있는** 문자열인가 — 공유 카드 경로처럼 밖에서 온 코드를 거를 때 쓴다. */
+export function isRoomCodeShape(code: string): boolean {
+  return code.length === CODE_LEN && [...code].every((ch) => CODE_CHARS.includes(ch));
+}
 /** 인증 레이트리밋: AUTH_WINDOW_MS 창에서 연결당 최대 AUTH_MAX_ATTEMPTS회 */
 const AUTH_WINDOW_MS = 60_000;
 const AUTH_MAX_ATTEMPTS = 12;
