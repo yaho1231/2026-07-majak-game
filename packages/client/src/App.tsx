@@ -6418,59 +6418,147 @@ function AuthScreen(props: {
   const gateOn = props.serverInfo?.signupGate === true;
   const guestOk = props.serverInfo?.guestPlay !== false && props.connection === "connected";
 
+  const augKinds = props.serverInfo?.augmentKinds ?? null;
+  // 상태 줄에 뜨는 연결 상태 — 색만으로 말하지 않는다(WCAG 1.4.1). 점 옆에 늘 글자가 있다.
+  const connLabel =
+    props.connection === "connected"
+      ? "서버 연결됨"
+      : props.connection === "reconnecting"
+        ? "재연결 중"
+        : props.connection === "closed"
+          ? "연결 끊김"
+          : "연결 중";
+
   return (
     <div className="lobby lobby-landing">
       {/* 공지는 **로그인 화면에도** 선다 (§4-3) — 점검 예고·서버 이전처럼 로그인하기
           전에 알아야 하는 것이 대부분이다. `serverInfo`가 인증 전에 오므로 가능하다. */}
       <NoticeBanner notice={props.serverInfo?.notice} />
-      {/* 방문자에게 필요한 것은 딱 둘이다 — 이게 무엇인지 한 줄, 그리고 시작 버튼.
-          나머지는 게임이 말한다. 자세한 설명이 필요한 사람은 규칙 화면으로 간다. */}
-      <section className="landing">
-        <h1 className="landing-title">이능마작</h1>
-        <p className="landing-lead">기존의 리치마작을 뒤바꾸는 다양한 증강을 즐겨보세요.</p>
 
-        {props.invitedCode !== null ? (
-          <p className="landing-invite">
-            <b>{props.invitedCode}</b> 방에 초대받았습니다 — 로그인하면 바로 들어갑니다.
-          </p>
+      {/*
+        ── 상태 줄 ──
+        예전 첫 화면은 44px 금색 간판이 화면 한가운데 뜨고 그 아래로 표어·버튼 셋·
+        설명 문단이 전부 가운데 정렬로 흘러내리는 **마케팅 랜딩**이었다. 어느 제품에
+        붙여도 말이 되는 모양이라 이 게임의 화면으로 읽히지 않았다
+        (2026-08-19 사용자 지시: "좀 더 AI 느낌이 안 나게").
+
+        지금은 **게임 클라이언트가 켜진 화면**이다. 이름표는 작게 왼쪽 위에 붙고,
+        오른쪽에는 클라이언트가 늘 알고 있어야 하는 것 — 서버가 붙었는지, 이 서버가
+        증강을 몇 종 굴리는지 — 이 상시로 뜬다.
+
+        ⚠ 증강 종수는 **서버가 준 값**(`serverInfo.augmentKinds`)만 쓴다. 문장에 숫자를
+        박아 두면 곧 낡는다 (index.html 에 같은 경고가 있다 — 예전에 "104종"으로 박아
+        두었다가 실제 113종이 되면서 공유 카드와 화면이 다른 말을 했다).
+      */}
+      <header className="site-bar landing-bar">
+        <span className="site-mark">이능마작</span>
+        <span className="site-sub">증강 리치마작</span>
+        <span className="site-bar-spacer" />
+        <span
+          className={`site-stat ${props.connection === "connected" ? "site-stat-on" : "site-stat-off"}`}
+        >
+          {connLabel}
+        </span>
+        {augKinds !== null ? (
+          <>
+            <span className="site-div" />
+            <span className="site-stat landing-bar-aug">증강 {augKinds}종</span>
+          </>
         ) : null}
+        <span className="site-div" />
+        <button className="btn-ghost site-bar-btn" onClick={props.onOpenHelp}>
+          <i className="mk mk-doc" aria-hidden="true" />
+          규칙
+        </button>
+      </header>
 
-        <div className="landing-cta">
-          {/*
-            **튜토리얼이 첫 버튼이다** (2026-08-18 사용자 지시: "튜토리얼을 언제든
-            다시 할 수 있게 로그인창에 튜토리얼 전용 버튼").
+      <div className="landing">
+        {/* ── 이게 무엇인가 ──
+            표어를 쓰지 않는다. "다양한 증강을 즐겨보세요" 같은 문장은 아무것도
+            알려주지 않으면서 광고처럼만 읽힌다 — 사양을 그대로 적는다. */}
+        <section className="landing-brief">
+          <h1 className="landing-title">이능마작</h1>
+          <p className="landing-lead">
+            표준 리치마작 4인전입니다. 매 국 시작에 증강 하나를 고르고,
+            그 증강은 점수가 아니라 <b>규칙을 바꿉니다</b>.
+          </p>
 
-            체험과 나란히 두되 앞에 세운 이유: 마작을 아는 사람은 어차피 오른쪽
-            버튼을 찾아 누르지만, 처음 온 사람은 "체험"이 무엇을 뜻하는지 모른 채
-            눌렀다가 아무 설명 없는 판 한가운데 떨어진다. 예전에는 안내가 **처음
-            온 사람에게 딱 한 번만** 따라붙어서(localStorage), 한 번 닫고 나면
-            다시 볼 길이 아예 없었다.
-          */}
-          <button
-            className="landing-tutorial"
-            onClick={props.onTutorial}
-            disabled={!guestOk}
-            title="화면 보는 법부터 증강 쓰는 법까지 — 판 위에서 순서대로 (5~10분)"
-          >
-            🎓 튜토리얼 (5~10분)
-          </button>
-          <button
-            className="landing-guest"
-            onClick={props.onGuest}
-            disabled={!guestOk}
-            title="계정 없이 봇 3명과 한 판 — 기록은 남지 않습니다"
-          >
-            ▶ 게스트로 바로 체험
-          </button>
-          <button className="landing-help" onClick={props.onOpenHelp}>
-            📘 규칙 · 증강 설명
-          </button>
-        </div>
-        <p className="landing-guest-note">
-          <b>튜토리얼</b>은 손패와 증강을 고정해 두고 화면 조작을 하나씩 짚어 줍니다 —
-          시간 제한이 없어 천천히 봐도 됩니다. <b>체험</b>은 설명 없이 바로 한 판입니다.
-          둘 다 가입이 필요 없고, 기록·순위에는 남지 않습니다.
-        </p>
+          {props.invitedCode !== null ? (
+            <p className="landing-invite">
+              <b className="num">{props.invitedCode}</b> 방에 초대받았습니다 — 로그인하면 바로 들어갑니다.
+            </p>
+          ) : null}
+
+          <dl className="landing-spec">
+            <div className="kv">
+              <dt>규칙</dt>
+              <dd>리치마작 · 4인</dd>
+            </div>
+            <div className="kv">
+              <dt>길이</dt>
+              <dd>동풍전 · 반장전</dd>
+            </div>
+            <div className="kv">
+              <dt>증강</dt>
+              {/* 서버가 아직 말을 안 했으면 숫자 자리를 비워 둔다 — 추측한 수를 적지 않는다 */}
+              <dd>{augKinds !== null ? `${augKinds}종 · 매 국 3장 중 1장` : "매 국 3장 중 1장"}</dd>
+            </div>
+            <div className="kv">
+              <dt>상대</dt>
+              <dd>사람 · 봇</dd>
+            </div>
+            <div className="kv">
+              <dt>계정</dt>
+              <dd>없이도 시작</dd>
+            </div>
+          </dl>
+        </section>
+
+        {/* ── 계정 없이 들어가는 두 문 ──
+            예전에는 튜토리얼·체험·규칙 버튼 셋이 로그인 칸과 **따로 떨어져** 화면
+            가운데 나란히 서 있었다. 들어가는 길이 화면 두 곳에 흩어져 있으면 처음
+            온 사람은 어느 쪽이 정문인지 못 고른다. 지금은 로그인 패널 바로 위에
+            붙여 **접속하는 자리 하나**로 묶었다. */}
+        <section className="panel landing-start">
+          <div className="panel-head">
+            <h2>계정 없이 시작</h2>
+          </div>
+          <div className="panel-body">
+            {/*
+              **튜토리얼이 주 동작이다** (2026-08-18 사용자 지시: "튜토리얼을 언제든
+              다시 할 수 있게 로그인창에 튜토리얼 전용 버튼").
+
+              마작을 아는 사람은 어차피 아래 줄을 찾아 누르지만, 처음 온 사람은
+              "체험"이 무엇을 뜻하는지 모른 채 눌렀다가 아무 설명 없는 판 한가운데
+              떨어진다. 예전에는 안내가 **처음 온 사람에게 딱 한 번만** 따라붙어서
+              (localStorage), 한 번 닫고 나면 다시 볼 길이 아예 없었다.
+            */}
+            <button
+              className="btn-key landing-key"
+              onClick={props.onTutorial}
+              disabled={!guestOk}
+              title="화면 보는 법부터 증강 쓰는 법까지 — 판 위에서 순서대로 (5~10분)"
+            >
+              <i className="mk mk-steps" aria-hidden="true" />
+              튜토리얼
+              <span className="landing-key-meta num">5~10분</span>
+            </button>
+            <button
+              className="btn-line landing-key"
+              onClick={props.onGuest}
+              disabled={!guestOk}
+              title="계정 없이 봇 3명과 한 판 — 기록은 남지 않습니다"
+            >
+              <i className="mk mk-play" aria-hidden="true" />
+              바로 한 판
+              <span className="landing-key-meta">봇 3명</span>
+            </button>
+            <p className="landing-key-note">
+              튜토리얼은 손패와 증강을 고정해 두고 화면 조작을 하나씩 짚어 줍니다.
+              시간 제한이 없습니다. 둘 다 기록·순위에 남지 않습니다.
+            </p>
+          </div>
+        </section>
 
         {/*
           이 게임의 유일한 차별점은 "규칙을 바꾸는 증강"인데, 예전에는 그것이
@@ -6479,37 +6567,50 @@ function AuthScreen(props: {
 
           쓰는 것은 도움말과 **같은 컴포넌트·같은 에셋**이다 — 광고용 그림을 따로
           만들면 화면과 다른 것을 약속하게 된다.
+
+          모양은 균등 3칸 카드였다가 **번호 붙은 목록**으로 바꿨다. 같은 크기 상자
+          셋을 나란히 놓는 배치는 내용과 상관없이 어디에나 놓이는 모양이라, 셋이
+          무슨 관계인지(= 같은 더미에서 뽑히는 보기 셋)를 말해 주지 않았다.
         */}
-        <div className="landing-show">
-          <p className="landing-show-head">증강은 규칙 자체를 바꿉니다</p>
-          <ul className="landing-show-list">
-            {LANDING_SHOWCASE.map((s) => (
+        <section className="panel landing-show">
+          <div className="panel-head">
+            <h2>증강 예시</h2>
+            <span className="panel-meta num">
+              3{augKinds !== null ? ` / ${augKinds}` : ""}
+            </span>
+          </div>
+          <ol className="landing-show-list">
+            {LANDING_SHOWCASE.map((s, i) => (
               <li key={s.name} className="landing-show-item">
-                <div className="landing-show-top">
-                  <span className="landing-show-name">{s.name}</span>
-                  <span className="landing-show-kind">{s.kind}</span>
+                <span className="landing-show-no num" aria-hidden="true">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="landing-show-body">
+                  <div className="landing-show-top">
+                    <span className="landing-show-name">{s.name}</span>
+                    <span className="landing-show-kind">{s.kind}</span>
+                    <span className="landing-show-cap">{s.cap}</span>
+                  </div>
+                  <div className="landing-show-fig">
+                    <span className="landing-show-before">
+                      <HelpTileGroups tiles={s.before} />
+                    </span>
+                    {/* 화살표 글자는 CSS가 넣는다 — 칸이 좁으면 세로(↓), 넓으면 가로(→)로
+                        쌓이는데 방향이 어긋나면 그림이 거짓말을 한다 */}
+                    <span className="landing-show-arrow" aria-hidden="true" />
+                    <span className="landing-show-after">
+                      <HelpTileGroups tiles={s.after} />
+                    </span>
+                  </div>
+                  <p className="landing-show-desc">{s.desc}</p>
                 </div>
-                <div className="landing-show-fig">
-                  <span className="landing-show-before">
-                    <HelpTileGroups tiles={s.before} />
-                  </span>
-                  {/* 화살표 글자는 CSS가 넣는다 — 칸이 좁으면 세로(↓), 넓으면 가로(→)로
-                      쌓이는데 방향이 어긋나면 그림이 거짓말을 한다 */}
-                  <span className="landing-show-arrow" aria-hidden="true" />
-                  <span className="landing-show-after">
-                    <HelpTileGroups tiles={s.after} />
-                  </span>
-                </div>
-                <p className="landing-show-cap">{s.cap}</p>
-                <p className="landing-show-desc">{s.desc}</p>
               </li>
             ))}
-          </ul>
+          </ol>
           <p className="landing-show-foot">
             매 국 시작에 세 장 중 하나를 고릅니다.
           </p>
-        </div>
-      </section>
+        </section>
 
       <div className="lobby-card auth-card">
         <div className="auth-tabs">
@@ -6616,12 +6717,15 @@ function AuthScreen(props: {
         {gateOn && tab === "register" ? (
           <p className="auth-gate-note">
             지금 이 서버는 <b>초대제</b>입니다 — 가입 코드가 있어야 계정을 만들 수 있습니다.
-            코드가 없다면 위의 <b>게스트로 바로 체험</b>으로 지금 바로 플레이할 수 있습니다.
+            {/* 시작 버튼은 이제 이 패널 **위**에 붙어 있다 — 가리키는 말도 같이 옮긴다.
+                예전 문구는 "위의 게스트로 바로 체험"이었는데, 그때는 그 버튼이 화면
+                가운데 따로 서 있었다. 없는 것을 가리키는 안내가 되지 않게 한다. */}
+            코드가 없다면 <b>계정 없이 시작</b>의 <b>바로 한 판</b>으로 지금 플레이할 수 있습니다.
           </p>
         ) : null}
 
         <button className="auth-advanced-toggle" onClick={() => setAdvanced((v) => !v)}>
-          {advanced ? "▴ 고급 설정 닫기" : "▾ 고급 설정"}
+          {advanced ? "고급 설정 닫기" : "고급 설정"}
         </button>
         {advanced ? (
           <div className="auth-advanced">
@@ -6633,9 +6737,10 @@ function AuthScreen(props: {
                 onChange={(e) => setServerUrl(e.target.value)}
               />
             </label>
-            <button className="wr-btn wr-bot" onClick={saveServer}>저장 후 새로고침</button>
+            <button className="btn-line" onClick={saveServer}>저장 후 새로고침</button>
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   );
@@ -6886,7 +6991,7 @@ function AugmentMeta({
                   {row.name}
                 </div>
                 <div className="aug-master-who">
-                  👑 {master.nickname} <b className={avgRankClass(master.avg)}>{master.avg.toFixed(2)}</b>
+                  <span className="aug-master-mark hud">장인</span> {master.nickname} <b className={avgRankClass(master.avg)}>{master.avg.toFixed(2)}</b>
                   <span className="aug-master-g">({master.games}판)</span>
                 </div>
               </div>
@@ -7291,12 +7396,12 @@ function TierScreen(props: {
 
   return (
     <div className="codex">
-      <header className="home-nav codex-nav">
+      <header className="site-bar home-nav codex-nav">
         <button className="codex-back" onClick={props.onClose}>← 홈으로</button>
-        <span className="home-logo">증강 파워 티어표</span>
+        <span className="site-mark codex-title">증강 파워 티어표</span>
         <span className="home-admin-badge">관리자</span>
         <span className="codex-collect-badge">{entries.length}종</span>
-        <span className="home-spacer" />
+        <span className="site-bar-spacer" />
         <div className="codex-tabs">
           <button className={!flat ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setFlat(false)}>티어별</button>
           <button className={flat ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setFlat(true)}>전체 표</button>
@@ -7498,11 +7603,11 @@ function CodexScreen(props: {
 
   return (
     <div className="codex">
-      <header className="home-nav codex-nav">
+      <header className="site-bar home-nav codex-nav">
         <button className="codex-back" onClick={props.onClose}>{props.backLabel ?? "← 홈으로"}</button>
-        <span className="home-logo">증강 도감</span>
+        <span className="site-mark codex-title">증강 도감</span>
         <span className="codex-collect-badge">{collectedCount}/{total}종 수집</span>
-        <span className="home-spacer" />
+        <span className="site-bar-spacer" />
         <div className="codex-tabs">
           <button className={tab === "codex" ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setTab("codex")}>도감</button>
           <button className={tab === "stats" ? "codex-tab codex-tab-on" : "codex-tab"} onClick={() => setTab("stats")}>전체 통계</button>
@@ -7538,9 +7643,14 @@ function CodexScreen(props: {
             className={`codex-cat aug-cat-${c}${category === c ? " codex-cat-on" : ""}`}
             onClick={() => setCategory(category === c ? null : c)}
           >
-            <span className="codex-cat-ico" aria-hidden="true">{CATEGORY_META[c].icon}</span>
+            {/* 계열 이모지를 뺐다 (2026-08-19). 칩에는 이미 계열 이름이 한 단어로 적혀
+                있어서 그림이 뜻을 더해 주지 않았고, 아홉 개가 한 줄에 서면 기기마다
+                다른 그림·다른 크기가 섞여 줄이 들쭉날쭉했다. 계열은 **칩의 색**
+                (`aug-cat-*` → `--fx-color`)이 이미 말하고 있다.
+                ⚠ `CATEGORY_META.icon` 자체는 그대로 둔다 — 판 위(액티브 버튼·드래프트
+                카드)에서 같은 값을 쓰는데 거기는 이번 정리 대상이 아니다. */}
             {CATEGORY_META[c].label}
-            <span className="codex-cat-n">{catCounts.get(c) ?? 0}</span>
+            <span className="codex-cat-n num">{catCounts.get(c) ?? 0}</span>
           </button>
         ))}
       </div>
@@ -7667,7 +7777,7 @@ function CodexScreen(props: {
                     <li>표본 <b>{selSrv.games}</b>판 · 평균순위 {statCell(selSrv.games > 0 ? selSrv.avgPlacement : undefined, "avg")}</li>
                     <li>1위율 <b>{selSrv.games > 0 ? pct(selSrv.topRate) : "-"}</b></li>
                     {selMaster !== undefined ? (
-                      <li>증강 장인 👑 <b>{selMaster.nickname}</b> <b className={avgRankClass(selMaster.avg)}>{selMaster.avg.toFixed(2)}</b>
+                      <li>증강 장인 <b>{selMaster.nickname}</b> <b className={avgRankClass(selMaster.avg)}>{selMaster.avg.toFixed(2)}</b>
                         <span className="codex-dim"> ({selMaster.games}판)</span></li>
                     ) : null}
                   </ul>
@@ -7712,10 +7822,13 @@ function GuestOutro(props: {
           체험 게임은 <b>기록에 남지 않습니다</b> — 리플레이·누적 통계·리더보드 어디에도
           올라가지 않고, 창을 닫으면 이 손님 이름도 사라집니다.
         </p>
-        <button className="lobby-join" onClick={props.onPlayAgain}>▶ 한 판 더 체험</button>
+        <button className="lobby-join" onClick={props.onPlayAgain}>
+          <i className="mk mk-play" aria-hidden="true" />
+          한 판 더 체험
+        </button>
         <div className="guest-actions">
-          <button className="wr-btn wr-bot" onClick={props.onOpenHelp}>📘 규칙 · 도움말</button>
-          <button className="wr-btn wr-bot" onClick={props.onOpenCodex}>📖 증강 도감</button>
+          <button className="wr-btn wr-bot" onClick={props.onOpenHelp}>규칙 · 도움말</button>
+          <button className="wr-btn wr-bot" onClick={props.onOpenCodex}>증강 도감</button>
         </div>
         <p className="guest-note">
           계정을 만들면 친구와 방 코드로 함께 두고, 전적·리플레이·리더보드가 쌓이고,
@@ -8407,10 +8520,10 @@ function HelpScreen(props: {
 
   return (
     <div className="codex help-screen">
-      <header className="home-nav codex-nav">
+      <header className="site-bar home-nav codex-nav">
         <button className="codex-back" onClick={props.onClose}>{props.backLabel ?? "← 닫기"}</button>
-        <span className="home-logo">규칙 · 도움말</span>
-        <span className="home-spacer" />
+        <span className="site-mark codex-title">규칙 · 도움말</span>
+        <span className="site-bar-spacer" />
         <div className="codex-tabs">
           <button
             className={tab === "basics" ? "codex-tab codex-tab-on" : "codex-tab"}
@@ -8461,7 +8574,7 @@ function HelpScreen(props: {
             여기서 도감으로 바로 건너뛴다 — 홈까지 나갔다 다시 들어올 이유가 없다. */}
         {tab === "augment" && props.onOpenCodex !== undefined ? (
           <button className="home-codex-cta" onClick={props.onOpenCodex}>
-            📖 증강 도감 열기 — {props.augmentKinds}종 전체 상세 설명
+            증강 도감 열기 — {props.augmentKinds}종 전체 상세 설명
           </button>
         ) : null}
       </main>
@@ -8472,8 +8585,8 @@ function HelpScreen(props: {
 // ─────────────────────────── 제보 게시판 ───────────────────────────
 
 const FEEDBACK_KIND_LABEL: Record<FeedbackKind, string> = {
-  bug: "🐞 버그 제보",
-  idea: "💡 증강 아이디어",
+  bug: "버그 제보",
+  idea: "증강 아이디어",
 };
 
 const FEEDBACK_STATUS_LABEL: Record<FeedbackStatus, string> = {
@@ -8544,7 +8657,7 @@ function FeedbackBoard(props: {
   return (
     <section className="home-card home-feedback">
       <div className="home-card-head">
-        <h2>📮 제보 게시판</h2>
+        <h2>제보 게시판</h2>
         <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
       </div>
       <p className="home-hint">
@@ -8607,7 +8720,7 @@ function FeedbackBoard(props: {
               <li key={e.id} className={`fb-row fb-${e.kind}`}>
                 <button className="fb-head" onClick={() => setOpenId(open ? null : e.id)}>
                   <span className={`fb-kind-tag fb-kind-${e.kind}`}>
-                    {e.kind === "bug" ? "🐞 버그" : "💡 아이디어"}
+                    {e.kind === "bug" ? "버그" : "아이디어"}
                   </span>
                   <span className="fb-row-title">{e.title}</span>
                   <span className={`fb-status fb-status-${e.status}`}>
@@ -8908,7 +9021,7 @@ function NoticeEditor({
   return (
     <section className="home-card home-notice-edit">
       <div className="home-card-head">
-        <h2>📢 공지<span className="home-admin-badge">관리자</span></h2>
+        <h2>공지<span className="home-admin-badge">관리자</span></h2>
       </div>
       <p className="home-hint">
         홈과 로그인 화면 맨 위에 뜹니다. <b>제목을 비우고 저장하면 내려갑니다.</b>
@@ -9246,12 +9359,14 @@ function HomeScreen(props: {
 
   // 오른쪽 탭 (readHomeTab 주석 참고)
   const [tab, setTab] = useState<HomeTabId>(() => readHomeTab(props.auth.isAdmin));
+  // 이모지 아이콘을 뺐다 (2026-08-19). 탭 이름이 이미 한 단어라 그림이 뜻을 더해 주지
+  // 않았고, 기기마다 다른 그림·다른 기준선이 와서 탭 줄의 글자 높이가 흔들렸다.
   const tabs: { id: HomeTabId; label: string }[] = [
-    { id: "record", label: "📊 전적" },
-    { id: "meta", label: "📈 증강 메타" },
-    { id: "feedback", label: "📮 제보" },
-    { id: "account", label: "🔑 계정" },
-    ...(props.auth.isAdmin ? [{ id: "admin" as const, label: "🛠 관리" }] : []),
+    { id: "record", label: "전적" },
+    { id: "meta", label: "증강 메타" },
+    { id: "feedback", label: "제보" },
+    { id: "account", label: "계정" },
+    ...(props.auth.isAdmin ? [{ id: "admin" as const, label: "관리" }] : []),
   ];
   /** 저장은 setState updater 밖에서 (useFold와 같은 이유) */
   function pickTab(id: HomeTabId): void {
@@ -9316,24 +9431,36 @@ function HomeScreen(props: {
 
   return (
     <div className="home">
-      <header className="home-nav">
-        <span className="home-logo">이능마작</span>
-        <span className="home-tagline">증강 리치마작</span>
-        <span className="home-spacer" />
+      {/* 첫 화면(AuthScreen)과 **같은 상태 줄**이다 — 로그인 전후로 창틀이 바뀌면
+          같은 클라이언트로 안 읽힌다. 왼쪽은 이름표, 오른쪽은 지금 누구로 붙어 있는지. */}
+      <header className="site-bar home-nav">
+        <span className="site-mark">이능마작</span>
+        <span className="site-sub">증강 리치마작</span>
+        <span className="site-bar-spacer" />
         {/* 규칙·도감은 어느 탭에 있든 손에 닿아야 한다 — 카드 안에만 두면 탭을
             바꾼 사람에게는 없는 문이 된다. 제보는 탭 줄에 서 있으니 여기서 뺐다. */}
-        <button className="home-logout home-nav-link" onClick={props.onOpenHelp} title="규칙 · 도움말">
-          📘<span className="home-nav-link-t"> 규칙</span>
+        <button className="btn-ghost site-bar-btn" onClick={props.onOpenHelp} title="규칙 · 도움말">
+          <i className="mk mk-doc" aria-hidden="true" />
+          <span className="home-nav-link-t">규칙</span>
         </button>
-        <button className="home-logout home-nav-link" onClick={props.onOpenCodex} title="증강 도감">
-          📖<span className="home-nav-link-t"> 도감</span>
+        <button className="btn-ghost site-bar-btn" onClick={props.onOpenCodex} title="증강 도감">
+          <i className="mk mk-grid" aria-hidden="true" />
+          <span className="home-nav-link-t">도감</span>
         </button>
+        <span className="site-div" />
         <span className="home-user">
           {props.auth.username}
           {props.auth.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
         </span>
         <div className="home-settings">
-          <button className="home-logout home-gear" onClick={() => setSettingsOpen((v) => !v)} title="설정">⚙</button>
+          <button
+            className="btn-ghost site-bar-btn home-gear"
+            onClick={() => setSettingsOpen((v) => !v)}
+            title="설정"
+            aria-label="설정"
+          >
+            <i className="mk mk-gear" aria-hidden="true" />
+          </button>
           {settingsOpen ? (
             <SettingsPanel
               settings={props.settings}
@@ -9342,7 +9469,7 @@ function HomeScreen(props: {
             />
           ) : null}
         </div>
-        <button className="home-logout" onClick={props.onLogout}>로그아웃</button>
+        <button className="btn-line site-bar-btn" onClick={props.onLogout}>로그아웃</button>
       </header>
 
       <main className="home-main">
@@ -9364,8 +9491,11 @@ function HomeScreen(props: {
 
         <section className="home-card home-play">
           <h2>대국</h2>
+          {/* 표식은 CSS가 그린다 (`.mk-*`) — 예전 `＋`는 전각 문자라 글꼴에 따라
+              폭과 기준선이 제각각이었고, 버튼 글자와 높이가 안 맞았다. */}
           <button className="home-create" onClick={props.onCreateRoom}>
-            ＋ 방 만들기
+            <i className="mk mk-plus" aria-hidden="true" />
+            방 만들기
           </button>
           <div className="home-join">
             <input
@@ -9379,7 +9509,8 @@ function HomeScreen(props: {
           </div>
           {props.lastRoomCode !== null ? (
             <button className="home-rejoin" onClick={() => props.onJoinRoom(props.lastRoomCode!)}>
-              ↻ 진행하던 방으로 재접속 ({props.lastRoomCode})
+              <i className="mk mk-again" aria-hidden="true" />
+              진행하던 방으로 재접속 <b className="num">{props.lastRoomCode}</b>
             </button>
           ) : null}
           <p className="home-hint">
@@ -9395,7 +9526,7 @@ function HomeScreen(props: {
               것이다(무작위 실전). 한 버튼에 묶여 있으면 안내를 다시 보고 싶은 사람도,
               안내 없이 두고 싶은 사람도 원하는 것을 못 고른다. */}
           <button className="home-practice" onClick={() => props.onPractice(true)}>
-            🎓 튜토리얼 (화면 조작 안내 · 5~10분)
+            튜토리얼 (화면 조작 안내 · 5~10분)
           </button>
           <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
             연습 대국 (봇 3명 · 안내 없음 · 기록 안 남음)
@@ -9469,7 +9600,7 @@ function HomeScreen(props: {
               {/* 전적이 0인 사람 = 아직 한 판도 안 끝낸 사람이다. 두 문(튜토리얼·
                   연습 대국) 중 여기서 권할 것은 **안내가 붙는 쪽**이다. */}
               <button className="home-empty-cta" onClick={() => props.onPractice(true)}>
-                🎓 튜토리얼로 한 판
+                튜토리얼로 한 판
               </button>
             </p>
           )}
@@ -9488,7 +9619,7 @@ function HomeScreen(props: {
           </div>
           <PersonalAugmentStats stats={career?.stats ?? null} catalog={props.catalog} />
           <button className="home-codex-cta" onClick={props.onOpenCodex}>
-            📖 증강 도감 전체 보기 — {Object.keys(props.catalog).length || "?"}종 상세 설명 · 서버 전체 통계
+            증강 도감 전체 보기 — {Object.keys(props.catalog).length || "?"}종 상세 설명 · 서버 전체 통계
           </button>
         </section>
                 </>
@@ -9578,7 +9709,7 @@ function HomeScreen(props: {
         <AnalyticsCard days={props.analytics} onRefresh={props.onRefreshAnalytics} />
         <section className="home-card home-sandbox">
           <div className="home-card-head">
-            <h2>🧪 증강 테스트<span className="home-admin-badge">관리자</span></h2>
+            <h2>증강 테스트<span className="home-admin-badge">관리자</span></h2>
           </div>
           <p className="home-hint">
             봇 3명과 함께 드래프트 없이 바로 시작합니다. 게임 안의 테스트 패널에서
@@ -9597,7 +9728,7 @@ function HomeScreen(props: {
             ))}
           </div>
           <button className="home-create" onClick={() => props.onStartSandbox(sandboxMode)}>
-            🧪 증강 테스트 시작
+            증강 테스트 시작
           </button>
         </section>
 
@@ -9632,7 +9763,7 @@ function HomeScreen(props: {
         {props.auth.isAdmin ? (
           <section className="home-card home-admin home-tiers">
             <div className="home-card-head">
-              <h2>📊 증강 파워 티어표 <span className="home-admin-badge">관리자</span></h2>
+              <h2>증강 파워 티어표 <span className="home-admin-badge">관리자</span></h2>
               <button className="home-refresh" onClick={props.onOpenTiers} title="티어표 열기">↗</button>
             </div>
             <p className="home-hint">
@@ -9662,7 +9793,7 @@ function HomeScreen(props: {
               </div>
             )}
             <button className="home-codex-cta" onClick={props.onOpenTiers}>
-              📊 티어표 전체 보기 — {props.augmentTiers?.entries.length ?? "?"}종 · 축별 점수 · 권장 가중치
+              티어표 전체 보기 — {props.augmentTiers?.entries.length ?? "?"}종 · 축별 점수 · 권장 가중치
             </button>
           </section>
         ) : null}
@@ -9809,7 +9940,7 @@ function WaitroomTips(): JSX.Element {
   }, []);
   return (
     <div className="waitroom-tip" aria-live="polite">
-      <span className="waitroom-tip-label">💡 꿀팁</span>
+      <span className="waitroom-tip-label">꿀팁</span>
       {/* key를 바꿔 페이드 인 애니메이션을 매번 다시 태운다 */}
       <span key={i} className="waitroom-tip-text">{WAITROOM_TIPS[i]}</span>
     </div>
@@ -9927,7 +10058,7 @@ function WaitingRoom(props: {
         <div className="waitroom-code" onClick={copyCode} title="클릭해서 복사">
           <span className="waitroom-code-label">방 코드</span>
           <span className="waitroom-code-value">{props.roomId}</span>
-          <span className="waitroom-code-copy">📋 복사</span>
+          <span className="waitroom-code-copy">복사</span>
         </div>
         <p className="waitroom-room">코드를 친구에게 알려주세요 · {lobby.players.length}/4</p>
 
@@ -9963,7 +10094,7 @@ function WaitingRoom(props: {
         {/* 봇 난이도 — 성향(원형)이 "어떻게 두는가"라면 이쪽은 "얼마나 잘 두는가"다.
             기본 어려움이 종전 봇 그대로이고, 그 위로는 열지 않는다. */}
         <div className="lobby-group-label">
-          🤖 봇 난이도
+          봇 난이도
         </div>
         <div className="mode-select" role="radiogroup" aria-label="봇 난이도">
           {BOT_DIFFICULTY.map(([level, label, sub]) => {
@@ -9995,7 +10126,6 @@ function WaitingRoom(props: {
               ) : (
                 <>
                   <span className="seat-name">
-                    {p.isHost ? <span className="seat-crown" title="방장">👑</span> : null}
                     {p.isBot ? "봇" : p.nickname}
                     {p.playerId === lobby.youId ? <span className="seat-you"> (나)</span> : null}
                     {p.isBot ? <span className="seat-bot">BOT</span> : null}
@@ -10071,7 +10201,7 @@ function WaitingRoom(props: {
                 disabled={lobby.players.length < 2}
                 title="동남서북 자리를 다시 뽑습니다 (친이 바뀝니다)"
               >
-                🎲 자리 섞기
+                자리 섞기
               </button>
               <button
                 className="wr-btn wr-start"
@@ -12188,7 +12318,7 @@ function SandboxPanel(props: {
   return (
     <div className="sbx">
       <header className="sbx-head">
-        <span className="sbx-title">🧪 증강 테스트</span>
+        <span className="sbx-title">증강 테스트</span>
         <span className="sbx-mode">{props.sandbox.mode === "tonpuu" ? "동풍전" : "반장전"}</span>
         <span className="home-spacer" />
         <button className="sbx-x" onClick={() => setOpen(false)} title="닫기">✕</button>

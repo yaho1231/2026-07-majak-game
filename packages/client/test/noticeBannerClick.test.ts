@@ -74,8 +74,13 @@ describe("공지 띠가 서는 자리", () => {
     expect(banner).toBeLessThan(play);
   });
 
-  it("홈 맨 위(로고 줄 위)로 되돌아가지 않는다", () => {
-    expect(APP).not.toMatch(/<div className="home">\s*(\{\/\*[\s\S]*?\*\/\}\s*)?<NoticeBanner/);
+  it("홈 맨 위(상태 줄 위)로 되돌아가지 않는다", () => {
+    const home = APP.indexOf('<div className="home">');
+    expect(home).toBeGreaterThan(0);
+    const bar = APP.indexOf("<header", home);
+    const banner = APP.indexOf("<NoticeBanner", home);
+    expect(bar).toBeGreaterThan(home);
+    expect(banner).toBeGreaterThan(bar);
   });
 
   it("왼쪽 열 안에서는 아래 여백을 열의 gap에 맡긴다", () => {

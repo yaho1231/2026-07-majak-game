@@ -43,6 +43,36 @@
   --r-md: 8px;
   --r-lg: 12px;
 
+  /* ── 클라이언트 크롬 (게임 밖 화면 전용) ──
+     게임판은 위의 --r-* 를 그대로 쓴다. 판 밖의 화면(랜딩·홈·도감·규칙·제보)만
+     이 아래 값을 쓴다 — 그쪽은 '카드를 늘어놓은 페이지'가 아니라 **게임 클라이언트의
+     창틀**이어야 하기 때문이다. 둥근 모서리 12px + 부드러운 그림자 + 가운데 정렬은
+     어느 제품에 붙여도 말이 되는 모양이라, 이 게임의 화면으로는 읽히지 않았다.
+
+     세 가지만 다르다: 모서리를 거의 없애고, 면 대신 **선**으로 구획하고, 수치는
+     전부 고정폭으로 세운다. */
+  --r-panel: 3px;
+  --r-chip: 2px;
+  /* 패널 안쪽 여백 — 머리(타이틀바)가 이 값만큼 **음수 마진으로 되밀어** 좌우 끝까지
+     닿는다. 그래서 여백을 바꿀 때 두 곳을 같이 고치지 않도록 변수로 묶어 둔다. */
+  --panel-pad-x: 16px;
+  --panel-pad-y: 14px;
+
+  /* 패널 — 채움은 펠트보다 어둡게(창이 판 위에 얹힌 것처럼), 머리는 한 단 밝게 */
+  --chrome-fill: #0c1511;
+  --chrome-head: #131f19;
+  --chrome-line: rgba(236, 228, 210, 0.13);
+  /* 위쪽 1px 하이라이트 — 이거 하나로 패널이 '그려진 사각형'에서 '금속판'이 된다 */
+  --chrome-lit: rgba(236, 228, 210, 0.055);
+
+  /* 입력칸 바닥 — 패널보다 한 단 더 깊다. 글씨를 **적어 넣는 자리**는 패널 면보다
+     들어가 보여야 한다(패널과 같은 색이면 테두리 1px만이 입력칸임을 말한다). */
+  --field-fill: #070d0a;
+
+  /* 수치용 고정폭 — 판수·승률·방 코드·버전처럼 **자리가 흔들리면 안 되는 것**.
+     비례폭으로 두면 새로고침마다 숫자 폭이 달라져 표가 덜컹거린다. */
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
   /* 그림자 — 오프셋과 블러가 같이 있어야 깊이다.
      무채 검정이 아니라 펠트 색조를 섞어 판에 붙어 보이게 한다. */
   --shadow-1: 0 1px 2px rgba(4, 9, 7, 0.4);
@@ -222,21 +252,23 @@ button {
   gap: 12px;
 }
 
+/* 34px 황동 간판이었다. 이 제목이 뜨는 자리는 전부 **한 가지 일을 하는 작은 창**
+   이다(입장 중·리플레이 재구성·게스트 체험 마무리) — 간판을 세울 자리가 아니라
+   창 이름을 다는 자리다. 자간 7px 도 뺀다: "대 기 실"로 흩어져 읽혔다. */
 .lobby-title {
   margin: 0;
   text-align: center;
-  font-size: 34px;
-  /* 자간은 넓게 유지(간판 글씨) 하되 글로우는 뺀다 — 무게는 굵기가 만든다.
-     한글 워드마크라 라틴만큼 벌리지 않는다 */
-  letter-spacing: 7px;
-  color: var(--brass-bright);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--ink-2);
 }
 
 .lobby-tag {
-  margin: -6px 0 10px;
+  margin: -4px 0 10px;
   text-align: center;
-  color: #93a89b;
-  font-size: 13px;
+  color: var(--ink-4);
+  font-size: 12px;
 }
 
 .lobby-card label {
@@ -5632,23 +5664,28 @@ button {
   padding: 16px;
 }
 
+/* 대기실은 판과 사이트의 경계에 선 화면이다 — 창틀은 셸(패널)을 따르고,
+   안의 좌석·모드 선택은 원래 모양을 유지한다. */
 .waitroom-card {
   position: relative;
   width: min(540px, 94cqw);
-  padding: 30px 28px 24px;
-  border-radius: 16px;
-  background: rgba(13, 23, 18, 0.92);
-  border: 1px solid rgba(184, 151, 92, 0.4);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  padding: 22px 22px 20px;
+  border-radius: var(--r-panel);
+  background: var(--chrome-fill);
+  border: 1px solid var(--chrome-line);
+  box-shadow: inset 0 1px 0 var(--chrome-lit), 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
+/* 26px 금색 + 글로우 + 자간 8px 이었다 — "대 기 실"로 흩어져 읽혔고, 글로우는
+   이 화면에서 유일한 발광이라 혼자 튀었다. 창 이름은 작고 조용하게. */
 .waitroom-title {
   margin: 0;
   text-align: center;
-  font-size: 26px;
-  letter-spacing: 8px;
-  color: #b8975c;
-  text-shadow: 0 2px 12px rgba(184, 151, 92, 0.3);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--ink-2);
+  text-shadow: none;
 }
 
 .waitroom-room {
@@ -5781,10 +5818,6 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.seat-crown {
-  font-size: 13px;
 }
 
 .seat-you {
@@ -6007,11 +6040,12 @@ button {
 
 .wr-btn {
   flex: 1;
-  padding: 13px;
-  border: none;
-  border-radius: 9px;
-  font-size: 15px;
-  font-weight: 800;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-chip);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   transition: filter 0.15s, opacity 0.15s;
 }
 
@@ -6022,8 +6056,9 @@ button {
 
 .wr-bot {
   flex: 0 0 auto;
-  background: rgba(147, 168, 155, 0.2);
-  color: #ece4d2;
+  border-color: var(--chrome-line);
+  background: rgba(236, 228, 210, 0.05);
+  color: var(--ink-2);
 }
 
 .wr-bot:not(:disabled):hover {
@@ -6033,8 +6068,9 @@ button {
 /* 자리 섞기 — 봇 추가와 같은 보조 버튼 계열, 폭은 글자에 맞춘다 */
 .wr-shuffle {
   flex: 0 0 auto;
-  background: rgba(147, 168, 155, 0.2);
-  color: #ece4d2;
+  border-color: var(--chrome-line);
+  background: rgba(236, 228, 210, 0.05);
+  color: var(--ink-2);
   white-space: nowrap;
 }
 
@@ -7774,41 +7810,28 @@ button {
 
 /* ── 모바일: 홈·로비·대기실 ── */
 @container ui (max-width: 700px) {
-  /* 상단 바 — 로고·부제·닉네임이 서로 밀어내 세 줄로 접히던 곳 */
-  .home-nav {
-    gap: 8px;
-    padding: 10px 12px;
+  /* 상단 바 — 이름표·부제·닉네임이 서로 밀어내 세 줄로 접히던 곳.
+     ⚠ 클래스가 바뀌었다 (2026-08-19, 클라이언트 셸): .home-logo → .site-mark,
+     .home-tagline → .site-sub, .home-logout → .btn-line.site-bar-btn.
+     여기서 겹치지 않는 것만 손대고, gap·padding 축소는 파일 **뒤쪽**의
+     `.home-nav { gap: 5px … }` 가 맡는다 (이 블록은 `.site-bar` 기본 규칙보다
+     앞이라 같은 속성을 적으면 뒤의 기본값이 이긴다 — 그 이유는 그쪽 주석 참고). */
+  .site-mark {
+    /* 375px에서 이름표가 "이/능/마/작" 네 줄로 접혀 상단 바가 세 배 높이가 됐다 */
+    font-size: 14px;
+    letter-spacing: 2px;
   }
-  .home-logo {
-    font-size: 17px;
-    letter-spacing: 3px;
-    /* 375px에서 로고가 "이/능/마/작" 네 줄로 접혀 상단 바가 세 배 높이가 됐다 */
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-  .home-tagline {
-    display: none;
-  }
-  /* 긴 닉네임이 로고·버튼을 밀어내 상단바가 세 줄로 접히지 않게 가둔다 */
+  /* 긴 닉네임이 이름표·버튼을 밀어내 상단바가 세 줄로 접히지 않게 가둔다 */
   .home-user {
     min-width: 0;
     gap: 5px;
-    font-size: 14px;
+    font-size: 12px;
     overflow: hidden;
     white-space: nowrap;
   }
   .home-admin-badge {
     flex: 0 0 auto;
   }
-  .home-logout {
-    flex: 0 0 auto;
-    padding: 7px 10px;
-    white-space: nowrap;
-  }
-  /* 좁은 상단 바에서는 규칙·도감을 아이콘만 남긴다 — 글자까지 두면 닉네임이 밀려
-     로고가 세로로 접힌다(375px 실측). */
-  .home-nav-link-t { display: none; }
-  .home-nav-link { padding: 7px 8px; }
 
   .home-main {
     grid-template-columns: minmax(0, 1fr);
@@ -7871,6 +7894,315 @@ button {
   .stats-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* ═══════════════ 클라이언트 셸 (게임 밖 화면 공통) ═══════════════
+
+   여기서부터 아래는 **판 밖의 화면**이다 — 랜딩·홈·도감·규칙·제보·티어표.
+   예전에는 이 화면들이 저마다 둥근 카드를 격자에 흘려 놓은 모양이었다. 문제는
+   못생긴 것이 아니라 **아무 제품에나 붙는 모양**이라는 것이었다: 12px 둥근 모서리,
+   부드러운 그림자, 가운데 정렬 제목, 이모지 아이콘, "다양한 ~를 즐겨보세요" 카피.
+   이 게임의 화면인지 알 수 없었다 (2026-08-19 사용자 지시: "좀 더 AI 느낌이 안 나게").
+
+   그래서 판 밖도 **게임 클라이언트의 창**으로 통일한다. 규칙 넷:
+
+   1. 면이 아니라 **선**으로 나눈다. 카드를 띄우지 말고 패널을 붙인다.
+   2. 모서리는 3px. 알약(999px)은 상태 배지에만 남긴다.
+   3. 수치는 전부 고정폭 — 표가 덜컹거리지 않게.
+   4. 라벨은 작고 넓게 벌린 한 급(11px/1.4px). 제목을 키워서 위계를 만들지 않는다.
+
+   아이콘 자리에 이모지를 쓰지 않는다. 이모지는 기기마다 다른 그림이 오고(안드로이드
+   📘 와 애플 📘 는 색부터 다르다) 크기·기준선도 제각각이라 줄이 흔들린다. 표식이
+   필요하면 CSS로 그린다 — 아래 `.mk-*`.                                        */
+
+/* ── 수치 ── 판수·승률·코드·버전처럼 자리가 흔들리면 안 되는 것 */
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ── HUD 라벨 ── 작게, 넓게. 대문자 변환은 하지 않는다(한글에 뜻이 없다) */
+.hud {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  color: var(--ink-4);
+}
+
+/* ── 패널 ──
+   `.home-card` 같은 기존 클래스에 이 모양을 **그대로 얹는다**(아래 매핑 참고) —
+   마크업을 통째로 갈아 끼우면 여섯 화면이 동시에 흔들린다. */
+.panel,
+.home-card,
+.lobby-card {
+  border-radius: var(--r-panel);
+  background: var(--chrome-fill);
+  border: 1px solid var(--chrome-line);
+  /* 그림자는 띄우는 용도가 아니라 **바닥에 붙이는** 용도다 — 오프셋만 짧게.
+     위 1px 하이라이트가 금속판의 윗면을 만든다. */
+  box-shadow: inset 0 1px 0 var(--chrome-lit), 0 1px 0 rgba(3, 7, 5, 0.5);
+}
+
+/* 패널 머리 = 창의 타이틀바. 왼쪽 황동 눈금 하나가 "여기가 머리다"를 말한다 —
+   글자를 키우거나 굵히지 않는다. */
+.panel-head,
+.home-card > h2,
+.home-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 0;
+  min-height: 34px;
+  border-bottom: 1px solid var(--chrome-line);
+  background: var(--chrome-head);
+  border-radius: var(--r-panel) var(--r-panel) 0 0;
+}
+
+/* ⚠ 머리가 창의 좌우 끝까지 닿는 방법이 두 갈래다 — 부모에 여백이 있느냐로 갈린다.
+
+   `.panel` 은 **여백이 없는 틀**이다(본문은 `.panel-body`가 자기 여백을 갖는다).
+   그래서 머리는 그냥 놓기만 하면 끝까지 닿는다.
+
+   `.home-card` 는 반대로 **자기가 여백을 갖는 상자**다(안의 내용이 제각각이라
+   본문 감싸개가 없다). 여기서는 머리가 그 여백만큼 되밀어야 끝에 닿는다.
+   두 경우에 같은 마진을 주면 한쪽은 머리가 패널 밖으로 삐져나온다
+   (실측 2026-08-19: `.panel` 쪽 머리가 좌우로 16px씩 넘쳐 나왔다). */
+.home-card > h2,
+.home-card-head {
+  margin: calc(var(--panel-pad-y) * -1) calc(var(--panel-pad-x) * -1) var(--panel-pad-y);
+}
+
+/* 패널 본문 — 여백은 여기서만 준다 */
+.panel-body {
+  padding: var(--panel-pad-y) var(--panel-pad-x);
+}
+
+.panel-head::before,
+.home-card > h2::before,
+.home-card-head::before {
+  content: "";
+  align-self: stretch;
+  width: 3px;
+  margin-right: 9px;
+  background: var(--brass);
+  border-radius: var(--r-panel) 0 0 0;
+}
+
+/* 제목 글자 — 한 급, 한 굵기. 카드마다 크기를 달리하지 않는다.
+   ⚠ `.home-card > h2`(머리 감싸개 없이 h2 하나만 있는 카드)는 **자기가 곧 머리다**.
+   그래서 여기서 margin 을 건드리면 위 블록이 준 음수 마진이 지워져 타이틀바가
+   패널 안쪽으로 쪼그라든다 — margin 은 아래 별도 규칙에서 머리 **안의** h2 에만 준다. */
+.panel-head > h2,
+.home-card > h2,
+.home-card-head > h2 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--ink-1);
+}
+
+.panel-head > h2,
+.home-card-head > h2 { margin: 0; }
+
+/* ── CSS로 그리는 표식 (이모지 대체) ──
+   전부 현재 글자색을 따라간다 — 버튼 색이 바뀌면 표식도 같이 바뀐다. */
+.mk {
+  display: inline-block;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  background: currentColor;
+  opacity: 0.85;
+}
+/* ⚠ 규칙과 도감은 **서로 다른 표식**이어야 한다. 한때 둘 다 같은 '책' 모양을
+   썼는데(그전에는 📘 와 📖 로 갈렸다), 11px 로 줄어들면 두 그림이 구별되지 않아
+   상단 바에 같은 단추가 두 개 있는 것처럼 보였다 (2026-08-19 모바일 실측).
+   규칙 = 글이 적힌 문서, 도감 = 칸이 나뉜 목록. 뜻도 그쪽이 맞는다.
+
+   여기부터는 clip-path 가 아니라 배경 그라디언트로 그린다 — 떨어져 있는 도형
+   여럿(줄 셋·칸 넷)은 다각형 하나로 이으려면 폭 0 짜리 다리를 놓아야 하는데,
+   그 다리가 렌더러에 따라 실선으로 보인다. */
+.mk-doc {
+  background:
+    linear-gradient(currentColor 0 0) 0 8%/100% 17% no-repeat,
+    linear-gradient(currentColor 0 0) 0 46%/100% 17% no-repeat,
+    linear-gradient(currentColor 0 0) 0 84%/64% 17% no-repeat;
+}
+.mk-grid {
+  background:
+    linear-gradient(currentColor 0 0) 0 0/44% 44% no-repeat,
+    linear-gradient(currentColor 0 0) 100% 0/44% 44% no-repeat,
+    linear-gradient(currentColor 0 0) 0 100%/44% 44% no-repeat,
+    linear-gradient(currentColor 0 0) 100% 100%/44% 44% no-repeat;
+}
+/* 재생 삼각형 = 바로 시작 */
+.mk-play { clip-path: polygon(8% 0, 100% 50%, 8% 100%); }
+/* 눈금 셋 = 배우기(단계) */
+.mk-steps { clip-path: polygon(0 62%, 30% 62%, 30% 100%, 0 100%, 35% 31%, 65% 31%, 65% 100%, 35% 100%, 70% 0, 100% 0, 100% 100%, 70% 100%); }
+/* 더하기 = 만들기 */
+.mk-plus { clip-path: polygon(42% 0, 58% 0, 58% 42%, 100% 42%, 100% 58%, 58% 58%, 58% 100%, 42% 100%, 42% 58%, 0 58%, 0 42%, 42% 42%); }
+/* 회전 화살표 = 새로 고침·재접속 (선으로 그린다) */
+.mk-again {
+  background: none;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  border-top-color: transparent;
+  transform: rotate(-40deg);
+}
+/* 확성기 = 공지 */
+.mk-notice { clip-path: polygon(0 34%, 34% 34%, 72% 4%, 72% 96%, 34% 66%, 0 66%); }
+/* 톱니 = 설정 */
+.mk-gear {
+  clip-path: polygon(
+    42% 0, 58% 0, 61% 12%, 74% 17%, 85% 10%, 96% 21%, 89% 32%, 94% 45%, 100% 48%,
+    100% 64%, 94% 67%, 89% 80%, 96% 91%, 85% 100%, 74% 93%, 61% 98%, 58% 100%,
+    42% 100%, 39% 98%, 26% 93%, 15% 100%, 4% 91%, 11% 80%, 6% 67%, 0 64%,
+    0 48%, 6% 45%, 11% 32%, 4% 21%, 15% 10%, 26% 17%, 39% 12%
+  );
+}
+
+/* ── 버튼 ── 창틀 위의 키. 알약이 아니라 사각 키다. */
+.btn-key,
+.btn-line,
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border-radius: var(--r-chip);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+/* 주 동작 — 화면당 하나. 두 개면 둘 다 주가 아니다. */
+.btn-key {
+  border: 1px solid var(--brass-bright);
+  background: var(--brass);
+  color: #1a1408;
+  box-shadow: inset 0 1px 0 rgba(255, 248, 230, 0.3);
+}
+.btn-key:hover:not(:disabled) { background: var(--brass-bright); }
+
+.btn-line {
+  border: 1px solid var(--chrome-line);
+  background: rgba(236, 228, 210, 0.035);
+  color: var(--ink-2);
+}
+.btn-line:hover:not(:disabled) {
+  border-color: var(--brass-line);
+  background: rgba(236, 228, 210, 0.075);
+  color: var(--ink-1);
+}
+
+.btn-ghost {
+  border: 1px solid transparent;
+  background: none;
+  color: var(--ink-3);
+}
+.btn-ghost:hover:not(:disabled) { color: var(--ink-1); background: rgba(236, 228, 210, 0.05); }
+
+.btn-key:disabled,
+.btn-line:disabled,
+.btn-ghost:disabled { opacity: 0.42; cursor: not-allowed; }
+
+/* ── 상태 스트립 ──
+   클라이언트라면 **서버가 지금 어떤 상태인지**가 화면 어딘가에 상시 떠 있어야 한다.
+   랜딩·홈·도감이 같은 줄을 쓴다. */
+.site-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* ⚠ `flex: none` 이 없으면 창틀이 **찌그러진다**. 이 줄은 세로 flex 컨테이너
+     (`.home`·`.codex`)의 첫 자식이라 기본값 `flex-shrink: 1` 을 갖는데, 좁은 화면에서
+     내용이 두 줄로 접히면(도감: 뒤로·제목·수집배지·탭) 컨테이너가 이 줄을 다시
+     `min-height: 40px` 까지 눌러 버리고, 안의 44px 단추들이 아래 도구줄 위로 넘쳐
+     겹쳤다 (2026-08-19 375px 실측: 내용 60px → 상자 40px). */
+  flex: none;
+  padding: 0 clamp(12px, 2.4cqw, 22px);
+  min-height: 40px;
+  background: var(--chrome-head);
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.site-mark {
+  flex: none;
+  /* 좁은 화면에서 "이능마 / 작"으로 접혔다 (2026-08-19 375px 실측) */
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 800;
+  /* 44px 금색 간판이었다. 클라이언트의 이름표는 **작고 왼쪽 위에** 붙는다 —
+     제목을 키워서 존재감을 만들지 않는다. */
+  letter-spacing: 3px;
+  color: var(--ink-1);
+}
+
+.site-sub {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  color: var(--ink-4);
+}
+
+.site-bar-spacer { flex: 1; }
+
+/* 서버 상태 점 — 색만으로 말하지 않는다(WCAG 1.4.1). 글자가 늘 옆에 붙는다. */
+.site-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.site-stat::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.site-stat-on { color: #7fb08c; }
+.site-stat-off { color: #d2857a; }
+
+/* 값들 사이 구분선 — 점이나 파이프 글자를 넣지 않는다(폰트마다 높이가 다르다) */
+.site-div {
+  width: 1px;
+  align-self: stretch;
+  margin: 10px 0;
+  background: var(--chrome-line);
+}
+
+/* ── 라벨/값 줄 ── 좌측 라벨, 우측 고정폭 값. 스펙 시트의 기본 단위. */
+.kv {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(236, 228, 210, 0.06);
+}
+.kv:last-child { border-bottom: none; }
+.kv > dt,
+.kv > .kv-k {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-4);
+}
+/* 값은 본문 글꼴 그대로 두고 **숫자만** 고정폭 자리로 세운다.
+   글꼴 자체를 mono 로 두면 한글은 어차피 대체 글꼴로 떨어지면서 한 줄 안에 서로
+   다른 글자폭 두 벌이 섞인다 — 사이 글자(·)까지 mono 폭을 받아 헐거워 보였다. */
+.kv > dd,
+.kv > .kv-v {
+  margin: 0 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-size: 13px;
+  color: var(--ink-1);
 }
 
 /* ─────────────── 인증 화면 ─────────────── */
@@ -7940,243 +8272,434 @@ button {
   background: rgba(255, 255, 255, 0.04);
 }
 
-/* ─────────────── 로그인 전 랜딩 ─────────────── */
+/* ─────────────── 로그인 전 첫 화면 ───────────────
 
-/* 랜딩 + 인증 카드가 함께 서므로 세로로 흐르는 문서가 된다 (기존 .lobby는 가운데 고정) */
+   ⚠ 여기는 **랜딩 페이지가 아니라 클라이언트가 켜진 화면**이다.
+
+   예전 모양: 44px 금색 간판이 화면 가운데 뜨고, 그 아래로 표어 한 줄 → 큰 버튼 둘
+   → 작은 버튼 하나 → 변명하는 설명 문단 → 균등 3칸 카드 → 로그인 카드가 **전부
+   가운데 정렬로** 흘러내렸다. 잘못 만든 화면은 아니었지만, 어느 제품에 붙여도
+   말이 되는 모양이라 이 게임의 화면으로 읽히지 않았다
+   (2026-08-19 사용자 지시: "좀 더 AI 느낌이 안 나게").
+
+   바꾼 것 넷:
+   1. 가운데 정렬 히어로 → 왼쪽 위 **상태 줄** + 좌우 2단.
+   2. 흩어져 있던 시작 버튼 셋 → 로그인 패널 위에 붙인 **접속 자리 하나**.
+   3. 균등 3칸 카드 → **번호 붙은 목록**. 셋이 "같은 더미에서 뽑히는 보기"임을 모양이 말한다.
+   4. 이모지 아이콘 전부 제거 → CSS로 그린 표식(`.mk-*`).                        */
+
+/* 세로로 흐르는 문서가 된다 (기존 .lobby는 가운데 고정).
+   ⚠ 배경 그라데이션을 뺐다 — 위에서 아래로 어두워지는 그라데이션은 내용과 아무
+   관계가 없으면서 화면 전체에 "무언가 연출했다"는 인상만 남긴다. 평평한 펠트 위에
+   **선으로** 구획한다. */
 .lobby-landing {
-  display: block;
+  /* 세로 flex — 공지·상태 줄은 위에 붙고, 아래 본문은 남는 공간이 있으면 그 안에서
+     가운데로 선다(`.landing { margin: auto }`). 창이 세로로 길 때 내용이 위쪽에만
+     몰려 있으면 화면이 덜 만들어진 것처럼 보인다.
+     ⚠ `justify-content: center` 가 아니라 **auto 마진**인 이유: 내용이 창보다 길어지면
+     auto 마진은 0으로 풀려서 위쪽이 잘리지 않는다(center 는 시작 쪽을 잘라 먹는다). */
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  padding: 32px 16px 48px;
-  background: linear-gradient(180deg, var(--felt-2) 0%, var(--felt-1) 42%, var(--felt-0) 100%);
+  padding: 0;
+  background: var(--felt-1);
+  /* ⚠ `.lobby`가 `place-items: center`다. display를 block으로 되돌려도 그 값은 남는데,
+     Chrome 123+ 는 **블록 컨테이너에서도 `justify-items`를 적용한다** — 블록 자식이
+     shrink-to-fit 되어 가운데로 몰린다(실측 2026-08-19: 폭 1280 안에서 상태 줄이
+     439px로 쪼그라들었다). 예전 랜딩은 자식마다 `width: min(…)` + `margin: 0 auto`가
+     박혀 있어서 이 동작이 드러나지 않았다. 정렬을 여기서 원래대로 돌린다. */
+  place-items: normal;
 }
 
+/* 상태 줄은 스크롤해도 붙어 있다 — 클라이언트의 창틀이므로 */
+.landing-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.site-bar-btn {
+  flex: none;
+  padding: 6px 10px;
+  font-size: 12px;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+/* 좁은 화면에서는 증강 종수를 접는다 — 연결 상태가 먼저다 */
+@container ui (max-width: 560px) {
+  .site-sub,
+  .landing-bar-aug,
+  .landing-bar-aug + .site-div { display: none; }
+}
+
+/* ── 2단 배치 ──
+   왼쪽 = 이 클라이언트가 무엇을 굴리는가(사양 + 증강 예시),
+   오른쪽 = 들어가는 문(계정 없이 시작 + 로그인).
+
+   격자 이름을 쓰는 이유: 좁은 화면에서는 DOM 순서 그대로 한 줄로 쌓이는데,
+   그 순서(무엇인가 → 시작 → 예시 → 로그인)가 이미 읽는 순서라 `order`로 뒤집을
+   일이 없다. 넓은 화면에서만 오른쪽 열로 시작·로그인을 올려 붙인다. */
 .landing {
-  /* 좌우 여백은 .lobby-landing의 padding이 이미 만든다 — 여기서 다시 cqw로 재면
-     둘이 합쳐져 가로 스크롤이 2px 남는다. 남은 폭을 그대로 채운다. */
-  width: min(560px, 100%);
-  margin: 0 auto 22px;
-  text-align: center;
+  display: grid;
+  gap: 14px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-areas:
+    "brief start"
+    "show  auth";
+  width: 100%;
+  max-width: 1080px;
+  margin: auto;
+  padding: 20px clamp(12px, 2.4cqw, 22px) 40px;
 }
 
+.landing-brief { grid-area: brief; }
+.landing-start { grid-area: start; }
+.landing-show { grid-area: show; }
+.lobby-landing .auth-card { grid-area: auth; }
+
+/* ── 이게 무엇인가 ── */
+/* 44px 금색 간판이었다. 이름표는 이미 상태 줄에 있으므로 여기서 또 크게 세우면
+   같은 이름이 두 번 소리친다. h1 은 접근성·검색을 위해 남기되(문서의 제목은
+   사이트 이름이 맞다) **눈에 띄는 자리는 사양표에 넘긴다** — 이 화면의 주인공은
+   워드마크가 아니라 "이 클라이언트가 무엇을 굴리는가"다. */
 .landing-title {
   margin: 0;
-  font-size: 44px;
-  /* 한글 네 글자 간판 — 라틴 워드마크만큼 벌리면 낱글자로 흩어진다 */
-  letter-spacing: 8px;
-  color: var(--brass-bright);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--ink-2);
 }
 
 .landing-lead {
-  /* 부제 줄을 뺐다 — 제목과 붙지 않게 여기서 위 여백을 준다 */
-  margin: 14px 0 22px;
-  font-size: 15px;
-  line-height: 1.7;
-  color: #d6e0d8;
-}
-
-.landing-cta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-}
-
-/* 튜토리얼 — 첫 버튼. 체험(금색 알약)과 **색으로는 겨루지 않는다**: 둘 다 금색이면
-   처음 온 사람 눈에는 같은 버튼이 두 개다. 금테 + 은은한 채움으로 "같은 급의 다른
-   문"이라고 말한다. 자리(맨 앞)가 이미 우선순위를 말하고 있다. */
-.landing-tutorial {
-  flex: 1 1 220px;
-  padding: 14px 18px;
-  border: 1px solid rgba(240, 200, 106, 0.7);
-  border-radius: var(--r-md);
-  background: rgba(240, 200, 106, 0.13);
-  color: #f0c86a;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  transition: transform 0.14s var(--ease), background 0.14s var(--ease);
-}
-
-.landing-tutorial:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: rgba(240, 200, 106, 0.2);
-}
-
-.landing-tutorial:disabled { opacity: 0.5; }
-
-.landing-guest {
-  flex: 1 1 220px;
-  padding: 14px 18px;
-  border: none;
-  border-radius: var(--r-md);
-  background: var(--brass);
-  color: #241c0c;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 248, 230, 0.28);
-  transition: transform 0.14s var(--ease), background 0.14s var(--ease);
-}
-
-.landing-guest:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: var(--brass-bright);
-}
-
-.landing-guest:disabled { opacity: 0.5; }
-
-.landing-help {
-  flex: 0 1 180px;
-  padding: 14px 18px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--brass-line);
-  background: rgba(255, 255, 255, 0.05);
-  color: #d6e0d8;
+  margin: 9px 0 0;
+  max-width: 46em;
   font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+.landing-lead b {
+  color: var(--brass-bright);
   font-weight: 700;
 }
 
-.landing-help:hover { background: rgba(255, 255, 255, 0.1); }
-
-.landing-guest-note {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: #5f7469;
+/* 사양표 — 라벨/값 줄(.kv)을 그대로 쓴다 */
+.landing-spec {
+  margin: 16px 0 0;
+  padding: 0;
+  max-width: 340px;
+  border-top: 1px solid var(--chrome-line);
 }
 
 /* 초대 링크로 온 사람에게 — 왜 여기 왔는지, 로그인하면 무슨 일이 생기는지. */
 .landing-invite {
-  margin: 12px auto 0;
-  padding: 8px 14px;
-  max-width: 420px;
-  border: 1px solid var(--brass-line);
-  border-radius: var(--r-md);
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--brass);
   background: rgba(154, 123, 66, 0.12);
   color: var(--ink-2);
   font-size: 13px;
+  line-height: 1.6;
 }
 .landing-invite b {
   color: var(--brass-bright);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 1px;
 }
 
-/* ── 증강이 무엇인지 클릭 전에 보여 주는 자리 (감사 §3-4) ──
+/* ── 계정 없이 시작 ── */
+.landing-start .panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 두 문은 **같은 폭·같은 높이**다. 크기로 우열을 만들면 작은 쪽이 곁다리로 보인다 —
+   우열은 채움(황동/외곽선)과 순서가 이미 말하고 있다. */
+.landing-key {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 12px 14px;
+  font-size: 15px;
+}
+
+/* 오른쪽 끝에 붙는 부가 정보 (소요 시간·상대) — 라벨이 아니라 값이므로 톤을 낮춘다 */
+.landing-key-meta {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  opacity: 0.72;
+}
+
+.landing-key-note {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--ink-4);
+}
+
+/* ── 증강 예시 ──
    말로만 "규칙을 바꾼다"고 하면 아무 그림도 안 그려진다. 실제 패와 실제 증강
    셋으로 보여 준다. 광고용 그림을 따로 만들지 않는 것이 요점이다 — 화면과 다른
    것을 약속하는 순간 첫 판에서 들통난다. */
-.landing-show {
-  margin: 18px auto 0;
-  max-width: 720px;
-}
-.landing-show-head {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-2);
-  letter-spacing: 0.5px;
-}
 .landing-show-list {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
+
+/* 상자를 씌우지 않는다. 줄 사이 헤어라인 하나면 "같은 종류가 이어진다"가 보인다 —
+   테두리를 두르면 셋이 서로 무관한 카드가 된다. */
 .landing-show-item {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 10px 11px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface-1);
-  text-align: left;
+  gap: 12px;
+  padding: 12px var(--panel-pad-x);
+  border-top: 1px solid rgba(236, 228, 210, 0.07);
 }
+.landing-show-item:first-child { border-top: none; }
+
+.landing-show-no {
+  flex: none;
+  padding-top: 1px;
+  width: 18px;
+  font-size: 11px;
+  color: var(--brass);
+}
+
+.landing-show-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
 .landing-show-top {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 7px;
 }
+
 .landing-show-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--ink-1);
 }
+
+/* 상시/액티브 = 상태 배지. 알약은 여기만 남긴다(상태를 나타내는 표식이므로). */
 .landing-show-kind {
-  padding: 1px 6px;
+  padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(124, 92, 255, 0.16);
+  border: 1px solid rgba(124, 92, 255, 0.34);
+  background: rgba(124, 92, 255, 0.13);
   color: #b9a8ff;
   font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
 }
+
+/* 한 줄 요약 — 제목 줄 오른쪽에 붙는다. 예전에는 그림 아래 가운데 정렬로 따로
+   떠 있어서 무엇에 대한 말인지 한 박자 늦게 붙었다. */
+.landing-show-cap {
+  margin: 0;
+  font-size: 12px;
+  color: var(--brass-bright);
+}
+
 /* ── 바뀌기 전 → 바뀐 뒤 ──
    패를 그냥 늘어놓으면 무엇을 설명하는 그림인지 알 수 없다(App.tsx LANDING_SHOWCASE
-   주석). 두 상태를 화살표로 이어야 "규칙이 바뀐다"가 그림으로 보인다. */
+   주석). 두 상태를 화살표로 이어야 "규칙이 바뀐다"가 그림으로 보인다.
+
+   1열 목록이 되면서 폭이 넉넉해졌다 — 늘 가로로 눕는다(예전 3칸 격자에서는 176px
+   밖에 안 되어 세로로 쌓고 화살표도 아래를 향해야 했다). */
 .landing-show-fig {
   display: flex;
-  /* 3열일 때 한 칸은 176px 남짓이라 여섯 장이 한 줄에 안 들어간다. 억지로 밀어
-     넣으면 줄바꿈이 되어 화살표가 아무것도 없는 오른쪽을 가리킨다 — 세로로 쌓고
-     화살표도 아래를 향하게 한다. 칸이 넓어지는 1열 배치에서는 다시 가로로 눕는다. */
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 8px 4px 6px;
-  border-radius: var(--r-md);
-  background: rgba(0, 0, 0, 0.18);
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: var(--r-chip);
+  background: rgba(0, 0, 0, 0.24);
+  box-shadow: var(--inset-well);
 }
 .landing-show-before {
-  opacity: 0.5;
-  filter: saturate(0.5);
+  opacity: 0.45;
+  filter: saturate(0.4);
 }
 .landing-show-arrow::before {
-  content: "↓";
+  content: "→";
 }
 .landing-show-arrow {
   color: #b9a8ff;
   font-size: 14px;
   line-height: 1;
 }
-.landing-show-cap {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  color: #b9a8ff;
-  text-align: center;
-}
+
 .landing-show-desc {
   margin: 0;
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--ink-3);
 }
+
 .landing-show-foot {
-  margin: 9px 0 0;
+  margin: 0;
+  padding: 9px var(--panel-pad-x) 11px;
+  border-top: 1px solid var(--chrome-line);
+  background: rgba(0, 0, 0, 0.16);
   font-size: 12px;
   color: var(--ink-4);
 }
 
-/* 좁은 화면에서는 셋을 세로로 — 3열을 유지하면 패 그림이 뭉개져 오히려 안 보인다. */
-@container ui (max-width: 700px) {
-  .landing-show-list {
-    grid-template-columns: 1fr;
-  }
-  /* 한 줄에 한 칸이면 폭이 넉넉하다 — 바뀌기 전/후를 가로로 눕히는 편이 읽기 쉽다 */
-  .landing-show-fig {
-    flex-direction: row;
-    gap: 7px;
-    padding: 7px 4px;
-  }
-  .landing-show-arrow::before {
-    content: "→";
-  }
+/* 패널 머리 오른쪽 수치 (3 / 113) */
+.panel-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-4);
 }
 
+/* ── 한 단으로 접기 ──
+   330px 오른쪽 열 + 최소 380px 왼쪽 열 + 여백이 안 나오는 폭부터 쌓는다. */
+@container ui (max-width: 780px) {
+  .landing {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: none;
+    max-width: 560px;
+  }
+  .landing-brief,
+  .landing-start,
+  .landing-show,
+  .lobby-landing .auth-card { grid-area: auto; }
+
+  .landing-spec { max-width: none; }
+
+  /* 좁으면 다시 세로로 — 여섯 장이 한 줄에 안 들어가면 줄바꿈이 되어 화살표가
+     아무것도 없는 오른쪽을 가리킨다 */
+  .landing-show-fig { gap: 6px; }
+}
+
+/* 여섯 장이 한 줄에 안 들어가는 폭 — 줄바꿈이 되면 화살표가 아무것도 없는 오른쪽을
+   가리키므로 세로로 쌓고 화살표도 아래를 향하게 한다. 세로로 쌓을 때는 가운데로
+   모은다: 왼쪽에 붙이면 우물 오른쪽이 통째로 비어 그림이 한쪽으로 쏠린다. */
+@container ui (max-width: 420px) {
+  .landing-show-fig {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+  }
+  .landing-show-arrow::before { content: "↓"; }
+}
+
+/* 로그인 패널 — 오른쪽 열에서는 열 폭을 그대로 채운다.
+   예전에는 `min(400px, 100%)` + `margin: 0 auto` 로 화면 가운데 떠 있었다. */
 .lobby-landing .auth-card {
-  width: min(400px, 100%); /* .landing과 같은 이유 — cqw를 padding 위에 또 겹치지 않는다 */
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
+  padding: var(--panel-pad-y) var(--panel-pad-x);
+  gap: 10px;
+}
+
+/* 로그인/회원가입 = 패널의 타이틀바에 든 **세그먼트**다. 예전에는 둥근 알약 두 개가
+   회색 홈 안에 떠 있었다 — 그건 탭이 아니라 토글처럼 보인다. */
+.lobby-landing .auth-tabs {
+  margin: calc(var(--panel-pad-y) * -1) calc(var(--panel-pad-x) * -1) 4px;
+  padding: 0;
+  gap: 0;
+  border-radius: var(--r-panel) var(--r-panel) 0 0;
+  border-bottom: 1px solid var(--chrome-line);
+  background: var(--chrome-head);
+}
+
+.lobby-landing .auth-tab {
+  border-radius: 0;
+  padding: 10px 8px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--ink-4);
+  /* 선택된 탭은 **아래 눈금**으로 말한다. 색 채움은 눌린 버튼처럼 보여서, 지금
+     보고 있는 화면이 아니라 누를 수 있는 것으로 읽힌다. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+}
+
+.lobby-landing .auth-tab:hover { color: var(--ink-2); }
+
+.lobby-landing .auth-tab.active {
+  background: none;
+  color: var(--brass-bright);
+  border-bottom-color: var(--brass-bright);
+}
+
+/* 판 밖 화면의 확인 버튼 — 알약이 아니라 키.
+   자간 4px 도 뺀다: "로 그 인"으로 떨어져 읽혔다. 넓은 자간은 간판 글씨의 문법이고
+   버튼은 간판이 아니다.
+   ⚠ 범위를 `.lobby`(첫 화면·게스트 마무리·입장 중·리플레이 재구성)와 `.home` 으로
+   묶는다 — `.lobby-join` 은 게임 종료 화면에서도 쓰는데 판 위는 이번 정리 대상이
+   아니다. `.lobby-landing` 은 `.lobby` 도 함께 달고 있어 여기 포함된다. */
+.lobby .lobby-join,
+.home .lobby-join {
+  margin-top: 4px;
+  padding: 11px;
+  border: 1px solid var(--brass-bright);
+  border-radius: var(--r-chip);
+  font-size: 14px;
+  letter-spacing: 0.6px;
+}
+
+.lobby .lobby-join:hover:not(:disabled),
+.home .lobby-join:hover:not(:disabled) { transform: none; }
+
+.lobby .lobby-card label {
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--ink-4);
+}
+
+.lobby .lobby-card input {
+  border-radius: var(--r-chip);
+  background: var(--field-fill);
+  box-shadow: var(--inset-well);
+}
+
+/* 고급 설정 — 접힌 서랍의 손잡이. 예전에는 ▾ 글자를 붙여 두었는데 폰트마다
+   기준선이 달라 줄이 흔들렸다. 표식은 CSS 삼각형으로 그린다. */
+.lobby-landing .auth-advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 6px;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  /* #5f7469 였다 — 패널 채움(#0c1511) 위에서 3.4:1 로 4.5:1 에 못 미쳤다. */
+  color: var(--ink-4);
+}
+.lobby-landing .auth-advanced-toggle::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border: 4px solid transparent;
+  border-top-color: currentColor;
+  transform: translateY(2px);
+}
+.lobby-landing .auth-advanced-toggle:hover { color: var(--ink-2); }
+
+.lobby-landing .auth-advanced {
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.lobby-landing .auth-rule,
+.lobby-landing .auth-gate-note {
+  border-radius: var(--r-chip);
 }
 
 .auth-required {
@@ -8249,18 +8772,35 @@ button {
   padding-bottom: 40px;
 }
 
+/* 규칙 문서의 절 — 셸의 패널 기하를 따른다(둥근 11px 카드였다).
+   문서라서 패널 머리를 따로 두지 않고, 제목 왼쪽의 눈금이 그 역할을 한다. */
 .help-section {
-  margin: 0 0 22px;
-  padding: 14px 16px;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  margin: 0 0 16px;
+  padding: 13px 15px;
+  border-radius: var(--r-panel);
+  background: var(--chrome-fill);
+  border: 1px solid var(--chrome-line);
+  box-shadow: inset 0 1px 0 var(--chrome-lit);
 }
 
 .help-section-title {
-  margin: 0 0 8px;
-  font-size: 16px;
-  color: #f0c86a;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--chrome-line);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--ink-1);
+}
+.help-section-title::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  height: 13px;
+  background: var(--brass);
 }
 
 .help-section .codex-para {
@@ -8276,9 +8816,10 @@ button {
 .help-fig {
   margin: 12px 0 0;
   padding: 11px 12px;
-  border-radius: 9px;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--r-chip);
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid rgba(236, 228, 210, 0.055);
+  box-shadow: var(--inset-well);
 }
 
 .help-fig-row + .help-fig-row {
@@ -8477,34 +9018,19 @@ button {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  /* 테이블 조명(중앙 radial)은 스크롤되는 문서에 안 맞는다 — 위에서 아래로 가라앉는 지면으로 바꾼다.
-     같은 먹녹 세계지만 '판'이 아니라 '페이지'로 읽히게. */
-  background: linear-gradient(180deg, var(--felt-2) 0%, var(--felt-1) 42%, var(--felt-0) 100%);
+  /* 위에서 아래로 어두워지는 그라데이션이었다. 스크롤되는 문서라 화면을 내리면
+     지면 색이 계속 변했고 — 무엇보다 내용과 아무 상관이 없는 연출이었다.
+     첫 화면(.lobby-landing)과 같은 평평한 펠트로 맞춘다: 구획은 색이 아니라
+     패널의 선이 한다. */
+  background: var(--felt-1);
 }
 
+/* 상태 줄 공통(.site-bar)에 얹는다 — 로그인 전후로 창틀이 같아야 한다.
+   여기서는 sticky 만 더한다. */
 .home-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 26px;
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 10;
-  backdrop-filter: blur(6px);
-}
-
-.home-logo {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: 4px;
-  color: var(--brass-bright);
-}
-
-.home-tagline {
-  color: #7b9084;
-  font-size: 12px;
 }
 
 .home-spacer { flex: 1; }
@@ -8517,43 +9043,36 @@ button {
   color: #ece4d2;
 }
 
+/* 관리자 = 상태 배지. 알약은 이런 표식에만 남긴다(상태를 나타내는 것이므로). */
 .home-admin-badge {
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   font-size: 10px;
-  font-weight: 800;
-  background: rgba(218, 98, 98, 0.25);
-  border: 1px solid rgba(246, 127, 109, 0.5);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  background: rgba(218, 98, 98, 0.2);
+  border: 1px solid rgba(246, 127, 109, 0.45);
   color: #fabcad;
 }
 
-.home-logout {
-  padding: 7px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.05);
-  color: #c2d0c5;
-  font-size: 13px;
+/* 상태 줄 안의 사용자 이름 — 이름표지 버튼이 아니다 */
+.home-user {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
 }
-
-.home-logout:hover { background: rgba(255, 255, 255, 0.12); }
-
-/* 규칙·도감 — 로그아웃과 같은 모양이지만 성격이 다르다(여는 문이지 나가는 문이 아니다).
-   글자를 황동으로 조금 띄워 둔다. */
-.home-nav-link {
-  color: var(--brass-bright);
-  border-color: var(--brass-line);
-  background: rgba(184, 151, 92, 0.1);
-}
-.home-nav-link:hover { background: rgba(184, 151, 92, 0.22); }
 
 /* ⚠ 좁은 화면용 상단 바 축소는 **여기**에 있어야 한다.
    위쪽 `@container ui (max-width: 700px)` 블록(모바일 묶음)은 파일에서 `.home-nav`
    기본 규칙보다 **앞**에 있어서, 같은 속성을 적으면 뒤에 오는 기본값이 이긴다
    (실측: 375px에서 gap이 계속 12px이었다). 겹치지 않는 속성만 그쪽에서 먹는다. */
 @container ui (max-width: 700px) {
-  .home-nav { gap: 6px; padding: 10px 10px; }
-  .home-nav-link { padding: 7px 8px; }
+  .home-nav { gap: 5px; padding-inline: 10px; }
+  .home-nav .site-bar-btn { padding: 6px 7px; }
+  /* 규칙·도감은 표식만 남기고 글자를 접는다 — 로그아웃·이름이 먼저다 */
+  .home-nav-link-t { display: none; }
+  .home-nav .mk { margin-right: 0; }
+  .site-sub { display: none; }
 }
 
 /* 홈 설정 — 패널은 position:fixed(화면 기준)라 앵커가 필요 없다.
@@ -8568,8 +9087,10 @@ button {
 .home-main {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 18px;
-  padding: 24px clamp(16px, 4cqw, 48px) 48px;
+  /* 간격을 18 → 14px 로 좁혔다. 카드가 패널이 되면서 테두리가 또렷해졌으므로,
+     그만큼 사이를 벌려 둘 이유가 없어졌다 — 넓은 여백은 "정보가 적다"는 인상을 준다. */
+  gap: 14px;
+  padding: 16px clamp(12px, 2.4cqw, 26px) 40px;
   max-width: 1280px;
   margin: 0 auto;
   width: 100%;
@@ -8578,15 +9099,18 @@ button {
 /* 카드는 전부 조용하게 — 여섯 장 모두에 황동 테두리를 두르면 어느 것도 강조가 아니게 된다.
    황동은 지금 눌러야 할 카드(방 만들기가 든 카드) 하나에만 남긴다. */
 .home-card {
-  padding: 22px 24px;
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-2);
+  padding: var(--panel-pad-y) var(--panel-pad-x);
+  /* 모양은 클라이언트 셸(.panel)이 준다 — 여기서는 여백만 정한다.
+     예전 값(radius 12px · surface-2 · shadow-2)은 그 셸 규칙으로 옮겼다. */
 }
 
-.home-card:has(.home-create) {
-  border-color: var(--brass-line);
+/* 지금 눌러야 할 패널 하나에만 황동 머리를 준다. 여섯 장 모두에 두르면 강조가
+   아니라 배경이 된다 — 예전에는 테두리 색으로 말했는데, 패널이 되고 나니
+   **머리의 눈금**이 더 잘 보이는 자리다. */
+.home-card:has(.home-create) > .home-card-head::before,
+.home-card:has(.home-create) > h2::before {
+  background: var(--brass-bright);
+  width: 4px;
 }
 
 /* 상단 3카드: 왼쪽(대국+내 통계) 세로 스택 + 오른쪽(내 증강 통계) 2열 배치 */
@@ -8594,7 +9118,7 @@ button {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
-  gap: 18px;
+  gap: 14px;
   /* stretch였다 — 증강 기록이 없는 계정에서는 오른쪽 카드가 왼쪽 열 높이(약 990px)
      까지 늘어나 텅 빈 상자가 됐다. 두 열 다 제 내용만큼만 선다. */
   align-items: start;
@@ -8603,7 +9127,7 @@ button {
 .home-top-left {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -8644,7 +9168,7 @@ button {
 .home-tabs {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
   /* `.home-top`은 align-items: start다(빈 카드가 늘어나지 않게). 탭 패널만은
      예외로 늘린다 — 탭을 바꿀 때마다 상자 높이가 튀면 눌러야 할 것이 움직인다. */
@@ -8657,31 +9181,39 @@ button {
   container: hometab / inline-size;
 }
 
+/* ── 탭 줄 ──
+   알약 다섯 개가 떠 있었다. 알약은 **고를 수 있는 값**의 문법이지(필터·태그),
+   "지금 보고 있는 화면"의 문법이 아니다 — 다섯 개가 다 같은 무게로 떠 있어서
+   어느 것이 켜져 있는지도 색 하나로만 갈렸다.
+   지금은 밑줄 하나를 공유하는 **세그먼트**다: 줄이 곧 화면의 경계고, 켜진 탭은
+   그 줄을 자기 색으로 끊는다. */
 .home-tabbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
+  gap: 0;
+  border-bottom: 1px solid var(--chrome-line);
 }
 
 .home-tab {
-  padding: 8px 15px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
-  color: #c2d0c5;
+  padding: 9px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-4);
   font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.8px;
   white-space: nowrap;
+  transition: color 0.12s var(--ease), border-color 0.12s var(--ease);
 }
 
-.home-tab:hover { background: rgba(255, 255, 255, 0.1); color: var(--ink-1); }
+.home-tab:hover { color: var(--ink-2); }
 
 .home-tab-on {
-  background: rgba(240, 200, 106, 0.16);
-  border-color: var(--brass-line);
   color: var(--brass-bright);
+  border-bottom-color: var(--brass-bright);
 }
 
 .home-tabpanel {
@@ -8689,7 +9221,7 @@ button {
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-  gap: 18px;
+  gap: 14px;
   align-content: start;
 }
 
@@ -8768,30 +9300,26 @@ button {
   }
 }
 
-.home-card h2 {
-  margin: 0 0 14px;
-  font-size: 17px;
-  letter-spacing: 2px;
-  color: #f0c86a;
+/* 카드 제목은 이제 **패널의 타이틀바 안**에 산다 (클라이언트 셸 §패널).
+   예전에는 17px 황동 글자를 본문 위에 그냥 얹었다 — 카드가 여섯 장이면 황동 제목이
+   여섯 줄 떠서, 어느 것도 강조가 아니면서 화면만 금색으로 시끄러웠다.
+   지금은 전부 같은 급(13px 상아)이고, 위계는 **머리 눈금의 굵기**가 만든다. */
+.home-card-head h2 {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
-.home-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+/* 머리 안에서 제목은 왼쪽, 단추 묶음은 오른쪽 끝 */
+.home-card-head > h2 { margin-right: auto; }
 
-.home-card-head h2 { margin-bottom: 14px; }
-
-/* 제목 오른쪽 단추 묶음 (새로 고침 · 접기) */
+/* 제목 오른쪽 단추 묶음 (새로 고침 · 접기) — 타이틀바 높이 안에 들어간다 */
 .home-card-tools {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 14px;
+  gap: 4px;
+  flex: none;
 }
 
 /* 접기 단추 — 새로 고침과 같은 크기·같은 톤. 다른 모양을 주면 두 단추가
@@ -8829,74 +9357,98 @@ button {
 
 .home-refresh:hover { background: rgba(255, 255, 255, 0.12); }
 
+/* 홈에서 유일한 주 동작. 자간 3px + 18px 였다 — "방 만 들 기"로 떨어져 읽혔다.
+   키는 간판이 아니므로 자간을 좁히고, 크기 대신 **채움**으로 주 동작임을 말한다. */
 .home-create {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  padding: 16px;
-  border: none;
-  border-radius: var(--r-md);
-  /* 단색 황동 + 위쪽 안쪽 하이라이트. 세로 그라디언트 + 색 글로우는 웹 2.0 광택이다. */
+  padding: 13px;
+  border: 1px solid var(--brass-bright);
+  border-radius: var(--r-chip);
   background: var(--brass);
-  color: #241c0c;
-  font-size: 18px;
+  color: #1a1408;
+  font-size: 15px;
   font-weight: 800;
-  letter-spacing: 3px;
-  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 248, 230, 0.28);
-  transition: transform 0.14s var(--ease), background 0.14s var(--ease);
+  letter-spacing: 1px;
+  box-shadow: inset 0 1px 0 rgba(255, 248, 230, 0.3);
+  transition: background 0.12s var(--ease);
 }
 
-.home-create:hover {
-  transform: translateY(-1px);
-  background: var(--brass-bright);
-}
+.home-create:hover { background: var(--brass-bright); }
 
 .home-join {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 6px;
+  margin-top: 10px;
 }
 
+/* 방 코드는 사람이 옮겨 적는 값이다 — 고정폭이라야 O 와 0, I 와 1 이 갈린다 */
 .home-join input {
   flex: 1;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid #33483d;
-  background: #152119;
-  color: #ece4d2;
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: var(--field-fill);
+  box-shadow: var(--inset-well);
+  color: var(--ink-1);
+  font-family: var(--mono);
   font-size: 16px;
-  letter-spacing: 4px;
-  font-weight: 700;
+  letter-spacing: 3px;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
+/* 파란 세로 그라데이션이었다 — 이 화면에서 파랑을 쓰는 곳은 여기 하나뿐이라
+   팔레트 밖에서 굴러들어온 버튼처럼 보였다. */
 .home-join button {
-  padding: 12px 22px;
-  border: none;
-  border-radius: 10px;
-  background: linear-gradient(180deg, #4a86bd, #2c5a88);
-  color: #f7f3e8;
-  font-size: 15px;
-  font-weight: 800;
+  flex: none;
+  padding: 11px 18px;
+  border: 1px solid var(--chrome-line);
+  border-radius: var(--r-chip);
+  background: rgba(236, 228, 210, 0.035);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.home-join button:hover:not(:disabled) {
+  border-color: var(--brass-line);
+  background: rgba(236, 228, 210, 0.075);
+  color: var(--ink-1);
 }
 
 .home-join button:disabled { opacity: 0.4; }
 
+/* 재접속 — 점선 초록 상자였다. 초록은 이 화면 어디에서도 뜻이 없고, 점선은
+   "임시로 그려 둔 것"으로 읽힌다. 지금 이어서 할 수 있는 것 = 황동 실선 한 겹. */
 .home-rejoin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px dashed rgba(141, 196, 133, 0.5);
-  background: rgba(101, 195, 136, 0.1);
-  color: #93dfa8;
+  margin-top: 8px;
+  padding: 9px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--brass-line);
+  background: rgba(154, 123, 66, 0.12);
+  color: var(--brass-bright);
   font-size: 13px;
   font-weight: 700;
 }
+.home-rejoin:hover { background: rgba(154, 123, 66, 0.22); }
+.home-rejoin b {
+  margin-left: 6px;
+  letter-spacing: 1px;
+}
 
 .home-hint {
-  margin: 14px 0 0;
-  color: #7b9084;
-  font-size: 12.5px;
-  line-height: 1.6;
+  margin: 12px 0 0;
+  color: var(--ink-4);
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 .home-empty {
@@ -8939,15 +9491,15 @@ button {
   display: inline-block;
   margin-top: 10px;
   padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(240, 200, 106, 0.45);
-  background: rgba(240, 200, 106, 0.12);
-  color: var(--ink-1);
+  border-radius: var(--r-chip);
+  border: 1px solid var(--brass-line);
+  background: rgba(154, 123, 66, 0.12);
+  color: var(--brass-bright);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
 }
-.home-empty-cta:hover { background: rgba(240, 200, 106, 0.2); }
+.home-empty-cta:hover { background: rgba(154, 123, 66, 0.22); }
 
 /* 리플레이 목록 */
 
@@ -8967,7 +9519,7 @@ button {
   align-items: center;
   gap: 10px;
   padding: 7px 11px;
-  border-radius: 10px;
+  border-radius: var(--r-chip);
   background: rgba(255, 255, 255, 0.045);
 }
 
@@ -9009,7 +9561,7 @@ button {
 .replay-open {
   padding: 8px 14px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-chip);
   background: rgba(74, 134, 189, 0.25);
   border: 1px solid rgba(109, 181, 231, 0.4);
   color: #ece4d2;
@@ -9206,7 +9758,7 @@ button {
 .home-head-actions { display: flex; align-items: center; gap: 8px; }
 .home-codex-btn {
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: var(--r-chip);
   border: 1px solid rgba(184, 151, 92, 0.4);
   background: rgba(184, 151, 92, 0.12);
   color: #cfae76;
@@ -9215,18 +9767,20 @@ button {
   white-space: nowrap;
 }
 .home-codex-btn:hover { background: rgba(184, 151, 92, 0.22); }
+/* 가로 그라데이션(황동→보라)이었다 — 두 색 사이를 흐르는 띠는 내용과 아무 관계가
+   없으면서 이 버튼만 다른 세계에서 온 것처럼 보이게 했다. 평평한 한 겹으로 되돌린다. */
 .home-codex-cta {
-  margin-top: 14px;
+  margin-top: 12px;
   width: 100%;
-  padding: 11px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(184, 151, 92, 0.35);
-  background: linear-gradient(90deg, rgba(184, 151, 92, 0.14), rgba(199, 188, 255, 0.10));
-  color: #cfae76;
+  padding: 10px 14px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--brass-line);
+  background: rgba(154, 123, 66, 0.1);
+  color: var(--brass-bright);
   font-size: 13px;
   font-weight: 700;
 }
-.home-codex-cta:hover { border-color: rgba(184, 151, 92, 0.6); }
+.home-codex-cta:hover { background: rgba(154, 123, 66, 0.2); }
 
 /* ─────────────── 증강 도감 (Codex) 전체화면 ─────────────── */
 .codex {
@@ -9236,41 +9790,66 @@ button {
   flex-direction: column;
   background: radial-gradient(1200px 600px at 50% -10%, rgba(28, 43, 36, 0.6), transparent), #0b1310;
 }
-.codex-nav { gap: 14px; }
+/* 도감·규칙·티어표의 머리는 홈과 **같은 상태 줄**이다 (.site-bar) — 전체화면으로
+   덮이는 화면이라 창틀까지 달라지면 다른 앱으로 넘어온 것처럼 읽힌다. */
+.codex-nav { gap: 10px; }
+
+/* 화면 이름 — 상태 줄의 이름표 자리를 그대로 쓰되, 여기서는 **이 화면이 무엇인가**를
+   말하므로 자간을 조인다(브랜드 워드마크가 아니다). */
+.codex-title {
+  letter-spacing: 1.2px;
+  font-size: 14px;
+}
+
 .codex-back {
-  padding: 7px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.05);
-  color: #ece4d2;
-  font-size: 13px;
+  flex: none;
+  padding: 6px 11px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: rgba(236, 228, 210, 0.035);
+  color: var(--ink-2);
+  font-size: 12px;
   font-weight: 600;
 }
-.codex-back:hover { background: rgba(255, 255, 255, 0.12); }
+.codex-back:hover {
+  border-color: var(--brass-line);
+  background: rgba(236, 228, 210, 0.075);
+  color: var(--ink-1);
+}
+
+/* 수집 현황 = 수치 배지. 고정폭이라야 0/117 → 12/117 로 바뀔 때 줄이 안 밀린다. */
 .codex-collect-badge {
-  padding: 3px 11px;
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-  background: rgba(147, 223, 168, 0.14);
-  border: 1px solid rgba(147, 223, 168, 0.35);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(147, 223, 168, 0.12);
+  border: 1px solid rgba(147, 223, 168, 0.3);
   color: #b9e6c6;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.codex-tabs { display: flex; gap: 4px; }
+
+/* 화면 안의 큰 갈래 — 홈 탭과 같은 세그먼트 문법. 상태 줄 안에 들어가므로
+   밑줄은 줄 바닥에 붙는다. */
+.codex-tabs { display: flex; gap: 0; align-self: stretch; }
 .codex-tab {
-  padding: 7px 16px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: transparent;
-  color: #a8bcaf;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-4);
   font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.8px;
 }
+.codex-tab:hover { color: var(--ink-2); }
 .codex-tab-on {
-  background: rgba(184, 151, 92, 0.16);
-  border-color: rgba(184, 151, 92, 0.45);
-  color: #cfae76;
+  background: none;
+  color: var(--brass-bright);
+  border-bottom-color: var(--brass-bright);
 }
 
 .codex-toolbar {
@@ -9286,11 +9865,11 @@ button {
 }
 .codex-filters { display: flex; gap: 6px; }
 .codex-filter {
-  padding: 6px 13px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.03);
-  color: #a8bcaf;
+  padding: 6px 12px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: rgba(236, 228, 210, 0.03);
+  color: var(--ink-3);
   font-size: 12.5px;
   font-weight: 700;
 }
@@ -9308,11 +9887,12 @@ button {
 }
 .codex-search {
   margin-left: auto;
-  padding: 8px 13px;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.04);
-  color: #f7f3e8;
+  padding: 8px 12px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: var(--field-fill);
+  box-shadow: var(--inset-well);
+  color: var(--ink-1);
   font-size: 13px;
   min-width: 200px;
 }
@@ -9332,10 +9912,10 @@ button {
   align-items: center;
   gap: 5px;
   padding: 5px 11px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  background: rgba(255, 255, 255, 0.03);
-  color: #a8bcaf;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: rgba(236, 228, 210, 0.03);
+  color: var(--ink-3);
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
@@ -9401,19 +9981,22 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 13px 15px;
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-  background:
-    radial-gradient(ellipse 130% 90% at 0% 0%, color-mix(in oklab, var(--rarity) 13%, transparent), transparent 62%),
-    var(--surface-2);
-  border: 1px solid var(--line);
-  border-color: color-mix(in oklab, var(--rarity) 32%, transparent);
-  transition: transform 0.14s var(--ease), border-color 0.14s var(--ease), background 0.14s var(--ease);
+  padding: 11px 13px 12px;
+  border-radius: var(--r-panel);
+  background: var(--chrome-fill);
+  border: 1px solid var(--chrome-line);
+  /* 계열은 **왼쪽 눈금**으로 말한다. 예전에는 좌상단에서 번지는 방사형 그라데이션 +
+     테두리 전체를 계열색으로 물들였는데, 117장이 한 화면에 깔리면 화면 전체가
+     흐릿한 색 얼룩이 됐다(그리고 어느 칸이 어느 계열인지는 오히려 덜 보였다).
+     눈금 하나면 세로로 훑을 때 계열 경계가 그대로 읽힌다. */
+  border-left: 3px solid color-mix(in oklab, var(--rarity) 62%, transparent);
+  box-shadow: inset 0 1px 0 var(--chrome-lit);
+  transition: border-color 0.12s var(--ease), background 0.12s var(--ease);
 }
 .codex-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in oklab, var(--rarity) 62%, transparent);
+  background: var(--chrome-head);
+  border-color: color-mix(in oklab, var(--rarity) 45%, transparent);
+  border-left-color: var(--rarity);
 }
 /* 폐기된 등급 체계(Silver/Gold/Prism)의 잔재를 걷어낸다 — docs/17 §288이 데드라고
    지적한 지 오래고, App.tsx는 계열 클래스(.aug-cat-*)만 붙인다. 남겨 두면 다음 사람이
@@ -9552,9 +10135,9 @@ button {
     padding: 8px 10px;
     flex-wrap: wrap;
   }
-  .codex-nav .home-logo {
-    font-size: 15px;
-    letter-spacing: 2px;
+  .codex-nav .codex-title {
+    font-size: 13px;
+    letter-spacing: 1px;
     white-space: nowrap;
   }
   .codex-back,
@@ -9621,7 +10204,7 @@ button {
 .user-delete {
   flex: 0 0 auto;
   padding: 8px 14px;
-  border-radius: 8px;
+  border-radius: var(--r-chip);
   border: 1px solid rgba(246, 127, 109, 0.45);
   background: rgba(218, 98, 98, 0.18);
   color: #fabcad;
@@ -9646,12 +10229,14 @@ button {
 
 .fb-kind-pick { display: flex; gap: 8px; }
 
+/* 버그/아이디어 = **고르는 값** 둘이다. 여기는 알약이 맞는 자리지만, 셸의 각진
+   기하와 어긋나지 않게 모서리를 낮춘다. */
 .fb-kind {
   padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--ink-2);
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: rgba(236, 228, 210, 0.035);
+  color: var(--ink-3);
   font-size: 13px;
   font-weight: 700;
 }
@@ -9679,9 +10264,10 @@ button {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line-strong);
-  background: var(--felt-1);
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: var(--field-fill);
+  box-shadow: var(--inset-well);
   color: var(--ink-1);
   font: inherit;
   /* 16px — 이유는 `.lobby-card input` 주석 참고 (iOS 포커스 자동 확대) */
@@ -10529,18 +11115,20 @@ button {
 .sandbox-mode {
   flex: 1;
   padding: 9px 0;
-  border-radius: 9px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.04);
-  color: #a8bcaf;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: rgba(236, 228, 210, 0.035);
+  color: var(--ink-3);
   font-size: 13px;
   font-weight: 700;
 }
 
+/* 고른 쪽은 황동. 예전에는 보라였는데, 보라는 이 화면에서 **증강**을 가리키는 색이라
+   (도감 배지·액티브 표식) 모드 선택에 쓰면 뜻이 겹친다. */
 .sandbox-mode.on {
-  border-color: rgba(199, 188, 255, 0.7);
-  background: rgba(165, 145, 255, 0.22);
-  color: #f7f3e8;
+  border-color: var(--brass-line);
+  background: rgba(154, 123, 66, 0.2);
+  color: var(--brass-bright);
 }
 
 /* 인게임 열기 버튼 (좌상단, 증강 인포 패널 위) */
@@ -12546,33 +13134,35 @@ body:has(.overlay) .emote-bar {
   cursor: pointer;
 }
 
-/* 연습 대국 — 방 만들기 아래의 두 번째 문. 방 만들기(주 동작)보다 조용하게 둔다. */
+/* 튜토리얼 — 방 만들기 아래의 두 번째 문. 방 만들기(주 동작)보다 조용하게 둔다.
+   점선 테두리를 뺐다: 점선은 "아직 안 만든 것 · 임시" 로 읽힌다. */
 .home-practice {
   width: 100%;
   margin-top: 8px;
   padding: 9px 12px;
-  border: 1px dashed rgba(240, 200, 106, 0.45);
-  border-radius: var(--r-md);
-  background: rgba(240, 200, 106, 0.06);
-  color: #f0c86a;
+  border: 1px solid var(--brass-line);
+  border-radius: var(--r-chip);
+  background: rgba(154, 123, 66, 0.1);
+  color: var(--brass-bright);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 .home-practice:hover {
-  background: rgba(240, 200, 106, 0.12);
+  background: rgba(154, 123, 66, 0.2);
 }
 
 /* 연습 대국 — 튜토리얼과 같은 크기의 두 번째 문이지만 안내가 없다.
    금색을 걷어 "이건 배우는 자리가 아니다"를 색으로 먼저 말한다. */
 .home-practice-plain {
   margin-top: 6px;
-  border-color: var(--brass-line);
-  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--chrome-line);
+  background: rgba(236, 228, 210, 0.035);
   color: var(--ink-3);
 }
 .home-practice-plain:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(236, 228, 210, 0.075);
+  color: var(--ink-2);
 }
 
 /* ─────────────── 14. 되묻는 창 (감사 §5-9) ───────────────
@@ -12695,21 +13285,35 @@ body:has(.overlay) .emote-bar {
 }
 
 /* ─────────────── 운영자 공지 (§4-3) ───────────────
-   로그인 화면 맨 위, 홈에서는 **대국 카드 바로 위**에 서는 띠. 화면을 가리지
-   않으면서 눈에는 들어와야 해서 한 줄 높이를 지키고, 본문은 눌러야 펼쳐진다. */
+   로그인 화면에서는 창틀(상태 줄) 위에 얹히는 방송 줄, 홈에서는 **대국 카드 바로
+   위**에 서는 띠. 화면을 가리지 않으면서 눈에는 들어와야 해서 한 줄 높이를 지키고,
+   본문은 눌러야 펼쳐진다. */
+/* 공지 = 클라이언트가 위에 띄우는 방송 줄이다. 예전에는 화면 안에 떠 있는 둥근
+   금색 카드였는데, 창틀(상태 줄) 위에 얹히면서 "화면 안의 카드"와 "창의 알림"이
+   섞여 보였다. 좌우 끝까지 닿는 띠로 두고 왼쪽 눈금 하나로 성격을 말한다. */
 .notice-banner {
-  margin: 0 0 12px;
-  padding: 10px 14px;
-  border-radius: var(--r-md, 10px);
-  border: 1px solid rgba(240, 200, 106, 0.4);
-  background: rgba(240, 200, 106, 0.1);
+  margin: 0;
+  padding: 9px 14px 9px 11px;
+  border: none;
+  border-bottom: 1px solid rgba(240, 200, 106, 0.28);
+  border-left: 3px solid var(--brass);
+  border-radius: 0;
+  background: rgba(240, 200, 106, 0.09);
 }
-/* 홈 왼쪽 열은 이미 `gap: 18px`으로 카드 사이를 벌린다 — 띠의 아래 여백을 그대로
-   두면 30px이 되어 공지가 대국 카드에서 떨어져 나온 별개의 것처럼 보인다.
-   `flex: none`은 열이 좁아질 때 띠가 눌려 글자가 겹치지 않게 하는 못이다. */
+/* 홈 안에서는 창의 알림이 아니라 **열에 선 한 장**이다 — 좌우로 닿을 끝이 없는
+   자리라 위 띠 모양을 그대로 쓰면 잘려 나온 조각처럼 보인다. 그래서 여기서만
+   카드처럼 테두리를 두르고 모서리를 깎는다. 왼쪽 황동 눈금은 남긴다 — 그게 "이건
+   공지다"라고 말하는 표식이고, 두 화면에서 같아야 한다.
+   아래 여백은 열의 `gap: 18px`에 맡긴다(자기 margin을 더하면 30px이 되어 공지가
+   대국 카드에서 떨어져 나온 별개의 것처럼 보인다). `flex: none`은 열이 좁아질 때
+   띠가 눌려 글자가 겹치지 않게 하는 못이다. */
 .home-top-left > .notice-banner {
   margin: 0;
   flex: none;
+  padding: 10px 14px 10px 11px;
+  border: 1px solid rgba(240, 200, 106, 0.32);
+  border-left: 3px solid var(--brass);
+  border-radius: var(--r-md, 10px);
 }
 .notice-head {
   display: flex;
@@ -12719,13 +13323,14 @@ body:has(.overlay) .emote-bar {
 }
 .notice-tag {
   flex: none;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(240, 200, 106, 0.25);
-  border: 1px solid rgba(240, 200, 106, 0.5);
+  padding: 2px 7px;
+  border-radius: var(--r-chip);
+  background: rgba(240, 200, 106, 0.2);
+  border: 1px solid rgba(240, 200, 106, 0.45);
   color: var(--ink-1);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.6px;
 }
 .notice-title {
   flex: 1 1 auto;
@@ -12811,10 +13416,13 @@ body:has(.overlay) .emote-bar {
   width: auto;
   margin: 0;
   padding: 0 18px;
+  border: 1px solid var(--brass-bright);
+  border-radius: var(--r-chip);
   font-size: 14px;
-  letter-spacing: 2px;
+  letter-spacing: 0.6px;
   white-space: nowrap;
 }
+.friend-add .lobby-join:hover { transform: none; }
 .friend-list { list-style: none; margin: 0; padding: 0; }
 .friend-row {
   display: flex;
@@ -12895,3 +13503,16 @@ body:has(.overlay) .emote-bar {
   cursor: pointer;
 }
 .home-account-others:hover { color: var(--ink-1); border-color: var(--line-strong); }
+
+/* 증강 장인 표식 — 👑 였다. 왕관 이모지는 기기마다 다른 그림이 오고(애플은 금색
+   입체, 안드로이드는 납작한 노랑), 무엇보다 이 화면의 다른 표식과 크기가 안 맞아
+   이름 앞에서 한 칸 튀었다. 뜻은 글자가 이미 다 말하고 있다. */
+.aug-master-mark {
+  margin-right: 5px;
+  padding: 1px 5px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--brass-line);
+  background: rgba(154, 123, 66, 0.14);
+  color: var(--brass-bright);
+  font-size: 10px;
+}
