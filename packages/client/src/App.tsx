@@ -14605,6 +14605,14 @@ function OwnArea(props: {
     // 무심코 한 번 누른 것이 곧바로 타패가 된다 — 두 번 누르게 한 이유가 사라진다.
     setArmedTileId(null);
   }, [props.promptSeq]);
+  /*
+   * 설정에서 이 기능을 **끄면** 들어 올려 둔 패도 함께 내린다. 안 내리면 패 하나가
+   * "한 번 더" 뱃지를 단 채 들려 있는데 정작 한 번만 눌러도 나가는 상태가 된다 —
+   * 화면이 실제 동작과 다른 말을 한다. (켤 때는 아무것도 들려 있지 않으므로 무해하다.)
+   */
+  useEffect(() => {
+    if (!props.tapTwiceToDiscard) setArmedTileId(null);
+  }, [props.tapTwiceToDiscard]);
   // 3장을 채우면 그 조합에 해당하는 옵션을 그대로 제출한다.
   const toggleSwap3 = (id: number): void => {
     setSwap3Sel((cur) => {
@@ -15433,6 +15441,20 @@ function OwnArea(props: {
                     }`}
                   >
                     ⚠
+                  </span>
+                ) : null}
+                {/*
+                 * "한 번 더" 안내는 **진짜 요소**여야 한다 — 의사요소로 두면 안 된다.
+                 * 한 요소에 ::after는 하나뿐인데 마우스 hover 금테(.hand-clickable:hover::after)가
+                 * 같은 자리를 쓴다. 특이도는 hover 쪽이 높아 `content`·`inset`만 덮어쓰고
+                 * `background: var(--brass)` 는 뱃지 규칙에서 그대로 남아, **패 전체를 덮는
+                 * 놋쇠색 판**이 됐다 — 첫 탭을 하는 순간 무슨 패를 버리려는지가 사라진다
+                 * (2026-08-18 사용자 보고, 데스크톱에서 이 설정을 켰을 때).
+                 * 봉인·지뢰 뱃지와 같은 방식(자식 span)으로 맞춘다.
+                 */}
+                {armedTileId === id ? (
+                  <span className="hand-armed-badge" aria-hidden="true">
+                    한 번 더
                   </span>
                 ) : null}
                 {showWaits ? (
