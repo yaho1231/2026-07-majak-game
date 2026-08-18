@@ -33,7 +33,9 @@ import type { GameMode } from "@majak/core/engine/state/GameState.js";
 import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
 import { SPECTATOR_ID } from "@majak/core/information/PlayerView.js";
 import type { SeatConnection } from "@majak/core/information/PlayerView.js";
-import { standardKinds } from "@majak/core/mahjong/tiles/Tile.js";
+import { kindKey, standardKinds } from "@majak/core/mahjong/tiles/Tile.js";
+import { handKindsOf, meldCountOf } from "@majak/core/mahjong/flow/helpers.js";
+import { winningKinds } from "@majak/core/mahjong/scoring/waits.js";
 import { isEmoteId } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
@@ -656,17 +658,16 @@ const MAX_GUEST_ROOMS_PER_IP = 3;
  * 설명하기 쉽게 고정해둬도 괜찮아".
  *
  * 그래서 튜토리얼 방은 게스트 방을 그대로 상속하되(기록 없음, 끊기면 §2-5의 '판
- * 세워 두기'로 3분간 기다린다) 넷을 고정한다:
+ * 세워 두기'로 3분간 기다린다) 다섯을 고정한다:
  *
  * 1. **시작 증강 = 연금술사.** 액티브(내 턴에 직접 발동)이면서 손패의 수패를
  *    ±1 바꿔 **생성패(보라)** 를 그 자리에서 만든다. "⚡ 버튼", "발광", "보라 패"
  *    세 강의가 이 하나로 전부 선다. 게임 5회라 실컷 눌러 봐도 남는다.
- * 2. **고정 배패.** 아래 `TUTORIAL_HAND` — 1샹텐에서 시작해 몇 순 안에 텐파이가
- *    된다. 바로 텐파이로 주지 않는 이유: 첫 순에 리치를 걸면 그 뒤가 전부 강제
- *    쯔모기리라 타패·정렬·증강 발동을 가르칠 자리가 사라진다.
+ * 2. **고정 배패.** 아래 `TUTORIAL_HAND` — 코치의 대본이 그대로 성립하도록 짠 손이다.
  * 3. **봇은 리치도 화료도 하지 않는다.** 배우는 중에 봇이 3순 만에 판을 끝내면
  *    "화료" 강의는 영영 안 나온다. 후로와 타패는 그대로 두어 판은 살아 있게 한다.
  * 4. **결정에 사실상 시간 제한이 없다** (`TUTORIAL_DECISION_TIMEOUT_MS`).
+ * 5. **사람이 리치를 걸면 봇이 그 대기패를 쏴 준다** (`TUTORIAL_FEED_NOTE`).
  *
  * 드래프트는 **끄지 않는다.** 증강을 고르는 것이 이 게임의 첫 조작이고, 그걸
  * 빼면 정작 가장 먼저 가르쳐야 할 화면을 안 보여 주는 셈이 된다.
@@ -676,25 +677,44 @@ const TUTORIAL_AUGMENTS: readonly string[] = ["alchemist"];
 /**
  * 튜토리얼 고정 배패 (kindKey 13장 + 첫 쯔모 1장).
  *
- * 234m 567m 4567p 22s 9s — 2멘츠 + 4567p + 22s 머리. 1샹텐이고 받을 수 있는 패가
- * 넓어(3p·6p·8p·9p·2s…) 서너 순 안에 텐파이가 선다. 마지막 `man1`은 **첫 쯔모**로
- * 깔린다(`applyPresetHands`가 배패 장수를 넘긴 한 장을 그 자리로 보낸다) — 누가
- * 봐도 버릴 패라 "필요 없는 패를 버립니다" 강의가 첫 순에 그대로 성립한다.
+ * **대본을 손패로 적어 둔 것**이다 (클라이언트 `tutorial.ts`의 `SCRIPT_*`와 한 쌍).
+ * 코치가 "필요 없는 패를 버리세요"가 아니라 "이번에는 **9삭**입니다"라고 말할 수
+ * 있으려면, 버릴 패가 판마다 달라져서는 안 된다 (2026-08-18 사용자 지시).
  *
- * 수패가 많은 것도 의도다: 연금술사(±1)를 어디에 써도 그림이 나온다.
+ *   배패 13장: 234m 567m 456p 7p 22s 9s   /   첫 쯔모: 1s
+ *
+ * 한 순씩 따라가면 이렇게 된다:
+ *
+ * 1. **첫 순 — 9삭을 버린다.** 손에 남는 쓸모없는 패는 9삭과 1삭 둘인데, 1삭은
+ *    2삭 두 장에 붙어 있고 9삭은 아무 데도 안 붙는다. 그래서 "왜 이 패인가"까지
+ *    한 줄로 가르칠 수 있는 자리가 된다 — 버릴 패가 뻔한 것만이 목적이 아니다.
+ * 2. **둘째 순 — 연금술사로 1삭을 2삭으로.** 1삭은 수패 중 유일하게 방향이 하나뿐이라
+ *    (0삭은 없다) 후보가 **한 개**로 떨어진다 = 패를 누르면 되묻는 창 없이 그대로
+ *    발동한다. 222s가 서면서 234m 567m 222s + 4567p, 즉 **4통·7통 텐파이**다.
+ * 3. **그 순에 그대로 리치.** 가져온 패를 버리면 텐파이가 유지되므로 리치가 뜬다.
+ * 4. **론.** 대기 두 종류가 각각 세 장씩 살아 있고, 리치를 걸면 봇이 그중 하나를
+ *    쏴 준다(`TUTORIAL_FEED_NOTE`). 대기가 넓은 것도 의도다 — 좁을수록 배우는
+ *    사람이 기다리는 시간이 길어진다.
+ *
+ * 대본을 벗어나도(건너뛰기·다른 패를 버림) 판은 그냥 평범하게 이어진다 — 코치가
+ * 일반 강의로 물러설 뿐이다.
  */
 const TUTORIAL_HAND: readonly string[] = [
   "man2", "man3", "man4",
   "man5", "man6", "man7",
-  "pin4", "pin5", "pin6", "pin7",
+  "pin4", "pin5", "pin6",
+  "pin7",
   "sou2", "sou2",
   "sou9",
   // ↓ 배패 13장을 넘긴 한 장 = 첫 쯔모
-  "man1",
+  "sou1",
 ];
 
 /** 튜토리얼 봇 제약 — 판을 일찍 끝내지 않는다 (`TUTORIAL_ROOM_NOTE` 3). */
 const TUTORIAL_BOT_RULES: SandboxBotRules = { noWin: true, noRiichi: true };
+
+/** "쏠 것 없음" — 매 결정마다 빈 Set을 새로 만들지 않으려고 하나만 둔다. */
+const EMPTY_FEED: ReadonlySet<string> = new Set<string>();
 
 /**
  * 게스트 연결이 인증 뒤에 보낼 수 있는 메시지. **여기 없는 것은 전부 거부**다.
@@ -2602,12 +2622,67 @@ export class RoomManager {
       const bot = new BotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
       // 튜토리얼 봇은 리치도 화료도 하지 않는다 (`TUTORIAL_ROOM_NOTE` 3) — 제약을
       // 거는 배관(`restrictOptions`)은 샌드박스와 같은 것을 그대로 쓴다.
-      if (room.tutorial) bot.setRestrictions(TUTORIAL_BOT_RULES);
+      if (room.tutorial) {
+        bot.setRestrictions(TUTORIAL_BOT_RULES);
+        // 그리고 사람이 리치를 걸면 그 대기패를 쏴 준다 (`TUTORIAL_FEED_NOTE`).
+        bot.setTutorialFeed(() => this.tutorialFeedKinds(room));
+      }
       return bot;
     }
     const bot = new SandboxBotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
     bot.setRestrictions(room.sandboxBotRules);
     return bot;
+  }
+
+  /**
+   * ## 튜토리얼 배급 — 봇이 지금 쏴 주어야 할 패 종류 (TUTORIAL_FEED_NOTE, 2026-08-18)
+   *
+   * 리치를 걸고 나면 배우는 사람이 할 일은 **기다리는 것뿐**이다. 그런데 상대는
+   * 봇 셋이고, 봇은 리치를 피해 안전패를 돌리는 것이 옳은 판단이다 — 그래서 그
+   * 기다림은 대개 유국으로 끝난다. 론이라는 이 게임의 절반이 튜토리얼에서 영영
+   * 안 나오는 셈이다. 사용자 지시도 그것이었다: "플레이어가 리치 이후 론을 할 때까지
+   * 튜토리얼을 진행해."
+   *
+   * 그래서 튜토리얼 방에서만, 사람이 **리치를 선언한 뒤**에 그 대기패를 봇의
+   * 버림 후보에서 우선한다. 지키는 선 셋:
+   *
+   * - **리치 전에는 한 장도 쏘지 않는다.** 리치를 걸기 전에 화료가 나 버리면
+   *   정작 가르치려던 "리치 → 론"이 통째로 사라진다.
+   * - **후리텐이면 쏘지 않는다.** 못 먹는 패를 던져 봐야 화면에는 아무 일도 안
+   *   일어나고, 배우는 사람은 "리치를 걸었는데 아무도 안 버린다"로 읽는다.
+   *   (`discardedKinds` — 코어의 후리텐 판정이 보는 것과 같은 기록이다.)
+   * - **없는 패를 만들지는 않는다.** 봇 손에 그 종류가 있을 때만 나간다
+   *   (`BotAgent.feedOption`). 대본대로 왔으면 대기가 여섯 장이라 몇 순 안에 나온다.
+   *
+   * 봇의 판단 자체는 손대지 않는다 — 이 함수가 답을 주지 않으면(튜토리얼이 아니거나
+   * 리치 전이면) 봇은 종전과 한 치도 다르지 않게 둔다.
+   */
+  private tutorialFeedKinds(room: Room): ReadonlySet<string> {
+    const none: ReadonlySet<string> = EMPTY_FEED;
+    const state = room.controller?.gameState ?? null;
+    if (state === null) return none;
+    const me = room.agents.find((a) => !this.isBot(a));
+    if (me === undefined) return none;
+    // 뷰의 `riichiDeclared`가 아니라 판 상태의 `riichi`를 본다 — 숨은 리치(스텔스)도
+    // 리치는 리치이므로, 공개 여부로 배급이 갈리면 그 증강을 든 판만 조용해진다.
+    const rs = state.round.byPlayer[me.id];
+    if (rs === undefined || rs.riichi === null) return none;
+
+    /*
+     * 지금이 사람의 차례면 손패가 14장이라 "무엇을 빼고 기다리는가"가 아직 안
+     * 정해져 있다. 봇이 결정하는 순간은 사람의 차례가 아니므로 평소에는 걸리지
+     * 않지만, 어긋난 순간에 엉뚱한 대기를 쏘느니 그 프레임은 그냥 쉰다.
+     */
+    const hand = handKindsOf(state, me.id);
+    const melds = meldCountOf(state, me.id);
+    if (hand.length !== 13 - melds * 3) return none;
+
+    const waits = winningKinds(hand, melds);
+    if (waits.length === 0) return none;
+    // 후리텐 — 내가 이미 버린 종류로는 론이 안 된다. 쏴도 화면에 아무 일도 없다.
+    const mine = new Set(rs.discardedKinds ?? []);
+    const live = waits.map(kindKey).filter((k) => !mine.has(k));
+    return live.length === 0 ? none : new Set(live);
   }
 
   private isBot(agent: PlayerAgent): boolean {

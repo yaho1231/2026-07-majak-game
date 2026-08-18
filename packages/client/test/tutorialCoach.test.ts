@@ -47,6 +47,10 @@ const ctx = (over: Partial<CoachCtx> = {}): CoachCtx => ({
   augmentReady: false,
   overlay: null,
   hit: () => false,
+  // 기본 손패는 **비워 둔다** — 대본 강의(9삭·1삭)는 그 패가 손에 있을 때만 서므로,
+  // 기본값을 채워 두면 일반 강의를 검사하는 자리마다 대본이 끼어든다.
+  handKinds: new Set<string>(),
+  riichiDeclared: false,
   seen: new Set<string>(),
   ...over,
 });
@@ -86,15 +90,17 @@ describe("무엇을 언제 꺼내는가", () => {
     expect(pickLesson(ctx({ seen }))?.id).toBe("dora");
   });
 
-  it("기본을 다 본 뒤에야 마무리가 나온다", () => {
-    const basics = new Set(["discard", "dora", "hand", "aug-pill", "aug-btn", "codex"]);
-    // 마무리만 남기려면 앞선 강의가 전부 '봤음'이어야 한다(그 사이 것들은 조건이 안 서 있다)
-    const all = new Set([...LESSONS.map((l) => l.id).filter((id) => id !== "outro"), ...basics]);
-    expect(pickLesson(ctx({ seen: all }))?.id).toBe("outro");
-    // 하나라도 덜 봤으면 마무리가 아니다
-    const partial = new Set([...all]);
-    partial.delete("aug-btn");
-    expect(pickLesson(ctx({ seen: partial }))?.id).not.toBe("outro");
+  it("화료를 해 봐야 마무리가 나온다", () => {
+    // 마무리 조건은 "강의를 몇 개 봤나"가 아니라 **판을 끝냈나**다 — 리치도 론도
+    // 안 해 본 사람에게 "여기까지가 기본입니다"가 뜨면 정작 점수가 오가는 순간을
+    // 한 번도 안 보여 준 채 끝난다(2026-08-18 사용자 지시).
+    const others = LESSONS.map((l) => l.id).filter((id) => id !== "outro");
+    // 화료를 안 해 봤으면 다른 걸 전부 봤어도 마무리가 아니다
+    const noWin = new Set(others.filter((id) => id !== "ron" && id !== "win"));
+    expect(pickLesson(ctx({ seen: noWin }))?.id).not.toBe("outro");
+    // 론 하나면 선다 (쯔모로 끝냈어도 마찬가지)
+    expect(pickLesson(ctx({ seen: new Set([...noWin, "ron"]) }))?.id).toBe("outro");
+    expect(pickLesson(ctx({ seen: new Set([...noWin, "win"]) }))?.id).toBe("outro");
   });
 
   it("지금 판에서 벌어지는 일이 '늘 참인 강의'보다 먼저다", () => {
@@ -104,7 +110,9 @@ describe("무엇을 언제 꺼내는가", () => {
     const late = ctx({ seen, view: viewWith(13, 4), hit: () => true });
     expect(pickLesson({ ...late, optionTypes: new Set(["chi", "pass"]) })?.id).toBe("call");
     expect(pickLesson({ ...late, optionTypes: new Set(["riichi", "discard"]) })?.id).toBe("riichi");
-    expect(pickLesson({ ...late, optionTypes: new Set(["win", "pass"]) })?.id).toBe("win");
+    // 남의 패로 나는 것은 론, 내가 가져와 나는 것은 쯔모 — 말이 다르므로 강의도 다르다
+    expect(pickLesson({ ...late, optionTypes: new Set(["win", "pass"]) })?.id).toBe("ron");
+    expect(pickLesson({ ...late, optionTypes: new Set(["win", "discard"]) })?.id).toBe("win");
     // 기회가 없으면 그 자리는 그냥 넘어간다
     expect(pickLesson(late)?.id).toBe("dora");
   });
@@ -251,7 +259,7 @@ describe("읽던 강의를 밀어내고 끼어든다", () => {
     // 선 채로 "증강 이름에 마우스를 올려 보세요"가 떠 있었다).
     const seen = new Set(["welcome", "hand", "discard"]);
     expect(pickUrgent(ctx({ seen, optionTypes: new Set(["chi", "pass"]) }))?.id).toBe("call");
-    expect(pickUrgent(ctx({ seen, optionTypes: new Set(["win", "pass"]) }))?.id).toBe("win");
+    expect(pickUrgent(ctx({ seen, optionTypes: new Set(["win", "pass"]) }))?.id).toBe("ron");
     expect(pickUrgent(ctx({ seen, draftOpen: true }))?.id).toBe("draft");
   });
 
@@ -268,6 +276,119 @@ describe("읽던 강의를 밀어내고 끼어든다", () => {
   it("이미 본 끼어들기는 다시 끼어들지 않는다", () => {
     const seen = new Set(["welcome", "hand", "discard", "call"]);
     expect(pickUrgent(ctx({ seen, optionTypes: new Set(["chi", "pass"]) }))).toBeNull();
+  });
+});
+
+// ─────────────────────── 대본 — 지목하고, 잠근다 ───────────────────────
+
+describe("대본 강의 (`SCRIPT_NOTE`)", () => {
+  /** 서버가 고정해 둔 첫 순의 손 — 9삭과 1삭이 함께 있다 (`RoomManager.TUTORIAL_HAND`) */
+  const scripted = (over: Partial<CoachCtx> = {}): CoachCtx =>
+    ctx({
+      handKinds: new Set(["man2", "man5", "pin4", "pin7", "sou1", "sou2", "sou9"]),
+      ...over,
+    });
+
+  it("첫 순에는 '필요 없는 패'가 아니라 9삭을 지목한다", () => {
+    const c = scripted({ seen: new Set(["welcome", "hand"]), optionTypes: new Set(["discard"]) });
+    const l = pickLesson(c)!;
+    expect(l.id).toBe("discard-script");
+    expect(l.title).toContain("9삭");
+    // 지목만으로는 부족하다 — 그 패 말고는 안 눌리게 잠근다
+    expect(l.lock).toEqual({ kind: "sou9", how: "discard" });
+  });
+
+  it("9삭이 손에 없으면 일반 강의로 물러선다 — 없는 패를 가리키지 않는다", () => {
+    const c = ctx({ seen: new Set(["welcome", "hand"]), optionTypes: new Set(["discard"]) });
+    expect(pickLesson(c)?.id).toBe("discard");
+  });
+
+  it("한 순이라도 지났으면 대본을 다시 꺼내지 않는다", () => {
+    // 대본은 **첫 순의 것**이다. 뒤늦게 9삭을 뽑았다고 "이번에는 9삭입니다"가 다시
+    // 뜨면 그건 대본이 아니라 잔소리다.
+    const c = scripted({
+      seen: new Set(["welcome", "hand"]),
+      view: viewWith(13, 2),
+      optionTypes: new Set(["discard"]),
+    });
+    expect(pickLesson(c)?.id).toBe("discard");
+  });
+
+  it("버렸으면 저절로 넘어간다", () => {
+    const l = lesson("discard-script");
+    expect(l.done?.(scripted({ optionTypes: new Set(["discard"]) }))).toBe(false);
+    expect(l.done?.(scripted({ optionTypes: new Set() }))).toBe(true);
+  });
+
+  it("연금술사는 '바꿀 패를 클릭'이 아니라 1삭을 지목한다", () => {
+    const c = scripted({
+      seen: new Set(["welcome", "hand", "discard-script"]),
+      view: viewWith(14, 1),
+      augmentReady: true,
+      hit: () => true,
+    });
+    const l = pickUrgent(c)!;
+    expect(l.id).toBe("aug-script");
+    expect(l.lock).toEqual({ kind: "sou1", how: "augment" });
+    // 후보가 하나뿐인 패라 되묻는 창 없이 그대로 발동한다 — 그 사실이 문구에 있다
+    expect(l.body).toContain("2삭");
+  });
+
+  it("1삭이 바뀌면(또는 없으면) 연금술 대본은 끝난 것으로 본다", () => {
+    const l = lesson("aug-script");
+    expect(l.done?.(scripted())).toBe(false);
+    expect(l.done?.(ctx({ handKinds: new Set(["sou2"]) }))).toBe(true);
+  });
+
+  it("리치를 이미 걸었으면 증강 대본을 꺼내지 않는다 — 손이 잠긴 뒤다", () => {
+    const c = scripted({ view: viewWith(14, 1), augmentReady: true, riichiDeclared: true });
+    expect(lesson("aug-script").when(c)).toBe(false);
+  });
+
+  it("리치를 걸면 '이제 기다립니다'가 나온다 — 멈춘 것처럼 보이지 않게", () => {
+    const seen = new Set(LESSONS.map((l) => l.id).filter((id) => id !== "riichi-wait"));
+    // 화료 강의를 이미 본 판이라도(=outro 조건) 기다림 안내가 먼저다
+    seen.delete("outro");
+    expect(pickLesson(ctx({ seen, riichiDeclared: true }))?.id).toBe("riichi-wait");
+    // 리치 전에는 안 나온다
+    expect(lesson("riichi-wait").when(ctx({ riichiDeclared: false }))).toBe(false);
+  });
+
+  it("리치 선언이 잡히면 리치 강의는 끝난다", () => {
+    const l = lesson("riichi");
+    expect(l.done?.(ctx({ optionTypes: new Set(["riichi", "discard"]) }))).toBe(false);
+    expect(
+      l.done?.(ctx({ optionTypes: new Set(["riichi", "discard"]), riichiDeclared: true })),
+    ).toBe(true);
+  });
+
+  it("잠근 강의는 잠근 그 패를 가리킨다 — 다른 것을 빛내면 안 된다", () => {
+    for (const l of LESSONS.filter((x) => x.lock !== undefined)) {
+      expect(l.anchor, `${l.id}: 잠갔으면 어느 패인지도 가리켜야 한다`).toContain(
+        `data-kind="${l.lock!.kind}"`,
+      );
+    }
+  });
+});
+
+describe("좌하단 빠른 토글 강의", () => {
+  const c = (discards: number): CoachCtx =>
+    ctx({ view: viewWith(13, discards), hit: onScreen(".quick-toggles") });
+
+  it("화면에 그 줄이 있을 때, 두 순 지난 뒤에 나온다", () => {
+    expect(LESSONS.filter((l) => l.when(c(2))).map((l) => l.id)).toContain("quick-toggles");
+    expect(LESSONS.filter((l) => l.when(c(1))).map((l) => l.id)).not.toContain("quick-toggles");
+    expect(
+      LESSONS.filter((l) => l.when(ctx({ view: viewWith(13, 4) }))).map((l) => l.id),
+    ).not.toContain("quick-toggles");
+  });
+
+  it("되돌릴 수 없는 자동 진행 둘을 이름으로 말린다", () => {
+    // 자동화료·자동버림은 켜는 순간 대신 둔다 — 배우는 자리에서 모르고 켜면
+    // 그때부터 판이 혼자 굴러간다.
+    const { body } = lesson("quick-toggles");
+    expect(body).toContain("자동화료");
+    expect(body).toContain("자동버림");
   });
 });
 
@@ -289,10 +410,8 @@ describe("강의가 지키는 규약", () => {
     // outro의 `when`은 id 문자열로 앞 강의를 참조한다 — 이름을 고치면 조용히
     // "영영 안 끝나는 튜토리얼"이 된다. 요구 목록이 실제 id인지 확인한다.
     const ids = new Set(LESSONS.map((l) => l.id));
-    const required = ["discard", "dora", "hand", "aug-pill", "aug-btn", "codex"];
-    for (const id of required) expect(ids.has(id), `${id} 강의가 사라졌다`).toBe(true);
-    const seen = new Set(required);
-    expect(lesson("outro").when(ctx({ seen }))).toBe(true);
+    for (const id of ["ron", "win"]) expect(ids.has(id), `${id} 강의가 사라졌다`).toBe(true);
+    expect(lesson("outro").when(ctx({ seen: new Set(["ron"]) }))).toBe(true);
   });
 });
 

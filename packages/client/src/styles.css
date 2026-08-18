@@ -2146,6 +2146,15 @@ button {
   filter: brightness(0.45) saturate(0.6);
 }
 
+/* 튜토리얼 대본이 막아 둔 패 — "이번에는 9삭입니다"의 나머지 열세 장.
+   안 눌리기만 하고 그대로 밝으면 눌러 보고 나서야 알게 된다: 지목한 한 장만 남기고
+   물러나 있어야 어디를 눌러야 하는지가 **보인다**. 코치의 강조 링(.coach-ring)이
+   그 한 장을 감싸므로 둘이 한 쌍으로 읽힌다. (App.tsx `CoachLockContext`) */
+.hand-coach-locked {
+  filter: brightness(0.5) saturate(0.5);
+  transition: filter 0.18s ease;
+}
+
 /* 봉인된 패 (봉인술사 등 discard.blockedKinds) — 보라 체인 + 자물쇠 뱃지.
    버릴 수 없는 이유가 보이도록 살짝 어둡게. 리치 dimmed와 겹치면 dimmed가 우선. */
 .hand-sealed .tile-face {

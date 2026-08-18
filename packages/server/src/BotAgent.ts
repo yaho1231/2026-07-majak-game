@@ -41,7 +41,8 @@ import type {
 } from "@majak/core/augment/Augment.js";
 import type { DraftStage, SandboxBotRules } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
-import type { TileKind } from "@majak/core/mahjong/tiles/Tile.js";
+import { kindKey } from "@majak/core/mahjong/tiles/Tile.js";
+import type { TileId, TileKind } from "@majak/core/mahjong/tiles/Tile.js";
 import { bidAbort } from "./bot/abort.js";
 import { bidCall, bidPass } from "./bot/call.js";
 import type { CallAudit } from "./bot/callAudit.js";
@@ -115,6 +116,31 @@ export function restrictOptions(
     return true;
   });
   return kept.length > 0 ? kept : options;
+}
+
+/**
+ * 배급할 버림을 고른다 — 원하는 종류의 패가 후보에 있으면 그 선택지, 없으면 null.
+ *
+ * 손에 없으면 **억지로 만들어 내지 않는다**. 다음 순, 또 다음 순에 뽑히면 그때 나간다 —
+ * 배우는 사람의 대기가 여섯 장쯤 되므로 몇 순 안에 걸린다.
+ *
+ * 순수 함수로 빼 둔 것은 이 판단을 봇의 판 읽기 없이도 검사할 수 있게 하기 위해서다
+ * (`restrictOptions`와 같은 이유).
+ */
+export function feedDiscard(
+  options: readonly ActionOption[],
+  tiles: Readonly<Record<TileId, { kind: TileKind } | undefined>>,
+  wanted: ReadonlySet<string>,
+): ActionOption | null {
+  if (wanted.size === 0) return null;
+  for (const o of options) {
+    if (o.type !== "discard") continue;
+    const tileId = (o.payload as { tileId?: TileId } | undefined)?.tileId;
+    if (tileId === undefined) continue;
+    const kind = tiles[tileId]?.kind;
+    if (kind !== undefined && wanted.has(kindKey(kind))) return o;
+  }
+  return null;
 }
 
 /** 플레이어 id에서 안정적 시드 파생 (결정론 유지) */
@@ -256,6 +282,31 @@ export class BotAgent implements PlayerAgent {
         rules.noWin === true ||
         rules.noAugment === true);
     this.restrictions = on ? rules : null;
+  }
+
+  /**
+   * **튜토리얼 배급** — 지금 버려 주어야 할 패 종류(kindKey)를 대는 손잡이.
+   *
+   * 배우는 사람이 리치를 걸어 놓고 아무 일도 안 일어나는 것이 튜토리얼의 가장
+   * 흔한 끝이다: 화면은 "이제 기다리세요"라고 말하는데 봇 셋은 당연히 리치를 피해
+   * 안전패만 돌린다. 그래서 **론을 보여 주려면 누군가 쏴야 한다**
+   * (2026-08-18 사용자 지시: "플레이어가 리치 이후 론을 할때까지 튜토리얼을 진행해").
+   *
+   * 봇이 남의 손패를 아는 것은 아니다 — 무엇을 쏠지는 **방이** 정해서 준다
+   * (`RoomManager.tutorialFeedKinds`). 여기 있는 것은 그 답을 받아 버리는 배관뿐이고,
+   * 튜토리얼 방이 아니면 이 함수는 아예 꽂히지 않아 실대국 봇의 판단은 그대로다.
+   */
+  private feedKinds: (() => ReadonlySet<string>) | null = null;
+
+  /** 튜토리얼 배급 손잡이를 꽂는다 (튜토리얼 방 전용 — `feedKinds` 주석). */
+  setTutorialFeed(feed: (() => ReadonlySet<string>) | null): void {
+    this.feedKinds = feed;
+  }
+
+  /** 지금 배급해야 할 버림이 있으면 그 선택지 — 없으면 null (`feedDiscard`). */
+  private feedOption(options: readonly ActionOption[]): ActionOption | null {
+    if (this.feedKinds === null || this.lastView === null) return null;
+    return feedDiscard(options, this.lastView.tiles, this.feedKinds());
   }
 
   /** 실험 스위치를 건다 (측정 전용) */
@@ -462,6 +513,11 @@ export class BotAgent implements PlayerAgent {
     // 화료는 비교하지 않는다 — 이기는 것보다 나은 선택지는 없다
     const win = options.find((o) => o.type === "win");
     if (win) return win;
+
+    // 튜토리얼 배급 — 판단보다 앞이다. 여기까지 온 이상 "안전패를 고른다"는 판단이
+    // 곧 배우는 사람의 리치를 영영 안 깨는 결과가 된다(`feedKinds` 주석).
+    const feed = this.feedOption(options);
+    if (feed !== null) return feed;
 
     const read = this.currentRead();
     if (read === null) return this.fallbackOption(options);

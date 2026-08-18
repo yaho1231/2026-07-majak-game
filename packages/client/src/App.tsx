@@ -82,7 +82,7 @@ import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
 import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent, placeBubble } from "./tutorial.js";
-import type { BubbleSpot, CoachCtx, CoachRect, Lesson } from "./tutorial.js";
+import type { BubbleSpot, CoachCtx, CoachRect, Lesson, LessonLock } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
 import { groupWinHand, shapeGroupLabel } from "./winShapeView.js";
 import {
@@ -2636,6 +2636,11 @@ export function App(): JSX.Element {
    */
   const coachOnRef = useRef(false);
   coachOnRef.current = coachOn;
+  /**
+   * 지금 대본 강의가 지목해 둔 패 (`CoachLockContext`). 코치가 알려 준다.
+   * 강의가 물러나면(마쳤든 «건너뛰기»든) 코치가 null을 보내 잠금이 풀린다.
+   */
+  const [coachLock, setCoachLock] = useState<LessonLock | null>(null);
   /** 튜토리얼을 이미 마쳤는가 (저장된 사실) */
   const tutorialDone = useRef(safeStorage.getItem(TUTORIAL_KEY) === "1");
   /**
@@ -5066,6 +5071,25 @@ export function App(): JSX.Element {
       ),
     [prompt],
   );
+  /**
+   * 지금 내 손에 있는 패 **종류** — 대본 강의가 "이번에는 9삭입니다"라고 말해도
+   * 되는지를 코치가 여기서 확인한다(없으면 일반 강의로 물러선다).
+   * 손패가 바뀔 때만 다시 만든다 — 코치는 매 프레임 이걸 훑는다.
+   */
+  const myHandKinds = useMemo(() => {
+    const ids = view === null ? [] : (view.zones[`hand:${view.playerId}`]?.tileIds ?? []);
+    const out = new Set<string>();
+    for (const id of ids) {
+      const kind = view?.tiles[id]?.kind;
+      if (kind !== undefined) out.add(kindKey(kind));
+    }
+    return out;
+  }, [view]);
+  /** 내가 리치를 선언했는가 — 코치의 "이제 기다립니다" 강의가 이걸 본다 */
+  const myRiichiDeclared =
+    view !== null && view.round.byPlayer[view.playerId]?.riichiDeclared === true;
+  const cbCoachLock = useStableFn((lock: LessonLock | null) => setCoachLock(lock));
+
   const lastRoomCode = safeStorage.getItem(LAST_ROOM_KEY);
 
   return (
@@ -5073,6 +5097,9 @@ export function App(): JSX.Element {
     {/* 판이 돌고 있을 때만 모드를 내려 준다 — 증강 설명의 "동풍전 N회 · 반장전 M회"가
         그 판의 숫자 하나로 줄어든다. 홈·도감에서는 null이라 둘 다 그대로 보인다. */}
     <GameModeContext.Provider value={view?.round.mode ?? null}>
+    {/* 대본 강의가 건 잠금 — 손패가 이걸 읽어 지목한 패 하나만 눌리게 한다
+        (`CoachLockContext` 주석). 코치가 없으면 언제나 null이라 판은 평소 그대로다. */}
+    <CoachLockContext.Provider value={coachLock}>
     <div className="game-root" ref={gameRootRef}>
       <LayoutHint />
       <ScaleControl />
@@ -5352,11 +5379,15 @@ export function App(): JSX.Element {
             draftOpen: draftVisible,
             augmentReady: promptHasAugment,
             overlay: helpOpen ? "help" : codexOpen ? "codex" : null,
+            handKinds: myHandKinds,
+            riichiDeclared: myRiichiDeclared,
           }}
           // 도감·규칙이 판을 덮는 동안은 그림만 걷는다 (컴포넌트 주석 참고)
           hidden={helpOpen || codexOpen}
+          onLock={cbCoachLock}
           onFinish={() => {
             setCoachOn(false);
+            setCoachLock(null);
             tutorialDone.current = true;
             safeStorage.setItem(TUTORIAL_KEY, "1");
           }}
@@ -5538,6 +5569,7 @@ export function App(): JSX.Element {
       ) : null}
       <PeekButton />
     </div>
+    </CoachLockContext.Provider>
     </GameModeContext.Provider>
     </GlossaryTipsContext.Provider>
   );
@@ -5694,23 +5726,58 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
 // ─────────────────────────── 첫 판 코치 (튜토리얼) ───────────────────────────
 
 /**
+ * 대본 강의가 화면에 건 잠금 — **지금은 이 패만 눌린다** (`tutorial.ts`의 `LessonLock`).
+ *
+ * 왜 컨텍스트인가: 잠금을 읽어야 하는 곳은 손패 한 군데(`OwnArea`)뿐인데, 거기까지는
+ * App → GameTable → OwnArea 로 두 번을 타야 한다. 튜토리얼 전용 값 하나 때문에 실대국
+ * 경로의 컴포넌트 서명을 둘이나 넓히느니, 이미 판이 쓰고 있는 방식(`DoraContext`·
+ * `SelectionContext`)을 그대로 따른다. 코치가 꺼져 있으면 언제나 null이라 판은 평소 그대로다.
+ */
+const CoachLockContext = createContext<LessonLock | null>(null);
+
+/**
+ * 이 패는 지금 **코치가 막고 있는가**.
+ *
+ * 잠금이 없으면(평소·튜토리얼 아님) 언제나 false — 판의 클릭 판정은 종전 그대로다.
+ * `augment` 잠금은 버리기까지 막는다: 증강을 쓰기 전에 버려 버리면 그 순이 그냥
+ * 지나가고, 다시 그 자리를 만들 방법이 없다.
+ */
+function coachBlocks(lock: LessonLock | null, kind: TileKind | undefined): boolean {
+  if (lock === null) return false;
+  return kind === undefined || kindKey(kind) !== lock.kind;
+}
+
+/** 잠긴 패를 눌렀을 때 알려 줄 말 — 왜 안 눌리는지가 화면 어디에도 없으면 고장으로 읽힌다 */
+function coachBlockHint(lock: LessonLock): string {
+  return lock.how === "discard"
+    ? "튜토리얼 — 지금은 빛나는 패만 버릴 수 있습니다"
+    : "튜토리얼 — 지금은 빛나는 패를 증강으로 바꿔 봅시다";
+}
+
+/**
  * 선택자로 화면의 사각형을 잰다 — **레이아웃 좌표**로 되돌려서.
  *
  * `getBoundingClientRect()`는 UI 배율이 곱해진 화면 좌표인데 인라인 `left/top`은
  * 레이아웃 좌표다. 안 되돌리면 배율이 1이 아닌 화면에서 링도 말풍선도 엉뚱한 데로
  * 간다 (`uiScale.ts`). 화면에 없거나 접혀 있으면 null.
+ *
+ * **같은 선택자에 여러 개가 걸리면 보이는 것을 고른다.** 반응형으로 두 벌을 렌더하고
+ * CSS가 한쪽만 보여 주는 줄이 있다(좌하단 빠른 토글이 그렇다 — 넓은 화면은 구석,
+ * 좁은 화면은 손패 위). `querySelector` 하나로 집으면 절반의 화면에서 **꺼져 있는
+ * 쪽**을 집어 링이 통째로 사라진다.
  */
 function rectOf(selector: string, pad = 0): CoachRect | null {
-  const el = document.querySelector(selector);
-  if (el === null) return null;
-  const r = el.getBoundingClientRect();
-  if (r.width === 0 || r.height === 0) return null;
-  return {
-    top: toLayoutPx(r.top) - pad,
-    left: toLayoutPx(r.left) - pad,
-    w: toLayoutPx(r.width) + pad * 2,
-    h: toLayoutPx(r.height) + pad * 2,
-  };
+  for (const el of document.querySelectorAll(selector)) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    return {
+      top: toLayoutPx(r.top) - pad,
+      left: toLayoutPx(r.left) - pad,
+      w: toLayoutPx(r.width) + pad * 2,
+      h: toLayoutPx(r.height) + pad * 2,
+    };
+  }
+  return null;
 }
 
 /**
@@ -5763,6 +5830,11 @@ function TutorialCoach(props: {
    * 완료로 잡히고, 닫는 순간 다음 강의가 이어진다.
    */
   hidden: boolean;
+  /**
+   * 지금 강의가 지목한 패를 알린다 (`LessonLock`) — 없으면 null.
+   * 강의가 바뀔 때마다 부른다: 잠금은 **그 강의가 떠 있는 동안만** 살아야 한다.
+   */
+  onLock: (lock: LessonLock | null) => void;
   /** 끝까지 봤거나 사용자가 그만 보기를 눌렀다 */
   onFinish: () => void;
 }): JSX.Element | null {
@@ -5812,6 +5884,20 @@ function TutorialCoach(props: {
   useEffect(() => {
     if (active?.done?.(ctx) === true) retire(active.id);
   });
+
+  /*
+   * 지금 강의가 지목한 패를 화면에 알린다 — 강의가 바뀌거나 물러날 때마다.
+   *
+   * 잠금이 강의보다 오래 살면 그 순간 판이 굳는다(아무 패도 안 눌린다). 그래서
+   * 잠금의 수명은 `activeId` 하나에 묶어 둔다 — 마쳤든 «건너뛰기»든, 강의가 물러나면
+   * 같은 이펙트가 null을 보낸다. 코치가 통째로 사라질 때(정리 함수)도 마찬가지다.
+   */
+  const { onLock } = props;
+  const lock = active?.lock ?? null;
+  useEffect(() => {
+    onLock(lock ?? null);
+    return () => onLock(null);
+  }, [onLock, lock]);
 
   /*
    * 읽던 강의를 밀어내고 끼어드는 강의 — 지금 화면에서 벌어지는 일이 먼저다.
@@ -10434,7 +10520,10 @@ function QuickToggles(props: {
         return (
           <button
             key={it.key}
-            className={`qt-item${active ? " qt-on" : ""}`}
+            /* `qt-<키>`는 **가리키기 위한 이름**이다 — 튜토리얼 코치가 넷 중 하나(자동정렬)를
+               집어 "이걸 눌러 보세요"라고 말하려면 셋과 구별되는 손잡이가 있어야 한다.
+               색·굵기는 전부 `qt-item`·`qt-on`이 정한다(이 이름에는 스타일이 없다). */
+            className={`qt-item qt-${it.key}${active ? " qt-on" : ""}`}
             aria-pressed={active}
             onClick={() => {
               const next = !active;
@@ -14046,6 +14135,11 @@ function OwnArea(props: {
 
   const drawnId = view.round.myDrawnTile;
   const hasDrawn = drawnId !== null && rawHand.includes(drawnId);
+  /**
+   * 튜토리얼 대본이 지목한 패 (`CoachLockContext`) — 없으면 null(평소).
+   * 있으면 그 패 말고는 클릭도 드래그도 받지 않는다.
+   */
+  const coachLock = useContext(CoachLockContext);
 
   /*
    * 보조기술에 **차례를 알린다** (감사 §6-3).
@@ -14554,6 +14648,12 @@ function OwnArea(props: {
   /** 이 패를 (드래그·클릭으로) 지금 낼 수 있는 옵션 — 클릭 동작과 동일 규칙. */
   function discardOptionFor(id: number | null): ActionOption | undefined {
     if (id === null) return undefined;
+    /*
+     * 대본 강의가 다른 패를 막고 있으면 **끌어서도** 안 나간다.
+     * 클릭만 막으면 잠금이 반쪽이 된다 — 이 판은 드래그로도, 단축키로도 버릴 수 있다.
+     * 여기 한 곳이면 드롭존 표시(`canDropDiscard`)까지 함께 꺼진다.
+     */
+    if (coachBlocks(coachLock, view.tiles[id]?.kind)) return undefined;
     // 오픈 리치·스텔스 리치 등으로 무장한 동안에는 그 액션이 곧 '이 패를 버리는' 수단이다
     if (armedAug !== null) {
       return DRAG_DISCARD_ARM_TYPES.has(armedAug)
@@ -14995,10 +15095,16 @@ function OwnArea(props: {
             const swapChosen = swapPicking && swapGive.includes(id);
             const armable =
               armedAug === "swap3" ? swapPicking : armedAug !== null && armedByTile.has(id);
+            /*
+             * 튜토리얼 대본이 이 패를 막고 있는가 (`CoachLockContext`).
+             * 코치가 꺼져 있으면 언제나 false라 실대국 판정은 종전과 같다.
+             */
+            const coachLocked = coachBlocks(coachLock, view.tiles[id]?.kind);
             // 무장 대상도 '지금 누를 수 있는 패'다 — 커서·hover 들림을 함께 준다
             const clickable =
-              armable ||
-              (active !== undefined && (!props.riichiMode || riichi !== undefined));
+              !coachLocked &&
+              (armable ||
+                (active !== undefined && (!props.riichiMode || riichi !== undefined)));
             // 리치 선언 후 버릴 수 없는(옵션 없는) 패 + 리치 모드에서 리치 불가 패를 어둡게
             const noDiscard = discard === undefined && freeDiscard === undefined;
             /*
@@ -15037,11 +15143,19 @@ function OwnArea(props: {
                   sealed ? "봉인됨" : null,
                   danger ? "위험패" : null,
                   armedTileId === id ? "선택됨 — 한 번 더 누르면 버립니다" : null,
-                  !clickable ? "지금 버릴 수 없음" : null,
+                  coachLocked ? "튜토리얼이 지금 막고 있음" : null,
+                  !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
                 ]
                   .filter((x) => x !== null)
                   .join(", ")}
                 aria-disabled={!clickable}
+                /*
+                 * 패 **종류**를 DOM에 싣는다 — 튜토리얼 코치가 "이 패를 누르세요"라고
+                 * 가리킬 때 쓰는 유일한 손잡이다(`tutorial.ts`의 `handTile`). 그림과
+                 * aria-label에는 사람이 읽는 이름밖에 없어서, 선택자로는 9삭 한 장을
+                 * 집을 방법이 없었다.
+                 */
+                data-kind={tileKind === undefined ? undefined : kindKey(tileKind)}
                 className={`hand-tile${clickable ? " hand-clickable" : " hand-locked"}${
                   armedTileId === id ? " hand-armed" : ""
                 }${
@@ -15057,7 +15171,9 @@ function OwnArea(props: {
                   drag?.id === id && drag.moved ? " hand-dragging" : ""
                 }${sealed ? " hand-sealed" : ""}${armable ? " hand-armable" : ""}${
                   swapChosen ? " hand-swap-picked" : ""
-                }${armedAug !== null && !armable ? " hand-dimmed" : ""}${
+                }${coachLocked ? " hand-coach-locked" : ""}${
+                  armedAug !== null && !armable ? " hand-dimmed" : ""
+                }${
                   danger ? " hand-danger" : ""
                 }`}
                 style={tileDragStyle(id, idx)}
@@ -15096,6 +15212,15 @@ function OwnArea(props: {
                   // 드래그로 재정렬/버리기를 한 직후 딸려온 click은 무시한다
                   if (suppressClickRef.current) {
                     suppressClickRef.current = false;
+                    return;
+                  }
+                  /*
+                   * 대본 강의가 다른 패를 지목해 두었다 — 아무 일도 하지 않되 **왜**인지는
+                   * 말한다. 안 눌리기만 하면 고장으로 읽힌다. (무장 해제보다 위에 둔다:
+                   * 잠긴 패를 눌렀다고 방금 켠 증강이 풀리면 그건 벌이다.)
+                   */
+                  if (coachLocked && coachLock !== null) {
+                    props.onToast?.(coachBlockHint(coachLock));
                     return;
                   }
                   // 등가교환: 상대를 정했으면 이 패를 교환 대상으로 토글(3장이면 제출)
