@@ -4507,7 +4507,14 @@ export class RoomManager {
       // **드래프트는 그대로 둔다** — 증강을 고르는 것이 이 게임의 첫 조작이다.
       // 샌드박스와 같은 배관(`presetHands`/`presetAugments`)을 쓰므로 새 경로가 없다.
       ...(room.tutorial
-        ? { ...tutorialPresets(room.agents), agentDecideTimeoutMs: TUTORIAL_AGENT_TIMEOUT_MS }
+        ? {
+            ...tutorialPresets(room.agents),
+            agentDecideTimeoutMs: TUTORIAL_AGENT_TIMEOUT_MS,
+            // 말풍선이 떠 있으면 **국과 국 사이도** 붙든다. 마지막 안내를 읽는 중에
+            // 다음 국이 시작되면 다 끝난 줄 알았던 판이 저 혼자 다시 시작한다
+            // (2026-08-19 사용자 보고). `TUTORIAL_HOLD_NOTE`와 같은 신호를 쓴다.
+            holdBetweenRounds: () => room.tutorialHoldUntil > Date.now(),
+          }
         : {}),
     }, {
       onEvent: (eventJson: string) => {

@@ -91,6 +91,18 @@ export interface HanchanConfig {
    * 터지도록, 그보다 넉넉한 값을 방이 정해서 준다.
    */
   agentDecideTimeoutMs?: number;
+  /**
+   * **국과 국 사이를 더 붙들어야 하는가** — true인 동안 다음 국을 시작하지 않는다.
+   * 생략하면 종전대로 `interRoundDelayMs` 상한에서 넘어간다.
+   *
+   * 튜토리얼이 쓴다: 마지막 말풍선("여기까지가 기본입니다")을 읽고 있는데 5초 뒤
+   * 새 국이 시작되면, 다 끝난 줄 알았던 판이 저 혼자 다시 시작한다
+   * (2026-08-19 사용자 보고). 결과 화면을 닫는 것은 사람이 정할 일이다.
+   *
+   * 여기서도 상한은 남는다 — 이 함수가 계속 true를 돌려주면 `HOLD_ROUND_MAX_MS`에서
+   * 포기하고 진행한다. 신호가 끊긴 방이 영원히 국 사이에 멈춰 있지 않게.
+   */
+  holdBetweenRounds?: () => boolean;
   /** 적도라 수 */
   redFivesPerSuit?: number;
   /** 콘텐츠 팩 증강 카탈로그 (@majak/content 등) */
@@ -382,6 +394,11 @@ const FX_SILENT_ACTION_TYPES = new Set([
  * 먼저 터지게 한다. 여기까지 왔다면 그건 버그다 — 그래서 로그를 남긴다.
  */
 const AGENT_DECIDE_TIMEOUT_MS = 90_000;
+
+/** 국 사이를 더 붙들 때 다시 물어보는 간격 (`holdBetweenRounds`) */
+const HOLD_ROUND_POLL_MS = 200;
+/** 그렇게 붙들 수 있는 상한 — 신호가 끊겨도 판이 영원히 국 사이에 멎지 않게 */
+const HOLD_ROUND_MAX_MS = 10 * 60_000;
 
 /**
  * **발동 사실 자체가 비밀**인 액션 — 연출을 보유자(와 관전자)에게만 보낸다.
@@ -1153,16 +1170,32 @@ export class HanchanController {
    */
   private async pauseBetweenRounds(): Promise<void> {
     const maxWait = this.config.interRoundDelayMs ?? 0;
-    if (maxWait <= 0) return;
-    // 봇·미구현 에이전트는 awaitContinue가 없어 즉시 통과 → 사람만 게이트한다.
-    // 무효 요청이 오면 ack를 다 못 받아도 즉시 깨어난다.
-    await this.raceAbort(
-      Promise.all(
-        [...this.agents.values()].map((a) =>
-          a.awaitContinue ? a.awaitContinue(maxWait) : Promise.resolve(),
+    if (maxWait > 0) {
+      // 봇·미구현 에이전트는 awaitContinue가 없어 즉시 통과 → 사람만 게이트한다.
+      // 무효 요청이 오면 ack를 다 못 받아도 즉시 깨어난다.
+      await this.raceAbort(
+        Promise.all(
+          [...this.agents.values()].map((a) =>
+            a.awaitContinue ? a.awaitContinue(maxWait) : Promise.resolve(),
+          ),
         ),
-      ),
-    );
+      );
+    }
+    /*
+     * 상한이 지나도 **더 붙들라는 신호**가 있으면 기다린다 (`holdBetweenRounds`).
+     * 튜토리얼의 마지막 말풍선을 읽는 중에 새 국이 시작되면, 다 끝난 줄 알았던 판이
+     * 저 혼자 다시 시작한다. 여기에도 상한을 둬서 신호가 끊겨도 판은 결국 이어진다.
+     */
+    const held = this.config.holdBetweenRounds;
+    if (held === undefined) return;
+    for (let waited = 0; waited < HOLD_ROUND_MAX_MS && !this.aborted && held(); waited += HOLD_ROUND_POLL_MS) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const nap = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), HOLD_ROUND_POLL_MS);
+      });
+      await this.raceAbort(nap);
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   /**

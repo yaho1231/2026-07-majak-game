@@ -5603,7 +5603,13 @@ export function App(): JSX.Element {
           result={roundResult}
           view={view}
           catalog={catalog}
-          deadlineAt={roundResultDeadline.current}
+          /*
+           * 튜토리얼 중에는 **카운트다운을 걸지 않는다.** 말풍선이 떠 있는 동안에는
+           * 서버가 국 사이를 붙들고 있어서(`holdBetweenRounds`) 숫자가 0이 되어도
+           * 아무 일도 일어나지 않는다 — 거짓말하는 시계는 없느니만 못하다.
+           * 코치를 끄면(«그만 보기») 그 순간부터 평소의 시계가 돌아온다.
+           */
+          deadlineAt={coachOn ? null : roundResultDeadline.current}
           onClose={closeRoundResult}
         />
       ) : null}

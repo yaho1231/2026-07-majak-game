@@ -373,6 +373,37 @@ describe("튜토리얼 판 — 시간에 쫓기지 않는다", () => {
     expect(Number.isFinite(cfg?.agentDecideTimeoutMs)).toBe(true);
   });
 
+  it("말풍선이 떠 있으면 국 사이도 붙든다 — 마지막 안내를 읽는 중에 새 국이 시작되지 않게", async () => {
+    /*
+     * 마무리 말풍선("여기까지가 기본입니다")을 읽는 동안 국 사이 상한이 지나면 다음
+     * 국이 시작됐다 — 다 끝난 줄 알았던 판이 저 혼자 다시 시작한다(2026-08-19 사용자
+     * 보고). 봇의 결정을 멈추는 것과 같은 신호로 국 전환도 붙든다.
+     */
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    await pickDraftAndPlay(sock);
+    const room = (h.rm as any).rooms.values().next().value;
+    const held = room.controller.config.holdBetweenRounds as (() => boolean) | undefined;
+    expect(held, "튜토리얼 방에 국 사이 붙들기가 안 꽂혔다").toBeTypeOf("function");
+    // 신호를 보내면 붙들고, 풀면 놓는다 — 시한이므로 끊겨도 스스로 풀린다
+    expect(held!()).toBe(false);
+    sock.clientSend({ type: "tutorialHold", hold: true });
+    expect(held!()).toBe(true);
+    sock.clientSend({ type: "tutorialHold", hold: false });
+    expect(held!()).toBe(false);
+  });
+
+  it("체험판은 국 사이를 붙들지 않는다", async () => {
+    const h = await newHarness();
+    const sock = await connect(h, false);
+    await sock.waitFor((m) => m.type === "draftOffer");
+    const room = (h.rm as any).rooms.values().next().value;
+    expect(room.controller.config.holdBetweenRounds).toBeUndefined();
+    // 체험 손님이 이 신호를 보내도 아무 힘이 없다
+    sock.clientSend({ type: "tutorialHold", hold: true });
+    expect(room.tutorialHoldUntil).toBe(0);
+  });
+
   it("체험판은 종전 그대로 — 그물을 건드리지 않는다", async () => {
     const h = await newHarness();
     const sock = await connect(h, false);
