@@ -6,12 +6,24 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   2747 / 2747 통과 (실패 0)   ← 2026-08-18 갱신 (253 파일, 약 400~800초)
+npm test                   2756 / 2756 통과 (실패 0)   ← 2026-08-18 갱신 (253 파일, 약 236초 — vitest 4)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
 npm run typecheck:client   0 errors
 ```
+
+### vitest 4 · vite 8 로 올린 뒤 (2026-08-18)
+
+`npm audit` 5건(critical 1 · high 1)이 전부 vite/vitest 메이저를 요구해서 올렸다.
+**감사 0건**이 됐고 전체 실행이 오히려 빨라졌다(같은 트리 실측 400~800초 → 236초).
+
+⚠ 올린 직후 **130건이 한꺼번에 `Test timed out in 5000ms`로 떨어졌다.** 코드가
+느려진 것이 아니다 — vitest 4 이전에는 이 제한이 **동기 테스트에 사실상 적용되지
+않았다**(동기 본문은 중간에 끊을 수가 없어 끝까지 돌고 통과했다). 이 저장소의
+테스트 상당수는 실제 마작 한 국·한 판을 끝까지 굴리므로 한 건이 50~190초다.
+`vitest.config.ts`에 `testTimeout: 300_000`을 명시해 해결했다. 시간에 뜻이 있는
+검사들은 이미 자기 예산을 명시하고 있으므로(`HANCHAN_MS` 등) 그쪽이 실제 그물이다.
 
 전체 실행에서 간헐적으로 1건 실패가 나올 수 있다:
 
