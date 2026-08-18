@@ -51,6 +51,7 @@ const ctx = (over: Partial<CoachCtx> = {}): CoachCtx => ({
   // 기본값을 채워 두면 일반 강의를 검사하는 자리마다 대본이 끼어든다.
   handKinds: new Set<string>(),
   riichiDeclared: false,
+  won: false,
   seen: new Set<string>(),
   ...over,
 });
@@ -62,6 +63,12 @@ const onScreen =
     selectors.includes(q);
 
 const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;
+
+/** 액티브 증강을 무장한 상태의 표식 (`tutorial.ts`의 ARMED_AUG와 같은 선택자) */
+const ARMED = ".own-top-main .aug-btn-armed";
+
+/** 마무리가 요구하는 강의들 (tutorial.ts의 `OUTRO_NEEDS`와 한 쌍 — 이름이 어긋나면 안 끝난다) */
+const OUTRO_IDS = ["hand", "dora", "aug-pill", "zoom", "quick-toggles", "codex", "help", "settings"];
 
 describe("무엇을 언제 꺼내는가", () => {
   it("판에 들어오면 환영부터", () => {
@@ -90,23 +97,24 @@ describe("무엇을 언제 꺼내는가", () => {
     expect(pickLesson(ctx({ seen }))?.id).toBe("dora");
   });
 
-  it("화료를 해 봐야 마무리가 나온다", () => {
-    // 마무리 조건은 "강의를 몇 개 봤나"가 아니라 **판을 끝냈나**다 — 리치도 론도
-    // 안 해 본 사람에게 "여기까지가 기본입니다"가 뜨면 정작 점수가 오가는 순간을
-    // 한 번도 안 보여 준 채 끝난다(2026-08-18 사용자 지시).
-    const others = LESSONS.map((l) => l.id).filter((id) => id !== "outro");
-    // 화료를 안 해 봤으면 다른 걸 전부 봤어도 마무리가 아니다
-    const noWin = new Set(others.filter((id) => id !== "ron" && id !== "win"));
-    expect(pickLesson(ctx({ seen: noWin }))?.id).not.toBe("outro");
-    // 론 하나면 선다 (쯔모로 끝냈어도 마찬가지)
-    expect(pickLesson(ctx({ seen: new Set([...noWin, "ron"]) }))?.id).toBe("outro");
-    expect(pickLesson(ctx({ seen: new Set([...noWin, "win"]) }))?.id).toBe("outro");
+  it("화료를 **해 봐야** 마무리가 나온다 — 강의를 본 것으로는 안 된다", () => {
+    /*
+     * 마무리 조건은 "강의를 몇 개 봤나"가 아니라 **정말 이겼나**다.
+     * 한때 `seen.has("ron")`으로 셌더니, 론 강의를 «건너뛰기»로 넘긴 사람에게
+     * 곧바로 "화료까지 해 보셨습니다"가 떴다 — 론 버튼이 아직 화면에 있는데도
+     * 그랬다(2026-08-18 실측).
+     */
+    const all = new Set(LESSONS.map((l) => l.id).filter((id) => id !== "outro"));
+    expect(pickLesson(ctx({ seen: all, won: false }))?.id).not.toBe("outro");
+    expect(pickLesson(ctx({ seen: all, won: true }))?.id).toBe("outro");
   });
 
   it("지금 판에서 벌어지는 일이 '늘 참인 강의'보다 먼저다", () => {
     // 예전에는 후로·리치·화료가 목록 맨 아래라, 치가 성립해 판이 내 답을 기다리는
     // 동안 코치가 "설정은 여기 있습니다"를 말했다(2026-08-18 실측).
-    const seen = new Set(["welcome", "hand", "discard"]);
+    // `conjured`(보라 생성패)는 화면에 그 패가 있으면 끼어드는 강의라, 여기서는
+    // 이미 본 것으로 두고 시작한다 — 이 테스트가 보려는 것은 후로·리치·화료의 자리다.
+    const seen = new Set(["welcome", "hand", "discard", "conjured"]);
     const late = ctx({ seen, view: viewWith(13, 4), hit: () => true });
     expect(pickLesson({ ...late, optionTypes: new Set(["chi", "pass"]) })?.id).toBe("call");
     expect(pickLesson({ ...late, optionTypes: new Set(["riichi", "discard"]) })?.id).toBe("riichi");
@@ -274,7 +282,7 @@ describe("읽던 강의를 밀어내고 끼어든다", () => {
   });
 
   it("아무 일도 안 벌어지면 끼어들지 않는다", () => {
-    const seen = new Set(["welcome", "hand", "discard"]);
+    const seen = new Set(["welcome", "hand", "discard", "conjured"]);
     expect(pickUrgent(ctx({ seen, view: viewWith(13, 4), hit: () => true }))).toBeNull();
   });
 
@@ -325,18 +333,26 @@ describe("대본 강의 (`SCRIPT_NOTE`)", () => {
     expect(l.done?.(scripted({ optionTypes: new Set() }))).toBe(true);
   });
 
-  it("연금술사는 '바꿀 패를 클릭'이 아니라 1삭을 지목한다", () => {
-    const c = scripted({
+  it("연금술사는 두 마디다 — 먼저 버튼, 그다음 1삭", () => {
+    /*
+     * 딤은 한 번에 한 곳만 비춘다. 한 마디로 붙여 놓으면 "손패의 1삭"을 비추면서
+     * 정작 먼저 눌러야 할 «✦ 액티브 증강»이 어두운 쪽에 남는다(2026-08-18 사용자
+     * 지적: "뭘 눌러야하는지 잘 모르겠어"). 누를 곳이 둘이면 마디도 둘이어야 한다.
+     */
+    const base = {
       seen: new Set(["welcome", "hand", "discard-script"]),
       view: viewWith(14, 1),
       augmentReady: true,
-      hit: () => true,
-    });
-    const l = pickUrgent(c)!;
-    expect(l.id).toBe("aug-script");
-    expect(l.lock).toEqual({ kind: "sou1", how: "augment" });
-    // 후보가 하나뿐인 패라 되묻는 창 없이 그대로 발동한다 — 그 사실이 문구에 있다
-    expect(l.body).toContain("2삭");
+    };
+    // 아직 무장 전 — 버튼(또는 열린 목록)을 가리킨다
+    const before = pickUrgent(scripted({ ...base, hit: (q: string) => q !== ARMED }))!;
+    expect(before.id).toBe("aug-script");
+    expect(before.anchor).toContain("aug-btn");
+    expect(before.body).toContain("2삭");
+    // 무장한 뒤 — 이제 손패의 그 한 장을 가리키고 잠근다
+    const after = pickUrgent(scripted({ ...base, hit: () => true }))!;
+    expect(after.id).toBe("aug-script-pick");
+    expect(after.lock).toEqual({ kind: "sou1", how: "augment" });
   });
 
   it("1삭이 바뀌면(또는 없으면) 연금술 대본은 끝난 것으로 본다", () => {
@@ -369,6 +385,12 @@ describe("대본 강의 (`SCRIPT_NOTE`)", () => {
 
   it("잠근 강의는 잠근 그 패를 가리킨다 — 다른 것을 빛내면 안 된다", () => {
     for (const l of LESSONS.filter((x) => x.lock !== undefined)) {
+      if (l.id === "aug-script") {
+        // 무장 **전** 마디 — 잠금은 손패에 걸지만(그 패를 못 버리게) 가리키는 것은
+        // 먼저 눌러야 할 버튼이다. 어느 패인지는 다음 마디가 비춘다.
+        expect(l.anchor, "무장 전에는 버튼을 가리킨다").toContain("aug-btn");
+        continue;
+      }
       if (l.lock!.kind === DRAWN_TILE) {
         // 종류가 아니라 자리로 잠근 것(리치) — 먼저 눌러야 할 버튼을 가리키고,
         // 어느 패를 버릴지는 «해 보세요»가 말한다.
@@ -436,6 +458,7 @@ describe("강의가 지키는 규약", () => {
      */
     const ids = new Set(LESSONS.map((l) => l.id));
     for (const id of ["ron", "win"]) expect(ids.has(id), `${id} 강의가 사라졌다`).toBe(true);
+    for (const id of OUTRO_IDS) expect(ids.has(id), `${id} 강의가 사라졌다`).toBe(true);
 
     // 판이 몇 순 돌고 화면 도구가 다 떠 있는 상태 — 여기서 성립하지 않는 강의를
     // 마무리가 요구하고 있으면 그 튜토리얼은 못 끝난다.
@@ -444,6 +467,7 @@ describe("강의가 지키는 규약", () => {
       hit: () => true,
       augmentReady: true,
       riichiDeclared: true,
+      won: true,
     });
     const openLate = new Set(LESSONS.filter((l) => l.when(late)).map((l) => l.id));
     const needed = LESSONS.filter((l) => l.id === "outro")[0]!;
@@ -451,7 +475,7 @@ describe("강의가 지키는 규약", () => {
     // 전부 봤다고 하면 마무리가 선다
     expect(needed.when({ ...late, seen: all })).toBe(true);
     // 화료만으로는 안 선다 (화면 도구를 안 짚고 끝나던 것이 이 조건의 이유다)
-    expect(needed.when({ ...late, seen: new Set(["ron"]) })).toBe(false);
+    expect(needed.when({ ...late, seen: new Set() })).toBe(false);
     // 마무리가 요구하는 것들은 이 국면에서 전부 성립한다 = 언젠가 반드시 볼 수 있다
     for (const id of all) {
       if (id === "outro") continue;
@@ -613,6 +637,7 @@ describe("리치를 건 뒤에는 조용해진다", () => {
     hit: () => false,
     handKinds: new Set<string>(),
     riichiDeclared: true,
+    won: false,
     seen: new Set<string>(["welcome", "hand", "discard-script"]),
     ...over,
   });

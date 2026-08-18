@@ -120,6 +120,14 @@ export interface CoachCtx {
   handKinds: ReadonlySet<string>;
   /** 내가 리치를 선언한 상태인가 */
   riichiDeclared: boolean;
+  /**
+   * **내가 이 판을 이겨 봤는가** — 화료 버튼을 눌러 실제로 점수를 받았는가.
+   *
+   * "화료 강의를 봤는가"(`seen`)로는 못 센다. 강의를 «건너뛰기»로 넘긴 사람에게도
+   * 마무리가 떠서 "화료까지 해 보셨습니다"라고 말했다(2026-08-18 실측) — 아직
+   * 론 버튼이 화면에 그대로 있는데도. 본 것과 한 것은 다르다.
+   */
+  won: boolean;
   /** 이미 본 강의 id */
   seen: ReadonlySet<string>;
 }
@@ -283,6 +291,8 @@ const CALL_TYPES = ["chi", "pon", "minkan", "kokushi_pon", "bluff_pon", "silent_
 const MY_PILLS = ".own-top-main .aug-pill";
 /** 내 이름표에서 지금 펼쳐진 증강 툴팁 */
 const MY_TIP = ".own-top-main .aug-tip";
+/** 액티브 증강을 **무장한** 상태 — 이제 대상을 클릭하면 터진다 (버튼이 그 상태를 입는다) */
+const ARMED_AUG = ".own-top-main .aug-btn-armed";
 
 /**
  * 강의 목록 — **위에 있을수록 먼저**.
@@ -448,12 +458,22 @@ export const LESSONS: readonly Lesson[] = [
     body: "손이 완성됐습니다. 빨간 버튼을 누르면 이 국이 끝나고 세 사람 모두에게서 점수를 받습니다.",
     todo: "«쯔모» 버튼을 누르세요.",
     anchor: ".act-win",
-    when: (c) => c.optionTypes.has("win"),
+    /*
+     * **내 차례일 때만.** 예전에는 화료 선택지만 보고 열었는데, 그러면 론 강의를
+     * «건너뛰기»로 넘긴 사람에게 곧바로 "쯔모!"가 떴다 — 같은 순간을 두 번 설명하는
+     * 데다, 남이 버린 패를 내가 가져온 것처럼 말하는 셈이다(2026-08-18 사용자 지적).
+     */
+    when: (c) => c.optionTypes.has("win") && myTurn(c),
     done: (c) => !c.optionTypes.has("win"),
   },
   {
     /*
-     * **대본 2 — 연금술사로 1삭을 2삭으로** (§대본).
+     * **대본 2 — 연금술사로 1삭을 2삭으로** (§대본). 두 마디로 끊는다.
+     *
+     * 한 마디로 붙여 놓았더니 이런 일이 생겼다: 딤은 **손패의 1삭**을 비추는데
+     * 정작 먼저 눌러야 할 «✦ 액티브 증강» 버튼은 어두운 쪽에 있었다 — "뭘 눌러야
+     * 하는지 모르겠다"(2026-08-18 사용자 지적). 딤은 한 번에 한 곳만 비출 수 있으니,
+     * 누를 곳이 둘이면 마디도 둘이어야 한다.
      *
      * 증강을 "설명"하는 강의(`aug-pill`·`aug-btn`)보다 **위**에 둔다. 이유는 순서가
      * 아니라 자원이다: 1삭은 누가 봐도 버릴 패라, 읽는 강의 몇 개를 먼저 흘려보내는
@@ -466,16 +486,40 @@ export const LESSONS: readonly Lesson[] = [
     id: "aug-script",
     urgent: true,
     chapter: "증강 읽기",
-    title: "⚡ 증강을 직접 써 봅시다 — 1삭을 2삭으로",
-    body: `내 증강 «연금술사»는 손패 한 장의 숫자를 ±1 옮깁니다. 1삭을 ${SCRIPT_ALCHEMY_TO}으로 만들면 2삭이 세 장이 되어 한 장만 더 맞으면 완성인 손이 됩니다.`,
+    title: "⚡ 증강을 써 봅시다 — 먼저 «✦ 액티브 증강»",
+    body: `내 증강 «연금술사»는 손패 한 장의 숫자를 ±1 옮깁니다. 1삭을 ${SCRIPT_ALCHEMY_TO}으로 만들면 2삭이 세 장이 되어, 한 장만 더 맞으면 완성인 손이 됩니다.`,
     // 쓸 수 있는 액티브 증강이 둘 이상이면(시작 증강 + 이번 국에 고른 것) 버튼을 누른
     // 뒤에 **고르는 줄이 한 번 더** 뜬다. 그 단계를 안 적어 두면 목록 앞에서 멈춘다
     // (2026-08-18 실측 — 첫 국부터 둘인 경우가 흔하다).
-    todo: "«✦ 액티브 증강»을 누르고(목록이 뜨면 «연금술사»), 빛나는 1삭을 클릭하세요.",
-    anchor: handTile(SCRIPT_ALCHEMY),
+    todo: "빛나는 «✦ 액티브 증강»을 누르세요. 목록이 뜨면 «연금술사»를 고릅니다.",
+    /*
+     * 목록이 떠 있으면 **목록을** 비춘다. 버튼만 가리키면 정작 다음에 눌러야 할 줄이
+     * 어두운 쪽에 남는다. `rectOf`는 문서 순서로 첫 번째 것을 집는데, 메뉴가 버튼보다
+     * 먼저 그려지므로(App.tsx `own-aug`) 이 한 줄이면 "열렸으면 목록, 아니면 버튼"이 된다.
+     */
+    anchor: ".aug-menu, .own-top-main .aug-btn",
+    // 무장 전에 1삭을 버려 버리는 것을 막는다 (그 순간 대본이 무너진다)
     lock: { kind: SCRIPT_ALCHEMY, how: "augment" },
     when: (c) =>
-      c.augmentReady && c.handKinds.has(SCRIPT_ALCHEMY) && turns(c.view) >= 1 && !c.riichiDeclared,
+      c.augmentReady &&
+      c.handKinds.has(SCRIPT_ALCHEMY) &&
+      turns(c.view) >= 1 &&
+      !c.riichiDeclared &&
+      !c.hit(ARMED_AUG),
+    /** 무장했는가 — 버튼이 그 상태를 이미 클래스로 말하고 있다(§판정은 화면에서) */
+    done: (c) => c.hit(ARMED_AUG) || c.hit(".tile-conjured") || !c.handKinds.has(SCRIPT_ALCHEMY),
+  },
+  {
+    /** **대본 2-2** — 무장한 뒤. 이제 비출 곳은 손패의 그 한 장이다. */
+    id: "aug-script-pick",
+    urgent: true,
+    chapter: "증강 읽기",
+    title: "이제 빛나는 1삭을 누르세요",
+    body: "누르는 순간 2삭으로 바뀝니다. 1삭은 올릴 방향이 하나뿐이라 되묻지 않고 그대로 발동합니다.",
+    todo: "손패에서 빛나는 1삭을 클릭하세요.",
+    anchor: handTile(SCRIPT_ALCHEMY),
+    lock: { kind: SCRIPT_ALCHEMY, how: "augment" },
+    when: (c) => c.hit(ARMED_AUG) && c.handKinds.has(SCRIPT_ALCHEMY) && !c.riichiDeclared,
     /*
      * 끝난 신호는 **보라 생성패가 생겼는가**가 먼저다. "1삭이 손에서 사라졌는가"만
      * 보면 그 순에 1삭을 한 장 더 쯔모했을 때(실제로 일어난다) 이미 바꿔 놓고도
@@ -483,6 +527,24 @@ export const LESSONS: readonly Lesson[] = [
      * 둘째 갈래는 대본을 벗어난 경우(버렸거나 애초에 없었다)를 위한 것이다.
      */
     done: (c) => c.hit(".tile-conjured") || !c.handKinds.has(SCRIPT_ALCHEMY),
+  },
+  {
+    /*
+     * 보라 생성패 — **만든 직후에** 말한다.
+     *
+     * 예전에는 «증강 읽기» 장 뒤쪽에 있어서 리치를 걸고 난 뒤에야 나왔다. 그때는
+     * 손패가 통째로 어둡다(리치라 버릴 수 없으니 판이 스스로 어둡게 한다) — 코치가
+     * 비추는 그 패까지 어두워서 "강조를 하는데 딤이 남아 있다"가 됐다(2026-08-18
+     * 사용자 지적). 방금 만든 순간에는 손패가 밝다.
+     */
+    id: "conjured",
+    urgent: true,
+    chapter: "증강 읽기",
+    title: "보라색 패 = 증강이 만들어낸 패",
+    body: "원래 패산에 있던 136장이 아니라 증강이 새로 만든 패입니다. 도라의 노란 반짝임과는 색으로 구분됩니다 — 노랑은 도라, 보라는 생성패입니다.",
+    // 내 손이든 상대 바닥이든, 지금 화면에 있는 그 패를 가리킨다 (봇도 생성패를 만든다)
+    anchor: ".tile-conjured",
+    when: (c) => c.hit(".tile-conjured"),
   },
   {
     /**
@@ -574,14 +636,6 @@ export const LESSONS: readonly Lesson[] = [
     done: (c) => c.hit(".own-top-main .augdesc-body-full"),
   },
   {
-    id: "aug-terms",
-    chapter: "증강 읽기",
-    title: "밑줄 그인 말은 눌러 보면 풀이가 나옵니다",
-    body: "슌쯔·오름패처럼 처음 보는 마작 용어에는 밑줄이 있습니다. 잠깐 올려 두거나 누르면 한 줄 풀이가 뜹니다. 전체 목록은 📘 규칙의 «용어» 탭에 있어요.",
-    anchor: ".gterm",
-    when: (c) => !c.draftOpen && c.hit(".gterm"),
-  },
-  {
     id: "aug-btn",
     chapter: "증강 읽기",
     title: "⚡ 액티브 증강은 직접 눌러야 터집니다",
@@ -605,15 +659,6 @@ export const LESSONS: readonly Lesson[] = [
     anchor: ".own-top-main .aug-btn",
     when: (c) => c.augmentReady && c.hit(".own-top-main .aug-btn") && !c.hit(".tile-conjured"),
     done: (c) => c.hit(".tile-conjured"),
-  },
-  {
-    id: "conjured",
-    chapter: "증강 읽기",
-    title: "보라색 패 = 증강이 만들어낸 패",
-    body: "원래 패산에 있던 136장이 아니라 증강이 새로 만든 패입니다. 도라의 노란 반짝임과는 색으로 구분됩니다 — 노랑은 도라, 보라는 생성패입니다.",
-    // 내 손이든 상대 바닥이든, 지금 화면에 있는 그 패를 가리킨다 (봇도 생성패를 만든다)
-    anchor: ".tile-conjured",
-    when: (c) => c.hit(".tile-conjured"),
   },
   {
     id: "aug-others",
@@ -666,7 +711,13 @@ export const LESSONS: readonly Lesson[] = [
     id: "help",
     chapter: "화면 도구",
     title: "📘 규칙 · 도움말 — 역·점수·용어",
-    body: "리치마작을 처음 해도 길을 잃지 않을 만큼만 적어 두었습니다. «용어» 탭에는 이 게임에 나오는 말이 전부 풀이돼 있어요.",
+    /*
+     * **용어 이야기는 여기 한 번만.** 예전에는 «증강 읽기» 장에도 "밑줄 그인 말은
+     * 눌러 보면 풀이가 나옵니다"가 따로 있어서, 같은 이야기를 두 번 들었다
+     * (2026-08-18 사용자 지적: "뒤에꺼만 나오게"). 밑줄 이야기를 여기로 합쳤다 —
+     * 이 자리가 «용어» 탭을 여는 법과 한 몸이라 설명이 흩어지지 않는다.
+     */
+    body: "리치마작을 처음 해도 길을 잃지 않을 만큼만 적어 두었습니다. 판 위에서 밑줄 그인 말(슌쯔·오름패…)은 눌러 보면 그 자리에서 한 줄 풀이가 뜨고, 전체 목록은 여기 «용어» 탭에 있어요.",
     todo: "오른쪽 위 📘를 눌러 열어 보세요.",
     anchor: ".help-btn",
     when: (c) => !c.draftOpen && handsFree(c),
@@ -702,10 +753,16 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "settings",
     chapter: "화면 도구",
-    title: "⚙ 설정 — 자동정렬·소리·용어 설명",
-    // 자동 응답이 튜토리얼 동안 멈춰 있다는 사실을 여기서 말한다. 안 적으면 켜 보고
-    // "안 먹는다"가 된다 (App.tsx `tryAutoRespond`의 튜토리얼 예외).
-    body: "자동 화료, 후로 안 하기, 효과음, 용어 설명 켜고 끄기가 전부 여기 있습니다. 맨 아래에는 게임 무효 투표도 있어요. 자동으로 대신 눌러 주는 설정들은 튜토리얼 동안만 쉽니다 — 직접 눌러 보셔야 하니까요.",
+    title: "⚙ 설정 — 손맛·소리·효과",
+    /*
+     * ⚠ 여기 적는 것은 **설정창에 실제로 있는 것**이어야 한다. 한때 "자동 화료,
+     * 후로 안 하기"라고 적혀 있었는데 그 넷은 좌하단 빠른 토글로 빠진 지 오래였다
+     * (2026-08-18 사용자 지적) — 코치가 없는 스위치를 가리키고 있었던 셈이다.
+     * 지금 있는 것: 두 번 눌러 버리기 · 내 오름패 표시 · 우클릭 쯔모기리 ·
+     * 도라 반짝임 · 화면 효과 · 효과음(+음량) · 진동 · 용어 설명 · 연출 속도 ·
+     * 게임 무효 요청.
+     */
+    body: "패를 어떻게 버릴지(두 번 눌러 버리기·우클릭 쯔모기리), 내 오름패를 보여 줄지, 화면 효과와 소리, 연출 속도가 여기 있습니다. 맨 아래에는 게임 무효 요청도 있어요. 자동정렬·자동화료 같은 것은 여기가 아니라 방금 본 왼쪽 아래 줄입니다.",
     todo: "오른쪽 위 ⚙를 눌러 열어 보세요.",
     anchor: ".settings-btn",
     when: (c) => !c.draftOpen && handsFree(c),
@@ -726,8 +783,11 @@ export const LESSONS: readonly Lesson[] = [
     id: "outro",
     chapter: "한 판 끝내기",
     title: "화료 성공 — 여기까지가 기본입니다",
-    body: "리치를 걸고 화료까지 해 보셨습니다. 나머지는 두면서 익히면 됩니다. 이 판은 계속 두셔도 되고, «🎓 튜토리얼» 버튼으로 언제든 다시 오실 수 있어요 — 로그인 화면과 홈 양쪽에 있습니다.",
-    when: (c) => OUTRO_NEEDS.every((id) => c.seen.has(id)) && (c.seen.has("ron") || c.seen.has("win")),
+    // 이 강의를 닫으면 판을 접고 처음 화면으로 돌아간다(App.tsx `onFinish`) —
+    // 그렇게 하기로 했으면 **그렇다고 적어 두어야** 한다. 안 적으면 누른 사람에게는
+    // 판이 갑자기 사라진 것으로 보인다(2026-08-18 사용자 지시).
+    body: "리치를 걸고 화료까지 해 보셨습니다. 나머지는 두면서 익히면 됩니다. «알겠어요»를 누르면 이 판을 접고 처음 화면으로 돌아갑니다 — «🎓 튜토리얼»은 로그인 화면과 홈 양쪽에 있으니 언제든 다시 오세요.",
+    when: (c) => c.won && OUTRO_NEEDS.every((id) => c.seen.has(id)),
   },
 ];
 

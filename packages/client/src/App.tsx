@@ -5097,6 +5097,21 @@ export function App(): JSX.Element {
   /** 내가 리치를 선언했는가 — 코치의 "이제 기다립니다" 강의가 이걸 본다 */
   const myRiichiDeclared =
     view !== null && view.round.byPlayer[view.playerId]?.riichiDeclared === true;
+  /**
+   * **내가 이 판을 이겨 봤는가** — 마무리 강의의 조건 (`CoachCtx.won`).
+   *
+   * 정산 결과의 화료자 명단에서 찾는다. 강의를 봤는지(`seen`)로 세면 «건너뛰기»로
+   * 넘긴 사람에게도 "화료까지 해 보셨습니다"가 뜬다 — 아직 론 버튼이 화면에 그대로
+   * 있는데도 그랬다(2026-08-18 실측).
+   */
+  const iWonRef = useRef(false);
+  if (
+    roundResult !== null &&
+    view !== null &&
+    (roundResult.settle.winInfos ?? []).some((w) => w.winner === view.playerId)
+  ) {
+    iWonRef.current = true;
+  }
   const cbCoachLock = useStableFn((lock: LessonLock | null) => setCoachLock(lock));
   /**
    * 말풍선이 떠 있는 동안 서버에 "기다려 달라"고 알린다
@@ -5425,17 +5440,25 @@ export function App(): JSX.Element {
             overlay: helpOpen ? "help" : codexOpen ? "codex" : null,
             handKinds: myHandKinds,
             riichiDeclared: myRiichiDeclared,
+            won: iWonRef.current,
           }}
           // 도감·규칙이 판을 덮는 동안은 그림만 걷는다 (컴포넌트 주석 참고)
           hidden={helpOpen || codexOpen}
           onLock={cbCoachLock}
           onHold={cbCoachHold}
-          onFinish={() => {
+          onFinish={(completed) => {
             setCoachOn(false);
             setCoachLock(null);
             cbCoachHold(false);
             tutorialDone.current = true;
             safeStorage.setItem(TUTORIAL_KEY, "1");
+            /*
+             * 끝까지 본 사람은 **판에서 내보낸다** (2026-08-18 사용자 지시).
+             * 튜토리얼 판은 배우려고 고정해 둔 판이라(늘 같은 배패, 화료도 안 하는 봇)
+             * 그대로 두면 다음 국부터는 배울 것도 없는 이상한 대국이 이어진다.
+             * 반대로 «그만 보기»는 "안내만 그만"이라는 뜻이므로 판은 그대로 둔다.
+             */
+            if (completed) returnHome();
           }}
         />
       ) : null}
@@ -5963,8 +5986,12 @@ function TutorialCoach(props: {
    * 가리키던 것이 화면에서 사라진다.
    */
   onHold: (holding: boolean) => void;
-  /** 끝까지 봤거나 사용자가 그만 보기를 눌렀다 */
-  onFinish: () => void;
+  /**
+   * 코치가 물러난다.
+   * @param completed 끝까지 봤는가 — 마무리 강의를 닫은 경우에만 true다.
+   *   «그만 보기»로 끈 사람은 계속 두고 싶다는 뜻이므로 판을 건드리면 안 된다.
+   */
+  onFinish: (completed: boolean) => void;
 }): JSX.Element | null {
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set<string>());
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -6010,7 +6037,7 @@ function TutorialCoach(props: {
   const retire = useStableFn((id: string) => {
     setSeen((prev) => new Set(prev).add(id));
     setActiveId(null);
-    if (id === "outro") props.onFinish();
+    if (id === "outro") props.onFinish(true);
   });
 
   // 사용자가 그 조작을 실제로 마쳤으면 저절로 넘어간다
@@ -6205,7 +6232,7 @@ function TutorialCoach(props: {
           >
             {active.todo === undefined ? "알겠어요" : "건너뛰기"}
           </button>
-          <button className="coach-quit" onClick={props.onFinish}>
+          <button className="coach-quit" onClick={() => props.onFinish(false)}>
             그만 보기
           </button>
         </div>
