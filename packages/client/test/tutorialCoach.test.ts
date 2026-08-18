@@ -10,6 +10,9 @@
  * - **화면 판정**: 고정·발광·생성패 같은 조작은 DOM 표식(`hit`)으로만 판정한다.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { PlayerView } from "@majak/core";
 import { DRAWN_TILE, LESSONS, pickLesson, pickUrgent, placeBubble } from "../src/tutorial.js";
@@ -683,5 +686,38 @@ describe("대본의 순서를 운이 앞지르지 않는다", () => {
 
   it("대본과 무관한 판(1삭이 없다)에서는 그냥 리치가 열린다", () => {
     expect(lesson("riichi").when(both({ handKinds: new Set(["pin7"]) }))).toBe(true);
+  });
+});
+
+// ─────────────── 잠금은 **버리는 길을 전부** 막는가 (소스 스캔) ───────────────
+
+/*
+ * 튜토리얼이 "이 패를 버리세요"라고 잠근 동안, 그 잠금을 우회해 패가 나가는 길이
+ * 있으면 안 된다. 이 판에서 패가 나가는 길은 셋이다 — 클릭 · 드래그 · 오른쪽 버튼.
+ * 오른쪽 버튼(쯔모기리)이 실제로 뚫려 있었다(2026-08-18 실측): 코치가 9삭을 지목한
+ * 순에 오른쪽 버튼 한 번이면 다음 마디에서 쓸 1삭이 그대로 나갔다.
+ *
+ * jsdom이 없는 패키지라 다른 가드들과 같은 방식으로 **소스를 읽어** 못을 박는다
+ * (onboardingAndLiveness.test.ts와 같은 결).
+ */
+describe("잠금이 막는 길 (App.tsx 소스 가드)", () => {
+  const APP = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/App.tsx"), "utf8");
+
+  it("오른쪽 버튼 쯔모기리도 잠금을 본다", () => {
+    const fn = APP.slice(
+      APP.indexOf("function rightClickTsumogiri"),
+      APP.indexOf("function rightClickTsumogiri") + 1800,
+    );
+    expect(fn, "rightClickTsumogiri가 코치 잠금을 확인하지 않는다").toContain(
+      "coachBlocksDiscard",
+    );
+  });
+
+  it("드래그로 버리는 길도 잠금을 본다", () => {
+    const fn = APP.slice(
+      APP.indexOf("function discardOptionFor"),
+      APP.indexOf("function discardOptionFor") + 1200,
+    );
+    expect(fn, "discardOptionFor가 코치 잠금을 확인하지 않는다").toContain("coachBlocksDiscard");
   });
 });

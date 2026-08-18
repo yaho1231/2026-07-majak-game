@@ -63,6 +63,7 @@ import {
   HumanAgent,
   MAX_BUFFERED_BYTES,
   SOLO_HOLD_MS,
+  TUTORIAL_DECISION_TIMEOUT_MS,
 } from "./HumanAgent.js";
 import { Prng } from "@majak/core/engine/random/Prng.js";
 import { BotAgent, seedFromId } from "./BotAgent.js";
@@ -738,6 +739,22 @@ const EMPTY_FEED: ReadonlySet<string> = new Set<string>();
  * 3분을 넘길 일은 없지만, 넘겨도 판이 다시 돌 뿐이라 손해가 없는 쪽으로 둔다.
  */
 const TUTORIAL_HOLD_TTL_MS = 3 * 60_000;
+
+/**
+ * 튜토리얼 방에서 **컨트롤러의 최후 그물**을 얼마나 늘릴 것인가
+ * (`HanchanConfig.agentDecideTimeoutMs`, 기본 90초).
+ *
+ * 그 그물은 "답이 영영 안 오는 에이전트"용인데, 튜토리얼에서는 둘 다 정상적으로
+ * 오래 끈다 — 사람은 사실상 무제한이고(`TUTORIAL_DECISION_TIMEOUT_MS`), 봇은
+ * 말풍선이 떠 있는 동안 답을 미룬다(`TUTORIAL_HOLD_NOTE`). 90초를 그대로 두면
+ * **배우는 사람의 차례가 대신 두어지고**(로그: `p0 decide 무응답 90000ms`),
+ * 봇의 결정도 안전 폴백으로 갈아치워져 리치 대기패 배급이 통째로 사라진다 —
+ * 실제로 그렇게 유국이 났다(2026-08-18 실측).
+ *
+ * 끄지 않고 늘린다: 사람의 제한(30분)보다 넉넉해야 "에이전트 자신의 타이머가 먼저
+ * 터진다"는 그물의 전제가 지켜지고, 그러면서도 유한해서 소프트락은 여전히 없다.
+ */
+const TUTORIAL_AGENT_TIMEOUT_MS = TUTORIAL_DECISION_TIMEOUT_MS + 60_000;
 
 /**
  * 게스트 연결이 인증 뒤에 보낼 수 있는 메시지. **여기 없는 것은 전부 거부**다.
@@ -4489,7 +4506,9 @@ export class RoomManager {
       // 튜토리얼: 사람 좌석의 손패와 시작 증강만 고정한다 (`TUTORIAL_ROOM_NOTE`).
       // **드래프트는 그대로 둔다** — 증강을 고르는 것이 이 게임의 첫 조작이다.
       // 샌드박스와 같은 배관(`presetHands`/`presetAugments`)을 쓰므로 새 경로가 없다.
-      ...(room.tutorial ? tutorialPresets(room.agents) : {}),
+      ...(room.tutorial
+        ? { ...tutorialPresets(room.agents), agentDecideTimeoutMs: TUTORIAL_AGENT_TIMEOUT_MS }
+        : {}),
     }, {
       onEvent: (eventJson: string) => {
         writer?.write(eventJson);
