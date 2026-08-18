@@ -270,6 +270,11 @@ interface Room {
    * 방이 사라져도 남은 타이머는 한 번 깨어나 자기 방이 아직 살아 있는지 보고 그만둔다.
    */
   handOrderThrottle: Map<PlayerId, HandOrderThrottle>;
+  /**
+   * **판을 세워 둔 시한**(epoch ms) — 튜토리얼 코치가 말풍선을 띄우고 있는 동안
+   * 봇의 결정을 멈춰 둔다 (`TUTORIAL_HOLD_NOTE`). 0이면 안 세웠다.
+   */
+  tutorialHoldUntil: number;
 }
 
 /** 연결 1개의 상태 — 인증·방 참가·관전을 소켓 단위로 추적한다 */
@@ -717,6 +722,24 @@ const TUTORIAL_BOT_RULES: SandboxBotRules = { noWin: true, noRiichi: true };
 const EMPTY_FEED: ReadonlySet<string> = new Set<string>();
 
 /**
+ * ## 판 세워 두기 (TUTORIAL_HOLD_NOTE, 2026-08-18)
+ *
+ * 코치가 "증강 이름을 눌러 고정해 보세요"라고 말하는 동안에도 봇 셋은 제 차례가
+ * 오면 패를 버린다. 배우는 사람이 한 문단을 읽는 사이 판이 두세 순 지나가고,
+ * 가리키던 것이 화면에서 사라지기까지 한다 (2026-08-18 사용자 보고: "계속 봇이
+ * 타패하니까 움직여버려"). 튜토리얼에서는 **화면이 먼저고 판이 뒤**여야 한다.
+ *
+ * 그래서 클라이언트가 말풍선을 띄우는 동안 `tutorialHold`를 보내고, 그 사이 봇은
+ * 결정을 **내지 않고 들고 있는다**(`BotAgent.waitWhileHeld`). 사람의 차례는 원래도
+ * 사람을 기다리므로 이 신호가 막는 것은 봇뿐이다.
+ *
+ * 신호가 끊겨도 판이 영영 멈추지 않도록 **시한**으로 건다 — 창을 닫고 사라진 손님의
+ * 방이 그대로 굳어 버리면 그건 세워 둔 것이 아니라 고장이다. 한 말풍선을 읽는 데
+ * 3분을 넘길 일은 없지만, 넘겨도 판이 다시 돌 뿐이라 손해가 없는 쪽으로 둔다.
+ */
+const TUTORIAL_HOLD_TTL_MS = 3 * 60_000;
+
+/**
  * 게스트 연결이 인증 뒤에 보낼 수 있는 메시지. **여기 없는 것은 전부 거부**다.
  *
  * 판을 두는 데 필요한 것(액션·드래프트·손패 배치·결과 넘기기·나가기)만 들어 있다.
@@ -739,6 +762,9 @@ const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
   "roundContinue",
   "handOrder",
   "leaveRoom",
+  // 튜토리얼 손님이 "설명을 읽는 중이니 기다려 달라"고 말하는 통로 (`TUTORIAL_HOLD_NOTE`).
+  // 튜토리얼 방이 아니면 서버가 무시하므로 체험 손님에게는 아무 힘이 없다.
+  "tutorialHold",
   // 손님도 인사는 할 수 있어야 한다. 봇전이라 받는 사람이 없을 때도 있지만,
   // 사람이 낀 판을 나중에 열더라도 이 목록을 다시 손보지 않게 지금 넣어 둔다.
   "emote",
@@ -1397,6 +1423,9 @@ export class RoomManager {
        */
       conn.agent.suspend(SOLO_HOLD_MS);
       room.holdUntil = Date.now() + SOLO_HOLD_MS;
+      // 말풍선을 띄운 채 나갔을 수 있다 — 그 신호를 여기서 놓아 준다. 안 놓으면
+      // 돌아올 사람도 없는 방에서 봇 셋이 시한이 다할 때까지 서 있는다.
+      room.tutorialHoldUntil = 0;
       this.log(
         room,
         `${conn.agent.nickname} 접속 끊김 — 판을 ${Math.round(SOLO_HOLD_MS / 1000)}초간 세워 두고 기다린다`,
@@ -1730,6 +1759,15 @@ export class RoomManager {
       case "draftReroll":
       case "roundContinue": {
         conn.agent?.handleMessage(msg);
+        return;
+      }
+      // ── 튜토리얼: 말풍선을 읽는 동안 판을 세워 둔다 (`TUTORIAL_HOLD_NOTE`) ──
+      case "tutorialHold": {
+        const room = conn.room;
+        // 튜토리얼 방에서만 듣는다. 다른 방에서 이 신호가 먹히면 아무나 판을
+        // 멈춰 세울 수 있는 손잡이가 된다 — 그건 그냥 방해 도구다.
+        if (room === null || !room.tutorial) return;
+        room.tutorialHoldUntil = msg.hold === true ? Date.now() + TUTORIAL_HOLD_TTL_MS : 0;
         return;
       }
       // ── 게임 무효(중단) 투표 ──
@@ -2367,6 +2405,7 @@ export class RoomManager {
       sandboxRestarting: false,
       lastActivityAt: Date.now(),
       handOrderThrottle: new Map(),
+      tutorialHoldUntil: 0,
     };
     this.rooms.set(code, room);
     return room;
@@ -2626,6 +2665,8 @@ export class RoomManager {
         bot.setRestrictions(TUTORIAL_BOT_RULES);
         // 그리고 사람이 리치를 걸면 그 대기패를 쏴 준다 (`TUTORIAL_FEED_NOTE`).
         bot.setTutorialFeed(() => this.tutorialFeedKinds(room));
+        // 말풍선이 떠 있는 동안에는 아무도 패를 버리지 않는다 (`TUTORIAL_HOLD_NOTE`).
+        bot.setTutorialHold(() => room.tutorialHoldUntil > Date.now());
       }
       return bot;
     }

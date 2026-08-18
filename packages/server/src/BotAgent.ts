@@ -63,6 +63,14 @@ import type { BotFlags } from "./bot/flags.js";
 /** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
 
+/** 판 세워 두기(튜토리얼) — 다시 물어보는 간격. 사람 눈에는 즉시로 보이는 길이다. */
+const HOLD_POLL_MS = 120;
+/**
+ * 한 결정을 세워 둘 수 있는 상한. 서버 쪽에도 만료가 있지만
+ * (`RoomManager.TUTORIAL_HOLD_TTL_MS`), 봇이 무한히 자는 경로를 코드에 남기지 않는다.
+ */
+const HOLD_MAX_MS = 5 * 60_000;
+
 /**
  * **content가 준 코드가 던진 예외를 여기서 끊는다.**
  *
@@ -309,6 +317,39 @@ export class BotAgent implements PlayerAgent {
     return feedDiscard(options, this.lastView.tiles, this.feedKinds());
   }
 
+  /**
+   * **판을 세워 두라는 신호**를 읽는 손잡이 (튜토리얼 방 전용).
+   *
+   * 코치가 말풍선을 띄우고 있는 동안 봇이 계속 패를 버리면, 배우는 사람이 설명을
+   * 읽는 사이 판이 저 혼자 몇 순 지나간다 — 가리키던 것이 화면에서 사라지기까지
+   * 한다(2026-08-18 사용자 보고). 튜토리얼에서는 화면이 먼저고 판이 뒤다.
+   *
+   * 결정 자체는 이미 내려 놓고 **내는 것만** 미룬다. 그동안 판은 아무도 건드리지
+   * 않으므로(전원이 이 결정을 기다리는 중이다) 답이 낡을 일이 없다.
+   */
+  private held: (() => boolean) | null = null;
+
+  /** 판 세워 두기 손잡이를 꽂는다 (튜토리얼 방 전용 — `held` 주석). */
+  setTutorialHold(held: (() => boolean) | null): void {
+    this.held = held;
+  }
+
+  /**
+   * 세워 두라는 동안 기다린다. 짧은 잠을 반복하는 이유는 **깨울 수 있어야** 하기
+   * 때문이다 — `think()`는 `cancelDecision()`이 즉시 깨우므로, 방이 접히거나 상위
+   * 선언이 확정되면 여기서 붙들려 있지 않는다.
+   *
+   * 상한(`HOLD_MAX_MS`)을 두는 것은 신호가 끊긴 경우의 안전망이다. 서버 쪽에도
+   * 만료가 있지만(`TUTORIAL_HOLD_TTL_MS`), 봇이 무한히 자는 경로를 코드로 남겨 두지
+   * 않는 편이 낫다.
+   */
+  private async waitWhileHeld(): Promise<void> {
+    if (this.held === null) return;
+    for (let waited = 0; waited < HOLD_MAX_MS && this.held(); waited += HOLD_POLL_MS) {
+      await this.think(HOLD_POLL_MS);
+    }
+  }
+
   /** 실험 스위치를 건다 (측정 전용) */
   setFlags(flags: BotFlags): void {
     this.flags = flags;
@@ -397,6 +438,8 @@ export class BotAgent implements PlayerAgent {
    */
   async decide(prompt: DecisionPrompt): Promise<ActionOption> {
     const chosen = this.decideSafely(prompt);
+    // 튜토리얼: 말풍선이 떠 있는 동안에는 내지 않고 기다린다 (`held` 주석)
+    await this.waitWhileHeld();
     if (this.thinkMs > 0 && chosen.type !== "pass") {
       const weighty =
         chosen.type === "riichi" ||
@@ -727,6 +770,9 @@ export class BotAgent implements PlayerAgent {
      *
      * 실대국은 이 스위치가 비어 있어 영향이 없다.
      */
+    // 튜토리얼: 증강 선택창을 설명하는 동안에는 봇도 기다린다 — 셋이 먼저 뽑아
+    // 버리면 배우는 사람만 남아 창을 붙들고 있는 꼴이 된다 (`held` 주석).
+    await this.waitWhileHeld();
     if (this.flags.has("draftRandom")) {
       const pick = choices[this.botRng.int(choices.length)] ?? choices[0];
       if (pick !== undefined) return pick.id;

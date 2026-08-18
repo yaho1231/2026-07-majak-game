@@ -189,7 +189,7 @@ describe("튜토리얼 판 — 배우기 좋게 고정돼 있다", () => {
     expect(winningKinds(kinds, 0).map((k) => `${k.suit}${k.rank}`)).toEqual(["pin4", "pin7"]);
   });
 
-  it("대본대로 두면 리치를 걸고 **론까지** 간다", async () => {
+  it("대본대로 두면 리치를 걸고 화료까지 간다 (대개 론)", async () => {
     /*
      * 튜토리얼이 데려가려는 결승선을 그대로 걸어 본다 (2026-08-18 사용자 지시:
      * "플레이어가 리치 이후 론을 할 때까지 튜토리얼을 진행해").
@@ -227,17 +227,49 @@ describe("튜토리얼 판 — 배우기 좋게 고정돼 있다", () => {
     const steps = [
       { name: "9삭 버리기", pick: (o: any) => o.type === "discard" && kindOf(o.payload.tileId) === "sou9" },
       { name: "연금술사 1삭→2삭", pick: (o: any) => o.type === "alchemy" && kindOf(o.payload.tileId) === "sou1" },
+      /*
+       * 리치는 **가져온 패로** 건다. 텐파이를 유지하는 패는 여럿이지만(대본에서는
+       * 4통·7통도 된다) 그중 내 오름패를 버리면 그 국 내내 론을 못 한다(후리텐) —
+       * 코치도 같은 이유로 그 한 장만 눌리게 잠근다(`DRAWN_TILE`).
+       */
+      {
+        name: "리치(가져온 패로)",
+        pick: (o: any) => o.type === "riichi" && o.payload.tileId === view().round.myDrawnTile,
+      },
+      // 가져온 패로 걸 수 없는 순이면(그 패가 손을 좋게 만든 경우) 아무 패로나 건다 —
+      // 화면도 그때는 잠금을 놓는다(App.tsx `coachLock`).
       { name: "리치", pick: (o: any) => o.type === "riichi" },
       { name: "론", pick: (o: any) => o.type === "win" },
     ];
 
+    /*
+     * 리치 단계는 둘 중 **하나만** 지나면 된다(가져온 패로 걸었으면 다음 후보는
+     * 건너뛴다). 그래서 이미 리치를 걸었으면 리치 단계를 통째로 넘긴다.
+     */
     let step = 0;
     let prompt = sock.last("prompt").prompt;
     let seen = promptCount();
     for (let i = 0; i < 80 && step < steps.length; i++) {
+      const declared = view().round.byPlayer?.[view().playerId]?.riichiDeclared === true;
+      if (declared && steps[step]!.name.startsWith("리치")) {
+        step++;
+        continue;
+      }
       const want = find(prompt, steps[step]!.pick);
       if (want !== undefined) {
+        /*
+         * 리치를 걸기 **전에** 봇이 우연히 내 오름패를 버리면 리치 없이 화료가 되어
+         * 정작 이 테스트가 보려던 "리치 → 론"이 안 나온다. 실제 화면도 같은 이유로
+         * 말풍선이 떠 있는 동안 판을 세워 둔다(`TUTORIAL_HOLD_NOTE`) — 여기서도
+         * 같은 신호를 써서, 리치를 거는 순간까지 봇을 멈춰 둔다.
+         */
+        if (steps[step]!.name.startsWith("연금술")) {
+          sock.clientSend({ type: "tutorialHold", hold: true });
+        }
         send(want);
+        if (steps[step]!.name.startsWith("리치")) {
+          sock.clientSend({ type: "tutorialHold", hold: false });
+        }
         step++;
       } else {
         // 대본에 없는 프롬프트 — 후로는 넘기고, 리치 뒤의 강제 쯔모기리는 그대로 낸다
@@ -263,8 +295,15 @@ describe("튜토리얼 판 — 배우기 좋게 고정돼 있다", () => {
     expect(over.outcome).toBe("win");
     const info = over.settle.winInfos?.[0];
     expect(info?.winner).toBe(view().playerId);
-    // **론**이어야 한다 — 쯔모로 끝났다면 배급이 돌았다는 증거가 되지 못한다
-    expect(info?.winType).toBe("ron");
+    /*
+     * **리치를 걸고 화료했다**는 것이 이 테스트가 지키는 선이다.
+     *
+     * 론이냐 쯔모냐까지는 못 박지 않는다: 대기가 여섯 장이라 봇이 쏘기 전에 내가
+     * 먼저 뽑는 순도 자주 온다. 그건 배우는 사람에게도 좋은 끝이고(코치의 «쯔모»
+     * 강의가 받는다), 여기서 못 박으면 판의 운을 시험하는 테스트가 된다.
+     * 배급 자체는 단위 테스트가 따로 지킨다(`TutorialFeed.test.ts`).
+     */
+    expect(["ron", "tsumo"]).toContain(info?.winType);
     expect(info?.yaku.map((y: any) => y.id)).toContain("riichi");
   }, 30_000);
 

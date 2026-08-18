@@ -540,6 +540,24 @@ export interface RoundContinueMessage {
   type: "roundContinue";
 }
 
+/**
+ * **판을 세워 둔다** — 튜토리얼 코치가 말풍선을 띄우고 있는 동안 (튜토리얼 방 전용).
+ *
+ * 왜 필요한가: 코치가 "증강 이름을 눌러 고정해 보세요"라고 말하는 사이에도 봇 셋은
+ * 계속 패를 버린다. 배우는 사람이 설명을 읽는 동안 판이 저 혼자 몇 순 지나가 버리고,
+ * 가리키던 것이 화면에서 사라지기까지 한다(2026-08-18 사용자 보고). 튜토리얼에서는
+ * **화면이 먼저고 판이 뒤**여야 한다.
+ *
+ * 사람의 차례는 원래도 사람을 기다리므로 이 신호가 막는 것은 **봇의 결정**뿐이다.
+ * 서버는 튜토리얼 방에서만 받아들이고, 신호가 끊겨도 짧은 시간 뒤 스스로 풀린다
+ * (`TUTORIAL_HOLD_TTL_MS`) — 창을 닫고 사라진 손님 때문에 판이 영영 멈추지 않는다.
+ */
+export interface TutorialHoldMessage {
+  type: "tutorialHold";
+  /** true = 지금 말풍선을 읽는 중이니 기다려 달라, false = 다 읽었다 */
+  hold: boolean;
+}
+
 // ── 대기실(로비) 메시지 (14) ──
 
 /** 준비 상태 토글 (방장 제외 플레이어). */
@@ -643,6 +661,7 @@ export type ClientMessage =
   | PingMessage
   | HandOrderMessage
   | RoundContinueMessage
+  | TutorialHoldMessage
   | ReadyMessage
   | AddBotMessage
   | RemoveBotMessage
