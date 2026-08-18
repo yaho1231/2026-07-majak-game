@@ -20,6 +20,31 @@ import { TIME_PRESSURE_CHANNEL } from "@majak/content";
 export const DECISION_TIMEOUT_MS = 30_000;
 
 /**
+ * 튜토리얼 좌석의 제한 시간 — 사실상 없음(30분).
+ *
+ * ## 왜 "무제한"이 아니라 30분인가
+ *
+ * 튜토리얼은 안내를 **읽는** 시간이 곧 판이 멈춰 있는 시간이다. 30초 제한이 그대로
+ * 걸려 있으면 증강 설명을 두 문단 읽는 사이에 서버가 대신 골라 버린다 — 특히
+ * 증강 선택창은 시간이 다 되면 후보 중 하나를 **무작위로** 집는다(`armDraft`).
+ * 배우러 온 사람에게 그건 사고다 (2026-08-18 사용자 지시: "강제로 선택되는 경우는
+ * 없어야 한다").
+ *
+ * 그렇다고 타이머를 아예 안 걸면 `decide()`가 **영영 resolve되지 않는** 프로미스가
+ * 된다. 튜토리얼 방은 손님 방이라 소켓이 닫히면 `requestAbort()`로 루프가 빠져나오긴
+ * 하지만, 해소되지 않는 대기를 남기는 설계는 나중에 반드시 어딘가에서 샌다.
+ * 그래서 "사람이 절대 도달하지 않는 값"으로 두되 **반드시 끝나기는 하게** 한다.
+ *
+ * 화면에는 마감을 **싣지 않는다**(`deadlineMs: 0`) — 30분짜리 카운트다운은 초읽기가
+ * 있다는 인상만 주고 아무것도 알려 주지 않는다. 클라이언트는 0/미지정이면 시계를
+ * 그리지 않는다.
+ *
+ * 접속이 끊긴 좌석에는 이 값이 걸리지 않는다 — 평소대로 `DISCONNECT_GRACE_MS`다.
+ * 창을 닫고 간 사람 때문에 방이 30분씩 남아 있을 이유가 없다.
+ */
+export const TUTORIAL_DECISION_TIMEOUT_MS = 30 * 60_000;
+
+/**
  * 소켓이 끊긴 좌석의 결정 유예(ms).
  *
  * 탭을 닫으면 좌석은 그대로 남고(재접속을 위해) 게임 루프는 그 사실을 모른 채
@@ -178,6 +203,12 @@ export class HumanAgent implements PlayerAgent {
   roomCode = "";
 
   /**
+   * 튜토리얼 좌석인가 — 제한 시간을 사실상 없애고 화면에서 시계를 걷는다
+   * (`TUTORIAL_DECISION_TIMEOUT_MS`). RoomManager가 방을 열면서 켠다.
+   */
+  private tutorial = false;
+
+  /**
    * 끊긴 채로 유예 타임아웃을 **연속으로** 흘린 횟수. 재접속하면 0으로 돌아간다.
    * `GRACE_TIMEOUTS_BEFORE_ABANDON`에 닿으면 좌석을 이탈로 확정한다.
    */
@@ -308,21 +339,25 @@ export class HumanAgent implements PlayerAgent {
         } else {
           leftMs = Math.max(0, p.deadlineAt - Date.now());
         }
-        this.send({ type: "prompt", prompt: p.prompt, deadlineMs: leftMs });
+        this.send({
+          type: "prompt",
+          prompt: p.prompt,
+          deadlineMs: this.shownDeadlineMs(leftMs, false),
+        });
       }
     } else if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
       // 결정과 같은 규칙 — 유예로 걸렸던 타이머는 정상 시간으로 되돌리고,
       // 아니면 실제 남은 시간을 알려 준다.
       let leftMs: number;
       if (this.draftGraced) {
-        leftMs = DECISION_TIMEOUT_MS;
+        leftMs = this.draftTimeoutMs();
         this.clearDraftTimeout();
         this.draftGraced = false;
         this.armDraft(leftMs);
       } else {
         leftMs = Math.max(0, this.draftDeadlineAt - Date.now());
       }
-      this.send(this.draftOfferMessage(leftMs));
+      this.send(this.draftOfferMessage(this.shownDeadlineMs(leftMs, false)));
     }
   }
 
@@ -591,17 +626,39 @@ export class HumanAgent implements PlayerAgent {
   }
 
   /**
+   * 이 좌석을 튜토리얼 모드로 둔다 — 제한 시간을 사실상 없애고(30분) 화면에서
+   * 시계를 걷는다. 방을 여는 `RoomManager`가 켜며, 켠 뒤에는 끄지 않는다.
+   */
+  setTutorial(on: boolean): void {
+    this.tutorial = on;
+  }
+
+  /**
    * 이 결정의 제한 시간(ms).
    *
    * 평소에는 AFK 방지용 30초지만, **초읽기(time_pressure)**가 걸린 국에는 그 증강이
    * 뷰에 실어 보낸 초를 그대로 쓴다. 제한 시간은 게임 규칙이 아니라 접속·진행의
    * 문제라 엔진이 아니라 여기서 다룬다 — 증강 쪽은 공개 채널에 숫자 하나만 싣는다.
    * 국이 끝나면 채널이 국 스코프로 자동 소멸해 30초로 돌아온다.
+   *
+   * 튜토리얼 좌석만 예외다 — 배우는 자리에는 초읽기도 30초도 걸지 않는다
+   * (`TUTORIAL_DECISION_TIMEOUT_MS`).
    */
   private decisionTimeoutMs(): number {
+    if (this.tutorial) return TUTORIAL_DECISION_TIMEOUT_MS;
     const limit = this.lastView?.augmentView?.[TIME_PRESSURE_CHANNEL];
     if (typeof limit !== "number" || limit <= 0) return DECISION_TIMEOUT_MS;
     return Math.min(DECISION_TIMEOUT_MS, Math.round(limit * 1000));
+  }
+
+  /**
+   * 화면에 실어 보낼 마감 — 튜토리얼이면 **0**(= 시계를 그리지 말라)이다.
+   *
+   * 서버 타이머는 그대로 돌지만 그 값은 30분이라, 그걸 그대로 보내면 판이 30분짜리
+   * 초읽기 중인 것처럼 보인다. 클라이언트는 0/미지정을 "마감 없음"으로 읽는다.
+   */
+  private shownDeadlineMs(timeoutMs: number, graced: boolean): number {
+    return this.tutorial && !graced ? 0 : timeoutMs;
   }
 
   private decideFor(seat: PlayerId, prompt: DecisionPrompt): Promise<ActionOption> {
@@ -621,7 +678,7 @@ export class HumanAgent implements PlayerAgent {
         : this.decisionTimeoutMs();
     // 마감은 **항상** 실어 보낸다. 예전에는 초읽기 국에만 실어서, 평소 30초 제한이
     // 화면에 전혀 안 보였다 — 자리를 비운 사람이 론을 조용히 흘렸다(QA P0-5).
-    this.send({ type: "prompt", prompt, deadlineMs: timeoutMs });
+    this.send({ type: "prompt", prompt, deadlineMs: this.shownDeadlineMs(timeoutMs, graced) });
     return new Promise<ActionOption>((resolve) => {
       this.armDecision(seat, prompt, resolve, timeoutMs, graced);
     });
@@ -713,13 +770,23 @@ export class HumanAgent implements PlayerAgent {
       ? this.holdLeftMs()
       : this.draftGraced
         ? DISCONNECT_GRACE_MS
-        : DECISION_TIMEOUT_MS;
-    this.send(this.draftOfferMessage(timeoutMs));
+        : this.draftTimeoutMs();
+    this.send(this.draftOfferMessage(this.shownDeadlineMs(timeoutMs, this.draftGraced)));
 
     return new Promise<string>((resolve) => {
       this.pendingDraft = resolve;
       this.armDraft(timeoutMs);
     });
+  }
+
+  /**
+   * 증강 선택의 제한 시간(ms).
+   *
+   * 튜토리얼에서 이 값이 가장 중요하다 — 시간이 다 되면 서버가 후보 중 하나를
+   * **무작위로** 집는데(`armDraft`), 카드 셋을 읽는 데만 30초가 넘게 걸린다.
+   */
+  private draftTimeoutMs(): number {
+    return this.tutorial ? TUTORIAL_DECISION_TIMEOUT_MS : DECISION_TIMEOUT_MS;
   }
 
   /** 이번 스테이지에 새로고침으로 갈아 낀 슬롯 (컨트롤러가 픽 직후에 읽는다). */

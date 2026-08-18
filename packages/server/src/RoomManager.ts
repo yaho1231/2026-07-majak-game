@@ -200,6 +200,11 @@ interface Room {
    */
   guest: boolean;
   /**
+   * **튜토리얼 방** — 게스트 방(`guest: true`)의 특수형이다. 무엇이 다른지는
+   * `TUTORIAL_ROOM_NOTE`에 한자리에 적어 두었다.
+   */
+  tutorial: boolean;
+  /**
    * **이 체험 판으로 돌아오는 열쇠** (게스트 방 전용, 그 외에는 null).
    *
    * 손님에게는 계정이 없어 `joinRoom`이 쓰는 신원(username)을 다음 접속까지
@@ -638,6 +643,61 @@ const MAX_GUEST_ROOMS = 16;
  * 한 사람이 손님 자리의 절반 이상을 붙드는 것만 막는다. 루프백/로컬은 예외.
  */
 const MAX_GUEST_ROOMS_PER_IP = 3;
+
+/**
+ * ## 튜토리얼 방 — 왜 체험판과 갈랐나 (TUTORIAL_ROOM_NOTE, 2026-08-18)
+ *
+ * 게스트 체험은 **진짜 판**이다: 무작위 배패, 무작위 증강, 최선을 다하는 봇.
+ * 그게 맞다 — 체험은 "이 게임이 어떤 게임인지" 보여 주는 자리다.
+ *
+ * 그런데 **가르치는** 자리에는 그 무작위가 정면으로 방해가 된다. "액티브 증강
+ * 버튼에 손을 올려 보세요"라고 말하려면 액티브 증강이 손에 있어야 하고, "보라색
+ * 패는 증강이 만든 패입니다"를 보여 주려면 그 패를 만들 수단이 있어야 한다.
+ * 무작위 드래프트에 맡기면 그 강의는 열 판에 한 번 나온다. 사용자도 같은 말을
+ * 했다 — "튜토리얼은 게스트체험이랑은 다르게 증강이랑 손패를 튜토리얼용으로
+ * 설명하기 쉽게 고정해둬도 괜찮아".
+ *
+ * 그래서 튜토리얼 방은 게스트 방을 그대로 상속하되(기록 없음, 끊기면 §2-5의 '판
+ * 세워 두기'로 3분간 기다린다) 넷을 고정한다:
+ *
+ * 1. **시작 증강 = 연금술사.** 액티브(내 턴에 직접 발동)이면서 손패의 수패를
+ *    ±1 바꿔 **생성패(보라)** 를 그 자리에서 만든다. "⚡ 버튼", "발광", "보라 패"
+ *    세 강의가 이 하나로 전부 선다. 게임 5회라 실컷 눌러 봐도 남는다.
+ * 2. **고정 배패.** 아래 `TUTORIAL_HAND` — 1샹텐에서 시작해 몇 순 안에 텐파이가
+ *    된다. 바로 텐파이로 주지 않는 이유: 첫 순에 리치를 걸면 그 뒤가 전부 강제
+ *    쯔모기리라 타패·정렬·증강 발동을 가르칠 자리가 사라진다.
+ * 3. **봇은 리치도 화료도 하지 않는다.** 배우는 중에 봇이 3순 만에 판을 끝내면
+ *    "화료" 강의는 영영 안 나온다. 후로와 타패는 그대로 두어 판은 살아 있게 한다.
+ * 4. **결정에 사실상 시간 제한이 없다** (`TUTORIAL_DECISION_TIMEOUT_MS`).
+ *
+ * 드래프트는 **끄지 않는다.** 증강을 고르는 것이 이 게임의 첫 조작이고, 그걸
+ * 빼면 정작 가장 먼저 가르쳐야 할 화면을 안 보여 주는 셈이 된다.
+ */
+const TUTORIAL_AUGMENTS: readonly string[] = ["alchemist"];
+
+/**
+ * 튜토리얼 고정 배패 (kindKey 13장 + 첫 쯔모 1장).
+ *
+ * 234m 567m 4567p 22s 9s — 2멘츠 + 4567p + 22s 머리. 1샹텐이고 받을 수 있는 패가
+ * 넓어(3p·6p·8p·9p·2s…) 서너 순 안에 텐파이가 선다. 마지막 `man1`은 **첫 쯔모**로
+ * 깔린다(`applyPresetHands`가 배패 장수를 넘긴 한 장을 그 자리로 보낸다) — 누가
+ * 봐도 버릴 패라 "필요 없는 패를 버립니다" 강의가 첫 순에 그대로 성립한다.
+ *
+ * 수패가 많은 것도 의도다: 연금술사(±1)를 어디에 써도 그림이 나온다.
+ */
+const TUTORIAL_HAND: readonly string[] = [
+  "man2", "man3", "man4",
+  "man5", "man6", "man7",
+  "pin4", "pin5", "pin6", "pin7",
+  "sou2", "sou2",
+  "sou9",
+  // ↓ 배패 13장을 넘긴 한 장 = 첫 쯔모
+  "man1",
+];
+
+/** 튜토리얼 봇 제약 — 판을 일찍 끝내지 않는다 (`TUTORIAL_ROOM_NOTE` 3). */
+const TUTORIAL_BOT_RULES: SandboxBotRules = { noWin: true, noRiichi: true };
+
 /**
  * 게스트 연결이 인증 뒤에 보낼 수 있는 메시지. **여기 없는 것은 전부 거부**다.
  *
@@ -697,6 +757,25 @@ export function sanitizeSandboxHands(
     if (picked.length > 0) clean[seat as PlayerId] = picked;
   }
   return clean;
+}
+
+/**
+ * 튜토리얼 판의 고정분 — **사람 좌석에만** 건다 (`TUTORIAL_ROOM_NOTE`).
+ *
+ * 좌석 id를 상수로 박지 않고 명단에서 찾는 이유: 사람이 언제나 `p0`이라는 보장이
+ * 없고(좌석 배치는 `seat`이 정한다), 어긋나면 봇에게 튜토리얼 손패가 가는 조용한
+ * 버그가 된다. 사람이 없으면(있을 수 없지만) 아무것도 걸지 않는다.
+ */
+export function tutorialPresets(agents: readonly PlayerAgent[]): {
+  presetAugments?: Record<PlayerId, readonly string[]>;
+  presetHands?: Record<PlayerId, readonly string[]>;
+} {
+  const me = agents.find((a) => !a.isBot);
+  if (me === undefined) return {};
+  return {
+    presetAugments: { [me.id]: TUTORIAL_AUGMENTS },
+    presetHands: { [me.id]: TUTORIAL_HAND },
+  };
 }
 
 /** 봇 제약 플래그를 boolean 4개로 정제한다 (클라이언트가 뭘 보내든 형태 고정). */
@@ -1402,7 +1481,7 @@ export class RoomManager {
       }
       // ── 게스트 체험 (계정 없이 봇 3명과 1인 게임) ──
       case "guestPlay":
-        return this.guestPlay(conn, msg.mode);
+        return this.guestPlay(conn, msg.mode, msg.tutorial === true);
       // 끊겼던 손님이 자기 판으로 돌아온다 — 인증 **전에** 오는 메시지다
       // (그 토큰이 곧 이 연결의 신원이 된다).
       case "guestResume":
@@ -1456,7 +1535,7 @@ export class RoomManager {
       case "createRoom":
         return this.createRoom(conn, user);
       case "practicePlay":
-        return this.practicePlay(conn, user, msg.mode);
+        return this.practicePlay(conn, user, msg.mode, msg.tutorial === true);
       case "joinRoom":
         return this.joinRoom(conn, user, msg.code);
       case "emote": {
@@ -1995,6 +2074,7 @@ export class RoomManager {
     options: {
       sandbox?: boolean;
       guest?: boolean;
+      tutorial?: boolean;
       gameMode?: GameMode;
       botDifficulty?: BotDifficulty;
       /**
@@ -2023,6 +2103,7 @@ export class RoomManager {
       gameMode: options.gameMode ?? "tonpuu",
       sandbox: options.sandbox ?? false,
       guest: options.guest ?? false,
+      tutorial: options.tutorial ?? false,
       guestToken: null,
       holdUntil: null,
       resumePath: null,
@@ -2293,7 +2374,11 @@ export class RoomManager {
     // 방장이 이 자리의 성향을 지정했으면 그걸 물려준다 (없으면 시드에서 뽑는다)
     const forced = room.botArchetypes.get(id);
     if (!room.sandbox) {
-      return new BotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
+      const bot = new BotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
+      // 튜토리얼 봇은 리치도 화료도 하지 않는다 (`TUTORIAL_ROOM_NOTE` 3) — 제약을
+      // 거는 배관(`restrictOptions`)은 샌드박스와 같은 것을 그대로 쓴다.
+      if (room.tutorial) bot.setRestrictions(TUTORIAL_BOT_RULES);
+      return bot;
     }
     const bot = new SandboxBotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
     bot.setRestrictions(room.sandboxBotRules);
@@ -3006,8 +3091,11 @@ export class RoomManager {
    * - `rateLimited` — 인증과 같은 창(연결당 12회/분, IP당 30회/분)
    * - `roomCreateLimited` — 방 생성과 같은 창(IP당 20회/10분)
    * - `MAX_ROOMS` + `MAX_GUEST_ROOMS` + `MAX_GUEST_ROOMS_PER_IP`
+   *
+   * `tutorial`이면 같은 손님 방을 **배우기 좋게 고정해서** 연다 (`TUTORIAL_ROOM_NOTE`).
+   * 남용 방어는 한 글자도 달라지지 않는다 — 튜토리얼도 손님 방 예산을 그대로 쓴다.
    */
-  private guestPlay(conn: Conn, mode?: GameMode): void {
+  private guestPlay(conn: Conn, mode?: GameMode, tutorial = false): void {
     // 이미 로그인한 연결은 게스트가 될 수 없다 — 계정 좌석을 임시 신원으로 갈아
     // 끼우면 진행 중인 게임의 좌석 주인이 바뀐다.
     if (conn.user !== null && !conn.guest) {
@@ -3076,13 +3164,17 @@ export class RoomManager {
 
     const room = this.newRoom({
       guest: true,
+      tutorial,
       // 안 적어 보내면 방 기본값과 같은 동풍전 (newRoom 참고)
       gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
       // 체험판은 봇을 한 칸 낮춘다(skill 1.0 → 0.7). easy(0.35)까지 내리지 않는 이유:
       // 마작을 아는 사람이 이 게임을 보러 왔을 때 봇이 헛수를 두면 게임 자체가
       // 얕아 보인다. normal은 초심자에게 이길 여지를 주면서 봇이 바보처럼 보이지는
       // 않는 자리다. 계정을 만들고 방을 열면 그때부터는 기본이 hard다.
-      botDifficulty: "normal",
+      //
+      // 튜토리얼만 한 칸 더 내린다 — 여기서는 봇의 수준이 아니라 **화면 조작**을
+      // 보여 주는 것이 목적이고, 배우는 사이에 봇이 판을 접으면 뒤 강의가 전부 멎는다.
+      botDifficulty: tutorial ? "easy" : "normal",
     });
     room.guestToken = guestToken;
     this.send(conn.ws, { type: "roomCreated", code: room.code });
@@ -3159,10 +3251,11 @@ export class RoomManager {
    * 집계 어디에도 안 들어간다(`openGame`·`onGameOver`가 그 플래그 하나를 본다).
    * 연습으로 둔 판이 통계에 섞이면 "내 전적"이 연습판으로 오염된다.
    *
-   * 대신 게스트 방의 성질도 함께 따라온다 — **끊기면 그 판은 사라진다**(재접속
-   * 없음). 아무것도 기록하지 않는 판이라 되살릴 것도 없다.
+   * 대신 게스트 방의 성질도 함께 따라온다 — 끊기면 손님 방과 같은 규칙으로
+   * **판을 세워 두고 기다린다**(§2-5, `SOLO_HOLD_MS`). 봇 셋뿐인 방이라 기다려도
+   * 잃는 사람이 없다. 시한이 지나면 유휴 청소가 접는다.
    */
-  private practicePlay(conn: Conn, user: UserRow, mode?: GameMode): void {
+  private practicePlay(conn: Conn, user: UserRow, mode?: GameMode, tutorial = false): void {
     this.sweepGhostSeats();
     let existing = this.membershipOf(user.username);
     if (existing !== null && this.releaseOwnStaleSeat(conn, existing, user.username)) {
@@ -3195,10 +3288,12 @@ export class RoomManager {
     }
     const room = this.newRoom({
       guest: true,
+      tutorial,
       gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
       // 체험판과 같은 이유로 한 칸 낮춘다 — 대기실을 안 거치므로 난이도를 고를
       // 화면 자체가 없고, 배우는 자리에서 봇이 최선을 두면 배우기 전에 끝난다.
-      botDifficulty: "normal",
+      // 튜토리얼은 거기서 한 칸 더 (`guestPlay` 주석과 같은 이유).
+      botDifficulty: tutorial ? "easy" : "normal",
     });
     this.send(conn.ws, { type: "roomCreated", code: room.code });
     this.seat(conn, user, room);
@@ -3902,6 +3997,8 @@ export class RoomManager {
       // 사람 좌석의 뷰에 좌석별 접속 상태를 실어 보내게 한다 (이름표 표시용).
       if (agent instanceof HumanAgent) {
         agent.setSeatConnectionSource(() => this.seatConnections(room));
+        // 튜토리얼 좌석은 결정 제한 시간을 사실상 없앤다 (`TUTORIAL_ROOM_NOTE` 4).
+        agent.setTutorial(room.tutorial);
         // 돌아오지 않아 이탈로 확정된 좌석 — 이름표를 갱신하고, 걸려 있던 중단
         // 투표를 다시 집계한다. 그 좌석이 정족수에서 빠지면서 이미 모인 표만으로
         // 무효가 성립할 수 있는데, 다시 세지 않으면 아무도 그걸 모른다.
@@ -3944,6 +4041,10 @@ export class RoomManager {
             presetHands: room.sandboxHands,
           }
         : {}),
+      // 튜토리얼: 사람 좌석의 손패와 시작 증강만 고정한다 (`TUTORIAL_ROOM_NOTE`).
+      // **드래프트는 그대로 둔다** — 증강을 고르는 것이 이 게임의 첫 조작이다.
+      // 샌드박스와 같은 배관(`presetHands`/`presetAugments`)을 쓰므로 새 경로가 없다.
+      ...(room.tutorial ? tutorialPresets(room.agents) : {}),
     }, {
       onEvent: (eventJson: string) => {
         writer?.write(eventJson);

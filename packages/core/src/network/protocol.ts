@@ -68,6 +68,15 @@ export interface GuestPlayMessage {
   type: "guestPlay";
   /** 동풍전(기본)·반장전. */
   mode?: GameMode;
+  /**
+   * **튜토리얼 판**으로 열어 달라 — 배우기 좋게 판을 고정한다 (`TUTORIAL_ROOM_NOTE`).
+   *
+   * 체험(그냥 `guestPlay`)과 다른 점은 셋이다: 손패·시작 증강이 고정이고, 봇이
+   * 리치·화료를 하지 않으며, **결정에 시간 제한이 사실상 없다**. 마지막 하나가
+   * 이 플래그를 만든 이유다 — 안내를 읽는 동안 30초가 지나 증강이 제멋대로
+   * 뽑히면 그건 튜토리얼이 아니다 (2026-08-18 사용자 지시).
+   */
+  tutorial?: boolean;
 }
 
 /**
@@ -123,6 +132,8 @@ export interface PracticePlayMessage {
   type: "practicePlay";
   /** 동풍전(기본)·반장전. */
   mode?: GameMode;
+  /** 튜토리얼 판으로 열기 — `GuestPlayMessage.tutorial`과 같은 뜻이다. */
+  tutorial?: boolean;
 }
 
 // ── 방 생성·참가 (15) ──
