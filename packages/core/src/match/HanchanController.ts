@@ -76,6 +76,21 @@ export interface HanchanConfig {
   draftSchedules?: DraftStage[];
   /** 시드 */
   seed: number;
+  /**
+   * 에이전트 응답을 기다리는 **최후의 상한**(ms). 생략하면 `AGENT_DECIDE_TIMEOUT_MS`(90초).
+   *
+   * 이 그물은 "답이 영영 안 오는 에이전트"를 위한 것이지 **오래 걸리는 에이전트**를
+   * 위한 것이 아니다. 튜토리얼 방은 둘 다 정상적으로 오래 끈다 — 사람에게는 사실상
+   * 시간 제한이 없고(`TUTORIAL_DECISION_TIMEOUT_MS`), 봇은 말풍선이 떠 있는 동안
+   * 일부러 답을 미룬다(`TUTORIAL_HOLD_NOTE`). 90초짜리 그물을 그대로 두면 그 둘이
+   * 전부 걸려서, 배우는 사람의 차례가 대신 두어지고 봇의 결정(리치 대기패 배급까지)이
+   * 안전 폴백으로 갈아치워진다 — 실제로 그렇게 유국이 났다(2026-08-18 실측).
+   *
+   * 그래서 **끄지는 않고 늘린다.** 상한이 사라지면 방이 영원히 `playing`으로 남는
+   * 소프트락이 돌아온다(BLOCKER-5). 어디까지나 에이전트 자신의 타이머가 먼저
+   * 터지도록, 그보다 넉넉한 값을 방이 정해서 준다.
+   */
+  agentDecideTimeoutMs?: number;
   /** 적도라 수 */
   redFivesPerSuit?: number;
   /** 콘텐츠 팩 증강 카탈로그 (@majak/content 등) */
@@ -486,13 +501,12 @@ export class HanchanController {
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      const limit = this.config.agentDecideTimeoutMs ?? AGENT_DECIDE_TIMEOUT_MS;
       const guard = new Promise<ActionOption>((resolve) => {
         timer = setTimeout(() => {
-          console.error(
-            `[hanchan] ${agent.id} decide 무응답 ${AGENT_DECIDE_TIMEOUT_MS}ms — 안전 폴백으로 진행`,
-          );
+          console.error(`[hanchan] ${agent.id} decide 무응답 ${limit}ms — 안전 폴백으로 진행`);
           resolve(fallback());
-        }, AGENT_DECIDE_TIMEOUT_MS);
+        }, limit);
       });
       const chosen = await Promise.race([agent.decide(prompt), guard]);
       // 목록 밖 응답도 폴백으로 되돌린다 — 그대로 submit하면 FlowController가 던진다.
@@ -564,13 +578,12 @@ export class HanchanController {
     const valid = new Set([...choices, ...rerolls].map((d) => d.id));
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      const limit = this.config.agentDecideTimeoutMs ?? AGENT_DECIDE_TIMEOUT_MS;
       const guard = new Promise<string>((resolve) => {
         timer = setTimeout(() => {
-          console.error(
-            `[hanchan] ${agent.id} decideDraft 무응답 ${AGENT_DECIDE_TIMEOUT_MS}ms — 첫 후보로 진행`,
-          );
+          console.error(`[hanchan] ${agent.id} decideDraft 무응답 ${limit}ms — 첫 후보로 진행`);
           resolve(first);
-        }, AGENT_DECIDE_TIMEOUT_MS);
+        }, limit);
       });
       const picked = await Promise.race([
         agent.decideDraft(stage, choices, rerolls),

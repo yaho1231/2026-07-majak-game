@@ -352,6 +352,35 @@ describe("튜토리얼 판 — 시간에 쫓기지 않는다", () => {
     expect(sock.last("draftOffer").deadlineMs).toBe(DECISION_TIMEOUT_MS);
   });
 
+  it("컨트롤러의 최후 그물도 함께 늘어난다 — 90초가 사람을 대신 두지 않게", async () => {
+    /*
+     * `HanchanController`에는 "답이 영영 안 오는 에이전트"를 위한 90초 그물이 따로
+     * 있다. 튜토리얼은 사람도(사실상 무제한) 봇도(말풍선 동안 대기) 정상적으로 오래
+     * 끄는 판이라 그 그물에 그대로 걸렸다 — 로그에 `p0 decide 무응답 90000ms`가
+     * 찍히고 배우는 사람의 차례가 대신 두어졌으며, 봇의 결정도 안전 폴백으로 바뀌어
+     * 리치 대기패 배급이 통째로 사라졌다(2026-08-18 실측: 그래서 유국이 났다).
+     *
+     * 끄지 않고 **늘린다** — 사람의 제한보다 넉넉해야 그물의 전제("에이전트 자신의
+     * 타이머가 먼저 터진다")가 지켜지고, 유한해서 소프트락도 여전히 없다.
+     */
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    await pickDraftAndPlay(sock);
+    const cfg = (h.rm as any).rooms?.values?.().next?.().value?.controller?.["config"];
+    expect(cfg?.agentDecideTimeoutMs, "튜토리얼 방의 그물이 안 늘어났다").toBeGreaterThan(
+      TUTORIAL_DECISION_TIMEOUT_MS,
+    );
+    expect(Number.isFinite(cfg?.agentDecideTimeoutMs)).toBe(true);
+  });
+
+  it("체험판은 종전 그대로 — 그물을 건드리지 않는다", async () => {
+    const h = await newHarness();
+    const sock = await connect(h, false);
+    await sock.waitFor((m) => m.type === "draftOffer");
+    const cfg = (h.rm as any).rooms?.values?.().next?.().value?.controller?.["config"];
+    expect(cfg?.agentDecideTimeoutMs).toBeUndefined();
+  });
+
   it("서버 타이머는 '없음'이 아니라 '사람이 못 닿을 값'이다", () => {
     // 아예 안 걸면 decide()가 영영 resolve되지 않는 프로미스가 된다 —
     // 상수 자체로 그 설계 의도를 못 박는다.

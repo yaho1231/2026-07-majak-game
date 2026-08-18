@@ -6062,12 +6062,17 @@ function TutorialCoach(props: {
   /*
    * 말풍선이 떠 있는 동안 **판을 세워 둔다** (`RoomManager.TUTORIAL_HOLD_NOTE`).
    *
-   * `props.hidden`(도감·규칙이 덮은 상태)에도 세워 둔 채로 둔다 — 도감을 열어 보라고
-   * 해 놓고 그 사이에 판이 세 순 지나가면 닫고 돌아왔을 때 다른 판이다.
-   * 강의가 없을 때만 놓아 준다: 그때가 곧 "다음 일이 일어나도 되는 순간"이다.
+   * **도감·규칙이 판을 덮고 있는 동안(`props.hidden`)도 세워 둔다.** 그 둘은 여는
+   * 순간 강의가 완료로 잡히는데(`done: overlay === "codex"`), 그걸로 붙들고 있던
+   * 강의가 사라지면 판이 곧바로 다시 돈다 — 정작 사람은 전체 화면을 읽는 중이다.
+   * 실제로 규칙 화면을 읽는 사이에 봇이 오름패를 쏴 론이 성립했고, 닫고 돌아오니
+   * 판이 다른 국면이었다(2026-08-18 실측). 열어 보라고 해 놓고 그 사이에 판을
+   * 굴리는 것은 앞뒤가 안 맞는다.
+   *
+   * 신호가 영영 안 풀리는 일은 없다 — 서버 쪽 시한이 3분이다(`TUTORIAL_HOLD_TTL_MS`).
    */
   const { onHold } = props;
-  const holding = active !== null;
+  const holding = active !== null || props.hidden;
   useEffect(() => {
     onHold(holding);
     return () => onHold(false);
@@ -10306,6 +10311,8 @@ const GameTable = memo(function GameTable(props: {
 
   // ── 액티브 증강 클릭 발동(무장) 상태 — 게임판 전체가 공유(SelectionContext) ──
   const selection = useSelection(view, prompt, props.onSubmit);
+  /** 튜토리얼이 지목해 둔 패 — 오른쪽 버튼 버림도 이걸 지켜야 한다 (`rightClickTsumogiri`) */
+  const coachLock = useContext(CoachLockContext);
   const tableRef = useRef<HTMLDivElement>(null);
   // 무장 중 게임판의 빈 곳(클릭 대상이 아닌 영역)을 누르면 무장을 해제한다.
   // 손패·상대·바닥 등 클릭 대상 영역은 data-arm-zone로 표시해 제외한다.
@@ -10351,6 +10358,17 @@ const GameTable = memo(function GameTable(props: {
     const drawnId = view.round.myDrawnTile;
     if (drawnId === null) return;
     if (!(view.zones[`hand:${me.id}`]?.tileIds ?? []).includes(drawnId)) return;
+    /*
+     * 튜토리얼이 "이 패를 버리세요"라고 잠가 둔 동안에는 **여기로도** 안 나간다.
+     *
+     * 잠금은 클릭과 드래그를 막고 있었는데 오른쪽 버튼은 그 둘 중 어느 쪽도 아니라
+     * 그대로 뚫렸다 — 코치가 9삭을 지목한 순에 오른쪽 버튼 한 번이면 정작 다음
+     * 마디에서 쓸 1삭이 나가 버린다(2026-08-18 실측). 버리는 길이 셋이면 잠금도 셋을
+     * 다 막아야 한다.
+     */
+    if (coachLock !== null && coachBlocksDiscard(coachLock, view.tiles[drawnId]?.kind, true)) {
+      return;
+    }
     const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
     const opts = (myPrompt?.options ?? []).filter(
       (o) => (o.payload as { tileId?: unknown }).tileId === drawnId,
