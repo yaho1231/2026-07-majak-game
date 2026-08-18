@@ -202,6 +202,46 @@ describe("조작을 마치면 저절로 넘어간다", () => {
     expect(d.done?.(ctx())).toBe(false);
     expect(d.done?.(ctx({ hit: onScreen(".settings-panel") }))).toBe(true);
   });
+
+  it("배율 — 가운데 % 버튼이 눌리게 되면(=100%가 아니면) 끝", () => {
+    // 새 표식을 붙이지 않고 이미 화면에 있는 진실을 읽는다: 그 버튼은 100%일 때만
+    // disabled다(App.tsx `ScaleControl`).
+    const d = lesson("zoom");
+    expect(d.done?.(ctx())).toBe(false);
+    expect(d.done?.(ctx({ hit: onScreen(".ui-zoom-now:not(:disabled)") }))).toBe(true);
+  });
+});
+
+describe("배율 손잡이 강의", () => {
+  const seeing = (discards: number): CoachCtx =>
+    ctx({ view: viewWith(13, discards), hit: onScreen(".ui-zoom") });
+
+  it("화면 도구 중에서 가장 먼저다 — 판이 잘려 보이면 나머지 안내가 다 헛돈다", () => {
+    const tools = LESSONS.filter((l) => l.chapter === "화면 도구").map((l) => l.id);
+    expect(tools[0]).toBe("zoom");
+  });
+
+  it("손잡이가 화면에 있을 때만, 그리고 두 순 지난 뒤에 나온다", () => {
+    expect(LESSONS.filter((l) => l.when(seeing(2))).map((l) => l.id)).toContain("zoom");
+    expect(LESSONS.filter((l) => l.when(seeing(1))).map((l) => l.id)).not.toContain("zoom");
+    // 손잡이가 없는 화면에서는 없는 버튼을 가리키지 않는다
+    expect(LESSONS.filter((l) => l.when(ctx({ view: viewWith(13, 4) }))).map((l) => l.id)).not.toContain("zoom");
+  });
+
+  it("자리가 화면마다 다르므로 위·아래 둘 다 알려 준다", () => {
+    // styles.css `.ui-zoom`: 대국+넓은 판이면 우상단 아이콘 줄 아래, 좁으면 오른쪽 아래 구석.
+    const { body } = lesson("zoom");
+    expect(body).toContain("오른쪽 위");
+    expect(body).toContain("오른쪽 아래");
+  });
+
+  it("버튼이 안 되는 자리를 대비해 키보드 두 벌을 함께 준다", () => {
+    // ⌥/Alt 는 이 게임의 배율, Ctrl(⌘) 은 브라우저 확대 — uiScale.ts 는 ctrl·meta 가
+    // 눌려 있으면 손을 떼므로 둘은 서로 먹히지 않고 각자 듣는다.
+    const todo = lesson("zoom").todo ?? "";
+    expect(todo).toContain("Alt");
+    expect(todo).toContain("Ctrl");
+  });
 });
 
 describe("읽던 강의를 밀어내고 끼어든다", () => {
