@@ -6605,7 +6605,9 @@ function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | nul
         </div>
       ) : null}
 
-      <div className="aug-block">
+      {/* 표는 이 카드에서 **자리를 가장 많이 먹는 블록**이다 — 남는 세로 공간을
+          받아 갈 곳이 여기라는 표시로 따로 클래스를 준다(styles.css 참고). */}
+      <div className="aug-block aug-block-table">
         <div className="aug-block-title">
           증강별 성적 · 도감 <span className="aug-collect">{collected}/{catalogSize || "?"}종 수집</span>
         </div>
@@ -9244,13 +9246,20 @@ function HomeScreen(props: {
               ))}
             </div>
             <div
-              className="home-tabpanel"
+              className={`home-tabpanel home-tabpanel-${tab}`}
               id="home-tabpanel"
               role="tabpanel"
               aria-labelledby={`home-tab-${tab}`}
             >
+              {/* 전적 탭은 카드 셋의 **키가 제각각**이다 — 내 통계는 짧고(타일 10칸 +
+                  기간 두 줄), 증강 통계는 표가 길다. 균등 2열에 셋을 흘려 두면 내 통계
+                  카드가 증강 카드 높이만큼 늘어나 카드 안이 통째로 비고, 그러는 동안
+                  증강 표는 좁은 열에서 가로로 잘렸다(2026-08-18 사용자 보고).
+                  그래서 **짧은 것끼리 왼쪽에 쌓고(내 통계 + 리플레이) 긴 표에 넓은
+                  열을 준다**. 남는 세로 공간은 카드 안이 아니라 카드 사이에 남는다. */}
               {tab === "record" ? (
                 <>
+        <div className="home-record-left">
         <section className={`home-card home-mystats${statsFolded ? " home-card-folded" : ""}`}>
           <div className="home-card-head">
             <h2>내 통계</h2>
@@ -9280,6 +9289,9 @@ function HomeScreen(props: {
           )}
         </section>
 
+        {replaysCard}
+        </div>
+
         <section className="home-card home-augment">
           <div className="home-card-head">
             <h2>내 증강 통계</h2>
@@ -9293,8 +9305,6 @@ function HomeScreen(props: {
             📖 증강 도감 전체 보기 — {Object.keys(props.catalog).length || "?"}종 상세 설명 · 서버 전체 통계
           </button>
         </section>
-
-        {replaysCard}
                 </>
               ) : null}
 
