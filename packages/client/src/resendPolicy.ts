@@ -50,7 +50,7 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   "addBot", "removeBot", "setBotArchetype", "setBotDifficulty", "kickPlayer",
   // 조회
   "statsRequest", "replayList", "replayGet", "leaderboard", "liveGames",
-  "feedbackList", "adminUsers", "adminAugmentTiers",
+  "feedbackList", "adminUsers", "adminAugmentTiers", "adminAnalytics",
   // 도감 카탈로그 — 로그인 전에도 통하는 유일한 조회다(§3-7). 끊긴 사이 눌렀다면
   // 다시 붙었을 때 도감이 여전히 비어 있으므로, 늦게 도착해도 뜻이 그대로다.
   "catalogRequest",

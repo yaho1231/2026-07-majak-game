@@ -19,6 +19,7 @@ import type {
   ActionMessage,
   AdminAugmentTiersMessage,
   AdminUserEntry,
+  AnalyticsDayEntry,
   AugmentCatalogEntry,
   AugmentTierEntry,
   AugmentCategory,
@@ -2574,6 +2575,8 @@ export function App(): JSX.Element {
   const [serverInfo, setServerInfo] = useState<ServerInfoMessage | null>(null);
   /** 친구 목록 (§4-6). null = 아직 못 받았다 — `[]`(정말 없다)와 화면에서 다르다. */
   const [friends, setFriends] = useState<FriendEntry[] | null>(null);
+  /** 자체 방문 집계 (관리자 전용, §8-6). */
+  const [analytics, setAnalytics] = useState<AnalyticsDayEntry[] | null>(null);
   /** 서버가 되돌려 준 인증 실패 사유 — 토스트가 아니라 로그인 폼 안에 남긴다. */
   const [authError, setAuthError] = useState<string | null>(null);
   /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
@@ -3530,6 +3533,7 @@ export function App(): JSX.Element {
     setMyReplays(null);
     setLeaderboard(null);
     setFriends(null);
+    setAnalytics(null);
     setAdminUsers(null);
     setFeedback(null);
   }
@@ -3635,6 +3639,7 @@ export function App(): JSX.Element {
         send({ type: "liveGames" });
         send({ type: "adminUsers" });
         send({ type: "adminAugmentTiers" });
+        send({ type: "adminAnalytics" });
       }
       return;
     }
@@ -3711,6 +3716,10 @@ export function App(): JSX.Element {
       if (guestRef.current) return;
       safeStorage.setItem(LAST_ROOM_KEY, msg.code);
       return; // 이어서 joined·lobby가 온다
+    }
+    if (msg.type === "adminAnalytics") {
+      setAnalytics(msg.days);
+      return;
     }
     if (msg.type === "friendList") {
       setFriends(msg.friends);
@@ -5200,6 +5209,8 @@ export function App(): JSX.Element {
         <HomeScreen
           auth={auth}
           serverInfo={serverInfo}
+          analytics={analytics}
+          onRefreshAnalytics={() => send({ type: "adminAnalytics" })}
           friends={friends}
           onAddFriend={(n) => send({ type: "friendAdd", nickname: n })}
           onRemoveFriend={(n) => send({ type: "friendRemove", nickname: n })}
@@ -8542,6 +8553,57 @@ function FriendsCard(props: {
   );
 }
 
+/**
+ * 자체 집계 카드 (관리자 전용, §8-6).
+ *
+ * **왜 외부 분석 도구를 넣지 않았나**: CSP가 `script-src 'self'`다. 외부 스크립트를
+ * 넣으려면 그 한 줄을 열어야 하는데, 그건 곧 **제3자에게 우리 화면의 실행 권한을
+ * 주는 일**이다 — 이 게임에는 계정과 세션 토큰이 있다. 서버가 직접 센 수로 충분하다.
+ *
+ * 보이는 수가 "하한"이라는 사실을 화면에 적어 둔다. 캐시·프리페치 때문에 문서
+ * 요청이 사람 수보다 적게 잡히는데, 그걸 모르면 숫자를 잘못 읽는다.
+ */
+function AnalyticsCard(props: {
+  days: AnalyticsDayEntry[] | null;
+  onRefresh: () => void;
+}): JSX.Element {
+  const recent = props.days === null ? null : props.days.slice(-14);
+  const peak = Math.max(1, ...(recent ?? []).map((d) => d.views));
+  return (
+    <section className="home-card home-analytics">
+      <div className="home-card-head">
+        <h2>방문 집계<span className="home-admin-badge">관리자</span></h2>
+        <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
+      </div>
+      <p className="home-hint">
+        서버가 직접 셉니다(외부 분석 도구 없음 · IP·UA는 저장하지 않습니다).
+        캐시 때문에 실제보다 <b>적게</b> 잡히는 하한값입니다.
+      </p>
+      <ListCard
+        items={recent}
+        empty="아직 집계된 방문이 없습니다."
+        emptyHint="첫 방문이 들어오면 여기에 날짜별로 쌓입니다."
+      >
+        {(rows) => (
+          <ul className="analytics-list">
+            {rows.map((d) => (
+              <li key={d.date} className="analytics-row">
+                <span className="analytics-date">{d.date.slice(5)}</span>
+                <span className="analytics-bar" aria-hidden="true">
+                  <span style={{ transform: `scaleX(${d.views / peak})` }} />
+                </span>
+                <span className="analytics-nums">
+                  <b>{d.visitors}</b>명 · {d.views}회 · 접속 {d.sockets}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ListCard>
+    </section>
+  );
+}
+
 function HomeScreen(props: {
   auth: AuthInfo;
   /** 서버 상태 — 여기서 쓰는 것은 운영자 공지뿐이다 (§4-3). */
@@ -8555,6 +8617,9 @@ function HomeScreen(props: {
   leaderboard: LeaderboardEntry[] | null;
   catalog: Record<string, AugmentCatalogEntry>;
   adminUsers: AdminUserEntry[] | null;
+  /** 자체 방문 집계 (관리자 전용, §8-6). null이면 아직 못 받았다. */
+  analytics: AnalyticsDayEntry[] | null;
+  onRefreshAnalytics: () => void;
   /** 친구 목록 — null이면 아직 못 받았다 (§4-6). */
   friends: FriendEntry[] | null;
   onAddFriend: (nickname: string) => void;
@@ -8769,6 +8834,7 @@ function HomeScreen(props: {
               notice={props.serverInfo?.notice}
               onSave={props.onSetNotice}
             />
+            <AnalyticsCard days={props.analytics} onRefresh={props.onRefreshAnalytics} />
             <section className="home-card home-sandbox">
               <div className="home-card-head">
                 <h2>🧪 증강 테스트<span className="home-admin-badge">관리자</span></h2>

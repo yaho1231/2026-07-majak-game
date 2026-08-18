@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   2698 / 2698 통과 (실패 0)   ← 2026-08-18 갱신 (249 파일, 약 350초)
+npm test                   2714 / 2714 통과 (실패 0)   ← 2026-08-18 갱신 (250 파일, 약 350초)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors

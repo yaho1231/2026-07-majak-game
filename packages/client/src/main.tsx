@@ -26,6 +26,28 @@ window.addEventListener("unhandledrejection", (e) => {
   console.error("[window] 처리되지 않은 Promise 거부:", e.reason);
 });
 
+/*
+ * 서비스워커 등록 (감사 §8-4).
+ *
+ * **왜 등록하는가**: 안드로이드의 "앱 설치" 배너는 매니페스트만으로 뜨지 않는다 —
+ * fetch 핸들러를 가진 서비스워커가 있어야 설치 가능으로 판정한다. 설치하면
+ * 주소창이 사라지고, 그 몇십 픽셀이 이 게임에서는 판의 세로 폭 그 자체다.
+ *
+ * **왜 `load` 뒤인가**: 등록은 첫 화면과 대역폭·CPU를 다툰다. 첫 방문에서 얻는
+ * 것이 없는 작업이므로(캐시가 비어 있다) 그릴 것을 다 그린 뒤로 미룬다.
+ *
+ * 실패는 삼킨다. 서비스워커가 없어도 게임은 그대로 돌아간다 — 잃는 것은 설치
+ * 배너와 두 번째 방문의 자산 캐시뿐이다. 안전하지 않은 컨텍스트(http://로 연
+ * 원격 주소)에서는 API 자체가 없다.
+ */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((err: unknown) => {
+      console.warn("[sw] 등록하지 못했습니다 — 게임에는 지장이 없습니다:", err);
+    });
+  });
+}
+
 createRoot(root).render(
   <React.StrictMode>
     <ErrorBoundary>
