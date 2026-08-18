@@ -84,6 +84,54 @@ export interface GameRecord {
   players: GamePlayerRecord[];
 }
 
+/** 진행 중인 대국의 좌석 하나 (이어하기용) */
+export interface LiveSeatRecord {
+  id: string;
+  nickname: string;
+  isBot: boolean;
+  /** 봇 성향 — 재개할 때 같은 성향으로 다시 앉힌다(없으면 시드에서 뽑는다) */
+  archetype?: string;
+}
+
+/**
+ * 진행 중인 대국 1건 (감사 §2-10 이어하기).
+ *
+ * 판의 **상태**는 없다 — 그건 `replayPath`가 가리키는 확정 이벤트 로그가 갖고 있다.
+ */
+export interface LiveGameRecord {
+  code: string;
+  replayPath: string;
+  gameMode: string;
+  botDifficulty: string;
+  seats: LiveSeatRecord[];
+  startedAt: string;
+  updatedAt: string;
+}
+
+/**
+ * 좌석 JSON을 푼다 — 깨져 있으면 빈 배열.
+ *
+ * 던지지 않는 이유: 이 값은 부팅 경로에서 읽힌다. 행 하나가 상해서 예외가 나면
+ * **다른 멀쩡한 판까지** 못 되살린다. 빈 좌석은 호출부가 "되살릴 수 없는 판"으로
+ * 보고 건너뛰며, 그 사실이 로그에 남는다.
+ */
+function parseSeats(raw: string): LiveSeatRecord[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (s): s is LiveSeatRecord =>
+        typeof s === "object" &&
+        s !== null &&
+        typeof (s as LiveSeatRecord).id === "string" &&
+        typeof (s as LiveSeatRecord).nickname === "string" &&
+        typeof (s as LiveSeatRecord).isBot === "boolean",
+    );
+  } catch {
+    return [];
+  }
+}
+
 export interface AdminUserRow {
   id: number;
   username: string;
@@ -257,6 +305,27 @@ export class SiteDb {
         replied_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
+      -- 진행 중인 대국 (감사 §2-10 이어하기).
+      --
+      -- games 표가 **끝난** 판의 인덱스인 것과 대칭으로, 이 표는 **아직 도는** 판을
+      -- 담는다. 예전에는 이 표가 없어서 서버를 재시작하면 진행 중이던 40분짜리
+      -- 반장전이 어디에도 남지 않고 사라졌다 — 리플레이 파일은 디스크에 있었지만
+      -- 그 파일이 어느 방의 것이고 누가 어느 자리에 앉아 있었는지를 아는 것이
+      -- 프로세스 메모리뿐이었다.
+      --
+      -- 판의 **상태**는 여기 담지 않는다. 그건 리플레이 파일(확정 이벤트 로그)이
+      -- 이미 완전하게 갖고 있고, 두 곳에 나눠 담으면 언젠가 둘이 어긋난다.
+      -- 여기 있는 것은 그 파일을 다시 세우는 데 필요한 **바깥 정보**뿐이다.
+      CREATE TABLE IF NOT EXISTS live_games (
+        code TEXT PRIMARY KEY,
+        replay_path TEXT NOT NULL,
+        game_mode TEXT NOT NULL,
+        bot_difficulty TEXT NOT NULL,
+        -- 좌석 JSON: [{ id, nickname, isBot, archetype? }] — 자리 순서 그대로
+        seats TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
     // WAL·SHM 곁파일은 위 `journal_mode = WAL` 이 실행된 **뒤에야** 생긴다.
     // 그래서 한 번 더 조인다 — 앞의 호출은 기존 파일용, 이쪽이 새로 생긴 곁파일용이다.
@@ -621,6 +690,70 @@ export class SiteDb {
    * 그 행은 리플레이 목록·순위에 그대로 실려 영구히 어긋난 기록이 된다.
    * deleteUser가 이미 같은 방식(BEGIN/COMMIT/ROLLBACK)을 쓴다.
    */
+  // ─────────────────────────── 진행 중인 대국 (이어하기) ───────────────────────────
+
+  /**
+   * 진행 중인 대국을 적어 둔다 (같은 코드면 덮어쓴다).
+   *
+   * 게임 시작 때 한 번, 그 뒤로는 국이 끝날 때마다 부른다 — 좌석이 바뀌지는
+   * 않지만 `updated_at`이 갱신돼야 **언제 끊긴 판인지**를 알 수 있다. 그 값이
+   * 없으면 부팅 때 며칠 묵은 잔해와 방금 끊긴 판을 구분할 수 없다.
+   */
+  saveLiveGame(rec: LiveGameRecord): void {
+    this.stmt(
+      `INSERT INTO live_games (code, replay_path, game_mode, bot_difficulty, seats, started_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(code) DO UPDATE SET
+         replay_path = excluded.replay_path,
+         game_mode = excluded.game_mode,
+         bot_difficulty = excluded.bot_difficulty,
+         seats = excluded.seats,
+         updated_at = excluded.updated_at`,
+    ).run(
+      rec.code,
+      rec.replayPath,
+      rec.gameMode,
+      rec.botDifficulty,
+      JSON.stringify(rec.seats),
+      rec.startedAt,
+      rec.updatedAt,
+    );
+  }
+
+  /**
+   * 이 판은 더 이상 진행 중이 아니다 — 행을 지운다.
+   *
+   * 종료·무효·크래시 **전부**에서 불러야 한다. 하나라도 빠지면 그 코드가 부팅
+   * 때마다 되살아나려 들고, 리플레이 파일이 이미 정리됐다면 매번 실패한다.
+   */
+  clearLiveGame(code: string): void {
+    this.stmt("DELETE FROM live_games WHERE code = ?").run(code);
+  }
+
+  /** 되살릴 후보 전부. 오래된 것부터 — 부팅 로그가 시간 순으로 읽힌다. */
+  listLiveGames(): LiveGameRecord[] {
+    const rows = this.stmt("SELECT * FROM live_games ORDER BY started_at").all() as {
+      code: string;
+      replay_path: string;
+      game_mode: string;
+      bot_difficulty: string;
+      seats: string;
+      started_at: string;
+      updated_at: string;
+    }[];
+    return rows.map((r) => ({
+      code: r.code,
+      replayPath: r.replay_path,
+      gameMode: r.game_mode,
+      botDifficulty: r.bot_difficulty,
+      // 좌석 JSON이 깨져 있으면 그 판만 포기한다(빈 좌석 → 호출부가 건너뛴다).
+      // 여기서 던지면 **다른 멀쩡한 판까지** 못 되살린다.
+      seats: parseSeats(r.seats),
+      startedAt: r.started_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
   recordGame(rec: GameRecord): number {
     this.db.exec("BEGIN");
     try {

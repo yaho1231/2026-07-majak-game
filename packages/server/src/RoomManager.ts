@@ -53,16 +53,23 @@ import type {
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
 import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
-import { HumanAgent, MAX_BUFFERED_BYTES, SOLO_HOLD_MS } from "./HumanAgent.js";
+import {
+  DISCONNECT_GRACE_MS,
+  HumanAgent,
+  MAX_BUFFERED_BYTES,
+  SOLO_HOLD_MS,
+} from "./HumanAgent.js";
 import { Prng } from "@majak/core/engine/random/Prng.js";
 import { BotAgent, seedFromId } from "./BotAgent.js";
 import { isArchetypeName, isBotDifficulty, rollTableProfiles, withDifficulty } from "./bot/profile.js";
 import type { ArchetypeName, BotDifficulty } from "./bot/profile.js";
 import { SandboxBotAgent } from "./SandboxBotAgent.js";
 import { ReplayWriter } from "./ReplayWriter.js";
+import { reconstructGameFromFile } from "./ReplayReader.js";
+import type { ResumeReconstruction } from "./ReplayReader.js";
 import type { StatsStore } from "./StatsStore.js";
 import { safeEqual } from "./SiteDb.js";
-import type { AuthResult, SiteDb, UserRow } from "./SiteDb.js";
+import type { AuthResult, LiveGameRecord, SiteDb, UserRow } from "./SiteDb.js";
 
 /**
  * 봇의 액티브 증강 정책 조회용 전체 증강 정의(standard + content).
@@ -212,6 +219,21 @@ interface Room {
    * null로 되돌린다.
    */
   holdUntil: number | null;
+  /**
+   * 이어하기로 연 방이 **이어 쓸** 리플레이 파일 경로 (평소에는 null).
+   * 새 파일을 열면 `__init__` 없는 반쪽 파일이 생기고 원본은 고아가 된다.
+   */
+  resumePath: string | null;
+  /**
+   * 무효 종료 시 리플레이 파일을 **지우지 않는다** (되살렸는데 아무도 안 돌아온 판).
+   *
+   * 평소의 무효 처리(전원 합의)는 "이 판은 없던 것으로 하자"는 사람들의 결정이라
+   * 파일을 지우는 것이 맞다. 그런데 되살린 판을 아무도 찾아오지 않아 접는 것은
+   * 그 결정이 아니다 — 40분짜리 반장전을 서버가 혼자 판단해 없애는 셈이 된다.
+   * 그때는 `shutdown()`과 같은 처지로 본다: 파일은 남기고, 보존 기간이 지나면
+   * 고아 청소가 가져간다.
+   */
+  preserveReplayOnAbort: boolean;
   /** 다음 판 시작 시 좌석별로 미리 지급할 증강 (샌드박스 전용) */
   sandboxAugments: Record<PlayerId, string[]>;
   /** 다음 판 시작 시 좌석별로 강제 배패할 손패 (kindKey 목록, 샌드박스 전용) */
@@ -490,6 +512,42 @@ function roomIdleTtlMs(): number {
  * 남으면 그 방의 네 사람은 영영 새 방을 만들 수 없다 — 마지막 그물이다.
  */
 const ZOMBIE_ROOM_TTL_MS = 60_000;
+/**
+ * 끊긴 대국을 되살릴 수 있는 최대 경과 시간(ms) — 기본 6시간 (감사 §2-10).
+ *
+ * 이어하기의 값어치는 "**방금** 끊긴 판으로 돌아간다"에 있다. 하루 지난 판을
+ * 되살려도 아무도 그 상황을 기억하지 못하고 방 예산만 물고 있는다. 6시간은
+ * "밤에 서버가 죽었고 아침에 켰다"까지는 포기하고, "배포 중 재시작"과 "낮에 맥이
+ * 잠깐 잠들었다"는 살리는 선이다. 되살리지 않아도 리플레이 파일은 그대로 남는다.
+ */
+const RESUME_MAX_AGE_MS = delayEnv("RESUME_MAX_AGE_MS", 6 * 60 * 60_000, 0, 24 * 60 * 60_000);
+/**
+ * 되살린 판이 사람을 기다리며 **세워져 있는** 시간(ms) — 기본 3분.
+ *
+ * 재시작 직후에는 네 사람이 **전부** 끊겨 있다. 평소의 끊김 유예(5초 × 8회)를
+ * 그대로 적용하면 아무도 화면을 새로고침하기 전에 네 좌석이 다 이탈로 확정되고,
+ * 그러면 되살린 보람이 없다. §2-5에서 만든 "판 세워 두기"를 그대로 쓴다.
+ */
+const RESUME_HOLD_MS = delayEnv("RESUME_HOLD_MS", 180_000, 1000, 30 * 60_000);
+
+/**
+ * 소켓 없이 앉는 좌석용 **이미 닫힌 소켓**.
+ *
+ * `HumanAgent`는 소켓을 반드시 하나 들고 있어야 하는데(생성자 인자), 되살린
+ * 좌석에는 아직 붙을 소켓이 없다. null을 허용하도록 고치는 대신 "닫힌 소켓"을
+ * 준다 — `send`는 `readyState !== 1`에서 그냥 돌아가고 `isConnected()`는 false다.
+ * 즉 **기존 끊김 처리 경로가 그대로 적용된다**. 새 상태를 만들지 않는 것이 요점이다.
+ */
+function closedSocket(): WebSocket {
+  return {
+    readyState: 3 /* CLOSED */,
+    bufferedAmount: 0,
+    send: () => undefined,
+    close: () => undefined,
+    terminate: () => undefined,
+    on: () => undefined,
+  } as unknown as WebSocket;
+}
 /** 리더보드 캐시의 안전 수명(ms) — 명시적 무효화가 어긋나도 이 시간이면 새로 만든다. */
 const LEADERBOARD_CACHE_TTL_MS = 30_000;
 /**
@@ -820,15 +878,22 @@ export class RoomManager {
         // 진행 중인 게임은 손대지 않는다. 다만 컨트롤러가 없는 "playing"은
         // 게임이 아니라 잔해다 — 방치하면 그 사람들이 영영 방을 못 만든다.
         if (room.controller !== null) {
-          // 사람을 기다리며 세워 둔 1인 방(§2-5)은 시한이 있다. 안 돌아오면
-          // 접는다 — 안 그러면 세워 둔 방이 방 예산을 영구히 물고 있는다.
+          // 사람을 기다리며 세워 둔 판(§2-5 체험 방 · §2-10 되살린 방)은 시한이
+          // 있다. 안 돌아오면 접는다 — 안 그러면 방 예산을 영구히 물고 있는다.
           if (room.holdUntil !== null && now > room.holdUntil) {
             this.log(room, "세워 둔 판의 보유 시한 초과 — 접는다");
-            room.controller.requestAbort();
+            // 되살린 판은 파일을 남긴다. 아무도 안 온 것이 "없던 일로 하자"는
+            // 뜻은 아니고, 그 파일이 그 40분의 유일한 흔적이다.
+            if (room.resumePath !== null) room.preserveReplayOnAbort = true;
             room.holdUntil = null;
+            room.controller.requestAbort();
             this.detachRoomConns(room);
             this.rooms.delete(room.code);
+            continue;
           }
+          // 진행 중인 판의 "마지막 소식" 시각을 갱신한다 — 이 값이 없으면 부팅 때
+          // 며칠 묵은 잔해와 방금 끊긴 판을 구분할 수 없다(§2-10).
+          this.rememberLiveGame(room);
           continue;
         }
         if (now - room.lastActivityAt < ZOMBIE_ROOM_TTL_MS) continue;
@@ -850,6 +915,8 @@ export class RoomManager {
    * 들어간다(무효 투표 경로에서 실제로 그랬다).
    */
   private closeRoom(room: Room, code: string, message: string): void {
+    // 서버가 스스로 접은 방은 이어하기 후보가 아니다 (§2-10).
+    this.forgetLiveGame(room);
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.notify({ type: "error", code, message });
     }
@@ -876,8 +943,14 @@ export class RoomManager {
    * 서버가 돌아온 뒤 `ROOM_NOT_FOUND`를 받는다(40분짜리 반장전이 아무 설명 없이
    * 사라진다). 여기서 gameAborted를 먼저 보내면 최소한 "무슨 일이 있었는지"는 남는다.
    */
-  shutdown(reason = "서버가 재시작합니다 — 잠시 후 다시 접속해 주세요"): void {
+  /**
+   * @returns 진행 중이던 판의 리플레이가 **디스크에 다 나갈 때까지**의 프로미스.
+   *   기다리지 않아도 동작은 같지만, 기다리지 않으면 마지막 몇 줄이 사라질 수
+   *   있고 그 꼬리가 곧 이어하기의 "어디까지 뒀는가"다 (§2-10).
+   */
+  shutdown(reason = "서버가 재시작합니다 — 잠시 후 다시 접속해 주세요"): Promise<void> {
     this.shuttingDown = true;
+    const flushing: Promise<void>[] = [];
     if (this.sweepTimer !== null) {
       clearInterval(this.sweepTimer);
       this.sweepTimer = null;
@@ -896,11 +969,12 @@ export class RoomManager {
       // 여기서는 **지우지 않고 닫기만** 한다 — 재시작에 끊긴 진짜 판이라, 이어하기를
       // 붙인다면 유일한 근거가 이 파일이다. 인덱스에 없어 쌓이기만 하는 문제는
       // index.ts의 `pruneOldReplays`가 보존 기간이 지난 뒤 쓸어 담는다.
-      room.writer?.close();
+      if (room.writer !== null) flushing.push(room.writer.close());
       this.detachRoomConns(room);
       this.rooms.delete(room.code);
     }
     this.log(null, "종료 알림 전송 완료 — 모든 방을 정리했다");
+    return Promise.all(flushing).then(() => undefined);
   }
 
   /** 청소 타이머만 멈춘다 (테스트 정리용). */
@@ -1899,9 +1973,15 @@ export class RoomManager {
       guest?: boolean;
       gameMode?: GameMode;
       botDifficulty?: BotDifficulty;
+      /**
+       * 방 코드를 지정한다 (이어하기 전용). 되살린 판은 **그 방 코드 그대로**
+       * 서야 한다 — 사람들의 브라우저에 `majak.lastRoomCode`로 남아 있는 값이고,
+       * "진행하던 방으로 재접속"이 그 값을 그대로 보낸다.
+       */
+      code?: string;
     } = {},
   ): Room {
-    const code = this.generateCode();
+    const code = options.code ?? this.generateCode();
     const room: Room = {
       code,
       agents: [],
@@ -1921,6 +2001,8 @@ export class RoomManager {
       guest: options.guest ?? false,
       guestToken: null,
       holdUntil: null,
+      resumePath: null,
+      preserveReplayOnAbort: false,
       sandboxAugments: {},
       sandboxHands: {},
       botArchetypes: new Map(),
@@ -1999,6 +2081,21 @@ export class RoomManager {
       // 이 사람을 기다리며 세워 둔 판이었다면 시한을 푼다 (§2-5). `mine.reconnect`가
       // 아래에서 타이머를 정상 시간으로 되돌리므로 방 쪽 표식만 걷으면 된다.
       room.holdUntil = null;
+      /*
+       * **다른 좌석의 대기도 짧게 줄인다** (§2-10 되살린 판).
+       *
+       * 재시작 직후에는 네 사람이 전부 끊겨 있어 전 좌석이 세워져 있다. 그중
+       * 한 명이 돌아왔는데 나머지 셋의 시한이 3분 그대로면, **돌아온 사람이
+       * 아무 설명 없이 3분을 본다.** 이제는 기다리는 사람이 생겼으므로 평소의
+       * 끊김 처리로 돌려보낸다 — 짧은 유예 뒤 자동 진행이고, 그 셋도 여전히
+       * 언제든 돌아올 수 있다(좌석은 그대로 남는다).
+       */
+      for (const other of room.agents) {
+        if (other === mine || !(other instanceof HumanAgent)) continue;
+        // 세워 둔 시한을 **평소의 끊김 유예 길이로 줄인다** — 새 상태를 만들지
+        // 않고 기존 처리로 돌려보내는 가장 짧은 길이다.
+        if (other.isHeld) other.suspend(DISCONNECT_GRACE_MS);
+      }
       // 이 좌석을 아직 붙들고 있는 **예전 연결**을 먼저 떼어낸다.
       //
       // 대기실 경로(`reseat`)는 이걸 하는데 여기만 빠져 있어서, 두 번째 탭으로
@@ -3534,6 +3631,176 @@ export class RoomManager {
       });
   }
 
+  // ─────────────────────────── 이어하기 (§2-10) ───────────────────────────
+
+  /**
+   * 이 판을 "진행 중"으로 적어 둔다 — 서버가 죽어도 다음 부팅이 되살릴 수 있게.
+   *
+   * 담는 것은 **바깥 정보**뿐이다(코드·좌석·모드·리플레이 경로). 판의 상태는
+   * 리플레이 파일이 이미 완전하게 갖고 있고, 두 곳에 나눠 담으면 언젠가 어긋난다.
+   *
+   * 샌드박스·체험 방은 대상이 아니다 — 리플레이 파일 자체를 남기지 않으므로
+   * 되살릴 근거가 없고, 애초에 기록으로 남기지 않기로 한 판이다.
+   */
+  private rememberLiveGame(room: Room): void {
+    const db = this.db;
+    if (db === undefined || room.writer === null || room.sandbox || room.guest) return;
+    const now = new Date().toISOString();
+    try {
+      db.saveLiveGame({
+        code: room.code,
+        replayPath: room.writer.path,
+        gameMode: room.gameMode,
+        botDifficulty: room.botDifficulty,
+        seats: room.agents.map((a) => ({
+          id: a.id,
+          nickname: a.nickname,
+          isBot: a instanceof BotAgent,
+          ...(a.botArchetype !== undefined ? { archetype: a.botArchetype } : {}),
+        })),
+        startedAt: room.startedAt ?? now,
+        updatedAt: now,
+      });
+    } catch (err) {
+      // 이어하기를 못 적는 것은 게임을 멈출 이유가 아니다 — 지금 도는 판은 멀쩡하다.
+      this.logError(room, "진행 중 대국 기록 실패(이어하기만 못 하게 된다):", err);
+    }
+  }
+
+  /** 이 판은 더 이상 진행 중이 아니다 (종료·무효·크래시·방 정리 공통). */
+  private forgetLiveGame(room: Room): void {
+    try {
+      this.db?.clearLiveGame(room.code);
+    } catch (err) {
+      this.logError(room, "진행 중 대국 기록 삭제 실패:", err);
+    }
+  }
+
+  /**
+   * 부팅 직후 — 끊긴 채로 남아 있던 대국을 전부 되살린다 (감사 §2-10).
+   *
+   * 예전에는 서버를 재시작하면 진행 중이던 40분짜리 반장전이 **어디에도 남지 않고**
+   * 사라졌다. 점수도 기록도 리플레이도 없이, 네 사람의 시간이 통째로.
+   *
+   * 되살린 방은 사람들의 좌석을 **비워 두지 않는다** — 이름 그대로 앉혀 두고,
+   * 각자 `joinRoom`(홈의 "진행하던 방으로 재접속")으로 돌아오면 기존 재접속
+   * 경로가 그대로 받는다. 아무도 안 돌아온 사이 판이 저 혼자 진행되지 않도록
+   * §2-5에서 만든 "판을 세워 두기"를 그대로 쓴다.
+   *
+   * 한 판이 실패해도 **다음 판을 계속 시도한다.** 되살리기는 최선의 노력이고,
+   * 실패한 판 하나가 나머지 셋까지 데려가면 안 된다.
+   */
+  async restoreLiveGames(): Promise<void> {
+    const db = this.db;
+    if (db === undefined) return;
+    let rows: LiveGameRecord[];
+    try {
+      rows = db.listLiveGames();
+    } catch (err) {
+      this.logError(null, "진행 중 대국 목록을 읽지 못했다:", err);
+      return;
+    }
+    if (rows.length === 0) return;
+    this.log(null, `끊긴 대국 ${rows.length}건 — 이어하기를 시도한다`);
+    for (const row of rows) {
+      try {
+        await this.restoreLiveGame(row);
+      } catch (err) {
+        this.logError(null, `[room ${row.code}] 이어하기 실패 — 이 판은 포기한다:`, err);
+        // 반쯤 세워진 방을 남기지 않는다 — 컨트롤러 없이 `playing`으로 굳은 방은
+        // 좀비 스위퍼가 1분 뒤에나 걷어가고, 그 사이 그 코드로 아무도 못 들어온다.
+        this.rooms.delete(row.code);
+        // 되살아나지 못한 판을 부팅마다 다시 시도하지 않는다. 리플레이 파일은
+        // 그대로 남으므로 사람이 열어 볼 수는 있다.
+        try {
+          db.clearLiveGame(row.code);
+        } catch {
+          /* 지우지 못해도 다음 부팅이 다시 시도할 뿐이다 */
+        }
+      }
+    }
+  }
+
+  /** 진행 중 대국 1건을 되살린다. 되살릴 수 없으면 던진다(호출부가 그 판만 포기한다). */
+  private async restoreLiveGame(row: LiveGameRecord): Promise<void> {
+    if (this.rooms.has(row.code)) return; // 이미 서 있다 (중복 호출 방어)
+    if (row.seats.length !== MAX_PLAYERS) {
+      throw new Error(`좌석이 ${row.seats.length}개다 (${MAX_PLAYERS}개여야 한다)`);
+    }
+    /*
+     * **너무 오래된 판은 되살리지 않는다.**
+     *
+     * 이어하기의 값어치는 "방금 끊긴 판으로 돌아간다"에 있다. 하루 지난 판을
+     * 되살려 봐야 아무도 그 상황을 기억하지 못하고, 방 예산만 물고 있는다.
+     * 그때는 리플레이 파일이 남아 있으므로 되짚어 볼 수는 있다.
+     */
+    const age = Date.now() - Date.parse(row.updatedAt);
+    if (!Number.isFinite(age) || age > RESUME_MAX_AGE_MS) {
+      throw new Error(`${Math.round(age / 60_000)}분 전에 끊긴 판이다 — 되살리지 않는다`);
+    }
+
+    // 상태 재구성은 **동기**다 — 중간에 await가 끼면 그 틈에 같은 코드의 방이
+    // 새로 생기거나 사람이 붙을 수 있다.
+    const recon = reconstructGameFromFile(row.replayPath, {
+      extraAugments: contentAugments,
+      // 실시간 경로와 같은 로깅 — 이게 없으면 재개한 판에서만 증강 버그가
+      // 아무 흔적 없이 사라진다(리플레이 재구성이 들어내진 이유 중 하나였다).
+      processor: {
+        onEffectError: (f) =>
+          console.error(
+            `[augment] ${f.source} ${f.phase} threw on ${f.eventType} (room ${row.code}): ${f.message}`,
+          ),
+      },
+    });
+    /*
+     * 티어 자동 조정 결과는 **파일이 아니라 지금 값**을 건다.
+     *
+     * 실시간 경로는 `augmentWeights`를 `HanchanConfig`로 넘기지만, 재개 경로는
+     * 카탈로그가 이미 만들어진 뒤라 그 길이 없다 — 레지스트리에 직접 건다.
+     * 시작 시점의 표를 파일에 굳혀 담지 않은 이유: 티어는 20판마다 움직이는
+     * 값이라, 재개한 판만 몇 시간 전 표로 드래프트하면 오히려 어긋난다.
+     */
+    if (this.augmentStats !== undefined) {
+      recon.game.augments.setWeightOverrides(this.augmentStats.weights());
+    }
+
+    const room = this.newRoom({
+      code: row.code,
+      gameMode: row.gameMode === "hanchan" ? "hanchan" : "tonpuu",
+      botDifficulty: row.botDifficulty as BotDifficulty,
+    });
+    room.resumePath = row.replayPath;
+    room.phase = "playing";
+    room.startedAt = row.startedAt;
+    for (const seat of row.seats) {
+      if (seat.isBot) {
+        // 원형을 그대로 물려준다 — 안 주면 시드에서 다시 뽑혀, 재개 뒤 봇의
+        // 성격이 바뀐다(같은 자리의 상대가 갑자기 다른 사람이 된 것처럼 보인다).
+        if (seat.archetype !== undefined) {
+          room.botArchetypes.set(seat.id, seat.archetype as ArchetypeName);
+        }
+        room.agents.push(this.newBot(room, seat.id));
+        continue;
+      }
+      // 사람 좌석은 **소켓 없이** 앉힌다. 이 자리는 이름을 지키기 위한 것이고,
+      // 그 이름으로 `joinRoom`이 들어오면 기존 재접속 경로가 소켓을 붙여 준다.
+      const agent = new HumanAgent(seat.id, seat.nickname, closedSocket());
+      // 아무도 돌아오지 않은 사이 판이 저 혼자 진행되지 않게 세워 둔다(§2-5).
+      agent.suspend(RESUME_HOLD_MS);
+      room.agents.push(agent);
+    }
+    room.hostId = room.agents.find((a) => !(a instanceof BotAgent))?.id ?? null;
+    this.seatBotProfiles(room);
+    room.holdUntil = Date.now() + RESUME_HOLD_MS;
+
+    await this.openGame(room, recon);
+    this.log(
+      room,
+      `이어하기 — ${recon.eventCount}개 이벤트에서 재개 ` +
+        `(${row.seats.filter((s) => !s.isBot).map((s) => s.nickname).join(", ")})`,
+    );
+  }
+
   private rollbackFailedStart(room: Room, err: unknown): void {
     this.logError(room, "게임 시작 실패 — 방을 대기실로 되돌린다:", err);
     // 시작도 못 한 게임이지만 그 실패 자체가 결함이다 — 지우지 않고 남긴다(§2-6).
@@ -3563,18 +3830,45 @@ export class RoomManager {
     this.broadcastLobby(room);
   }
 
-  /** 실제 시작 절차 — 던질 수 있다(호출자 startGame이 롤백한다). */
-  private async openGame(room: Room): Promise<void> {
+  /**
+   * 실제 시작 절차 — 던질 수 있다(호출자 startGame이 롤백한다).
+   *
+   * @param resume 서버 재시작 후 **이어하기**로 여는 경우 (감사 §2-10). 새 판을
+   *   시작하는 것과 여기서부터의 배선(컨트롤러 콜백·기록·통계·정리)이 완전히
+   *   같아야 하므로 분기를 만들지 않고 이 함수 하나로 모았다 — 두 벌로 두면
+   *   한쪽에만 고쳐진 자리가 반드시 생긴다.
+   */
+  private async openGame(room: Room, resume?: ResumeReconstruction): Promise<void> {
     // 자리는 대기실에서 이미 정해져 보이고 있다 — 여기서 다시 섞으면 그 표시가 거짓이 된다.
 
     // 증강 테스트·게스트 체험 방은 리플레이 파일을 남기지 않는다 — 어차피 게임
     // 인덱스·통계에도 기록하지 않으므로 열어 볼 길 없는 파일만 쌓인다.
-    const writer = room.sandbox || room.guest ? null : new ReplayWriter(this.replayDir, room.code);
+    //
+    // 이어하기는 **같은 파일을 이어 쓴다**. 새로 열면 `__init__`도 지금까지의
+    // 확정 이벤트도 없는 반쪽 파일이 생겨 리플레이로 열 수 없고, 원본은 인덱스에
+    // 없는 고아로 남는다.
+    const writer =
+      room.sandbox || room.guest
+        ? null
+        : new ReplayWriter(this.replayDir, room.code, room.resumePath ?? undefined);
     if (writer !== null) await writer.open();
     room.writer = writer;
 
     const playerIds = room.agents.map((a) => a.id);
     const tracker = new StatsTracker(playerIds);
+    if (resume !== undefined) {
+      // 누적 통계를 되세운다 — `StatsTracker.consume`은 "리플레이 로그의 JSON도
+      // 그대로 넣을 수 있다"가 계약이라, 읽은 줄을 다시 먹이면 끊긴 시점의 집계가
+      // 그대로 복원된다. 이게 없으면 재개한 판의 통계가 **중간부터** 세어져,
+      // 그 판에 참가한 네 사람의 전적이 조용히 깎인다.
+      for (const line of resume.eventLines) {
+        try {
+          tracker.consume(JSON.parse(line) as { type: string; payload?: unknown });
+        } catch {
+          /* 한 줄이 상해도 나머지 집계는 살린다 (실시간 경로와 같은 규율) */
+        }
+      }
+    }
 
     // 봇에게 이 게임이 몇 국짜리인지 알린다 — 뷰에 없는 정보다. 이게 있어야 봇이
     // "지금이 올라스인가"를 알고 순위를 지키거나 뒤집는 판단을 한다(bot/match.ts).
@@ -3596,7 +3890,11 @@ export class RoomManager {
 
     room.controller = new HanchanController(room.agents, {
       // 모드에 맞는 진행 설정(장 수·서입·드래프트 스케줄) 한 벌. 반장전/동풍전 분기.
-      ...hanchanConfigForMode(room.gameMode),
+      //
+      // 이어하기는 **그 판이 시작될 때의 설정**을 파일에서 읽어 쓴다. 지금 코드가
+      // 만드는 한 벌을 쓰면, 그 사이 규칙이 바뀐 경우 재개한 판이 시작할 때와
+      // 다른 규칙으로 끝난다 — 점수가 조용히 달라진다.
+      ...(resume !== undefined ? resume.hanchan : hanchanConfigForMode(room.gameMode)),
       extraAugments: contentAugments,
       interRoundDelayMs: this.interRoundDelayMs,
       autoMoveDelayMs: AUTO_MOVE_MS,
@@ -3631,6 +3929,12 @@ export class RoomManager {
           // 통계 집계 실패는 게임 진행을 막지 않는다
         }
       },
+      // 국이 하나 끝날 때마다 "마지막 소식" 시각을 갱신한다 (§2-10). 유휴 청소도
+      // 같은 일을 하지만 그쪽은 1분 주기라, 국 경계에서 죽는 경우가 가장 흔한
+      // 만큼 여기서도 한 번 찍어 둔다.
+      onRoundEnd: () => {
+        this.rememberLiveGame(room);
+      },
       onGameOver: (rankings: RankingEntry[], endReason: GameEndReason) => {
         // 방은 그대로 남는다 — 결과 화면에서 "이어하기"로 같은 멤버와 다음 판을 간다.
         // 게스트 판은 "이어하기"를 주지 않는다 — 대기실로 돌아가도 손님은 `startGame`을
@@ -3642,6 +3946,10 @@ export class RoomManager {
          * `recordGame` 은 리플레이 **경로만** 읽으므로 writer 를 닫기 전이어도 된다.
          * 샌드박스·게스트 판은 애초에 기록하지 않으므로 id 도 없다.
          */
+        // 이 판은 더 이상 "진행 중"이 아니다 — 이어하기 후보에서 뺀다(§2-10).
+        // 기록보다 **먼저** 지운다: recordGame이 던져도 이 코드가 부팅 때마다
+        // 되살아나려 드는 일은 없어야 한다.
+        this.forgetLiveGame(room);
         const recordedId =
           room.sandbox || room.guest ? undefined : this.recordGame(room, rankings);
         const msg: ServerMessage = {
@@ -3696,9 +4004,24 @@ export class RoomManager {
           });
       },
       onGameAborted: () => {
+        /*
+         * **서버 종료로 깨어난 abort는 무효 처리가 아니다** (감사 §2-10).
+         *
+         * `shutdown()`은 대기 중인 결정 프로미스를 붙들고 있지 않으려고
+         * `requestAbort()`를 부르는데, 그 신호가 여기까지 흘러오면 아래 정리가
+         * **이어하기의 유일한 근거인 리플레이 파일을 지운다.** 종료 중에는
+         * 파일도 `live_games` 행도 그대로 둬야 다음 부팅이 그 판을 되살린다.
+         */
+        if (this.shuttingDown) {
+          writer?.close();
+          return;
+        }
+        this.forgetLiveGame(room);
         // 무효 처리는 기록하지 않는다 → 리플레이 파일도 남기지 않는다. close()만 하면
         // 인덱스에 없는 `.jsonl`이 디스크에 영원히 남는다(ReplayWriter.discard 주석).
-        this.discardReplay(room, writer);
+        // **되살렸는데 아무도 안 돌아온 판만 예외**다 — 그건 사람들의 결정이 아니다.
+        if (room.preserveReplayOnAbort) writer?.close();
+        else this.discardReplay(room, writer);
         this.touch(room);
         // 증강 테스트 초기화 — 방·좌석을 유지한 채 새 판을 시작한다(무효 알림 없음)
         if (room.sandbox && room.sandboxRestarting) {
@@ -3727,9 +4050,16 @@ export class RoomManager {
       },
     });
 
+    // 이 판을 "진행 중"으로 적어 둔다 — 서버가 여기서 죽어도 다음 부팅이 되살린다.
+    // 컨트롤러를 **돌리기 전에** 적는다: 첫 국 도중에 죽는 경우가 가장 흔하다.
+    this.rememberLiveGame(room);
+
     // 백그라운드로 실행 (프롬프트 대기는 각 HumanAgent가 소켓으로 처리)
-    room.controller.run().catch((err: unknown) => {
+    const loop = resume === undefined ? room.controller.run() : room.controller.resume(resume.game);
+    loop.catch((err: unknown) => {
       this.logError(room, "게임이 예외로 종료됐다:", err);
+      // 되살아나지 못한 판을 부팅마다 다시 시도하지 않게 후보에서 뺀다.
+      this.forgetLiveGame(room);
       // 예외 종료는 recordGame을 부르지 않는다. 그렇다고 지우면 **크래시한 판만
       // 골라 재현 증거를 없애는** 셈이라(감사 §2-6), 인덱스 밖이 정상인 자리
       // (`replays/crashed/`)로 옮겨 남긴다.
