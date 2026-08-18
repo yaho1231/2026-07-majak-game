@@ -759,7 +759,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 2,
     u: 3,
     f: 3,
-    note: "3순에 1회, 고른 손패 3장을 패산 위 3장과 교체 + 발동당 +1판. 가져온 3장은 전원 공개된다 (2026-08-15)",
+    note: "3순에 1회 3장 교체 + 발동당 +1판. 무작위 3장이 뽑혀 완성된 몸통이 깨질 수 있다 (2026-08-18: 2026-08-15의 '3장 전부 선택'을 되돌렸다)",
   },
   meld_dissolve: {
     p: 2,

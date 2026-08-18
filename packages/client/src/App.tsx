@@ -14398,8 +14398,8 @@ function OwnArea(props: {
     });
   };
 
-  // 미래를 보는 자 — 패산 위 3장과 바꿀 손패를 모달에서 **한 장씩 세 번** 고른다.
-  // (2026-08-15 이전에는 무작위 3장 중 '바닥에 버릴' 한 장을 고르는 창이었다.)
+  // 미래를 보는 자 — 무작위로 뽑힌 3장 중 '바닥에 버릴' 한 장을 모달에서 고른다.
+  // (2026-08-15의 "3장 전부 선택" 사양은 2026-08-18 사용자 지시로 되돌렸다.)
   const futurePick = useMemo(() => {
     const byTile = new Map<number, ActionOption>();
     for (const o of myPrompt?.options ?? []) {
@@ -15242,18 +15242,17 @@ function OwnArea(props: {
       ) : null}
       {/* '다시 열기' 버튼은 없다 — 이제 dismissed는 "방금 제출했다"는 뜻뿐이고
           (닫기가 사라졌다), 다음 단계 프롬프트가 오면 모달이 알아서 다시 뜬다. */}
-      {/* 미래를 보는 자 — 손패를 보여주고 패산 위 3장과 바꿀 패를 한 장씩 고르게 한다
-          (3장을 채우면 그 자리에서 교환이 일어난다).
+      {/* 미래를 보는 자 — 뽑힌 3장을 보여주고 바닥에 버릴 1장을 고르게 한다.
           ⚠ 닫기가 없다. 버튼을 누른 순간 발동은 확정이고(사용자 확정 2026-08-01
           "사용하면 무조건 패가 바뀌어야 한다"), 고르기 싫으면 랜덤으로 맡긴다. */}
       {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
       {canPickFuture && !futureDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
-            <div className="rinshan-pick-title">🔮 미래를 보는 자 — 교체할 패 선택</div>
+            <div className="rinshan-pick-title">🔮 미래를 보는 자 — 버릴 패 선택</div>
             <div className="rinshan-pick-sub">
-              패산 위 3장과 바꿀 손패를 고르세요 — 한 장씩 세 번 고르면 그 3장이 패산 맨
-              밑으로 가고 패산 위 3장이 손에 들어옵니다. 바닥에 버려지는 패는 없습니다.
+              손에서 이 세 장이 뽑혔습니다. 바닥에 버릴 한 장을 고르세요 — 나머지 두 장은
+              패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다.
             </div>
             <div className="rinshan-pick-tiles">
               {sortTileIds([...futurePick.keys()], view.tiles).map((id) => {
@@ -15270,7 +15269,7 @@ function OwnArea(props: {
                     }}
                   >
                     <TileImg tile={tile} size="hand" />
-                    <span className="rinshan-pick-label">이 패를 바꾼다</span>
+                    <span className="rinshan-pick-label">이 패를 버린다</span>
                   </button>
                 );
               })}
@@ -15285,7 +15284,7 @@ function OwnArea(props: {
                 setFutureDismissed(true);
               }}
             >
-              🎲 아무거나 (랜덤으로 고르기)
+              🎲 아무거나 (랜덤으로 버리기)
             </button>
           </div>
         </div>,

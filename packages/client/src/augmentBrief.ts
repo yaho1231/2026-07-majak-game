@@ -109,7 +109,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   frame_up: { use: "2국에 1회", text: "내가 버릴 패를 상대 바닥에 놓아 그 사람을 후리텐에 빠뜨린다." },
   free_riichi_discard: { use: "상시", text: "리치를 걸어도 오름패만 고정되고, 버리는 패는 계속 자유롭다." },
   full_hand_swap: { use: "게임 2회", text: "국 첫 순에 상대의 손패를 통째로 빼앗는다." },
-  future_sight: { use: "3순에 1회", text: "고른 손패 3장을 패산 위 3장과 바꾼다. 쓸수록 그 국 화료에 판이 붙는다." },
+  future_sight: { use: "3순에 1회", text: "손패 3장을 패산 위 3장과 바꾼다. 쓸수록 그 국 화료에 판이 붙는다." },
   genesis: { use: MODE_1_2, text: "손패의 자패는 수패로, 수패는 자패로 통째로 뒤바뀐다. 국당 1회." },
   giant_god: { use: "상시", text: "내 바닥의 국사무쌍 13종을 손으로 끌어올려 텐파이 — 다음 순에 화료한다." },
   grave_rob: { use: MODE_1_2, text: "상대가 최근 버린 10장 중 1장을 파내 그대로 화료한다." },
