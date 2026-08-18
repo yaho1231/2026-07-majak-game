@@ -12261,12 +12261,18 @@ body:has(.overlay) .emote-bar {
   transform: translateY(-14px);
   z-index: 3;
 }
-.hand-armed::after {
-  content: "한 번 더";
+/* ⚠ 이 뱃지는 `.hand-armed::after` 로 두면 안 된다 — 한 요소의 ::after는 하나뿐인데
+   마우스 hover 금테(`.hand-clickable:hover::after`)가 같은 자리를 쓴다. 특이도가 높은
+   hover 쪽이 `content: ""` 와 `inset: -3px` 로 덮어써도 여기 `background: var(--brass)` 는
+   남아, 첫 탭을 한 순간 **패 전체가 놋쇠색 판으로 가려졌다**(2026-08-18 사용자 보고 —
+   데스크톱에서 이 설정을 켜면 무엇을 버리려는지가 안 보인다). 그래서 봉인·지뢰 뱃지와
+   같이 진짜 자식 요소로 그린다(App.tsx `hand-armed-badge`). */
+.hand-armed-badge {
   position: absolute;
   left: 50%;
   bottom: -17px;
   transform: translateX(-50%);
+  z-index: 3;
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--brass);
