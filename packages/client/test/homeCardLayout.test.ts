@@ -144,7 +144,8 @@ describe("홈 오른쪽 카드는 탭으로 갈아 끼운다", () => {
     for (const id of ['"record"', '"meta"', '"feedback"', '"account"', '"admin"']) {
       expect(APP_CODE, `${id} 탭이 없다`).toContain(id);
     }
-    expect(APP_CODE).toContain('className="home-tabpanel"');
+    // 패널에는 고른 탭 이름이 함께 붙는다 — 탭마다 배치가 다를 수 있어야 한다.
+    expect(APP_CODE).toContain("home-tabpanel home-tabpanel-${tab}");
   });
 
   it("고른 탭만 렌더한다", () => {
@@ -171,6 +172,51 @@ describe("홈 오른쪽 카드는 탭으로 갈아 끼운다", () => {
     expect(panel).toMatch(/align-content:\s*start/);
     // `.home-top`은 align-items: start다 — 탭 열만 예외로 늘려 높이가 안 튀게 한다.
     expect(rule(".home-tabs")).toMatch(/align-self:\s*stretch/);
+  });
+
+  /* ── 전적 탭: 빈칸과 잘림은 한 문제의 앞뒤다 (2026-08-18 사용자 보고) ──
+     균등 2열에 키가 다른 카드 셋을 흘려 두었더니 내 통계는 카드 **안**이 600px
+     비고(stretch), 증강 표는 폭이 모자라 픽률 열이 잘렸다. 둘 다 콘솔은 조용하다. */
+  it("내 통계는 제 내용만큼만 선다 — 카드 안이 비지 않게", () => {
+    const rec = rule(".home-tabpanel-record");
+    // stretch(격자 기본값)면 짧은 카드가 옆 카드 높이까지 늘어나 테두리 안이 빈다.
+    expect(rec).toMatch(/align-items:\s*start/);
+  });
+
+  it("짧은 카드 둘은 왼쪽에 쌓고, 긴 표에 넓은 열을 준다", () => {
+    // 리플레이가 내 통계 아래로 들어가야 왼쪽에 남던 세로 공간이 쓰인다.
+    expect(APP_CODE).toMatch(/home-record-left[\s\S]{0,3000}\{replaysCard\}\s*<\/div>/);
+    const rec = rule(".home-tabpanel-record");
+    expect(rec).toMatch(/grid-template-columns:\s*minmax\(0,\s*4fr\)\s+minmax\(340px,\s*5fr\)/);
+  });
+
+  it("증강 열의 최소치는 표가 안 잘리는 폭이다", () => {
+    // 340px = 5열 표 min-content 290 + 카드 패딩 48 + 테두리 2 (실측).
+    // 이 최소치가 빠지면 창 1100px 근처에서 픽률 열이 다시 잘린다.
+    expect(rule(".home-tabpanel-record")).toContain("minmax(340px");
+    // 숫자 열은 제 글자만큼만, 남는 폭은 이름 열이 먹는다 — 5열이 벌어져 잘리던 이유.
+    expect(CSS_CODE).toMatch(/td:not\(\.aug-name\)\s*\{[^}]*width:\s*1%/);
+    // 도감 표는 빼 둔다 — 전체 폭 페이지라 손댈 이유가 없다.
+    expect(CSS_CODE).toContain(".aug-table:not(.codex-table)");
+  });
+
+  it("전적 탭 배치는 창이 아니라 패널 폭으로 갈린다", () => {
+    // 이 열은 창의 약 60%다(.home-top 1:1.55). 환산을 창 기준 breakpoint에 박아 두면
+    // 바깥 비율을 손대는 순간 조용히 어긋난다.
+    expect(rule(".home-tabs")).toMatch(/container:\s*hometab\s*\/\s*inline-size/);
+    expect(CSS_CODE).toMatch(/@container hometab \(max-width: 634px\)/);
+    // 창 기준 규칙(@container ui)이 뒤에서 덮으면 안 된다 — 순서로 이긴다.
+    const ui900 = CSS_CODE.indexOf("@container ui (max-width: 900px)");
+    const rec = CSS_CODE.indexOf(".home-tabpanel-record {");
+    expect(ui900).toBeGreaterThanOrEqual(0);
+    expect(rec).toBeGreaterThan(ui900);
+  });
+
+  it("좁아져도 셋을 세로로 쌓지 않는다", () => {
+    // #318이 없앤 네 화면짜리 세로 줄로 돌아가지 않게 — 짧은 둘은 가로로 눕힌다.
+    const at = CSS_CODE.indexOf("@container hometab (max-width: 634px)");
+    const block = CSS_CODE.slice(at, CSS_CODE.indexOf("\n}", CSS_CODE.indexOf("}", at + 40)));
+    expect(block).toMatch(/\.home-record-left\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit/);
   });
 
   it("규칙·도감은 탭 밖(상단 바)에 있다", () => {

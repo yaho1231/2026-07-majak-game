@@ -8649,6 +8649,12 @@ button {
   /* `.home-top`은 align-items: start다(빈 카드가 늘어나지 않게). 탭 패널만은
      예외로 늘린다 — 탭을 바꿀 때마다 상자 높이가 튀면 눌러야 할 것이 움직인다. */
   align-self: stretch;
+  /* 탭 안의 배치는 **창**이 아니라 **이 열의 폭**으로 갈려야 한다. 이 열은 창의
+     약 60%인데(`.home-top` 1 : 1.55), 그 환산을 breakpoint 숫자에 박아 두면
+     바깥 비율을 손대는 순간 조용히 어긋난다. 그래서 여기서 컨테이너를 연다.
+     ⚠ `ui`(body)는 이름이 있어서 안 가려진다 — 이 파일의 `@container ui`는 전부
+     그대로 창 기준이다(이름 없는 @container 질의는 이 파일에 없다, 실측 확인). */
+  container: hometab / inline-size;
 }
 
 .home-tabbar {
@@ -8689,6 +8695,37 @@ button {
 
 .home-tabpanel > * { min-width: 0; }
 
+/* ── 전적 탭: 짧은 것끼리 왼쪽, 긴 표는 넓은 오른쪽 ──
+
+   균등 2열(auto-fit 1fr 1fr)에 카드 셋을 흘려 두었더니 두 가지가 동시에 깨졌다
+   (2026-08-18 사용자 보고, 스크린샷):
+
+   1. **내 통계 안이 비었다.** 격자 기본값 `align-items: stretch` 때문에 짧은 카드가
+      같은 줄의 긴 카드(증강 통계) 높이까지 늘어난다 — 내용은 380px인데 카드는
+      990px이라 600px이 테두리 **안쪽**에 빈칸으로 남았다.
+   2. **증강 표는 자리가 모자랐다.** 같은 폭(≈360px)에 5열 표를 넣으니 가로로
+      잘려서 픽률 열이 아예 안 보이고 가로 스크롤바가 생겼다.
+
+   둘은 한 문제의 앞뒤다 — 키가 다른 카드에 같은 폭·같은 높이를 준 것. 그래서
+   **짧은 카드 둘(내 통계·리플레이)을 왼쪽 열에 쌓고**, 긴 표에 넓은 열을 준다.
+   `align-items: start` 라서 카드는 제 내용만큼만 서고, 남는 세로 공간은 카드
+   **사이**에 남는다(테두리 안이 아니라).
+
+   오른쪽 열의 `340px`는 취향이 아니라 **표가 안 잘리는 최소치**다 — 5열 표의
+   min-content 290px + 카드 좌우 패딩 48px + 테두리 2px(실측 2026-08-18). fr 트랙은
+   자기 최소치 아래로는 안 줄어드니, 폭이 모자라면 **왼쪽이 먼저 양보한다**. 4fr:5fr
+   그대로 두면 창 1100px 근처에서 오른쪽이 326px까지 눌려 픽률 열이 다시 잘렸다.
+
+   규칙 자체는 아래 `@container ui` 블록 **뒤**에 있다 — 이 탭의 배치는 창이 아니라
+   패널 폭으로만 갈려야 해서(hometab), 창 기준 규칙에 덮이면 안 된다. */
+
+.home-record-left {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
 /* 리플레이 목록은 탭 안에서도 스스로 상한을 갖는다 — 판이 쌓여도 탭이 안 길어진다. */
 .home-tabpanel .home-replays .replay-list {
   min-height: 90px;
@@ -8707,6 +8744,28 @@ button {
   /* 좁은 화면에서는 한 줄에 한 장 — 290px 두 장을 억지로 끼우면 표가 무너진다. */
   .home-tabpanel { grid-template-columns: 1fr; }
   .home-tabpanel .home-account { max-width: none; }
+}
+
+/* 전적 탭 배치 (위 주석 참고). 창 기준 규칙 뒤에 두어 패널 폭이 최종 결정권을 갖는다. */
+.home-tabpanel-record {
+  grid-template-columns: minmax(0, 4fr) minmax(340px, 5fr);
+  align-items: start;
+}
+
+/* 두 열을 감당 못 하는 폭 ── 634px = 내 통계가 안 깨지는 최소치 277px(통계 타일
+   5칸의 min-content 229px + 카드 패딩 48px) + 간격 18px + 증강 열 340px. 이보다
+   좁으면 둘 중 하나는 반드시 깨진다.
+
+   그때도 셋을 세로로 쌓지는 않는다(#318이 없앤 그 세로 줄이다). 대신 **짧은 카드 둘을
+   가로로 눕히고 긴 표에 한 줄을 통째로** 준다 — 표는 패널 폭을 다 받아 제일 넓어지고,
+   높이는 스택보다 카드 한 장만큼 짧다. 더 좁아지면 auto-fit이 알아서 한 장씩 접는다. */
+@container hometab (max-width: 634px) {
+  .home-tabpanel-record { grid-template-columns: 1fr; }
+  .home-record-left {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(277px, 1fr));
+    align-items: start;
+  }
 }
 
 .home-card h2 {
@@ -9102,7 +9161,23 @@ button {
 }
 
 /* 증강 테이블 (lb-table 재사용 + 조정) */
-.aug-table-scroll { max-height: 420px; overflow-y: auto; }
+/* 117종 중 수집한 만큼이 여기 쌓인다 — 10줄만 보이면 스크롤이 끝나지 않는다.
+   전적 탭에서 왼쪽 열(내 통계 + 리플레이)과 키를 맞추는 값이기도 하다. */
+.aug-table-scroll { max-height: 520px; overflow-y: auto; }
+/* 이름 열이 남는 폭을 다 먹고, 숫자 열은 제 글자만큼만 — 5열이 잘리던 이유가
+   숫자 열들이 **균등하게 벌어져서**였다(auto 레이아웃은 남는 폭을 열마다 나눠 준다).
+   이걸로 표의 min-content가 314px → 290px로 줄어 홈 카드 폭에 들어간다(실측).
+   도감(`.codex-table`)은 뺀다 — 전체 폭 페이지라 좁아서 잘릴 일이 없고, 7열 정렬
+   머리글이 오른쪽으로 몰리기만 한다. 홈의 두 표(내 증강 통계·증강 메타)만 대상. */
+.aug-table:not(.codex-table) { table-layout: auto; }
+.aug-table:not(.codex-table) th:not(.aug-name-h),
+.aug-table:not(.codex-table) td:not(.aug-name) {
+  width: 1%;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+.aug-table:not(.codex-table) th.aug-name-h,
+.aug-table:not(.codex-table) td.aug-name { width: auto; }
 .aug-table td.aug-name,
 .aug-table th.aug-name-h {
   text-align: left;
