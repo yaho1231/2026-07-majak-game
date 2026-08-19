@@ -6,9 +6,11 @@
  * 돌린다 — 소스 문자열 스캔이 아니라 계산 결과를 본다.
  *
  * 여기서 못 박는 것: 수동 배수가 자동값을 **덮지 않고 곱한다**, 최종 배율이 읽히는
- * 범위를 못 벗어난다, 새 localStorage 키를 쓰고 옛 키는 계속 지운다.
+ * 범위를 못 벗어난다, 새 localStorage 키를 쓰고 옛 키는 계속 지운다, 그리고 배율을
+ * **무엇으로 거는지**(zoom / transform)를 엔진을 재서 고른다.
  */
 
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Uis = typeof import("../src/uiScale.js");
@@ -16,6 +18,12 @@ type Uis = typeof import("../src/uiScale.js");
 const store = new Map<string, string>();
 let cssVars: Record<string, string> = {};
 let keyHandlers: ((e: unknown) => void)[] = [];
+/** `<html>`에 실제로 쓰인 data-ui-scale-mode. */
+let modeAttr: string | null = null;
+/** 프로브가 재게 될 `100cqw` — 엔진 흉내. 100 = zoom을 아는 엔진, 200 = 모르는 엔진. */
+let probeCq = 100;
+/** `CSS.supports("zoom", "2")` 가 참인가. */
+let zoomSupported = true;
 
 /** 창 크기·포인터·dpr을 정해 놓고 모듈을 새로 읽어 온다. */
 async function boot(opts: {
@@ -24,11 +32,18 @@ async function boot(opts: {
   fine?: boolean;
   dpr?: number;
   stored?: string;
+  /** 프로브가 잴 100cqw (기본 100 = 크로뮴처럼 zoom을 아는 엔진). */
+  cq?: number;
+  /** `zoom` 자체를 지원하는가 (기본 참). */
+  zoom?: boolean;
 }): Promise<Uis> {
   store.clear();
   if (opts.stored !== undefined) store.set("majak.uiZoom", opts.stored);
   cssVars = {};
   keyHandlers = [];
+  modeAttr = null;
+  probeCq = opts.cq ?? 100;
+  zoomSupported = opts.zoom ?? true;
   const fine = opts.fine ?? true;
   const win = {
     innerWidth: opts.w,
@@ -45,10 +60,25 @@ async function boot(opts: {
     },
   };
   vi.stubGlobal("window", win);
+  // 배율 방식 프로브가 쓰는 만큼만 세운다: createElement → appendChild → offsetWidth.
   vi.stubGlobal("document", {
-    body: { style: { setProperty: (k: string, v: string) => void (cssVars[k] = v) } },
-    documentElement: {},
+    body: {
+      style: { setProperty: (k: string, v: string) => void (cssVars[k] = v) },
+      appendChild: () => {},
+    },
+    documentElement: {
+      setAttribute: (k: string, v: string) => void (k === "data-ui-scale-mode" && (modeAttr = v)),
+    },
+    createElement: () => ({
+      setAttribute: () => {},
+      appendChild: () => {},
+      remove: () => {},
+      get offsetWidth(): number {
+        return probeCq;
+      },
+    }),
   });
+  vi.stubGlobal("CSS", { supports: (p: string) => (p === "zoom" ? zoomSupported : true) });
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -244,5 +274,73 @@ describe("단축키는 브라우저 확대와 겹치지 않는다", () => {
     press({ altKey: true, metaKey: true, code: "Equal" });
     press({ code: "Equal" });
     expect(mod.getUiZoom()).toBe(1);
+  });
+});
+
+/**
+ * 배율을 zoom으로 걸지 transform으로 걸지 — `zoom` 지원 여부만 보면 안 된다.
+ *
+ * WebKit(사파리)은 `zoom`을 지원하면서 **cq 단위를 컨테이너의 화면 크기로 푼다**.
+ * styles.css는 화면 비례 길이를 전부 cq로 쓰므로, 그 엔진에서 zoom을 걸면 판 전체가
+ * 배율만큼 작아진 채 창 위쪽에 붙는다 (2026-08-19 사용자 보고 · WebKit 26.5 실측:
+ * 1905×985 배율 0.7에서 `.game-root` 가 1905×690).
+ */
+describe("배율을 무엇으로 거는가", () => {
+  it("cq 단위가 zoom을 아는 엔진(크로뮴)은 zoom", async () => {
+    // zoom 2인 100px 컨테이너 안의 100cqw = 100 (레이아웃 px)
+    await boot({ w: 1440, h: 900, cq: 100 });
+    expect(modeAttr).toBe("zoom");
+  });
+
+  it("cq 단위가 zoom을 무시하는 엔진(WebKit)은 transform", async () => {
+    // 같은 자리에서 200 (화면 px)이 나온다 → zoom과 cq가 어긋난다
+    await boot({ w: 1440, h: 900, cq: 200 });
+    expect(modeAttr).toBe("transform");
+  });
+
+  it("`zoom` 자체가 없으면 transform (Firefox 125 이하)", async () => {
+    await boot({ w: 1440, h: 900, zoom: false, cq: 100 });
+    expect(modeAttr).toBe("transform");
+  });
+
+  it("배율이 1이어도 표식은 붙는다 — 나중에 −/+ 를 눌러도 걸려야 한다", async () => {
+    const m = await boot({ w: 1920, h: 1080, cq: 100 });
+    expect(m.getUiScale()).toBe(1);
+    expect(modeAttr).toBe("zoom");
+  });
+});
+
+describe("styles.css가 그 표식만 보고 갈래를 고른다", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+
+  /** `<선택자> { … }` 한 덩어리를 꺼낸다 (중첩 없는 평범한 규칙 전용). */
+  function ruleBody(selector: string): string {
+    const at = css.indexOf(selector + " {");
+    expect(at, `${selector} 규칙이 없다`).toBeGreaterThan(-1);
+    const open = css.indexOf("{", at);
+    return css.slice(open + 1, css.indexOf("}", open));
+  }
+
+  it("맨 body에는 zoom을 걸지 않는다 (표식 없이 걸리면 WebKit에서 판이 깨진다)", () => {
+    expect(ruleBody("body")).not.toMatch(/zoom:/);
+  });
+
+  it("zoom 갈래는 zoom만 걸고 크기는 100% 그대로 둔다", () => {
+    // 퍼센트는 zoom 아래에서 자기 단위로 풀린다 — 여기서 또 나누면 배율이 제곱된다.
+    const body = ruleBody('html[data-ui-scale-mode="zoom"] body');
+    expect(body).toMatch(/zoom:\s*var\(--ui-scale, 1\)/);
+    expect(body).not.toMatch(/calc\(100% \/ var\(--ui-scale/);
+  });
+
+  it("transform 갈래는 배율만큼 상자를 키우고 transform으로 줄인다", () => {
+    const body = ruleBody('html[data-ui-scale-mode="transform"] body');
+    expect(body).toMatch(/width:\s*calc\(100% \/ var\(--ui-scale, 1\)\)/);
+    expect(body).toMatch(/height:\s*calc\(100% \/ var\(--ui-scale, 1\)\)/);
+    expect(body).toMatch(/transform:\s*scale\(var\(--ui-scale, 1\)\)/);
+    expect(body).toMatch(/transform-origin:\s*0 0/);
+  });
+
+  it("가상 뷰포트를 재는 컨테이너는 그대로 body다", () => {
+    expect(ruleBody("body")).toMatch(/container:\s*ui \/ size/);
   });
 });

@@ -42,6 +42,10 @@
  * 이 가상 뷰포트**를 봐야 한다. 그래서 거기서는 vw/vh/vmin 대신 cqw/cqh/cqmin을,
  * `@media (max-width: …)` 대신 `@container ui (max-width: …)`를 쓴다 (body가 `container: ui / size`).
  *
+ * 그리고 그 전제가 성립하지 않는 엔진이 있다 — 아래 detectScaleMode() 주석 참고.
+ * 배율을 zoom으로 걸지 transform으로 걸지는 **이 파일이 정해서** `<html>`의
+ * `data-ui-scale-mode`로 알린다. styles.css는 그 표식만 보고 갈래를 고른다.
+ *
  * 좌표를 다루는 코드는 주의해야 한다. `getBoundingClientRect()`·`clientX`는 **화면 좌표**
  * (배율이 곱해진 값)인데, 인라인 left/top·transform은 **레이아웃 좌표**(곱하기 전)로
  * 해석된다. 둘을 섞는 자리에서는 toLayoutPx()로 되돌려야 한다.
@@ -159,6 +163,62 @@ function userZoomedIn(): boolean {
     safeStorage.removeItem(ZOOMED_KEY);
   }
   return nowZoomed || zoomedInSticky;
+}
+
+// ── 배율을 무엇으로 거는가 (zoom vs transform) ──
+
+/** styles.css가 보는 표식. `<html data-ui-scale-mode="zoom|transform">`. */
+const MODE_ATTR = "data-ui-scale-mode";
+
+export type ScaleMode = "zoom" | "transform";
+
+/**
+ * cq 단위가 zoom을 무시하는 엔진인가.
+ *
+ * 컨테이너 질의 단위(cqw/cqh)는 **컨테이너의 레이아웃 크기**로 풀려야 한다. 크로뮴은
+ * 그렇게 하는데 **WebKit(사파리)은 화면 크기로 푼다** — zoom이 걸린 아래에서 둘은
+ * `--ui-scale` 배만큼 다르다. styles.css는 화면 비례 길이를 전부 cq로 쓰므로(174곳)
+ * 그 차이가 그대로 판 전체에 걸린다: 배율 0.7에서 `.game-root`의 `height: 100cqh`가
+ * 창 높이의 70%가 되어 판이 위쪽에 붙고 아래가 통째로 빈다
+ * (2026-08-19 사용자 보고 "마이너스 버튼을 눌렀는데 게임 전체가 위로 가버려").
+ *
+ * zoom 2를 건 100px 상자를 컨테이너로 세우고 그 안에서 `100cqw`를 잰다.
+ * 아는 엔진이면 100(= 컨테이너의 레이아웃 px), 모르는 엔진이면 200(= 화면 px)이 나온다.
+ */
+function cqUnitsIgnoreZoom(): boolean {
+  const host = document.createElement("div");
+  host.setAttribute(
+    "style",
+    "position:absolute;top:0;left:0;width:100px;height:100px;" +
+      "visibility:hidden;pointer-events:none;zoom:2;container:uiprobe / size",
+  );
+  const inner = document.createElement("div");
+  inner.setAttribute("style", "width:100cqw;height:1px");
+  host.appendChild(inner);
+  document.body.appendChild(host);
+  const w = inner.offsetWidth;
+  host.remove();
+  return w > 150;
+}
+
+/**
+ * 배율을 걸 방식.
+ *
+ * `zoom`이 기본이다 — 진짜 브라우저 확대와 같아서 키워도 글자가 뭉개지지 않는다.
+ * 다만 **`zoom`을 지원한다는 것만으로는 부족하다**: 위 cqUnitsIgnoreZoom()이 참인
+ * 엔진에서는 zoom과 cq 단위가 서로 어긋나 배치가 깨진다. 그런 엔진은 transform으로
+ * 받는다 — body에 zoom이 없으면 cq 단위가 레이아웃 크기 그대로라 전부 맞는다.
+ *
+ * 잴 수 없으면(DOM이 없는 환경) transform으로 둔다. 어느 엔진에서든 배치는 맞고
+ * 잃는 것은 글자 선명도뿐이라, 판이 깨지는 쪽보다 안전한 기본값이다.
+ */
+function detectScaleMode(): ScaleMode {
+  try {
+    if (typeof CSS === "undefined" || !CSS.supports("zoom", "2")) return "transform";
+    return cqUnitsIgnoreZoom() ? "transform" : "zoom";
+  } catch {
+    return "transform";
+  }
 }
 
 /** 마우스 쓰는 기기인가 — 폰·태블릿은 좁은 화면 전용 배치가 따로 있어 손대지 않는다. */
@@ -353,6 +413,13 @@ function onKey(e: KeyboardEvent): void {
 
 /** 앱 부팅 시 1회. 첫 페인트 전에 배율을 걸고, 이후 창 크기를 따라간다. */
 export function startUiScale(): void {
+  // 배율을 **걸기 전에** 방식을 정한다 — 표식이 없으면 styles.css의 두 갈래가 전부
+  // 안 걸려 배율이 통째로 무시된다(첫 프레임에 원래 크기가 번쩍인다).
+  try {
+    document.documentElement.setAttribute(MODE_ATTR, detectScaleMode());
+  } catch {
+    /* DOM을 못 건드리는 환경이면 배율 자체가 의미 없다 */
+  }
   try {
     safeStorage.removeItem(LEGACY_OVERRIDE_KEY);
   } catch {

@@ -126,29 +126,43 @@ html {
 
    그래서 이 파일의 화면 비례 단위는 전부 vw/vh/vmin이 아니라 **cqw/cqh/cqmin**이고,
    크기 미디어쿼리도 전부 `@container ui`다. 둘 다 실제 창이 아니라 이 가상 뷰포트를
-   기준으로 풀려야 배율을 바꿔도 배치가 그대로 따라온다. (`container: ui / size`가
-   body 자신의 상자를 재므로 zoom 아래에서도 그대로 성립한다 — 실측 확인.)
-   --ui-scale 은 uiScale.ts가 인라인으로 넣는다 (없으면 1 = 지금까지와 동일). */
+   기준으로 풀려야 배율을 바꿔도 배치가 그대로 따라온다.
+   --ui-scale 은 uiScale.ts가 인라인으로 넣는다 (없으면 1 = 지금까지와 동일).
+
+   ⚠ **배율을 거는 방식은 CSS가 아니라 uiScale.ts가 고른다** (`data-ui-scale-mode`).
+   `zoom` 이 있느냐만 보면 안 되기 때문이다: WebKit(사파리)은 `zoom` 을 지원하면서도
+   **cq 단위를 컨테이너의 화면 크기로 푼다** — zoom 아래에서는 레이아웃 크기와 다르다.
+   실측(2026-08-19, WebKit 26.5, 1905×985 · 배율 0.7): body 상자는 레이아웃 2721×1407로
+   제대로 서는데 `100cqh` 가 1407이 아니라 986으로 풀려, 화면 비례로 잡은 것이 전부
+   0.7배가 되고 판이 창 위쪽 70%에 붙었다(사용자 보고: "마이너스를 누르면 게임 전체가
+   위로 가버려"). 크로뮴은 같은 자리에서 1407이 나온다.
+   그런 엔진에는 zoom 대신 transform 을 건다 — body 에 zoom 이 없으면 cq 단위가
+   레이아웃 크기 그대로라 174곳의 cq 길이와 51개의 `@container ui` 가 한꺼번에 맞는다. */
 body {
   width: 100%;
   height: 100%;
-  zoom: var(--ui-scale, 1);
   container: ui / size;
   /* 탭할 때 회색 사각형이 번쩍이지 않게 (모바일 크롬·사파리) */
   -webkit-tap-highlight-color: transparent;
 }
 
-/* 표준 `zoom` 이 없는 브라우저(Firefox 125 이하)만 예전 transform 방식으로 받는다.
-   결과는 같고 글자만 덜 선명하다 — 배치가 깨지는 것보다는 낫다.
+/* 기본 경로 — 진짜 브라우저 확대와 같은 물건이라 확대해도 글자가 선명하다.
+   `width/height` 는 100% 그대로다: zoom 아래에서 퍼센트는 자기 zoom 단위로 풀리므로
+   저절로 `창 / --ui-scale` 이 된다. 여기에 `calc(100% / var(--ui-scale))` 를 얹으면
+   보정이 두 번 걸려 배율이 제곱된다. */
+html[data-ui-scale-mode="zoom"] body {
+  zoom: var(--ui-scale, 1);
+}
+
+/* 대체 경로 — `zoom` 이 없거나(Firefox 125 이하) cq 단위가 zoom을 모르는(WebKit)
+   엔진이 받는다. 결과는 같고 글자만 덜 선명하다 — 배치가 깨지는 것보다는 낫다.
    좌표계는 둘이 같다: 어느 쪽이든 getBoundingClientRect()·clientX 는 화면 px,
    인라인 left/top 은 레이아웃 px 이라 toLayoutPx() 가 그대로 맞는다. */
-@supports not (zoom: 2) {
-  body {
-    width: calc(100% / var(--ui-scale, 1));
-    height: calc(100% / var(--ui-scale, 1));
-    transform: scale(var(--ui-scale, 1));
-    transform-origin: 0 0;
-  }
+html[data-ui-scale-mode="transform"] body {
+  width: calc(100% / var(--ui-scale, 1));
+  height: calc(100% / var(--ui-scale, 1));
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: 0 0;
 }
 
 #root {

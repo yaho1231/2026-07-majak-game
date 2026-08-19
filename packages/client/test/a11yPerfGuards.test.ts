@@ -120,16 +120,26 @@ describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌
     expect(CSS).toContain(".ui-zoom");
   });
 
-  it("배율은 body의 zoom 하나로 화면 전체에 균일하게 걸린다 (transform: scale 아님)", () => {
-    // `transform: scale()` 은 그린 화면을 컴포지터가 늘려서 **글자를 뭉갠다**.
-    // `zoom` 은 레이아웃을 다시 풀고 최종 크기로 다시 래스터화한다 — 확대해도 선명하다.
+  it("배율은 body 하나로 화면 전체에 균일하게 걸린다 (기본은 zoom)", () => {
+    // `transform: scale()` 은 그린 화면을 컴포지터가 늘려서 글자가 덜 선명하다.
+    // `zoom` 은 레이아웃을 다시 풀고 최종 크기로 다시 래스터화한다 — 그래서 기본이다.
+    expect(CSS).toContain('html[data-ui-scale-mode="zoom"] body');
     expect(CSS).toContain("zoom: var(--ui-scale, 1)");
     // 되돌리기 scale 금지: 손잡이만 배율에서 빼면 옆 아이콘 줄과 높이가 어긋난다.
     expect(CSS).not.toContain("transform: scale(calc(1 / var(--ui-scale, 1)))");
-    // transform 은 zoom 미지원 브라우저 대비 @supports 안에만 남아 있어야 한다.
+    // transform 은 대체 갈래 한 곳에만 있어야 한다.
     const scaleUses = [...CSS.matchAll(/transform: scale\(var\(--ui-scale/g)].length;
     expect(scaleUses).toBe(1);
-    expect(CSS).toContain("@supports not (zoom: 2)");
+    expect(CSS).toContain('html[data-ui-scale-mode="transform"] body');
+  });
+
+  it("어느 갈래를 쓸지는 엔진을 재서 고른다 (`zoom` 지원 여부만 보지 않는다)", () => {
+    // WebKit은 `zoom`을 지원하면서 cq 단위를 컨테이너의 **화면** 크기로 푼다.
+    // styles.css의 화면 비례 길이가 전부 cq라, 그 엔진에서 zoom을 걸면 판이 배율만큼
+    // 작아진 채 창 위쪽에 붙는다 (2026-08-19 사용자 보고).
+    expect(UISCALE).toContain("function cqUnitsIgnoreZoom");
+    expect(UISCALE).toContain("function detectScaleMode");
+    expect(code(UISCALE)).toContain("document.documentElement.setAttribute(MODE_ATTR, detectScaleMode())");
   });
 
   it("크기 토큰을 골라 곱하는 배율은 없다 (PR #239 되돌림)", () => {
