@@ -36,7 +36,7 @@ import type { SeatConnection } from "@majak/core/information/PlayerView.js";
 import { kindKey, standardKinds } from "@majak/core/mahjong/tiles/Tile.js";
 import { handKindsOf, meldCountOf } from "@majak/core/mahjong/flow/helpers.js";
 import { winningKinds } from "@majak/core/mahjong/scoring/waits.js";
-import { isEmoteId } from "@majak/core/network/protocol.js";
+import { isEmoteId, INVITE_COOLDOWN_MS } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
   ClientMessage,
@@ -487,14 +487,6 @@ const HEAVY_MESSAGES: ReadonlySet<string> = new Set([
 ]);
 const HEAVY_WINDOW_MS = 10_000;
 const HEAVY_MAX_PER_WINDOW = 5;
-/**
- * 같은 친구에게 초대장을 다시 보낼 수 있게 되기까지의 시간 (2026-08-19).
- *
- * 초대는 받는 쪽 **메인 화면에 카드로** 뜬다 — 단추 연타를 막지 않으면 그게 곧
- * 남의 화면 도배가 된다. 20초는 "안 들어오네, 한 번 더" 가 자연스럽게 되는
- * 간격이면서 연타는 접히는 길이다.
- */
-const INVITE_COOLDOWN_MS = 20_000;
 /**
  * `replayGet`이 한 프레임으로 내보낼 수 있는 리플레이 파일 크기 상한(bytes).
  * 운영 실측 최대는 250KB 남짓이라 정상 리플레이는 근처에도 오지 않는다 —

@@ -10769,35 +10769,60 @@ button {
    누를 것이라, `pointer-events: none`인 토스트 스택에 얹을 수 없다.
    토스트 위(bottom을 더 크게)에 세워 둘이 겹치지 않게 한다. */
 .invite-stack {
+  /*
+   * 화면 **위 한가운데**다 (2026-08-19 사용자 지적: "잘 보이는 곳으로").
+   *
+   * 오른쪽 아래에 뒀을 때는 홈 화면에서 눈이 가장 늦게 닿는 구석이었다 — 카드가
+   * 세 열로 깔린 화면에서 오른쪽 아래는 리플레이·도감 카드가 이미 채우고 있는
+   * 자리라, 초대장이 그 사이에 섞여 그냥 또 하나의 상자로 읽혔다. 창틀
+   * (`.site-bar`, 40px) 바로 아래 가운데는 어느 화면에서든 비어 있고, 눈이
+   * 화면을 훑기 시작하는 곳이다.
+   */
   position: absolute;
-  right: 20px;
-  bottom: 20px;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 101;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
-  max-width: min(360px, 90cqw);
+  width: max-content;
+  max-width: min(460px, 92cqw);
 }
 .invite-card {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--brass-bright, #c9a04a);
   border-radius: 12px;
-  background: rgba(28, 43, 36, 0.97);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
-  animation: toast-in-right 0.25s var(--ease);
+  background: rgba(28, 43, 36, 0.98);
+  /*
+   * 그림자 위에 **테두리 발광**을 한 겹 얹는다. 이 화면에는 이미 상자가 여럿이라
+   * 테두리 하나로는 "또 하나의 카드"로 읽힌다 — 빛나는 테는 카드가 아니라
+   * 알림이라는 신호다. 두 번 숨 쉬고 멈춘다(계속 뛰면 그때부터는 잡음이다).
+   */
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(201, 160, 74, 0.35);
+  animation: invite-in 0.28s var(--ease), invite-pulse 1.6s var(--ease) 2;
 }
-@keyframes toast-in-right {
-  from { transform: translateX(16px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+@keyframes invite-in {
+  from { transform: translateY(-14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes invite-pulse {
+  0%, 100% { box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(201, 160, 74, 0.35); }
+  50% { box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 6px rgba(201, 160, 74, 0.22); }
+}
+/* 움직임을 줄여 달라고 한 사람에게는 뛰지 않는다 — 정보는 테두리에 이미 있다. */
+@media (prefers-reduced-motion: reduce) {
+  .invite-card { animation: invite-in 0.28s var(--ease); }
 }
 .invite-text {
   flex: 1 1 auto;
   min-width: 0;
   color: #f7f3e8;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.45;
 }
 .invite-from { color: var(--brass-bright, #c9a04a); }
@@ -10809,7 +10834,7 @@ button {
 }
 .invite-go {
   flex: none;
-  padding: 6px 14px;
+  padding: 8px 18px;
   border: 1px solid var(--brass-bright, #c9a04a);
   border-radius: var(--r-chip, 8px);
   background: rgba(201, 160, 74, 0.22);

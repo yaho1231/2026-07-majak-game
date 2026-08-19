@@ -68,6 +68,7 @@ import type {
 import {
   AUGMENT_CATEGORIES,
   EMOTES,
+  INVITE_COOLDOWN_MS,
   NOTICE_BODY_MAX,
   NOTICE_TITLE_MAX,
   SPECTATOR_ID,
@@ -10370,8 +10371,16 @@ function SeatInvite(props: {
   friends: FriendEntry[] | null;
   /** 이 방에 이미 앉아 있는 사람들의 닉네임 — 목록에서 뺀다. */
   seated: string[];
-  /** 방금 부른 사람들 — 쿨다운 동안 "부름"으로 잠긴다. */
-  invited: string[];
+  /**
+   * 방금 부른 사람 → **다시 부를 수 있게 되는 시각**(epoch ms).
+   *
+   * 예전에는 닉네임 목록이었다. 잠긴 단추가 "부름"이라고만 적혀 있어서 언제
+   * 풀리는지 알 길이 없었고, 그래서 안 들어오는 친구 앞에서 사람은 그냥
+   * 기다릴지 포기할지를 몰랐다 — 남은 초를 적어 두면 그 물음이 사라진다.
+   */
+  invitedUntil: Record<string, number>;
+  /** 지금 시각(ms) — 부모가 1초마다 넘겨 준다. 남은 초를 여기서 센다. */
+  now: number;
   /** 아래쪽 자리는 목록을 **위로** 편다 — 카드 밖으로 넘치지 않게. */
   up: boolean;
   onInvite: (nickname: string) => void;
@@ -10435,7 +10444,8 @@ function SeatInvite(props: {
           ) : (
             <ul className="seat-invite-list">
               {online.map((f) => {
-                const done = props.invited.includes(f.nickname);
+                const left = Math.ceil(((props.invitedUntil[f.nickname] ?? 0) - props.now) / 1000);
+                const cooling = left > 0;
                 return (
                   <li key={f.nickname} className="seat-invite-row">
                     <span
@@ -10446,15 +10456,21 @@ function SeatInvite(props: {
                     <button
                       type="button"
                       className="wr-friend-invite"
-                      disabled={f.playing || done}
+                      disabled={f.playing || cooling}
                       onClick={() => {
                         props.onInvite(f.nickname);
                         // 부르고 나면 닫는다 — 한 자리에 두 사람을 부를 일은 없다.
                         onClose();
                       }}
-                      title={f.playing ? "대국 중입니다" : done ? "이미 불렀습니다" : "대기실로 부르기"}
+                      title={
+                        f.playing
+                          ? "대국 중입니다"
+                          : cooling
+                            ? `방금 불렀습니다 — ${left}초 뒤에 다시 부를 수 있습니다`
+                            : "대기실로 부르기"
+                      }
                     >
-                      {f.playing ? "대국 중" : done ? "부름" : "초대"}
+                      {f.playing ? "대국 중" : cooling ? `${left}초` : "초대"}
                     </button>
                   </li>
                 );
@@ -10503,8 +10519,26 @@ function WaitingRoom(props: {
 }): JSX.Element {
   const { lobby } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
-  /** 이 대기실에서 이미 부른 사람 — 단추를 "부름"으로 바꿔 두 번 누르지 않게 한다. */
-  const [invited, setInvited] = useState<string[]>([]);
+  /**
+   * 이 대기실에서 부른 사람 → 다시 부를 수 있게 되는 시각(epoch ms).
+   *
+   * 서버도 같은 길이의 쿨다운을 건다(RoomManager `INVITE_COOLDOWN_MS`) — 여기
+   * 값은 그 규칙을 **화면에 비추는 것**이지 규칙 자체가 아니다. 그래서 넉넉하게
+   * 잡지 않고 정확히 같은 길이로 둔다: 화면이 먼저 풀리면 서버가 거절하고,
+   * 늦게 풀리면 누를 수 있는 단추를 못 누르게 막는다.
+   */
+  const [invitedUntil, setInvitedUntil] = useState<Record<string, number>>({});
+  /*
+   * 남은 초를 세는 시계 — **잠긴 사람이 있을 때만 돈다.** 대기실은 사람을 기다리며
+   * 오래 열어 두는 화면이라, 아무도 안 부른 방에서 1초마다 리렌더를 돌릴 이유가 없다.
+   */
+  const [now, setNow] = useState(() => Date.now());
+  const cooling = Object.values(invitedUntil).some((t) => t > now);
+  useEffect(() => {
+    if (!cooling) return undefined;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [cooling]);
   /**
    * 지금 초대 목록을 펴 둔 빈자리의 번호 (없으면 null).
    *
@@ -10731,23 +10765,25 @@ function WaitingRoom(props: {
                       onClose={() => setInviteSeat(null)}
                       friends={props.friends ?? null}
                       seated={lobby.players.filter((q) => !q.isBot).map((q) => q.nickname)}
-                      invited={invited}
+                      invitedUntil={invitedUntil}
+                      now={now}
                       up={i >= 2}
                       onInvite={(nickname) => {
                         sfx.slide();
                         props.onInviteFriend?.(nickname);
                         /*
-                         * 서버 쿨다운과 같은 길이만큼 단추를 잠근다
-                         * (RoomManager `INVITE_COOLDOWN_MS`). 영영 잠그지 않는
-                         * 이유: "안 들어오네, 한 번 더"는 정당한 행동이고,
-                         * 그때 서버가 거절하는 단추를 누르게 두면 화면이
-                         * 거짓말을 한 셈이 된다.
+                         * 서버 쿨다운과 같은 길이만큼 단추를 잠그고, 남은 초를
+                         * 단추에 적는다 (RoomManager `INVITE_COOLDOWN_MS`).
+                         * 영영 잠그지 않는 이유: "안 들어오네, 한 번 더"는 정당한
+                         * 행동이다. 타이머로 지우지 않고 **만료 시각**을 적어 두는
+                         * 이유: 타이머는 탭이 백그라운드로 가면 늘어지고, 그러면
+                         * 이미 서버가 받아 주는 단추가 화면에서만 잠겨 있게 된다.
                          */
-                        setInvited((cur) => [...cur, nickname]);
-                        window.setTimeout(
-                          () => setInvited((cur) => cur.filter((n) => n !== nickname)),
-                          20_000,
-                        );
+                        setInvitedUntil((cur) => ({
+                          ...cur,
+                          [nickname]: Date.now() + INVITE_COOLDOWN_MS,
+                        }));
+                        setNow(Date.now());
                       }}
                     />
                   ) : null}
