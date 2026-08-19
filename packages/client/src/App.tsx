@@ -10161,6 +10161,123 @@ function WaitroomTips(): JSX.Element {
   );
 }
 
+/**
+ * 빈자리의 ＋ — 누르면 **지금 접속해 있는 친구**가 뜨고 거기서 부른다
+ * (2026-08-19 사용자 요청).
+ *
+ * 왜 자리 안에 있나: 채울 곳이 빈자리이므로 채우는 단추도 빈자리에 있어야 한다.
+ * 카드 위쪽에 목록을 따로 두었을 때는 "이 자리를 누구로 채운다"는 행동이 자리에서
+ * 멀리 떨어져 있었고, 자리 넷과 목록 하나가 서로를 가리키지 않았다.
+ *
+ * 목록에 **접속한 사람만** 올린다. 오프라인인 사람에게 보내는 초대는 받는 화면이
+ * 없어 아무 일도 일어나지 않는데, 목록에 있으면 사람은 눌러 본다. 대국 중인
+ * 친구는 남겨 두되 누를 수 없게 한다 — 안 보이면 "왜 없지?"를 묻게 되고,
+ * 지금 부를 수 없는 이유가 화면에 있어야 한다.
+ */
+function SeatInvite(props: {
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  friends: FriendEntry[] | null;
+  /** 이 방에 이미 앉아 있는 사람들의 닉네임 — 목록에서 뺀다. */
+  seated: string[];
+  /** 방금 부른 사람들 — 쿨다운 동안 "부름"으로 잠긴다. */
+  invited: string[];
+  /** 아래쪽 자리는 목록을 **위로** 편다 — 카드 밖으로 넘치지 않게. */
+  up: boolean;
+  onInvite: (nickname: string) => void;
+}): JSX.Element {
+  const wrap = useRef<HTMLDivElement | null>(null);
+  const { open, onClose } = props;
+  /*
+   * 바깥을 누르거나 Esc면 닫는다. 이런 작은 창은 **닫는 법이 분명해야** 한다 —
+   * 닫기 단추만 있으면 자리 넷 중 하나를 열어 둔 채 다른 곳을 눌러 보다가
+   * 목록이 자리표를 계속 가리는 상태에 갇힌다.
+   */
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e: MouseEvent): void => {
+      if (wrap.current !== null && !wrap.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  /*
+   * null = 아직 목록을 못 받았다. []와 화면에서 다른 문장이다.
+   *
+   * **이미 이 방에 앉은 사람은 뺀다.** 남겨 두면 옆자리에 앉아 있는 사람에게
+   * "이 방으로 오라"는 초대장을 보내게 된다 — 서버는 그 사람이 방에 있는 탭에는
+   * 알림을 보내지 않으므로 아무 일도 일어나지 않고, 화면만 거짓말을 한다.
+   */
+  const online =
+    props.friends === null
+      ? null
+      : props.friends.filter((f) => f.online && !props.seated.includes(f.nickname));
+  return (
+    <div className="seat-invite" ref={wrap}>
+      <button
+        type="button"
+        className={`seat-invite-add${open ? " seat-invite-open" : ""}`}
+        onClick={props.onToggle}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="친구 초대"
+        aria-label="이 자리에 친구 초대"
+      >
+        ＋
+      </button>
+      {open ? (
+        <div className={`seat-invite-menu${props.up ? " seat-invite-up" : ""}`} role="menu">
+          <div className="seat-invite-head">접속 중인 친구</div>
+          {online === null ? (
+            <div className="seat-invite-empty">불러오는 중…</div>
+          ) : online.length === 0 ? (
+            <div className="seat-invite-empty">
+              지금 부를 수 있는 친구가 없습니다. 방 코드를 눌러 링크를 보내 보세요.
+            </div>
+          ) : (
+            <ul className="seat-invite-list">
+              {online.map((f) => {
+                const done = props.invited.includes(f.nickname);
+                return (
+                  <li key={f.nickname} className="seat-invite-row">
+                    <span
+                      className={`friend-dot${f.playing ? " friend-dot-playing" : " friend-dot-on"}`}
+                      aria-hidden="true"
+                    />
+                    <span className="friend-name">{f.nickname}</span>
+                    <button
+                      type="button"
+                      className="wr-friend-invite"
+                      disabled={f.playing || done}
+                      onClick={() => {
+                        props.onInvite(f.nickname);
+                        // 부르고 나면 닫는다 — 한 자리에 두 사람을 부를 일은 없다.
+                        onClose();
+                      }}
+                      title={f.playing ? "대국 중입니다" : done ? "이미 불렀습니다" : "대기실로 부르기"}
+                    >
+                      {f.playing ? "대국 중" : done ? "부름" : "초대"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function WaitingRoom(props: {
   lobby: LobbyMessage | null;
   roomId: string;
@@ -10199,6 +10316,14 @@ function WaitingRoom(props: {
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** 이 대기실에서 이미 부른 사람 — 단추를 "부름"으로 바꿔 두 번 누르지 않게 한다. */
   const [invited, setInvited] = useState<string[]>([]);
+  /**
+   * 지금 초대 목록을 펴 둔 빈자리의 번호 (없으면 null).
+   *
+   * 목록을 자리마다 따로 들고 있지 않고 **한 번에 하나만** 연다 — 넷이 동시에
+   * 펴져 있으면 카드 절반이 같은 이름 넷으로 덮인다. 어느 자리에서 열었든
+   * 보내는 초대는 같으므로, 열린 자리는 "어디를 눌렀는지"의 표시일 뿐이다.
+   */
+  const [inviteSeat, setInviteSeat] = useState<number | null>(null);
   const refreshFriends = props.onRefreshFriends;
   /*
    * 들어오자마자 목록을 한 번 새로 받는다. 홈에서 받아 둔 목록은 그 사이에
@@ -10326,64 +10451,6 @@ function WaitingRoom(props: {
           코드를 친구에게 알려주세요 · <b className="num">{lobby.players.length}/4</b>
         </p>
 
-        {/*
-          친구 부르기 (2026-08-19).
-
-          접속해 있는 친구만 줄에 세운다 — 오프라인인 사람에게 보내는 초대는
-          받는 화면이 없어 아무 일도 일어나지 않고, 목록에 있으면 사람은 눌러
-          본다. 대국 중인 친구는 남겨 두되 누를 수 없게 한다: 안 보이면 "왜
-          없지?" 를 묻게 되고, 지금 부를 수 없는 이유가 화면에 있어야 한다.
-        */}
-        {props.onInviteFriend !== undefined && props.friends !== null && props.friends !== undefined
-          ? (() => {
-              const callable = props.friends.filter((f) => f.online);
-              const invite = props.onInviteFriend;
-              if (callable.length === 0) return null;
-              return (
-                <>
-                  <div className="lobby-group-label">친구 부르기</div>
-                  <ul className="wr-friends">
-                    {callable.map((f) => {
-                      const done = invited.includes(f.nickname);
-                      return (
-                        <li key={f.nickname} className="wr-friend">
-                          <span
-                            className={`friend-dot${f.playing ? " friend-dot-playing" : " friend-dot-on"}`}
-                            aria-hidden="true"
-                          />
-                          <span className="friend-name">{f.nickname}</span>
-                          <button
-                            className="wr-friend-invite"
-                            disabled={f.playing || done}
-                            onClick={() => {
-                              sfx.slide();
-                              invite(f.nickname);
-                              /*
-                               * 서버 쿨다운과 같은 길이만큼 단추를 잠근다
-                               * (RoomManager `INVITE_COOLDOWN_MS`). 영영 잠그지
-                               * 않는 이유: "안 들어오네, 한 번 더"는 정당한
-                               * 행동이고, 그때 서버가 거절하는 단추를 누르게
-                               * 두면 화면이 거짓말을 한 셈이 된다.
-                               */
-                              setInvited((cur) => [...cur, f.nickname]);
-                              window.setTimeout(
-                                () => setInvited((cur) => cur.filter((n) => n !== f.nickname)),
-                                20_000,
-                              );
-                            }}
-                            title={f.playing ? "대국 중입니다" : done ? "이미 불렀습니다" : "대기실로 부르기"}
-                          >
-                            {f.playing ? "대국 중" : done ? "부름" : "부르기"}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              );
-            })()
-          : null}
-
         {/* 줄이 둘인데 둘 다 라벨이 없어, 아래 줄이 무엇을 정하는지 알 수 없었다
             (2026-08-08 사용자 지적) — 각 줄에 무엇을 고르는 자리인지 붙인다. */}
         <div className="lobby-group-label">판 길이</div>
@@ -10439,12 +10506,63 @@ function WaitingRoom(props: {
           })}
         </div>
 
-        <div className="seat-list">
+        {/*
+          초대 목록이 펴져 있는 동안에만 클립을 푼다.
+
+          `.seat-list`는 둥근 모서리를 위해 `overflow: hidden`이다 — 그 안에서
+          띄운 목록이 자리표 높이(≈160px)를 넘는 순간 잘려서 한 줄만 보였다.
+          `position: fixed`로 빼내는 방법은 이 앱이 화면 배율을 transform으로
+          주기 때문에 좌표가 어긋난다(uiScale.ts) — 클립을 잠깐 푸는 쪽이
+          정확하고, 모서리가 잠시 각지는 대가뿐이다.
+        */}
+        <div className={`seat-list${inviteSeat !== null ? " seat-list-open" : ""}`}>
           {slots.map((p, i) => (
             <div key={i} className={`seat-row ${p === null ? "seat-empty" : ""} ${p?.playerId === lobby.youId ? "seat-me" : ""}`}>
               <span className="seat-idx">{WIND_KO[i]}</span>
               {p === null ? (
-                <span className="seat-vacant">빈 자리</span>
+                <>
+                  {/* ＋가 붙는 줄에서는 "빈 자리"가 마지막 칸까지 먹지 않는다
+                      (`.seat-row`는 4칸 그리드다) — 안 그러면 ＋가 줄 밖으로 밀린다 */}
+                  <span
+                    className={`seat-vacant${props.onInviteFriend !== undefined ? " seat-vacant-invitable" : ""}`}
+                  >
+                    빈 자리
+                  </span>
+                  {/*
+                    빈자리의 ＋ (2026-08-19 사용자 요청).
+
+                    초대를 카드 위쪽 목록에 따로 두었더니 "이 자리를 누구로
+                    채운다"는 행동이 자리에서 멀리 떨어져 있었다. 채울 곳이
+                    빈자리이므로 채우는 단추도 빈자리에 있어야 한다.
+                  */}
+                  {props.onInviteFriend !== undefined ? (
+                    <SeatInvite
+                      open={inviteSeat === i}
+                      onToggle={() => setInviteSeat((cur) => (cur === i ? null : i))}
+                      onClose={() => setInviteSeat(null)}
+                      friends={props.friends ?? null}
+                      seated={lobby.players.filter((q) => !q.isBot).map((q) => q.nickname)}
+                      invited={invited}
+                      up={i >= 2}
+                      onInvite={(nickname) => {
+                        sfx.slide();
+                        props.onInviteFriend?.(nickname);
+                        /*
+                         * 서버 쿨다운과 같은 길이만큼 단추를 잠근다
+                         * (RoomManager `INVITE_COOLDOWN_MS`). 영영 잠그지 않는
+                         * 이유: "안 들어오네, 한 번 더"는 정당한 행동이고,
+                         * 그때 서버가 거절하는 단추를 누르게 두면 화면이
+                         * 거짓말을 한 셈이 된다.
+                         */
+                        setInvited((cur) => [...cur, nickname]);
+                        window.setTimeout(
+                          () => setInvited((cur) => cur.filter((n) => n !== nickname)),
+                          20_000,
+                        );
+                      }}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <>
                   <span className="seat-name">

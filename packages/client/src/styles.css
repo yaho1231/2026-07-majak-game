@@ -5913,6 +5913,8 @@ button {
   border-radius: var(--r-chip);
   overflow: hidden;
 }
+/* 빈자리의 초대 목록이 펴진 동안만 클립을 푼다 (App.tsx `seat-list-open` 주석). */
+.seat-list-open { overflow: visible; }
 
 .seat-row {
   display: grid;
@@ -5949,6 +5951,8 @@ button {
   color: var(--ink-4);
   font-size: 12px;
 }
+/* ＋(친구 초대)가 붙는 줄은 마지막 칸을 그 단추에 내준다. */
+.seat-vacant-invitable { grid-column: 2 / -2; }
 
 .seat-name {
   display: flex;
@@ -13783,23 +13787,72 @@ body:has(.overlay) .emote-bar {
 }
 .friend-decline:hover { color: var(--ink-1); border-color: var(--ink-4); }
 
-/* ── 대기실의 친구 부르기 ──
-   자리표(seat-list) 위에 놓이는 줄이라 seat-row보다 조용해야 한다. */
-.wr-friends {
-  list-style: none;
-  margin: 0 0 10px;
+/* ── 빈자리의 ＋ 친구 초대 (2026-08-19) ──
+   자리표 안에 앉는 작은 창이다. 자리 줄은 좁으므로 ＋만 줄에 남기고
+   목록은 그 아래로 띄운다(absolute) — 목록이 줄 높이를 밀면 자리 넷의
+   간격이 열 때마다 출렁인다. */
+.seat-invite { position: relative; justify-self: end; }
+.seat-invite-add {
+  width: 26px;
+  height: 26px;
   padding: 0;
-  max-height: 132px;
+  border: 1px dashed var(--ink-4);
+  border-radius: var(--r-chip, 8px);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.seat-invite-add:hover,
+.seat-invite-open {
+  border-style: solid;
+  border-color: var(--brass-bright, #c9a04a);
+  color: var(--ink-1);
+  background: rgba(201, 160, 74, 0.14);
+}
+.seat-invite-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 232px;
+  padding: 8px 10px;
+  border: 1px solid var(--brass-bright, #c9a04a);
+  border-radius: 10px;
+  background: var(--surface-2, #1a1f1c);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+/* 아래쪽 두 자리(서·북)는 위로 편다 — 아래로 펴면 카드 밖으로 넘친다. */
+.seat-invite-up { top: auto; bottom: calc(100% + 6px); }
+.seat-invite-head {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
+}
+.seat-invite-empty {
+  color: var(--ink-4);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 2px 0 3px;
+}
+.seat-invite-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 176px;
   overflow-y: auto;
 }
-.wr-friend {
+.seat-invite-row {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 5px 4px;
+  gap: 8px;
+  padding: 5px 0;
   border-bottom: 1px solid var(--line);
 }
-.wr-friend:last-child { border-bottom: none; }
+.seat-invite-row:last-child { border-bottom: none; }
 .wr-friend-invite {
   flex: none;
   padding: 3px 12px;
