@@ -1345,6 +1345,10 @@ export class HanchanController {
       if (this.catalogMsg !== null) sink.notify?.(this.catalogMsg);
       sink.sendView(
         buildPlayerView(this.game.engine.state, SPECTATOR_ID, this.game.engine.rules, {
+          // 형식텐파이·역없는 대기 계산용 — 관전 뷰는 네 좌석 모두 이 상세를 받는다.
+          // 없으면 **합류 직후 첫 화면에서만** 그 표기가 비어, 다음 뷰가 올 때까지
+          // 중계 화면이 깜빡였다(broadcastViews는 처음부터 싣고 있었다).
+          yaku: this.game.yaku,
           handOrder: this.handOrder,
           lastDiscardFrom: this.lastDiscardFrom,
         }),

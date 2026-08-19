@@ -74,6 +74,7 @@ import {
   SPECTATOR_ID,
   doraKindFor,
   kindKey,
+  shantenOf,
   standardKinds,
   winningKinds,
 } from "@majak/core";
@@ -11095,9 +11096,26 @@ const GameTable = memo(function GameTable(props: {
   const soloWithBots = props.spectator !== true && view.players.filter((p) => !p.isBot).length <= 1;
   // 내 손패에 마우스를 올리면 그 종류의 공개패(버림·후로)를 강조하기 위한 hover 종류
   const [hoverKind, setHoverKind] = useState<TileKind | null>(null);
-  // 관전자·리플레이는 자리가 없으므로 현재 오야(친)를 하단 시점으로 삼아
-  // 국이 바뀌어 오야가 옮겨가면 시점도 따라간다.
+  /*
+   * ── 관전 시점 좌석 (중계) ──
+   *
+   * 관전자·리플레이는 자리가 없어 **오야를 하단 시점**으로 삼아 왔다. 중계에서는
+   * 그게 곧 "보고 싶은 사람을 못 고른다"였다 — 리치를 건 사람의 손패가 화면 위쪽
+   * 뒤집힌 자리에 있으면 해설이 그 손을 읽을 수가 없다.
+   *
+   * 세 가지로 둔다. `"dealer"`(기본, 예전 그대로 오야를 따라간다) ·
+   * `"turn"`(지금 차례인 사람을 따라간다) · 좌석 고정(playerId).
+   * 좌석이 사라지는 일은 없지만(4인 고정), 못 찾으면 오야로 되돌아간다.
+   */
+  const [focusSeat, setFocusSeat] = useState<string>("dealer");
+  const focusPlayer =
+    props.spectator !== true || focusSeat === "dealer"
+      ? null // 아래 기본 폴백(오야)이 그대로 처리한다
+      : focusSeat === "turn"
+        ? (view.players.find((p) => p.seat === view.round.turnSeat) ?? null)
+        : (view.players.find((p) => p.id === focusSeat) ?? null);
   const me = view.players.find((p) => p.id === view.playerId)
+    ?? focusPlayer
     ?? view.players.find((p) => p.seat === view.round.dealerSeat)
     ?? view.players.find((p) => p.seat === 0)
     ?? view.players[0]!;
@@ -11212,7 +11230,36 @@ const GameTable = memo(function GameTable(props: {
     >
       {props.spectator === true ? (
         <div className="spectate-bar">
-          👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
+          <span className="spectate-bar-label">
+            👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
+          </span>
+          {/* 아래 자리 고르기 — 화면 아래에 손패를 펼칠 좌석. 중계 카메라에 해당한다. */}
+          <span className="spectate-focus">
+            <span className="spectate-focus-label">아래 자리</span>
+            {[
+              { key: "dealer", label: "오야", title: "친이 바뀌면 시점도 따라갑니다" },
+              { key: "turn", label: "차례", title: "지금 차례인 사람을 따라갑니다" },
+            ].map((o) => (
+              <button
+                key={o.key}
+                className={focusSeat === o.key ? "spectate-focus-pick on" : "spectate-focus-pick"}
+                onClick={() => setFocusSeat(o.key)}
+                title={o.title}
+              >
+                {o.label}
+              </button>
+            ))}
+            {view.players.map((p) => (
+              <button
+                key={p.id}
+                className={focusSeat === p.id ? "spectate-focus-pick on" : "spectate-focus-pick"}
+                onClick={() => setFocusSeat(p.id)}
+                title={`${playerName(view, p)} 자리를 아래에 고정합니다`}
+              >
+                {playerName(view, p)}
+              </button>
+            ))}
+          </span>
         </div>
       ) : null}
       {observing ? (
@@ -13885,25 +13932,117 @@ function OpponentStrip({
   const peeked = peekedWaits(view, player.id);
   // 봉인술사·손패 강탈로 알아낸 이 상대의 손패 — 오름패 간파와 같은 자리에 띄운다
   const sealPeek = sealedPeekOf(view, player.id);
-  // 관전 모드에서는 손패가 전부 공개되므로 각 플레이어의 오름패(대기)를 직접 계산해 표시
-  const specWaits = useMemo<TileKind[]>(() => {
-    if (view.playerId !== SPECTATOR_ID) return [];
-    const kinds = arranged
+  /** 중계 관전 시점인가 — 이 좌석의 손패가 통째로 공개돼 있다. */
+  const spectating = view.playerId === SPECTATOR_ID;
+  /**
+   * 이 좌석이 쥔 패의 종류 — 관전에서만 채워진다(그 외에는 뒷면이라 셀 수 없다).
+   *
+   * `hand`는 대기·샹텐을 잴 **13장**이고 `full`은 증강 분해 옵션 판정에 쓸 손 전체다.
+   * 차례가 온 좌석은 쯔모패까지 14장을 쥔다 — 떨어져 쥔 그 한 장을 빼야 **지금 서
+   * 있는 텐파이**가 그대로 보인다. 예전에는 14장이면 `% 3 !== 1`에 걸려 오름패가
+   * 통째로 사라졌다: 자기 차례마다 그 좌석의 오름패가 깜빡였고, 정작 해설이 봐야 할
+   * 순간(무엇을 버릴지 고르는 그 몇 초)에 화면이 비어 있었다.
+   */
+  const specHand = useMemo<{ hand: TileKind[]; full: TileKind[] } | null>(() => {
+    if (!spectating) return null;
+    const full = arranged
       .map((id) => view.tiles[id]?.kind)
       .filter((k): k is TileKind => k !== undefined);
-    if (kinds.length % 3 !== 1) return [];
+    if (full.length === 0) return null;
+    const hand =
+      full.length % 3 === 2 && pr?.drawnSeparated === true ? full.slice(0, -1) : full;
+    return { hand, full };
+  }, [spectating, arranged, view.tiles, pr?.drawnSeparated]);
+  // 관전 모드에서는 손패가 전부 공개되므로 각 플레이어의 오름패(대기)를 직접 계산해 표시
+  const specWaits = useMemo<TileKind[]>(() => {
+    if (specHand === null || specHand.hand.length % 3 !== 1) return [];
     try {
-      return winningKinds(kinds, meldCount, undefined, waitDecompOptions(player, view, kinds));
+      return winningKinds(
+        specHand.hand,
+        meldCount,
+        undefined,
+        waitDecompOptions(player, view, specHand.full),
+      );
     } catch {
       return [];
     }
-  }, [view, arranged, meldCount, player]);
+  }, [specHand, meldCount, player, view]);
+  /**
+   * 이 좌석의 샹텐 수 — 텐파이까지 몇 걸음 남았나 (관전 전용).
+   *
+   * 오름패가 안 뜨는 좌석이 «손이 멀어서»인지 «형태는 됐는데 대기가 죽어서»인지
+   * 화면에 없었다. 중계에서 판의 속도는 이 숫자 하나로 읽힌다.
+   * 14장(쯔모를 쥔 차례)이면 한 장 버린 뒤의 최선을 잰다 — 사람이 말하는 샹텐이다.
+   * (`shantenOf`는 순수 함수이고 내부 캐시가 있어 이 반복이 비싸지 않다.)
+   */
+  const specShanten = useMemo<number | null>(() => {
+    if (specHand === null) return null;
+    const opts = waitDecompOptions(player, view, specHand.full);
+    try {
+      const { hand } = specHand;
+      if (hand.length % 3 !== 2) return shantenOf(hand, meldCount, opts);
+      let best = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < hand.length; i++) {
+        best = Math.min(best, shantenOf(hand.filter((_, j) => j !== i), meldCount, opts));
+      }
+      return Number.isFinite(best) ? best : null;
+    } catch {
+      return null;
+    }
+  }, [specHand, meldCount, player, view]);
+  /**
+   * 이 좌석이 세는 남은 장수 — 공개패 + **그 사람 자신의 손패**.
+   *
+   * 판 전체가 공유하는 셈(WaitCountContext)은 하단 시점 좌석 하나를 기준으로 한다.
+   * 그 수를 남의 오름패 옆에 그대로 붙이면 «남의 손패는 빼고 하단 좌석의 손패는 넣은»
+   * 아무의 것도 아닌 숫자가 된다. 중계는 좌석마다 그 사람이 세는 수를 보여야 한다.
+   */
+  const seatRemaining = useMemo(
+    () => (spectating ? remainingCounter(view, player.id) : null),
+    [spectating, view, player.id],
+  );
+  // 역이 없어 론이 안 되는 대기 · 후리텐 — 서버가 관전 뷰에는 네 좌석 모두 실어 준다.
+  const specNoYaku = useMemo(
+    () => (spectating ? new Set(pr?.noYakuWaits ?? []) : undefined),
+    [spectating, pr?.noYakuWaits],
+  );
+  const specFuriten = spectating ? pr?.furitenReasons : undefined;
   // 오픈 리치로 공개된 오름패는 전원에게 상시 보인다 (다른 정보 소스보다 우선).
   const openWaits = openRiichiWaits(view, player.id);
   const waits = openWaits.length > 0 ? openWaits : peeked.length > 0 ? peeked : specWaits;
   // 간파한 오름패는 오픈 리치와 같은 크기·강조로 그 상대의 손패 위에 띄운다
   // (예전엔 작은 뱃지라 상대 손패 옆에 묻혀 잘 안 보였다).
   const peekBadge = openWaits.length === 0 && peeked.length > 0;
+  /**
+   * 이 좌석 머리 위에 세우는 오름패 뱃지. 위·좌·우 세 자리가 **같은 것**을 그리므로
+   * 한 번 만들어 둘 다 쓴다(예전엔 같은 JSX가 두 벌 있었다).
+   * 남은 장수만 이 좌석 기준으로 갈아 끼운다.
+   */
+  const waitsNode =
+    waits.length === 0 ? null : (
+      <WaitsBadge
+        waits={waits}
+        owner={playerName(view, player)}
+        openRiichi={openWaits.length > 0}
+        peek={peekBadge}
+        spectator={spectating && openWaits.length === 0 && !peekBadge}
+        {...(specNoYaku !== undefined ? { noYaku: specNoYaku } : {})}
+        {...(specFuriten !== undefined ? { furiten: specFuriten } : {})}
+      />
+    );
+  const badges =
+    waitsNode === null && specShanten === null ? null : (
+      <>
+        {specShanten !== null ? (
+          <ShantenBadge shanten={specShanten} tenpaiShown={waitsNode !== null} />
+        ) : null}
+        {seatRemaining === null ? (
+          waitsNode
+        ) : (
+          <WaitCountContext.Provider value={seatRemaining}>{waitsNode}</WaitCountContext.Provider>
+        )}
+      </>
+    );
 
   if (side === "top") {
     return (
@@ -13917,14 +14056,7 @@ function OpponentStrip({
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
         ) : null}
-        {waits.length > 0 ? (
-          <WaitsBadge
-            waits={waits}
-            owner={playerName(view, player)}
-            openRiichi={openWaits.length > 0}
-            peek={peekBadge}
-          />
-        ) : null}
+        {badges}
         {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
         <div className="opp-melds-row">
           {melds.map((m, i) => (
@@ -13960,14 +14092,7 @@ function OpponentStrip({
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
         ) : null}
-      {waits.length > 0 ? (
-          <WaitsBadge
-            waits={waits}
-            owner={playerName(view, player)}
-            openRiichi={openWaits.length > 0}
-            peek={peekBadge}
-          />
-        ) : null}
+      {badges}
       {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
       <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
       <div className="opp-backs-col">
@@ -15786,6 +15911,9 @@ function OwnArea(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoverId]);
 
+  /** 이 좌석이 쯔모패를 손패와 떨어뜨려 쥐고 있는가 — 오름패·샹텐을 13장으로 재는 기준 */
+  const myDrawnSeparated = view.round.byPlayer[me.id]?.drawnSeparated === true;
+
   // "내 오름패 표시" 설정 — 텐파이(13장 대기 상태)면 손패 위에 화료패를 항상 띄운다.
   // 내 차례(쯔모패 포함 14장)에서는 hover 미리보기가 담당하므로 대기 상태일 때만 계산한다.
   const myWaits = useMemo<TileKind[]>(() => {
@@ -15793,16 +15921,55 @@ function OwnArea(props: {
     if (frozenWaits.length > 0) return frozenWaits;
     // 관전 모드에서는 하단 시점 플레이어의 오름패도 항상 표시(설정과 무관).
     if (!isSpectator && !props.showMyWaits) return [];
-    const kinds = rawHand
+    const full = rawHand
       .map((id) => view.tiles[id]?.kind)
       .filter((k): k is TileKind => k !== undefined);
+    // 관전은 이 좌석의 차례에도 오름패를 계속 보여준다 — 떨어져 쥔 쯔모패 한 장을
+    // 빼면 **지금 서 있는 텐파이**다 (상대 자리 뱃지와 같은 규칙). 대국자 본인은
+    // 그 몇 초를 hover 미리보기가 맡으므로 예전 그대로 둔다.
+    const kinds =
+      isSpectator && full.length % 3 === 2 && myDrawnSeparated ? full.slice(0, -1) : full;
     if (kinds.length % 3 !== 1) return [];
     try {
-      return winningKinds(kinds, myMeldCount, undefined, waitDecompOptions(me, view, kinds));
+      return winningKinds(kinds, myMeldCount, undefined, waitDecompOptions(me, view, full));
     } catch {
       return [];
     }
-  }, [props.showMyWaits, isSpectator, rawHand, view.tiles, myMeldCount, frozenWaits, me]);
+  }, [
+    props.showMyWaits,
+    isSpectator,
+    myDrawnSeparated,
+    rawHand,
+    view.tiles,
+    myMeldCount,
+    frozenWaits,
+    me,
+  ]);
+
+  /**
+   * 하단 시점 좌석의 샹텐 — 관전에서만 잰다(대국자 화면에는 띄우지 않는다: 스스로
+   * 세는 것이 이 게임의 일이고, 남의 자리와 달리 그 손은 이미 눈앞에 펼쳐져 있다).
+   * 계산 규칙은 상대 자리 뱃지와 같다.
+   */
+  const mySpecShanten = useMemo<number | null>(() => {
+    if (!isSpectator) return null;
+    const full = rawHand
+      .map((id) => view.tiles[id]?.kind)
+      .filter((k): k is TileKind => k !== undefined);
+    if (full.length === 0) return null;
+    const hand = full.length % 3 === 2 && myDrawnSeparated ? full.slice(0, -1) : full;
+    const opts = waitDecompOptions(me, view, full);
+    try {
+      if (hand.length % 3 !== 2) return shantenOf(hand, myMeldCount, opts);
+      let best = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < hand.length; i++) {
+        best = Math.min(best, shantenOf(hand.filter((_, j) => j !== i), myMeldCount, opts));
+      }
+      return Number.isFinite(best) ? best : null;
+    } catch {
+      return null;
+    }
+  }, [isSpectator, myDrawnSeparated, rawHand, view.tiles, myMeldCount, me, view]);
 
   // 역이 없어 론이 안 되는 대기 종류 — 서버가 내 뷰에만 실어 준다(PlayerRoundView.noYakuWaits).
   // 오름패 표시가 "기다리면 먹을 수 있다"로 읽히는 오해를 막는 용도.
@@ -15813,7 +15980,7 @@ function OwnArea(props: {
 
   // 후리텐 — 이름표에도 뜨지만, 정작 오름패를 보는 동안에는 시선 밖이라 안 보였다.
   // 후리텐이면 여기 뜬 오름패 전부가 론 불가라 표시가 붙는 자리는 오름패 옆이 맞다.
-  // 본인 뷰에만 실리므로 관전자에게는 자연히 비어 있다.
+  // 관전 뷰는 네 좌석 모두 이 값을 받으므로(중계) 하단 시점 좌석의 것이 그대로 뜬다.
   const myFuritenReasons = view.round.byPlayer[me.id]?.furitenReasons ?? [];
 
   /** 이 패를 (드래그·클릭으로) 지금 낼 수 있는 옵션 — 클릭 동작과 동일 규칙. */
@@ -16065,10 +16232,14 @@ function OwnArea(props: {
             {!isSpectator ? <ActiveInfoBadges view={view} me={me} /> : null}
           </div>
           <div className="own-top-waits">
+            {mySpecShanten !== null ? (
+              <ShantenBadge shanten={mySpecShanten} tenpaiShown={myWaits.length > 0} />
+            ) : null}
             {myWaits.length > 0 ? (
               <WaitsBadge
                 waits={myWaits}
                 mine={!isSpectator}
+                spectator={isSpectator}
                 noYaku={noYakuWaitSet}
                 furiten={myFuritenReasons}
                 {...(isSpectator ? { owner: playerName(view, me) } : {})}
@@ -16706,12 +16877,47 @@ const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null
  * 상시 표시용 오름패 뱃지 — 선언 간파(상대 위)와 내 오름패(손패 위)에 공용.
  * WaitTip과 달리 hover 없이 계속 떠 있는다.
  */
+/**
+ * 샹텐 뱃지 — 「텐파이까지 몇 걸음 남았나」 (중계 관전 전용).
+ *
+ * 오름패가 안 뜨는 좌석이 «손이 아직 멀어서»인지 «형태는 됐는데 대기가 죽어서»인지
+ * 화면 어디에도 없었다. 중계에서 판의 속도는 이 숫자 하나로 읽힌다 —
+ * 「전원 1샹텐」과 「혼자 텐파이, 셋은 3샹텐」은 완전히 다른 판이고, 해설이 먼저
+ * 말해야 하는 것도 그것이다.
+ *
+ * 오름패 뱃지가 이미 서 있으면(`tenpaiShown`) 텐파이는 그쪽이 말하므로 겹쳐 적지
+ * 않는다. 화료형이면(-1) 아무것도 적지 않는다 — 그건 곧 정산 화면이 말한다.
+ */
+function ShantenBadge({
+  shanten,
+  tenpaiShown,
+}: {
+  shanten: number;
+  tenpaiShown: boolean;
+}): JSX.Element | null {
+  if (shanten < 0) return null;
+  if (shanten === 0 && tenpaiShown) return null;
+  return (
+    <div
+      className={`shanten-badge${shanten === 0 ? " shanten-badge-tenpai" : ""}`}
+      title={
+        shanten === 0
+          ? "텐파이 — 한 장만 더 맞으면 화료형입니다"
+          : `${shanten}샹텐 — 텐파이까지 ${shanten}장을 더 갈아야 합니다`
+      }
+    >
+      {shanten === 0 ? "텐파이" : `${shanten}샹텐`}
+    </div>
+  );
+}
+
 function WaitsBadge({
   waits,
   owner,
   mine,
   openRiichi,
   peek,
+  spectator,
   noYaku,
   furiten,
 }: {
@@ -16721,6 +16927,11 @@ function WaitsBadge({
   openRiichi?: boolean;
   /** 선언 간파로 알아낸 상대의 오름패 — 오픈 리치와 같은 크기로 상대 손패 위에 띄운다 */
   peek?: boolean;
+  /**
+   * 중계 관전 — 손패가 통째로 공개돼 **계산해서 그냥 아는** 오름패다.
+   * 「간파」(증강으로 훔쳐본 것)와 이름이 갈려야 한다: 판에서 벌어진 일이 아니다.
+   */
+  spectator?: boolean;
   /** 역이 없어 론이 안 되는 대기 종류(kindKey) — 오름패 표시의 오해를 막는다 */
   noYaku?: ReadonlySet<string>;
   /**
@@ -16735,9 +16946,11 @@ function WaitsBadge({
       ? " waits-badge-open"
       : peek === true
         ? " waits-badge-peek"
-        : mine === true
-          ? " waits-badge-mine"
-          : "";
+        : spectator === true
+          ? " waits-badge-spec"
+          : mine === true
+            ? " waits-badge-mine"
+            : "";
   const dead = (k: TileKind): boolean => noYaku?.has(kindKey(k)) === true;
   const allDead = waits.length > 0 && waits.every(dead);
   const furitenOn = furiten !== undefined && furiten.length > 0;
@@ -16763,7 +16976,13 @@ function WaitsBadge({
   return (
     <div className={`waits-badge${cls}${wide}${furitenOn ? " waits-badge-furiten" : ""}`}>
       <span className="waits-badge-label">
-        {openRiichi === true ? "오픈 리치" : mine === true ? "내 오름패" : "간파"}
+        {openRiichi === true
+          ? "오픈 리치"
+          : mine === true
+            ? "내 오름패"
+            : spectator === true
+              ? "오름패"
+              : "간파"}
         {owner !== undefined && mine !== true ? <span className="waits-badge-owner">{owner}</span> : null}
         {waits.length > WAIT_TILE_CAP ? (
           <span className="waits-badge-count">{waits.length}종</span>

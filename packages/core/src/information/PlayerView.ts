@@ -160,6 +160,8 @@ export interface MeldView {
  * 국 단위 공개 정보.
  * byPlayer에서 타인은 리치 선언 여부만 노출하고,
  * 후리텐·일발 세부는 본인만 확인할 수 있다.
+ * **관전 뷰(SPECTATOR_ID)는 예외** — 네 좌석 모두 본인 시점과 같은 상세를 받는다
+ * (중계가 후리텐·형식텐파이를 읽어야 한다. buildRoundView의 분기 주석 참고).
  */
 export interface PlayerRoundView {
   /** 리치 선언 여부 (공개) */
@@ -172,14 +174,14 @@ export interface PlayerRoundView {
    * 바꾸는 데 쓴다 — 큰 컷인이 뜨면 여러 시점을 함께 보는 화면에서 은닉이 새 보인다.
    */
   riichiHidden?: boolean;
-  /** 일발 유효 여부 (본인 뷰에서만 포함) */
+  /** 일발 유효 여부 (본인 뷰·관전 뷰에만 포함) */
   ippatsu?: boolean;
-  /** 후리텐 상태 (본인 뷰에서만 포함) */
+  /** 후리텐 상태 (본인 뷰·관전 뷰에만 포함) */
   furiten?: boolean;
-  /** 후리텐 사유 (본인 뷰에서만 포함) */
+  /** 후리텐 사유 (본인 뷰·관전 뷰에만 포함) */
   furitenReasons?: FuritenReason[];
   /**
-   * 리치를 지금 걸 수 없는 이유 (본인 뷰에만, 걸 수 있으면 없음).
+   * 리치를 지금 걸 수 없는 이유 (본인 뷰·관전 뷰에만, 걸 수 있으면 없음).
    *
    * 리치가 막히는 사유는 엔진에 다섯 가지가 명시돼 있지만(standardActions의 riichi
    * validate) 그건 `validate` 반환값이라, **옵션이 애초에 제시되지 않는 경로**에서는
@@ -193,12 +195,12 @@ export interface PlayerRoundView {
   riichiBlocked?: "notEnoughPoints" | "wallTooShort";
   /**
    * 형식텐파이(역없음) — 텐파이지만 어떤 오름패로도 역이 없어 화료할 수 없는 상태.
-   * 본인 뷰에서만, 그리고 yaku 레지스트리가 주어졌을 때만 채워진다.
+   * 본인 뷰·관전 뷰에서만, 그리고 yaku 레지스트리가 주어졌을 때만 채워진다.
    * 열린 손 전용(멘젠 손은 리치·멘젠쯔모로 역을 만들 수 있어 해당 없음).
    */
   noYaku?: boolean;
   /**
-   * 대기패 중 **역이 없어 론이 성립하지 않는** 종류(kindKey 목록). 본인 뷰 전용.
+   * 대기패 중 **역이 없어 론이 성립하지 않는** 종류(kindKey 목록). 본인 뷰·관전 뷰 전용.
    * 오름패 표시가 "기다리면 먹을 수 있다"로 읽히는 오해를 막는다 —
    * 이 목록에 든 패는 화면에서 "역없음"으로 구분해 그린다.
    * 리치 중이면 리치가 역이 되므로 자연히 비어 있다.
@@ -854,7 +856,19 @@ function buildRoundView(
       rules.has("riichi.hidden") &&
       rules.resolve<boolean>("riichi.hidden", { playerId: pid, state });
 
-    if (pid === viewerId) {
+    /*
+     * **본인 시점의 속사정을 그대로 싣는가.**
+     *
+     * 본인은 당연히 그렇고, **관전자도 그렇다**(2026-08-19 중계 관전). 관전 뷰는
+     * 설계상 완전정보다 — 손패도 패산도 다 실린다. 그런데 후리텐·형식텐파이·
+     * 역없는 대기만은 `pid === viewerId`에 걸려 **네 좌석 전부 비어 있었다**.
+     * 중계 화면에서 오름패는 뜨는데 "저 사람 후리텐이라 론이 안 된다"가 어디에도
+     * 없었다 — 해설이 판을 거꾸로 읽는다. 봉인패(`showSealed`)가 이미 같은 이유로
+     * 같은 예외를 두고 있으므로 규칙을 하나로 맞춘다.
+     *
+     * 대국자에게 새는 정보는 없다: 관전 뷰는 관전자에게만 간다.
+     */
+    if (pid === viewerId || viewerId === SPECTATOR_ID) {
       const furitenReasons = buildFuritenReasons(state, pid, pr, rules);
       // 형식텐파이(역없음)는 yaku 레지스트리가 주어졌을 때만 계산 (열린 손 전용)
       const noYaku = yaku !== undefined && tenpaiNoYaku(state, pid, rules, yaku);
