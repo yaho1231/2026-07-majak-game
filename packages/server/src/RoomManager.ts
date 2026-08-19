@@ -51,6 +51,7 @@ import type {
   AugmentTierEntry,
   AnalyticsDayEntry,
   FeedbackEntry,
+  FriendListMessage,
   PeriodStats,
   SandboxBotRules,
   ServerNotice,
@@ -486,6 +487,14 @@ const HEAVY_MESSAGES: ReadonlySet<string> = new Set([
 ]);
 const HEAVY_WINDOW_MS = 10_000;
 const HEAVY_MAX_PER_WINDOW = 5;
+/**
+ * 같은 친구에게 초대장을 다시 보낼 수 있게 되기까지의 시간 (2026-08-19).
+ *
+ * 초대는 받는 쪽 **메인 화면에 카드로** 뜬다 — 단추 연타를 막지 않으면 그게 곧
+ * 남의 화면 도배가 된다. 20초는 "안 들어오네, 한 번 더" 가 자연스럽게 되는
+ * 간격이면서 연타는 접히는 길이다.
+ */
+const INVITE_COOLDOWN_MS = 20_000;
 /**
  * `replayGet`이 한 프레임으로 내보낼 수 있는 리플레이 파일 크기 상한(bytes).
  * 운영 실측 최대는 250KB 남짓이라 정상 리플레이는 근처에도 오지 않는다 —
@@ -964,6 +973,11 @@ export class RoomManager {
   private authIpHits = new Map<string, number[]>();
   /** IP별 방 생성 슬라이딩 윈도우 (방 대량 생성 남용 차단). */
   private roomCreateIpHits = new Map<string, number[]>();
+  /**
+   * 친구 초대를 마지막으로 보낸 시각 — 키는 `보낸사람id>받는사람id` (ms).
+   * `INVITE_COOLDOWN_MS` 가 지난 항목은 다음 초대 때 함께 치운다(무한 증식 방지).
+   */
+  private inviteSentAt = new Map<string, number>();
   /** 진행 중 scrypt 수 + 대기 큐 (동시 실행 상한). */
   private scryptActive = 0;
   private scryptQueue: Array<() => void> = [];
@@ -1915,14 +1929,51 @@ export class RoomManager {
       case "leaderboard":
         return this.sendLeaderboard(conn);
       // ── 친구 (§4-6) ──
-      case "friendAdd": {
+      case "friendRequest": {
         const db = this.db;
         if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
         if (typeof msg.nickname !== "string" || msg.nickname.trim() === "") {
           return this.fail(conn, "BAD_REQUEST", "닉네임을 입력해 주세요");
         }
-        const res = db.addFriend(user.id, msg.nickname.trim());
-        if (!res.ok) return this.fail(conn, "FRIEND_ADD_FAILED", res.error ?? "추가하지 못했습니다");
+        const res = db.requestFriend(user.id, msg.nickname.trim());
+        if (!res.ok || res.nickname === undefined) {
+          return this.fail(conn, "FRIEND_ADD_FAILED", res.error ?? "보내지 못했습니다");
+        }
+        // 상대 화면도 지금 갱신한다 — 편지함은 "요청이 왔다"를 늦게 알면 뜻이 없다.
+        this.pushFriends(res.nickname);
+        this.fail(
+          conn,
+          res.accepted === true ? "FRIEND_ADDED" : "FRIEND_REQUESTED",
+          res.accepted === true
+            ? `${res.nickname} 님과 친구가 되었습니다 — 서로 요청을 보냈습니다`
+            : `${res.nickname} 님에게 친구 요청을 보냈습니다`,
+        );
+        return this.sendFriends(conn, user);
+      }
+      case "friendRespond": {
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (typeof msg.nickname !== "string" || typeof msg.accept !== "boolean") return;
+        const res = db.respondFriendRequest(user.id, msg.nickname, msg.accept);
+        if (!res.ok || res.nickname === undefined) {
+          this.sendFriends(conn, user); // 낡은 편지함을 들고 있다 — 바른 상태로 되돌린다
+          return this.fail(conn, "FRIEND_RESPOND_FAILED", res.error ?? "처리하지 못했습니다");
+        }
+        if (msg.accept) {
+          // 수락은 보낸 쪽에도 알린다. 거절은 알리지 않는다 — 거절당했다는 통보는
+          // 아무 행동으로도 이어지지 않고 사람만 상하게 한다(편지함에서 조용히 사라진다).
+          this.pushFriends(res.nickname, `${user.username} 님이 친구 요청을 수락했습니다`);
+        } else {
+          this.pushFriends(res.nickname);
+        }
+        return this.sendFriends(conn, user);
+      }
+      case "friendCancel": {
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (typeof msg.nickname !== "string") return;
+        db.cancelFriendRequest(user.id, msg.nickname);
+        this.pushFriends(msg.nickname);
         return this.sendFriends(conn, user);
       }
       case "friendRemove": {
@@ -1930,10 +1981,14 @@ export class RoomManager {
         if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
         if (typeof msg.nickname !== "string") return;
         db.removeFriend(user.id, msg.nickname);
+        // 끊기는 쌍방이다 — 상대 화면에서도 사라져야 한다.
+        this.pushFriends(msg.nickname);
         return this.sendFriends(conn, user);
       }
       case "friendList":
         return this.sendFriends(conn, user);
+      case "friendInvite":
+        return this.inviteFriend(conn, user, msg.nickname);
       // ── 제보 게시판 ──
       case "feedbackSubmit":
         return this.submitFeedback(conn, user, msg.kind, msg.title, msg.body);
@@ -1999,8 +2054,10 @@ export class RoomManager {
       /*
        * 홈으로 돌아올 때마다 «진행하던 방으로 재접속»을 다시 판정한다.
        *
-       * 인증 직후에도 한 번 밀지만(`applyAuth`), 그 뒤로 판이 끝나거나 다른 탭에서
-       * 나갔을 수 있다 — 없는 방을 가리키는 버튼은 누를 때마다 실패 토스트만 낸다.
+       * 로그인 시점의 답은 `authOk.resumeRoom`이 이미 줬다(#338). 그 값이 홈에
+       * 머무는 동안 낡는 것이 문제다 — 판이 끝나거나, 다른 탭·다른 기기에서
+       * 나갔거나, 방이 유휴 청소로 사라진다. 없는 방을 가리키는 버튼은 누를
+       * 때마다 실패 토스트만 낸다.
        */
       case "activeGameRequest":
         return this.sendActiveGame(conn, user);
@@ -2253,33 +2310,23 @@ export class RoomManager {
       username: user.username,
       isAdmin: user.isAdmin,
       sessionToken,
+      // 홈의 "진행하던 방으로 재접속"은 이 값만 보고 뜬다 (protocol.ts 주석).
+      resumeRoom: this.resumableRoomFor(user.username),
     });
     // 홈 통계에서 증강 이름·등급을 게임 시작 전에도 쓸 수 있도록 정적 카탈로그를 보낸다.
     this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
-    /*
-     * **진행 중인 판이 있으면 여기서 알려 준다** (2026-08-19 사용자 지시 ①).
-     *
-     * 재접속 버튼이 브라우저의 `majak.lastRoomCode`에만 기대고 있어서, 다른 기기나
-     * 저장소를 지운 브라우저에서는 서버에 판이 멀쩡히 서 있어도(§2-10 이어하기)
-     * 코드를 외우는 것 말고는 돌아갈 길이 없었다. 서버는 좌석을 닉네임으로 들고
-     * 있으므로 계정만 알면 답할 수 있다 — 요청을 기다리지 않고 인증 직후 민다.
-     *
-     * 게스트는 제외한다: 임시 신원이라 `membershipOf`가 남의 좌석을 가리킬 수 있고,
-     * 손님의 재접속은 이미 `guestToken`이라는 별도의 문이 맡고 있다.
-     */
-    if (!conn.guest) this.sendActiveGame(conn, user);
   }
 
-  /** 이 계정이 지금 앉아 있는 방을 알려 준다 (없으면 code:null). */
+  /**
+   * 돌아갈 수 있는 방을 **다시** 알려 준다 (`activeGameRequest`의 답).
+   *
+   * 판정은 `authOk.resumeRoom`과 **같은 함수**(`resumableRoomFor`)를 쓴다 — 로그인
+   * 때 한 번 맞춰 준 값이 그 뒤로 낡는 것이 문제라, 답이 갈라지면 고칠 이유가
+   * 없어진다. 이 메시지가 따로 있는 이유는 오직 **다시 물을 수 있게** 하는 것이다:
+   * 홈에 돌아올 때마다 판이 끝났는지·다른 기기에서 이어지는지가 바뀐다.
+   */
   private sendActiveGame(conn: Conn, user: UserRow): void {
-    const room = this.membershipOf(user.username);
-    if (room === null) return this.send(conn.ws, { type: "activeGame", code: null });
-    this.send(conn.ws, {
-      type: "activeGame",
-      code: room.code,
-      playing: room.phase === "playing",
-      ...(room.startedAt !== null ? { startedAt: room.startedAt } : {}),
-    });
+    this.send(conn.ws, { type: "activeGame", code: this.resumableRoomFor(user.username) });
   }
 
   private fail(conn: Conn, code: string, message: string): void {
@@ -2303,6 +2350,35 @@ export class RoomManager {
     for (const room of this.rooms.values()) {
       if (room.agents.some((a) => this.isActiveHuman(a, username))) {
         return room;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * **이 계정이 지금 돌아갈 수 있는 방 코드** (없으면 null).
+   *
+   * 판정은 `joinRoom`이 실제로 통과시키는 조건과 같아야 한다 — 여기서 알려 준
+   * 코드를 클라이언트가 그대로 눌렀을 때 "존재하지 않는 방"이 돌아오면 고치려던
+   * 문제가 그대로 남는다. 그래서 같은 세 가지를 본다: 강퇴 여부, 1인 전용 방
+   * (체험·연습·증강 테스트)은 그 방 주인만, 진행 중이면 되돌릴 수 있는 좌석.
+   */
+  private resumableRoomFor(username: string): string | null {
+    for (const room of this.rooms.values()) {
+      if (room.kicked.has(username)) continue;
+      const mineActive = room.agents.some((a) => this.isActiveHuman(a, username));
+      // 1인 전용 방은 남에게 존재 자체를 감춘다(joinRoom과 같은 규칙)
+      if ((room.sandbox || room.guest) && !mineActive) continue;
+      if (room.phase === "playing") {
+        const canReturn = room.agents.some(
+          (a): a is HumanAgent =>
+            a instanceof HumanAgent &&
+            (!a.isAbandoned || a.canRejoin) &&
+            a.nickname === username,
+        );
+        if (canReturn) return room.code;
+      } else if (mineActive) {
+        return room.code;
       }
     }
     return null;
@@ -3049,8 +3125,12 @@ export class RoomManager {
    * 홈에서 한 번 보고 방을 만드는 흐름이 충분하다. (새로 고침 버튼이 있다.)
    */
   private sendFriends(conn: Conn, user: UserRow): void {
-    const db = this.db;
-    if (db === undefined) return;
+    const payload = this.friendPayload(user.id);
+    if (payload !== null) this.send(conn.ws, payload);
+  }
+
+  /** 닉네임 → 지금 접속해 있는가 / 그중 대국 중인가. */
+  private onlineMap(): Map<string, boolean> {
     const online = new Map<string, boolean>();
     for (const c of this.conns) {
       if (c.user === null || c.guest) continue;
@@ -3058,14 +3138,102 @@ export class RoomManager {
       const playing = c.room !== null && c.room.phase === "playing";
       online.set(c.user.username, (online.get(c.user.username) ?? false) || playing);
     }
-    this.send(conn.ws, {
+    return online;
+  }
+
+  private friendPayload(userId: number): FriendListMessage | null {
+    const db = this.db;
+    if (db === undefined) return null;
+    const online = this.onlineMap();
+    return {
       type: "friendList",
-      friends: db.friendNames(user.id).map((nickname) => ({
+      friends: db.friendNames(userId).map((nickname) => ({
         nickname,
         online: online.has(nickname),
         playing: online.get(nickname) === true,
       })),
-    });
+      incoming: db.incomingFriendRequests(userId),
+      outgoing: db.outgoingFriendRequests(userId),
+    };
+  }
+
+  /**
+   * 관계가 바뀐 **상대**의 화면을 지금 갱신한다 (요청 도착·수락·취소·절교).
+   *
+   * 목록 자체는 여전히 요청할 때만 나가지만(상시 프레즌스는 없다), 관계 변화는
+   * 다르다 — 편지함에 요청이 왔다는 사실을 상대가 새로 고칠 때까지 모르면
+   * 승인제 자체가 반쪽이 된다. 접속해 있지 않으면 아무 일도 하지 않는다:
+   * 다음 접속 때 목록을 받으면서 자연히 보인다.
+   */
+  private pushFriends(username: string, toast?: string): void {
+    const db = this.db;
+    if (db === undefined) return;
+    const target = db.userByName(username);
+    if (target === null) return;
+    const payload = this.friendPayload(target.id);
+    if (payload === null) return;
+    for (const c of this.conns) {
+      if (c.user === null || c.guest || c.user.id !== target.id) continue;
+      this.send(c.ws, payload);
+      if (toast !== undefined) this.send(c.ws, { type: "error", code: "FRIEND_INFO", message: toast });
+    }
+  }
+
+  /**
+   * 친구를 지금 내 대기실로 부른다 (2026-08-19).
+   *
+   * 코드는 **서버가 붙인다** — 클라이언트가 실어 보내게 하면 아무 방에나 남을
+   * 부르는 초대장을 찍어 낼 수 있다. 조건은 셋: 내가 대기실에 있을 것, 쌍방
+   * 친구일 것, 상대가 접속해 있을 것.
+   */
+  private inviteFriend(conn: Conn, user: UserRow, nickname: unknown): void {
+    const db = this.db;
+    if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+    if (typeof nickname !== "string" || nickname.trim() === "") return;
+    const room = conn.room;
+    if (room === null) return this.fail(conn, "NOT_IN_ROOM", "대기실에서만 부를 수 있습니다");
+    if (room.phase !== "waiting") {
+      return this.fail(conn, "ROOM_PLAYING", "이미 시작한 판에는 부를 수 없습니다");
+    }
+    const target = db.userByName(nickname.trim());
+    if (target === null) return this.fail(conn, "FRIEND_INVITE_FAILED", "그런 계정이 없습니다");
+    if (!db.areFriends(user.id, target.id)) {
+      return this.fail(conn, "FRIEND_INVITE_FAILED", "친구에게만 보낼 수 있습니다");
+    }
+    if (room.kicked.has(target.username)) {
+      return this.fail(conn, "FRIEND_INVITE_FAILED", "이 방에서 내보낸 사람입니다");
+    }
+    /*
+     * 도배 방지 — 같은 사람에게 연달아 보내지 못하게 한다. 초대는 받는 쪽 메인
+     * 화면에 카드로 뜨므로, 막지 않으면 단추 연타가 곧 상대 화면 도배가 된다.
+     */
+    const now = Date.now();
+    const key = `${user.id}>${target.id}`;
+    const last = this.inviteSentAt.get(key) ?? 0;
+    if (now - last < INVITE_COOLDOWN_MS) {
+      return this.fail(conn, "FRIEND_INVITE_FAILED", "방금 보냈습니다 — 잠시 후에 다시 보내세요");
+    }
+    const out = {
+      type: "friendInviteFrom" as const,
+      from: user.username,
+      code: room.code,
+      at: new Date(now).toISOString(),
+    };
+    let sent = 0;
+    for (const c of this.conns) {
+      // 이미 어느 방엔가 앉아 있는 탭에는 보내지 않는다 — 초대장은 "지금 갈 수
+      // 있는 사람"에게만 뜻이 있고, 대국 중인 화면 위에 뜨면 방해일 뿐이다.
+      if (c.user === null || c.guest || c.user.id !== target.id) continue;
+      if (c.room !== null) continue;
+      this.send(c.ws, out);
+      sent++;
+    }
+    if (sent === 0) {
+      return this.fail(conn, "FRIEND_INVITE_FAILED", `${target.username} 님은 지금 부를 수 없습니다`);
+    }
+    this.inviteSentAt.set(key, now);
+    for (const [k, t] of this.inviteSentAt) if (now - t >= INVITE_COOLDOWN_MS) this.inviteSentAt.delete(k);
+    this.fail(conn, "FRIEND_INVITED", `${target.username} 님을 불렀습니다`);
   }
 
   // ─────────────────────────── 통계·리플레이 ───────────────────────────

@@ -17,7 +17,6 @@ import type {
   AbortVoteMessage,
   ActionOption,
   ActionMessage,
-  ActiveGameMessage,
   AdminAugmentTiersMessage,
   AdminUserEntry,
   AnalyticsDayEntry,
@@ -55,6 +54,8 @@ import type {
   SandboxMessage,
   SandboxBotRules,
   FriendEntry,
+  FriendRequestEntry,
+  FriendInviteFromMessage,
   PeriodStats,
   ServerInfoMessage,
   ServerNotice,
@@ -2629,6 +2630,19 @@ export function App(): JSX.Element {
   const [serverInfo, setServerInfo] = useState<ServerInfoMessage | null>(null);
   /** 친구 목록 (§4-6). null = 아직 못 받았다 — `[]`(정말 없다)와 화면에서 다르다. */
   const [friends, setFriends] = useState<FriendEntry[] | null>(null);
+  /** 받은 친구 요청 = 편지함. 수락·거절할 때까지 남는다 (2026-08-19). */
+  const [friendIn, setFriendIn] = useState<FriendRequestEntry[]>([]);
+  /** 내가 보내 둔 요청의 닉네임 — 목록에 "요청함"으로 붙는다. */
+  const [friendOut, setFriendOut] = useState<string[]>([]);
+  /**
+   * 지금 화면에 떠 있는 친구 초대장 (2026-08-19).
+   *
+   * 토스트로만 띄우지 않는 이유: 초대는 **누를 것**이지 읽을 것이 아니다.
+   * 3초 뒤 사라지는 문장에 "들어가기"를 달아 놓으면 그 사이에 못 누른 사람은
+   * 방 코드를 다시 물어야 한다. 같은 사람이 다시 부르면 카드를 새것으로 갈아
+   * 끼운다 — 한 사람이 카드를 여러 장 쌓지 못한다.
+   */
+  const [invites, setInvites] = useState<FriendInviteFromMessage[]>([]);
   /** 자체 방문 집계 (관리자 전용, §8-6). */
   const [analytics, setAnalytics] = useState<AnalyticsDayEntry[] | null>(null);
   /**
@@ -2657,14 +2671,6 @@ export function App(): JSX.Element {
    * 그 답은 **지금 값에 대한 답이 아니다**. 화면은 둘이 같을 때만 결과를 보여 준다.
    */
   const [nameCheck, setNameCheck] = useState<NameCheck | null>(null);
-  /**
-   * 이 계정이 지금 앉아 있는 방 — 서버가 알려 준다 (2026-08-19 사용자 지시 ①).
-   *
-   * 브라우저의 `majak.lastRoomCode`보다 **이쪽이 우선**이다. 저장소는 기기마다
-   * 따로고 시크릿 창에서는 아예 없지만, 서버의 좌석은 재시작을 넘겨서도 남는다
-   * (§2-10 이어하기).
-   */
-  const [activeGame, setActiveGame] = useState<ActiveGameMessage | null>(null);
   /**
    * 튜토리얼 코치가 켜져 있는가.
    *
@@ -2762,6 +2768,16 @@ export function App(): JSX.Element {
   const [adminUsers, setAdminUsers] = useState<AdminUserEntry[] | null>(null);
   /** 제보 게시판 — 내가 볼 수 있는 글만 온다(내 글, 관리자면 전체). */
   const [feedback, setFeedback] = useState<FeedbackEntry[] | null>(null);
+  /**
+   * 홈의 "진행하던 방으로 재접속"이 가리키는 방 (없으면 null).
+   *
+   * 저장소 값을 **화면 그릴 때 직접 읽지 않는다** — 그러면 코드를 지워도 리렌더가
+   * 걸리지 않아 이미 죽은 방의 버튼이 그대로 서 있다. 저장소와 이 상태는
+   * `rememberLastRoom` 한 곳에서만 함께 움직인다.
+   */
+  const [lastRoomCode, setLastRoomCode] = useState<string | null>(() =>
+    safeStorage.getItem(LAST_ROOM_KEY),
+  );
   const [spectating, setSpectating] = useState<string | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
   /**
@@ -3602,6 +3618,29 @@ export function App(): JSX.Element {
     refreshHome();
   }
 
+  /**
+   * "진행하던 방" 기억하기/버리기 — 저장소와 화면 상태를 한 번에 움직인다.
+   * 저장소만 지우면 홈의 버튼이 그대로 남고, 상태만 지우면 새로고침에 되살아난다.
+   */
+  /**
+   * 마지막으로 들어가려 한 방 코드 — 거절이 돌아왔을 때 **무엇이 거절당했는지**를
+   * 알려면 있어야 한다. 오류 메시지에는 코드가 실려 오지 않아서, 이게 없으면
+   * 남의 방 코드를 잘못 쳐서 난 `ROOM_NOT_FOUND`가 멀쩡한 내 재접속 코드를 지운다.
+   */
+  const joinTargetRef = useRef<string | null>(null);
+
+  /** 방 참가 — 무엇을 향한 시도였는지 남기고 보낸다(위 `joinTargetRef` 참고). */
+  function joinRoomByCode(code: string): void {
+    joinTargetRef.current = code;
+    send({ type: "joinRoom", code });
+  }
+
+  function rememberLastRoom(code: string | null): void {
+    if (code === null) safeStorage.removeItem(LAST_ROOM_KEY);
+    else safeStorage.setItem(LAST_ROOM_KEY, code);
+    setLastRoomCode(code);
+  }
+
   function refreshHome(): void {
     // 게스트에게는 전부 막힌 요청이다 — 보내면 거절 토스트만 네 번 뜬다.
     if (guestRef.current) return;
@@ -3644,7 +3683,7 @@ export function App(): JSX.Element {
     setHelpOpen(false);
     safeStorage.removeItem(SESSION_KEY);
     safeStorage.removeItem(SESSION_SERVER_KEY);
-    safeStorage.removeItem(LAST_ROOM_KEY);
+    rememberLastRoom(null);
     // 체험을 끝내고 나가는 길(가입하러 가기 포함)도 여기를 지난다 — 열쇠를
     // 남겨 두면 다음 접속에서 이미 접힌 판으로 끌려간다.
     safeStorage.removeItem(GUEST_TOKEN_KEY);
@@ -3655,6 +3694,9 @@ export function App(): JSX.Element {
     setMyReplays(null);
     setLeaderboard(null);
     setFriends(null);
+    setFriendIn([]);
+    setFriendOut([]);
+    setInvites([]);
     setAnalytics(null);
     setAdminUsers(null);
     setFeedback(null);
@@ -3701,6 +3743,19 @@ export function App(): JSX.Element {
         // 계정으로 들어왔으니 체험 열쇠는 버린다 — 안 그러면 로그아웃한 뒤
         // 다음 접속에서 남의(자기 옛) 체험 판으로 끌려간다.
         safeStorage.removeItem(GUEST_TOKEN_KEY);
+        /*
+         * **진행하던 방은 서버에 물어서 정한다** (2026-08-19 사용자 보고).
+         *
+         * 브라우저에 남은 코드는 방이 서버에서 사라지는 길(재시작·유휴 청소·내가
+         * 없는 동안 접힌 판) 어디에서도 지워지지 않아, 홈의 재접속 버튼이 대부분
+         * **눌러야 "그 방은 이미 사라졌습니다"를 보는 버튼**이 되어 있었다.
+         * 이제 로그인할 때마다 실제로 돌아갈 수 있는 방으로 맞춘다.
+         *
+         * `undefined`면 이 값을 모르는 응답이다(비밀번호 변경 뒤 재발급 등) —
+         * 그럴 때는 건드리지 않는다. 지워 버리면 방 안에서 비밀번호를 바꾼 사람의
+         * 재접속 코드가 사라진다.
+         */
+        if (msg.resumeRoom !== undefined) rememberLastRoom(msg.resumeRoom);
       } else if (typeof msg.guestToken === "string" && msg.guestToken !== "") {
         // 끊겨도 이 판으로 돌아올 수 있게 열쇠를 보관한다 (감사 §2-5).
         safeStorage.setItem(GUEST_TOKEN_KEY, msg.guestToken);
@@ -3744,11 +3799,11 @@ export function App(): JSX.Element {
       } else if (invited !== null) {
         pendingInviteRef.current = null;
         clearRoomFromUrl();
-        send({ type: "joinRoom", code: invited });
+        joinRoomByCode(invited);
       } else if (activeRoomRef.current !== null) {
         // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
         // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
-        send({ type: "joinRoom", code: activeRoomRef.current });
+        joinRoomByCode(activeRoomRef.current);
       } else if (activeSpectateRef.current !== null) {
         send({ type: "spectate", code: activeSpectateRef.current });
       }
@@ -3794,6 +3849,21 @@ export function App(): JSX.Element {
         setAuthError(msg.message);
         return;
       }
+      /*
+       * **못 들어가는 방은 기억에서도 지운다.**
+       *
+       * 자동 재입장이든 홈에서 직접 누른 재접속이든(그쪽은 `activeRoomRef`가
+       * null이라 아래 분기에 안 걸린다), 서버가 이 세 사유로 거절했다면 그 코드로는
+       * 다시 들어갈 수 없다. 남겨 두면 홈에 죽은 버튼이 계속 서서, 누를 때마다 같은
+       * 거절만 돌아온다 — 실제로 이게 이 버튼의 평소 모습이었다 (2026-08-19 보고).
+       */
+      if (
+        (msg.code === "ROOM_NOT_FOUND" || msg.code === "ROOM_PLAYING" || msg.code === "KICKED") &&
+        joinTargetRef.current !== null &&
+        joinTargetRef.current === safeStorage.getItem(LAST_ROOM_KEY)
+      ) {
+        rememberLastRoom(null);
+      }
       // 재연결 후 자동 재입장했는데 그 방이 사라졌거나(게임이 오프라인 중 종료 등)
       // 방장이 나를 내보냈으면 조용히 홈으로 돌아간다.
       // activeRoomRef가 살아 있으면 = 자동 재입장 시도였다.
@@ -3836,7 +3906,7 @@ export function App(): JSX.Element {
     if (msg.type === "roomCreated") {
       // 게스트 방은 재접속할 수 없다 — 기억해 두면 홈에 죽은 방의 "재접속"이 남는다.
       if (guestRef.current) return;
-      safeStorage.setItem(LAST_ROOM_KEY, msg.code);
+      rememberLastRoom(msg.code);
       return; // 이어서 joined·lobby가 온다
     }
     if (msg.type === "adminAnalytics") {
@@ -3845,6 +3915,14 @@ export function App(): JSX.Element {
     }
     if (msg.type === "friendList") {
       setFriends(msg.friends);
+      setFriendIn(msg.incoming);
+      setFriendOut(msg.outgoing);
+      return;
+    }
+    if (msg.type === "friendInviteFrom") {
+      // 같은 사람의 앞선 초대장은 걷어 낸다 — 남는 것은 늘 **가장 최근 방 코드**다.
+      setInvites((cur) => [msg, ...cur.filter((v) => v.from !== msg.from)].slice(0, 5));
+      sfx.slide();
       return;
     }
     if (msg.type === "replayList") {
@@ -3886,11 +3964,16 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "activeGame") {
-      setActiveGame(msg);
-      // 서버가 "그런 판 없다"고 하면 브라우저에 남은 옛 코드도 같이 버린다 —
-      // 안 버리면 재접속 버튼이 이미 끝난 방을 계속 가리킨다.
-      if (msg.code === null) safeStorage.removeItem(LAST_ROOM_KEY);
-      else safeStorage.setItem(LAST_ROOM_KEY, msg.code);
+      /*
+       * `authOk.resumeRoom`과 **같은 판정을 같은 자리에 적는다** (서버도 같은
+       * `resumableRoomFor`를 쓴다). 로그인 때 한 번이 아니라 홈에 돌아올 때마다
+       * 다시 묻는 것이 이 메시지의 존재 이유다 — 판이 방금 끝났으면 버튼이
+       * 사라져야 하고, 다른 기기에서 이어지고 있으면 떠야 한다.
+       *
+       * 저장소를 직접 건드리지 않고 `rememberLastRoom`을 지나간다. 저장소와
+       * 화면 상태가 갈라지는 길을 하나도 만들지 않기 위해서다(#338).
+       */
+      rememberLastRoom(msg.code);
       return;
     }
     if (msg.type === "leaderboard") {
@@ -3998,7 +4081,7 @@ export function App(): JSX.Element {
       // 게스트는 재접속할 수단이 없다(세션 토큰도 joinRoom 권한도 없다) — 재연결
       // 자동 재입장 대상으로 기억하면 붙자마자 거절 토스트만 뜬다.
       activeRoomRef.current = guestRef.current ? null : msg.roomId; // 재연결 시 자동 재입장 대상
-      safeStorage.setItem(LAST_ROOM_KEY, msg.roomId);
+      rememberLastRoom(msg.roomId);
       return;
     }
     if (msg.type === "catalog") {
@@ -4241,8 +4324,7 @@ export function App(): JSX.Element {
       // 새로고침·재연결로 돌아와도 같은 대기실에 다시 앉는다.
       if (msg.canContinue !== true) {
         activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
-        safeStorage.removeItem(LAST_ROOM_KEY);
-        setActiveGame({ type: "activeGame", code: null });
+        rememberLastRoom(null);
       }
       // 체험 판이 끝났으면 그 판으로 돌아오는 열쇠도 여기서 죽는다 — 결과 화면에서
       // 새로고침했을 때 이미 없는 판으로 붙었다가 튕기는 길을 막는다.
@@ -4254,11 +4336,8 @@ export function App(): JSX.Element {
       showToast("방장이 방에서 내보냈습니다", "info", 4000);
       activeRoomRef.current = null;
       if (safeStorage.getItem(LAST_ROOM_KEY) === msg.roomId) {
-        safeStorage.removeItem(LAST_ROOM_KEY);
+        rememberLastRoom(null);
       }
-      setActiveGame((prev: ActiveGameMessage | null) =>
-        prev?.code === msg.roomId ? { type: "activeGame", code: null } : prev,
-      );
       resetGameState();
       refreshHome();
       return;
@@ -4291,8 +4370,7 @@ export function App(): JSX.Element {
       if (leftBySelf.current) leftBySelf.current = false;
       else showToast(msg.reason, "info", 4000);
       activeRoomRef.current = null;
-      safeStorage.removeItem(LAST_ROOM_KEY);
-      setActiveGame({ type: "activeGame", code: null });
+      rememberLastRoom(null);
       returnHome();
       return;
     }
@@ -5165,6 +5243,12 @@ export function App(): JSX.Element {
   const cbOpenCodex = openCodex;
   const cbOpenHelp = useStableFn(() => setHelpOpen(true));
   const cbGameToast = useStableFn((t: string) => showToast(t, "info"));
+  /*
+   * 대기실이 열릴 때 친구 목록을 한 번 다시 받는다 — 이 함수는 **정체성이
+   * 고정돼야 한다.** 인라인 화살표로 넘기면 렌더마다 새 함수가 되고, 그걸
+   * 의존성으로 삼은 대기실의 effect가 매 렌더 돌아 friendList를 무한히 쏜다.
+   */
+  const cbRefreshFriends = useStableFn(() => send({ type: "friendList" }));
 
   // ── 화면 라우팅 ──
   const isSpectator = spectating !== null;
@@ -5248,20 +5332,6 @@ export function App(): JSX.Element {
       push(false);
     }, COACH_HOLD_RELEASE_MS);
   });
-
-  /*
-   * «진행하던 방으로 재접속»이 가리킬 코드.
-   *
-   * **서버의 답이 먼저다.** 브라우저 저장소는 기기마다 따로고 시크릿 창에는 아예
-   * 없어서, 예전에는 판이 서버에 멀쩡히 서 있어도(§2-10 이어하기 — 서버를 재시작해도
-   * 되살아난다) 다른 기기·다른 브라우저에서는 **코드를 외우는 것 말고 돌아갈 길이
-   * 없었다** (2026-08-19 사용자 지시 ①). 서버는 좌석을 닉네임으로 들고 있으므로
-   * 로그인만 하면 답할 수 있다.
-   *
-   * 저장소는 **아직 답이 안 온 첫 프레임**의 대역으로만 남긴다 — 그때 버튼이 한 번
-   * 깜빡이며 사라졌다 다시 뜨는 것보다 낫다.
-   */
-  const lastRoomCode = activeGame !== null ? activeGame.code : safeStorage.getItem(LAST_ROOM_KEY);
 
   return (
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
@@ -5347,7 +5417,6 @@ export function App(): JSX.Element {
             startCoach(true);
             send({ type: "guestPlay", tutorial: true });
           }}
-          onOpenHelp={() => setHelpOpen(true)}
           onLogin={(u, p) => send({ type: "login", username: u, password: p })}
           onRegister={(u, p, code, signup) => {
             // authOk는 가입과 로그인을 구별해 주지 않는다 — 여기서 표시해 둔다.
@@ -5427,6 +5496,9 @@ export function App(): JSX.Element {
           onOpenHelp={() => setHelpOpen(true)}
           onOpenCodex={openCodex}
           onEmote={sendEmote}
+          friends={friends}
+          onInviteFriend={(n) => send({ type: "friendInvite", nickname: n })}
+          onRefreshFriends={cbRefreshFriends}
         />
       ) : tierOpen ? (
         <TierScreen
@@ -5460,7 +5532,11 @@ export function App(): JSX.Element {
           analytics={analytics}
           onRefreshAnalytics={() => send({ type: "adminAnalytics" })}
           friends={friends}
-          onAddFriend={(n) => send({ type: "friendAdd", nickname: n })}
+          friendIn={friendIn}
+          friendOut={friendOut}
+          onRequestFriend={(n) => send({ type: "friendRequest", nickname: n })}
+          onRespondFriend={(n, accept) => send({ type: "friendRespond", nickname: n, accept })}
+          onCancelFriend={(n) => send({ type: "friendCancel", nickname: n })}
           onRemoveFriend={(n) => send({ type: "friendRemove", nickname: n })}
           onRefreshFriends={() => send({ type: "friendList" })}
           onSetNotice={(title, body) => send({ type: "adminSetNotice", title, body })}
@@ -5487,11 +5563,10 @@ export function App(): JSX.Element {
             });
           }}
           lastRoomCode={lastRoomCode}
-          lastRoomPlaying={activeGame?.playing === true}
           settings={settings}
           onSetting={updateSetting}
           onCreateRoom={() => send({ type: "createRoom" })}
-          onJoinRoom={(code) => send({ type: "joinRoom", code })}
+          onJoinRoom={joinRoomByCode}
           onOpenReplay={(gameId) => send({ type: "replayGet", gameId })}
           onOpenCodex={() => { openCodex(); refreshHome(); }}
           onOpenHelp={() => setHelpOpen(true)}
@@ -5771,6 +5846,43 @@ export function App(): JSX.Element {
         보조기술에 전혀 가지 않았다. 연출 텍스트는 sr-only live region으로 제대로
         열어 뒀는데 정작 토스트만 빠져 있었다.
       */}
+      {/*
+        친구 초대장 (2026-08-19).
+
+        토스트가 아니라 **머무는 카드**다. 초대는 읽을 것이 아니라 누를 것이고,
+        3초 뒤 사라지는 문장에 "들어가기"를 달면 그 사이에 못 누른 사람은 방
+        코드를 다시 물어야 한다. 판이나 대기실에 들어간 뒤에는 걷어 낸다 —
+        그 화면에서 다른 방으로 순간이동하는 단추는 실수를 부른다.
+      */}
+      {invites.length > 0 && !inGame && !inWaiting ? (
+        <div className="invite-stack" role="status" aria-live="polite">
+          {invites.map((v) => (
+            <div key={`${v.from}:${v.code}`} className="invite-card">
+              <div className="invite-text">
+                <b className="invite-from">{v.from}</b> 님이 대기실로 불렀습니다
+                <span className="invite-code num">{v.code}</span>
+              </div>
+              <button
+                className="invite-go"
+                onClick={() => {
+                  setInvites((cur) => cur.filter((x) => x.from !== v.from));
+                  joinRoomByCode(v.code);
+                }}
+              >
+                들어가기
+              </button>
+              <button
+                className="invite-x"
+                onClick={() => setInvites((cur) => cur.filter((x) => x.from !== v.from))}
+                aria-label="초대 닫기"
+                title="닫기"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {toasts.length > 0 ? (
         <div className="toast-stack" role="status" aria-live="polite" aria-atomic="false">
           {toasts.map((t) => (
@@ -6401,62 +6513,13 @@ function TutorialCoach(props: {
  * 지금은 (1) 무엇인지 먼저 말하고, (2) 계정 없이 바로 한 판을 주고,
  * (3) 가입이 초대제인지 서버가 알려 준 사실대로 적는다.
  */
-/**
- * 랜딩에서 보여 줄 증강 셋 — **실제로 구현된 것**만 쓴다.
- *
- * 여기 적힌 이름·효과는 `packages/content` 의 것을 그대로 옮긴 것이다. 광고용으로
- * 없는 기능을 지어내면 첫 판에서 바로 들통난다. 셋을 고른 기준은 "한 줄로 이해되고,
- * 마작을 알든 모르든 규칙이 흔들린다는 게 보이는가"다.
- *
- * 패 그림은 도움말과 같은 컴포넌트(HelpTileGroups)·같은 에셋을 쓴다.
- *
- * # 왜 **바뀌기 전 → 바뀐 뒤** 인가 (2026-08-18)
- *
- * 예전에는 증강마다 패 세 장을 그냥 늘어놓았다(사방치기 456m · 단색 세계 123p ·
- * 함구령 777s). 그 패들은 효과와 아무 상관이 없어서, 보는 사람에게는 **무엇을
- * 설명하는 그림인지 알 수 없는 장식**이었다 — "사진이 빈약해서 오히려 별로다,
- * 뭘 설명하는 건지 모르게 됐다"(사용자 지적).
- *
- * 규칙이 바뀐다는 것은 정지 화면으로는 보여 줄 수 없다. **무엇이 무엇으로 바뀌는지**
- * 두 상태를 나란히 놓아야 비로소 그림이 말을 한다. 그래서 셋을 전부 "이랬던 것이
- * 이렇게 된다"로 세웠고, 그 형태에 맞는 증강만 골랐다 — 셋 다 실제 구현된 것이다.
+/*
+ * ⚠ `LANDING_SHOWCASE`(랜딩에 세우던 증강 셋: 사방치기·단색 세계·개벽)가 여기
+ * 있었다. 2026-08-19 사용자 지시로 로그인 화면에서 예시를 걷어 내면서 함께
+ * 뺐다 — 그 "바뀌기 전 → 바뀐 뒤" 그림 문법은 버리는 것이 아니라 로그인 뒤
+ * «증강 예시» 화면의 기본 틀로 넘어간다. 원본 데이터와 설계는
+ * docs/36_AUGMENT_EXAMPLES_PLAN.md 에 있다.
  */
-const LANDING_SHOWCASE: {
-  name: string;
-  kind: string;
-  /** 바뀌기 전 */
-  before: string;
-  /** 바뀐 뒤 */
-  after: string;
-  /** 그림 밑에 붙는 한 줄 — 그림이 무엇을 보여 준 것인지 못 박는다 */
-  cap: string;
-  desc: string;
-}[] = [
-  {
-    name: "사방치기",
-    kind: "상시",
-    before: "46m",
-    after: "456m",
-    cap: "누가 버린 5만이든 치",
-    desc: "치는 원래 왼쪽(상가) 사람의 버림패로만 됩니다.",
-  },
-  {
-    name: "단색 세계",
-    kind: "액티브",
-    before: "1m 5p 9s",
-    after: "159p",
-    cap: "숫자는 그대로, 색만 통일",
-    desc: "손패의 수패가 원하는 한 색으로 물듭니다.",
-  },
-  {
-    name: "개벽",
-    kind: "액티브",
-    before: "3m 7p 2s",
-    after: "123z",
-    cap: "수패가 통째로 자패로",
-    desc: "손패의 수패는 자패로, 자패는 수패로 뒤집힙니다.",
-  },
-];
 
 function AuthScreen(props: {
   connection: ConnectionState;
@@ -6483,7 +6546,6 @@ function AuthScreen(props: {
   onGuest: () => void;
   /** 튜토리얼 판으로 들어간다 — 게스트 체험과 같은 문이지만 판이 고정돼 있다 */
   onTutorial: () => void;
-  onOpenHelp: () => void;
   onRetryConnect: () => void;
 }): JSX.Element {
   // 어느 탭으로 열리는가는 **여기 오기까지 무엇을 눌렀는지**가 정한다.
@@ -6678,11 +6740,10 @@ function AuthScreen(props: {
             <span className="site-stat landing-bar-aug">증강 {augKinds}종</span>
           </>
         ) : null}
-        <span className="site-div" />
-        <button className="btn-ghost site-bar-btn" onClick={props.onOpenHelp}>
-          <i className="mk mk-doc" aria-hidden="true" />
-          규칙
-        </button>
+        {/* ⚠ 여기 «규칙» 버튼이 있었다. 로그인 화면에는 **로고와 로그인 상자만**
+            남긴다 (2026-08-19 사용자 지시) — 규칙과 증강 예시는 로그인 뒤 상태 줄의
+            «규칙»·«도감»이 맡는다. 처음 온 사람이 이 화면에서 할 일은 하나뿐이다:
+            들어가는 것. 읽을거리는 들어간 다음에 있다. */}
       </header>
 
       <div className="landing">
@@ -6949,61 +7010,11 @@ function AuthScreen(props: {
       </div>
         </div>
 
-        {/*
-          이 게임의 유일한 차별점은 "규칙을 바꾸는 증강"인데, 예전에는 그것이
-          **클릭하기 전에는 한 문장으로만** 전달됐다 (감사 §3-4). 시작 버튼을 누를지
-          말지가 여기서 갈리므로, 말 대신 실제 패로 보여 준다.
-
-          쓰는 것은 도움말과 **같은 컴포넌트·같은 에셋**이다 — 광고용 그림을 따로
-          만들면 화면과 다른 것을 약속하게 된다.
-
-          모양은 균등 3칸 카드였다가 **번호 붙은 목록**으로 바꿨다. 같은 크기 상자
-          셋을 나란히 놓는 배치는 내용과 상관없이 어디에나 놓이는 모양이라, 셋이
-          무슨 관계인지(= 같은 더미에서 뽑히는 보기 셋)를 말해 주지 않았다.
-
-          ⚠ DOM 에서 **로그인 뒤**에 있다. 격자로는 왼쪽 아래 칸이지만, 한 단으로
-          접히면 로고 → 시작·로그인 → 증강 예시 순으로 쌓인다. 좁은 화면에서
-          들어가는 문이 예시 목록 밑으로 밀려나지 않게 하려는 순서다.
-        */}
-        <section className="panel landing-show">
-          <div className="panel-head">
-            <h2>증강 예시</h2>
-            <span className="panel-meta num">
-              3{augKinds !== null ? ` / ${augKinds}` : ""}
-            </span>
-          </div>
-          <ol className="landing-show-list">
-            {LANDING_SHOWCASE.map((s, i) => (
-              <li key={s.name} className="landing-show-item">
-                <span className="landing-show-no num" aria-hidden="true">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="landing-show-body">
-                  <div className="landing-show-top">
-                    <span className="landing-show-name">{s.name}</span>
-                    <span className="landing-show-kind">{s.kind}</span>
-                    <span className="landing-show-cap">{s.cap}</span>
-                  </div>
-                  <div className="landing-show-fig">
-                    <span className="landing-show-before">
-                      <HelpTileGroups tiles={s.before} />
-                    </span>
-                    {/* 화살표 글자는 CSS가 넣는다 — 칸이 좁으면 세로(↓), 넓으면 가로(→)로
-                        쌓이는데 방향이 어긋나면 그림이 거짓말을 한다 */}
-                    <span className="landing-show-arrow" aria-hidden="true" />
-                    <span className="landing-show-after">
-                      <HelpTileGroups tiles={s.after} />
-                    </span>
-                  </div>
-                  <p className="landing-show-desc">{s.desc}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="landing-show-foot">
-            매 국 시작에 세 장 중 하나를 고릅니다.
-          </p>
-        </section>
+        {/* ⚠ 여기 «증강 예시» 패널(3종, 바뀌기 전 → 바뀐 뒤)이 있었다. 2026-08-19
+            사용자 지시로 **로그인 뒤**로 옮긴다 — 세 종을 맛보기로 보여 주는 대신
+            전 증강을 한 화면에서 훑는 «증강 예시» 화면을 따로 세운다. 설계는
+            docs/36_AUGMENT_EXAMPLES_PLAN.md, 옮겨 갈 세 종의 원본 데이터도 거기
+            §7 에 그대로 적어 두었다. */}
       </div>
     </div>
   );
@@ -8955,7 +8966,11 @@ function FeedbackBoard(props: {
           className="fb-title"
           value={title}
           maxLength={80}
-          placeholder="제목 (예: 리치 후 쯔모가 두 번 들어옵니다)"
+          placeholder={
+            kind === "bug"
+              ? "제목 (예: 리치 후 쯔모가 두 번 들어옵니다)"
+              : "제목 (예: 버린 패를 한 번 되돌리는 증강)"
+          }
           onChange={(e) => setTitle(e.target.value)}
         />
         <textarea
@@ -9359,16 +9374,45 @@ function PeriodStatsRow({ periods }: { periods: PeriodStats[] | undefined }): JS
 }
 
 /**
+ * "언제 온 요청인가"를 한 마디로 (편지함 줄 끝).
+ *
+ * 절대 시각을 쓰지 않는 이유: 편지함에서 알고 싶은 것은 "오늘 온 건가, 묵은
+ * 건가"이지 몇 시 몇 분이 아니다. 하루가 넘으면 날짜를 쓴다 — 그때부터는
+ * "37시간 전"보다 날짜가 읽기 쉽다.
+ */
+function friendAgo(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const min = Math.floor((Date.now() - t) / 60_000);
+  if (min < 1) return "방금";
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  return new Date(t).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
+}
+
+/**
  * 친구 카드 (감사 §4-6).
  *
  * **무엇을 풀려는 문제인가**: 방을 만들고 코드를 부를 사람이 지금 접속해 있는지
  * 알 방법이 없었다. 그래서 방을 만들어 두고(TTL 30분) 기다리다 닫는 일이 반복됐다.
- * 필요한 것은 소셜 그래프가 아니라 **"지금 있나?" 한 줄**이다 — 그래서 이 화면에는
- * 요청·승인·알림이 없고, 목록과 상태 점만 있다.
+ *
+ * 처음에는 요청·승인 없이 닉네임만 넣으면 담기는 단방향 목록이었다. 2026-08-19에
+ * **요청·수락**을 넣었다(사용자 결정) — 대기실 초대가 붙으면서 친구 관계가 곧
+ * "남의 메인 화면에 카드를 띄울 권한"이 됐기 때문이다. 그 권한은 받는 쪽이
+ * 동의한 적 있어야 한다.
+ *
+ * 받은 요청은 **편지함처럼** 이 카드 맨 위에 쌓인다. 토스트 한 번으로 알리고
+ * 마는 방식은 자리를 비운 사이에 온 요청을 영영 못 보게 만든다 — 수락이나
+ * 거절을 누를 때 비로소 사라진다.
  */
 function FriendsCard(props: {
   friends: FriendEntry[] | null;
-  onAdd: (nickname: string) => void;
+  incoming: FriendRequestEntry[];
+  outgoing: string[];
+  onRequest: (nickname: string) => void;
+  onRespond: (nickname: string, accept: boolean) => void;
+  onCancel: (nickname: string) => void;
   onRemove: (nickname: string) => void;
   onRefresh: () => void;
 }): JSX.Element {
@@ -9377,13 +9421,19 @@ function FriendsCard(props: {
   const add = (): void => {
     const n = name.trim();
     if (n === "") return;
-    props.onAdd(n);
+    props.onRequest(n);
     setName("");
   };
+  const pending = props.incoming.length;
   return (
     <section className={`home-card home-friends${folded ? " home-card-folded" : ""}`}>
       <div className="home-card-head">
-        <h2>친구</h2>
+        <h2>
+          친구
+          {/* 접어 둬도 보이는 자리다 — 편지함에 온 것을 카드를 펴야만 알 수 있으면
+              편지함이 아니다. */}
+          {pending > 0 ? <span className="friend-badge num">{pending}</span> : null}
+        </h2>
         <div className="home-card-tools">
           <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
           <FoldButton folded={folded} onToggle={toggleFold} label="친구" />
@@ -9396,20 +9446,66 @@ function FriendsCard(props: {
               className="fb-input"
               value={name}
               maxLength={12}
-              placeholder="닉네임으로 추가"
+              placeholder="닉네임으로 친구 요청"
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") add();
               }}
             />
             <button className="lobby-join" onClick={add} disabled={name.trim() === ""}>
-              추가
+              요청
             </button>
           </div>
+          {pending > 0 ? (
+            <div className="friend-inbox">
+              <div className="friend-inbox-head">받은 요청 <b className="num">{pending}</b></div>
+              <ul className="friend-list">
+                {props.incoming.map((r) => (
+                  <li key={r.nickname} className="friend-row friend-row-req">
+                    <span className="friend-name">{r.nickname}</span>
+                    <span className="friend-state">{friendAgo(r.at)}</span>
+                    <button
+                      className="friend-accept"
+                      onClick={() => props.onRespond(r.nickname, true)}
+                    >
+                      수락
+                    </button>
+                    <button
+                      className="friend-decline"
+                      onClick={() => props.onRespond(r.nickname, false)}
+                    >
+                      거절
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {props.outgoing.length > 0 ? (
+            <div className="friend-sent">
+              <div className="friend-inbox-head">보낸 요청</div>
+              <ul className="friend-list">
+                {props.outgoing.map((n) => (
+                  <li key={n} className="friend-row friend-row-out">
+                    <span className="friend-name">{n}</span>
+                    <span className="friend-state">수락 대기</span>
+                    <button
+                      className="friend-del"
+                      onClick={() => props.onCancel(n)}
+                      aria-label={`${n} 님에게 보낸 요청 취소`}
+                      title="요청 취소"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <ListCard
             items={props.friends}
-            empty="아직 추가한 친구가 없습니다."
-            emptyHint="닉네임을 넣어 두면 방을 만들기 전에 지금 접속해 있는지 볼 수 있습니다."
+            empty="아직 친구가 없습니다."
+            emptyHint="닉네임으로 요청을 보내고 상대가 수락하면 서로 친구가 됩니다. 그때부터 접속 여부가 보이고 대기실로 부를 수 있습니다."
           >
             {(rows) => (
               <ul className="friend-list">
@@ -9585,7 +9681,12 @@ function HomeScreen(props: {
   onRefreshAnalytics: () => void;
   /** 친구 목록 — null이면 아직 못 받았다 (§4-6). */
   friends: FriendEntry[] | null;
-  onAddFriend: (nickname: string) => void;
+  /** 받은 요청(편지함) · 보낸 요청. */
+  friendIn: FriendRequestEntry[];
+  friendOut: string[];
+  onRequestFriend: (nickname: string) => void;
+  onRespondFriend: (nickname: string, accept: boolean) => void;
+  onCancelFriend: (nickname: string) => void;
   onRemoveFriend: (nickname: string) => void;
   onRefreshFriends: () => void;
   /** 제보 게시판 — 내 글(관리자면 전체) */
@@ -9597,8 +9698,6 @@ function HomeScreen(props: {
   /** 관리자 전용 파워 티어표 (요약 배지용) */
   augmentTiers: AdminAugmentTiersMessage | null;
   lastRoomCode: string | null;
-  /** 그 방이 대국 중인가 — 대기실이면 "돌아가기", 대국 중이면 "재접속"이다. */
-  lastRoomPlaying: boolean;
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   onCreateRoom: () => void;
@@ -9783,15 +9882,18 @@ function HomeScreen(props: {
             />
             <button onClick={joinByCode} disabled={code.trim().length < 4}>참가</button>
           </div>
-          {/* 이 버튼이 뜨는 근거는 이제 **서버가 들고 있는 좌석**이다 (2026-08-19
-              사용자 지시 ①). 예전에는 브라우저의 `majak.lastRoomCode` 하나뿐이라,
-              튕겨서 다른 기기·다른 브라우저로 돌아온 사람에게는 진행 중이던 판이
-              존재하지 않는 것과 같았다 — 서버는 그 판을 재시작 너머로도 되살려
-              두는데(§2-10) 정작 돌아갈 문이 없었다. */}
+          {/* 이 버튼이 뜨는 근거는 **서버가 들고 있는 좌석**이다 — 로그인 때
+              `authOk.resumeRoom`으로 한 번(#338), 그리고 홈에 돌아올 때마다
+              `activeGameRequest`로 다시(2026-08-19 사용자 지시 ①).
+
+              두 번 묻는 것이 요점이다. 한 번만 맞추면 홈에 머무는 동안 그 값이
+              낡는다 — 판이 끝나거나, 다른 기기에서 이어지거나, 방이 유휴 청소로
+              사라진다. 그러면 이 버튼은 **눌러야 비로소 "그 방은 이미
+              사라졌습니다"를 보는 버튼**으로 되돌아간다. */}
           {props.lastRoomCode !== null ? (
             <button className="home-rejoin" onClick={() => props.onJoinRoom(props.lastRoomCode!)}>
               <i className="mk mk-again" aria-hidden="true" />
-              {props.lastRoomPlaying ? "진행 중인 대국으로 재접속" : "진행하던 방으로 재접속"}{" "}
+              진행하던 방으로 재접속{" "}
               <b className="num">{props.lastRoomCode}</b>
             </button>
           ) : null}
@@ -9820,7 +9922,11 @@ function HomeScreen(props: {
             아래쪽(리플레이·관리자 카드 옆)에 두었더니 두 화면을 스크롤해야 만났다. */}
         <FriendsCard
           friends={props.friends}
-          onAdd={props.onAddFriend}
+          incoming={props.friendIn}
+          outgoing={props.friendOut}
+          onRequest={props.onRequestFriend}
+          onRespond={props.onRespondFriend}
+          onCancel={props.onCancelFriend}
           onRemove={props.onRemoveFriend}
           onRefresh={props.onRefreshFriends}
         />
@@ -10241,6 +10347,123 @@ function WaitroomTips(): JSX.Element {
   );
 }
 
+/**
+ * 빈자리의 ＋ — 누르면 **지금 접속해 있는 친구**가 뜨고 거기서 부른다
+ * (2026-08-19 사용자 요청).
+ *
+ * 왜 자리 안에 있나: 채울 곳이 빈자리이므로 채우는 단추도 빈자리에 있어야 한다.
+ * 카드 위쪽에 목록을 따로 두었을 때는 "이 자리를 누구로 채운다"는 행동이 자리에서
+ * 멀리 떨어져 있었고, 자리 넷과 목록 하나가 서로를 가리키지 않았다.
+ *
+ * 목록에 **접속한 사람만** 올린다. 오프라인인 사람에게 보내는 초대는 받는 화면이
+ * 없어 아무 일도 일어나지 않는데, 목록에 있으면 사람은 눌러 본다. 대국 중인
+ * 친구는 남겨 두되 누를 수 없게 한다 — 안 보이면 "왜 없지?"를 묻게 되고,
+ * 지금 부를 수 없는 이유가 화면에 있어야 한다.
+ */
+function SeatInvite(props: {
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  friends: FriendEntry[] | null;
+  /** 이 방에 이미 앉아 있는 사람들의 닉네임 — 목록에서 뺀다. */
+  seated: string[];
+  /** 방금 부른 사람들 — 쿨다운 동안 "부름"으로 잠긴다. */
+  invited: string[];
+  /** 아래쪽 자리는 목록을 **위로** 편다 — 카드 밖으로 넘치지 않게. */
+  up: boolean;
+  onInvite: (nickname: string) => void;
+}): JSX.Element {
+  const wrap = useRef<HTMLDivElement | null>(null);
+  const { open, onClose } = props;
+  /*
+   * 바깥을 누르거나 Esc면 닫는다. 이런 작은 창은 **닫는 법이 분명해야** 한다 —
+   * 닫기 단추만 있으면 자리 넷 중 하나를 열어 둔 채 다른 곳을 눌러 보다가
+   * 목록이 자리표를 계속 가리는 상태에 갇힌다.
+   */
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e: MouseEvent): void => {
+      if (wrap.current !== null && !wrap.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  /*
+   * null = 아직 목록을 못 받았다. []와 화면에서 다른 문장이다.
+   *
+   * **이미 이 방에 앉은 사람은 뺀다.** 남겨 두면 옆자리에 앉아 있는 사람에게
+   * "이 방으로 오라"는 초대장을 보내게 된다 — 서버는 그 사람이 방에 있는 탭에는
+   * 알림을 보내지 않으므로 아무 일도 일어나지 않고, 화면만 거짓말을 한다.
+   */
+  const online =
+    props.friends === null
+      ? null
+      : props.friends.filter((f) => f.online && !props.seated.includes(f.nickname));
+  return (
+    <div className="seat-invite" ref={wrap}>
+      <button
+        type="button"
+        className={`seat-invite-add${open ? " seat-invite-open" : ""}`}
+        onClick={props.onToggle}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title="친구 초대"
+        aria-label="이 자리에 친구 초대"
+      >
+        ＋
+      </button>
+      {open ? (
+        <div className={`seat-invite-menu${props.up ? " seat-invite-up" : ""}`} role="menu">
+          <div className="seat-invite-head">접속 중인 친구</div>
+          {online === null ? (
+            <div className="seat-invite-empty">불러오는 중…</div>
+          ) : online.length === 0 ? (
+            <div className="seat-invite-empty">
+              지금 부를 수 있는 친구가 없습니다. 방 코드를 눌러 링크를 보내 보세요.
+            </div>
+          ) : (
+            <ul className="seat-invite-list">
+              {online.map((f) => {
+                const done = props.invited.includes(f.nickname);
+                return (
+                  <li key={f.nickname} className="seat-invite-row">
+                    <span
+                      className={`friend-dot${f.playing ? " friend-dot-playing" : " friend-dot-on"}`}
+                      aria-hidden="true"
+                    />
+                    <span className="friend-name">{f.nickname}</span>
+                    <button
+                      type="button"
+                      className="wr-friend-invite"
+                      disabled={f.playing || done}
+                      onClick={() => {
+                        props.onInvite(f.nickname);
+                        // 부르고 나면 닫는다 — 한 자리에 두 사람을 부를 일은 없다.
+                        onClose();
+                      }}
+                      title={f.playing ? "대국 중입니다" : done ? "이미 불렀습니다" : "대기실로 부르기"}
+                    >
+                      {f.playing ? "대국 중" : done ? "부름" : "초대"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function WaitingRoom(props: {
   lobby: LobbyMessage | null;
   roomId: string;
@@ -10266,9 +10489,36 @@ function WaitingRoom(props: {
   onOpenCodex?: () => void;
   /** 정형구 — 사람을 기다리는 자리에서도 인사는 오간다 */
   onEmote?: (id: string) => void;
+  /**
+   * 친구 초대 (2026-08-19). 방 코드를 옮겨 적게 하는 대신 **여기서 바로 부른다** —
+   * 코드 복사는 "링크를 보낼 다른 앱이 이미 열려 있는" 사람의 흐름이고, 이쪽은
+   * 그 앱조차 필요 없는 흐름이다.
+   */
+  friends?: FriendEntry[] | null;
+  onInviteFriend?: (nickname: string) => void;
+  onRefreshFriends?: () => void;
 }): JSX.Element {
   const { lobby } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 이 대기실에서 이미 부른 사람 — 단추를 "부름"으로 바꿔 두 번 누르지 않게 한다. */
+  const [invited, setInvited] = useState<string[]>([]);
+  /**
+   * 지금 초대 목록을 펴 둔 빈자리의 번호 (없으면 null).
+   *
+   * 목록을 자리마다 따로 들고 있지 않고 **한 번에 하나만** 연다 — 넷이 동시에
+   * 펴져 있으면 카드 절반이 같은 이름 넷으로 덮인다. 어느 자리에서 열었든
+   * 보내는 초대는 같으므로, 열린 자리는 "어디를 눌렀는지"의 표시일 뿐이다.
+   */
+  const [inviteSeat, setInviteSeat] = useState<number | null>(null);
+  const refreshFriends = props.onRefreshFriends;
+  /*
+   * 들어오자마자 목록을 한 번 새로 받는다. 홈에서 받아 둔 목록은 그 사이에
+   * 낡았을 수 있고(방을 만드는 동안 친구가 접속했을 수 있다), 여기서 보는 것은
+   * "지금 부를 수 있는 사람"이라 낡은 목록은 그냥 틀린 목록이다.
+   */
+  useEffect(() => {
+    refreshFriends?.();
+  }, [refreshFriends]);
 
   function copyCode(): void {
     const code = props.roomId;
@@ -10442,12 +10692,63 @@ function WaitingRoom(props: {
           })}
         </div>
 
-        <div className="seat-list">
+        {/*
+          초대 목록이 펴져 있는 동안에만 클립을 푼다.
+
+          `.seat-list`는 둥근 모서리를 위해 `overflow: hidden`이다 — 그 안에서
+          띄운 목록이 자리표 높이(≈160px)를 넘는 순간 잘려서 한 줄만 보였다.
+          `position: fixed`로 빼내는 방법은 이 앱이 화면 배율을 transform으로
+          주기 때문에 좌표가 어긋난다(uiScale.ts) — 클립을 잠깐 푸는 쪽이
+          정확하고, 모서리가 잠시 각지는 대가뿐이다.
+        */}
+        <div className={`seat-list${inviteSeat !== null ? " seat-list-open" : ""}`}>
           {slots.map((p, i) => (
             <div key={i} className={`seat-row ${p === null ? "seat-empty" : ""} ${p?.playerId === lobby.youId ? "seat-me" : ""}`}>
               <span className="seat-idx">{WIND_KO[i]}</span>
               {p === null ? (
-                <span className="seat-vacant">빈 자리</span>
+                <>
+                  {/* ＋가 붙는 줄에서는 "빈 자리"가 마지막 칸까지 먹지 않는다
+                      (`.seat-row`는 4칸 그리드다) — 안 그러면 ＋가 줄 밖으로 밀린다 */}
+                  <span
+                    className={`seat-vacant${props.onInviteFriend !== undefined ? " seat-vacant-invitable" : ""}`}
+                  >
+                    빈 자리
+                  </span>
+                  {/*
+                    빈자리의 ＋ (2026-08-19 사용자 요청).
+
+                    초대를 카드 위쪽 목록에 따로 두었더니 "이 자리를 누구로
+                    채운다"는 행동이 자리에서 멀리 떨어져 있었다. 채울 곳이
+                    빈자리이므로 채우는 단추도 빈자리에 있어야 한다.
+                  */}
+                  {props.onInviteFriend !== undefined ? (
+                    <SeatInvite
+                      open={inviteSeat === i}
+                      onToggle={() => setInviteSeat((cur) => (cur === i ? null : i))}
+                      onClose={() => setInviteSeat(null)}
+                      friends={props.friends ?? null}
+                      seated={lobby.players.filter((q) => !q.isBot).map((q) => q.nickname)}
+                      invited={invited}
+                      up={i >= 2}
+                      onInvite={(nickname) => {
+                        sfx.slide();
+                        props.onInviteFriend?.(nickname);
+                        /*
+                         * 서버 쿨다운과 같은 길이만큼 단추를 잠근다
+                         * (RoomManager `INVITE_COOLDOWN_MS`). 영영 잠그지 않는
+                         * 이유: "안 들어오네, 한 번 더"는 정당한 행동이고,
+                         * 그때 서버가 거절하는 단추를 누르게 두면 화면이
+                         * 거짓말을 한 셈이 된다.
+                         */
+                        setInvited((cur) => [...cur, nickname]);
+                        window.setTimeout(
+                          () => setInvited((cur) => cur.filter((n) => n !== nickname)),
+                          20_000,
+                        );
+                      }}
+                    />
+                  ) : null}
+                </>
               ) : (
                 <>
                   <span className="seat-name">

@@ -1099,6 +1099,85 @@ describe("강퇴 (방장)", () => {
   });
 });
 
+describe("authOk.resumeRoom — 홈의 \"진행하던 방으로 재접속\"", () => {
+  /*
+   * 이 필드가 생긴 이유(2026-08-19 사용자 보고): 홈의 재접속 버튼은 브라우저에
+   * 남은 마지막 방 코드만 보고 떴는데, 그 코드는 방이 사라지는 어느 길에서도
+   * 지워지지 않았다 — 눌러야 비로소 "그 방은 이미 사라졌습니다"를 보는 버튼이
+   * 대부분이었다. 판단을 서버로 옮겼으므로, **여기서 알려 준 코드는 곧바로
+   * `joinRoom`이 통해야 한다.** 그게 이 describe가 지키는 선이다.
+   */
+  it("돌아갈 방이 없으면 null이다", async () => {
+    const h = await newHarness();
+    const sock = await connectAndRegister(h, "Nobody");
+    expect(sock.last("authOk").resumeRoom).toBeNull();
+  });
+
+  it("대기실에 앉아 있으면 그 방 코드가 오고, 그 코드로 실제로 다시 들어간다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+
+    const back = await connectAndLogin(h, "Host", "pw123456");
+    expect(back.last("authOk").resumeRoom).toBe(code);
+    back.clientSend({ type: "joinRoom", code });
+    expect(back.last("error")).toBeUndefined();
+    expect(back.last("joined").roomId).toBe(code);
+  });
+
+  it("방이 사라지면 다음 로그인에서 null이다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    host.clientSend({ type: "leaveRoom" }); // 혼자 있던 방 → 방이 없어진다
+
+    const back = await connectAndLogin(h, "Host", "pw123456");
+    expect(back.last("authOk").resumeRoom).toBeNull();
+  });
+
+  it("강퇴당한 방은 알려 주지 않는다 (다시 들어갈 수 없으므로)", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    host.clientSend({ type: "kickPlayer", playerId: guest.last("joined").playerId });
+
+    const back = await connectAndLogin(h, "Guest", "pw123456");
+    expect(back.last("authOk").resumeRoom).toBeNull();
+  });
+
+  it("남의 대기실은 알려 주지 않는다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    await connectAndRegister(h, "Stranger");
+
+    const back = await connectAndLogin(h, "Stranger", "pw123456");
+    expect(back.last("authOk").resumeRoom).toBeNull();
+  });
+
+  it("게임 중 끊겼던 사람에게는 그 방을 알려 준다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host", { autoRespond: true });
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const player = await connectAndRegister(h, "Player", { autoRespond: true });
+    player.clientSend({ type: "joinRoom", code });
+    player.clientSend({ type: "ready", ready: true });
+    host.clientSend({ type: "addBot" });
+    host.clientSend({ type: "addBot" });
+    host.clientSend({ type: "startGame" });
+    await player.waitFor((m) => m.type === "view");
+    player.close(); // 지하철에 들어갔다
+
+    const back = await connectAndLogin(h, "Player", "pw123456");
+    expect(back.last("authOk").resumeRoom).toBe(code);
+  });
+});
+
 describe("입력 검증·견고성", () => {
   // 회귀: replayGet의 gameId가 없거나 정수가 아니면 node:sqlite 바인딩이 던지고,
   // 떠 있는 Promise 거부가 되어 서버 프로세스 전체가 죽던 문제 (20차 이후 발견).

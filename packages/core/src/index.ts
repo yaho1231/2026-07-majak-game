@@ -436,6 +436,8 @@ export type {
   AnalyticsDayEntry,
   FriendEntry,
   FriendListMessage,
+  FriendRequestEntry,
+  FriendInviteFromMessage,
   PeriodStats,
   ServerInfoMessage,
   ServerNotice,

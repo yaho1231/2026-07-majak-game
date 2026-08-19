@@ -3,11 +3,11 @@
  *
  * 지키려는 선(이 파일이 존재하는 이유):
  *
- * - **재접속 버튼의 근거는 서버다.** 브라우저 저장소가 비어 있어도(다른 기기·시크릿
- *   창) 로그인하면 서버가 "너는 지금 이 방에 앉아 있다"고 알려 준다. 예전에는 이
- *   판단이 `majak.lastRoomCode` 하나뿐이라, 튕겨서 다른 브라우저로 돌아온 사람은
- *   서버에 판이 멀쩡히 서 있어도(§2-10 이어하기) **코드를 외우는 것 말고 길이
- *   없었다.**
+ * - **돌아갈 방은 로그인 뒤에도 다시 물을 수 있다.** 로그인 시점의 답은
+ *   `authOk.resumeRoom`이 준다(#338). 그런데 그 값은 홈에 머무는 동안 낡는다 —
+ *   판이 끝나거나, 다른 기기에서 이어지거나, 방이 유휴 청소로 사라진다.
+ *   `activeGameRequest`가 **같은 판정**(`resumableRoomFor`)으로 다시 답한다.
+ *   두 경로가 갈라지면 로그인 직후와 새로고침 뒤가 서로 다른 말을 하게 된다.
  * - **닉네임 중복 확인은 가입과 같은 규칙으로 답한다.** 갈라 두면 "확인은 통과인데
  *   가입은 거절"이 언젠가 반드시 생긴다. 그리고 이 창구는 **인증과 같은
  *   레이트리밋 창**을 태운다 — 계정 열거의 속도 상한을 올려 주지 않는다.
@@ -137,14 +137,27 @@ afterEach(async () => {
   for (const db of dbs.splice(0)) db.close();
 });
 
-describe("진행하던 방 — 서버가 알려 준다", () => {
-  it("방이 없으면 code:null 을 인증 직후에 보낸다", async () => {
+describe("돌아갈 방 — 로그인 뒤에도 다시 물을 수 있다", () => {
+  /*
+   * 로그인 시점의 답은 `authOk.resumeRoom`이 준다(#338). 여기서 지키는 선은 그
+   * 값이 **낡았을 때 고쳐 잡을 수 있는가**다 — 홈에 머무는 동안 판이 끝나거나
+   * 다른 기기에서 이어지면 그 코드는 곧 거짓이 되고, 예전에는 눌러야 비로소
+   * "그 방은 이미 사라졌습니다"를 보는 버튼이 되었다.
+   *
+   * 두 경로가 **같은 판정**(`resumableRoomFor`)을 쓰는지도 함께 본다. 갈라지면
+   * 로그인 직후와 새로고침 뒤가 서로 다른 답을 하게 된다.
+   */
+  it("방이 없으면 code:null 로 답한다", async () => {
     const h = await newHarness();
     const sock = await connectUser(h, "혼자");
+    expect(sock.last("authOk").resumeRoom).toBeNull();
+
+    sock.clientSend({ type: "activeGameRequest" });
+    await sock.waitFor((m) => m.type === "activeGame");
     expect(sock.last("activeGame")).toEqual({ type: "activeGame", code: null });
   });
 
-  it("방을 만든 뒤 **다른 연결로** 로그인해도 그 방을 알려 준다", async () => {
+  it("**다른 연결로** 로그인해도 그 방을 알려 주고, 다시 물어도 같은 답이다", async () => {
     const h = await newHarness();
     const first = await connectUser(h, "돌아올사람");
     const token = first.last("authOk").sessionToken as string;
@@ -153,15 +166,18 @@ describe("진행하던 방 — 서버가 알려 준다", () => {
     const code = first.last("roomCreated").code as string;
 
     /*
-     * 여기가 이 파일의 요점이다. 이 소켓에는 브라우저 저장소가 없다 —
-     * 다른 기기에서 세션 토큰만 들고 돌아온 사람과 같은 처지다.
-     * 예전에는 이 사람에게 방 코드를 알려 줄 길이 **아예 없었다.**
+     * 이 소켓에는 브라우저 저장소가 없다 — 다른 기기에서 세션 토큰만 들고
+     * 돌아온 사람과 같은 처지다.
      */
     const second = await reconnectWithToken(h, token);
-    expect(second.last("activeGame")).toMatchObject({ code, playing: false });
+    expect(second.last("authOk").resumeRoom).toBe(code);
+
+    second.clientSend({ type: "activeGameRequest" });
+    await second.waitFor((m) => m.type === "activeGame");
+    expect(second.last("activeGame").code).toBe(code);
   });
 
-  it("나가면 다시 물었을 때 code:null 로 바뀐다", async () => {
+  it("나가면 다시 물었을 때 code:null 로 바뀐다 (로그인 때 값이 낡는다)", async () => {
     const h = await newHarness();
     const sock = await connectUser(h, "들락날락");
     sock.clientSend({ type: "createRoom" });

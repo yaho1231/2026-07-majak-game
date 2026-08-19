@@ -55,6 +55,19 @@ trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
 
 healthy() { bash "$ROOT/deploy/serve.sh" health >/dev/null 2>&1; }
 
+# 감시자가 **자기가 세운 서버를 자기가 죽이는** 상태인지 본다.
+# launchd는 AbandonProcessGroup이 없으면 작업이 끝나는 순간 그 프로세스 그룹에 남은
+# 프로세스 전부에 SIGTERM을 보낸다 → 서버를 세우자마자 이 스크립트가 끝나면서 죽인다.
+# 2026-08-19 오전에 이 상태로 한 시간 넘게 폭주했고, 로그만 보면 "다시 세움 완료"라
+# 원인이 보이지 않았다. 그래서 재시작 직전에 한 줄로 짚는다.
+STALE_PLIST="$HOME/Library/LaunchAgents/com.yaho1231.majak.watchdog.plist"
+warn_if_self_killing() {
+  [ -f "$STALE_PLIST" ] || return 0
+  grep -q "AbandonProcessGroup" "$STALE_PLIST" && return 0
+  log "⚠ 낡은 플리스트(AbandonProcessGroup 없음) — 세운 서버를 launchd가 곧바로 죽입니다. 고치기: bash deploy/agents.sh install"
+  return 1
+}
+
 for i in $(seq 1 "$HEALTH_TRIES"); do
   if healthy; then exit 0; fi
   if [ "$i" -lt "$HEALTH_TRIES" ]; then sleep "$HEALTH_GAP_SEC"; fi
@@ -87,14 +100,24 @@ if [ "${recent:-0}" -ge "$RESTART_LIMIT" ]; then
 fi
 
 log "응답 없음 — 서버를 다시 세운다 (최근 ${recent}회)"
+SELF_KILLING=0
+warn_if_self_killing || SELF_KILLING=1
 echo "$now" >>"$RESTARTS"
 if bash "$ROOT/deploy/serve.sh" start >>"$WLOG" 2>&1; then
   log "다시 세움 완료"
   rm -f "$RUNDIR/watchdog.gaveup"
   # 되살아났다는 사실 자체가 신호다 — 왜 누웠는지 사람이 봐야 한다.
-  notify "서버가 누워 있어 다시 세웠습니다" \
+  if [ "$SELF_KILLING" = "1" ]; then
+    notify "서버를 세웠지만 곧 다시 죽습니다 — 감시자 설정이 낡았습니다" \
+"launchd 플리스트에 AbandonProcessGroup 이 없어, 감시자가 끝나는 순간 방금 세운 서버가
+SIGTERM 으로 죽습니다. 1분마다 이 일이 반복됩니다.
+
+고치기:  bash deploy/agents.sh install"
+  else
+    notify "서버가 누워 있어 다시 세웠습니다" \
 "자동 복구는 성공했지만 원인은 남아 있습니다 (최근 $((RESTART_WINDOW_SEC / 60))분간 $((recent + 1))회).
 로그: tail -50 $RUNDIR/server.log"
+  fi
 else
   log "✗ 다시 세우기 실패 — 위 출력과 .majak/server.log 를 볼 것"
   notify "서버를 다시 세우지 못했습니다" \

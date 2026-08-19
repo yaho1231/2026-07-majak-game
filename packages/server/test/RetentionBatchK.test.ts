@@ -154,26 +154,79 @@ describe("공지를 전할 길이 생겼다", () => {
 // ─────────────── §4-6 친구 ───────────────
 
 describe("친구가 지금 있는지 볼 수 있다", () => {
-  it("닉네임으로 더하고, 온라인 여부가 함께 온다", async () => {
+  /** Alice → Bob 요청을 Bob이 수락해 **쌍방** 친구로 만든다. */
+  async function befriend(a: FakeSocket, b: FakeSocket, aName: string, bName: string): Promise<void> {
+    a.clientSend({ type: "friendRequest", nickname: bName });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 1);
+    b.clientSend({ type: "friendRespond", nickname: aName, accept: true });
+    await a.waitFor((m) => m.type === "friendList" && m.friends.length === 1);
+  }
+
+  it("요청은 **수락하기 전까지 친구가 아니다** — 편지함에만 남는다", async () => {
     const h = await newHarness();
     const a = await connectUser(h.rm, "Alice");
-    await connectUser(h.rm, "Bob");
+    const b = await connectUser(h.rm, "Bob");
 
-    a.clientSend({ type: "friendAdd", nickname: "Bob" });
-    await a.waitFor((m) => m.type === "friendList");
+    a.clientSend({ type: "friendRequest", nickname: "Bob" });
+    // 받는 쪽 화면이 곧바로 갱신된다 — 편지함은 늦게 알면 뜻이 없다
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 1);
+    expect(b.last("friendList").incoming[0].nickname).toBe("Alice");
+    expect(b.last("friendList").friends).toEqual([]);
+    // 보낸 쪽에도 아직 친구는 없다 (보낸 요청으로만 보인다)
+    expect(a.last("friendList").friends).toEqual([]);
+    expect(a.last("friendList").outgoing).toEqual(["Bob"]);
+  });
+
+  it("수락하면 **양쪽 모두**의 목록에 들어간다", async () => {
+    const h = await newHarness();
+    const a = await connectUser(h.rm, "Alice");
+    const b = await connectUser(h.rm, "Bob");
+    await befriend(a, b, "Alice", "Bob");
+
     const list = a.last("friendList").friends;
     expect(list).toHaveLength(1);
     expect(list[0].nickname).toBe("Bob");
     expect(list[0].online).toBe(true);
     expect(list[0].playing).toBe(false);
+    // 쌍방이다 — 예전 단방향 설계에서는 이 줄이 비어 있었다
+    expect(b.last("friendList").friends.map((f: any) => f.nickname)).toEqual(["Alice"]);
+    // 편지함은 비었다
+    expect(b.last("friendList").incoming).toEqual([]);
+    expect(a.last("friendList").outgoing).toEqual([]);
+  });
+
+  it("거절하면 편지함에서 사라지고 친구도 되지 않는다", async () => {
+    const h = await newHarness();
+    const a = await connectUser(h.rm, "Alice");
+    const b = await connectUser(h.rm, "Bob");
+
+    a.clientSend({ type: "friendRequest", nickname: "Bob" });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 1);
+    b.clientSend({ type: "friendRespond", nickname: "Alice", accept: false });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 0);
+    expect(b.last("friendList").friends).toEqual([]);
+    await a.waitFor((m) => m.type === "friendList" && m.outgoing.length === 0);
+    expect(a.last("friendList").friends).toEqual([]);
+  });
+
+  it("서로 요청을 보내면 그 자리에서 맺어진다 (편지함 교착 없음)", async () => {
+    const h = await newHarness();
+    const a = await connectUser(h.rm, "Alice");
+    const b = await connectUser(h.rm, "Bob");
+
+    a.clientSend({ type: "friendRequest", nickname: "Bob" });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 1);
+    b.clientSend({ type: "friendRequest", nickname: "Alice" });
+    await b.waitFor((m) => m.type === "friendList" && m.friends.length === 1);
+    await a.waitFor((m) => m.type === "friendList" && m.friends.length === 1);
+    expect(b.last("friendList").incoming).toEqual([]);
   });
 
   it("온라인 판정은 **살아 있는 연결**에서 나온다 (DB의 마지막 접속 시각이 아니다)", async () => {
     const h = await newHarness();
     const a = await connectUser(h.rm, "Alice");
     const b = await connectUser(h.rm, "Bob");
-    a.clientSend({ type: "friendAdd", nickname: "Bob" });
-    await a.waitFor((m) => m.type === "friendList");
+    await befriend(a, b, "Alice", "Bob");
 
     b.close();
     a.clientSend({ type: "friendList" });
@@ -181,29 +234,92 @@ describe("친구가 지금 있는지 볼 수 있다", () => {
     expect(a.last("friendList").friends[0].online).toBe(false);
   });
 
-  it("자기 자신·없는 닉네임은 더할 수 없다", async () => {
+  it("자기 자신·없는 닉네임에게는 보낼 수 없다", async () => {
     const h = await newHarness();
     const a = await connectUser(h.rm, "Alice");
 
-    a.clientSend({ type: "friendAdd", nickname: "Alice" });
-    await a.waitFor((m) => m.type === "error");
-    expect(a.last("error").code).toBe("FRIEND_ADD_FAILED");
+    a.clientSend({ type: "friendRequest", nickname: "Alice" });
+    await a.waitFor((m) => m.type === "error" && m.code === "FRIEND_ADD_FAILED");
 
     const errsBefore = a.all("error").length;
-    a.clientSend({ type: "friendAdd", nickname: "없는사람" });
+    a.clientSend({ type: "friendRequest", nickname: "없는사람" });
     await a.waitFor(() => a.all("error").length > errsBefore);
     expect(h.db.friendNames(1)).toEqual([]);
   });
 
-  it("빼면 목록에서 사라진다", async () => {
+  it("빼면 **양쪽 다** 사라진다 — 한쪽만 남는 유령 관계를 만들지 않는다", async () => {
     const h = await newHarness();
     const a = await connectUser(h.rm, "Alice");
-    await connectUser(h.rm, "Bob");
-    a.clientSend({ type: "friendAdd", nickname: "Bob" });
-    await a.waitFor((m) => m.type === "friendList");
+    const b = await connectUser(h.rm, "Bob");
+    await befriend(a, b, "Alice", "Bob");
+
     a.clientSend({ type: "friendRemove", nickname: "Bob" });
     await a.waitFor((m) => m.type === "friendList" && m.friends.length === 0);
+    await b.waitFor((m) => m.type === "friendList" && m.friends.length === 0);
     expect(a.last("friendList").friends).toEqual([]);
+    expect(b.last("friendList").friends).toEqual([]);
+  });
+
+  it("보낸 요청을 거두면 상대 편지함에서도 사라진다", async () => {
+    const h = await newHarness();
+    const a = await connectUser(h.rm, "Alice");
+    const b = await connectUser(h.rm, "Bob");
+
+    a.clientSend({ type: "friendRequest", nickname: "Bob" });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 1);
+    a.clientSend({ type: "friendCancel", nickname: "Bob" });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 0);
+    expect(a.last("friendList").outgoing).toEqual([]);
+  });
+});
+
+// ─────────────── 친구 초대 (2026-08-19) ───────────────
+
+describe("대기실에서 친구를 부른다", () => {
+  it("친구에게 방 코드가 담긴 초대장이 간다", async () => {
+    const h = await newHarness();
+    const a = await connectUser(h.rm, "Alice");
+    const b = await connectUser(h.rm, "Bob");
+    a.clientSend({ type: "friendRequest", nickname: "Bob" });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 1);
+    b.clientSend({ type: "friendRespond", nickname: "Alice", accept: true });
+    await a.waitFor((m) => m.type === "friendList" && m.friends.length === 1);
+
+    a.clientSend({ type: "createRoom" });
+    await a.waitFor((m) => m.type === "roomCreated");
+    const code = a.last("roomCreated").code;
+
+    a.clientSend({ type: "friendInvite", nickname: "Bob" });
+    await b.waitFor((m) => m.type === "friendInviteFrom");
+    const inv = b.last("friendInviteFrom");
+    expect(inv.from).toBe("Alice");
+    // 코드는 **서버가** 붙인다 — 클라이언트가 실어 보내면 아무 방에나 부를 수 있다
+    expect(inv.code).toBe(code);
+  });
+
+  it("친구가 아니면 부를 수 없다 — 초대는 곧 남의 화면에 카드를 띄울 권한이다", async () => {
+    const h = await newHarness();
+    const a = await connectUser(h.rm, "Alice");
+    const b = await connectUser(h.rm, "Bob");
+    a.clientSend({ type: "createRoom" });
+    await a.waitFor((m) => m.type === "roomCreated");
+
+    a.clientSend({ type: "friendInvite", nickname: "Bob" });
+    await a.waitFor((m) => m.type === "error" && m.code === "FRIEND_INVITE_FAILED");
+    expect(b.all("friendInviteFrom")).toEqual([]);
+  });
+
+  it("대기실 밖에서는 부를 수 없다", async () => {
+    const h = await newHarness();
+    const a = await connectUser(h.rm, "Alice");
+    const b = await connectUser(h.rm, "Bob");
+    a.clientSend({ type: "friendRequest", nickname: "Bob" });
+    await b.waitFor((m) => m.type === "friendList" && m.incoming.length === 1);
+    b.clientSend({ type: "friendRespond", nickname: "Alice", accept: true });
+    await a.waitFor((m) => m.type === "friendList" && m.friends.length === 1);
+
+    a.clientSend({ type: "friendInvite", nickname: "Bob" });
+    await a.waitFor((m) => m.type === "error" && m.code === "NOT_IN_ROOM");
   });
 });
 
