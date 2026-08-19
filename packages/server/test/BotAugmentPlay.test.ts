@@ -5,6 +5,7 @@
  * 그건 "봇이 반영하고 있다"는 착각으로 남는다. 그래서 실시간 카탈로그와 대조한다.
  */
 
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { contentAugments } from "@majak/content";
 import {
@@ -128,5 +129,60 @@ describe("값어치 배수 — 내 손이 얼마나 비싼가", () => {
       expect(AUGMENT_PLAY[id]?.threat, id).toBeUndefined();
       expect(AUGMENT_PLAY[id]?.value, id).toBeGreaterThan(1);
     }
+  });
+});
+
+/*
+ * ⚠ 이 표의 가장 조용한 실패는 **채널 이름 오타**다.
+ *
+ * 없는 채널을 적으면 아무 일도 일어나지 않는다 — 에러도, 경고도 없고, 그저 봇이
+ * 영원히 반응하지 않을 뿐이다. 그리고 표에는 "반영했다"고 적혀 있다. id 오타를 위에서
+ * 카탈로그와 대조하는 것과 같은 이유로, 채널도 **실제 소스와 대조**한다.
+ */
+describe("공개 채널을 적은 행은 그 채널이 실제로 있다", () => {
+  const AUG_DIR = new URL("../../content/src/augments/", import.meta.url);
+
+  /** 증강 id → 그 증강을 정의한 소스 전문 */
+  const sourceOf = new Map<string, string>();
+  for (const file of readdirSync(AUG_DIR)) {
+    if (!file.endsWith(".ts")) continue;
+    const src = readFileSync(new URL(file, AUG_DIR), "utf8");
+    for (const m of src.matchAll(/(?:const (?:ID|AUGMENT_ID) = |\bid: )"([a-z_0-9]+)"/g)) {
+      sourceOf.set(m[1] as string, src);
+    }
+  }
+
+  /** 이 행들이 읽겠다고 선언한 채널 (`{p}`는 보유자 자리) */
+  const declared: { id: string; channel: string }[] = [];
+  for (const [id, play] of Object.entries(AUGMENT_PLAY)) {
+    for (const spec of [play.fired, play.ronImmune, play.furitenBroken]) {
+      if (spec !== undefined) declared.push({ id, channel: spec.channel ?? `${id}:{p}` });
+    }
+  }
+
+  it("적어도 하나는 선언돼 있다 (테스트가 빈손으로 통과하지 않게)", () => {
+    expect(declared.length).toBeGreaterThan(5);
+  });
+
+  it("모든 채널이 전원 공개(`viewKey(\"*\", ...)`)로 실제로 실린다", () => {
+    const missing: string[] = [];
+    for (const { id, channel } of declared) {
+      const src = sourceOf.get(id);
+      if (src === undefined) {
+        missing.push(`${id}: 소스를 못 찾음`);
+        continue;
+      }
+      // 관례 채널(`{id}:{p}`)은 `viewKey("*", `${ID}:${누구}`)` 형태로 나간다
+      if (!/[Vv]iewKey\("\*", `\$\{(?:ID|AUGMENT_ID)\}:\$\{/.test(src)) {
+        missing.push(`${id}: 전원 공개 채널을 내지 않는다`);
+        continue;
+      }
+      // 관례에서 벗어난 채널은 그 **고정 부분**이 소스에 그대로 있어야 한다
+      const custom = channel.replace(`${id}:`, "").replace("{p}", "");
+      if (custom !== "" && !src.includes(`${"$"}{ID}:${custom}`) && !src.includes(custom)) {
+        missing.push(`${id}: "${custom}" 조각이 소스에 없다 (채널: ${channel})`);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });

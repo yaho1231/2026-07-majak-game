@@ -43,6 +43,14 @@ const ID = "no_ron_pact";
 const PACT_TURNS = 6;
 /** 전원 공개: 지금 조약이 살아 있는가 (국 스코프 — 국이 끝나면 엔진이 지운다) */
 const pactViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
+/**
+ * 같은 사실의 **기계가 읽는 판**(전원 공개) — 봇의 수비 계산이 이걸 본다.
+ *
+ * 위 채널은 사람이 읽는 한 줄이라 문구가 언제든 다듬어진다. 봇이 그 문구를 조건으로
+ * 삼으면 문구를 고치는 순간 **조용히** 틀린다(면역이 아닌데 밀거나, 면역인데 접는다).
+ * 두 채널이 같은 리액션에서 함께 나가므로 서로 어긋날 수 없다.
+ */
+const pactActiveKey = (h: PlayerId): string => roundViewKey("*", `${ID}:active:${h}`);
 
 /** 지금 조약이 보유자를 보호하는가 */
 function pactActive(state: GameState, holder: PlayerId): boolean {
@@ -95,6 +103,10 @@ export const noRonPact: AugmentDef = defineAugment({
     for (const on of [ROUND_STARTED, TILE_DRAWN, TILE_DISCARDED, CALL_MADE, KAN_DECLARED]) {
       ctx.reaction(on, (_event, rc) => {
         const label = pactLabel(rc.state, holder);
+        const active = pactActive(rc.state, holder);
+        if (rc.state.augmentData[pactActiveKey(holder)] !== active) {
+          rc.emit(augmentDataSet(pactActiveKey(holder), active));
+        }
         if (rc.state.augmentData[pactViewKey(holder)] === label) return;
         rc.emit(augmentDataSet(pactViewKey(holder), label));
       });
