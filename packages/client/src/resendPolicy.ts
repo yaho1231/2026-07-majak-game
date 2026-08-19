@@ -34,6 +34,9 @@ export const VOLATILE_MESSAGES: ReadonlySet<string> = new Set([
   "roundContinue", // "이 결과창을 닫는다" — 늦게 가면 다음 국 결과창을 건너뛴다
   "ping", // 스스로 다시 온다
   "emote", // 인사는 그 순간의 것이다 — 늦게 도착하면 뜻이 어긋난다
+  // 친구 초대도 그 순간의 것이다 — 15초 뒤에 나가면 그 대기실은 이미 시작했거나
+  // 사라졌고, 받는 사람은 죽은 코드가 적힌 초대장을 누르게 된다.
+  "friendInvite",
   // "지금 말풍선을 읽는 중"이라는 **찰나의 상태**다. 끊긴 사이의 것을 나중에 보내면
   // 그때는 이미 다른 강의를 보고 있거나 튜토리얼이 끝나 있다 — 판만 이유 없이 멎는다.
   // 다시 붙으면 코치가 지금 상태를 곧바로 다시 알린다(App.tsx `cbCoachHold`).
@@ -64,9 +67,10 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 공유 링크 만들기 (§4-8) — 늦게 도착해도 뜻이 그대로다(이미 있으면 그 토큰을
   // 다시 돌려준다). 누를 때마다 새 링크가 나오지 않으므로 중복 전송도 안전하다.
   "replayShare",
-  // 친구 (§4-6) — 목록 조회는 물론이고 추가·삭제도 "상태를 이렇게 바꿔 달라"는
-  // 요청이라 늦게 도착해도 뜻이 그대로다. 서버가 중복 추가를 흡수한다.
-  "friendAdd", "friendRemove", "friendList",
+  // 친구 (§4-6) — 목록 조회는 물론이고 요청·응답·절교도 "상태를 이렇게 바꿔 달라"는
+  // 요청이라 늦게 도착해도 뜻이 그대로다. 서버가 중복을 흡수한다(이미 보낸 요청·
+  // 이미 처리된 요청은 실패로 돌아올 뿐 상태를 흔들지 않는다).
+  "friendRequest", "friendRespond", "friendCancel", "friendRemove", "friendList",
   // 쓰기 요청 (전송 실패한 것만 큐에 담기므로 중복 등록이 되지 않는다)
   "feedbackSubmit", "feedbackUpdate", "feedbackDelete", "adminDeleteUser",
   // 관전·증강 테스트

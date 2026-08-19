@@ -314,15 +314,31 @@ export class SiteDb {
         replied_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
-      -- 친구 (§4-6). **단방향이고 승인이 없다** — 여기서 얻는 것은 상대의 온라인
-      -- 여부 한 줄뿐이고, 그건 방 코드를 나눌 사이라면 이미 서로 아는 사실이다.
-      -- 맞팔·요청 알림을 만들면 그 대가로 화면과 상태가 배로 는다.
+      -- 친구 (§4-6). **쌍방이고 승인이 있다** (2026-08-19 사용자 결정).
+      --
+      -- 예전에는 단방향이었다 — 닉네임만 알면 아무나 남을 제 목록에 담고 그 사람의
+      -- 접속 여부를 상시로 볼 수 있었다. 얻는 것이 "지금 있나?" 한 줄뿐이라 해도
+      -- 그건 **상대가 동의한 적 없는** 한 줄이고, 여기에 친구 초대(방으로 부르기)가
+      -- 붙는 순간 일방적 관계가 곧 일방적 알림 권한이 된다.
+      --
+      -- 그래서 지금은 friend_requests 에 요청이 쌓이고, 받는 쪽이 수락해야
+      -- friends 에 **두 줄**(a→b, b→a)이 함께 들어간다. 한 줄만 넣는 설계는
+      -- 조회할 때마다 양쪽을 OR로 합쳐야 하고 언젠가 한쪽을 빠뜨린다.
       CREATE TABLE IF NOT EXISTS friends (
         user_id INTEGER NOT NULL REFERENCES users(id),
         friend_id INTEGER NOT NULL REFERENCES users(id),
         created_at TEXT NOT NULL,
         PRIMARY KEY (user_id, friend_id)
       );
+      -- 보류 중인 친구 요청. 수락·거절되면 지워진다 — 이 표에 남아 있는 것이 곧
+      -- "받은 편지함에 떠 있는 것"이다(별도의 읽음 표시를 두지 않는 이유).
+      CREATE TABLE IF NOT EXISTS friend_requests (
+        from_id INTEGER NOT NULL REFERENCES users(id),
+        to_id INTEGER NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (from_id, to_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_friend_requests_to ON friend_requests(to_id);
       -- 진행 중인 대국 (감사 §2-10 이어하기).
       --
       -- games 표가 **끝난** 판의 인덱스인 것과 대칭으로, 이 표는 **아직 도는** 판을
@@ -361,6 +377,22 @@ export class SiteDb {
     this.db.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_games_share ON games(share_token) WHERE share_token IS NOT NULL",
     );
+    /*
+     * 단방향 시절의 친구 목록을 **한 번** 비운다 (2026-08-19 사용자 결정).
+     *
+     * 기존 행은 "상대가 수락한 적 없는 관계"다. 그대로 두고 쌍방 규칙만 켜면
+     * 목록의 절반이 한쪽에만 보이는 유령 관계로 남고, 그 관계에 초대 알림
+     * 권한이 붙는다 — 승인제를 도입하는 이유가 그대로 무너진다.
+     *
+     * `config` 에 표식을 남겨 재기동마다 다시 지우지 않게 한다. 표식이 없으면
+     * (= 아직 이행 안 한 DB) 한 번 비우고 표식을 쓴다.
+     */
+    const reset = this.stmt("SELECT value FROM config WHERE key = 'friends_mutual_reset'").get();
+    if (reset === undefined) {
+      this.db.exec("DELETE FROM friends");
+      this.stmt("INSERT INTO config (key, value) VALUES ('friends_mutual_reset', ?)")
+        .run(new Date().toISOString());
+    }
     // WAL·SHM 곁파일은 위 `journal_mode = WAL` 이 실행된 **뒤에야** 생긴다.
     // 그래서 한 번 더 조인다 — 앞의 호출은 기존 파일용, 이쪽이 새로 생긴 곁파일용이다.
     tightenDbPermissions(path);
@@ -415,36 +447,122 @@ export class SiteDb {
 
   // ─────────────────────────── 친구 (§4-6) ───────────────────────────
 
-  /**
-   * 친구를 더한다. 돌려주는 값은 **실제 저장된 닉네임**(대소문자 원본)이거나,
-   * 더할 수 없는 이유다.
-   *
-   * 자기 자신은 더할 수 없다 — 목록에 내가 있으면 "지금 있나?"라는 질문에 아무
-   * 뜻이 없다. 상한(`MAX_FRIENDS`)을 두는 이유: 이 목록은 접속할 때마다 통째로
-   * 나가고, 온라인 판정이 목록 크기만큼 돈다.
-   */
-  addFriend(userId: number, nickname: string): { ok: boolean; nickname?: string; error?: string } {
-    const row = this.stmt("SELECT id, username FROM users WHERE username = ?").get(nickname) as
-      | { id: number; username: string }
-      | undefined;
-    if (row === undefined) return { ok: false, error: "그런 닉네임의 계정이 없습니다" };
-    if (row.id === userId) return { ok: false, error: "자기 자신은 추가할 수 없습니다" };
-    const count = this.stmt("SELECT COUNT(*) AS n FROM friends WHERE user_id = ?").get(userId) as {
+  /** 두 사람이 (쌍방) 친구인가. */
+  areFriends(a: number, b: number): boolean {
+    return (
+      this.stmt("SELECT 1 AS n FROM friends WHERE user_id = ? AND friend_id = ?").get(a, b) !==
+      undefined
+    );
+  }
+
+  private friendCount(userId: number): number {
+    return (this.stmt("SELECT COUNT(*) AS n FROM friends WHERE user_id = ?").get(userId) as {
       n: number;
-    };
-    if (count.n >= MAX_FRIENDS) {
-      return { ok: false, error: `친구는 ${MAX_FRIENDS}명까지 추가할 수 있습니다` };
+    }).n;
+  }
+
+  /**
+   * 친구 **요청**을 보낸다. 성사는 상대가 수락할 때다.
+   *
+   * 한 경우만 예외로 곧바로 이어 준다: **상대가 이미 나에게 요청을 보내 둔 경우**.
+   * 그때 요청을 하나 더 쌓으면 서로의 편지함에 서로를 기다리는 카드가 한 장씩
+   * 남아 아무도 먼저 누르지 않는다 — 양쪽 의사가 이미 확인됐으므로 그 자리에서
+   * 맺는다(`accepted: true` 로 호출자에게 알린다).
+   */
+  requestFriend(
+    userId: number,
+    nickname: string,
+  ): { ok: boolean; nickname?: string; accepted?: boolean; error?: string } {
+    const row = this.userByName(nickname);
+    if (row === null) return { ok: false, error: "그런 닉네임의 계정이 없습니다" };
+    if (row.id === userId) return { ok: false, error: "자기 자신에게는 보낼 수 없습니다" };
+    if (this.areFriends(userId, row.id)) return { ok: false, error: "이미 친구입니다" };
+    if (this.friendCount(userId) >= MAX_FRIENDS) {
+      return { ok: false, error: `친구는 ${MAX_FRIENDS}명까지 맺을 수 있습니다` };
+    }
+    if (this.friendCount(row.id) >= MAX_FRIENDS) {
+      return { ok: false, error: "상대의 친구 목록이 가득 찼습니다" };
+    }
+    // 상대가 먼저 보내 뒀다 → 그 요청을 수락하는 것과 같다
+    const incoming = this.stmt(
+      "SELECT 1 AS n FROM friend_requests WHERE from_id = ? AND to_id = ?",
+    ).get(row.id, userId);
+    if (incoming !== undefined) {
+      this.linkFriends(userId, row.id);
+      return { ok: true, nickname: row.username, accepted: true };
+    }
+    const already = this.stmt(
+      "SELECT 1 AS n FROM friend_requests WHERE from_id = ? AND to_id = ?",
+    ).get(userId, row.id);
+    if (already !== undefined) return { ok: false, error: "이미 요청을 보냈습니다" };
+    // 보낸 요청 수에도 같은 상한을 건다 — 안 그러면 요청만으로 남의 편지함을 채울 수 있다
+    const sent = (this.stmt("SELECT COUNT(*) AS n FROM friend_requests WHERE from_id = ?").get(
+      userId,
+    ) as { n: number }).n;
+    if (sent >= MAX_FRIENDS) {
+      return { ok: false, error: `보낸 요청은 ${MAX_FRIENDS}건까지입니다` };
     }
     this.stmt(
-      "INSERT INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+      "INSERT INTO friend_requests (from_id, to_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
     ).run(userId, row.id, new Date().toISOString());
+    return { ok: true, nickname: row.username, accepted: false };
+  }
+
+  /** 두 사람을 잇는다 — **양방향 두 줄**을 넣고 오가던 요청을 치운다. */
+  private linkFriends(a: number, b: number): void {
+    const now = new Date().toISOString();
+    const ins = this.stmt(
+      "INSERT INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+    );
+    ins.run(a, b, now);
+    ins.run(b, a, now);
+    this.stmt(
+      "DELETE FROM friend_requests WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)",
+    ).run(a, b, b, a);
+  }
+
+  /**
+   * 받은 요청에 답한다. 수락이면 친구가 되고, 어느 쪽이든 요청은 편지함에서 사라진다.
+   *
+   * 존재하지 않는 요청에 답하면 실패로 돌려준다 — 화면이 낡은 목록을 들고 있을 때
+   * 조용히 성공한 척하면 사용자는 무엇이 일어났는지 알 수 없다.
+   */
+  respondFriendRequest(
+    userId: number,
+    fromNickname: string,
+    accept: boolean,
+  ): { ok: boolean; nickname?: string; error?: string } {
+    const row = this.userByName(fromNickname);
+    if (row === null) return { ok: false, error: "그런 닉네임의 계정이 없습니다" };
+    const req = this.stmt(
+      "SELECT 1 AS n FROM friend_requests WHERE from_id = ? AND to_id = ?",
+    ).get(row.id, userId);
+    if (req === undefined) return { ok: false, error: "이미 처리된 요청입니다" };
+    if (!accept) {
+      this.stmt("DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?").run(row.id, userId);
+      return { ok: true, nickname: row.username };
+    }
+    if (this.friendCount(userId) >= MAX_FRIENDS) {
+      return { ok: false, error: `친구는 ${MAX_FRIENDS}명까지 맺을 수 있습니다` };
+    }
+    this.linkFriends(userId, row.id);
     return { ok: true, nickname: row.username };
   }
 
-  removeFriend(userId: number, nickname: string): void {
+  /** 내가 보낸 요청을 거둔다. */
+  cancelFriendRequest(userId: number, toNickname: string): void {
     this.stmt(
-      "DELETE FROM friends WHERE user_id = ? AND friend_id = (SELECT id FROM users WHERE username = ?)",
-    ).run(userId, nickname);
+      "DELETE FROM friend_requests WHERE from_id = ? AND to_id = (SELECT id FROM users WHERE username = ?)",
+    ).run(userId, toNickname);
+  }
+
+  /** 친구를 끊는다 — **양쪽 다** 지운다. 한쪽만 남으면 유령 관계가 된다. */
+  removeFriend(userId: number, nickname: string): void {
+    const row = this.userByName(nickname);
+    if (row === null) return;
+    this.stmt(
+      "DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
+    ).run(userId, row.id, row.id, userId);
   }
 
   /** 내 친구들의 닉네임 (가나다순). 온라인 판정은 호출자가 붙인다. */
@@ -453,6 +571,28 @@ export class SiteDb {
       `SELECT u.username AS username
          FROM friends f JOIN users u ON u.id = f.friend_id
         WHERE f.user_id = ?
+        ORDER BY u.username`,
+    ).all(userId) as { username: string }[];
+    return rows.map((r) => r.username);
+  }
+
+  /** 내가 **받은** 보류 요청 (최근 것이 위). 이게 곧 편지함의 내용이다. */
+  incomingFriendRequests(userId: number): { nickname: string; at: string }[] {
+    const rows = this.stmt(
+      `SELECT u.username AS username, r.created_at AS at
+         FROM friend_requests r JOIN users u ON u.id = r.from_id
+        WHERE r.to_id = ?
+        ORDER BY r.created_at DESC`,
+    ).all(userId) as { username: string; at: string }[];
+    return rows.map((r) => ({ nickname: r.username, at: r.at }));
+  }
+
+  /** 내가 **보낸** 보류 요청의 닉네임 (가나다순). */
+  outgoingFriendRequests(userId: number): string[] {
+    const rows = this.stmt(
+      `SELECT u.username AS username
+         FROM friend_requests r JOIN users u ON u.id = r.to_id
+        WHERE r.from_id = ?
         ORDER BY u.username`,
     ).all(userId) as { username: string }[];
     return rows.map((r) => r.username);
@@ -813,6 +953,11 @@ export class SiteDb {
       // 제보는 남기되 주인을 끊는다 — 관리자에게는 계속 보이고(처리 이력 보존),
       // 나중에 같은 닉네임으로 재가입한 다른 사람에게는 보이지 않는다.
       this.stmt("UPDATE feedback SET user_id = NULL WHERE user_id = ?").run(userId);
+      // 친구 관계·보류 요청은 **주인을 끊지 않고 지운다.** 제보와 달리 남겨서 얻을
+      // 이력이 없고, 같은 닉네임으로 재가입한 다른 사람이 남의 친구 자리를 물려받는
+      // 일은 있어서는 안 된다.
+      this.stmt("DELETE FROM friends WHERE user_id = ? OR friend_id = ?").run(userId, userId);
+      this.stmt("DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?").run(userId, userId);
       this.stmt("DELETE FROM users WHERE id = ?").run(userId);
       this.db.exec("COMMIT");
       this.usersRev++;
