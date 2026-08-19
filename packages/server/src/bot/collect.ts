@@ -98,6 +98,8 @@ interface Bias {
   honor: number;
   terminal: number;
   suit: Map<string, number>;
+  /** 짝수 수패 (짝수의 세계) */
+  even: number;
 }
 
 /**
@@ -107,7 +109,7 @@ interface Bias {
  * 안 버렸다"는 둘 중 하나만 있을 때보다 확실히 진한 신호다. 상한은 `RISK_CAP`.
  */
 export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
-  const bias: Bias = { honor: 1, terminal: 1, suit: new Map() };
+  const bias: Bias = { honor: 1, terminal: 1, suit: new Map(), even: 1 };
   const tags: string[] = [];
   let hanBonus = 0;
   let minLevel = 0;
@@ -146,6 +148,51 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
     hanBonus += 5;
     minLevel = Math.max(minLevel, 0.3);
     tags.push(`suit_unify:${unified}`);
+  }
+
+  /*
+   * **편식**(picky_eater) — 단색 세계의 퀘스트판이다. 둘로 나눠 읽는다.
+   *
+   *  1. **발동한 뒤**(`picky_eater:{player}` = 무늬) — 손패가 그 색으로 물들었다.
+   *     단색 세계와 완전히 같은 상황이라 같은 배수를 쓴다. 예전에는 채널 이름이
+   *     달라 이 읽기가 통째로 비어 있었다 — 같은 효과인데 한쪽만 무서워했다
+   *     (2026-08-19 사용자 보고).
+   *  2. **발동 전**(`picky_eater:progress:{player}`) — 12장 중 몇 장을 채웠는지가
+   *     **국의 절반 동안 전원에게 공개**된다. 이 증강의 설계가 "대응 시간이 아주
+   *     길다"는 것인데(그 파일 Rule #4), 정작 봇은 그 예고를 한 번도 안 봤다.
+   *     달성이 눈앞이면 곧 청일색 손이 된다고 보고 실점 추정을 올린다.
+   *     ⚠ 위험한 **패**를 짚지는 않는다 — 아직 어느 색이 될지는 본인도 안 정했다.
+   */
+  const pickySuit = av[`picky_eater:${player}`];
+  if (typeof pickySuit === "string" && NUMBER_SUITS.has(pickySuit)) {
+    suitMul(pickySuit, 2.2);
+    hanBonus += 5;
+    minLevel = Math.max(minLevel, 0.3);
+    tags.push(`picky_eater:${pickySuit}`);
+  } else {
+    const progress = av[`picky_eater:progress:${player}`] as
+      | { count?: number; need?: number; failed?: boolean }
+      | null
+      | undefined;
+    const need = progress?.need ?? 12;
+    const count = progress?.count ?? 0;
+    if (progress != null && progress.failed !== true && count >= need - 4) {
+      hanBonus += 4;
+      tags.push(`picky_quest:${count}/${need}`);
+    }
+  }
+
+  /*
+   * **짝수의 세계**(even_world) — 손패의 홀수 수패가 전부 짝수로 다시 태어났다.
+   * 그 손을 완성시키는 것은 **짝수 수패**뿐이고 홀수는 오히려 안전해진다
+   * (안전해지는 쪽은 건드리지 않는다 — 단색 세계와 같은 규율).
+   * 탕야오·또이또이가 단숨에 사정권이라 판수도 함께 올린다.
+   */
+  if (av[`even_world:${player}`] === true) {
+    bias.even *= 2.0;
+    hanBonus += 3;
+    minLevel = Math.max(minLevel, 0.25);
+    tags.push("even_world");
   }
 
   /*
@@ -210,6 +257,7 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
   const clamp = (m: number): number => Math.min(RISK_CAP, m);
   const honor = clamp(bias.honor);
   const terminal = clamp(bias.terminal);
+  const even = clamp(bias.even);
   const suit = new Map<string, number>();
   for (const [s, m] of bias.suit) suit.set(s, clamp(m));
 
@@ -224,6 +272,8 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
       else if (isTerminal(kind)) m = terminal;
       const s = suit.get(kind.suit);
       if (s !== undefined) m = Math.max(m, s);
+      // 홀짝 읽기도 겹치면 더 진한 쪽 하나만 쓴다 (곱하면 같은 패를 두 번 무서워한다)
+      if (NUMBER_SUITS.has(kind.suit) && kind.rank % 2 === 0) m = Math.max(m, even);
       return m;
     },
     hanBonus,

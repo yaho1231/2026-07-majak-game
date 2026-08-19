@@ -194,6 +194,55 @@ function meldToSet(meld: MeldInfo): ScoringSet {
   };
 }
 
+/**
+ * 이 후로가 채점에서 **취할 수 있는 몸통 해석들** (보통 하나).
+ *
+ * 둘이 되는 것은 **장사진의 4연속 깡**(3-4-5-6) 하나뿐이다. 넉 장을 깡으로 눕혔다는
+ * 사실 하나로 슌쯔로도, 커쯔로도 볼 수 있게 한다 — 어느 쪽이 비싼지는 변형끼리
+ * 겨뤄 `evaluateWin`이 고른다(도라·역 조합에 따라 답이 달라진다).
+ *
+ * **왜 둘인가** (2026-08-19 사용자 지시). 예전에는 슌쯔 해석 하나뿐이라 3-4-5-6 깡을
+ * 낀 또이또이·산안커·스안커가 통째로 성립하지 않았고, 커쯔로 셀 것이 그것뿐인 손은
+ * **역 없음**으로 떨어졌다. 반대로 커쯔 해석만 두면 일기통관·삼색동순이 날아간다.
+ * 둘 다 내놓고 비싼 쪽을 고르는 것이 "깡으로 취급할 수 있다"의 정확한 뜻이다.
+ *
+ * ⚠ 커쯔 해석에도 **대표 3장은 실물 그대로**(3-4-5) 둔다. first를 복제해 3-3-3처럼
+ * 만들면 삼색동각·청노두·혼일색이 헛성립한다. 랭크·무늬를 요구하는 역들은
+ * `isSameRankTriplet`·`isPureTriplet`으로 이미 그런 몸통을 걸러 낸다.
+ * 부수는 두 해석이 같다(`fu.ts`가 깡을 type과 무관하게 센다).
+ *
+ * 사풍깡(바람의 계보의 동남서북)은 여기 들지 않는다 — 연속이 아니므로
+ * `runQuadRepr`가 null이고, 커쯔로 세면 역패·사희가 헛성립한다.
+ */
+function meldToSetChoices(meld: MeldInfo): ScoringSet[] {
+  const set = meldToSet(meld);
+  if (set.type !== "run" || !set.isKan) return [set];
+  /*
+   * ⚠ 무늬를 반드시 함께 본다. `runQuadRepr`는 **랭크만** 보므로 동남서북(바람 랭크
+   * 1·2·3·4)이 연속으로 잡힌다 — 이 검사가 없으면 사풍깡이 커쯔가 되어 대사희·
+   * 스안커가 헛성립한다(테스트가 즉시 잡았다). 장사진은 `isRunQuad`와 같은 기준으로
+   * **같은 수패 무늬 넉 장**일 때만이다.
+   */
+  const suit = (meld.tiles[0] as TileKind).suit;
+  if (!NUMBERED.has(suit) || !meld.tiles.every((t) => t.suit === suit)) return [set];
+  if (runQuadRepr(meld.tiles) === null) return [set];
+  return [set, { ...set, type: "triplet" }];
+}
+
+/**
+ * 후로별 해석 목록의 곱집합 — 보통 원소 하나짜리 배열 하나다.
+ * (장사진 깡이 n개면 2^n. 깡은 최대 4개라 상한이 16이다.)
+ */
+function meldSetCombos(choices: ScoringSet[][]): ScoringSet[][] {
+  let out: ScoringSet[][] = [[]];
+  for (const alts of choices) {
+    const next: ScoringSet[][] = [];
+    for (const prefix of out) for (const alt of alts) next.push([...prefix, alt]);
+    out = next;
+  }
+  return out;
+}
+
 function classifyRunWait(run: DecompSet, winningTile: TileKind): WaitType {
   const [a, b, c] = run.tiles as [TileKind, TileKind, TileKind];
   if (sameKind(b, winningTile)) return "kanchan";
@@ -209,7 +258,8 @@ function classifyRunWait(run: DecompSet, winningTile: TileKind): WaitType {
 export function buildVariants(ctx: WinContext): ScoringVariant[] {
   // 안깡·묵계(silent)는 손을 열지 않는다 — 그 외 후로가 있어야 열린 손.
   const isClosed = ctx.melds.every((m) => m.kind === "kan_closed" || m.silent === true);
-  const meldSets = ctx.melds.map(meldToSet);
+  // 장사진 깡은 슌쯔로도 커쯔로도 셀 수 있다 — 조합마다 변형을 따로 낸다(보통 1개)
+  const meldCombos = meldSetCombos(ctx.melds.map(meldToSetChoices));
   const variants: ScoringVariant[] = [];
   /**
    * 화료패가 **조커**면 그 패는 이 분해에서 조커가 변한 것으로 친다 — 물리적인 백을
@@ -259,51 +309,49 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
     for (const winTile of winTiles) {
       const winKey = kindKey(winTile);
 
-      if (decomp.pair !== null && kindKey(decomp.pair) === winKey) {
-        variants.push({
-          form: "standard",
-          pair: decomp.pair,
-          handKinds,
-          sets: [
-            ...baseSets.map((s) => ({
-              type: s.type,
-              tiles: s.tiles,
-              concealed: true,
-              isKan: false,
-            })),
-            ...meldSets,
-          ],
-          waitType: "tanki",
-          isClosed,
+      for (const meldSets of meldCombos) {
+        if (decomp.pair !== null && kindKey(decomp.pair) === winKey) {
+          variants.push({
+            form: "standard",
+            pair: decomp.pair,
+            handKinds,
+            sets: [
+              ...baseSets.map((s) => ({
+                type: s.type,
+                tiles: s.tiles,
+                concealed: true,
+                isKan: false,
+              })),
+              ...meldSets,
+            ],
+            waitType: "tanki",
+            isClosed,
+          });
+        }
+
+        baseSets.forEach((absorber, i) => {
+          if (!absorber.tiles.some((t) => kindKey(t) === winKey)) return;
+          const waitType: WaitType =
+            absorber.type === "triplet" ? "shanpon" : classifyRunWait(absorber, winTile);
+          variants.push({
+            form: "standard",
+            pair: decomp.pair,
+            handKinds,
+            sets: [
+              ...baseSets.map((s, j) => ({
+                type: s.type,
+                tiles: s.tiles,
+                // 론으로 완성된 커쯔는 명각 취급
+                concealed: !(j === i && s.type === "triplet" && ctx.winType === "ron"),
+                isKan: false,
+              })),
+              ...meldSets,
+            ],
+            waitType,
+            isClosed,
+          });
         });
       }
-
-      baseSets.forEach((absorber, i) => {
-        if (!absorber.tiles.some((t) => kindKey(t) === winKey)) return;
-        const waitType: WaitType =
-          absorber.type === "triplet" ? "shanpon" : classifyRunWait(absorber, winTile);
-        variants.push({
-          form: "standard",
-          pair: decomp.pair,
-          handKinds,
-          sets: [
-            ...baseSets.map((s, j) => ({
-              type: s.type,
-              tiles: s.tiles,
-              // 론으로 완성된 커쯔는 명각 취급
-              concealed: !(
-                j === i &&
-                s.type === "triplet" &&
-                ctx.winType === "ron"
-              ),
-              isKan: false,
-            })),
-            ...meldSets,
-          ],
-          waitType,
-          isClosed,
-        });
-      });
     }
   }
 

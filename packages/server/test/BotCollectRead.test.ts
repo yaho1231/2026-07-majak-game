@@ -167,3 +167,76 @@ describe("읽기의 근거", () => {
     expect(read.riskOf(h("1z")[0]!)).toBe(1);
   });
 });
+
+/*
+ * 2026-08-19 사용자 지적: "편식·단색 세계 같은 걸 상대가 쓴 것에 봇이 대응을 못 한다."
+ * 단색 세계는 위에서 이미 읽고 있었는데, **같은 효과의 퀘스트판인 편식**은 공개 채널
+ * 이름이 달라 통째로 비어 있었다 — 같은 청일색인데 한쪽만 무서워하고 있었다.
+ */
+describe("편식 — 발동 전에도, 발동 뒤에도 읽는다", () => {
+  it("발동 뒤에는 물든 색이 단색 세계와 똑같이 위험해진다", () => {
+    const scene = botScene({
+      hand: "123m456p789s11z22m",
+      turnCount: 12,
+      augments: { p1: ["picky_eater"] },
+      augmentView: { "picky_eater:p1": "sou" },
+      discards: { p1: "1z2z3z4z" },
+    });
+    const read = readCollect(scene.view, "p1");
+    expect(read.tags).toContain("picky_eater:sou");
+    expect(read.riskOf(h("5s")[0]!)).toBeGreaterThan(1);
+    expect(read.riskOf(h("5m")[0]!)).toBe(1);
+  });
+
+  it("퀘스트가 달성 직전이면 실점 추정이 오른다 (예고를 본다)", () => {
+    const near = botScene({
+      hand: "123m456p789s11z22m",
+      turnCount: 12,
+      augments: { p1: ["picky_eater"] },
+      augmentView: {
+        "picky_eater:progress:p1": { suit: "man", count: 9, need: 12, failed: false },
+      },
+    });
+    const read = readCollect(near.view, "p1");
+    expect(read.hanBonus).toBeGreaterThan(0);
+    expect(read.tags.some((t) => t.startsWith("picky_quest:"))).toBe(true);
+  });
+
+  it("깨진 퀘스트·초반 진행은 읽지 않는다", () => {
+    const broken = botScene({
+      hand: "123m456p789s11z22m",
+      turnCount: 12,
+      augments: { p1: ["picky_eater"] },
+      augmentView: {
+        "picky_eater:progress:p1": { suit: "man", count: 9, need: 12, failed: true },
+      },
+    });
+    expect(readCollect(broken.view, "p1").tags).toEqual([]);
+
+    const early = botScene({
+      hand: "123m456p789s11z22m",
+      turnCount: 4,
+      augments: { p1: ["picky_eater"] },
+      augmentView: {
+        "picky_eater:progress:p1": { suit: "man", count: 3, need: 12, failed: false },
+      },
+    });
+    expect(readCollect(early.view, "p1").tags).toEqual([]);
+  });
+});
+
+describe("짝수의 세계 — 짝수 수패만 위험해진다", () => {
+  it("짝수는 오르고 홀수·자패는 그대로다", () => {
+    const scene = botScene({
+      hand: "123m456p789s11z22m",
+      turnCount: 8,
+      augments: { p1: ["even_world"] },
+      augmentView: { "even_world:p1": true },
+      discards: { p1: "1z2z3z4z" },
+    });
+    const read = readCollect(scene.view, "p1");
+    expect(read.tags).toContain("even_world");
+    expect(read.riskOf(h("4p")[0]!)).toBeGreaterThan(1);
+    expect(read.riskOf(h("5p")[0]!)).toBe(1);
+  });
+});

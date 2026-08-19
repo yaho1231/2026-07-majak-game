@@ -16,7 +16,15 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, flagOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import {
+  counterOf,
+  flagOf,
+  matchUses,
+  preArmRestoreEvents,
+  preArmSpent,
+  publishUsesLeft,
+  roundViewKey,
+} from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "reload";
@@ -59,12 +67,34 @@ function spentKeyOf(
   );
 }
 
+/**
+ * 이 증강이 **어떤 방식으로** 소진돼 있는가 (아니면 null).
+ *
+ * 두 종류다.
+ *  - `counter` — 사용 횟수 규약(`<id>:uses:` · `<id>:used:`)을 쓰는 액티브.
+ *  - `preArm`  — 뽑은 직후 국에 자동으로 터지고 끝나는 선발동형(눈먼 총알·초읽기·반전).
+ *    예전에는 이쪽이 통째로 사각지대였다. 소진 표식이 사용 카운터가 아니라 "켜졌던
+ *    국"이라 `spentKeyOf`가 못 봤고, 그래서 **한 번 터지면 게임 내내 죽은 칸**이었다
+ *    (2026-08-19 사용자 요청). 재장전이 다시 장전하면 다음 국에 한 번 더 터진다.
+ *
+ * ⚠ 지금 켜져 **있는** 국에는 후보가 아니다(`preArmSpent`가 false) — 타는 중인 것을
+ * 되살릴 수는 없다. 그 국이 지나간 뒤부터 후보에 든다.
+ */
+function spentModeOf(
+  state: GameState,
+  augId: string,
+  holder: PlayerId,
+): "counter" | "preArm" | null {
+  if (spentKeyOf(state, augId, holder) !== null) return "counter";
+  return preArmSpent(state, augId, holder) ? "preArm" : null;
+}
+
 /** 복구 가능한(=소진 이력이 있는) 홀더의 다른 증강 id 목록 */
 function reloadable(state: GameState, holder: PlayerId): string[] {
   const player = state.players.find((p) => p.id === holder);
   if (player === undefined) return [];
   return player.augments.filter(
-    (augId) => augId !== ID && spentKeyOf(state, augId, holder) !== null,
+    (augId) => augId !== ID && spentModeOf(state, augId, holder) !== null,
   );
 }
 
@@ -84,19 +114,26 @@ const reloadAction: ActionDef<{ augmentId: string }> = {
     if (!player.augments.includes(req.payload.augmentId)) {
       return "you do not have that augment";
     }
-    if (spentKeyOf(state, req.payload.augmentId, req.player) === null) {
+    if (spentModeOf(state, req.payload.augmentId, req.player) === null) {
       return "that augment has no spent use to restore";
     }
     return null;
   },
   toEvents: (req, { state }) => {
     // validate가 존재를 보장한다
-    const key = spentKeyOf(state, req.payload.augmentId, req.player) as string;
-    // 불리언 소진 플래그는 false로, 숫자 카운터는 1 감소로 되돌린다
-    const restored = flagOf(state, key) ? false : counterOf(state, key) - 1;
+    const mode = spentModeOf(state, req.payload.augmentId, req.player);
+    const restore =
+      mode === "preArm"
+        ? // 선발동형 — 표식을 지우면 다음 국에 다시 켜진다
+          preArmRestoreEvents(req.payload.augmentId, req.player)
+        : (() => {
+            const key = spentKeyOf(state, req.payload.augmentId, req.player) as string;
+            // 불리언 소진 플래그는 false로, 숫자 카운터는 1 감소로 되돌린다
+            return [augmentDataSet(key, flagOf(state, key) ? false : counterOf(state, key) - 1)];
+          })();
     return [
       // 대상 증강의 사용 기록을 되돌린다 (한 번 더 쓸 수 있게)
-      augmentDataSet(key, restored),
+      ...restore,
       // 재장전 자신을 1 소진
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       // 전원 공개 — 소진됐다고 믿던 증강이 되살아났음을 알린다
@@ -122,7 +159,7 @@ export const reload: AugmentDef = defineAugment({
    */
   draftStages: ["eastThird", "eastFourth", "southEntry", "southThird"],
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에, 이미 한 번 이상 쓴 내 다른 증강 하나를 지목해 사용 횟수를 한 번 되돌린다. 첫 증강 선택에는 나오지 않는다(되살릴 증강이 아직 없다). '게임 내 1회'라는 절대 한도조차 무너뜨릴 수 있다. 복구 순간은 전원에게 공개되며, 사용 횟수 규약을 따르는 증강만 되살릴 수 있고 재장전 자신은 대상이 아니다.\n\n⚠ 복구할 수 있는 것은 게임 단위 사용 횟수를 쓰는 증강뿐이다. 국 단위 쿨다운으로 도는 증강은 눈에 띄게 소진돼 보여도 후보에 뜨지 않는다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에, 이미 한 번 이상 쓴 내 다른 증강 하나를 지목해 사용 횟수를 한 번 되돌린다. 첫 증강 선택에는 나오지 않는다(되살릴 증강이 아직 없다). '게임 내 1회'라는 절대 한도조차 무너뜨릴 수 있다. 복구 순간은 전원에게 공개되며, 사용 횟수 규약을 따르는 증강만 되살릴 수 있고 재장전 자신은 대상이 아니다.\n\n뽑은 직후 국에 저절로 터지고 끝나는 증강(눈먼 총알·초읽기·반전)도 되살릴 수 있다 — 다시 장전하면 다음 국에 한 번 더 터진다.\n\n⚠ 그 밖에 복구할 수 있는 것은 게임 단위 사용 횟수를 쓰는 증강뿐이다. 국 단위 쿨다운으로 도는 증강은 눈에 띄게 소진돼 보여도 후보에 뜨지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

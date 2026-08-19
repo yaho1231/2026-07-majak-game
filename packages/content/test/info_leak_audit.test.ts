@@ -139,6 +139,95 @@ describe("스텔스 리치 — 발동 연출(actionFx)이 타가에게 가지 �
   });
 });
 
+// ───────────── 1b. 자유 선언의 자유 타패는 연출을 내지 않는다 ─────────────
+
+/** 리치를 걸 수 있으면 걸고, 그 뒤로는 자유 타패를 쓰는 봇 */
+class FreeDiscardBot implements PlayerAgent {
+  readonly isBot = true;
+  readonly nickname: string;
+  readonly fx: string[] = [];
+  onFreeDiscardDone: (() => void) | null = null;
+  constructor(
+    readonly id: string,
+    private readonly grab: boolean,
+  ) {
+    this.nickname = `B-${id}`;
+  }
+  sendView(_v: PlayerView): void {}
+  notify(msg: ServerMessage): void {
+    if (msg.type === "actionFx") this.fx.push(msg.actionType);
+  }
+  async decide(prompt: DecisionPrompt): Promise<ActionOption> {
+    if (this.grab) {
+      const riichi = prompt.options.find((o) => o.type === "riichi");
+      if (riichi !== undefined) return riichi;
+      const free = prompt.options.find((o) => o.type === "free_discard");
+      if (free !== undefined) {
+        this.onFreeDiscardDone?.();
+        return free;
+      }
+    }
+    const pass = prompt.options.find((o) => o.type === "pass");
+    if (pass !== undefined) return pass;
+    const discards = prompt.options.filter((o) => o.type === "discard");
+    return (discards[0] ?? prompt.options[0]) as ActionOption;
+  }
+  async decideDraft(_s: DraftStage, choices: AugmentDef[]): Promise<string> {
+    return choices[0]!.id;
+  }
+}
+
+/*
+ * 자유 타패는 **버림**이지 발동이 아니다. 그런데 표준 액션 목록에 없다는 이유로
+ * `actionFx`가 나가, 리치를 건 국의 매 순 화면 한가운데에 컷인이 떴다(2026-08-19
+ * 사용자 보고: "free_discard 계속 나옴"). 소음이면서 동시에 누설이기도 하다 —
+ * 이 증강의 값어치는 "쯔모기리인지 손에서 뺀 것인지 읽히지 않는 것"인데,
+ * 컷인이 매번 "지금 손에서 뺐다"고 외치면 그 값어치가 통째로 무너진다.
+ */
+describe("자유 선언 — 자유 타패에는 발동 연출이 없다", () => {
+  it("자유 타패를 써도 누구에게도 actionFx가 가지 않는다", async () => {
+    const bots = [
+      new FreeDiscardBot("p0", true),
+      new FreeDiscardBot("p1", false),
+      new FreeDiscardBot("p2", false),
+      new FreeDiscardBot("p3", false),
+    ];
+    const ctrl = new HanchanController(bots as unknown as PlayerAgent[], {
+      ...DEFAULT_HANCHAN_CONFIG,
+      maxWind: 1,
+      westEntry: false,
+      dobi: false,
+      draftSchedules: [],
+      seed: 7,
+      presetAugments: { p0: ["free_riichi_discard"] },
+      // 첫 순부터 텐파이 — 무엇을 버려도 리치가 성립한다
+      presetHands: {
+        p0: [
+          "man2", "man3", "man4",
+          "pin3", "pin4", "pin5",
+          "sou3", "sou4", "sou5",
+          "sou6", "sou7", "sou8",
+          "sou9",
+        ],
+      },
+      extraAugments: [
+        (await import("../src/augments/free_riichi_discard.js")).freeRiichiDiscard,
+      ],
+    });
+    let seen = false;
+    for (const b of bots) {
+      b.onFreeDiscardDone = () => {
+        seen = true;
+        ctrl.requestAbort();
+      };
+    }
+    await ctrl.run();
+
+    expect(seen).toBe(true); // 전제: 자유 타패가 실제로 한 번 나갔다
+    for (const b of bots) expect(b.fx).not.toContain("free_discard");
+  });
+});
+
 // ───────────── 2·3. 안개로 가려진 바닥은 후보가 되지 않는다 ─────────────
 
 /**

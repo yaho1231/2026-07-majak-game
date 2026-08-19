@@ -28,6 +28,8 @@ import { removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
 import { NOTEN_PENALTY, NOTEN_WALL, waitTilesOf } from "./value.js";
+import { readDiscardQuest } from "./quest.js";
+import type { QuestGain } from "./quest.js";
 import type { ActionBid } from "./decide.js";
 
 /** 버림 후보 — 옵션과 그 패의 정보 */
@@ -172,7 +174,7 @@ function lineEV(
   shape: Shape,
   plan: HandPlan,
   profile: BotProfile,
-  opts: { riichi: boolean; tsumoOnly: boolean; notenStake: number },
+  opts: { riichi: boolean; tsumoOnly: boolean; notenStake: number; quest: QuestGain },
 ): number {
   const scale = scales(read, profile);
   // 값어치 — 도라·적도라를 흘리면 같은 형태라도 손이 싸진다
@@ -205,7 +207,9 @@ function lineEV(
   let gain =
     pWin * (points + read.match.potBonus) * placement * appetite +
     (shape.shanten <= 0 ? opts.notenStake : 0) +
-    directionGain(c.kind, plan, value.points);
+    directionGain(c.kind, plan, value.points) +
+    // 증강이 버림에 건 규율(편식의 12장 퀘스트 등) — 없으면 0이라 종전과 같다
+    opts.quest(c.kind);
   // 속도냐 타점이냐 — 어느 쪽도 틀리지 않는 취향이라 EV를 뒤엎지 않고 기울이기만 한다
   gain *= valueTilt(value.points, profile);
 
@@ -352,6 +356,7 @@ export function bidDiscard(
   // 종반에 텐파이를 붙들면 노텐벌부를 피한다 — 화료와 별개로 값이 있는 결과다
   const notenStake = read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   const tsumoOnly = read.menzen && !hasYakuNow(read);
+  const quest = readDiscardQuest(read.view, read.me, read.wallLeft, read.valueOf({ plan }).points);
 
   const scored: { c: Candidate; ev: number }[] = [];
   let best: Candidate | null = null;
@@ -363,6 +368,7 @@ export function bidDiscard(
       riichi: false,
       tsumoOnly,
       notenStake,
+      quest,
     });
     scored.push({ c, ev });
     // 동점이면 뒤쪽(쯔모패 쪽)을 버린다 — 사람도 쓸모 같으면 쯔모기리한다
@@ -410,6 +416,7 @@ export function bidRiichi(
   const cands = candidatesOf(read, riichiOptions);
   if (cands.length === 0) return null;
   const shapes = shapesOf(read, cands);
+  const quest = readDiscardQuest(read.view, read.me, read.wallLeft, read.valueOf({ plan }).points);
 
   let best: Candidate | null = null;
   let bestEV = -Infinity;
@@ -429,6 +436,7 @@ export function bidRiichi(
       riichi: true,
       tsumoOnly: furiten,
       notenStake: 0, // 리치는 어차피 텐파이 — 노텐벌부는 양쪽 공통이라 비교에서 상쇄된다
+      quest,
     });
     if (ev > bestEV) {
       bestEV = ev;

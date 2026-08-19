@@ -100,6 +100,65 @@ describe("재장전 (reload)", () => {
     expect(game.engine.state.augmentData["red_five_touch:used:p0"]).toBe(false);
   });
 
+  /*
+   * 선발동형(뽑은 직후 국에 저절로 터지고 끝나는 것 — 눈먼 총알·초읽기·반전)은
+   * 소진 표식이 사용 카운터가 아니라 "켜졌던 국"이라, 예전에는 재장전의 사각지대였다.
+   * 한 번 터지면 게임 내내 죽은 칸이었다(2026-08-19 사용자 요청).
+   */
+  describe("선발동형(눈먼 총알)도 다시 장전할 수 있다", () => {
+    const preArmScene = (spent: boolean): GameState => {
+      const base = craft({
+        hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+      });
+      const s = withAug(base, "p0", ["reload", "blind_ron"]);
+      return {
+        ...s,
+        augmentData: {
+          ...s.augmentData,
+          // 켜졌던 국(동1국)과 "이미 지나갔다" 공개 표식
+          "blind_ron:armedRound:p0": "1-1-0",
+          ...(spent ? { "view:*:spent:blind_ron:p0": true } : {}),
+        },
+      };
+    };
+
+    it("효과가 지나간 뒤에는 후보로 뜨고, 표식이 지워져 다음 국에 다시 켜진다", () => {
+      const game = start(preArmScene(true));
+      const provider = game.engine.turnOptionProviders[0];
+      const opts = provider ? provider(game.engine.state, "p0") : [];
+      expect(
+        opts.some(
+          (o) =>
+            o.type === "reload_use" &&
+            (o.payload as { augmentId?: string }).augmentId === "blind_ron",
+        ),
+      ).toBe(true);
+
+      const r = game.engine.submit({
+        player: "p0",
+        type: "reload_use",
+        payload: { augmentId: "blind_ron" },
+      });
+      expect(r.ok).toBe(true);
+      // 두 표식이 모두 지워져야 `armOnNextRound`가 다음 국에 다시 켠다
+      expect(game.engine.state.augmentData["blind_ron:armedRound:p0"]).toBeUndefined();
+      expect(game.engine.state.augmentData["view:*:spent:blind_ron:p0"]).toBeUndefined();
+      expect(game.engine.state.augmentData["reload:uses:p0"]).toBe(1);
+    });
+
+    it("지금 켜져 **있는** 국에는 후보가 아니다 — 타는 중인 것은 소진이 아니다", () => {
+      const game = start(preArmScene(false));
+      const r = game.engine.submit({
+        player: "p0",
+        type: "reload_use",
+        payload: { augmentId: "blind_ron" },
+      });
+      expect(r.ok).toBe(false);
+    });
+  });
+
   it("holderTurnOptions가 복구 가능한 증강만 후보로 낸다", () => {
     const game = start(scene(1));
     const provider = game.engine.turnOptionProviders[0];
