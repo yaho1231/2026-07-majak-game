@@ -6477,45 +6477,29 @@ function AuthScreen(props: {
       </header>
 
       <div className="landing">
-        {/* ── 이게 무엇인가 ──
-            표어를 쓰지 않는다. "다양한 증강을 즐겨보세요" 같은 문장은 아무것도
-            알려주지 않으면서 광고처럼만 읽힌다 — 사양을 그대로 적는다. */}
+        {/* ── 간판 ──
+            예전에는 이 자리에 사양표가 섰다 — 제목 + 한 문단 + 규칙/길이/증강/상대/
+            계정 다섯 줄. 로그인 화면에서 읽어야 할 것치고는 말이 너무 많았다
+            (2026-08-19 사용자 지시: "왼쪽 위 설명들 다 빼고 로고로 대체").
+
+            지금은 **로고 한 장**이다. 이 화면에서 정말 필요한 안내(증강 예시,
+            튜토리얼, 계정 없이 시작)는 이미 아래·오른쪽 패널이 맡고 있다.
+
+            ⚠ 그림 배경(#141b16)은 펠트(`--felt-1` #0d1712)보다 아주 조금 밝다 —
+            그냥 놓으면 사각형 자국이 보인다. CSS가 가장자리를 투명으로 흘려서
+            지운다(`.landing-logo img` 의 mask). 그림을 갈아 끼울 때도 같은 전제다. */}
         <section className="landing-brief">
-          <h1 className="landing-title">이능마작</h1>
-          <p className="landing-lead">
-            표준 리치마작 4인전입니다. 매 국 시작에 증강 하나를 고르고,
-            그 증강은 점수가 아니라 <b>규칙을 바꿉니다</b>.
-          </p>
+          {/* h1 은 남긴다 — 문서의 제목은 사이트 이름이 맞다. 글자 대신 그림이
+              들어가므로 alt 가 그 h1 의 본문이다(스크린리더·이미지 차단 시). */}
+          <h1 className="landing-logo">
+            <img src="/logo.jpg" alt="이능마작 — 증강으로 뒤바뀌는 마작" width={946} height={870} />
+          </h1>
 
           {props.invitedCode !== null ? (
             <p className="landing-invite">
               <b className="num">{props.invitedCode}</b> 방에 초대받았습니다 — 로그인하면 바로 들어갑니다.
             </p>
           ) : null}
-
-          <dl className="landing-spec">
-            <div className="kv">
-              <dt>규칙</dt>
-              <dd>리치마작 · 4인</dd>
-            </div>
-            <div className="kv">
-              <dt>길이</dt>
-              <dd>동풍전 · 반장전</dd>
-            </div>
-            <div className="kv">
-              <dt>증강</dt>
-              {/* 서버가 아직 말을 안 했으면 숫자 자리를 비워 둔다 — 추측한 수를 적지 않는다 */}
-              <dd>{augKinds !== null ? `${augKinds}종 · 매 국 3장 중 1장` : "매 국 3장 중 1장"}</dd>
-            </div>
-            <div className="kv">
-              <dt>상대</dt>
-              <dd>사람 · 봇</dd>
-            </div>
-            <div className="kv">
-              <dt>계정</dt>
-              <dd>없이도 시작</dd>
-            </div>
-          </dl>
         </section>
 
         {/* ── 계정 없이 들어가는 두 문 ──
