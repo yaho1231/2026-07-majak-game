@@ -495,6 +495,38 @@ export function armedNow(
 }
 
 /**
+ * 선발동형이 **이미 다 타 버렸는가** — 켜졌던 국이 지나갔다.
+ *
+ * `armOnNextRound`가 그 사실을 공개 채널(`spentViewKey`)에 굳히므로 그것만 보면 된다.
+ * 지금 켜져 있는 국(`armedNow`)에는 아직 false다 — 타는 중인 것은 소진이 아니다.
+ */
+export function preArmSpent(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+): boolean {
+  return state.augmentData[spentViewKey(augmentId, holder)] === true;
+}
+
+/**
+ * 다 타 버린 선발동형을 **다시 장전한다** (재장전 전용).
+ *
+ * 표식 둘을 지우면 그만이다 — 다음 `ROUND_STARTED`에서 `armOnNextRound`가 "아직 켜진
+ * 적 없는 증강"으로 보고 그 국에 다시 켠다(공개 표시도 그때 함께 다시 나간다).
+ * 값을 `undefined`로 두는 것이 요점이다: `null`을 쓰면 `!== undefined` 검사에 걸려
+ * 재장전이 아니라 **또 한 번 소진 처리**가 된다.
+ */
+export function preArmRestoreEvents(
+  augmentId: string,
+  holder: PlayerId,
+): ProposedEvent<string, unknown>[] {
+  return [
+    augmentDataSet(armedRoundKey(augmentId, holder), undefined),
+    augmentDataSet(spentViewKey(augmentId, holder), undefined),
+  ];
+}
+
+/**
  * 이 증강이 '게임 시작 이후(늦은) 드래프트'에서 획득됐는가.
  * 게임은 각 국 첫 진입마다 1개씩(동풍전 3개·반장전 4개) 준다. 시작 이후에 들어온
  * 증강은 남은 국이 적어 국을 거듭해 쌓는 스택형 증강이 제 값을 못 낸다 — 이때 보강한다.

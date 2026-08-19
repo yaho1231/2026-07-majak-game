@@ -271,7 +271,11 @@ describe("양극 — 1·9 혼합 깡도 커쯔로 채점된다", () => {
     expect(yakuIds(r)).not.toContain("sanshoku_doukou"); // 199를 '1 커쯔'로 오인 금지
   });
 
-  it("장사진의 4연속 깡은 여전히 슌쯔성 몸통이다(또이또이 X)", () => {
+  /*
+   * 2026-08-19 사용자 지시로 뒤집힌 규칙: 장사진의 4연속 깡은 **커쯔로도 셀 수 있다.**
+   * 예전에는 슌쯔 해석 하나뿐이라 이 손이 또이또이를 못 받고 역 없음으로 떨어졌다.
+   */
+  it("장사진의 4연속 깡은 커쯔로도 세어 또이또이가 성립한다", () => {
     const r = evaluateWin(
       ctxOf({
         hand: h("111p111s55z"),
@@ -280,7 +284,25 @@ describe("양극 — 1·9 혼합 깡도 커쯔로 채점된다", () => {
       }),
       registry,
     );
-    expect(yakuIds(r)).not.toContain("toitoi");
+    expect(r?.ok).toBe(true);
+    expect(yakuIds(r)).toContain("toitoi");
+    // 랭크가 섞인 몸통은 '같은 숫자'를 요구하는 역에는 들어가지 않는다
+    expect(yakuIds(r)).not.toContain("sanshoku_doukou");
+  });
+
+  it("장사진 깡의 슌쯔 해석도 살아 있다 — 비싼 쪽이 잡힌다(일기통관)", () => {
+    // 123m 슌쯔 + 456m·789m + 장사진 깡(1m2m3m4m)이면 커쯔로 세는 순간 일통이 죽는다.
+    // 두 해석을 다 내놓으므로 이쪽은 슌쯔 해석이 이긴다.
+    const r = evaluateWin(
+      ctxOf({
+        hand: h("456m789m123p11s"),
+        melds: [meldOf("kan_closed", "1m2m3m4m")],
+        winningTile: t("1s"),
+      }),
+      registry,
+    );
+    expect(r?.ok).toBe(true);
+    expect(yakuIds(r)).toContain("ittsuu");
   });
 
   it("바람의 계보 동남서북 안깡은 핑후도 아니다(깡은 슌쯔가 아니다)", () => {

@@ -450,6 +450,9 @@ const ACTION_LABEL: Record<string, string> = {
   claim_dealer: "오야 찬탈",
   seat_swap: "자리 바꿈",
   cancel_riichi: "리치 취소",
+  // 자유 선언 — 리치 중 자유 타패. 손패 클릭으로 나가므로 액션 바에는 안 서지만,
+  // 이름이 없으면 어느 경로로든 화면에 내부 id가 그대로 찍힌다.
+  free_discard: "자유 버림",
   bloom_pick: "영상패 고르기",
   no_retreat_riichi: "불퇴 리치",
   declare_big_hand: "큰손 선언",

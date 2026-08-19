@@ -204,9 +204,17 @@ export const pickyEater: AugmentDef = defineAugment({
     intent: "rewrite",
     // 타이밍은 이 정책이 직접 본다 — planner의 일반 적기와 성질이 다르다
     fleeting: true,
-    // 퀘스트를 우연히 달성했다면 수패가 가장 많은 색으로 통일한다 (단색 세계와 같은 기준)
-    pick: ({ options, view, holder, tenpai }) => {
-      if (tenpai) return null;
+    /**
+     * 12장을 채웠으면 수패가 가장 많은 색으로 통일한다 (단색 세계와 같은 기준).
+     *
+     * **텐파이여도 친다**(2026-08-19). 이 증강은 숫자를 그대로 두고 무늬만 바꾸므로
+     * 모양이 흐트러지지 않는다 — 텐파이는 텐파이 그대로고 거기에 청일색이 얹힌다.
+     * 예전에는 `tenpai`면 접었는데, 그건 손을 흩는 갈아엎기 증강의 규율이지 이쪽의
+     * 규율이 아니었다. 퀘스트를 12장 걸어와서 정작 가장 값이 나는 자리에서 접었다.
+     *
+     * (12장을 채우는 일 자체는 서버 봇의 버림 규율이 맡는다 — `bot/quest.ts`.)
+     */
+    pick: ({ options, view, holder }) => {
       const counts: Record<string, number> = { man: 0, pin: 0, sou: 0 };
       let total = 0;
       for (const k of handKindsOf(view, holder)) {
