@@ -42,6 +42,9 @@ import {
   augmentFiredReads,
   augmentFuritenBreakReads,
   augmentRonImmuneReads,
+  augmentTableRuleReads,
+  augmentTargetingReads,
+  augmentWideWaits,
   discardsZone,
   firedChannelKey,
   isHonor,
@@ -157,6 +160,56 @@ export function effectiveAugmentsOf(view: PlayerView, player: PlayerId): string[
     }
   }
   return locked.size === 0 ? [...augments] : augments.filter((id) => !locked.has(id));
+}
+
+/**
+ * 이 국의 **방총 지분** — 내가 쏴도 실제로 내 지갑이 열릴 몫 (1 = 표준).
+ *
+ * 눈먼 총알이 켜진 국에는 론의 지불자가 무작위로 다시 정해져 0.25가 된다. 나머지
+ * 3/4은 내가 무엇을 버리든 똑같이 걸리는 몫이라 **버림 선택과 무관**하다 — 그래서
+ * 판단에 들어가는 것은 내 몫뿐이다.
+ *
+ * 테이블 전체에 걸리는 규칙이라 상대별이 아니라 **판 단위**로 읽는다(누가 들었든
+ * 켜져 있으면 전원에게 적용된다).
+ */
+export function readDealInShare(view: PlayerView): number {
+  let share = 1;
+  for (const p of view.players) {
+    for (const { id, rule } of augmentTableRuleReads(effectiveAugmentsOf(view, p.id))) {
+      if (channelOn(view, p.id, id, rule)) share = Math.min(share, rule.dealInShare);
+    }
+  }
+  return share;
+}
+
+/**
+ * **지목형 증강**이 이 사람에게 건 것 — 지목 관계는 전원 공개다.
+ *
+ * @param player 판정 대상(지목당했는지 볼 사람)
+ * @returns 그 사람 실점 추정에 얹을 판수와, 그 사람이 **나**일 때의 위험 선호 보정
+ */
+export function readTargeting(
+  view: PlayerView,
+  player: PlayerId,
+): { hanBonus: number; appetite: number; tags: string[] } {
+  let hanBonus = 0;
+  let appetite = 0;
+  const tags: string[] = [];
+  for (const caster of view.players) {
+    for (const { id, targeting } of augmentTargetingReads(effectiveAugmentsOf(view, caster.id))) {
+      const raw = view.augmentView[firedChannelKey(id, targeting, caster.id)];
+      if (raw === undefined || raw === null) continue;
+      const target =
+        targeting.targetField === undefined
+          ? raw
+          : (raw as Record<string, unknown>)[targeting.targetField];
+      if (target !== player) continue;
+      hanBonus += targeting.oppHanBonus ?? 0;
+      appetite += targeting.selfAppetite ?? 0;
+      tags.push(`${id}:targeted`);
+    }
+  }
+  return { hanBonus, appetite, tags };
 }
 
 /** 공개 채널 하나가 "지금 켜져 있는가" (`ronImmune`·`furitenBroken` 공용 규약) */
@@ -285,6 +338,27 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
     }
   }
 
+  /*
+   * **대기가 표준보다 넓은 상대** (표: `AUGMENT_PLAY.wideWaits`).
+   *
+   * 스지·벽 계산은 "슌쯔는 같은 무늬 연속, 커쯔는 같은 패"라는 모양의 전제 위에 서
+   * 있다. 그 전제를 넓히는 증강을 든 사람에게는 같은 스지라도 지워지는 대기가 적다 —
+   * 수패 위험 전체를 조금 올려 그 미더움의 차이를 메운다.
+   * (현물은 안 건드린다 — 후리텐은 그대로라 여전히 100%다.)
+   */
+  const wide = augmentWideWaits(augments);
+  if (wide > 1) tags.push(`wide_waits:${wide.toFixed(2)}`);
+
+  /*
+   * **지목당한 상대** — 격에 걸린 사람이 이기면 그것은 반드시 만관 이상이다.
+   * (지목 관계는 전원 공개라 봇이 그대로 읽는다.)
+   */
+  const targeted = readTargeting(view, player);
+  if (targeted.hanBonus > 0) {
+    hanBonus += targeted.hanBonus;
+    tags.push(...targeted.tags);
+  }
+
   // ── 2. 보유만으로도 방향이 보이는 증강 (표: AUGMENT_PLAY.collect) ──
   // 아직 안 터졌으므로 약하게 잡는다. 그래도 0은 아니다 — 국사 증강을 든 사람에게
   // 요구패를 아무 생각 없이 흘리는 것은 사람도 안 하는 일이다.
@@ -359,7 +433,9 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
       // **바로 그 패**로 지목된 것은 언제나 가장 진한 신호다 (추정이 아니라 확정)
       const exact = kinds.get(`${kind.suit}${kind.rank}`);
       if (exact !== undefined) m = Math.max(m, exact);
-      return m;
+      // 대기가 넓은 상대에게는 수패 전체가 조금씩 더 위험하다 (곱한다 — 다른 축이다)
+      if (NUMBER_SUITS.has(kind.suit)) m *= wide;
+      return Math.min(RISK_CAP, m);
     },
     hanBonus,
     minLevel,

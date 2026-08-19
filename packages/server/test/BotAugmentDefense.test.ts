@@ -1,14 +1,18 @@
 /**
  * **상대 증강에 대한 대응** — 표(`AUGMENT_PLAY`)에 적은 것이 실제 판단까지 내려가는가.
  *
- * 2026-08-19 사용자 요청("최대한 다양한 증강에 대처")으로 대응 축이 넷으로 늘었다.
+ * 2026-08-19 사용자 요청("최대한 다양한 증강에 대처")으로 대응 축이 여덟으로 늘었다.
  * 각 축이 실제로 **결정을 바꾸는지**를 여기서 못박는다 — 표에 값만 적혀 있고 아무도
  * 안 읽는 상태는 "반영했다"는 착각으로 남기 때문이다.
  *
- *   1. 발동 채널 → 어느 패가 위험한가 (`fired`)
- *   2. 론 면역   → 그 사람에게는 무엇을 버려도 된다 (`ronImmune`)
- *   3. 현물 무효 → 그 사람에게는 100% 안전패가 없다 (`furitenBroken`)
- *   4. 무장해제  → 잠긴 증강은 무서워하지 않는다
+ *   1. 발동 채널   → 어느 패가 위험한가 (`fired`)
+ *   2. 론 면역     → 그 사람에게는 무엇을 버려도 된다 (`ronImmune`)
+ *   3. 현물 무효   → 그 사람에게는 100% 안전패가 없다 (`furitenBroken`)
+ *   4. 무장해제    → 잠긴 증강은 무서워하지 않는다
+ *   5. 지불 재배선 → 그 국은 방총 회피의 값 자체가 다르다 (`tableRule`)
+ *   6. 리치 신뢰   → 이 사람의 리치는 텐파이가 아닐 수 있다 (`riichiTrust`)
+ *   7. 넓은 대기   → 스지·무스지 판정이 덜 미덥다 (`wideWaits`)
+ *   8. 지목        → 효과는 지목당한 쪽에 붙는다 (`targeting`)
  */
 
 import { describe, expect, it } from "vitest";
@@ -19,7 +23,14 @@ import {
   safetyOf,
   tileTracker,
 } from "../src/bot/danger.js";
-import { effectiveAugmentsOf, isFuritenBroken, isRonImmune, readCollect } from "../src/bot/collect.js";
+import {
+  effectiveAugmentsOf,
+  isFuritenBroken,
+  isRonImmune,
+  readCollect,
+  readDealInShare,
+} from "../src/bot/collect.js";
+import { readMatch } from "../src/bot/match.js";
 import { botScene, h } from "./botTestView.js";
 import type { BotViewOptions } from "./botTestView.js";
 
@@ -188,5 +199,104 @@ describe("자패의 귀환 — 되받은 그 자패가 위험해진다", () => {
       augmentView: { "honor_return:p1": [] }, // 이미 주입돼 비워졌다
     });
     expect(readCollect(spent.view, "p1").tags).toEqual([]);
+  });
+});
+
+/*
+ * ── 2026-08-19 2차: 표의 네 축에 안 맞아 남겨 뒀던 것들 ──
+ * 축을 넷 더 만들어 붙였다(docs/27 §7의 "이번에 넣지 않은 것" 표를 해소).
+ */
+
+describe("눈먼 총알 — 그 국은 방총 회피의 값 자체가 1/4이다", () => {
+  const BLIND: BotViewOptions = {
+    ...BASE,
+    riichi: ["p1"],
+    augments: { p2: ["blind_ron"] },
+    augmentView: { "blind_ron:p2": true },
+  };
+
+  it("같은 리치 상대라도 기대 실점이 4분의 1로 줄어든다", () => {
+    const blind = threatOf(BLIND);
+    const normal = threatOf({ ...BLIND, augmentView: {} });
+    const p5 = h("5p")[0]!;
+    const lossBlind = expectedLossOf(p5, [blind.t], blind.remaining, NEUTRAL_DEFENSE);
+    const lossNormal = expectedLossOf(p5, [normal.t], normal.remaining, NEUTRAL_DEFENSE);
+    expect(lossBlind).toBeGreaterThan(0); // 0이 되지는 않는다 — 1/4은 내가 문다
+    expect(lossBlind).toBeCloseTo(lossNormal * 0.25, 5);
+  });
+
+  it("안 켜진 국에는 아무것도 바뀌지 않는다", () => {
+    expect(readDealInShare(botScene({ ...BLIND, augmentView: {} }).view)).toBe(1);
+    expect(readDealInShare(botScene(BLIND).view)).toBe(0.25);
+  });
+});
+
+describe("공성계 — 이 사람의 리치는 텐파이가 아닐 수 있다", () => {
+  it("리치 위협도가 1보다 낮게 잡힌다 (다만 얕게)", () => {
+    const siege = threatOf({
+      ...BASE,
+      riichi: ["p1"],
+      augments: { p1: ["siege_riichi"] },
+    });
+    const plain = threatOf({ ...BASE, riichi: ["p1"] });
+    expect(plain.t.level).toBe(1);
+    expect(siege.t.level).toBeLessThan(1);
+    // 블러프를 못 알아채는 손해보다 진짜 리치에 미는 손해가 크다 — 얕게만 깎는다
+    expect(siege.t.level).toBeGreaterThan(0.8);
+  });
+});
+
+describe("모양의 전제를 넓히는 증강 — 스지가 덜 미덥다", () => {
+  it("동수의 결속·비대칭 치또이를 든 상대에게는 수패 위험이 오른다", () => {
+    const wide = botScene({ ...BASE, augments: { p1: ["mixed_triplet"] } });
+    const read = readCollect(wide.view, "p1");
+    expect(read.riskOf(h("5p")[0]!)).toBeGreaterThan(1);
+    // 자패는 그대로다 — 넓어진 것은 수패의 몸통이다
+    expect(read.riskOf(h("1z")[0]!)).toBe(1);
+    expect(read.tags.some((t) => t.startsWith("wide_waits:"))).toBe(true);
+  });
+
+  it("현물은 여전히 100% 안전하다 (후리텐은 그대로다)", () => {
+    const wide = threatOf({ ...BASE, riichi: ["p1"], augments: { p1: ["broken_border"] } });
+    expect(safetyOf(h("1z")[0]!, [wide.t], wide.remaining, NEUTRAL_DEFENSE)).toBe(1);
+  });
+});
+
+describe("지목형 — 효과는 지목당한 쪽에 붙는다", () => {
+  it("격에 지목당한 상대가 이기면 반드시 만관 이상이다 (실점 추정이 오른다)", () => {
+    const gated = botScene({
+      ...BASE,
+      augments: { p2: ["rank_gate"] },
+      augmentView: { "rank_gate:p2": { by: "p2", target: "p1", minHan: 5 } },
+    });
+    const read = readCollect(gated.view, "p1");
+    expect(read.hanBonus).toBeGreaterThan(0);
+    expect(read.tags).toContain("rank_gate:targeted");
+    // 지목당하지 않은 사람은 그대로다
+    expect(readCollect(gated.view, "p3").tags).toEqual([]);
+  });
+
+  it("덤터기에 찍히면 내 위험 선호가 밀린다 (버림으로는 못 막는 실점)", () => {
+    const marked = botScene({
+      ...BASE,
+      augments: { p1: ["scapegoat"] },
+      augmentView: { "scapegoat:p1": "p0" },
+    });
+    const safe = botScene({ ...BASE, augments: { p1: ["scapegoat"] } });
+    expect(readMatch(marked.view, "p0").riskAppetite).toBeGreaterThan(
+      readMatch(safe.view, "p0").riskAppetite,
+    );
+  });
+
+  it("남이 찍혔으면 내 위험 선호는 그대로다", () => {
+    const other = botScene({
+      ...BASE,
+      augments: { p1: ["scapegoat"] },
+      augmentView: { "scapegoat:p1": "p2" },
+    });
+    const none = botScene({ ...BASE, augments: { p1: ["scapegoat"] } });
+    expect(readMatch(other.view, "p0").riskAppetite).toBe(
+      readMatch(none.view, "p0").riskAppetite,
+    );
   });
 });

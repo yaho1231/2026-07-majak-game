@@ -22,10 +22,23 @@
  * 정확한 대기 추정이 아니라 **사람이 한눈에 쓰는 근거의 근사**다 — 그게 목적이다.
  */
 
-import { augmentThreatMultiplier, discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
+import {
+  augmentRiichiTrust,
+  augmentThreatMultiplier,
+  discardsZone,
+  handZone,
+  kindKey,
+  meldsZone,
+} from "@majak/core";
 import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 import { pointsForHan } from "./value.js";
-import { effectiveAugmentsOf, isFuritenBroken, isRonImmune, readCollect } from "./collect.js";
+import {
+  effectiveAugmentsOf,
+  isFuritenBroken,
+  isRonImmune,
+  readCollect,
+  readDealInShare,
+} from "./collect.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
 import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.js";
@@ -136,6 +149,8 @@ export function readThreats(
   const turn = view.round.turnCount;
   const doraSet = new Set(doraKinds.map(kindKey));
   const ponds = pondsOf(view);
+  // 판 전체에 걸리는 지불 규칙 — 상대별이 아니라 국 단위다
+  const dealInShare = readDealInShare(view);
   for (const p of view.players) {
     if (p.id === me) continue;
     const rs = view.round.byPlayer[p.id];
@@ -167,6 +182,11 @@ export function readThreats(
     }
 
     const riichi = rs?.riichiDeclared === true;
+    /**
+     * **이 사람의 리치를 얼마나 믿는가** (`AUGMENT_PLAY.riichiTrust`).
+     * 공성계는 노텐 리치를 허용한다 — "리치 = 텐파이"라는 대전제가 이 사람에게만 깨진다.
+     */
+    const riichiTrust = augmentRiichiTrust(effectiveAugmentsOf(view, p.id));
     // 리치 이후 남의 바닥을 지나간 패는 이 사람이 론을 놓친 것이다 — 현물과 같다.
     // (통과패도 후리텐이 근거이므로 그 규칙이 꺼진 상대에게는 함께 성립하지 않는다)
     if (riichi && !furitenBroken) {
@@ -179,7 +199,7 @@ export function readThreats(
     const traits = traitsOf(p.id);
     let level = 0;
     if (riichi) {
-      level = 1;
+      level = riichiTrust;
     } else if (melds > 0) {
       // 후로 손은 텐파이 여부가 안 보인다 — 후로 수와 순목으로 어림한다.
       // 역패 후로가 섞여 있으면 싸구려라도 확실히 화료를 향해 간다는 신호다.
@@ -257,7 +277,9 @@ export function readThreats(
       riichi,
       isDealer,
       kindRisk: collect.riskOf,
-      value: augMult * estimateThreatValue(view, p.id, {
+      // 눈먼 총알이 켜진 국에는 내가 쏴도 **내가 물 확률이 1/4**이다 (지불자 무작위 재배선).
+      // 나머지 몫은 무엇을 버리든 똑같이 걸리므로 버림 판단에서는 내 몫만 센다.
+      value: dealInShare * augMult * estimateThreatValue(view, p.id, {
         collectHan: collect.hanBonus,
         riichi,
         melds,

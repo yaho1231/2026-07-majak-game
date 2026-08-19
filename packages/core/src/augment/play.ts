@@ -115,6 +115,74 @@ export interface AugmentPlay {
    * 같은 종류의, 가장 조용하고 가장 비싼 오판이다.
    */
   furitenBroken?: AugmentRonImmune;
+  /**
+   * 이 사람의 **대기가 표준 모형보다 넓은가** — 무스지·스지 판정이 덜 미더워진다.
+   *
+   * 봇의 안전패 계산(`bot/suji.ts`)은 "슌쯔는 같은 무늬 연속, 커쯔는 같은 패, 치또이
+   * 쌍은 같은 패"라는 **모양의 전제** 위에 서 있다. 그 전제를 넓히는 증강이 있다 —
+   * 동수의 결속(무늬 무관 커쯔)·비대칭 치또이(랭크 쌍)·무너진 국경(혼색 슌쯔)·
+   * 부숴진 벽(순환 슌쯔). 그런 상대에게는 같은 "스지"라도 지워지는 대기가 더 적다.
+   *
+   * 값은 수패 위험에 곱한다. **현물은 건드리지 않는다** — 후리텐은 그대로라 여전히 0이다.
+   */
+  wideWaits?: number;
+  /**
+   * 이 사람의 **리치가 텐파이라는 보장이 있는가** (1 = 표준, 그대로 믿는다).
+   *
+   * 공성계는 노텐 리치를 허용한다 — "리치 배너 = 텐파이"라는 대전제가 이 사람에게만
+   * 깨진다. 위협도(`level`)에 곱해 그만큼 덜 믿는다.
+   *
+   * ⚠ 과하게 낮추지 않는다. 덜 무서워하는 방향의 오차는 **방총으로 갚는다** —
+   * 블러프를 못 알아채는 손해보다 진짜 리치에 미는 손해가 훨씬 크다.
+   */
+  riichiTrust?: number;
+  /**
+   * **상대를 지목하는** 증강의 공개 지목 채널 — 지목 관계가 전원에게 보인다.
+   *
+   * 지목형은 보유자가 아니라 **지목당한 사람**에게 효과가 붙으므로, 다른 축과 달리
+   * "이 증강을 든 사람"을 보는 것으로는 아무것도 알 수 없다.
+   */
+  targeting?: AugmentTargeting;
+  /** 그 국의 **지불 구조 자체**를 바꾼다 (눈먼 총알) */
+  tableRule?: AugmentTableRule;
+}
+
+/** 지목형 증강의 공개 채널 규약 */
+export interface AugmentTargeting {
+  /** 지목 채널 이름. `{p}`는 **시전자** 자리다 (기본 `{증강id}:{p}`) */
+  channel?: string;
+  /** 채널 값에서 대상 id를 꺼낼 필드. 없으면 값 자체가 대상 id다 */
+  targetField?: string;
+  /**
+   * 대상이 **나**일 때 내 위험 선호(`riskAppetite`)를 이만큼 민다.
+   * 덤터기는 지목당한 사람이 홀더의 쯔모를 혼자 전액 문다 — 버림으로는 막을 수
+   * 없는 실점이라, 할 수 있는 것은 **그 국을 내 손으로 먼저 끝내는 것**뿐이다.
+   */
+  selfAppetite?: number;
+  /**
+   * 대상이 **상대**일 때 그 사람 실점 추정에 얹을 판수.
+   * 격(rank_gate)에 지목당한 사람은 4판 이하로 화료할 수 없다 — 그 사람이 이기면
+   * 그것은 반드시 만관 이상이다.
+   */
+  oppHanBonus?: number;
+}
+
+/**
+ * **판 전체의 지불 구조**를 바꾸는 증강 — 그 국에는 방총의 값 자체가 달라진다.
+ *
+ * 눈먼 총알이 유일한 사례다. 론의 지불자가 실제로 쏜 사람이 아니라 넷 중 무작위
+ * 한 명으로 다시 정해지므로, **내가 쏴도 내 지갑이 열릴 확률은 1/4뿐이다.**
+ * 나머지 3/4은 내가 무엇을 버리든 똑같이 걸리는 몫이라 버림 선택과 무관하다 —
+ * 즉 그 국에는 "위험패를 피한다"는 행위의 값이 통째로 4분의 1이 된다.
+ *
+ * 보유자 한 명의 채널이지만 효과는 **테이블 전원**에게 걸린다는 점이 다른 축과 다르다.
+ */
+export interface AugmentTableRule {
+  /** 이 채널이 켜진 국에 적용 (기본 `{증강id}:{p}`) */
+  channel?: string;
+  when: "present" | "true";
+  /** 내가 방총했을 때 **실제로 내가 무는** 몫 (1 = 표준) */
+  dealInShare: number;
 }
 
 /** "지금 이 구간에 켜져 있다"를 알리는 공개 채널의 규약 (`ronImmune`·`furitenBroken` 공용) */
@@ -327,6 +395,61 @@ export const AUGMENT_PLAY: Readonly<Record<string, AugmentPlay>> = {
   },
   /** 왕패의 주인 — 왕패 열람 + 국 첫 순 왕패↔손패 2장 교환(도라 표시패까지 갈 수 있다) */
   dead_wall_master: { threat: 1.08, value: 1.12 },
+
+  // ───────────────── 모양의 전제를 넓히는 것 (스지·무스지가 덜 미덥다) ─────────────────
+  /**
+   * 동수의 결속 — 커쯔가 무늬를 안 가린다(5만5통5삭도 커쯔). 샤보 대기가 무늬를 넘어
+   * 서므로 "이 무늬는 정리됐다"는 읽기가 그 랭크에는 통하지 않는다.
+   */
+  mixed_triplet: { wideWaits: 1.25 },
+  /**
+   * 비대칭 치또이 — 치또이 쌍이 랭크만 맞으면 된다(1만+1통도 한 쌍). 단기 대기가
+   * 한 종이 아니라 **같은 랭크 세 종**으로 벌어진다.
+   */
+  async_chiitoi: { wideWaits: 1.25 },
+  /**
+   * 무너진 국경 — 슌쯔가 무늬를 안 가린다(2만·3통·4삭). 무늬 안에서만 세던 량면·간짱
+   * 자리가 무늬를 넘어 서므로 스지가 지우는 몫이 줄어든다.
+   */
+  broken_border: { wideWaits: 1.3 },
+  /**
+   * 부숴진 벽 — 8-9-1·9-1-2가 슌쯔가 된다. 9와 1 사이의 벽이 없어져 노두패 근처의
+   * "여기서 끊긴다"는 계산이 어긋난다.
+   */
+  broken_wall: { wideWaits: 1.2 },
+
+  // ───────────────────────── 리치가 텐파이가 아닐 수 있다 ─────────────────────────
+  /**
+   * 공성계 — 텐파이가 아니어도 리치를 걸 수 있다. "리치 = 텐파이"라는 대전제가
+   * 이 사람에게만 깨진다.
+   *
+   * 0.9로 **얕게** 잡는다. 덜 무서워하는 방향의 오차는 방총으로 갚기 때문이다 —
+   * 블러프에 한 번 접는 손해보다 진짜 리치에 미는 손해가 훨씬 크다.
+   * (봇은 노텐 리치를 걸지 않으므로 실질 대상은 사람 상대다.)
+   */
+  siege_riichi: { riichiTrust: 0.9 },
+
+  // ───────────────────────── 지목형 — 효과는 지목당한 쪽에 붙는다 ─────────────────────────
+  /**
+   * 격 — 지목당한 사람은 그 국에 4판 이하로 화료할 수 없다. 그 사람이 이긴다면
+   * 그것은 **반드시 만관 이상**이라는 뜻이다(역만은 코어가 면제).
+   */
+  rank_gate: { targeting: { targetField: "target", oppHanBonus: 3 } },
+  /**
+   * 덤터기 — 홀더가 쯔모하면 원래 셋이 나눠 낼 것을 **지목당한 한 명이 전액** 문다.
+   *
+   * 버림으로는 막을 수 없는 실점이다(쯔모다). 지목당한 쪽이 할 수 있는 것은 그 국을
+   * **내 손으로 먼저 끝내는 것**뿐이라, 위험 선호를 미는 쪽으로 건다.
+   */
+  scapegoat: { targeting: { selfAppetite: 0.25 } },
+
+  // ───────────────────────── 그 국의 지불 구조 자체가 바뀐다 ─────────────────────────
+  /**
+   * 눈먼 총알 — 그 국의 모든 론이 넷 중 무작위 한 명에게 청구된다.
+   * 내가 쏴도 **내가 물 확률은 1/4**이고, 나머지 몫은 무엇을 버리든 똑같이 걸리므로
+   * 버림 선택과 무관하다. 즉 그 국에는 "위험패를 피한다"의 값이 4분의 1이 된다.
+   */
+  blind_ron: { tableRule: { when: "true", dealInShare: 0.25 } },
   /**
    * 소환 — 다음 쯔모를 지목한 종류로 확정한다. 채널에 그 종류가 실린다.
    * 그 패로 쏘일 위험보다는 "이 사람 손이 그 종류를 중심으로 짜인다"는 읽기다
@@ -535,6 +658,45 @@ export function augmentFiredReads(
   for (const id of augments) {
     const fired = AUGMENT_PLAY[id]?.fired;
     if (fired !== undefined) out.push({ id, fired });
+  }
+  return out;
+}
+
+/** 대기가 넓어지는 증강들의 누적 배수 (1 = 표준 모형 그대로) */
+export function augmentWideWaits(augments: readonly string[]): number {
+  let m = 1;
+  for (const id of augments) m *= AUGMENT_PLAY[id]?.wideWaits ?? 1;
+  // 여럿 겹쳐도 위험 상한(`RISK_CAP`)에서 어차피 잘리지만, 여기서도 상식선을 둔다
+  return Math.min(2, m);
+}
+
+/** 이 사람의 리치를 얼마나 믿는가 (1 = 그대로 믿는다) */
+export function augmentRiichiTrust(augments: readonly string[]): number {
+  let m = 1;
+  for (const id of augments) m *= AUGMENT_PLAY[id]?.riichiTrust ?? 1;
+  return Math.max(0.5, m); // 아무리 겹쳐도 절반 아래로는 안 내린다
+}
+
+/** 지목형 증강들 (id와 규약) */
+export function augmentTargetingReads(
+  augments: readonly string[],
+): { id: string; targeting: AugmentTargeting }[] {
+  const out: { id: string; targeting: AugmentTargeting }[] = [];
+  for (const id of augments) {
+    const targeting = AUGMENT_PLAY[id]?.targeting;
+    if (targeting !== undefined) out.push({ id, targeting });
+  }
+  return out;
+}
+
+/** 판 전체의 지불 구조를 바꾸는 증강들 (id와 규약) */
+export function augmentTableRuleReads(
+  augments: readonly string[],
+): { id: string; rule: AugmentTableRule }[] {
+  const out: { id: string; rule: AugmentTableRule }[] = [];
+  for (const id of augments) {
+    const rule = AUGMENT_PLAY[id]?.tableRule;
+    if (rule !== undefined) out.push({ id, rule });
   }
   return out;
 }
