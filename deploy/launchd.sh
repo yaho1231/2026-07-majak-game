@@ -68,6 +68,13 @@ majak_agent_install() {
     <string>$script</string>
   </array>
   <key>WorkingDirectory</key><string>$MAJAK_LAUNCHD_ROOT</string>
+  <!-- ⚠ 이 키가 없으면 감시자가 세운 서버를 launchd가 곧바로 죽인다.
+       기본값(false)에서 launchd는 **작업이 끝나는 순간 그 프로세스 그룹에 남은 프로세스
+       전부에 SIGTERM**을 보낸다. 감시자는 서버를 백그라운드 자식으로 띄우고 곧 끝나므로,
+       "다시 세움 완료"를 찍은 그 초에 서버가 SIGTERM으로 죽었다. 그러면 1분 뒤 감시자가
+       또 세우고 또 죽는다 — 2026-08-19 오전의 재시작 폭주가 정확히 이것이었다.
+       (손으로 켠 서버는 launchd 작업 밖이라 멀쩡히 몇 시간씩 돌았고, 그 대비가 단서였다.) -->
+  <key>AbandonProcessGroup</key><true/>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>$node_bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
@@ -116,8 +123,18 @@ majak_agent_uninstall() {
 majak_agent_status() {
   local suffix="$1"
   local label="com.yaho1231.majak.$suffix"
+  local plist="$HOME/Library/LaunchAgents/$label.plist"
   if ! launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
     echo "  $suffix: 등록 안 됨"
+    return 1
+  fi
+  # 플리스트는 install 때만 다시 쓰인다 — 이 키가 생기기 전에 등록해 둔 것이 그대로
+  # 남아 있으면 감시자가 세운 서버를 launchd가 즉시 죽인다(위 주석 참고). 조용히 도는
+  # 고장이라 상태 점검에서 반드시 짚는다.
+  if [ -f "$plist" ] && ! grep -q "AbandonProcessGroup" "$plist"; then
+    echo "  $suffix: 등록됨 — 그러나 **낡은 플리스트**입니다 (AbandonProcessGroup 없음)."
+    echo "     이 상태로는 감시자가 세운 서버를 launchd가 곧바로 죽입니다 → 재시작 폭주."
+    echo "     고치기:  bash deploy/agents.sh install"
     return 1
   fi
   local rc
