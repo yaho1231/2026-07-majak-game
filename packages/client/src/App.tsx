@@ -6520,14 +6520,17 @@ function AuthScreen(props: {
             지금은 **로고 한 장**이다. 이 화면에서 정말 필요한 안내(증강 예시,
             튜토리얼, 계정 없이 시작)는 이미 아래·오른쪽 패널이 맡고 있다.
 
-            ⚠ 그림 배경(#141b16)은 펠트(`--felt-1` #0d1712)보다 아주 조금 밝다 —
-            그냥 놓으면 사각형 자국이 보인다. CSS가 가장자리를 투명으로 흘려서
-            지운다(`.landing-logo img` 의 mask). 그림을 갈아 끼울 때도 같은 전제다. */}
+            ⚠ 원본 그림의 배경은 #141b16(노이즈 포함)이라 펠트(`--felt-1` #0d1712)보다
+            아주 조금 밝았다 — 그대로 놓으니 로고를 감싼 **사각형 자국**이 보였다
+            (2026-08-19 사용자 지적). 그래서 넣기 전에 배경을 펠트 색으로 정확히
+            옮기고 노이즈를 평평하게 눌렀다(작업 스크립트는 커밋 메시지 참고).
+            지금 파일은 판 위에 그대로 이어 붙으므로 CSS 페이드가 필요 없다.
+            ⚠ 그림을 갈아 끼울 때는 배경이 #0d1712 정확히 맞는지부터 본다. */}
         <section className="landing-brief">
           {/* h1 은 남긴다 — 문서의 제목은 사이트 이름이 맞다. 글자 대신 그림이
               들어가므로 alt 가 그 h1 의 본문이다(스크린리더·이미지 차단 시). */}
           <h1 className="landing-logo">
-            <img src="/logo.jpg" alt="이능마작 — 증강으로 뒤바뀌는 마작" width={946} height={870} />
+            <img src="/logo.png" alt="이능마작 — 증강으로 뒤바뀌는 마작" width={946} height={870} />
           </h1>
 
           {props.invitedCode !== null ? (
@@ -6537,6 +6540,14 @@ function AuthScreen(props: {
           ) : null}
         </section>
 
+        {/* ── 접속하는 자리 ──
+            «계정 없이 시작»과 로그인 패널을 **한 상자에 담는다**. 예전에는 둘이
+            격자의 서로 다른 행에 있었는데, 왼쪽 열(로고)이 더 길어지면서 그 행
+            높이에 밀려 둘 사이가 통째로 벌어졌다 — 화면에는 «계정 없이 시작»
+            아래로 빈 칸이 한참 있고 저 밑에 로그인 칸이 따로 떠 있었다
+            (2026-08-19 사용자 지시: "계정 없이 시작과 로그인은 붙어 있어야 한다").
+            이제 이 둘은 격자 칸 하나(`side`) 안의 세로 흐름이라 항상 붙어 있다. */}
+        <div className="landing-side">
         {/* ── 계정 없이 들어가는 두 문 ──
             예전에는 튜토리얼·체험·규칙 버튼 셋이 로그인 칸과 **따로 떨어져** 화면
             가운데 나란히 서 있었다. 들어가는 길이 화면 두 곳에 흩어져 있으면 처음
@@ -6581,58 +6592,6 @@ function AuthScreen(props: {
               시간 제한이 없습니다. 둘 다 기록·순위에 남지 않습니다.
             </p>
           </div>
-        </section>
-
-        {/*
-          이 게임의 유일한 차별점은 "규칙을 바꾸는 증강"인데, 예전에는 그것이
-          **클릭하기 전에는 한 문장으로만** 전달됐다 (감사 §3-4). 시작 버튼을 누를지
-          말지가 여기서 갈리므로, 말 대신 실제 패로 보여 준다.
-
-          쓰는 것은 도움말과 **같은 컴포넌트·같은 에셋**이다 — 광고용 그림을 따로
-          만들면 화면과 다른 것을 약속하게 된다.
-
-          모양은 균등 3칸 카드였다가 **번호 붙은 목록**으로 바꿨다. 같은 크기 상자
-          셋을 나란히 놓는 배치는 내용과 상관없이 어디에나 놓이는 모양이라, 셋이
-          무슨 관계인지(= 같은 더미에서 뽑히는 보기 셋)를 말해 주지 않았다.
-        */}
-        <section className="panel landing-show">
-          <div className="panel-head">
-            <h2>증강 예시</h2>
-            <span className="panel-meta num">
-              3{augKinds !== null ? ` / ${augKinds}` : ""}
-            </span>
-          </div>
-          <ol className="landing-show-list">
-            {LANDING_SHOWCASE.map((s, i) => (
-              <li key={s.name} className="landing-show-item">
-                <span className="landing-show-no num" aria-hidden="true">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="landing-show-body">
-                  <div className="landing-show-top">
-                    <span className="landing-show-name">{s.name}</span>
-                    <span className="landing-show-kind">{s.kind}</span>
-                    <span className="landing-show-cap">{s.cap}</span>
-                  </div>
-                  <div className="landing-show-fig">
-                    <span className="landing-show-before">
-                      <HelpTileGroups tiles={s.before} />
-                    </span>
-                    {/* 화살표 글자는 CSS가 넣는다 — 칸이 좁으면 세로(↓), 넓으면 가로(→)로
-                        쌓이는데 방향이 어긋나면 그림이 거짓말을 한다 */}
-                    <span className="landing-show-arrow" aria-hidden="true" />
-                    <span className="landing-show-after">
-                      <HelpTileGroups tiles={s.after} />
-                    </span>
-                  </div>
-                  <p className="landing-show-desc">{s.desc}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="landing-show-foot">
-            매 국 시작에 세 장 중 하나를 고릅니다.
-          </p>
         </section>
 
       <div className="lobby-card auth-card">
@@ -6764,6 +6723,63 @@ function AuthScreen(props: {
           </div>
         ) : null}
       </div>
+        </div>
+
+        {/*
+          이 게임의 유일한 차별점은 "규칙을 바꾸는 증강"인데, 예전에는 그것이
+          **클릭하기 전에는 한 문장으로만** 전달됐다 (감사 §3-4). 시작 버튼을 누를지
+          말지가 여기서 갈리므로, 말 대신 실제 패로 보여 준다.
+
+          쓰는 것은 도움말과 **같은 컴포넌트·같은 에셋**이다 — 광고용 그림을 따로
+          만들면 화면과 다른 것을 약속하게 된다.
+
+          모양은 균등 3칸 카드였다가 **번호 붙은 목록**으로 바꿨다. 같은 크기 상자
+          셋을 나란히 놓는 배치는 내용과 상관없이 어디에나 놓이는 모양이라, 셋이
+          무슨 관계인지(= 같은 더미에서 뽑히는 보기 셋)를 말해 주지 않았다.
+
+          ⚠ DOM 에서 **로그인 뒤**에 있다. 격자로는 왼쪽 아래 칸이지만, 한 단으로
+          접히면 로고 → 시작·로그인 → 증강 예시 순으로 쌓인다. 좁은 화면에서
+          들어가는 문이 예시 목록 밑으로 밀려나지 않게 하려는 순서다.
+        */}
+        <section className="panel landing-show">
+          <div className="panel-head">
+            <h2>증강 예시</h2>
+            <span className="panel-meta num">
+              3{augKinds !== null ? ` / ${augKinds}` : ""}
+            </span>
+          </div>
+          <ol className="landing-show-list">
+            {LANDING_SHOWCASE.map((s, i) => (
+              <li key={s.name} className="landing-show-item">
+                <span className="landing-show-no num" aria-hidden="true">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="landing-show-body">
+                  <div className="landing-show-top">
+                    <span className="landing-show-name">{s.name}</span>
+                    <span className="landing-show-kind">{s.kind}</span>
+                    <span className="landing-show-cap">{s.cap}</span>
+                  </div>
+                  <div className="landing-show-fig">
+                    <span className="landing-show-before">
+                      <HelpTileGroups tiles={s.before} />
+                    </span>
+                    {/* 화살표 글자는 CSS가 넣는다 — 칸이 좁으면 세로(↓), 넓으면 가로(→)로
+                        쌓이는데 방향이 어긋나면 그림이 거짓말을 한다 */}
+                    <span className="landing-show-arrow" aria-hidden="true" />
+                    <span className="landing-show-after">
+                      <HelpTileGroups tiles={s.after} />
+                    </span>
+                  </div>
+                  <p className="landing-show-desc">{s.desc}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="landing-show-foot">
+            매 국 시작에 세 장 중 하나를 고릅니다.
+          </p>
+        </section>
       </div>
     </div>
   );
