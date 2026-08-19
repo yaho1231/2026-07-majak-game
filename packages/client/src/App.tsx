@@ -9460,7 +9460,7 @@ function HomeScreen(props: {
             title="설정"
             aria-label="설정"
           >
-            <i className="mk mk-gear" aria-hidden="true" />
+            <i className="mk mk-sliders" aria-hidden="true" />
           </button>
           {settingsOpen ? (
             <SettingsPanel
@@ -10039,15 +10039,42 @@ function WaitingRoom(props: {
   return (
     <div className="waitroom">
       <div className="waitroom-card">
-        <button className="icon-btn settings-btn" onClick={() => setSettingsOpen((v) => !v)} title="설정">⚙</button>
-        <button className="icon-btn leave-btn" onClick={props.onLeave} title="나가기">✕</button>
-        {props.onOpenCodex !== undefined ? (
-          <button className="icon-btn codex-btn" onClick={props.onOpenCodex} title="증강 도감">📖</button>
-        ) : null}
-        {props.onEmote !== undefined ? <EmoteBar onSend={props.onEmote} /> : null}
-        {props.onOpenHelp !== undefined ? (
-          <button className="icon-btn help-btn" onClick={props.onOpenHelp} title="규칙 · 도움말">📘</button>
-        ) : null}
+        {/*
+          ── 창 머리 ──
+          예전에는 이 넷(설정·나가기·도감·규칙)이 **판 위와 같은 `.icon-btn`** 이라
+          `position: absolute` 로 카드 위에 떠 있었고, 정형구 단추(`.emote-bar`)도
+          `top: 64px` 로 그 아래에 얹혀 방 코드 상자를 가렸다. 판이 없는 화면에서
+          단추가 허공에 떠 있을 이유가 없다 — 판 밖 화면의 문법대로 **창의
+          타이틀바**로 내린다 (2026-08-19 사용자 지적: "대기실도 애매하게 남아있어").
+
+          ⚠ 그래서 여기서는 `.icon-btn` 을 쓰지 않는다. 그 클래스는 판 위 절대배치
+          전용이고, 대기실만 떼어 오려면 클래스를 갈라야 한다.
+        */}
+        <div className="wr-head">
+          <h1 className="waitroom-title">대기실</h1>
+          <span className="site-bar-spacer" />
+          {props.onOpenHelp !== undefined ? (
+            <button className="btn-ghost wr-head-btn" onClick={props.onOpenHelp} title="규칙 · 도움말" aria-label="규칙 · 도움말">
+              <i className="mk mk-doc" aria-hidden="true" />
+            </button>
+          ) : null}
+          {props.onOpenCodex !== undefined ? (
+            <button className="btn-ghost wr-head-btn" onClick={props.onOpenCodex} title="증강 도감" aria-label="증강 도감">
+              <i className="mk mk-grid" aria-hidden="true" />
+            </button>
+          ) : null}
+          {props.onEmote !== undefined ? <EmoteBar onSend={props.onEmote} /> : null}
+          <button
+            className="btn-ghost wr-head-btn"
+            onClick={() => setSettingsOpen((v) => !v)}
+            title="설정"
+            aria-label="설정"
+          >
+            <i className="mk mk-sliders" aria-hidden="true" />
+          </button>
+          <span className="site-div" />
+          <button className="btn-ghost wr-head-btn wr-head-x" onClick={props.onLeave} title="나가기" aria-label="나가기">✕</button>
+        </div>
         {settingsOpen ? (
           <SettingsPanel
             settings={props.settings}
@@ -10055,13 +10082,17 @@ function WaitingRoom(props: {
             onClose={() => setSettingsOpen(false)}
           />
         ) : null}
-        <h1 className="waitroom-title">대기실</h1>
-        <div className="waitroom-code" onClick={copyCode} title="클릭해서 복사">
-          <span className="waitroom-code-label">방 코드</span>
-          <span className="waitroom-code-value">{props.roomId}</span>
+
+        {/* 방 코드 — `<div onClick>` 이었다. 키보드로는 닿지 않고 스크린리더에는
+            누를 것으로 안 읽혔다. 하는 일이 "누르면 복사"이므로 버튼이 맞다. */}
+        <button type="button" className="waitroom-code" onClick={copyCode} title="눌러서 복사">
+          <span className="waitroom-code-label hud">방 코드</span>
+          <span className="waitroom-code-value num">{props.roomId}</span>
           <span className="waitroom-code-copy">복사</span>
-        </div>
-        <p className="waitroom-room">코드를 친구에게 알려주세요 · {lobby.players.length}/4</p>
+        </button>
+        <p className="waitroom-room">
+          코드를 친구에게 알려주세요 · <b className="num">{lobby.players.length}/4</b>
+        </p>
 
         {/* 줄이 둘인데 둘 다 라벨이 없어, 아래 줄이 무엇을 정하는지 알 수 없었다
             (2026-08-08 사용자 지적) — 각 줄에 무엇을 고르는 자리인지 붙인다. */}
