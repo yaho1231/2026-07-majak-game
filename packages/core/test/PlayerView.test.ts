@@ -190,6 +190,46 @@ describe("PlayerView — 관전자(SPECTATOR_ID)", () => {
     expect(view.zones[DEAD_WALL]?.hiddenCount).toBe(0);
     expect(view.zones[DEAD_WALL]?.tileIds.length).toBeGreaterThan(0);
   });
+
+  /*
+   * 중계 관전(2026-08-19). 관전 뷰는 손패도 패산도 다 보여 주면서, 정작 후리텐·일발
+   * 같은 «본인 시점의 속사정»만 `pid === viewerId`에 걸려 네 좌석 전부 비어 있었다.
+   * 화면에는 오름패가 뜨는데 "저 사람은 후리텐이라 론이 안 된다"가 어디에도 없어,
+   * 중계 해설이 판을 거꾸로 읽는다.
+   */
+  it("관전자는 네 좌석 모두의 후리텐·일발 상세를 받는다 (대국자는 본인 것만)", () => {
+    const base = makeState();
+    const p1 = base.round.byPlayer["p1"];
+    if (p1 === undefined) throw new Error("missing p1");
+    const state: GameState = {
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p1: {
+            ...p1,
+            temporaryFuriten: true,
+            riichi: { double: false, ippatsu: true, discardIndex: 2 },
+          },
+        },
+      },
+    };
+    const rules = makeRules();
+
+    const spec = buildPlayerView(state, SPECTATOR_ID, rules).round.byPlayer["p1"];
+    expect(spec?.furiten).toBe(true);
+    expect(spec?.furitenReasons).toEqual(["temporary"]);
+    expect(spec?.ippatsu).toBe(true);
+
+    // 대국자 시점은 그대로다 — 남의 후리텐·일발은 여전히 안 보인다.
+    const other = buildPlayerView(state, "p2", rules).round.byPlayer["p1"];
+    expect(other?.furiten).toBeUndefined();
+    expect(other?.furitenReasons).toBeUndefined();
+    expect(other?.ippatsu).toBeUndefined();
+    // 리치 선언 자체는 원래대로 전원 공개다.
+    expect(other?.riichiDeclared).toBe(true);
+  });
 });
 
 // ─────────────────────────── §6 RoundView 공개 정보 ───────────────────────────
