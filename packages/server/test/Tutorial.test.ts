@@ -2,8 +2,9 @@
  * 튜토리얼 방 — 배우기 위해 **고정해 둔 것**이 실제로 고정돼 있는가.
  *
  * 지키려는 선(서버의 `TUTORIAL_ROOM_NOTE`가 약속하는 것들):
- * - 시작 증강이 **액티브 증강 하나로 고정**된다 → "⚡ 버튼"·"발광"·"보라 생성패"
- *   세 강의가 매번 성립한다.
+ * - 증강 선택창이 **고정**된다: 같은 석 장이 서고 **연금술사만** 눌린다 →
+ *   "⚡ 버튼"·"발광"·"보라 생성패" 세 강의가 매번 성립하고, 손에 남는 증강은
+ *   그 하나뿐이라 «✦ 액티브 증강»에 고르는 줄이 끼어들지 않는다.
  * - 손패가 고정된다 → 첫 순에 버릴 패가 뻔하고, 몇 순 안에 텐파이가 선다.
  * - **결정에 시간 제한이 사실상 없다.** 이게 이 파일의 핵심이다 — 증강 설명을
  *   읽는 사이 서버가 무작위로 대신 고르면 그건 튜토리얼이 아니다
@@ -139,13 +140,58 @@ afterEach(async () => {
 });
 
 describe("튜토리얼 판 — 배우기 좋게 고정돼 있다", () => {
-  it("시작부터 액티브 증강(연금술사)을 들고 있다", async () => {
+  it("증강 선택창이 고정돼 있다 — 같은 석 장, 연금술사만 잠금 해제", async () => {
+    /*
+     * 코치의 대본이 "«연금술사»를 고르세요"라고 **이름을 부른다**. 카드가 판마다
+     * 달라지면 그 자리에서 거짓말이 되고, 다른 카드가 눌리면 뒤 강의(⚡ 버튼·발광·
+     * 보라 생성패)가 통째로 성립하지 않는다.
+     */
     const h = await newHarness();
     const sock = await connect(h, true);
+    await sock.waitFor((m) => m.type === "draftOffer");
+    const offer = sock.last("draftOffer");
+    expect(offer.choices.map((c: any) => c.id)).toEqual([
+      "alchemist",
+      "danger_sense",
+      "triple_peek",
+    ]);
+    expect(offer.lockedId).toBe("alchemist");
+    // 새로고침은 없다 — 갈아 낄 수 있으면 고정이 아니다.
+    expect(offer.rerollable).toEqual([false, false, false]);
+  });
+
+  it("잠긴 카드는 서버가 거절한다 — 화면을 우회해도 못 고른다", async () => {
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    await sock.waitFor((m) => m.type === "draftOffer");
+    const offer = sock.last("draftOffer");
+    sock.clientSend({ type: "draftPick", stage: offer.stage, augmentId: "danger_sense" });
+    await sock.waitFor((m) => m.type === "error");
+    expect(sock.last("error").code).toBe("INVALID_DRAFT_PICK");
+    // 거절이지 무시가 아니다 — 연금술사는 그대로 들어간다.
+    sock.clientSend({ type: "draftPick", stage: offer.stage, augmentId: "alchemist" });
+    await sock.waitFor((m) => m.type === "prompt");
     const view = sock.last("view").view;
-    const me = view.players.find((p: any) => p.id === view.playerId);
-    // 이 하나로 "⚡ 액티브 증강 버튼"·"이름표 발광"·"보라 생성패" 강의가 전부 선다.
-    expect(me.augments).toContain("alchemist");
+    expect(view.players.find((p: any) => p.id === view.playerId).augments).toEqual([
+      "alchemist",
+    ]);
+  });
+
+  it("증강은 연금술사 **한 개**뿐이다 — 지급분이 따로 붙지 않는다", async () => {
+    /*
+     * 예전에는 배패 전에 연금술사를 지급해 두고 드래프트를 무작위로 열어, 첫 국부터
+     * 증강이 둘이었다 — 이름표에 알약이 둘 붙고 «✦ 액티브 증강»에 고르는 줄이 한 번
+     * 더 떴다(2026-08-19 사용자 지시: "연금술사 한개만 있게 해줘").
+     */
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    const before = sock.last("view").view;
+    // 고르기 전에는 아무것도 없다 (지급분이 없다는 뜻)
+    expect(before.players.find((p: any) => p.id === before.playerId).augments).toEqual([]);
+    const after = await pickDraftAndPlay(sock);
+    expect(after.players.find((p: any) => p.id === after.playerId).augments).toEqual([
+      "alchemist",
+    ]);
   });
 
   it("손패가 고정 배패다 — 코치의 대본이 손패로 적혀 있다", async () => {
@@ -319,13 +365,18 @@ describe("튜토리얼 판 — 배우기 좋게 고정돼 있다", () => {
   });
 
   it("체험판(튜토리얼 아님)은 고정되지 않는다 — 진짜 판 그대로다", async () => {
-    // 고정이 새어 나가면 체험이 매번 같은 판이 된다. 시작 증강이 붙지 않는 것으로 본다
-    // (배패는 무작위라 '다르다'를 한 판으로 증명할 수 없지만, 증강은 결정적이다).
+    // 고정이 새어 나가면 체험이 매번 같은 판이 된다. 증강 선택창으로 본다 —
+    // 잠긴 카드가 없고 새로고침도 살아 있어야 한다(배패의 무작위성은 한 판으로
+    // 증명할 수 없지만, 이 둘은 결정적이다).
     const h = await newHarness();
     const sock = await connect(h, false);
+    await sock.waitFor((m) => m.type === "draftOffer");
+    const offer = sock.last("draftOffer");
+    expect(offer.lockedId).toBeUndefined();
+    expect(offer.rerollable).toContain(true);
+    // 그리고 시작 증강 지급도 없다 (튜토리얼과 공유하던 배관이 남아 있지 않게)
     const view = sock.last("view").view;
-    const me = view.players.find((p: any) => p.id === view.playerId);
-    expect(me.augments).toHaveLength(0);
+    expect(view.players.find((p: any) => p.id === view.playerId).augments).toHaveLength(0);
   });
 });
 

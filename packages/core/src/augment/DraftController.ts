@@ -62,6 +62,18 @@ function hashString(s: string): number {
   return h >>> 0;
 }
 
+/** 드래프트를 **추첨하지 않고 못 박는** 통로 (튜토리얼) */
+export interface DraftOptions {
+  /**
+   * 이 좌석·스테이지에 세울 카드를 통째로 지정한다 (없으면 평소대로 추첨).
+   *
+   * 튜토리얼은 코치의 대본이 "«연금술사»를 고르세요"라고 이름을 부르므로, 카드가
+   * 판마다 달라지면 안내가 곧바로 거짓말이 된다(`RoomManager.TUTORIAL_ROOM_NOTE`).
+   * 보유·난도·좌석 칸 같은 평소 규칙은 여기서 전부 건너뛴다 — 못 박는다는 뜻이다.
+   */
+  forcedChoices?: (stage: DraftStage, player: PlayerId) => readonly string[] | undefined;
+}
+
 export class DraftController {
   /**
    * **이 스테이지가 열린 순간의** 보유 현황 (플레이어 id → 보유 증강).
@@ -96,7 +108,27 @@ export class DraftController {
     private readonly engine: GameEngine,
     private readonly catalog: AugmentRegistry,
     private readonly extras: AugmentExtras = {},
+    private readonly opts: DraftOptions = {},
   ) {}
+
+  /**
+   * 이 좌석·스테이지에 **못 박아 둔 카드**가 있으면 그 정의들 (없으면 null).
+   *
+   * 추첨을 통째로 건너뛰는 자리라 `rollWithRerolls` 안에 둔다 — `pick`이 검증할 때도
+   * 같은 함수를 다시 부르므로, 여기서 갈아 끼우면 제시와 검증이 저절로 일치한다.
+   * 바깥에서 오퍼만 바꿔치기하면 `pick`이 "제시된 적 없다"로 던진다.
+   */
+  private forced(stage: DraftStage, player: PlayerId): AugmentDef[] | null {
+    const ids = this.opts.forcedChoices?.(stage, player);
+    if (ids === undefined || ids.length === 0) return null;
+    const defs: AugmentDef[] = [];
+    for (const id of ids) {
+      const def = this.catalog.get(id);
+      // 이름이 틀렸으면 그 한 장만 빠진다 — 못 박기가 통째로 무너지는 것보다 낫다.
+      if (def !== undefined) defs.push(def);
+    }
+    return defs.length > 0 ? defs : null;
+  }
 
   /** 현재 게임 모드 (없으면 반장전 폴백) */
   private mode(): import("../engine/state/GameState.js").GameMode {
@@ -280,6 +312,12 @@ export class DraftController {
     stage: DraftStage,
     player: PlayerId,
   ): { choices: AugmentDef[]; rerolls: AugmentDef[] } {
+    /*
+     * 못 박아 둔 자리(튜토리얼)에는 **새로고침을 주지 않는다.** 갈아 끼울 수 있으면
+     * 고정이 아니고, 그 순간 코치의 대본이 가리키는 카드가 화면에서 사라진다.
+     */
+    const forced = this.forced(stage, player);
+    if (forced !== null) return { choices: forced, rerolls: [] };
     const count = this.engine.rules.resolve<number>("augment.draft.choices");
     const drawn = this.draw(stage, player);
     return { choices: drawn.slice(0, count), rerolls: drawn.slice(count) };

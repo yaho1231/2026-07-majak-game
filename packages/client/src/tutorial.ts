@@ -78,9 +78,11 @@
  *
  * ## 판은 튜토리얼용으로 고정돼 있다
  *
- * 서버가 튜토리얼 방을 배우기 좋게 고정한다 — 시작 증강은 **연금술사**(액티브 +
- * 생성패), 손패는 1샹텐 고정, 봇은 리치·화료를 하지 않고, 결정에 시간 제한이
- * 사실상 없다. 그래서 여기 강의는 "액티브 증강이 있다면"을 가정해도 된다.
+ * 서버가 튜토리얼 방을 배우기 좋게 고정한다 — 증강 선택창에 뜨는 카드 석 장이
+ * 판마다 같고 그중 **연금술사**(액티브 + 생성패)만 눌리며, 손패는 1샹텐 고정,
+ * 봇은 리치·화료를 하지 않고, 결정에 시간 제한이 사실상 없다. 그래서 여기 강의는
+ * "액티브 증강이 있다면"이 아니라 **"내 증강은 연금술사 하나"**를 가정해도 된다
+ * (2026-08-19 사용자 지시로 지급분을 걷고 드래프트 한 장으로 모았다).
  * 근거와 이유는 서버의 `TUTORIAL_ROOM_NOTE`에 한자리에 적혀 있다.
  */
 
@@ -120,6 +122,15 @@ export interface CoachCtx {
   handKinds: ReadonlySet<string>;
   /** 내가 리치를 선언한 상태인가 */
   riichiDeclared: boolean;
+  /**
+   * **국이 끝나 정산 화면이 떠 있는가.**
+   *
+   * 이때는 마무리(`outro`) 말고 아무 말도 하지 않는다. 판의 사실만 보는 강의들이
+   * 국이 끝난 뒤에도 그대로 성립하기 때문이다 — 실제로 론을 눌러 8700점을 받은
+   * 정산 화면 위에 "리치 성공 — 이제 기다립니다. 누군가 오름패를 버리면 «론»
+   * 버튼이 뜹니다"가 떴다(2026-08-19 실측). 이미 눌러서 끝난 판이다.
+   */
+  roundOver: boolean;
   /**
    * **내가 이 판을 이겨 봤는가** — 화료 버튼을 눌러 실제로 점수를 받았는가.
    *
@@ -318,7 +329,13 @@ export const LESSONS: readonly Lesson[] = [
     urgent: true,
     chapter: "증강 고르기",
     title: "먼저 증강을 하나 고릅니다",
-    body: "국이 시작될 때마다 세 장 중 하나를 고릅니다. 증강은 이 게임의 규칙 자체를 바꾸는 능력입니다 — 무엇을 골라도 됩니다.",
+    /*
+     * ⚠ "무엇을 골라도 됩니다"라고 적어 두면 **화면과 어긋난다**: 튜토리얼의 카드
+     * 석 장은 고정이고 그중 연금술사만 눌린다(`RoomManager.TUTORIAL_ROOM_NOTE`).
+     * 뒤 강의들이 전부 "내 증강 «연금술사»"를 전제로 서 있기 때문이다 —
+     * 실제 대국이 어떻게 다른지는 같은 자리에서 한 줄로 말해 둔다.
+     */
+    body: "국이 시작될 때마다 세 장 중 하나를 고릅니다. 증강은 이 게임의 규칙 자체를 바꾸는 능력입니다. 실제 대국에서는 셋 다 고를 수 있지만, 튜토리얼은 설명하기 좋은 «연금술사» 하나로 고정해 두었습니다.",
     anchor: ".draft-panel",
     when: (c) => c.draftOpen,
   },
@@ -334,6 +351,12 @@ export const LESSONS: readonly Lesson[] = [
     done: (c) => !c.draftOpen || c.hit(".draft-card .augdesc-body-full"),
   },
   {
+    /*
+     * 새로고침 — **튜토리얼에서는 안 나온다.** 카드를 못 박은 판에는 ↻ 줄 자체가
+     * 없어서(`App.tsx` DraftOverlay의 `locked`) `when`이 성립하지 않는다. 지우지
+     * 않는 이유는 이 코치가 튜토리얼 전용이 아니기 때문이다 — 새로고침이 있는
+     * 판에서 켜면 그때는 이 강의가 제자리에서 뜬다.
+     */
     id: "draft-reroll",
     urgent: true,
     chapter: "증강 고르기",
@@ -346,9 +369,14 @@ export const LESSONS: readonly Lesson[] = [
     id: "draft-pick",
     urgent: true,
     chapter: "증강 고르기",
-    title: "이제 하나를 고르세요",
-    body: "튜토리얼에서는 제한 시간이 없습니다 — 시간이 지나 저절로 뽑히는 일은 없으니 마음 놓고 읽어 보세요.",
-    todo: "카드 한 장을 눌러 고릅니다.",
+    title: "이제 «연금술사»를 고르세요",
+    /*
+     * 잠긴 두 장을 **먼저** 설명한다. 지목만 해 두면 어두워진 카드가 "고장난 카드"로
+     * 읽히고, 눌러 봤는데 안 나가면 거기서 멈춘다(2026-08-19 사용자 지시로 고정한 판).
+     * 제한 시간 이야기를 함께 두는 것은 둘 다 "이 화면에서 서두를 것이 없다"이기 때문.
+     */
+    body: "가운데·오른쪽 카드는 어둡게 잠겨 있습니다 — 튜토리얼이라 «연금술사» 하나로 고정해 둔 것이라, 눌러도 나가지 않습니다. 제한 시간도 없으니 세 장 다 읽어 보고 고르세요.",
+    todo: "밝게 켜져 있는 «연금술사» 카드를 눌러 고릅니다.",
     anchor: ".draft-cards",
     when: (c) => c.draftOpen,
     done: (c) => !c.draftOpen,
@@ -493,10 +521,14 @@ export const LESSONS: readonly Lesson[] = [
     chapter: "증강 읽기",
     title: "⚡ 증강을 써 봅시다 — 먼저 «✦ 액티브 증강»",
     body: `내 증강 «연금술사»는 손패 한 장의 숫자를 ±1 옮깁니다. 1삭을 ${SCRIPT_ALCHEMY_TO}으로 만들면 2삭이 세 장이 되어, 한 장만 더 맞으면 완성인 손이 됩니다.`,
-    // 쓸 수 있는 액티브 증강이 둘 이상이면(시작 증강 + 이번 국에 고른 것) 버튼을 누른
-    // 뒤에 **고르는 줄이 한 번 더** 뜬다. 그 단계를 안 적어 두면 목록 앞에서 멈춘다
-    // (2026-08-18 실측 — 첫 국부터 둘인 경우가 흔하다).
-    todo: "빛나는 «✦ 액티브 증강»을 누르세요. 목록이 뜨면 «연금술사»를 고릅니다.",
+    /*
+     * 한때 "목록이 뜨면 «연금술사»를 고릅니다"가 붙어 있었다 — 시작 증강과 이번 국에
+     * 고른 것이 겹쳐 액티브가 둘이던 시절, 버튼을 누르면 고르는 줄이 한 번 더 떴기
+     * 때문이다. 이제 증강은 연금술사 하나뿐이라(`TUTORIAL_ROOM_NOTE`) 그 줄은 뜨지
+     * 않는다 — 버튼을 누르면 곧바로 손패를 고르는 상태가 된다. 안 뜨는 화면을
+     * 설명하는 것도 틀린 안내다.
+     */
+    todo: "빛나는 «✦ 액티브 증강»을 누르세요.",
     /*
      * 목록이 떠 있으면 **목록을** 비춘다. 버튼만 가리키면 정작 다음에 눌러야 할 줄이
      * 어두운 쪽에 남는다. `rectOf`는 문서 순서로 첫 번째 것을 집는데, 메뉴가 버튼보다
@@ -849,10 +881,22 @@ const OUTRO_NEEDS: readonly string[] = [
   "settings",
 ];
 
+/**
+ * 정산 화면이 떠 있는 동안 꺼내도 되는 강의인가.
+ *
+ * 마무리 하나뿐이다(`CoachCtx.roundOver` 주석). 강의마다 `when`에 조건을 하나씩 더
+ * 다는 대신 픽커에서 한 번에 막는다 — 조건을 빠뜨린 강의가 하나만 있어도 같은 일이
+ * 다시 생기고, 그건 강의를 새로 얹을 때마다 되풀이될 실수다.
+ */
+function allowedNow(c: CoachCtx, lesson: Lesson): boolean {
+  return !c.roundOver || lesson.id === "outro";
+}
+
 /** 지금 꺼낼 강의 — 아직 안 본 것 중 기회가 성립하는 첫 번째 */
 export function pickLesson(c: CoachCtx): Lesson | null {
   for (const lesson of LESSONS) {
     if (c.seen.has(lesson.id)) continue;
+    if (!allowedNow(c, lesson)) continue;
     if (lesson.when(c)) return lesson;
   }
   return null;
@@ -868,6 +912,7 @@ export function pickLesson(c: CoachCtx): Lesson | null {
 export function pickUrgent(c: CoachCtx): Lesson | null {
   for (const lesson of LESSONS) {
     if (lesson.urgent !== true || c.seen.has(lesson.id)) continue;
+    if (!allowedNow(c, lesson)) continue;
     if (lesson.when(c)) return lesson;
   }
   return null;

@@ -209,6 +209,14 @@ export class HumanAgent implements PlayerAgent {
   private tutorial = false;
 
   /**
+   * 증강 선택에서 **이 하나만 유효하다** — 튜토리얼이 못 박은 픽 (없으면 null).
+   *
+   * 화면도 나머지 카드를 잠그지만(`DraftOfferMessage.lockedId`), 서버가 같은 값을
+   * 들고 있어야 화면을 우회한 메시지·시간 초과 자동 선택까지 같은 결론으로 간다.
+   */
+  private forcedDraftPick: string | null = null;
+
+  /**
    * 끊긴 채로 유예 타임아웃을 **연속으로** 흘린 횟수. 재접속하면 0으로 돌아간다.
    * `GRACE_TIMEOUTS_BEFORE_ABANDON`에 닿으면 좌석을 이탈로 확정한다.
    */
@@ -665,6 +673,14 @@ export class HumanAgent implements PlayerAgent {
   }
 
   /**
+   * 증강 선택을 이 하나로 못 박는다 (튜토리얼). null이면 평소대로 셋 다 유효하다.
+   * 카드 목록 자체는 컨트롤러가 고정한다(`presetDraftChoices`) — 여기는 **답**만 본다.
+   */
+  setForcedDraftPick(id: string | null): void {
+    this.forcedDraftPick = id;
+  }
+
+  /**
    * 이 결정의 제한 시간(ms).
    *
    * 평소에는 AFK 방지용 30초지만, **초읽기(time_pressure)**가 걸린 국에는 그 증강이
@@ -831,6 +847,12 @@ export class HumanAgent implements PlayerAgent {
    */
   private draftOfferMessage(deadlineMs: number): ServerMessage {
     const choices = this.pendingDraftChoices ?? [];
+    // 못 박은 카드가 **실제로 화면에 서 있을 때만** 잠금을 알린다 — 없는 카드를
+    // 가리키며 나머지를 잠그면 아무것도 못 고르는 화면이 된다.
+    const locked =
+      this.forcedDraftPick !== null && choices.some((c) => c.id === this.forcedDraftPick)
+        ? this.forcedDraftPick
+        : null;
     return {
       type: "draftOffer",
       stage: this.pendingDraftStage ?? "gameStart",
@@ -844,6 +866,7 @@ export class HumanAgent implements PlayerAgent {
       rerollable: choices.map(
         (_, i) => !this.draftRerollUsed.has(i) && this.pendingDraftRerolls[i] !== undefined,
       ),
+      ...(locked !== null ? { lockedId: locked } : {}),
     };
   }
 
@@ -899,7 +922,14 @@ export class HumanAgent implements PlayerAgent {
       this.draftTimeout = null;
       // 후보가 비었을 리는 없지만(컨트롤러가 빈 목록으로는 부르지 않는다), 그래도
       // resolve는 반드시 한다 — 안 하면 이 좌석 하나가 판 전체를 세운다.
-      const pick = choices[Math.floor(Math.random() * choices.length)] ?? choices[0];
+      // 못 박아 둔 자리(튜토리얼)는 무작위가 아니라 **그 카드**로 간다 — 30분을
+      // 넘겨 자리를 비운 사람이 돌아왔을 때 코치의 대본과 손이 어긋나지 않게.
+      const forced =
+        this.forcedDraftPick === null
+          ? undefined
+          : choices.find((c) => c.id === this.forcedDraftPick);
+      const pick =
+        forced ?? choices[Math.floor(Math.random() * choices.length)] ?? choices[0];
       // 무엇이 뽑혔는지 알린다 — 선택창은 "랜덤으로 결정된다"를 미리 적어 두면서
       // 결과는 말하지 않아, 돌아온 사람에게는 안 고른 증강이 그냥 생겨 있었다.
       if (pick !== undefined) {
@@ -1023,7 +1053,15 @@ export class HumanAgent implements PlayerAgent {
       // 지금 **화면에 서 있는** 후보만 유효하다 — 새로고침으로 갈아 낸 옛 카드는
       // pendingDraftChoices에서 이미 빠졌으므로 여기서 자동으로 거부된다.
       const choices = this.pendingDraftChoices ?? [];
-      const valid = choices.find((c) => c.id === msg.augmentId);
+      // 튜토리얼이 픽을 못 박았으면 그 하나만 유효하다 — 화면도 나머지를 잠그지만
+      // (`lockedId`), 그 잠금을 우회한 메시지가 통과하면 못 박은 뜻이 없어진다.
+      const locked =
+        this.forcedDraftPick !== null && choices.some((c) => c.id === this.forcedDraftPick)
+          ? this.forcedDraftPick
+          : null;
+      const valid = choices.find(
+        (c) => c.id === msg.augmentId && (locked === null || c.id === locked),
+      );
       if (valid) {
         this.clearDraftTimeout();
         const resolve = this.pendingDraft;
@@ -1036,7 +1074,10 @@ export class HumanAgent implements PlayerAgent {
         this.send({
           type: "error",
           code: "INVALID_DRAFT_PICK",
-          message: "제시되지 않은 증강입니다 — 화면을 새로 받아 주세요.",
+          message:
+            locked === null
+              ? "제시되지 않은 증강입니다 — 화면을 새로 받아 주세요."
+              : "튜토리얼에서는 이 증강만 고를 수 있습니다.",
         });
       }
       return;

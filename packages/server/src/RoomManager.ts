@@ -666,7 +666,7 @@ const MAX_GUEST_ROOMS_PER_IP = 3;
  * 그래서 튜토리얼 방은 게스트 방을 그대로 상속하되(기록 없음, 끊기면 §2-5의 '판
  * 세워 두기'로 3분간 기다린다) 다섯을 고정한다:
  *
- * 1. **시작 증강 = 연금술사.** 액티브(내 턴에 직접 발동)이면서 손패의 수패를
+ * 1. **증강 = 연금술사 하나.** 액티브(내 턴에 직접 발동)이면서 손패의 수패를
  *    ±1 바꿔 **생성패(보라)** 를 그 자리에서 만든다. "⚡ 버튼", "발광", "보라 패"
  *    세 강의가 이 하나로 전부 선다. 게임 5회라 실컷 눌러 봐도 남는다.
  * 2. **고정 배패.** 아래 `TUTORIAL_HAND` — 코치의 대본이 그대로 성립하도록 짠 손이다.
@@ -677,8 +677,38 @@ const MAX_GUEST_ROOMS_PER_IP = 3;
  *
  * 드래프트는 **끄지 않는다.** 증강을 고르는 것이 이 게임의 첫 조작이고, 그걸
  * 빼면 정작 가장 먼저 가르쳐야 할 화면을 안 보여 주는 셈이 된다.
+ *
+ * ## 증강은 드래프트로 **한 개만** 들어온다 (2026-08-19 사용자 지시)
+ *
+ * 예전에는 연금술사를 배패 전에 지급해 두고(`presetAugments`) 드래프트는 무작위로
+ * 열어 두었다. 그러면 첫 국부터 증강이 **둘**이 된다 — 코치는 "내 증강 «연금술사»"
+ * 하나만 이야기하는데 이름표에는 알약이 둘 붙고, «✦ 액티브 증강»을 누르면 고르는
+ * 줄이 한 번 더 떠서 "무엇을 눌러야 하는가"가 그 자리에서 흐려진다. 사용자 지시가
+ * 그대로 이것이다: "이제 고정할거니까 연금술사 한개만 있게 해줘."
+ *
+ * 그래서 지급을 걷고 **드래프트 쪽을 못 박는다**:
+ * - 카드 석 장이 판마다 똑같이 선다 (`TUTORIAL_DRAFT_CHOICES`) — 새로고침은 없다.
+ * - 그중 **연금술사만 눌린다** (`TUTORIAL_DRAFT_PICK`). 화면이 나머지를 잠그고
+ *   (`DraftOfferMessage.lockedId`), 서버도 같은 값으로 답을 검증한다.
+ *
+ * 결과는 같다 — 배패 직후 손에 연금술사 하나. 다만 그 하나가 **사람이 직접 고른
+ * 것**이라, 증강 선택 화면이라는 첫 조작을 가르치면서도 손이 흐려지지 않는다.
  */
-const TUTORIAL_AUGMENTS: readonly string[] = ["alchemist"];
+/**
+ * 튜토리얼 드래프트에 세우는 카드 석 장 — **연금술사가 첫 장**이다.
+ *
+ * 나머지 둘은 고르지 못하지만 아무거나가 아니다: 둘 다 난도 1(첫 드래프트에 실제로
+ * 나올 수 있는 급)이고 계열이 달라, "카드마다 색과 아이콘이 다르다"는 것이 화면에서
+ * 그냥 보인다. 잠긴 카드도 읽을거리이지 장식이 아니다.
+ */
+const TUTORIAL_DRAFT_CHOICES: readonly string[] = [
+  "alchemist",
+  "danger_sense",
+  "triple_peek",
+];
+
+/** 튜토리얼에서 **유일하게 고를 수 있는** 증강 (`TUTORIAL_DRAFT_CHOICES`의 첫 장) */
+const TUTORIAL_DRAFT_PICK = "alchemist";
 
 /**
  * 튜토리얼 고정 배패 (kindKey 13장 + 첫 쯔모 1장).
@@ -828,14 +858,15 @@ export function sanitizeSandboxHands(
  * 버그가 된다. 사람이 없으면(있을 수 없지만) 아무것도 걸지 않는다.
  */
 export function tutorialPresets(agents: readonly PlayerAgent[]): {
-  presetAugments?: Record<PlayerId, readonly string[]>;
   presetHands?: Record<PlayerId, readonly string[]>;
+  presetDraftChoices?: Record<PlayerId, readonly string[]>;
 } {
   const me = agents.find((a) => !a.isBot);
   if (me === undefined) return {};
   return {
-    presetAugments: { [me.id]: TUTORIAL_AUGMENTS },
     presetHands: { [me.id]: TUTORIAL_HAND },
+    // 증강은 지급하지 않는다 — 드래프트에서 **직접 고른 한 개**가 전부다.
+    presetDraftChoices: { [me.id]: TUTORIAL_DRAFT_CHOICES },
   };
 }
 
@@ -4461,6 +4492,9 @@ export class RoomManager {
         agent.setSeatConnectionSource(() => this.seatConnections(room));
         // 튜토리얼 좌석은 결정 제한 시간을 사실상 없앤다 (`TUTORIAL_ROOM_NOTE` 4).
         agent.setTutorial(room.tutorial);
+        // 증강 선택은 연금술사 하나로 못 박는다 — 카드 목록 자체는 컨트롤러가
+        // 고정하고(`presetDraftChoices`), 좌석은 **답**을 검증한다.
+        agent.setForcedDraftPick(room.tutorial ? TUTORIAL_DRAFT_PICK : null);
         // 돌아오지 않아 이탈로 확정된 좌석 — 이름표를 갱신하고, 걸려 있던 중단
         // 투표를 다시 집계한다. 그 좌석이 정족수에서 빠지면서 이미 모인 표만으로
         // 무효가 성립할 수 있는데, 다시 세지 않으면 아무도 그걸 모른다.
@@ -4503,9 +4537,10 @@ export class RoomManager {
             presetHands: room.sandboxHands,
           }
         : {}),
-      // 튜토리얼: 사람 좌석의 손패와 시작 증강만 고정한다 (`TUTORIAL_ROOM_NOTE`).
-      // **드래프트는 그대로 둔다** — 증강을 고르는 것이 이 게임의 첫 조작이다.
-      // 샌드박스와 같은 배관(`presetHands`/`presetAugments`)을 쓰므로 새 경로가 없다.
+      // 튜토리얼: 사람 좌석의 손패와 증강 선택지를 고정한다 (`TUTORIAL_ROOM_NOTE`).
+      // **드래프트는 끄지 않는다** — 증강을 고르는 것이 이 게임의 첫 조작이라,
+      // 카드는 그대로 세우되 판마다 같은 석 장이 서고 연금술사만 눌린다.
+      // 손패는 샌드박스와 같은 배관(`presetHands`)을 쓰므로 새 경로가 없다.
       ...(room.tutorial
         ? {
             ...tutorialPresets(room.agents),
