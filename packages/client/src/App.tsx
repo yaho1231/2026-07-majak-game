@@ -2733,6 +2733,16 @@ export function App(): JSX.Element {
   const [adminUsers, setAdminUsers] = useState<AdminUserEntry[] | null>(null);
   /** 제보 게시판 — 내가 볼 수 있는 글만 온다(내 글, 관리자면 전체). */
   const [feedback, setFeedback] = useState<FeedbackEntry[] | null>(null);
+  /**
+   * 홈의 "진행하던 방으로 재접속"이 가리키는 방 (없으면 null).
+   *
+   * 저장소 값을 **화면 그릴 때 직접 읽지 않는다** — 그러면 코드를 지워도 리렌더가
+   * 걸리지 않아 이미 죽은 방의 버튼이 그대로 서 있다. 저장소와 이 상태는
+   * `rememberLastRoom` 한 곳에서만 함께 움직인다.
+   */
+  const [lastRoomCode, setLastRoomCode] = useState<string | null>(() =>
+    safeStorage.getItem(LAST_ROOM_KEY),
+  );
   const [spectating, setSpectating] = useState<string | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
   /**
@@ -3573,6 +3583,29 @@ export function App(): JSX.Element {
     refreshHome();
   }
 
+  /**
+   * "진행하던 방" 기억하기/버리기 — 저장소와 화면 상태를 한 번에 움직인다.
+   * 저장소만 지우면 홈의 버튼이 그대로 남고, 상태만 지우면 새로고침에 되살아난다.
+   */
+  /**
+   * 마지막으로 들어가려 한 방 코드 — 거절이 돌아왔을 때 **무엇이 거절당했는지**를
+   * 알려면 있어야 한다. 오류 메시지에는 코드가 실려 오지 않아서, 이게 없으면
+   * 남의 방 코드를 잘못 쳐서 난 `ROOM_NOT_FOUND`가 멀쩡한 내 재접속 코드를 지운다.
+   */
+  const joinTargetRef = useRef<string | null>(null);
+
+  /** 방 참가 — 무엇을 향한 시도였는지 남기고 보낸다(위 `joinTargetRef` 참고). */
+  function joinRoomByCode(code: string): void {
+    joinTargetRef.current = code;
+    send({ type: "joinRoom", code });
+  }
+
+  function rememberLastRoom(code: string | null): void {
+    if (code === null) safeStorage.removeItem(LAST_ROOM_KEY);
+    else safeStorage.setItem(LAST_ROOM_KEY, code);
+    setLastRoomCode(code);
+  }
+
   function refreshHome(): void {
     // 게스트에게는 전부 막힌 요청이다 — 보내면 거절 토스트만 네 번 뜬다.
     if (guestRef.current) return;
@@ -3612,7 +3645,7 @@ export function App(): JSX.Element {
     setHelpOpen(false);
     safeStorage.removeItem(SESSION_KEY);
     safeStorage.removeItem(SESSION_SERVER_KEY);
-    safeStorage.removeItem(LAST_ROOM_KEY);
+    rememberLastRoom(null);
     // 체험을 끝내고 나가는 길(가입하러 가기 포함)도 여기를 지난다 — 열쇠를
     // 남겨 두면 다음 접속에서 이미 접힌 판으로 끌려간다.
     safeStorage.removeItem(GUEST_TOKEN_KEY);
@@ -3672,6 +3705,19 @@ export function App(): JSX.Element {
         // 계정으로 들어왔으니 체험 열쇠는 버린다 — 안 그러면 로그아웃한 뒤
         // 다음 접속에서 남의(자기 옛) 체험 판으로 끌려간다.
         safeStorage.removeItem(GUEST_TOKEN_KEY);
+        /*
+         * **진행하던 방은 서버에 물어서 정한다** (2026-08-19 사용자 보고).
+         *
+         * 브라우저에 남은 코드는 방이 서버에서 사라지는 길(재시작·유휴 청소·내가
+         * 없는 동안 접힌 판) 어디에서도 지워지지 않아, 홈의 재접속 버튼이 대부분
+         * **눌러야 "그 방은 이미 사라졌습니다"를 보는 버튼**이 되어 있었다.
+         * 이제 로그인할 때마다 실제로 돌아갈 수 있는 방으로 맞춘다.
+         *
+         * `undefined`면 이 값을 모르는 응답이다(비밀번호 변경 뒤 재발급 등) —
+         * 그럴 때는 건드리지 않는다. 지워 버리면 방 안에서 비밀번호를 바꾼 사람의
+         * 재접속 코드가 사라진다.
+         */
+        if (msg.resumeRoom !== undefined) rememberLastRoom(msg.resumeRoom);
       } else if (typeof msg.guestToken === "string" && msg.guestToken !== "") {
         // 끊겨도 이 판으로 돌아올 수 있게 열쇠를 보관한다 (감사 §2-5).
         safeStorage.setItem(GUEST_TOKEN_KEY, msg.guestToken);
@@ -3715,11 +3761,11 @@ export function App(): JSX.Element {
       } else if (invited !== null) {
         pendingInviteRef.current = null;
         clearRoomFromUrl();
-        send({ type: "joinRoom", code: invited });
+        joinRoomByCode(invited);
       } else if (activeRoomRef.current !== null) {
         // 재연결 복귀 — 끊기기 전 참가/관전 중이던 방으로 자동 재입장한다.
         // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
-        send({ type: "joinRoom", code: activeRoomRef.current });
+        joinRoomByCode(activeRoomRef.current);
       } else if (activeSpectateRef.current !== null) {
         send({ type: "spectate", code: activeSpectateRef.current });
       }
@@ -3765,6 +3811,21 @@ export function App(): JSX.Element {
         setAuthError(msg.message);
         return;
       }
+      /*
+       * **못 들어가는 방은 기억에서도 지운다.**
+       *
+       * 자동 재입장이든 홈에서 직접 누른 재접속이든(그쪽은 `activeRoomRef`가
+       * null이라 아래 분기에 안 걸린다), 서버가 이 세 사유로 거절했다면 그 코드로는
+       * 다시 들어갈 수 없다. 남겨 두면 홈에 죽은 버튼이 계속 서서, 누를 때마다 같은
+       * 거절만 돌아온다 — 실제로 이게 이 버튼의 평소 모습이었다 (2026-08-19 보고).
+       */
+      if (
+        (msg.code === "ROOM_NOT_FOUND" || msg.code === "ROOM_PLAYING" || msg.code === "KICKED") &&
+        joinTargetRef.current !== null &&
+        joinTargetRef.current === safeStorage.getItem(LAST_ROOM_KEY)
+      ) {
+        rememberLastRoom(null);
+      }
       // 재연결 후 자동 재입장했는데 그 방이 사라졌거나(게임이 오프라인 중 종료 등)
       // 방장이 나를 내보냈으면 조용히 홈으로 돌아간다.
       // activeRoomRef가 살아 있으면 = 자동 재입장 시도였다.
@@ -3807,7 +3868,7 @@ export function App(): JSX.Element {
     if (msg.type === "roomCreated") {
       // 게스트 방은 재접속할 수 없다 — 기억해 두면 홈에 죽은 방의 "재접속"이 남는다.
       if (guestRef.current) return;
-      safeStorage.setItem(LAST_ROOM_KEY, msg.code);
+      rememberLastRoom(msg.code);
       return; // 이어서 joined·lobby가 온다
     }
     if (msg.type === "adminAnalytics") {
@@ -3961,7 +4022,7 @@ export function App(): JSX.Element {
       // 게스트는 재접속할 수단이 없다(세션 토큰도 joinRoom 권한도 없다) — 재연결
       // 자동 재입장 대상으로 기억하면 붙자마자 거절 토스트만 뜬다.
       activeRoomRef.current = guestRef.current ? null : msg.roomId; // 재연결 시 자동 재입장 대상
-      safeStorage.setItem(LAST_ROOM_KEY, msg.roomId);
+      rememberLastRoom(msg.roomId);
       return;
     }
     if (msg.type === "catalog") {
@@ -4204,7 +4265,7 @@ export function App(): JSX.Element {
       // 새로고침·재연결로 돌아와도 같은 대기실에 다시 앉는다.
       if (msg.canContinue !== true) {
         activeRoomRef.current = null; // 게임 종료 → 재연결 자동 재입장 안 함
-        safeStorage.removeItem(LAST_ROOM_KEY);
+        rememberLastRoom(null);
       }
       // 체험 판이 끝났으면 그 판으로 돌아오는 열쇠도 여기서 죽는다 — 결과 화면에서
       // 새로고침했을 때 이미 없는 판으로 붙었다가 튕기는 길을 막는다.
@@ -4216,7 +4277,7 @@ export function App(): JSX.Element {
       showToast("방장이 방에서 내보냈습니다", "info", 4000);
       activeRoomRef.current = null;
       if (safeStorage.getItem(LAST_ROOM_KEY) === msg.roomId) {
-        safeStorage.removeItem(LAST_ROOM_KEY);
+        rememberLastRoom(null);
       }
       resetGameState();
       refreshHome();
@@ -4250,7 +4311,7 @@ export function App(): JSX.Element {
       if (leftBySelf.current) leftBySelf.current = false;
       else showToast(msg.reason, "info", 4000);
       activeRoomRef.current = null;
-      safeStorage.removeItem(LAST_ROOM_KEY);
+      rememberLastRoom(null);
       returnHome();
       return;
     }
@@ -5213,8 +5274,6 @@ export function App(): JSX.Element {
     }, COACH_HOLD_RELEASE_MS);
   });
 
-  const lastRoomCode = safeStorage.getItem(LAST_ROOM_KEY);
-
   return (
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
     {/* 판이 돌고 있을 때만 모드를 내려 준다 — 증강 설명의 "동풍전 N회 · 반장전 M회"가
@@ -5443,7 +5502,7 @@ export function App(): JSX.Element {
           settings={settings}
           onSetting={updateSetting}
           onCreateRoom={() => send({ type: "createRoom" })}
-          onJoinRoom={(code) => send({ type: "joinRoom", code })}
+          onJoinRoom={joinRoomByCode}
           onOpenReplay={(gameId) => send({ type: "replayGet", gameId })}
           onOpenCodex={() => { openCodex(); refreshHome(); }}
           onOpenHelp={() => setHelpOpen(true)}
@@ -5731,7 +5790,7 @@ export function App(): JSX.Element {
                 className="invite-go"
                 onClick={() => {
                   setInvites((cur) => cur.filter((x) => x.from !== v.from));
-                  send({ type: "joinRoom", code: v.code });
+                  joinRoomByCode(v.code);
                 }}
               >
                 들어가기
@@ -8807,7 +8866,11 @@ function FeedbackBoard(props: {
           className="fb-title"
           value={title}
           maxLength={80}
-          placeholder="제목 (예: 리치 후 쯔모가 두 번 들어옵니다)"
+          placeholder={
+            kind === "bug"
+              ? "제목 (예: 리치 후 쯔모가 두 번 들어옵니다)"
+              : "제목 (예: 버린 패를 한 번 되돌리는 증강)"
+          }
           onChange={(e) => setTitle(e.target.value)}
         />
         <textarea
