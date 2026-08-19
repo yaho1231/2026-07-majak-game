@@ -21,6 +21,7 @@
  */
 
 import type { PlayerId, PlayerView } from "@majak/core";
+import { readTargeting } from "./collect.js";
 
 export type BotGameMode = "hanchan" | "tonpuu";
 
@@ -93,6 +94,16 @@ export function readMatch(
   // 오야는 화료하면 연장된다 — 뒤집을 기회가 한 번 더 생기므로 조금 더 민다.
   // 반대로 올라스 오야 선두는 **끝내는 것**이 이득이라 더 지킨다.
   if (isDealer) riskAppetite += allLast && rank === 1 ? -0.15 : 0.1 * lateness;
+
+  /**
+   * **내가 지목당했는가** (`AUGMENT_PLAY.targeting.selfAppetite`).
+   *
+   * 덤터기에 찍히면 그 사람의 쯔모를 나 혼자 전액 문다 — **버림으로는 막을 수 없는**
+   * 실점이다. 안전패를 아무리 골라도 소용이 없으므로, 할 수 있는 일은 그 국을 내
+   * 손으로 먼저 끝내는 것뿐이다. 그래서 판단 규칙이 아니라 이 축(위험 선호) 하나를 민다 —
+   * 그러면 버림·리치·후로·깡·증강이 **한꺼번에** 그 방향으로 기운다(이 파일의 설계).
+   */
+  riskAppetite += readTargeting(view, me).appetite;
 
   return {
     myScore,

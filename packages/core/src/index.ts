@@ -266,15 +266,21 @@ export {
   augmentCollectHints,
   augmentFiredReads,
   augmentFuritenBreakReads,
+  augmentRiichiTrust,
   augmentRonImmuneReads,
+  augmentTableRuleReads,
+  augmentTargetingReads,
   augmentThreatMultiplier,
   augmentValueMultiplier,
+  augmentWideWaits,
   firedChannelKey,
 } from "./augment/play.js";
 export type {
   AugmentFired,
   AugmentPlay,
   AugmentRonImmune,
+  AugmentTableRule,
+  AugmentTargeting,
   CollectHint,
 } from "./augment/play.js";
 export type {
