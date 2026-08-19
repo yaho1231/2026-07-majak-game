@@ -800,6 +800,14 @@ export interface DraftOfferMessage {
    * 잠긴 채로 뜬다. 없으면(구 서버) 새로고침 자체가 없는 것으로 본다.
    */
   rerollable?: boolean[];
+  /**
+   * **이 카드만 고를 수 있다** — 튜토리얼이 픽을 못 박은 경우의 증강 id.
+   *
+   * 화면은 나머지 카드를 잠그고(눌러도 안 나간다) 새로고침도 감춘다. 서버도 같은
+   * 값으로 픽을 검증하므로, 화면을 우회해 보내도 다른 카드는 들어가지 않는다
+   * (`RoomManager.TUTORIAL_ROOM_NOTE`). 없으면 평소대로 셋 다 고를 수 있다.
+   */
+  lockedId?: string;
 }
 
 /**

@@ -2641,6 +2641,26 @@ export function App(): JSX.Element {
    */
   const coachOnRef = useRef(false);
   coachOnRef.current = coachOn;
+  /** 방금 **내가 눌러서** 판을 떠났는가 — 뒤따라오는 무효 알림을 삼키는 표식 */
+  const leftBySelf = useRef(false);
+  /**
+   * **이 튜토리얼에서 이겨 봤는가** — 마무리 강의(`outro`)의 조건 (`CoachCtx.won`).
+   *
+   * 정산 결과의 화료자 명단에서 찾는다(아래 `roundResult` 근처). 강의를 봤는지로
+   * 세면 «건너뛰기»로 넘긴 사람에게도 마무리가 떴다(2026-08-18 실측).
+   *
+   * ⚠ **코치를 켤 때마다 0으로 되돌린다.** ref는 판이 아니라 탭의 수명을 산다 —
+   * 한 번 이기고 튜토리얼을 마친 사람이 «🎓 튜토리얼»을 다시 누르면 이 값이 참인
+   * 채로 새 판이 시작해, **화료를 한 번도 안 했는데** 화면 도구 강의를 다 보는
+   * 순간 "화료 성공 — 여기까지가 기본입니다"가 뜨고 판에서 쫓겨났다
+   * (2026-08-19 사용자 보고). 켜는 자리가 여럿이라 `startCoach` 하나로 모은다.
+   */
+  const iWonRef = useRef(false);
+  /** 코치를 켠다 — 새 튜토리얼이므로 "이겨 봤는가"를 함께 되돌린다 */
+  const startCoach = (on: boolean): void => {
+    if (on) iWonRef.current = false;
+    setCoachOn(on);
+  };
   /**
    * 지금 대본 강의가 지목해 둔 패 (`CoachLockContext`). 코치가 알려 준다.
    * 강의가 물러나면(마쳤든 «건너뛰기»든) 코치가 null을 보내 잠금이 풀린다.
@@ -3529,6 +3549,8 @@ export function App(): JSX.Element {
    * 게임 중 나가기도 마찬가지로 알려야 서버가 그 자리를 자동 진행으로 넘긴다.
    */
   function returnHome(): void {
+    // 내가 눌러서 나간다 — 뒤따라올 `gameAborted`는 알림거리가 아니다(위 주석).
+    if (joined !== null) leftBySelf.current = true;
     if (joined !== null) send({ type: "leaveRoom" });
     if (spectating !== null) send({ type: "spectateStop" });
     resetGameState();
@@ -3670,7 +3692,7 @@ export function App(): JSX.Element {
         !tutorialDone.current
       ) {
         justRegistered.current = false;
-        setCoachOn(true);
+        startCoach(true);
         send({ type: "practicePlay", tutorial: true });
       } else if (invited !== null) {
         pendingInviteRef.current = null;
@@ -4002,6 +4024,9 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "view") {
+      // 판 안에 있다 = 앞서 누른 나가기는 이미 끝난 이야기다. 표식을 여기서 내려
+      // 두지 않으면, 그 뒤 남들의 합의로 진짜 무효가 났을 때 알림이 삼켜진다.
+      leftBySelf.current = false;
       // 첫 뷰 = 게임 테이블 입장 — 개막 연출 후 드래프트가 뜬다
       if (!introShown.current) {
         introShown.current = true;
@@ -4187,7 +4212,17 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "gameAborted") {
-      showToast(msg.reason, "info", 4000);
+      /*
+       * **내가 나가서 접힌 판이면 알리지 않는다.**
+       *
+       * 손님 방은 사람이 하나뿐이라 `leaveRoom`이 곧 무효 종료다 — 서버는 그 사유를
+       * "전원 합의로 게임이 무효 처리되었습니다"로 보낸다(투표 경로와 같은 메시지).
+       * 스스로 나간 사람에게 그 말은 뜻이 안 통하고, 튜토리얼을 끝까지 본 사람에게는
+       * "화료 성공" 바로 뒤에 **무효**라는 말이 뜬다(2026-08-19 실측). 내가 방금
+       * 누른 나가기의 결과라면 조용히 정리만 한다.
+       */
+      if (leftBySelf.current) leftBySelf.current = false;
+      else showToast(msg.reason, "info", 4000);
       activeRoomRef.current = null;
       safeStorage.removeItem(LAST_ROOM_KEY);
       returnHome();
@@ -5101,14 +5136,7 @@ export function App(): JSX.Element {
   /** 내가 리치를 선언했는가 — 코치의 "이제 기다립니다" 강의가 이걸 본다 */
   const myRiichiDeclared =
     view !== null && view.round.byPlayer[view.playerId]?.riichiDeclared === true;
-  /**
-   * **내가 이 판을 이겨 봤는가** — 마무리 강의의 조건 (`CoachCtx.won`).
-   *
-   * 정산 결과의 화료자 명단에서 찾는다. 강의를 봤는지(`seen`)로 세면 «건너뛰기»로
-   * 넘긴 사람에게도 "화료까지 해 보셨습니다"가 뜬다 — 아직 론 버튼이 화면에 그대로
-   * 있는데도 그랬다(2026-08-18 실측).
-   */
-  const iWonRef = useRef(false);
+  // **내가 이겨 봤는가**를 정산 결과에서 줍는다 (`iWonRef` 선언부에 근거).
   if (
     roundResult !== null &&
     view !== null &&
@@ -5230,7 +5258,7 @@ export function App(): JSX.Element {
           onTutorial={() => {
             setAuthError(null);
             // **일부러 누른 사람**이다 — 저장된 "이미 봤다"와 무관하게 코치를 켠다.
-            setCoachOn(true);
+            startCoach(true);
             send({ type: "guestPlay", tutorial: true });
           }}
           onOpenHelp={() => setHelpOpen(true)}
@@ -5326,6 +5354,11 @@ export function App(): JSX.Element {
         <GuestOutro
           username={auth.username}
           onPlayAgain={() => send({ type: "guestPlay" })}
+          onTutorial={() => {
+            // 직접 누른 사람이다 — 저장된 "이미 봤다"와 무관하게 코치를 켠다.
+            startCoach(true);
+            send({ type: "guestPlay", tutorial: true });
+          }}
           onOpenCodex={openCodex}
           onOpenHelp={() => setHelpOpen(true)}
           onSignUp={() => logout("register")}
@@ -5385,7 +5418,7 @@ export function App(): JSX.Element {
             // 튜토리얼을 **직접 누른** 사람은 다시 배우고 싶다는 뜻이다 — 저장된
             // "이미 봤다"와 무관하게 코치를 켠다. 연습 대국 쪽은 안내를 붙이지
             // 않는다(그 버튼의 약속이 "안내 없음"이다).
-            setCoachOn(tutorial);
+            startCoach(tutorial);
             send({ type: "practicePlay", ...(tutorial ? { tutorial: true } : {}) });
           }}
           onDeleteUser={(userId, username) => {
@@ -5444,6 +5477,8 @@ export function App(): JSX.Element {
             overlay: helpOpen ? "help" : codexOpen ? "codex" : null,
             handKinds: myHandKinds,
             riichiDeclared: myRiichiDeclared,
+            // 정산 화면이 떠 있는 동안에는 마무리 말고 아무 말도 하지 않는다
+            roundOver: roundResult !== null,
             won: iWonRef.current,
           }}
           // 도감·규칙이 판을 덮는 동안은 그림만 걷는다 (컴포넌트 주석 참고)
@@ -5451,7 +5486,7 @@ export function App(): JSX.Element {
           onLock={cbCoachLock}
           onHold={cbCoachHold}
           onFinish={(completed) => {
-            setCoachOn(false);
+            startCoach(false);
             setCoachLock(null);
             cbCoachHold(false);
             tutorialDone.current = true;
@@ -7797,6 +7832,8 @@ function CodexScreen(props: {
 function GuestOutro(props: {
   username: string;
   onPlayAgain: () => void;
+  /** 🎓 튜토리얼을 다시 켠다 — 이 화면이 마무리 강의가 내보내는 자리다 */
+  onTutorial: () => void;
   onOpenCodex: () => void;
   onOpenHelp: () => void;
   onSignUp: () => void;
@@ -7813,6 +7850,13 @@ function GuestOutro(props: {
         <button className="lobby-join" onClick={props.onPlayAgain}>
           <i className="mk mk-play" aria-hidden="true" />
           한 판 더 체험
+        </button>
+        {/* 🎓 튜토리얼 — **여기에도** 있어야 한다. 마무리 강의가 "«🎓 튜토리얼»은
+            로그인 화면과 홈 양쪽에 있으니 언제든 다시 오세요"라고 말해 놓고 그 길로
+            내보내는 곳이 바로 이 화면인데, 여태 이 화면에만 그 버튼이 없었다 —
+            손님은 로그아웃하지 않고는 다시 볼 수가 없었다(2026-08-19 실측). */}
+        <button className="lobby-join guest-tutorial" onClick={props.onTutorial}>
+          <span aria-hidden="true">🎓</span> 튜토리얼 다시 보기
         </button>
         <div className="guest-actions">
           <button className="wr-btn wr-bot" onClick={props.onOpenHelp}>규칙 · 도움말</button>
@@ -18766,6 +18810,15 @@ function DraftOverlay({
   // 원문 설명은 Shift를 누르고 있는 동안, 또는 카드의 "자세히"를 눌렀을 때만 펼친다.
   const shiftHeld = useShiftHeld();
   const [moreFor, setMoreFor] = useState<string | null>(null);
+  /**
+   * 튜토리얼이 못 박은 카드 (`DraftOfferMessage.lockedId`) — 없으면 null.
+   * 화면에 그 카드가 실제로 서 있을 때만 잠근다: 서버와 어긋나 있어도 "아무것도
+   * 못 고르는 화면"이 되지는 않게 한다.
+   */
+  const locked =
+    draft.lockedId !== undefined && draft.choices.some((c) => c.id === draft.lockedId)
+      ? draft.lockedId
+      : null;
   // 보유 중 알약의 title은 원문 그대로라, 여기서도 이 판의 횟수로 줄여 준다.
   const mode = useContext(GameModeContext);
 
@@ -18802,6 +18855,15 @@ function DraftOverlay({
           카드의 <b>자세히 ▾</b>를 누르면 원문 설명이 열립니다
           <span className="draft-howto-key"> · Shift를 누르고 있으면 전부 펼쳐집니다</span>
         </p>
+        {/* 왜 두 장이 어두운지 — 화면 안에서 한 줄로 답한다. 이 말이 없으면 잠긴
+            카드가 "고장난 카드"로 읽힌다 (`RoomManager.TUTORIAL_ROOM_NOTE`). */}
+        {locked !== null ? (
+          <p className="draft-locked-note">
+            🎓 튜토리얼 — 이번에는{" "}
+            <b>«{draft.choices.find((c) => c.id === locked)?.name ?? locked}»</b> 하나만
+            고를 수 있습니다. 실제 대국에서는 세 장 중 아무거나 고릅니다.
+          </p>
+        ) : null}
         {/* 지금까지 고른 증강 — 새 증강은 기존 증강과 맞물릴 때 값하므로, 무엇을
             들고 있는지 보이지 않으면 고를 수가 없다 (2026-08-04 사용자 요청). */}
         {owned.length > 0 ? (
@@ -18824,19 +18886,34 @@ function DraftOverlay({
         ) : null}
         <div className={`draft-cards${picked ? " draft-cards-locked" : ""}`}>
           {draft.choices.map((c, i) => {
-            const canReroll = !picked && draft.rerollable?.[i] === true;
+            const canReroll = !picked && locked === null && draft.rerollable?.[i] === true;
             // 새로고침이 있는 판(서버가 rerollable을 보낸 판)에서는 이미 쓴 슬롯에도
             // 잠긴 버튼을 남긴다 — 버튼이 사라지면 카드 세 장의 아래 끝이 어긋난다.
-            const hasRerollRow = draft.rerollable !== undefined;
+            // 못 박은 판(튜토리얼)에는 줄 자체를 걷는다: 셋 다 영영 안 눌리는 버튼을
+            // 남겨 두면 "왜 안 되는지"를 설명할 것이 하나 더 생길 뿐이다.
+            const hasRerollRow = draft.rerollable !== undefined && locked === null;
+            /** 튜토리얼이 잠근 카드인가 — 눌러도 안 나간다 */
+            const lockedOut = locked !== null && c.id !== locked;
             return (
               <div className="draft-slot" key={i}>
                 <button
                   // key를 카드 id로 잡아 새로고침 때 카드가 새로 등장하는 연출을 다시 태운다
                   key={c.id}
-                  className={`draft-card draft-card-cat aug-cat-${augmentCategory(c.id)}`}
+                  className={`draft-card draft-card-cat aug-cat-${augmentCategory(c.id)}${
+                    lockedOut ? " draft-card-locked" : ""
+                  }`}
                   style={{ animationDelay: `${i * 120}ms` }}
-                  onClick={() => onPick(c.id)}
+                  onClick={lockedOut ? undefined : () => onPick(c.id)}
+                  /*
+                   * 잠긴 카드는 `disabled`가 아니라 `aria-disabled`다. `disabled`를 걸면
+                   * 카드 **안**의 «자세히 ▾»까지 함께 죽어(포인터 이벤트가 통째로 꺼진다)
+                   * 바로 앞 강의에서 "자세히를 눌러 보세요"라고 가르친 조작이 석 장 중
+                   * 두 장에서 안 먹는다(2026-08-19 실측). 고를 수 없는 것과 읽을 수 없는
+                   * 것은 다르다 — 고르기만 막는다.
+                   */
                   disabled={picked}
+                  aria-disabled={lockedOut || undefined}
+                  title={lockedOut ? "튜토리얼에서는 이 증강을 고를 수 없습니다" : undefined}
                 >
                   <span className="draft-card-head">
                     <span className="draft-head-left">

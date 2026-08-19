@@ -2997,6 +2997,13 @@ button {
   border: 1px solid var(--line-strong);
   box-shadow: var(--shadow-3);
   animation: bar-in 0.22s var(--ease);
+  /* 고정해 둔 증강 설명(.aug-tip, z-index 80)보다 **위**에 선다.
+     그 상자는 이름표에서 위로 자라 판 한가운데에 서는데, 치·퐁·리치·론 버튼이 정확히
+     그 자리다 — 튜토리얼이 "설명을 눌러 고정해 보세요"라고 시킨 뒤 몇 순 지나
+     치·패스 버튼이 그 상자에 덮여 있었다(2026-08-19 실측). 읽을거리보다 **지금 눌러야
+     하는 버튼**이 위여야 한다. */
+  position: relative;
+  z-index: 90;
 }
 
 @keyframes bar-in {
@@ -3965,6 +3972,32 @@ button {
     0 20px 62px rgba(0, 0, 0, 0.6),
     0 0 56px color-mix(in oklab, var(--fx-color, #a37ce8) 62%, transparent);
 }
+
+/* 튜토리얼이 잠근 카드 — 읽을 수는 있고 고를 수는 없다 (`TUTORIAL_ROOM_NOTE`).
+   숨기지 않는 이유: 증강 선택 화면이 어떻게 생겼는지가 이 강의의 내용이고, 석 장이
+   서 있어야 "셋 중 하나"라는 말이 화면과 맞는다. 대신 확실히 뒤로 물린다 — 광택도
+   hover 들림도 끄지 않으면 눌리는 카드처럼 보인다. */
+.draft-card-locked {
+  filter: grayscale(0.85) brightness(0.6);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.draft-card-locked::after { display: none; }
+@media (hover: hover) {
+  .draft-card-locked:hover { transform: none; }
+}
+
+/* 왜 두 장이 어두운가 — 화면 안에서 답하는 한 줄 */
+.draft-locked-note {
+  margin: 0 0 12px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(126, 200, 160, 0.12);
+  border: 1px solid rgba(126, 200, 160, 0.32);
+  color: #cfe6d8;
+  font-size: 12.5px;
+}
+.draft-locked-note b { color: #ffe9a8; }
 
 .draft-card-head {
   display: flex;
@@ -8882,6 +8915,16 @@ button {
 }
 
 .guest-note b { color: #d6e0d8; }
+
+/* 🎓 튜토리얼 다시 보기 — "한 판 더"보다 한 단 낮춘다. 이미 한 번 본 사람이
+   대부분인 자리라, 있다는 것만 알면 되는 버튼이다. */
+.guest-tutorial {
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid rgba(126, 200, 160, 0.4);
+  color: #cfe6d8;
+}
+.guest-tutorial:hover { border-color: rgba(126, 200, 160, 0.75); }
 
 .guest-actions {
   display: flex;

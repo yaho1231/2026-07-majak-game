@@ -120,6 +120,13 @@ export interface HanchanConfig {
    */
   presetHands?: Record<PlayerId, readonly string[]>;
   /**
+   * 좌석별 **고정 드래프트** — 그 자리에는 추첨 대신 이 카드들이 선다(튜토리얼).
+   *
+   * 새로고침도 함께 사라진다(`DraftOptions.forcedChoices`). 지정하지 않은 좌석은
+   * 평소대로 추첨하므로, 사람 한 자리만 못 박고 봇 셋은 그대로 둘 수 있다.
+   */
+  presetDraftChoices?: Record<PlayerId, readonly string[]>;
+  /**
    * 국 종료 후 다음 국 시작까지의 대기(ms). 결과 화면을 볼 시간을 준다.
    * 기본 0 (테스트·봇 게임은 지연 없음). 실서버가 사람 게임에서 설정한다.
    */
@@ -1074,10 +1081,13 @@ export class HanchanController {
   private async runDraft(game: StandardGame, stage: DraftStage): Promise<void> {
     this.draftedStages.add(stage);
     this.events.onDraftStart?.(stage);
-    const draft = new DraftController(game.engine, game.augments, {
-      yaku: game.yaku,
-      catalog: game.augments,
-    });
+    const draft = new DraftController(
+      game.engine,
+      game.augments,
+      { yaku: game.yaku, catalog: game.augments },
+      // 튜토리얼처럼 카드를 못 박아 둔 좌석 (`presetDraftChoices`).
+      { forcedChoices: (_stage, player) => this.config.presetDraftChoices?.[player] },
+    );
 
     // 아직 이 스테이지를 마치지 않은 에이전트만 대상. 재개 시 이미 뽑은 사람은 건너뛴다 —
     // 픽은 (시드·스테이지·플레이어)로 결정적·플레이어 독립적이라 건너뛰어도 남은 사람의

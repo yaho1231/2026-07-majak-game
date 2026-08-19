@@ -54,6 +54,7 @@ const ctx = (over: Partial<CoachCtx> = {}): CoachCtx => ({
   // 기본값을 채워 두면 일반 강의를 검사하는 자리마다 대본이 끼어든다.
   handKinds: new Set<string>(),
   riichiDeclared: false,
+  roundOver: false,
   won: false,
   seen: new Set<string>(),
   ...over,
@@ -640,6 +641,7 @@ describe("리치를 건 뒤에는 조용해진다", () => {
     hit: () => false,
     handKinds: new Set<string>(),
     riichiDeclared: true,
+    roundOver: false,
     won: false,
     seen: new Set<string>(["welcome", "hand", "discard-script"]),
     ...over,
@@ -719,5 +721,51 @@ describe("잠금이 막는 길 (App.tsx 소스 가드)", () => {
       APP.indexOf("function discardOptionFor") + 1200,
     );
     expect(fn, "discardOptionFor가 코치 잠금을 확인하지 않는다").toContain("coachBlocksDiscard");
+  });
+});
+
+describe("정산 화면 위에서는 마무리 말고 아무 말도 하지 않는다", () => {
+  /*
+   * 론을 눌러 8700점을 받은 정산 화면 위에 "리치 성공 — 이제 기다립니다. 누군가
+   * 오름패를 버리면 «론» 버튼이 뜹니다"가 떴다(2026-08-19 실측). 판의 사실만 보는
+   * 강의는 국이 끝난 뒤에도 그대로 성립하기 때문이다 — 이미 눌러서 끝난 판인데.
+   */
+  const over = (o: Partial<CoachCtx> = {}): CoachCtx =>
+    ctx({ riichiDeclared: true, roundOver: true, ...o });
+
+  it("국이 끝나면 어떤 강의도 새로 꺼내지 않는다", () => {
+    expect(pickLesson(over())).toBeNull();
+    expect(pickUrgent(over())).toBeNull();
+    // 같은 화면인데 국이 안 끝났으면 평소대로 꺼낸다 (조건 자체는 살아 있다)
+    expect(pickLesson(over({ roundOver: false }))?.id).toBe("welcome");
+  });
+
+  it("마무리만은 예외다 — 그 자리가 정산 화면이다", () => {
+    const seen = new Set(LESSONS.map((l) => l.id).filter((id) => id !== "outro"));
+    expect(pickLesson(over({ seen, won: true }))?.id).toBe("outro");
+  });
+});
+
+describe("마무리는 **이 판에서** 이겨야 뜬다", () => {
+  /*
+   * `won`은 App.tsx의 ref다 — 판이 아니라 **탭**의 수명을 산다. 한 번 이기고 마친
+   * 사람이 «🎓 튜토리얼»을 다시 누르면 그 값이 참인 채로 새 판이 시작해, 화료를 한
+   * 번도 안 했는데 화면 도구 강의를 다 보는 순간 "화료 성공"이 뜨고 판에서 쫓겨났다
+   * (2026-08-19 사용자 보고). 여기 코치 쪽 계약은 "won이 거짓이면 안 뜬다"이고,
+   * 그 값을 새 튜토리얼마다 되돌리는 것은 App.tsx의 `startCoach`가 맡는다.
+   */
+  it("화면 도구를 다 봤어도 화료 전에는 안 뜬다", () => {
+    const seen = new Set(LESSONS.map((l) => l.id).filter((id) => id !== "outro"));
+    expect(pickLesson(ctx({ seen, won: false }))?.id).not.toBe("outro");
+  });
+
+  it("코치를 켤 때 `won`을 되돌린다 (App.tsx 소스 가드)", () => {
+    // 켜는 자리가 넷이라(랜딩·홈·게스트 마무리·가입 직후) 하나만 빠져도 되살아난다.
+    const src = readFileSync(
+      new URL("../src/App.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(src).toMatch(/const startCoach = \(on: boolean\): void => \{\s*if \(on\) iWonRef\.current = false;/);
+    expect(src.includes("setCoachOn(true)")).toBe(false);
   });
 });
