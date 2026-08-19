@@ -648,6 +648,28 @@ export class SiteDb {
     return before.n - after.n;
   }
 
+  /**
+   * 이 닉네임으로 가입할 수 있는가 — 못 쓰면 그 이유, 쓸 수 있으면 null.
+   *
+   * `register`가 쓰는 판정을 그대로 떼어 낸 것이다. 가입 폼의 «중복 확인»
+   * 버튼(`checkUsername`)과 실제 가입이 **다른 규칙으로 답하지 않도록** 한 곳에
+   * 둔다 — 갈라 두면 "확인은 통과했는데 가입은 거절"이 언젠가 반드시 생긴다.
+   *
+   * ⚠ 이 함수는 존재 여부를 **즉시** 알려 준다(register는 열거 오라클을 막으려고
+   * scrypt 뒤로 미룬다). 호출부가 인증과 같은 레이트리밋을 태워야 한다.
+   */
+  usernameProblem(username: string): string | null {
+    if (!USERNAME_RE.test(username)) {
+      return "닉네임은 2~12자 (한글·영문·숫자·_-)만 가능합니다";
+    }
+    // 봇 사칭·시스템 id·프로토타입 키 방지
+    if (/^bot_/i.test(username) || RESERVED_NAMES.has(username.toLowerCase())) {
+      return "사용할 수 없는 닉네임입니다";
+    }
+    const exists = this.stmt("SELECT id FROM users WHERE username = ?").get(username);
+    return exists === undefined ? null : "이미 사용 중인 닉네임입니다";
+  }
+
   async register(username: string, password: string, adminCode?: string): Promise<AuthResult> {
     if (!USERNAME_RE.test(username)) {
       return { ok: false, error: "닉네임은 2~12자 (한글·영문·숫자·_-)만 가능합니다" };

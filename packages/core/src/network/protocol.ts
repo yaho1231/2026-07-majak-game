@@ -122,6 +122,35 @@ export interface GuestResumeMessage {
 }
 
 /**
+ * **닉네임이 비었는지 지금 확인한다** (가입 폼의 «중복 확인» 버튼).
+ *
+ * 예전에는 «가입하고 시작»을 눌러 scrypt 왕복을 다 치른 뒤에야 "이미 사용 중인
+ * 닉네임입니다"를 봤다. 비밀번호 두 칸까지 다 채운 뒤에 되돌아가는 순서다.
+ *
+ * ⚠ 이건 **계정 존재 여부를 알려 주는 창구**다. 새로 생긴 정보는 아니다 —
+ * `register`가 이미 같은 문구로 답한다. 다만 값이 싸지므로 대량 열거로 쓰이지
+ * 않게 서버가 인증과 **같은 레이트리밋 창**을 태운다(`RoomManager.route`).
+ */
+export interface CheckUsernameMessage {
+  type: "checkUsername";
+  username: string;
+}
+
+/**
+ * **내가 지금 진행 중인 판이 있는가** (홈의 «진행하던 방으로 재접속»).
+ *
+ * 예전에는 이 버튼이 브라우저의 `majak.lastRoomCode` **하나에만** 기대고 있었다.
+ * 그래서 다른 기기·시크릿 창·저장소를 지운 브라우저에서는 판이 서버에 멀쩡히
+ * 서 있어도(§2-10 이어하기) 돌아갈 길이 **코드를 외우는 것뿐**이었다.
+ *
+ * 서버는 좌석을 닉네임으로 들고 있으므로 계정만 알면 답할 수 있다. 인증 직후
+ * 자동으로 한 번 밀어 주고, 홈으로 돌아올 때마다 이 요청으로 갱신한다.
+ */
+export interface ActiveGameRequestMessage {
+  type: "activeGameRequest";
+}
+
+/**
  * **증강 도감을 로그인 전에도 연다** (감사 §3-7).
  *
  * 예전에는 카탈로그를 인증 뒤에만 보냈다. 그런데 랜딩 → 규칙 → "증강이란" 탭의
@@ -372,6 +401,25 @@ export interface AdminDeleteUserMessage {
 /** 진행 중 게임 목록 요청 (관리자 전용). */
 export interface LiveGamesRequestMessage {
   type: "liveGames";
+}
+
+/**
+ * **진행 중인 판을 관리자가 강제로 끝낸다** (관리자 전용).
+ *
+ * 전원 합의 무효(`voteAbort`)와 **같은 문**으로 나간다 — 정산·기록·통계 없이
+ * 판을 접고 사람들을 홈으로 돌린다. 다른 점은 두 가지뿐이다: 투표가 필요 없고,
+ * 사람들이 받는 사유에 "관리자"가 적힌다.
+ *
+ * 이게 필요한 이유는 좌석이 **끊긴 사람 몫으로 남는다**는 설계 때문이다(§2-10).
+ * 돌아오지 않는 사람이 낀 판은 저 혼자 세워진 채 방 예산을 물고 있고, 그 계정은
+ * `ALREADY_IN_GAME`에 걸려 새 방도 못 만든다 — 푸는 손잡이가 어디에도 없었다.
+ */
+export interface AdminAbortGameMessage {
+  type: "adminAbortGame";
+  /** 끊을 방 코드. */
+  code: string;
+  /** 사람들에게 보일 사유. 비우면 서버 기본 문구. */
+  reason?: string;
 }
 
 /** 진행 중 게임 관전 시작 (관리자 전용). */
@@ -704,6 +752,9 @@ export type ClientMessage =
   | AdminAnalyticsRequestMessage
   | AdminDeleteUserMessage
   | LiveGamesRequestMessage
+  | AdminAbortGameMessage
+  | CheckUsernameMessage
+  | ActiveGameRequestMessage
   | SpectateMessage
   | SpectateStopMessage
   | SandboxStartMessage
@@ -1272,6 +1323,30 @@ export interface AuthOkMessage {
   guestToken?: string;
 }
 
+/** 닉네임 중복 확인 결과 (`checkUsername`의 답). */
+export interface UsernameCheckMessage {
+  type: "usernameCheck";
+  /** 물어본 닉네임 그대로 — 답이 늦게 와도 지금 칸의 값과 대조할 수 있게. */
+  username: string;
+  available: boolean;
+  /** 못 쓰는 이유 (형식 위반·예약어·중복). 쓸 수 있으면 없다. */
+  reason?: string;
+}
+
+/**
+ * 이 계정이 지금 앉아 있는 방 (`activeGameRequest`의 답, 인증 직후에도 한 번).
+ *
+ * `code`가 null이면 진행 중인 판이 없다 — 클라이언트는 재접속 버튼을 감춘다.
+ */
+export interface ActiveGameMessage {
+  type: "activeGame";
+  code: string | null;
+  /** 그 방이 대국 중인가(아니면 대기실인가). code가 null이면 없다. */
+  playing?: boolean;
+  /** ISO 시작 시각 — "몇 분 전에 시작한 판인지" 를 버튼에 적는다. */
+  startedAt?: string;
+}
+
 /** 방 생성 완료 — 이어서 joined·lobby가 온다. */
 export interface RoomCreatedMessage {
   type: "roomCreated";
@@ -1448,6 +1523,8 @@ export type ServerMessage =
   | AdminAugmentTiersMessage
   | AdminAnalyticsMessage
   | AuthOkMessage
+  | UsernameCheckMessage
+  | ActiveGameMessage
   | RoomCreatedMessage
   | ReplayListMessage
   | ReplayDataMessage

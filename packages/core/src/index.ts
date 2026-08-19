@@ -451,6 +451,8 @@ export type {
   AugmentTierEntry,
   AdminAugmentTiersMessage,
   AuthOkMessage,
+  UsernameCheckMessage,
+  ActiveGameMessage,
   RoomCreatedMessage,
   ReplayGameSummary,
   ReplayListMessage,
