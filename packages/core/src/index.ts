@@ -264,10 +264,19 @@ export type { SynergyTag, SynergyEntry } from "./augment/synergy.js";
 export {
   AUGMENT_PLAY,
   augmentCollectHints,
+  augmentFiredReads,
+  augmentFuritenBreakReads,
+  augmentRonImmuneReads,
   augmentThreatMultiplier,
   augmentValueMultiplier,
+  firedChannelKey,
 } from "./augment/play.js";
-export type { AugmentPlay, CollectHint } from "./augment/play.js";
+export type {
+  AugmentFired,
+  AugmentPlay,
+  AugmentRonImmune,
+  CollectHint,
+} from "./augment/play.js";
 export type {
   Tile,
   TileId,

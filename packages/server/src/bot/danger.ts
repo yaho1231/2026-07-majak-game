@@ -25,7 +25,7 @@
 import { augmentThreatMultiplier, discardsZone, handZone, kindKey, meldsZone } from "@majak/core";
 import type { PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 import { pointsForHan } from "./value.js";
-import { readCollect } from "./collect.js";
+import { effectiveAugmentsOf, isFuritenBroken, isRonImmune, readCollect } from "./collect.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
 import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.js";
@@ -142,8 +142,20 @@ export function readThreats(
     const discards = discardKindsOf(view, p.id);
     const genbutsu = new Set<string>();
     const discardRanks = new Map<string, Set<number>>();
+    /**
+     * **현물이 안전패가 아닌 상대**가 있다 (`AUGMENT_PLAY.furitenBroken`).
+     *
+     * 현물은 이 봇이 가진 유일한 **100% 안전**이다 — `safetyOf`가 계산 없이 0을
+     * 돌려준다. 그 확신의 근거는 후리텐이라는 규칙 하나인데, 이 게임에는 그 규칙을
+     * 끄는 증강이 있다(만개·조커·손바닥 뒤집기). 가정이 깨진 줄 모르면 봇은
+     * "계산할 필요도 없이 안전한 패"를 골라 정확히 그 패로 쏘인다.
+     *
+     * 그럴 때는 현물 목록을 **비운다**. 위험이 사라지는 것이 아니라 평범한 패로
+     * 돌아갈 뿐이라(스지·장수·무늬 읽기는 그대로 돈다) 과잉 반응이 아니다.
+     */
+    const furitenBroken = isFuritenBroken(view, p.id);
     for (const kind of discards) {
-      genbutsu.add(kindKey(kind));
+      if (!furitenBroken) genbutsu.add(kindKey(kind));
       if (isNumber(kind)) {
         let set = discardRanks.get(kind.suit);
         if (set === undefined) {
@@ -155,8 +167,9 @@ export function readThreats(
     }
 
     const riichi = rs?.riichiDeclared === true;
-    // 리치 이후 남의 바닥을 지나간 패는 이 사람이 론을 놓친 것이다 — 현물과 같다
-    if (riichi) {
+    // 리치 이후 남의 바닥을 지나간 패는 이 사람이 론을 놓친 것이다 — 현물과 같다.
+    // (통과패도 후리텐이 근거이므로 그 규칙이 꺼진 상대에게는 함께 성립하지 않는다)
+    if (riichi && !furitenBroken) {
       for (const kind of passedSinceRiichi(view, p.id, rs?.riichiTileIndex)) {
         genbutsu.add(kindKey(kind));
       }
@@ -199,6 +212,18 @@ export function readThreats(
     if (collect.minLevel > level) level = collect.minLevel;
 
     /**
+     * **지금 이 사람은 론당하지 않는다**(천하무적·불가침 조약 — `AUGMENT_PLAY.ronImmune`).
+     *
+     * 위협도를 0으로 내린다. 이 축은 "이 사람에게 **내 버림으로** 쏘일 확률"이고,
+     * 론이 원천 봉쇄된 상대에게 그 값은 진짜로 0이다 — 쯔모는 내가 무엇을 버리든
+     * 막을 수 없으므로 버림 선택에 들어갈 자리가 없다.
+     *
+     * 접기 판정보다 앞에 두는 것은 아래 `minLevel`과 같은 이유이고, 여기서 0이 되면
+     * 뒤의 곱셈들이 무엇을 하든 0이다.
+     */
+    if (isRonImmune(view, p.id)) level = 0;
+
+    /**
      * **접은 사람은 위험하지 않다.** 남의 리치에 현물만 골라 내고 있는 사람은
      * 이미 화료를 포기한 것이다. 예전 봇은 후로 둘을 눕힌 채 접은 사람을 끝까지
      * 무서워해서, 아무도 노리지 않는 패를 못 버리고 자기 손만 망쳤다.
@@ -221,7 +246,8 @@ export function readThreats(
      * 표에 없는 증강은 1.0이고, 곱은 코어에서 0.4~2.2로 잘려 있어 셋을 겹쳐 들어도
      * 폭주하지 않는다.
      */
-    const augMult = augmentThreatMultiplier(p.augments ?? []);
+    // 무장해제로 그 국에 잠긴 증강은 빼고 센다 — 꺼진 물건을 계속 무서워하지 않는다
+    const augMult = augmentThreatMultiplier(effectiveAugmentsOf(view, p.id));
 
     out.push({
       player: p.id,

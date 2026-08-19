@@ -37,7 +37,16 @@
  * 대한 정보이므로 하한을 올린다.
  */
 
-import { augmentCollectHints, discardsZone, isHonor, meldsZone } from "@majak/core";
+import {
+  augmentCollectHints,
+  augmentFiredReads,
+  augmentFuritenBreakReads,
+  augmentRonImmuneReads,
+  discardsZone,
+  firedChannelKey,
+  isHonor,
+  meldsZone,
+} from "@majak/core";
 import type { PlayerId, PlayerView, Suit, TileKind } from "@majak/core";
 
 /** 한 상대에 대한 "무엇을 모으는가" 읽기 */
@@ -100,6 +109,89 @@ interface Bias {
   suit: Map<string, number>;
   /** 짝수 수패 (짝수의 세계) */
   even: number;
+  /** **바로 그 패**들 (오픈 리치의 공개 대기, 자패의 귀환이 되받은 자패 …) */
+  kinds: Map<string, number>;
+}
+
+/**
+ * 공개 채널에 실린 패 목록을 `kindKey` 집합으로 읽는다.
+ * 채널마다 모양이 다르다 — `kindKey` 문자열 배열(오픈 리치)일 수도, `TileKind`
+ * 객체 배열(자패의 귀환·미련)일 수도 있다. 둘 다 받는다.
+ * 빈 배열은 "아직/이미 없음"이므로 신호가 아니다.
+ */
+function kindKeysOf(value: unknown): string[] {
+  // 한 종류만 싣는 채널(소환의 지목패)은 배열이 아니라 문자열 하나다
+  if (typeof value === "string") return value === "" ? [] : [value];
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string") out.push(entry);
+    else if (entry !== null && typeof entry === "object") {
+      const k = entry as { suit?: unknown; rank?: unknown };
+      if (typeof k.suit === "string" && typeof k.rank === "number") {
+        out.push(`${k.suit}${k.rank}`);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 이 사람이 **지금 실제로 쓸 수 있는** 증강 목록.
+ *
+ * 무장해제(disarm)는 상대 증강 하나를 그 국 동안 통째로 잠근다. 그런데 잠긴 증강도
+ * `PlayerInfo.augments`에는 그대로 남아 있어, 봇은 **이미 꺼진 물건을 국이 끝날 때까지
+ * 무서워했다** — 만년 오야를 잠가 놓고도 그 사람 손을 1.4배로 세는 식이다.
+ * 지목 관계는 전원 공개 채널(`disarm:{시전자}` = {target, augmentId})이라 그대로 읽는다.
+ */
+export function effectiveAugmentsOf(view: PlayerView, player: PlayerId): string[] {
+  const augments = view.players.find((p) => p.id === player)?.augments ?? [];
+  const locked = new Set<string>();
+  for (const p of view.players) {
+    const mark = view.augmentView[`disarm:${p.id}`] as
+      | { target?: unknown; augmentId?: unknown }
+      | undefined;
+    if (mark === undefined || mark === null) continue;
+    if (mark.target === player && typeof mark.augmentId === "string") {
+      locked.add(mark.augmentId);
+    }
+  }
+  return locked.size === 0 ? [...augments] : augments.filter((id) => !locked.has(id));
+}
+
+/** 공개 채널 하나가 "지금 켜져 있는가" (`ronImmune`·`furitenBroken` 공용 규약) */
+function channelOn(
+  view: PlayerView,
+  player: PlayerId,
+  id: string,
+  spec: { channel?: string; when: "present" | "true" },
+): boolean {
+  const value = view.augmentView[firedChannelKey(id, spec, player)];
+  return spec.when === "true" ? value === true : value !== undefined && value !== null;
+}
+
+/**
+ * 이 사람을 **지금 론할 수 없는가**(천하무적·불가침 조약).
+ *
+ * 그렇다면 내가 무엇을 버리든 그에게는 방총이 성립하지 않는다 — 안전패를 아껴 두는
+ * 것은 순수한 낭비이고, 그 국은 밀어야 한다.
+ */
+export function isRonImmune(view: PlayerView, player: PlayerId): boolean {
+  return augmentRonImmuneReads(effectiveAugmentsOf(view, player)).some(({ id, immune }) =>
+    channelOn(view, player, id, immune),
+  );
+}
+
+/**
+ * 이 사람에게 **현물이 안전패가 아닌가**(만개·조커·손바닥 뒤집기).
+ *
+ * 봇 수비의 첫 기둥이 "그가 버린 패로는 론이 안 된다"인데, 그 가정을 부수는 증강이
+ * 있다. 가정이 틀린 줄 모르면 봇은 **위험도 0으로 확신한 패**를 흘린다.
+ */
+export function isFuritenBroken(view: PlayerView, player: PlayerId): boolean {
+  return augmentFuritenBreakReads(effectiveAugmentsOf(view, player)).some(({ id, spec }) =>
+    channelOn(view, player, id, spec),
+  );
 }
 
 /**
@@ -109,12 +201,12 @@ interface Bias {
  * 안 버렸다"는 둘 중 하나만 있을 때보다 확실히 진한 신호다. 상한은 `RISK_CAP`.
  */
 export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
-  const bias: Bias = { honor: 1, terminal: 1, suit: new Map(), even: 1 };
+  const bias: Bias = { honor: 1, terminal: 1, suit: new Map(), even: 1, kinds: new Map() };
   const tags: string[] = [];
   let hanBonus = 0;
   let minLevel = 0;
 
-  const augments = view.players.find((p) => p.id === player)?.augments ?? [];
+  const augments = effectiveAugmentsOf(view, player);
   const av = view.augmentView;
   const suitMul = (suit: string, m: number): void => {
     bias.suit.set(suit, (bias.suit.get(suit) ?? 1) * m);
@@ -123,53 +215,64 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
   // ── 1. 증강이 실제로 터진 것 — 화면에 배너로 뜬 사건이다 ──
 
   /*
-   * **개벽**(genesis) — 손패의 수패가 통째로 자패가 됐다. 평범한 손패는 대부분
-   * 수패이므로 뒤집힌 손은 거의 전부 자패다. 자일색·대사희·소사희·대삼원이 한꺼번에
-   * 사정권에 들어오고, 그 손을 완성시켜 주는 것은 **내가 흘리는 자패**다.
+   * 무엇을 얼마나 무서워할지는 **코어의 표**(`AUGMENT_PLAY.fired`)가 정하고, 여기서는
+   * 뷰를 읽어 적용만 한다. 예전에는 증강마다 if 블록이 하나씩 붙어 있었는데, 그 방식은
+   * 종수가 늘수록 무너진다(차터 §1: 증강 1000개를 엔진 수정 없이). 지금은 새 증강이
+   * 들어와도 이 함수는 그대로다 — 표에 행 하나가 는다.
    *
-   * 이 판정을 '보유'가 아니라 '발동'으로 두는 것이 요점이다 — 개벽을 들고만 있는
-   * 사람은 평범한 손이라 자패를 무서워할 이유가 없다.
+   * 이 판정이 '보유'가 아니라 '발동'인 것이 요점이다. 개벽을 **들고만 있는** 사람은
+   * 평범한 손이라 자패를 무서워할 이유가 없고, **쓴** 사람의 손은 통째로 자패다.
    */
-  if (av[`genesis:${player}`] === true) {
-    bias.honor *= 2.6;
-    hanBonus += 8;
-    minLevel = Math.max(minLevel, 0.35);
-    tags.push("genesis");
+  for (const { id, fired } of augmentFiredReads(augments)) {
+    const value = av[firedChannelKey(id, fired, player)];
+    let dangerSuit: string | null = null;
+    let dangerKinds: string[] = [];
+    if (fired.kind === "flag") {
+      if (value !== true) continue;
+    } else if (fired.kind === "kinds") {
+      dangerKinds = kindKeysOf(value);
+      if (dangerKinds.length === 0) continue; // 빈 배열 = 아직 없거나 이미 지나갔다
+    } else {
+      if (typeof value !== "string" || !NUMBER_SUITS.has(value)) continue;
+      dangerSuit = value;
+    }
+    const mul = fired.riskMul ?? 1;
+    switch (fired.danger) {
+      case "honor":
+        bias.honor *= mul;
+        break;
+      case "terminal":
+        bias.terminal *= mul;
+        break;
+      case "even":
+        bias.even *= mul;
+        break;
+      case "channelSuit":
+        if (dangerSuit !== null) suitMul(dangerSuit, mul);
+        break;
+      case "channelKinds":
+        for (const key of dangerKinds) {
+          bias.kinds.set(key, (bias.kinds.get(key) ?? 1) * mul);
+        }
+        break;
+      default:
+        break; // 패를 짚지 않는 신호 — 판수·하한만 얹는다
+    }
+    hanBonus += fired.hanBonus ?? 0;
+    if (fired.minLevel !== undefined) minLevel = Math.max(minLevel, fired.minLevel);
+    tags.push(dangerSuit !== null ? `${id}:${dangerSuit}` : id);
   }
 
   /*
-   * **단색 세계**(suit_unify) — 손패의 수패가 고른 한 색으로 물들었다. 그 색은
-   * 청일색이 확정된 것이나 마찬가지이고, 다른 두 색은 오히려 안전해진다
-   * (안전해지는 쪽은 건드리지 않는다 — 남는 위험을 지우는 것은 늘 더 위험하다).
-   */
-  const unified = av[`suit_unify:${player}`];
-  if (typeof unified === "string" && NUMBER_SUITS.has(unified)) {
-    suitMul(unified, 2.2);
-    hanBonus += 5;
-    minLevel = Math.max(minLevel, 0.3);
-    tags.push(`suit_unify:${unified}`);
-  }
-
-  /*
-   * **편식**(picky_eater) — 단색 세계의 퀘스트판이다. 둘로 나눠 읽는다.
+   * **편식의 퀘스트 예고**(picky_eater) — 발동 자체는 위 표가 읽는다(물든 색).
+   * 그 **전**에도 읽을 것이 있어서 여기 따로 남는다: 12장 중 몇 장을 채웠는지가
+   * 국의 절반 동안 전원에게 공개된다. 이 증강의 설계가 "대응 시간이 아주 길다"는
+   * 것인데(그 파일 Rule #4) 봇은 그 예고를 한 번도 안 봤다.
    *
-   *  1. **발동한 뒤**(`picky_eater:{player}` = 무늬) — 손패가 그 색으로 물들었다.
-   *     단색 세계와 완전히 같은 상황이라 같은 배수를 쓴다. 예전에는 채널 이름이
-   *     달라 이 읽기가 통째로 비어 있었다 — 같은 효과인데 한쪽만 무서워했다
-   *     (2026-08-19 사용자 보고).
-   *  2. **발동 전**(`picky_eater:progress:{player}`) — 12장 중 몇 장을 채웠는지가
-   *     **국의 절반 동안 전원에게 공개**된다. 이 증강의 설계가 "대응 시간이 아주
-   *     길다"는 것인데(그 파일 Rule #4), 정작 봇은 그 예고를 한 번도 안 봤다.
-   *     달성이 눈앞이면 곧 청일색 손이 된다고 보고 실점 추정을 올린다.
-   *     ⚠ 위험한 **패**를 짚지는 않는다 — 아직 어느 색이 될지는 본인도 안 정했다.
+   * ⚠ 위험한 **패**를 짚지는 않는다 — 아직 어느 색이 될지는 본인도 안 정했다.
+   * 표의 규약(채널 하나 = 값 하나)으로는 표현되지 않는 모양이라 코드로 남긴다.
    */
-  const pickySuit = av[`picky_eater:${player}`];
-  if (typeof pickySuit === "string" && NUMBER_SUITS.has(pickySuit)) {
-    suitMul(pickySuit, 2.2);
-    hanBonus += 5;
-    minLevel = Math.max(minLevel, 0.3);
-    tags.push(`picky_eater:${pickySuit}`);
-  } else {
+  if (av[`picky_eater:${player}`] === undefined) {
     const progress = av[`picky_eater:progress:${player}`] as
       | { count?: number; need?: number; failed?: boolean }
       | null
@@ -180,29 +283,6 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
       hanBonus += 4;
       tags.push(`picky_quest:${count}/${need}`);
     }
-  }
-
-  /*
-   * **짝수의 세계**(even_world) — 손패의 홀수 수패가 전부 짝수로 다시 태어났다.
-   * 그 손을 완성시키는 것은 **짝수 수패**뿐이고 홀수는 오히려 안전해진다
-   * (안전해지는 쪽은 건드리지 않는다 — 단색 세계와 같은 규율).
-   * 탕야오·또이또이가 단숨에 사정권이라 판수도 함께 올린다.
-   */
-  if (av[`even_world:${player}`] === true) {
-    bias.even *= 2.0;
-    hanBonus += 3;
-    minLevel = Math.max(minLevel, 0.25);
-    tags.push("even_world");
-  }
-
-  /*
-   * **마작의 거신병**(giant_god) — 국사가 손에 들어왔다. 요구패 한 장이 곧 역만이다.
-   */
-  if (av[`giant_god:${player}`] === true) {
-    bias.terminal *= 2.4;
-    hanBonus += 8;
-    minLevel = Math.max(minLevel, 0.4);
-    tags.push("giant_god");
   }
 
   // ── 2. 보유만으로도 방향이 보이는 증강 (표: AUGMENT_PLAY.collect) ──
@@ -260,6 +340,8 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
   const even = clamp(bias.even);
   const suit = new Map<string, number>();
   for (const [s, m] of bias.suit) suit.set(s, clamp(m));
+  const kinds = new Map<string, number>();
+  for (const [k, m] of bias.kinds) kinds.set(k, clamp(m));
 
   if (tags.length === 0) return NEUTRAL_COLLECT;
 
@@ -274,6 +356,9 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
       if (s !== undefined) m = Math.max(m, s);
       // 홀짝 읽기도 겹치면 더 진한 쪽 하나만 쓴다 (곱하면 같은 패를 두 번 무서워한다)
       if (NUMBER_SUITS.has(kind.suit) && kind.rank % 2 === 0) m = Math.max(m, even);
+      // **바로 그 패**로 지목된 것은 언제나 가장 진한 신호다 (추정이 아니라 확정)
+      const exact = kinds.get(`${kind.suit}${kind.rank}`);
+      if (exact !== undefined) m = Math.max(m, exact);
       return m;
     },
     hanBonus,

@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FlowController,
+  ROUND_STARTED,
   buildPlayerView,
   createStandardGameFromState,
   installAugment,
@@ -33,6 +34,21 @@ function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
 
 function setTurnCount(state: GameState, n: number): GameState {
   return { ...state, round: { ...state.round, turnCount: n } };
+}
+
+type Game = ReturnType<typeof createStandardGameFromState>;
+
+/** 이벤트를 그대로 흘려 넣는 테스트 전용 액션 (리액션을 깨우는 용도) */
+function emitEvent(game: Game, event: { type: string; payload: unknown }): void {
+  if (!game.engine.actions.has("__test_emit")) {
+    game.engine.actions.register({
+      type: "__test_emit",
+      validate: () => null,
+      toEvents: (req) => [req.payload as { type: string; payload: unknown }],
+    });
+  }
+  const res = game.engine.submit({ player: "p0", type: "__test_emit", payload: event });
+  if (!res.ok) throw new Error(`emit failed: ${res.reason}`);
 }
 
 describe("불가침 조약 (no_ron_pact)", () => {
@@ -73,6 +89,21 @@ describe("불가침 조약 (no_ron_pact)", () => {
   it("타가에게는 면역을 주지 않는다", () => {
     const g = game(setTurnCount(base(), 2));
     expect(g.engine.rules.resolve<boolean>("win.ronImmune", { playerId: "p1", state: g.engine.state })).toBe(false);
+  });
+
+  /*
+   * 봇의 수비 계산(`bot/collect.ts`)은 사람이 읽는 문구가 아니라 **기계가 읽는 채널**을
+   * 본다 — 문구는 언제든 다듬어지고, 그때 봇은 조용히 틀린다(면역이 아닌데 밀거나,
+   * 면역인데 접는다). 두 채널이 같은 리액션에서 함께 나가는지 여기서 못박는다.
+   */
+  it("조약 상태가 기계용 공개 채널로도 나간다 (봇 수비가 읽는 값)", () => {
+    const g = game(setTurnCount(base(), 2));
+    // 국 스코프 채널이라 키에 `#round` 표식이 붙는다(뷰로 나갈 때 떨어진다)
+    const key = "view:*:no_ron_pact:active:p0#round";
+    emitEvent(g, { type: ROUND_STARTED, payload: {} });
+    expect(g.engine.state.augmentData[key]).toBe(true);
+    // 사람이 읽는 문구도 같은 리액션에서 함께 나간다 (둘이 어긋날 수 없다)
+    expect(g.engine.state.augmentData["view:*:no_ron_pact:p0#round"]).toContain("조약 유효");
   });
 });
 
