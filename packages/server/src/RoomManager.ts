@@ -2268,6 +2268,8 @@ export class RoomManager {
       username: user.username,
       isAdmin: user.isAdmin,
       sessionToken,
+      // 홈의 "진행하던 방으로 재접속"은 이 값만 보고 뜬다 (protocol.ts 주석).
+      resumeRoom: this.resumableRoomFor(user.username),
     });
     // 홈 통계에서 증강 이름·등급을 게임 시작 전에도 쓸 수 있도록 정적 카탈로그를 보낸다.
     this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
@@ -2294,6 +2296,35 @@ export class RoomManager {
     for (const room of this.rooms.values()) {
       if (room.agents.some((a) => this.isActiveHuman(a, username))) {
         return room;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * **이 계정이 지금 돌아갈 수 있는 방 코드** (없으면 null).
+   *
+   * 판정은 `joinRoom`이 실제로 통과시키는 조건과 같아야 한다 — 여기서 알려 준
+   * 코드를 클라이언트가 그대로 눌렀을 때 "존재하지 않는 방"이 돌아오면 고치려던
+   * 문제가 그대로 남는다. 그래서 같은 세 가지를 본다: 강퇴 여부, 1인 전용 방
+   * (체험·연습·증강 테스트)은 그 방 주인만, 진행 중이면 되돌릴 수 있는 좌석.
+   */
+  private resumableRoomFor(username: string): string | null {
+    for (const room of this.rooms.values()) {
+      if (room.kicked.has(username)) continue;
+      const mineActive = room.agents.some((a) => this.isActiveHuman(a, username));
+      // 1인 전용 방은 남에게 존재 자체를 감춘다(joinRoom과 같은 규칙)
+      if ((room.sandbox || room.guest) && !mineActive) continue;
+      if (room.phase === "playing") {
+        const canReturn = room.agents.some(
+          (a): a is HumanAgent =>
+            a instanceof HumanAgent &&
+            (!a.isAbandoned || a.canRejoin) &&
+            a.nickname === username,
+        );
+        if (canReturn) return room.code;
+      } else if (mineActive) {
+        return room.code;
       }
     }
     return null;
