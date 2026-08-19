@@ -380,6 +380,19 @@ const GAME_STREAM_MESSAGES: ReadonlySet<ServerMessage["type"]> = new Set([
   "sandboxConfig",
 ]);
 
+/**
+ * 가입 폼의 «중복 확인» 상태.
+ *
+ * `username`은 **물어본 값**이다 — 답이 오는 사이 사람이 칸을 더 쳤을 수 있으므로,
+ * 지금 칸의 값과 같을 때만 결과로 인정한다.
+ */
+type NameCheck = {
+  username: string;
+  state: "checking" | "ok" | "taken";
+  /** 못 쓰는 이유 (state === "taken"). */
+  reason?: string;
+};
+
 /** 도중유국 사유 (RoundSettledPayload.abortReason) — 결과 화면 부제 */
 const ABORT_REASONS: Record<string, string> = {
   kyushuKyuhai: "구종구패 — 배패에 요구패·자패가 9종 이상이라 국을 물렸다",
@@ -2632,10 +2645,32 @@ export function App(): JSX.Element {
   const [invites, setInvites] = useState<FriendInviteFromMessage[]>([]);
   /** 자체 방문 집계 (관리자 전용, §8-6). */
   const [analytics, setAnalytics] = useState<AnalyticsDayEntry[] | null>(null);
-  /** 서버가 되돌려 준 인증 실패 사유 — 토스트가 아니라 로그인 폼 안에 남긴다. */
-  const [authError, setAuthError] = useState<string | null>(null);
+  /**
+   * 서버가 되돌려 준 인증 실패 사유 — 토스트가 아니라 로그인 폼 안에 남긴다.
+   *
+   * ⚠ **문구가 아니라 `seq`가 "답이 왔다"는 신호다.** 예전에는 AuthScreen이
+   * `serverError` 값의 변화만 보고 «확인 중…»을 풀었는데, 같은 실수를 두 번 하면
+   * (비밀번호를 똑같이 틀리면) 문자열이 같아 state가 안 바뀌고 → 이펙트가 안 돌고
+   * → 버튼이 «확인 중…»에 **영구히 갇혔다**. 새로고침 말고는 푸는 길이 없었다
+   * (2026-08-19 사용자 지시 ②: "자꾸 확인중… 나오면서 버튼이 무시됨").
+   * 이제 실패할 때마다 `seq`가 오르므로 같은 문구라도 반드시 한 번은 흐른다.
+   */
+  const [authError, setAuthErrorState] = useState<{ text: string | null; seq: number }>({
+    text: null,
+    seq: 0,
+  });
+  const setAuthError = useCallback((text: string | null): void => {
+    setAuthErrorState((prev) => ({ text, seq: prev.seq + 1 }));
+  }, []);
   /** 로그인 화면을 열 때 보여 줄 탭 — logout(nextTab)이 정한다. */
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
+  /**
+   * 가입 폼의 «중복 확인» 결과 (2026-08-19 사용자 지시 ③).
+   *
+   * `username`을 함께 들고 있는 이유: 답이 늦게 오는 사이 사람이 칸을 더 쳤으면
+   * 그 답은 **지금 값에 대한 답이 아니다**. 화면은 둘이 같을 때만 결과를 보여 준다.
+   */
+  const [nameCheck, setNameCheck] = useState<NameCheck | null>(null);
   /**
    * 튜토리얼 코치가 켜져 있는가.
    *
@@ -3614,6 +3649,9 @@ export function App(): JSX.Element {
     send({ type: "leaderboard" });
     send({ type: "feedbackList" });
     send({ type: "friendList" });
+    // 홈에 돌아올 때마다 «진행하던 방으로 재접속»을 서버에 다시 물어본다 — 판이
+    // 방금 끝났으면 버튼이 사라져야 하고, 다른 기기에서 이어지고 있으면 떠야 한다.
+    send({ type: "activeGameRequest" });
   }
 
   /**
@@ -3915,6 +3953,27 @@ export function App(): JSX.Element {
     }
     if (msg.type === "liveGames") {
       setLiveRooms(msg.rooms);
+      return;
+    }
+    if (msg.type === "usernameCheck") {
+      setNameCheck({
+        username: msg.username,
+        state: msg.available ? "ok" : "taken",
+        ...(msg.reason !== undefined ? { reason: msg.reason } : {}),
+      });
+      return;
+    }
+    if (msg.type === "activeGame") {
+      /*
+       * `authOk.resumeRoom`과 **같은 판정을 같은 자리에 적는다** (서버도 같은
+       * `resumableRoomFor`를 쓴다). 로그인 때 한 번이 아니라 홈에 돌아올 때마다
+       * 다시 묻는 것이 이 메시지의 존재 이유다 — 판이 방금 끝났으면 버튼이
+       * 사라져야 하고, 다른 기기에서 이어지고 있으면 떠야 한다.
+       *
+       * 저장소를 직접 건드리지 않고 `rememberLastRoom`을 지나간다. 저장소와
+       * 화면 상태가 갈라지는 길을 하나도 만들지 않기 위해서다(#338).
+       */
+      rememberLastRoom(msg.code);
       return;
     }
     if (msg.type === "leaderboard") {
@@ -5326,7 +5385,13 @@ export function App(): JSX.Element {
         <AuthScreen
           connection={connection}
           serverInfo={serverInfo}
-          serverError={authError}
+          serverError={authError.text}
+          serverErrorSeq={authError.seq}
+          nameCheck={nameCheck}
+          onCheckUsername={(u) => {
+            setNameCheck({ username: u, state: "checking" });
+            send({ type: "checkUsername", username: u });
+          }}
           initialTab={authTab}
           invitedCode={pendingInviteRef.current}
           onGuest={() => {
@@ -5509,6 +5574,18 @@ export function App(): JSX.Element {
           augmentTiers={augmentTiers}
           onRefreshLive={() => send({ type: "liveGames" })}
           onSpectate={(code) => send({ type: "spectate", code })}
+          onAbortGame={(code, who) => {
+            // 되돌릴 수 없다 — 정산도 기록도 없이 네 사람의 판이 사라진다.
+            // 관전과 버튼이 나란히 있으므로 확인을 반드시 한 번 받는다.
+            void askConfirm({
+              title: `${code} 방의 대국을 강제 종료할까요?`,
+              body: `${who}\n\n점수 정산·전적·리플레이 없이 즉시 종료되고, 참가자는 홈으로 돌아갑니다. 되돌릴 수 없습니다.`,
+              confirmLabel: "강제 종료",
+              danger: true,
+            }).then((ok) => {
+              if (ok) send({ type: "adminAbortGame", code });
+            });
+          }}
           onRefreshUsers={() => send({ type: "adminUsers" })}
           onStartSandbox={(mode) => send({ type: "sandboxStart", mode })}
           onPractice={(tutorial) => {
@@ -6457,6 +6534,16 @@ function AuthScreen(props: {
   serverInfo: ServerInfoMessage | null;
   /** 서버가 되돌려 준 인증 실패 사유 (폼 안에 남는다) */
   serverError: string | null;
+  /**
+   * **답이 왔다는 신호** — 실패할 때마다 오른다.
+   *
+   * 문구가 아니라 이 값을 본다. 같은 실수를 두 번 하면(비밀번호를 똑같이 틀리면)
+   * 문자열이 같아 리렌더가 안 일어나고, 그러면 «확인 중…»이 영원히 안 풀렸다.
+   */
+  serverErrorSeq: number;
+  /** 닉네임 중복 확인 결과 (없으면 아직 안 눌렀다) */
+  nameCheck: NameCheck | null;
+  onCheckUsername: (username: string) => void;
   /** 어느 탭으로 열 것인가. 체험 뒤 "계정 만들고 계속하기"로 오면 가입 탭이다. */
   initialTab?: "login" | "register";
   onLogin: (username: string, password: string) => void;
@@ -6485,14 +6572,47 @@ function AuthScreen(props: {
    * 보내 놓고 답을 기다리는 중인가 (감사 §5-7).
    *
    * 로그인·가입은 서버 왕복이 있는데 버튼이 계속 눌렸다 — 느린 회선에서 두 번 누르면
-   * 인증 레이트리밋(연결당 12회/분)만 먹는다. 서버가 답하면(authOk 로 화면이 바뀌거나
-   * serverError 가 들어오거나) 풀린다.
+   * 인증 레이트리밋(연결당 12회/분)만 먹는다.
+   *
+   * 푸는 길은 셋이다 (아래 이펙트 셋과 1:1): authOk 로 화면이 통째로 바뀌거나,
+   * 실패가 돌아오거나(`serverErrorSeq`), 아무 답도 없이 12초가 지나거나.
+   * **하나로는 부족하다** — 실제로 갇힌 적이 있다(2026-08-19 사용자 지시 ②).
    */
   const [sending, setSending] = useState(false);
+  /*
+   * **답이 오면 푼다** — 판단 근거는 문구가 아니라 `serverErrorSeq`다.
+   *
+   * 예전에는 `serverError` **값**의 변화만 보았다. 그래서 같은 실수를 두 번 하면
+   * (비밀번호를 똑같이 두 번 틀리면) 문자열이 같아 state가 바뀌지 않고 → 리렌더가
+   * 없고 → 이 이펙트가 안 돌아, 버튼이 «확인 중…»에 갇힌 채 클릭을 전부 무시했다.
+   * 새로고침 말고는 푸는 길이 없었다 (2026-08-19 사용자 지시 ②).
+   *
+   * seq는 실패할 때마다 오르므로 같은 문구여도 반드시 한 번은 흐른다. 초기값(0)에는
+   * 반응하지 않게 seq > 0 을 본다.
+   */
   useEffect(() => {
-    if (props.serverError !== null) setSending(false);
-  }, [props.serverError]);
+    if (props.serverErrorSeq > 0) setSending(false);
+  }, [props.serverErrorSeq]);
+  /*
+   * **그물** — 답이 아예 안 오는 경우까지 푼다.
+   *
+   * 위의 seq는 서버가 뭐라도 답했을 때의 이야기다. 소켓이 조용히 죽거나 프레임이
+   * 유실되면 아무 신호도 안 온다 — 그때도 버튼은 살아 있어야 한다. 인증 왕복은
+   * scrypt를 포함해도 1초 안쪽이므로 12초면 "답이 없다"로 봐도 된다.
+   */
+  useEffect(() => {
+    if (!sending) return;
+    const t = window.setTimeout(() => {
+      setSending(false);
+      setLocalError("서버가 응답하지 않습니다 — 다시 시도해 주세요");
+    }, 12_000);
+    return () => window.clearTimeout(t);
+  }, [sending]);
   const disconnected = props.connection === "closed";
+  // 연결이 끊기면 보낸 것의 답은 영영 안 온다 — 버튼을 잠가 둘 이유가 없다.
+  useEffect(() => {
+    if (props.connection !== "connected") setSending(false);
+  }, [props.connection]);
 
   function submit(): void {
     if (sending) return;
@@ -6545,6 +6665,38 @@ function AuthScreen(props: {
 
   const gateOn = props.serverInfo?.signupGate === true;
   const guestOk = props.serverInfo?.guestPlay !== false && props.connection === "connected";
+
+  /*
+   * ── 타자 칠 때마다 다시 재는 비밀번호 규칙 (2026-08-19 사용자 지시 ④) ──
+   *
+   * 예전에는 규칙이 **한 줄짜리 설명문**으로 위에 붙어 있고, 어긴 것은 «가입하고
+   * 시작»을 누른 **뒤에야** 한 개씩 나왔다 — 8자를 채우고 나면 이번엔 "숫자로만
+   * 이루어질 수 없습니다"가 나오는 식이라, 규칙 셋을 다 통과하려면 왕복을 세 번
+   * 했다. 지금은 셋을 동시에, 지금 값 기준으로 보여 준다.
+   *
+   * ⚠ 이 배열은 서버(`SiteDb.passwordProblem`)·아래 `submit`의 검사와 **같은
+   * 규칙이어야 한다.** 셋이 어긋나면 사람은 화면이 통과시킨 값을 보냈다가 거절당한다.
+   */
+  const trimmedName = username.trim();
+  const pwRules: { ok: boolean; label: string }[] = [
+    { ok: password.length >= 8, label: "8자 이상" },
+    { ok: !/^\d+$/.test(password), label: "숫자만으로 이루어지지 않을 것" },
+    {
+      ok: !(trimmedName.length >= 4 && password.toLowerCase().includes(trimmedName.toLowerCase())),
+      label: "닉네임을 포함하지 않을 것",
+    },
+  ];
+  // 아직 한 글자도 안 친 칸에 빨간 줄을 세우지 않는다 — 그건 실수가 아니라 시작이다.
+  const pwTouched = password.length > 0;
+  const pwAllOk = pwRules.every((r) => r.ok);
+  const pw2Mismatch = password2.length > 0 && password !== password2;
+
+  /**
+   * 중복 확인 결과가 **지금 칸의 값에 대한 답인가.**
+   * 답을 기다리는 사이 사람이 칸을 더 쳤으면 그 결과는 이미 다른 이름의 것이다.
+   */
+  const nameCheck =
+    props.nameCheck !== null && props.nameCheck.username === trimmedName ? props.nameCheck : null;
 
   const augKinds = props.serverInfo?.augmentKinds ?? null;
   // 상태 줄에 뜨는 연결 상태 — 색만으로 말하지 않는다(WCAG 1.4.1). 점 옆에 늘 글자가 있다.
@@ -6700,14 +6852,41 @@ function AuthScreen(props: {
             버튼을 위로 밀어냈다**(2026-08-18 실측: 열자마자 scrollTop 142).
             처음 온 사람이 가장 먼저 봐야 할 것은 로그인 칸이 아니다.
           */}
-          <input
-            value={username}
-            maxLength={12}
-            placeholder="게임에서 표시되는 이름"
-            onChange={(e) => setUsername(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-          />
+          {/* 가입 탭에서만 «중복 확인»이 옆에 붙는다 (2026-08-19 사용자 지시 ③).
+              로그인 탭에는 뜻이 없다 — 거기 닉네임은 이미 있는 계정이어야 한다. */}
+          <div className={tab === "register" ? "auth-name-row" : undefined}>
+            <input
+              value={username}
+              maxLength={12}
+              placeholder="게임에서 표시되는 이름"
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+            {tab === "register" ? (
+              <button
+                type="button"
+                className="auth-name-check"
+                // 서버가 인증과 **같은 레이트리밋 창**을 태운다(계정 열거 방지) —
+                // 같은 이름을 다시 눌러 예산을 태우지 않게 여기서 한 번 접는다.
+                disabled={
+                  props.connection !== "connected" ||
+                  trimmedName.length < 2 ||
+                  nameCheck !== null
+                }
+                onClick={() => props.onCheckUsername(trimmedName)}
+              >
+                {nameCheck?.state === "checking" ? "확인 중…" : "중복 확인"}
+              </button>
+            ) : null}
+          </div>
         </label>
+        {tab === "register" && nameCheck !== null && nameCheck.state !== "checking" ? (
+          <p className={nameCheck.state === "ok" ? "auth-check-ok" : "auth-check-bad"}>
+            {nameCheck.state === "ok"
+              ? `«${nameCheck.username}» — 사용할 수 있습니다`
+              : (nameCheck.reason ?? "사용할 수 없는 닉네임입니다")}
+          </p>
+        ) : null}
         <label>
           비밀번호
           <input
@@ -6719,9 +6898,28 @@ function AuthScreen(props: {
         </label>
         {tab === "register" ? (
           <>
-            <p className="auth-rule">
-              비밀번호 규칙 — <b>8자 이상</b>, 숫자로만 이루어질 수 없고, 닉네임을 포함할 수 없습니다.
-            </p>
+            {/* 규칙은 **지금 값 기준으로** 다시 그려진다 (2026-08-19 사용자 지시 ④):
+                못 지킨 줄만 붉게 남고, 지키는 순간 그 줄은 조용히 통과 표시로 바뀐다.
+                셋을 다 지키면 목록이 통째로 접히고 한 줄만 남는다 — 다 된 뒤에도
+                규칙표가 자리를 차지하고 있으면 아직 뭔가 남은 것처럼 보인다.
+                `aria-live`로 읽어 주는 이유: 화면을 못 보는 사람에게는 색이 없다. */}
+            {!pwTouched ? (
+              <p className="auth-rule">
+                비밀번호 규칙 — <b>8자 이상</b>, 숫자로만 이루어질 수 없고, 닉네임을 포함할 수 없습니다.
+              </p>
+            ) : pwAllOk ? (
+              <p className="auth-check-ok" aria-live="polite">
+                ✓ 비밀번호 규칙을 모두 만족합니다
+              </p>
+            ) : (
+              <ul className="auth-rule-list" aria-live="polite">
+                {pwRules.map((r) => (
+                  <li key={r.label} className={r.ok ? "auth-rule-ok" : "auth-rule-bad"}>
+                    <span aria-hidden="true">{r.ok ? "✓" : "✕"}</span> {r.label}
+                  </li>
+                ))}
+              </ul>
+            )}
             <label>
               비밀번호 확인
               <input
@@ -6731,6 +6929,10 @@ function AuthScreen(props: {
                 onKeyDown={(e) => e.key === "Enter" && submit()}
               />
             </label>
+            {/* 확인 칸도 같은 규칙이다 — 누르기 전에 안다. 비어 있을 때는 침묵한다. */}
+            {pw2Mismatch ? (
+              <p className="auth-check-bad" aria-live="polite">✕ 비밀번호 확인이 일치하지 않습니다</p>
+            ) : null}
             {gateOn ? (
               <label>
                 가입 코드 <span className="auth-required">(필수)</span>
@@ -9510,6 +9712,8 @@ function HomeScreen(props: {
   onOpenTiers: () => void;
   onRefreshLive: () => void;
   onSpectate: (code: string) => void;
+  /** 관리자 강제 종료 — 확인 대화를 띄우고 보낸다. `who`는 그 대화에 적을 명단. */
+  onAbortGame: (code: string, who: string) => void;
   onRefreshUsers: () => void;
   onStartSandbox: (mode: GameMode) => void;
   /**
@@ -9681,10 +9885,19 @@ function HomeScreen(props: {
             />
             <button onClick={joinByCode} disabled={code.trim().length < 4}>참가</button>
           </div>
+          {/* 이 버튼이 뜨는 근거는 **서버가 들고 있는 좌석**이다 — 로그인 때
+              `authOk.resumeRoom`으로 한 번(#338), 그리고 홈에 돌아올 때마다
+              `activeGameRequest`로 다시(2026-08-19 사용자 지시 ①).
+
+              두 번 묻는 것이 요점이다. 한 번만 맞추면 홈에 머무는 동안 그 값이
+              낡는다 — 판이 끝나거나, 다른 기기에서 이어지거나, 방이 유휴 청소로
+              사라진다. 그러면 이 버튼은 **눌러야 비로소 "그 방은 이미
+              사라졌습니다"를 보는 버튼**으로 되돌아간다. */}
           {props.lastRoomCode !== null ? (
             <button className="home-rejoin" onClick={() => props.onJoinRoom(props.lastRoomCode!)}>
               <i className="mk mk-again" aria-hidden="true" />
-              진행하던 방으로 재접속 <b className="num">{props.lastRoomCode}</b>
+              진행하던 방으로 재접속{" "}
+              <b className="num">{props.lastRoomCode}</b>
             </button>
           ) : null}
           <p className="home-hint">
@@ -9929,6 +10142,18 @@ function HomeScreen(props: {
                     </span>
                     <button className="replay-open" onClick={() => props.onSpectate(r.code)}>
                       👁 관전
+                    </button>
+                    {/* 강제 종료 (2026-08-19 사용자 지시 ⑤).
+
+                        필요한 이유는 좌석이 **끊긴 사람 몫으로 남는다**는 설계다:
+                        돌아오지 않는 사람이 낀 판은 저 혼자 세워진 채 방을 물고
+                        있고, 그 계정은 `ALREADY_IN_GAME`에 걸려 새 방도 못 만든다.
+                        푸는 손잡이가 어디에도 없었다. */}
+                    <button
+                      className="replay-open live-abort"
+                      onClick={() => props.onAbortGame(r.code, r.players.map((p) => p.nickname).join(" · "))}
+                    >
+                      ⛔ 강제 종료
                     </button>
                   </li>
                 ))}

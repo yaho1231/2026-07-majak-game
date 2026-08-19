@@ -246,6 +246,14 @@ interface Room {
    * 고아 청소가 가져간다.
    */
   preserveReplayOnAbort: boolean;
+  /**
+   * 이번 무효 종료의 사유 — 사람들에게 그대로 나간다. null이면 "전원 합의".
+   *
+   * 무효 종료로 들어오는 문이 둘이라 필요하다: 전원 합의 투표와 관리자 강제 종료.
+   * `requestAbort()`는 인자를 받지 않고(컨트롤러는 왜 끊는지 알 이유가 없다),
+   * 콜백은 방만 보고 문구를 고른다 — 그 판단 근거를 여기 적어 둔다.
+   */
+  abortReason: string | null;
   /** 다음 판 시작 시 좌석별로 미리 지급할 증강 (샌드박스 전용) */
   sandboxAugments: Record<PlayerId, string[]>;
   /** 다음 판 시작 시 좌석별로 강제 배패할 손패 (kindKey 목록, 샌드박스 전용) */
@@ -1586,6 +1594,37 @@ export class RoomManager {
         void this.doAuth(conn, "LOGIN_FAILED", () => db.login(username.trim(), password));
         return;
       }
+      /*
+       * 닉네임 중복 확인 — 가입 폼의 «중복 확인» 버튼.
+       *
+       * **인증과 같은 레이트리밋 창을 태운다** (`rateLimited`). 이 창구가 새로
+       * 흘리는 정보는 없다 — `register`가 이미 "이미 사용 중인 닉네임입니다"로
+       * 답한다 — 하지만 값이 싸서, 별도 예산을 주면 계정 열거의 **속도 상한**만
+       * 올려 주게 된다. 같은 버킷을 쓰면 지금의 천장(연결 12회/분·IP 30회/분)이
+       * 그대로 유지된다.
+       */
+      case "checkUsername": {
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        if (typeof msg.username !== "string" || !withinAuthFieldLimit(msg.username)) {
+          return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
+        }
+        if (this.rateLimited(conn)) return;
+        const name = msg.username.trim();
+        let problem: string | null;
+        try {
+          problem = db.usernameProblem(name);
+        } catch (err) {
+          console.error("checkUsername error:", err);
+          return this.fail(conn, "INTERNAL", "닉네임 확인 중 오류가 발생했습니다");
+        }
+        return this.send(conn.ws, {
+          type: "usernameCheck",
+          username: name,
+          available: problem === null,
+          ...(problem !== null ? { reason: problem } : {}),
+        });
+      }
       case "tokenLogin": {
         if (typeof msg.sessionToken === "string" && msg.sessionToken.length > MAX_AUTH_FIELD_LEN) {
           return this.fail(conn, "TOKEN_INVALID", "세션이 만료되었습니다");
@@ -2003,22 +2042,25 @@ export class RoomManager {
       // ── 관리자 관전 ──
       case "liveGames": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
-        this.send(conn.ws, {
-          type: "liveGames",
-          rooms: [...this.rooms.values()]
-            // 증강 테스트·게스트 체험 방은 실대국이 아니므로 관전 목록에서 제외한다
-            .filter((r) => r.phase === "playing" && !r.sandbox && !r.guest)
-            .map((r) => ({
-              code: r.code,
-              startedAt: r.startedAt ?? "",
-              players: r.agents.map((a) => ({
-                nickname: a.nickname,
-                isBot: this.isBot(a),
-              })),
-            })),
-        });
-        return;
+        return this.sendLiveGames(conn);
       }
+      case "adminAbortGame": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        if (typeof msg.code !== "string") {
+          return this.fail(conn, "BAD_REQUEST", "잘못된 방 코드입니다");
+        }
+        return this.adminAbortGame(conn, user, msg.code, msg.reason);
+      }
+      /*
+       * 홈으로 돌아올 때마다 «진행하던 방으로 재접속»을 다시 판정한다.
+       *
+       * 로그인 시점의 답은 `authOk.resumeRoom`이 이미 줬다(#338). 그 값이 홈에
+       * 머무는 동안 낡는 것이 문제다 — 판이 끝나거나, 다른 탭·다른 기기에서
+       * 나갔거나, 방이 유휴 청소로 사라진다. 없는 방을 가리키는 버튼은 누를
+       * 때마다 실패 토스트만 낸다.
+       */
+      case "activeGameRequest":
+        return this.sendActiveGame(conn, user);
       case "spectate":
         return this.spectate(conn, user, msg.code);
       case "spectateStop":
@@ -2275,6 +2317,18 @@ export class RoomManager {
     this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
   }
 
+  /**
+   * 돌아갈 수 있는 방을 **다시** 알려 준다 (`activeGameRequest`의 답).
+   *
+   * 판정은 `authOk.resumeRoom`과 **같은 함수**(`resumableRoomFor`)를 쓴다 — 로그인
+   * 때 한 번 맞춰 준 값이 그 뒤로 낡는 것이 문제라, 답이 갈라지면 고칠 이유가
+   * 없어진다. 이 메시지가 따로 있는 이유는 오직 **다시 물을 수 있게** 하는 것이다:
+   * 홈에 돌아올 때마다 판이 끝났는지·다른 기기에서 이어지는지가 바뀐다.
+   */
+  private sendActiveGame(conn: Conn, user: UserRow): void {
+    this.send(conn.ws, { type: "activeGame", code: this.resumableRoomFor(user.username) });
+  }
+
   private fail(conn: Conn, code: string, message: string): void {
     this.send(conn.ws, { type: "error", code, message });
   }
@@ -2525,6 +2579,7 @@ export class RoomManager {
       holdUntil: null,
       resumePath: null,
       preserveReplayOnAbort: false,
+      abortReason: null,
       sandboxAugments: {},
       sandboxHands: {},
       botArchetypes: new Map(),
@@ -3431,6 +3486,60 @@ export class RoomManager {
     });
   }
 
+  /** 진행 중인 대국 목록 (관리자 화면). 권한 검사는 호출부가 이미 했다. */
+  private sendLiveGames(conn: Conn): void {
+    this.send(conn.ws, {
+      type: "liveGames",
+      rooms: [...this.rooms.values()]
+        // 증강 테스트·게스트 체험 방은 실대국이 아니므로 관전 목록에서 제외한다
+        .filter((r) => r.phase === "playing" && !r.sandbox && !r.guest)
+        .map((r) => ({
+          code: r.code,
+          startedAt: r.startedAt ?? "",
+          players: r.agents.map((a) => ({
+            nickname: a.nickname,
+            isBot: this.isBot(a),
+          })),
+        })),
+    });
+  }
+
+  /**
+   * 관리자 강제 종료 — 진행 중인 판 하나를 정산 없이 접는다 (2026-08-19 사용자 지시 ⑤).
+   *
+   * **새 종료 경로를 만들지 않는다.** 전원 합의 무효와 같은 문(`requestAbort` →
+   * 컨트롤러 `onGameAborted`)으로 나간다 — 리플레이 폐기·`live_games` 행 삭제·
+   * 관전 종료·방 삭제·연결 분리가 전부 그 콜백 한 곳에 모여 있고, 여기서 따로
+   * 흉내 내면 언젠가 한쪽만 고쳐져 유령 방이 남는다. 여기서 하는 일은 사유를
+   * 적어 두고(`abortReason`) 그 문을 여는 것뿐이다.
+   *
+   * 대기실 방은 대상이 아니다 — 진행 중인 판이 없으니 "강제 종료"할 것도 없고,
+   * 대기실 좌석은 사람이 나가거나 유령 청소가 알아서 걷어 간다.
+   */
+  private adminAbortGame(conn: Conn, admin: UserRow, code: string, reason?: string): void {
+    const room = this.rooms.get(code.trim().toUpperCase());
+    if (room === undefined) return this.fail(conn, "ROOM_NOT_FOUND", "그런 방이 없습니다");
+    if (room.phase !== "playing" || room.controller === null) {
+      return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
+    }
+    // 관리자가 적어 준 사유가 있으면 그대로 쓴다. 길이는 여기서 자른다 — 이 문자열은
+    // 네 사람의 화면에 그대로 뜬다.
+    const note = typeof reason === "string" ? reason.trim().slice(0, 100) : "";
+    room.abortReason =
+      note !== ""
+        ? `관리자가 게임을 종료했습니다 — ${note}`
+        : "관리자가 게임을 강제 종료했습니다";
+    this.log(room, `관리자 강제 종료 (${admin.username})`);
+    room.controller.requestAbort();
+    // 목록을 즉시 갱신해 준다 — 방금 끊은 방이 목록에 남아 있으면 한 번 더 누르게 된다.
+    // 컨트롤러 정리는 비동기라(대기 중인 결정 프로미스가 깨어나야 한다) 조금 뒤에 읽는다.
+    // 레이트리밋을 태우지 않으려고 `route`가 아니라 전송 함수를 직접 부른다 — 이건
+    // 사용자가 요청한 조회가 아니라 방금 누른 동작의 결과 화면이다.
+    setTimeout(() => {
+      if (conn.ws.readyState === 1 /* OPEN */) this.sendLiveGames(conn);
+    }, 50).unref?.();
+  }
+
   /** 계정 삭제 (관리자 전용) — 본인은 삭제 불가. 삭제 후 목록·리더보드를 갱신한다. */
   private adminDeleteUser(conn: Conn, admin: UserRow, userId: number): void {
     if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
@@ -4243,6 +4352,7 @@ export class RoomManager {
     room.startedAt = null;
     room.abortVotes.clear();
     room.ready.clear();
+    room.abortReason = null;
     room.sandboxRestarting = false;
     this.touch(room);
     // 봇은 새 인스턴스로 — 지난 판의 내부 상태(프로필·기억)를 다음 판에 끌고 가지 않는다
@@ -4837,11 +4947,12 @@ export class RoomManager {
           this.restartSandbox(room);
           return;
         }
-        this.log(room, "게임 무효 종료");
-        // 전원 합의 무효 — 정산·기록·통계 없이 즉시 정리하고 홈으로 돌린다
+        this.log(room, `게임 무효 종료${room.abortReason !== null ? ` (${room.abortReason})` : ""}`);
+        // 무효 — 정산·기록·통계 없이 즉시 정리하고 홈으로 돌린다.
+        // 사유는 방에 적혀 있으면 그것(관리자 강제 종료), 아니면 전원 합의다.
         const msg: ServerMessage = {
           type: "gameAborted",
-          reason: "전원 합의로 게임이 무효 처리되었습니다",
+          reason: room.abortReason ?? "전원 합의로 게임이 무효 처리되었습니다",
         };
         for (const agent of room.agents) {
           if (agent instanceof HumanAgent) agent.notify(msg);

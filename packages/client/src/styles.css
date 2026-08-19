@@ -8761,6 +8761,61 @@ button {
 
 .auth-rule b { color: #d6e0d8; }
 
+/*
+ * 타자 칠 때마다 다시 재는 규칙표 (2026-08-19 사용자 지시 ④).
+ * 못 지킨 줄은 붉게 남고 지킨 줄은 흐려진다 — 다 지키면 목록 자체가 접히고
+ * `.auth-check-ok` 한 줄만 남는다(App.tsx의 `pwAllOk`).
+ *
+ * ⚠ 색만으로 말하지 않는다 (WCAG 1.4.1) — 줄마다 ✓/✕ 글자가 앞에 붙는다.
+ */
+.auth-rule-list {
+  margin: -4px 0 2px;
+  padding: 8px 10px;
+  list-style: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.auth-rule-list li { display: flex; gap: 6px; align-items: baseline; }
+.auth-rule-bad { color: #f8a295; font-weight: 600; }
+.auth-rule-ok { color: #6f8878; }
+
+.auth-check-ok,
+.auth-check-bad {
+  margin: -2px 0 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.auth-check-ok { color: #8fd3a5; }
+.auth-check-bad { color: #f8a295; font-weight: 600; }
+
+/* 닉네임 칸 + «중복 확인» — 한 줄에 붙인다. */
+.auth-name-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.auth-name-row input { flex: 1 1 auto; min-width: 0; }
+
+.auth-name-check {
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: rgba(255, 255, 255, 0.06);
+  color: #d6e0d8;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.auth-name-check:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.auth-name-check:disabled { opacity: 0.45; }
+
 .auth-gate-note {
   margin: 6px 0 0;
   padding: 10px 12px;
@@ -9624,6 +9679,15 @@ button {
 }
 
 .replay-open:hover { background: rgba(74, 134, 189, 0.45); }
+
+/* 관리자 강제 종료 — 되돌릴 수 없는 동작이라 관전 버튼과 색으로 갈라 둔다.
+   (누르면 확인 대화가 한 번 뜬다 — App.tsx `onAbortGame`) */
+.live-abort {
+  background: rgba(189, 74, 74, 0.22);
+  border-color: rgba(231, 121, 109, 0.45);
+}
+
+.live-abort:hover { background: rgba(189, 74, 74, 0.42); }
 
 .live-code {
   flex: 0 0 auto;
