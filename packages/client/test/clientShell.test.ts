@@ -141,3 +141,84 @@ describe("수치는 자리가 흔들리지 않는다", () => {
     expect(kv).not.toMatch(/font-family/);
   });
 });
+
+/**
+ * 대기실 (2026-08-19, 2차).
+ *
+ * 첫 정리에서 대기실은 창틀(패널 기하)만 맞추고 안은 그대로 뒀더니, 판 위의 문법과
+ * 판 밖의 문법이 한 화면에 섞여 남았다 (사용자 지적: "대기실도 애매하게 남아있어").
+ * 남아 있던 것: 카드 위에 떠 있는 `.icon-btn` 넷, 그 아래 얹힌 정형구 단추, 점선
+ * 두른 방 코드 상자, 둥근 상자로 흩어진 좌석 넷, 세로 그라디언트 시작 버튼.
+ */
+describe("대기실은 판 밖의 문법을 쓴다", () => {
+  /**
+   * 대기실 컴포넌트의 마크업만.
+   *
+   * ⚠ 끝 표시로 주석(`// ── 게임 테이블 ──`)을 쓰면 안 된다 — `code()` 가 주석을
+   * 걷어내므로 indexOf 가 -1 을 돌려주고, `slice(start, -1)` 은 **파일 끝까지**를
+   * 잘라 와서 판 위의 `.icon-btn` 이 딸려 들어온다(그래서 검사가 늘 실패했다).
+   * 실제 식별자로 끊는다.
+   */
+  const WR_FROM = APP_CODE.indexOf('<div className="waitroom-card">');
+  const WR_TO = APP_CODE.indexOf("function useDoraFx", WR_FROM);
+  const WR = APP_CODE.slice(WR_FROM, WR_TO);
+
+  it("머리 단추는 판 위 절대배치(.icon-btn)를 쓰지 않는다", () => {
+    // `.icon-btn` 은 `position: absolute` 라 카드 위에 떠 버린다. 판이 없는 화면에서
+    // 단추가 허공에 뜰 이유가 없다 — 창의 타이틀바로 내렸다.
+    expect(WR_FROM).toBeGreaterThanOrEqual(0);
+    expect(WR_TO).toBeGreaterThan(WR_FROM);
+    expect(WR).not.toContain("icon-btn");
+    expect(WR).toContain('<div className="wr-head">');
+  });
+
+  it("머리에 규칙·도감·설정·나가기가 모두 있다", () => {
+    const head = WR.slice(WR.indexOf('<div className="wr-head">'), WR.indexOf("</div>", WR.indexOf("wr-head-x")));
+    for (const fn of ["props.onOpenHelp", "props.onOpenCodex", "props.onLeave"]) {
+      expect(head).toContain(fn);
+    }
+    expect(head).toContain("setSettingsOpen");
+  });
+
+  it("정형구 단추는 머리줄 안에서 흐름 배치다", () => {
+    // 예전에는 `.waitroom-card .emote-bar { top: 64px }` 로 카드 위에 얹혀 방 코드
+    // 상자를 가렸다. 파일 뒤쪽 규칙이라 앞의 흐름 배치를 덮는다 — 좌표를 비워 둔다.
+    expect(rule(".wr-head .emote-bar")).toMatch(/position:\s*relative/);
+    const late = rule(".waitroom-card .emote-bar");
+    expect(late).toMatch(/top:\s*auto/);
+    expect(late).not.toMatch(/top:\s*\d/);
+  });
+
+  it("방 코드는 눌러서 복사하는 **버튼**이다", () => {
+    // `<div onClick>` 이었다 — 키보드로 닿지 않고 스크린리더에 누를 것으로 안 읽혔다.
+    expect(WR).toMatch(/<button[^>]*className="waitroom-code"/);
+  });
+
+  it("좌석 넷은 한 목록이다", () => {
+    // 저마다 둥근 상자로 띄우면 서로 무관한 카드 넷으로 보인다.
+    const list = rule(".seat-list");
+    expect(list).toMatch(/border:\s*1px solid var\(--chrome-line\)/);
+    expect(rule(".seat-row")).toMatch(/border-top:/);
+    // 빈 자리에 점선을 두르지 않는다 (점선 = 임시로 그려 둔 것)
+    expect(rule(".seat-row.seat-empty")).not.toMatch(/dashed/);
+    expect(rule(".waitroom-code")).not.toMatch(/dashed/);
+  });
+
+  it("시작·준비 버튼에 세로 그라디언트가 없다", () => {
+    // 판 밖의 주 동작은 전부 평평한 채움 + 위 1px 하이라이트다(.btn-key).
+    for (const sel of [".wr-start", ".wr-ready", ".wr-unready"]) {
+      expect(rule(sel)).not.toMatch(/linear-gradient/);
+    }
+  });
+});
+
+describe("설정 표식은 작은 크기에서 살아남는다", () => {
+  it("톱니 다각형이 아니라 슬라이더다", () => {
+    // 24점 톱니 폴리곤은 11~14px 로 줄면 얼룩이 된다 (2026-08-19 실측).
+    expect(CSS_CODE).toContain(".mk-sliders");
+    expect(CSS_CODE).not.toContain(".mk-gear");
+    expect(APP_CODE).not.toContain("mk-gear");
+    // px 좌표로 그리므로 크기를 고정해 둬야 부모가 줄여도 손잡이가 안 잘린다
+    expect(rule(".mk-sliders")).toMatch(/width:\s*14px/);
+  });
+});

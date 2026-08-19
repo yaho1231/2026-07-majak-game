@@ -5683,23 +5683,109 @@ button {
 .waitroom-card {
   position: relative;
   width: min(540px, 94cqw);
-  padding: 22px 22px 20px;
+  /* 셸 토큰으로 맞춘다 — 아래 `.wr-head` 가 이 값만큼 음수 마진으로 되밀어야
+     타이틀바가 창의 좌우 끝까지 닿는다 (`.home-card-head` 와 같은 방식). */
+  padding: var(--panel-pad-y) var(--panel-pad-x);
   border-radius: var(--r-panel);
   background: var(--chrome-fill);
   border: 1px solid var(--chrome-line);
   box-shadow: inset 0 1px 0 var(--chrome-lit), 0 16px 48px rgba(0, 0, 0, 0.5);
 }
 
+/* ── 창 머리 (타이틀바) ──
+   판 위의 `.icon-btn` 을 카드 위에 띄워 두던 것을 여기로 내렸다 (App.tsx 주석).
+   기하는 셸의 패널 머리와 같다 — 왼쪽 황동 눈금 + 한 급 제목 + 오른쪽 단추 묶음. */
+.wr-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: calc(var(--panel-pad-y) * -1) calc(var(--panel-pad-x) * -1) 14px;
+  padding: 0 8px 0 0;
+  min-height: 38px;
+  border-bottom: 1px solid var(--chrome-line);
+  background: var(--chrome-head);
+  border-radius: var(--r-panel) var(--r-panel) 0 0;
+}
+
+.wr-head::before {
+  content: "";
+  align-self: stretch;
+  width: 3px;
+  margin-right: 9px;
+  background: var(--brass);
+  border-radius: var(--r-panel) 0 0 0;
+}
+
+.wr-head-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+/* 표식만 든 단추라 글자용 오른쪽 여백이 필요 없다.
+   크기도 한 급 올린다 — 기본 11px 에서는 톱니(설정)가 뭉개져 무슨 그림인지 안 보였다. */
+.wr-head-btn .mk {
+  width: 14px;
+  height: 14px;
+  margin-right: 0;
+  opacity: 1;
+}
+
+/* 나가기는 되돌리기 어려운 쪽이다 — 다른 단추와 같은 크기지만 색으로 갈라 둔다 */
+.wr-head-x { color: var(--ink-3); }
+.wr-head-x:hover { color: #f8a295; background: rgba(218, 98, 98, 0.16); }
+
+/* ── 정형구(대화) 단추 ──
+   `.emote-bar` 는 판 위 절대배치(right/bottom)라, 대기실에서는 `top: 64px` 로
+   덮어써서 방 코드 상자 위에 얹혀 있었다. 머리줄 안으로 들어왔으니 흐름에 맡기고,
+   펼쳐지는 목록만 절대배치로 아래에 단다. */
+.wr-head .emote-bar {
+  position: relative;
+  right: auto;
+  top: auto;
+  bottom: auto;
+  flex: none;
+  z-index: 41;
+}
+
+.wr-head .emote-toggle {
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-chip);
+  border-color: var(--chrome-line);
+  background: rgba(236, 228, 210, 0.035);
+  color: var(--ink-2);
+  font-size: 12px;
+  box-shadow: none;
+}
+.wr-head .emote-toggle:hover {
+  background: rgba(236, 228, 210, 0.075);
+  border-color: var(--brass-line);
+  color: var(--ink-1);
+}
+
+.wr-head .emote-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  border-radius: var(--r-chip);
+  border-color: var(--chrome-line);
+  background: var(--chrome-head);
+}
+
 /* 26px 금색 + 글로우 + 자간 8px 이었다 — "대 기 실"로 흩어져 읽혔고, 글로우는
    이 화면에서 유일한 발광이라 혼자 튀었다. 창 이름은 작고 조용하게. */
 .waitroom-title {
   margin: 0;
-  text-align: center;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 3px;
-  color: var(--ink-2);
+  letter-spacing: 1.2px;
+  color: var(--ink-1);
   text-shadow: none;
+  white-space: nowrap;
 }
 
 .waitroom-room {
@@ -5715,8 +5801,8 @@ button {
 
 .mode-select {
   display: flex;
-  gap: 8px;
-  margin: 0 0 16px;
+  gap: 6px;
+  margin: 0 0 14px;
 }
 
 /*
@@ -5743,19 +5829,21 @@ button {
   letter-spacing: 0;
 }
 
+/* 나란한 보기 둘·셋 = **세그먼트**다. 저마다 둥근 상자를 두르면 서로 무관한 버튼
+   여럿으로 보인다 — 하나의 띠를 나눠 갖게 하고, 고른 쪽만 황동으로 채운다. */
 .mode-btn {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 10px 6px;
-  border: 1px solid rgba(147, 168, 155, 0.28);
-  border-radius: 9px;
-  background: rgba(147, 168, 155, 0.08);
-  color: #93a89b;
+  padding: 9px 6px;
+  border: 1px solid var(--chrome-line);
+  border-radius: var(--r-chip);
+  background: rgba(236, 228, 210, 0.03);
+  color: var(--ink-3);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color 0.14s var(--ease), background 0.14s var(--ease), color 0.14s var(--ease);
 }
 
 .mode-btn:disabled {
@@ -5763,18 +5851,19 @@ button {
 }
 
 .mode-btn:not(:disabled):hover {
-  border-color: rgba(184, 151, 92, 0.6);
+  border-color: var(--brass-line);
+  color: var(--ink-2);
 }
 
 .mode-btn.mode-active {
-  border-color: #b8975c;
-  background: rgba(184, 151, 92, 0.16);
-  color: #e2c793;
+  border-color: var(--brass-line);
+  background: rgba(154, 123, 66, 0.2);
+  color: var(--brass-bright);
 }
 
 .mode-name {
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .mode-sub {
@@ -5782,45 +5871,50 @@ button {
   opacity: 0.85;
 }
 
+/* 좌석 넷은 **한 판의 네 자리**다. 저마다 둥근 상자로 띄워 두면 서로 무관한 카드
+   넷으로 보인다 — 테두리 하나 안에 헤어라인으로 나눠, 한 자리표로 읽히게 한다. */
 .seat-list {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  border: 1px solid var(--chrome-line);
+  border-radius: var(--r-chip);
+  overflow: hidden;
 }
 
 .seat-row {
   display: grid;
-  grid-template-columns: 30px minmax(96px, 1fr) auto auto;
+  grid-template-columns: 26px minmax(96px, 1fr) auto auto;
   gap: 10px;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid transparent;
-  min-height: 46px;
+  padding: 9px 11px;
+  border-top: 1px solid rgba(236, 228, 210, 0.07);
+  min-height: 44px;
 }
+.seat-row:first-child { border-top: none; }
 
+/* 내 자리 — 배경을 칠하는 대신 **왼쪽 눈금**으로 짚는다. 네 줄이 붙어 있으므로
+   면을 칠하면 그 줄만 다른 상자처럼 튀어 목록이 끊긴다. */
 .seat-row.seat-me {
-  border-color: rgba(240, 200, 106, 0.4);
-  background: rgba(184, 151, 92, 0.1);
+  background: rgba(154, 123, 66, 0.08);
+  box-shadow: inset 3px 0 0 var(--brass);
 }
 
+/* 빈 자리는 점선을 두르지 않는다(점선 = 임시로 그려 둔 것) — 톤만 내린다 */
 .seat-row.seat-empty {
-  opacity: 0.5;
-  border: 1px dashed rgba(147, 168, 155, 0.35);
-  background: transparent;
+  background: rgba(0, 0, 0, 0.18);
 }
 
 .seat-idx {
-  font-weight: 800;
-  color: #f0c86a;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--brass-bright);
   text-align: center;
 }
 
 .seat-vacant {
   grid-column: 2 / -1;
-  color: #5f7469;
-  font-size: 13px;
+  color: var(--ink-4);
+  font-size: 12px;
 }
 
 .seat-name {
@@ -5863,11 +5957,12 @@ button {
 
 .stat-chip {
   padding: 2px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #c2d0c5;
+  border-radius: var(--r-chip);
+  background: rgba(236, 228, 210, 0.05);
+  color: var(--ink-2);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   white-space: nowrap;
 }
 
@@ -5887,10 +5982,10 @@ button {
   align-items: center;
   gap: 5px;
   padding: 3px 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(240, 200, 106, 0.32);
-  background: rgba(240, 200, 106, 0.12);
-  color: #e6c880;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--brass-line);
+  background: rgba(154, 123, 66, 0.14);
+  color: var(--brass-bright);
   font-family: inherit;
   font-size: 11px;
   font-weight: 700;
@@ -6007,38 +6102,45 @@ button {
   justify-self: end;
 }
 
+/* 방장·준비완료·대기중 = 상태 표식이다 — 알약이 맞는 자리(셸 규칙 2). 다만
+   800 굵기는 좌석 이름보다 무거워 눈이 배지로 먼저 갔다. */
 .badge {
-  padding: 3px 9px;
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
+  border: 1px solid transparent;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   white-space: nowrap;
 }
 
 .badge-host {
-  background: rgba(184, 151, 92, 0.25);
-  color: #f0c86a;
+  border-color: var(--brass-line);
+  background: rgba(154, 123, 66, 0.18);
+  color: var(--brass-bright);
 }
 
 .badge-ready {
-  background: rgba(101, 195, 136, 0.22);
-  color: #93dfa8;
+  border-color: rgba(147, 223, 168, 0.3);
+  background: rgba(101, 195, 136, 0.16);
+  color: #b9e6c6;
 }
 
 .badge-wait {
-  background: rgba(147, 168, 155, 0.18);
-  color: #a8bcaf;
+  border-color: var(--chrome-line);
+  background: rgba(236, 228, 210, 0.045);
+  color: var(--ink-3);
 }
 
 .seat-kick {
   width: 20px;
   height: 20px;
   padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: rgba(218, 98, 98, 0.2);
+  border: 1px solid transparent;
+  border-radius: var(--r-chip);
+  background: rgba(218, 98, 98, 0.16);
   color: #f9a3a3;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -6092,21 +6194,32 @@ button {
   background: rgba(147, 168, 155, 0.35);
 }
 
+/* 세로 그라디언트를 걷었다 — 판 밖 화면의 주 동작은 전부 **평평한 채움 + 위 1px
+   하이라이트**다(`.btn-key`). 여기만 광택이 남아 있으면 같은 급의 버튼이 화면마다
+   다른 재질로 보인다.
+
+   글자색도 `.btn-key` 와 같은 #1a1408 로 맞춘다. 예전 #2a2109 는 황동(#9a7b42)
+   위에서 4.00:1 이라 AA(4.5:1)에 못 미쳤다 — #1a1408 은 4.61:1 이다
+   (그 주석이 인용한 3.97:1 은 #4a3a22 시절 값이고, 내려온 값도 여전히 모자랐다). */
 .wr-start {
-  background: linear-gradient(180deg, #b8975c, #9a7b42);
-  /* #4a3a22 는 이 황동 위에서 3.97:1 이다. 이름표 차례 표시(.plate-turn .plate-wind)에서
-     이미 같은 이유로 #2a2109 로 내렸는데 여기에는 반영이 안 돼 있었다. */
-  color: #2a2109;
+  border-color: var(--brass-bright);
+  background: var(--brass);
+  color: #1a1408;
+  box-shadow: inset 0 1px 0 rgba(255, 248, 230, 0.3);
 }
 
+/* 준비 완료 — 초록은 이 화면에서 "됐다"의 뜻으로만 쓴다(좌석 배지와 같은 계열) */
 .wr-ready {
-  background: linear-gradient(180deg, #66c388, #429563);
+  border-color: rgba(147, 223, 168, 0.55);
+  background: #429563;
   color: #072011;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .wr-unready {
-  background: rgba(147, 168, 155, 0.2);
-  color: #ece4d2;
+  border-color: var(--chrome-line);
+  background: rgba(236, 228, 210, 0.05);
+  color: var(--ink-2);
 }
 
 .wr-btn:not(:disabled):hover {
@@ -6114,38 +6227,42 @@ button {
 }
 
 .waitroom-hint {
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   text-align: center;
-  color: #93a89b;
-  font-size: 12px;
+  color: var(--ink-4);
+  font-size: 11.5px;
+  line-height: 1.6;
 }
 
+/* 꿀팁 — 창 바닥에 붙는 안내 띠. 테두리를 두른 상자였는데, 카드 안에서 또 하나의
+   상자가 되어 좌석표와 같은 무게로 읽혔다. 왼쪽 눈금 하나면 "덧붙인 말"이 된다. */
 .waitroom-tip {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 9px;
   /* 팁마다 길이가 달라 카드 높이가 튀지 않게 두 줄 높이를 미리 잡아 둔다 */
   min-height: 42px;
-  margin: 12px 0 0;
-  padding: 9px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(184, 151, 92, 0.22);
-  background: rgba(184, 151, 92, 0.07);
+  margin: 12px calc(var(--panel-pad-x) * -1) calc(var(--panel-pad-y) * -1);
+  padding: 9px var(--panel-pad-x);
+  border: none;
+  border-top: 1px solid var(--chrome-line);
+  border-radius: 0 0 var(--r-panel) var(--r-panel);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .waitroom-tip-label {
   flex: none;
-  color: #b8975c;
-  font-size: 12px;
+  color: var(--brass);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 1px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 .waitroom-tip-text {
-  color: #cfdcd3;
-  font-size: 12px;
-  line-height: 1.55;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  line-height: 1.6;
   animation: waitroom-tip-in 0.45s ease both;
 }
 
@@ -8068,14 +8185,22 @@ button {
 }
 /* 확성기 = 공지 */
 .mk-notice { clip-path: polygon(0 34%, 34% 34%, 72% 4%, 72% 96%, 34% 66%, 0 66%); }
-/* 톱니 = 설정 */
-.mk-gear {
-  clip-path: polygon(
-    42% 0, 58% 0, 61% 12%, 74% 17%, 85% 10%, 96% 21%, 89% 32%, 94% 45%, 100% 48%,
-    100% 64%, 94% 67%, 89% 80%, 96% 91%, 85% 100%, 74% 93%, 61% 98%, 58% 100%,
-    42% 100%, 39% 98%, 26% 93%, 15% 100%, 4% 91%, 11% 80%, 6% 67%, 0 64%,
-    0 48%, 6% 45%, 11% 32%, 4% 21%, 15% 10%, 26% 17%, 39% 12%
-  );
+/* 설정 = 슬라이더 셋.
+   ⚠ 톱니바퀴를 다각형으로 그려 봤는데(24점 폴리곤) 11~14px 로 줄면 톱니가 뭉개져
+   그냥 얼룩으로 보였다 (2026-08-19 실측). 이 크기에서 형태가 살아남는 것은 **굵은
+   직선 몇 개**뿐이다. 가로줄 셋은 이미 규칙(.mk-doc)이 쓰므로 세로 막대 + 손잡이로
+   간다 — 두 표식이 90도 어긋나 나란히 있어도 갈린다. */
+.mk-sliders {
+  /* 좌표를 px 로 잡았으므로 크기를 고정한다 — 부모가 11px 로 줄이면 손잡이가 잘린다 */
+  width: 14px;
+  height: 14px;
+  background:
+    linear-gradient(currentColor 0 0) 1px 0 / 2px 100% no-repeat,
+    linear-gradient(currentColor 0 0) 6px 0 / 2px 100% no-repeat,
+    linear-gradient(currentColor 0 0) 11px 0 / 2px 100% no-repeat,
+    linear-gradient(currentColor 0 0) 0 3px / 4px 2.5px no-repeat,
+    linear-gradient(currentColor 0 0) 5px 8px / 4px 2.5px no-repeat,
+    linear-gradient(currentColor 0 0) 10px 5px / 4px 2.5px no-repeat;
 }
 
 /* ── 버튼 ── 창틀 위의 키. 알약이 아니라 사각 키다. */
@@ -9092,11 +9217,12 @@ button {
 /* 홈 설정 — 패널은 position:fixed(화면 기준)라 앵커가 필요 없다.
    대국·대기실과 같은 자리(오른쪽 위)에서 뜨고, 헤더를 끌어 옮길 수 있다. */
 .home-settings { position: relative; }
+/* 상단 바의 설정 단추 — 표식만 들어 있으므로 글자 여백 대신 정사각으로 잡는다 */
 .home-gear {
-  font-size: 16px;
+  padding: 6px 8px;
   line-height: 1;
-  padding: 7px 11px;
 }
+.home-gear .mk { margin-right: 0; opacity: 1; }
 
 .home-main {
   display: grid;
@@ -10482,38 +10608,52 @@ button {
 
 /* ─────────────── 대기실 방 코드 ─────────────── */
 
+/* ── 방 코드 ──
+   점선 테두리 + 26px 금색 + 글로우였다. 점선은 "아직 안 만든 것 · 임시"로 읽히고,
+   글로우는 이 화면에서 유일한 발광이라 혼자 튀었다. 하는 일은 **읽어서 옮겨 적는
+   값 한 칸**이므로, 값 칸의 문법으로 둔다: 파인 바닥 + 고정폭. */
 .waitroom-code {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 12px;
-  margin: 12px 0 4px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(184, 151, 92, 0.1);
-  border: 1px dashed rgba(240, 200, 106, 0.5);
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: var(--r-chip);
+  background: var(--field-fill);
+  border: 1px solid var(--chrome-line);
+  box-shadow: var(--inset-well);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: border-color 0.14s var(--ease);
 }
 
-.waitroom-code:hover { background: rgba(184, 151, 92, 0.2); }
+.waitroom-code:hover { border-color: var(--brass-line); }
 
-.waitroom-code-label {
-  font-size: 12px;
-  color: #a8bcaf;
-}
+.waitroom-code-label { flex: none; }
 
+/* 사람이 눈으로 읽어 불러 주는 값이다 — 고정폭이라야 O 와 0, I 와 1 이 갈린다 */
 .waitroom-code-value {
-  font-size: 26px;
-  font-weight: 900;
-  letter-spacing: 8px;
-  color: #f0c86a;
-  text-shadow: 0 0 16px rgba(240, 200, 106, 0.4);
+  flex: 1;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 5px;
+  /* 자간이 글자 뒤에도 붙어 가운데 정렬이 왼쪽으로 밀린다 — 그만큼 되민다 */
+  text-indent: 5px;
+  color: var(--brass-bright);
 }
 
 .waitroom-code-copy {
-  font-size: 12px;
-  color: #93a89b;
+  flex: none;
+  padding: 3px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.waitroom-code:hover .waitroom-code-copy {
+  border-color: var(--brass-line);
+  color: var(--brass-bright);
 }
 
 /* ─────────────── 관전 바·리플레이 컨트롤 ─────────────── */
@@ -12913,11 +13053,16 @@ body:has(.overlay) .emote-bar {
   display: none;
 }
 
-/* 대기실에서는 판이 없으므로 아이콘 바 아래에 붙인다. */
+/* 대기실의 정형구 단추는 **창 머리줄 안**에 산다 (`.wr-head .emote-bar`, 대기실
+   섹션 참고) — 판이 없으므로 허공에 띄울 이유가 없다.
+   ⚠ 예전에는 여기서 `top: 64px` 로 카드 위에 얹었는데, 그 자리가 방 코드 상자와
+   겹쳐 코드 오른쪽을 가렸다 (2026-08-19 사용자 스크린샷).
+   이 규칙은 **머리줄 배치를 덮지 않도록** 비워 둔다 — 파일 뒤쪽이라 특정도가 같으면
+   이쪽이 이긴다. */
 .waitroom-card .emote-bar {
-  right: 14px;
+  right: auto;
   bottom: auto;
-  top: 64px;
+  top: auto;
 }
 
 /* 폰 — 손패가 더 위로 올라오므로 정형구도 함께 올린다. */
