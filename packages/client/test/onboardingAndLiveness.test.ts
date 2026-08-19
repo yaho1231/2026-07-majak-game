@@ -176,20 +176,48 @@ describe("친구를 부르는 일이 한 단계다", () => {
 // ─────────────────── 6. 랜딩 (§3-4) ───────────────────
 
 describe("클릭하기 전에 이 게임이 무엇인지 보인다", () => {
-  it("랜딩이 실제 패로 증강을 보여 준다", () => {
-    expect(APP_CODE).toContain("LANDING_SHOWCASE");
-    const at = APP_CODE.indexOf("LANDING_SHOWCASE");
-    const block = APP_CODE.slice(at, at + 900);
-    // 도움말과 같은 컴포넌트·같은 에셋 — 광고용 그림을 따로 만들지 않는다.
-    // (창은 넉넉히 잡는다: 2026-08-18에 그림이 "바뀌기 전 → 바뀐 뒤" 두 벌로 늘면서
-    //  .map과 첫 HelpTileGroups 사이의 마크업이 길어졌다. 여기서 재는 것은 거리가
-    //  아니라 **같은 컴포넌트를 쓰는가**다.)
-    expect(APP_CODE).toMatch(/LANDING_SHOWCASE\.map[\s\S]{0,900}HelpTileGroups/);
-    expect(block).toContain("사방치기");
-    // 규칙이 무엇에서 무엇으로 바뀌는지 두 상태를 나란히 보여 준다 — 패만 늘어놓으면
-    // 무엇을 설명하는 그림인지 알 수 없다(2026-08-18 사용자 지적).
-    expect(block).toContain("before");
-    expect(block).toContain("after");
+  /*
+   * 여기 "랜딩이 실제 패로 증강을 보여 준다"가 있었다 — 로그인 화면의 «증강 예시»
+   * 세 종(LANDING_SHOWCASE)을 지키던 테스트다.
+   *
+   * 2026-08-19 사용자 지시로 그 패널을 **로그인 뒤**로 옮겼다: "예시랑 룰은 로그인
+   * 후에 확인할 수 있게 옮기고 로그인화면은 로고, 로그인박스만 남아있게." 세 종을
+   * 맛보기로 보여 주는 대신 113종 전부를 훑는 화면을 따로 세운다
+   * (설계: docs/36_AUGMENT_EXAMPLES_PLAN.md).
+   *
+   * 그래서 이 자리가 지키는 것이 **바뀌었다**. 예전 규약("클릭 전에 그림으로
+   * 보여 준다")은 그 화면으로 넘어갔고, 여기서 지킬 것은 그 반대다 — 로그인
+   * 화면에 읽을거리가 다시 기어들어 오지 않는 것.
+   */
+  it("로그인 화면에는 로고와 로그인 상자만 있다", () => {
+    const at = APP_CODE.indexOf('<div className="landing">');
+    expect(at, "랜딩 본문을 못 찾았다").toBeGreaterThan(0);
+    // ⚠ APP_CODE는 주석이 걷힌 코드다 — 구획 주석을 끝 표식으로 쓸 수 없다.
+    //    랜딩 바로 뒤에 오는 첫 선언(`type AugCatalog`)까지가 이 화면이다.
+    const end = APP_CODE.indexOf("type AugCatalog", at);
+    expect(end, "랜딩 뒤 끝 표식을 못 찾았다").toBeGreaterThan(at);
+    const landing = APP_CODE.slice(at, end);
+
+    // 로고와 접속하는 자리(계정 없이 시작 + 로그인)는 그대로 있다.
+    expect(landing).toContain('className="landing-logo"');
+    expect(landing).toContain('className="landing-side"');
+    expect(landing).toContain("계정 없이 시작");
+
+    // 읽을거리는 없다 — 증강 예시도, 규칙으로 가는 문도.
+    expect(APP_CODE).not.toContain("LANDING_SHOWCASE");
+    expect(landing).not.toContain("landing-show");
+    expect(landing).not.toContain("HelpTileGroups");
+  });
+
+  it("가운데 한 상자다 — 격자로 옆에 칸을 만들지 않는다", () => {
+    // 왼쪽 열을 채우던 것이 로그인 뒤로 옮겨 갔다. 2단 격자를 남겨 두면 한쪽이
+    // 빈 채로 서고, 다음 사람이 그 빈 칸을 무언가로 채우게 된다.
+    const css = readFileSync(join(HERE, "../src/styles.css"), "utf8");
+    const at = css.indexOf(".landing {");
+    expect(at, ".landing 규칙을 못 찾았다").toBeGreaterThan(0);
+    const rule = css.slice(at, css.indexOf("}", at));
+    expect(rule).not.toContain("grid-template-areas");
+    expect(rule).toContain("margin: auto");
   });
 
   it("로그인 칸이 첫 화면을 가로채지 않는다", () => {

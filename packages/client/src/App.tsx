@@ -5261,7 +5261,6 @@ export function App(): JSX.Element {
             startCoach(true);
             send({ type: "guestPlay", tutorial: true });
           }}
-          onOpenHelp={() => setHelpOpen(true)}
           onLogin={(u, p) => send({ type: "login", username: u, password: p })}
           onRegister={(u, p, code, signup) => {
             // authOk는 가입과 로그인을 구별해 주지 않는다 — 여기서 표시해 둔다.
@@ -6302,62 +6301,13 @@ function TutorialCoach(props: {
  * 지금은 (1) 무엇인지 먼저 말하고, (2) 계정 없이 바로 한 판을 주고,
  * (3) 가입이 초대제인지 서버가 알려 준 사실대로 적는다.
  */
-/**
- * 랜딩에서 보여 줄 증강 셋 — **실제로 구현된 것**만 쓴다.
- *
- * 여기 적힌 이름·효과는 `packages/content` 의 것을 그대로 옮긴 것이다. 광고용으로
- * 없는 기능을 지어내면 첫 판에서 바로 들통난다. 셋을 고른 기준은 "한 줄로 이해되고,
- * 마작을 알든 모르든 규칙이 흔들린다는 게 보이는가"다.
- *
- * 패 그림은 도움말과 같은 컴포넌트(HelpTileGroups)·같은 에셋을 쓴다.
- *
- * # 왜 **바뀌기 전 → 바뀐 뒤** 인가 (2026-08-18)
- *
- * 예전에는 증강마다 패 세 장을 그냥 늘어놓았다(사방치기 456m · 단색 세계 123p ·
- * 함구령 777s). 그 패들은 효과와 아무 상관이 없어서, 보는 사람에게는 **무엇을
- * 설명하는 그림인지 알 수 없는 장식**이었다 — "사진이 빈약해서 오히려 별로다,
- * 뭘 설명하는 건지 모르게 됐다"(사용자 지적).
- *
- * 규칙이 바뀐다는 것은 정지 화면으로는 보여 줄 수 없다. **무엇이 무엇으로 바뀌는지**
- * 두 상태를 나란히 놓아야 비로소 그림이 말을 한다. 그래서 셋을 전부 "이랬던 것이
- * 이렇게 된다"로 세웠고, 그 형태에 맞는 증강만 골랐다 — 셋 다 실제 구현된 것이다.
+/*
+ * ⚠ `LANDING_SHOWCASE`(랜딩에 세우던 증강 셋: 사방치기·단색 세계·개벽)가 여기
+ * 있었다. 2026-08-19 사용자 지시로 로그인 화면에서 예시를 걷어 내면서 함께
+ * 뺐다 — 그 "바뀌기 전 → 바뀐 뒤" 그림 문법은 버리는 것이 아니라 로그인 뒤
+ * «증강 예시» 화면의 기본 틀로 넘어간다. 원본 데이터와 설계는
+ * docs/36_AUGMENT_EXAMPLES_PLAN.md 에 있다.
  */
-const LANDING_SHOWCASE: {
-  name: string;
-  kind: string;
-  /** 바뀌기 전 */
-  before: string;
-  /** 바뀐 뒤 */
-  after: string;
-  /** 그림 밑에 붙는 한 줄 — 그림이 무엇을 보여 준 것인지 못 박는다 */
-  cap: string;
-  desc: string;
-}[] = [
-  {
-    name: "사방치기",
-    kind: "상시",
-    before: "46m",
-    after: "456m",
-    cap: "누가 버린 5만이든 치",
-    desc: "치는 원래 왼쪽(상가) 사람의 버림패로만 됩니다.",
-  },
-  {
-    name: "단색 세계",
-    kind: "액티브",
-    before: "1m 5p 9s",
-    after: "159p",
-    cap: "숫자는 그대로, 색만 통일",
-    desc: "손패의 수패가 원하는 한 색으로 물듭니다.",
-  },
-  {
-    name: "개벽",
-    kind: "액티브",
-    before: "3m 7p 2s",
-    after: "123z",
-    cap: "수패가 통째로 자패로",
-    desc: "손패의 수패는 자패로, 자패는 수패로 뒤집힙니다.",
-  },
-];
 
 function AuthScreen(props: {
   connection: ConnectionState;
@@ -6374,7 +6324,6 @@ function AuthScreen(props: {
   onGuest: () => void;
   /** 튜토리얼 판으로 들어간다 — 게스트 체험과 같은 문이지만 판이 고정돼 있다 */
   onTutorial: () => void;
-  onOpenHelp: () => void;
   onRetryConnect: () => void;
 }): JSX.Element {
   // 어느 탭으로 열리는가는 **여기 오기까지 무엇을 눌렀는지**가 정한다.
@@ -6504,11 +6453,10 @@ function AuthScreen(props: {
             <span className="site-stat landing-bar-aug">증강 {augKinds}종</span>
           </>
         ) : null}
-        <span className="site-div" />
-        <button className="btn-ghost site-bar-btn" onClick={props.onOpenHelp}>
-          <i className="mk mk-doc" aria-hidden="true" />
-          규칙
-        </button>
+        {/* ⚠ 여기 «규칙» 버튼이 있었다. 로그인 화면에는 **로고와 로그인 상자만**
+            남긴다 (2026-08-19 사용자 지시) — 규칙과 증강 예시는 로그인 뒤 상태 줄의
+            «규칙»·«도감»이 맡는다. 처음 온 사람이 이 화면에서 할 일은 하나뿐이다:
+            들어가는 것. 읽을거리는 들어간 다음에 있다. */}
       </header>
 
       <div className="landing">
@@ -6725,61 +6673,11 @@ function AuthScreen(props: {
       </div>
         </div>
 
-        {/*
-          이 게임의 유일한 차별점은 "규칙을 바꾸는 증강"인데, 예전에는 그것이
-          **클릭하기 전에는 한 문장으로만** 전달됐다 (감사 §3-4). 시작 버튼을 누를지
-          말지가 여기서 갈리므로, 말 대신 실제 패로 보여 준다.
-
-          쓰는 것은 도움말과 **같은 컴포넌트·같은 에셋**이다 — 광고용 그림을 따로
-          만들면 화면과 다른 것을 약속하게 된다.
-
-          모양은 균등 3칸 카드였다가 **번호 붙은 목록**으로 바꿨다. 같은 크기 상자
-          셋을 나란히 놓는 배치는 내용과 상관없이 어디에나 놓이는 모양이라, 셋이
-          무슨 관계인지(= 같은 더미에서 뽑히는 보기 셋)를 말해 주지 않았다.
-
-          ⚠ DOM 에서 **로그인 뒤**에 있다. 격자로는 왼쪽 아래 칸이지만, 한 단으로
-          접히면 로고 → 시작·로그인 → 증강 예시 순으로 쌓인다. 좁은 화면에서
-          들어가는 문이 예시 목록 밑으로 밀려나지 않게 하려는 순서다.
-        */}
-        <section className="panel landing-show">
-          <div className="panel-head">
-            <h2>증강 예시</h2>
-            <span className="panel-meta num">
-              3{augKinds !== null ? ` / ${augKinds}` : ""}
-            </span>
-          </div>
-          <ol className="landing-show-list">
-            {LANDING_SHOWCASE.map((s, i) => (
-              <li key={s.name} className="landing-show-item">
-                <span className="landing-show-no num" aria-hidden="true">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="landing-show-body">
-                  <div className="landing-show-top">
-                    <span className="landing-show-name">{s.name}</span>
-                    <span className="landing-show-kind">{s.kind}</span>
-                    <span className="landing-show-cap">{s.cap}</span>
-                  </div>
-                  <div className="landing-show-fig">
-                    <span className="landing-show-before">
-                      <HelpTileGroups tiles={s.before} />
-                    </span>
-                    {/* 화살표 글자는 CSS가 넣는다 — 칸이 좁으면 세로(↓), 넓으면 가로(→)로
-                        쌓이는데 방향이 어긋나면 그림이 거짓말을 한다 */}
-                    <span className="landing-show-arrow" aria-hidden="true" />
-                    <span className="landing-show-after">
-                      <HelpTileGroups tiles={s.after} />
-                    </span>
-                  </div>
-                  <p className="landing-show-desc">{s.desc}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="landing-show-foot">
-            매 국 시작에 세 장 중 하나를 고릅니다.
-          </p>
-        </section>
+        {/* ⚠ 여기 «증강 예시» 패널(3종, 바뀌기 전 → 바뀐 뒤)이 있었다. 2026-08-19
+            사용자 지시로 **로그인 뒤**로 옮긴다 — 세 종을 맛보기로 보여 주는 대신
+            전 증강을 한 화면에서 훑는 «증강 예시» 화면을 따로 세운다. 설계는
+            docs/36_AUGMENT_EXAMPLES_PLAN.md, 옮겨 갈 세 종의 원본 데이터도 거기
+            §7 에 그대로 적어 두었다. */}
       </div>
     </div>
   );
