@@ -310,18 +310,38 @@ export interface FeedbackDeleteMessage {
 // ── 친구 (§4-6) ──
 
 /**
- * 친구 추가·삭제 (§4-6).
+ * 친구 요청 보내기 (§4-6).
  *
  * **무엇을 풀려는 문제인가**: 방을 만들고 코드를 부를 사람이 지금 접속해 있는지
  * 알 방법이 없었다. 그래서 사람들은 방을 만들어 두고(TTL 30분) 기다리다 닫았다.
- * 필요한 것은 소셜 그래프가 아니라 **"지금 있나?" 한 줄**이다.
  *
- * 그래서 이 기능에는 **승인 절차가 없다.** 맞팔 개념도, 요청 알림도 없다 —
- * 여기서 얻는 것은 상대의 온라인 여부뿐이고, 그건 방 코드를 나눌 사이라면
- * 이미 서로 아는 사실이다. 승인 흐름을 만들면 그 대가로 화면과 상태가 배로 는다.
+ * 처음에는 **승인 없는 단방향**이었다. 닉네임만 알면 아무나 담을 수 있고, 담긴
+ * 사람은 그 사실조차 몰랐다. 거기에 친구 초대(`friendInvite`)가 붙는 순간
+ * 일방적 관계가 **일방적 알림 권한**이 된다 — 그래서 2026-08-19에 요청·수락
+ * 절차를 넣고 관계를 쌍방으로 바꿨다(사용자 결정). 단방향 시절 목록은 한 번
+ * 비웠다(SiteDb `friends_mutual_reset`).
+ *
+ * 상대가 이미 나에게 요청을 보내 뒀다면 이 메시지가 그 요청의 **수락**이 된다 —
+ * 서로를 기다리는 카드가 양쪽 편지함에 한 장씩 남는 교착을 만들지 않는다.
  */
-export interface FriendAddMessage {
-  type: "friendAdd";
+export interface FriendRequestMessage {
+  type: "friendRequest";
+  nickname: string;
+}
+
+/**
+ * 받은 요청에 답하기 — 수락(친구가 된다) 또는 거절. 어느 쪽이든 편지함에서 사라진다.
+ */
+export interface FriendRespondMessage {
+  type: "friendRespond";
+  /** 요청을 **보낸** 사람의 닉네임. */
+  nickname: string;
+  accept: boolean;
+}
+
+/** 내가 보낸 요청 거두기. */
+export interface FriendCancelMessage {
+  type: "friendCancel";
   nickname: string;
 }
 
@@ -330,9 +350,23 @@ export interface FriendRemoveMessage {
   nickname: string;
 }
 
-/** 내 친구 목록 요청. */
+/** 내 친구 목록 + 편지함 요청. */
 export interface FriendListRequestMessage {
   type: "friendList";
+}
+
+/**
+ * 친구를 지금 내 대기실로 부른다 (2026-08-19).
+ *
+ * 방 코드를 따로 옮겨 적게 하지 않는다 — 받는 쪽 메인 화면에 초대장이 뜨고,
+ * 누르면 그대로 그 방으로 들어간다. 보내는 쪽은 **대기실에 있어야** 하고
+ * (게임 중인 방에는 부를 자리가 없다), 상대와 **쌍방 친구**여야 한다.
+ * 코드는 서버가 붙인다 — 클라이언트가 코드를 실어 보내면 아무 방에나 남을
+ * 부르는 초대장을 찍어 낼 수 있다.
+ */
+export interface FriendInviteMessage {
+  type: "friendInvite";
+  nickname: string;
 }
 
 // ── 관리자 관전 (15) ──
@@ -691,9 +725,12 @@ export type ClientMessage =
   | ReplayGetMessage
   | ReplayShareMessage
   | LeaderboardRequestMessage
-  | FriendAddMessage
+  | FriendRequestMessage
+  | FriendRespondMessage
+  | FriendCancelMessage
   | FriendRemoveMessage
   | FriendListRequestMessage
+  | FriendInviteMessage
   | FeedbackSubmitMessage
   | FeedbackListRequestMessage
   | FeedbackUpdateMessage
@@ -1328,9 +1365,45 @@ export interface FriendEntry {
   playing: boolean;
 }
 
+/** 편지함에 떠 있는 받은 요청 한 장. */
+export interface FriendRequestEntry {
+  /** 보낸 사람. */
+  nickname: string;
+  /** ISO 시각 — 언제 온 요청인지 보여 준다. */
+  at: string;
+}
+
+/**
+ * 친구 화면 전체 상태 (§4-6).
+ *
+ * 목록·받은 요청·보낸 요청을 **한 메시지에** 담는다. 셋을 나누면 화면이 세 개의
+ * 응답을 서로 다른 시점에 받아 잠깐씩 앞뒤가 안 맞는 상태(요청을 수락했는데
+ * 편지함에서만 사라지고 목록에는 아직 없는)를 보여 준다.
+ */
 export interface FriendListMessage {
   type: "friendList";
   friends: FriendEntry[];
+  /** 내가 받은 보류 요청 — 이게 편지함이다 (최근 것이 위). */
+  incoming: FriendRequestEntry[];
+  /** 내가 보낸 보류 요청의 닉네임 — "요청함" 표시와 취소에 쓴다. */
+  outgoing: string[];
+}
+
+/**
+ * 친구가 나를 제 대기실로 부른다 (2026-08-19).
+ *
+ * 서버가 **밀어 주는** 유일한 친구 관련 메시지다(목록은 요청할 때만 나간다).
+ * 초대는 지금 이 순간에만 뜻이 있고, 받는 사람이 화면을 새로 고칠 때까지
+ * 기다리게 하면 그 방은 이미 시작했거나 사라졌다.
+ */
+export interface FriendInviteFromMessage {
+  type: "friendInviteFrom";
+  /** 부른 사람. */
+  from: string;
+  /** 그 사람이 있는 방 코드 — 누르면 이 코드로 joinRoom 한다. */
+  code: string;
+  /** ISO 시각 — 오래된 초대장을 화면에서 걷어 내는 기준. */
+  at: string;
 }
 
 /** 하루치 집계 한 줄 (§8-6). IP·UA는 어디에도 남지 않는다 — 서버 analytics.ts 참고. */
@@ -1453,6 +1526,7 @@ export type ServerMessage =
   | ReplayDataMessage
   | ReplayShareTokenMessage
   | FriendListMessage
+  | FriendInviteFromMessage
   | LiveGamesMessage
   | SpectateStartedMessage
   | SpectateEndedMessage
