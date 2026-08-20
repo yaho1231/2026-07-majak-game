@@ -31,8 +31,8 @@ const seeded: GameState = {
   ...withAug(base, { p0: ["push_riichi"], p1: ["frame_up"] }),
   augmentData: {
     ...base.augmentData,
-    [`push_riichi:brand:${rk(base)}:p0`]: "p1",
-    [`push_riichi:used:${rk(base)}:p0`]: true,
+    [`push_riichi:brand:${rk(base)}:p0#round`]: "p1",
+    [`push_riichi:used:${rk(base)}:p0#round`]: true,
     [`view:*:push_riichi:p0#round`]: "p1",
   },
 };
@@ -71,4 +71,4 @@ if (riichi != null && typeof riichi === "object") {
     st.zones[discardsZone("p1")]!.tileIds.includes(tid as never),
     " p2 바닥에 있는가:", st.zones[discardsZone("p2")]!.tileIds.includes(tid as never));
 }
-console.log("낙인 남았나:", JSON.stringify(st.augmentData[`push_riichi:brand:${rk(st)}:p0`]));
+console.log("낙인 남았나:", JSON.stringify(st.augmentData[`push_riichi:brand:${rk(st)}:p0#round`]));

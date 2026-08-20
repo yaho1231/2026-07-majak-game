@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  ROUND_SCOPED_MARK,
   FlowController,
   ROUND_STARTED,
   buildPlayerView,
@@ -34,6 +35,30 @@ function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
 
 function setTurnCount(state: GameState, n: number): GameState {
   return { ...state, round: { ...state.round, turnCount: n } };
+}
+
+/**
+ * 그 사람이 이미 n장을 버린 상태로 만든다.
+ *
+ * '순'을 세는 증강(불가침 조약·뒤늦은 출진)의 단일 진실은 전역 `turnCount`가 아니라
+ * **자신의 버림 횟수**(`discardCount`)다 — 남의 깡·연속 쯔모가 전역 카운터를 미는
+ * 것에 흔들리지 않는다(2026-08-20 QA). 그래서 순을 세팅하는 테스트는 이 쪽을 쓴다.
+ */
+function setDiscardCount(
+  state: GameState,
+  player: PlayerId,
+  n: number,
+): GameState {
+  return {
+    ...state,
+    round: {
+      ...state.round,
+      byPlayer: {
+        ...state.round.byPlayer,
+        [player]: { ...state.round.byPlayer[player]!, discardCount: n },
+      },
+    },
+  };
 }
 
 type Game = ReturnType<typeof createStandardGameFromState>;
@@ -66,7 +91,7 @@ describe("불가침 조약 (no_ron_pact)", () => {
   });
 
   it("7순부터는 면역이 풀린다", () => {
-    const g = game(setTurnCount(base(), 7));
+    const g = game(setDiscardCount(setTurnCount(base(), 7), "p0", 7));
     expect(g.engine.rules.resolve<boolean>("win.ronImmune", { playerId: "p0", state: g.engine.state })).toBe(false);
   });
 
@@ -192,7 +217,9 @@ describe("뒤늦은 출진 (late_double)", () => {
   });
 
   it("8순 이후 리치는 승격도 보너스도 없다", () => {
-    const g = createStandardGameFromState(setTurnCount(scene(true), 9));
+    const g = createStandardGameFromState(
+      setDiscardCount(setTurnCount(scene(true), 9), "p0", 8),
+    );
     installAugment(g.engine, lateDouble, "p0", { yaku: g.yaku });
     const flow = new FlowController(g.engine);
     flow.begin();
@@ -232,7 +259,7 @@ describe("함구령 (call_seal)", () => {
         ...s.augmentData,
         "call_seal:uses:p0": 1,
         // 선언 순 키는 국 스코프다 (국이 바뀌면 봉인이 저절로 만료된다)
-        [`call_seal:turn:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:p0`]: 0,
+        [`call_seal:turn:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:p0${ROUND_SCOPED_MARK}`]: 0,
       },
     };
   }

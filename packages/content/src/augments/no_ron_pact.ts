@@ -35,12 +35,26 @@ import {
   augmentDataSet,
   defineAugment,
 } from "@majak/core";
-import type { AugmentDef, GameState, PlayerId } from "@majak/core";
-import { roundViewKey } from "../util.js";
+import type {
+  AugmentDef,
+  GameState,
+  PlayerId,
+  TileDiscardedPayload,
+} from "@majak/core";
+import { flagOf, roundKey, roundViewKey } from "../util.js";
 
 const ID = "no_ron_pact";
-/** 조약이 유효한 마지막 순 (turnCount ≤ PACT_TURNS) */
+/** 조약이 유효한 마지막 순 (보유자 자신의 버림 횟수 ≤ PACT_TURNS) */
 const PACT_TURNS = 6;
+/**
+ * 이 국에 보유자가 **리치를 선언한 적이 있는가** — 파기는 되돌릴 수 없는 사건이다.
+ *
+ * 현재 상태(`rs.riichi`)만 보면 승부수(last_stand)로 리치를 물리는 순간 조약이
+ * 되살아나, "리치로 압박하고 물러나 다시 무적"이라는 무한 방패가 됐다
+ * (2026-08-20 QA 문구 확정 9). 선언 이력으로 판정한다(`hidden_blade`와 같은 방식).
+ */
+const declaredKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:declared:${roundKey(state)}:${h}`;
 /** 전원 공개: 지금 조약이 살아 있는가 (국 스코프 — 국이 끝나면 엔진이 지운다) */
 const pactViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 /**
@@ -54,11 +68,20 @@ const pactActiveKey = (h: PlayerId): string => roundViewKey("*", `${ID}:active:$
 
 /** 지금 조약이 보유자를 보호하는가 */
 function pactActive(state: GameState, holder: PlayerId): boolean {
-  if (state.round.turnCount > PACT_TURNS) return false;
   const rs = state.round.byPlayer[holder];
   if (rs === undefined) return false;
-  // 내가 리치를 걸었으면 파기
+  /*
+   * '순'은 **내가 몇 번 버렸는가**다 — `turnCount`가 아니다.
+   *
+   * `turnCount`는 오야가 뽑을 때마다 오르는 전역 카운터라, 남의 영혼의 일격
+   * (soul_strike)이 연속으로 6번 뽑으면 **내가 한 장도 더 버리지 않았는데** 조약이
+   * 만료됐다(2026-08-20 QA 문구 확정 10). 버림 횟수는 누명(creditTo)에도 흔들리지
+   * 않는 실제 순 계수다(docs/25 P5).
+   */
+  if (rs.discardCount > PACT_TURNS) return false;
+  // 이 국에 리치를 선언한 적이 있으면 파기 (물려도 돌아오지 않는다)
   if (rs.riichi !== null && rs.riichi !== undefined) return false;
+  if (flagOf(state, declaredKey(state, holder))) return false;
   // 멘쯔가 하나라도 있으면 파기.
   // ⚠ 치·펑·대명깡뿐 아니라 **안깡**과 멘젠이 유지되는 **묵계 퐁**도 여기 걸린다 —
   //    설명이 "후로"라고만 적혀 있어 안깡으로 조약을 스스로 깨는 사고가 났다.
@@ -71,7 +94,8 @@ function pactActive(state: GameState, holder: PlayerId): boolean {
 /** 지금 조약 상태를 사람이 읽는 한 줄로 (전원 공개 채널의 값) */
 function pactLabel(state: GameState, holder: PlayerId): string {
   if (pactActive(state, holder)) return `조약 유효 — ${PACT_TURNS}순까지 론 불가`;
-  return state.round.turnCount > PACT_TURNS ? "조약 만료 — 론 가능" : "조약 파기 — 론 가능";
+  const spent = (state.round.byPlayer[holder]?.discardCount ?? 0) > PACT_TURNS;
+  return spent ? "조약 만료 — 론 가능" : "조약 파기 — 론 가능";
 }
 
 export const noRonPact: AugmentDef = defineAugment({
@@ -96,6 +120,14 @@ export const noRonPact: AugmentDef = defineAugment({
         if (state === undefined) return cur;
         return pactActive(state, holder) ? true : cur;
       },
+    });
+
+    // 리치 선언 이력 — 한 번 서면 그 국 내내 남는다 (승부수로 물려도 지우지 않는다).
+    ctx.reaction(TILE_DISCARDED, (event, rc) => {
+      const p = event.payload as TileDiscardedPayload;
+      if (!p.riichi || p.player !== holder) return;
+      if (flagOf(rc.state, declaredKey(rc.state, holder))) return;
+      rc.emit(augmentDataSet(declaredKey(rc.state, holder), true));
     });
 
     // 조약 상태를 전원 공개 채널에 동기화한다 (값이 그대로면 아무것도 내지 않는다).

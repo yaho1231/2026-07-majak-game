@@ -28,7 +28,7 @@ for (let i = 0; i < N; i++) {
     personas: { p0: PERSONAS.folder!, p1: PERSONAS.folder!, p2: PERSONAS.folder!, p3: PERSONAS.stall! },
     onState: (st: GameState) => {
       const rk = `${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}`;
-      const isOpen = st.augmentData[`hourglass:opened:${rk}:p0`] === true;
+      const isOpen = st.augmentData[`hourglass:opened:${rk}:p0#round`] === true;
       if (!isOpen) return;
       const wall = st.zones[WALL]?.tileIds.length ?? 0;
       const dw = st.zones[DEAD_WALL]?.tileIds.length ?? 0;

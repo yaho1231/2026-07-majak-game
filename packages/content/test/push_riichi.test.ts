@@ -22,10 +22,14 @@ function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
   };
 }
 
-/** 낙인 키는 **국 단위**다 — 국이 바뀌면 키가 달라져 저절로 풀린다. */
+/**
+ * 낙인 키는 **국 단위**다 — 국이 바뀌면 키가 달라져 저절로 풀리고, 뒤에 붙은
+ * 정리 표식(`ROUND_SCOPED_MARK`)으로 국 경계에서 엔진이 실제로 지운다
+ * (`augments/roundScope.ts`, QA cross 확정 3).
+ */
 function brandKeyOf(state: GameState, holder: PlayerId = "p0"): string {
   const r = state.round;
-  return `push_riichi:brand:${r.prevalentWind}-${r.roundNumber}-${r.honba}:${holder}`;
+  return `push_riichi:brand:${r.prevalentWind}-${r.roundNumber}-${r.honba}:${holder}${ROUND_SCOPED_MARK}`;
 }
 
 /** p1(seat1)이 9s를 버리면 텐파이(11p 머리 + 23p 대기). p0가 등 떠밀기 보유. */

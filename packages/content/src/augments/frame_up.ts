@@ -19,6 +19,7 @@ import {
   augmentDataSet,
   defineAugment,
   handIdsOf,
+  isTerminalOrHonor,
   lockedDiscardIds,
   kindKey,
   kindOf,
@@ -37,6 +38,7 @@ import {
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "frame_up";
 const ACTION = "frame_discard";
@@ -63,8 +65,36 @@ const inRiichi = (state: GameState, h: PlayerId): boolean =>
  * 0장, 지목당한 사람 바닥을 2장으로 만들어 그 판정을 조용히 무너뜨린다(성립해야 할
  * 도중유국이 안 나거나, 아직 버리지도 않은 사람이 1장으로 집계돼 오탐이 난다).
  * 창이 첫 바퀴뿐이라, 그 동안 발동을 막는 것이 판정을 건드리지 않는 가장 싼 해법이다.
+ *
+ * ⚠ `round.firstTurn` **하나만 보면 안 된다.** 그 플래그는 원래 천화·지화용이라
+ * **후로가 일어나는 순간 내려간다** — 네 사람의 버림 수가 전부 0인데도(아무도 아직
+ * 안 버렸는데) 퐁 한 번에 누명 후보가 0개에서 30개로 열렸다(QA text 확정 32).
+ * detail이 말하는 '첫 바퀴'는 **네 사람이 한 번씩 버리기 전**이므로, 각자의 버림
+ * 이력이 하나라도 비어 있으면 아직 첫 바퀴다. 두 조건의 논리합이라 보호창이 후로로
+ * 깨지지도, 첫 바퀴가 끝난 뒤까지 늘어지지도 않는다.
  */
-const inFirstGoAround = (state: GameState): boolean => state.round.firstTurn;
+const inFirstGoAround = (state: GameState): boolean =>
+  state.round.firstTurn ||
+  state.players.some(
+    (p) => (state.round.byPlayer[p.id]?.discardedKinds ?? []).length === 0,
+  );
+
+/**
+ * 이번 국에 **중장패를 남의 바닥으로 흘렸는가** (유국만관 자격 박탈용, 국 스코프).
+ *
+ * 나가시 판정은 `round.byPlayer[x].discardedKinds`만 본다. 누명은 그 이력을 지목당한
+ * 사람에게 새기므로 보유자의 이력에는 요구패만 남아, **중장패를 버리고도 유국만관이
+ * 이어졌다** — 같은 손·같은 패인데 표준으로 버리면 −3,000, 누명으로 버리면 +9,000으로
+ * 12,000점이 뒤집혔다(QA disrupt-b 확정 4). 누명이 광고하는 것은 후리텐 이력 오염과
+ * 내 후리텐 회피 둘뿐이고, "유국만관 자격까지 지켜 준다"는 어디에도 없다.
+ *
+ * 코어의 나가시 판정은 `draw.nagashiMangan` 규칙으로 감싸여 있으므로(standardActions),
+ * 그 규칙을 보유자에 한해 끄는 것으로 **판정 자체를 건드리지 않고** 바로잡는다.
+ * 요구패를 심은 경우에는 표시를 남기지 않는다 — 표준으로 버려도 나가시가 안 깨지는
+ * 패라 자격이 유지되는 것이 맞다.
+ */
+const brokeNagashiKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "brokeNagashi", state, h);
 
 const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
   type: ACTION,
@@ -102,6 +132,9 @@ const frameAction: ActionDef<{ tileId: TileId; target: PlayerId }> = {
     return null;
   },
   toEvents: (req, { state }) => [
+    ...(isTerminalOrHonor(kindOf(state, req.payload.tileId))
+      ? []
+      : [augmentDataSet(brokeNagashiKey(state, req.player), true)]),
     // 표준 버림과 동일하되 '명의'만 지목 대상에게 — 방총 책임·턴 진행은 나에게 남는다
     {
       type: TILE_DISCARDED,
@@ -156,6 +189,18 @@ export const frameUp: AugmentDef = defineAugment({
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
     trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
+
+    // 중장패를 남의 바닥에 심었으면 이번 국 내 유국만관 자격을 잃는다 (brokeNagashiKey 참고)
+    engine.rules.addModifier<boolean>("draw.nagashiMangan", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        return state.augmentData[brokeNagashiKey(state, holder)] === true ? false : cur;
+      },
+    });
 
     // 손패 × 상대 조합을 후보로 낸다 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) => {

@@ -223,9 +223,21 @@ export class FlowController {
         continue;
       }
 
+      /*
+       * 사가리치는 **타가 셋의 화면에 리치가 넷 보일 때** 성립한다 — 숨은 리치
+       * (스텔스 리치)는 세지 않는다. 세면 아무도 못 본 4번째 리치로 국이 끝나고,
+       * 그 정산에서 은닉이 통째로 드러난다(2026-08-20 QA 리치 확정 5).
+       */
       let riichiCount = 0;
       for (const p of state.players) {
-        if (state.round.byPlayer[p.id]?.riichi != null) riichiCount++;
+        if (state.round.byPlayer[p.id]?.riichi == null) continue;
+        const hidden =
+          this.engine.rules.has("riichi.hidden") &&
+          this.engine.rules.resolve<boolean>("riichi.hidden", {
+            playerId: p.id,
+            state,
+          });
+        if (!hidden) riichiCount++;
       }
       if (riichiCount === 4 && phase === "turn.draw") {
         this.sys("sys.settleAbort", { reason: "fourRiichi" }); // 사가리치
@@ -305,6 +317,8 @@ export class FlowController {
       // 안깡 (ankan) — 같은 종류는 한 번만 제시 (서로 다른 종류의 안깡 2개는 각각 유지).
       // 무너진 국경이면 무늬가 섞인 4장(랭크만 같음)도 안깡이 된다.
       const mixedTri = mixedTripletsFor(state, this.engine.rules, player);
+      /** 양극 — 가깡 후보 생성에서 같은 무늬의 1·9를 한 패로 본다 (안깡은 종전대로) */
+      const polarKan = polarEndsFor(state, this.engine.rules, player);
       const sameTiles = hand
         .filter((t) => sameCallKind(kindOf(state, t), kindOf(state, tileId), mixedTri))
         .slice(0, 4);
@@ -367,7 +381,9 @@ export class FlowController {
       for (const m of state.round.byPlayer[player]?.melds ?? []) {
         if (m.kind === "pon" && m.tileIds.length === 3) {
           const tk = kindOf(state, m.tileIds[0]!);
-          if (sameCallKind(kindOf(state, tileId), tk, mixedTri)) {
+          // 양극도 함께 본다 — 1·9 혼합 퐁 위의 가깡이 한쪽 방향으로만 뜨던 자리
+          // (validate 쪽은 standardActions의 shouminkan). qa-lab text 확정 21.
+          if (sameCallKind(kindOf(state, tileId), tk, mixedTri, polarKan)) {
              if (this.validateOk(player, "shouminkan", { tileId, targetMeldTileId: m.tileIds[0]! })) {
                options.push({ type: "shouminkan", payload: { tileId, targetMeldTileId: m.tileIds[0]! } });
              }

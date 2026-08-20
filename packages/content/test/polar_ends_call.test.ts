@@ -113,3 +113,51 @@ describe("양극 (polar_ends) — 퐁 콜", () => {
     expect(ponOptions(game).length).toBeGreaterThan(0);
   });
 });
+
+describe("양극 (polar_ends) — 1·9 혼합 퐁 위의 가깡 (QA 2026-08-20)", () => {
+  /**
+   * detail: "1과 9를 섞어 퐁한 몸통 위로는 가깡을 얹을 수 있다(1만1만9만 + 1만)."
+   * 예전에는 shouminkan validate가 polarEnds를 안 봐서 **멘쯔 대표와 같은 랭크만**
+   * 통했다 — 퐁한 순서에 따라 1만만 되거나 9만만 되는 반쪽이었다(qa-lab text 확정 21).
+   */
+  function kakan(meldSpec: string, addSpec: string, holder: boolean): boolean {
+    const st = craft({
+      hands: { p0: `${addSpec}234p567p11s`, p1: "*", p2: "*", p3: "*" },
+      melds: { p0: [{ kind: "pon" as const, spec: meldSpec, from: "p1" as PlayerId }] },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = createStandardGameFromState(st);
+    if (holder) installAugment(game.engine, polarEnds, "p0", { yaku: game.yaku });
+    const target = game.engine.state.round.byPlayer.p0?.melds[0]?.tileIds[0] as number;
+    const tileId = (game.engine.state.zones["hand:p0"]?.tileIds ?? [])[0] as number;
+    return game.engine.submit({
+      player: "p0",
+      type: "shouminkan",
+      payload: { tileId, targetMeldTileId: target },
+    }).ok;
+  }
+
+  it("퐁 1m1m9m(대표 1m) 위에 1m — detail의 예시", () => {
+    expect(kakan("119m", "1m", true)).toBe(true);
+  });
+
+  it("같은 몸통 위에 9m도 얹힌다 (1·9는 한 패로 통한다)", () => {
+    expect(kakan("119m", "9m", true)).toBe(true);
+  });
+
+  it("퐁 9m9m1m(대표 9m) 위에는 1m·9m 어느 쪽도 얹힌다 — 퐁 순서에 안 갈린다", () => {
+    expect(kakan("991m", "1m", true)).toBe(true);
+    expect(kakan("991m", "9m", true)).toBe(true);
+  });
+
+  it("대조군: 순수 퐁 111m 위의 1m 가깡은 종전대로", () => {
+    expect(kakan("111m", "1m", true)).toBe(true);
+    expect(kakan("111m", "1m", false)).toBe(true);
+  });
+
+  it("대조군: 보유자가 아니면 대표와 랭크가 다른 패는 얹히지 않는다", () => {
+    expect(kakan("119m", "9m", false)).toBe(false);
+  });
+});

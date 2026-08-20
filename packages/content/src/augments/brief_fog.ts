@@ -44,7 +44,8 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, matchUses, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 import { plan } from "./botPlan.js";
 
 const ID = "brief_fog";
@@ -64,7 +65,7 @@ const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
  * 두 번째 사용도 영영 열리지 않는다(2026-07-29 감사). 사용 횟수(usesKey)는 게임 스코프 유지.
  */
 const turnKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:turn:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "turn", state, holder);
 /** 선언 사실을 전원에게 알리는 공개 뷰 채널 */
 const noticeKey = (holder: PlayerId): string => roundViewKey("*", `${ID}:${holder}`);
 /** 각 플레이어의 마지막 버림패 맵 { playerId: tileId } — 전원 공개 */
@@ -79,14 +80,15 @@ const lastMapKey = (holder: PlayerId): string =>
 const revealKey = (holder: PlayerId): string =>
   roundViewKey("*", `revealTiles:fog:${holder}`);
 
-/** 이 게임에 한 번이라도 선언했는가 (안개가 걷혔어도 true) */
-function fogDeclared(state: GameState, holder: PlayerId): boolean {
-  return counterOf(state, usesKey(holder)) > 0;
-}
-
-/** 지금 이 순간 안개가 유효한가 — 이번 국에 선언했고, 그 뒤 6순 이내 */
+/**
+ * 지금 이 순간 안개가 유효한가 — 이번 국에 선언했고, 그 뒤 6순 이내.
+ *
+ * ⚠ **사용 카운터를 보지 않는다.** 예전에는 `counterOf(usesKey) > 0`을 앞세워
+ * 활성 판정이 사용 카운터를 겸용했다 — 재장전이 그 카운터를 되돌리면(0) **6순 중
+ * 0순만 지났어도 안개가 그 자리에서 걷혔다**(QA disrupt-b 확정 2). 걷히는 조건은
+ * detail대로 **6순 경과**와 **국 종료**뿐이고, 둘 다 아래 turnKey(국 스코프)로 선다.
+ */
 function fogActive(state: GameState, holder: PlayerId): boolean {
-  if (!fogDeclared(state, holder)) return false;
   // 이번 국에 선언한 적이 없으면 키 자체가 없다 (0순 선언과 구분하려면 존재 여부를 본다)
   const declaredTurn = state.augmentData[turnKey(state, holder)];
   if (typeof declaredTurn !== "number") return false;
@@ -95,7 +97,6 @@ function fogActive(state: GameState, holder: PlayerId): boolean {
 
 /** 지금 안개가 몇 순 더 가는가 (걷혔으면 0) */
 function fogTurnsLeft(state: GameState, holder: PlayerId): number {
-  if (!fogDeclared(state, holder)) return 0;
   const declaredTurn = state.augmentData[turnKey(state, holder)];
   if (typeof declaredTurn !== "number") return 0;
   return Math.max(0, FOG_TURNS - (state.round.turnCount - declaredTurn));

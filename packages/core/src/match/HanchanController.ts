@@ -965,13 +965,29 @@ export class HanchanController {
     });
   }
 
-  /** 설정된 사전 지급 증강을 설치한다. 알 수 없는 id·중복은 조용히 건너뛴다. */
+  /**
+   * 설정된 사전 지급 증강을 설치한다. 알 수 없는 id·중복은 조용히 건너뛴다.
+   *
+   * 좌석을 하나씩 도는 순차 설치라, **아직 설치되지 않은 뒷자리의 preset**은 상태에
+   * 아직 없다. 지급형 증강(수상한 주사위)이 그 틈에 같은 id를 뽑아 주면 한 게임에
+   * 같은 증강을 두 사람이 들게 된다 — 정식 드래프트에서 막아 둔 것과 같은 구멍이다
+   * (2026-08-20 QA 시스템 횡단 §1). 남은 preset 전부를 예약분으로 넘겨 막는다.
+   */
   private installPreset(game: StandardGame): void {
     const preset = this.config.presetAugments;
     if (preset === undefined) return;
+    const pending: string[] = [];
     for (const [player, ids] of Object.entries(preset)) {
       if (!this.agents.has(player as PlayerId)) continue;
-      for (const id of ids) this.applyAugment(game, player as PlayerId, id);
+      pending.push(...ids);
+    }
+    for (const [player, ids] of Object.entries(preset)) {
+      if (!this.agents.has(player as PlayerId)) continue;
+      for (const id of ids) {
+        const at = pending.indexOf(id);
+        if (at >= 0) pending.splice(at, 1);
+        this.applyAugment(game, player as PlayerId, id, pending);
+      }
     }
   }
 
@@ -980,6 +996,7 @@ export class HanchanController {
     game: StandardGame,
     player: PlayerId,
     augmentId: string,
+    reservedAugmentIds: readonly string[] = [],
   ): string | null {
     const def = game.augments.get(augmentId);
     if (def === undefined) return `unknown augment: ${augmentId}`;
@@ -992,6 +1009,7 @@ export class HanchanController {
     installAugment(game.engine, def, player, {
       yaku: game.yaku,
       catalog: game.augments,
+      reservedAugmentIds,
     });
     return null;
   }

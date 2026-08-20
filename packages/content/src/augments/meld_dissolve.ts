@@ -74,6 +74,21 @@ const EVENT = "MeldDissolved";
 const usedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:used:${roundKey(state)}:${h}`;
 
+/**
+ * "이 사람의 버림패는 이미 한 번 울려 나갔다" 표식 (roundKey 스코프).
+ *
+ * 표준 유국만관은 **강 장수 === 버림 이력 길이**로 "한 장도 울려 나가지 않았다"를
+ * 판정한다(`standardActions.nagashiManganSeats`). 파혼이 가져왔던 1장을 강으로
+ * 되돌리면 그 등식이 **다시 성립**해, 이미 울려 나가 자격을 잃었던 사람의 유국만관이
+ * 되살아났다(QA defcall 확정 1 — 실측 8,000점 오차). 파혼의 설명 어디에도 남의 역·정산
+ * 자격을 바꾼다는 말은 없다.
+ *
+ * 그래서 되돌리는 순간 이 표식을 남기고, `draw.nagashiMangan` 모디파이어가 그 사람의
+ * 유국만관만 꺼 둔다 — 코어 판정은 그대로 두고 **파혼 쪽에서** 원상태를 보존한다.
+ */
+const nagashiBrokenKey = (state: GameState, target: PlayerId): string =>
+  `${ID}:nagashiBroken:${roundKey(state)}:${target}`;
+
 /** 치·펑(후로 3장)만 해체 대상 — 깡은 제외 */
 function isDissolvable(meld: Meld | undefined): boolean {
   if (meld === undefined) return false;
@@ -151,6 +166,8 @@ const dissolveAction: ActionDef<{ meldIndex: number }> = {
           calledFrom,
         } satisfies MeldDissolvePayload,
       },
+      // 강으로 되돌아간 1장이 "울려 나간 적 없음"으로 보이지 않게 못 박는다.
+      augmentDataSet(nagashiBrokenKey(state, calledFrom), true),
     ];
   },
 };
@@ -167,6 +184,22 @@ export const meldDissolve: AugmentDef = defineAugment({
     "(매 국 1회) 자기 순에 자신의 치·퐁 하나를 골라 해체한다. 손에서 냈던 2장은 손패로 돌아오고 남에게서 가져왔던 1장은 그 사람의 버림패 더미로 되돌아가며, 부족한 한 장은 패산에서 보충되어 손패 장수가 정확히 맞는다. 후로가 하나뿐이었다면 그 순간 손이 다시 멘젠이 되어 리치를 걸 수 있다. 해체는 전원에게 공개된다. 깡은 대상이 아니고 패산이 비면 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 파혼으로 강이 복원된 사람의 유국만관은 꺼 둔다 — 되돌리기 전에 이미 잃었던
+    // 자격이다(위 nagashiBrokenKey 주석). 보유자 전용이 아니라 **지목된 상대**에게
+    // 걸리는 규칙이라 setHolderRule이 아니라 모디파이어로 직접 단다.
+    ctx.engine.rules.addModifier<boolean>("draw.nagashiMangan", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (cur !== true) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined || rctx.playerId === undefined) return cur;
+        return flagOf(state, nagashiBrokenKey(state, rctx.playerId))
+          ? false
+          : cur;
+      },
+    });
 
     // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
     // "이번 국 1회"는 이미 썼는지가 화면 어디에도 없어서, 액티브 버튼이 사라지고

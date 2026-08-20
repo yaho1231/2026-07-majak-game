@@ -37,6 +37,7 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
+  riichiPotGainOf,
   roundKey,
   roundViewKey,
   settleInterceptor,
@@ -239,6 +240,10 @@ export const jackpot: AugmentDef = defineAugment({
       // 굴리지 않은 국(0)·배수 1은 효과 없음. 0.5배는 그대로 적용된다(도박형 예외).
       if (mult <= 0 || mult === 1) return event;
       const p = event.payload as RoundSettledPayload;
+      // 유국(황패)의 노텐 벌부는 규칙이 정한 정액이다 — 남의 룰렛 결과로 내가 무는
+      // 벌부가 달라져서는 안 된다. 같은 Multiply 단계의 핏빛 계약·판돈 굴리기도
+      // 화료만 가드한다(QA score-a 확정 3).
+      if (p.outcome !== "win") return event;
       const d = p.deltas[holder] ?? 0;
       // 무페널티: 잃을 때는 곱하지 않는다 — 버는 쪽만 불어나거나 줄어든다
       if (d <= 0) return event;
@@ -246,7 +251,9 @@ export const jackpot: AugmentDef = defineAugment({
       // 공탁(리치봉)은 배수 대상이 아니다 — 남이 낸 봉을 3배로 불리면 그만큼을
       // 뱅크가 새로 발행하게 되어 공탁 총량 불변식이 깨진다. 공탁은 첫 화료자에게
       // 통째로 가므로, 그 사람일 때만 떼어 놓고 곱한 뒤 되돌려 붙인다.
-      const pot = (p.winInfos ?? [])[0]?.winner === holder ? p.riichiPot : 0;
+      // ⚠ `p.riichiPot`은 **다음 국으로 넘길 값이라 화료 정산에서 항상 0**이다 —
+      // 회수액은 winInfo.riichiPotGain에만 있다(riichiPotGainOf).
+      const pot = riichiPotGainOf(p, holder);
       const base = Math.max(0, d - pot);
       // 0.5배가 있으므로 100점 격자로 맞춘다 — 안 맞추면 소지점이 100의 배수가
       // 아니게 되어 결과창·순위 표시가 깨진다(docs/25 역/점수 #7).

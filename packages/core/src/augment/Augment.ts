@@ -20,7 +20,8 @@ import type { GameMode } from "../engine/state/GameState.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
 import type { PlayerView } from "../information/PlayerView.js";
 import type { TileKind } from "../mahjong/tiles/Tile.js";
-import { augmentGrantKey } from "./events.js";
+import { augmentGrantKey, augmentStageKey } from "./events.js";
+import type { DraftStage } from "./DraftController.js";
 
 export type AugmentTier = "silver" | "gold" | "prism";
 
@@ -406,6 +407,23 @@ export interface AugmentExtras {
     all(): readonly AugmentDef[];
     get(id: string): AugmentDef | undefined;
   };
+  /**
+   * **이번 스테이지에 다른 좌석이 집을 수도 있는 증강 id** — 지급형(`ctx.grantAugments`)의
+   * 후보에서 함께 뺀다.
+   *
+   * 왜 필요한가: 한 스테이지의 진행은 (전원 오퍼 → 전원 응답 → **고정 좌석 순서로 픽 적용**)
+   * 이다. p0의 수상한 주사위는 픽이 적용되는 그 순간 지급까지 끝내는데, 그 시점에 p3의
+   * 픽은 아직 상태에 없어 `heldByAnyone`을 그대로 통과했다 — 곧이어 p3의 픽이 적용되면
+   * **한 게임에 같은 증강을 둘이 보유**한다(DraftController 머리말의 불변식 ②가 깨진다).
+   * 드래프트 전용 시뮬 3,000판 중 12판에서 재현됐고, 전부 수상한 주사위가 낀 게임이었다
+   * (QA cross 확정 1).
+   *
+   * `DraftController.pick`이 **같은 스테이지 다른 좌석의 오퍼 전체**(교체분 포함)를 넣어
+   * 준다 — 그들이 실제로 무엇을 고를지는 여기서 알 수 없지만, 고를 수 있는 것의 상한은
+   * 결정적으로 다시 계산할 수 있다. 후보가 좌석당 6장씩 최대 18장 줄 뿐이라 지급 자체는
+   * 100장 넘는 후보에서 그대로 이뤄진다.
+   */
+  reservedAugmentIds?: readonly string[];
 }
 
 /** 획득 시 증강 능력을 엔진 Registry에 등록한다 (부수효과 — DraftController가 호출) */
@@ -472,9 +490,25 @@ export function installAugment(
     grantAugments(pick) {
       const catalog = extras.catalog;
       if (catalog === undefined) return;
-      // 이미 지급 이력이 있으면(재구성) 다시 뽑지 않는다 — 지급된 증강은
-      // player.augments에 남아 있어 rebuildAugments가 알아서 재설치한다.
-      if (engine.state.augmentData[augmentGrantKey(holder, def.id)] !== undefined) {
+      /*
+       * 이미 지급 이력이 있으면(재구성) **다시 뽑지 않고, 기록된 것을 그 자리에서
+       * 설치한다.**
+       *
+       * 예전에는 그냥 돌아갔고, 지급분은 `rebuildAugments`의 바깥 루프가 뒤늦게
+       * (자기 보유 목록의 인덱스 순서대로) 설치했다. 그래서 원본에서 **지급자보다
+       * 먼저** 등록되던 것이 재구성에서는 **한참 뒤**로 밀려, 등록 순서(seq)에 기대는
+       * 동률 훅의 결과가 뒤집힐 수 있었다 — 300시드×2모드 600게임 중 수상한 주사위가
+       * 낀 76게임에서 **75게임이 불일치**(QA cross 확정 2). 여기서 설치하면 원본의
+       * 인터리브가 글자 그대로 재현된다(지급분 → 지급자의 나머지 install).
+       */
+      const already = engine.state.augmentData[augmentGrantKey(holder, def.id)];
+      if (already !== undefined) {
+        if (Array.isArray(already)) {
+          for (const id of already as string[]) {
+            const granted = catalog.get(id);
+            if (granted !== undefined) installAugment(engine, granted, holder, extras);
+          }
+        }
         return;
       }
       /*
@@ -498,20 +532,38 @@ export function installAugment(
         for (const c of catalog.get(id)?.conflicts ?? []) forbidden.add(c);
       }
       const mode = engine.state.config.mode ?? "hanchan";
+      /*
+       * **지금 이 스테이지에 실제로 제시 가능한 것만** 남긴다.
+       *
+       * 스테이지는 정식 픽이 상태에 적어 둔다(`augmentStageKey`) — 클로저가 아니라
+       * 상태에서 읽으므로 리플레이·재개에서도 같은 후보가 나온다. 못 박아 둔 스테이지가
+       * 없는 경로(사전 지급·샌드박스·테스트)에서는 **스테이지 제한이 붙은 증강을 통째로
+       * 뺀다**: 어느 스테이지인지 모르는 채로 "gameStart면 통과" 같은 추정을 하면 그게
+       * 바로 아래에 적힌 사고다.
+       *
+       * ⚠ 예전 조건은 `d.draftStages === undefined || d.draftStages.includes("gameStart")`
+       * 로 **정확히 뒤집혀** 있었다. 막으려던 게임 시작 전용 증강(가불 인생·대기만성)이
+       * 오히려 통과하고, 늦은 스테이지 전용(재장전)만 빠졌다 — 남3국에 수상한 주사위를
+       * 집으면 6.7%로 그 자리에서 뱅크 +10,000이었다(QA disrupt-b 확정 1, docs/28 §2-9).
+       */
+      const stageRaw = engine.state.augmentData[augmentStageKey(holder, def.id)];
+      const stage = typeof stageRaw === "string" ? stageRaw : null;
+      const offerableNow = (d: AugmentDef): boolean => {
+        if (d.draftStages === undefined) return true;
+        return stage !== null && d.draftStages.includes(stage as DraftStage);
+      };
+      const reserved = new Set(extras.reservedAugmentIds ?? []);
       const available = catalog
         .all()
         .filter(
           (d) =>
             d.id !== def.id &&
             !heldByAnyone.has(d.id) &&
+            !reserved.has(d.id) &&
             !forbidden.has(d.id) &&
             !(d.conflicts ?? []).some((c) => mine.has(c)) &&
             (d.modes === undefined || d.modes.includes(mode)) &&
-            // 드래프트 스테이지 제한을 지킨다. `DraftController`는 이걸 보는데
-            // 여기서만 빠져 있어, 수상한 주사위가 **게임 시작 전용** 증강(마왕의
-            // 진군 등)을 남3국에 뿌렸다 — "앞당겨 받는 10,000점"이 대가 없는
-            // +10,000이 됐다(2026-08-08 QA §2-9).
-            (d.draftStages === undefined || d.draftStages.includes("gameStart")),
+            offerableNow(d),
         );
       const chosen = pick(available);
       /*

@@ -20,9 +20,7 @@ import {
   ROUND_STARTED,
   augmentDataSet,
   defineAugment,
-  discardsZone,
   handZone,
-  kindOf,
   playerAtSeat,
   tileKindChanged,
 } from "@majak/core";
@@ -57,15 +55,33 @@ function isHonor(kind: TileKind): boolean {
 }
 
 /**
- * 이번 국 홀더 바닥의 자패 kind — **가장 최근에 버린 것부터** 최대 4개.
+ * `discardedKinds`의 kindKey("wind3"·"dragon1")를 TileKind로 되돌린다.
+ * 이력은 문자열 스냅샷이라 tileId가 없다 — 되받는 것은 종류뿐이라 그것으로 충분하다.
+ * (같은 일을 하는 `nagashi_yakuman.kindFromKey`와 같은 꼴.)
+ */
+function kindFromKey(key: string): TileKind | null {
+  const m = /^([a-z]+)(\d+)$/.exec(key);
+  if (m === null) return null;
+  return { suit: m[1] as TileKind["suit"], rank: Number(m[2]) };
+}
+
+/**
+ * 이번 국에 **내가 버린** 자패 kind — 가장 최근에 버린 것부터 최대 4개.
  * (늦게 버린 자패일수록 의도적으로 흘린 것이라 되받는 값이 크다. 결정적.)
+ *
+ * ⚠ 바닥 존(실물)이 아니라 **버림 이력**(`discardedKinds`)을 읽는다. 존은 남이 울어
+ * 가면 그 패가 빠지므로, 東·南·白·白을 버렸는데 白 하나가 퐁당하면 세 장만 기억됐다
+ * (2026-08-20 QA text 확정 17). description의 기준은 '내가 버렸는가'지
+ * '아직 내 바닥에 남아 있는가'가 아니다 — 자패를 흘려 두는 것이 이 카드의 플레이인데
+ * 그 자패를 상대가 울어 가면 손해가 두 번 났다. 같은 이유로 유국역만도 이력을 본다
+ * (`nagashi_yakuman.nagashiValid`).
  */
 function recallableHonors(state: GameState, holder: PlayerId): TileKind[] {
-  const ids: readonly TileId[] = state.zones[discardsZone(holder)]?.tileIds ?? [];
+  const history = state.round.byPlayer[holder]?.discardedKinds ?? [];
   const out: TileKind[] = [];
-  for (let i = ids.length - 1; i >= 0 && out.length < MAX_RETURN; i--) {
-    const kind = kindOf(state, ids[i] as TileId);
-    if (isHonor(kind)) out.push({ ...kind });
+  for (let i = history.length - 1; i >= 0 && out.length < MAX_RETURN; i--) {
+    const kind = kindFromKey(history[i] as string);
+    if (kind !== null && isHonor(kind)) out.push(kind);
   }
   return out;
 }

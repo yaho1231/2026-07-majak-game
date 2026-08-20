@@ -257,8 +257,14 @@ export const noRetreat: AugmentDef = defineAugment({
       if (state.round.phase !== "turn.act") return [];
       if (!canDeclare(state, holder)) return [];
       if (state.round.byPlayer[holder]?.riichi != null) return [];
+      // 텐파이 요구는 validate와 **같은 규칙**에서 읽는다 — 공성계(siege_riichi)가
+      // `riichi.requiresTenpai`를 false로 내렸을 때 후보가 0개가 되면 안 된다.
+      const needTenpai = engine.rules.resolve<boolean>("riichi.requiresTenpai", {
+        playerId: holder,
+        state,
+      });
       return handIdsOf(state, holder)
-        .filter((tileId) => tenpaiAfterDiscard(state, engine.rules, holder, tileId))
+        .filter((tileId) => !needTenpai || tenpaiAfterDiscard(state, engine.rules, holder, tileId))
         .map((tileId) => ({ type: ACTION, payload: { tileId } }));
     });
   },

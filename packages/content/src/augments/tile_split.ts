@@ -34,6 +34,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { isPreciousMaterial } from "./bluff_pretense.js";
 import { plan } from "./botPlan.js";
 import { handIdsOfView, handKindsOf, isolatedIndex, shantenIfChanged } from "./botHelpers.js";
 
@@ -64,9 +65,20 @@ function pickMaterial(
   holder: PlayerId,
   targetId: TileId,
 ): TileId | undefined {
-  const hand = handIdsOf(state, holder);
+  const all = handIdsOf(state, holder);
+  if (all.length <= 1) return undefined;
+  /*
+   * 도라·적도라는 '잡패'가 아니다 — 고립도만 보면 그 국의 도라이자 적도라인 외톨이
+   * 패가 1순위 재료로 뽑혀 도라 1판 + 적도라 1판이 한 번에 증발했다
+   * (2026-08-20 QA text 확정 14). 판정은 허장성세와 같은 함수 하나를 쓴다.
+   * 쪼갤 대상은 후보에서 빠지지만 이웃 계산에는 남아 있어야 하므로 배열에 유지한다.
+   * 태울 것이 도라뿐이면 그때만 도라가 재료가 된다(발동 자체가 막히지 않도록).
+   */
+  const spare = all.filter(
+    (id) => id === targetId || !isPreciousMaterial(state, id),
+  );
+  const hand = spare.length > 1 ? spare : all;
   const targetIdx = hand.indexOf(targetId);
-  if (hand.length <= 1) return undefined;
   const idx = isolatedIndex(
     hand.map((id) => kindOf(state, id)),
     targetIdx,
@@ -148,7 +160,7 @@ export const tileSplit: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 자기 순에 손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통 → 4통 + 5통). 두 번째 조각은 손패에서 가장 쓸모없는 잡패 한 장이 대신 바뀌어 채운다(손패 장수는 그대로).",
   detail:
-    "(매 국 1회) 손패의 수패 한 장을 골라 두 숫자로 쪼갠다 — 두 숫자의 합이 원래 숫자가 되고 무늬는 그대로다(예: 9통 → 4통 + 5통). 쪼갤 수 있는 것은 랭크 2 이상의 수패이며, 두 번째 조각은 손패에서 가장 고립된 잡패 하나가 그 조각으로 바뀌어 채우므로 손패 장수는 변하지 않는다. 결과는 전원에게 공개되고 리치 중에는 쓸 수 없다.",
+    "(매 국 1회) 손패의 수패 한 장을 골라 두 숫자로 쪼갠다 — 두 숫자의 합이 원래 숫자가 되고 무늬는 그대로다(예: 9통 → 4통 + 5통). 쪼갤 수 있는 것은 랭크 2 이상의 수패이며, 두 번째 조각은 손패에서 가장 고립된 잡패 하나가 그 조각으로 바뀌어 채우므로 손패 장수는 변하지 않는다 — **재료는 도라·적도라가 아닌 패 중에서 고른다**(태울 잡패가 하나도 없을 때만 도라가 재료가 된다). 결과는 전원에게 공개되고 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

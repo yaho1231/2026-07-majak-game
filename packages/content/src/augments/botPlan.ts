@@ -175,12 +175,55 @@ export function readiness(intent: AugmentIntent, ctx: BotDecisionContext): numbe
       return clamp01((Math.max(0, ctx.shanten) - 1) / 3) * timeLeft(ctx);
 
     /**
-     * 포석은 회수할 시간이 남아 있을 때만 — 그리고 **회수할 국이 남아 있을 때만.**
-     * 올라스에 까는 포석은 다음 국이 없어 값이 없다.
+     * 포석은 **회수할 자리가 남아 있을 때만.** 그 자리는 두 군데다.
+     *
+     * 예전 식은 `allLast ? 0 : (1 - turn/12) * timeLeft`였다 — 축이 통째로 **순목**
+     * 하나였고, 그래서 두 군데 다 틀렸다(`qa-lab/findings/bot.md` 확정 3).
+     *
+     *   - **7순부터 전 구간이 닫혔다.** 재장전처럼 "다른 증강을 이미 소진해야"
+     *     제시되는 포석은 그 시점이 대개 중후반이다. 아레나 220판에서 재장전 액션이
+     *     37번 제시됐고 정책은 **한 번도 제안하지 않았다** — 제시 조건과 발동 조건이
+     *     서로 어긋나 있었다. 다음 국에 쓸 자원을 채우는 일에 **이번 국의 순목**은
+     *     애초에 축이 아니다.
+     *   - **올라스가 0이었다.** 그런데 안개·지정처럼 **이번 국 안에서** 값이 도는
+     *     포석은 마지막 국에도 그대로 값이 있다.
+     *
+     * 그래서 두 축의 최댓값으로 본다 — 이번 국 안에서 회수하는가(순목·패산),
+     * 아니면 다음 국 이후에 회수하는가(**남은 국**). 둘 중 하나만 서면 값이 있다.
      */
-    case "setup":
-      return ctx.placement.allLast ? 0 : clamp01(1 - ctx.turn / 12) * timeLeft(ctx);
+    case "setup": {
+      // ① 이번 국 안에서 회수한다 — 순목이 축이다
+      const thisRound = clamp01(1 - ctx.turn / 12) * timeLeft(ctx);
+      // ② 다음 국 이후에 회수한다 — 남은 국이 축이고 순목과 무관하다
+      const ahead = roundsAheadOf(ctx);
+      const laterRounds = ahead === 0 ? 0 : 0.5 + 0.25 * clamp01((ahead - 1) / 2);
+      return Math.max(thisRound, laterRounds);
+    }
   }
+}
+
+/** 모드별 총 국 수 (연장/서입은 아래에서 하한으로 흡수한다) */
+const TOTAL_ROUNDS: Record<string, number> = { tonpuu: 4, hanchan: 8 };
+
+/**
+ * **이번 국을 뺀** 남은 국 수 (0 = 올라스).
+ *
+ * `BotPlacement`에는 `allLast` 불리언만 있어 "몇 국 남았나"를 못 묻는다. 뷰의 장풍·국수는
+ * 전원 공개라 여기서 그대로 셀 수 있다(`server/bot/match.ts`의 `roundsLeft`와 같은 식).
+ * 뷰가 최소 형태일 수 있으므로 없으면 `allLast`로 되돌아간다.
+ */
+function roundsAheadOf(ctx: BotDecisionContext): number {
+  if (ctx.placement.allLast) return 0;
+  const round = ctx.view.round as
+    | { mode?: string; prevalentWind?: number; roundNumber?: number }
+    | undefined;
+  const total = TOTAL_ROUNDS[round?.mode ?? "hanchan"] ?? 8;
+  const wind = round?.prevalentWind;
+  const number = round?.roundNumber;
+  // 판을 못 읽으면 "올라스는 아니다"만 아는 상태다 — 최소치 1을 준다
+  if (typeof wind !== "number" || typeof number !== "number") return 1;
+  const played = (wind - 1) * 4 + number;
+  return Math.max(0, total - played);
 }
 
 /**
@@ -191,11 +234,39 @@ export function readiness(intent: AugmentIntent, ctx: BotDecisionContext): numbe
  * 키우는 증강이 "이 손에 걸 만한가"를 물을 때, **이미 비싼 손을 싸구려로 보고** 접었다.
  *
  * 표(`AUGMENT_PLAY`)는 상시 효과만 센다 — "지금 발동할까"는 여기가 아니라 의도가 답한다.
+ *
+ * ⚠ **무장해제로 잠긴 것은 뺀다.** 잠긴 증강도 `PlayerInfo.augments`에는 그대로 남아
+ * 있어서, 예전에는 사람이 봇의 큰손·뚫린 천장을 잠근 국에도 봇이 자기 손을 최대 35%
+ * 비싸게 셌다 — 그 값이 **증강 발동 문턱(적기·강도)** 까지 함께 부풀렸다
+ * (`qa-lab/findings/bot.md` 확정 2).
  */
 function myHandPoints(ctx: BotDecisionContext): number {
+  return ctx.handPoints * augmentValueMultiplier(liveAugmentsOf(ctx));
+}
+
+/**
+ * 지금 **실제로 살아 있는** 내 증강 목록 — 무장해제로 잠긴 것을 뺀다.
+ *
+ * 지목 관계는 전원 공개 채널(`disarm:{시전자}` = {target, augmentId})이라 뷰에서 그대로
+ * 읽는다(`server/bot/collect.ts:effectiveAugmentsOf`와 같은 채널·같은 규칙 — content는
+ * server를 못 부르므로 여기 한 벌 둔다).
+ */
+function liveAugmentsOf(ctx: BotDecisionContext): string[] {
   // 뷰가 최소 형태(players 없음)일 수 있다 — 정책은 판을 모르고도 답할 수 있어야 한다
-  const mine = (ctx.view.players ?? []).find((p) => p.id === ctx.holder)?.augments ?? [];
-  return ctx.handPoints * augmentValueMultiplier(mine);
+  const players = ctx.view.players ?? [];
+  const mine = players.find((p) => p.id === ctx.holder)?.augments ?? [];
+  const view = (ctx.view.augmentView ?? {}) as Record<string, unknown>;
+  const locked = new Set<string>();
+  for (const p of players) {
+    const mark = view[`disarm:${p.id}`] as
+      | { target?: unknown; augmentId?: unknown }
+      | undefined;
+    if (mark === undefined || mark === null) continue;
+    if (mark.target === ctx.holder && typeof mark.augmentId === "string") {
+      locked.add(mark.augmentId);
+    }
+  }
+  return locked.size === 0 ? [...mine] : mine.filter((id) => !locked.has(id));
 }
 
 /**

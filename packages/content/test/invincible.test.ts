@@ -184,3 +184,62 @@ describe("invincible — 막은 버림은 후리텐도 만들지 않는다", () 
     expect(game.engine.state.round.byPlayer["p1"]?.temporaryFuriten).toBe(false);
   });
 });
+
+/**
+ * 창깡(챤깡)은 막지 않는다 (2026-08-20 QA defcall §4).
+ *
+ * 코어의 소비 지점이 `win.ronImmune`을 `lastDiscard.player ?? chankan.player`로
+ * 조회하는 탓에, 무적을 켜면 **내 깡을 창깡당하는 것까지** 함께 막혔다. 카드는
+ * "내 **버림패**로 론"만 막는다고 적어 두었고, 그 때문에 성립하지 않는 깡을 노리는
+ * 증강(void_kan)이 무적 보유자 앞에서 통째로 죽었다. 깡은 버림이 아니다.
+ */
+describe("invincible — 창깡은 막지 않는다", () => {
+  function chankanScene(active: boolean): Game {
+    const base = craft({
+      hands: { p0: "234m345p345s678s5s", p1: "234m345p345s678s5s", p2: "*", p3: "*" },
+      phase: "reaction",
+      turnSeat: 0,
+    });
+    const state: GameState = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === "p0" ? { ...p, augments: ["invincible"] } : p,
+      ),
+      round: {
+        ...base.round,
+        lastDiscard: null,
+        chankan: { player: "p0", tileId: 0, closedKan: false },
+      },
+      augmentData: active
+        ? { ...base.augmentData, [`invincible:active:${roundKey(base)}:p0`]: true }
+        : base.augmentData,
+    };
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, invincible, "p0", { yaku: game.yaku });
+    return game;
+  }
+
+  it("무적을 켜도 창깡 대상(보유자)에게는 ronImmune이 서지 않는다", () => {
+    for (const active of [false, true]) {
+      const game = chankanScene(active);
+      const immune = game.engine.rules.resolve<boolean>("win.ronImmune", {
+        playerId: "p0",
+        state: game.engine.state,
+      });
+      expect(immune).toBe(false);
+    }
+  });
+
+  it("버림패 경로는 그대로 막힌다 (회귀 방지)", () => {
+    const base = craftRon();
+    const game = createStandardGameFromState({
+      ...base,
+      augmentData: {
+        ...base.augmentData,
+        [`invincible:active:${roundKey(base)}:p0`]: true,
+      },
+    });
+    installAugment(game.engine, invincible, "p0", { yaku: game.yaku });
+    expect(winValidate(game, "p1")).toBe("discarder is immune to ron");
+  });
+});

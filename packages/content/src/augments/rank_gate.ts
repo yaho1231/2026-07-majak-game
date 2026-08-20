@@ -17,6 +17,7 @@
  */
 
 import {
+  ROUND_SETTLED,
   ROUND_STARTED,
   augmentDataSet,
   defineAugment,
@@ -124,7 +125,13 @@ export const rankGate: AugmentDef = defineAugment({
         .map((p) => ({ type: ACTION, payload: { target: p.id } }));
     });
 
-    // 새 국이 시작되면 지목 표식을 지운다 (뱃지가 다음 국으로 새지 않게)
+    // 지목 표식을 지운다 — detail이 "국이 끝나면 풀린다"고 약속하므로 **정산에서** 내린다.
+    // ROUND_STARTED만 듣던 예전에는 제한이 이미 끝난 뒤에도 정산 화면과 증강 드래프트
+    // 내내 배지가 걸려 있는 것처럼 보였다(2026-08-20 QA 문구 감사 §27). 다음 국 시작에도
+    // 한 번 더 내리는 것은 유국·중단 등 정산을 타지 않는 경로를 위한 그물이다.
+    ctx.reaction(ROUND_SETTLED, (_event, rc) => {
+      rc.emit(augmentDataSet(publicKey(holder), null));
+    });
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
       rc.emit(augmentDataSet(publicKey(holder), null));
     });

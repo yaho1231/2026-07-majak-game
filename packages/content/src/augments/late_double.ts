@@ -31,8 +31,21 @@ import type {
 import { addHanBonus } from "../util.js";
 
 const ID = "late_double";
-/** 이 순(turnCount)까지의 리치는 더블로 승격된다 */
+/**
+ * 이 순까지의 리치는 더블로 승격된다.
+ *
+ * '순'은 **보유자 자신의 버림 횟수**(`discardCount`)다 — 전역 `turnCount`가 아니다.
+ * `turnCount`는 오야가 뽑을 때마다 오르므로 깡의 영상 쯔모까지 1순으로 세어,
+ * 안깡 한 번에 플레이어가 세기에 7순인 리치가 승격에서 빠졌다
+ * (2026-08-20 QA 문구 확정 8). detail이 "순서가 흐트러져도 상관없다"고 못 박은
+ * 바로 그 상황이다. 순 세기의 단일 진실은 `discardCount`다(docs/25 P5).
+ */
 const DOUBLE_UNTIL_TURN = 7;
+
+/** 이 국에 그 사람이 지금까지 버린 장수 */
+function discardsSoFar(state: GameState, player: PlayerId): number {
+  return state.round.byPlayer[player]?.discardCount ?? 0;
+}
 
 /**
  * **이 사람의 지금 리치를 뒤늦은 출진이 더블로 밀어 올리는가.**
@@ -48,7 +61,9 @@ const DOUBLE_UNTIL_TURN = 7;
 export function lateDoublePromotes(state: GameState, player: PlayerId): boolean {
   const p = state.players.find((x) => x.id === player);
   if (p === undefined || !p.augments.includes(ID)) return false;
-  return state.round.turnCount <= DOUBLE_UNTIL_TURN;
+  // 선언한 버림이 **이미 세어진** 상태(TILE_DISCARDED 리듀서 뒤)에서 부른다 —
+  // 그래서 첫 버림 리치가 1이고, 7순째 리치가 7이다.
+  return discardsSoFar(state, player) <= DOUBLE_UNTIL_TURN;
 }
 
 export const lateDouble: AugmentDef = defineAugment({
@@ -68,7 +83,8 @@ export const lateDouble: AugmentDef = defineAugment({
     ctx.interceptor(TILE_DISCARDED, (event, ic) => {
       const p = event.payload as TileDiscardedPayload;
       if (!p.riichi || p.player !== holder) return event;
-      if (ic.state.round.turnCount > DOUBLE_UNTIL_TURN) return event;
+      // 인터셉터는 리듀서 **앞**이라 이번 버림이 아직 안 세어졌다 — +1이 이번 순이다.
+      if (discardsSoFar(ic.state, holder) + 1 > DOUBLE_UNTIL_TURN) return event;
       return { type: event.type, payload: { ...p, riichiDouble: true } };
     });
 

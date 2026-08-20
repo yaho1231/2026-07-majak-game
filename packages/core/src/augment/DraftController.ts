@@ -32,6 +32,7 @@ import { Prng } from "../engine/random/Prng.js";
 import type { GameEngine } from "../engine/GameEngine.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import { FIRST_DRAFT_EXCLUDED_COMPLEXITY, installAugment } from "./Augment.js";
+import { augmentGrantKey } from "./events.js";
 import type { AugmentDef, AugmentExtras } from "./Augment.js";
 import { AugmentRegistry } from "./AugmentRegistry.js";
 import { synergyBias } from "./synergy.js";
@@ -411,9 +412,56 @@ export class DraftController {
     });
     if (!result.ok) throw new Error(`draftPick failed: ${result.reason}`);
 
-    installAugment(this.engine, def, player, this.extras);
+    installAugment(this.engine, def, player, {
+      ...this.extras,
+      reservedAugmentIds: this.reservedForOthers(stage, player),
+    });
   }
 
+  /**
+   * **이번 스테이지에 다른 좌석이 집을 수도 있는 증강 id** (지급형 증강의 후보에서 뺀다).
+   *
+   * 스테이지 진행은 (전원 오퍼 → 전원 응답 → **고정 순서로 픽 적용**)이라, 앞 좌석의
+   * 픽이 적용되는 시점에 뒷 좌석의 픽은 아직 상태에 없다. 수상한 주사위는 바로 그
+   * 순간에 지급까지 끝내므로 `heldByAnyone`이 뒷 좌석의 픽을 못 보고, 곧이어 그 픽이
+   * 적용되면 **한 게임에 같은 증강을 둘이 보유**한다(머리말 불변식 ②, QA cross 확정 1).
+   *
+   * 남이 무엇을 고를지는 여기서 알 수 없지만 **무엇을 고를 수 있는지**는 결정적으로
+   * 다시 계산할 수 있다 — 오퍼(+교체분) 전체를 예약분으로 넘겨 그 창을 닫는다.
+   * 오퍼는 `rollWithRerolls`가 몇 번을 불러도 같은 값이라 리플레이·재개에서도 같다.
+   */
+  private reservedForOthers(stage: DraftStage, player: PlayerId): string[] {
+    const out = new Set<string>();
+    for (const p of this.engine.state.players) {
+      if (p.id === player) continue;
+      const { choices, rerolls } = this.rollWithRerolls(stage, p.id);
+      for (const d of [...choices, ...rerolls]) out.add(d.id);
+    }
+    return [...out];
+  }
+}
+
+/**
+ * 좌석별 **지급받은(=드래프트로 집지 않은) 증강 id** — 지급 이력(`augmentGrantKey`)에서 읽는다.
+ * 재구성이 "인덱스 = 스테이지"를 셀 때 이 id들을 빼야 스테이지가 밀리지 않는다.
+ */
+function grantedAugmentIds(
+  engine: GameEngine,
+  catalog: AugmentRegistry,
+): Map<PlayerId, Set<string>> {
+  const out = new Map<PlayerId, Set<string>>();
+  for (const player of engine.state.players) {
+    const granted = new Set<string>();
+    for (const by of player.augments) {
+      const rec = engine.state.augmentData[augmentGrantKey(player.id, by)];
+      if (!Array.isArray(rec)) continue;
+      for (const id of rec as string[]) {
+        if (catalog.get(id) !== undefined) granted.add(id);
+      }
+    }
+    out.set(player.id, granted);
+  }
+  return out;
 }
 
 /** 게임 재구성·리플레이용: state.augments에 있는 모든 증강을 재설치한다 */
@@ -429,10 +477,25 @@ export function rebuildAugments(
   // 설치해 등록 순서(seq)가 달라졌고, seq에 기대는 동률 훅의 결과가 뒤집혔다 —
   // 즉 **이어하기·리플레이가 원본과 다른 점수를 낼 수 있었다**(docs/25 P6).
   // player.augments는 픽 순서로 쌓이므로 인덱스가 곧 드래프트 스테이지에 대응한다.
-  const maxCount = Math.max(0, ...engine.state.players.map((p) => p.augments.length));
+  //
+  // ⚠ **지급받은 증강은 이 루프에서 세지 않는다.** 수상한 주사위(cornucopia)가 한
+  // 스테이지에 2장을 더 밀어 넣으면 "인덱스 = 스테이지"라는 전제가 그 자리에서 깨져,
+  // 뒤쪽 스테이지가 통째로 한 칸씩 밀린다. 게다가 원본에서 지급분은 **지급자의 install
+  // 안에서** 설치되므로(지급자보다 먼저 등록된다) 여기서 다시 설치하면 순서가 두 번
+  // 어긋난다. 지급자를 설치하면 `grantAugments`가 지급 이력을 읽어 **원본과 같은 자리에**
+  // 지급분을 설치해 준다(Augment.ts). 600게임 중 75게임의 순서 불일치가 이것이었다
+  // (QA cross 확정 2).
+  const grantedIds = grantedAugmentIds(engine, catalog);
+  const slots = new Map<PlayerId, string[]>(
+    engine.state.players.map((p) => [
+      p.id,
+      p.augments.filter((id) => !(grantedIds.get(p.id)?.has(id) ?? false)),
+    ]),
+  );
+  const maxCount = Math.max(0, ...[...slots.values()].map((ids) => ids.length));
   for (let i = 0; i < maxCount; i++) {
     for (const player of engine.state.players) {
-      const augmentId = player.augments[i];
+      const augmentId = slots.get(player.id)?.[i];
       if (augmentId === undefined) continue;
       const def = catalog.get(augmentId);
       if (def === undefined) {

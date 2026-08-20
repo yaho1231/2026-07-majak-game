@@ -26,6 +26,7 @@ import type {
   GameState,
   PlayerId,
   RoundSettledPayload,
+  SettleStage,
 } from "@majak/core";
 import {
   cooldownReady,
@@ -126,34 +127,43 @@ export const bigHand: AugmentDef = defineAugment({
     //
     // 기준을 deltas로 잡으면 공탁·본장 수령분도 함께 세어진다 — "그 국에 내가
     // 받는 것이 최소 만관"이라는 단순한 규칙으로 확정한다.
-    settleInterceptor(ctx, SETTLE_STAGE.BankFloor, (event, ic) => {
-      const p = event.payload as RoundSettledPayload;
-      if (p.outcome !== "win") return event;
-      if (!declaredThisRound(ic.state, holder)) return event;
-      if (!(p.winInfos ?? []).some((w) => w.winner === holder)) return event;
+    //
+    // 하한은 **두 번** 확인한다. `BankFloor`(가산 직후)만으로는 뒤에 도는 Transfer 단계
+    // (기생충·가불 인생 상환 등)가 채워 넣은 몫을 도로 뜯어 가, 기생충 한 장에 "최소
+    // 만관"이 6000이 됐다(QA text 확정 25). `Reassert`는 이동까지 끝난 뒤 모자란
+    // 만큼만 더 채운다 — 이미 하한 이상이면 아무것도 하지 않으므로, 뚫린 천장처럼
+    // **더해 주는** 이동과 겹쳐도 이중으로 채워지지 않는다.
+    const floorAt = (stage: SettleStage): void =>
+      settleInterceptor(ctx, stage, (event, ic) => {
+        const p = event.payload as RoundSettledPayload;
+        if (p.outcome !== "win") return event;
+        if (!declaredThisRound(ic.state, holder)) return event;
+        if (!(p.winInfos ?? []).some((w) => w.winner === holder)) return event;
 
-      // 오야 취급 증강(찬탈자 등)도 오야 하한을 쓴다 — 좌석만 보면 어긋난다
-      const me = ic.state.players.find((pl) => pl.id === holder);
-      const isDealer =
-        (me !== undefined && me.seat === ic.state.round.dealerSeat) ||
-        ic.rules.resolve<boolean>("win.treatAsDealer", {
-          playerId: holder,
-          state: ic.state,
-        });
-      const floor = isDealer ? MANGAN_DEALER : MANGAN_NONDEALER;
+        // 오야 취급 증강(찬탈자 등)도 오야 하한을 쓴다 — 좌석만 보면 어긋난다
+        const me = ic.state.players.find((pl) => pl.id === holder);
+        const isDealer =
+          (me !== undefined && me.seat === ic.state.round.dealerSeat) ||
+          ic.rules.resolve<boolean>("win.treatAsDealer", {
+            playerId: holder,
+            state: ic.state,
+          });
+        const floor = isDealer ? MANGAN_DEALER : MANGAN_NONDEALER;
 
-      const current = p.deltas[holder] ?? 0;
-      const topUp = Math.max(0, floor - current);
-      if (topUp === 0) return event;
-      return {
-        type: event.type,
-        payload: {
-          ...p,
-          deltas: { ...p.deltas, [holder]: current + topUp },
-          augPoints: withAugPoint(p, ctx, topUp),
-        },
-      };
-    });
+        const current = p.deltas[holder] ?? 0;
+        const topUp = Math.max(0, floor - current);
+        if (topUp === 0) return event;
+        return {
+          type: event.type,
+          payload: {
+            ...p,
+            deltas: { ...p.deltas, [holder]: current + topUp },
+            augPoints: withAugPoint(p, ctx, topUp),
+          },
+        };
+      });
+    floorAt(SETTLE_STAGE.BankFloor);
+    floorAt(SETTLE_STAGE.Reassert);
 
     // 48차 무페널티: "선언한 국에 방총하면 만관을 문다"는 다운사이드 삭제.
     // 선언은 이제 순수한 상향 — 그 국의 내 화료가 최소 만관이 된다.

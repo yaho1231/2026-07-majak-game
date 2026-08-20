@@ -103,8 +103,26 @@ export const voidKan: AugmentDef = defineAugment({
   install(ctx) {
     const { holder } = ctx;
 
-    // 안깡도 챤깡 대상으로 연다 (표준은 국사만)
-    ctx.setHolderRule("win.closedKanRobbable", true);
+    /*
+     * 안깡도 챤깡 대상으로 연다 (표준은 국사만) — **단, 리치 중에는 열지 않는다.**
+     *
+     * ⚠ 예전에는 `ctx.setHolderRule("win.closedKanRobbable", true)`로 **조건 없이**
+     * 켜 두고, 리치 가드는 손패를 바꾸는 KAN_DECLARED 리액션에만 걸어 두었다. 그래서
+     * "리치 중에는 발동하지 않는다"(description 머리말 + detail 한 문단)가 **거짓**이었다 —
+     * 손패가 안 바뀔 뿐 능력의 본체(국사 예외의 무력화)는 리치 중에도 살아 있어 안깡
+     * 창깡 론이 그대로 성립했다(QA text 확정 30). 카드가 "둘 중 하나를 골라야 한다"고
+     * 못 박은 제약이라 문구가 아니라 구현을 맞춘다.
+     */
+    ctx.engine.rules.addModifier<boolean>("win.closedKanRobbable", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        return state.round.byPlayer[holder]?.riichi != null ? cur : true;
+      },
+    });
 
     ctx.reaction(KAN_DECLARED, (event, rc) => {
       const p = event.payload as KanDeclaredPayload;

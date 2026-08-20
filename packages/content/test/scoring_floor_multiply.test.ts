@@ -60,7 +60,9 @@ function settle(game: Game, winPoints: number, pot = 0): RoundSettledPayload {
     deltas: { p0: winPoints + pot, p1: -winPoints },
     dealerSeat: game.engine.state.round.dealerSeat,
     honba: 0,
-    riichiPot: pot,
+    // 엔진과 같은 모양 — 화료 정산의 payload.riichiPot은 언제나 0이고,
+    // 회수액은 winInfo.riichiPotGain에만 실린다
+    riichiPot: 0,
     roundNumber: game.engine.state.round.roundNumber,
     prevalentWind: game.engine.state.round.prevalentWind,
     winInfos: [
@@ -73,6 +75,7 @@ function settle(game: Game, winPoints: number, pot = 0): RoundSettledPayload {
         fu: 30,
         yaku: [],
         yakumanCount: 0,
+        ...(pot > 0 ? { riichiPotGain: pot } : {}),
       } as unknown as RoundSettledPayload["winInfos"] extends (infer T)[] ? T : never,
     ],
   };

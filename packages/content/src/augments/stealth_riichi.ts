@@ -259,8 +259,15 @@ export const stealthRiichi: AugmentDef = defineAugment({
     ctx.holderTurnOptions((state) => {
       if (state.round.phase !== "turn.act") return [];
       if (state.round.byPlayer[holder]?.riichi != null) return [];
+      // 텐파이 요구는 validate와 **같은 규칙**에서 읽는다 — 여기서 하드 필터링하면
+      // 공성계(siege_riichi)가 `riichi.requiresTenpai`를 false로 내려도 후보가 0개라
+      // 프롬프트에 액션이 실리지 않아, validate의 수정이 그대로 무효가 된다.
+      const needTenpai = engine.rules.resolve<boolean>("riichi.requiresTenpai", {
+        playerId: holder,
+        state,
+      });
       return handIdsOf(state, holder)
-        .filter((tileId) => tenpaiAfterDiscard(state, engine.rules, holder, tileId))
+        .filter((tileId) => !needTenpai || tenpaiAfterDiscard(state, engine.rules, holder, tileId))
         .map((tileId) => ({ type: ACTION, payload: { tileId } }));
     });
   },

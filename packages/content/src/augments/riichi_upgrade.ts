@@ -27,7 +27,9 @@
 
 import {
   ROUND_SETTLED,
+  ROUND_STARTED,
   TILE_DISCARDED,
+  TILE_DRAWN,
   augmentDataSet,
   defineAugment,
   nextSeat,
@@ -63,7 +65,7 @@ export const riichiUpgrade: AugmentDef = defineAugment({
   complexity: 3,
   name: "이중 선언",
   description:
-    "(상시) 리치를 선언하면 언제나 더블리치가 되고, 동시에 내 하가(다음 차례 사람)는 그 국에 리치를 걸 수 없게 된다. 이 증강이 없었어도 더블리치였을 리치라면 트리플리치가 되어 4판으로 값한다.",
+    "(상시) 리치를 선언하면 언제나 더블리치가 되고, 동시에 내 하가(다음 차례 사람)는 내가 그 리치를 지고 있는 동안 리치를 걸 수 없게 된다. 이 증강이 없었어도 더블리치였을 리치라면 트리플리치가 되어 4판으로 값한다.",
   detail:
     "(상시) 리치를 선언하면 몇 번째 버림이든 언제나 더블리치(2판)로 승격된다. 동시에 자신의 하가의 리치가 **내가 그 리치를 지고 있는 동안** 봉인되어 그 사람은 리치·일발·뒷도라를 통째로 잃는다. 이미 리치를 건 사람에게는 소급하지 않으며 봉인 대상은 전원에게 공개된다. 이 증강이 없었어도 더블리치였을 리치(첫 버림, 또는 뒤늦은 출진이 승격시킨 7순 이내의 리치)라면 트리플리치가 되어 리치가 4판으로 값한다(추가 판은 역만에 적용되지 않는다).",
   install(ctx) {
@@ -93,8 +95,10 @@ export const riichiUpgrade: AugmentDef = defineAugment({
        * 더블로 만들어 언제나 true다. 그래서 예전에는 ①만 봤고, 뒤늦은 출진으로 만든
        * 더블리치는 이중 선언을 함께 들고도 트리플이 되지 않았다(2026-08-12 사용자 보고).
        */
-      const naturalDouble =
-        rs.riichi.discardIndex === 0 && state.round.goAroundBroken === false;
+      // 순 세기는 `discardCount`다 — `discardIndex`(바닥 자리)를 쓰면 바닥에서 패를
+      // 빼 가는 증강이 지나갔을 때 3순째 리치가 트리플이 된다(2026-08-20 QA 리치 확정 6).
+      // 이 훅은 리듀서 뒤에 돌아 이번 버림이 이미 세어져 있으므로 첫 버림 = 1이다.
+      const naturalDouble = rs.discardCount === 1 && state.round.goAroundBroken === false;
       if (naturalDouble || lateDoublePromotes(state, holder)) {
         rc.emit(augmentDataSet(tripleKey(holder), true));
         // 선언 순간 "트리플리치"로 보이게 — 정산에서만 드러나는 패시브가 되지 않도록.
@@ -119,6 +123,31 @@ export const riichiUpgrade: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(viewKey("*", `${ID}:${holder}`), target));
     });
 
+    /*
+     * 봉인 공개 표시를 **실제 봉인 상태에 맞춘다** (`riichi_seal`의 `syncBanner`와 같다).
+     *
+     * 봉인은 살아 있는 내 리치에서 파생하는데(아래 `riichi.blocked`), 공개 채널은
+     * 선언 때 쓰고 취소 때 지우지 않았다. 그래서 승부수로 리치를 물리면 하가는
+     * 리치를 걸 수 있는데 화면은 "너는 봉인됐다"고 말했다 — 손해를 보는 쪽이
+     * 피해자다(2026-08-20 QA 문구 확정 13). 정보는 **맞을 때만** 산다.
+     */
+    const sealViewKey = viewKey("*", `${ID}:${holder}`);
+    const syncSealView = (
+      state: GameState,
+      emit: (e: ReturnType<typeof augmentDataSet>) => void,
+    ): void => {
+      if (stringOf(state, sealViewKey) === null) return;
+      if (state.round.byPlayer[holder]?.riichi != null) return;
+      emit(augmentDataSet(sealViewKey, ""));
+    };
+    // 리치가 사라질 수 있는 지점 전부 — 승부수 취소(RiichiCanceled)는 그 자리에서,
+    // 나머지는 이어지는 쯔모·버림에서 정리된다.
+    for (const on of ["RiichiCanceled", TILE_DRAWN, TILE_DISCARDED, ROUND_STARTED]) {
+      ctx.reaction(on, (_event, rc) => {
+        syncSealView(rc.state, rc.emit);
+      });
+    }
+
     // 국이 끝나면 트리플 플래그·뷰 채널 해제 (다음 국으로 이월 금지)
     ctx.reaction(ROUND_SETTLED, (_event, rc) => {
       if (flagOf(rc.state, tripleKey(holder))) {
@@ -131,9 +160,8 @@ export const riichiUpgrade: AugmentDef = defineAugment({
         if (flagOf(rc.state, k)) rc.emit(augmentDataSet(k, false));
       }
       // 봉인 뷰 채널도 함께 내린다 — 이 키에는 roundKey가 없어 그대로 두면 다음 국까지 남는다
-      const sealView = viewKey("*", `${ID}:${holder}`);
-      if (stringOf(rc.state, sealView) !== null) {
-        rc.emit(augmentDataSet(sealView, null));
+      if (stringOf(rc.state, sealViewKey) !== null) {
+        rc.emit(augmentDataSet(sealViewKey, null));
       }
     });
 
@@ -165,7 +193,7 @@ export const riichiUpgrade: AugmentDef = defineAugment({
         if (state === undefined) return current;
         /*
          * **살아 있는 리치에서 파생한다.** 트리플 플래그는 게임 스코프 키라
-         * ROUND_SETTLED까지 남는데, 승부수·손바닥 뒤집기로 그 국에 리치를 취소하면
+         * ROUND_SETTLED까지 남는데, 승부수로 그 국에 리치를 취소하면
          * 리치가 없는 손에 리치 판수 +2가 그대로 붙었다. 판수는 리치의 값어치이므로
          * 리치가 사라지면 함께 사라져야 한다 — 리치 봉인이 같은 이유로 이미
          * 라이브 상태에서 파생한다(2026-08-08 QA §2-9).

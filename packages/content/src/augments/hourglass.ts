@@ -43,7 +43,6 @@ import type {
 } from "@majak/core";
 import {
   flagOf,
-  roundKey,
   cooldownReady,
   cooldownUsedKey,
   cooldownViewKey,
@@ -52,6 +51,7 @@ import {
   settleInterceptor,
   trackRoundSeq,
 } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "hourglass";
 const EVENT = "HourglassOpened";
@@ -77,7 +77,7 @@ function offCooldown(state: GameState, h: PlayerId): boolean {
 }
 /** 이번 국에 이미 연장했는가 — 두 번째 유국은 그대로 통과 (무한 연장 방지) */
 const openedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:opened:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "opened", state, h);
 
 interface HourglassPayload {
   holder: PlayerId;

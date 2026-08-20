@@ -29,10 +29,12 @@ import {
   discardsZone,
   evaluateWin,
   handZone,
+  isFuritenAsRon,
   kindKey,
   kindOf,
   moveTiles,
   playerAtSeat,
+  scoringOptionsOf,
   visibleTileIdsIn,
 } from "@majak/core";
 import type {
@@ -49,6 +51,7 @@ import {
   matchUses,
   publishUsesLeft,
   replaceDrawnTile,
+  roundKey,
   roundViewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
@@ -59,6 +62,14 @@ const EVENT = "GraveRobPerformed";
 
 /** 매치당 사용 횟수 카운터 (게임 단위). 동풍전 1·반장전 2회. */
 const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
+
+/**
+ * 이 국에서 **마지막으로 파낸 패**의 id. 지금의 `lastDrawnTile`과 같을 때만
+ * "손에 든 쯔모패가 남의 바닥에서 온 패"라는 뜻이다 — 다음 쯔모가 오면 자연히 어긋난다.
+ * 날치기(pond_snatch)와 같은 규약이며, 아래 `win.tsumoFuriten` 모디파이어가 이 값을 본다.
+ */
+const robbedKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:robbed:${roundKey(state)}:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(h)) < matchUses(state);
 
@@ -167,7 +178,18 @@ function robWins(
     playerId: holder,
     state: sim,
   });
-  return needYaku ? ev.ok : true;
+  if (needYaku && !ev.ok) return false;
+  // 파낸 패로 나는 것은 **남이 버린 패로 나는 것**이다 — 후리텐이면 화료할 수 없다
+  // (아래 win.tsumoFuriten 모디파이어가 표준 win 액션에서 같은 판정을 다시 건다).
+  // 후보 단계에서 미리 거르지 않으면 "화료되는 패만 제시한다"는 약속이 깨지고,
+  // 게임 1회뿐인 사용 횟수를 화료하지 못하는 도굴에 태우게 된다.
+  if (
+    rules.resolve<boolean>("win.furiten.enabled", { playerId: holder, state: sim }) &&
+    isFuritenAsRon(sim, holder, graveId, scoringOptionsOf(sim, rules, holder), rules)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function makeAction(yaku: YakuRegistry): ActionDef<{
@@ -232,9 +254,9 @@ export const graveRob: AugmentDef = defineAugment({
   complexity: 2,
   name: "무덤 도굴",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 상대들이 **최근에 버린 10장** 중 1장을 파내 그대로 화료한다. 지불은 쯔모 취급으로 세 명이 분담한다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 상대들이 **최근에 버린 10장** 중 1장을 파내 그대로 화료한다. 지불은 쯔모 취급으로 세 명이 분담한다 — 단 남이 버린 패로 나는 것이므로 후리텐이면 화료할 수 없다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 세 명이 최근에 버린 10장 안에서 화료가 성립하는 패 1장을 골라 그대로 화료한다. 화료가 되는 패만 후보로 제시되며, 그보다 더 오래전에 흘린 패는 무덤 깊이 묻혀 파낼 수 없다. 그 순의 쯔모패는 패산으로 돌아가고, 한참 전에 버린 사람에게 책임을 묻지 않도록 지불은 쯔모와 같이 세 명이 분담한다. 안개로 가려진 바닥의 패도 파낼 수 없다. 자기 바닥은 후리텐 존중을 위해 대상이 아니며, 원주인의 바닥 기록은 남아 그 사람의 후리텐 판정도 유지된다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 상대 세 명이 최근에 버린 10장 안에서 화료가 성립하는 패 1장을 골라 그대로 화료한다. 화료가 되는 패만 후보로 제시되며, 그보다 더 오래전에 흘린 패는 무덤 깊이 묻혀 파낼 수 없다. 그 순의 쯔모패는 패산으로 돌아가고, 한참 전에 버린 사람에게 책임을 묻지 않도록 지불은 쯔모와 같이 세 명이 분담한다. 안개로 가려진 바닥의 패도 파낼 수 없다. 자기 바닥은 후리텐 존중을 위해 대상이 아니며, 원주인의 바닥 기록은 남아 그 사람의 후리텐 판정도 유지된다. 파낸 패로 나는 것은 남이 버린 패로 나는 것이므로 내가 후리텐이면 화료할 수 없다 — 그런 패는 후보에도 오르지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -260,12 +282,33 @@ export const graveRob: AugmentDef = defineAugment({
           augmentData: {
             ...sim.augmentData,
             [usesKey(p.holder)]: counterOf(state, usesKey(p.holder)) + 1,
+            // 이 패로 화료하면 후리텐 판정을 받는다 (아래 win.tsumoFuriten 모디파이어)
+            [robbedKey(state, p.holder)]: p.graveId,
             // 전원 공개 — 누구의 무덤에서 무엇이 나왔는지가 이 증강의 구경거리다
             [roundViewKey("*", `${ID}:${p.holder}`)]: kindKey(kindOf(state, p.graveId)),
           },
         };
       });
     }
+
+    /**
+     * 파낸 패가 지금의 쯔모패인 동안, 이 보유자의 **쯔모 화료에 후리텐을 태운다**.
+     * 파낸 패로 나는 것은 남이 버린 패로 나는 것이므로 표준 론과 같은 판정을 받아야
+     * 한다(날치기 pond_snatch와 같은 규약). setHolderRule은 상수만 걸 수 있어
+     * 여기서는 Modifier로 직접 짠다.
+     */
+    ctx.engine.rules.addModifier<boolean>("win.tsumoFuriten", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        const robbed = state.augmentData[robbedKey(state, holder)];
+        if (typeof robbed !== "number") return cur;
+        return state.round.lastDrawnTile === robbed ? true : cur;
+      },
+    });
 
     // 화료가 성립하는 무덤 패만 후보로 제시한다 (합법성 최종 판정은 validate)
     ctx.holderTurnOptions((state) => {

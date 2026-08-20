@@ -150,11 +150,25 @@ function commonReject(state: GameState, player: PlayerId): string | null {
     return "not enough wall tiles";
   }
   if (handIdsOf(state, player).length < 4) return "not enough tiles in hand";
-  if (onCooldown(state, player)) return "future sight is on cooldown";
+  // 이미 무장했다면 쿨다운 기준점은 **이번 무장이 방금 세운 것**이라 교환을 막지 않는다.
+  // (무장 시점에 발동을 소모하므로 — 아래 futureArmAction 참고)
+  if (!isArmed(state, player) && onCooldown(state, player)) {
+    return "future sight is on cooldown";
+  }
   return null;
 }
 
-/** 무장 선언 — 이걸 눌러야 교환 후보(모달)가 열린다. 패는 전혀 움직이지 않는다. */
+/**
+ * 무장 선언 — 이걸 눌러야 교환 후보(모달)가 열린다. 패는 전혀 움직이지 않는다.
+ *
+ * ⚠ **누르는 순간 그 발동이 소모된다** (2026-08-20 QA hand-a 확정 3).
+ * 예전에는 플래그만 세우고 패·순·쿨다운을 하나도 쓰지 않아서, 뽑힌 무작위 3장을
+ * 확인만 하고 그냥 버리면(리액션이 무장을 조용히 내린다) **대가 0으로 물러날 수**
+ * 있었다 — 매 순 무제한으로 "3장을 먼저 보고 발동 여부를 정하는" 버튼이 되어,
+ * 2026-08-18 사양 복귀의 명분("리스크가 사라져 누르면 무조건 이득")이 통째로
+ * 무력화됐다. 그래서 쿨다운 기준점(lastUsedKey)을 **무장 시점**에 찍는다.
+ * 층(스택)은 실제로 교환했을 때만 쌓인다 — 물러나면 대가만 남는다.
+ */
 const futureArmAction: ActionDef<Record<string, never>> = {
   type: ARM_ACTION,
   validate: (req, { state }) => {
@@ -165,6 +179,8 @@ const futureArmAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(armedKey(state, req.player), true),
+    // 지금 이 순을 쿨다운 기준점으로 — 물러나도 내 순이 3번 지나야 다시 열린다
+    augmentDataSet(lastUsedKey(state, req.player), turnNo(state, req.player)),
   ],
 };
 
@@ -229,7 +245,7 @@ export const futureSight: AugmentDef = defineAugment({
   description:
     "(3순에 1회) 액티브 버튼을 누르면 손패에서 무작위 3장이 뽑히고, 그중 바닥에 버릴 1장을 직접 고른 뒤(나머지 2장은 패산 맨 밑으로) 패산 위 3장을 가져온다. ⚠ 이렇게 가져온 3장은 상대에게도 공개된다. 쓸 때마다 층이 쌓여 그 국에 화료하면 층 하나당 +1판을 얻는다.",
   detail:
-    "(3순에 1회) 자기 순에 버튼을 누르면 손패에서 뽑힌 무작위 3장이 제시된다. 그중 버릴 1장을 고르면 나머지 2장은 패산 맨 밑으로 들어가고 패산에서 3장을 새로 받는다. 한 번 누르면 취소할 수 없고, 고르지 않으면 무작위로 한 장이 버려진다.\n\n⚠ **가져온 3장은 상대에게도 그대로 공개된다** — 쓸수록 내 손이 읽힌다.\n\n교환할 때마다 층이 1씩 쌓여 그 국에 화료하면 층 하나당 +1판을 얻고, 층은 국이 바뀌면 초기화된다. 버린 패는 내 바닥에 쌓여 후리텐을 만들지만 다른 사람의 론·후로 대상은 되지 않는다. 한 번 쓰면 내 순이 세 번 지나야 다시 열린다. 리치 중에는 쓸 수 없다.",
+    "(3순에 1회) 자기 순에 버튼을 누르면 손패에서 뽑힌 무작위 3장이 제시된다. 그중 버릴 1장을 고르면 나머지 2장은 패산 맨 밑으로 들어가고 패산에서 3장을 새로 받는다. **버튼을 누른 순간 그 발동은 소모된다** — 뽑힌 3장을 보고 물러나도 쿨다운은 그대로 3순이 돌아간다(층은 실제로 교환했을 때만 쌓인다).\n\n⚠ **가져온 3장은 상대에게도 그대로 공개된다** — 쓸수록 내 손이 읽힌다.\n\n교환할 때마다 층이 1씩 쌓여 그 국에 화료하면 층 하나당 +1판을 얻고, 층은 국이 바뀌면 초기화된다. 버린 패는 내 바닥에 쌓여 후리텐을 만들지만 다른 사람의 론·후로 대상은 되지 않는다. 한 번 쓰면 내 순이 세 번 지나야 다시 열린다. 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

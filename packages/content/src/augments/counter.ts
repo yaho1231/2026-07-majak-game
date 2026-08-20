@@ -49,6 +49,7 @@ import type {
 } from "@majak/core";
 import {
   flagOf,
+  riichiHidden,
   settleInterceptor,
   stringOf,
   viewKey,
@@ -130,7 +131,7 @@ interface CounterStruckPayload {
   holder: PlayerId;
   /** 대납·일발 소멸을 당하는 선리치자 */
   target: PlayerId;
-  /** 대납 금액 (= 보유자가 방금 낸 리치 공탁) */
+  /** 대납 금액 (= 표준 리치 공탁, 상대의 잔여 점수가 상한) */
   amount: number;
 }
 
@@ -180,8 +181,10 @@ export const counter: AugmentDef = defineAugment({
       if (flagOf(rc.state, struckKey(holder))) {
         rc.emit(augmentDataSet(struckKey(holder), false));
       }
-      if (stringOf(rc.state, viewKey("*", `counter:${holder}`)) !== null) {
-        rc.emit(augmentDataSet(viewKey("*", `counter:${holder}`), ""));
+      for (const channel of ["*", holder]) {
+        if (stringOf(rc.state, viewKey(channel, `counter:${holder}`)) !== null) {
+          rc.emit(augmentDataSet(viewKey(channel, `counter:${holder}`), ""));
+        }
       }
     });
 
@@ -206,7 +209,21 @@ export const counter: AugmentDef = defineAugment({
       // 그 사람이 음수 점수인 채로 국을 계속 친다(docs/25 방해 #14).
       const targetScore =
         rc.state.players.find((pl) => pl.id === target)?.score ?? 0;
-      const amount = Math.max(0, Math.min(p.riichiCost ?? 0, targetScore));
+      /*
+       * 대납액은 **표준 리치 공탁**이다 — 내가 실제로 낸 금액이 아니다.
+       *
+       * 예전에는 `p.riichiCost`(방금 낸 금액)를 그대로 옮겼다. 그래서 공탁을 내지 않는
+       * 리치(스텔스 리치·물러설 수 없는 선언)로 추격하면 원금이 0이라 대납도 0원이 됐고,
+       * 카드가 못 박은 "1000점이 눈앞에서 넘어온다"가 조용히 사라졌다
+       * (2026-08-20 QA 문구 확정 6). 규칙값은 playerId 없이 뽑는다 — 보유자별
+       * 공탁 면제 모디파이어를 타지 않는 '그 게임의 표준 공탁'이다.
+       * (상한은 그대로 상대의 잔여 점수다.)
+       */
+      const standardCost = engine.rules.resolve<number>("riichi.cost", {
+        state: rc.state,
+      });
+      const due = Math.max(p.riichiCost ?? 0, standardCost);
+      const amount = Math.max(0, Math.min(due, targetScore));
       /*
        * ⚠ 여기서 `if (amount <= 0) return;` 으로 빠져나가면 **반격 전체가 사라졌다.**
        * 대납은 상한(상대 잔여 점수) 때문에 0이 될 수 있는데, 그 한 줄이 COUNTER_STRUCK
@@ -221,7 +238,15 @@ export const counter: AugmentDef = defineAugment({
         payload: { holder, target, amount } satisfies CounterStruckPayload,
       });
       rc.emit(augmentDataSet(struckKey(holder), true));
-      rc.emit(augmentDataSet(viewKey("*", `counter:${holder}`), target));
+      /*
+       * 추격 대상 공개 — 다만 **숨은 리치(스텔스 리치)는 이 채널로도 새면 안 된다.**
+       *
+       * 대상은 "그 국에 가장 먼저 리치를 건 사람"이라, 그 id를 전원 채널에 실으면
+       * 리치 표시가 false인 채로 "저 사람이 리치다"가 그대로 공개됐다
+       * (2026-08-20 QA 문구 확정 7). 숨은 리치가 대상이면 나만 보는 채널에 싣는다.
+       */
+      const channel = riichiHidden(engine.rules, rc.state, target) ? holder : "*";
+      rc.emit(augmentDataSet(viewKey(channel, `counter:${holder}`), target));
     });
 
     // 반격을 터뜨린 국을 내가 '먼저' 화료하면, 선리치자의 손이 올랐을 때 받았을

@@ -317,3 +317,37 @@ describe("바람의 계보 — 바람 슌쯔에 낀 역패 (2026-08-12 상향)",
     expect(winWith("1z2z3z123m456m789m99p")).not.toContain("wind_lineage_dragon");
   });
 });
+
+describe("바람의 계보 — 동남서북 깡의 북(北)도 역패로 센다 (QA 2026-08-20)", () => {
+  /**
+   * 동남서북 깡의 **채점 대표 3장**은 동·남·서다(WinContext.meldToSet).
+   * 대표만 훑던 windRunHas 때문에 북가·북장만 같은 깡을 하고도 1판을 못 받았다 —
+   * 자리에 따라 값이 갈리던 자리다(qa-lab shape 확정 3).
+   */
+  function kanWinYaku(seatWind: number, prevalentWind: number): string[] {
+    const base = craft({
+      hands: { p0: "123m456p789s11p", p1: "*", p2: "*", p3: "*" },
+      melds: { p0: [{ kind: "kan_closed" as const, spec: "1234z" }] },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const game = createStandardGameFromState(withAug(base, "p0", ["wind_lineage"]));
+    installAugment(game.engine, windLineage, "p0", { yaku: game.yaku });
+    const st = game.engine.state;
+    const winTile = (st.zones["hand:p0"]?.tileIds ?? []).at(-1) as TileId;
+    const ctx = buildWinContext(st, "p0", "tsumo", winTile, { rules: game.engine.rules });
+    return (
+      evaluateWin({ ...ctx, seatWind, prevalentWind }, game.yaku)?.yaku ?? []
+    ).map((y) => y.id);
+  }
+
+  for (const [name, rank] of [["동", 1], ["남", 2], ["서", 3], ["북", 4]] as const) {
+    it(`자풍이 ${name}이어도 계보 자풍역이 붙는다`, () => {
+      expect(kanWinYaku(rank, 1)).toContain("wind_lineage_seat");
+    });
+  }
+
+  it("장풍이 북(서입 이후)이어도 계보 장풍역이 붙는다", () => {
+    expect(kanWinYaku(1, 4)).toContain("wind_lineage_prevalent");
+  });
+});

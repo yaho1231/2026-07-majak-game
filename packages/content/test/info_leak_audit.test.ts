@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  ROUND_SCOPED_MARK,
   DEFAULT_HANCHAN_CONFIG,
   FlowController,
   HanchanController,
@@ -252,7 +253,7 @@ function foggedScene(withFog: boolean): Game {
   const fogKeys = withFog
     ? {
         // 박무가 **지금** 선언된 상태 (선언 순 = 현재 순, 게임 단위 사용 1회)
-        [`brief_fog:turn:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p1`]: r.turnCount,
+        [`brief_fog:turn:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p1${ROUND_SCOPED_MARK}`]: r.turnCount,
         "brief_fog:uses:p1": 1,
       }
     : {};

@@ -25,6 +25,7 @@ import {
   wallLeftOf,
 } from "./danger.js";
 import type { DefenseContext, Threat } from "./danger.js";
+import { effectiveAugmentsOf } from "./collect.js";
 import { NEUTRAL_PROFILE } from "./profile.js";
 import type { BotProfile } from "./profile.js";
 import { readMatch } from "./match.js";
@@ -316,8 +317,17 @@ export function buildRead(
    * 다마를 쳤다(docs/27 §5.2가 지정한 삽입 지점). 표에 없는 증강은 1.0이고 곱은
    * 코어에서 0.4~2.2로 잘려 있다. **그 국에만 사는 효과는 표에 없으므로**
    * 이미 꺼진 증강을 계속 비싸게 세는 일은 생기지 않는다.
+   *
+   * ⚠ **잠긴 것은 빼고 센다** (`effectiveAugmentsOf`). 예전에는 여기만 원본
+   * `player.augments`를 읽었다 — 상대를 볼 때는 전부 무장해제 채널을 통과시키면서
+   * (`danger.ts` 리치 신뢰·위협 배수, `collect.ts`) **내 쪽만** 그대로였다. 그래서
+   * 사람이 봇의 큰손·뚫린 천장·만년 오야를 잠근 바로 그 국에, 봇은 자기 손을 최대
+   * 35% 비싸게 세고 그만큼 더 밀었다(잠근 대가로 얻어야 할 "저 봇이 접는다"가
+   * 일어나지 않는다). `handRulesOf`도 같은 목록을 보므로 **역 없이 화료·오픈 리치**가
+   * 잠긴 뒤에도 봇은 그 규칙이 살아 있다고 믿고 손을 짰다
+   * (`qa-lab/findings/bot.md` 확정 2).
    */
-  const myAugments = view.players.find((p) => p.id === me)?.augments ?? [];
+  const myAugments = effectiveAugmentsOf(view, me);
   const myAugmentValue = augmentValueMultiplier(myAugments);
   const rules = handRulesOf(myAugments);
   /**

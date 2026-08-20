@@ -43,7 +43,8 @@ import type {
   TileDiscardedPayload,
   TileKind,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey, stringOf } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey, stringOf } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 import { plan } from "./botPlan.js";
 
 const ID = "push_riichi";
@@ -51,7 +52,7 @@ const ACTION = "push_brand";
 
 /** 국당 1회 — 국이 바뀌면 다시 찍을 수 있다 (단, 살아 있는 낙인이 있으면 못 찍는다) */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   !flagOf(state, usedKey(state, h));
 /**
@@ -59,7 +60,7 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
  * `usedKey`와 같은 국을 가리켜야 "매 국 1회"가 어긋나지 않는다 — 위 ⚠ 참고.
  */
 const brandKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:brand:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "brand", state, h);
 /** 낙인 표시 채널 (전원 공개, 국 스코프 — 국 경계에서 엔진이 지운다) */
 const brandViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 
@@ -152,6 +153,21 @@ export const pushRiichi: AugmentDef = defineAugment({
     ctx.interceptor(TILE_DISCARDED, (event, ic) => {
       const p = event.payload as TileDiscardedPayload;
       if (p.riichi) return event; // 이미 리치면 그대로
+      /*
+       * **명의가 남에게 가는 버림(누명)에는 강제 리치를 얹지 않는다.**
+       *
+       * 리치 선언패는 선언자의 바닥에 옆으로 눕혀 놓이는 것이 선언 시점의 단일 진실인데,
+       * 누명(`creditTo`)의 패는 지목당한 사람 바닥으로 간다. 여기에 riichi를 얹으면
+       * `riichi.discardTileId`는 남의 바닥에 심긴 패, `discardIndex`는 0(빈 내 바닥)이 되어
+       * **어느 바닥에도 리치 표식이 그려지지 않는 리치**가 성립한다(리치봉 1000점만 나간다).
+       * 같은 값을 보는 `riichi_upgrade`의 더블리치 판정도 자기 바닥 인덱스를 본다
+       * (QA disrupt-b 확정 6).
+       *
+       * 낙인은 **비우지 않는다** — 이 버림으로 밀린 것이 없으므로, 낙인 대상이 다음에
+       * 평범하게 버리는 순간 예정대로 강제 리치가 걸린다(누명은 2국에 1회라 한 번
+       * 미루는 것이 전부다).
+       */
+      if (p.creditTo !== undefined && p.creditTo !== p.player) return event;
       const target = stringOf(ic.state, brandKey(ic.state, holder));
       if (target === null || p.player !== target) return event;
       if (!riichiEligibleOnDiscard(ic.state, ic.rules, target, p.tileId)) return event;

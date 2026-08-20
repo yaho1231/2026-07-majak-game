@@ -135,8 +135,17 @@ export const hiddenRiver: AugmentDef = defineAugment({
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return cur;
         if (!fogDeclared(state, holder)) return cur;
-        // 보유자는 어느 바닥이든 그대로 읽는다
-        if (rctx.playerId === holder) return cur;
+        /*
+         * 안개를 **건 사람**은 어느 바닥이든 그대로 읽는다.
+         *
+         * ⚠ 예전에는 `rctx.playerId === holder`, 즉 **이 인스턴스의 보유자만** 면제했다.
+         * 그래서 둘이 각자 안개를 걸면 서로의 모디파이어에 걸려 **양쪽 보유자가 모두**
+         * 최근 6장만 보게 됐다 — 횟수를 태워 시야를 얻는 증강이 시야를 잃는,
+         * 설명("보유자만 네 개의 바닥을 그대로 읽는다")과 정반대의 결과였다
+         * (qa-lab text 확정 5). 지금은 "이번 국에 안개를 선언한 사람"이면 누구든 면제한다.
+         */
+        const viewer = rctx.playerId;
+        if (viewer !== undefined && fogDeclared(state, viewer)) return cur;
         // 이미 더 좁게 가려져 있으면(박무의 count_only 등) 넓히지 않는다
         if (cur === "count_only" || cur === "hidden") return cur;
         if (typeof cur === "object") {

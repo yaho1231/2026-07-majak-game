@@ -154,10 +154,14 @@ export const eternalDealer: AugmentDef = defineAugment({
       const holderSeat = playerOf(ic.state, holder).seat;
       // 진짜 오야로서 화료한 국은 원래 연장이다 — 횟수를 소모하지 않는다
       if (holderSeat === dealerSeat) return event;
-      // 더블론 등으로 진짜 오야도 함께 화료했다면 그것도 원래 연장이다
-      if (infos.some((w) => playerOf(ic.state, w.winner).seat === dealerSeat)) {
-        return event;
-      }
+      /*
+       * ⚠ 예전에는 "더블론 등으로 진짜 오야도 함께 화료했다면 그것도 원래 연장"이라며
+       * 여기서 빠져나갔다. 그건 틀렸다 — 진짜 오야가 함께 올라도 `keepDealerSeat`에는
+       * **보유자 자리**가 박혀 다음 국 오야가 내 쪽으로 옮겨 온다(standardActions).
+       * 능력은 실제로 일했는데 표식이 안 남아 카운터가 오르지 않았고, 그 결과
+       * **게임 3회 한도를 우회**했다(QA score-a 확정 4). 예외 문구가 가리키는 것은
+       * "내가 진짜 오야인 국"뿐이며 그건 바로 위 줄이 이미 걸러 낸다.
+       */
       // 오야 자리가 **내 자리로 옮겨 왔는가** (payload.dealerSeat = 다음 국의 오야 자리)
       if (p.dealerSeat !== holderSeat) return event;
       if (counterOf(ic.state, keepsKey(holder)) >= MAX_KEEPS) return event;
@@ -172,13 +176,25 @@ export const eternalDealer: AugmentDef = defineAugment({
       if (!(p.extendedBy ?? []).includes(holder)) return;
       const used = counterOf(rc.state, keepsKey(holder)) + 1;
       rc.emit(augmentDataSet(keepsKey(holder), used));
-      // 전원 공개 — 남은 연장 횟수가 테이블에 보인다
-      rc.emit(
-        augmentDataSet(
-          viewKey("*", `${ID}:${holder}`),
-          `연장 (남은 ${MAX_KEEPS - used}회)`,
-        ),
-      );
+    });
+
+    /*
+     * 남은 연장 횟수를 **전원 공개 채널에 상시** 싣는다.
+     *
+     * detail이 "남은 횟수는 전원에게 보인다"고 약속하는데, 실제로는 `publishUsesLeft`의
+     * 보유자 전용 채널(view:{holder}:uses:…)뿐이었고 공개 채널은 **연장이 실제로 일어난
+     * 국에만** 한 줄 발행됐다(QA text 확정 29). 상대에게 이 숫자는 "지금 이 사람을
+     * 떨어뜨려야 하는가"를 가르는 판단 재료다.
+     *
+     * 갱신 시점은 publishUsesLeft와 같은 규약 — 모든 이벤트에 걸되 값이 달라질 때만
+     * 발행하므로 연쇄는 한 겹에서 멈춘다.
+     */
+    const publicKey = viewKey("*", `${ID}:${holder}`);
+    ctx.reaction("*", (_event, rc) => {
+      const left = Math.max(0, MAX_KEEPS - counterOf(rc.state, keepsKey(holder)));
+      const label = `연장 (남은 ${left}회)`;
+      if (rc.state.augmentData[publicKey] === label) return;
+      rc.emit(augmentDataSet(publicKey, label));
     });
   },
 });

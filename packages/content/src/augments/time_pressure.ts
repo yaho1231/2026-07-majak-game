@@ -7,7 +7,8 @@
  *
  * 시간이 다 되면 서버가 **안전 폴백**으로 대신 진행한다 —
  * 버릴 차례면 **쯔모기리**, 울지 말지 물어보는 자리면 **패스**,
- * 되돌릴 수 없는 발동의 마무리 단계면 **남은 후보 중 무작위**로 끝맺는다.
+ * 되돌릴 수 없는 발동의 마무리 단계면 **남은 후보 중 하나**로 끝맺는다(리플레이 결정성을
+ * 위해 무작위가 아니라 후보 목록에서 결정적으로 고른다 — `HumanAgent`).
  *
  * 이 증강만은 도파민이 룰이 아니라 **손가락**에 있다. 리치를 건 상대 앞에서 5초 안에
  * 안전패를 고르는 것은 평소의 마작과 전혀 다른 게임이며, 자기 자신도 같은 시계를
@@ -19,8 +20,8 @@
  * 카운트다운을 그린다. 봇은 원래 즉답이라 사실상 영향을 받지 않는다.
  */
 
-import { augmentDataSet, defineAugment } from "@majak/core";
-import type { AugmentDef } from "@majak/core";
+import { AUGMENT_DISARMED, augmentDataSet, defineAugment } from "@majak/core";
+import type { AugmentDef, AugmentDisarmedPayload } from "@majak/core";
 import { armOnNextRound, roundViewKey } from "../util.js";
 
 const ID = "time_pressure";
@@ -42,14 +43,41 @@ export const timePressure: AugmentDef = defineAugment({
   name: "초읽기",
   description:
     "뽑는 순간 자동 발동. 이번 국 동안 전원의 모든 결정에 5초 제한이 걸린다 — 나도 포함이다. 시간을 넘기면 쯔모기리·패스로 자동 진행된다.",
+  /*
+   * detail의 마무리 폴백 문구는 예전에 "남은 후보 중 하나가 **무작위로** 선택된다"였다.
+   * 서버는 리플레이·재개 결정성을 위해 `Math.random()`을 **일부러 걷어내고** 후보 목록의
+   * 해시로 고르도록 바꿨는데(`HumanAgent.ts` 주석에 경위가 있다, docs/25 시스템 횡단 #14)
+   * 문구만 옛 동작에 남아 있었다 — 같은 상황이면 언제나 같은 것이 골라지므로 "무작위"는
+   * 거짓이고, 상대에게도 걸리는 증강이라 그 차이가 전략 정보다(QA text 확정 35).
+   * 구현이 옳고 문장이 낡은 경우라 **문장을 고친다**.
+   */
   detail:
-    "획득한 직후의 국 하나 동안 전원의 모든 결정에 5초 제한이 걸린다. 타패, 론·치·퐁·깡 선언, 액티브 증강 선택이 모두 포함되며 보유자도 예외가 아니다.\n\n제한을 넘기면 버릴 차례에는 쯔모한 패를 그대로 버리고, 반응을 묻는 자리에서는 패스하며, 되돌릴 수 없는 발동의 마무리 단계에서는 남은 후보 중 하나가 무작위로 선택된다.\n\n⚠ 5초 제한은 사람에게만 걸린다 — 봇은 이 제한을 받지 않는다. 봇이 섞인 자리에서는 그만큼 나만 조여진다.",
+    "획득한 직후의 국 하나 동안 전원의 모든 결정에 5초 제한이 걸린다. 타패, 론·치·퐁·깡 선언, 액티브 증강 선택이 모두 포함되며 보유자도 예외가 아니다.\n\n제한을 넘기면 버릴 차례에는 쯔모한 패를 그대로 버리고, 반응을 묻는 자리에서는 패스하며, 되돌릴 수 없는 발동의 마무리 단계에서는 남은 후보 중 하나가 정해진 규칙에 따라 선택된다(리플레이가 같은 결과를 내야 하므로 무작위가 아니다 — 같은 상황이면 언제나 같은 후보가 골라진다).\n\n⚠ 5초 제한은 사람에게만 걸린다 — 봇은 이 제한을 받지 않는다. 봇이 섞인 자리에서는 그만큼 나만 조여진다.",
   install(ctx) {
     // 획득 뒤 처음 시작되는 국 하나에만 켜진다.
     // 전원 공개 — 서버는 이 값으로 결정 대기 시간을 줄이고 클라는 카운트다운을 그린다.
     armOnNextRound(ctx, ID, () => [
       augmentDataSet(roundViewKey("*", TIME_PRESSURE_CHANNEL), TIME_PRESSURE_SECONDS),
     ]);
+
+    /*
+     * **무장해제되면 초읽기도 그 자리에서 꺼진다.**
+     *
+     * 코어의 무장해제 게이트는 Modifier·Interceptor·Reaction·액티브 버튼만 건너뛴다.
+     * 그런데 이 증강의 효과는 국 시작에 **이미 실려 버린 공개 채널 값 하나**라 게이트를
+     * 아예 타지 않았다 — 잠근 뒤에도 국이 끝날 때까지 테이블 전원이 5초 안에 결정해야
+     * 했다(무장해제 1회를 쓰고도 아무것도 안 잠긴다, QA disrupt-b 확정 3).
+     * 진짜 용과 같은 규약으로 스스로 되돌린다: 무장해제 통보는 목록에 넣기 **전에**
+     * 오므로 이 리액션은 정상적으로 돈다(disarm.ts toEvents의 순서 계약).
+     */
+    ctx.reaction(AUGMENT_DISARMED, (event, rc) => {
+      const p = event.payload as AugmentDisarmedPayload;
+      if (p.augmentId !== ID || p.target !== ctx.holder) return;
+      if (rc.state.augmentData[roundViewKey("*", TIME_PRESSURE_CHANNEL)] === undefined) {
+        return;
+      }
+      rc.emit(augmentDataSet(roundViewKey("*", TIME_PRESSURE_CHANNEL), undefined));
+    });
   },
   // 봇 정책 없음 — 자동 발동이라 선택 지점이 없다.
 });

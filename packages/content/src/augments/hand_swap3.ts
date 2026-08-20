@@ -157,10 +157,23 @@ function swapsLeft(state: GameState, holder: PlayerId): number {
   return counterOf(state, leftKey(state, holder));
 }
 
-/** 고르기까지 끝낸 '넘길 내 3장' (아직 없으면 빈 배열) */
+/**
+ * 고르기까지 끝낸 '넘길 내 3장' (아직 없으면 빈 배열).
+ *
+ * ⚠ **손을 떠난 패가 하나라도 있으면 그 선택은 통째로 무효**로 본다
+ * (2026-08-20 QA hand-a 확정 4). give는 패를 움직이지 않고 키에 적어 둘 뿐이라
+ * 고른 3장을 그대로 버리거나 안깡으로 넣을 수 있는데, 예전에는 그러면
+ * ① take가 "give tile not in hand"로 영구 반려되고
+ * ② give는 `length > 0`이라 다시 고를 수 없어
+ * 그 국의 교환이 조용히 죽었다 — 게임 2회 중 1회는 이미 소모된 채로.
+ * 무효로 떨어뜨리면 give 후보가 다시 뜨고, 그 국 안에서 다시 고를 수 있다.
+ */
 function pendingGives(state: GameState, holder: PlayerId): TileId[] {
   const v = state.augmentData[giveKey(state, holder)];
-  return Array.isArray(v) ? (v as TileId[]) : [];
+  if (!Array.isArray(v)) return [];
+  const raw = v as TileId[];
+  const hand = handIdsOf(state, holder);
+  return raw.every((id) => hand.includes(id)) ? raw : [];
 }
 
 /** 지금 바로 교환할 수 있는 대상 (지정됨 + 횟수 남음 + 대상이 리치 아님) */
@@ -276,7 +289,11 @@ const giveAction: ActionDef<{ gives: TileId[] }> = {
     if (aimedTarget(state, req.player) === null) return "no target designated";
     if (swappedThisRound(state, req.player)) return "already swapped this round";
     if (swapsLeft(state, req.player) <= 0) return "no swaps left";
-    if (pendingGives(state, req.player).length > 0) return "gives already chosen";
+    // 이미 3장을 고른 뒤에만 막는다 — 손을 떠난 패가 섞이면 pendingGives가 빈
+    // 배열을 돌려주므로 그 국 안에서 다시 고를 수 있다(확정 4).
+    if (pendingGives(state, req.player).length >= SWAP_TILES) {
+      return "gives already chosen";
+    }
     if (!isSortedTriple(req.payload.gives)) return "need three distinct tiles";
     const hand = handIdsOf(state, req.player);
     if (!req.payload.gives.every((id) => hand.includes(id))) {
@@ -336,7 +353,7 @@ export const handSwap3: AugmentDef = defineAugment({
   description:
     "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패가 나에게만 공개되고, 넘길 내 3장과 가져올 상대 3장을 각각 골라 통째로 맞바꾼다. 리치를 선언한 상대에게는 쓸 수 없다.",
   detail:
-    "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패 전체가 나에게만 진짜 패로 공개된다. 이어서 넘길 내 3장과 가져올 상대 3장을 각각 한 번에 골라 맞바꾸며, 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로 유지된다. 리치한 상대는 지정할 수 없고 지정한 뒤 상대가 리치하면 교환이 중단된다. 다만 **숨은 리치는 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 당사자에게만 알려진 채 풀린다.\n\n**횟수는 대상을 지정하는 순간 소비된다** — 교환을 끝내지 못하고 국이 끝나거나 상대가 리치를 걸면 그 1회는 돌아오지 않는다.\n\n무엇이 오갔는지는 **당사자 둘에게만** 화면에 뜬다 — 제3자는 대상 지정 사실만 알 뿐 갈린 패는 보지 못한다.",
+    "(게임 내 2회 · 한 국에 1회) 자기 순에 상대 한 명을 지정하면 그 손패 전체가 나에게만 진짜 패로 공개된다. 이어서 넘길 내 3장과 가져올 상대 3장을 각각 한 번에 골라 맞바꾸며, 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로 유지된다. 리치한 상대는 지정할 수 없고 지정한 뒤 상대가 리치하면 교환이 중단된다. 다만 **숨은 리치는 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 당사자에게만 알려진 채 풀린다.\n\n**횟수는 대상을 지정하는 순간 소비된다** — 교환을 끝내지 못하고 국이 끝나거나 상대가 리치를 걸면 그 1회는 돌아오지 않는다. 넘기기로 고른 3장은 아직 손에 있으므로 그중 한 장을 버리거나 깡에 써도 되며, 그러면 **그 선택이 무효가 되어 다시 고를 수 있다**.\n\n무엇이 오갔는지는 **당사자 둘에게만** 화면에 뜬다 — 제3자는 대상 지정 사실만 알 뿐 갈린 패는 보지 못한다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -441,7 +458,7 @@ export const handSwap3: AugmentDef = defineAugment({
       const target = activeTarget(state, engine.rules, holder);
       if (target !== null) {
         const gives = pendingGives(state, holder);
-        if (gives.length === 0) {
+        if (gives.length < SWAP_TILES) {
           return triples(myHand).map((t) => ({
             type: GIVE_ACTION,
             payload: { gives: t },

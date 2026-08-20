@@ -107,11 +107,40 @@ export function draftScore(def: AugmentDef, ctx: DraftContext): number {
 const UNUSABLE_PENALTY = 0.25;
 
 /**
+ * 값이 셀수록 가팔라지는 정도. 성격의 흔들림(`noise`)이 이 안에서 완만하게 만든다.
+ *
+ * 지수라서 **비율**로 판단한다 — 최선값의 90%짜리는 자주, 45%짜리는 드물게 뽑힌다.
+ * 파워가 절대값이 아니라 비율로 들어오므로 티어표의 눈금이 바뀌어도 성질이 따라온다.
+ */
+const DRAFT_SHARPNESS = 2.5;
+
+/** 균등난수를 뽑아낼 눈금 (rng는 `int(n)`만 준다 — 리플레이 계약을 바꾸지 않는다) */
+const RNG_RESOLUTION = 1 << 20;
+
+/**
  * 뽑을 증강을 고른다.
  *
- * 값이 가장 큰 것을 고르되, **엇비슷한 것들 사이에서는 흔들린다** — 버림에서와
- * 같은 이유다(`bot/discard.ts`의 wobble). 넷이 같은 표를 보고 매번 같은 답을 내면
- * 그 자체가 읽히는 정보이고, 무엇보다 탁이 한 종류의 덱으로 채워진다.
+ * ## 왜 최고점을 그대로 집지 않는가
+ *
+ * 예전에는 최고점을 집고 **최선값의 몇 %(wobble) 안에 있는 것들 사이에서만** 흔들었다.
+ * 그 폭이 실측 3~6%라, 220판 2,596픽에서 **D티어 7종이 691번 제시되고 픽이 0**이었다
+ * (`qa-lab/findings/bot.md` 확정 1). 파워 ≤21 구간이 통째로 전멸이다.
+ *
+ * 그건 "가끔 흔들린다"가 아니라 **카드 풀이 사람과 다르다**는 뜻이다. 봇 셋이 영영
+ * 들지 않는 증강 7종은 대인전에서 사라지고, 티어표 하단은 아레나로 검증할 표본이
+ * 아예 쌓이지 않는다(표가 만든 표본으로 그 표를 검증하는 순환).
+ *
+ * 그래서 **절대 문턱(밴드)이 아니라 비율 가중 추첨**으로 바꾼다. 최선값 대비 비율의
+ * 거듭제곱을 가중치로 쓰면
+ *   - 순서는 그대로다 — 센 것이 항상 더 자주 뽑힌다(단조),
+ *   - 격차가 클수록 아래쪽이 급격히 드물어진다(파워를 뒤엎지 않는다),
+ *   - 그래도 **0은 아니다** — 사람이 가끔 낮은 티어를 집는 것과 같다.
+ *
+ * ## 봇이 못 쓰는 증강은 그대로 제외한다
+ *
+ * `unusable`(BOT_UNUSABLE)은 뽑아 봐야 게임 내내 놀리는 카드다. 흔들림을 넓히면서
+ * 이것까지 같이 열면 봇이 빈 칸을 들고 다니게 되므로, 추첨 **모집단에서 뺀다** —
+ * 다만 선택지가 전부 그것뿐이면 어쩔 수 없이 그중에서 고른다.
  */
 export function chooseDraft(
   choices: readonly AugmentDef[],
@@ -119,15 +148,39 @@ export function chooseDraft(
   rng: { int(n: number): number },
 ): AugmentDef | undefined {
   if (choices.length === 0) return undefined;
-  const scored = choices.map((def) => ({ def, score: draftScore(def, ctx) }));
-  let bestScore = -Infinity;
-  for (const s of scored) if (s.score > bestScore) bestScore = s.score;
 
-  // 흔들림 폭은 성격이 정하고, 최선값에 비례한다 (파워 격차가 크면 흔들리지 않는다)
-  const band = bestScore * ctx.profile.noise * DRAFT_WOBBLE;
-  const near = scored.filter((s) => s.score >= bestScore - band);
-  return (near[rng.int(near.length)] ?? scored[0])?.def;
+  // 봇이 못 쓰는 것은 모집단에서 뺀다 (전부 그것뿐이면 그대로 둔다)
+  const usable = choices.filter((def) => !ctx.unusable.includes(def.id));
+  const pool = usable.length > 0 ? usable : choices;
+
+  const scored = pool.map((def) => ({ def, score: Math.max(0, draftScore(def, ctx)) }));
+  // 값 내림차순 — 안정 정렬이라 동점은 제시 순서를 지킨다(리플레이 결정론)
+  scored.sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (best === undefined) return undefined;
+  if (best.score <= 0) return best.def;
+
+  /**
+   * 성격이 가파름을 정한다. 흔들림이 작은 수비형은 표에 가깝게, 변덕형은 훨씬
+   * 평평하게 뽑는다 — 탁이 한 종류의 덱으로 채워지지 않게 하는 것이 원래 목적이다.
+   */
+  const gamma = DRAFT_SHARPNESS / (0.5 + ctx.profile.noise);
+
+  let total = 0;
+  const weights = scored.map((s) => {
+    const w = Math.pow(s.score / best.score, gamma);
+    total += w;
+    return w;
+  });
+
+  // rng는 `int(n)`만 준다 — 눈금으로 나눠 균등난수를 만든다.
+  // int()가 0을 주면 u=0이라 **항상 최고점**이 나온다(기존 테스트의 결정론 계약).
+  const u = rng.int(RNG_RESOLUTION) / RNG_RESOLUTION;
+  let acc = 0;
+  for (let i = 0; i < scored.length; i++) {
+    acc += (weights[i] as number) / total;
+    if (u < acc) return (scored[i] as { def: AugmentDef }).def;
+  }
+  return best.def;
 }
-
-/** 최선값 대비 흔들릴 수 있는 비율의 상한 (성격이 이 안에서 정한다) */
-const DRAFT_WOBBLE = 0.12;

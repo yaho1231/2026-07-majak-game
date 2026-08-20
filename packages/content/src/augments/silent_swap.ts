@@ -1,7 +1,7 @@
 /**
  * 정적의 손 (silent_swap, prism) — "아무도 리치를 걸지 않은 조용한 국에서만 열리는 창".
  *
- * 그 국에 리치가 단 하나도 없을 때, 자기 턴에 **네 명 전원의 바닥(버림패 더미)**에서
+ * 그 국에 리치가 단 하나도 없을 때, 자기 턴에 **상대 세 명의 바닥(버림패 더미)**에서
  * 아무 패나 1장을 골라 손으로 가져온다. 국당 1회. 발동한 국에 화료하면 +2판.
  *
  * 설계 결정:
@@ -13,8 +13,13 @@
  *   꺼낸 패가 새 쯔모패가 된다(날치기 pond_snatch·무덤 도굴 grave_rob과 같은 계열).
  *   손패가 영구히 한 장 늘면 13장 전제의 화료 분해가 통째로 깨져 화료 자체가
  *   불가능해지므로, 엔진 불변식을 지키는 이 형태로 구현했다.
- * - **대상은 내 바닥을 포함한 네 명의 바닥 전부.** 후보가 수십 장이 되므로 클라이언트는
- *   전용 모달로 바닥을 통째로 펼쳐 보여준다 — payload는 `{ tileId }` 하나로 유지한다.
+ * - **대상은 내 바닥을 제외한 상대 세 명의 바닥.**(2026-08-20 사용자 설계 변경) 예전에는
+ *   자기 바닥도 후보라, "방금 버린 내 오름패를 도로 집어 후리텐인 채로 화료"가 이 증강의
+ *   가장 쉬운 사용법이 되어 있었다. 후보가 수십 장이 되므로 클라이언트는 전용 모달로
+ *   바닥을 통째로 펼쳐 보여준다 — payload는 `{ tileId }` 하나로 유지한다.
+ * - **집은 패로 나는 것은 남이 버린 패로 나는 것이다.** 날치기(pond_snatch)·무덤 도굴과
+ *   같이, 집은 패가 지금의 쯔모패인 동안 `win.tsumoFuriten`을 켜서 후리텐이면 쯔모
+ *   화료를 막는다.
  * - 원주인의 바닥 기록(discardedKinds)은 **건드리지 않는다** — 바닥에서 패가 빠져도
  *   후리텐 판정은 이 이력을 쓰므로 그대로 둬야 안전하다.
  * - 리치가 하나라도 걸린 국에서는 발동할 수 없다. "정적"이 이 증강의 조건이다.
@@ -60,6 +65,13 @@ const WIN_BONUS_HAN = 2;
 /** 국당 1회 — roundKey가 섞여 국이 바뀌면 자동 만료 */
 const usedKey = (state: GameState, h: PlayerId): string =>
   `${ID}:used:${roundKey(state)}:${h}`;
+
+/**
+ * 이 국에서 **집어 온 패**의 id. 지금의 `lastDrawnTile`과 같을 때만 "손에 든 쯔모패가
+ * 남의 바닥에서 온 패"라는 뜻이다 — 다음 쯔모가 오면 자연히 어긋난다(날치기와 같은 규약).
+ */
+const takenKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:taken:${roundKey(state)}:${h}`;
 
 /**
  * 이번 국에 리치를 건 사람이 하나라도 있는가.
@@ -114,9 +126,10 @@ const silentTakeAction: ActionDef<{ tileId: TileId }> = {
     const drawn = state.round.lastDrawnTile;
     if (drawn === null) return "no drawn tile to trade";
     if (!handIdsOf(state, req.player).includes(drawn)) return "drawn tile not in hand";
-    if (pondOwnerOf(state, req.payload.tileId) === null) {
-      return "tile is not in any pond";
-    }
+    const owner = pondOwnerOf(state, req.payload.tileId);
+    if (owner === null) return "tile is not in any pond";
+    // 자기 바닥은 대상이 아니다 — 방금 버린 오름패를 도로 집는 길을 막는다
+    if (owner === req.player) return "cannot take from your own pond";
     return null;
   },
   toEvents: (req, { state }) => [
@@ -139,9 +152,9 @@ export const silentSwap: AugmentDef = defineAugment({
   complexity: 2,
   name: "정적의 손",
   description:
-    "(매 국 1회 — 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 네 명 전원의 바닥에서 버림패 1장을 골라 손으로 가져온다(쯔모패는 패산으로). 발동한 국에 화료하면 +2판을 얻는다.",
+    "(매 국 1회 — 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 **상대 세 명의 바닥**에서 버림패 1장을 골라 손으로 가져온다(쯔모패는 패산으로). 발동한 국에 화료하면 +2판을 얻는다 — 단 남이 버린 패로 나는 것이므로 후리텐이면 그 화료는 인정되지 않는다.",
   detail:
-    "(매 국 1회 — 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 네 사람의 바닥 전체에서 한 장을 골라 손으로 가져오고, 그 순의 쯔모패는 패산 맨 밑으로 돌아간다. 리치가 하나라도 걸린 국에서는 발동할 수 없다. 가져온 뒤 이어지는 같은 순의 버림에는 방총 위험이 그대로 적용된다. 원래 주인의 바닥 기록은 남아 그 사람의 후리텐은 유지되고, 내 바닥에서 가져와도 내 후리텐은 풀리지 않는다. 발동한 국에 화료하면 +2판을 얻는다.\n\n가져온 패는 그 순의 쯔모패가 된다 — 그 패로 화료할 수 있고, 그때는 쯔모 화료로 값한다. 또한 '리치가 걸리지 않은 국' 조건은 **보이는 리치**만 센다: 스텔스 리치가 서 있어도 발동된다. 쯔모 없이 한 장을 더 얻는 셈이라 그 국은 모두에게 1쯔모만큼 길어진다.",
+    "(매 국 1회 — 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 **상대 세 명의 바닥**에서 한 장을 골라 손으로 가져오고, 그 순의 쯔모패는 패산 맨 밑으로 돌아간다. 내 바닥은 대상이 아니다. 리치가 하나라도 걸린 국에서는 발동할 수 없다. 가져온 뒤 이어지는 같은 순의 버림에는 방총 위험이 그대로 적용된다. 원래 주인의 바닥 기록은 남아 그 사람의 후리텐은 유지된다. 발동한 국에 화료하면 +2판을 얻는다.\n\n가져온 패는 그 순의 쯔모패가 된다 — 그 패로 화료할 수 있고, 그때는 쯔모 화료로 값한다. 다만 실체는 남이 버린 패로 나는 것이므로, 내가 후리텐이면 그 패로는 화료할 수 없다. 또한 '리치가 걸리지 않은 국' 조건은 **보이는 리치**만 센다: 스텔스 리치가 서 있어도 발동된다. 쯔모 없이 한 장을 더 얻는 셈이라 그 국은 모두에게 1쯔모만큼 길어진다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -175,6 +188,8 @@ export const silentSwap: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [usedKey(state, p.holder)]: true,
+            // 이 패로 화료하면 후리텐 판정을 받는다 (아래 win.tsumoFuriten 모디파이어)
+            [takenKey(state, p.holder)]: p.takenId,
             // 전원 공개 — 누구의 바닥에서 무엇이 걸어 나왔는지가 이 증강의 구경거리다.
             // ⚠ 좌석 id를 `from`으로 실으면 안 된다 — 사건 컷인(App.tsx augEventTiles)에서
             // `{kind, from}`의 `from`은 "바뀌기 전 패"라는 뜻이라, 좌석 id "p1"이 패 키로
@@ -189,7 +204,7 @@ export const silentSwap: AugmentDef = defineAugment({
     }
 
     /*
-     * 보유자 턴 후보: 네 명 전원의 바닥 중 **보유자에게 실제로 보이는 패만**.
+     * 보유자 턴 후보: **상대 세 명**의 바닥 중 보유자에게 실제로 보이는 패만.
      *
      * 안개 계열(박무·숨은 강)이 가려 놓은 바닥까지 후보로 내면, 보유자는 뒷면인
      * 패를 집게 되어 "무엇을 가져오는지 보고 고른다"는 이 능력이 제비뽑기가 된다
@@ -203,6 +218,8 @@ export const silentSwap: AugmentDef = defineAugment({
       if (anyRiichi(engine.rules, state)) return [];
       const out: { type: string; payload: { tileId: TileId } }[] = [];
       for (const p of state.players) {
+        // 내 바닥은 제외 — 내가 버린 오름패를 도로 집는 것은 이 증강의 용도가 아니다
+        if (p.id === holder) continue;
         for (const tileId of visibleTileIdsIn(
           state,
           engine.rules,
@@ -215,13 +232,31 @@ export const silentSwap: AugmentDef = defineAugment({
       return out;
     });
 
+    /**
+     * 집은 패가 지금의 쯔모패인 동안, 이 보유자의 **쯔모 화료에 후리텐을 태운다**.
+     * 남이 버린 패로 나는 것이므로 표준 론과 같은 판정을 받아야 한다
+     * (날치기 pond_snatch·무덤 도굴 grave_rob과 같은 규약).
+     */
+    ctx.engine.rules.addModifier<boolean>("win.tsumoFuriten", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        const taken = state.augmentData[takenKey(state, holder)];
+        if (typeof taken !== "number") return cur;
+        return state.round.lastDrawnTile === taken ? true : cur;
+      },
+    });
+
     // 발동한 국에 화료하면 +2판
     addWinHanBonus(ctx, (state) =>
       flagOf(state, usedKey(state, holder)) ? WIN_BONUS_HAN : 0,
     );
   },
   /**
-   * 봇: 네 바닥을 통틀어 **내 손을 진전시키는 패**(짝을 만들거나 슌쯔 이웃)가 있으면
+   * 봇: 상대 세 바닥을 통틀어 **내 손을 진전시키는 패**(짝을 만들거나 슌쯔 이웃)가 있으면
    * 가져온다 — 날치기(pond_snatch)와 같은 판단이다. 텐파이면 대기를 흐트러뜨리지
    * 않도록 손대지 않는다. (발동 국 화료 시 +2판이 따라온다.)
    */

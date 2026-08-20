@@ -98,6 +98,18 @@ const seatSwapAction: ActionDef<{ target: PlayerId }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
+    // 보유자 자신이 리치 중이면 손패가 동결된다 — 대상의 리치만 보고 자기 리치를
+    // 빠뜨리면 리치를 세워 둔 채 손 13장을 통째로 갈아치울 수 있었다
+    // (2026-08-20 QA riichi 확정 7). `hand_swap3.commonReject`와 같은 규약.
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
+    // 쯔모를 마친 순이어야 한다. 치·펑 직후에도 turn.act이지만 그때는 lastDrawnTile이
+    // null이라 ① 리듀서가 "발동자에게 남길 쯔모패"를 못 찾아 **옛 손패 아무 장**을
+    // 남기고(detail의 "방금 뽑은 쯔모패 한 장만 남는다"가 깨진다), ② 나도 울었으므로
+    // sameHandSize가 **이미 울어 둔 상대**를 후보로 올린다
+    // (2026-08-20 QA text 확정 18). full_hand_swap·table_flip에 있는 가드다.
+    if (state.round.lastDrawnTile === null) return "no drawn tile";
     if (req.payload.target === req.player) return "cannot swap with yourself";
     if (!state.players.some((p) => p.id === req.payload.target)) {
       return "unknown target";
@@ -151,7 +163,7 @@ export const seatSwap: AugmentDef = defineAugment({
   description:
     "(동풍전 2회 · 반장전 3회, 국당 1회) 내 첫 순에 상대 한 명을 지정하면 그 자리에서 즉시 자리와 손패를 통째로 맞바꾼다 — 자풍·오야·차례는 물론 상대의 손패·후로까지 가져온다. 리치를 선언한 상대에게는 쓸 수 없다.",
   detail:
-    "(동풍전 2회 · 반장전 3회, 한 국에는 1회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다. 리치한 상대는 지정할 수 없지만, **숨은 리치는 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손이 바뀌는 순간 그 리치는 당사자에게만 알려진 채 풀린다.\n\n손패 장수와 후로 개수가 나와 같은 상대만 대상이 된다 — 이미 울어 둔 상대는 목록에 뜨지 않는다.",
+    "(동풍전 2회 · 반장전 3회, 한 국에는 1회) 그 국에서 내가 아직 한 장도 버리지 않은 내 순이면 상대 한 명을 지정해 즉시 그 상대와 자리와 손을 통째로 맞바꾼다. 상대의 자리(자풍·오야·차례)뿐 아니라 손패와 후로까지 내 것이 되고 내 손은 상대에게 넘어간다 — 내가 방금 뽑은 쯔모패 한 장만 내게 남아 그대로 버림을 이어 간다. 효과는 다음 국이 아니라 그 국에서 즉시 적용된다. 리치한 상대는 지정할 수 없지만, **숨은 리치는 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손이 바뀌는 순간 그 리치는 당사자에게만 알려진 채 풀린다.\n\n손패 장수와 후로 개수가 나와 같은 상대만 대상이 된다 — 내가 울지 않았다면 이미 울어 둔 상대는 목록에 뜨지 않는다.\n\n쯔모패가 없는 상태(치·퐁 직후)에는 발동할 수 없고, **내가 리치를 선언한 뒤에는 내 손이 동결되므로 발동할 수 없다**.",
   install(ctx) {
     const { engine } = ctx;
 
@@ -251,7 +263,9 @@ export const seatSwap: AugmentDef = defineAugment({
     // 보유자 턴 프롬프트에 상대별 교환 후보 노출 (validate가 최종 판정).
     // 배패 장수가 다른 상대(진짜 용 등)는 애초에 후보에서 제외한다.
     ctx.holderTurnOptions((state) =>
-      flagOf(state, roundUsedKey(state, ctx.holder))
+      flagOf(state, roundUsedKey(state, ctx.holder)) ||
+      state.round.byPlayer[ctx.holder]?.riichi != null ||
+      state.round.lastDrawnTile === null
         ? []
         : state.players
             .filter(

@@ -138,20 +138,24 @@ function silentScene(): GameState {
 }
 
 describe("silent_swap (정적의 손)", () => {
-  it("네 명 전원의 바닥 전부를 후보로 낸다 (내 바닥 포함)", () => {
+  // 2026-08-20 사용자 확정: 정적의 손은 **상대 셋의 바닥에서만** 줍는다.
+  // 내 바닥이 대상이던 시절에는 "방금 버린 내 오름패를 도로 집어 후리텐 화료"가
+  // 가장 쉬운 사용법이었다(QA hand-a 확정 2).
+  it("상대 세 명의 바닥만 후보로 낸다 (내 바닥은 제외)", () => {
     const state = silentScene();
     const { prompt } = start(state, silentSwap);
     const takes = optionsOf(prompt, "silent_take");
-    const pondTotal = state.players.reduce(
-      (n, p) => n + (state.zones[discardsZone(p.id)]?.tileIds.length ?? 0),
+    const oppTotal = state.players.reduce(
+      (n, p) =>
+        p.id === "p0" ? n : n + (state.zones[discardsZone(p.id)]?.tileIds.length ?? 0),
       0,
     );
-    expect(pondTotal).toBe(1 + 3 + 1 + 1);
-    expect(takes).toHaveLength(pondTotal);
-    // 내 바닥의 패도 후보에 있다
+    expect(oppTotal).toBe(3 + 1 + 1);
+    expect(takes).toHaveLength(oppTotal);
+    // 내 바닥의 패는 후보에 없다
     const mine = state.zones[discardsZone("p0")]?.tileIds[0] as TileId;
     expect(takes.some((o) => (o.payload as { tileId: TileId }).tileId === mine)).toBe(
-      true,
+      false,
     );
   });
 

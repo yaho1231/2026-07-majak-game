@@ -25,6 +25,8 @@ import type {
   RoundSettledPayload,
 } from "@majak/core";
 import {
+  honbaGainOf,
+  riichiPotGainOf,
   roundKey,
   roundViewKey,
   settleInterceptor,
@@ -117,15 +119,13 @@ export const bloodContract: AugmentDef = defineAugment({
       // 본장도 배수 대상이 아니다 — 공탁과 같은 이유다. 본장은 상대가 실제로
       // 더 내는 돈인데, 여기서 1.5배로 불리면 그 차액을 뱅크가 새로 발행한다
       // (3본장 론 900 → 1,350). 론 본장은 첫 화료자에게만 붙는다(standardActions).
-      const honbaPerStick = ic.rules.resolve<number>("score.honbaPerStick", {
-        playerId: holder,
-        state: ic.state,
-      });
-      const honba =
-        (p.winInfos ?? [])[0]?.winner === holder && info.winType === "ron"
-          ? Math.max(0, ic.state.round.honba * honbaPerStick)
-          : 0;
-      const pot = (p.winInfos ?? [])[0]?.winner === holder ? p.riichiPot : 0;
+      // 본장은 론·쯔모 양쪽에서 붙는다(쯔모는 셋에게서 100씩) — 실제로 받은
+      // 금액이 winInfo.honbaBonus에 그대로 실려 있으므로 그걸 쓴다. 예전에는
+      // 론만 떼어 내 쯔모 본장이 1.5배로 불어났다(QA score-a 확정 2).
+      const honba = honbaGainOf(p, holder);
+      // ⚠ `p.riichiPot`은 화료 정산에서 항상 0이다(다음 국으로 넘길 값).
+      // 회수액은 winInfo.riichiPotGain에만 있다 — 그 탓에 공탁 제외가 죽어 있었다.
+      const pot = riichiPotGainOf(p, holder);
       const base = Math.max(0, d - pot - honba);
       const after = round100(base * mult) + pot + honba;
       return {

@@ -22,6 +22,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, PlayerId } from "@majak/core";
 import { flagOf, publishUsesLeft } from "../util.js";
+import { stealthActiveKey } from "./stealth_riichi.js";
 import { waitTilesLeft } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -95,8 +96,21 @@ export const lastStand: AugmentDef = defineAugment({
         const p = event.payload as RiichiCanceledPayload;
         const rs = state.round.byPlayer[p.player];
         if (rs === undefined) throw new Error(`RiichiCanceled: unknown ${p.player}`);
+        /*
+         * 숨은 리치 표식도 함께 내린다 — 손을 뺏겨 풀리는 경로(`stealthBreak`)와 같다.
+         *
+         * 남겨 두면 ① 같은 국에 스텔스 리치를 한 번 더 걸 수 있고("리치는 국당 한 번"이
+         * 깨진다) ② 그 뒤 공탁 1000점을 낸 **표준 리치까지 은닉**된다 — 공탁은 냈는데
+         * 남들 화면에는 리치가 없다(2026-08-20 QA 문구 확정 12).
+         */
+        const stealthKey = stealthActiveKey(state, p.player);
+        const augmentData =
+          state.augmentData[stealthKey] === undefined
+            ? state.augmentData
+            : { ...state.augmentData, [stealthKey]: false };
         return {
           ...state,
+          augmentData,
           players: state.players.map((pl) =>
             pl.id === p.player ? { ...pl, score: pl.score + p.refund } : pl,
           ),

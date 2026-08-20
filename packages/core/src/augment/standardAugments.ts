@@ -16,6 +16,7 @@ import type { GameState } from "../engine/state/GameState.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import { discardsZone, handZone, moveTiles } from "../engine/zones/Zone.js";
 import type { TileId, TileKind } from "../mahjong/tiles/Tile.js";
+import { kindKey } from "../mahjong/tiles/Tile.js";
 import type { ActionDef } from "../engine/actions/ActionRegistry.js";
 import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
 import type {
@@ -299,9 +300,9 @@ export const discardRecall = defineAugment({
   complexity: 1,
   name: "회수",
   description:
-    "(매 국 1회) 자기 순에 쯔모한 패를 내 바닥으로 내보내고, 자신의 과거 버림패 중 하나를 골라 손으로 되가져온다.",
+    "(매 국 1회) 자기 순에 쯔모한 패를 내 바닥으로 내보내고, 자신의 과거 버림패 중 하나를 골라 손으로 되가져온다. 리치 중에는 쓸 수 없다.",
   detail:
-    "(매 국 1회) 자기 순에 방금 쯔모한 패를 내 바닥으로 내보내고 그 대신 내가 예전에 버린 패 하나를 손으로 되가져온다. 나가고 들어오는 장수가 1:1이라 손패 수는 그대로이며, 되가져온 뒤 정상적으로 버림을 이어간다.",
+    "(매 국 1회) 자기 순에 방금 쯔모한 패를 내 바닥으로 내보내고 그 대신 내가 예전에 버린 패 하나를 손으로 되가져온다. 나가고 들어오는 장수가 1:1이라 손패 수는 그대로이며, 되가져온 뒤 정상적으로 버림을 이어간다. 리치를 걸면 손이 잠겨 회수할 수 없다.\n\n내보낸 패는 내 버림으로 남아 그 종류로는 론할 수 없고(후리텐), 되가져온 패도 한 번 버린 이력이라 후리텐이 풀리지는 않는다.",
   /**
    * 봇: **쯔모패가 쓸모없고**(짝도 이웃도 없음) 내 바닥에 손을 진전시키는 패가 있을 때만
    * 회수한다. 회수는 매 국 1회뿐이라 아무 때나 쓰면 정작 필요한 순간에 없다.
@@ -340,11 +341,36 @@ export const discardRecall = defineAugment({
         zones = moveTiles(zones, discardsZone(p.player), handZone(p.player), [
           p.recallTileId,
         ]);
+        /*
+         * **내 바닥으로 내보낸 패는 후리텐 이력에 남는다.**
+         *
+         * 예전에는 존(바닥)에만 넣고 `discardedKinds`를 건드리지 않았다. 후리텐은
+         * 이 이력으로 판정되므로, 화면상 내 바닥에 뻔히 놓인 그 패로 **내가 론했다**
+         * (qa-lab text 확정 3). 설명이 "내 바닥으로 내보내고"라고 말하는 이상 바닥과
+         * 판정 근거가 갈라져서는 안 된다.
+         *
+         * 되가져온 패의 이력은 **지우지 않는다** — 한 번 버린 패의 후리텐은 그 패가
+         * 바닥을 떠나도 유지된다는 것이 표준 룰이고(후로로 사라진 버림패와 같다),
+         * 이 필드의 계약이기도 하다(GameState.discardedKinds 주석).
+         */
+        const drawnKind = state.tiles[p.drawnTileId]?.kind;
+        const rs = state.round.byPlayer[p.player];
+        const byPlayer =
+          drawnKind === undefined || rs === undefined
+            ? state.round.byPlayer
+            : {
+                ...state.round.byPlayer,
+                [p.player]: {
+                  ...rs,
+                  discardedKinds: [...rs.discardedKinds, kindKey(drawnKind)],
+                },
+              };
         return {
           ...state,
           zones,
           round: {
             ...state.round,
+            byPlayer,
             lastDrawnTile: p.recallTileId,
             // 바닥에서 되가져온 패는 **영상패가 아니다.** 이 플래그를 끄지 않아,
             // 깡 직후에 회수하면 되가져온 패로도 영상개화(+1판)가 붙었다.
