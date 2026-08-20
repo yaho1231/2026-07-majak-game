@@ -154,3 +154,56 @@ describe("HanchanController — 일시정지", () => {
     await run;
   });
 });
+
+/**
+ * 국 무효 (docs/36 B4) — 강제 종료와 무효 사이의 손잡이.
+ *
+ * 규칙이 판정하는 도중유국과 **같은 문**으로 나가야 한다. 여기서 새 정산 경로를
+ * 만들면 점수·본장·친 로테이션이 규칙 쪽과 언젠가 어긋난다.
+ */
+describe("HanchanController — 이 국만 물리기", () => {
+  it("물린 국은 점수가 오가지 않고, 판은 그대로 이어져 끝난다", async () => {
+    const tally = { decides: 0 };
+    const agents = ["p0", "p1", "p2", "p3"].map(
+      (id, i) => new CountingAgent(id, i + 1, tally),
+    );
+    const settled: { outcome: string; deltas: Record<string, number> }[] = [];
+    const ctrl = new HanchanController(agents, CFG, {
+      // 이벤트는 리플레이용 JSON 문자열로 흘러나온다 — 정산만 골라 읽는다.
+      onEvent: (json) => {
+        const ev = JSON.parse(json) as { type: string; payload?: unknown };
+        if (ev.type !== "RoundSettled") return;
+        const p = ev.payload as { outcome: string; deltas: Record<string, number> };
+        settled.push({ outcome: p.outcome, deltas: p.deltas });
+      },
+    });
+    /*
+     * **동기로 건다.** 봇은 타이머 없이 답하므로 이 판은 마이크로태스크만으로
+     * 끝까지 굴러간다 — `await sleep(…)`(매크로태스크)를 끼우면 그 시점에는 이미
+     * 판이 끝나 있어 아무것도 걸리지 않는다. `run()`은 첫 await까지 동기로 실행돼
+     * 게임이 이미 세워져 있으므로, 여기가 «판이 도는 중»의 가장 이른 지점이다.
+     */
+    const run = ctrl.run();
+    ctrl.requestRoundVoid();
+    const rankings = await run;
+
+    // 판은 끝까지 갔다 — 이건 «판을 접는 것»이 아니다.
+    expect(rankings).toHaveLength(4);
+    // 물린 국이 하나 있고, 그 국에서는 아무도 주고받지 않았다.
+    const voided = settled.filter((r) => r.outcome === "abort");
+    expect(voided.length).toBeGreaterThanOrEqual(1);
+    expect(Object.values(voided[0]!.deltas).every((d) => d === 0)).toBe(true);
+  }, 30_000);
+
+  it("이미 무효로 끝난 판에는 걸리지 않는다", async () => {
+    const tally = { decides: 0 };
+    const agents = ["p0", "p1", "p2", "p3"].map(
+      (id, i) => new CountingAgent(id, i + 1, tally),
+    );
+    const ctrl = new HanchanController(agents, CFG);
+    const run = ctrl.run();
+    ctrl.requestAbort();
+    ctrl.requestRoundVoid(); // 아무 일도 일어나지 않아야 한다 (던지지도 않는다)
+    await run;
+  });
+});

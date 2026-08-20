@@ -18,7 +18,7 @@ import type { TileId, TileKind } from "../tiles/Tile.js";
 import { winningKinds } from "../scoring/waits.js";
 import { DEFAULT_SEQUENCE_SUITS, decompose, honorMaxRank } from "../scoring/decompose.js";
 import { ROUND_SETTLED, KAN_DECLARED } from "./flowEvents.js";
-import type { RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
+import type { AbortReason, RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
 import type { SettleWinRequest } from "./standardActions.js";
 import { WIN_BLOCKED_MIN_HAN, WIN_BLOCKED_RON_IMMUNE } from "./standardActions.js";
 import {
@@ -121,6 +121,24 @@ export class FlowController {
 
   /** setup부터 자동 진행. 첫 결정 지점(또는 즉시 종국)을 돌려준다 */
   begin(): FlowStatus {
+    return this.runAuto();
+  }
+
+  /**
+   * **이 국을 지금 물린다** — 도중유국으로 정산하고 다음 국으로 넘긴다.
+   *
+   * 규칙이 스스로 판정하는 도중유국(사깡산료·사풍연타…)과 **같은 문**으로 나간다
+   * (`sys.settleAbort`). 여기서 새 정산 경로를 만들면 점수·본장·친 로테이션이
+   * 규칙 쪽과 언젠가 어긋난다 — 도중유국은 「아무도 주고받지 않고 본장만 오른다」는
+   * 규칙이고, 그 계산은 한 곳에만 있어야 한다.
+   *
+   * 기다리던 결정은 버린다. 그 결정들은 **이제 없는 국**에 대한 답이라, 남겨 두면
+   * 다음 국의 첫 프롬프트와 섞인다.
+   */
+  abortRound(reason: AbortReason): FlowStatus {
+    this.pending.clear();
+    this.decisions.clear();
+    this.sys("sys.settleAbort", { reason });
     return this.runAuto();
   }
 

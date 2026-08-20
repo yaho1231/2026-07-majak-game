@@ -67,6 +67,7 @@ import {
   TUTORIAL_DECISION_TIMEOUT_MS,
 } from "./HumanAgent.js";
 import { Prng } from "@majak/core/engine/random/Prng.js";
+import { buildSpectateInsight } from "./spectateInsight.js";
 import { BotAgent, seedFromId } from "./BotAgent.js";
 import { isArchetypeName, isBotDifficulty, rollTableProfiles, withDifficulty } from "./bot/profile.js";
 import type { ArchetypeName, BotDifficulty } from "./bot/profile.js";
@@ -118,6 +119,41 @@ const ROOM_NOTICE_MAX = 120;
 
 /** 한 번에 더해 줄 수 있는 시간(초)의 상한. 그 이상은 일시정지가 할 일이다. */
 const EXTEND_SECONDS_MAX = 120;
+
+/**
+ * 송출 딜레이의 상한(초). 그 이상은 중계가 아니라 지난 판 다시 보기다 —
+ * 그 용도에는 리플레이가 따로 있다.
+ */
+const SPECTATE_DELAY_MAX_S = 60;
+
+/** 장풍 글자 — 목록의 국 이름(「동2국 1본장」)에 쓴다. */
+const WIND_CHAR = ["동", "남", "서", "북"];
+
+/**
+ * 진행 중인 방 하나의 «지금 무슨 국인가» 요약 (docs/36 D4).
+ *
+ * 게임이 아직 안 붙었거나(대기실 잔해) 상태를 못 읽으면 아무 것도 싣지 않는다 —
+ * 모르는 것을 「동1국」으로 채우면 목록이 조용히 거짓말을 한다.
+ */
+function liveRoundSummary(room: Room): {
+  roundLabel?: string;
+  riichiCount?: number;
+  turnCount?: number;
+} {
+  const state = room.controller?.gameState;
+  if (state === null || state === undefined) return {};
+  const r = state.round;
+  const wind = WIND_CHAR[r.prevalentWind - 1] ?? "?";
+  let riichi = 0;
+  for (const p of state.players) {
+    if (r.byPlayer[p.id]?.riichi != null) riichi++;
+  }
+  return {
+    roundLabel: `${wind}${r.roundNumber}국${r.honba > 0 ? ` ${r.honba}본장` : ""}`,
+    ...(riichi > 0 ? { riichiCount: riichi } : {}),
+    turnCount: r.turnCount,
+  };
+}
 
 /**
  * 한 좌석이 손패 배치를 다시 뿌릴 수 있는 최소 간격(ms).
@@ -333,6 +369,18 @@ interface Conn {
   room: Room | null;
   agent: HumanAgent | null;
   spectating: Room | null;
+  /**
+   * **송출 딜레이**(ms) — 이 관전석에 판을 몇 초 늦춰 보낼 것인가 (docs/36 C1).
+   *
+   * 관전 뷰는 네 사람의 손패가 전부 실려 있다. 그게 실시간으로 나가면, 중계를
+   * 보는 사람이 그대로 대국자에게 알려 줄 수 있다 — 대회에서 이건 이론이 아니라
+   * 실제로 막아야 하는 통로다. 0이면 지연 없음(기본, 내부 감시용).
+   */
+  spectateDelayMs: number;
+  /** 아직 내보내지 않은 지연 전송 타이머 — 관전을 접으면 전부 걷는다. */
+  spectateTimers: Set<ReturnType<typeof setTimeout>>;
+  /** 관전을 시작한 시각(epoch ms) — 감사 로그에 «얼마나 봤는가»를 남긴다 (C3). */
+  spectateSince: number;
   /** 최근 인증 시도 타임스탬프(ms) — 레이트리밋용 슬라이딩 윈도우 */
   authAttempts: number[];
   /** 최근 정형구 전송 시각(ms) — 도배 방지용 슬라이딩 윈도우 */
@@ -1293,6 +1341,9 @@ export class RoomManager {
       room: null,
       agent: null,
       spectating: null,
+      spectateDelayMs: 0,
+      spectateTimers: new Set(),
+      spectateSince: 0,
       authAttempts: [],
       emoteHits: [],
       ip,
@@ -2115,8 +2166,15 @@ export class RoomManager {
         }
         return this.adminExtendTime(conn, user, msg.code, msg.seat, msg.seconds);
       }
+      case "adminVoidRound": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        if (typeof msg.code !== "string") {
+          return this.fail(conn, "BAD_REQUEST", "잘못된 방 코드입니다");
+        }
+        return this.adminVoidRound(conn, user, msg.code);
+      }
       case "spectate":
-        return this.spectate(conn, user, msg.code);
+        return this.spectate(conn, user, msg.code, msg.delaySeconds);
       case "spectateStop":
         return this.stopSpectating(conn);
       // ── 증강 테스트 (관리자) ──
@@ -3563,6 +3621,9 @@ export class RoomManager {
             isBot: this.isBot(a),
           })),
           ...(r.paused ? { paused: true } : {}),
+          // 탁자를 고르는 화면이 방 코드만 보고 고를 수는 없다 (docs/36 D4) —
+          // 「지금 무슨 국인가 · 리치가 걸렸나」가 볼 만한 탁자의 가장 값싼 신호다.
+          ...liveRoundSummary(r),
         })),
     });
   }
@@ -3751,12 +3812,16 @@ export class RoomManager {
 
   // ─────────────────────────── 관전 (관리자) ───────────────────────────
 
-  private spectate(conn: Conn, user: UserRow, rawCode: string): void {
+  private spectate(conn: Conn, user: UserRow, rawCode: string, delaySeconds?: number): void {
     if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
     if (typeof rawCode !== "string") {
       return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
     }
     const code = rawCode.trim().toUpperCase();
+    const delayMs =
+      typeof delaySeconds === "number" && Number.isFinite(delaySeconds)
+        ? Math.min(SPECTATE_DELAY_MAX_S, Math.max(0, Math.round(delaySeconds))) * 1000
+        : 0;
     const room = this.rooms.get(code);
     if (room === undefined || room.phase !== "playing" || room.controller === null) {
       return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
@@ -3767,15 +3832,63 @@ export class RoomManager {
     if (room.agents.some((a) => this.isActiveHuman(a, user.username))) {
       return this.fail(conn, "FORBIDDEN", "본인이 참가 중인 게임은 관전할 수 없습니다");
     }
-    this.stopSpectating(conn); // 기존 관전 정리 (동시 1개)
+    this.stopSpectating(conn); // 기존 관전 정리 (한 소켓당 한 방)
+    /*
+     * 송출 딜레이 (docs/36 C1) — 이 관전석에만 거는 지연이다.
+     *
+     * **판의 스트림만** 늦춘다: 뷰·중계 보조값·연출. 조작 응답(관전 시작, 정지·공지
+     * 확인)은 그대로 즉시 간다 — 운영자가 누른 것이 몇 초 뒤에 반응하면 그건 고장으로
+     * 읽히고, 그 사이에 한 번 더 누르게 된다.
+     *
+     * 지연을 바꾸려면 관전을 다시 시작한다(이 함수를 다시 탄다). 중간에 값을 줄이면
+     * 이미 예약된 것들과 새 것들의 순서가 뒤집히기 때문이다 — 다시 시작하면 대기 중인
+     * 것을 전부 걷고(stopSpectating) 지금 뷰부터 새로 흐른다.
+     */
+    conn.spectateDelayMs = delayMs;
+    conn.spectateSince = Date.now();
+    const stream = (msg: ServerMessage): void => {
+      if (conn.spectateDelayMs <= 0) {
+        this.send(conn.ws, msg);
+        return;
+      }
+      const timer = setTimeout(() => {
+        conn.spectateTimers.delete(timer);
+        // 그 사이에 관전을 접었거나 다른 방으로 옮겼으면 흘려보내지 않는다.
+        if (conn.spectating === room) this.send(conn.ws, msg);
+      }, conn.spectateDelayMs);
+      conn.spectateTimers.add(timer);
+    };
     const sink: SpectatorSink = {
       id: conn.id,
-      sendView: (view) => this.send(conn.ws, { type: "view", view }),
-      notify: (msg) => this.send(conn.ws, msg),
+      sendView: (view) => {
+        stream({ type: "view", view });
+        /*
+         * 중계 보조값(예상 타점·위험패)을 뷰와 **같은 순간에** 붙여 보낸다
+         * (docs/36 A2·A4). 관전 뷰에서만 만들어지고 관전자에게만 간다 —
+         * 대국자에게는 한 글자도 가지 않는다.
+         *
+         * 계산이 던져도 판은 계속돼야 한다. 이건 화면을 돕는 곁다리지
+         * 판의 일부가 아니다.
+         */
+        try {
+          const insight = buildSpectateInsight(view);
+          if (insight !== null) stream(insight);
+        } catch (err) {
+          this.logError(null, `중계 보조값 계산 실패 — 뷰는 그대로 보냈다: ${String(err)}`);
+        }
+      },
+      notify: (msg) => stream(msg),
     };
     room.spectators.add(conn);
     conn.spectating = room;
-    this.send(conn.ws, { type: "spectateStarted", code });
+    /*
+     * 감사 로그 (docs/36 C3). 관전 뷰는 **네 사람의 손패 전부**를 내보내는 창이다 —
+     * 그런 창을 누가 언제 어느 판에 열었는지가 어디에도 안 남으면, 나중에 「그 판을
+     * 누가 봤나」를 물었을 때 답할 방법이 없다. 접을 때 얼마나 봤는지까지 남긴다.
+     */
+    this.log(null, `관전 시작 ${code} — ${user.username}${delayMs > 0 ? ` (지연 ${delayMs / 1000}초)` : ""}`);
+    this.send(conn.ws, { type: "spectateStarted", code, ...(delayMs > 0 ? { delaySeconds: delayMs / 1000 } : {}) });
+    this.notifySpectated(room); // 대국자에게 «중계 중»을 알린다 (C4)
     // 이미 세워 둔 판이면 그대로 알린다 — 중계석이 바뀌어도 «지금 서 있다»가 보인다.
     if (room.paused) this.sendPauseState(conn, room);
     this.sendRoomNotice(conn, room);
@@ -3920,6 +4033,36 @@ export class RoomManager {
     });
   }
 
+  /**
+   * **이 국만 물린다** (docs/36 B4) — 강제 종료와 무효 사이의 손잡이.
+   *
+   * 강제 종료는 판 자체를 접는다(되돌릴 수 없다). 오심·사고가 난 «그 국»만
+   * 없던 일로 하고 판은 계속하고 싶을 때 쓸 것이 여태 없었다. 실제 물림은
+   * 컨트롤러가 다음 결정 지점에서 한다 — 결정이 흐르는 도중에 엔진 상태를
+   * 건드리면 그 결정이 없는 국에 들어간다.
+   *
+   * 세워 둔 판에서도 부를 수 있다. 요청만 걸리고, 재개하는 순간 물린다.
+   */
+  private adminVoidRound(conn: Conn, user: UserRow, rawCode: string): void {
+    const room = this.rooms.get(rawCode.trim().toUpperCase());
+    if (room === undefined || room.phase !== "playing" || room.controller === null) {
+      return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
+    }
+    room.controller.requestRoundVoid();
+    this.touch(room);
+    this.log(null, `국 무효 ${room.code} — ${user.username}`);
+    const out: ServerMessage = {
+      type: "roomNotice",
+      text: "관리자가 이 국을 물렸습니다 — 다음 국으로 넘어갑니다",
+      ttlMs: 8000,
+      by: user.username,
+    };
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify(out);
+    }
+    for (const sp of room.spectators) this.send(sp.ws, out);
+  }
+
   /** 이 연결에 «지금 판이 서 있다»를 알린다 (재접속·관전 합류 복원용). */
   private sendPauseState(conn: Conn, room: Room): void {
     this.send(conn.ws, {
@@ -3956,6 +4099,32 @@ export class RoomManager {
     room.spectators.delete(conn);
     room.controller?.removeSpectator(conn.id);
     conn.spectating = null;
+    // 지연 송출 대기분을 전부 걷는다 — 안 걷으면 관전을 접은 뒤에도 몇 초 동안
+    // 남의 손패가 계속 날아간다(C1의 뜻이 정확히 그 반대다).
+    for (const t of conn.spectateTimers) clearTimeout(t);
+    conn.spectateTimers.clear();
+    conn.spectateDelayMs = 0;
+    if (conn.spectateSince > 0) {
+      const secs = Math.round((Date.now() - conn.spectateSince) / 1000);
+      this.log(null, `관전 종료 ${room.code} — ${conn.user?.username ?? "?"} (${secs}초)`);
+      conn.spectateSince = 0;
+    }
+    this.notifySpectated(room);
+  }
+
+  /**
+   * **이 판이 중계되고 있다**를 대국자에게 알린다 (docs/36 C4).
+   *
+   * 관전 뷰는 손패를 전부 공개한다. 그 사실을 자리에 앉은 사람이 모르는 채로 두는
+   * 것은 — 관리자 전용이라 해도 — 밝힐 수 있는 것을 굳이 숨기는 쪽이다. 관전자가
+   * 붙고 떨어질 때마다 인원수만 보낸다(누가 보는지는 알리지 않는다: 그건 운영의
+   * 신원이고, 판에는 필요 없다).
+   */
+  private notifySpectated(room: Room): void {
+    const count = room.spectators.size;
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify({ type: "spectated", count });
+    }
   }
 
   // ─────────────────────────── 게임 무효(중단) 투표 ───────────────────────────

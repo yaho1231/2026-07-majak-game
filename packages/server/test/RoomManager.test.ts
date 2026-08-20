@@ -1349,6 +1349,68 @@ describe("관리자 관전", () => {
     await player.waitFor((m) => m.type === "roomNotice" && m.text === "");
   });
 
+  /*
+   * 송출 딜레이 (docs/36 C1) · 감사 (C3) · 대국자 고지 (C4).
+   *
+   * 관전 뷰에는 네 사람의 손패가 전부 실린다. 실시간으로 나가면 중계를 보는 사람이
+   * 그대로 대국자에게 알려 줄 수 있다 — 대회에서는 실제로 막아야 하는 통로다.
+   */
+  it("송출 지연을 걸면 판이 늦게 흐르고, 관전을 접으면 남은 것도 흘리지 않는다", async () => {
+    const h = await newHarness();
+    const player = await connectAndRegister(h, "Human", { autoRespond: true });
+    player.clientSend({ type: "createRoom" });
+    const code = player.last("roomCreated").code;
+    for (let i = 0; i < 3; i++) player.clientSend({ type: "addBot" });
+    player.clientSend({ type: "startGame" });
+    await player.waitFor((m) => m.type === "view");
+
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "spectate", code, delaySeconds: 5 });
+    await admin.waitFor((m) => m.type === "spectateStarted");
+    expect(admin.last("spectateStarted").delaySeconds).toBe(5);
+
+    // 대국자에게는 «중계 중»이 즉시 간다 (C4) — 지연은 판의 스트림에만 걸린다.
+    await player.waitFor((m) => m.type === "spectated");
+    expect(player.last("spectated").count).toBe(1);
+
+    // 5초 지연이라 뷰는 아직 한 장도 오지 않았다.
+    expect(admin.last("view")).toBeUndefined();
+
+    // 관전을 접으면 대기 중이던 것도 흘리지 않는다 — 접은 뒤에도 몇 초 동안
+    // 남의 손패가 날아가면 지연을 건 뜻이 정확히 뒤집힌다.
+    admin.clientSend({ type: "spectateStop" });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(admin.last("view")).toBeUndefined();
+    // 관전자가 떨어진 것도 대국자에게 알린다
+    await player.waitFor((m) => m.type === "spectated" && m.count === 0);
+  });
+
+  /* 국 무효 (docs/36 B4) — 강제 종료와 무효 사이. 판은 계속된다. */
+  it("관리자는 이 국만 물릴 수 있다 (판은 계속된다)", async () => {
+    const h = await newHarness();
+    const player = await connectAndRegister(h, "Human", { autoRespond: true });
+    player.clientSend({ type: "createRoom" });
+    const code = player.last("roomCreated").code;
+    for (let i = 0; i < 3; i++) player.clientSend({ type: "addBot" });
+    player.clientSend({ type: "startGame" });
+    await player.waitFor((m) => m.type === "view");
+
+    player.clientSend({ type: "adminVoidRound", code });
+    expect(player.last("error")?.code).toBe("FORBIDDEN");
+
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "adminVoidRound", code });
+    // 도중유국으로 정산되고 — 점수는 오가지 않는다.
+    await player.waitFor((m) => m.type === "roundOver", HANCHAN_MS);
+    const over = player.last("roundOver");
+    expect(over.outcome).toBe("abort");
+    expect(over.settle.abortReason).toBe("adminVoid");
+    expect(Object.values(over.settle.deltas)).toEqual([0, 0, 0, 0]);
+    // 방은 살아 있다 — 판을 접은 것이 아니다.
+    admin.clientSend({ type: "liveGames" });
+    expect(admin.last("liveGames").rooms.some((r: any) => r.code === code)).toBe(true);
+  }, HANCHAN_TEST_MS);
+
   /* 시간 연장 (docs/36 B3) — 판 전체를 세우는 대신 한 자리에만 몇 초를 준다. */
   it("시간 연장은 사람이 기다리는 자리에만 준다", async () => {
     const h = await newHarness();

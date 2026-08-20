@@ -197,6 +197,33 @@ describe("PlayerView — 관전자(SPECTATOR_ID)", () => {
    * 화면에는 오름패가 뜨는데 "저 사람은 후리텐이라 론이 안 된다"가 어디에도 없어,
    * 중계 해설이 판을 거꾸로 읽는다.
    */
+  /*
+   * 관전자는 남의 전용 채널까지 보는데, 예전에는 **주인을 떼고** 평평하게 담아 왔다.
+   * 그래서 세 사람이 같은 채널을 쓰면(횟수형 증강의 `uses:{id}`) 서로를 덮어써
+   * 중계 화면에서 «누구의 잔량인가»를 말할 수 없었다(docs/36 A5).
+   */
+  it("관전자는 남의 전용 채널을 좌석별로도 받는다 (같은 채널이 서로를 덮지 않게)", () => {
+    const base = makeState();
+    const state: GameState = {
+      ...base,
+      augmentData: {
+        ...base.augmentData,
+        "view:p0:uses:alchemist": { left: 1, total: 2 },
+        "view:p2:uses:alchemist": { left: 0, total: 2 },
+      },
+    };
+    const rules = makeRules();
+    const spec = buildPlayerView(state, SPECTATOR_ID, rules).augmentView;
+    expect(spec["seat:p0:uses:alchemist"]).toEqual({ left: 1, total: 2 });
+    expect(spec["seat:p2:uses:alchemist"]).toEqual({ left: 0, total: 2 });
+
+    // 대국자에게는 예전 그대로 — 남의 전용 채널은 한 글자도 가지 않는다.
+    const mine = buildPlayerView(state, "p0", rules).augmentView;
+    expect(mine["uses:alchemist"]).toEqual({ left: 1, total: 2 });
+    expect(mine["seat:p2:uses:alchemist"]).toBeUndefined();
+    expect(mine["seat:p0:uses:alchemist"]).toBeUndefined();
+  });
+
   it("관전자는 네 좌석 모두의 후리텐·일발 상세를 받는다 (대국자는 본인 것만)", () => {
     const base = makeState();
     const p1 = base.round.byPlayer["p1"];
