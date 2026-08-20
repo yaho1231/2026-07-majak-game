@@ -441,6 +441,17 @@ const FX_PRIVATE_ACTION_TYPES = new Set([
   "tenpai_scan_use",
 ]);
 
+/**
+ * 일시정지 동안 멈춰 서는 타이머. `remaining`은 **아직 흘러야 할 시간**이고,
+ * 정지할 때마다 그때까지 흐른 만큼을 빼서 갱신한다. 재개하면 남은 만큼 다시 건다.
+ */
+interface PausableTimer {
+  remaining: number;
+  startedAt: number;
+  handle: ReturnType<typeof setTimeout> | null;
+  arm: () => void;
+}
+
 // ─────────────────────────── HanchanController ───────────────────────────
 
 export class HanchanController {
@@ -456,6 +467,22 @@ export class HanchanController {
   private readonly spectators = new Map<string, SpectatorSink>();
   /** 진행 중인 게임 (관전자 중도 합류 시 즉시 뷰 전송용) */
   private game: StandardGame | null = null;
+  /**
+   * **판이 서 있는가** — 관리자 중계 일시정지 (docs/36 §7).
+   *
+   * 세운다는 것은 «아무 시계도 흐르지 않는다»는 뜻이다. 한 군데라도 계속 돌면 그
+   * 자리가 판을 밀어 버린다. 그래서 세 겹으로 막는다:
+   *  1. **문** — 결정을 시작하기 전, 엔진에 넣기 직전, 다음 국을 시작하기 전.
+   *     봇이 판을 미는 것을 여기서 막는다(봇에는 제 시계가 없다).
+   *  2. **정지 시간을 빼고 세는 타이머**(`pausable`) — 무응답 안전망이 세워 둔
+   *     판을 폴백으로 밀어 버리지 않게.
+   *  3. **좌석의 제한 시간**(`agent.setPaused`) — 사람의 30초가 계속 줄지 않게.
+   */
+  private paused = false;
+  /** 재개를 기다리는 대기자들 (문 앞에 선 결정·국 시작) */
+  private readonly pauseWaiters = new Set<() => void>();
+  /** 정지 중에는 흐르지 않는 타이머들 (무응답 안전망) */
+  private readonly pausable = new Set<PausableTimer>();
 
   /** 진행 중인 게임 상태 (통계 집계·관리 도구용. 아직 시작 전이면 null) */
   get gameState(): GameState | null {
@@ -533,23 +560,30 @@ export class HanchanController {
         opts[0]!
       );
     };
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    // 안전망은 **정지 시간을 빼고** 센다 — 안 그러면 세워 둔 판을 이 타이머가
+    // 폴백으로 밀어 버린다(사람의 30초는 좌석이 따로 세운다).
+    let cancelGuard: (() => void) | undefined;
     try {
       const limit = this.config.agentDecideTimeoutMs ?? AGENT_DECIDE_TIMEOUT_MS;
+      let fire!: (o: ActionOption) => void;
       const guard = new Promise<ActionOption>((resolve) => {
-        timer = setTimeout(() => {
-          console.error(`[hanchan] ${agent.id} decide 무응답 ${limit}ms — 안전 폴백으로 진행`);
-          resolve(fallback());
-        }, limit);
+        fire = resolve;
+      });
+      cancelGuard = this.pausableDelay(limit, () => {
+        console.error(`[hanchan] ${agent.id} decide 무응답 ${limit}ms — 안전 폴백으로 진행`);
+        fire(fallback());
       });
       const chosen = await Promise.race([agent.decide(prompt), guard]);
+      // 나가는 문 — 판이 서 있으면 **답을 들고 기다린다**. 정지 직전에 이미 생각을
+      // 시작한 봇이 그 답을 그대로 엔진에 밀어 넣는 것을 여기서 막는다.
+      await this.gatePaused();
       // 목록 밖 응답도 폴백으로 되돌린다 — 그대로 submit하면 FlowController가 던진다.
       return prompt.options.includes(chosen) ? chosen : fallback();
     } catch (err) {
       console.error(`[hanchan] ${agent.id} decide 예외 — 안전 폴백으로 진행`, err);
       return fallback();
     } finally {
-      if (timer !== undefined) clearTimeout(timer);
+      cancelGuard?.();
     }
   }
 
@@ -610,26 +644,113 @@ export class HanchanController {
     // 후보가 비어 있으면 고를 것이 없다 — 호출부가 이 좌석을 건너뛰게 한다.
     if (first === undefined) return "";
     const valid = new Set([...choices, ...rerolls].map((d) => d.id));
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelGuard: (() => void) | undefined;
     try {
       const limit = this.config.agentDecideTimeoutMs ?? AGENT_DECIDE_TIMEOUT_MS;
+      let fire!: (id: string) => void;
       const guard = new Promise<string>((resolve) => {
-        timer = setTimeout(() => {
-          console.error(`[hanchan] ${agent.id} decideDraft 무응답 ${limit}ms — 첫 후보로 진행`);
-          resolve(first);
-        }, limit);
+        fire = resolve;
+      });
+      // 결정과 같은 규칙 — 정지 시간은 세지 않는다.
+      cancelGuard = this.pausableDelay(limit, () => {
+        console.error(`[hanchan] ${agent.id} decideDraft 무응답 ${limit}ms — 첫 후보로 진행`);
+        fire(first);
       });
       const picked = await Promise.race([
         agent.decideDraft(stage, choices, rerolls),
         guard,
       ]);
+      await this.gatePaused(); // 나가는 문 (safeDecide와 같다)
       return valid.has(picked) ? picked : first;
     } catch (err) {
       console.error(`[hanchan] ${agent.id} decideDraft 예외 — 첫 후보로 진행`, err);
       return first;
     } finally {
-      if (timer !== undefined) clearTimeout(timer);
+      cancelGuard?.();
     }
+  }
+
+  // ─────────────────────────── 일시정지 (중계) ───────────────────────────
+
+  /** 지금 판이 서 있는가. */
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /**
+   * 판을 세운다 / 다시 돌린다 (docs/36 §7).
+   *
+   * 무효(abort)된 판에는 걸지 않는다 — 세워 봐야 되살릴 수 없고, 문 앞의 대기자만
+   * 남는다. 재개는 언제든 안전하다(문을 열고 시계를 다시 걸 뿐이다).
+   */
+  setPaused(paused: boolean): void {
+    if (paused === this.paused) return;
+    if (paused && this.aborted) return;
+    this.paused = paused;
+    for (const agent of this.agents.values()) agent.setPaused?.(paused);
+    if (paused) {
+      const now = Date.now();
+      for (const t of this.pausable) {
+        if (t.handle === null) continue;
+        clearTimeout(t.handle);
+        t.handle = null;
+        t.remaining = Math.max(0, t.remaining - (now - t.startedAt));
+      }
+      return;
+    }
+    for (const t of this.pausable) {
+      if (t.handle === null) t.arm();
+    }
+    // 문을 연다 — 기다리던 결정·국 시작이 그 자리에서 이어진다.
+    const waiters = [...this.pauseWaiters];
+    this.pauseWaiters.clear();
+    for (const w of waiters) w();
+  }
+
+  /**
+   * 정지가 풀릴 때까지 기다린다. **중단해야 하면 true**를 준다
+   * (기다리는 동안 무효가 들어왔거나 이미 무효인 판).
+   */
+  private async gatePaused(): Promise<boolean> {
+    while (this.paused && !this.aborted) {
+      let waiter!: () => void;
+      const wait = new Promise<void>((resolve) => {
+        waiter = resolve;
+      });
+      this.pauseWaiters.add(waiter);
+      try {
+        const r = await this.raceAbort(wait);
+        if (r !== undefined && typeof r === "object" && "abort" in r) return true;
+      } finally {
+        this.pauseWaiters.delete(waiter);
+      }
+    }
+    return this.aborted;
+  }
+
+  /**
+   * 정지 시간을 빼고 `ms`를 세는 타이머를 건다. 취소 함수를 돌려준다.
+   * 평소에는 `setTimeout`과 똑같이 동작하고, 판이 서면 그 자리에서 멈춘다.
+   */
+  private pausableDelay(ms: number, fire: () => void): () => void {
+    const t: PausableTimer = {
+      remaining: ms,
+      startedAt: 0,
+      handle: null,
+      arm: () => {
+        t.startedAt = Date.now();
+        t.handle = setTimeout(() => {
+          this.pausable.delete(t);
+          fire();
+        }, t.remaining);
+      },
+    };
+    this.pausable.add(t);
+    if (!this.paused) t.arm();
+    return () => {
+      if (t.handle !== null) clearTimeout(t.handle);
+      this.pausable.delete(t);
+    };
   }
 
   private async raceAbort<T>(work: Promise<T>): Promise<T | { readonly abort: true }> {
@@ -900,6 +1021,7 @@ export class HanchanController {
     let endReason: GameEndReason = "normal";
     while (true) {
       if (this.aborted) return this.finishAborted();
+      if (await this.gatePaused()) return this.finishAborted();
       this.events.onRoundStart?.(game, roundIndex);
       this.broadcastViews(game);
 
@@ -955,6 +1077,8 @@ export class HanchanController {
         break;
       }
 
+      // 다음 국 시작 — 세워 둔 판에서 국이 넘어가면 결과 화면이 통째로 지나간다.
+      if (await this.gatePaused()) return this.finishAborted();
       // 다음 국 시작
       const res = game.engine.submit({
         player: "__system",
@@ -989,6 +1113,9 @@ export class HanchanController {
     this.broadcastViews(game); // 배패 직후 — 손패가 보이는 첫 시점
 
     while (status.kind === "awaiting") {
+      // 들어가는 문 — 판이 서 있으면 다음 수를 **시작하지 않는다**. 강제 수(리치
+      // 쯔모기리)와 봇의 차례가 여기서 함께 선다.
+      if (await this.gatePaused()) return "abort";
       // 강제 수(리치 쯔모기리) — 고를 것이 없으니 에이전트에게 묻지 않고 그대로 둔다.
       // 사람은 프롬프트조차 받지 않아 매 순 같은 패를 다시 클릭할 일이 없다.
       // 턴 프롬프트는 언제나 한 명뿐이라 auto가 다른 사람의 리액션과 섞이지 않는다.
@@ -1363,6 +1490,10 @@ export class HanchanController {
       if (this.catalogMsg !== null) sink.notify?.(this.catalogMsg);
       sink.sendView(
         buildPlayerView(this.game.engine.state, SPECTATOR_ID, this.game.engine.rules, {
+          // 형식텐파이·역없는 대기 계산용 — 관전 뷰는 네 좌석 모두 이 상세를 받는다.
+          // 없으면 **합류 직후 첫 화면에서만** 그 표기가 비어, 다음 뷰가 올 때까지
+          // 중계 화면이 깜빡였다(broadcastViews는 처음부터 싣고 있었다).
+          yaku: this.game.yaku,
           handOrder: this.handOrder,
           lastDiscardFrom: this.lastDiscardFrom,
         }),

@@ -180,7 +180,11 @@ type ResolveDraft = (id: string) => void;
 interface PendingDecision {
   prompt: DecisionPrompt;
   resolve: ResolveDecision;
-  timer: ReturnType<typeof setTimeout>;
+  /**
+   * 자동 폴백 타이머. **일시정지 중에는 null**이다 — 판이 서 있는 동안에는
+   * 아무 시계도 흐르지 않는다(docs/36 §7). 재개할 때 남은 시간으로 다시 건다.
+   */
+  timer: ReturnType<typeof setTimeout> | null;
   /** 자동 폴백이 터질 시각(epoch ms) — 재접속 시 남은 시간을 그대로 알려 주려고 둔다 */
   deadlineAt: number;
   /**
@@ -279,6 +283,22 @@ export class HumanAgent implements PlayerAgent {
    * 기다리는 사람이 아무도 없기 때문이다(1인 방 전용, `SOLO_HOLD_MS` 참고).
    */
   private heldUntil = 0;
+  /**
+   * **관리자가 판을 세웠는가** (중계 일시정지, docs/36 §7).
+   *
+   * `suspend()`(1인 방 보류)와는 다른 것이다: 저쪽은 «이 좌석 하나를 기다린다»라
+   * 남은 대기 시간이 계속 줄고, 이쪽은 «판 전체가 선다»라 **아무 시계도 흐르지
+   * 않는다**. 그래서 남은 시간을 적어 두고 타이머를 떼며, 재개할 때 적어 둔 그
+   * 시간으로 다시 건다. 정지 중에 걸리는 새 타이머도 걸지 않는다(재접속 복원이
+   * 세워 둔 판의 시계를 되살리는 구멍이 실제로 여기였다).
+   */
+  private paused = false;
+  /** 정지 순간 좌석별로 남아 있던 결정 시간(ms) */
+  private readonly pausedLeft = new Map<PlayerId, number>();
+  /** 정지 순간 드래프트에 남아 있던 시간(ms). null이면 드래프트가 없었다 */
+  private pausedDraftLeft: number | null = null;
+  /** 정지 때 국간 대기 타이머를 뗐는가 (재개하면 원래 상한으로 다시 건다) */
+  private pausedContinue = false;
   /** 국 사이 대기의 원래 상한 — 세워 뒀다 돌아왔을 때 그대로 다시 건다. */
   private continueMaxWaitMs = 0;
   /** 재접속 시 즉시 복원해 줄 마지막 뷰 */
@@ -352,7 +372,7 @@ export class HumanAgent implements PlayerAgent {
         let leftMs: number;
         if (p.graced) {
           leftMs = this.decisionTimeoutMs();
-          clearTimeout(p.timer);
+          this.clearPendingTimer(p);
           this.armDecision(seat, p.prompt, p.resolve, leftMs, false);
         } else {
           leftMs = Math.max(0, p.deadlineAt - Date.now());
@@ -447,7 +467,7 @@ export class HumanAgent implements PlayerAgent {
     if (this.pendingContinue !== null) this.resolveContinue();
     for (const [seat, p] of [...this.pending]) {
       if (p.graced || p.deadlineAt - now <= DISCONNECT_GRACE_MS) continue;
-      clearTimeout(p.timer);
+      this.clearPendingTimer(p);
       this.armDecision(seat, p.prompt, p.resolve, DISCONNECT_GRACE_MS, true);
     }
     if (
@@ -480,7 +500,7 @@ export class HumanAgent implements PlayerAgent {
     if (this.abandoned) return;
     this.heldUntil = Date.now() + holdMs;
     for (const [seat, p] of [...this.pending]) {
-      clearTimeout(p.timer);
+      this.clearPendingTimer(p);
       this.armDecision(seat, p.prompt, p.resolve, this.holdLeftMs(), true);
     }
     if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
@@ -494,6 +514,63 @@ export class HumanAgent implements PlayerAgent {
       clearTimeout(this.continueTimeout);
       this.continueTimeout = null;
     }
+  }
+
+  /** 대기의 폴백 타이머를 뗀다 (정지 중에는 애초에 걸려 있지 않다). */
+  private clearPendingTimer(p: PendingDecision): void {
+    if (p.timer !== null) clearTimeout(p.timer);
+    p.timer = null;
+  }
+
+  /**
+   * **판을 세운다 / 다시 돌린다** — 관리자 중계 일시정지 (docs/36 §7).
+   *
+   * 세울 때는 좌석별 결정·드래프트·국간 대기의 남은 시간을 적어 두고 타이머를 전부
+   * 뗀다. 대기 자체(`pending`·`pendingDraft`·`pendingContinue`)는 **그대로 둔다** —
+   * 화면에 떠 있는 선택창이 사라지면 안 되고, 재개했을 때 그 자리에서 이어져야 한다.
+   *
+   * 재개할 때는 적어 둔 남은 시간으로 다시 건다. 클라이언트도 같은 규칙으로 제 시계를
+   * 멈췄다 이어 세므로(gamePaused), 화면의 초와 서버의 초가 어긋나지 않는다.
+   */
+  setPaused(paused: boolean): void {
+    if (paused === this.paused) return;
+    this.paused = paused;
+    if (paused) {
+      const now = Date.now();
+      for (const [seat, p] of this.pending) {
+        this.pausedLeft.set(seat, Math.max(0, p.deadlineAt - now));
+        this.clearPendingTimer(p);
+      }
+      if (this.draftTimeout !== null) {
+        this.pausedDraftLeft = Math.max(0, this.draftDeadlineAt - now);
+        this.clearDraftTimeout();
+      }
+      if (this.continueTimeout !== null) {
+        clearTimeout(this.continueTimeout);
+        this.continueTimeout = null;
+        this.pausedContinue = true;
+      }
+      return;
+    }
+    for (const [seat, p] of [...this.pending]) {
+      // 적어 둔 값이 없으면(정지 중에 새로 뜬 대기) 그 대기의 마감이 곧 남은 시간이다.
+      const left = this.pausedLeft.get(seat) ?? Math.max(0, p.deadlineAt - Date.now());
+      this.armDecision(seat, p.prompt, p.resolve, left, p.graced);
+    }
+    this.pausedLeft.clear();
+    if (this.pausedDraftLeft !== null && this.pendingDraft !== null) {
+      this.armDraft(this.pausedDraftLeft);
+    }
+    this.pausedDraftLeft = null;
+    if (this.pausedContinue && this.pendingContinue !== null) {
+      this.continueTimeout = setTimeout(() => this.resolveContinue(), this.continueMaxWaitMs);
+    }
+    this.pausedContinue = false;
+  }
+
+  /** 지금 이 좌석의 시계가 서 있는가 (관리자 일시정지). */
+  get isPaused(): boolean {
+    return this.paused;
   }
 
   /** 세워 둔 판이 아직 유효하면 남은 시간, 아니면 0. */
@@ -568,7 +645,7 @@ export class HumanAgent implements PlayerAgent {
    * 터지거나, 클라이언트의 늦은 응답이 폐기된 프롬프트에 매칭된다.
    */
   resetForNewGame(): void {
-    for (const p of this.pending.values()) clearTimeout(p.timer);
+    for (const p of this.pending.values()) this.clearPendingTimer(p);
     this.pending.clear();
     this.clearDraftTimeout();
     if (this.continueTimeout !== null) {
@@ -742,6 +819,19 @@ export class HumanAgent implements PlayerAgent {
     timeoutMs: number,
     graced: boolean,
   ): void {
+    // 판이 서 있으면 시계를 걸지 않는다 — 남은 시간만 적어 두고 재개 때 건다.
+    // (재접속 복원이 이 경로로 들어와 세워 둔 판의 시계를 되살리던 구멍을 막는다.)
+    if (this.paused) {
+      this.pausedLeft.set(seat, timeoutMs);
+      this.pending.set(seat, {
+        prompt,
+        resolve,
+        timer: null,
+        deadlineAt: Date.now() + timeoutMs,
+        graced,
+      });
+      return;
+    }
     const timer = setTimeout(() => {
       // 제한 시간 초과 — 서버는 안전 폴백으로 진행한다. 클라이언트가 이걸 모르면
       // 내 차례가 지나간 뒤에도 선택 모달·버튼이 계속 떠 있으므로 취소를 알린다.
@@ -785,7 +875,7 @@ export class HumanAgent implements PlayerAgent {
   cancelDecisionFor(seat: PlayerId): void {
     const p = this.pending.get(seat);
     if (p === undefined) return;
-    clearTimeout(p.timer);
+    this.clearPendingTimer(p);
     this.pending.delete(seat);
     // 시간이 남았는데 접힌 것이므로 사유가 다르다 — 더 높은 선언이 이미 확정됐다.
     this.send({ type: "promptCancel", seat, reason: "preempted" });
@@ -912,6 +1002,11 @@ export class HumanAgent implements PlayerAgent {
    */
   private armDraft(timeoutMs: number): void {
     this.draftDeadlineAt = Date.now() + timeoutMs;
+    // 결정 타이머와 같은 규칙 — 판이 서 있으면 걸지 않는다.
+    if (this.paused) {
+      this.pausedDraftLeft = timeoutMs;
+      return;
+    }
     this.draftTimeout = setTimeout(() => {
       const choices = this.pendingDraftChoices ?? [];
       const resolve = this.pendingDraft;
@@ -960,7 +1055,13 @@ export class HumanAgent implements PlayerAgent {
       this.pendingContinue = resolve;
       // 세워 둔 동안에는 타이머를 걸지 않는다 — `reconnect()`가 돌아온 시점에
       // 원래 상한으로 다시 건다. 아무도 안 돌아오면 방 쪽 보유 시한이 판을 접는다.
-      this.continueTimeout = this.isHeld ? null : setTimeout(() => this.resolveContinue(), maxWaitMs);
+      if (this.isHeld || this.paused) {
+        // 세워 둔 1인 방과 같은 처지 — 정지 중에는 결과 화면도 그대로 세워 둔다.
+        this.continueTimeout = null;
+        this.pausedContinue = this.paused;
+      } else {
+        this.continueTimeout = setTimeout(() => this.resolveContinue(), maxWaitMs);
+      }
     });
   }
 
@@ -1017,7 +1118,7 @@ export class HumanAgent implements PlayerAgent {
         (o) => o.type === msg.actionType && JSON.stringify(o.payload) === wantPayload,
       );
       if (matched && entry !== undefined && seat !== null) {
-        clearTimeout(entry.timer);
+        this.clearPendingTimer(entry);
         this.pending.delete(seat);
         entry.resolve(matched);
       } else if (this.riichiTargetOf(msg) !== null) {
