@@ -478,6 +478,22 @@ export interface SpectateStopMessage {
   type: "spectateStop";
 }
 
+/**
+ * **판을 세운다 / 다시 돌린다** (관리자 전용, 대회 중계 — docs/36 §7).
+ *
+ * 세워 둔 동안에는 아무 시계도 흐르지 않는다: 좌석의 제한 시간도, 봇의 차례도,
+ * 국 사이 대기도 전부 선다. 정지 중 들어온 조작은 서버가 무시한다.
+ */
+export interface AdminPauseGameMessage {
+  type: "adminPauseGame";
+  /** 세울(또는 다시 돌릴) 방 코드. */
+  code: string;
+  /** true=세운다, false=다시 돌린다. */
+  paused: boolean;
+  /** 화면에 적을 사유 (「점검 5분」 등). 비우면 기본 문구. */
+  reason?: string;
+}
+
 // ── 증강 테스트(샌드박스) (49) ──
 
 /**
@@ -804,6 +820,7 @@ export type ClientMessage =
   | CheckUsernameMessage
   | ActiveGameRequestMessage
   | SpectateMessage
+  | AdminPauseGameMessage
   | SpectateStopMessage
   | SandboxStartMessage
   | SandboxGrantMessage
@@ -1524,6 +1541,12 @@ export interface LiveRoomSummary {
   code: string;
   startedAt: string;
   players: { nickname: string; isBot: boolean }[];
+  /**
+   * 이 판이 **세워져 있는가** (관리자 일시정지). 목록에 실어야 세워 둔 채 잊힌
+   * 탁자를 다른 관리자가 알아보고 다시 돌릴 수 있다 — 세운 사람이 그대로
+   * 자리를 뜨면 판은 영영 서 있게 된다.
+   */
+  paused?: boolean;
 }
 
 export interface LiveGamesMessage {
@@ -1542,6 +1565,21 @@ export interface SpectateEndedMessage {
   type: "spectateEnded";
   code: string;
   reason: string;
+}
+
+/**
+ * 판이 섰다 / 다시 돈다 (관리자 중계 일시정지). 대국자·관전자 **모두**에게 간다.
+ *
+ * 받은 쪽은 화면의 시계를 그 자리에서 멈추고(재개하면 멈춘 지점부터 이어 센다),
+ * 조작을 잠근다. 서버도 같은 규칙으로 시계를 멈추므로 양쪽 초가 어긋나지 않는다.
+ */
+export interface GamePausedMessage {
+  type: "gamePaused";
+  paused: boolean;
+  /** 화면에 적을 사유 (없으면 클라이언트 기본 문구). */
+  reason?: string;
+  /** 세운 사람 (관리자 닉네임). 기록·화면 표시용. */
+  by?: string;
 }
 
 /**
@@ -1628,6 +1666,7 @@ export type ServerMessage =
   | LiveGamesMessage
   | SpectateStartedMessage
   | SpectateEndedMessage
+  | GamePausedMessage
   | SandboxMessage
   | SandboxConfigMessage
   | ActionFxMessage;

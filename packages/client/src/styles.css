@@ -10744,6 +10744,105 @@ button {
   color: #fff3ee;
 }
 
+/* ─────────────── 일시정지 (관리자 중계) ─────────────── */
+
+/* 대국자 화면을 덮어 잠근다. 판 위에 서는 것 중 가장 위다 — 이 덮개가 뚫리면
+   «정지 중인데 눌렸다»가 되고, 그건 정지가 아니다. */
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 12, 10, 0.62);
+  backdrop-filter: blur(2px);
+  animation: bar-in 0.2s ease-out;
+}
+
+/* 관전석 변형 — 덮개가 아니라 띠다. 판을 다시 돌릴 사람이 여기 앉아 있으므로
+   클릭을 통과시키고, 화면 위쪽에만 얹는다. */
+.pause-overlay-open {
+  place-items: start center;
+  padding-top: 64px;
+  background: none;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+.pause-card {
+  padding: 18px 26px 20px;
+  border-radius: var(--r-md, 12px);
+  background: rgba(13, 23, 18, 0.96);
+  border: 1px solid rgba(226, 178, 92, 0.65);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 22px rgba(226, 178, 92, 0.25);
+  text-align: center;
+  max-width: min(90vw, 420px);
+}
+
+.pause-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #f0c884;
+}
+
+.pause-reason {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f7f3e8;
+  word-break: keep-all;
+}
+
+.pause-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(247, 243, 232, 0.66);
+  word-break: keep-all;
+}
+
+/* 관전 띠의 세우기·재개 단추 — 되돌릴 수 있는 조작이라 강제 종료(붉은색)와
+   색으로 갈라 둔다. */
+.spectate-pause {
+  border-left: none;
+  padding-left: 0;
+}
+
+.spectate-pause-btn {
+  padding: 3px 12px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(226, 178, 92, 0.55);
+  background: rgba(13, 23, 18, 0.55);
+  color: #f0c884;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.spectate-pause-btn:hover {
+  border-color: rgba(226, 178, 92, 0.9);
+}
+
+.spectate-pause-btn.on {
+  background: rgba(226, 178, 92, 0.3);
+  border-color: rgba(226, 178, 92, 0.95);
+  color: #fff6e4;
+}
+
+/* 진행 중 게임 목록의 정지 표식 */
+.live-paused {
+  margin-left: 8px;
+  padding: 1px 8px 2px;
+  border-radius: 999px;
+  background: rgba(226, 178, 92, 0.22);
+  border: 1px solid rgba(226, 178, 92, 0.5);
+  color: #f0c884;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .replayer {
   position: relative;
   width: 100%;

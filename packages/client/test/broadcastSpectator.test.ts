@@ -102,3 +102,36 @@ describe("중계 관전 — 샹텐 뱃지 (A3)", () => {
     expect(strip).toMatch(/hand\.filter\(\(_, j\) => j !== i\), meldCount, opts\)/);
   });
 });
+
+describe("중계 관전 — 일시정지 (B1)", () => {
+  it("관전 띠에서 세우고 다시 돌린다", () => {
+    expect(APP).toMatch(/type: "adminPauseGame", code: spectating, paused/);
+    expect(APP).toContain("spectate-pause-btn");
+    expect(APP).toMatch(/▶ 재개/);
+  });
+
+  it("판이 서면 화면의 시계도 선다 — 세 시계 전부", () => {
+    expect(APP).toContain("const PausedContext = createContext(false)");
+    // 프롬프트·드래프트·결과 화면 — useContext(PausedContext)로 같은 값을 본다
+    const uses = APP.match(/useContext\(PausedContext\)/g) ?? [];
+    expect(uses.length).toBeGreaterThanOrEqual(3);
+    expect(APP).toContain("if (deadlineAt === null || paused) return;");
+  });
+
+  it("재개할 때 마감을 정지한 만큼 뒤로 민다 — 세워 둔 것이 벌이 되지 않게", () => {
+    expect(APP).toMatch(/setPromptDeadline\(\(d\) => \(d === null \? null : d \+ dEpoch\)\)/);
+    expect(APP).toMatch(/draftDeadline\.current \+= dPerf/);
+    expect(APP).toMatch(/roundResultDeadline\.current \+= dPerf/);
+  });
+
+  it("대국자 화면은 덮어 잠그고, 관전석은 덮지 않는다", () => {
+    expect(APP).toMatch(/<PauseOverlay pause=\{pause\} blocking=\{spectating === null\} \/>/);
+    // 관전석 변형은 클릭을 통과시킨다 — 판을 다시 돌릴 단추가 거기 있다
+    expect(CSS).toMatch(/\.pause-overlay-open \{[^}]*pointer-events: none;/);
+  });
+
+  it("방을 나가거나 관전을 접으면 정지 표식도 걷는다", () => {
+    const reset = APP.slice(APP.indexOf("function clearProductions()"));
+    expect(reset.slice(0, reset.indexOf("\n  }"))).toContain("setPause(null)");
+  });
+});
