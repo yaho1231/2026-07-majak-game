@@ -284,7 +284,7 @@ describe("진짜 용 × 절벽 위에 피어난 꽃 — 17장 손에서도 만�
     });
     const augs = dragon ? ["true_dragon", "cliff_bloom"] : ["cliff_bloom"];
     const base = withData(withAug(base0, { p0: augs }), {
-      [`cliff_bloom:kans:${roundKey(base0)}:p0`]: 1,
+      [`cliff_bloom:kans:${roundKey(base0)}:p0#round`]: 1,
     });
     const installs: { def: AugmentDef; holder: PlayerId }[] = [
       { def: C.cliffBloom, holder: "p0" },
@@ -308,7 +308,7 @@ describe("진짜 용 × 절벽 위에 피어난 꽃 — 17장 손에서도 만�
 
       // 만개 플래그가 서고, 손패가 완성형으로 재구성돼 화료가 통과한다
       const state = g.engine.state;
-      expect(state.augmentData[`cliff_bloom:bloomed:${roundKey(state)}:p0`]).toBe(true);
+      expect(state.augmentData[`cliff_bloom:bloomed:${roundKey(state)}:p0#round`]).toBe(true);
       expect(validate(g, "p0", "win", {})).toBeNull();
     });
   }
@@ -393,8 +393,8 @@ describe("정산 인터셉터 — 설치(픽) 순서와 무관하게 같은 결�
   it("기생충 × 일확천금: 어느 쪽을 먼저 설치해도 deltas가 같다", () => {
     const base0 = withAug(ronScene(), { p0: ["jackpot"], p2: ["parasite"] });
     const base = withData(base0, {
-      [`jackpot:mult:${roundKey(base0)}:p0`]: 3,
-      [`parasite:target:p2:${roundKey(base0)}`]: "p0",
+      [`jackpot:mult:${roundKey(base0)}:p0#round`]: 3,
+      [`parasite:target:p2:${roundKey(base0)}#round`]: "p0",
     });
     const a = runRon(base, [
       { def: C.parasite, holder: "p2" },
@@ -511,7 +511,7 @@ describe("리치 봉인 — 커스텀 리치 액션까지 전부 막는다", () 
     });
     // 봉인은 "보유자가 리치를 지고 있는 동안"만 산다 — p1을 실제 리치 상태로 둔다
     const sealed: GameState = {
-      ...withData(s0, { [`riichi_seal:sealed:${roundKey(s0)}:p1`]: true }),
+      ...withData(s0, { [`riichi_seal:sealed:${roundKey(s0)}:p1#round`]: true }),
       round: {
         ...s0.round,
         byPlayer: {
@@ -621,7 +621,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
     const base = withAug(
       {
         ...withData(s0, {
-          [`riichi_seal:sealed:${roundKey(s0)}:p0`]: true,
+          [`riichi_seal:sealed:${roundKey(s0)}:p0#round`]: true,
           "view:*:riichi_seal:p0#round": "봉인",
         }),
         round: {
@@ -732,7 +732,7 @@ describe("리치 봉인 — 리치를 풀면 봉인도 풀린다", () => {
 
     // 그 국에 다시 선제 리치를 세우면 봉인이 돌아온다
     const sealed = withData(nextRound, {
-      [`riichi_seal:sealed:${roundKey(nextRound)}:p0`]: true,
+      [`riichi_seal:sealed:${roundKey(nextRound)}:p0#round`]: true,
     });
     const g3 = mk(sealed, [{ def: C.riichiSeal, holder: "p0" }]);
     expect(
@@ -850,7 +850,7 @@ describe("일확천금 — 국의 첫 순 한정 + 가중 확률", () => {
       });
       expect(res.ok).toBe(true);
       const mult = g.engine.state.augmentData[
-        `jackpot:mult:${roundKey(g.engine.state)}:p0`
+        `jackpot:mult:${roundKey(g.engine.state)}:p0#round`
       ] as number;
       counts.set(mult, (counts.get(mult) ?? 0) + 1);
     }

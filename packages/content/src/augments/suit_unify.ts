@@ -41,7 +41,6 @@ import {
   flagOf,
   matchUses,
   publishUsesLeft,
-  roundKey,
   roundViewKey,
 } from "../util.js";
 import {
@@ -51,6 +50,7 @@ import {
 } from "./suitUnifyCore.js";
 import { handKindsOf } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "suit_unify";
 const ACTION = "mono_world";
@@ -67,7 +67,7 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
  * 같은 순에 남은 매치 횟수를 전부 태울 수 있다 (개벽 genesis와 같은 이유·같은 배관).
  */
 const unifiedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:unified:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "unified", state, h);
 
 /** 지금 발동할 수 있는가 — 자기 순(turn.act)·리치 중이 아님·이 국에 아직 안 씀 */
 function canUnify(state: GameState, holder: PlayerId): boolean {
@@ -121,7 +121,7 @@ export const suitUnify: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회 · 한 국에 1회) 자기 순이면 언제든 발동하며, 만·통·삭 중 원하는 색을 골라 손패의 수패를 전부 그 색으로 바꾼다. 숫자는 그대로 유지되고 청일색도 인정된다.",
   detail:
-    "(동풍전 1회 · 반장전 2회 — 다만 **한 국에는 한 번까지만** 쓸 수 있다. 이 액션은 턴을 넘기지 않아서, 이 제한이 없으면 같은 순에 남은 횟수를 전부 태울 수 있다) 자기 순이면 언제든 액티브 버튼이 뜬다. 만·통·삭 중 색을 직접 골라 손패의 수패를 숫자는 그대로 둔 채 전부 그 색으로 바꾸며, 통일된 색으로 청일색까지 그대로 인정된다. 새 패는 패산에 있는 같은 숫자의 실물과 맞바꿔 오고(내 패는 패산 맨 밑으로 돌아간다), 패산에 그 숫자가 남아 있지 않을 때만 그 자리에서 새로 만들어진다. 어느 색으로 물들였는지는 전원에게 공개된다. 리치 중에는 발동할 수 없다.",
+    "(동풍전 1회 · 반장전 2회 — 다만 **한 국에는 한 번까지만** 쓸 수 있다. 이 액션은 턴을 넘기지 않아서, 이 제한이 없으면 같은 순에 남은 횟수를 전부 태울 수 있다) 자기 순이면 언제든 액티브 버튼이 뜬다. 만·통·삭 중 색을 직접 골라 손패의 수패를 숫자는 그대로 둔 채 전부 그 색으로 바꾸며, 통일된 색으로 청일색까지 그대로 인정된다. 새 패는 패산에 있는 같은 숫자의 실물과 맞바꿔 오고(내 패는 패산 맨 밑으로 돌아간다), 패산에 그 숫자가 남아 있지 않을 때만 그 자리에서 새로 만들어진다. 어느 색으로 물들였는지는 전원에게 공개된다. 리치 중에는 발동할 수 없다.\n\n⚠ **손패의 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 무늬가 바뀌면 성립하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

@@ -74,7 +74,7 @@ function turnPromptFor(
 
 describe("future_sight — 미래를 보는 자", () => {
   // craft의 초기 국면 roundKey = "장풍1-1국-0본장"
-  const STACKS_KEY = "future_sight:stacks:1-1-0:p0";
+  const STACKS_KEY = "future_sight:stacks:1-1-0:p0#round";
 
   function craftFutureState(): GameState {
     const s = craft({
@@ -154,8 +154,8 @@ describe("future_sight — 미래를 보는 자", () => {
   });
 
   // ── 3순에 1회 (2026-08-02 사용자 지시) ──
-  const TURNS_KEY = "future_sight:turns:1-1-0:p0";
-  const LAST_KEY = "future_sight:last:1-1-0:p0";
+  const TURNS_KEY = "future_sight:turns:1-1-0:p0#round";
+  const LAST_KEY = "future_sight:last:1-1-0:p0#round";
 
   /** 순 번호(turns)와 마지막 발동 순(last)을 주입하고 무장이 통과하는지 본다 */
   function armOk(turns: number, last: number | null): boolean {
@@ -282,7 +282,7 @@ describe("bottom_deal — 밑장빼기", () => {
   /** 예약 플래그 키 (roundKey 스코프 — 상태에서 직접 뽑아 하드코딩을 피한다) */
   const armedKey = (s: GameState): string => {
     const r = s.round;
-    return `bottom_deal:armed:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0`;
+    return `bottom_deal:armed:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0#round`;
   };
   const VIEW_ARMED_KEY = "view:p0:bottom_deal:armed:p0#round";
   const NOTICE_KEY = "view:*:bottom_deal:armed:p0#round";
@@ -753,7 +753,7 @@ describe("bottom_deal — 봇 정책 (실게임 뷰)", () => {
   it("예약이 이미 걸려 후보가 없으면 null을 돌려준다 (크래시하지 않는다)", () => {
     const base = scene("123m456m789m123p99p", "9p8p7p");
     const armed = withAugmentData(base, {
-      [`bottom_deal:armed:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p0`]:
+      [`bottom_deal:armed:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p0#round`]:
         true,
     });
     expect(askBot(armed).picked).toBeNull();

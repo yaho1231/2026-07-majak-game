@@ -35,15 +35,16 @@ import type {
   TileDiscardedPayload,
   TileId,
 } from "@majak/core";
-import { roundKey, roundViewKey } from "../util.js";
+import { roundViewKey } from "../util.js";
 import { pickSafestDiscard } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const AUGMENT_ID = "free_riichi_discard";
 
 /** 국 단위 손패 스냅샷 키 (리치 시점의 손패 13장 id) — 국이 바뀌면 자동 만료 */
 const snapKey = (state: GameState, player: PlayerId): string =>
-  `${AUGMENT_ID}:snap:${roundKey(state)}:${player}`;
+  roundScopedKey(AUGMENT_ID, "snap", state, player);
 
 /** augmentData에서 스냅샷 손패 id 목록을 읽는다 (없으면 null) */
 function snapshotOf(state: GameState, player: PlayerId): TileId[] | null {

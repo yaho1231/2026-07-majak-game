@@ -19818,8 +19818,16 @@ function AugDeltaNotes({
   player: string;
   skipWinners?: ReadonlySet<string>;
 }): JSX.Element | null {
-  if (skipWinners?.has(player) === true) return null;
-  const notes = (settle.augPoints ?? []).filter((a) => a.player === player);
+  // `skipWinners`는 "승자 블록이 이미 적은 줄"만 건너뛰는 장치다. 그 블록은
+  // `points !== 0`인 노트만 그리므로(아래 화료자 블록 필터), 사람 단위로 통째로
+  // 건너뛰면 **0점 노트가 양쪽 경로에서 전부 걸러져** 화면에서 사라진다 —
+  // 마왕의 진군은 폭발이 화료 정산에서만 일어나 보유자가 언제나 승자라서,
+  // 9,000점이 근거 한 줄 없이 테이블에서 증발했다(QA verify-score 확정 2).
+  // 그래서 승자에게는 **0점 노트만** 남긴다(중복도 없고 근거도 사라지지 않는다).
+  const skip = skipWinners?.has(player) === true;
+  const notes = (settle.augPoints ?? []).filter(
+    (a) => a.player === player && (!skip || a.points === 0),
+  );
   if (notes.length === 0) return null;
   return (
     <span className="result-delta-augs">

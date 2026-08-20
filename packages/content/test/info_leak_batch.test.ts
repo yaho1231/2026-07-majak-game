@@ -47,7 +47,7 @@ describe("박무 — 피해자가 자기 바닥은 본다 (docs/25 정보 #2)", 
         ...base.augmentData,
         // 박무가 지금 깔려 있는 상태를 직접 심는다 (선언 횟수 + 선언 순)
         [`brief_fog:uses:p0`]: 1,
-        [`brief_fog:turn:${roundKey(base)}:p0`]: base.round.turnCount,
+        [`brief_fog:turn:${roundKey(base)}:p0#round`]: base.round.turnCount,
       },
     };
     const game = createStandardGameFromState(state, undefined, [briefFog]);
@@ -78,7 +78,7 @@ describe("가려진 도라 — 왕패를 열어도 표시패는 안 보인다 (d
       ...withAug(base, { p0: ["dora_conceal"], p1: ["ura_peek"] }),
       augmentData: {
         ...base.augmentData,
-        [`ura_peek:used:${roundKey(base)}:p1`]: true,
+        [`ura_peek:used:${roundKey(base)}:p1#round`]: true,
       },
     };
     const game = createStandardGameFromState(state, undefined, [doraConceal, uraPeek]);

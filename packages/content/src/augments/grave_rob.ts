@@ -51,10 +51,11 @@ import {
   matchUses,
   publishUsesLeft,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredMark } from "./handAltered.js";
 
 const ID = "grave_rob";
 const ACTION = "grave_rob";
@@ -69,7 +70,7 @@ const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
  * 날치기(pond_snatch)와 같은 규약이며, 아래 `win.tsumoFuriten` 모디파이어가 이 값을 본다.
  */
 const robbedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:robbed:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "robbed", state, h);
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(h)) < matchUses(state);
 
@@ -154,7 +155,18 @@ function simulateRob(
   return {
     ...state,
     zones,
-    round: replaceDrawnTile(state.round, graveId),
+    round: {
+      ...replaceDrawnTile(state.round, graveId),
+      // 무덤에서 파낸 패가 마지막 버림패였다면 그 표식을 비운다 — 후로가 패를 가져갈 때
+      // CALL_MADE가 하는 것과 같은 처리다 (2026-08-20 QA hand 확정 7). 비우지 않으면
+      // `round.lastDiscard`가 이미 바닥에 없는 패를 가리켜, 세 좌석 뷰에 어느 가시 존에도
+      // 없는 패의 정체가 실리고 `lastDiscardFrom` 낡은 표식도 걸러지지 않는다.
+      lastDiscard:
+        state.round.lastDiscard?.tileId === graveId ? null : state.round.lastDiscard,
+    },
+    // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고).
+    // 가상 상태에도 함께 실어야 화료 예측(robWins)과 실제 판정이 갈라지지 않는다.
+    augmentData: { ...state.augmentData, ...handAlteredMark(state, holder) },
   };
 }
 

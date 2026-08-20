@@ -15,6 +15,7 @@ import {
   isNumberSuit,
   kindKey,
   kindOf,
+  lockedDiscardIds,
   seatWindOf,
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
@@ -108,10 +109,13 @@ describe("discard_lock (봉인술사)", () => {
       );
       for (const key of list) expect(handNumberKinds.has(key)).toBe(true);
       // 규칙은 **개별 패**(discard.blockedTileIds)로 걸린다 — 봉인 시점 손패의 그 패들.
-      const blockedIds = game.engine.rules.resolve<TileId[]>("discard.blockedTileIds", {
-        playerId: pid,
-        state,
-      });
+      //
+      // ⚠ 원재료(`discard.blockedTileIds`)는 이제 보유자가 건 **세 좌석 봉인의 합집합**이다
+      //   — 봉인이 사람이 아니라 tileId 를 따라가야 손 교환 증강(seat_swap·full_hand_swap)이
+      //   끼어도 증발하지 않기 때문이다(2026-08-20 QA disrupt 확정 1). 그래서 "내 손패에
+      //   있는가"는 최종 판정(`lockedDiscardIds`)에서 봐야 한다 — 화면과 버림 액션도
+      //   그 함수 하나만 쓴다(`flow/helpers.ts` 주석).
+      const blockedIds = [...lockedDiscardIds(state, game.engine.rules, pid)];
       expect(blockedIds.length).toBeGreaterThan(0);
       for (const id of blockedIds) {
         expect(handIdsOf(state, pid)).toContain(id);
@@ -120,12 +124,7 @@ describe("discard_lock (봉인술사)", () => {
     }
     // 보유자 본인은 봉인 대상이 아니다
     expect(state.augmentData[roundViewKey("p0", "sealed:p0")]).toBeUndefined();
-    expect(
-      game.engine.rules.resolve<TileId[]>("discard.blockedTileIds", {
-        playerId: "p0",
-        state,
-      }),
-    ).toEqual([]);
+    expect([...lockedDiscardIds(state, game.engine.rules, "p0")]).toEqual([]);
     // 발동 국 시퀀스 기록 (쿨다운 기준) — craft 상태는 seq 0
     expect(state.augmentData["discard_lock:used:p0"]).toBe(0);
     // 난수 소비가 이벤트 payload를 거쳐 state.prngState에 반영되었다
@@ -257,12 +256,8 @@ describe("discard_lock (봉인술사)", () => {
     expect(discardValidate(game, "p1", tileOf("sou7"))).toBeNull();
     expect(discardValidate(game, "p1", tileOf("wind1"))).toBeNull();
     // 보유자 본인은 어떤 봉인도 적용되지 않는다
-    expect(
-      game.engine.rules.resolve<TileId[]>("discard.blockedTileIds", {
-        playerId: "p0",
-        state: game.engine.state,
-      }),
-    ).toEqual([]);
+    // (원재료 규칙이 아니라 최종 판정을 본다 — 위 ⚠ 참고)
+    expect([...lockedDiscardIds(game.engine.state, game.engine.rules, "p0")]).toEqual([]);
   });
 
   it("봉인 뒤 같은 종류가 새로 들어와도 그 패는 잠기지 않는다 (처음 지목된 2장만)", () => {

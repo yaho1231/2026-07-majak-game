@@ -45,10 +45,10 @@ import {
   flagOf,
   matchUses,
   publishUsesLeft,
-  roundKey,
   roundViewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "hidden_river";
 const ACTION = "declare_fog";
@@ -60,7 +60,7 @@ const RECENT = 6;
  * 국이 끝나면 저절로 걷히므로 별도의 해제 처리가 필요 없다.
  */
 const fogKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:fog:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "fog", state, holder);
 /** 매치당 사용 횟수 카운터 — **게임 단위**라 roundKey를 섞지 않는다. 동풍전 1·반장전 2회. */
 const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
 /** 선언 사실을 전원에게 알리는 공개 뷰 채널 */

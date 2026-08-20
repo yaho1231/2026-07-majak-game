@@ -45,13 +45,13 @@ import type {
 import {
   addWinHanBonus,
   flagOf,
-  roundKey,
   roundViewKey,
   addYakuHolder,
   yakuHolders,
 } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "open_riichi_reveal";
 const ACTION = "open_riichi";
@@ -61,7 +61,7 @@ const STRIKE_YAKU = "open_riichi_strike";
 const RIICHI_UPGRADE_HAN = 2;
 /** 이번 국에 오픈 리치를 선언했는가 (roundKey 스코프 — 국이 바뀌면 자동 만료) */
 const declaredKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:declared:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "declared", state, h);
 
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;

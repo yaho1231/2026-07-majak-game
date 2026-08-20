@@ -24,6 +24,7 @@
  */
 
 import {
+  ROUND_SETTLED,
   TILE_DISCARDED,
   augmentDataSet,
   defineAugment,
@@ -63,6 +64,8 @@ const brandKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "brand", state, h);
 /** 낙인 표시 채널 (전원 공개, 국 스코프 — 국 경계에서 엔진이 지운다) */
 const brandViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
+/** 강제 리치 발동 연출 채널 (전원 공개, 국 스코프) */
+const firedViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:fired:${h}`);
 
 /** 대상이 멘젠인가 (안깡·묵계는 손을 열지 않는다) */
 function isMenzen(state: GameState, id: PlayerId): boolean {
@@ -206,7 +209,26 @@ export const pushRiichi: AugmentDef = defineAugment({
        * 끼워 넣으므로(2026-08-17 사용자 요청), 강제가 아닐 때 쏘면 없는 사건을 그린다.
        */
       if (p.riichiForced !== holder) return;
-      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:fired:${holder}`), target));
+      rc.emit(augmentDataSet(firedViewKey(holder), target));
+    });
+
+    /*
+     * 낙인 표시를 **정산에서** 내린다 (2026-08-20 QA disrupt 확정 2).
+     *
+     * 표시 채널은 국 스코프(roundViewKey)라 **다음 국 setupRound**에서 지워진다. 그런데
+     * 국이 끝나고 다음 국이 시작되기까지 정산 화면과 증강 드래프트가 통째로 끼어 있어서,
+     * 이미 효과가 끝난 낙인이 그 내내 이름표 관계선(RELATION_HEADS)과 당사자 뱃지로
+     * 서 있었다 — 상대는 죽은 낙인을 보고 다음 국 드래프트를 고르게 된다.
+     * 완전히 같은 모양을 blind_ron(2026-08-12 사용자 신고)·rank_gate가 이미 이렇게 고쳤다.
+     * 값을 비우면 PlayerView가 채널 자체를 내려보내지 않는다.
+     */
+    // 발동 연출 채널(`{ID}:fired:{holder}`)도 같은 이유로 함께 내린다 — 이쪽도
+    // RELATION_HEADS 에 걸려 관계선을 긋는다(App.tsx의 "중간 마디가 낀 키" 주석).
+    ctx.reaction(ROUND_SETTLED, (_event, rc) => {
+      for (const key of [brandViewKey(holder), firedViewKey(holder)]) {
+        if (rc.state.augmentData[key] === undefined) continue;
+        rc.emit(augmentDataSet(key, ""));
+      }
     });
 
     // 사용 횟수가 남았고 활성 낙인이 없으면 보유자 턴에 각 상대를 지목 후보로 낸다

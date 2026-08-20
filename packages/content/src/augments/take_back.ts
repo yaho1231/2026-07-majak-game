@@ -38,10 +38,10 @@ import type {
 import {
   cooldownTurnsViewKey,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "take_back";
 const ACTION = "take_back";
@@ -50,7 +50,7 @@ const EVENT = "TakeBackPerformed";
 const COOLDOWN_TURNS = 3;
 /** 마지막으로 사용한 턴 번호(국 스코프) — 국이 바뀌면 키가 사라져 자동 해제 */
 const lastUsedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:last:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "last", state, h);
 
 /** 이 국에서 보유자의 현재 턴 번호 (= 내가 버린 수) */
 function turnNo(state: GameState, h: PlayerId): number {

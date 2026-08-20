@@ -125,14 +125,14 @@ describe("시간 정지 — 추가 턴이 실제로 발동한다", () => {
 
     flow.submit("p0", { type: "time_stop_use", payload: {} });
     const s = game.engine.state;
-    expect(s.augmentData["time_stop:used:1-1-0:p0"]).toBe(true);
+    expect(s.augmentData["time_stop:used:1-1-0:p0#round"]).toBe(true);
 
     const def = game.engine.actions.get("time_stop_use");
     if (def === undefined) throw new Error("no time_stop_use action");
     // 이번 국엔 charge가 없다 (armed 플래그를 지워도 소진 기록이 막는다)
     const disarmed = {
       ...s,
-      augmentData: { ...s.augmentData, "time_stop:armed:1-1-0:p0": false },
+      augmentData: { ...s.augmentData, "time_stop:armed:1-1-0:p0#round": false },
     };
     expect(
       def.validate(

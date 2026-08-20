@@ -82,7 +82,7 @@ const FULL_POND = "19m19p19s1234z567z";
 
 /** "다음 쯔모를 오름패로" 예약 키 (국 스코프) */
 const tsumoKeyOf = (st: GameState): string =>
-  `giant_god:tsumo:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0`;
+  `giant_god:tsumo:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0#round`;
 
 function startWithGiantGod(state: GameState) {
   const game = createStandardGameFromState(state);

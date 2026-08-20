@@ -154,7 +154,7 @@ describe("take_back (무르기) — 3턴에 1회", () => {
         },
         augmentData: {
           ...base.augmentData,
-          [`take_back:last:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p0`]:
+          [`take_back:last:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p0#round`]:
             lastUsed,
         },
       };
@@ -186,7 +186,7 @@ describe("take_back (무르기) — 3턴에 1회", () => {
     const state: GameState = {
       ...withAugments(base, "p0", ["take_back"]),
       round: { ...base.round, roundNumber: 2 },
-      augmentData: { ...base.augmentData, "take_back:last:east-1-0:p0": 0 },
+      augmentData: { ...base.augmentData, "take_back:last:east-1-0:p0#round": 0 },
     };
     const game = createStandardGameFromState(state);
     installAugment(game.engine, takeBack, "p0", { yaku: game.yaku });
@@ -301,7 +301,7 @@ describe("blood_contract (핏빛 계약) — 1.5배", () => {
         ...withAug,
         augmentData: {
           ...withAug.augmentData,
-          [`blood_contract:yaku:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p0`]:
+          [`blood_contract:yaku:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p0#round`]:
             contract,
         },
       };

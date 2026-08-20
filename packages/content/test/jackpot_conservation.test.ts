@@ -45,7 +45,7 @@ function scene(mult: number | null, pot = 0): Game {
     round: { ...base.round, riichiPot: pot },
     augmentData: {
       ...base.augmentData,
-      ...(mult === null ? {} : { [`jackpot:mult:${rk}:p0`]: mult }),
+      ...(mult === null ? {} : { [`jackpot:mult:${rk}:p0#round`]: mult }),
     },
   };
   const game = createStandardGameFromState(state, undefined, mult === null ? [] : [jackpot]);

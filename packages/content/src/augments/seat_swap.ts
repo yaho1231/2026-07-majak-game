@@ -51,7 +51,8 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, publishUsesLeft, roundKey, sameHandSize } from "../util.js";
+import { counterOf, flagOf, matchUses, publishUsesLeft, sameHandSize } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 import {
   breakStealthRiichiEvents,
   ensureStealthBreakReducer,
@@ -82,7 +83,7 @@ const hasUsesLeft = (state: GameState, player: PlayerId): boolean =>
  * 있었다(테이블을 한 순에 두 번 뒤집는다). 국당 1회로 잠근다.
  */
 const roundUsedKey = (state: GameState, player: PlayerId): string =>
-  `seat_swap:round:${roundKey(state)}:${player}`;
+  roundScopedKey("seat_swap", "round", state, player);
 
 const seatSwapAction: ActionDef<{ target: PlayerId }> = {
   type: "seat_swap",

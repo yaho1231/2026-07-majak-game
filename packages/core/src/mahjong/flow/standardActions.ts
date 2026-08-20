@@ -104,6 +104,12 @@ function isRiichiSafeAnkan(
     undefined,
     opts,
   );
+  // 노텐 리치(대기 ∅)는 지킬 대기가 없어 `sameKindSet(∅, ∅)`이 **어떤 안깡이든**
+  // 통과시킨다. 그러면 공성계(siege_riichi) 같은 노텐 리치 카드가 대기와 무관한
+  // 아무 안깡으로 사깡산료를 만들어 국을 무효화하고, 카드가 약속한 노텐 벌부를
+  // 회피할 수 있다(QA verify-score 확정 4). 대기가 없는 리치는 손이 완전히 잠긴다.
+  // 진짜 리치는 언제나 텐파이라 이 줄에 걸리지 않는다.
+  if (before.length === 0) return false;
   return sameKindSet(before, after);
 }
 

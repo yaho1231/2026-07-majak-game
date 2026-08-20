@@ -87,7 +87,7 @@ describe("cliff_bloom (절벽 위에 피어난 꽃) — 만개 국의 영상개�
     s = { ...s, round: { ...s.round, lastDrawRinshan: rinshan } };
     s = withAugments(s, "p0", ["cliff_bloom"]);
     if (mode === "bloom") {
-      s = withData(s, { [`cliff_bloom:bloomed:${roundKey(s)}:p0`]: true });
+      s = withData(s, { [`cliff_bloom:bloomed:${roundKey(s)}:p0#round`]: true });
     }
     const game = createStandardGameFromState(s);
     if (mode !== "none") {

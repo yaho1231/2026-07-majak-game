@@ -2,7 +2,7 @@
  * 바닥의 족보 (bottom_yaku, prism) — "내 바닥이 역을 만든다".
  *
  * 유국역만(nagashi_yakuman)의 거울상이다. 유국이 아니라 **실제 화료**에 얹히는 역으로,
- * 화료 순간 내 바닥(버림패) zone을 읽어 두 갈래로 판을 더한다.
+ * 화료 순간 내가 **버린 패의 이력**을 읽어 두 갈래로 판을 더한다.
  *   - 한 무늬(만·통·삭 중 하나)의 1~9가 **모두** 내 바닥에 있으면 '역류 통관' **2판**.
  *   - 같은 패를 3장 이상 버렸으면(어느 종류든) '미련 없음' **1판**.
  * 두 조건은 겹칠 수 있다 — 둘 다 붙으면 **+3판**. 유국이면 화료가 없으니 무용지물이다.
@@ -23,25 +23,21 @@
  *   손이 바닥만으로 화료했는데, 그건 "역 없이도 이긴다"는 별개의 능력이었다.
  *   멘젠 무관 — 후로해도 openHan을 같게 두어 붙는다.
  *
- * 바닥 읽기: WinContext는 손패·화료패만 실을 뿐 버림 zone을 노출하지 않는다. 그래서
+ * 바닥 읽기: WinContext는 손패·화료패만 실을 뿐 버림 이력을 노출하지 않는다. 그래서
  * check 클로저가 install 시점의 `ctx.engine`을 붙잡아 채점 시점의 `engine.state`에서
- * 화료자(wctx.winnerId)의 버림 zone을 discardsZone으로 읽는다. 화료 채점은 언제나 그
+ * 화료자(wctx.winnerId)의 `round.byPlayer[…].discardedKinds`를 읽는다 —
+ * 바닥 zone이 아니라 **버린 사실 자체**다(울려 나간 패도 내가 버린 패다). 화료 채점은 언제나 그
  * 시점 state에 대해 동기적으로 돌므로 engine.state가 곧 그 국의 바닥이다. 여러 명이
  * 보유해도 역 등록은 게임당 1회(yakuHolders), 나머지는 holders 집합에만 더한다.
  */
 
-import {
-  defineAugment,
-  discardsZone,
-  isNumberSuit,
-  kindKey,
-  kindOf,
-} from "@majak/core";
+import { defineAugment, isNumberSuit } from "@majak/core";
 import type {
   AugmentDef,
   GameEngine,
   GameState,
   PlayerId,
+  TileKind,
 } from "@majak/core";
 import { addYakuHolder, yakuHolders } from "../util.js";
 
@@ -51,16 +47,39 @@ const FLOW = "bottom_flow";
 /** 미련 없음 — 같은 패 3장 이상을 바닥에 (1판) */
 const LETGO = "bottom_letgo";
 
-/** 화료자의 버림 zone tileId 목록 (없으면 빈 배열) */
-function discardIds(state: GameState, holder: PlayerId): readonly number[] {
-  return state.zones[discardsZone(holder)]?.tileIds ?? [];
+/**
+ * `discardedKinds`의 kindKey("man1"·"wind3")를 TileKind로 되돌린다.
+ * 이력은 버림 시점의 문자열 스냅샷이라 tileId가 없다 — 종류만 알면 충분하다.
+ * (유국역만이 같은 이유로 같은 헬퍼를 쓴다 — nagashi_yakuman.ts)
+ */
+function kindFromKey(key: string): TileKind | null {
+  const m = /^([a-z]+)(\d+)$/.exec(key);
+  if (m === null) return null;
+  return { suit: m[1] as TileKind["suit"], rank: Number(m[2]) };
 }
 
-/** 어느 수패 무늬(만·통·삭)든 1~9가 전부 내 바닥에 있는가 */
+/**
+ * 화료자가 그 국에 **버린 패의 종류 이력** (없으면 빈 배열).
+ *
+ * ⚠ 바닥 zone(`state.zones[discardsZone(holder)]`)이 아니라 이력을 본다.
+ * 코어는 남이 치·펑·깡을 하면 그 패를 버린 사람의 바닥에서 **빼서** 운 사람의
+ * 멘쯔로 옮긴다(flow/flowEvents.ts). 그래서 zone만 보면 "5만을 버렸는데 상대가
+ * 퐁해 갔다"는 이유로 역류 통관이 조용히 무효가 됐다 — 조건을 잘 채울수록
+ * (같은 패를 3장 버릴수록) 남이 울 확률이 높아 더 잘 깨지는 구조였다.
+ * `round.byPlayer[x].discardedKinds`는 후리텐 판정이 쓰는 append-only 스냅샷이라
+ * 울려 나가도 남는다 — detail이 약속하는 것은 "무엇을 버렸는가"이지
+ * "그게 바닥에 남았는가"가 아니다(2026-08-20 QA 확정).
+ */
+function discardedKinds(state: GameState, holder: PlayerId): readonly string[] {
+  return state.round.byPlayer[holder]?.discardedKinds ?? [];
+}
+
+/** 어느 수패 무늬(만·통·삭)든 1~9를 전부 버렸는가 */
 function hasFullSuitRun(state: GameState, holder: PlayerId): boolean {
   const ranksBySuit = new Map<string, Set<number>>();
-  for (const id of discardIds(state, holder)) {
-    const kind = kindOf(state, id);
+  for (const key of discardedKinds(state, holder)) {
+    const kind = kindFromKey(key);
+    if (kind === null) continue;
     if (!isNumberSuit(kind)) continue; // 자패는 순창(1~9) 대상이 아니다
     let ranks = ranksBySuit.get(kind.suit);
     if (ranks === undefined) {
@@ -85,8 +104,7 @@ function hasFullSuitRun(state: GameState, holder: PlayerId): boolean {
 /** 같은 종류(kindKey)를 3장 이상 버렸는가 — 무늬·자패 무관 */
 function hasTripleDiscard(state: GameState, holder: PlayerId): boolean {
   const counts = new Map<string, number>();
-  for (const id of discardIds(state, holder)) {
-    const key = kindKey(kindOf(state, id));
+  for (const key of discardedKinds(state, holder)) {
     const next = (counts.get(key) ?? 0) + 1;
     if (next >= 3) return true;
     counts.set(key, next);
@@ -103,7 +121,7 @@ export const bottomYaku: AugmentDef = defineAugment({
   description:
     "(상시) 화료 시 내 바닥(버림패)이 판을 얹어 준다 — 한 무늬의 1~9를 모두 버렸으면 '역류 통관' 2판, 같은 패를 3장 이상 버렸으면 '미련 없음' 1판. 둘은 겹쳐 최대 3판. ⚠ 이 두 역만으로는 화료할 수 없다 — 손에 진짜 역이 하나는 있어야 한다.",
   detail:
-    "(상시) 쯔모·론으로 화료하는 순간 자신의 버림패를 판정해 판을 얹어 준다. 만·통·삭 중 한 무늬의 1~9가 모두 내 바닥에 있으면 '역류 통관' 2판, 같은 패를 3장 이상 버렸으면 종류를 가리지 않고 '미련 없음' 1판으로 취급되며, 두 조건이 함께 성립하면 3판이다. 멘젠·후로는 가리지 않는다. ⚠ 이 두 역은 도라처럼 **판만 더하는 보조역**이라 이것만으로는 화료할 수 없다 — 손에서 나온 역(리치·탕야오·역패 등)이 하나라도 있어야 판이 붙고, 역이 하나도 없으면 두 조건을 다 채워도 화료가 성립하지 않는다. 화료형(표준형·치또이·국사 등)도 스스로 완성해야 하며, 유국에는 적용되지 않는다.",
+    "(상시) 쯔모·론으로 화료하는 순간 자신의 버림패를 판정해 판을 얹어 준다. 만·통·삭 중 한 무늬의 1~9를 모두 버렸으면 '역류 통관' 2판, 같은 패를 3장 이상 버렸으면 종류를 가리지 않고 '미련 없음' 1판으로 취급되며, 두 조건이 함께 성립하면 3판이다. 판정은 **내가 버린 이력 전체**를 보므로 남이 내 버림패를 울어 가도 그대로 남는다. 멘젠·후로는 가리지 않는다. ⚠ 이 두 역은 도라처럼 **판만 더하는 보조역**이라 이것만으로는 화료할 수 없다 — 손에서 나온 역(리치·탕야오·역패 등)이 하나라도 있어야 판이 붙고, 역이 하나도 없으면 두 조건을 다 채워도 화료가 성립하지 않는다. 화료형(표준형·치또이·국사 등)도 스스로 완성해야 하며, 유국에는 적용되지 않는다.",
   install(ctx) {
     const yaku = ctx.yaku;
     if (yaku === undefined) return;

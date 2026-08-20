@@ -41,7 +41,6 @@ import type {
 import {
   cooldownReady,
   cooldownUse,
-  roundKey,
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
@@ -52,6 +51,7 @@ import {
   registerMonoWorldReducer,
 } from "./suitUnifyCore.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "picky_eater";
 const ACTION = "picky_unify";
@@ -63,7 +63,7 @@ const COOLDOWN_ROUNDS = 2;
 
 /** 이번 국에 이미 발동했는가 */
 const doneKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:done:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "done", state, h);
 /**
  * **내가 실제로 버린 패의 종류** (국 스코프, TILE_DISCARDED 리액션이 쌓는다).
  *
@@ -76,7 +76,7 @@ const doneKey = (state: GameState, h: PlayerId): string =>
  * "내가 버린 것"의 단일 진실은 이 목록과 `discardCount`다.
  */
 const myDiscardsKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:mine:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "mine", state, h);
 
 /**
  * 내가 버린 패의 종류 목록.
@@ -156,6 +156,18 @@ const pickyAction: ActionDef<{ suit: Suit }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
+    /*
+     * 리치 중에는 발동할 수 없다 — 리치는 손패를 **동결**한다 (2026-08-20 QA hand 확정 5).
+     *
+     * 효과가 완전히 같은 형제 `suit_unify` 는 `canUnify` 에서 같은 조건으로 반려하는데
+     * (실물 교환 구현 `suitUnifyCore` 까지 공유한다) 이쪽에만 가드가 없어서, 리치를 걸어
+     * 둔 채 손패의 수패를 통째로 물들여 **대기를 갈아치울 수** 있었다. 대기가 1종에서
+     * 4종으로 바뀌고, 선언 간파(`peek_riichi_waits`)가 공개한 대기·상대의 안전패 계산·
+     * 후리텐 근거가 전부 낡은 값을 가리켰다.
+     */
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
     if (!cooldownReady(state, ID, req.player, COOLDOWN_ROUNDS)) {
       return "on cooldown";
     }
@@ -186,7 +198,7 @@ export const pickyEater: AugmentDef = defineAugment({
   description:
     "(2국에 1회) 국이 시작된 뒤 한 무늬의 수패(자패는 허용)만 12장 버리면 액티브가 열린다 — 발동하면 손패의 수패를 원하는 한 색으로 통일한다. 다른 무늬를 한 장이라도 버리면 그 국은 실패.",
   detail:
-    "(2국에 1회) 국이 시작된 뒤 만·통·삭 중 한 무늬와 자패만으로 12장을 버리면 발동할 수 있다. 발동하면 만·통·삭 중 한 색을 골라 손패의 수패를 전부 그 색으로 바꾼다.\n\n숫자는 유지되고 통일된 색으로 청일색이 성립한다. 새 패는 패산에 있는 같은 숫자의 실물과 교환되며, 패산에 없을 때만 그 자리에서 만들어진다.\n\n다른 무늬의 수패를 한 장이라도 버리면 그 국의 진행은 실패한다. 진행도는 국이 바뀌면 처음부터 다시 센다.\n\n쿨다운 중이거나 이미 이 국에 발동했다면 진행을 세지 않는다 — 발동할 수 있는 국에만 퀘스트가 돈다.",
+    "(2국에 1회) 국이 시작된 뒤 만·통·삭 중 한 무늬와 자패만으로 12장을 버리면 발동할 수 있다. 발동하면 만·통·삭 중 한 색을 골라 손패의 수패를 전부 그 색으로 바꾼다.\n\n숫자는 유지되고 통일된 색으로 청일색이 성립한다. 새 패는 패산에 있는 같은 숫자의 실물과 교환되며, 패산에 없을 때만 그 자리에서 만들어진다.\n\n다른 무늬의 수패를 한 장이라도 버리면 그 국의 진행은 실패한다. 진행도는 국이 바뀌면 처음부터 다시 센다.\n\n쿨다운 중이거나 이미 이 국에 발동했다면 진행을 세지 않는다 — 발동할 수 있는 국에만 퀘스트가 돈다.\n\n리치 중에는 발동할 수 없다.\n\n⚠ **손패의 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 무늬가 바뀌면 성립하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -248,6 +260,8 @@ export const pickyEater: AugmentDef = defineAugment({
     ctx.holderTurnOptions((state) => {
       if (!questProgress(state, holder).ready) return [];
       if (state.augmentData[doneKey(state, holder)] === true) return [];
+      // 리치 중에는 버튼 자체가 뜨지 않는다 (validate와 같은 판정 — 위 주석 참고)
+      if (state.round.byPlayer[holder]?.riichi != null) return [];
       return NUMBER_SUITS.map((suit) => ({ type: ACTION, payload: { suit } }));
     });
   },

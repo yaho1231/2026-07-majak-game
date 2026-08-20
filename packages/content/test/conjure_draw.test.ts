@@ -45,11 +45,11 @@ function startFlow(state: GameState) {
 
 /** 소환 예약 키는 국 스코프다 (소비 전에 국이 끝나면 자동 만료) */
 const pendingFor = (st: GameState): string =>
-  `conjure_draw:pending:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0`;
+  `conjure_draw:pending:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0#round`;
 /** 국 스코프 사용 플래그 키 (roundKey 포함) */
 const usedKeyOf = (state: GameState): string => {
   const r = state.round;
-  return `conjure_draw:used:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0`;
+  return `conjure_draw:used:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0#round`;
 };
 
 describe("소환 (conjure_draw)", () => {

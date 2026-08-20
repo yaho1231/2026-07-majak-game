@@ -29,8 +29,9 @@ import type {
   GameState,
   PlayerId,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "time_stop";
 const ACTION = "time_stop_use";
@@ -42,10 +43,10 @@ const ACTION = "time_stop_use";
  * 재선언이 "already armed"로 막혔다(2026-07-29 감사).
  */
 const armedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:armed:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "armed", state, h);
 /** 이번 국에 이미 썼는가 — **국 스코프**라 국이 바뀌면 자동으로 다시 충전된다. */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 const seatOf = (state: GameState, h: PlayerId): number | undefined =>
   state.players.find((p) => p.id === h)?.seat;

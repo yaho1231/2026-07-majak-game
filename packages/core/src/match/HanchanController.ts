@@ -989,26 +989,59 @@ export class HanchanController {
   /**
    * 설정된 사전 지급 증강을 설치한다. 알 수 없는 id·중복은 조용히 건너뛴다.
    *
-   * 좌석을 하나씩 도는 순차 설치라, **아직 설치되지 않은 뒷자리의 preset**은 상태에
-   * 아직 없다. 지급형 증강(수상한 주사위)이 그 틈에 같은 id를 뽑아 주면 한 게임에
-   * 같은 증강을 두 사람이 들게 된다 — 정식 드래프트에서 막아 둔 것과 같은 구멍이다
-   * (2026-08-20 QA 시스템 횡단 §1). 남은 preset 전부를 예약분으로 넘겨 막는다.
+   * **두 패스로 나눈다** (2026-08-20 QA disrupt 확정 3).
+   *
+   * 예전에는 좌석·id 를 하나씩 `draftPick` → 즉시 `installAugment` 로 돌렸다. 그래서
+   * 어떤 증강이 설치되는 시점에 **같은 좌석의 뒤쪽 preset 이 아직 상태에 없었고**,
+   * 지급형 증강(수상한 주사위)의 후보 필터가 보는 `mine`(= `player.augments`)이 불완전했다.
+   * 결과: `p3:[cornucopia, stealth_riichi]` 같은 순서에서 스텔스 리치와 **상호 배제인**
+   * 증강이 그대로 지급됐다(120시드 중 17건 = 14.2%. 순서를 뒤집으면 0건 — 순서 의존이
+   * 원인이라는 증거). 중복 쪽은 `reservedAugmentIds` 로 닫혔지만, 예약 목록은 "그 id 자신"만
+   * 막을 뿐 "그 id 의 상대편"을 막지 못한다.
+   *
+   * 이제 ① 전 좌석·전 id 의 `draftPick` 을 먼저 제출해 `player.augments` 를 완성하고,
+   * ② 그 뒤에 `installAugment` 를 같은 순서로 돌린다. 그러면 지급형 증강이 보는
+   * `mine`·`heldByAnyone` 이 처음부터 완전해져 중복·상호 배제가 함께 닫힌다.
+   * (`reservedAugmentIds` 는 그대로 넘긴다 — 이제 항상 비지만, 이 경로 밖에서
+   *  `applyAugment` 를 쓰는 `grantAugment` 와 계약을 맞춰 둔다.)
+   *
+   * 같은 좌석의 preset **끼리** 상호 배제인 조합은 여기서 뒤엣것을 건너뛴다 — 그 조합은
+   * "손패 장수·화료형이 어긋나 그 국이 통째로 벽돌이 된다"는 이유로 드래프트가 막아 둔
+   * 것이라, 지급이라고 성립시켜 주면 안 된다. 서버 샌드박스 정제기가 conflicts 를 보지
+   * 않으므로(RoomManager) 최종 그물은 여기다.
    */
   private installPreset(game: StandardGame): void {
     const preset = this.config.presetAugments;
     if (preset === undefined) return;
-    const pending: string[] = [];
-    for (const [player, ids] of Object.entries(preset)) {
-      if (!this.agents.has(player as PlayerId)) continue;
-      pending.push(...ids);
-    }
-    for (const [player, ids] of Object.entries(preset)) {
-      if (!this.agents.has(player as PlayerId)) continue;
+
+    // ① 좌석별로 같은 좌석 안의 상호 배제를 걸러 낸 뒤 draftPick 만 먼저 제출한다.
+    const submitted: { player: PlayerId; def: AugmentDef }[] = [];
+    for (const [rawPlayer, ids] of Object.entries(preset)) {
+      const player = rawPlayer as PlayerId;
+      if (!this.agents.has(player)) continue;
+      const taken: string[] = [];
       for (const id of ids) {
-        const at = pending.indexOf(id);
-        if (at >= 0) pending.splice(at, 1);
-        this.applyAugment(game, player as PlayerId, id, pending);
+        const def = game.augments.get(id);
+        if (def === undefined) continue;
+        const clashes = taken.some(
+          (a) =>
+            (def.conflicts ?? []).includes(a) ||
+            (game.augments.get(a)?.conflicts ?? []).includes(def.id),
+        );
+        if (clashes) continue;
+        const res = game.engine.submit({ player, type: "draftPick", payload: { augmentId: id } });
+        if (!res.ok) continue;
+        taken.push(def.id);
+        submitted.push({ player, def });
       }
+    }
+
+    // ② 상태가 완성된 뒤에 설치한다.
+    for (const { player, def } of submitted) {
+      installAugment(game.engine, def, player, {
+        yaku: game.yaku,
+        catalog: game.augments,
+      });
     }
   }
 
@@ -1021,6 +1054,18 @@ export class HanchanController {
   ): string | null {
     const def = game.augments.get(augmentId);
     if (def === undefined) return `unknown augment: ${augmentId}`;
+    /*
+     * 같은 좌석이 이미 든 증강과 상호 배제면 지급을 거절한다 (2026-08-20 QA disrupt 확정 3).
+     * 드래프트(`DraftController.excludeFor`)가 막아 둔 조합이 지급 경로로 성립하면 그 국이
+     * 통째로 벽돌이 된다 — 관계는 대칭이므로 양방향을 본다.
+     */
+    const mine = game.engine.state.players.find((p) => p.id === player)?.augments ?? [];
+    const clash = mine.find(
+      (a) =>
+        (def.conflicts ?? []).includes(a) ||
+        (game.augments.get(a)?.conflicts ?? []).includes(def.id),
+    );
+    if (clash !== undefined) return `conflicts with held augment: ${clash}`;
     const res = game.engine.submit({
       player,
       type: "draftPick",

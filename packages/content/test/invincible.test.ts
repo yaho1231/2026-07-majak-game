@@ -56,7 +56,7 @@ describe("invincible (천하무적)", () => {
       ...base,
       augmentData: {
         ...base.augmentData,
-        [`invincible:active:${roundKey(base)}:p0`]: true,
+        [`invincible:active:${roundKey(base)}:p0#round`]: true,
       },
     };
     const game = createStandardGameFromState(state);
@@ -88,7 +88,7 @@ describe("invincible (천하무적)", () => {
     expect(r.ok).toBe(true);
 
     const st = game.engine.state;
-    expect(st.augmentData[`invincible:active:${roundKey(st)}:p0`]).toBe(true);
+    expect(st.augmentData[`invincible:active:${roundKey(st)}:p0#round`]).toBe(true);
     expect(st.augmentData["invincible:cd:p0"]).toBe(2);
 
     // 같은 국 재선언 거부
@@ -141,7 +141,7 @@ describe("invincible — 막은 버림은 후리텐도 만들지 않는다", () 
       },
       augmentData: {
         ...base.augmentData,
-        ...(active ? { [`invincible:active:${roundKey(base)}:p0`]: true } : {}),
+        ...(active ? { [`invincible:active:${roundKey(base)}:p0#round`]: true } : {}),
       },
     };
     const game = createStandardGameFromState(state);
@@ -211,7 +211,7 @@ describe("invincible — 창깡은 막지 않는다", () => {
         chankan: { player: "p0", tileId: 0, closedKan: false },
       },
       augmentData: active
-        ? { ...base.augmentData, [`invincible:active:${roundKey(base)}:p0`]: true }
+        ? { ...base.augmentData, [`invincible:active:${roundKey(base)}:p0#round`]: true }
         : base.augmentData,
     };
     const game = createStandardGameFromState(state);
@@ -236,7 +236,7 @@ describe("invincible — 창깡은 막지 않는다", () => {
       ...base,
       augmentData: {
         ...base.augmentData,
-        [`invincible:active:${roundKey(base)}:p0`]: true,
+        [`invincible:active:${roundKey(base)}:p0#round`]: true,
       },
     });
     installAugment(game.engine, invincible, "p0", { yaku: game.yaku });

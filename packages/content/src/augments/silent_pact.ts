@@ -31,15 +31,16 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "silent_pact";
 const ACTION = "silent_pon";
 
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 const wallLen = (state: GameState): number =>
   state.zones["wall"]?.tileIds.length ?? 0;

@@ -49,13 +49,14 @@ import type {
   ProposedEvent,
   TileDiscardedPayload,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { flagOf, roundViewKey } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "riichi_seal";
 
 /** 이번 국에 이 보유자가 봉인을 세웠는가 (국이 바뀌면 키가 달라져 자동 만료) */
 const sealKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:sealed:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "sealed", state, h);
 
 /** 이 플레이어가 지금 리치 중인가 */
 const inRiichi = (state: GameState, p: PlayerId): boolean =>

@@ -98,7 +98,7 @@ describe("open_riichi_reveal (오픈 리치)", () => {
     expect(st.players.find((p) => p.id === "p0")!.score).toBe(before - 1000);
     // 이번 국 선언 플래그
     expect(
-      st.augmentData[`open_riichi_reveal:declared:${roundKey(st)}:p0`],
+      st.augmentData[`open_riichi_reveal:declared:${roundKey(st)}:p0#round`],
     ).toBe(true);
     // 오름패(2s·5s·8s)가 view:*: 채널로 전원 공개된다
     const revealed = st.augmentData["view:*:open_riichi_reveal:p0#round"];
@@ -183,7 +183,7 @@ describe("open_riichi_reveal (오픈 리치)", () => {
       },
       augmentData: {
         ...s.augmentData,
-        [`open_riichi_reveal:declared:${rk}:p0`]: declared,
+        [`open_riichi_reveal:declared:${rk}:p0#round`]: declared,
       },
     };
     const game = createStandardGameFromState(s);

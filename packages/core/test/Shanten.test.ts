@@ -85,6 +85,46 @@ describe("shantenOf — 치또이·국사", () => {
   });
 });
 
+/*
+ * 우는 국사(open_kokushi) — 특수 퐁을 한 순간 `scoringOptionsOf`가 `kokushiOnly`와
+ * `kokushiMeldKinds`를 켠다(helpers.ts). 그 손은 국사로만 화료할 수 있는데,
+ * 예전 `shantenOf`는 두 옵션을 보지 않고 표준형 값을 그대로 답으로 썼다 —
+ * 국사 텐파이가 샹텐 6으로 읽혀 봇이 자기 역만 텐파이를 노텐으로 봤다
+ * (read.ts의 `if (shanten <= 0)`이 대기·리치·푸시 판단의 문지기다). 2026-08-20 QA 확정.
+ */
+describe("shantenOf — 우는 국사 (kokushiOnly · kokushiMeldKinds)", () => {
+  /** kokushi_pon 세 장 = 1m·7z(중)·9s 를 덮개로 잡은 손 */
+  const MELD = h("1m9s7z");
+  const opts = { kokushiOnly: true as const, kokushiMeldKinds: MELD };
+
+  it("남은 10종을 다 모은 손은 텐파이(0) — 표준형 값(6)이 답이 아니다", () => {
+    // 손 11장: 남은 10종 + 후로가 덮은 9s 한 장(쓸모없는 여분)
+    const hand = h("9m19p19s123456z");
+    expect(shantenOf(hand, 1, opts)).toBe(0);
+    expect(shantenOf(hand, 1)).toBe(6); // 대조: 옵션 없는 표준형
+  });
+
+  it("한 종류가 비면 1샹텐", () => {
+    expect(shantenOf(h("9m19p19s12345z5m"), 1, opts)).toBe(1);
+  });
+
+  it("남은 10종 + 그중 하나가 짝이면 화료형(-1)", () => {
+    expect(shantenOf(h("9m19p19s1234566z"), 1, opts)).toBe(-1);
+  });
+
+  it("후로가 없어도 kokushiOnly면 표준형·치또이 값을 쓰지 않는다", () => {
+    // 표준형으로는 화료 직전이지만, 국사 외길이면 국사 샹텐이 답이다
+    const hand = h("123m456m789m11p22s");
+    expect(shantenOf(hand, 0)).toBe(0); // 표준형: 텐파이
+    expect(shantenOf(hand, 0, { kokushiOnly: true })).toBeGreaterThan(5);
+  });
+
+  it("표준 손은 옵션이 없으면 예전 그대로다 (회귀 방지)", () => {
+    expect(shantenOf(h("19m19p19s1234567z"), 0)).toBe(0);
+    expect(shantenOf(h("123m456m789m123p1s"), 0)).toBe(0);
+  });
+});
+
 describe("ukeireOf — 받는 패의 실제 장수", () => {
   const all4 = (): number => 4;
 

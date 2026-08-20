@@ -50,15 +50,16 @@ import type {
   TileKind,
   YakuRegistry,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "danger_sense";
 const ACTION = "danger_sense_use";
 
 /** 이미 이 국에서 발동했는가 (국 단위 — roundKey 스코프, 매 국 초기화) */
 const usedKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "used", state, holder);
 
 /**
  * 이 상대가 **지금 후리텐 때문에 론이 막히는가**.

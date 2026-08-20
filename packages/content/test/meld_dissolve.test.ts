@@ -142,7 +142,7 @@ describe("파혼 (meld_dissolve)", () => {
   it("이미 소진되면 후보가 없다", () => {
     const base = scene();
     const r = base.round;
-    const usedKey = `meld_dissolve:used:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0`;
+    const usedKey = `meld_dissolve:used:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0#round`;
     const used: GameState = {
       ...base,
       augmentData: { ...base.augmentData, [usedKey]: true },

@@ -40,6 +40,7 @@ import type {
 import { cooldownReady, cooldownUse, roundViewKey, trackRoundSeq } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { handAlteredKey } from "./handAltered.js";
 
 const ID = "even_world";
 const ACTION = "even_world_flip";
@@ -113,6 +114,8 @@ function evenEvents(state: GameState, holder: PlayerId) {
   }
   return [
     tileKindChanged(changes),
+    // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+    augmentDataSet(handAlteredKey(state, holder), true),
     // 2국 쿨다운 시작 — 기준점을 찍고 잔량 표시도 그 자리에서 갱신한다
     ...cooldownUse(state, ID, holder, COOLDOWN_ROUNDS),
     // 짝수의 세계가 발동됐음을 전원에게 알린다 (구체적 결과는 손패로 드러난다)

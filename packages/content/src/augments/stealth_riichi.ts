@@ -39,8 +39,9 @@ import type {
   RuleRegistry,
   TileId,
 } from "@majak/core";
-import { flagOf, roundKey } from "../util.js";
+import { flagOf } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "stealth_riichi";
 const ACTION = "stealth_riichi";
@@ -52,7 +53,7 @@ const ACTION = "stealth_riichi";
  * (`stealthBreak.ts`). 남겨 두면 같은 국에 다시 건 **표준 리치**까지 은닉된다.
  */
 export const stealthActiveKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:active:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "active", state, holder);
 const activeKey = stealthActiveKey;
 
 /**

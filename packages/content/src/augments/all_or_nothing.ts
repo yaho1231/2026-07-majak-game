@@ -39,13 +39,13 @@ import type {
 import {
   counterOf,
   publishUsesLeft,
-  roundKey,
   roundViewKey,
   settleInterceptor,
   withAugPoint,
 } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "all_or_nothing";
 const ACTION = "all_in_riichi";
@@ -53,7 +53,7 @@ const ACTION = "all_in_riichi";
 const USES_PER_ROUND = 1;
 /** 이번 국에 이미 걸었는가 — **국 스코프** 카운터라 국이 바뀌면 다시 1회다 */
 const usesKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:uses:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "uses", state, h);
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(state, h)) < USES_PER_ROUND;
 /**
@@ -65,7 +65,7 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
  * 지금은 국 스코프 키 + 정산 인터셉터(정산 전 state)라 두 문제가 함께 사라진다.
  */
 const activeKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:active:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "active", state, h);
 
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;

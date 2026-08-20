@@ -44,9 +44,10 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "conjure_draw";
 const ACTION = "conjure_tsumo";
@@ -59,10 +60,10 @@ const ACTION = "conjure_tsumo";
  * 주는 이중 발동이 됐다(2026-07-29 감사). 국 스코프로 두면 저절로 만료된다.
  */
 const pendingKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:pending:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "pending", state, h);
 /** 국당 1회 소진 플래그 (roundKey 스코프 — 매 국 초기화) */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 /** augmentData에 저장된 대기 목표 kind를 읽는다 (없거나 비었으면 null) */
 function pendingKind(state: GameState, h: PlayerId): TileKind | null {

@@ -4,7 +4,7 @@
  * 국에는 아무 영향이 없다.
  *
  * 구현 메모:
- * - 지정은 augmentData "parasite:target:{holder}:{roundKey}"에 대상만 저장하고
+ * - 지정은 augmentData "parasite:target:{holder}:{roundKey}#round"에 대상만 저장하고
  *   roundViewKey("*", ...)로 전원에게 공개한다. 둘 다 국 단위로 만료되므로
  *   대상 키의 존재 자체가 "이번 국에 이미 썼다" 플래그다 (별도 used 키 불필요).
  * - 예전에는 게임당 1회 지정 후 숙주가 화료·방총할 때마다 대상이 다음 자리로
@@ -29,18 +29,20 @@ import type {
   RoundSettledPayload,
 } from "@majak/core";
 import {
-  roundKey,
   roundViewKey,
   settleInterceptor,
   stringOf,
   withAugPoint,
 } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 import { plan } from "./botPlan.js";
 import { threatWeightOf } from "./botHelpers.js";
 
 /** 이번 국의 기생 대상 키 (국이 바뀌면 만료되어 다시 지정할 수 있다) */
 const targetKey = (holder: PlayerId, state: GameState): string =>
-  `parasite:target:${holder}:${roundKey(state)}`;
+  // 좌석을 이름 쪽에 둔다 — 기존 키 모양(`parasite:target:{holder}:{roundKey}`)을 그대로
+  // 유지하면서 국 경계 정리 표식만 얹는다.
+  roundScopedKey("parasite", `target:${holder}`, state);
 /** 전원 공개 뷰 키 (이번 국의 숙주 표시용 — 국 경계에서 엔진이 지운다) */
 const targetViewKey = (holder: PlayerId): string =>
   roundViewKey("*", `parasite:${holder}`);

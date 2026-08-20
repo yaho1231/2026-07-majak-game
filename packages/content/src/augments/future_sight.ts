@@ -66,12 +66,13 @@ import {
   counterOf,
   flagOf,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
   statePrng,
 } from "../util.js";
 import { plan } from "./botPlan.js";
 import { handKindsOf, usefulIn } from "./botHelpers.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredMark } from "./handAltered.js";
 
 const ID = "future_sight";
 const ACTION = "future_exchange";
@@ -87,7 +88,7 @@ const COOLDOWN_TURNS = 3;
 
 /** 이번 국의 스택 카운터 키 — roundKey가 들어가 국이 바뀌면 자동 리셋 */
 const stacksKey = (state: GameState, player: PlayerId): string =>
-  `${ID}:stacks:${roundKey(state)}:${player}`;
+  roundScopedKey(ID, "stacks", state, player);
 /**
  * 이번 국에서 **내가 버린 횟수** = 내 순 번호 (국 스코프).
  *
@@ -98,13 +99,13 @@ const stacksKey = (state: GameState, player: PlayerId): string =>
  * 그래서 보유자의 실제 버림(TILE_DISCARDED)만 직접 센다.
  */
 const turnsKey = (state: GameState, player: PlayerId): string =>
-  `${ID}:turns:${roundKey(state)}:${player}`;
+  roundScopedKey(ID, "turns", state, player);
 /** 마지막으로 교환한 순 번호 (쿨다운 기준점) */
 const lastUsedKey = (state: GameState, player: PlayerId): string =>
-  `${ID}:last:${roundKey(state)}:${player}`;
+  roundScopedKey(ID, "last", state, player);
 /** 무장 플래그 키 (국 단위 — 국이 바뀌면 자동 소멸) */
 const armedKey = (state: GameState, player: PlayerId): string =>
-  `${ID}:armed:${roundKey(state)}:${player}`;
+  roundScopedKey(ID, "armed", state, player);
 /** 쌓인 스택 — 전원 공개(이름표 pill이 "+N판"으로 띄운다). 국이 바뀌면 사라진다 */
 const stacksViewKey = (player: PlayerId): string =>
   roundViewKey("*", `${ID}:${player}`);
@@ -146,6 +147,19 @@ function commonReject(state: GameState, player: PlayerId): string | null {
   if (state.round.byPlayer[player]?.riichi != null) {
     return "riichi: cannot see the future";
   }
+  /*
+   * 후로한 순에는 쓸 수 없다 — 그 순은 **쯔모를 포기한 순**이다 (2026-08-20 QA hand 확정 2).
+   *
+   * 펑·치 직후에도 `turn.act` 이고 순서도 내 것이라 위 조건만으로는 통과했다. 그런데
+   * 교환은 3장을 넣고 3장을 빼면서 **마지막에 들어온 패를 새 쯔모패로 세운다** —
+   * 울고 나서 같은 순에 쯔모 화료 창이 열렸다(표준 마작에 없는 화료). 게다가 정상 순의
+   * 발동은 패산을 2장(쯔모 1 + 교환 1) 태우는데 후로 직후 발동은 1장만 태워, 울기가
+   * 자기 쯔모를 포기하는 대가라는 전제까지 환급됐다.
+   *
+   * 형제 카드들(`pond_snatch`·`take_back`·`silent_swap`)이 전부 같은 한 줄로 막고,
+   * `full_hand_swap` 은 같은 사고를 겪고 명시적으로 막았다(docs/25 #1).
+   */
+  if (state.round.lastDrawnTile == null) return "no drawn tile";
   if ((state.zones[WALL]?.tileIds.length ?? 0) < 3) {
     return "not enough wall tiles";
   }
@@ -327,6 +341,8 @@ export const futureSight: AugmentDef = defineAugment({
           round: { ...replaceDrawnTile(state.round, newDrawn), byPlayer },
           augmentData: {
             ...state.augmentData,
+            // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+            ...handAlteredMark(state, p.player),
             [sKey]: stacks,
             // 지금 이 순을 쿨다운 기준점으로 — 내 순이 3번 지나야 다시 열린다
             // (같은 순의 재발동은 순 번호가 그대로라 여기서 함께 막힌다)

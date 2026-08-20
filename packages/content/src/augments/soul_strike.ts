@@ -78,11 +78,11 @@ import {
   cooldownUse,
   counterOf,
   flagOf,
-  roundKey,
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "soul_strike";
 const ACTION = "soul_strike";
@@ -102,13 +102,13 @@ const RIICHI_HAN_BONUS = 1;
 
 /** 폭주가 켜져 있는가 (이번 국) */
 const activeKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:active:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "active", state, h);
 /** 남은 연속 쯔모 횟수 (이번 국) */
 const leftKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:left:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "left", state, h);
 /** 이번 국에 영혼의 일격으로 리치를 걸었는가 (판수 보너스 조건) */
 const declaredKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:declared:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "declared", state, h);
 
 const isActive = (state: GameState, h: PlayerId): boolean =>
   flagOf(state, activeKey(state, h));

@@ -34,8 +34,9 @@ import type {
   TileId,
 } from "@majak/core";
 import type { VisibilityRule } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey, viewKey, widenPeek } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey, viewKey, widenPeek } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "ura_peek";
 const ACTION = "ura_peek_reveal";
@@ -44,10 +45,10 @@ const EVENT = "UraPeeked";
 const EVENT_SWAP = "UraSwapped";
 const uraViewKey = (h: PlayerId): string => roundViewKey(h, "ura");
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 /** 국당 1회 바꿔치기 플래그 */
 const swappedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:swapped:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "swapped", state, h);
 
 interface UraPeekedPayload {
   holder: PlayerId;

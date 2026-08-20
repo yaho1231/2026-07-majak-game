@@ -32,6 +32,7 @@ import type {
 import { roundKey, stringOf, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 import { threatWeightOf } from "./botHelpers.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "rank_gate";
 const ACTION = "rank_gate_mark";
@@ -40,7 +41,7 @@ const MIN_HAN = 5;
 
 /** 이번 국의 지목 대상 — roundKey가 섞여 국이 바뀌면 자동 만료 */
 const markKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:mark:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "mark", state, h);
 /** 전원 공개 채널 (지목 관계 연출용) */
 const publicKey = (h: PlayerId): string => viewKey("*", `${ID}:${h}`);
 

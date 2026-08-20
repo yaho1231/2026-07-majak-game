@@ -48,7 +48,6 @@ import {
   counterOf,
   publishUsesLeft,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
   stringOf,
 } from "../util.js";
@@ -57,6 +56,7 @@ import {
   ensureStealthBreakReducer,
   riichiBlocksSwap,
 } from "./stealthBreak.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "hand_swap3";
 /** 대상 지정 액션 (손패는 움직이지 않는다) */
@@ -76,20 +76,20 @@ const HAND_SWAP3_SWAPPED = "HandSwap3Swapped";
 const usedKey = (holder: PlayerId): string => `${ID}:used:${holder}`;
 /** 이번 국에 지정해 둔 상대 (국 단위 — 국이 바뀌면 키가 달라져 자동 소멸) */
 const targetKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:target:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "target", state, holder);
 /** 이번 국에 남은 교환 횟수 (지정 1회당 1) */
 const leftKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:left:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "left", state, holder);
 /** 고르기까지 끝낸 '넘길 내 3장' (아직 손패는 그대로) */
 const giveKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:give:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "give", state, holder);
 /**
  * 이번 국에 교환을 **완료**했는가 (55차 사용자 피드백: "발동한 국에는 재사용 불가").
  * 교환이 끝나는 순간(swap3_take 리듀서)에 세우고, 그 국에는 새 지정을 막는다.
  * 국 단위 키라 다음 국이 되면 자동 만료된다 — 게임당 2회 한도와는 별개의 제한이다.
  */
 const doneKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:done:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "done", state, holder);
 /** 보유자 전용 '실제 패' 공개 키 (revealTiles:* 채널 → 진짜 패 메타데이터 노출) */
 const revealKey = (holder: PlayerId, target: PlayerId): string =>
   roundViewKey(holder, `revealTiles:${target}`);

@@ -156,7 +156,7 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
   // 안개 플래그는 **국 스코프**다 (2026-08-15: 게임 1회 → 동풍전 1·반장전 2회로 바뀌며
   // 수명이 국으로 내려왔다). 키를 손으로 적지 않고 상태에서 뽑는다.
   const fogKeyOf = (game: Game): string =>
-    `hidden_river:fog:${roundKey(game.engine.state)}:p0`;
+    `hidden_river:fog:${roundKey(game.engine.state)}:p0#round`;
 
   function setup(): Game {
     const state = withAugment(
@@ -270,7 +270,7 @@ describe("hidden_river — 안개는 선언해야 낀다 (액티브)", () => {
 
 describe("hand_swap3 — 발동한 국에는 재사용 불가", () => {
   const doneKeyOf = (s: GameState): string =>
-    `hand_swap3:done:${roundKey(s)}:p0`;
+    `hand_swap3:done:${roundKey(s)}:p0#round`;
 
   function setup(): Game {
     const state = withAugment(
@@ -379,7 +379,7 @@ describe("hand_swap3 — 발동한 국에는 재사용 불가", () => {
 
 describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
   const armedKeyOf = (s: GameState): string =>
-    `future_sight:armed:${roundKey(s)}:p0`;
+    `future_sight:armed:${roundKey(s)}:p0#round`;
   const GOT_KEY = roundViewKey("*", "future_sight:got:p0");
   const REVEAL_KEY = roundViewKey("*", "revealTiles:future");
 
@@ -513,8 +513,8 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
     ).toBe(true);
     // 버림으로 내 순이 하나 넘어갔다 (쿨다운의 기준이 되는 카운터)
     const rk = roundKey(game.engine.state);
-    expect(game.engine.state.augmentData[`future_sight:turns:${rk}:p0`]).toBe(1);
-    expect(game.engine.state.augmentData[`future_sight:last:${rk}:p0`]).toBe(0);
+    expect(game.engine.state.augmentData[`future_sight:turns:${rk}:p0#round`]).toBe(1);
+    expect(game.engine.state.augmentData[`future_sight:last:${rk}:p0#round`]).toBe(0);
     // 아직 한 순밖에 안 지났으니 다시 열리지 않는다 (3순에 1회)
     expect(
       game.engine.submit({ player: "p0", type: "future_arm", payload: {} }).ok,
@@ -546,7 +546,7 @@ describe("future_sight — 액티브 버튼을 눌러야 발동한다", () => {
 
 describe("jackpot — 룰렛에 0.5배가 추가됐다", () => {
   const multKeyOf = (s: GameState): string =>
-    `jackpot:mult:${roundKey(s)}:p0`;
+    `jackpot:mult:${roundKey(s)}:p0#round`;
 
   function setup(seed?: number): Game {
     const base = craft({

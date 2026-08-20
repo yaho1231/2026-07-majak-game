@@ -1,5 +1,5 @@
 /**
- * 바닥의 족보 (bottom_yaku) — 화료 순간 자기 버림 zone을 읽어 판을 얹는 거울상 역.
+ * 바닥의 족보 (bottom_yaku) — 화료 순간 자기 **버림 이력**을 읽어 판을 얹는 거울상 역.
  * 여기서는 evaluateWin이 실제로 (a) 한 무늬 1~9 완주 → +2판(역류 통관),
  * (b) 같은 패 3장 → +1판(미련 없음), (c) 둘 겹침 → +3판을 합산하고,
  * (d) 비보유자·빈 바닥에는 아무것도 얹지 않는지 확인한다.
@@ -12,6 +12,9 @@ import {
   discardsZone,
   evaluateWin,
   installAugment,
+  kindKey,
+  kindOf,
+  meldsZone,
 } from "@majak/core";
 import type { GameState, PlayerId, TileId, WinEvaluation } from "@majak/core";
 import { craft } from "./helpers.js";
@@ -88,5 +91,71 @@ describe("바닥의 족보 (bottom_yaku)", () => {
     const ev = evalP0Ron(setup(craftRon("123456789m111z"), "p1"));
     expect(hanOf(ev, FLOW)).toBeUndefined();
     expect(hanOf(ev, LETGO)).toBeUndefined();
+  });
+
+  /*
+   * 회귀 (2026-08-20 QA 확정): 남이 울어 간 버림패는 **바닥 zone에서 사라진다**
+   * (flowEvents가 버린 사람의 discards zone에서 빼서 운 사람의 melds로 옮긴다).
+   * zone을 보던 예전 구현은 그 순간 조건이 깨져 "5만을 퐁당했다"는 이유로 역이
+   * 통째로 사라졌다. 판정 근거는 append-only인 `discardedKinds`(후리텐 이력)여야 한다.
+   */
+  /** 코어가 퐁 성립 때 하는 이동 그대로: victim의 바닥 → caller의 후로 zone */
+  function callAway(
+    state: GameState,
+    victim: PlayerId,
+    caller: PlayerId,
+    kindStr: string,
+  ): GameState {
+    const dz = discardsZone(victim);
+    const ids = state.zones[dz]?.tileIds ?? [];
+    const target = ids.find((id) => kindKey(kindOf(state, id)) === kindStr);
+    if (target === undefined) throw new Error(`바닥에 ${kindStr}가 없다`);
+    const mz = meldsZone(caller);
+    return {
+      ...state,
+      zones: {
+        ...state.zones,
+        [dz]: {
+          ...state.zones[dz]!,
+          tileIds: ids.filter((id) => id !== target),
+        },
+        [mz]: {
+          ...state.zones[mz]!,
+          tileIds: [...(state.zones[mz]?.tileIds ?? []), target],
+        },
+      },
+    };
+  }
+
+  it("(e1) 완주한 한 장을 남이 울어 가도 역류 통관은 살아 있다", () => {
+    const state = callAway(craftRon("123456789m"), "p0", "p1", "man5");
+    // 바닥 zone에서는 5만이 빠졌지만 버림 이력은 9장 그대로다
+    expect(state.zones[discardsZone("p0")]?.tileIds).toHaveLength(8);
+    expect(state.round.byPlayer["p0"]?.discardedKinds).toHaveLength(9);
+    const ev = evalP0Ron(setup(state));
+    expect(ev?.ok).toBe(true);
+    expect(hanOf(ev, FLOW)).toBe(2);
+  });
+
+  it("(e2) 3장 버린 것 중 하나를 울려 가도 미련 없음은 살아 있다", () => {
+    const state = callAway(craftRon("111z"), "p0", "p1", "wind1");
+    expect(state.zones[discardsZone("p0")]?.tileIds).toHaveLength(2);
+    const ev = evalP0Ron(setup(state));
+    expect(ev?.ok).toBe(true);
+    expect(hanOf(ev, LETGO)).toBe(1);
+  });
+
+  it("(e3) 둘 다 울려 가도 합 3판이 그대로 남는다", () => {
+    let state = callAway(craftRon("123456789m111z"), "p0", "p1", "man5");
+    state = callAway(state, "p0", "p2", "wind1");
+    const ev = evalP0Ron(setup(state));
+    expect(hanOf(ev, FLOW)).toBe(2);
+    expect(hanOf(ev, LETGO)).toBe(1);
+  });
+
+  it("(e4) 애초에 버리지 않은 패는 여전히 세지 않는다 (이력에도 없다)", () => {
+    // 1~8만만 버렸다 — 9만이 없으니 완주가 아니다
+    const ev = evalP0Ron(setup(craftRon("12345678m")));
+    expect(hanOf(ev, FLOW)).toBeUndefined();
   });
 });

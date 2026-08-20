@@ -47,12 +47,13 @@ import {
   matchUses,
   publishUsesLeft,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
   statePrng,
 } from "../util.js";
 import { handIsPoor, handKindsOf } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredMark } from "./handAltered.js";
 
 const ID = "genesis";
 const ACTION = "genesis_flip";
@@ -82,7 +83,7 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
  * 국당 1회로 묶어 연타를 막는다.
  */
 const flippedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:flipped:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "flipped", state, h);
 
 /** 자기 턴(turn.act)이고 리치 중이 아니면 발동 가능 */
 function canFlip(state: GameState, holder: PlayerId): boolean {
@@ -240,6 +241,8 @@ export const genesis: AugmentDef = defineAugment({
           zones,
           tiles,
           prngState: p.prngState,
+          // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+          augmentData: { ...state.augmentData, ...handAlteredMark(state, p.holder) },
           ...(remap === undefined
             ? {}
             : { round: replaceDrawnTile(state.round, remap.wallId) }),

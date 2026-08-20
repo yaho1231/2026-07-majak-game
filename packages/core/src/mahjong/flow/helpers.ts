@@ -7,6 +7,7 @@
 import { DEAD_WALL, discardsZone, handZone } from "../../engine/zones/Zone.js";
 import { DISARMED_SOURCES_KEY } from "../../engine/GameEngine.js";
 import type { PlayerId } from "../../engine/zones/Zone.js";
+import { ROUND_SCOPED_MARK } from "../../engine/state/GameState.js";
 import type { GameState, PlayerState } from "../../engine/state/GameState.js";
 import type { RuleRegistry } from "../../engine/rules/RuleRegistry.js";
 import { kindKey } from "../tiles/Tile.js";
@@ -21,6 +22,46 @@ import type { MeldInfo, WinContext } from "../scoring/WinContext.js";
 
 /** 시스템 액션 전용 플레이어 id. 서버는 소켓에서 이 id를 절대 받지 않는다 */
 export const SYSTEM_PLAYER: PlayerId = "__system";
+
+/**
+ * **"이번 국에 증강이 이 사람의 손패를 고쳤다"** 표식의 키 접두 (국 스코프).
+ *
+ * 천화(天和)·지화(地和)는 *"배패가 첫 쯔모 시점에 이미 완성돼 있었다"* 는 **사실**에
+ * 붙는 역만이다. 손패를 갈아 끼우는 액티브 증강이 첫 순에 손을 **고쳐서** 완성시킨
+ * 손은 배패가 아니므로 이 역이 붙으면 안 된다 — 오야 역만 48,000점이 거짓 근거로
+ * 지급된다(2026-08-20 QA hand 확정 4, `dead_wall_master` 로 실증).
+ *
+ * 왜 `firstTurn` 을 내리지 않는가: 그 플래그는 구종구패·사풍연타·더블리치가 함께
+ * 읽는다. 증강이 손을 고쳤다고 그 판정들까지 무너뜨릴 이유가 없어서, 천화·지화만
+ * 보는 **별도 표식**을 쓴다.
+ *
+ * 키 규약(증강 쪽 `roundScopedKey(HAND_ALTERED_AUGMENT_ID, HAND_ALTERED_NAME, state, holder)`
+ * 와 같은 모양이다):
+ *
+ * ```
+ * handAltered:byAugment:<장-국-본장>:<playerId>#round   →  true
+ * ```
+ *
+ * `#round`(`ROUND_SCOPED_MARK`) 표식 덕에 국 경계에서 엔진이 알아서 지운다.
+ * 접두만 맞추면 되므로 core ↔ content 사이에 값을 주고받을 배관이 필요 없다.
+ */
+export const HAND_ALTERED_AUGMENT_ID = "handAltered";
+export const HAND_ALTERED_NAME = "byAugment";
+
+/**
+ * 이번 국에 증강이 이 사람의 손패를 고쳤는가 (천화·지화 게이트 전용).
+ *
+ * 키에 박힌 `장-국-본장`까지 맞춰 본다 — `#round` 표식이 국 경계에서 지워지는 것이
+ * 정상 경로지만, 정리와 국 전환이 완전히 같은 순간이 아닌 경로(재구성·리플레이·
+ * 본장 재배패)에서 **지난 국의 표식을 이번 국 것으로 오독하지 않게** 한다.
+ */
+export function handAlteredByAugment(state: GameState, player: PlayerId): boolean {
+  const r = state.round;
+  const key =
+    `${HAND_ALTERED_AUGMENT_ID}:${HAND_ALTERED_NAME}:` +
+    `${r.prevalentWind}-${r.roundNumber}-${r.honba}:${player}${ROUND_SCOPED_MARK}`;
+  return state.augmentData[key] === true;
+}
 
 export function playerOf(state: GameState, id: PlayerId): PlayerState {
   const p = state.players.find((x) => x.id === id);
@@ -761,16 +802,20 @@ export function buildWinContext(
         state.round.chankan !== null &&
         state.round.chankan.tileId === winningTileId,
       // 천화: 친의 첫 쯔모 화료 / 지화: 자의 첫 쯔모 화료 (첫 바퀴·무후로)
+      // ⚠ 증강이 이 국에 손패를 고쳤으면 그 손은 **배패가 아니다** → 둘 다 붙지 않는다
+      //   (HAND_ALTERED_AUGMENT_ID 주석 참고).
       tenhou:
         winType === "tsumo" &&
         state.round.firstTurn &&
         !state.round.goAroundBroken &&
+        !handAlteredByAugment(state, winner) &&
         (rs?.discardedKinds.length ?? 0) === 0 &&
         playerOf(state, winner).seat === state.round.dealerSeat,
       chihou:
         winType === "tsumo" &&
         state.round.firstTurn &&
         !state.round.goAroundBroken &&
+        !handAlteredByAugment(state, winner) &&
         (rs?.discardedKinds.length ?? 0) === 0 &&
         playerOf(state, winner).seat !== state.round.dealerSeat,
     },

@@ -25,18 +25,18 @@ import type {
   SettleStage,
 } from "@majak/core";
 import {
-  roundKey,
   roundViewKey,
   settleInterceptor,
   stringOf,
   withAugNoteFor,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "scapegoat";
 const ACTION = "scapegoat_mark";
 const targetKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:target:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "target", state, h);
 
 const markAction: ActionDef<{ target: PlayerId }> = {
   type: ACTION,

@@ -20,7 +20,7 @@ const RIICHI = { double: false, ippatsu: false, discardIndex: 0 };
 const ALL_IN = 12000;
 
 const activeKeyOf = (s: GameState, h: PlayerId): string =>
-  `all_or_nothing:active:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:${h}`;
+  `all_or_nothing:active:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:${h}#round`;
 
 /** 판돈이 걸린 상태. riichi=true면 그 리치가 아직 살아 있다. */
 function scene(riichi: boolean): GameState {

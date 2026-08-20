@@ -76,8 +76,9 @@ import type {
   TileDrawnPayload,
   TileId,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "giant_god";
 const ACTION = "giant_god";
@@ -90,7 +91,7 @@ const EVENT = "GiantGodAwakened";
  * 쯔모를 강탈한다 — 소환(conjure_draw)이 같은 이유로 국 스코프를 쓴다.
  */
 const tsumoKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:tsumo:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "tsumo", state, h);
 
 /**
  * **국당 1회** 소진 플래그 — 국 스코프(매 국 자동 초기화).
@@ -98,7 +99,7 @@ const tsumoKey = (state: GameState, h: PlayerId): string =>
  * 소환(conjure_draw)의 `used:` 키와 같은 규약이다.
  */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 /** 국사무쌍 13종 (1·9 수패 + 동남서북 + 백발중) */
 const KOKUSHI_KINDS = [

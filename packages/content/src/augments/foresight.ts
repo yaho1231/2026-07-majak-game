@@ -55,6 +55,7 @@ import type {
 } from "@majak/core";
 import { addWinHanBonus, cooldownTurnsViewKey, flagOf, roundKey, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "foresight";
 const REVEAL = "foresight_reveal";
@@ -69,10 +70,10 @@ const WIN_BONUS_HAN = 2; // 구 +4500점 → 3판 → 2판 (2026-07-26 판수 �
 
 /** 이번 국에 발동했는가 (점수 보너스 게이팅, roundKey 스코프) */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 /** 마지막 발동 순(turnCount) — 쿨다운 기준 (roundKey 스코프) */
 const lastTurnKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:turn:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "turn", state, h);
 /**
  * 이번 국에 재배열을 이미 썼는가 (roundKey 스코프).
  *
@@ -81,10 +82,10 @@ const lastTurnKey = (state: GameState, h: PlayerId): string =>
  * 이제 두 번째 발동부터는 "보기"만 되고 드래그 확정은 열리지 않는다.
  */
 const orderUsedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:ordered:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "ordered", state, h);
 /** '이번 턴에 공개했고 아직 재배열 안 함' 마커 = 공개 시점의 turnCount (roundKey 스코프) */
 const revealTurnKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:reveal:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "reveal", state, h);
 /** 공개된 앞 4장 kind를 담는 보유자 전용 채널 */
 const peekViewKey = (h: PlayerId): string => roundViewKey(h, "foresight_peek");
 

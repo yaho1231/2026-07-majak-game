@@ -116,7 +116,7 @@ describe("riichi_seal (리치 봉인)", () => {
     flow.submit("p0", riichi!);
 
     const st = game.engine.state;
-    expect(st.augmentData["riichi_seal:sealed:1-1-0:p0"]).toBe(true);
+    expect(st.augmentData["riichi_seal:sealed:1-1-0:p0#round"]).toBe(true);
     // 보유자 본인은 잠기지 않는다 / 나머지 셋은 잠긴다
     expect(
       game.engine.rules.resolve<boolean>("riichi.blocked", { playerId: "p0", state: st }),
@@ -156,7 +156,7 @@ describe("riichi_seal (리치 봉인)", () => {
     // 봉인은 **보유자가 리치를 지고 있는 동안**만 유효하므로(60차) p0도 리치 상태여야 한다.
     const sealed: GameState = {
       ...base,
-      augmentData: { ...base.augmentData, "riichi_seal:sealed:1-1-0:p0": true },
+      augmentData: { ...base.augmentData, "riichi_seal:sealed:1-1-0:p0#round": true },
       round: {
         ...base.round,
         byPlayer: {
@@ -196,7 +196,7 @@ describe("riichi_seal (리치 봉인)", () => {
     const status = flow.begin();
     flow.submit("p0", optionsFor(status, "p0").find((o) => o.type === "riichi")!);
 
-    expect(game.engine.state.augmentData["riichi_seal:sealed:1-1-0:p0"]).toBeUndefined();
+    expect(game.engine.state.augmentData["riichi_seal:sealed:1-1-0:p0#round"]).toBeUndefined();
     expect(
       game.engine.rules.resolve<boolean>("riichi.blocked", {
         playerId: "p2",
@@ -374,7 +374,7 @@ describe("haitei_lord (해저의 지배자)", () => {
     expect(win).toBeDefined();
 
     const st = game.engine.state;
-    expect(st.augmentData["haitei_lord:fired:1-1-0:p0"]).toBe(true);
+    expect(st.augmentData["haitei_lord:fired:1-1-0:p0#round"]).toBe(true);
     // 패산은 비었고, 쯔모패는 손패에 있다
     expect(st.zones[WALL]?.tileIds).toHaveLength(0);
     const drawn = st.round.lastDrawnTile as TileId;
@@ -414,7 +414,7 @@ describe("haitei_lord (해저의 지배자)", () => {
     const status = flow.begin();
     expect(optionsFor(status, "p0").some((o) => o.type === "win")).toBe(false);
     expect(
-      game.engine.state.augmentData["haitei_lord:fired:1-1-0:p0"],
+      game.engine.state.augmentData["haitei_lord:fired:1-1-0:p0#round"],
     ).toBeUndefined();
   });
 

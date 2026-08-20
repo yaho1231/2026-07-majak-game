@@ -107,7 +107,7 @@ describe("천리안 (tenpai_scan)", () => {
       k.startsWith("tenpai_scan:uses:"),
     );
     expect(usesKeys).toHaveLength(1);
-    expect(usesKeys[0]!.endsWith(":p0")).toBe(true);
+    expect(usesKeys[0]!.endsWith(":p0#round")).toBe(true);
     expect(game.engine.state.augmentData[usesKeys[0]!]).toBe(1);
 
     // 사용 후의 state를 새 게임에 재설치 → p0 턴이어도 스캔 후보가 뜨지 않는다

@@ -45,6 +45,11 @@ import {
 
 const ID = "sign_flip";
 
+/** 이미 이 증강이 서명한 발행인가 — 자기 보정(`sign_flip`)과 뒤집은 발행(`X+sign_flip`) 둘 다. */
+function isOwnReason(reason: string | undefined): boolean {
+  return reason === ID || (reason !== undefined && reason.endsWith(`+${ID}`));
+}
+
 export const signFlip: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
@@ -77,9 +82,19 @@ export const signFlip: AugmentDef = defineAugment({
     // (내가 스스로 낸 보정은 제외 — 뒤집으면 위 공탁 보정이 도로 사라진다.)
     ctx.interceptor(SCORE_CHANGED, (event, ic) => {
       const p = event.payload as ScoreChangedPayload;
-      if (p.player !== holder || p.reason === ID) return event;
+      if (p.player !== holder || isOwnReason(p.reason)) return event;
       if (!armedNow(ic.state, ID, holder)) return event;
-      return { type: event.type, payload: { ...p, delta: -p.delta } };
+      // 뒤집은 발행에는 **반드시 서명한다**. reason을 그대로 두면 원장이
+      // "카르마가 피해자에게 +4,000을 줬다"고 거짓말을 한다(QA verify-score 확정 3).
+      // 원인을 지우지 않고 뒤에 붙여 "karma+sign_flip"으로 남긴다.
+      return {
+        type: event.type,
+        payload: {
+          ...p,
+          delta: -p.delta,
+          reason: p.reason === undefined ? ID : `${p.reason}+${ID}`,
+        },
+      };
     });
 
     // 정산 단계: SignFlip — 돈이 움직이는 모든 단계 뒤, 방어 앞.

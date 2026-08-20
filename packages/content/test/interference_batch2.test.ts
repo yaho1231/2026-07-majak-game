@@ -66,7 +66,7 @@ describe("핏빛 계약 — 공탁은 배수 대상이 아니다 (docs/25 방해
       ),
       augmentData: {
         ...base.augmentData,
-        [`blood_contract:yaku:${roundKey(base)}:p0`]: "tanyao",
+        [`blood_contract:yaku:${roundKey(base)}:p0#round`]: "tanyao",
       },
     };
     const game = createStandardGameFromState(state, undefined, [bloodContract]);

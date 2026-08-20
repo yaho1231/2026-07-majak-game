@@ -22,8 +22,9 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { cooldownViewKey, flagOf, roundKey, roundViewKey } from "../util.js";
+import { cooldownViewKey, flagOf, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "invincible";
 const ACTION = "invincible_guard";
@@ -32,7 +33,7 @@ const COOLDOWN_ROUNDS = 2;
 
 /** 이번 국에 무적을 켰는가 (roundKey 스코프 — 국이 바뀌면 자동 만료) */
 const activeKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:active:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "active", state, h);
 /** 남은 쿨다운(국 수). 0/미설정이면 사용 가능 */
 const cooldownKey = (h: PlayerId): string => `${ID}:cd:${h}`;
 /**

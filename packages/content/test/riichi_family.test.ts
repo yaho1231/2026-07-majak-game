@@ -304,7 +304,7 @@ describe("free_riichi_discard (자유 선언)", () => {
     expect(r.ok).toBe(true);
 
     const st = game.engine.state;
-    const snap = st.augmentData[`free_riichi_discard:snap:${roundKey(st)}:p0`];
+    const snap = st.augmentData[`free_riichi_discard:snap:${roundKey(st)}:p0#round`];
     expect(Array.isArray(snap)).toBe(true);
     expect(snap as TileId[]).toHaveLength(13);
     // 스냅샷은 리치 버림 직후의 실제 손패와 일치한다
@@ -333,7 +333,7 @@ describe("free_riichi_discard (자유 선언)", () => {
     s = withAugments(s, "p0", ["free_riichi_discard"]);
     s = withRiichi(s, "p0");
     const snapIds = [...(s.zones[handZone("p1")]?.tileIds ?? [])];
-    s = { ...s, augmentData: { [`free_riichi_discard:snap:${roundKey(s)}:p0`]: snapIds } };
+    s = { ...s, augmentData: { [`free_riichi_discard:snap:${roundKey(s)}:p0#round`]: snapIds } };
     const game = createStandardGameFromState(s);
     installAugment(game.engine, freeRiichiDiscard, "p0", { yaku: game.yaku });
 
@@ -403,7 +403,7 @@ describe("peek_riichi_waits (선언 간파)", () => {
       "sou5",
       "sou8",
     ]);
-    expect(st.augmentData[`peek_riichi_waits:used:${roundKey(st)}:p0`]).toBe(true);
+    expect(st.augmentData[`peek_riichi_waits:used:${roundKey(st)}:p0#round`]).toBe(true);
 
     // 턴은 이어지고 (같은 turn.act), 그 국엔 더 이상 간파할 수 없다 (국당 1회)
     expect(st.round.phase).toBe("turn.act");

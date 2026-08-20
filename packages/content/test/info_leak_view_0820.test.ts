@@ -248,7 +248,7 @@ describe("안개 덮인 바닥 — 안개를 건 사람은 네 바닥을 그대�
     for (const h of holders) s = give(s, h, "hidden_river");
     const rk = roundKey(s);
     const data: Record<string, unknown> = {};
-    for (const h of declared) data[`hidden_river:fog:${rk}:${h}`] = true;
+    for (const h of declared) data[`hidden_river:fog:${rk}:${h}#round`] = true;
     s = { ...s, augmentData: { ...s.augmentData, ...data } };
     const game = createStandardGameFromState(s);
     for (const h of holders) {

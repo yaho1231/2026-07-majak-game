@@ -1,0 +1,222 @@
+{
+ "shard": 0,
+ "shards": 1,
+ "gamesPer": 8,
+ "rows": [
+  {
+   "id": "ura_peek",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 2348,
+   "fired": 72,
+   "proposed": 72,
+   "chooseCalls": 2847,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "ura_peek_reveal",
+    "ura_swap"
+   ],
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}"
+   ]
+  },
+  {
+   "id": "last_stand",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 168,
+   "fired": 2,
+   "proposed": 2,
+   "chooseCalls": 2838,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "cancel_riichi"
+   ],
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"cancel_riichi\",\"payload\":{}}",
+    "{\"type\":\"cancel_riichi\",\"payload\":{}}"
+   ]
+  },
+  {
+   "id": "scapegoat",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 1865,
+   "fired": 78,
+   "proposed": 78,
+   "chooseCalls": 2478,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "scapegoat_mark"
+   ],
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p2\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p2\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p0\"}}"
+   ]
+  },
+  {
+   "id": "open_kokushi",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 265,
+   "fired": 4,
+   "proposed": 4,
+   "chooseCalls": 3559,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "kokushi_pon"
+   ],
+   "lostTo": [
+    [
+     "pass",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 1,
+   "samples": [
+    "{\"type\":\"kokushi_pon\",\"payload\":{\"tileIds\":[113,117]}}",
+    "{\"type\":\"kokushi_pon\",\"payload\":{\"tileIds\":[126,135]}}",
+    "{\"type\":\"kokushi_pon\",\"payload\":{\"tileIds\":[111,117]}}",
+    "{\"type\":\"kokushi_pon\",\"payload\":{\"tileIds\":[3,37]}}"
+   ]
+  },
+  {
+   "id": "blood_contract",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 180,
+   "fired": 3,
+   "proposed": 3,
+   "chooseCalls": 2906,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "blood_contract_declare"
+   ],
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"blood_contract_declare\",\"payload\":{\"yaku\":\"chiitoitsu\"}}",
+    "{\"type\":\"blood_contract_declare\",\"payload\":{\"yaku\":\"chiitoitsu\"}}",
+    "{\"type\":\"blood_contract_declare\",\"payload\":{\"yaku\":\"chiitoitsu\"}}"
+   ]
+  },
+  {
+   "id": "tenpai_scan",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 1686,
+   "fired": 115,
+   "proposed": 115,
+   "chooseCalls": 2687,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "tenpai_scan_use"
+   ],
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+   ]
+  },
+  {
+   "id": "disarm",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 253,
+   "fired": 32,
+   "proposed": 32,
+   "chooseCalls": 2504,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "disarm_lock"
+   ],
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p1\",\"augmentId\":\"disarm\"}}",
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p0\",\"augmentId\":\"disarm\"}}",
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p0\",\"augmentId\":\"disarm\"}}",
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p0\",\"augmentId\":\"disarm\"}}",
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p1\",\"augmentId\":\"disarm\"}}"
+   ]
+  },
+  {
+   "id": "palm_flip",
+   "games": 8,
+   "crash": null,
+   "effectErrors": [],
+   "opportunity": 119,
+   "fired": 3,
+   "proposed": 3,
+   "chooseCalls": 3013,
+   "threw": 0,
+   "throws": 0,
+   "contentFailures": [],
+   "unoffered": [],
+   "actions": [
+    "flip_riichi"
+   ],
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"flip_riichi\",\"payload\":{\"tileId\":22}}",
+    "{\"type\":\"flip_riichi\",\"payload\":{\"tileId\":53}}",
+    "{\"type\":\"flip_riichi\",\"payload\":{\"tileId\":49}}"
+   ]
+  }
+ ],
+ "done": true
+}

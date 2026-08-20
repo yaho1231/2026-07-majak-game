@@ -32,6 +32,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { replaceDrawnTile, statePrng } from "../util.js";
+import { handAlteredMark } from "./handAltered.js";
 
 /** 통일 대상 후보 수패 종류 */
 export const NUMBER_SUITS: readonly Suit[] = ["man", "pin", "sou"];
@@ -145,6 +146,8 @@ export function registerMonoWorldReducer(engine: GameEngine): void {
       zones,
       tiles,
       prngState: p.prngState,
+      // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+      augmentData: { ...state.augmentData, ...handAlteredMark(state, p.holder) },
       ...(remap === undefined
         ? {}
         : { round: replaceDrawnTile(state.round, remap.wallId) }),

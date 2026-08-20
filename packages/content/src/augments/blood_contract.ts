@@ -27,7 +27,6 @@ import type {
 import {
   honbaGainOf,
   riichiPotGainOf,
-  roundKey,
   roundViewKey,
   settleInterceptor,
   stringOf,
@@ -35,6 +34,7 @@ import {
 } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "blood_contract";
 const ACTION = "blood_contract_declare";
@@ -50,7 +50,7 @@ const CONTRACT_YAKU = [
   "chiitoitsu",
 ] as const;
 const contractKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:yaku:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "yaku", state, h);
 
 const discardCount = (state: GameState, h: PlayerId): number =>
   state.round.byPlayer[h]?.discardCount ?? 0;
@@ -126,8 +126,18 @@ export const bloodContract: AugmentDef = defineAugment({
       // ⚠ `p.riichiPot`은 화료 정산에서 항상 0이다(다음 국으로 넘길 값).
       // 회수액은 winInfo.riichiPotGain에만 있다 — 그 탓에 공탁 제외가 죽어 있었다.
       const pot = riichiPotGainOf(p, holder);
-      const base = Math.max(0, d - pot - honba);
-      const after = round100(base * mult) + pot + honba;
+      // ⚠ 밑값은 **손의 화료점**이지 델타 전체가 아니다. 같은 Multiply 단계의
+      // let_it_ride·jackpot이 먼저 돌아 델타를 부풀려 놓으면, 델타를 밑값으로
+      // 삼는 순간 그 부풀린 몫에까지 1.5배가 걸려 detail의 "손의 화료점뿐"이
+      // 거짓이 된다(손 8,000·연승 4배에서 기대 +4,000 → 실제 +16,000,
+      // QA verify-score 확정 1). let_it_ride:96-99와 같은 규약으로 맞춘다 —
+      // winInfos[].points를 밑값으로 쓰고, 앞 단계가 얹은 몫에는 손대지 않는다.
+      const winPoints = (p.winInfos ?? [])
+        .filter((w) => w.winner === holder)
+        .reduce((sum, w) => sum + w.points, 0);
+      const base = Math.min(Math.max(0, winPoints), Math.max(0, d - pot - honba));
+      const bonus = round100(base * mult) - base;
+      const after = d + bonus;
       return {
         type: event.type,
         payload: {

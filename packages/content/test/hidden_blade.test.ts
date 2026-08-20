@@ -132,7 +132,7 @@ describe("hidden_blade — 리치를 걸었다가 취소해도 다마텐 보너�
    * 다마텐 보상을 가져가는 셈이다. "이번 국에 선언한 적이 있는가"로 봐야 한다.
    */
   const DECLARED_KEY = (s: GameState): string =>
-    `hidden_blade:declared:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:p0`;
+    `hidden_blade:declared:${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}:p0#round`;
 
   /** 리치를 선언한 뒤 취소한 상태 (선언 이력만 남고 riichi는 null) */
   function craftCancelled(): GameState {

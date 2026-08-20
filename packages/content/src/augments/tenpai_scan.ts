@@ -41,8 +41,9 @@ import type {
   PlayerId,
   RuleRegistry,
 } from "@majak/core";
-import { counterOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { counterOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "tenpai_scan";
 const ACTION = "tenpai_scan_use";
@@ -51,7 +52,7 @@ const ACTION = "tenpai_scan_use";
 const USES_PER_ROUND = 1;
 /** 이번 국에 이미 발동했는가 (국 단위 — roundKey를 섞는다) */
 const usesKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:uses:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "uses", state, holder);
 const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
   counterOf(state, usesKey(state, holder)) < USES_PER_ROUND;
 /** 스캔 결과(텐파이인 상대 id 배열)를 실을 보유자 전용 뷰 채널 */
