@@ -75,6 +75,13 @@ const takenKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "taken", state, h);
 
 /**
+ * 이 국에서 **집어 온 패**의 id. 지금의 `lastDrawnTile`과 같을 때만 "손에 든 쯔모패가
+ * 남의 바닥에서 온 패"라는 뜻이다 — 다음 쯔모가 오면 자연히 어긋난다(날치기와 같은 규약).
+ */
+const takenKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:taken:${roundKey(state)}:${h}`;
+
+/**
  * 이번 국에 리치를 건 사람이 하나라도 있는가.
  *
  * ⚠ **숨은 리치(스텔스 리치)는 세지 않는다.** 이 증강은 "누가 리치를 걸었을 때"만

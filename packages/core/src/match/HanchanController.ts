@@ -31,7 +31,7 @@ import type { GameState } from "../engine/state/GameState.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import type { TileId } from "../mahjong/tiles/Tile.js";
 import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
-import type { RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
+import type { AbortReason, RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
 import { uraIndicatorIds, winHandIdsOf } from "../mahjong/flow/helpers.js";
 import type { PlayerAgent } from "./PlayerAgent.js";
 import type {
@@ -481,6 +481,14 @@ export class HanchanController {
   private paused = false;
   /** 재개를 기다리는 대기자들 (문 앞에 선 결정·국 시작) */
   private readonly pauseWaiters = new Set<() => void>();
+  /**
+   * **이 국을 물려 달라는 요청** (관리자 판정 — docs/36 B4).
+   *
+   * 판 전체를 접는 무효(`requestAbort`)와는 다르다: 이건 «이 국만» 없던 일로 하고
+   * 다음 국으로 넘긴다. 규칙이 판정하는 도중유국과 같은 문으로 나가므로 점수·본장·
+   * 친 로테이션이 그쪽과 정확히 같다.
+   */
+  private roundVoid: AbortReason | null = null;
   /** 정지 중에는 흐르지 않는 타이머들 (무응답 안전망) */
   private readonly pausable = new Set<PausableTimer>();
 
@@ -675,6 +683,19 @@ export class HanchanController {
   /** 지금 판이 서 있는가. */
   get isPaused(): boolean {
     return this.paused;
+  }
+
+  /**
+   * **이 국만 물린다** (관리자 판정). 판은 계속된다.
+   *
+   * 기다리는 중이던 결정은 즉시 접는다 — 그 답은 이제 없는 국에 대한 것이고,
+   * 접지 않으면 판이 최대 30초(사람의 제한 시간) 동안 요청을 붙들고 서 있다.
+   * 실제 물림은 다음 결정 지점에서 일어난다(엔진 상태를 결정 도중에 건드리지 않는다).
+   */
+  requestRoundVoid(reason: AbortReason = "adminVoid"): void {
+    if (this.aborted || this.game === null) return;
+    this.roundVoid = reason;
+    for (const agent of this.agents.values()) agent.cancelDecision?.();
   }
 
   /**
@@ -1161,6 +1182,18 @@ export class HanchanController {
       // 들어가는 문 — 판이 서 있으면 다음 수를 **시작하지 않는다**. 강제 수(리치
       // 쯔모기리)와 봇의 차례가 여기서 함께 선다.
       if (await this.gatePaused()) return "abort";
+      /*
+       * 관리자가 이 국을 물렸다 (docs/36 B4). **결정 지점에서만** 손을 댄다 —
+       * 결정이 흐르는 도중에 엔진 상태를 바꾸면 그 결정이 없는 국에 들어간다.
+       */
+      if (this.roundVoid !== null) {
+        const reason = this.roundVoid;
+        this.roundVoid = null;
+        status = flow.abortRound(reason);
+        this.flushEvents(game);
+        this.broadcastViews(game);
+        continue;
+      }
       // 강제 수(리치 쯔모기리) — 고를 것이 없으니 에이전트에게 묻지 않고 그대로 둔다.
       // 사람은 프롬프트조차 받지 않아 매 순 같은 패를 다시 클릭할 일이 없다.
       // 턴 프롬프트는 언제나 한 명뿐이라 auto가 다른 사람의 리액션과 섞이지 않는다.
