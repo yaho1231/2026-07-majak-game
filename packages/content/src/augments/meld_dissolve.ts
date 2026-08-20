@@ -89,21 +89,6 @@ const usedKey = (state: GameState, h: PlayerId): string =>
 const nagashiBrokenKey = (state: GameState, target: PlayerId): string =>
   roundScopedKey(ID, "nagashiBroken", state, target);
 
-/**
- * "이 사람의 버림패는 이미 한 번 울려 나갔다" 표식 (roundKey 스코프).
- *
- * 표준 유국만관은 **강 장수 === 버림 이력 길이**로 "한 장도 울려 나가지 않았다"를
- * 판정한다(`standardActions.nagashiManganSeats`). 파혼이 가져왔던 1장을 강으로
- * 되돌리면 그 등식이 **다시 성립**해, 이미 울려 나가 자격을 잃었던 사람의 유국만관이
- * 되살아났다(QA defcall 확정 1 — 실측 8,000점 오차). 파혼의 설명 어디에도 남의 역·정산
- * 자격을 바꾼다는 말은 없다.
- *
- * 그래서 되돌리는 순간 이 표식을 남기고, `draw.nagashiMangan` 모디파이어가 그 사람의
- * 유국만관만 꺼 둔다 — 코어 판정은 그대로 두고 **파혼 쪽에서** 원상태를 보존한다.
- */
-const nagashiBrokenKey = (state: GameState, target: PlayerId): string =>
-  `${ID}:nagashiBroken:${roundKey(state)}:${target}`;
-
 /** 치·펑(후로 3장)만 해체 대상 — 깡은 제외 */
 function isDissolvable(meld: Meld | undefined): boolean {
   if (meld === undefined) return false;

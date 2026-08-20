@@ -117,61 +117,6 @@ function canRonWith(
 }
 
 /**
- * 이 상대가 **지금 후리텐 때문에 론이 막히는가**.
- *
- * ⚠ 후리텐이라는 사실만으로 빼면 안 된다 — 철벽(iron_wall)·만개(late_bloomer) 계열은
- * `win.furiten.enabled`를 꺼서 **후리텐인 채로 론한다**. 그 상대를 통째로 건너뛰면
- * 실제로 쏘이는 패가 "안전"으로 칠해져, 오탐을 없애려던 필터가 정반대의 **거짓 안전**을
- * 만든다(qa-lab text 확정 1). 표준 론 검증(standardActions의 win validate)과 **같은 순서**로
- * `win.furiten.enabled`를 먼저 묻는다.
- */
-function furitenBlocksRon(
-  state: GameState,
-  rules: RuleRegistry,
-  pid: PlayerId,
-): boolean {
-  if (
-    rules.has("win.furiten.enabled") &&
-    !rules.resolve<boolean>("win.furiten.enabled", { playerId: pid, state })
-  ) {
-    return false;
-  }
-  return isFuriten(state, pid, scoringOptionsOf(state, rules, pid), rules);
-}
-
-/** 이 사람의 화료에 역이 필요한가 (규칙이 없으면 표준대로 true) */
-function needsYaku(state: GameState, rules: RuleRegistry, pid: PlayerId): boolean {
-  if (!rules.has("win.requiresYaku")) return true;
-  return rules.resolve<boolean>("win.requiresYaku", { playerId: pid, state });
-}
-
-/**
- * 그 종류로 실제 **론이 성립하는가** — 가상 화료를 평가해 역 성립까지 본다.
- *
- * 대기(winningKinds)만 보면 후로해서 역이 하나도 없는 상대(론 불가)의 대기까지
- * 위험으로 칠한다 — 후리텐은 빼면서 무역은 안 빼는 반쪽 기준이었다(qa-lab text 확정 2).
- * 화료패는 반드시 **손패 밖**의 실물이어야 한다(손 안의 같은 종류를 집으면
- * buildWinContext가 그 패를 뺐다 붙여 13장이 되어 분해가 실패한다).
- */
-function canRonWith(
-  state: GameState,
-  rules: RuleRegistry,
-  yaku: YakuRegistry,
-  pid: PlayerId,
-  waitKind: TileKind,
-): boolean {
-  const key = kindKey(waitKind);
-  const inHand = new Set<TileId>(handIdsOf(state, pid));
-  const tileId = Object.keys(state.tiles)
-    .map(Number)
-    .find((t) => !inHand.has(t) && kindKey(state.tiles[t]!.kind) === key);
-  if (tileId === undefined) return true; // 실물을 못 찾으면 방어적으로 위험으로 둔다
-  const ev = evaluateWin(buildWinContext(state, pid, "ron", tileId, { rules }), yaku);
-  if (ev === null) return false;
-  return !needsYaku(state, rules, pid) || ev.ok;
-}
-
-/**
  * 발동 시점 기준, 보유자 손패 중 지금 버리면 방총이 되는 종류(kindKey, 중복 제거·정렬).
  * = 세 상대의 **실제로 론이 되는** 대기 합집합 ∩ 보유자 손패 종류.
  */
