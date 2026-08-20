@@ -1,0 +1,3823 @@
+{
+ "games": 110,
+ "seed": 11,
+ "mode": "tonpuu",
+ "crash": null,
+ "rounds": 623,
+ "decisions": 40442,
+ "drafts": 1284,
+ "decideNowThrows": [],
+ "contentFailures": [],
+ "unofferedWarns": [],
+ "conflictViolations": [],
+ "modeViolations": [],
+ "actionToAug": [
+  [
+   "ura_peek_reveal",
+   "ura_peek"
+  ],
+  [
+   "ura_swap",
+   "ura_peek"
+  ],
+  [
+   "grave_rob",
+   "grave_rob"
+  ],
+  [
+   "flip_riichi",
+   "palm_flip"
+  ],
+  [
+   "take_back",
+   "take_back"
+  ],
+  [
+   "dissolve_meld",
+   "meld_dissolve"
+  ],
+  [
+   "future_exchange",
+   "future_sight"
+  ],
+  [
+   "future_arm",
+   "future_sight"
+  ],
+  [
+   "declare_big_hand",
+   "big_hand"
+  ],
+  [
+   "time_stop_use",
+   "time_stop"
+  ],
+  [
+   "seal_hands",
+   "discard_lock"
+  ],
+  [
+   "foresight_reveal",
+   "foresight"
+  ],
+  [
+   "foresight_order",
+   "foresight"
+  ],
+  [
+   "parasite_attach",
+   "parasite"
+  ],
+  [
+   "alchemy",
+   "alchemist"
+  ],
+  [
+   "rinshan_pull",
+   "rinshan_preview"
+  ],
+  [
+   "spy_mark",
+   "spy"
+  ],
+  [
+   "dw_swap",
+   "dead_wall_master"
+  ],
+  [
+   "triple_peek_use",
+   "triple_peek"
+  ],
+  [
+   "push_brand",
+   "push_riichi"
+  ],
+  [
+   "silent_pon",
+   "silent_pact"
+  ],
+  [
+   "silent_take",
+   "silent_swap"
+  ],
+  [
+   "soul_strike",
+   "soul_strike"
+  ],
+  [
+   "declare_brief_fog",
+   "brief_fog"
+  ],
+  [
+   "jackpot_roll",
+   "jackpot"
+  ],
+  [
+   "danger_sense_use",
+   "danger_sense"
+  ],
+  [
+   "north_pull",
+   "north_trader"
+  ],
+  [
+   "scapegoat_mark",
+   "scapegoat"
+  ],
+  [
+   "call_seal_use",
+   "call_seal"
+  ],
+  [
+   "rank_gate_mark",
+   "rank_gate"
+  ],
+  [
+   "no_retreat_riichi",
+   "no_retreat"
+  ],
+  [
+   "karma_burn",
+   "karma"
+  ],
+  [
+   "dora_recall",
+   "dora_afterimage"
+  ],
+  [
+   "seat_swap",
+   "seat_swap"
+  ],
+  [
+   "kokushi_pon",
+   "open_kokushi"
+  ],
+  [
+   "mono_world",
+   "suit_unify"
+  ],
+  [
+   "dragons_will",
+   "three_dragons_will"
+  ],
+  [
+   "even_world_flip",
+   "even_world"
+  ],
+  [
+   "stealth_riichi",
+   "stealth_riichi"
+  ],
+  [
+   "invincible_guard",
+   "invincible"
+  ],
+  [
+   "giant_god",
+   "giant_god"
+  ],
+  [
+   "tenpai_scan_use",
+   "tenpai_scan"
+  ],
+  [
+   "genesis_flip",
+   "genesis"
+  ],
+  [
+   "all_in_riichi",
+   "all_or_nothing"
+  ],
+  [
+   "bluff_pon",
+   "bluff_pretense"
+  ],
+  [
+   "peek_waits",
+   "peek_riichi_waits"
+  ],
+  [
+   "peek_forge",
+   "peek_riichi_waits"
+  ],
+  [
+   "red_touch",
+   "red_five_touch"
+  ],
+  [
+   "xray_reveal",
+   "xray_hand"
+  ],
+  [
+   "split_tile",
+   "tile_split"
+  ],
+  [
+   "declare_fog",
+   "cornucopia"
+  ],
+  [
+   "pond_snatch",
+   "pond_snatch"
+  ],
+  [
+   "conjure_tsumo",
+   "conjure_draw"
+  ],
+  [
+   "cancel_riichi",
+   "last_stand"
+  ],
+  [
+   "table_flip_do",
+   "table_flip"
+  ],
+  [
+   "picky_unify",
+   "picky_eater"
+  ],
+  [
+   "hand_swap",
+   "cornucopia"
+  ],
+  [
+   "claim_dealer",
+   "cornucopia"
+  ],
+  [
+   "open_riichi",
+   "open_riichi_reveal"
+  ],
+  [
+   "bloom_pick",
+   "cliff_bloom"
+  ],
+  [
+   "disarm_lock",
+   "disarm"
+  ],
+  [
+   "joker_call",
+   "joker"
+  ],
+  [
+   "bottom_deal",
+   "bottom_deal"
+  ],
+  [
+   "blood_contract_declare",
+   "blood_contract"
+  ],
+  [
+   "free_discard",
+   "cornucopia"
+  ],
+  [
+   "recall",
+   "cornucopia"
+  ],
+  [
+   "tile_dye",
+   "cornucopia"
+  ],
+  [
+   "honor_recall",
+   "honor_return"
+  ],
+  [
+   "reload_use",
+   "reload"
+  ]
+ ],
+ "augActions": [
+  [
+   "ura_peek",
+   [
+    "ura_peek_reveal",
+    "ura_swap"
+   ]
+  ],
+  [
+   "grave_rob",
+   [
+    "grave_rob"
+   ]
+  ],
+  [
+   "palm_flip",
+   [
+    "flip_riichi"
+   ]
+  ],
+  [
+   "take_back",
+   [
+    "take_back"
+   ]
+  ],
+  [
+   "meld_dissolve",
+   [
+    "dissolve_meld"
+   ]
+  ],
+  [
+   "future_sight",
+   [
+    "future_exchange",
+    "future_arm"
+   ]
+  ],
+  [
+   "big_hand",
+   [
+    "declare_big_hand"
+   ]
+  ],
+  [
+   "time_stop",
+   [
+    "time_stop_use"
+   ]
+  ],
+  [
+   "discard_lock",
+   [
+    "seal_hands"
+   ]
+  ],
+  [
+   "foresight",
+   [
+    "foresight_reveal",
+    "foresight_order"
+   ]
+  ],
+  [
+   "parasite",
+   [
+    "parasite_attach"
+   ]
+  ],
+  [
+   "alchemist",
+   [
+    "alchemy"
+   ]
+  ],
+  [
+   "rinshan_preview",
+   [
+    "rinshan_pull"
+   ]
+  ],
+  [
+   "spy",
+   [
+    "spy_mark"
+   ]
+  ],
+  [
+   "dead_wall_master",
+   [
+    "dw_swap"
+   ]
+  ],
+  [
+   "triple_peek",
+   [
+    "triple_peek_use"
+   ]
+  ],
+  [
+   "push_riichi",
+   [
+    "push_brand"
+   ]
+  ],
+  [
+   "silent_pact",
+   [
+    "silent_pon"
+   ]
+  ],
+  [
+   "silent_swap",
+   [
+    "silent_take"
+   ]
+  ],
+  [
+   "soul_strike",
+   [
+    "soul_strike"
+   ]
+  ],
+  [
+   "brief_fog",
+   [
+    "declare_brief_fog"
+   ]
+  ],
+  [
+   "jackpot",
+   [
+    "jackpot_roll"
+   ]
+  ],
+  [
+   "danger_sense",
+   [
+    "danger_sense_use"
+   ]
+  ],
+  [
+   "cornucopia",
+   [
+    "danger_sense_use",
+    "grave_rob",
+    "push_brand",
+    "tenpai_scan_use",
+    "parasite_attach",
+    "silent_pon",
+    "split_tile",
+    "recall",
+    "declare_fog",
+    "hand_swap",
+    "scapegoat_mark",
+    "disarm_lock",
+    "free_discard",
+    "claim_dealer",
+    "tile_dye"
+   ]
+  ],
+  [
+   "north_trader",
+   [
+    "north_pull"
+   ]
+  ],
+  [
+   "scapegoat",
+   [
+    "scapegoat_mark"
+   ]
+  ],
+  [
+   "call_seal",
+   [
+    "call_seal_use"
+   ]
+  ],
+  [
+   "rank_gate",
+   [
+    "rank_gate_mark"
+   ]
+  ],
+  [
+   "no_retreat",
+   [
+    "no_retreat_riichi"
+   ]
+  ],
+  [
+   "karma",
+   [
+    "karma_burn"
+   ]
+  ],
+  [
+   "dora_afterimage",
+   [
+    "dora_recall"
+   ]
+  ],
+  [
+   "seat_swap",
+   [
+    "seat_swap"
+   ]
+  ],
+  [
+   "open_kokushi",
+   [
+    "kokushi_pon"
+   ]
+  ],
+  [
+   "suit_unify",
+   [
+    "mono_world"
+   ]
+  ],
+  [
+   "three_dragons_will",
+   [
+    "dragons_will"
+   ]
+  ],
+  [
+   "even_world",
+   [
+    "even_world_flip"
+   ]
+  ],
+  [
+   "stealth_riichi",
+   [
+    "stealth_riichi"
+   ]
+  ],
+  [
+   "invincible",
+   [
+    "invincible_guard"
+   ]
+  ],
+  [
+   "giant_god",
+   [
+    "giant_god"
+   ]
+  ],
+  [
+   "tenpai_scan",
+   [
+    "tenpai_scan_use"
+   ]
+  ],
+  [
+   "genesis",
+   [
+    "genesis_flip"
+   ]
+  ],
+  [
+   "all_or_nothing",
+   [
+    "all_in_riichi"
+   ]
+  ],
+  [
+   "bluff_pretense",
+   [
+    "bluff_pon"
+   ]
+  ],
+  [
+   "peek_riichi_waits",
+   [
+    "peek_waits",
+    "peek_forge"
+   ]
+  ],
+  [
+   "red_five_touch",
+   [
+    "red_touch"
+   ]
+  ],
+  [
+   "xray_hand",
+   [
+    "xray_reveal"
+   ]
+  ],
+  [
+   "tile_split",
+   [
+    "split_tile"
+   ]
+  ],
+  [
+   "hidden_river",
+   [
+    "declare_fog"
+   ]
+  ],
+  [
+   "pond_snatch",
+   [
+    "pond_snatch"
+   ]
+  ],
+  [
+   "conjure_draw",
+   [
+    "conjure_tsumo"
+   ]
+  ],
+  [
+   "last_stand",
+   [
+    "cancel_riichi"
+   ]
+  ],
+  [
+   "table_flip",
+   [
+    "table_flip_do"
+   ]
+  ],
+  [
+   "picky_eater",
+   [
+    "picky_unify"
+   ]
+  ],
+  [
+   "full_hand_swap",
+   [
+    "hand_swap"
+   ]
+  ],
+  [
+   "pseudo_dealer",
+   [
+    "claim_dealer"
+   ]
+  ],
+  [
+   "open_riichi_reveal",
+   [
+    "open_riichi"
+   ]
+  ],
+  [
+   "cliff_bloom",
+   [
+    "bloom_pick"
+   ]
+  ],
+  [
+   "disarm",
+   [
+    "disarm_lock"
+   ]
+  ],
+  [
+   "joker",
+   [
+    "joker_call"
+   ]
+  ],
+  [
+   "bottom_deal",
+   [
+    "bottom_deal"
+   ]
+  ],
+  [
+   "blood_contract",
+   [
+    "blood_contract_declare"
+   ]
+  ],
+  [
+   "free_riichi_discard",
+   [
+    "free_discard"
+   ]
+  ],
+  [
+   "tile_dyeing",
+   [
+    "tile_dye"
+   ]
+  ],
+  [
+   "honor_return",
+   [
+    "honor_recall"
+   ]
+  ],
+  [
+   "reload",
+   [
+    "reload_use"
+   ]
+  ]
+ ],
+ "draftPicks": [
+  [
+   "ura_peek",
+   16
+  ],
+  [
+   "grave_rob",
+   13
+  ],
+  [
+   "palm_flip",
+   10
+  ],
+  [
+   "take_back",
+   12
+  ],
+  [
+   "eternal_dealer",
+   10
+  ],
+  [
+   "off_by_one",
+   17
+  ],
+  [
+   "meld_dissolve",
+   5
+  ],
+  [
+   "mixed_triplet",
+   14
+  ],
+  [
+   "wind_lineage",
+   20
+  ],
+  [
+   "polar_ends",
+   10
+  ],
+  [
+   "future_sight",
+   13
+  ],
+  [
+   "big_hand",
+   7
+  ],
+  [
+   "time_stop",
+   9
+  ],
+  [
+   "discard_lock",
+   13
+  ],
+  [
+   "foresight",
+   11
+  ],
+  [
+   "open_riichi",
+   22
+  ],
+  [
+   "parasite",
+   8
+  ],
+  [
+   "blame_shift",
+   5
+  ],
+  [
+   "alchemist",
+   14
+  ],
+  [
+   "rinshan_preview",
+   7
+  ],
+  [
+   "omni_chi",
+   16
+  ],
+  [
+   "spy",
+   13
+  ],
+  [
+   "dead_wall_master",
+   11
+  ],
+  [
+   "snake_kan",
+   6
+  ],
+  [
+   "triple_peek",
+   6
+  ],
+  [
+   "async_chiitoi",
+   19
+  ],
+  [
+   "true_dragon",
+   7
+  ],
+  [
+   "push_riichi",
+   5
+  ],
+  [
+   "silent_pact",
+   14
+  ],
+  [
+   "broken_wall",
+   18
+  ],
+  [
+   "silent_swap",
+   19
+  ],
+  [
+   "soul_strike",
+   14
+  ],
+  [
+   "aotenjou_ceiling",
+   13
+  ],
+  [
+   "discard_recall",
+   20
+  ],
+  [
+   "brief_fog",
+   6
+  ],
+  [
+   "jackpot",
+   15
+  ],
+  [
+   "cornucopia",
+   16
+  ],
+  [
+   "north_trader",
+   7
+  ],
+  [
+   "regret",
+   19
+  ],
+  [
+   "no_ron_pact",
+   7
+  ],
+  [
+   "soul_hunt",
+   10
+  ],
+  [
+   "blind_ron",
+   12
+  ],
+  [
+   "late_bloomer_east",
+   8
+  ],
+  [
+   "scapegoat",
+   8
+  ],
+  [
+   "call_seal",
+   5
+  ],
+  [
+   "rank_gate",
+   9
+  ],
+  [
+   "sign_flip",
+   12
+  ],
+  [
+   "yakuman_shield",
+   7
+  ],
+  [
+   "no_retreat",
+   8
+  ],
+  [
+   "time_pressure",
+   8
+  ],
+  [
+   "karma",
+   5
+  ],
+  [
+   "dora_afterimage",
+   17
+  ],
+  [
+   "riichi_upgrade",
+   10
+  ],
+  [
+   "mirror_dora",
+   17
+  ],
+  [
+   "seat_swap",
+   4
+  ],
+  [
+   "open_kokushi",
+   12
+  ],
+  [
+   "tanyao_break",
+   21
+  ],
+  [
+   "let_it_ride",
+   14
+  ],
+  [
+   "late_double",
+   17
+  ],
+  [
+   "suit_unify",
+   24
+  ],
+  [
+   "broken_border",
+   18
+  ],
+  [
+   "iron_wall",
+   15
+  ],
+  [
+   "three_dragons_will",
+   10
+  ],
+  [
+   "siege_riichi",
+   14
+  ],
+  [
+   "even_world",
+   13
+  ],
+  [
+   "stealth_riichi",
+   23
+  ],
+  [
+   "invincible",
+   15
+  ],
+  [
+   "royal_kokushi",
+   11
+  ],
+  [
+   "giant_god",
+   11
+  ],
+  [
+   "riichi_seal",
+   16
+  ],
+  [
+   "counter",
+   6
+  ],
+  [
+   "genesis",
+   18
+  ],
+  [
+   "all_or_nothing",
+   17
+  ],
+  [
+   "bluff_pretense",
+   14
+  ],
+  [
+   "peek_riichi_waits",
+   12
+  ],
+  [
+   "red_five_touch",
+   9
+  ],
+  [
+   "honba_hunter",
+   6
+  ],
+  [
+   "xray_hand",
+   16
+  ],
+  [
+   "hourglass",
+   12
+  ],
+  [
+   "tile_split",
+   13
+  ],
+  [
+   "hidden_river",
+   11
+  ],
+  [
+   "pond_snatch",
+   14
+  ],
+  [
+   "conjure_draw",
+   20
+  ],
+  [
+   "last_stand",
+   11
+  ],
+  [
+   "table_flip",
+   13
+  ],
+  [
+   "haitei_lord",
+   14
+  ],
+  [
+   "picky_eater",
+   21
+  ],
+  [
+   "full_hand_swap",
+   8
+  ],
+  [
+   "pseudo_dealer",
+   5
+  ],
+  [
+   "avenger",
+   4
+  ],
+  [
+   "open_riichi_reveal",
+   5
+  ],
+  [
+   "cliff_bloom",
+   5
+  ],
+  [
+   "disarm",
+   4
+  ],
+  [
+   "joker",
+   10
+  ],
+  [
+   "nagashi_yakuman",
+   8
+  ],
+  [
+   "void_kan",
+   5
+  ],
+  [
+   "tenpai_scan",
+   10
+  ],
+  [
+   "die_hard",
+   1
+  ],
+  [
+   "always_tenpai",
+   6
+  ],
+  [
+   "bottom_deal",
+   14
+  ],
+  [
+   "mixed_nine_gates",
+   16
+  ],
+  [
+   "danger_sense",
+   4
+  ],
+  [
+   "blood_contract",
+   9
+  ],
+  [
+   "devils_advance",
+   7
+  ],
+  [
+   "dora_conceal",
+   8
+  ],
+  [
+   "free_riichi_discard",
+   10
+  ],
+  [
+   "bottom_yaku",
+   4
+  ],
+  [
+   "ankan_dora",
+   7
+  ],
+  [
+   "tile_dyeing",
+   14
+  ],
+  [
+   "yakuless_win",
+   12
+  ],
+  [
+   "honor_return",
+   8
+  ],
+  [
+   "reload",
+   5
+  ],
+  [
+   "hidden_blade",
+   3
+  ],
+  [
+   "unification",
+   4
+  ]
+ ],
+ "augStats": [
+  {
+   "id": "ura_peek",
+   "chooseCalls": 1049,
+   "proposed": 26,
+   "threw": 0,
+   "fired": 22,
+   "opportunity": 829,
+   "lostTo": [
+    [
+     "scapegoat_mark",
+     1
+    ],
+    [
+     "peek_waits",
+     1
+    ],
+    [
+     "stealth_riichi",
+     1
+    ],
+    [
+     "soul_strike",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}",
+    "{\"type\":\"ura_peek_reveal\",\"payload\":{}}"
+   ],
+   "heldGames": 16,
+   "offered": 45,
+   "picks": 16
+  },
+  {
+   "id": "grave_rob",
+   "chooseCalls": 858,
+   "proposed": 2,
+   "threw": 0,
+   "fired": 2,
+   "opportunity": 2,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"grave_rob\",\"payload\":{\"fromPlayer\":\"p1\",\"graveId\":53}}",
+    "{\"type\":\"grave_rob\",\"payload\":{\"fromPlayer\":\"p0\",\"graveId\":84}}"
+   ],
+   "heldGames": 14,
+   "offered": 33,
+   "picks": 13
+  },
+  {
+   "id": "take_back",
+   "chooseCalls": 561,
+   "proposed": 84,
+   "threw": 0,
+   "fired": 83,
+   "opportunity": 206,
+   "lostTo": [
+    [
+     "conjure_tsumo",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"take_back\",\"payload\":{}}",
+    "{\"type\":\"take_back\",\"payload\":{}}",
+    "{\"type\":\"take_back\",\"payload\":{}}",
+    "{\"type\":\"take_back\",\"payload\":{}}",
+    "{\"type\":\"take_back\",\"payload\":{}}"
+   ],
+   "heldGames": 12,
+   "offered": 40,
+   "picks": 12
+  },
+  {
+   "id": "palm_flip",
+   "chooseCalls": 653,
+   "proposed": 1,
+   "threw": 0,
+   "fired": 1,
+   "opportunity": 23,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"flip_riichi\",\"payload\":{\"tileId\":61}}"
+   ],
+   "heldGames": 10,
+   "offered": 39,
+   "picks": 10
+  },
+  {
+   "id": "meld_dissolve",
+   "chooseCalls": 172,
+   "proposed": 2,
+   "threw": 0,
+   "fired": 2,
+   "opportunity": 6,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"dissolve_meld\",\"payload\":{\"meldIndex\":0}}",
+    "{\"type\":\"dissolve_meld\",\"payload\":{\"meldIndex\":0}}"
+   ],
+   "heldGames": 5,
+   "offered": 29,
+   "picks": 5
+  },
+  {
+   "id": "big_hand",
+   "chooseCalls": 286,
+   "proposed": 11,
+   "threw": 0,
+   "fired": 9,
+   "opportunity": 11,
+   "lostTo": [
+    [
+     "table_flip_do",
+     1
+    ],
+    [
+     "joker_call",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+    "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+    "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+    "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+    "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+   ],
+   "heldGames": 7,
+   "offered": 21,
+   "picks": 7
+  },
+  {
+   "id": "wind_lineage",
+   "chooseCalls": 842,
+   "proposed": 0,
+   "threw": 0,
+   "fired": 0,
+   "opportunity": 0,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [],
+   "heldGames": 20,
+   "offered": 36,
+   "picks": 20
+  },
+  {
+   "id": "future_sight",
+   "chooseCalls": 1189,
+   "proposed": 318,
+   "threw": 0,
+   "fired": 316,
+   "opportunity": 538,
+   "lostTo": [
+    [
+     "invincible_guard",
+     1
+    ],
+    [
+     "parasite_attach",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"future_arm\",\"payload\":{}}",
+    "{\"type\":\"future_exchange\",\"payload\":{\"tileId\":12}}",
+    "{\"type\":\"future_arm\",\"payload\":{}}",
+    "{\"type\":\"future_exchange\",\"payload\":{\"tileId\":63}}",
+    "{\"type\":\"future_arm\",\"payload\":{}}"
+   ],
+   "heldGames": 13,
+   "offered": 42,
+   "picks": 13
+  },
+  {
+   "id": "time_stop",
+   "chooseCalls": 620,
+   "proposed": 22,
+   "threw": 0,
+   "fired": 22,
+   "opportunity": 421,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"time_stop_use\",\"payload\":{}}",
+    "{\"type\":\"time_stop_use\",\"payload\":{}}",
+    "{\"type\":\"time_stop_use\",\"payload\":{}}",
+    "{\"type\":\"time_stop_use\",\"payload\":{}}",
+    "{\"type\":\"time_stop_use\",\"payload\":{}}"
+   ],
+   "heldGames": 9,
+   "offered": 40,
+   "picks": 9
+  },
+  {
+   "id": "discard_lock",
+   "chooseCalls": 790,
+   "proposed": 34,
+   "threw": 0,
+   "fired": 31,
+   "opportunity": 34,
+   "lostTo": [
+    [
+     "spy_mark",
+     3
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"seal_hands\",\"payload\":{}}",
+    "{\"type\":\"seal_hands\",\"payload\":{}}",
+    "{\"type\":\"seal_hands\",\"payload\":{}}",
+    "{\"type\":\"seal_hands\",\"payload\":{}}",
+    "{\"type\":\"seal_hands\",\"payload\":{}}"
+   ],
+   "heldGames": 13,
+   "offered": 43,
+   "picks": 13
+  },
+  {
+   "id": "foresight",
+   "chooseCalls": 698,
+   "proposed": 100,
+   "threw": 0,
+   "fired": 97,
+   "opportunity": 358,
+   "lostTo": [
+    [
+     "alchemy",
+     1
+    ],
+    [
+     "shouminkan",
+     1
+    ],
+    [
+     "blood_contract_declare",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"foresight_reveal\",\"payload\":{}}",
+    "{\"type\":\"foresight_reveal\",\"payload\":{}}",
+    "{\"type\":\"foresight_reveal\",\"payload\":{}}",
+    "{\"type\":\"foresight_reveal\",\"payload\":{}}",
+    "{\"type\":\"foresight_reveal\",\"payload\":{}}"
+   ],
+   "heldGames": 11,
+   "offered": 34,
+   "picks": 11
+  },
+  {
+   "id": "alchemist",
+   "chooseCalls": 911,
+   "proposed": 52,
+   "threw": 0,
+   "fired": 51,
+   "opportunity": 416,
+   "lostTo": [
+    [
+     "recall",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"alchemy\",\"payload\":{\"tileId\":97,\"delta\":-1}}",
+    "{\"type\":\"alchemy\",\"payload\":{\"tileId\":39,\"delta\":1}}",
+    "{\"type\":\"alchemy\",\"payload\":{\"tileId\":91,\"delta\":-1}}",
+    "{\"type\":\"alchemy\",\"payload\":{\"tileId\":37,\"delta\":1}}",
+    "{\"type\":\"alchemy\",\"payload\":{\"tileId\":35,\"delta\":-1}}"
+   ],
+   "heldGames": 14,
+   "offered": 50,
+   "picks": 14
+  },
+  {
+   "id": "parasite",
+   "chooseCalls": 509,
+   "proposed": 29,
+   "threw": 0,
+   "fired": 24,
+   "opportunity": 179,
+   "lostTo": [
+    [
+     "parasite_attach",
+     5
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"parasite_attach\",\"payload\":{\"target\":\"p2\"}}",
+    "{\"type\":\"parasite_attach\",\"payload\":{\"target\":\"p2\"}}",
+    "{\"type\":\"parasite_attach\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"parasite_attach\",\"payload\":{\"target\":\"p1\"}}",
+    "{\"type\":\"parasite_attach\",\"payload\":{\"target\":\"p1\"}}"
+   ],
+   "heldGames": 9,
+   "offered": 51,
+   "picks": 8
+  },
+  {
+   "id": "rinshan_preview",
+   "chooseCalls": 231,
+   "proposed": 13,
+   "threw": 0,
+   "fired": 12,
+   "opportunity": 13,
+   "lostTo": [
+    [
+     "invincible_guard",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"rinshan_pull\",\"payload\":{}}",
+    "{\"type\":\"rinshan_pull\",\"payload\":{}}",
+    "{\"type\":\"rinshan_pull\",\"payload\":{}}",
+    "{\"type\":\"rinshan_pull\",\"payload\":{}}",
+    "{\"type\":\"rinshan_pull\",\"payload\":{}}"
+   ],
+   "heldGames": 7,
+   "offered": 28,
+   "picks": 7
+  },
+  {
+   "id": "snake_kan",
+   "chooseCalls": 191,
+   "proposed": 0,
+   "threw": 0,
+   "fired": 0,
+   "opportunity": 0,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [],
+   "heldGames": 6,
+   "offered": 24,
+   "picks": 6
+  },
+  {
+   "id": "spy",
+   "chooseCalls": 660,
+   "proposed": 45,
+   "threw": 0,
+   "fired": 41,
+   "opportunity": 45,
+   "lostTo": [
+    [
+     "genesis_flip",
+     1
+    ],
+    [
+     "silent_take",
+     1
+    ],
+    [
+     "tile_dye",
+     2
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"spy_mark\",\"payload\":{\"tileId\":116}}",
+    "{\"type\":\"spy_mark\",\"payload\":{\"tileId\":129}}",
+    "{\"type\":\"spy_mark\",\"payload\":{\"tileId\":73}}",
+    "{\"type\":\"spy_mark\",\"payload\":{\"tileId\":54}}",
+    "{\"type\":\"spy_mark\",\"payload\":{\"tileId\":86}}"
+   ],
+   "heldGames": 13,
+   "offered": 41,
+   "picks": 13
+  },
+  {
+   "id": "dead_wall_master",
+   "chooseCalls": 450,
+   "proposed": 32,
+   "threw": 0,
+   "fired": 29,
+   "opportunity": 65,
+   "lostTo": [
+    [
+     "alchemy",
+     2
+    ],
+    [
+     "table_flip_do",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":74,\"deadIndex\":5}}",
+    "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":17,\"deadIndex\":2}}",
+    "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":107,\"deadIndex\":1}}",
+    "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":134,\"deadIndex\":0}}",
+    "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":97,\"deadIndex\":2}}"
+   ],
+   "heldGames": 11,
+   "offered": 20,
+   "picks": 11
+  },
+  {
+   "id": "triple_peek",
+   "chooseCalls": 274,
+   "proposed": 9,
+   "threw": 0,
+   "fired": 9,
+   "opportunity": 53,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"triple_peek_use\",\"payload\":{}}",
+    "{\"type\":\"triple_peek_use\",\"payload\":{}}",
+    "{\"type\":\"triple_peek_use\",\"payload\":{}}",
+    "{\"type\":\"triple_peek_use\",\"payload\":{}}",
+    "{\"type\":\"triple_peek_use\",\"payload\":{}}"
+   ],
+   "heldGames": 6,
+   "offered": 45,
+   "picks": 6
+  },
+  {
+   "id": "silent_pact",
+   "chooseCalls": 479,
+   "proposed": 9,
+   "threw": 0,
+   "fired": 8,
+   "opportunity": 38,
+   "lostTo": [
+    [
+     "silent_pon",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"silent_pon\",\"payload\":{\"tileIds\":[132,135]}}",
+    "{\"type\":\"silent_pon\",\"payload\":{\"tileIds\":[108,109]}}",
+    "{\"type\":\"silent_pon\",\"payload\":{\"tileIds\":[108,111]}}",
+    "{\"type\":\"silent_pon\",\"payload\":{\"tileIds\":[110,111]}}",
+    "{\"type\":\"silent_pon\",\"payload\":{\"tileIds\":[124,126]}}"
+   ],
+   "heldGames": 15,
+   "offered": 21,
+   "picks": 14
+  },
+  {
+   "id": "push_riichi",
+   "chooseCalls": 291,
+   "proposed": 20,
+   "threw": 0,
+   "fired": 11,
+   "opportunity": 20,
+   "lostTo": [
+    [
+     "push_brand",
+     7
+    ],
+    [
+     "seat_swap",
+     1
+    ],
+    [
+     "dora_recall",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p1\"}}"
+   ],
+   "heldGames": 6,
+   "offered": 44,
+   "picks": 5
+  },
+  {
+   "id": "silent_swap",
+   "chooseCalls": 908,
+   "proposed": 52,
+   "threw": 0,
+   "fired": 50,
+   "opportunity": 68,
+   "lostTo": [
+    [
+     "danger_sense_use",
+     1
+    ],
+    [
+     "conjure_tsumo",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"silent_take\",\"payload\":{\"tileId\":127}}",
+    "{\"type\":\"silent_take\",\"payload\":{\"tileId\":57}}",
+    "{\"type\":\"silent_take\",\"payload\":{\"tileId\":109}}",
+    "{\"type\":\"silent_take\",\"payload\":{\"tileId\":6}}",
+    "{\"type\":\"silent_take\",\"payload\":{\"tileId\":114}}"
+   ],
+   "heldGames": 19,
+   "offered": 40,
+   "picks": 19
+  },
+  {
+   "id": "soul_strike",
+   "chooseCalls": 589,
+   "proposed": 7,
+   "threw": 0,
+   "fired": 6,
+   "opportunity": 18,
+   "lostTo": [
+    [
+     "all_in_riichi",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"soul_strike\",\"payload\":{\"tileId\":128}}",
+    "{\"type\":\"soul_strike\",\"payload\":{\"tileId\":106}}",
+    "{\"type\":\"soul_strike\",\"payload\":{\"tileId\":63}}",
+    "{\"type\":\"soul_strike\",\"payload\":{\"tileId\":78}}",
+    "{\"type\":\"soul_strike\",\"payload\":{\"tileId\":15}}"
+   ],
+   "heldGames": 14,
+   "offered": 19,
+   "picks": 14
+  },
+  {
+   "id": "brief_fog",
+   "chooseCalls": 272,
+   "proposed": 6,
+   "threw": 0,
+   "fired": 6,
+   "opportunity": 59,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"declare_brief_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_brief_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_brief_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_brief_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_brief_fog\",\"payload\":{}}"
+   ],
+   "heldGames": 6,
+   "offered": 37,
+   "picks": 6
+  },
+  {
+   "id": "jackpot",
+   "chooseCalls": 561,
+   "proposed": 43,
+   "threw": 0,
+   "fired": 39,
+   "opportunity": 43,
+   "lostTo": [
+    [
+     "conjure_tsumo",
+     2
+    ],
+    [
+     "mono_world",
+     1
+    ],
+    [
+     "take_back",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"jackpot_roll\",\"payload\":{}}",
+    "{\"type\":\"jackpot_roll\",\"payload\":{}}",
+    "{\"type\":\"jackpot_roll\",\"payload\":{}}",
+    "{\"type\":\"jackpot_roll\",\"payload\":{}}",
+    "{\"type\":\"jackpot_roll\",\"payload\":{}}"
+   ],
+   "heldGames": 15,
+   "offered": 41,
+   "picks": 15
+  },
+  {
+   "id": "north_trader",
+   "chooseCalls": 198,
+   "proposed": 6,
+   "threw": 0,
+   "fired": 6,
+   "opportunity": 10,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"north_pull\",\"payload\":{\"tileId\":122}}",
+    "{\"type\":\"north_pull\",\"payload\":{\"tileId\":123}}",
+    "{\"type\":\"north_pull\",\"payload\":{\"tileId\":123}}",
+    "{\"type\":\"north_pull\",\"payload\":{\"tileId\":120}}",
+    "{\"type\":\"north_pull\",\"payload\":{\"tileId\":120}}"
+   ],
+   "heldGames": 7,
+   "offered": 20,
+   "picks": 7
+  },
+  {
+   "id": "cornucopia",
+   "chooseCalls": 0,
+   "proposed": 0,
+   "threw": 0,
+   "fired": 101,
+   "opportunity": 307,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 101,
+   "samples": [
+    "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+    "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p1\"}}",
+    "{\"type\":\"push_brand\",\"payload\":{\"target\":\"p1\"}}"
+   ],
+   "heldGames": 16,
+   "offered": 28,
+   "picks": 16
+  },
+  {
+   "id": "danger_sense",
+   "chooseCalls": 279,
+   "proposed": 16,
+   "threw": 0,
+   "fired": 13,
+   "opportunity": 137,
+   "lostTo": [
+    [
+     "danger_sense_use",
+     2
+    ],
+    [
+     "invincible_guard",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+    "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+    "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+    "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+    "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+   ],
+   "heldGames": 5,
+   "offered": 38,
+   "picks": 4
+  },
+  {
+   "id": "scapegoat",
+   "chooseCalls": 475,
+   "proposed": 15,
+   "threw": 0,
+   "fired": 12,
+   "opportunity": 325,
+   "lostTo": [
+    [
+     "scapegoat_mark",
+     3
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p1\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"scapegoat_mark\",\"payload\":{\"target\":\"p3\"}}"
+   ],
+   "heldGames": 9,
+   "offered": 44,
+   "picks": 8
+  },
+  {
+   "id": "call_seal",
+   "chooseCalls": 304,
+   "proposed": 5,
+   "threw": 0,
+   "fired": 5,
+   "opportunity": 47,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"call_seal_use\",\"payload\":{}}",
+    "{\"type\":\"call_seal_use\",\"payload\":{}}",
+    "{\"type\":\"call_seal_use\",\"payload\":{}}",
+    "{\"type\":\"call_seal_use\",\"payload\":{}}",
+    "{\"type\":\"call_seal_use\",\"payload\":{}}"
+   ],
+   "heldGames": 5,
+   "offered": 42,
+   "picks": 5
+  },
+  {
+   "id": "rank_gate",
+   "chooseCalls": 410,
+   "proposed": 27,
+   "threw": 0,
+   "fired": 22,
+   "opportunity": 27,
+   "lostTo": [
+    [
+     "rinshan_pull",
+     2
+    ],
+    [
+     "conjure_tsumo",
+     1
+    ],
+    [
+     "table_flip_do",
+     2
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"rank_gate_mark\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"rank_gate_mark\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"rank_gate_mark\",\"payload\":{\"target\":\"p1\"}}",
+    "{\"type\":\"rank_gate_mark\",\"payload\":{\"target\":\"p1\"}}",
+    "{\"type\":\"rank_gate_mark\",\"payload\":{\"target\":\"p1\"}}"
+   ],
+   "heldGames": 9,
+   "offered": 36,
+   "picks": 9
+  },
+  {
+   "id": "no_retreat",
+   "chooseCalls": 217,
+   "proposed": 3,
+   "threw": 0,
+   "fired": 3,
+   "opportunity": 28,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"no_retreat_riichi\",\"payload\":{\"tileId\":39}}",
+    "{\"type\":\"no_retreat_riichi\",\"payload\":{\"tileId\":101}}",
+    "{\"type\":\"no_retreat_riichi\",\"payload\":{\"tileId\":37}}"
+   ],
+   "heldGames": 8,
+   "offered": 21,
+   "picks": 8
+  },
+  {
+   "id": "karma",
+   "chooseCalls": 368,
+   "proposed": 1,
+   "threw": 0,
+   "fired": 1,
+   "opportunity": 1,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"karma_burn\",\"payload\":{}}"
+   ],
+   "heldGames": 5,
+   "offered": 29,
+   "picks": 5
+  },
+  {
+   "id": "dora_afterimage",
+   "chooseCalls": 1158,
+   "proposed": 25,
+   "threw": 0,
+   "fired": 25,
+   "opportunity": 233,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"dora_recall\",\"payload\":{}}",
+    "{\"type\":\"dora_recall\",\"payload\":{}}",
+    "{\"type\":\"dora_recall\",\"payload\":{}}",
+    "{\"type\":\"dora_recall\",\"payload\":{}}",
+    "{\"type\":\"dora_recall\",\"payload\":{}}"
+   ],
+   "heldGames": 17,
+   "offered": 45,
+   "picks": 17
+  },
+  {
+   "id": "seat_swap",
+   "chooseCalls": 197,
+   "proposed": 2,
+   "threw": 0,
+   "fired": 2,
+   "opportunity": 17,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"seat_swap\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"seat_swap\",\"payload\":{\"target\":\"p2\"}}"
+   ],
+   "heldGames": 4,
+   "offered": 18,
+   "picks": 4
+  },
+  {
+   "id": "open_kokushi",
+   "chooseCalls": 395,
+   "proposed": 2,
+   "threw": 0,
+   "fired": 2,
+   "opportunity": 29,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"kokushi_pon\",\"payload\":{\"tileIds\":[124,131]}}",
+    "{\"type\":\"kokushi_pon\",\"payload\":{\"tileIds\":[1,37]}}"
+   ],
+   "heldGames": 12,
+   "offered": 22,
+   "picks": 12
+  },
+  {
+   "id": "suit_unify",
+   "chooseCalls": 1272,
+   "proposed": 25,
+   "threw": 0,
+   "fired": 24,
+   "opportunity": 76,
+   "lostTo": [
+    [
+     "even_world_flip",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"pin\"}}",
+    "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"man\"}}",
+    "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"sou\"}}",
+    "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"man\"}}",
+    "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"sou\"}}"
+   ],
+   "heldGames": 24,
+   "offered": 36,
+   "picks": 24
+  },
+  {
+   "id": "three_dragons_will",
+   "chooseCalls": 310,
+   "proposed": 0,
+   "threw": 0,
+   "fired": 0,
+   "opportunity": 0,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [],
+   "heldGames": 10,
+   "offered": 25,
+   "picks": 10
+  },
+  {
+   "id": "even_world",
+   "chooseCalls": 1171,
+   "proposed": 21,
+   "threw": 0,
+   "fired": 21,
+   "opportunity": 421,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"even_world_flip\",\"payload\":{}}",
+    "{\"type\":\"even_world_flip\",\"payload\":{}}",
+    "{\"type\":\"even_world_flip\",\"payload\":{}}",
+    "{\"type\":\"even_world_flip\",\"payload\":{}}",
+    "{\"type\":\"even_world_flip\",\"payload\":{}}"
+   ],
+   "heldGames": 13,
+   "offered": 39,
+   "picks": 13
+  },
+  {
+   "id": "stealth_riichi",
+   "chooseCalls": 1849,
+   "proposed": 41,
+   "threw": 0,
+   "fired": 40,
+   "opportunity": 46,
+   "lostTo": [
+    [
+     "claim_dealer",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"stealth_riichi\",\"payload\":{\"tileId\":82}}",
+    "{\"type\":\"stealth_riichi\",\"payload\":{\"tileId\":98}}",
+    "{\"type\":\"stealth_riichi\",\"payload\":{\"tileId\":118}}",
+    "{\"type\":\"stealth_riichi\",\"payload\":{\"tileId\":7}}",
+    "{\"type\":\"stealth_riichi\",\"payload\":{\"tileId\":95}}"
+   ],
+   "heldGames": 23,
+   "offered": 38,
+   "picks": 23
+  },
+  {
+   "id": "invincible",
+   "chooseCalls": 917,
+   "proposed": 31,
+   "threw": 0,
+   "fired": 30,
+   "opportunity": 278,
+   "lostTo": [
+    [
+     "tenpai_scan_use",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"invincible_guard\",\"payload\":{}}",
+    "{\"type\":\"invincible_guard\",\"payload\":{}}",
+    "{\"type\":\"invincible_guard\",\"payload\":{}}",
+    "{\"type\":\"invincible_guard\",\"payload\":{}}",
+    "{\"type\":\"invincible_guard\",\"payload\":{}}"
+   ],
+   "heldGames": 15,
+   "offered": 39,
+   "picks": 15
+  },
+  {
+   "id": "giant_god",
+   "chooseCalls": 415,
+   "proposed": 0,
+   "threw": 0,
+   "fired": 0,
+   "opportunity": 0,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [],
+   "heldGames": 11,
+   "offered": 36,
+   "picks": 11
+  },
+  {
+   "id": "tenpai_scan",
+   "chooseCalls": 681,
+   "proposed": 27,
+   "threw": 0,
+   "fired": 21,
+   "opportunity": 402,
+   "lostTo": [
+    [
+     "tenpai_scan_use",
+     6
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+    "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+   ],
+   "heldGames": 11,
+   "offered": 41,
+   "picks": 10
+  },
+  {
+   "id": "genesis",
+   "chooseCalls": 1235,
+   "proposed": 14,
+   "threw": 0,
+   "fired": 14,
+   "opportunity": 167,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"genesis_flip\",\"payload\":{}}",
+    "{\"type\":\"genesis_flip\",\"payload\":{}}",
+    "{\"type\":\"genesis_flip\",\"payload\":{}}",
+    "{\"type\":\"genesis_flip\",\"payload\":{}}",
+    "{\"type\":\"genesis_flip\",\"payload\":{}}"
+   ],
+   "heldGames": 18,
+   "offered": 28,
+   "picks": 18
+  },
+  {
+   "id": "all_or_nothing",
+   "chooseCalls": 1076,
+   "proposed": 21,
+   "threw": 0,
+   "fired": 21,
+   "opportunity": 21,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"all_in_riichi\",\"payload\":{\"tileId\":108}}",
+    "{\"type\":\"all_in_riichi\",\"payload\":{\"tileId\":112}}",
+    "{\"type\":\"all_in_riichi\",\"payload\":{\"tileId\":8}}",
+    "{\"type\":\"all_in_riichi\",\"payload\":{\"tileId\":31}}",
+    "{\"type\":\"all_in_riichi\",\"payload\":{\"tileId\":99}}"
+   ],
+   "heldGames": 17,
+   "offered": 38,
+   "picks": 17
+  },
+  {
+   "id": "bluff_pretense",
+   "chooseCalls": 937,
+   "proposed": 19,
+   "threw": 0,
+   "fired": 19,
+   "opportunity": 194,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 1,
+   "samples": [
+    "{\"type\":\"bluff_pon\",\"payload\":{\"tileId\":111}}",
+    "{\"type\":\"bluff_pon\",\"payload\":{\"tileId\":130}}",
+    "{\"type\":\"bluff_pon\",\"payload\":{\"tileId\":113}}",
+    "{\"type\":\"bluff_pon\",\"payload\":{\"tileId\":113}}",
+    "{\"type\":\"bluff_pon\",\"payload\":{\"tileId\":127}}"
+   ],
+   "heldGames": 14,
+   "offered": 45,
+   "picks": 14
+  },
+  {
+   "id": "peek_riichi_waits",
+   "chooseCalls": 575,
+   "proposed": 20,
+   "threw": 0,
+   "fired": 20,
+   "opportunity": 107,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"peek_waits\",\"payload\":{\"target\":\"p2\"}}",
+    "{\"type\":\"peek_waits\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"peek_waits\",\"payload\":{\"target\":\"p2\"}}",
+    "{\"type\":\"peek_waits\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"peek_waits\",\"payload\":{\"target\":\"p1\"}}"
+   ],
+   "heldGames": 12,
+   "offered": 46,
+   "picks": 12
+  },
+  {
+   "id": "red_five_touch",
+   "chooseCalls": 547,
+   "proposed": 9,
+   "threw": 0,
+   "fired": 9,
+   "opportunity": 133,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"red_touch\",\"payload\":{\"rank\":2}}",
+    "{\"type\":\"red_touch\",\"payload\":{\"rank\":5}}",
+    "{\"type\":\"red_touch\",\"payload\":{\"rank\":3}}",
+    "{\"type\":\"red_touch\",\"payload\":{\"rank\":1}}",
+    "{\"type\":\"red_touch\",\"payload\":{\"rank\":6}}"
+   ],
+   "heldGames": 9,
+   "offered": 35,
+   "picks": 9
+  },
+  {
+   "id": "xray_hand",
+   "chooseCalls": 783,
+   "proposed": 16,
+   "threw": 0,
+   "fired": 16,
+   "opportunity": 79,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"xray_reveal\",\"payload\":{}}",
+    "{\"type\":\"xray_reveal\",\"payload\":{}}",
+    "{\"type\":\"xray_reveal\",\"payload\":{}}",
+    "{\"type\":\"xray_reveal\",\"payload\":{}}",
+    "{\"type\":\"xray_reveal\",\"payload\":{}}"
+   ],
+   "heldGames": 16,
+   "offered": 44,
+   "picks": 16
+  },
+  {
+   "id": "hidden_river",
+   "chooseCalls": 712,
+   "proposed": 15,
+   "threw": 0,
+   "fired": 11,
+   "opportunity": 15,
+   "lostTo": [
+    [
+     "north_pull",
+     1
+    ],
+    [
+     "hand_swap",
+     1
+    ],
+    [
+     "declare_fog",
+     2
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"declare_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_fog\",\"payload\":{}}",
+    "{\"type\":\"declare_fog\",\"payload\":{}}"
+   ],
+   "heldGames": 13,
+   "offered": 43,
+   "picks": 12
+  },
+  {
+   "id": "tile_split",
+   "chooseCalls": 761,
+   "proposed": 49,
+   "threw": 0,
+   "fired": 45,
+   "opportunity": 107,
+   "lostTo": [
+    [
+     "split_tile",
+     2
+    ],
+    [
+     "dw_swap",
+     2
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"split_tile\",\"payload\":{\"tileId\":65,\"a\":1}}",
+    "{\"type\":\"split_tile\",\"payload\":{\"tileId\":52,\"a\":2}}",
+    "{\"type\":\"split_tile\",\"payload\":{\"tileId\":33,\"a\":1}}",
+    "{\"type\":\"split_tile\",\"payload\":{\"tileId\":95,\"a\":2}}",
+    "{\"type\":\"split_tile\",\"payload\":{\"tileId\":99,\"a\":2}}"
+   ],
+   "heldGames": 14,
+   "offered": 37,
+   "picks": 13
+  },
+  {
+   "id": "pond_snatch",
+   "chooseCalls": 1115,
+   "proposed": 42,
+   "threw": 0,
+   "fired": 42,
+   "opportunity": 75,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"pond_snatch\",\"payload\":{\"snatchId\":15,\"fromPlayer\":\"p1\"}}",
+    "{\"type\":\"pond_snatch\",\"payload\":{\"snatchId\":18,\"fromPlayer\":\"p2\"}}",
+    "{\"type\":\"pond_snatch\",\"payload\":{\"snatchId\":37,\"fromPlayer\":\"p2\"}}",
+    "{\"type\":\"pond_snatch\",\"payload\":{\"snatchId\":38,\"fromPlayer\":\"p0\"}}",
+    "{\"type\":\"pond_snatch\",\"payload\":{\"snatchId\":45,\"fromPlayer\":\"p3\"}}"
+   ],
+   "heldGames": 14,
+   "offered": 38,
+   "picks": 14
+  },
+  {
+   "id": "conjure_draw",
+   "chooseCalls": 1311,
+   "proposed": 85,
+   "threw": 0,
+   "fired": 80,
+   "opportunity": 111,
+   "lostTo": [
+    [
+     "future_arm",
+     1
+    ],
+    [
+     "future_exchange",
+     1
+    ],
+    [
+     "split_tile",
+     2
+    ],
+    [
+     "ankan",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":14}}",
+    "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":12}}",
+    "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":88}}",
+    "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":128}}",
+    "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":47}}"
+   ],
+   "heldGames": 20,
+   "offered": 35,
+   "picks": 20
+  },
+  {
+   "id": "last_stand",
+   "chooseCalls": 694,
+   "proposed": 0,
+   "threw": 0,
+   "fired": 0,
+   "opportunity": 14,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [],
+   "heldGames": 11,
+   "offered": 52,
+   "picks": 11
+  },
+  {
+   "id": "table_flip",
+   "chooseCalls": 784,
+   "proposed": 37,
+   "threw": 0,
+   "fired": 37,
+   "opportunity": 48,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"table_flip_do\",\"payload\":{}}",
+    "{\"type\":\"table_flip_do\",\"payload\":{}}",
+    "{\"type\":\"table_flip_do\",\"payload\":{}}",
+    "{\"type\":\"table_flip_do\",\"payload\":{}}",
+    "{\"type\":\"table_flip_do\",\"payload\":{}}"
+   ],
+   "heldGames": 13,
+   "offered": 35,
+   "picks": 13
+  },
+  {
+   "id": "picky_eater",
+   "chooseCalls": 1024,
+   "proposed": 3,
+   "threw": 0,
+   "fired": 3,
+   "opportunity": 3,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"picky_unify\",\"payload\":{\"suit\":\"sou\"}}",
+    "{\"type\":\"picky_unify\",\"payload\":{\"suit\":\"pin\"}}",
+    "{\"type\":\"picky_unify\",\"payload\":{\"suit\":\"sou\"}}"
+   ],
+   "heldGames": 21,
+   "offered": 57,
+   "picks": 21
+  },
+  {
+   "id": "full_hand_swap",
+   "chooseCalls": 499,
+   "proposed": 9,
+   "threw": 0,
+   "fired": 8,
+   "opportunity": 40,
+   "lostTo": [
+    [
+     "hand_swap",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"hand_swap\",\"payload\":{\"target\":\"p1\"}}",
+    "{\"type\":\"hand_swap\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"hand_swap\",\"payload\":{\"target\":\"p0\"}}",
+    "{\"type\":\"hand_swap\",\"payload\":{\"target\":\"p3\"}}",
+    "{\"type\":\"hand_swap\",\"payload\":{\"target\":\"p3\"}}"
+   ],
+   "heldGames": 9,
+   "offered": 45,
+   "picks": 8
+  },
+  {
+   "id": "pseudo_dealer",
+   "chooseCalls": 278,
+   "proposed": 6,
+   "threw": 0,
+   "fired": 4,
+   "opportunity": 93,
+   "lostTo": [
+    [
+     "claim_dealer",
+     2
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"claim_dealer\",\"payload\":{}}",
+    "{\"type\":\"claim_dealer\",\"payload\":{}}",
+    "{\"type\":\"claim_dealer\",\"payload\":{}}",
+    "{\"type\":\"claim_dealer\",\"payload\":{}}"
+   ],
+   "heldGames": 6,
+   "offered": 26,
+   "picks": 5
+  },
+  {
+   "id": "open_riichi_reveal",
+   "chooseCalls": 212,
+   "proposed": 5,
+   "threw": 0,
+   "fired": 5,
+   "opportunity": 5,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"open_riichi\",\"payload\":{\"tileId\":35}}",
+    "{\"type\":\"open_riichi\",\"payload\":{\"tileId\":106}}",
+    "{\"type\":\"open_riichi\",\"payload\":{\"tileId\":53}}",
+    "{\"type\":\"open_riichi\",\"payload\":{\"tileId\":42}}",
+    "{\"type\":\"open_riichi\",\"payload\":{\"tileId\":38}}"
+   ],
+   "heldGames": 5,
+   "offered": 24,
+   "picks": 5
+  },
+  {
+   "id": "cliff_bloom",
+   "chooseCalls": 172,
+   "proposed": 0,
+   "threw": 0,
+   "fired": 0,
+   "opportunity": 0,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [],
+   "heldGames": 5,
+   "offered": 15,
+   "picks": 5
+  },
+  {
+   "id": "disarm",
+   "chooseCalls": 452,
+   "proposed": 5,
+   "threw": 0,
+   "fired": 4,
+   "opportunity": 29,
+   "lostTo": [
+    [
+     "disarm_lock",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p1\",\"augmentId\":\"stealth_riichi\"}}",
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p1\",\"augmentId\":\"mixed_triplet\"}}",
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p0\",\"augmentId\":\"tile_dyeing\"}}",
+    "{\"type\":\"disarm_lock\",\"payload\":{\"target\":\"p0\",\"augmentId\":\"broken_border\"}}"
+   ],
+   "heldGames": 5,
+   "offered": 39,
+   "picks": 4
+  },
+  {
+   "id": "joker",
+   "chooseCalls": 283,
+   "proposed": 7,
+   "threw": 0,
+   "fired": 7,
+   "opportunity": 106,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"joker_call\",\"payload\":{}}",
+    "{\"type\":\"joker_call\",\"payload\":{}}",
+    "{\"type\":\"joker_call\",\"payload\":{}}",
+    "{\"type\":\"joker_call\",\"payload\":{}}",
+    "{\"type\":\"joker_call\",\"payload\":{}}"
+   ],
+   "heldGames": 10,
+   "offered": 21,
+   "picks": 10
+  },
+  {
+   "id": "bottom_deal",
+   "chooseCalls": 748,
+   "proposed": 134,
+   "threw": 0,
+   "fired": 127,
+   "opportunity": 511,
+   "lostTo": [
+    [
+     "silent_take",
+     1
+    ],
+    [
+     "genesis_flip",
+     1
+    ],
+    [
+     "conjure_tsumo",
+     4
+    ],
+    [
+     "danger_sense_use",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"bottom_deal\",\"payload\":{}}",
+    "{\"type\":\"bottom_deal\",\"payload\":{}}",
+    "{\"type\":\"bottom_deal\",\"payload\":{}}",
+    "{\"type\":\"bottom_deal\",\"payload\":{}}",
+    "{\"type\":\"bottom_deal\",\"payload\":{}}"
+   ],
+   "heldGames": 14,
+   "offered": 36,
+   "picks": 14
+  },
+  {
+   "id": "blood_contract",
+   "chooseCalls": 250,
+   "proposed": 5,
+   "threw": 0,
+   "fired": 4,
+   "opportunity": 20,
+   "lostTo": [
+    [
+     "split_tile",
+     1
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"blood_contract_declare\",\"payload\":{\"yaku\":\"chiitoitsu\"}}",
+    "{\"type\":\"blood_contract_declare\",\"payload\":{\"yaku\":\"chiitoitsu\"}}",
+    "{\"type\":\"blood_contract_declare\",\"payload\":{\"yaku\":\"chiitoitsu\"}}",
+    "{\"type\":\"blood_contract_declare\",\"payload\":{\"yaku\":\"chiitoitsu\"}}"
+   ],
+   "heldGames": 9,
+   "offered": 26,
+   "picks": 9
+  },
+  {
+   "id": "free_riichi_discard",
+   "chooseCalls": 371,
+   "proposed": 6,
+   "threw": 0,
+   "fired": 0,
+   "opportunity": 18,
+   "lostTo": [
+    [
+     "free_discard",
+     6
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [],
+   "heldGames": 11,
+   "offered": 13,
+   "picks": 10
+  },
+  {
+   "id": "tile_dyeing",
+   "chooseCalls": 1037,
+   "proposed": 68,
+   "threw": 0,
+   "fired": 61,
+   "opportunity": 189,
+   "lostTo": [
+    [
+     "dw_swap",
+     1
+    ],
+    [
+     "silent_take",
+     1
+    ],
+    [
+     "tile_dye",
+     5
+    ]
+   ],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"tile_dye\",\"payload\":{\"tileId\":32,\"suit\":\"pin\"}}",
+    "{\"type\":\"tile_dye\",\"payload\":{\"tileId\":103,\"suit\":\"pin\"}}",
+    "{\"type\":\"tile_dye\",\"payload\":{\"tileId\":5,\"suit\":\"pin\"}}",
+    "{\"type\":\"tile_dye\",\"payload\":{\"tileId\":24,\"suit\":\"pin\"}}",
+    "{\"type\":\"tile_dye\",\"payload\":{\"tileId\":19,\"suit\":\"pin\"}}"
+   ],
+   "heldGames": 15,
+   "offered": 37,
+   "picks": 14
+  },
+  {
+   "id": "honor_return",
+   "chooseCalls": 376,
+   "proposed": 8,
+   "threw": 0,
+   "fired": 8,
+   "opportunity": 8,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"honor_recall\",\"payload\":{}}",
+    "{\"type\":\"honor_recall\",\"payload\":{}}",
+    "{\"type\":\"honor_recall\",\"payload\":{}}",
+    "{\"type\":\"honor_recall\",\"payload\":{}}",
+    "{\"type\":\"honor_recall\",\"payload\":{}}"
+   ],
+   "heldGames": 8,
+   "offered": 45,
+   "picks": 8
+  },
+  {
+   "id": "reload",
+   "chooseCalls": 166,
+   "proposed": 1,
+   "threw": 0,
+   "fired": 1,
+   "opportunity": 1,
+   "lostTo": [],
+   "selfTarget": 0,
+   "randomFire": 0,
+   "samples": [
+    "{\"type\":\"reload_use\",\"payload\":{\"augmentId\":\"suit_unify\"}}"
+   ],
+   "heldGames": 5,
+   "offered": 16,
+   "picks": 5
+  }
+ ],
+ "arenaAug": [
+  {
+   "id": "free_riichi_discard",
+   "offered": 13,
+   "picked": 10,
+   "pickRate": 0.7692307692307693,
+   "games": 11,
+   "avgPlacement": 2.272727272727273,
+   "power": 41
+  },
+  {
+   "id": "soul_strike",
+   "offered": 19,
+   "picked": 14,
+   "pickRate": 0.7368421052631579,
+   "games": 14,
+   "avgPlacement": 2.7857142857142856,
+   "power": 41
+  },
+  {
+   "id": "suit_unify",
+   "offered": 36,
+   "picked": 24,
+   "pickRate": 0.6666666666666666,
+   "games": 24,
+   "avgPlacement": 2.25,
+   "power": 44
+  },
+  {
+   "id": "silent_pact",
+   "offered": 21,
+   "picked": 14,
+   "pickRate": 0.6666666666666666,
+   "games": 15,
+   "avgPlacement": 3,
+   "power": 45
+  },
+  {
+   "id": "genesis",
+   "offered": 28,
+   "picked": 18,
+   "pickRate": 0.6428571428571429,
+   "games": 18,
+   "avgPlacement": 2.3333333333333335,
+   "power": 44
+  },
+  {
+   "id": "async_chiitoi",
+   "offered": 32,
+   "picked": 20,
+   "pickRate": 0.625,
+   "games": 20,
+   "avgPlacement": 2.5,
+   "power": 39
+  },
+  {
+   "id": "broken_border",
+   "offered": 29,
+   "picked": 18,
+   "pickRate": 0.6206896551724138,
+   "games": 18,
+   "avgPlacement": 2.5555555555555554,
+   "power": 44
+  },
+  {
+   "id": "aotenjou_ceiling",
+   "offered": 21,
+   "picked": 13,
+   "pickRate": 0.6190476190476191,
+   "games": 13,
+   "avgPlacement": 2,
+   "power": 35
+  },
+  {
+   "id": "mixed_nine_gates",
+   "offered": 26,
+   "picked": 16,
+   "pickRate": 0.6153846153846154,
+   "games": 16,
+   "avgPlacement": 2.625,
+   "power": 30
+  },
+  {
+   "id": "late_bloomer_east",
+   "offered": 13,
+   "picked": 8,
+   "pickRate": 0.6153846153846154,
+   "games": 8,
+   "avgPlacement": 2.875,
+   "power": 35
+  },
+  {
+   "id": "open_riichi",
+   "offered": 36,
+   "picked": 22,
+   "pickRate": 0.6111111111111112,
+   "games": 22,
+   "avgPlacement": 2.3181818181818183,
+   "power": 42
+  },
+  {
+   "id": "royal_kokushi",
+   "offered": 18,
+   "picked": 11,
+   "pickRate": 0.6111111111111112,
+   "games": 12,
+   "avgPlacement": 2.5,
+   "power": 44
+  },
+  {
+   "id": "stealth_riichi",
+   "offered": 38,
+   "picked": 23,
+   "pickRate": 0.6052631578947368,
+   "games": 23,
+   "avgPlacement": 2.260869565217391,
+   "power": 41
+  },
+  {
+   "id": "eternal_dealer",
+   "offered": 17,
+   "picked": 10,
+   "pickRate": 0.5882352941176471,
+   "games": 10,
+   "avgPlacement": 2.5,
+   "power": 41
+  },
+  {
+   "id": "conjure_draw",
+   "offered": 35,
+   "picked": 20,
+   "pickRate": 0.5714285714285714,
+   "games": 20,
+   "avgPlacement": 3,
+   "power": 39
+  },
+  {
+   "id": "cornucopia",
+   "offered": 28,
+   "picked": 16,
+   "pickRate": 0.5714285714285714,
+   "games": 16,
+   "avgPlacement": 2.5,
+   "power": 41
+  },
+  {
+   "id": "wind_lineage",
+   "offered": 36,
+   "picked": 20,
+   "pickRate": 0.5555555555555556,
+   "games": 20,
+   "avgPlacement": 2.25,
+   "power": 38
+  },
+  {
+   "id": "polar_ends",
+   "offered": 18,
+   "picked": 10,
+   "pickRate": 0.5555555555555556,
+   "games": 10,
+   "avgPlacement": 2.9,
+   "power": 41
+  },
+  {
+   "id": "dead_wall_master",
+   "offered": 20,
+   "picked": 11,
+   "pickRate": 0.55,
+   "games": 11,
+   "avgPlacement": 2.727272727272727,
+   "power": 39
+  },
+  {
+   "id": "open_kokushi",
+   "offered": 22,
+   "picked": 12,
+   "pickRate": 0.5454545454545454,
+   "games": 12,
+   "avgPlacement": 2.5833333333333335,
+   "power": 41
+  },
+  {
+   "id": "mixed_triplet",
+   "offered": 27,
+   "picked": 14,
+   "pickRate": 0.5185185185185185,
+   "games": 14,
+   "avgPlacement": 2.5,
+   "power": 44
+  },
+  {
+   "id": "let_it_ride",
+   "offered": 28,
+   "picked": 14,
+   "pickRate": 0.5,
+   "games": 14,
+   "avgPlacement": 2.5714285714285716,
+   "power": 38
+  },
+  {
+   "id": "joker",
+   "offered": 21,
+   "picked": 10,
+   "pickRate": 0.47619047619047616,
+   "games": 10,
+   "avgPlacement": 2.3,
+   "power": 36
+  },
+  {
+   "id": "silent_swap",
+   "offered": 40,
+   "picked": 19,
+   "pickRate": 0.475,
+   "games": 19,
+   "avgPlacement": 2.6315789473684212,
+   "power": 35
+  },
+  {
+   "id": "off_by_one",
+   "offered": 36,
+   "picked": 17,
+   "pickRate": 0.4722222222222222,
+   "games": 17,
+   "avgPlacement": 2.5294117647058822,
+   "power": 36
+  },
+  {
+   "id": "tanyao_break",
+   "offered": 45,
+   "picked": 21,
+   "pickRate": 0.4666666666666667,
+   "games": 22,
+   "avgPlacement": 2.6363636363636362,
+   "power": 35
+  },
+  {
+   "id": "regret",
+   "offered": 41,
+   "picked": 19,
+   "pickRate": 0.4634146341463415,
+   "games": 19,
+   "avgPlacement": 2.210526315789474,
+   "power": 35
+  },
+  {
+   "id": "hourglass",
+   "offered": 26,
+   "picked": 12,
+   "pickRate": 0.46153846153846156,
+   "games": 12,
+   "avgPlacement": 2.4166666666666665,
+   "power": 34
+  },
+  {
+   "id": "mirror_dora",
+   "offered": 37,
+   "picked": 17,
+   "pickRate": 0.4594594594594595,
+   "games": 17,
+   "avgPlacement": 2.764705882352941,
+   "power": 38
+  },
+  {
+   "id": "all_or_nothing",
+   "offered": 38,
+   "picked": 17,
+   "pickRate": 0.4473684210526316,
+   "games": 17,
+   "avgPlacement": 3,
+   "power": 32
+  },
+  {
+   "id": "broken_wall",
+   "offered": 41,
+   "picked": 18,
+   "pickRate": 0.43902439024390244,
+   "games": 19,
+   "avgPlacement": 2.5789473684210527,
+   "power": 33
+  },
+  {
+   "id": "true_dragon",
+   "offered": 16,
+   "picked": 7,
+   "pickRate": 0.4375,
+   "games": 7,
+   "avgPlacement": 2.857142857142857,
+   "power": 47
+  },
+  {
+   "id": "no_ron_pact",
+   "offered": 16,
+   "picked": 7,
+   "pickRate": 0.4375,
+   "games": 7,
+   "avgPlacement": 2.142857142857143,
+   "power": 27
+  },
+  {
+   "id": "discard_recall",
+   "offered": 46,
+   "picked": 20,
+   "pickRate": 0.43478260869565216,
+   "games": 21,
+   "avgPlacement": 2.3333333333333335,
+   "power": 34
+  },
+  {
+   "id": "late_double",
+   "offered": 40,
+   "picked": 17,
+   "pickRate": 0.425,
+   "games": 17,
+   "avgPlacement": 2.7058823529411766,
+   "power": 33
+  },
+  {
+   "id": "omni_chi",
+   "offered": 40,
+   "picked": 16,
+   "pickRate": 0.4,
+   "games": 16,
+   "avgPlacement": 2.0625,
+   "power": 30
+  },
+  {
+   "id": "three_dragons_will",
+   "offered": 25,
+   "picked": 10,
+   "pickRate": 0.4,
+   "games": 10,
+   "avgPlacement": 2.5,
+   "power": 35
+  },
+  {
+   "id": "iron_wall",
+   "offered": 38,
+   "picked": 15,
+   "pickRate": 0.39473684210526316,
+   "games": 15,
+   "avgPlacement": 2.6666666666666665,
+   "power": 33
+  },
+  {
+   "id": "grave_rob",
+   "offered": 33,
+   "picked": 13,
+   "pickRate": 0.3939393939393939,
+   "games": 14,
+   "avgPlacement": 2.5,
+   "power": 38
+  },
+  {
+   "id": "haitei_lord",
+   "offered": 36,
+   "picked": 14,
+   "pickRate": 0.3888888888888889,
+   "games": 14,
+   "avgPlacement": 2.642857142857143,
+   "power": 27
+  },
+  {
+   "id": "bottom_deal",
+   "offered": 36,
+   "picked": 14,
+   "pickRate": 0.3888888888888889,
+   "games": 14,
+   "avgPlacement": 2.5,
+   "power": 37
+  },
+  {
+   "id": "yakuless_win",
+   "offered": 31,
+   "picked": 12,
+   "pickRate": 0.3870967741935484,
+   "games": 14,
+   "avgPlacement": 2.7857142857142856,
+   "power": 38
+  },
+  {
+   "id": "invincible",
+   "offered": 39,
+   "picked": 15,
+   "pickRate": 0.38461538461538464,
+   "games": 15,
+   "avgPlacement": 2.466666666666667,
+   "power": 31
+  },
+  {
+   "id": "riichi_upgrade",
+   "offered": 26,
+   "picked": 10,
+   "pickRate": 0.38461538461538464,
+   "games": 10,
+   "avgPlacement": 2.5,
+   "power": 32
+  },
+  {
+   "id": "soul_hunt",
+   "offered": 26,
+   "picked": 10,
+   "pickRate": 0.38461538461538464,
+   "games": 11,
+   "avgPlacement": 2.272727272727273,
+   "power": 31
+  },
+  {
+   "id": "no_retreat",
+   "offered": 21,
+   "picked": 8,
+   "pickRate": 0.38095238095238093,
+   "games": 8,
+   "avgPlacement": 2.375,
+   "power": 34
+  },
+  {
+   "id": "tile_dyeing",
+   "offered": 37,
+   "picked": 14,
+   "pickRate": 0.3783783783783784,
+   "games": 15,
+   "avgPlacement": 2.2,
+   "power": 31
+  },
+  {
+   "id": "dora_afterimage",
+   "offered": 45,
+   "picked": 17,
+   "pickRate": 0.37777777777777777,
+   "games": 17,
+   "avgPlacement": 2.764705882352941,
+   "power": 31
+  },
+  {
+   "id": "table_flip",
+   "offered": 35,
+   "picked": 13,
+   "pickRate": 0.37142857142857144,
+   "games": 13,
+   "avgPlacement": 2.6923076923076925,
+   "power": 33
+  },
+  {
+   "id": "picky_eater",
+   "offered": 57,
+   "picked": 21,
+   "pickRate": 0.3684210526315789,
+   "games": 21,
+   "avgPlacement": 2.9047619047619047,
+   "power": 31
+  },
+  {
+   "id": "pond_snatch",
+   "offered": 38,
+   "picked": 14,
+   "pickRate": 0.3684210526315789,
+   "games": 14,
+   "avgPlacement": 2.7857142857142856,
+   "power": 35
+  },
+  {
+   "id": "jackpot",
+   "offered": 41,
+   "picked": 15,
+   "pickRate": 0.36585365853658536,
+   "games": 15,
+   "avgPlacement": 1.6666666666666667,
+   "power": 31
+  },
+  {
+   "id": "xray_hand",
+   "offered": 44,
+   "picked": 16,
+   "pickRate": 0.36363636363636365,
+   "games": 16,
+   "avgPlacement": 2.375,
+   "power": 29
+  },
+  {
+   "id": "ura_peek",
+   "offered": 45,
+   "picked": 16,
+   "pickRate": 0.35555555555555557,
+   "games": 16,
+   "avgPlacement": 2.5,
+   "power": 25
+  },
+  {
+   "id": "sign_flip",
+   "offered": 34,
+   "picked": 12,
+   "pickRate": 0.35294117647058826,
+   "games": 13,
+   "avgPlacement": 2.230769230769231,
+   "power": 32
+  },
+  {
+   "id": "tile_split",
+   "offered": 37,
+   "picked": 13,
+   "pickRate": 0.35135135135135137,
+   "games": 14,
+   "avgPlacement": 2.2142857142857144,
+   "power": 30
+  },
+  {
+   "id": "north_trader",
+   "offered": 20,
+   "picked": 7,
+   "pickRate": 0.35,
+   "games": 7,
+   "avgPlacement": 2.5714285714285716,
+   "power": 34
+  },
+  {
+   "id": "riichi_seal",
+   "offered": 46,
+   "picked": 16,
+   "pickRate": 0.34782608695652173,
+   "games": 16,
+   "avgPlacement": 2.625,
+   "power": 32
+  },
+  {
+   "id": "blood_contract",
+   "offered": 26,
+   "picked": 9,
+   "pickRate": 0.34615384615384615,
+   "games": 9,
+   "avgPlacement": 1.7777777777777777,
+   "power": 31
+  },
+  {
+   "id": "even_world",
+   "offered": 39,
+   "picked": 13,
+   "pickRate": 0.3333333333333333,
+   "games": 13,
+   "avgPlacement": 2.8461538461538463,
+   "power": 35
+  },
+  {
+   "id": "big_hand",
+   "offered": 21,
+   "picked": 7,
+   "pickRate": 0.3333333333333333,
+   "games": 7,
+   "avgPlacement": 2,
+   "power": 34
+  },
+  {
+   "id": "cliff_bloom",
+   "offered": 15,
+   "picked": 5,
+   "pickRate": 0.3333333333333333,
+   "games": 5,
+   "avgPlacement": 2.6,
+   "power": 38
+  },
+  {
+   "id": "foresight",
+   "offered": 34,
+   "picked": 11,
+   "pickRate": 0.3235294117647059,
+   "games": 11,
+   "avgPlacement": 1.7272727272727273,
+   "power": 39
+  },
+  {
+   "id": "devils_advance",
+   "offered": 22,
+   "picked": 7,
+   "pickRate": 0.3181818181818182,
+   "games": 7,
+   "avgPlacement": 1.5714285714285714,
+   "power": 30
+  },
+  {
+   "id": "spy",
+   "offered": 41,
+   "picked": 13,
+   "pickRate": 0.3170731707317073,
+   "games": 13,
+   "avgPlacement": 2.923076923076923,
+   "power": 33
+  },
+  {
+   "id": "reload",
+   "offered": 16,
+   "picked": 5,
+   "pickRate": 0.3125,
+   "games": 5,
+   "avgPlacement": 2.6,
+   "power": 24
+  },
+  {
+   "id": "bluff_pretense",
+   "offered": 45,
+   "picked": 14,
+   "pickRate": 0.3111111111111111,
+   "games": 14,
+   "avgPlacement": 2.357142857142857,
+   "power": 34
+  },
+  {
+   "id": "future_sight",
+   "offered": 42,
+   "picked": 13,
+   "pickRate": 0.30952380952380953,
+   "games": 13,
+   "avgPlacement": 2.1538461538461537,
+   "power": 27
+  },
+  {
+   "id": "nagashi_yakuman",
+   "offered": 26,
+   "picked": 8,
+   "pickRate": 0.3076923076923077,
+   "games": 8,
+   "avgPlacement": 2,
+   "power": 28
+  },
+  {
+   "id": "giant_god",
+   "offered": 36,
+   "picked": 11,
+   "pickRate": 0.3055555555555556,
+   "games": 11,
+   "avgPlacement": 3.1818181818181817,
+   "power": 27
+  },
+  {
+   "id": "discard_lock",
+   "offered": 43,
+   "picked": 13,
+   "pickRate": 0.3023255813953488,
+   "games": 13,
+   "avgPlacement": 2.769230769230769,
+   "power": 23
+  },
+  {
+   "id": "take_back",
+   "offered": 40,
+   "picked": 12,
+   "pickRate": 0.3,
+   "games": 12,
+   "avgPlacement": 2.5833333333333335,
+   "power": 31
+  },
+  {
+   "id": "blind_ron",
+   "offered": 42,
+   "picked": 12,
+   "pickRate": 0.2857142857142857,
+   "games": 12,
+   "avgPlacement": 3.0833333333333335,
+   "power": 26
+  },
+  {
+   "id": "alchemist",
+   "offered": 50,
+   "picked": 14,
+   "pickRate": 0.28,
+   "games": 14,
+   "avgPlacement": 2.0714285714285716,
+   "power": 30
+  },
+  {
+   "id": "hidden_river",
+   "offered": 43,
+   "picked": 12,
+   "pickRate": 0.27906976744186046,
+   "games": 13,
+   "avgPlacement": 2.3076923076923075,
+   "power": 30
+  },
+  {
+   "id": "siege_riichi",
+   "offered": 53,
+   "picked": 14,
+   "pickRate": 0.2641509433962264,
+   "games": 15,
+   "avgPlacement": 2.6,
+   "power": 28
+  },
+  {
+   "id": "peek_riichi_waits",
+   "offered": 46,
+   "picked": 12,
+   "pickRate": 0.2608695652173913,
+   "games": 12,
+   "avgPlacement": 2.75,
+   "power": 26
+  },
+  {
+   "id": "yakuman_shield",
+   "offered": 27,
+   "picked": 7,
+   "pickRate": 0.25925925925925924,
+   "games": 7,
+   "avgPlacement": 3.142857142857143,
+   "power": 21
+  },
+  {
+   "id": "red_five_touch",
+   "offered": 35,
+   "picked": 9,
+   "pickRate": 0.2571428571428571,
+   "games": 9,
+   "avgPlacement": 2.2222222222222223,
+   "power": 32
+  },
+  {
+   "id": "palm_flip",
+   "offered": 39,
+   "picked": 10,
+   "pickRate": 0.2564102564102564,
+   "games": 10,
+   "avgPlacement": 2.4,
+   "power": 29
+  },
+  {
+   "id": "rank_gate",
+   "offered": 36,
+   "picked": 9,
+   "pickRate": 0.25,
+   "games": 9,
+   "avgPlacement": 3.111111111111111,
+   "power": 24
+  },
+  {
+   "id": "rinshan_preview",
+   "offered": 28,
+   "picked": 7,
+   "pickRate": 0.25,
+   "games": 7,
+   "avgPlacement": 2.5714285714285716,
+   "power": 25
+  },
+  {
+   "id": "snake_kan",
+   "offered": 24,
+   "picked": 6,
+   "pickRate": 0.25,
+   "games": 6,
+   "avgPlacement": 2.5,
+   "power": 28
+  },
+  {
+   "id": "tenpai_scan",
+   "offered": 41,
+   "picked": 10,
+   "pickRate": 0.24390243902439024,
+   "games": 11,
+   "avgPlacement": 2.4545454545454546,
+   "power": 22
+  },
+  {
+   "id": "ankan_dora",
+   "offered": 29,
+   "picked": 7,
+   "pickRate": 0.2413793103448276,
+   "games": 7,
+   "avgPlacement": 1.4285714285714286,
+   "power": 32
+  },
+  {
+   "id": "void_kan",
+   "offered": 22,
+   "picked": 5,
+   "pickRate": 0.22727272727272727,
+   "games": 6,
+   "avgPlacement": 2.6666666666666665,
+   "power": 26
+  },
+  {
+   "id": "time_stop",
+   "offered": 40,
+   "picked": 9,
+   "pickRate": 0.225,
+   "games": 9,
+   "avgPlacement": 2,
+   "power": 34
+  },
+  {
+   "id": "seat_swap",
+   "offered": 18,
+   "picked": 4,
+   "pickRate": 0.2222222222222222,
+   "games": 4,
+   "avgPlacement": 1.75,
+   "power": 26
+  },
+  {
+   "id": "counter",
+   "offered": 28,
+   "picked": 6,
+   "pickRate": 0.21428571428571427,
+   "games": 7,
+   "avgPlacement": 2.5714285714285716,
+   "power": 27
+  },
+  {
+   "id": "last_stand",
+   "offered": 52,
+   "picked": 11,
+   "pickRate": 0.21153846153846154,
+   "games": 11,
+   "avgPlacement": 2.3636363636363638,
+   "power": 25
+  },
+  {
+   "id": "avenger",
+   "offered": 19,
+   "picked": 4,
+   "pickRate": 0.21052631578947367,
+   "games": 5,
+   "avgPlacement": 2.8,
+   "power": 22
+  },
+  {
+   "id": "open_riichi_reveal",
+   "offered": 24,
+   "picked": 5,
+   "pickRate": 0.20833333333333334,
+   "games": 5,
+   "avgPlacement": 3,
+   "power": 29
+  },
+  {
+   "id": "pseudo_dealer",
+   "offered": 26,
+   "picked": 5,
+   "pickRate": 0.19230769230769232,
+   "games": 6,
+   "avgPlacement": 2.5,
+   "power": 29
+  },
+  {
+   "id": "hidden_blade",
+   "offered": 16,
+   "picked": 3,
+   "pickRate": 0.1875,
+   "games": 3,
+   "avgPlacement": 3,
+   "power": 31
+  },
+  {
+   "id": "scapegoat",
+   "offered": 44,
+   "picked": 8,
+   "pickRate": 0.18181818181818182,
+   "games": 9,
+   "avgPlacement": 2.5555555555555554,
+   "power": 20
+  },
+  {
+   "id": "honor_return",
+   "offered": 45,
+   "picked": 8,
+   "pickRate": 0.17777777777777778,
+   "games": 8,
+   "avgPlacement": 2.875,
+   "power": 27
+  },
+  {
+   "id": "full_hand_swap",
+   "offered": 45,
+   "picked": 8,
+   "pickRate": 0.17777777777777778,
+   "games": 9,
+   "avgPlacement": 2.5555555555555554,
+   "power": 24
+  },
+  {
+   "id": "time_pressure",
+   "offered": 46,
+   "picked": 8,
+   "pickRate": 0.17391304347826086,
+   "games": 9,
+   "avgPlacement": 2.5555555555555554,
+   "power": 18
+  },
+  {
+   "id": "dora_conceal",
+   "offered": 46,
+   "picked": 8,
+   "pickRate": 0.17391304347826086,
+   "games": 9,
+   "avgPlacement": 2.111111111111111,
+   "power": 24
+  },
+  {
+   "id": "karma",
+   "offered": 29,
+   "picked": 5,
+   "pickRate": 0.1724137931034483,
+   "games": 5,
+   "avgPlacement": 2.8,
+   "power": 26
+  },
+  {
+   "id": "meld_dissolve",
+   "offered": 29,
+   "picked": 5,
+   "pickRate": 0.1724137931034483,
+   "games": 5,
+   "avgPlacement": 2.8,
+   "power": 28
+  },
+  {
+   "id": "always_tenpai",
+   "offered": 36,
+   "picked": 6,
+   "pickRate": 0.16666666666666666,
+   "games": 6,
+   "avgPlacement": 1.5,
+   "power": 20
+  },
+  {
+   "id": "brief_fog",
+   "offered": 37,
+   "picked": 6,
+   "pickRate": 0.16216216216216217,
+   "games": 6,
+   "avgPlacement": 1.5,
+   "power": 18
+  },
+  {
+   "id": "bottom_yaku",
+   "offered": 25,
+   "picked": 4,
+   "pickRate": 0.16,
+   "games": 6,
+   "avgPlacement": 2.6666666666666665,
+   "power": 19
+  },
+  {
+   "id": "unification",
+   "offered": 25,
+   "picked": 4,
+   "pickRate": 0.16,
+   "games": 4,
+   "avgPlacement": 2.75,
+   "power": 30
+  },
+  {
+   "id": "honba_hunter",
+   "offered": 38,
+   "picked": 6,
+   "pickRate": 0.15789473684210525,
+   "games": 6,
+   "avgPlacement": 2.1666666666666665,
+   "power": 24
+  },
+  {
+   "id": "parasite",
+   "offered": 51,
+   "picked": 8,
+   "pickRate": 0.1568627450980392,
+   "games": 9,
+   "avgPlacement": 2.5555555555555554,
+   "power": 26
+  },
+  {
+   "id": "blame_shift",
+   "offered": 36,
+   "picked": 5,
+   "pickRate": 0.1388888888888889,
+   "games": 5,
+   "avgPlacement": 3.4,
+   "power": 22
+  },
+  {
+   "id": "triple_peek",
+   "offered": 45,
+   "picked": 6,
+   "pickRate": 0.13333333333333333,
+   "games": 6,
+   "avgPlacement": 2.6666666666666665,
+   "power": 21
+  },
+  {
+   "id": "call_seal",
+   "offered": 42,
+   "picked": 5,
+   "pickRate": 0.11904761904761904,
+   "games": 5,
+   "avgPlacement": 2,
+   "power": 18
+  },
+  {
+   "id": "push_riichi",
+   "offered": 44,
+   "picked": 5,
+   "pickRate": 0.11363636363636363,
+   "games": 6,
+   "avgPlacement": 3,
+   "power": 23
+  },
+  {
+   "id": "danger_sense",
+   "offered": 38,
+   "picked": 4,
+   "pickRate": 0.10526315789473684,
+   "games": 5,
+   "avgPlacement": 3.4,
+   "power": 22
+  },
+  {
+   "id": "disarm",
+   "offered": 39,
+   "picked": 4,
+   "pickRate": 0.10256410256410256,
+   "games": 5,
+   "avgPlacement": 2.6,
+   "power": 18
+  },
+  {
+   "id": "die_hard",
+   "offered": 40,
+   "picked": 1,
+   "pickRate": 0.025,
+   "games": 1,
+   "avgPlacement": 3,
+   "power": 16
+  },
+  {
+   "id": "frame_up",
+   "offered": 29,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 0,
+   "avgPlacement": 0,
+   "power": 33
+  },
+  {
+   "id": "hand_swap3",
+   "offered": 25,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 0,
+   "avgPlacement": 0,
+   "power": 35
+  }
+ ]
+}

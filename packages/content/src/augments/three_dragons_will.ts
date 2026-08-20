@@ -36,6 +36,7 @@ import type {
 import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { handAlteredKey } from "./handAltered.js";
 
 const ID = "three_dragons_will";
 const ACTION = "dragons_will";
@@ -154,6 +155,8 @@ const willAction: ActionDef<Record<string, never>> = {
           attrs: { conjured: true },
         })),
       ),
+      // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+      augmentDataSet(handAlteredKey(state, req.player), true),
       augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
       // 전원 공개 — 대삼원이 섰다는 것은 테이블 전체의 사건이다
       augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), kindKey(pending.kind)),

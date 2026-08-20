@@ -68,12 +68,12 @@ import type {
 import {
   counterOf,
   flagOf,
-  roundKey,
   roundViewKey,
   widenPeek,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "cliff_bloom";
 const ACTION_PICK = "bloom_pick";
@@ -106,10 +106,10 @@ const STANDARD_RINSHAN_HAN = 1;
 
 /** 이번 국에 이 보유자가 선언한 깡 수 */
 const kanCountKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:kans:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "kans", state, h);
 /** 이번 국에 이미 만개했는가 */
 const bloomedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:bloomed:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "bloomed", state, h);
 /**
  * 지금 고를 수 있는 영상패의 대상 쯔모패 (tileId + 1, 0 = 없음).
  * "지금 쯔모패가 그 영상패일 때만 유효"하므로 플래그가 스스로 만료된다 —
@@ -119,7 +119,7 @@ const bloomedKey = (state: GameState, h: PlayerId): string =>
  * 정상 쯔모했을 때 되살아나, 깡도 없이 쯔모패를 왕패와 맞바꿀 수 있었다(2026-07-29 감사).
  */
 const pickKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:pick:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "pick", state, h);
 
 /** 지금 이 플레이어가 영상패를 고를 수 있는가 */
 function canPick(state: GameState, h: PlayerId): boolean {

@@ -289,7 +289,7 @@ describe("사가리치 — 숨은 리치는 4번째로 세지 않는다 (리치 
     return {
       ...withAugs(base, stealth ? { p3: ["stealth_riichi"] } : {}),
       augmentData: stealth
-        ? { ...base.augmentData, [`stealth_riichi:active:${rk(base)}:p3`]: true }
+        ? { ...base.augmentData, [`stealth_riichi:active:${rk(base)}:p3#round`]: true }
         : base.augmentData,
       round: {
         ...base.round,

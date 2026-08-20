@@ -473,14 +473,14 @@ describe("foresight (예지)", () => {
     const { game, flow } = start(foresightScene(), foresight);
     flow.submit("p0", { type: "foresight_reveal", payload: {} });
     flow.submit("p0", { type: "foresight_order", payload: { order: [1, 0, 2, 3] } });
-    expect(game.engine.state.augmentData["foresight:ordered:1-1-0:p0"]).toBe(true);
+    expect(game.engine.state.augmentData["foresight:ordered:1-1-0:p0#round"]).toBe(true);
 
     // 같은 국에서 다시 발동(공개)한 상황을 만든다 — 쿨다운이 지난 순으로 옮겨 다시 연다
     const base = foresightScene();
     const again: GameState = {
       ...base,
       round: { ...base.round, turnCount: 4 },
-      augmentData: { ...base.augmentData, "foresight:ordered:1-1-0:p0": true },
+      augmentData: { ...base.augmentData, "foresight:ordered:1-1-0:p0#round": true },
     };
     const second = start(again, foresight);
     expect(optionsOf(second.prompt, "foresight_reveal")).toHaveLength(1);
@@ -515,7 +515,7 @@ describe("foresight (예지)", () => {
       return {
         ...base,
         round: { ...base.round, turnCount },
-        augmentData: { ...base.augmentData, "foresight:turn:1-1-0:p0": 0 },
+        augmentData: { ...base.augmentData, "foresight:turn:1-1-0:p0#round": 0 },
       };
     };
     for (const [turnCount, expected] of [

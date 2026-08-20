@@ -202,6 +202,30 @@ export class DraftController {
     return exclude;
   }
 
+  /** 좌석 칸 폴백 경고를 이미 낸 스테이지 (스테이지당 한 번만 시끄럽게 한다). */
+  private readonly cellFallbackWarned = new Set<DraftStage>();
+
+  /**
+   * 좌석 칸을 만들지 못해 전역 추첨으로 강등됐음을 알린다 (스테이지당 1회).
+   *
+   * 조용한 강등이 확정 5의 본질이었다 — 카탈로그가 줄거나 modes/draftStages 제한이
+   * 늘거나 좌석 수가 바뀌면 이 경로로 떨어지는데, 그때 아무 흔적도 남지 않았다.
+   */
+  private warnCellFallback(stage: DraftStage): void {
+    if (this.cellFallbackWarned.has(stage)) return;
+    this.cellFallbackWarned.add(stage);
+    const seats = this.engine.state.players.length;
+    const pool = this.catalog.all().filter((d) => this.offerable(d, stage)).length;
+    const count = this.engine.rules.resolve<number>("augment.draft.choices");
+    const minCell = Math.max(count * 4, 12);
+    const need = seats * minCell + this.drawCount();
+    console.warn(
+      `[draft] 좌석 칸 없이 전역 추첨으로 강등됐다 (stage=${stage}, 제시 가능 풀=${pool}, ` +
+        `최소 요구치=${need} = 좌석 ${seats} × 최소 칸 ${minCell} + 보충 ${this.drawCount()}). ` +
+        `게임 내 중복 보유는 계속 막지만 좌석 간 오퍼 겹침은 보장하지 못한다.`,
+    );
+  }
+
   /**
    * 다른 플레이어가 **이 스테이지에 들어오기 전에** 보유한 증강 id
    * (한 게임에 같은 증강이 둘 있지 않게). 스냅샷을 읽는 이유는 위 필드 주석에.
@@ -252,7 +276,9 @@ export class DraftController {
    *   금지 목록의 근거(`heldByOthers`)는 **스테이지 시작 시점 스냅샷**으로 고정한다.
    *
    * 카탈로그가 좌석 수를 감당할 만큼 크지 않으면 `null`을 돌려 **기존 전역 균등 추첨**으로
-   * 돌아간다(작은 테스트 카탈로그·극단적 모드 필터). 그때는 겹침을 보장하지 못한다.
+   * 돌아간다(작은 테스트 카탈로그·극단적 모드 필터). 그때 포기하는 것은 **좌석 간 오퍼
+   * 겹침**뿐이다 — "게임 내 중복 보유 금지"는 `draw`의 폴백 경로가 계속 지키고, 강등
+   * 사실은 스테이지당 한 번 경고로 남는다(`warnCellFallback`, QA disrupt 확정 5).
    */
   private cellFor(stage: DraftStage, player: PlayerId): AugmentDef[] | null {
     const state = this.engine.state;
@@ -269,9 +295,26 @@ export class DraftController {
     // (예전 18은 새로고침 없이 3장만 뽑던 시절의 값이고, 그때도 최소치 15에 3장 여유였다.)
     // 칸이 마르면 칸 밖에서 보충하는데(아래 draw), 그 경로는 남의 보유분을 걸러 내지 못해
     // 중복이 새어 나간다. 칸 밖에는 보충용 나머지가 최소 draw개 남아야 한다.
-    const cellSize = Math.max(count * 8, 24);
+    const idealCell = Math.max(count * 8, 24);
     const pool = this.catalog.all().filter((d) => this.offerable(d, stage));
-    if (pool.length < seats * cellSize + draw) return null; // 카탈로그가 작다 → 기존 방식
+
+    /*
+     * **칸 크기를 풀에 맞춰 좁힌다** (2026-08-20 QA disrupt 확정 5).
+     *
+     * 예전에는 `pool.length < seats * idealCell + draw` 면 곧장 `null` 을 돌려 전역 추첨으로
+     * 강등했다. 그런데 오늘 카탈로그의 여유는 12~13장뿐이라(115 vs 요구치 102), 증강을
+     * 13종만 정리하거나 modes/draftStages 제한을 몇 개 더 걸면 **절벽처럼** 서로 소인
+     * 분할이 통째로 사라졌다 — 실측으로 -13종에서 게임의 절반이 중복 보유였다.
+     * 칸이 꼭 24여야 할 이유는 없다: 서로 소이기만 하면 "같은 스테이지에 두 사람에게 같은
+     * 증강이 제시되지 않는다"는 성질은 그대로다. 이상치(24)는 **칸이 마를 확률을 낮추는
+     * 여유**일 뿐이므로, 풀이 모자라면 여유부터 깎고 분할 자체는 지킨다.
+     *
+     * 최소치(`count*4`) 아래로는 칸이 상시 말라 보충 경로만 타게 되므로 그때는 전역
+     * 추첨으로 내려간다(작은 테스트 카탈로그). 그 강등은 `draw` 에서 경고로 남는다.
+     */
+    const fit = Math.floor((pool.length - draw) / seats);
+    const cellSize = Math.min(idealCell, fit);
+    if (cellSize < Math.max(count * 4, 12)) return null; // 카탈로그가 작다 → 기존 방식
 
     // (시드 ⊕ 스테이지)로 결정적 셔플 — 플레이어에 의존하지 않는다(칸 경계가 흔들리면 안 된다).
     const prng = new Prng(
@@ -337,7 +380,26 @@ export class DraftController {
     const bias = this.synergyBiasFor(player);
 
     const cell = this.cellFor(stage, player);
-    if (cell === null) return this.catalog.rollUniform(prng, total, exclude, bias);
+    if (cell === null) {
+      /*
+       * 좌석 칸을 못 만든 폴백 (2026-08-20 QA disrupt 확정 5).
+       *
+       * 예전에는 여기서 `exclude` 만 걸고 전역 균등 추첨으로 돌아갔다 — `exclude` 에는
+       * **`heldByOthers` 가 없어서**, 이 파일 머리말이 못 박은 불변식
+       * *"한 게임에 같은 증강을 둘이 갖는 일이 없다"* 가 **아무 신호 없이** 꺼졌다.
+       * 여유는 12~13장뿐이라(카탈로그 115 vs 요구치 102) 증강 13종만 정리하거나
+       * modes/draftStages 제한을 몇 개 더 걸면 절벽처럼 무너진다: 실측으로 -13종에서
+       * 게임의 52.5%가 중복 보유였다. 값이 아니라 불변식이 깨지는데 로그도 테스트도
+       * 아무 말을 하지 않는 것이 이 건의 본질이다.
+       *
+       * 이제 폴백에서도 금지 목록을 유지한다 — 포기하는 것은 **좌석 간 오퍼 겹침**
+       * (같은 스테이지에 두 사람에게 같은 카드가 보이는 것)뿐이고, "게임 내 중복 보유"는
+       * 살아남는다. 그리고 강등됐다는 사실을 스테이지당 한 번 경고로 남긴다.
+       */
+      this.warnCellFallback(stage);
+      const banned = new Set([...exclude, ...this.heldByOthers(stage, player)]);
+      return this.catalog.rollUniform(prng, total, banned, bias);
+    }
 
     // 내 칸에서 뽑는다 — 기존 제외 + 남이 이미 가진 것(게임 내 중복 금지).
     const banned = new Set([...exclude, ...this.heldByOthers(stage, player)]);

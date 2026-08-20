@@ -90,7 +90,7 @@ function scene(swapper: AugmentDef, mode: Riichi): Game {
       // 스텔스 액션으로 걸었다는 국 단위 표식 — riichi.hidden이 이때만 참이 된다
       ...(mode === "stealth"
         ? {
-            [`stealth_riichi:active:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p1`]:
+            [`stealth_riichi:active:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p1#round`]:
               true,
           }
         : {}),
@@ -249,10 +249,10 @@ describe("손패 3장 교환 — 지정 후 대상이 스텔스 리치를 걸어
       },
       augmentData: {
         ...s0.augmentData,
-        [`hand_swap3:target:${roundK}:p0`]: "p1",
-        [`hand_swap3:left:${roundK}:p0`]: 1,
+        [`hand_swap3:target:${roundK}:p0#round`]: "p1",
+        [`hand_swap3:left:${roundK}:p0#round`]: 1,
         ...(mode === "stealth"
-          ? { [`stealth_riichi:active:${roundK}:p1`]: true }
+          ? { [`stealth_riichi:active:${roundK}:p1#round`]: true }
           : {}),
       },
     };

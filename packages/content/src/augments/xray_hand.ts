@@ -23,15 +23,16 @@ import type {
   PlayerId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { counterOf, flagOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "xray_hand";
 const ACTION = "xray_reveal";
 
 /** 이 국에 투시를 발동했는가 (국 스코프 — 국이 바뀌면 자연 만료) */
 const activeKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:active:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "active", state, h);
 /** 매치당 사용 횟수 카운터 (게임 단위 — roundKey 없음). 동풍전 1·반장전 2회. */
 const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 

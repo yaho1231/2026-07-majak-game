@@ -37,12 +37,12 @@ import type {
 import {
   cooldownReady,
   cooldownUse,
-  roundKey,
   roundViewKey,
   trackRoundSeq,
   viewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "dora_afterimage";
 const ACTION = "dora_recall";
@@ -61,7 +61,7 @@ const prevDoraKey = `${ID}:prevDora`;
 const candidateViewKey = (h: PlayerId): string => viewKey(h, `${ID}:prev:${h}`);
 /** 이번 국에 되살아난 도라 종류 (발동 시 굳힌다) */
 const recalledKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:recalled:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "recalled", state, h);
 
 /** 값이 TileKind 배열인가 (augmentData는 unknown이라 읽을 때마다 확인한다) */
 function asKinds(value: unknown): TileKind[] {

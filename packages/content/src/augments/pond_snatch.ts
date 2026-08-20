@@ -49,10 +49,11 @@ import {
   counterOf,
   publishUsesLeft,
   replaceDrawnTile,
-  roundKey,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredMark } from "./handAltered.js";
 
 const ID = "pond_snatch";
 const ACTION = "pond_snatch";
@@ -67,7 +68,7 @@ const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
  * 국을 섞어 오판하지 않게 국 키를 넣는다.
  */
 const takenKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:taken:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "taken", state, h);
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;
 
@@ -164,9 +165,22 @@ export const pondSnatch: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
-          round: replaceDrawnTile(state.round, p.snatchId),
+          round: {
+            ...replaceDrawnTile(state.round, p.snatchId),
+            // 바닥에서 걷어 간 패가 마지막 버림패였다면 그 표식을 비운다 —
+            // 후로가 패를 가져갈 때 CALL_MADE가 하는 것과 같은 처리다
+            // (2026-08-20 QA hand 확정 7). 비우지 않으면 `round.lastDiscard`가
+            // **이미 바닥에 없는 패**를 가리켜, 세 좌석 뷰의 tiles 맵에 어느 가시 존에도
+            // 없는 패의 정체가 실리고 `lastDiscardFrom` 낡은 표식도 걸러지지 않는다.
+            lastDiscard:
+              state.round.lastDiscard?.tileId === p.snatchId
+                ? null
+                : state.round.lastDiscard,
+          },
           augmentData: {
             ...state.augmentData,
+            // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+            ...handAlteredMark(state, p.holder),
             [usedKey(p.holder)]: counterOf(state, usedKey(p.holder)) + 1,
             // 이 패로 화료하면 후리텐 판정을 받는다 (아래 win.tsumoFuriten Modifier)
             [takenKey(state, p.holder)]: p.snatchId,

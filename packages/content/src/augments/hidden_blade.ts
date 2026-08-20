@@ -19,7 +19,8 @@ import type {
   PlayerId,
   TileDiscardedPayload,
 } from "@majak/core";
-import { addYakuHolder, flagOf, roundKey, yakuHolders } from "../util.js";
+import { addYakuHolder, flagOf, yakuHolders } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "hidden_blade";
 
@@ -33,7 +34,7 @@ const ID = "hidden_blade";
  * **선언 이력**으로 판정한다.
  */
 const declaredKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:declared:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "declared", state, h);
 
 /** 이번 국에 리치를 선언했거나 지금 리치 중인가 */
 function riichiTouched(state: GameState, h: PlayerId): boolean {

@@ -37,11 +37,12 @@ import {
   flagOf,
   publishUsesLeft,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
 } from "../util.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredMark } from "./handAltered.js";
 
 const ID = "table_flip";
 const ACTION = "table_flip_do";
@@ -49,7 +50,7 @@ const TABLE_FLIP_PERFORMED = "TableFlipPerformed";
 
 /** 매 국 1회 사용 플래그 (roundKey 스코프) */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;
@@ -150,6 +151,8 @@ export const tableFlip: AugmentDef = defineAugment({
           round: replaceDrawnTile(state.round, nextDrawn),
           augmentData: {
             ...state.augmentData,
+            // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+            ...handAlteredMark(state, p.holder),
             [usedKey(state, p.holder)]: true,
             // 반납한 손패를 전원 공개
             [roundViewKey("*", `${ID}:${p.holder}`)]: p.revealedKinds,

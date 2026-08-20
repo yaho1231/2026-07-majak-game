@@ -146,7 +146,7 @@ describe("hidden_river — 안개 바닥", () => {
             ...state,
             augmentData: {
               ...state.augmentData,
-              [`hidden_river:fog:${roundKey(state)}:p0`]: true,
+              [`hidden_river:fog:${roundKey(state)}:p0#round`]: true,
             },
           }
         : state,

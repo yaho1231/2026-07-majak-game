@@ -50,11 +50,12 @@ import {
   publishUsesLeft,
   replaceDrawnTile,
   riichiHidden,
-  roundKey,
   roundViewKey,
 } from "../util.js";
 import { handKindsOf, usefulIn } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredMark } from "./handAltered.js";
 
 const ID = "silent_swap";
 const ACTION = "silent_take";
@@ -64,14 +65,14 @@ const WIN_BONUS_HAN = 2;
 
 /** 국당 1회 — roundKey가 섞여 국이 바뀌면 자동 만료 */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 /**
  * 이 국에서 **집어 온 패**의 id. 지금의 `lastDrawnTile`과 같을 때만 "손에 든 쯔모패가
  * 남의 바닥에서 온 패"라는 뜻이다 — 다음 쯔모가 오면 자연히 어긋난다(날치기와 같은 규약).
  */
 const takenKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:taken:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "taken", state, h);
 
 /**
  * 이번 국에 리치를 건 사람이 하나라도 있는가.
@@ -184,9 +185,22 @@ export const silentSwap: AugmentDef = defineAugment({
           zones,
           // 가져온 패가 새 쯔모패 — 이어지는 버림 흐름 유지.
           // 영상 쯔모 직후에 집었더라도 바닥 패는 영상패가 아니므로 플래그도 내린다.
-          round: replaceDrawnTile(state.round, p.takenId),
+          round: {
+            ...replaceDrawnTile(state.round, p.takenId),
+            // 바닥에서 걷어 간 패가 마지막 버림패였다면 그 표식을 비운다 —
+            // 후로가 패를 가져갈 때 CALL_MADE가 하는 것과 같은 처리다
+            // (2026-08-20 QA hand 확정 7). 비우지 않으면 `round.lastDiscard`가
+            // 이미 바닥에 없는 패를 가리켜, 세 좌석 뷰에 어느 가시 존에도 없는 패의
+            // 정체가 실리고 `lastDiscardFrom` 낡은 표식도 걸러지지 않는다.
+            lastDiscard:
+              state.round.lastDiscard?.tileId === p.takenId
+                ? null
+                : state.round.lastDiscard,
+          },
           augmentData: {
             ...state.augmentData,
+            // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+            ...handAlteredMark(state, p.holder),
             [usedKey(state, p.holder)]: true,
             // 이 패로 화료하면 후리텐 판정을 받는다 (아래 win.tsumoFuriten 모디파이어)
             [takenKey(state, p.holder)]: p.takenId,

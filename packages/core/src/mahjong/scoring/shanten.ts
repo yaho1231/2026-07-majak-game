@@ -230,6 +230,32 @@ function kokushiShanten(kinds: readonly TileKind[]): number {
 }
 
 /**
+ * **울어 국사** 샹텐 — 특수 후로(서로 다른 요구패 3장 × M개)가 3M종을 덮은 손.
+ *
+ * `decompose`의 울어 국사 분기(meldKokushiPairOf)와 같은 규칙을 샹텐으로 옮긴 것이다.
+ * 후로가 덮은 종류는 손에서 다시 쓸 수 없고(머리도 반드시 손패), 남은 (13−3M)종을
+ * 손이 1장씩 + 그중 하나를 2장(머리) 채우면 완성이다.
+ */
+function meldKokushiShanten(
+  kinds: readonly TileKind[],
+  meldKinds: readonly TileKind[],
+): number {
+  const meldKeys = new Set(meldKinds.map(kindKey));
+  const need = 13 - meldKeys.size;
+  if (need <= 0) return 0;
+  const counts = new Map<string, number>();
+  for (const k of kinds) {
+    if (!isOrphan(k)) continue;
+    const key = kindKey(k);
+    if (meldKeys.has(key)) continue; // 후로가 덮은 종류는 손에서 쓸모없다
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let hasPair = false;
+  for (const c of counts.values()) if (c >= 2) hasPair = true;
+  return need - counts.size - (hasPair ? 1 : 0);
+}
+
+/**
  * 손패의 샹텐 — 0이면 텐파이, -1이면 화료형.
  * 13장·14장 어느 쪽을 넣어도 된다(블록 계산이라 남는 한 장은 자연히 무시된다).
  */
@@ -319,6 +345,26 @@ function shantenUncached(
     const wildKeys = new Set(wildKinds.map(kindKey));
     rest = kinds.filter((k) => !wildKeys.has(kindKey(k)));
     wilds = kinds.length - rest.length;
+  }
+  /*
+   * ⚠ **국사 외길**(우는 국사무쌍의 특수 퐁 뒤)은 표준형·치또이를 아예 열거하지
+   * 않는다(`decompose.ts`의 kokushiOnly). 샹텐도 같은 길을 재야 한다 — 예전에는
+   * 이 옵션을 보지 않아 표준형 값이 그대로 답이 됐고, 국사 텐파이가 샹텐 6으로
+   * 읽혀 봇이 **자기 역만 텐파이를 노텐으로** 봤다(read.ts의 `if (shanten <= 0)`이
+   * 대기·푸시·리치 판단 전체의 문지기다). 2026-08-20 QA 확정.
+   */
+  if (opts?.kokushiOnly === true) {
+    const meldKinds = opts.kokushiMeldKinds ?? [];
+    let k =
+      (meldKinds.length > 0
+        ? meldKokushiShanten(rest, meldKinds)
+        : kokushiShanten(rest)) - wilds;
+    if (wilds > 0) {
+      // 조커 근사가 낙관적일 수 있다 — 장수가 모자라면 -1(완성)로 떨어질 수 없다
+      const floor = kinds.length >= 14 - meldKinds.length ? -1 : 0;
+      if (k < floor) k = floor;
+    }
+    return k;
   }
   let best = standardShanten(rest, meldCount, totalSets) - wilds;
   // 치또이·국사는 멘젠 13/14장 전용. 특수 화료형 증강이 걸린 손은 표준형만 본다.

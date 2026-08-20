@@ -53,12 +53,12 @@ import {
   cooldownReady,
   cooldownUse,
   flagOf,
-  roundKey,
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
 import { handKindsOf } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "joker";
 const ACTION = "joker_call";
@@ -71,7 +71,7 @@ const HAKU: TileKind = { suit: Suits.Dragon, rank: 1 };
 
 /** 이번 국에 조커를 켰는가 (국 스코프 — 효과는 그 국에만 산다) */
 const onKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:on:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "on", state, h);
 
 const jokerOn = (state: GameState, h: PlayerId): boolean =>
   flagOf(state, onKey(state, h));

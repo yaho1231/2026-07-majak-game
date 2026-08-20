@@ -353,7 +353,7 @@ describe("잔상 (dora_afterimage)", () => {
     const recalled: TileKind[] = [{ suit: "sou", rank: 2 }];
     const plain = settleRon(base);
     const staged = withData(withAugments(base, "p0", ["dora_afterimage"]), {
-      [`dora_afterimage:recalled:${roundKeyOf(base)}:p0`]: recalled,
+      [`dora_afterimage:recalled:${roundKeyOf(base)}:p0#round`]: recalled,
     });
     const boosted = settleRon(staged, (game) => {
       installAugment(game.engine, doraAfterimage, "p0", { yaku: game.yaku });
@@ -452,8 +452,8 @@ describe("영혼의 일격 (soul_strike)", () => {
       ["soul_strike"],
     );
 
-  const activeKey = (s: GameState): string => `soul_strike:active:${roundKeyOf(s)}:p0`;
-  const leftKey = (s: GameState): string => `soul_strike:left:${roundKeyOf(s)}:p0`;
+  const activeKey = (s: GameState): string => `soul_strike:active:${roundKeyOf(s)}:p0#round`;
+  const leftKey = (s: GameState): string => `soul_strike:left:${roundKeyOf(s)}:p0#round`;
 
   function start(state: GameState) {
     const game = createStandardGameFromState(state);
@@ -596,7 +596,7 @@ describe("영혼의 일격 (soul_strike)", () => {
     // 이 보너스는 **리치의 값어치**라 살아 있는 리치를 전제한다 — 발동 플래그만
     // 세우면 승부수로 리치를 물린 손에도 판수가 붙는다(2026-08-17 수정).
     const base = withRiichi(ronScene(), "p0");
-    const declared = `soul_strike:declared:${roundKeyOf(base)}:p0`;
+    const declared = `soul_strike:declared:${roundKeyOf(base)}:p0#round`;
     const plain = settleRon(base);
     const boosted = settleRon(
       withData(withAugments(base, "p0", ["soul_strike"]), { [declared]: true }),
@@ -613,7 +613,7 @@ describe("영혼의 일격 (soul_strike)", () => {
     // 발동 플래그는 국 스코프라 정산까지 남는다. 그것만 보면 **리치가 없는 손에**
     // 리치 판수가 그대로 붙었다 — 판수는 리치의 값어치이므로 함께 사라져야 한다.
     const base = ronScene(); // 리치를 세우지 않은(=물린 뒤의) 상태
-    const declared = `soul_strike:declared:${roundKeyOf(base)}:p0`;
+    const declared = `soul_strike:declared:${roundKeyOf(base)}:p0#round`;
     const plain = settleRon(base);
     const cancelled = settleRon(
       withData(withAugments(base, "p0", ["soul_strike"]), { [declared]: true }),

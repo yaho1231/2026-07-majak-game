@@ -106,7 +106,7 @@ describe("scapegoat (덤터기)", () => {
       ...state,
       augmentData: {
         ...state.augmentData,
-        [`scapegoat:target:${roundKey(state)}:p0`]: "p1",
+        [`scapegoat:target:${roundKey(state)}:p0#round`]: "p1",
       },
     };
     state = withAugments(state, "p0", ["scapegoat"]);

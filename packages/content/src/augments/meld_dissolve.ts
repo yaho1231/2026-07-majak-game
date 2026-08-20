@@ -61,10 +61,10 @@ import {
   flagOf,
   publishUsesLeft,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "meld_dissolve";
 const ACTION = "dissolve_meld";
@@ -72,7 +72,7 @@ const EVENT = "MeldDissolved";
 
 /** 국당 1회 사용 플래그 (roundKey 스코프) */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 /**
  * "이 사람의 버림패는 이미 한 번 울려 나갔다" 표식 (roundKey 스코프).
@@ -87,7 +87,7 @@ const usedKey = (state: GameState, h: PlayerId): string =>
  * 유국만관만 꺼 둔다 — 코어 판정은 그대로 두고 **파혼 쪽에서** 원상태를 보존한다.
  */
 const nagashiBrokenKey = (state: GameState, target: PlayerId): string =>
-  `${ID}:nagashiBroken:${roundKey(state)}:${target}`;
+  roundScopedKey(ID, "nagashiBroken", state, target);
 
 /** 치·펑(후로 3장)만 해체 대상 — 깡은 제외 */
 function isDissolvable(meld: Meld | undefined): boolean {

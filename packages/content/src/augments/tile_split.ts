@@ -33,17 +33,19 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { isPreciousMaterial } from "./bluff_pretense.js";
 import { plan } from "./botPlan.js";
 import { handIdsOfView, handKindsOf, isolatedIndex, shantenIfChanged } from "./botHelpers.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredKey } from "./handAltered.js";
 
 const ID = "tile_split";
 const ACTION = "split_tile";
 
 /** 국당 1회 — 국이 바뀌면 다시 쓸 수 있다 */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   !flagOf(state, usedKey(state, h));
 
@@ -138,6 +140,8 @@ const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
           attrs: { conjured: true },
         },
       ]),
+      // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+      augmentDataSet(handAlteredKey(state, req.player), true),
       augmentDataSet(usedKey(state, req.player), true),
       // 전원 공개 — 무엇이 무엇으로 갈라졌는지 보인다
       augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), {

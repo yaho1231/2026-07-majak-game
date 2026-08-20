@@ -53,7 +53,7 @@ function markedByRankGate(base: GameState, target: PlayerId = "p1"): GameState {
     ),
     augmentData: {
       ...base.augmentData,
-      [`rank_gate:mark:${roundKey(base)}:p0`]: target,
+      [`rank_gate:mark:${roundKey(base)}:p0#round`]: target,
     },
   };
 }
@@ -67,7 +67,7 @@ function invincibleScene(base: GameState): GameState {
     ),
     augmentData: {
       ...base.augmentData,
-      [`invincible:active:${roundKey(base)}:p0`]: true,
+      [`invincible:active:${roundKey(base)}:p0#round`]: true,
     },
   };
 }

@@ -47,7 +47,6 @@ import type {
 } from "@majak/core";
 import {
   flagOf,
-  roundKey,
   roundViewKey,
   settleInterceptor,
   stringOf,
@@ -55,6 +54,7 @@ import {
   withAugNoteFor,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "spy";
 const ACTION = "spy_mark";
@@ -63,7 +63,7 @@ const ACTION = "spy_mark";
 const markKey = (h: PlayerId): string => `${ID}:mark:${h}`;
 /** 이번 국에 이미 찍었는가 (국이 바뀌면 키가 달라져 다시 한 번 찍을 수 있다) */
 const markedThisRoundKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:marked:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "marked", state, h);
 
 const markAction: ActionDef<{ tileId: TileId }> = {
   type: ACTION,

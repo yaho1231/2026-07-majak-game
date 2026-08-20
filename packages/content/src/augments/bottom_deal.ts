@@ -57,12 +57,12 @@ import type {
 } from "@majak/core";
 import {
   flagOf,
-  roundKey,
   roundViewKey,
   widenPeek,
 } from "../util.js";
 import { handKindsExcept, handKindsOf, usefulIn } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "bottom_deal";
 const ACTION = "bottom_deal";
@@ -73,7 +73,7 @@ const PEEK = 3;
 
 /** 다음 쯔모를 밑장으로 예약했는가 (roundKey 스코프 — 국이 바뀌면 자동으로 풀린다) */
 const armedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:armed:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "armed", state, h);
 /** 보유자 뷰 전용 채널 — 지금 예약 상태인지 UI에 노출한다 */
 const viewArmedKey = (h: PlayerId): string => roundViewKey(h, `${ID}:armed:${h}`);
 /** 전원 공개 마커 — 누가 밑장빼기를 선언했는지는 모두가 안다 (내용은 아니다) */

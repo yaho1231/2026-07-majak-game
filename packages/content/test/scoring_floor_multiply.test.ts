@@ -44,7 +44,7 @@ function scene(mult: number | null, pot = 0): Game {
     augmentData: {
       ...base.augmentData,
       [`big_hand:round:p0`]: rk,
-      ...(mult === null ? {} : { [`jackpot:mult:${rk}:p0`]: mult }),
+      ...(mult === null ? {} : { [`jackpot:mult:${rk}:p0#round`]: mult }),
     },
   };
   const defs = mult === null ? [bigHand] : [bigHand, jackpot];

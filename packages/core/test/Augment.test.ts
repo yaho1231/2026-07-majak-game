@@ -552,11 +552,19 @@ describe("DraftController — 상호 배제(conflicts)", () => {
     expect(ids).toContain("conflict_c");
   });
 
-  it("무관한 플레이어에겐 여전히 전부 제시된다", () => {
+  /*
+   * 상호 배제는 **내 손 안에서의 제약**이라 남이 뭘 들었는지로 내 후보가 막히면 안 된다.
+   * 다만 "한 게임에 같은 증강을 둘이 갖지 않는다"는 별개의 불변식이라, 남이 든 그 카드
+   * 자체는 어차피 빠진다 — 예전에는 카탈로그가 작아 좌석 칸을 못 만드는 이 경로에서
+   * 그 불변식이 **조용히 꺼져** 있어서 conflict_a 까지 다시 제시됐다
+   * (2026-08-20 QA disrupt 확정 5, `DraftCellFallback.test.ts`).
+   */
+  it("무관한 플레이어의 후보는 남의 conflicts로 막히지 않는다 (보유분 자체만 빠진다)", () => {
     const { game, draft } = setup();
     give(game, "p0", "conflict_a");
     const ids = draft.roll("gameStart", "p2").map((d) => d.id);
-    expect(new Set(ids)).toEqual(new Set(["conflict_a", "conflict_b", "conflict_c"]));
+    // p0가 든 A와 상호 배제인 B가 p2에게는 그대로 제시된다
+    expect(new Set(ids)).toEqual(new Set(["conflict_b", "conflict_c"]));
   });
 });
 

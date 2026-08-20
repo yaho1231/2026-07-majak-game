@@ -214,7 +214,7 @@ describe("선언 간파 — 스텔스 리치는 간파 대상이 아니다", () 
         // 스텔스 액션으로 걸었다는 표식 (roundKey = "장-국-본장")
         ...(stealth
           ? {
-              [`stealth_riichi:active:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p1`]:
+              [`stealth_riichi:active:${base.round.prevalentWind}-${base.round.roundNumber}-${base.round.honba}:p1#round`]:
                 true,
             }
           : {}),

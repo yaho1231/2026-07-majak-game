@@ -49,11 +49,12 @@ import type {
 import {
   counterOf,
   replaceDrawnTile,
-  roundKey,
   roundViewKey,
   widenPeek,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
+import { handAlteredMark } from "./handAltered.js";
 
 const ID = "dead_wall_master";
 const ACTION_SWAP = "dw_swap";
@@ -72,7 +73,7 @@ const deadWallSize = (state: GameState): number =>
 
 /** 이번 국에 쓴 교환 횟수 (roundKey 스코프 — 국이 바뀌면 자동으로 0) */
 const swapsKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:swaps:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "swaps", state, h);
 /** 보유자 뷰 전용 채널 — 남은 교환 횟수를 클라이언트에 노출한다 */
 const viewRemainingKey = (h: PlayerId): string =>
   roundViewKey(h, `${ID}:remaining:${h}`);
@@ -234,6 +235,8 @@ export const deadWallMaster: AugmentDef = defineAugment({
           round,
           augmentData: {
             ...state.augmentData,
+            // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+            ...handAlteredMark(state, p.player),
             [swapsKey(state, p.player)]: used,
             [viewRemainingKey(p.player)]: Math.max(0, SWAPS_PER_ROUND - used),
           },

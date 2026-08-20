@@ -93,7 +93,7 @@ describe("만개 — 지금 손과 가장 가까운 화료형으로 다시 짠�
       ...withAug(base0, { p0: ["cliff_bloom"] }),
       augmentData: {
         ...base0.augmentData,
-        [`cliff_bloom:kans:${roundKey(base0)}:p0`]: 1,
+        [`cliff_bloom:kans:${roundKey(base0)}:p0#round`]: 1,
       },
     };
     const game = mk(base, [{ def: C.cliffBloom, holder: "p0" }]);
@@ -106,7 +106,7 @@ describe("만개 — 지금 손과 가장 가까운 화료형으로 다시 짠�
     expect(ankan).toBeDefined();
     flow.submit("p0", ankan!);
     expect(
-      game.engine.state.augmentData[`cliff_bloom:bloomed:${roundKey(game.engine.state)}:p0`],
+      game.engine.state.augmentData[`cliff_bloom:bloomed:${roundKey(game.engine.state)}:p0#round`],
     ).toBe(true);
     return game;
   }

@@ -144,7 +144,7 @@ describe("jackpot — 공탁과 유국 벌부는 배수 밖이다", () => {
   const scene = (mult: number): Game => {
     const base = blank();
     return withAugs(base, [{ player: "p0", def: jackpot }], {
-      [`jackpot:mult:${roundKey(base)}:p0`]: mult,
+      [`jackpot:mult:${roundKey(base)}:p0#round`]: mult,
     });
   };
 
@@ -200,7 +200,7 @@ describe("blood_contract — 배수는 손의 화료점에만 걸린다", () => 
   const scene = (): Game => {
     const base = blank();
     return withAugs(base, [{ player: "p0", def: bloodContract }], {
-      [`blood_contract:yaku:${roundKey(base)}:p0`]: "tanyao",
+      [`blood_contract:yaku:${roundKey(base)}:p0#round`]: "tanyao",
     });
   };
 
@@ -284,7 +284,7 @@ describe("big_hand — 하한은 이동(Transfer)까지 끝난 뒤에도 지켜�
       ],
       {
         [`big_hand:round:p0`]: roundKey(base),
-        [`parasite:target:p1:${roundKey(base)}`]: "p0",
+        [`parasite:target:p1:${roundKey(base)}#round`]: "p0",
       },
     );
     const out = settle(
@@ -309,9 +309,9 @@ describe("scapegoat — '나머지 둘은 한 푼도 내지 않는다'", () => {
         { player: "p1", def: parasite },
       ],
       {
-        [`scapegoat:target:${roundKey(base)}:p0`]: "p2",
+        [`scapegoat:target:${roundKey(base)}:p0#round`]: "p2",
         // 기생충이 p0의 획득 절반을 가져간다 = p0 델타만 줄어든다(지불 부과 아님)
-        [`parasite:target:p1:${roundKey(base)}`]: "p3",
+        [`parasite:target:p1:${roundKey(base)}#round`]: "p3",
       },
     );
     const out = settle(

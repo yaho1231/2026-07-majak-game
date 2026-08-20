@@ -343,11 +343,11 @@ describe("hand_swap3 — 등가교환", () => {
 
   /** 국 단위 상태 키 (구현이 roundKey를 키에 섞는다) */
   const targetKeyOf = (s: GameState): string =>
-    `hand_swap3:target:${roundKey(s)}:p0`;
+    `hand_swap3:target:${roundKey(s)}:p0#round`;
   const leftKeyOf = (s: GameState): string =>
-    `hand_swap3:left:${roundKey(s)}:p0`;
+    `hand_swap3:left:${roundKey(s)}:p0#round`;
   const giveKeyOf = (s: GameState): string =>
-    `hand_swap3:give:${roundKey(s)}:p0`;
+    `hand_swap3:give:${roundKey(s)}:p0#round`;
   const revealKeyOf = (target: PlayerId): string =>
     roundViewKey("p0", `revealTiles:${target}`);
 
@@ -754,8 +754,9 @@ describe("hand_swap3 — 등가교환", () => {
     expect(state.augmentData[leftKeyOf(state)]).toBeUndefined();
     // 게임 단위 사용 횟수는 국을 넘어 유지된다
     expect(state.augmentData["hand_swap3:used:p0"]).toBe(1);
-    // (이전 국 키는 남아 있어도 새 국 조회에 걸리지 않는다)
-    expect(state.augmentData[targetKeyOf(before)]).toBe("p1");
+    // 이전 국 키도 남지 않는다 — 국 스코프 표식(#round)이 붙어 setupRound가 지운다
+    // (예전에는 이름만 만료되고 값은 매치 끝까지 쌓였다 — QA cross 확정 3)
+    expect(state.augmentData[targetKeyOf(before)]).toBeUndefined();
   });
 });
 

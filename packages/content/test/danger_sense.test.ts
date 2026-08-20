@@ -96,7 +96,7 @@ describe("지뢰 탐지 (danger_sense)", () => {
     const ad = game.engine.state.augmentData;
     expect(
       Object.keys(ad).some(
-        (k) => k.startsWith("danger_sense:used:") && k.endsWith(":p0") && ad[k] === true,
+        (k) => k.startsWith("danger_sense:used:") && k.endsWith(":p0#round") && ad[k] === true,
       ),
     ).toBe(true);
 

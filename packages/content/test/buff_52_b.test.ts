@@ -135,7 +135,7 @@ describe("jackpot (일확천금) — 룰렛을 돌린 국만 배수가 붙는다
     expect(r.ok).toBe(true);
 
     const s = game.engine.state;
-    const mult = s.augmentData[`jackpot:mult:${roundKeyOf(s)}:p0`];
+    const mult = s.augmentData[`jackpot:mult:${roundKeyOf(s)}:p0#round`];
     expect([0.5, 2, 3, 4]).toContain(mult);
     expect(s.augmentData["view:*:jackpot:p0#round"]).toBe(`${String(mult)}배`);
     // 난수를 소비했으면 전진된 상태가 되돌려져 있어야 한다 (결정론)
@@ -176,7 +176,7 @@ describe("jackpot (일확천금) — 룰렛을 돌린 국만 배수가 붙는다
     installAugment(game.engine, jackpot, "p0");
     game.engine.submit({ player: "p0", type: "jackpot_roll", payload: {} });
     const s = game.engine.state;
-    const mult = s.augmentData[`jackpot:mult:${roundKeyOf(s)}:p0`] as number;
+    const mult = s.augmentData[`jackpot:mult:${roundKeyOf(s)}:p0#round`] as number;
     runTsumoWin(game);
     expect(lastSettled(game).deltas["p0"]).toBe(baseGain * mult);
   });
@@ -647,7 +647,7 @@ describe("riichi_upgrade (이중 선언) — 더블리치 + 하가 리치 봉인
     const state = game.engine.state;
     expect(state.round.byPlayer["p0"]?.riichi?.double).toBe(true);
     expect(
-      state.augmentData[`riichi_upgrade:seal:${roundKeyOf(state)}:p0`],
+      state.augmentData[`riichi_upgrade:seal:${roundKeyOf(state)}:p0#round`],
     ).toBe("p1");
     expect(state.augmentData["view:*:riichi_upgrade:p0"]).toBe("p1");
 

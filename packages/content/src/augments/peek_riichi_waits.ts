@@ -41,8 +41,9 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, riichiHidden, roundKey, viewKey } from "../util.js";
+import { flagOf, publishUsesLeft, riichiHidden, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const AUGMENT_ID = "peek_riichi_waits";
 /** 증강 id에서 파생한 이벤트 타입 (다른 증강과 충돌 방지) */
@@ -71,11 +72,11 @@ interface PeekWaitsClearedPayload {
  * 한 국에 세 번 볼 수 있었다. 이제 **국당 1회** — 누구를 볼지가 선택이 된다.
  */
 const usedKey = (state: GameState, holder: PlayerId): string =>
-  `${AUGMENT_ID}:used:${roundKey(state)}:${holder}`;
+  roundScopedKey(AUGMENT_ID, "used", state, holder);
 
 /** 국 단위 위조 사용 플래그 키 (roundKey를 섞어 국마다 자동 만료) */
 const forgedKey = (state: GameState, holder: PlayerId): string =>
-  `${AUGMENT_ID}:forged:${roundKey(state)}:${holder}`;
+  roundScopedKey(AUGMENT_ID, "forged", state, holder);
 
 /**
  * 이번 국에 이 보유자가 간파해 둔 대기패 전부 (kindKey 문자열, 중복 제거·정렬).

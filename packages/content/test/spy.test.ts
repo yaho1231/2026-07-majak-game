@@ -111,7 +111,7 @@ describe("스파이 (spy)", () => {
       ...withAugments(base, "p0", ["spy"]),
       augmentData: {
         "spy:mark:p0": MAN3,
-        [`spy:marked:${roundKey(base)}:p0`]: true,
+        [`spy:marked:${roundKey(base)}:p0#round`]: true,
       },
     };
     const { status } = startFlow(marked);
@@ -129,7 +129,7 @@ describe("스파이 (spy)", () => {
     // 지난 국에 찍어 둔 상태 — 이번 국(roundKey가 다르다)에는 다시 후보가 뜬다
     const marked: GameState = {
       ...withAugments(base, "p0", ["spy"]),
-      augmentData: { "spy:mark:p0": MAN3, "spy:marked:1-0-0:p0": true },
+      augmentData: { "spy:mark:p0": MAN3, "spy:marked:1-0-0:p0#round": true },
     };
     const { status } = startFlow(marked);
     const prompt = status.prompts.find((p) => p.player === "p0");

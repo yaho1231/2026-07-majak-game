@@ -25,9 +25,9 @@ const ALL_IN = 12000;
 const roundKeyOf = (s: GameState): string =>
   `${s.round.prevalentWind}-${s.round.roundNumber}-${s.round.honba}`;
 const activeKeyOf = (s: GameState, h: PlayerId): string =>
-  `all_or_nothing:active:${roundKeyOf(s)}:${h}`;
+  `all_or_nothing:active:${roundKeyOf(s)}:${h}#round`;
 const usesKeyOf = (s: GameState, h: PlayerId): string =>
-  `all_or_nothing:uses:${roundKeyOf(s)}:${h}`;
+  `all_or_nothing:uses:${roundKeyOf(s)}:${h}#round`;
 
 /** p0가 판돈을 걸고 리치 중인 상태 */
 function scene(): GameState {

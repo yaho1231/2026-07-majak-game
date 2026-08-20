@@ -42,8 +42,9 @@ import type {
   PlayerId,
   TileDiscardedPayload,
 } from "@majak/core";
-import { flagOf, roundKey, stringOf, viewKey } from "../util.js";
+import { flagOf, stringOf, viewKey } from "../util.js";
 import { lateDoublePromotes } from "./late_double.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "riichi_upgrade";
 
@@ -56,7 +57,7 @@ const tripleKey = (holder: PlayerId): string => `${ID}:triple:${holder}`;
 const tripleViewKey = (holder: PlayerId): string => `${ID}:triple:${holder}`;
 /** 이번 국에 리치가 봉인된 대상 (국이 바뀌면 키가 달라져 자동 만료) */
 const sealKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:seal:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "seal", state, holder);
 
 export const riichiUpgrade: AugmentDef = defineAugment({
   id: ID,

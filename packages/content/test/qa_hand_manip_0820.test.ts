@@ -252,8 +252,8 @@ describe("future_sight — future_arm이 쿨다운을 소모한다", () => {
       payload: {} as never,
     });
     expect(res.ok).toBe(true);
-    expect(game.engine.state.augmentData[`future_sight:last:${rk}:p0`]).toBe(0);
-    expect(game.engine.state.augmentData[`future_sight:armed:${rk}:p0`]).toBe(true);
+    expect(game.engine.state.augmentData[`future_sight:last:${rk}:p0#round`]).toBe(0);
+    expect(game.engine.state.augmentData[`future_sight:armed:${rk}:p0#round`]).toBe(true);
   });
 
   it("무장만 하고 물러났다면 다음 순에 다시 무장할 수 없다", () => {
@@ -261,8 +261,8 @@ describe("future_sight — future_arm이 쿨다운을 소모한다", () => {
     const rk = roundKey(probe);
     // 0순에 무장하고 물러난 뒤(armed=false) 1순이 된 상태
     const st = scene({
-      [`future_sight:last:${rk}:p0`]: 0,
-      [`future_sight:turns:${rk}:p0`]: 1,
+      [`future_sight:last:${rk}:p0#round`]: 0,
+      [`future_sight:turns:${rk}:p0#round`]: 1,
     });
     const game = createStandardGameFromState(st, undefined, [futureSight]);
     installAugment(game.engine, futureSight, "p0", { yaku: game.yaku });
@@ -278,8 +278,8 @@ describe("future_sight — future_arm이 쿨다운을 소모한다", () => {
     const probe = scene();
     const rk = roundKey(probe);
     const st = scene({
-      [`future_sight:last:${rk}:p0`]: 0,
-      [`future_sight:turns:${rk}:p0`]: 3,
+      [`future_sight:last:${rk}:p0#round`]: 0,
+      [`future_sight:turns:${rk}:p0#round`]: 3,
     });
     const game = createStandardGameFromState(st, undefined, [futureSight]);
     installAugment(game.engine, futureSight, "p0", { yaku: game.yaku });

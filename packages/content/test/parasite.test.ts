@@ -26,7 +26,7 @@ type Game = ReturnType<typeof createStandardGameFromState>;
 
 /** 이번 국의 기생 대상 키 (국이 바뀌면 만료된다) */
 const targetKeyOf = (state: GameState): string =>
-  `parasite:target:p0:${roundKey(state)}`;
+  `parasite:target:p0:${roundKey(state)}#round`;
 const VIEW_KEY = roundViewKey("*", "parasite:p0");
 
 /** state.players[].augments에 증강 보유를 직접 주입한다 (드래프트 이벤트 생략) */
@@ -261,7 +261,7 @@ describe("parasite (기생충) — 정산 절반 이전", () => {
       ...base,
       augmentData: {
         ...base.augmentData,
-        [`parasite:target:p0:${roundKey(base)}`]: "p1",
+        [`parasite:target:p0:${roundKey(base)}#round`]: "p1",
       },
       round: { ...base.round, roundNumber: 2 },
     };

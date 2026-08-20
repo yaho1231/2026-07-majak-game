@@ -41,7 +41,8 @@ import type {
   PlayerId,
   TileDiscardedPayload,
 } from "@majak/core";
-import { flagOf, roundKey, roundViewKey } from "../util.js";
+import { flagOf, roundViewKey } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "no_ron_pact";
 /** 조약이 유효한 마지막 순 (보유자 자신의 버림 횟수 ≤ PACT_TURNS) */
@@ -54,7 +55,7 @@ const PACT_TURNS = 6;
  * (2026-08-20 QA 문구 확정 9). 선언 이력으로 판정한다(`hidden_blade`와 같은 방식).
  */
 const declaredKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:declared:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "declared", state, h);
 /** 전원 공개: 지금 조약이 살아 있는가 (국 스코프 — 국이 끝나면 엔진이 지운다) */
 const pactViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 /**

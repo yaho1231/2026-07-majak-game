@@ -56,6 +56,7 @@ import {
   trackRoundSeq,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "triple_peek";
 const ACTION = "triple_peek_use";
@@ -76,7 +77,7 @@ const resultKey = (holder: PlayerId): string => roundViewKey(holder, ID);
  * 아예 켜지 않은 것을 구분해야, 국 끝물에 잠깐 비었다가 다시 채워질 수 있다.
  */
 const activeKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:on:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "on", state, holder);
 
 /** 발동 사실만 알리는 전원 공개 마커 (내용 없음) */
 const noticeKey = (holder: PlayerId): string =>

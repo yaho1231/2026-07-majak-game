@@ -39,7 +39,8 @@ import type {
   TileDrawnPayload,
   TileKind,
 } from "@majak/core";
-import { addWinHanBonus, flagOf, roundKey, roundViewKey } from "../util.js";
+import { addWinHanBonus, flagOf, roundViewKey } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "haitei_lord";
 /** 발동한 국의 화료에 얹는 판수 (구 +4500점) */
@@ -47,7 +48,7 @@ const BONUS_HAN = 3;
 
 /** 이번 국에 해저 지배가 발동했는가 */
 const firedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:fired:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "fired", state, h);
 
 export const haiteiLord: AugmentDef = defineAugment({
   id: ID,

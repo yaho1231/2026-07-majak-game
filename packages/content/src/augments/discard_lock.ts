@@ -26,7 +26,8 @@
  *   (실제 잠긴 tileId)에 저장한다 — 둘 다 국 스코프 키다.
  * - 쿨다운은 국 단위: ROUND_STARTED마다 discard_lock:seq:{holder}를 +1 하고,
  *   발동 국의 시퀀스를 discard_lock:used:{holder}에 남겨 seq-used>=2 일 때만 재발동 허용.
- * - 실제 버림 금지는 discard.blockedTileIds 규칙에 Modifier로 얹는다(보유자별 키를 읽음).
+ * - 실제 버림 금지는 discard.blockedTileIds 규칙에 Modifier로 얹는다(보유자가 건 세 대상 키의
+ *   **합집합**을 읽는다 — 봉인은 사람이 아니라 tileId를 따라간다. 손 교환 증강 참고, 아래 ⚠).
  *   보유자 본인은 영향 없음. 손패 전부가 봉인이어도 엔진이 소프트락을 막아준다.
  */
 
@@ -246,6 +247,27 @@ export const discardLock: AugmentDef = defineAugment({
     // ⚠ 종류 단위(discard.blockedKinds)가 아니라 개별 패(discard.blockedTileIds)다 —
     // 봉인 뒤 같은 종류를 새로 쯔모해도 그 새 패는 자유롭게 버릴 수 있어야 한다
     // (2026-07-31 사용자 확정: "처음 선택된 2개만 봉인").
+    //
+    // ⚠ 봉인은 **사람이 아니라 패를 따라간다** (2026-08-20 QA disrupt 확정 1).
+    //
+    //   봉인 목록은 대상 playerId 별 키에 담기지만, 담긴 값은 tileId다. 예전에는
+    //   "지금 버리려는 사람" 칸 하나(`sealTilesKey(holder, rctx.playerId)`)만 읽어서,
+    //   손을 통째로 맞바꾸는 증강(seat_swap·full_hand_swap)이 끼면 봉인이 **아무에게도**
+    //   걸리지 않았다: 잠긴 tileId 들이 상대 손으로 건너가 원래 주인의 `hand.includes(id)`
+    //   를 통과하지 못하고, 넘겨받은 사람 칸에는 그 id가 적혀 있지 않기 때문이다.
+    //   p1↔p2 가 손을 바꾸면 두 좌석의 봉인이 동시에 0장이 됐다.
+    //
+    //   **패를 따라가게 정한 근거**: description·detail이 약속하는 것이 "발동 시점 손패의
+    //   **그 패들**을 이번 국 동안 버릴 수 없게 잠근다"이고, 판정의 실체도 종류가 아니라
+    //   tileId다(위 `sealTilesKey` 주석 ②). 즉 이 증강의 단위는 처음부터 사람이 아니라
+    //   패다 — "그 패는 이번 국에 못 나간다"가 약속이므로, 그 패가 누구 손에 있든 잠겨
+    //   있는 것이 문구와 일치한다. 사람을 따라가게 하려면 교환 증강마다 두 좌석의 키를
+    //   함께 뒤집어야 하고(seat_swap·full_hand_swap·hand_swap3·앞으로 생길 것 전부),
+    //   3장만 옮기는 hand_swap3 에서는 "따라간 사람"이 정의되지 않는다. 여기서
+    //   보유자의 세 대상 키를 **합집합**으로 읽으면 어떤 교환이 끼어도 새지 않는다.
+    //
+    //   보유자 본인 면제는 그대로다 — 교환으로 봉인패가 보유자 손에 들어오면 그 패는
+    //   풀린다(자기 증강에 자기가 묶이지 않는다는 기존 규약).
     engine.rules.addModifier<number[]>("discard.blockedTileIds", {
       source: ctx.instanceId,
       layer: ctx.layer,
@@ -253,9 +275,13 @@ export const discardLock: AugmentDef = defineAugment({
         if (rctx.playerId === undefined || rctx.playerId === holder) return current;
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return current;
-        const sealed = state.augmentData[sealTilesKey(holder, rctx.playerId)];
-        if (!Array.isArray(sealed)) return current;
-        return [...current, ...(sealed as number[])];
+        const out = [...current];
+        for (const p of state.players) {
+          if (p.id === holder) continue;
+          const sealed = state.augmentData[sealTilesKey(holder, p.id)];
+          if (Array.isArray(sealed)) out.push(...(sealed as number[]));
+        }
+        return out;
       },
     });
   },

@@ -101,7 +101,7 @@ describe("분열 (tile_split)", () => {
     // 사용 표식은 **국 단위** — 국이 바뀌면 다시 쓸 수 있다
     const rd = st.round;
     expect(
-      st.augmentData[`tile_split:used:${rd.prevalentWind}-${rd.roundNumber}-${rd.honba}:p0`],
+      st.augmentData[`tile_split:used:${rd.prevalentWind}-${rd.roundNumber}-${rd.honba}:p0#round`],
     ).toBe(true);
   });
 

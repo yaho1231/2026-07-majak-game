@@ -38,13 +38,13 @@ import type {
 import {
   counterOf,
   riichiPotGainOf,
-  roundKey,
   roundViewKey,
   settleInterceptor,
   statePrng,
   withAugPoint,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "jackpot";
 const ACTION = "jackpot_roll";
@@ -130,7 +130,7 @@ function atFirstTurn(state: GameState, player: PlayerId): boolean {
 
 /** 이번 국에 확정된 배수 (국이 바뀌면 키가 달라져 자동 만료) */
 const multKey = (state: GameState, player: PlayerId): string =>
-  `${ID}:mult:${roundKey(state)}:${player}`;
+  roundScopedKey(ID, "mult", state, player);
 
 interface JackpotRolledPayload {
   player: PlayerId;

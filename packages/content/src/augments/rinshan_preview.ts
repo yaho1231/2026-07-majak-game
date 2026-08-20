@@ -44,11 +44,11 @@ import type {
 import {
   flagOf,
   publishUsesLeft,
-  roundKey,
   roundViewKey,
   widenPeek,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "rinshan_preview";
 const ACTION_PULL = "rinshan_pull";
@@ -56,7 +56,7 @@ const RINSHAN_PULLED = "RinshanPulled";
 
 /** 국당 1회 사용 플래그 (roundKey를 섞어 국마다 자동 만료) */
 const usedKey = (state: GameState, h: PlayerId): string =>
-  `${ID}:used:${roundKey(state)}:${h}`;
+  roundScopedKey(ID, "used", state, h);
 
 /**
  * 전원 공개: 이번 국에 영상패 맨 앞이 이 사람의 쯔모패로 갈렸다는 사실.

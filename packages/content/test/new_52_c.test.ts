@@ -167,7 +167,7 @@ describe("dead_wall_master (왕패의 주인)", () => {
     expect(st.zones[handZone("p0")]?.tileIds).toHaveLength(14);
     // 남은 횟수가 뷰 채널로 미러링된다
     expect(st.augmentData["view:p0:dead_wall_master:remaining:p0#round"]).toBe(1);
-    expect(st.augmentData["dead_wall_master:swaps:1-1-0:p0"]).toBe(1);
+    expect(st.augmentData["dead_wall_master:swaps:1-1-0:p0#round"]).toBe(1);
   });
 
   it("앞자리가 울어 첫 바퀴가 깨져도, 내가 아직 안 버렸으면 교환할 수 있다", () => {
@@ -231,7 +231,7 @@ describe("dead_wall_master (왕패의 주인)", () => {
               ...base,
               augmentData: {
                 ...base.augmentData,
-                "dead_wall_master:swaps:1-1-0:p0": swaps,
+                "dead_wall_master:swaps:1-1-0:p0#round": swaps,
               },
             };
       const { game, flow } = setup(state);
