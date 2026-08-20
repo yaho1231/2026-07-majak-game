@@ -1259,6 +1259,54 @@ describe("관리자 관전", () => {
     },
     HANCHAN_TEST_MS,
   );
+
+  /*
+   * 일시정지 (docs/36 §7). 대회 중계에서 판을 멈출 유일한 방법이 «판을 없애는
+   * 것»(강제 종료)이었다.
+   *
+   * 여기서는 판을 끝까지 돌리지 않는다 — 이 테스트가 지키는 것은 **문**이다:
+   * 관리자만 걸 수 있고, 양쪽 화면에 알려지고, 정지 중 조작은 서버가 거부하고,
+   * 세워 둔 탁자가 관리자 목록에 표시된다.
+   */
+  it("관리자만 판을 세울 수 있고, 세운 동안 조작이 거부된다", async () => {
+    const h = await newHarness();
+    const player = await connectAndRegister(h, "Human");
+    player.clientSend({ type: "createRoom" });
+    const code = player.last("roomCreated").code;
+    for (let i = 0; i < 3; i++) player.clientSend({ type: "addBot" });
+    player.clientSend({ type: "startGame" });
+    await player.waitFor((m) => m.type === "view");
+
+    // 일반 유저 → 거부. 판은 그대로 돈다.
+    player.clientSend({ type: "adminPauseGame", code, paused: true });
+    expect(player.last("error")?.code).toBe("FORBIDDEN");
+
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "spectate", code });
+    await admin.waitFor((m) => m.type === "spectateStarted");
+
+    admin.clientSend({ type: "adminPauseGame", code, paused: true, reason: "점검 5분" });
+    // 대국자와 관전자 **모두**에게 알린다 — 한쪽만 알면 그 화면만 굳는다.
+    await player.waitFor((m) => m.type === "gamePaused");
+    expect(player.last("gamePaused")).toMatchObject({ paused: true, reason: "점검 5분", by: "Boss" });
+    expect(admin.last("gamePaused")).toMatchObject({ paused: true });
+
+    // 정지 중 조작은 서버가 거부한다 (화면만 잠그면 낡은 화면·직접 소켓으로 뚫린다)
+    player.clientSend({ type: "action", actionType: "discard", payload: { tileId: 0 } });
+    expect(player.last("error")?.code).toBe("GAME_PAUSED");
+    player.clientSend({ type: "roundContinue" });
+    expect(player.last("error")?.code).toBe("GAME_PAUSED");
+
+    // 세워 둔 탁자는 목록에서 알아볼 수 있어야 한다 (세운 사람이 자리를 뜨면 영영 선다)
+    admin.clientSend({ type: "liveGames" });
+    expect(admin.last("liveGames").rooms[0].paused).toBe(true);
+
+    // 재개
+    admin.clientSend({ type: "adminPauseGame", code, paused: false });
+    await player.waitFor((m) => m.type === "gamePaused" && m.paused === false);
+    admin.clientSend({ type: "liveGames" });
+    expect(admin.last("liveGames").rooms[0].paused).toBeUndefined();
+  });
 });
 
 describe("전체 통계·계정 관리 (32)", () => {

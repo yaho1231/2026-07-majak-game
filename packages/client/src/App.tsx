@@ -2781,6 +2781,16 @@ export function App(): JSX.Element {
     safeStorage.getItem(LAST_ROOM_KEY),
   );
   const [spectating, setSpectating] = useState<string | null>(null);
+  /**
+   * **관리자가 세워 둔 판** (중계 일시정지, docs/36 §7). null이면 평소대로 돈다.
+   *
+   * 화면이 하는 일 셋: 시계를 멈추고(PausedContext), 조작을 덮어 잠그고,
+   * 왜 섰는지 적는다. 서버도 같은 순간에 시계를 멈추므로, 재개하면 멈춘 지점부터
+   * 양쪽이 함께 이어 센다 — 그 이음매를 위해 마감 시각을 정지한 만큼 뒤로 민다.
+   */
+  const [pause, setPause] = useState<{ reason?: string; by?: string } | null>(null);
+  /** 정지가 시작된 시각 (epoch, performance 각각) — 재개 때 마감을 밀 값 */
+  const pausedAt = useRef<{ epoch: number; perf: number } | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
   /**
    * 중앙 인포 패널이 그리는 **국 스냅샷** — 판의 나머지(`view`)와 따로 논다.
@@ -3203,6 +3213,10 @@ export function App(): JSX.Element {
     setRoundHistory([]);
     riichiBgm.stop(); // 리셋 시 리치 BGM도 확실히 정지
     riichiBgmArmed.current = false;
+    // 세워 둔 판의 표식도 여기서 걷는다 — 방을 나가거나 관전을 접는 자리다.
+    // 남겨 두면 다음 판이 시작부터 «정지 중»으로 덮여 조작이 막힌다.
+    setPause(null);
+    pausedAt.current = null;
   }
 
   function showToast(text: string, tone: Toast["tone"] = "error", ms = 3200): void {
@@ -3999,6 +4013,37 @@ export function App(): JSX.Element {
       activeSpectateRef.current = msg.code; // 재연결 시 관전 자동 복귀 대상
       introShown.current = true; // 관전은 개막 연출 생략
       resumeAudio(); // 관전은 이후 클릭이 없어 오디오가 잠들 수 있다 — 여기서 깨워 효과음·BGM 보장
+      return;
+    }
+    if (msg.type === "gamePaused") {
+      if (msg.paused) {
+        pausedAt.current = { epoch: Date.now(), perf: performance.now() };
+        setPause({
+          ...(msg.reason !== undefined ? { reason: msg.reason } : {}),
+          ...(msg.by !== undefined ? { by: msg.by } : {}),
+        });
+        showToast(msg.reason ?? "관리자가 판을 세웠습니다", "info", 4000);
+      } else {
+        /*
+         * 재개 — 서 있던 만큼 **마감을 뒤로 민다**.
+         *
+         * 화면의 시계는 전부 «절대 마감 시각»으로 돌아간다. 정지 동안 그 시각은
+         * 그대로인데 실제 시간만 흘렀으므로, 밀어 주지 않으면 재개하는 순간 남은
+         * 시간이 정지한 만큼 통째로 사라진다 — 세워 둔 것이 벌이 된다.
+         * 서버도 남은 시간을 적어 두었다가 그 값으로 다시 걸므로 양쪽이 맞는다.
+         */
+        const since = pausedAt.current;
+        if (since !== null) {
+          const dEpoch = Date.now() - since.epoch;
+          const dPerf = performance.now() - since.perf;
+          setPromptDeadline((d) => (d === null ? null : d + dEpoch));
+          if (draftDeadline.current !== null) draftDeadline.current += dPerf;
+          if (roundResultDeadline.current !== null) roundResultDeadline.current += dPerf;
+        }
+        pausedAt.current = null;
+        setPause(null);
+        showToast("판을 다시 시작합니다", "info", 2600);
+      }
       return;
     }
     if (msg.type === "spectateEnded") {
@@ -5336,6 +5381,7 @@ export function App(): JSX.Element {
   });
 
   return (
+    <PausedContext.Provider value={pause !== null}>
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
     {/* 판이 돌고 있을 때만 모드를 내려 준다 — 증강 설명의 "동풍전 N회 · 반장전 M회"가
         그 판의 숫자 하나로 줄어든다. 홈·도감에서는 null이라 둘 다 그대로 보인다. */}
@@ -5455,6 +5501,14 @@ export function App(): JSX.Element {
           settings={settings}
           spectator={isSpectator}
           spectateCode={spectating}
+          spectatePaused={pause !== null}
+          {...(spectating === null
+            ? {}
+            : {
+                onTogglePause: (paused: boolean) => {
+                  send({ type: "adminPauseGame", code: spectating, paused });
+                },
+              })}
           logEvents={logEvents}
           botDifficulty={isSpectator ? null : (lobby?.botDifficulty ?? null)}
           pastRounds={roundHistory}
@@ -5895,10 +5949,48 @@ export function App(): JSX.Element {
         </div>
       ) : null}
       <PeekButton />
+      {/* 세워 둔 판 — 대국자는 화면째 덮어 잠그고, 관전석(중계)은 띠만 얹는다.
+          관전자를 덮으면 정작 판을 다시 돌릴 단추까지 막히기 때문이다. */}
+      {pause !== null ? <PauseOverlay pause={pause} blocking={spectating === null} /> : null}
     </div>
     </CoachLockContext.Provider>
     </GameModeContext.Provider>
     </GlossaryTipsContext.Provider>
+    </PausedContext.Provider>
+  );
+}
+
+/**
+ * 「⏸ 일시정지」 — 관리자가 판을 세웠다 (docs/36 §7).
+ *
+ * 대국자에게는 **막는 덮개**다. 화면을 잠그는 것이 이 표시의 절반이고(서버도 같은
+ * 조작을 거부한다 — 둘 다 해야 한다), 나머지 절반은 «왜 섰는지»다. 이유 없이 굳은
+ * 화면은 그대로 «게임이 멈췄다»는 제보가 된다.
+ *
+ * 관전석에서는 막지 않는다 — 판을 다시 돌릴 사람이 거기 앉아 있다.
+ */
+function PauseOverlay({
+  pause,
+  blocking,
+}: {
+  pause: { reason?: string; by?: string };
+  blocking: boolean;
+}): JSX.Element {
+  return (
+    <div
+      className={blocking ? "pause-overlay" : "pause-overlay pause-overlay-open"}
+      role="status"
+      aria-live="assertive"
+    >
+      <div className="pause-card">
+        <div className="pause-title">⏸ 일시정지</div>
+        <div className="pause-reason">{pause.reason ?? "관리자가 판을 세웠습니다"}</div>
+        <div className="pause-hint">
+          제한 시간도 함께 멈춰 있습니다 — 재개하면 멈춘 자리에서 이어집니다.
+          {pause.by !== undefined ? ` (${pause.by})` : ""}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -10141,6 +10233,9 @@ function HomeScreen(props: {
                       <span className="replay-players">
                         {r.players.map((p) => p.nickname).join(" · ")}
                       </span>
+                      {/* 세워 둔 채 잊힌 탁자를 목록에서 알아볼 수 있어야 한다 —
+                          세운 사람이 자리를 뜨면 판은 영영 서 있게 된다. */}
+                      {r.paused === true ? <span className="live-paused">⏸ 정지 중</span> : null}
                     </span>
                     <button className="replay-open" onClick={() => props.onSpectate(r.code)}>
                       👁 관전
@@ -11030,6 +11125,13 @@ const GameTable = memo(function GameTable(props: {
   settings: Settings;
   /** 관전 모드 — 전 손패 공개·조작 없음 (관리자 실시간 관전·리플레이) */
   spectator?: boolean;
+  /** 이 판이 관리자 일시정지로 서 있는가 (관전 띠의 단추 상태) */
+  spectatePaused?: boolean;
+  /**
+   * 판을 세우거나 다시 돌린다 (관전 중인 관리자 전용). 관전이 아니면 없다 —
+   * 자리에 앉은 사람에게는 이 손잡이가 존재하지 않는다.
+   */
+  onTogglePause?: (paused: boolean) => void;
   /** 관전 중인 방 코드 (표시용) */
   spectateCode?: string | null;
   /** 게임 무효 투표 현황 (없으면 아직 투표 없음) */
@@ -11234,6 +11336,21 @@ const GameTable = memo(function GameTable(props: {
             👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
           </span>
           {/* 아래 자리 고르기 — 화면 아래에 손패를 펼칠 좌석. 중계 카메라에 해당한다. */}
+          {props.onTogglePause !== undefined ? (
+            <span className="spectate-focus spectate-pause">
+              <button
+                className={props.spectatePaused === true ? "spectate-pause-btn on" : "spectate-pause-btn"}
+                onClick={() => props.onTogglePause?.(props.spectatePaused !== true)}
+                title={
+                  props.spectatePaused === true
+                    ? "판을 다시 돌립니다 — 멈춘 자리에서 이어집니다"
+                    : "판을 세웁니다 — 좌석의 제한 시간도, 봇의 차례도 함께 멈춥니다"
+                }
+              >
+                {props.spectatePaused === true ? "▶ 재개" : "⏸ 일시정지"}
+              </button>
+            </span>
+          ) : null}
           <span className="spectate-focus">
             <span className="spectate-focus-label">아래 자리</span>
             {[
@@ -15316,6 +15433,7 @@ function PromptTimer(props: {
   onTimeout?: string | null;
 }): JSX.Element {
   const { deadline } = props;
+  const paused = useContext(PausedContext);
   const [left, setLeft] = useState<number | null>(
     deadline === null ? null : Math.max(0, deadline - Date.now()),
   );
@@ -15324,10 +15442,13 @@ function PromptTimer(props: {
       setLeft(null);
       return;
     }
+    // 판이 서 있으면 마지막 값에서 멈춘다 — 재개하면 서버가 세워 둔 만큼 마감이
+    // 뒤로 밀려 있으므로(gamePaused 처리) 그 자리에서 이어 센다.
+    if (paused) return;
     setLeft(Math.max(0, deadline - Date.now()));
     const t = setInterval(() => setLeft(Math.max(0, deadline - Date.now())), 100);
     return () => clearInterval(t);
-  }, [deadline]);
+  }, [deadline, paused]);
 
   // 게이지 길이는 **이 마감을 처음 본 순간의 남은 시간**으로 한 번만 정한다.
   // 렌더마다 다시 계산하면(0.1초마다 다시 렌더된다) CSS 애니메이션의 duration이 계속
@@ -16871,6 +16992,15 @@ const FURITEN_REASON_TEXT: Record<FuritenReason, string> = {
  *
  * null이면 숫자를 아예 그리지 않는다(뷰가 없는 미리보기·헬프 화면).
  */
+/**
+ * **판이 서 있는가** — 관리자 중계 일시정지 (docs/36 §7).
+ *
+ * 화면의 시계들(프롬프트·드래프트·결과 화면)이 이 값을 보고 **그 자리에서 멈춘다**.
+ * 서버도 같은 규칙으로 남은 시간을 적어 두고 멈추므로, 재개하면 양쪽이 멈춘 지점에서
+ * 함께 이어 센다 — 화면의 초와 서버의 초가 어긋나지 않는다.
+ */
+const PausedContext = createContext(false);
+
 const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null);
 
 /**
@@ -19109,13 +19239,15 @@ function RoundResultPanel({
   const [remainMs, setRemainMs] = useState<number>(() =>
     deadlineAt === null ? 0 : Math.max(0, deadlineAt - performance.now()),
   );
+  // 판이 서 있으면 세지 않는다 — 마지막 값 그대로 멈춘다(PausedContext).
+  const paused = useContext(PausedContext);
   useEffect(() => {
-    if (deadlineAt === null) return;
+    if (deadlineAt === null || paused) return;
     const tick = (): void => setRemainMs(Math.max(0, deadlineAt - performance.now()));
     tick();
     const timer = window.setInterval(tick, 200);
     return () => window.clearInterval(timer);
-  }, [deadlineAt]);
+  }, [deadlineAt, paused]);
   const remainSec = Math.ceil(remainMs / 1000);
   const showCountdown = deadlineAt !== null && remainSec > 0;
 
@@ -19612,13 +19744,15 @@ function DraftOverlay({
   const [remainMs, setRemainMs] = useState<number>(() =>
     deadlineAt === null ? 0 : Math.max(0, deadlineAt - performance.now()),
   );
+  // 판이 서 있으면 세지 않는다 — 마지막 값 그대로 멈춘다(PausedContext).
+  const paused = useContext(PausedContext);
   useEffect(() => {
-    if (deadlineAt === null) return;
+    if (deadlineAt === null || paused) return;
     const tick = (): void => setRemainMs(Math.max(0, deadlineAt - performance.now()));
     tick();
     const timer = window.setInterval(tick, 200);
     return () => window.clearInterval(timer);
-  }, [deadlineAt]);
+  }, [deadlineAt, paused]);
   const remainSec = Math.ceil(remainMs / 1000);
   const showTimer = deadlineAt !== null && !picked;
   /**

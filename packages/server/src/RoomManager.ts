@@ -108,6 +108,12 @@ function buildAugmentCatalog(): AugmentCatalogEntry[] {
 const MAX_HAND_ORDER = 24;
 
 /**
+ * 일시정지 사유의 최대 길이. 화면에서는 배너 한 줄로 서므로 길 이유가 없다 —
+ * 「점검 5분」·「선수 네트워크 문제」 정도가 이 손잡이가 쓰이는 전부다.
+ */
+const PAUSE_REASON_MAX = 80;
+
+/**
  * 한 좌석이 손패 배치를 다시 뿌릴 수 있는 최소 간격(ms).
  *
  * `setHandOrder`는 **완전히 같은** 배치만 걸러낸다 — 두 배치를 번갈아 보내면
@@ -172,6 +178,16 @@ interface Room {
   startedAt: string | null;
   /** 이 방을 관전 중인 연결들 (관리자) */
   spectators: Set<Conn>;
+  /**
+   * **관리자가 세워 둔 판인가** (중계 일시정지, docs/36 §7).
+   *
+   * 컨트롤러가 실제 시계를 들고 있지만(`HanchanController.isPaused`) 방에도 둔다 —
+   * 정지 중 들어온 조작을 컨트롤러까지 내려보내기 전에 여기서 잘라야 하고,
+   * 관리자 목록(`liveGames`)이 컨트롤러 없이도 세워진 탁자를 보여야 한다.
+   */
+  paused: boolean;
+  /** 세워 둔 사유 (화면에 적는다). 비어 있으면 클라이언트 기본 문구. */
+  pauseReason: string | null;
   /** 게임 무효(중단)에 동의한 사람 playerId 집합 (게임 중에만 의미). */
   abortVotes: Set<PlayerId>;
   /**
@@ -1851,6 +1867,20 @@ export class RoomManager {
       case "draftPick":
       case "draftReroll":
       case "roundContinue": {
+        /*
+         * 세워 둔 판에서는 아무 조작도 받지 않는다 (docs/36 §7).
+         *
+         * 화면도 잠그지만 그것만으로는 부족하다 — 재접속 직후의 낡은 화면, 직접
+         * 만든 소켓, 연타로 이미 날아온 프레임이 전부 이 문을 통과하려 든다.
+         * 정지의 뜻은 «판이 한 칸도 움직이지 않는다»이므로, 판을 움직일 수 있는
+         * 입구는 서버에서 닫아야 한다.
+         *
+         * 조용히 버리지 않고 사실을 알린다 — 화면에 이유 없이 안 먹히는 버튼이
+         * 남으면 그게 곧 "게임이 멈췄다"는 제보가 된다.
+         */
+        if (conn.room?.paused === true) {
+          return this.fail(conn, "GAME_PAUSED", "관리자가 판을 세웠습니다 — 재개를 기다려 주세요");
+        }
         conn.agent?.handleMessage(msg);
         return;
       }
@@ -2053,6 +2083,13 @@ export class RoomManager {
        */
       case "activeGameRequest":
         return this.sendActiveGame(conn, user);
+      case "adminPauseGame": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        if (typeof msg.code !== "string") {
+          return this.fail(conn, "BAD_REQUEST", "잘못된 방 코드입니다");
+        }
+        return this.adminPauseGame(conn, user, msg.code, msg.paused === true, msg.reason);
+      }
       case "spectate":
         return this.spectate(conn, user, msg.code);
       case "spectateStop":
@@ -2559,6 +2596,8 @@ export class RoomManager {
       writer: null,
       startedAt: null,
       spectators: new Set(),
+      paused: false,
+      pauseReason: null,
       abortVotes: new Set(),
       kicked: new Set(),
       // 새 방의 기본은 **동풍전**이다 (2026-08-14 사용자 지시) — 한 판이 짧아
@@ -2688,6 +2727,10 @@ export class RoomManager {
       // 증강 테스트 방이면, 뷰·프롬프트 복원 전에 sandbox 패널 상태를 먼저 보낸다
       // (sandbox 메시지가 클라이언트에서 프롬프트를 초기화하므로 순서가 중요하다).
       mine.reconnect(conn.ws, room.sandbox ? () => this.sendSandboxState(room) : undefined);
+      // 세워 둔 판으로 돌아왔다면 그 사실부터 알린다 — 안 보내면 돌아온 사람의
+      // 화면만 시계가 계속 돌고 조작이 열려 있다(서버는 막고 있으니 «버튼이
+      // 안 먹는다»로 보인다).
+      if (room.paused) this.sendPauseState(conn, room);
       this.touch(room);
       this.log(room, `${user.username} 재접속 (${mine.id})`);
       // 돌아왔다는 사실을 나머지 좌석의 이름표에도 반영한다.
@@ -3492,6 +3535,7 @@ export class RoomManager {
             nickname: a.nickname,
             isBot: this.isBot(a),
           })),
+          ...(r.paused ? { paused: true } : {}),
         })),
     });
   }
@@ -3705,7 +3749,69 @@ export class RoomManager {
     room.spectators.add(conn);
     conn.spectating = room;
     this.send(conn.ws, { type: "spectateStarted", code });
+    // 이미 세워 둔 판이면 그대로 알린다 — 중계석이 바뀌어도 «지금 서 있다»가 보인다.
+    if (room.paused) this.sendPauseState(conn, room);
     room.controller.addSpectator(sink); // 현재 뷰·카탈로그 즉시 전송됨
+  }
+
+  /**
+   * **판을 세운다 / 다시 돌린다** — 관리자 중계 일시정지 (docs/36 §7).
+   *
+   * 강제 종료(`adminAbortGame`)와 나란히 서는 손잡이지만 결이 반대다: 저쪽은
+   * 되돌릴 수 없고, 이쪽은 되돌리기 위해 있다. 대회 중계에서 판을 멈출 유일한
+   * 방법이 «판을 없애는 것»이었다.
+   *
+   * 세우는 일 자체는 컨트롤러가 한다(좌석의 시계·봇의 차례·안전망을 한 번에
+   * 세운다). 여기서는 권한을 보고, 방에 표식을 남기고, **대국자와 관전자 모두**
+   * 에게 알린다. 표식을 방에도 남기는 이유는 두 가지다 — 정지 중 들어온 조작을
+   * 컨트롤러까지 내려보내기 전에 잘라야 하고, 세워 둔 채 잊힌 탁자가 관리자
+   * 목록에 그대로 보여야 한다.
+   */
+  private adminPauseGame(
+    conn: Conn,
+    user: UserRow,
+    rawCode: string,
+    paused: boolean,
+    rawReason?: string,
+  ): void {
+    const code = rawCode.trim().toUpperCase();
+    const room = this.rooms.get(code);
+    if (room === undefined || room.phase !== "playing" || room.controller === null) {
+      return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
+    }
+    if (room.paused === paused) return; // 같은 상태로 두 번 — 알릴 것이 없다
+    const reason =
+      typeof rawReason === "string" && rawReason.trim().length > 0
+        ? rawReason.trim().slice(0, PAUSE_REASON_MAX)
+        : null;
+    room.paused = paused;
+    room.pauseReason = paused ? reason : null;
+    room.controller.setPaused(paused);
+    // 유휴 청소가 세워 둔 판을 유령으로 오해하지 않도록 활동 시각을 갱신한다.
+    this.touch(room);
+    this.log(
+      null,
+      `${paused ? "일시정지" : "재개"} ${code} — ${user.username}${reason === null ? "" : ` (${reason})`}`,
+    );
+    const out: ServerMessage = {
+      type: "gamePaused",
+      paused,
+      ...(reason !== null ? { reason } : {}),
+      by: user.username,
+    };
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify(out);
+    }
+    for (const sp of room.spectators) this.send(sp.ws, out);
+  }
+
+  /** 이 연결에 «지금 판이 서 있다»를 알린다 (재접속·관전 합류 복원용). */
+  private sendPauseState(conn: Conn, room: Room): void {
+    this.send(conn.ws, {
+      type: "gamePaused",
+      paused: true,
+      ...(room.pauseReason !== null ? { reason: room.pauseReason } : {}),
+    });
   }
 
   private stopSpectating(conn: Conn): void {
