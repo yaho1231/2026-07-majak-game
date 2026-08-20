@@ -2788,6 +2788,12 @@ export function App(): JSX.Element {
    * 양쪽이 함께 이어 센다 — 그 이음매를 위해 마감 시각을 정지한 만큼 뒤로 민다.
    */
   const [pause, setPause] = useState<{ reason?: string; by?: string } | null>(null);
+  /**
+   * **이 탁자에만 걸린 공지** (docs/36 B2). 일시정지와 짝이다 — 세워 놓고 이유를
+   * 말할 수 있어야 한다. 시한이 있으면 그때 저절로 내려간다.
+   */
+  const [roomNotice, setRoomNotice] = useState<{ text: string; by?: string } | null>(null);
+  const roomNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 정지가 시작된 시각 (epoch, performance 각각) — 재개 때 마감을 밀 값 */
   const pausedAt = useRef<{ epoch: number; perf: number } | null>(null);
   const [view, setView] = useState<PlayerView | null>(null);
@@ -3216,6 +3222,9 @@ export function App(): JSX.Element {
     // 남겨 두면 다음 판이 시작부터 «정지 중»으로 덮여 조작이 막힌다.
     setPause(null);
     pausedAt.current = null;
+    setRoomNotice(null);
+    if (roomNoticeTimer.current !== null) clearTimeout(roomNoticeTimer.current);
+    roomNoticeTimer.current = null;
   }
 
   function showToast(text: string, tone: Toast["tone"] = "error", ms = 3200): void {
@@ -4027,6 +4036,26 @@ export function App(): JSX.Element {
       activeSpectateRef.current = msg.code; // 재연결 시 관전 자동 복귀 대상
       introShown.current = true; // 관전은 개막 연출 생략
       resumeAudio(); // 관전은 이후 클릭이 없어 오디오가 잠들 수 있다 — 여기서 깨워 효과음·BGM 보장
+      return;
+    }
+    if (msg.type === "roomNotice") {
+      if (roomNoticeTimer.current !== null) clearTimeout(roomNoticeTimer.current);
+      roomNoticeTimer.current = null;
+      if (msg.text.length === 0) {
+        setRoomNotice(null);
+        return;
+      }
+      setRoomNotice({ text: msg.text, ...(msg.by !== undefined ? { by: msg.by } : {}) });
+      if (msg.ttlMs !== undefined && msg.ttlMs > 0) {
+        roomNoticeTimer.current = setTimeout(() => setRoomNotice(null), msg.ttlMs);
+      }
+      return;
+    }
+    if (msg.type === "promptExtended") {
+      // 마감 하나만 갈아 끼운다 — 프롬프트를 다시 그리면 골라 둔 패가 떨어진다.
+      if (msg.kind === "draft") draftDeadline.current = performance.now() + msg.deadlineMs;
+      else setPromptDeadline(Date.now() + msg.deadlineMs);
+      showToast(`시간이 ${Math.round(msg.deadlineMs / 1000)}초로 늘었습니다`, "info", 2600);
       return;
     }
     if (msg.type === "gamePaused") {
@@ -5516,11 +5545,23 @@ export function App(): JSX.Element {
           spectator={isSpectator}
           spectateCode={spectating}
           spectatePaused={pause !== null}
+          {...(roomNotice !== null ? { roomNotice } : {})}
           {...(spectating === null
             ? {}
             : {
                 onTogglePause: (paused: boolean) => {
                   send({ type: "adminPauseGame", code: spectating, paused });
+                },
+                onRoomNotice: (text: string, seconds: number) => {
+                  send({
+                    type: "adminRoomNotice",
+                    code: spectating,
+                    text,
+                    ...(seconds > 0 ? { seconds } : {}),
+                  });
+                },
+                onExtendTime: (seat: string, seconds: number) => {
+                  send({ type: "adminExtendTime", code: spectating, seat, seconds });
                 },
               })}
           logEvents={logEvents}
@@ -11164,6 +11205,12 @@ const GameTable = memo(function GameTable(props: {
    * 자리에 앉은 사람에게는 이 손잡이가 존재하지 않는다.
    */
   onTogglePause?: (paused: boolean) => void;
+  /** 이 탁자에 공지를 걸거나 내린다 (빈 글 = 내림). 관전 중인 관리자 전용. */
+  onRoomNotice?: (text: string, seconds: number) => void;
+  /** 한 좌석에 시간을 더 준다. 관전 중인 관리자 전용. */
+  onExtendTime?: (seat: string, seconds: number) => void;
+  /** 지금 이 탁자에 걸려 있는 공지 (대국자·관전자 모두 본다) */
+  roomNotice?: { text: string; by?: string };
   /** 관전 중인 방 코드 (표시용) */
   spectateCode?: string | null;
   /** 게임 무효 투표 현황 (없으면 아직 투표 없음) */
@@ -11368,6 +11415,14 @@ const GameTable = memo(function GameTable(props: {
             👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
           </span>
           {/* 아래 자리 고르기 — 화면 아래에 손패를 펼칠 좌석. 중계 카메라에 해당한다. */}
+          {props.onRoomNotice !== undefined && props.onExtendTime !== undefined ? (
+            <BroadcastTools
+              view={view}
+              onRoomNotice={props.onRoomNotice}
+              onExtendTime={props.onExtendTime}
+              noticeUp={props.roomNotice !== undefined}
+            />
+          ) : null}
           {props.onTogglePause !== undefined ? (
             <span className="spectate-focus spectate-pause">
               <button
@@ -11409,6 +11464,16 @@ const GameTable = memo(function GameTable(props: {
               </button>
             ))}
           </span>
+        </div>
+      ) : null}
+      {/* 이 탁자에 걸린 공지 — 대국자·관전자가 같은 것을 본다 (docs/36 B2). */}
+      {props.roomNotice !== undefined ? (
+        <div className={`room-notice${props.spectator === true ? " room-notice-spec" : ""}`} role="status">
+          <span className="room-notice-mark">📢</span>
+          <span className="room-notice-text">{props.roomNotice.text}</span>
+          {props.roomNotice.by !== undefined ? (
+            <span className="room-notice-by">{props.roomNotice.by}</span>
+          ) : null}
         </div>
       ) : null}
       {observing ? (
@@ -17061,6 +17126,111 @@ const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null
  * 상시 표시용 오름패 뱃지 — 선언 간파(상대 위)와 내 오름패(손패 위)에 공용.
  * WaitTip과 달리 hover 없이 계속 떠 있는다.
  */
+/**
+ * 🛠 중계 도구 — 관전 중인 관리자만 보는 서랍 (docs/36 B2·B3).
+ *
+ * 관전 띠에 손잡이를 계속 늘려 붙이면 그 띠가 곧 판을 가리는 물건이 된다. 자주
+ * 쓰는 것(시점·일시정지)만 띠에 두고, 가끔 쓰는 것은 접어 둔다.
+ *
+ * 여기 있는 둘은 짝이다. **공지**는 세워 둔 이유를 그 탁자에만 말하는 손잡이고
+ * (전역 공지는 로비와 다른 판에까지 붙는다), **시간 연장**은 판 전체를 세우는
+ * 대신 한 자리에만 몇 초를 주는 더 가벼운 구제다.
+ */
+function BroadcastTools({
+  view,
+  onRoomNotice,
+  onExtendTime,
+  noticeUp,
+}: {
+  view: PlayerView;
+  onRoomNotice: (text: string, seconds: number) => void;
+  onExtendTime: (seat: string, seconds: number) => void;
+  /** 지금 공지가 걸려 있는가 — 「내리기」를 그때만 띄운다 */
+  noticeUp: boolean;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  /** 공지가 저절로 내려가기까지의 초. 0이면 내릴 때까지 떠 있다. */
+  const [secs, setSecs] = useState(0);
+  return (
+    <span className="spectate-focus spectate-tools">
+      <button
+        className={open ? "spectate-tool-toggle on" : "spectate-tool-toggle"}
+        onClick={() => setOpen((v) => !v)}
+        title="공지·시간 연장"
+      >
+        🛠 중계 도구
+      </button>
+      {open ? (
+        <div className="bcast-panel">
+          <div className="bcast-row">
+            <span className="bcast-label">공지</span>
+            <input
+              className="bcast-input"
+              value={text}
+              maxLength={120}
+              placeholder="예: 점검 5분 뒤 재개합니다"
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && text.trim().length > 0) {
+                  onRoomNotice(text.trim(), secs);
+                  setText("");
+                }
+              }}
+            />
+            {/* 표시 시간 — 0은 «내릴 때까지». 자동으로 재개되는 것이 아니라
+                배너가 사라지는 시간이다(그 구분을 문구에 적어 둔다). */}
+            <select
+              className="bcast-secs"
+              value={secs}
+              onChange={(e) => setSecs(Number(e.target.value))}
+              title="배너가 저절로 사라지기까지 (재개와는 무관합니다)"
+            >
+              <option value={0}>계속</option>
+              <option value={30}>30초</option>
+              <option value={60}>1분</option>
+              <option value={300}>5분</option>
+            </select>
+            <button
+              className="bcast-send"
+              disabled={text.trim().length === 0}
+              onClick={() => {
+                onRoomNotice(text.trim(), secs);
+                setText("");
+              }}
+            >
+              걸기
+            </button>
+            {noticeUp ? (
+              <button className="bcast-send bcast-clear" onClick={() => onRoomNotice("", 0)}>
+                내리기
+              </button>
+            ) : null}
+          </div>
+          <div className="bcast-row">
+            <span className="bcast-label">시간 연장</span>
+            {view.players.map((p) => (
+              <button
+                key={p.id}
+                className="bcast-seat"
+                disabled={p.isBot}
+                onClick={() => onExtendTime(p.id, 30)}
+                title={
+                  p.isBot
+                    ? "봇에게는 줄 시계가 없습니다"
+                    : `${playerName(view, p)}에게 30초를 더 줍니다 (지금 기다리는 중일 때만)`
+                }
+              >
+                {playerName(view, p)} +30초
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
 /**
  * 샹텐 뱃지 — 「텐파이까지 몇 걸음 남았나」 (중계 관전 전용).
  *

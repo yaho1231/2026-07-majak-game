@@ -573,6 +573,48 @@ export class HumanAgent implements PlayerAgent {
     return this.paused;
   }
 
+  /**
+   * **이 좌석의 시계를 늘린다** — 관리자 시간 연장 (docs/36 B3).
+   *
+   * 지금 마주한 시계 하나에만 더한다: 결정이 걸려 있으면 그것, 아니면 증강 선택.
+   * 늘린 새 남은 시간을 돌려준다(없으면 null — 기다리는 것이 없다).
+   *
+   * 프롬프트를 다시 보내지 않는다. 클라이언트는 새 프롬프트를 «여기부터가 진짜다»로
+   * 읽고 골라 둔 패를 비운다 — 시간만 주는데 손에 쥔 것을 떨어뜨리게 할 이유가 없다.
+   * 정지 중이면 타이머를 걸지 않고 적어 둔 남은 시간만 늘린다(재개 때 그 값으로 건다).
+   */
+  extendTime(extraMs: number): { kind: "decision" | "draft"; seat?: PlayerId; leftMs: number } | null {
+    if (this.abandoned || extraMs <= 0) return null;
+    const now = Date.now();
+    // 여러 좌석이 동시에 기다리는 경우(봇 좌석 조종)는 **가장 급한 자리**를 늘린다.
+    let target: PlayerId | null = null;
+    let soonest = Number.POSITIVE_INFINITY;
+    for (const [seat, p] of this.pending) {
+      const left = this.paused ? (this.pausedLeft.get(seat) ?? 0) : Math.max(0, p.deadlineAt - now);
+      if (left < soonest) {
+        soonest = left;
+        target = seat;
+      }
+    }
+    if (target !== null) {
+      const p = this.pending.get(target)!;
+      const leftMs = soonest + extraMs;
+      this.clearPendingTimer(p);
+      this.armDecision(target, p.prompt, p.resolve, leftMs, p.graced);
+      return { kind: "decision", seat: target, leftMs };
+    }
+    if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
+      const left = this.paused
+        ? (this.pausedDraftLeft ?? 0)
+        : Math.max(0, this.draftDeadlineAt - now);
+      const leftMs = left + extraMs;
+      this.clearDraftTimeout();
+      this.armDraft(leftMs);
+      return { kind: "draft", leftMs };
+    }
+    return null;
+  }
+
   /** 세워 둔 판이 아직 유효하면 남은 시간, 아니면 0. */
   private holdLeftMs(): number {
     return Math.max(0, this.heldUntil - Date.now());

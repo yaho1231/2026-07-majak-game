@@ -467,6 +467,37 @@ export interface AdminAbortGameMessage {
   reason?: string;
 }
 
+/**
+ * **그 탁자에만 거는 공지** (관리자 전용, 대회 중계 — docs/36 B2).
+ *
+ * 전역 공지(`adminSetNotice`)는 접속한 모두의 상단 띠를 바꾼다 — 한 탁자에
+ * 「5분 뒤 재개」를 말하려고 서버 전체에 붙일 수는 없다. 이건 그 방 사람과
+ * 관전자에게만 간다. 일시정지와 짝이다: 세워 놓고 이유를 말할 수 있어야 한다.
+ */
+export interface AdminRoomNoticeMessage {
+  type: "adminRoomNotice";
+  code: string;
+  /** 배너에 적을 글. **빈 문자열이면 내린다.** */
+  text: string;
+  /** 몇 초 뒤 저절로 내려갈지. 0·미지정이면 내릴 때까지 떠 있다. */
+  seconds?: number;
+}
+
+/**
+ * **한 좌석에 시간을 더 준다** (관리자 전용 — docs/36 B3).
+ *
+ * 네트워크 사고 구제용이다. 지금 그 좌석이 마주한 시계(결정 또는 증강 선택)에
+ * 초를 더한다 — 봇 좌석에는 줄 것이 없다(제 시계가 없다).
+ */
+export interface AdminExtendTimeMessage {
+  type: "adminExtendTime";
+  code: string;
+  /** 시간을 줄 좌석 playerId. */
+  seat: string;
+  /** 더할 초 (1~120). */
+  seconds: number;
+}
+
 /** 진행 중 게임 관전 시작 (관리자 전용). */
 export interface SpectateMessage {
   type: "spectate";
@@ -821,6 +852,8 @@ export type ClientMessage =
   | ActiveGameRequestMessage
   | SpectateMessage
   | AdminPauseGameMessage
+  | AdminRoomNoticeMessage
+  | AdminExtendTimeMessage
   | SpectateStopMessage
   | SandboxStartMessage
   | SandboxGrantMessage
@@ -1568,6 +1601,36 @@ export interface SpectateEndedMessage {
 }
 
 /**
+ * 그 탁자에 걸린 공지 (관리자 중계). 대국자·관전자 모두에게 간다.
+ * `text`가 빈 문자열이면 내린 것이다.
+ */
+export interface RoomNoticeMessage {
+  type: "roomNotice";
+  text: string;
+  /** 남은 표시 시간(ms). 0·미지정이면 내릴 때까지 떠 있다. */
+  ttlMs?: number;
+  /** 건 사람 (관리자 닉네임). */
+  by?: string;
+}
+
+/**
+ * **이 좌석의 시계를 늘렸다** (관리자 시간 연장).
+ *
+ * 프롬프트를 통째로 다시 보내지 않는 이유: 클라이언트는 새 프롬프트를 «여기부터가
+ * 진짜다»로 읽고 골라 둔 패·리치 모드를 비운다. 시간만 늘리는데 손에 쥔 것을
+ * 떨어뜨리게 할 이유가 없다 — 그래서 마감 하나만 갈아 끼운다.
+ */
+export interface PromptExtendedMessage {
+  type: "promptExtended";
+  /** 어느 시계인가 — 결정(프롬프트) 또는 증강 선택. */
+  kind: "decision" | "draft";
+  /** 대상 좌석 (결정일 때만 의미 있다). */
+  seat?: string;
+  /** 새 남은 시간(ms). */
+  deadlineMs: number;
+}
+
+/**
  * 판이 섰다 / 다시 돈다 (관리자 중계 일시정지). 대국자·관전자 **모두**에게 간다.
  *
  * 받은 쪽은 화면의 시계를 그 자리에서 멈추고(재개하면 멈춘 지점부터 이어 센다),
@@ -1667,6 +1730,8 @@ export type ServerMessage =
   | SpectateStartedMessage
   | SpectateEndedMessage
   | GamePausedMessage
+  | RoomNoticeMessage
+  | PromptExtendedMessage
   | SandboxMessage
   | SandboxConfigMessage
   | ActionFxMessage;
