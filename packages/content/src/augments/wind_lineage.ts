@@ -21,7 +21,7 @@
  * 헛성립하지 않는다.
  */
 
-import { Suits, defineAugment, isHonorRun } from "@majak/core";
+import { Suits, defineAugment, isHonorRun, setKinds } from "@majak/core";
 import type {
   AugmentDef,
   PlayerId,
@@ -49,13 +49,19 @@ const DRAGON_YAKU = "wind_lineage_dragon";
  * 한 장당 1판으로 센다.
  */
 function windRunHas(variant: ScoringVariant, rank: number): boolean {
-  return variant.sets.some(
-    (s) =>
-      s.type === "run" &&
-      isHonorRun(s.tiles) &&
-      s.tiles.every((t) => t.suit === Suits.Wind) &&
-      s.tiles.some((t) => t.rank === rank),
-  );
+  return variant.sets.some((s) => {
+    if (s.type !== "run" || !isHonorRun(s.tiles)) return false;
+    /*
+     * ⚠ 동남서북 **안깡**의 채점 대표는 앞 3장(동·남·서)이라, 대표만 훑으면
+     * 북(rank 4)이 존재하지 않는 것이 된다 — 북가/북장만 같은 깡을 하고도 1판을
+     * 못 받았다(qa-lab shape 확정 3). `setKinds`가 대표에서 빠진 네 번째 바람을
+     * 되돌려 준다.
+     */
+    const kinds = setKinds(s);
+    return (
+      kinds.every((t) => t.suit === Suits.Wind) && kinds.some((t) => t.rank === rank)
+    );
+  });
 }
 
 /**

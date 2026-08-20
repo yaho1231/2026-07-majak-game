@@ -103,6 +103,15 @@ export interface ScoringSet {
   /** 암각/안깡 여부. 론으로 완성된 커쯔는 false */
   concealed: boolean;
   isKan: boolean;
+  /**
+   * 깡의 **실물 넉 장** — 랭크가 섞인 깡(장사진의 3-4-5-6, 바람의 계보의 동남서북)에만
+   * 실린다. 대표 3장(`tiles`)에서 빠진 네 번째 패가 역 판정에서 사라지지 않도록
+   * `allKinds`가 이걸 함께 본다 — 없으면 9만이 든 장사진에 탕야오가, 중장패가 든
+   * 장사진에 찬타·준찬타가 붙는다(qa-lab text 확정 22).
+   *
+   * 부수(`fu.ts`)·도라는 종전대로 `tiles`/실물 멘쯔를 본다.
+   */
+  kanTiles?: TileKind[];
 }
 
 export interface ScoringVariant {
@@ -181,12 +190,15 @@ function meldToSet(meld: MeldInfo): ScoringSet {
       tiles: repr,
       concealed: meld.kind === "kan_closed",
       isKan: true,
+      // 대표에서 빠진 네 번째 패를 잃지 않는다 (allKinds가 본다)
+      kanTiles: [...meld.tiles],
     };
   }
   return {
     type: meld.kind === "chi" ? "run" : "triplet",
     tiles: meld.kind === "chi" ? meld.tiles.slice(0, 3) : tripletRepr(meld.tiles),
     concealed: meld.kind === "kan_closed",
+    ...(isKanKind ? { kanTiles: [...meld.tiles] } : {}),
     // kokushi_pon(울어 국사 특수 후로)은 깡이 아니다. 국사 폼은 이 set을 쓰지 않지만
     // 다른 계산이 깡으로 오인하지 않도록 명시적으로 제외한다.
     isKan:
@@ -262,6 +274,25 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
   const meldCombos = meldSetCombos(ctx.melds.map(meldToSetChoices));
   const variants: ScoringVariant[] = [];
   /**
+   * 화료패가 **커쯔에 들어간** 변형이 하나라도 있으면 `손 서명#화료패` 가 여기 담긴다.
+   * 아래에서 같은 손·같은 패의 단기(머리 대기) 변형을 걷어내는 데 쓴다 — 이유는 return 직전.
+   *
+   * ⚠ 서명에 **손패 전체**를 넣는 이유: 조커는 분해마다 다른 패로 변하므로
+   * (`decomp.effectiveHand`) 같은 화료패라도 손이 다르다. 화료패만으로 묶으면
+   * 조커가 5만이 된 손의 샹퐁이 조커가 9만이 된 손의 단기를 지워 **순정구련보등이
+   * 사라진다** — 실제로 joker 테스트가 잡았다.
+   */
+  const shanponWinKeys = new Set<string>();
+  /** handKinds 배열(분해당 하나) → 정렬된 손 서명. 참조로 메모한다. */
+  const handSigs = new Map<readonly TileKind[], string>();
+  const handSigOf = (kinds: readonly TileKind[]): string => {
+    const hit = handSigs.get(kinds);
+    if (hit !== undefined) return hit;
+    const sig = kinds.map(kindKey).sort().join(",");
+    handSigs.set(kinds, sig);
+    return sig;
+  };
+  /**
    * 화료패가 **조커**면 그 패는 이 분해에서 조커가 변한 것으로 친다 — 물리적인 백을
    * 그대로 찾으면 어느 몸통에도 없어 변형이 0개가 되고, 완성된 손이 화료로 안 잡힌다.
    */
@@ -333,6 +364,7 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
           if (!absorber.tiles.some((t) => kindKey(t) === winKey)) return;
           const waitType: WaitType =
             absorber.type === "triplet" ? "shanpon" : classifyRunWait(absorber, winTile);
+          if (waitType === "shanpon") shanponWinKeys.add(`${handSigOf(handKinds)}#${winKey}`);
           variants.push({
             form: "standard",
             pair: decomp.pair,
@@ -355,7 +387,47 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
     }
   }
 
-  return variants;
+  /*
+   * ── 같은 화료패로 샹퐁이 서면 그 패의 **단기 변형은 버린다** (2026-08-20) ──
+   *
+   * 스안커 단기가 더블 역만인 근거는 이 파일 아래 `suuankou_tanki` 주석 그대로
+   * **"화료패가 커쯔에 들어가지 않는다"**는 것이다. 같은 14장·같은 화료패로 커쯔에
+   * 들어가는 해석이 실제로 있다면 그 근거는 거짓이므로, 단기라고 부를 수 없다.
+   *
+   * 표준 마작에서는 이 두 해석이 함께 설 수 없다(머리 XX + 커쯔 XXX = 같은 패 5장).
+   * 함께 서는 것은 **커쯔의 동일성을 느슨하게 만드는 증강**뿐이다 —
+   * 동수의 결속(1만1통1통)·양극(1만9만9만)은 "커쯔 3장 + 머리 2장"으로 있던 손을
+   * "혼합 커쯔 + 같은 랭크 머리"로 다시 읽어 샹퐁 대기를 단기로 바꿨고,
+   * 그 결과 스안커(역만1)가 **항상** 스안커단기(역만2)로 격상됐다
+   * (qa-lab shape 확정 2). 두 증강의 설명 어디에도 역만 배수를 올린다는 말은 없다 —
+   * 혼합 몸통 자체는 그대로 커쯔로 인정되므로 또이또이·산안커·스안커·청노두는
+   * 종전대로 붙는다. 사라지는 것은 **근거 없는 단기 격상**뿐이다.
+   */
+  if (shanponWinKeys.size === 0) return variants;
+  return variants.filter(
+    (v) =>
+      !(
+        v.form === "standard" &&
+        v.waitType === "tanki" &&
+        v.pair !== null &&
+        shanponWinKeys.has(`${handSigOf(v.handKinds ?? [])}#${kindKey(v.pair)}`)
+      ),
+  );
+}
+
+/**
+ * 몸통 하나가 **역 판정에 내놓는 패 종류**.
+ *
+ * 깡의 대표는 3장이라 **랭크가 섞인 깡**은 한 장이 빠진다(장사진 6-7-8-9만의 9만,
+ * 동남서북 깡의 북). 대표에 없는 종류만 더한다 — 표준 깡(같은 패 넉 장)은 이미
+ * 대표에 그 종류가 있으므로 아무것도 늘지 않는다(그래서 이 함수는 표준 채점을
+ * 한 톨도 바꾸지 않는다).
+ */
+export function setKinds(s: ScoringSet): TileKind[] {
+  if (s.kanTiles === undefined) return s.tiles;
+  const seen = new Set(s.tiles.map(kindKey));
+  const extra = s.kanTiles.filter((t) => !seen.has(kindKey(t)));
+  return extra.length === 0 ? s.tiles : [...s.tiles, ...extra];
 }
 
 /** 변형의 모든 패 kind (부·역 판정용. 깡은 3장 대표, 도라 계산에는 쓰지 말 것) */
@@ -369,6 +441,6 @@ export function allKinds(variant: ScoringVariant): TileKind[] {
   if (variant.form === "kokushi") {
     return variant.handKinds ?? [];
   }
-  const tiles = variant.sets.flatMap((s) => s.tiles);
+  const tiles = variant.sets.flatMap(setKinds);
   return variant.pair !== null ? [...tiles, variant.pair, variant.pair] : tiles;
 }

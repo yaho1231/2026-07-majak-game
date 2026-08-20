@@ -406,10 +406,16 @@ describe("seat_swap (자리 바꿈)", () => {
   // 발동 창은 내 첫 순(첫 바퀴에서 내가 아직 버리지 않았을 때)이다.
   /** 첫 바퀴·아무도 안 버린 상태 (craft는 firstTurn:false라 직접 켜 준다) */
   function craftFirstTurn(turnSeat = 0): GameState {
+    // 쯔모패를 반드시 실어 준다 — 자리 바꿈은 "방금 뽑은 쯔모패 한 장만 내게 남는다"를
+    // 약속하므로 `lastDrawnTile === null`인 순(후로 직후)에는 열리지 않는다
+    // (2026-08-20 QA: 그 창에서 옛 손패 아무 장이 남고 대상 필터도 뒤집혔다).
+    // 실제 게임의 turn.act에는 언제나 쯔모패가 있다.
+    const me = (["p0", "p1", "p2", "p3"] as const)[turnSeat] as PlayerId;
     const base = craft({
       hands: { p0: "123m456p789s11z22z", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
       turnSeat,
+      drawnLastFor: me,
     });
     return { ...base, round: { ...base.round, firstTurn: true } };
   }

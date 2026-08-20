@@ -107,6 +107,15 @@ export const invincible: AugmentDef = defineAugment({
         if (rctx.playerId !== holder) return cur;
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return cur;
+        /*
+         * **창깡(챤깡)은 막지 않는다.** 코어의 소비 지점은 이 규칙을
+         * `lastDiscard.player ?? chankan.player` 로 조회하므로(standardActions.ts),
+         * 가만히 두면 내 깡을 창깡당하는 것까지 함께 막혔다 — description·detail은
+         * "내 **버림패**로 론"만 막는다고 적어 두었고, 그 탓에 성립하지 않는 깡을
+         * 노리는 증강(void_kan)이 무적 보유자 앞에서 통째로 무력해졌다
+         * (2026-08-20 QA defcall §4). 깡은 버림이 아니다.
+         */
+        if (state.round.chankan?.player === holder) return cur;
         return flagOf(state, activeKey(state, holder)) ? true : cur;
       },
     });

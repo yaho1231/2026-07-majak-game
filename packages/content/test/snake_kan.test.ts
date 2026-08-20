@@ -10,6 +10,7 @@ import {
   buildVariants,
   buildWinContext,
   createStandardGameFromState,
+  evaluateWin,
   installAugment,
   kindOf,
 } from "@majak/core";
@@ -164,5 +165,39 @@ describe("장사진 + 끝없는 윤회 — 순환 4연속 깡", () => {
         expect(meldSet.tiles.map((t) => t.rank)).toEqual([8, 9, 1]);
       }
     }
+  });
+});
+
+describe("장사진 — 네 번째 패가 역 판정에서 사라지지 않는다 (QA 2026-08-20)", () => {
+  /**
+   * 4연속 깡의 채점 대표는 앞 3장(6-7-8만)이라, 남는 9만이 `allKinds`에서 빠져
+   * **9만이 든 손에 탕야오가** 붙었다(qa-lab text 확정 22). 대표에 없는 종류를
+   * 되돌려 주는 `setKinds`로 막았다.
+   */
+  function winYaku(handSpec: string, kanSpec: string): string[] {
+    const base = craft({
+      hands: { p0: handSpec, p1: "*", p2: "*", p3: "*" },
+      melds: { p0: [{ kind: "kan_closed" as const, spec: kanSpec }] },
+      phase: "turn.act",
+      turnSeat: 0,
+    });
+    const game = createStandardGameFromState(withAug(base, "p0", ["snake_kan"]));
+    installAugment(game.engine, snakeKan, "p0");
+    const st = game.engine.state;
+    const winTile = (st.zones["hand:p0"]?.tileIds ?? []).at(-1) as TileId;
+    const ctx = buildWinContext(st, "p0", "tsumo", winTile, { rules: game.engine.rules });
+    return (evaluateWin(ctx, game.yaku)?.yaku ?? []).map((y) => y.id);
+  }
+
+  it("9만이 든 장사진(6-7-8-9만)에는 탕야오가 붙지 않는다", () => {
+    expect(winYaku("234p567p345s22s", "6789m")).not.toContain("tanyao");
+  });
+
+  it("1만이 든 장사진(1-2-3-4만)에도 탕야오가 붙지 않는다", () => {
+    expect(winYaku("234p567p345s22s", "1234m")).not.toContain("tanyao");
+  });
+
+  it("대조군: 중장패만 든 장사진(3-4-5-6통)에는 탕야오가 그대로 붙는다", () => {
+    expect(winYaku("234p567p345s22s", "3456p")).toContain("tanyao");
   });
 });

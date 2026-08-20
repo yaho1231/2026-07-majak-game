@@ -67,18 +67,21 @@ export const blameShift: AugmentDef = defineAugment({
       const discarder = info.from;
 
       /*
-       * 재분배 대상은 **내 화료에 대한 지불분만**이다.
+       * 재분배 대상은 **내 화료에 대한 지불분만**이다 — 그 값은 `deltas`가 아니라
+       * **내 WinInfo**에서 직접 센다.
        *
-       * ⚠ 더블론에서는 `deltas[discarder]`에 다른 화료자에게 갈 몫까지 들어 있다. 예전에는
-       * 그 총액을 통째로 재분배해, 공동 승자가 **자기가 받을 돈의 일부를 되레 부담**하고
-       * 아무 상관 없는 사람에게도 그 몫이 떠넘겨졌다(2026-07-29 감사).
-       * 쏜 사람의 지불액 = Σ(화료자 points) + 본장이므로, 다른 화료자의 points를 빼면
-       * 내 몫(+본장)만 정확히 남는다.
+       * 예전에는 `-deltas[discarder] - Σ(다른 화료자 points)`로 역산했는데 두 곳에서 틀렸다
+       * (QA score-b 확정 1·2):
+       *   ① **본장은 첫 화료자 한 사람만** 받는다(standardActions `i === 0`). 내가 둘째
+       *      화료자면 남의 본장 가산분이 통째로 내 `owed`에 섞여, 무관한 사람이 남의
+       *      연장료를 대신 물었다.
+       *   ② 두 사람이 이 증강을 들고 더블론하면 **뒤에 도는 인터셉터가 이미 재배선된
+       *      deltas**를 원본으로 읽어 자기 몫을 과소 계산했다(방총자 과부담).
+       * WinInfo에서 재는 값은 다른 인터셉터의 영향을 받지 않으므로 둘 다 사라진다.
+       * 파오분은 책임자가 따로 무는 돈이라(방총자가 내지 않는다) 빼 둔다.
        */
-      const otherWinnersTotal = (p.winInfos ?? [])
-        .filter((w) => w.winner !== holder)
-        .reduce((sum, w) => sum + w.points, 0);
-      const owed = -(p.deltas[discarder] ?? 0) - otherWinnersTotal;
+      const owed =
+        info.points + (info.honbaBonus ?? 0) - (info.pao?.points ?? 0);
       if (owed <= 0) return event;
 
       // 화료자는 전부 제외한다 — 승자에게 지불을 떠넘기지 않는다.

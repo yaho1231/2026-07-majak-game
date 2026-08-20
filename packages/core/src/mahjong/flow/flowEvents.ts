@@ -410,6 +410,15 @@ export function registerFlowReducers(
     const p = event.payload as TileDiscardedPayload;
     const discardsBefore =
       state.zones[discardsZone(p.player)]?.tileIds.length ?? 0;
+    /*
+     * 더블리치 판정의 단일 진실 — **실제로 몇 장을 버렸는가**(`discardCount`)다.
+     *
+     * 바닥 존의 물리 길이(`discardsBefore`)를 세면, 바닥에서 패를 빼 가는 증강
+     * (날치기 pond_snatch · 무덤 도굴 grave_rob · 정적의 손 silent_take)이 내 바닥을
+     * 비웠을 때 3순째 리치도 "첫 버림"으로 인정돼 더블리치가 된다(2026-08-20 QA 리치 확정 6).
+     * `discardIndex`는 표시용 자리라 물리 길이가 맞지만, 순 세기는 이 값이다(docs/25 P5).
+     */
+    const discardCountBefore = state.round.byPlayer[p.player]?.discardCount ?? 0;
     const discardedKind = state.tiles[p.tileId]?.kind;
     // 누명(creditTo): 패가 놓이는 바닥과 후리텐 이력만 다른 사람 명의로 간다.
     // 손패 출처·방총 책임(lastDiscard.player)·턴 진행은 실제 버린 사람 그대로다.
@@ -474,7 +483,8 @@ export function registerFlowReducers(
         ...rs,
         riichi: {
           double:
-            p.riichiDouble ?? (discardsBefore === 0 && !state.round.goAroundBroken),
+            p.riichiDouble ??
+            (discardCountBefore === 0 && !state.round.goAroundBroken),
           ippatsu: true,
           discardIndex: discardsBefore,
           // 자리가 아니라 **그 패**가 표식의 단일 진실이다 — 바닥 중간에서 패를

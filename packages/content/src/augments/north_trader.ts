@@ -160,9 +160,29 @@ export const northTrader: AugmentDef = defineAugment({
   description:
     "(상시) 삼인마작의 북빼기. 자기 순에 손의 北을 빼놓고 영상패로 보충하며, 빼놓은 北은 한 장당 도라 1판으로 값한다. 영상패가 떨어지면 더는 못 빼고, 뺄 때마다 패산이 한 장씩 줄어 국이 그만큼 빨리 끝난다.",
   detail:
-    "(상시) 삼인마작의 북빼기가 그대로 들어온다. 자기 순에 '북빼기'를 선언하면 손의 北이 옆에 서고 그 자리를 영상패로 보충하며, 빼놓은 北은 한 장당 도라 1판으로 값한다. 보충 쯔모로 화료하면 영상개화가 붙는다. 리치 중에는 쓸 수 없다.\n\n영상패가 바닥나거나(누구의 것이든 깡 네 번) 패산이 다 떨어지면 北이 손에 있어도 못 뺀다. 뺄 때마다 패산이 한 장 줄어 그 국은 모두에게 그만큼 빨리 끝나고, 첫 순에 빼면 내 천화·지화는 깨진다.",
+    "(상시) 삼인마작의 북빼기가 그대로 들어온다. 자기 순에 '북빼기'를 선언하면 손의 北이 옆에 서고 그 자리를 영상패로 보충하며, 빼놓은 北은 한 장당 도라 1판으로 값한다. 보충 쯔모로 화료하면 영상개화가 붙는다. 리치 중에는 쓸 수 없다.\n\n영상패가 바닥나거나(누구의 것이든 깡 네 번) 패산이 다 떨어지면 北이 손에 있어도 못 뺀다. 뺄 때마다 패산이 한 장 줄어 그 국은 모두에게 그만큼 빨리 끝나고, 첫 순에 빼면 내 천화·지화는 깨진다(상대의 천화·지화·구종구패에는 영향을 주지 않는다).",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    /*
+     * 북을 한 장이라도 빼놓은 국에는 **내** 천화·지화가 성립하지 않는다.
+     *
+     * 역 check는 state를 못 보므로 `win.blockedYaku`로 게이팅한다(숨은 칼날·오픈 리치와
+     * 같은 패턴). 라운드 공용 플래그를 끄던 예전 방식은 상대 셋의 지화·구종구패까지
+     * 같이 없앴다(QA text 확정 26) — 이 규칙은 보유자에게만 걸린다.
+     */
+    ctx.engine.rules.addModifier<string[]>("win.blockedYaku", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== ctx.holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        return pulledNorthCount(state, ctx.holder) > 0
+          ? [...cur, "tenhou", "chihou"]
+          : cur;
+      },
+    });
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(pullAction);
@@ -177,7 +197,9 @@ export const northTrader: AugmentDef = defineAugment({
           [p.tileId],
         );
         // 영상패(왕패 맨 앞) 한 장을 손으로 — 손패 장수 불변
-        zones = moveTiles(zones, DEAD_WALL, handZone(p.player), [p.replacement]);
+        zones = moveTiles(zones, DEAD_WALL, handZone(p.player), [
+          p.replacement,
+        ]);
         // 패산 최후미 한 장을 왕패 '앞'으로 되채운다 — 왕패 장수 유지 + 표시패 자리 불변.
         // **이 되채움이 깡과의 차이다**: 깡의 영상 쯔모는 뽑기만 하고 보충하지 않아
         // 왕패가 줄어든다(flowEvents의 TILE_DRAWN{rinshan} 참고).
@@ -200,11 +222,18 @@ export const northTrader: AugmentDef = defineAugment({
           ...state.round,
           lastDrawnTile: p.replacement,
           lastDrawRinshan: true,
-          // 북빼기는 '배패 그대로'를 깬다 — 천화·지화의 전제가 사라진다.
-          // 예전에는 두 플래그를 그대로 둬서 오야가 첫 순에 북을 뺀 뒤 보충패로 화료하면
-          // **천화가 붙었다**(2026-07-29 감사). 삼마 북빼기 룰도 동일하게 천화를 깬다.
-          firstTurn: false,
-          goAroundBroken: true,
+          /*
+           * ⚠ 여기서 `firstTurn`·`goAroundBroken`을 건드리지 않는다.
+           *
+           * 북빼기는 '배패 그대로'를 깨므로 **내** 천화·지화는 성립하면 안 된다. 예전에는
+           * 그걸 위해 라운드 플래그 두 개를 갈아 끼웠는데, 이 둘은 **테이블 공용 상태**다 —
+           * 첫 순 북빼기 한 번에 아직 순이 오지도 않은 **상대 셋의 지화 전제와 구종구패
+           * 선언까지** 함께 사라졌다(QA text 확정 26). 카드에는 남에게 가는 피해로
+           * "국이 그만큼 빨리 끝난다"만 적혀 있다.
+           *
+           * 이제 보유자 자신에게만 걸리는 `win.blockedYaku`로 천화·지화를 막는다
+           * (아래 install 참조) — 숨은 칼날·오픈 리치가 쓰는 것과 같은 게이팅이다.
+           */
         };
         // 표시도 **실물에서 센다** — 점수(score.extraHan)와 같은 근거를 써야
         // 자리 바꿈 뒤에 "北3장"이라 떠 있는데 판은 0인 어긋남이 안 생긴다.

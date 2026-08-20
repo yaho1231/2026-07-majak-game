@@ -52,6 +52,31 @@ export function roundKey(state: GameState): string {
 }
 
 /**
+ * 이 사람이 **이번 정산에서 회수한 공탁(리치봉)** 금액.
+ *
+ * ⚠ `payload.riichiPot`을 보면 안 된다 — 화료 정산에서 그 필드는 **다음 국으로 넘길
+ * 공탁**이라 언제나 0이다(`standardActions.ts` `riichiPot: 0`). 회수액은 첫 화료자의
+ * `winInfos[].riichiPotGain`에만 실린다. 배수 증강들이 `p.riichiPot`을 빼는 코드를
+ * 갖고도 공탁을 그대로 곱하고 있던 원인이 이것이다(QA score-a 확정 1·2).
+ */
+export function riichiPotGainOf(
+  p: RoundSettledPayload,
+  player: PlayerId,
+): number {
+  return (p.winInfos ?? []).find((w) => w.winner === player)?.riichiPotGain ?? 0;
+}
+
+/**
+ * 이 사람이 이번 화료로 받은 **본장 가산분**.
+ *
+ * 론이면 첫 화료자만, 쯔모면 셋에게서 걷은 합계가 `winInfo.honbaBonus`에 실린다 —
+ * 론만 따로 계산하면 쯔모 본장이 배수에 휩쓸린다(QA score-a 확정 2).
+ */
+export function honbaGainOf(p: RoundSettledPayload, player: PlayerId): number {
+  return (p.winInfos ?? []).find((w) => w.winner === player)?.honbaBonus ?? 0;
+}
+
+/**
  * "게임당 N회" 액티브의 N — 매치 길이에 비례한다.
  * 동풍전(tonpuu)=1회, 반장전(hanchan, 기본)=2회.
  * (config.mode가 없으면 반장전로 본다 — 서버 기본과 일치.)
@@ -745,11 +770,22 @@ export function addWinPointTransfer(
       take(info.from, extra);
     } else {
       // 쯔모 — 표준 분배와 같은 비율. 화료자가 친이면 셋이 똑같이, 자면 친이 2배를 낸다.
+      //
+      // ⚠ **오야 취급**(`win.treatAsDealer` — 만년 오야·찬탈자)도 친과 같다. 엔진의
+      // 기본 분담(`sysSettleWin`)은 `scoresAsDealer`가 켜지면 세 사람이 똑같이 내는데,
+      // 여기서는 **진짜 오야 자리인지만** 봐서 같은 화료 안에서 기본분은 균등, 상한
+      // 해제분만 "친 2배"로 갈렸다(QA score-a 확정 5 — 진짜 오야가 1,500점 더 냈다).
       const dealer = playerAtSeat(state, state.round.dealerSeat).id;
+      const treatAsDealer =
+        dealer === ctx.holder ||
+        ic.rules.resolve<boolean>("win.treatAsDealer", {
+          playerId: ctx.holder,
+          state,
+        });
       const others = state.players.map((pl) => pl.id).filter((id) => id !== ctx.holder);
       // 친이 무거운 쪽이 먼저 오도록 정렬 — 나머지 100점을 결정적으로 배분한다
       const payers =
-        dealer === ctx.holder
+        treatAsDealer
           ? others.map((id) => ({ id, weight: 1 }))
           : [...others]
               .sort((a, b) => (b === dealer ? 1 : 0) - (a === dealer ? 1 : 0))

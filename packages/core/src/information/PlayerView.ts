@@ -87,6 +87,16 @@ export function isConcealedTileId(id: TileId): boolean {
 /** 특수 관전자 playerId. 이 id를 사용하면 모든 정보가 공개된다 */
 export const SPECTATOR_ID: PlayerId = "__spectator";
 
+/**
+ * **실제 패 공개 채널**의 이름 접두어 — 값이 `TileId[]`면 그 패들의 메타데이터를
+ * 뷰어의 `tiles`에 실어 클라이언트가 '진짜 패'로 그릴 수 있게 한다.
+ *
+ * 새 채널을 만들 때는 반드시 여기에 등록한다. 등록을 빠뜨리면 채널은 그대로 나가는데
+ * `tiles`가 비어 화면이 조용히 폴백으로 떨어진다(봉인술사가 실제로 겪은 일 —
+ * 아래 사용처 주석 참고).
+ */
+const REVEAL_TILE_PREFIXES = ["revealTiles:", "discardLockReveal:"] as const;
+
 // ─────────────────────────── PlayerView 타입 ───────────────────────────
 
 /**
@@ -616,13 +626,21 @@ export function buildPlayerView(
     }
   }
 
-  // ── 실제 패 공개 채널 (revealTiles:*) ──
+  // ── 실제 패 공개 채널 (revealTiles:* · discardLockReveal:*) ──
   // augmentView에 `revealTiles:{tag}` = TileId[] 로 실린 항목은, 그 특정 패들의
   // 메타데이터를 이 뷰어의 tiles에 포함시켜 클라이언트가 '진짜 패'로 그릴 수 있게 한다.
   // 명시된 tile id만 노출하므로 상대 손패 Zone 전체가 새지 않는다.
   // (첫 사용처: 봉인술사가 상대 손패의 봉인된 실제 패를 보유자에게 보여준다.)
+  //
+  // ⚠ 2026-08 감사에서 봉인술사(discard_lock)의 채널 이름을 `revealTiles:{target}` →
+  // `discardLockReveal:{target}`으로 바꿨는데(hand_swap3와의 키 충돌 회피, docs/22 §12-20)
+  // **이 판정이 같이 바뀌지 않았다.** 그래서 채널에 실린 tileId가 tiles에 하나도 없고,
+  // 보유자는 description이 약속한 "봉인된 실제 패"를 못 보고 종류 폴백만 봤다
+  // (qa-lab disrupt-a 확정 1). 접두어를 목록으로 둔다 — 새 채널을 만들 때 여기 추가한다.
   for (const [key, value] of Object.entries(augmentView)) {
-    if (!key.startsWith("revealTiles:") || !Array.isArray(value)) continue;
+    if (!REVEAL_TILE_PREFIXES.some((p) => key.startsWith(p)) || !Array.isArray(value)) {
+      continue;
+    }
     for (const id of value as unknown[]) {
       if (typeof id !== "number" || tiles[id] !== undefined) continue;
       const tile = state.tiles[id];
@@ -955,6 +973,28 @@ function buildRoundView(
  * 판정은 액션 검증(standardActions의 riichi validate)과 같은 규칙을 본다 — 클라이언트가
  * 자기 나름의 셈을 흉내내면 언젠가 화면과 엔진이 갈라진다.
  */
+/**
+ * **공탁을 내지 않는 리치**를 열어 주는 증강 — 점수가 바닥나도 이 사람은 리치를 건다.
+ *
+ * `riichi.cost`(=1000)만 보고 "점수 부족"을 띄우면, 500점짜리 스텔스 리치 보유자의
+ * 화면에 **리치 후보가 14개 떠 있는데도** "리치 불가 — 점수 부족"이 뜬다. 정보가 틀리는
+ * 정도가 아니라 점수가 바닥난 사람에게서 유일한 탈출구를 감춘다(qa-lab riichi 확정 4).
+ *
+ * 두 증강 모두 자기 액션(`stealth_riichi` / `no_retreat_riichi`)의 validate에 점수 조건이
+ * 없고 `riichiCost: 0`으로 선언한다. `no_retreat`의 `riichi.cost` 모디파이어는 **선언 뒤에야**
+ * 0으로 내려가므로 규칙만 봐서는 선언 전을 가려낼 수 없다 — 그래서 id로 본다.
+ * (코어가 증강 id를 아는 다른 자리와 같은 방식: HanchanController의 `FX_PRIVATE_ACTION_TYPES`.)
+ */
+const FREE_RIICHI_AUGMENTS = new Set(["stealth_riichi", "no_retreat"]);
+
+function hasFreeRiichi(state: GameState, pid: PlayerId): boolean {
+  return (
+    state.players
+      .find((p) => p.id === pid)
+      ?.augments.some((a) => FREE_RIICHI_AUGMENTS.has(a)) === true
+  );
+}
+
 function riichiBlockReason(
   state: GameState,
   rules: RuleRegistry,
@@ -970,7 +1010,7 @@ function riichiBlockReason(
   ) {
     return null;
   }
-  if (rules.has("riichi.cost")) {
+  if (rules.has("riichi.cost") && !hasFreeRiichi(state, pid)) {
     const cost = rules.resolve<number>("riichi.cost", { playerId: pid, state });
     if (playerOf(state, pid).score < cost) return "notEnoughPoints";
   }

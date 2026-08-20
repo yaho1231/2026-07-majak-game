@@ -15,7 +15,7 @@ await runMatch({
   personas: { p0: PERSONAS.masher!, p1: PERSONAS.riichiRusher!, p2: PERSONAS.folder!, p3: PERSONAS.caller! },
   onState: (st: GameState) => {
     const rk = `${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}`;
-    const declared = st.augmentData[`call_seal:turn:${rk}:p0`];
+    const declared = st.augmentData[`call_seal:turn:${rk}:p0#round`];
     const uses = st.augmentData["call_seal:uses:p0"];
     const active = typeof uses === "number" && uses > 0 && typeof declared === "number" && st.round.turnCount - declared < 6;
     if (!active) return;

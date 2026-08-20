@@ -82,10 +82,26 @@ function menzenTenpai(state: GameState, rules: RuleRegistry, holder: PlayerId): 
   );
 }
 
-/** augmentData에 보존된 손패 kind 목록 */
-function keptKinds(state: GameState, holder: PlayerId): TileKind[] {
+/**
+ * 보존 한 장 — 종류에 **적도라 표식까지** 얹는다.
+ *
+ * description이 "그 손패 13장이 **그대로** 다음 국의 배패가 된다"라고 적는데, 예전에는
+ * kind(무늬·숫자)만 보존하고 주입할 때 `red: false`로 덮어써서 진짜 적5도, 붉은 손길이
+ * 각인한 적도라도 **평범한 패로 돌아왔다**(2026-08-20 QA text 확정 16).
+ * 텐파이를 넘긴다는 카드의 값이 도라 2판만큼 조용히 깎였다.
+ *
+ * `TileKind`의 상위 호환이라 예전 모양(`{suit, rank}`)도 그대로 읽힌다 — 그때는
+ * 적도라가 없던 손으로 본다.
+ */
+interface KeptTile extends TileKind {
+  red?: boolean;
+  redFor?: PlayerId;
+}
+
+/** augmentData에 보존된 손패 목록 */
+function keptKinds(state: GameState, holder: PlayerId): KeptTile[] {
   const v = state.augmentData[keepKey(holder)];
-  return Array.isArray(v) ? (v as TileKind[]) : [];
+  return Array.isArray(v) ? (v as KeptTile[]) : [];
 }
 
 export const regret: AugmentDef = defineAugment({
@@ -97,7 +113,7 @@ export const regret: AugmentDef = defineAugment({
   description:
     "(2국에 1회) 황패유국 시 당신이 멘젠 텐파이면 그 손패 13장이 그대로 다음 국의 배패가 된다 — 다음 국 첫 쯔모에 곧바로 리치가 나올 수 있다.",
   detail:
-    "(2국에 1회) 황패유국 시 자신이 멘젠으로 텐파이를 잡고 있었다면 그 손패 13장이 그대로 다음 국의 배패가 된다. 보존되는 손과 대기는 유국 시 전원에게 공개된다. 한 번 보존이 성사되면 2국이 지나야 다시 성사되므로, 넘겨받은 손으로 싸우는 국에서 또 유국이 나도 그 손은 이어지지 않는다(본장도 한 국으로 센다). 후로한 손은 13장이 되지 않아 멘젠 텐파이에만 적용되며, 누군가 화료해 국이 끝나면 발동하지 않는다.",
+    "(2국에 1회) 황패유국 시 자신이 멘젠으로 텐파이를 잡고 있었다면 그 손패 13장이 적도라 표식까지 그대로 다음 국의 배패가 된다. 보존되는 손과 대기는 유국 시 전원에게 공개된다. 한 번 보존이 성사되면 2국이 지나야 다시 성사되므로, 넘겨받은 손으로 싸우는 국에서 또 유국이 나도 그 손은 이어지지 않는다(본장도 한 국으로 센다). 후로한 손은 13장이 되지 않아 멘젠 텐파이에만 적용되며, 누군가 화료해 국이 끝나면 발동하지 않는다.",
   // A급 파괴(docs/25 §conflicts): 둘 다 ROUND_STARTED에서 배패 앞자리를 자기 값으로
   // 덮어써 **뒤에 도는 쪽이 앞의 결과를 지운다**. 역할이 완전히 겹쳐 막아도 잃는 게 없다.
   conflicts: ["honor_return"],
@@ -113,7 +129,14 @@ export const regret: AugmentDef = defineAugment({
       if (p.outcome !== "draw") return;
       if (!offCooldown(rc.state, holder)) return;
       if (!menzenTenpai(rc.state, engine.rules, holder)) return;
-      const kinds = handIdsOf(rc.state, holder).map((id) => kindOf(rc.state, id));
+      const kinds: KeptTile[] = handIdsOf(rc.state, holder).map((id) => {
+        const attrs = rc.state.tiles[id]?.attrs;
+        const kept: KeptTile = { ...kindOf(rc.state, id) };
+        // 적도라는 '그대로' 넘어간다 — 붉은 손길이 새긴 소유자(redFor)까지 함께.
+        if (attrs?.red === true) kept.red = true;
+        if (typeof attrs?.redFor === "string") kept.redFor = attrs.redFor;
+        return kept;
+      });
       if (kinds.length === 0) return;
       rc.emit(augmentDataSet(keepKey(holder), kinds));
       rc.emit(augmentDataSet(noticeKey(holder), kinds.map((k) => ({ ...k }))));
@@ -129,13 +152,20 @@ export const regret: AugmentDef = defineAugment({
       const n = Math.min(hand.length, kinds.length);
       const changes = [];
       for (let i = 0; i < n; i++) {
+        const kept = kinds[i] as KeptTile;
+        /*
+         * red는 **항상 명시**한다(true든 false든). attrs는 병합이라 값을 빼면 덮어쓴
+         * 자리가 적5였을 때 되살린 패(예: 3만)가 적도라로 남는다 — 보존한 손과 무관한
+         * 적도라가 생긴다. 반대로 보존한 패가 적도라였다면 그 표식을 그대로 되살린다
+         * (확정 16 — "13장이 그대로"라는 약속).
+         */
         changes.push({
           tileId: hand[i] as TileId,
-          kind: kinds[i] as TileKind,
-          // honor_return과 같은 이유로 red를 끈다 — attrs 병합이라 덮어쓴 자리가
-          // 적5였으면 되살린 패(예: 3만)가 적도라로 남아 화면·채점이 함께 어긋난다.
-          // 보존하는 것은 kind뿐이므로 적도라 표식은 따라오지 않는 게 맞다.
-          attrs: { conjured: true, red: false },
+          kind: { suit: kept.suit, rank: kept.rank },
+          attrs:
+            kept.redFor === undefined
+              ? { conjured: true, red: kept.red === true }
+              : { conjured: true, red: kept.red === true, redFor: kept.redFor },
         });
       }
       // 갓 받은 배패를 보존 kind로 일괄 변경 (결정적 — prng 불필요)

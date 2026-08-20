@@ -68,10 +68,15 @@ export const soulHunt: AugmentDef = defineAugment({
         name: "혼 사냥",
         closedHan: 1,
         openHan: 1,
+        // "리치 **대신**" 붙는 1판이다 — 내가 이미 리치를 걸었다면 표준 리치가
+        // 이미 그 1판을 주고 있으므로 더 붙을 근거가 없다. 예전에는 내 리치 여부를
+        // 보지 않아 리치 + 혼 사냥이 **둘 다** 붙어 조용히 +1판이었다
+        // (QA score-b 확정 3).
         check: (_variant, wctx) =>
           wctx.winnerId !== undefined &&
           yakuHolders(yaku, ID).has(wctx.winnerId) &&
           wctx.winType === "ron" &&
+          wctx.riichi === null &&
           wctx.fromRiichi === true,
       });
     }

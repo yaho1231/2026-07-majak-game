@@ -72,11 +72,36 @@ describe("적기 — 판에서 나오는 값이지 증강이 정하는 값이 �
     expect(poor).toBeLessThan(rich);
   });
 
-  it("올라스에 까는 포석은 값이 없다 — 회수할 국이 없다", () => {
-    const early = ctx({ turn: 2 });
-    const last = ctx({ turn: 2, placement: { rank: 1, allLast: true, riskAppetite: 0 } });
-    expect(readiness("setup", early)).toBeGreaterThan(0);
-    expect(readiness("setup", last)).toBe(0);
+  /**
+   * 2026-08-20 — 축이 바뀌었다. 예전엔 `allLast ? 0 : (1 - turn/12) * timeLeft` 였다.
+   *
+   * 그 식은 두 군데서 틀렸다(`qa-lab/findings/bot.md` 확정 3). ① 순목만 봐서
+   * **7순부터 전 구간이 닫혔다** — 재장전처럼 "다른 증강을 이미 소진해야" 제시되는
+   * 포석은 그 시점이 대개 중후반인데, 다음 국에 쓸 자원을 채우는 일에 이번 국의
+   * 순목은 애초에 축이 아니다(아레나 220판 기회 37 · 제안 0). ② 올라스를 통째로
+   * 0으로 눌러, **이번 국 안에서 값이 도는** 포석(안개·지정)까지 함께 죽였다.
+   *
+   * 지금은 두 축의 최댓값이다 — 이번 국 안에서 회수하는가(순목), 다음 국 이후에
+   * 회수하는가(남은 **국**).
+   */
+  it("포석의 축은 순목이 아니라 남은 국이다 — 국이 남아 있으면 종반에도 값이 있다", () => {
+    const lateWithRoundsLeft = ctx({ turn: 12, wallLeft: 10 });
+    expect(readiness("setup", lateWithRoundsLeft)).toBeGreaterThan(0.45);
+  });
+
+  it("올라스 종반에는 값이 없다 — 이번 국에도 다음 국에도 회수할 자리가 없다", () => {
+    const last = ctx({
+      turn: 12,
+      wallLeft: 10,
+      placement: { rank: 1, allLast: true, riskAppetite: 0 },
+    });
+    expect(readiness("setup", last)).toBeLessThan(0.45);
+    // 같은 올라스라도 초반이면 이번 국 안에서 회수할 자리가 남아 있다
+    const lastEarly = ctx({
+      turn: 2,
+      placement: { rank: 1, allLast: true, riskAppetite: 0 },
+    });
+    expect(readiness("setup", lastEarly)).toBeGreaterThan(readiness("setup", last));
   });
 
   it("손 밀기는 갈 길과 시간이 남아 있을 때 값이 있다", () => {

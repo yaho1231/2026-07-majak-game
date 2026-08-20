@@ -633,7 +633,18 @@ const shouminkanAction: ActionDef<{ tileId: TileId, targetMeldTileId: TileId }> 
     if (mIdx === undefined || mIdx < 0) return "target pon meld not found";
     const k = kindOf(state, req.payload.tileId);
     const tk = kindOf(state, req.payload.targetMeldTileId);
-    if (!sameCallKind(k, tk, mixedTripletsFor(state, rules, req.player))) {
+    // 양극(polarEnds)이면 같은 무늬의 1·9가 한 패로 통한다 — detail이 예시로 든
+    // "1만1만9만 + 1만"이 서려면 여기서도 그 규칙을 봐야 한다. 넘기지 않으면
+    // 얹는 패가 **멘쯔 대표와 같은 랭크일 때만** 통해, 퐁한 순서에 따라 1만만 되거나
+    // 9만만 되는 반쪽이 된다(qa-lab text 확정 21).
+    if (
+      !sameCallKind(
+        k,
+        tk,
+        mixedTripletsFor(state, rules, req.player),
+        polarEndsFor(state, rules, req.player),
+      )
+    ) {
       return "tile does not match the meld";
     }
     return null;

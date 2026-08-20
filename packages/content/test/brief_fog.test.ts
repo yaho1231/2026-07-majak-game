@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  ROUND_SCOPED_MARK,
   FlowController,
   buildPlayerView,
   createStandardGameFromState,
@@ -32,7 +33,7 @@ type Game = ReturnType<typeof createStandardGameFromState>;
 const USES_KEY = "brief_fog:uses:p0";
 /** 선언 순 키는 국 스코프다 (국이 바뀌면 자동 만료) */
 const turnKeyFor = (st: GameState): string =>
-  `brief_fog:turn:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0`;
+  `brief_fog:turn:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0${ROUND_SCOPED_MARK}`;
 
 function withAugment(state: GameState, player: PlayerId, id: string): GameState {
   return {

@@ -62,9 +62,36 @@ function spentKeyOf(
 ): string | null {
   return (
     targetUsesKeys(augId, holder).find(
-      (k) => counterOf(state, k) > 0 || flagOf(state, k),
+      (k) =>
+        !isCooldownReference(state, augId, holder, k) &&
+        (counterOf(state, k) > 0 || flagOf(state, k)),
     ) ?? null
   );
+}
+
+/**
+ * 이 키가 **소진 카운터가 아니라 국 단위 쿨다운의 기준점**인가.
+ *
+ * `discard_lock`(봉인술사)만 공용 쿨다운 규약(`<id>:usedSeq:`)에서 벗어나
+ * `discard_lock:used:{holder}`에 **마지막 발동 국의 순번**을 담는다 — 이름이 위
+ * `targetUsesKeys`의 `:used:`와 겹쳐 소진 카운터로 오인됐다. 그래서 detail의 ⚠
+ * ("국 단위 쿨다운 증강은 후보에 뜨지 않는다")과 정반대로 후보에 떴고, 복구하면
+ * 기준점이 3→2로 되감겨 **쿨다운이 그 자리에서 풀렸다**(같은 국에 두 번 봉인,
+ * QA text 확정 34).
+ *
+ * 판정은 이름이 아니라 **함께 쓰는 국 진행 카운터**(`<id>:seq:{holder}`, 공용
+ * `roundSeqKey` 규약)의 존재로 한다 — 국 수를 세고 있다는 것은 그 증강이 국 단위
+ * 쿨다운으로 돈다는 뜻이고, 그러면 `:used:`는 소진 횟수가 아니라 국 번호다.
+ * 매치 카운터를 쓰는 증강(`:uses:`)은 이 검사에 걸리지 않는다.
+ */
+function isCooldownReference(
+  state: GameState,
+  augId: string,
+  holder: PlayerId,
+  key: string,
+): boolean {
+  if (key !== `${augId}:used:${holder}`) return false;
+  return typeof state.augmentData[`${augId}:seq:${holder}`] === "number";
 }
 
 /**

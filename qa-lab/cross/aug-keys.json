@@ -1,750 +1,54 @@
 [
  [
   "draft:done:gameStart:pX",
-  30
+  8
  ],
  [
   "draft:done:eastThird:pX",
-  30
- ],
- [
-  "draft:done:eastFourth:pX",
-  15
+  8
  ],
  [
   "draft:done:southEntry:pX",
-  14
+  4
  ],
  [
-  "draft:done:southThird:pX",
-  14
- ],
- [
-  "augment:stage:pX:full_hand_swap",
-  11
- ],
- [
-  "view:pX:uses:full_hand_swap",
-  11
- ],
- [
-  "augment:stage:pX:danger_sense",
-  9
- ],
- [
-  "view:pX:uses:danger_sense",
-  9
- ],
- [
-  "danger_sense:used:#-#-#:pX",
-  9
- ],
- [
-  "augment:stage:pX:jackpot",
-  8
- ],
- [
-  "augment:stage:pX:broken_wall",
-  8
- ],
- [
-  "full_hand_swap:used:pX",
-  8
- ],
- [
-  "augment:stage:pX:alchemist",
-  7
- ],
- [
-  "view:pX:uses:alchemist",
-  7
- ],
- [
-  "alchemist:turn:pX",
-  7
- ],
- [
-  "alchemist:used:pX",
-  7
- ],
- [
-  "augment:stage:pX:parasite",
-  7
- ],
- [
-  "jackpot:mult:#-#-#:pX",
-  7
- ],
- [
-  "augment:stage:pX:async_chiitoi",
-  7
- ],
- [
-  "augment:stage:pX:picky_eater",
-  7
- ],
- [
-  "picky_eater:seq:pX",
-  7
- ],
- [
-  "view:*:picky_eater:progress:pX#round",
-  7
- ],
- [
-  "view:pX:cooldown:picky_eater",
-  7
- ],
- [
-  "augment:stage:pX:xray_hand",
-  7
- ],
- [
-  "view:pX:uses:xray_hand",
-  7
- ],
- [
-  "xray_hand:active:#-#-#:pX",
-  7
- ],
- [
-  "xray_hand:uses:pX",
-  7
- ],
- [
-  "augment:stage:pX:seat_swap",
-  7
- ],
- [
-  "view:pX:uses:seat_swap",
-  7
- ],
- [
-  "augment:stage:pX:bluff_pretense",
-  7
- ],
- [
-  "view:pX:uses:bluff_pretense",
-  7
- ],
- [
-  "bluff_pretense:used:#-#-#:pX",
-  7
- ],
- [
-  "augment:stage:pX:dora_afterimage",
-  6
- ],
- [
-  "augment:stage:pX:scapegoat",
-  6
- ],
- [
-  "dora_afterimage:prevDora",
-  6
- ],
- [
-  "dora_afterimage:seq:pX",
-  6
- ],
- [
-  "scapegoat:target:#-#-#:pX",
-  6
- ],
- [
-  "view:pX:cooldown:dora_afterimage",
-  6
- ],
- [
-  "view:pX:dora_afterimage:prev:pX",
-  6
- ],
- [
-  "dora_afterimage:recalled:#-#-#:pX",
-  6
- ],
- [
-  "dora_afterimage:usedSeq:pX",
-  6
- ],
- [
-  "augment:stage:pX:blind_ron",
-  6
- ],
- [
-  "blind_ron:armedRound:pX",
-  6
- ],
- [
-  "view:*:blind_ron:pX#round",
-  6
- ],
- [
-  "view:*:spent:blind_ron:pX",
-  6
- ],
- [
-  "augment:stage:pX:broken_border",
-  6
- ],
- [
-  "parasite:target:pX:#-#-#",
-  6
- ],
- [
-  "augment:stage:pX:last_stand",
-  6
- ],
- [
-  "view:pX:uses:last_stand",
-  6
- ],
- [
-  "augment:stage:pX:mixed_triplet",
-  6
- ],
- [
-  "seat_swap:round:#-#-#:pX",
-  6
- ],
- [
-  "seat_swap:uses:pX",
-  6
- ],
- [
-  "augment:stage:pX:open_riichi_reveal",
-  6
- ],
- [
-  "augment:stage:pX:hidden_river",
-  5
- ],
- [
-  "view:pX:uses:hidden_river",
-  5
- ],
- [
-  "hidden_river:fog:#-#-#:pX",
-  5
- ],
- [
-  "hidden_river:uses:pX",
-  5
- ],
- [
-  "augment:stage:pX:triple_peek",
-  5
- ],
- [
-  "triple_peek:seq:pX",
-  5
- ],
- [
-  "view:pX:cooldown:triple_peek",
-  5
- ],
- [
-  "triple_peek:on:#-#-#:pX",
-  5
- ],
- [
-  "triple_peek:usedSeq:pX",
-  5
- ],
- [
-  "augment:stage:pX:conjure_draw",
-  5
- ],
- [
-  "augment:stage:pX:blame_shift",
-  5
- ],
- [
-  "view:pX:uses:conjure_draw",
-  5
- ],
- [
-  "conjure_draw:pending:#-#-#:pX",
-  5
- ],
- [
-  "conjure_draw:used:#-#-#:pX",
-  5
- ],
- [
-  "augment:stage:pX:tile_dyeing",
-  5
- ],
- [
-  "tile_dyeing:turn:pX",
-  5
- ],
- [
-  "tile_dyeing:used:pX",
-  5
- ],
- [
-  "view:pX:tile_dyeing:left",
-  5
- ],
- [
-  "augment:stage:pX:future_sight",
-  5
- ],
- [
-  "view:pX:cooldownTurns:future_sight",
-  5
- ],
- [
-  "future_sight:armed:#-#-#:pX",
-  5
- ],
- [
-  "future_sight:turns:#-#-#:pX",
-  5
- ],
- [
-  "augment:stage:pX:stealth_riichi",
-  5
- ],
- [
-  "augment:stage:pX:mixed_nine_gates",
-  5
+  "draft:done:eastFourth:pX",
+  4
  ],
  [
   "augment:stage:pX:north_trader",
-  5
+  3
  ],
  [
-  "augment:stage:pX:regret",
-  5
- ],
- [
-  "regret:seq:pX",
-  5
- ],
- [
-  "view:pX:cooldown:regret",
-  5
- ],
- [
-  "augment:stage:pX:frame_up",
-  5
- ],
- [
-  "frame_up:seq:pX",
-  5
- ],
- [
-  "view:pX:cooldown:frame_up",
-  5
- ],
- [
-  "frame_up:usedSeq:pX",
-  5
- ],
- [
-  "augment:stage:pX:riichi_upgrade",
-  5
- ],
- [
-  "augment:stage:pX:joker",
-  5
- ],
- [
-  "joker:seq:pX",
-  5
- ],
- [
-  "view:pX:cooldown:joker",
-  5
- ],
- [
-  "joker:on:#-#-#:pX",
-  5
- ],
- [
-  "joker:usedSeq:pX",
-  5
- ],
- [
-  "augment:stage:pX:grave_rob",
-  5
- ],
- [
-  "view:pX:uses:grave_rob",
-  5
- ],
- [
-  "augment:stage:pX:rank_gate",
-  5
- ],
- [
-  "view:*:rank_gate:pX",
-  5
- ],
- [
-  "augment:stage:pX:pond_snatch",
-  5
- ],
- [
-  "view:pX:uses:pond_snatch",
-  5
- ],
- [
-  "pond_snatch:taken:#-#-#:pX",
-  5
- ],
- [
-  "pond_snatch:used:pX",
-  5
- ],
- [
-  "augment:stage:pX:siege_riichi",
-  5
- ],
- [
-  "augment:stage:pX:honba_hunter",
-  4
- ],
- [
-  "view:*:honba_hunter:pX#round",
-  4
- ],
- [
-  "augment:stage:pX:discard_recall",
-  4
- ],
- [
-  "future_sight:last:#-#-#:pX",
-  4
- ],
- [
-  "future_sight:stacks:#-#-#:pX",
-  4
- ],
- [
-  "recall_used:#-#-#:pX",
-  4
- ],
- [
-  "augment:stage:pX:snake_kan",
-  4
- ],
- [
-  "augment:stage:pX:soul_hunt",
-  4
- ],
- [
-  "augment:stage:pX:all_or_nothing",
-  4
- ],
- [
-  "view:pX:uses:all_or_nothing",
-  4
- ],
- [
-  "augment:stage:pX:cliff_bloom",
-  4
- ],
- [
-  "augment:stage:pX:dora_conceal",
-  4
- ],
- [
-  "augment:stage:pX:yakuless_win",
-  4
- ],
- [
-  "view:pX:uses:suit_unify",
-  4
- ],
- [
-  "augment:stage:pX:wind_lineage",
-  4
- ],
- [
-  "augment:stage:pX:rinshan_preview",
-  4
- ],
- [
-  "view:pX:uses:rinshan_preview",
-  4
- ],
- [
-  "augment:stage:pX:foresight",
-  4
- ],
- [
-  "rinshan_preview:used:#-#-#:pX",
-  4
- ],
- [
-  "view:pX:cooldownTurns:foresight",
-  4
- ],
- [
-  "augment:stage:pX:nagashi_yakuman",
-  4
- ],
- [
-  "view:pX:uses:silent_swap",
-  4
- ],
- [
-  "silent_swap:used:#-#-#:pX",
-  4
- ],
- [
-  "augment:stage:pX:die_hard",
-  4
- ],
- [
-  "view:pX:uses:die_hard",
-  4
- ],
- [
-  "rank_gate:mark:#-#-#:pX",
-  4
- ],
- [
-  "augment:stage:pX:aotenjou_ceiling",
-  4
- ],
- [
-  "augment:stage:pX:giant_god",
-  4
- ],
- [
-  "augment:stage:pX:red_five_touch",
-  4
- ],
- [
-  "view:pX:uses:red_five_touch",
-  4
- ],
- [
-  "red_five_touch:rank:pX",
-  4
- ],
- [
-  "red_five_touch:used:pX",
-  4
- ],
- [
-  "view:*:red_five_touch:pX",
-  4
+  "augment:stage:pX:time_pressure",
+  3
  ],
  [
   "augment:stage:pX:omni_chi",
   3
  ],
  [
-  "augment:stage:pX:unification",
+  "time_pressure:armedRound:pX",
   3
  ],
  [
-  "augment:stage:pX:riichi_seal",
+  "view:*:spent:time_pressure:pX",
   3
  ],
  [
-  "view:*:unification:pX",
+  "draft:done:southThird:pX",
   3
  ],
  [
-  "augment:stage:pX:hand_swapX",
+  "augment:stage:pX:conjure_draw",
   3
  ],
  [
-  "augment:stage:pX:let_it_ride",
+  "augment:stage:pX:brief_fog",
   3
  ],
  [
-  "view:*:let_it_ride:pX",
-  3
- ],
- [
-  "view:pX:uses:hand_swapX",
-  3
- ],
- [
-  "hand_swapX:give:#-#-#:pX",
-  3
- ],
- [
-  "hand_swapX:left:#-#-#:pX",
-  3
- ],
- [
-  "hand_swapX:target:#-#-#:pX",
-  3
- ],
- [
-  "hand_swapX:used:pX",
-  3
- ],
- [
-  "hand_swapX:done:#-#-#:pX",
-  3
- ],
- [
-  "augment:stage:pX:invincible",
-  3
- ],
- [
-  "invincible:active:#-#-#:pX",
-  3
- ],
- [
-  "invincible:cd:pX",
-  3
- ],
- [
-  "view:pX:cooldown:invincible",
-  3
- ],
- [
-  "augment:stage:pX:bottom_deal",
-  3
- ],
- [
-  "augment:stage:pX:yakuman_shield",
-  3
- ],
- [
-  "bottom_deal:armed:#-#-#:pX",
-  3
- ],
- [
-  "augment:stage:pX:ura_peek",
-  3
- ],
- [
-  "view:pX:uses:ura_peek",
-  3
- ],
- [
-  "augment:stage:pX:suit_unify",
-  3
- ],
- [
-  "augment:stage:pX:silent_pact",
-  3
- ],
- [
-  "ura_peek:swapped:#-#-#:pX",
-  3
- ],
- [
-  "ura_peek:used:#-#-#:pX",
-  3
- ],
- [
-  "view:pX:uses:silent_pact",
-  3
- ],
- [
-  "augment:stage:pX:take_back",
-  3
- ],
- [
-  "augment:stage:pX:sign_flip",
-  3
- ],
- [
-  "view:pX:cooldownTurns:take_back",
-  3
- ],
- [
-  "sign_flip:armedRound:pX",
-  3
- ],
- [
-  "take_back:last:#-#-#:pX",
-  3
- ],
- [
-  "view:*:spent:sign_flip:pX",
-  3
- ],
- [
-  "augment:stage:pX:palm_flip",
-  3
- ],
- [
-  "palm_flip:seq:pX",
-  3
- ],
- [
-  "view:pX:cooldown:palm_flip",
-  3
- ],
- [
-  "augment:granted:pX:cornucopia",
-  3
- ],
- [
-  "augment:stage:pX:cornucopia",
-  3
- ],
- [
-  "view:*:cornucopia:pX",
-  3
- ],
- [
-  "view:*:no_ron_pact:active:pX#round",
-  3
- ],
- [
-  "view:*:no_ron_pact:pX#round",
-  3
- ],
- [
-  "suit_unify:unified:#-#-#:pX",
-  3
- ],
- [
-  "suit_unify:uses:pX",
-  3
- ],
- [
-  "augment:stage:pX:tile_split",
-  3
- ],
- [
-  "view:pX:uses:tile_split",
-  3
- ],
- [
-  "tile_split:used:#-#-#:pX",
-  3
- ],
- [
-  "augment:stage:pX:honor_return",
-  3
- ],
- [
-  "view:pX:uses:honor_return",
-  3
- ],
- [
-  "honor_return:keep:pX",
-  3
- ],
- [
-  "honor_return:uses:pX",
-  3
- ],
- [
-  "view:*:honor_return:pX",
-  3
- ],
- [
-  "view:pX:uses:brief_fog",
-  3
- ],
- [
-  "brief_fog:turn:#-#-#:pX",
+  "view:pX:uses:conjure_draw",
   3
  ],
  [
@@ -752,31 +56,23 @@
   3
  ],
  [
-  "augment:stage:pX:table_flip",
+  "conjure_draw:pending:#-#-#:pX",
   3
  ],
  [
-  "view:pX:uses:table_flip",
+  "conjure_draw:used:#-#-#:pX",
   3
  ],
  [
-  "augment:stage:pX:even_world",
+  "view:pX:uses:brief_fog",
   3
  ],
  [
-  "even_world:seq:pX",
+  "augment:stage:pX:three_dragons_will",
   3
  ],
  [
-  "even_world:usedSeq:pX",
-  3
- ],
- [
-  "view:pX:cooldown:even_world",
-  3
- ],
- [
-  "augment:stage:pX:silent_swap",
+  "augment:stage:pX:soul_hunt",
   3
  ],
  [
@@ -784,115 +80,67 @@
   3
  ],
  [
-  "foresight:ordered:#-#-#:pX",
+  "augment:stage:pX:discard_lock",
   3
  ],
  [
-  "foresight:reveal:#-#-#:pX",
+  "discard_lock:seq:pX",
   3
  ],
  [
-  "foresight:turn:#-#-#:pX",
+  "view:pX:cooldown:discard_lock",
   3
  ],
  [
-  "foresight:used:#-#-#:pX",
+  "augment:stage:pX:parasite",
   3
+ ],
+ [
+  "discard_lock:used:pX",
+  3
+ ],
+ [
+  "parasite:target:pX:#-#-#",
+  3
+ ],
+ [
+  "augment:stage:pX:blame_shift",
+  3
+ ],
+ [
+  "augment:stage:pX:broken_border",
+  3
+ ],
+ [
+  "augment:stage:pX:jackpot",
+  2
+ ],
+ [
+  "augment:stage:pX:die_hard",
+  2
+ ],
+ [
+  "view:pX:uses:die_hard",
+  2
+ ],
+ [
+  "jackpot:mult:#-#-#:pX",
+  2
  ],
  [
   "augment:stage:pX:push_riichi",
-  3
+  2
  ],
  [
   "view:pX:uses:push_riichi",
-  3
- ],
- [
-  "push_riichi:brand:#-#-#:pX",
-  3
- ],
- [
-  "push_riichi:used:#-#-#:pX",
-  3
- ],
- [
-  "augment:stage:pX:karma",
-  3
- ],
- [
-  "augment:stage:pX:off_by_one",
-  3
- ],
- [
-  "augment:stage:pX:meld_dissolve",
   2
  ],
  [
-  "augment:stage:pX:no_retreat",
+  "augment:stage:pX:honba_hunter",
   2
  ],
  [
-  "no_retreat:seq:pX",
-  2
- ],
- [
-  "view:pX:uses:meld_dissolve",
-  2
- ],
- [
-  "view:pX:cooldown:no_retreat",
-  2
- ],
- [
-  "meld_dissolve:used:#-#-#:pX",
-  2
- ],
- [
-  "augment:stage:pX:ankan_dora",
-  2
- ],
- [
-  "augment:stage:pX:open_kokushi",
-  2
- ],
- [
-  "augment:stage:pX:iron_wall",
-  2
- ],
- [
-  "augment:stage:pX:avenger",
-  2
- ],
- [
-  "augment:stage:pX:eternal_dealer",
-  2
- ],
- [
-  "view:pX:uses:eternal_dealer",
-  2
- ],
- [
-  "augment:stage:pX:reload",
-  2
- ],
- [
-  "view:pX:uses:reload",
-  2
- ],
- [
-  "reload:uses:pX",
-  2
- ],
- [
-  "augment:stage:pX:tenpai_scan",
-  2
- ],
- [
-  "augment:stage:pX:time_pressure",
-  2
- ],
- [
-  "time_pressure:armedRound:pX",
+  "view:*:honba_hunter:pX#round",
   2
  ],
  [
@@ -900,147 +148,99 @@
   2
  ],
  [
-  "view:pX:uses:tenpai_scan",
+  "augment:stage:pX:rinshan_preview",
   2
  ],
  [
-  "view:*:spent:time_pressure:pX",
+  "view:pX:uses:rinshan_preview",
   2
  ],
  [
-  "augment:stage:pX:counter",
+  "rinshan_preview:used:#-#-#:pX",
   2
  ],
  [
-  "augment:stage:pX:void_kan",
+  "augment:stage:pX:broken_wall",
   2
  ],
  [
-  "augment:stage:pX:time_stop",
+  "augment:stage:pX:mixed_triplet",
   2
  ],
  [
-  "view:pX:uses:time_stop",
+  "augment:stage:pX:free_riichi_discard",
   2
  ],
  [
-  "time_stop:armed:#-#-#:pX",
+  "augment:stage:pX:open_riichi_reveal",
   2
  ],
  [
-  "time_stop:used:#-#-#:pX",
+  "augment:stage:pX:pond_snatch",
   2
  ],
  [
-  "augment:stage:pX:devils_advance",
+  "augment:stage:pX:table_flip",
   2
  ],
  [
-  "devils_advance:granted:pX",
+  "view:pX:uses:pond_snatch",
   2
  ],
  [
-  "view:*:devils_advance:pX",
+  "view:pX:uses:table_flip",
   2
  ],
  [
-  "augment:stage:pX:brief_fog",
+  "pond_snatch:taken:#-#-#:pX",
   2
  ],
  [
-  "augment:stage:pX:soul_strike",
+  "pond_snatch:used:pX",
   2
  ],
  [
-  "soul_strike:seq:pX",
+  "augment:stage:pX:hand_swapX",
   2
  ],
  [
-  "view:pX:cooldown:soul_strike",
+  "view:pX:uses:hand_swapX",
   2
  ],
  [
-  "augment:stage:pX:open_riichi",
+  "hand_swapX:done:#-#-#:pX",
   2
  ],
  [
-  "augment:stage:pX:three_dragons_will",
+  "hand_swapX:give:#-#-#:pX",
   2
  ],
  [
-  "augment:stage:pX:blood_contract",
+  "hand_swapX:left:#-#-#:pX",
   2
  ],
  [
-  "blood_contract:yaku:#-#-#:pX",
+  "hand_swapX:target:#-#-#:pX",
   2
  ],
  [
-  "augment:stage:pX:genesis",
+  "hand_swapX:used:pX",
   2
  ],
  [
-  "view:pX:uses:genesis",
+  "augment:stage:pX:hourglass",
   2
  ],
  [
-  "genesis:flipped:#-#-#:pX",
+  "augment:stage:pX:nagashi_yakuman",
   2
  ],
  [
-  "genesis:uses:pX",
+  "hourglass:seq:pX",
   2
  ],
  [
-  "augment:stage:pX:discard_lock",
-  2
- ],
- [
-  "discard_lock:seq:pX",
-  2
- ],
- [
-  "view:pX:cooldown:discard_lock",
-  2
- ],
- [
-  "augment:stage:pX:late_double",
-  2
- ],
- [
-  "silent_pact:used:#-#-#:pX",
-  2
- ],
- [
-  "augment:stage:pX:disarm",
-  2
- ],
- [
-  "disarm:uses:pX",
-  2
- ],
- [
-  "view:pX:uses:disarm",
-  2
- ],
- [
-  "augment:stage:pX:big_hand",
-  2
- ],
- [
-  "big_hand:seq:pX",
-  2
- ],
- [
-  "view:pX:cooldown:big_hand",
-  2
- ],
- [
-  "big_hand:round:pX",
-  2
- ],
- [
-  "big_hand:usedSeq:pX",
+  "view:pX:cooldown:hourglass",
   2
  ],
  [
@@ -1060,11 +260,51 @@
   2
  ],
  [
-  "augment:stage:pX:tanyao_break",
+  "augment:stage:pX:take_back",
   2
  ],
  [
-  "augment:stage:pX:no_ron_pact",
+  "view:pX:cooldownTurns:take_back",
+  2
+ ],
+ [
+  "take_back:last:#-#-#:pX",
+  2
+ ],
+ [
+  "augment:stage:pX:full_hand_swap",
+  2
+ ],
+ [
+  "view:pX:uses:full_hand_swap",
+  2
+ ],
+ [
+  "augment:stage:pX:blind_ron",
+  2
+ ],
+ [
+  "blind_ron:armedRound:pX",
+  2
+ ],
+ [
+  "view:*:spent:blind_ron:pX",
+  2
+ ],
+ [
+  "augment:stage:pX:time_stop",
+  2
+ ],
+ [
+  "time_stop:armed:#-#-#:pX",
+  2
+ ],
+ [
+  "time_stop:used:#-#-#:pX",
+  2
+ ],
+ [
+  "view:pX:uses:time_stop",
   2
  ],
  [
@@ -1072,19 +312,27 @@
   1
  ],
  [
-  "view:*:late_bloomer:pX",
+  "augment:stage:pX:dora_afterimage",
   1
  ],
  [
-  "cliff_bloom:kans:#-#-#:pX",
+  "dora_afterimage:prevDora",
   1
  ],
  [
-  "cliff_bloom:pick:#-#-#:pX",
+  "dora_afterimage:seq:pX",
   1
  ],
  [
-  "augment:stage:pX:royal_kokushi",
+  "view:pX:cooldown:dora_afterimage",
+  1
+ ],
+ [
+  "view:pX:dora_afterimage:prev:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:dora_conceal",
   1
  ],
  [
@@ -1092,23 +340,179 @@
   1
  ],
  [
+  "dora_afterimage:recalled:#-#-#:pX",
+  1
+ ],
+ [
+  "dora_afterimage:usedSeq:pX",
+  1
+ ],
+ [
   "view:*:mirror_dora:pX#round",
   1
  ],
  [
-  "augment:stage:pX:hourglass",
+  "augment:stage:pX:meld_dissolve",
   1
  ],
  [
-  "hourglass:seq:pX",
+  "view:pX:uses:meld_dissolve",
   1
  ],
  [
-  "view:pX:cooldown:hourglass",
+  "meld_dissolve:nagashiBroken:#-#-#:pX",
   1
  ],
  [
-  "tenpai_scan:uses:#-#-#:pX",
+  "meld_dissolve:used:#-#-#:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:silent_pact",
+  1
+ ],
+ [
+  "augment:stage:pX:ankan_dora",
+  1
+ ],
+ [
+  "augment:stage:pX:dead_wall_master",
+  1
+ ],
+ [
+  "view:pX:uses:silent_pact",
+  1
+ ],
+ [
+  "view:pX:dead_wall_master:remaining:pX#round",
+  1
+ ],
+ [
+  "dead_wall_master:swaps:#-#-#:pX",
+  1
+ ],
+ [
+  "view:*:late_bloomer:pX",
+  1
+ ],
+ [
+  "silent_pact:used:#-#-#:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:bluff_pretense",
+  1
+ ],
+ [
+  "view:pX:uses:bluff_pretense",
+  1
+ ],
+ [
+  "bluff_pretense:used:#-#-#:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:aotenjou_ceiling",
+  1
+ ],
+ [
+  "augment:stage:pX:siege_riichi",
+  1
+ ],
+ [
+  "augment:stage:pX:reload",
+  1
+ ],
+ [
+  "view:pX:uses:reload",
+  1
+ ],
+ [
+  "augment:stage:pX:big_hand",
+  1
+ ],
+ [
+  "augment:stage:pX:xray_hand",
+  1
+ ],
+ [
+  "big_hand:seq:pX",
+  1
+ ],
+ [
+  "table_flip:used:#-#-#:pX",
+  1
+ ],
+ [
+  "view:pX:cooldown:big_hand",
+  1
+ ],
+ [
+  "view:pX:uses:xray_hand",
+  1
+ ],
+ [
+  "big_hand:round:pX",
+  1
+ ],
+ [
+  "big_hand:usedSeq:pX",
+  1
+ ],
+ [
+  "xray_hand:active:#-#-#:pX",
+  1
+ ],
+ [
+  "xray_hand:uses:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:avenger",
+  1
+ ],
+ [
+  "augment:stage:pX:even_world",
+  1
+ ],
+ [
+  "augment:stage:pX:hidden_river",
+  1
+ ],
+ [
+  "augment:stage:pX:palm_flip",
+  1
+ ],
+ [
+  "even_world:seq:pX",
+  1
+ ],
+ [
+  "palm_flip:seq:pX",
+  1
+ ],
+ [
+  "view:pX:cooldown:even_world",
+  1
+ ],
+ [
+  "view:pX:uses:hidden_river",
+  1
+ ],
+ [
+  "view:pX:cooldown:palm_flip",
+  1
+ ],
+ [
+  "even_world:usedSeq:pX",
+  1
+ ],
+ [
+  "hidden_river:fog:#-#-#:pX",
+  1
+ ],
+ [
+  "hidden_river:uses:pX",
   1
  ],
  [
@@ -1116,7 +520,31 @@
   1
  ],
  [
-  "table_flip:used:#-#-#:pX",
+  "view:*:blind_ron:pX#round",
+  1
+ ],
+ [
+  "full_hand_swap:used:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:eternal_dealer",
+  1
+ ],
+ [
+  "augment:stage:pX:counter",
+  1
+ ],
+ [
+  "view:*:eternal_dealer:pX",
+  1
+ ],
+ [
+  "view:pX:uses:eternal_dealer",
+  1
+ ],
+ [
+  "augment:stage:pX:tile_dyeing",
   1
  ],
  [
@@ -1128,59 +556,15 @@
   1
  ],
  [
-  "peek_riichi_waits:forged:#-#-#:pX",
+  "tile_dyeing:turn:pX",
   1
  ],
  [
-  "peek_riichi_waits:used:#-#-#:pX",
+  "tile_dyeing:used:pX",
   1
  ],
  [
-  "augment:stage:pX:pseudo_dealer",
-  1
- ],
- [
-  "pseudo_dealer:cd:pX",
-  1
- ],
- [
-  "view:pX:cooldown:pseudo_dealer",
-  1
- ],
- [
-  "augment:stage:pX:hidden_blade",
-  1
- ],
- [
-  "riichi_seal:sealed:#-#-#:pX",
-  1
- ],
- [
-  "view:*:sign_flip:pX#round",
-  1
- ],
- [
-  "discard_lock:used:pX",
-  1
- ],
- [
-  "augment:stage:pX:bottom_yaku",
-  1
- ],
- [
-  "augment:stage:pX:call_seal",
-  1
- ],
- [
-  "view:pX:uses:call_seal",
-  1
- ],
- [
-  "call_seal:turn:#-#-#:pX",
-  1
- ],
- [
-  "call_seal:uses:pX",
+  "view:pX:tile_dyeing:left",
   1
  ],
  [
@@ -1188,11 +572,143 @@
   1
  ],
  [
-  "augment:stage:pX:free_riichi_discard",
+  "augment:stage:pX:discard_recall",
   1
  ],
  [
-  "augment:stage:pX:polar_ends",
+  "recall_used:#-#-#:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:riichi_seal",
+  1
+ ],
+ [
+  "augment:stage:pX:joker",
+  1
+ ],
+ [
+  "joker:seq:pX",
+  1
+ ],
+ [
+  "view:pX:cooldown:joker",
+  1
+ ],
+ [
+  "joker:on:#-#-#:pX",
+  1
+ ],
+ [
+  "joker:usedSeq:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:open_riichi",
+  1
+ ],
+ [
+  "augment:stage:pX:snake_kan",
+  1
+ ],
+ [
+  "augment:stage:pX:soul_strike",
+  1
+ ],
+ [
+  "soul_strike:seq:pX",
+  1
+ ],
+ [
+  "view:pX:cooldown:soul_strike",
+  1
+ ],
+ [
+  "augment:stage:pX:tanyao_break",
+  1
+ ],
+ [
+  "augment:stage:pX:disarm",
+  1
+ ],
+ [
+  "augment:stage:pX:iron_wall",
+  1
+ ],
+ [
+  "view:pX:uses:disarm",
+  1
+ ],
+ [
+  "disarm:uses:pX",
+  1
+ ],
+ [
+  "augment:stage:pX:triple_peek",
+  1
+ ],
+ [
+  "triple_peek:seq:pX",
+  1
+ ],
+ [
+  "view:pX:cooldown:triple_peek",
+  1
+ ],
+ [
+  "augment:stage:pX:danger_sense",
+  1
+ ],
+ [
+  "augment:stage:pX:foresight",
+  1
+ ],
+ [
+  "augment:stage:pX:regret",
+  1
+ ],
+ [
+  "regret:seq:pX",
+  1
+ ],
+ [
+  "triple_peek:on:#-#-#:pX",
+  1
+ ],
+ [
+  "triple_peek:usedSeq:pX",
+  1
+ ],
+ [
+  "view:pX:uses:danger_sense",
+  1
+ ],
+ [
+  "view:pX:cooldownTurns:foresight",
+  1
+ ],
+ [
+  "view:pX:cooldown:regret",
+  1
+ ],
+ [
+  "danger_sense:used:#-#-#:pX",
+  1
+ ],
+ [
+  "foresight:ordered:#-#-#:pX",
+  1
+ ],
+ [
+  "foresight:reveal:#-#-#:pX",
+  1
+ ],
+ [
+  "foresight:turn:#-#-#:pX",
+  1
+ ],
+ [
+  "foresight:used:#-#-#:pX",
   1
  ]
 ]

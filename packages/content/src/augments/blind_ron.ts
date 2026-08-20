@@ -18,13 +18,19 @@
  */
 
 import {
+  AUGMENT_DISARMED,
   Prng,
   ROUND_SETTLED,
   SETTLE_STAGE,
   augmentDataSet,
   defineAugment,
 } from "@majak/core";
-import type { AugmentDef, PlayerId, RoundSettledPayload } from "@majak/core";
+import type {
+  AugmentDef,
+  AugmentDisarmedPayload,
+  PlayerId,
+  RoundSettledPayload,
+} from "@majak/core";
 import {
   armOnNextRound,
   armedNow,
@@ -79,6 +85,21 @@ export const blindRon: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(key, ""));
     });
 
+    /*
+     * 무장해제로 잠기면 표시도 함께 내린다 (2026-08-20 QA disrupt-b 확정 3 ②).
+     *
+     * 효과 쪽은 게이트가 정상적으로 막는데 전원 공개 표시만 남아, 상대들은 이 국의
+     * 론이 여전히 어디로 날아갈지 모른다고 믿었다 — 잠긴 증강이 화면에서는 살아
+     * 있는 셈이라 정보가 틀린다. 초읽기(time_pressure)와 같은 처리다.
+     */
+    ctx.reaction(AUGMENT_DISARMED, (event, rc) => {
+      const p = event.payload as AugmentDisarmedPayload;
+      if (p.augmentId !== ID || p.target !== holder) return;
+      const key = roundViewKey("*", `${ID}:${holder}`);
+      if (rc.state.augmentData[key] === undefined) return;
+      rc.emit(augmentDataSet(key, ""));
+    });
+
     // 정산 단계: Redistribute — 지불자만 재배선(총액 불변). 방어(Shield)보다 먼저 돌아야
     // 엉뚱하게 맞은 사람의 방어 증강이 "새로 부과된 지불"을 보고 막을 수 있다.
     settleInterceptor(ctx, SETTLE_STAGE.Redistribute, (event, ic) => {
@@ -101,7 +122,17 @@ export const blindRon: AugmentDef = defineAugment({
       let notes = p.augPoints ?? [];
       let moved = 0;
       for (const shooter of shooters) {
-        const owed = -(deltas[shooter] ?? 0);
+        /*
+         * 옮기는 것은 **손의 지불분뿐**이다 — 본장 가산분은 쏜 사람이 그대로 문다
+         * (detail: "공탁·본장은 원래대로 정산된다").
+         *
+         * 예전에는 `-deltas[shooter]`를 통째로 옮겼는데, 론의 지불 델타에는 본장
+         * 가산분(300×본장)이 이미 섞여 있어 남의 연장료까지 엉뚱한 사람이 물었다
+         * (QA disrupt-b 확정 5). 파오분은 책임자가 따로 무는 돈이라 뺀다.
+         */
+        const owed = (p.winInfos ?? [])
+          .filter((w) => w.winType === "ron" && w.from === shooter)
+          .reduce((sum, w) => sum + w.points - (w.pao?.points ?? 0), 0);
         if (owed <= 0) continue;
         const prng = new Prng(
           (ic.state.config.seed ^

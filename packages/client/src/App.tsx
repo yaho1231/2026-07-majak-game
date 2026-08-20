@@ -819,7 +819,7 @@ const QUEST_GOAL: Record<string, string> = {
  * - "opp-river" : 상대 바닥의 (가장 최근) 버림패를 클릭 (payload에 snatchId/fromPlayer)
  * - "swap3"     : 상대를 클릭한 뒤 내 손패 3장을 클릭 (등가교환 전용)
  */
-type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "any-river" | "swap3";
+type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "swap3";
 
 /**
  * 액티브 액션 타입 → 클릭 발동 방식. 여기 등록된 액션은 버튼이 아니라
@@ -867,7 +867,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   // 손바닥 뒤집기 — 리치 중, 쯔모기리 대신 버릴 손패를 클릭한다 (2026-08-15)
   flip_riichi: "hand",
   // 정적의 손 — 새 탭 없이 실제 바닥패(네 사람 전부)를 직접 클릭해 주울 패를 고른다
-  silent_take: "any-river",
+  // 정적의 손 — 2026-08-20부터 **상대 셋의 바닥만** 대상이다(내 바닥 제외)
+  silent_take: "opp-river",
   // 영혼의 일격 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
   soul_strike: "hand",
 };
@@ -934,8 +935,6 @@ function armPromptText(mode: ArmMode | null, type?: string | null): string {
       return "내 버림패(바닥)를 클릭하세요";
     case "opp-river":
       return "주울 상대의 버림패를 클릭하세요";
-    case "any-river":
-      return "주울 버림패를 아무 바닥에서나 클릭하세요";
     case "hand":
     default:
       return "발동할 손패를 클릭하세요";
@@ -988,7 +987,7 @@ function readScanSnapshot(
 const MODAL_PICK_TYPES = new Set<string>([
   "mono_world",
   // 2026-07-22 (52차) 신규 — 전부 "무엇을 고르는지 패로 보여야 하는" 액션이다
-  // (정적의 손 silent_take는 2026-07-25 실제 바닥패 클릭[any-river]으로 전환 — 여기서 제외)
+  // (정적의 손 silent_take는 실제 바닥패 클릭[opp-river]으로 전환 — 여기서 제외)
   // (예지 foresight_order는 2026-07-25 발동[reveal]→드래그 재배열 전용 흐름으로 전환 — 여기서 제외)
   "dw_swap", // 왕패 14장 ↔ 내 손패 1장
   "red_touch", // 적도라로 만들 숫자 지정 (1~9)
@@ -3206,10 +3205,25 @@ export function App(): JSX.Element {
 
   function showToast(text: string, tone: Toast["tone"] = "error", ms = 3200): void {
     const key = ++toastSeq.current;
-    // 같은 문장이 연달아 오면 새로 쌓지 않는다 — 재연결 실패처럼 반복되는 통지가
-    // 화면을 세 줄로 덮는 것을 막는다.
+    /*
+     * 같은 문장이 연달아 오면 **줄을 쌓지는 않되, 다시 띄운다.**
+     *
+     * 예전에는 그냥 버렸다(`return cur`). 화면을 세 줄로 덮지 않으려는 것까지는
+     * 맞는데, 그 탓에 **두 번째 이후의 누름이 아무 반응도 내지 않았다** — 사람이
+     * 같은 버튼을 다시 누르는 이유는 대개 "방금 아무 일도 안 일어난 것 같아서"이고,
+     * 그때 돌아오는 것이 또 침묵이면 버튼이 고장 났다고 결론 낸다. 관리자 화면의
+     * «증강 테스트 시작»을 네 번 눌렀는데 끝까지 아무 말이 없었다는 보고가 이것이다
+     * (2026-08-19 라이브 QA 확정 2 — 서버는 «이미 방(…)에 참가 중입니다»를 매번
+     * 보내고 있었다).
+     *
+     * 마지막 줄을 **새 key로 갈아 끼운다**: React가 노드를 새로 만들어 등장
+     * 애니메이션(`toast-in`)이 다시 돌고, 3.2초 타이머도 이 key 기준으로 다시
+     * 시작한다. 앞 key의 제거 타이머는 그 key가 이미 없으므로 아무것도 지우지 않는다.
+     */
     setToasts((cur) =>
-      cur[cur.length - 1]?.text === text ? cur : [...cur, { key, text, tone }].slice(-TOAST_MAX),
+      cur[cur.length - 1]?.text === text
+        ? [...cur.slice(0, -1), { key, text, tone }]
+        : [...cur, { key, text, tone }].slice(-TOAST_MAX),
     );
     window.setTimeout(() => setToasts((cur) => cur.filter((t) => t.key !== key)), ms);
   }
@@ -9192,6 +9206,20 @@ function useFold(id: string): [boolean, () => void] {
  */
 type HomeTabId = "record" | "meta" | "feedback" | "account" | "admin";
 const HOME_TAB_KEY = "majak.homeTab";
+/*
+ * 증강 테스트(관리자) 판 길이 선택.
+ *
+ * `useState`만 쓰던 시절, 이 선택은 **HomeScreen이 다시 마운트될 때마다** 기본값
+ * (동풍전)으로 되돌아갔다 — 재연결로 화면이 한 번 갈아엎히거나 홈을 떠났다 오면
+ * 그만이다. 매번 반장전을 다시 고르게 만드는데, 정작 되돌아간 사실은 눈에 안 띈다
+ * (2026-08-19 라이브 QA 확정 2 곁가지: "버튼을 누를 때마다 동풍전으로 되돌아간다").
+ * 탭(HOME_TAB_KEY)과 같은 방식으로 남긴다.
+ */
+const SANDBOX_MODE_KEY = "majak.sandboxMode";
+
+function readSandboxMode(): GameMode {
+  return safeStorage.getItem(SANDBOX_MODE_KEY) === "hanchan" ? "hanchan" : "tonpuu";
+}
 
 function readHomeTab(isAdmin: boolean): HomeTabId {
   const raw = safeStorage.getItem(HOME_TAB_KEY);
@@ -9730,7 +9758,7 @@ function HomeScreen(props: {
   const [code, setCode] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 방 기본값과 같은 쪽으로 맞춘다 — 동풍전 (RoomManager.newRoom 참고)
-  const [sandboxMode, setSandboxMode] = useState<GameMode>("tonpuu");
+  const [sandboxMode, setSandboxMode] = useState<GameMode>(readSandboxMode);
   // 접어 둘 수 있는 카드들 — 지금 안 보는 것이 화면을 차지하지 않게 (useFold 주석 참고)
   const [statsFolded, toggleStatsFold] = useFold("mystats");
   const [replaysFolded, toggleReplaysFold] = useFold("replays");
@@ -10113,7 +10141,11 @@ function HomeScreen(props: {
               <button
                 key={m}
                 className={sandboxMode === m ? "sandbox-mode on" : "sandbox-mode"}
-                onClick={() => setSandboxMode(m)}
+                aria-pressed={sandboxMode === m}
+                onClick={() => {
+                  setSandboxMode(m);
+                  safeStorage.setItem(SANDBOX_MODE_KEY, m);
+                }}
               >
                 {m === "hanchan" ? "반장전" : "동풍전"}
               </button>
@@ -11523,17 +11555,15 @@ function useSelection(
         const p = o.payload as {
           snatchId?: unknown;
           graveId?: unknown;
+          tileId?: unknown;
           fromPlayer?: unknown;
         };
+        // 정적의 손처럼 주인을 payload에 싣지 않는 액션은 tileId만으로 짝을 짓는다
+        // (이 분기는 이미 "내 바닥이 아님"을 위에서 걸렀다).
+        if (p.fromPlayer === undefined) return p.tileId === tileId;
         if (p.fromPlayer !== ownerId) return false;
         return p.snatchId === tileId || p.graveId === tileId;
       });
-    }
-    if (armMode === "any-river") {
-      // 정적의 손 — 네 사람 전부의 바닥이 대상. payload는 { tileId } 하나뿐(주인 무관).
-      return armedOptions.find(
-        (o) => (o.payload as { tileId?: unknown }).tileId === tileId,
-      );
     }
     return undefined;
   };
@@ -15516,6 +15546,7 @@ function OwnArea(props: {
    * 값이 그대로면 아무것도 쓰지 않으므로 리렌더가 잦아도 비용은 offsetHeight 읽기뿐이다.
    */
   const ownBandRef = useRef(-1);
+  const ownBandFullRef = useRef(-1);
   // 렌더마다 다시 잰다(의존성 배열 없음). ResizeObserver를 먼저 써 봤는데, 손패가
   // 채워지거나 화면 크기가 바뀌어 띠가 자라도 콜백이 오지 않는 경우가 있어 띠가 낡았다.
   // 렌더는 뷰가 올 때마다 도므로 이쪽이 확실하다.
@@ -15541,6 +15572,25 @@ function OwnArea(props: {
      * 읽힌다. 올림이라 자리가 모자라는 쪽으로는 절대 틀리지 않는다(최대 3px 더 비운다).
      */
     const band = Math.max(0, Math.ceil((h + inset) / 4) * 4);
+    /*
+     * 같은 자리에서 **잠깐 뜨는 줄까지 포함한** 실제 높이도 함께 올려 준다.
+     *
+     * `--own-band`는 보드 크기를 정하는 값이라 액션 바·타이머를 일부러 뺀다(위 주석).
+     * 하지만 "내 영역 위로 무엇을 띄울 것인가"를 정할 때는 그 줄들도 피해야 한다 —
+     * 토스트가 그 자리를 썼다. 「시간 초과 — 쯔모기리로 자동 진행했습니다」가
+     * 화면 아래 가운데(bottom:28px)에 뜨는 바람에 **내 손패를 덮었다**
+     * (2026-08-19 라이브 QA 실측: 1280×1120에서 13장 중 5장, 375×812에서 13장 중 8장
+     * = 62%). 하필 "방금 내 순이 그냥 지나갔다"는 통지라, 손패를 다시 읽어야 하는
+     * 바로 그 순간에 손패가 사라졌다.
+     *
+     * 이 값은 보드 크기에 안 쓰이므로 액션 바가 떴다 사라져도 판이 출렁이지 않는다
+     * (움직이는 것은 토스트 줄 하나뿐이다).
+     */
+    const bandFull = Math.max(0, Math.ceil((area.offsetHeight + inset) / 4) * 4);
+    if (bandFull !== ownBandFullRef.current) {
+      ownBandFullRef.current = bandFull;
+      root.style.setProperty("--own-band-full", `${bandFull}px`);
+    }
     if (band === ownBandRef.current) return;
     ownBandRef.current = band;
     root.style.setProperty("--own-band", `${band}px`);
@@ -15551,7 +15601,11 @@ function OwnArea(props: {
     const root = areaRef.current?.closest(".game-root") ?? null;
     return () => {
       ownBandRef.current = -1;
-      if (root instanceof HTMLElement) root.style.removeProperty("--own-band");
+      ownBandFullRef.current = -1;
+      if (root instanceof HTMLElement) {
+        root.style.removeProperty("--own-band");
+        root.style.removeProperty("--own-band-full");
+      }
     };
   }, []);
 
@@ -17412,8 +17466,6 @@ function ActiveAugmentControl(props: {
         return "내 버림패 클릭으로 선택";
       case "opp-river":
         return "상대 버림패 클릭으로 선택";
-      case "any-river":
-        return "아무 바닥의 버림패 클릭으로 선택";
       case "swap3":
         return "상대·손패 클릭으로 선택";
       default:

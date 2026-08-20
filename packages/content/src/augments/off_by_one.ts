@@ -18,7 +18,9 @@
  */
 
 import {
+  DEAD_WALL,
   TILE_DRAWN,
+  WALL,
   augmentDataSet,
   defineAugment,
   isNumberSuit,
@@ -31,10 +33,32 @@ import {
   winHandIdsOf,
   winningKinds,
 } from "@majak/core";
-import type { AugmentDef, TileDrawnPayload } from "@majak/core";
+import type { AugmentDef, GameState, TileKind, TileDrawnPayload } from "@majak/core";
 import { roundViewKey } from "../util.js";
 
 const ID = "off_by_one";
+
+/**
+ * 그 종류가 **아직 뽑히지 않은 채 남아 있는** 장수 (패산 + 왕패).
+ *
+ * 마작의 물리 법칙은 한 종류 4장이다. 밀어서 만든 패는 그 종류를 한 장 늘리므로,
+ * 오름패 4장이 이미 전부 남의 손·바닥·후로로 나와 버린 **죽은 대기**에 밀어 넣으면
+ * 그 종류가 게임 안에 5장 존재하게 된다 — 남은 장수를 세는 쪽
+ * (`botHelpers.waitTilesLeft` · 대기 잔량 UI)이 0이라고 말하는데 화료가 나는
+ * 상태다(2026-08-20 QA 리치 확정 3). 그래서 밀기 전에 남은 장수를 센다.
+ *
+ * 세는 곳이 패산·왕패인 이유: 그 밖의 자리(손·바닥·후로)에 있는 장은 이미
+ * '나온' 장이고, 남은 장수는 정확히 아직 안 나온 나머지다.
+ */
+function copiesLeftUndrawn(state: GameState, kind: TileKind): number {
+  let n = 0;
+  for (const zone of [WALL, DEAD_WALL]) {
+    for (const id of state.zones[zone]?.tileIds ?? []) {
+      if (sameKind(kindOf(state, id), kind)) n++;
+    }
+  }
+  return n;
+}
 
 export const offByOne: AugmentDef = defineAugment({
   id: ID,
@@ -45,7 +69,7 @@ export const offByOne: AugmentDef = defineAugment({
   description:
     "(상시) 리치 후 쯔모한 패가 오름패의 ±1이면 그 패가 한 칸 밀려 오름패로 바뀐다. 3통 대기에 2통·4통을 잡아도 화료다.",
   detail:
-    "(상시) 리치를 선언한 뒤의 쯔모에만 적용된다. 뽑은 수패가 자신의 오름패와 같은 무늬이고 숫자가 1만큼 어긋나 있으면 그 패가 그 자리에서 오름패로 바뀌어 그대로 쯔모 화료할 수 있다. 1과 9를 잇는 순환은 없고 자패에도 적용되지 않으며, 론이나 추가 점수와는 무관하다.\n\n⚠ 바뀐 패로 화료하지 않으면 그 패가 손에 남는다 — 리치 중이라면 그대로 버리게 되어 그 국 후리텐이 된다.",
+    "(상시) 리치를 선언한 뒤의 쯔모에만 적용된다. 뽑은 수패가 자신의 오름패와 같은 무늬이고 숫자가 1만큼 어긋나 있으면 그 패가 그 자리에서 오름패로 바뀌어 그대로 쯔모 화료할 수 있다. 1과 9를 잇는 순환은 없고 자패에도 적용되지 않으며, 론이나 추가 점수와는 무관하다. 오름패가 이미 4장 다 나온 죽은 대기로는 밀리지 않는다 — 세상에 없는 5번째 장을 만들 수는 없다.\n\n⚠ 바뀐 패로 화료하지 않으면 그 패가 손에 남는다 — 리치 중이라면 그대로 버리게 되어 그 국 후리텐이 된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -73,7 +97,11 @@ export const offByOne: AugmentDef = defineAugment({
       if (waits.some((w) => sameKind(w, drawn))) return;
 
       const target = waits.find(
-        (w) => w.suit === drawn.suit && Math.abs(w.rank - drawn.rank) === 1,
+        (w) =>
+          w.suit === drawn.suit &&
+          Math.abs(w.rank - drawn.rank) === 1 &&
+          // 죽은 대기(남은 장수 0)에는 밀지 않는다 — 5번째 장이 생긴다
+          copiesLeftUndrawn(state, w) > 0,
       );
       if (target === undefined) return;
 

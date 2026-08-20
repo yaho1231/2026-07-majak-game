@@ -77,7 +77,9 @@ describe("핏빛 계약 — 공탁은 배수 대상이 아니다 (docs/25 방해
       deltas: { p0: points + pot, p1: -points },
       dealerSeat: base.round.dealerSeat,
       honba: 0,
-      riichiPot: pot,
+      // 엔진과 같은 모양 — 화료 정산의 payload.riichiPot은 언제나 0이고
+      // 회수액은 winInfo.riichiPotGain에만 실린다(2026-08-20 QA score-a 확정 1·2)
+      riichiPot: 0,
       roundNumber: base.round.roundNumber,
       prevalentWind: base.round.prevalentWind,
       winInfos: [
@@ -90,6 +92,7 @@ describe("핏빛 계약 — 공탁은 배수 대상이 아니다 (docs/25 방해
           fu: 30,
           yaku: [{ id: "tanyao", name: "탕야오", han: 1 }],
           yakumanCount: 0,
+          ...(pot > 0 ? { riichiPotGain: pot } : {}),
         },
       ],
     } as unknown as RoundSettledPayload;

@@ -14,7 +14,8 @@
 
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 import { plan } from "./botPlan.js";
 
 const ID = "call_seal";
@@ -35,11 +36,18 @@ const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
  * 저절로 만료되어 다음 국은 깨끗하게 시작한다. 사용 횟수(usesKey)는 게임 스코프 유지.
  */
 const turnKey = (state: GameState, holder: PlayerId): string =>
-  `${ID}:turn:${roundKey(state)}:${holder}`;
+  roundScopedKey(ID, "turn", state, holder);
 
-/** 지금 상대 후로가 봉인돼 있는가 — 마지막 선언 후 6순 이내 */
+/**
+ * 지금 상대 후로가 봉인돼 있는가 — 마지막 선언 후 6순 이내.
+ *
+ * ⚠ **사용 카운터를 보지 않는다.** 예전에는 `counterOf(usesKey) === 0`을 앞에 뒀는데,
+ * 그러면 활성 판정이 사용 카운터를 겸용하게 된다 — 재장전이 그 카운터를 1 되돌리는
+ * 순간(0이 된다) **6순 중 0순만 지났어도 봉인이 그 자리에서 걷혔다**(QA disrupt-b 확정 2).
+ * 걷히는 조건은 detail이 적은 대로 **6순 경과** 또는 **국 종료** 둘뿐이고, 그 둘은
+ * 아래 turnKey(국 스코프 + 6순 창)만으로 정확히 판정된다.
+ */
 function sealActive(state: GameState, holder: PlayerId): boolean {
-  if (counterOf(state, usesKey(holder)) === 0) return false;
   const declared = state.augmentData[turnKey(state, holder)];
   if (typeof declared !== "number") return false;
   return state.round.turnCount - declared < SEAL_TURNS;

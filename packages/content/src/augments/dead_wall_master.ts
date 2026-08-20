@@ -46,7 +46,13 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, roundKey, roundViewKey, widenPeek } from "../util.js";
+import {
+  counterOf,
+  replaceDrawnTile,
+  roundKey,
+  roundViewKey,
+  widenPeek,
+} from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "dead_wall_master";
@@ -211,15 +217,21 @@ export const deadWallMaster: AugmentDef = defineAugment({
         const doraIndicators = state.round.doraIndicators.map((id) =>
           id === p.deadTileId ? p.handTileId : id,
         );
-        // 쯔모패를 내보냈다면 가져온 패가 새 쯔모패다 (쯔모 화료·리치 판정 정합성)
-        const lastDrawnTile =
+        // 쯔모패를 내보냈다면 가져온 패가 새 쯔모패다 (쯔모 화료·리치 판정 정합성).
+        // 이때 `replaceDrawnTile`을 거쳐 **lastDrawRinshan을 함께 내린다** —
+        // 첫 순 안깡 직후에도 발동 창이 열려 있어서(canSwap은 discardCount만 본다),
+        // 영상 쯔모를 왕패의 오름패로 갈아 끼우면 영상개화 +1판이 그대로 붙었다
+        // (2026-08-20 QA hand-b 확정 1). 형제들(개벽·단색 세계·밥상 뒤엎기)은
+        // 전부 이 헬퍼를 쓴다.
+        const base = { ...state.round, doraIndicators };
+        const round =
           state.round.lastDrawnTile === p.handTileId
-            ? p.deadTileId
-            : state.round.lastDrawnTile;
+            ? replaceDrawnTile(base, p.deadTileId)
+            : base;
         return {
           ...state,
           zones,
-          round: { ...state.round, doraIndicators, lastDrawnTile },
+          round,
           augmentData: {
             ...state.augmentData,
             [swapsKey(state, p.player)]: used,

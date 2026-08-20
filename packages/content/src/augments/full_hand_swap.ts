@@ -79,6 +79,12 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
       return "not your turn";
     }
     if (state.round.turnCount > 1) return "only on the first turn";
+    // 보유자 자신이 리치 중이면 손패가 동결된다 — 대상의 리치만 보고 자기 리치를
+    // 빠뜨리면 리치를 세워 둔 채 손 13장을 통째로 갈아치울 수 있었다
+    // (2026-08-20 QA riichi 확정 7). `hand_swap3.commonReject`와 같은 규약.
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
     // 쯔모를 마친 순이어야 한다. 치·펑 직후에도 turn.act이지만 그때는 lastDrawnTile이
     // null이고, 교환 로직이 "보유자는 쯔모패 한 장을 더 들고 있다"를 전제하므로
     // **손패가 한 장 모자란 채로 남아 그 국 내내 벽돌**이 된다(docs/25 손패 #1).
@@ -129,7 +135,7 @@ export const fullHandSwap: AugmentDef = defineAugment({
   description:
     "(게임 내 2회) 국의 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패(쯔모패 제외)는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다. 리치를 선언한 상대에게는 쓸 수 없다.",
   detail:
-    "(게임 내 2회) 국의 첫 순에 상대 한 명을 지정해 그 손패를 통째로 가져온다. 교환이 아니라 강탈이라 내 손패(쯔모패 제외)는 상대가 아니라 패산 맨 밑으로 들어가고, 상대는 패산 위에서 같은 장수를 새로 받는다. 내 배패가 상대를 강화하는 일은 없다. 리치한 상대와 손패 장수가 다른 상대는 지정할 수 없다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손을 뺏기는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다.\n\n쯔모패가 없는 상태(치·퐁 직후)나 패산이 모자랄 때는 발동할 수 없다.",
+    "(게임 내 2회) 국의 첫 순에 상대 한 명을 지정해 그 손패를 통째로 가져온다. 교환이 아니라 강탈이라 내 손패(쯔모패 제외)는 상대가 아니라 패산 맨 밑으로 들어가고, 상대는 패산 위에서 같은 장수를 새로 받는다. 내 배패가 상대를 강화하는 일은 없다. 리치한 상대와 손패 장수가 다른 상대는 지정할 수 없다. 다만 **숨은 리치(스텔스 리치)는 남들에게 리치가 아닌 사람으로 보이므로 그대로 지정할 수 있고**, 손을 뺏기는 순간 그 리치는 풀린다 — 풀렸다는 사실은 당사자에게만 알려진다.\n\n쯔모패가 없는 상태(치·퐁 직후)나 패산이 모자랄 때는 발동할 수 없고, **내가 리치를 선언한 뒤에는 내 손이 동결되므로 발동할 수 없다**.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -172,7 +178,9 @@ export const fullHandSwap: AugmentDef = defineAugment({
     // 보유자 턴에 상대마다 후보 노출 — 합법성은 validate가 최종 판정.
     // 배패 장수가 다른 상대(진짜 용 등)는 애초에 후보에서 제외한다.
     ctx.holderTurnOptions((state) =>
-      state.players
+      state.round.byPlayer[holder]?.riichi != null
+        ? []
+        : state.players
         .filter(
           (p) =>
             p.id !== holder &&

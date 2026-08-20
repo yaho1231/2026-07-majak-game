@@ -289,14 +289,25 @@ describe("눈먼 총알 (blind_ron)", () => {
       });
       // 총액 보존 — 지불자만 바뀐다
       expect(Object.values(settled.deltas).reduce((a, b) => a + b, 0)).toBe(0);
-      const payers = (["p1", "p2", "p3"] as PlayerId[]).filter(
-        (id) => (settled.deltas[id] ?? 0) < 0,
+      /*
+       * 옮겨 가는 것은 **화료점뿐**이다 — detail이 "공탁·본장은 원래대로"라고
+       * 약속한다. 예전에는 쏜 사람의 음수 델타를 통째로 옮겨 본장 가산분까지
+       * 엉뚱한 사람이 물었다(2026-08-20 QA disrupt-b 확정 5). 지금은 본장 몫이
+       * 쏜 사람(p1)에게 남으므로, 본장이 있는 국에서는 지불자가 둘이 될 수 있다.
+       */
+      const honbaPart = honba * 300;
+      const bigPayers = (["p1", "p2", "p3"] as PlayerId[]).filter(
+        (id) => (settled.deltas[id] ?? 0) < -honbaPart,
       );
-      // 무는 사람은 언제나 한 명뿐 (또는 화료자 자신이 물어 아무도 없다)
-      expect(payers.length).toBeLessThanOrEqual(1);
-      if (payers.length === 1 && payers[0] !== "p1") redirected++;
-      // 화료자가 뽑히면 실질 0점
-      if (payers.length === 0) expect(settled.deltas["p0"] ?? 0).toBe(0);
+      // 화료점을 무는 사람은 언제나 한 명뿐 (또는 화료자 자신이 뽑혀 아무도 없다)
+      expect(bigPayers.length).toBeLessThanOrEqual(1);
+      if (bigPayers.length === 1 && bigPayers[0] !== "p1") {
+        redirected++;
+        // 본장 몫은 여전히 쏜 사람이 낸다
+        expect(settled.deltas["p1"] ?? 0).toBe(-honbaPart);
+      }
+      // 화료자가 뽑히면 화료점은 실질 0 — 남는 것은 본장 수령뿐
+      if (bigPayers.length === 0) expect(settled.deltas["p0"] ?? 0).toBe(honbaPart);
     }
     // 여섯 판 중 최소 한 번은 엉뚱한 사람이 맞는다 (그게 이 증강의 전부다)
     expect(redirected).toBeGreaterThan(0);

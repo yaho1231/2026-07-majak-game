@@ -17,7 +17,7 @@ import {
   kindKey,
 } from "../tiles/Tile.js";
 import type { TileKind } from "../tiles/Tile.js";
-import { allKinds } from "./WinContext.js";
+import { allKinds, setKinds } from "./WinContext.js";
 import type { ScoringSet, ScoringVariant, WinContext } from "./WinContext.js";
 import type { YakuDef, YakuRegistry } from "./YakuRegistry.js";
 
@@ -474,7 +474,8 @@ export const standardYakuList: YakuDef[] = [
       isStd(v) &&
       runs(v).length >= 1 &&
       allKinds(v).some(isHonor) && // 자패가 없으면 준찬타의 영역
-      v.sets.every((s) => s.tiles.some(isTerminalOrHonor)) &&
+      // 랭크가 섞인 깡은 대표 3장에 없는 네 번째 패도 이 몸통의 일부다 (setKinds)
+      v.sets.every((s) => setKinds(s).some(isTerminalOrHonor)) &&
       v.pair !== null &&
       isTerminalOrHonor(v.pair),
   },
@@ -514,7 +515,7 @@ export const standardYakuList: YakuDef[] = [
       isStd(v) &&
       runs(v).length >= 1 &&
       !allKinds(v).some(isHonor) &&
-      v.sets.every((s) => s.tiles.some(isTerminal)) &&
+      v.sets.every((s) => setKinds(s).some(isTerminal)) &&
       v.pair !== null &&
       isTerminal(v.pair),
   },

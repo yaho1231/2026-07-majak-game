@@ -7,8 +7,10 @@
  * **횟수 제한을 없앤다** — 역만(셈수역만 포함)과 유국역만 피해는 몇 번이 오든 전부 0이 된다.
  * 하네만·배만·삼배만은 더 이상 막지 않는다.
  *
- * 방어가 발동하면 **역만 화료분(winInfo.points) 전액**을 돌려받는다. 본장·공탁은
- * points에 없으므로 그 부담은 남는다 — 설명도 그렇게 적혀 있다. 환급분은 그
+ * 방어가 발동하면 **보유자가 그 역만에 낸 몫 전액**(론이면 직격분, 쯔모면 분담분)을
+ * 돌려받는다. 표준 분담(`winInfo.payments`)에는 본장·공탁이 없으므로 그 부담은 남는다 —
+ * 설명도 그렇게 적혀 있다. 화료 총액(`Σ points`)을 상한으로 쓰던 시절에는 쯔모에서
+ * 상한이 한 번도 물리지 않아 본장까지 환급됐다(QA defcall 확정 2). 환급분은 그
  * 화료자(들)의 이득에서 (이득 한도까지) 차감하고, 부족분은 뱅크에서 발행한다 —
  * 화료자가 마이너스로 떨어지지 않으면서 보유자는 역만 피해에서 벗어난다.
  *
@@ -20,7 +22,10 @@
  * 그 표식을 보고 사용 횟수·공개 뷰를 갱신한다 (리플레이에서도 결정적).
  *
  * 유국역만(nagashi_yakuman)은 outcome=draw라 이 인터셉터가 잡지 못하므로,
- * nagashi 쪽에서 방어막 보유자에게는 지불을 부과하지 않도록 연동한다.
+ * nagashi 쪽에서 방어막 보유자에게는 지불을 부과하지 않도록 연동한다. 그쪽 면제분은
+ * **전액 뱅크가 낸다**(화료자 수령은 줄지 않는다) — 화료 방어와 재원이 다르므로 detail에
+ * 따로 적었다. 표식이 남지 않는 경로라 아래 리액션이 `drawSpecial`을 직접 보고
+ * 막아낸 횟수를 센다.
  */
 
 import {
@@ -66,9 +71,9 @@ export const yakumanShield: AugmentDef = defineAugment({
   complexity: 3,
   name: "역만 방어술",
   description:
-    "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해를 막는다 — 역만 화료분을 전액 돌려받고 그만큼 화료자의 이득이 줄어든다. 본장·공탁 부담은 그대로 낸다. 막아낸 횟수는 전원에게 보인다.",
+    "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해를 막는다 — 내가 그 역만에 낸 몫을 전액 돌려받고 그만큼 화료자의 이득이 줄어든다. 본장·공탁 부담은 그대로 낸다. 막아낸 횟수는 전원에게 보인다. 죽기살기와는 함께 가질 수 없다.",
   detail:
-    "(상시 · 횟수 제한 없음) 역만·셈수역만으로 점수를 잃을 때 **그 역만 화료의 점수만큼** 돌려받는다. 더블론으로 역만이 둘 떨어지면 둘의 합만큼 돌려받는다.\n\n돌려받는 상한이 역만 화료 점수라, 본장(1본당 300)과 공탁 부담은 환급 대상이 아니다 — 2본장 역만 직격이면 손실이 0이 아니라 600 남는다. 역만을 막는 능력이지 본장을 막는 능력이 아니다.\n\n환급된 만큼 화료자의 획득이 줄어들고 모자란 몫은 뱅크가 내므로 화료자가 마이너스로 떨어지지는 않는다. 몇 번이 오든 전부 막지만 하네만·배만·삼배만은 막지 않으며, 유국역만도 막되 자신이 화료하는 경우에는 관여하지 않는다.",
+    "(상시 · 횟수 제한 없음) 역만·셈수역만으로 점수를 잃을 때 **내가 그 역만에 낸 몫만큼** 돌려받는다. 직격(론)이면 내가 문 화료점 전액, 쯔모면 내 분담분(자 8000 등)이다. 더블론으로 역만이 둘 떨어지면 둘에 낸 몫의 합만큼 돌려받는다.\n\n돌려받는 상한이 그 몫이라, 본장(1본당 300)과 공탁 부담은 환급 대상이 아니다 — 2본장 역만 직격이면 손실이 0이 아니라 600 남는다. 역만을 막는 능력이지 본장을 막는 능력이 아니다. 쯔모도 마찬가지로 본장 몫은 남는다.\n\n환급된 만큼 화료자의 획득이 줄어들고 모자란 몫은 뱅크가 내므로 화료자가 마이너스로 떨어지지는 않는다. 몇 번이 오든 전부 막지만 하네만·배만·삼배만은 막지 않으며, 유국역만도 막되 자신이 화료하는 경우에는 관여하지 않는다.\n\n**유국역만만은 재원이 다르다** — 그 지불은 아예 부과되지 않고 면제분 전액을 뱅크가 대신 내므로, 유국역만 화료자의 수령액은 한 푼도 줄지 않는다.\n\n죽기살기(die_hard)와는 함께 가질 수 없다 — 둘 다 정산 마지막에 손실을 되돌리는 능력이라 겹치면 서로의 결과를 뒤엎는다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -91,14 +96,38 @@ export const yakumanShield: AugmentDef = defineAugment({
 
       // 손실 전액 환급 → 보유자 손실 0. 환급분은 화료자 이득 한도까지 차감하고,
       // 부족분은 뱅크가 발행한다(제로섬 불변식은 아니다 — 프로젝트 허용).
-      // 환급 상한은 **역만 화료들의 값 합**이다. 예전에는 그 국의 합산 손실(deltas)
-      // 전액을 되돌려, 더블론에서 함께 난 평범한 화료(3900)까지 무효화되고 다른
-      // 증강이 뜯어간 이동액도 함께 환급됐다(docs/25 국면 #4).
-      // points는 본장·공탁을 제외한 화료 획득점이다. 본장 부담까지 막을 필요는
-      // 없으므로(역만을 막는 능력이지 본장을 막는 능력이 아니다) 그대로 상한으로 쓴다 —
-      // 설명도 "역만 화료분 전액"이라고 적어 본장·공탁이 남는다는 사실을 밝힌다.
-      const cap = bigWins.reduce((sum, w) => sum + w.points, 0);
+      //
+      // 환급 상한은 **보유자가 그 역만들에 실제로 낸 몫**이다. 예전에는 그 국의 합산
+      // 손실(deltas) 전액을 되돌려, 더블론에서 함께 난 평범한 화료(3900)까지
+      // 무효화됐다(docs/25 국면 #4). 그 수정이 상한을 `Σ w.points`(화료 총액)로 잡는
+      // 바람에 이번엔 **쯔모에서 상한이 한 번도 물리지 않았다** — 보유자 몫은 총액의
+      // 1/3~1/2뿐이라 상한이 늘 손실보다 커서 `refund = -loss`, 즉 본장 부담까지
+      // 통째로 환급됐다(QA defcall 확정 2). 론 직격에서만 detail대로 본장이 남았다.
+      //
+      // 그래서 화료 총액이 아니라 **내 지불 분담**을 센다. `payments`는 본장·공탁을
+      // 뺀 표준 분담이라 그 둘은 자연히 상한 밖에 남는다.
+      const holderSeat = ic.state.players.find((pl) => pl.id === holder)?.seat;
+      const dealerSeat = ic.state.round.dealerSeat;
+      const paidFor = (w: WinInfo): number => {
+        // 론 — 한 사람이 손 전액을 문다. **누가 무는지는 보지 않는다**: 책임전가·
+        // 눈먼 총알이 그 지불을 나에게 돌렸어도 역만 피해인 것은 같다. 상한은
+        // 본장을 뺀 화료점이므로 detail대로 본장 몫만 남는다.
+        if (w.winType === "ron") return Math.max(0, w.payments?.discarder ?? w.points);
+        // 쯔모 — 내 분담분만. 오야 취급 화료(payments.dealer 없음)면 셋이 똑같이 낸다.
+        // 여기서 화료 총액(Σ points)을 쓰면 상한이 손실보다 늘 커서 본장까지 환급된다.
+        // 파오 책임자로 떠안은 몫도 그 역만 때문에 낸 돈이다 — 표준 분담과 합친다
+        // (겹쳐서 넘쳐도 `min(-loss, cap)`이 잘라 준다).
+        const paoShare = w.pao?.responsible === holder ? w.pao.points : 0;
+        if (holderSeat === undefined) return paoShare;
+        const share =
+          w.payments?.dealer !== undefined && holderSeat === dealerSeat
+            ? w.payments.dealer
+            : (w.payments?.others ?? w.points);
+        return Math.max(0, share) + paoShare;
+      };
+      const cap = bigWins.reduce((sum, w) => sum + paidFor(w), 0);
       const refund = Math.min(-loss, cap);
+      if (refund <= 0) return event;
 
       // 차감은 역만 화료자들에게 **이득이 큰 쪽부터** 결정적으로 나눠 문다
       // (동점이면 winner id 순 — 리플레이에서 같은 결과가 나와야 한다).
@@ -128,10 +157,20 @@ export const yakumanShield: AugmentDef = defineAugment({
       };
     });
 
-    // 발동했으면 누적 방어 횟수를 올리고 전원에게 공개한다
+    // 발동했으면 누적 방어 횟수를 올리고 전원에게 공개한다.
+    //
+    // 유국역만(outcome=draw)은 위 인터셉터가 잡지 않는다 — nagashi_yakuman 쪽이 방어막
+    // 보유자를 **지불 목록에서 건너뛰는** 방식이라 `shieldedBy` 표식이 남지 않았고,
+    // 그래서 막아 내고도 카운터와 공개 채널이 그대로였다(QA defcall 확정 3).
+    // description이 "막아낸 횟수는 전원에게 보인다"고 약속하므로 여기서 함께 센다.
     ctx.reaction(ROUND_SETTLED, (event, rc) => {
       const p = event.payload as RoundSettledPayload & ShieldMark;
-      if (!(p.shieldedBy ?? []).includes(holder)) return;
+      const nagashiBlocked =
+        p.outcome === "draw" &&
+        p.drawSpecial?.augId === "nagashi_yakuman" &&
+        p.drawSpecial.holder !== undefined &&
+        p.drawSpecial.holder !== holder;
+      if (!(p.shieldedBy ?? []).includes(holder) && !nagashiBlocked) return;
       const used = counterOf(rc.state, usedKey(holder)) + 1;
       rc.emit(augmentDataSet(usedKey(holder), used));
       rc.emit(augmentDataSet(shieldViewKey(holder), used));

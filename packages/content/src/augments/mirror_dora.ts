@@ -16,8 +16,6 @@
  */
 
 import {
-  DORA_FLIPPED,
-  ROUND_STARTED,
   augmentDataSet,
   defineAugment,
   frontDoraKindFor,
@@ -88,14 +86,31 @@ export const mirrorDora: AugmentDef = defineAugment({
     addKinds("scoring.extraDoraKinds", frontKinds);
     addKinds("scoring.extraUraDoraKinds", uraFrontKinds);
 
-    // 표시패가 뒤집힐 때마다(배패 직후·깡도라) 내 앞도라가 무엇인지 전원에게 알린다.
-    // 안 보이면 상대가 대응할 수 없고(Rule #4), 나도 무엇이 내 도라인지 못 센다.
+    /*
+     * 표시패가 **바뀔 때마다** 내 앞도라가 무엇인지 전원에게 알린다.
+     * 안 보이면 상대가 대응할 수 없고(Rule #4), 나도 무엇이 내 도라인지 못 센다.
+     *
+     * ⚠ 예전에는 `ROUND_STARTED`·`DORA_FLIPPED` 두 이벤트에만 걸려 있었다. 표시패
+     * **자리를 갈아 끼우는** 증강(왕패의 주인 dead_wall_master의 표시패 ↔ 손패 교환)은
+     * 그 둘을 하나도 내지 않아, 채널이 배패 때 값 그대로 굳은 채 **낡은 앞도라를 계속
+     * 광고**했다 — 점수는 새 표시패로 정확히 계산되므로 화면만 거짓이 됐다
+     * (qa-lab score-b 확정 4). 특정 이벤트를 열거하는 방식은 새 증강이 생길 때마다
+     * 같은 구멍이 다시 열리므로, 매 이벤트마다 다시 계산하고 **값이 달라졌을 때만**
+     * 발행한다(값이 같으면 아무것도 안 내므로 반응 연쇄는 한 겹에서 멈춘다).
+     */
     const announce = (rc: { state: GameState; emit: (e: ProposedEvent) => void }): void => {
       const kinds = frontKinds(rc.state).map(kindKey);
       if (kinds.length === 0) return;
+      const cur = rc.state.augmentData[publicKey(holder)];
+      if (
+        Array.isArray(cur) &&
+        cur.length === kinds.length &&
+        (cur as string[]).every((k, i) => k === kinds[i])
+      ) {
+        return;
+      }
       rc.emit(augmentDataSet(publicKey(holder), kinds));
     };
-    ctx.reaction(ROUND_STARTED, (_event, rc) => announce(rc));
-    ctx.reaction(DORA_FLIPPED, (_event, rc) => announce(rc));
+    ctx.reaction("*", (_event, rc) => announce(rc));
   },
 });

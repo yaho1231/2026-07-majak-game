@@ -164,7 +164,7 @@ export const openRiichiReveal: AugmentDef = defineAugment({
   description:
     "(매 국 1회 · 리치는 국당 한 번) 멘젠·텐파이 상태에서 공탁 1000점을 걸고 오픈 리치를 선언한다. 오름패가 전원에게 공개되며, 리치를 걸지 않은 사람이 그 오름패로 방총하면 그 화료는 역만이 된다.",
   detail:
-    "(매 국 1회 · 리치는 국당 한 번) 멘젠 텐파이 상태에서 공탁 1000점을 걸고 오픈 리치를 선언한다. 표준 리치와 똑같이 손이 잠기고, 여기에 더해 자신의 오름패가 전원에게 공개된다. 리치를 걸지 않은 사람에게서 론으로 화료하면 그 화료는 역만이 되고, 그 외의 화료(쯔모 · 리치자에게서 론)에서는 그 리치를 3판으로 취급한다. 손패 전체가 드러나지는 않고 오름패만 공개된다. 승부수·손바닥 뒤집기·염색과는 함께 가질 수 없다.",
+    "(매 국 1회 · 리치는 국당 한 번) 멘젠 텐파이 상태에서 공탁 1000점을 걸고 오픈 리치를 선언한다. 표준 리치와 똑같이 손이 잠기고, 여기에 더해 자신의 오름패가 전원에게 공개된다. 리치를 걸지 않은 사람에게서 론으로 화료하면 그 화료는 역만이 되고, 그 외의 화료(쯔모 · 리치자에게서 론)에서는 그 리치를 3판으로 취급한다. 손패 전체가 드러나지는 않고 오름패만 공개된다. 승부수·손바닥 뒤집기·염색·스텔스 리치와는 함께 가질 수 없다.",
   // A급 파괴(docs/25 §conflicts): 직격 역만의 게이트가 "이번 국에 선언했는가"뿐이라,
   // 리치를 취소하고 완전히 다른 대기로 화료해도 역만이 성립한다. 공개된 대기는
   // 갱신되지 않아 상대는 이미 무효인 정보를 보고 판단한다 → 회피 불가능한 역만.
@@ -259,8 +259,17 @@ export const openRiichiReveal: AugmentDef = defineAugment({
     ctx.holderTurnOptions((state) => {
       if (state.round.byPlayer[holder]?.riichi != null) return [];
       if (flagOf(state, declaredKey(state, holder))) return [];
+      // 텐파이 요구는 validate와 **같은 규칙**에서 읽는다 — 공성계(siege_riichi)가
+      // `riichi.requiresTenpai`를 false로 내렸을 때 후보가 0개가 되면 안 된다.
+      const needTenpai = engine.rules.resolve<boolean>("riichi.requiresTenpai", {
+        playerId: holder,
+        state,
+      });
       return handIdsOf(state, holder)
-        .filter((tileId) => waitsAfterDiscard(state, engine.rules, holder, tileId).length > 0)
+        .filter(
+          (tileId) =>
+            !needTenpai || waitsAfterDiscard(state, engine.rules, holder, tileId).length > 0,
+        )
         .map((tileId) => ({ type: ACTION, payload: { tileId } }));
     });
   },

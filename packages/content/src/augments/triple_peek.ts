@@ -31,10 +31,6 @@
  */
 
 import {
-  CALL_MADE,
-  KAN_DECLARED,
-  TILE_DISCARDED,
-  TILE_DRAWN,
   WALL,
   augmentDataSet,
   defineAugment,
@@ -202,9 +198,13 @@ export const triplePeek: AugmentDef = defineAugment({
      * 누가 후로해 차례가 밀리면 배정 자체가 다시 계산된다. 예전의 "발동 순간 스냅샷 +
      * 뽑을 때마다 앞에서 하나 삭제" 방식은 후로 한 번에 통째로 어긋났다.
      *
-     * 후로(CALL_MADE)까지 보는 이유: 펑·치는 쯔모 없이 turnSeat만 옮기므로, 운 사람이
-     * 무엇을 버릴지 고르는 그 사이에도 배정이 이미 달라져 있다.
-     * 깡은 따로 보지 않는다 — 뒤따르는 영상 쯔모(TILE_DRAWN)가 곧바로 다시 계산한다.
+     * ⚠ 예전에는 `TILE_DRAWN`·`TILE_DISCARDED`·`CALL_MADE` 셋에만 걸려 있었다.
+     * 패산을 **직접 옮기는** 증강(미래를 보는 자 future_sight는 커스텀 이벤트로 패산 앞
+     * 3장을 손에 넣고 2장을 밑으로 돌린다)은 그 셋을 하나도 발행하지 않아, 채널이
+     * **이미 사라진 패**를 "다음 쯔모"로 계속 광고했다 — 한 사람의 패산 조작이 네 좌석의
+     * 예고를 전부 망가뜨렸다(qa-lab info 확정 1). 이벤트를 열거하는 방식은 패산을 만지는
+     * 증강이 새로 생길 때마다 같은 구멍이 다시 열리므로, **매 이벤트마다** 다시 계산하고
+     * 값이 달라졌을 때만 발행한다(같으면 아무것도 안 내므로 반응 연쇄는 한 겹에서 멈춘다).
      */
     const resync = (
       _event: unknown,
@@ -222,9 +222,7 @@ export const triplePeek: AugmentDef = defineAugment({
       }
       rc.emit(augmentDataSet(resultKey(holder), kinds));
     };
-    ctx.reaction(TILE_DRAWN, resync);
-    ctx.reaction(TILE_DISCARDED, resync);
-    ctx.reaction(CALL_MADE, resync);
+    ctx.reaction("*", resync);
 
     // 아직 안 썼으면 보유자 턴에 선언 후보를 낸다 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) =>

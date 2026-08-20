@@ -16,8 +16,8 @@
  * 준비하는지 안다** — 대응 시간이 아주 길다(Rule #4).
  *
  * 구현: 실물 패 교환은 `suitUnifyCore`가 단일 진실이다(단색 세계와 공유).
- * 퀘스트 진행은 상태를 따로 쌓지 않고 **버림 이력**(`round.byPlayer[h].discardedKinds`)에서
- * 그때그때 계산한다 — 저장을 안 하니 재구성·리플레이에서 어긋날 여지가 없다.
+ * 퀘스트 진행은 **내가 실제로 버린 것**만 센다 — 후리텐 이력(`discardedKinds`)은
+ * 누명(frame_up)이 남의 명의로 새길 수 있어 근거가 되지 못한다(myDiscardsKey 주석 참고).
  */
 
 import {
@@ -26,6 +26,7 @@ import {
   TILE_DISCARDED,
   augmentDataSet,
   defineAugment,
+  kindKey,
   playerAtSeat,
 } from "@majak/core";
 import type {
@@ -35,6 +36,7 @@ import type {
   GameState,
   PlayerId,
   Suit,
+  TileDiscardedPayload,
 } from "@majak/core";
 import {
   cooldownReady,
@@ -62,6 +64,38 @@ const COOLDOWN_ROUNDS = 2;
 /** 이번 국에 이미 발동했는가 */
 const doneKey = (state: GameState, h: PlayerId): string =>
   `${ID}:done:${roundKey(state)}:${h}`;
+/**
+ * **내가 실제로 버린 패의 종류** (국 스코프, TILE_DISCARDED 리액션이 쌓는다).
+ *
+ * 퀘스트 근거를 후리텐 이력(`discardedKinds`)에서 옮겨 온 이유 —
+ * 누명(frame_up)은 `creditTo`로 **남의 바닥에 실물을 심고 그 사람의 `discardedKinds`에
+ * 새긴다**. 그래서 심긴 한 장이 ① 다른 무늬면 피해자의 퀘스트를 통째로 깨고,
+ * ② 같은 무늬면 진행도를 **올려 준다**(11장 → 12장으로 공짜 달성).
+ * 피해자는 플레이로 피할 수 없다(2026-08-20 QA hand-b 확정 4, docs/28 §2-9 :359).
+ * 누명은 `discardCount`(실제 버린 사람에게만 오르는 값)를 건드리지 않으므로,
+ * "내가 버린 것"의 단일 진실은 이 목록과 `discardCount`다.
+ */
+const myDiscardsKey = (state: GameState, h: PlayerId): string =>
+  `${ID}:mine:${roundKey(state)}:${h}`;
+
+/**
+ * 내가 버린 패의 종류 목록.
+ *
+ * 이벤트로 쌓은 목록의 길이가 `discardCount`와 맞으면 그것이 정답이다. 맞지 않는 것은
+ * **이벤트 없이 조립된 상태**(테스트 픽스처·스냅샷)뿐이라, 그때만 예전 근거로 되돌아간다.
+ */
+function trackedDiscards(state: GameState, h: PlayerId): string[] {
+  const v = state.augmentData[myDiscardsKey(state, h)];
+  return Array.isArray(v) ? (v as string[]) : [];
+}
+
+function myDiscardKinds(state: GameState, h: PlayerId): string[] {
+  const tracked = trackedDiscards(state, h);
+  const count = state.round.byPlayer[h]?.discardCount ?? 0;
+  return tracked.length === count
+    ? tracked
+    : (state.round.byPlayer[h]?.discardedKinds ?? []);
+}
 
 /** kindKey(`man3`·`wind1`…)에서 무늬만 떼어 낸다 */
 const suitOfKey = (key: string): string => key.replace(/\d+$/, "");
@@ -98,7 +132,7 @@ function questActive(state: GameState, h: PlayerId): boolean {
 /** 이번 국의 퀘스트 진행 — 버림 이력에서 그때그때 센다 */
 export function questProgress(state: GameState, h: PlayerId): QuestProgress {
   if (!questActive(state, h)) return idle();
-  const discards = state.round.byPlayer[h]?.discardedKinds ?? [];
+  const discards = myDiscardKinds(state, h);
   let suit: string | null = null;
   let failed = false;
   for (const key of discards) {
@@ -177,7 +211,25 @@ export const pickyEater: AugmentDef = defineAugment({
       });
     };
     ctx.reaction(ROUND_STARTED, (_event, rc) => rc.emit(publish(rc.state)));
-    ctx.reaction(TILE_DISCARDED, (_event, rc) => rc.emit(publish(rc.state)));
+    ctx.reaction(TILE_DISCARDED, (event, rc) => {
+      // 내가 실제로 버린 것만 퀘스트에 센다 — 누명이 심은 패는 `player`가 누명 쪽이라
+      // 여기서 자연히 빠진다(확정 4).
+      const p = event.payload as TileDiscardedPayload;
+      if (p.player === holder) {
+        const kind = rc.state.tiles[p.tileId]?.kind;
+        if (kind !== undefined) {
+          rc.emit(
+            augmentDataSet(myDiscardsKey(rc.state, holder), [
+              // 쌓는 쪽은 **원본 목록**을 읽는다 — myDiscardKinds의 픽스처 폴백을
+              // 여기서 읽으면 후리텐 이력이 섞여 목록이 두 배로 불어난다.
+              ...trackedDiscards(rc.state, holder),
+              kindKey(kind),
+            ]),
+          );
+        }
+      }
+      rc.emit(publish(rc.state));
+    });
 
     /*
      * 무장해제로 잠기는 순간 진행도 표시를 지운다.

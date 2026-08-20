@@ -302,21 +302,38 @@ function shantenUncached(
    * 따로 한다. 정작 중요한 것은 **조커를 버리면 손이 나빠진다**가 여기서 보이는 것이다 —
    * 이게 없으면 봇이 백을 그냥 흘린다.
    */
+  /*
+   * ⚠ 조커를 뺀 `rest`로 **세 화료형을 각각** 재고 장수만큼 뺀다 (2026-08-20).
+   *
+   * 예전에는 `shantenOf(rest, ...) - wilds` 한 줄로 끝냈다. 그 `rest`는 12장 이하라
+   * 바로 아래 특수형 게이트(`kinds.length >= 13`)에 걸려 **치또이·국사가 통째로
+   * 계산되지 않았다** — 국사 13면 텐파이가 샹텐 7로 읽혀 봇이 자기 텐파이를 노텐으로
+   * 보고 오름패를 흘렸다(qa-lab shape 확정 1). 게이트는 **원래 손 장수**로 보고,
+   * 각 화료형은 조커를 뺀 손 위에서 재는 것이 맞다.
+   */
+  const totalSets = opts?.totalSets ?? 4;
   const wildKinds = opts?.wildKinds ?? [];
+  let rest = kinds;
+  let wilds = 0;
   if (wildKinds.length > 0) {
     const wildKeys = new Set(wildKinds.map(kindKey));
-    const rest = kinds.filter((k) => !wildKeys.has(kindKey(k)));
-    const wilds = kinds.length - rest.length;
-    if (wilds > 0) {
-      const { wildKinds: _wild, ...plain } = opts ?? {};
-      return Math.max(-1, shantenOf(rest, meldCount, plain) - wilds);
-    }
+    rest = kinds.filter((k) => !wildKeys.has(kindKey(k)));
+    wilds = kinds.length - rest.length;
   }
-  const totalSets = opts?.totalSets ?? 4;
-  let best = standardShanten(kinds, meldCount, totalSets);
+  let best = standardShanten(rest, meldCount, totalSets) - wilds;
   // 치또이·국사는 멘젠 13/14장 전용. 특수 화료형 증강이 걸린 손은 표준형만 본다.
   if (meldCount === 0 && totalSets === 4 && kinds.length >= 13) {
-    best = Math.min(best, chiitoiShanten(kinds), kokushiShanten(kinds));
+    best = Math.min(best, chiitoiShanten(rest) - wilds, kokushiShanten(rest) - wilds);
+  }
+  /*
+   * 조커 근사는 낙관적일 수 있다(블록 모형이 장수를 세지 않는다). **장수 바닥**을
+   * 씌워 13장짜리 손이 -1(=이미 완성)로 나오는 일만은 막는다 — 그 값은 EV·우케이레
+   * 비교를 통째로 어긋나게 한다.
+   */
+  if (wilds > 0) {
+    const needed = 3 * Math.max(0, totalSets - meldCount) + 2;
+    const floor = kinds.length >= needed ? -1 : 0;
+    if (best < floor) best = floor;
   }
   return best;
 }

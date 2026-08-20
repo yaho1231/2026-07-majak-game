@@ -87,6 +87,9 @@ const sealedKey = (holder: PlayerId, target: PlayerId): string =>
 // 동시에 보유하고 같은 상대를 지목하면 서로 덮어썼다(이 값은 discard.blockedTileIds가
 // 읽는 봉인 판정의 실체이기도 해서 단순 표시 버그가 아니라 실제 봉인이 틀어졌다).
 // 전용 채널로 분리해 충돌을 막는다(2026-08 감사, docs/22 §12-20).
+// ⚠ 이름을 바꿀 때 코어의 '실제 패 공개' 루프(`PlayerView.ts`의 REVEAL_TILE_PREFIXES)에
+// 같이 등록해야 한다 — 그때 빠뜨려서 보유자가 봉인된 실제 패를 못 보고 종류 폴백만
+// 봤다(qa-lab disrupt-a 확정 1). 지금은 두 접두어가 모두 등록돼 있다.
 const sealTilesKey = (holder: PlayerId, target: PlayerId): string =>
   roundViewKey(holder, `discardLockReveal:${target}`);
 

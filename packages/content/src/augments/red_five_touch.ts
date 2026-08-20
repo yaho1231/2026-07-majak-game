@@ -33,9 +33,6 @@
  */
 
 import {
-  CALL_MADE,
-  ROUND_STARTED,
-  TILE_DRAWN,
   augmentDataSet,
   defineAugment,
   handIdsOf,
@@ -51,7 +48,6 @@ import type {
   GameState,
   PlayerId,
   ProposedEvent,
-  TileDrawnPayload,
   TileKindChangedPayload,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, viewKey } from "../util.js";
@@ -236,15 +232,22 @@ export const redFiveTouch: AugmentDef = defineAugment({
       if (changes.length > 0) emit(tileKindChanged(changes));
     };
 
-    // 새 국 배패 — setupRound가 tiles를 원본으로 되돌리므로 각인을 다시 새긴다
-    ctx.reaction(ROUND_STARTED, (_event, rc) => engrave(rc.state, rc.emit));
-    // 내가 새로 뽑은 패 — 지정 숫자면 그 자리에서 적도라가 된다
-    ctx.reaction(TILE_DRAWN, (event, rc) => {
-      if ((event.payload as TileDrawnPayload).player !== holder) return;
-      engrave(rc.state, rc.emit);
-    });
-    // 울어서 손이 바뀐 순간도 포함 (후로로 남은 손패가 정리된 뒤 각인 유지)
-    ctx.reaction(CALL_MADE, (_event, rc) => engrave(rc.state, rc.emit));
+    /*
+     * **손패가 바뀌면 다시 새긴다** — 이벤트 목록이 아니라 값 비교로 잡는다.
+     *
+     * 예전에는 ROUND_STARTED·TILE_DRAWN·CALL_MADE 셋만 들었다. 그래서 패가
+     * `TILE_DRAWN` 없이 손에 들어오는 경로가 전부 새고 있었다 — 실측으로
+     * take_back(교체 쯔모) · future_sight(패산 3장) · full_hand_swap(강탈한 13장) ·
+     * hand_swap3(받아온 3장) · suit_unify(맞바꿔 온 실물) · alchemist ·
+     * tile_dyeing(kind가 각인 숫자로 **바뀐** 패)에서 미각인이 나왔다
+     * (2026-08-20 QA hand-a 확정 5, 뿌리는 docs/28 §2-9). 다음 쯔모가 오면 다시
+     * 훑으므로 비는 것은 그 순뿐인데, 하필 그 순이 "방금 받은 패로 쯔모 화료하는" 순이라
+     * 도라 1개가 조용히 사라졌다.
+     *
+     * `engraveChanges`가 이미 각인된 패를 걸러 내므로, 새길 것이 없으면 아무것도
+     * 내지 않는다 → 우리가 낸 TileKindChanged가 다시 이 리액션을 깨워도 한 겹에서 멈춘다.
+     */
+    ctx.reaction("*", (_event, rc) => engrave(rc.state, rc.emit));
 
     // 손패에 실제로 있는 랭크만 후보로 — 빈 옵션이 뜨지 않는다
     ctx.holderTurnOptions((state) =>

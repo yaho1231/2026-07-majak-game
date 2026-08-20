@@ -68,7 +68,7 @@ export function domainCheck(st: GameState, out: Violation[], ctx: Ctx): void {
   // 4) 함구령 — 봉인이 끝났는데 공개 표식이 남아 있다
   for (const p of st.players) {
     if (!p.augments.includes("call_seal")) continue;
-    const declared = st.augmentData[`call_seal:turn:${rk}:${p.id}`];
+    const declared = st.augmentData[`call_seal:turn:${rk}:${p.id}#round`];
     const active =
       num(st, `call_seal:uses:${p.id}`) > 0 &&
       typeof declared === "number" &&
@@ -86,7 +86,7 @@ export function domainCheck(st: GameState, out: Violation[], ctx: Ctx): void {
   // 5) 박무 — 안개가 걷혔는데 표식/공개 tileId가 남아 있다
   for (const p of st.players) {
     if (!p.augments.includes("brief_fog")) continue;
-    const declared = st.augmentData[`brief_fog:turn:${rk}:${p.id}`];
+    const declared = st.augmentData[`brief_fog:turn:${rk}:${p.id}#round`];
     const active =
       num(st, `brief_fog:uses:${p.id}`) > 0 &&
       typeof declared === "number" &&
@@ -102,7 +102,7 @@ export function domainCheck(st: GameState, out: Violation[], ctx: Ctx): void {
   // 6) 등 떠밀기 — 낙인 표시와 실제 낙인 상태가 어긋난다
   for (const p of st.players) {
     if (!p.augments.includes("push_riichi")) continue;
-    const brand = st.augmentData[`push_riichi:brand:${rk}:${p.id}`];
+    const brand = st.augmentData[`push_riichi:brand:${rk}:${p.id}#round`];
     const view = Object.entries(st.augmentData).find(([k]) =>
       k.includes(`view:*:push_riichi:${p.id}`) && !k.includes("fired"),
     )?.[1];
@@ -124,7 +124,7 @@ export function domainCheck(st: GameState, out: Violation[], ctx: Ctx): void {
   // 10) 함구령 — 봉인 중에 비보유자의 후로(열린 멘쯔)가 늘었는가
   for (const p of st.players) {
     if (!p.augments.includes("call_seal")) continue;
-    const declared = st.augmentData[`call_seal:turn:${rk}:${p.id}`];
+    const declared = st.augmentData[`call_seal:turn:${rk}:${p.id}#round`];
     const active =
       num(st, `call_seal:uses:${p.id}`) > 0 &&
       typeof declared === "number" &&

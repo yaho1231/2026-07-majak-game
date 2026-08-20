@@ -11,6 +11,12 @@
  *   ① 네 사람 델타의 합이 배수 적용 전과 **정확히 같다** (뱅크 발행/소멸 0).
  *   ② 지불자는 바닐라(배수 없음)보다 **절대 더 내지 않는다.**
  *   ③ 2·3배(상방)는 종전대로 뱅크가 발행한다 — 상대가 더 내지 않는다.
+ *
+ * ⚠ **픽스처는 엔진과 같은 모양이어야 한다** (2026-08-20). 예전 픽스처는 화료 정산
+ * payload에 `riichiPot: pot`을 실었는데, 엔진은 그 자리에 **항상 0**을 싣고(다음 국으로
+ * 넘길 값) 회수액은 `winInfos[0].riichiPotGain`에만 담는다. 그래서 "공탁은 배수에서
+ * 빠진다"를 검사하는 아래 케이스가 **실제 결함을 통과시켰다** — 실경기에서는 공탁이
+ * 그대로 3배로 불어나고 있었다(QA score-a 확정 1).
  */
 
 import { describe, expect, it } from "vitest";
@@ -51,6 +57,8 @@ const winInfo = (
   winType: "ron" | "tsumo",
   from: PlayerId | null,
   points: number,
+  /** 이 화료로 회수한 공탁 — 엔진은 여기에만 싣는다(payload.riichiPot은 항상 0) */
+  riichiPotGain = 0,
 ): RoundSettledPayload["winInfos"] extends (infer T)[] ? T : never =>
   ({
     winner: "p0" as PlayerId,
@@ -61,6 +69,7 @@ const winInfo = (
     fu: 30,
     yaku: [],
     yakumanCount: 0,
+    ...(riichiPotGain > 0 ? { riichiPotGain } : {}),
   }) as never;
 
 /** ROUND_SETTLED를 정산 인터셉터 체인에 흘려 최종 payload를 얻는다 */
@@ -86,10 +95,11 @@ function ronPayload(g: Game, points: number, pot = 0): RoundSettledPayload {
     deltas: { p0: points + pot, p1: 0, p2: -points, p3: 0 },
     dealerSeat: g.engine.state.round.dealerSeat,
     honba: 0,
-    riichiPot: pot,
+    // 엔진과 같은 모양 — 화료 정산의 payload.riichiPot은 언제나 0이다
+    riichiPot: 0,
     roundNumber: g.engine.state.round.roundNumber,
     prevalentWind: g.engine.state.round.prevalentWind,
-    winInfos: [winInfo("ron", "p2", points)],
+    winInfos: [winInfo("ron", "p2", points, pot)],
   } as RoundSettledPayload;
 }
 

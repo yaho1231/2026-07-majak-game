@@ -35,6 +35,9 @@ function withAug(state: GameState, player: PlayerId, ids: string[]): GameState {
 function scene(riichi = false): GameState {
   const base = craft({
     hands: { p0: "3m123m456m789m11p", p1: "*", p2: "*", p3: "*" },
+    // 누명은 **국의 첫 바퀴**(네 사람이 한 번씩 버리기 전)에는 쓸 수 없다 —
+    // 그 보호창이 후로로 깨지지 않도록 각자 버림 이력으로 판정한다(QA text 확정 32).
+    discards: { p0: "1z", p1: "1z", p2: "1z", p3: "1z" },
     phase: "turn.act",
     turnSeat: 0,
     drawnLastFor: "p0",
@@ -131,6 +134,7 @@ describe("누명 (frame_up)", () => {
         p2: "33m123p456p789p1s1s",
         p3: "*",
       },
+      discards: { p0: "1z", p1: "1z", p2: "1z", p3: "1z" },
       phase: "turn.act",
       turnSeat: 0,
       drawnLastFor: "p0",
@@ -232,6 +236,9 @@ describe("누명 — '내 첫 순인가'를 discardedKinds로 세면 안 된다 
    */
   it("누명으로 버려도 실제 버린 사람의 버림 횟수는 늘어난다", () => {
     const game = setup(scene());
+    const before = game.engine.state.round.byPlayer;
+    const c0 = before["p0"]?.discardCount ?? 0;
+    const c1 = before["p1"]?.discardCount ?? 0;
     const tileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
     const r = game.engine.submit({
       player: "p0",
@@ -241,20 +248,22 @@ describe("누명 — '내 첫 순인가'를 discardedKinds로 세면 안 된다 
     expect(r.ok).toBe(true);
 
     const rs = game.engine.state.round.byPlayer;
-    // 후리텐 이력은 종전대로 지목당한 사람에게 (이 동작은 의도된 것)
-    expect(rs["p0"]?.discardedKinds).toHaveLength(0);
-    expect(rs["p1"]?.discardedKinds).toHaveLength(1);
+    // 후리텐 이력은 종전대로 지목당한 사람에게 (이 동작은 의도된 것).
+    // 첫 바퀴 보호창 밖에서만 쓸 수 있으므로 각자 1z 한 장이 이미 깔려 있다.
+    expect(rs["p0"]?.discardedKinds).toHaveLength(1);
+    expect(rs["p1"]?.discardedKinds).toHaveLength(2);
     // 실제로 버린 것은 p0다 — 턴 카운터는 p0만 오른다
-    expect(rs["p0"]?.discardCount).toBe(1);
-    expect(rs["p1"]?.discardCount).toBe(0);
+    expect(rs["p0"]?.discardCount).toBe(c0 + 1);
+    expect(rs["p1"]?.discardCount).toBe(c1);
   });
 
   it("표준 버림에서는 둘이 같이 오른다", () => {
     const game = setup(scene());
+    const c0 = game.engine.state.round.byPlayer["p0"]?.discardCount ?? 0;
     const tileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
     game.engine.submit({ player: "p0", type: "discard", payload: { tileId } });
     const rs = game.engine.state.round.byPlayer;
-    expect(rs["p0"]?.discardedKinds).toHaveLength(1);
-    expect(rs["p0"]?.discardCount).toBe(1);
+    expect(rs["p0"]?.discardedKinds).toHaveLength(2); // 깔아 둔 1z + 방금 버린 한 장
+    expect(rs["p0"]?.discardCount).toBe(c0 + 1);
   });
 });

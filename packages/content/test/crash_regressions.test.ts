@@ -70,11 +70,14 @@ describe("크래시 회귀 — 누명(frame_up)으로 심은 패를 울 수 있�
         p2: "*",
         p3: "*",
       },
+      // 누명은 **국의 첫 바퀴**(네 사람이 한 번씩 버리기 전)에는 못 쓴다
+      // — 사풍연타 판정 보호. 후로로 firstTurn만 내려가는 것으로는 열리지 않으므로
+      // 각자 한 장씩 깔아 둔다(QA text 확정 32).
+      discards: { p0: "1z", p1: "1z", p2: "1z", p3: "1z" },
       phase: "turn.act",
       turnSeat: 0,
       drawnLastFor: "p0",
     });
-    // 누명은 첫 바퀴에는 못 쓴다(사풍연타 판정 보호) — craft가 firstTurn:false로 준다
     expect(state.round.firstTurn).toBe(false);
     const withAug = {
       ...state,

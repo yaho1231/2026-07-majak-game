@@ -21,6 +21,7 @@ import {
   augmentDataSet,
   augmentInstanceId,
   defineAugment,
+  doraKindFor,
   handIdsOf,
   isSourceDisarmed,
   kindKey,
@@ -47,6 +48,26 @@ const usedKey = (state: GameState, h: PlayerId): string =>
 const wallLen = (state: GameState): number =>
   state.zones["wall"]?.tileIds.length ?? 0;
 
+/**
+ * **재료(잡패)로 태워서는 안 되는 패인가** — 도라·적도라.
+ *
+ * 분열·허장성세는 둘 다 detail에서 재료를 "가장 고립된 **잡패**"라고 부른다. '잡패'는
+ * 값이 없는 패라는 뜻인데, 고립도만 보면 **그 국의 도라이자 적도라인 외톨이 패**가
+ * 1순위 재료로 뽑혀 도라 1판 + 적도라 1판이 한 번에 증발했다
+ * (2026-08-20 QA text 확정 14·15). 같은 팩의 `even_world`가 이미 같은 이유로
+ * 도라·적5를 명시적으로 지킨다(`even_world.ts` shouldFlip).
+ *
+ * 분열(`tile_split`)도 이 함수를 쓴다 — 판정이 두 벌로 갈리지 않게 한 곳에 둔다.
+ */
+export function isPreciousMaterial(state: GameState, id: TileId): boolean {
+  if (state.tiles[id]?.attrs.red === true) return true; // 적도라
+  const key = kindKey(kindOf(state, id));
+  for (const t of state.round.doraIndicators) {
+    if (kindKey(doraKindFor(kindOf(state, t))) === key) return true; // 표시패 도라
+  }
+  return false;
+}
+
 /** 손패에서 목표패(discard kind)와 같은 종류인 tileId 목록 */
 function matchingIds(state: GameState, holder: PlayerId, targetKey: string): TileId[] {
   return handIdsOf(state, holder).filter((id) => kindKey(kindOf(state, id)) === targetKey);
@@ -62,9 +83,12 @@ function pickSacrifice(
   realId: TileId,
   targetKey: string,
 ): TileId | undefined {
-  const hand = handIdsOf(state, holder).filter(
+  const all = handIdsOf(state, holder).filter(
     (id) => id !== realId && kindKey(kindOf(state, id)) !== targetKey,
   );
+  // 도라·적도라는 '잡패'가 아니다 — 태울 것이 그것뿐일 때만 어쩔 수 없이 쓴다.
+  const spare = all.filter((id) => !isPreciousMaterial(state, id));
+  const hand = spare.length > 0 ? spare : all;
   if (hand.length === 0) return undefined;
   const kinds = hand.map((id) => kindOf(state, id));
   const usefulness = (i: number): number => {
@@ -165,7 +189,7 @@ export const bluffPretense: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 상대가 버린 패에 대해, 손에 같은 패가 1장뿐이어도 퐁을 선언할 수 있다. 부족한 세 번째 장은 손패의 잡패 하나가 그 패로 변신해 채운다.",
   detail:
-    "(매 국 1회) 같은 패를 1장만 쥐고 있어도 퐁을 선언할 수 있다. 부족한 세 번째 장은 손패에서 가장 고립된 잡패 하나가 그 패로 변신(생성패)해 채우며, 진짜 1장 + 변신한 잡패 1장 + 버림패 1장으로 정상 커쯔가 된다. 손패 장수는 표준 퐁과 똑같이 맞아떨어진다. 발동은 전원에게 공개된다.\n\n리치 중, 후로가 봉인된 동안(함구령), 패산이 다 떨어진 마지막 버림, 재료로 쓸 잡패가 없을 때는 발동하지 않는다.",
+    "(매 국 1회) 같은 패를 1장만 쥐고 있어도 퐁을 선언할 수 있다. 부족한 세 번째 장은 손패에서 가장 고립된 잡패 하나가 그 패로 변신(생성패)해 채우며(**재료는 도라·적도라가 아닌 패 중에서 고른다** — 태울 잡패가 하나도 없을 때만 도라가 재료가 된다), 진짜 1장 + 변신한 잡패 1장 + 버림패 1장으로 정상 커쯔가 된다. 손패 장수는 표준 퐁과 똑같이 맞아떨어진다. 발동은 전원에게 공개된다.\n\n리치 중, 후로가 봉인된 동안(함구령), 패산이 다 떨어진 마지막 버림, 재료로 쓸 잡패가 없을 때는 발동하지 않는다.",
   /**
    * 봇: 잡패 한 장을 태워 커쯔를 만드는 콜이라, **역패**(그 커쯔 자체가 역)일 때만 쓴다.
    * 수패로 부르면 손만 열리고 역이 안 서는 일이 잦다.
