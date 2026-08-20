@@ -232,7 +232,17 @@ export type AbortReason =
   /** 사가리치 — 네 명이 모두 리치를 걸었다 */
   | "fourRiichi"
   /** 삼가화 — 한 버림패에 세 명이 동시에 론했다 */
-  | "tripleRon";
+  | "tripleRon"
+  /**
+   * **관리자가 이 국만 물렸다** (대회 운영 — docs/36 B4).
+   *
+   * 규칙이 만든 도중유국이 아니라 **사람이 내린 판정**이다. 그래서 규칙 사유들과
+   * 한 칸에 두되 이름을 다르게 둔다 — 결과 화면이 「사풍연타」와 같은 말투로
+   * 「운영 판정」을 적으면 그 국에 무슨 일이 있었는지 되짚을 수 없다.
+   *
+   * 판은 계속된다. 강제 종료(판 자체를 접는 것)와는 다른 손잡이다.
+   */
+  | "adminVoid";
 
 export interface RoundSettledPayload {
   outcome: "win" | "draw" | "abort";

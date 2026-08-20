@@ -10969,6 +10969,292 @@ button {
   color: #f0d5cd;
 }
 
+/* ─────────────── 오버레이 모드 · 되감기 (관전 전용) ─────────────── */
+
+/*
+ * OBS에 얹기 위한 모드 (docs/36 D2). 판만 남기고 배경과 곁가지를 걷는다 —
+ * 「투명」은 브라우저 소스의 투명 배경을, 「초록」은 크로마키를 쓴다.
+ * 관전 띠와 중계 패널은 방송 화면에 나갈 물건이 아니므로 함께 걷는다
+ * (조작이 필요하면 모드를 끄면 된다).
+ */
+.table-overlay-clear,
+.table-overlay-green {
+  background: none !important;
+}
+
+.table-overlay-green {
+  background: #00b140 !important; /* 표준 크로마키 초록 */
+}
+
+.table-overlay-clear .bcast-side,
+.table-overlay-green .bcast-side,
+.table-overlay-clear .quick-toggles,
+.table-overlay-green .quick-toggles {
+  display: none;
+}
+
+/* 탁자 전환기 (docs/36 D4) — 목록이 곧 카메라 선택 화면이다. */
+.spectate-table {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(246, 127, 109, 0.35);
+  background: rgba(13, 23, 18, 0.55);
+  color: #f0d5cd;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.spectate-table.on {
+  background: rgba(246, 127, 109, 0.3);
+  border-color: rgba(246, 127, 109, 0.9);
+  color: #fff3ee;
+  cursor: default;
+}
+
+/* 리치가 걸린 탁자 — 「볼 만한 탁자」의 가장 값싼 신호 */
+.spectate-table.hot {
+  border-color: rgba(226, 178, 92, 0.85);
+}
+
+.spectate-table-sub {
+  color: rgba(247, 243, 232, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.spectate-table-riichi {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(226, 178, 92, 0.28);
+  color: #f0c884;
+  font-size: 10px;
+}
+
+.spectate-rewind-at {
+  min-width: 44px;
+  text-align: center;
+  color: #f0d5cd;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* 「이 판은 중계 중」 — 대국자 화면에만. 판을 가리지 않게 왼쪽 위 구석에 작게 선다. */
+.spectated-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 44;
+  padding: 4px 10px 5px;
+  border-radius: 999px;
+  background: rgba(218, 98, 98, 0.16);
+  border: 1px solid rgba(246, 127, 109, 0.45);
+  color: #f0a79b;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* ─────────────── 중계 패널 (관전 전용) ─────────────── */
+
+/* 판의 오른쪽 여백에 세로로 선다. 클릭은 통과시키고 스크롤만 받는다 —
+   중계 화면에서 이 패널이 판을 집어삼키면 본말이 뒤집힌다. */
+.bcast-side {
+  position: absolute;
+  top: 96px;
+  right: 10px;
+  bottom: 96px;
+  z-index: 40;
+  width: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.bcast-card {
+  padding: 8px 10px 9px;
+  border-radius: var(--r-md, 12px);
+  background: rgba(9, 17, 14, 0.86);
+  border: 1px solid rgba(247, 243, 232, 0.14);
+}
+
+/* 지금 두는 사람 — 카드 하나만 밝힌다 */
+.bcast-card-turn {
+  border-color: rgba(120, 196, 173, 0.7);
+  box-shadow: 0 0 14px rgba(96, 178, 154, 0.25);
+}
+
+.bcast-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.bcast-card-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #f7f3e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bcast-card-score {
+  font-size: 14px;
+  font-weight: 800;
+  color: #e8dcc0;
+}
+
+.bcast-card-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.bcast-chip {
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  background: rgba(247, 243, 232, 0.1);
+  color: #cfc7b6;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bcast-tenpai {
+  background: rgba(120, 196, 173, 0.2);
+  color: #9fd9c5;
+}
+
+.bcast-riichi {
+  background: rgba(226, 178, 92, 0.22);
+  color: #f0c884;
+}
+
+.bcast-furiten {
+  background: rgba(218, 98, 98, 0.22);
+  color: #f0a79b;
+}
+
+.bcast-label-sm {
+  color: rgba(247, 243, 232, 0.5);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bcast-points {
+  font-size: 13px;
+  font-weight: 800;
+  color: #f0c884;
+}
+
+.bcast-hanfu {
+  color: rgba(247, 243, 232, 0.55);
+  font-size: 11px;
+}
+
+.bcast-augs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 5px;
+}
+
+.bcast-aug {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 2px;
+  border-radius: 6px;
+  background: rgba(140, 120, 200, 0.18);
+  border: 1px solid rgba(160, 140, 220, 0.3);
+  color: #cfc4ee;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* 다 쓴 증강 — 있는 것과 «쓸 수 있는 것»은 다르다 */
+.bcast-aug-spent {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.bcast-aug-uses {
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 10px;
+}
+
+.bcast-trend-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.bcast-trend-label {
+  width: 64px;
+  color: rgba(247, 243, 232, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bcast-trend-d {
+  flex: 1;
+  text-align: right;
+  color: rgba(247, 243, 232, 0.4);
+}
+
+.bcast-trend-d.up {
+  color: #9fd9c5;
+}
+
+.bcast-trend-d.down {
+  color: #f0a79b;
+}
+
+/* 중계 위험패 — 지금 두는 사람의 손패에만. 대국자 본인의 `hand-danger`와는
+   다른 표시다(저쪽은 내 눈, 이쪽은 봇의 눈을 빌린 해설). */
+.spec-danger-md {
+  box-shadow: inset 0 0 0 2px rgba(226, 178, 92, 0.75);
+  border-radius: 4px;
+}
+
+.spec-danger-hi {
+  box-shadow: inset 0 0 0 2px rgba(226, 96, 84, 0.9);
+  border-radius: 4px;
+}
+
+.hand-tile.spec-danger-md::after,
+.hand-tile.spec-danger-hi::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.hand-tile.spec-danger-md {
+  color: rgba(226, 178, 92, 0.85);
+}
+
+.hand-tile.spec-danger-hi {
+  color: rgba(226, 96, 84, 0.95);
+}
+
 /* ─────────────── 일시정지 (관리자 중계) ─────────────── */
 
 /* 대국자 화면을 덮어 잠근다. 판 위에 서는 것 중 가장 위다 — 이 덮개가 뚫리면

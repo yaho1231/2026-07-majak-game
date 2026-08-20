@@ -67,9 +67,14 @@ describe("우클릭 쯔모기리", () => {
      * 예전에는 이 자리의 JSX 한 줄을 **문자열 그대로** 박아 두었다. 그래서 판
      * 루트에 속성이 하나 늘어(§7-4의 `data-hl`) 줄이 여러 줄로 갈리자, 배선은
      * 그대로인데 이 가드가 깨졌다. 지키려는 뜻은 "판 루트에 걸려 있는가"이므로
-     * 그 뜻만 본다 — `className="table"` 여는 태그 안에 핸들러가 있는가.
+     * 그 뜻만 본다 — 판 루트 여는 태그 안에 핸들러가 있는가.
+     *
+     * (2026-08-19) className이 문자열에서 **템플릿 리터럴**로 바뀌었다 — 중계
+     * 오버레이 모드가 판 루트에 클래스를 얹기 때문이다(docs/36 D2). 같은 이유로
+     * 여기서도 여는 형태를 고정하지 않는다: 판 루트를 찾는 표식은 `ref={tableRef}`
+     * 하나면 충분하고, 그건 배선의 뜻과 정확히 같다.
      */
-    const open = /<div\s+className="table"[\s\S]{0,300}?>/.exec(APP)?.[0] ?? "";
+    const open = /<div\s+className=\{?[`"]table[\s\S]{0,400}?>/.exec(APP)?.[0] ?? "";
     expect(open).toContain("ref={tableRef}");
     expect(open).toContain("onContextMenu={rightClickTsumogiri}");
     // 손패 상자에 다시 걸리면 판 핸들러와 이중으로 제출된다

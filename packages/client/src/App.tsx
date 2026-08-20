@@ -59,6 +59,7 @@ import type {
   PeriodStats,
   ServerInfoMessage,
   ServerNotice,
+  SpectateInsightMessage,
   ServerMessage,
   StatsEntry,
   StatsMessage,
@@ -402,6 +403,8 @@ const ABORT_REASONS: Record<string, string> = {
   fourWind: "사풍연타 — 첫 순에 네 명이 같은 풍패를 버렸다",
   fourRiichi: "사가리치 — 네 명이 모두 리치를 걸었다",
   tripleRon: "삼가화 — 한 버림패에 세 명이 동시에 론했다",
+  // 규칙이 만든 유국이 아니라 **사람이 내린 판정**이다 — 말투를 갈라 둔다(docs/36 B4).
+  adminVoid: "운영 판정 — 관리자가 이 국을 물렸다 (판은 계속됩니다)",
 };
 
 /**
@@ -1484,6 +1487,11 @@ interface LogEvent {
 
 /** 기록 상한 — 한 판(동풍전 4~8국)이면 100줄 안쪽이다. 넘치면 오래된 것부터 버린다. */
 const LOG_MAX = 400;
+/**
+ * 즉시 되감기 버퍼의 길이 (docs/36 D3). 뷰 하나는 한 순의 화면이라, 120장이면
+ * 대략 한 국을 통째로 덮는다. 그 이상은 «되감기»가 아니라 리플레이의 일이다.
+ */
+const REWIND_MAX = 120;
 /** 기록이 없는 자리(리플레이 뷰어)용 고정 빈 배열 — 매번 새 []를 넘기면 memo가 헛돈다. */
 const EMPTY_LOG: LogEvent[] = [];
 const EMPTY_PAST_ROUNDS: PastRound[] = [];
@@ -2793,6 +2801,37 @@ export function App(): JSX.Element {
    * 말할 수 있어야 한다. 시한이 있으면 그때 저절로 내려간다.
    */
   const [roomNotice, setRoomNotice] = useState<{ text: string; by?: string } | null>(null);
+  /**
+   * 중계 보조값 — 예상 타점·위험패 (docs/36 A2·A4). 관전자에게만 온다.
+   * 서버가 **봇이 쓰는 그 눈**으로 계산해 보낸다: 화면과 봇이 서로 다른 숫자를
+   * 말하면 둘 중 하나는 거짓말인데 어느 쪽인지 알 수 없다.
+   */
+  const [insight, setInsight] = useState<SpectateInsightMessage | null>(null);
+  /** 이 관전석에 걸린 송출 지연(초). 0이면 지연 없음 (docs/36 C1). */
+  const [spectateDelay, setSpectateDelay] = useState(0);
+  const spectateDelayRef = useRef(0);
+  spectateDelayRef.current = spectateDelay;
+  /**
+   * **이 판을 보고 있는 관전자 수** (docs/36 C4). 대국자에게만 온다.
+   * 손패가 전부 공개되는 창이 열려 있다는 사실은 자리에 앉은 사람도 알아야 한다.
+   */
+  const [spectatedBy, setSpectatedBy] = useState(0);
+  /**
+   * **즉시 되감기** 버퍼 (docs/36 D3) — 관전 중에만 쌓는다.
+   *
+   * 방금 무슨 일이 있었는지 되짚는 것은 중계의 절반이다. 판이 끝나야 열리는
+   * 리플레이로는 그 자리에서 못 한다. 관전자는 어차피 완전한 뷰를 매 순 받으므로,
+   * 그 프레임을 몇 십 장 들고 있으면 그것이 곧 되감기다 — 서버에 아무것도 더
+   * 묻지 않는다.
+   *
+   * 대국 중인 사람의 화면에서는 쌓지 않는다(메모리도 이유지만, 자기 판을 되감아
+   * 보는 것은 대국이 아니다).
+   */
+  const viewBuffer = useRef<PlayerView[]>([]);
+  /** 지금 보고 있는 버퍼 위치. null이면 라이브다. */
+  const [rewindAt, setRewindAt] = useState<number | null>(null);
+  /** 방송 오버레이 모드 — OBS로 얹기 위해 배경과 곁가지를 걷는다 (docs/36 D2) */
+  const [overlayMode, setOverlayMode] = useState<"off" | "clear" | "green">("off");
   const roomNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 정지가 시작된 시각 (epoch, performance 각각) — 재개 때 마감을 밀 값 */
   const pausedAt = useRef<{ epoch: number; perf: number } | null>(null);
@@ -3225,6 +3264,10 @@ export function App(): JSX.Element {
     setRoomNotice(null);
     if (roomNoticeTimer.current !== null) clearTimeout(roomNoticeTimer.current);
     roomNoticeTimer.current = null;
+    setInsight(null);
+    setSpectatedBy(0);
+    viewBuffer.current = [];
+    setRewindAt(null);
   }
 
   function showToast(text: string, tone: Toast["tone"] = "error", ms = 3200): void {
@@ -3278,6 +3321,20 @@ export function App(): JSX.Element {
     pendingSends.current = enqueueSend(pendingSends.current, msg, Date.now());
     return false;
   }
+
+  /*
+   * 관전 중에는 탁자 목록을 주기적으로 새로 받는다 (docs/36 D4).
+   *
+   * 중계석이 탁자를 고르는 화면이라, 목록이 낡으면 이미 끝난 판이 계속 떠 있고
+   * 방금 리치가 걸린 탁자는 안 보인다. 10초는 «판이 눈에 띄게 변하는» 주기다 —
+   * 더 짧게 돌리면 그건 목록이 아니라 스트림이고, 그 값을 하려면 서버가 밀어 줘야 한다.
+   */
+  useEffect(() => {
+    if (spectating === null) return;
+    const t = window.setInterval(() => send({ type: "liveGames" }), 10_000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spectating]);
 
   /** 다시 붙었다 — 큐에 남은 것을 담긴 순서대로 보낸다 (묵은 것은 resendPolicy가 걸러낸다). */
   function flushPendingSends(): void {
@@ -3844,7 +3901,13 @@ export function App(): JSX.Element {
         // (신원 기준 재접속: 서버가 좌석의 소켓을 교체하고 뷰를 즉시 복원)
         joinRoomByCode(activeRoomRef.current);
       } else if (activeSpectateRef.current !== null) {
-        send({ type: "spectate", code: activeSpectateRef.current });
+        send({
+          type: "spectate",
+          code: activeSpectateRef.current,
+          // 걸어 둔 송출 지연은 재접속으로 풀리면 안 된다 — 그 순간 실시간 손패가
+          // 그대로 나간다(C1이 막으려던 바로 그것이다).
+          ...(spectateDelayRef.current > 0 ? { delaySeconds: spectateDelayRef.current } : {}),
+        });
       }
       send({ type: "statsRequest" });
       send({ type: "replayList" });
@@ -4033,9 +4096,19 @@ export function App(): JSX.Element {
     }
     if (msg.type === "spectateStarted") {
       setSpectating(msg.code);
+      setSpectateDelay(msg.delaySeconds ?? 0);
+      send({ type: "liveGames" }); // 탁자 전환기에 쓸 목록을 바로 한 번 받아 둔다
       activeSpectateRef.current = msg.code; // 재연결 시 관전 자동 복귀 대상
       introShown.current = true; // 관전은 개막 연출 생략
       resumeAudio(); // 관전은 이후 클릭이 없어 오디오가 잠들 수 있다 — 여기서 깨워 효과음·BGM 보장
+      return;
+    }
+    if (msg.type === "spectated") {
+      setSpectatedBy(msg.count);
+      return;
+    }
+    if (msg.type === "spectateInsight") {
+      setInsight(msg);
       return;
     }
     if (msg.type === "roomNotice") {
@@ -4260,6 +4333,12 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "view") {
+      // 되감기 버퍼 — 관전 중일 때만 쌓는다 (docs/36 D3).
+      if (spectatingRef.current) {
+        const buf = viewBuffer.current;
+        buf.push(msg.view);
+        if (buf.length > REWIND_MAX) buf.splice(0, buf.length - REWIND_MAX);
+      }
       // 판 안에 있다 = 앞서 누른 나가기는 이미 끝난 이야기다. 표식을 여기서 내려
       // 두지 않으면, 그 뒤 남들의 합의로 진짜 무효가 났을 때 알림이 삼켜진다.
       leftBySelf.current = false;
@@ -5532,7 +5611,11 @@ export function App(): JSX.Element {
         />
       ) : inGame && view !== null ? (
         <GameTable
-          view={view}
+          /*
+           * 되감아 보는 동안에는 **그때의 뷰**를 그린다 (docs/36 D3). 판은 계속
+           * 돌고 있고 버퍼도 계속 쌓인다 — 라이브로 돌아오면 지금 화면으로 이어진다.
+           */
+          view={rewindAt !== null ? (viewBuffer.current[rewindAt] ?? view) : view}
           {...(isSpectator ? {} : { onEmote: sendEmote })}
           roundView={centerView ?? view}
           prompt={prompt}
@@ -5546,6 +5629,45 @@ export function App(): JSX.Element {
           spectateCode={spectating}
           spectatePaused={pause !== null}
           {...(roomNotice !== null ? { roomNotice } : {})}
+          {/* 되감는 동안에는 보조값을 붙이지 않는다 — 그 숫자는 «지금»의 것이라,
+              지나간 화면 옆에 세우면 두 시점이 한 화면에서 서로를 거짓말로 만든다. */
+          ...(insight !== null && isSpectator && rewindAt === null ? { insight } : {})}
+          {...(spectating !== null && liveRooms !== null ? { liveRooms } : {})}
+          rewindAt={rewindAt}
+          rewindLen={viewBuffer.current.length}
+          overlayMode={overlayMode}
+          {...(spectating === null
+            ? {}
+            : {
+                onRewind: (at: number | null) => setRewindAt(at),
+                onOverlayMode: (m: "off" | "clear" | "green") => setOverlayMode(m),
+                onSwitchTable: (code: string) => {
+                  // 탁자를 옮긴다 — 걸어 둔 지연은 그대로 들고 간다.
+                  setRewindAt(null);
+                  viewBuffer.current = [];
+                  send({
+                    type: "spectate",
+                    code,
+                    ...(spectateDelay > 0 ? { delaySeconds: spectateDelay } : {}),
+                  });
+                },
+              })}
+          spectateDelay={spectateDelay}
+          spectatedBy={spectatedBy}
+          {...(spectating === null
+            ? {}
+            : {
+                onSpectateDelay: (seconds: number) => {
+                  // 지연을 바꾸는 길은 «다시 관전»뿐이다 — 중간에 줄이면 이미 예약된
+                  // 프레임과 새 프레임의 순서가 뒤집힌다. 서버가 대기분을 걷고 지금
+                  // 뷰부터 새로 흘려 준다.
+                  send({
+                    type: "spectate",
+                    code: spectating,
+                    ...(seconds > 0 ? { delaySeconds: seconds } : {}),
+                  });
+                },
+              })}
           {...(spectating === null
             ? {}
             : {
@@ -5562,6 +5684,9 @@ export function App(): JSX.Element {
                 },
                 onExtendTime: (seat: string, seconds: number) => {
                   send({ type: "adminExtendTime", code: spectating, seat, seconds });
+                },
+                onVoidRound: () => {
+                  send({ type: "adminVoidRound", code: spectating });
                 },
               })}
           logEvents={logEvents}
@@ -11209,8 +11334,31 @@ const GameTable = memo(function GameTable(props: {
   onRoomNotice?: (text: string, seconds: number) => void;
   /** 한 좌석에 시간을 더 준다. 관전 중인 관리자 전용. */
   onExtendTime?: (seat: string, seconds: number) => void;
+  /** 이 국만 물린다 (판은 계속). 관전 중인 관리자 전용. */
+  onVoidRound?: () => void;
   /** 지금 이 탁자에 걸려 있는 공지 (대국자·관전자 모두 본다) */
   roomNotice?: { text: string; by?: string };
+  /** 중계 보조값 (관전 전용) — 예상 타점·위험패 */
+  insight?: SpectateInsightMessage;
+  /** 이 관전석에 걸린 송출 지연(초) */
+  spectateDelay?: number;
+  /** 지연을 바꾼다 (관전 중인 관리자 전용) */
+  onSpectateDelay?: (seconds: number) => void;
+  /** 이 판을 보고 있는 관전자 수 — 대국자 화면의 «중계 중» 표식 */
+  spectatedBy?: number;
+  /** 되감아 보고 있는 버퍼 위치 (null이면 라이브) */
+  rewindAt?: number | null;
+  /** 되감기 버퍼에 쌓인 프레임 수 */
+  rewindLen?: number;
+  /** 되감기 위치를 옮긴다 (null = 라이브로 복귀). 관전 전용 */
+  onRewind?: (at: number | null) => void;
+  /** 방송 오버레이 모드 — OBS로 얹기 위해 배경·곁가지를 걷는다 */
+  overlayMode?: "off" | "clear" | "green";
+  onOverlayMode?: (m: "off" | "clear" | "green") => void;
+  /** 지금 돌고 있는 탁자들 (관전 전용) — 중계석의 카메라 선택 목록 */
+  liveRooms?: LiveRoomSummary[];
+  /** 다른 탁자로 옮긴다 (관전 전용) */
+  onSwitchTable?: (code: string) => void;
   /** 관전 중인 방 코드 (표시용) */
   spectateCode?: string | null;
   /** 게임 무효 투표 현황 (없으면 아직 투표 없음) */
@@ -11262,7 +11410,14 @@ const GameTable = memo(function GameTable(props: {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 증강 정보 로그 — 기본은 접힘. 예전엔 왼쪽 위에 상시로 펼쳐져 왼쪽 상대를 덮었다.
   // 설정 패널과 같은 자리(우상단)에 뜨므로 둘 중 하나만 열린다.
-  const [logOpen, setLogOpen] = useState(false);
+  /*
+   * 📜 기록 — 평소에는 접혀 있다. **중계 관전에서는 처음부터 펼친다**(docs/36 A6).
+   *
+   * 중계에서 필요한 정보는 «눌러서 여는 것»이 아니다. 리치가 언제 걸렸고 누가
+   * 무엇을 울었는지는 해설이 말하는 그 순간 화면에 이미 있어야 한다. 대국자에게는
+   * 종전 그대로다 — 판을 두는 사람의 화면을 가릴 이유가 없다.
+   */
+  const [logOpen, setLogOpen] = useState(props.spectator === true);
   // 증강 테스트 시점 전환: sandbox.seat이 내 실제 좌석, view.playerId는 지금 보고 있는 좌석.
   // 둘이 다르면 상대(또는 전체공개) 시점을 관찰 중이다.
   const sbxSelfId = props.sandbox?.seat ?? null;
@@ -11323,6 +11478,15 @@ const GameTable = memo(function GameTable(props: {
    * 다르면 "내 화면의 3"과 "관전 화면의 1"이 서로를 거짓말로 만든다.
    */
   const waitRemaining = useMemo(() => remainingCounter(view, me.id), [view, me.id]);
+
+  /** 중계 위험패 — 서버가 보내 준 «지금 두는 사람»의 손패 위험도 (관전 전용) */
+  const specDanger = useMemo(
+    () =>
+      props.insight?.dangerSeat !== undefined && props.insight.danger !== undefined
+        ? { seat: props.insight.dangerSeat, danger: props.insight.danger }
+        : null,
+    [props.insight],
+  );
 
   // ── 액티브 증강 클릭 발동(무장) 상태 — 게임판 전체가 공유(SelectionContext) ──
   const selection = useSelection(view, prompt, props.onSubmit);
@@ -11398,13 +11562,20 @@ const GameTable = memo(function GameTable(props: {
     <SelectionContext.Provider value={selection}>
     <DoraContext.Provider value={doraFx}>
     <WaitCountContext.Provider value={waitRemaining}>
+    <DangerContext.Provider value={specDanger}>
     <RelationProvider view={view}>
     {/* `data-hl` — 손패 hover 강조를 **CSS 짝맞추기**로 넘긴 자리 (감사 §7-4).
         예전에는 이 값을 컨텍스트로 내려보내 공개패마다 비교했고, 그래서 마우스가
         손패 위를 지날 때마다 화면의 패 150~250장이 전부 다시 그려졌다. 지금은
         여기 속성 **하나**만 바뀌고 React는 그 아래를 건드리지 않는다. */}
     <div
-      className="table"
+      className={`table${
+        props.overlayMode === "clear"
+          ? " table-overlay-clear"
+          : props.overlayMode === "green"
+            ? " table-overlay-green"
+            : ""
+      }`}
       ref={tableRef}
       onContextMenu={rightClickTsumogiri}
       data-hl={hoverKind === null ? undefined : `${hoverKind.suit}${hoverKind.rank}`}
@@ -11415,11 +11586,135 @@ const GameTable = memo(function GameTable(props: {
             👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
           </span>
           {/* 아래 자리 고르기 — 화면 아래에 손패를 펼칠 좌석. 중계 카메라에 해당한다. */}
+          {/* 탁자 전환 (docs/36 D4) — 목록이 곧 카메라 선택 화면이다.
+              방 코드만으로는 어느 탁자가 볼 만한지 알 수 없어 국·리치를 함께 적는다. */}
+          {props.onSwitchTable !== undefined && (props.liveRooms?.length ?? 0) > 1 ? (
+            <span className="spectate-focus">
+              <span className="spectate-focus-label">탁자</span>
+              {(props.liveRooms ?? []).map((r) => (
+                <button
+                  key={r.code}
+                  className={`spectate-table${r.code === props.spectateCode ? " on" : ""}${
+                    (r.riichiCount ?? 0) > 0 ? " hot" : ""
+                  }`}
+                  onClick={() => {
+                    if (r.code !== props.spectateCode) props.onSwitchTable?.(r.code);
+                  }}
+                  title={`${r.players.map((p) => p.nickname).join(" · ")}${
+                    r.roundLabel !== undefined ? ` — ${r.roundLabel}` : ""
+                  }${(r.riichiCount ?? 0) > 0 ? ` · 리치 ${r.riichiCount}` : ""}${
+                    r.paused === true ? " · 정지 중" : ""
+                  }`}
+                >
+                  {r.code}
+                  {r.roundLabel !== undefined ? (
+                    <span className="spectate-table-sub">{r.roundLabel}</span>
+                  ) : null}
+                  {(r.riichiCount ?? 0) > 0 ? <span className="spectate-table-riichi">리치</span> : null}
+                  {r.paused === true ? <span className="spectate-table-sub">⏸</span> : null}
+                </button>
+              ))}
+            </span>
+          ) : null}
+          {/* 즉시 되감기 (docs/36 D3) — 방금 무슨 일이 있었는지 그 자리에서 되짚는다.
+              라이브로 돌아오면 지금 화면으로 이어진다(버퍼는 계속 쌓인다). */}
+          {props.onRewind !== undefined && (props.rewindLen ?? 0) > 1 ? (
+            <span className="spectate-focus">
+              <span className="spectate-focus-label">되감기</span>
+              <button
+                className="spectate-focus-pick"
+                onClick={() => {
+                  const len = props.rewindLen ?? 0;
+                  const cur = props.rewindAt ?? len - 1;
+                  props.onRewind?.(Math.max(0, cur - 1));
+                }}
+                title="한 장면 뒤로"
+              >
+                ◀
+              </button>
+              <span className="spectate-rewind-at num">
+                {props.rewindAt === null || props.rewindAt === undefined
+                  ? "라이브"
+                  : `-${(props.rewindLen ?? 0) - 1 - props.rewindAt}`}
+              </span>
+              <button
+                className="spectate-focus-pick"
+                disabled={props.rewindAt === null || props.rewindAt === undefined}
+                onClick={() => {
+                  const len = props.rewindLen ?? 0;
+                  const next = (props.rewindAt ?? len - 1) + 1;
+                  props.onRewind?.(next >= len - 1 ? null : next);
+                }}
+                title="한 장면 앞으로"
+              >
+                ▶
+              </button>
+              {props.rewindAt !== null && props.rewindAt !== undefined ? (
+                <button className="spectate-focus-pick on" onClick={() => props.onRewind?.(null)}>
+                  라이브로
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+          {/* 오버레이 모드 (docs/36 D2) — OBS에 얹을 때 배경과 곁가지를 걷는다 */}
+          {props.onOverlayMode !== undefined ? (
+            <span className="spectate-focus">
+              <span className="spectate-focus-label">오버레이</span>
+              {([
+                { key: "off", label: "끔" },
+                { key: "clear", label: "투명" },
+                { key: "green", label: "초록" },
+              ] as const).map((o) => (
+                <button
+                  key={o.key}
+                  className={
+                    (props.overlayMode ?? "off") === o.key
+                      ? "spectate-focus-pick on"
+                      : "spectate-focus-pick"
+                  }
+                  onClick={() => props.onOverlayMode?.(o.key)}
+                  title={
+                    o.key === "off"
+                      ? "평소 화면"
+                      : o.key === "clear"
+                        ? "배경을 비운다 — OBS 브라우저 소스의 투명 배경용"
+                        : "배경을 크로마키 초록으로 채운다"
+                  }
+                >
+                  {o.label}
+                </button>
+              ))}
+            </span>
+          ) : null}
+          {props.onSpectateDelay !== undefined ? (
+            <span className="spectate-focus">
+              <span className="spectate-focus-label">지연</span>
+              {[0, 5, 15, 30].map((sec) => (
+                <button
+                  key={sec}
+                  className={
+                    (props.spectateDelay ?? 0) === sec
+                      ? "spectate-focus-pick on"
+                      : "spectate-focus-pick"
+                  }
+                  onClick={() => props.onSpectateDelay?.(sec)}
+                  title={
+                    sec === 0
+                      ? "지연 없음 — 내부 감시용. 공개 중계에는 쓰지 마세요"
+                      : `${sec}초 늦춰 보냅니다 — 관전 화면을 보고 대국자에게 알려 주는 길을 막습니다`
+                  }
+                >
+                  {sec === 0 ? "없음" : `${sec}초`}
+                </button>
+              ))}
+            </span>
+          ) : null}
           {props.onRoomNotice !== undefined && props.onExtendTime !== undefined ? (
             <BroadcastTools
               view={view}
               onRoomNotice={props.onRoomNotice}
               onExtendTime={props.onExtendTime}
+              onVoidRound={props.onVoidRound ?? (() => undefined)}
               noticeUp={props.roomNotice !== undefined}
             />
           ) : null}
@@ -11464,6 +11759,13 @@ const GameTable = memo(function GameTable(props: {
               </button>
             ))}
           </span>
+        </div>
+      ) : null}
+      {/* 「이 판은 중계 중」 — 대국자에게만 (docs/36 C4).
+          관전 뷰는 손패를 전부 공개한다. 밝힐 수 있는 것을 굳이 숨기지 않는다. */}
+      {props.spectator !== true && (props.spectatedBy ?? 0) > 0 ? (
+        <div className="spectated-badge" role="status" title="관리자가 이 판을 관전 중입니다 — 관전 화면에는 모든 손패가 공개됩니다">
+          ● 중계 중{(props.spectatedBy ?? 0) > 1 ? ` ×${props.spectatedBy}` : ""}
         </div>
       ) : null}
       {/* 이 탁자에 걸린 공지 — 대국자·관전자가 같은 것을 본다 (docs/36 B2). */}
@@ -11660,8 +11962,19 @@ const GameTable = memo(function GameTable(props: {
         {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
         {...(props.onHandOrder !== undefined ? { onHandOrder: props.onHandOrder } : {})}
       />
+      {/* 중계 패널 — 관전 화면 오른쪽에 상시로 서는 좌석 카드·점수 추이 (docs/36 A2·A5·A7).
+          대국자 화면에는 존재하지 않는다: 남의 손을 읽어 주는 물건이다. */}
+      {props.spectator === true ? (
+        <BroadcastPanel
+          view={view}
+          catalog={catalog}
+          {...(props.insight !== undefined ? { insight: props.insight } : {})}
+          pastRounds={props.pastRounds ?? EMPTY_PAST_ROUNDS}
+        />
+      ) : null}
     </div>
     </RelationProvider>
+    </DangerContext.Provider>
     </WaitCountContext.Provider>
     </DoraContext.Provider>
     </SelectionContext.Provider>
@@ -13987,15 +14300,18 @@ const OppHandSlot = memo(function OppHandSlot({
   }
   const tile = view.tiles[slot.id];
   const hk = highlightKey(tile);
+  // 중계 위험패 — 지금 두는 사람의 손패에만 붙는다(그 좌석이 아니면 언제나 빈 문자열)
+  const dg = useContext(DangerContext);
+  const dangerCls = specDangerClass(dg?.seat === owner ? dg.danger[slot.id] : undefined);
   if (side === "top") {
     return (
-      <span className={`open-tile${gapCls}`} data-k={hk}>
+      <span className={`open-tile${gapCls}${dangerCls}`} data-k={hk}>
         <TileImg tile={tile} size="fill" owner={owner} />
       </span>
     );
   }
   return (
-    <span className={`open-tile-lying open-${side}${gapCls}`} data-k={hk}>
+    <span className={`open-tile-lying open-${side}${gapCls}${dangerCls}`} data-k={hk}>
       <span className="open-tile-inner">
         <TileImg tile={tile} size="fill" owner={owner} />
       </span>
@@ -16247,6 +16563,17 @@ function OwnArea(props: {
   // 드래그 중인 패를 지금 낼 수 있으면 바닥 드롭존을 띄운다
   const canDropDiscard = discardOptionFor(drag?.id ?? null) !== undefined;
 
+  /*
+   * 중계 위험패 — 하단 시점 좌석이 «지금 두는 사람»일 때만 칠한다 (docs/36 A4).
+   *
+   * 대국자 본인의 `hand-danger`와는 다른 것이다. 저쪽은 «내가 쏘일까»를 내 눈으로
+   * 보는 표시고, 이쪽은 중계가 봇의 눈을 빌려 남의 손에 붙이는 해설이다 —
+   * 그래서 클래스도 색도 따로 둔다.
+   */
+  const specDanger = useContext(DangerContext);
+  const specDangerCls = (id: number): string =>
+    specDangerClass(specDanger?.seat === me.id ? specDanger.danger[id] : undefined);
+
   /**
    * 포인터 드래그 시작 — 시작 시점의 슬롯 중심 X를 한 번 측정해 둔다.
    * 실제 드래그(리프트·재정렬)는 임계값 이상 움직여야 시작하고, 그 전엔 클릭으로 처리된다.
@@ -16761,7 +17088,7 @@ function OwnArea(props: {
                   armedAug !== null && !armable ? " hand-dimmed" : ""
                 }${
                   danger ? " hand-danger" : ""
-                }`}
+                }${specDangerCls(id)}`}
                 style={tileDragStyle(id, idx)}
                 onPointerDown={(e) => {
                   beginDrag(e, id, idx);
@@ -17118,6 +17445,23 @@ const FURITEN_REASON_TEXT: Record<FuritenReason, string> = {
  * 서버도 같은 규칙으로 남은 시간을 적어 두고 멈추므로, 재개하면 양쪽이 멈춘 지점에서
  * 함께 이어 센다 — 화면의 초와 서버의 초가 어긋나지 않는다.
  */
+/**
+ * **중계 위험패** — 지금 두는 사람의 손패에 매긴 위험도 (docs/36 A4). 관전 전용.
+ *
+ * 값은 서버가 봇의 위협 읽기(`bot/danger.ts`)로 잰 그대로다(0~1, 1이 가장 위험).
+ * 네 좌석 모두에 칠하지 않는 이유는 화면이 통째로 신호등이 되기 때문이다 —
+ * 실제로 궁금한 것은 언제나 「지금 이 사람이 무엇을 버릴 수 있나」 하나다.
+ */
+const DangerContext = createContext<{ seat: string; danger: Record<number, number> } | null>(null);
+
+/** 위험도 → 클래스 접미. 두 단계면 충분하다(세 단계는 색이 서로를 잡아먹는다). */
+function specDangerClass(level: number | undefined): string {
+  if (level === undefined) return "";
+  if (level >= 0.66) return " spec-danger-hi";
+  if (level >= 0.33) return " spec-danger-md";
+  return "";
+}
+
 const PausedContext = createContext(false);
 
 const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null);
@@ -17126,6 +17470,163 @@ const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null
  * 상시 표시용 오름패 뱃지 — 선언 간파(상대 위)와 내 오름패(손패 위)에 공용.
  * WaitTip과 달리 hover 없이 계속 떠 있는다.
  */
+/**
+ * 중계 패널 — 관전 화면 오른쪽에 **상시로** 서는 좌석 카드와 점수 추이
+ * (docs/36 A2·A5·A7).
+ *
+ * 왜 상시인가: 중계에서 필요한 정보는 «눌러서 여는 것»이 아니다. 해설이 말하는
+ * 동안 화면에 이미 있어야 하고, 판을 가리지 않는 자리에 있어야 한다. 그래서
+ * 판의 오른쪽 여백에 세로로 세우고 클릭은 통과시킨다(스크롤만 받는다).
+ *
+ * 한 좌석 카드에 담는 것은 넷이다 — **점수 · 얼마나 왔나(샹텐/텐파이) · 지금
+ * 화료하면 얼마(추정) · 무엇을 들고 있나(증강과 잔량)**. 그 넷이 「이 사람이
+ * 지금 무엇을 하려는가」의 전부다.
+ *
+ * 대국자 화면에는 존재하지 않는다. 남의 손을 읽어 주는 물건이다.
+ */
+function BroadcastPanel({
+  view,
+  catalog,
+  insight,
+  pastRounds,
+}: {
+  view: PlayerView;
+  catalog: Record<string, AugmentCatalogEntry>;
+  insight?: SpectateInsightMessage;
+  pastRounds: PastRound[];
+}): JSX.Element {
+  const bySeat = useMemo(() => {
+    const m = new Map<string, SpectateInsightMessage["seats"][number]>();
+    for (const s of insight?.seats ?? []) m.set(s.id, s);
+    return m;
+  }, [insight]);
+  // 점수 추이 — 국마다의 증감. 누적은 이름표의 점수가 이미 말하므로 여기서는
+  // "그 국에 무슨 일이 있었나"만 적는다 (A7).
+  const rows = useMemo(
+    () =>
+      pastRounds.slice(-8).map((r) => ({
+        label: r.label,
+        deltas: r.result.settle.deltas,
+      })),
+    [pastRounds],
+  );
+  const order = [...view.players].sort((a, b) => a.seat - b.seat);
+  return (
+    <div className="bcast-side" aria-hidden="true">
+      {order.map((p) => {
+        const ins = bySeat.get(p.id);
+        const pr = view.round.byPlayer[p.id];
+        const turn = p.seat === view.round.turnSeat;
+        return (
+          <div key={p.id} className={`bcast-card${turn ? " bcast-card-turn" : ""}`}>
+            <div className="bcast-card-head">
+              <span className="bcast-card-name">{playerName(view, p)}</span>
+              <span className="bcast-card-score num">{p.score.toLocaleString()}</span>
+            </div>
+            <div className="bcast-card-line">
+              {pr?.riichiDeclared === true ? <span className="bcast-chip bcast-riichi">리치</span> : null}
+              {ins !== undefined ? (
+                <span className={`bcast-chip${ins.shanten <= 0 ? " bcast-tenpai" : ""}`}>
+                  {ins.shanten < 0 ? "화료형" : ins.shanten === 0 ? "텐파이" : `${ins.shanten}샹텐`}
+                </span>
+              ) : null}
+              {pr?.furiten === true ? <span className="bcast-chip bcast-furiten">후리텐</span> : null}
+              {(pr?.meldCount ?? 0) > 0 ? (
+                <span className="bcast-chip">후로 {pr?.meldCount}</span>
+              ) : null}
+            </div>
+            {/* 예상 타점 — 아직 완성되지 않은 손의 «확정 타점»이라는 것은 없다.
+                추정임을 그 자리에 적는다(툴팁이 아니라 라벨로). */}
+            {ins !== undefined && ins.points > 0 ? (
+              <div className="bcast-card-line">
+                <span className="bcast-label-sm">예상</span>
+                <span className="bcast-points num" title="봇이 쓰는 값어치 모형으로 잰 추정값입니다">
+                  {ins.points.toLocaleString()}점
+                </span>
+                <span className="bcast-hanfu">
+                  {ins.han}판 {ins.fu}부
+                </span>
+              </div>
+            ) : null}
+            <SeatAugments view={view} player={p} catalog={catalog} />
+          </div>
+        );
+      })}
+      {rows.length > 0 ? (
+        <div className="bcast-card bcast-trend">
+          <div className="bcast-card-head">
+            <span className="bcast-card-name">점수 추이</span>
+          </div>
+          {rows.map((r, i) => (
+            <div key={i} className="bcast-trend-row">
+              <span className="bcast-trend-label">{r.label}</span>
+              {order.map((p) => {
+                const d = r.deltas[p.id] ?? 0;
+                return (
+                  <span
+                    key={p.id}
+                    className={`bcast-trend-d num${d > 0 ? " up" : d < 0 ? " down" : ""}`}
+                  >
+                    {d === 0 ? "·" : d > 0 ? `+${d}` : d}
+                  </span>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 한 좌석이 들고 있는 증강과 **남은 횟수** (docs/36 A5).
+ *
+ * 이름표의 pill이 이미 좌석별 증강을 보여주지만 잔량은 보유자 본인에게만 실렸다 —
+ * 관전 뷰에서는 네 좌석의 전용 채널이 주인을 잃고 평평하게 겹쳐 서로를 덮었기
+ * 때문이다. 코어가 이제 주인을 붙인 사본(`seat:{id}:...`)을 함께 싣는다.
+ *
+ * 잔량이 중계에서 중요한 이유: 「2회 중 1회 남음」과 「다 썼다」는 그 사람이 앞으로
+ * 무엇을 할 수 있는가를 통째로 바꾼다 — 해설이 가장 자주 틀리는 자리다.
+ */
+function SeatAugments({
+  view,
+  player,
+  catalog,
+}: {
+  view: PlayerView;
+  player: PlayerInfo;
+  catalog: Record<string, AugmentCatalogEntry>;
+}): JSX.Element | null {
+  if (player.augments.length === 0) return null;
+  return (
+    <div className="bcast-augs">
+      {player.augments.map((id) => {
+        const uses = view.augmentView[`seat:${player.id}:uses:${id}`] as
+          | { left?: unknown; total?: unknown }
+          | undefined;
+        const left = typeof uses?.left === "number" ? uses.left : null;
+        const total = typeof uses?.total === "number" ? uses.total : null;
+        return (
+          <span
+            key={id}
+            className={`bcast-aug${left === 0 ? " bcast-aug-spent" : ""}`}
+            title={catalog[id]?.description ?? id}
+          >
+            {catalog[id]?.name ?? id}
+            {left !== null ? (
+              <span className="bcast-aug-uses">
+                {left}
+                {total !== null ? `/${total}` : ""}
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * 🛠 중계 도구 — 관전 중인 관리자만 보는 서랍 (docs/36 B2·B3).
  *
@@ -17140,11 +17641,14 @@ function BroadcastTools({
   view,
   onRoomNotice,
   onExtendTime,
+  onVoidRound,
   noticeUp,
 }: {
   view: PlayerView;
   onRoomNotice: (text: string, seconds: number) => void;
   onExtendTime: (seat: string, seconds: number) => void;
+  /** 이 국만 물린다 (판은 계속) */
+  onVoidRound: () => void;
   /** 지금 공지가 걸려 있는가 — 「내리기」를 그때만 띄운다 */
   noticeUp: boolean;
 }): JSX.Element {
@@ -17206,6 +17710,28 @@ function BroadcastTools({
                 내리기
               </button>
             ) : null}
+          </div>
+          <div className="bcast-row">
+            <span className="bcast-label">국 무효</span>
+            <button
+              className="bcast-send bcast-clear"
+              onClick={() => {
+                void (async () => {
+                  const ok = await askConfirm({
+                    title: "이 국을 물릴까요?",
+                    body:
+                      "지금 국이 도중유국으로 처리되고 다음 국으로 넘어갑니다.\n" +
+                      "점수는 오가지 않고 본장만 오릅니다. 판 자체는 계속됩니다.",
+                    confirmLabel: "이 국을 물린다",
+                    danger: true,
+                  });
+                  if (ok) onVoidRound();
+                })();
+              }}
+              title="이 국만 도중유국으로 처리합니다 — 판은 계속됩니다"
+            >
+              이 국을 물린다
+            </button>
           </div>
           <div className="bcast-row">
             <span className="bcast-label">시간 연장</span>

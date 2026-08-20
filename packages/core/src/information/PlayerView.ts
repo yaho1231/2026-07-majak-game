@@ -620,9 +620,22 @@ export function buildPlayerView(
     if (key.startsWith(publicPrefix)) {
       augmentView[channel(key.slice(publicPrefix.length))] = value;
     } else if (isSpectator && key.startsWith("view:")) {
+      /*
+       * 관전자는 남의 전용 채널까지 본다. 그런데 **주인을 떼고** 평평하게 담아
+       * 왔다 — 그래서 세 사람이 같은 채널을 쓰면(예: 횟수형 증강의 `uses:{id}`)
+       * 서로를 덮어써, 중계 화면에서 «누구의 잔량인가»를 말할 수 없었다.
+       *
+       * 평평한 키는 그대로 둔다(이미 그걸 읽는 화면이 있다). 주인을 붙인 사본을
+       * 하나 더 담아, 좌석별로 읽어야 하는 곳은 그쪽을 본다(docs/36 A5).
+       */
       const rest = key.slice("view:".length);
       const sep = rest.indexOf(":");
-      if (sep > 0) augmentView[channel(rest.slice(sep + 1))] = value;
+      if (sep > 0) {
+        const owner = rest.slice(0, sep);
+        const ch = channel(rest.slice(sep + 1));
+        augmentView[ch] = value;
+        augmentView[`seat:${owner}:${ch}`] = value;
+      }
     } else if (key.startsWith(ownPrefix)) {
       augmentView[channel(key.slice(ownPrefix.length))] = value;
     }

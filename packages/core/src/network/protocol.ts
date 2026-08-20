@@ -498,10 +498,30 @@ export interface AdminExtendTimeMessage {
   seconds: number;
 }
 
+/**
+ * **이 국만 물린다** (관리자 전용, 대회 운영 — docs/36 B4).
+ *
+ * 강제 종료(`adminAbortGame`)는 판 자체를 접는다. 이건 그 사이에 있던 손잡이다:
+ * 오심·사고가 난 그 국만 도중유국으로 처리하고 **판은 계속한다**. 규칙이 판정하는
+ * 도중유국과 같은 정산을 쓰므로 점수·본장·친 로테이션이 그쪽과 정확히 같다.
+ */
+export interface AdminVoidRoundMessage {
+  type: "adminVoidRound";
+  code: string;
+}
+
 /** 진행 중 게임 관전 시작 (관리자 전용). */
 export interface SpectateMessage {
   type: "spectate";
   code: string;
+  /**
+   * **송출 딜레이**(초, 0~60) — 이 관전석에만 거는 지연 (docs/36 C1).
+   *
+   * 관전 뷰에는 네 사람의 손패가 전부 실린다. 실시간으로 나가면 중계를 보는 사람이
+   * 그대로 대국자에게 알려 줄 수 있다 — 대회에서는 실제로 막아야 하는 통로다.
+   * 값을 바꾸려면 관전을 다시 시작한다(중간에 줄이면 순서가 뒤집힌다).
+   */
+  delaySeconds?: number;
 }
 
 /** 관전 종료. */
@@ -854,6 +874,7 @@ export type ClientMessage =
   | AdminPauseGameMessage
   | AdminRoomNoticeMessage
   | AdminExtendTimeMessage
+  | AdminVoidRoundMessage
   | SpectateStopMessage
   | SandboxStartMessage
   | SandboxGrantMessage
@@ -1580,6 +1601,15 @@ export interface LiveRoomSummary {
    * 자리를 뜨면 판은 영영 서 있게 된다.
    */
   paused?: boolean;
+  /**
+   * 지금 무슨 국인가 (「동2국 1본장」). 중계석이 탁자를 고를 때 방 코드만으로는
+   * 어느 탁자가 볼 만한지 알 수 없다 — 목록이 곧 카메라 선택 화면이다 (docs/36 D4).
+   */
+  roundLabel?: string;
+  /** 지금 리치를 건 사람 수 — 「볼 만한 탁자」의 가장 값싼 신호다. */
+  riichiCount?: number;
+  /** 이 국의 순목(turnCount) — 판이 얼마나 진행됐는지. */
+  turnCount?: number;
 }
 
 export interface LiveGamesMessage {
@@ -1591,6 +1621,20 @@ export interface LiveGamesMessage {
 export interface SpectateStartedMessage {
   type: "spectateStarted";
   code: string;
+  /** 이 관전석에 걸린 송출 지연(초). 없으면 지연 없음. */
+  delaySeconds?: number;
+}
+
+/**
+ * **이 판이 중계되고 있다** — 대국자에게만 간다 (docs/36 C4).
+ *
+ * 관전 뷰는 손패를 전부 공개한다. 그 사실을 자리에 앉은 사람이 모르는 채로 두는 것은
+ * 밝힐 수 있는 것을 굳이 숨기는 쪽이다. 인원수만 보낸다 — 누가 보는지는 운영의
+ * 신원이고 판에는 필요 없다.
+ */
+export interface SpectatedMessage {
+  type: "spectated";
+  count: number;
 }
 
 /** 관전 종료 (게임 종료·방 소멸 등). */
@@ -1628,6 +1672,35 @@ export interface PromptExtendedMessage {
   seat?: string;
   /** 새 남은 시간(ms). */
   deadlineMs: number;
+}
+
+/**
+ * **중계 보조값** — 관전자에게만 간다 (docs/36 A2·A4).
+ *
+ * 손패가 전부 공개된 시점에서만 의미가 있는 값들이라 관전 뷰와 함께 나간다.
+ * 계산은 서버가 한다: 봇이 매 순 쓰는 값어치 모형·위협 읽기를 그대로 얹어,
+ * 화면과 봇이 서로 다른 숫자를 말하는 일이 없게 한다.
+ *
+ * **추정값이다.** 아직 완성되지 않은 손의 «확정 타점»이라는 것은 없다 —
+ * 화면에도 추정임을 적는다.
+ */
+export interface SpectateInsightMessage {
+  type: "spectateInsight";
+  seats: {
+    id: string;
+    /** 예상 판수 (도라·적도라 포함) */
+    han: number;
+    /** 예상 부수 */
+    fu: number;
+    /** 지금 이 손으로 론했을 때 받을 것으로 보이는 점수 */
+    points: number;
+    /** 샹텐 (0=텐파이, -1=화료형) */
+    shanten: number;
+  }[];
+  /** 위험패를 매긴 좌석 (지금 두는 사람). 없으면 매길 상대가 없다. */
+  dangerSeat?: string;
+  /** tileId → 위험도 0~1 (1이 가장 위험). `dangerSeat`의 손패만 담긴다. */
+  danger?: Record<number, number>;
 }
 
 /**
@@ -1732,6 +1805,8 @@ export type ServerMessage =
   | GamePausedMessage
   | RoomNoticeMessage
   | PromptExtendedMessage
+  | SpectateInsightMessage
+  | SpectatedMessage
   | SandboxMessage
   | SandboxConfigMessage
   | ActionFxMessage;

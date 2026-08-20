@@ -169,3 +169,115 @@ describe("중계 관전 — 방 공지 · 시간 연장 (B2·B3)", () => {
     expect(CSS).toMatch(/\.bcast-panel \{[^}]*pointer-events: auto;/);
   });
 });
+
+describe("중계 관전 — 중계 패널 (A2·A5·A7)", () => {
+  const panel = bodyOf("function BroadcastPanel({");
+
+  it("관전 화면에만 선다 — 대국자에게는 아예 없다", () => {
+    expect(APP).toMatch(/props\.spectator === true \? \(\s*<BroadcastPanel/);
+  });
+
+  it("판을 가리지 않는다 — 클릭은 통과시키고 스크롤만 받는다", () => {
+    expect(CSS).toMatch(/\.bcast-side \{[\s\S]*?pointer-events: none;[\s\S]*?\}/);
+  });
+
+  it("좌석마다 점수·샹텐·예상 타점을 적는다", () => {
+    expect(panel).toContain("bcast-card-score");
+    expect(panel).toMatch(/ins\.shanten === 0 \? "텐파이"/);
+    expect(panel).toContain("bcast-points");
+  });
+
+  it("예상 타점은 추정임을 화면에 적는다", () => {
+    expect(panel).toMatch(/예상/);
+    expect(panel).toMatch(/추정값입니다/);
+  });
+
+  it("증강은 좌석별 잔량까지 — 다 쓴 것은 따로 표시한다", () => {
+    const augs = bodyOf("function SeatAugments({");
+    expect(augs).toMatch(/seat:\$\{player\.id\}:uses:\$\{id\}/);
+    expect(augs).toContain("bcast-aug-spent");
+  });
+
+  it("점수 추이는 국별 증감으로 적는다", () => {
+    expect(panel).toContain("r.result.settle.deltas");
+    expect(CSS).toContain(".bcast-trend-d.up");
+  });
+});
+
+describe("중계 관전 — 위험패 (A4)", () => {
+  it("지금 두는 좌석의 손패에만 칠한다", () => {
+    expect(APP).toContain("const DangerContext = createContext<");
+    expect(APP).toMatch(/dg\?\.seat === owner \? dg\.danger\[slot\.id\] : undefined/);
+    expect(APP).toMatch(/specDanger\?\.seat === me\.id/);
+  });
+
+  it("두 단계뿐이다 — 세 단계는 색이 서로를 잡아먹는다", () => {
+    const fn = APP.slice(APP.indexOf("function specDangerClass("));
+    const body = fn.slice(0, fn.indexOf("\n}"));
+    expect(body).toContain("spec-danger-hi");
+    expect(body).toContain("spec-danger-md");
+    expect(CSS).toContain(".spec-danger-hi");
+  });
+});
+
+describe("중계 관전 — 기록 (A6)", () => {
+  it("관전에서는 기록이 처음부터 펼쳐져 있다 (대국자는 종전대로 접힘)", () => {
+    expect(APP).toContain("useState(props.spectator === true)");
+  });
+});
+
+describe("중계 관전 — 방송 안전 (C1·C4)", () => {
+  it("송출 지연을 관전 띠에서 고른다", () => {
+    expect(APP).toMatch(/\[0, 5, 15, 30\]\.map\(\(sec\)/);
+    expect(APP).toMatch(/type: "spectate",\s*\n\s*code: spectating,/);
+  });
+
+  it("재접속으로 지연이 풀리지 않는다 — 그 순간 실시간 손패가 나간다", () => {
+    expect(APP).toMatch(/spectateDelayRef\.current > 0 \? \{ delaySeconds: spectateDelayRef\.current \}/);
+  });
+
+  it("대국자에게 «중계 중»을 알린다 (관전자에게는 띄우지 않는다)", () => {
+    expect(APP).toMatch(/props\.spectator !== true && \(props\.spectatedBy \?\? 0\) > 0/);
+    expect(CSS).toContain(".spectated-badge");
+  });
+});
+
+describe("중계 관전 — 되감기·오버레이·탁자 (D3·D2·D4)", () => {
+  it("되감는 동안에는 그때의 뷰를 그린다", () => {
+    expect(APP).toMatch(/rewindAt !== null \? \(viewBuffer\.current\[rewindAt\] \?\? view\) : view/);
+  });
+
+  it("되감기 버퍼는 관전에서만 쌓는다", () => {
+    expect(APP).toMatch(/if \(spectatingRef\.current\) \{\s*\n\s*const buf = viewBuffer\.current;/);
+  });
+
+  it("되감는 동안에는 보조값을 붙이지 않는다 — 두 시점이 섞이면 서로를 거짓말로 만든다", () => {
+    expect(APP).toMatch(/insight !== null && isSpectator && rewindAt === null/);
+  });
+
+  it("오버레이 모드는 배경과 곁가지를 걷는다", () => {
+    expect(CSS).toContain(".table-overlay-green");
+    expect(CSS).toMatch(/\.table-overlay-clear \.bcast-side/);
+  });
+
+  it("탁자 전환기는 국·리치를 함께 보여준다", () => {
+    expect(APP).toContain("spectate-table");
+    expect(APP).toMatch(/r\.riichiCount \?\? 0\) > 0/);
+    expect(APP).toMatch(/type: "liveGames" \}\), 10_000/);
+  });
+});
+
+describe("중계 관전 — 국 무효 (B4)", () => {
+  it("되돌릴 수 없는 조작이라 반드시 한 번 묻는다", () => {
+    const tools = bodyOf("function BroadcastTools({");
+    expect(tools).toContain("askConfirm({");
+    expect(tools).toMatch(/이 국을 물린다/);
+  });
+
+  it("판을 접는 것과 다르다고 화면에 적는다", () => {
+    const tools = bodyOf("function BroadcastTools({");
+    expect(tools).toMatch(/판 자체는 계속됩니다/);
+    // 결과 화면의 사유도 규칙 유국과 말투를 가른다
+    expect(APP).toMatch(/adminVoid: "운영 판정/);
+  });
+});
