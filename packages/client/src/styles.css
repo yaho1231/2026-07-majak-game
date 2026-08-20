@@ -10744,6 +10744,147 @@ button {
   color: #fff3ee;
 }
 
+/* ─────────────── 방 공지 · 중계 도구 ─────────────── */
+
+/* 이 탁자에만 걸린 공지 (docs/36 B2). 관전 띠 아래에 눕고, 대국자 화면에서는
+   그 자리가 화면 맨 위다. 판을 가리지 않도록 클릭은 통과시킨다. */
+.room-notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(86vw, 640px);
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(46, 38, 18, 0.94);
+  border: 1px solid rgba(226, 178, 92, 0.6);
+  color: #f4dfb4;
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+  animation: bar-in 0.25s ease-out;
+}
+
+/* 관전 화면에는 관전 띠가 이미 그 자리에 있으므로 한 줄 아래로 내린다 */
+.room-notice-spec {
+  top: 58px;
+}
+
+.room-notice-text {
+  word-break: keep-all;
+}
+
+.room-notice-by {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(226, 178, 92, 0.22);
+  font-size: 12px;
+}
+
+.spectate-tools {
+  position: relative;
+}
+
+.spectate-tool-toggle {
+  padding: 3px 10px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(246, 127, 109, 0.4);
+  background: rgba(13, 23, 18, 0.55);
+  color: #f0d5cd;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.spectate-tool-toggle.on {
+  background: rgba(246, 127, 109, 0.28);
+  border-color: rgba(246, 127, 109, 0.9);
+}
+
+/* 서랍 — 띠 아래에 펼친다. 여기서는 클릭을 받아야 하므로 pointer-events를 켠다. */
+.bcast-panel {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--r-md, 12px);
+  background: rgba(9, 17, 14, 0.97);
+  border: 1px solid rgba(246, 127, 109, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  z-index: 50;
+}
+
+.bcast-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.bcast-label {
+  min-width: 60px;
+  color: rgba(250, 188, 173, 0.8);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bcast-input {
+  width: 260px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(247, 243, 232, 0.24);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f7f3e8;
+  font: inherit;
+  font-size: 13px;
+}
+
+.bcast-secs {
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(247, 243, 232, 0.24);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f7f3e8;
+  font: inherit;
+  font-size: 12px;
+}
+
+.bcast-send,
+.bcast-seat {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(226, 178, 92, 0.5);
+  background: rgba(226, 178, 92, 0.16);
+  color: #f0c884;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bcast-send:disabled,
+.bcast-seat:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bcast-clear {
+  border-color: rgba(246, 127, 109, 0.5);
+  background: rgba(246, 127, 109, 0.16);
+  color: #f0d5cd;
+}
+
 /* ─────────────── 일시정지 (관리자 중계) ─────────────── */
 
 /* 대국자 화면을 덮어 잠근다. 판 위에 서는 것 중 가장 위다 — 이 덮개가 뚫리면

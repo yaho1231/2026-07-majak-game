@@ -113,6 +113,12 @@ const MAX_HAND_ORDER = 24;
  */
 const PAUSE_REASON_MAX = 80;
 
+/** 방 공지의 최대 길이 — 배너 한두 줄이 이 손잡이의 전부다. */
+const ROOM_NOTICE_MAX = 120;
+
+/** 한 번에 더해 줄 수 있는 시간(초)의 상한. 그 이상은 일시정지가 할 일이다. */
+const EXTEND_SECONDS_MAX = 120;
+
 /**
  * 한 좌석이 손패 배치를 다시 뿌릴 수 있는 최소 간격(ms).
  *
@@ -188,6 +194,11 @@ interface Room {
   paused: boolean;
   /** 세워 둔 사유 (화면에 적는다). 비어 있으면 클라이언트 기본 문구. */
   pauseReason: string | null;
+  /**
+   * **이 탁자에만 걸린 공지** (docs/36 B2). `expiresAt`가 지나면 없는 것으로 본다.
+   * 재접속·관전 합류 때 그대로 다시 보내야 해서 방이 들고 있는다.
+   */
+  notice: { text: string; by: string; expiresAt: number | null } | null;
   /** 게임 무효(중단)에 동의한 사람 playerId 집합 (게임 중에만 의미). */
   abortVotes: Set<PlayerId>;
   /**
@@ -2090,6 +2101,20 @@ export class RoomManager {
         }
         return this.adminPauseGame(conn, user, msg.code, msg.paused === true, msg.reason);
       }
+      case "adminRoomNotice": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        if (typeof msg.code !== "string" || typeof msg.text !== "string") {
+          return this.fail(conn, "BAD_REQUEST", "공지 형식이 올바르지 않습니다");
+        }
+        return this.adminRoomNotice(conn, user, msg.code, msg.text, msg.seconds);
+      }
+      case "adminExtendTime": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        if (typeof msg.code !== "string" || typeof msg.seat !== "string") {
+          return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
+        }
+        return this.adminExtendTime(conn, user, msg.code, msg.seat, msg.seconds);
+      }
       case "spectate":
         return this.spectate(conn, user, msg.code);
       case "spectateStop":
@@ -2598,6 +2623,7 @@ export class RoomManager {
       spectators: new Set(),
       paused: false,
       pauseReason: null,
+      notice: null,
       abortVotes: new Set(),
       kicked: new Set(),
       // 새 방의 기본은 **동풍전**이다 (2026-08-14 사용자 지시) — 한 판이 짧아
@@ -2731,6 +2757,7 @@ export class RoomManager {
       // 화면만 시계가 계속 돌고 조작이 열려 있다(서버는 막고 있으니 «버튼이
       // 안 먹는다»로 보인다).
       if (room.paused) this.sendPauseState(conn, room);
+      this.sendRoomNotice(conn, room);
       this.touch(room);
       this.log(room, `${user.username} 재접속 (${mine.id})`);
       // 돌아왔다는 사실을 나머지 좌석의 이름표에도 반영한다.
@@ -3751,6 +3778,7 @@ export class RoomManager {
     this.send(conn.ws, { type: "spectateStarted", code });
     // 이미 세워 둔 판이면 그대로 알린다 — 중계석이 바뀌어도 «지금 서 있다»가 보인다.
     if (room.paused) this.sendPauseState(conn, room);
+    this.sendRoomNotice(conn, room);
     room.controller.addSpectator(sink); // 현재 뷰·카탈로그 즉시 전송됨
   }
 
@@ -3805,12 +3833,120 @@ export class RoomManager {
     for (const sp of room.spectators) this.send(sp.ws, out);
   }
 
+  /**
+   * **그 탁자에만 거는 공지** (docs/36 B2) — 일시정지와 짝이다.
+   *
+   * 전역 공지(`adminSetNotice`)로는 이 말을 할 수 없다. 「5분 뒤 재개」는 그 방
+   * 사람들에게 하는 말인데, 전역 띠는 로비에 있는 사람·다른 판에서 두고 있는
+   * 사람에게까지 붙는다. 세워 놓고 이유를 말할 수 없으면 정지는 그냥 «굳은 화면»이다.
+   *
+   * 빈 글은 «내린다»는 뜻이다 — 내리는 손잡이를 따로 만들면 둘이 언젠가 어긋난다.
+   */
+  private adminRoomNotice(
+    conn: Conn,
+    user: UserRow,
+    rawCode: string,
+    rawText: string,
+    seconds?: number,
+  ): void {
+    const room = this.rooms.get(rawCode.trim().toUpperCase());
+    if (room === undefined || room.phase !== "playing") {
+      return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
+    }
+    const text = rawText.trim().slice(0, ROOM_NOTICE_MAX);
+    const ttlMs =
+      typeof seconds === "number" && seconds > 0
+        ? Math.min(Math.round(seconds), 60 * 60) * 1000
+        : 0;
+    room.notice =
+      text.length === 0
+        ? null
+        : { text, by: user.username, expiresAt: ttlMs > 0 ? Date.now() + ttlMs : null };
+    this.touch(room);
+    this.log(null, `방 공지 ${room.code} — ${user.username}: ${text.length === 0 ? "(내림)" : text}`);
+    const out: ServerMessage = {
+      type: "roomNotice",
+      text,
+      ...(ttlMs > 0 ? { ttlMs } : {}),
+      by: user.username,
+    };
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify(out);
+    }
+    for (const sp of room.spectators) this.send(sp.ws, out);
+  }
+
+  /**
+   * **한 좌석에 시간을 더 준다** (docs/36 B3) — 네트워크 사고 구제.
+   *
+   * 판 전체를 세우는 것(B1)은 네 사람 모두를 기다리게 한다. 한 사람의 회선이
+   * 잠깐 끊긴 것뿐이라면 그 자리에만 몇 초를 주는 편이 판을 덜 흔든다.
+   * 봇 좌석에는 줄 것이 없다 — 제 시계가 없다.
+   */
+  private adminExtendTime(
+    conn: Conn,
+    user: UserRow,
+    rawCode: string,
+    seat: string,
+    rawSeconds: unknown,
+  ): void {
+    const room = this.rooms.get(rawCode.trim().toUpperCase());
+    if (room === undefined || room.phase !== "playing" || room.controller === null) {
+      return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
+    }
+    const seconds =
+      typeof rawSeconds === "number" && Number.isFinite(rawSeconds)
+        ? Math.min(EXTEND_SECONDS_MAX, Math.max(1, Math.round(rawSeconds)))
+        : 30;
+    const agent = room.agents.find((a) => a.id === seat);
+    if (!(agent instanceof HumanAgent)) {
+      return this.fail(conn, "BAD_REQUEST", "사람이 앉은 자리가 아닙니다");
+    }
+    const res = agent.extendTime(seconds * 1000);
+    if (res === null) {
+      // 지금 그 자리가 아무것도 기다리고 있지 않다 — 줄 시계가 없다.
+      return this.fail(conn, "NOT_WAITING", "그 자리는 지금 기다리는 중이 아닙니다");
+    }
+    this.touch(room);
+    this.log(
+      null,
+      `시간 연장 ${room.code}/${seat} +${seconds}초 (${res.kind}) — ${user.username}`,
+    );
+    agent.notify({
+      type: "promptExtended",
+      kind: res.kind,
+      ...(res.seat !== undefined ? { seat: res.seat } : {}),
+      deadlineMs: res.leftMs,
+    });
+  }
+
   /** 이 연결에 «지금 판이 서 있다»를 알린다 (재접속·관전 합류 복원용). */
   private sendPauseState(conn: Conn, room: Room): void {
     this.send(conn.ws, {
       type: "gamePaused",
       paused: true,
       ...(room.pauseReason !== null ? { reason: room.pauseReason } : {}),
+    });
+  }
+
+  /**
+   * 이 연결에 그 탁자의 공지를 다시 보낸다 (재접속·관전 합류 복원용).
+   * 시한이 지난 공지는 여기서 걷는다 — 따로 도는 청소를 만들 만한 일이 아니다.
+   */
+  private sendRoomNotice(conn: Conn, room: Room): void {
+    const notice = room.notice;
+    if (notice === null) return;
+    if (notice.expiresAt !== null && Date.now() >= notice.expiresAt) {
+      room.notice = null;
+      return;
+    }
+    this.send(conn.ws, {
+      type: "roomNotice",
+      text: notice.text,
+      ...(notice.expiresAt !== null
+        ? { ttlMs: Math.max(0, notice.expiresAt - Date.now()) }
+        : {}),
+      by: notice.by,
     });
   }
 

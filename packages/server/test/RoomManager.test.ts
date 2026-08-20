@@ -1307,6 +1307,76 @@ describe("관리자 관전", () => {
     admin.clientSend({ type: "liveGames" });
     expect(admin.last("liveGames").rooms[0].paused).toBeUndefined();
   });
+
+  /*
+   * 방 지정 공지 (docs/36 B2) — 일시정지의 짝. 전역 공지로는 「5분 뒤 재개」를
+   * 말할 수 없다(로비와 다른 판에까지 붙는다).
+   */
+  it("방 공지는 그 탁자에만 걸리고, 빈 글이 곧 내림이다", async () => {
+    const h = await newHarness();
+    const player = await connectAndRegister(h, "Human");
+    player.clientSend({ type: "createRoom" });
+    const code = player.last("roomCreated").code;
+    for (let i = 0; i < 3; i++) player.clientSend({ type: "addBot" });
+    player.clientSend({ type: "startGame" });
+    await player.waitFor((m) => m.type === "view");
+
+    // 다른 방에서 두고 있는 사람 — 이 공지가 닿으면 안 된다
+    const bystander = await connectAndRegister(h, "Other");
+    bystander.clientSend({ type: "createRoom" });
+
+    player.clientSend({ type: "adminRoomNotice", code, text: "몰래" });
+    expect(player.last("error")?.code).toBe("FORBIDDEN");
+
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "spectate", code });
+    await admin.waitFor((m) => m.type === "spectateStarted");
+
+    admin.clientSend({ type: "adminRoomNotice", code, text: "점검 5분 뒤 재개합니다", seconds: 60 });
+    await player.waitFor((m) => m.type === "roomNotice");
+    expect(player.last("roomNotice")).toMatchObject({ text: "점검 5분 뒤 재개합니다", by: "Boss" });
+    expect(admin.last("roomNotice").text).toBe("점검 5분 뒤 재개합니다");
+    expect(bystander.last("roomNotice")).toBeUndefined(); // 남의 탁자에는 안 붙는다
+
+    // 늦게 합류한 관전석에도 지금 걸린 공지가 그대로 온다
+    const admin2 = await connectAndRegister(h, "Boss2", { adminCode: h.db.adminCode() });
+    admin2.clientSend({ type: "spectate", code });
+    await admin2.waitFor((m) => m.type === "roomNotice");
+    expect(admin2.last("roomNotice").text).toBe("점검 5분 뒤 재개합니다");
+
+    // 빈 글 = 내림
+    admin.clientSend({ type: "adminRoomNotice", code, text: "" });
+    await player.waitFor((m) => m.type === "roomNotice" && m.text === "");
+  });
+
+  /* 시간 연장 (docs/36 B3) — 판 전체를 세우는 대신 한 자리에만 몇 초를 준다. */
+  it("시간 연장은 사람이 기다리는 자리에만 준다", async () => {
+    const h = await newHarness();
+    const player = await connectAndRegister(h, "Human");
+    player.clientSend({ type: "createRoom" });
+    const code = player.last("roomCreated").code;
+    for (let i = 0; i < 3; i++) player.clientSend({ type: "addBot" });
+    player.clientSend({ type: "startGame" });
+    // 판이 열리면 제일 먼저 증강 선택창이 뜬다 — 답하지 않고 그대로 세워 둔다.
+    // (그 자리가 «지금 이 사람이 마주한 시계»다. 결정 쪽 경로는 PauseGame.test.ts에서 잰다.)
+    await player.waitFor((m) => m.type === "draftOffer");
+    const seat = player.last("joined").playerId;
+    const before = player.last("draftOffer").deadlineMs;
+
+    const admin = await connectAndRegister(h, "Boss", { adminCode: h.db.adminCode() });
+    admin.clientSend({ type: "adminExtendTime", code, seat, seconds: 30 });
+    await player.waitFor((m) => m.type === "promptExtended");
+    const ext = player.last("promptExtended");
+    expect(ext.kind).toBe("draft");
+    expect(ext.deadlineMs).toBeGreaterThan(before);
+
+    // 봇 자리에는 줄 시계가 없다
+    admin.clientSend({ type: "adminExtendTime", code, seat: "p1", seconds: 30 });
+    expect(admin.last("error")?.code).toBe("BAD_REQUEST");
+    // 관리자가 아니면 애초에 못 준다
+    player.clientSend({ type: "adminExtendTime", code, seat, seconds: 30 });
+    expect(player.last("error")?.code).toBe("FORBIDDEN");
+  });
 });
 
 describe("전체 통계·계정 관리 (32)", () => {

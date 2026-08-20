@@ -135,3 +135,37 @@ describe("중계 관전 — 일시정지 (B1)", () => {
     expect(reset.slice(0, reset.indexOf("\n  }"))).toContain("setPause(null)");
   });
 });
+
+describe("중계 관전 — 방 공지 · 시간 연장 (B2·B3)", () => {
+  const tools = bodyOf("function BroadcastTools({");
+
+  it("공지를 걸고 내린다 — 빈 글이 곧 내림이다", () => {
+    expect(tools).toContain('onRoomNotice("", 0)');
+    expect(APP).toMatch(/type: "adminRoomNotice"/);
+  });
+
+  it("좌석마다 +30초 — 봇 자리는 잠근다", () => {
+    expect(tools).toMatch(/onExtendTime\(p\.id, 30\)/);
+    expect(tools).toContain("disabled={p.isBot}");
+  });
+
+  it("연장은 마감만 갈아 끼운다 — 프롬프트를 다시 그리지 않는다", () => {
+    const handler = APP.slice(APP.indexOf('if (msg.type === "promptExtended")'));
+    const body = handler.slice(0, handler.indexOf("return;"));
+    expect(body).toContain("setPromptDeadline(Date.now() + msg.deadlineMs)");
+    expect(body).toContain("draftDeadline.current = performance.now() + msg.deadlineMs");
+    expect(body).not.toContain("setPrompts");
+  });
+
+  it("공지는 대국자와 관전자가 같은 것을 본다", () => {
+    expect(APP).toContain('className={`room-notice${props.spectator === true ? " room-notice-spec" : ""}`}');
+    expect(CSS).toContain(".room-notice");
+    // 판을 가리지 않는다
+    expect(CSS).toMatch(/\.room-notice \{[^}]*pointer-events: none;/);
+  });
+
+  it("서랍은 접혀 있고, 열면 클릭을 받는다", () => {
+    expect(tools).toContain("const [open, setOpen] = useState(false)");
+    expect(CSS).toMatch(/\.bcast-panel \{[^}]*pointer-events: auto;/);
+  });
+});
