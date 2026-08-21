@@ -13,6 +13,16 @@
  */
 import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+/*
+ * **게임의 진짜 CSS 를 그대로 쓴다.**
+ *
+ * 점검 페이지가 자기만의 스타일로 컷인을 흉내 내면, 여기서 "괜찮다"고 판단한 것이
+ * 게임에서 다르게 보인다 — 24_FX_LAB 이 같은 이유로 시각 토큰을 맞춰 두었다.
+ * 컷인·배너·리치 연출은 규칙이 수십 개라 흉내 낼 수도 없다.
+ *
+ * 순서가 중요하다: 게임 CSS 를 먼저 깔고 점검 페이지 레이아웃을 그 위에 얹는다.
+ */
+import "./styles.css";
 import "./fxShowcase.css";
 import { applyFxSettings, type FxDemo, type FxStage } from "./fx";
 import { DEMOS } from "./fx/demos";

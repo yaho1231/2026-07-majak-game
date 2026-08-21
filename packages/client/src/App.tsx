@@ -17,6 +17,7 @@ import {
   shakeBoard,
   applyFxSettings,
   watchReducedMotion,
+  applyProdSpeed,
   captureHand,
   playHand,
   isPureReorder,
@@ -3248,6 +3249,24 @@ export function App(): JSX.Element {
       if (prodFiredKey.current !== prod.key) {
         prodFiredKey.current = prod.key; // HMR 재마운트 등 effect 재실행 시 이중 재생 방지
         prod.sfx?.();
+      }
+      /*
+       * **연출 속도를 실제 모션에 건다.**
+       *
+       * 예전에는 체류 시간만 줄여서, "빠르게"를 고르면 연출이 빨라지는 게 아니라
+       * 밴드가 다 들어오기도 전에 잘렸다. 이제 이미 돌고 있는 CSS 애니메이션의
+       * 재생 속도를 직접 바꾼다 — 처음부터 끝까지 다 보이되 짧게 지나간다.
+       *
+       * 연출 요소에만 건다. `game-root` 전체에 걸면 차례 표시·도라 반짝임처럼
+       * 늘 도는 것들까지 같이 빨라진다.
+       */
+      const speed = settingsRef.current.prodSpeed;
+      if (speed !== 1) {
+        for (const node of gameRootRef.current?.querySelectorAll(
+          ".riichi-stage, .banner, .cutin",
+        ) ?? []) {
+          applyProdSpeed(node, speed);
+        }
       }
       const imp = prod.impact;
       if (imp !== undefined && settingsRef.current.screenFx) {

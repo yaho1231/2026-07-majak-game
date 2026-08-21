@@ -11,7 +11,8 @@
 import type { FxDemo } from "./catalog";
 import { shakeBoard, flashBoard, ringAt, attention } from "./effects/board";
 import { drawTile, discardTile, meldTiles, reflowHand, throwTile } from "./effects/tiles";
-import { centerOf } from "./core";
+import { centerOf, canDecorate } from "./core";
+import { playCutIn, playBanner, playRiichiStage } from "./effects/production";
 import { flushSync } from "react-dom";
 
 export const DEMOS: FxDemo[] = [
@@ -99,6 +100,105 @@ export const DEMOS: FxDemo[] = [
     },
   },
 
+
+  // ─────────────────────── 연출 큐 (컷인 · 배너) ───────────────────────
+  //
+  // 게임의 `styles.css` 규칙을 **그대로** 쓴다. 점검 페이지가 흉내 낸 것을 보고
+  // 판단하면 그 판단이 게임으로 옮겨가지 않는다.
+  {
+    id: "cutin-ron",
+    group: "연출 큐",
+    name: "컷인 — 론",
+    when: "누군가 화료했을 때",
+    freq: "드묾",
+    intent:
+      "국이 끝나는 사건. 밴드가 들어오고 글자가 꽂힌다. 연출 속도를 0.35×로 바꾸고 다시 눌러 보라 — 예전에는 여기서 밴드가 다 들어오기 전에 잘렸다.",
+    play: (s) => {
+      playCutIn(s.overlay, { tone: "ron", text: "론!", sub: "하가 — 12000점", ttl: 1500 }, canDecorate());
+      shakeBoard(s.table, 3, { anticipate: true });
+    },
+  },
+  {
+    id: "cutin-tsumo",
+    group: "연출 큐",
+    name: "컷인 — 쯔모",
+    when: "스스로 화료했을 때",
+    freq: "드묾",
+    intent: "론보다 한 단계 가볍다 — 쏘인 사람이 없으니 충격도 덜해야 한다.",
+    play: (s) => {
+      playCutIn(s.overlay, { tone: "tsumo", text: "쯔모!", sub: "나 — 7700점", ttl: 1400 }, canDecorate());
+      shakeBoard(s.table, 2);
+    },
+  },
+  {
+    id: "cutin-yakuman",
+    group: "연출 큐",
+    name: "컷인 — 역만",
+    when: "역만 화료 (판에 한 번 있을까)",
+    freq: "희귀",
+    intent:
+      "예산을 몰아주는 자리. 광선·파문 두 겹·섬광이 붙고 흔들림도 최대다. 이게 매 국 나오면 통과의례가 되지만, 진짜로 드물기 때문에 세게 가도 된다.",
+    play: (s) => {
+      playCutIn(s.overlay, { tone: "yakuman", text: "국사무쌍", sub: "대면 — 32000점", ttl: 2600 }, canDecorate());
+      shakeBoard(s.table, 4, { anticipate: true });
+      flashBoard(s.table, { peak: 0.2 });
+    },
+  },
+  {
+    id: "cutin-augment",
+    group: "연출 큐",
+    name: "컷인 — 증강 발동",
+    when: "증강이 발동할 때",
+    freq: "가끔",
+    intent:
+      "대각 섬광과 스캔라인이 붙어 다른 컷인과 구분된다. 국마다 여러 번 나올 수 있어 론보다 짧게 잡는다.",
+    play: (s) => {
+      playCutIn(
+        s.overlay,
+        { tone: "augment", text: "투시", sub: "나 — 상대 손패를 본다", aug: true, ttl: 1600 },
+        canDecorate(),
+      );
+      shakeBoard(s.table, 2);
+    },
+  },
+  {
+    id: "cutin-call",
+    group: "연출 큐",
+    name: "컷인 — 후로 (폰)",
+    when: "폰·치·깡",
+    freq: "가끔",
+    intent:
+      "가장 자주 나오는 컷인이라 가장 짧고 가볍다. 여기가 길면 국이 통째로 늘어진다.",
+    play: (s) => {
+      playCutIn(s.overlay, { tone: "pon", text: "폰", sub: "상가", call: true, ttl: 1050 }, canDecorate());
+      shakeBoard(s.table, 1);
+    },
+  },
+  {
+    id: "riichi-stage",
+    group: "연출 큐",
+    name: "리치 무대",
+    when: "리치 선언",
+    freq: "가끔",
+    intent:
+      "리치는 **알고 나서 버려야 하는** 유일한 통지라, 늦게 뜨면 그대로 오판이 된다(연출 큐가 등급을 두는 이유). 비네트로 판을 눌러 시선을 강제로 끌어온다.",
+    play: (s) => {
+      playRiichiStage(s.overlay, "하가", 1700);
+      shakeBoard(s.table, 2);
+    },
+  },
+  {
+    id: "banner-draw",
+    group: "연출 큐",
+    name: "배너 — 유국",
+    when: "국이 무승부로 끝날 때",
+    freq: "드묾",
+    intent: "컷인보다 판을 덜 가린다. 정산 화면이 바로 뒤에 오므로 여기서 길게 끌 이유가 없다.",
+    play: (s) => {
+      playBanner(s.overlay, "draw", "유 국", "텐파이 2명", 1300);
+      shakeBoard(s.table, 4);
+    },
+  },
   // ─────────────────────────── 판 ───────────────────────────
   {
     id: "shake-1",

@@ -17,6 +17,8 @@ export {
 } from "./settings";
 export { fxTimeline, canDecorate, alive, centerOf, spawnFx, type FxTimelineOpts } from "./core";
 export { deltaTo, flyTo, arcPath } from "./coords";
+export { applyProdSpeed } from "./prodSpeed";
+export { playCutIn, playBanner, playRiichiStage, type CutInSpec, type ProdTone } from "./effects/production";
 export { shakeBoard, flashBoard, ringAt, attention } from "./effects/board";
 export {
   drawTile,
