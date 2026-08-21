@@ -5557,6 +5557,7 @@ export function App(): JSX.Element {
           serverInfo={serverInfo}
           serverError={authError.text}
           serverErrorSeq={authError.seq}
+          onClearError={() => setAuthError(null)}
           nameCheck={nameCheck}
           onCheckUsername={(u) => {
             setNameCheck({ username: u, state: "checking" });
@@ -6815,6 +6816,14 @@ function AuthScreen(props: {
    * 문자열이 같아 리렌더가 안 일어나고, 그러면 «확인 중…»이 영원히 안 풀렸다.
    */
   serverErrorSeq: number;
+  /**
+   * 서버 실패 사유를 지운다 — **탭을 바꿀 때** 부른다.
+   *
+   * 이 사유는 부모가 들고 있어서(`authError`) 여기서 직접 못 지운다. 안 지우면
+   * 가입 탭에서 받은 «가입 코드가 필요합니다»가 로그인 탭으로 그대로 따라와,
+   * 비밀번호를 틀린 사람에게 "코드가 필요하다"고 말한다 (2026-08-21 사용자 보고).
+   */
+  onClearError: () => void;
   /** 닉네임 중복 확인 결과 (없으면 아직 안 눌렀다) */
   nameCheck: NameCheck | null;
   onCheckUsername: (username: string) => void;
@@ -6888,6 +6897,22 @@ function AuthScreen(props: {
     if (props.connection !== "connected") setSending(false);
   }, [props.connection]);
 
+  /**
+   * 탭을 바꾼다 — **앞 탭에서 받은 실패 사유는 함께 지운다.**
+   *
+   * 예전에는 `setTab`만 했다. 실패 사유는 지우는 사람이 아무도 없어서 그대로
+   * 남았고, 폼은 하나뿐이라 그 문장이 새 탭 아래에 그대로 섰다: 가입을 눌렀다가
+   * 로그인으로 옮긴 사람은 «가입 코드가 필요합니다»를 **로그인 폼 아래에서**
+   * 읽는다. 그러고 나서 비밀번호를 틀리면, 그건 코드 때문에 막힌 것처럼 보인다
+   * (2026-08-21 사용자 보고: "비밀번호가 틀린 건데 코드가 필요하다고 나온다").
+   */
+  function switchTab(next: "login" | "register"): void {
+    if (next === tab) return;
+    setTab(next);
+    setLocalError(null);
+    props.onClearError();
+  }
+
   function submit(): void {
     if (sending) return;
     setLocalError(null);
@@ -6908,6 +6933,16 @@ function AuthScreen(props: {
       }
       if (password !== password2) {
         return setLocalError("비밀번호 확인이 일치하지 않습니다");
+      }
+      /*
+       * 가입 코드는 **보내기 전에** 본다 (게이트가 켜진 서버에서만).
+       *
+       * 서버도 같은 것을 보지만(RoomManager `SIGNUP_CODE_REQUIRED`), 빈 칸인 줄
+       * 알면서 보내면 그 왕복이 **인증 레이트리밋 예산**(연결 12회/분)을 그냥 태운다.
+       * 칸에는 이미 «(필수)»가 붙어 있으니 화면이 먼저 답하는 게 맞다.
+       */
+      if (gateOn && signupCode.trim() === "") {
+        return setLocalError("가입 코드를 입력해 주세요 — 이 서버는 초대제입니다");
       }
     }
     setSending(true);
@@ -7110,10 +7145,12 @@ function AuthScreen(props: {
 
       <div className="lobby-card auth-card">
         <div className="auth-tabs">
-          <button className={tab === "login" ? "auth-tab active" : "auth-tab"} onClick={() => setTab("login")}>
+          {/* ⚠ `setTab`을 직접 부르지 마라 — 앞 탭의 실패 사유가 그대로 남는다.
+              반드시 `switchTab`을 거친다 (이유는 그쪽 주석). */}
+          <button className={tab === "login" ? "auth-tab active" : "auth-tab"} onClick={() => switchTab("login")}>
             로그인
           </button>
-          <button className={tab === "register" ? "auth-tab active" : "auth-tab"} onClick={() => setTab("register")}>
+          <button className={tab === "register" ? "auth-tab active" : "auth-tab"} onClick={() => switchTab("register")}>
             회원가입
           </button>
         </div>
