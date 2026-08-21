@@ -14490,6 +14490,17 @@ const River = memo(function River({
    * 실제 탁자에서도 셋째 단은 접지 않고 옆으로 늘인다. 그쪽(모서리)은 어차피
    * --river-h 만큼 비어 있는 자리라, 늘어난 단이 이웃 바닥이나 손패를 건드리지 않는다.
    */
+  /*
+   * ⚠ **타패에 새 연출을 얹지 않는다.**
+   *
+   * 손패 자리에서 바닥으로 날아오게 만들어 봤다가 물렸다. 여기에는 이미 `tile-in`
+   * (위에서 내리꽂혀 착지 스쿼시 후 리바운드)이 있고, 그건 CSS 애니메이션이라
+   * **인라인 transform 을 덮어쓴다** — 두 연출이 같은 속성을 두고 싸운다.
+   * 게다가 바로 위 주석이 "`.rt-latest` 에 animation 을 덮어쓰지 말 것"이라고
+   * 못 박고 있다(덮으면 다음 타패 때 `tile-in` 이 재재생된다).
+   *
+   * 잘 도는 것을 옮기지 않는다 — 38_ANIMATION_LIBS §9-1 이 말하는 그 자리다.
+   */
   const cells = backsFirst ? [...backCells, ...tileCells] : [...tileCells, ...backCells];
   const rows = [cells.slice(0, 6), cells.slice(6, 12), cells.slice(12)].filter(
     (r) => r.length > 0,
