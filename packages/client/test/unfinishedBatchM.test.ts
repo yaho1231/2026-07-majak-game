@@ -69,7 +69,9 @@ describe("계정을 되찾는 화면이 있다", () => {
 
   it("새 비밀번호를 두 번 받고 서로 다르면 못 누른다", () => {
     expect(APP_CODE).toContain("const mismatch =");
-    expect(APP_CODE).toContain("disabled={!ready}");
+    // `sending`이 붙은 것은 2026-08-21에 하나 더 잠근 것이다 — 답을 기다리는
+    // 동안에도 계속 눌리면 인증 레이트리밋만 태운다. `!ready` 는 그대로여야 한다.
+    expect(APP_CODE).toContain("disabled={!ready || sending}");
   });
 });
 
