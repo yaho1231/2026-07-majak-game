@@ -774,7 +774,11 @@ pointermove마다 도는 전역 리렌더를 없앤다. **성능 이득이 가�
 
 ### 번들 비용
 `waapi.animate`는 3KB, 전체 `animate`는 10KB(문서 명시). react-spring `@react-spring/web`는
-이보다 크다 — **정확한 수치는 도입 전 실측한다**(`npx vite-bundle-visualizer`).
+이보다 크다.
+
+> ✅ **실측했다 — §10-9 ③.** 실제로 쓸 조합으로 묶으면 anime waapi+utils 8.0 KB ·
+> anime 코어 18.3 KB · react-spring 18.7 KB · GSAP 우리 세트 72.6 KB (전부 gzip).
+> **위의 3KB/10KB는 문서 수치이고 실측과 다르다.**
 지금 클라이언트는 의존성이 React 외에 사실상 없는 상태라, **처음 들어오는 무게**라는 점을
 감안해야 한다. 그래서 §8의 0~1단계는 anime.js **서브패스 임포트**(`animejs/waapi`)만 쓴다.
 
@@ -1108,6 +1112,9 @@ setTimeout · 소켓 메시지 콜백)은 `contextSafe()`로 감싸야 정리 �
 하드웨어 가속을 쓴다. 대신 좌표계 변환·물리·CustomWiggle·SplitText autoSplit은 **계속 손으로**
 짠다.
 
+> **✅ 0단계를 실제로 돌렸다 — 결과는 §10-9. 결론은 (A)다.** 아래 문단은 재기 전의 판단이고,
+> 실측 뒤 바뀐 부분(번들 차이가 예상보다 작고 정확도 차이가 예상보다 컸다)은 §10-9에 적었다.
+>
 > **판단 기준은 하나로 좁혀진다: 번들 예산.** 지금 클라이언트 의존성이 React 외에 사실상
 > 없다는 게 이 저장소의 성질이고, 그걸 지킬 가치가 있다고 보면 (B), 연출이 이 게임의 핵심
 > 경험이라고 보면 (A)다.
@@ -1118,7 +1125,7 @@ setTimeout · 소켓 메시지 콜백)은 `contextSafe()`로 감싸야 정리 �
 
 ### 10-7. 개정된 도입 순서
 
-**0단계 · fx-lab에서 GSAP과 anime.js를 나란히 (번들 영향 0)**
+**0단계 · fx-lab에서 GSAP과 anime.js를 나란히 (번들 영향 0)** — ✅ **완료. 결과는 §10-9.**
 `packages/client/public/`은 정적 파일이라 실패해도 게임에 영향이 없다. 같은 연출 두세 개
 («분열» gooey · «자리 바꿈» 원호 · 손패 스태거)를 **양쪽으로 각각 만들어** 비교한다.
 → 여기서 반드시 확인할 것: ① `uiScale` 조상 transform 아래에서 좌표가 맞는가
@@ -1148,6 +1155,121 @@ setTimeout · 소켓 메시지 콜백)은 `contextSafe()`로 감싸야 정리 �
     입력 코드는 오타패 사고를 겪고 다듬은 것이다. 새 제스처를 만들 때만 쓴다.
 13. **`registerEffect`로 계열 문장을 만들되, 문장 수를 늘리지 마라.** 24_FX_LAB이 계열을
     8개로 묶은 것이 요점이다. 도구가 편해졌다고 계열이 20개가 되면 그건 다시 잡동사니다.
+
+### 10-9. 0단계 실측 결과 (2026-08-21)
+
+**돌려 본 것:** `packages/client/public/fx-bakeoff.html` — 게임과 같은 방식으로 무대를
+`scale()` 하고, 손패(`scale .92 / rotate -1.2°`)와 멜드 칸(`scale 1.08 / rotate 2.5°`)에
+**서로 다른 중첩 transform** 을 한 겹씩 더 걸어 `uiScale.ts` 상황을 재현했다.
+버전: anime.js 4.5.0 · GSAP 3.15.0 · react-spring 10.1.2.
+
+```bash
+npm run dev:client      # → http://localhost:5173/fx-bakeoff.html
+```
+화면 버튼으로 눌러 봐도 되고, 콘솔에서 `__runAll()` 이면 전부 잰다.
+
+> **측정은 재생이 아니라 `seek` 으로 한다.** 탭이 숨겨져 있으면 rAF 가 조여지고,
+> anime.js 는 `engine.pauseOnDocumentHidden` 이 **기본 true** 라 엔진이 아예 선다 —
+> "끝날 때까지 기다리는" 측정은 영영 안 끝난다. 끝 상태로 감아서 재면 결정적이다.
+> (이것 자체가 도입 시 알아 둘 사실이다: **anime.js 는 배경 탭에서 완전히 멈춘다.**
+> 우리 연출 큐가 배경 탭에서 밀렸다가 돌아올 때 어떻게 될지는 따로 확인해야 한다.)
+
+#### ① 좌표 — 손패 첫 패를 멜드 칸에 정확히 얹기 (착지 오차, 화면 px)
+
+| 방법 | 오차 | |
+| --- | ---: | --- |
+| 현행(손수 계산 — `sRect()` / `toLayoutPx()` 와 같은 식) | **8.53 px** | ❌ |
+| anime.js | **8.53 px** | ❌ |
+| GSAP `MotionPathPlugin.getRelativePosition` | **0.0006 px** | ✅ |
+
+**anime.js 가 현행과 오차까지 똑같은 게 요점이다.** anime.js 에는 좌표 변환 헬퍼가 없어
+*같은 손수 계산을 그대로 쓸 수밖에 없고*, 그래서 같은 만큼 틀린다. 무대 배율만 나누는
+계산은 **중첩 transform 을 모른다** — 8.5px 은 패 폭(52px)의 16%다. 패를 얹는 연출에서
+이 정도면 눈에 보인다.
+
+> §10-4에서 "이건 GSAP만 푼다"고 적은 것이 **숫자로 확인됐다.**
+
+#### ② FLIP — 손패 13장 정렬 토글
+
+| 방법 | 착지 오차 | 비행 이탈(50%) | |
+| --- | ---: | ---: | --- |
+| 현행 (연출 없음) | 0 px | — | 순간이동 |
+| anime.js `createLayout` | 0 px | **270.7 px** | ❌ |
+| GSAP `Flip` | 0 px | **0.00005 px** | ✅ |
+| **대조군** · anime.js, 조상 transform 없는 곳 | 0 px | **0 px** | ✅ |
+
+**비행 이탈**은 중간 지점에서 패가 "출발점→도착점 직선"을 얼마나 벗어나는지다. FLIP 은
+곧게 옮기는 기법이라 이징이 무엇이든 중간 위치는 그 선 위에 있어야 한다.
+
+- anime.js 는 **착지는 정확한데 비행이 270px 어긋난다.** 원인을 직접 확인했다:
+  `createLayout` 은 비행 동안 컨테이너와 자식을 **`position: fixed` 로 바꾸고 컨테이너의
+  `transform` 을 걷어낸 뒤 뷰포트 좌표로 `translate` 를 준다.** 조상에 transform 이 있으면
+  `position: fixed` 의 기준이 뷰포트가 아니라 그 조상이 되므로(우리가
+  `App.tsx:19190` 주석에 이미 적어 둔 바로 그 함정) 계산이 통째로 어긋난다.
+- **대조군이 0 px 이라는 게 중요하다.** 결론은 "anime.js 가 못 한다"가 아니라
+  **"anime.js 의 Layout 은 `uiScale` 과 같이 못 쓴다"** 이다. 둘은 다른 말이고 후자만 사실이다.
+  우리는 UI 배율을 버릴 생각이 없으므로 결과는 같지만, 이유는 정확히 적어 둔다.
+- GSAP `Flip` 은 `transform` 만 건드려 조상 transform 과 싸우지 않는다.
+
+> **측정하다 겪은 것 하나:** 처음엔 GSAP 수치가 4~27px 씩 흔들렸다. 앞 테스트(anime Layout)가
+> 남긴 `translate` · `position: fixed` 잔재가 다음 측정을 오염시킨 것이었다. 테스트 사이에
+> 인라인 스타일을 지우고 다시 재니 소수점 둘째 자리까지 정확해졌다. 24_FX_LAB 의
+> *"전역 UI를 건드리는 연출은 되돌림까지가 연출이다"* 가 **측정에도 그대로 적용된다.**
+
+#### ③ 번들 — 실측 (esbuild `--bundle --minify` + `gzip -9`)
+
+기준선: 지금 클라이언트 메인 청크 **191.1 KB (gzip)**.
+
+| 무엇을 넣나 | gzip | 기준선 대비 |
+| --- | ---: | ---: |
+| anime.js `waapi` + `utils` | 8.0 KB | +4% |
+| anime.js 코어 한 벌 | 18.3 KB | +10% |
+| anime.js 전부 (+layout·svg·text·draggable) | 36.9 KB | +19% |
+| react-spring (web) | 18.7 KB | +10% |
+| GSAP 코어만 | 27.0 KB | +14% |
+| GSAP 최소 세트¹ | 55.3 KB | +29% |
+| GSAP 우리 세트² | **72.6 KB** | **+38%** |
+
+¹ Flip · Draggable · MotionPath · CustomEase · CustomWiggle
+² ¹ + Inertia · SplitText · ScrambleText · DrawSVG · MorphSVG · Physics2D · CustomBounce
+
+**조합 비교:** anime.js 전부 + react-spring = **55.3 KB** vs GSAP 우리 세트 = **72.6 KB**.
+차이는 17.3 KB — 원안 (B) 를 골라도 (A) 대비 **24% 만 아낀다.**
+
+> ⚠ **§8에 적었던 "waapi 3KB / 전체 10KB"는 anime.js 문서의 숫자이고, 실측과 다르다.**
+> 실제로 쓸 만한 조합으로 묶으면 8.0 KB / 18.3 KB 다(gzip). 문서 수치는 더 좁은 기준인
+> 듯하다 — **숫자는 실측을 믿는다.**
+
+#### ④ 흔들림 — 코드량
+
+지금 `styles.css` 는 `shake-1`~`shake-4` 를 **키프레임 4벌**(약 40줄)로 갖고 있고, 세기를
+바꾸려면 좌표를 다시 적어야 한다. `CustomWiggle` 은 이징 1벌 + 세기 숫자 하나다:
+
+```js
+CustomWiggle.create("mjShake", { wiggles: 8, type: "easeOut" });
+const AMP = { 1: 2, 2: 5, 3: 9, 4: 14 };
+gsap.fromTo(".table", { x: -AMP[lv] }, { x: 0, duration: DUR[lv], ease: "mjShake", clearProps: "x" });
+```
+`type: "anticipate"`(한 번 뒤로 당겼다 터진다)는 페이지에서 눌러 비교할 수 있게 넣어 뒀다 —
+**지금 키프레임으로는 만들 수 없는 결**이라 론·역만용으로 쓸 값이 있다.
+
+#### 0단계 결론
+
+**§10-6의 (A) GSAP 단독을 고른다.**
+
+판단 기준을 "번들 예산"이라고 적어 뒀는데, 실측해 보니 **번들 차이가 생각보다 작고
+(17.3 KB, 기준선의 9%) 기능 차이는 생각보다 크다** — ①과 ②는 우리 구조에서 anime.js 로는
+**정확도가 안 나온다**(8.5px · 270px). 이건 "손으로 더 짜면 된다"가 아니라 그 손으로 짠 것이
+지금 이미 8.5px 틀리고 있다는 뜻이다.
+
+**남는 질문 두 개** — 1단계 전에 확인한다:
+1. **react-spring 을 함께 쓸 것인가.** GSAP `quickTo` + `Draggable` 이 그 자리를 상당 부분
+   덮는다(§10-5). 손패 드래그를 양쪽으로 만들어 비교하는 것이 3단계다. 지금은 보류.
+2. **배경 탭 동작.** anime.js 는 기본으로 멈추고 GSAP 은 rAF 스로틀만 받는다. 우리 연출
+   큐는 TTL 로 도는데 탭을 숨겼다 돌아왔을 때 무엇이 밀리는지는 따로 재야 한다.
+
+**실험 자산 정리:** `fx-bakeoff.*` 와 `public/vendor/` 는 **실험용**이다. 게임 번들에
+들어가지 않는다(정적 파일). 도입을 결정하면 npm 의존성으로 제대로 들이고 이 셋은 지운다.
 
 ## 부록 A. 이 문서를 다시 확인하는 법
 

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FX 라이브러리 비교 (0단계) — anime.js vs GSAP</title>
+<link rel="stylesheet" href="/fx-bakeoff.css?v=1" />
+</head>
+<body>
+<header class="top">
+  <h1>0단계 비교 — anime.js 4.5.0 · GSAP 3.15.0</h1>
+  <p class="sub">
+    docs/38 §10-7. 확인할 것 셋: <b>① 조상 transform 아래 좌표</b> ·
+    <b>② FLIP</b> · <b>③ 번들</b>. 무대는 게임과 같은 방식으로
+    <code>scale()</code> 되어 있고, 손패·멜드 칸에는 <b>서로 다른 중첩 transform</b>이
+    한 겹 더 걸려 있다 — <code>uiScale.ts</code>가 만드는 상황을 일부러 재현한 것이다.
+  </p>
+</header>
+
+<div class="wrap">
+  <div id="stageWrap" class="stagewrap">
+    <div id="stage" class="stage">
+      <div class="felt"></div>
+      <!-- 손패 칸: 중첩 transform 한 겹 -->
+      <div id="hand" class="hand"></div>
+      <!-- 멜드 칸: 손패와 *다른* 중첩 transform -->
+      <div id="meldZone" class="meldzone">
+        <div id="meldSlot" class="meldslot"></div>
+      </div>
+      <div class="label lbl-hand">손패 (scale .92 / rotate -1.2°)</div>
+      <div class="label lbl-meld">멜드 칸 (scale 1.08 / rotate 2.5°)</div>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <section>
+      <h2>① 좌표 — 손패 첫 패를 멜드 칸에 정확히 얹기</h2>
+      <p class="note">
+        착지 후 <b>패 중심과 목표 중심의 화면상 오차(px)</b>를 잰다. 0에 가까울수록 옳다.
+      </p>
+      <div class="row">
+        <button data-act="coord-manual">현행(손수 계산)</button>
+        <button data-act="coord-anime">anime.js</button>
+        <button data-act="coord-gsap">GSAP</button>
+        <button data-act="coord-all" class="primary">셋 다 순서대로</button>
+      </div>
+      <div id="coordOut" class="out">아직 안 돌렸다.</div>
+    </section>
+
+    <section>
+      <h2>② FLIP — 손패 13장 정렬 토글</h2>
+      <p class="note">
+        끝난 뒤 각 패의 위치를 <b>연출 없이 그냥 재배치했을 때의 위치</b>와 비교한다.
+        최대 오차가 0에 가까워야 "제자리에 앉았다"이다.
+      </p>
+      <div class="row">
+        <button data-act="flip-none">현행(연출 없음)</button>
+        <button data-act="flip-anime">anime.js createLayout</button>
+        <button data-act="flip-gsap">GSAP Flip</button>
+        <button data-act="flip-control">대조군(조상 transform 없음)</button>
+      </div>
+      <div id="flipOut" class="out">아직 안 돌렸다.</div>
+    </section>
+
+    <section>
+      <h2>③ 흔들림 — 지금의 keyframes vs CustomWiggle</h2>
+      <p class="note">세기 단계를 바꿔가며 눌러 본다. 코드량 차이는 아래에 적었다.</p>
+      <div class="row">
+        <label>세기 <select id="shakeLv"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></label>
+        <button data-act="shake-css">현행 CSS keyframes</button>
+        <button data-act="shake-wiggle">CustomWiggle</button>
+        <button data-act="shake-antic">CustomWiggle · anticipate</button>
+      </div>
+      <div id="shakeOut" class="out">아직 안 돌렸다.</div>
+    </section>
+
+    <section>
+      <h2>④ 번들 (실측)</h2>
+      <div id="bundleOut" class="out"></div>
+    </section>
+  </aside>
+</div>
+
+<script type="module" src="/fx-bakeoff.js?v=1"></script>
+</body>
+</html>
