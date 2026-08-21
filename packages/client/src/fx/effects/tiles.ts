@@ -8,7 +8,11 @@
  * "AI가 만든 사이트 같다"는 인상의 상당 부분이 여기서 온다 — 상태는 정확한데 **상태가
  * 바뀌는 과정이 없다.**
  *
- * 그래서 이 파일의 연출은 대부분 **전달(essential)** 이다. 설정을 꺼도 끝 상태까지는 간다.
+ * 그래서 이 파일의 연출은 대부분 **전달(essential)** 이다 — 다만 끝 상태를 만드는 것은
+ * **React 이지 이 연출이 아니다.** 패는 이미 제자리에 그려져 있고, 여기서 하는 일은
+ * "어디서 왔는지"를 눈에 보여 주는 것뿐이다. 그래서 설정을 끄면 **그냥 안 그린다** —
+ * 그것이 곧 "즉시 도착"이고, 정보는 하나도 잃지 않는다.
+ * (예외: `throwTile` 은 끝날 때 상태를 바꾸는 호출부가 있어 `onComplete` 를 반드시 부른다.)
  *
  * ⚠ 매 순 일어나는 것(뽑기·버리기)은 `DUR.tick`~`DUR.tile`(0.12~0.26초) 안에서 끝낸다.
  *    한 국에 70순이 넘게 돈다 — 여기서 0.1초를 더 쓰면 한 국이 7초 길어진다.
@@ -16,6 +20,7 @@
 import { gsap, Flip } from "../setup";
 import { DUR, EASE, STAGGER } from "../motion";
 import { alive, canDecorate, spawnFx } from "../core";
+import { fxEnabled } from "../settings";
 import { deltaTo, arcPath } from "../coords";
 
 /**
@@ -26,6 +31,8 @@ import { deltaTo, arcPath } from "../coords";
  */
 export function drawTile(tile: Element | null, wall?: Element | null): void {
   if (!alive(tile)) return;
+  // 연출을 껐으면 움직이지 않는다. 패는 이미 손에 있으므로 정보는 그대로다.
+  if (!fxEnabled()) return;
   if (alive(wall)) {
     const d = deltaTo(tile, wall);
     gsap.fromTo(
@@ -53,21 +60,34 @@ export function drawTile(tile: Element | null, wall?: Element | null): void {
  */
 export function discardTile(from: Element | null, to: Element | null): void {
   if (!alive(from) || !alive(to)) return;
+  /*
+   * 고스트는 **순수 장식**이다 — 실제 패의 이동은 React 가 한다(바닥에 이미 그려진다).
+   * 그래서 끄면 아예 만들지 않는다. 정보는 하나도 잃지 않는다.
+   */
+  if (!canDecorate()) return;
   const ghost = from.cloneNode(true) as HTMLElement;
   const r = from.getBoundingClientRect();
   ghost.setAttribute("aria-hidden", "true");
-  ghost.style.cssText += `position:fixed; left:${r.left}px; top:${r.top}px;
-    width:${r.width}px; height:${r.height}px; margin:0; pointer-events:none; z-index:40;`;
-  const kill = spawnFx(document.body, ghost, 3000);
-  const target = to.getBoundingClientRect();
+  /*
+   * ⚠ 고스트는 **from 의 부모 옆에** 붙인다 — `document.body` 가 아니다.
+   *
+   * body 에는 `--ui-scale` 이 걸린다(`uiScale.ts`). 변형된 조상 아래의
+   * `position: fixed` 는 그 조상이 컨테이닝 블록이 되므로, 화면 좌표로 넣은 `left/top`
+   * 이 배율로 한 번 더 곱해진다 — 오차가 8.5px 급이 아니라 수백 px 이다.
+   *
+   * 그래서 ① 같은 좌표계 안(원본의 부모)에 붙이고 ② 이동은 `left/top` 이 아니라
+   * `deltaTo` 로 구한 **transform** 으로 한다. `coords.ts` 가 "판을 가로지르는 이동은
+   * 전부 이 파일을 지난다"고 적어 둔 규칙을 이 파일이 어기고 있었다.
+   */
+  ghost.style.cssText += `position:absolute; left:${from instanceof HTMLElement ? from.offsetLeft : 0}px;
+    top:${from instanceof HTMLElement ? from.offsetTop : 0}px; width:${r.width}px; height:${r.height}px;
+    margin:0; pointer-events:none; z-index:40;`;
+  const host = from.parentElement ?? document.body;
+  const kill = spawnFx(host, ghost, 3000);
+  const d = deltaTo(ghost, to);
   gsap
     .timeline({ onComplete: kill })
-    .to(ghost, {
-      left: target.left + (target.width - r.width) / 2,
-      top: target.top + (target.height - r.height) / 2,
-      duration: DUR.tile,
-      ease: EASE.soft,
-    })
+    .to(ghost, { x: d.x, y: d.y, duration: DUR.tile, ease: EASE.soft })
     .to(ghost, { scaleY: 0.88, scaleX: 1.06, duration: 0.06, ease: "power2.out" }, ">-0.04")
     .to(ghost, { scaleY: 1, scaleX: 1, duration: 0.12, ease: EASE.land });
 }
@@ -81,6 +101,8 @@ export function discardTile(from: Element | null, to: Element | null): void {
 export function meldTiles(tiles: (Element | null)[], slot: Element | null): void {
   const live = tiles.filter(alive);
   if (live.length === 0 || !alive(slot)) return;
+  // 끝 상태(멜드 자리에 패가 있다)는 React 가 이미 만들었다 — 움직임만 뺀다.
+  if (!fxEnabled()) return;
   live.forEach((t, i) => {
     const d = deltaTo(t, slot);
     gsap.fromTo(
@@ -123,23 +145,55 @@ export function meldTiles(tiles: (Element | null)[], slot: Element | null): void
  */
 const PINNED = "width,height,minWidth,minHeight,maxWidth,maxHeight";
 
-/** 지금 돌고 있는 손패 Flip — 겹치면 앞의 것을 죽인다 */
-let handFlipTl: gsap.core.Timeline | null = null;
+/**
+ * 지금 돌고 있는 손패 Flip — 겹치면 앞의 것을 죽인다.
+ *
+ * 손패 단위로 잡는다(모듈 전역 변수 하나가 아니라). 지금은 손패가 화면에 하나뿐이지만
+ * (관전도 시점 하나만 그린다), 전역 변수로 두면 손패가 둘이 되는 날 A 의 완료 콜백이
+ * B 의 타임라인을 놓아 버려 B 를 죽일 수 없게 된다. `WeakMap` 이라 손패 노드가 사라지면
+ * 항목도 함께 사라진다.
+ */
+const handFlips = new WeakMap<Element, gsap.core.Timeline>();
 
 function clearPinned(hand: Element): void {
   gsap.set(hand.children, { clearProps: PINNED });
 }
 
+/** 대국을 나갈 때 등 — 손패가 사라지기 전에 돌고 있는 Flip 을 정리한다 */
+export function killHandFlip(hand: Element | null): void {
+  if (hand === null) return;
+  const tl = handFlips.get(hand);
+  if (tl === undefined) return;
+  tl.kill();
+  handFlips.delete(hand);
+}
+
 function runHandFlip(hand: Element, state: Flip.FlipState): void {
-  if (handFlipTl !== null) {
-    handFlipTl.kill();
+  const running = handFlips.get(hand);
+  if (running !== undefined) {
+    running.kill();
     clearPinned(hand);
+  }
+  /*
+   * **설정을 여기서 본다.**
+   *
+   * 호출부가 아니라 이 안에서 검사하는 것이 `fx/` 모듈의 취지다 — 새 호출부가
+   * 생길 때마다 검사를 다시 적게 하면 반드시 하나는 빠진다.
+   *
+   * FLIP 은 "정보를 나르는" 연출이지만(어느 패가 어디로 갔는가), **끝 상태는 이미
+   * DOM 에 있다.** 그래서 그냥 안 그리면 그것이 곧 "즉시 도착"이다 — 정보를 잃지 않고
+   * 움직임만 없앤다. 전정기관 문제로 움직임 자체가 증상인 사람에게는 이쪽이 맞다.
+   */
+  if (!fxEnabled()) {
+    clearPinned(hand);
+    handFlips.delete(hand);
+    return;
   }
   const done = (): void => {
     clearPinned(hand);
-    handFlipTl = null;
+    handFlips.delete(hand);
   };
-  handFlipTl = Flip.from(state, {
+  const tl = Flip.from(state, {
     duration: DUR.layout,
     ease: EASE.move,
     // 총량으로 잡는다 — 13장에 낱개 간격을 주면 정렬 한 번에 0.6초를 기다린다.
@@ -162,6 +216,7 @@ function runHandFlip(hand: Element, state: Flip.FlipState): void {
     onComplete: done,
     onInterrupt: done,
   });
+  handFlips.set(hand, tl);
 }
 
 /**
@@ -188,25 +243,7 @@ export function captureHand(hand: Element | null): Flip.FlipState | null {
   return alive(hand) ? Flip.getState(hand.children) : null;
 }
 
-/**
- * **이번 변화가 FLIP 을 걸어도 되는 종류인가.**
- *
- * FLIP 은 "같은 것들이 자리를 바꿨다"를 그리는 기법이다. 패가 들어오거나 나가는 변화에
- * 걸면 Flip 이 사라진 요소의 상태를 남은 요소에 뒤집어씌우면서 이상한 일이 벌어진다 —
- * 실제로 국 전환 중 잠깐 접힌 손패의 크기가 다음 국 패에 박혔다.
- *
- * 그래서 **집합이 완전히 같고 순서만 다를 때만** 건다. 뽑기·버리기·후로는 각자 전용
- * 연출이 있으므로(`drawTile` · `discardTile` · `meldTiles`) 이쪽에 기댈 필요가 없다.
- */
-export function isPureReorder(prev: readonly number[], next: readonly number[]): boolean {
-  if (prev.length !== next.length || prev.length === 0) return false;
-  const a = [...prev].sort((x, y) => x - y);
-  const b = [...next].sort((x, y) => x - y);
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  // 순서까지 같으면 움직일 것이 없다
-  return prev.some((v, i) => v !== next[i]);
-}
-
+/** 캡처해 둔 상태로 재생한다 (`captureHand` 와 짝) */
 export function playHand(state: Flip.FlipState | null, hand: Element | null): void {
   if (state === null || !alive(hand)) return;
   runHandFlip(hand, state);
@@ -224,6 +261,14 @@ export function throwTile(
   opts: { duration?: number; onComplete?: () => void } = {},
 ): void {
   if (!alive(el) || !alive(target)) {
+    opts.onComplete?.();
+    return;
+  }
+  /*
+   * 끄면 **즉시 도착**한다 — `onComplete` 는 반드시 부른다.
+   * 이 연출은 끝날 때 상태를 바꾸는 호출부가 있으므로(전달형), 안 부르면 게임이 멈춘다.
+   */
+  if (!fxEnabled()) {
     opts.onComplete?.();
     return;
   }

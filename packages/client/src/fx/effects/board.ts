@@ -36,11 +36,18 @@ export function shakeBoard(
 }
 
 /**
- * 화면 섬광 — 아주 짧게 밝아진다.
+ * 섬광 불투명도 **상한**. 호출부가 더 큰 값을 줘도 여기서 잘린다.
  *
- * 흰 화면을 덮는 것은 광과민 위험이 있어 **불투명도 상한을 낮게** 잡았다(0.24).
- * 24_FX_LAB 의 `flash()` 는 0.9까지 갔는데 그건 랩이라 가능했던 값이다.
+ * 흰 화면을 덮는 것은 광과민 위험이 있다. 24_FX_LAB 의 `flash()` 는 0.9까지 갔는데
+ * 그건 실험실이라 가능했던 값이다.
+ *
+ * ⚠ 예전에는 기본값 0.24 · 상한 0.35 였는데 주석은 "상한 0.24"라고 적고 있었다.
+ *   광과민 안전을 말하는 문장의 숫자가 틀리면, 다음 사람이 0.35 를 넣고도 "상한
+ *   안"이라고 믿는다. 기본과 상한을 **같은 값 하나**로 합쳐 어긋날 자리를 없앤다.
  */
+const FLASH_PEAK = 0.24;
+
+/** 화면 섬광 — 아주 짧게 밝아진다. 불투명도는 `FLASH_PEAK` 로 잘린다. */
 export function flashBoard(
   host: Element | null,
   opts: { color?: string; peak?: number; duration?: number } = {},
@@ -53,7 +60,7 @@ export function flashBoard(
   const kill = spawnFx(host, el, 2000);
   gsap
     .timeline({ onComplete: kill })
-    .to(el, { opacity: Math.min(opts.peak ?? 0.24, 0.35), duration: 0.06, ease: "power2.out" })
+    .to(el, { opacity: Math.min(opts.peak ?? FLASH_PEAK, FLASH_PEAK), duration: 0.06, ease: "power2.out" })
     .to(el, { opacity: 0, duration: (opts.duration ?? 0.34) - 0.06, ease: "power2.in" });
 }
 
@@ -76,11 +83,13 @@ export function ringAt(
   el.style.cssText = `position:absolute; left:${x}px; top:${y}px; width:${size}px; height:${size}px;
     margin:${-size / 2}px 0 0 ${-size / 2}px; border-radius:50%; pointer-events:none; z-index:55;
     border:2px solid ${opts.color ?? "rgba(200,162,74,.9)"};`;
-  const kill = spawnFx(host, el, 3000);
+  const dur = opts.duration ?? 0.62;
+  // 제거 보험은 애니메이션 길이에서 유도한다 — 고정값(3초)이면 긴 파문이 도중에 지워진다
+  const kill = spawnFx(host, el, dur * 1000 + 500);
   gsap.fromTo(
     el,
     { scale: 0.25, opacity: 0.9 },
-    { scale: 1, opacity: 0, duration: opts.duration ?? 0.62, ease: "power2.out", onComplete: kill },
+    { scale: 1, opacity: 0, duration: dur, ease: "power2.out", onComplete: kill },
   );
 }
 

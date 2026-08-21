@@ -15,7 +15,7 @@
  * **그래서 판을 가로지르는 이동은 전부 이 파일을 지난다.** 직접 `getBoundingClientRect()`
  * 로 빼서 쓰지 않는다 — 그 순간 8.5px 이 돌아온다.
  */
-import { gsap, MotionPathPlugin } from "./setup";
+import { MotionPathPlugin } from "./setup";
 
 /**
  * `from` 을 `to` 위로 정확히 옮기려면 얼마나 움직여야 하는가 (from 의 로컬 좌표계 기준).
@@ -32,28 +32,6 @@ export function deltaTo(
   toOrigin: [number, number] = [0.5, 0.5],
 ): { x: number; y: number } {
   return MotionPathPlugin.getRelativePosition(from, to, fromOrigin, toOrigin);
-}
-
-/**
- * 한 요소를 다른 요소 자리로 **날려 보낸다** (되돌아오지 않는다).
- *
- * 후로처럼 "손에서 빠져나와 저쪽에 앉는" 동작의 기본형. 실제 DOM 이동은 호출부가
- * `onComplete` 에서 한다 — 연출은 눈을 옮겨 줄 뿐이고, 상태는 여전히 React 가 소유한다.
- */
-export function flyTo(
-  el: Element,
-  target: Element,
-  opts: { duration?: number; ease?: string; scale?: number; onComplete?: () => void } = {},
-): gsap.core.Tween {
-  const d = deltaTo(el, target);
-  return gsap.to(el, {
-    x: `+=${d.x}`,
-    y: `+=${d.y}`,
-    ...(opts.scale !== undefined ? { scale: opts.scale } : {}),
-    duration: opts.duration ?? 0.32,
-    ease: opts.ease ?? "power3.out",
-    ...(opts.onComplete !== undefined ? { onComplete: opts.onComplete } : {}),
-  });
 }
 
 /**

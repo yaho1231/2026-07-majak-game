@@ -64,8 +64,27 @@ describe("연출 — 건너뛸 수 있고, 화면 효과를 끄면 짧아진다"
   });
 
   it("CSS의 --prod-ttl도 줄어든 값을 받는다 (연출 길이와 체류가 어긋나지 않게)", () => {
+    // 날것의 ttl 을 넣으면 안 된다 — 설정으로 줄인 값이어야 한다.
     expect(APP).not.toContain('"--prod-ttl": `${activeProd.ttl}ms`');
-    expect([...APP.matchAll(/"--prod-ttl": `\$\{prodTtl\}ms`/g)].length).toBe(2);
+    /*
+     * 2026-08-22 — 넣는 값이 `prodTtl` 에서 `prodTtlAnim` 으로 바뀌었다. **가드를 푼 것이
+     * 아니라 불변식이 하나 늘었다.**
+     *
+     * `--prod-ttl` 은 `.cutin`/`.riichi-stage` 가 자기 자신에게 거는 `prod-out` 의
+     * 지연으로 쓰이는데, 이제 그 요소의 CSS 애니메이션은 `applyProdSpeed` 로 재생 속도가
+     * `1/prodSpeed` 배가 된다. 즉 이 값은 **실시간이 아니라 애니메이션 시간축**이다.
+     * 실시간 `prodTtl` 을 그대로 넣으면 길이가 두 번 줄어, 0.35× 에서 컷인이 0.2초 만에
+     * 사라지고 **빈 화면을 0.3초 더 보게 된다**(체류의 61%).
+     */
+    expect([...APP.matchAll(/"--prod-ttl": `\$\{prodTtlAnim\}ms`/g)].length).toBe(2);
+    // 그리고 그 값은 반드시 `prodTtl` 을 배수로 나눈 것이어야 한다.
+    expect(APP).toMatch(/const prodTtlAnim = Math\.round\(prodTtl \/ \(settings\.prodSpeed/);
+  });
+
+  it("임팩트 지연도 연출 속도를 받는다 (글자와 흔들림이 어긋나지 않게)", () => {
+    // 모션은 applyProdSpeed 로 빨라지는데 지연만 실시간이면 0.35× 에서 150ms 어긋난다.
+    const body = APP.slice(APP.indexOf("const imp = prod.impact;"));
+    expect(body.slice(0, 900)).toMatch(/\(speed > 0 \? speed : 1\)/);
   });
 });
 

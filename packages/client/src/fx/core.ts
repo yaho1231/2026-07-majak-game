@@ -10,45 +10,13 @@
  *   → 설정을 끄면 **아예 안 그린다.**
  *
  * **전달(essential)** — 패가 손에서 바닥으로 간다, 점수가 이 사람에게서 저 사람에게 간다.
- *   → 설정을 꺼도 **끝 상태는 반드시 만든다.** 다만 즉시 끝낸다.
- *   움직임을 뺀다는 것이 "무슨 일이 있었는지 모르게 한다"는 뜻은 아니다.
+ *   → 설정을 꺼도 **끝 상태는 반드시 남는다.** 다만 우리 연출의 경우 끝 상태를 만드는
+ *   것은 대개 React 다(패는 이미 제자리에 그려져 있다). 그래서 "즉시 끝낸다"는 실무적으로
+ *   "그냥 안 그린다"가 된다 — 정보는 하나도 잃지 않는다.
+ *   상태를 바꾸는 콜백이 걸린 연출만 예외로 `onComplete` 를 반드시 부른다.
  */
 import { gsap } from "./setup";
-import { fxEnabled, prodTimeScale } from "./settings";
-
-export interface FxTimelineOpts {
-  /**
-   * 연출 큐에 서는 것인가(컷인·배너). true 면 `prodSpeed` 재생 배수가 걸린다.
-   * 판 위의 일상 동작(타패·정렬)에는 걸지 않는다 — 게임 전체가 조급해진다.
-   */
-  prod?: boolean;
-  /**
-   * 정보를 나르는 연출인가. true 면 설정을 꺼도 **끝 상태까지 간다**(즉시).
-   * false(기본)면 설정을 껐을 때 아무것도 안 만든다.
-   */
-  essential?: boolean;
-  onComplete?: () => void;
-}
-
-/**
- * 연출용 타임라인.
- *
- * 반환값은 항상 타임라인이다 — 설정이 꺼져 있어도 `null` 을 돌려주지 않는다.
- * 호출부가 `?.` 로 도배되는 것을 막으려는 것이고, 더 중요하게는 **`onComplete` 에 걸어 둔
- * 상태 변경이 설정과 무관하게 반드시 실행되게** 하려는 것이다.
- */
-export function fxTimeline(opts: FxTimelineOpts = {}): gsap.core.Timeline {
-  const tl = gsap.timeline({
-    ...(opts.onComplete !== undefined ? { onComplete: opts.onComplete } : {}),
-  });
-  if (opts.prod === true) tl.timeScale(prodTimeScale());
-  if (!fxEnabled()) {
-    // 정보를 나르는 것은 끝까지 간다. 장식은 여기서 사실상 없던 일이 된다.
-    // (둘 다 타임라인은 살아 있으므로 onComplete 는 정상적으로 불린다.)
-    tl.timeScale(opts.essential === true ? 1000 : 100000);
-  }
-  return tl;
-}
+import { fxEnabled } from "./settings";
 
 /**
  * 장식 연출을 그릴 수 있는가 — 그릴 수 없으면 호출부가 **일찍 반환**한다.

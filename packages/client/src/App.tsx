@@ -3225,6 +3225,24 @@ export function App(): JSX.Element {
   // 화면 효과를 끈 사람에게 파티클만 빼고 **기다림은 그대로** 물리는 건 말이 안 된다
   // ("효과 끄기"를 누른 이유가 대개 기다림이다). 밴드·글자는 남기되 체류를 절반 아래로 줄인다.
   const prodTtl = effectiveProdTtl(activeProd?.ttl ?? 0, settings.screenFx, settings.prodSpeed);
+  /*
+   * ⚠ `--prod-ttl` 은 **실시간(ms)이 아니라 애니메이션 시간축 값**이다.
+   *
+   * `.cutin` / `.riichi-stage` 는 자기 자신에게
+   *   `animation: prod-out 0.16s ... calc(var(--prod-ttl) - 0.16s) forwards`
+   * 를 걸어 마지막 0.16초에 페이드아웃한다. 그런데 우리가 `applyProdSpeed` 로 그 요소의
+   * 애니메이션 **재생 속도**를 `1/speed` 배로 올리므로, 애니메이션 시간축의 값은
+   * 실시간으로 `× speed` 만큼 **짧아진다.**
+   *
+   * `prodTtl`(제거 타이머가 쓰는 실시간)을 그대로 넣으면 길이가 **두 번** 줄어든다 —
+   * 0.35× 에서 컷인이 0.2초 만에 사라지고 **빈 화면을 0.3초 더 바라보게 된다**(전체의 61%).
+   * 이건 2단계에서 고쳤다는 그 증상("밴드가 다 들어오기 전에 잘렸다")이 형태만 바꿔
+   * 되돌아온 것이다.
+   *
+   * 그래서 배수로 나눠 넣는다: 페이드가 애니메이션 시간축 `prodTtl/speed` 에 끝나면
+   * 실시간으로는 정확히 `prodTtl` — 제거 타이머와 같은 순간이다.
+   */
+  const prodTtlAnim = Math.round(prodTtl / (settings.prodSpeed > 0 ? settings.prodSpeed : 1));
 
   // 현재 연출을 ttl 동안 띄우고, 뜨는 순간 효과음을(연출당 정확히 1회) 재생한 뒤 내린다.
   // 흔들림은 글자 슬램이 꽂히는 시점(임팩트)에 맞춰 지연 발동한다.
@@ -3272,7 +3290,14 @@ export function App(): JSX.Element {
       }
       const imp = prod.impact;
       if (imp !== undefined && settingsRef.current.screenFx) {
-        const delay = imp.delayMs ?? (prod.channel === "banner" ? BANNER_IMPACT_MS : CUTIN_IMPACT_MS);
+        /*
+         * 임팩트(글자가 꽂히는 순간)에 맞춰 흔든다. **연출 속도만큼 당겨야 한다** —
+         * 모션은 `applyProdSpeed` 로 빨라졌는데 이 지연만 실시간 그대로면, 0.35× 에서
+         * 글자는 80ms 에 꽂히고 화면은 230ms 에 흔들려 150ms 어긋난다.
+         */
+        const delay =
+          (imp.delayMs ?? (prod.channel === "banner" ? BANNER_IMPACT_MS : CUTIN_IMPACT_MS)) *
+          (speed > 0 ? speed : 1);
         timers.push(window.setTimeout(() => shakeTable(imp.shake), delay));
       }
       timers.push(
@@ -6062,7 +6087,7 @@ export function App(): JSX.Element {
         <div
           key={activeProd.key}
           className="riichi-stage"
-          style={{ "--prod-ttl": `${prodTtl}ms` } as CSSProperties}
+          style={{ "--prod-ttl": `${prodTtlAnim}ms` } as CSSProperties}
         >
           <div className="riichi-vignette" />
           <div className="riichi-band">
@@ -6102,7 +6127,7 @@ export function App(): JSX.Element {
           {...(activeProd.augId !== undefined
             ? { "data-aug-cat": augmentCategory(activeProd.augId) }
             : {})}
-          style={{ "--prod-ttl": `${prodTtl}ms` } as CSSProperties}
+          style={{ "--prod-ttl": `${prodTtlAnim}ms` } as CSSProperties}
         >
           {settings.screenFx && AUGMENT_CUTIN_TONES.has(activeProd.tone) ? (
             <>
@@ -16342,9 +16367,24 @@ function OwnArea(props: {
    *   `committing` 한 프레임 동안 트랜지션을 껐다 켜는 정교한 순서를 갖고 있다. 거기에
    *   FLIP 을 겹치면 두 애니메이션이 같은 요소를 두고 싸운다.
    */
+  /*
+   * ⚠ 비교는 **배열 식별자가 아니라 내용**으로 한다.
+   *
+   * StrictMode 는 렌더 함수를 두 번 부르고, 그때 `useMemo` 도 다시 돌아 `displayIds` 가
+   * **새 배열 객체**가 된다(내용은 같다). 식별자로 비교하면 2패스에서 "또 바뀌었다"로
+   * 읽혀 1패스에서 잡아 둔 상태를 null 로 덮어쓴다 — **dev 에서만 FLIP 이 조용히 안
+   * 도는** 형태가 된다(프로덕션 빌드에서는 돈다). 확인 경로가 dev 하나뿐이라 이게
+   * "왜 안 움직이지"로 이어진다.
+   *
+   * 국이 바뀌면(`roundKeyStr`) 강제로 다시 잡는다. `.own-hand` div 는 그 key 로 새로
+   * 마운트되는데 여기 ref 들은 살아남으므로, 옛 국에서 잡은 상태가 새 div 에 재생될
+   * 수 있다 — 패 id 는 국마다 재사용되므로(0~135) 확률이 0 이 아니다.
+   */
+  const handKey = `${roundKeyStr}|${displayIds.join(",")}`;
+  const lastHandKey = useRef(handKey);
   const lastHandIds = useRef<number[]>(displayIds);
   const handFlip = useRef<ReturnType<typeof captureHand>>(null);
-  if (lastHandIds.current !== displayIds) {
+  if (handKey !== lastHandKey.current) {
     /*
      * **순서만 바뀐 경우에만** 건다 (`isPureReorder`). 장수가 바뀌는 변화(뽑기·버리기·
      * 후로)에 FLIP 을 걸면 사라진 요소의 상태가 남은 요소에 옮겨붙는다 — 실제로 그렇게
@@ -16360,6 +16400,7 @@ function OwnArea(props: {
         ? captureHand(handRef.current)
         : null;
     lastHandIds.current = displayIds;
+    lastHandKey.current = handKey;
   }
   useLayoutEffect(() => {
     if (handFlip.current === null) return;

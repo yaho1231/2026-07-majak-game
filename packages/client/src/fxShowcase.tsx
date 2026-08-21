@@ -24,7 +24,7 @@ import { createRoot } from "react-dom/client";
  */
 import "./styles.css";
 import "./fxShowcase.css";
-import { applyFxSettings, gsap, type FxDemo, type FxStage } from "./fx";
+import { applyFxSettings, forceReducedMotion, gsap, type FxDemo, type FxStage } from "./fx";
 import { DEMOS } from "./fx/demos";
 
 const HAND_CODES = ["1m", "2m", "3m", "5m", "6m", "7m", "2p", "3p", "4p", "7s", "8s", "9s", "1z"];
@@ -52,6 +52,8 @@ function Showcase(): JSX.Element {
   const [screenFx, setScreenFx] = useState(true);
   const [prodSpeed, setProdSpeed] = useState(1);
   const [slow, setSlow] = useState(false);
+  /** OS 설정을 바꾸지 않고 "동작 줄이기"를 흉내 낸다 — 이게 없으면 접근성만 점검을 못 한다 */
+  const [reduce, setReduce] = useState(false);
   const [selected, setSelected] = useState<string>(DEMOS[0]?.id ?? "");
   const [lines, setLines] = useState<string[]>([]);
   const [handOrder, setHandOrder] = useState<string[]>(SORTED);
@@ -61,8 +63,9 @@ function Showcase(): JSX.Element {
   const [discards, setDiscards] = useState<string[]>(["9m", "1p", "5z", "6z"]);
 
   useEffect(() => {
+    forceReducedMotion(reduce ? true : null);
     applyFxSettings({ screenFx, prodSpeed });
-  }, [screenFx, prodSpeed]);
+  }, [screenFx, prodSpeed, reduce]);
 
   // 슬로우모션 — 기법을 눈으로 뜯어볼 때 쓴다. 24_FX_LAB 이 "연출을 고를 때 이게 제일
   // 유용하다"고 적어 둔 그 손잡이다. 전역 타임라인에 걸므로 점검 페이지 전용이다.
@@ -271,6 +274,16 @@ function Showcase(): JSX.Element {
           </div>
           <div className="sc-row">
             <label className="sw">
+              <input
+                type="checkbox"
+                checked={reduce}
+                onChange={(e) => setReduce(e.target.checked)}
+              />
+              동작 줄이기 흉내 (prefers-reduced-motion)
+            </label>
+          </div>
+          <div className="sc-row">
+            <label className="sw">
               <input type="checkbox" checked={slow} onChange={(e) => setSlow(e.target.checked)} />
               슬로우모션 0.25× (점검 전용)
             </label>
@@ -278,6 +291,9 @@ function Showcase(): JSX.Element {
           <p className="sc-hint">
             화면 효과를 끄면 <b>장식은 사라지고 정보는 남아야 한다</b> — 패가 어디로 갔는지는
             여전히 보여야 맞다. 그게 안 되면 그 연출은 잘못 분류된 것이다.
+            <br />
+            <b>동작 줄이기</b>는 OS 설정을 이긴다 — 켠 채로 전부 한 번씩 눌러 보면
+            움직이는 것이 남아 있는지 바로 보인다.
           </p>
         </section>
 

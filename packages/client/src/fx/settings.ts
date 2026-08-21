@@ -17,7 +17,6 @@
  * 소리·진동·상태 표시·글자는 그대로 나간다. 연출이 꺼져도 무슨 일이 일어났는지는
  * 여전히 알 수 있어야 한다.
  */
-import { gsap } from "./setup";
 
 export interface FxSettings {
   /** 화면 효과 — 흔들림·번쩍임·파티클 */
@@ -26,13 +25,20 @@ export interface FxSettings {
   prodSpeed: number;
 }
 
-let current: FxSettings = { screenFx: true, prodSpeed: 1 };
-let reduced = false;
-
 function readReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
+
+let current: FxSettings = { screenFx: true, prodSpeed: 1 };
+
+/**
+ * ⚠ **처음부터 읽어 둔다.** 기본값 `false` 로 두면, App 의 `useEffect` 가 처음 도는
+ * 순간까지 "동작 줄이기를 켠 사람"이 안 켠 것으로 취급된다. 그 창은 짧지만 손패 FLIP 은
+ * `useLayoutEffect` 라 passive effect 보다 **먼저** 돈다 — 순서상 뚫려 있는 구조다.
+ * 모듈이 로드될 때 한 번 읽는 비용은 0이고, 이 부류의 순서 버그를 통째로 없앤다.
+ */
+let reduced = readReducedMotion();
 
 /**
  * 지금 연출을 그려도 되는가.
@@ -54,23 +60,28 @@ export function fxSpeed(): number {
  *
  * ⚠ **`prodSpeed` 로 전역 타임라인을 건드리지 않는다.** 그러면 손패가 움직이는 속도까지
  * 같이 빨라져서, "컷인을 빨리 넘기고 싶다"는 요구가 "게임 전체가 조급해진다"로 번진다.
- * 배수는 **연출 큐에 서는 타임라인에만** 건다(`prodTimeScale()` 을 쓰는 쪽).
+ * 배수를 실제로 거는 곳은 `prodSpeed.ts` 의 `applyProdSpeed` 하나뿐이다 — 연출 요소의
+ * CSS 애니메이션 재생 속도를 직접 바꾼다.
  */
 export function applyFxSettings(next: FxSettings): void {
   current = next;
-  reduced = readReducedMotion();
+  reduced = forcedReduced ?? readReducedMotion();
 }
 
 /**
- * 연출(컷인·배너)에 걸 재생 배수.
+ * **점검용 강제 지정** — OS 설정을 바꾸지 않고 "동작 줄이기"를 흉내 낸다.
  *
- * `prodSpeed` 0.35 = "최소" 이므로 **더 빨리** 지나가야 한다 → timeScale 은 그 역수다.
- * 길이를 자르는 게 아니라 재생을 빠르게 하는 것이라, 처음부터 끝까지 다 보이되 짧게 끝난다 —
- * 예전에는 체류 시간만 줄여서 `.cutin-band`(0.34s 고정)가 **중간에 잘렸다**
- * (38_ANIMATION_LIBS §1-1).
+ * 점검 페이지에 이 손잡이가 없으면, 정작 **접근성을 검증해야 할 페이지에서 그것만
+ * 검증할 수 없다.** 실제로 QA 에서 "설정을 안 보는 연출"이 두 건 나왔는데 점검
+ * 페이지로는 발견할 방법이 없었다.
+ *
+ * `null` 이면 다시 OS 설정을 따른다. 게임에서는 아무도 부르지 않는다.
  */
-export function prodTimeScale(): number {
-  return 1 / fxSpeed();
+let forcedReduced: boolean | null = null;
+
+export function forceReducedMotion(v: boolean | null): void {
+  forcedReduced = v;
+  reduced = v ?? readReducedMotion();
 }
 
 /**
@@ -81,7 +92,8 @@ export function watchReducedMotion(onChange?: () => void): () => void {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
   const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
   const handler = (): void => {
-    reduced = mq.matches;
+    // 점검용 강제 지정이 걸려 있으면 OS 설정보다 그쪽이 이긴다
+    reduced = forcedReduced ?? mq.matches;
     onChange?.();
   };
   handler();

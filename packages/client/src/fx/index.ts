@@ -11,12 +11,12 @@ export {
   applyFxSettings,
   fxEnabled,
   fxSpeed,
-  prodTimeScale,
   watchReducedMotion,
+  forceReducedMotion,
   type FxSettings,
 } from "./settings";
-export { fxTimeline, canDecorate, alive, centerOf, spawnFx, type FxTimelineOpts } from "./core";
-export { deltaTo, flyTo, arcPath } from "./coords";
+export { canDecorate, alive, centerOf, spawnFx } from "./core";
+export { deltaTo, arcPath } from "./coords";
 export { applyProdSpeed } from "./prodSpeed";
 export { playCutIn, playBanner, playRiichiStage, type CutInSpec, type ProdTone } from "./effects/production";
 export { shakeBoard, flashBoard, ringAt, attention } from "./effects/board";
@@ -27,7 +27,8 @@ export {
   reflowHand,
   captureHand,
   playHand,
-  isPureReorder,
+  killHandFlip,
   throwTile,
 } from "./effects/tiles";
+export { isPureReorder } from "./reorder";
 export { type FxDemo, type FxFreq, type FxStage } from "./catalog";

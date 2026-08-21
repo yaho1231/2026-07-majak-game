@@ -18,7 +18,7 @@
  */
 import { applyProdSpeed } from "../prodSpeed";
 import { fxSpeed } from "../settings";
-import { spawnFx } from "../core";
+import { spawnFx, canDecorate } from "../core";
 
 
 /**
@@ -82,15 +82,33 @@ function buildCutIn(spec: CutInSpec, decorate: boolean): HTMLElement {
   }
   if (decorate && spec.tone === "yakuman") parts.push('<div class="cutin-ring cutin-ring-2"></div>');
   parts.push('<div class="cutin-band"></div>');
-  parts.push(
-    `<div class="cutin-body"><span class="cutin-text"${
-      spec.text.replace(/\s/g, "").length >= 4 ? ' data-long="1"' : ""
-    }>${spec.text}</span>${
-      spec.sub !== undefined ? `<span class="cutin-sub">${spec.sub}</span>` : ""
-    }</div>`,
-  );
   if (decorate && spec.tone === "yakuman") parts.push('<div class="cutin-flash"></div>');
   el.innerHTML = parts.join("");
+  /*
+   * ⚠ **글자는 `innerHTML` 로 넣지 않는다.**
+   *
+   * `text`·`sub` 에는 **플레이어 이름**이 들어온다(게임 쪽 컷인은 "하가 — 12000점"
+   * 처럼 이름을 싣는다). 템플릿 문자열로 박으면 이름에 태그를 넣은 사람이 다른
+   * 사람의 클라이언트에서 스크립트를 실행한다. 지금은 점검 페이지가 하드코딩
+   * 문자열만 넘겨서 안 터지지만, 연출 큐를 이 함수로 배선하는 순간 열린다 —
+   * 배선 전에 막아 두는 편이 싸다.
+   */
+  const body = document.createElement("div");
+  body.className = "cutin-body";
+  const text = document.createElement("span");
+  text.className = "cutin-text";
+  if (spec.text.replace(/\s/g, "").length >= 4) text.dataset.long = "1";
+  text.textContent = spec.text;
+  body.appendChild(text);
+  if (spec.sub !== undefined) {
+    const sub = document.createElement("span");
+    sub.className = "cutin-sub";
+    sub.textContent = spec.sub;
+    body.appendChild(sub);
+  }
+  // 밴드 뒤·섬광 앞에 들어가야 한다 (컷인 CSS 가 그 순서를 가정한다)
+  const flash = el.querySelector(".cutin-flash");
+  el.insertBefore(body, flash);
   return el;
 }
 
@@ -100,7 +118,12 @@ function buildCutIn(spec: CutInSpec, decorate: boolean): HTMLElement {
  * 게임에서는 React 가 같은 마크업을 그리고 연출 큐가 수명을 관리한다. 여기서는
  * 그 두 가지를 흉내 내되, **속도 적용만은 게임과 같은 함수**(`applyProdSpeed`)를 쓴다.
  */
-export function playCutIn(host: Element, spec: CutInSpec, decorate = true): HTMLElement {
+export function playCutIn(
+  host: Element,
+  spec: CutInSpec,
+  /** 장식 조각(광선·파문·섬광)을 그릴지. **기본값이 설정을 본다** — 호출부가 잊어도 새지 않는다 */
+  decorate = canDecorate(),
+): HTMLElement {
   const el = buildCutIn(spec, decorate);
   const ttl = spec.ttl ?? 1600;
   // 체류 시간도 속도 배수를 받는다 — 게임의 `effectiveProdTtl` 과 같은 방향.
@@ -109,7 +132,13 @@ export function playCutIn(host: Element, spec: CutInSpec, decorate = true): HTML
   return el;
 }
 
-/** 배너 — 컷인보다 가볍고 판을 덜 가린다 */
+/**
+ * 배너 — 컷인보다 가볍고 판을 덜 가린다.
+ *
+ * `decorate` 인자가 없는 것은 의도다: 배너에는 걷어낼 **장식 조각이 없다**(글자와
+ * 밴드뿐이다). 컷인의 광선·파문·섬광 같은 것이 없으므로 끌 것도 없다.
+ * 체류 시간과 재생 속도는 다른 연출과 똑같이 설정을 따른다.
+ */
 export function playBanner(
   host: Element,
   tone: ProdTone,
@@ -120,29 +149,48 @@ export function playBanner(
   const el = document.createElement("div");
   el.className = `banner banner-${tone}`;
   el.style.setProperty("--prod-ttl", `${ttl}ms`);
-  el.innerHTML =
-    `<span class="banner-text">${text}</span>` +
-    (sub !== undefined ? `<span class="banner-sub">${sub}</span>` : "");
+  // 글자는 textContent 로 — 이름이 실려 오는 자리다(위 buildCutIn 주석 참고)
+  const t = document.createElement("span");
+  t.className = "banner-text";
+  t.textContent = text;
+  el.appendChild(t);
+  if (sub !== undefined) {
+    const sEl = document.createElement("span");
+    sEl.className = "banner-sub";
+    sEl.textContent = sub;
+    el.appendChild(sEl);
+  }
   spawnFx(host, el, Math.max(400, ttl * fxSpeed()) + 400);
   speedUpSoon(el, fxSpeed());
   return el;
 }
 
 /** 리치 전용 무대 — 비네트 암전 + 붉은 밴드 + 천점봉 */
-export function playRiichiStage(host: Element, who: string, ttl = 1700): HTMLElement {
+export function playRiichiStage(
+  host: Element,
+  who: string,
+  ttl = 1700,
+  decorate = canDecorate(),
+): HTMLElement {
   const el = document.createElement("div");
   el.className = "riichi-stage";
   el.style.setProperty("--prod-ttl", `${ttl}ms`);
-  el.innerHTML = `
-    <div class="riichi-vignette"></div>
-    <div class="riichi-band">
+  /*
+   * 비네트 암전과 섬광은 **장식**이다 — 끄면 밴드와 글자만 남는다.
+   * `board.ts` 가 광과민 위험 때문에 섬광 상한을 낮춰 둔 것과 같은 이유로,
+   * 여기도 끌 수 있어야 한다. 리치가 걸렸다는 **정보**는 밴드가 전한다.
+   */
+  el.innerHTML =
+    (decorate ? '<div class="riichi-vignette"></div>' : "") +
+    `<div class="riichi-band">
       <div class="riichi-stick"><i class="riichi-stick-dot"></i></div>
-      <div class="riichi-body">
-        <span class="riichi-text">리치</span>
-        <span class="riichi-sub">${who}</span>
-      </div>
-    </div>
-    <div class="riichi-flash"></div>`;
+      <div class="riichi-body"><span class="riichi-text">리치</span></div>
+    </div>` +
+    (decorate ? '<div class="riichi-flash"></div>' : "");
+  const sub = document.createElement("span");
+  sub.className = "riichi-sub";
+  sub.textContent = who; // 이름이다 — innerHTML 로 넣지 않는다
+  el.querySelector(".riichi-body")?.appendChild(sub);
   spawnFx(host, el, Math.max(400, ttl * fxSpeed()) + 400);
   speedUpSoon(el, fxSpeed());
   return el;
