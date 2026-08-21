@@ -91,3 +91,52 @@ describe("fx/settings — 접근성 배선", () => {
     expect(settings).toMatch(/return current\.screenFx && !reduced;/);
   });
 });
+
+describe("연출 예산 — 자주 보이는 것에 세게 쓰지 않는다", () => {
+  const motion = readFileSync(join(FX, "motion.ts"), "utf8");
+  const app = readFileSync(join(HERE, "../src/App.tsx"), "utf8");
+
+  /**
+   * 2026-08-22 사용자 보고: "화면 흔들림이 너무 강해. 전체적으로 볼 때마다 어지러워."
+   *
+   * 처음에는 옛 CSS 키프레임의 변위를 그대로 옮겨 왔는데(최대 14px), 한 번 볼 때
+   * 적당한 세기와 한 국에 여러 번 겪을 때 견딜 수 있는 세기는 다르다. 연출을 만들 때는
+   * 앞의 것만 보게 되므로, 상한을 **숫자로 못 박아** 다음 사람이 슬금슬금 올리는 것을 막는다.
+   *
+   * ⚠ `amp` 는 실제 변위의 절반이다(CustomWiggle 이 구간을 넘어 진동한다 — 실측 ×1.95).
+   *   그래서 상한도 `amp` 기준으로 적는다.
+   */
+  const AMP_CAP = { 1: 0.5, 2: 1, 3: 2, 4: 3 } as const;
+
+  for (const [lv, cap] of Object.entries(AMP_CAP)) {
+    it(`흔들림 ${lv}단의 진폭이 ${cap} 이하다 (실측 변위 약 ${(cap * 1.95).toFixed(1)}px)`, () => {
+      const m = new RegExp(`${lv}: \\{ amp: ([\\d.]+),`).exec(motion);
+      expect(m, `SHAKE ${lv}단 정의를 못 찾았다`).not.toBeNull();
+      expect(Number(m?.[1])).toBeLessThanOrEqual(cap);
+    });
+  }
+
+  it("폰·치에는 흔들림을 걸지 않는다 (한 국에 여러 번 일어난다)", () => {
+    const at = app.indexOf("const callSfx = m.kind === \"chi\"");
+    expect(at).toBeGreaterThan(0);
+    const body = app.slice(at, at + 500);
+    // 깡만 흔든다 — pon 가지가 살아 있으면 안 된다
+    expect(body).toMatch(/isKan \? \{ impact: \{ shake: 1 as const \} \} : \{\}/);
+    expect(body).not.toContain('m.kind === "pon" ? { impact:');
+  });
+
+  it("유국은 흔들지 않는다 (아무도 화료하지 않은 사건이다)", () => {
+    const at = app.indexOf('msg.outcome === "draw" ? "유 국"');
+    expect(at).toBeGreaterThan(0);
+    expect(app.slice(at, at + 220)).not.toContain("impact");
+  });
+
+  it("매 순 일어나는 동작은 짧다 (한 국에 70순이 넘는다)", () => {
+    const tick = /tick: ([\d.]+),/.exec(motion);
+    const tile = /tile: ([\d.]+),/.exec(motion);
+    const layout = /layout: ([\d.]+),/.exec(motion);
+    expect(Number(tick?.[1])).toBeLessThanOrEqual(0.14);
+    expect(Number(tile?.[1])).toBeLessThanOrEqual(0.28);
+    expect(Number(layout?.[1])).toBeLessThanOrEqual(0.3);
+  });
+});

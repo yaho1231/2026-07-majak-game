@@ -191,10 +191,9 @@ export const DEMOS: FxDemo[] = [
     when: "폰·치·깡",
     freq: "가끔",
     intent:
-      "가장 자주 나오는 컷인이라 가장 짧고 가볍다. 여기가 길면 국이 통째로 늘어진다.",
+      "가장 자주 나오는 컷인이라 가장 짧고 가볍다. **흔들림은 없다** — 한 국에 여러 번 일어나는 일이라 그때마다 판이 떨면 국이 도는 내내 화면이 흔들린다. 무엇이 일어났는지는 글자와 소리가 이미 전한다.",
     play: (s) => {
       playCutIn(s.overlay, { tone: "pon", text: "폰", sub: "상가", call: true, ttl: 1050 }, canDecorate());
-      shakeBoard(s.table, 1);
     },
   },
   {
@@ -226,19 +225,20 @@ export const DEMOS: FxDemo[] = [
   {
     id: "shake-1",
     group: "판",
-    name: "흔들림 1 — 폰·치",
-    when: "가벼운 후로",
+    name: "흔들림 1 — 깡",
+    when: "깡 (도라가 늘어 판이 실제로 바뀐다)",
     freq: "가끔",
-    intent: "가장 약한 단계. 있는지 없는지 애매할 정도가 맞다 — 매 국 여러 번 일어난다.",
+    intent:
+      "가장 약한 단계(실측 약 1px). 있는지 없는지 애매할 정도가 맞다. 폰·치에는 **아예 안 넣는다** — 너무 자주 일어난다.",
     play: (s) => shakeBoard(s.table, 1),
   },
   {
     id: "shake-2",
     group: "판",
-    name: "흔들림 2 — 깡·리치",
-    when: "깡, 리치 선언",
+    name: "흔들림 2 — 리치·증강 발동",
+    when: "리치 선언, 증강 발동",
     freq: "가끔",
-    intent: "판이 한 번 흔들렸다는 것이 인지되는 최소 단계.",
+    intent: "판이 흔들렸다는 것이 인지되는 최소 단계(실측 약 2px).",
     play: (s) => shakeBoard(s.table, 2),
   },
   {
@@ -247,16 +247,17 @@ export const DEMOS: FxDemo[] = [
     name: "흔들림 3 — 론",
     when: "화료(론)",
     freq: "드묾",
-    intent: "국이 끝나는 사건. 앞의 두 단계와 확실히 구분돼야 한다.",
+    intent: "국이 끝나는 사건(실측 약 4px). 앞의 두 단계와 구분되되, 판을 흔들어 어지럽게 하지는 않는다.",
     play: (s) => shakeBoard(s.table, 3),
   },
   {
     id: "shake-4",
     group: "판",
     name: "흔들림 4 — 역만",
-    when: "역만, 큰 증강 발동",
+    when: "역만",
     freq: "희귀",
-    intent: "판에 한 번 있을까 한 사건. 여기에만 예산을 몰아준다.",
+    intent:
+      "가장 센 단계인데도 실측 약 6px 이다. 예전에는 14px 였고 그게 **볼 때마다 어지러웠다**(2026-08-22 사용자 보고). 흔들림은 '무언가 일어났다'는 신호지 사건 자체가 아니다 — 사건은 컷인 글자와 소리가 전한다.",
     play: (s) => shakeBoard(s.table, 4),
   },
   {

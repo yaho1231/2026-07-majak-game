@@ -4789,9 +4789,11 @@ export function App(): JSX.Element {
             ? playerNameById(prevViewRef.current, special.holder)
             : undefined,
           2200,
-          { sfx: sfx.draw, impact: { shake: 4 } },
+          // 유국 역만은 드물지만 "화료"가 아니다 — 역만 화료와 같은 세기로 흔들지 않는다
+          { sfx: sfx.draw, impact: { shake: 2 } },
         );
       } else {
+        // 유국은 아무 일도 일어나지 않은 것에 가깝다 — 흔들림 없이 배너만.
         showCutIn(msg.outcome === "draw" ? "유 국" : "도중 유국", "draw", undefined, 1300, {
           sfx: sfx.draw,
         });
@@ -5171,12 +5173,20 @@ export function App(): JSX.Element {
           // 부른 패(없으면 후로 첫 패)를 컷인에 함께 보여준다
           const calledId = m.calledTileId ?? m.tileIds[0];
           const calledKind = calledId !== undefined ? next.tiles[calledId]?.kind : undefined;
-          // 후로별 차등: 치(잦음)는 가볍고 짧게, 깡(희귀·묵직)은 흔들림까지
+          /*
+           * 후로별 차등: 치(잦음)는 가볍고 짧게, 깡(희귀·묵직)은 흔들림까지.
+           *
+           * ⚠ **폰·치는 흔들지 않는다.** 한 국에 여러 번 일어나는 일이라, 그때마다
+           * 판이 흔들리면 국이 도는 내내 화면이 떤다(2026-08-22 사용자 보고:
+           * "볼 때마다 어지럽다"). 무엇이 일어났는지는 컷인 글자와 소리가 이미
+           * 전하고 있다 — 흔들림까지 더할 이유가 없다.
+           * 깡은 도라가 늘어 판이 실제로 바뀌므로 가장 약한 단계만 남긴다.
+           */
           const callSfx = m.kind === "chi" ? sfx.callChi : isKan ? sfx.callKan : sfx.callPon;
           showCutIn(label, tone, who, isKan ? 1200 : 1050, {
             sfx: callSfx,
             ...(calledKind !== undefined ? { tiles: [calledKind] } : {}),
-            ...(isKan ? { impact: { shake: 2 as const } } : m.kind === "pon" ? { impact: { shake: 1 as const } } : {}),
+            ...(isKan ? { impact: { shake: 1 as const } } : {}),
           });
         }
       }
@@ -5195,6 +5205,7 @@ export function App(): JSX.Element {
         // 더한 패(마지막 패, 없으면 부른 패)를 컷인에 함께 보여준다
         const addedId = m.tileIds[m.tileIds.length - 1] ?? m.calledTileId;
         const addedKind = addedId !== undefined ? next.tiles[addedId]?.kind : undefined;
+        // 깡 — 가장 약한 단계. 도라가 늘어 판이 바뀌는 것은 컷인이 전한다.
         showCutIn("깡", "kan", who, 1200, {
           sfx: sfx.callKan,
           ...(addedKind !== undefined ? { tiles: [addedKind] } : {}),

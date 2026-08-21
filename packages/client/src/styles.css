@@ -1128,7 +1128,7 @@ button {
   position: relative;
   width: var(--rt-w);
   height: var(--rt-h);
-  animation: tile-in 0.28s var(--ease);
+  animation: tile-in 0.2s var(--ease);
   /* ⚠ 여기에 오버슈트 곡선(--ease-pop)을 주지 말 것.
      `tile-in` 키프레임이 이미 착지 스쿼시(1.08,0.9 → 0.97,1.03)를 하고 있어서,
      곡선까지 튀면 **이중으로 튄다.** 게임에서 가장 자주 도는 애니메이션이라
@@ -1183,12 +1183,16 @@ button {
   bottom: calc((var(--rt-h) - var(--rt-w)) / 2 + 2px);
 }
 
-/* 타패 슬램 — 위에서 내리꽂혀 착지 스쿼시(1.08, 0.9) 후 리바운드 (부피 보존) */
+/* 타패 착지 — 살짝 위에서 내려앉고 아주 얕게 눌렸다 펴진다.
+   ⚠ **매 순 일어나는 일이다** (한 국에 70순이 넘는다). 예전에는 1.45배 크기로
+   16px 위에서 내리꽂혔는데, 한 번 볼 때는 시원해도 한 국 내내 보면 판이 계속
+   튀는 것으로 읽힌다(2026-08-22 사용자 지적: 기본 동작의 연출을 줄일 것).
+   무엇이 일어났는지는 패가 그 자리에 놓였다는 사실이 이미 말한다 — 연출은
+   "방금 놓였다"만 거들면 된다. */
 @keyframes tile-in {
-  0% { transform: translateY(-16px) scale(1.45); opacity: 0; }
-  50% { transform: translateY(0) scale(1); opacity: 1; }
-  68% { transform: scale(1.08, 0.9); }
-  84% { transform: scale(0.97, 1.03); }
+  0% { transform: translateY(-6px) scale(1.12); opacity: 0; }
+  55% { transform: translateY(0) scale(1); opacity: 1; }
+  74% { transform: scale(1.03, 0.97); }
   100% { transform: scale(1, 1); }
 }
 
@@ -2910,7 +2914,7 @@ button {
    움직이지 않는다. 그래서 짧은 전환만으로 "새로 붙었다 / 빠져나갔다"가 읽힌다.
    fill-mode를 주지 않는 건 끝난 뒤 transform이 남으면 hover 들림을 덮기 때문. */
 .hand-drawn {
-  animation: hand-draw-in 0.19s ease-out;
+  animation: hand-draw-in 0.15s var(--ease);
 }
 
 /* 벌어짐 — **아직 손에 넣지 않은** 쯔모패(맨 끝에 있는 것)에만.
@@ -2922,8 +2926,10 @@ button {
   margin-left: calc(var(--hand-w) * 0.4);
 }
 
+/* 쯔모 — 매 순 일어나므로 "새로 붙었다"만 알리고 끝낸다.
+   예전에는 패 폭의 0.55배만큼 옆에서 12px 위로 날아 들어왔다. */
 @keyframes hand-draw-in {
-  from { transform: translateX(calc(var(--hand-w) * 0.55)) translateY(-12px); opacity: 0; }
+  from { transform: translateX(calc(var(--hand-w) * 0.22)) translateY(-4px); opacity: 0; }
   to { transform: translateX(0) translateY(0); opacity: 1; }
 }
 
