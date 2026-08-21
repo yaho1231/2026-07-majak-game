@@ -25,6 +25,7 @@ export {
   reflowHand,
   captureHand,
   playHand,
+  isPureReorder,
   throwTile,
 } from "./effects/tiles";
 export { type FxDemo, type FxFreq, type FxStage } from "./catalog";

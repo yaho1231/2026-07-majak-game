@@ -12,6 +12,7 @@ import type { FxDemo } from "./catalog";
 import { shakeBoard, flashBoard, ringAt, attention } from "./effects/board";
 import { drawTile, discardTile, meldTiles, reflowHand, throwTile } from "./effects/tiles";
 import { centerOf } from "./core";
+import { flushSync } from "react-dom";
 
 export const DEMOS: FxDemo[] = [
   // ─────────────────────────── 손패 ───────────────────────────
@@ -50,7 +51,14 @@ export const DEMOS: FxDemo[] = [
     intent:
       "지금은 순간이동한다. 마작에서 손패 순서는 곧 사고 과정이라, 어느 패가 어디로 갔는지 보이는 것이 곧 정보다. 총량 0.22초로 잡아 열세 장이어도 기다림이 안 생긴다.",
     play: (s) => {
-      reflowHand(s.hand, () => s.shuffleHand());
+      /*
+       * `flushSync` 가 필수다 — `reflowHand` 는 mutate 가 **끝나면 DOM 이 이미 바뀌어
+       * 있다**고 가정한다(FLIP 의 전제). React 의 setState 는 비동기라 그냥 부르면
+       * 아직 안 바뀐 DOM 을 두고 Flip 을 걸어 아무 일도 안 일어난다.
+       * 게임 쪽(`OwnArea`)은 렌더 단계에서 캡처하고 `useLayoutEffect` 에서 재생하는
+       * 다른 방식을 쓰므로 이 문제가 없다.
+       */
+      reflowHand(s.hand, () => flushSync(() => s.shuffleHand()));
       s.log("손패를 섞었다 — 다시 누르면 정렬로 돌아간다");
     },
   },
@@ -61,7 +69,7 @@ export const DEMOS: FxDemo[] = [
     when: "위와 같음 (정렬된 상태로 복귀)",
     freq: "가끔",
     intent: "같은 연출의 반대 방향. 두 방향이 같은 리듬인지 확인한다.",
-    play: (s) => reflowHand(s.hand, () => s.sortHand()),
+    play: (s) => reflowHand(s.hand, () => flushSync(() => s.sortHand())),
   },
   {
     id: "tile-meld",

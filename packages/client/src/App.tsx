@@ -13,7 +13,15 @@ import {
 } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { shakeBoard, applyFxSettings, watchReducedMotion, type ShakeLevel } from "./fx";
+import {
+  shakeBoard,
+  applyFxSettings,
+  watchReducedMotion,
+  captureHand,
+  playHand,
+  isPureReorder,
+  type ShakeLevel,
+} from "./fx";
 import type {
   AbortVoteMessage,
   ActionOption,
@@ -16287,6 +16295,46 @@ function OwnArea(props: {
     const added = sortTileIds(remaining, view.tiles);
     return drawnPending ? [...kept, ...added, drawnId] : [...kept, ...added];
   }, [isSpectator, autoSort, rawHand, manualOrder, drawnId, hasDrawn, view.tiles]);
+  /*
+   * ── 손패 재배치를 눈에 보이게 한다 (FLIP) ──
+   *
+   * 지금까지 손패 순서가 바뀌면 열세 장이 **순간이동**했다. 자동정렬을 켜는 순간이
+   * 특히 그렇다 — 무엇이 어디로 갔는지 눈이 못 따라간다. 마작에서 손패 순서는 곧
+   * 사고 과정이라, 그 이동이 보이는 것 자체가 정보다.
+   *
+   * FLIP 은 "바꾸기 **전에** 재고, 바꾼 뒤 원래 자리에서 새 자리로 미끄러뜨리는" 기법이다.
+   * `Flip.getState` 는 DOM 이 아직 옛 모습일 때 불려야 하므로 **렌더 단계에서** 잡는다
+   * (렌더 중 DOM 읽기는 직전 커밋 상태를 본다 — 안전하다).
+   *
+   * ⚠ **드래그 중에는 건드리지 않는다.** 드래그는 이미 자기 손으로 transform 을 걸고
+   *   `committing` 한 프레임 동안 트랜지션을 껐다 켜는 정교한 순서를 갖고 있다. 거기에
+   *   FLIP 을 겹치면 두 애니메이션이 같은 요소를 두고 싸운다.
+   */
+  const lastHandIds = useRef<number[]>(displayIds);
+  const handFlip = useRef<ReturnType<typeof captureHand>>(null);
+  if (lastHandIds.current !== displayIds) {
+    /*
+     * **순서만 바뀐 경우에만** 건다 (`isPureReorder`). 장수가 바뀌는 변화(뽑기·버리기·
+     * 후로)에 FLIP 을 걸면 사라진 요소의 상태가 남은 요소에 옮겨붙는다 — 실제로 그렇게
+     * 해서 손패가 통째로 2px 가 됐다. 그런 변화는 각자 전용 연출이 담당한다.
+     *
+     * 드래그 중에도 건너뛴다. 드래그는 이미 자기 손으로 transform 을 걸고 `committing`
+     * 한 프레임 동안 트랜지션을 껐다 켜는 정교한 순서를 갖고 있어, FLIP 을 겹치면
+     * 두 애니메이션이 같은 요소를 두고 싸운다.
+     */
+    const busy = dragRef.current !== null || committing;
+    handFlip.current =
+      !busy && isPureReorder(lastHandIds.current, displayIds)
+        ? captureHand(handRef.current)
+        : null;
+    lastHandIds.current = displayIds;
+  }
+  useLayoutEffect(() => {
+    if (handFlip.current === null) return;
+    playHand(handFlip.current, handRef.current);
+    handFlip.current = null;
+  });
+
 
   // 손패 배치를 서버에 올린다 — 다른 사람은 뒷면이지만 **자리는 이 배치 그대로** 보고,
   // 관전·투시로 공개되면 내가 실제로 쥔 순서가 보인다.
@@ -17300,6 +17348,18 @@ function OwnArea(props: {
                  * 집을 방법이 없었다.
                  */
                 data-kind={tileKind === undefined ? undefined : kindKey(tileKind)}
+                /*
+                 * FLIP 이 렌더 사이에 **같은 패를 같은 패로 알아보게** 하는 손잡이.
+                 *
+                 * 이게 없으면 GSAP 이 `auto-1`, `auto-2` … 를 자동으로 붙이는데, 그 번호는
+                 * **자식 순서로 매겨진다.** 손패는 매 순 장수와 순서가 둘 다 바뀌므로
+                 * 번호가 밀리고, 그러면 A 패의 옛 크기가 B 패에 적용된다. 실제로 그렇게
+                 * 해서 손패 열세 장이 전부 `width: 2px` 가 됐다(국 전환 중 잠깐 접혔던
+                 * 상태를 다른 패에 뒤집어씌운 것이다).
+                 *
+                 * 패 id 는 서버가 주는 고유 번호라 한 국 내내 변하지 않는다.
+                 */
+                data-flip-id={`t${id}`}
                 className={`hand-tile${clickable ? " hand-clickable" : " hand-locked"}${
                   armedTileId === id ? " hand-armed" : ""
                 }${

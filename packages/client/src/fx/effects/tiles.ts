@@ -107,7 +107,65 @@ export function meldTiles(tiles: (Element | null)[], slot: Element | null): void
  * 미끄러뜨린다. 조상에 `transform`(UI 배율)이 걸려 있어도 맞는다 — 그것이 GSAP `Flip`
  * 을 쓰는 이유다(38 §10-9 ②).
  *
- * @param mutate DOM 순서를 실제로 바꾸는 함수. 이 안에서 React 가 렌더해도 된다.
+ * ── ⚠ 뒤처리가 이 함수의 절반이다 ──
+ *
+ * Flip 은 애니메이션 동안 요소에 `width`/`height`/`min-*`/`max-*` 를 **px 로 박는다**
+ * (크기가 함께 변하는 일반적인 경우를 처리하기 위해서다). 정상 종료하면 지우지만,
+ * **끝나기 전에 다음 Flip 이 시작되면 그 값이 남는다.** 손패는 타패마다 재배치가
+ * 일어나므로 이 겹침이 늘 생긴다.
+ *
+ * 실제로 그렇게 됐다: 게임에서 두어 번 버린 뒤 손패 열세 장 전부에
+ * `width: 65.3px; min-width: 65.3px; max-width: 65.3px` 가 박혀 남았다. 우리 패 크기는
+ * 컨테이너 쿼리와 UI 배율에서 나오므로, 이게 박히면 **창을 줄이거나 배율을 바꿔도 패가
+ * 옛 크기 그대로 있는다.** 조용히 레이아웃이 깨지는 종류의 버그다.
+ *
+ * 그래서 ① 새 Flip 을 걸기 전에 이전 것을 죽이고 ② 끝나든 끊기든 박힌 값을 지운다.
+ */
+const PINNED = "width,height,minWidth,minHeight,maxWidth,maxHeight";
+
+/** 지금 돌고 있는 손패 Flip — 겹치면 앞의 것을 죽인다 */
+let handFlipTl: gsap.core.Timeline | null = null;
+
+function clearPinned(hand: Element): void {
+  gsap.set(hand.children, { clearProps: PINNED });
+}
+
+function runHandFlip(hand: Element, state: Flip.FlipState): void {
+  if (handFlipTl !== null) {
+    handFlipTl.kill();
+    clearPinned(hand);
+  }
+  const done = (): void => {
+    clearPinned(hand);
+    handFlipTl = null;
+  };
+  handFlipTl = Flip.from(state, {
+    duration: DUR.layout,
+    ease: EASE.move,
+    // 총량으로 잡는다 — 13장에 낱개 간격을 주면 정렬 한 번에 0.6초를 기다린다.
+    stagger: { amount: STAGGER.handTotal, from: "center" },
+    // 위치가 안 바뀐 패는 건드리지 않는다. 안 그러면 정렬할 때마다 열세 장 전부가
+    // 미세하게 떨려서 화면이 부산해진다.
+    prune: true,
+    /*
+     * **크기는 절대 건드리지 않는다.**
+     *
+     * 손패 재배치에서 패 크기는 변하지 않는다 — 자리만 바뀐다. 그런데 Flip 은 기본적으로
+     * 크기 변화를 `width`/`height` 로 처리하려고 요소에 px 를 박는데, 우리 패 크기는
+     * 컨테이너 쿼리와 UI 배율에서 나오므로 그게 박히는 순간 반응형이 죽는다.
+     * `scale: true` 는 크기 차이를 `scaleX/Y` 로 다루므로 **width 를 아예 안 만진다**
+     * (그리고 어차피 크기가 같으니 배율은 1이 되어 아무 일도 안 일어난다).
+     */
+    scale: true,
+    // 회전·기울임 계산도 건너뛴다. 손패는 평면 위에서 옆으로만 움직인다.
+    simple: true,
+    onComplete: done,
+    onInterrupt: done,
+  });
+}
+
+/**
+ * @param mutate DOM 순서를 실제로 바꾸는 함수.
  */
 export function reflowHand(hand: Element | null, mutate: () => void): void {
   if (!alive(hand)) {
@@ -116,36 +174,42 @@ export function reflowHand(hand: Element | null, mutate: () => void): void {
   }
   const state = Flip.getState(hand.children);
   mutate();
-  Flip.from(state, {
-    duration: DUR.layout,
-    ease: EASE.move,
-    // 총량으로 잡는다 — 13장에 낱개 간격을 주면 정렬 한 번에 0.6초를 기다린다.
-    stagger: { amount: STAGGER.handTotal, from: "center" },
-    // 위치가 안 바뀐 패는 건드리지 않는다. 안 그러면 정렬할 때마다 열세 장 전부가
-    // 미세하게 떨려서 화면이 부산해진다.
-    prune: true,
-  });
+  runHandFlip(hand, state);
 }
 
 /**
  * React 가 이미 렌더한 뒤에 FLIP 을 걸어야 할 때 쓰는 두 조각.
  *
  * `Flip.getState` 는 React 가 렌더하기 **전에** 불려야 하는데, 훅 안에서는 그 순간을
- * 잡기가 번거롭다. 렌더 직전에 `captureHand` 를 부르고 `useLayoutEffect` 에서
+ * 잡기가 번거롭다. 렌더 단계에서 `captureHand` 를 부르고 `useLayoutEffect` 에서
  * `playHand` 를 부르면 된다.
  */
 export function captureHand(hand: Element | null): Flip.FlipState | null {
   return alive(hand) ? Flip.getState(hand.children) : null;
 }
 
-export function playHand(state: Flip.FlipState | null): void {
-  if (state === null) return;
-  Flip.from(state, {
-    duration: DUR.layout,
-    ease: EASE.move,
-    stagger: { amount: STAGGER.handTotal, from: "center" },
-    prune: true,
-  });
+/**
+ * **이번 변화가 FLIP 을 걸어도 되는 종류인가.**
+ *
+ * FLIP 은 "같은 것들이 자리를 바꿨다"를 그리는 기법이다. 패가 들어오거나 나가는 변화에
+ * 걸면 Flip 이 사라진 요소의 상태를 남은 요소에 뒤집어씌우면서 이상한 일이 벌어진다 —
+ * 실제로 국 전환 중 잠깐 접힌 손패의 크기가 다음 국 패에 박혔다.
+ *
+ * 그래서 **집합이 완전히 같고 순서만 다를 때만** 건다. 뽑기·버리기·후로는 각자 전용
+ * 연출이 있으므로(`drawTile` · `discardTile` · `meldTiles`) 이쪽에 기댈 필요가 없다.
+ */
+export function isPureReorder(prev: readonly number[], next: readonly number[]): boolean {
+  if (prev.length !== next.length || prev.length === 0) return false;
+  const a = [...prev].sort((x, y) => x - y);
+  const b = [...next].sort((x, y) => x - y);
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  // 순서까지 같으면 움직일 것이 없다
+  return prev.some((v, i) => v !== next[i]);
+}
+
+export function playHand(state: Flip.FlipState | null, hand: Element | null): void {
+  if (state === null || !alive(hand)) return;
+  runHandFlip(hand, state);
 }
 
 /**
