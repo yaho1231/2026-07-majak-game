@@ -705,6 +705,16 @@ export class SiteDb {
     if (typeof password !== "string" || password.length < 8 || password.length > 72) {
       return "비밀번호는 8자 이상이어야 합니다";
     }
+    /*
+     * 공백만으로 이루어진 비밀번호를 거부한다 (QA 2차 auth §6).
+     *
+     * `"        "`는 위 길이 검사를 통과하고 숫자도 아니라 그대로 계정이 됐다 —
+     * 사실상 비밀번호가 없는 계정이다. 붙여넣기 사고로 만들어지기 쉽다.
+     * **비밀번호 자체를 trim하지는 않는다** — 그건 기존 계정을 깨뜨린다.
+     */
+    if (password.trim() === "") {
+      return "비밀번호는 공백만으로 이루어질 수 없습니다";
+    }
     // 온라인 무차별 대입 완화 — 숫자로만 이루어진(PIN) 비밀번호를 거부한다.
     if (/^\d+$/.test(password)) {
       return "숫자로만 이루어진 비밀번호는 사용할 수 없습니다";

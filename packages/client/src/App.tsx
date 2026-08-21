@@ -3973,6 +3973,32 @@ export function App(): JSX.Element {
     if (msg.type === "error") {
       // 주의: 이 콜백은 마운트 시 소켓에 고정된 클로저라 state 값(view/auth 등)은
       // 스테일하다. 판단은 반드시 live ref(activeRoomRef 등)나 setter로만 한다.
+      /*
+       * 중복 확인은 **답이 없을 수 있다** (QA 2차 auth §4).
+       *
+       * 서버는 `RATE_LIMITED`·`NO_DB`·`INTERNAL`이면 `usernameCheck`를 아예 보내지
+       * 않는다. 그러면 버튼은 `disabled` «확인 중…»에 영원히 갇히고, 닉네임을
+       * 고쳤다 되돌려도 같은 문자열이라 그대로다 — 새로고침만이 답이었다.
+       * 어떤 오류든 왔으면 기다림은 끝난 것이므로 여기서 푼다.
+       */
+      setNameCheck((cur) => (cur?.state === "checking" ? null : cur));
+      /*
+       * 세션이 회수됐다 — 비밀번호 변경·「다른 기기에서 로그아웃」이 이 연결을
+       * 끊은 것이다. 만료(`TOKEN_INVALID`)와 뒤처리가 같다: 죽은 토큰을 버리고
+       * 로그인 화면으로 정리한다. 안 그러면 곧 닫힐 소켓 위에서 홈이 잠깐 살아
+       * 있는 것처럼 보인다.
+       */
+      if (msg.code === "SESSION_REVOKED") {
+        safeStorage.removeItem(SESSION_KEY);
+        activeRoomRef.current = null;
+        activeSpectateRef.current = null;
+        authedRef.current = false;
+        guestRef.current = false;
+        setAuth(null);
+        resetGameState();
+        showToast(msg.message, "info", 6000);
+        return;
+      }
       if (msg.code === "TOKEN_INVALID") {
         // 세션 만료(자동 로그인/재연결 실패) — 로그인 화면으로 정리
         safeStorage.removeItem(SESSION_KEY);
@@ -7273,6 +7299,12 @@ function AuthScreen(props: {
               value={username}
               maxLength={12}
               placeholder="게임에서 표시되는 이름"
+              /* 비밀번호 관리자가 이 폼을 알아보게 한다 (QA 2차 auth §5). 계정
+                 카드의 비밀번호 변경 칸은 이미 제대로 하고 있었는데 정작 로그인·
+                 가입 폼에만 없어서, 저장도 자동입력도 안 됐다. 이 제품에는
+                 비밀번호 재설정 경로가 없으므로 「기억할 수 있는 약한 비밀번호」로
+                 몰리는 것이 그대로 위험이다. */
+              autoComplete="username"
               onChange={(e) => setUsername(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
             />
@@ -7309,6 +7341,7 @@ function AuthScreen(props: {
           <input
             type="password"
             value={password}
+            autoComplete={tab === "register" ? "new-password" : "current-password"}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
           />
@@ -7342,6 +7375,7 @@ function AuthScreen(props: {
               <input
                 type="password"
                 value={password2}
+                autoComplete="new-password"
                 onChange={(e) => setPassword2(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
               />
@@ -7369,7 +7403,9 @@ function AuthScreen(props: {
               <input
                 value={adminCode}
                 placeholder="일반 가입은 비워두세요"
+                autoComplete="off"
                 onChange={(e) => setAdminCode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
               />
             </label>
           </>

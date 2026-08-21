@@ -1745,6 +1745,16 @@ export class RoomManager {
         const db = this.db;
         if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
         if (this.rateLimited(conn)) return;
+        // `register`/`login`과 같은 검사를 여기에도 건다. 없으면 비문자열이 그대로
+        // `scrypt`까지 내려가 `ERR_INVALID_ARG_TYPE`으로 던지고, 로그인한 연결이면
+        // 누구나 서버 로그에 스택 트레이스를 찍을 수 있다 (QA 2차 auth §7).
+        if (
+          typeof msg.currentPassword !== "string" ||
+          typeof msg.newPassword !== "string" ||
+          !withinAuthFieldLimit(msg.currentPassword, msg.newPassword)
+        ) {
+          return this.fail(conn, "PASSWORD_CHANGE_FAILED", "비밀번호 형식이 올바르지 않습니다");
+        }
         const userId = conn.user.id;
         void db
           .changePassword(userId, msg.currentPassword, msg.newPassword)
@@ -1755,6 +1765,13 @@ export class RoomManager {
             // 이 연결의 세션도 갈렸다 — 새 토큰을 쥐여 주지 않으면 다음 재연결에서
             // 자기 자신이 로그아웃된다.
             conn.sessionToken = res.sessionToken;
+            // 토큰만 죽이는 것으로는 남의 손에 있는 **열린 탭**이 안 끊긴다 —
+            // 회수가 목적인 기능이니 소켓까지 끊는다 (QA 2차 auth §1).
+            this.evictOtherSessions(
+              userId,
+              conn,
+              "비밀번호가 변경되어 이 기기의 로그인이 끊겼습니다",
+            );
             this.send(conn.ws, {
               type: "authOk",
               username: res.user.username,
@@ -1775,7 +1792,19 @@ export class RoomManager {
         }
         const db = this.db;
         if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
-        const removed = db.logoutOthers(conn.user.id, conn.sessionToken ?? "");
+        // 같은 자리의 `changePassword`와 같은 창을 태운다 — 요청 하나가 sessions
+        // COUNT 2회 + DELETE 1회다 (QA 2차 auth §7-b).
+        if (this.rateLimited(conn)) return;
+        const removedRows = db.logoutOthers(conn.user.id, conn.sessionToken ?? "");
+        // 세션 행을 지우는 것만으로는 이미 열려 있는 소켓이 안 끊긴다 (§1).
+        const closed = this.evictOtherSessions(
+          conn.user.id,
+          conn,
+          "다른 기기에서 로그아웃되었습니다",
+        );
+        // 문구는 **실제로 끊은 수**여야 한다. 저장된 세션이 없어도 열린 탭은 있을 수
+        // 있고(토큰 없이 살아 있던 연결), 그 반대도 있다.
+        const removed = Math.max(removedRows, closed);
         this.fail(
           conn,
           "SESSIONS_CLEARED",
@@ -2403,6 +2432,21 @@ export class RoomManager {
   }
 
   private applyAuth(conn: Conn, user: UserRow, sessionToken: string): void {
+    /*
+     * 게스트였던 연결이 계정으로 올라선다 — **게스트 표식을 반드시 내린다**
+     * (QA 2차 auth §2·§3).
+     *
+     * 안 내리면 라우터의 게스트 화이트리스트(`GUEST_ALLOWED_MESSAGES`)가 그대로
+     * 걸린 채 `authOk`만 정상으로 나가, 클라이언트는 홈을 그리는데 그 홈의 모든
+     * 카드가 `GUEST_FORBIDDEN`으로 거절당한다("로그인은 됐는데 아무것도 안 된다").
+     * 그리고 붙들고 있던 체험 판을 여기서 접지 않으면, 그 방은 `phase:"playing"`
+     * 이라 유휴 청소가 건너뛰어 `MAX_GUEST_ROOMS` 예산을 영구히 문다 — 16개가
+     * 차면 랜딩의 「바로 한 판」이 통째로 막힌다.
+     */
+    if (conn.guest) {
+      this.dropGuestRoom(conn);
+      conn.guest = false;
+    }
     // 재인증 방어 — 이미 인증돼 방/좌석을 가진 연결이 (같은/다른 신원으로) 다시
     // 로그인하면 이전 좌석 링크가 끊어져 대기실에 유령 좌석이 영구히 남는다.
     // 새 신원을 적용하기 전에 이전 좌석을 분리한다.
@@ -3728,6 +3772,40 @@ export class RoomManager {
     }
   }
 
+  /**
+   * 이 계정의 **다른 열린 연결**을 끊는다 — 비밀번호 변경·「다른 기기에서 로그아웃」의 실체.
+   *
+   * DB의 `sessions` 행만 지우는 것으로는 아무 일도 일어나지 않는다. `conn.user`는
+   * 인증할 때 한 번 캐시되고 다시 검증되지 않으므로(`evictUser` 주석이 적은 그
+   * 사실), **이미 열려 있는 소켓은 토큰이 죽은 뒤에도 계속 산다** — 침입자의 탭이
+   * 대국·리플레이·친구를, 계정이 관리자면 관리자 권한까지 그대로 쓴다. 화면은
+   * "끊었습니다"라고 단언하므로 회수했다고 믿게 만드는 것이 더 나쁘다
+   * (QA 2차 auth §1).
+   *
+   * `evictUser`와 달리 **좌석을 기권시키지 않는다.** 계정이 사라진 것이 아니라
+   * 세션만 갈린 것이라, 그 사람은 새 토큰으로 다시 들어올 수 있다. 소켓만 닫고
+   * 나머지는 평소의 접속 끊김 경로(`handleClose`)에 맡기면 좌석이 재접속용으로
+   * 남는다.
+   *
+   * @returns 실제로 끊은 연결 수
+   */
+  private evictOtherSessions(userId: number, keep: Conn, message: string): number {
+    let closed = 0;
+    for (const c of this.conns) {
+      if (c === keep || c.user?.id !== userId || c.guest) continue;
+      c.user = null;
+      c.sessionToken = null;
+      this.fail(c, "SESSION_REVOKED", message);
+      closed++;
+      try {
+        c.ws.close();
+      } catch {
+        /* 이미 닫힘 */
+      }
+    }
+    return closed;
+  }
+
   private sendReplayList(conn: Conn, user: UserRow): void {
     // 관리자는 모든 게임 리플레이를, 일반 사용자는 본인 참가 게임만 본다.
     const rows = user.isAdmin
@@ -4395,6 +4473,10 @@ export class RoomManager {
     if (room === undefined || seat === undefined || room.phase !== "playing") {
       return this.fail(conn, "GUEST_SESSION_GONE", "체험 대국이 이미 끝났습니다");
     }
+    // 이 연결이 **다른** 체험 판을 붙들고 있으면 먼저 접는다. 안 접으면 그 방이
+    // 유령("진행 중"이라 유휴 청소가 건너뛴다)으로 남아 손님 방 예산을 문다
+    // (QA 2차 auth §3). 돌아가려는 방 자신은 당연히 건드리지 않는다.
+    if (conn.guest && conn.room !== null && conn.room !== room) this.dropGuestRoom(conn);
     const user: UserRow = { id: GUEST_USER_ID, username: seat.nickname, isAdmin: false };
     conn.user = user;
     conn.guest = true;
