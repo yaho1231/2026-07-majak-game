@@ -10,10 +10,22 @@
 ## 확인하는 법
 
 ```bash
-npm run dev:client
+# ⚠ 반드시 **이 워크트리에서** 띄운다. 5173 은 다른 세션이 잡고 있을 수 있다
+#   (실제로 그래서 한동안 남의 체크아웃을 보며 "왜 내 CSS가 안 먹지" 했다).
+cd packages/client && npx vite --port 5179 --strictPort
 ```
-- 게임: <http://localhost:5173/>
-- **연출 점검 페이지: <http://localhost:5173/fx-showcase.html>** ← 모든 연출을 여기서 본다
+- 게임: <http://localhost:5179/>
+- **연출 점검 페이지: <http://localhost:5179/fx-showcase.html>** ← 모든 연출을 여기서 본다
+
+포트가 **517x** 여야 클라이언트가 `ws://localhost:3001` 을 자동으로 본다(`App.tsx` 의
+`serverUrl`). 대국까지 해 보려면 테스트 서버도 함께 띄운다 — **운영은 3011 이라 안 겹친다**:
+
+```bash
+cd packages/server && PORT=3001 DB_PATH=/tmp/majak-test.db npm run dev
+```
+
+⚠ 브라우저에 예전 서버 주소가 저장돼 있으면 계속 "재연결 중"만 뜬다:
+`localStorage.removeItem("majak.serverUrl")` 후 새로고침.
 
 **master 에 병합하지 않는다.** 사용자가 직접 확인하고 "본서버에 올려도 되겠다"고 판단한 뒤에 한다.
 

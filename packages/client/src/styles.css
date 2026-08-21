@@ -2888,8 +2888,16 @@ button {
    움직이지 않는다. 그래서 짧은 전환만으로 "새로 붙었다 / 빠져나갔다"가 읽힌다.
    fill-mode를 주지 않는 건 끝난 뒤 transform이 남으면 hover 들림을 덮기 때문. */
 .hand-drawn {
-  margin-left: calc(var(--hand-w) * 0.4);
   animation: hand-draw-in 0.19s ease-out;
+}
+
+/* 벌어짐 — **아직 손에 넣지 않은** 쯔모패(맨 끝에 있는 것)에만.
+   예전에는 `.hand-drawn` 자체에 붙어 있어서, 수동 정렬로 쯔모패를 손패 가운데로
+   끌어다 놓으면 그 자리에서 손패가 두 덩이로 갈라졌다 — 손에 넣었는데도 밖에 있는
+   것처럼 보였다. 레일 폭(.own-hand-rail width)은 이 여백을 늘 포함하므로, 넣은 뒤에는
+   오른쪽 끝에 그만큼 빈자리가 남을 뿐 손패 블록이 흔들리지 않는다. */
+.hand-drawn-tail {
+  margin-left: calc(var(--hand-w) * 0.4);
 }
 
 @keyframes hand-draw-in {

@@ -17371,6 +17371,21 @@ function OwnArea(props: {
                     : ""
                 }${
                   isDrawn ? " hand-drawn" : ""
+                }${
+                  /*
+                   * **벌어짐은 쯔모패가 아직 손패 끝에 떨어져 있을 때만** 준다.
+                   *
+                   * `.hand-drawn` 의 `margin-left`(0.4w)는 "이 패는 아직 손에 넣지 않은
+                   * 쯔모패다"를 뜻한다. 그런데 그 여백이 **패가 어디 있든** 따라다녀서,
+                   * 수동 정렬에서 쯔모패를 손패 가운데로 끌어다 놓으면 거기서 손패가
+                   * 두 덩이로 갈라졌다(2026-08-22 사용자 보고). 손에 넣었는데도 여전히
+                   * 밖에 있는 것처럼 보이는 셈이다.
+                   *
+                   * 자리로 판단한다: 맨 끝에 있으면 아직 안 넣은 것, 아니면 넣은 것.
+                   * 금빛 테두리(`.hand-drawn`)는 그대로 둔다 — "방금 뽑은 패"라는 정보는
+                   * 손에 넣은 뒤에도 쓸모가 있다(쯔모기리 판단).
+                   */
+                  isDrawn && idx === displayIds.length - 1 ? " hand-drawn-tail" : ""
                 }${freeDiscard !== undefined && discard === undefined ? " hand-free" : ""}${
                   drag?.id === id && drag.moved ? " hand-dragging" : ""
                 }${sealed ? " hand-sealed" : ""}${armable ? " hand-armable" : ""}${
