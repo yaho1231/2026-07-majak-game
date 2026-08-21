@@ -24,7 +24,7 @@ import { createRoot } from "react-dom/client";
  */
 import "./styles.css";
 import "./fxShowcase.css";
-import { applyFxSettings, type FxDemo, type FxStage } from "./fx";
+import { applyFxSettings, gsap, type FxDemo, type FxStage } from "./fx";
 import { DEMOS } from "./fx/demos";
 
 const HAND_CODES = ["1m", "2m", "3m", "5m", "6m", "7m", "2p", "3p", "4p", "7s", "8s", "9s", "1z"];
@@ -109,6 +109,17 @@ function Showcase(): JSX.Element {
         }),
       sortHand: () => setHandOrder(SORTED),
       reset: () => {
+        /*
+         * 연출이 남긴 인라인 스타일까지 지운다.
+         *
+         * 상태만 되돌리면 GSAP 이 걸어 둔 `transform` 이 남아 패가 엉뚱한 자리에
+         * 붙박이로 있는다. "판 초기화"가 진짜로 초기화가 아니면 점검을 이어갈 수 없다.
+         */
+        gsap.killTweensOf([hand, ...hand.children, table]);
+        gsap.set([hand, ...hand.children, table], { clearProps: "all" });
+        for (const el of hand.children) el.removeAttribute("style");
+        table.removeAttribute("style");
+        overlay.replaceChildren();
         setHandOrder(SORTED);
         setDiscards(["9m", "1p", "5z", "6z"]);
       },

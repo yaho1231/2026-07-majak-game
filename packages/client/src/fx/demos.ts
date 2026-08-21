@@ -12,6 +12,8 @@ import type { FxDemo } from "./catalog";
 import { shakeBoard, flashBoard, ringAt, attention } from "./effects/board";
 import { drawTile, discardTile, meldTiles, reflowHand, throwTile } from "./effects/tiles";
 import { centerOf, canDecorate } from "./core";
+import { gsap } from "./setup";
+import { DUR, EASE } from "./motion";
 import { playCutIn, playBanner, playRiichiStage } from "./effects/production";
 import { flushSync } from "react-dom";
 
@@ -96,7 +98,28 @@ export const DEMOS: FxDemo[] = [
     play: (s) => {
       const t = s.tiles()[0] ?? null;
       const seat = s.seats[0] ?? null;
-      throwTile(t, seat, { onComplete: () => s.log("도착 — 실제 게임에서는 여기서 상태가 바뀐다") });
+      throwTile(t, seat, {
+        onComplete: () => {
+          s.log("도착 — 실제 게임에서는 여기서 손패 상태가 바뀐다");
+          /*
+           * 점검 페이지에서는 **반드시 되돌린다.**
+           *
+           * 실제 게임이라면 도착과 동시에 그 패가 손패에서 빠지고 저쪽에 생긴다 —
+           * 남아 있는 것이 맞다. 하지만 여기는 상태가 바뀌지 않으므로, 안 돌려놓으면
+           * 패 한 장이 판 밖에 붙박이로 남아 **다음 연출을 점검할 수 없게 된다.**
+           * (실제로 21종을 연속 재생했더니 그렇게 됐다.)
+           */
+          if (t === null) return;
+          gsap.to(t, {
+            x: 0,
+            y: 0,
+            duration: DUR.panel,
+            ease: EASE.soft,
+            delay: 0.35,
+            clearProps: "transform",
+          });
+        },
+      });
     },
   },
 
