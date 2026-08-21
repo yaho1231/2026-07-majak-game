@@ -357,6 +357,24 @@ export function bidDiscard(
   const notenStake = read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   const tsumoOnly = read.menzen && !hasYakuNow(read);
   const quest = readDiscardQuest(read.view, read.me, read.wallLeft, read.valueOf({ plan }).points);
+  /*
+   * **이 한 장을 버려서 내가 후리텐이 되는가** (QA 2차 bot 확정 2).
+   *
+   * `bidRiichi`에는 이 검사가 있는데 평시 버림에는 아예 없었다. 그래서 론이
+   * 원천 봉쇄된 텐파이에도 론 배수(`value.ts` RON_MULTIPLIER = 2.2)가 그대로
+   * 붙어 화료 기대값을 1,000~1,300점(30~40%) 부풀려 셌다. 이 EV는 버림·리치·
+   * 후로·깡·증강 판단이 **전부 공유하는 축**이라(`bot/decide.ts`), 부풀림이 그
+   * 판단 전부를 함께 기울인다 — 실제로 나타나는 모습은 "후리텐 텐파이를 론 되는
+   * 텐파이로 착각해 그 손을 계속 민다"이다(위험패를 통과시키는 문턱이 낮아진다).
+   *
+   * 배관은 이미 다 있었다 — `winChanceOf`가 `tsumoOnly`를 받아 론 배수를 빼는
+   * 경로가 그대로 살아 있고, 여기서 그 값을 후보별로 채워 넣기만 하면 된다.
+   */
+  const myDiscards = new Set<string>();
+  for (const id of read.view.zones[`discards:${read.me}`]?.tileIds ?? []) {
+    const k = read.view.tiles[id]?.kind;
+    if (k !== undefined) myDiscards.add(kindKey(k));
+  }
 
   const scored: { c: Candidate; ev: number }[] = [];
   let best: Candidate | null = null;
@@ -364,9 +382,24 @@ export function bidDiscard(
   for (const c of cands) {
     const shape = shapes.get(kindKey(c.kind));
     if (shape === undefined) continue;
+    // 텐파이가 되는 후보에만 뜻이 있다 — 샹텐이 남은 손에는 대기 자체가 없다.
+    let selfFuriten = false;
+    if (shape.shanten === 0) {
+      const declKey = kindKey(c.kind);
+      const waits = winningKinds(
+        removeKinds(read.hand, [c.kind]),
+        read.meldCount,
+        undefined,
+        read.opts,
+      );
+      selfFuriten = waits.some((w) => {
+        const k = kindKey(w);
+        return k === declKey || myDiscards.has(k);
+      });
+    }
     const ev = lineEV(read, c, shape, plan, profile, {
       riichi: false,
-      tsumoOnly,
+      tsumoOnly: tsumoOnly || selfFuriten,
       notenStake,
       quest,
     });
@@ -428,7 +461,23 @@ export function bidRiichi(
     if (shape.waitTiles <= 0) continue;
     const rest = removeKinds(read.hand, [c.kind]);
     const waits = winningKinds(rest, read.meldCount, undefined, read.opts);
-    const furiten = waits.some((w) => myDiscards.has(kindKey(w)));
+    /*
+     * **선언패 자신도 세어야 한다** (QA 2차 bot 확정 1).
+     *
+     * `myDiscards`는 선언패가 바닥에 놓이기 **전**의 목록이라, 「커쯔에서 한 장
+     * 떼어 량면을 세우는」 흔한 선언에서 선언패가 곧 자기 대기인 경우를 구조적으로
+     * 못 봤다. 그 리치는 거는 순간 후리텐이라 국이 끝날 때까지 론이 안 된다 —
+     * 봉 1000점은 나갔고 손은 잠겼고 남는 건 쯔모뿐이다. 실측으로 리치 선언의
+     * 5.0%가 이 경우였고, 여섯 원형 전부 똑같이 걸었다.
+     *
+     * 아래의 「대기가 아주 넓고 저돌적이면 예외」 조항은 그대로 둔다 — 후리텐인 줄
+     * **알고** 쯔모만 노리는 리치는 성립하는 수다. 문제는 모르고 거는 것이었다.
+     */
+    const declKey = kindKey(c.kind);
+    const furiten = waits.some((w) => {
+      const k = kindKey(w);
+      return k === declKey || myDiscards.has(k);
+    });
     // 후리텐 리치는 쯔모밖에 없다. 대기가 아주 넓고 저돌적인 성격일 때만.
     if (furiten && !(shape.waitTiles >= 8 && profile.aggression > 0.6)) continue;
 
