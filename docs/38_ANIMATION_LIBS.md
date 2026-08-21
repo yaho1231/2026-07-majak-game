@@ -1,9 +1,10 @@
-# 38. 애니메이션 라이브러리 도입 분석 — anime.js v4 · react-spring
+# 38. 애니메이션 라이브러리 도입 분석 — anime.js v4 · react-spring · GSAP v3
 
-> 조사 대상: <https://animejs.com/documentation/> (v4 문서 전체) · <https://www.react-spring.dev> (v10 문서 전체)
-> 요청에 URL 세 개가 있었지만 앞의 둘이 같은 주소(animejs.com/documentation)라 **실제로는 두
-> 라이브러리**를 봤다. 세 번째로 다른 곳(motion.dev·GSAP 등)을 염두에 두셨다면 알려 주시면
-> 같은 형식으로 덧붙인다.
+> 조사 대상: <https://animejs.com/documentation/> (v4 문서 전체) · <https://www.react-spring.dev>
+> (v10 문서 전체) · <https://gsap.com/docs/v3/> (v3 문서 전체)
+>
+> 처음 두 곳을 먼저 조사했고(§1~§9), **GSAP은 나중에 덧붙였다(§10)**. GSAP을 넣고 나니
+> **§0의 결론이 바뀐다** — §10-5의 최종 비교표를 먼저 봐도 된다.
 
 이 문서는 "라이브러리를 넣자"는 제안서가 아니다. **지금 손으로 짜고 있는 것 중 무엇이
 라이브러리 기능과 1:1로 겹치는지**를 전부 대조하고, 겹치는 자리마다 바꿔서 실제로 나아지는
@@ -19,10 +20,14 @@
 | --- | --- |
 | **anime.js v4** | **넣을 값이 있다.** 우리 연출은 "타임라인 + 스태거 + SVG 속성 애니메이션 + 슬로우모션"이 핵심인데, 그 넷이 정확히 anime.js가 CSS `@keyframes`보다 잘하는 것이다. 특히 `fx-lab`의 `fx-core.js`가 손으로 만든 WAAPI 래퍼·속도 배율·취소 토큰은 anime.js의 `waapi.animate` / `engine.speed` / `scope.revert()`와 **기능이 같다**. |
 | **react-spring** | **부분적으로만.** 컷인·증강 연출 같은 *일회성 시네마틱*에는 안 맞는다(스프링은 "언제 끝나는지"를 정의하지 않는데 우리 연출 큐는 TTL이 생명이다). 대신 **손패 드래그·재정렬·타이머 게이지·점수 카운트업·목록 진입/이탈**처럼 *상태에 연동되는 상호작용*에는 지금 코드보다 확실히 낫다. |
-| **둘 다 안 넣어도 되는 곳** | 이미 잘 도는 CSS `@keyframes` 89종. 여기를 JS로 옮기면 순수 손해다(§9). |
+| **GSAP v3** | **§10에서 따로 다룬다. 판단이 바뀐다.** 2025년 4월부터 플러그인까지 전부 무료가 됐고, 우리가 "라이브러리 없이는 못 한다"고 적어 둔 것들(FLIP · 좌표계 변환 · 흔들림 이징 · 캔버스 물리 · 폰트 로드 후 재분할)을 **한 라이브러리 안에서** 덮는다. 대신 번들이 가장 무겁다. |
+| **셋 다 안 넣어도 되는 곳** | 이미 잘 도는 CSS `@keyframes` 89종. 여기를 JS로 옮기면 순수 손해다(§9). |
 
-**역할 분담 한 문장:** *anime.js는 "판 위에서 일어나는 사건"을, react-spring은 "손가락에 붙어
-있는 것"을 맡는다.*
+**역할 분담 한 문장(§1~§9 기준):** *anime.js는 "판 위에서 일어나는 사건"을, react-spring은
+"손가락에 붙어 있는 것"을 맡는다.*
+
+**⚠ 이 문장은 §10에서 수정된다.** GSAP 하나가 그 둘을 다 덮을 수 있고, 그러면 남는 질문은
+"역할을 어떻게 나누나"가 아니라 **"번들을 얼마까지 쓸 것인가"** 하나가 된다.
 
 ---
 
@@ -739,6 +744,8 @@ const 규칙완화 = (target, { 금지문구, 완화연출 }) =>
 
 ## 8. 도입 순서 — 각 단계가 독립적으로 값을 한다
 
+> ⚠ **GSAP을 포함해 다시 쓴 순서가 §10-7에 있다.** 아래는 anime.js + react-spring만 놓고 짠 원안이다.
+
 **0단계 · 랩에서만 (번들 영향 0)**
 `packages/client/public/`에 anime.js를 넣고 `fx-core.js`의 `anim()`을 `waapi.animate()`로,
 `setSpeed()`를 `engine.speed`로 바꾼다. 랩은 정적 파일이라 실패해도 게임에 영향이 없다.
@@ -775,6 +782,8 @@ pointermove마다 도는 전역 리렌더를 없앤다. **성능 이득이 가�
 
 ## 9. 하지 말 것
 
+> 9번부터는 §10-8에 이어진다(GSAP 관련).
+
 1. **기존 89개 `@keyframes`를 JS로 옮기지 마라.** `dora-shine`·`turn-pulse`·`aug-pill-usable-pulse`
    같은 **상시 반복 표시**는 CSS가 더 싸고, 메인 스레드를 안 쓰고, 이미 잘 돈다.
 2. **자주 일어나는 사건에 새 연출을 붙이지 마라.** 24_FX_LAB: *"스펙터클은 세 번째부터
@@ -793,6 +802,353 @@ pointermove마다 도는 전역 리렌더를 없앤다. **성능 이득이 가�
 
 ---
 
+---
+
+## 10. 추가 조사 — GSAP v3
+
+앞의 §1~§9를 쓴 뒤에 GSAP을 덧붙여 조사했다. **결론이 바뀌므로 따로 둔다.**
+바뀌는 이유는 하나다 — §1~§9에서 "이건 라이브러리 없이는 못 한다" 또는 "이게 이 교체의
+유일한 난관이다"라고 적어 둔 것들을, GSAP이 **전용 도구로 이미 갖고 있다.**
+
+### 10-1. 먼저 라이선스 — 2025년 4월부터 전부 무료다
+
+이게 판단의 전제라 먼저 적는다. **2025년 4월부터 GSAP과 모든 플러그인이 무료다**(Webflow 후원).
+예전에 유료(Club GreenSock) 회원 전용이던 **SplitText · MorphSVG · DrawSVG · Flip · Inertia ·
+ScrollSmoother 까지 전부 포함**이고, 상업적 사용도 무료다.
+
+⚠ **단, MIT가 아니다.** Webflow의 "Standard 'No Charge' GSAP License"라는 자체 라이선스이고,
+금지 조항이 하나 있다 — *"Webflow의 비주얼 애니메이션 빌더와 경쟁하는, 코드 없이 애니메이션을
+만드는 도구"*에 쓸 수 없다.
+
+> **우리에게 해당하는가: 아니다.** 우리는 마작 게임이지 애니메이션 저작 도구가 아니다.
+> 다만 저장소가 **MIT 계열 의존성만 쓰는 상태**라는 점은 기록해 둔다 — 정책적으로 걸린다면
+> 그 자체가 anime.js를 고를 이유가 된다(anime.js v4는 MIT).
+
+### 10-2. 코어 — anime.js와 겹치는 부분
+
+`gsap.to/from/fromTo/set` · `gsap.timeline()` · 이징(power1~4, back, bounce, circ, elastic,
+expo, sine, steps) · 스태거 · 키프레임 · 콜백 · `gsap.utils`.
+
+**타임라인 위치 파라미터**가 anime.js보다 한 겹 더 있다:
+`3`(절대) · `"+=1"` `"-=1"`(상대) · `"<"`(직전 것의 **시작**) · `">"`(직전 것의 **끝**) ·
+`"<1"`(직전 시작 +1초) · `">-0.5"`(직전 끝 -0.5초) · `"label"` · `"label+=1"`.
+
+> ⚠ **anime.js와 `<`의 뜻이 반대다.** anime.js에서 `'<'`는 *직전 것이 끝나는 지점*,
+> `'<<'`가 *직전 것이 시작하는 지점*이다. GSAP은 `"<"`가 시작, `">"`가 끝이다.
+> **두 라이브러리를 섞어 쓰면 여기서 반드시 사고가 난다** — §9-5(소유권을 요소 단위로
+> 나눈다)에 이 이유를 하나 더 얹는다.
+
+**타임라인 중첩**이 우리 구조에 맞다. §3-2에서 "거신병 5단 구성이 코드 구조가 된다"고
+적었는데, GSAP은 거기서 한 걸음 더 간다 — 단계마다 타임라인을 만들어 반환하는 함수를
+`master.add(buildIntro()).add(buildMain(), "+=0.5")`로 잇는다. **연출 하나가 함수 하나**가 된다.
+
+`gsap.globalTimeline.timeScale()` / `tl.timeScale()` → §1-1의 `prodSpeed` 결함 수정.
+`tl.seek()` `tl.progress()` `tl.reverse()` `tl.tweenTo()` → §5-11 리플레이 스크러빙.
+그리고 **타임라인 자체를 트윈할 수 있다**: `gsap.to(tl, { timeScale: 2, duration: 2 })` —
+연출이 *점점* 빨라진다. 배속 전환이 뚝 끊기지 않는다.
+
+**스태거 객체**: `{ each, amount, from: "start"|"center"|"edges"|"random"|"end"|인덱스,
+grid: [행,열] | "auto", axis, ease, repeat, yoyo }`.
+`grid: "auto"`가 **행·열을 실측해서 알아서 잡는다** — 카와(버림패)는 국이 진행되며 행 수가
+변하므로(§3-4에서 `grid: [6,4]`로 하드코딩했던 부분) 이쪽이 맞다.
+
+**`gsap.utils`**: `clamp` `distribute` `getUnit` `interpolate` `mapRange` `normalize` `pipe`
+`random(min,max,increment)` `selector` `shuffle` `snap` `splitColor` `toArray` `unitize`
+`wrap` `wrapYoyo` `checkPrefix`.
+`pipe()`로 체이닝한다: `gsap.utils.pipe(clamp(0,100), snap(5), quickTo(...))`.
+> anime.js의 `utils`와 대부분 겹친다. 다만 **`createSeededRandom`이 없다** — 리플레이
+> 재현성(§3-15)은 우리 `mulberry32`를 계속 쓰거나 `gsap.utils.random`에 시드를 물려야 한다.
+> **이건 anime.js가 이기는 드문 지점이다.**
+
+### 10-3. 플러그인 전수 → 적용처
+
+#### Flip — §3-7·§5-3의 FLIP을 이걸로 한다
+
+`Flip.getState(targets, { props })` → DOM 변경 → `Flip.from(state, {...})`.
+설정: `absolute` `absoluteOnLeave` `nested` `scale` `simple` `spin` `stagger` `prune`
+`props` `toggleClass` `targets` `onEnter` `onLeave` `fade`, 그리고 `data-flip-id`.
+
+anime.js의 `createLayout()`보다 **우리에게 중요한 것 세 개를 더 갖고 있다**:
+
+1. **`Flip.fit(a, b)`** — 요소 하나를 다른 요소의 자리·크기에 정확히 맞춘다.
+   §5-5의 "고른 드래프트 카드가 보유 알약 자리로 날아가 앉는다"가 이 함수 하나다.
+   후로 시 손패 → 멜드 자리도 같다.
+2. **`Flip.batch()`** — **React 대응 전용.** 문서가 "프레임워크에서 필수"라고 명시한다.
+   React가 리렌더하며 요소 인스턴스를 새로 만들기 때문에 `getState()`를 렌더 **전에**
+   불러야 하고, `Flip.from`에 `targets`를 명시해야 한다. **§3-7에서 걱정한 부분에 대한
+   공식 답이 이미 있다.**
+3. **`onEnter` / `onLeave`** — 들어오고 나가는 요소를 따로 처리한다.
+   §5-7·§5-8에서 "지금 퇴장 연출이 없다"고 적은 곳이 전부 여기로 들어온다.
+
+`spin`은 덤이지만 «자리 바꿈»·«손바닥 뒤집기»에 그대로 쓰인다.
+
+#### MotionPathPlugin — **§5-3의 "유일한 난관"에 대한 답**
+
+`motionPath: { path, align, alignOrigin, autoRotate, start, end, curviness, offsetX/Y }`.
+경로는 SVG `<path>`, path 문자열, **좌표 배열**(`[{x,y},...]`) 셋 다 된다.
+
+우리에게 결정적인 건 **헬퍼 메서드**다:
+
+- **`MotionPathPlugin.convertCoordinates()`** — 중첩된 transform을 가로질러 좌표를 변환한다.
+- **`MotionPathPlugin.getRelativePosition(a, b)`** — 두 요소 사이 x/y 거리를 **모든 중첩
+  transform을 감안해** 계산한다.
+- **`MotionPathPlugin.getGlobalMatrix()`** — 로컬 좌표 → 뷰포트 좌표 행렬.
+
+> **이게 `uiScale.ts` 문제의 정답이다.** §3-6·§5-3에서 "조상에 `transform: scale()`이 걸려
+> 있어 화면 좌표와 레이아웃 좌표가 두 벌이고, 이게 이 교체의 유일한 난관"이라고 적었다.
+> `App.tsx:6386`의 주석도 같은 말을 한다. **GSAP은 그 변환을 라이브러리 기능으로 갖고 있고,
+> anime.js에는 대응물이 없다.** 우리 `toLayoutPx()`가 손으로 하던 일이다.
+>
+> 그리고 `align: 요소`는 "중첩 transform과 무관하게 대상을 경로 위에 정확히 올린다"고
+> 문서가 직접 말한다 — 점수봉이 지불자 → 수령자로 날아가는 궤적(§5-6)처럼 **서로 다른
+> 좌표 문맥에 있는 두 요소를 잇는** 연출이 그제야 안전해진다.
+
+#### Draggable + InertiaPlugin — §5-3 손패 드래그
+
+`Draggable.create(el, { type: "x,y"|"x"|"rotation"|..., bounds, trigger, cursor,
+activeCursor, lockAxis, minimumMovement, dragResistance, edgeResistance, zIndexBoost,
+dragClickables, snap, liveSnap, inertia, throwResistance, maxDuration })`.
+콜백: `onPress` `onDragStart` `onDrag` `onDragEnd` `onRelease` `onThrowUpdate` `onThrowComplete`.
+속성: `this.x/y` `startX/Y` `endX/Y` `isPressed` `isThrowing` `pointerX/Y`.
+
+anime.js `createDraggable`과 대부분 겹치지만 **`liveSnap`이 우리 것과 정확히 같다**:
+드래그하는 *동안* 슬롯에 붙는다. 우리 `handDragTargetIdx` + `targetIdx` 상태가 하는 일이
+`liveSnap: { x: 슬롯중심배열 }` 한 줄이 된다. `minimumMovement`(기본 2px)는
+`HAND_DRAG_THRESHOLD`, `edgeResistance`는 §3-6에서 제안한 "버리기에 마찰을 준다"에 해당한다.
+
+`InertiaPlugin.getVelocity(target, "x")` — 던지듯 버리는 동작에서 속도를 읽어 세기를 정한다.
+
+#### SplitText — §3-8보다 우리 사정에 맞는다
+
+`type: "chars,words,lines"` · `mask: "lines"|"words"|"chars"` · **`autoSplit`** ·
+**`aria: "auto"|"hidden"|"none"`** · `charsClass`("char++"로 자동 번호) · **`propIndex`**
+(`--char: 3` 같은 CSS 변수를 각 조각에 넣는다) · `tag` · `deepSlice` · `smartWrap` ·
+`prepareText` · `onSplit` · `revert()`.
+
+세 가지가 anime.js `splitText`보다 낫다:
+
+1. **`autoSplit`** — **폰트가 로드된 뒤 자동으로 다시 쪼갠다.** 우리는 한글 웹폰트를 쓰므로
+   폰트 로드 전에 쪼개면 줄바꿈 위치가 어긋난다. 이게 없으면 컷인 글자가 첫 로드에서만 깨진다.
+2. **`mask`** — 조각마다 클리핑 상자를 하나 더 만든다. "밑에서 올라와 드러나는" 연출이
+   overflow 처리 없이 된다. 컷인 제목에 바로 쓴다.
+3. **`prepareText`** — 문서가 "띄어쓰기가 없는 언어"용이라고 명시한다. 우리 컷인 문구에는
+   «성립하지 않는 깡»처럼 **한글 + 한자 + 기호**가 섞인다 — 쪼개는 규칙을 여기서 손댈 수 있다.
+
+그리고 `aria: "auto"`가 **기본으로** 부모에 `aria-label`, 조각에 `aria-hidden`을 붙인다.
+접근성을 지키는 저장소에서 이건 "옵션"이 아니라 전제다.
+
+#### ScrambleTextPlugin — §3-8의 해독 연출
+
+`{ text, chars: "upperCase"|"lowerCase"|"XO"|커스텀, speed, delimiter(""|" "), tweenLength,
+newClass, oldClass, revealDelay, rightToLeft }`.
+
+> §3-8에 적은 적용처(«투시»·«선언 간파»·«천리안»·«수상한 주사위»·«일확천금»·«뚫린 천장»)가
+> 그대로 유효하다. **`delimiter: " "`로 단어 단위 해독**이 되는 게 추가 이점 — 대기패 이름처럼
+> "삼색동순" 같은 덩어리는 글자 단위로 풀리면 오히려 안 읽힌다.
+> ⚠ **`seed`가 없다.** 리플레이 재현성이 필요하면 우리가 문자열을 미리 만들어 넘겨야 한다.
+
+#### DrawSVG · MorphSVG · MotionPathHelper
+
+- **DrawSVG** — `stroke-dashoffset` 선 그리기. §3-9의 적용처(«핏빛 계약» 서명, «연금술사»
+  연성진, «무장해제» 균열, 점수 경로 14종) 그대로. dash 길이 계산을 대신해 준다.
+- **MorphSVG** — 도형 변형. «양극»·«손바닥 뒤집기» 배지, 증강 카테고리 아이콘 전환.
+  점 개수가 다른 path끼리도 알아서 맞춘다.
+- **MotionPathHelper** — 브라우저에서 경로를 **끌어서 편집**하고 코드를 뽑는다. 연출을
+  손으로 좌표 찍어 만드는 fx-lab 작업이 눈에 띄게 줄어든다(개발 도구, 배포엔 안 넣는다).
+
+#### Physics2DPlugin / PhysicsPropsPlugin — **캔버스 물리를 손으로 안 짜도 된다**
+
+`physics2D: { velocity, angle, gravity, acceleration, accelerationAngle, friction, xProp, yProp }`.
+
+> 24_FX_LAB의 캔버스 연출들이 손으로 짠 것이 정확히 이것이다 — «밥상 뒤엎기»(중력·회전),
+> «일확천금»(동전의 중력·바닥 반발·마찰), «개벽»(입자 내폭), «무장해제»(파편).
+> `xProp`/`yProp`로 `left`/`top`이나 임의 프로퍼티에 물릴 수 있어서, **캔버스 스프라이트
+> 객체에도 그대로 쓴다**(§3-10에서 anime.js의 JS 객체 애니메이션으로 하자고 한 것을
+> 물리 모델까지 포함해서 한다).
+> ⚠ 문서 주의: 물리 파라미터는 **도중에 바꿀 수 없고** 이징이 무시된다. 대신 되감기는 된다.
+
+#### CustomWiggle / CustomBounce / CustomEase — **화면 흔들림에 전용 도구가 있다**
+
+`CustomWiggle.create("myWiggle", { wiggles: 6, type: "easeOut"|"easeInOut"|"anticipate"|
+"uniform"|"random", amplitudeEase, timingEase })`, 또는 축약형 `ease: "wiggle(15)"` ·
+`ease: "wiggle({type: anticipate, wiggles: 8})"`.
+**세기는 트윈 값이 정한다** — `rotation: 30`이 `rotation: 10`보다 세게 흔들린다.
+
+> **이게 §5-1(초읽기 흔들림)과 §1의 `shake-1~4`에 대한 직접적인 답이다.**
+> 지금 우리는 흔들림 4단을 **키프레임 4벌**로 손으로 적어 놨다(`styles.css:503~`).
+> CustomWiggle이면 **한 이징에 세기만 바꿔** 4단이 나온다:
+> ```js
+> CustomWiggle.create("shake", { wiggles: 8, type: "easeOut" });
+> const AMP = { 1: 2, 2: 5, 3: 9, 4: 14 };   // 4단이 숫자 하나로 갈린다
+> gsap.fromTo(".table", { x: -AMP[level] }, { x: 0, duration: DUR[level], ease: "shake" });
+> ```
+> 그리고 `type: "anticipate"`가 있다 — **한 번 뒤로 당겼다가 터진다.** 론·역만처럼
+> "맞았다"를 표현하는 흔들림에는 이쪽이 맞다. 지금 키프레임으로는 표현이 안 되는 결이다.
+>
+> **CustomBounce**(`strength`, `endAtStart`, `squash`)는 24_FX_LAB이 못 박은 규칙 —
+> *"패가 물리적으로 부딪히는 순간에는 스쿼시를 남긴다"* — 의 `squash`가 **이름 그대로 있다.**
+> 타패 슬램·분열 스냅·발굴 상승이 이것이다.
+
+#### Observer — 입력 통합
+
+`Observer.create({ target, type: "wheel,touch,pointer", onUp/onDown/onLeft/onRight/onChange/
+onPress/onRelease/onDrag/onHover/onClick, tolerance, dragMinimum, lockAxis, preventDefault,
+ignore, debounce })`.
+
+> **적용:** 모바일 제스처. 지금 「누른 채로 게임판 보기」(`PeekButton`)·이모트·빠른 토글이
+> 각자 포인터 이벤트를 다룬다. 다만 **우리는 이미 잘 도는 입력 코드가 있고 오조작이
+> 치명적인 게임**이다(오타패 문제). **후순위** — 새 제스처를 만들 때만 쓴다.
+
+#### ScrollTrigger / ScrollSmoother / ScrollToPlugin
+
+> **§3-16·§4-11과 같은 판정: 대국 화면은 스크롤이 없다.** 도감·도움말·통계 한정.
+> ScrollSmoother(관성 스크롤)는 **쓰지 않는다** — 정보를 찾아 읽는 화면에서 스크롤이
+> 미끄러지면 방해다.
+
+#### GSDevTools — fx-lab의 속도 슬라이더를 대체한다
+
+타임라인 스크러버·재생 속도·루프를 화면에 띄우는 개발 도구.
+
+> 24_FX_LAB이 *"속도를 0.25×로 낮추면 기법이 눈에 보인다 — 연출을 고를 때 이게 제일
+> 유용하다"*고 적어 뒀는데, 그게 **완제품으로 있다.** 스크럽 바가 있어 특정 프레임으로
+> 바로 갈 수도 있다(우리 슬라이더는 배속만 된다). **배포 번들에는 넣지 않는다.**
+
+#### 안 쓰는 것
+
+Pixi · EaselJS(다른 렌더러) · CSSRulePlugin(의사요소 — 우리는 클래스 토글로 충분) ·
+ScrollSmoother · Parallax류.
+
+### 10-4. GSAP만 푸는 것 — §1~§9에서 "못 한다"고 적은 자리들
+
+| §1~§9에서 이렇게 적었다 | GSAP의 답 |
+| --- | --- |
+| §5-3 "조상 transform 좌표계가 **이 교체의 유일한 난관**" | `MotionPathPlugin.convertCoordinates` / `getRelativePosition` / `getGlobalMatrix` |
+| §3-7 "FLIP은 조상 transform 리스크가 있어 0단계 결과를 보고 결정" | `Flip.batch()`(React 전용) · `absolute` · `nested` · `targets` — 문서가 프레임워크 사례를 직접 다룬다 |
+| §5-5 "고른 카드가 보유 알약 자리로 날아가 앉는다" | `Flip.fit(a, b)` 한 줄 |
+| §1 흔들림 4단을 키프레임 4벌로 손으로 적음 | `CustomWiggle` — 세기 숫자 하나로 4단 · `anticipate` 타입은 아예 새 표현 |
+| 24_FX_LAB "패가 부딪히는 순간엔 스쿼시" | `CustomBounce`의 `squash` |
+| 24_FX_LAB 캔버스 중력·반발·마찰을 손으로 | `Physics2DPlugin` (`xProp`/`yProp`로 캔버스 객체에도) |
+| §3-8 컷인 글자 쪼개기 | `SplitText`의 `autoSplit`(**한글 웹폰트 로드 후 재분할**) · `mask` · `aria:"auto"` |
+| §5-7·§5-8 "지금 퇴장 연출이 없다" | `Flip`의 `onLeave` / `absoluteOnLeave` |
+| §7 reduced-motion을 CSS 11곳 + JSX 20여 곳에서 관리 | `gsap.matchMedia({ reduceMotion: "(prefers-reduced-motion: reduce)" })` — **한 곳** |
+| `mulberry32` 주석의 "StrictMode 이중 렌더" 걱정 | `useGSAP()` 훅이 **명시적으로** React 18 StrictMode 이중 호출을 다룬다 |
+| 24_FX_LAB "계열마다 공통 문장 하나를 정하고 변주만 갖는다" | `gsap.registerEffect({ name, effect, defaults, extendTimeline: true })` — 계열 문장이 **타임라인 메서드**가 된다 |
+| §5-3 드래그의 초당 60회 리렌더 | `gsap.quickTo()` — 고빈도 갱신 전용. `gsap.utils.pipe(clamp, snap, quickTo)` |
+
+#### `gsap.matchMedia()` — §7 접근성 배선의 정답
+
+```js
+const mm = gsap.matchMedia();
+mm.add({
+  isMobile:    "(max-width: 799px)",
+  reduceMotion:"(prefers-reduced-motion: reduce)",
+}, (ctx) => {
+  const { isMobile, reduceMotion } = ctx.conditions;
+  gsap.to(".table", { x: 0, duration: reduceMotion ? 0 : 0.42, ease: "shake" });
+  return () => { /* 조건이 풀리면 자동 되돌림 */ };
+});
+```
+**조건이 안 맞게 되는 순간 그 안에서 만든 것이 전부 되돌려진다.** §3-12에서 anime.js
+`scope.revert()`를 두고 "24_FX_LAB의 되돌림 버그를 구조적으로 막는다"고 적었는데,
+GSAP은 거기에 **미디어쿼리 조건까지** 묶는다. 우리는 `screenFx` 설정도 같이 물려야 하므로
+`mm.add()` 조건에 커스텀 상태를 넣기보다 `gsap.context()`를 하나 더 두고 설정 변경 시
+`revert()` 하는 편이 낫다.
+
+#### `useGSAP()` — React 통합
+
+```js
+gsap.registerPlugin(useGSAP);
+const root = useRef();
+const { contextSafe } = useGSAP({ scope: root });      // 언마운트 시 자동 revert
+const playCutIn = contextSafe((tone) => { /* 타임라인 */ });
+```
+`scope`가 셀렉터를 그 ref 아래로 한정하고, 훅이 끝난 **뒤에** 만드는 애니메이션(클릭 핸들러 ·
+setTimeout · 소켓 메시지 콜백)은 `contextSafe()`로 감싸야 정리 대상이 된다.
+
+> **우리 연출은 전부 "훅이 끝난 뒤"에 만들어진다** — 서버 메시지가 도착해서 `showCutIn`을
+> 부르는 구조다(`App.tsx:3034`). 그래서 **`contextSafe`가 선택이 아니라 필수**다.
+> 이걸 놓치면 국이 바뀌어도 이전 연출이 살아남는다 — 24_FX_LAB이 겪은 그 버그다.
+
+### 10-5. 최종 비교 — 세 라이브러리
+
+| 기준 | anime.js v4 | react-spring | **GSAP v3** |
+| --- | --- | --- | --- |
+| 라이선스 | MIT | MIT | Webflow 자체(무료, 경쟁 제한 조항) |
+| 번들 | **가장 가볍다** (waapi 3KB / 전체 10KB) | 중간 | **가장 무겁다** (코어 + 플러그인마다 추가) |
+| 구동 | WAAPI(하드웨어 가속) 선택 가능 | rAF | rAF (메인 스레드) |
+| 타임라인 | 있다 | 없다(체이닝·`useChain`으로 대체) | **가장 성숙** (중첩·라벨·`tweenTo`·타임라인 트윈) |
+| FLIP | `createLayout` | 없다 | **Flip 플러그인** (`fit` `batch` `onEnter/onLeave`) |
+| 드래그 | `createDraggable` | 외부(use-gesture) | **Draggable + Inertia** (`liveSnap`) |
+| 좌표계 변환 | **없다** | 없다 | **`convertCoordinates` 등** ← 우리 `uiScale` 문제 |
+| 흔들림 이징 | 직접 키프레임 | 스프링으로 흉내 | **CustomWiggle**(`anticipate`) |
+| 물리(입자·파편) | JS 객체 트윈 | 스프링 | **Physics2D**(중력·마찰·각도) |
+| 텍스트 | `splitText`/`scrambleText` | 없다 | **SplitText**(`autoSplit` `mask` `aria`) / ScrambleText |
+| SVG | `morphTo`/`createDrawable`/`createMotionPath` | 없다 | Morph/Draw/MotionPath **+ 편집 헬퍼** |
+| 시드 난수(리플레이) | **`createSeededRandom`** | 없다 | 없다 |
+| 전역 배속(`prodSpeed`) | `engine.speed` | 없다 | `globalTimeline.timeScale()` **+ 배속 자체를 트윈** |
+| reduced-motion 일원화 | 스코프 revert | **`Globals.skipAnimation`** | **`matchMedia({reduceMotion})`** |
+| React 통합 | `createScope` | **네이티브(선언적)** | `useGSAP` + `contextSafe` |
+| 상태 연동 상호작용 | 약함 | **가장 강함** | `quickTo`로 대체 가능 |
+| 개발 도구 | 없다 | 없다 | **GSDevTools** · MotionPathHelper |
+
+### 10-6. 개정된 결론 — §0을 이렇게 고친다
+
+**우리 요구 목록을 한 라이브러리로 가장 많이 덮는 것은 GSAP이다.** §1~§9를 쓸 때 "라이브러리
+없이는 못 한다"·"이게 유일한 난관이다"라고 적은 자리들이 §10-4 표에 전부 답이 있다.
+그중 **좌표계 변환**(`uiScale.ts`)과 **`Flip.batch()`의 React 대응**은 다른 두 라이브러리에
+대응물이 아예 없다.
+
+그래서 실제 선택지는 셋 중 고르는 게 아니라 **둘 중 하나**다:
+
+**(A) GSAP 단독** — 연출(타임라인·Flip·물리·텍스트·SVG)과 상호작용(Draggable·quickTo)을
+한 라이브러리로. 배울 것이 하나고, 두 라이브러리가 같은 `transform`을 놓고 싸울 일이 없다
+(§9-5). **번들이 가장 무겁다는 것 하나만 감수하면 된다.**
+
+**(B) anime.js(`animejs/waapi`) + react-spring** — §1~§9의 원안. 가볍고 MIT이며 WAAPI
+하드웨어 가속을 쓴다. 대신 좌표계 변환·물리·CustomWiggle·SplitText autoSplit은 **계속 손으로**
+짠다.
+
+> **판단 기준은 하나로 좁혀진다: 번들 예산.** 지금 클라이언트 의존성이 React 외에 사실상
+> 없다는 게 이 저장소의 성질이고, 그걸 지킬 가치가 있다고 보면 (B), 연출이 이 게임의 핵심
+> 경험이라고 보면 (A)다.
+>
+> **개인 추천은 (A)다.** 증강 104종에 연출을 붙이는 게 이 프로젝트가 실제로 하려는 일이고
+> (fx-lab 107종이 그 증거다), 그 일의 절반이 §10-4 표에 적힌 "손으로 짜던 것"이다.
+> 다만 **번들 수치를 실측하고 결정하자** — 아래 0단계가 그 실측이다.
+
+### 10-7. 개정된 도입 순서
+
+**0단계 · fx-lab에서 GSAP과 anime.js를 나란히 (번들 영향 0)**
+`packages/client/public/`은 정적 파일이라 실패해도 게임에 영향이 없다. 같은 연출 두세 개
+(«분열» gooey · «자리 바꿈» 원호 · 손패 스태거)를 **양쪽으로 각각 만들어** 비교한다.
+→ 여기서 반드시 확인할 것: ① `uiScale` 조상 transform 아래에서 좌표가 맞는가
+② FLIP이 우리 레이아웃에서 도는가 ③ **실제 번들 증가량**(`npx vite-bundle-visualizer`)
+
+**1단계 · `prodSpeed` 결함 수정 (§1-1)** — `globalTimeline.timeScale()` 또는 `engine.speed`.
+컷인 하나만 옮겨서 검증한다.
+
+**2단계 · 흔들림 4단을 CustomWiggle로** (GSAP을 고른 경우) — 키프레임 4벌이 숫자 하나가 되고,
+`anticipate` 타입이라는 새 표현이 생긴다. 되돌리기 쉬운 작은 변경이다.
+
+**3단계 · 손패 드래그** — `Draggable`(`liveSnap`) 또는 react-spring imperative API.
+**성능 이득이 가장 큰 곳.** 모바일 실기 확인 필수.
+
+**4단계 · Flip** — 자동정렬 · 후로 · 드래프트 카드 → 보유 알약(`Flip.fit`).
+
+**5단계 · 새 증강 연출만 새 방식으로.** 기존 89개 키프레임은 옮기지 않는다(§9-1).
+
+### 10-8. GSAP을 쓰면 안 되는 곳 — §9에 덧붙인다
+
+9. **`ScrollSmoother`를 켜지 마라.** 도감·도움말은 정보를 찾아 읽는 화면이다. 스크롤이
+   미끄러지면 원하는 줄에서 멈추기 어려워진다.
+10. **`GSDevTools`·`MotionPathHelper`를 배포 번들에 넣지 마라.** 개발 도구다. fx-lab에만.
+11. **anime.js와 GSAP을 같은 프로젝트에 함께 넣지 마라.** 기능이 90% 겹치는데 타임라인
+    위치 문법의 `<`가 **서로 반대 뜻**이다(§10-2). 둘 다 있으면 반드시 사고가 난다.
+12. **`Observer`로 기존 입력 코드를 갈아엎지 마라.** 오조작이 곧 타패인 게임이고, 지금
+    입력 코드는 오타패 사고를 겪고 다듬은 것이다. 새 제스처를 만들 때만 쓴다.
+13. **`registerEffect`로 계열 문장을 만들되, 문장 수를 늘리지 마라.** 24_FX_LAB이 계열을
+    8개로 묶은 것이 요점이다. 도구가 편해졌다고 계열이 20개가 되면 그건 다시 잡동사니다.
+
 ## 부록 A. 이 문서를 다시 확인하는 법
 
 - anime.js 문서 목차는 `https://animejs.com/documentation/` 사이드바에 전부 있다.
@@ -800,5 +1156,7 @@ pointermove마다 도는 전역 리렌더를 없앤다. **성능 이득이 가�
   각 하위 페이지에 적혀 있다.
 - react-spring 프리셋 값(`default {170,26}` `gentle {120,14}` `wobbly {180,12}` `stiff {210,20}`
   `slow {280,60}` `molasses {280,120}`)은 `/docs/advanced/config`에 있다.
+- GSAP 문서는 `https://gsap.com/docs/v3/`. 라이선스는 `https://gsap.com/licensing/` —
+  **2025년 4월 전면 무료화** 이전 자료가 웹에 많이 남아 있으니 반드시 원문을 본다.
 - 우리 쪽 근거는 전부 `packages/client/src/App.tsx`·`styles.css`·`public/fx-*.js`의
   줄 번호로 달아 뒀다. **줄 번호는 낡는다 — 심볼 이름으로 찾아라.**
