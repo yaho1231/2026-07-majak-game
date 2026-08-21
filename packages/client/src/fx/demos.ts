@@ -1,0 +1,177 @@
+/**
+ * 점검 페이지에 뜨는 연출 목록.
+ *
+ * **연출을 만들면 반드시 여기에 등록한다.** 등록하지 않으면 점검 페이지에 안 뜨고,
+ * 안 뜨면 아무도 확인하지 않는다.
+ *
+ * 각 항목의 `when`(언제 나오는가)과 `freq`(빈도)는 장식이 아니다 — 연출 예산이 그것으로
+ * 정해진다. 매 순 보이는 것에 0.5초를 쓰면 지연이고, 판에 한 번 보이는 것에 0.1초만 쓰면
+ * 사건이 사건처럼 안 보인다.
+ */
+import type { FxDemo } from "./catalog";
+import { shakeBoard, flashBoard, ringAt, attention } from "./effects/board";
+import { drawTile, discardTile, meldTiles, reflowHand, throwTile } from "./effects/tiles";
+import { centerOf } from "./core";
+
+export const DEMOS: FxDemo[] = [
+  // ─────────────────────────── 손패 ───────────────────────────
+  {
+    id: "tile-draw",
+    group: "손패",
+    name: "쯔모 — 패산에서 들어온다",
+    when: "내 차례가 되어 패를 한 장 가져올 때",
+    freq: "매순",
+    intent:
+      "지금은 패가 그냥 나타난다. 패산에서 왔다는 것이 보이면 '어디서 온 패인가'를 매번 확인하지 않아도 된다. 매 순 일어나므로 0.26초를 넘기지 않는다.",
+    play: (s) => {
+      const last = s.tiles().at(-1) ?? null;
+      drawTile(last, s.wall);
+    },
+  },
+  {
+    id: "tile-discard",
+    group: "손패",
+    name: "타패 — 바닥에 놓인다",
+    when: "패를 버릴 때마다",
+    freq: "매순",
+    intent:
+      "손에서 바닥으로 가는 경로가 보이고, 닿는 순간 살짝 눌렸다 펴진다. 물체가 안 튀면 무게가 없어 보인다 — 다만 UI가 아니라 패에만 준다.",
+    play: (s) => {
+      const t = s.tiles().at(-1) ?? null;
+      discardTile(t, s.discard);
+    },
+  },
+  {
+    id: "hand-sort",
+    group: "손패",
+    name: "정렬 — 열세 장이 제자리로",
+    when: "자동정렬을 켜거나 손패를 직접 재배열할 때",
+    freq: "가끔",
+    intent:
+      "지금은 순간이동한다. 마작에서 손패 순서는 곧 사고 과정이라, 어느 패가 어디로 갔는지 보이는 것이 곧 정보다. 총량 0.22초로 잡아 열세 장이어도 기다림이 안 생긴다.",
+    play: (s) => {
+      reflowHand(s.hand, () => s.shuffleHand());
+      s.log("손패를 섞었다 — 다시 누르면 정렬로 돌아간다");
+    },
+  },
+  {
+    id: "hand-sort-back",
+    group: "손패",
+    name: "정렬 — 되돌리기",
+    when: "위와 같음 (정렬된 상태로 복귀)",
+    freq: "가끔",
+    intent: "같은 연출의 반대 방향. 두 방향이 같은 리듬인지 확인한다.",
+    play: (s) => reflowHand(s.hand, () => s.sortHand()),
+  },
+  {
+    id: "tile-meld",
+    group: "손패",
+    name: "후로 — 멜드 자리로 간다",
+    when: "폰·치·깡을 했을 때",
+    freq: "가끔",
+    intent:
+      "지금은 손패에서 사라지고 오른쪽에 생긴다. 어느 패가 나갔는지 안 보이면 상대가 무엇을 울었는지 매번 손패를 다시 세어야 한다. 이건 장식이 아니라 정보다.",
+    play: (s) => {
+      const tiles = s.tiles().slice(0, 3);
+      meldTiles(tiles, s.meldSlot);
+    },
+  },
+  {
+    id: "tile-throw",
+    group: "손패",
+    name: "패가 판을 가로질러 날아간다",
+    when: "등가교환·통째로 바꾸기 등 자리를 옮기는 증강",
+    freq: "희귀",
+    intent:
+      "긴 이동은 호를 그린다 — 직선이면 '미끄러졌다'로 보이고 호를 그리면 '던졌다'로 보인다. 짧은 이동에는 호를 주지 않는다(그냥 흔들린 것처럼 보인다).",
+    play: (s) => {
+      const t = s.tiles()[0] ?? null;
+      const seat = s.seats[0] ?? null;
+      throwTile(t, seat, { onComplete: () => s.log("도착 — 실제 게임에서는 여기서 상태가 바뀐다") });
+    },
+  },
+
+  // ─────────────────────────── 판 ───────────────────────────
+  {
+    id: "shake-1",
+    group: "판",
+    name: "흔들림 1 — 폰·치",
+    when: "가벼운 후로",
+    freq: "가끔",
+    intent: "가장 약한 단계. 있는지 없는지 애매할 정도가 맞다 — 매 국 여러 번 일어난다.",
+    play: (s) => shakeBoard(s.table, 1),
+  },
+  {
+    id: "shake-2",
+    group: "판",
+    name: "흔들림 2 — 깡·리치",
+    when: "깡, 리치 선언",
+    freq: "가끔",
+    intent: "판이 한 번 흔들렸다는 것이 인지되는 최소 단계.",
+    play: (s) => shakeBoard(s.table, 2),
+  },
+  {
+    id: "shake-3",
+    group: "판",
+    name: "흔들림 3 — 론",
+    when: "화료(론)",
+    freq: "드묾",
+    intent: "국이 끝나는 사건. 앞의 두 단계와 확실히 구분돼야 한다.",
+    play: (s) => shakeBoard(s.table, 3),
+  },
+  {
+    id: "shake-4",
+    group: "판",
+    name: "흔들림 4 — 역만",
+    when: "역만, 큰 증강 발동",
+    freq: "희귀",
+    intent: "판에 한 번 있을까 한 사건. 여기에만 예산을 몰아준다.",
+    play: (s) => shakeBoard(s.table, 4),
+  },
+  {
+    id: "shake-antic",
+    group: "판",
+    name: "흔들림 · 예고형 (뒤로 당겼다 터진다)",
+    when: "론처럼 '맞았다'인 사건",
+    freq: "희귀",
+    intent:
+      "지금의 CSS 키프레임으로는 만들 수 없는 결이다. 한 번 뒤로 당기는 동작이 붙으면 같은 세기여도 '터졌다'로 읽힌다. 흔한 사건에 쓰면 피로해지므로 아껴 쓴다.",
+    play: (s) => shakeBoard(s.table, 3, { anticipate: true }),
+  },
+  {
+    id: "flash",
+    group: "판",
+    name: "섬광",
+    when: "화료·역만 컷인의 첫 프레임",
+    freq: "드묾",
+    intent:
+      "불투명도 상한을 0.24로 낮게 잡았다 — 흰 화면을 덮는 것은 광과민 위험이 있다. 프로토타입에서는 0.9까지 갔는데 그건 실험실이라 가능했던 값이다.",
+    play: (s) => flashBoard(s.table),
+  },
+  {
+    id: "ring",
+    group: "판",
+    name: "파문 — 자리를 지목한다",
+    when: "증강 발동 대상, 후로 대상 표시",
+    freq: "가끔",
+    intent:
+      "컷인처럼 판을 덮지 않고 '어디서 일어났는지'만 가리킨다. 판을 계속 보면서 읽을 수 있어, 판단을 끊지 않는다.",
+    play: (s) => {
+      const seat = s.seats[2];
+      if (seat === undefined) return;
+      const c = centerOf(seat);
+      const host = s.table.getBoundingClientRect();
+      ringAt(s.table, c.x - host.left, c.y - host.top);
+    },
+  },
+  {
+    id: "attention",
+    group: "판",
+    name: "주목 — 한 번만 숨 쉰다",
+    when: "내 차례가 되었을 때, 새 정보가 붙었을 때",
+    freq: "매순",
+    intent:
+      "맥동을 반복하지 않는 것이 요점이다. 상시 반복하는 강조는 몇 순이면 배경이 되어 아무도 안 보고, 그때부터는 그냥 시끄러운 것이다.",
+    play: (s) => attention(s.center),
+  },
+];
