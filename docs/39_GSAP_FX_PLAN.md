@@ -21,7 +21,28 @@ cd packages/client && npx vite --port 5179 --strictPort
 `serverUrl`). 대국까지 해 보려면 테스트 서버도 함께 띄운다 — **운영은 3011 이라 안 겹친다**:
 
 ```bash
-cd packages/server && PORT=3001 DB_PATH=/tmp/majak-test.db npm run dev
+cd packages/server && nohup /usr/bin/env PORT=3001 DB_PATH=/tmp/majak-test.db \
+  node --import tsx/esm src/index.ts > /tmp/majak-test.log 2>&1 & disown
+```
+
+⚠ **`nohup … & disown` 으로 띄운다. 셸의 작업으로 두면 안 된다.**
+
+2026-08-22, 테스트 서버를 셸 백그라운드 작업으로 띄웠다가 그 작업이 정리될 때
+**운영 서버까지 함께 죽었다.** 두 프로세스의 종료 로그가 1ms 차이다:
+
+```
+운영:   [2026-08-21T23:43:49.693Z] 정상 종료 완료
+테스트: [2026-08-21T23:43:49.694Z] 정상 종료 완료
+```
+
+같은 프로세스 그룹에 SIGTERM 이 갔다는 뜻이다(운영 서버도 예전에 어느 셸에서 떠 있었다).
+공개 주소가 **502 로 약 50초** 떴다. 감시자·자동 복구가 곧 다시 세웠지만, 애초에
+일어나면 안 되는 일이다.
+
+띄운 뒤 **반드시 확인한다** — 세 프로세스 그룹이 서로 달라야 한다:
+
+```bash
+for p in 3001 3011; do lsof -nP -iTCP:$p -sTCP:LISTEN -t; done | xargs ps -o pid=,pgid=,command=
 ```
 
 ⚠ 브라우저에 예전 서버 주소가 저장돼 있으면 계속 "재연결 중"만 뜬다:
