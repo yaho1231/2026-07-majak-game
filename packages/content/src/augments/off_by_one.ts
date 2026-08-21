@@ -34,31 +34,20 @@ import {
   winningKinds,
 } from "@majak/core";
 import type { AugmentDef, GameState, TileKind, TileDrawnPayload } from "@majak/core";
-import { roundViewKey } from "../util.js";
+import { copiesLeftUndrawn, roundViewKey } from "../util.js";
 
 const ID = "off_by_one";
 
-/**
- * 그 종류가 **아직 뽑히지 않은 채 남아 있는** 장수 (패산 + 왕패).
- *
+/*
  * 마작의 물리 법칙은 한 종류 4장이다. 밀어서 만든 패는 그 종류를 한 장 늘리므로,
  * 오름패 4장이 이미 전부 남의 손·바닥·후로로 나와 버린 **죽은 대기**에 밀어 넣으면
  * 그 종류가 게임 안에 5장 존재하게 된다 — 남은 장수를 세는 쪽
  * (`botHelpers.waitTilesLeft` · 대기 잔량 UI)이 0이라고 말하는데 화료가 나는
  * 상태다(2026-08-20 QA 리치 확정 3). 그래서 밀기 전에 남은 장수를 센다.
  *
- * 세는 곳이 패산·왕패인 이유: 그 밖의 자리(손·바닥·후로)에 있는 장은 이미
- * '나온' 장이고, 남은 장수는 정확히 아직 안 나온 나머지다.
+ * 세는 자(`copiesLeftUndrawn`)는 `../util.js`에 있다 — 같은 검사가 필요한 자리가
+ * 둘이 되면서(선언 간파의 위조) 한 벌로 합쳤다.
  */
-function copiesLeftUndrawn(state: GameState, kind: TileKind): number {
-  let n = 0;
-  for (const zone of [WALL, DEAD_WALL]) {
-    for (const id of state.zones[zone]?.tileIds ?? []) {
-      if (sameKind(kindOf(state, id), kind)) n++;
-    }
-  }
-  return n;
-}
 
 export const offByOne: AugmentDef = defineAugment({
   id: ID,

@@ -41,7 +41,7 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, riichiHidden, viewKey } from "../util.js";
+import { copiesLeftUndrawn, flagOf, publishUsesLeft, riichiHidden, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
 
@@ -180,7 +180,22 @@ const peekForgeAction: ActionDef<{ tileId: TileId; kind: string }> = {
     if (!peekedWaits(state, req.player).includes(req.payload.kind)) {
       return "kind not among peeked waits";
     }
-    if (parseKindKey(req.payload.kind) === null) return "bad kind";
+    const forged = parseKindKey(req.payload.kind);
+    if (forged === null) return "bad kind";
+    /*
+     * **세상에 없는 5번째 장은 만들지 않는다** (QA 2차 aug-3 확정 1).
+     *
+     * 형제 증강 `off_by_one`이 같은 함정을 이미 막아 뒀는데(죽은 대기로는 밀지
+     * 않는다) 이쪽 위조에는 그 검사가 없었다. 그래서 이미 4장이 다 나와 있는
+     * 종류로도 위조가 됐고, 그 순간 테이블 위에 그 종류가 5장 섰다. 대기 잔량을
+     * 세는 쪽(봇의 `waitTilesLeft`, 클라이언트의 남은 장수 표시)은 0이라고
+     * 말하는데 그 패로 화료가 난다 — 장수를 세고 던진 안전패에 맞는 것이라
+     * 대응 자체가 불가능하다.
+     *
+     * 카드 문구도 "간파한 오름패 중 하나로 바꿔 만들 수 있다"까지이지 물리
+     * 법칙(한 종류 4장)을 깨겠다고는 하지 않는다.
+     */
+    if (copiesLeftUndrawn(state, forged) <= 0) return "no copies left";
     return null;
   },
   toEvents: (req, { state }) => [
@@ -295,7 +310,12 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
             .map((p) => ({ type: "peek_waits", payload: { target: p.id } }));
 
       if (!flagOf(state, forgedKey(state, holder))) {
-        const kinds = peekedWaits(state, holder);
+        // 이미 4장이 다 나온 종류는 후보에서도 뺀다 — validate가 어차피 반려하지만,
+        // 누를 수 없는 단추를 보여 주면 그 자체가 틀린 정보다.
+        const kinds = peekedWaits(state, holder).filter((k) => {
+          const kind = parseKindKey(k);
+          return kind !== null && copiesLeftUndrawn(state, kind) > 0;
+        });
         if (kinds.length > 0) {
           for (const tileId of handIdsOf(state, holder)) {
             for (const kind of kinds) {

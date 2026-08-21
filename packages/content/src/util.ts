@@ -19,8 +19,12 @@ import {
   augmentDataSet,
   augmentStageKey,
   calculateScore,
+  kindOf,
   meldCountOf,
   playerAtSeat,
+  sameKind,
+  WALL,
+  DEAD_WALL,
 } from "@majak/core";
 import type {
   AugPointNote,
@@ -33,6 +37,7 @@ import type {
   RuleRegistry,
   SettleStage,
   TileId,
+  TileKind,
   VisibilityRule,
   WinInfo,
   YakuRegistry,
@@ -46,6 +51,30 @@ export function statePrng(state: GameState): Prng {
 }
 
 /** 현재 국을 식별하는 키 (국이 바뀌면 달라진다 — 국 단위 플래그용) */
+/**
+ * **아직 안 나온 그 종류의 장수** — 패산 + 왕패에 남아 있는 수.
+ *
+ * 「없는 5번째 장을 만들지 않는다」를 지키려는 증강이 공유하는 자다. 손·바닥·후로에
+ * 있는 장은 이미 '나온' 장이고, 여기 남은 것이 정확히 아직 안 나온 나머지다.
+ *
+ * **왜 함수로 뽑았나**: `off_by_one`이 이 검사를 먼저 갖췄는데(2026-08-20 QA 리치
+ * 확정 3) `peek_riichi_waits`의 위조는 같은 함정에 그대로 빠져 있었다(QA 2차 aug-3
+ * 확정 1) — 같은 규칙이 두 곳에 필요한데 한 곳에만 있으면, 그 갈림은 언제나
+ * **느슨한 쪽이 통과되는 방향**으로만 드러난다. 세 번째 자리가 생기면 여기를 쓴다.
+ *
+ * 장수 세기는 마작 방어의 근간이다 — "이 패는 4장 다 보였으니 절대 안 맞는다"라고
+ * 세고 던진 안전패에 맞으면 그건 대응 자체가 불가능한 화료가 된다.
+ */
+export function copiesLeftUndrawn(state: GameState, kind: TileKind): number {
+  let n = 0;
+  for (const zone of [WALL, DEAD_WALL]) {
+    for (const id of state.zones[zone]?.tileIds ?? []) {
+      if (sameKind(kindOf(state, id), kind)) n++;
+    }
+  }
+  return n;
+}
+
 export function roundKey(state: GameState): string {
   const r = state.round;
   return `${r.prevalentWind}-${r.roundNumber}-${r.honba}`;
