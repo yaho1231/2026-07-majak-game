@@ -27,6 +27,10 @@
 | `fx-effects-9.js` | 4차 배치 E — 손패 6 + 정보 3 + 기타 1 |
 | `fx-lab.js` | UI 배선 (목록·재생·속도) |
 
+**별도 페이지 하나가 더 있다:** `fx-bakeoff.html` / `.css` / `.js` — anime.js vs GSAP
+비교 실험([38_ANIMATION_LIBS.md](38_ANIMATION_LIBS.md) §10-9의 0단계). 랩과 독립이고
+`public/vendor/*.esm.js` 를 쓴다. **라이브러리 도입을 결정하면 셋 다 지운다.**
+
 **연출을 추가할 때**는 새 `fx-effects-N.js` 를 만들어 `def({...})` 로 등록하고 `fx-lab.js` 의
 import 목록에 한 줄 넣으면 된다. UI 코드는 건드리지 않는다 — 배치가 계속 늘어날 예정이라
 레지스트리를 따로 뒀다. 새 기법군을 쓰면 `fx-lab.js` 의 `FAM_ORDER` 에만 추가한다.
