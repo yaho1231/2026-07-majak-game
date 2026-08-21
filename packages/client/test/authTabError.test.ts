@@ -72,6 +72,30 @@ describe("탭을 바꾸면 앞 탭의 실패 사유는 사라진다", () => {
   });
 });
 
+describe("늦게 온 답도 제 탭에만 뜬다", () => {
+  /*
+   * 탭 전환에서 지우는 것만으로는 부족하다 — 답은 늦게 온다(scrypt 포함 왕복 ~1초).
+   * 가입을 누르고 그 사이에 로그인 탭으로 옮기면, 지워 둔 자리에 뒤늦게 «가입
+   * 코드가 필요합니다»가 내려앉는다. 끊겼다 붙은 직후 큐에 남아 있던 `register`가
+   * 다시 나가는 길도 있다(SEND_RESEND_POLICY ②) — 그쪽은 사람이 아무것도 누르지
+   * 않아도 도착한다. 그래서 **보낼 때의 탭**을 적어 두고 그 탭에서만 보여 준다.
+   */
+  it("보낼 때의 탭을 적어 둔다 (`sentFrom`)", () => {
+    expect(AUTH).toMatch(/sentFrom\.current = tab/);
+  });
+
+  it("답이 오면 그 탭에 귀속시킨다", () => {
+    expect(AUTH).toMatch(/setErrorTab\(sentFrom\.current\)/);
+  });
+
+  it("화면은 **지금 탭의 답만** 그린다", () => {
+    expect(AUTH).toMatch(/errorTab === tab \? props\.serverError : null/);
+    // 서버 사유를 날것으로 그리면 귀속이 무의미해진다.
+    expect(AUTH).toMatch(/\{localError \?\? shownServerError\}/);
+    expect(AUTH).not.toMatch(/\{localError \?\? props\.serverError\}/);
+  });
+});
+
 describe("초대제 서버에서 빈 가입 코드는 보내기 전에 걸린다", () => {
   /*
    * 서버도 같은 것을 본다(`SIGNUP_CODE_REQUIRED`). 다만 빈 칸인 줄 알면서 보내면

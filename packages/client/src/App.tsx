@@ -396,6 +396,21 @@ type NameCheck = {
   reason?: string;
 };
 
+/**
+ * 계정 카드가 남기는 답 (2026-08-21 사용자 보고) — 비밀번호 변경·다른 기기 로그아웃.
+ *
+ * 토스트가 아니라 카드 안에 남는다. `kind`가 필요한 이유: 성공했을 때 비밀번호
+ * 칸 셋을 비우는 것은 **비밀번호를 바꿨을 때뿐**이다. 「다른 기기에서 로그아웃」의
+ * 성공까지 칸을 비우면 마침 쓰던 중이던 사람의 입력이 사라진다.
+ * `seq`는 «보내는 중…»을 푸는 신호다 — 같은 문구가 두 번 와도 반드시 한 번은 흐른다.
+ */
+type AccountNotice = {
+  kind: "password" | "sessions";
+  ok: boolean;
+  text: string;
+  seq: number;
+};
+
 /** 도중유국 사유 (RoundSettledPayload.abortReason) — 결과 화면 부제 */
 const ABORT_REASONS: Record<string, string> = {
   kyushuKyuhai: "구종구패 — 배패에 요구패·자패가 9종 이상이라 국을 물렸다",
@@ -2732,6 +2747,30 @@ export function App(): JSX.Element {
    * 서버의 `authOk`는 둘을 구별해 주지 않는다(같은 메시지다).
    */
   const justRegistered = useRef(false);
+  /**
+   * 방금 **비밀번호 변경**을 보냈는가 (2026-08-21 사용자 보고).
+   *
+   * 서버는 성공을 새 `authOk`(새 세션 토큰)로 알린다 — 로그인·가입과 **같은
+   * 메시지**라 이 표식이 없으면 화면은 방금 무슨 일이 일어났는지 모른다.
+   * 그래서 예전에는 바꾸든 못 바꾸든 계정 카드가 **아무 말도 하지 않았고**,
+   * 실패 사유는 3.2초 토스트로 스쳐 갔다. 칸은 누르는 즉시 비워졌으므로 화면만
+   * 보면 성공과 실패가 똑같이 생겼다 — 못 바꾼 사람이 "바꿨다"고 믿고 새
+   * 비밀번호로 로그인하다가 계정이 잠긴 것처럼 느낀 경로가 정확히 이것이다.
+   */
+  const pwChangePending = useRef(false);
+  /**
+   * 계정 카드에 남길 결과 — 비밀번호 변경·다른 기기 로그아웃의 답.
+   * `seq`는 «보내는 중…»을 푸는 신호다(AuthScreen과 같은 이유 — 같은 문구가 두 번
+   * 와도 반드시 한 번은 흐른다).
+   */
+  const [pwNotice, setPwNoticeState] = useState<AccountNotice | null>(null);
+  const setPwNotice = useCallback(
+    (kind: AccountNotice["kind"], ok: boolean, text: string): void => {
+      setPwNoticeState((prev) => ({ kind, ok, text, seq: (prev?.seq ?? 0) + 1 }));
+    },
+    [],
+  );
+  const clearPwNotice = useCallback((): void => setPwNoticeState(null), []);
   /** 방금 도착한 정형구들 — EMOTE_SHOW_MS 뒤 스스로 사라진다. */
   const [emotes, setEmotes] = useState<EmoteEntry[]>([]);
   /** 규칙·도움말 화면 열림 여부 (로그인 전·홈·게임 중 어디서나 열린다) */
@@ -3828,6 +3867,15 @@ export function App(): JSX.Element {
       // 아래 자동 복귀(joinRoom·statsRequest…)보다 **먼저** 보내, 사용자가 실제로
       // 누른 것이 자동 복구보다 뒤로 밀리지 않게 한다.
       flushPendingSends();
+      /*
+       * 비밀번호 변경의 성공도 `authOk`로 온다 — **여기서만** 그것을 알 수 있다
+       * (아래로 내려가면 로그인과 구별되지 않는다). 성공했다는 말을 남기지 않으면
+       * 사용자는 바뀌었는지 아닌지 모른 채 로그아웃하게 된다.
+       */
+      if (pwChangePending.current) {
+        pwChangePending.current = false;
+        setPwNotice("password", true, "비밀번호를 바꿨습니다 — 다른 기기의 로그인은 모두 끊겼습니다");
+      }
       guestRef.current = msg.guest === true;
       const guest = msg.guest === true;
       // 게스트에게는 저장할 세션이 없다 — 토큰이 빈 문자열이라 저장하면 다음 접속에
@@ -3942,6 +3990,26 @@ export function App(): JSX.Element {
         // 뿐이고, 그 앞에 놓아야 할 것은 오류 문구가 아니라 "체험 시작" 버튼이다.
         safeStorage.removeItem(GUEST_TOKEN_KEY);
         flushPendingSends();
+        return;
+      }
+      /*
+       * 계정 카드의 답은 **카드 안에** 남긴다 (2026-08-21 사용자 보고).
+       *
+       * 로그인 폼에 대해 이미 내린 것과 같은 판단이다: 정정할 수 있는 사유
+       * ("지금 비밀번호가 올바르지 않습니다", "비밀번호는 8자 이상이어야 합니다")를
+       * 3.2초 토스트로 흘려보내면 사람은 읽기도 전에 놓치고, 칸은 이미 비어 있어
+       * **성공한 것과 똑같이 생긴 화면**만 남는다. 그러고는 바뀌지도 않은 새
+       * 비밀번호로 로그인을 시도하다 "닉네임·비번이 맞는데 안 들어가진다"가 된다.
+       */
+      if (msg.code === "PASSWORD_CHANGE_FAILED") {
+        pwChangePending.current = false;
+        setPwNotice("password", false, msg.message);
+        return;
+      }
+      // 「다른 기기에서 로그아웃」의 답도 같은 카드의 것이다 — 몇 곳을 끊었는지는
+      // 그 버튼 옆에서 읽어야 뜻이 있다.
+      if (msg.code === "SESSIONS_CLEARED") {
+        setPwNotice("sessions", true, msg.message);
         return;
       }
       // 로그인·가입 실패는 **폼 안에** 남긴다. 3.2초짜리 토스트로 스쳐 보내면
@@ -5762,10 +5830,17 @@ export function App(): JSX.Element {
         <HomeScreen
           auth={auth}
           serverInfo={serverInfo}
-          onChangePassword={(current, next) =>
-            send({ type: "changePassword", currentPassword: current, newPassword: next })
-          }
-          onLogoutOthers={() => send({ type: "logoutOthers" })}
+          onChangePassword={(current, next) => {
+            // 이 표식이 있어야 돌아온 `authOk`를 «바꿨다»로 읽을 수 있다.
+            pwChangePending.current = true;
+            clearPwNotice();
+            send({ type: "changePassword", currentPassword: current, newPassword: next });
+          }}
+          onLogoutOthers={() => {
+            clearPwNotice();
+            send({ type: "logoutOthers" });
+          }}
+          pwNotice={pwNotice}
           analytics={analytics}
           onRefreshAnalytics={() => send({ type: "adminAnalytics" })}
           friends={friends}
@@ -6873,9 +6948,27 @@ function AuthScreen(props: {
    * seq는 실패할 때마다 오르므로 같은 문구여도 반드시 한 번은 흐른다. 초기값(0)에는
    * 반응하지 않게 seq > 0 을 본다.
    */
+  /**
+   * **이 실패는 어느 탭의 것인가.**
+   *
+   * 탭 전환에서 지우는 것만으로는 부족하다 — 답은 늦게 온다. 가입을 누르고
+   * (왕복 ~1초, scrypt 포함) 그 사이에 로그인 탭으로 옮기면, 지워 둔 자리에
+   * 뒤늦게 «가입 코드가 필요합니다»가 내려앉는다. 끊겼다 붙은 직후 큐에 남아
+   * 있던 `register`가 다시 나가는 길도 있다(SEND_RESEND_POLICY ②) — 그쪽은
+   * 사람이 아무것도 누르지 않아도 도착한다.
+   *
+   * 그래서 **보낼 때의 탭을 적어 두고**, 지금 탭의 답일 때만 보여 준다.
+   */
+  const sentFrom = useRef<"login" | "register">(props.initialTab ?? "login");
+  const [errorTab, setErrorTab] = useState<"login" | "register" | null>(null);
   useEffect(() => {
-    if (props.serverErrorSeq > 0) setSending(false);
+    if (props.serverErrorSeq > 0) {
+      setSending(false);
+      setErrorTab(sentFrom.current);
+    }
   }, [props.serverErrorSeq]);
+  /** 지금 탭에 속한 서버 사유만 — 남의 탭 것은 없는 셈 친다. */
+  const shownServerError = errorTab === tab ? props.serverError : null;
   /*
    * **그물** — 답이 아예 안 오는 경우까지 푼다.
    *
@@ -6910,6 +7003,7 @@ function AuthScreen(props: {
     if (next === tab) return;
     setTab(next);
     setLocalError(null);
+    setErrorTab(null);
     props.onClearError();
   }
 
@@ -6946,6 +7040,7 @@ function AuthScreen(props: {
       }
     }
     setSending(true);
+    sentFrom.current = tab;
     if (tab === "login") props.onLogin(username.trim(), password);
     else props.onRegister(username.trim(), password, adminCode.trim(), signupCode.trim());
   }
@@ -7118,7 +7213,12 @@ function AuthScreen(props: {
             */}
             <button
               className="btn-key landing-key"
-              onClick={props.onTutorial}
+              /* 이것도 «지금 탭에서 누른 것»이다 — 답(거절 사유)이 남의 탭 것으로
+                 몰려 숨겨지면, 버튼이 아무 반응 없는 것처럼 보인다. */
+              onClick={() => {
+                sentFrom.current = tab;
+                props.onTutorial();
+              }}
               disabled={!guestOk}
               title="화면 보는 법부터 증강 쓰는 법까지 — 판 위에서 순서대로 (5~10분)"
             >
@@ -7128,7 +7228,10 @@ function AuthScreen(props: {
             </button>
             <button
               className="btn-line landing-key"
-              onClick={props.onGuest}
+              onClick={() => {
+                sentFrom.current = tab;
+                props.onGuest();
+              }}
               disabled={!guestOk}
               title="계정 없이 봇 3명과 한 판 — 기록은 남지 않습니다"
             >
@@ -7184,7 +7287,10 @@ function AuthScreen(props: {
                   trimmedName.length < 2 ||
                   nameCheck !== null
                 }
-                onClick={() => props.onCheckUsername(trimmedName)}
+                onClick={() => {
+                  sentFrom.current = tab;
+                  props.onCheckUsername(trimmedName);
+                }}
               >
                 {nameCheck?.state === "checking" ? "확인 중…" : "중복 확인"}
               </button>
@@ -7271,8 +7377,8 @@ function AuthScreen(props: {
 
         {/* 클라이언트 검증(localError)과 서버 판정(serverError)이 같은 자리에 뜬다 —
             예전에는 서버 쪽만 3.2초 토스트라 읽기 전에 사라졌다. */}
-        {localError ?? props.serverError ? (
-          <p className="auth-error">{localError ?? props.serverError}</p>
+        {localError ?? shownServerError ? (
+          <p className="auth-error">{localError ?? shownServerError}</p>
         ) : null}
 
         {disconnected ? (
@@ -9928,14 +10034,66 @@ function AnalyticsCard(props: {
  * 모른다"). 그 순간에 필요한 두 행동이 서로 다른 화면에 있으면 하나를 놓친다.
  */
 function AccountCard(props: {
+  /** 지금 로그인한 닉네임 — 서버와 **같은 비밀번호 규칙**을 미리 재는 데 쓴다. */
+  username: string;
   onChangePassword: (current: string, next: string) => void;
   onLogoutOthers: () => void;
+  /** 서버가 돌려준 답 (카드 안에 남는다). null = 아직 아무것도 안 물었다. */
+  notice: AccountNotice | null;
 }): JSX.Element {
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const mismatch = again !== "" && next !== again;
   const ready = cur !== "" && next !== "" && next === again;
+  const notice = props.notice;
+
+  /*
+   * 답이 오면 «보내는 중…»을 푼다. 성공이 비밀번호 변경의 것이면 칸도 비운다 —
+   * **성공했을 때만** 비운다. 예전에는 누르는 즉시 비워서, 못 바꾼 사람이 지금
+   * 비밀번호부터 전부 다시 쳐야 했고 화면은 성공한 것과 똑같이 생겼다.
+   */
+  useEffect(() => {
+    if (notice === null) return;
+    setSending(false);
+    // 화면 쪽 사유와 서버 쪽 답은 같은 자리에 뜬다 — 새 답이 왔으면 앞엣것은 지운다.
+    setLocalError(null);
+    if (notice.ok && notice.kind === "password") {
+      setCur("");
+      setNext("");
+      setAgain("");
+    }
+  }, [notice]);
+  /* 그물 — 답이 아예 안 오는 경우(소켓이 조용히 죽는다)까지 버튼을 풀어 준다. */
+  useEffect(() => {
+    if (!sending) return;
+    const t = window.setTimeout(() => setSending(false), 12_000);
+    return () => window.clearTimeout(t);
+  }, [sending]);
+
+  /**
+   * 보내기 전에 **서버와 같은 규칙**을 잰다 (SiteDb.passwordProblem).
+   *
+   * 여기가 느슨하면 사람은 화면이 통과시킨 값을 보냈다가 거절당하고, 그 거절은
+   * 인증 레이트리밋 예산까지 태운다. 가입 폼(AuthScreen.submit)과 같은 셋이다.
+   */
+  function submit(): void {
+    if (sending || !ready) return;
+    setLocalError(null);
+    if (next.length < 8) return setLocalError("새 비밀번호는 8자 이상이어야 합니다");
+    if (/^\d+$/.test(next)) {
+      return setLocalError("숫자로만 이루어진 비밀번호는 사용할 수 없습니다");
+    }
+    if (props.username.length >= 4 && next.toLowerCase().includes(props.username.toLowerCase())) {
+      return setLocalError("비밀번호에 닉네임을 포함할 수 없습니다");
+    }
+    if (next === cur) return setLocalError("지금 쓰는 비밀번호와 같습니다");
+    setSending(true);
+    props.onChangePassword(cur, next);
+  }
+
   return (
     <section className="home-card home-account">
       <div className="home-card-head">
@@ -9969,17 +10127,19 @@ function AccountCard(props: {
         onChange={(e) => setAgain(e.target.value)}
       />
       {mismatch ? <p className="home-empty-hint">새 비밀번호가 서로 다릅니다.</p> : null}
-      <button
-        className="lobby-join"
-        disabled={!ready}
-        onClick={() => {
-          props.onChangePassword(cur, next);
-          setCur("");
-          setNext("");
-          setAgain("");
-        }}
-      >
-        비밀번호 바꾸기
+      {/* 답은 **이 자리**에 남는다 (2026-08-21 사용자 보고). 예전에는 3.2초 토스트라
+          "지금 비밀번호가 올바르지 않습니다"를 읽기도 전에 사라졌고, 칸은 이미
+          비어 있어 성공과 실패가 똑같이 생긴 화면만 남았다. */}
+      {localError !== null ? (
+        <p className="auth-error" aria-live="polite">{localError}</p>
+      ) : notice !== null ? (
+        <p className={notice.ok ? "auth-check-ok" : "auth-error"} aria-live="polite">
+          {notice.ok ? "✓ " : ""}
+          {notice.text}
+        </p>
+      ) : null}
+      <button className="lobby-join" disabled={!ready || sending} onClick={submit}>
+        {sending ? "바꾸는 중…" : "비밀번호 바꾸기"}
       </button>
       <button className="home-account-others" onClick={props.onLogoutOthers}>
         다른 기기에서 로그아웃 (이 기기는 유지)
@@ -10004,6 +10164,8 @@ function HomeScreen(props: {
   /** 비밀번호 변경 · 다른 기기 로그아웃 (§10-2). */
   onChangePassword: (current: string, next: string) => void;
   onLogoutOthers: () => void;
+  /** 그 둘의 답 — 계정 카드 안에 남는다 (토스트로 흘리지 않는다). */
+  pwNotice: AccountNotice | null;
   /** 자체 방문 집계 (관리자 전용, §8-6). null이면 아직 못 받았다. */
   analytics: AnalyticsDayEntry[] | null;
   onRefreshAnalytics: () => void;
@@ -10414,8 +10576,10 @@ function HomeScreen(props: {
 
               {tab === "account" ? (
         <AccountCard
+          username={props.auth.username}
           onChangePassword={props.onChangePassword}
           onLogoutOthers={props.onLogoutOthers}
+          notice={props.pwNotice}
         />
               ) : null}
 
