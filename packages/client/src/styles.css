@@ -100,8 +100,6 @@
    */
   /** 가속 — 나가는 것. 들어올 때보다 빨라야 눈이 안 붙잡힌다 */
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  /** 양방향 — 자리를 옮기는 것 */
-  --ease-move: cubic-bezier(0.4, 0, 0.2, 1);
   /** 튐 — **물체가 부딪히는 순간에만.** UI 크롬에는 쓰지 않는다(튀면 싸구려로 보인다) */
   --ease-pop: cubic-bezier(0.2, 1.4, 0.4, 1);
 }
@@ -521,8 +519,6 @@ button {
 
    흔드는 대상은 그대로 `.table`(월드)이다 — 컷인·배너는 형제라 흔들리지 않아 글자가
    또렷하다. `prefers-reduced-motion`·`screenFx` 검사도 `shakeBoard` 안으로 들어갔다. ── */
-
-}
 
 /*
  * ⚠ z-index 는 `.overlay`(50)·`.result-overlay`(55)보다 **위**여야 한다.
@@ -1132,7 +1128,12 @@ button {
   position: relative;
   width: var(--rt-w);
   height: var(--rt-h);
-  animation: tile-in 0.28s var(--ease-pop);
+  animation: tile-in 0.28s var(--ease);
+  /* ⚠ 여기에 오버슈트 곡선(--ease-pop)을 주지 말 것.
+     `tile-in` 키프레임이 이미 착지 스쿼시(1.08,0.9 → 0.97,1.03)를 하고 있어서,
+     곡선까지 튀면 **이중으로 튄다.** 게임에서 가장 자주 도는 애니메이션이라
+     (패를 버릴 때마다) 그 과장이 제일 먼저 눈에 띈다. 튐은 키프레임이 맡고
+     곡선은 감속만 한다. */
 }
 
 .rt-inner {
@@ -3548,7 +3549,7 @@ button {
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgba(6, 2, 4, 0.62) 100%);
-  animation: riichi-vig 1.5s ease both; /* showBanner riichi ttl=1500과 동기 */
+  animation: riichi-vig 1.5s var(--ease) both; /* showBanner riichi ttl=1500과 동기 */
 }
 
 @keyframes riichi-vig {
@@ -4401,7 +4402,7 @@ button {
   justify-content: center;
   gap: 14px;
   background: radial-gradient(ellipse at center, rgba(11, 19, 16, 0.82), rgba(11, 19, 16, 0.96));
-  animation: intro-fade 2.1s ease forwards;
+  animation: intro-fade 2.1s var(--ease) forwards;
   pointer-events: none;
 }
 
@@ -5727,7 +5728,7 @@ button {
    (타일 개별 stagger는 정렬 인덱스가 바뀔 때마다 애니메이션이 재시작되어
    손패가 깜빡이는 문제가 있어 컨테이너 단위로만 연출한다) */
 .own-hand {
-  animation: deal-in 0.4s ease both;
+  animation: deal-in 0.4s var(--ease) both;
 }
 
 @keyframes deal-in {
@@ -6343,7 +6344,7 @@ button {
   color: var(--ink-3);
   font-size: 11.5px;
   line-height: 1.6;
-  animation: waitroom-tip-in 0.45s ease both;
+  animation: waitroom-tip-in 0.45s var(--ease) both;
 }
 
 @keyframes waitroom-tip-in {
@@ -11588,7 +11589,7 @@ button {
   background: var(--surface-3);
   border: 1px solid var(--brass-line);
   box-shadow: var(--shadow-2);
-  animation: bar-in 0.25s ease;
+  animation: bar-in 0.25s var(--ease);
 }
 
 .layout-hint b {
@@ -11747,7 +11748,7 @@ button {
   background: rgba(107, 84, 48, 0.96);
   border-bottom: 1px solid rgba(184, 151, 92, 0.5);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
-  animation: bar-in 0.25s ease;
+  animation: bar-in 0.25s var(--ease);
   pointer-events: none;
 }
 
@@ -11769,7 +11770,7 @@ button {
   background: rgba(142, 28, 45, 0.97);
   border-bottom: 1px solid rgba(247, 128, 144, 0.6);
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
-  animation: bar-in 0.25s ease;
+  animation: bar-in 0.25s var(--ease);
   pointer-events: auto;
 }
 

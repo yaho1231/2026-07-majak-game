@@ -134,8 +134,10 @@ import {
  *
  * - `.own-area`는 `transform: translateX(-50%)`를 갖는다. 그 안에 있던 분열/염색
  *   선택 모달이 화면 아래쪽 손패 영역에 처박히고 아래가 잘렸다(2026-08-06 보고).
- * - `.game-root[data-shake] .table`은 흔들림 동안 `will-change: transform`을 켠다 —
- *   그 안의 고정 표면이 화료·리치·깡 연출마다 판과 같이 흔들렸다.
+ * - `.table`은 흔들리는 동안 `transform`을 갖는다 — 그 안의 고정 표면이 화료·리치·깡
+ *   연출마다 판과 같이 흔들렸다. (예전에는 CSS `data-shake` 애니메이션이, 지금은
+ *   GSAP `shakeBoard`가 인라인 `transform`을 건다. **기법이 바뀌어도 함정은 그대로다** —
+ *   무엇으로 흔들든 흔드는 동안 그 조상은 컨테이닝 블록이 된다.)
  * - `.home-nav`는 `backdrop-filter: blur(6px)`다. 홈 설정 패널은 마침 nav 원점이
  *   화면 원점과 겹쳐 티가 안 났을 뿐, 조상이 한 겹만 바뀌어도 튄다.
  *
