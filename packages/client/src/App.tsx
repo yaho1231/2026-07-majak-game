@@ -13,6 +13,7 @@ import {
 } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { shakeBoard, applyFxSettings, watchReducedMotion, type ShakeLevel } from "./fx";
 import type {
   AbortVoteMessage,
   ActionOption,
@@ -1394,7 +1395,8 @@ interface ImpactSpec {
 }
 
 /** 흔들림 강도별 지속시간(ms) — CSS keyframes 길이와 일치해야 한다 */
-const SHAKE_MS: Record<number, number> = { 1: 180, 2: 300, 3: 420, 4: 620 };
+/* 흔들림 지속시간은 `fx/motion.ts` 의 `SHAKE` 가 갖는다 — 예전 `SHAKE_MS` 는 지웠다.
+   두 곳에 나눠 두면 반드시 어긋난다(실제로 CSS 주석이 "일치해야 한다"고 적고 있었다). */
 const CUTIN_IMPACT_MS = 230;
 const BANNER_IMPACT_MS = 180;
 
@@ -2984,6 +2986,30 @@ export function App(): JSX.Element {
   const [scoreFx, setScoreFx] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<Settings>(loadSettings);
   settingsRef.current = settings; // 매 렌더 동기화 (소켓 콜백에서 최신 설정 읽기)
+
+  /*
+   * 연출 설정을 `fx/` 모듈에 넘긴다 — **연출이 설정을 보는 창구는 여기 하나뿐이다.**
+   *
+   * 예전에는 `screenFx` 검사가 CSS 미디어쿼리와 JSX 조건부 렌더 수십 곳에 흩어져 있어,
+   * 새 연출을 만들 때마다 두 군데를 같이 고쳐야 했고 빠뜨리면 조용히 새어 나갔다
+   * (화면 효과를 끈 사람에게 새로 만든 것만 계속 보이는 식). 기존 CSS 쪽 검사는
+   * 그대로 두고, **GSAP 으로 만드는 것은 전부 이 한 줄을 지난다.**
+   *
+   * `prefers-reduced-motion` 은 게임 도중에도 바뀔 수 있어(OS 설정) 함께 지켜본다.
+   */
+  useEffect(() => {
+    applyFxSettings({ screenFx: settings.screenFx, prodSpeed: settings.prodSpeed });
+  }, [settings.screenFx, settings.prodSpeed]);
+  useEffect(
+    () =>
+      watchReducedMotion(() => {
+        applyFxSettings({
+          screenFx: settingsRef.current.screenFx,
+          prodSpeed: settingsRef.current.prodSpeed,
+        });
+      }),
+    [],
+  );
   sandboxRef.current = sandbox; // 소켓 콜백에서 "내 실제 좌석"을 읽기 위한 동기화
   catalogRef.current = catalog;
   spectatingRef.current = spectating !== null;
@@ -3159,17 +3185,21 @@ export function App(): JSX.Element {
     }
   }, [view]);
 
-  /** 화면 흔들림 — game-root의 data-shake 속성만 토글, CSS가 .table을 흔든다.
-   *  리렌더 없이 발동하고, 컷인·배너(형제 오버레이)는 흔들리지 않아 글자가 또렷하다. */
-  function shakeTable(level: 1 | 2 | 3 | 4): void {
-    const el = gameRootRef.current;
-    if (el === null) return;
-    el.removeAttribute("data-shake");
-    void el.offsetWidth; // reflow — 같은 강도 연속 발동에도 keyframe 처음부터 재생
-    el.setAttribute("data-shake", String(level));
-    window.setTimeout(() => {
-      if (el.getAttribute("data-shake") === String(level)) el.removeAttribute("data-shake");
-    }, SHAKE_MS[level] ?? 300);
+  /**
+   * 화면 흔들림 — `.table`(월드)만 흔든다. 컷인·배너는 형제 오버레이라 흔들리지 않아
+   * 글자가 또렷하다. 이 구분은 예전 CSS 방식에서 그대로 가져온 것이다.
+   *
+   * 예전에는 `data-shake` 속성을 토글하고 CSS 키프레임 **4벌**이 흔들었다. GSAP 으로
+   * 옮긴 이유는 두 가지다:
+   *  ① 세기 4단이 표 한 줄이 된다(`fx/motion.ts` 의 `SHAKE`).
+   *  ② **다른 transform 과 겹칠 수 있다.** CSS 방식은 `.table` 의 `transform` 을 통째로
+   *     잡아서, 흔드는 동안 줌·틸트를 얹을 수가 없었다.
+   *
+   * `prefers-reduced-motion` · `screenFx` 검사는 `shakeBoard` 안에서 한다 — 호출부가
+   * 그걸 기억하지 않아도 되게 하는 것이 `fx/` 모듈의 요점이다.
+   */
+  function shakeTable(level: ShakeLevel): void {
+    shakeBoard(gameRootRef.current?.querySelector(".table") ?? null, level);
   }
 
   /**

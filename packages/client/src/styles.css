@@ -491,52 +491,16 @@ button {
   --back-h: calc(var(--back-w) * 1.36);
 }
 
-/* ── 화면 흔들림 — game-root의 data-shake 속성이 .table(월드)만 흔든다.
-   컷인·배너는 game-root 직속 형제라 흔들리지 않아 글자가 또렷하다.
-   지속시간은 App.tsx SHAKE_MS와 일치해야 한다 (1:180 / 2:300 / 3:420 / 4:620ms). ── */
-.game-root[data-shake] .table { will-change: transform; }
-.game-root[data-shake="1"] .table { animation: shake-1 0.18s linear both; }
-.game-root[data-shake="2"] .table { animation: shake-2 0.3s linear both; }
-.game-root[data-shake="3"] .table { animation: shake-3 0.42s linear both; }
-.game-root[data-shake="4"] .table { animation: shake-4 0.62s linear both; }
+/* ── 화면 흔들림 — 이제 GSAP 이 한다 (`src/fx/effects/board.ts` 의 `shakeBoard`).
+   여기 있던 `data-shake` 규칙과 `shake-1`~`shake-4` 키프레임 4벌은 지웠다.
 
-@keyframes shake-1 {
-  0% { transform: translate(0, 0); }
-  25% { transform: translate(2px, -2px); }
-  50% { transform: translate(-2px, 1px); }
-  75% { transform: translate(1px, 1px); }
-  100% { transform: translate(0, 0); }
-}
-@keyframes shake-2 {
-  0% { transform: translate(0, 0); }
-  15% { transform: translate(-4px, 3px); }
-  30% { transform: translate(4px, -2px); }
-  45% { transform: translate(-3px, 2px); }
-  60% { transform: translate(2px, -1px); }
-  80% { transform: translate(-1px, 1px); }
-  100% { transform: translate(0, 0); }
-}
-@keyframes shake-3 {
-  0% { transform: translate(0, 0) rotate(0); }
-  12% { transform: translate(7px, -5px) rotate(0.15deg); }
-  24% { transform: translate(-6px, 4px) rotate(-0.15deg); }
-  38% { transform: translate(5px, 3px) rotate(0.1deg); }
-  52% { transform: translate(-4px, -3px); }
-  68% { transform: translate(2px, 2px); }
-  84% { transform: translate(-1px, -1px); }
-  100% { transform: translate(0, 0) rotate(0); }
-}
-@keyframes shake-4 {
-  0% { transform: translate(0, 0) rotate(0) scale(1); }
-  8% { transform: translate(-12px, 8px) rotate(-0.4deg) scale(1.012); }
-  17% { transform: translate(11px, -7px) rotate(0.35deg) scale(1.01); }
-  27% { transform: translate(-9px, 5px) rotate(-0.25deg) scale(1.008); }
-  38% { transform: translate(7px, 4px) rotate(0.2deg); }
-  50% { transform: translate(-5px, -3px) rotate(-0.12deg); }
-  63% { transform: translate(4px, 2px); }
-  77% { transform: translate(-2px, -2px); }
-  90% { transform: translate(1px, 1px); }
-  100% { transform: translate(0, 0) rotate(0) scale(1); }
+   왜 옮겼나: ① 세기 4단이 표 한 줄이 된다(`fx/motion.ts` 의 `SHAKE`) ② 무엇보다
+   CSS `animation` 은 `.table` 의 `transform` 을 **통째로 잡아서**, 흔드는 동안 줌·틸트를
+   얹을 수가 없었다. GSAP 은 같은 속성에 여러 트윈을 합성할 수 있다.
+
+   흔드는 대상은 그대로 `.table`(월드)이다 — 컷인·배너는 형제라 흔들리지 않아 글자가
+   또렷하다. `prefers-reduced-motion`·`screenFx` 검사도 `shakeBoard` 안으로 들어갔다. ── */
+
 }
 
 /*
@@ -12398,7 +12362,8 @@ button {
 /* ─────────────── 접근성: 모션 최소화 ─────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .game-root[data-shake] .table { animation: none; }
+  /* 흔들림은 여기서 끄지 않는다 — GSAP 쪽(`fx/settings.ts` 의 `fxEnabled`)이
+     `prefers-reduced-motion` 을 직접 보고 아예 그리지 않는다. */
   .px-burst,
   .cutin-confetti,
   .cutin-rays,
