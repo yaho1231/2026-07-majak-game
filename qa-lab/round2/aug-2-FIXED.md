@@ -12,8 +12,11 @@
 
 - 회귀 테스트: `packages/content/test/qa_aug2_round2.test.ts` — **22개, 전부 통과**.
   **각 수정을 하나씩 되돌려 대응 테스트가 실제로 빨개지는 것까지 확인했다**(아래 표).
-- 재현 스크립트 12종은 고치기 전 상태를 그대로 재현했고, 고친 뒤 전부 사라졌다.
-  의심 8을 위해 `qa-lab/round2/aug-2/p_joker_tenhou.ts` 한 개를 새로 만들었다.
+- 재현 스크립트: 확정 건에 대응하는 **9종을 고치기 전에 돌려 증상을 재현하고, 고친 뒤
+  전부 사라진 것을 확인했다**(최종 상태는 아래 «검증»에 그대로 붙여 뒀다).
+  의심 8을 위해 `qa-lab/round2/aug-2/p_joker_tenhou.ts` 한 개를 새로 만들었다 — 합 10종.
+  나머지 3종(`r_karma_deadbtn`·`r_futuresight_deadbtn`·`r_yaku_disarm`)은 원 보고서가
+  **기각한 가설**의 기록이라 고칠 대상이 없어 돌리지 않았다.
 - 코어(`packages/core/**`)는 **한 줄도 고치지 않았다**. 코어에 있어야 할 수정 1건은
   아래 «코어에 남긴 숙제»에 초안째 적어 둔다.
 
@@ -334,14 +337,39 @@ p_joker_tenhou        12,000 menzen_tsumo,pinfu,ittsuu    ← 48,000 tenhou 였�
 사라졌다. `disarm` 은 **내 수정을 전부 되돌린 상태에서도 똑같이 실패**하는 것을 직접 확인해
 내 변경과 무관함을 못 박아 뒀다. 내 담당 28종 + `regret` + `util.ts` 에서는 실패가 없다.
 
+### 광역 스위프 — **이번에 고친 9종에 대해 완주**
+
+무작위 대국으로 «다른 데를 망가뜨리지 않았는가»를 본다. 이번에 손댄 증강 9종에 대해
+좌석1·좌석2 보유·중복 보유·담당 증강 2개 조합·페르소나 혼합으로 **36판 완주, 전부 무결**:
+
+```
+$ npx tsx qa-lab/round2/aug-2/sweep.ts 4 0 \
+    foresight,free_riichi_discard,full_hand_swap,giant_god,hand_swap3,\
+    honor_return,jackpot,joker,last_stand
+
+-- done foresight:            games=4  crash=0 eff=0 viol=0
+-- done free_riichi_discard:  games=8  crash=0 eff=0 viol=0
+-- done full_hand_swap:       games=12 crash=0 eff=0 viol=0
+-- done giant_god:            games=16 crash=0 eff=0 viol=0
+-- done hand_swap3:           games=20 crash=0 eff=0 viol=0
+-- done honor_return:         games=24 crash=0 eff=0 viol=0
+-- done jackpot:              games=28 crash=0 eff=0 viol=0
+-- done joker:                games=32 crash=0 eff=0 viol=0
+-- done last_stand:           games=36 crash=0 eff=0 viol=0
+DONE games=36 crash=0 eff=0 viol=0
+```
+
+특히 확정 4로 예지의 공개 채널이 **매 이벤트 재계산**이 됐으므로 반응 연쇄가 폭주하지
+않는지가 걱정이었는데, 36판 어디에서도 effectError가 나지 않았다(값이 같으면 emit을
+생략하는 가드가 실제로 한 겹에서 끊는다).
+
 ### 안 한 것 (정직하게)
 
-- **광역 스위프(`sweep.ts`, 180판)를 완주시키지 못했다.** 이번 세션 안에서 두 번 걸었으나
-  둘 다 끝나기 전에 시간이 다했다. 원 보고서가 적었듯 이 스위프는 **확정 10건 중 하나도
-  잡지 못했던** 검사라(무작위 대국으로는 조건이 안 겹친다) 회귀 신호로서의 값은 낮지만,
-  «다른 데를 망가뜨리지 않았는가»를 넓게 보는 용도로는 아직 안 돌아갔다. 다음 사람이
-  `npx tsx qa-lab/round2/aug-2/sweep.ts` 를 한 번 완주시켜 주면 좋겠다.
-  그 자리를 대신한 것은 재현 스크립트 10종 + 회귀 테스트 22개 + 되돌림 검증 13회다.
+- **담당 28종 전체 스위프(`sweep.ts` 무인자 = augment당 40판)는 안 돌렸다.** 판당 ~50초라
+  이번 세션 안에 끝나지 않는다. 원 보고서가 적었듯 이 스위프는 **확정 10건 중 하나도 잡지
+  못했던** 검사라(무작위 대국으로는 조건이 안 겹친다) 회귀 신호로서의 값이 낮다고 보고,
+  **변경한 9종에 범위를 좁혀** 위와 같이 완주시켰다. 손대지 않은 19종까지 보려면
+  `npx tsx qa-lab/round2/aug-2/sweep.ts 6` 을 걸어 두면 된다(원 보고서와 같은 180판 규모).
 - **클라이언트 표시**는 보지 않았다. 특히 확정 4로 예지의 공개 채널이 «저장값»에서
   «파생값»으로 바뀌었으므로, 드래그 모달이 렌더 도중 갱신되는 목록을 어떻게 다루는지는
   클라 담당이 한 번 봐야 한다(값 자체는 이제 항상 실제 패산과 일치한다).

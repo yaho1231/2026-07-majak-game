@@ -115,11 +115,30 @@ function graveCandidates(
   for (const p of state.players) {
     if (p.id === holder) continue;
     const seatOrder = ((p.seat - state.round.dealerSeat) % n + n) % n;
-    // ⚠ **보유자에게 실제로 보이는 패만** 무덤으로 센다. 후보는 "지금 파면 화료되는
-    //    패"만 남으므로, 안개(박무·숨은 강)로 가려진 바닥까지 긁으면 그 순간
-    //    "안 보이는 저 패가 내 오름패다"가 후보 하나로 드러난다(2026-08-02 감사).
-    //    보이지 않는 무덤은 팔 수도 없다 — 정보와 규칙을 같은 선에 맞춘다.
-    const pond = visibleTileIdsIn(state, rules, holder, discardsZone(p.id));
+    /*
+     * ⚠ **전원에게 보이는 패만** 무덤으로 센다.
+     *
+     * 원래는 «보유자에게 보이는 패»였다. 후보는 "지금 파면 화료되는 패"만 남으므로,
+     * 안개(박무·숨은 강)로 가려진 바닥까지 긁으면 그 순간 "안 보이는 저 패가 내
+     * 오름패다"가 후보 하나로 드러나기 때문이다(2026-08-02 감사).
+     *
+     * 그런데 그 기준에는 반대쪽 구멍이 있었다 — 안개는 **비보유자에게만** 강을
+     * 가리므로, **안개를 친 본인이 도굴을 함께 들면** 남에게는 가려진 바닥을 자기만
+     * 보고 파낼 수 있었다. 그리고 파낸 패는 전원 공개 채널로 나가므로, 그 순간
+     * 자기가 감춰 둔 정보를 자기 손으로 흘리면서 규칙까지 우회한다. detail이
+     * "**안개로 가려진 바닥의 패도 파낼 수 없다**"고 못 박은 것과도 어긋난다
+     * (QA 2차 aug-2 의심 6).
+     *
+     * 기준을 «누구의 눈»이 아니라 «테이블 위에 실제로 놓여 있는가»로 옮긴다 —
+     * 전 좌석의 교집합이면 안개를 친 쪽도 같은 규칙을 받는다.
+     */
+    const pond = state.players.reduce<TileId[]>(
+      (acc, viewer) => {
+        const seen = new Set(visibleTileIdsIn(state, rules, viewer.id, discardsZone(p.id)));
+        return acc.filter((id) => seen.has(id));
+      },
+      [...visibleTileIdsIn(state, rules, holder, discardsZone(p.id))],
+    );
     pond.forEach((id, turn) => {
       rows.push({ fromPlayer: p.id, graveId: id, turn, seatOrder });
     });
