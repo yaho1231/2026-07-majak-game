@@ -2941,6 +2941,8 @@ export function App(): JSX.Element {
   const prodSeq = useRef(0);
   /** 효과음을 이미 재생한 연출 key — effect 재실행(HMR 등)에도 연출당 1회 보장 */
   const prodFiredKey = useRef(0);
+  /** 큐에서 꺼냈지만 아직 화면에 못 세운 구간 — 펌프 이펙트의 이중 실행 가드(그쪽 주석) */
+  const prodPumpPending = useRef(false);
   /** 화면 흔들림 대상 루트 (data-shake 속성 토글용) */
   const gameRootRef = useRef<HTMLDivElement | null>(null);
   /**
@@ -2982,6 +2984,8 @@ export function App(): JSX.Element {
   const [riichiMode, setRiichiMode] = useState(false);
   const [intro, setIntro] = useState(false);
   const [scoreFx, setScoreFx] = useState<Record<string, number>>({});
+  /** 점수 변동 표시를 지우는 타이머 — 새 변동이 오면 갈아 끼운다(아래 주석) */
+  const scoreFxTimer = useRef<number | null>(null);
   const [settings, setSettings] = useState<Settings>(loadSettings);
   settingsRef.current = settings; // 매 렌더 동기화 (소켓 콜백에서 최신 설정 읽기)
   sandboxRef.current = sandbox; // 소켓 콜백에서 "내 실제 좌석"을 읽기 위한 동기화
@@ -3001,9 +3005,12 @@ export function App(): JSX.Element {
     } else if (key === "sfxVolume" && typeof value === "number") {
       setSfxVolume(value);
       if (value > 0) sfx.pick();
-    } else if (key === "haptics" && value === true) {
-      setHapticsEnabled(true);
-      haptics.declare();
+    } else if (key === "haptics") {
+      // 끄는 쪽도 **즉시** 반영한다. 예전에는 `value === true`만 있어서 끄기가
+      // 아래 동기화 이펙트에만 매달려 있었고, 그 이펙트의 의존성마저 빠져 있어
+      // 스위치가 아무 일도 하지 않았다. 둘 중 하나만 고치면 다시 같은 일이 난다.
+      setHapticsEnabled(value === true && hapticsSupported());
+      if (value === true) haptics.declare(); // 끌 때는 울리지 않는다 (앞뒤가 안 맞는다)
     }
     setSettings((prev) => {
       const next = { ...prev, [key]: value };
@@ -3108,13 +3115,30 @@ export function App(): JSX.Element {
     setProdTick((t) => t + 1); // 드레인 체크 재실행
   }
 
-  // 펌프+드레인: 재생 중이 없을 때 큐에서 하나 꺼내 재생하고, 큐가 완전히 비면
-  // 대기 중이던 국 결과창을 연다. shift는 setState 업데이터가 아닌 이펙트 안에서만
-  // 일어나 StrictMode 이중호출에도 안전하다.
+  /*
+   * 펌프+드레인: 재생 중이 없을 때 큐에서 하나 꺼내 재생하고, 큐가 완전히 비면
+   * 대기 중이던 국 결과창을 연다.
+   *
+   * ⚠ 예전 주석은 «shift는 이펙트 안에서만 일어나 StrictMode 이중호출에도
+   * 안전하다»고 적었는데 **사실이 아니었다.** React 18의 StrictMode는 이펙트를
+   * setup → cleanup → setup 으로 **본문 자체를 두 번** 실행한다. 두 번째 실행
+   * 시점에도 `activeProd`는 아직 null(같은 커밋이라 state가 안 바뀌었다)이라
+   * 큐에서 하나를 더 `shift`하고 `setActiveProd`가 마지막 것으로 덮여 **앞의
+   * 연출이 유실됐다**(개발 모드 한정). 꺼내 놓고 아직 화면에 못 세운 구간을
+   * ref로 표시해 두 번째 실행이 손대지 않게 한다. 표식은 `activeProd`가 서는
+   * 순간 풀리므로 프로덕션 동작은 그대로다.
+   */
   useEffect(() => {
-    if (activeProd !== null) return;
+    if (activeProd !== null) {
+      prodPumpPending.current = false;
+      return;
+    }
+    if (prodPumpPending.current) return;
     if (productionQueue.current.length > 0) {
       const next = productionQueue.current.shift();
+      // `next`가 없으면 표식을 세우지 않는다 — 세워 두면 풀어 줄 `activeProd`가
+      // 영영 안 서서 펌프가 멎는다.
+      prodPumpPending.current = next !== undefined;
       // 뒤에 몇 개가 밀려 있는지는 **꺼내는 이 순간**에 정해진다 — 그 수만큼 체류를
       // 줄여 큐가 벽이 되지 않게 한다. ttl을 여기서 확정해 두면 CSS(`--prod-ttl`)와
       // 내리는 타이머가 같은 값을 본다(둘이 갈리면 연출이 끝나기 전에 사라진다).
@@ -3245,12 +3269,32 @@ export function App(): JSX.Element {
     return () => window.removeEventListener("keydown", onKey);
   }, [activeProd]);
 
-  // 효과음 설정 → 마스터 게인 동기화 (호출부 무수정 뮤트)
+  /*
+   * 재연결 띠가 떠 있는 동안 body 에 표식을 단다.
+   *
+   * 화면 맨 위를 차지하는 고정 띠는 여럿인데 서로를 못 본다. 특히 무효 투표 배너
+   * (`.abort-banner`)는 GameTable 안쪽에 있어 형제 선택자로는 닿지 않는다 —
+   * CSS 가 «지금 재연결 띠가 떠 있는가»를 알 유일한 길이 이 표식이다.
+   */
+  useEffect(() => {
+    document.body.classList.toggle("reconnecting", connection === "reconnecting");
+    return () => document.body.classList.remove("reconnecting");
+  }, [connection]);
+
+  /*
+   * 효과음·진동 설정 → 마스터 게인 동기화 (호출부 무수정 뮤트)
+   *
+   * ⚠ 의존성에 **`sfxVolume`과 `haptics`가 빠져 있었다.** 그래서 «진동»을 끄면
+   * `updateSetting`의 «켤 때만» 분기(`value === true`)도 안 걸리고 이 이펙트도 안
+   * 돌아, 새로고침하거나 «효과음»을 껐다 켜기 전까지 그 세션 내내 계속 울렸다 —
+   * 죽은 접근성 스위치였다(진동을 끄는 사람에게는 끌 이유가 있다).
+   * 세 값을 전부 의존성에 적어 «설정이 곧 지금 상태»가 되게 한다.
+   */
   useEffect(() => {
     setSfxEnabled(settings.sfxOn);
     setSfxVolume(settings.sfxVolume);
     setHapticsEnabled(settings.haptics && hapticsSupported());
-  }, [settings.sfxOn]);
+  }, [settings.sfxOn, settings.sfxVolume, settings.haptics]);
 
   // 리치 BGM 볼륨 동기화 (효과음과 독립된 자체 볼륨)
   useEffect(() => {
@@ -3652,6 +3696,32 @@ export function App(): JSX.Element {
 
   /** 게임/방 관련 로컬 상태만 초기화 (연결·로그인은 유지) */
   function resetGameState(): void {
+    /*
+     * **튜토리얼 코치는 방을 떠나는 순간 함께 꺼진다.**
+     *
+     * 코치를 끄는 자리가 코치 자신의 `onFinish`와 홈의 «연습 대국(안내 없음)»
+     * 둘뿐이라, 강의 도중 「나가기」를 누르면 `coachOn`이 켜진 채 홈으로 나왔다.
+     * 그 뒤 아무 실전 판에 들어가면 코치가 첫 강의부터 다시 붙고 —
+     * `discard-script`의 `lock`이 «이 패만 버릴 수 있다», `how: "augment"` 잠금은
+     * 아예 «아무 패도 못 버린다»가 된다. 실전 판에서 버릴 패가 없어지는
+     * 소프트락이었다(자동화료·자동버림도 `tryAutoRespond`가 조용히 무시했다).
+     *
+     * 방을 떠나는 경로(returnHome·logout·gameAborted·kicked …)는 전부 여기를
+     * 지나므로, 끄는 자리를 이 한 곳으로 모은다.
+     */
+    setCoachOn(false);
+    coachOnRef.current = false; // 소켓 콜백은 state가 아니라 이 ref를 본다
+    setCoachLock(null);
+    /*
+     * 서버로 보낸 «판을 잠깐 멈춰 달라»도 되돌린다. 방은 이미 떠났으니 새로
+     * 보내지 않고, 다음 튜토리얼이 깨끗하게 시작하도록 표식만 비운다.
+     */
+    if (coachHoldRelease.current !== null) {
+      window.clearTimeout(coachHoldRelease.current);
+      coachHoldRelease.current = null;
+    }
+    coachHoldSent.current = false;
+    coachHoldWanted.current = false;
     setJoined(null);
     setLobby(null);
     prevLobby.current = null;
@@ -3669,6 +3739,8 @@ export function App(): JSX.Element {
     setRoundResult(null);
     setAbortVote(null);
     setSpectating(null);
+    // 중계 오버레이도 관전석에 두고 나온다 (위 `overlayMode` 주석).
+    setOverlayMode("off");
     clearProductions();
     setScoreFx({});
     prevViewRef.current = null;
@@ -3997,6 +4069,22 @@ export function App(): JSX.Element {
         setAuth(null);
         resetGameState();
         showToast(msg.message, "info", 6000);
+        return;
+      }
+      /*
+       * **이 자리는 다른 창이 가져갔다** (QA 2차 server 확정 2).
+       *
+       * 로그인은 멀쩡하다 — 옮겨 간 것은 좌석 하나뿐이라 세션 토큰은 지우지 않는다.
+       * 대신 이 창을 홈으로 정리한다: 그냥 두면 마지막 대국 화면이 초읽기까지 돌린 채
+       * 남아, 누르는 것마다 아무 일도 일어나지 않는 «좀비 탭»이 된다(그게 곧 "서버가
+       * 죽었다"는 제보가 됐다). 자동 재입장 근거도 함께 지운다 — 안 그러면 다음
+       * 재연결에서 이 창이 좌석을 도로 빼앗아 두 창이 서로를 끊는 핑퐁이 된다.
+       */
+      if (msg.code === "SESSION_REPLACED") {
+        activeRoomRef.current = null;
+        showToast(msg.message, "info", 6000);
+        resetGameState();
+        refreshHome();
         return;
       }
       if (msg.code === "TOKEN_INVALID") {
@@ -4526,6 +4614,15 @@ export function App(): JSX.Element {
       else setPrompts({});
       setPromptDeadline(null);
       setRiichiMode(false);
+      /*
+       * **취소도 «프롬프트가 바뀐 사건»이다.** 예전에는 도착 경로에서만
+       * `promptSeq`를 올려서, 시간 초과로 접힌 순에는 그 값에 매달린 정리가 전부
+       * 안 돌았다 — 들어 올려 둔 패(`armedTileId`)·등가교환 선택·예지/영상패
+       * «닫아 둠» 표식이 그대로 남았다. 특히 «한 번 더» 뱃지가 달린 채 살아남으면
+       * 다음 순의 첫 탭이 곧바로 타패가 되는 길이 열린다(두 번 탭 게이트의 전제가
+       * 무너진다).
+       */
+      setPromptSeq((s) => s + 1);
       return;
     }
     if (msg.type === "draftOffer") {
@@ -4937,7 +5034,16 @@ export function App(): JSX.Element {
     if (changed) {
       setScoreFx(deltas);
       sfx.score();
-      window.setTimeout(() => setScoreFx({}), 2600);
+      /*
+       * 앞서 걸어 둔 지우개는 **취소한다.** 2.6초 안에 점수가 두 번 움직이면
+       * (연속 화료·증강 정산) 먼저 걸린 타이머가 나중에 뜬 숫자를 지워, 두 번째
+       * 변동이 순식간에 사라졌다.
+       */
+      if (scoreFxTimer.current !== null) window.clearTimeout(scoreFxTimer.current);
+      scoreFxTimer.current = window.setTimeout(() => {
+        scoreFxTimer.current = null;
+        setScoreFx({});
+      }, 2600);
     }
 
     /*
@@ -5376,7 +5482,21 @@ export function App(): JSX.Element {
       ...(seat !== undefined ? { seat } : {}),
     } as ActionMessage);
     if (!sent) return;
-    if (seat !== undefined) dropPrompt(seat);
+    /*
+     * 프롬프트를 걷는 것은 **방금 보낸 수가 지금 떠 있는 그 프롬프트의 것일 때만**이다.
+     *
+     * 예전에는 전송에 성공하기만 하면 무조건 걷었다. 손패를 끌어 든 채 제한 시간이
+     * 지나면 그 사이에 도착한 **다른** 프롬프트(론·치·펑)가 떠 있는데, 손을 뗀
+     * 순간 낡은 타패가 나가고 그 버튼이 통째로 걷혔다 — 서버는 "지금 고를 수 있는
+     * 선택지가 아닙니다"를 돌려주고 화면은 론을 잃었다.
+     * 지금 떠 있는 프롬프트가 이 수를 갖고 있지 않으면 화면을 그대로 둔다.
+     */
+    if (seat !== undefined) {
+      const shown = prompts[seat];
+      if (shown === undefined || shown.options.some((o) => o.type === option.type)) {
+        dropPrompt(seat);
+      }
+    }
     setRiichiMode(false);
   }
 
@@ -5630,10 +5750,24 @@ export function App(): JSX.Element {
       <EmoteFeed entries={emotes} />
       {/* 되묻는 창 — window.confirm 과 달리 메인 스레드를 멈추지 않는다(감사 §5-9) */}
       <ConfirmHost />
+      {/*
+        재연결 띠. 화면 맨 위를 통째로 쓰는 불투명한 띠(z 300)라, 같은 자리에 서는
+        무효 투표 배너(`.abort-banner`, z 290)를 덮었다 — 둘은 배타적이지 않다
+        (재연결 중에도 마지막 뷰가 그대로 렌더되므로 배너는 살아 있다).
+        `role="alertdialog"` 짜리 배너의 찬성/반대 버튼이 통째로 안 보였다.
+        body 에 표식을 달아, 띠가 떠 있는 동안 배너가 그 아래로 내려가게 한다
+        (배너는 GameTable 안쪽이라 형제 선택자로는 닿지 않는다).
+      */}
       {connection === "reconnecting" ? (
         <div className="reconnect-bar">
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
         </div>
+      ) : null}
+      {inGame || inWaiting ? (
+        <GameNoticeBanner
+          notice={serverInfo?.notice}
+          belowReconnectBar={connection === "reconnecting"}
+        />
       ) : null}
       {/* 공유 링크로 들어온 리플레이는 **로그인 화면보다 먼저** 선다 (§4-8).
           토큰이 곧 권한이라 계정이 필요 없다 — 여기서 auth 게이트를 먼저 통과시키면
@@ -5730,7 +5864,15 @@ export function App(): JSX.Element {
           {...(spectating !== null && liveRooms !== null ? { liveRooms } : {})}
           rewindAt={rewindAt}
           rewindLen={viewBuffer.current.length}
-          overlayMode={overlayMode}
+          /*
+           * 중계 오버레이는 **관전석의 장치다.** 끄는 단추(`onOverlayMode`)가 관전
+           * 중에만 그려지는데 값 자체는 `props.spectator`와 무관하게 `.table`에
+           * 붙었다 — 관전하며 «오버레이: 초록»을 켠 뒤 관전을 끝내고 내 판에 앉으면
+           * 판이 통째로 크로마키 초록이 되고 빠른 토글 바(자동정렬·자동화료·후로없음·
+           * 자동버림)까지 사라졌다. 되돌릴 단추가 없어 탈출구가 새로고침뿐이었다.
+           * 관전 중이 아니면 여기서 잘라, 값이 남아 있어도 내 판에는 못 붙는다.
+           */
+          overlayMode={spectating === null ? "off" : overlayMode}
           {...(spectating === null
             ? {}
             : {
@@ -5738,8 +5880,25 @@ export function App(): JSX.Element {
                 onOverlayMode: (m: "off" | "clear" | "green") => setOverlayMode(m),
                 onSwitchTable: (code: string) => {
                   // 탁자를 옮긴다 — 걸어 둔 지연은 그대로 들고 간다.
+                  // 다만 **앞 탁자의 상태는 들고 가지 않는다** (QA 2차 admin 확정 2 —
+                  // 자세한 사연은 바로 아래 주석).
                   setRewindAt(null);
                   viewBuffer.current = [];
+                  setPause(null);
+                  pausedAt.current = null;
+                  setRoomNotice(null);
+                  if (roomNoticeTimer.current !== null) {
+                    clearTimeout(roomNoticeTimer.current);
+                  }
+                  roomNoticeTimer.current = null;
+                  /*
+                   * A방을 세워 놓고 B방으로 넘어가면 «정지 중» 오버레이와 A방 공지가
+                   * 그대로 남아 멀쩡한 B방을 덮었다. 게다가 관전 버튼의 라벨은
+                   * `pause !== null` 하나로 정해지므로 「▶ 재개」에 박힌 채, 눌러도
+                   * B방은 원래 안 서 있으니 서버가 무시해 영영 풀리지 않았다.
+                   * (서버도 새 탁자에 붙는 순간 두 값을 확정해 보내도록 함께 고쳤다 —
+                   *  여기는 그 메시지가 오기 전의 한 프레임까지 비우는 몫이다.)
+                   */
                   send({
                     type: "spectate",
                     code,
@@ -8198,6 +8357,30 @@ function TierScreen(props: {
   );
 }
 
+/**
+ * 도감 검색 술어 — 목록 필터와 계열 칩 개수가 **같은 코퍼스**를 봐야 한다.
+ *
+ * 원래는 이름·id·설명·상세 넷만 봤다. 그런데 도감 카드에 실제로 인쇄되는 본문은
+ * `<AugDesc variant="codex" expanded={false} />` = **요약**(`augmentBrief.ts`) 한
+ * 줄이다 — 사람은 눈앞에 보이는 낱말을 치는데, 그 낱말만 검색에서 빠져 있었다.
+ * (`giant_god`+"텐파이", `danger_sense`+"방총", `true_dragon`+"몸통" — 셋 다 카드에
+ * 대놓고 적혀 있는데 검색 결과에서 사라졌다.)
+ *
+ * 두 곳에 같은 술어가 복사돼 있던 것이 애초에 어긋남의 씨앗이라 함수로 묶는다.
+ */
+function codexMatchesQuery(cat: AugmentCatalogEntry, q: string): boolean {
+  if (q === "") return true;
+  if (cat.name.toLowerCase().includes(q)) return true;
+  if (cat.id.includes(q)) return true;
+  if ((cat.detail ?? "").toLowerCase().includes(q)) return true;
+  if (cat.description.toLowerCase().includes(q)) return true;
+  // 카드에 인쇄되는 요약 — 배지(use)까지 포함해 본다("상시"·"매 국 1회"로도 찾는다).
+  const brief = briefOf(cat.id, cat.description);
+  if (brief.text.toLowerCase().includes(q)) return true;
+  if (brief.use.toLowerCase().includes(q)) return true;
+  return false;
+}
+
 function CodexScreen(props: {
   /** 왼쪽 위 되돌아가기 버튼 문구. 게임 중 오버레이로 열면 "← 닫기"다. */
   backLabel?: string;
@@ -8250,9 +8433,7 @@ function CodexScreen(props: {
     return merged.filter((m) => {
       if (onlyCollected && !m.collected) return false;
       if (category !== null && m.cat.category !== category) return false;
-      if (q !== "" && !m.cat.name.toLowerCase().includes(q) && !m.cat.id.includes(q)
-        && !(m.cat.detail ?? "").toLowerCase().includes(q)
-        && !m.cat.description.toLowerCase().includes(q)) return false;
+      if (!codexMatchesQuery(m.cat, q)) return false;
       return true;
     });
   }, [merged, onlyCollected, category, q]);
@@ -8262,9 +8443,7 @@ function CodexScreen(props: {
     const counts = new Map<AugmentCategory, number>();
     for (const m of merged) {
       if (onlyCollected && !m.collected) continue;
-      if (q !== "" && !m.cat.name.toLowerCase().includes(q) && !m.cat.id.includes(q)
-        && !(m.cat.detail ?? "").toLowerCase().includes(q)
-        && !m.cat.description.toLowerCase().includes(q)) continue;
+      if (!codexMatchesQuery(m.cat, q)) continue;
       counts.set(m.cat.category, (counts.get(m.cat.category) ?? 0) + 1);
     }
     return counts;
@@ -8771,6 +8950,9 @@ const HELP_BASICS: HelpSection[] = [
     paras: [
       "남이 버린 패를 가져와 묶음을 완성할 수 있습니다. 연속 두 장을 들고 있으면 바로 위(상가)에게서만 치, 같은 패 2장을 들고 있으면 누구에게서든 퐁입니다. 같은 패 4장은 깡입니다.",
       "울면 그 묶음이 공개되고 멘젠이 깨집니다 — 리치를 걸 수 없고 쓸 수 있는 역이 줄어듭니다.",
+      // 2026-08-22: 규칙이 실제로 생겼는데 도움말에 없으면, 사람은 자물쇠만 보고
+      // 「버그인가?」 한다. 규칙을 만들면 그 규칙을 설명하는 자리도 함께 만든다.
+      "울고 난 바로 그 순에는 **방금 만든 묶음과 같은 패를 버릴 수 없습니다**(쿠이카에 금지). 예를 들어 4만5만으로 3만을 치했다면 손에 있는 3만도, 반대쪽 6만도 그 순에는 버리지 못합니다 — 버릴 수 없는 패에는 자물쇠가 걸립니다. 다음 순부터는 평범하게 버릴 수 있습니다.",
     ],
     figure: [
       { label: "치", tiles: "34m", then: "234m", note: "연속 두 장을 들고 있을 때, **왼쪽 사람(상가)** 이 버린 2만이나 5만만 가져올 수 있습니다." },
@@ -9742,6 +9924,52 @@ function NoticeBanner({ notice }: { notice: ServerNotice | undefined }): JSX.Ele
         {hasBody ? <span className="notice-more">{open ? "접기 ▴" : "자세히 ▾"}</span> : null}
       </div>
       {hasBody && open ? <p className="notice-body">{notice.body}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * **대국·대기실 화면에 얹는 전역 공지 띠** (docs/36 §1 · QA 2차 admin 확정 3).
+ *
+ * 서버는 예전부터 전역 공지를 전원에게 밀고 있었고 `adminSetNotice` 핸들러의 주석도
+ * "대기실·게임 중인 사람도 받는다"고 적어 두었다. 그런데 **그리는 자리가 로그인
+ * 화면(AuthScreen)과 홈(HomeScreen)밖에 없었다.** 전역 공지의 존재 이유가
+ * 「점검 5분 전」인데, 정작 그 5분 동안 반장전을 두고 있는 사람 — 공지가 가장 필요한
+ * 집단 — 에게는 한 글자도 닿지 않았다. 반장전 한 판이 30~40분이다. 그리고 관리자는
+ * 자기 홈에 되돌아온 배너를 보고 전달됐다고 믿는다.
+ *
+ * 그래서 판 위에 얹는 자리를 하나 만든다. 홈·로그인에는 이미 배너가 서 있으므로
+ * **호출부가 대국·대기실에서만** 이걸 세운다. 탁자 공지(`roomNotice`)와는 채널이
+ * 다르다 — 저건 그 탁자에만 거는 말이고, 이건 서버 전체에 하는 말이다.
+ *
+ * 배치를 인라인으로 잡는 이유: 기존 두 자리는 화면 흐름 안이라 고정 배치 규칙이
+ * 없다(`.notice-banner`는 자리를 잡지 않는다). 판 위에 띄우는 건 여기가 처음이라
+ * 이 컴포넌트가 자기 자리를 들고 있는다. 재연결 띠(z 300)와 같이 뜨면 그 아래로
+ * 내려간다 — 둘은 배타적이지 않다.
+ */
+function GameNoticeBanner({
+  notice,
+  belowReconnectBar,
+}: {
+  notice: ServerNotice | undefined;
+  belowReconnectBar: boolean;
+}): JSX.Element | null {
+  if (notice === undefined) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: belowReconnectBar ? 34 : 0,
+        left: 0,
+        right: 0,
+        zIndex: 299,
+        maxHeight: "40vh",
+        overflowY: "auto",
+        boxShadow: "0 6px 22px rgba(0, 0, 0, 0.45)",
+        background: "rgba(24, 20, 14, 0.97)",
+      }}
+    >
+      <NoticeBanner notice={notice} />
     </div>
   );
 }
@@ -11716,13 +11944,22 @@ const GameTable = memo(function GameTable(props: {
    */
   const waitRemaining = useMemo(() => remainingCounter(view, me.id), [view, me.id]);
 
-  /** 중계 위험패 — 서버가 보내 준 «지금 두는 사람»의 손패 위험도 (관전 전용) */
+  /**
+   * 중계 위험패 — 서버가 보내 준 «지금 두는 사람»의 손패 위험도 (관전 전용).
+   *
+   * ⚠ **`spectator` 가드를 함께 건다.** 이건 남의 손패에 대한 해설이라, 대국자
+   * 화면에 서면 그대로 정보 누출이다. 지금은 서버가 대국자에게 `insight`를 안
+   * 보내므로 안전하지만, 그 «안 보낸다» 한 줄이 유일한 방어선이었다 — 누출을
+   * 막는 조건은 보내는 쪽과 그리는 쪽 **양쪽에** 있어야 한다.
+   */
   const specDanger = useMemo(
     () =>
-      props.insight?.dangerSeat !== undefined && props.insight.danger !== undefined
+      props.spectator === true &&
+      props.insight?.dangerSeat !== undefined &&
+      props.insight.danger !== undefined
         ? { seat: props.insight.dangerSeat, danger: props.insight.danger }
         : null,
-    [props.insight],
+    [props.insight, props.spectator],
   );
 
   // ── 액티브 증강 클릭 발동(무장) 상태 — 게임판 전체가 공유(SelectionContext) ──
@@ -11860,6 +12097,10 @@ const GameTable = memo(function GameTable(props: {
               <span className="spectate-focus-label">되감기</span>
               <button
                 className="spectate-focus-pick"
+                /* 버퍼 맨 앞에서는 더 갈 데가 없다. `Math.max(0, …)`로 클램프만 해
+                   두면 버튼은 계속 활성인데 눌러도 아무 일이 없어, 짝인 ▶(아래)와
+                   달리 «고장난 버튼»으로 읽혔다. */
+                disabled={(props.rewindAt ?? (props.rewindLen ?? 0) - 1) <= 0}
                 onClick={() => {
                   const len = props.rewindLen ?? 0;
                   const cur = props.rewindAt ?? len - 1;
@@ -14442,8 +14683,23 @@ const River = memo(function River({
         // 뒷면 칸은 언제나 바닥의 앞쪽이라 자리 번호가 곧 바닥 인덱스다.
         const rot = isRiichiSlot(i) ? " rt-riichi" : "";
         if (revealLast) {
+          /*
+           * ⚠ **금색 링(`rt-latest`)은 «지금 막 버려진 그 한 장»에만 붙인다.**
+           *
+           * 예전에는 이 칸이면 무조건 `rt-latest`였다. 박무의 `count_only` 구간에서는
+           * 네 사람이 저마다 «자기 마지막 한 장»을 여기 띄우므로, 강 네 개가 **동시에**
+           * 금색 링 + 무한 발광을 달았다 — 누가 방금 버렸는지 판독이 불가능했다.
+           * 테이블 최신 버림(`round.lastDiscard`)의 주인일 때만 링을 준다.
+           *
+           * key에 tileId를 넣는 이유: 자리 번호(`h${i}`)만 쓰면 다음 버림이 와도
+           * key도 class도 그대로라 `::before` 착지 플래시가 재생되지 않았다.
+           */
+          const isTableLatest = last !== null && last.player === playerId;
           return (
-            <span key={`h${i}`} className={`rt rt-latest${rot}`}>
+            <span
+              key={`h${i}:${ownLastId}`}
+              className={`rt${isTableLatest ? " rt-latest" : ""}${rot}`}
+            >
               <span className="rt-inner">
                 <TileImg tile={view.tiles[ownLastId]} size="fill" owner={playerId} />
               </span>
@@ -14621,6 +14877,23 @@ function SealBadge({
   );
 }
 
+/**
+ * 후로 하나가 줄에서 먹는 **칸** 수.
+ *
+ * `--meld-n`은 «후로 줄이 먹는 칸 수» 예산인데 예전에는 `tileIds.length`(장 수)를
+ * 그대로 세고 있었다. 가깡(`kan_added`)만 둘이 어긋난다 — 4장째를 울어 온 패 **위에
+ * 겹쳐 쌓으므로**(`MeldGroup`) 화면에서는 `upright` 2칸 + `MeldStack` 1칸 = 3칸인데
+ * 장수는 4다. 안깡(4칸/4장)·치·퐁(3칸/3장)은 일치한다.
+ * 가깡 1회당 1칸씩 과다 계상되고, 뒷면과 후로가 같은 예산을 나눠 갖는 구조라
+ * **상대 손패 뒷면까지 함께** 필요보다 작게 그려졌다.
+ */
+function meldSlotCount(m: { kind: string; tileIds: number[]; calledTileId?: number }): number {
+  if (m.kind === "kan_added" && m.calledTileId !== undefined) {
+    return Math.max(1, m.tileIds.length - 1);
+  }
+  return m.tileIds.length;
+}
+
 function OpponentStrip({
   view,
   player,
@@ -14675,7 +14948,7 @@ function OpponentStrip({
   // 후로 타일 크기가 고정이던 시절엔 깡 서너 번에 예산을 다 먹어 뒷면만 하한까지
   // 쪼그라들었다 (2026-08-13 보고).
   const meldTileCount =
-    melds.reduce((n, m) => n + m.tileIds.length, 0) + pulledMeldTileIds(view, player.id).length;
+    melds.reduce((n, m) => n + meldSlotCount(m), 0) + pulledMeldTileIds(view, player.id).length;
   const sizeVars = {
     "--back-n": Math.max(1, handCount),
     "--meld-n": meldTileCount,
@@ -14901,7 +15174,15 @@ function disarmedAugmentsOf(view: PlayerView, playerId: string): Set<string> {
   return out;
 }
 
-/** 재장전으로 이번 게임에 되살린 이 사람의 증강 (pill에 ♻를 붙인다) */
+/**
+ * 재장전으로 **이번 국에** 되살린 이 사람의 증강 (pill에 ♻를 붙인다).
+ *
+ * ⚠ 주석이 «이번 게임»이라고 적혀 있었지만 채널 수명은 그게 아니다 —
+ * `content/src/augments/reload.ts` 가 `roundViewKey("*", …)` 즉 **국 스코프**로
+ * 발행하므로 국이 넘어가는 순간 이 표식이 사라진다(되살아난 사용 횟수 자체는
+ * 게임 내내 남는다). 여기서 고칠 수 있는 것은 문구뿐이라 문구를 사실에 맞춘다 —
+ * 표식을 게임 내내 남기려면 콘텐츠 쪽 채널을 게임 스코프로 올려야 한다.
+ */
 function reloadedAugmentsOf(view: PlayerView, playerId: string): Set<string> {
   const out = new Set<string>();
   const v = view.augmentView[`reload:${playerId}`];
@@ -15225,15 +15506,8 @@ function augmentPillStatus(
     return { chip: `${left}회`, note: `이번 국 왕패 교환 ${left}회 남음` };
   }
 
-  // 울기 봉인 — 몇 순 남았는지. 값이 객체라 예전엔 어떤 표시에도 안 걸려
-  // **화면에 아무것도 안 떴다**(2026-08-01 감사).
-  if (augId === "call_seal") {
-    const m = av[`call_seal:${playerId}`] as { until?: number } | null;
-    if (m === null || typeof m !== "object" || typeof m.until !== "number") return null;
-    const left = m.until - view.round.turnCount;
-    if (left <= 0) return null;
-    return { chip: `${left}순`, note: `앞으로 ${left}순 동안 아무도 후로할 수 없다` };
-  }
+  // (울기 봉인 `call_seal`은 잔량(`usesStatus`)과 함께 보여야 해서 아래
+  //  `withUses` 뒤로 내려갔다 — 그쪽 주석 참고.)
   /*
    * 밀실의 도라 — **깡에 들어간 네 장**이 이 사람만의 도라가 된다(전원 공개).
    * 종류가 아니라 그 네 장이라, 손패에 같은 패가 있어도 판이 붙지 않는다.
@@ -15352,6 +15626,27 @@ function augmentPillStatus(
       ...(usesStatus.gauge !== undefined ? { gauge: usesStatus.gauge } : {}),
     };
   };
+
+  /*
+   * 울기 봉인 — 몇 순 남았는지. 값이 객체라 예전엔 어떤 표시에도 안 걸려
+   * **화면에 아무것도 안 떴다**(2026-08-01 감사).
+   *
+   * ⚠ 그 뒤로도 이 분기는 `usesStatus`보다 **위에서** 곧바로 return 했다. 그래서
+   * 콘텐츠가 «횟수형 증강 공용 규약»으로 `publishUsesLeft`를 발행하고 있는데도
+   * 봉인 전·만료 후에는 아무 칩도 없었고, 봉인 중에는 `6순`만 떠 남은 사용 횟수가
+   * 통째로 묻혔다. 바로 아래 `hand_swap3`이 `return usesStatus`로 옳게 처리하고
+   * 있어 대비가 뚜렷했다 — 같은 자리로 내려 같은 규약을 쓴다.
+   */
+  if (augId === "call_seal") {
+    const m = av[`call_seal:${playerId}`] as { until?: number } | null;
+    if (m === null || typeof m !== "object" || typeof m.until !== "number") return usesStatus;
+    const left = m.until - view.round.turnCount;
+    if (left <= 0) return usesStatus;
+    return withUses({
+      chip: `${left}순`,
+      note: `앞으로 ${left}순 동안 아무도 후로할 수 없다`,
+    });
+  }
 
   /*
    * 등가교환 — **누구와 바꾸기로 했는가**. 지정(swap3)한 순간부터 교환이 성사될
@@ -15636,7 +15931,7 @@ const NamePlate = memo(function NamePlate({
                     </span>
                   ) : null}
                   {reloaded.has(a) ? (
-                    <span className="aug-tip-status">♻ 재장전 — 이 증강을 다시 쓸 수 있다</span>
+                    <span className="aug-tip-status">♻ 재장전 — 이번 국에 되살렸다</span>
                   ) : null}
                   {fromDice.has(a) ? (
                     <span className="aug-tip-status">🎲 수상한 주사위에서 굴러 나왔다</span>
@@ -16010,7 +16305,16 @@ function MeldStack({
 interface HandDragState {
   id: number;
   pointerId: number;
-  /** 드래그 시작 시점의 표시 순서 — 드래그 중 DOM 순서는 이걸로 고정한다 */
+  /**
+   * 드래그 시작 시점의 표시 순서 — 손을 뗄 때 새 순서를 **커밋하는 기준**이다.
+   *
+   * ⚠ 예전 주석은 «드래그 중 DOM 순서는 이걸로 고정한다»였는데 **사실이 아니다.**
+   * 손패 렌더는 늘 최신 `displayIds`를 돌고(`displayIds.map(...)`), 이 값은
+   * `handReordered(b.order, …)` 한 곳에서만 읽힌다. 드래그 도중 손패가 바뀌면
+   * (증강으로 늘거나 바뀜·쯔모 도착·자동정렬 토글) DOM은 즉시 재배치되는데
+   * `slotCenter`·`fromIdx`는 시작 시점 값이라 다른 자리에 꽂힐 수 있다 —
+   * 진짜로 고정하려면 렌더가 이 배열을 봐야 한다. 지금은 그 사실을 적어만 둔다.
+   */
   order: number[];
   fromIdx: number;
   /** order 인덱스별 슬롯 중심 X (드래그 시작 시 1회 측정, 피드백 루프 방지) */
@@ -16030,6 +16334,19 @@ interface HandDragState {
 }
 
 const HAND_DRAG_THRESHOLD = 5;
+
+/**
+ * 드래그 뒤 딸려오는 유령 click 을 무시하는 시간(ms).
+ *
+ * 브라우저는 pointerup 직후 같은 틱에 click 을 합성한다 — 250ms 면 그 하나를 덮고도
+ * 남고, 사람이 손을 뗀 뒤 다시 누르기까지 걸리는 시간(빨라도 300ms 남짓)보다는 짧다.
+ */
+const SUPPRESS_CLICK_MS = 250;
+
+/** 후로 줄과 손패 레일 사이에 남겨 두는 숨통(px) — `.own-corner-right`의 right:16px 포함 */
+const OWN_CORNER_GUTTER = 28;
+/** 후로 줄이 아무리 좁아도 이만큼은 준다 — 0이 되면 스크롤 상자가 사라진다 */
+const OWN_CORNER_MIN_W = 120;
 
 /** 커서 X로 드래그 패의 최종 인덱스를 구한다 (자기 원래 슬롯은 건너뛴다). */
 function handDragTargetIdx(
@@ -16228,8 +16545,17 @@ function OwnArea(props: {
   };
   const handRef = useRef<HTMLDivElement | null>(null);
   const dropzoneRef = useRef<HTMLDivElement | null>(null);
-  // 드래그(재정렬/버리기) 직후에 딸려오는 click 이벤트를 한 번 무시한다.
-  const suppressClickRef = useRef(false);
+  /*
+   * 드래그(재정렬/버리기) 직후에 딸려오는 유령 click 이벤트를 무시하는 **마감 시각**.
+   *
+   * 예전에는 boolean 플래그였는데 푸는 자리가 **타일 button의 onClick 안**뿐이었다.
+   * 재정렬로 다른 슬롯에 놓거나 드롭존에 끌어다 버리면 pointerdown 타깃과 pointerup
+   * 타깃이 달라서 click이 타일이 아니라 공통 조상에서 발생한다 → 타일 onClick이 아예
+   * 안 돌고 플래그가 true로 남았다. 그 뒤 **사람이 실제로 누른 클릭 한 번이 삼켜졌다**
+   * (`tapTwiceToDiscard`가 켜진 폰이면 한 패를 버리는 데 총 3탭).
+   * 시각으로 재우면 어디서 click이 나든 저절로 풀린다.
+   */
+  const suppressClickUntil = useRef(0);
   // 재정렬 확정 순간 한 프레임만 트랜지션을 끈다 (DOM 재정렬 + transform 제거가
   // 동시에 일어날 때 생기는 튐 방지). 다음 프레임에 다시 켠다.
   const [committing, setCommitting] = useState(false);
@@ -16411,6 +16737,8 @@ function OwnArea(props: {
    */
   const ownBandRef = useRef(-1);
   const ownBandFullRef = useRef(-1);
+  /** 내 후로 줄(`.own-corner-right`)이 손패를 안 건드리고 쓸 수 있는 최대 폭 */
+  const ownCornerMaxRef = useRef(-1);
   // 렌더마다 다시 잰다(의존성 배열 없음). ResizeObserver를 먼저 써 봤는데, 손패가
   // 채워지거나 화면 크기가 바뀌어 띠가 자라도 콜백이 오지 않는 경우가 있어 띠가 낡았다.
   // 렌더는 뷰가 올 때마다 도므로 이쪽이 확실하다.
@@ -16455,6 +16783,31 @@ function OwnArea(props: {
       ownBandFullRef.current = bandFull;
       root.style.setProperty("--own-band-full", `${bandFull}px`);
     }
+    /*
+     * **내 후로 줄이 손패를 덮지 않게** 쓸 수 있는 폭을 함께 올려 준다.
+     *
+     * `.own-corner-right`는 `.own-area`의 형제라 담는 상자가 `.table`(화면 전체)다.
+     * 폭 상한도 `overflow`도 없었고 반응형 오버라이드도 없어서, 후로가 3~4개면
+     * 오른쪽에서 자라 올라온 후로 줄(z 11)이 손패(z 10) 위로 올라탔다 — 1280×800
+     * 후로 4개에서 쯔모패 아래 60px, 375×812에서 타일 34px 중 25px이 가려졌다.
+     * 하필 «후로 4개 + 마지막 한 장(단기 대기)» = 그 한 장을 봐야 하는 상황이다.
+     *
+     * 손패 레일은 가운데 정렬이므로, 레일 오른쪽에 남는 폭이 곧 후로 줄의 예산이다.
+     * CSS만으로는 레일 폭을 알 수 없어(`--hand-w`·`--hand-slots`는 레일에서만 산다)
+     * 띠를 재는 이 자리에서 함께 잰다. 남는 폭을 넘으면 후로 줄이 가로로 스크롤된다.
+     */
+    const rail = area.querySelector(".own-hand-rail");
+    const tableEl = area.closest(".table");
+    if (rail instanceof HTMLElement && tableEl instanceof HTMLElement) {
+      const free = Math.max(
+        OWN_CORNER_MIN_W,
+        Math.floor((tableEl.clientWidth - rail.offsetWidth) / 2) - OWN_CORNER_GUTTER,
+      );
+      if (free !== ownCornerMaxRef.current) {
+        ownCornerMaxRef.current = free;
+        root.style.setProperty("--own-corner-max", `${free}px`);
+      }
+    }
     if (band === ownBandRef.current) return;
     ownBandRef.current = band;
     root.style.setProperty("--own-band", `${band}px`);
@@ -16466,9 +16819,11 @@ function OwnArea(props: {
     return () => {
       ownBandRef.current = -1;
       ownBandFullRef.current = -1;
+      ownCornerMaxRef.current = -1;
       if (root instanceof HTMLElement) {
         root.style.removeProperty("--own-band");
         root.style.removeProperty("--own-band-full");
+        root.style.removeProperty("--own-corner-max");
       }
     };
   }, []);
@@ -16557,6 +16912,19 @@ function OwnArea(props: {
   useEffect(() => {
     if (!props.tapTwiceToDiscard) setArmedTileId(null);
   }, [props.tapTwiceToDiscard]);
+  /*
+   * **리치 모드가 바뀌면 들어 올려 둔 패를 내린다.**
+   *
+   * 들어 올린 패는 여태 `promptSeq` 변화와 «두 번 눌러 버리기» OFF 에서만 내려갔다.
+   * 그런데 리치 전환은 같은 프롬프트 안에서 일어난다 — 패 A를 한 번 탭해 들어
+   * 올린 뒤 액션 바 [리치]를 누르고 A를 **한 번** 더 탭하면 `armedTileId === id`
+   * 라 게이트를 건너뛰고 **리치가 그대로 확정**됐다. 되돌릴 수 없는 수가 오탭
+   * 한 번에 나가는 것이라, 게이트를 만든 이유가 정확히 무너지는 자리다.
+   * 반대 방향(리치 모드에서 들어 올린 뒤 리치 취소 → 한 탭에 그냥 타패)도 같다.
+   */
+  useEffect(() => {
+    setArmedTileId(null);
+  }, [props.riichiMode]);
   // 3장을 채우면 그 조합에 해당하는 옵션을 그대로 제출한다.
   const toggleSwap3 = (id: number): void => {
     setSwap3Sel((cur) => {
@@ -16801,6 +17169,33 @@ function OwnArea(props: {
   const canDropDiscard = discardOptionFor(drag?.id ?? null) !== undefined;
 
   /*
+   * **드래그 리스너가 보는 "지금"** — 손을 뗀 시점의 최신 값이 여기 들어 있다.
+   *
+   * window 리스너는 `[drag !== null]` 하나로만 재구독한다(포인터 추적을 매 렌더
+   * 떼었다 붙이면 이벤트를 흘린다). 그래서 `onMove`/`onUp`은 **드래그가 시작된
+   * 렌더**의 `discardOptionFor`(=`optionsByTile`·`armedAug`·`riichiMode`)·`autoSort`·
+   * `onSubmit`을 붙잡고 있었다 — 드래그 도중 프롬프트가 죽으면 손을 뗄 때 **이미
+   * 없는 옵션**이 서버로 나가고, `submitOption`이 그 좌석의 프롬프트를 걷어 버려
+   * 방금 도착한 론/치·펑 버튼이 화면에서 통째로 사라졌다.
+   *
+   * 값을 렌더마다 이 ref에 갱신해 두고 리스너는 늘 여기서 읽는다.
+   */
+  const dragLiveRef = useRef({
+    discardOptionFor,
+    autoSort,
+    armedAug,
+    submit: props.onSubmit,
+    selSubmit: sel.submit,
+  });
+  dragLiveRef.current = {
+    discardOptionFor,
+    autoSort,
+    armedAug,
+    submit: props.onSubmit,
+    selSubmit: sel.submit,
+  };
+
+  /*
    * 중계 위험패 — 하단 시점 좌석이 «지금 두는 사람»일 때만 칠한다 (docs/36 A4).
    *
    * 대국자 본인의 `hand-danger`와는 다른 것이다. 저쪽은 «내가 쏘일까»를 내 눈으로
@@ -16885,11 +17280,12 @@ function OwnArea(props: {
         e.clientX <= dz.right &&
         e.clientY >= dz.top &&
         e.clientY <= dz.bottom;
-      const targetIdx = autoSort
+      const live = dragLiveRef.current;
+      const targetIdx = live.autoSort
         ? b.fromIdx
         : handDragTargetIdx(b.slotCenter, b.fromIdx, e.clientX);
       // 슬롯을 하나 넘길 때마다 "칙" — 패를 스르륵 넘기는 촉감. (재정렬 모드에서만)
-      if (!autoSort && targetIdx !== b.targetIdx) sfx.slide();
+      if (!live.autoSort && targetIdx !== b.targetIdx) sfx.slide();
       setDragBoth({ ...b, curX: e.clientX, curY: e.clientY, moved: true, overDiscard, targetIdx });
     }
     function onUp(e: PointerEvent): void {
@@ -16899,22 +17295,39 @@ function OwnArea(props: {
         setDragBoth(null);
         return;
       }
-      suppressClickRef.current = true; // 드래그 뒤 딸려오는 click 무시
-      if (b.overDiscard) {
-        const opt = discardOptionFor(b.id);
+      // 드래그 뒤 브라우저가 딸려 보내는 유령 click 한 번만 무시한다 (시각 기준 — 아래 주석)
+      suppressClickUntil.current = Date.now() + SUPPRESS_CLICK_MS;
+      const live = dragLiveRef.current;
+      /*
+       * 드롭존 위인가를 **손을 뗀 지금** 다시 잰다.
+       *
+       * `b.overDiscard`는 마지막 `pointermove` 때의 값이라, 포인터를 멈춘 채
+       * 프롬프트가 죽어 드롭존이 언마운트돼도 `true`로 남아 있었다. 그 상태로 손을
+       * 떼면 이미 없는 옵션이 나가고 새 프롬프트가 걷혔다. 드롭존이 사라졌으면
+       * `dropzoneRef.current`가 null이므로 여기서 자연히 false가 되어 재정렬로 물러난다.
+       */
+      const dz = dropzoneRef.current?.getBoundingClientRect();
+      const overDiscardNow =
+        dz !== undefined &&
+        e.clientX >= dz.left &&
+        e.clientX <= dz.right &&
+        e.clientY >= dz.top &&
+        e.clientY <= dz.bottom;
+      if (overDiscardNow) {
+        const opt = live.discardOptionFor(b.id);
         setDragBoth(null);
         // 무장 액션으로 버렸으면 무장도 함께 푼다(sel.submit) — 남아 있으면 다음 패까지
         // 그 액션의 대상으로 잡힌다.
         if (opt !== undefined) {
-          if (armedAug !== null) sel.submit(opt);
-          else props.onSubmit(opt);
+          if (live.armedAug !== null) live.selSubmit(opt);
+          else live.submit(opt);
         }
         return;
       }
       // 최종 자리로 부드럽게 안착시킨 뒤 순서를 확정한다 (수동 정렬 모드만 커밋).
       setDragBoth({ ...b, settling: true });
       window.setTimeout(() => {
-        if (!autoSort) {
+        if (!dragLiveRef.current.autoSort) {
           setCommitting(true); // 커밋 프레임엔 트랜지션 off → 튐 방지
           setManualOrder(handReordered(b.order, b.id, b.targetIdx));
         }
@@ -17360,8 +17773,8 @@ function OwnArea(props: {
                 onBlur={() => setHoverId((cur) => (cur === id ? null : cur))}
                 onClick={() => {
                   // 드래그로 재정렬/버리기를 한 직후 딸려온 click은 무시한다
-                  if (suppressClickRef.current) {
-                    suppressClickRef.current = false;
+                  if (Date.now() < suppressClickUntil.current) {
+                    suppressClickUntil.current = 0;
                     return;
                   }
                   /*
@@ -17383,6 +17796,29 @@ function OwnArea(props: {
                     const opts = armedByTile.get(id);
                     if (opts !== undefined && opts.length > 0) {
                       if (opts.length === 1) {
+                        /*
+                         * 무장형 리치(오픈·스텔스·올인·영혼의 일격 …)에도 «두 번 눌러
+                         * 버리기»를 건다.
+                         *
+                         * 이 분기는 게이트보다 **위**에서 곧바로 return 해서, 평범한
+                         * 타패에는 걸리는 2단계가 정작 더 되돌릴 수 없는 수 —
+                         * 오픈 리치·올인 리치 — 에는 하나도 안 걸렸다. 폰에서 오탭
+                         * 한 번이 곧 확정이었다.
+                         *
+                         * `DRAG_DISCARD_ARM_TYPES`(= "무장 → 버릴 패를 고른다" 형)에만
+                         * 건다. 나머지 선택형 증강은 «그 패를 버리는» 수가 아니라
+                         * 대상 지목이라 취소가 되고, 게이트를 걸면 손만 늘어난다.
+                         */
+                        if (
+                          props.tapTwiceToDiscard &&
+                          DRAG_DISCARD_ARM_TYPES.has(armedAug) &&
+                          armedTileId !== id
+                        ) {
+                          setArmedTileId(id);
+                          sfx.pick();
+                          return;
+                        }
+                        setArmedTileId(null);
                         sel.submit(opts[0]!);
                         setArmSub(null);
                       } else {
@@ -18349,7 +18785,11 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   }
   // 덤터기 지목 대상 (내 것)
   const scape = av[`scapegoat:${me.id}`];
-  if (typeof scape === "string") textBadge("scapegoat", "덤터기", playerNameById(view, scape));
+  // 빈 문자열도 «지목 없음»이다 — 서버가 그렇게 지우면 이름 없는 «덤터기» 뱃지가
+  // 남는다. 바로 위 avenger 분기와 같은 기준으로 본다.
+  if (typeof scape === "string" && scape !== "") {
+    textBadge("scapegoat", "덤터기", playerNameById(view, scape));
+  }
   // 판돈 굴리기 배수(×4)·일확천금 배수도 그 사람의 증강 pill에 붙는다.
   // 스파이 — 내가 찍은 패는 나만 본다(비밀 지정)
   const spyMark = av["spy:mark"];
@@ -18594,6 +19034,20 @@ function ActiveAugmentControl(props: {
       o.type !== "swap3_take" &&
       o.type !== "future_exchange",
   );
+  /*
+   * **이 버튼이 실제로 할 수 있는 것** — `augOptions`에서 예지 재배열을 뺀 것.
+   *
+   * `foresight_order`는 `byType`에는 남겨 둬야 한다(드래그 모달이 거기서 후보를
+   * 골라 제출한다). 그런데 버튼의 «쓸 수 있는가»·«개수»·«툴팁»까지 그 목록을
+   * 보고 있었다: 발동(REVEAL)을 이미 쓴 순에는 콘텐츠가 후보를 ORDER만 24개
+   * 내주므로 `usable=true` · `types=[]` · `displayCount=0` 이 되어
+   * — 버튼이 **활성인데 «✦ 액티브 증강 (0)»**,
+   * — 누르면 **항목이 0개인 «사용할 증강 선택» 메뉴**,
+   * — 툴팁은 `augNameFor(types[0]!)` 가 undefined 를 타 **«undefined 사용»**
+   * 이 그대로 화면에 떴다(`!` 단언이 타입 에러를 가리고 있었다).
+   * 버튼이 보는 목록을 여기서 한 번에 갈라 셋을 함께 맞춘다.
+   */
+  const menuOptions = augOptions.filter((o) => o.type !== "foresight_order");
 
   // 예지 — 공개된 패산 앞 장들의 kind (뽑히는 대로 앞에서 한 장씩 줄어든다).
   // 훅은 조기 반환보다 위에 있어야 한다(Rules of Hooks).
@@ -18684,10 +19138,24 @@ function ActiveAugmentControl(props: {
     sel.submit(opt);
     setDwQueue((cur) => cur.slice(1));
   }, [dwQueue, myPrompt, sel]);
+  /*
+   * **국이 넘어가면 큐를 비운다.**
+   *
+   * 큐를 접는 조건이 «프롬프트가 왔는데 그 쌍이 후보에 없다» 하나뿐이라, 남은 채로
+   * `myPrompt`가 null이 되면(턴 종료·국 전환) 그대로 살아남았다. 다음 국의 프롬프트에
+   * 우연히 같은 `handTileId`/`deadIndex` 쌍이 서면 **지시하지 않은 교환이 자동으로
+   * 나간다.** 실제로 그 우연이 닿는지는 타일 id 재사용에 달렸는데, «닿지 않기를
+   * 바라는» 것은 방어가 아니다 — 국 경계에서 확실히 끊는다.
+   */
+  const dwRoundKey = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
+  useEffect(() => {
+    setDwQueue([]);
+    dwSentPromptRef.current = null;
+  }, [dwRoundKey]);
 
-  if (!hasActive && augOptions.length === 0) return null;
+  if (!hasActive && menuOptions.length === 0) return null;
 
-  const usable = augOptions.length > 0;
+  const usable = menuOptions.length > 0;
   const activeIds = me.augments.filter(
     (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
   );
@@ -19315,10 +19783,13 @@ function ActiveAugmentControl(props: {
         }`}
         disabled={!usable}
         title={
-          usable
+          usable && types.length > 0
             ? types.length > 1
               ? "액티브 증강 선택"
-              : `${augNameFor(types[0]!)} 사용`
+              : // `types[0]` 이 없는 순은 위 `menuOptions` 가 이미 걷어 냈다. 그래도
+                // 단언(`!`)은 두지 않는다 — 그 단언이 «undefined 사용»을 화면까지
+                // 흘려보낸 장본인이다.
+                `${augNameFor(types[0] ?? "")} 사용`
             : `지금은 사용할 수 없습니다\n${activeIds.map(blockedNote).join("\n")}`
         }
         onClick={click}
@@ -20789,8 +21260,10 @@ function DraftOverlay({
               ⏳ 남은 시간 <strong>{remainSec}</strong>초
             </div>
             <p className={`draft-timer-note${urgent ? " draft-timer-note-urgent" : ""}`}>
+              {/* 숫자를 «10초»로 박아 두면 3초가 남아도 «10초 남았다»가 뜬다 —
+                  바로 위 줄이 실제 숫자를 찍고 있어 한 화면에서 두 값이 어긋났다. */}
               {urgent
-                ? "🎲 10초 남았다 — 시간이 다 되면 랜덤으로 결정된다"
+                ? `🎲 ${remainSec}초 남았다 — 시간이 다 되면 랜덤으로 결정된다`
                 : "시간이 다 되면 랜덤으로 결정된다"}
             </p>
           </>
@@ -20851,7 +21324,7 @@ function DraftOverlay({
                     lockedOut ? " draft-card-locked" : ""
                   }`}
                   style={{ animationDelay: `${i * 120}ms` }}
-                  onClick={lockedOut ? undefined : () => onPick(c.id)}
+                  onClick={lockedOut || picked ? undefined : () => onPick(c.id)}
                   /*
                    * 잠긴 카드는 `disabled`가 아니라 `aria-disabled`다. `disabled`를 걸면
                    * 카드 **안**의 «자세히 ▾»까지 함께 죽어(포인터 이벤트가 통째로 꺼진다)
@@ -20859,8 +21332,14 @@ function DraftOverlay({
                    * 두 장에서 안 먹는다(2026-08-19 실측). 고를 수 없는 것과 읽을 수 없는
                    * 것은 다르다 — 고르기만 막는다.
                    */
-                  disabled={picked}
-                  aria-disabled={lockedOut || undefined}
+                  /*
+                   * ⚠ `picked`에도 `disabled`를 걸면 안 된다 — 바로 위 주석이 잠긴
+                   * 카드에 대해 말한 것과 **같은 이유**다. 고른 뒤에는 카드 안의
+                   * «자세히 ▾»까지 함께 죽어, 다른 사람을 기다리는 동안(= 시간이
+                   * 가장 남는 구간) 설명을 펼칠 수가 없었다. 고르기는 onClick과
+                   * `.draft-cards-locked`가 막고, 읽기는 열어 둔다.
+                   */
+                  aria-disabled={lockedOut || picked || undefined}
                   title={lockedOut ? "튜토리얼에서는 이 증강을 고를 수 없습니다" : undefined}
                 >
                   <span className="draft-card-head">
@@ -20993,8 +21472,20 @@ function GameOverModal({
                     <span className="rank-umaoka">
                       <TermText
                         text={[
-                          r.uma !== 0 ? `우마 ${r.uma > 0 ? "+" : ""}${r.uma}` : null,
-                          r.oka !== 0 ? `오카 ${r.oka > 0 ? "+" : ""}${r.oka}` : null,
+                          /*
+                           * ⚠ **단위를 맞춘다.** 서버가 싣는 `uma`·`oka`는 k단위
+                           * (기본 설정 `uma: [5, 15]`)인데 옆의 `rawScore`와 최종
+                           * `score`는 점 단위다. 그대로 찍으면 «40,000점 · 우마
+                           * +15» 옆에 «+30,000»이 서서, 이 줄이 있는 유일한 이유
+                           * («25000점이 왜 -5가 되는지 역산할 수 있게»)가 성립하지
+                           * 않았다 — 1000배 어긋난 세 수가 한 줄에 있었다.
+                           */
+                          r.uma !== 0
+                            ? `우마 ${r.uma > 0 ? "+" : ""}${(r.uma * 1000).toLocaleString()}`
+                            : null,
+                          r.oka !== 0
+                            ? `오카 ${r.oka > 0 ? "+" : ""}${(r.oka * 1000).toLocaleString()}`
+                            : null,
                         ]
                           .filter((s) => s !== null)
                           .join(" · ")}
@@ -21136,7 +21627,14 @@ function ReplayViewer(props: {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const total = replay !== null ? replay.states.length - 1 : 0;
-  /** 열어 둔 정산 (없으면 null) — 리플레이는 판만 그려서 역·판·부를 되짚을 수 없었다 */
+  /**
+   * 열어 둔 정산 (없으면 null) — 리플레이는 판만 그려서 역·판·부를 되짚을 수 없었다.
+   *
+   * ⚠ 여기 담는 것은 **그 정산이 일어난 이벤트 인덱스**다. 예전에는 «지금까지 끝난
+   * 정산 배열의 몇 번째»를 담았는데, 그 배열은 `idx`가 줄면 함께 짧아진다 — 되감으면
+   * 패널이 «닫힌 것처럼» 사라졌다가(사용자는 닫은 적이 없다) 다시 앞으로 가면 저절로
+   * 되살아났다. 길이가 변하는 배열의 인덱스를 상태로 들고 있어서 생긴 일이다.
+   */
   const [openSettle, setOpenSettle] = useState<number | null>(null);
   const settlements = useMemo(
     () => (replay !== null && mod !== null ? mod.replaySettlements(replay) : []),
@@ -21144,6 +21642,16 @@ function ReplayViewer(props: {
   );
   /** 지금 프레임까지 이미 끝난 국들의 정산 (아직 안 온 국의 결과를 미리 보여 주지 않는다) */
   const shownSettlements = settlements.filter((sx) => sx.index <= idx);
+  /** 지금 열려 있는 정산 — 되감아 «아직 안 일어난» 것이 되면 아예 닫는다(위 주석) */
+  const openSettlement =
+    openSettle !== null
+      ? (shownSettlements.find((sx) => sx.index === openSettle) ?? null)
+      : null;
+  useEffect(() => {
+    // 되감아서 그 정산 이전으로 갔다 — 사용자가 닫은 것으로 친다. 이렇게 비워 두지
+    // 않으면 다시 앞으로 갔을 때 패널이 혼자 되살아난다.
+    if (openSettle !== null && idx < openSettle) setOpenSettle(null);
+  }, [idx, openSettle]);
 
   // 자동 재생
   useEffect(() => {
@@ -21180,6 +21688,17 @@ function ReplayViewer(props: {
       if (el !== null && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return;
       const step = e.shiftKey ? 10 : 1;
       if (e.key === " ") {
+        /*
+         * ⚠ **포커스가 버튼 위에 있으면 그 버튼에 양보한다.**
+         *
+         * Space 는 브라우저가 «포커스된 버튼 누르기»로 쓰는 키다. 여기서 무조건
+         * `preventDefault()` 하면 🧾·속도(`rp-speed`)·⏮ 에 탭으로 가 Space 를 눌러도
+         * 그 버튼이 아니라 재생이 토글됐다 — 키보드 사용자는 그 버튼들을 Enter 로만
+         * 쓸 수 있었다. 빈 곳에 포커스가 있을 때만 «재생/정지»로 받는다.
+         */
+        const onButton =
+          el !== null && el.closest("button, [role='button'], a[href]") !== null;
+        if (onButton) return;
         e.preventDefault();
         setPlaying((v) => !v);
       } else if (e.key === "ArrowRight") {
@@ -21219,6 +21738,19 @@ function ReplayViewer(props: {
   // 현재 idx가 속한 국 / 국 점프 대상
   const currentRound = replay.roundStarts.filter((r) => r <= idx).length;
   function jumpRound(delta: number): void {
+    /*
+     * ⏮ 은 영상 플레이어의 관습대로 **«이 국의 처음»**이다 — 이미 그 자리에 서
+     * 있을 때만 이전 국으로 넘어간다. 예전에는 늘 `currentRound - 1 + delta`라
+     * 3국 한복판에서 눌러도 3국 시작이 아니라 **2국 시작**으로 뛰었다.
+     */
+    if (delta < 0) {
+      const here = replay!.roundStarts[currentRound - 1];
+      if (here !== undefined && idx > here) {
+        setIdx(here);
+        setPlaying(false);
+        return;
+      }
+    }
     const target = currentRound - 1 + delta;
     const to = replay!.roundStarts[target];
     setIdx(to !== undefined ? to : delta < 0 ? 0 : total);
@@ -21248,11 +21780,31 @@ function ReplayViewer(props: {
       <div className="replayer-bar">
         <span className="replayer-round">{roundLabel}</span>
         <button className="rp-btn" onClick={() => jumpRound(-1)} title="이전 국">⏮</button>
-        <button className="rp-btn" onClick={() => { setIdx(Math.max(0, idx - 1)); setPlaying(false); }} title="이전">◀</button>
-        <button className="rp-btn rp-play" onClick={() => setPlaying((v) => !v)}>
+        <button
+          className="rp-btn"
+          disabled={idx <= 0}
+          onClick={() => { setIdx(Math.max(0, idx - 1)); setPlaying(false); }}
+          title="이전"
+        >
+          ◀
+        </button>
+        <button
+          className="rp-btn rp-play"
+          /* 끝 프레임에서는 눌러도 `setPlaying(true)` → 자동 재생 이펙트가 곧바로
+             `false` 로 되돌려, «아무 일도 안 하는» 버튼이 된다. 아예 잠근다. */
+          disabled={!playing && idx >= total}
+          onClick={() => setPlaying((v) => !v)}
+        >
           {playing ? "⏸" : "▶"}
         </button>
-        <button className="rp-btn" onClick={() => { setIdx(Math.min(total, idx + 1)); setPlaying(false); }} title="다음">▶</button>
+        <button
+          className="rp-btn"
+          disabled={idx >= total}
+          onClick={() => { setIdx(Math.min(total, idx + 1)); setPlaying(false); }}
+          title="다음"
+        >
+          ▶
+        </button>
         <button className="rp-btn" onClick={() => jumpRound(1)} title="다음 국">⏭</button>
         <input
           className="replayer-slider"
@@ -21287,7 +21839,8 @@ function ReplayViewer(props: {
         <button
           className="rp-btn"
           disabled={shownSettlements.length === 0}
-          onClick={() => setOpenSettle(shownSettlements.length - 1)}
+          /* 배열 위치가 아니라 **그 정산의 이벤트 인덱스**를 담는다 (위 주석) */
+          onClick={() => setOpenSettle(shownSettlements[shownSettlements.length - 1]?.index ?? null)}
           title="이 국까지의 정산 보기"
         >
           🧾
@@ -21304,9 +21857,9 @@ function ReplayViewer(props: {
           </button>
         ) : null}
       </div>
-      {openSettle !== null && shownSettlements[openSettle] !== undefined ? (
+      {openSettlement !== null ? (
         <RoundResultPanel
-          result={shownSettlements[openSettle]!.result}
+          result={openSettlement.result}
           view={view}
           catalog={replay.catalog as Record<string, AugmentCatalogEntry>}
           deadlineAt={null}
