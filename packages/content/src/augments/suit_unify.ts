@@ -1,14 +1,15 @@
 /**
- * suit_unify (단색 세계) — 동풍전 1·반장전 2회, **자기 순이면 언제든** 액티브 버튼으로 발동한다.
+ * suit_unify (단색 세계) — 동풍전 1·반장전 2회, **국의 첫 순에만** 액티브 버튼으로 발동한다.
  * **만·통·삭 중 원하는 색을 직접 골라** 손패의 수패를 전부 그 색으로 바꾼다.
  * **청일색까지 그대로 인정된다.**
  *
- * 2026-08-16: **발동창을 개벽(genesis)과 같게 열었다** (사용자 지시 "개벽처럼 원할 때").
- * 예전에는 "각 국의 첫 타패 전"에만 버튼이 떴다. 그런데 첫 순에는 어느 색으로 몰아야
- * 이득인지 정보가 가장 적다 — 손이 어떻게 굴러갈지 보이기 전에 게임당 한 번뿐인 자원을
- * 태우거나, 아니면 그 국을 통째로 건너뛰는 수밖에 없었다. 지금은 개벽과 같은 조건이다:
- * 자기 순(turn.act) · 리치 중이 아님 · **한 국에 한 번까지**. 국당 1회 제한도 개벽과 같은
- * 이유다 — 이 액션은 턴을 넘기지 않아서, 없으면 같은 순에 남은 횟수를 전부 태울 수 있다.
+ * 2026-08-23: **발동창을 다시 «첫 순»으로 되돌렸다** (사용자 지시).
+ * 2026-08-16에 개벽(genesis)과 같게 "자기 순이면 언제든"으로 넓혔던 창이다. 그런데
+ * 그러면 이 증강이 **손을 보고 나서 확실한 자리에만 꽂는 물건**이 된다 — 배패를 걸고
+ * 색을 정하는 도박이 사라지고, 남의 버림과 자기 진행을 다 본 뒤 청일색으로 갈아타는
+ * 후반 확정타가 됐다. 지금 조건은: 자기 순(turn.act) · **이 국에서 아직 한 장도 안 버림**
+ * · 리치 중이 아님 · 한 국에 한 번까지. 마지막 조건이 남아 있는 이유는 이 액션이 턴을
+ * 넘기지 않기 때문이다 — 없으면 같은 첫 순에 남은 매치 횟수를 전부 태울 수 있다.
  *
  * 2026-07-22 (48차): **청일색 봉인 삭제 + 색 무작위 → 플레이어 선택.** "동풍전 1·반장전 2회"라는 횟수 제한이 이미 리미트이므로
  * 능력에 페널티를 겹쳐 붙이지 않는다 — 수패를 한 색으로 만들어 주면서 청일색을 막는 것은
@@ -69,12 +70,22 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
 const unifiedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "unified", state, h);
 
-/** 지금 발동할 수 있는가 — 자기 순(turn.act)·리치 중이 아님·이 국에 아직 안 씀 */
+/**
+ * 지금 발동할 수 있는가 — **자기 첫 순**(turn.act·이 국에서 아직 안 버림)·리치 중이
+ * 아님·이 국에 아직 안 씀.
+ *
+ * 첫 순 판정은 `round.firstTurn`(첫 바퀴)이 아니라 **내 버림 횟수**로 센다. 그 플래그는
+ * 천화·지화용이라 누구든 울면 꺼지고, 반대로 남이 울어서 내 순이 건너뛰어진 뒤에도
+ * "내 첫 순"은 아직 오지 않은 것이라 남의 사정에 좌우되면 안 된다. 누명(frame_up)이
+ * `discardedKinds`를 남의 이력으로 돌리므로 종류가 아니라 `discardCount`를 본다
+ * (docs/25 P5).
+ */
 function canUnify(state: GameState, holder: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== holder) return false;
   if (r.byPlayer[holder]?.riichi != null) return false;
+  if ((r.byPlayer[holder]?.discardCount ?? 0) !== 0) return false; // 첫 순만
   if (flagOf(state, unifiedKey(state, holder))) return false; // 국당 1회
   return true;
 }
@@ -105,7 +116,9 @@ const monoWorldAction: ActionDef<{ suit: Suit }> = {
       return "no suit_unify augment";
     }
     if (!hasUsesLeft(state, req.player)) return "already used";
-    if (!canUnify(state, req.player)) return "not your turn (or riichi, or already this round)";
+    if (!canUnify(state, req.player)) {
+      return "not your first turn (or riichi, or already this round)";
+    }
     if (!NUMBER_SUITS.includes(req.payload.suit)) return "invalid suit";
     return null;
   },
@@ -119,9 +132,9 @@ export const suitUnify: AugmentDef = defineAugment({
   complexity: 2,
   name: "단색 세계",
   description:
-    "(동풍전 1회 · 반장전 2회 · 매 국 1회) 자기 순이면 언제든 발동하며, 만·통·삭 중 원하는 색을 골라 손패의 수패를 전부 그 색으로 바꾼다. 숫자는 그대로 유지되고 청일색도 인정된다.",
+    "(동풍전 1회 · 반장전 2회 · 매 국 1회) **국의 첫 순에만** 발동하며, 만·통·삭 중 원하는 색을 골라 손패의 수패를 전부 그 색으로 바꾼다. 숫자는 바뀌지 않고, 청일색도 그대로 인정된다.",
   detail:
-    "(동풍전 1회 · 반장전 2회 — 다만 **한 국에는 한 번까지만** 쓸 수 있다. 이 액션은 턴을 넘기지 않아서, 이 제한이 없으면 같은 순에 남은 횟수를 전부 태울 수 있다) 자기 순이면 언제든 액티브 버튼이 뜬다. 만·통·삭 중 색을 직접 골라 손패의 수패를 숫자는 그대로 둔 채 전부 그 색으로 바꾸며, 통일된 색으로 청일색까지 그대로 인정된다. 새 패는 패산에 있는 같은 숫자의 실물과 맞바꿔 오고(내 패는 패산 맨 밑으로 돌아간다), 패산에 그 숫자가 남아 있지 않을 때만 그 자리에서 새로 만들어진다. 어느 색으로 물들였는지는 전원에게 공개된다. 리치 중에는 발동할 수 없다.\n\n⚠ **손패의 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 무늬가 바뀌면 성립하지 않는다.",
+    "(동풍전 1회 · 반장전 2회 — 다만 **한 국에는 한 번까지만** 쓸 수 있다. 이 액션은 턴을 넘기지 않아서, 이 제한이 없으면 같은 순에 남은 횟수를 전부 태울 수 있다) **발동은 그 국의 첫 순뿐이다** — 배패를 받고 아직 한 장도 버리지 않은 자기 순에만 액티브 버튼이 뜨고, 한 장이라도 버리면 그 국의 기회는 사라진다(다음 국의 첫 순에 다시 온다). 만·통·삭 중 색을 직접 골라 손패의 수패를 숫자는 그대로 둔 채 전부 그 색으로 바꾸며, 통일된 색으로 청일색까지 그대로 인정된다. 새 패는 패산에 있는 같은 숫자의 실물과 맞바꿔 오고(내 패는 패산 맨 밑으로 돌아간다), 패산에 그 숫자가 남아 있지 않을 때만 그 자리에서 새로 만들어진다. 어느 색으로 물들였는지는 전원에게 공개된다. 리치 중에는 발동할 수 없다.\n\n⚠ **손패의 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 무늬가 바뀌면 성립하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -154,9 +167,10 @@ export const suitUnify: AugmentDef = defineAugment({
     // 손패의 수패를 통째로 한 색으로 바꾼다 — 갈아엎기다
     intent: "rewrite",
     /*
-     * 2026-08-16: `fleeting`을 뗐다. 발동창이 "첫 순 한 번"에서 "자기 순이면 언제든"으로
-     * 넓어졌으므로 더 이상 "지금 아니면 없는" 발동이 아니다 — 적기는 planner의 `rewrite`
-     * 판정(잡손일수록 값이 난다)에 맡긴다. 게임당 1~2회뿐이라 문턱은 한 칸 더 올린다.
+     * 2026-08-23: 발동창이 다시 "그 국의 첫 순"으로 좁아졌다. 그래도 `fleeting`은 붙이지
+     * 않는다 — 이 국을 넘겨도 **다음 국의 첫 순**에 같은 기회가 오므로 "지금 아니면 없는"
+     * 발동이 아니다. 적기는 planner의 `rewrite` 판정(잡손일수록 값이 난다)에 맡기고,
+     * 게임당 1~2회뿐이라 `oneShot`으로 문턱을 한 칸 더 올린다.
      */
     oneShot: true,
     pick: ({ options, view, holder, tenpai }) => {

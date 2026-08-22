@@ -9975,11 +9975,25 @@ function NoticeBanner({ notice }: { notice: ServerNotice | undefined }): JSX.Ele
  * **호출부가 대국·대기실에서만** 이걸 세운다. 탁자 공지(`roomNotice`)와는 채널이
  * 다르다 — 저건 그 탁자에만 거는 말이고, 이건 서버 전체에 하는 말이다.
  *
- * 배치를 인라인으로 잡는 이유: 기존 두 자리는 화면 흐름 안이라 고정 배치 규칙이
- * 없다(`.notice-banner`는 자리를 잡지 않는다). 판 위에 띄우는 건 여기가 처음이라
- * 이 컴포넌트가 자기 자리를 들고 있는다. 재연결 띠(z 300)와 같이 뜨면 그 아래로
- * 내려간다 — 둘은 배타적이지 않다.
+ * **서는 자리는 좌상단 한 귀퉁이다** (2026-08-23 사용자 지시). 처음에는 화면 맨 위를
+ * 좌우로 가로지르는 띠였는데, 그러면 판의 상단 전체 — 맞은편 자리·도라 표시·모드
+ * 배지가 있는 줄 — 가 통째로 가려졌다. 공지는 «읽고 나면 끝»인 물건이고 판은 계속
+ * 봐야 하는 것이라, 판을 가리는 쪽이 잘못이다. 그래서 폭을 좁혀 왼쪽 위 빈 자리에
+ * 카드로 세운다. 세로 위치는 모드 배지(top 12, 아래끝 ≈56)와 봇 난이도 배지
+ * (top 60, 아래끝 ≈90) **아래**로 내려 겹치지 않게 잡는다.
+ *
+ * 배치를 인라인으로 잡지 않는 이유: 안전영역·좁은 화면 폭이 전부 CSS 쪽 규칙이라
+ * `.game-notice-float`에 모아 둔다. 여기서 인라인으로 주는 것은 재연결 띠가 떠
+ * 있을 때의 offset 하나뿐이다 — 그건 상태라 CSS가 알 수 없다(재연결 띠 z 300과는
+ * 배타적이지 않아 그 아래로 내려간다).
  */
+/**
+ * 좌상단 공지 카드가 시작하는 높이(px). 모드 배지(top 12 · 아래끝 ≈56)와 봇 난이도
+ * 배지(top 60 · 아래끝 ≈90) 아래다 — 배지는 판 컨테이너 안의 absolute라 이쪽(fixed)과
+ * 서로 밀어내지 못하므로 숫자로 비켜 준다.
+ */
+const NOTICE_TOP_OFFSET = 100;
+
 function GameNoticeBanner({
   notice,
   belowReconnectBar,
@@ -9990,17 +10004,8 @@ function GameNoticeBanner({
   if (notice === undefined) return null;
   return (
     <div
-      style={{
-        position: "fixed",
-        top: belowReconnectBar ? 34 : 0,
-        left: 0,
-        right: 0,
-        zIndex: 299,
-        maxHeight: "40vh",
-        overflowY: "auto",
-        boxShadow: "0 6px 22px rgba(0, 0, 0, 0.45)",
-        background: "rgba(24, 20, 14, 0.97)",
-      }}
+      className="game-notice-float"
+      style={{ top: (belowReconnectBar ? 34 : 0) + NOTICE_TOP_OFFSET }}
     >
       <NoticeBanner notice={notice} />
     </div>

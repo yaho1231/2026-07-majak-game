@@ -87,3 +87,44 @@ describe("공지 띠가 서는 자리", () => {
     expect(CSS).toMatch(/\.home-top-left\s*>\s*\.notice-banner\s*\{[^}]*margin:\s*0/);
   });
 });
+
+/**
+ * 인게임 전역 공지가 서는 자리 (2026-08-23 사용자 보고).
+ *
+ * 처음 판 위에 얹었을 때는 화면 맨 위를 좌우로 가로지르는 띠였다 — 맞은편 자리·도라
+ * 표시·모드 배지가 있는 상단 줄이 통째로 가려졌다. 공지는 한 번 읽으면 끝이고 판은
+ * 계속 봐야 하는 것이라, 왼쪽 위 귀퉁이의 좁은 카드로 세운다.
+ */
+describe("인게임 공지는 왼쪽 위 귀퉁이만 쓴다", () => {
+  function gameNotice(): string {
+    const at = APP.indexOf("function GameNoticeBanner(");
+    expect(at).toBeGreaterThan(0);
+    const end = APP.indexOf("\n}\n", at);
+    expect(end).toBeGreaterThan(at);
+    return APP.slice(at, end);
+  }
+
+  it("좌우로 가로지르던 띠로 되돌아가지 않는다", () => {
+    const src = gameNotice();
+    expect(src).toMatch(/game-notice-float/);
+    // `right: 0` + `left: 0` 조합이 곧 «상단 전체를 가리는 띠»다
+    expect(src).not.toMatch(/right:\s*0/);
+    expect(src).not.toMatch(/left:\s*0/);
+  });
+
+  it("모드·봇 배지 아래에서 시작한다 (배지와 겹치지 않는다)", () => {
+    // 배지는 판 컨테이너 안의 absolute라 fixed인 이 카드와 서로 밀어내지 못한다.
+    const off = /const NOTICE_TOP_OFFSET = (\d+);/.exec(APP);
+    expect(off).not.toBeNull();
+    // 봇 난이도 배지가 top 60에서 시작해 ≈90에서 끝난다
+    expect(Number(off?.[1])).toBeGreaterThanOrEqual(92);
+  });
+
+  it("폭은 화면이 좁아도 넘치지 않는다 (cqw 규약)", () => {
+    const rule = /\.game-notice-float\s*\{([^}]*)\}/.exec(CSS);
+    expect(rule).not.toBeNull();
+    expect(rule?.[1]).toMatch(/width:\s*min\(/);
+    expect(rule?.[1]).toMatch(/cqw/);
+    expect(rule?.[1]).not.toMatch(/\bvw\b/);
+  });
+});
