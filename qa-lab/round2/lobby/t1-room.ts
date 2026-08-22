@@ -12,6 +12,15 @@ const h = await newHarness();
   host.clientSend({ type: "addBot" });
   await tick();
   const bot = host.last("lobby").players.find((p: any) => p.isBot);
+  /*
+   * **지정 전의 «자연 성향»을 먼저 적어 둔다** (2026-08-22).
+   *
+   * 아래 검사를 「재추가한 봇이 attacker 가 아니다」로 두면 오탐이 난다 —
+   * 성향은 (방 코드, 세대)로 결정되는 값이라 지정을 지운 뒤에도 그 자리에 우연히
+   * attacker 가 다시 앉을 수 있다. 물려받은 것과 우연히 같은 것은 다른 사건이다.
+   * 「지정을 지운 뒤에는 지정이 없던 때와 같은 성향이 온다」가 정확한 물음이다.
+   */
+  const natural = bot.archetype;
   host.clientSend({ type: "setBotArchetype", playerId: bot.playerId, archetype: "attacker" });
   await tick();
   const room: any = (h.rm as any).rooms.get(code);
@@ -30,8 +39,8 @@ const h = await newHarness();
   const nb = host.last("lobby").players.find((p: any) => p.isBot);
   console.log("new bot after re-add:", nb.playerId, nb.archetype);
   chk("새 봇이 지운 봇의 성향을 물려받지 않는다",
-    !(nb.playerId === bot.playerId && nb.archetype === "attacker"),
-    `${nb.playerId} archetype=${nb.archetype}`);
+    nb.archetype === natural,
+    `${nb.playerId} archetype=${nb.archetype} (지정 없던 때: ${natural})`);
 }
 
 // ── 2. 방 정원/없는 코드/이미 시작한 방 ──

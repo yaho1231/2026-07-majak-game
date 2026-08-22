@@ -59,17 +59,76 @@ function candidatesOf(read: BotRead, options: readonly ActionOption[]): Candidat
 const PUSH_HORIZON = 2.5;
 
 /**
+ * **공격성이 저울에 주는 폭.**
+ *
+ * 밀기와 접기의 비교는 결국 이 부등식이고(안전패의 기대 실점은 0이므로),
+ *
+ *     (위험패의 획득 − 안전패의 획득)  >  위험패의 기대 실점 × PUSH_HORIZON × (loss/gain)
+ *
+ * **`loss/gain` 비가 곧 "이만큼 벌 수 있어야 민다"의 문턱 배율**이다.
+ *
+ * 예전 값은 0.6이었다. 그 폭이면 비가 공격형 0.74 · 수비형 1.74 — **2.4배**뿐이라,
+ * 후보들의 획득 격차(보통 수백 점)가 기대 실점(100~230점)보다 크면 argmax가 안
+ * 뒤집힌다. QA 2차 실측이 그 결과였다: 밀기/접기가 갈려야 하는 장면의 **91.3%를
+ * 여섯 원형이 같은 패로** 골랐다(확정 3).
+ *
+ * 1.4면 비가 공격형 0.34 · 수비형 2.92 — **8.5배**다. 1.8까지 넓히면 갈린 비율이
+ * 24.7% → 31.3%까지 가지만 수비형이 실점을 실제의 11배로 세어 과도하게 접기 시작한다.
+ *
+ * ## 미는 쪽은 안 넓힌다
+ *
+ * 공격형은 폭을 0.6·1.0·1.4·1.8 어디에 두어도 **밀기율이 78.2%에서 꿈쩍하지
+ * 않는다**(전부 68/87). 안전패가 애초에 더 쓸모 있는 장면은 성격으로 뒤집히지 않으므로
+ * **미는 쪽은 포화한다** — 넓혀 봐야 판에서 달라 보이지 않는다. 그런데 아레나 2:2는
+ * 공격형 넷 탁에서 넓힌 쪽이 꾸준히 열세라고 답했다(정규화 전 −0.1500 ± 0.0689 ·
+ * 정규화 후 −0.0967 ± 0.0695). **얻는 것은 없고 잃기만 하는 방향**이라, 미는 쪽 폭은
+ * 예전 값 그대로 둔다. 갈라지는 것은 접는 쪽이고, 접는 쪽은 공짜다(−0.0200 ± 0.0675).
+ */
+const AGGRESSION_SPAN_FOLD = 1.4;
+const AGGRESSION_SPAN_PUSH = 0.6;
+
+/** QA 2차 이전의 폭 — `narrowProfile` 스위치가 되돌리는 값 */
+const AGGRESSION_SPAN_LEGACY = 0.6;
+
+/**
  * 밀기와 접기에 각각 곱하는 저울.
  *
  * 성격(공격성)과 순위 압박(riskAppetite)이 **판단 규칙이 아니라 저울에만** 붙는다.
  * 올라스 선두는 같은 계산을 하고도 실점을 크게 세어 접고, 꼴찌는 획득을 크게 세어
  * 민다 — 사람이 그러는 것과 같고, 새 성격을 추가해도 분기가 늘지 않는다.
+ *
+ * ## 성격은 **비**만 바꾼다 — 크기는 안 바꾼다 (2026-08-22)
+ *
+ * 폭을 그냥 1.4로 넓혔더니 아레나 2:2에서 강함이 **−0.15 ± 0.07**(유의미) 깎였다.
+ * 무엇이 깎였는지는 표에 그대로 나왔다 — 수비형 넷 탁에서 **리치율이 18.4% → 10.2%**로
+ * 무너졌고, 공격형 넷 탁에서는 반대로 후로율·리치율·방총율이 전부 헐거워졌다.
+ *
+ * 원인은 밀기/접기 판단이 아니라 **크기**였다. 이 EV에서 저울을 안 타는 절대 상수가
+ * 하나 있다 — `RIICHI_COST`(1000점 공탁). 수비형은 `gain`이 0.51로 줄어드니 같은 1000점
+ * 공탁이 사실상 **1961점**이 되어 리치가 아예 성립하지 않았고, 공격형은 `gain`이 1.49라
+ * 공탁이 671점으로 싸져 아무 리치나 걸었다. 성격이 아니라 저울의 부작용이다.
+ *
+ * 그래서 **성격이 만든 크기(`norm`)를 도로 나눈다.** 밀기/접기의 비는 한 치도
+ * 안 변하므로(EV 전체를 같은 양수로 나누는 것이라 argmax가 그대로다) 원형이 갈라지는
+ * 폭은 그대로 유지되고, 절대 상수에 대한 왜곡만 사라진다. 순위 압박(`riskAppetite`)은
+ * 따로 재서 고른 값이라 **크기까지 바꾸던 종전 동작 그대로** 둔다 — `lean`이 0인
+ * 균형형에서는 `norm`이 정확히 1이라 이 함수가 예전과 완전히 같은 값을 낸다.
  */
 export function scales(read: BotRead, profile: BotProfile): { gain: number; loss: number } {
-  const bias = (profile.aggression - 0.5) * 0.6 + read.match.riskAppetite * 0.45;
+  const lean = profile.aggression - 0.5;
+  // `narrowProfile`은 폭을 QA 2차 이전 값으로 되돌리는 **끄는 스위치**다 (bot/flags.ts)
+  const legacy = read.flags.has("narrowProfile");
+  const span = legacy
+    ? AGGRESSION_SPAN_LEGACY
+    : lean < 0
+      ? AGGRESSION_SPAN_FOLD
+      : AGGRESSION_SPAN_PUSH;
+  const bias = lean * span + read.match.riskAppetite * 0.45;
+  // 성격이 만든 크기만 되돌린다 (예전 저울에서는 이 정규화가 없었다)
+  const norm = legacy ? 1 : Math.max(0.4, 1 + lean * span);
   return {
-    gain: Math.max(0.4, 1 + bias),
-    loss: Math.max(0.35, 1 - bias),
+    gain: Math.max(0.4, 1 + bias) / norm,
+    loss: Math.max(0.35, 1 - bias) / norm,
   };
 }
 

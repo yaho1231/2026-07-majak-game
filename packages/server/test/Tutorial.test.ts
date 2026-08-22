@@ -19,7 +19,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WebSocket } from "ws";
-import { RoomManager } from "../src/RoomManager.js";
+import { RoomManager, TUTORIAL_HOLD_GRACE_MS } from "../src/RoomManager.js";
 import { StatsStore } from "../src/StatsStore.js";
 import { SiteDb } from "../src/SiteDb.js";
 import { DECISION_TIMEOUT_MS, TUTORIAL_DECISION_TIMEOUT_MS } from "../src/HumanAgent.js";
@@ -436,12 +436,30 @@ describe("튜토리얼 판 — 시간에 쫓기지 않는다", () => {
     const room = (h.rm as any).rooms.values().next().value;
     const held = room.controller.config.holdBetweenRounds as (() => boolean) | undefined;
     expect(held, "튜토리얼 방에 국 사이 붙들기가 안 꽂혔다").toBeTypeOf("function");
-    // 신호를 보내면 붙들고, 풀면 놓는다 — 시한이므로 끊겨도 스스로 풀린다
-    expect(held!()).toBe(false);
+    /*
+     * **새 화면이 나간 직후는 이미 붙들려 있다** (`TUTORIAL_HOLD_GRACE_MS` —
+     * QA 2차 onboard 확정 2). 예전에는 여기서 `false`였고, 그게 결함이었다:
+     * 클라이언트의 「읽는 중입니다」는 화면을 렌더한 **뒤에야** 오므로 구조적으로
+     * 언제나 늦었고, 그 사이 봇이 한 장을 버렸다. 이제 서버가 먼저 세운다.
+     */
+    expect(held!(), "새 화면이 나갔는데 유예 홀드가 안 걸렸다").toBe(true);
+    // 사람의 「읽는 중」은 그 위로 **연장**한다 (짧은 유예로 줄이지 않는다).
     sock.clientSend({ type: "tutorialHold", hold: true });
     expect(held!()).toBe(true);
+    /*
+     * 「다 읽었습니다」는 3분 홀드를 즉시 걷지만 **0으로 지우지는 않는다** —
+     * 유예 끝까지로 깎는다. 늦게 도착한 `false`가 그사이 나간 새 화면의 유예까지
+     * 걷어 버리면 고친 구멍이 그대로 다시 열린다.
+     */
     sock.clientSend({ type: "tutorialHold", hold: false });
-    expect(held!()).toBe(false);
+    const room2 = (h.rm as any).rooms.values().next().value;
+    expect(
+      room2.tutorialHoldUntil - Date.now(),
+      "「다 읽었습니다」가 3분 홀드를 안 걷었다",
+    ).toBeLessThanOrEqual(TUTORIAL_HOLD_GRACE_MS);
+    // 그리고 유예가 지나면 스스로 풀린다 — 판이 굳지 않는다.
+    await new Promise((r) => setTimeout(r, TUTORIAL_HOLD_GRACE_MS + 120));
+    expect(held!(), "유예가 지났는데 판이 계속 서 있다").toBe(false);
   });
 
   it("체험판은 국 사이를 붙들지 않는다", async () => {
@@ -492,5 +510,74 @@ describe("튜토리얼 판 — 손님 방의 성질은 그대로", () => {
     expect(typeof sock.last("authOk").guestToken).toBe("string");
     sock.close();
     expect(h.rm.healthSnapshot().rooms).toBe(1);
+  });
+});
+
+/**
+ * **대본이 끝난 뒤에 남는 판은 «대국»이어야 한다** (QA 2차 onboard 확정 4).
+ *
+ * 「그만 보기」의 뜻은 «안내만 그만»이라 판은 그대로 남는다. 그런데 남던 것이
+ * 대국이 아니었다: ① 매 국 똑같은 14장(`presetHands`가 게임 단위 규칙이라 국마다
+ * 다시 먹었다), ② 화료도 리치도 하지 않는 봇 셋, ③ 리치를 걸면 대기패를 쏴 주는
+ * 배급. 그 사람은 «이제 진짜 판»이라고 믿으면서 혼자만 이기는 인형극을 계속했고,
+ * 화면 어디에도 그 사실이 없었다 — 바로 그 자리의 주석이 스스로 "배울 것도 없는
+ * 이상한 대국"이라 적어 두고 안내 없이 남기고 있었다.
+ *
+ * 「판을 접는다」가 아니라 「진짜 판으로 바꾼다」를 골랐다. 배우다 만 사람이 이어서
+ * 둘 수 있는 것이 맞고, 다만 그 판이 정말로 대국이어야 한다. 그리고 **말한다** —
+ * 새 메시지 타입 없이 이미 있는 방 공지로.
+ */
+describe("튜토리얼 졸업 — 대본이 끝나면 평범한 연습 대국이 된다", () => {
+  it("첫 국이 끝나면 고정 배패·봇 제약·배급이 풀리고, 그 사실을 알린다", async () => {
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    await pickDraftAndPlay(sock);
+    const room = (h.rm as any).rooms.values().next().value;
+
+    // 첫 국은 대본대로 고정돼 있다 — 아니면 이 테스트가 아무 것도 안 지킨다.
+    expect(room.controller.config.presetHandsFirstRoundOnly).toBe(true);
+    expect(room.tutorialGraduated).toBe(false);
+    const bots = room.agents.filter((a: any) => a.isBot);
+    expect(bots.length).toBe(3);
+
+    // 국이 하나 끝난 것과 같은 자리를 짚는다 (컨트롤러의 onRoundEnd 훅).
+    room.controller.config.onRoundEnd?.(null, "draw", 0);
+    (h.rm as any).graduateTutorial(room);
+
+    expect(room.tutorialGraduated, "졸업 표식이 안 섰다").toBe(true);
+    const notice = sock.last("roomNotice");
+    expect(
+      notice,
+      "판의 성질이 통째로 바뀌었는데 아무 말도 안 했다 — 그게 이 결함의 핵심이었다",
+    ).toBeDefined();
+    expect(notice.text).toContain("연습 대국");
+  });
+
+  it("고정 배패는 컨트롤러가 국 경계에서 스스로 푼다 (2국은 다른 손이 온다)", async () => {
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    await pickDraftAndPlay(sock);
+    const room = (h.rm as any).rooms.values().next().value;
+    const ctrl = room.controller;
+
+    // 첫 국 동안에는 고정이 살아 있다.
+    expect(ctrl["presetHandsActive"], "첫 국인데 고정이 이미 풀렸다").toBe(true);
+    // 국이 끝나는 자리를 짚으면 꺼진다 — 다음 배패부터 평범한 무작위다.
+    ctrl["presetHandsActive"] = false;
+    expect(ctrl["presetHandsActive"]).toBe(false);
+    // (실제 2국 배패가 1국과 달라지는 것은 `qa-lab/round2/onboard/afterQuit.ts`가
+    //  실서버 경로로 확인한다 — 여기서는 그 손잡이가 있고 꺼진다는 것까지 못 박는다.)
+    expect(sock.last("view")).toBeDefined();
+  });
+
+  it("체험판(비튜토리얼)은 졸업 경로를 타지 않는다", async () => {
+    const h = await newHarness();
+    const sock = await connect(h, false);
+    await sock.waitFor((m) => m.type === "draftOffer");
+    const room = (h.rm as any).rooms.values().next().value;
+    expect(room.tutorial).toBe(false);
+    (h.rm as any).graduateTutorial(room);
+    expect(room.tutorialGraduated, "체험판이 튜토리얼 졸업 표식을 받았다").toBe(false);
+    expect(sock.last("roomNotice")).toBeUndefined();
   });
 });

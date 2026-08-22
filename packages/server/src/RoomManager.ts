@@ -310,6 +310,30 @@ interface Room {
    */
   preserveReplayOnAbort: boolean;
   /**
+   * **이 판은 이미 끝났다** — 종국 처리가 시작됐고 아직 `resetRoomAfterGame`이
+   * 방을 대기실로 되돌리지 못한 «정리 중» 구간을 가리킨다.
+   *
+   * 왜 별도 깃발이 필요한가: `onGameOver`는 `live_games` 행을 지우고(`forgetLiveGame`)
+   * `games`에 결과를 적은 뒤, 통계 전송(`finishStats`)이 끝나는 **`.finally`** 에서야
+   * 방을 정리한다. 그 정리를 앞당길 수는 없다 — `finishStats`가 `room.agents`를 훑어야
+   * 하기 때문이다(`onGameOver`의 ⚠ 주석). 그래서 그사이 방은 여전히
+   * `phase==="playing" && controller!==null && writer!==null` 인 채로 남는다.
+   *
+   * 그 창에 유휴 청소(`sweepIdleRooms`)가 한 번이라도 돌면 «진행 중인 판»으로 보고
+   * `rememberLiveGame`이 **방금 지운 `live_games` 행을 다시 써 넣었다.** 그러면 다음
+   * 부팅이 이미 끝난 판을 되살려 리플레이를 처음부터 다 소진하고 **두 번째로 종국**한다 —
+   * `games`에 같은 리플레이가 두 행, 누적 전적·증강 통계는 이중 계상, 홈에는
+   * "진행하던 방으로 재접속"이 뜨는데 들어가 보면 이미 끝난 판. 로그는 한 줄도 안 남는다
+   * (QA 2차 server 확정 1: 임시 DB에서 실제로 두 행이 관측됐다).
+   *
+   * `StatsStore.save()`가 프로세스 전역 체인에 직렬화되므로 판이 몰릴수록 이 창은 ms가
+   * 아니라 초 단위로 벌어진다 — 좁아 보이지만 «언젠가는 맞는» 종류의 창이다.
+   *
+   * 그래서 종국 처리의 **맨 앞**에서 켜고, `resetRoomAfterGame`이 방을 되돌릴 때 끈다.
+   * `rememberLiveGame`과 `sweepIdleRooms`가 함께 이 값을 본다.
+   */
+  finished: boolean;
+  /**
    * 이번 무효 종료의 사유 — 사람들에게 그대로 나간다. null이면 "전원 합의".
    *
    * 무효 종료로 들어오는 문이 둘이라 필요하다: 전원 합의 투표와 관리자 강제 종료.
@@ -348,6 +372,11 @@ interface Room {
    * 봇의 결정을 멈춰 둔다 (`TUTORIAL_HOLD_NOTE`). 0이면 안 세웠다.
    */
   tutorialHoldUntil: number;
+  /**
+   * 대본이 쓰는 첫 국이 끝나 **평범한 연습 대국으로 넘어갔는가**
+   * (`graduateTutorial` — QA 2차 onboard 확정 4). 한 번만 하면 되는 일이라 표식을 둔다.
+   */
+  tutorialGraduated: boolean;
 }
 
 /** 연결 1개의 상태 — 인증·방 참가·관전을 소켓 단위로 추적한다 */
@@ -377,8 +406,20 @@ interface Conn {
    * 실제로 막아야 하는 통로다. 0이면 지연 없음(기본, 내부 감시용).
    */
   spectateDelayMs: number;
-  /** 아직 내보내지 않은 지연 전송 타이머 — 관전을 접으면 전부 걷는다. */
-  spectateTimers: Set<ReturnType<typeof setTimeout>>;
+  /**
+   * 아직 내보내지 않은 **지연 송출 대기분** — 타이머 → 그 타이머가 보낼 프레임.
+   *
+   * Set이 아니라 Map인 이유: 끊는 길에 따라 이 대기분을 **버릴 수도, 흘려보낼 수도**
+   * 있어야 하기 때문이다 (QA 2차 spectate 확정 5).
+   * - 운영자가 관전을 접었다 → 버린다. 창을 닫은 뒤에도 남의 손패가 몇 초 더 날아가면
+   *   그건 C1이 막으려던 것 자체다.
+   * - **판이 끝났다** → 흘려보낸다. 15초 딜레이면 마지막 15초에 마지막 국의 화료·정산·
+   *   최종 순위가 들어 있는데, 예전에는 그게 통째로 폐기되고 `spectateEnded`만 도착했다.
+   *   중계가 결말을 잃는다. 딜레이는 «늦게 본다»는 뜻이지 «마지막을 안 본다»가 아니다.
+   *
+   * Map은 삽입 순서를 지키므로 흘려보낼 때 원래 순서가 그대로 나간다.
+   */
+  spectateTimers: Map<ReturnType<typeof setTimeout>, ServerMessage>;
   /** 관전을 시작한 시각(epoch ms) — 감사 로그에 «얼마나 봤는가»를 남긴다 (C3). */
   spectateSince: number;
   /** 최근 인증 시도 타임스탬프(ms) — 레이트리밋용 슬라이딩 윈도우 */
@@ -855,6 +896,29 @@ const EMPTY_FEED: ReadonlySet<string> = new Set<string>();
 const TUTORIAL_HOLD_TTL_MS = 3 * 60_000;
 
 /**
+ * **새 화면이 나간 직후 봇을 세워 두는 유예** (QA 2차 onboard 확정 2).
+ *
+ * 위 신호에는 구조적인 구멍이 있었다. 홀드가 서버에 닿을 수 있는 창은 «서버가 새
+ * view 를 내보낸 순간 ~ 봇의 `decide()`가 첫 줄을 실행하는 순간» 사이 **몇 ms**인데,
+ * 클라이언트는 그 view 를 받아 **렌더하고 강의를 고른 뒤에야** 홀드를 보낸다
+ * (`cbCoachHold`는 강의가 바뀔 때만 부른다). 즉 홀드는 언제나 늦게 도착했고, 늦게
+ * 도착한 홀드는 이미 생각 시간에 잠든 봇을 붙들지 못했다 — 봇은 1초 뒤 깨어나
+ * **말풍선이 떠 있는 한가운데서 한 장을 버렸다.** 지연을 0ms(도달 불가능한 이상적
+ * 클라이언트)로 낮춰도 홀드 구간 9개 중 5개가 샜다. 네트워크가 아니라 순서 문제다.
+ * `docs/23_TEST_BASELINE.md`가 적어 둔 `Tutorial.test.ts` 플레이크가 같은 사건이다.
+ *
+ * 그래서 **묻지 않고 서버가 먼저 세운다**: 튜토리얼 좌석에 새 화면이 나갈 때마다
+ * 이만큼을 자동으로 붙든다. 그 유예가 곧 «클라이언트가 답할 시간»이다. 클라이언트의
+ * `hold:true`는 종전대로 3분으로 **연장**하고, `hold:false`는 0으로 지우는 대신
+ * 유예 끝까지로 **깎는다** — 늦게 온 `false`가 방금 나간 화면의 유예를 걷어 버리면
+ * 고친 구멍이 그대로 다시 열린다.
+ *
+ * 값의 근거: RTT + 렌더 + 강의 선택이 들어갈 만큼은 되고, 사람이 «판이 굳었다»로
+ * 읽을 만큼은 아닌 길이. 튜토리얼 방에서만 걸리므로 실대국 리듬에는 영향이 없다.
+ */
+export const TUTORIAL_HOLD_GRACE_MS = 700;
+
+/**
  * 튜토리얼 방에서 **컨트롤러의 최후 그물**을 얼마나 늘릴 것인가
  * (`HanchanConfig.agentDecideTimeoutMs`, 기본 90초).
  *
@@ -1150,6 +1214,11 @@ export class RoomManager {
     const ttl = roomIdleTtlMs();
     for (const room of [...this.rooms.values()]) {
       if (room.phase === "playing") {
+        // 이미 끝난 판의 **정리 중** 구간이다 (`Room.finished`). 종국 처리가 통계
+        // 전송을 기다리는 동안 방은 아직 playing 이지만, 여기서 "진행 중"으로 다뤄
+        // `rememberLiveGame`을 부르면 방금 지운 이어하기 행이 되살아난다. 곧
+        // `resetRoomAfterGame`이 대기실로 돌려놓을 방이니 이번 회차는 그냥 지나간다.
+        if (room.finished) continue;
         // 진행 중인 게임은 손대지 않는다. 다만 컨트롤러가 없는 "playing"은
         // 게임이 아니라 잔해다 — 방치하면 그 사람들이 영영 방을 못 만든다.
         if (room.controller !== null) {
@@ -1342,7 +1411,7 @@ export class RoomManager {
       agent: null,
       spectating: null,
       spectateDelayMs: 0,
-      spectateTimers: new Set(),
+      spectateTimers: new Map(),
       spectateSince: 0,
       authAttempts: [],
       emoteHits: [],
@@ -1534,6 +1603,14 @@ export class RoomManager {
       conn.room,
       `연결 닫힘 ${conn.user?.username ?? conn.key} (동시 ${this.conns.size})`,
     );
+    /*
+     * 내가 나갔다 — 친구들 화면의 «접속 중»을 지금 끈다 (QA 2차 lobby 확정 4).
+     *
+     * **`conns`에서 뺀 뒤에** 부른다: `onlineMap`이 남은 연결을 훑어 값을 만들므로,
+     * 먼저 빼지 않으면 방금 닫힌 이 소켓이 «아직 접속 중»으로 세어진다.
+     * 게스트는 친구 관계가 없으므로 건너뛴다.
+     */
+    if (!conn.guest) this.notifyPresenceChanged(conn.user?.username);
     // 미인증 유예 타이머 해제 — 닫힌 연결에 대고 타이머가 남지 않게 한다.
     if (conn.authDeadline !== null) {
       clearTimeout(conn.authDeadline);
@@ -1972,7 +2049,19 @@ export class RoomManager {
         if (conn.room?.paused === true) {
           return this.fail(conn, "GAME_PAUSED", "관리자가 판을 세웠습니다 — 재개를 기다려 주세요");
         }
-        conn.agent?.handleMessage(msg);
+        /*
+         * 같은 원칙을 좌석이 **없는** 경우에도 적용한다 (QA 2차 server 확정 2).
+         *
+         * 예전에는 `conn.agent?.handleMessage(msg)` 였다 — 좌석이 떨어져 나간 옛 탭의
+         * 액션이 옵셔널 체이닝에 조용히 삼켜져, `fail()`조차 타지 않았다. 위 주석이
+         * 막으려던 «이유 없이 안 먹히는 버튼»이 정확히 그 상태다. 좌석을 잃은 이유는
+         * 여럿이지만(다른 탭이 가져갔다·방이 정리됐다·이미 나갔다) 화면이 알아야 할
+         * 것은 하나다: **이 창은 더 이상 그 자리에 앉아 있지 않다.**
+         */
+        if (conn.agent === null) {
+          return this.fail(conn, "NOT_IN_ROOM", "이 창은 더 이상 그 자리에 앉아 있지 않습니다");
+        }
+        conn.agent.handleMessage(msg);
         return;
       }
       // ── 튜토리얼: 말풍선을 읽는 동안 판을 세워 둔다 (`TUTORIAL_HOLD_NOTE`) ──
@@ -1981,7 +2070,26 @@ export class RoomManager {
         // 튜토리얼 방에서만 듣는다. 다른 방에서 이 신호가 먹히면 아무나 판을
         // 멈춰 세울 수 있는 손잡이가 된다 — 그건 그냥 방해 도구다.
         if (room === null || !room.tutorial) return;
-        room.tutorialHoldUntil = msg.hold === true ? Date.now() + TUTORIAL_HOLD_TTL_MS : 0;
+        if (msg.hold === true) {
+          room.tutorialHoldUntil = Date.now() + TUTORIAL_HOLD_TTL_MS;
+          return;
+        }
+        /*
+         * 「다 읽었습니다」 — 그래도 **0으로 지우지는 않는다**
+         * (QA 2차 onboard 확정 2 · `TUTORIAL_HOLD_GRACE_MS`).
+         *
+         * 이 신호는 언제나 늦게 온다(화면을 렌더한 뒤에야 보낸다). 그사이 서버가
+         * 새 화면을 한 장 더 내보내며 유예를 걸어 뒀을 수 있는데, 늦게 도착한 이
+         * `false`가 그 유예까지 걷어 버리면 봇이 **아직 아무도 못 본 화면 위에서**
+         * 한 장을 버린다 — 고친 구멍이 그대로 다시 열린다.
+         *
+         * 그래서 «지운다»가 아니라 «유예 끝까지로 깎는다». 사람의 3분 홀드는 즉시
+         * 풀리고, 서버가 스스로 건 짧은 유예만 남는다.
+         */
+        room.tutorialHoldUntil = Math.min(
+          room.tutorialHoldUntil,
+          Date.now() + TUTORIAL_HOLD_GRACE_MS,
+        );
         return;
       }
       // ── 게임 무효(중단) 투표 ──
@@ -2471,6 +2579,8 @@ export class RoomManager {
     });
     // 홈 통계에서 증강 이름·등급을 게임 시작 전에도 쓸 수 있도록 정적 카탈로그를 보낸다.
     this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+    // 내가 «접속 중»이 됐다 — 친구들 화면의 그 점이 지금 켜져야 한다 (확정 4).
+    this.notifyPresenceChanged(user.username);
   }
 
   /**
@@ -2590,12 +2700,35 @@ export class RoomManager {
    *
    * 한 좌석은 언제나 연결 하나만 몰아야 한다. 안 그러면 나가기·중단 투표 같은
    * "좌석 단위" 행동을 유령이 된 예전 탭이 대신 저질러 버린다.
+   *
+   * **떼어냈다는 사실을 그 탭에도 알린다** (QA 2차 server 확정 2). 예전에는
+   * `room`·`agent`를 조용히 null로만 만들었다. 그 뒤 옛 탭이 보내는 액션은
+   * `conn.agent?.handleMessage(msg)`의 옵셔널 체이닝에 걸려 통째로 사라졌고 —
+   * 오류 한 줄조차 돌아가지 않았다. 화면에는 마지막 뷰가 그대로 남고 초읽기도
+   * 계속 돌아가는데 누르는 것마다 아무 반응이 없으니, 폰과 PC를 오간 사람에게는
+   * 그게 "서버가 죽었다"로 읽혔다. 그러는 사이 진짜 결정은 새 탭에서 시간이 흘러
+   * 자동 진행됐다.
+   *
+   * 같은 파일의 `:action` 게이트가 이미 못 박아 둔 원칙 그대로다 — *"조용히 버리지
+   * 않고 사실을 알린다 — 화면에 이유 없이 안 먹히는 버튼이 남으면 그게 곧 «게임이
+   * 멈췄다»는 제보가 된다."*
+   *
+   * 소켓은 **닫지 않는다.** `evictOtherSessions`(비밀번호 변경·다른 기기 로그아웃)와
+   * 다른 점이 여기다: 저쪽은 «이 계정의 로그인이 무효»라 끊는 것이 맞지만, 여기서
+   * 무효가 된 것은 좌석 하나뿐이고 계정은 멀쩡하다. 게다가 끊으면 클라이언트가
+   * 재연결하면서 `activeRoomRef`로 **자동 재입장**을 시도한다 — 두 탭이 서로를
+   * 끊어내는 핑퐁이 된다. 사실만 알리고 문은 열어 둔다.
    */
   private detachStaleConns(agent: HumanAgent, keep: Conn): void {
     for (const c of this.conns) {
       if (c.agent === agent && c !== keep) {
         c.room = null;
         c.agent = null;
+        this.fail(
+          c,
+          "SESSION_REPLACED",
+          "다른 곳에서 이 자리에 접속해 이 창의 연결이 끊겼습니다",
+        );
       }
     }
   }
@@ -2738,6 +2871,7 @@ export class RoomManager {
       holdUntil: null,
       resumePath: null,
       preserveReplayOnAbort: false,
+      finished: false,
       abortReason: null,
       sandboxAugments: {},
       sandboxHands: {},
@@ -2754,6 +2888,7 @@ export class RoomManager {
       lastActivityAt: Date.now(),
       handOrderThrottle: new Map(),
       tutorialHoldUntil: 0,
+      tutorialGraduated: false,
     };
     this.rooms.set(code, room);
     return room;
@@ -2841,8 +2976,7 @@ export class RoomManager {
       // 포기한 좌석은 재접속이 막혀(`ROOM_PLAYING`) 그 사람이 영영 못 들어왔다.
       // 중단 투표도 예전 탭이 그 좌석 이름으로 던질 수 있었다.
       this.detachStaleConns(mine, conn);
-      conn.room = room;
-      conn.agent = mine;
+      this.sitDown(conn, room, mine);
       /*
        * `joined` 를 **복원 전송보다 먼저** 보낸다.
        *
@@ -2914,14 +3048,41 @@ export class RoomManager {
   }
 
   /**
+   * **이 연결을 좌석에 앉힌다** — 방에 앉는 모든 길이 지나는 문 하나다
+   * (게임 중 재접속 · 대기실 재착석 `reseat` · 새 착석 `seat`).
+   *
+   * 앉는 순간 **관전을 접는다** (QA 2차 spectate 확정 1 · 🔴 완전정보 부정행위).
+   * `detachSeat`은 자리에서 **일어날 때** 관전을 정리하는데(`:2470`), 그 대칭인
+   * «앉을 때»가 어디에도 없었다. 그래서 이런 길이 열려 있었다:
+   *
+   *   1. 대국 중인 관리자가 소켓을 끊고 60초를 기다린다 → 좌석이 `abandoned`
+   *   2. 그 순간부터 자기 방 관전이 허용된다 → `spectate <내 방 코드>`
+   *   3. 관전을 켜 둔 채 `joinRoom` 으로 그 좌석에 **복귀**한다
+   *   4. 한 소켓이 자기 뷰와 `__spectator` 전체공개 뷰를 **동시에** 받는다 —
+   *      상대 손패·패산·도라·우라가 전부 보이는 채로 자기 판을 둔다
+   *
+   * `docs/26:208`·`docs/28:294`·`docs/29:252` 가 전부 "본인이 참가 중인 방은 관전이
+   * 거부된다"고 적어 둔 바로 그 시나리오였다. 대회 운영자가 곧 선수이기도 한
+   * 구성에서는 대회의 정당성 자체가 무너진다.
+   *
+   * 관전 쪽 입구 검사(`spectate`)도 함께 넓혔지만, 막는 것은 **여기**여야 한다:
+   * 앉는 것이 나중이든 먼저든, 앉은 뒤에는 관전석이 남아 있지 않다는 뜻이 되기
+   * 때문이다. 검사 하나에 기대면 순서를 바꾸는 새 경로가 생길 때마다 다시 뚫린다.
+   */
+  private sitDown(conn: Conn, room: Room, agent: HumanAgent): void {
+    this.stopSpectating(conn);
+    conn.room = room;
+    conn.agent = agent;
+  }
+
+  /**
    * 이미 있는 대기실 좌석에 이 연결을 도로 붙인다 (자리·방장·준비는 그대로).
    * 클라이언트가 방 상태만 잃었을 때 코드로 다시 들어오면 여기로 온다.
    */
   private reseat(conn: Conn, room: Room, agent: HumanAgent): void {
     this.detachStaleConns(agent, conn);
     agent.reconnect(conn.ws);
-    conn.room = room;
-    conn.agent = agent;
+    this.sitDown(conn, room, agent);
     this.send(conn.ws, { type: "joined", playerId: agent.id, roomId: room.code, token: "" });
     this.broadcastLobby(room);
   }
@@ -2936,8 +3097,7 @@ export class RoomManager {
     agent.roomCode = room.code; // 타임아웃 폴백 로그에 방 코드를 싣는다
     room.agents.push(agent);
     if (room.hostId === null) room.hostId = playerId;
-    conn.room = room;
-    conn.agent = agent;
+    this.sitDown(conn, room, agent);
     this.touch(room);
     this.log(room, `${user.username} 착석 (${playerId}, ${room.agents.length}/4)`);
     this.send(conn.ws, { type: "joined", playerId, roomId: room.code, token: "" });
@@ -3026,6 +3186,46 @@ export class RoomManager {
     const bot = new SandboxBotAgent(id, `Bot_${id}`, seed, ALL_AUGMENT_DEFS, BOT_THINK_MS, forced);
     bot.setRestrictions(room.sandboxBotRules);
     return bot;
+  }
+
+  /**
+   * **튜토리얼을 졸업시킨다** — 대본이 쓰는 첫 국이 끝나면 평범한 연습 대국으로
+   * 돌려놓고, 무슨 일이 일어났는지 말한다 (QA 2차 onboard 확정 4).
+   *
+   * 예전에는 「그만 보기」를 누른 사람에게 이런 판이 **말없이** 남았다:
+   * ① 매 국 똑같은 14장(`presetHands`가 게임 단위 규칙이라 국마다 다시 먹었다),
+   * ② 화료도 리치도 하지 않는 봇 셋(`noWin`·`noRiichi`는 게임 단위 제약이다),
+   * ③ 리치를 걸면 대기패를 쏴 주는 배급(`TUTORIAL_FEED_NOTE`).
+   * 즉 그 사람은 «이제 진짜 판을 두는 중»이라고 믿으면서 혼자만 이기는 인형극을
+   * 계속했다. 화면 어디에도 그 사실이 없었다 — 눈치채면 게임이 고장 났다고 읽고,
+   * 눈치 못 채면 이 게임의 난이도를 통째로 잘못 배운다. 어느 쪽이든 첫인상이 상한다.
+   * 바로 그 자리의 주석이 스스로 "배울 것도 없는 이상한 대국"이라고 적어 두고 있었다.
+   *
+   * 「판을 접는다」가 아니라 「진짜 판으로 바꾼다」를 고른 이유: «그만 보기»의 뜻은
+   * «안내만 그만»이지 «그만 두겠다»가 아니다. 배우다 만 사람이 이어서 둘 수 있는
+   * 것이 맞고, 다만 그 판이 **정말로 대국이어야** 한다.
+   *
+   * 새 메시지 타입을 만들지 않는다 — 이미 있는 방 공지(`roomNotice`)로 말한다.
+   * 배패 고정은 컨트롤러가 국 경계에서 스스로 푼다(`presetHandsFirstRoundOnly`).
+   */
+  private graduateTutorial(room: Room): void {
+    if (!room.tutorial || room.tutorialGraduated) return;
+    room.tutorialGraduated = true;
+    for (const a of room.agents) {
+      if (!(a instanceof BotAgent)) continue;
+      // 봇을 평범하게 돌려놓는다 — 이제 화료도 리치도 한다.
+      a.setRestrictions({});
+      // 배급도 끊는다. 리치를 걸면 오름패가 날아오는 판은 연습이 아니다.
+      a.setTutorialFeed(() => EMPTY_FEED);
+    }
+    const text =
+      "튜토리얼 안내는 여기까지입니다 — 지금부터는 평범한 연습 대국입니다. " +
+      "손패 고정이 풀리고, 봇도 리치와 화료를 합니다.";
+    const out: ServerMessage = { type: "roomNotice", text, by: "튜토리얼" };
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify(out);
+    }
+    this.log(room, "튜토리얼 졸업 — 고정 배패·봇 제약·배급을 풀고 연습 대국으로 넘긴다");
   }
 
   /**
@@ -3152,8 +3352,25 @@ export class RoomManager {
         const target = room.agents.find((a) => a.id === msg.playerId);
         if (target === undefined) return;
         if (!(target instanceof HumanAgent)) {
-          // 봇을 지정했으면 removeBot과 같은 처리
+          /*
+           * 봇을 지정했으면 **`removeBot`과 정말로 같은 처리**를 한다
+           * (QA 2차 lobby 확정 1).
+           *
+           * 주석은 처음부터 "removeBot과 같은 처리"라고 적혀 있었는데 실제로는
+           * `splice` + `broadcastLobby`뿐이었다. `removeBot`이 함께 하는 두 가지가
+           * 빠져 있었고, 그쪽 주석이 그 이유를 직접 경고하고 있었다 — 성향 지정을
+           * 안 지우면 **나중에 그 좌석 id로 들어온 봇이 지운 봇의 성향을 물려받고**,
+           * `seatBotProfiles`를 안 부르면 남은 봇들의 원형 중복 회피가 낡은 채로
+           * 남아 같은 원형 둘이 앉을 수 있다. 방장이 "이 성향 말고 다른 걸로"
+           * 하려고 봇을 빼고 다시 넣었는데 같은 성향이 돌아온다.
+           *
+           * 지금 클라이언트는 봇 좌석의 ✕에 `removeBot`을 보내므로 이 경로가 닿지
+           * 않는다 — 프로토콜 수준의 잠재 버그다. 그래도 두 문을 갈라 두면 언젠가
+           * 한쪽만 고쳐진다.
+           */
           room.agents.splice(room.agents.indexOf(target), 1);
+          room.botArchetypes.delete(msg.playerId);
+          this.seatBotProfiles(room);
           this.broadcastLobby(room);
           return;
         }
@@ -3344,6 +3561,58 @@ export class RoomManager {
   }
 
   /**
+   * **이 사람의 «지금 상태»가 바뀌었다 — 친구들 화면을 갱신한다** (QA 2차 lobby 확정 4).
+   *
+   * `pushFriends`를 부르는 자리가 **친구 관계가 바뀔 때뿐**이었다(요청·수락·삭제·취소).
+   * 접속에도 이탈에도 대국 시작에도 아무 push 가 없어서, 홈에 앉아 있는 동안 친구
+   * 목록은 **들어온 순간의 사진 한 장**이었다. 값 자체는 정확했다 — 틀린 것은
+   * 계산이 아니라 «언제 다시 계산되는가»다.
+   *
+   * 이 카드의 존재 이유가 코드 주석에 그대로 적혀 있다: «친구는 **방을 만들기 직전에**
+   * 보는 것이다 … "지금 있나?"를 확인하고 방을 만들지 말지를 정하는 자리». 대기실 쪽은
+   * 한술 더 뜬다: «여기서 보는 것은 "지금 부를 수 있는 사람"이라 낡은 목록은 그냥
+   * 틀린 목록이다». 홈에 5분 앉아 있다가 «접속 중»인 친구를 부르면 「지금 부를 수
+   * 없습니다」가 돌아왔고, 방금 들어온 친구는 «오프라인»으로 보여 아예 안 불렀다.
+   *
+   * 비용은 작다: 친구 수에 상한이 있고(그 상한의 우회도 이번에 함께 막았다 — 확정 2),
+   * 보내는 곳은 **지금 접속해 있는 친구의 연결**뿐이다. 새 메시지 타입도 주기 폴링도
+   * 만들지 않는다 — 이미 있는 `friendList` 를 그 사람들에게 한 번 더 밀 뿐이다.
+   *
+   * 「나」에게는 보내지 않는다. 내 상태가 바뀐 것이지 내 친구 목록이 바뀐 것이 아니고,
+   * 접속·입장 경로는 자기 목록을 이미 따로 받는다.
+   */
+  private notifyPresenceChanged(username: string | undefined): void {
+    const db = this.db;
+    if (db === undefined || username === undefined) return;
+    let names: string[];
+    try {
+      const me = db.userByName(username);
+      if (me === null) return;
+      names = db.friendNames(me.id);
+    } catch {
+      // 표시용 갱신이다 — 못 읽었다고 접속·이탈 경로를 막을 이유가 없다.
+      return;
+    }
+    if (names.length === 0) return;
+    const targets = new Set(names);
+    /*
+     * 친구 한 명당 payload 를 새로 만든다(각자 자기 목록이라 내용이 다르다). 다만
+     * **접속해 있는 친구만** 훑는다 — 목록에는 있지만 지금 없는 사람에게는 보낼 곳이 없다.
+     */
+    const seen = new Set<number>();
+    for (const c of this.conns) {
+      if (c.user === null || c.guest) continue;
+      if (!targets.has(c.user.username) || seen.has(c.user.id)) continue;
+      const payload = this.friendPayload(c.user.id);
+      if (payload === null) continue;
+      seen.add(c.user.id);
+      for (const other of this.conns) {
+        if (other.user?.id === c.user.id && !other.guest) this.send(other.ws, payload);
+      }
+    }
+  }
+
+  /**
    * 친구를 지금 내 대기실로 부른다 (2026-08-19).
    *
    * 코드는 **서버가 붙인다** — 클라이언트가 실어 보내게 하면 아무 방에나 남을
@@ -3366,6 +3635,28 @@ export class RoomManager {
     }
     if (room.kicked.has(target.username)) {
       return this.fail(conn, "FRIEND_INVITE_FAILED", "이 방에서 내보낸 사람입니다");
+    }
+    /*
+     * **앉을 자리가 없으면 초대가 아니다** (QA 2차 lobby 확정 3).
+     *
+     * 초대의 뜻은 "와서 앉아라"인데 좌석 검사가 어디에도 없었다. 그래서 4/4인 방에서도
+     * 「불렀습니다」가 나가고, 받은 사람은 카드를 **눌러 봐야** `ROOM_FULL`을 봤다.
+     * 흔한 순서가 정확히 이 순서다 — 방을 만들고 «봇 채우기»로 네 자리를 채운 뒤 친구를
+     * 부른다. 게다가 그 초대는 성공으로 쳐서 20초 쿨다운(`INVITE_COOLDOWN_MS`)을
+     * 태우므로, 봇을 하나 빼고 곧바로 다시 불러도 「방금 보냈습니다」로 막혔다.
+     *
+     * 그래서 **쿨다운을 태우기 전에** 거절한다. 봇이 차 있는 것뿐일 때가 대부분이라
+     * 안내도 그렇게 적는다 — 사람이 지금 당장 할 수 있는 일을 말해 주는 편이 낫다.
+     */
+    if (room.agents.length >= MAX_PLAYERS) {
+      const bots = room.agents.filter((a) => this.isBot(a)).length;
+      return this.fail(
+        conn,
+        "FRIEND_INVITE_FAILED",
+        bots > 0
+          ? "방에 빈 자리가 없습니다 — 봇을 하나 빼고 부르세요"
+          : "방에 빈 자리가 없습니다",
+      );
     }
     /*
      * 도배 방지 — 같은 사람에게 연달아 보내지 못하게 한다. 초대는 받는 쪽 메인
@@ -3900,14 +4191,55 @@ export class RoomManager {
       typeof delaySeconds === "number" && Number.isFinite(delaySeconds)
         ? Math.min(SPECTATE_DELAY_MAX_S, Math.max(0, Math.round(delaySeconds))) * 1000
         : 0;
+    /*
+     * **좌석에 앉아 있는 연결은 관전을 시작할 수 없다** — `sitDown`의 대칭
+     * (QA 2차 spectate 확정 1-b).
+     *
+     * 앉는 쪽만 막으면 순서를 바꿔 같은 곳에 도착한다: 대국 중인 관리자가 그대로
+     * **다른 방** 관전을 켜면 한 소켓에 내 뷰와 남의 판 전체공개 뷰가 섞여 온다
+     * (실측: 8초에 내 뷰 13장 + 남의 판 전체공개 뷰 11장). 대회 편성이 여러 탁이면
+     * 그건 자기 판을 두면서 옆 탁의 전 손패를 보는 것이고, 그렇지 않더라도 한 화면에
+     * 두 판이 겹쳐 오는 것 자체가 고장이다.
+     *
+     * 지켜야 할 불변식을 한 줄로 적으면: **한 소켓은 좌석이거나 관전석이거나, 둘 다는
+     * 아니다.** 문 두 개(`sitDown`·여기)가 그 한 줄을 양쪽에서 지킨다.
+     *
+     * 방 조회보다 **먼저** 본다 — 어느 방이든 답이 같으므로 방을 찾을 이유가 없다.
+     */
+    if (conn.room !== null) {
+      return this.fail(
+        conn,
+        "FORBIDDEN",
+        "대국에 참가한 창으로는 관전할 수 없습니다 — 다른 창에서 열어 주세요",
+      );
+    }
     const room = this.rooms.get(code);
     if (room === undefined || room.phase !== "playing" || room.controller === null) {
       return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
     }
-    // 본인이 참가 중인 방은 관전 불가 — 관전 뷰는 전원의 손패·산·도라를 그대로
-    // 노출하므로, 대국 중인 참가자(관리자여도)가 자기 방을 관전하면 완전정보
-    // 치트가 된다. (다른 방 관전은 그대로 허용.)
-    if (room.agents.some((a) => this.isActiveHuman(a, user.username))) {
+    /*
+     * 본인이 참가 중인 방은 관전 불가 — 관전 뷰는 전원의 손패·산·도라를 그대로
+     * 노출하므로, 대국 중인 참가자(관리자여도)가 자기 방을 관전하면 완전정보
+     * 치트가 된다. (다른 방 관전은 그대로 허용.)
+     *
+     * **「참가 중」을 «돌아올 수 있는 좌석»까지로 넓힌다** (QA 2차 spectate 확정 1).
+     * 예전에는 `isActiveHuman`(= `!isAbandoned`)만 봤다. 그래서 60초를 끊고 기다려
+     * 좌석이 `abandoned`로 확정되면 그 순간부터 **자기 방 관전이 허용**됐고, 전
+     * 좌석 손패를 띄운 채 `joinRoom`으로 그 자리에 **복귀**할 수 있었다.
+     * `canRejoin`인 좌석은 «비어 있는 자리»가 아니라 «내가 언제든 돌아갈 내 자리»다 —
+     * 관전 판정에서도 그렇게 다룬다. 스스로 나간 좌석(`canRejoin === false`)은
+     * 돌아올 길이 없으니 그대로 관전을 열어 준다.
+     *
+     * 이건 두 겹 중 바깥 겹이다. 안쪽 겹은 «자리에 앉는 순간 관전을 접는다»
+     * (`sitDown`) — 순서를 뒤집어도 한 소켓이 두 뷰를 겹쳐 받는 일이 없어야 한다.
+     */
+    if (
+      room.agents.some(
+        (a) =>
+          this.isActiveHuman(a, user.username) ||
+          (a instanceof HumanAgent && a.nickname === user.username && a.canRejoin),
+      )
+    ) {
       return this.fail(conn, "FORBIDDEN", "본인이 참가 중인 게임은 관전할 수 없습니다");
     }
     this.stopSpectating(conn); // 기존 관전 정리 (한 소켓당 한 방)
@@ -3934,7 +4266,9 @@ export class RoomManager {
         // 그 사이에 관전을 접었거나 다른 방으로 옮겼으면 흘려보내지 않는다.
         if (conn.spectating === room) this.send(conn.ws, msg);
       }, conn.spectateDelayMs);
-      conn.spectateTimers.add(timer);
+      // 프레임을 함께 들고 있는다 — 판이 끝날 때 남은 대기분을 **흘려보내야** 하고,
+      // 그러려면 무엇이 대기 중인지 알아야 한다 (`spectateTimers` 주석 · 확정 5).
+      conn.spectateTimers.set(timer, msg);
     };
     const sink: SpectatorSink = {
       id: conn.id,
@@ -3967,9 +4301,17 @@ export class RoomManager {
     this.log(null, `관전 시작 ${code} — ${user.username}${delayMs > 0 ? ` (지연 ${delayMs / 1000}초)` : ""}`);
     this.send(conn.ws, { type: "spectateStarted", code, ...(delayMs > 0 ? { delaySeconds: delayMs / 1000 } : {}) });
     this.notifySpectated(room); // 대국자에게 «중계 중»을 알린다 (C4)
-    // 이미 세워 둔 판이면 그대로 알린다 — 중계석이 바뀌어도 «지금 서 있다»가 보인다.
-    if (room.paused) this.sendPauseState(conn, room);
-    this.sendRoomNotice(conn, room);
+    /*
+     * 이 탁자의 정지 상태와 공지를 **확정해서** 보낸다 (QA 2차 admin 확정 2).
+     *
+     * 「서 있으면 알린다」로는 부족하다. 관전 화면은 탁자를 갈아 끼우는 화면이라,
+     * 앞 탁자에서 물려받은 «정지 중» 오버레이와 «방 공지»가 그대로 얹힌 채 새 탁자를
+     * 덮는다 — 멀쩡한 탁자가 정지 화면으로 보이고, A방 공지가 B방 사람들 것처럼 뜬다.
+     * 지울 메시지를 아무도 보내지 않았기 때문이다. 새 탁자에 붙는 순간 두 값을 다
+     * 사실로 덮어써서 그 사슬을 끊는다.
+     */
+    this.sendPauseState(conn, room);
+    this.sendRoomNotice(conn, room, true);
     room.controller.addSpectator(sink); // 현재 뷰·카탈로그 즉시 전송됨
   }
 
@@ -3998,7 +4340,24 @@ export class RoomManager {
     if (room === undefined || room.phase !== "playing" || room.controller === null) {
       return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
     }
-    if (room.paused === paused) return; // 같은 상태로 두 번 — 알릴 것이 없다
+    if (room.paused === paused) {
+      /*
+       * 같은 상태로 두 번 — 판에는 알릴 것이 없다. 그래도 **부른 사람에게는 답한다**
+       * (QA 2차 admin 확정 2).
+       *
+       * 조용한 무시가 관리자 화면을 가둔다. 관전 버튼의 라벨은 클라이언트가 들고 있는
+       * `pause` state 하나로 정해지는데, 그 값이 앞 탁자에서 물려받아 틀려 있으면
+       * 「▶ 재개」가 떠 있고 → 눌러도 서버가 조용히 무시하고 → `gamePaused` 가 안 오니
+       * state 가 안 바뀌고 → 버튼은 영원히 「재개」에 박힌다. 관전을 완전히 접기 전까지
+       * 그 탁자에서는 일시정지 자체를 못 쓴다. 도구가 죽는 것이다.
+       *
+       * 그래서 «지금 상태»를 그대로 되돌려 준다. 새 이벤트도 새 메시지 타입도 아니고
+       * 이미 있는 복원 경로(`sendPauseState`)를 한 번 더 태우는 것이다 — 화면이
+       * 스스로를 되돌릴 근거를 언제나 가질 수 있게.
+       */
+      this.sendPauseState(conn, room);
+      return;
+    }
     const reason =
       typeof rawReason === "string" && rawReason.trim().length > 0
         ? rawReason.trim().slice(0, PAUSE_REASON_MAX)
@@ -4008,6 +4367,9 @@ export class RoomManager {
     room.controller.setPaused(paused);
     // 유휴 청소가 세워 둔 판을 유령으로 오해하지 않도록 활동 시각을 갱신한다.
     this.touch(room);
+    // **재시작을 넘겨 세워 둔다** (QA 2차 spectate 확정 6). 이어하기 행에 정지
+    // 표식을 함께 적어 둔다 — 배포·감시자 복구가 운영자의 판단을 지우면 안 된다.
+    this.rememberLiveGame(room);
     this.log(
       null,
       `${paused ? "일시정지" : "재개"} ${code} — ${user.username}${reason === null ? "" : ` (${reason})`}`,
@@ -4054,6 +4416,9 @@ export class RoomManager {
         ? null
         : { text, by: user.username, expiresAt: ttlMs > 0 ? Date.now() + ttlMs : null };
     this.touch(room);
+    // 정지와 같은 이유로 이어하기 행에 함께 적는다 (확정 6). 시한부 공지는
+    // 적히지 않는다 — `rememberLiveGame`이 그 자리에서 걸러 낸다.
+    this.rememberLiveGame(room);
     this.log(null, `방 공지 ${room.code} — ${user.username}: ${text.length === 0 ? "(내림)" : text}`);
     const out: ServerMessage = {
       type: "roomNotice",
@@ -4099,9 +4464,11 @@ export class RoomManager {
       return this.fail(conn, "NOT_WAITING", "그 자리는 지금 기다리는 중이 아닙니다");
     }
     this.touch(room);
+    // **결과**를 적는다 — 요청한 초만 적으면 누적 천장(`EXTEND_LEFT_MAX_MS`)에서
+    // 잘린 연장이 로그상 성공한 것처럼 보인다.
     this.log(
       null,
-      `시간 연장 ${room.code}/${seat} +${seconds}초 (${res.kind}) — ${user.username}`,
+      `시간 연장 ${room.code}/${seat} +${seconds}초 → 남은 ${Math.round(res.leftMs / 1000)}초 (${res.kind}) — ${user.username}`,
     );
     agent.notify({
       type: "promptExtended",
@@ -4120,13 +4487,25 @@ export class RoomManager {
    * 건드리면 그 결정이 없는 국에 들어간다.
    *
    * 세워 둔 판에서도 부를 수 있다. 요청만 걸리고, 재개하는 순간 물린다.
+   *
+   * **국과 국 사이에서는 거절한다** (QA 2차 admin 확정 1). 결과 화면이 떠 있는
+   * 동안 누르면 예전에는 요청이 그대로 살아남아 «다음 국»을 배패 직후에 물렸다 —
+   * 물리려던 국은 점수까지 그대로 남긴 채로. 관리자는 안내 문구("이 국을 물렸습니다")를
+   * 믿고 오심이 정리됐다고 판단하므로, 조용히 어긋나는 것이 가장 나쁘다. 컨트롤러가
+   * 「지금 물릴 국이 없다」를 알려 주면 그 사실을 그대로 관리자에게 돌려준다.
    */
   private adminVoidRound(conn: Conn, user: UserRow, rawCode: string): void {
     const room = this.rooms.get(rawCode.trim().toUpperCase());
     if (room === undefined || room.phase !== "playing" || room.controller === null) {
       return this.fail(conn, "NOT_PLAYING", "진행 중인 게임이 아닙니다");
     }
-    room.controller.requestRoundVoid();
+    if (!room.controller.requestRoundVoid()) {
+      return this.fail(
+        conn,
+        "NOT_IN_ROUND",
+        "지금은 물릴 국이 없습니다 — 이미 끝난 국은 물릴 수 없고, 다음 국이 시작된 뒤에 다시 눌러 주세요",
+      );
+    }
     this.touch(room);
     this.log(null, `국 무효 ${room.code} — ${user.username}`);
     const out: ServerMessage = {
@@ -4141,25 +4520,44 @@ export class RoomManager {
     for (const sp of room.spectators) this.send(sp.ws, out);
   }
 
-  /** 이 연결에 «지금 판이 서 있다»를 알린다 (재접속·관전 합류 복원용). */
+  /**
+   * 이 연결에 «이 탁자가 지금 서 있는가»를 알린다 (재접속·관전 합류 복원용).
+   *
+   * **서 있을 때만이 아니라 언제나 사실을 보낸다** (QA 2차 admin 확정 2). 예전에는
+   * `paused: true` 만 보내고 서 있지 않으면 아무 것도 안 보냈다. 그게 관전 탁자
+   * 전환에서 터졌다: A방을 세워 두고 B방으로 옮기면 B방이 안 서 있으니 «정지 해제»를
+   * 알릴 메시지가 아예 없어, 화면의 «정지 중» 오버레이가 멀쩡한 B방을 덮은 채 남았다.
+   * 그리고 화면이 «▶ 재개»에 박히면 빠져나올 길이 없었다(아래 `adminPauseGame` 주석).
+   *
+   * 「없는 것은 안 보낸다」가 맞으려면 받는 쪽이 백지에서 시작해야 하는데, 관전은
+   * 탁자를 갈아 끼우는 화면이라 그 전제가 성립하지 않는다. 그러면 보내는 쪽이
+   * 확정해 줘야 한다.
+   */
   private sendPauseState(conn: Conn, room: Room): void {
     this.send(conn.ws, {
       type: "gamePaused",
-      paused: true,
-      ...(room.pauseReason !== null ? { reason: room.pauseReason } : {}),
+      paused: room.paused,
+      ...(room.paused && room.pauseReason !== null ? { reason: room.pauseReason } : {}),
     });
   }
 
   /**
    * 이 연결에 그 탁자의 공지를 다시 보낸다 (재접속·관전 합류 복원용).
    * 시한이 지난 공지는 여기서 걷는다 — 따로 도는 청소를 만들 만한 일이 아니다.
+   *
+   * `clearIfNone` 은 «공지가 없다»도 사실로 보낸다(빈 글 = 내린다 —
+   * `adminRoomNotice` 와 같은 규약이다). 관전 탁자를 옮길 때 앞 탁자의 공지가 새
+   * 탁자 사람들 것처럼 화면에 남아 있던 것을 여기서 끊는다 (확정 2).
    */
-  private sendRoomNotice(conn: Conn, room: Room): void {
+  private sendRoomNotice(conn: Conn, room: Room, clearIfNone = false): void {
     const notice = room.notice;
-    if (notice === null) return;
+    const clear = (): void => {
+      if (clearIfNone) this.send(conn.ws, { type: "roomNotice", text: "" });
+    };
+    if (notice === null) return clear();
     if (notice.expiresAt !== null && Date.now() >= notice.expiresAt) {
       room.notice = null;
-      return;
+      return clear();
     }
     this.send(conn.ws, {
       type: "roomNotice",
@@ -4171,22 +4569,59 @@ export class RoomManager {
     });
   }
 
-  private stopSpectating(conn: Conn): void {
-    const room = conn.spectating;
-    if (room === null) return;
+  /**
+   * **관전 하나를 놓아 준다** — 끊기는 길이 어디든 여기를 지난다 (docs/36 C3).
+   *
+   * 관전이 끊기는 길은 둘이다: 사람이 접는다(`stopSpectating`)와 판이 끝난다
+   * (`endSpectating`). 예전에는 앞쪽만 정리와 감사 로그를 했고 뒤쪽은
+   * `conn.spectating = null` 한 줄이 전부였다 — 그래서 **가장 흔한 종료 경로**
+   * (판이 끝날 때까지 본다)가 감사 기록에서 통째로 빠졌다. 「누가 그 판을 얼마나
+   * 봤나」를 물으면 «시작»만 있고 «종료»가 없어 본 시간을 답할 수 없었다.
+   * `spectateSince`도 `spectateTimers`도 그대로 남았다 (QA 2차 admin 확정 4).
+   *
+   * 네 사람의 손패를 전부 내보내는 창이다. 그 창이 언제 닫혔는지를 «어느 문으로
+   * 나갔는가»에 따라 남기고 말고 할 이유가 없다 — 그래서 두 길을 한 함수로 모은다.
+   *
+   * **두 길이 갈리는 곳은 딱 하나**, 지연 송출 대기분을 어떻게 하느냐다(`flushDelayed`).
+   * 그건 «누가 닫았는가»에 따라 답이 정말로 다르다 — 아래 인자 주석 참고.
+   *
+   * @param flushDelayed 대기 중인 지연 프레임을 **원래 순서대로 지금 다 보낼지**.
+   *   운영자가 접는 길은 `false`(버린다 — 창을 닫은 뒤에도 남의 손패가 날아가면 안 된다),
+   *   판이 끝나는 길은 `true`(흘려보낸다 — 그 마지막 N초에 화료·정산·최종 순위가 있다).
+   */
+  private releaseSpectator(conn: Conn, room: Room, flushDelayed = false): void {
     room.spectators.delete(conn);
     room.controller?.removeSpectator(conn.id);
     conn.spectating = null;
-    // 지연 송출 대기분을 전부 걷는다 — 안 걷으면 관전을 접은 뒤에도 몇 초 동안
-    // 남의 손패가 계속 날아간다(C1의 뜻이 정확히 그 반대다).
-    for (const t of conn.spectateTimers) clearTimeout(t);
+    /*
+     * 지연 송출 대기분을 처리한다.
+     *
+     * 버리는 쪽이 기본이다 — 안 걷으면 관전을 접은 뒤에도 몇 초 동안 남의 손패가
+     * 계속 날아간다(C1의 뜻이 정확히 그 반대다). 판이 끝난 길에서만 흘려보낸다
+     * (`flushDelayed` — QA 2차 spectate 확정 5). 타이머는 어느 쪽이든 걷는다:
+     * 흘려보낸 프레임을 타이머가 한 번 더 보내면 중복이 된다.
+     *
+     * `conn.spectating`을 **먼저** null로 만든 뒤라 타이머 본문의 가드가 이미
+     * 걸려 있다 — 여기서 직접 보내는 것이 유일한 송출 경로다.
+     */
+    const pending = [...conn.spectateTimers];
+    for (const [t] of pending) clearTimeout(t);
     conn.spectateTimers.clear();
+    if (flushDelayed) {
+      for (const [, msg] of pending) this.send(conn.ws, msg);
+    }
     conn.spectateDelayMs = 0;
     if (conn.spectateSince > 0) {
       const secs = Math.round((Date.now() - conn.spectateSince) / 1000);
       this.log(null, `관전 종료 ${room.code} — ${conn.user?.username ?? "?"} (${secs}초)`);
       conn.spectateSince = 0;
     }
+  }
+
+  private stopSpectating(conn: Conn): void {
+    const room = conn.spectating;
+    if (room === null) return;
+    this.releaseSpectator(conn, room);
     this.notifySpectated(room);
   }
 
@@ -4839,6 +5274,14 @@ export class RoomManager {
     room.ready.clear();
     room.abortReason = null;
     room.sandboxRestarting = false;
+    // 정리가 끝났다 — «끝난 판» 표식을 내린다. 이 방은 이제 다음 판을 받을 수 있는
+    // 평범한 대기실이고, 다음 `startGame`이 다시 `rememberLiveGame` 대상이 된다.
+    room.finished = false;
+    // 판이 끝났다 = «대국 중»이 아니다. 시작할 때와 짝을 맞춰 친구들 화면을 갱신한다
+    // (QA 2차 lobby 확정 4). 안 하면 «대국 중»이 판이 끝난 뒤에도 남는다.
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) this.notifyPresenceChanged(a.nickname);
+    }
     this.touch(room);
     // 봇은 새 인스턴스로 — 지난 판의 내부 상태(프로필·기억)를 다음 판에 끌고 가지 않는다
     room.agents = room.agents.map((a) => (this.isBot(a) ? this.newBot(room, a.id) : a));
@@ -4921,6 +5364,17 @@ export class RoomManager {
     if (room.phase === "playing") return;
     if (this.shuttingDown) return;
     room.phase = "playing";
+    /*
+     * 이 방 사람들이 «대국 중»이 됐다 — 친구 목록의 표시가 지금 바뀌어야 한다
+     * (QA 2차 lobby 확정 4). `phase`를 바꾼 **뒤에** 부른다(`onlineMap`이 그 값을 읽는다).
+     */
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) this.notifyPresenceChanged(a.nickname);
+    }
+    // 새 판이다 — 지난 판의 «끝났다» 표식이 남아 있으면 이 판이 이어하기 후보에서
+    // 통째로 빠진다(`rememberLiveGame`이 걸러 낸다). 정상 흐름에서는
+    // `resetRoomAfterGame`이 이미 내려 주지만, 여기서 한 번 더 못 박아 둔다.
+    room.finished = false;
     room.startedAt = new Date().toISOString();
     this.touch(room);
     this.seatBotProfiles(room);
@@ -5030,6 +5484,9 @@ export class RoomManager {
   private rememberLiveGame(room: Room): void {
     const db = this.db;
     if (db === undefined || room.writer === null || room.sandbox || room.guest) return;
+    // 이미 끝난 판은 절대 되쓰지 않는다. `writer`는 종국 정리가 끝나야 null이 되므로
+    // 위의 검사만으로는 «정산 중인 방»을 걸러 내지 못한다 (`Room.finished` 주석).
+    if (room.finished) return;
     const now = new Date().toISOString();
     try {
       db.saveLiveGame({
@@ -5045,6 +5502,23 @@ export class RoomManager {
         })),
         startedAt: room.startedAt ?? now,
         updatedAt: now,
+        /*
+         * 운영자가 세워 둔 것·써 붙인 것도 함께 적는다 (QA 2차 spectate 확정 6).
+         * 이게 없으면 「심판 판정 중」이라고 세운 탁자가 배포·감시자 복구 한 번에
+         * 그냥 다시 굴러간다 — 목록에도 표식이 없어 운영자는 알 방법조차 없다.
+         *
+         * 공지의 시한은 **절대 시각으로** 함께 적는다. 남은 시간(상대값)을 적으면
+         * 되살아난 공지가 재시작마다 그만큼 더 살아 있게 된다 — 「5분 뒤 재개」가
+         * 재시작 한 번에 다시 5분이 되면 그건 예고가 아니다. 이미 지난 공지는
+         * 복원 쪽이 버린다.
+         */
+        paused: room.paused,
+        pauseReason: room.paused ? room.pauseReason : null,
+        notice: room.notice?.text ?? null,
+        noticeExpiresAt:
+          room.notice?.expiresAt === undefined || room.notice.expiresAt === null
+            ? null
+            : new Date(room.notice.expiresAt).toISOString(),
       });
     } catch (err) {
       // 이어하기를 못 적는 것은 게임을 멈출 이유가 아니다 — 지금 도는 판은 멀쩡하다.
@@ -5178,7 +5652,37 @@ export class RoomManager {
     this.seatBotProfiles(room);
     room.holdUntil = Date.now() + RESUME_HOLD_MS;
 
+    /*
+     * **운영자가 세워 둔 것·써 붙인 것을 그대로 되살린다** (QA 2차 spectate 확정 6).
+     *
+     * 방은 정확히 되살아나는데 정지와 공지만 사라지는 것이 예전 모습이었다. 대회
+     * 중 판정 시비로 세워 놓은 탁자가 배포·감시자 복구 한 번에 그냥 진행됐고,
+     * 목록에도 표식이 없어 운영자는 다시 눌러야 한다는 것을 알 방법이 없었다.
+     *
+     * 표식은 `openGame` **전에** 세운다. 컨트롤러에 거는 `setPaused(true)`는
+     * 컨트롤러가 생긴 뒤(아래)여야 하지만, 방 쪽 값은 판이 돌기 시작하기 전에
+     * 서 있어야 그사이 들어온 조작이 정지 게이트에 제대로 걸린다.
+     */
+    room.paused = row.paused;
+    room.pauseReason = row.paused ? row.pauseReason : null;
+    /*
+     * 공지도 되살린다. 시한은 **적어 둔 절대 시각 그대로** 쓴다 — 그래서 재시작이
+     * 오래 걸렸으면 되살아나자마자 만료돼 사라지는 것이 맞다(그 편이 정직하다).
+     * 이미 지난 것은 아예 걸지 않는다. 「누가 걸었는가」는 남기지 않았으므로 «관리자».
+     */
+    const noticeExpiresAt =
+      row.noticeExpiresAt === null ? null : Date.parse(row.noticeExpiresAt);
+    const noticeExpired =
+      noticeExpiresAt !== null && (!Number.isFinite(noticeExpiresAt) || Date.now() >= noticeExpiresAt);
+    room.notice =
+      row.notice === null || row.notice.length === 0 || noticeExpired
+        ? null
+        : { text: row.notice, by: "관리자", expiresAt: noticeExpiresAt };
+
     await this.openGame(room, recon);
+    // 컨트롤러가 생긴 뒤에 실제로 세운다 — 좌석의 시계·봇의 차례·안전망을
+    // 한 번에 세우는 것은 컨트롤러의 몫이다(`adminPauseGame`과 같은 문을 쓴다).
+    if (room.paused) room.controller?.setPaused(true);
     this.log(
       room,
       `이어하기 — ${recon.eventCount}개 이벤트에서 재개 ` +
@@ -5275,6 +5779,26 @@ export class RoomManager {
           this.refreshSeatStatus(room);
           this.retallyAbortVotes(room);
         });
+        /*
+         * **튜토리얼: 새 화면이 나가면 그 자리에서 봇을 세운다**
+         * (`TUTORIAL_HOLD_GRACE_MS` — QA 2차 onboard 확정 2).
+         *
+         * 클라이언트의 「읽는 중입니다」를 기다리지 않는다. 그 신호는 화면을 받아
+         * 렌더한 **뒤에야** 오므로 구조적으로 언제나 늦고, 늦게 오면 이미 잠든 봇을
+         * 못 붙든다. 대신 화면이 나가는 순간을 서버가 알고 있으니 여기서 먼저 세우고,
+         * 그 유예가 곧 클라이언트가 답할 시간이 된다. 프로토콜도 클라이언트도 그대로다.
+         *
+         * `max`로 얹는 이유: 사람이 이미 3분 홀드를 걸어 둔 상태라면 그것을 짧은
+         * 유예로 **줄이면 안 된다**.
+         */
+        if (room.tutorial) {
+          agent.setViewSentListener(() => {
+            room.tutorialHoldUntil = Math.max(
+              room.tutorialHoldUntil,
+              Date.now() + TUTORIAL_HOLD_GRACE_MS,
+            );
+          });
+        }
       }
     }
 
@@ -5317,6 +5841,9 @@ export class RoomManager {
       ...(room.tutorial
         ? {
             ...tutorialPresets(room.agents),
+            // 고정은 **대본이 쓰는 첫 국까지만** (QA 2차 onboard 확정 4).
+            // 「그만 보기」로 남은 판이 2국부터도 같은 배패면 그건 대국이 아니다.
+            presetHandsFirstRoundOnly: true,
             agentDecideTimeoutMs: TUTORIAL_AGENT_TIMEOUT_MS,
             // 말풍선이 떠 있으면 **국과 국 사이도** 붙든다. 마지막 안내를 읽는 중에
             // 다음 국이 시작되면 다 끝난 줄 알았던 판이 저 혼자 다시 시작한다
@@ -5338,6 +5865,9 @@ export class RoomManager {
       // 만큼 여기서도 한 번 찍어 둔다.
       onRoundEnd: () => {
         this.rememberLiveGame(room);
+        // 튜토리얼 대본은 1국짜리다 — 그 국이 끝나면 이 방을 평범한 연습 대국으로
+        // 돌려놓고, 그 사실을 말한다 (`graduateTutorial` — QA 2차 onboard 확정 4).
+        if (room.tutorial) this.graduateTutorial(room);
       },
       onGameOver: (rankings: RankingEntry[], endReason: GameEndReason) => {
         // 방은 그대로 남는다 — 결과 화면에서 "이어하기"로 같은 멤버와 다음 판을 간다.
@@ -5353,6 +5883,12 @@ export class RoomManager {
         // 이 판은 더 이상 "진행 중"이 아니다 — 이어하기 후보에서 뺀다(§2-10).
         // 기록보다 **먼저** 지운다: recordGame이 던져도 이 코드가 부팅 때마다
         // 되살아나려 드는 일은 없어야 한다.
+        //
+        // ⚠ 깃발을 **지우기보다 먼저** 세운다. 아래 `finishStats`가 비동기라 방이
+        //   대기실로 돌아가기까지 시간이 걸리는데, 그사이 유휴 청소가 이 방을
+        //   «진행 중인 판»으로 보고 방금 지운 행을 도로 써 넣었다(`Room.finished`
+        //   주석 — QA 2차 server 확정 1). 순서가 뒤집히면 그 창이 다시 열린다.
+        room.finished = true;
         this.forgetLiveGame(room);
         const recordedId =
           room.sandbox || room.guest ? undefined : this.recordGame(room, rankings);
@@ -5556,12 +6092,35 @@ export class RoomManager {
     }
   }
 
-  /** 관전자들에게 종료를 알리고 관전 상태를 정리한다 */
+  /**
+   * 관전자들에게 종료를 알리고 관전 상태를 정리한다 — **판이 끝나서** 끊기는 길이다.
+   *
+   * 정리는 사람이 접는 길과 **같은 함수**를 탄다(`releaseSpectator`): `관전 종료 …`
+   * 감사 로그, 본 시간(`spectateSince`), 지연 송출 대기분(`spectateTimers`)까지 전부.
+   * 예전에는 여기서 `conn.spectating = null` 만 했고, 그게 관전 감사 기록에
+   * 「종료가 없는 시작」만 쌓이게 한 원인이었다 (docs/36 C3 · QA 2차 admin 확정 4).
+   *
+   * **남은 지연 프레임을 다 흘린 뒤에 끝을 알린다** (QA 2차 spectate 확정 5).
+   * 예전에는 대기 큐가 통째로 폐기돼, 15초 딜레이를 건 중계석은 종료 15초 전 화면에
+   * 멈춘 채 `spectateEnded`만 받았다 — 마지막 국의 화료·정산·최종 순위가 정확히 그
+   * 15초 안에 있다. 문서(`docs/36:110-113`)가 «접으면 대기 프레임을 흘리지 않는다»고
+   * 적은 것은 **운영자가 창을 닫는 경우**의 이야기고 그 판단은 옳다. 게임 종료는
+   * 운영자가 접은 것이 아닌데, 같은 코드 경로를 타는 바람에 결말을 잃었다.
+   */
   private endSpectating(room: Room, reason: string, finalMsg?: ServerMessage): void {
-    for (const conn of room.spectators) {
+    for (const conn of [...room.spectators]) {
+      /*
+       * 순서가 곧 화면이다: 밀린 판의 프레임들 → 마지막 사건(`finalMsg`) → 끝났다는 말.
+       * `releaseSpectator(…, true)`가 첫 단계를 원래 순서대로 흘려보낸다.
+       */
+      this.releaseSpectator(conn, room, true);
+      /*
+       * 마무리 메시지는 **지연을 태우지 않는다** — 판이 이미 끝났으므로 15초 뒤에
+       * 도착하는 «끝났습니다»는 아무 것도 지키지 못한다. 위에서 밀린 것을 다 흘린
+       * 뒤라, 즉시 보내도 결말보다 앞서 도착하지 않는다.
+       */
       if (finalMsg !== undefined) this.send(conn.ws, finalMsg);
       this.send(conn.ws, { type: "spectateEnded", code: room.code, reason });
-      conn.spectating = null;
     }
     room.spectators.clear();
   }

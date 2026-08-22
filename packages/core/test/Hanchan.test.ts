@@ -631,7 +631,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
 
   it("반장 남4국: 오야 렌짱 + 오야 단독 1위 → 종국", () => {
     expect(
-      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 2,
         roundNumber: 4,
         dealerSeat: 0,
@@ -642,7 +642,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
 
   it("동풍 동4국: 오야 렌짱 + 오야 단독 1위 → 종국", () => {
     expect(
-      agariYameTriggers(true, 1, { wind: 1, roundNumber: 4, dealerSeat: 0 }, {
+      agariYameTriggers(true, 1, { wind: 1, roundNumber: 4, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 1,
         roundNumber: 4,
         dealerSeat: 0,
@@ -653,7 +653,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
 
   it("오야가 1위가 아니면 계속 (연장)", () => {
     expect(
-      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 2,
         roundNumber: 4,
         dealerSeat: 0,
@@ -664,7 +664,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
 
   it("오야가 1위지만 동점(단독 아님)이면 계속", () => {
     expect(
-      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 2,
         roundNumber: 4,
         dealerSeat: 0,
@@ -675,7 +675,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
 
   it("렌짱이 아니면(정산 후 국번이 넘어감) 미적용", () => {
     expect(
-      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 3, // 서1로 넘어감 = 오야 교대
         roundNumber: 1,
         dealerSeat: 1, // 오야가 다음 자리로 넘어갔다
@@ -686,7 +686,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
 
   it("최종 국이 아니면(남3국 등) 미적용", () => {
     expect(
-      agariYameTriggers(true, 2, { wind: 2, roundNumber: 3, dealerSeat: 0 }, {
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 3, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 2,
         roundNumber: 3,
         dealerSeat: 0,
@@ -697,7 +697,7 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
 
   it("반장에서 동4국(최종 아님)은 미적용", () => {
     expect(
-      agariYameTriggers(true, 2, { wind: 1, roundNumber: 4, dealerSeat: 0 }, {
+      agariYameTriggers(true, 2, { wind: 1, roundNumber: 4, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 1,
         roundNumber: 4,
         dealerSeat: 0,
@@ -706,9 +706,61 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
     ).toBe(false);
   });
 
+  /**
+   * **도중유국은 아가리야메가 아니다** (QA 2차 rules 확정 3).
+   *
+   * 렌짱 판정을 «정산 후 장풍·국번이 그대로인가»로만 하던 시절, 도중유국
+   * (구종구패·사풍연타·사가리치·삼가화·사깡산료)이 그 검사를 그대로 통과했다 —
+   * 도중유국도 **같은 국을 다시 치므로** 장풍·국번이 유지되기 때문이다
+   * (`sysSettleAbort`가 그 사실을 주석으로 적어 두었다).
+   *
+   * 그래서 남4국에서 도중유국이 나고 오야가 단독 1위이면 게임이 그 자리에서 끝났다.
+   * 누가 선언했는지도 보지 않으니 **1위 오야가 배패에 요구패 9종이 오면 스스로
+   * 구종구패를 선언해 한 순도 두지 않고 우승을 확정**할 수 있었고, 남이 낸 도중유국
+   * 으로도 2~4위가 역전할 마지막 국을 통째로 잃었다.
+   *
+   * 아래 셋은 «결과만 다르고 나머지가 완전히 같은» 세 줄이다 — win/draw는 종국,
+   * abort만 계속. 그 대조가 이 스위트에 빠져 있던 것 자체가 결함의 원인이었다.
+   */
+  it("도중유국(abort)은 렌짱이 아니다 — 남4국 오야 단독 1위여도 계속", () => {
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "abort" }, {
+        prevalentWind: 2,
+        roundNumber: 4,
+        dealerSeat: 0,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+      "1위 오야가 구종구패 선언으로 우승을 확정할 수 있다",
+    ).toBe(false);
+  });
+
+  it("황패유국(draw)의 오야 텐파이야메는 그대로 종국이다 (대조군)", () => {
+    // 텐파이야메는 실재하는 특권이다 — 도중유국을 막으면서 이쪽까지 막으면 안 된다.
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "draw" }, {
+        prevalentWind: 2,
+        roundNumber: 4,
+        dealerSeat: 0,
+        players: scores(40000, 20000, 20000, 20000),
+      }),
+    ).toBe(true);
+  });
+
+  it("도중유국이면 오야 자리가 옮겨간 경우에도 종국이 아니다", () => {
+    // 오야를 옮기는 증강(만년 오야·찬탈자)이 걸려도 결과가 abort면 답은 하나다.
+    expect(
+      agariYameTriggers(true, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "abort" }, {
+        prevalentWind: 2,
+        roundNumber: 4,
+        dealerSeat: 2,
+        players: scores(20000, 20000, 40000, 20000),
+      }),
+    ).toBe(false);
+  });
+
   it("agariYame=false면 항상 미적용", () => {
     expect(
-      agariYameTriggers(false, 2, { wind: 2, roundNumber: 4, dealerSeat: 0 }, {
+      agariYameTriggers(false, 2, { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "win" }, {
         prevalentWind: 2,
         roundNumber: 4,
         dealerSeat: 0,
@@ -739,7 +791,7 @@ describe("아가리야메 — 오야 자리가 옮겨가는 경우", () => {
       agariYameTriggers(
         true,
         2,
-        { wind: 2, roundNumber: 4, dealerSeat: 0 },
+        { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "win" },
         {
           prevalentWind: 2,
           roundNumber: 4,
@@ -757,7 +809,7 @@ describe("아가리야메 — 오야 자리가 옮겨가는 경우", () => {
       agariYameTriggers(
         true,
         2,
-        { wind: 2, roundNumber: 4, dealerSeat: 0 },
+        { wind: 2, roundNumber: 4, dealerSeat: 0, outcome: "win" },
         {
           prevalentWind: 2,
           roundNumber: 4,

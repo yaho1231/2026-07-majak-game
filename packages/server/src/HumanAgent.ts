@@ -20,6 +20,26 @@ import { TIME_PRESSURE_CHANNEL } from "@majak/content";
 export const DECISION_TIMEOUT_MS = 30_000;
 
 /**
+ * **시간 연장으로 만들 수 있는 «남은 시간»의 천장** (docs/36 B3 · QA 2차 server 의심 1).
+ *
+ * `RoomManager.EXTEND_SECONDS_MAX`는 «한 번에 주는 초»에만 걸려 있었다. 그런데
+ * `extendTime`은 `남은 시간 + 더 주는 시간`으로 타이머를 다시 걸므로, 관리자가
+ * 연타하면 한 좌석의 결정 시한이 사실상 무한이 된다 — 그러면 판 전체가 그 자리
+ * 하나 때문에 멈춘 채로 남는다. 나머지 세 사람에게는 «굳은 판»과 구분되지 않는다.
+ *
+ * 값의 근거는 이 손잡이가 무엇을 위해 있는가다. 시간 연장은 **네트워크 사고 구제**이고
+ * (몇십 초), 그보다 길게 붙들어야 하는 상황을 위한 도구는 따로 있다 — 일시정지(B1)다.
+ * `EXTEND_SECONDS_MAX`(120초) 옆의 주석이 이미 그렇게 적어 두었다: *"그 이상은
+ * 일시정지가 할 일이다."* 그 문장을 누적에도 그대로 적용한다: 한 번에 줄 수 있는
+ * 최대치를 기본 제한 시간 위에 얹은 만큼(30 + 120 = 150초)까지는 언제든 채울 수 있고,
+ * 그 위로는 올라가지 않는다.
+ *
+ * 잘렸다는 사실은 감춰지지 않는다 — `promptExtended`가 **실제** 남은 시간을 실어
+ * 보내고, 서버 로그도 결과를 그대로 적는다.
+ */
+export const EXTEND_LEFT_MAX_MS = DECISION_TIMEOUT_MS + 120_000;
+
+/**
  * 튜토리얼 좌석의 제한 시간 — 사실상 없음(30분).
  *
  * ## 왜 "무제한"이 아니라 30분인가
@@ -231,6 +251,8 @@ export class HumanAgent implements PlayerAgent {
    * 남은 사람들의 이름표를 갱신하고, 중단 투표가 걸려 있으면 다시 집계하게 한다.
    */
   private onAbandoned: (() => void) | null = null;
+  /** 새 화면이 실제로 나갔을 때 방에 알린다 (`setViewSentListener`). */
+  private onViewSent: (() => void) | null = null;
 
   /**
    * 응답을 기다리는 결정들 — **좌석 id → 대기**.
@@ -347,8 +369,25 @@ export class HumanAgent implements PlayerAgent {
     // 그 표식을 남긴 이유가 이것이다(재접속 복원 경로를 새로 만들지 않는다).
     this.heldUntil = 0;
     if (this.pendingContinue !== null && this.continueTimeout === null) {
-      // 결과 화면에서 멈춰 있었다 — 원래 상한으로 다시 건다.
-      this.continueTimeout = setTimeout(() => this.resolveContinue(), this.continueMaxWaitMs);
+      /*
+       * 결과 화면에서 멈춰 있었다 — 원래 상한으로 다시 건다.
+       *
+       * **단, 세워 둔 판(`paused`)에서는 걸지 않는다** (QA 2차 spectate 확정 4).
+       * 형제 호출부 셋(`armDecision`·`armDraft`·`awaitContinue`)은 전부 `paused`를
+       * 먼저 보는데 여기만 빠져 있었다. 그래서 정지 중에 좌석 하나가 끊겼다 붙으면
+       * 국간 대기가 **정지 중에** 정상 상한으로 다시 걸려 그대로 만료됐다. 다음 국
+       * 시작 자체는 컨트롤러의 `gatePaused()`가 막아 주므로 정지 중에 판이 넘어가지는
+       * 않지만, **재개하는 순간** 결과 화면이 0초 만에 사라지고 다음 국이 시작된다.
+       *
+       * 대회에서 정지를 거는 이유의 절반이 "결과 화면을 띄워 놓고 해설한다"이다.
+       * 그 사이 선수 한 명의 회선이 한 번만 끊겼다 붙어도(대회장 와이파이에서 흔하다)
+       * 중계가 결과를 못 보여 준 채 넘어간다 — 정지가 길수록 반드시 터진다.
+       *
+       * 정지 중에는 표식만 세운다. 다시 거는 것은 `setPaused(false)`의 몫이고,
+       * 그쪽은 이미 그 일을 하고 있다(새 경로를 만들지 않는다).
+       */
+      if (this.paused) this.pausedContinue = true;
+      else this.continueTimeout = setTimeout(() => this.resolveContinue(), this.continueMaxWaitMs);
     }
     // 소켓을 붙인 뒤, 뷰·프롬프트를 복원하기 **전에** 호출자가 끼워 넣는 훅.
     // 증강 테스트에서 sandbox 상태 메시지를 여기서 보내야 한다 — 그 메시지는
@@ -460,11 +499,23 @@ export class HumanAgent implements PlayerAgent {
   noticeDisconnect(): void {
     if (this.abandoned || this.isConnected()) return;
     const now = Date.now();
-    // 국 사이 결과 화면 대기는 유예가 아니라 **즉시** 해소한다. 예전에는
-    // awaitContinue가 호출 시점에만 연결을 봐서, 결과 화면이 뜬 뒤에 탭을 닫으면
-    // 남은 셋이 interRoundDelayMs(운영 20초)를 꽉 채워 기다렸다. 화면 뒤에
-    // 아무도 없는데 기다릴 이유가 없다(2026-08-08 QA 2-6).
-    if (this.pendingContinue !== null) this.resolveContinue();
+    /*
+     * 국 사이 결과 화면 대기는 유예가 아니라 **즉시** 해소한다. 예전에는
+     * awaitContinue가 호출 시점에만 연결을 봐서, 결과 화면이 뜬 뒤에 탭을 닫으면
+     * 남은 셋이 interRoundDelayMs(운영 20초)를 꽉 채워 기다렸다. 화면 뒤에
+     * 아무도 없는데 기다릴 이유가 없다(2026-08-08 QA 2-6).
+     *
+     * **세워 둔 판은 예외다** (QA 2차 spectate 확정 4). 그 근거("화면 뒤에 아무도
+     * 없다")가 정지 중에는 성립하지 않는다 — 결과 화면을 띄워 놓고 **해설하려고**
+     * 운영자가 일부러 세운 것이고, 보고 있는 사람은 좌석이 아니라 중계석이다.
+     * 여기서 해소해 버리면 재개하는 순간 결과 화면이 0초 만에 사라지고 다음 국이
+     * 시작된다. 대회장 회선에서 선수 한 명이 한 번만 끊겨도 중계가 결말을 잃는다.
+     *
+     * 형제 호출부 셋(`armDecision`·`armDraft`·`awaitContinue`)은 전부 `paused`를
+     * 먼저 보는데 이 자리와 `reconnect`만 빠져 있었다. 둘 다 채운다 — 한쪽만 고치면
+     * 「끊겼다 → 정지 중 해소」와 「끊겼다 → 붙었다 → 재무장」 중 하나가 그대로 남는다.
+     */
+    if (this.pendingContinue !== null && !this.paused) this.resolveContinue();
     for (const [seat, p] of [...this.pending]) {
       if (p.graced || p.deadlineAt - now <= DISCONNECT_GRACE_MS) continue;
       this.clearPendingTimer(p);
@@ -582,6 +633,10 @@ export class HumanAgent implements PlayerAgent {
    * 프롬프트를 다시 보내지 않는다. 클라이언트는 새 프롬프트를 «여기부터가 진짜다»로
    * 읽고 골라 둔 패를 비운다 — 시간만 주는데 손에 쥔 것을 떨어뜨리게 할 이유가 없다.
    * 정지 중이면 타이머를 걸지 않고 적어 둔 남은 시간만 늘린다(재개 때 그 값으로 건다).
+   *
+   * **누적에는 천장이 있다** (`EXTEND_LEFT_MAX_MS`). 한 번에 주는 초에만 상한이
+   * 걸려 있어서, 연타하면 한 좌석의 시한이 사실상 무한이 됐다 — 그 판 전체가 멈춘다.
+   * 돌려주는 `leftMs`는 언제나 **실제로 걸린** 값이라 잘렸는지가 그대로 드러난다.
    */
   extendTime(extraMs: number): { kind: "decision" | "draft"; seat?: PlayerId; leftMs: number } | null {
     if (this.abandoned || extraMs <= 0) return null;
@@ -598,7 +653,10 @@ export class HumanAgent implements PlayerAgent {
     }
     if (target !== null) {
       const p = this.pending.get(target)!;
-      const leftMs = soonest + extraMs;
+      // 누적에도 천장이 있다 (`EXTEND_LEFT_MAX_MS`) — 연타로 한 좌석을 무한히
+      // 붙들면 그건 시간 연장이 아니라 일시정지를 흉내 낸 것이고, 나머지 세
+      // 사람에게는 굳은 판과 구분되지 않는다. 이미 천장 위면 그대로 둔다.
+      const leftMs = Math.max(soonest, Math.min(soonest + extraMs, EXTEND_LEFT_MAX_MS));
       this.clearPendingTimer(p);
       this.armDecision(target, p.prompt, p.resolve, leftMs, p.graced);
       return { kind: "decision", seat: target, leftMs };
@@ -607,7 +665,9 @@ export class HumanAgent implements PlayerAgent {
       const left = this.paused
         ? (this.pausedDraftLeft ?? 0)
         : Math.max(0, this.draftDeadlineAt - now);
-      const leftMs = left + extraMs;
+      // 결정 시계와 같은 천장을 쓴다 (`EXTEND_LEFT_MAX_MS`) — 증강 선택이라고
+      // 무한히 붙들 수 있어야 할 이유는 없다.
+      const leftMs = Math.max(left, Math.min(left + extraMs, EXTEND_LEFT_MAX_MS));
       this.clearDraftTimeout();
       this.armDraft(leftMs);
       return { kind: "draft", leftMs };
@@ -638,6 +698,22 @@ export class HumanAgent implements PlayerAgent {
   /** 이탈 확정 시 방에 알릴 콜백을 꽂는다 (RoomManager 전용). */
   setAbandonedListener(fn: () => void): void {
     this.onAbandoned = fn;
+  }
+
+  /**
+   * **새 화면이 이 좌석으로 실제로 나갔다**를 방에 알리는 콜백 (RoomManager 전용).
+   *
+   * 튜토리얼이 이걸 쓴다 (`TUTORIAL_HOLD_NOTE` — QA 2차 onboard 확정 2): 화면이
+   * 나간 순간부터 짧은 유예 동안 봇을 세워, 클라이언트가 그 화면을 렌더하고
+   * 「읽는 중입니다」를 보낼 시간을 **구조적으로** 확보한다. 그 전에는 홀드 신호가
+   * 구조적으로 항상 늦어, 코치가 말하는 동안 봇이 한 장씩 버렸다.
+   *
+   * «보냈을 때만» 부른다 — 무변경 스킵(§7-6)에 걸려 아무 것도 안 나간 프레임은
+   * 화면을 바꾸지 않으므로 읽을 시간도 필요 없다. 그 자리에서 유예를 걸면 봇이
+   * 아무 이유 없이 계속 서 있게 된다.
+   */
+  setViewSentListener(fn: () => void): void {
+    this.onViewSent = fn;
   }
 
   /**
@@ -729,6 +805,9 @@ export class HumanAgent implements PlayerAgent {
     if (frame === this.lastViewFrame) return;
     this.lastViewFrame = frame;
     this.sendRaw(frame);
+    // 화면이 실제로 바뀌었다 — 방이 알아야 할 일이 있으면 여기서 알린다
+    // (튜토리얼의 «읽을 시간» 유예 — `setViewSentListener`).
+    this.onViewSent?.();
   }
 
   /**
@@ -1217,9 +1296,12 @@ export class HumanAgent implements PlayerAgent {
         this.send({
           type: "error",
           code: "INVALID_DRAFT_PICK",
+          // "화면을 새로 받아 주세요"는 같은 파일 위쪽 INVALID_ACTION의 주석이
+          // 폐기한 표현이다 — 화면을 새로 받는 방법이 프로토콜에 없다. 그때
+          // 위쪽만 고치고 여기는 그대로 남아 있었다(2026-08-22 QA round2 부록 D).
           message:
             locked === null
-              ? "제시되지 않은 증강입니다 — 화면을 새로 받아 주세요."
+              ? "이미 지나간 증강 후보입니다 — 지금 화면에 서 있는 카드 중에서 고르세요."
               : "튜토리얼에서는 이 증강만 고를 수 있습니다.",
         });
       }

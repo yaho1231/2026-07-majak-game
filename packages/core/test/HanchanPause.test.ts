@@ -34,6 +34,11 @@ class CountingAgent implements PlayerAgent {
     private readonly tally: { decides: number },
     /** 첫 결정에 영영 답하지 않는다 — 안전망만이 판을 밀 수 있는 상태를 만든다 */
     private readonly hangFirst = false,
+    /**
+     * 첫 결정 **직전**에 한 번 부른다 — «판이 결정 루프 안에서 돌고 있는 순간»의
+     * 유일하게 정확한 지점이다. 관리자가 화면을 보고 손잡이를 누르는 시점이 여기다.
+     */
+    private readonly onFirstDecide?: () => void,
   ) {
     this.nickname = `Bot-${id}`;
     this.rng = new Prng(seed);
@@ -49,6 +54,7 @@ class CountingAgent implements PlayerAgent {
 
   async decide(prompt: DecisionPrompt): Promise<ActionOption> {
     this.tally.decides++;
+    if (this.tally.decides === 1) this.onFirstDecide?.();
     if (this.hangFirst && this.tally.decides === 1) return new Promise<ActionOption>(() => {});
     const opts = prompt.options;
     return opts[this.rng.int(opts.length)] as ActionOption;
@@ -164,11 +170,23 @@ describe("HanchanController — 일시정지", () => {
 describe("HanchanController — 이 국만 물리기", () => {
   it("물린 국은 점수가 오가지 않고, 판은 그대로 이어져 끝난다", async () => {
     const tally = { decides: 0 };
+    /*
+     * **국 안에서** 건다 (`onFirstDecide`) — 관리자가 화면을 보고 누르는 시점이다.
+     *
+     * 예전에는 `run()` 직후에 동기로 걸었다. 그 자리는 첫 국의 결정 루프에 들어가기
+     * **전**, 즉 «국과 국 사이»와 같은 창이라 지금은 거절된다 — 그 창에서 걸어 둔
+     * 요청이 다음 국을 물리던 것이 바로 고친 결함이다(아래 테스트). 손잡이의 뜻은
+     * 「지금 도는 이 국을 물린다」이므로, 도는 중에 거는 것이 이 테스트의 제자리다.
+     */
+    let requested: boolean | null = null;
     const agents = ["p0", "p1", "p2", "p3"].map(
-      (id, i) => new CountingAgent(id, i + 1, tally),
+      (id, i) =>
+        new CountingAgent(id, i + 1, tally, false, () => {
+          requested = ctrl.requestRoundVoid();
+        }),
     );
     const settled: { outcome: string; deltas: Record<string, number> }[] = [];
-    const ctrl = new HanchanController(agents, CFG, {
+    const ctrl: HanchanController = new HanchanController(agents, CFG, {
       // 이벤트는 리플레이용 JSON 문자열로 흘러나온다 — 정산만 골라 읽는다.
       onEvent: (json) => {
         const ev = JSON.parse(json) as { type: string; payload?: unknown };
@@ -177,22 +195,59 @@ describe("HanchanController — 이 국만 물리기", () => {
         settled.push({ outcome: p.outcome, deltas: p.deltas });
       },
     });
-    /*
-     * **동기로 건다.** 봇은 타이머 없이 답하므로 이 판은 마이크로태스크만으로
-     * 끝까지 굴러간다 — `await sleep(…)`(매크로태스크)를 끼우면 그 시점에는 이미
-     * 판이 끝나 있어 아무것도 걸리지 않는다. `run()`은 첫 await까지 동기로 실행돼
-     * 게임이 이미 세워져 있으므로, 여기가 «판이 도는 중»의 가장 이른 지점이다.
-     */
-    const run = ctrl.run();
-    ctrl.requestRoundVoid();
-    const rankings = await run;
+    const rankings = await ctrl.run();
 
+    // 국 안에서 걸었으므로 요청이 받아들여졌다.
+    expect(requested, "국이 도는 중인데 요청이 거절됐다").toBe(true);
     // 판은 끝까지 갔다 — 이건 «판을 접는 것»이 아니다.
     expect(rankings).toHaveLength(4);
     // 물린 국이 하나 있고, 그 국에서는 아무도 주고받지 않았다.
     const voided = settled.filter((r) => r.outcome === "abort");
     expect(voided.length).toBeGreaterThanOrEqual(1);
     expect(Object.values(voided[0]!.deltas).every((d) => d === 0)).toBe(true);
+  }, 30_000);
+
+  /**
+   * **국과 국 사이에 건 요청은 다음 국을 물리지 않는다** (QA 2차 admin 확정 1).
+   *
+   * `roundVoid` 플래그는 `runRound()`의 결정 루프 **안에서만** 소비된다. 결과 화면이
+   * 떠 있는 «국 사이»는 그 루프 밖이라, 예전에는 걸어 둔 플래그가 그대로 살아남아
+   * **다음 국의 첫 결정 지점**에서 터졌다 — 물리려던 국은 점수까지 그대로 정산되고,
+   * 무고한 다음 국이 배패 직후 adminVoid 도중유국이 됐다(본장만 하나 붙는다).
+   * 그러면서 대국자에게 나간 안내는 "이 국을 물렸습니다"였다. 관리자는 그 문구를
+   * 믿고 오심이 정리됐다고 판단하므로, 조용히 어긋나는 것이 가장 나쁘다.
+   *
+   * 결과 화면은 사람이 «다음 국»을 누를 때까지 떠 있다 — 노려서 맞히기 어려운 창이
+   * 아니라, 오히려 «국이 끝난 걸 보고 나서» 누르는 것이 자연스러운 순서다.
+   */
+  it("국 사이(결과 화면)에 건 요청은 거절되고, 다음 국을 물리지 않는다", async () => {
+    const tally = { decides: 0 };
+    const agents = ["p0", "p1", "p2", "p3"].map(
+      (id, i) => new CountingAgent(id, i + 1, tally),
+    );
+    /** 국이 끝난 자리(= 결정 루프 밖)에서 건 요청의 반환값들. */
+    const requestedBetween: boolean[] = [];
+    const outcomes: string[] = [];
+    const ctrl: HanchanController = new HanchanController(agents, CFG, {
+      onRoundEnd: (_game, outcome) => {
+        outcomes.push(outcome);
+        // 여기가 정확히 «결과 화면» 자리다 — `runRound()`이 막 반환한 직후.
+        requestedBetween.push(ctrl.requestRoundVoid());
+      },
+    });
+    const rankings = await ctrl.run();
+
+    expect(rankings).toHaveLength(4);
+    expect(requestedBetween.length, "국이 하나도 안 끝났다 — 이 테스트가 노리는 자리가 아니다")
+      .toBeGreaterThan(0);
+    // 1) 국 사이의 요청은 전부 거절된다 — 걸어 두지 않는다.
+    expect(
+      requestedBetween.every((r) => r === false),
+      "국 사이의 요청이 받아들여졌다 — 그 요청은 다음 국을 물린다",
+    ).toBe(true);
+    // 2) 그래서 어느 국도 물리지 않았다. (예전에는 매 국 끝마다 건 요청이 곧바로
+    //    다음 국을 abort 로 만들어, 결과가 abort 로 도배됐다.)
+    expect(outcomes, `국 결과: ${outcomes.join(",")}`).not.toContain("abort");
   }, 30_000);
 
   it("이미 무효로 끝난 판에는 걸리지 않는다", async () => {
@@ -203,7 +258,8 @@ describe("HanchanController — 이 국만 물리기", () => {
     const ctrl = new HanchanController(agents, CFG);
     const run = ctrl.run();
     ctrl.requestAbort();
-    ctrl.requestRoundVoid(); // 아무 일도 일어나지 않아야 한다 (던지지도 않는다)
+    // 아무 일도 일어나지 않아야 한다 (던지지도 않는다). 물릴 국이 없으므로 false 다.
+    expect(ctrl.requestRoundVoid()).toBe(false);
     await run;
   });
 });

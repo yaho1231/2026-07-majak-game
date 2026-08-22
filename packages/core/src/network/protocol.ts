@@ -468,6 +468,29 @@ export interface AdminAbortGameMessage {
 }
 
 /**
+ * **전역 공지 설정** (관리자 전용). 제목을 비우면 공지를 **내린다**.
+ *
+ * 삭제를 별도 메시지로 두지 않은 이유: "제목 없는 공지"는 존재할 수 없으므로
+ * 빈 제목이 곧 삭제다. 두 경로를 두면 한쪽만 고쳐진 자리가 생긴다.
+ *
+ * ⚠ **클라이언트 → 서버 구간에 있어야 한다.** 예전에는 이 정의가 아래쪽 구간 경계선
+ * **뒤**, 응답 payload 인 `ServerNotice` 옆에 있었다.
+ * (경계선 글귀를 여기 그대로 적지 않는 이유: 그 문자열을 찾아 구간을 자르는 검사가
+ *  있어서, 주석에 한 번 더 적으면 그 검사가 여기서 잘려 아래 메시지들을 통째로
+ *  못 보게 된다 — 막으려던 구멍을 다른 모양으로 다시 뚫는 셈이다.)
+ * 재전송 정책 테스트는 앞 구간만 훑으므로(`resendPolicy.test.ts`가
+ * `PROTOCOL.slice(0, end)` 를 본다) 이 타입을 **아예 보지 못했고**, 실제로
+ * `VOLATILE_MESSAGES`·`RESENDABLE_MESSAGES` 어디에도 없는 채로 통과하고 있었다 —
+ * 「두 목록이 ClientMessage 전체를 빠짐없이 덮는다」는 불변식이 이미 깨진 상태였다
+ * (QA 2차 admin 확정 5). 바로 아래 `AdminRoomNoticeMessage` 와 짝이니 여기가 제자리다.
+ */
+export interface AdminSetNoticeMessage {
+  type: "adminSetNotice";
+  title: string;
+  body: string;
+}
+
+/**
  * **그 탁자에만 거는 공지** (관리자 전용, 대회 중계 — docs/36 B2).
  *
  * 전역 공지(`adminSetNotice`)는 접속한 모두의 상단 띠를 바꾼다 — 한 탁자에
@@ -1204,18 +1227,6 @@ export interface ServerNotice {
 /** 공지 길이 상한 — 매 연결에 나가는 값이라 서버가 자른다. */
 export const NOTICE_TITLE_MAX = 120;
 export const NOTICE_BODY_MAX = 2000;
-
-/**
- * 공지 설정 (관리자 전용). 제목을 비우면 공지를 **내린다**.
- *
- * 삭제를 별도 메시지로 두지 않은 이유: "제목 없는 공지"는 존재할 수 없으므로
- * 빈 제목이 곧 삭제다. 두 경로를 두면 한쪽만 고쳐진 자리가 생긴다.
- */
-export interface AdminSetNoticeMessage {
-  type: "adminSetNotice";
-  title: string;
-  body: string;
-}
 
 // ── 대기실(로비) 상태 (14) ──
 
