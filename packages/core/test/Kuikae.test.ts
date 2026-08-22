@@ -29,6 +29,7 @@ import type { PlayerId } from "../src/engine/zones/Zone.js";
 import { kindKey } from "../src/mahjong/tiles/Tile.js";
 import type { TileId, TileKind } from "../src/mahjong/tiles/Tile.js";
 import { lockedDiscardIds } from "../src/mahjong/flow/helpers.js";
+import { buildPlayerView } from "../src/information/PlayerView.js";
 import { FlowController } from "../src/mahjong/flow/FlowController.js";
 import { createStandardGameFromState } from "../src/mahjong/flow/standardGame.js";
 import type { StandardGame } from "../src/mahjong/flow/standardGame.js";
@@ -199,5 +200,34 @@ describe("쿠이카에 금지 — 펑", () => {
     expect(reason(game, "p0", idOf(game, "p0", "5m"))).not.toBeNull();
     // 펑에는 스지 금지가 없다 — 몸통이 슌쯔가 아니다.
     expect(reason(game, "p0", idOf(game, "p0", "6m"))).toBeNull();
+  });
+});
+
+describe("화면에 실을 때는 봉인과 갈라 보낸다", () => {
+  /**
+   * 둘 다 자물쇠지만 근거도 수명도 다르다 — 봉인은 남의 증강이 국 내내 건 것이고,
+   * 쿠이카에는 표준 룰이라 이 한 순이면 풀린다. 한 배열로 합쳐 보냈더니 증강이 하나도
+   * 없는 판에서 치를 한 것만으로 「누군가 내 패 2장을 봉인했습니다」 배너와 「이번 국
+   * 동안 버릴 수 없습니다」 툴팁이 떴다 (QA 2차 onboard 확정 1).
+   */
+  it("증강 0개 판의 쿠이카에는 sealedTileIds가 아니라 kuikaeTileIds로 간다", () => {
+    const { game } = afterChi();
+    const view = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    const mine = view.round.byPlayer["p0"];
+    const kuikae = mine?.kuikaeTileIds ?? [];
+    expect(kuikae.length).toBe(2); // 현물 3m · 스지 6m
+    expect(mine?.sealedTileIds ?? []).toEqual([]);
+    // 자물쇠로 그려야 할 집합은 둘의 합이고, 그것이 곧 검증 결과와 같다.
+    const locked = lockedDiscardIds(game.engine.state, game.engine.rules, "p0");
+    expect(new Set([...(mine?.sealedTileIds ?? []), ...kuikae])).toEqual(locked);
+  });
+
+  it("아무것도 안 잠긴 순에는 두 배열이 다 붙지 않는다", () => {
+    const { game, flow } = afterChi();
+    flow.submit("p0", { type: "discard", payload: { tileId: idOf(game, "p0", "1s") } });
+    const view = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    const mine = view.round.byPlayer["p0"];
+    expect(mine?.kuikaeTileIds).toBeUndefined();
+    expect(mine?.sealedTileIds).toBeUndefined();
   });
 });

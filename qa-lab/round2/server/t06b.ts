@@ -1,0 +1,14 @@
+import { C, uniq, sleep } from "./lib.js";
+const c = new C("A"); await c.open();
+c.ws.on("close", (code, r) => console.log("CLOSE", code, r.toString()));
+c.ws.on("error", (e) => console.log("ERR", e.message));
+c.onMsg = (m) => console.log("<-", m.type, JSON.stringify(m).length);
+await sleep(500);
+c.send({ type: "register", username: uniq("ADM"), password: "qatest1234", adminCode: "qaadmin123" });
+await sleep(3000);
+c.send({ type: "liveGames" });
+await sleep(3000);
+c.send({ type: "ping" });
+await sleep(2000);
+console.log("closed?", c.closed, c.closeInfo);
+process.exit(0);

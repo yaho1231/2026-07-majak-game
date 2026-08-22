@@ -290,6 +290,16 @@ const WIND_KO = ["동", "남", "서", "북"];
 const SEAL_HINT = "🔒 봉인된 패 — 이번 국 동안 버릴 수 없습니다";
 
 /**
+ * 쿠이카에 안내 — 봉인과 **다른 문구여야 한다**.
+ *
+ * 둘 다 자물쇠지만 근거도 수명도 다르다: 봉인은 남의 증강이 국 내내 건 것이고,
+ * 쿠이카에는 표준 룰이라 **이 한 순**이면 풀린다. 예전에는 서버가 둘을 한 배열로
+ * 보내 화면이 구분하지 못했고, 증강이 하나도 없는 판에서 치를 한 것만으로
+ * 「누군가 내 패를 봉인했습니다」가 떴다(QA 2차 onboard 확정 1).
+ */
+const KUIKAE_HINT = "🔒 방금 울어서 만든 몸통과 같은 패 — 이번 순에만 버릴 수 없습니다 (쿠이카에 금지)";
+
+/**
  * 그 모드의 마지막 장(場) — 동풍전은 동장(1), 반장전은 남장(2)까지가 정규 구간이다.
  * 이 값을 넘긴 장은 전부 서든데스(서입·남입)다: `westEntry`가 두 모드 모두 켜져 있어
  * (HanchanController `hanchanConfigForMode`) 정규 구간이 끝나도 1위가 반환점(30000)에
@@ -8986,7 +8996,11 @@ const HELP_BASICS: HelpSection[] = [
   {
     title: "판은 언제 끝나는가",
     paras: [
-      "동1국부터 시작합니다. 반장전은 남4국까지, 동풍전은 동4국까지 갑니다. 친이 화료하거나 텐파이로 유국하면 그 자리가 이어집니다(연장).",
+      "동1국부터 시작합니다. 반장전은 남4국까지, 동풍전은 동4국까지가 정규 구간입니다. 친이 화료하거나 텐파이로 유국하면 그 자리가 이어집니다(연장).",
+      // 2026-08-22: 예전에는 "남4국까지 / 동4국까지"에서 문장이 끝나 **거짓**이었다 —
+      // 서든데스(westEntry)와 도비가 두 모드 모두 켜져 있고, 같은 화면의 로비 툴팁은
+      // 이미 그렇게 적고 있어 한 제품 안에서 두 곳이 다른 말을 했다 (QA 2차 onboard 확정 3).
+      "정규 구간이 끝났는데 1위가 30,000점에 못 미치면 장이 하나 더 붙습니다(서든데스 — 동풍전은 남장, 반장전은 서장). 반대로 누구든 점수가 0점 아래로 내려가면 그 자리에서 끝납니다(도비).",
       "마지막 국이 끝나면 점수 순으로 1~4위가 정해집니다. 성적은 순위로 남습니다.",
     ],
   },
@@ -16835,6 +16849,11 @@ function OwnArea(props: {
     () => new Set(view.round.byPlayer[me.id]?.sealedTileIds ?? []),
     [view, me.id],
   );
+  /** 쿠이카에로 이 순에만 못 버리는 패 — 자물쇠는 같지만 안내 문구가 다르다. */
+  const kuikaeSet = useMemo(
+    () => new Set(view.round.byPlayer[me.id]?.kuikaeTileIds ?? []),
+    [view, me.id],
+  );
 
   /*
    * 지뢰 탐지 — 스캔한 순간 "버리면 방총"이던 내 손패 종류(kindKey).
@@ -17685,6 +17704,8 @@ function OwnArea(props: {
             // 있게 된 경우(clickable)에도 봉인 상태 자체는 계속 보여준다.
             const tileKind = view.tiles[id]?.kind;
             const sealed = sealedSet.has(id);
+            const kuikae = kuikaeSet.has(id);
+            const lockedTile = sealed || kuikae;
             // 지뢰 탐지 — 이 패를 지금 버리면 방총(위험). 실제 손패 위에 경고 표시.
             const danger =
               dangerSet.size > 0 && tileKind !== undefined && dangerSet.has(kindKey(tileKind));
@@ -17704,6 +17725,7 @@ function OwnArea(props: {
                   formatTile(view.tiles[id]),
                   isDrawn ? "방금 쯔모" : null,
                   sealed ? "봉인됨" : null,
+                  kuikae ? "쿠이카에 — 이번 순에만 버릴 수 없음" : null,
                   danger ? "위험패" : null,
                   armedTileId === id ? "선택됨 — 한 번 더 누르면 버립니다" : null,
                   coachLocked ? "튜토리얼이 지금 막고 있음" : null,
@@ -17732,7 +17754,7 @@ function OwnArea(props: {
                   isDrawn ? " hand-drawn" : ""
                 }${freeDiscard !== undefined && discard === undefined ? " hand-free" : ""}${
                   drag?.id === id && drag.moved ? " hand-dragging" : ""
-                }${sealed ? " hand-sealed" : ""}${armable ? " hand-armable" : ""}${
+                }${lockedTile ? " hand-sealed" : ""}${armable ? " hand-armable" : ""}${
                   swapChosen ? " hand-swap-picked" : ""
                 }${coachLocked ? " hand-coach-locked" : ""}${
                   armedAug !== null && !armable ? " hand-dimmed" : ""
@@ -17863,14 +17885,17 @@ function OwnArea(props: {
                     return;
                   }
                   // 봉인된 패를 버리려고 클릭 — 왜 안 되는지 안내 (내 버림 차례일 때만)
-                  if (sealed && promptHasDiscard && !props.riichiMode) {
-                    props.onToast?.(SEAL_HINT);
+                  if (lockedTile && promptHasDiscard && !props.riichiMode) {
+                    props.onToast?.(sealed ? SEAL_HINT : KUIKAE_HINT);
                   }
                 }}
               >
                 <TileImg tile={view.tiles[id]} size="hand" owner={me.id} />
-                {sealed ? (
-                  <span className="hand-seal-badge" title={SEAL_HINT}>
+                {lockedTile ? (
+                  <span
+                    className="hand-seal-badge"
+                    title={sealed ? SEAL_HINT : KUIKAE_HINT}
+                  >
                     🔒
                   </span>
                 ) : null}

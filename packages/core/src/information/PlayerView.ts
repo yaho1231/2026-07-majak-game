@@ -23,6 +23,7 @@ import {
   playerOf,
   scoringOptionsOf,
   lockedDiscardIds,
+  kuikaeForbiddenIds,
   tenpaiNoYaku,
   yakulessWaits,
 } from "../mahjong/flow/helpers.js";
@@ -227,6 +228,16 @@ export interface PlayerRoundView {
    * 걷어냈다(§7-6과 같은 결의 정리다).
    */
   sealedTileIds?: TileId[];
+  /**
+   * **쿠이카에로 이 순에만 못 버리는 손패** — 봉인과 갈라 싣는다.
+   *
+   * 둘 다 "지금 버릴 수 없다"이지만 근거도 수명도 다르다: 봉인은 남의 증강이 건
+   * 것이고 국 내내 간다. 쿠이카에는 표준 룰이고 **이 한 순**이면 풀린다. 한 배열에
+   * 합쳐 보냈더니 화면이 구분하지 못해, 증강이 하나도 없는 판에서 치를 한 것만으로
+   * 「누군가 내 패 2장을 봉인했습니다」 배너와 「이번 국 동안 버릴 수 없습니다」
+   * 툴팁이 떴다(QA 2차 onboard 확정 1).
+   */
+  kuikaeTileIds?: TileId[];
   /** 후로 수 — melds Zone 장수로 계산 가능하지만 편의용 */
   meldCount: number;
   /**
@@ -343,6 +354,21 @@ export interface PlayerView {
    * `scoringOptionsOf`는 `sequenceSuits`(Set)를 채우지 않으므로 JSON 직렬화에 안전하다.
    */
   scoringOptions: DecomposeOptions;
+  /**
+   * **좌석별** 화료형 분해 옵션 — 관전 뷰에만 실린다 (docs/36 A5 · QA 2차 spectate 확정 3).
+   *
+   * 관전자는 «특정 플레이어»가 아니라서 `scoringOptions`가 `{}`(표준 규칙)다. 그
+   * 판단 자체는 옳지만, 그 바람에 중계 패널이 **네 좌석 전부를 표준 규칙으로** 쟀다.
+   * 그러면 이 게임의 간판 요소인 증강을 든 좌석에서 정확히 틀린다 — 진짜 용(5멘쯔)
+   * 보유자가 «패널 텐파이 / 좌석 뱃지 2샹텐», 조커(만능패) 보유자가 «패널 1샹텐 /
+   * 뱃지 텐파이». 같은 화면에 숫자가 둘 뜨고, 해설이 어느 쪽을 읽어도 절반은 거짓말이다.
+   * 관전 뷰가 이 정보를 아예 안 실어 주니 화면이 되찾을 방법도 없었다.
+   *
+   * 보유 증강은 관전자에게 이미 전부 공개된 정보라(`augmentView`) 이 맵이 새로 여는
+   * 것은 없다 — 흩어져 있던 사실을 «대기 계산에 바로 쓸 수 있는 모양»으로 옮겨 담을 뿐이다.
+   * 관전 뷰가 아니면 `undefined`: 대국자에게는 남의 화료형이 곧 남의 손 정보다.
+   */
+  seatScoringOptions?: Record<PlayerId, DecomposeOptions>;
 }
 
 // ─────────────────────────── 표준 가시성 규칙 등록 ───────────────────────────
@@ -676,6 +702,15 @@ export function buildPlayerView(
     // 관전자는 특정 플레이어가 아니므로 표준 옵션으로 둔다.
     scoringOptions:
       viewerId === SPECTATOR_ID ? {} : scoringOptionsOf(state, rules, viewerId),
+    // 관전 뷰에만: 네 좌석 각각의 화료형 옵션 (`seatScoringOptions` 주석 참고).
+    // 중계 패널이 좌석마다 «그 좌석의 규칙»으로 재려면 이게 있어야 한다.
+    ...(viewerId === SPECTATOR_ID
+      ? {
+          seatScoringOptions: Object.fromEntries(
+            players.map((p) => [p.id, scoringOptionsOf(state, rules, p.id)]),
+          ) as Record<PlayerId, DecomposeOptions>,
+        }
+      : {}),
   };
 }
 
@@ -878,8 +913,16 @@ function buildRoundView(
     // 원재료(sealedDiscardIds)를 그대로 실으면 화면에는 자물쇠가 걸렸는데 실제로는
     // 버려지는 거짓 UI가 된다(docs/25 방해 #7).
     const showSealed = pid === viewerId || viewerId === SPECTATOR_ID;
-    const sealedTileIds = showSealed ? [...lockedDiscardIds(state, rules, pid)] : [];
-    const sealed = { ...(sealedTileIds.length > 0 ? { sealedTileIds } : {}) };
+    // 최종 판정은 하나(`lockedDiscardIds`)로 두고, 화면에 실을 때만 **근거별로 가른다** —
+    // 갈라서 계산하면 「전부 잠겼으면 잠긴 것이 없다」 같은 예외가 두 벌이 되어 어긋난다.
+    const lockedAll = showSealed ? lockedDiscardIds(state, rules, pid) : new Set<TileId>();
+    const kuikae = showSealed ? kuikaeForbiddenIds(state, rules, pid) : new Set<TileId>();
+    const sealedTileIds = [...lockedAll].filter((id) => !kuikae.has(id));
+    const kuikaeTileIds = [...lockedAll].filter((id) => kuikae.has(id));
+    const sealed = {
+      ...(sealedTileIds.length > 0 ? { sealedTileIds } : {}),
+      ...(kuikaeTileIds.length > 0 ? { kuikaeTileIds } : {}),
+    };
 
     // 이 사람의 리치가 은닉 대상인가 (본인 뷰 표시 + 타인 뷰 마스킹의 단일 판정)
     const riichiIsHidden =
