@@ -32,7 +32,7 @@ export const royalKokushi: AugmentDef = defineAugment({
   description:
     "(상시) 국사무쌍은 요구패 13종을 모두 갖추지 않아도 성립한다. 없는 한 종류의 요구패는 다른 요구패의 중복으로 대신할 수 있다.",
   detail:
-    "(상시) 국사무쌍의 '13종 전부' 조건이 느슨해진다. 요구패 한 종류가 빠져도 다른 요구패를 2장 이상 중복해 그 자리를 메우면 국사로 인정되어, 12종 + 중복으로도 역만에 도달한다. 손패는 여전히 14장 전부 요구패여야 한다.",
+    "(상시) 빠진 요구패 한 종류의 자리는 다른 요구패를 2장 이상 중복해 메운다. 손패는 여전히 14장 전부 요구패여야 한다.",
   install(ctx) {
     ctx.setHolderRule("scoring.kokushiDupes", DUPES);
   },
