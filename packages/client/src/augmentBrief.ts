@@ -38,6 +38,18 @@ export interface AugmentBrief {
 
 /** 동풍전 1회 · 반장전 2회 — 가장 흔한 배지라 상수로 둔다 */
 const MODE_1_2 = "동풍전1·반장전2";
+/** 동풍전 2회 · 반장전 3회 (자리 바꿈 — 2026-07-31 버프로 +1) */
+const MODE_2_3 = "동풍전2·반장전3";
+
+/*
+ * ⚠ **배지에는 «가장 빡빡한 한도»를 적는다** (2026-08-23 사용자 지적).
+ *
+ * 매치 예산(동풍전N·반장전M · 게임 내 N회)과 국당 1회를 **함께** 가진 증강이 있다.
+ * 그때 배지에 국당 한도만 적으면 카드가 «매 국 1회»라고 말하는데 실제로는 게임 전체에
+ * 한두 번뿐이라, 드래프트에서 값을 정반대로 읽게 된다. 2026-08-22 표기 통일에서
+ * `단색세계`·`개벽`·`등가교환` 셋이 그렇게 뒤집혔다 — 국당 한도는 본문에 적고 배지에는
+ * 매치 예산을 남긴다. (`briefBadgeMatchBudget.test.ts` 가 이 규약을 지킨다.)
+ */
 
 /** 표기를 줄일 때 기준이 되는 게임 모드 (core의 `GameMode`와 같은 값). */
 export type DisplayMode = "hanchan" | "tonpuu";
@@ -110,11 +122,11 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   free_riichi_discard: { use: "상시", text: "리치를 걸어도 오름패만 고정되고, 버리는 패는 계속 자유롭다." },
   full_hand_swap: { use: "게임 2회", text: "국 첫 순에 상대의 손패를 통째로 빼앗는다." },
   future_sight: { use: "3순에 1회", text: "손패 3장을 패산 위 3장과 바꾼다. 쓸수록 그 국 화료에 판이 붙는다." },
-  genesis: { use: "매 국 1회", text: "손패의 자패는 수패로, 수패는 자패로 통째로 뒤바뀐다." },
+  genesis: { use: MODE_1_2, text: "손패의 자패는 수패로, 수패는 자패로 통째로 뒤바뀐다. 국당 1회." },
   giant_god: { use: "매 국 1회", text: "내 바닥의 국사무쌍 13종을 손으로 끌어올려 13면 텐파이 — 다음 순에 화료한다." },
   grave_rob: { use: MODE_1_2, text: "상대가 최근 버린 10장 중 1장을 파내 그대로 화료한다." },
   haitei_lord: { use: "상시", text: "텐파이로 해저패를 쯔모하면 대기와 상관없이 무조건 화료한다." },
-  hand_swap3: { use: "매 국 1회", text: "상대 손패를 보고 내 3장과 맞바꾼다. 지정하면 소모된다." },
+  hand_swap3: { use: "게임 2회", text: "상대 손패를 보고 내 3장과 맞바꾼다. 국당 1회, 지정하면 소모." },
   hidden_blade: { use: "상시", text: "리치 없이 멘젠 론으로 이기면 +2판에 뒷도라까지 붙는다." },
   hidden_river: { use: MODE_1_2, text: "그 국 내내 모두의 버림패가 최근 6장만 보인다. 나만 그대로 본다." },
   honba_hunter: { use: "상시", text: "나만 본장 1개당 추가 점수가 300점이 아니라 1,500점이 된다." },
@@ -160,7 +172,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   rinshan_preview: { use: "매 국 1회", text: "다음 영상패가 늘 보이고, 깡 없이도 내 쯔모패와 바꿀 수 있다." },
   royal_kokushi: { use: "상시", text: "국사무쌍에 13종을 다 안 모아도 된다. 빠진 종류는 중복으로 때운다." },
   scapegoat: { use: "매 국 1회", text: "내 쯔모 화료 점수를 셋이 나눠 내지 않고 지목한 한 명이 전부 낸다." },
-  seat_swap: { use: "매 국 1회", text: "국 첫 순에 상대와 자리·손패를 맞바꾼다. 자풍·오야까지 따라온다." },
+  seat_swap: { use: MODE_2_3, text: "국 첫 순에 상대와 자리·손패를 맞바꾼다. 국당 1회, 자풍·오야까지 따라온다." },
   siege_riichi: { use: "상시", text: "텐파이가 아니어도 리치를 걸 수 있다(그 상태로는 화료 불가)." },
   silent_pact: { use: "매 국 1회", text: "이 증강으로 부른 퐁 1회는 멘젠이 유지된다 — 리치도 그대로 된다." },
   silent_swap: { use: "매 국 1회", text: "아무도 리치를 안 건 국에, 상대의 바닥에서 버림패 1장을 손으로 가져온다." },
@@ -168,7 +180,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   soul_hunt: { use: "상시", text: "리치한 상대를 론하면 그 리치를 빼앗아 내 화료가 리치가 된다." },
   spy: { use: "매 국 1회", text: "패 1종을 몰래 찍고, 상대가 그 패로 화료하면 그 점수를 내가 가져온다." },
   stealth_riichi: { use: "매 국 1회", text: "남에게 보이지 않는 리치를 건다. 공탁도 내지 않는다." },
-  suit_unify: { use: "매 국 1회", text: "손패의 수패를 전부 한 무늬로 바꾼다. 숫자는 그대로다." },
+  suit_unify: { use: MODE_1_2, text: "손패의 수패를 전부 한 무늬로 바꾼다. 숫자는 그대로, 국당 1회." },
   table_flip: { use: "매 국 1회", text: "첫 순에 손패를 통째로 갈아 낀다. 버린 손패는 전원에게 공개된다." },
   take_back: { use: "3순에 1회", text: "방금 쯔모한 패를 전원에게 공개하고 패산에 되돌린 뒤 새로 뽑는다." },
   tanyao_break: { use: "상시", text: "자패만 없으면 1·9가 섞여도 탕야오. 게다가 2판으로 값한다." },
