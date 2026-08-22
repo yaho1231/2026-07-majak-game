@@ -1,0 +1,5 @@
+OK   [멘젠·리치 없음] p0이 한 바퀴 돈 뒤 임시 후리텐 상태 — temporary=false riichiFuriten=false
+OK   [멘젠·리치 없음] 한 바퀴 돈 뒤 6s로 론 가능 — p0=win,pass
+OK   [리치 중] p0이 한 바퀴 돈 뒤 임시 후리텐 상태 — temporary=false riichiFuriten=true
+OK   [리치 중] 6s 론 불가(리치 후리텐은 영구) — p0=
+4/4 통과

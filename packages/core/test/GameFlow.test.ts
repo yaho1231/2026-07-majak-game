@@ -420,7 +420,13 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
       hands: {
         p0: "129m258p369s124z5s",
         p1: "123m123p123s34s55z", // 2s/5s 양면 대기
-        p2: "555s29m258p369s34z",
+        // ⚠ 2026-08-22: 원래 "555s29m258p369s34z" 였다. 이 시나리오는 p2가 5삭을 펑한
+        //    **바로 그 순에 남은 5삭을 버려서** 일시 후리텐을 확인했는데, 그것이 곧
+        //    펑 쿠이카에다 — 이번에 표준 룰대로 금지되면서 그 수 자체가 불법이 됐다
+        //    (QA 2차 rules 확정 2). 검사하려는 것은 쿠이카에가 아니라 **일시 후리텐**
+        //    이므로, p2에게 2삭을 쥐여 주고 그것으로 같은 것을 확인한다 —
+        //    2삭도 p1의 오름패(34s의 양면)라 검사의 뜻은 그대로다.
+        p2: "555s29m258p269s34z",
         p3: "147m147p147s11z22z",
       },
       phase: "turn.act",
@@ -449,11 +455,12 @@ describe("FlowController — 시나리오 (수작업 상태)", () => {
     status = flow.submit("p2", ponOption as { type: string; payload: unknown });
     if (status.kind !== "awaiting") throw new Error("expected p2 turn");
 
-    const secondFiveSou = game.engine.state.zones[handZone("p2")]?.tileIds.find(
-      (t) => kindKey(game.engine.state.tiles[t]?.kind as TileKind) === "sou5",
+    // 펑한 5삭 자신은 쿠이카에로 막혀 있다 — p1의 다른 오름패인 2삭으로 확인한다.
+    const twoSou = game.engine.state.zones[handZone("p2")]?.tileIds.find(
+      (t) => kindKey(game.engine.state.tiles[t]?.kind as TileKind) === "sou2",
     );
-    expect(secondFiveSou).toBeDefined();
-    status = flow.submit("p2", { type: "discard", payload: { tileId: secondFiveSou } });
+    expect(twoSou).toBeDefined();
+    status = flow.submit("p2", { type: "discard", payload: { tileId: twoSou } });
 
     if (status.kind === "awaiting") {
       const furitenPrompt = status.prompts.find((p) => p.player === "p1");

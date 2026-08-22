@@ -1,0 +1,4 @@
+OK   창깡 준비: 5m 버림에 p1 론이 뜬다(직접 론) — p1=win,pass
+OK   가깡 창깡: 5m 대기자가 론할 수 있다 — p1=win,pass prompts=p1 furiten=false/false p1손=[man2 man3 man4 man6 man7 pin2 pin3 pin4 pin5 pin6 pin7 sou4 sou4] 버림=man6
+OK   가깡 창깡: 화료로 정산 — 가깡한 사람이 전부 낸다 — phase=round.over deltas=-7700/7700/0/0
+3/3 통과

@@ -1,0 +1,15 @@
+.10.20.30.40.50.60
+=== stats ===
+{
+ "rounds": 642,
+ "outcome_draw": 161,
+ "outcome_win": 473,
+ "wins": 475,
+ "outcome_abort": 8,
+ "HAN_MISMATCH": 2
+}
+=== issues (앞 40) ===
+
+--- HAN_MISMATCH (2) ---
+  seed=20175 1-2-4 p2 engine=4han(tanyao:1,sanshoku:1|dora0+ura0+red2) ref=3han(tanyao:1|dora0+ura0+red2) hand=[m3 p4 m5 m4 p3 p2 p2 p5] melds=[pon:s2s2s2 chi:s4s5s3] win=p5 tsumo seat=2 round=1 riichi=null flags={"haitei":false,"houtei":false,"rinshan":false,"chankan":false,"tenhou":false,"chihou":false} dora=[s6] ura=[p7] red=2
+  seed=20179 1-1-1 p3 engine=3han(tanyao:1,sanshoku:1|dora0+ura0+red1) ref=2han(tanyao:1|dora0+ura0+red1) hand=[m7 m6 m4 m5 s3 s7 s2 m4 s6 s5 s4] melds=[chi:p6p7p5] win=s4 tsumo seat=4 round=1 riichi=null flags={"haitei":false,"houtei":false,"rinshan":false,"chankan":false,"tenhou":false,"chihou":false} dora=[p1] ura=[m6] red=1

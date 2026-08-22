@@ -273,25 +273,21 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
   // 장사진 깡은 슌쯔로도 커쯔로도 셀 수 있다 — 조합마다 변형을 따로 낸다(보통 1개)
   const meldCombos = meldSetCombos(ctx.melds.map(meldToSetChoices));
   const variants: ScoringVariant[] = [];
-  /**
-   * 화료패가 **커쯔에 들어간** 변형이 하나라도 있으면 `손 서명#화료패` 가 여기 담긴다.
-   * 아래에서 같은 손·같은 패의 단기(머리 대기) 변형을 걷어내는 데 쓴다 — 이유는 return 직전.
+  /*
+   * ── 샹퐁이 서면 그 화료패의 **단기 변형은 버린다** (2026-08-20 도입 · 2026-08-22 범위 수정) ──
    *
-   * ⚠ 서명에 **손패 전체**를 넣는 이유: 조커는 분해마다 다른 패로 변하므로
-   * (`decomp.effectiveHand`) 같은 화료패라도 손이 다르다. 화료패만으로 묶으면
-   * 조커가 5만이 된 손의 샹퐁이 조커가 9만이 된 손의 단기를 지워 **순정구련보등이
-   * 사라진다** — 실제로 joker 테스트가 잡았다.
+   * 스안커 단기가 더블 역만인 근거는 `suuankou_tanki` 주석 그대로 **"화료패가 커쯔에
+   * 들어가지 않는다"**이다. 같은 해석 안에서 커쯔에 들어가는 읽기가 실제로 있다면 그
+   * 근거가 거짓이므로 단기라고 부를 수 없다. 잡으려던 것은 동수의 결속(1만1통1통)·
+   * 양극(1만9만9만)처럼 **커쯔의 동일성을 느슨하게 만드는 증강**이 「커쯔 3장 + 머리
+   * 2장」을 「혼합 커쯔 + 같은 랭크 머리」로 다시 읽어 스안커를 항상 스안커단기로
+   * 격상시키던 일이다(qa-lab shape 확정 2).
+   *
+   * ⚠ 도입할 때의 전제 «표준 마작에서는 두 해석이 함께 설 수 없다(같은 패 5장이
+   * 필요하다)»는 **거짓이었다.** 화료패가 손에 3장 있고 그중 하나가 슌쯔로도 읽히면
+   * 두 해석이 **서로 다른 분해로** 함께 선다. 그래서 필터는 이제 분해 하나 안에서만
+   * 돈다 — 자세한 근거와 실례는 아래 `localShanponKeys` 주석에 있다.
    */
-  const shanponWinKeys = new Set<string>();
-  /** handKinds 배열(분해당 하나) → 정렬된 손 서명. 참조로 메모한다. */
-  const handSigs = new Map<readonly TileKind[], string>();
-  const handSigOf = (kinds: readonly TileKind[]): string => {
-    const hit = handSigs.get(kinds);
-    if (hit !== undefined) return hit;
-    const sig = kinds.map(kindKey).sort().join(",");
-    handSigs.set(kinds, sig);
-    return sig;
-  };
   /**
    * 화료패가 **조커**면 그 패는 이 분해에서 조커가 변한 것으로 친다 — 물리적인 백을
    * 그대로 찾으면 어느 몸통에도 없어 변형이 0개가 되고, 완성된 손이 화료로 안 잡힌다.
@@ -336,13 +332,37 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
 
     // standard: 화료패를 품을 수 있는 곳마다 변형 하나
     const baseSets = decomp.sets;
+    /*
+     * **이 분해 하나 안에서** 만들어진 변형과, 그중 샹퐁이 선 화료패.
+     *
+     * 아래 «샹퐁이 서면 단기를 버린다» 필터는 반드시 **같은 분해 안에서만** 돌아야
+     * 한다(QA 2차 rules 확정 1). 예전에는 손 서명(14장 전체) + 화료패로 묶어서
+     * 분해를 가로질러 지웠는데, 손 서명은 같은 손의 모든 분해에서 **똑같다** —
+     * 즉 사실상 손 단위 필터였다.
+     *
+     * 표준 마작에서도 두 해석은 **서로 다른 분해로** 함께 설 수 있다:
+     *   3m3m3m 4m5m6m 6m6m 7p7p7p 2s3s4s · 6m 화료
+     *     단기  = 333m + 456m + 777p + 234s + 머리 66m   (40부)
+     *     샹퐁  = 666m + 345m + 777p + 234s + 머리 33m   (30부)
+     * 필터가 손 단위라 단기가 통째로 지워져 표준보다 싸게 지불됐다(2000 대 2700).
+     * 표준 룰은 여러 해석 중 **가장 비싼 것**을 고른다.
+     *
+     * 원래 잡으려던 것(동수의 결속·양극이 스안커를 항상 스안커단기로 격상시키던 일)은
+     * **한 분해 안에서** 커쯔가 머리로 재해석되는 경우이므로 이 좁은 조건으로도
+     * 그대로 잡힌다 — 그 손은 pair도 화료패, 같은 분해의 커쯔도 화료패를 품는다.
+     */
+    const localVariants: { v: ScoringVariant; winKey: string }[] = [];
+    const localShanponKeys = new Set<string>();
+    const localPush = (winKey: string, v: ScoringVariant): void => {
+      localVariants.push({ v, winKey });
+    };
 
     for (const winTile of winTiles) {
       const winKey = kindKey(winTile);
 
       for (const meldSets of meldCombos) {
         if (decomp.pair !== null && kindKey(decomp.pair) === winKey) {
-          variants.push({
+          localPush(winKey, {
             form: "standard",
             pair: decomp.pair,
             handKinds,
@@ -364,8 +384,8 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
           if (!absorber.tiles.some((t) => kindKey(t) === winKey)) return;
           const waitType: WaitType =
             absorber.type === "triplet" ? "shanpon" : classifyRunWait(absorber, winTile);
-          if (waitType === "shanpon") shanponWinKeys.add(`${handSigOf(handKinds)}#${winKey}`);
-          variants.push({
+          if (waitType === "shanpon") localShanponKeys.add(winKey);
+          localPush(winKey, {
             form: "standard",
             pair: decomp.pair,
             handKinds,
@@ -385,34 +405,15 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
         });
       }
     }
+
+    // 이 분해 안에서 샹퐁이 선 화료패의 단기 변형만 버린다.
+    for (const { v, winKey } of localVariants) {
+      if (v.waitType === "tanki" && localShanponKeys.has(winKey)) continue;
+      variants.push(v);
+    }
   }
 
-  /*
-   * ── 같은 화료패로 샹퐁이 서면 그 패의 **단기 변형은 버린다** (2026-08-20) ──
-   *
-   * 스안커 단기가 더블 역만인 근거는 이 파일 아래 `suuankou_tanki` 주석 그대로
-   * **"화료패가 커쯔에 들어가지 않는다"**는 것이다. 같은 14장·같은 화료패로 커쯔에
-   * 들어가는 해석이 실제로 있다면 그 근거는 거짓이므로, 단기라고 부를 수 없다.
-   *
-   * 표준 마작에서는 이 두 해석이 함께 설 수 없다(머리 XX + 커쯔 XXX = 같은 패 5장).
-   * 함께 서는 것은 **커쯔의 동일성을 느슨하게 만드는 증강**뿐이다 —
-   * 동수의 결속(1만1통1통)·양극(1만9만9만)은 "커쯔 3장 + 머리 2장"으로 있던 손을
-   * "혼합 커쯔 + 같은 랭크 머리"로 다시 읽어 샹퐁 대기를 단기로 바꿨고,
-   * 그 결과 스안커(역만1)가 **항상** 스안커단기(역만2)로 격상됐다
-   * (qa-lab shape 확정 2). 두 증강의 설명 어디에도 역만 배수를 올린다는 말은 없다 —
-   * 혼합 몸통 자체는 그대로 커쯔로 인정되므로 또이또이·산안커·스안커·청노두는
-   * 종전대로 붙는다. 사라지는 것은 **근거 없는 단기 격상**뿐이다.
-   */
-  if (shanponWinKeys.size === 0) return variants;
-  return variants.filter(
-    (v) =>
-      !(
-        v.form === "standard" &&
-        v.waitType === "tanki" &&
-        v.pair !== null &&
-        shanponWinKeys.has(`${handSigOf(v.handKinds ?? [])}#${kindKey(v.pair)}`)
-      ),
-  );
+  return variants;
 }
 
 /**
