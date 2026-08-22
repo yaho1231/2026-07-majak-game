@@ -32,37 +32,12 @@ import { calculateScore, defineAugment, playerAtSeat } from "@majak/core";
 import type { AugmentDef, GameState, WinInfo } from "@majak/core";
 import { addWinPointTransfer } from "../util.js";
 
-const roundUp100 = (n: number): number => Math.ceil(n / 100) * 100;
-
-/** 만관의 기본점 */
-const MANGAN_BASE = 2000;
-/** 만관 위로 판 하나가 더해 주는 기본점 — 만관의 절반(= 2판당 만관 하나) */
-const PER_HAN_BASE = MANGAN_BASE / 2;
-/** 이 판수부터 상한이 걸리기 시작한다 (표준 만관) */
+/** 이 판수부터 표준 상한이 걸리기 시작한다 (표시용 판수 계산에만 쓴다) */
 const MANGAN_HAN = 5;
 
 /** 화료형의 실효 판수 — 역만은 판·부를 세지 않으므로(han=0·fu=0) 13판으로 환산한다 */
 function effectiveHan(info: WinInfo): number {
   return info.han + 13 * info.yakumanCount;
-}
-
-/**
- * 상한 없는 기본점(base).
- *
- * - 5판 미만: 표준과 같은 부수 × 2^(2+판). 다만 **2000점 상한을 씌우지 않는다.**
- * - 5판 이상: 만관 + (판 − 5) × 만관/2. 두 판이 오를 때마다 만관 하나씩.
- */
-function aotenjouBase(info: WinInfo): number {
-  const effHan = effectiveHan(info);
-  if (effHan < MANGAN_HAN) return info.fu * 2 ** (2 + effHan);
-  return MANGAN_BASE + (effHan - MANGAN_HAN) * PER_HAN_BASE;
-}
-
-/** 기본점 → 화료자 총 획득점 (표준과 같은 지불 구조·100점 올림) */
-function totalOf(base: number, isDealer: boolean, winType: "tsumo" | "ron"): number {
-  if (winType === "ron") return roundUp100(base * (isDealer ? 6 : 4));
-  if (isDealer) return roundUp100(base * 2) * 3;
-  return roundUp100(base * 2) + roundUp100(base) * 2;
 }
 
 export const aotenjouCeiling: AugmentDef = defineAugment({
@@ -77,6 +52,16 @@ export const aotenjouCeiling: AugmentDef = defineAugment({
     "(상시) 만관(5판)을 넘으면 2판마다 만관 한 개분이 더 붙어 8판이면 2.5개, 11판이면 4개가 되고 그 위로도 끝없이 늘어난다. 만관 아래에서도 상한이 없다. 늘어난 몫은 론이면 쏜 사람이 전부, 쯔모면 나머지 셋이 평소 비율대로 낸다.",
   install(ctx) {
     const { holder } = ctx;
+
+    // 보유자에게만 상한 해제를 켠다 — "+N판"을 점수로 환산하는 헬퍼가 이걸 읽고
+    // 같은 곡선을 쓴다(`winPointsWithExtraHan`). 그래야 어느 증강이 판을 줬느냐로
+    // 상한이 살았다 죽었다 하지 않는다.
+    ctx.engine.rules.addModifier<boolean>("score.uncapped", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => (rctx.playerId === holder ? true : cur),
+    });
+
     addWinPointTransfer(ctx, (state: GameState, info) => {
       /*
        * 오야 배율은 **자리만으로 정하지 않는다** — 정산(`sysSettleWin`)이
@@ -90,7 +75,22 @@ export const aotenjouCeiling: AugmentDef = defineAugment({
           playerId: holder,
           state,
         });
-      const uncapped = totalOf(aotenjouBase(info), isDealer, info.winType);
+      /*
+       * 곡선은 **코어의 `calculateScore({ uncapped: true })`가 유일한 구현**이다.
+       * 예전에는 이 파일이 곡선을 따로 들고 있어서, 다른 증강이 얹어 주는 "+N판"은
+       * 상한 해제를 못 보고 표준 계단에 다시 잘렸다 — 같은 "+3판"인데 실판 계열은
+       * 48,000, 뱅크 환산 계열은 42,000이 되고, 계수역만 구간에서는 통째로 0이었다
+       * (2026-08-23 QA synergy3 score 확정 6). 지금은 `score.uncapped` 규칙 하나로
+       * 그 계열들도 같은 곡선을 본다(`winPointsWithExtraHan`).
+       */
+      const uncapped = calculateScore({
+        han: info.han,
+        fu: info.fu,
+        yakumanCount: info.yakumanCount,
+        isDealer,
+        winType: info.winType,
+        uncapped: true,
+      }).total;
       // 기준선은 '증강이 없었다면 받았을 점수' — info.points를 그대로 쓰면 다른 증강이
       // 배수를 걸어 둔 국에서 그 배수까지 되빼게 된다.
       const standard = calculateScore({

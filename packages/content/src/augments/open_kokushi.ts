@@ -117,15 +117,19 @@ const wallLen = (state: GameState): number => state.zones[WALL]?.tileIds.length 
  * 모두 불가 + 노텐 확정). 요구패 중복(`meldedOrphanKinds`)과 정확히 같은 함정이
  * 반대 방향에서 열려 있던 셈이다(2026-08-08 QA BLOCKER-1).
  *
- * 국사 묶음은 "서로 다른 요구패 3장"이므로, 그 모양이 아닌 후로는 전부 평범한
- * 후로다 — 안깡·가깡(4장)도 여기 걸린다.
+ * ⚠ **모양이 아니라 후로의 `kind`로 판정한다** (2026-08-23, QA synergy3 relax 확정 3).
+ * 예전에는 3장의 kind가 국사 묶음 모양이면 통과시켰는데, 동수의 결속(mixed_triplet)을
+ * 함께 들면 **평범한 펑 `1만1통1삭`** 이 그 모양과 정확히 겹친다. 그 펑은 국사 덮개
+ * (`helpers.kokushiMeldKinds`, `m.kind === "kokushi_pon"`만 센다)에는 안 들어가므로
+ * 3종이 국사에서 영영 빠지고, 그 뒤 kokushi_pon을 부르면 `kokushiOnly`가 표준형·치또이까지
+ * 막아 **그 국이 통째로 벽돌**이 됐다(화료·텐파이 불가 + 노텐 확정). 위 두 문단이 이미
+ * 두 번 막아 둔 그 함정의 세 번째 문이었다. 모양이 우연히 국사 묶음인 평범한 펑도
+ * '평범한 후로'다 — 덮개가 세는 기준과 같은 기준으로 판정한다.
  */
 function hasNonKokushiMeld(state: GameState, player: PlayerId): boolean {
-  for (const meld of state.round.byPlayer[player]?.melds ?? []) {
-    const kinds = meld.tileIds.map((id) => kindOf(state, id));
-    if (!isKokushiGroup(kinds)) return true;
-  }
-  return false;
+  return (state.round.byPlayer[player]?.melds ?? []).some(
+    (meld) => meld.kind !== "kokushi_pon",
+  );
 }
 
 function meldedOrphanKinds(state: GameState, player: PlayerId): Set<string> {

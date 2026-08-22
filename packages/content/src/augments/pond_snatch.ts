@@ -33,6 +33,7 @@ import {
   WALL,
   augmentDataSet,
   defineAugment,
+  discardedByPlayer,
   discardsZone,
   handZone,
   moveTiles,
@@ -114,6 +115,14 @@ const pondSnatchAction: ActionDef<{ snatchId: TileId; fromPlayer: PlayerId }> = 
     if (state.round.lastDrawRinshan) return "cannot snatch after a rinshan draw";
     if (wallLen(state) === 0) return "wall is empty";
     if (req.payload.fromPlayer === req.player) return "cannot snatch your own pond";
+    /*
+     * 바닥의 주인만 보면 누명(frame_up)으로 남의 바닥에 심어 둔 **내 패**를 도로
+     * 집을 수 있었다 (QA synergy3 handedit 확정 2, 2026-08-23). 근거를 실제 버린
+     * 사람으로 옮긴다 — 강 회수 3종이 같은 판정을 쓴다.
+     */
+    if (discardedByPlayer(state, req.player, req.payload.snatchId)) {
+      return "cannot snatch a tile you discarded";
+    }
     const pond = state.zones[discardsZone(req.payload.fromPlayer)]?.tileIds ?? [];
     if (!pond.slice(-SNATCH_DEPTH).includes(req.payload.snatchId)) {
       return "not among the recent discards";

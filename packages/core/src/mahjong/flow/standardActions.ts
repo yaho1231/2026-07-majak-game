@@ -56,6 +56,7 @@ import {
   playerAtSeat,
   playerOf,
   scoringOptionsOf,
+  sameCallBody,
   sameCallKind,
   lockedDiscardIds,
   mixedTripletsFor,
@@ -401,10 +402,17 @@ const ponAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
     // 무늬의 1·9를 같은 패로 보고 펑을 허용한다.
     const mixedTri = mixedTripletsFor(state, rules, req.player);
     const polar = polarEndsFor(state, rules, req.player);
-    if (
-      !sameCallKind(kindOf(state, a), target, mixedTri, polar) ||
-      !sameCallKind(kindOf(state, b), target, mixedTri, polar)
-    ) {
+    /*
+     * 세 장을 **한 규칙 안에서** 판정한다 (2026-08-23 QA synergy3 shape 확정 2).
+     *
+     * 예전에는 버림패와 손패 한 장씩을 따로 비교했다. 그래서 동수의 결속(랭크만 맞으면 됨)과
+     * 양극(같은 무늬의 1·9)을 함께 들면 **어느 카드로도 몸통이 아닌 잡종 펑**이 통과했다 —
+     * `{1만, 9만, 1통}`은 "9만↔1만"이 양극으로, "1통↔1만"이 결속으로 각각 통과하는데
+     * 셋을 한꺼번에 보면 어느 규칙도 만족하지 않는다. 채점은 그걸 몸통으로 세었다.
+     * 후보 생성(FlowController)은 이미 `sameCallBody`로 닫혔고, 여기는 **직접 제출**을
+     * 막는 마지막 그물이다.
+     */
+    if (!sameCallBody(target, kindOf(state, a), kindOf(state, b), mixedTri, polar)) {
       return "tiles do not match the discard";
     }
     return null;
@@ -1162,8 +1170,26 @@ function nagashiManganSeats(state: GameState, rules: RuleRegistry): PlayerId[] {
   const out: PlayerId[] = [];
   for (const p of state.players) {
     if (!rules.resolve<boolean>("draw.nagashiMangan", { playerId: p.id, state })) continue;
-    const history = state.round.byPlayer[p.id]?.discardedKinds ?? [];
-    if (history.length === 0) continue;
+    const all = state.round.byPlayer[p.id]?.discardedKinds ?? [];
+    if (all.length === 0) continue;
+    /*
+     * **버림 이력을 갈아 끼우는 증강**(거신병 각성)이 남긴 기준선 앞은 건너뛴다.
+     *
+     * 각성은 요구패 이력을 통째로 지우고 내려보낸 손패(중장패)를 대신 넣는다 —
+     * 13면 후리텐을 푸는 정당한 처리다. 그런데 그 가짜 이력을 그대로 검사하면
+     * **각성 조건("요구패 13종을 내가 전부 버려 뒀다")을 만족한 국의 유국만관이
+     * 통째로 사라진다**(2026-08-23 QA synergy3 shape 확정 3).
+     * 기준선 뒤 = 각성 이후에 실제로 버린 패이고, 그것만 검사한다
+     * (각성 뒤에 잡패를 버리면 유국만관은 여전히 깨진다).
+     */
+    const base = Math.max(
+      0,
+      Math.min(all.length, rules.resolve<number>("draw.nagashiHistoryBase", {
+        playerId: p.id,
+        state,
+      })),
+    );
+    const history = base > 0 ? all.slice(base) : all;
     // 이력은 문자열 스냅샷이라 tileId가 없다 — 종류만 알면 요구패 판정에는 충분하다.
     // 파싱에 실패한 키는 요구패가 아닌 것으로 본다(성립을 넓히지 않는 쪽으로 막는다).
     if (
@@ -1174,8 +1200,8 @@ function nagashiManganSeats(state: GameState, rules: RuleRegistry): PlayerId[] {
     ) {
       continue;
     }
-    // 하나라도 울려 나갔으면 불성립
-    if ((state.zones[discardsZone(p.id)]?.tileIds.length ?? 0) !== history.length) continue;
+    // 하나라도 울려 나갔으면 불성립 (기준선 앞은 각성이 만든 자리라 이력 전체로 견준다)
+    if ((state.zones[discardsZone(p.id)]?.tileIds.length ?? 0) !== all.length) continue;
     out.push(p.id);
   }
   return out;
@@ -1333,10 +1359,24 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define<string[]>("win.blockedYaku", []);
   /** 점수 계산 시 오야 취급 (연장은 실제 오야만) */
   rules.define("win.treatAsDealer", false);
+  /**
+   * 이 사람의 화료에는 **단계 상한이 없다** (뚫린 천장).
+   *
+   * 채점 본체가 읽는 값이 아니라, "+N판"을 점수로 환산하는 쪽
+   * (`content/util.ts` winPointsWithExtraHan)이 같은 곡선을 쓰게 하는 스위치다.
+   * 이게 없던 시절에는 상한 해제가 **실판 계열에만** 걸리고 뱅크 환산 계열은
+   * 표준 계단에 다시 잘려, 같은 "+3판"이 6,000점 갈렸다(QA synergy3 score 확정 6).
+   */
+  rules.define("score.uncapped", false);
   /** 화료 시 추가 판 (역만 제외) — 동적 Modifier가 state에서 계산한다 */
   rules.define("score.extraHan", 0);
   // 유국만관 — 표준 규칙(01_GAME_RULES). 유국역만 증강이 보유자에게만 끈다.
   rules.define("draw.nagashiMangan", true);
+  /**
+   * 버림 이력을 갈아 끼운 증강이 남기는 **기준선** — 유국만관 판정은 이 인덱스 뒤만 본다.
+   * (거신병 각성이 요구패 이력을 중장패로 갈아 끼운다. 위 `nagashiManganSeats` 주석.)
+   */
+  rules.define("draw.nagashiHistoryBase", 0);
   /** 리치를 걸지 않은 손도 뒷도라를 센다 (숨은 칼날). ctx에 winType·isClosed가 온다 */
   rules.define("scoring.uraWithoutRiichi", false);
   /**

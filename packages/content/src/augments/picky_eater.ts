@@ -27,6 +27,7 @@ import {
   augmentDataSet,
   defineAugment,
   kindKey,
+  ownDiscardKindsOf,
   playerAtSeat,
 } from "@majak/core";
 import type {
@@ -82,7 +83,13 @@ const myDiscardsKey = (state: GameState, h: PlayerId): string =>
  * 내가 버린 패의 종류 목록.
  *
  * 이벤트로 쌓은 목록의 길이가 `discardCount`와 맞으면 그것이 정답이다. 맞지 않는 것은
- * **이벤트 없이 조립된 상태**(테스트 픽스처·스냅샷)뿐이라, 그때만 예전 근거로 되돌아간다.
+ * **이벤트 없이 조립된 상태**(테스트 픽스처·스냅샷)뿐이라, 그때만 폴백을 쓴다.
+ *
+ * ⚠ 그 폴백이 예전에는 후리텐 이력(`discardedKinds`)이었다 — 즉 **폴백이 도는 상황에서는
+ * 이 카드가 막으려던 누명 피해가 그대로 살아 있었다**(국 도중에 편식을 받은 좌석처럼
+ * 목록이 비어 있는 경우가 여기에 해당한다. QA synergy3 handedit 확정 8 부가 발견,
+ * 2026-08-23). 이제 코어가 "실제로 내가 버린 패"를 `ownDiscards` 로 들고 있으므로
+ * 폴백도 그쪽을 본다 — 두 경로가 같은 뜻이 됐다.
  */
 function trackedDiscards(state: GameState, h: PlayerId): string[] {
   const v = state.augmentData[myDiscardsKey(state, h)];
@@ -94,7 +101,7 @@ function myDiscardKinds(state: GameState, h: PlayerId): string[] {
   const count = state.round.byPlayer[h]?.discardCount ?? 0;
   return tracked.length === count
     ? tracked
-    : (state.round.byPlayer[h]?.discardedKinds ?? []);
+    : [...ownDiscardKindsOf(state, h)];
 }
 
 /** kindKey(`man3`·`wind1`…)에서 무늬만 떼어 낸다 */

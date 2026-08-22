@@ -94,6 +94,7 @@ function craft(p0hand: string): GameState {
       discardedKinds: [],
       discardCount: 0,
       tsumogiriIds: [],
+      ownDiscards: [],
     };
   }
 

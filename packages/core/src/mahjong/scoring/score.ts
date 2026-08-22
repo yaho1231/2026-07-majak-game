@@ -21,6 +21,21 @@ export interface ScoreArgs {
   yakumanCount?: number;
   isDealer: boolean;
   winType: "tsumo" | "ron";
+  /**
+   * **단계 상한을 씌우지 않는다** (뚫린 천장 · `score.uncapped`).
+   *
+   * 만관·하네만·배만·역만의 계단을 없애고 판수에 선형으로 붙인다 —
+   * 만관(5판) 위로는 **2판마다 만관 하나**, 만관 아래는 표준 `부 × 2^(2+판)`을
+   * 상한 없이 그대로 쓴다(4판 40부 2,560이 2,000으로 깎이지 않는 것이 이 구간의
+   * 천장 뚫기다). 역만은 판·부를 세지 않으므로 13판으로 환산한다.
+   *
+   * 곡선의 근거와 기울기 조정 이력은 `content/src/augments/aotenjou_ceiling.ts`.
+   * 그 증강이 여기를 **유일한 구현**으로 쓴다 — 예전에는 증강이 곡선을 따로
+   * 들고 있어서, 다른 증강이 얹어 주는 "+N판"은 이 상한 해제를 못 보고
+   * `calculateScore`의 계단에 다시 잘렸다(2026-08-23 QA synergy3 score 확정 6:
+   * 같은 "+3판"인데 실판 계열은 48,000, 뱅크 환산 계열은 42,000이었다).
+   */
+  uncapped?: boolean;
 }
 
 export interface ScoreResult {
@@ -40,12 +55,28 @@ export interface ScoreResult {
 
 const roundUp100 = (n: number): number => Math.ceil(n / 100) * 100;
 
+/** 만관의 기본점 */
+const MANGAN_BASE = 2000;
+/** 상한 해제 구간에서 판 하나가 더해 주는 기본점 — 만관의 절반(= 2판당 만관 하나) */
+const UNCAPPED_PER_HAN = MANGAN_BASE / 2;
+/** 이 판수부터 표준 상한이 걸리기 시작한다 */
+const MANGAN_HAN = 5;
+
+/** 상한 없는 기본점 — `uncapped` 전용 곡선 (위 ScoreArgs.uncapped 주석 참고) */
+function uncappedBase(args: ScoreArgs): number {
+  const effHan = args.han + 13 * (args.yakumanCount ?? 0);
+  if (effHan < MANGAN_HAN) return args.fu * 2 ** (2 + effHan);
+  return MANGAN_BASE + (effHan - MANGAN_HAN) * UNCAPPED_PER_HAN;
+}
+
 export function calculateScore(args: ScoreArgs): ScoreResult {
   const yakuman = args.yakumanCount ?? 0;
   let basePoints: number;
   let limit: LimitName = null;
 
-  if (yakuman > 0) {
+  if (args.uncapped === true) {
+    basePoints = uncappedBase(args);
+  } else if (yakuman > 0) {
     basePoints = 8000 * yakuman;
     limit = "yakuman";
   } else if (args.han >= 13) {

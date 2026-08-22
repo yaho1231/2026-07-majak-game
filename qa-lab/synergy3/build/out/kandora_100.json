@@ -1,0 +1,1648 @@
+{
+ "key": "kandora",
+ "ids": [
+  "ankan_dora",
+  "snake_kan",
+  "mirror_dora",
+  "red_five_touch"
+ ],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 101,
+   "ms": 4814,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 3,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 77300,
+    "p1": -9300,
+    "p2": 18900,
+    "p3": 13100
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 1,
+    "p2": 1,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 9,
+     "fu": 50,
+     "points": 24000,
+     "yakumanCount": 0,
+     "yaku": [
+      "rinshan"
+     ],
+     "extraHanBy": [
+      {
+       "augId": "ankan_dora",
+       "han": 4
+      }
+     ],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "baiman"
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 11,
+     "fu": 30,
+     "points": 24000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 5,
+     "uraHan": 2,
+     "redHan": 1,
+     "limit": "sanbaiman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 34,
+     "pass": 4,
+     "chi": 1,
+     "red_touch": 1,
+     "ankan": 1,
+     "win": 2,
+     "riichi": 2
+    },
+    "p1": {
+     "discard": 49,
+     "pass": 10,
+     "ankan": 1,
+     "riichi": 1
+    },
+    "p2": {
+     "discard": 50,
+     "pass": 14,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 51,
+     "pass": 13
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1314,
+     "reactEmit": 9,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 54,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2,
+      "TileKindChanged": 7
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 657,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    },
+    {
+     "k": "p0|ankan_dora",
+     "ruleSet": 0,
+     "reactCall": 2,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 43,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 16,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":4}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 43,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "ankan",
+       1
+      ]
+     ],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 102,
+   "ms": 5630,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 4,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 23800,
+    "p1": 21800,
+    "p2": 31400,
+    "p3": 23000
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 1,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 3,
+     "fu": 30,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 5,
+     "fu": 20,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 5,
+     "fu": 20,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 63,
+     "pass": 17,
+     "red_touch": 1,
+     "riichi": 1,
+     "pon": 2,
+     "chi": 2,
+     "ankan": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 58,
+     "pass": 16,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 66,
+     "pass": 12,
+     "chi": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 62,
+     "pass": 17,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1660,
+     "reactEmit": 9,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 68,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2,
+      "TileKindChanged": 7
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 830,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    },
+    {
+     "k": "p0|ankan_dora",
+     "ruleSet": 0,
+     "reactCall": 1,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 87,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 14,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":3}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 87,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "ankan",
+       1
+      ]
+     ],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 103,
+   "ms": 4882,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 2,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 22300,
+    "p1": 21800,
+    "p2": 29500,
+    "p3": 26400
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 2,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 30,
+     "points": 7900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 54,
+     "pass": 15,
+     "red_touch": 1,
+     "riichi": 2,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 63,
+     "pon": 2,
+     "pass": 6,
+     "minkan": 1,
+     "shouminkan": 1
+    },
+    "p2": {
+     "discard": 51,
+     "pass": 12,
+     "riichi": 2,
+     "win": 1
+    },
+    "p3": {
+     "discard": 63,
+     "pass": 14,
+     "pon": 2,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1562,
+     "reactEmit": 7,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 63,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2,
+      "TileKindChanged": 5
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 781,
+     "reactEmit": 9,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 9
+     }
+    },
+    {
+     "k": "p0|ankan_dora",
+     "ruleSet": 0,
+     "reactCall": 2,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 73,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 28,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":4}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 73,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 104,
+   "ms": 6653,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 4,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 12300,
+    "p1": 26500,
+    "p2": 45300,
+    "p3": 13900
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 2,
+    "p2": 3,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 1,
+     "fu": 50,
+     "points": 2400,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 6,
+     "fu": 30,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 70,
+     "pass": 29,
+     "red_touch": 1,
+     "riichi": 2
+    },
+    "p1": {
+     "discard": 69,
+     "pass": 12,
+     "riichi": 2,
+     "win": 1,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 65,
+     "pass": 14,
+     "riichi": 3,
+     "win": 3,
+     "pon": 1
+    },
+    "p3": {
+     "discard": 74,
+     "pass": 15,
+     "riichi": 1,
+     "pon": 2
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1898,
+     "reactEmit": 11,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 78,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2,
+      "TileKindChanged": 9
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 949,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 102,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 10,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":1}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 102,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 105,
+   "ms": 4596,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 3,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 62700,
+    "p1": 10600,
+    "p2": 19100,
+    "p3": 7600
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 0,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 20,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 3,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 13,
+     "fu": 60,
+     "points": 32000,
+     "yakumanCount": 0,
+     "yaku": [
+      "rinshan"
+     ],
+     "extraHanBy": [
+      {
+       "augId": "ankan_dora",
+       "han": 8
+      }
+     ],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "kazoe_yakuman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 51,
+     "pass": 13,
+     "pon": 2,
+     "red_touch": 1,
+     "win": 2,
+     "ankan": 2
+    },
+    "p1": {
+     "discard": 52,
+     "pass": 13
+    },
+    "p2": {
+     "discard": 48,
+     "pass": 9,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 44,
+     "pon": 1,
+     "pass": 10,
+     "ankan": 1,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1306,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 56,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2,
+      "TileKindChanged": 4
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 653,
+     "reactEmit": 9,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 9
+     }
+    },
+    {
+     "k": "p0|ankan_dora",
+     "ruleSet": 0,
+     "reactCall": 3,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 69,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 20,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":5}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 69,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "ankan",
+       2
+      ]
+     ],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 106,
+   "ms": 4438,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 49100,
+    "p1": 12700,
+    "p2": 20200,
+    "p3": 18000
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 0,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 9,
+     "fu": 50,
+     "points": 16000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [
+      {
+       "augId": "ankan_dora",
+       "han": 4
+      }
+     ],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 3,
+     "limit": "baiman"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 7,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_chun"
+     ],
+     "extraHanBy": [],
+     "doraHan": 4,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 53,
+     "pass": 7,
+     "pon": 2,
+     "red_touch": 1,
+     "ankan": 1,
+     "win": 2,
+     "chi": 1
+    },
+    "p1": {
+     "pass": 11,
+     "discard": 54,
+     "pon": 2,
+     "shouminkan": 1,
+     "ankan": 1
+    },
+    "p2": {
+     "pass": 12,
+     "discard": 48,
+     "pon": 1,
+     "chi": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 44,
+     "pass": 15,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1360,
+     "reactEmit": 7,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 57,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2,
+      "TileKindChanged": 5
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 680,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    },
+    {
+     "k": "p0|ankan_dora",
+     "ruleSet": 0,
+     "reactCall": 3,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 65,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 18,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":3}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 65,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "ankan",
+       1
+      ]
+     ],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 107,
+   "ms": 6205,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 3,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 21500,
+    "p1": 29700,
+    "p2": 31100,
+    "p3": 17700
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 2,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 6,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 71,
+     "pass": 12,
+     "pon": 1,
+     "chi": 2,
+     "red_touch": 1,
+     "shouminkan": 1,
+     "ankan": 1
+    },
+    "p1": {
+     "pass": 22,
+     "discard": 61,
+     "riichi": 2,
+     "win": 1
+    },
+    "p2": {
+     "discard": 66,
+     "pass": 14,
+     "pon": 1,
+     "riichi": 2,
+     "win": 2
+    },
+    "p3": {
+     "discard": 63,
+     "pass": 18,
+     "riichi": 1,
+     "pon": 2,
+     "minkan": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1750,
+     "reactEmit": 12,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 74,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2,
+      "TileKindChanged": 10
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 875,
+     "reactEmit": 11,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 11
+     }
+    },
+    {
+     "k": "p0|ankan_dora",
+     "ruleSet": 0,
+     "reactCall": 3,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 89,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 23,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":7}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 89,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "ankan",
+       1
+      ]
+     ],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 108,
+   "ms": 6182,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 2,
+    "win": 3
+   },
+   "finalScores": {
+    "p0": 48900,
+    "p1": 40300,
+    "p2": 9800,
+    "p3": 1000
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 2,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 6,
+     "fu": 25,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 14,
+     "fu": 60,
+     "points": 32000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [
+      {
+       "augId": "ankan_dora",
+       "han": 4
+      }
+     ],
+     "doraHan": 1,
+     "uraHan": 4,
+     "redHan": 3,
+     "limit": "kazoe_yakuman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 70,
+     "pass": 15,
+     "pon": 1,
+     "red_touch": 1,
+     "ankan": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 62,
+     "pass": 17,
+     "riichi": 2,
+     "win": 1
+    },
+    "p2": {
+     "discard": 70,
+     "pass": 14,
+     "riichi": 1
+    },
+    "p3": {
+     "discard": 70,
+     "minkan": 1,
+     "pass": 22,
+     "chi": 1,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|snake_kan",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|red_five_touch",
+     "ruleSet": 0,
+     "reactCall": 1798,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 74,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|mirror_dora",
+     "ruleSet": 0,
+     "reactCall": 899,
+     "reactEmit": 8,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 8
+     }
+    },
+    {
+     "k": "p0|ankan_dora",
+     "ruleSet": 0,
+     "reactCall": 2,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "red_five_touch",
+     "chooseCalls": 89,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 71,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"red_touch\",\"payload\":{\"rank\":3}}"
+     ]
+    },
+    {
+     "id": "snake_kan",
+     "chooseCalls": 89,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "red_touch",
+       1
+      ],
+      [
+       "ankan",
+       1
+      ]
+     ],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "red_five_touch",
+     [
+      "red_touch"
+     ]
+    ]
+   ]
+  }
+ ]
+}

@@ -51,6 +51,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { settleInterceptor, withAugNoteFor } from "../util.js";
+import { giantGodNagashiBaseKey } from "./giant_god.js";
 
 const ID = "nagashi_yakuman";
 
@@ -74,7 +75,19 @@ function kindFromKey(key: string): TileKind {
 function nagashiValid(state: GameState, holder: PlayerId): boolean {
   const history = state.round.byPlayer[holder]?.discardedKinds ?? [];
   if (history.length === 0) return false;
-  return history.every((key) => isTerminalOrHonor(kindFromKey(key)));
+  /*
+   * 거신병 각성은 **버림 이력을 갈아 끼운다** — 요구패 이력을 통째로 지우고 내려보낸
+   * 손패(중장패)를 대신 넣는다(13면 후리텐을 푸는 정당한 처리다). 그 결과 각성 조건
+   * ("요구패 13종을 내가 전부 버려 뒀다")을 만족한 국에서 이 판정이 거짓이 되어
+   * 48,000이 통째로 사라졌다(QA synergy3 shape 확정 3, 2026-08-23).
+   *
+   * 각성이 남긴 스냅샷의 값은 "각성 직후 이력의 길이"다 — 그 앞은 각성이 만든 가짜
+   * 이력이니 건너뛰고, **각성 이후에 실제로 버린 패만** 검사한다(그 뒤 잡패를 버리면
+   * 유국역만은 여전히 깨진다).
+   */
+  const base = state.augmentData[giantGodNagashiBaseKey(state, holder)];
+  const rest = typeof base === "number" ? history.slice(base) : history;
+  return rest.every((key) => isTerminalOrHonor(kindFromKey(key)));
 }
 
 export const nagashiYakuman: AugmentDef = defineAugment({

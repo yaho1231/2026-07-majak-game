@@ -46,27 +46,26 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
-import { roundScopedKey } from "./roundScope.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
+import {
+  BRIEF_FOG_TURNS,
+  briefFogActive,
+  briefFogTurnKey,
+  fogCasterNow,
+} from "./fogScope.js";
 import { plan } from "./botPlan.js";
 
 const ID = "brief_fog";
 const ACTION = "declare_brief_fog";
 /** 안개가 유효한 순 수 — 선언한 순부터 이 수만큼 (turnCount는 오야가 뽑을 때만 +1 = 진짜 순) */
-const FOG_TURNS = 6;
+const FOG_TURNS = BRIEF_FOG_TURNS;
 
 /** 매치당 사용 횟수 카운터 — **게임 단위**라 roundKey를 섞지 않는다. 동풍전 1·반장전 2회. */
 const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
 const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
   counterOf(state, usesKey(holder)) < matchUses(state);
-/**
- * 선언한 순간의 turnCount(선언 순) — 6순 창의 기준점.
- *
- * ⚠ **국 스코프여야 한다.** `round.turnCount`는 국마다 0으로 리셋되므로, 기준점을 게임
- * 스코프에 두면 다음 국에서 `0 - 8 < 6`이 영원히 참이 되어 **안개가 영구히 유지되고**
- * 두 번째 사용도 영영 열리지 않는다(2026-07-29 감사). 사용 횟수(usesKey)는 게임 스코프 유지.
- */
-const turnKey = (state: GameState, holder: PlayerId): string =>
-  roundScopedKey(ID, "turn", state, holder);
+/** 선언 순(6순 창의 기준점) 키 — 국 스코프. 정의는 fogScope가 소유한다. */
+const turnKey = briefFogTurnKey;
 /** 선언 사실을 전원에게 알리는 공개 뷰 채널 */
 const noticeKey = (holder: PlayerId): string => roundViewKey("*", `${ID}:${holder}`);
 /** 각 플레이어의 마지막 버림패 맵 { playerId: tileId } — 전원 공개 */
@@ -81,20 +80,8 @@ const lastMapKey = (holder: PlayerId): string =>
 const revealKey = (holder: PlayerId): string =>
   roundViewKey("*", `revealTiles:fog:${holder}`);
 
-/**
- * 지금 이 순간 안개가 유효한가 — 이번 국에 선언했고, 그 뒤 6순 이내.
- *
- * ⚠ **사용 카운터를 보지 않는다.** 예전에는 `counterOf(usesKey) > 0`을 앞세워
- * 활성 판정이 사용 카운터를 겸용했다 — 재장전이 그 카운터를 되돌리면(0) **6순 중
- * 0순만 지났어도 안개가 그 자리에서 걷혔다**(QA disrupt-b 확정 2). 걷히는 조건은
- * detail대로 **6순 경과**와 **국 종료**뿐이고, 둘 다 아래 turnKey(국 스코프)로 선다.
- */
-function fogActive(state: GameState, holder: PlayerId): boolean {
-  // 이번 국에 선언한 적이 없으면 키 자체가 없다 (0순 선언과 구분하려면 존재 여부를 본다)
-  const declaredTurn = state.augmentData[turnKey(state, holder)];
-  if (typeof declaredTurn !== "number") return false;
-  return state.round.turnCount - declaredTurn < FOG_TURNS;
-}
+/** 지금 이 순간 안개가 유효한가 — 이번 국에 선언했고, 그 뒤 6순 이내 (fogScope 소유) */
+const fogActive = briefFogActive;
 
 /** 지금 안개가 몇 순 더 가는가 (걷혔으면 0) */
 function fogTurnsLeft(state: GameState, holder: PlayerId): number {
@@ -193,8 +180,20 @@ export const briefFog: AugmentDef = defineAugment({
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return cur;
         if (!fogActive(state, holder)) return cur;
-        // 뷰어가 보유자가 아니면 어느 바닥이든 장수만 — 보유자만 전부 읽는다
-        return rctx.playerId === holder ? cur : "count_only";
+        /*
+         * 지금 **안개를 걸어 둔 사람**은 어느 바닥이든 그대로 읽는다.
+         *
+         * ⚠ 예전에는 `rctx.playerId === holder`, 즉 **이 인스턴스의 보유자만** 면제했다.
+         * 그래서 박무 둘이 각자 선언하면 서로의 모디파이어에 걸려 **양쪽 보유자가 모두**
+         * 장수만 보게 됐고(0장 — 아무것도 안 든 것보다 못하다), 안개 덮인 바닥과
+         * 겹쳐도 같은 일이 났다. 카드가 약속한 "나만 네 개의 바닥을 그대로 본다"의
+         * 정반대다(2026-08-23 QA synergy3 disrupt 확정 2·3). 안개 덮인 바닥 쪽은 같은
+         * 결함을 이미 한 번 고쳤는데(qa-lab text 확정 5) 이쪽에는 옮겨지지 않았다 —
+         * 이제 판정이 `fogScope` 한 곳에 있어 다시 갈라질 수 없다.
+         */
+        const viewer = rctx.playerId;
+        if (viewer !== undefined && fogCasterNow(state, viewer)) return cur;
+        return "count_only";
       },
     });
 
@@ -247,6 +246,18 @@ export const briefFog: AugmentDef = defineAugment({
         rc.emit(augmentDataSet(revealKey(holder), []));
       }
     });
+
+
+    /*
+     * 무장해제로 잠기면 «안개 (N순 남음)» 배너와 마지막 버림 실물 공개를 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 배너만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [
+      noticeKey(holder),
+      lastMapKey(holder),
+      revealKey(holder),
+    ]);
 
     // 국이 바뀌면 바닥이 비므로 지난 국 tileId가 새지 않게 맵을 비운다
     // (used 플래그는 게임 단위라 그대로 유지된다 — 동풍전 1·반장전 2회).

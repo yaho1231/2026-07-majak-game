@@ -1,0 +1,2090 @@
+{
+ "key": "wall",
+ "ids": [
+  "dead_wall_master",
+  "bottom_deal",
+  "haitei_lord",
+  "cliff_bloom"
+ ],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 1,
+   "ms": 11192,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "draw": 1,
+    "win": 3
+   },
+   "finalScores": {
+    "p0": 18400,
+    "p1": 24400,
+    "p2": 24400,
+    "p3": 32800
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 2,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 6,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "yakuhai_hatsu",
+      "sanshoku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 4,
+     "discard": 58,
+     "pass": 17,
+     "bottom_deal": 13,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 55,
+     "minkan": 1,
+     "pass": 13,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 46,
+     "pass": 15,
+     "riichi": 2,
+     "win": 1
+    },
+    "p3": {
+     "pass": 14,
+     "discard": 43,
+     "riichi": 2,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 233,
+     "reactEmit": 8,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 10,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 8
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 235,
+     "reactEmit": 13,
+     "interCall": 231,
+     "interChange": 13,
+     "optionOffer": 62,
+     "actionFired": 13,
+     "emitted": {
+      "AugmentDataSet": 39
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 231,
+     "reactEmit": 0,
+     "interCall": 4,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 232,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 93,
+     "proposed": 4,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 10,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":77,\"deadIndex\":1}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":104,\"deadIndex\":2}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 93,
+     "proposed": 15,
+     "threw": 0,
+     "fired": 13,
+     "opportunity": 62,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 93,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 2,
+   "ms": 20628,
+   "crash": null,
+   "rounds": 9,
+   "outcomes": {
+    "win": 5,
+    "draw": 3,
+    "abort": 1
+   },
+   "finalScores": {
+    "p0": 29900,
+    "p1": 18300,
+    "p2": 29500,
+    "p3": 22300
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 1,
+    "p2": 1,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 1,
+     "fu": 50,
+     "points": 2400,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 2,
+     "fu": 30,
+     "points": 2900,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_chun"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_chun"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 8,
+     "discard": 111,
+     "bottom_deal": 27,
+     "pass": 17,
+     "riichi": 2,
+     "win": 2,
+     "pon": 1,
+     "chi": 1
+    },
+    "p1": {
+     "discard": 106,
+     "pass": 32,
+     "riichi": 1,
+     "kyushuKyuhai": 1,
+     "pon": 3,
+     "shouminkan": 1,
+     "win": 1
+    },
+    "p2": {
+     "pass": 21,
+     "discard": 110,
+     "pon": 1,
+     "chi": 1,
+     "win": 2,
+     "riichi": 1
+    },
+    "p3": {
+     "discard": 110,
+     "pass": 29,
+     "pon": 4
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 456,
+     "reactEmit": 17,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 21,
+     "actionFired": 8,
+     "emitted": {
+      "AugmentDataSet": 17
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 447,
+     "reactEmit": 26,
+     "interCall": 438,
+     "interChange": 26,
+     "optionOffer": 121,
+     "actionFired": 27,
+     "emitted": {
+      "AugmentDataSet": 78
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 438,
+     "reactEmit": 0,
+     "interCall": 9,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 439,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 167,
+     "proposed": 8,
+     "threw": 0,
+     "fired": 8,
+     "opportunity": 21,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":61,\"deadIndex\":6}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":118,\"deadIndex\":4}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 167,
+     "proposed": 34,
+     "threw": 0,
+     "fired": 27,
+     "opportunity": 121,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       7
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 167,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 3,
+   "ms": 12745,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "draw": 3,
+    "win": 1
+   },
+   "finalScores": {
+    "p0": 26400,
+    "p1": 22600,
+    "p2": 26500,
+    "p3": 23500
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 1,
+    "p2": 0,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 4,
+     "bottom_deal": 16,
+     "discard": 61,
+     "pass": 16,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 57,
+     "pass": 14,
+     "pon": 1,
+     "chi": 1,
+     "riichi": 1
+    },
+    "p2": {
+     "pass": 12,
+     "discard": 62,
+     "pon": 1
+    },
+    "p3": {
+     "discard": 63,
+     "pass": 17
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 255,
+     "reactEmit": 8,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 12,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 8
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 252,
+     "reactEmit": 16,
+     "interCall": 248,
+     "interChange": 16,
+     "optionOffer": 66,
+     "actionFired": 16,
+     "emitted": {
+      "AugmentDataSet": 48
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 248,
+     "reactEmit": 0,
+     "interCall": 4,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 248,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 98,
+     "proposed": 4,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 12,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":39,\"deadIndex\":4}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":34,\"deadIndex\":1}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 98,
+     "proposed": 20,
+     "threw": 0,
+     "fired": 16,
+     "opportunity": 66,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       4
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 98,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 4,
+   "ms": 22311,
+   "crash": null,
+   "rounds": 9,
+   "outcomes": {
+    "win": 6,
+    "draw": 3
+   },
+   "finalScores": {
+    "p0": 37000,
+    "p1": 13200,
+    "p2": 12400,
+    "p3": 37400
+   },
+   "riichiBySeat": {
+    "p0": 4,
+    "p1": 1,
+    "p2": 1,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 6000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 6,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "tanyao",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p1",
+     "han": 4,
+     "fu": 30,
+     "points": 11600,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat",
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p1",
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 9,
+     "bottom_deal": 37,
+     "discard": 117,
+     "pass": 25,
+     "riichi": 4,
+     "win": 2,
+     "pon": 1,
+     "ankan": 1,
+     "bloom_pick": 1
+    },
+    "p1": {
+     "discard": 121,
+     "pass": 33,
+     "riichi": 1,
+     "win": 1,
+     "ankan": 1,
+     "chi": 1
+    },
+    "p2": {
+     "discard": 115,
+     "pass": 36,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "pass": 27,
+     "discard": 121,
+     "pon": 5,
+     "chi": 3,
+     "win": 2,
+     "shouminkan": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 490,
+     "reactEmit": 18,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 26,
+     "actionFired": 9,
+     "emitted": {
+      "AugmentDataSet": 18
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 485,
+     "reactEmit": 37,
+     "interCall": 476,
+     "interChange": 37,
+     "optionOffer": 133,
+     "actionFired": 37,
+     "emitted": {
+      "AugmentDataSet": 111
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 476,
+     "reactEmit": 0,
+     "interCall": 9,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 479,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 195,
+     "proposed": 9,
+     "threw": 0,
+     "fired": 9,
+     "opportunity": 26,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":2,\"deadIndex\":0}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":103,\"deadIndex\":9}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 195,
+     "proposed": 45,
+     "threw": 0,
+     "fired": 37,
+     "opportunity": 133,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       8
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 195,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"bloom_pick\",\"payload\":{\"index\":0}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 5,
+   "ms": 11895,
+   "crash": null,
+   "rounds": 8,
+   "outcomes": {
+    "win": 8
+   },
+   "finalScores": {
+    "p0": 52400,
+    "p1": 16500,
+    "p2": 17600,
+    "p3": 19800
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 3,
+    "p2": 3,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 4,
+     "fu": 30,
+     "points": 11700,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao",
+      "haitei"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 3,
+     "fu": 30,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 4,
+     "fu": 25,
+     "points": 6400,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 6000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 5,
+     "fu": 25,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "haitei_lord",
+     "player": "p0",
+     "points": 6300
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 8,
+     "discard": 88,
+     "bottom_deal": 20,
+     "riichi": 3,
+     "win": 4,
+     "pass": 16,
+     "chi": 1,
+     "pon": 1
+    },
+    "p1": {
+     "pass": 21,
+     "discard": 82,
+     "riichi": 3,
+     "win": 1
+    },
+    "p2": {
+     "discard": 82,
+     "pass": 21,
+     "riichi": 3,
+     "win": 2,
+     "pon": 1,
+     "chi": 2
+    },
+    "p3": {
+     "discard": 92,
+     "pon": 2,
+     "pass": 28,
+     "chi": 2,
+     "shouminkan": 1,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 374,
+     "reactEmit": 16,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 19,
+     "actionFired": 8,
+     "emitted": {
+      "AugmentDataSet": 16
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 371,
+     "reactEmit": 19,
+     "interCall": 363,
+     "interChange": 19,
+     "optionOffer": 101,
+     "actionFired": 20,
+     "emitted": {
+      "AugmentDataSet": 57
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 363,
+     "reactEmit": 1,
+     "interCall": 8,
+     "interChange": 1,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "TileKindChanged": 1,
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 364,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 137,
+     "proposed": 8,
+     "threw": 0,
+     "fired": 8,
+     "opportunity": 19,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":63,\"deadIndex\":3}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":77,\"deadIndex\":4}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 137,
+     "proposed": 25,
+     "threw": 0,
+     "fired": 20,
+     "opportunity": 101,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       5
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 137,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 6,
+   "ms": 8507,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 5
+   },
+   "finalScores": {
+    "p0": 31300,
+    "p1": 38000,
+    "p2": 37300,
+    "p3": -6600
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 1,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 4,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 3,
+     "fu": 40,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 5,
+     "bottom_deal": 13,
+     "discard": 58,
+     "pass": 15,
+     "riichi": 3,
+     "ankan": 1,
+     "bloom_pick": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 55,
+     "pass": 10,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 59,
+     "pass": 12,
+     "pon": 1,
+     "win": 3,
+     "riichi": 2
+    },
+    "p3": {
+     "discard": 56,
+     "pass": 15,
+     "chi": 1,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 258,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 14,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 257,
+     "reactEmit": 13,
+     "interCall": 252,
+     "interChange": 13,
+     "optionOffer": 68,
+     "actionFired": 13,
+     "emitted": {
+      "AugmentDataSet": 39
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 252,
+     "reactEmit": 0,
+     "interCall": 5,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 253,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 96,
+     "proposed": 5,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 14,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":59,\"deadIndex\":2}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":20,\"deadIndex\":2}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 96,
+     "proposed": 17,
+     "threw": 0,
+     "fired": 13,
+     "opportunity": 68,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       4
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 96,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"bloom_pick\",\"payload\":{\"index\":2}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 7,
+   "ms": 14321,
+   "crash": null,
+   "rounds": 8,
+   "outcomes": {
+    "win": 6,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 57600,
+    "p1": 16100,
+    "p2": 35200,
+    "p3": -900
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 3,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 1,
+     "fu": 40,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 3,
+     "fu": 40,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "yakuhai_seat",
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 5,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 9,
+     "fu": 20,
+     "points": 16000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu",
+      "tanyao",
+      "haitei"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 2,
+     "limit": "baiman"
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "haitei_lord",
+     "player": "p0",
+     "points": 8000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 8,
+     "discard": 109,
+     "bottom_deal": 21,
+     "pass": 34,
+     "riichi": 3,
+     "win": 3,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 93,
+     "pass": 28,
+     "pon": 1,
+     "riichi": 3,
+     "win": 1
+    },
+    "p2": {
+     "discard": 105,
+     "riichi": 2,
+     "pass": 35,
+     "win": 2
+    },
+    "p3": {
+     "discard": 109,
+     "pass": 27,
+     "riichi": 1,
+     "pon": 2
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 464,
+     "reactEmit": 16,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 21,
+     "actionFired": 8,
+     "emitted": {
+      "AugmentDataSet": 16
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 462,
+     "reactEmit": 21,
+     "interCall": 454,
+     "interChange": 21,
+     "optionOffer": 120,
+     "actionFired": 21,
+     "emitted": {
+      "AugmentDataSet": 63
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 454,
+     "reactEmit": 1,
+     "interCall": 8,
+     "interChange": 1,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "TileKindChanged": 1,
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 454,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 176,
+     "proposed": 8,
+     "threw": 0,
+     "fired": 8,
+     "opportunity": 21,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":81,\"deadIndex\":13}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":127,\"deadIndex\":1}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 176,
+     "proposed": 26,
+     "threw": 0,
+     "fired": 21,
+     "opportunity": 120,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       5
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 176,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 8,
+   "ms": 4081,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "draw": 1,
+    "win": 3
+   },
+   "finalScores": {
+    "p0": 32900,
+    "p1": 19900,
+    "p2": 28900,
+    "p3": 18300
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 7,
+     "fu": 70,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat",
+      "yakuhai_prevalent",
+      "rinshan"
+     ],
+     "extraHanBy": [
+      {
+       "augId": "cliff_bloom",
+       "han": 3
+      }
+     ],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "dw_swap": 4,
+     "bottom_deal": 11,
+     "discard": 40,
+     "pass": 11,
+     "pon": 2,
+     "shouminkan": 1,
+     "bloom_pick": 1,
+     "ankan": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 39,
+     "pass": 13,
+     "chi": 1,
+     "riichi": 1,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 39,
+     "pass": 10,
+     "chi": 1,
+     "riichi": 2,
+     "win": 2
+    },
+    "p3": {
+     "discard": 28,
+     "pass": 8,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|dead_wall_master",
+     "ruleSet": 0,
+     "reactCall": 168,
+     "reactEmit": 8,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 10,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 8
+     }
+    },
+    {
+     "k": "p0|bottom_deal",
+     "ruleSet": 0,
+     "reactCall": 167,
+     "reactEmit": 9,
+     "interCall": 163,
+     "interChange": 9,
+     "optionOffer": 47,
+     "actionFired": 11,
+     "emitted": {
+      "AugmentDataSet": 27
+     }
+    },
+    {
+     "k": "p0|haitei_lord",
+     "ruleSet": 0,
+     "reactCall": 163,
+     "reactEmit": 0,
+     "interCall": 4,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|cliff_bloom",
+     "ruleSet": 0,
+     "reactCall": 165,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 2,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 5,
+      "TileKindChanged": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "dead_wall_master",
+     "chooseCalls": 71,
+     "proposed": 4,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 10,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":62,\"deadIndex\":3}}",
+      "{\"type\":\"dw_swap\",\"payload\":{\"handTileId\":124,\"deadIndex\":6}}"
+     ]
+    },
+    {
+     "id": "bottom_deal",
+     "chooseCalls": 71,
+     "proposed": 13,
+     "threw": 0,
+     "fired": 11,
+     "opportunity": 47,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "dw_swap",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"bottom_deal\",\"payload\":{}}",
+      "{\"type\":\"bottom_deal\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "cliff_bloom",
+     "chooseCalls": 71,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 2,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"bloom_pick\",\"payload\":{\"index\":0}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "dead_wall_master",
+     [
+      "dw_swap"
+     ]
+    ],
+    [
+     "bottom_deal",
+     [
+      "bottom_deal"
+     ]
+    ],
+    [
+     "cliff_bloom",
+     [
+      "bloom_pick"
+     ]
+    ]
+   ]
+  }
+ ]
+}

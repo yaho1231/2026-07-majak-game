@@ -34,6 +34,7 @@ import {
   stringOf,
   withAugPoint,
 } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 import { plan } from "./botPlan.js";
 import { threatWeightOf } from "./botHelpers.js";
@@ -121,6 +122,13 @@ export const parasite: AugmentDef = defineAugment({
         payload: { ...p, deltas, augPoints: withAugPoint(p, ctx, share) },
       };
     });
+
+    /*
+     * 무장해제로 잠기면 기생 관계선도 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 관계선만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [targetViewKey(holder)]);
 
     // 이번 국에 아직 지정 전일 때만 상대별 후보를 턴 프롬프트에 노출 (validate가 최종 판정)
     ctx.holderTurnOptions((state) => {

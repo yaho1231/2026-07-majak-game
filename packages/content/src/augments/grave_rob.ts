@@ -26,6 +26,7 @@ import {
   WALL,
   buildWinContext,
   defineAugment,
+  discardedByPlayer,
   discardsZone,
   evaluateWin,
   handZone,
@@ -242,6 +243,14 @@ function makeAction(yaku: YakuRegistry): ActionDef<{
       const drawn = state.round.lastDrawnTile;
       if (drawn === null) return "no drawn tile";
       if (req.payload.fromPlayer === req.player) return "cannot rob your own pond";
+      /*
+       * 바닥의 주인만 보면 누명(frame_up)으로 남의 바닥에 심어 둔 **내 패**를 도로
+       * 파낼 수 있었다 — 도굴은 곧 화료라 그대로 부정 화료가 됐다
+       * (QA synergy3 handedit 확정 2, 2026-08-23). 근거를 실제 버린 사람으로 옮긴다.
+       */
+      if (discardedByPlayer(state, req.player, req.payload.graveId)) {
+        return "cannot rob a tile you discarded";
+      }
       const pond = state.zones[discardsZone(req.payload.fromPlayer)]?.tileIds ?? [];
       if (!pond.includes(req.payload.graveId)) return "tile is not in that pond";
       if (!inGraveWindow(state, rules, req.player, req.payload.graveId)) {

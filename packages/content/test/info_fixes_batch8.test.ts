@@ -79,13 +79,30 @@ describe("예지 — 뽑힌 패는 예언 스트립에서 지워진다 (docs/25 
     }
   }
 
-  /** 누군가 패산에서 한 장 뽑았다는 이벤트를 흘리고, 화면 갱신까지 돌린다 */
+  /**
+   * 발동 시점에 예언한 4장의 tileId.
+   *
+   * (이 하네스는 리액션만 돌리고 패산을 실제로 줄이지 않으므로 이 값이 내내 같다.)
+   */
+  const peekIds = (g: ReturnType<typeof createStandardGameFromState>): number[] =>
+    [...(g.engine.state.zones[WALL]?.tileIds ?? [])].slice(0, 4);
+
+  /**
+   * 누군가 패산에서 한 장 뽑았다는 이벤트를 흘리고, 화면 갱신까지 돌린다.
+   *
+   * ⚠ 예전에는 `tileId: 0`이라는 **가짜 id**를 흘렸다. "쯔모가 일어났으면 패산 앞이
+   * 한 장 줄었다"를 무조건 전제하던 시절에는 그래도 통했지만, 밑장빼기(`bottom_deal`)가
+   * 패산 **최후미**를 뽑으면서 그 전제가 깨졌다 — 앞이 그대로인데 예언 창만 닫혔다
+   * (2026-08-23 QA synergy3 kandora 의심 1). 이제 예언한 4장 중 하나가 실제로 뽑혔을
+   * 때만 세므로, 여기서도 **그 자리의 진짜 tileId**를 흘린다.
+   */
   function draw(
     g: ReturnType<typeof createStandardGameFromState>,
     player: PlayerId,
     rinshan: boolean,
+    nth = 0,
   ): void {
-    fire(g, TILE_DRAWN, { player, tileId: 0, rinshan });
+    fire(g, TILE_DRAWN, { player, tileId: peekIds(g)[nth] ?? -1, rinshan });
     fire(g, "*", {});
   }
 
@@ -111,7 +128,7 @@ describe("예지 — 뽑힌 패는 예언 스트립에서 지워진다 (docs/25 
 
   it("다 소진되면 빈 채로 남는다 (음수 인덱스 없음)", () => {
     const game = scene();
-    for (let i = 0; i < 6; i++) draw(game, "p0", false);
+    for (let i = 0; i < 6; i++) draw(game, "p0", false, i);
     expect(strip(game)).toEqual([]);
   });
 });

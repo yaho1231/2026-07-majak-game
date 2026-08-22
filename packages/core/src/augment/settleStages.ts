@@ -72,6 +72,8 @@
  */
 
 import { RuleLayer } from "../engine/rules/RuleRegistry.js";
+import type { GameState } from "../engine/state/GameState.js";
+import type { PlayerId } from "../engine/zones/Zone.js";
 
 /**
  * 정산 인터셉터가 공통으로 쓰는 레이어.
@@ -147,4 +149,24 @@ export function settlePriority(
   augmentId: string,
 ): number {
   return stage + seat + idFraction(augmentId);
+}
+
+/**
+ * `settlePriority`의 "자리" 자리에 넣을 **좌석 교환에 흔들리지 않는** 축.
+ *
+ * ⚠ `player.seat`을 쓰면 안 된다. `GameState.seat` 주석은 "게임 내내 불변"이라고
+ * 적혀 있지만 **자리 바꿈(seat_swap)이 그 값을 영구히 맞바꾼다.** 인터셉터는 설치
+ * 시점에 한 번 priority를 굳히므로, 자리 바꿈이 일어난 판을 이어하기·리플레이로
+ * 재구성하면(`rebuildAugments`) **새 좌석 번호로 다시 정렬돼 원본과 다른 순서로
+ * 정산한다.** 정산 인터셉터는 교환법칙이 성립하지 않으므로 그건 곧 점수가 갈린다는
+ * 뜻이다 — 실측으로 기생충 × 스파이 조합에서 한 사람의 4,000점이 통째로 오갔다
+ * (QA 2026-08-22 synergy 확정 2). 대조군(자리를 안 바꾼 재구성)은 60판 전부 일치했다.
+ *
+ * `players` 배열의 순서는 자리 바꿈이 건드리지 않는다(`seat` 필드만 맞바꾼다).
+ * 게임 시작 시 `seat === 배열 인덱스`이므로 **자리 바꿈이 없는 판에서는 예전과 완전히
+ * 같은 값**이고, 있는 판에서만 원본·재구성이 같아진다.
+ */
+export function settleSeatAxis(state: GameState, holder: PlayerId): number {
+  const at = state.players.findIndex((p) => p.id === holder);
+  return at < 0 ? 0 : at;
 }

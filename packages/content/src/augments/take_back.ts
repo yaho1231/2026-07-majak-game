@@ -16,6 +16,10 @@
  * 나간다(정상 12,000 — 2026-08-22 QA aug-4 확정 2). 쿨다운이 3순이라 첫 순에는 항상
  * 열려 있어 발동 문턱이 가장 낮은 경로였다.
  *
+ * ⚠ 되돌릴 수 있는 것은 **패산에서 온 쯔모패**뿐이다(`riverTaken.ts`). 강 회수 3종이
+ * 바닥에서 집어 온 패를 쯔모패 자리에 세우는데, 그것까지 무를 수 있어서 "상대 바닥에서
+ * 아무 패나 한 장 지워 패산에 묻는" 짓이 성립했다(QA synergy3 handedit 확정 6, 2026-08-23).
+ *
  * 쿨다운 게이팅: 보유자의 턴은 정확히 버림 한 번으로 끝나므로 **그 국에서 내가 버린 수**가
  * 곧 턴 번호다. 사용 시점의 버림 수를 국 스코프로 기록해 두고, 그 뒤로 3턴이 지나야
  * (버림 수가 +3 이상) 다시 열린다. 같은 턴 재사용은 버림 수가 그대로라 자동으로 막힌다.
@@ -48,6 +52,7 @@ import {
 } from "../util.js";
 import { plan } from "./botPlan.js";
 import { handAlteredMark } from "./handAltered.js";
+import { isRiverTakenTile } from "./riverTaken.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "take_back";
@@ -105,6 +110,14 @@ const takeBackAction: ActionDef<Record<string, never>> = {
       return "drawn tile is no longer in hand";
     }
     if (state.round.lastDrawRinshan) return "cannot take back a rinshan tile";
+    /*
+     * 바닥에서 집어 온 패는 **쯔모한 패가 아니다** — 무를 수 없다.
+     * 이 가드가 없어서 "상대 바닥에서 아무 패나 한 장 지워 패산에 묻고, 정적의 손의
+     * +2판은 그대로" 가 3순마다 성립했다 (QA synergy3 handedit 확정 6, 2026-08-23).
+     */
+    if (isRiverTakenTile(state, req.player, state.round.lastDrawnTile)) {
+      return "that tile did not come from the wall";
+    }
     if (wallLen(state) === 0) return "wall is empty";
     return null;
   },

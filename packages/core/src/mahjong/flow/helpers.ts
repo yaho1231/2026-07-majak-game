@@ -280,6 +280,41 @@ export function sameCallKind(
   return kindKey(a) === kindKey(b);
 }
 
+/**
+ * 펑 세 장이 **하나의 규칙 안에서** 커쯔로 닫히는가 (버림패 1장 + 손패 2장).
+ *
+ * `sameCallKind`는 1:1 비교라 두 장을 각각 버림패와 견주면 **서로 다른 규칙으로 하나씩**
+ * 통과할 수 있다. 양극(같은 무늬의 1·9)과 동수의 결속(무늬 무시·같은 랭크)을 함께 들면
+ * `{1만, 9만, 1통}` — 랭크도 무늬도 안 맞아 어느 카드로도 몸통이 아닌 잡종 펑이 열렸고,
+ * 채점에서도 몸통으로 세어졌다(QA synergy3 shape 확정 2, 2026-08-23). 상대는 두 카드를
+ * 다 읽어도 이 펑을 예측할 수 없다.
+ *
+ * 그래서 세 장을 **한 번에** 본다 — 순수 커쯔이거나, 전부 같은 랭크(결속)이거나,
+ * 전부 같은 무늬의 노두패(양극)여야 한다. 규칙끼리 섞이지 않는다.
+ */
+export function sameCallBody(
+  target: TileKind,
+  a: TileKind,
+  b: TileKind,
+  mixedTriplets: boolean,
+  polarEnds = false,
+): boolean {
+  const three = [target, a, b];
+  const key = kindKey(target);
+  if (three.every((k) => kindKey(k) === key)) return true; // 순수 커쯔
+  const numbered = three.every(
+    (k) => k.suit === "man" || k.suit === "pin" || k.suit === "sou",
+  );
+  if (!numbered) return false; // 자패는 무늬 개념이 없어 언제나 동일 kind만
+  // 동수의 결속: 무늬를 안 가리고 랭크만
+  if (mixedTriplets && three.every((k) => k.rank === target.rank)) return true;
+  // 양극: 같은 무늬의 노두패(1·9)끼리
+  return (
+    polarEnds &&
+    three.every((k) => k.suit === target.suit && (k.rank === 1 || k.rank === 9))
+  );
+}
+
 /** 이 사람에게 혼색 커쯔(동수의 결속)가 열려 있는가 — 후로 판정용 */
 export function mixedTripletsFor(
   state: GameState,
@@ -356,6 +391,38 @@ export function isRunQuad(kinds: readonly TileKind[], wrap = false): boolean {
   if (suit === undefined || !DEFAULT_SEQUENCE_SUITS.has(suit)) return false;
   if (!kinds.every((k) => k.suit === suit)) return false;
   return runQuadStart(kinds.map((k) => k.rank), wrap) !== null;
+}
+
+/**
+ * 이번 국 이 사람이 **실제로 버린 패**의 kindKey 목록 (버림 시점 스냅샷).
+ *
+ * 후리텐 이력(`discardedKinds`)과 다르다 — 누명(frame_up)의 `creditTo`는 후리텐
+ * 이력만 남에게 돌리고 실물의 출처는 그대로 두기 때문이다. "내가 버린 패"를 근거로
+ * 쓰는 증강(바닥의 족보·자패 귀환)은 반드시 이쪽을 읽는다
+ * (QA synergy3 handedit 확정 3·4, 2026-08-23 — `PlayerRoundState.ownDiscards` 주석).
+ */
+export function ownDiscardKindsOf(
+  state: GameState,
+  player: PlayerId,
+): readonly string[] {
+  return (state.round.byPlayer[player]?.ownDiscards ?? []).map((d) => d.kind);
+}
+
+/**
+ * 이 패를 이번 국에 **이 사람이 직접 버렸는가** — 지금 어느 바닥에 놓여 있는지와 무관하다.
+ *
+ * 강에서 패를 회수하는 카드들(정적의 손·날치기·무덤 도굴)의 "내 바닥은 대상이 아니다"
+ * 가드가 바닥의 물리적 주인으로 판정하던 탓에, 누명으로 남의 바닥에 심어 둔 자기 패를
+ * 도로 집어 후리텐 없이 화료할 수 있었다 (QA synergy3 handedit 확정 2, 2026-08-23).
+ */
+export function discardedByPlayer(
+  state: GameState,
+  player: PlayerId,
+  tileId: TileId,
+): boolean {
+  return (state.round.byPlayer[player]?.ownDiscards ?? []).some(
+    (d) => d.tileId === tileId,
+  );
 }
 
 /**

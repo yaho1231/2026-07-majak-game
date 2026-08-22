@@ -21,6 +21,7 @@ import {
   augmentDataSet,
   defineAugment,
   handZone,
+  ownDiscardKindsOf,
   playerAtSeat,
   tileKindChanged,
 } from "@majak/core";
@@ -56,7 +57,7 @@ function isHonor(kind: TileKind): boolean {
 }
 
 /**
- * `discardedKinds`의 kindKey("wind3"·"dragon1")를 TileKind로 되돌린다.
+ * 버림 이력의 kindKey("wind3"·"dragon1")를 TileKind로 되돌린다.
  * 이력은 문자열 스냅샷이라 tileId가 없다 — 되받는 것은 종류뿐이라 그것으로 충분하다.
  * (같은 일을 하는 `nagashi_yakuman.kindFromKey`와 같은 꼴.)
  */
@@ -70,7 +71,7 @@ function kindFromKey(key: string): TileKind | null {
  * 이번 국에 **내가 버린** 자패 kind — 가장 최근에 버린 것부터 최대 4개.
  * (늦게 버린 자패일수록 의도적으로 흘린 것이라 되받는 값이 크다. 결정적.)
  *
- * ⚠ 바닥 존(실물)이 아니라 **버림 이력**(`discardedKinds`)을 읽는다. 존은 남이 울어
+ * ⚠ 바닥 존(실물)이 아니라 **버림 이력**(`ownDiscards`)을 읽는다. 존은 남이 울어
  * 가면 그 패가 빠지므로, 東·南·白·白을 버렸는데 白 하나가 퐁당하면 세 장만 기억됐다
  * (2026-08-20 QA text 확정 17). description의 기준은 '내가 버렸는가'지
  * '아직 내 바닥에 남아 있는가'가 아니다 — 자패를 흘려 두는 것이 이 카드의 플레이인데
@@ -78,7 +79,14 @@ function kindFromKey(key: string): TileKind | null {
  * (`nagashi_yakuman.nagashiValid`).
  */
 function recallableHonors(state: GameState, holder: PlayerId): TileKind[] {
-  const history = state.round.byPlayer[holder]?.discardedKinds ?? [];
+  /*
+   * ⚠ 후리텐 이력이 아니라 **실제로 내가 버린 패**를 읽는다 — 누명(frame_up)은
+   * `creditTo` 로 후리텐 이력만 남에게 돌리기 때문이다. 예전에는 누명으로 흘린 東을
+   * 보유자가 기억하지 못하고, 대신 **피해자**가 버리지도 않은 東을 다음 국 배패로
+   * 되받았다 (QA synergy3 handedit 확정 4, 2026-08-23).
+   * description 의 기준은 '내가 버렸는가'다.
+   */
+  const history = ownDiscardKindsOf(state, holder);
   const out: TileKind[] = [];
   for (let i = history.length - 1; i >= 0 && out.length < MAX_RETURN; i--) {
     const kind = kindFromKey(history[i] as string);

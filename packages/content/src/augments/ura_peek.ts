@@ -17,7 +17,6 @@
 
 import {
   DEAD_WALL,
-  DORA_FLIPPED,
   INDICATOR_BLOCK_SIZE,
   ROUND_STARTED,
   augmentDataSet,
@@ -266,7 +265,16 @@ export const uraPeek: AugmentDef = defineAugment({
     // 발동한 뒤 깡으로 새 도라 표시패가 뒤집히면 새로 생긴 뒷도라도 함께 보인다.
     // (예전엔 발동 시점의 뒷도라만 기록해, 이후 깡으로 늘어난 뒷도라가 영영 안 보였다.
     //  "이번 국의 뒷도라를 본다"가 능력이므로 국 안에서는 계속 최신이어야 한다.)
-    ctx.reaction(DORA_FLIPPED, (_event, rc) => {
+    //
+    // ⚠ 그 갱신이 `DORA_FLIPPED` **하나**에만 걸려 있었다. 뒷도라 표시패의 **자리를
+    // 갈아 끼우는** 증강(왕패의 주인 dead_wall_master의 왕패 ↔ 손패 교환)은 그 이벤트를
+    // 내지 않아, 화면이 확인 시점의 값에서 굳은 채 **낡은 뒷도라를 계속 보여 줬다** —
+    // 정산은 새 표시패로 정확히 계산되므로 화면만 거짓이 됐고, "리치를 걸지 다마로 갈지"
+    // 라는 이 카드의 전부가 거짓 정보 위에 섰다(2026-08-23, QA synergy3 kandora 확정 4).
+    // 거울(mirror_dora)이 같은 함정을 먼저 밟고 `reaction("*")` + 값 비교로 고쳤다
+    // (qa-lab score-b 확정 4) — 이벤트를 열거하는 방식은 새 증강마다 구멍이 다시 열리므로
+    // 같은 방식을 따른다. 값이 같으면 아무것도 안 내므로 반응 연쇄는 한 겹에서 멈춘다.
+    ctx.reaction("*", (_event, rc) => {
       if (!flagOf(rc.state, usedKey(rc.state, holder))) return;
       const kinds = uraIndicatorIds(rc.state).map((id) =>
         kindKey(kindOf(rc.state, id)),

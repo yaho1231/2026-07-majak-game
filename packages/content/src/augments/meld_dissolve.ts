@@ -225,12 +225,37 @@ export const meldDissolve: AugmentDef = defineAugment({
         zones = moveTiles(zones, meldsZone(p.holder), discardsZone(p.calledFrom), [
           p.calledTileId,
         ]);
-        // ③ byPlayer[holder].melds에서 해당 후로 제거 (멘젠은 melds에서 파생 → 자연 복구)
+        /*
+         * ③ byPlayer[holder].melds에서 해당 후로 제거 (멘젠은 melds에서 파생 → 자연 복구)
+         *
+         * ⚠ **묵계(silent_pact)의 멘젠은 되살리지 않는다** (2026-08-23,
+         * QA synergy3 relax 확정 4). 묵계 카드는 "같은 국에 평범한 퐁·치·대명깡을
+         * 하나라도 더 하면 손이 열려 **전부 잃는다**"고 못 박는데, 멘젠 판정이 전부
+         * 현재 melds 파생이라 그 평범한 퐁을 파혼으로 지우는 순간 멘젠이 **그 자리에서
+         * 되살아났다**(리치까지 열렸다) — 속공으로 두 몸통을 세우고 파혼으로 멘젠 리치에
+         * 복귀하는 길이 됐고, 묵계의 ⚠ 경고가 이 조합에서만 거짓이 됐다.
+         *
+         * 불가침 조약이 리치·후로 이력을 국 스코프로 굳혀 두는 것과 같은 취급이다:
+         * 해체 시점에 이미 손이 열려 있었다면(평범한 후로가 하나라도 있었다면) 남은
+         * 후로의 `silent` 표식을 떼어 낸다. 잃은 것은 잃은 채로 둔다.
+         */
+        const wasOpen = (state.round.byPlayer[p.holder]?.melds ?? []).some(
+          (m) => m.kind !== "kan_closed" && m.silent !== true,
+        );
         const byPlayer = Object.fromEntries(
           Object.entries(state.round.byPlayer).map(([id, rs]) => [
             id,
             id === p.holder
-              ? { ...rs, melds: rs.melds.filter((_, i) => i !== p.meldIndex) }
+              ? {
+                  ...rs,
+                  melds: rs.melds
+                    .filter((_, i) => i !== p.meldIndex)
+                    .map((m) =>
+                      wasOpen && m.silent === true
+                        ? { ...m, silent: false }
+                        : m,
+                    ),
+                }
               : rs,
           ]),
         );

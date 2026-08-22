@@ -1,0 +1,1496 @@
+{
+ "key": "kokushi",
+ "ids": [
+  "royal_kokushi",
+  "giant_god",
+  "polar_ends",
+  "broken_wall"
+ ],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 101,
+   "ms": 7404,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 2,
+    "win": 3
+   },
+   "finalScores": {
+    "p0": 40300,
+    "p1": 6700,
+    "p2": 38900,
+    "p3": 14100
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 1,
+    "p2": 1,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 6,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 6,
+     "fu": 50,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu",
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 4,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 45,
+     "pass": 10,
+     "chi": 1,
+     "riichi": 3,
+     "win": 1
+    },
+    "p1": {
+     "discard": 68,
+     "pass": 16,
+     "ankan": 1,
+     "riichi": 1
+    },
+    "p2": {
+     "discard": 69,
+     "pass": 17,
+     "riichi": 1,
+     "win": 2,
+     "pon": 1,
+     "shouminkan": 1
+    },
+    "p3": {
+     "discard": 70,
+     "pass": 21
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 1147,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 59,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 102,
+   "ms": 10009,
+   "crash": null,
+   "rounds": 8,
+   "outcomes": {
+    "win": 6,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 23400,
+    "p1": 13700,
+    "p2": 51300,
+    "p3": 11600
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 1,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 3,
+     "fu": 40,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 5,
+     "fu": 20,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 2,
+     "fu": 30,
+     "points": 2900,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 20,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 25,
+     "points": 9600,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 6,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 96,
+     "pass": 32,
+     "riichi": 3,
+     "win": 2,
+     "pon": 1,
+     "chi": 1
+    },
+    "p1": {
+     "discard": 98,
+     "pass": 23,
+     "riichi": 1,
+     "pon": 2,
+     "win": 1
+    },
+    "p2": {
+     "discard": 94,
+     "pass": 27,
+     "riichi": 2,
+     "win": 3
+    },
+    "p3": {
+     "discard": 97,
+     "pass": 25,
+     "riichi": 1,
+     "pon": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 1708,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 133,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 103,
+   "ms": 4786,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 24000,
+    "p1": 7800,
+    "p2": 29200,
+    "p3": 39000
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 1,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 4,
+     "fu": 50,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p1",
+     "han": 6,
+     "fu": 30,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 50,
+     "pass": 14,
+     "pon": 1,
+     "chi": 1
+    },
+    "p1": {
+     "discard": 49,
+     "pon": 2,
+     "pass": 12,
+     "riichi": 1,
+     "win": 1,
+     "shouminkan": 1
+    },
+    "p2": {
+     "discard": 43,
+     "pass": 7,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 47,
+     "pass": 17,
+     "riichi": 2,
+     "win": 2
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 820,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 66,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 104,
+   "ms": 5593,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 3,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 13600,
+    "p1": 24300,
+    "p2": 22100,
+    "p3": 40000
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 20,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 6,
+     "fu": 30,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 54,
+     "pass": 16,
+     "chi": 1,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 53,
+     "pass": 13,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 43,
+     "pass": 14,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 50,
+     "pass": 15,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 875,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 72,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 105,
+   "ms": 6053,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 3,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 26900,
+    "p1": 24400,
+    "p2": 35500,
+    "p3": 13200
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 2,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 3,
+     "fu": 30,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 63,
+     "pass": 16,
+     "chi": 1
+    },
+    "p1": {
+     "discard": 54,
+     "pass": 15,
+     "riichi": 2,
+     "win": 1
+    },
+    "p2": {
+     "discard": 49,
+     "pass": 15,
+     "riichi": 2,
+     "win": 2
+    },
+    "p3": {
+     "discard": 54,
+     "pon": 1,
+     "pass": 10,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 1004,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 80,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 106,
+   "ms": 5169,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 3,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 21100,
+    "p1": 25100,
+    "p2": 30200,
+    "p3": 23600
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 1,
+     "fu": 30,
+     "points": 1100,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 56,
+     "pass": 10,
+     "pon": 1,
+     "win": 1
+    },
+    "p1": {
+     "pass": 9,
+     "discard": 45,
+     "riichi": 1,
+     "ankan": 1,
+     "pon": 1
+    },
+    "p2": {
+     "pass": 11,
+     "discard": 51,
+     "pon": 1,
+     "shouminkan": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 45,
+     "pass": 13,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 921,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 67,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 107,
+   "ms": 6018,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 1,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 47500,
+    "p1": 34100,
+    "p2": 16700,
+    "p3": 1700
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 1,
+    "p2": 0,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 6,
+     "fu": 25,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "tanyao",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 25,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 7,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 52,
+     "pass": 11,
+     "pon": 2,
+     "shouminkan": 2,
+     "riichi": 3,
+     "win": 3
+    },
+    "p1": {
+     "pass": 13,
+     "discard": 66,
+     "win": 1,
+     "riichi": 1,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 78,
+     "pass": 16,
+     "pon": 1
+    },
+    "p3": {
+     "discard": 80,
+     "pass": 18,
+     "pon": 2,
+     "minkan": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 1269,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 70,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 108,
+   "ms": 5331,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 3,
+    "win": 2
+   },
+   "finalScores": {
+    "p0": 30200,
+    "p1": 23000,
+    "p2": 17900,
+    "p3": 28900
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 2,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 70,
+     "pass": 17,
+     "pon": 2,
+     "shouminkan": 1,
+     "ankan": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 69,
+     "pass": 24,
+     "riichi": 2
+    },
+    "p2": {
+     "discard": 73,
+     "pass": 11,
+     "riichi": 1
+    },
+    "p3": {
+     "discard": 73,
+     "minkan": 1,
+     "pass": 16,
+     "pon": 1,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|royal_kokushi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|polar_ends",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_wall",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|giant_god",
+     "ruleSet": 0,
+     "reactCall": 1215,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "giant_god",
+     "chooseCalls": 92,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "giant_god",
+     [
+      "giant_god"
+     ]
+    ]
+   ]
+  }
+ ]
+}

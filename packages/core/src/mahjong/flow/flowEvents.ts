@@ -487,6 +487,19 @@ export function registerFlowReducers(
     next = withPlayerRound(next, p.player, (rs) => ({
       ...rs,
       discardCount: rs.discardCount + 1,
+      /*
+       * 실물의 출처도 **버린 사람**에게 남긴다 (`credited`가 아니다).
+       *
+       * 누명이 남의 바닥에 심은 내 패를 강 회수 3종이 "남의 바닥"으로 보고 도로
+       * 집어 갔고, 바닥의 족보·자패 귀환은 후리텐 이력을 "내가 버린 패"의 근거로
+       * 써서 피해자 쪽에 판을 얹어 줬다 (QA synergy3 handedit 확정 2·3·4).
+       * 후리텐 이력과 "내가 버린 실물"은 애초에 다른 것이라 필드를 나눈다.
+       */
+      // `?? []` 는 이 필드가 없던 시절의 리플레이를 다시 돌릴 때를 위한 것이다
+      ownDiscards:
+        discardedKind === undefined
+          ? (rs.ownDiscards ?? [])
+          : [...(rs.ownDiscards ?? []), { tileId: p.tileId, kind: kindKey(discardedKind) }],
     }));
     if (p.riichi) {
       next = withPlayerRound(next, p.player, (rs) => ({

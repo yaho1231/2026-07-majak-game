@@ -1,0 +1,968 @@
+{
+ "key": "control",
+ "ids": [],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 101,
+   "ms": 6122,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 3,
+    "win": 2
+   },
+   "finalScores": {
+    "p0": 23000,
+    "p1": 33300,
+    "p2": 30000,
+    "p3": 13700
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 1,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 2,
+     "fu": 30,
+     "points": 2900,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_chun"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 58,
+     "pass": 17,
+     "riichi": 1
+    },
+    "p1": {
+     "discard": 66,
+     "pass": 18,
+     "pon": 1,
+     "win": 2,
+     "riichi": 1
+    },
+    "p2": {
+     "discard": 64,
+     "pass": 10,
+     "pon": 3,
+     "riichi": 1,
+     "shouminkan": 1
+    },
+    "p3": {
+     "discard": 69,
+     "pass": 21,
+     "riichi": 1
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  },
+  {
+   "seed": 102,
+   "ms": 4922,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 18000,
+    "p1": 33000,
+    "p2": 23000,
+    "p3": 26000
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 0,
+    "p2": 0,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 40,
+     "points": 2700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 39,
+     "pass": 10,
+     "riichi": 3,
+     "win": 1
+    },
+    "p1": {
+     "discard": 52,
+     "pass": 15,
+     "win": 1
+    },
+    "p2": {
+     "discard": 53,
+     "pass": 8
+    },
+    "p3": {
+     "discard": 47,
+     "pass": 12,
+     "riichi": 2,
+     "win": 2
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  },
+  {
+   "seed": 103,
+   "ms": 6697,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 3,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 30400,
+    "p1": 21500,
+    "p2": 18100,
+    "p3": 30000
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 0,
+    "p2": 3,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "pinfu",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 77,
+     "pass": 29,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 78,
+     "pon": 2,
+     "pass": 17,
+     "shouminkan": 1
+    },
+    "p2": {
+     "discard": 64,
+     "pass": 12,
+     "riichi": 3,
+     "win": 1
+    },
+    "p3": {
+     "discard": 67,
+     "pass": 11,
+     "pon": 2,
+     "win": 1,
+     "chi": 1,
+     "riichi": 1
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  },
+  {
+   "seed": 104,
+   "ms": 5178,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 4,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 25400,
+    "p1": 32700,
+    "p2": 11200,
+    "p3": 30700
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 1,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 5,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 2,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 4,
+     "fu": 25,
+     "points": 6400,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 56,
+     "pass": 20,
+     "riichi": 2,
+     "win": 1
+    },
+    "p1": {
+     "discard": 57,
+     "pass": 12,
+     "riichi": 1,
+     "win": 1,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 50,
+     "pass": 10,
+     "riichi": 2,
+     "win": 1
+    },
+    "p3": {
+     "discard": 56,
+     "pass": 15,
+     "riichi": 1,
+     "win": 1,
+     "pon": 2,
+     "chi": 1
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  },
+  {
+   "seed": 105,
+   "ms": 4234,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 12000,
+    "p1": 15700,
+    "p2": 22700,
+    "p3": 49600
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 1,
+    "p2": 2,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 20,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 3,
+     "fu": 50,
+     "points": 6400,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 7,
+     "fu": 25,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 1,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 47,
+     "pass": 11,
+     "pon": 2,
+     "win": 1,
+     "riichi": 1
+    },
+    "p1": {
+     "discard": 48,
+     "pass": 9,
+     "riichi": 1
+    },
+    "p2": {
+     "discard": 46,
+     "pass": 14,
+     "riichi": 2,
+     "win": 1,
+     "pon": 1
+    },
+    "p3": {
+     "discard": 39,
+     "pon": 1,
+     "pass": 12,
+     "ankan": 1,
+     "riichi": 2,
+     "win": 2
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  },
+  {
+   "seed": 106,
+   "ms": 4448,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 19500,
+    "p1": 30500,
+    "p2": 18700,
+    "p3": 31300
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 0,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 1,
+     "fu": 30,
+     "points": 1100,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 5,
+     "fu": 20,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 50,
+     "pass": 12,
+     "pon": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 45,
+     "pass": 14,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "pass": 15,
+     "discard": 49
+    },
+    "p3": {
+     "discard": 39,
+     "pass": 9,
+     "riichi": 2,
+     "win": 2,
+     "pon": 2
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  },
+  {
+   "seed": 107,
+   "ms": 4291,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 26700,
+    "p1": 29700,
+    "p2": 16300,
+    "p3": 27300
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 0,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 3,
+     "fu": 25,
+     "points": 3200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 1,
+     "fu": 30,
+     "points": 1100,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_chun"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 51,
+     "pass": 12,
+     "pon": 3,
+     "win": 1
+    },
+    "p1": {
+     "discard": 46,
+     "pass": 10,
+     "pon": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 53,
+     "pass": 11,
+     "pon": 1
+    },
+    "p3": {
+     "discard": 37,
+     "pass": 12,
+     "riichi": 2,
+     "win": 2,
+     "pon": 1
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  },
+  {
+   "seed": 108,
+   "ms": 6363,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "draw": 2,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 47700,
+    "p1": 20500,
+    "p2": 3400,
+    "p3": 28400
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 5,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_chun"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 74,
+     "pass": 18,
+     "chi": 1,
+     "riichi": 2,
+     "win": 2,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 80,
+     "pass": 18,
+     "pon": 3,
+     "win": 1
+    },
+    "p2": {
+     "discard": 74,
+     "pass": 19,
+     "pon": 1,
+     "chi": 2,
+     "riichi": 2
+    },
+    "p3": {
+     "discard": 75,
+     "minkan": 1,
+     "pass": 14,
+     "riichi": 1,
+     "win": 1,
+     "chi": 1
+    }
+   },
+   "aug": [],
+   "bot": [],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": []
+  }
+ ]
+}

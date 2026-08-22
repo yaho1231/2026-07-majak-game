@@ -6,6 +6,13 @@
  *
  * 구현:
  *  - 보조(auxiliary) 커스텀 역: winType==='ron' + isClosed(멘젠) + riichi 미선언.
+ *
+ *  ⚠ `isClosed`는 **안깡과 묵계 퐁(silent)을 멘젠으로 센다**(WinContext). 그래서 묵계
+ *    (silent_pact)로 눈에 보이는 퐁을 깔아 둔 손에도 이 역이 붙는다 — 상대는 커쯔를
+ *    보고 "후로 손"이라 읽는데 정산에서 뒷도라가 뒤집힌다(2026-08-23 QA synergy3
+ *    riichi 확정 5, 2,900 → 18,000). 동작은 그대로 두었다: 묵계 카드가 "멘젠쯔모·멘젠
+ *    론 부수가 그대로 붙는다"를 명시적으로 약속하고 있어 여기만 좁히면 그쪽이 거짓이
+ *    된다. 대신 **detail에 그 귀결을 적었다.**
  *    다른 실역이 있어야 붙는다(wait_art와 같은 패턴).
  *  - 뒷도라: 코어 규칙 `scoring.uraWithoutRiichi` Modifier. buildWinContext가
  *    winType·isClosed를 RuleContext로 넘겨 주므로 "다마텐 론"만 정확히 골라
@@ -50,7 +57,7 @@ export const hiddenBlade: AugmentDef = defineAugment({
   description:
     "(상시) 리치를 선언하지 않은 멘젠 론 화료에 +2판이 붙고, 뒷도라가 적용된다.",
   detail:
-    "(상시) 리치 역이 붙는 것이 아니라 판만 얹으므로 다른 역이 하나 이상 있어야 한다. 쯔모 화료·후로 화료, 실제로 리치를 건 손에는 붙지 않는다 — 그 국에 리치를 걸었다면 나중에 물리더라도 되살아나지 않는다.",
+    "(상시) 리치 역이 붙는 것이 아니라 판만 얹으므로 다른 역이 하나 이상 있어야 한다. 쯔모 화료·후로 화료, 실제로 리치를 건 손에는 붙지 않는다 — 그 국에 리치를 걸었다면 나중에 물리더라도 되살아나지 않는다.\n\n안깡과 묵계 퐁은 채점에서 멘젠이므로 그 손에는 붙는다.",
   // B급 무효(docs/25 §conflicts): 둘 다 scoring.uraWithoutRiichi를 연다.
   // "멘젠 다마텐 론 + 상대 리치" 손에서 뒷도라 해제가 완전히 중복된다.
   conflicts: ["soul_hunt"],

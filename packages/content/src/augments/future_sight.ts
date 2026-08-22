@@ -316,6 +316,13 @@ export const futureSight: AugmentDef = defineAugment({
                     ...(state.round.byPlayer[p.player]?.discardedKinds ?? []),
                     kindKey(discardedKind),
                   ],
+                  // 실물도 내 바닥에 쌓이므로 "내가 버린 패"에도 남긴다 — 바닥의
+                  // 족보·자패 귀환이 읽는 근거다(PlayerRoundState.ownDiscards,
+                  // QA synergy3 handedit 확정 3·4).
+                  ownDiscards: [
+                    ...(state.round.byPlayer[p.player]?.ownDiscards ?? []),
+                    { tileId: toDiscards, kind: kindKey(discardedKind) },
+                  ],
                 },
               };
         // 2장은 패산 맨 밑(배열 끝)으로 — 앞쪽(다음 쯔모) 순서는 유지된다

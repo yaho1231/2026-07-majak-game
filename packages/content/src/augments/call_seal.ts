@@ -15,6 +15,7 @@
 import { augmentDataSet, defineAugment, playerAtSeat } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 import { plan } from "./botPlan.js";
 
@@ -116,6 +117,14 @@ export const callSeal: AugmentDef = defineAugment({
         return sealActive(state, holder) ? true : cur;
       },
     });
+
+
+    /*
+     * 무장해제로 잠기면 «6순 동안 못 운다» 배너도 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 배너만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     // 사용 횟수가 남았고 봉인이 활성 중이 아니면 보유자 턴에 선언 후보를 낸다
     ctx.holderTurnOptions((state) =>

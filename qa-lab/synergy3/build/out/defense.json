@@ -1,0 +1,2240 @@
+{
+ "key": "defense",
+ "ids": [
+  "invincible",
+  "always_tenpai",
+  "danger_sense",
+  "tenpai_scan"
+ ],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 1,
+   "ms": 13220,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 1,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 22400,
+    "p1": 35800,
+    "p2": 22800,
+    "p3": 19000
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 2,
+    "p2": 2,
+    "p3": 3
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 4000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 64,
+     "invincible_guard": 3,
+     "danger_sense_use": 5,
+     "pass": 14,
+     "tenpai_scan_use": 5,
+     "riichi": 2,
+     "pon": 1,
+     "chi": 1
+    },
+    "p1": {
+     "discard": 67,
+     "minkan": 1,
+     "pass": 16,
+     "riichi": 2,
+     "win": 2,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 56,
+     "pass": 17,
+     "chi": 1,
+     "riichi": 2,
+     "win": 1
+    },
+    "p3": {
+     "pass": 20,
+     "discard": 66,
+     "riichi": 3,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 5,
+     "interChange": 1,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 958,
+     "reactEmit": 21,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 45,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 21
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 958,
+     "reactEmit": 27,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 57,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 27
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 5,
+     "reactEmit": 5,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 20,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 95,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 20,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 95,
+     "proposed": 8,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 45,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 95,
+     "proposed": 11,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 57,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "danger_sense_use",
+       4
+      ],
+      [
+       "invincible_guard",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 2,
+   "ms": 19064,
+   "crash": null,
+   "rounds": 9,
+   "outcomes": {
+    "draw": 3,
+    "win": 5,
+    "abort": 1
+   },
+   "finalScores": {
+    "p0": 42800,
+    "p1": 42000,
+    "p2": -1300,
+    "p3": 16500
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 3,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 5,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p0",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 4000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 114,
+     "pass": 25,
+     "invincible_guard": 4,
+     "danger_sense_use": 7,
+     "tenpai_scan_use": 7,
+     "pon": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 114,
+     "pass": 14,
+     "riichi": 3,
+     "win": 3,
+     "ankan": 1,
+     "pon": 4,
+     "kyushuKyuhai": 1,
+     "chi": 1
+    },
+    "p2": {
+     "pass": 32,
+     "discard": 97,
+     "riichi": 2
+    },
+    "p3": {
+     "discard": 105,
+     "riichi": 1,
+     "pon": 5,
+     "pass": 21,
+     "chi": 2,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 9,
+     "interChange": 3,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 1535,
+     "reactEmit": 29,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 52,
+     "actionFired": 7,
+     "emitted": {
+      "AugmentDataSet": 29
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 1535,
+     "reactEmit": 37,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 72,
+     "actionFired": 7,
+     "emitted": {
+      "AugmentDataSet": 37
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 9,
+     "reactEmit": 7,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 30,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 14
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 159,
+     "proposed": 4,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 30,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 159,
+     "proposed": 11,
+     "threw": 0,
+     "fired": 7,
+     "opportunity": 52,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       4
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 159,
+     "proposed": 13,
+     "threw": 0,
+     "fired": 7,
+     "opportunity": 72,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       3
+      ],
+      [
+       "danger_sense_use",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 3,
+   "ms": 15371,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 3,
+    "draw": 3
+   },
+   "finalScores": {
+    "p0": 32400,
+    "p1": 36700,
+    "p2": 24500,
+    "p3": 6400
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 2,
+    "p2": 1,
+    "p3": 3
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 1,
+     "fu": 30,
+     "points": 1100,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 7,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 4,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 83,
+     "pass": 23,
+     "invincible_guard": 3,
+     "danger_sense_use": 6,
+     "tenpai_scan_use": 6,
+     "chi": 1,
+     "riichi": 1
+    },
+    "p1": {
+     "discard": 69,
+     "pass": 13,
+     "riichi": 2,
+     "win": 2,
+     "pon": 3,
+     "shouminkan": 1
+    },
+    "p2": {
+     "pass": 17,
+     "discard": 81,
+     "pon": 2,
+     "chi": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 68,
+     "pass": 21,
+     "riichi": 3,
+     "pon": 2
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 6,
+     "interChange": 3,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 1157,
+     "reactEmit": 25,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 38,
+     "actionFired": 6,
+     "emitted": {
+      "AugmentDataSet": 25
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 1157,
+     "reactEmit": 32,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 54,
+     "actionFired": 6,
+     "emitted": {
+      "AugmentDataSet": 32
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 6,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 16,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 123,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 16,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 123,
+     "proposed": 9,
+     "threw": 0,
+     "fired": 6,
+     "opportunity": 38,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 123,
+     "proposed": 9,
+     "threw": 0,
+     "fired": 6,
+     "opportunity": 54,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       1
+      ],
+      [
+       "danger_sense_use",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 4,
+   "ms": 19874,
+   "crash": null,
+   "rounds": 7,
+   "outcomes": {
+    "win": 4,
+    "draw": 3
+   },
+   "finalScores": {
+    "p0": 71500,
+    "p1": 18900,
+    "p2": -2800,
+    "p3": 10400
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 1,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 8,
+     "fu": 50,
+     "points": 24000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "sanankou"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "baiman"
+    },
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 4,
+     "fu": 25,
+     "points": 9600,
+     "yakumanCount": 0,
+     "yaku": [
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 6000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 111,
+     "pass": 33,
+     "riichi": 1,
+     "win": 2,
+     "invincible_guard": 3,
+     "danger_sense_use": 6,
+     "tenpai_scan_use": 4,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 94,
+     "pass": 35,
+     "chi": 2,
+     "pon": 1,
+     "win": 1,
+     "riichi": 1
+    },
+    "p2": {
+     "discard": 108,
+     "pass": 27,
+     "riichi": 1,
+     "minkan": 1
+    },
+    "p3": {
+     "pass": 34,
+     "discard": 99,
+     "pon": 2,
+     "win": 1,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 7,
+     "interChange": 3,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 1421,
+     "reactEmit": 25,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 74,
+     "actionFired": 6,
+     "emitted": {
+      "AugmentDataSet": 25
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 1421,
+     "reactEmit": 22,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 97,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 22
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 7,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 38,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 159,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 38,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 159,
+     "proposed": 9,
+     "threw": 0,
+     "fired": 6,
+     "opportunity": 74,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 159,
+     "proposed": 5,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 97,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "danger_sense_use",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 5,
+   "ms": 11982,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 5
+   },
+   "finalScores": {
+    "p0": 18100,
+    "p1": 28700,
+    "p2": 36000,
+    "p3": 17200
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 2,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 3,
+     "fu": 30,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 5,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p1",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 60,
+     "invincible_guard": 3,
+     "danger_sense_use": 5,
+     "tenpai_scan_use": 4,
+     "pon": 1,
+     "pass": 15,
+     "chi": 1,
+     "riichi": 1
+    },
+    "p1": {
+     "pass": 17,
+     "discard": 56,
+     "riichi": 2,
+     "win": 2,
+     "pon": 2,
+     "chi": 1
+    },
+    "p2": {
+     "discard": 55,
+     "pass": 15,
+     "riichi": 2,
+     "chi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 65,
+     "pon": 2,
+     "pass": 8,
+     "chi": 1,
+     "win": 2,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 5,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 899,
+     "reactEmit": 21,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 31,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 21
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 899,
+     "reactEmit": 22,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 51,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 22
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 5,
+     "reactEmit": 5,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 18,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 90,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 18,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 90,
+     "proposed": 8,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 31,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 90,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 51,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       1
+      ],
+      [
+       "danger_sense_use",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 6,
+   "ms": 24220,
+   "crash": null,
+   "rounds": 9,
+   "outcomes": {
+    "win": 6,
+    "draw": 3
+   },
+   "finalScores": {
+    "p0": 55700,
+    "p1": 30600,
+    "p2": 11700,
+    "p3": 2000
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 4,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 25,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 6000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 4000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 130,
+     "riichi": 1,
+     "invincible_guard": 5,
+     "danger_sense_use": 7,
+     "tenpai_scan_use": 6,
+     "win": 3,
+     "pass": 29,
+     "chi": 1,
+     "pon": 1
+    },
+    "p1": {
+     "pass": 27,
+     "discard": 105,
+     "riichi": 4,
+     "win": 3
+    },
+    "p2": {
+     "discard": 129,
+     "pass": 32,
+     "pon": 2,
+     "chi": 1,
+     "shouminkan": 1,
+     "riichi": 1
+    },
+    "p3": {
+     "discard": 121,
+     "pass": 35,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 9,
+     "interChange": 3,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 1731,
+     "reactEmit": 29,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 91,
+     "actionFired": 7,
+     "emitted": {
+      "AugmentDataSet": 29
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 1731,
+     "reactEmit": 32,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 102,
+     "actionFired": 6,
+     "emitted": {
+      "AugmentDataSet": 32
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 9,
+     "reactEmit": 9,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 38,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 18
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 180,
+     "proposed": 5,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 38,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 180,
+     "proposed": 12,
+     "threw": 0,
+     "fired": 7,
+     "opportunity": 91,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       5
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 180,
+     "proposed": 17,
+     "threw": 0,
+     "fired": 6,
+     "opportunity": 102,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       5
+      ],
+      [
+       "danger_sense_use",
+       6
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 7,
+   "ms": 11791,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 6
+   },
+   "finalScores": {
+    "p0": 20600,
+    "p1": 24300,
+    "p2": 33600,
+    "p3": 21500
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 2,
+    "p2": 2,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 3000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 7,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 3000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 3,
+     "fu": 30,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 20,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 66,
+     "pass": 18,
+     "invincible_guard": 3,
+     "danger_sense_use": 6,
+     "riichi": 1,
+     "tenpai_scan_use": 5,
+     "win": 1
+    },
+    "p1": {
+     "discard": 59,
+     "pass": 14,
+     "riichi": 2,
+     "win": 1,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 61,
+     "chi": 1,
+     "pass": 12,
+     "pon": 3,
+     "win": 3,
+     "riichi": 2
+    },
+    "p3": {
+     "discard": 67,
+     "pass": 16,
+     "chi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 6,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 916,
+     "reactEmit": 25,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 46,
+     "actionFired": 6,
+     "emitted": {
+      "AugmentDataSet": 25
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 916,
+     "reactEmit": 27,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 61,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 27
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 6,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 23,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 99,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 23,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 99,
+     "proposed": 9,
+     "threw": 0,
+     "fired": 6,
+     "opportunity": 46,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 99,
+     "proposed": 7,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 61,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "danger_sense_use",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 8,
+   "ms": 13804,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 4,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 44900,
+    "p1": 7200,
+    "p2": 17700,
+    "p3": 30200
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 0,
+    "p2": 1,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "yakuhai_seat",
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p1",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 1,
+     "fu": 30,
+     "points": 1100,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 6000
+    },
+    {
+     "augId": "always_tenpai",
+     "player": "p0",
+     "points": 2000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 69,
+     "pass": 14,
+     "riichi": 3,
+     "win": 2,
+     "invincible_guard": 2,
+     "danger_sense_use": 4,
+     "tenpai_scan_use": 4,
+     "pon": 1,
+     "shouminkan": 1,
+     "chi": 1
+    },
+    "p1": {
+     "discard": 78,
+     "pass": 20
+    },
+    "p2": {
+     "discard": 74,
+     "pass": 10,
+     "riichi": 1,
+     "minkan": 1,
+     "chi": 1
+    },
+    "p3": {
+     "discard": 63,
+     "pass": 15,
+     "riichi": 2,
+     "win": 2,
+     "minkan": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|always_tenpai",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 6,
+     "interChange": 2,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|danger_sense",
+     "ruleSet": 0,
+     "reactCall": 1043,
+     "reactEmit": 17,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 45,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 17
+     }
+    },
+    {
+     "k": "p0|tenpai_scan",
+     "ruleSet": 0,
+     "reactCall": 1043,
+     "reactEmit": 22,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 52,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 22
+     }
+    },
+    {
+     "k": "p0|invincible",
+     "ruleSet": 0,
+     "reactCall": 6,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 34,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 8
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "invincible",
+     "chooseCalls": 99,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 34,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"invincible_guard\",\"payload\":{}}",
+      "{\"type\":\"invincible_guard\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "danger_sense",
+     "chooseCalls": 99,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 45,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}",
+      "{\"type\":\"danger_sense_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "tenpai_scan",
+     "chooseCalls": 99,
+     "proposed": 9,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 52,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "invincible_guard",
+       2
+      ],
+      [
+       "danger_sense_use",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}",
+      "{\"type\":\"tenpai_scan_use\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "invincible",
+     [
+      "invincible_guard"
+     ]
+    ],
+    [
+     "danger_sense",
+     [
+      "danger_sense_use"
+     ]
+    ],
+    [
+     "tenpai_scan",
+     [
+      "tenpai_scan_use"
+     ]
+    ]
+   ]
+  }
+ ]
+}

@@ -23,6 +23,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { cooldownViewKey, flagOf, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
 
@@ -120,6 +121,14 @@ export const invincible: AugmentDef = defineAugment({
         return flagOf(state, activeKey(state, holder)) ? true : cur;
       },
     });
+
+
+    /*
+     * 무장해제로 잠기면 «이번 국 론 불가» 배너도 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 배너만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [activeViewKey(holder)]);
 
     // 국 종료마다 쿨다운 1 감소 (무적 자체는 roundKey 스코프라 저절로 꺼진다)
     ctx.reaction(ROUND_SETTLED, (_event, rc) => {

@@ -32,6 +32,7 @@ import type {
 } from "@majak/core";
 import { counterOf, publishUsesLeft, roundViewKey, sameHandSize } from "../util.js";
 import { handAlteredMark } from "./handAltered.js";
+import { clearedHandMarks } from "./handMarkChannels.js";
 import {
   breakStealthRiichiEvents,
   ensureStealthBreakReducer,
@@ -174,6 +175,16 @@ export const fullHandSwap: AugmentDef = defineAugment({
             // **양쪽 모두** 배패가 아닌 손이 된다.
             ...handAlteredMark(state, p.holder),
             ...handAlteredMark(state, p.target),
+            /*
+             * 손을 따라가지 못하는 **공개 표식**을 걷는다.
+             *
+             * 손패의 실물 흔적(생성패·`conjured`·적도라)은 이미 패를 따라간다.
+             * 그런데 "누가 무슨 색으로 통일했다" 같은 국 스코프 채널은 원주인 자리에
+             * 남아, 화면이 **엉뚱한 좌석을 가리키는 거짓말**이 됐다 — 세 좌석이 전부
+             * 잘못된 대상에게 베타오리했다 (QA synergy3 handedit 확정 7, 2026-08-23).
+             * 양쪽 다 지운다: 대상은 손을 빼앗겼고, 강탈자도 자기 손을 패산에 넘겼다.
+             */
+            ...clearedHandMarks(state, p.holder, p.target),
           },
         };
         return next;

@@ -77,6 +77,7 @@ function scene(opts: SceneOptions): Scene {
       // 리치 선언패가 바닥의 첫 장 = 이른 리치. 통과패 셈이 켜지는 조건이기도 하다
       ...((opts.riichi ?? []).includes(p) ? { riichiTileIndex: 0 } : {}),
       tsumogiriIds: [],
+      ownDiscards: [],
       ...(p === "p0" ? { furiten: false, furitenReasons: [] } : {}),
     };
   }

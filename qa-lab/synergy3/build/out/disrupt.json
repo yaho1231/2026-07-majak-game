@@ -1,0 +1,1969 @@
+{
+ "key": "disrupt",
+ "ids": [
+  "riichi_seal",
+  "call_seal",
+  "disarm",
+  "time_stop"
+ ],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 1,
+   "ms": 10607,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 1,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 12500,
+    "p1": 40500,
+    "p2": 29700,
+    "p3": 17300
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 2,
+    "p2": 2,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p0",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 56,
+     "pass": 14,
+     "call_seal_use": 1,
+     "time_stop_use": 1,
+     "riichi": 1,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 58,
+     "minkan": 1,
+     "pass": 11,
+     "riichi": 2,
+     "win": 2
+    },
+    "p2": {
+     "discard": 51,
+     "pass": 9,
+     "chi": 1,
+     "riichi": 2,
+     "win": 2
+    },
+    "p3": {
+     "pass": 16,
+     "discard": 59,
+     "riichi": 2,
+     "chi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 254,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 776,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 9,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 781,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 1018,
+     "reactEmit": 6,
+     "interCall": 242,
+     "interChange": 1,
+     "optionOffer": 58,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 7
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 74,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 9,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 74,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 58,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 74,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 2,
+   "ms": 11180,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "draw": 1,
+    "win": 3
+   },
+   "finalScores": {
+    "p0": 22000,
+    "p1": 16300,
+    "p2": 19300,
+    "p3": 42400
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 0,
+    "p2": 0,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 10,
+     "fu": 25,
+     "points": 16000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 4,
+     "redHan": 0,
+     "limit": "baiman"
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 59,
+     "pass": 10,
+     "call_seal_use": 1,
+     "pon": 1,
+     "time_stop_use": 2,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 63,
+     "pass": 9
+    },
+    "p2": {
+     "pass": 12,
+     "discard": 59,
+     "chi": 1,
+     "win": 1,
+     "ankan": 1,
+     "minkan": 1
+    },
+    "p3": {
+     "discard": 42,
+     "riichi": 2,
+     "pon": 1,
+     "chi": 1,
+     "pass": 5,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 250,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 776,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 9,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 780,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 1016,
+     "reactEmit": 9,
+     "interCall": 240,
+     "interChange": 2,
+     "optionOffer": 52,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 11
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 74,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 9,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 74,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 52,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}",
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 74,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 3,
+   "ms": 14400,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 3,
+    "draw": 3
+   },
+   "finalScores": {
+    "p0": 22700,
+    "p1": 41600,
+    "p2": 15300,
+    "p3": 20400
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 2,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p0",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 64,
+     "pass": 11,
+     "call_seal_use": 1,
+     "chi": 1,
+     "time_stop_use": 3,
+     "riichi": 3,
+     "win": 1
+    },
+    "p1": {
+     "discard": 60,
+     "pass": 9,
+     "riichi": 2,
+     "win": 2,
+     "pon": 3
+    },
+    "p2": {
+     "pass": 14,
+     "discard": 70,
+     "pon": 1,
+     "chi": 1,
+     "riichi": 1
+    },
+    "p3": {
+     "discard": 66,
+     "pass": 17,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 322,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 989,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 7,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 995,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 1296,
+     "reactEmit": 12,
+     "interCall": 307,
+     "interChange": 3,
+     "optionOffer": 67,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 15
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 83,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 7,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 83,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 67,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}",
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 83,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 4,
+   "ms": 18037,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "draw": 2,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 29000,
+    "p1": 47300,
+    "p2": 13700,
+    "p3": 9000
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 3,
+    "p2": 2,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "pinfu",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 5,
+     "fu": 50,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 6,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 87,
+     "pass": 28,
+     "call_seal_use": 1,
+     "time_stop_use": 2,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 75,
+     "pass": 22,
+     "win": 2,
+     "riichi": 3
+    },
+    "p2": {
+     "discard": 84,
+     "pass": 23,
+     "riichi": 2,
+     "win": 1
+    },
+    "p3": {
+     "pass": 24,
+     "discard": 92,
+     "pon": 2,
+     "chi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 373,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 1136,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 9,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 1142,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 1496,
+     "reactEmit": 9,
+     "interCall": 360,
+     "interChange": 2,
+     "optionOffer": 88,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 11
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 119,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 9,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 119,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 88,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}",
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 119,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 5,
+   "ms": 7059,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 5
+   },
+   "finalScores": {
+    "p0": 22400,
+    "p1": 27300,
+    "p2": 36000,
+    "p3": 14300
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 2,
+    "p2": 2,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p0",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 5,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 47,
+     "call_seal_use": 1,
+     "pass": 10,
+     "time_stop_use": 3,
+     "pon": 1,
+     "win": 1,
+     "riichi": 1
+    },
+    "p1": {
+     "pass": 10,
+     "discard": 41,
+     "riichi": 2,
+     "win": 2,
+     "chi": 1,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 45,
+     "riichi": 2,
+     "pass": 9,
+     "win": 1
+    },
+    "p3": {
+     "discard": 56,
+     "pon": 3,
+     "pass": 6,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 224,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 690,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 9,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 695,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 898,
+     "reactEmit": 11,
+     "interCall": 208,
+     "interChange": 2,
+     "optionOffer": 47,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 13
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 63,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 9,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 63,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 47,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}",
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 63,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 6,
+   "ms": 10179,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 4,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 27000,
+    "p1": 17600,
+    "p2": 25600,
+    "p3": 28800
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 2,
+     "fu": 40,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 79,
+     "time_stop_use": 3,
+     "riichi": 2,
+     "call_seal_use": 1,
+     "win": 2,
+     "pass": 17
+    },
+    "p1": {
+     "pass": 25,
+     "discard": 77
+    },
+    "p2": {
+     "discard": 67,
+     "pass": 17,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 70,
+     "pass": 18,
+     "pon": 1,
+     "win": 1,
+     "chi": 1,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 321,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 992,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 10,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 998,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 1302,
+     "reactEmit": 12,
+     "interCall": 310,
+     "interChange": 3,
+     "optionOffer": 79,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 15
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 102,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 10,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 102,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 79,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}",
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 102,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 7,
+   "ms": 7840,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 1,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 28700,
+    "p1": 15800,
+    "p2": 19100,
+    "p3": 36400
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 1,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 2,
+     "fu": 30,
+     "points": 2900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 55,
+     "pass": 18,
+     "time_stop_use": 2,
+     "riichi": 2,
+     "call_seal_use": 1,
+     "chi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 69,
+     "pass": 18,
+     "pon": 3
+    },
+    "p2": {
+     "discard": 67,
+     "chi": 1,
+     "pass": 11,
+     "pon": 2,
+     "riichi": 1
+    },
+    "p3": {
+     "discard": 58,
+     "pass": 11,
+     "riichi": 2,
+     "win": 3
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 282,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 865,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 10,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 870,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 1132,
+     "reactEmit": 9,
+     "interCall": 267,
+     "interChange": 2,
+     "optionOffer": 55,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 11
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 79,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 10,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 79,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 55,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}",
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 79,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 8,
+   "ms": 12072,
+   "crash": null,
+   "rounds": 8,
+   "outcomes": {
+    "win": 6,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 27300,
+    "p1": 13400,
+    "p2": 32600,
+    "p3": 26700
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 2,
+    "p2": 2,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 4,
+     "fu": 30,
+     "points": 11700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "yakuhai_seat",
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 3,
+     "fu": 40,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p1",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 5,
+     "fu": 25,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "discard": 93,
+     "pass": 26,
+     "time_stop_use": 3,
+     "call_seal_use": 1,
+     "riichi": 3,
+     "win": 2,
+     "chi": 1,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 90,
+     "pass": 24,
+     "pon": 2,
+     "riichi": 2,
+     "chi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 97,
+     "pass": 26,
+     "riichi": 2,
+     "win": 2
+    },
+    "p3": {
+     "discard": 94,
+     "pass": 23,
+     "riichi": 2,
+     "win": 2,
+     "minkan": 1,
+     "chi": 1,
+     "pon": 2
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|riichi_seal",
+     "ruleSet": 0,
+     "reactCall": 418,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|call_seal",
+     "ruleSet": 0,
+     "reactCall": 1279,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 10,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|disarm",
+     "ruleSet": 0,
+     "reactCall": 1287,
+     "reactEmit": 2,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 2
+     }
+    },
+    {
+     "k": "p0|time_stop",
+     "ruleSet": 0,
+     "reactCall": 1676,
+     "reactEmit": 12,
+     "interCall": 397,
+     "interChange": 3,
+     "optionOffer": 96,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 15
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "call_seal",
+     "chooseCalls": 128,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 10,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "time_stop_use",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"call_seal_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "time_stop",
+     "chooseCalls": 128,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 96,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"time_stop_use\",\"payload\":{}}",
+      "{\"type\":\"time_stop_use\",\"payload\":{}}"
+     ]
+    },
+    {
+     "id": "disarm",
+     "chooseCalls": 128,
+     "proposed": 0,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 0,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": []
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "call_seal",
+     [
+      "call_seal_use"
+     ]
+    ],
+    [
+     "disarm",
+     [
+      "disarm_lock"
+     ]
+    ],
+    [
+     "time_stop",
+     [
+      "time_stop_use"
+     ]
+    ]
+   ]
+  }
+ ]
+}

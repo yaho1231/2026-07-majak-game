@@ -198,6 +198,13 @@ export function craft(cfg: CraftConfig): GameState {
       discardedKinds: h(cfg.discards?.[p] ?? "").map(kindKey),
       discardCount: h(cfg.discards?.[p] ?? "").length,
       tsumogiriIds: [],
+      // 크래프트한 바닥은 "그 사람이 실제로 버린 것"으로 본다 — 누명(frame_up)만이
+      // 이 둘을 갈라놓고, 누명 장면은 진짜 액션으로 만들어야 한다
+      // (QA synergy3 handedit 확정 2, 2026-08-23).
+      ownDiscards: discardIds.map((id, i) => ({
+        tileId: id,
+        kind: kindKey(h(cfg.discards?.[p] ?? "")[i] as TileKind),
+      })),
     };
   }
 
@@ -215,6 +222,7 @@ export function craft(cfg: CraftConfig): GameState {
       byPlayer[cfg.lastDiscard.player] = {
         ...rs,
         discardedKinds: [...rs.discardedKinds, kindKey(kind)],
+        ownDiscards: [...rs.ownDiscards, { tileId, kind: kindKey(kind) }],
       };
     }
   }

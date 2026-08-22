@@ -52,6 +52,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, flagOf, matchUses, publishUsesLeft, sameHandSize } from "../util.js";
+import { clearedHandMarks } from "./handMarkChannels.js";
 import { roundScopedKey } from "./roundScope.js";
 import {
   breakStealthRiichiEvents,
@@ -242,6 +243,15 @@ export const seatSwap: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
+          /*
+           * 손 가공 표식도 함께 지운다 — 손이 통째로 자리를 바꿨는데 "저 사람이 이 색으로
+           * 통일했다" 같은 전원 공개 채널이 원주인 자리에 남으면 화면이 거짓말을 한다
+           * (2026-08-23 QA synergy3 handedit 확정 7과 같은 구조. `handMarkChannels.ts`).
+           */
+          augmentData: {
+            ...state.augmentData,
+            ...clearedHandMarks(state, p.a, p.b),
+          },
           players: state.players.map((pl) =>
             pl.id === p.a
               ? { ...pl, seat: b.seat }

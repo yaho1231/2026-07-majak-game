@@ -262,17 +262,38 @@ describe("BotAgent — 액티브 2개가 동시에 발동을 원할 때", () => 
     expect(decision.type).toBe("ura_peek_reveal");
   });
 
-  it("가중치가 같으면 보유 순서로 결정론적으로 끊는다", async () => {
+  /*
+   * 예전에는 "가중치가 같으면 **보유 순서**로 끊는다"였다. 그런데 그러면 강도가 정확히
+   * 같은 정책 둘을 함께 들 때 **뒤엣것이 한 게임 내내 한 번도 발동하지 않는다** —
+   * 물러설 수 없는 선언 × 스텔스 리치가 그랬고, 보유 순서만 뒤집으면 같은 시드의
+   * 최종 점수가 158,100 → 224,500으로 갈렸다(2026-08-23 QA synergy3 build 확정 1).
+   * 지금은 봇 rng로 섞는다. 계약은 "**결정론**"이지 "보유 순서"가 아니다.
+   */
+  it("가중치가 같으면 결정론적으로(같은 시드=같은 결과) 끊되, 보유 순서로 굳지 않는다", async () => {
     const defs = [alwaysFire("weak_aug", 50), alwaysFire("strong_aug", 50)];
-    const bot = new BotAgent("p0", undefined, 1, defs);
-    const view = makeView({ augments: ["strong_aug", "weak_aug"], hand: TENPAI_HAND });
-    bot.sendView(view);
-    const options = optionsWith(view, [
-      { type: "weak_aug", payload: {} },
-      { type: "strong_aug", payload: {} },
-    ]);
-    const decision = await bot.decide({ player: "p0", options });
-    expect(decision.type).toBe("strong_aug");
+    const decideWith = async (
+      seed: number,
+      augments: string[],
+    ): Promise<string> => {
+      const bot = new BotAgent("p0", undefined, seed, defs);
+      const view = makeView({ augments, hand: TENPAI_HAND });
+      bot.sendView(view);
+      const options = optionsWith(view, [
+        { type: "weak_aug", payload: {} },
+        { type: "strong_aug", payload: {} },
+      ]);
+      return (await bot.decide({ player: "p0", options })).type;
+    };
+    // 같은 시드·같은 입력이면 언제나 같은 결과다 (리플레이·이어하기의 전제)
+    const a = await decideWith(1, ["strong_aug", "weak_aug"]);
+    const b = await decideWith(1, ["strong_aug", "weak_aug"]);
+    expect(a).toBe(b);
+    // 그리고 어느 쪽도 굶지 않는다 — 시드를 바꾸면 둘 다 나온다
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 24; seed++) {
+      seen.add(await decideWith(seed, ["strong_aug", "weak_aug"]));
+    }
+    expect([...seen].sort()).toEqual(["strong_aug", "weak_aug"]);
   });
 });
 

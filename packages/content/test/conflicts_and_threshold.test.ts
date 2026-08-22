@@ -40,7 +40,12 @@ describe("A급 — 게임 파괴 조합은 함께 뽑히지 않는다", () => {
     // "discardedKinds 고정"이 사라졌다 — 네 증강 모두 discardCount로 옮겨졌고
     // 누명은 그 값을 건드리지 않는다(2026-08-08 QA §2-9). 아래 회귀 테스트가
     // 그 전제를 직접 지킨다.
-    ["frame_up", "picky_eater", "심긴 패 한 장이 남의 편식 퀘스트를 깨뜨린다"],
+    // 누명 ↔ picky_eater 도 **폐기했다** (2026-08-23, QA synergy3 handedit 확정 8).
+    // 근거였던 "심긴 패 한 장이 편식 퀘스트를 깨뜨린다"가 사라졌다 — 편식은 그 뒤
+    // `TILE_DISCARDED.player === holder` 만 세는 자기 목록(myDiscardKinds)으로 옮겼고,
+    // 실측으로 심긴 패에 퀘스트가 깨지지 않음을 확인했다. 게다가 그 피해는 **상대편**
+    // 편식 보유자에게 가는 것이라 `conflicts`(같은 사람이 둘 다 드는 것을 막는 장치)로는
+    // 애초에 막을 수 없었다. 아래 회귀 테스트가 편식 쪽 가드를 직접 지킨다.
     ["stealth_riichi", "riichi_upgrade", "하가 봉인이 view:* 라 스텔스가 즉시 드러난다"],
     ["stealth_riichi", "silent_swap", "리치로 잠긴 손을 바닥에서 갈아 끼운다"],
     ["open_riichi_reveal", "tile_dyeing", "공개한 대기를 리치 중에 바꿔 대응 불가 역만"],

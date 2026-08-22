@@ -21,15 +21,19 @@ import {
   defineAugment,
   handIdsOf,
   isSourceDisarmed,
-  kindKey,
   kindOf,
+  mixedTripletsFor,
+  polarEndsFor,
+  sameCallBody,
 } from "@majak/core";
 import type {
   ActionDef,
   AugmentDef,
   GameState,
   PlayerId,
+  RuleRegistry,
   TileId,
+  TileKind,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
@@ -45,11 +49,35 @@ const usedKey = (state: GameState, h: PlayerId): string =>
 const wallLen = (state: GameState): number =>
   state.zones["wall"]?.tileIds.length ?? 0;
 
-/** 손패에서 목표패(discard kind)와 같은 종류인 tileId 목록 (tileId 오름차순) */
-function matchingIds(state: GameState, holder: PlayerId, targetKey: string): TileId[] {
-  return handIdsOf(state, holder)
-    .filter((id) => kindKey(kindOf(state, id)) === targetKey)
-    .sort((a, b) => a - b);
+/**
+ * 목표패(버림패)와 **한 규칙 안에서 커쯔가 되는** 손패 두 장 (tileId 오름차순).
+ *
+ * 예전에는 `kindKey` 완전 일치로만 셌다. 그런데 표준 펑은 `sameCallKind`를 타서
+ * 동수의 결속(혼색 커쯔)·양극을 존중하므로, **결속이 열어 준 바로 그 퐁에서만 묵계가
+ * 사라졌다** — 1만+1통을 들고 1삭 버림에 뜨는 것은 평범한 펑뿐이었고, 홀더는 "혼색
+ * 커쯔를 부르면 손이 열린다"를 어디서도 알 수 없었다(QA synergy3 relax 확정 5,
+ * 2026-08-23). 세 장을 한 번에 보는 `sameCallBody`를 쓰므로 양극+결속을 함께 든
+ * 사람에게도 잡종 펑이 열리지 않는다(shape 확정 2와 같은 기준).
+ */
+function matchingPair(
+  state: GameState,
+  rules: RuleRegistry,
+  holder: PlayerId,
+  target: TileKind,
+): [TileId, TileId] | null {
+  const mixedTri = mixedTripletsFor(state, rules, holder);
+  const polar = polarEndsFor(state, rules, holder);
+  const ids = [...handIdsOf(state, holder)].sort((a, b) => a - b);
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const a = ids[i] as TileId;
+      const b = ids[j] as TileId;
+      if (sameCallBody(target, kindOf(state, a), kindOf(state, b), mixedTri, polar)) {
+        return [a, b];
+      }
+    }
+  }
+  return null;
 }
 
 const silentPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
@@ -82,8 +110,17 @@ const silentPonAction: ActionDef<{ tileIds: [TileId, TileId] }> = {
     if (a === b) return "duplicate tile ids";
     const hand = handIdsOf(state, req.player);
     if (!hand.includes(a) || !hand.includes(b)) return "tiles not in hand";
-    const targetKey = kindKey(kindOf(state, last.tileId));
-    if (kindKey(kindOf(state, a)) !== targetKey || kindKey(kindOf(state, b)) !== targetKey) {
+    // 표준 펑과 같은 "같은 패" 정의를 쓴다 — 동수의 결속·양극을 존중하되
+    // 세 장이 한 규칙 안에서 닫혀야 한다(matchingPair 주석).
+    if (
+      !sameCallBody(
+        kindOf(state, last.tileId),
+        kindOf(state, a),
+        kindOf(state, b),
+        mixedTripletsFor(state, rules, req.player),
+        polarEndsFor(state, rules, req.player),
+      )
+    ) {
       return "tiles do not match the discard";
     }
     return null;
@@ -154,15 +191,14 @@ export const silentPact: AugmentDef = defineAugment({
     ctx.holderReactionOptions((state, discard) => {
       if (flagOf(state, usedKey(state, holder))) return [];
       if (state.round.byPlayer[holder]?.riichi != null) return [];
-      const targetKey = kindKey(kindOf(state, discard.tileId));
-      const matches = matchingIds(state, holder, targetKey);
-      if (matches.length < 2) return []; // 정상 펑처럼 2장 이상 필요
-      return [
-        {
-          type: ACTION,
-          payload: { tileIds: [matches[0] as TileId, matches[1] as TileId] },
-        },
-      ];
+      const pair = matchingPair(
+        state,
+        ctx.engine.rules,
+        holder,
+        kindOf(state, discard.tileId),
+      );
+      if (pair === null) return []; // 정상 펑처럼 몸통이 되는 두 장이 있어야 한다
+      return [{ type: ACTION, payload: { tileIds: pair } }];
     });
   },
 });

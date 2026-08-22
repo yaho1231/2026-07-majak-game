@@ -768,7 +768,23 @@ export class BotAgent implements PlayerAgent {
       }
       bids.push(bid);
     }
-    // 동점은 먼저 본 쪽(보유 순서)이 이긴다 — bestBid가 순수 부등호라 그렇게 된다
+    /*
+     * **동점은 보유 순서로 갈리면 안 된다** (2026-08-23 QA synergy3 build 확정 1).
+     *
+     * `bestBid`가 순수 부등호라 예전에는 동점일 때 언제나 `me.augments`의 앞엣것이
+     * 이겼다. 강도가 정확히 같은 정책 둘을 함께 들면(물러설 수 없는 선언 × 스텔스
+     * 리치가 그렇다) 뒤엣것이 **한 게임 내내 한 번도 발동하지 않는다** — 실측으로
+     * 제안 15회 중 발동 0회였고, 보유 순서만 뒤집으면 같은 시드에서 최종 점수가
+     * 158,100 → 224,500으로 갈렸다. 카드가 아니라 배열 순서가 승패를 정한 셈이다.
+     *
+     * 봇 rng로 섞는다 — 결정론은 그대로다(같은 시드·같은 진행이면 같은 순서).
+     */
+    for (let i = bids.length - 1; i > 0; i--) {
+      const j = this.botRng.int(i + 1);
+      const a = bids[i] as ActionBid;
+      bids[i] = bids[j] as ActionBid;
+      bids[j] = a;
+    }
     return bids;
   }
 

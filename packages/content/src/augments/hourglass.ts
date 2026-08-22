@@ -20,9 +20,12 @@
  */
 
 import {
+  augmentDataSet,
   DEAD_WALL,
   defineAugment,
+  discardsZone,
   isTenpai,
+  isTerminalOrHonor,
   meldCountOf,
   moveTiles,
   playerOf,
@@ -30,6 +33,7 @@ import {
   ROUND_SETTLED,
   scoringOptionsOf,
   SETTLE_STAGE,
+  TILE_DRAWN,
   TURN_PASSED,
   WALL,
   winHandKindsOf,
@@ -39,9 +43,11 @@ import type {
   GameState,
   PlayerId,
   RoundSettledPayload,
+  TileDrawnPayload,
   TileId,
 } from "@majak/core";
 import {
+  counterOf,
   flagOf,
   cooldownReady,
   cooldownUsedKey,
@@ -75,9 +81,48 @@ const COOLDOWN_ROUNDS = 2;
 function offCooldown(state: GameState, h: PlayerId): boolean {
   return cooldownReady(state, ID, h, COOLDOWN_ROUNDS);
 }
+
+/**
+ * 지금 이 유국에 **보유자의 유국만관/유국역만이 서 있는가.**
+ *
+ * 연장은 거절할 수 없는 자동 발동이다. 그런데 나가시는 "내 버림이 **한 장도 빠짐없이**
+ * 요구패·자패"라서, 연장으로 4장을 더 버리는 순간 손에 요구패가 없으면 **회피 경로가
+ * 아예 없다** — 실측으로 유국역만 51,000이 3,000이 됐고(표준 유국만관도 12,000 증발),
+ * 두 카드 어디에도 그 말이 없었다(QA synergy3 relax 확정 2, 2026-08-23).
+ * 그래서 나가시가 서 있는 국에는 인터셉터가 **통과**한다 — 연장을 포기하고 그 국을
+ * 그대로 정산한다. 모래시계는 2국에 1회 다시 열리지만 유국역만은 그 국뿐이라,
+ * 둘 중 하나를 버려야 한다면 큰 쪽을 지킨다.
+ *
+ * 판정은 `nagashi_yakuman.nagashiValid`·`standardActions.nagashiManganSeats`와 같은
+ * 이력(discardedKinds) 기준이다. 유국역만 증강 보유자는 "울려 나갔어도 성립"이므로
+ * 강 장수 비교를 하지 않고, 표준 유국만관 쪽만 ②(아무도 울지 않았다)를 함께 본다.
+ */
+function nagashiStanding(state: GameState, h: PlayerId): boolean {
+  const history = state.round.byPlayer[h]?.discardedKinds ?? [];
+  if (history.length === 0) return false;
+  const allOrphans = history.every((key) => {
+    const m = /^([a-z]+)(\d+)$/.exec(key);
+    return m !== null && isTerminalOrHonor({ suit: m[1] as never, rank: Number(m[2]) });
+  });
+  if (!allOrphans) return false;
+  if (playerOf(state, h).augments.includes("nagashi_yakuman")) return true;
+  // 표준 유국만관: 한 장이라도 울려 나갔으면 이미 자격이 없다
+  return (state.zones[discardsZone(h)]?.tileIds.length ?? 0) === history.length;
+}
 /** 이번 국에 이미 연장했는가 — 두 번째 유국은 그대로 통과 (무한 연장 방지) */
 const openedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "opened", state, h);
+/**
+ * 연장으로 **아직 남은 솔로 쯔모 횟수**.
+ *
+ * 예전에는 연장의 끝을 "패산이 마르는 것"으로 판정했다. 그런데 강 회수 카드
+ * (정적의 손·날치기)는 쯔모패를 `WALL` 로 되돌리며 **패산을 되채운다** — 연장이
+ * 그만큼 늘어나 설명이 약속한 "최대 4장"이 실측 7회까지 갔다
+ * (QA synergy3 handedit 확정 5, 2026-08-23). 넘겨받은 장수는 발동 시점에 이미
+ * 정해져 있으니(`HourglassPayload.tiles.length`) 그 수를 세는 것이 단일 진실이다.
+ */
+const soloLeftKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "soloLeft", state, h);
 
 interface HourglassPayload {
   holder: PlayerId;
@@ -96,7 +141,7 @@ export const hourglass: AugmentDef = defineAugment({
   description:
     "(2국에 1회) 황패유국이 선언되는 순간 내가 텐파이라면 국이 끝나지 않고, 남은 영상패(최대 4장)를 나 혼자 연속으로 쯔모한다.",
   detail:
-    "왕패에서 넘어오는 것은 아직 쓰지 않은 영상패다. 그 국에 깡이 있었으면 쓴 만큼 연장이 짧아지고, 영상패가 남지 않았으면 발동하지 않는다.\n\n연장 중 자신이 버리는 패는 평소대로 론 대상이다. 넘어온 패를 다 쓰면 그대로 유국으로 정산된다.",
+    "왕패에서 넘어오는 것은 아직 쓰지 않은 영상패다. 그 국에 깡이 있었으면 쓴 만큼 연장이 짧아지고, 영상패가 남지 않았으면 발동하지 않는다. 내 유국만관·유국역만이 성립한 국에는 연장하지 않는다.\n\n연장 중 자신이 버리는 패는 평소대로 론 대상이다. 넘어온 패를 다 쓰면 그대로 유국으로 정산된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -117,6 +162,8 @@ export const hourglass: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [openedKey(state, p.holder)]: true,
+            // 넘겨받은 장수 = 앞으로 돌 솔로 쯔모 횟수 (soloLeftKey 주석 참고)
+            [soloLeftKey(state, p.holder)]: p.tiles.length,
             // 이 국을 쿨다운 기준점으로 찍고, 잔량 표시도 그 자리에서 갱신한다
             [cooldownUsedKey(ID, p.holder)]: roundSeqOf(state, ID, p.holder),
             [cooldownViewKey(ID, p.holder)]: COOLDOWN_ROUNDS,
@@ -138,6 +185,8 @@ export const hourglass: AugmentDef = defineAugment({
       // 이미 이 국에 연장했으면(=4장을 다 쓴 두 번째 유국) 그대로 정산한다
       if (flagOf(state, openedKey(state, holder))) return event;
       if (!offCooldown(state, holder)) return event;
+      // 나가시(유국만관·유국역만)가 서 있으면 연장하지 않는다 — 위 nagashiStanding 주석
+      if (nagashiStanding(state, holder)) return event;
       // 유국 순간 텐파이여야 한다
       const tenpai = isTenpai(
         winHandKindsOf(state, ic.rules, holder),
@@ -160,10 +209,28 @@ export const hourglass: AugmentDef = defineAugment({
       };
     });
 
+    // 연장 중 보유자가 한 장 뽑을 때마다 남은 솔로 쯔모를 하나 깎는다.
+    // (영상패는 세지 않는다 — 깡의 보충 쯔모는 연장이 넘겨받은 4장이 아니다.)
+    ctx.reaction(TILE_DRAWN, (event, rc) => {
+      const p = event.payload as TileDrawnPayload;
+      if (p.player !== holder || p.rinshan) return;
+      const state = rc.state;
+      if (!flagOf(state, openedKey(state, holder))) return;
+      const left = counterOf(state, soloLeftKey(state, holder));
+      if (left <= 0) return;
+      rc.emit(augmentDataSet(soloLeftKey(state, holder), left - 1));
+    });
+
     // 연장 중에는 턴이 보유자에게 고정된다 (솔로 쯔모)
     ctx.interceptor(TURN_PASSED, (event, ic) => {
       const state = ic.state;
       if (!flagOf(state, openedKey(state, holder))) return event;
+      /*
+       * 넘겨받은 장수를 다 썼으면 연장은 끝이다 — **패산이 마르는 것**으로 판정하면
+       * 강 회수(쯔모패를 패산으로 되돌린다)가 패산을 되채울 때마다 솔로 쯔모가
+       * 늘어난다(4회 → 7회 실측, QA synergy3 handedit 확정 5).
+       */
+      if (counterOf(state, soloLeftKey(state, holder)) <= 0) return event;
       // 패산이 다 마르면 연장이 끝난 것이므로 그대로 둔다
       if ((state.zones[WALL]?.tileIds.length ?? 0) === 0) return event;
       // **보유자가 버린 뒤**에만 턴을 되가져온다. 누가 버렸는지 보지 않으면,

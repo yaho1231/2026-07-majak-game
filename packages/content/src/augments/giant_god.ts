@@ -59,6 +59,7 @@ import {
   discardsZone,
   handIdsOf,
   handZone,
+  isTerminalOrHonor,
   kindKey,
   kindOf,
   meldCountOf,
@@ -75,6 +76,7 @@ import type {
   PlayerId,
   TileDrawnPayload,
   TileId,
+  TileKind,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
@@ -100,6 +102,32 @@ const tsumoKey = (state: GameState, h: PlayerId): string =>
  */
 const usedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "used", state, h);
+
+/**
+ * 각성 시점의 **유국역만 스냅샷** — 값은 "각성 직후 버림 이력의 길이"다.
+ *
+ * 각성은 요구패 이력을 통째로 지우고 그 자리에 내려보낸 손패(중장패)를 넣는다.
+ * 후리텐을 푸는 정당한 처리지만, 그 결과 `nagashi_yakuman`의 판정("내 버림이 전부
+ * 요구패·자패")이 **거짓이 되어 유국역만 48,000이 통째로 사라졌다** — 거신병의 발동
+ * 조건(요구패 13종을 내가 전부 버려 뒀다)은 유국역만의 조건을 포함하는데,
+ * 각성이 그것을 스스로 지운 셈이다(QA synergy3 shape 확정 3, 2026-08-23).
+ *
+ * 그래서 각성 직전 이력이 전부 요구패·자패였으면 표식을 남긴다. 길이를 담는 이유는
+ * **각성 이후의 버림은 그대로 검사해야** 하기 때문이다 — 유국역만은 그 뒤 잡패를
+ * 버리면 여전히 깨져야 한다(`nagashi_yakuman.nagashiValid`가 이 값 뒤쪽만 본다).
+ */
+export const giantGodNagashiBaseKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "nagashiBase", state, h);
+
+/**
+ * `discardedKinds`의 kindKey("man1"·"wind3")를 TileKind로 되돌린다 — 이력은 문자열
+ * 스냅샷이라 tileId가 없다. (`nagashi_yakuman`에 같은 함수가 있다: 판정 기준을 맞춘다.)
+ */
+function kindFromKey(key: string): TileKind {
+  const m = /^([a-z]+)(\d+)$/.exec(key);
+  if (m === null) return { suit: "man", rank: 5 }; // 파싱 실패 = 요구패 아님으로 취급
+  return { suit: m[1] as TileKind["suit"], rank: Number(m[2]) };
+}
 
 /** 국사무쌍 13종 (1·9 수패 + 동남서북 + 백발중) */
 const KOKUSHI_KINDS = [
@@ -218,6 +246,23 @@ export const giantGod: AugmentDef = defineAugment({
   detail:
     "(매 국 1회) **증강이 요구패를 깔아 주지 않는다** — 남의 바닥은 세지 않는다. 각성하면 요구패에 대한 내 버림 이력이 지워져 후리텐이 풀린다.\n\n**치·퐁·깡을 한 번이라도 하면 그 국에는 각성할 수 없다.** 리치 중에도 쓸 수 없다.",
   install(ctx) {
+
+    /*
+     * 각성이 갈아 끼운 버림 이력의 **기준선**을 표준 유국만관 판정에도 알린다
+     * (2026-08-23 QA synergy3 shape 확정 3). 이 규칙이 없으면 각성한 국의
+     * 유국만관 12,000이 통째로 사라진다 — 각성 조건 자체가 "요구패만 버렸다"라
+     * 그 조합은 흔하다. 유국역만 증강 쪽은 자기 판정에서 같은 스냅샷을 읽는다.
+     */
+    ctx.engine.rules.addModifier<number>("draw.nagashiHistoryBase", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (current, rctx) => {
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined || rctx.playerId !== ctx.holder) return current;
+        const v = state.augmentData[giantGodNagashiBaseKey(state, ctx.holder)];
+        return typeof v === "number" ? Math.max(current, v) : current;
+      },
+    });
     const { engine, holder } = ctx;
 
     if (!engine.actions.has(ACTION)) {
@@ -254,7 +299,11 @@ export const giantGod: AugmentDef = defineAugment({
         // 이력이 바닥과 어긋나는 것은 상대도 알고 대응할 수 있는 정보다.
         const kokushiSet = new Set(KOKUSHI_KEYS);
         const rs = state.round.byPlayer[p.holder];
-        const history = (rs?.discardedKinds ?? []).filter((k) => !kokushiSet.has(k));
+        const before = rs?.discardedKinds ?? [];
+        // 각성 직전 이력이 전부 요구패·자패였는가 — 유국역만 스냅샷(위 키 주석)
+        const wasAllOrphans =
+          before.length > 0 && before.every((k) => isTerminalOrHonor(kindFromKey(k)));
+        const history = before.filter((k) => !kokushiSet.has(k));
         history.push(
           ...p.handOut
             .map((id) => kindKey(kindOf(state, id)))
@@ -287,6 +336,10 @@ export const giantGod: AugmentDef = defineAugment({
             [usedKey(state, p.holder)]: true,
             // 전원 공개 — 거신병 각성
             [roundViewKey("*", `${ID}:${p.holder}`)]: true,
+            // 유국역만 스냅샷 — 각성이 갈아 끼운 이력의 길이까지는 "전부 요구패였다"
+            ...(wasAllOrphans
+              ? { [giantGodNagashiBaseKey(state, p.holder)]: history.length }
+              : {}),
           },
         };
       });

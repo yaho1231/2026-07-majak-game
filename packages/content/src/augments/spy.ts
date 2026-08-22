@@ -150,9 +150,23 @@ export const spy: AugmentDef = defineAugment({
       let notes = p.augPoints ?? [];
       let stolen = 0;
       for (const hit of hits) {
-        const gain = deltas[hit.winner] ?? 0;
+        /*
+         * 훔치는 것은 **그 화료 자체의 값**까지다 — 카드가 그렇게 적혀 있다:
+         * "지불자들이 내는 액수도 그대로다 — 돈의 **도착지**만 바뀐다".
+         *
+         * 예전에는 `deltas[winner]`를 통째로 가져갔는데, 거기에는 **뱅크가 화료자에게
+         * 따로 발행한 몫**(큰손의 만관 하한 · 모 아니면 도의 판돈 …)까지 섞여 있다.
+         * 그래서 3,900짜리 손 하나가 테이블에 20,100점을 찍어 내고(큰손이 하한을
+         * 두 번 발행한다), 판돈 12,000이 통째로 스파이에게 갔다 — 스파이가 쏜
+         * 사람이면 **방총자가 흑자**가 됐다(2026-08-23 QA synergy3 score 확정 2·5).
+         * 화료의 값(손 점수 + 본장 + 회수한 공탁)으로 자르면 그 경로가 닫히고,
+         * 그때 스파이가 얻는 것은 정확히 "지불자들이 낸 액수"가 된다.
+         */
+        const worth =
+          hit.points + (hit.honbaBonus ?? 0) + (hit.riichiPotGain ?? 0);
+        const gain = Math.min(deltas[hit.winner] ?? 0, Math.max(0, worth));
         if (gain <= 0) continue; // 받을 것이 없으면 훔칠 것도 없다
-        deltas[hit.winner] = 0;
+        deltas[hit.winner] = (deltas[hit.winner] ?? 0) - gain;
         stolen += gain;
         // 화료자의 큰 숫자는 그대로 굴러가는데 증감표에는 0이 뜬다 — 그 줄에 이유를 남긴다.
         notes = withAugNoteFor({ ...p, augPoints: notes }, ID, hit.winner, -gain);

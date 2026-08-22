@@ -95,6 +95,7 @@ function craft(hands: Record<PlayerId, string>, drawnLastFor: PlayerId): GameSta
       discardedKinds: [],
       discardCount: 0,
       tsumogiriIds: [],
+      ownDiscards: [],
     };
   }
 
