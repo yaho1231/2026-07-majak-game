@@ -131,7 +131,9 @@ describe("규칙·계산식 설명이 터치에서도 열린다", () => {
     // ③ 서든데스 규칙 (모드 뱃지)
     expect(APP_CODE).toMatch(/<InfoNote\s+className="mode-badge"/);
     // ④·⑤ 증강 설명 전문 (중계 · 드래프트 보유 목록)
-    expect(APP_CODE).toContain("note={catalog[id]?.description ?? id}");
+    expect(APP_CODE).toContain(
+      "note={\n              catalog[id] === undefined\n                ? id\n                : forMode(catalog[id].description, view.round.mode)\n            }",
+    );
     expect(APP_CODE).toContain("note={entry === undefined ? id : forMode(entry.description, mode)}");
     // 옛 형태(맨 span 의 title)가 돌아오면 실패한다
     expect(APP_CODE).not.toContain('title="타점×3 + 속도×3 + 무대응×2 + 빈도×2"');
