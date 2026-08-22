@@ -2986,8 +2986,9 @@ button {
   max-width: var(--own-corner-max, none);
   overflow-x: auto;
   overflow-y: hidden;
-  /* 스크롤이 생겨도 후로가 잘려 보이지 않게 — 넘치면 가로로 밀어 본다 */
-  scrollbar-width: thin;
+  /* 스크롤이 생겨도 후로가 잘려 보이지 않게 — 넘치면 가로로 밀어 본다.
+     막대는 그리지 않는다(아래 «판 위의 작은 상자» 규칙) — 후로 두어 개뿐인 줄에도
+     회색 막대가 그어져 있었다. */
   overscroll-behavior-x: contain;
 }
 
@@ -7630,8 +7631,41 @@ button {
   overflow-y: auto;
 }
 
+/*
+ * **판 위의 작은 상자에서는 스크롤막대를 그리지 않는다** (2026-08-23 사용자 지시).
+ *
+ * `overflow: auto`는 «넘칠 때만» 막대를 그리는 규칙처럼 보이지만, macOS의
+ * «스크롤 막대 항상 표시»를 켠 사람에게는 **넘치든 말든 항상** 자리를 차지한 채 서 있다.
+ * 그래서 한 화면에 다 들어오는 증강 설명에도, 후로 두어 개뿐인 줄에도 회색 막대가
+ * 그어져 있었다 — 판 위에 얹힌 상자들이라 그 한 줄이 유독 눈에 띈다.
+ *
+ * 막대만 감추고 **스크롤 자체는 남긴다** — 휠·터치·드래그로 넘친 내용에 그대로 닿는다.
+ * (긴 목록을 담는 상자 — 증강 정보 로그·도감·설정 — 은 건드리지 않는다. 거기서는
+ *  막대가 «더 있다»는 유일한 신호다.)
+ */
+.augdesc-body-full,
+.own-corner-right {
+  scrollbar-width: none;
+}
+.augdesc-body-full::-webkit-scrollbar,
+.own-corner-right::-webkit-scrollbar,
+.game-notice-float::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 /* 펼친 본문의 문단 — 상세(detail)는 빈 줄로 나뉜 여러 문단일 수 있다 */
 .augdesc-para { display: block; }
+
+/* 원문 머리말이 배지보다 더 말할 때의 조건 줄 (AugDesc `cond`).
+   배지는 펼쳐도 바뀌지 않으므로, 「매 국 1회」 같은 추가 제한은 여기에 선다. */
+.augdesc-cond {
+  display: block;
+  margin-bottom: 4px;
+  color: #ded7ff;
+  font-size: 0.9em;
+  font-weight: 700;
+}
 .augdesc-para + .augdesc-para { margin-top: 0.5em; }
 
 /* 다섯 줄 방어선 — 요약이 없는(새로 추가된) 증강이 원문 첫 문장으로 대체될 때를 대비 */
@@ -14468,6 +14502,9 @@ body:has(.overlay) .emote-bar {
   width: min(320px, calc(100cqw - 28px));
   max-height: 40cqh;
   overflow-y: auto;
+  /* 막대는 그리지 않는다 — 세 줄짜리 공지에도 회색 줄이 그어져 있었다
+     (위 «판 위의 작은 상자» 규칙과 같은 이유). */
+  scrollbar-width: none;
   border: 1px solid rgba(240, 200, 106, 0.32);
   border-left: 3px solid var(--brass);
   border-radius: var(--r-md, 10px);
@@ -14492,6 +14529,30 @@ body:has(.overlay) .emote-bar {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+/* 판 위의 공지만 내릴 수 있다 — 「✕」는 공지 띠 **밖**의 형제라 카드 오른쪽 위에
+   절대 배치로 얹고, 머리줄에는 그만큼 자리를 비워 준다(띠 안에 넣으면 머리줄 전체가
+   «펼치기» 과녁이라 누름이 두 번 세어진다). */
+.game-notice-float > .notice-banner .notice-head {
+  padding-right: 22px;
+}
+.notice-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 1;
+  padding: 2px 5px;
+  border: none;
+  border-radius: var(--r-chip, 6px);
+  background: none;
+  color: var(--ink-4, #8b97a0);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.notice-close:hover {
+  background: rgba(240, 200, 106, 0.16);
+  color: var(--ink-1, #ece4d2);
 }
 .notice-tag {
   flex: none;
