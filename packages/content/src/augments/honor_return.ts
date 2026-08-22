@@ -33,6 +33,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { counterOf, matchUses, publishUsesLeft, viewKey } from "../util.js";
+import { handAlteredKey } from "./handAltered.js";
 import { plan } from "./botPlan.js";
 
 const ID = "honor_return";
@@ -170,7 +171,14 @@ export const honorReturn: AugmentDef = defineAugment({
         });
       }
       // 배패 13장 안에서 교체 — 장수 불변, 결정적(prng 불필요)
-      if (changes.length > 0) rc.emit(tileKindChanged(changes));
+      if (changes.length > 0) {
+        rc.emit(tileKindChanged(changes));
+        // 배패 자체를 다시 쓴 것이므로 천화·지화 게이트를 닫는다 — 이 주입은
+        // `ROUND_STARTED`(=setupRound) **뒤**, 오야의 첫 쯔모보다 **앞**이라 천화 창
+        // 한복판에서 일어난다. 되받는 자패는 역패 커쯔를 통째로 채워 주므로 순수
+        // 배패보다 완성 확률이 오히려 높다(2026-08-22 QA aug-2 확정 5).
+        rc.emit(augmentDataSet(handAlteredKey(rc.state, holder), true));
+      }
       rc.emit(augmentDataSet(keepKey(holder), []));
       rc.emit(augmentDataSet(noticeKey(holder), []));
     });

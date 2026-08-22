@@ -31,7 +31,14 @@ const ID = "blame_shift";
 /** total(양수)을 n명에게 100점 단위로 최대한 고르게 나눈다. 합은 정확히 total.
  *  마지막 몫이 나머지를 흡수한다(호출부에서 쏜 사람을 마지막에 둔다). */
 function splitEvenly(total: number, n: number): number[] {
-  const per = Math.round(total / n / 100) * 100;
+  /*
+   * ⚠ `Math.round`가 아니라 **내림**이어야 한다. 올림이 나오는 금액(8000/3 = 2666.7 →
+   * 2700)에서는 앞의 두 사람이 2,700씩 내고 **마지막(=쏜 사람)이 2,600**만 내서,
+   * "끝수는 시작한 사람이 흡수한다"는 주석·카드 문구가 정확히 뒤집혔다 — 결과 화면에
+   * 방총한 사람이 테이블에서 가장 적게 내는 줄이 섰다(2026-08-22 QA aug-1 확정 2).
+   * 내림이면 나머지는 언제나 마지막 몫으로 몰린다.
+   */
+  const per = Math.floor(total / n / 100) * 100;
   const out: number[] = [];
   let assigned = 0;
   for (let i = 0; i < n - 1; i++) {

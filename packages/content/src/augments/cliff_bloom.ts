@@ -415,17 +415,27 @@ export const cliffBloom: AugmentDef = defineAugment({
       });
     }
 
-    // 보유자에게 **남은 영상패만** 공개 — 무엇을 고를지 보고 정한다.
-    // 상수 4로 두면 깡으로 영상패가 줄어든 뒤 그 뒤의 도라 표시패까지 새어 보인다.
+    /*
+     * 보유자에게 **남은 영상패만** 공개 — 무엇을 고를지 보고 정한다.
+     * 상수 4로 두면 깡으로 영상패가 줄어든 뒤 그 뒤의 도라 표시패까지 새어 보인다.
+     *
+     * ⚠ 열람은 **고를 차례가 열려 있을 때만** 열린다(`canPick`). 예전에는 게이트가
+     * 하나도 없어서, 깡을 한 번도 치지 않은 보유자가 **배패 직후부터 유국까지**
+     * 영상패를 실제 tileId로 계속 봤다(2026-08-22 QA aug-1 확정 3). 왕패는 절대
+     * 나오지 않는 패라 그 4장을 아는 것은 "남은 산에 그 종류가 몇 장인지"를 아는
+     * 것과 같다 — 카드가 열람 시점을 "깡할 때마다"로 못 박은 것과 정면으로 어긋나고,
+     * 정보형 증강(`dead_wall_master`·`rinshan_preview`)의 값어치를 무상으로 준다.
+     */
     ctx.engine.rules.addModifier<VisibilityRule>("visibility.deadWall", {
       source: ctx.instanceId,
       layer: ctx.layer,
       apply: (cur, rctx) => {
         if (rctx.playerId !== holder) return cur;
         const state = rctx.state as GameState | undefined;
+        if (state === undefined || !canPick(state, holder)) return cur;
         return widenPeek(cur, {
           mode: "peek",
-          count: state === undefined ? 4 : rinshanRemaining(state),
+          count: rinshanRemaining(state),
         });
       },
     });

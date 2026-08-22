@@ -34,6 +34,7 @@ import { siegeRiichi } from "../src/augments/siege_riichi.js";
 import { silentPact } from "../src/augments/silent_pact.js";
 import { soulStrike } from "../src/augments/soul_strike.js";
 import { stealthRiichi } from "../src/augments/stealth_riichi.js";
+import { contentAugments } from "../src/index.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -226,7 +227,7 @@ describe("stealth_riichi × last_stand — 취소가 은닉 표식을 함께 내
       { p0: ["stealth_riichi", "last_stand"] },
     );
 
-  it("취소 뒤에 건 표준 리치는 숨지 않는다 (공탁 1000을 내고 은닉을 얻지 못한다)", () => {
+  it("취소한 국에는 리치를 다시 걸 수 없다 — 은닉 세탁 경로가 통째로 닫힌다", () => {
     const g1 = mk(scene());
     expect(
       g1.engine.submit({
@@ -250,7 +251,13 @@ describe("stealth_riichi × last_stand — 취소가 은닉 표식을 함께 내
     );
     for (const [, v] of stealthKeys) expect(v).not.toBe(true);
 
-    // 다시 뽑아 표준 리치(공탁 1000) — 은닉되면 안 된다
+    /*
+     * 원래 이 자리는 "다시 뽑아 표준 리치를 걸면 은닉되지 않는다"였다. 그런데
+     * 2026-08-22(QA aug-2 확정 8)부터 **취소한 국에는 리치를 다시 걸 수 없다** —
+     * 취소가 국 스코프 이력을 남기고 `riichi.blocked`가 그것을 본다. 순비용 0으로
+     * 일발을 재장전하고 영구 리치 후리텐을 세탁하던 경로를 통째로 막은 것이라,
+     * 여기서 걱정하던 "은닉 세탁"도 함께 사라졌다 — 재리치 자체가 없다.
+     */
     const g3 = mk(giveDraw(g2.engine.state, "p0"));
     const before = g3.engine.state.players.find((p) => p.id === "p0")!.score;
     const r = g3.engine.submit({
@@ -258,17 +265,13 @@ describe("stealth_riichi × last_stand — 취소가 은닉 표식을 함께 내
       type: "riichi",
       payload: { tileId: g3.engine.state.round.lastDrawnTile as TileId },
     });
-    expect(r.ok).toBe(true);
+    expect(r.ok).toBe(false);
     const after = g3.engine.state;
-    expect(before - after.players.find((p) => p.id === "p0")!.score).toBe(1000);
-    expect(
-      g3.engine.rules.resolve<boolean>("riichi.hidden", {
-        playerId: "p0",
-        state: after,
-      }),
-    ).toBe(false);
+    // 공탁도 나가지 않고 리치도 서지 않는다
+    expect(before - after.players.find((p) => p.id === "p0")!.score).toBe(0);
+    expect(after.round.byPlayer["p0"]?.riichi ?? null).toBeNull();
     const v1 = buildPlayerView(after, "p1", g3.engine.rules);
-    expect(v1.round.byPlayer["p0"]?.riichiDeclared).toBe(true);
+    expect(v1.round.byPlayer["p0"]?.riichiDeclared).not.toBe(true);
   });
 });
 
@@ -718,7 +721,11 @@ describe("문구 — 구현과 어긋난 문장이 남아 있지 않다", () => 
   });
 
   it("open_riichi_reveal — detail의 배타 목록이 실제 대칭 배제와 같다", () => {
-    const detail = openRiichiReveal.detail ?? "";
+    // 배타 문장은 이제 손으로 적지 않고 `conflicts`에서 생성한다
+    // (src/conflictNotes.ts — 2026-08-22 QA round2 확정 1). 그래서 원본 정의가
+    // 아니라 **출고되는 카탈로그**를 본다.
+    const shipped = contentAugments.find((d) => d.id === openRiichiReveal.id);
+    const detail = shipped?.detail ?? "";
     for (const name of ["승부수", "손바닥 뒤집기", "염색", "스텔스 리치"]) {
       expect(detail).toContain(name);
     }

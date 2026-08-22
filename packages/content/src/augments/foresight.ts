@@ -13,8 +13,9 @@
  *   삼세 예지처럼 "지금 기준으로 다시 계산"해서 되돌릴 수 있는 종류의 정보가 아니다 —
  *   미래의 후로를 미리 알 방법이 없으므로 구조적으로 재계산 불가다.
  *   그래서 엔진이 아니라 **문구**를 사실에 맞췄다(detail에 배정이 밀릴 수 있음을 명시).
- *   표시 쪽은 이미 정확하다: 공개 채널은 쯔모마다 앞에서 한 장씩 소비되고(TILE_DRAWN
- *   반응), 자리 이름은 클라이언트의 `drawOrder.ts`가 렌더 시점의 `turnSeat`·방향에서
+ *   표시 쪽은 정확하다: 공개 채널은 **저장된 스냅샷이 아니라 파생값**이라
+ *   («남은 장수» × «지금 패산 앞») 매 이벤트마다 다시 만들어지고(아래 resync),
+ *   자리 이름은 클라이언트의 `drawOrder.ts`가 렌더 시점의 `turnSeat`·방향에서
  *   매번 다시 계산한다 — 후로 뒤에는 "나"가 세 번째 칸으로 옮겨 붙는다.
  * - 발동만 하고 순서를 바꾸지 않으면(턴 시간 종료 포함) **그대로**(항등) 둔 것으로 친다 —
  *   발동 자체가 이미 소진이라, 재배열은 선택이다.
@@ -71,9 +72,17 @@ const WIN_BONUS_HAN = 2; // 구 +4500점 → 3판 → 2판 (2026-07-26 판수 �
 /** 이번 국에 발동했는가 (점수 보너스 게이팅, roundKey 스코프) */
 const usedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "used", state, h);
-/** 마지막 발동 순(turnCount) — 쿨다운 기준 (roundKey 스코프) */
+/** 마지막 발동 순 — 쿨다운 기준 (roundKey 스코프). 단위는 아래 `turnNo` */
 const lastTurnKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "turn", state, h);
+/**
+ * 공개한 4장 중 아직 뽑히지 않고 남은 장수 (roundKey 스코프).
+ *
+ * 표시할 kind는 **저장하지 않는다** — 남은 장수만 세고 화면에 낼 목록은 그때그때
+ * 패산 앞에서 다시 만든다(아래 resync). 이유는 확정 4를 보라.
+ */
+const peekLeftKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "peekLeft", state, h);
 /**
  * 이번 국에 재배열을 이미 썼는가 (roundKey 스코프).
  *
@@ -92,6 +101,18 @@ const peekViewKey = (h: PlayerId): string => roundViewKey(h, "foresight_peek");
 /** 패산 앞 PEEK장의 tileId (부족하면 짧은 배열) */
 function frontIds(state: GameState): TileId[] {
   return (state.zones[WALL]?.tileIds ?? []).slice(0, PEEK);
+}
+
+/** 예언 채널 비교 — 같으면 emit을 생략해 반응 연쇄를 한 겹에서 끊는다 */
+function sameKinds(shown: unknown, kinds: string[]): boolean {
+  if (!Array.isArray(shown) || shown.length !== kinds.length) return false;
+  return kinds.every((k, i) => shown[i] === k);
+}
+
+/** 공개분 중 아직 안 뽑힌 장수 (한 번도 발동 안 했으면 0) */
+function peekLeftOf(state: GameState, h: PlayerId): number {
+  const raw = state.augmentData[peekLeftKey(state, h)];
+  return typeof raw === "number" ? raw : 0;
 }
 
 /** 0~n-1의 모든 순열 (재배열 후보 생성용) */
@@ -137,16 +158,35 @@ const cdTurnsKey = (h: PlayerId): string => cooldownTurnsViewKey(ID, h);
 /** 이번 국 재배열이 소진됐음을 알리는 보유자 전용 채널 */
 const reorderSpentKey = (h: PlayerId): string => roundViewKey(h, `${ID}:reorderSpent`);
 
+/**
+ * 이 국에서 보유자의 현재 순 번호 (= 내가 버린 수).
+ *
+ * ⚠ `state.round.turnCount`를 쓰면 안 된다 — 그것은 **오야가 쯔모할 때마다** 오르고
+ * 영상패(깡)도 예외가 아니다(`flowEvents.ts`, `turnCount + (isDealer ? 1 : 0)`).
+ * 그래서 오야가 예지를 발동한 **바로 그 순에 깡을 치면** 영상 쯔모로 turnCount가 +1 되어
+ * ① `revealedThisTurn`이 거짓이 되고 재배열 후보 24개가 그 자리에서 **0개로 사라졌다** —
+ *    "발동 = 소진, 취소 불가"인 증강이 소진만 되고 능력은 못 쓴 채 죽었다.
+ * ② 쿨다운이 4 → 3으로 줄어 **깡 한 번당 1순씩 공짜로 짧아졌다**.
+ * (2026-08-22 QA aug-2 확정 3, 실측 재현: `qa-lab/round2/aug-2/r_foresight_kan.ts`.)
+ *
+ * 형제 증강이 같은 함정을 먼저 밟고 먼저 나왔다 — `future_sight`·`take_back` 둘 다
+ * 보유자의 `discardCount`로 옮겨 갔다. 여기도 같은 기준을 쓴다.
+ * (누명이 `discardedKinds`를 남의 이력으로 돌리므로 이력 길이가 아니라 `discardCount`다.)
+ */
+function turnNo(state: GameState, h: PlayerId): number {
+  return state.round.byPlayer[h]?.discardCount ?? 0;
+}
+
 /** 남은 쿨다운 순 수 (0이면 발동 가능) */
 function cooldownLeft(state: GameState, h: PlayerId): number {
   const last = state.augmentData[lastTurnKey(state, h)];
   if (typeof last !== "number") return 0;
-  return Math.max(0, COOLDOWN_TURNS - (state.round.turnCount - last));
+  return Math.max(0, COOLDOWN_TURNS - (turnNo(state, h) - last));
 }
 
-/** 이번 턴에 공개했고 아직 재배열하지 않았는가 */
+/** 공개했고 그 뒤로 아직 버리지 않았는가 (= 발동한 그 순 안인가) */
 function revealedThisTurn(state: GameState, h: PlayerId): boolean {
-  return state.augmentData[revealTurnKey(state, h)] === state.round.turnCount;
+  return state.augmentData[revealTurnKey(state, h)] === turnNo(state, h);
 }
 
 function isMyTurn(state: GameState, h: PlayerId): boolean {
@@ -181,9 +221,10 @@ const revealAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => {
     const kinds = frontIds(state).map((id) => kindKey(kindOf(state, id)));
-    const tc = state.round.turnCount;
+    const tc = turnNo(state, req.player);
     return [
       augmentDataSet(peekViewKey(req.player), kinds),
+      augmentDataSet(peekLeftKey(state, req.player), kinds.length),
       augmentDataSet(usedKey(state, req.player), true),
       augmentDataSet(lastTurnKey(state, req.player), tc),
       augmentDataSet(revealTurnKey(state, req.player), tc),
@@ -230,7 +271,7 @@ export const foresight: AugmentDef = defineAugment({
   complexity: 2,
   name: "예지",
   description:
-    "(열람 4순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 그 순간 패산 다음 4장이 나에게만 공개되고(발동=공개, 취소 불가), 국에 한 번은 드래그로 순서를 바꿔 다음 한 바퀴를 설계한다. 발동한 국에 화료하면 +2판을 얻는다.",
+    "(열람 4순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 그 순간 패산 다음 4장이 나에게만 공개되고(발동=공개, 취소 불가), 국에 한 번은 드래그로 순서를 바꿔 다음 한 바퀴를 설계한다. 발동한 국에 화료하면 +2판을 얻는다(역만에는 미적용).",
   detail:
     "(열람 4순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 패산 앞 4장이 나에게만 공개된다. 이 4장은 **지금 차례 기준으로** 하가·대면·상가·나에게 차례로 배정되며, 발동한 그 순간에는 네 번째가 내 쯔모다. 중간에 누군가 퐁·치를 하면 그 사람은 쯔모를 건너뛰므로 배정이 한 칸씩 당겨져 **네 번째가 더 이상 내 쯔모가 아닐 수 있다** — 화면의 자리 이름은 그때그때 다시 계산되니 재배열을 확정하기 전에 확인한다. 드래그로 순서를 바꿔 다시 배치할 수 있지만 **재배열은 한 국에 한 번**이라, 그 국에 다시 발동하면 열람만 되고 순서는 손댈 수 없다. 바꾸지 않거나 순 시간이 지나면 그대로 확정된다. 발동 자체가 이미 소진이라 취소할 수 없으며, 발동 후 4순 동안은 다시 발동할 수 없고 국이 바뀌면 초기화된다. 무엇을 보고 어떻게 섞었는지는 나만 알고 상대에게는 발동 사실만 보인다. 발동한 국에 화료하면 +2판을 얻는다.",
   install(ctx) {
@@ -268,25 +309,19 @@ export const foresight: AugmentDef = defineAugment({
       });
     }
 
-    // 보유자 턴 후보:
-    //  - 아직 이번 턴 공개 전이면 발동(공개) 후보 하나.
-    //  - 이미 공개했으면(재배열 대기) 0~3 모든 순열을 재배열 후보로 낸다 — 클라 드래그
-    //    모달이 사용자가 만든 순서에 맞는 후보를 골라 제출한다(항등 포함 = '그대로 두기').
-    // 예언한 4장은 뽑히는 대로 지운다.
-    //
-    // 스냅샷을 그대로 두면 **이미 남의 손에 들어간 패를 "다음 4장"으로** 국 끝까지
-    // 보여 준다 — 정보 증강이 틀린 정보를 확신 있게 주는 셈이다(docs/25 정보 #5).
-    // 삼세 예지가 같은 문제로 2026-08-01에 고친 방식을 그대로 쓴다.
-    //
-    // ⚠ 보유자 본인의 쯔모만 세면 안 된다. 이 예언은 네 자리의 다음 쯔모를 함께
-    // 보여 주므로, **누가 뽑든** 패산 앞이 한 장씩 줄어든다.
-    // 영상패(깡)는 왕패에서 오므로 패산 순서를 소모하지 않는다 — 세지 않는다.
+    /*
+     * 예언한 4장은 뽑히는 대로 하나씩 줄어든다 — **남은 장수만** 센다.
+     *
+     * ⚠ 보유자 본인의 쯔모만 세면 안 된다. 이 예언은 네 자리의 다음 쯔모를 함께
+     * 보여 주므로, **누가 뽑든** 패산 앞이 한 장씩 줄어든다.
+     * 영상패(깡)는 왕패에서 오므로 패산 순서를 소모하지 않는다 — 세지 않는다.
+     */
     ctx.reaction(TILE_DRAWN, (event, rc) => {
       const p = event.payload as TileDrawnPayload;
       if (p.rinshan) return;
-      const rest = rc.state.augmentData[peekViewKey(holder)];
-      if (!Array.isArray(rest) || rest.length === 0) return;
-      rc.emit(augmentDataSet(peekViewKey(holder), (rest as string[]).slice(1)));
+      const left = peekLeftOf(rc.state, holder);
+      if (left <= 0) return;
+      rc.emit(augmentDataSet(peekLeftKey(rc.state, holder), left - 1));
     });
 
     ctx.holderTurnOptions((state) => {
@@ -316,6 +351,42 @@ export const foresight: AugmentDef = defineAugment({
       const spent = flagOf(rc.state, orderUsedKey(rc.state, holder));
       if (spent && rc.state.augmentData[reorderSpentKey(holder)] !== true) {
         rc.emit(augmentDataSet(reorderSpentKey(holder), true));
+      }
+
+      /*
+       * 예언 채널을 **지금 패산 앞**에서 매번 다시 만든다.
+       *
+       * 예전에는 발동 시점의 kind 배열을 저장해 두고 `TILE_DRAWN` 에서 앞을 한 장씩
+       * 깎기만 했다. 그런데 패산 앞을 `TILE_DRAWN` 없이 가져가는 경로가 여럿이다 —
+       * `future_sight`(앞 3장 교환) · `full_hand_swap`(앞에서 13장 refill) ·
+       * `meld_dissolve`(보충패). 그 뒤로 예언 채널은 **이미 남의 손에 들어간 패**를
+       * "다음 4장"이라고 국 끝까지 확신 있게 보여 줬다 — 정보 증강이 틀린 정보를 주는
+       * 셈이고(docs/25 정보 #5), 더 나쁜 것은 재배열이 그 잘못된 표시 위에서 확정된다는
+       * 점이다. 드래그로 옮긴 것은 화면의 pin8이 아니라 실제 패산의 pin9였다
+       * (2026-08-22 QA aug-2 확정 4, 실측 재현: `qa-lab/round2/aug-2/r_foresight_stale.ts`).
+       *
+       * 삼세 예지가 같은 문제를 2026-08-01에 이렇게 고쳤고, 거기 주석이 이유까지 적어
+       * 뒀다 — "증강이 새로 생길 때마다 같은 구멍이 다시 열리므로 **매 이벤트마다** 다시
+       * 계산한다"(`triple_peek.ts`). 경로를 하나씩 막는 대신 파생값으로 둔다.
+       * "발동 시점 스냅샷"이 아니라 "지금 패산 앞 N장"이 카드가 약속한 것이기도 하다.
+       *
+       * 값이 같으면 아무것도 내지 않아 반응 연쇄는 한 겹에서 멈춘다.
+       */
+      const peekLeft = peekLeftOf(rc.state, holder);
+      if (peekLeft > 0) {
+        const kinds = frontIds(rc.state)
+          .slice(0, peekLeft)
+          .map((id) => kindKey(kindOf(rc.state, id)));
+        const shown = rc.state.augmentData[peekViewKey(holder)];
+        if (!sameKinds(shown, kinds)) {
+          rc.emit(augmentDataSet(peekViewKey(holder), kinds));
+        }
+      } else if (
+        Array.isArray(rc.state.augmentData[peekViewKey(holder)]) &&
+        (rc.state.augmentData[peekViewKey(holder)] as unknown[]).length > 0
+      ) {
+        // 네 장이 전부 뽑혔으면 채널을 비운다 (예언이 끝났다)
+        rc.emit(augmentDataSet(peekViewKey(holder), []));
       }
     });
 

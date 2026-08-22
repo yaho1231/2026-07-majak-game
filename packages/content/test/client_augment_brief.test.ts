@@ -256,7 +256,10 @@ describe("마작 용어 사전", () => {
       splitTerms(text).filter((c) => c.kind === "term").map((c) => (c.kind === "term" ? c.entry.key : ""));
     // `대가`는 "그 상대가"의 꼬리에 통째로 들어 있다 — 여기에 밑줄이 그이면 안 된다
     expect(pick("그 상대가 버린 패")).toEqual([]);
-    expect(pick("대가와 상가")).toEqual(["toimen", "kamicha"]);
+    // `대가`는 아예 잡지 않는다 — 앞이 한글일 때만 막아도 "은닉의 대가가"(값·비용)가
+    // 그대로 걸렸다(2026-08-22 QA round2 확정 7). 이 뜻으로 쓰는 표기는 `대면`뿐이다.
+    expect(pick("대가와 상가")).toEqual(["kamicha"]);
+    expect(pick("은닉의 대가가 하나 있다")).toEqual([]);
     expect(pick("하가·대면·상가·나")).toEqual(["shimocha", "toimen", "kamicha"]);
     // `머리`·`대기`도 낱말 안에 숨는다
     expect(pick("대기만성")).toEqual([]);

@@ -117,11 +117,22 @@ describe("C-4 ⑥ 왕패 열람은 합성되고 픽 순서에 의존하지 않�
       turnSeat: 0,
       drawnLastFor: holder,
     });
+    /*
+     * 절벽 위의 꽃의 왕패 열람은 **고를 차례가 열려 있을 때만** 열린다
+     * (2026-08-22 QA aug-1 확정 3 — 예전에는 깡 없이도 국 내내 보였다).
+     * 여기서 재는 것은 "합성이 좁혀지지 않는가"이므로, 그 창을 열어 둔 상태로 잰다.
+     */
+    const r = base.round;
+    const pickKey = `cliff_bloom:pick:${r.prevalentWind}-${r.roundNumber}-${r.honba}:${holder}#round`;
     const state: GameState = {
       ...base,
       players: base.players.map((p) =>
         p.id === holder ? { ...p, augments: order.map(([id]) => id) } : p,
       ),
+      augmentData: {
+        ...base.augmentData,
+        [pickKey]: (base.round.lastDrawnTile ?? -1) + 1,
+      },
     };
     const g = createStandardGameFromState(state, undefined, contentAugments);
     for (const [, def] of order) {

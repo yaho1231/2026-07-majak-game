@@ -15,6 +15,8 @@
 
 import type { AugmentDef } from "@majak/core";
 
+import { withConflictNotes } from "./conflictNotes.js";
+
 // 봇이 판단할 수 없어 정책을 두지 않은 액티브 증강 목록 (드래프트 후순위·커버리지 테스트)
 export { BOT_UNUSABLE_AUGMENTS } from "./augments/botHelpers.js";
 
@@ -280,7 +282,7 @@ export {
  * 드래프트는 카탈로그 전체에서 균등·비복원으로 3장을 뽑는다(`AugmentRegistry.rollUniform`).
  * 그래서 아래 배열의 구획 주석은 등급이 아니라 **추가된 시기**를 나타낸다.
  */
-export const contentAugments: AugmentDef[] = [
+const CONTENT_AUGMENTS: AugmentDef[] = [
   // Silver
   redFiveTouch,
   counter,
@@ -407,3 +409,9 @@ export const contentAugments: AugmentDef[] = [
   // 7차 사용자 발안 (2026-08-07)
   joker, // 조커 — 이번 국 손패의 백이 무엇이든 되는 만능패
 ];
+
+/**
+ * 배타(`conflicts`) 문장은 카탈로그에서 생성해 detail 끝에 붙인다 — 손으로 적으면
+ * 배열이 바뀔 때마다 낡는다(2026-08-22 QA round2 확정 1). conflictNotes.ts 참조.
+ */
+export const contentAugments: AugmentDef[] = withConflictNotes(CONTENT_AUGMENTS);

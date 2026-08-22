@@ -509,16 +509,29 @@ describe("foresight (예지)", () => {
 
   // 2026-08-07(사용자 지시) 너프: 열람 쿨다운 2순 → 4순.
   it("사용 후 4순 동안 비활성, 4순이 지나면 다시 열린다", () => {
-    // 0순에 발동한 기록을 심고 turnCount를 옮겨 가며 발동 후보 수를 본다
-    const scene = (turnCount: number): GameState => {
+    /*
+     * 0순에 발동한 기록을 심고 **보유자가 버린 수**를 옮겨 가며 발동 후보 수를 본다.
+     *
+     * 2026-08-22(QA aug-2 확정 3): 순 기준이 `round.turnCount`에서 보유자의
+     * `discardCount`로 옮겨 갔다. turnCount는 **오야가 뽑을 때마다** 오르고 영상패도
+     * 예외가 아니라, 오야가 깡을 칠 때마다 쿨다운이 공짜로 1순씩 짧아졌다
+     * (형제 `future_sight`·`take_back`이 먼저 밟고 먼저 나온 함정이다).
+     */
+    const scene = (discardCount: number): GameState => {
       const base = foresightScene();
       return {
         ...base,
-        round: { ...base.round, turnCount },
+        round: {
+          ...base.round,
+          byPlayer: {
+            ...base.round.byPlayer,
+            p0: { ...base.round.byPlayer.p0!, discardCount },
+          },
+        },
         augmentData: { ...base.augmentData, "foresight:turn:1-1-0:p0#round": 0 },
       };
     };
-    for (const [turnCount, expected] of [
+    for (const [discardCount, expected] of [
       [0, 0],
       [1, 0],
       [2, 0],
@@ -526,7 +539,7 @@ describe("foresight (예지)", () => {
       [4, 1],
       [7, 1],
     ] as const) {
-      const { prompt } = start(scene(turnCount), foresight);
+      const { prompt } = start(scene(discardCount), foresight);
       expect(optionsOf(prompt, "foresight_reveal")).toHaveLength(expected);
     }
   });

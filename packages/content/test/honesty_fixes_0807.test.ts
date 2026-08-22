@@ -416,8 +416,9 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
     ).toBe(45000);
 
     // 문구가 곧 계약이다 — 카드에 적힌 수와 엔진이 쓰는 수가 같아야 한다
-    expect(unification.description).toContain("45000");
-    expect(unification.detail).toContain("45000");
+    // 4자리 이상은 전부 자릿점을 찍는다(2026-08-22 QA round2 확정 13④)
+    expect(unification.description).toContain("45,000");
+    expect(unification.detail).toContain("45,000");
   });
 });
 
@@ -455,7 +456,8 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
   });
 
   it("개벽: 국당 1회 제한", () => {
-    expect(genesis.description).toContain("한 국에 1회");
+    // 횟수 표기는 "매 국 1회" 하나로 통일했다(2026-08-22 QA round2 확정 13①)
+    expect(genesis.description).toContain("매 국 1회");
   });
 
   it("북풍 상인: 영상패 고갈·패산 감소·천화 파기", () => {

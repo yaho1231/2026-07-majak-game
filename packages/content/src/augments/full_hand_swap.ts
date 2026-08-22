@@ -31,6 +31,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, publishUsesLeft, roundViewKey, sameHandSize } from "../util.js";
+import { handAlteredMark } from "./handAltered.js";
 import {
   breakStealthRiichiEvents,
   ensureStealthBreakReducer,
@@ -166,6 +167,13 @@ export const fullHandSwap: AugmentDef = defineAugment({
             [usedKey(p.holder)]: counterOf(state, usedKey(p.holder)) + 1,
             // 누구를 털었는지 전원 공개 (Rule #4 대응의 전제)
             [roundViewKey("*", `${ID}:${p.holder}`)]: p.target,
+            // 천화·지화 게이트를 닫는다 — 발동 창(turnCount<=1)이 천화 창과 정확히
+            // 겹치므로, 표식이 없으면 "상대 배패가 완성형이면 강탈해서 천화"가
+            // 확률이 아니라 **선택**이 된다(2026-08-22 QA aug-2 확정 2, 48,000점 실측).
+            // 손이 바뀐 것은 강탈자만이 아니다 — 대상도 패산에서 새 손을 받으므로
+            // **양쪽 모두** 배패가 아닌 손이 된다.
+            ...handAlteredMark(state, p.holder),
+            ...handAlteredMark(state, p.target),
           },
         };
         return next;

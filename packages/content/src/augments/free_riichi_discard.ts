@@ -36,6 +36,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { roundViewKey } from "../util.js";
+import { STEALTH_RIICHI_BROKEN } from "./stealthBreak.js";
 import { pickSafestDiscard } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
@@ -46,10 +47,41 @@ const AUGMENT_ID = "free_riichi_discard";
 const snapKey = (state: GameState, player: PlayerId): string =>
   roundScopedKey(AUGMENT_ID, "snap", state, player);
 
-/** augmentData에서 스냅샷 손패 id 목록을 읽는다 (없으면 null) */
+/**
+ * augmentData에서 스냅샷 손패 id 목록을 읽는다 (없으면 null).
+ *
+ * 빈 배열도 null로 본다 — 리치가 풀릴 때 스냅샷을 `[]`로 지우기 때문이다.
+ * (키 삭제 이벤트가 없어 빈 값으로 덮는다. 빈 배열을 그대로 흘려보내면
+ *  `hand.winTileIds`가 «손패 0장»이 되어 그 국이 더 크게 죽는다.)
+ */
 function snapshotOf(state: GameState, player: PlayerId): TileId[] | null {
   const raw = state.augmentData[snapKey(state, player)];
-  return Array.isArray(raw) ? (raw as TileId[]) : null;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  return raw as TileId[];
+}
+
+/**
+ * 지금 이 스냅샷을 판정에 써도 되는가 — **리치가 살아 있을 때만** 쓴다.
+ *
+ * ## 왜 있는가 — 남이 내 리치를 풀면 그 국이 통째로 벽돌이 됐다
+ *
+ * 이 파일의 `conflicts`(`last_stand`·`palm_flip`)는 **같은 사람의 드래프트 안에서만**
+ * 작동한다. 그런데 리치를 푸는 경로가 하나 더 있고 그것은 **상대의** 증강이 낸다 —
+ * `stealthBreak` 의 `STEALTH_RIICHI_BROKEN`(통째로 바꾸기·등가교환·자리 바꿈).
+ * 게다가 `riichiBlocksSwap` 은 숨은 리치를 **일부러 대상으로 허용**하므로 조합이 열려 있다.
+ *
+ * 그러면 리치는 풀렸는데 스냅샷만 남아, 화료 판정·후리텐·유국 텐파이가 **지금 상대 손에
+ * 있는 옛 13장**으로 돌아갔다. 실제 손이 무엇이 되든 화료가 성립하지 않고, 유국 텐파이도
+ * 잡히지 않으며, `call.kan.enabled` 까지 계속 막혔다 — 능력(`free_discard`)은 이미 죽어
+ * 있으니 **얻는 것 없이 그 국을 통째로 잃는다**(2026-08-22 QA aug-2 확정 7, 실측 재현).
+ *
+ * 아래 `STEALTH_RIICHI_BROKEN` 리액션이 스냅샷을 지우지만, 그 한 경로만 막으면 다음에
+ * 리치를 푸는 증강이 생길 때 같은 구멍이 다시 열린다. 그래서 판정 쪽에서도 **리치가
+ * 살아 있는지**를 함께 본다 — 어느 경로로 풀리든 손은 물리 손패로 돌아간다.
+ */
+function activeSnapshotOf(state: GameState, player: PlayerId): TileId[] | null {
+  if (state.round.byPlayer[player]?.riichi == null) return null;
+  return snapshotOf(state, player);
 }
 
 const freeDiscardAction: ActionDef<{ tileId: TileId }> = {
@@ -66,6 +98,13 @@ const freeDiscardAction: ActionDef<{ tileId: TileId }> = {
     }
     if (state.round.byPlayer[req.player]?.riichi == null) {
       return "not in riichi";
+    }
+    // 스냅샷이 있어야 «아무 패나 버려도 대기가 안 변한다»가 성립한다. 두 조건이
+    // 분리돼 있어서, 스냅샷 리액션을 놓친 채 리치 상태만 서는 경로가 하나라도 생기면
+    // 남는 것은 «리치 중 대기 파괴 자유 타패»뿐이었다(QA aug-2 의심 5 — 그런 경로를
+    // 실제로 찾지는 못했지만, 두 조건을 붙여 두면 앞으로도 생기지 않는다).
+    if (snapshotOf(state, req.player) === null) {
+      return "no riichi snapshot";
     }
     const drawn = state.round.lastDrawnTile;
     if (drawn !== null && req.payload.tileId === drawn) {
@@ -140,6 +179,24 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
     });
 
     /*
+     * 남이 내 숨은 리치를 풀면 스냅샷도 함께 걷는다.
+     *
+     * `activeSnapshotOf` 가 판정 쪽에서 이미 리치를 함께 보므로 여기 없어도 오판은
+     * 나지 않는다. 그래도 지우는 이유는 두 가지다 —
+     * ① 화면에 남은 «내 오름패» 배지가 이미 남의 손에 있는 옛 대기를 계속 가리킨다.
+     * ② 스냅샷이 살아 있으면 그 국에 리치를 다시 걸었을 때(스텔스가 풀렸으니 표준
+     *    리치는 걸 수 있다) 위 리액션의 "이미 스냅샷됨" 조기 반환에 걸려 **새 손이 아니라
+     *    옛 손이 다시 고정**된다.
+     */
+    ctx.reaction(STEALTH_RIICHI_BROKEN, (event, rc) => {
+      const p = event.payload as { player: PlayerId };
+      if (p.player !== holder) return;
+      if (snapshotOf(rc.state, holder) === null) return;
+      rc.emit(augmentDataSet(snapKey(rc.state, holder), []));
+      rc.emit(augmentDataSet(roundViewKey(holder, `free_declare_waits:${holder}`), []));
+    });
+
+    /*
      * 스냅샷이 살아 있는 동안 보유자는 깡을 칠 수 없다.
      *
      * 스냅샷은 손패 **id 목록**만 고정한다 — 멘쯔 수는 고정하지 않는다. 그래서 리치 뒤에
@@ -155,7 +212,7 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
         if (rctx.playerId !== holder) return current;
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return current;
-        return snapshotOf(state, holder) === null ? current : false;
+        return activeSnapshotOf(state, holder) === null ? current : false;
       },
     });
 
@@ -167,7 +224,7 @@ export const freeRiichiDiscard: AugmentDef = defineAugment({
         if (rctx.playerId !== holder) return current;
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return current;
-        return snapshotOf(state, holder) ?? current;
+        return activeSnapshotOf(state, holder) ?? current;
       },
     });
 

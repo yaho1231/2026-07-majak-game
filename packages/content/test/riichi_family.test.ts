@@ -67,6 +67,25 @@ function withRiichi(state: GameState, player: PlayerId): GameState {
   };
 }
 
+/**
+ * 리치 선언 스냅샷을 심는다 (`TILE_DISCARDED{riichi:true}` 리액션이 만드는 것과 같은 값).
+ *
+ * `withRiichi`는 `riichi` 필드만 세우므로 그 리액션을 건너뛴다. `free_discard`는 이제
+ * 리치 상태와 스냅샷 존재를 **함께** 보므로(2026-08-22 QA aug-2 의심 5), 픽스처도
+ * 실제 흐름이 만드는 상태를 그대로 만들어 준다.
+ */
+function withFreeSnapshot(s: GameState, player: PlayerId): GameState {
+  const r = s.round;
+  const key = `free_riichi_discard:snap:${r.prevalentWind}-${r.roundNumber}-${r.honba}:${player}#round`;
+  return {
+    ...s,
+    augmentData: {
+      ...s.augmentData,
+      [key]: [...(s.zones[handZone(player)]?.tileIds ?? [])],
+    },
+  };
+}
+
 // ─────────────────────────── riichi_upgrade ───────────────────────────
 
 describe("riichi_upgrade (이중 선언)", () => {
@@ -188,7 +207,7 @@ describe("free_riichi_discard (자유 선언)", () => {
       drawnLastFor: "p0",
     });
     s = withAugments(s, "p0", ["free_riichi_discard"]);
-    return withRiichi(s, "p0");
+    return withFreeSnapshot(withRiichi(s, "p0"), "p0");
   }
 
   it("리치 후에는 쯔모패가 아닌 손패를 대기 보존 검사 없이 아무거나 버릴 수 있다", () => {
@@ -478,7 +497,7 @@ describe("peek_riichi_waits (선언 간파)", () => {
 describe("리치 자동 버림 — 증강이 선택지를 열면 자동으로 두지 않는다", () => {
   /** p0 리치 상태 + 쓸모없는 쯔모 1장 (14장 turn.act) */
   function forcedState(augments: string[]): GameState {
-    return withRiichi(
+    const base = withRiichi(
       withAugments(
         craft({
           hands: { p0: "123m456p789s55z66z1m", p1: "*", p2: "*", p3: "*" },
@@ -491,6 +510,7 @@ describe("리치 자동 버림 — 증강이 선택지를 열면 자동으로 �
       ),
       "p0",
     );
+    return augments.includes("free_riichi_discard") ? withFreeSnapshot(base, "p0") : base;
   }
 
   function p0Prompt(game: Game): { options: { type: string }[]; auto?: true } {

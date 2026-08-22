@@ -5,17 +5,42 @@
  *
  * 구현: 연금술사(alchemist)와 같은 자원 구조 — 게임 단위 카운터 5회 + 한 순 1회 제한 +
  * 남은 횟수 뷰 채널. holderTurnOptions로 손패 수패×다른 무늬 후보(≤26)를 열거,
- * TileKindChanged(conjured)로 변환한다.
+ * TileKindChanged로 변환한다.
+ *
+ * ⚠ **패산의 실물과 종류를 맞바꾼다 — 그 자리에서 생성(conjure)하는 것은 최후수단이다.**
+ * 형제 `suit_unify`(suitUnifyCore 머리 주석)가 완전히 같은 조작에서 이미 버린 구현이
+ * kind 덮어쓰기였다: 손패의 kind만 갈아 끼우면 같은 종류가 게임에 5장 이상 존재하는
+ * 비정상 분포가 생기고, 남은 패를 세는 쪽(대기·안전패 계산)이 전부 틀어진다
+ * (2026-08-22 QA aug-4 확정 3). 그래서 suitUnifyCore와 같은 규약을 쓴다 —
+ * 패산에 목표 종류의 실물이 있으면 그 패와 종류를 서로 맞바꾸고(장수 분포 보존),
+ * 없을 때만 그 자리에서 생성한다.
+ * (패산 실물을 손으로 끌어오는 대신 **종류만 맞교환**하는 것은, 손패의 tileId가
+ *  그대로 남아야 "그 패가 물들었다"는 카드 문구·클라이언트 표시가 유지되기 때문이다.
+ *  패산은 아무에게도 안 보이므로 물리 교환과 결과가 같다.)
+ *
+ * ⚠ **가드는 `copiesLeftUndrawn`가 아니라 「이미 눈에 보이는 장수」로 건다.**
+ * 형제들이 쓰는 `copiesLeftUndrawn`(패산+왕패)는 **상대 손패에 있는 장을 세지 않으므로
+ * 보유자가 알 수 없는 값**이다. 그걸로 액티브 후보를 열고 닫으면 버튼이 뜨고 안 뜨는
+ * 것만으로 "3통이 패산에 남았는가"가 새어 나간다 — 정보 증강도 아닌 카드가 패산을
+ * 들여다보는 셈이다. 반면 확정 3이 말한 실제 피해("바닥에서 넉 장을 다 세고 던진
+ * 안전패에 맞는다")는 **넉 장이 전부 공개돼 있을 때만** 성립한다. 그래서 공개 정보인
+ * 「보이는 장수 ≥ 4」로 막는다: 피해가 정확히 그 경우에만 생기고, 판정이 공개 정보라
+ * 새어 나갈 것이 없다. (자동으로 종류를 고르는 `void_kan`은 선택이 없어 정보 누출이
+ *  없으므로 그쪽은 `copiesLeftUndrawn`을 그대로 쓴다.)
  */
 
 import {
   TILE_DRAWN,
+  WALL,
   augmentDataSet,
   defineAugment,
+  discardsZone,
   handIdsOf,
+  handZone,
   isNumberSuit,
   kindKey,
   kindOf,
+  meldsZone,
   playerAtSeat,
   tileKindChanged,
 } from "@majak/core";
@@ -25,8 +50,10 @@ import type {
   GameState,
   PlayerId,
   TileId,
+  TileKind,
 } from "@majak/core";
-import { counterOf, roundKey, roundViewKey, viewKey } from "../util.js";
+import { counterOf, roundKey, roundViewKey, statePrng, viewKey } from "../util.js";
+import { handAlteredKey } from "./handAltered.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -68,6 +95,46 @@ function usedThisTurn(state: GameState, h: PlayerId): boolean {
   return state.augmentData[turnUsedKey(h)] === currentTurnSig(state, h);
 }
 
+/**
+ * 패산에 남아 있는 목표 종류의 실물들 (교환 상대 후보).
+ *
+ * 적도라는 후보에서 뺀다 — 적5를 끌어오면 "적도라를 물들이면 빨간색이 사라진다"는
+ * 카드의 ⚠ 문구와 반대로 **염색으로 적도라가 생기는** 길이 열린다.
+ * 왕패는 보지 않는다 — 표시패·영상패 자리를 건드리면 도라가 통째로 흔들린다.
+ */
+function wallPartners(state: GameState, kind: TileKind): TileId[] {
+  const out: TileId[] = [];
+  for (const id of state.zones[WALL]?.tileIds ?? []) {
+    const t = state.tiles[id];
+    if (t === undefined || t.attrs.red === true) continue;
+    if (t.kind.suit === kind.suit && t.kind.rank === kind.rank) out.push(id);
+  }
+  return out;
+}
+
+/**
+ * **이미 테이블에 드러나 있는 그 종류의 장수** — 내 손패 + 전원의 버림·후로 + 도라 표시패.
+ *
+ * 수비자가 "이건 절대 안 맞는다"고 셀 수 있는 값이 정확히 이것이다. 4가 되면 그 종류로는
+ * 물들 수 없다(파일 머리의 ⚠ 참고). 공개 정보만 세므로 후보 열거에 써도 새는 것이 없다.
+ */
+function visibleCopies(state: GameState, holder: PlayerId, kind: TileKind): number {
+  let n = 0;
+  const count = (ids: readonly TileId[] | undefined): void => {
+    for (const id of ids ?? []) {
+      const k = kindOf(state, id);
+      if (k.suit === kind.suit && k.rank === kind.rank) n++;
+    }
+  };
+  count(state.zones[handZone(holder)]?.tileIds);
+  for (const p of state.players) {
+    count(state.zones[discardsZone(p.id)]?.tileIds);
+    count(state.zones[meldsZone(p.id)]?.tileIds);
+  }
+  count(state.round.doraIndicators);
+  return n;
+}
+
 const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
   type: ACTION,
   validate: (req, { state }) => {
@@ -89,18 +156,40 @@ const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
     const k = kindOf(state, req.payload.tileId);
     if (!isNumberSuit(k)) return "not a number tile";
     if (k.suit === req.payload.suit) return "same suit";
+    // 5장째 방지: 넉 장이 이미 전부 보이는 종류로는 물들 수 없다 (머리 주석 ⚠ 참고)
+    if (visibleCopies(state, req.player, { suit: req.payload.suit, rank: k.rank }) >= 4) {
+      return "all four copies of that tile are already visible";
+    }
     return null;
   },
   toEvents: (req, { state }) => {
     const k = kindOf(state, req.payload.tileId);
+    const target: TileKind = { suit: req.payload.suit, rank: k.rank };
+    // 패산에 실물이 남아 있으면 그 패와 종류를 맞바꾼다(분포 보존). 없으면 생성한다
+    // — suitUnifyCore와 같은 규약이다. 교환 상대는 결정적 난수로 고른다: 패산 어느
+    // 자리의 실물을 내주느냐가 이후 쯔모 순서를 바꾸므로 재현 가능해야 한다.
+    const partners = wallPartners(state, target);
+    const prng = statePrng(state);
+    const partnerId =
+      partners.length === 0 ? undefined : (partners[prng.int(partners.length)] as TileId);
+    const wasRed = state.tiles[req.payload.tileId]?.attrs.red === true;
     return [
-      tileKindChanged([
-        {
-          tileId: req.payload.tileId,
-          kind: { suit: req.payload.suit, rank: k.rank },
-          attrs: { conjured: true },
-        },
-      ]),
+      tileKindChanged(
+        [
+          // 손패의 그 패가 목표 색으로 물든다 (적도라 표식은 코어가 뗀다)
+          { tileId: req.payload.tileId, kind: target, attrs: { conjured: true } },
+          // 패산의 실물이 그 대신 원래 종류가 된다 — 게임 전체 장수 분포 보존.
+          // 물들인 패가 적5였다면 그 빨강은 패산으로 따라간다(적도라 총수도 보존).
+          ...(partnerId === undefined
+            ? []
+            : [{ tileId: partnerId, kind: k, ...(wasRed ? { attrs: { red: true } } : {}) }]),
+        ],
+        prng.getState(),
+      ),
+      // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고).
+      // 이게 없으면 오야가 첫 순에 염색으로 손을 완성시켜 48,000점을 받는다
+      // (2026-08-22 QA aug-4 확정 1 — dead_wall_master 와 완전히 같은 버그).
+      augmentDataSet(handAlteredKey(state, req.player), true),
       augmentDataSet(usedKey(req.player), counterOf(state, usedKey(req.player)) + 1),
       // 이번 턴에 썼음을 기록 → 같은 턴 재사용 차단 (버림으로 턴이 넘어가면 자동 해제)
       augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
@@ -124,7 +213,7 @@ export const tileDyeing: AugmentDef = defineAugment({
   description:
     "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",
   detail:
-    "(게임 내 5회 — 남은 횟수는 증강 표식에 상시 표시된다) 자기 순에 손패의 수패 1장을 숫자는 그대로 둔 채 다른 무늬로 바꾼다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 자패는 대상이 아니다.\n\n무엇을 무엇으로 바꿨는지는 전원에게 공개된다(그 국 동안, 가장 최근 한 번). 패 자체는 손패 안에 남으므로 상대가 보는 것은 '무엇이 무엇이 됐다'는 사실이지 그 패가 손패 어디에 있는지는 아니다.\n\n⚠ **적도라(빨간 5)를 물들이면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 무늬가 바뀌면 성립하지 않는다.",
+    "(게임 내 5회 — 남은 횟수는 증강 표식에 상시 표시된다) 자기 순에 손패의 수패 1장을 숫자는 그대로 둔 채 다른 무늬로 바꾼다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동할 수 있다. 자패는 대상이 아니다.\n\n무엇을 무엇으로 바꿨는지는 전원에게 공개된다(그 국 동안, 가장 최근 한 번). 패 자체는 손패 안에 남으므로 상대가 보는 것은 '무엇이 무엇이 됐다'는 사실이지 그 패가 손패 어디에 있는지는 아니다.\n\n⚠ **넉 장이 이미 전부 드러난 종류로는 물들 수 없다** — 그 무늬·숫자가 버림패·후로·도라 표시패와 내 손패에 다 나와 있으면 그 색은 고를 수 없다(세상에 없는 다섯 번째 장이 생기지 않게).\n\n⚠ **적도라(빨간 5)를 물들이면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 무늬가 바뀌면 성립하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -149,7 +238,10 @@ export const tileDyeing: AugmentDef = defineAugment({
         const k = kindOf(state, id);
         if (!isNumberSuit(k)) continue;
         for (const suit of SUITS) {
-          if (suit !== k.suit) opts.push({ type: ACTION, payload: { tileId: id, suit } });
+          if (suit === k.suit) continue;
+          // 넉 장이 이미 다 보이는 색은 후보로도 내지 않는다 (validate와 같은 기준)
+          if (visibleCopies(state, holder, { suit, rank: k.rank }) >= 4) continue;
+          opts.push({ type: ACTION, payload: { tileId: id, suit } });
         }
       }
       return opts;

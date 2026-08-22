@@ -48,6 +48,7 @@ import type {
   YakuRegistry,
 } from "@majak/core";
 import {
+  counterOf,
   flagOf,
   riichiHidden,
   settleInterceptor,
@@ -110,10 +111,25 @@ function bestWinValue(
 
 /** 이번 국에 먼저 리치를 선언한 상대 (없으면 미기록) */
 const prevKey = (h: PlayerId): string => `counter:prev:${h}`;
-/** 이번 국에 이미 반격했는가 (국당 1회) */
+/**
+ * 반격이 **지금 유효한가** — 손 가치 강탈·직격 +4판의 전제.
+ * 추격 리치를 무르면(승부수) 이 플래그가 내려간다.
+ */
 const struckKey = (h: PlayerId): string => `counter:struck:${h}`;
+/**
+ * 이번 국에 반격을 이미 **썼는가** (국당 1회의 실제 계수).
+ *
+ * `struckKey`와 나눠 둔 이유: 리치 취소로 반격이 무효가 되어도 "이번 국 1회"는 그대로
+ * 소진돼야 한다. 하나로 합치면 취소할 때마다 반격을 다시 쓸 수 있다.
+ */
+const spentKey = (h: PlayerId): string => `counter:spent:${h}`;
+/** 이번 국에 그 상대가 실제로 대납한 금액 (취소 시 되돌릴 원금) */
+const paidKey = (h: PlayerId): string => `counter:paid:${h}`;
 
 const COUNTER_STRUCK = "CounterStruck";
+const COUNTER_REVERTED = "CounterReverted";
+/** 승부수(last_stand)의 리치 취소 이벤트 — 문자열로 구독한다(riichi_upgrade와 같은 꼴) */
+const RIICHI_CANCELED = "RiichiCanceled";
 
 /**
  * 반격한 국에 그 선리치자를 **직격 론**으로 잡았을 때의 확정 보너스
@@ -135,6 +151,13 @@ interface CounterStruckPayload {
   amount: number;
 }
 
+/** 추격 리치를 무를 때 대납금을 원위치로 되돌린다 */
+interface CounterRevertedPayload {
+  holder: PlayerId;
+  target: PlayerId;
+  amount: number;
+}
+
 export const counter: AugmentDef = defineAugment({
   id: "counter",
   tier: "silver",
@@ -142,9 +165,9 @@ export const counter: AugmentDef = defineAugment({
   complexity: 3,
   name: "카운터",
   description:
-    "(매 국 1회) 나보다 먼저 리치를 건 상대에게 추격 리치로 반격한다 — 내 공탁 1000점을 그 상대가 대납하고 그 상대의 일발이 즉시 사라진다. 그 국을 내가 먼저 화료하면 그 상대의 손이 올랐을 때 받았을 점수까지 뱅크에서 받고, 직격 론으로 잡았다면 +4판을 얻는다.",
+    "(매 국 1회) 나보다 먼저 리치를 건 상대에게 추격 리치로 반격한다 — 내 공탁 1,000점을 그 상대가 대납하고 그 상대의 일발이 즉시 사라진다. 그 국을 내가 먼저 화료하면 그 상대의 손이 올랐을 때 받았을 점수까지 뱅크에서 받고, 직격 론으로 잡았다면 +4판을 얻는다.",
   detail:
-    "(매 국 1회) 상대가 먼저 리치를 건 국에서 추격 리치를 선언하는 순간 발동한다. 내 리치 공탁 1000점을 그 상대가 대신 내고, 그 상대의 일발이 즉시 소멸한다. 그 국을 내가 먼저 화료하면 그 상대의 손이 화료했을 때 받았을 점수를 뱅크에서 추가로 받고, 나아가 그 상대의 버림패를 직격 론으로 잡으면 +4판을 얻는다(점수 강탈과 중복).\n\n**대상은 그 국에 가장 먼저 리치를 건 한 사람뿐이다** — 내 앞에 둘·셋이 리치를 걸어도 반격은 첫 사람에게만 간다.\n\n**대납액은 그 상대의 남은 점수를 넘지 않는다** — 상대가 1000점 미만이면 대납은 그만큼만 이뤄지지만, 일발 소멸과 손 가치 강탈·직격 +4판은 그대로 성립한다.",
+    "(매 국 1회) 상대가 먼저 리치를 건 국에서 추격 리치를 선언하는 순간 발동한다. 내 리치 공탁 1,000점을 그 상대가 대신 내고, 그 상대의 일발이 즉시 소멸한다. 그 국을 내가 먼저 화료하면 그 상대의 손이 화료했을 때 받았을 점수를 뱅크에서 추가로 받고, 나아가 그 상대의 버림패를 직격 론으로 잡으면 +4판을 얻는다(점수 강탈과 중복).\n\n**대상은 그 국에 가장 먼저 리치를 건 한 사람뿐이다** — 내 앞에 둘·셋이 리치를 걸어도 반격은 첫 사람에게만 간다.\n\n**대납액은 그 상대의 남은 점수를 넘지 않는다** — 상대가 1,000점 미만이면 대납은 그만큼만 이뤄지지만, 일발 소멸과 손 가치 강탈·직격 +4판은 그대로 성립한다.",
   install(ctx) {
     const { holder, engine } = ctx;
 
@@ -181,6 +204,12 @@ export const counter: AugmentDef = defineAugment({
       if (flagOf(rc.state, struckKey(holder))) {
         rc.emit(augmentDataSet(struckKey(holder), false));
       }
+      if (flagOf(rc.state, spentKey(holder))) {
+        rc.emit(augmentDataSet(spentKey(holder), false));
+      }
+      if (counterOf(rc.state, paidKey(holder)) !== 0) {
+        rc.emit(augmentDataSet(paidKey(holder), 0));
+      }
       for (const channel of ["*", holder]) {
         if (stringOf(rc.state, viewKey(channel, `counter:${holder}`)) !== null) {
           rc.emit(augmentDataSet(viewKey(channel, `counter:${holder}`), ""));
@@ -203,7 +232,7 @@ export const counter: AugmentDef = defineAugment({
 
       // 내 추격 리치 — 선리치자가 있고 아직 반격하지 않았다면 발동
       const target = stringOf(rc.state, prevKey(holder));
-      if (target === null || flagOf(rc.state, struckKey(holder))) return;
+      if (target === null || flagOf(rc.state, spentKey(holder))) return;
       // 상대의 잔여 점수를 넘겨 뜯지 않는다(2026-08-04 사용자 확정). 정산 밖에서
       // 직접 옮기는 이동이라 도비 판정(국 정산 뒤)이 못 잡는다 — 캡이 없으면
       // 그 사람이 음수 점수인 채로 국을 계속 친다(docs/25 방해 #14).
@@ -238,6 +267,8 @@ export const counter: AugmentDef = defineAugment({
         payload: { holder, target, amount } satisfies CounterStruckPayload,
       });
       rc.emit(augmentDataSet(struckKey(holder), true));
+      rc.emit(augmentDataSet(spentKey(holder), true));
+      rc.emit(augmentDataSet(paidKey(holder), amount));
       /*
        * 추격 대상 공개 — 다만 **숨은 리치(스텔스 리치)는 이 채널로도 새면 안 된다.**
        *
@@ -247,6 +278,59 @@ export const counter: AugmentDef = defineAugment({
        */
       const channel = riichiHidden(engine.rules, rc.state, target) ? holder : "*";
       rc.emit(augmentDataSet(viewKey(channel, `counter:${holder}`), target));
+    });
+
+    /*
+     * 추격 리치를 **무르면 반격도 함께 무른다** (2026-08-22 QA aug-1 확정 4).
+     *
+     * 카드가 요구하는 대가는 "**추격 리치로** 반격한다" — 내가 리치에 몸을 싣는 것이다.
+     * 그런데 반격은 리치 선언 한 번으로 종결되고 그 뒤에 승부수(`last_stand`)로 리치를
+     * 취소하면 공탁 1,000점이 되돌아왔다. 결과: 리치를 걸지 않은 채 순 +1,000점을 벌고,
+     * 상대의 일발을 지웠으며, 손 가치 강탈·직격 +4판의 전제인 `struck`까지 그대로 남았다.
+     *
+     * 여기서 되돌리는 것은 **대납금과 `struck` 플래그**다.
+     * - 일발은 되살리지 않는다. 취소는 빨라야 내 다음 순이라 그 시점이면 표준 규칙으로도
+     *   이미 일발이 지나 있다 — 되살리면 없던 일발을 만들어 주는 쪽이 오히려 규칙 위반이다.
+     * - `spent`(국당 1회)는 내리지 않는다. 무르는 것은 반격의 **효과**이지 기회가 아니다.
+     *
+     * `conflicts: ["last_stand"]`로 막지 않은 이유: conflicts는 **같은 사람의 드래프트
+     * 안에서만** 작동하고 샌드박스·프리셋 경로는 그 밖에 있다. 게다가 리치를 없애는
+     * 경로가 승부수 하나뿐이라는 보장도 없어, 근본(취소 시 환급·플래그 해제)을 고친다.
+     */
+    if (!engine.reducers.has(COUNTER_REVERTED)) {
+      engine.reducers.register(COUNTER_REVERTED, (state, event) => {
+        const p = event.payload as CounterRevertedPayload;
+        return {
+          ...state,
+          players: state.players.map((pl) => {
+            if (pl.id === p.holder) return { ...pl, score: pl.score - p.amount };
+            if (pl.id === p.target) return { ...pl, score: pl.score + p.amount };
+            return pl;
+          }),
+        };
+      });
+    }
+
+    ctx.reaction(RIICHI_CANCELED, (event, rc) => {
+      const p = event.payload as { player?: PlayerId };
+      if (p.player !== holder) return;
+      if (!flagOf(rc.state, struckKey(holder))) return;
+      const target = stringOf(rc.state, prevKey(holder));
+      const amount = counterOf(rc.state, paidKey(holder));
+      if (target !== null && amount > 0) {
+        rc.emit({
+          type: COUNTER_REVERTED,
+          payload: { holder, target, amount } satisfies CounterRevertedPayload,
+        });
+      }
+      rc.emit(augmentDataSet(struckKey(holder), false));
+      rc.emit(augmentDataSet(paidKey(holder), 0));
+      // 공개 채널의 "이 사람을 추격 중" 표시도 함께 내린다 — 반격이 없던 일이 됐다.
+      for (const channel of ["*", holder]) {
+        if (stringOf(rc.state, viewKey(channel, `counter:${holder}`)) !== null) {
+          rc.emit(augmentDataSet(viewKey(channel, `counter:${holder}`), ""));
+        }
+      }
     });
 
     // 반격을 터뜨린 국을 내가 '먼저' 화료하면, 선리치자의 손이 올랐을 때 받았을

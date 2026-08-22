@@ -51,6 +51,7 @@ import {
   trackRoundSeq,
   viewKey,
 } from "../util.js";
+import { handAlteredKey } from "./handAltered.js";
 
 const ID = "regret";
 /** 보존이 성사된 뒤 다시 성사되기까지 필요한 국 수 (2국에 1회) */
@@ -111,7 +112,7 @@ export const regret: AugmentDef = defineAugment({
   complexity: 2,
   name: "미련",
   description:
-    "(2국에 1회) 황패유국 시 당신이 멘젠 텐파이면 그 손패 13장이 그대로 다음 국의 배패가 된다 — 다음 국 첫 쯔모에 곧바로 리치가 나올 수 있다.",
+    "(2국에 1회) 황패유국 시 내가 멘젠 텐파이면 그 손패 13장이 그대로 다음 국의 배패가 된다 — 다음 국 첫 쯔모에 곧바로 리치가 나올 수 있다.",
   detail:
     "(2국에 1회) 황패유국 시 자신이 멘젠으로 텐파이를 잡고 있었다면 그 손패 13장이 적도라 표식까지 그대로 다음 국의 배패가 된다. 보존되는 손과 대기는 유국 시 전원에게 공개된다. 한 번 보존이 성사되면 2국이 지나야 다시 성사되므로, 넘겨받은 손으로 싸우는 국에서 또 유국이 나도 그 손은 이어지지 않는다(본장도 한 국으로 센다). 후로한 손은 13장이 되지 않아 멘젠 텐파이에만 적용되며, 누군가 화료해 국이 끝나면 발동하지 않는다.",
   // A급 파괴(docs/25 §conflicts): 둘 다 ROUND_STARTED에서 배패 앞자리를 자기 값으로
@@ -169,7 +170,14 @@ export const regret: AugmentDef = defineAugment({
         });
       }
       // 갓 받은 배패를 보존 kind로 일괄 변경 (결정적 — prng 불필요)
-      if (changes.length > 0) rc.emit(tileKindChanged(changes));
+      if (changes.length > 0) {
+        rc.emit(tileKindChanged(changes));
+        // 배패를 통째로 다시 쓴 것이므로 천화·지화 게이트를 닫는다 — 주입은
+        // `ROUND_STARTED`(=setupRound) 뒤, 오야의 첫 쯔모보다 앞이라 천화 창
+        // 한복판이다. `honor_return` 과 같은 크로스국 주입 패턴이고 같은 규약을
+        // 따른다(2026-08-22 QA aug-2 확정 5).
+        rc.emit(augmentDataSet(handAlteredKey(rc.state, holder), true));
+      }
       // 보존 소진 (다음 유국에서 다시 채워진다)
       rc.emit(augmentDataSet(keepKey(holder), []));
       rc.emit(augmentDataSet(noticeKey(holder), []));

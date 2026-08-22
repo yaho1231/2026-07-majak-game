@@ -29,6 +29,7 @@
  */
 
 import {
+  ROUND_SETTLED,
   ROUND_STARTED,
   TILE_DISCARDED,
   augmentDataSet,
@@ -153,7 +154,7 @@ export const briefFog: AugmentDef = defineAugment({
   complexity: 1,
   name: "박무",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 그 순간부터 6순 동안 네 사람 모두의 버림패가 가려지고, 오직 당신만 모든 바닥을 그대로 본다. 6순이 지나면 안개는 저절로 걷힌다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 그 순간부터 6순 동안 네 사람 모두의 버림패가 가려지고, 오직 나만 모든 바닥을 그대로 본다. 6순이 지나면 안개는 저절로 걷힌다.",
   detail:
     "(동풍전 1회 · 반장전 2회) 자기 순에 선언하면 6순 동안 네 사람의 버림패가 다른 사람에게는 장수만 보이고 내용이 가려진다. 보유자만 네 개의 바닥을 그대로 읽는다. 각 플레이어의 마지막 버림패 한 장은 안개 속에서도 전원에게 공개되어 론·후로 판정과 최소한의 현물 수비는 유지된다. 안개가 활성 중에는 다시 선언할 수 없고, 6순이 지나면 모든 바닥이 정상으로 돌아온다. 6순이 다 가기 전에 국이 끝나면 함께 걷힌다(사용 횟수는 돌아오지 않는다).",
   // 봇: 자해 위험이 전혀 없다 — 옵션이 뜨면 곧바로 선언한다.
@@ -224,6 +225,27 @@ export const briefFog: AugmentDef = defineAugment({
       const map = lastDiscardMap(rc.state);
       rc.emit(augmentDataSet(lastMapKey(holder), map));
       rc.emit(augmentDataSet(revealKey(holder), Object.values(map)));
+    });
+
+    /*
+     * 국이 끝나면 그 자리에서 안개를 걷는다 — **결과 화면에 배지가 남지 않게**.
+     *
+     * 효과 자체는 정산과 함께 정확히 끝난다(`turnKey`가 국 스코프라 다음 국 값이
+     * 쓰이는 순간 만료). 그런데 배지를 내리는 유일한 지점이 `TILE_DISCARDED`였고
+     * 정산 뒤에는 버림이 없다 — 6순이 다 가기 전에 국이 끝나면 "안개 (N순 남음)"이
+     * 결과 화면 내내 서 있었다(2026-08-22 QA aug-1 의심 5). detail의
+     * "6순이 다 가기 전에 국이 끝나면 함께 걷힌다"와 화면이 어긋난다.
+     * `blind_ron`이 같은 증상을 같은 방식으로 고쳤다.
+     */
+    ctx.reaction(ROUND_SETTLED, (_event, rc) => {
+      if (rc.state.augmentData[noticeKey(holder)] !== "") {
+        rc.emit(augmentDataSet(noticeKey(holder), ""));
+      }
+      const revealed = rc.state.augmentData[revealKey(holder)];
+      if (Array.isArray(revealed) && revealed.length > 0) {
+        rc.emit(augmentDataSet(lastMapKey(holder), {}));
+        rc.emit(augmentDataSet(revealKey(holder), []));
+      }
     });
 
     // 국이 바뀌면 바닥이 비므로 지난 국 tileId가 새지 않게 맵을 비운다
