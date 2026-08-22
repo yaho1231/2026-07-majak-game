@@ -5729,9 +5729,16 @@ export function App(): JSX.Element {
   return (
     <PausedContext.Provider value={pause !== null}>
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
-    {/* 판이 돌고 있을 때만 모드를 내려 준다 — 증강 설명의 "동풍전 N회 · 반장전 M회"가
-        그 판의 숫자 하나로 줄어든다. 홈·도감에서는 null이라 둘 다 그대로 보인다. */}
-    <GameModeContext.Provider value={view?.round.mode ?? null}>
+    {/* 판이 정해져 있을 때만 모드를 내려 준다 — 증강 설명의 "동풍전 N회 · 반장전 M회"가
+        그 판의 숫자 하나로 줄어든다. 홈·도감(판 밖)에서는 null이라 둘 다 그대로 보인다.
+
+        **대기실도 판이 정해진 자리다** (2026-08-23 사용자 지시 "전부"). 방의 모드는
+        이미 골라져 있고 곧 그 모드로 시작하므로, 대기실에서 도감을 열어 놓고 고른
+        증강이 판에 들어가는 순간 다른 숫자로 보이면 안 된다. `view`가 없는 동안에는
+        `lobby.gameMode`가 그 자리를 대신한다. */}
+    <GameModeContext.Provider
+      value={view?.round.mode ?? (joined !== null ? lobby?.gameMode ?? null : null)}
+    >
     {/* 대본 강의가 건 잠금 — 손패가 이걸 읽어 지목한 패 하나만 눌리게 한다
         (`CoachLockContext` 주석). 코치가 없으면 언제나 null이라 판은 평소 그대로다. */}
     <CoachLockContext.Provider value={coachLock}>
@@ -7928,11 +7935,13 @@ function AugmentMeta({
 const GlossaryTipsContext = createContext(true);
 
 /**
- * 지금 도는 판의 모드. **인게임에서만** 값이 있고 그 밖(도감·샌드박스·테스트)은 null이다.
+ * 지금 정해져 있는 판의 모드. **대국 중과 대기실**에 값이 있고, 판 밖(홈·홈에서 연
+ * 도감·테스트)에서는 null이다.
  *
- * "동풍전 1회 · 반장전 2회"처럼 두 모드를 나란히 적은 횟수를, 판 중에는 그 판의 숫자
- * 하나("게임 2회")로 줄이는 데 쓴다(`forMode`). 도감은 모드를 가리지 않고 읽는 자리라
- * 둘 다 그대로 둔다.
+ * "동풍전 1회 · 반장전 2회"처럼 두 모드를 나란히 적은 횟수를, 판이 정해져 있으면 그
+ * 판의 숫자 하나("게임 2회")로 줄이는 데 쓴다(`forMode`). 이 컨텍스트를 읽는 자리는
+ * 증강 설명이 나오는 **모든** 화면이다 — 드래프트 카드·이름표 툴팁·관전 칩·도감·
+ * 샌드박스. 판 밖의 도감만 두 숫자를 그대로 보여 준다(모드를 가리지 않고 읽는 자리).
  */
 const GameModeContext = createContext<DisplayMode | null>(null);
 
@@ -8089,10 +8098,16 @@ function AugDesc({
    */
   useOverride?: string | undefined;
 }): JSX.Element {
-  // 판 중이면 "동풍전 1회 · 반장전 2회"를 그 판의 숫자 하나로 줄인다(도감은 둘 다 둔다).
-  // 도감 변형은 판 안에서 열어도 모드를 가리지 않는 자리라 null로 못 박는다.
-  const ctxMode = useContext(GameModeContext);
-  const mode = variant === "draft" ? ctxMode : null;
+  /*
+   * 판이 정해져 있으면 "동풍전 1회 · 반장전 2회"를 그 판의 숫자 하나로 줄인다.
+   *
+   * 2026-08-23: **변형을 가리지 않는다** (사용자 지시 "전부"). 예전에는 `"draft"`
+   * (드래프트 카드·이름표 툴팁)만 줄이고 도감 변형은 원문을 뒀는데, 판 중에 📖로 연
+   * 도감은 «지금 이 판»의 증강을 읽는 자리다 — 같은 증강이 카드에서는 「게임 1회」,
+   * 도감에서는 「동풍전 1회 · 반장전 2회」로 보여 두 곳이 다른 말을 했다. 판 밖(홈)
+   * 에서는 컨텍스트가 null이라 두 숫자가 그대로 남는다.
+   */
+  const mode = useContext(GameModeContext);
   const raw = briefOf(id, description);
   const brief = { use: forMode(raw.use, mode), text: forMode(raw.text, mode) };
   const lead = splitLead(forMode(description ?? "", mode));
@@ -8420,6 +8435,8 @@ function CodexScreen(props: {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [onlyCollected, setOnlyCollected] = useState(false);
+  /** 판(대국·대기실) 안에서 열었으면 그 판의 모드 — 횟수 표기를 하나로 줄인다 */
+  const codexMode = useContext(GameModeContext);
   /** 계열 필터. null이면 전체 — 104종을 한 화면에서 훑기는 어려워 계열로 좁힌다. */
   const [category, setCategory] = useState<AugmentCategory | null>(null);
   const [sortKey, setSortKey] = useState<CodexSortKey>("srvAvg");
@@ -8533,8 +8550,16 @@ function CodexScreen(props: {
   // 도감 상세는 요약(리드) → **상세** 두 겹이다. 원문 설명은 넣지 않는다 — 카드/표에
   // 이미 요약이 서 있고, 설명은 상세와 말이 겹쳐 같은 얘기를 두 번 읽히게 했다.
   // 상세가 아직 없는 증강만 설명이 그 자리를 대신한다(`expandParas`).
-  const selBrief = sel !== undefined ? briefOf(sel.id, sel.description) : null;
-  const selParas = expandParas("codex", sel?.description, sel?.detail);
+  // 판(대국·대기실) 안에서 연 도감은 그 판의 숫자 하나로 줄인다 — 목록 줄(AugDesc)과
+  // 상세가 다른 말을 하면 안 된다. 판 밖에서는 null이라 두 숫자가 그대로 남는다.
+  const selRaw = sel !== undefined ? briefOf(sel.id, sel.description) : null;
+  const selBrief =
+    selRaw === null
+      ? null
+      : { use: forMode(selRaw.use, codexMode), text: forMode(selRaw.text, codexMode) };
+  const selParas = expandParas("codex", sel?.description, sel?.detail).map((para) =>
+    forMode(para, codexMode),
+  );
 
   return (
     <div className="codex">
@@ -14032,6 +14057,8 @@ function SandboxPanel(props: {
   const [target, setTarget] = useState<string>(selfId);
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
+  /** 이 패널은 판 위에 열린다 — 횟수 표기를 그 판의 숫자 하나로 줄인다 */
+  const sbxMode = useContext(GameModeContext);
 
   // 대상 좌석이 사라지는 경우는 없지만(4인 고정), 관전 전환 등으로 어긋나면 나로 되돌린다
   const targetId = view.players.some((p) => p.id === target) ? target : selfId;
@@ -14297,9 +14324,10 @@ function SandboxPanel(props: {
             <span key={b} className="sbx-badge">{b}</span>
           ))}
           {/* 샌드박스 상세는 도감과 같은 취급이다 — 목록 줄에 이미 요약이 서 있고,
-              여기 오는 사람은 증강이 실제로 어떻게 도는지 보러 온다(= 상세). */}
+              여기 오는 사람은 증강이 실제로 어떻게 도는지 보러 온다(= 상세).
+              샌드박스는 판 위에 열리므로 횟수 표기도 그 판의 숫자 하나로 줄인다. */}
           {expandParas("codex", detail.description, detail.detail).map((p, i) => (
-            <p key={i} className="sbx-detail-body"><TermText text={p} /></p>
+            <p key={i} className="sbx-detail-body"><TermText text={forMode(p, sbxMode)} /></p>
           ))}
         </div>
       ) : null}
@@ -18376,7 +18404,12 @@ function SeatAugments({
           <span
             key={id}
             className={`bcast-aug${left === 0 ? " bcast-aug-spent" : ""}`}
-            title={catalog[id]?.description ?? id}
+            /* 관전도 판 위다 — 횟수 표기는 그 판의 숫자 하나로(이름표 툴팁과 같은 규약) */
+            title={
+              catalog[id] === undefined
+                ? id
+                : forMode(catalog[id].description, view.round.mode)
+            }
           >
             {catalog[id]?.name ?? id}
             {left !== null ? (
