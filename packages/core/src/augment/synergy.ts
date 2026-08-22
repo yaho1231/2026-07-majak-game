@@ -406,9 +406,20 @@ function recencyWeights(held: readonly string[]): number[] {
  *   감쇠하지 않는다**: "함께 들면 서로 죽는다"는 언제 집었는지와 무관하기 때문이다.
  *
  * 결정적이다(입력이 같으면 출력이 같다). 순수 함수라 드래프트 밖에서도 안전하다.
+ *
+ * ## 카탈로그의 `conflicts` 와 어긋나면 안 된다 (2026-08-22)
+ *
+ * 함께 **가질 수 없는** 쌍에 «함께 오면 좋다»는 ×2~×3 가중치가 붙어 있었다 —
+ * 실측 10쌍(QA 2차 synergy 확정 3). 그 카드는 `excludeFor`가 어차피 후보에서
+ * 지우므로 화면에 오지는 않지만, **두 표가 서로 반대를 말한다**는 것이 문제다:
+ * 다음 사람이 어느 쪽을 믿어야 할지 알 수 없고, 끌어올린 가중치는 도달할 수 없는
+ * 카드에 버려진다. 그래서 배타 관계를 아는 쪽(카탈로그)이 `conflictsOf`로 알려
+ * 주면 여기서 그 항목을 아예 빼 준다 — 두 표를 손으로 맞춰 두면 언젠가 또 갈린다.
  */
 export function synergyBias(
   held: readonly string[],
+  /** id → 그 증강이 배타하는 id들 (카탈로그가 안다). 없으면 검사하지 않는다. */
+  conflictsOf?: (id: string) => readonly string[],
 ): Readonly<Record<string, number>> {
   if (held.length === 0) return {};
 
@@ -427,9 +438,22 @@ export function synergyBias(
     for (const other of entry.antiIds ?? []) heldAntiIds.add(other);
   });
 
+  /** 보유 증강과 **함께 가질 수 없는** id — 어느 방향이든 배타면 대상이다. */
+  const conflicting = new Set<string>();
+  if (conflictsOf !== undefined) {
+    for (const id of held) for (const c of conflictsOf(id)) conflicting.add(c);
+  }
+
   const out: Record<string, number> = {};
   for (const [id, entry] of Object.entries(AUGMENT_SYNERGY)) {
     if (heldSet.has(id)) continue;
+    // 애초에 함께 가질 수 없는 카드는 끌어올릴 것도 눌러 둘 것도 없다.
+    if (
+      conflicting.has(id) ||
+      (conflictsOf !== undefined && conflictsOf(id).some((c) => heldSet.has(c)))
+    ) {
+      continue;
+    }
 
     // 역시너지 — 네 방향 중 하나라도 걸리면 눌린다(관계는 대칭).
     const anti =
