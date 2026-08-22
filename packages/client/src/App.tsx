@@ -8098,13 +8098,24 @@ function AugDesc({
   const lead = splitLead(forMode(description ?? "", mode));
   const paras = expandParas(variant, description, detail).map((p) => forMode(p, mode));
   const showFull = expanded && paras.length > 0;
-  // 원문 설명을 펼칠 때는 배지도 원문 머리말로 바꿔 단다 — 요약의 use보다 조건이 자세할
-  // 때가 많고, 본문에 머리말을 남겨 두면 같은 말이 배지와 두 번 나온다. 상세(detail)에는
-  // 그런 머리말이 없으므로 요약 배지를 그대로 둔다.
+  /*
+   * **배지는 펼쳐도 그대로다** (2026-08-23 사용자 보고: "개벽 인게임에서 횟수가 이상하게 바뀜").
+   *
+   * 예전에는 펼치는 순간 배지를 원문 머리말로 **갈아 끼웠다**. 개벽은 접으면 「게임 2회」,
+   * 펼치면 「게임 2회 · 매 국 1회」가 되어, 같은 자리의 같은 칩이 누를 때마다 다른 횟수를
+   * 말했다 — 몇 번 쓸 수 있는지를 그 칩 하나로 읽는 사람에게는 숫자가 흔들리는 것으로
+   * 보인다. 배지는 한 증강에 하나여야 한다.
+   *
+   * 대신 원문 머리말이 배지보다 **더 말하는** 경우(개벽의 「매 국 1회」, 자리 바꿈·등가교환의
+   * 국당 제한 …)에는 펼친 본문 맨 위에 조건 줄로 세운다. 머리말은 `expandParas`가 본문에서
+   * 떼어 내므로, 여기서 세우지 않으면 그 조건은 화면 어디에도 남지 않는다.
+   */
   const use =
-    useOverride !== undefined && useOverride !== ""
-      ? useOverride
-      : showFull && variant === "draft" && lead.use !== "" ? lead.use : brief.use;
+    useOverride !== undefined && useOverride !== "" ? useOverride : brief.use;
+  const cond =
+    showFull && variant === "draft" && lead.use !== "" && lead.use !== brief.use
+      ? lead.use
+      : "";
   return (
     <span className="augdesc">
       {use !== "" ? (
@@ -8113,11 +8124,16 @@ function AugDesc({
         </span>
       ) : null}
       <span className={`augdesc-body${showFull ? " augdesc-body-full" : ""}`}>
-        {showFull
-          ? paras.map((p, i) => (
+        {showFull ? (
+          <>
+            {cond !== "" ? <span className="augdesc-cond">{cond}</span> : null}
+            {paras.map((p, i) => (
               <span key={i} className="augdesc-para"><TermText text={p} /></span>
-            ))
-          : <TermText text={brief.text} />}
+            ))}
+          </>
+        ) : (
+          <TermText text={brief.text} />
+        )}
       </span>
     </span>
   );
@@ -10001,12 +10017,39 @@ function GameNoticeBanner({
   notice: ServerNotice | undefined;
   belowReconnectBar: boolean;
 }): JSX.Element | null {
-  if (notice === undefined) return null;
+  /*
+   * **판 위에서는 «×»로 내릴 수 있다** (2026-08-23 사용자 지시).
+   *
+   * 홈·로그인 화면의 배너에는 닫기가 없다 — 거기서는 아무것도 가리지 않고, 공지는
+   * 운영자가 일부러 세운 것이라 "한 번 닫으면 안 보임"을 만들면 못 본 사람이 생긴다
+   * (NoticeBanner 주석). 그런데 판 위는 사정이 다르다: 좁은 카드라도 왼쪽 위를 계속
+   * 덮고 있고, 판은 30~40분을 본다. 그래서 여기서만 닫기를 연다.
+   *
+   * 닫은 표식은 **그 공지 한 건**(제목·본문·수정 시각)에만 붙는다 — 운영자가 공지를
+   * 고치거나 새로 세우면 키가 달라져 다시 뜬다. 「점검 5분 전」이 닫혀 있어서 안 보이는
+   * 일이 없어야 한다. 저장하지 않으므로 새로고침하면 다시 선다.
+   */
+  const key =
+    notice === undefined ? "" : `${notice.title}\u0000${notice.body}\u0000${notice.updatedAt}`;
+  const [dismissed, setDismissed] = useState("");
+  if (notice === undefined || dismissed === key) return null;
   return (
     <div
       className="game-notice-float"
       style={{ top: (belowReconnectBar ? 34 : 0) + NOTICE_TOP_OFFSET }}
     >
+      {/* 닫기는 공지 띠 **밖**에 둔다 — 띠의 머리줄 전체가 «펼치기» 과녁이라, 그 안에
+          버튼을 넣으면 한 번의 누름이 두 번 세어져 펼쳤다 바로 접힌다
+          (`noticeBannerClick.test.ts`가 그걸 지킨다). */}
+      <button
+        type="button"
+        className="notice-close"
+        onClick={() => setDismissed(key)}
+        aria-label="공지 닫기"
+        title="공지 닫기"
+      >
+        ✕
+      </button>
       <NoticeBanner notice={notice} />
     </div>
   );

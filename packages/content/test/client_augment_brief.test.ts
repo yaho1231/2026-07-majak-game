@@ -95,6 +95,40 @@ describe("증강 요약 (클라이언트 기본 설명)", () => {
     }).map((a) => `${a.id}: 배지 "${AUGMENT_BRIEF[a.id]?.use}" ↔ 원문 "${/^\(([^)]*)\)/.exec(a.description)?.[1]}"`);
     expect(bad).toEqual([]);
   });
+
+  /*
+   * **국의 첫 순에만 열리는 증강은 요약에서 그 사실을 말해야 한다** (2026-08-23 사용자 지시).
+   *
+   * 인게임에서 기본으로 보이는 글은 이 요약 한 줄뿐이다. 첫 순이 지나면 버튼이 그냥
+   * 회색으로 죽는데, 요약에 조건이 없으면 «고장»으로 읽힌다 — 단색 세계가 그랬다
+   * (설명·상세에는 «국의 첫 순에만»이 있는데 요약에만 빠져 있었다).
+   *
+   * 아래 목록의 진실은 각 증강의 `validate`다 — 전부 보유자의 `discardCount === 0`
+   * (통째로 바꾸기는 `turnCount <= 1`)을 요구한다. 새로 첫 순 제한을 다는 증강은
+   * 여기에도 넣는다.
+   */
+  const FIRST_TURN_ONLY = [
+    "big_hand",
+    "blood_contract",
+    "dead_wall_master",
+    "discard_lock",
+    "full_hand_swap",
+    "jackpot",
+    "rank_gate",
+    "seat_swap",
+    "suit_unify",
+    "table_flip",
+  ];
+
+  it("첫 순 전용 증강은 요약에도 «첫 순»이 적혀 있다", () => {
+    const missing = FIRST_TURN_ONLY.filter((id) => !(AUGMENT_BRIEF[id]?.text ?? "").includes("첫 순"));
+    expect(missing).toEqual([]);
+  });
+
+  it("첫 순 전용 목록에 사라진 증강이 남아 있지 않다", () => {
+    const live = new Set(ALL.map((a) => a.id));
+    expect(FIRST_TURN_ONLY.filter((id) => !live.has(id))).toEqual([]);
+  });
 });
 
 /**

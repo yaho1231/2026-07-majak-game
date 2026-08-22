@@ -18,6 +18,9 @@
  * 본문이 말한다. 뒤집힌 셋은 배지와 본문 **양쪽에서** 사라졌으므로 이 그물에 걸린다.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { contentAugments } from "@majak/content";
 import { AUGMENT_BRIEF } from "../src/augmentBrief.js";
@@ -69,5 +72,43 @@ describe("증강 카드 배지 — 매치 예산을 숨기지 않는다", () => 
       }
     }
     expect(missing).toEqual([]);
+  });
+});
+
+/**
+ * **배지는 펼쳐도 그대로다** (2026-08-23 사용자 보고: "개벽 인게임에서 횟수가 이상하게 바뀜").
+ *
+ * 예전 `AugDesc`는 «자세히»를 펼치는 순간 배지를 원문 머리말로 갈아 끼웠다. 개벽은
+ * 접으면 「게임 2회」, 펼치면 「게임 2회 · 매 국 1회」 — 같은 자리의 같은 칩이 누를 때마다
+ * 다른 횟수를 말했다. 몇 번 쓸 수 있는지를 그 칩으로 읽는 사람에게는 숫자가 흔들린다.
+ *
+ * 대신 머리말이 배지보다 더 말할 때는 펼친 본문 맨 위에 조건 줄(`augdesc-cond`)로 선다.
+ * 머리말은 `expandParas`가 본문에서 떼어 내므로, 그 줄이 없으면 조건이 통째로 사라진다.
+ */
+describe("배지는 펼쳐도 바뀌지 않는다", () => {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const APP = readFileSync(join(HERE, "../src/App.tsx"), "utf8");
+  const CSS = readFileSync(join(HERE, "../src/styles.css"), "utf8");
+  function augDesc(): string {
+    const at = APP.indexOf("function AugDesc(");
+    expect(at).toBeGreaterThan(0);
+    const end = APP.indexOf("\n}\n", at);
+    expect(end).toBeGreaterThan(at);
+    return APP.slice(at, end);
+  }
+
+  it("펼침(showFull) 여부가 배지 글을 고르지 않는다", () => {
+    const src = augDesc();
+    const use = /const use =\s*([\s\S]*?);\n/.exec(src);
+    expect(use).not.toBeNull();
+    expect(use?.[1]).not.toMatch(/showFull/);
+    expect(use?.[1]).toMatch(/brief\.use/);
+  });
+
+  it("배지보다 더 말하는 머리말은 조건 줄로 선다", () => {
+    const src = augDesc();
+    expect(src).toMatch(/lead\.use !== brief\.use/);
+    expect(src).toMatch(/augdesc-cond/);
+    expect(CSS).toMatch(/\.augdesc-cond\s*\{/);
   });
 });

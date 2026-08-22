@@ -120,6 +120,44 @@ describe("인게임 공지는 왼쪽 위 귀퉁이만 쓴다", () => {
     expect(Number(off?.[1])).toBeGreaterThanOrEqual(92);
   });
 
+  /*
+   * **판 위의 공지는 ✕로 내릴 수 있다** (2026-08-23 사용자 지시).
+   *
+   * 홈·로그인 배너에는 닫기가 없다 — 거기서는 아무것도 가리지 않는다. 판 위는
+   * 왼쪽 위를 30~40분 내내 덮고 있어서 사정이 다르다.
+   *
+   * 닫은 표식은 그 공지 한 건(제목·본문·수정 시각)에만 붙는다. 공지가 바뀌면 키가
+   * 달라져 다시 뜬다 — 「점검 5분 전」이 옛 닫기 때문에 안 보이면 안 된다.
+   */
+  it("닫기 단추가 있다", () => {
+    const src = gameNotice();
+    expect(src).toMatch(/className="notice-close"/);
+    expect(src).toMatch(/aria-label="공지 닫기"/);
+  });
+
+  it("닫은 표식은 공지 한 건에만 붙는다 (제목·본문·수정 시각)", () => {
+    const src = gameNotice();
+    expect(src).toMatch(/notice\.title/);
+    expect(src).toMatch(/notice\.body/);
+    expect(src).toMatch(/notice\.updatedAt/);
+    expect(src).toMatch(/setDismissed\(key\)/);
+    expect(src).toMatch(/dismissed === key/);
+  });
+
+  it("단추는 공지 띠 밖에 선다 (띠 안이면 클릭이 두 번 세어진다)", () => {
+    const src = gameNotice();
+    const btn = src.indexOf("notice-close");
+    const banner = src.indexOf("<NoticeBanner");
+    expect(btn).toBeGreaterThan(0);
+    expect(banner).toBeGreaterThan(btn);
+    // CSS가 머리줄에 ✕ 자리를 비워 둔다
+    expect(CSS).toMatch(/\.game-notice-float\s*>\s*\.notice-banner\s+\.notice-head\s*\{[^}]*padding-right/);
+  });
+
+  it("홈·로그인 배너에는 닫기가 없다", () => {
+    expect(noticeBanner()).not.toMatch(/notice-close/);
+  });
+
   it("폭은 화면이 좁아도 넘치지 않는다 (cqw 규약)", () => {
     const rule = /\.game-notice-float\s*\{([^}]*)\}/.exec(CSS);
     expect(rule).not.toBeNull();
