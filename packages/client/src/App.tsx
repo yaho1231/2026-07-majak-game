@@ -11,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type {
   AbortVoteMessage,
@@ -1049,7 +1049,7 @@ const CATEGORY_META: Record<AugmentCategory, CategoryMeta> = {
   riichi: { label: "리치", icon: "⚡" },
   defense: { label: "수비", icon: "🛡" },
   disrupt: { label: "교란", icon: "🌀" },
-  etc: { label: "기타", icon: "✦" },
+  etc: { label: "기타", icon: "🔮" },
 };
 
 /**
@@ -1092,7 +1092,7 @@ function AugCatIcon({ id }: { id: string }): JSX.Element {
 function ActiveBadge(): JSX.Element {
   return (
     <span className="aug-active-badge" title="직접 발동하는 액티브 증강">
-      ⚡ 액티브
+      ✦ 액티브
     </span>
   );
 }
@@ -2419,8 +2419,19 @@ const TileImg = memo(function TileImg({
   const src = tile === undefined ? null : tileImageSrcOf(tile.kind, isRed);
   // 증강이 새로 만들어낸 패(색 변환 등)는 원본과 구분되게 별도 이펙트로 표시한다
   const conjured = tile?.attrs?.conjured === true ? " tile-conjured" : "";
-  // 5가 아닌 적도라(붉은 손길 등)는 그림이 없다 — 원래 패 그대로 두고 붉은 기운만 얹는다
-  const red = tile !== undefined && isRed && !usesRedArt(tile.kind, true) ? " tile-red" : "";
+  /*
+   * 5가 아닌 적도라(붉은 손길 등)는 그림이 없다 — 원래 패 그대로 두고 붉은 기운만 얹는다.
+   *
+   * 5의 적도라는 전용 그림(0m/0p/0s)을 쓰므로 `.tile-red` 이펙트를 **일부러** 뺐다.
+   * 그런데 그 탓에 «적5와 평범한 5의 차이를 말하는 것이 잉크 색밖에 없는» 상태가 됐다 —
+   * 적록색맹·적색약에게는 1판 차이가 화면에서 사라지고, Windows 고대비에서는 그림의
+   * 붉은 잉크마저 평탄화돼 **더** 구분이 안 된다(`.tile-red` 의 dashed outline 이
+   * 유일한 비색 표식인데 걸리지 않았다). 그림은 그대로 두고 «색 말고 다른 채널»
+   * 하나만 얹는 별도 클래스를 붙인다. (QA 4라운드 mobile-a11y P2)
+   */
+  const redArt = tile !== undefined && isRed && usesRedArt(tile.kind, true) ? " tile-red-art" : "";
+  const red =
+    tile !== undefined && isRed && !usesRedArt(tile.kind, true) ? " tile-red" : redArt;
   const dora = owner === undefined ? "" : doraClassOf(tile, owner, doraFx);
   if (src === null) {
     return (
@@ -2431,7 +2442,10 @@ const TileImg = memo(function TileImg({
   }
   return (
     <span className={`tile-face tile-${size}${conjured}${red}${dora}`}>
-      <img src={src} alt={formatTile(tile)} draggable={false} />
+      {/* `owner` 를 넘긴다 — 각인 적도라(redFor)는 그 주인의 손에서만 붉게 **그리는데**
+          이 alt 만 owner 를 안 넘겨서 남의 손에 있는 같은 패를 「赤5만」으로 읽었다.
+          눈으로 보는 사람과 듣는 사람이 서로 다른 판을 봤다. (QA 4라운드 mobile-a11y) */}
+      <img src={src} alt={formatTile(tile, owner)} draggable={false} />
     </span>
   );
 });
@@ -3846,9 +3860,52 @@ export function App(): JSX.Element {
    */
   const joinTargetRef = useRef<string | null>(null);
 
+  /**
+   * **지금 대국 중이라 못 들어간 방 코드** (QA 4차 loop 확정 2).
+   *
+   * 친구가 링크를 30초 늦게 열면 «이미 게임이 시작된 방입니다» 토스트 하나가 전부였다.
+   * 관전도, 대기 줄도, "끝나면 알려 주기"도 없다(서버가 관전을 관리자에게만 연다) —
+   * 그리고 그 토스트가 사라지고 나면 **다시 시도하는 것이 6자리 재입력**이 된다.
+   * 반장전이면 30~40분이라 그 사이에 사람이 그냥 나간다.
+   *
+   * 서버를 못 고치는 자리이므로(관전·대기 줄은 서버 일이다) 클라이언트가 할 수 있는
+   * 것만 한다: **코드를 붙들어 두고 다시 누를 단추를 남긴다.**
+   */
+  const [busyRoomCode, setBusyRoomCode] = useState<string | null>(null);
+
+  /**
+   * **방금 끝난 판이 «연습 대국»이었는가** (QA 4차 loop 확정 3).
+   *
+   * 연습 대국은 서버가 게스트 방으로 열기 때문에(`practicePlay` → `newRoom({guest:true})`)
+   * 종국에서 `canContinue: false`가 오고 방이 그 자리에서 지워진다. 그래서 결과 화면
+   * 버튼이 «로비로» **하나**였다 — 한 판 더 두려면 로비로 → 홈 렌더 → «연습 대국»을
+   * 다시 누르는 세 걸음이다. 아이러니하게도 **계정이 없는 게스트에게는** «한 판 더»가
+   * 있다(`GuestOutro`). 가입한 사람이 더 불편했다.
+   *
+   * 방을 유지할 필요가 없다 — 게스트 경로가 이미 그렇게 한다(새 방을 즉시 만든다).
+   * 그러려면 "방금 그 판이 연습이었나"만 알면 되는데, 그 사실은 서버 응답에 없으므로
+   * **보낸 쪽에서** 기억한다.
+   */
+  const [wasPractice, setWasPractice] = useState(false);
+
+  /**
+   * **공유 링크가 살아 있는 판** (QA 4차 loop 확정 7).
+   *
+   * 리플레이 뷰어의 «공유»를 한 번 누르면 128비트 토큰이 생기고 그 링크는 영구히
+   * 산다 — 내리는 버튼이 어디에도 없었다. 실수로 만든 링크(아는 사람들과의 판)를
+   * 되돌릴 수 없다는 뜻이다. 서버·프로토콜(`ReplayShareMessage.revoke`)도, 내려졌을
+   * 때 띄울 토스트도 **이미 구현돼 있었고**, 그걸 띄우게 만드는 요청만 아무도
+   * 보내지 않았다(`grep revoke packages/client/src` → 0건).
+   *
+   * `replayData`에는 토큰 여부가 실려 오지 않으므로, 이 세션에서 만든 것만 안다.
+   * 그거면 충분하다 — 방금 만든 링크를 그 자리에서 내리는 것이 이 버튼의 용도다.
+   */
+  const [sharedGames, setSharedGames] = useState<ReadonlySet<number>>(new Set());
+
   /** 방 참가 — 무엇을 향한 시도였는지 남기고 보낸다(위 `joinTargetRef` 참고). */
   function joinRoomByCode(code: string): void {
     joinTargetRef.current = code;
+    setWasPractice(false); // 사람 방이다 — 결과 화면의 «연습 한 판 더»는 여기서 꺼진다
     send({ type: "joinRoom", code });
   }
 
@@ -3861,6 +3918,9 @@ export function App(): JSX.Element {
   function refreshHome(): void {
     // 게스트에게는 전부 막힌 요청이다 — 보내면 거절 토스트만 네 번 뜬다.
     if (guestRef.current) return;
+    // 홈 진입도 서버의 무거운 조회 창을 먹는다 — 단추 넷과 **같은** 쿨다운을 태운다.
+    // (판을 끝내고 홈에 들어와 두어 번 누르면 한도에 걸리던 길, QA 4차 loop 확정 10)
+    markRefreshed();
     send({ type: "statsRequest" });
     send({ type: "replayList" });
     send({ type: "leaderboard" });
@@ -4021,6 +4081,7 @@ export function App(): JSX.Element {
       ) {
         justRegistered.current = false;
         startCoach(true);
+        setWasPractice(true);
         send({ type: "practicePlay", tutorial: true });
       } else if (invited !== null) {
         pendingInviteRef.current = null;
@@ -4187,6 +4248,20 @@ export function App(): JSX.Element {
         refreshHome();
         return;
       }
+      /*
+       * 대국 중인 방에 **직접** 코드/링크로 들어가려던 시도 (자동 재입장은 위에서 끝났다).
+       * 코드를 붙들어 홈의 참가 칸에 남긴다 — 재시도가 6자리 재입력이 되지 않게.
+       */
+      if (msg.code === "ROOM_PLAYING" && joinTargetRef.current !== null) {
+        const busy = joinTargetRef.current;
+        setBusyRoomCode(busy);
+        showToast(
+          `${busy} 방은 지금 대국 중입니다 — 끝나면 다시 들어갈 수 있습니다. 코드를 홈에 남겨 뒀습니다.`,
+          "info",
+          6000,
+        );
+        return;
+      }
       // 게임이 서버에서 크래시 종료 — 마지막 화면에서 멈추지 않고 홈으로 정리
       if (msg.code === "GAME_CRASHED") {
         showToast(msg.message);
@@ -4235,9 +4310,16 @@ export function App(): JSX.Element {
      */
     if (msg.type === "replayShareToken") {
       if (msg.token === null) {
+        setSharedGames((cur) => {
+          if (!cur.has(msg.gameId)) return cur;
+          const next = new Set(cur);
+          next.delete(msg.gameId);
+          return next;
+        });
         showToast("공유 링크를 내렸습니다 — 기존 링크는 더 이상 열리지 않습니다", "info", 4000);
         return;
       }
+      setSharedGames((cur) => (cur.has(msg.gameId) ? cur : new Set(cur).add(msg.gameId)));
       const url = replayLinkFor(msg.token);
       void navigator.clipboard
         ?.writeText(url)
@@ -4416,6 +4498,7 @@ export function App(): JSX.Element {
     if (msg.type === "joined") {
       setJoined(msg);
       inRoomRef.current = true;
+      setBusyRoomCode(null); // 들어갔다 — 붙들고 있던 «대국 중» 코드를 놓는다
       /*
        * 방에 (다시) 들어왔다 = **지금 화면에 떠 있는 선택지는 전부 낡았다.**
        *
@@ -4588,6 +4671,31 @@ export function App(): JSX.Element {
         opts.some((o) => o.type !== "pass")
       ) {
         sfx.callPrompt();
+      }
+      /*
+       * 내 턴이 시작됐다 = 손끝에도 알린다.
+       *
+       * 여태 «내 차례다»를 말하는 신호는 화면뿐이었다. 화면을 잠깐 안 보고 있으면
+       * 내 순이 시작된 줄 모르고, 초읽기(5초) 국에서는 그대로 쯔모기리 폴백으로
+       * 넘어간다 — 되돌릴 수 없는 손실이다. 정확히 이 용도로 만들어 둔
+       * `haptics.turn` 이 저장소 전체에서 호출부 0건인 죽은 코드였다
+       * (QA 4라운드 ingame-ux P2).
+       *
+       * 소리는 **초읽기 국에서만** 붙인다. 매 순 울리면 시끄럽고(반응 프롬프트의
+       * "삑"과 달리 버림 프롬프트는 한 국에 열여덟 번 온다), 그렇다고 아예 없으면
+       * 마감이 5~10초인 국에서 화면을 안 보는 사람은 손도 못 써 본다.
+       * 진동은 소리 설정과 독립이고 8~18ms라 매 순 울려도 방해가 아니다(haptics.ts §1).
+       */
+      if (
+        msg.prompt.player === prevViewRef.current?.playerId &&
+        opts.some((o) => o.type === "discard") &&
+        // 위에서 이미 "삑"이 울린 리액션 프롬프트는 제외한다(두 번 울리지 않게).
+        !opts.some((o) => o.type === "pass")
+      ) {
+        haptics.turn();
+        if (msg.deadlineMs !== undefined && msg.deadlineMs > 0 && msg.deadlineMs <= 12_000) {
+          sfx.callPrompt();
+        }
       }
       setPrompts((prev) => ({ ...prev, [msg.prompt.player]: msg.prompt }));
       // 모든 프롬프트에 마감이 실려 온다 → 카운트다운을 켠다 (구 서버면 null)
@@ -4788,6 +4896,9 @@ export function App(): JSX.Element {
       const pv = prevViewRef.current;
       const who = pv !== null ? playerNameById(pv, headline.winner) : headline.winner;
       const wt = headline.winType === "tsumo" ? "쯔모" : "론";
+      // 내가 화료했다 — 한 판에 한 번뿐인 신호라 진동도 여기서 유일하게 두 번 울린다.
+      // (`haptics.win` 은 만들어만 두고 호출부가 0건이었다 — QA 4라운드 ingame-ux P2)
+      if (pv !== null && infos.some((w) => w.winner === pv.playerId)) haptics.win();
 
       if (isYakuman) {
         // 배수 역만은 컷인 문구가 "더블 역만"처럼 배수를 그대로 말한다 —
@@ -4997,7 +5108,7 @@ export function App(): JSX.Element {
       const maxWind = maxWindOf(next.round.mode);
       const subParts: string[] = [];
       if (next.round.prevalentWind > maxWind) {
-        subParts.push("서든데스 — 30000점을 먼저 넘기면 종료");
+        subParts.push("서든데스 — 30,000점을 먼저 넘기면 종료");
       } else if (next.round.prevalentWind === maxWind && next.round.roundNumber === 4) {
         subParts.push("오라스");
       }
@@ -5648,6 +5759,69 @@ export function App(): JSX.Element {
   const inGame = (joined !== null || isSpectator) && view !== null;
   const inWaiting = joined !== null && view === null && rankings === null && !isSpectator;
   const draftVisible = inGame && draft !== null && !intro && roundResult === null && !isSpectator;
+
+  /*
+   * ── 판 밖으로 나가려는 몸짓을 한 번 붙잡는다 ── (QA 4차 onboard 확정 4)
+   *
+   * 이 앱에는 히스토리 항목을 만드는 화면이 하나도 없었다(`replaceState` 둘은 주소창
+   * 청소용이다). 그래서 판 한가운데서 브라우저 뒤로가기 — 안드로이드 하드웨어
+   * 뒤로가기 포함 — 를 누르면 **사이트를 통째로 벗어난다**. 모바일에서 뒤로가기는
+   * "닫기"를 뜻하는 몸짓이라 반드시 눌린다. 새로고침도 경고 한 줄 없이 나갔다.
+   *
+   * 계정 사용자는 돌아와 재접속하면 되고, 게스트도 체험 열쇠(`GUEST_TOKEN_KEY` →
+   * `guestResume`)로 그 판에 다시 붙는다. 다만 **그 사실을 아무도 모른다** — 나가는
+   * 사람 눈에는 넷이 두던 판이 사라지는 것으로 보이고, 게스트에게는 안내조차 판이
+   * 끝난 **뒤** 화면(`GuestOutro`)에만 있었다. 알아야 할 때는 안 보였다.
+   *
+   * 두 갈래를 다 막는다:
+   * ① `beforeunload` — 새로고침·탭 닫기·주소 이동. 브라우저 기본 대화상자다
+   *    (문안은 어차피 브라우저가 정한다. `preventDefault`만이 규격이다).
+   * ② `pushState` + `popstate` — 뒤로가기. 화면에 들어설 때 히스토리 항목을 하나
+   *    쌓아 두고, 뒤로가기가 그 항목을 먹으면 «나갈까요?»를 되묻는다. 남기로 하면
+   *    항목을 다시 쌓아 다음 뒤로가기도 같은 자리에서 잡힌다.
+   *
+   * 관전자는 제외한다 — 잃을 판이 없고, 뒤로가기가 정상적인 «그만 보기»다.
+   */
+  const leavingGuard = (inGame || inWaiting) && !isSpectator;
+  const isGuestSeat = auth?.guest === true;
+  useEffect(() => {
+    if (!leavingGuard) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent): void => {
+      // 규격상 이것만이 대화상자를 띄운다. 반환값·returnValue 는 옛 브라우저 잔재라
+      // 문안을 못 바꾸지만, 넣어 두어야 일부 구형에서 실제로 뜬다.
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    // 뒤로가기가 먹을 «완충» 항목. 이미 우리가 쌓아 둔 것이 있으면 또 쌓지 않는다.
+    if (window.history.state?.majakGuard !== true) {
+      window.history.pushState({ majakGuard: true }, "");
+    }
+    const onPopState = (): void => {
+      /*
+       * `window.confirm` 을 쓰지 않는다 — 메인 스레드를 멈추는데 **서버의 결정
+       * 타이머는 흐른다**("정말 나갈까요?"를 읽는 사이 내 차례가 폴백으로 지나간다,
+       * 감사 5-9). `askConfirm` 은 비동기라, 되묻는 동안 뒤로가기가 한 번 더 눌려도
+       * 사이트를 벗어나지 않게 **먼저** 완충 항목을 다시 쌓아 두고 묻는다.
+       */
+      window.history.pushState({ majakGuard: true }, "");
+      void askConfirm({
+        title: "지금 두던 판에서 나갈까요?",
+        body: isGuestSeat
+          ? "계정이 없어도 이 브라우저로 다시 열면 같은 판으로 돌아옵니다 — 다만 판이 끝난 뒤에는 돌아올 수 없습니다."
+          : "홈의 «진행하던 방으로»로 다시 들어올 수 있습니다.",
+        confirmLabel: "나가기",
+      }).then((ok) => {
+        // 방금 쌓아 둔 완충 항목 + 뒤로가기가 먹은 것, 둘을 되돌린다.
+        if (ok) window.history.go(-2);
+      });
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, [leavingGuard, isGuestSeat]);
   /*
    * 첫 판 코치가 보는 것 — 지금 고를 수 있는 선택지의 **종류**뿐이다.
    * (`prompt`가 바뀔 때만 다시 만든다: 코치는 매 프레임 이걸 훑는다.)
@@ -5847,6 +6021,8 @@ export function App(): JSX.Element {
           onSetting={updateSetting}
           onClose={() => setReplayData(null)}
           onShare={() => send({ type: "replayShare", gameId: replayData.gameId })}
+          shared={sharedGames.has(replayData.gameId)}
+          onUnshare={() => send({ type: "replayShare", gameId: replayData.gameId, revoke: true })}
         />
       ) : inGame && view !== null ? (
         <GameTable
@@ -6072,8 +6248,12 @@ export function App(): JSX.Element {
           lastRoomCode={lastRoomCode}
           settings={settings}
           onSetting={updateSetting}
-          onCreateRoom={() => send({ type: "createRoom" })}
+          onCreateRoom={() => {
+            setWasPractice(false);
+            send({ type: "createRoom" });
+          }}
           onJoinRoom={joinRoomByCode}
+          busyRoomCode={busyRoomCode}
           onOpenReplay={(gameId) => send({ type: "replayGet", gameId })}
           onOpenCodex={() => { openCodex(); refreshHome(); }}
           onOpenHelp={() => setHelpOpen(true)}
@@ -6100,6 +6280,7 @@ export function App(): JSX.Element {
             // "이미 봤다"와 무관하게 코치를 켠다. 연습 대국 쪽은 안내를 붙이지
             // 않는다(그 버튼의 약속이 "안내 없음"이다).
             startCoach(tutorial);
+            setWasPractice(true);
             send({ type: "practicePlay", ...(tutorial ? { tutorial: true } : {}) });
           }}
           onDeleteUser={(userId, username) => {
@@ -6127,7 +6308,14 @@ export function App(): JSX.Element {
         <ScreenOverlay label="규칙 · 도움말" onClose={() => setHelpOpen(false)}>
           <HelpScreen
             augmentKinds={augmentKinds}
-            backLabel={auth === null ? "← 로그인으로" : "← 닫기"}
+            /* 예전에는 `auth === null ? "← 로그인으로" : "← 닫기"` 였다 — 로그인 전
+               랜딩에서도 이 오버레이를 열 수 있던 시절의 잔재다. 그 길은 2026-08-19
+               사용자 지시로 **일부러** 없앴고(`AuthScreen`에는 `onOpenHelp`가 없다:
+               "처음 온 사람이 이 화면에서 할 일은 하나뿐이다 — 들어가는 것"), 그래서
+               `auth === null` 가지는 도달할 수 없다. 죽은 분기만 걷는다 —
+               «규칙 버튼을 되살릴까»는 설계 판단이라 여기서 건드리지 않는다
+               (QA 4차 onboard 확정 6의 의심 부분). */
+            backLabel="← 닫기"
             onOpenCodex={openCodex}
             onClose={() => setHelpOpen(false)}
           />
@@ -6344,6 +6532,15 @@ export function App(): JSX.Element {
           onClose={returnHome}
           {...(canContinue && !isSpectator
             ? { onContinue: continueInRoom, sandbox: sandbox !== null }
+            : {})}
+          {/* 연습 판은 방이 이미 지워져 «이어하기»가 없다 — 대신 새 연습 판을 연다. */
+          ...(!canContinue && wasPractice && !isSpectator
+            ? {
+                onPracticeAgain: () => {
+                  returnHome();
+                  send({ type: "practicePlay" });
+                },
+              }
             : {})}
         />
       ) : null}
@@ -7202,6 +7399,26 @@ function AuthScreen(props: {
     props.onClearError();
   }
 
+  /**
+   * **초대를 들고 온 사람이 게스트 문을 눌렀다** (QA 4차 loop 확정 1).
+   *
+   * 게스트로 시작하면 초대 코드는 그대로 버려지고(`authOk`의 게스트 분기가
+   * `pendingInviteRef`를 보지도 않는다), 체험이 끝난 뒤에도 그 방으로 가는 길이
+   * 없다. 부른 사람은 대기실에서 계속 기다린다. 지금까지는 **잘못 눌렀다는 사실
+   * 자체를** 아무도 몰랐다.
+   *
+   * 막고 가입 탭으로 보낸다. true를 돌려주면 호출부는 그 자리에서 멈춘다.
+   */
+  function inviteNeedsAccount(): boolean {
+    if (props.invitedCode === null) return false;
+    switchTab("register");
+    setLocalError(
+      `${props.invitedCode} 방에 들어가려면 계정이 필요합니다 — 가입하면 바로 그 방으로 들어갑니다.`,
+    );
+    setErrorTab("register");
+    return true;
+  }
+
   function submit(): void {
     if (sending) return;
     setLocalError(null);
@@ -7375,6 +7592,13 @@ function AuthScreen(props: {
           {props.invitedCode !== null ? (
             <p className="landing-invite">
               <b className="num">{props.invitedCode}</b> 방에 초대받았습니다 — 로그인하면 바로 들어갑니다.
+              {/* 이 문장 바로 옆(같은 상자)에 가장 큰 버튼인 «계정 없이 시작»이 서 있다.
+                  계정이 없는 사람이 그걸 누르면 친구 방이 아니라 봇 3명짜리 체험 판이
+                  열리고 초대 코드는 조용히 버려졌다 (QA 4차 loop 확정 1). 서버가 게스트에게
+                  `joinRoom` 을 열지 않으므로(화이트리스트) 게스트 경로로는 **구조적으로**
+                  초대를 살릴 수 없다 — 그러면 그 사실을 여기서 말해야 한다. */}
+              <br />
+              초대받은 방에는 <b>계정으로만</b> 들어갈 수 있습니다.
             </p>
           ) : null}
         </section>
@@ -7411,6 +7635,7 @@ function AuthScreen(props: {
               /* 이것도 «지금 탭에서 누른 것»이다 — 답(거절 사유)이 남의 탭 것으로
                  몰려 숨겨지면, 버튼이 아무 반응 없는 것처럼 보인다. */
               onClick={() => {
+                if (inviteNeedsAccount()) return;
                 sentFrom.current = tab;
                 props.onTutorial();
               }}
@@ -7424,6 +7649,7 @@ function AuthScreen(props: {
             <button
               className="btn-line landing-key"
               onClick={() => {
+                if (inviteNeedsAccount()) return;
                 sentFrom.current = tab;
                 props.onGuest();
               }}
@@ -7435,8 +7661,9 @@ function AuthScreen(props: {
               <span className="landing-key-meta">봇 3명</span>
             </button>
             <p className="landing-key-note">
-              튜토리얼은 손패와 증강을 고정해 두고 화면 조작을 하나씩 짚어 줍니다.
-              시간 제한이 없습니다. 둘 다 기록·순위에 남지 않습니다.
+              튜토리얼은 손패와 증강을 고정해 두고 화면 조작을 하나씩 짚어 줍니다 — 시간
+              제한이 없습니다. «바로 한 판»은 실전과 같은 판이라 한 수에 30초가 걸립니다
+              (첫 증강 고르기만 넉넉합니다). 둘 다 기록·순위에 남지 않습니다.
             </p>
           </div>
         </section>
@@ -8298,12 +8525,27 @@ function TierScreen(props: {
       <tr>
         <th>증강</th>
         <th>티어</th>
-        <th className="tier-num" title="타점 — 화료 1회당 점수가 얼마나 뛰는가">타점</th>
-        <th className="tier-num" title="속도 — 화료가 얼마나 쉬워지는가">속도</th>
-        <th className="tier-num" title="무대응 — 상대가 알고도 못 막는가">무대응</th>
-        <th className="tier-num" title="빈도 — 실제로 몇 번 작동하는가">빈도</th>
-        <th className="tier-num" title="타점×3 + 속도×3 + 무대응×2 + 빈도×2">총점</th>
-        <th className="tier-num" title="드래프트 가중치 (1.00 = 균등)">가중치</th>
+        {/* 열 머리의 뜻·계산식은 여기 말고 어디에도 없다 — `title=` 만 두면 폰에서
+            영영 못 읽는다(QA 4라운드 mobile-a11y P1). 오른쪽 두 열은 표 끝이라
+            팝오버를 왼쪽으로 뒤집는다. */}
+        <th className="tier-num">
+          <InfoNote note="타점 — 화료 1회당 점수가 얼마나 뛰는가">타점</InfoNote>
+        </th>
+        <th className="tier-num">
+          <InfoNote note="속도 — 화료가 얼마나 쉬워지는가">속도</InfoNote>
+        </th>
+        <th className="tier-num">
+          <InfoNote note="무대응 — 상대가 알고도 못 막는가">무대응</InfoNote>
+        </th>
+        <th className="tier-num">
+          <InfoNote note="빈도 — 실제로 몇 번 작동하는가">빈도</InfoNote>
+        </th>
+        <th className="tier-num">
+          <InfoNote align="right" note="타점×3 + 속도×3 + 무대응×2 + 빈도×2">총점</InfoNote>
+        </th>
+        <th className="tier-num">
+          <InfoNote align="right" note="드래프트 가중치 (1.00 = 균등)">가중치</InfoNote>
+        </th>
         <th>사유</th>
       </tr>
     </thead>
@@ -8942,7 +9184,7 @@ const HELP_BASICS: HelpSection[] = [
   {
     title: "리치",
     paras: [
-      "손패를 남에게 하나도 보이지 않은 채(멘젠) 한 장만 더 오면 완성인 상태(텐파이)가 되면, 1000점을 걸고 리치를 선언할 수 있습니다.",
+      "손패를 남에게 하나도 보이지 않은 채(멘젠) 한 장만 더 오면 완성인 상태(텐파이)가 되면, 1,000점을 걸고 리치를 선언할 수 있습니다.",
       "리치를 걸면 그 뒤로는 손패를 바꿀 수 없습니다 — 가져온 패를 그대로 버립니다. 대신 역이 확정되고, 도라를 한 겹 더 받고(우라도라), 타점이 크게 뜁니다.",
       "화면에 뜨는 오름패에는 작은 숫자가 붙습니다 — 그 패가 **아직 보이지 않은 장수**입니다. 기본 4장에서 버림패·울음·도라 표시패·내 손패에 이미 나온 만큼을 뺀 값이고(증강이 만들어 낸 패는 세지 않습니다), **0이면 그 패는 다 나가서 그것으로는 날 수 없습니다.**",
     ],
@@ -9010,7 +9252,7 @@ const HELP_BASICS: HelpSection[] = [
     ],
   },
   {
-    title: "판은 언제 끝나는가",
+    title: "대국은 언제 끝나는가",
     paras: [
       "동1국부터 시작합니다. 반장전은 남4국까지, 동풍전은 동4국까지가 정규 구간입니다. 친이 화료하거나 텐파이로 유국하면 그 자리가 이어집니다(연장).",
       // 2026-08-22: 예전에는 "남4국까지 / 동4국까지"에서 문장이 끝나 **거짓**이었다 —
@@ -9078,7 +9320,7 @@ function helpAugmentSections(kinds: number): HelpSection[] {
     title: "제한 — 이름표에 다 뜬다",
     paras: [
       "제한은 증강마다 다르고, 지금 상태는 이름표 옆 증강 칸에 표시됩니다.",
-      "🕐N국 쿨다운 · 게이지는 퀘스트 진행도(조건을 채워야 열립니다) · 🔒 는 상대의 무장해제로 잠긴 것 · ♻ 는 재장전으로 되살린 것 · 🎲 는 주사위로 얻은 것. 사용 횟수는 각 증강 설명에 적혀 있습니다.",
+      "✦ 액티브 는 직접 눌러 발동하는 증강(저절로 터지지 않습니다) · 🕐N국 쿨다운 · 게이지는 퀘스트 진행도(조건을 채워야 열립니다) · 🔒 는 상대의 무장해제로 잠긴 것 · ♻ 는 재장전으로 되살린 것 · 🎲 는 주사위로 얻은 것. 사용 횟수는 각 증강 설명에 적혀 있습니다.",
       "발동에 점수를 지불하지 않습니다. 제한은 횟수와 조건으로만 걸립니다.",
     ],
   },
@@ -9141,7 +9383,7 @@ const HELP_YAKU: YakuGroup[] = [
   {
     title: "1판",
     items: [
-      { name: "리치", han: "1판 · 멘젠", note: "멘젠 텐파이에서 1000점을 걸고 선언. 이후 손패를 바꿀 수 없습니다." },
+      { name: "리치", han: "1판 · 멘젠", note: "멘젠 텐파이에서 1,000점을 걸고 선언. 이후 손패를 바꿀 수 없습니다." },
       { name: "일발", han: "1판 · 멘젠", note: "리치를 걸고 한 바퀴가 돌기 전에 화료. 중간에 울음이 들어가면 사라집니다." },
       { name: "멘젠쯔모", han: "1판 · 멘젠", note: "한 번도 울지 않은 손으로 스스로 뽑아 화료." },
       {
@@ -9369,17 +9611,19 @@ function TermsTab(): JSX.Element {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<GlossaryGroup | null>(null);
 
-  const needle = query.trim().toLowerCase();
-  // 검색은 표기(별칭 포함)와 풀이 본문 전부를 훑는다 — "1000점"으로 리치를 찾을 수 있어야 한다
+  // 검색은 표기(별칭 포함)와 풀이 본문 전부를 훑는다 — "1000점"으로 리치를 찾을 수 있어야 한다.
+  // 풀이의 점수 표기에 천단위 콤마가 붙으면서(QA 4차 text 확정 9) "1000점"이 "1,000점"을
+  // 못 찾게 됐다 — 검색어와 본문 **양쪽에서** 콤마를 걷어 내 두 표기를 같은 것으로 본다.
+  const uncomma = (t: string): string => t.replace(/,/g, "");
+  const needle = uncomma(query.trim().toLowerCase());
   const matched = useMemo(
     () =>
       needle === ""
         ? GLOSSARY
         : GLOSSARY.filter((e) =>
-            [e.label, ...plainAliases(e), e.short, e.long ?? ""]
-              .join(" ")
-              .toLowerCase()
-              .includes(needle),
+            uncomma([e.label, ...plainAliases(e), e.short, e.long ?? ""].join(" ").toLowerCase()).includes(
+              needle,
+            ),
           ),
     [needle],
   );
@@ -9791,12 +10035,45 @@ function FeedbackBoard(props: {
  * 끌어오려면 아홉 자리에 각각 배선을 해야 하는데, 그 복잡도가 얻는 것보다 크다.
  * 대신 짧게 돌고 그동안 다시 눌리지 않게 잠근다 — 연타를 막는 것이 실제 목적이다.
  */
+/*
+ * ── 새로 고침 단추 넷이 **하나의** 쿨다운을 나눠 쓴다 ── (QA 4차 loop 확정 10)
+ *
+ * 홈에는 새로 고침 단추가 넷(내 통계·리플레이·전체 통계·증강 메타) 있고 **전부 같은
+ * `refreshHome`을 부른다** — 한 번 누를 때마다 statsRequest·replayList·leaderboard·
+ * feedbackList·friendList·activeGameRequest 가 함께 나간다. 그런데 쿨다운은 버튼마다
+ * 따로였고 900ms였다. 친구를 기다리며 «들어왔나?» 하고 10초 안에 여섯 번 누르면
+ * 서버의 무거운 조회 한도(10초에 종류별 5회)에 걸려 빨간 토스트가 뜬다 —
+ * **사람이 고칠 수 있는 것이 아무것도 없는 에러**다. 홈 진입(`returnHome`)도 같은
+ * 창을 먹으므로 판을 끝내고 들어와 두어 번만 눌러도 걸렸다.
+ *
+ * 같은 요청을 보내는 단추들이므로 쿨다운도 하나여야 한다. 값은 2.5초 — 10초 창에
+ * 최대 4회라 한도(5회) 안쪽이고, 홈 진입 한 번을 얹어도 남는다.
+ */
+const REFRESH_COOLDOWN_MS = 2_500;
+let refreshBusyUntil = 0;
+const refreshBusyListeners = new Set<() => void>();
+
+function markRefreshed(): void {
+  refreshBusyUntil = Date.now() + REFRESH_COOLDOWN_MS;
+  for (const fn of refreshBusyListeners) fn();
+}
+
 function RefreshButton(props: { onRefresh: () => void; title?: string }): JSX.Element {
-  const [busy, setBusy] = useState(false);
-  const timer = useRef<number | null>(null);
+  const [busy, setBusy] = useState(() => Date.now() < refreshBusyUntil);
   useEffect(() => {
+    let timer: number | null = null;
+    const sync = (): void => {
+      const left = refreshBusyUntil - Date.now();
+      setBusy(left > 0);
+      if (timer !== null) window.clearTimeout(timer);
+      // 남은 시간만큼만 기다렸다 스스로 푼다 — 어느 버튼이 눌렸든 넷이 같이 풀린다.
+      timer = left > 0 ? window.setTimeout(sync, left) : null;
+    };
+    refreshBusyListeners.add(sync);
+    sync();
     return () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
+      refreshBusyListeners.delete(sync);
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, []);
   return (
@@ -9805,8 +10082,7 @@ function RefreshButton(props: { onRefresh: () => void; title?: string }): JSX.El
       disabled={busy}
       onClick={() => {
         props.onRefresh();
-        setBusy(true);
-        timer.current = window.setTimeout(() => setBusy(false), 900);
+        markRefreshed();
       }}
       title={props.title ?? "새로 고침"}
       aria-label={props.title ?? "새로 고침"}
@@ -10537,6 +10813,8 @@ function HomeScreen(props: {
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   onCreateRoom: () => void;
   onJoinRoom: (code: string) => void;
+  /** 대국 중이라 못 들어간 방 코드 — 참가 칸에 남겨 두고 다시 누를 수 있게 한다. */
+  busyRoomCode: string | null;
   onOpenReplay: (gameId: number) => void;
   onOpenCodex: () => void;
   /** 규칙·도움말 화면 열기 */
@@ -10559,6 +10837,14 @@ function HomeScreen(props: {
   onLogout: () => void;
 }): JSX.Element {
   const [code, setCode] = useState("");
+  /*
+   * «지금 대국 중» 으로 거절당한 코드는 참가 칸에 그대로 채워 둔다 (QA 4차 loop 확정 2).
+   * 사람이 그 뒤에 다른 코드를 치고 있으면 뺏지 않는다 — 새로 온 거절만 채운다.
+   */
+  const busy = props.busyRoomCode;
+  useEffect(() => {
+    if (busy !== null) setCode(busy);
+  }, [busy]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 방 기본값과 같은 쪽으로 맞춘다 — 동풍전 (RoomManager.newRoom 참고)
   const [sandboxMode, setSandboxMode] = useState<GameMode>(readSandboxMode);
@@ -10717,6 +11003,14 @@ function HomeScreen(props: {
             />
             <button onClick={joinByCode} disabled={code.trim().length < 4}>참가</button>
           </div>
+          {/* 서버는 «이미 게임이 시작된 방입니다» 한 줄로 끝난다 — 관전도 대기 줄도
+              없으니(관리자 전용) 사람이 할 수 있는 일을 여기서 말해 준다. */}
+          {busy !== null ? (
+            <p className="home-join-busy">
+              <b className="num">{busy}</b> 방은 지금 대국 중입니다. 한 판이 끝나면 들어갈 수
+              있으니 «참가»를 다시 눌러 보세요 — 반장전이면 30~40분 걸립니다.
+            </p>
+          ) : null}
           {/* 이 버튼이 뜨는 근거는 **서버가 들고 있는 좌석**이다 — 로그인 때
               `authOk.resumeRoom`으로 한 번(#338), 그리고 홈에 돌아올 때마다
               `activeGameRequest`로 다시(2026-08-19 사용자 지시 ①).
@@ -10819,12 +11113,25 @@ function HomeScreen(props: {
                다시 사람이 정해야 했다. 여기서 갈 곳은 하나뿐이다: 봇과 한 판. */
             <p className="home-empty">
               아직 완료한 대국이 없습니다.
-              <span className="home-empty-hint">한 판 두고 나면 승률·평균 순위가 여기에 쌓입니다.</span>
-              {/* 전적이 0인 사람 = 아직 한 판도 안 끝낸 사람이다. 두 문(튜토리얼·
-                  연습 대국) 중 여기서 권할 것은 **안내가 붙는 쪽**이다. */}
-              <button className="home-empty-cta" onClick={() => props.onPractice(true)}>
-                튜토리얼로 한 판
-              </button>
+              <span className="home-empty-hint">
+                한 판 두고 나면 승률·평균 순위가 여기에 쌓입니다.
+                {/* 예전에는 여기서 «튜토리얼로 한 판»만 권했는데, 그 버튼이 여는 판은
+                    서버가 게스트 방으로 열어 **아무 기록도 남기지 않는다**
+                    (QA 4차 loop 확정 4). 시키는 대로 한 판 두고 돌아오면 화면이 글자
+                    하나 안 바뀐 채 같은 문장으로 다시 맞이했다. 두 문을 다 놓고,
+                    어느 쪽이 기록에 남는지를 적는다. */}
+                {" "}튜토리얼과 연습 대국은 기록에 남지 않습니다 — 익힌 뒤 방을 만들어 보세요.
+              </span>
+              {/* 전적이 0인 사람 = 아직 한 판도 안 끝낸 사람이다. 배우는 문과
+                  기록이 남는 문을 나란히 준다. */}
+              <span className="home-empty-ctas">
+                <button className="home-empty-cta" onClick={() => props.onPractice(true)}>
+                  튜토리얼로 한 판
+                </button>
+                <button className="home-empty-cta" onClick={props.onCreateRoom}>
+                  방 만들기 (전적에 남음)
+                </button>
+              </span>
             </p>
           )}
         </section>
@@ -11101,8 +11408,33 @@ function StatsChips({ s }: { s: PlayerStatsView }): JSX.Element {
   if (s.roundsPlayed === 0) {
     return <span className="stat-chip stat-chip-empty">전적 없음</span>;
   }
+  /*
+   * **표본을 맨 앞에 세운다** (QA 4차 loop 확정 6).
+   *
+   * 예전에는 0국만 걸러 내고 나머지는 «화료 33% · 방총 12% …»로 붙였다. 어제 가입해
+   * 1국을 이긴 사람은 «화료 100% · 방총 0%»로 서고, 같이 앉은 사람은 고수와 마주앉았다고
+   * 읽는다. 공개 첫 주는 전원이 표본 1~3판이라 이 줄이 사실상 전부 거짓말이 된다.
+   *
+   * 같은 값을 쓰는 리더보드 표는 «판수» 열을, 결과 화면 `StatsGrid`는 첫 칸에 판수·국수를
+   * 이미 보여 준다 — 유독 **사람이 서로를 재는 자리**에서만 표본이 빠져 있었다.
+   *
+   * 표본이 적으면 %를 아예 접는다. 10국 미만에서 «화료 100%»는 정보가 아니라 오해다.
+   */
+  const THIN_ROUNDS = 10;
+  if (s.roundsPlayed < THIN_ROUNDS) {
+    return (
+      <span className="stat-chips">
+        <span className="stat-chip stat-chip-thin" title="아직 표본이 적어 비율을 접었습니다">
+          전적 {s.roundsPlayed}국 — 아직 적음
+        </span>
+      </span>
+    );
+  }
   return (
     <span className="stat-chips">
+      <span className="stat-chip stat-chip-n" title="표본 — 이 비율들이 몇 국에서 나온 값인가">
+        {s.games > 0 ? `${s.games}판 · ` : ""}{s.roundsPlayed}국
+      </span>
       <span className="stat-chip" title="화료율">화료 {pct(s.winRate)}</span>
       <span className="stat-chip" title="방총률">방총 {pct(s.dealInRate)}</span>
       <span className="stat-chip" title="리치율">리치 {pct(s.riichiRate)}</span>
@@ -11111,6 +11443,42 @@ function StatsChips({ s }: { s: PlayerStatsView }): JSX.Element {
         <span className="stat-chip" title="평균 순위">평순 {s.avgPlacement.toFixed(2)}</span>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * **이번 판에 고른 증강** — 결과 화면 통계 탭 (QA 4차 loop 확정 5).
+ *
+ * 이 게임의 정체성은 증강인데, 판이 끝난 뒤 «내 증강이 이번 판에 뭘 했나»를 알 방법이
+ * 결과 화면에 없었다. 통계 탭이 보여 주던 것은 화료율·방총률·리치율·후로율·쯔모율…
+ * **전부 순수 마작 지표**다. 증강 성적은 홈 → 전적 탭 → «내 증강 통계»로 가야 했고
+ * 그것도 이번 판이 아니라 **누적**이며, 연습·게스트 판은 누적에도 안 들어가므로 그
+ * 판의 증강은 어디에도 남지 않았다.
+ *
+ * 새 데이터도 새 메시지도 필요 없다 — 서버가 보내는 `StatsEntry.stats`가
+ * `PlayerStatsView extends PlayerStatsRaw`라 `augments`를 **이미 담고 있다**
+ * (`PlayerStats.ts`). 여태 한 번도 읽지 않았을 뿐이다.
+ *
+ * 누적용 `PersonalAugmentStats`를 그대로 쓰지 않는 이유: 그쪽은 «시그니처»·«함정»처럼
+ * 표본이 여러 판이어야 뜻이 서는 분석이다. 한 판에서는 전부 1과 0이라 헛말이 된다.
+ * 여기서는 «무엇을 골랐나»만 적는다.
+ */
+function GameAugmentRow({ s }: { s: PlayerStatsView }): JSX.Element | null {
+  const picked = Object.entries(s.augments ?? {})
+    .filter(([, a]) => a.picked > 0)
+    .map(([id]) => id);
+  if (picked.length === 0) return null;
+  return (
+    <div className="stats-augs">
+      <span className="stats-augs-label">이번 판 증강</span>
+      <span className="stats-augs-names">
+        {picked.map((id) => (
+          <span key={id} className={`stats-aug aug-cat-${augmentCategory(id)}`}>
+            {augmentDisplayName(id)}
+          </span>
+        ))}
+      </span>
+    </div>
   );
 }
 
@@ -11164,10 +11532,10 @@ const WAITROOM_TIPS: readonly string[] = [
   "보라색으로 계속 반짝이는 패는 원래의 4개 패가 아니라 증강 등으로 새로 만들어진 패입니다.",
   "상대가 타패한 뒤 점선 표시를 보면 그 패를 어디서 냈는지 알 수 있습니다.",
   "게임 무효 투표는 설정 맨 아래에 있습니다.",
-  "⚡ 액티브 표시가 붙은 증강은 저절로 터지지 않습니다. 조건이 되면 버튼이 사용 가능해지니 직접 눌러 발동하세요.",
+  "✦ 액티브 표시가 붙은 증강은 저절로 터지지 않습니다. 조건이 되면 버튼이 사용 가능해지니 직접 눌러 발동하세요.",
   "🎯 퀘스트 증강은 게이지가 조건 진행도입니다 — 퀘스트를 달성해야 능력을 사용할 수 있습니다.",
   "이름표의 증강에 🔒이 걸리면 상대의 무장해제로 이번 국만 잠긴 것, 🕐N국은 쿨다운, ♻는 재장전, 🎲는 주사위로 얻은 증강입니다.",
-  "화면 배치가 겹치거나 어색하면 오른쪽 위 +/− 버튼이나 Ctrl + −(+)로 크기를 맞춰 보세요.",
+  "화면 배치가 겹치거나 어색하면 오른쪽 위 +/− 버튼이나 Alt(⌥) + − / + 로 맞춰 보세요. 그래도 좁으면 브라우저 확대 Ctrl(⌘) + − 를 씁니다.",
 ];
 
 const WAITROOM_TIP_MS = 10_000;
@@ -11521,8 +11889,8 @@ function WaitingRoom(props: {
           {([
             // 서든데스를 적어 둔다 — westEntry가 두 모드 모두 켜져 있어(maxWindOf 주석)
             // "남4국까지"는 거짓이었다. 오라스라 믿고 짠 순위 계산이 통째로 틀어진다.
-            ["hanchan", "반장전", "동+남 · 남4국 뒤 1위가 30000 미만이면 서장"],
-            ["tonpuu", "동풍전", "동장만 · 동4국 뒤 1위가 30000 미만이면 남장"],
+            ["hanchan", "반장전", "동+남 · 남4국 뒤 1위가 30,000 미만이면 서장"],
+            ["tonpuu", "동풍전", "동장만 · 동4국 뒤 1위가 30,000 미만이면 남장"],
           ] as const).map(([mode, label, sub]) => {
             const active = lobby.gameMode === mode;
             return (
@@ -11820,7 +12188,7 @@ const RIICHI_BLOCK_TEXT: Record<"notEnoughPoints" | "wallTooShort", string> = {
 const GAME_END_NOTE: Partial<Record<GameEndReason, string>> = {
   dobi: "도비 — 누군가 0점 아래로 떨어져 그 자리에서 끝났습니다",
   agariYame: "아가리야메 — 마지막 국에서 오야가 연장하며 단독 1위라 그대로 끝났습니다",
-  westEntryDecided: "서든데스 종료 — 30000점을 넘긴 사람이 나왔습니다",
+  westEntryDecided: "서든데스 종료 — 30,000점을 넘긴 사람이 나왔습니다",
   instantWin: "천하통일 — 문턱 점수에 닿아 남은 국 없이 끝났습니다",
 };
 
@@ -11836,13 +12204,15 @@ const BOT_DIFFICULTY_LABEL: Record<string, string> = Object.fromEntries(
 function ModeBadge(props: { mode: GameMode }): JSX.Element {
   const m = MODE_BADGE[props.mode] ?? MODE_BADGE.hanchan;
   return (
-    <div
+    /* 서든데스 규칙은 이 뱃지 말고 어디에도 없다 — `title=` 만 두면 터치에서
+       영영 안 보인다(QA 4라운드 mobile-a11y P1). 탭해서 열 수 있게 바꾼다. */
+    <InfoNote
       className="mode-badge"
-      title={`${m.name} — 증강 획득: ${m.drafts}\n정규 구간이 끝나도 1위가 30000점에 못 미치면 장이 하나 더 붙는다(서든데스). 그 장에는 증강 획득이 없다.`}
+      note={`${m.name} — 증강 획득: ${m.drafts}\n정규 구간이 끝나도 1위가 30,000점에 못 미치면 장이 하나 더 붙는다(서든데스). 그 장에는 증강 획득이 없다.`}
     >
       <span className="mode-badge-name">{m.name}</span>
       <span className="mode-badge-drafts">증강 {m.drafts}</span>
-    </div>
+    </InfoNote>
   );
 }
 
@@ -12839,7 +13209,7 @@ function QuickToggles(props: {
  * 가로막아 정작 그 순간의 결정을 놓쳤다. 설명은 툴팁으로 그대로 남는다.
  */
 const AUTO_WIN_DESC =
-  "화료 가능해지는 즉시 되묻지 않고 론·쯔모합니다 (점수·야쿠를 보지 않습니다)";
+  "화료 가능해지는 즉시 되묻지 않고 론·쯔모합니다 (점수·역을 보지 않습니다)";
 
 // ─────────────────────────── 설정 패널 ───────────────────────────
 
@@ -14566,7 +14936,7 @@ function CenterPanel({
               setGameMode) 사람만 국 번호로 역산해야 했다. 서든데스 구간은 "몇 국까지"가
               정해져 있지 않으므로 오라스 대신 그 사실을 적는다. */}
           {r.prevalentWind > maxWindOf(r.mode) ? (
-            <span className="last-round" title="정규 구간이 끝난 서든데스 — 30000점을 먼저 넘기면 종료">
+            <span className="last-round" title="정규 구간이 끝난 서든데스 — 30,000점을 먼저 넘기면 종료">
               서든데스
             </span>
           ) : r.prevalentWind === maxWindOf(r.mode) && r.roundNumber === 4 ? (
@@ -15894,7 +16264,7 @@ const NamePlate = memo(function NamePlate({
     >
       {isTurn ? (
         awaitingCall ? (
-          <span className="np-turn np-turn-wait" title="다른 자리의 선언(론·펑·치·깡)을 기다리는 중입니다">
+          <span className="np-turn np-turn-wait" title="다른 자리의 선언(론·치·퐁·깡)을 기다리는 중입니다">
             선언 대기
           </span>
         ) : (
@@ -16024,7 +16394,7 @@ const NamePlate = memo(function NamePlate({
                     <span className="aug-tip-quest">🎯 퀘스트 증강 — {QUEST_GOAL[a]}</span>
                   ) : null}
                   {isActiveAugment(a) ? (
-                    <span className="aug-tip-active">⚡ 액티브 증강 (직접 발동)</span>
+                    <span className="aug-tip-active">✦ 액티브 증강 (직접 발동)</span>
                   ) : null}
                   <span className="aug-tip-desc">
                     <AugDesc
@@ -16528,6 +16898,117 @@ function PromptTimer(props: {
       {urgent && props.onTimeout != null ? (
         <span className="prompt-timer-note">{props.onTimeout}</span>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * 규칙·계산식처럼 «이 숫자가 무슨 뜻인가»를 말하는 설명을, 터치에서도 열리게 하는 칩.
+ *
+ * 네이티브 `title` 툴팁은 **터치에서 뜨지 않는다**(여러 줄이면 더더욱). 그래서 오름패
+ * 계산식·티어표 열 머리·서든데스 규칙·증강 설명 전문처럼 «다른 어디에도 없는» 정보가
+ * 폰에서는 통째로 사라져 있었다. 게다가 맨 `<span>` 에 `cursor: help` 만 달린 것들은
+ * 포커스도 안 잡혀 키보드에서도 못 읽었다(QA 4라운드 mobile-a11y P1).
+ *
+ * 저장소에 이미 있는 정답 패턴(`.aug-pill:focus-within .aug-tip` + 탭 고정)을 한 조각으로
+ * 접은 것이다. 마우스는 hover, 키보드는 focus, 손가락은 탭 — 세 통로가 같은 글을 연다.
+ * `title` 은 그대로 남긴다: 데스크톱 보조기술이 읽는 통로이고, 열지 않아도 들린다.
+ */
+function InfoNote(props: {
+  children: ReactNode;
+  /** 설명 전문. 줄바꿈(\n)은 그대로 살아난다(CSS `white-space: pre-line`). */
+  note: string;
+  /** 원래 이 자리에 서 있던 요소의 클래스 — 겉모습·배치는 그대로 둔다. */
+  className?: string;
+  /** 팝오버가 오른쪽 끝에 붙어 화면 밖으로 나갈 자리(표 오른쪽 열 등)에서 뒤집는다. */
+  align?: "left" | "right";
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const toggle = (): void => setOpen((v) => !v);
+  return (
+    /*
+     * `<button>` 이 아니라 `tabIndex` 를 실은 `<span>` 이다 — 이 칩은 뱃지·표 머리·pill
+     * **안에 그대로 앉아야** 하는데, 버튼을 끼우면 그 자리의 배치(`display:flex` 세로
+     * 두 줄인 모드 뱃지 등)가 한 겹 끊긴다. 저장소의 `.aug-pill`·상대 지목 칩이 쓰는
+     * 방식과 같다(`tabIndex={0}` + 클릭 고정).
+     */
+    <span
+      className={`info-note${open ? " info-note-open" : ""}${props.className !== undefined ? ` ${props.className}` : ""}`}
+      // 데스크톱 보조기술이 읽는 통로 — 열지 않아도 들린다. 터치가 못 읽던 것이 문제였지
+      // 이게 문제였던 적은 없으므로 남긴다.
+      title={props.note}
+      tabIndex={0}
+      role="button"
+      aria-expanded={open}
+      onClick={(e) => {
+        // 이 칩은 큰 과녁(카드·행) 안에 앉는 일이 많다 — 설명을 열려다 그 카드를
+        // 골라 버리면 안 된다(드래프트 카드의 «자세히»가 같은 이유로 막아 둔 것).
+        e.stopPropagation();
+        toggle();
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        toggle();
+      }}
+      onBlur={(e) => {
+        // 팝오버 안쪽으로 포커스가 옮겨간 것은 떠난 게 아니다(:focus-within 과 같은 뜻).
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setOpen(false);
+      }}
+    >
+      {props.children}
+      <span className="info-note-mark" aria-hidden="true">ⓘ</span>
+      <span className={`info-note-tip info-note-tip-${props.align ?? "left"}`} role="note">
+        {props.note}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * 증강 선택 모달(등가교환·미래교환·영상패·예지 재배열·분열/염색 후보 …) 안에 세우는
+ * 남은 시간 줄.
+ *
+ * 이 모달들은 **살아 있는 프롬프트의 결정**이라 서버 마감(`deadlineMs`)이 그대로 흐르는데,
+ * 전면 오버레이(z 120)라 남은 시간을 보여 주는 유일한 장치인 `PromptTimer`
+ * (`.own-area`, z 10)를 통째로 덮었다. 상대 손패를 비교하는 동안 시간이 지나면 아무
+ * 예고 없이 창이 닫히고 서버 폴백이 들어왔다 — 초읽기 국은 마감이 5~10초라 거의 확정이다
+ * (QA 4라운드 ingame-ux P1). 드래프트 창(`.draft-timer`)·국 결과창이 이미 쓰는 방식을
+ * 그대로 가져온다.
+ *
+ * 마감이 없으면(평시 국) 아무것도 그리지 않는다.
+ */
+function PickTimer(props: { deadline: number | null }): JSX.Element | null {
+  const { deadline } = props;
+  const paused = useContext(PausedContext);
+  const [left, setLeft] = useState<number | null>(
+    deadline === null ? null : Math.max(0, deadline - Date.now()),
+  );
+  useEffect(() => {
+    if (deadline === null) {
+      setLeft(null);
+      return;
+    }
+    // 판이 서 있으면 마지막 값에서 멈춘다 (PromptTimer와 같은 규칙).
+    if (paused) return;
+    setLeft(Math.max(0, deadline - Date.now()));
+    const t = setInterval(() => setLeft(Math.max(0, deadline - Date.now())), 200);
+    return () => clearInterval(t);
+  }, [deadline, paused]);
+  if (deadline === null || left === null) return null;
+  const urgent = left <= TIMER_URGENT_MS;
+  return (
+    <div
+      className={`draft-timer pick-timer${urgent ? " draft-timer-urgent" : ""}`}
+      role="timer"
+      aria-live="off"
+    >
+      ⏳ 남은 시간 <strong>{Math.ceil(left / 1000)}</strong>초
+      <span className="pick-timer-note">
+        {urgent ? " — 시간이 다 되면 서버가 대신 고른다" : " (지나면 서버가 대신 고른다)"}
+      </span>
     </div>
   );
 }
@@ -17529,6 +18010,8 @@ function OwnArea(props: {
                 me={me}
                 prompt={prompt}
                 catalog={props.catalog}
+                promptDeadline={props.promptDeadline}
+                {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
                 onUsableHint={(ids) => setUsableHint(ids === null ? null : new Set(ids))}
               />
             ) : null}
@@ -17603,6 +18086,7 @@ function OwnArea(props: {
         {armSub !== null ? createPortal(
           <div className="rinshan-pick-overlay" data-arm-zone="1">
             <div className="rinshan-pick-panel">
+              <PickTimer deadline={props.promptDeadline} />
               <div className="rinshan-pick-title">
                 ✦ {armName} — {armSub.options[0]?.type === "split_tile" ? "어떻게 쪼갤까요?" : "무엇으로 바꿀까요?"}
               </div>
@@ -17872,6 +18356,10 @@ function OwnArea(props: {
                    * 잠긴 패를 눌렀다고 방금 켠 증강이 풀리면 그건 벌이다.)
                    */
                   if (coachLocked && coachLock !== null) {
+                    // 손끝으로도 «지금은 아니다»를 말한다 — 토스트만 뜨면 화면을 보고
+                    // 있지 않은 사람에겐 그냥 안 눌린 것과 같다.
+                    // (`haptics.reject` 는 호출부 0건이었다 — QA 4라운드 ingame-ux P2)
+                    haptics.reject();
                     props.onToast?.(coachBlockHint(coachLock));
                     return;
                   }
@@ -17953,6 +18441,7 @@ function OwnArea(props: {
                   }
                   // 봉인된 패를 버리려고 클릭 — 왜 안 되는지 안내 (내 버림 차례일 때만)
                   if (lockedTile && promptHasDiscard && !props.riichiMode) {
+                    haptics.reject();
                     props.onToast?.(sealed ? SEAL_HINT : KUIKAE_HINT);
                   }
                 }}
@@ -18017,6 +18506,7 @@ function OwnArea(props: {
       {canSwapTake && !swapTakeDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
+            <PickTimer deadline={props.promptDeadline} />
             <div className="rinshan-pick-title">
               {swap3Pick.stage === "give"
                 ? "🔄 등가교환 — 넘길 내 패 3장"
@@ -18070,6 +18560,7 @@ function OwnArea(props: {
       {canPickFuture && !futureDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
+            <PickTimer deadline={props.promptDeadline} />
             <div className="rinshan-pick-title">🔮 미래를 보는 자 — 버릴 패 선택</div>
             <div className="rinshan-pick-sub">
               손에서 이 세 장이 뽑혔습니다. 바닥에 버릴 한 장을 고르세요 — 나머지 두 장은
@@ -18116,6 +18607,7 @@ function OwnArea(props: {
       {canPickRinshan && !rinshanDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
+            <PickTimer deadline={props.promptDeadline} />
             <div className="rinshan-pick-title">
               🌸 절벽 위에 피어난 꽃 — 영상패 선택
             </div>
@@ -18373,10 +18865,10 @@ function SeatAugments({
         const left = typeof uses?.left === "number" ? uses.left : null;
         const total = typeof uses?.total === "number" ? uses.total : null;
         return (
-          <span
+          <InfoNote
             key={id}
             className={`bcast-aug${left === 0 ? " bcast-aug-spent" : ""}`}
-            title={catalog[id]?.description ?? id}
+            note={catalog[id]?.description ?? id}
           >
             {catalog[id]?.name ?? id}
             {left !== null ? (
@@ -18385,7 +18877,7 @@ function SeatAugments({
                 {total !== null ? `/${total}` : ""}
               </span>
             ) : null}
-          </span>
+          </InfoNote>
         );
       })}
     </div>
@@ -18643,12 +19135,12 @@ function WaitsBadge({
             (waitCounts는 zone 화이트리스트를 방어선으로 삼는다) — 짧은 문구만 보면
             화면과 어긋나 보였다. */}
         {remaining !== null ? (
-          <span
+          <InfoNote
             className="waits-badge-hint"
-            title="패 위 숫자 = 기본 4장에서 버림패·후로·도라 표시패·내 손패에 나온 만큼을 뺀 수 (증강 생성패는 세지 않음)"
+            note="패 위 숫자 = 기본 4장에서 버림패·후로·도라 표시패·내 손패에 나온 만큼을 뺀 수 (증강 생성패는 세지 않음)"
           >
             남은 장수
-          </span>
+          </InfoNote>
         ) : null}
       </span>
       <span className="waits-badge-tiles">
@@ -19051,6 +19543,10 @@ function ActiveAugmentControl(props: {
   me: PlayerInfo;
   prompt: PromptMessage["prompt"] | null;
   catalog: Record<string, AugmentCatalogEntry>;
+  /** 초읽기 국의 결정 마감(epoch ms). 전면 모달이 `PromptTimer`를 덮으므로 모달 안에 다시 세운다. */
+  promptDeadline?: number | null;
+  /** 못 쓰는 이유처럼 터치에서 `title=` 로는 못 읽는 안내를 띄운다. */
+  onToast?: (text: string) => void;
   /**
    * 지금 이름표 pill에 빛낼 증강 id들을 위로 올린다 (없으면 null).
    *
@@ -19348,7 +19844,22 @@ function ActiveAugmentControl(props: {
   const displayCount = usableAugIds.length;
 
   const click = (): void => {
-    if (!usable) return;
+    if (!usable) {
+      /*
+       * 못 쓰는 이유는 여태 `title=` 에만 있었다 — 네이티브 툴팁은 터치에서 뜨지 않고,
+       * 여러 줄이면 더더욱 안 뜬다. 게다가 버튼이 진짜 `disabled` 라 포커스도 클릭도
+       * 안 잡혀 **이유를 물을 방법 자체가 없었다**. 이제 `aria-disabled` 로 바꿔
+       * 누를 수는 있게 두고, 누르면 이유를 토스트로 읽어 준다(저장소의 봉인패 안내와
+       * 같은 패턴 — QA 4라운드 mobile-a11y P1).
+       */
+      haptics.reject();
+      props.onToast?.(
+        activeIds.length > 0
+          ? `지금은 사용할 수 없습니다 — ${activeIds.map(blockedNote).join(" · ")}`
+          : "지금은 사용할 수 없습니다",
+      );
+      return;
+    }
     // 다시 눌러 선택 모드 취소(같은 타입이면 해제). 증강 리치 무장은 이 버튼 소관이
     // 아니므로 여기서 가로채지 않는다 — 그냥 메뉴를 연다(무장은 sel.arm이 교체한다).
     if (sel.armedType !== null && !DRAG_DISCARD_ARM_TYPES.has(sel.armedType)) {
@@ -19496,6 +20007,7 @@ function ActiveAugmentControl(props: {
       {monoType !== null && monoOptions.length > 0 ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
+            <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">🎨 {augNameFor(monoType)} — 통일할 무늬 선택</div>
             <div className="rinshan-pick-sub">
               고른 무늬로 손패의 모든 수패가 물듭니다. 자패는 그대로입니다 —
@@ -19536,6 +20048,7 @@ function ActiveAugmentControl(props: {
       {pickModal === "ura_swap" ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
+            <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">🔮 {augNameFor("ura_swap")}</div>
             <div className="rinshan-pick-sub">
               지금 뒷도라 표시패를 왕패의 다른 패와 맞바꿉니다 — 본 것을 원하는 대로 고쳐 쓰세요.
@@ -19577,6 +20090,7 @@ function ActiveAugmentControl(props: {
       {pickModal === "red_touch" ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
+            <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">🔴 {augNameFor("red_touch")} — 물들일 숫자 선택</div>
             <div className="rinshan-pick-sub">
               고른 숫자의 손패가 <b>전부 적도라</b>가 됩니다. 게임당 한 번뿐입니다.
@@ -19626,6 +20140,7 @@ function ActiveAugmentControl(props: {
       {pickModal === "silent_take" ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
+            <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">🤫 {augNameFor("silent_take")} — 주울 버림패 선택</div>
             <div className="rinshan-pick-sub">
               바닥에서 한 장을 골라 가져옵니다 — 지금 쯔모한 패는 패산 맨 밑으로 돌아가고,
@@ -19668,6 +20183,7 @@ function ActiveAugmentControl(props: {
       {pickModal === "dw_swap" ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
+            <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">
               🏯 {augNameFor("dw_swap")} — 남은 교환 {dwRemaining}회
             </div>
@@ -19873,7 +20389,7 @@ function ActiveAugmentControl(props: {
             ? " aug-btn-armed"
             : ""
         }`}
-        disabled={!usable}
+        aria-disabled={!usable}
         title={
           usable && types.length > 0
             ? types.length > 1
@@ -19957,6 +20473,7 @@ function ActiveAugmentControl(props: {
         ? createPortal(
             <div className="rinshan-pick-overlay" data-arm-zone="1">
               <div className="rinshan-pick-panel foresight-tab">
+                <PickTimer deadline={props.promptDeadline ?? null} />
                 <div className="rinshan-pick-title">🔮 예지 — 다음 한 바퀴를 어떻게 놓을까요?</div>
                 <div className="rinshan-pick-sub">
                   왼쪽부터 차례로 뽑혀 갑니다. 옮길 패를 끌어다 놓거나, 옮길 패와 놓을 자리를
@@ -21067,16 +21584,25 @@ function RoundResultPanel({
             <div className="result-total">
               <span className="result-han-circle">
                 {/* 글자 수를 넘겨 준다 — "더블 역만"은 원 밖으로 나가므로 CSS가 줄인다 */}
+                {/* 여기만 용어집을 잇는다 (QA 4차 onboard 확정 3). 바로 위 역 이름 줄에
+                    안 잇는 이유는 그대로다 — 줄줄이 밑줄이 그이면 어느 역이 큰지가 안
+                    보인다. 그런데 «3판 30부»는 **한 자리뿐**이라 그 이유가 걸리지 않고,
+                    처음 화료한 사람이 "판이 뭔데? 부가 뭔데?"를 물을 유일한 자리다.
+                    (`han` 은 `\d+판`, `fu` 는 `\d+부` 로 잡는다 — glossary.ts) */}
                 <b className="result-han-big" data-len={`${w.yakumanCount >= 2 ? yakumanName(w.yakumanCount).length : 0}`}>
-                  {w.yakumanCount > 0 ? yakumanName(w.yakumanCount) : `${w.han}판`}
+                  <TermText text={w.yakumanCount > 0 ? yakumanName(w.yakumanCount) : `${w.han}판`} />
                 </b>
                 <i className="result-fu-sm">
                   {/* 배수는 큰 글자가 이미 "더블 역만"으로 말한다 — 작은 줄은 등급만 */}
-                  {w.yakumanCount > 0
-                    ? w.limit !== null
-                      ? (LIMIT_NAMES[w.limit] ?? w.limit)
-                      : ""
-                    : `${w.fu}부${w.limit !== null ? ` · ${LIMIT_NAMES[w.limit] ?? w.limit}` : ""}`}
+                  <TermText
+                    text={
+                      w.yakumanCount > 0
+                        ? w.limit !== null
+                          ? (LIMIT_NAMES[w.limit] ?? w.limit)
+                          : ""
+                        : `${w.fu}부${w.limit !== null ? ` · ${LIMIT_NAMES[w.limit] ?? w.limit}` : ""}`
+                    }
+                  />
                 </i>
               </span>
               {/* 증강이 점수를 움직였으면 **최종 획득점**으로 굴린다 — 표준 점수만 크게
@@ -21385,14 +21911,14 @@ function DraftOverlay({
             {owned.map((id) => {
               const entry = catalog[id];
               return (
-                <span
+                <InfoNote
                   key={id}
                   className={`draft-owned-pill aug-cat-${augmentCategory(id)}`}
-                  title={entry === undefined ? id : forMode(entry.description, mode)}
+                  note={entry === undefined ? id : forMode(entry.description, mode)}
                 >
                   <AugCatIcon id={id} />
                   {entry?.name ?? id}
-                </span>
+                </InfoNote>
               );
             })}
           </div>
@@ -21452,7 +21978,7 @@ function DraftOverlay({
                     onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
                   />
                   {isActiveAugment(c.id) ? (
-                    <span className="draft-active-note">⚡ 액티브 증강 — 내 턴에 직접 발동</span>
+                    <span className="draft-active-note">✦ 액티브 증강 — 내 턴에 직접 발동</span>
                   ) : null}
                 </button>
                 {hasRerollRow ? (
@@ -21496,6 +22022,7 @@ function GameOverModal({
   stats,
   onClose,
   onContinue,
+  onPracticeAgain,
   onOpenReplay,
   sandbox = false,
 }: {
@@ -21506,6 +22033,8 @@ function GameOverModal({
   onClose: () => void;
   /** 방이 살아 있을 때만 — 같은 멤버 그대로 다음 판으로 (증강 테스트는 즉시 새 판) */
   onContinue?: () => void;
+  /** 연습 대국이었을 때의 «한 판 더» — 방이 이미 지워졌으므로 새 판을 연다. */
+  onPracticeAgain?: () => void;
   /**
    * 방금 끝난 이 판을 그 자리에서 다시 보기 (감사 §5-10).
    * 예전에는 로비로 나가 목록에서 찾아야 했다 — 방금 진 판이 가장 보고 싶은 판인데.
@@ -21613,6 +22142,7 @@ function GameOverModal({
                   </div>
                   <div className="stats-sec-label">이번 판</div>
                   <StatsGrid s={e.stats} scope="game" />
+                  <GameAugmentRow s={e.stats} />
                   {career !== null ? (
                     <>
                       <div className="stats-sec-label">누적</div>
@@ -21631,13 +22161,18 @@ function GameOverModal({
               {sandbox ? "새 판 시작" : "이어하기 (방 유지)"}
             </button>
           ) : null}
+          {onPracticeAgain !== undefined ? (
+            <button className="lobby-join" onClick={onPracticeAgain}>
+              연습 한 판 더
+            </button>
+          ) : null}
           {onOpenReplay !== undefined ? (
             <button className="lobby-join go-replay" onClick={onOpenReplay}>
               이 판 다시 보기
             </button>
           ) : null}
           <button
-            className={onContinue !== undefined ? "lobby-join go-leave" : "lobby-join"}
+            className={onContinue !== undefined || onPracticeAgain !== undefined ? "lobby-join go-leave" : "lobby-join"}
             onClick={onClose}
           >
             로비로
@@ -21687,6 +22222,10 @@ function ReplayViewer(props: {
    * 리플레이(로그인 전)에는 이 함수가 오지 않으므로 버튼도 뜨지 않는다.
    */
   onShare?: () => void;
+  /** 이 판의 공유 링크가 지금 살아 있는가 (이 세션에서 만든 것만 안다). */
+  shared?: boolean;
+  /** 공유 링크 내리기 — `revoke`. 서버·토스트는 예전부터 있었고 요청만 없었다. */
+  onUnshare?: () => void;
 }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [mod, setMod] = useState<ReplayRebuildModule | null>(null);
@@ -21946,6 +22485,17 @@ function ReplayViewer(props: {
             title="이 판을 볼 수 있는 링크를 만든다 — 링크를 가진 사람만 볼 수 있습니다"
           >
             🔗
+          </button>
+        ) : null}
+        {/* 만든 링크를 **같은 자리에서** 내린다. 이 세션에서 만든 판에만 뜬다
+            (`replayData`에는 토큰 여부가 실려 오지 않는다 — QA 4차 loop 확정 7). */}
+        {props.onShare !== undefined && props.shared === true && props.onUnshare !== undefined ? (
+          <button
+            className="rp-btn"
+            onClick={props.onUnshare}
+            title="공유 링크 내리기 — 이미 뿌린 링크도 더 이상 열리지 않습니다"
+          >
+            🔗✕
           </button>
         ) : null}
       </div>

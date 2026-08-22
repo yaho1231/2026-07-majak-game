@@ -59,6 +59,7 @@ import { OpponentMemory } from "./bot/opponents.js";
 import { chooseDraft } from "./bot/draft.js";
 import { NO_FLAGS } from "./bot/flags.js";
 import type { BotFlags } from "./bot/flags.js";
+import { shouldDeclineRon } from "./bot/winCall.js";
 
 /** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
@@ -574,9 +575,23 @@ export class BotAgent implements PlayerAgent {
     // 제약이 없으면 prompt.options 그대로다.
     const options = restrictOptions(prompt.options, this.restrictions);
 
-    // 화료는 비교하지 않는다 — 이기는 것보다 나은 선택지는 없다
+    /**
+     * 화료는 비교하지 않는다 — 이기는 것보다 나은 선택지는 없다.
+     *
+     * **딱 한 자리만 예외다**(QA 4라운드 P2): 오라스에서 순위를 한 칸도 못 바꾸는
+     * 론. 그건 「이겼다」가 아니라 「내 순위를 내 손으로 확정했다」이므로, 조건이
+     * 전부 맞을 때만 흘린다(`bot/winCall.ts`에 그 여덟 조건이 있다). 쯔모는 흘릴 수
+     * 없으므로 **패스가 함께 제시된 리액션 프롬프트**에서만 본다.
+     */
     const win = options.find((o) => o.type === "win");
-    if (win) return win;
+    if (win) {
+      const pass = options.find((o) => o.type === "pass");
+      const read = pass === undefined ? null : this.currentRead();
+      if (pass === undefined || read === null || !shouldDeclineRon(read, this.profile)) {
+        return win;
+      }
+      return pass;
+    }
 
     // 튜토리얼 배급 — 판단보다 앞이다. 여기까지 온 이상 "안전패를 고른다"는 판단이
     // 곧 배우는 사람의 리치를 영영 안 깨는 결과가 된다(`feedKinds` 주석).

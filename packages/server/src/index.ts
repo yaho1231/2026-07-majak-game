@@ -13,7 +13,7 @@
  */
 
 import { createServer } from "node:http";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createGzip, gzipSync } from "node:zlib";
 import { unlink } from "node:fs/promises";
@@ -408,6 +408,56 @@ const CSP = [
   "form-action 'none'",
 ].join("; ");
 
+/**
+ * **HTTP 요청 IP 레이트리밋** (QA 4라운드 ops P0·P1).
+ *
+ * WS 쪽은 연결 수립 속도·연결당 토큰버킷·인증/방생성 창까지 촘촘한데, HTTP 요청
+ * 수를 세는 곳은 한 줄도 없었다. 그 위에 `/og/room/*`(요청마다 PNG 합성)과
+ * `?room=` 문서(요청마다 index.html 재압축)처럼 **요청당 동기 CPU가 붙는 라우트**가
+ * 인증 없이 열려 있어서, 노트북 한 대로 이벤트 루프를 0.7~0.9초 단위로 굳힐 수 있었다.
+ *
+ * 두 창을 둔다.
+ * - 일반(정적 자산·문서): 사람 한 명이 첫 로드에 수십 개를 받으므로 넉넉하게.
+ * - 비싼 것(카드·초대 문서): 크롤러의 정상 사용은 링크 하나당 1~수 회다. 빡빡하게.
+ *
+ * `/healthz`는 제외한다 — 감시자가 1분마다 부르고, 어차피 루프백만 답한다.
+ * 진짜 루프백(로컬 개발·감시자)도 면제다(`ClientOrigin.exempt`).
+ */
+const HTTP_RATE_WINDOW_MS = 10_000;
+const HTTP_RATE_MAX = numEnv("HTTP_RATE_MAX", 300);
+const HTTP_COSTLY_RATE_MAX = numEnv("HTTP_COSTLY_RATE_MAX", 20);
+const httpRateHits = new Map<string, number[]>();
+
+/** 창 안에서 이 키가 `max`를 넘었는가. 넘지 않았으면 이번 요청을 센다. */
+export function httpRateLimited(key: string, max: number): boolean {
+  const now = Date.now();
+  const hits = (httpRateHits.get(key) ?? []).filter((t) => now - t < HTTP_RATE_WINDOW_MS);
+  if (hits.length >= max) {
+    httpRateHits.set(key, hits);
+    return true;
+  }
+  hits.push(now);
+  httpRateHits.set(key, hits);
+  // 메모리 상한 — 창이 완전히 지난 항목을 정리한다(`connRateHits`와 같은 규약).
+  if (httpRateHits.size >= 4096) {
+    for (const [k, ts] of httpRateHits) {
+      if (ts.every((t) => now - t >= HTTP_RATE_WINDOW_MS)) httpRateHits.delete(k);
+    }
+  }
+  return false;
+}
+
+/** 429는 로그를 접어서 남긴다 — 플러드 한 번에 로그가 잠기면 안 된다. */
+let http429LoggedAt = 0;
+function tooManyRequests(res: ServerResponse, what: string): void {
+  const now = Date.now();
+  if (now - http429LoggedAt >= 60_000) {
+    http429LoggedAt = now;
+    console.warn(`[http] 요청이 너무 잦아 429로 접습니다 (${what}) — 1분에 한 줄만 남깁니다`);
+  }
+  res.writeHead(429, { "Retry-After": "10", "Cache-Control": "no-store" }).end();
+}
+
 const httpServer = createServer((req, res) => {
   // 정적 서버는 읽기 전용이다 — GET/HEAD 외의 메서드는 본문을 읽지 않고 거절한다.
   // (예전에는 POST에도 파일을 그대로 내주었고, 본문은 소켓에 남아 다음 요청
@@ -421,6 +471,16 @@ const httpServer = createServer((req, res) => {
   const queryAt = rawUrl.indexOf("?");
   const url = (queryAt === -1 ? rawUrl : rawUrl.slice(0, queryAt)) || "/";
   const query = queryAt === -1 ? "" : rawUrl.slice(queryAt + 1);
+  /*
+   * IP 레이트리밋 — 아무것도 그리기 전에 먼저 센다 (ops P0·P1).
+   * `/healthz`는 제외한다(감시자 전용 + 루프백만 답한다).
+   */
+  const who = clientIpOf(req);
+  const rateKey = abuseKeyOf(who.ip);
+  if (url !== "/healthz" && !who.exempt && httpRateLimited(rateKey, HTTP_RATE_MAX)) {
+    tooManyRequests(res, "일반");
+    return;
+  }
   /**
    * 초대 카드 — `/og/room/<코드>.png`. 코드마다 다른 그림이라 그 자리에서 그린다
    * (자세한 이유는 ogCard.ts). 방이 실제로 있는지는 **묻지 않는다** — 크롤러는
@@ -432,6 +492,11 @@ const httpServer = createServer((req, res) => {
     const code = cardMatch[1] as string;
     if (!isRoomCodeShape(code)) {
       res.writeHead(404).end();
+      return;
+    }
+    // 카드 한 장은 여전히 합성 비용이 있다 — 비싼 창을 따로 건다.
+    if (!who.exempt && httpRateLimited(rateKey + "|costly", HTTP_COSTLY_RATE_MAX)) {
+      tooManyRequests(res, "초대 카드");
       return;
     }
     const png = ogCardFor(code);
@@ -462,7 +527,7 @@ const httpServer = createServer((req, res) => {
      * 없는 경로처럼 404를 준다(403은 "여기 뭔가 있다"를 알려 준다).
      * 외부 감시 도구를 붙여야 하면 HEALTHZ_PUBLIC=1로 되돌릴 수 있다.
      */
-    if (!HEALTHZ_PUBLIC && !clientIpOf(req).direct) {
+    if (!HEALTHZ_PUBLIC && !who.direct) {
       res.writeHead(404).end();
       return;
     }
@@ -572,10 +637,15 @@ const httpServer = createServer((req, res) => {
    * `HEAD`는 세지 않는다 — 크롤러·헬스체크가 쓰는 방식이다.
    */
   if (req.method !== "HEAD" && realPath.endsWith(sep + "index.html")) {
-    analytics.noteView(clientIpOf(req).ip, headerValue(req.headers["user-agent"]) ?? "");
+    analytics.noteView(who.ip, headerValue(req.headers["user-agent"]) ?? "");
   }
   const inviteCode = roomParamOf(query);
   if (inviteCode !== null && realPath.endsWith(sep + "index.html")) {
+    // 요청마다 index.html 전체를 다시 gzip 한다 — 카드와 같은 창에 넣는다.
+    if (!who.exempt && httpRateLimited(rateKey + "|costly", HTTP_COSTLY_RATE_MAX)) {
+      tooManyRequests(res, "초대 문서");
+      return;
+    }
     const body = Buffer.from(injectInviteMeta(indexHtml(realPath), inviteCode), "utf8");
     const gzipped = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
     const out = gzipped ? gzipSync(body) : body;

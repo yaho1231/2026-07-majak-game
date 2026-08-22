@@ -185,7 +185,14 @@ function encodeGrayPng(pixels: Buffer, width: number, height: number): Buffer {
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", ihdr),
-    chunk("IDAT", deflateSync(raw, { level: 9 })),
+    // 압축 레벨은 **1**이다 (QA 4라운드 ops P0).
+    //
+    // level 9는 카드 한 장에 35ms 안팎의 **동기** CPU를 먹는다. 이 라우트는 인증이
+    // 없고 코드 공간이 32^6이라 캐시가 사실상 항상 미스이므로, 그 35ms가 그대로
+    // 이벤트 루프 정지 시간이 된다 — 진행 중인 모든 대국이 함께 멎었다.
+    // level 1이면 한 자릿수 ms로 떨어지고, 커지는 것은 파일 5KB → 10KB 뿐이다
+    // (공유 카드 한 장에 무의미한 차이다).
+    chunk("IDAT", deflateSync(raw, { level: 1 })),
     chunk("IEND", Buffer.alloc(0)),
   ]);
 }

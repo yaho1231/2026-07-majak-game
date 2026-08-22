@@ -22,7 +22,11 @@ import type { WebSocket } from "ws";
 import { RoomManager, TUTORIAL_HOLD_GRACE_MS } from "../src/RoomManager.js";
 import { StatsStore } from "../src/StatsStore.js";
 import { SiteDb } from "../src/SiteDb.js";
-import { DECISION_TIMEOUT_MS, TUTORIAL_DECISION_TIMEOUT_MS } from "../src/HumanAgent.js";
+import {
+  DECISION_TIMEOUT_MS,
+  FIRST_DRAFT_TIMEOUT_MS,
+  TUTORIAL_DECISION_TIMEOUT_MS,
+} from "../src/HumanAgent.js";
 import { winningKinds } from "@majak/core";
 
 class FakeSocket {
@@ -396,11 +400,28 @@ describe("튜토리얼 판 — 시간에 쫓기지 않는다", () => {
     expect(sock.last("prompt").deadlineMs).toBe(0);
   });
 
-  it("체험판은 종전대로 30초 마감이 실린다", async () => {
+  it("체험판의 **첫** 증강 선택은 30초보다 넉넉하다 (QA 4차 onboard 확정 1)", async () => {
+    /*
+     * 예전에는 여기가 «체험판은 종전대로 30초»였다. 그런데 랜딩의 두 문 중 하나인
+     * «바로 한 판»으로 들어온 사람은 마작도 증강도 처음이고, 판이 열리자마자 처음 보는
+     * 카드 3장이 뜬다 — `draftTimeoutMs()`의 주석 자신이 "카드 셋을 읽는 데만 30초가
+     * 넘게 걸린다"고 적어 두고 그 판단을 튜토리얼에만 적용했다. 못 고르면 서버가
+     * 무작위로 집는다.
+     *
+     * 넉넉해지는 것은 **첫 스테이지 한 번뿐**이다(아래 테스트). 튜토리얼의 «시계 없음»
+     * (deadlineMs 0)과도 다른 상태다 — 여기는 시계가 뜨고 숫자만 크다.
+     */
     const h = await newHarness();
     const sock = await connect(h, false);
     await sock.waitFor((m) => m.type === "draftOffer");
-    expect(sock.last("draftOffer").deadlineMs).toBe(DECISION_TIMEOUT_MS);
+    expect(sock.last("draftOffer").deadlineMs).toBe(FIRST_DRAFT_TIMEOUT_MS);
+  });
+
+  it("그 넉넉함은 컨트롤러의 최후 그물(90초)보다 작다", () => {
+    // 그물의 전제는 "정상 흐름에서는 좌석 자신의 타이머가 항상 먼저 터진다"이다.
+    // 같거나 크면 그물이 사람을 대신 골라 버린다.
+    expect(FIRST_DRAFT_TIMEOUT_MS).toBeGreaterThan(DECISION_TIMEOUT_MS);
+    expect(FIRST_DRAFT_TIMEOUT_MS).toBeLessThan(90_000);
   });
 
   it("컨트롤러의 최후 그물도 함께 늘어난다 — 90초가 사람을 대신 두지 않게", async () => {

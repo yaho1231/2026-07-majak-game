@@ -54,18 +54,35 @@ describe("콜 기회 집계 — 관문마다 다른 이름이 붙는다", () => 
   });
 
   it("손이 전진하지 않는 콜은 '전진 없음'이다", () => {
-    // 이미 완성된 456p에서 4p5p를 빼 3p를 쳐 봐야 6p만 뜬다 — 손은 그대로다.
-    // (멘젠 텐파이가 아닌 손이라야 그 관문에 먼저 걸리지 않는다)
+    // 이미 완성된 234m에서 2m4m을 빼 3m을 쳐 봐야 샹텐이 되레 하나 늘고 받는 폭도
+    // 좁아진다. (멘젠 텐파이가 아닌 손이라야 그 관문에 먼저 걸리지 않는다)
     const scene = botScene({
-      hand: "123m789m456p22s5s9s",
-      lastDiscard: { player: "p3", spec: "3p" },
+      hand: "234m456p678p2358s",
+      lastDiscard: { player: "p3", spec: "3m" },
     });
     const { tally, bid } = outcomeOf(scene, [
-      { type: "chi", payload: { tileIds: [scene.idOf("4p"), scene.idOf("5p")] } },
+      { type: "chi", payload: { tileIds: [scene.idOf("2m"), scene.idOf("4m")] } },
       { type: "pass", payload: {} },
     ]);
     expect(bid).toBeNull();
     expect(only(tally)).toBe("no_progress");
+  });
+
+  /**
+   * QA 4라운드 P2 — 「전진」의 정의가 샹텐 하나에서 **샹텐 + 우케이레**로 넓어졌다
+   * (`bot/call.ts`의 `advances`). 예전에는 이 장면이 '전진 없음'으로 잘렸다.
+   */
+  it("샹텐이 같아도 받는 폭이 뚜렷하게 넓어지는 콜은 전진으로 친다", () => {
+    const scene = botScene({
+      hand: "123m789m456p22s5s9s",
+      lastDiscard: { player: "p3", spec: "3p" },
+    });
+    const { tally } = outcomeOf(scene, [
+      { type: "chi", payload: { tileIds: [scene.idOf("4p"), scene.idOf("5p")] } },
+      { type: "pass", payload: {} },
+    ]);
+    // 전진 관문을 통과해 **그 다음 관문**까지 갔다 (여기서는 역이 없어 걸린다)
+    expect(only(tally)).toBe("no_yaku");
   });
 
   it("울면 화료할 역이 없는 것은 '역 없음'이다", () => {
@@ -83,11 +100,11 @@ describe("콜 기회 집계 — 관문마다 다른 이름이 붙는다", () => 
 
   it("치뿐인 기회와 펑이 가능한 기회를 나눠 센다", () => {
     const chiScene = botScene({
-      hand: "123m789m456p22s5s9s",
-      lastDiscard: { player: "p3", spec: "3p" },
+      hand: "234m456p678p2358s",
+      lastDiscard: { player: "p3", spec: "3m" },
     });
     const chi = outcomeOf(chiScene, [
-      { type: "chi", payload: { tileIds: [chiScene.idOf("4p"), chiScene.idOf("5p")] } },
+      { type: "chi", payload: { tileIds: [chiScene.idOf("2m"), chiScene.idOf("4m")] } },
       { type: "pass", payload: {} },
     ]).tally;
     expect(chi.ponCount("no_progress")).toBe(0);

@@ -161,8 +161,14 @@ describe("빈 상태가 다음 걸음을 준다", () => {
     // 코드를 받을지 연습을 할지 다시 사람이 정해야 했다.
     const at = APP_CODE.indexOf("아직 완료한 대국이 없습니다");
     expect(at).toBeGreaterThan(0);
-    expect(APP_CODE.slice(at, at + 320)).toContain("home-empty-cta");
-    expect(APP_CODE.slice(at, at + 320)).toContain("props.onPractice");
+    // 창을 320 → 640 으로 넓혔다: 빈 상태 안내에 «튜토리얼·연습은 기록에 남지
+    // 않습니다» 한 줄과 «방 만들기» 단추가 함께 들어왔다(QA 4차 loop 확정 4).
+    // 이 테스트가 지키려는 것은 «누를 것이 있는가»지 그 글자 수가 아니다.
+    expect(APP_CODE.slice(at, at + 640)).toContain("home-empty-cta");
+    expect(APP_CODE.slice(at, at + 640)).toContain("props.onPractice");
+    // 그리고 **기록에 남는 문**도 함께 서 있어야 한다 — 예전 CTA 는 시키는 대로
+    // 한 판 두고 돌아와도 화면이 글자 하나 안 바뀌는 판을 열었다.
+    expect(APP_CODE.slice(at, at + 640)).toContain("props.onCreateRoom");
   });
 
   it("정말 빈 목록에는 힌트가 붙어 있다", () => {
