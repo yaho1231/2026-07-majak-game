@@ -9558,19 +9558,39 @@ function FeedbackBoard(props: {
   const [openId, setOpenId] = useState<number | null>(null);
   /** 관리자 답변 편집 중인 글 id → 입력값 */
   const [replyDraft, setReplyDraft] = useState<Record<number, string>>({});
-  /** 방금 제출했는가 — 목록이 갱신돼 오면 입력창을 비운다 */
-  const submittedRef = useRef<string | null>(null);
+  /*
+   * 방금 제출한 글의 제목 — 목록이 갱신돼 오면 입력창을 비운다.
+   *
+   * ⚠ **ref가 아니라 state여야 한다** (QA 2차 lobby 확정 6). 예전에는 `useRef`였고,
+   * 그래서 아래 «제출 중에는 다시 눌리지 않는다»가 **한 번도 작동하지 않았다** —
+   * ref를 바꿔도 리렌더가 없으니 버튼은 계속 눌린 그대로다. 막으려던 이중 제출이
+   * 그대로 열려 있었다.
+   */
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
 
   // 서버가 갱신된 목록을 되돌려주면 = 등록 성공. 그때만 입력창을 비운다
   // (실패 시에는 error 토스트만 오므로 쓴 글이 날아가지 않는다).
   useEffect(() => {
-    if (submittedRef.current === null) return;
-    if (props.entries?.some((e) => e.title === submittedRef.current && e.mine) === true) {
-      submittedRef.current = null;
+    if (pendingTitle === null) return;
+    if (props.entries?.some((e) => e.title === pendingTitle && e.mine) === true) {
+      setPendingTitle(null);
       setTitle("");
       setBody("");
     }
-  }, [props.entries]);
+  }, [props.entries, pendingTitle]);
+
+  /*
+   * **실패했을 때 풀어 주는 그물** (QA 2차 lobby 확정 6).
+   *
+   * 잠금을 푸는 유일한 길이 «목록에 내 글이 나타나는 것»뿐이었다. 시간당 10건 상한은
+   * 실제로 걸리는데, 걸리면 목록이 오지 않으므로 버튼이 «올리는 중…»에 **영구히**
+   * 갇혔다 — 새로고침 말고는 길이 없었다. 로그인 버튼이 쓰는 것과 같은 12초 그물이다.
+   */
+  useEffect(() => {
+    if (pendingTitle === null) return;
+    const timer = setTimeout(() => setPendingTitle(null), 12_000);
+    return () => clearTimeout(timer);
+  }, [pendingTitle]);
 
   /*
    * 제출 중에는 다시 눌리지 않는다 (감사 2026-08-17 §5-7).
@@ -9578,14 +9598,13 @@ function FeedbackBoard(props: {
    * 액션 제출은 "전송에 성공했을 때만 프롬프트를 내린다"는 규율을 지키는데,
    * **로비·인증·제보에는 그 규율이 오지 않았다.** 목록이 돌아올 때까지 몇 백 ms가
    * 비어 있고 버튼은 그대로 눌려서, 느린 회선에서 같은 제보가 두 번 올라갔다.
-   * `submittedRef` 가 이미 "성공하면 비운다"를 알고 있으므로 그 값을 그대로 쓴다.
    */
-  const sending = submittedRef.current !== null;
+  const sending = pendingTitle !== null;
   const canSubmit = title.trim() !== "" && body.trim() !== "" && !sending;
 
   function submit(): void {
     if (!canSubmit) return;
-    submittedRef.current = title.trim();
+    setPendingTitle(title.trim());
     props.onSubmit(kind, title.trim(), body.trim());
   }
 

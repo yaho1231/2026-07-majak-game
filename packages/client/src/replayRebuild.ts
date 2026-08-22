@@ -18,6 +18,7 @@ import {
   createInitialGameState,
   createStandardGameFromState,
   installAugment,
+  uraIndicatorIds,
 } from "@majak/core";
 import type {
   GameConfig,
@@ -148,6 +149,19 @@ export function replaySettlements(replay: RebuiltReplay): {
     };
     const dora = [...before.round.doraIndicators];
     for (const id of dora) add(id);
+    /*
+     * **뒷도라도 함께 싣는다** (QA 2차 lobby 확정 5).
+     *
+     * 예전에는 `uraDoraIndicators: []` 를 고정으로 넣었다. 그래서 리치로 화료한 국을
+     * 다시 볼 때 역 목록에는 「뒷도라 2판」이 뜨는데 그 두 장이 화면에 없었다 —
+     * 점수의 절반을 설명하는 근거가 정확히 그 자리에서 빈다. 바로 위 표도라 블록의
+     * 주석이 반대 방향의 같은 문제를 이미 적어 두었다.
+     *
+     * 생방과 **같은 함수·같은 입력**을 쓴다: `HanchanController`도 화료 때
+     * `uraIndicatorIds(state)`로 뽑는다. 화료가 아닌 국에는 뒷도라가 없다.
+     */
+    const ura = settle.outcome === "win" ? [...uraIndicatorIds(before)] : [];
+    for (const id of ura) add(id);
     for (const w of settle.winInfos ?? []) add(w.winningTileId);
     out.push({
       index: i + 1,
@@ -159,7 +173,7 @@ export function replaySettlements(replay: RebuiltReplay): {
         outcome: settle.outcome,
         settle,
         doraIndicators: dora,
-        uraDoraIndicators: [],
+        uraDoraIndicators: ura,
         tiles,
         revealedHands: {},
       },
