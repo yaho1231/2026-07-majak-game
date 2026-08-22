@@ -53,6 +53,45 @@ describe("증강 도감 — 계열 필터", () => {
   });
 });
 
+describe("증강 도감 — 검색 코퍼스", () => {
+  /*
+   * 검색이 **카드에 인쇄된 낱말을 못 찾았다.**
+   *
+   * 술어가 이름·id·설명·상세 넷만 봤는데, 도감 카드 본문은
+   * `<AugDesc variant="codex" expanded={false} />` = **요약**(`augmentBrief.ts`)
+   * 한 줄이다. 검색창 안내가 "증강 이름·설명 검색"이고 사람은 눈앞에 보이는 낱말을
+   * 치는데, 그 낱말만 코퍼스에서 빠져 있었다.
+   * (`giant_god`+"텐파이", `danger_sense`+"방총", `true_dragon`+"몸통" — 확인된 셋.)
+   */
+  it("요약을 술어가 함께 본다", () => {
+    const at = SRC.indexOf("function codexMatchesQuery(");
+    expect(at, "codexMatchesQuery 가 없다").toBeGreaterThan(0);
+    const fn = SRC.slice(at, SRC.indexOf("\n}", at));
+    expect(fn).toContain("briefOf(cat.id, cat.description)");
+    expect(fn).toContain("brief.text.toLowerCase().includes(q)");
+  });
+
+  it("목록 필터와 계열 칩 개수가 **같은** 술어를 쓴다", () => {
+    // 두 곳에 술어가 복사돼 있던 것이 애초에 어긋남의 씨앗이었다 — 한쪽만 고치면
+    // 칩의 개수와 실제 목록이 다시 갈린다.
+    const body = codexSource();
+    expect([...body.matchAll(/codexMatchesQuery\(m\.cat, q\)/g)]).toHaveLength(2);
+    // 옛 인라인 술어가 남아 있지 않다
+    expect(body).not.toContain("!m.cat.name.toLowerCase().includes(q)");
+  });
+
+  it("카드에 인쇄된 낱말로 실제로 찾힌다", async () => {
+    const { briefOf } = await import("../src/augmentBrief.js");
+    for (const [id, word] of [
+      ["giant_god", "텐파이"],
+      ["danger_sense", "방총"],
+      ["true_dragon", "몸통"],
+    ] as const) {
+      expect(briefOf(id, "").text, `${id} 요약에 «${word}» 가 없다`).toContain(word);
+    }
+  });
+});
+
 describe("마작 규칙 문안 — 울기 표기", () => {
   it("치·퐁·깡으로 쓴다", () => {
     expect(SRC).toContain("울기 — 치 · 퐁 · 깡");

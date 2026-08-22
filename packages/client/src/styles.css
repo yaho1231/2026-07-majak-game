@@ -346,7 +346,7 @@ button {
   margin: 4px 0 0;
   text-align: center;
   font-size: 11px;
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
 }
 
 /* ─────────────── 테이블 배치 · 크기 변수 ─────────────── */
@@ -1301,6 +1301,16 @@ button {
    */
   --top-side-reserve: 264px;
   max-width: calc(100cqw - 2 * var(--top-side-reserve));
+  /*
+   * ⚠ `max-width` 만으로는 예산이 **지켜지지 않는다.** 줄바꿈 없는 한 줄 flex 라
+   * 자식들의 `min-content` 합이 예산을 넘으면 상자가 그대로 삐져나가 위 겹침이
+   * 되살아난다(≥901cqw + 가로 + 배율 1.5 이상에서 도달 가능: 1400×800 «+»→1.5 면
+   * 예산 405px 인데 뒷패 줄만 하한 14px×13 = 218px 이다).
+   * 자식이 실제로 줄어들 수 있게 `min-width: 0` 을 준다(아래 `> *` 규칙). 툴팁이
+   * 이 상자 밖으로 나가야 해서 `overflow: hidden` 은 걸지 않는다 — 자르는 것은
+   * 이름표·후로 줄이 각자 자기 안에서 한다.
+   */
+  min-width: 0;
   --row-unit: calc(
     (
         100cqw - 2 * var(--top-side-reserve) - var(--back-room-x) -
@@ -1312,6 +1322,12 @@ button {
   --back-h: calc(var(--back-w) * 1.36);
   --mt-w: min(var(--mt-cap), max(14px, var(--row-unit)));
   --mt-h: calc(var(--mt-w) * 1.5);
+}
+
+/* flex 자식의 기본 `min-width: auto` 를 풀어, 위 폭 예산이 실제로 지켜지게 한다.
+   이게 없으면 `max-width` 는 있으나 마나다(위 `--top-side-reserve` 주석). */
+.opp-strip-top > * {
+  min-width: 0;
 }
 
 /*
@@ -2951,6 +2967,14 @@ button {
   to { transform: translateY(-14px) scale(0.9); opacity: 0; }
 }
 
+/* 내 후로 줄. `.own-area`의 **형제**라 담는 상자가 `.table`(화면 전체)다 — 그래서
+   폭을 스스로 지켜야 한다. 예전에는 상한도 overflow도 없어서 후로가 3~4개면 이 줄이
+   왼쪽으로 자라 손패(z 10) 위로 올라탔다(1280×800 후로 4개에서 쯔모패 아래 60px,
+   375×812에서 타일 34px 중 25px). 하필 «후로 4개 + 단기 대기 한 장» = 그 한 장을
+   봐야 하는 상황이다.
+
+   `--own-corner-max`는 OwnArea가 실측해 올려 주는 «손패 레일 오른쪽에 남는 폭»이다
+   (App.tsx의 띠 측정 자리). 대국 밖에서는 없으므로 예전처럼 상한이 없다. */
 .own-corner-right {
   position: absolute;
   right: 16px;
@@ -2959,6 +2983,12 @@ button {
   display: flex;
   align-items: flex-end;
   gap: 10px;
+  max-width: var(--own-corner-max, none);
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 스크롤이 생겨도 후로가 잘려 보이지 않게 — 넘치면 가로로 밀어 본다 */
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
 }
 
 /* 프롬프트 제한시간 게이지 (기본은 서버 30초 타임아웃 기준) */
@@ -3928,9 +3958,24 @@ button {
 }
 
 /* 선택 완료 후 카드 잠금 */
+/* 고르고 난 뒤(다른 사람 기다리는 중) — 흐려 두되 **읽는 것은 막지 않는다.**
+   예전에는 `pointer-events: none` 이 카드 전체를 죽여서, 남는 시간이 가장 많은
+   그 구간에 «자세히 ▾»로 설명을 펼칠 수가 없었다. 고를 수 없는 것과 읽을 수 없는
+   것은 다르다(카드 자체의 `aria-disabled` 주석과 같은 규칙). */
 .draft-cards-locked {
   opacity: 0.55;
+}
+.draft-cards-locked .draft-card,
+.draft-cards-locked .draft-reroll {
+  cursor: default;
+}
+/* 카드 본체의 «고르기»만 막는다 — 안쪽의 «자세히 ▾»는 다시 살린다 */
+.draft-cards-locked .draft-card {
   pointer-events: none;
+}
+.draft-cards-locked .draft-card .augdesc-more {
+  pointer-events: auto;
+  cursor: pointer;
 }
 .draft-card:disabled {
   cursor: default;
@@ -5044,7 +5089,7 @@ button {
 
 .result-draw-hidden {
   font-size: 12px;
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
   text-align: left;
 }
 
@@ -6054,7 +6099,7 @@ button {
 }
 
 .stat-chip-empty {
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
   font-style: italic;
 }
 
@@ -6513,7 +6558,7 @@ button {
 }
 
 .settings-grip {
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
   font-size: 15px;
   letter-spacing: 0;
   line-height: 1;
@@ -7094,6 +7139,15 @@ button {
 .waits-badge {
   display: inline-flex;
   align-items: center;
+  /*
+   * 오름패는 최대 9종(`WAIT_TILE_CAP`)까지 서고 거기에 후리텐 태그·`N종` 칩이 붙는다.
+   * 375×812 실측으로 ≈425px 인데 담는 `.own-top` 상한은 367px 이고, `.game-root` 는
+   * `overflow: hidden` 이라 **넘친 부분이 스크롤도 없이 잘렸다** — 좌우 끝의 오름패
+   * 한 장씩이 조용히 사라졌다. 줄바꿈을 허용하고 상한을 스스로 지킨다.
+   */
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100cqw - 16px);
   gap: 7px;
   padding: 5px 11px 6px;
   border-radius: 11px;
@@ -8539,7 +8593,7 @@ button {
 }
 
 .auth-optional {
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
   font-weight: 400;
 }
 
@@ -8559,7 +8613,7 @@ button {
   margin-top: 2px;
   border: none;
   background: none;
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
   font-size: 12px;
   text-align: center;
 }
@@ -9685,7 +9739,7 @@ button {
 }
 
 .home-empty {
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
   font-size: 13px;
   text-align: center;
   padding: 18px 0;
@@ -10265,7 +10319,7 @@ button {
   font-variant-numeric: tabular-nums;
 }
 .codex-card-sample { color: #7b9084; margin-left: 4px; }
-.codex-dim { color: #5f7469; }
+.codex-dim { color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */ }
 
 /* 통계표 */
 .codex-table-scroll { max-height: none; }
@@ -10841,7 +10895,10 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: min(86vw, 640px);
+  /* 파일 규약(§1 :127): 화면 비례 단위는 vw/vh/vmin 이 아니라 cqw/cqh/cqmin 이다.
+     여기만 vw 라 UI 배율을 안 봤다 — 390px 폰 + 배율 2.0(가상 뷰포트 195px)에서
+     86vw = 335px 로 상자가 화면 폭의 1.7배가 됐다. */
+  max-width: min(86cqw, 640px);
   padding: 8px 18px;
   border-radius: 999px;
   background: rgba(46, 38, 18, 0.94);
@@ -10856,6 +10913,23 @@ button {
 /* 관전 화면에는 관전 띠가 이미 그 자리에 있으므로 한 줄 아래로 내린다 */
 .room-notice-spec {
   top: 58px;
+}
+
+/*
+ * 좁은 폭 — 우상단 아이콘 줄 **아래**로 내린다.
+ *
+ * 375px 에서 공지는 x 26…348 / y 12…48 인데 같은 자리의 `.icon-btn` 다섯 개가
+ * x 173…367 / y 8…48 · **z 58** 이라, 공지 글자의 오른쪽 절반이 단추 밑으로
+ * 들어갔다(`pointer-events: none` 이라 조용히 가려지기만 했다). 폭을 줄여서는
+ * 못 피한다 — 공지는 가운데 정렬이고 단추 줄이 그 가운데까지 내려와 있다.
+ * 아래로 한 줄 내리면 판 위쪽을 잠깐 스치지만, 공지는 떴다 사라지는 띠라
+ * «안 읽히는 것»보다 낫다. 관전 화면은 위 `.room-notice-spec` 이 더 아래로 이미
+ * 내려 두었으므로 건드리지 않는다.
+ */
+@container ui (max-width: 700px) {
+  .room-notice:not(.room-notice-spec) {
+    top: 54px;
+  }
 }
 
 .room-notice-text {
@@ -11287,7 +11361,9 @@ button {
   border: 1px solid rgba(226, 178, 92, 0.65);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 22px rgba(226, 178, 92, 0.25);
   text-align: center;
-  max-width: min(90vw, 420px);
+  /* 같은 이유로 cqw 다(위 `.room-notice` 주석). `.pause-overlay` 는 place-items:
+     center 라 넘치면 좌우가 **양쪽 다** 잘려 일시정지 사유를 못 읽었다. */
+  max-width: min(90cqw, 420px);
 }
 
 .pause-title {
@@ -11354,10 +11430,25 @@ button {
   font-weight: 700;
 }
 
+/*
+ * 리플레이 뷰어.
+ *
+ * ⚠ `z-index: auto` 였다 — **쌓임 맥락을 만들지 않았다.** 그래서 순위표에서 「이 판
+ * 다시 보기」를 열면 판은 순위표 `.overlay`(z 50) **뒤에** 깔리고, 자손인
+ * `.replayer-bar`(z 60)만 순위표 위로 삐져나왔다: 화면에는 재생 바만 떠 있고
+ * ⏮◀▶⏭·Space·←/→ 가 **안 보이는 판**을 조작했다.
+ *
+ * 순위표를 걷지 않고 **위로 올린다** — 뷰어를 닫으면(`onClose`) 순위표가 그대로
+ * 다시 보여야 하기 때문이다(걷어 버리면 「이어하기」·「로비로」로 돌아갈 길이 없다).
+ * `isolation: isolate` 로 안쪽 z-index 를 이 상자 안에 가둬, 재생 바가 다시는
+ * 바깥 오버레이와 높이를 다투지 않게 한다.
+ */
 .replayer {
   position: relative;
   width: 100%;
   height: 100%;
+  z-index: 55; /* .overlay(50) 위 */
+  isolation: isolate;
 }
 
 .replayer-bar {
@@ -11579,8 +11670,14 @@ button {
 .layout-hint {
   position: fixed;
   /* 좌상단 모드 뱃지(top 12 · 아래끝 46~57) 아래로 — 둘 다 왼쪽 위라 예전에는
-     겹쳐서 둘 다 안 읽혔다(2026-08-12 실측: 뱃지 y 16~93 × 안내 y 16~118). */
-  top: 62px;
+     겹쳐서 둘 다 안 읽혔다(2026-08-12 실측: 뱃지 y 16~93 × 안내 y 16~118).
+
+     ⚠ 그 계산이 **모드 뱃지 하나만** 셌다. 봇 대국에는 그 아래 60px 자리에 두 번째
+     뱃지(`.bot-diff-badge`, 아래끝 ~94)가 하나 더 선다 — 안내(z 310)가 뱃지(z 40)를
+     정면으로 덮어, 그 뱃지의 유일한 쓰임(`cursor: help` 툴팁으로 봇 난이도 읽기)이
+     통째로 막혔다. 두 번째 뱃지 아래로 내린다. 봇이 없는 판에서는 그만큼 여백이
+     생기지만, 잠깐 떴다 사라지는 안내라 자리가 밀리는 편이 겹치는 것보다 낫다. */
+  top: 100px;
   left: 8px;
   z-index: 310;
   display: flex;
@@ -11778,6 +11875,18 @@ button {
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
   animation: bar-in 0.25s ease;
   pointer-events: auto;
+}
+
+/*
+ * 재연결 띠(z 300, 불투명)가 떠 있으면 그 아래로 내려선다.
+ *
+ * 둘은 배타적이지 않다 — 재연결 중에도 마지막 뷰가 그대로 렌더되므로 투표 배너는
+ * 살아 있는데, 띠가 `role="alertdialog"` 배너의 찬성/반대 버튼까지 통째로 가렸다.
+ * 값 34px = 띠의 실제 높이(패딩 8+8 + 줄높이 ~17 + 아래 테두리 1).
+ * 표식은 App 이 body 에 단다(`connection === "reconnecting"`).
+ */
+body.reconnecting .abort-banner {
+  top: 34px;
 }
 
 .abort-banner-info {
@@ -12595,7 +12704,7 @@ button {
 .tier-td-id {
   display: block;
   font-size: 10.5px;
-  color: #5f7469;
+  color: var(--ink-4); /* #5f7469 였다 — --chrome-fill 위에서 3.68:1 로 본문 4.5:1 에 못 미쳤다 (§1 토큰 주석) */
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .tier-td-note { color: #a8bcaf; line-height: 1.5; min-width: 260px; }
@@ -13101,7 +13210,23 @@ body.peeking .overlay-peekable > * {
 .prod-skip {
   position: fixed;
   left: 50%;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  /*
+   * **`.toast-stack` 과 같은 이유로 내 영역 위로 비켜선다.**
+   *
+   * 토스트는 2026-08-19 에 이 수리를 받았는데 이 알약만 `bottom: 12px` 로 남아
+   * 있었다. z 250 이라 `.own-area`(z 10) 위에 얹히고, 폭 130px 짜리가 화면 아래
+   * 가운데에 서므로 375×812 폰 세로에서는 손패 가운데 다섯 장이 타일 높이 전부
+   * 가려졌다. 컷인은 남이 리치·후로·화료할 때마다 뜨므로 «지금 내 패를 다시
+   * 읽는» 순간과 정확히 겹친다.
+   *
+   * `--own-band-full` 은 OwnArea 가 실측해 올려 주는 내 영역 전체 높이다.
+   * 대국 밖에서는 그 변수가 없으므로 예전 값 12px 이 그대로 하한으로 남는다.
+   * safe-area 는 양쪽 항에 다 걸어 홈 인디케이터도 함께 피한다.
+   */
+  bottom: max(
+    calc(12px + env(safe-area-inset-bottom, 0px)),
+    calc(var(--own-band-full, 0px) + 12px + env(safe-area-inset-bottom, 0px))
+  );
   transform: translateX(-50%);
   z-index: 250;
   display: inline-flex;
@@ -13440,8 +13565,18 @@ body.peeking .overlay-peekable > * {
 }
 
 /* 9-3. 폰 세로 (≤480px) — 데스크톱 배치를 그대로 쓸 수 없는 폭.
-   판은 남기고 주변 장식을 접는다. 손패는 세로 크기를 지켜 탭 목표를 확보한다. */
-@media (max-width: 480px) {
+   판은 남기고 주변 장식을 접는다. 손패는 세로 크기를 지켜 탭 목표를 확보한다.
+
+   ⚠ 이 블록은 원래 `@media (max-width: 480px)` = **실제 기기 px** 이었다. 그런데
+   배치를 가르는 규칙은 전부 `@container ui`(=배율이 곱해진 가상 뷰포트)다 — 그래서
+   좁은 배치가 만든 문제를 막는 값만 다른 저울에 걸려 있었다. 800×1200 창 + 화면
+   배율 2.0(uiScale 1.44) 이면 가상 뷰포트가 555×833 이라 `@container ui
+   (max-width:700px)` 규칙은 전부 걸리는데 이 블록은 하나도 안 걸렸다: 보드는 폰과
+   같은 크기로 줄어드는데 `--own-reserve` 는 0 이라 치·펑 프롬프트가 뜨는 순간 내
+   바닥이 다시 먹혔고, 터치 목표(`.hand-tile` 46px)와 홈 인디케이터 여백도 함께
+   빠졌다. **큰 글씨를 쓰려고 배율을 올린 사람 = 이 보호가 가장 필요한 사람**이
+   보호를 못 받은 셈이다. 파일의 다른 반응형 규칙과 같은 기준으로 옮긴다. */
+@container ui (max-width: 480px) {
   .quick-toggles { display: none; }
   .quick-toggles-inline { display: flex; }
   .icon-btn { width: 40px; height: 40px; font-size: 15px; }
@@ -13777,6 +13912,25 @@ body.peeking .overlay-peekable > * {
   background: var(--surface-3);
   border-color: var(--brass-line);
 }
+/*
+ * 「대화」 버튼의 포커스 링을 되돌린다 (WCAG 2.4.7).
+ *
+ * 전역 `:focus-visible` 규칙(§1)은 `:where(...)` 라 특이성이 (0,1,0) 이고,
+ * 바로 위 `.emote-toggle { box-shadow: var(--shadow-2) }` 도 (0,1,0) 인데 **파일에서
+ * 더 뒤에 있다** — 뒤에 온 쪽이 이겨서 링이 통째로 덮이고 `outline: none` 만 남았다.
+ * 그래서 Tab 으로 이 버튼에 닿아도 화면이 아무 말도 하지 않았다.
+ * (§1 의 «이 규칙은 파일 끝에 있어 같은 특이성을 이긴다» 는 전제가 이 블록이
+ * 나중에 추가되면서 깨진 것이다. 전역 블록을 옮기면 §13 의 prefers-contrast·
+ * forced-colors 재정의까지 순서가 흔들리므로, 덮은 쪽에 링을 되돌려 준다.)
+ * 그림자는 그대로 두고 링만 겹쳐 얹는다.
+ */
+.emote-toggle:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--felt-0),
+    0 0 0 4px var(--brass-bright),
+    var(--shadow-2);
+}
 .emote-list {
   display: flex;
   flex-direction: column;
@@ -13813,6 +13967,10 @@ body.peeking .overlay-peekable > * {
   left: 50%;
   top: 84px;
   transform: translateX(-50%);
+  /* `position: fixed` 라 `.game-root { overflow: hidden }` 으로도 안 잘린다 —
+     넘치면 문서 **밖으로** 나간다. 닉네임(최대 12자) + 긴 정형구는 320px 급에서
+     화면을 넘으므로 상한을 스스로 지킨다. */
+  max-width: calc(100cqw - 16px);
   z-index: 120;
   display: flex;
   flex-direction: column;
@@ -13830,7 +13988,11 @@ body.peeking .overlay-peekable > * {
   background: var(--surface-3);
   box-shadow: var(--shadow-2);
   font-size: 13px;
-  white-space: nowrap;
+  /* `nowrap` 이었다 — 좁은 폭에서 말풍선이 화면 밖으로 삐져나갔다. 두 줄이 되는
+     편이 문장이 잘리는 것보다 낫다. */
+  max-width: 100%;
+  white-space: normal;
+  word-break: keep-all;
 }
 @media (prefers-reduced-motion: no-preference) {
   .emote-bubble {
@@ -13877,11 +14039,17 @@ body:has(.overlay) .emote-bar {
   top: auto;
 }
 
-/* 폰 — 손패가 더 위로 올라오므로 정형구도 함께 올린다. */
+/* 폰 — 손패가 더 위로 올라오므로 정형구도 함께 올린다.
+
+   ⚠ 150px 은 «액션 바가 한 줄일 때»의 실측이라 여유가 7px 뿐이었다. 치×3 + 퐁 +
+   깡 + 론 + 패스가 두 줄로 접히면(`.action-bar { flex-wrap: wrap }`) 내 영역 위끝이
+   ~193px 까지 올라와, 「대화」 알약(z 60)이 액션 바 오른쪽 끝에 얹혔다.
+   `--own-band-full` 은 OwnArea 가 **액션 바까지 포함해** 실측해 올려 주는 높이다 —
+   상수 대신 그 값을 하한으로 쓰면 줄이 접히든 말든 늘 그 위에 선다. */
 @container ui (max-width: 700px) {
   .emote-bar {
     right: 8px;
-    bottom: 150px;
+    bottom: max(150px, calc(var(--own-band-full, 0px) + 10px));
   }
   .emote-btn {
     min-height: 40px; /* §9-2 터치 목표 */
@@ -14313,9 +14481,17 @@ body:has(.overlay) .emote-bar {
 .notice-date { flex: none; color: var(--ink-4); font-size: 11px; }
 /* 머리줄 전체가 과녁이다 — "자세히 ▾"는 눌러야 함을 알려 주는 표시로만 남는다. */
 .notice-head-clickable { cursor: pointer; }
+/*
+ * ⚠ `--line-strong`(rgba(236,228,210,.18))으로 그린 링이었다. 특이성 (0,2,0)이라
+ * 전역 황동 링 (0,1,0)을 이기는데, 공지 띠 배경 위에 합성하면 ≈#343330 → 인접
+ * 대비가 **1.5:1** 로 WCAG 2.4.11(3:1)에 한참 못 미쳤다. 사실상 안 보이는 링이
+ * 보이는 링을 밀어낸 셈이라, 전역과 같은 황동 두 겹으로 되돌린다.
+ */
 .notice-head-clickable:focus-visible {
-  outline: 2px solid var(--line-strong);
-  outline-offset: 3px;
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--felt-0),
+    0 0 0 4px var(--brass-bright);
   border-radius: var(--r-sm, 6px);
 }
 .notice-more {

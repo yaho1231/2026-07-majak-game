@@ -60,14 +60,48 @@ export function rebuildReplay(lines: string[]): RebuiltReplay {
   const roundStarts: number[] = [];
 
   for (const line of lines.slice(1)) {
-    const event = JSON.parse(line) as GameEvent;
-    state = game.engine.reducers.dispatch(state, event);
+    /*
+     * **한 줄이 깨져도 판 전체를 잃지 않는다** — 서버 `ReplayReader`와 같은 정책이다.
+     *
+     * 리플레이 파일은 프로세스가 사는 동안 계속 append되고, 서버가 SIGKILL로 죽으면
+     * 마지막 write가 중간에서 끊긴다. 예전에는 여기 `try/catch`가 하나도 없어서 그
+     * 한 줄에 `rebuildReplay`가 통째로 throw했고, 뷰어는 `JSON.parse` 원문
+     * («Unexpected end of JSON input»)만 띄웠다 — 서버가 비정상 종료했다가 감시자가
+     * 되살린 판, 즉 **가장 다시 보고 싶은 판**이 정확히 안 열렸다.
+     * 마지막 한 수를 잃는 것과 40분을 잃는 것 중 하나를 고르는 문제라, 거기서 끊고
+     * 지금까지 복원한 것을 돌려준다.
+     *
+     * 리듀서 예외(`dispatch`)도 같이 받는다: 클라이언트는 서버와 달리 콘텐츠 버전이
+     * 어긋난 채로 옛 판을 열 수 있어, 모르는 이벤트 하나에 판 전체가 닫혔다.
+     */
+    let event: GameEvent;
+    try {
+      event = JSON.parse(line) as GameEvent;
+    } catch {
+      console.warn(`[replay] 줄이 온전하지 않다 — ${events.length}개 이벤트까지만 되살린다`);
+      break;
+    }
+    try {
+      state = game.engine.reducers.dispatch(state, event);
+    } catch (err) {
+      console.warn(
+        `[replay] 이벤트를 되살리지 못했다(${String(event.type)}) — ${events.length}개까지만 보여 준다`,
+        err,
+      );
+      break;
+    }
     state = { ...state, lastEventSeq: event.seq };
     if (event.type === AUGMENT_DRAFTED) {
       const p = event.payload as { player: PlayerId; augmentId: string };
       const def = game.augments.get(p.augmentId);
       if (def !== undefined) {
-        installAugment(game.engine, def, p.player, { yaku: game.yaku });
+        // 설치 실패도 판을 닫을 이유는 아니다 — 그 증강이 만든 이벤트에서 위
+        // dispatch 가 멈추고 «여기까지»로 물러난다.
+        try {
+          installAugment(game.engine, def, p.player, { yaku: game.yaku });
+        } catch (err) {
+          console.warn(`[replay] 증강 설치 실패(${p.augmentId})`, err);
+        }
       }
     }
     events.push(event);

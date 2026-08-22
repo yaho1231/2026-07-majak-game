@@ -9,7 +9,7 @@
  * 다만 storage.ts 는 순수 모듈이라 실제로 불러서 동작까지 확인한다.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -22,6 +22,21 @@ const APP = read("../src/App.tsx");
 const UISCALE = read("../src/uiScale.ts");
 const HTML = read("../index.html");
 const PUBLIC = join(HERE, "../public");
+
+/** `src/` 아래 모든 ts·tsx 원본 — 저장소 키 스캔이 특정 파일에 묶이지 않게 한다 */
+function clientSources(): string[] {
+  const root = join(HERE, "../src");
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(e.name)) out.push(readFileSync(p, "utf8"));
+    }
+  };
+  walk(root);
+  return out;
+}
 
 /** 주석을 걷어낸 코드만 — 주석에 적힌 옛 형태가 검사에 걸리지 않게 한다 */
 function code(src: string): string {
@@ -79,9 +94,17 @@ describe("저장소 접근이 부팅을 깨뜨리지 않는다", () => {
 
   it("전체 지우기가 실제로 쓰는 키를 전부 덮는다", async () => {
     const { STORAGE_KEYS } = await import("../src/storage.js");
-    // 소스에 등장하는 majak.* 키가 목록에 다 들어 있어야 "처음부터"가 처음부터다.
+    /*
+     * 소스에 등장하는 majak.* 키가 목록에 다 들어 있어야 "처음부터"가 처음부터다.
+     *
+     * ⚠ 예전에는 `App.tsx`·`uiScale.ts` **두 파일만** 훑었다. 그래서
+     * `majak.tutorialDone`처럼 다른 파일(`tutorial.ts`)에 상수로 사는 키는 App이
+     * `TUTORIAL_KEY`로만 부르는 탓에 스캔에 안 잡혔고, 목록에서 빠진 채 조용히
+     * 살아남았다 — 계정까지 지우고 다시 가입해도 튜토리얼이 다시 안 떴다.
+     * `src` 아래 전체를 훑는다: 스캔 대상이 «지금 열어 둔 두 파일»이면 같은 일이 또 난다.
+     */
     const used = new Set<string>();
-    for (const src of [APP, UISCALE]) {
+    for (const src of clientSources()) {
       for (const m of src.matchAll(/"(majak\.[a-zA-Z]+)"/g)) used.add(m[1] as string);
     }
     // uiScale이 부팅 때 지우는 옛 키는 이미 사라진 값이라 목록 대상이 아니다.

@@ -90,6 +90,13 @@ export const STORAGE_KEYS = [
   "majak.homeFolded",
   "majak.homeTab",
   "majak.sandboxMode",
+  /*
+   * `tutorial.ts`의 `TUTORIAL_KEY`. 여기 빠져 있었다 — 가드 테스트가 App.tsx·
+   * uiScale.ts의 **문자열 리터럴만** 훑는데 이 키는 다른 파일의 상수라 스캔에
+   * 안 잡혔다. 그 탓에 에러 바운더리의 최후 탈출구를 눌러 계정까지 지우고 다시
+   * 가입해도 새 계정이 가입 직후 튜토리얼 판으로 안내되지 않았다.
+   */
+  "majak.tutorialDone",
 ] as const;
 
 /** 방 복귀 정보만 지운다 — 로그인은 유지한 채 "그 판"에서만 빠져나오는 용도. */
