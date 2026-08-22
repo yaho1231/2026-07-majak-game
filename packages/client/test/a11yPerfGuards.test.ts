@@ -289,9 +289,26 @@ describe("키보드로 둘 수 있고, 어디에 서 있는지 보인다", () =>
   });
 
   it("UA 기본 포커스 링을 지우는 규칙이 남아 있지 않다", () => {
-    // 전역 규칙 자신의 outline:none(box-shadow로 대체)만 예외
-    const offenders = [...code(CSS).matchAll(/outline:\s*none/g)];
-    expect(offenders.length).toBe(1);
+    /*
+     * `outline: none`은 **같은 규칙 안에서 황동 링을 다시 세울 때만** 허용한다.
+     *
+     * 예전에는 «한 곳뿐»으로 개수를 셌는데, 그 셈은 «전역 규칙이 파일에서 마지막에
+     * 온다»는 전제 위에 서 있었고 그 전제가 실제로 깨졌다(확정 15: `.emote-toggle`이
+     * 뒤에 추가되면서 같은 특이성으로 링을 덮어 「대화」 버튼에 포커스 표시가 통째로
+     * 사라졌다). 개수가 아니라 **링이 함께 있는가**를 본다 — 링을 되돌려 주는 수리는
+     * 통과하고, 링 없이 지우기만 하는 규칙은 몇 개든 잡힌다.
+     */
+    const src = code(CSS);
+    const offenders: string[] = [];
+    for (const m of src.matchAll(/outline:\s*none/g)) {
+      const at = m.index ?? 0;
+      const start = src.lastIndexOf("{", at);
+      const end = src.indexOf("}", at);
+      const block = src.slice(start, end === -1 ? src.length : end);
+      const selector = src.slice(Math.max(0, src.lastIndexOf("\n", start)), start).trim();
+      if (!block.includes("0 0 0 4px var(--brass-bright)")) offenders.push(selector);
+    }
+    expect(offenders, `링 없이 outline을 지운다: ${offenders.join(" / ")}`).toEqual([]);
   });
 
   it("액션 바에 단축키가 걸려 있다", () => {

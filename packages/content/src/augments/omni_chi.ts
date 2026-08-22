@@ -15,9 +15,9 @@ export const omniChi: AugmentDef = defineAugment({
   complexity: 2,
   name: "사방치기",
   description:
-    "(상시) 상가뿐 아니라 누구의 버림패로도 치를 할 수 있다.",
+    "(상시) 상가뿐 아니라 누구의 버림패로도 치할 수 있다.",
   detail:
-    "(상시) 치의 자리 제한이 사라져 어느 자리의 버림패로도 치를 할 수 있다. 같은 버림에 퐁과 겹치면 퐁이 우선하는 표준 우선순위는 그대로지만, 상가의 일반 치와 겹치면 이쪽 원격 치가 우선한다.",
+    "(상시) 치의 자리 제한이 사라져 어느 자리의 버림패로도 치할 수 있다. 같은 버림에 퐁과 겹치면 퐁이 우선하는 표준 우선순위는 그대로지만, 상가의 일반 치와 겹치면 이쪽 원격 치가 우선한다.",
   install(ctx) {
     ctx.setHolderRule("call.chi.fromAnyone", true);
   },

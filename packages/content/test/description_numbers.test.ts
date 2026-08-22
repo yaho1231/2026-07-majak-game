@@ -35,11 +35,10 @@ import { ALL_AUGMENTS, playerFacingText, sourceOf } from "./catalogSource.js";
  * 새로 추가할 때는 왜 코드에 없는지를 함께 적는다.
  */
 const DERIVED_NUMBERS: Readonly<Record<string, readonly [number, string][]>> = {
-  devils_advance: [[9000, "3000 × 3인의 합계 — 코드는 1인분 3000만 안다"]],
-  karma: [
-    [12000, "게이지 예시값(설명 안의 예시 계산)"],
-    [3200, "그 예시에서 사라지는 몫 — 12000에서 파생된 산문"],
-  ],
+  // devils_advance 9000·karma 12000은 예전에 여기 있었다. 자릿점을 지우고 나서
+  // (`flattenCommas`) 같은 파일 안에서 근거가 잡혀 아래 "낡지 않았다" 검사가
+  // 뺄 것을 요구했다 — 2026-08-22 QA round2 확정 13④의 부수 효과다.
+  karma: [[3200, "12000에서 사라지는 몫 — 설명 안의 예시 계산"]],
 };
 
 /** 주석·문자열 리터럴을 걷어낸 "실행되는 코드" */
@@ -52,15 +51,30 @@ function codeOnly(src: string): string {
     .replace(/`(?:[^`\\]|\\.)*`/g, "``");
 }
 
+/**
+ * 자릿점을 지운다 — 글은 `45,000점`, 코드는 `45000`이라 그대로 두면 서로를 못 찾는다.
+ * 그룹이 여럿이어도(1,112,345,678,999) 다 붙을 때까지 돌린다.
+ * (2026-08-22 QA round2 확정 13④로 4자리 이상을 전부 콤마 표기로 통일하면서 추가.)
+ */
+function flattenCommas(text: string): string {
+  let out = text;
+  for (;;) {
+    const next = out.replace(/(\d),(\d{3})/g, "$1$2");
+    if (next === out) return out;
+    out = next;
+  }
+}
+
 /** 글에서 숫자를 뽑는다 (10,000 같은 자릿점은 붙여 읽는다) */
 function numbersIn(text: string): string[] {
-  const flat = text.replace(/(\d),(\d{3})/g, "$1$2");
-  return [...new Set(flat.match(/\d+(?:\.\d+)?/g) ?? [])];
+  return [...new Set(flattenCommas(text).match(/\d+(?:\.\d+)?/g) ?? [])];
 }
 
 /** 그 숫자가 **딱 그 숫자로** 나오는가 (12가 1·2에 걸리지 않게) */
 function hasNumber(src: string, n: string): boolean {
-  return new RegExp(`(?<![\\d.])${n.replace(".", "\\.")}(?![\\d.])`).test(src);
+  return new RegExp(`(?<![\\d.])${n.replace(".", "\\.")}(?![\\d.])`).test(
+    flattenCommas(src),
+  );
 }
 
 describe("설명 ↔ 구현 수치 대조 ① 숫자 실재", () => {

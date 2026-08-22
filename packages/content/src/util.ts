@@ -19,8 +19,11 @@ import {
   augmentDataSet,
   augmentStageKey,
   calculateScore,
-  meldCountOf,
+  kindOf,
   playerAtSeat,
+  sameKind,
+  WALL,
+  DEAD_WALL,
 } from "@majak/core";
 import type {
   AugPointNote,
@@ -33,6 +36,7 @@ import type {
   RuleRegistry,
   SettleStage,
   TileId,
+  TileKind,
   VisibilityRule,
   WinInfo,
   YakuRegistry,
@@ -46,6 +50,30 @@ export function statePrng(state: GameState): Prng {
 }
 
 /** 현재 국을 식별하는 키 (국이 바뀌면 달라진다 — 국 단위 플래그용) */
+/**
+ * **아직 안 나온 그 종류의 장수** — 패산 + 왕패에 남아 있는 수.
+ *
+ * 「없는 5번째 장을 만들지 않는다」를 지키려는 증강이 공유하는 자다. 손·바닥·후로에
+ * 있는 장은 이미 '나온' 장이고, 여기 남은 것이 정확히 아직 안 나온 나머지다.
+ *
+ * **왜 함수로 뽑았나**: `off_by_one`이 이 검사를 먼저 갖췄는데(2026-08-20 QA 리치
+ * 확정 3) `peek_riichi_waits`의 위조는 같은 함정에 그대로 빠져 있었다(QA 2차 aug-3
+ * 확정 1) — 같은 규칙이 두 곳에 필요한데 한 곳에만 있으면, 그 갈림은 언제나
+ * **느슨한 쪽이 통과되는 방향**으로만 드러난다. 세 번째 자리가 생기면 여기를 쓴다.
+ *
+ * 장수 세기는 마작 방어의 근간이다 — "이 패는 4장 다 보였으니 절대 안 맞는다"라고
+ * 세고 던진 안전패에 맞으면 그건 대응 자체가 불가능한 화료가 된다.
+ */
+export function copiesLeftUndrawn(state: GameState, kind: TileKind): number {
+  let n = 0;
+  for (const zone of [WALL, DEAD_WALL]) {
+    for (const id of state.zones[zone]?.tileIds ?? []) {
+      if (sameKind(kindOf(state, id), kind)) n++;
+    }
+  }
+  return n;
+}
+
 export function roundKey(state: GameState): string {
   const r = state.round;
   return `${r.prevalentWind}-${r.roundNumber}-${r.honba}`;
@@ -192,6 +220,18 @@ export function publishUsesLeft(
  * 물리적으로 불가능한 손이 남아 **그 국 내내 벽돌**이 됐다(2026-07-29 감사, 실측 재현).
  * 그래서 멘쯔 수까지 같은지 함께 본다.
  *
+ * ⚠⚠ 그런데 **멘쯔 개수도 부족했다** — 후로가 손에서 빼 가는 장수는 종류마다 다르다.
+ * 깡은 3장(안깡은 4장), 퐁·치·국사퐁은 2장이다. 멘쯔 1개끼리라도 깡 보유자는 손패 10장,
+ * 퐁 보유자는 11장이라 옛 가드를 그대로 통과했고, 바꾸고 나면 강탈자 손이
+ * **11 + 쯔모 1 = 12장**(정상 11장)이 되어 그 국 내내 유효 14장으로 놀았다
+ * (2026-08-22 QA aug-2 확정 1, 실측 재현: `qa-lab/round2/aug-2/r_fullswap.ts`).
+ * 반대 조합이면 한 장 모자란 벽돌 손이 된다. 그래서 개수가 아니라 **손패 슬롯 수**
+ * (`deal.handSize − Σ 멘쯔가 손에서 가져간 장수`)를 비교한다.
+ *
+ * 손에서 가져간 장수는 멘쯔 종류를 나열하지 않고 실물로 센다 —
+ * `tileIds.length − (남의 패를 울어 온 것이면 1)`. 종류가 늘어도(국사퐁·가깡·묵계)
+ * 이 식은 그대로 맞고, 새 종류를 여기 등록하는 것을 잊어 가드가 다시 새는 일이 없다.
+ *
  * 손패를 통째로 옮기는 증강(자리 바꿈·통째로 바꾸기)의 **공용 가드** —
  * 여기 한 곳에서만 판정해 사본이 갈라져 가드가 빠지는 일을 막는다.
  */
@@ -203,13 +243,31 @@ export function sameHandSize(
   a: PlayerId,
   b: PlayerId,
 ): boolean {
-  if (
-    rules.resolve<number>("deal.handSize", { playerId: a, state }) !==
-    rules.resolve<number>("deal.handSize", { playerId: b, state })
-  ) {
-    return false;
-  }
-  return meldCountOf(state, a) === meldCountOf(state, b);
+  const sizeA = rules.resolve<number>("deal.handSize", { playerId: a, state });
+  const sizeB = rules.resolve<number>("deal.handSize", { playerId: b, state });
+  if (sizeA !== sizeB) return false;
+  // 멘쯔 개수가 같아도 손패 슬롯 수는 다를 수 있다(깡 ↔ 퐁). 슬롯 수로 본다.
+  return concealedSlotsOf(state, a, sizeA) === concealedSlotsOf(state, b, sizeB);
+}
+
+/**
+ * 이 사람이 지금 손에 들고 있어야 할 **슬롯 수**(쯔모패 제외).
+ *
+ * `deal.handSize`(보통 13)에서 후로가 손에서 가져간 장수를 뺀다. 실제 손패 배열 길이를
+ * 그대로 쓰지 않는 이유: 쯔모를 마친 사람은 한 장 더 들고 있어 양쪽을 비교할 수 없고,
+ * 손패가 이미 어긋난 상태에서는 "어긋남을 정상으로 인정"해 버린다.
+ */
+export function concealedSlotsOf(
+  state: GameState,
+  id: PlayerId,
+  handSize = 13,
+): number {
+  const melds = state.round.byPlayer[id]?.melds ?? [];
+  const taken = melds.reduce(
+    (n, m) => n + m.tileIds.length - (m.calledTileId === undefined ? 0 : 1),
+    0,
+  );
+  return handSize - taken;
 }
 
 /**

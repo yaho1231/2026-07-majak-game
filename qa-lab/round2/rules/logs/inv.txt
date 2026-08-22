@@ -1,0 +1,18 @@
+OK   결정성 seed=11 — rounds=8 최종={"p0":24000,"p1":24000,"p2":24000,"p3":28000}
+OK   결정성 seed=12 — rounds=8 최종={"p0":24000,"p1":24000,"p2":24000,"p3":28000}
+OK   결정성 seed=13 — rounds=8 최종={"p0":25000,"p1":25000,"p2":25000,"p3":25000}
+OK   결정성 seed=14 — rounds=9 최종={"p0":24000,"p1":28000,"p2":24000,"p3":24000}
+OK   hanchan seed=21 완주·총합 — crash=undefined sum=100000 rounds=8 점수변동국=0
+OK   tonpuu seed=21 완주·총합 — crash=undefined sum=100000 rounds=4 점수변동국=0
+OK   hanchan seed=22 완주·총합 — crash=undefined sum=100000 rounds=8 점수변동국=0
+OK   tonpuu seed=22 완주·총합 — crash=undefined sum=100000 rounds=4 점수변동국=0
+OK   hanchan seed=23 완주·총합 — crash=undefined sum=100000 rounds=8 점수변동국=0
+OK   tonpuu seed=23 완주·총합 — crash=undefined sum=100000 rounds=4 점수변동국=0
+OK   hanchan seed=24 완주·총합 — crash=undefined sum=100000 rounds=9 점수변동국=6
+OK   tonpuu seed=24 완주·총합 — crash=undefined sum=100000 rounds=4 점수변동국=1
+OK   hanchan seed=25 완주·총합 — crash=undefined sum=100000 rounds=8 점수변동국=0
+OK   tonpuu seed=25 완주·총합 — crash=undefined sum=100000 rounds=4 점수변동국=0
+OK   hanchan seed=26 완주·총합 — crash=undefined sum=100000 rounds=9 점수변동국=9
+OK   tonpuu seed=26 완주·총합 — crash=undefined sum=100000 rounds=5 점수변동국=5
+
+16/16 통과

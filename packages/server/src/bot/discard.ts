@@ -59,17 +59,76 @@ function candidatesOf(read: BotRead, options: readonly ActionOption[]): Candidat
 const PUSH_HORIZON = 2.5;
 
 /**
+ * **공격성이 저울에 주는 폭.**
+ *
+ * 밀기와 접기의 비교는 결국 이 부등식이고(안전패의 기대 실점은 0이므로),
+ *
+ *     (위험패의 획득 − 안전패의 획득)  >  위험패의 기대 실점 × PUSH_HORIZON × (loss/gain)
+ *
+ * **`loss/gain` 비가 곧 "이만큼 벌 수 있어야 민다"의 문턱 배율**이다.
+ *
+ * 예전 값은 0.6이었다. 그 폭이면 비가 공격형 0.74 · 수비형 1.74 — **2.4배**뿐이라,
+ * 후보들의 획득 격차(보통 수백 점)가 기대 실점(100~230점)보다 크면 argmax가 안
+ * 뒤집힌다. QA 2차 실측이 그 결과였다: 밀기/접기가 갈려야 하는 장면의 **91.3%를
+ * 여섯 원형이 같은 패로** 골랐다(확정 3).
+ *
+ * 1.4면 비가 공격형 0.34 · 수비형 2.92 — **8.5배**다. 1.8까지 넓히면 갈린 비율이
+ * 24.7% → 31.3%까지 가지만 수비형이 실점을 실제의 11배로 세어 과도하게 접기 시작한다.
+ *
+ * ## 미는 쪽은 안 넓힌다
+ *
+ * 공격형은 폭을 0.6·1.0·1.4·1.8 어디에 두어도 **밀기율이 78.2%에서 꿈쩍하지
+ * 않는다**(전부 68/87). 안전패가 애초에 더 쓸모 있는 장면은 성격으로 뒤집히지 않으므로
+ * **미는 쪽은 포화한다** — 넓혀 봐야 판에서 달라 보이지 않는다. 그런데 아레나 2:2는
+ * 공격형 넷 탁에서 넓힌 쪽이 꾸준히 열세라고 답했다(정규화 전 −0.1500 ± 0.0689 ·
+ * 정규화 후 −0.0967 ± 0.0695). **얻는 것은 없고 잃기만 하는 방향**이라, 미는 쪽 폭은
+ * 예전 값 그대로 둔다. 갈라지는 것은 접는 쪽이고, 접는 쪽은 공짜다(−0.0200 ± 0.0675).
+ */
+const AGGRESSION_SPAN_FOLD = 1.4;
+const AGGRESSION_SPAN_PUSH = 0.6;
+
+/** QA 2차 이전의 폭 — `narrowProfile` 스위치가 되돌리는 값 */
+const AGGRESSION_SPAN_LEGACY = 0.6;
+
+/**
  * 밀기와 접기에 각각 곱하는 저울.
  *
  * 성격(공격성)과 순위 압박(riskAppetite)이 **판단 규칙이 아니라 저울에만** 붙는다.
  * 올라스 선두는 같은 계산을 하고도 실점을 크게 세어 접고, 꼴찌는 획득을 크게 세어
  * 민다 — 사람이 그러는 것과 같고, 새 성격을 추가해도 분기가 늘지 않는다.
+ *
+ * ## 성격은 **비**만 바꾼다 — 크기는 안 바꾼다 (2026-08-22)
+ *
+ * 폭을 그냥 1.4로 넓혔더니 아레나 2:2에서 강함이 **−0.15 ± 0.07**(유의미) 깎였다.
+ * 무엇이 깎였는지는 표에 그대로 나왔다 — 수비형 넷 탁에서 **리치율이 18.4% → 10.2%**로
+ * 무너졌고, 공격형 넷 탁에서는 반대로 후로율·리치율·방총율이 전부 헐거워졌다.
+ *
+ * 원인은 밀기/접기 판단이 아니라 **크기**였다. 이 EV에서 저울을 안 타는 절대 상수가
+ * 하나 있다 — `RIICHI_COST`(1000점 공탁). 수비형은 `gain`이 0.51로 줄어드니 같은 1000점
+ * 공탁이 사실상 **1961점**이 되어 리치가 아예 성립하지 않았고, 공격형은 `gain`이 1.49라
+ * 공탁이 671점으로 싸져 아무 리치나 걸었다. 성격이 아니라 저울의 부작용이다.
+ *
+ * 그래서 **성격이 만든 크기(`norm`)를 도로 나눈다.** 밀기/접기의 비는 한 치도
+ * 안 변하므로(EV 전체를 같은 양수로 나누는 것이라 argmax가 그대로다) 원형이 갈라지는
+ * 폭은 그대로 유지되고, 절대 상수에 대한 왜곡만 사라진다. 순위 압박(`riskAppetite`)은
+ * 따로 재서 고른 값이라 **크기까지 바꾸던 종전 동작 그대로** 둔다 — `lean`이 0인
+ * 균형형에서는 `norm`이 정확히 1이라 이 함수가 예전과 완전히 같은 값을 낸다.
  */
 export function scales(read: BotRead, profile: BotProfile): { gain: number; loss: number } {
-  const bias = (profile.aggression - 0.5) * 0.6 + read.match.riskAppetite * 0.45;
+  const lean = profile.aggression - 0.5;
+  // `narrowProfile`은 폭을 QA 2차 이전 값으로 되돌리는 **끄는 스위치**다 (bot/flags.ts)
+  const legacy = read.flags.has("narrowProfile");
+  const span = legacy
+    ? AGGRESSION_SPAN_LEGACY
+    : lean < 0
+      ? AGGRESSION_SPAN_FOLD
+      : AGGRESSION_SPAN_PUSH;
+  const bias = lean * span + read.match.riskAppetite * 0.45;
+  // 성격이 만든 크기만 되돌린다 (예전 저울에서는 이 정규화가 없었다)
+  const norm = legacy ? 1 : Math.max(0.4, 1 + lean * span);
   return {
-    gain: Math.max(0.4, 1 + bias),
-    loss: Math.max(0.35, 1 - bias),
+    gain: Math.max(0.4, 1 + bias) / norm,
+    loss: Math.max(0.35, 1 - bias) / norm,
   };
 }
 
@@ -357,6 +416,24 @@ export function bidDiscard(
   const notenStake = read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   const tsumoOnly = read.menzen && !hasYakuNow(read);
   const quest = readDiscardQuest(read.view, read.me, read.wallLeft, read.valueOf({ plan }).points);
+  /*
+   * **이 한 장을 버려서 내가 후리텐이 되는가** (QA 2차 bot 확정 2).
+   *
+   * `bidRiichi`에는 이 검사가 있는데 평시 버림에는 아예 없었다. 그래서 론이
+   * 원천 봉쇄된 텐파이에도 론 배수(`value.ts` RON_MULTIPLIER = 2.2)가 그대로
+   * 붙어 화료 기대값을 1,000~1,300점(30~40%) 부풀려 셌다. 이 EV는 버림·리치·
+   * 후로·깡·증강 판단이 **전부 공유하는 축**이라(`bot/decide.ts`), 부풀림이 그
+   * 판단 전부를 함께 기울인다 — 실제로 나타나는 모습은 "후리텐 텐파이를 론 되는
+   * 텐파이로 착각해 그 손을 계속 민다"이다(위험패를 통과시키는 문턱이 낮아진다).
+   *
+   * 배관은 이미 다 있었다 — `winChanceOf`가 `tsumoOnly`를 받아 론 배수를 빼는
+   * 경로가 그대로 살아 있고, 여기서 그 값을 후보별로 채워 넣기만 하면 된다.
+   */
+  const myDiscards = new Set<string>();
+  for (const id of read.view.zones[`discards:${read.me}`]?.tileIds ?? []) {
+    const k = read.view.tiles[id]?.kind;
+    if (k !== undefined) myDiscards.add(kindKey(k));
+  }
 
   const scored: { c: Candidate; ev: number }[] = [];
   let best: Candidate | null = null;
@@ -364,9 +441,24 @@ export function bidDiscard(
   for (const c of cands) {
     const shape = shapes.get(kindKey(c.kind));
     if (shape === undefined) continue;
+    // 텐파이가 되는 후보에만 뜻이 있다 — 샹텐이 남은 손에는 대기 자체가 없다.
+    let selfFuriten = false;
+    if (shape.shanten === 0) {
+      const declKey = kindKey(c.kind);
+      const waits = winningKinds(
+        removeKinds(read.hand, [c.kind]),
+        read.meldCount,
+        undefined,
+        read.opts,
+      );
+      selfFuriten = waits.some((w) => {
+        const k = kindKey(w);
+        return k === declKey || myDiscards.has(k);
+      });
+    }
     const ev = lineEV(read, c, shape, plan, profile, {
       riichi: false,
-      tsumoOnly,
+      tsumoOnly: tsumoOnly || selfFuriten,
       notenStake,
       quest,
     });
@@ -428,7 +520,23 @@ export function bidRiichi(
     if (shape.waitTiles <= 0) continue;
     const rest = removeKinds(read.hand, [c.kind]);
     const waits = winningKinds(rest, read.meldCount, undefined, read.opts);
-    const furiten = waits.some((w) => myDiscards.has(kindKey(w)));
+    /*
+     * **선언패 자신도 세어야 한다** (QA 2차 bot 확정 1).
+     *
+     * `myDiscards`는 선언패가 바닥에 놓이기 **전**의 목록이라, 「커쯔에서 한 장
+     * 떼어 량면을 세우는」 흔한 선언에서 선언패가 곧 자기 대기인 경우를 구조적으로
+     * 못 봤다. 그 리치는 거는 순간 후리텐이라 국이 끝날 때까지 론이 안 된다 —
+     * 봉 1000점은 나갔고 손은 잠겼고 남는 건 쯔모뿐이다. 실측으로 리치 선언의
+     * 5.0%가 이 경우였고, 여섯 원형 전부 똑같이 걸었다.
+     *
+     * 아래의 「대기가 아주 넓고 저돌적이면 예외」 조항은 그대로 둔다 — 후리텐인 줄
+     * **알고** 쯔모만 노리는 리치는 성립하는 수다. 문제는 모르고 거는 것이었다.
+     */
+    const declKey = kindKey(c.kind);
+    const furiten = waits.some((w) => {
+      const k = kindKey(w);
+      return k === declKey || myDiscards.has(k);
+    });
     // 후리텐 리치는 쯔모밖에 없다. 대기가 아주 넓고 저돌적인 성격일 때만.
     if (furiten && !(shape.waitTiles >= 8 && profile.aggression > 0.6)) continue;
 

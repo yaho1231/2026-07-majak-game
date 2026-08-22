@@ -10,6 +10,12 @@
  * 순서상 맨 밑)으로 옮기고 WALL 맨 앞의 새 패를 손으로 가져와 lastDrawnTile을 갱신.
  * 되돌린 패 종류는 공개 뷰로 잠깐 노출.
  *
+ * ⚠ 리듀서는 `handAlteredMark`도 함께 남긴다 — 손패 1장을 **다른 실물**로 갈아 끼우는
+ * 증강의 공통 규약이다(handAltered.ts). 없으면 오야가 첫 순에 쯔모패를 무르고 새로 뽑은
+ * 패로 완성해도 코어 게이트가 "배패가 이미 완성돼 있었다"로 읽어 **천화 48,000점**이
+ * 나간다(정상 12,000 — 2026-08-22 QA aug-4 확정 2). 쿨다운이 3순이라 첫 순에는 항상
+ * 열려 있어 발동 문턱이 가장 낮은 경로였다.
+ *
  * 쿨다운 게이팅: 보유자의 턴은 정확히 버림 한 번으로 끝나므로 **그 국에서 내가 버린 수**가
  * 곧 턴 번호다. 사용 시점의 버림 수를 국 스코프로 기록해 두고, 그 뒤로 3턴이 지나야
  * (버림 수가 +3 이상) 다시 열린다. 같은 턴 재사용은 버림 수가 그대로라 자동으로 막힌다.
@@ -41,6 +47,7 @@ import {
   roundViewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { handAlteredMark } from "./handAltered.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "take_back";
@@ -159,6 +166,7 @@ export const takeBack: AugmentDef = defineAugment({
           round: replaceDrawnTile(state.round, newTop),
           augmentData: {
             ...state.augmentData,
+            ...handAlteredMark(state, p.holder),
             [lastUsedKey(state, p.holder)]: p.turnNo,
             [roundViewKey("*", `${ID}:${p.holder}`)]: p.revealedKind,
           },

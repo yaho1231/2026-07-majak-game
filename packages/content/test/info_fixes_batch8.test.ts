@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TILE_DRAWN,
+  WALL,
   createStandardGameFromState,
   installAugment,
   kindKey,
@@ -17,6 +18,17 @@ import { dangerSense } from "../src/augments/danger_sense.js";
 import { roundViewKey } from "../src/util.js";
 
 describe("예지 — 뽑힌 패는 예언 스트립에서 지워진다 (docs/25 정보 #5)", () => {
+  /*
+   * 2026-08-22(QA aug-2 확정 4) 개편: 예언 스트립은 **저장된 스냅샷이 아니라 파생값**이다.
+   * 발동 시점의 kind 배열을 들고 있다가 앞을 깎는 방식은, 패산 앞을 TILE_DRAWN 없이
+   * 가져가는 경로(미래를 보는 자·통째로 바꾸기·파혼)에서 유령 패를 가리켰다. 이제
+   * `peekLeft`(남은 장수)만 세고, 화면에 낼 목록은 **매 이벤트마다 지금 패산 앞**에서
+   * 다시 만든다(삼세 예지와 같은 방식).
+   *
+   * 그래서 이 블록이 검사하는 것도 둘로 나뉜다 —
+   * ① TILE_DRAWN이 남은 장수를 올바로 깎는가(영상패는 세지 않는가),
+   * ② 그 장수대로 스트립이 실제 패산 앞을 비추는가.
+   */
   function scene(): ReturnType<typeof createStandardGameFromState> {
     const base = craft({
       hands: { p0: "123m456m789m11p23p", p1: "*", p2: "*", p3: "*" },
@@ -29,29 +41,32 @@ describe("예지 — 뽑힌 패는 예언 스트립에서 지워진다 (docs/25 
       players: base.players.map((p) =>
         p.id === "p0" ? { ...p, augments: ["foresight"] } : p,
       ),
-      augmentData: {
-        ...base.augmentData,
-        // 예언 4장이 이미 공개된 상태
-        [roundViewKey("p0", "foresight_peek")]: ["man1", "man2", "man3", "man4"],
-      },
     };
     const game = createStandardGameFromState(state, undefined, [foresight]);
     installAugment(game.engine, foresight, "p0", { yaku: game.yaku });
+    // 예언 4장을 실제로 공개한다 (스트립도 peekLeft도 여기서 선다)
+    game.engine.submit({ player: "p0", type: "foresight_reveal", payload: {} });
     return game;
   }
 
   const strip = (g: ReturnType<typeof createStandardGameFromState>): string[] =>
     (g.engine.state.augmentData[roundViewKey("p0", "foresight_peek")] as string[]) ?? [];
 
-  /** 누군가 패산에서 한 장 뽑았다는 이벤트를 흘린다 */
-  function draw(
+  /** 지금 패산 앞 n장의 kind — 스트립이 비춰야 하는 값 */
+  const front = (g: ReturnType<typeof createStandardGameFromState>, n: number): string[] =>
+    (g.engine.state.zones[WALL]?.tileIds ?? [])
+      .slice(0, n)
+      .map((id) => kindKey(kindOf(g.engine.state, id)));
+
+  /** 리액션 하나를 현재 상태에 대고 돌린다 (emit은 그 자리에서 반영) */
+  function fire(
     g: ReturnType<typeof createStandardGameFromState>,
-    player: PlayerId,
-    rinshan: boolean,
+    type: string,
+    payload: Record<string, unknown>,
   ): void {
-    for (const { react } of g.engine.effects.reactionsFor(TILE_DRAWN)) {
+    for (const { react } of g.engine.effects.reactionsFor(type)) {
       react(
-        { seq: 1, type: TILE_DRAWN, payload: { player, tileId: 0, rinshan } },
+        { seq: 1, type, payload },
         {
           state: g.engine.state,
           rules: g.engine.rules,
@@ -64,23 +79,34 @@ describe("예지 — 뽑힌 패는 예언 스트립에서 지워진다 (docs/25 
     }
   }
 
+  /** 누군가 패산에서 한 장 뽑았다는 이벤트를 흘리고, 화면 갱신까지 돌린다 */
+  function draw(
+    g: ReturnType<typeof createStandardGameFromState>,
+    player: PlayerId,
+    rinshan: boolean,
+  ): void {
+    fire(g, TILE_DRAWN, { player, tileId: 0, rinshan });
+    fire(g, "*", {});
+  }
+
   it("보유자가 뽑으면 한 장 줄어든다", () => {
     const game = scene();
+    expect(strip(game)).toEqual(front(game, 4));
     draw(game, "p0", false);
-    expect(strip(game)).toEqual(["man2", "man3", "man4"]);
+    expect(strip(game)).toEqual(front(game, 3));
   });
 
   it("**남이 뽑아도** 줄어든다 — 이 예언은 네 자리의 다음 쯔모다", () => {
     const game = scene();
     draw(game, "p1", false);
     // 예전에는 소비 자체가 없어 이미 남의 손에 들어간 패를 계속 보여 줬다
-    expect(strip(game)).toEqual(["man2", "man3", "man4"]);
+    expect(strip(game)).toEqual(front(game, 3));
   });
 
   it("영상패(깡)는 패산 순서를 소모하지 않는다", () => {
     const game = scene();
     draw(game, "p0", true);
-    expect(strip(game)).toEqual(["man1", "man2", "man3", "man4"]);
+    expect(strip(game)).toEqual(front(game, 4));
   });
 
   it("다 소진되면 빈 채로 남는다 (음수 인덱스 없음)", () => {

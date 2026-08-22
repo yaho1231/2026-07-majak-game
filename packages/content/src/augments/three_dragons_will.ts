@@ -6,7 +6,8 @@
  *
  * 구현: 손패 장수 불변식을 지키는 유일한 길로 **재료 소모형 생성**을 쓴다(허장성세 `bluff_pretense`·
  * 분열 `tile_split`과 같은 계열). 엔진은 실물 없는 새 tileId를 만들 수 없으므로, 손패에서 가장
- * 고립된 잡패 **2장**을 부족한 삼원패로 변환(`tileKindChanged`, conjured)해 커쯔를 채운다.
+ * 고립된 잡패를 부족한 만큼(한두 장) 삼원패로 변환(`tileKindChanged`, conjured)해 커쯔를 채운다.
+ * 재료에서 도라·적도라는 뺀다 — 판정은 형제 둘과 같은 `isPreciousMaterial` 하나를 쓴다.
  *
  * docs/16 §2의 "conjured 2장 보충" 노트를 그대로 따른 것이며, 결과적으로 **코어 변경이 없다** —
  * 세 삼원 커쯔가 실제로 손에 서므로 대삼원·소삼원·부수가 표준 채점에서 자연히 따라온다
@@ -34,6 +35,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import { isPreciousMaterial } from "./bluff_pretense.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { handAlteredKey } from "./handAltered.js";
@@ -103,8 +105,16 @@ function pickMaterials(
   holder: PlayerId,
   n: number,
 ): TileId[] | null {
-  const hand = handIdsOf(state, holder).filter((id) => !isDragon(kindOf(state, id)));
-  if (hand.length < n) return null;
+  const all = handIdsOf(state, holder).filter((id) => !isDragon(kindOf(state, id)));
+  if (all.length < n) return null;
+  /*
+   * 도라·적도라는 '잡패'가 아니다 — 고립도만 보면 그 국의 도라이자 적도라인 외톨이
+   * 패가 1순위 재료로 뽑혀 도라 1판 + 적도라 1판이 조용히 증발한다
+   * (2026-08-22 QA round2 의심 1). 판정은 분열·허장성세와 같은 함수 하나를 쓴다.
+   * 태울 것이 도라뿐이면 그때만 도라가 재료가 된다 — 발동 자체가 막히지 않도록.
+   */
+  const spare = all.filter((id) => !isPreciousMaterial(state, id));
+  const hand = spare.length >= n ? spare : all;
   const kinds = hand.map((id) => kindOf(state, id));
   const usefulness = (i: number): number => {
     const k = kinds[i] as TileKind;
@@ -173,7 +183,7 @@ export const threeDragonsWill: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회) 백·발·중 중 두 종류를 커쯔로 세우고 나머지 한 종류를 한 장이라도 쥐고 있으면, 자기 순에 발동해 그 한 장을 커쯔로 완성한다 — 삼원패 9장이 필요한 대삼원이 7장에서 선다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 백·발·중 중 두 종류를 커쯔로 세우고 나머지 한 종류를 한 장이라도 쥔 상태에서 발동하면, 부족한 두 장이 손패의 가장 쓸모없는 잡패에서 물질화해 커쯔를 채운다. 손패 장수는 변하지 않고 세 커쯔가 실제로 손에 서므로 대삼원이 정식으로 성립한다. 재료로 쓸 잡패가 모자라거나 리치 중이면 발동할 수 없다.\n\n⚠ 재료는 손패에서 자동으로 골라 덮어쓴다 — 이웃 패가 적은 순으로 뽑으므로 이미 완성된 몸통의 패가 나갈 수도 있다. 미리 보거나 고를 수는 없다. 세 번째 삼원패를 2장 쥐고 있으면 필요한 재료도 1장뿐이다.",
+    "(동풍전 1회 · 반장전 2회) 백·발·중 중 두 종류를 커쯔로 세우고 나머지 한 종류를 한 장이라도 쥔 상태에서 발동하면, 부족한 만큼(한두 장)이 손패의 가장 쓸모없는 잡패에서 물질화해 커쯔를 채운다. 손패 장수는 변하지 않고 세 커쯔가 실제로 손에 서므로 대삼원이 정식으로 성립한다. 재료로 쓸 잡패가 모자라거나 리치 중이면 발동할 수 없다.\n\n⚠ 재료는 손패에서 자동으로 골라 덮어쓴다 — 이웃 패가 적은 순으로 뽑으므로 이미 완성된 몸통의 패가 나갈 수도 있다. 미리 보거나 고를 수는 없다. 재료는 도라·적도라가 아닌 패 중에서 고른다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

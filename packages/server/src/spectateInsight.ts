@@ -26,7 +26,12 @@ import {
   meldsZone,
   shantenOf,
 } from "@majak/core";
-import type { PlayerView, SpectateInsightMessage, TileKind } from "@majak/core";
+import type {
+  DecomposeOptions,
+  PlayerView,
+  SpectateInsightMessage,
+  TileKind,
+} from "@majak/core";
 import { estimateHandValue } from "./bot/value.js";
 import { NEUTRAL_DEFENSE, readThreats, safetyOf, tileTracker } from "./bot/danger.js";
 
@@ -38,6 +43,41 @@ function kindsOf(view: PlayerView, zoneId: string): TileKind[] {
     if (k !== undefined) out.push(k);
   }
   return out;
+}
+
+/**
+ * **한 장 버린 뒤의 최선 샹텐** — 14장(3n+2) 시점의 옳은 셈 (docs/36:101).
+ *
+ * 예전에는 `hand.slice(0, -1)`, 즉 **배열의 마지막 한 장**을 그냥 잘라 냈다. 그 자리는
+ * 손패 배치(`handOrder`)에 따라 아무 패나 될 수 있고 최선의 버림도 아니다 — 실측에서
+ * 14장 시점 64건 중 22건(34%)이 좌석 뱃지와 어긋났고, 어긋날 때는 언제나 «한 단계 나쁘게»
+ * 나왔다. 텐파이인 좌석을 1샹텐이라 읽는 일이 실제로 났다. 해설이 읽는 숫자다.
+ *
+ * 클라이언트 좌석 뱃지(`App.tsx`)는 처음부터 모든 버림 후보를 돌려 최소값을 쓴다 —
+ * 같은 화면의 두 숫자가 다른 셈을 쓸 이유가 없으므로 여기를 그쪽에 맞춘다
+ * (QA 2차 spectate 확정 2).
+ *
+ * 같은 종류가 여러 장이면 결과가 같으므로 **종류 단위로 한 번씩만** 잰다 — 14장이면
+ * 최대 14회가 최대 13회로 줄고, 실제로는 대개 그보다 훨씬 적다(`s12`가 잰 1회 0.44ms의
+ * 예산 안에 있어야 한다).
+ */
+function bestShanten(
+  hand: readonly TileKind[],
+  meldCount: number,
+  options: DecomposeOptions | undefined,
+): number {
+  if (hand.length % 3 !== 2) return shantenOf(hand, meldCount, options);
+  let best = Number.POSITIVE_INFINITY;
+  const tried = new Set<string>();
+  for (let i = 0; i < hand.length; i++) {
+    const key = kindKey(hand[i]!);
+    if (tried.has(key)) continue;
+    tried.add(key);
+    const rest = hand.filter((_, j) => j !== i);
+    const s = shantenOf(rest, meldCount, options);
+    if (s < best) best = s;
+  }
+  return Number.isFinite(best) ? best : shantenOf(hand.slice(0, -1), meldCount, options);
 }
 
 /**
@@ -79,8 +119,12 @@ export function buildSpectateInsight(view: PlayerView): SpectateInsightMessage |
      * 여기서도 그 규칙을 그대로 따른다(공개된 후로가 하나도 없으면 멘젠).
      */
     const menzen = (pr?.melds ?? []).every((m) => m.kind === "kan_closed");
+    // 샹텐과 **같은 옵션**을 쓴다 — 한 좌석의 두 숫자(예상 타점·샹텐)가 서로 다른
+    // 규칙으로 계산되면 화면 안에서도 어긋난다 (QA 2차 spectate 확정 3).
+    const seatOpts = view.seatScoringOptions?.[p.id];
     const value = estimateHandValue({
       kinds: [...hand, ...meldKinds],
+      ...(seatOpts !== undefined ? { opts: seatOpts } : {}),
       handDora: doraIn(hand) + doraIn(meldKinds) + reds,
       meldCount,
       menzen,
@@ -93,7 +137,16 @@ export function buildSpectateInsight(view: PlayerView): SpectateInsightMessage |
       han: Math.round(value.han * 10) / 10,
       fu: value.fu,
       points: value.points,
-      shanten: shantenOf(hand.length % 3 === 2 ? hand.slice(0, -1) : hand, meldCount),
+      /*
+       * **그 좌석의 규칙으로** 잰다 (QA 2차 spectate 확정 3).
+       *
+       * 관전 뷰의 `scoringOptions`는 «관전자는 특정 플레이어가 아니다»라서 `{}`(표준)다.
+       * 그걸 그대로 네 좌석에 쓰면 화료형을 바꾸는 증강(진짜 용 5멘쯔 · 조커 만능패 ·
+       * 국사무쌍 전용)을 든 좌석에서 정확히 틀린다 — 좌석 뱃지는 그 좌석의 증강을 보고
+       * 재므로 같은 화면에 숫자가 둘 뜬다. 좌석별 옵션은 뷰가 실어 준다
+       * (`PlayerView.seatScoringOptions`). 없으면(옛 뷰) 표준 규칙으로 떨어진다.
+       */
+      shanten: bestShanten(hand, meldCount, seatOpts),
     });
   }
 

@@ -42,7 +42,7 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { cooldownViewKey, roundViewKey, statePrng } from "../util.js";
+import { cooldownViewKey, counterOf, roundViewKey, statePrng } from "../util.js";
 import { plan } from "./botPlan.js";
 
 /** 봉인 확정 이벤트 (증강 id에서 파생한 이름 — 다른 증강과 충돌 방지) */
@@ -233,6 +233,24 @@ export const discardLock: AugmentDef = defineAugment({
       // 칩이 서지 않아, 버튼이 사라진 이유를 화면에서 알 수 없었다.
       const used = rc.state.augmentData[usedKey(holder)];
       const left = typeof used === "number" ? Math.max(0, COOLDOWN_ROUNDS - (seq - used)) : 0;
+      rc.emit(augmentDataSet(cooldownViewKey("discard_lock", holder), left));
+    });
+
+    /*
+     * 봉인한 **그 순간** 쿨다운 칩을 함께 올린다.
+     *
+     * 예전에는 이 채널을 쓰는 곳이 위 `ROUND_STARTED` 하나뿐이라, 발동으로 버튼이
+     * 사라진 뒤에도 칩은 다음 국이 시작될 때까지 "0국"(=지금 쓸 수 있음)으로 남았다
+     * (2026-08-22 QA aug-1 의심 9). 공용 헬퍼 `util.ts`의 `cooldownUse`가 사용과 표시
+     * 갱신을 **함께** 내는 이유가 정확히 이것인데, 쿨다운을 직접 짜면서 그 절반을
+     * 빠뜨렸다. 산술은 위 리액션과 같은 식이다 — 방금 쓴 국의 seq를 기준점으로 두면
+     * `COOLDOWN_ROUNDS - 0` = 남은 국 수가 그대로 나온다.
+     */
+    ctx.reaction(DISCARD_LOCK_SEALED, (event, rc) => {
+      const p = event.payload as DiscardLockSealedPayload;
+      if (p.holder !== holder) return;
+      const left = Math.max(0, COOLDOWN_ROUNDS - (roundSeq(rc.state, holder) - p.usedSeq));
+      if (counterOf(rc.state, cooldownViewKey("discard_lock", holder)) === left) return;
       rc.emit(augmentDataSet(cooldownViewKey("discard_lock", holder), left));
     });
 

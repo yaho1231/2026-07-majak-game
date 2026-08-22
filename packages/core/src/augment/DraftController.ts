@@ -222,7 +222,8 @@ export class DraftController {
     console.warn(
       `[draft] 좌석 칸 없이 전역 추첨으로 강등됐다 (stage=${stage}, 제시 가능 풀=${pool}, ` +
         `최소 요구치=${need} = 좌석 ${seats} × 최소 칸 ${minCell} + 보충 ${this.drawCount()}). ` +
-        `게임 내 중복 보유는 계속 막지만 좌석 간 오퍼 겹침은 보장하지 못한다.`,
+        `좌석별로 순서대로 뽑아 오퍼가 서로 겹치지 않게 유지한다 — 게임 내 중복 보유는 ` +
+        `그대로 막히지만, 카테고리 균형(칸이 하던 일)은 이 스테이지에 보장되지 않는다.`,
     );
   }
 
@@ -397,8 +398,7 @@ export class DraftController {
        * 살아남는다. 그리고 강등됐다는 사실을 스테이지당 한 번 경고로 남긴다.
        */
       this.warnCellFallback(stage);
-      const banned = new Set([...exclude, ...this.heldByOthers(stage, player)]);
-      return this.catalog.rollUniform(prng, total, banned, bias);
+      return this.fallbackDraw(stage, player);
     }
 
     // 내 칸에서 뽑는다 — 기존 제외 + 남이 이미 가진 것(게임 내 중복 금지).
@@ -419,6 +419,106 @@ export class DraftController {
     ];
   }
 
+  /** 폴백 스테이지의 좌석별 후보 — 스테이지당 한 번 통째로 만들어 둔다. */
+  private readonly fallbackOffers = new Map<DraftStage, Map<PlayerId, AugmentDef[]>>();
+
+  /**
+   * 좌석 칸 폴백의 후보 뽑기 — **좌석끼리 겹치지 않게** 한 스테이지분을 한 번에 만든다.
+   *
+   * 예전에는 좌석마다 독립적으로 전역 추첨을 돌렸다. `heldByOthers`(스테이지 **시작
+   * 시점** 스냅샷)를 걸긴 했지만, 그건 "**이번 스테이지에 동시에 고르는 것**"을 막지
+   * 못한다 — 칸이 있을 때는 칸이 서로 소라 그 경우가 아예 생기지 않아서 문제가 없었고,
+   * 칸을 못 만든 폴백은 정확히 그 방어가 사라진 자리다. 그래서 폴백이 걸리는 순간
+   * **게임의 59~82%가 중복 보유로 끝났다**(QA 2차 synergy 확정 1). 같은 증강을 둘이
+   * 들면 보유자 전용 채널(잔량·쿨다운)이 좌석을 구분하지 못한다 — 그게 이 불변식이
+   * 있는 이유다(`Augment.grantAugments` 주석).
+   *
+   * 더 나쁜 것은 경고 문구가 *"게임 내 중복 보유는 계속 막지만"* 이라고 **반대로**
+   * 말하고 있었다는 점이다. 원인 추적을 정확히 틀린 방향으로 보낸다.
+   *
+   * 고치는 방법은 칸이 하던 일을 그대로 흉내 내는 것이다: 좌석 순서대로 뽑되 **앞
+   * 좌석이 이미 제시받은 id를 다음 좌석에서 제외**한다. 아무도 남의 후보를 볼 수
+   * 없으므로, 오퍼가 서로 소면 중복 보유는 원천적으로 불가능하다.
+   *
+   * 결정성은 그대로다 — `state.players` 순서와 시드만으로 정해지고, 몇 번 호출해도
+   * 같은 값이 나온다(`draw`의 계약). 그래서 pick 검증이 흔들리지 않는다.
+   */
+  private fallbackDraw(stage: DraftStage, player: PlayerId): AugmentDef[] {
+    let byPlayer = this.fallbackOffers.get(stage);
+    if (byPlayer === undefined) {
+      byPlayer = new Map();
+      const total = this.drawCount();
+      const count = this.engine.rules.resolve<number>("augment.draft.choices");
+      const seats = this.engine.state.players;
+      /** 앞 좌석에 이미 나간 후보 — 칸이 하던 «서로 소» 역할을 대신한다. */
+      const takenThisStage = new Set<string>();
+      /** 좌석별 상태 — 두 패스가 같은 난수열을 이어 써야 결과가 결정적이다. */
+      const perSeat = seats.map((p) => ({
+        id: p.id,
+        prng: new Prng((this.engine.state.config.seed ^ hashString(`${stage}:${p.id}`)) >>> 0),
+        bias: this.synergyBiasFor(p.id),
+        fixed: new Set([...this.excludeFor(stage, p.id), ...this.heldByOthers(stage, p.id)]),
+        out: [] as AugmentDef[],
+      }));
+      /*
+       * **두 패스로 나눠 뽑는다.**
+       *
+       * 한 패스로 좌석마다 `drawCount()`(화면분 + 교체분)를 통째로 예약하면, 카탈로그가
+       * 좁을 때 뒤쪽 좌석이 통째로 굶는다(좌석 4 × 6 = 24장이 필요하다). 그러면 겹침을
+       * 풀 수밖에 없고, 그 순간 이 함수가 막으려던 중복 보유가 그대로 돌아온다.
+       *
+       * 그래서 **화면에 서는 몫을 먼저 전 좌석에 돌리고**, 남은 것으로 교체분을 채운다.
+       * 필요량이 좌석 4 × 3 = 12장으로 내려가므로 웬만한 좁은 카탈로그에서도 모든 좌석이
+       * 고를 것을 갖는다. 교체분이 짧아지는 것은 «새로고침할 카드가 없다»는 정직한
+       * 열화라 그대로 둔다 — 불변식(같은 증강을 둘이 갖지 않는다)은 지켜진다.
+       */
+      for (const seat of perSeat) {
+        let got = this.catalog.rollUniform(
+          seat.prng,
+          count,
+          new Set([...seat.fixed, ...takenThisStage]),
+          seat.bias,
+        );
+        /*
+         * **화면 칸은 언제나 채운다 — 모자라면 겹침 금지를 먼저 놓는다.**
+         *
+         * 좌석 수 × 화면 칸보다도 작은 카탈로그에서는 겹침 금지를 지킬 방법이 아예
+         * 없다(좌석 4 × 3칸 = 12장이 매 스테이지 새로 필요한데, 지난 스테이지들이
+         * 이미 12장을 가져간 상태다). 그때 «중복 보유 가능성»과 «고를 것이 없는
+         * 드래프트 화면» 중에서 고르면 후자가 더 나쁘다 — 판이 그 자리에 선다.
+         *
+         * 그리고 **0장일 때만** 풀어 주면 안 된다: 뒤쪽 좌석이 1~2장짜리 화면을 받는
+         * 어중간한 상태가 남는다(실측으로 표준 4종 카탈로그에서 한 좌석이 1장만
+         * 받았다). 그건 «선택지가 준다»가 아니라 선택이 사라지는 것이고, 무엇보다
+         * 이 자리의 동작을 예전과 다르게 만든다. 채울 수 있으면 채운다.
+         *
+         * 여기까지 오려면 카탈로그가 대략 30종 아래여야 한다(실제 114종).
+         */
+        if (got.length < count) {
+          got = this.catalog.rollUniform(seat.prng, count, seat.fixed, seat.bias);
+        }
+        for (const d of got) takenThisStage.add(d.id);
+        seat.out.push(...got);
+      }
+      for (const seat of perSeat) {
+        const want = total - seat.out.length;
+        if (want <= 0) continue;
+        const got = this.catalog.rollUniform(
+          seat.prng,
+          want,
+          new Set([...seat.fixed, ...takenThisStage]),
+          seat.bias,
+        );
+        for (const d of got) takenThisStage.add(d.id);
+        seat.out.push(...got);
+      }
+      for (const seat of perSeat) byPlayer.set(seat.id, seat.out);
+      this.fallbackOffers.set(stage, byPlayer);
+    }
+    return byPlayer.get(player) ?? [];
+  }
+
+
   /**
    * 이 플레이어의 **보유 증강과의 시너지** 편향 (증강 id → 가중치 배수).
    *
@@ -433,7 +533,8 @@ export class DraftController {
   private synergyBiasFor(player: PlayerId): Readonly<Record<string, number>> {
     const held =
       this.engine.state.players.find((p) => p.id === player)?.augments ?? [];
-    return synergyBias(held);
+    // 배타 관계는 카탈로그만 안다 — 시너지 표가 배타 쌍을 끌어올리지 않게 넘겨 준다.
+    return synergyBias(held, (id) => this.catalog.get(id)?.conflicts ?? []);
   }
 
   /**

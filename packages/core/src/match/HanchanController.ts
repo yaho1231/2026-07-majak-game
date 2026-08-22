@@ -127,6 +127,20 @@ export interface HanchanConfig {
    */
   presetDraftChoices?: Record<PlayerId, readonly string[]>;
   /**
+   * 고정 배패를 **첫 국에만** 적용한다 (튜토리얼 전용, 기본 false = 매 국 고정).
+   *
+   * `presetHands`는 게임 단위 규칙 모디파이어라 `ROUND_STARTED`마다 다시 먹는다.
+   * 샌드박스(증강 테스트)에서는 그게 맞다 — 같은 손을 몇 번이고 다시 돌려 보는
+   * 도구니까. 튜토리얼에서는 정반대다: 대본은 1국짜리인데, 「그만 보기」로 안내만
+   * 끄고 남은 판은 2국부터 **1국과 한 장도 다르지 않은 배패**가 계속 나왔다
+   * (QA 2차 onboard 확정 4 — 서버 주석 스스로 "배울 것도 없는 이상한 대국"이라
+   * 적어 두고 안내 없이 남기고 있었다). 처음 온 사람이 «이제 진짜 판»이라고 믿는
+   * 자리에서 그러면, 눈치채면 고장으로 읽고 못 채면 난이도를 통째로 잘못 배운다.
+   *
+   * 그래서 대본이 쓰는 국만 고정하고 그 뒤로는 평범한 배패로 돌아간다.
+   */
+  presetHandsFirstRoundOnly?: boolean;
+  /**
    * 국 종료 후 다음 국 시작까지의 대기(ms). 결과 화면을 볼 시간을 준다.
    * 기본 0 (테스트·봇 게임은 지연 없음). 실서버가 사람 게임에서 설정한다.
    */
@@ -261,7 +275,16 @@ export function resumableHanchanConfig(config: HanchanConfig): ResumableHanchanC
 export function agariYameTriggers(
   agariYame: boolean | undefined,
   maxWind: number,
-  played: { wind: number; roundNumber: number; dealerSeat: number },
+  played: {
+    wind: number;
+    roundNumber: number;
+    dealerSeat: number;
+    /**
+     * 방금 둔 국이 **어떻게 끝났는가**. 아가리야메 판정에 반드시 필요하다 —
+     * 자세한 사연은 아래 «도중유국은 렌짱이 아니다» 문단.
+     */
+    outcome: "win" | "draw" | "abort";
+  },
   post: {
     prevalentWind: number;
     roundNumber: number;
@@ -273,6 +296,26 @@ export function agariYameTriggers(
   if (agariYame === false) return false;
   const lastRoundNumber = post.players.length; // 각 장의 마지막 국 (4인=4국)
   if (played.wind !== maxWind || played.roundNumber !== lastRoundNumber) return false;
+  /*
+   * **도중유국은 렌짱이 아니다** (QA 2차 rules 확정 3).
+   *
+   * 아가리야메(+텐파이야메)는 «오야가 딴 것을 그대로 들고 판을 접는» 오야의 특권이다.
+   * 붙는 자리는 둘뿐이다 — 오야 화료, 그리고 황패유국의 오야 텐파이.
+   *
+   * 도중유국(구종구패·사풍연타·사가리치·삼가화·사깡산료)은 «연장»이 아니라 **같은 국을
+   * 처음부터 다시 치는 것**이다(`sysSettleAbort`가 그 주석을 직접 적어 두었다). 그런데
+   * 다시 치므로 장풍·국번도 그대로 남고, 아래 `renchan` 검사가 그걸 렌짱으로 읽었다.
+   * 결과는 남4국에서 도중유국이 나고 오야가 단독 1위이면 **게임이 그 자리에서 끝난다.**
+   *
+   * 최악은 누가 선언했는지도 안 본다는 것이다: **1위 오야가 배패에 요구패 9종이 오면
+   * 스스로 구종구패를 선언해 한 순도 두지 않고 우승을 확정**할 수 있었다. 남이 낸
+   * 도중유국으로도 2~4위가 역전할 마지막 국을 통째로 잃었다 — 이쪽은 «남을 위해 게임을
+   * 끝내 주는» 손해다. 실전에서 실제로 나온다(무증강 대량 플레이 1800국당 abort 13건).
+   *
+   * 그래서 결과를 함께 본다. 장풍·국번이 그대로여도 그 국이 도중유국이었다면 종국 사유가
+   * 아니다 — 다시 친다.
+   */
+  if (played.outcome === "abort") return false;
   // 정산 후 장풍·국번이 그대로면 오야 연장(화료 또는 텐파이야메)
   const renchan =
     post.prevalentWind === played.wind && post.roundNumber === played.roundNumber;
@@ -489,6 +532,28 @@ export class HanchanController {
    * 친 로테이션이 그쪽과 정확히 같다.
    */
   private roundVoid: AbortReason | null = null;
+  /**
+   * **지금 «물릴 수 있는 국» 안에 있는가** — `runRound()`의 결정 루프가 도는 동안만 true.
+   *
+   * 이 값이 없던 시절, 결과 화면(국과 국 **사이**)에서 누른 «이 국을 물린다»가
+   * 엉뚱한 **다음 국**을 물렸다. `roundVoid`는 결정 루프 안에서만 소비되는데
+   * (`runRound`의 `if (this.roundVoid !== null)`), 루프 밖에서 세운 플래그는 아무도
+   * 걷어 주지 않아 그대로 살아남았다가 다음 국의 첫 결정 지점에서 터졌기 때문이다.
+   * 관리자 입장에서는 «물리려던 국은 그대로 정산되고, 무고한 다음 국이 배패 직후
+   * 무효»가 되는 최악의 조합이었다 — 그러면서 안내 문구는 물렸다고 말했다
+   * (QA 2차 admin 확정 1).
+   *
+   * 그래서 경계를 명시한다. 루프에 들어갈 때 켜고 나올 때 끄면서 `roundVoid`도 함께
+   * 비운다(국 경계에서 늦게 온 요청은 **버린다** — 다음 국에 떠넘기지 않는다).
+   * 밖에서 온 요청은 `requestRoundVoid`가 false를 돌려주고, 서버는 그걸 관리자에게
+   * "이미 끝난 국은 물릴 수 없다"로 되돌린다. 조용히 먹히는 것보다 낫다.
+   */
+  private inRound = false;
+  /**
+   * 고정 배패가 아직 살아 있는가 (`presetHandsFirstRoundOnly`).
+   * 첫 국이 끝나면 꺼지고, 그때부터 배패는 평범한 무작위로 돌아간다.
+   */
+  private presetHandsActive = true;
   /** 정지 중에는 흐르지 않는 타이머들 (무응답 안전망) */
   private readonly pausable = new Set<PausableTimer>();
 
@@ -498,6 +563,23 @@ export class HanchanController {
   }
   /** 관전자 중도 합류 시 재전송할 증강 카탈로그 */
   private catalogMsg: ServerMessage | null = null;
+  /**
+   * **지금 떠 있는 결과 화면** — 마지막 `roundOver` 메시지와 그때의 뒷도라.
+   * 국이 끝난 순간부터 다음 국이 시작될 때까지만 채워져 있다.
+   *
+   * 왜 들고 있나: `roundOver`는 그 순간 한 번 나가는 메시지라, 결과 화면 구간에
+   * **합류한 관전석**에는 영영 가지 않았다. 합류 뷰의 `phase`는 `round.over`인데
+   * 역·판·부·`revealedHands`·`settle`도 우라도라도 없으니, «결과 화면인 것은 아는데
+   * 결과는 모르는» 빈 화면이 다음 국까지 떠 있었다 (QA 2차 spectate 확정 7).
+   *
+   * 대회 중계에서 탁자를 옮기는 순간이 정확히 「방금 큰 판이 났다」는 순간이다 —
+   * D4 탁자 전환기의 실제 용도가 그것이고, 그때가 이 사각의 정면이다.
+   * `catalogMsg`를 들고 있다가 합류할 때 다시 보내는 것과 **같은 방식**이다:
+   * 새 메시지 타입도 새 경로도 만들지 않는다.
+   */
+  private lastRoundOverMsg: ServerMessage | null = null;
+  /** 위 결과 화면의 뒷도라 — 합류 뷰에도 실어야 화면의 두 자리가 어긋나지 않는다. */
+  private lastRoundUra: TileId[] = [];
   /**
    * 플레이어가 직접 정한 손패 배치 (왼→오른쪽). 클라이언트가 손패가 바뀔 때마다 올린다.
    * 뷰를 만들 때 그대로 실려, 관전·투시로 손패가 공개될 때 소유자가 실제로 쥔
@@ -691,11 +773,19 @@ export class HanchanController {
    * 기다리는 중이던 결정은 즉시 접는다 — 그 답은 이제 없는 국에 대한 것이고,
    * 접지 않으면 판이 최대 30초(사람의 제한 시간) 동안 요청을 붙들고 서 있다.
    * 실제 물림은 다음 결정 지점에서 일어난다(엔진 상태를 결정 도중에 건드리지 않는다).
+   *
+   * **국 안에 있을 때만 받는다** (`inRound`). 결과 화면·드래프트처럼 «국과 국 사이»에
+   * 들어온 요청은 걸어 두지 않고 그 자리에서 거절한다 — 걸어 두면 그게 다음 국을
+   * 물린다. 세워 둔 판(`setPaused`)은 결정 루프 **안**에서 문 앞에 서 있는 것이라
+   * 여전히 받는다: 요청만 걸리고, 재개하는 순간 물린다.
+   *
+   * @returns 요청을 받았으면 true. 물릴 국이 없으면 false (호출자가 알려 줄 몫이다).
    */
-  requestRoundVoid(reason: AbortReason = "adminVoid"): void {
-    if (this.aborted || this.game === null) return;
+  requestRoundVoid(reason: AbortReason = "adminVoid"): boolean {
+    if (this.aborted || this.game === null || !this.inRound) return false;
     this.roundVoid = reason;
     for (const agent of this.agents.values()) agent.cancelDecision?.();
+    return true;
   }
 
   /**
@@ -981,8 +1071,13 @@ export class HanchanController {
     rules.addModifier<readonly string[]>("deal.presetHand", {
       source: "__sandbox_preset_hand",
       layer: RuleLayer.System,
+      // 모디파이어를 떼는 대신 **스스로 비켜서게** 한다 (`presetHandsFirstRoundOnly`).
+      // 규칙 합성에서 무언가를 빼는 것은 리플레이 재구성과 어긋날 위험이 있는데,
+      // 이 플래그는 국 경계에서만 움직이므로 재구성도 같은 자리에서 같은 값을 본다.
       apply: (current, ctx) =>
-        ctx.playerId === undefined ? current : (table.get(ctx.playerId) ?? current),
+        !this.presetHandsActive || ctx.playerId === undefined
+          ? current
+          : (table.get(ctx.playerId) ?? current),
     });
   }
 
@@ -1101,6 +1196,10 @@ export class HanchanController {
       const outcome = await this.runRound(game);
       if (this.aborted) return this.finishAborted();
       this.flushEvents(game); // 국 진행 이벤트를 리플레이 로그로
+      // 대본이 쓰는 국은 하나뿐이다 — 여기서 고정을 푼다 (`presetHandsFirstRoundOnly`).
+      // 호출부(`onRoundEnd`)보다 **먼저** 끄는 이유: 그 훅이 방을 다음 국으로
+      // 준비시키므로, 훅이 보는 세계와 다음 배패가 보는 세계가 같아야 한다.
+      if (this.config.presetHandsFirstRoundOnly === true) this.presetHandsActive = false;
       this.events.onRoundEnd?.(game, outcome, roundIndex);
 
       roundIndex++;
@@ -1137,7 +1236,12 @@ export class HanchanController {
       }
 
       // 종료 조건 판정 (일반 종국 또는 아가리야메)
-      const reason = this.endReason(game.engine.state, game.engine.rules, playedRound);
+      // 방금 둔 국의 결과를 함께 넘긴다 — 도중유국은 아가리야메가 아니다
+      // (`agariYameTriggers`의 «도중유국은 렌짱이 아니다» 주석 — QA 2차 rules 확정 3).
+      const reason = this.endReason(game.engine.state, game.engine.rules, {
+        ...playedRound,
+        outcome,
+      });
       if (reason !== null) {
         endReason = reason;
         break;
@@ -1169,7 +1273,32 @@ export class HanchanController {
 
   // ─────────────────────────── 국 1개 실행 ───────────────────────────
 
+  /**
+   * 국 하나의 **경계**를 긋는다 — 안쪽은 `runRoundBody`가 돈다.
+   *
+   * 이 껍데기가 따로 있는 이유는 하나다: 「지금 물릴 수 있는 국 안에 있는가」를
+   * 국의 시작·끝에서 정확히 한 번씩 갱신하려면, 본문의 여러 `return` 경로
+   * (무효·재해석·정상 종료) 전부를 지나는 자리가 필요하다. `finally`가 그 자리다.
+   *
+   * 나올 때 `roundVoid`를 **비운다.** 국이 끝나 버린 뒤에도 남아 있는 요청은
+   * 「이 국을 물려 달라」의 대상이 이미 사라진 것이므로, 다음 국에 떠넘기지 않고
+   * 여기서 버린다 (`inRound` 주석 참고 — QA 2차 admin 확정 1).
+   */
   private async runRound(game: StandardGame): Promise<"win" | "draw" | "abort"> {
+    this.inRound = true;
+    // 새 국이 배패를 시작한다 — 지난 국의 결과 화면은 이제 화면에 없다. 여기서
+    // 비우지 않으면 국 도중에 합류한 관전석이 **지난 국의 결과**를 받는다.
+    this.lastRoundOverMsg = null;
+    this.lastRoundUra = [];
+    try {
+      return await this.runRoundBody(game);
+    } finally {
+      this.inRound = false;
+      this.roundVoid = null;
+    }
+  }
+
+  private async runRoundBody(game: StandardGame): Promise<"win" | "draw" | "abort"> {
     // 지난 국의 손패 배치는 버린다 — tile id는 국이 바뀌어도 0~135를 그대로 재사용해
     // 남겨 두면 새 배패에 지난 국의 배치가 엉뚱하게 들러붙는다.
     for (const pid of Object.keys(this.handOrder)) delete this.handOrder[pid];
@@ -1561,6 +1690,11 @@ export class HanchanController {
   /**
    * 관전자를 붙인다. 게임이 이미 진행 중이면 카탈로그와 현재 관전자
    * 시점 뷰를 즉시 보내 바로 화면을 그릴 수 있게 한다.
+   *
+   * **결과 화면 구간에 합류하면 그 결과도 함께 보낸다** (QA 2차 spectate 확정 7).
+   * `roundOver`는 일회성 메시지라, 예전에는 합류한 관전석이 «phase는 round.over인데
+   * 역도 점수 이동도 뒷도라도 없는» 빈 결과 화면을 다음 국까지 보고 있어야 했다.
+   * 탁자를 옮긴 직후가 정확히 「방금 큰 판이 났다」는 순간이라 그게 정면 사각이었다.
    */
   addSpectator(sink: SpectatorSink): void {
     this.spectators.set(sink.id, sink);
@@ -1574,8 +1708,14 @@ export class HanchanController {
           yaku: this.game.yaku,
           handOrder: this.handOrder,
           lastDiscardFrom: this.lastDiscardFrom,
+          // 결과 화면이 떠 있으면 뒷도라도 그때 것으로 — 화면의 두 자리(뷰의 우라 표시와
+          // 결과 패널)가 어긋나면 그게 더 헷갈린다. 국 중이면 빈 배열이라 실리지 않는다.
+          ...(this.lastRoundUra.length > 0 ? { uraDoraIndicators: this.lastRoundUra } : {}),
         }),
       );
+      // 뷰 **다음에** 보낸다 — 결과 패널은 뷰 위에 얹히는 것이라 순서가 뒤집히면
+      // 화면이 한 번 비었다가 다시 그려진다.
+      if (this.lastRoundOverMsg !== null) sink.notify?.(this.lastRoundOverMsg);
     }
   }
 
@@ -1665,6 +1805,10 @@ export class HanchanController {
       // 실제로 쓰는 상한 그대로다. 클라이언트에 같은 숫자를 두 벌 두지 않기 위해 싣는다.
       autoContinueMs: this.config.interRoundDelayMs ?? 0,
     };
+    // 결과 화면 구간에 합류하는 관전석에 다시 보낼 수 있게 들고 있는다
+    // (`lastRoundOverMsg` 주석 — QA 2차 spectate 확정 7). 다음 국이 시작하면 비운다.
+    this.lastRoundOverMsg = msg;
+    this.lastRoundUra = ura;
     this.notifyAll(msg);
   }
 
@@ -1689,7 +1833,12 @@ export class HanchanController {
   private endReason(
     state: GameState,
     rules: import("../engine/rules/RuleRegistry.js").RuleRegistry,
-    played: { wind: number; roundNumber: number; dealerSeat: number },
+    played: {
+      wind: number;
+      roundNumber: number;
+      dealerSeat: number;
+      outcome: "win" | "draw" | "abort";
+    },
   ): GameEndReason | null {
     if (!this.shouldEnd(state, rules)) {
       return this.isAgariYame(state, played) ? "agariYame" : null;
@@ -1746,10 +1895,18 @@ export class HanchanController {
    *
    * 렌짱은 정산 후 장풍·국번이 그대로인 것으로 판정한다(오야 유지 시 국이 안 넘어감).
    * 서입 연장국(wind>maxWind)은 반환점 도달로 이미 종료 판정되므로 제외한다.
+   *
+   * **도중유국은 그 판정에서 빠진다** — 장풍·국번이 그대로여도 «다시 치는 것»이지
+   * 오야가 딴 것이 아니다 (`agariYameTriggers` 주석 — QA 2차 rules 확정 3).
    */
   private isAgariYame(
     state: GameState,
-    played: { wind: number; roundNumber: number; dealerSeat: number },
+    played: {
+      wind: number;
+      roundNumber: number;
+      dealerSeat: number;
+      outcome: "win" | "draw" | "abort";
+    },
   ): boolean {
     return agariYameTriggers(this.config.agariYame, this.config.maxWind, played, {
       prevalentWind: state.round.prevalentWind,

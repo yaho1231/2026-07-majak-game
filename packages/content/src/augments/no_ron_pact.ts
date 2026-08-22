@@ -56,6 +56,21 @@ const PACT_TURNS = 6;
  */
 const declaredKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "declared", state, h);
+/**
+ * 이 국에 보유자에게 **멘쯔가 생긴 적이 있는가** — 리치와 똑같이 되돌릴 수 없는 사건이다.
+ *
+ * 리치 쪽은 이미 이력으로 판정하는데(`declaredKey`) 멘쯔 쪽만 현재 상태
+ * (`rs.melds.length`)에서 파생했다. 그래서 파혼(meld_dissolve)이 후로를 해체해
+ * 멘쯔가 0으로 돌아가면 **조약이 그대로 부활했다** — 퐁 → 파혼으로 조약을 껐다 켜는
+ * 무비용 루프이고, 리치 쪽에서 이미 막아 둔 것과 정확히 같은 구멍이다
+ * (QA 2차 aug-3 확정 2). 좌석 바꿈처럼 후로 존을 통째로 옮기는 증강도 같은 문이었다.
+ *
+ * 더 나쁜 것은 **화면이 거짓말을 한다**는 점이었다: 부활은 즉시인데 공개 채널은
+ * 다음 쯔모·버림까지 "조약 파기 — 론 가능"을 그대로 띄우고 있었다. 파기시켰다고
+ * 믿은 상대가 위험패를 던지고 론이 조용히 무산된다(Rule #4가 정확히 반대로 돈다).
+ */
+const meldedKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "melded", state, h);
 /** 전원 공개: 지금 조약이 살아 있는가 (국 스코프 — 국이 끝나면 엔진이 지운다) */
 const pactViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 /**
@@ -89,6 +104,8 @@ function pactActive(state: GameState, holder: PlayerId): boolean {
   //    코드를 좁히지 않고(수비 증강이 안깡으로 6순을 더 버티는 것은 다른 밸런스다)
   //    설명을 "멘쯔가 하나라도 생기면"으로 정확히 고쳤다.
   if (rs.melds.length > 0) return false;
+  // 멘쯔가 있었던 이력 — 해체돼 지금은 0이어도 조약은 돌아오지 않는다.
+  if (flagOf(state, meldedKey(state, holder))) return false;
   return true;
 }
 
@@ -108,7 +125,7 @@ export const noRonPact: AugmentDef = defineAugment({
   description:
     "(상시) 매 국 첫 6순은 론당하지 않는다. 단 리치·후로(안깡 포함)를 하면 조약이 사라진다.",
   detail:
-    "(상시) 매 국 첫 6순 동안 무엇을 버려도 타가는 당신을 론할 수 없다.\n\n파기 조건은 둘이다 — 리치를 걸거나, **손에 멘쯔가 하나라도 생기는 것**. 치·퐁·대명깡은 물론 **안깡도 파기 사유이고, 멘젠이 유지되는 묵계 퐁도 마찬가지다**. 파기되면 그 뒤로는 평범하게 론당한다.\n\n상대의 쯔모 화료나 유국 노텐 벌점은 막지 못하며, 7순부터는 효과가 사라진다. 조약이 지금 유효한지 파기·만료됐는지는 국 내내 전원에게 공개된다.",
+    "(상시) 매 국 첫 6순 동안 무엇을 버려도 상대는 나를 론할 수 없다.\n\n파기 조건은 둘이다 — 리치를 걸거나, **손에 몸통이 하나라도 생기는 것**. 치·퐁·대명깡은 물론 **안깡도 파기 사유이고, 멘젠이 유지되는 묵계 퐁도 마찬가지다**. 파기되면 그 뒤로는 평범하게 론당한다.\n\n상대의 쯔모 화료나 유국 노텐 벌점은 막지 못하며, 7순부터는 효과가 사라진다. 조약이 지금 유효한지 파기·만료됐는지는 국 내내 전원에게 공개된다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -135,6 +152,18 @@ export const noRonPact: AugmentDef = defineAugment({
     // 조약이 바뀔 수 있는 지점 전부에 같은 리액션을 건다 — 순 진행·리치·후로·깡.
     for (const on of [ROUND_STARTED, TILE_DRAWN, TILE_DISCARDED, CALL_MADE, KAN_DECLARED]) {
       ctx.reaction(on, (_event, rc) => {
+        /*
+         * 멘쯔 이력을 여기서 남긴다 — CALL_MADE·KAN_DECLARED만 잡지 않는 이유는,
+         * 후로 존을 통째로 옮기는 증강(좌석 바꿈 등)처럼 **울음 이벤트 없이** 멘쯔가
+         * 생기는 길이 있기 때문이다. 조약이 바뀔 수 있는 모든 관측점에서 «지금
+         * 멘쯔가 있는가»를 보고, 있으면 그 사실을 국 스코프로 굳힌다.
+         */
+        if (
+          (rc.state.round.byPlayer[holder]?.melds.length ?? 0) > 0 &&
+          !flagOf(rc.state, meldedKey(rc.state, holder))
+        ) {
+          rc.emit(augmentDataSet(meldedKey(rc.state, holder), true));
+        }
         const label = pactLabel(rc.state, holder);
         const active = pactActive(rc.state, holder);
         if (rc.state.augmentData[pactActiveKey(holder)] !== active) {

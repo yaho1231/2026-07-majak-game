@@ -1,0 +1,13 @@
+import { buildVariants, evaluateWin, calculateScore, YakuRegistry, registerStandardYaku } from "@majak/core";
+import type { TileKind, WinContext } from "@majak/core";
+const registry = new YakuRegistry(); registerStandardYaku(registry);
+const m = (r: number): TileKind => ({ suit: "man", rank: r });
+const s = (r: number): TileKind => ({ suit: "sou", rank: r });
+const haku: TileKind = { suit: "dragon", rank: 1 };
+const hand: TileKind[] = [m(3),m(3),m(3),m(4),m(5),m(6),m(6),m(6),haku,haku,haku,s(2),s(3),s(4)];
+const ctx: WinContext = { hand, melds: [], winningTile: m(6), winType: "ron", seatWind: 2, prevalentWind: 1, riichi: null, flags: {}, doraKinds: [], uraDoraKinds: [], redCount: 0 };
+for (const v of buildVariants(ctx)) console.log(v.waitType, "pair=", v.pair?.suit, v.pair?.rank, v.sets.map(x=>`${x.type}:${x.tiles.map(t=>t.suit[0]+t.rank).join("")}${x.concealed?"c":"o"}`).join(" "));
+const ev = evaluateWin(ctx, registry)!;
+console.log("engine:", ev.han, "han", ev.fu, "fu", ev.waitType, ev.yaku.map(y=>y.id).join(","));
+console.log("engine points(자 론):", calculateScore({han:ev.han,fu:ev.fu,yakumanCount:ev.yakumanCount,isDealer:false,winType:"ron"}).total);
+console.log("표준 기대: 1판 50부 = 1600 (단기 해석)");

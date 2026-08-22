@@ -455,6 +455,30 @@ describe("영혼의 일격 (soul_strike)", () => {
   const activeKey = (s: GameState): string => `soul_strike:active:${roundKeyOf(s)}:p0#round`;
   const leftKey = (s: GameState): string => `soul_strike:left:${roundKeyOf(s)}:p0#round`;
 
+  /**
+   * 폭주 중 상태를 손으로 조립한다.
+   *
+   * ⚠ **살아 있는 리치를 함께 세운다.** 이 증강의 폭주는 자기가 건 리치와 한 몸이고
+   * (`soul_strike` isActive), 리치가 취소되면 폭주도 그 자리에서 끝난다
+   * (2026-08-22 QA aug-4 의심 5). 리치 없이 플래그만 세운 상태는 실제 게임에
+   * 존재하지 않는 자리라 하네스도 그렇게 만들지 않는다.
+   */
+  function running(base: GameState, left: number): GameState {
+    const s = withData(base, { [activeKey(base)]: true, [leftKey(base)]: left });
+    const rs = s.round.byPlayer["p0"];
+    if (rs === undefined) throw new Error("no p0 round state");
+    return {
+      ...s,
+      round: {
+        ...s.round,
+        byPlayer: {
+          ...s.round.byPlayer,
+          p0: { ...rs, riichi: { double: false, ippatsu: true, discardIndex: 0, cost: 1000 } },
+        },
+      },
+    };
+  }
+
   function start(state: GameState) {
     const game = createStandardGameFromState(state);
     installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
@@ -477,7 +501,7 @@ describe("영혼의 일격 (soul_strike)", () => {
 
   it("폭주 중에는 턴이 보유자에게 고정된다", () => {
     const base = strikeScene();
-    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 3 });
+    const state = running(base, 3);
     const game = createStandardGameFromState(state);
     installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
     emit(game, { type: TURN_PASSED, payload: { nextSeat: 1 } });
@@ -493,7 +517,7 @@ describe("영혼의 일격 (soul_strike)", () => {
 
   it("남은 횟수 0에서 타패하면 폭주가 끝난다 (하가로 넘어간다)", () => {
     const base = strikeScene();
-    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 0 });
+    const state = running(base, 0);
     const game = createStandardGameFromState(state);
     installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
     const tileId = game.engine.state.zones["hand:p0"]?.tileIds[0] as TileId;
@@ -510,7 +534,7 @@ describe("영혼의 일격 (soul_strike)", () => {
 
   it("남은 횟수가 남아 있으면 타패해도 폭주가 계속된다", () => {
     const base = strikeScene();
-    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 2 });
+    const state = running(base, 2);
     const game = createStandardGameFromState(state);
     installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
     const tileId = game.engine.state.zones["hand:p0"]?.tileIds[0] as TileId;
@@ -523,7 +547,7 @@ describe("영혼의 일격 (soul_strike)", () => {
 
   it("6장을 다 뽑은 뒤의 쯔모는 횟수를 더 소모하지 않는다 (안깡 연장)", () => {
     const base = strikeScene();
-    const state = withData(base, { [activeKey(base)]: true, [leftKey(base)]: 0 });
+    const state = running(base, 0);
     const game = createStandardGameFromState(state);
     installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
     // 영상 쯔모는 왕패에서 나온다 — 리듀서가 실물을 옮기므로 실제 왕패 패를 쓴다

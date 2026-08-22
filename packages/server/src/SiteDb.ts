@@ -108,6 +108,33 @@ export interface LiveGameRecord {
   seats: LiveSeatRecord[];
   startedAt: string;
   updatedAt: string;
+  /**
+   * **운영자가 세워 둔 탁자인가** (docs/36 B1 · QA 2차 spectate 확정 6).
+   *
+   * "판의 상태는 여기 담지 않는다"(표 주석)의 예외가 아니다 — 정지는 **판의 상태가
+   * 아니라 운영의 상태**다. 리플레이 이벤트 로그에는 들어 있지 않고(엔진은 정지를
+   * 모른다) 들어 있어서도 안 된다. 그런데 프로세스 메모리에만 사니, 「심판 판정 중」
+   * 이라고 세워 놓은 탁자가 배포·감시자 복구 한 번에 **그냥 다시 굴러갔다.**
+   * 선수들이 돌아오는 순간 판이 진행되고, 목록에도 정지 표식이 없으니 운영자는
+   * 다시 눌러야 한다는 것을 알 방법조차 없다.
+   *
+   * 이어하기 기능 자체가 "배포 중 재시작"을 살리려고 만들어진 것이므로, 그 재시작이
+   * 운영자의 판단을 지우면 안 된다.
+   */
+  paused: boolean;
+  /** 정지 사유 — 화면에 그대로 뜬다. 정지가 아니거나 사유가 없으면 null. */
+  pauseReason: string | null;
+  /** 그 탁자의 공지 본문. 없으면 null. */
+  notice: string | null;
+  /**
+   * 그 공지의 **절대 만료 시각**(ISO). 시한 없는 공지면 null.
+   *
+   * 남은 시간(상대값)이 아니라 시각(절대값)으로 적는다. 재시작이 얼마나 걸릴지
+   * 모르는데 남은 시간을 적으면 되살아난 공지가 그만큼 더 살아 있게 된다 —
+   * 「5분 뒤 재개」가 재시작마다 5분씩 늘어나면 그건 예고가 아니다.
+   * 이미 지난 공지는 복원 쪽에서 버린다.
+   */
+  noticeExpiresAt: string | null;
 }
 
 /**
@@ -374,6 +401,27 @@ export class SiteDb {
     } catch {
       /* 이미 있다 */
     }
+    /*
+     * 세워 둔 탁자·방 공지 열 (docs/36 B1·B2 — QA 2차 spectate 확정 6).
+     * 위 `share_token`과 **같은 방식**이다: 운영 DB에는 이미 표가 있으므로 ALTER가
+     * 유일한 길이고, 두 번째 부팅부터는 SQLite가 던진다(정상이라 삼킨다).
+     *
+     * 왜 여기 담는가는 `LiveGameRecord.paused` 주석에 적었다 — 요약하면 정지는
+     * 판의 상태가 아니라 **운영의 상태**라서 리플레이 로그에 없고, 그래서 재시작을
+     * 넘길 곳이 여기밖에 없다.
+     */
+    for (const col of [
+      "paused INTEGER",
+      "pause_reason TEXT",
+      "notice TEXT",
+      "notice_expires_at TEXT",
+    ]) {
+      try {
+        this.db.exec(`ALTER TABLE live_games ADD COLUMN ${col}`);
+      } catch {
+        /* 이미 있다 */
+      }
+    }
     this.db.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_games_share ON games(share_token) WHERE share_token IS NOT NULL",
     );
@@ -495,12 +543,19 @@ export class SiteDb {
       "SELECT 1 AS n FROM friend_requests WHERE from_id = ? AND to_id = ?",
     ).get(userId, row.id);
     if (already !== undefined) return { ok: false, error: "이미 요청을 보냈습니다" };
-    // 보낸 요청 수에도 같은 상한을 건다 — 안 그러면 요청만으로 남의 편지함을 채울 수 있다
+    /*
+     * 보낸 요청 수에도 같은 상한을 건다 — 안 그러면 요청만으로 남의 편지함을 채울 수 있다.
+     *
+     * **이미 맺은 친구와 합쳐 센다** (QA 2차 lobby 확정 2). 보류분만 세면 수락되어
+     * 빠져나간 만큼 자리가 비어, «100건 보내고 → 수락되기를 기다렸다가 → 또 100건»을
+     * 무한히 반복할 수 있었다. 상한의 뜻은 「보류함의 크기」가 아니라
+     * 「이 사람이 벌일 수 있는 관계의 총량」이다.
+     */
     const sent = (this.stmt("SELECT COUNT(*) AS n FROM friend_requests WHERE from_id = ?").get(
       userId,
     ) as { n: number }).n;
-    if (sent >= MAX_FRIENDS) {
-      return { ok: false, error: `보낸 요청은 ${MAX_FRIENDS}건까지입니다` };
+    if (sent + this.friendCount(userId) >= MAX_FRIENDS) {
+      return { ok: false, error: `친구와 보낸 요청을 합쳐 ${MAX_FRIENDS}건까지입니다` };
     }
     this.stmt(
       "INSERT INTO friend_requests (from_id, to_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
@@ -542,8 +597,30 @@ export class SiteDb {
       this.stmt("DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?").run(row.id, userId);
       return { ok: true, nickname: row.username };
     }
+    /*
+     * **양쪽을 다 본다** (QA 2차 lobby 확정 2).
+     *
+     * 예전에는 «수락하는 쪽»만 셌다. `requestFriend`는 처음부터 양쪽을 보므로
+     * 설계 의도는 "누구도 100명을 넘지 않는다"였는데, 수락 경로가 그 절반만 지켰다.
+     * 요청은 **보류로 쌓인다** — 보낸 뒤 그 사람의 친구가 늘어나 상한을 넘어도,
+     * 이미 나가 있던 보류분이 나중에 수락되면 그대로 통과했다. 게다가 보낸-요청
+     * 상한은 **보류 중인 것만** 세므로 수락된 만큼 자리가 비어 계속 새로 보낼 수 있다.
+     * 반복하면 무제한이고, 재현에서 실제로 130명까지 갔다.
+     *
+     * 친구 목록은 `friendList`로 **통째로** 나가고 관계가 바뀔 때마다 `pushFriends`가
+     * 전 목록을 다시 만다 — 상한이 조용히 사라지면 그 프레임이 그만큼 커진다.
+     *
+     * 문구를 «상대»로 갈라 적는다. 「당신이 100명입니다」와 「그쪽이 100명입니다」는
+     * 할 수 있는 일이 다르다(전자는 내가 정리하면 되고, 후자는 아니다).
+     */
     if (this.friendCount(userId) >= MAX_FRIENDS) {
       return { ok: false, error: `친구는 ${MAX_FRIENDS}명까지 맺을 수 있습니다` };
+    }
+    if (this.friendCount(row.id) >= MAX_FRIENDS) {
+      return {
+        ok: false,
+        error: `${row.username} 님의 친구가 ${MAX_FRIENDS}명이라 더 맺을 수 없습니다`,
+      };
     }
     this.linkFriends(userId, row.id);
     return { ok: true, nickname: row.username };
@@ -704,6 +781,16 @@ export class SiteDb {
   private passwordProblem(username: string, password: string): string | null {
     if (typeof password !== "string" || password.length < 8 || password.length > 72) {
       return "비밀번호는 8자 이상이어야 합니다";
+    }
+    /*
+     * 공백만으로 이루어진 비밀번호를 거부한다 (QA 2차 auth §6).
+     *
+     * `"        "`는 위 길이 검사를 통과하고 숫자도 아니라 그대로 계정이 됐다 —
+     * 사실상 비밀번호가 없는 계정이다. 붙여넣기 사고로 만들어지기 쉽다.
+     * **비밀번호 자체를 trim하지는 않는다** — 그건 기존 계정을 깨뜨린다.
+     */
+    if (password.trim() === "") {
+      return "비밀번호는 공백만으로 이루어질 수 없습니다";
     }
     // 온라인 무차별 대입 완화 — 숫자로만 이루어진(PIN) 비밀번호를 거부한다.
     if (/^\d+$/.test(password)) {
@@ -1127,14 +1214,19 @@ export class SiteDb {
    */
   saveLiveGame(rec: LiveGameRecord): void {
     this.stmt(
-      `INSERT INTO live_games (code, replay_path, game_mode, bot_difficulty, seats, started_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO live_games (code, replay_path, game_mode, bot_difficulty, seats, started_at, updated_at,
+                               paused, pause_reason, notice, notice_expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(code) DO UPDATE SET
          replay_path = excluded.replay_path,
          game_mode = excluded.game_mode,
          bot_difficulty = excluded.bot_difficulty,
          seats = excluded.seats,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at,
+         paused = excluded.paused,
+         pause_reason = excluded.pause_reason,
+         notice = excluded.notice,
+         notice_expires_at = excluded.notice_expires_at`,
     ).run(
       rec.code,
       rec.replayPath,
@@ -1143,6 +1235,10 @@ export class SiteDb {
       JSON.stringify(rec.seats),
       rec.startedAt,
       rec.updatedAt,
+      rec.paused ? 1 : 0,
+      rec.pauseReason,
+      rec.notice,
+      rec.noticeExpiresAt,
     );
   }
 
@@ -1166,6 +1262,11 @@ export class SiteDb {
       seats: string;
       started_at: string;
       updated_at: string;
+      // ALTER로 나중에 붙은 열 — 그 이전에 쓰인 행에는 NULL이 들어 있다.
+      paused: number | null;
+      pause_reason: string | null;
+      notice: string | null;
+      notice_expires_at: string | null;
     }[];
     return rows.map((r) => ({
       code: r.code,
@@ -1177,6 +1278,12 @@ export class SiteDb {
       seats: parseSeats(r.seats),
       startedAt: r.started_at,
       updatedAt: r.updated_at,
+      // NULL(= 열이 붙기 전에 쓰인 행)은 «세워 두지 않았다»로 읽는다. 모르는 것을
+      // 정지로 해석하면 되살아난 판이 아무 이유 없이 굳는다 — 그 반대가 안전하다.
+      paused: r.paused === 1,
+      pauseReason: r.pause_reason ?? null,
+      notice: r.notice ?? null,
+      noticeExpiresAt: r.notice_expires_at ?? null,
     }));
   }
 

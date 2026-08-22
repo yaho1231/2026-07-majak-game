@@ -175,22 +175,57 @@ describe("jackpot — 공탁과 유국 벌부는 배수 밖이다", () => {
     expect(out.deltas["p2"]).toBe(-4000);
   });
 
+  /** 유국 정산 한 판 (deltas만 갈아 끼운다) */
+  const drawPayload = (
+    g: ReturnType<typeof scene>,
+    deltas: Record<string, number>,
+  ): RoundSettledPayload => {
+    const r = g.engine.state.round;
+    return {
+      outcome: "draw",
+      deltas,
+      dealerSeat: r.dealerSeat,
+      honba: r.honba + 1,
+      riichiPot: 0,
+      roundNumber: r.roundNumber,
+      prevalentWind: r.prevalentWind,
+    } as RoundSettledPayload;
+  };
+
   it("유국(황패)의 노텐 벌부에는 배수가 걸리지 않는다", () => {
+    // 무페널티 — 벌부는 언제나 음수 델타이고, 배수는 **버는 쪽**에만 붙는다.
     for (const mult of [0.5, 3]) {
       const g = scene(mult);
-      const r = g.engine.state.round;
-      const draw = {
-        outcome: "draw",
-        deltas: { p0: 3000, p1: -1000, p2: -1000, p3: -1000 },
-        dealerSeat: r.dealerSeat,
-        honba: r.honba + 1,
-        riichiPot: 0,
-        roundNumber: r.roundNumber,
-        prevalentWind: r.prevalentWind,
-      } as RoundSettledPayload;
-      const out = settle(g, draw);
-      expect(out.deltas).toEqual(draw.deltas);
+      const draw = drawPayload(g, { p0: -1000, p1: 3000, p2: -1000, p3: -1000 });
+      expect(settle(g, draw).deltas["p0"]).toBe(-1000);
     }
+  });
+
+  /*
+   * 2026-08-22(QA aug-2 확정 9): 예전에는 `outcome !== "win"`이면 통째로 건너뛰어
+   * **유국 텐파이 수령·유국만관·유국역만**이 전부 배수 밖이었다. 카드는 "**그 국에
+   * 얻는 점수**(공탁 회수분 제외)에 뽑힌 배수가 곱해지며"라고만 적고 어디에도
+   * "화료했을 때만"이라 하지 않는다. 벌부 보호는 위 테스트가 보듯 `d <= 0` 한 줄이
+   * 혼자서 완전히 해내므로, `outcome` 컷은 양수 획득까지 함께 밀어내고 있었다.
+   */
+  it("유국 텐파이 수령에는 배수가 붙는다 — 카드가 '그 국에 얻는 점수'라 적었다", () => {
+    for (const [mult, expected] of [
+      [3, 9000],
+      [0.5, 1500],
+    ] as const) {
+      const g = scene(mult);
+      const draw = drawPayload(g, { p0: 3000, p1: -1000, p2: -1000, p3: -1000 });
+      expect(settle(g, draw).deltas["p0"]).toBe(expected);
+    }
+  });
+
+  it("도중유국은 델타가 0이라 아무 일도 일어나지 않는다", () => {
+    const g = scene(3);
+    const abort = {
+      ...drawPayload(g, { p0: 0, p1: 0, p2: 0, p3: 0 }),
+      outcome: "abort",
+    } as RoundSettledPayload;
+    expect(settle(g, abort).deltas).toEqual(abort.deltas);
   });
 });
 
@@ -253,9 +288,10 @@ describe("blame_shift — 내 화료 몫만, WinInfo에서 직접 센다", () =>
   it("둘째 화료자가 들면 첫 화료자의 본장은 흩어지지 않는다", () => {
     const g = withAugs(blank(), [{ player: "p0", def: blameShift }]);
     const out = settle(g, doubleRon(g));
-    // p0 몫 7,700 만 2분할 → 무관한 p3는 3,900
-    expect(out.deltas["p3"]).toBe(-3900);
-    expect(out.deltas["p1"]).toBe(-16600 + 7700 - 3800);
+    // p0 몫 7,700 만 2분할 → 무관한 p3는 3,800, 끝수 100은 쏜 사람 p1이 흡수한다
+    // (2026-08-22 QA aug-1 확정 2 — 예전에는 Math.round라 애먼 p3가 3,900으로 더 냈다)
+    expect(out.deltas["p3"]).toBe(-3800);
+    expect(out.deltas["p1"]).toBe(-16600 + 7700 - 3900);
     expect(sum(out.deltas)).toBe(sum(doubleRon(g).deltas));
   });
 
@@ -265,8 +301,9 @@ describe("blame_shift — 내 화료 몫만, WinInfo에서 직접 센다", () =>
       { player: "p2", def: blameShift },
     ]);
     const out = settle(g, doubleRon(g));
-    // p2 몫 8,900(본장 포함) ÷2 = 4,500 + p0 몫 7,700 ÷2 = 3,900
-    expect(out.deltas["p3"]).toBe(-8400);
+    // p2 몫 8,900(본장 포함) ÷2 = 4,400 + p0 몫 7,700 ÷2 = 3,800.
+    // 두 끝수(100+100)는 모두 쏜 사람 p1에게 간다 — 확정 2의 내림 규칙.
+    expect(out.deltas["p3"]).toBe(-8200);
     expect(sum(out.deltas)).toBe(sum(doubleRon(g).deltas));
   });
 });

@@ -1,0 +1,10 @@
+.10.20.30.40.50.60
+=== stats ===
+{
+ "rounds": 648,
+ "outcome_win": 483,
+ "wins": 486,
+ "outcome_abort": 7,
+ "outcome_draw": 158
+}
+=== issues (앞 40) ===

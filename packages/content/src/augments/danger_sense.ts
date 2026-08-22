@@ -20,7 +20,8 @@
  *   텐파이면 전부 위험으로 잡는다(다마텐도 걸러낸다).
  * - 기준은 **실제로 쏘이는가**다. 후리텐이라 론이 막힌 상대와 역이 없어 론이 성립하지 않는
  *   대기는 빼고(가상 론을 평가한다), `win.furiten.enabled`를 끈 상대(철벽 등)는
- *   후리텐이어도 그대로 센다. 판정 순서는 표준 론 검증과 같다.
+ *   후리텐이어도 그대로 센다. 판정 순서는 표준 론 검증과 같다 — 후리텐 → evaluateWin →
+ *   역 → **내 버림의 론 면역(`win.ronImmune`)** → **격(`win.minHan`)** 까지 전부 본다.
  *
  * 국 단위 1회라 사용 플래그 키에 roundKey를 섞는다(매 국 초기화).
  */
@@ -91,6 +92,23 @@ function needsYaku(state: GameState, rules: RuleRegistry, pid: PlayerId): boolea
 }
 
 /**
+ * **내 버림이 론당하지 않는 국인가** (천하무적 `invincible`·불가침 조약 `no_ron_pact`).
+ *
+ * `win.ronImmune`의 playerId는 표준 론 검증에서 **버리는 사람**이다
+ * (`standardActions.ts`의 win validate: `source = last?.player`). 보유자 자신이 면역인
+ * 국에서는 무엇을 버려도 쏘이지 않는데 예전에는 손패 대부분이 빨갛게 칠해졌다
+ * (2026-08-22 QA aug-1 확정 5). "실제로 쏘이는가"가 기준인 카드에서 이건 순수 오탐이다.
+ */
+function discarderImmune(
+  state: GameState,
+  rules: RuleRegistry,
+  holder: PlayerId,
+): boolean {
+  if (!rules.has("win.ronImmune")) return false;
+  return rules.resolve<boolean>("win.ronImmune", { playerId: holder, state });
+}
+
+/**
  * 그 종류로 실제 **론이 성립하는가** — 가상 화료를 평가해 역 성립까지 본다.
  *
  * 대기(winningKinds)만 보면 후로해서 역이 하나도 없는 상대(론 불가)의 대기까지
@@ -113,7 +131,33 @@ function canRonWith(
   if (tileId === undefined) return true; // 실물을 못 찾으면 방어적으로 위험으로 둔다
   const ev = evaluateWin(buildWinContext(state, pid, "ron", tileId, { rules }), yaku);
   if (ev === null) return false;
-  return !needsYaku(state, rules, pid) || ev.ok;
+  if (needsYaku(state, rules, pid) && !ev.ok) return false;
+  /*
+   * 격(`win.minHan` — rank_gate)에 걸려 **론할 수 없는 싼 손**도 위험이 아니다.
+   * 표준 론 검증의 `belowMinHan`과 같은 계산이다(역만 면제 + score.extraHan 합산).
+   */
+  return !belowMinHan(state, rules, pid, ev);
+}
+
+/**
+ * 최소 판 게이트에 걸리는가 — `standardActions.ts`의 `belowMinHan`을 그대로 옮긴 것.
+ * (코어가 내보내지 않는 내부 함수라 여기서 같은 계산을 다시 쓴다. 판정이 갈리면
+ * "위험하다고 칠했는데 실제로는 론이 거부되는" 오탐이 된다.)
+ */
+function belowMinHan(
+  state: GameState,
+  rules: RuleRegistry,
+  pid: PlayerId,
+  ev: { han: number; yakumanCount: number },
+): boolean {
+  if (ev.yakumanCount > 0) return false;
+  if (!rules.has("win.minHan")) return false;
+  const min = rules.resolve<number>("win.minHan", { playerId: pid, state });
+  if (min <= 0) return false;
+  const extra = rules.has("score.extraHan")
+    ? Math.max(0, rules.resolve<number>("score.extraHan", { playerId: pid, state }))
+    : 0;
+  return ev.han + extra < min;
 }
 
 /**
@@ -126,6 +170,8 @@ function dangerKinds(
   yaku: YakuRegistry | undefined,
   holder: PlayerId,
 ): string[] {
+  // 내가 론 면역인 국에는 위험패가 존재하지 않는다 — 무엇을 버려도 쏘이지 않는다.
+  if (discarderImmune(state, rules, holder)) return [];
   // 세 상대의 대기(오름패)를 kindKey 집합으로 합친다. 노텐은 []이라 자연히 빠진다.
   const oppWaits = new Set<string>();
   for (const p of state.players) {

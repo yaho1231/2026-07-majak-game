@@ -20,9 +20,15 @@
  * 카운트다운을 그린다. 봇은 원래 즉답이라 사실상 영향을 받지 않는다.
  */
 
-import { AUGMENT_DISARMED, augmentDataSet, defineAugment } from "@majak/core";
+import {
+  AUGMENT_DISARMED,
+  augmentDataSet,
+  augmentInstanceId,
+  defineAugment,
+  isSourceDisarmed,
+} from "@majak/core";
 import type { AugmentDef, AugmentDisarmedPayload } from "@majak/core";
-import { armOnNextRound, roundViewKey } from "../util.js";
+import { armOnNextRound, armedNow, roundViewKey } from "../util.js";
 
 const ID = "time_pressure";
 
@@ -42,7 +48,7 @@ export const timePressure: AugmentDef = defineAugment({
   complexity: 1,
   name: "초읽기",
   description:
-    "뽑는 순간 자동 발동. 이번 국 동안 전원의 모든 결정에 5초 제한이 걸린다 — 나도 포함이다. 시간을 넘기면 쯔모기리·패스로 자동 진행된다.",
+    "(획득 즉시 · 이번 국만) 전원의 모든 결정에 5초 제한이 걸린다 — 나도 포함이다. 시간을 넘기면 쯔모기리·패스로 자동 진행된다.",
   /*
    * detail의 마무리 폴백 문구는 예전에 "남은 후보 중 하나가 **무작위로** 선택된다"였다.
    * 서버는 리플레이·재개 결정성을 위해 `Math.random()`을 **일부러 걷어내고** 후보 목록의
@@ -52,7 +58,7 @@ export const timePressure: AugmentDef = defineAugment({
    * 구현이 옳고 문장이 낡은 경우라 **문장을 고친다**.
    */
   detail:
-    "획득한 직후의 국 하나 동안 전원의 모든 결정에 5초 제한이 걸린다. 타패, 론·치·퐁·깡 선언, 액티브 증강 선택이 모두 포함되며 보유자도 예외가 아니다.\n\n제한을 넘기면 버릴 차례에는 쯔모한 패를 그대로 버리고, 반응을 묻는 자리에서는 패스하며, 되돌릴 수 없는 발동의 마무리 단계에서는 남은 후보 중 하나가 정해진 규칙에 따라 선택된다(리플레이가 같은 결과를 내야 하므로 무작위가 아니다 — 같은 상황이면 언제나 같은 후보가 골라진다).\n\n⚠ 5초 제한은 사람에게만 걸린다 — 봇은 이 제한을 받지 않는다. 봇이 섞인 자리에서는 그만큼 나만 조여진다.",
+    "(획득 즉시 · 이번 국만) 전원의 모든 결정에 5초 제한이 걸린다. 타패, 론·치·퐁·깡 선언, 액티브 증강 선택이 모두 포함되며 보유자도 예외가 아니다.\n\n제한을 넘기면 버릴 차례에는 쯔모한 패를 그대로 버리고, 반응을 묻는 자리에서는 패스하며, 되돌릴 수 없는 발동의 마무리 단계에서는 남은 후보 중 하나가 정해진 규칙에 따라 선택된다(리플레이가 같은 결과를 내야 하므로 무작위가 아니다 — 같은 상황이면 언제나 같은 후보가 골라진다).\n\n⚠ 5초 제한은 사람에게만 걸린다 — 봇은 이 제한을 받지 않는다. 봇이 섞인 자리에서는 그만큼 나만 조여진다.",
   install(ctx) {
     // 획득 뒤 처음 시작되는 국 하나에만 켜진다.
     // 전원 공개 — 서버는 이 값으로 결정 대기 시간을 줄이고 클라는 카운트다운을 그린다.
@@ -76,6 +82,23 @@ export const timePressure: AugmentDef = defineAugment({
       if (rc.state.augmentData[roundViewKey("*", TIME_PRESSURE_CHANNEL)] === undefined) {
         return;
       }
+      /*
+       * ⚠ 채널은 **보유자별이 아니라 테이블 공용**이다(위 주석의 의도). 그래서 두 명이
+       * 같은 국에 이 증강을 들면, 한쪽만 무장해제해도 이 리액션이 공용 채널을 지워
+       * **나머지 한 명의 초읽기까지 함께 꺼졌다**(2026-08-22 QA aug-4 의심 2).
+       * 아직 살아 있는 다른 보유자가 있으면 채널을 그대로 둔다 — 무장해제는 지목한
+       * 한 사람의 증강만 잠그는 것이지 남의 증강까지 잠그는 것이 아니다.
+       * (이 리액션은 목록에 들어가기 **전에** 오므로, 지금 나 자신은 아직
+       *  `isSourceDisarmed`가 false다 — 그래서 나를 명시적으로 뺀다.)
+       */
+      const stillArmed = rc.state.players.some(
+        (pl) =>
+          pl.id !== ctx.holder &&
+          pl.augments.includes(ID) &&
+          armedNow(rc.state, ID, pl.id) &&
+          !isSourceDisarmed(rc.state, augmentInstanceId(pl.id, ID)),
+      );
+      if (stillArmed) return;
       rc.emit(augmentDataSet(roundViewKey("*", TIME_PRESSURE_CHANNEL), undefined));
     });
   },

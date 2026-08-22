@@ -422,9 +422,88 @@ export function lockedDiscardIds(
 ): Set<TileId> {
   if (state.round.byPlayer[playerId]?.riichi != null) return new Set();
   const sealed = sealedDiscardIds(state, rules, playerId, hand);
+  // 쿠이카에는 봉인과 근거가 다르지만(증강이 아니라 **표준 룰**) 결과는 같다 —
+  // "지금 이 패는 버릴 수 없다". 같은 집합에 합쳐야 화면의 자물쇠와 검증이 갈리지 않는다.
+  for (const id of kuikaeForbiddenIds(state, rules, playerId, hand)) sealed.add(id);
   if (sealed.size === 0) return sealed;
   // 전부 잠겼으면 잠긴 것이 없는 것과 같다 (그대로 두면 버릴 패가 없다)
   return hand.some((id) => !sealed.has(id)) ? sealed : new Set();
+}
+
+/**
+ * **쿠이카에(먹고 바꾸기) 금지** — 방금 울어서 만든 몸통과 같은 패는 버릴 수 없다.
+ *
+ * 일본 리치마작 표준 룰이고, 이 저장소는 이 금지를 **한 줄도 구현하지 않고 있었다**
+ * (QA 2차 rules 확정 2). 없으면 후로가 **공짜 손패 교환**이 된다: 4m5m을 들고 3m을
+ * 친 뒤 6m을 버리면 손패 장수도 텐파이 모양도 그대로인 채 필요 없는 패 하나를
+ * 버릴 수 있다. 울 때마다 무료 교체가 되므로 대인전에서 명백한 어드밴티지가 된다
+ * (봇은 이 수를 쓰지 않아 봇 상대로는 드러나지 않는다).
+ *
+ * 금지 대상 셋:
+ *  - **현물** — 펑이든 치든, 울린 패와 같은 종류.
+ *  - **스지(뒤집기)** — 치로 만든 슌쯔의 반대쪽 바깥 한 장. 4m5m으로 3m을 치했으면
+ *    6m을 버려 «456m을 만들고 3m을 흘린 것»과 같은 결과를 살 수 없다. 울린 패가
+ *    슌쯔의 가운데(칸챤 치)면 반대쪽이 없으므로 스지 금지도 없다.
+ *
+ * **깡에는 걸리지 않는다** — 같은 패 네 장을 다 썼으니 손에 남은 같은 패가 없고,
+ * 대명깡·가깡 뒤에는 영상패를 뽑으므로 아래 «방금 울었다» 판정에도 걸리지 않는다.
+ *
+ * 「방금 울었다」의 판정: `CALL_MADE`가 페이즈를 `turn.act`로 두고 턴을 우는 사람에게
+ * 넘기면서 `lastDrawnTile`·`lastDiscard`를 **둘 다 비운다.** 즉 "내 차례 · 이번 순에
+ * 아무것도 뽑지 않았다"가 곧 "방금 울고 아직 안 버렸다"이다.
+ *
+ * 규칙 스위치 `call.kuikae`로 끌 수 있다(true = 금지). 몸통 모양 자체를 바꾸는 증강이
+ * 들어올 자리를 남겨 둔다.
+ */
+export function kuikaeForbiddenIds(
+  state: GameState,
+  rules: RuleRegistry,
+  playerId: PlayerId,
+  hand: readonly TileId[] = handIdsOf(state, playerId),
+): Set<TileId> {
+  const out = new Set<TileId>();
+  const round = state.round;
+  if (round.phase !== "turn.act") return out;
+  if (round.lastDrawnTile !== null || round.lastDiscard !== null) return out;
+  const seat = state.players.find((p) => p.id === playerId)?.seat;
+  if (seat === undefined || seat !== round.turnSeat) return out;
+  if (
+    rules.has("call.kuikae") &&
+    !rules.resolve<boolean>("call.kuikae", { playerId, state })
+  ) {
+    return out;
+  }
+  const melds = round.byPlayer[playerId]?.melds ?? [];
+  const last = melds[melds.length - 1];
+  if (last === undefined || last.calledTileId === undefined) return out;
+  if (last.kind !== "chi" && last.kind !== "pon") return out;
+
+  const called = state.tiles[last.calledTileId]?.kind;
+  if (called === undefined) return out;
+  const forbidden = new Set<string>([kindKey(called)]);
+
+  if (last.kind === "chi" && DEFAULT_SEQUENCE_SUITS.has(called.suit)) {
+    // 슌쯔의 세 숫자 — 울린 패가 어느 끝인지 보고 반대쪽 바깥 한 장을 막는다.
+    const ranks = last.tileIds
+      .map((id) => state.tiles[id]?.kind)
+      .filter((k): k is TileKind => k !== undefined && k.suit === called.suit)
+      .map((k) => k.rank)
+      .sort((a, b) => a - b);
+    const low = ranks[0];
+    const high = ranks[ranks.length - 1];
+    if (low !== undefined && high !== undefined && high - low === 2) {
+      if (called.rank === low && high + 1 <= 9) {
+        forbidden.add(kindKey({ suit: called.suit, rank: high + 1 }));
+      } else if (called.rank === high && low - 1 >= 1) {
+        forbidden.add(kindKey({ suit: called.suit, rank: low - 1 }));
+      }
+    }
+  }
+
+  for (const id of hand) {
+    if (forbidden.has(kindKey(kindOf(state, id)))) out.add(id);
+  }
+  return out;
 }
 
 /**

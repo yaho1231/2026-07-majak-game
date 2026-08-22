@@ -32,6 +32,17 @@
  *
  *   - `noYakuRead` — 손을 직접 읽어 역을 잡는 것을 끈다 (`bot/yaku.ts`)
  *   - `noSuji` — 스지 읽기를 끈다. 량면 감액이 사라지고 벽·장수 셈만 남는다 (`bot/suji.ts`)
+ *   - `narrowProfile` — 성격이 밀기/접기 저울에 주는 폭을 QA 2차 이전 값(0.6)으로
+ *     되돌린다 (`bot/discard.ts`의 `AGGRESSION_SPAN`). 이 폭이 곧 "원형이 판에서
+ *     구분되는가"의 눈금이라, 앞으로 폭을 다시 조정할 때 **전후를 같은 탁에서** 재려면
+ *     이 스위치가 있어야 한다.
+ *
+ *         npm run arena -- --games 150 --mode tonpuu \
+ *           --seats attacker,attacker,defender,defender --ab narrowProfile
+ *
+ *     ⚠ 성격 스위치는 **원형을 고정해야** 잰다. `--ab`의 기본 좌석은 균형형 넷인데
+ *     균형형은 `aggression`이 정확히 0.5라 폭을 아무리 바꿔도 저울이 1/1로 같다 —
+ *     좌석을 안 주면 차이가 구조적으로 정확히 0이 나온다.
  *
  * ## 예외 2: 재 보고 반려했지만 남겨 둔 것
  *

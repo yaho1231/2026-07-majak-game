@@ -10,6 +10,9 @@
  * 남의 방총이 내 지갑을 열 수 있다.
  *
  * 구현: 정산 인터셉터 하나(`Redistribute` 단계 — 지불자만 재배선, 총액 불변).
+ * - 이 효과는 홀더가 아니라 **판 전체**에 걸린다. 그래서 몇 명이 들고 있든 재배선은
+ *   **국당 정확히 한 번**이어야 한다 — payload 표식(`blindRonApplied`)으로 잠근다
+ *   (`die_hard`의 ReviveMark·`devils_advance`의 BurstMark와 같은 패턴).
  * - 무작위 대상은 `(게임 시드 ⊕ 국 ⊕ 쏜 사람)`에서 파생한 **독립 PRNG**로 뽑는다.
  *   게임 진행용 PRNG를 소비하지 않아 패산이 흔들리지 않고, 리플레이·재개에서 같다.
  * - 더블론처럼 한 사람이 여러 화료자에게 무는 경우, 그 지불 **전체**가 같은 대상에게
@@ -42,6 +45,22 @@ import {
 
 const ID = "blind_ron";
 
+/**
+ * 이번 정산에서 재배선이 이미 끝났다는 표식 (인터셉터 → 인터셉터 신호).
+ *
+ * 인터셉터는 `ctx.instanceId` 단위로 등록되므로 **보유자 수만큼** 돈다. 그런데
+ * 이동량 `owed`는 재배선의 영향을 받지 않는 `winInfos`에서 다시 재기 때문에, 두 번째
+ * 인스턴스는 "이미 옮겨졌다"를 볼 수 없어 **같은 이동을 한 번 더** 얹었다 — 8000점 론
+ * 하나로 쏜 사람이 +8000을 **벌고** 엉뚱하게 맞은 사람이 16000을 무는 그림이 됐다
+ * (2026-08-22 QA aug-1 확정 1). 총합은 0이라 합계 불변식으로는 잡히지 않는다.
+ *
+ * 이 증강의 효과는 홀더 개인이 아니라 **그 국의 모든 론**에 걸리므로, 몇 명이 들고
+ * 있든 재배선은 한 번이면 충분하고 한 번이어야 맞다.
+ */
+interface BlindRonMark {
+  blindRonApplied?: boolean;
+}
+
 function hashString(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -58,9 +77,9 @@ export const blindRon: AugmentDef = defineAugment({
   complexity: 1,
   name: "눈먼 총알",
   description:
-    "증강을 뽑은 국에만 적용되며, 이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다. 화료자도 포함될 수 있으며 이 경우 그 화료는 ±0점이 된다.",
+    "(획득 즉시 · 이번 국만) 이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다. 화료자도 포함될 수 있으며, 그러면 손의 화료점을 자기가 물어 그만큼 상쇄된다(본장·공탁은 그대로 받는다).",
   detail:
-    "대상은 자리에 앉은 넷 전부에서 고르므로 보유자도 25%로 맞는다. 쯔모에는 적용되지 않고, 더블론처럼 한 사람이 여럿에게 물 때는 그 지불 전체가 같은 한 명에게 옮겨 간다. 옮겨 가는 것은 손의 지불분이며 공탁·본장은 원래대로 정산된다. 켜지는 순간 전원에게 공개되고 국이 끝나면 저절로 꺼진다.",
+    "(획득 즉시 · 이번 국만) 대상은 자리에 앉은 넷 전부에서 고르므로 보유자도 25%로 맞는다. 쯔모에는 적용되지 않고, 더블론처럼 한 사람이 여럿에게 물 때는 그 지불 전체가 같은 한 명에게 옮겨 간다. 옮겨 가는 것은 손의 지불분이며 공탁·본장은 원래대로 정산된다. 켜지는 순간 전원에게 공개되고 국이 끝나면 저절로 꺼진다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -103,9 +122,11 @@ export const blindRon: AugmentDef = defineAugment({
     // 정산 단계: Redistribute — 지불자만 재배선(총액 불변). 방어(Shield)보다 먼저 돌아야
     // 엉뚱하게 맞은 사람의 방어 증강이 "새로 부과된 지불"을 보고 막을 수 있다.
     settleInterceptor(ctx, SETTLE_STAGE.Redistribute, (event, ic) => {
-      const p = event.payload as RoundSettledPayload;
+      const p = event.payload as RoundSettledPayload & BlindRonMark;
       if (p.outcome !== "win") return event;
       if (!armedNow(ic.state, ID, holder)) return event;
+      // 다른 보유자의 인스턴스가 이미 이 국의 총알을 날렸다 — 두 번 쏘지 않는다.
+      if (p.blindRonApplied === true) return event;
 
       // 이 국에 실제로 쏜 사람들 (더블론이면 한 명이 여러 번 나온다 → 중복 제거)
       const shooters = [
@@ -151,7 +172,10 @@ export const blindRon: AugmentDef = defineAugment({
         notes = withAugNoteFor({ ...p, augPoints: notes }, ID, shooter, owed);
       }
       if (moved === 0) return event;
-      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
+      return {
+        type: event.type,
+        payload: { ...p, deltas, augPoints: notes, blindRonApplied: true },
+      };
     });
   },
   // 봇 정책 없음 — 자동 발동이라 선택 지점이 없다.

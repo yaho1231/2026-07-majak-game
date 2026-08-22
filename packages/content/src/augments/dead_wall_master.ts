@@ -30,6 +30,7 @@
 import {
   DEAD_WALL,
   ROUND_STARTED,
+  TILE_DISCARDED,
   augmentDataSet,
   defineAugment,
   handIdsOf,
@@ -43,6 +44,7 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  TileDiscardedPayload,
   TileId,
   VisibilityRule,
 } from "@majak/core";
@@ -78,9 +80,30 @@ const swapsKey = (state: GameState, h: PlayerId): string =>
 const viewRemainingKey = (h: PlayerId): string =>
   roundViewKey(h, `${ID}:remaining:${h}`);
 
-/** 이번 국에 남은 교환 횟수 */
+/** 이번 국에 남은 교환 횟수 (창이 아직 열려 있는지는 보지 않는다) */
 function remainingSwaps(state: GameState, h: PlayerId): number {
   return Math.max(0, SWAPS_PER_ROUND - counterOf(state, swapsKey(state, h)));
+}
+
+/**
+ * 이번 국의 교환 **창**이 아직 열려 있는가 — 내가 아직 한 장도 버리지 않았고 리치도
+ * 걸지 않았다. (내 순인지·페이즈는 `canSwap`이 따로 본다.)
+ *
+ * 이름표에 실을 값은 이쪽을 봐야 한다. 예전에는 `remainingSwaps`(쓴 횟수)만 실어서,
+ * 한 장도 안 바꾸고 첫 타패를 넘긴 보유자가 국이 끝날 때까지 "왕패 교환 2회 남음"을
+ * 달고 다녔다 — 실제 버튼은 이미 사라진 뒤였고, **그 pill은 다른 좌석도 읽는다**
+ * (2026-08-22 QA aug-1 확정 6).
+ */
+function swapWindowOpen(state: GameState, h: PlayerId): boolean {
+  const r = state.round;
+  if ((r.byPlayer[h]?.discardCount ?? 0) > 0) return false;
+  if (r.byPlayer[h]?.riichi != null) return false;
+  return true;
+}
+
+/** 이름표에 실을 "이번 국에 아직 쓸 수 있는 교환 횟수" */
+function publishedRemaining(state: GameState, h: PlayerId): number {
+  return swapWindowOpen(state, h) ? remainingSwaps(state, h) : 0;
 }
 
 /**
@@ -96,8 +119,7 @@ function canSwap(state: GameState, h: PlayerId): boolean {
   const r = state.round;
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== h) return false;
-  if ((r.byPlayer[h]?.discardCount ?? 0) > 0) return false;
-  if (r.byPlayer[h]?.riichi != null) return false;
+  if (!swapWindowOpen(state, h)) return false;
   return remainingSwaps(state, h) > 0;
 }
 
@@ -250,8 +272,22 @@ export const deadWallMaster: AugmentDef = defineAugment({
     // 국이 시작될 때마다 남은 교환 횟수를 다시 발행 (매 국 2장으로 리셋된다)
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
       rc.emit(
-        augmentDataSet(viewRemainingKey(holder), remainingSwaps(rc.state, holder)),
+        augmentDataSet(viewRemainingKey(holder), publishedRemaining(rc.state, holder)),
       );
+    });
+
+    /*
+     * 첫 타패로 창이 닫히는 순간 이름표를 0으로 내린다.
+     *
+     * 리듀서는 **교환했을 때만** 이 채널을 갱신하므로, 한 번도 안 바꾸고 넘긴 경우가
+     * 그대로 거짓말로 남았다. 리치 선언도 같은 이벤트(TILE_DISCARDED)로 온다.
+     */
+    ctx.reaction(TILE_DISCARDED, (event, rc) => {
+      const p = event.payload as TileDiscardedPayload;
+      if (p.player !== holder) return;
+      const next = publishedRemaining(rc.state, holder);
+      if (counterOf(rc.state, viewRemainingKey(holder)) === next) return;
+      rc.emit(augmentDataSet(viewRemainingKey(holder), next));
     });
 
     // 보유자에게 왕패 14장 전체 공개 — 무엇을 가져올지 보고 정한다

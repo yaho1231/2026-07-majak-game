@@ -438,8 +438,6 @@ export class BotAgent implements PlayerAgent {
    */
   async decide(prompt: DecisionPrompt): Promise<ActionOption> {
     const chosen = this.decideSafely(prompt);
-    // 튜토리얼: 말풍선이 떠 있는 동안에는 내지 않고 기다린다 (`held` 주석)
-    await this.waitWhileHeld();
     if (this.thinkMs > 0 && chosen.type !== "pass") {
       const weighty =
         chosen.type === "riichi" ||
@@ -453,6 +451,29 @@ export class BotAgent implements PlayerAgent {
       );
       await this.think(ms);
     }
+    /*
+     * **홀드는 생각 시간 «뒤에» 본다** (QA 2차 onboard 확정 2).
+     *
+     * 예전에는 이 검사가 생각 시간 **앞에** 한 번뿐이었다. 그러면 홀드 신호가 서버에
+     * 닿을 수 있는 창이 «서버가 새 view 를 내보낸 순간 ~ 이 함수의 첫 줄» 사이 **몇 ms**
+     * 밖에 안 된다. 그런데 클라이언트는 그 view 를 받아 **렌더하고 강의를 고른 뒤에야**
+     * 홀드를 보낸다 — 구조적으로 항상 늦고, 늦게 온 홀드는 이미 잠든 봇을 못 붙들었다.
+     * 봇은 1초 뒤 깨어나 **말풍선이 떠 있는 한가운데서 한 장을 버렸다.** 지연을 0ms로
+     * 낮춰도 홀드 구간 9개 중 5개가 샜다(각 정확히 1장) — 네트워크가 아니라 **검사
+     * 지점의 순서** 문제라는 증거다. `docs/23_TEST_BASELINE.md`의 `Tutorial.test.ts`
+     * 플레이크가 같은 사건이다.
+     *
+     * **앞뒤로 두 번 묻지 않고 뒤로 옮긴 이유**: 두 번 물으면 서버가 view 마다 거는
+     * 유예(`TUTORIAL_HOLD_GRACE_MS`)가 생각 시간에 **더해져** 봇의 한 순이 그만큼
+     * 길어진다. 튜토리얼이 눈에 띄게 늘어지고, 실제로 `Tutorial.test.ts`가 시간 예산을
+     * 넘겼다. 뒤에서 한 번만 물으면 유예가 생각 시간과 **겹쳐** 흐르므로 운영 기본값
+     * (생각 1000ms > 유예 700ms)에서는 추가 비용이 0이다. 붙드는 힘은 그대로다 —
+     * 어차피 «내기 직전»에 보는 것이 이 검사의 뜻이다.
+     *
+     * 리액션 경합의 죽은 시간은 늘지 않는다: `think()`는 `cancelDecision()`으로 즉시
+     * 깨울 수 있고, `waitWhileHeld`도 그 `think()`를 쓴다.
+     */
+    await this.waitWhileHeld();
     return chosen;
   }
 

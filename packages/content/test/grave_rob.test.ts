@@ -27,6 +27,7 @@ import type {
 } from "@majak/core";
 import { craft } from "./helpers.js";
 import { graveRob } from "../src/augments/grave_rob.js";
+import { briefFog } from "../src/augments/brief_fog.js";
 
 function withAugments(
   state: GameState,
@@ -206,5 +207,41 @@ describe("무덤 도굴 (grave_rob)", () => {
     };
     const { prompt } = startWithGraveRob(used);
     expect(robOptions(prompt)).toHaveLength(0);
+  });
+});
+
+describe("안개를 친 본인도 안개 속 바닥은 파낼 수 없다", () => {
+  /**
+   * QA 2차 aug-2 의심 6. 후보 판정이 «보유자에게 보이는 바닥»이었다. 박무·숨은 강은
+   * `visibility.discards`를 **비보유자에게만** 내리므로, 안개를 친 본인이 도굴을 함께
+   * 들면 남에게는 가려진 바닥을 **자기만 보고** 파낼 수 있었다 — 게다가 파낸 패는
+   * 전원 공개 채널로 나가므로 자기가 감춰 둔 정보를 자기 손으로 흘리면서 규칙까지
+   * 우회한다. detail은 "안개로 가려진 바닥의 패도 파낼 수 없다"고 못 박고 있다.
+   *
+   * 대조군(안개 없음)이 같은 장면에서 후보를 내는 것까지 함께 검사한다 — 그래야
+   * 「후보가 없다」가 안개 때문인지 장면이 애초에 안 되는 것인지 갈린다.
+   */
+  it("박무 + 도굴을 함께 든 좌석에게 후보가 뜨지 않는다", () => {
+    const base = scene();
+    const control = startWithGraveRob(base);
+    expect(robOptions(control.prompt).length).toBeGreaterThan(0);
+
+    const fogged = withAugments(base, "p0", ["grave_rob", "brief_fog"]);
+    const game = createStandardGameFromState(fogged);
+    installAugment(game.engine, graveRob, "p0", { yaku: game.yaku });
+    installAugment(game.engine, briefFog, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    let status = flow.begin();
+    if (status.kind !== "awaiting") throw new Error("expected awaiting");
+    const fogOption = status.prompts
+      .find((p) => p.player === "p0")
+      ?.options.find((o) => o.type === "declare_brief_fog");
+    expect(fogOption, "박무 선언 후보가 있어야 장면이 성립한다").toBeDefined();
+    // 안개를 친다 — 이제 남의 바닥은 나만 보인다.
+    status = flow.submit("p0", fogOption!);
+    if (status.kind !== "awaiting") throw new Error("expected awaiting after fog");
+    const prompt = status.prompts.find((p) => p.player === "p0");
+    expect(prompt).toBeDefined();
+    expect(robOptions(prompt!).length).toBe(0);
   });
 });

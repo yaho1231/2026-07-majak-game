@@ -110,8 +110,18 @@ const leftKey = (state: GameState, h: PlayerId): string =>
 const declaredKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "declared", state, h);
 
+/**
+ * 폭주가 지금 살아 있는가.
+ *
+ * ⚠ 국 스코프 플래그만 보면 안 된다 — **리치가 취소되면 폭주도 끝나야 한다.**
+ * 카드는 "리치를 걸고 여섯 순을 달린다"이고, 승부수(`last_stand`)·은밀한 리치의
+ * 해제(`stealthBreak`)는 그 국의 리치를 실제로 지운다. 판수 보너스(`addWinHanBonus`)는
+ * 이미 라이브 리치를 함께 보는데 **연속 6쯔모만 그 게이트를 안 타서**, 리치만 무르고
+ * 여섯 순은 그대로 챙기는 모양이 됐다(2026-08-22 QA aug-4 의심 5). 같은 판단을
+ * 한 곳에서 하도록 여기에 합친다.
+ */
 const isActive = (state: GameState, h: PlayerId): boolean =>
-  flagOf(state, activeKey(state, h));
+  flagOf(state, activeKey(state, h)) && state.round.byPlayer[h]?.riichi != null;
 const leftOf = (state: GameState, h: PlayerId): number =>
   counterOf(state, leftKey(state, h));
 
@@ -199,7 +209,7 @@ export const soulStrike: AugmentDef = defineAugment({
   description:
     "(2국에 1회) 텐파이에서 발동하면 그 패로 리치를 걸고 연속 6쯔모에 들어간다. 그 리치는 2판(더블리치는 3판)으로 값하고, 폭주 중 쯔모 화료는 언제나 일발이다.",
   detail:
-    "(2국에 1회) 텐파이 상태의 자기 순에 버릴 패를 골라 발동한다. 그 패로 리치를 선언하고 연속 6쯔모에 들어간다. 이 리치는 2판, 더블리치면 3판으로 취급하며, 연속 쯔모 중의 쯔모 화료에는 일발이 붙는다.\n\n다음 중 하나가 충족되면 종료된다(위가 우선). ① 타가에게 방총당하면 국이 끝난다. ② 타가가 후로하면 후로한 사람부터 진행된다. ③ 여섯 번째 이후의 쯔모패를 버리면 하가부터 진행된다.\n\n안깡은 다섯 번째 쯔모까지만 횟수를 소모한다. 여섯 장을 뽑은 뒤에는 버리기 전까지 횟수 소모 없이 안깡과 영상 쯔모를 반복할 수 있다.\n\n연속 쯔모는 패산을 실제로 소모하며, 그동안 버리는 패는 평소대로 론 대상이다.",
+    "(2국에 1회) 텐파이 상태의 자기 순에 버릴 패를 골라 발동한다. 그 패로 리치를 선언하고 연속 6쯔모에 들어간다. 이 리치는 2판, 더블리치면 3판으로 취급하며(역만에는 미적용), 연속 쯔모 중의 쯔모 화료에는 일발이 붙는다.\n\n다음 중 하나가 충족되면 종료된다(위가 우선). ① 상대에게 방총당하면 국이 끝난다. ② 상대가 후로하면 후로한 사람부터 진행된다. ③ 여섯 번째 이후의 쯔모패를 버리면 하가부터 진행된다.\n\n안깡은 다섯 번째 쯔모까지만 횟수를 소모한다. 여섯 장을 뽑은 뒤에는 버리기 전까지 횟수 소모 없이 안깡과 영상 쯔모를 반복할 수 있다.\n\n연속 쯔모는 패산을 실제로 소모하며, 그동안 버리는 패는 평소대로 론 대상이다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -231,6 +241,21 @@ export const soulStrike: AugmentDef = defineAugment({
     ctx.holderTurnOptions((state) =>
       handIdsOf(state, holder).map((tileId) => ({ type: ACTION, payload: { tileId } })),
     );
+
+    /*
+     * 리치가 취소되면 폭주 표식도 그 자리에서 정리한다.
+     *
+     * `isActive`가 라이브 리치를 함께 보므로 효과는 이미 멈추지만, 플래그와 공개
+     * 채널이 그대로 남으면 이름표에 "남은 6쯔모"가 계속 떠 있다 — 상대는 아직
+     * 폭주 중인 줄 알고 수비한다. 값이 같으면 아무것도 내지 않으므로 연쇄는 한 겹이다.
+     */
+    ctx.reaction("*", (_event, rc) => {
+      if (!flagOf(rc.state, activeKey(rc.state, holder))) return;
+      if (rc.state.round.byPlayer[holder]?.riichi != null) return;
+      rc.emit(augmentDataSet(activeKey(rc.state, holder), false));
+      rc.emit(augmentDataSet(leftKey(rc.state, holder), 0));
+      rc.emit(augmentDataSet(roundViewKey("*", `${ID}:${holder}`), 0));
+    });
 
     // 폭주 중에는 턴을 보유자에게 고정한다 (솔로 연속 쯔모)
     ctx.interceptor(TURN_PASSED, (event, ic) => {

@@ -56,6 +56,7 @@ import {
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
+import { handAlteredKey } from "./handAltered.js";
 import { handKindsOf } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
@@ -87,6 +88,16 @@ const jokerAction: ActionDef<Record<string, never>> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
+    // 리치 중에는 손이 동결된다 — 같은 계열(giant_god·tile_split·genesis·even_world·
+    // full_hand_swap·future_sight)과 같은 규약(docs/21 D-2).
+    // 조커는 패를 갈아 끼우지 않고 **해석만** 바꾸지만 결과는 더 나쁘다:
+    // `scoring.wildKinds` 는 `scoringOptionsOf` 를 타고 화료·텐파이·대기·후리텐 전부에
+    // 흘러가므로, 리치로 잠겨 있어야 할 대기 2종이 그 자리에서 34종으로 다시 계산됐다
+    // (2026-08-22 QA aug-2 확정 6, 실측). 싼 대기로 압박해 두고 상대가 그 두 종만 피해
+    // 밀어붙이는 순간 조커를 켜서 아무 패로나 론하는, 원리적으로 대응 불가능한 화료다.
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
+    }
     if (!cooldownReady(state, ID, req.player, COOLDOWN_ROUNDS)) return "on cooldown";
     if (jokerOn(state, req.player)) return "already on";
     return null;
@@ -96,6 +107,19 @@ const jokerAction: ActionDef<Record<string, never>> = {
     ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
     // 전원 공개 — 백이 만능패가 됐다는 것을 알아야 상대가 백을 쥐고 있을 수 있다
     augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), true),
+    /*
+     * 천화·지화 게이트를 닫는다.
+     *
+     * 조커는 패를 갈아 끼우지 않고 **해석만** 바꾸므로 `handAltered` 규약의 문자적
+     * 대상이 아니라고 읽을 수도 있다. 그런데 결과는 게이트가 막으려던 바로 그것이다 —
+     * 천화는 "**배패가 첫 쯔모 시점에 이미 완성돼 있었다**"는 사실에 붙는 역만인데,
+     * 오야가 첫 순에 조커를 켜면 완성돼 있지 **않던** 배패가 그 자리에서 완성형으로
+     * 읽힌다. 버림 0장·`firstTurn` 은 그대로라 게이트는 열려 있었다 — 실측 48,000점
+     * (2026-08-22 QA aug-2 의심 8 → 확정, `qa-lab/round2/aug-2/p_joker_tenhou.ts`).
+     *
+     * 발동한 국에만 걸리는 국 스코프 표식이라, 조커를 켜지 않은 국의 천화는 멀쩡하다.
+     */
+    augmentDataSet(handAlteredKey(state, req.player), true),
   ],
 };
 
@@ -152,7 +176,14 @@ export const joker: AugmentDef = defineAugment({
     });
 
     // 자기 순에 뜨는 액티브 버튼 (합법성 최종 판정은 validate)
-    ctx.holderTurnOptions(() => [{ type: ACTION, payload: {} }]);
+    // 리치 중에는 후보 자체를 내지 않는다 — `FlowController` 의 리치 강제 쯔모기리
+    // 자동 진행은 `options.length === 1` 일 때만 도는데, 여기서 후보가 하나 더 남으면
+    // 리치 중 매 순 프롬프트가 떠 자동 진행이 사라진다.
+    ctx.holderTurnOptions((state) =>
+      state.round.byPlayer[holder]?.riichi != null
+        ? []
+        : [{ type: ACTION, payload: {} }],
+    );
   },
   /**
    * 손을 **전진시키는** 물건이라 `advance`다 — 남은 순목이 있고 손이 닿는 거리일 때

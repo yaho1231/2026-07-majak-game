@@ -103,7 +103,24 @@ log "응답 없음 — 서버를 다시 세운다 (최근 ${recent}회)"
 SELF_KILLING=0
 warn_if_self_killing || SELF_KILLING=1
 echo "$now" >>"$RESTARTS"
-if bash "$ROOT/deploy/serve.sh" start >>"$WLOG" 2>&1; then
+# ⚠ `start` 가 아니라 **`restart`** 다 (QA 2차 server 확정 3).
+#
+# 이 감시자의 판단 기준은 위에 적어 둔 대로 "프로세스가 있느냐"가 아니라 /healthz
+# 응답이다. 그런데 복구를 `start` 로 하면 그 기준과 어긋난다: `majak.sh start` 는
+# 첫 줄에서 `is_running`(PID 파일 + kill -0)을 보고 «이미 실행 중입니다»를 찍은 뒤
+# **종료코드 0으로 즉시 반환**한다. 그러면 여기 성공 분기로 들어와 "다시 세움 완료"를
+# 남기고 gaveup 표식을 지우고 «자동 복구는 성공» 알림까지 보내는데, **실제로는 아무
+# 것도 하지 않았고 서버는 계속 죽어 있다.** 15분에 3회를 채우면 "부팅 자체가 깨졌다"는
+# 틀린 진단과 함께 포기한다 — `restart` 한 번이면 살아났을 상황에서.
+#
+# 그리고 그게 가장 흔한 운영 고장이다: 프로세스는 살아 있는데 서비스가 멎은 상태
+# (이벤트 루프 점유 · HTTP 서버만 닫힘 · 반쯤 끝난 종료). `/healthz` 가 예외 5회 초과에
+# HTTP 500 을 주며 "나를 다시 세워 달라"고 말하는 유일한 경로도 여기로 들어오는데,
+# 받는 쪽에 그걸 실행할 수단이 없었다.
+#
+# `restart` 는 **빌드를 먼저 하고 성공했을 때만** 교체하므로(majak.sh:141) «빌드 깨진
+# 커밋에 서버가 내려간 채로 남는» 예전 함정도 그대로 피한다.
+if bash "$ROOT/deploy/serve.sh" restart >>"$WLOG" 2>&1; then
   log "다시 세움 완료"
   rm -f "$RUNDIR/watchdog.gaveup"
   # 되살아났다는 사실 자체가 신호다 — 왜 누웠는지 사람이 봐야 한다.

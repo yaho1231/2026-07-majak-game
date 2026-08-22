@@ -6,7 +6,7 @@
  * ① 확인(기존): 국당 1회, 자기 턴에 뒷도라 표시패를 본인만 확인한다. 한 번 열어 두면
  *    그 국에 깡으로 뒷도라가 늘어날 때마다 새 표시패도 자동으로 보인다.
  * ② 바꿔치기(신규): 이면투시를 이미 발동한 국에 한해 **국당 1회**, 뒷도라 표시패
- *    (첫 번째 것)를 왕패의 다른 패와 자리째 맞바꾼다 — 알고도 아무것도 못 하던
+ *    (첫 번째 것)를 왕패의 **영상패**와 자리째 맞바꾼다 — 알고도 아무것도 못 하던
  *    정보형에서 "내 손에 맞는 뒷도라를 직접 고르는" 능동형이 된다.
  *
  * 구현: peek_riichi_waits 패턴. 커스텀 액션 + 리듀서가 왕패의 뒷도라 표시패 kind를
@@ -18,6 +18,7 @@
 import {
   DEAD_WALL,
   DORA_FLIPPED,
+  INDICATOR_BLOCK_SIZE,
   ROUND_STARTED,
   augmentDataSet,
   defineAugment,
@@ -66,16 +67,29 @@ interface UraSwappedPayload {
   swappedKey: string;
 }
 
-/** 손대면 안 되는 왕패 자리 (도라 표시패 자신과 그 바로 뒤 = 뒷도라 표시패) */
+/**
+ * 손대면 안 되는 왕패 자리.
+ *
+ * ⚠ 예전에는 **이미 뒤집힌** 표시패와 그 +1만 잠갔다. 그래서 2번째(=다음 깡) 도라
+ * 표시패 자리도, 그 뒷도라 자리도 전부 교환 후보로 열려 있었고, 왕패 전체가 보이는
+ * 이 증강의 홀더가 **다음 깡 도라를 직접 심고** 스스로 깡을 쳐서 여는 조합이 성립했다
+ * (2026-08-22 QA aug-4 확정 5). 깡 도라는 테이블 전원의 손에 붙는다.
+ * 카드는 "도라 표시패 자리는 건드릴 수 없다"고 못 박았는데 구현이 그 반대였다.
+ *
+ * 표시패 블록은 늘 왕패의 **마지막 10장**이고(`INDICATOR_BLOCK_SIZE`), 자리는
+ * 뒤집혔는지와 무관하게 `doraIndicatorIndex(state, k) = len - 10 + 2k`로 처음부터
+ * 정해져 있다(core `GameState.ts`). 규약이 코어에 있으니 그대로 따라 블록 전체를 잠근다.
+ *
+ * 남는 후보는 앞쪽 **영상패 자리**뿐이다. 왕패는 영상패 4 + 표시패 블록 10이 전부라,
+ * 영상패까지 잠그면 교환 상대가 하나도 남지 않아 능력이 통째로 죽는다 — 그래서
+ * 여기서는 잠그지 않고, 대신 detail에 "영상패와 맞바꾼다"를 명시했다(같은 감사 의심 4:
+ * `deadIndex:0`은 `sys.drawRinshan`이 뽑는 다음 깡의 쯔모다). 이 축을 정말 닫으려면
+ * 교환 상대를 왕패가 아니라 패산에서 가져오는 **재설계**가 필요하다.
+ */
 function lockedIndices(state: GameState): Set<number> {
-  const deadWall = state.zones[DEAD_WALL]?.tileIds ?? [];
+  const len = state.zones[DEAD_WALL]?.tileIds.length ?? 0;
   const locked = new Set<number>();
-  for (const indicator of state.round.doraIndicators) {
-    const idx = deadWall.indexOf(indicator);
-    if (idx < 0) continue;
-    locked.add(idx);
-    locked.add(idx + 1);
-  }
+  for (let i = Math.max(0, len - INDICATOR_BLOCK_SIZE); i < len; i++) locked.add(i);
   return locked;
 }
 
@@ -126,7 +140,8 @@ const uraSwapAction: ActionDef<{ deadIndex: number }> = {
     if (!Number.isInteger(idx) || idx < 0 || idx >= deadWall.length) {
       return "invalid dead wall index";
     }
-    // 도라 표시패와 뒷도라 표시패 자리 자체는 건드리지 않는다 (도라가 통째로 흔들린다)
+    // 표시패 블록 전체(도라·뒷도라 10자리)는 뒤집혔든 아니든 건드리지 않는다
+    // — lockedIndices 주석 참고
     if (lockedIndices(state).has(idx)) return "cannot swap with an indicator slot";
     return null;
   },
@@ -151,9 +166,9 @@ export const uraPeek: AugmentDef = defineAugment({
   complexity: 2,
   name: "이면투시",
   description:
-    "(매 국 1회 + 바꿔치기 1회) 자기 순에 뒷도라 표시패를 본인만 확인한다. 확인한 국에는 1회, 그 뒷도라 표시패를 왕패의 다른 패와 바꿔치기할 수 있다.",
+    "(매 국 1회 + 바꿔치기 1회) 자기 순에 뒷도라 표시패를 나만 확인한다. 확인한 국에는 1회, 첫 번째 뒷도라 표시패를 왕패의 다른 패와 바꿔치기할 수 있다.",
   detail:
-    "(매 국 1회 + 바꿔치기 1회) 자기 순에 이번 국의 뒷도라 표시패를 자신만 확인한다. 한 번 열면 그 국 동안 유지되어 깡으로 뒷도라가 늘어나면 새 표시패도 자동으로 보인다. 확인한 국에는 추가로 1회, 뒷도라 표시패를 왕패의 다른 패와 통째로 맞바꿔 내 손에 맞는 뒷도라를 직접 만들 수 있다(도라 표시패 자리는 건드릴 수 없다). 고를 수 있도록 바꿔치기를 쓰기 전까지 왕패 전체가 자신에게만 보인다. 국이 바뀌면 확인한 정보는 지워진다.",
+    "(매 국 1회 + 바꿔치기 1회) 자기 순에 이번 국의 뒷도라 표시패를 자신만 확인한다. 한 번 열면 그 국 동안 유지되어 깡으로 뒷도라가 늘어나면 새 표시패도 자동으로 보인다. 확인한 국에는 추가로 1회, 첫 번째 뒷도라 표시패를 왕패의 **영상패**와 통째로 맞바꿔 내 손에 맞는 뒷도라를 직접 만들 수 있다(도라·뒷도라 표시패 자리는 뒤집혔든 아니든 건드릴 수 없다 — 다음 깡 도라를 심을 수는 없다). 고를 수 있도록 바꿔치기를 쓰기 전까지 왕패 전체가 자신에게만 보인다. 국이 바뀌면 확인한 정보는 지워진다.",
   // 봇: 텐파이일 때 확인한다 — 리치를 걸지 다마텐으로 갈지 판단할 정보가 가장 필요한 시점.
   //     (바꿔치기는 내 손패와 맞춰 골라야 해서 봇에게 맡기지 않는다.)
   bot: plan({

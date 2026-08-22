@@ -857,6 +857,24 @@ export class FlowController {
       if (!waits.some((w) => sameKind(w, targetKind))) continue;
       // 안깡: 창깡할 수 있었던 사람(국사무쌍·성립하지 않는 깡 보유자)만 '넘긴' 것이다
       if (closedKan && !this.couldRobClosedKan(p.id, targetKind)) continue;
+      /*
+       * **격(rank_gate)의 최소 판에 막힌 사람도 넘긴 것이 없다** (QA 2차 aug-3 확정 3).
+       *
+       * 위의 `win.ronImmune` 예외와 같은 원칙인데 이쪽만 빠져 있었다. 다른 점은
+       * **사람마다 다르다**는 것이다 — ronImmune은 버린 사람의 성질이라 통째로
+       * 반환할 수 있지만, 최소 판은 지목당한 사람에게만 걸린다. 그래서 여기,
+       * 마킹 루프 안에서 그 사람만 건너뛴다.
+       *
+       * 안 건너뛰면 격은 카드에 적힌 "5판 이상이 아니면 화료할 수 없다"에 더해
+       * **손을 키워 5판을 넘긴 뒤에도 그 대기로는 영영 론할 수 없게 만드는** 두 번째
+       * 벌을 몰래 얹는다. 리치를 걸어 둔 상태면 영구 후리텐이라 국이 끝날 때까지
+       * 회복 수단이 없다 — 지목당한 쪽이 할 수 있는 유일한 대응(손을 키운다)이
+       * 봉쇄되는 셈이다.
+       *
+       * 비용: 이 검사는 **오름패가 실제로 지나간 사람**에게만 돈다(바로 위에서
+       * 대기 일치를 이미 걸렀다). 한 버림에 많아야 몇 번이다.
+       */
+      if (this.validateReason(p.id, "win", {}) === WIN_BLOCKED_MIN_HAN) continue;
       this.sys("sys.markFuriten", {
         player: p.id,
         permanent: state.round.byPlayer[p.id]?.riichi != null,

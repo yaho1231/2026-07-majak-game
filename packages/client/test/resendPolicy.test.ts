@@ -29,7 +29,19 @@ const PROTOCOL = readFileSync(join(HERE, "../../core/src/network/protocol.ts"), 
 
 /** 프로토콜의 **클라이언트 → 서버** 메시지 타입 전부 (파일 앞쪽이 그 구간이다) */
 function clientMessageTypes(): string[] {
-  const end = PROTOCOL.indexOf("서버 → 클라이언트");
+  /*
+   * 구간 경계는 **구분선 주석 한 줄**로만 찾는다 (`// ─── 서버 → 클라이언트 ───`).
+   *
+   * 예전에는 `indexOf("서버 → 클라이언트")` 였다. 그러면 위쪽 아무 설명 주석에 그
+   * 글귀가 한 번 들어가는 순간 구간이 거기서 잘려, **그 아래 클라이언트 메시지
+   * 전부**가 이 검사의 눈 밖으로 사라진다. 「두 목록이 ClientMessage 전체를 빠짐없이
+   * 덮는다」를 지키라고 있는 테스트가 조용히 반쪽이 되는 것이다 — 그리고 그 조용한
+   * 반쪽이 정확히 `adminSetNotice` 누락을 놓친 방식이었다(QA 2차 admin 확정 5).
+   * 구분선은 사람이 설명문에 흉내 내지 않는 모양이라 경계로 삼을 만하다.
+   */
+  const m = /^\/\/ ─+ 서버 → 클라이언트 ─+$/m.exec(PROTOCOL);
+  expect(m, "프로토콜 파일의 구간 구분선을 못 찾았다").not.toBeNull();
+  const end = m!.index;
   expect(end, "프로토콜 파일의 구간 표시를 못 찾았다").toBeGreaterThan(0);
   const found = [
     ...new Set(
