@@ -14454,6 +14454,39 @@ body:has(.overlay) .emote-bar {
   border-left: 3px solid var(--brass);
   border-radius: var(--r-md, 10px);
 }
+/* 대국·대기실 위에 뜨는 전역 공지 (App.tsx `GameNoticeBanner`).
+   예전에는 화면 맨 위를 좌우로 가로지르는 띠라, 판의 상단 줄 — 맞은편 자리·도라
+   표시·모드 배지 — 이 통째로 가려졌다(2026-08-23 사용자 보고). 공지는 한 번 읽으면
+   끝이고 판은 계속 봐야 하는 것이라, 왼쪽 위 빈 귀퉁이에 좁은 카드로 세운다.
+   세로 자리(top)는 모드·봇 배지 아래로 App 이 인라인으로 준다 — 재연결 띠가 떠
+   있는지에 따라 달라지는 값이라 CSS가 알 수 없다.
+   폭은 cqw 다(파일 규약 §1) — 배율을 바꿔도 화면 대비 같은 몫을 쓴다. */
+.game-notice-float {
+  position: fixed;
+  left: max(14px, env(safe-area-inset-left, 0px));
+  z-index: 299;
+  width: min(320px, calc(100cqw - 28px));
+  max-height: 40cqh;
+  overflow-y: auto;
+  border: 1px solid rgba(240, 200, 106, 0.32);
+  border-left: 3px solid var(--brass);
+  border-radius: var(--r-md, 10px);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  background: rgba(24, 20, 14, 0.97);
+}
+/* 안쪽 띠는 자기 테두리·배경을 벗는다 — 바깥 카드가 이미 두르고 있다 */
+.game-notice-float > .notice-banner {
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+}
+/* 좁은 판에서는 한 뼘 더 줄이고 왼쪽에 바싹 붙인다 (모드 배지도 여기서 8px로 간다) */
+@container ui (max-width: 700px) {
+  .game-notice-float {
+    left: max(8px, env(safe-area-inset-left, 0px));
+    width: min(260px, calc(100cqw - 16px));
+  }
+}
 .notice-head {
   display: flex;
   align-items: center;
