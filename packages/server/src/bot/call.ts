@@ -18,6 +18,7 @@ import type { TileId, TileKind } from "@majak/core";
 import { meldKindsOf, removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
+import { looseness, skillOf } from "./skill.js";
 import { scales } from "./discard.js";
 import type { ActionBid } from "./decide.js";
 import { NOTEN_PENALTY, NOTEN_WALL, waitTilesOf } from "./value.js";
@@ -89,6 +90,11 @@ export function bidCall(
   const hasYakuhaiMeld = countYakuhaiTriplets(read, meldKinds) > 0;
   const menzen = read.menzen;
   const before = shantenOf(read.hand, read.meldCount, read.opts);
+  /**
+   * 「전진 없음」 게이트가 **우케이레까지 본다** — 지금 손이 받는 폭. 샹텐이 같아도
+   * 받는 폭이 뚜렷하게 넓어지는 콜은 EV까지 보낸다 (아래 `advances`).
+   */
+  const widen = ukeireOf(read.hand, read.meldCount, read.remainingOf, read.opts).tiles;
 
   /**
    * 이 콜 기회가 어디서 끝났는지 한 줄 남긴다 (`bot/callAudit.ts`).
@@ -208,7 +214,7 @@ export function bidCall(
      * 따로 있는데도 "전진 없음"으로 잘린다 — 정렬 기준을 바꾸면서 그 뒤의 판정이
      * 무엇을 전제하고 있었는지 함께 봐야 하는 자리다.
      */
-    const advancing = plans.filter((p) => p.shanten < before);
+    const advancing = plans.filter((p) => advances(p, before, widen));
     if (advancing.length > 1) {
       const scored = advancing.map((p) => ({
         p,
@@ -216,7 +222,7 @@ export function bidCall(
         ev: evOfCall(read, p, p.yaku ?? committed, profile),
       }));
       scored.sort((a, b) => b.ev - a.ev);
-      const rest = plans.filter((p) => p.shanten >= before);
+      const rest = plans.filter((p) => !advances(p, before, widen));
       plans.length = 0;
       for (const x of scored) plans.push(x.p);
       for (const p of rest) plans.push(p);
@@ -243,7 +249,7 @@ export function bidCall(
     if (best === undefined) return audit("no_shape");
 
     // 손이 전진하지 않는 콜은 부르지 않는다 (텐파이를 잡는 콜은 전진으로 친다)
-    if (best.shanten >= before) return audit("no_progress");
+    if (!advances(best, before, widen)) return audit("no_progress");
 
     /**
      * 종반 형식텐파이 — 역이 없어도 텐파이면 노텐벌부를 피한다.
@@ -340,7 +346,8 @@ function evOfCall(
    * 됐다**(예전엔 `maxOpenShanten` 문턱이 이 값을 읽었다). 성격 넷 중 하나가 조용히
    * 죽어 있었던 셈이라, 여기서 되살린다.
    */
-  const appetite = 0.75 + profile.callLoose * 0.5;
+  // 난이도도 여기 붙는다 — 초보는 「일단 부르고 본다」(`bot/skill.ts` looseness).
+  const appetite = (0.75 + profile.callLoose * 0.5) * looseness(skillOf(profile));
   const gain = pWin * (value.points + read.match.potBonus) * appetite;
   // 종반에 텐파이가 걸리면 노텐벌부를 피한다
   const noten = picked.shanten <= 0 && read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
@@ -436,6 +443,41 @@ function usesRedFive(read: BotRead, option: ActionOption): boolean {
   const ids = (option.payload as { tileIds?: TileId[] }).tileIds ?? [];
   return ids.some((id) => read.view.tiles[id]?.attrs.red === true);
 }
+
+/**
+ * 이 콜이 **손을 앞으로 보내는가**.
+ *
+ * 기본은 샹텐 하나뿐이다(`p.shanten < before`). QA 4라운드 계측이 이 게이트에서
+ * 콜 기회의 **44.0%**(3,786건 · 평균 샹텐 1.60)가 잘린다고 짚었다 — 샹텐이 같아도
+ * **받는 폭이 넓어지는** 콜(변짱·간짱을 량면으로 바꾸는 치 등)이 EV를 보지도 못하고
+ * 통째로 죽는다는 지적이다.
+ *
+ 그래서 «샹텐 동률 + 우케이레가 뚜렷하게 넓어짐»도 전진으로 친다.
+ * **뚜렷하게**가 요점이다 — 한두 장 차이까지 통과시키면 손만 열고 값은 못 얻는 콜이
+ * 쏟아진다(같은 실수를 쿠이탄·역게이트에서 세 번 했다, `yakuPathAfter` 주석).
+ * 통과시켜도 부를지 말지는 여전히 EV가 정한다.
+ *
+ * ## 채택 (2026-08-23, 동풍전 150배패 × 2(좌우 교대) × 두 시드, `wideCall` 스위치)
+ *
+ * | 시드 | 후로율(켠/끈) | 화료율 | 평균 순위 차 |
+ * |---|---|---|---|
+ * | 기본 | 20.4% / 18.3% | 19.6% / 19.0% | −0.0033 ± 0.0542 |
+ * | 987654321 | 21.9% / 17.8% | 19.0% / 19.4% | −0.0167 ± 0.0517 |
+ *
+ * 「전진 없음」이 39.6% → (게이트가 실제로 열려) 후로율이 2~4%p 올랐고 **강함은
+ * 두 시드 다 표준오차 안**이다. 앞선 세 번의 실패(쿠이탄 두 번·역 게이트 한 번)는
+ * 전부 «더 울고 덜 이겼다»였는데 이번엔 화료율도 그대로다 — 넓힌 것이 문턱이 아니라
+ * **전진의 정의**여서, 새로 통과한 콜이 «샹텐은 같지만 받는 폭이 1.35배» 짜리로
+ * 한정되기 때문이다. 사람의 30~40%에는 여전히 못 미친다(그 격차는 미해결로 남는다).
+ */
+function advances(p: CallPlan, before: number, widenFrom: number): boolean {
+  if (p.shanten < before) return true;
+  if (p.shanten !== before) return false;
+  return p.ukeire >= widenFrom * UKEIRE_WIDEN;
+}
+
+/** 샹텐 동률 콜을 전진으로 인정하는 우케이레 배율 */
+const UKEIRE_WIDEN = 1.35;
 
 /** 후로 패에 들어 있는 역패 커쯔 수 */
 function countYakuhaiTriplets(read: BotRead, meldKinds: readonly TileKind[]): number {

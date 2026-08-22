@@ -363,6 +363,11 @@ interface Room {
    */
   lastActivityAt: number;
   /**
+   * 유휴 종료 예고를 이미 보냈는가 (QA 4라운드 loop P2).
+   * 무엇이든 눌리면(`touch`) 시계와 함께 되돌아간다 — 예고는 «닫히기 직전»에만 뜻이 있다.
+   */
+  idleWarned: boolean;
+  /**
    * 좌석별 손패 배치 스로틀 상태 (`HAND_ORDER_MIN_INTERVAL_MS` 참고).
    * 방이 사라져도 남은 타이머는 한 번 깨어나 자기 방이 아직 살아 있는지 보고 그만둔다.
    */
@@ -656,6 +661,16 @@ function roomIdleTtlMs(): number {
  * 남으면 그 방의 네 사람은 영영 새 방을 만들 수 없다 — 마지막 그물이다.
  */
 const ZOMBIE_ROOM_TTL_MS = 60_000;
+/**
+ * 유휴 종료를 **미리 알리는** 시간(ms) — 닫히기 이만큼 전에 한 번 말한다
+ * (QA 4라운드 loop P2).
+ *
+ * 방을 만들어 초대 링크를 뿌려 놓고 기다리는 사람에게 30분은 조용히 지나간다.
+ * 예전에는 예고 없이 «오래 비어 있어 방이 닫혔습니다»로 튕겼고, 링크를 받은 친구는
+ * 그 뒤 «존재하지 않는 방 코드»만 봤다. 이제 닫히기 전에 한 번 알려 주고, 아무
+ * 버튼이나 누르면(`touch`) 시계가 되돌아간다.
+ */
+const ROOM_IDLE_WARN_MS = delayEnv("ROOM_IDLE_WARN_MS", 5 * 60_000, 0, 60 * 60_000);
 /**
  * 끊긴 대국을 되살릴 수 있는 최대 경과 시간(ms) — 기본 6시간 (감사 §2-10).
  *
@@ -1174,6 +1189,7 @@ export class RoomManager {
   /** 이 방에 방금 무슨 일이 있었다 — 유휴 청소 시계를 되돌린다. */
   private touch(room: Room): void {
     room.lastActivityAt = Date.now();
+    room.idleWarned = false;
   }
 
   /**
@@ -1245,9 +1261,22 @@ export class RoomManager {
         this.closeRoom(room, "ROOM_CLOSED", "방이 정리되었습니다 — 홈에서 다시 시작하세요");
         continue;
       }
-      if (now - room.lastActivityAt < ttl) continue;
-      this.log(room, `유휴 ${Math.round((now - room.lastActivityAt) / 60_000)}분 — 방을 닫는다`);
-      this.closeRoom(room, "ROOM_IDLE_CLOSED", "오래 비어 있어 방이 닫혔습니다");
+      const idleFor = now - room.lastActivityAt;
+      if (idleFor < ttl) {
+        // 닫히기 전에 한 번 예고한다 — 사람이 앉아 있는 대기실만 대상이다.
+        if (!room.idleWarned && ROOM_IDLE_WARN_MS > 0 && idleFor >= ttl - ROOM_IDLE_WARN_MS) {
+          const mins = Math.max(1, Math.round((ttl - idleFor) / 60_000));
+          room.idleWarned = true;
+          this.warnIdleClose(room, mins);
+        }
+        continue;
+      }
+      this.log(room, `유휴 ${Math.round(idleFor / 60_000)}분 — 방을 닫는다`);
+      this.closeRoom(
+        room,
+        "ROOM_IDLE_CLOSED",
+        "오래 비어 있어 방이 닫혔습니다 — 초대 링크도 함께 만료됩니다. 홈에서 새로 만들어 주세요",
+      );
     }
   }
 
@@ -1258,6 +1287,27 @@ export class RoomManager {
    * 객체를 계속 가리킨 채 `phase:"playing"` 가드를 통과해 폐기된 컨트롤러로
    * 들어간다(무효 투표 경로에서 실제로 그랬다).
    */
+  /**
+   * «곧 닫힙니다» 한 번 (QA 4라운드 loop P2).
+   *
+   * 새 메시지 타입을 만들지 않는다 — 클라이언트는 모르는 `error` 코드를 그대로
+   * 토스트로 띄우므로(App.tsx 마지막 분기), 이 한 줄이면 화면에 닿는다.
+   * 사람이 없는 방에는 보낼 곳도 없으니 아무 일도 일어나지 않는다.
+   */
+  private warnIdleClose(room: Room, minutes: number): void {
+    const message =
+      `이 방은 약 ${minutes}분 뒤 자동으로 닫힙니다 — ` +
+      `아무 버튼이나 누르면 시간이 다시 늘어납니다`;
+    let told = 0;
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent && !a.isAbandoned) {
+        a.notify({ type: "error", code: "ROOM_IDLE_WARNING", message });
+        told += 1;
+      }
+    }
+    if (told > 0) this.log(room, `유휴 종료 예고 — ${minutes}분 전, ${told}명에게 알렸다`);
+  }
+
   private closeRoom(room: Room, code: string, message: string): void {
     // 서버가 스스로 접은 방은 이어하기 후보가 아니다 (§2-10).
     this.forgetLiveGame(room);
@@ -1981,6 +2031,41 @@ export class RoomManager {
         // 체험 판에서 나가기 = 그 판의 끝. 남겨 두어도 손님은 돌아올 수 없다.
         if (conn.guest) {
           this.dropGuestRoom(conn);
+          return;
+        }
+        // **재연결 뒤에 도착한 「나가기」** (QA 4라운드 netfail P2).
+        //
+        // 끊긴 사이에 누른 나가기는 재전송 큐에 담겼다가 **새 연결**로 온다. 새
+        // 연결의 `conn.room`은 `joinRoom` 전이라 null이므로, 예전에는 아래 분기를
+        // 통째로 건너뛰고 아무 말 없이 끝났다 — 화면만 나가고 좌석은 방에 남아,
+        // 남은 사람들이 그 자리를 이탈 확정까지 8번 더 기다렸다.
+        // 그래서 `conn.room`이 없으면 **신원으로** 돌아갈 방을 찾아 그 좌석을 정리한다
+        // (찾지 못하면 그때만 조용히 무시 — 이미 나갔거나 방이 사라진 것이다).
+        if (room === null && conn.agent === null) {
+          const code = this.resumableRoomFor(user.username);
+          const target = code === null ? undefined : this.rooms.get(code);
+          if (target !== undefined) {
+            const seat = target.agents.find(
+              (a): a is HumanAgent => a instanceof HumanAgent && a.nickname === user.username,
+            );
+            /*
+             * **살아 있는 다른 탭의 좌석은 건드리지 않는다.**
+             *
+             * 이 길은 «끊긴 사이에 누른 나가기»만을 위한 것이다. 좌석의 소켓이
+             * 지금 열려 있다면 그건 다른 탭이 정상적으로 앉아 있다는 뜻이고,
+             * 여기서 포기시키면 예전 탭이 남의 자리를 접는 사고가 된다
+             * (`ServerHardening` 회귀가 그 자리를 지킨다).
+             */
+            if (seat !== undefined && !seat.isConnected()) {
+              this.log(target, `재연결 뒤 도착한 나가기 — ${user.username} 좌석을 정리한다`);
+              if (target.phase === "waiting") this.leaveWaiting(target, seat);
+              else {
+                seat.abandon("left");
+                this.refreshSeatStatus(target);
+                this.abortIfNoHumansLeft(target);
+              }
+            }
+          }
           return;
         }
         if (room !== null && conn.agent !== null) {
@@ -2886,6 +2971,7 @@ export class RoomManager {
       sandboxControl: true,
       sandboxRestarting: false,
       lastActivityAt: Date.now(),
+      idleWarned: false,
       handOrderThrottle: new Map(),
       tutorialHoldUntil: 0,
       tutorialGraduated: false,

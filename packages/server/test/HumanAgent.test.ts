@@ -10,6 +10,7 @@ import type { WebSocket } from "ws";
 import { TIME_PRESSURE_CHANNEL, TIME_PRESSURE_SECONDS } from "@majak/content";
 import {
   DECISION_TIMEOUT_MS,
+  FIRST_DRAFT_TIMEOUT_MS,
   DISCONNECT_GRACE_MS,
   HumanAgent,
   safeFallbackOption,
@@ -568,7 +569,9 @@ describe("HumanAgent — 드래프트 슬롯 새로고침", () => {
       agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 0 } as never);
       agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 1 } as never);
       agent.handleMessage({ type: "draftReroll", stage: "gameStart", slot: 2 } as never);
-      await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS + 100);
+      // 판의 **첫** 드래프트는 30초가 아니라 `FIRST_DRAFT_TIMEOUT_MS` 다
+      // (QA 4차 onboard 확정 1) — 30초만 감으면 아직 아무것도 안 골라져 있다.
+      await vi.advanceTimersByTimeAsync(FIRST_DRAFT_TIMEOUT_MS + 100);
       expect(["x", "y", "z"]).toContain(picked());
     } finally {
       vi.useRealTimers();

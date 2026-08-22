@@ -27,6 +27,7 @@ import type { TileId, TileKind } from "@majak/core";
 import { removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
+import { blunderFloor, looseness, placementSight, riskSight, skillOf } from "./skill.js";
 import { NOTEN_PENALTY, NOTEN_WALL, waitTilesOf } from "./value.js";
 import { readDiscardQuest } from "./quest.js";
 import type { QuestGain } from "./quest.js";
@@ -123,12 +124,19 @@ export function scales(read: BotRead, profile: BotProfile): { gain: number; loss
     : lean < 0
       ? AGGRESSION_SPAN_FOLD
       : AGGRESSION_SPAN_PUSH;
-  const bias = lean * span + read.match.riskAppetite * 0.45;
+  /**
+   * **난이도**(`bot/skill.ts`). 실력이 낮으면 (1) 점수판을 덜 보고
+   * (2) 방총 위험을 싸게 본다. 성격과 달리 실력은 **비를 한쪽으로 밀어야** 하므로
+   * `loss`에만 직접 곱한다 — 정규화(`norm`)를 통과한 뒤라야 절대 상수(`RIICHI_COST`)에
+   * 대한 왜곡 없이 "위험을 덜 센다"만 남는다.
+   */
+  const skill = skillOf(profile);
+  const bias = lean * span + read.match.riskAppetite * 0.45 * placementSight(skill);
   // 성격이 만든 크기만 되돌린다 (예전 저울에서는 이 정규화가 없었다)
   const norm = legacy ? 1 : Math.max(0.4, 1 + lean * span);
   return {
     gain: Math.max(0.4, 1 + bias) / norm,
-    loss: Math.max(0.35, 1 - bias) / norm,
+    loss: (Math.max(0.35, 1 - bias) / norm) * riskSight(skill),
   };
 }
 
@@ -259,9 +267,14 @@ function lineEV(
    * 쓸모가 없고(원하는 건 국이 조용히 끝나는 것), 꼴찌에게는 액면가보다 비싸다.
    * 리치는 점수를 사는 거래이므로 이 환율이 리치 쪽에만 붙는다.
    */
-  const placement = opts.riichi ? 1 + read.match.riskAppetite * 0.35 : 1;
-  // 리치를 좋아하는 성격은 같은 계산에서도 리치 쪽에 웃돈을 준다
-  const appetite = opts.riichi ? 0.75 + profile.riichiLoose * 0.5 : 1;
+  const skill = skillOf(profile);
+  const placement = opts.riichi ? 1 + read.match.riskAppetite * 0.35 * placementSight(skill) : 1;
+  /**
+   * 리치를 좋아하는 성격은 같은 계산에서도 리치 쪽에 웃돈을 준다.
+   * **난이도도 여기 붙는다** — 초보는 "일단 걸고 본다"(`bot/skill.ts` looseness).
+   * 나쁜 대기·싼 손의 리치가 easy 쪽에서만 통과하기 시작한다.
+   */
+  const appetite = opts.riichi ? (0.75 + profile.riichiLoose * 0.5) * looseness(skill) : 1;
 
   let gain =
     pWin * (points + read.match.potBonus) * placement * appetite +
@@ -306,7 +319,9 @@ function wobble(
   profile: BotProfile,
   jitter: BotJitter | undefined,
 ): { c: Candidate; ev: number } | null {
-  if (jitter === undefined || profile.noise <= 0 || scored.length < 2) return null;
+  const skill = skillOf(profile);
+  if (jitter === undefined || scored.length < 2) return null;
+  if (profile.noise <= 0 && skill >= 1) return null;
   // 폭은 EV 규모에 비례하되, 모두가 0에 가까운 국면(가망 없는 손)에서도 작동하도록
   // 바닥을 둔다. 바닥이 크면 그런 국면에서 **모든 후보가 후보로 묶여** 성격 차이가
   // 사라지므로 작게 잡는다. 성격이 그 폭을 정하고, 난이도가 그 위에 곱해진다.
@@ -315,8 +330,15 @@ function wobble(
    * 보는 폭이 넓어져, 봇은 규칙을 몰라서가 아니라 **고르기를 흔들려서** 진다 —
    * 사람이 실수하는 모습과 같다. `skill = 1`이면 곱이 정확히 1이라 종전과 같다.
    */
-  const clumsy = 1 + (1 - Math.max(0, Math.min(1, profile.skill))) * BLUNDER_SPAN;
-  const band = profile.noise * clumsy * Math.max(30, Math.abs(bestEV) * 0.06);
+  const clumsy = 1 + (1 - skill) * BLUNDER_SPAN;
+  /**
+   * 성격이 만든 폭에 **난이도의 바닥**을 더한다(`bot/skill.ts` `blunderFloor`).
+   * 곱만으로는 조용한 성격(`noise`가 작은 원형)에서 난이도가 사라지고, 무엇보다
+   * 그 곱은 「엇비슷한 후보가 여럿일 때」만 살아 있어서 강함을 재면 시드마다 부호가
+   * 뒤집혔다. 더하는 바닥이 곧 «이만큼 손해까지는 아무거나 고른다»의 크기다.
+   */
+  const band =
+    profile.noise * clumsy * Math.max(30, Math.abs(bestEV) * 0.06) + blunderFloor(skill);
   const near = scored.filter((x) => x.ev >= bestEV - band);
   if (near.length < 2) return null;
   return near[jitter.int(near.length)] ?? null;

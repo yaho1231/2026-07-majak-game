@@ -51,7 +51,10 @@ describe("모드가 정해진 자리에서는 두 숫자가 남지 않는다", (
   });
 
   it("원문 설명을 그대로 title에 꽂는 자리가 없다", () => {
-    const titles = [...APP.matchAll(/title=\{[^}]*\.description[^}]*\}/g)].map((m) => m[0]);
+    // `title=` 과 `note=`(InfoNote — 터치에서도 열리는 설명 칩) 둘 다 본다.
+    const titles = [...APP.matchAll(/(?:title|note)=\{[^}]*\.description[^}]*\}/g)].map(
+      (m) => m[0],
+    );
     expect(titles.length).toBeGreaterThan(0);
     expect(titles.filter((t) => !t.includes("forMode"))).toEqual([]);
   });

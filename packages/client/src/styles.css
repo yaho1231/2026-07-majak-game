@@ -2438,6 +2438,19 @@ button {
   color: #f0c86a;
   text-shadow: 0 0 20px rgba(240, 200, 106, 0.5);
 }
+/* 9-3. 증강 선택 모달 안의 남은 시간 줄 (PickTimer)
+   이 모달들은 z 120 전면 오버레이라 `.own-area`(z 10)의 PromptTimer를 통째로 덮는다.
+   서버 마감은 그대로 흐르므로 드래프트 창과 같은 알약을 모달 머리에 한 번 더 세운다.
+   (QA 4라운드 ingame-ux P1) */
+.pick-timer {
+  gap: 4px;
+  margin: 0 auto 4px;
+}
+.pick-timer-note {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
 .rinshan-pick-sub {
   margin: 8px auto 18px;
   max-width: 420px;
@@ -6759,7 +6772,12 @@ button {
   transition: filter 0.15s, transform 0.1s;
 }
 
-.aug-btn:disabled {
+/* `disabled` 대신 `aria-disabled` 를 쓴다 — 못 쓰는 이유(«쿨다운 2국» 등)가 여태
+   `title=` 에만 있어서 터치에서는 영영 안 보였다. 진짜로 `disabled` 면 포커스도
+   클릭도 안 잡혀 이유를 물을 방법 자체가 없다. 이제 눌러서 토스트로 읽는다.
+   (QA 4라운드 mobile-a11y P1) */
+.aug-btn:disabled,
+.aug-btn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -11488,10 +11506,21 @@ button {
 .replayer-bar {
   position: absolute;
   left: 50%;
-  bottom: 10px;
+  /* 하단 좌석 손패 위에 얹히지 않게 `--own-band-full`(OwnArea가 실측해 `.game-root`에
+     올려 주는 손패 띠 높이) 위로 띄운다. `bottom: 10px` 고정이던 시절에는 바(≈56px)가
+     `.own-area`(bottom 18px)와 48px 겹쳐, 정작 한 수씩 되짚어 보려고 여는 화면에서
+     손패 아랫부분이 가렸다. 토스트(`.toast-stack`)·건너뛰기 알약(`.prod-skip`)이 쓰는
+     식과 완전히 같다. safe-area도 같이 얹는다(아이폰 홈 인디케이터).
+     (QA 4라운드 ingame-ux P1) */
+  bottom: max(
+    calc(10px + env(safe-area-inset-bottom, 0px)),
+    calc(var(--own-band-full, 0px) + 10px + env(safe-area-inset-bottom, 0px))
+  );
   transform: translateX(-50%);
   z-index: 60;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 8px;
   width: min(860px, 96cqw);
@@ -11566,7 +11595,10 @@ button {
    * 한다 — 토스트는 그 줄들도 피해야 한다). 대국 밖에서는 그 변수가 없으므로
    * 예전 값 28px 이 그대로 하한으로 남는다.
    */
-  bottom: max(28px, calc(var(--own-band-full, 0px) + 12px));
+  bottom: max(
+    calc(28px + env(safe-area-inset-bottom, 0px)),
+    calc(var(--own-band-full, 0px) + 12px + env(safe-area-inset-bottom, 0px))
+  );
   transform: translateX(-50%);
   z-index: 100;
   display: flex;
@@ -13596,6 +13628,49 @@ body.peeking .overlay-peekable > * {
   }
   /* 칩 줄은 44px면 도감 머리가 통째로 두꺼워진다 — 손가락이 닿는 선(36px)까지만. */
   .codex-cat { min-height: 36px; }
+
+  /* 리플레이 조작 줄 — 한 수씩 되짚느라 수백 번 누르는 버튼인데 36×34 로 서 있었다.
+     ⏮/◀ 를 노리다 «이전 국»으로 뛰면 되감아도 위치를 다시 찾아야 한다.
+     (QA 4라운드 ingame-ux P2. 줄이 넘치면 `.replayer-bar`가 flex-wrap 으로 접는다.) */
+  .rp-btn { min-width: 44px; min-height: 44px; }
+  .rp-speed { min-width: 52px; }
+  /* 네이티브 range 는 트랙만 얇게 서서 손가락이 미끄러진다 — 세로 목표를 확보한다. */
+  .replayer-slider { min-height: 44px; }
+
+  /* (판 위 공지의 「✕」는 파일 끝에서 따로 올린다 — 아래 `.notice-close` 규칙이
+     이 블록보다 뒤에 있고 머리줄 여백은 선택자가 더 세다.) */
+}
+
+/* 9-2-a. 우상단 아이콘 줄의 **간격**도 44px 에 맞춘다.
+ *
+ * 좁은 판/가로 폰 블록은 버튼을 34~40px 로 줄이고 **40px 피치**(8/48/88/128/168)로
+ * 세운다. 그런데 바로 위 9-2 의 `min-width: 44px` 는 선언 순서와 무관하게 `width` 를
+ * 이기므로 실제 폭이 44px 이 되어 **쌍마다 4px 씩 올라탔다** — 가장자리를 짚으면 이웃
+ * 버튼이 열리고, 그중 하나가 «나가기»다(QA 4라운드 mobile-a11y P1).
+ * 폭을 44 로 되돌리는 대신 피치를 48px 로 벌린다(44 + 4 여백).
+ * 조건은 40px 피치를 선언하는 두 블록과 **정확히 같아야 한다**. */
+@media (pointer: coarse) {
+  @container ui (max-width: 700px) {
+    .icon-btn { --icon-x: max(8px, env(safe-area-inset-right, 0px)); }
+    .leave-btn { right: var(--icon-x); }
+    .settings-btn { right: calc(var(--icon-x) + 48px); }
+    .auglog-btn { right: calc(var(--icon-x) + 96px); }
+    .codex-btn { right: calc(var(--icon-x) + 144px); }
+    .help-btn { right: calc(var(--icon-x) + 192px); }
+    /* 대기실에는 증강 로그 단추가 없다 — 한 칸씩 당겨 붙인다(위 .waitroom-card 주석). */
+    .waitroom-card .codex-btn { right: calc(var(--icon-x) + 96px); }
+    .waitroom-card .help-btn { right: calc(var(--icon-x) + 144px); }
+  }
+  @container ui (max-height: 560px) and (orientation: landscape) {
+    .icon-btn { --icon-x: max(8px, env(safe-area-inset-right, 0px)); }
+    .leave-btn { right: var(--icon-x); }
+    .settings-btn { right: calc(var(--icon-x) + 48px); }
+    .auglog-btn { right: calc(var(--icon-x) + 96px); }
+    .codex-btn { right: calc(var(--icon-x) + 144px); }
+    .help-btn { right: calc(var(--icon-x) + 192px); }
+    .waitroom-card .codex-btn { right: calc(var(--icon-x) + 96px); }
+    .waitroom-card .help-btn { right: calc(var(--icon-x) + 144px); }
+  }
 }
 
 /* 9-3. 폰 세로 (≤480px) — 데스크톱 배치를 그대로 쓸 수 없는 폭.
@@ -14373,6 +14448,10 @@ body:has(.overlay) .emote-bar {
   font-size: 13px;
   line-height: 1.7;
   color: var(--ink-2);
+  /* 본문은 `<p>` 하나에 통째로 들어간다(confirm.tsx). `\n` 을 넣은 호출부가 둘 있는데
+     (강제 종료의 참가자 명단 · 도중유국 안내) 기본값 `normal` 이면 그 줄바꿈이 공백
+     한 칸으로 접혀 명단과 경고문이 한 덩어리가 됐다. 넷의 판을 지우는 창이다. */
+  white-space: pre-line;
 }
 .confirm-actions {
   display: flex;
@@ -14899,4 +14978,283 @@ body:has(.overlay) .emote-bar {
   background: rgba(154, 123, 66, 0.14);
   color: var(--brass-bright);
   font-size: 10px;
+}
+
+/* ─────────────── 9-2-b. 판 위 공지의 「✕」 터치 목표 ───────────────
+ * 대국 중 전역 공지를 내리는 **유일한** 수단인데 13px 글자 + 2px 패딩 = 약 17px 이라
+ * 폰에서 몇 번 헛짚다 그냥 두게 됐다 — 그 카드는 375px 폰에서 가로의 69%를 물고
+ * 상가의 버림패·이름표 자리를 덮는다. 같은 성격의 `.rotate-hint-close`(30px)는 이미
+ * 「못 누르면 막다른 골목이 된다」는 이유로 44px 로 올라가 있었고 이것만 빠졌다.
+ * (QA 4라운드 ingame-ux P2)
+ *
+ * ⚠ 위 9-2 블록이 아니라 파일 끝에 있는 이유: `.notice-close` 본체와 머리줄 여백
+ *   (`.game-notice-float > .notice-banner .notice-head`, 선택자가 더 세다)이 9-2 보다
+ *   뒤에 선언돼 있어 거기서는 여백을 못 이긴다. */
+@media (pointer: coarse) {
+  .notice-close {
+    min-width: 44px;
+    min-height: 44px;
+    /* 글리프는 그대로 두고 과녁만 키운다 — 절대 배치라 카드 크기는 안 변한다. */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    top: 2px;
+    right: 2px;
+    padding: 0;
+  }
+  /* 과녁이 커진 만큼 머리줄 오른쪽을 더 비운다 — 안 그러면 제목 글자를 덮는다. */
+  .game-notice-float > .notice-banner .notice-head {
+    padding-right: 46px;
+  }
+}
+
+/* ─────────────── 9-2-c. 건너뛰기 알약 ↔ 토스트 겹침 ───────────────
+ * 「건너뛰기」알약(`.prod-skip`)과 토스트 스택(`.toast-stack`)은 좌표식이 같다:
+ * 둘 다 `left:50% / translateX(-50%)` 에 `max(하한, --own-band-full + 12px)` 이고,
+ * 대국 중에는 `--own-band-full` 항이 늘 이기므로 노치 없는 기기에서는 bottom 이
+ * **완전히 같은 값**이 된다. 토스트 스택은 `column-reverse` 라 **가장 새 토스트**가
+ * 맨 아래 = 알약과 같은 줄에 서고, 알약이 z 250 · 불투명 배경이라 그대로 덮었다.
+ * 하필 자주 겹친다: 남의 선언 컷인이 도는 순간(=알약이 뜨는 순간) 내 프롬프트가
+ * 접히며 「다른 사람의 선언이 우선합니다」·「시간 초과 …」 토스트가 같은 자리에 온다.
+ * → 알약이 떠 있는 동안에만 토스트를 알약 높이(44px)+여백만큼 올린다.
+ * (QA 4라운드 ingame-ux P2) */
+body:has(.prod-skip) .toast-stack {
+  bottom: max(
+    calc(28px + 52px + env(safe-area-inset-bottom, 0px)),
+    calc(var(--own-band-full, 0px) + 12px + 52px + env(safe-area-inset-bottom, 0px))
+  );
+}
+
+/* ─────────────── 9-4. InfoNote — 터치에서도 열리는 설명 칩 ───────────────
+ * 네이티브 `title` 툴팁은 터치에서 뜨지 않는다. 규칙·계산식처럼 **다른 어디에도 없는**
+ * 설명은 hover 말고도 열 길이 있어야 한다 — `.aug-tip` 이 쓰는 식(hover · focus ·
+ * focus-within · 탭 고정)을 그대로 가져온다. (QA 4라운드 mobile-a11y P1)
+ *
+ * ⚠ 이 클래스는 원래 서 있던 요소(`.mode-badge` · `.bcast-aug` · `.draft-owned-pill` ·
+ *   `.waits-badge-hint`)에 **덧붙는다**. 그래서 겉모습은 건드리지 않고 위치 기준
+ *   (`position`)과 팝오버만 얹는다. 이미 자리를 잡고 있는 것은 아래에서 되돌린다. */
+.info-note {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+/* 모드 뱃지는 판 왼쪽 위에 **absolute** 로 서 있고 `pointer-events: none` 이라
+   애초에 눌릴 수 없었다 — 배치는 그대로 두고 이 칩만 손가락을 받게 연다.
+   (absolute 도 positioned 라 팝오버의 기준으로 그대로 쓸 수 있다.) */
+.mode-badge.info-note {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  pointer-events: auto;
+}
+.info-note-mark {
+  font-size: 0.82em;
+  opacity: 0.55;
+}
+.info-note:hover .info-note-mark,
+.info-note:focus-within .info-note-mark,
+.info-note-open .info-note-mark {
+  opacity: 1;
+}
+.info-note:focus-visible {
+  outline: 2px solid rgba(240, 200, 106, 0.85);
+  outline-offset: 2px;
+}
+.info-note-tip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 300; /* 판·표 위. 코치(320)·확인 창(9998) 아래. */
+  width: max-content;
+  max-width: min(300px, 84cqw);
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(240, 200, 106, 0.45);
+  background: rgba(9, 16, 13, 0.97);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  color: var(--ink-1, #ece4d2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.55;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: pre-line; /* 원래 `title` 에 들어 있던 줄바꿈을 그대로 살린다 */
+  text-transform: none;
+  cursor: default;
+}
+.info-note-tip-left { left: 0; }
+.info-note-tip-right { right: 0; }
+.info-note:hover .info-note-tip,
+.info-note:focus-within .info-note-tip,
+.info-note-open .info-note-tip {
+  display: block;
+}
+@media (pointer: coarse) {
+  /* 손가락 과녁 — 표 머리·뱃지 안에 앉으므로 세로만 확보한다(폭은 줄이 정한다). */
+  .info-note { min-height: 30px; }
+  .info-note-mark { font-size: 1em; opacity: 0.85; }
+  .info-note-tip { font-size: 13px; }
+}
+
+/* ─────────────── 9-5. 색 말고 다른 채널 (mobile-a11y P2 4건) ───────────────
+ * 판 위의 표식이 «색 하나»에 매달려 있으면 색약·저시력·고대비 사용자에게는 그 정보가
+ * 통째로 사라진다. 아래 넷은 그 그물을 빠져나가 있던 것들이다. */
+
+/* (1) 적5(赤ドラ) — 전용 그림(0m/0p/0s)을 쓰느라 `.tile-red` 이펙트를 일부러 뺐고,
+ *     그 탓에 평범한 5와의 차이가 **잉크 색뿐**이 됐다. 점수가 1판 차이 나는 정보다.
+ *     테두리 «선종»(파선)이라는 색과 무관한 채널을 하나 얹는다 — 그림은 그대로다. */
+.tile-red-art {
+  border-style: dashed;
+  border-width: 2px;
+  border-color: #e2564f;
+}
+
+/* (2) 공통 도라(금) vs 내 개인 도라(장미) — 테두리 굵기·글로우 반경·광택이 바이트
+ *     단위로 같고 **색조만** 달랐다. 색을 못 가리면 "이게 내 도라인가"를 알 수 없다.
+ *     `forced-colors` 에서 이미 쓰던 이중선(double)을 평상시에도 쓴다. */
+.tile-dora-own {
+  outline: 4px double rgba(249, 160, 215, 0.95);
+  outline-offset: -4px;
+}
+
+/* (3) 중계 위험도 2단계 — 호박색 vs 붉은색 «2px 링» 둘. 굵기·모양이 같아 색약
+ *     사용자에게는 단계 구분이 사라졌다(같은 게임의 본인용 `.hand-danger` 는 ⚠ 뱃지를
+ *     단다 — 중계 쪽만 빠졌다). 중간=가는 파선 / 높음=굵은 실선으로 갈라 놓는다. */
+.spec-danger-md {
+  outline: 2px dashed rgba(226, 178, 92, 0.9);
+  outline-offset: -2px;
+}
+.spec-danger-hi {
+  outline: 3px solid rgba(226, 96, 84, 0.95);
+  outline-offset: -3px;
+}
+
+/* (4) `prefers-contrast: more` — 여태 토큰 5개(--ink-2/3/4 · --line · --line-strong)만
+ *     재정의하고 **판 위 규칙은 0건**이었다. 정작 중요한 표식이 전부 리터럴 색이라
+ *     고대비를 켠 저시력 사용자에게 대국 화면은 사실상 아무것도 바뀌지 않았다.
+ *     바로 위 `prefers-reduced-motion` 블록이 25개 선택자를 하나하나 따지는 것과 대조된다.
+ *     색은 채도·명도를 올리고, 동시에 «모양» 채널을 하나씩 더 준다. */
+@media (prefers-contrast: more) {
+  /* 오야 — 붉은 배경 하나뿐이었다. 배경을 진하게 + 테두리로 한 번 더 말한다. */
+  .plate-dealer {
+    background: #c02a1c;
+    color: #ffffff;
+    box-shadow: inset 0 0 0 2px #ffffff;
+  }
+  /* 지금 차례 — 흐린 황동 링을 두껍고 밝게. */
+  .plate-turn {
+    background: rgba(240, 200, 106, 0.28);
+    box-shadow: 0 0 0 3px #ffd772;
+  }
+  /* 도라 — 금테를 밝게, 개인 도라는 이중선을 더 두껍게(위 (2)와 같은 채널). */
+  .tile-dora {
+    border-color: #ffd772;
+    border-width: 2px;
+  }
+  .tile-dora-own {
+    outline-color: #ffb0e0;
+    outline-width: 5px;
+    outline-offset: -5px;
+  }
+  /* 적도라 — 그림 있는 것(5)·없는 것 둘 다 파선을 진하게. */
+  .tile-red,
+  .tile-red-art {
+    border-color: #ff5a4f;
+    border-width: 2px;
+  }
+  /* 위험패 — 내 눈(본인)과 봇의 눈(중계) 둘 다. */
+  .hand-danger .tile-face {
+    outline: 3px solid #ff6b6b;
+  }
+  .spec-danger-md {
+    outline-color: #ffd08a;
+    outline-width: 3px;
+  }
+  .spec-danger-hi {
+    outline-color: #ff6f60;
+    outline-width: 4px;
+    outline-offset: -4px;
+  }
+  /* 리치 선언패 */
+  .hand-riichi .tile-face {
+    outline: 3px solid #ff9a8c;
+  }
+}
+
+@media (forced-colors: active) {
+  /* 적5도 «적도라»의 비색 표식(파선)을 받는다 — 여태 `.tile-red` 만 걸려 있어서
+     고대비에서는 그림의 붉은 잉크마저 평탄화되어 평범한 5와 완전히 같아졌다. */
+  .tile-red-art {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+  /* 중계 위험도 — 색이 사라져도 선종·굵기로 두 단계가 남는다. */
+  .spec-danger-md {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+  .spec-danger-hi {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+}
+
+/* ── 9-6 «지금 대국 중인 방» 안내 (QA 4차 loop 확정 2) ─────────────────────
+   홈의 참가 칸 아래. 토스트는 사라지지만 이 줄은 남아 «다시 눌러 보라»를 말한다. */
+.home-join-busy {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.home-join-busy .num {
+  color: var(--ink-1);
+}
+
+/* ── 9-7 빈 전적의 두 문 · 표본 칩 (QA 4차 loop 확정 4·6) ─────────────────
+   `.home-empty` 는 `<p>` 라 버튼 둘이 그대로 서면 줄이 붙는다 — 감싸는 줄을 준다. */
+.home-empty-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+/* 표본 칩. 비율 칩들보다 앞에 서므로 «몇 국에서 나온 값인가»를 먼저 읽게 된다. */
+.stat-chip-n {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+/* 표본이 얇아 비율을 접은 자리 — 「전적 없음」과 같은 톤으로 둔다(둘 다 «아직»이다). */
+.stat-chip-thin {
+  color: var(--ink-4);
+  font-style: italic;
+}
+
+/* ── 9-8 결과 화면의 «이번 판 증강» (QA 4차 loop 확정 5) ─────────────────── */
+.stats-augs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin-top: 8px;
+}
+.stats-augs-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.stats-augs-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.stats-aug {
+  padding: 2px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--chrome-line);
+  background: var(--chrome-fill);
+  font-size: 12px;
+  color: var(--ink-1);
 }

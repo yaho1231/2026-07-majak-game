@@ -20,6 +20,29 @@ import { TIME_PRESSURE_CHANNEL } from "@majak/content";
 export const DECISION_TIMEOUT_MS = 30_000;
 
 /**
+ * **판의 첫 증강 선택**에만 주는 제한 시간(ms) — QA 4차 onboard 확정 1.
+ *
+ * `draftTimeoutMs()`의 주석은 오래전부터 "카드 셋을 읽는 데만 30초가 넘게 걸린다"고
+ * 적고 있었는데, 그 판단이 **튜토리얼 좌석에만** 적용돼 있었다. 랜딩의 두 문 중
+ * 하나인 «바로 한 판»(게스트 체험)과 홈의 «연습 대국»은 `tutorial=false`다 — 즉
+ * 마작도 증강도 처음인 사람이 판이 열리자마자 처음 보는 카드 3장을 30초 안에 읽고
+ * 골라야 했고, 못 고르면 서버가 무작위로 집었다(`armDraft`).
+ *
+ * ⚠ **값의 천장은 75초가 아니라 컨트롤러가 정한다.** `HanchanController`에는 "답이
+ * 영영 안 오는 에이전트"를 위한 최후의 그물이 90초로 걸려 있고(`AGENT_DECIDE_TIMEOUT_MS`,
+ * 드래프트 경로에도 걸린다), 그 그물의 전제는 **"정상 흐름에서는 좌석 자신의 타이머가
+ * 항상 먼저 터진다"**이다. 90초로 맞추면 둘이 같은 순간에 터져 그물이 사람을 대신
+ * 골라 버릴 수 있다 — 보고서가 예로 든 90초를 그대로 쓰지 않은 이유다.
+ *
+ * 방이 게스트/연습인지는 이 클래스가 알지 못한다(`RoomManager`가 쥔 사실이다).
+ * 대신 **누구에게나 참인 사실** 하나로 가른다: 이 판에서 카드 셋을 아직 한 번도
+ * 읽어 본 적이 없는 순간은 «대국 개시» 드래프트 하나뿐이다. 그 한 번만 넉넉히 주고
+ * 두 번째 스테이지부터는 평소대로 30초다. 네 좌석 모두에게 같은 값이 걸리므로
+ * 유불리가 생기지 않고, 판 전체가 한 번 60초 더 기다릴 뿐이다.
+ */
+export const FIRST_DRAFT_TIMEOUT_MS = 75_000;
+
+/**
  * **시간 연장으로 만들 수 있는 «남은 시간»의 천장** (docs/36 B3 · QA 2차 server 의심 1).
  *
  * `RoomManager.EXTEND_SECONDS_MAX`는 «한 번에 주는 초»에만 걸려 있었다. 그런데
@@ -231,6 +254,13 @@ export class HumanAgent implements PlayerAgent {
    * (`TUTORIAL_DECISION_TIMEOUT_MS`). RoomManager가 방을 열면서 켠다.
    */
   private tutorial = false;
+
+  /**
+   * 이 좌석이 이번 판에서 **증강 선택 화면을 몇 번 봤는가**. 첫 번째만 넉넉한
+   * 제한 시간을 받는다(`FIRST_DRAFT_TIMEOUT_MS`). 방을 이어 쓰는 «이어하기»에서는
+   * 되돌리지 않는다 — 두 번째 판을 시작하는 사람은 이미 카드를 한 벌 읽어 봤다.
+   */
+  private draftsOffered = 0;
 
   /**
    * 증강 선택에서 **이 하나만 유효하다** — 튜토리얼이 못 박은 픽 (없으면 null).
@@ -1020,6 +1050,7 @@ export class HumanAgent implements PlayerAgent {
     this.pendingDraftRerolls = rerolls;
     this.draftRerollUsed = new Set();
     this.pendingDraftStage = stage;
+    this.draftsOffered += 1;
     // 드래프트는 네 사람이 다 고를 때까지 판 전체가 멈춘다 — 끊긴 좌석은 결정과
     // 같은 이유로 짧게만 기다린다. 유예 안에 돌아오면 reconnect가 되돌린다.
     this.draftGraced = !this.isConnected();
@@ -1044,7 +1075,9 @@ export class HumanAgent implements PlayerAgent {
    * **무작위로** 집는데(`armDraft`), 카드 셋을 읽는 데만 30초가 넘게 걸린다.
    */
   private draftTimeoutMs(): number {
-    return this.tutorial ? TUTORIAL_DECISION_TIMEOUT_MS : DECISION_TIMEOUT_MS;
+    if (this.tutorial) return TUTORIAL_DECISION_TIMEOUT_MS;
+    // 이 판에서 처음 보는 카드 셋 — 30초로는 못 읽는다는 위 판단이 그대로 적용된다.
+    return this.draftsOffered <= 1 ? FIRST_DRAFT_TIMEOUT_MS : DECISION_TIMEOUT_MS;
   }
 
   /** 이번 스테이지에 새로고침으로 갈아 낀 슬롯 (컨트롤러가 픽 직후에 읽는다). */

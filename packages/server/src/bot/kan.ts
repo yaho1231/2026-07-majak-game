@@ -22,6 +22,7 @@ import type { TileId, TileKind } from "@majak/core";
 import { removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
+import { riskSight, skillOf } from "./skill.js";
 import { waitTilesOf } from "./value.js";
 import type { ActionBid } from "./decide.js";
 
@@ -139,7 +140,9 @@ function gainOfKan(
 
   // 저돌적인 봇은 자기 손이 커지는 쪽을 더 크게 본다 (같은 계산, 다른 저울)
   const bias = (profile.aggression - 0.5) * 0.6;
-  return mine * (1 + bias) - theirs * (1 - bias);
+  // 난이도 — 초보는 **남에게 붙는 도라**를 잘 안 센다(`bot/skill.ts`). 그래서 깡이
+  // 자기 손을 키우는 면만 보이고, 판을 키워 놓고 자기가 맞는 일이 잦아진다.
+  return mine * (1 + bias) - theirs * (1 - bias) * riskSight(skillOf(profile));
 }
 
 /** 깡을 칠 것인가 (예전 진입점 — 입찰의 얇은 껍데기) */

@@ -171,3 +171,28 @@ describe("초대 메타 갈아 끼우기", () => {
     expect(out.length).toBeGreaterThan(html.length * 0.9);
   });
 });
+
+/**
+ * 압축 레벨 회귀 (QA 4라운드 ops P0).
+ *
+ * level 9는 카드 한 장에 수십 ms의 **동기** CPU를 먹고, 이 라우트는 인증이 없어
+ * 그 시간이 그대로 이벤트 루프 정지가 된다(실측 8연결 flood에 healthz 0.9초).
+ * zlib 헤더의 FLEVEL 비트로 레벨을 되읽어, 누가 level 9로 되돌리면 여기서 걸린다.
+ */
+describe("압축 레벨", () => {
+  it("IDAT 은 가장 빠른 압축(FLEVEL=0)으로 만든다", () => {
+    const png = renderOgCard("ABCDE2");
+    let pos = 8;
+    let flevel = -1;
+    while (pos < png.length) {
+      const len = png.readUInt32BE(pos);
+      if (png.toString("ascii", pos + 4, pos + 8) === "IDAT") {
+        // zlib 헤더 2바이트: CMF, FLG. FLG의 상위 2비트가 FLEVEL.
+        flevel = ((png[pos + 9] as number) >> 6) & 0b11;
+        break;
+      }
+      pos += len + 12;
+    }
+    expect(flevel).toBe(0); // 0 = fastest(level 1), 3 = maximum(level 9)
+  });
+});
