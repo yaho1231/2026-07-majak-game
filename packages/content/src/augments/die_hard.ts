@@ -37,6 +37,14 @@ import {
 
 const ID = "die_hard";
 
+/**
+ * 반등 폭의 상한 — **판의 시작 점수 한 벌**(`DEFAULT_HANCHAN_CONFIG.startScore`).
+ *
+ * 상수로 두는 이유: 시작 점수는 매치 설정(`HanchanController`)에 있고 엔진 상태에는
+ * 실리지 않는다. 설정을 바꿔 쓰게 될 때 함께 손봐야 하는 자리다.
+ */
+const REVIVE_CAP = 25_000;
+
 /** 매치당 발동 횟수 카운터 (게임 단위). 동풍전 1·반장전 2회. */
 const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
@@ -56,7 +64,7 @@ export const dieHard: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회) 국 정산 결과 점수가 0 아래로 떨어지면, 내려간 만큼이 그대로 플러스로 뒤집힌다 — −8,000점이 되면 즉시 +8,000점.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 정산 결과가 0 이상이면 발동하지 않는다. 토비 판정보다 먼저 반영되어 그 자리에서 되살아나며, 되돌려 받은 몫은 결과 화면의 증감에도 함께 표시된다.",
+    "(동풍전 1회 · 반장전 2회) 정산 결과가 0 이상이면 발동하지 않는다. 토비 판정보다 먼저 반영되어 그 자리에서 되살아나며, 되돌려 받은 몫은 결과 화면의 증감에도 함께 표시된다.\n\n되돌아오는 폭은 판의 시작 점수(25,000) 한 벌까지다.",
   /*
    * 상호 배제 — 죽기살기는 **크게 잃는 순간**을 자원으로 쓴다. 그 순간을 없애는 증강과
    * 함께 들면 수비가 성공할수록 죽기살기의 수익이 0에 수렴한다(docs/21 §C-3).
@@ -92,13 +100,29 @@ export const dieHard: AugmentDef = defineAugment({
       const before = ic.state.players.find((pl) => pl.id === holder)?.score ?? 0;
       const after = before + (p.deltas[holder] ?? 0);
       if (after >= 0) return event;
-      // after=-8000 → -2×after=+16000을 얹어 최종 +8000. 부호가 뒤집힌다.
+      /*
+       * after=-8000 → 최종 +8000. 부호가 뒤집힌다.
+       *
+       * ⚠ 다만 **되돌아오는 폭은 시작 점수(25,000) 한 벌까지다** (2026-08-23 QA
+       * synergy3 score 확정 3). 손실을 한 사람에게 몰아 주는 증강(덤터기·눈먼 총알)과
+       * 겹치면 깊이에 상한이 없어서, 뚫린 천장이 낀 역만 쯔모를 덤터기로 뒤집어쓴
+       * 보유자가 **뱅크에서 226,000점을 받고** 그 자리에서 매치 1위가 됐다
+       * (25,000×4 = 100,000짜리 판이 326,000이 된다).
+       *
+       * 상한을 "지금 내 점수"가 아니라 **판의 시작 점수**로 잡은 이유: 지금 점수로 자르면
+       * 이미 바닥난 사람에게는 반등이 거의 남지 않아, "크게 맞을수록 크게 돌아온다"는
+       * 이 카드의 정체성이 정작 그게 필요한 자리에서 사라진다. 시작 점수 한 벌은
+       * 이 게임에서 "한 사람 몫"의 자연스러운 크기이고, 카드의 예시(−8,000 → +8,000)는
+       * 그 아래라 한 글자도 달라지지 않는다.
+       */
+      const revived = Math.min(-after, REVIVE_CAP);
+      const adjust = revived - after;
       return {
         type: event.type,
         payload: {
           ...p,
-          deltas: { ...p.deltas, [holder]: (p.deltas[holder] ?? 0) - 2 * after },
-          augPoints: withAugPoint(p, ctx, -2 * after),
+          deltas: { ...p.deltas, [holder]: (p.deltas[holder] ?? 0) + adjust },
+          augPoints: withAugPoint(p, ctx, adjust),
           revivedBy: [...(p.revivedBy ?? []), holder],
         },
       };

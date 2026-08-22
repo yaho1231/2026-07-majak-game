@@ -30,6 +30,7 @@ import {
   stringOf,
   withAugNoteFor,
 } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
 
@@ -37,6 +38,22 @@ const ID = "scapegoat";
 const ACTION = "scapegoat_mark";
 const targetKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "target", state, h);
+
+/**
+ * 이번 국에 `marker`가 지목해 둔 사람 (없으면 null).
+ *
+ * 바깥에 여는 이유: 지불을 통째로 옮기는 재배선이라, **뒤에 도는 정산 단계**가
+ * "이 사람이 왜 이만큼을 무는가"를 알아야 하는 경우가 있다. 역만 방어술이 그렇다 —
+ * 쯔모 환급 상한을 표준 분담(1/3)으로 잡던 시절, 덤터기가 몰아준 역만 쯔모에서
+ * 96,000 중 64,000이 그대로 남았다(2026-08-23 QA synergy3 disrupt 확정 1).
+ * 무장해제 여부는 부르는 쪽이 본다 — 잠긴 덤터기는 재배선을 하지 않으므로.
+ */
+export function scapegoatTargetOf(
+  state: GameState,
+  marker: PlayerId,
+): PlayerId | null {
+  return stringOf(state, targetKey(state, marker));
+}
 
 const markAction: ActionDef<{ target: PlayerId }> = {
   type: ACTION,
@@ -125,6 +142,13 @@ export const scapegoat: AugmentDef = defineAugment({
       });
     sweep(SETTLE_STAGE.Redistribute);
     sweep(SETTLE_STAGE.Reassert);
+
+    /*
+     * 무장해제로 잠기면 지목 관계선도 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 관계선만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     // 매 국 1회만 지목 — 이번 국에 이미 지목했으면 버튼을 내리지 않는다
     ctx.holderTurnOptions((state) => {

@@ -28,6 +28,7 @@ import type {
 import { counterOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { handAlteredKey } from "./handAltered.js";
 
 const ID = "alchemist";
 const ACTION = "alchemy";
@@ -103,6 +104,12 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
         },
       ]),
       augmentDataSet(usedKey(req.player), counterOf(state, usedKey(req.player)) + 1),
+      // 이 손은 더 이상 **배패가 아니다** → 천화·지화를 막는다.
+      // 형제 카드(염색·분열·짝수의 세계·조커)는 전부 찍는데 연금술만 빠져 있어서,
+      // 오야가 첫 순에 한 장을 옮겨 완성한 손에 천화 역만 48,000점이 붙었다
+      // (QA synergy3 handedit 확정 1, 2026-08-23). 같은 기법(TileKindChanged)이면
+      // 같은 대우를 받아야 한다 — handAltered.ts 머리말 규약.
+      augmentDataSet(handAlteredKey(state, req.player), true),
       // 이번 턴에 썼음을 기록 → 같은 턴 재사용 차단 (버림으로 턴이 넘어가면 자동 해제)
       augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
       // 전원 공개 — 무엇이 무엇이 됐는지. 문자열이라 클라이언트 폴백이 그대로 읽는다.

@@ -102,6 +102,8 @@ export {
   isFuriten,
   isFuritenAsRon,
   isRunQuad,
+  ownDiscardKindsOf,
+  discardedByPlayer,
   sealedDiscardIds,
   lockedDiscardIds,
   seatWindOf,
@@ -116,6 +118,9 @@ export {
   meldInfosOf,
   meldCountOf,
   openMeldCountOf,
+  sameCallBody,
+  mixedTripletsFor,
+  polarEndsFor,
   scoringOptionsOf,
   furitenOptionsOf,
   uraIndicatorIds,
@@ -193,7 +198,7 @@ export type {
   BotRng,
 } from "./augment/Augment.js";
 export { AugmentRegistry } from "./augment/AugmentRegistry.js";
-export { SETTLE_LAYER, SETTLE_STAGE, settlePriority } from "./augment/settleStages.js";
+export { SETTLE_LAYER, SETTLE_STAGE, settlePriority, settleSeatAxis } from "./augment/settleStages.js";
 export type { SettleStage } from "./augment/settleStages.js";
 export {
   SCORE_CHANGED,
@@ -258,6 +263,7 @@ export {
   SYNERGY_RECENCY_DECAY,
   SYNERGY_PENALTY,
   synergyBonusFor,
+  SELF_ANTI_TAGS,
   synergyBias,
 } from "./augment/synergy.js";
 export type { SynergyTag, SynergyEntry } from "./augment/synergy.js";
@@ -323,6 +329,7 @@ export type {
   InitialStateOptions,
   SetupRoundOptions,
   PlayerState,
+  OwnDiscard,
   PlayerRoundState,
   RoundState,
   RiichiState,

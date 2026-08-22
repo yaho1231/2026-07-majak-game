@@ -79,6 +79,22 @@ const viewArmedKey = (h: PlayerId): string => roundViewKey(h, `${ID}:armed:${h}`
 /** 전원 공개 마커 — 누가 밑장빼기를 선언했는지는 모두가 안다 (내용은 아니다) */
 const noticeKey = (h: PlayerId): string => roundViewKey("*", `${ID}:armed:${h}`);
 
+/**
+ * **이 좌석의 다음 쯔모가 패산 밑에서 나오는가** — 예약이 걸려 있는가.
+ *
+ * 밖으로 여는 이유: 패산 앞을 좌석 순서로 헤아려 미래를 예고하는 증강
+ * (`triple_peek`)이 이 예약을 모르면 예고가 통째로 어긋난다. 밑장빼기는 앞을
+ * 소모하지 않고 뒤를 뽑으므로 뒤따르는 좌석들의 몫이 한 칸씩 밀린다 —
+ * "지금 기준으로 다시 계산돼 어긋나지 않는다"고 적힌 카드가 4/4 틀렸다
+ * (2026-08-23, QA synergy3 kandora 확정 3).
+ *
+ * 정보 누설이 아니다: 선언 사실은 `noticeKey`로 이미 **전원 공개**다(무엇이 밑장인지는
+ * 아니다). 예고를 읽는 쪽도 "그 좌석이 뒤에서 뽑는다"만 쓰고 밑장의 종류는 안 본다.
+ */
+export function bottomDealArmed(state: GameState, player: PlayerId): boolean {
+  return flagOf(state, armedKey(state, player));
+}
+
 /** 패산 맨 밑장 (다음 밑장빼기로 나올 패). 패산이 비면 undefined */
 function bottomTile(state: GameState): TileId | undefined {
   const wall = state.zones[WALL]?.tileIds ?? [];

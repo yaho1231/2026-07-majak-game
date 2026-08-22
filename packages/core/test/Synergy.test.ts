@@ -11,6 +11,7 @@ import {
   AUGMENT_SYNERGY,
   SYNERGY_PENALTY,
   SYNERGY_TAG_LABEL,
+  SELF_ANTI_TAGS,
   synergyBias,
   synergyBonusFor,
 } from "../src/augment/synergy.js";
@@ -37,10 +38,14 @@ describe("시너지 표 무결성", () => {
     }
   });
 
-  it("자기 축을 자기 anti로 두지 않는다 (스스로를 누르는 항목이 없다)", () => {
+  it("자기 축을 자기 anti로 두지 않는다 (SELF_ANTI_TAGS만 예외)", () => {
+    // 예외는 "한 게임에 하나만 사는 부류"뿐이다 — 리치 선언 버튼처럼 자원이 겹쳐
+    // 서로를 죽이는 축(SELF_ANTI_TAGS). 그 축은 같은 부류의 **다른** 카드를 밀어낸다.
+    const allowed = new Set<SynergyTag>(SELF_ANTI_TAGS);
     for (const [id, entry] of Object.entries(AUGMENT_SYNERGY)) {
       const anti = new Set<SynergyTag>(entry.anti ?? []);
       for (const t of entry.tags) {
+        if (allowed.has(t)) continue;
         expect(anti.has(t), `${id}: 축 ${t}가 자기 anti에도 있다`).toBe(false);
       }
     }
@@ -95,7 +100,11 @@ describe("역시너지 — 스텔스 리치", () => {
   });
 
   it("드러내지 않고 값만 키우는 리치 증강은 오른다", () => {
-    for (const id of ["no_retreat", "late_double", "ura_peek", "free_riichi_discard"]) {
+    // ⚠ `no_retreat`은 2026-08-23부터 여기 없다 — 스텔스와 **같은 riichi_declare 축**
+    //   (전용 리치 선언 버튼)이라 서로를 밀어낸다. 둘을 함께 들면 국당 한 번뿐인
+    //   리치를 두고 버튼이 나란히 뜨고 하나는 늘 논다(QA synergy3 riichi 확정 9,
+    //   build 확정 1은 그 상태에서 봇이 뒤엣것을 영영 안 쓰는 것까지 보였다).
+    for (const id of ["late_double", "ura_peek", "free_riichi_discard"]) {
       expect(bias[id], `${id}이 오르지 않았다`).toBeGreaterThan(1);
     }
   });
@@ -165,9 +174,14 @@ describe("최신성 — 가장 최근에 집은 것이 가장 세게 끈다", ()
   });
 
   it("같은 축을 거듭 집으면 그 축이 더 세게 끌린다", () => {
+    // ⚠ 표본을 `cliff_bloom`에서 `void_kan`으로 옮겼다 — 2026-08-23부터 만개는
+    //   `snake_kan`을 antiIds로 들고 있어(둘이 함께 서면 배패에서 화료가 확정된다)
+    //   깡 축을 두 번 집어도 만개만은 눌린다. 축 누적 자체는 그대로다.
     const once = synergyBias(["ankan_dora"]);
     const twice = synergyBias(["ankan_dora", "snake_kan"]);
-    expect(twice["cliff_bloom"]).toBeGreaterThan(once["cliff_bloom"] as number);
+    expect(twice["void_kan"]).toBeGreaterThan(once["void_kan"] as number);
+    // 역시너지는 보너스를 이긴다 — 만개는 오히려 눌린다
+    expect(twice["cliff_bloom"]).toBe(SYNERGY_PENALTY);
   });
 
   it("상한이 있다 — 아무리 겹쳐도 확정이 되지 않는다", () => {

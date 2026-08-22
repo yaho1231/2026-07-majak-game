@@ -47,6 +47,7 @@ import type {
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { haiteiLordWaits } from "./haitei_lord.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "conjure_draw";
@@ -120,7 +121,7 @@ export const conjureDraw: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 자기 순에 손패 1장을 지목하면, 다음 내 쯔모가 그 패의 복제(생성패)로 바뀐다.",
   detail:
-    "(매 국 1회) 지목한 패의 종류가 목표가 된다. 다음 쯔모는 패산에서 평소대로 한 장 뽑히되 그 자리에서 바뀌므로, 패산도 손패 장수도 그대로다.\n\n깡으로 뽑는 영상패에는 반응하지 않는다. 무엇을 불렀는지는 발동 즉시 전원에게 공개된다.",
+    "(매 국 1회) 지목한 패의 종류가 목표가 된다. 다음 쯔모는 패산에서 평소대로 한 장 뽑히되 그 자리에서 바뀌므로, 패산도 손패 장수도 그대로다.\n\n깡으로 뽑는 영상패에는 반응하지 않는다. 해저의 지배자가 가져가는 해저패에도 반응하지 않는다. 무엇을 불렀는지는 발동 즉시 전원에게 공개된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -145,6 +146,19 @@ export const conjureDraw: AugmentDef = defineAugment({
       if (p.rinshan) return; // 영상패(깡 후 쯔모)에는 반응하지 않는다 — 정상 쯔모만
       const target = pendingKind(rc.state, holder);
       if (target === null) return;
+      /*
+       * ⚠ **해저패는 해저의 지배자의 것이다** — 이 한 장은 양보하고 예약도 남긴다.
+       *
+       * 같은 좌석이 `haitei_lord`를 함께 들면 둘이 같은 tileId에 `tileKindChanged`를
+       * 쏴서, 나중에 설치된 쪽(= 드래프트 픽 순서)이 이기고 진 쪽은 조용히 죽었다
+       * (2026-08-23, QA synergy3 kandora 확정 2). 여기서 물러나는 이유는 보유자에게
+       * 그쪽이 언제나 낫기 때문이다 — 오름패로 바뀌면 그 자리에서 해저로월 화료 + 3판.
+       *
+       * 예약(`pendingKey`)은 **비우지 않는다.** 지배자가 못 가져간 경우에만 이 아래로
+       * 내려오므로 여기서 남기는 것은 순수한 양보다. 국 스코프라 국이 끝나면 저절로
+       * 만료된다(위 pendingKey 주석).
+       */
+      if (haiteiLordWaits(rc.state, engine.rules, holder, p.tileId).length > 0) return;
       // 방금 뽑은 패 그 한 장을 목표 kind로 변환(conjured). 손패 장수 불변.
       rc.emit(
         tileKindChanged([

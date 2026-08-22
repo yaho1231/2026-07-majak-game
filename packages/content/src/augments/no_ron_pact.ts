@@ -42,6 +42,7 @@ import type {
   TileDiscardedPayload,
 } from "@majak/core";
 import { flagOf, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "no_ron_pact";
@@ -140,10 +141,27 @@ export const noRonPact: AugmentDef = defineAugment({
       },
     });
 
+
+    /*
+     * 무장해제로 잠기면 조약 배너와 봇용 `active` 채널을 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 배너만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [pactViewKey(holder), pactActiveKey(holder)]);
+
     // 리치 선언 이력 — 한 번 서면 그 국 내내 남는다 (승부수로 물려도 지우지 않는다).
     ctx.reaction(TILE_DISCARDED, (event, rc) => {
       const p = event.payload as TileDiscardedPayload;
       if (!p.riichi || p.player !== holder) return;
+      /*
+       * **남이 강제한 리치는 파기 사유가 아니다** (2026-08-23 QA synergy3 riichi 확정 3).
+       *
+       * 카드가 적은 파기 사유는 전부 **내 행동**이다(리치를 걸거나 몸통을 만들거나).
+       * 그런데 낙인(push_riichi)을 맞으면 멘젠 텐파이로 아무 패나 버리는 순간 강제
+       * 리치가 서고, 그것이 그대로 파기로 계산됐다 — 프리즘 수비 카드가 방해 카드
+       * 한 장에 **무조건** 0이 되고 피해자에게는 아무 선택지도 없었다.
+       */
+      if (p.riichiForced !== undefined) return;
       if (flagOf(rc.state, declaredKey(rc.state, holder))) return;
       rc.emit(augmentDataSet(declaredKey(rc.state, holder), true));
     });

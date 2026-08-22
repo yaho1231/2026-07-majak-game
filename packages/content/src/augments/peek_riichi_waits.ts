@@ -245,6 +245,14 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
     if (!engine.reducers.has(PEEK_WAITS_PERFORMED)) {
       engine.reducers.register(PEEK_WAITS_PERFORMED, (state, event) => {
         const p = event.payload as PeekWaitsPerformedPayload;
+        /*
+         * **노텐 리치를 간파해도 국당 1회는 쓰지 않는다** (2026-08-23 QA synergy3
+         * riichi 확정 8). 공성계(siege_riichi)는 텐파이가 아니어도 리치를 걸 수 있어
+         * 오름패가 0종이다. 예전에는 그 빈 목록을 받고도 사용 플래그가 서서, 골드
+         * 카드 한 장이 프리즘 카드 한 장에 통째로 무효화됐다 — 위조("간파한 오름패로
+         * 바꾼다")까지 함께 죽었다. 이제 "노텐 확정"이라는 정보만 남고 횟수는 살아 있다.
+         */
+        const spent = p.waits.length > 0;
         // 48차 무페널티: 간파는 공짜다 (예전엔 대상에게 1000점을 지불해 상대를 살찌웠다)
         return {
           ...state,
@@ -252,7 +260,7 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
             ...state.augmentData,
             // 보유자 화면에만 대기 노출 + 국 단위 사용 플래그
             [viewKey(p.holder, `waits:${p.target}`)]: p.waits,
-            [usedKey(state, p.holder)]: true,
+            ...(spent ? { [usedKey(state, p.holder)]: true } : {}),
           },
         };
       });

@@ -24,6 +24,7 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import { counterOf, flagOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
 
@@ -107,6 +108,14 @@ export const xrayHand: AugmentDef = defineAugment({
         return flagOf(state, activeKey(state, holder)) ? "public" : cur;
       },
     });
+
+
+    /*
+     * 무장해제로 잠기면 «투시 켜짐» 배너도 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 배너만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     // 아직 사용 횟수가 남았으면 보유자 턴에 발동 후보를 낸다
     ctx.holderTurnOptions((state) =>

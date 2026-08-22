@@ -16,6 +16,7 @@ import {
   SETTLE_LAYER,
   SETTLE_STAGE,
   settlePriority,
+  settleSeatAxis,
   augmentDataSet,
   augmentStageKey,
   calculateScore,
@@ -671,10 +672,9 @@ export function settleInterceptor(
   stage: SettleStage,
   intercept: Parameters<AugmentContext["interceptor"]>[1],
 ): void {
-  const seat = ctx.engine.state.players.find((p) => p.id === ctx.holder)?.seat ?? 0;
   ctx.interceptor(ROUND_SETTLED, intercept, {
     layer: SETTLE_LAYER,
-    priority: settlePriority(stage, seat, ctx.augmentId),
+    priority: settlePriority(stage, settleSeatAxis(ctx.engine.state, ctx.holder), ctx.augmentId),
   });
 }
 
@@ -694,6 +694,14 @@ export function addWinPointBonus(
   points: (
     state: GameState,
     info: WinInfo,
+    /**
+     * **이 정산에서 다른 증강이 이미 얹은 판수.** "+N판" 계열이 서로 겹칠 때
+     * 각자 원본 `info.han`을 밑값으로 삼으면 합이 +(N+M)판이 되지 않는다 —
+     * 만개+해저(각 +3판)가 36,000이 아니라 30,000이었고, 무형화료+대기만성은
+     * 반대로 만관표에 없는 20,100이 나왔다(2026-08-23 QA synergy3 relax 확정 1).
+     * 이 값을 밑값에 더해 계산하면 순서와 무관하게 정확히 덧셈이 된다.
+     */
+    hanSoFar: number,
   ) => number | { points: number; han?: number },
 ): void {
   settleInterceptor(ctx, SETTLE_STAGE.BankTopUp, (event, ic) => {
@@ -701,7 +709,11 @@ export function addWinPointBonus(
     if (p.outcome !== "win") return event;
     const info = (p.winInfos ?? []).find((w) => w.winner === ctx.holder);
     if (info === undefined) return event;
-    const raw = points(ic.state, info);
+    const myId = augIdOf(ctx);
+    const hanSoFar = (p.augPoints ?? [])
+      .filter((n) => n.player === ctx.holder && n.augId !== myId)
+      .reduce((sum, n) => sum + (n.han ?? 0), 0);
+    const raw = points(ic.state, info, hanSoFar);
     const asObj = typeof raw === "number" ? { points: raw } : raw;
     const bonus = Math.max(0, Math.round(asObj.points));
     if (bonus === 0) return event;
@@ -906,6 +918,8 @@ export function winPointsWithExtraHan(
   info: WinInfo,
   extraHan: number,
   rules?: RuleRegistry,
+  /** 이 정산에서 다른 "+N판" 증강이 이미 얹은 판수 (밑값에 더한다) */
+  hanSoFar = 0,
 ): number {
   /*
    * 오야 배율은 **자리만으로 정하지 않는다** — 정산(`sysSettleWin`)이
@@ -920,14 +934,29 @@ export function winPointsWithExtraHan(
   const isDealer =
     playerAtSeat(state, state.round.dealerSeat).id === holder ||
     (rules?.resolve<boolean>("win.treatAsDealer", { playerId: holder, state }) ?? false);
-  const boosted = calculateScore({
-    han: info.han + extraHan,
-    fu: info.fu,
-    yakumanCount: info.yakumanCount,
-    isDealer,
-    winType: info.winType,
-  }).total;
-  return Math.max(0, boosted - info.points);
+  /*
+   * 상한 해제(뚫린 천장)를 **함께 본다.** 예전에는 표준 계단으로만 환산해서,
+   * 같은 "+3판"이 실판 계열(`score.extraHan`·역 등록)에서는 상한이 풀리고
+   * 뱅크 환산 계열에서는 잘렸다 — 8판 손에서 48,000 대 42,000, 계수역만
+   * 구간에서는 아예 0원이었다(2026-08-23 QA synergy3 score 확정 6).
+   */
+  const uncapped =
+    rules?.resolve<boolean>("score.uncapped", { playerId: holder, state }) ?? false;
+  const scoreAt = (extra: number): number =>
+    calculateScore({
+      han: info.han + extra,
+      fu: info.fu,
+      yakumanCount: info.yakumanCount,
+      isDealer,
+      winType: info.winType,
+      uncapped,
+    }).total;
+  /*
+   * 밑값은 `info.points`가 아니라 **같은 식으로 계산한 값**이다 — 다른 증강이
+   * 배수를 걸어 둔 국에서 `info.points`를 빼면 그 배수까지 되빼게 되고,
+   * 상한 해제나 앞선 "+N판"이 걸린 국에서는 밑값이 아예 다른 곡선 위에 있다.
+   */
+  return Math.max(0, scoreAt(hanSoFar + extraHan) - scoreAt(hanSoFar));
 }
 
 /**
@@ -951,11 +980,18 @@ export function addWinHanBonus(
   ctx: AugmentContext,
   han: (state: GameState, info: WinInfo) => number,
 ): void {
-  addWinPointBonus(ctx, (state, info) => {
+  addWinPointBonus(ctx, (state, info, hanSoFar) => {
     const n = Math.max(0, Math.round(han(state, info)));
     if (n === 0) return 0;
     return {
-      points: winPointsWithExtraHan(state, ctx.holder, info, n, ctx.engine.rules),
+      points: winPointsWithExtraHan(
+        state,
+        ctx.holder,
+        info,
+        n,
+        ctx.engine.rules,
+        hanSoFar,
+      ),
       han: n,
     };
   });

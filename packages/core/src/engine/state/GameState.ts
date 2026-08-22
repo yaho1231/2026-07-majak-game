@@ -129,6 +129,32 @@ export interface PlayerRoundState {
    * (리치 선언패 인덱스가 겪는 문제) 엉뚱한 패에 표식이 붙는다.
    */
   tsumogiriIds: TileId[];
+  /**
+   * 이번 국 **내가 실제로 버린 패** — (tileId, 버림 시점 kindKey) 쌍, 순서 보존.
+   *
+   * `discardedKinds`는 *후리텐 이력*이라 누명(frame_up)의 `creditTo`가 그 이력을
+   * **지목당한 사람**에게 새긴다. 그래서 "내가 버린 패"를 근거로 쓰는 증강들이
+   * 한꺼번에 어긋났다 (QA synergy3 handedit 확정 2·3·4, 2026-08-23):
+   * - 강 회수 3종(정적의 손·날치기·무덤 도굴)의 "내 바닥은 대상이 아니다" 가드가
+   *   **바닥의 물리적 주인**으로 판정해, 누명으로 남의 바닥에 심은 내 패를 도로 집어
+   *   후리텐 없이 화료했다.
+   * - 바닥의 족보는 심긴 패로 **피해자**의 역류 통관을 완성시키고(3판→5판),
+   *   정작 보유자 자신의 통관은 조용히 무산시켰다.
+   * - 자패 귀환은 보유자가 누명으로 흘린 자패를 기억하지 못하고, 피해자가 버리지도
+   *   않은 자패를 다음 국 배패로 되받았다.
+   *
+   * 이미 `discardCount`(턴 세기)를 같은 이유로 갈라 놓았듯(docs/25 P5), 이 필드는
+   * **실물의 출처**를 가른다. `TILE_DISCARDED.player`(실제 버린 사람)에게만 쌓이고
+   * `creditTo`에 영향받지 않는다. 후리텐과는 무관하니 후리텐 판정에 쓰지 말 것.
+   */
+  ownDiscards: OwnDiscard[];
+}
+
+/** 실제로 내가 버린 패 한 장 (`PlayerRoundState.ownDiscards`) */
+export interface OwnDiscard {
+  tileId: TileId;
+  /** 버림 **시점**의 kindKey — 나중에 kind가 바뀌어도 이력은 그대로다 */
+  kind: string;
 }
 
 export interface PlayerState {
@@ -292,6 +318,7 @@ function freshPlayerRoundState(): PlayerRoundState {
     discardedKinds: [],
     discardCount: 0,
     tsumogiriIds: [],
+    ownDiscards: [],
   };
 }
 

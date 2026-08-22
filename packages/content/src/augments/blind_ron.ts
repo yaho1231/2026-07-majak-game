@@ -151,9 +151,19 @@ export const blindRon: AugmentDef = defineAugment({
          * 가산분(300×본장)이 이미 섞여 있어 남의 연장료까지 엉뚱한 사람이 물었다
          * (QA disrupt-b 확정 5). 파오분은 책임자가 따로 무는 돈이라 뺀다.
          */
-        const owed = (p.winInfos ?? [])
+        const hand = (p.winInfos ?? [])
           .filter((w) => w.winType === "ron" && w.from === shooter)
           .reduce((sum, w) => sum + w.points - (w.pao?.points ?? 0), 0);
+        /*
+         * **지금 그가 실제로 무는 것보다 많이 되돌려 줄 수는 없다** (2026-08-23 QA
+         * synergy3 score 확정 1). 같은 `Redistribute` 단계의 다른 재배선(책임전가)이
+         * 먼저 돌아 지불을 셋으로 흩어 놓으면, WinInfo의 원본 금액을 그대로 환급하는
+         * 순간 **쏜 사람이 흑자가 된다** — 8판 24,000 론에서 방총자가 +16,000을 벌고
+         * 총알을 맞은 사람이 손값보다 많은 32,000을 물었다(총합은 0이라 드리프트
+         * 검사에도 안 걸렸다). 현재 음수 델타로 자르면 어느 쪽이 먼저 돌든
+         * "쏜 사람이 이득을 본다"가 성립하지 않는다.
+         */
+        const owed = Math.min(hand, Math.max(0, -(deltas[shooter] ?? 0)));
         if (owed <= 0) continue;
         const prng = new Prng(
           (ic.state.config.seed ^

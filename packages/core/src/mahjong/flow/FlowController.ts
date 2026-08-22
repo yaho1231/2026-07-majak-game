@@ -32,6 +32,7 @@ import {
   playerOf,
   furitenOptionsOf,
   scoringOptionsOf,
+  sameCallBody,
   sameCallKind,
   mixedTripletsFor,
   polarEndsFor,
@@ -498,10 +499,37 @@ export class FlowController {
         const isRed = (t: TileId): boolean => state.tiles[t]?.attrs.red === true;
         const norms = matching.filter((t) => !isRed(t));
         const reds = matching.filter(isRed);
+        /*
+         * 세 장이 **한 규칙 안에서** 닫히는 짝만 후보로 낸다.
+         *
+         * 예전에는 손패를 버림패와 1:1로만 견줘 앞에서 두 장을 집었다. 양극과 동수의
+         * 결속을 함께 들면 두 장이 **서로 다른 규칙으로 하나씩** 통과해
+         * `{1만, 9만, 1통}` — 어느 카드로도 몸통이 아닌 잡종 펑이 열렸다
+         * (QA synergy3 shape 확정 2, 2026-08-23 — helpers.sameCallBody 주석).
+         * 유효한 짝 안에서 적도라 조합 3종을 고르므로 "적5를 손에 남길 선택권"은
+         * 그대로다.
+         */
+        const closes = (x: TileId, y: TileId): boolean =>
+          sameCallBody(discardKind, kindOf(state, x), kindOf(state, y), mixedTri, polar);
+        const firstPair = (
+          xs: TileId[],
+          ys: TileId[],
+        ): [TileId, TileId] | null => {
+          for (const x of xs) {
+            for (const y of ys) {
+              if (x !== y && closes(x, y)) return [x, y];
+            }
+          }
+          return null;
+        };
         const combos: [TileId, TileId][] = [];
-        if (norms.length >= 2) combos.push([norms[0]!, norms[1]!]);
-        if (norms.length >= 1 && reds.length >= 1) combos.push([norms[0]!, reds[0]!]);
-        if (reds.length >= 2) combos.push([reds[0]!, reds[1]!]);
+        for (const pair of [
+          firstPair(norms, norms),
+          firstPair(norms, reds),
+          firstPair(reds, reds),
+        ]) {
+          if (pair !== null) combos.push(pair);
+        }
         for (const tileIds of combos) {
           const payload = { tileIds };
           if (this.validateOk(p.id, "pon", payload)) {

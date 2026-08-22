@@ -1,0 +1,1700 @@
+{
+ "key": "open",
+ "ids": [
+  "omni_chi",
+  "mixed_triplet",
+  "broken_border",
+  "big_hand"
+ ],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 1,
+   "ms": 112020,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 5,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 35500,
+    "p1": 18900,
+    "p2": 30700,
+    "p3": 14900
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 3,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 6,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "sanankou"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 3,
+     "discard": 58,
+     "pass": 81,
+     "riichi": 2,
+     "win": 2,
+     "pon": 2,
+     "shouminkan": 1
+    },
+    "p1": {
+     "discard": 64,
+     "minkan": 1,
+     "pass": 15,
+     "pon": 1,
+     "chi": 1
+    },
+    "p2": {
+     "discard": 39,
+     "pass": 8,
+     "chi": 1,
+     "minkan": 1,
+     "win": 3,
+     "riichi": 3
+    },
+    "p3": {
+     "pass": 16,
+     "discard": 64,
+     "pon": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 6,
+     "reactEmit": 6,
+     "interCall": 12,
+     "interChange": 0,
+     "optionOffer": 3,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 147,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 3,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 2,
+   "ms": 45823,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 30700,
+    "p1": 21900,
+    "p2": 11100,
+    "p3": 36300
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 0,
+    "p2": 0,
+    "p3": 3
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_haku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 7,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 2,
+     "discard": 44,
+     "pass": 61,
+     "chi": 2,
+     "pon": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 45,
+     "pass": 9
+    },
+    "p2": {
+     "pass": 8,
+     "discard": 44,
+     "pon": 2,
+     "win": 1
+    },
+    "p3": {
+     "discard": 31,
+     "riichi": 3,
+     "win": 2,
+     "pass": 9
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 4,
+     "reactEmit": 4,
+     "interCall": 8,
+     "interChange": 0,
+     "optionOffer": 2,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 8
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 110,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 2,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 3,
+   "ms": 51968,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 2,
+    "win": 3
+   },
+   "finalScores": {
+    "p0": 29100,
+    "p1": 11800,
+    "p2": 37300,
+    "p3": 21800
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 0,
+    "p2": 1,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p2",
+     "from": "p1",
+     "han": 6,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu",
+      "iipeiko"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 3,
+     "fu": 30,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 3,
+     "discard": 63,
+     "pass": 73,
+     "pon": 3,
+     "shouminkan": 2,
+     "chi": 3,
+     "riichi": 1,
+     "win": 1
+    },
+    "p1": {
+     "discard": 67,
+     "pass": 20,
+     "chi": 1
+    },
+    "p2": {
+     "pass": 16,
+     "discard": 63,
+     "riichi": 1,
+     "win": 2,
+     "chi": 1
+    },
+    "p3": {
+     "discard": 56,
+     "pass": 12,
+     "riichi": 2
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 5,
+     "reactEmit": 5,
+     "interCall": 10,
+     "interChange": 0,
+     "optionOffer": 3,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 148,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 3,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 4,
+   "ms": 38204,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 6
+   },
+   "finalScores": {
+    "p0": 47400,
+    "p1": 22600,
+    "p2": 29200,
+    "p3": 6800
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 1,
+    "p2": 1,
+    "p3": 2
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 7,
+     "fu": 50,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "sanankou"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 2,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 4,
+     "fu": 50,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p3",
+     "from": "p0",
+     "han": 3,
+     "fu": 30,
+     "points": 3900,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 40,
+     "points": 2700,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "big_hand",
+     "player": "p0",
+     "points": 6000
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 3,
+     "discard": 63,
+     "pass": 94,
+     "win": 3,
+     "pon": 4
+    },
+    "p1": {
+     "discard": 58,
+     "pass": 14,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 63,
+     "pass": 14,
+     "riichi": 1,
+     "win": 1,
+     "pon": 1
+    },
+    "p3": {
+     "pass": 18,
+     "discard": 55,
+     "riichi": 2,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 6,
+     "reactEmit": 6,
+     "interCall": 12,
+     "interChange": 1,
+     "optionOffer": 3,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 164,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 3,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 5,
+   "ms": 66311,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 1,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 44500,
+    "p1": 24500,
+    "p2": 15300,
+    "p3": 23000
+   },
+   "riichiBySeat": {
+    "p0": 0,
+    "p1": 2,
+    "p2": 0,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 4,
+     "fu": 20,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "pinfu",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 20,
+     "points": 1500,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "big_hand",
+     "player": "p0",
+     "points": 800
+    },
+    {
+     "augId": "big_hand",
+     "player": "p0",
+     "points": 6500
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 3,
+     "discard": 49,
+     "pass": 77,
+     "win": 3
+    },
+    "p1": {
+     "pass": 12,
+     "discard": 41,
+     "riichi": 2,
+     "win": 1
+    },
+    "p2": {
+     "discard": 48,
+     "pass": 8
+    },
+    "p3": {
+     "discard": 50,
+     "pon": 3,
+     "pass": 9,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 5,
+     "reactEmit": 5,
+     "interCall": 10,
+     "interChange": 2,
+     "optionOffer": 3,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 129,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 3,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 6,
+   "ms": 47884,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 2,
+    "draw": 2
+   },
+   "finalScores": {
+    "p0": 32200,
+    "p1": 25300,
+    "p2": 25600,
+    "p3": 23000
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 1,
+    "p2": 0,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": "p0",
+     "han": 1,
+     "fu": 40,
+     "points": 1300,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 1,
+     "fu": 50,
+     "points": 1600,
+     "yakumanCount": 0,
+     "yaku": [
+      "rinshan"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "big_hand",
+     "player": "p0",
+     "points": 6100
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 2,
+     "discard": 45,
+     "pass": 76,
+     "riichi": 1,
+     "pon": 1,
+     "shouminkan": 1,
+     "win": 1,
+     "chi": 1
+    },
+    "p1": {
+     "pass": 14,
+     "discard": 47,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 52,
+     "pass": 9,
+     "chi": 1
+    },
+    "p3": {
+     "discard": 50,
+     "pass": 12
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 4,
+     "reactEmit": 4,
+     "interCall": 8,
+     "interChange": 1,
+     "optionOffer": 2,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 8
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 127,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 2,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 7,
+   "ms": 20824,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 6
+   },
+   "finalScores": {
+    "p0": 50700,
+    "p1": 30600,
+    "p2": 24200,
+    "p3": 8200
+   },
+   "riichiBySeat": {
+    "p0": 1,
+    "p1": 0,
+    "p2": 1,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 2,
+     "fu": 50,
+     "points": 4800,
+     "yakumanCount": 0,
+     "yaku": [
+      "sanankou"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 5,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "yakuhai_seat",
+      "yakuhai_prevalent",
+      "ittsuu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": "p0",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 1,
+     "fu": 40,
+     "points": 1500,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 4,
+     "fu": 20,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "big_hand",
+     "player": "p0",
+     "points": 7200
+    },
+    {
+     "augId": "big_hand",
+     "player": "p0",
+     "points": 6500
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 3,
+     "discard": 43,
+     "pass": 56,
+     "win": 4,
+     "riichi": 1
+    },
+    "p1": {
+     "discard": 47,
+     "pass": 9,
+     "pon": 3,
+     "win": 1
+    },
+    "p2": {
+     "discard": 46,
+     "pass": 14,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 44,
+     "pass": 15,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 6,
+     "reactEmit": 6,
+     "interCall": 12,
+     "interChange": 2,
+     "optionOffer": 3,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 103,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 3,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 8,
+   "ms": 33702,
+   "crash": null,
+   "rounds": 7,
+   "outcomes": {
+    "win": 7
+   },
+   "finalScores": {
+    "p0": 76600,
+    "p1": 8800,
+    "p2": 4000,
+    "p3": 12400
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "yakuhai_seat",
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 6000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 8,
+     "fu": 40,
+     "points": 24000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "sanankou"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 2,
+     "redHan": 1,
+     "limit": "baiman"
+    },
+    {
+     "winner": "p3",
+     "from": "p2",
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_chun"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 40,
+     "points": 5200,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_haku",
+      "haitei"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 1,
+     "fu": 30,
+     "points": 1100,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p2",
+     "han": 1,
+     "fu": 30,
+     "points": 1000,
+     "yakumanCount": 0,
+     "yaku": [
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    }
+   ],
+   "augPoints": [
+    {
+     "augId": "big_hand",
+     "player": "p0",
+     "points": 1800
+    }
+   ],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "declare_big_hand": 4,
+     "discard": 69,
+     "pass": 103,
+     "riichi": 2,
+     "win": 4,
+     "pon": 1
+    },
+    "p1": {
+     "discard": 74,
+     "pass": 15,
+     "minkan": 1,
+     "chi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 65,
+     "pass": 10,
+     "minkan": 1,
+     "pon": 1,
+     "riichi": 2
+    },
+    "p3": {
+     "discard": 71,
+     "pass": 15,
+     "riichi": 1,
+     "pon": 2,
+     "win": 2,
+     "chi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|omni_chi",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|mixed_triplet",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|broken_border",
+     "ruleSet": 1,
+     "reactCall": 0,
+     "reactEmit": 0,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 0,
+     "actionFired": 0,
+     "emitted": {}
+    },
+    {
+     "k": "p0|big_hand",
+     "ruleSet": 0,
+     "reactCall": 7,
+     "reactEmit": 7,
+     "interCall": 14,
+     "interChange": 1,
+     "optionOffer": 4,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 14
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "big_hand",
+     "chooseCalls": 179,
+     "proposed": 4,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 4,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}",
+      "{\"type\":\"declare_big_hand\",\"payload\":{}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "big_hand",
+     [
+      "declare_big_hand"
+     ]
+    ]
+   ]
+  }
+ ]
+}

@@ -112,6 +112,7 @@ function craft(cfg: {
       discardedKinds: h(cfg.discards?.[p] ?? "").map(kindKey),
       discardCount: h(cfg.discards?.[p] ?? "").length,
       tsumogiriIds: [],
+      ownDiscards: [],
     };
   }
 

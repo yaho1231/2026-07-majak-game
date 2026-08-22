@@ -25,13 +25,13 @@
  *
  * 바닥 읽기: WinContext는 손패·화료패만 실을 뿐 버림 이력을 노출하지 않는다. 그래서
  * check 클로저가 install 시점의 `ctx.engine`을 붙잡아 채점 시점의 `engine.state`에서
- * 화료자(wctx.winnerId)의 `round.byPlayer[…].discardedKinds`를 읽는다 —
+ * 화료자(wctx.winnerId)의 `round.byPlayer[…].ownDiscards`를 읽는다 —
  * 바닥 zone이 아니라 **버린 사실 자체**다(울려 나간 패도 내가 버린 패다). 화료 채점은 언제나 그
  * 시점 state에 대해 동기적으로 돌므로 engine.state가 곧 그 국의 바닥이다. 여러 명이
  * 보유해도 역 등록은 게임당 1회(yakuHolders), 나머지는 holders 집합에만 더한다.
  */
 
-import { defineAugment, isNumberSuit } from "@majak/core";
+import { defineAugment, isNumberSuit, ownDiscardKindsOf } from "@majak/core";
 import type {
   AugmentDef,
   GameEngine,
@@ -70,14 +70,23 @@ function kindFromKey(key: string): TileKind | null {
  * 울려 나가도 남는다 — detail이 약속하는 것은 "무엇을 버렸는가"이지
  * "그게 바닥에 남았는가"가 아니다(2026-08-20 QA 확정).
  */
-function discardedKinds(state: GameState, holder: PlayerId): readonly string[] {
-  return state.round.byPlayer[holder]?.discardedKinds ?? [];
+function myDiscardKinds(state: GameState, holder: PlayerId): readonly string[] {
+  /*
+   * ⚠ 후리텐 이력(`discardedKinds`)이 아니라 **실제로 내가 버린 패**를 읽는다.
+   *
+   * 누명(frame_up)의 `creditTo`는 후리텐 이력만 지목당한 사람에게 새긴다. 그래서
+   * 남이 심어 준 9만 한 장이 **피해자**의 역류 통관을 완성시켰고(3판 → 5판, 만관
+   * 문턱을 넘는 자리다), 정작 보유자가 자기 9만을 누명으로 흘리면 자기 통관이
+   * 조용히 무산됐다 (QA synergy3 handedit 확정 3, 2026-08-23).
+   * detail 이 약속하는 것은 "**내** 버림패가 판을 얹어 준다"이다.
+   */
+  return ownDiscardKindsOf(state, holder);
 }
 
 /** 어느 수패 무늬(만·통·삭)든 1~9를 전부 버렸는가 */
 function hasFullSuitRun(state: GameState, holder: PlayerId): boolean {
   const ranksBySuit = new Map<string, Set<number>>();
-  for (const key of discardedKinds(state, holder)) {
+  for (const key of myDiscardKinds(state, holder)) {
     const kind = kindFromKey(key);
     if (kind === null) continue;
     if (!isNumberSuit(kind)) continue; // 자패는 순창(1~9) 대상이 아니다
@@ -104,7 +113,7 @@ function hasFullSuitRun(state: GameState, holder: PlayerId): boolean {
 /** 같은 종류(kindKey)를 3장 이상 버렸는가 — 무늬·자패 무관 */
 function hasTripleDiscard(state: GameState, holder: PlayerId): boolean {
   const counts = new Map<string, number>();
-  for (const key of discardedKinds(state, holder)) {
+  for (const key of myDiscardKinds(state, holder)) {
     const next = (counts.get(key) ?? 0) + 1;
     if (next >= 3) return true;
     counts.set(key, next);

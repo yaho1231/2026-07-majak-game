@@ -1,0 +1,292 @@
+| build | rounds | winsP0 | win% | avgPts | avgHan | maxPts | 역만 | 방총 | 유국 | 리치 | 최종 | augPts | viol | effErr | ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| control | 50 | 11 | 22% | 7555 | 3.8 | 24000 | 0 | 8 | 13 | 9 | 26575 | 0 | 0 | 0 | 14888 |
+| riichi | 43 | 8 | 19% | 6875 | 3.5 | 11700 | 0 | 10 | 9 | 15 | 25075 | 0 | 0 | 0 | 14538 |
+| kandora | 48 | 6 | 13% | 14000 | 6.5 | 18000 | 0 | 5 | 14 | 11 | 30913 | 0 | 0 | 0 | 14992 |
+| kokushi | 44 | 6 | 14% | 5183 | 3 | 12000 | 0 | 7 | 11 | 7 | 23650 | 0 | 0 | 0 | 14135 |
+| open | 43 | 19 | 44% | 7047 | 3.4 | 24000 | 0 | 7 | 6 | 7 | 43338 | 34900 | 0 | 0 | 52092 |
+| bank | 45 | 11 | 24% | 6800 | 3.5 | 12000 | 0 | 8 | 9 | 12 | 42238 | 27600 | 0 | 0 | 13972 |
+| defense | 53 | 9 | 17% | 7922 | 3.7 | 24000 | 0 | 3 | 15 | 11 | 38550 | 48000 | 0 | 0 | 16166 |
+| steal | 49 | 8 | 16% | 7025 | 3.1 | 18000 | 0 | 6 | 13 | 9 | 34300 | 76200 | 0 | 0 | 15073 |
+| info | 46 | 12 | 26% | 7250 | 3.6 | 24000 | 0 | 6 | 12 | 12 | 35263 | 50600 | 0 | 0 | 14011 |
+| hand | 38 | 20 | 53% | 13655 | 5.2 | 36000 | 0 | 2 | 3 | 29 | 54750 | 0 | 0 | 0 | 8860 |
+| draw | 50 | 11 | 22% | 8164 | 3.9 | 24000 | 0 | 3 | 12 | 17 | 40863 | 46000 | 0 | 0 | 14192 |
+| dealer | 49 | 11 | 22% | 8918 | 3.5 | 18000 | 0 | 8 | 12 | 12 | 33550 | 33100 | 0 | 0 | 13994 |
+| wall | 51 | 14 | 27% | 6679 | 3.5 | 16000 | 0 | 2 | 13 | 16 | 35738 | 14300 | 0 | 0 | 13210 |
+| disrupt | 45 | 9 | 20% | 4011 | 2.3 | 11700 | 0 | 8 | 12 | 14 | 23950 | 0 | 0 | 0 | 11422 |
+| ron | 45 | 8 | 18% | 4038 | 2.5 | 7700 | 0 | 3 | 9 | 12 | 19875 | -7700 | 0 | 0 | 11073 |
+| shape | 47 | 20 | 43% | 4860 | 2.9 | 12000 | 0 | 4 | 6 | 8 | 34125 | 0 | 0 | 0 | 47029 |
+| multi | 56 | 11 | 20% | 9200 | 3.6 | 24000 | 0 | 10 | 21 | 16 | 29038 | 16600 | 0 | 0 | 9193 |
+| late | 47 | 15 | 32% | 7227 | 3.7 | 24000 | 0 | 5 | 19 | 16 | 37938 | 22700 | 0 | 0 | 7381 |
+
+## riichi — 리치 최대화 (stealth_riichi + late_double + ura_peek + no_retreat)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| stealth_riichi | 0 | 0/0 | 0/0 | 44 | 15 | 15/15/15 |  |
+| late_double | 0 | 0/0 | 2171/4 | 0 | 0 | 0/0/0 |  |
+| ura_peek | 0 | 6805/44 | 0/0 | 565 | 18 | 565/33/18 |  |
+| no_retreat | 0 | 43/43 | 0/0 | 44 | 0 | 15/15/0 |  |
+- p0 역 빈도: riichi:3 menzen_tsumo:3 double_riichi:3 yakuhai_haku:1 chiitoitsu:1 pinfu:1 yakuhai_hatsu:1
+- extraHanBy(전체): late_double:3판
+- augPoints(p0): -
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":527,"pass":131,"stealth_riichi":15,"ura_peek_reveal":18,"pon":4,"win":8,"chi":4,"shouminkan":1}
+- 크래시: -
+
+## kandora — 깡·도라 (ankan_dora + snake_kan + mirror_dora + red_five_touch)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| ankan_dora | 0 | 6/2 | 0/0 | 0 | 0 | 0/0/0 |  |
+| snake_kan | 8 | 0/0 | 0/0 | 0 | 0 | 0/3/0 |  |
+| mirror_dora | 0 | 7969/88 | 0/0 | 0 | 0 | 0/0/0 |  |
+| red_five_touch | 0 | 15938/90 | 0/0 | 651 | 8 | 151/8/8 |  |
+- p0 역 빈도: riichi:5 yakuhai_haku:1 ippatsu:1 pinfu:1 menzen_tsumo:1
+- extraHanBy(전체): -
+- augPoints(p0): -
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":576,"pass":137,"red_touch":8,"riichi":11,"win":6,"pon":5,"chi":4,"ankan":2}
+- 크래시: -
+
+## kokushi — 국사 (royal_kokushi + giant_god + polar_ends + broken_wall)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| royal_kokushi | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| giant_god | 0 | 8866/8 | 0/0 | 0 | 0 | 0/0/0 |  |
+| polar_ends | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| broken_wall | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+- p0 역 빈도: riichi:3 menzen_tsumo:3 yakuhai_chun:1 tanyao:1 yakuhai_hatsu:1 ippatsu:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): -
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":519,"pass":170,"riichi":7,"pon":6,"ankan":1,"win":6,"chi":3}
+- 크래시: -
+
+## open — 후로 타점 (omni_chi + mixed_triplet + broken_border + big_hand)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| omni_chi | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| mixed_triplet | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| broken_border | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| big_hand | 0 | 43/43 | 86/7 | 23 | 23 | 23/23/23 |  |
+- p0 역 빈도: menzen_tsumo:12 riichi:5 sanankou:4 pinfu:3 yakuhai_prevalent:3 tanyao:3 yakuhai_haku:2 yakuhai_seat:2 rinshan:1 ittsuu:1 ippatsu:1 haitei:1
+- extraHanBy(전체): -
+- augPoints(p0): big_hand:34900
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"declare_big_hand":23,"discard":434,"pass":621,"riichi":7,"win":19,"pon":12,"shouminkan":4,"chi":6}
+- 크래시: -
+
+## bank — 뱅크 (jackpot + big_hand + devils_advance + honba_hunter)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| jackpot | 0 | 0/0 | 45/9 | 114 | 45 | 45/45/45 |  |
+| big_hand | 0 | 45/45 | 90/2 | 48 | 24 | 48/48/24 |  |
+| devils_advance | 0 | 90/12 | 45/4 | 0 | 0 | 0/0/0 |  |
+| honba_hunter | 8 | 45/45 | 0/0 | 0 | 0 | 0/0/0 |  |
+- p0 역 빈도: riichi:8 ippatsu:4 yakuhai_chun:3 menzen_tsumo:2 pinfu:1 houtei:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): devils_advance:0 jackpot:19100 big_hand:8500
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"jackpot_roll":45,"declare_big_hand":24,"discard":515,"pass":121,"riichi":12,"win":11,"pon":12,"chi":2}
+- 크래시: -
+
+## defense — 수비 존버 (invincible + always_tenpai + danger_sense + tenpai_scan)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| invincible | 0 | 53/48 | 0/0 | 217 | 26 | 217/26/26 |  |
+| always_tenpai | 8 | 0/0 | 53/15 | 0 | 0 | 0/0/0 |  |
+| danger_sense | 0 | 9660/192 | 0/0 | 422 | 46 | 422/72/46 |  |
+| tenpai_scan | 0 | 9660/221 | 0/0 | 546 | 41 | 546/77/41 |  |
+- p0 역 빈도: riichi:5 menzen_tsumo:4 ippatsu:2 chiitoitsu:2 yakuhai_seat:2 pinfu:1 sanankou:1 yakuhai_prevalent:1 tanyao:1
+- extraHanBy(전체): -
+- augPoints(p0): always_tenpai:48000
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":697,"invincible_guard":26,"danger_sense_use":46,"pass":171,"tenpai_scan_use":41,"riichi":11,"pon":6,"chi":5,"win":9,"shouminkan":1}
+- 크래시: -
+
+## steal — 훔치기 (spy + parasite + karma + blame_shift)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| spy | 0 | 49/0 | 49/0 | 50 | 49 | 50/50/49 |  |
+| parasite | 0 | 0/0 | 49/23 | 342 | 48 | 342/48/48 |  |
+| karma | 0 | 49/17 | 0/0 | 757 | 2 | 4/4/2 |  |
+| blame_shift | 0 | 0/0 | 49/6 | 0 | 0 | 0/0/0 |  |
+- p0 역 빈도: riichi:5 menzen_tsumo:2 ippatsu:2 yakuhai_haku:1 tanyao:1 iipeiko:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): parasite:76200
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"spy_mark":49,"discard":623,"parasite_attach":48,"pass":163,"riichi":9,"win":8,"pon":8,"karma_burn":2}
+- 크래시: -
+
+## info — 정보 (xray_hand + foresight + triple_peek + peek_riichi_waits)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| xray_hand | 0 | 11445/16 | 0/0 | 57 | 8 | 57/9/8 |  |
+| foresight | 0 | 13841/2694 | 46/11 | 445 | 118 | 445/130/118 |  |
+| triple_peek | 0 | 11491/327 | 0/0 | 194 | 25 | 194/52/25 |  |
+| peek_riichi_waits | 0 | 11491/95 | 0/0 | 198 | 28 | 188/28/28 |  |
+- p0 역 빈도: riichi:8 ippatsu:4 menzen_tsumo:4 sanankou:2 yakuhai_haku:1 chiitoitsu:1 pinfu:1 yakuhai_hatsu:1 tanyao:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): foresight:50600
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":571,"foresight_reveal":118,"pass":137,"xray_reveal":8,"triple_peek_use":25,"riichi":12,"peek_waits":28,"pon":7,"win":12,"chi":2,"ankan":1}
+- 크래시: -
+
+## hand — 손패 조작 (alchemist + tile_split + suit_unify + conjure_draw)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| alchemist | 0 | 5429/36 | 0/0 | 345 | 28 | 345/34/28 |  |
+| tile_split | 0 | 5429/88 | 0/0 | 84 | 36 | 84/51/36 |  |
+| suit_unify | 0 | 5429/32 | 0/0 | 12 | 8 | 12/8/8 |  |
+| conjure_draw | 0 | 6972/144 | 0/0 | 178 | 28 | 178/74/28 |  |
+- p0 역 빈도: riichi:15 menzen_tsumo:10 double_riichi:4 chinitsu:4 pinfu:3 sanankou:3 honitsu:2 ippatsu:2 chiitoitsu:1 tanyao:1 yakuhai_hatsu:1 yakuhai_seat:1
+- extraHanBy(전체): -
+- augPoints(p0): -
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"mono_world":8,"split_tile":36,"win":20,"conjure_tsumo":28,"discard":317,"riichi":29,"alchemy":28,"pass":52,"pon":2,"shouminkan":1,"ankan":8}
+- 크래시: -
+
+## draw — 유국 (always_tenpai + nagashi_yakuman + hourglass + regret)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| always_tenpai | 8 | 0/0 | 50/12 | 0 | 0 | 0/0/0 |  |
+| nagashi_yakuman | 8 | 0/0 | 50/0 | 0 | 0 | 0/0/0 |  |
+| hourglass | 0 | 50/50 | 2592/7 | 0 | 0 | 0/0/0 |  |
+| regret | 0 | 150/53 | 0/0 | 0 | 0 | 0/0/0 |  |
+- p0 역 빈도: riichi:8 ippatsu:4 menzen_tsumo:4 pinfu:2 double_riichi:1 iipeiko:1 chiitoitsu:1 sanankou:1 yakuhai_hatsu:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): always_tenpai:46000
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":569,"pass":134,"riichi":17,"win":11,"pon":4,"chi":1,"shouminkan":1}
+- 크래시: -
+
+## dealer — 오야 고정 (eternal_dealer + pseudo_dealer + honba_hunter + big_hand)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| eternal_dealer | 0 | 16317/28 | 49/1 | 0 | 0 | 0/0/0 |  |
+| pseudo_dealer | 0 | 49/17 | 0/0 | 303 | 10 | 303/10/10 |  |
+| honba_hunter | 8 | 49/49 | 0/0 | 0 | 0 | 0/0/0 |  |
+| big_hand | 0 | 49/49 | 98/5 | 27 | 27 | 27/27/27 |  |
+- p0 역 빈도: riichi:9 ippatsu:4 menzen_tsumo:3 pinfu:1 yakuhai_haku:1 tanyao:1 yakuhai_chun:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): big_hand:33100
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"declare_big_hand":27,"discard":605,"pass":150,"riichi":12,"win":11,"claim_dealer":10,"pon":10,"chi":3,"minkan":1}
+- 크래시: -
+
+## wall — 패산 지배 (dead_wall_master + bottom_deal + haitei_lord + cliff_bloom)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| dead_wall_master | 0 | 2698/101 | 0/0 | 133 | 50 | 133/50/50 |  |
+| bottom_deal | 0 | 2676/154 | 2625/154 | 718 | 158 | 718/195/158 |  |
+| haitei_lord | 0 | 2625/2 | 51/2 | 0 | 0 | 0/0/0 |  |
+| cliff_bloom | 0 | 2634/8 | 0/0 | 4 | 3 | 4/3/3 |  |
+- p0 역 빈도: riichi:10 menzen_tsumo:4 iipeiko:2 tanyao:2 haitei:2 chiitoitsu:2 yakuhai_seat:2 yakuhai_prevalent:2 yakuhai_chun:1 ippatsu:1 pinfu:1 rinshan:1
+- extraHanBy(전체): cliff_bloom:3판
+- augPoints(p0): haitei_lord:14300
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"dw_swap":50,"discard":642,"pass":151,"bottom_deal":158,"pon":7,"riichi":16,"win":14,"chi":2,"ankan":3,"bloom_pick":3,"shouminkan":1}
+- 크래시: -
+
+## disrupt — 봉인 (riichi_seal + call_seal + disarm + time_stop)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| riichi_seal | 0 | 2444/11 | 0/0 | 0 | 0 | 0/0/0 |  |
+| call_seal | 0 | 7503/16 | 0/0 | 73 | 8 | 73/9/8 |  |
+| disarm | 0 | 7548/16 | 0/0 | 0 | 0 | 0/0/0 |  |
+| time_stop | 0 | 9834/80 | 2331/18 | 542 | 19 | 542/19/19 |  |
+- p0 역 빈도: riichi:7 pinfu:3 yakuhai_hatsu:1 iipeiko:1 menzen_tsumo:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): -
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":540,"pass":134,"call_seal_use":8,"time_stop_use":19,"riichi":14,"pon":4,"win":9,"chi":3}
+- 크래시: -
+
+## ron — 론 특화 (avenger + blind_ron + off_by_one + frame_up)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| avenger | 0 | 45/3 | 0/0 | 0 | 0 | 0/0/0 |  |
+| blind_ron | 0 | 90/24 | 45/3 | 0 | 0 | 0/0/0 |  |
+| off_by_one | 0 | 2227/1 | 0/0 | 0 | 0 | 0/0/0 |  |
+| frame_up | 0 | 45/45 | 0/0 | 483 | 0 | 483/0/0 |  |
+- p0 역 빈도: riichi:7 menzen_tsumo:2 ippatsu:2 yakuhai_prevalent:1 tanyao:1
+- extraHanBy(전체): -
+- augPoints(p0): blind_ron:-7700
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":516,"pass":129,"riichi":12,"win":8,"pon":4,"minkan":1}
+- 크래시: -
+
+## shape — 손 모양 파괴 (async_chiitoi + mixed_triplet + broken_border + polar_ends)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| async_chiitoi | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| mixed_triplet | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| broken_border | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+| polar_ends | 8 | 0/0 | 0/0 | 0 | 0 | 0/0/0 |  |
+- p0 역 빈도: menzen_tsumo:11 riichi:6 tanyao:5 pinfu:4 yakuhai_haku:2 ippatsu:2 chiitoitsu:2 yakuhai_hatsu:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): -
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":508,"pass":500,"riichi":8,"win":20,"pon":16,"shouminkan":7,"chi":1,"minkan":1}
+- 크래시: -
+
+## multi — 타점 배수 (aotenjou_ceiling + eternal_dealer + mirror_dora + ankan_dora)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| aotenjou_ceiling | 0 | 0/0 | 56/3 | 0 | 0 | 0/0/0 |  |
+| eternal_dealer | 0 | 18736/44 | 56/5 | 0 | 0 | 0/0/0 |  |
+| mirror_dora | 0 | 9340/77 | 0/0 | 0 | 0 | 0/0/0 |  |
+| ankan_dora | 0 | 5/1 | 0/0 | 0 | 0 | 0/0/0 |  |
+- p0 역 빈도: riichi:8 menzen_tsumo:4 yakuhai_haku:2 chiitoitsu:1 yakuhai_hatsu:1 iipeiko:1 yakuhai_chun:1 sanankou:1 ippatsu:1 yakuhai_seat:1 yakuhai_prevalent:1
+- extraHanBy(전체): -
+- augPoints(p0): aotenjou_ceiling:16600
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"discard":681,"pass":175,"riichi":16,"win":11,"chi":6,"pon":4,"ankan":1}
+- 크래시: -
+
+## late — 역전 (동풍전 후반) (late_bloomer_east + rank_gate + last_stand + cliff_bloom)
+| 증강 | rule | react호출/emit | inter호출/변경 | 옵션제시 | 액션발동 | 봇 기회/제안/발동 | |
+|---|---|---|---|---|---|---|---|
+| late_bloomer_east | 0 | 47/8 | 47/5 | 0 | 0 | 0/0/0 |  |
+| rank_gate | 0 | 94/94 | 0/0 | 46 | 46 | 46/46/46 |  |
+| last_stand | 0 | 8380/10 | 0/0 | 47 | 1 | 47/1/1 |  |
+| cliff_bloom | 0 | 2674/6 | 0/0 | 3 | 3 | 3/3/3 |  |
+- p0 역 빈도: riichi:9 menzen_tsumo:6 ippatsu:4 pinfu:2 yakuhai_haku:2 tanyao:2 haitei:1 sanankou:1 chiitoitsu:1 yakuhai_seat:1 yakuhai_prevalent:1 yakuhai_chun:1
+- extraHanBy(전체): -
+- augPoints(p0): late_bloomer_east:22700
+- 위반: -
+- 증강 코드 실패: -
+- 미제시 경고: -
+- p0 액션: {"rank_gate_mark":46,"discard":653,"pass":155,"riichi":16,"win":15,"pon":5,"shouminkan":1,"bloom_pick":3,"chi":5,"ankan":2,"cancel_riichi":1}
+- 크래시: -

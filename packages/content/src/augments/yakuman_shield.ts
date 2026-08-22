@@ -32,7 +32,9 @@ import {
   ROUND_SETTLED,
   SETTLE_STAGE,
   augmentDataSet,
+  augmentInstanceId,
   defineAugment,
+  isSourceDisarmed,
 } from "@majak/core";
 import type {
   AugmentDef,
@@ -46,8 +48,11 @@ import {
   viewKey,
   withAugPoint,
 } from "../util.js";
+import { scapegoatTargetOf } from "./scapegoat.js";
 
 const ID = "yakuman_shield";
+/** 지불을 한 사람에게 몰아주는 재배선 — 쯔모 환급 상한이 이걸 봐야 한다 (아래 paidFor) */
+const SCAPEGOAT = "scapegoat";
 /** 게임 단위 누적 방어 횟수 (roundKey를 섞지 않는다 — 게임 내내 누적) */
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
 /** 전원 공개: 지금까지 막아낸 역만 수 */
@@ -119,6 +124,30 @@ export const yakumanShield: AugmentDef = defineAugment({
         // (겹쳐서 넘쳐도 `min(-loss, cap)`이 잘라 준다).
         const paoShare = w.pao?.responsible === holder ? w.pao.points : 0;
         if (holderSeat === undefined) return paoShare;
+        /*
+         * ⚠ **재배선으로 나에게 몰린 몫도 그 역만 때문에 낸 돈이다.**
+         *
+         * 론 분기는 위에서 이미 "누가 무는지는 보지 않는다"고 적어 두었는데, 쯔모
+         * 분기만 표준 분담(`payments.others`)을 상한으로 삼고 있었다. 그래서 덤터기가
+         * 셋의 지불을 나 하나에게 몰아준 96,000 역만 쯔모에서 방어막이 32,000만
+         * 돌려주고 **64,000이 그대로 남았다** — 25,000 시작 판이면 즉사인데, 화면에는
+         * 방어 카운터가 +1 되어 "막았다"고 찍혔다(2026-08-23 QA synergy3 disrupt 확정 1).
+         * 같은 96,000을 론으로 맞으면 0이 되는 것과 앞뒤가 맞지 않았다.
+         *
+         * 덤터기 표식이 그 화료자에게서 나를 가리키면 상한을 그 손의 **지불 총액**으로
+         * 올린다. 본장·공탁은 `payments`(=`points`)에 없으므로 detail대로 그대로 남는다.
+         * 잠긴(무장해제된) 덤터기는 재배선 자체를 하지 않으니 표식도 무시한다.
+         */
+        const marker = ic.state.players.find(
+          (pl) =>
+            pl.id !== holder &&
+            pl.augments.includes(SCAPEGOAT) &&
+            !isSourceDisarmed(ic.state, augmentInstanceId(pl.id, SCAPEGOAT)) &&
+            scapegoatTargetOf(ic.state, pl.id) === holder,
+        );
+        if (marker !== undefined && marker.id === w.winner) {
+          return w.points + paoShare;
+        }
         const share =
           w.payments?.dealer !== undefined && holderSeat === dealerSeat
             ? w.payments.dealer

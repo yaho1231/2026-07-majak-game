@@ -730,23 +730,38 @@ function kokushiPairOf(hand: readonly TileKind[], kokushiDupes: number): TileKin
   return counts.kindOf.get(doubled) as TileKind;
 }
 
-/** 울어 국사 — 후로가 3M종을 덮고 손이 나머지를 덮는가. 성립하면 머리 kind */
+/**
+ * 울어 국사 — 후로가 3M종을 덮고 손이 나머지를 덮는가. 성립하면 머리 kind.
+ *
+ * `kokushiDupes`(왕의 징표)는 닫힌 국사(`kokushiPairOf`)와 **같은 뜻**이다 — 종류가
+ * d개까지 빠져도 되고 빠진 자리는 중복으로 메운다. 2026-08-23까지 이 분기만 그 값을
+ * 안 받아 13종을 강제했다: 같은 자리에서 조커(`forEachOrphanFill`)는 통하는데 중복만
+ * 안 통해, 두 카드를 함께 든 사람이 12종에서 kokushi_pon을 부르면 화료형이 서지 않고
+ * `kokushiOnly`가 다른 길까지 막아 **벽돌 국**이 됐다(QA synergy3 shape 확정 1).
+ * 머리는 그대로 손패(울지 않은 패)에서만 나온다.
+ */
 function meldKokushiPairOf(
   hand: readonly TileKind[],
   meldSet: ReadonlySet<string>,
   orphanKeys: ReadonlySet<string>,
+  kokushiDupes: number,
 ): TileKind | null {
   const handKeys = hand.map(kindKey);
   const handDistinct = new Set(handKeys);
   const counts = new Map<string, number>();
   for (const key of handKeys) counts.set(key, (counts.get(key) ?? 0) + 1);
+  // 빠진 종류 수 — 후로+손이 덮은 종류가 13에서 몇 개 모자라는가
+  const missing = 13 - (handDistinct.size + meldSet.size);
   const covered =
     handKeys.every((key) => orphanKeys.has(key)) && // 손패 전부 요구패
     [...handDistinct].every((key) => !meldSet.has(key)) && // 후로와 겹치지 않음(머리도 손패)
-    handDistinct.size + meldSet.size === 13 && // 후로+손 = 13종 전부
-    handKeys.length === handDistinct.size + 1; // 정확히 1종만 2장(머리)
+    missing >= 0 &&
+    missing <= kokushiDupes;
   if (!covered) return null;
-  const pairKey = [...counts.entries()].find(([, n]) => n === 2)?.[0];
+  // 손패 장수는 바깥에서 14−K로 고정돼 있으므로, 빠진 d종만큼 중복이 더 생긴다.
+  // 머리는 그중 아무 중복 종류 하나 — 결정적으로 첫 번째를 쓴다.
+  const pairKey = [...counts.entries()].find(([, n]) => n >= 2)?.[0];
+  if (pairKey === undefined) return null;
   return hand.find((k) => kindKey(k) === pairKey) ?? null;
 }
 
@@ -763,15 +778,65 @@ export function decompose(
   return decomposeInternal(hand, meldCount, normalizeOptions(opts), false);
 }
 
+/**
+ * `isWinningShape` 메모 — **순수 함수의 결과 캐시**다.
+ *
+ * 이 함수는 대기 계산(`winningKinds`)이 34종을 훑으며 부르고, 봇은 한 번의 결정에서
+ * 손 읽기·버림 후보·위험도를 재느라 같은 손을 몇 번이고 다시 묻는다. 화료형을 넓히는
+ * 증강(무너진 국경 `mixedRuns` 등)이 켜지면 분해 가지가 폭증해, 그 반복이 곧 체감
+ * 지연이 된다 — 실측으로 **한 장에 봇 진행이 3.4배 느려졌다**(3.7s → 12.7s/판,
+ * 2026-08-23 QA synergy3 build 확정 4).
+ *
+ * 입력이 같으면 출력이 같으므로 무효화가 필요 없다. 다만 무한히 자라면 안 되므로
+ * 상한을 두고 넘치면 통째로 비운다(LRU를 쓸 만큼 뜨겁지 않다).
+ */
+const SHAPE_MEMO_MAX = 20_000;
+const shapeMemo = new Map<string, boolean>();
+
+/** 메모 키 — 손 + 후로 수 + **분해 규칙 전부**. 하나라도 빠지면 오답이 캐시된다. */
+function shapeMemoKey(
+  hand: readonly TileKind[],
+  meldCount: number,
+  n: NormalizedOptions,
+): string {
+  const tiles = hand.map(kindKey).sort().join(",");
+  const suits = [...n.sequenceSuits].sort().join("");
+  const wild = n.wildKinds.map(kindKey).sort().join(",");
+  const kokushi =
+    n.kokushiMeldKinds === undefined
+      ? ""
+      : n.kokushiMeldKinds.map(kindKey).sort().join(",");
+  const flags = [
+    n.wrapRuns,
+    n.kokushiOnly,
+    n.mixedRuns,
+    n.mixedTriplets,
+    n.mixedPairs,
+    n.polarEnds,
+    n.chiitoiMixedPairs,
+    n.honorRuns,
+  ]
+    .map((b) => (b ? "1" : "0"))
+    .join("");
+  return `${tiles}|${meldCount}|${n.totalSets}|${suits}|${flags}|${n.kokushiDupes}|${wild}|${kokushi}`;
+}
+
 /** 화료 형태인가 (분해가 하나라도 존재) */
 export function isWinningShape(
   hand: readonly TileKind[],
   meldCount: number,
   opts?: DecomposeOptions | ReadonlySet<Suit>,
 ): boolean {
+  const norm = normalizeOptions(opts);
+  const key = shapeMemoKey(hand, meldCount, norm);
+  const hit = shapeMemo.get(key);
+  if (hit !== undefined) return hit;
   // 존재만 보면 되므로 첫 해에서 멈춘다 — 대기 계산(winningKinds)이 34종을 훑으며
   // 이 함수를 부르기 때문에 조기 종료가 곧 체감 속도다.
-  return decomposeInternal(hand, meldCount, normalizeOptions(opts), true).length > 0;
+  const out = decomposeInternal(hand, meldCount, norm, true).length > 0;
+  if (shapeMemo.size >= SHAPE_MEMO_MAX) shapeMemo.clear();
+  shapeMemo.set(key, out);
+  return out;
 }
 
 /**
@@ -961,7 +1026,12 @@ function decomposeInternal(
       real.every((k) => orphanKeys.has(kindKey(k)))
     ) {
       forEachOrphanFill(wilds, (fill) => {
-        const pair = meldKokushiPairOf([...real, ...fill], meldSet, orphanKeys);
+        const pair = meldKokushiPairOf(
+          [...real, ...fill],
+          meldSet,
+          orphanKeys,
+          kokushiDupes,
+        );
         if (pair !== null) add({ form: "kokushi", pair, sets: [] }, fill);
         return done();
       });

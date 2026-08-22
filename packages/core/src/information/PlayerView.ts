@@ -868,6 +868,7 @@ function buildRoundView(
       discardedKinds: [],
       discardCount: 0,
       tsumogiriIds: [],
+      ownDiscards: [],
     };
     const meldCount = pr.melds.length;
     const riichiDeclared = pr.riichi !== null;

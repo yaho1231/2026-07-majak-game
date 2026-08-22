@@ -14,16 +14,8 @@
  *   "시작한 사람"이 끝수까지 진다).
  */
 
-import {
-  defineAugment,
-  ROUND_SETTLED,
-  SETTLE_STAGE,
-} from "@majak/core";
-import type {
-  AugmentDef,
-  PlayerId,
-  RoundSettledPayload,
-} from "@majak/core";
+import { defineAugment, ROUND_SETTLED, SETTLE_STAGE } from "@majak/core";
+import type { AugmentDef, PlayerId, RoundSettledPayload } from "@majak/core";
 import { settleInterceptor, withAugNoteFor } from "../util.js";
 
 const ID = "blame_shift";
@@ -49,6 +41,30 @@ function splitEvenly(total: number, n: number): number[] {
   return out;
 }
 
+/** 그 화료 때문에 쏜 사람이 무는 금액 (파오분은 책임자가 따로 문다) */
+function owedToMe(info: {
+  points: number;
+  honbaBonus?: number;
+  pao?: { points: number } | null;
+}): number {
+  return info.points + (info.honbaBonus ?? 0) - (info.pao?.points ?? 0);
+}
+
+/** 지불을 나눠 질 사람들 — 화료자는 빼고, 끝수를 흡수할 쏜 사람을 마지막에 둔다. */
+function losersFor(
+  p: RoundSettledPayload,
+  players: readonly { id: PlayerId }[],
+  discarder: PlayerId,
+): PlayerId[] {
+  const winners = new Set((p.winInfos ?? []).map((w) => w.winner));
+  return [
+    ...players
+      .map((pl) => pl.id)
+      .filter((id) => !winners.has(id) && id !== discarder),
+    discarder,
+  ];
+}
+
 export const blameShift: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
@@ -62,8 +78,10 @@ export const blameShift: AugmentDef = defineAugment({
   install(ctx) {
     const { holder } = ctx;
 
-    // 정산 단계: Redistribute — 지불자만 재배선한다 — 총액·홀더 수령액 불변. 재분배가 방어(Shield)보다
-    // 먼저 돌아야 역만 방어술이 "새로 부과된 지불"까지 보고 막을 수 있다.
+    /*
+     * 정산 단계: Redistribute — 지불자만 재배선한다 — 총액·홀더 수령액 불변. 재분배가
+     * 방어(Shield)보다 먼저 돌아야 역만 방어술이 "새로 부과된 지불"까지 보고 막을 수 있다.
+     */
     settleInterceptor(ctx, SETTLE_STAGE.Redistribute, (event, ic) => {
       const p = event.payload as RoundSettledPayload;
       if (p.outcome !== "win") return event;
@@ -87,19 +105,19 @@ export const blameShift: AugmentDef = defineAugment({
        * WinInfo에서 재는 값은 다른 인터셉터의 영향을 받지 않으므로 둘 다 사라진다.
        * 파오분은 책임자가 따로 무는 돈이라(방총자가 내지 않는다) 빼 둔다.
        */
-      const owed =
-        info.points + (info.honbaBonus ?? 0) - (info.pao?.points ?? 0);
+      /*
+       * **지금 그가 실제로 무는 것보다 많이 되돌려 줄 수는 없다** (2026-08-23 QA
+       * synergy3 score 확정 1). 같은 `Redistribute` 단계의 눈먼 총알이 먼저 돌아
+       * 지불을 통째로 다른 사람에게 옮겨 놓으면, WinInfo의 원본 금액을 그대로
+       * 원상복구하는 순간 **쏜 사람이 흑자가 된다.**
+       */
+      const owed = Math.min(
+        owedToMe(info),
+        Math.max(0, -(p.deltas[discarder] ?? 0)),
+      );
       if (owed <= 0) return event;
 
-      // 화료자는 전부 제외한다 — 승자에게 지불을 떠넘기지 않는다.
-      // 쏜 사람을 마지막에 두어 끝수를 흡수시킨다.
-      const winners = new Set((p.winInfos ?? []).map((w) => w.winner));
-      const losers: PlayerId[] = [
-        ...ic.state.players
-          .map((pl) => pl.id)
-          .filter((id) => !winners.has(id) && id !== discarder),
-        discarder,
-      ];
+      const losers = losersFor(p, ic.state.players, discarder);
       if (losers.length === 0) return event;
 
       const shares = splitEvenly(owed, losers.length);
@@ -111,6 +129,61 @@ export const blameShift: AugmentDef = defineAugment({
       // 결과 화면 어디에도 이유가 없었다.
       let notes = p.augPoints ?? [];
       notes = withAugNoteFor({ ...p, augPoints: notes }, ID, discarder, owed);
+      losers.forEach((id, i) => {
+        const share = shares[i] as number;
+        deltas[id] = (deltas[id] ?? 0) - share;
+        notes = withAugNoteFor({ ...p, augPoints: notes }, ID, id, -share);
+      });
+      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
+    });
+
+    /*
+     * `Reassert` — 이동(Transfer)이 전부 끝난 뒤 **한 번 더** 확인한다.
+     *
+     * 위 재분배는 `Redistribute`(100)라, 뒤에 도는 `Transfer`(400)가 **쏜 사람에게만**
+     * 새로 부과하는 지불을 볼 수 없다. 그래서 뚫린 천장이 끼면 표준 24,000은 3분할되는데
+     * 상한 해제분 6,000은 쏜 사람 혼자가 물었다 — 카드가 약속한 "그 지불이 세 명에게
+     * 분담된다"가 큰 손에서 깨진 것이다(2026-08-23 QA synergy3 score 확정 4).
+     * 역만 구간이면 그 편차가 42,000이다. 덤터기(`scapegoat`)는 정확히 같은 이유로
+     * 이미 `Reassert` 재확인을 갖고 있는데 거울상인 이쪽에는 없었다.
+     *
+     * **새로 붙은 몫만** 나눈다. 지금 쏜 사람이 무는 것에서 ①내 화료로 내가 이미 지운
+     * 그의 몫과 ②다른 화료자에게 가는 몫을 빼면 남는 것이 정확히 그것이다. 값이 0 이하면
+     * (= 이미 누군가 다시 흩었거나 새 부담이 없다) 아무 일도 하지 않는다 — 그래서
+     * 두 패스가 이중으로 나누지 않는다.
+     */
+    settleInterceptor(ctx, SETTLE_STAGE.Reassert, (event, ic) => {
+      const p = event.payload as RoundSettledPayload;
+      if (p.outcome !== "win") return event;
+      const info = (p.winInfos ?? []).find(
+        (w) => w.winner === holder && w.winType === "ron" && w.from !== null,
+      );
+      if (info === undefined || info.from === null) return event;
+      const discarder = info.from;
+      const owed = owedToMe(info);
+      if (owed <= 0) return event;
+
+      const losers = losersFor(p, ic.state.players, discarder);
+      if (losers.length === 0) return event;
+
+      /** 첫 패스가 쏜 사람에게 남긴 내 몫 — 끝수를 흡수하므로 마지막 칸이다. */
+      const myShareLast = splitEvenly(owed, losers.length)[
+        losers.length - 1
+      ] as number;
+      /** 다른 화료자에게 가는 몫 — 내 화료의 지불이 아니다. */
+      const otherOwed = (p.winInfos ?? [])
+        .filter(
+          (w) =>
+            w.winner !== holder && w.winType === "ron" && w.from === discarder,
+        )
+        .reduce((sum, w) => sum + owedToMe(w), 0);
+      const extra = -(p.deltas[discarder] ?? 0) - myShareLast - otherOwed;
+      if (extra <= 0) return event;
+
+      const shares = splitEvenly(extra, losers.length);
+      const deltas = { ...p.deltas };
+      deltas[discarder] = (deltas[discarder] ?? 0) + extra;
+      let notes = withAugNoteFor(p, ID, discarder, extra);
       losers.forEach((id, i) => {
         const share = shares[i] as number;
         deltas[id] = (deltas[id] ?? 0) - share;

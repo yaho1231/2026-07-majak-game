@@ -48,6 +48,16 @@
 export type SynergyTag =
   /** 리치를 선언한다·리치 선언 자체의 조건을 건드린다 */
   | "riichi"
+  /**
+   * **자기만의 리치 선언 버튼을 낸다** — 국당 하나만 쓸 수 있으므로 서로 죽는다.
+   *
+   * 리치는 국당 한 번이다. 이 축의 카드를 둘 이상 들면 텐파이 순간 버튼이 나란히 뜨고
+   * 하나를 쓰는 순간 나머지는 그 국 내내 사라진다 — 카드 어디에도 그런 말이 없고
+   * `conflicts`도 없다(2026-08-23 QA synergy3 riichi 확정 9). 그런데 다섯 장 전부
+   * `riichi` 축을 달고 있어 시너지 표가 오히려 **중복 카드를 몰아 줬다.**
+   * 이 축은 자기 자신에게 `anti`라 서로를 밀어낸다.
+   */
+  | "riichi_declare"
   /** 리치 화료의 값을 키운다 (뒷도라·리치 판수·일발) */
   | "riichi_value"
   /** 내가 리치라는 사실을 전원에게 드러낸다 (스텔스의 반대축) */
@@ -114,6 +124,7 @@ export type SynergyTag =
 /** 축 한 줄 정의 (문서·관리자 화면용) */
 export const SYNERGY_TAG_LABEL: Readonly<Record<SynergyTag, string>> = {
   riichi: "리치 선언",
+  riichi_declare: "전용 리치 선언",
   riichi_value: "리치 타점",
   riichi_open: "리치 공개",
   riichi_deny: "리치 봉쇄",
@@ -169,11 +180,13 @@ const e = (
 export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   // ───────────────────────── 리치 빌드 ─────────────────────────
   // 값을 키우는 쪽(riichi_value)과 드러내는 쪽(riichi_open)을 일부러 갈라 놓았다.
-  stealth_riichi: e(["riichi", "riichi_value", "menzen"], {
-    anti: ["riichi_open", "riichi_deny"],
+  stealth_riichi: e(["riichi", "riichi_declare", "riichi_value", "menzen"], {
+    anti: ["riichi_open", "riichi_deny", "riichi_declare"],
   }),
   // 2026-08-15: 손바닥 뒤집기와의 상호 무효(둘 다 riichi.cost 0)가 사라져 antiIds를 뺐다.
-  no_retreat: e(["riichi", "riichi_value"]),
+  no_retreat: e(["riichi", "riichi_declare", "riichi_value"], {
+    anti: ["riichi_declare"],
+  }),
   late_double: e(["riichi", "riichi_value", "menzen"]),
   free_riichi_discard: e(["riichi", "menzen"]),
   off_by_one: e(["riichi", "riichi_open", "shape"]),
@@ -184,9 +197,15 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
     anti: ["riichi"],
     antiIds: ["soul_hunt"], // scoring.uraWithoutRiichi 완전 중복 (docs/21 §C-4)
   }),
-  soul_strike: e(["riichi", "riichi_value", "riichi_open", "tempo"]),
-  open_riichi_reveal: e(["riichi", "riichi_open"]),
-  all_or_nothing: e(["riichi", "riichi_open", "bank"]),
+  soul_strike: e(["riichi", "riichi_declare", "riichi_value", "riichi_open", "tempo"], {
+    anti: ["riichi_declare"],
+  }),
+  open_riichi_reveal: e(["riichi", "riichi_declare", "riichi_open"], {
+    anti: ["riichi_declare"],
+  }),
+  all_or_nothing: e(["riichi", "riichi_declare", "riichi_open", "bank"], {
+    anti: ["riichi_declare"],
+  }),
   palm_flip: e(["riichi", "riichi_open"]),
   last_stand: e(["riichi", "defense"]),
   siege_riichi: e(["riichi", "disrupt"]),
@@ -214,7 +233,13 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   // ───────────────────────── 깡·도라 ─────────────────────────
   ankan_dora: e(["kan", "dora", "menzen"]),
   snake_kan: e(["kan", "dora"]),
-  cliff_bloom: e(["kan", "wall_info"]),
+  cliff_bloom: e(["kan", "wall_info"], {
+    // 2026-08-23 QA synergy3 kandora 의심 2 — 둘 다 프리즘인데 함께 들면 **배패에서**
+    // 연속 4장 두 벌만으로 만개 확정 화료가 선다(5/5, 그중 스안커 역만 1건).
+    // 카드 문구는 서로 어긋나지 않으므로 동작은 그대로 두고, `kan` 축을 공유해
+    // **오히려 함께 뜰 확률이 오르던 것**만 되돌린다("함께 뜨면 게임이 부서지는 짝").
+    antiIds: ["snake_kan"],
+  }),
   rinshan_preview: e(["kan", "wall_info"], { antiIds: ["dead_wall_master"] }),
   void_kan: e(["kan", "disrupt"]),
   dead_wall_master: e(["wall_info", "hand_edit"]),
@@ -355,6 +380,16 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
 };
 
 /** 축 하나가 겹칠 때(가장 최근 픽 기준) 오르는 폭 — 1.0이면 배수 2.0이 된다 */
+/**
+ * **자기 자신을 anti로 두는 축** — "이 부류는 한 게임에 하나만 산다".
+ *
+ * 보통은 축을 자기 anti에 넣지 않는다(그러면 자기를 누르는 셈이다). 예외는 카드끼리
+ * **자원이 겹쳐 서로를 죽이는** 부류다 — `riichi_declare`가 그렇다: 리치는 국당 한 번이라
+ * 전용 선언 버튼이 둘이면 하나는 늘 논다. 보유는 이미 후보에서 빠지므로(`heldSet`)
+ * 자기 자신이 눌리는 일은 없고, **같은 부류의 다른 카드만** 밀어낸다.
+ */
+export const SELF_ANTI_TAGS: readonly SynergyTag[] = ["riichi_declare"];
+
 export const SYNERGY_PER_TAG = 1.0;
 
 /** 시너지 배수의 상한. 아무리 겹쳐도 여기서 멈춘다 — "확률업"이지 확정이 아니다 */

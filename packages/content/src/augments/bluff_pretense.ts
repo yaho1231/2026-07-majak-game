@@ -26,6 +26,9 @@ import {
   isSourceDisarmed,
   kindKey,
   kindOf,
+  mixedTripletsFor,
+  polarEndsFor,
+  sameCallBody,
   tileKindChanged,
 } from "@majak/core";
 import type {
@@ -33,7 +36,9 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  RuleRegistry,
   TileId,
+  TileKind,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
@@ -69,9 +74,27 @@ export function isPreciousMaterial(state: GameState, id: TileId): boolean {
   return false;
 }
 
-/** 손패에서 목표패(discard kind)와 같은 종류인 tileId 목록 */
-function matchingIds(state: GameState, holder: PlayerId, targetKey: string): TileId[] {
-  return handIdsOf(state, holder).filter((id) => kindKey(kindOf(state, id)) === targetKey);
+/**
+ * 손패에서 목표패(버림패)와 **같은 패로 통하는** tileId 목록.
+ *
+ * 예전에는 `kindKey` 완전 일치로만 셌다. 그런데 표준 펑은 `sameCallKind`를 타서 동수의
+ * 결속(무늬 무시)·양극을 존중하므로, 결속을 함께 든 사람이 1만 한 장을 들고 1삭 버림에
+ * 허장성세를 부를 수 없었다 — "같은 패가 1장뿐이어도 퐁"이라는 문구가 그 조합에서만
+ * 거짓이었다(QA synergy3 relax 확정 5, 2026-08-23).
+ */
+function matchingIds(
+  state: GameState,
+  rules: RuleRegistry,
+  holder: PlayerId,
+  target: TileKind,
+): TileId[] {
+  const mixedTri = mixedTripletsFor(state, rules, holder);
+  const polar = polarEndsFor(state, rules, holder);
+  // 세 번째 장은 잡패가 목표패로 **변신해서** 채운다 — 그래서 "이 손패 + 목표패 2장"이
+  // 한 규칙 안에서 몸통이 되는지를 본다(1:1 비교가 아니라 세 장 기준: shape 확정 2).
+  return handIdsOf(state, holder).filter((id) =>
+    sameCallBody(target, kindOf(state, id), target, mixedTri, polar),
+  );
 }
 
 /**
@@ -143,8 +166,9 @@ const bluffPonAction: ActionDef<{ tileId: TileId }> = {
     if (last.player === req.player) return "cannot call own discard";
     if (state.round.byPlayer[req.player]?.riichi != null) return "riichi: cannot call";
     if (wallLen(state) === 0) return "no calls on the last discard";
-    const targetKey = kindKey(kindOf(state, last.tileId));
-    const matches = matchingIds(state, req.player, targetKey);
+    const targetKind = kindOf(state, last.tileId);
+    const targetKey = kindKey(targetKind);
+    const matches = matchingIds(state, rules, req.player, targetKind);
     // 허장성세는 "1장뿐일 때"만 — 2장 이상이면 표준 펑을 쓰면 된다
     if (matches.length !== 1) return "bluff pon needs exactly one matching tile";
     if (matches[0] !== req.payload.tileId) return "tile is not the matching one";
@@ -228,8 +252,9 @@ export const bluffPretense: AugmentDef = defineAugment({
     ctx.holderReactionOptions((state, discard) => {
       if (flagOf(state, usedKey(state, holder))) return [];
       if (state.round.byPlayer[holder]?.riichi != null) return [];
-      const targetKey = kindKey(kindOf(state, discard.tileId));
-      const matches = matchingIds(state, holder, targetKey);
+      const targetKind = kindOf(state, discard.tileId);
+      const targetKey = kindKey(targetKind);
+      const matches = matchingIds(state, ctx.engine.rules, holder, targetKind);
       if (matches.length !== 1) return []; // 정확히 1장일 때만
       if (pickSacrifice(state, holder, matches[0] as TileId, targetKey) === undefined) {
         return [];

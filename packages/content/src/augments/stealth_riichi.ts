@@ -209,12 +209,19 @@ export const stealthRiichi: AugmentDef = defineAugment({
    *      - `silent_swap` 정적의 손 — 홀더 자신의 리치를 막지 않고, "아무도 리치를 안
    *        건 국"이라는 조건도 스텔스 리치를 세지 않아 그대로 통과한다.
    *
+   *      - `no_ron_pact` 불가침 조약 — 조약 상태를 **국 내내 전원 공개**로 동기화하는데,
+   *        파기 사유가 "리치 아니면 몸통"뿐이다. 몸통(후로)은 눈에 보이므로, 후로가
+   *        없는데 배너가 «조약 파기»로 뒤집히면 **리치임이 확정된다.** 은닉 리치를
+   *        건 그 순간 폭로되고, 화면 두 곳이 서로 다른 말을 한다(리치 표시는 false)
+   *        — 2026-08-23 QA synergy3 riichi 확정 4.
+   *
    * 반대로 **잠그지 않는 것**: `free_riichi_discard`·`late_double`·`no_retreat`·
    * `siege_riichi`는 공개 채널을 쓰지 않는다. `push_riichi`는 남을 리치시키는 것이라
    * 내 은닉과 무관하다.
    */
   conflicts: [
     "riichi_seal",
+    "no_ron_pact",
     "open_riichi_reveal",
     "all_or_nothing",
     "soul_strike",

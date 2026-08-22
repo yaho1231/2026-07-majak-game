@@ -42,34 +42,30 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
-  flagOf,
   matchUses,
   publishUsesLeft,
   roundViewKey,
 } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { plan } from "./botPlan.js";
-import { roundScopedKey } from "./roundScope.js";
+import {
+  fogCasterNow,
+  hiddenRiverDeclared,
+  hiddenRiverFogKey,
+} from "./fogScope.js";
 
 const ID = "hidden_river";
 const ACTION = "declare_fog";
 /** 안개 속에서도 전원에게 보이는 최근 버림패 장수 */
 const RECENT = 6;
 
-/**
- * 안개 선언 플래그 — **국 단위**다(roundKey 스코프).
- * 국이 끝나면 저절로 걷히므로 별도의 해제 처리가 필요 없다.
- */
-const fogKey = (state: GameState, holder: PlayerId): string =>
-  roundScopedKey(ID, "fog", state, holder);
 /** 매치당 사용 횟수 카운터 — **게임 단위**라 roundKey를 섞지 않는다. 동풍전 1·반장전 2회. */
 const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
 /** 선언 사실을 전원에게 알리는 공개 뷰 채널 */
 const noticeKey = (holder: PlayerId): string => roundViewKey("*", `${ID}:${holder}`);
 
-/** 이번 국에 안개가 걸려 있는가 */
-function fogDeclared(state: GameState, holder: PlayerId): boolean {
-  return flagOf(state, fogKey(state, holder));
-}
+/** 이번 국에 안개가 걸려 있는가 (플래그와 키는 fogScope가 소유한다) */
+const fogDeclared = hiddenRiverDeclared;
 
 /** 아직 사용 횟수가 남았는가 (동풍전 1회 · 반장전 2회) */
 function hasUsesLeft(state: GameState, holder: PlayerId): boolean {
@@ -91,7 +87,7 @@ const declareFogAction: ActionDef<Record<string, never>> = {
     return null;
   },
   toEvents: (req, { state }) => [
-    augmentDataSet(fogKey(state, req.player), true),
+    augmentDataSet(hiddenRiverFogKey(state, req.player), true),
     augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
     augmentDataSet(noticeKey(req.player), "안개"),
   ],
@@ -143,9 +139,13 @@ export const hiddenRiver: AugmentDef = defineAugment({
          * 최근 6장만 보게 됐다 — 횟수를 태워 시야를 얻는 증강이 시야를 잃는,
          * 설명("보유자만 네 개의 바닥을 그대로 읽는다")과 정반대의 결과였다
          * (qa-lab text 확정 5). 지금은 "이번 국에 안개를 선언한 사람"이면 누구든 면제한다.
+         *
+         * ⚠ 그 «누구든»이 **이 증강의 플래그만** 봤다 — 박무(brief_fog) 선언자는 못
+         * 알아봐서, 두 안개가 겹치면 양쪽 보유자가 모두 시야를 잃었다(2026-08-23
+         * QA synergy3 disrupt 확정 2). 판정을 `fogScope`의 공통 술어로 올렸다.
          */
         const viewer = rctx.playerId;
-        if (viewer !== undefined && fogDeclared(state, viewer)) return cur;
+        if (viewer !== undefined && fogCasterNow(state, viewer)) return cur;
         // 이미 더 좁게 가려져 있으면(박무의 count_only 등) 넓히지 않는다
         if (cur === "count_only" || cur === "hidden") return cur;
         if (typeof cur === "object") {
@@ -154,6 +154,14 @@ export const hiddenRiver: AugmentDef = defineAugment({
         return { mode: "peek", count: RECENT, pick: "back" };
       },
     });
+
+
+    /*
+     * 무장해제로 잠기면 «안개» 배너도 함께 내린다 (2026-08-23 QA synergy3 disrupt 확정 4).
+     * 효과는 게이트가 막는데 배너만 남아 있으면 화면이 정확히 반대를 말한다 —
+     * 눈먼 총알·초읽기와 같은 규약이다(disarmBanner.ts).
+     */
+    clearViewOnDisarm(ctx, () => [noticeKey(holder)]);
 
     // 표식(noticeKey)도 안개도 국 스코프라 국이 바뀌면 함께 사라진다 —
     // 예전처럼 국 시작마다 표식을 다시 걸 필요가 없다.

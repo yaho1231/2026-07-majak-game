@@ -55,6 +55,7 @@ import {
   roundViewKey,
   trackRoundSeq,
 } from "../util.js";
+import { bottomDealArmed } from "./bottom_deal.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
 
@@ -108,6 +109,18 @@ function nextDrawSeat(state: GameState, dir: number): number {
  * 패산을 훑어 보유자의 다음 쯔모 **최대 PEEK장**의 kind를 순서대로 모은다.
  * 지금 상태로 다시 계산하므로 후로로 차례가 밀려도 어긋나지 않는다(실시간).
  * 남은 쯔모가 모자라면 그만큼만 돌려준다.
+ *
+ * ⚠ 예전에는 "패산 index 0부터 좌석이 한 칸씩 돌며 뽑는다"만 전제했다. 밑장빼기
+ * (`bottom_deal`)는 앞을 소모하지 않고 **최후미**를 뽑으므로 그 전제가 통째로
+ * 깨진다 — ① 뒤따르는 좌석의 몫이 한 칸씩 밀리고 ② 내가 선언했으면 다음 한 장은
+ * 애초에 이 목록에 없는 패다. 남의 좌석이 써도 내 예고가 깨졌고, 실측 4/4·3/4가
+ * 틀렸다(2026-08-23, QA synergy3 kandora 확정 3). "어긋나지 않는다"고 적힌 카드가
+ * 틀린 정보를 확신 있게 주는 것이 이 증강의 가장 나쁜 실패다.
+ *
+ * 그래서 앞뒤 두 손가락으로 헤아린다: 좌석마다 밑장 예약이 걸려 있으면 뒤에서,
+ * 아니면 앞에서 한 장 가져간다. 예약은 쓰면 사라지므로(국당 여러 번이지만 매 순
+ * 1회) 한 좌석당 한 번만 뒤를 쓴다. 예약 여부는 이미 전원 공개 정보다
+ * (`bottom_deal`의 noticeKey) — 새로 새는 정보가 없다.
  */
 function peekMyDrawKinds(
   state: GameState,
@@ -118,9 +131,19 @@ function peekMyDrawKinds(
   const dir = turnDirection(state, rules);
   let seat = nextDrawSeat(state, dir);
   const kinds: string[] = [];
-  for (let i = 0; i < wall.length && kinds.length < PEEK; i++) {
-    const tileId = wall[i];
-    if (tileId !== undefined && playerAtSeat(state, seat).id === holder) {
+  let front = 0;
+  let back = wall.length - 1;
+  const armed = new Set<PlayerId>(
+    state.players.filter((p) => bottomDealArmed(state, p.id)).map((p) => p.id),
+  );
+  while (front <= back && kinds.length < PEEK) {
+    const who = playerAtSeat(state, seat).id;
+    const fromBottom = armed.has(who);
+    if (fromBottom) armed.delete(who);
+    const tileId = fromBottom ? wall[back] : wall[front];
+    if (fromBottom) back--;
+    else front++;
+    if (tileId !== undefined && who === holder) {
       kinds.push(kindKey(kindOf(state, tileId)));
     }
     seat = nextSeat(state, seat, dir);

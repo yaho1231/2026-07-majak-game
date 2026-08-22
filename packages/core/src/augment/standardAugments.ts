@@ -32,7 +32,7 @@ import {
 } from "../mahjong/flow/helpers.js";
 import { calculateScore } from "../mahjong/scoring/score.js";
 import { defineAugment } from "./Augment.js";
-import { SETTLE_LAYER, SETTLE_STAGE, settlePriority } from "./settleStages.js";
+import { SETTLE_LAYER, SETTLE_STAGE, settlePriority, settleSeatAxis } from "./settleStages.js";
 import type { AugmentContext, AugmentDef } from "./Augment.js";
 import type { PlayerView } from "../information/PlayerView.js";
 
@@ -69,7 +69,9 @@ function addWinHanBonus(
    * 돌았고(자기 자신보다도), 개문선언·무형화료를 둘이 나눠 가지면 서로 완전히 동률이라
    * 픽 순서로 갈렸다.
    */
-  const seat = ctx.engine.state.players.find((p) => p.id === ctx.holder)?.seat ?? 0;
+  // ⚠ player.seat이 아니라 배열 인덱스다 — 자리 바꿈 뒤 재구성이 순서를 바꾸지 않게.
+  //   (settleSeatAxis 주석 참고)
+  const seat = settleSeatAxis(ctx.engine.state, ctx.holder);
   ctx.interceptor(
     ROUND_SETTLED,
     (event, ic) => {
@@ -363,6 +365,16 @@ export const discardRecall = defineAugment({
                 [p.player]: {
                   ...rs,
                   discardedKinds: [...rs.discardedKinds, kindKey(drawnKind)],
+                  /*
+                   * `ownDiscards`("실제로 **내가** 버린 패")에도 남긴다 — 누명(frame_up)이
+                   * 남의 바닥에 심은 패와 내 것을 가르는 단일 진실이라(2026-08-23 QA
+                   * synergy3 handedit 확정 2), 여기만 빠지면 이 경로로 내보낸 한 장이
+                   * 바닥의 족보·자패 회수 판정에서 통째로 빠진다.
+                   */
+                  ownDiscards: [
+                    ...rs.ownDiscards,
+                    { tileId: p.drawnTileId, kind: kindKey(drawnKind) },
+                  ],
                 },
               };
         return {

@@ -28,6 +28,7 @@
 import {
   WALL,
   defineAugment,
+  discardedByPlayer,
   discardsZone,
   handIdsOf,
   handZone,
@@ -131,6 +132,15 @@ const silentTakeAction: ActionDef<{ tileId: TileId }> = {
     if (owner === null) return "tile is not in any pond";
     // 자기 바닥은 대상이 아니다 — 방금 버린 오름패를 도로 집는 길을 막는다
     if (owner === req.player) return "cannot take from your own pond";
+    /*
+     * 바닥의 **물리적 주인**만 보면 누명(frame_up) 한 장으로 이 가드가 통째로 뚫린다.
+     * 내가 버릴 오름패를 누명으로 남의 바닥에 심으면 내 후리텐도 안 걸리고
+     * 그 패를 도로 집어 화료까지 됐다 (QA synergy3 handedit 확정 2, 2026-08-23).
+     * 판정 근거를 "어느 바닥에 놓였나"에서 **"누가 실제로 버렸나"**로 옮긴다.
+     */
+    if (discardedByPlayer(state, req.player, req.payload.tileId)) {
+      return "cannot take a tile you discarded";
+    }
     return null;
   },
   toEvents: (req, { state }) => [

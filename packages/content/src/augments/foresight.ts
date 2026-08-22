@@ -84,6 +84,25 @@ const lastTurnKey = (state: GameState, h: PlayerId): string =>
 const peekLeftKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "peekLeft", state, h);
 /**
+ * 공개할 때 본 **그 4장의 tileId** (roundKey 스코프).
+ *
+ * 장수만 세던 시절에는 "쯔모가 일어났으면 패산 앞이 한 장 줄었다"를 전제로 했다.
+ * 밑장빼기(`bottom_deal`)는 앞을 소모하지 않고 **최후미**를 뽑으므로 그 전제가 깨져,
+ * 아직 패산 앞에 그대로 있는 예언패가 화면에서 사라졌다 — 패산 앞은 안 줄었는데
+ * 창만 줄었다(2026-08-23, QA synergy3 kandora 의심 1). 이제 **뽑힌 그 한 장이
+ * 예언한 4장 중 하나였을 때만** 깎는다. 재배열은 순서만 바꾸므로 이 집합은 그대로다.
+ *
+ * 보유자 전용 채널(`view:`)이 아니라 내부 키라 클라이언트로 나가지 않는다.
+ */
+const peekIdsKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "peekIds", state, h);
+
+/** 공개한 4장의 tileId (한 번도 발동 안 했으면 빈 배열) */
+function peekIdsOf(state: GameState, h: PlayerId): TileId[] {
+  const raw = state.augmentData[peekIdsKey(state, h)];
+  return Array.isArray(raw) ? (raw as TileId[]) : [];
+}
+/**
  * 이번 국에 재배열을 이미 썼는가 (roundKey 스코프).
  *
  * 2026-08-02(사용자 지시) 너프: **열람은 쿨다운 1회, 재배열은 국에 1회.**
@@ -225,6 +244,7 @@ const revealAction: ActionDef<Record<string, never>> = {
     return [
       augmentDataSet(peekViewKey(req.player), kinds),
       augmentDataSet(peekLeftKey(state, req.player), kinds.length),
+      augmentDataSet(peekIdsKey(state, req.player), [...frontIds(state)]),
       augmentDataSet(usedKey(state, req.player), true),
       augmentDataSet(lastTurnKey(state, req.player), tc),
       augmentDataSet(revealTurnKey(state, req.player), tc),
@@ -273,7 +293,7 @@ export const foresight: AugmentDef = defineAugment({
   description:
     "(열람 4순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 패산 다음 4장이 나에게만 공개되고(취소 불가), 국에 한 번은 드래그로 그 순서를 바꾼다. 발동한 국에 화료하면 +2판(역만에는 미적용).",
   detail:
-    "(열람 4순에 1회 · 재배열은 국에 1회) 공개된 4장은 **지금 차례 기준으로** 하가·대면·상가·나에게 차례로 배정된다. 중간에 누가 퐁·치를 하면 배정이 한 칸씩 당겨져 네 번째가 더 이상 내 쯔모가 아닐 수 있다.\n\n재배열은 한 국에 한 번이라, 그 국에 다시 발동하면 열람만 된다. 상대에게는 발동 사실만 보인다.",
+    "(열람 4순에 1회 · 재배열은 국에 1회) 공개된 4장은 **지금 차례 기준으로** 하가·대면·상가·나에게 차례로 배정된다. 중간에 누가 퐁·치를 하거나 밑장빼기·북빼기로 패산 앞을 건너뛰면 배정이 밀려 네 번째가 더 이상 내 쯔모가 아닐 수 있다.\n\n재배열은 한 국에 한 번이라, 그 국에 다시 발동하면 열람만 된다. 상대에게는 발동 사실만 보인다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -315,10 +335,15 @@ export const foresight: AugmentDef = defineAugment({
      * ⚠ 보유자 본인의 쯔모만 세면 안 된다. 이 예언은 네 자리의 다음 쯔모를 함께
      * 보여 주므로, **누가 뽑든** 패산 앞이 한 장씩 줄어든다.
      * 영상패(깡)는 왕패에서 오므로 패산 순서를 소모하지 않는다 — 세지 않는다.
+     *
+     * ⚠ "쯔모가 일어났다"만으로 세면 안 된다. 밑장빼기는 패산 **최후미**를 뽑으므로
+     * 앞이 그대로인데 창만 닫혔다(peekIdsKey 주석 · QA synergy3 kandora 의심 1).
+     * 뽑힌 그 한 장이 **예언한 4장 중 하나**일 때만 센다.
      */
     ctx.reaction(TILE_DRAWN, (event, rc) => {
       const p = event.payload as TileDrawnPayload;
       if (p.rinshan) return;
+      if (!peekIdsOf(rc.state, holder).includes(p.tileId)) return;
       const left = peekLeftOf(rc.state, holder);
       if (left <= 0) return;
       rc.emit(augmentDataSet(peekLeftKey(rc.state, holder), left - 1));

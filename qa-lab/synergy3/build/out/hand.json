@@ -1,0 +1,2377 @@
+{
+ "key": "hand",
+ "ids": [
+  "alchemist",
+  "tile_split",
+  "suit_unify",
+  "conjure_draw"
+ ],
+ "mode": "tonpuu",
+ "games": [
+  {
+   "seed": 1,
+   "ms": 7348,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 6
+   },
+   "finalScores": {
+    "p0": 66600,
+    "p1": 17400,
+    "p2": 22300,
+    "p3": -6300
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 1,
+    "p2": 1,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 6,
+     "fu": 25,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo",
+      "chiitoitsu",
+      "honitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 4,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 4,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 2,
+     "fu": 30,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_seat"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": "p3",
+     "han": 4,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "yakuhai_seat",
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "double_riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "mono_world": 1,
+     "split_tile": 6,
+     "win": 3,
+     "conjure_tsumo": 5,
+     "discard": 33,
+     "riichi": 2,
+     "alchemy": 2,
+     "pass": 8,
+     "pon": 2,
+     "shouminkan": 1,
+     "ankan": 1
+    },
+    "p1": {
+     "pass": 10,
+     "discard": 37,
+     "pon": 1,
+     "win": 2,
+     "riichi": 1
+    },
+    "p2": {
+     "discard": 29,
+     "pass": 10,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 37,
+     "pass": 8
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 566,
+     "reactEmit": 3,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 50,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 3
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 566,
+     "reactEmit": 14,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 8,
+     "actionFired": 6,
+     "emitted": {
+      "AugmentDataSet": 14
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 566,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 716,
+     "reactEmit": 24,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 14,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 24,
+      "TileKindChanged": 5
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 61,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 50,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":14,\"delta\":-1}}",
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":68,\"delta\":-1}}"
+     ]
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 61,
+     "proposed": 8,
+     "threw": 0,
+     "fired": 6,
+     "opportunity": 8,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":69,\"a\":1}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":7,\"a\":1}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 61,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"pin\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 61,
+     "proposed": 13,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 14,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "split_tile",
+       6
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":73}}",
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":37}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 2,
+   "ms": 9248,
+   "crash": null,
+   "rounds": 6,
+   "outcomes": {
+    "win": 6
+   },
+   "finalScores": {
+    "p0": 83200,
+    "p1": 17400,
+    "p2": -1900,
+    "p3": 1300
+   },
+   "riichiBySeat": {
+    "p0": 6,
+    "p1": 1,
+    "p2": 0,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 5,
+     "fu": 50,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "double_riichi",
+      "honitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 6000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 1,
+     "fu": 40,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 5,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 4,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "mono_world": 1,
+     "split_tile": 6,
+     "riichi": 6,
+     "discard": 43,
+     "win": 6,
+     "alchemy": 5,
+     "conjure_tsumo": 5,
+     "pass": 11,
+     "ankan": 1
+    },
+    "p1": {
+     "discard": 48,
+     "pass": 14,
+     "pon": 1,
+     "riichi": 1
+    },
+    "p2": {
+     "pass": 9,
+     "discard": 57,
+     "pon": 3
+    },
+    "p3": {
+     "discard": 47,
+     "pass": 16,
+     "chi": 1,
+     "riichi": 1,
+     "pon": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 789,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 24,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 6
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 789,
+     "reactEmit": 14,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 15,
+     "actionFired": 6,
+     "emitted": {
+      "AugmentDataSet": 14
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 789,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 1006,
+     "reactEmit": 24,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 21,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 24,
+      "TileKindChanged": 5
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 78,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 24,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":104,\"delta\":-1}}",
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":104,\"delta\":-1}}"
+     ]
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 78,
+     "proposed": 9,
+     "threw": 0,
+     "fired": 6,
+     "opportunity": 15,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":53,\"a\":1}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":104,\"a\":2}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 78,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"pin\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 78,
+     "proposed": 12,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 21,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "split_tile",
+       4
+      ],
+      [
+       "alchemy",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":51}}",
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":94}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 3,
+   "ms": 8003,
+   "crash": null,
+   "rounds": 4,
+   "outcomes": {
+    "win": 3,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 38300,
+    "p1": 28900,
+    "p2": 15900,
+    "p3": 16900
+   },
+   "riichiBySeat": {
+    "p0": 4,
+    "p1": 2,
+    "p2": 2,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 5,
+     "fu": 20,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 5,
+     "fu": 50,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "yakuhai_hatsu",
+      "sanankou"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "mono_world": 1,
+     "split_tile": 4,
+     "riichi": 4,
+     "discard": 41,
+     "alchemy": 3,
+     "conjure_tsumo": 3,
+     "ankan": 1,
+     "pass": 4,
+     "win": 2
+    },
+    "p1": {
+     "discard": 36,
+     "pass": 9,
+     "riichi": 2,
+     "win": 1,
+     "pon": 1
+    },
+    "p2": {
+     "discard": 38,
+     "pass": 10,
+     "chi": 1,
+     "pon": 1,
+     "riichi": 2
+    },
+    "p3": {
+     "discard": 48,
+     "pass": 8,
+     "chi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 649,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 54,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 649,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 11,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 649,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 835,
+     "reactEmit": 16,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 15,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 16,
+      "TileKindChanged": 3
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 61,
+     "proposed": 4,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 54,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":33,\"delta\":-1}}",
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":78,\"delta\":1}}"
+     ]
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 61,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 11,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":105,\"a\":3}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":60,\"a\":3}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 61,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"sou\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 61,
+     "proposed": 8,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 15,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "split_tile",
+       2
+      ],
+      [
+       "alchemy",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":94}}",
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":89}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 4,
+   "ms": 11297,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 5
+   },
+   "finalScores": {
+    "p0": 46800,
+    "p1": 36200,
+    "p2": 27800,
+    "p3": -10800
+   },
+   "riichiBySeat": {
+    "p0": 3,
+    "p1": 1,
+    "p2": 2,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 12,
+     "fu": 40,
+     "points": 36000,
+     "yakumanCount": 0,
+     "yaku": [
+      "double_riichi",
+      "menzen_tsumo",
+      "chinitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "sanbaiman"
+    },
+    {
+     "winner": "p2",
+     "from": null,
+     "han": 5,
+     "fu": 30,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "menzen_tsumo",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 6000,
+     "yakumanCount": 0,
+     "yaku": [
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 6,
+     "fu": 40,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 3,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 6,
+     "fu": 25,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "chiitoitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 2,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "mono_world": 1,
+     "split_tile": 5,
+     "riichi": 3,
+     "discard": 49,
+     "win": 1,
+     "conjure_tsumo": 4,
+     "pass": 12,
+     "alchemy": 5,
+     "ankan": 1
+    },
+    "p2": {
+     "pass": 15,
+     "discard": 52,
+     "riichi": 2,
+     "win": 2
+    },
+    "p1": {
+     "discard": 53,
+     "pass": 13,
+     "win": 2,
+     "riichi": 1
+    },
+    "p3": {
+     "discard": 54,
+     "pass": 11,
+     "chi": 1,
+     "riichi": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 797,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 63,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 6
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 797,
+     "reactEmit": 12,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 9,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 797,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 1026,
+     "reactEmit": 20,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 22,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 20,
+      "TileKindChanged": 4
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 80,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 63,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":58,\"delta\":-1}}",
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":95,\"delta\":-1}}"
+     ]
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 80,
+     "proposed": 7,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 9,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":93,\"a\":1}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":18,\"a\":2}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 80,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"sou\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 80,
+     "proposed": 10,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 22,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "split_tile",
+       4
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":101}}",
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":24}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 5,
+   "ms": 12018,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 5
+   },
+   "finalScores": {
+    "p0": 62300,
+    "p1": 28400,
+    "p2": -2600,
+    "p3": 11900
+   },
+   "riichiBySeat": {
+    "p0": 4,
+    "p1": 1,
+    "p2": 0,
+    "p3": 1
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 11,
+     "fu": 40,
+     "points": 36000,
+     "yakumanCount": 0,
+     "yaku": [
+      "double_riichi",
+      "menzen_tsumo",
+      "sanankou",
+      "chinitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "sanbaiman"
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 1,
+     "fu": 40,
+     "points": 2000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 3,
+     "fu": 40,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 4000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 7,
+     "fu": 40,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 4,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "mono_world": 1,
+     "riichi": 4,
+     "discard": 48,
+     "win": 3,
+     "alchemy": 5,
+     "conjure_tsumo": 4,
+     "split_tile": 4,
+     "pass": 4,
+     "ankan": 1
+    },
+    "p1": {
+     "discard": 60,
+     "pass": 19,
+     "pon": 2,
+     "ankan": 1,
+     "riichi": 1,
+     "win": 1
+    },
+    "p2": {
+     "discard": 63,
+     "pass": 13,
+     "chi": 1,
+     "pon": 1
+    },
+    "p3": {
+     "discard": 55,
+     "pass": 20,
+     "riichi": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 864,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 42,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 6
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 864,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 11,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 864,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 1115,
+     "reactEmit": 20,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 22,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 20,
+      "TileKindChanged": 4
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 71,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 42,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":18,\"delta\":-1}}",
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":50,\"delta\":1}}"
+     ]
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 71,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 11,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "alchemy",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":18,\"a\":1}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":71,\"a\":2}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 71,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"sou\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 71,
+     "proposed": 10,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 22,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       2
+      ],
+      [
+       "split_tile",
+       3
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":81}}",
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":71}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 6,
+   "ms": 10122,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "draw": 1,
+    "win": 4
+   },
+   "finalScores": {
+    "p0": 21300,
+    "p1": 22500,
+    "p2": 29400,
+    "p3": 26800
+   },
+   "riichiBySeat": {
+    "p0": 4,
+    "p1": 1,
+    "p2": 2,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p3",
+     "from": null,
+     "han": 1,
+     "fu": 40,
+     "points": 1500,
+     "yakumanCount": 0,
+     "yaku": [
+      "yakuhai_hatsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 2,
+     "fu": 40,
+     "points": 2600,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p0",
+     "from": "p2",
+     "han": 4,
+     "fu": 30,
+     "points": 7700,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p0",
+     "han": 4,
+     "fu": 40,
+     "points": 8000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "tanyao"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 1,
+     "limit": "mangan"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "mono_world": 1,
+     "split_tile": 5,
+     "riichi": 4,
+     "discard": 50,
+     "pass": 5,
+     "alchemy": 3,
+     "conjure_tsumo": 2,
+     "win": 1,
+     "ankan": 1
+    },
+    "p1": {
+     "discard": 48,
+     "pass": 17,
+     "riichi": 1
+    },
+    "p2": {
+     "discard": 46,
+     "pass": 16,
+     "riichi": 2,
+     "win": 2
+    },
+    "p3": {
+     "discard": 52,
+     "pass": 13,
+     "pon": 1,
+     "win": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 723,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 61,
+     "actionFired": 3,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 723,
+     "reactEmit": 12,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 13,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 12
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 723,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 935,
+     "reactEmit": 12,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 49,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 12,
+      "TileKindChanged": 2
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 71,
+     "proposed": 3,
+     "threw": 0,
+     "fired": 3,
+     "opportunity": 61,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":70,\"delta\":-1}}",
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":5,\"delta\":1}}"
+     ]
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 71,
+     "proposed": 7,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 13,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":59,\"a\":1}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":70,\"a\":3}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 71,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"pin\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 71,
+     "proposed": 7,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 49,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "split_tile",
+       3
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":49}}",
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":38}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 7,
+   "ms": 11419,
+   "crash": null,
+   "rounds": 5,
+   "outcomes": {
+    "win": 4,
+    "draw": 1
+   },
+   "finalScores": {
+    "p0": 46200,
+    "p1": 37200,
+    "p2": 21400,
+    "p3": -4800
+   },
+   "riichiBySeat": {
+    "p0": 4,
+    "p1": 2,
+    "p2": 1,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 10,
+     "fu": 80,
+     "points": 24000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "sanankou",
+      "chinitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "baiman"
+    },
+    {
+     "winner": "p0",
+     "from": null,
+     "han": 3,
+     "fu": 30,
+     "points": 6000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 1,
+     "redHan": 0,
+     "limit": null
+    },
+    {
+     "winner": "p2",
+     "from": "p3",
+     "han": 7,
+     "fu": 30,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "pinfu",
+      "sanshoku"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 1,
+     "redHan": 1,
+     "limit": "haneman"
+    },
+    {
+     "winner": "p1",
+     "from": null,
+     "han": 6,
+     "fu": 20,
+     "points": 18000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "menzen_tsumo",
+      "pinfu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 2,
+     "redHan": 0,
+     "limit": "haneman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "mono_world": 1,
+     "ankan": 2,
+     "riichi": 4,
+     "discard": 49,
+     "win": 2,
+     "alchemy": 5,
+     "split_tile": 4,
+     "conjure_tsumo": 4,
+     "pass": 8
+    },
+    "p1": {
+     "discard": 48,
+     "pass": 14,
+     "pon": 1,
+     "chi": 1,
+     "riichi": 2,
+     "win": 1
+    },
+    "p2": {
+     "pass": 16,
+     "discard": 66,
+     "riichi": 1,
+     "win": 1
+    },
+    "p3": {
+     "discard": 68,
+     "pass": 11,
+     "minkan": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 936,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 41,
+     "actionFired": 5,
+     "emitted": {
+      "AugmentDataSet": 6
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 936,
+     "reactEmit": 10,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 14,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 10
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 936,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 1,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 1212,
+     "reactEmit": 20,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 27,
+     "actionFired": 4,
+     "emitted": {
+      "AugmentDataSet": 20,
+      "TileKindChanged": 4
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 77,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 5,
+     "opportunity": 41,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":12,\"delta\":-1}}",
+      "{\"type\":\"alchemy\",\"payload\":{\"tileId\":103,\"delta\":-1}}"
+     ]
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 77,
+     "proposed": 6,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 14,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":61,\"a\":3}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":77,\"a\":1}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 77,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 1,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"sou\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 77,
+     "proposed": 10,
+     "threw": 0,
+     "fired": 4,
+     "opportunity": 27,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ],
+      [
+       "alchemy",
+       3
+      ],
+      [
+       "split_tile",
+       2
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":77}}",
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":77}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  },
+  {
+   "seed": 8,
+   "ms": 1428,
+   "crash": null,
+   "rounds": 2,
+   "outcomes": {
+    "win": 2
+   },
+   "finalScores": {
+    "p0": 73300,
+    "p1": -11300,
+    "p2": 25000,
+    "p3": 13000
+   },
+   "riichiBySeat": {
+    "p0": 2,
+    "p1": 0,
+    "p2": 0,
+    "p3": 0
+   },
+   "wins": [
+    {
+     "winner": "p0",
+     "from": "p3",
+     "han": 5,
+     "fu": 40,
+     "points": 12000,
+     "yakumanCount": 0,
+     "yaku": [
+      "riichi",
+      "ippatsu",
+      "yakuhai_seat",
+      "yakuhai_prevalent"
+     ],
+     "extraHanBy": [],
+     "doraHan": 1,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "mangan"
+    },
+    {
+     "winner": "p0",
+     "from": "p1",
+     "han": 11,
+     "fu": 30,
+     "points": 36000,
+     "yakumanCount": 0,
+     "yaku": [
+      "double_riichi",
+      "pinfu",
+      "ittsuu",
+      "chinitsu"
+     ],
+     "extraHanBy": [],
+     "doraHan": 0,
+     "uraHan": 0,
+     "redHan": 0,
+     "limit": "sanbaiman"
+    }
+   ],
+   "augPoints": [],
+   "violations": [],
+   "effectErrors": [],
+   "actionsBySeat": {
+    "p0": {
+     "split_tile": 2,
+     "conjure_tsumo": 1,
+     "discard": 4,
+     "riichi": 2,
+     "win": 2,
+     "mono_world": 1
+    },
+    "p1": {
+     "discard": 6,
+     "pass": 2
+    },
+    "p2": {
+     "discard": 5
+    },
+    "p3": {
+     "discard": 5,
+     "pass": 1
+    }
+   },
+   "aug": [
+    {
+     "k": "p0|alchemist",
+     "ruleSet": 0,
+     "reactCall": 105,
+     "reactEmit": 1,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 10,
+     "actionFired": 0,
+     "emitted": {
+      "AugmentDataSet": 1
+     }
+    },
+    {
+     "k": "p0|tile_split",
+     "ruleSet": 0,
+     "reactCall": 105,
+     "reactEmit": 6,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 3,
+     "actionFired": 2,
+     "emitted": {
+      "AugmentDataSet": 6
+     }
+    },
+    {
+     "k": "p0|suit_unify",
+     "ruleSet": 0,
+     "reactCall": 105,
+     "reactEmit": 4,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 5,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 4
+     }
+    },
+    {
+     "k": "p0|conjure_draw",
+     "ruleSet": 0,
+     "reactCall": 127,
+     "reactEmit": 8,
+     "interCall": 0,
+     "interChange": 0,
+     "optionOffer": 8,
+     "actionFired": 1,
+     "emitted": {
+      "AugmentDataSet": 8,
+      "TileKindChanged": 1
+     }
+    }
+   ],
+   "bot": [
+    {
+     "id": "alchemist",
+     "chooseCalls": 10,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 0,
+     "opportunity": 10,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "mono_world",
+       1
+      ]
+     ],
+     "samples": []
+    },
+    {
+     "id": "tile_split",
+     "chooseCalls": 10,
+     "proposed": 2,
+     "threw": 0,
+     "fired": 2,
+     "opportunity": 3,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":12,\"a\":1}}",
+      "{\"type\":\"split_tile\",\"payload\":{\"tileId\":32,\"a\":2}}"
+     ]
+    },
+    {
+     "id": "suit_unify",
+     "chooseCalls": 10,
+     "proposed": 1,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 5,
+     "randomFire": 0,
+     "lostTo": [],
+     "samples": [
+      "{\"type\":\"mono_world\",\"payload\":{\"suit\":\"man\"}}"
+     ]
+    },
+    {
+     "id": "conjure_draw",
+     "chooseCalls": 10,
+     "proposed": 4,
+     "threw": 0,
+     "fired": 1,
+     "opportunity": 8,
+     "randomFire": 0,
+     "lostTo": [
+      [
+       "split_tile",
+       2
+      ],
+      [
+       "mono_world",
+       1
+      ]
+     ],
+     "samples": [
+      "{\"type\":\"conjure_tsumo\",\"payload\":{\"tileId\":110}}"
+     ]
+    }
+   ],
+   "contentFailures": [],
+   "unofferedWarns": [],
+   "augActions": [
+    [
+     "alchemist",
+     [
+      "alchemy"
+     ]
+    ],
+    [
+     "tile_split",
+     [
+      "split_tile"
+     ]
+    ],
+    [
+     "suit_unify",
+     [
+      "mono_world"
+     ]
+    ],
+    [
+     "conjure_draw",
+     [
+      "conjure_tsumo"
+     ]
+    ]
+   ]
+  }
+ ]
+}
