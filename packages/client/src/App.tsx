@@ -12494,11 +12494,21 @@ const GameTable = memo(function GameTable(props: {
    * 계산되어 언젠가 갈라진다.
    */
   const dockFlag =
-    props.spectator !== true || overlayOn
+    props.spectator !== true
       ? null
-      : dockPrefs.dockOpen
-        ? "open"
-        : "folded";
+      : overlayOn
+        ? /*
+           * 오버레이(OBS 송출) — 도크는 안 그리지만 **표식은 남긴다.**
+           * `.ui-zoom`·`.auglog` 는 body 포털이라 `.game-root` 의 후손이 아니라
+           * **형제**다. 그래서 `.game-root:has(.table-overlay-green) .ui-zoom` 은
+           * 후손 결합자가 성립하지 않아 한 번도 매치되지 않았고, 크로마키 화면에
+           * 배율 손잡이와 열린 📜 로그가 그대로 나갔다(2026-08-23 검수 지적).
+           * body 에 실린 이 표식만이 그 둘에 닿는 유일한 길이다.
+           */
+          "overlay"
+        : dockPrefs.dockOpen
+          ? "open"
+          : "folded";
   useEffect(() => {
     if (dockFlag === null) {
       delete document.body.dataset.majakDock;

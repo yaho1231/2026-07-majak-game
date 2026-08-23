@@ -299,6 +299,20 @@ describe("중계 관전 — 2열 무대 (인게임 3/4 + 분석 도크 1/4)", ()
     expect(CSS).toMatch(/\.spectate-stage-board \{[\s\S]*?container: ui \/ size;/);
   });
 
+  it("왼쪽 칸이 판을 잘라 준다 — 안 그러면 좁은 폭에서 손패가 도크를 문다", () => {
+    /*
+     * `container-type: size` 는 **레이아웃** 봉쇄일 뿐 자르지 않는다(자르는 것은
+     * paint 봉쇄다). 대국자 화면에서 `.game-root { overflow: hidden }` 이 하던 몫을
+     * 이 칸이 이어받아야 한다 — 진짜 대국 화면을 2열에 넣고 재 보니 창 1000px ·
+     * 왼쪽 칸 700px 에서 손패 레일이 x=722 까지 뻗어 도크를 22px 물었다.
+     */
+    const board = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spectate-stage-board") && r.conds.length === 0,
+    );
+    expect(board.length).toBeGreaterThan(0);
+    expect(board.some((r) => declOf(r, "overflow") === "hidden")).toBe(true);
+  });
+
   /*
    * ⚠ 아래 셋은 **선언이 있는지**가 아니라 **이기는지**를 본다.
    *
@@ -578,6 +592,32 @@ describe("중계 관전 — body 포털이 도크를 덮지 않는다", () => {
     }
     // 좁은 폭에서는 되돌린다 (그쪽은 서랍이라 자리를 안 쓴다)
     expect(CSS).toMatch(/@container ui \(max-width: 900px\) \{[\s\S]{0,200}--dock-reserve: 0px;/);
+  });
+
+  /*
+   * ⚠ 이 둘은 `.game-root` 의 **후손이 아니라 형제**다(body 포털). 처음엔
+   * `.game-root:has(.table-overlay-green) .ui-zoom` 으로 썼는데 후손 결합자가
+   * 성립하지 않아 **한 번도 매치되지 않았고**, 크로마키 출력에 배율 손잡이와 열린
+   * 📜 로그가 그대로 나갔다. 소스만 보면 멀쩡해 보이는 종류의 실패라 여기서 못 박는다.
+   */
+  it("오버레이 출력에서 배율 손잡이·기록 서랍이 실제로 걷힌다 (body 신호로)", () => {
+    // 정확히 그 두 요소를 겨냥한 규칙만 본다 (`.ui-zoom-now` 같은 자식은 제외)
+    const targets = (sel: string): boolean =>
+      /(?:^|\s)\.(?:ui-zoom|auglog)$/.test(sel);
+    const hide = CSS_RULES.filter(
+      (r) => r.selectors.some(targets) && declOf(r, "display") === "none",
+    );
+    expect(hide.length, "오버레이에서 둘을 걷는 규칙이 없다").toBeGreaterThan(0);
+    for (const r of hide) {
+      for (const sel of r.selectors.filter(targets)) {
+        // `.game-root …` 후손 결합자로는 이 둘에 절대 닿지 못한다
+        expect(sel.startsWith(".game-root"), `닿지 않는 선택자: ${sel}`).toBe(false);
+        expect(sel.startsWith("body[data-majak-dock"), `body 신호가 아니다: ${sel}`).toBe(true);
+      }
+    }
+    // 그 표식을 실제로 다는 쪽 (오버레이일 때 "overlay")
+    expect(APP1).toContain('props.spectator !== true ? null : overlayOn ?');
+    expect(APP).toContain('"overlay"');
   });
 
   it("도크 폭은 무대의 그리드 트랙과 같은 식이다 — 두 곳에서 따로 계산하지 않는다", () => {
