@@ -618,12 +618,13 @@ describe("중계 관전 — 되감는 동안의 말투", () => {
 });
 
 /*
- * `.auglog`(z 90)·`.ui-zoom`(z 85)은 body 포털이라 열 분할 바깥에 산다 —
- * 컨테이너 봉쇄도 안 걸려 늘 «창» 오른쪽에 서고, 그대로 두면 도크 위에 올라탔다
- * (1440×900 실측: 📜 서랍이 도크 머리·구획 스위치·좌석 카드를 통째로 덮었다).
+ * `.auglog`(z 90)은 body 포털이라 열 분할 바깥에 산다 — 컨테이너 봉쇄도 안 걸려
+ * 늘 «창» 오른쪽에 서고, 그대로 두면 도크 위에 올라탔다 (1440×900 실측: 📜 서랍이
+ * 도크 머리·구획 스위치·좌석 카드를 통째로 덮었다).
+ * (같은 자리에 있던 배율 손잡이 `.ui-zoom` 은 2026-08-24에 없앴다.)
  */
 describe("중계 관전 — body 포털이 도크를 덮지 않는다", () => {
-  it("배율 손잡이·기록 서랍이 도크 몫만큼 물러난다", () => {
+  it("기록 서랍이 도크 몫만큼 물러난다", () => {
     // 좁은 화면(≤900)에서는 도크가 떠 있는 서랍이라 자리를 안 쓴다 — 그 블록의
     // 규칙은 예전 값 그대로가 맞다. **넓은 폭에 적용되는** 규칙만 따진다.
     const wide = (r: CssRule): boolean =>
@@ -631,7 +632,7 @@ describe("중계 관전 — body 포털이 도크를 덮지 않는다", () => {
         const m = /max-width:\s*(\d+)px/.exec(c);
         return m !== null && Number(m[1]) <= 900;
       });
-    for (const sel of [".ui-zoom", ".auglog"]) {
+    for (const sel of [".auglog"]) {
       const rs = rulesFor(sel, "right").filter(wide);
       expect(rs.length, `${sel} 의 right 규칙이 없다`).toBeGreaterThan(0);
       for (const r of rs) expect(declOf(r, "right")).toContain("--dock-reserve");
@@ -641,19 +642,18 @@ describe("중계 관전 — body 포털이 도크를 덮지 않는다", () => {
   });
 
   /*
-   * ⚠ 이 둘은 `.game-root` 의 **후손이 아니라 형제**다(body 포털). 처음엔
-   * `.game-root:has(.table-overlay-green) .ui-zoom` 으로 썼는데 후손 결합자가
-   * 성립하지 않아 **한 번도 매치되지 않았고**, 크로마키 출력에 배율 손잡이와 열린
-   * 📜 로그가 그대로 나갔다. 소스만 보면 멀쩡해 보이는 종류의 실패라 여기서 못 박는다.
+   * ⚠ 이것은 `.game-root` 의 **후손이 아니라 형제**다(body 포털). 처음엔
+   * `.game-root:has(.table-overlay-green) .auglog` 로 썼는데 후손 결합자가
+   * 성립하지 않아 **한 번도 매치되지 않았고**, 크로마키 출력에 열린 📜 로그가
+   * 그대로 나갔다. 소스만 보면 멀쩡해 보이는 종류의 실패라 여기서 못 박는다.
    */
-  it("오버레이 출력에서 배율 손잡이·기록 서랍이 실제로 걷힌다 (body 신호로)", () => {
-    // 정확히 그 두 요소를 겨냥한 규칙만 본다 (`.ui-zoom-now` 같은 자식은 제외)
-    const targets = (sel: string): boolean =>
-      /(?:^|\s)\.(?:ui-zoom|auglog)$/.test(sel);
+  it("오버레이 출력에서 기록 서랍이 실제로 걷힌다 (body 신호로)", () => {
+    // 정확히 그 요소를 겨냥한 규칙만 본다 (`.auglog-btn` 같은 것은 제외)
+    const targets = (sel: string): boolean => /(?:^|\s)\.auglog$/.test(sel);
     const hide = CSS_RULES.filter(
       (r) => r.selectors.some(targets) && declOf(r, "display") === "none",
     );
-    expect(hide.length, "오버레이에서 둘을 걷는 규칙이 없다").toBeGreaterThan(0);
+    expect(hide.length, "오버레이에서 서랍을 걷는 규칙이 없다").toBeGreaterThan(0);
     for (const r of hide) {
       for (const sel of r.selectors.filter(targets)) {
         // `.game-root …` 후손 결합자로는 이 둘에 절대 닿지 못한다
@@ -681,11 +681,11 @@ describe("중계 관전 — body 포털이 도크를 덮지 않는다", () => {
  * `.game-root` 는 새 컨테이너(`.spectate-stage-board`) 바깥이라 늘 창을 본다.
  * 그래서 두 층이 서로 다른 폭을 믿는 구간이 생겼다 — 1024×768 실측으로 왼쪽 칸은
  * 724px 이라 `.table` 이 ≤900 규칙을 받는데, 같은 순간 `.game-root` 는 창이 1024라
- * `--side-strip-reserve: 56px` 를 유지했다.
+ * 넓은 판의 띠 값을 유지했다.
  */
 describe("중계 관전 — 두 층이 같은 폭을 본다", () => {
   it("예약 띠 변수를 .table 에서도 다시 푼다 (기본값 + 모든 브레이크포인트)", () => {
-    for (const prop of ["--top-band", "--side-strip-reserve", "--waits-row-h", "--own-reserve"]) {
+    for (const prop of ["--top-band", "--waits-row-h", "--own-reserve"]) {
       const onRoot = rulesFor(".game-root", prop);
       const onTable = rulesFor(".table", prop);
       expect(onTable.length, `${prop} 가 .table 에 없다`).toBeGreaterThan(0);

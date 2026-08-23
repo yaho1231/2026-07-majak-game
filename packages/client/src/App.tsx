@@ -119,13 +119,9 @@ import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
 import { sfx, setSfxEnabled, setSfxVolume, riichiBgm, bgm, resumeAudio } from "./sfx.js";
 import {
-  canStepUiZoom,
   getUiScale,
-  getUiZoom,
   isLayoutCramped,
   layoutViewport,
-  resetUiZoom,
-  stepUiZoom,
   subscribeUiScale,
   toLayoutPx,
 } from "./uiScale.js";
@@ -2548,32 +2544,23 @@ const TileImg = memo(function TileImg({
 });
 
 /**
- * 창이 너무 작아 자동 축소(uiScale.ts)로도 배치가 안 풀릴 때 왼쪽 위에 뜨는 안내.
+ * 창이 너무 작아 자동 맞춤(uiScale.ts)으로도 배치가 안 풀릴 때 왼쪽 위에 뜨는 안내.
  * 브라우저 확대율은 스크립트로 못 건드린다 — 여기서부터는 사람이 눌러야 한다.
  *
- * 단, 사람이 −/+ 로 **직접 키워서** 좁아진 것이라면 원인도 해법도 브라우저가 아니다.
- * 그땐 방금 누른 그 버튼을 가리킨다 (안 그러면 "줄이라"는 안내가 엉뚱한 손잡이를 가리킨다).
+ * 화면의 −/+ 손잡이는 없앴다(2026-08-24). 배율은 창 크기에서 자동으로 나오므로
+ * 가리킬 손잡이가 하나뿐이다 — 브라우저 확대다.
  */
 function LayoutHint(): JSX.Element | null {
   const [cramped, setCramped] = useState(isLayoutCramped);
   const [dismissed, setDismissed] = useState(false);
   useEffect(() => subscribeUiScale(() => setCramped(isLayoutCramped())), []);
   if (!cramped || dismissed) return null;
-  const zoomedByHand = getUiZoom() > 1;
   const mod = navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl";
   return createPortal(
     <div className="layout-hint" role="status">
       <span className="layout-hint-icon">⤢</span>
       <span>
-        {zoomedByHand ? (
-          <>
-            화면을 키워 배치가 겹칠 수 있습니다 — 오른쪽 위 <b>−</b> 로 줄여 보세요.
-          </>
-        ) : (
-          <>
-            창이 좁아 배치가 겹칠 수 있습니다 — <b>{mod} + −</b> 로 화면을 줄여 보세요.
-          </>
-        )}
+        창이 좁아 배치가 겹칠 수 있습니다 — <b>{mod} + −</b> 로 화면을 줄여 보세요.
       </span>
       <button
         type="button"
@@ -2582,65 +2569,6 @@ function LayoutHint(): JSX.Element | null {
         aria-label="안내 닫기"
       >
         ×
-      </button>
-    </div>,
-    document.body,
-  );
-}
-
-/**
- * 화면 확대/축소 손잡이 — 자동 맞춤(uiScale.ts) **위에 곱하는** 배수를 사람이 만진다.
- *
- * 자동은 창만 본다. 눈·모니터 거리·시력은 못 본다 — 같은 창에서도 누구는 크게,
- * 누구는 작게 보고 싶어 한다. 2026-08-07에 설정 패널의 "화면 크기"를 없앤 뒤로는
- * 그 손잡이가 아예 없었다.
- *
- * 자리는 **오른쪽 위 아이콘 줄**(설정 ⚙ · 도감 📖 · 규칙 📘)의 왼쪽 끝이다 —
- * 2026-08-12에 사용자가 "인게임 기준 설정이나 증강도감 있는 쪽"으로 지정했다.
- * 포털로 body에 붙으므로 로그인·로비·대국 어디서나 같은 자리다.
- *
- * 배율은 body 하나에 균일하게 걸린다(styles.css 가상 뷰포트 주석 — 엔진에 따라
- * `zoom` 또는 `transform`이고, 고르는 것은 uiScale.ts다).
- * 이 손잡이도 예외가 아니다 — 확대하면 같이 커진다. 브라우저 Ctrl+ 와 같은 동작이고,
- * 옆 아이콘 버튼과 높이도 어긋나지 않는다.
- */
-function ScaleControl(): JSX.Element {
-  const [, bump] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => subscribeUiScale(bump), []);
-  const zoom = getUiZoom();
-  const pct = Math.round(zoom * 100);
-  const mod = navigator.userAgent.includes("Mac") ? "⌥" : "Alt";
-  return createPortal(
-    <div className="ui-zoom" role="group" aria-label="화면 크기">
-      <button
-        type="button"
-        className="ui-zoom-btn"
-        onClick={() => stepUiZoom(-1)}
-        disabled={!canStepUiZoom(-1)}
-        aria-label="화면 축소"
-        title={`화면 축소 (${mod} + −)`}
-      >
-        −
-      </button>
-      <button
-        type="button"
-        className="ui-zoom-now"
-        onClick={() => resetUiZoom()}
-        disabled={zoom === 1}
-        aria-label={`화면 크기 ${pct}% — 눌러서 기본값으로`}
-        title={`기본 크기로 되돌리기 (${mod} + 0)`}
-      >
-        {pct}%
-      </button>
-      <button
-        type="button"
-        className="ui-zoom-btn"
-        onClick={() => stepUiZoom(1)}
-        disabled={!canStepUiZoom(1)}
-        aria-label="화면 확대"
-        title={`화면 확대 (${mod} + +)`}
-      >
-        +
       </button>
     </div>,
     document.body,
@@ -6125,7 +6053,6 @@ export function App(): JSX.Element {
     <CoachLockContext.Provider value={coachLock}>
     <div className="game-root" ref={gameRootRef}>
       <LayoutHint />
-      <ScaleControl />
       {/* 기기를 돌려 달라는 안내. LayoutHint 는 '브라우저 확대'를 말하는 것이라
           터치 기기에서는 뜨지 않는다(맞는 판단이다) — 폰 세로에는 그래서 아무 안내도
           없었다. 뜨는 조건은 전부 CSS 미디어쿼리라 여기에 상태가 없었는데, **닫을 수가

@@ -224,10 +224,6 @@ button {
    * 상수로 두면 자리는 늘 거기 있고 바는 그 안에 들어왔다 나갈 뿐이다.
    */
   --own-reserve: 0px;
-  /* 우상단 아이콘 줄 **아래** 한 줄을 배율 손잡이(.ui-zoom)가 쓴다. 좌·우 상대 줄이
-     그만큼 비켜서야 오른쪽 이름표와 안 겹친다. 손잡이가 아이콘 줄 안으로 되돌아가는
-     좁은 판(≤900cqw)에서는 0 — 아래 @container 블록에서 끈다. */
-  --side-strip-reserve: 56px;
   /* 내 오름패 뱃지 자리가 늘 차지하는 높이 (`.own-top-waits`의 min-height).
      텐파이가 아니어도 이만큼은 비워 둔다 — 자리가 들쭉날쭉하면 아래쪽 띠(--own-band)를
      따라 보드·바닥 타일 크기가 매 순 달라진다. 값 = `.waits-badge-mine`의 실제 높이 =
@@ -392,14 +388,14 @@ button {
    *   에 써 넣는 값이고, `.table` 바깥의 `.rotate-hint` 도 같은 띠를 봐야 한다.
    *   여기서 다시 선언하면 그 실측값이 덮인다.
    *
-   * 나머지 넷(`--top-band`·`--side-strip-reserve`·`--waits-row-h`·`--own-reserve`)은
+   * 나머지 셋(`--top-band`·`--waits-row-h`·`--own-reserve`)은
    * 순수 CSS 값이고, 브레이크포인트가 전부 `@container ui (…)` 안에 있다. 그런데
    * `.game-root` 는 관전 2열의 새 컨테이너(`.spectate-stage-board`) **바깥**이라
    * 늘 창(body)을 본다 — 그래서 두 층이 서로 다른 폭을 믿는 구간이 생겼다.
    * 1024×768 실측: 왼쪽 칸 724px 이라 `.table` 은 ≤900 규칙을 받아 보드가 422px 로
-   * 줄었는데, 같은 순간 `.game-root` 는 창이 1024라 `--side-strip-reserve: 56px` 를
-   * 유지했다 — 좌·우 상대 줄이 있지도 않은 배율 손잡이 자리를 비우고 그 절반만큼
-   * 아래로 밀려 섰다. 어긋나는 구간이 창 폭 1000~1840 으로 흔한 노트북 전부다.
+   * 줄었는데, 같은 순간 `.game-root` 는 창이 1024라 넓은 판의 띠 값을 유지했다 —
+   * 두 층이 서로 다른 폭을 믿으면 위·아래 띠가 그만큼 어긋난다. 어긋나는 구간이
+   * 창 폭 1000~1840 으로 흔한 노트북 전부다.
    *
    * `.table` 은 관전이면 새 컨테이너 «안» 이라 자기 칸을 질의한다. 그래서 기본값을
    * 여기에도 못 박아, 넓은 쪽 브레이크포인트 값이 상속으로 새어 들어오지 못하게 한다.
@@ -407,17 +403,16 @@ button {
    * — 판이 한 픽셀도 달라지지 않는다.
    */
   --top-band: 76px;
-  --side-strip-reserve: 56px;
   --waits-row-h: 75px;
   --own-reserve: 0px;
   /* 띠와 보드 사이 숨통. 0으로 두면 액션 바가 떴을 때 그 위쪽 끝이 패널 아래 테두리를
      몇 px 스치고, 내 점수판과도 딱 붙는다(845×390 실측: 여유 0px). */
-  --own-gutter: 16px;
+  --own-gutter: 12px;
   /* 위쪽에도 같은 숨통을 준다. 예전에는 위만 0이라 보드가 맞은편 뒷패 줄에 **붙어**
      있었고(1280×800 실측: 여유 12px), 그만큼 중앙 패널이 화면 한가운데보다 위로
      올라가 있었다(2026-08-12 사용자 지적: "패널이 중앙보다 살짝 위"). 아래 clamp 가
      이 값을 함께 보므로, 위·아래 여유가 같아지면서 보드가 그만큼 내려온다. */
-  --top-gutter: 16px;
+  --top-gutter: 12px;
   --board-vspan: 0.9;
   --board-fit-v: max(
     200px,
@@ -1357,8 +1352,7 @@ button {
  * 내린다.
  *
  * 가로로 긴 판에서는 맞은편 줄이 가운데에, 아이콘 줄이 오른쪽 끝에 있어 서로 닿지 않는다
- * (1280×800: 줄 x 246~1034, 아이콘 x 1024~ — 이미 맞닿아 있다는 것이 `.ui-zoom` 주석의
- * 실측이다). 세로로 길면 그 여유가 사라진다: 768×1024를 배율 0.62로 보면 판은 1237cqw
+ * (1280×800 실측: 줄 x 246~1034, 아이콘 x 1024~ — 이미 맞닿아 있다). 세로로 길면 그 여유가 사라진다: 768×1024를 배율 0.62로 보면 판은 1237cqw
  * 인데 이름표 오른쪽 끝이 1098cq까지 뻗어 아이콘 줄(981cq~)을 그대로 물었다 — "봇2"가
  * 📘 아이콘에 가려졌다(2026-08-18 실측).
  *
@@ -1380,18 +1374,34 @@ button {
    예전에는 후로 타일이 고정 크기(38~52px)라 예산을 먼저 다 먹었고, 깡 서너 번이면
    남는 높이가 바닥나 손패 뒷면만 14px 하한까지 쪼그라들었다(2026-08-13 보고).
    이제 후로도 같이 줄어들어 둘 다 읽을 수 있는 크기로 수렴한다. */
-/* ⚠ 위쪽에서 배율 손잡이(.ui-zoom)가 아이콘 줄 **아래 한 줄**을 쓴다(≥901cqw).
-   그만큼 좌·우 상대 줄을 아래로 밀고(가운데 정렬을 반만큼 옮긴다) 높이 예산에서도
-   뺀다 — 안 그러면 오른쪽 상대 이름표가 손잡이와 겹친다(1280×800 실측: 이름표 y
-   83~151 × 손잡이 y 60~94). 아래로 미는 값은 절반(=--side-strip-reserve/2)이라
-   아래끝은 그만큼만 내려간다. */
+/* (2026-08-24: 아이콘 줄 아래 한 줄을 쓰던 배율 손잡이를 없앴다 — 좌·우 상대 줄이
+   그만큼 비켜설 이유도 함께 사라져 `--side-strip-reserve` 를 걷어냈다. 줄은 다시
+   화면 세로 한가운데에 선다.) */
 .opp-strip-left,
 .opp-strip-right {
-  --back-room-y: calc(40px + var(--side-strip-reserve, 0px));
-  /* 뺄 것: 뒷면 사이 간격(--back-gap씩) + 후로 묶음 사이·줄 사이 간격(장당 3px 어림)
-     + 이름표 여유(--col-slack). --back-room-y(40px)는 이름표 실제 높이(≈68px)보다
-     작은데, 후로가 없을 땐 남는 높이가 많아 티가 안 났다. 꽉 찬 경우에만 더 뺀다
-     (이름표를 숨기는 좁은 화면에서는 0으로 되돌린다). */
+  /* 세로줄이 못 쓰는 몫. 이름표(≈68px)와 **위·아래 구석에 사는 것들**(왼쪽 아래
+     빠른 토글 · 오른쪽 아래 대화 알약 · 우상단 아이콘 줄)을 함께 비켜야 한다.
+     줄은 화면 세로 한가운데 정렬이라 이 값의 절반씩 위·아래에서 물러난다.
+
+     ⚠ 두 값 중 큰 쪽이다. 96px 는 예전의 40px + `--side-strip-reserve`(56px) —
+     배율 손잡이를 없애며 그 56px 를 걷어내자 줄이 길어져 **왼쪽 아래 빠른 토글 위로
+     뒷패가 29% 올라탔다**(1850×860 실측, 2026-08-24). 손잡이는 사라졌어도
+     «구석을 비켜야 한다»는 이유는 그대로라 같은 몫을 여기로 옮겼다.
+
+     `567px - 36cqh` 를 함께 두는 이유: 뒷패에는 상한(`--back-cap`)이 있어서 세로가
+     넉넉한 판에서는 줄이 **상한에 걸린 채 길어지기만** 한다. 그러면 세로가 짧아질수록
+     줄의 아래끝이 구석 위젯 쪽으로 내려온다 — 1024×768(가상 1365×1024)에서 오른쪽 줄
+     맨 아래 뒷패가 내 손패 마지막 장을 6px 물었고, 1920×600(가상 2560×800)에서는
+     왼쪽 줄이 빠른 토글 더미를 물었다(2026-08-24 실측).
+
+     식은 그 조건을 그대로 푼 것이다. 줄은 세로 한가운데 정렬이므로
+         줄 높이 ≤ 100cqh − 2 × C     (C = 구석 위젯 높이 + 여백 ≈ 171px)
+     이어야 하고, 줄 높이 ≈ 13 × 뒷패 + 104, 뒷패 = (100cqh − room − 39) / 17.68 이라
+     room ≥ 2.72C + 102 − 36cqh = 567px − 36cqh 가 나온다. 세로 ≳1300 이면 음수라
+     96px 바닥이 이긴다 — 그 판에서는 상한에 걸린 줄이 이미 충분히 짧다. */
+  --back-room-y: max(96px, calc(567px - 36cqh));
+  /* 그 밖에 뺄 것: 뒷면 사이 간격(--back-gap씩) + 후로 묶음 사이·줄 사이 간격
+     (장당 3px 어림) + 이름표 여유(--col-slack). 꽉 찬 경우에만 더 뺀다. */
   --col-slack: min(28px, var(--meld-n) * 7px);
   --col-unit: calc(
     (
@@ -1410,7 +1420,7 @@ button {
 
 .opp-strip-left {
   left: 14px;
-  top: calc(50% + var(--side-strip-reserve, 0px) / 2);
+  top: 50%;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
@@ -1420,7 +1430,7 @@ button {
 
 .opp-strip-right {
   right: 14px;
-  top: calc(50% + var(--side-strip-reserve, 0px) / 2);
+  top: 50%;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
@@ -2004,12 +2014,12 @@ button {
 .own-area {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: 14px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   z-index: 10;
 }
 
@@ -2131,6 +2141,51 @@ button {
   .game-root,
   .table { --waits-row-h: 54px; }
 }
+
+/* ─────────────── 납작한 판 안전망 (max-height) ───────────────
+ *
+ * 배율(uiScale.ts)이 가상 뷰포트를 원판(1920×1080) 언저리로 잡아 주므로 보통은 여기
+ * 안 온다.
+ * 오는 건 배율 **하한(0.75)에 걸린 납작한 창**이다 — 1920×600 같은 반쪽 창, 세로가
+ * 아주 짧은 노트북, 창을 위아래로 눌러 놓은 사람.
+ *
+ * 거기서는 위·아래 띠(전부 고정 px)가 세로를 다 먹고 중앙 보드가 쪼그라든다. 패널이
+ * 180px 아래로 내려가면 국 표시·도라·네 방향 점수판이 서로 올라탄다(uiScale.ts
+ * REF_W/REF_H 주석의 계산). 그래서 **띠 쪽이 먼저 양보한다**: 늘 비워 두는 오름패 줄,
+ * 손패 크기, 띠 사이 숨통 순이다. 정보를 지우지는 않는다 — 같은 것이 작아질 뿐이다.
+ *
+ * ⚠ 좁은 폭(≤900cqw)의 전용 배치는 이 아래 파일 뒤쪽에서 다시 잡으므로 그쪽이 이긴다.
+ *   여기는 **넓고 납작한** 판을 위한 것이다. */
+@container ui (max-height: 900px) {
+  .game-root,
+  .table { --waits-row-h: 56px; }
+  .table {
+    --hand-pref: clamp(46px, min(6cqw, 9.2cqh), 84px);
+    --own-gutter: 10px;
+    --top-gutter: 10px;
+  }
+  .own-area { gap: 8px; bottom: 12px; }
+  /* 왼쪽 아래 토글 더미(4칸 세로 스택)는 납작한 판에서 세로의 20%를 먹는다 —
+     그만큼 좌·우 상대 줄이 짧아져야 하므로(위 `--back-room-y`) 여기서 먼저 낮춘다. */
+  .quick-toggles { gap: 6px; bottom: 14px; }
+  .qt-item { padding: 6px 11px 6px 9px; font-size: 13px; }
+}
+
+@container ui (max-height: 760px) {
+  .game-root,
+  .table { --waits-row-h: 50px; }
+  .table {
+    --hand-pref: clamp(40px, min(6cqw, 8.4cqh), 84px);
+    --own-gutter: 8px;
+    --top-gutter: 8px;
+  }
+  .own-area { gap: 6px; bottom: 10px; }
+  /* 왼쪽 아래 토글 더미도 같이 낮춘다 — 4칸 세로 스택이 납작한 판에서는 세로의
+     20%를 먹고, 그만큼 좌·우 상대 줄이 갈 곳을 잃는다. */
+  .quick-toggles { gap: 5px; bottom: 12px; }
+  .qt-item { padding: 5px 10px 5px 8px; font-size: 12.5px; }
+}
+
 
 /*
  * 손패 레일 — 손패 블록의 **왼쪽 끝을 못 박아 두는** 껍데기.
@@ -5700,8 +5755,8 @@ button {
 .auglog {
   position: fixed;
   top: 62px;
-  /* .ui-zoom 과 같은 이유로 도크 몫만큼 물러난다 — 이쪽이 더 컸다(340px 서랍이
-     도크 머리·구획 스위치·좌석 카드를 통째로 덮어 📜를 연 채로는 도크를 못 썼다). */
+  /* 관전 2열에서는 도크 몫만큼 물러난다 — 340px 서랍이 도크 머리·구획 스위치·좌석
+     카드를 통째로 덮어 📜를 연 채로는 도크를 못 썼다. */
   right: calc(14px + var(--dock-reserve, 0px));
   z-index: 90;
   width: min(340px, calc(100cqw - 16px - var(--dock-reserve, 0px)));
@@ -7405,6 +7460,18 @@ button {
   .waits-badge-mine.waits-badge-wide .waits-badge-tiles .tile-mini { width: 24px; height: 35px; }
 }
 
+/* 납작한 판(§안전망) — 늘 비워 두는 오름패 줄이 세로를 덜 먹게 뱃지도 함께 줄인다.
+   `--waits-row-h` 와 **같은 눈금으로** 움직여야 한다: 줄 높이 = 타일 높이 + 11 + 2. */
+@container ui (max-height: 900px) {
+  .waits-badge-mine .waits-badge-tiles .tile-mini { width: 29px; height: 43px; }
+  .waits-badge-mine.waits-badge-wide .waits-badge-tiles .tile-mini { width: 26px; height: 38px; }
+}
+
+@container ui (max-height: 760px) {
+  .waits-badge-mine .waits-badge-tiles .tile-mini { width: 25px; height: 37px; }
+  .waits-badge-mine.waits-badge-wide .waits-badge-tiles .tile-mini { width: 22px; height: 32px; }
+}
+
 /* ── 남은 장수 ──
    **패 그림 바로 아래**에 "N장" 띠로 놓는다. 겹치지 않는다 — 띠가 패 위에 얹혀
    있던 동안은 패의 아랫부분(무늬가 끝나는 자리)이 가려져 무슨 패인지 읽는 데
@@ -8022,10 +8089,10 @@ button {
   }
 
   /* 세로 화면은 위쪽 이름표 줄이 두 줄로 접혀 더 두껍다
-     (.opp-strip-top top:48px + 두 줄 — 375×812 실측 아래끝 119px) */
+     (.opp-strip-top top:56px + 두 줄 — 375×812 실측 아래끝 127px) */
   .game-root,
   .table {
-    --top-band: 124px;
+    --top-band: 132px;
   }
 
   /* 상단 아이콘 버튼을 줄이고, 상대 이름표가 그 아래로 내려오게 한다 */
@@ -8041,9 +8108,12 @@ button {
   .codex-btn { right: 128px; }
   .help-btn { right: 168px; }
 
-  /* 이름표가 화면 폭을 거의 다 쓰므로 우상단 아이콘 버튼 아래로 내린다 */
+  /* 이름표가 화면 폭을 거의 다 쓰므로 우상단 아이콘 버튼 아래로 내린다.
+     56px = 아이콘 줄 top 8px + 터치 목표 44px(`@media (pointer: coarse)` 가 키운 값,
+     아래 §9-2) + 숨통 4px. 48px 이던 시절에는 그 4px 이 없어 뒷패 윗줄이 ⚙·📘 아래
+     끝을 물었다(375×812 실측 8~14%, 2026-08-24). */
   .opp-strip-top {
-    top: 48px;
+    top: 56px;
     gap: 5px;
   }
   .opp-strip-left { left: 6px; }
@@ -11168,18 +11238,17 @@ button {
 }
 
 /*
- * 배율 손잡이(`.ui-zoom`)와 기록 서랍(`.auglog`)도 방송에 나가면 안 된다.
+ * 기록 서랍(`.auglog`)도 방송에 나가면 안 된다.
  *
- * ⚠ 이 둘은 **body 포털**이다(FIXED_SURFACE_NOTE) — `.game-root` 의 후손이 아니라
- *   **형제**다. 그래서 처음에 쓴 `.game-root:has(.table-overlay-green) .ui-zoom`
- *   은 후손 결합자가 성립하지 않아 **한 번도 매치되지 않았고**, 크로마키 출력에
+ * ⚠ 이것은 **body 포털**이다(FIXED_SURFACE_NOTE) — `.game-root` 의 후손이 아니라
+ *   **형제**다. 그래서 처음에 쓴 `.game-root:has(.table-overlay-green) .auglog`
+ *   는 후손 결합자가 성립하지 않아 **한 번도 매치되지 않았고**, 크로마키 출력에
  *   손잡이와 열린 📜 로그가 그대로 나갔다(2026-08-23 검수 지적). 소스만 보면
  *   멀쩡해 보이는 종류의 실패라 브라우저로 매치 여부를 직접 확인해야 한다.
  *
  * 그래서 `--dock-reserve` 와 **같은 방식**으로 body 에 실린 신호를 본다.
  * 표식은 App(GameTable)이 단다: 오버레이 중이면 `data-majak-dock="overlay"`.
  */
-body[data-majak-dock="overlay"] .ui-zoom,
 body[data-majak-dock="overlay"] .auglog {
   display: none;
 }
@@ -11644,12 +11713,12 @@ body[data-majak-dock="overlay"] .auglog {
 /*
  * ── 도크 몫 (`--dock-reserve`) ──
  *
- * `.auglog`(z 90)·`.ui-zoom`(z 85)은 **body 포털**이라(FIXED_SURFACE_NOTE) 열 분할
- * 바깥에 산다 — 컨테이너 안에 있지 않으니 `container-type` 의 봉쇄도 걸리지 않는다.
- * 그대로 두면 늘 «창» 오른쪽에 서서 도크 위에 올라탄다(1440×900 실측: 📜 서랍이
- * 도크 머리·구획 스위치·좌석 카드를 통째로 덮어 그걸 연 채로는 도크를 못 썼다).
+ * `.auglog`(z 90)는 **body 포털**이라(FIXED_SURFACE_NOTE) 열 분할 바깥에 산다 —
+ * 컨테이너 안에 있지 않으니 `container-type` 의 봉쇄도 걸리지 않는다. 그대로 두면
+ * 늘 «창» 오른쪽에 서서 도크 위에 올라탄다(1440×900 실측: 📜 서랍이 도크 머리·
+ * 구획 스위치·좌석 카드를 통째로 덮어 그걸 연 채로는 도크를 못 썼다).
  *
- * 그래서 도크가 실제로 쓰는 폭을 body에 실어 두고, 그 둘이 그만큼 물러나게 한다.
+ * 그래서 도크가 실제로 쓰는 폭을 body에 실어 두고, 그만큼 물러나게 한다.
  * 값은 `.spectate-stage` 의 그리드 트랙과 **같은 식**을 쓴다 — 무대는 `.game-root`
  * 를 `inset: 0` 으로 덮고 `.game-root` 는 body 폭 그대로라, `25cqw` 가 곧 트랙의 25%다.
  * (JS로 재서 넣지 않는 이유: 한 값이 두 곳에서 따로 계산되면 언젠가 갈라진다.)
@@ -11669,8 +11738,7 @@ body[data-majak-dock="folded"] {
    `body` 는 자기 자신의 컨테이너를 질의할 수 없으므로(컨테이너는 자기를 못 잰다)
    값을 쓰는 쪽에서 되돌린다 — 이 둘은 `ui` 컨테이너 «안»이라 질의가 성립한다. */
 @container ui (max-width: 900px) {
-  .auglog,
-  .ui-zoom {
+  .auglog {
     --dock-reserve: 0px;
   }
 }
@@ -12596,129 +12664,6 @@ body[data-majak-dock="folded"] {
 
 .layout-hint-x:hover {
   color: var(--ink-1);
-}
-
-/* ─────────────── 화면 크기 −/+ (수동 배율) ───────────────
-   자동 맞춤(uiScale.ts) 위에 곱하는 배수를 만지는 손잡이. 포털로 body에 붙으므로
-   로그인·홈·도감·대국 어디서나 뜬다.
-
-   자리는 화면마다 다르다 — 사용자는 "인게임 기준 설정이나 증강도감 있는 쪽"을
-   지정했고(2026-08-12), 그건 **대국 화면의 우상단 아이콘 줄**이다:
-
-     · 대국(우상단 아이콘 줄이 있는 화면) + 넓은 판(≥901cqw)
-         → ⚙📖📘 **바로 아래 줄**, 같은 오른쪽 끝.
-           같은 줄에 못 넣은 이유는 실측이다(1280×800): 맞은편 상대 줄이 x 246~1034 를
-           쓰고 아이콘 줄이 x 1024 에서 시작한다 — 이미 맞닿아 있어서 92px짜리 손잡이가
-           들어갈 폭이 **음수**다. 넣으려면 상대 뒷패를 39→18px 로 줄여야 하는데
-           그게 이번에 되돌린 거래다. 이 줄이 먹는 높이는 `--side-strip-reserve` 로
-           좌·우 상대 줄에 통보한다.
-     · 그 밖(홈·로그인·도감, 또는 ≤900cqw)
-         → **오른쪽 아래 구석**. 홈은 상단 바(.home-nav)가 폭을 다 쓰고, 좁은 판은
-           위 줄이 이미 모드 뱃지·상대 이름표·아이콘으로 겹쳐 있다(가상 853×533 실측).
-           그 폭에서는 좌·우 상대 이름표가 숨고 손패는 가운데 정렬이라 구석이 빈다.
-
-   ⚠ 되감기 scale은 **없다**. 배율은 화면 전체에 균일하게 걸리는 것이고(body의 zoom),
-   이 손잡이만 예외로 두면 옆의 아이콘 버튼들과 높이가 어긋난다. 확대하면 이 버튼도
-   같이 커진다 — 브라우저 Ctrl+ 와 같은 동작이다. */
-.ui-zoom {
-  position: fixed;
-  bottom: 8px;
-  /*
-   * 관전 2열에서는 **도크 폭만큼 왼쪽으로** 물러난다 (`--dock-reserve`).
-   * `position: fixed` + body 포털이라 열 분할과 무관하게 늘 «창» 오른쪽에 서는데,
-   * 그 자리는 이제 도크의 것이다 — 1440×900 실측으로 도크 머리의 ⚙/▶ 바로 위에
-   * 올라탔다. 옛 `.bcast-side` 는 읽기 전용이라 덮여도 손해가 적었지만 도크는
-   * 조작하는 물건이라 «덮인다 = 못 쓴다»가 된다.
-   * 관전이 아니면 `--dock-reserve` 가 0이라 예전 자리 그대로다.
-   */
-  right: calc(14px + var(--dock-reserve, 0px));
-  /* 설정·증강로그 패널(90)보다 **아래**. 그 패널들이 손잡이를 덮는 건 맞다 —
-     패널을 열어 둔 채 배율을 만질 일은 없고, 반투명한 손잡이가 패널 위에 떠 있으면
-     그게 더 이상하다. 판 위 오버레이(1~40)보다는 위다. */
-  z-index: 85;
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 999px;
-  border: 1px solid var(--brass-line);
-  background: rgba(13, 23, 18, 0.72);
-  box-shadow: var(--shadow-2);
-  /* 판을 볼 때는 눈에 안 걸리게, 다가가면 또렷하게.
-     너무 흐리면 "있는 줄 몰랐다"가 되므로 쉬는 상태도 읽히는 선(0.7)까지만 낮춘다. */
-  opacity: 0.7;
-  transition: opacity 0.15s ease;
-}
-
-/* 대국 화면 + 넓은 판 → 우상단 아이콘 줄 바로 아래.
-   `:has(.icon-btn)` 으로 "그 줄이 있는 화면"을 가린다 — 홈·로그인에는 없다. */
-@container ui (min-width: 901px) {
-  body:has(.icon-btn) .ui-zoom {
-    top: 60px;
-    bottom: auto;
-  }
-}
-
-.ui-zoom:hover,
-.ui-zoom:focus-within {
-  opacity: 1;
-}
-
-.ui-zoom-btn,
-.ui-zoom-now {
-  border: 0;
-  background: none;
-  color: var(--ink-2);
-  border-radius: 999px;
-  line-height: 1;
-}
-
-.ui-zoom-btn {
-  width: 26px;
-  height: 26px;
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.ui-zoom-now {
-  min-width: 44px;
-  padding: 0 6px;
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
-}
-
-.ui-zoom-btn:hover:not(:disabled),
-.ui-zoom-now:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--ink-1);
-}
-
-/* 사다리 끝이거나 최종 배율 하한/상한에 닿아 눌러도 안 바뀌는 상태 (canStepUiZoom) */
-.ui-zoom-btn:disabled,
-.ui-zoom-now:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-/* 좁은 판: 아이콘 줄과 같은 눈금으로 작아진다 (구석 자리는 그대로) */
-@container ui (max-width: 900px) {
-  .game-root,
-  .table { --side-strip-reserve: 0px; }
-  .ui-zoom-btn { font-size: 15px; }
-  .ui-zoom-now { min-width: 38px; font-size: 10.5px; }
-}
-
-/* 더 좁아지면 구석도 좁다 — 백분율을 접는다.
-   (−/+ 두 칸이면 배율은 만질 수 있고, 지금 값은 툴팁·단축키로 안다.) */
-@container ui (max-width: 700px) {
-  .ui-zoom-now { display: none; }
-}
-
-/* 터치 기기: 손가락이 닿을 크기로. */
-@media (pointer: coarse) {
-  .ui-zoom { opacity: 1; }
-  .ui-zoom-btn { width: 36px; height: 36px; font-size: 19px; }
 }
 
 /* ─────────────── 재연결 인디케이터 ─────────────── */
@@ -14372,51 +14317,6 @@ body.peeking .overlay-peekable > * {
   .leave-btn { right: max(8px, env(safe-area-inset-right, 0px)); }
 }
 
-/* 배율 손잡이의 안전 영역. 자리는 화면·폭마다 다르다(위 .ui-zoom 주석) —
-   구석 쪽에 top 을 주면 bottom 과 둘 다 서서 손잡이가 세로로 늘어난다. */
-.ui-zoom {
-  bottom: max(8px, env(safe-area-inset-bottom, 0px));
-  right: calc(max(14px, env(safe-area-inset-right, 0px)) + var(--dock-reserve, 0px));
-}
-
-@container ui (min-width: 901px) {
-  body:has(.icon-btn) .ui-zoom {
-    top: max(60px, env(safe-area-inset-top, 0px) + 48px);
-    bottom: auto;
-  }
-}
-
-/* 9-1-b. 터치 기기 세로 + 대국 중 — 손잡이를 **왼쪽 위**로 옮기고 세로로 세운다.
- *
- * 오른쪽 아래 구석이 빈다는 위 .ui-zoom 주석의 전제는 데스크톱의 좁은 판(가상 853×533)
- * 이야기였고, 세로 화면에서는 정반대다. 손패 레일이 폭을 다 쓰기 때문이다 — 실측:
- *
- *   375×812  레일 x 4–371 · 손잡이 x 279–361 · y 760–804 → **마지막 세 장이 깔린다.**
- *            `elementFromPoint`로 방금 쯔모한 패(x 340–363) 한가운데를 찍으면
- *            `.ui-zoom-btn`이 나온다 — 쯔모패를 보지도, 버리지도 못했다.
- *   767×1024 레일 x 9–758 · 손잡이 x 631–753 · y 972–1016 → 마지막 두 장의 아래 23px.
- *
- * 배율을 줄여도 손패가 같은 비율로 같이 줄어드니 겹침은 그대로 따라온다 — 세로에서는
- * **줄여도 안 보이는 부분이 남았다**(2026-08-13 사용자 보고).
- *
- * 왼쪽 위가 세로에서 확실히 비는 구석이다. 모드 뱃지 아래 줄(y 60~)에서 시작해 세로로
- * 세우면 44×88 이라, 실측한 이웃 어디에도 닿지 않는다:
- *   375×812  뱃지 없음 · 아이콘 줄 x 163~ · 맞은편 줄 x 73~ · 왼쪽 줄 y 289~
- *   767×1024 뱃지 y 8–46 · 아이콘 줄 x 509~ · 맞은편 줄 x 119~ · 왼쪽 줄 y 222~
- * 대국 밖(로그인·홈·규칙)에서는 아래 구석이 실제로 비므로 손대지 않는다 — 규칙 화면은
- * 왼쪽 위에 "← 로그인으로"가 있어서 오히려 그쪽이 막혀 있다. */
-@media (orientation: portrait) and (pointer: coarse) {
-  /* ⚠ 손잡이는 포털로 body에 붙는다 — `.game-root`의 자손이 아니라 **형제도 아니다**
-     (`#root > .game-root` 대 `body > .ui-zoom`). 그래서 조건은 body에서 건다. */
-  body:has(.game-root .table) .ui-zoom {
-    top: max(60px, env(safe-area-inset-top, 0px) + 48px);
-    left: max(4px, env(safe-area-inset-left, 0px));
-    right: auto;
-    bottom: auto;
-    flex-direction: column;
-  }
-}
-
 /* 9-2. 손가락 목표 크기 — 최소 44px (WCAG 2.5.8 은 24px, 애플·구글 권장은 44/48).
    손패 한 장은 '되돌릴 수 없는 타패'라 특히 중요하다. 폭은 판이 정하므로
    **세로로** 44px 를 확보하고, 패 사이 간격을 벌려 오탭을 줄인다. */
@@ -14443,8 +14343,7 @@ body.peeking .overlay-peekable > * {
     min-height: 44px;
   }
   .rotate-hint-close,
-  .home-refresh,
-  .ui-zoom-btn {
+  .home-refresh {
     min-width: 44px;
     min-height: 44px;
   }
@@ -14513,7 +14412,12 @@ body.peeking .overlay-peekable > * {
   .icon-btn { width: 40px; height: 40px; font-size: 15px; }
   .hand-tile { min-height: 46px; }
   .hand { gap: 3px; }
-  .mode-badge,
+  /* ⚠ `.mode-badge` 만으로는 안 걷힌다 — 파일 뒤쪽의 `.mode-badge.info-note`
+     (팝오버를 얹으면서 `display: flex` 를 다시 세운다) 가 **같은 특정도에 더 뒤**라
+     이긴다. 조상 하나를 더 짚어 특정도로 이긴다(자리 옮김에 안 흔들리게).
+     안 걷히면 폰 세로에서 좌상단 뱃지가 그대로 남아 맞은편 뒷패 줄을 63~71% 덮는다
+     (375×812 실측, 2026-08-24). */
+  .game-root .info-note.mode-badge { display: none; }
   .np-arch { display: none; }
   .auglog,
   .settings-panel {
@@ -14594,16 +14498,13 @@ body.peeking .overlay-peekable > * {
    *
    * ⚠ **대국 화면에서만 띄운다** (`.game-root:has(.table)`). 예전에는 로그인·홈·규칙
    * 에서도 화면 아래에 떴는데, 거기엔 "네 자리"가 아예 없어서 문구가 뜻이 없는 데다
-   * 같은 구석에 있는 배율 손잡이(.ui-zoom)를 통째로 덮었다 — 375×812 실측으로 힌트가
-   * x 8–367 · y 752–804, 손잡이가 x 279–361 · y 760–804 라 `elementFromPoint`가 "−"
-   * 자리에서 `.rotate-hint`를 돌려줬다. **폰에서 화면을 줄일 방법이 아예 없었다**
-   * (2026-08-13 사용자 보고: "스크롤이나 화면 줌아웃을 해도 안 보이는 부분이 생겨").
+   * 같은 구석에 있던 배율 손잡이를 통째로 덮기도 했다(2026-08-13 사용자 보고:
+   * "스크롤이나 화면 줌아웃을 해도 안 보이는 부분이 생겨"). 그 손잡이는 2026-08-24에
+   * 없앴지만, 안내가 본문을 가리면 안 된다는 이유는 그대로다.
    */
   .game-root:has(.table) .rotate-hint {
     position: fixed;
-    /* 왼쪽은 배율 손잡이 세로 줄(§9-1-b, x ≤48)을 비켜 간다 — 안 비키면 y 132–184 에서
-       손잡이 아래 칸("+")과 겹친다. */
-    left: 56px;
+    left: 8px;
     right: 8px;
     top: calc(var(--top-band, 124px) + 8px);
     /* 패널·오버레이(50~130)보다 **아래**. 300이던 시절에는 이 안내가 설정 패널의 첫
