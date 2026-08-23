@@ -60,6 +60,7 @@ import type {
   ServerInfoMessage,
   ServerNotice,
   SpectateInsightMessage,
+  SpectateWinValue,
   ServerMessage,
   StatsEntry,
   StatsMessage,
@@ -86,6 +87,21 @@ import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
+import {
+  DEFAULT_DOCK_PREFS,
+  DOCK_SECTIONS,
+  type DockPrefs,
+  type DockSectionId,
+  type OverlayMode,
+  loadDockPrefs,
+  loadFocusSeat,
+  loadOverlayMode,
+  loadSpectateDelay,
+  saveDockPrefs,
+  saveFocusSeat,
+  saveOverlayMode,
+  saveSpectateDelay,
+} from "./spectateDock.js";
 import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent, placeBubble } from "./tutorial.js";
 import { DRAWN_TILE } from "./tutorial.js";
 import type { BubbleSpot, CoachCtx, CoachRect, Lesson, LessonLock } from "./tutorial.js";
@@ -2870,8 +2886,14 @@ export function App(): JSX.Element {
    * 말하면 둘 중 하나는 거짓말인데 어느 쪽인지 알 수 없다.
    */
   const [insight, setInsight] = useState<SpectateInsightMessage | null>(null);
-  /** 이 관전석에 걸린 송출 지연(초). 0이면 지연 없음 (docs/36 C1). */
-  const [spectateDelay, setSpectateDelay] = useState(0);
+  /**
+   * 이 관전석에 걸린 송출 지연(초). 0이면 지연 없음 (docs/36 C1).
+   *
+   * **저장한다.** 여태 새로고침 한 번에 0으로 돌아갔는데, 이건 취향이 아니라
+   * 안전장치다 — 대회 중계에서 15초를 걸어 둔 운영자가 재접속 뒤 자기도 모르게
+   * 실시간으로 네 사람의 손패를 내보내게 된다.
+   */
+  const [spectateDelay, setSpectateDelay] = useState(loadSpectateDelay);
   const spectateDelayRef = useRef(0);
   spectateDelayRef.current = spectateDelay;
   /**
@@ -2894,7 +2916,28 @@ export function App(): JSX.Element {
   /** 지금 보고 있는 버퍼 위치. null이면 라이브다. */
   const [rewindAt, setRewindAt] = useState<number | null>(null);
   /** 방송 오버레이 모드 — OBS로 얹기 위해 배경과 곁가지를 걷는다 (docs/36 D2) */
-  const [overlayMode, setOverlayMode] = useState<"off" | "clear" | "green">("off");
+  const [overlayMode, setOverlayMode] = useState<OverlayMode>(loadOverlayMode);
+  /*
+   * Esc 로 오버레이를 끈다 — **갇히지 않기 위한 두 번째 문** (QA 2026-08-23 P0-2).
+   *
+   * 오버레이 모드는 도크와 관전 띠를 함께 걷으므로 화면에 남는 «끔» 단추가 0개다.
+   * 판 위에 hover 로 드러나는 손잡이를 하나 뒀지만 그건 마우스의 문이고, 키보드만
+   * 쓰는 사람에게는 이쪽이 유일한 길이다. 저장까지 함께 되돌린다 — 상태만 끄면
+   * 다음 관전에서 같은 화면으로 되살아난다.
+   *
+   * 관전 중이고 오버레이가 켜져 있을 때만 듣는다. 글자를 치는 칸에서는 비켜선다
+   * (공지 입력 중의 Esc 는 그 칸의 것이다).
+   */
+  useEffect(() => {
+    if (spectating === null || overlayMode === "off") return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || isTypingTarget(e.target)) return;
+      setOverlayMode("off");
+      saveOverlayMode("off");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [spectating, overlayMode]);
   const roomNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 정지가 시작된 시각 (epoch, performance 각각) — 재개 때 마감을 밀 값 */
   const pausedAt = useRef<{ epoch: number; perf: number } | null>(null);
@@ -3763,8 +3806,16 @@ export function App(): JSX.Element {
     setRoundResult(null);
     setAbortVote(null);
     setSpectating(null);
-    // 중계 오버레이도 관전석에 두고 나온다 (위 `overlayMode` 주석).
+    /*
+     * 중계 오버레이도 관전석에 두고 나온다 (위 `overlayMode` 주석).
+     *
+     * ⚠ **저장값까지 함께 내려야 한다.** 상태만 끄면 localStorage 에는 `green` 이
+     * 남아, 다음에 관전을 열자마자 판이 통째로 크로마키 초록으로 되살아난다
+     * (2026-08-23 QA 실측 — 오버레이에 갇히는 상태가 다음 세션까지 살아남는 경로가
+     * 정확히 이것이었다). 저장과 상태가 갈라지면 «껐다»가 거짓말이 된다.
+     */
     setOverlayMode("off");
+    saveOverlayMode("off");
     clearProductions();
     setScoreFx({});
     prevViewRef.current = null;
@@ -4370,7 +4421,10 @@ export function App(): JSX.Element {
     }
     if (msg.type === "spectateStarted") {
       setSpectating(msg.code);
+      // 서버가 확정해 준 값이 곧 «지금 걸린 지연»이다 — 저장도 여기서 맞춘다.
+      // (요청은 보냈는데 서버가 다른 값으로 확정하면 저장값만 옛것으로 남는다.)
       setSpectateDelay(msg.delaySeconds ?? 0);
+      saveSpectateDelay(msg.delaySeconds ?? 0);
       send({ type: "liveGames" }); // 탁자 전환기에 쓸 목록을 바로 한 번 받아 둔다
       activeSpectateRef.current = msg.code; // 재연결 시 관전 자동 복귀 대상
       introShown.current = true; // 관전은 개막 연출 생략
@@ -6070,7 +6124,10 @@ export function App(): JSX.Element {
             ? {}
             : {
                 onRewind: (at: number | null) => setRewindAt(at),
-                onOverlayMode: (m: "off" | "clear" | "green") => setOverlayMode(m),
+                onOverlayMode: (m: OverlayMode) => {
+                  setOverlayMode(m);
+                  saveOverlayMode(m);
+                },
                 onSwitchTable: (code: string) => {
                   // 탁자를 옮긴다 — 걸어 둔 지연은 그대로 들고 간다.
                   // 다만 **앞 탁자의 상태는 들고 가지 않는다** (QA 2차 admin 확정 2 —
@@ -6108,6 +6165,7 @@ export function App(): JSX.Element {
                   // 지연을 바꾸는 길은 «다시 관전»뿐이다 — 중간에 줄이면 이미 예약된
                   // 프레임과 새 프레임의 순서가 뒤집힌다. 서버가 대기분을 걷고 지금
                   // 뷰부터 새로 흘려 준다.
+                  saveSpectateDelay(seconds);
                   send({
                     type: "spectate",
                     code: spectating,
@@ -6267,7 +6325,16 @@ export function App(): JSX.Element {
           onOpenTiers={() => { setTierOpen(true); send({ type: "adminAugmentTiers" }); }}
           augmentTiers={augmentTiers}
           onRefreshLive={() => send({ type: "liveGames" })}
-          onSpectate={(code) => send({ type: "spectate", code })}
+          onSpectate={(code) =>
+            /* 관전을 시작할 때부터 **저장해 둔 지연**을 들고 간다. 안 그러면 저장의
+               뜻이 사라진다 — 새 관전은 언제나 «없음»으로 열리고, 운영자가 매번
+               다시 걸어야 한다는 것을 잊는 순간이 곧 실시간 유출이다. */
+            send({
+              type: "spectate",
+              code,
+              ...(spectateDelay > 0 ? { delaySeconds: spectateDelay } : {}),
+            })
+          }
           onAbortGame={(code, who) => {
             // 되돌릴 수 없다 — 정산도 기록도 없이 네 사람의 판이 사라진다.
             // 관전과 버튼이 나란히 있으므로 확인을 반드시 한 번 받는다.
@@ -12382,7 +12449,76 @@ const GameTable = memo(function GameTable(props: {
    * `"turn"`(지금 차례인 사람을 따라간다) · 좌석 고정(playerId).
    * 좌석이 사라지는 일은 없지만(4인 고정), 못 찾으면 오야로 되돌아간다.
    */
-  const [focusSeat, setFocusSeat] = useState<string>("dealer");
+  /*
+   * ⚠ **관전일 때만 읽는다.** 대국자 화면에서도 읽으면 `spectateDock.ts` 머리말이
+   * 경계한 것과 다른 결과가 된다 — 저장이 막힌 브라우저에서 아무 상관도 없는 판이
+   * 남의 설정을 읽으려다 경고를 뱉는다. 관전이 아니면 기본값이면 충분하다
+   * (아래 `focusPlayer` 가 관전이 아닐 때 이 값을 아예 안 본다).
+   */
+  const [focusSeat, setFocusSeatRaw] = useState<string>(() =>
+    props.spectator === true ? loadFocusSeat() : "dealer",
+  );
+  const setFocusSeat = useCallback((s: string) => {
+    setFocusSeatRaw(s);
+    // 중계석은 한 대회 내내 같은 자리를 아래에 두고 본다 — 새로고침마다 오야로
+    // 튕겨 나가면 해설이 매번 카메라를 다시 잡아야 한다.
+    saveFocusSeat(s);
+  }, []);
+  /**
+   * ── 관전 도크의 취향값 ──
+   *
+   * 구획마다 «있나/없나»(on)와 «펼쳤나/접었나»(open)를 따로 둔다. 둘은 다른 뜻이다:
+   * 끈 구획은 아예 그리지 않아 렌더 비용도 사라지고(다음 쯔모처럼 스포일러인 것은
+   * 그래야 한다), 접은 구획은 제목줄이 남아 «여기 있다»를 계속 말한다.
+   */
+  const [dockPrefs, setDockPrefsRaw] = useState<DockPrefs>(() =>
+    props.spectator === true ? loadDockPrefs() : DEFAULT_DOCK_PREFS,
+  );
+  const setDockPrefs = useCallback((next: DockPrefs) => {
+    setDockPrefsRaw(next);
+    saveDockPrefs(next);
+  }, []);
+  const dangerOn = dockPrefs.on.danger;
+  /** 방송 오버레이가 켜져 있나 — 도크와 관전 띠가 함께 사라지는 조건 (docs/36 D2) */
+  const overlayOn = (props.overlayMode ?? "off") !== "off";
+  /*
+   * 도크가 실제로 쓰는 폭을 **body 에 표식으로 단다** (`--dock-reserve` 의 스위치).
+   *
+   * `.auglog`(z 90)·`.ui-zoom`(z 85)은 body 포털이라(FIXED_SURFACE_NOTE) 열 분할
+   * 바깥에 산다 — 컨테이너 봉쇄도 안 걸려서 늘 «창» 오른쪽에 서고, 그대로 두면
+   * 도크 위에 올라탄다(1440×900 실측: 📜 서랍이 도크 머리·구획 스위치·좌석 카드를
+   * 통째로 덮어 그걸 연 채로는 도크를 못 썼다). 폭 자체는 CSS 가 무대의 그리드
+   * 트랙과 **같은 식**으로 계산한다 — 여기서 재서 넣으면 한 값이 두 곳에서 따로
+   * 계산되어 언젠가 갈라진다.
+   */
+  const dockFlag =
+    props.spectator !== true
+      ? null
+      : overlayOn
+        ? /*
+           * 오버레이(OBS 송출) — 도크는 안 그리지만 **표식은 남긴다.**
+           * `.ui-zoom`·`.auglog` 는 body 포털이라 `.game-root` 의 후손이 아니라
+           * **형제**다. 그래서 `.game-root:has(.table-overlay-green) .ui-zoom` 은
+           * 후손 결합자가 성립하지 않아 한 번도 매치되지 않았고, 크로마키 화면에
+           * 배율 손잡이와 열린 📜 로그가 그대로 나갔다(2026-08-23 검수 지적).
+           * body 에 실린 이 표식만이 그 둘에 닿는 유일한 길이다.
+           */
+          "overlay"
+        : dockPrefs.dockOpen
+          ? "open"
+          : "folded";
+  useEffect(() => {
+    if (dockFlag === null) {
+      delete document.body.dataset.majakDock;
+      return;
+    }
+    document.body.dataset.majakDock = dockFlag;
+    // 관전을 접거나 방을 나가면 표식도 걷는다 — 남으면 대국자 화면에서 배율
+    // 손잡이가 있지도 않은 도크를 피해 왼쪽으로 물러난 채로 굳는다.
+    return () => {
+      delete document.body.dataset.majakDock;
+    };
+  }, [dockFlag]);
   const focusPlayer =
     props.spectator !== true || focusSeat === "dealer"
       ? null // 아래 기본 폴백(오야)이 그대로 처리한다
@@ -12429,11 +12565,14 @@ const GameTable = memo(function GameTable(props: {
   const specDanger = useMemo(
     () =>
       props.spectator === true &&
+      // 도크의 「위험패」 스위치가 판 위의 색칠까지 함께 끈다 — 도크에만 걸면
+      // 「껐는데 판은 여전히 신호등」이 되어 스위치가 거짓말을 한다.
+      dangerOn &&
       props.insight?.dangerSeat !== undefined &&
       props.insight.danger !== undefined
         ? { seat: props.insight.dangerSeat, danger: props.insight.danger }
         : null,
-    [props.insight, props.spectator],
+    [props.insight, props.spectator, dangerOn],
   );
 
   // ── 액티브 증강 클릭 발동(무장) 상태 — 게임판 전체가 공유(SelectionContext) ──
@@ -12506,16 +12645,11 @@ const GameTable = memo(function GameTable(props: {
     props.onSubmit(opt);
   }
 
-  return (
-    <SelectionContext.Provider value={selection}>
-    <DoraContext.Provider value={doraFx}>
-    <WaitCountContext.Provider value={waitRemaining}>
-    <DangerContext.Provider value={specDanger}>
-    <RelationProvider view={view}>
-    {/* `data-hl` — 손패 hover 강조를 **CSS 짝맞추기**로 넘긴 자리 (감사 §7-4).
-        예전에는 이 값을 컨텍스트로 내려보내 공개패마다 비교했고, 그래서 마우스가
-        손패 위를 지날 때마다 화면의 패 150~250장이 전부 다시 그려졌다. 지금은
-        여기 속성 **하나**만 바뀌고 React는 그 아래를 건드리지 않는다. */}
+  /* `data-hl` — 손패 hover 강조를 **CSS 짝맞추기**로 넘긴 자리 (감사 §7-4).
+     예전에는 이 값을 컨텍스트로 내려보내 공개패마다 비교했고, 그래서 마우스가
+     손패 위를 지날 때마다 화면의 패 150~250장이 전부 다시 그려졌다. 지금은
+     여기 속성 **하나**만 바뀌고 React는 그 아래를 건드리지 않는다. */
+  const tableEl = (
     <div
       className={`table${
         props.overlayMode === "clear"
@@ -12528,188 +12662,16 @@ const GameTable = memo(function GameTable(props: {
       onContextMenu={rightClickTsumogiri}
       data-hl={hoverKind === null ? undefined : `${hoverKind.suit}${hoverKind.rank}`}
     >
+      {/* 관전 표식 — **표식만** 남긴다.
+          예전에는 이 알약 하나에 운영 손잡이 7묶음(탁자·되감기·오버레이·지연·중계
+          도구·일시정지·아래 자리)이 전부 들어 있었다. 좁아지면 `flex-wrap`으로
+          여러 줄이 되어 아래로 자라며 맞은편 손패와 이름표를 덮었다 — 손잡이를
+          늘릴수록 판이 가려지는 구조였다. 전부 오른쪽 도크의 「관전 설정」으로
+          옮겼다(기능은 하나도 줄지 않았다). */}
       {props.spectator === true ? (
         <div className="spectate-bar">
           <span className="spectate-bar-label">
             👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
-          </span>
-          {/* 아래 자리 고르기 — 화면 아래에 손패를 펼칠 좌석. 중계 카메라에 해당한다. */}
-          {/* 탁자 전환 (docs/36 D4) — 목록이 곧 카메라 선택 화면이다.
-              방 코드만으로는 어느 탁자가 볼 만한지 알 수 없어 국·리치를 함께 적는다. */}
-          {props.onSwitchTable !== undefined && (props.liveRooms?.length ?? 0) > 1 ? (
-            <span className="spectate-focus">
-              <span className="spectate-focus-label">탁자</span>
-              {(props.liveRooms ?? []).map((r) => (
-                <button
-                  key={r.code}
-                  className={`spectate-table${r.code === props.spectateCode ? " on" : ""}${
-                    (r.riichiCount ?? 0) > 0 ? " hot" : ""
-                  }`}
-                  onClick={() => {
-                    if (r.code !== props.spectateCode) props.onSwitchTable?.(r.code);
-                  }}
-                  title={`${r.players.map((p) => p.nickname).join(" · ")}${
-                    r.roundLabel !== undefined ? ` — ${r.roundLabel}` : ""
-                  }${(r.riichiCount ?? 0) > 0 ? ` · 리치 ${r.riichiCount}` : ""}${
-                    r.paused === true ? " · 정지 중" : ""
-                  }`}
-                >
-                  {r.code}
-                  {r.roundLabel !== undefined ? (
-                    <span className="spectate-table-sub">{r.roundLabel}</span>
-                  ) : null}
-                  {(r.riichiCount ?? 0) > 0 ? <span className="spectate-table-riichi">리치</span> : null}
-                  {r.paused === true ? <span className="spectate-table-sub">⏸</span> : null}
-                </button>
-              ))}
-            </span>
-          ) : null}
-          {/* 즉시 되감기 (docs/36 D3) — 방금 무슨 일이 있었는지 그 자리에서 되짚는다.
-              라이브로 돌아오면 지금 화면으로 이어진다(버퍼는 계속 쌓인다). */}
-          {props.onRewind !== undefined && (props.rewindLen ?? 0) > 1 ? (
-            <span className="spectate-focus">
-              <span className="spectate-focus-label">되감기</span>
-              <button
-                className="spectate-focus-pick"
-                /* 버퍼 맨 앞에서는 더 갈 데가 없다. `Math.max(0, …)`로 클램프만 해
-                   두면 버튼은 계속 활성인데 눌러도 아무 일이 없어, 짝인 ▶(아래)와
-                   달리 «고장난 버튼»으로 읽혔다. */
-                disabled={(props.rewindAt ?? (props.rewindLen ?? 0) - 1) <= 0}
-                onClick={() => {
-                  const len = props.rewindLen ?? 0;
-                  const cur = props.rewindAt ?? len - 1;
-                  props.onRewind?.(Math.max(0, cur - 1));
-                }}
-                title="한 장면 뒤로"
-              >
-                ◀
-              </button>
-              <span className="spectate-rewind-at num">
-                {props.rewindAt === null || props.rewindAt === undefined
-                  ? "라이브"
-                  : `-${(props.rewindLen ?? 0) - 1 - props.rewindAt}`}
-              </span>
-              <button
-                className="spectate-focus-pick"
-                disabled={props.rewindAt === null || props.rewindAt === undefined}
-                onClick={() => {
-                  const len = props.rewindLen ?? 0;
-                  const next = (props.rewindAt ?? len - 1) + 1;
-                  props.onRewind?.(next >= len - 1 ? null : next);
-                }}
-                title="한 장면 앞으로"
-              >
-                ▶
-              </button>
-              {props.rewindAt !== null && props.rewindAt !== undefined ? (
-                <button className="spectate-focus-pick on" onClick={() => props.onRewind?.(null)}>
-                  라이브로
-                </button>
-              ) : null}
-            </span>
-          ) : null}
-          {/* 오버레이 모드 (docs/36 D2) — OBS에 얹을 때 배경과 곁가지를 걷는다 */}
-          {props.onOverlayMode !== undefined ? (
-            <span className="spectate-focus">
-              <span className="spectate-focus-label">오버레이</span>
-              {([
-                { key: "off", label: "끔" },
-                { key: "clear", label: "투명" },
-                { key: "green", label: "초록" },
-              ] as const).map((o) => (
-                <button
-                  key={o.key}
-                  className={
-                    (props.overlayMode ?? "off") === o.key
-                      ? "spectate-focus-pick on"
-                      : "spectate-focus-pick"
-                  }
-                  onClick={() => props.onOverlayMode?.(o.key)}
-                  title={
-                    o.key === "off"
-                      ? "평소 화면"
-                      : o.key === "clear"
-                        ? "배경을 비운다 — OBS 브라우저 소스의 투명 배경용"
-                        : "배경을 크로마키 초록으로 채운다"
-                  }
-                >
-                  {o.label}
-                </button>
-              ))}
-            </span>
-          ) : null}
-          {props.onSpectateDelay !== undefined ? (
-            <span className="spectate-focus">
-              <span className="spectate-focus-label">지연</span>
-              {[0, 5, 15, 30].map((sec) => (
-                <button
-                  key={sec}
-                  className={
-                    (props.spectateDelay ?? 0) === sec
-                      ? "spectate-focus-pick on"
-                      : "spectate-focus-pick"
-                  }
-                  onClick={() => props.onSpectateDelay?.(sec)}
-                  title={
-                    sec === 0
-                      ? "지연 없음 — 내부 감시용. 공개 중계에는 쓰지 마세요"
-                      : `${sec}초 늦춰 보냅니다 — 관전 화면을 보고 대국자에게 알려 주는 길을 막습니다`
-                  }
-                >
-                  {sec === 0 ? "없음" : `${sec}초`}
-                </button>
-              ))}
-            </span>
-          ) : null}
-          {props.onRoomNotice !== undefined && props.onExtendTime !== undefined ? (
-            <BroadcastTools
-              view={view}
-              onRoomNotice={props.onRoomNotice}
-              onExtendTime={props.onExtendTime}
-              onVoidRound={props.onVoidRound ?? (() => undefined)}
-              noticeUp={props.roomNotice !== undefined}
-            />
-          ) : null}
-          {props.onTogglePause !== undefined ? (
-            <span className="spectate-focus spectate-pause">
-              <button
-                className={props.spectatePaused === true ? "spectate-pause-btn on" : "spectate-pause-btn"}
-                onClick={() => props.onTogglePause?.(props.spectatePaused !== true)}
-                title={
-                  props.spectatePaused === true
-                    ? "판을 다시 돌립니다 — 멈춘 자리에서 이어집니다"
-                    : "판을 세웁니다 — 좌석의 제한 시간도, 봇의 차례도 함께 멈춥니다"
-                }
-              >
-                {props.spectatePaused === true ? "▶ 재개" : "⏸ 일시정지"}
-              </button>
-            </span>
-          ) : null}
-          <span className="spectate-focus">
-            <span className="spectate-focus-label">아래 자리</span>
-            {[
-              { key: "dealer", label: "오야", title: "친이 바뀌면 시점도 따라갑니다" },
-              { key: "turn", label: "차례", title: "지금 차례인 사람을 따라갑니다" },
-            ].map((o) => (
-              <button
-                key={o.key}
-                className={focusSeat === o.key ? "spectate-focus-pick on" : "spectate-focus-pick"}
-                onClick={() => setFocusSeat(o.key)}
-                title={o.title}
-              >
-                {o.label}
-              </button>
-            ))}
-            {view.players.map((p) => (
-              <button
-                key={p.id}
-                className={focusSeat === p.id ? "spectate-focus-pick on" : "spectate-focus-pick"}
-                onClick={() => setFocusSeat(p.id)}
-                title={`${playerName(view, p)} 자리를 아래에 고정합니다`}
-              >
-                {playerName(view, p)}
-              </button>
-            ))}
           </span>
         </div>
       ) : null}
@@ -12914,17 +12876,96 @@ const GameTable = memo(function GameTable(props: {
         {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
         {...(props.onHandOrder !== undefined ? { onHandOrder: props.onHandOrder } : {})}
       />
-      {/* 중계 패널 — 관전 화면 오른쪽에 상시로 서는 좌석 카드·점수 추이 (docs/36 A2·A5·A7).
-          대국자 화면에는 존재하지 않는다: 남의 손을 읽어 주는 물건이다. */}
-      {props.spectator === true ? (
-        <BroadcastPanel
-          view={view}
-          catalog={catalog}
-          {...(props.insight !== undefined ? { insight: props.insight } : {})}
-          pastRounds={props.pastRounds ?? EMPTY_PAST_ROUNDS}
-        />
-      ) : null}
     </div>
+  );
+  /*
+   * ── 관전 화면은 **2열**이다 (사용자 요구 2026-08-23) ──
+   *
+   * 예전에는 중계 물건이 전부 `.table` 위의 `position: absolute` 오버레이였고,
+   * 자기 크기를 레이아웃에 **통보하지 않았다**. 그래서 오른쪽 중계 패널(232px)이
+   * 오른쪽 상대의 손패·이름표 위에 그대로 올라탔다 — 손패가 후로로 길어지는 순간
+   * 판을 덮었다. 오버레이를 옆으로 밀어 피하는 식으로는 다음 폭에서 또 겹친다.
+   *
+   * 그래서 자리를 **나눈다**: 왼쪽 3/4가 판, 오른쪽 1/4가 분석 도크.
+   * 핵심은 왼쪽 칸이 **자기 container 컨텍스트**(`container: ui / size`)가 된다는
+   * 점이다 — `--board`가 `63cqw`·`83cqmin`으로 잡혀 있으므로, 좁아진 칸의 폭을
+   * 보드가 그대로 따라 줄어든다. 겹침이 «피해서» 사라지는 게 아니라 구조적으로
+   * 성립하지 않게 된다.
+   */
+  const dockOff = overlayOn || props.spectator !== true;
+  return (
+    <SelectionContext.Provider value={selection}>
+    <DoraContext.Provider value={doraFx}>
+    <WaitCountContext.Provider value={waitRemaining}>
+    <DangerContext.Provider value={specDanger}>
+    <RelationProvider view={view}>
+    {props.spectator === true ? (
+      <div
+        className={`spectate-stage${dockOff ? " spectate-stage-nodock" : ""}${
+          !dockOff && !dockPrefs.dockOpen ? " spectate-stage-folded" : ""
+        }`}
+      >
+        <div className="spectate-stage-board">{tableEl}</div>
+        {dockOff ? null : (
+          <SpectateDock
+            view={view}
+            catalog={catalog}
+            prefs={dockPrefs}
+            onPrefs={setDockPrefs}
+            focusSeat={focusSeat}
+            onFocusSeat={setFocusSeat}
+            pastRounds={props.pastRounds ?? EMPTY_PAST_ROUNDS}
+            {...(props.insight !== undefined ? { insight: props.insight } : {})}
+            {...(props.spectateCode != null ? { spectateCode: props.spectateCode } : {})}
+            {...(props.liveRooms !== undefined ? { liveRooms: props.liveRooms } : {})}
+            {...(props.onSwitchTable !== undefined ? { onSwitchTable: props.onSwitchTable } : {})}
+            rewindAt={props.rewindAt ?? null}
+            rewindLen={props.rewindLen ?? 0}
+            {...(props.onRewind !== undefined ? { onRewind: props.onRewind } : {})}
+            overlayMode={props.overlayMode ?? "off"}
+            {...(props.onOverlayMode !== undefined ? { onOverlayMode: props.onOverlayMode } : {})}
+            spectateDelay={props.spectateDelay ?? 0}
+            {...(props.onSpectateDelay !== undefined
+              ? { onSpectateDelay: props.onSpectateDelay }
+              : {})}
+            spectatePaused={props.spectatePaused === true}
+            {...(props.onTogglePause !== undefined ? { onTogglePause: props.onTogglePause } : {})}
+            {...(props.onRoomNotice !== undefined ? { onRoomNotice: props.onRoomNotice } : {})}
+            {...(props.onExtendTime !== undefined ? { onExtendTime: props.onExtendTime } : {})}
+            {...(props.onVoidRound !== undefined ? { onVoidRound: props.onVoidRound } : {})}
+            noticeUp={props.roomNotice !== undefined}
+          />
+        )}
+        {/*
+          * ── 오버레이 모드의 탈출구 ── (QA 2026-08-23 P0-2)
+          *
+          * 「초록」을 켜면 도크와 관전 띠가 **동시에** 사라진다. 그러면 화면에 남는
+          * 끔/투명/초록 단추가 0개다. 예전에는 `overlayMode` 가 휘발이라 새로고침이
+          * 탈출구였는데, 저장을 붙이면서 그 탈출구까지 없앴다 — 다시 관전하면 같은
+          * 상태로 복귀해 운영자가 localStorage 를 지워야 빠져나왔다.
+          *
+          * 접힌 도크에 30px 레일을 남긴 것과 **같은 원칙**이다: 되돌릴 손잡이가
+          * 사라지면 그건 모드가 아니라 함정이다.
+          *
+          * 다만 이건 OBS 로 나가는 화면이라 손잡이가 그대로 방송에 실리면 안 된다.
+          * 그래서 평소에는 완전히 투명하고(픽셀을 하나도 더하지 않는다) 마우스를
+          * 올리거나 Tab 으로 포커스가 닿을 때만 드러난다. 카메라에는 손이 없다.
+          * 키보드만 쓰는 사람을 위해 Esc 도 같은 일을 한다(App 쪽 핸들러).
+          */}
+        {overlayOn && props.onOverlayMode !== undefined ? (
+          <button
+            type="button"
+            className="spectate-overlay-escape"
+            onClick={() => props.onOverlayMode?.("off")}
+            title="오버레이 모드를 끕니다 (Esc)"
+          >
+            ✕ 오버레이 끄기
+          </button>
+        ) : null}
+      </div>
+    ) : (
+      tableEl
+    )}
     </RelationProvider>
     </DangerContext.Provider>
     </WaitCountContext.Provider>
@@ -18754,52 +18795,573 @@ const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null
  * WaitTip과 달리 hover 없이 계속 떠 있는다.
  */
 /**
- * 중계 패널 — 관전 화면 오른쪽에 **상시로** 서는 좌석 카드와 점수 추이
- * (docs/36 A2·A5·A7).
+ * ── 관전 분석 도크 ── (docs/36 A2·A4·A5·A6·A7 + 2026-08-23 사용자 요구)
  *
- * 왜 상시인가: 중계에서 필요한 정보는 «눌러서 여는 것»이 아니다. 해설이 말하는
- * 동안 화면에 이미 있어야 하고, 판을 가리지 않는 자리에 있어야 한다. 그래서
- * 판의 오른쪽 여백에 세로로 세우고 클릭은 통과시킨다(스크롤만 받는다).
+ * 야구 중계의 점수표와 같은 자리다. 왼쪽 3/4가 본 게임, 오른쪽 1/4가 상세 분석.
  *
- * 한 좌석 카드에 담는 것은 넷이다 — **점수 · 얼마나 왔나(샹텐/텐파이) · 지금
- * 화료하면 얼마(추정) · 무엇을 들고 있나(증강과 잔량)**. 그 넷이 「이 사람이
- * 지금 무엇을 하려는가」의 전부다.
+ * **왜 오버레이가 아니라 열(column)인가.** 예전 중계 패널(`.bcast-side`)은 판 위에
+ * 절대좌표로 떠 있었고 자기 폭(232px)을 보드 계산에 알리지 않았다. 보드는
+ * `--board: min(83cqmin, 63cqw, …)`로 좌우를 **어림잡을 뿐**이라, 오른쪽 상대의
+ * 손패가 후로로 길어지는 순간 패널이 그 위에 올라탔다. 열로 나누면 왼쪽 칸이
+ * 자기 container가 되어 `--board` 체인이 좁아진 폭을 그대로 따라온다 — 겹칠 자리가
+ * 아예 없어진다.
+ *
+ * **왜 전부 끌 수 있어야 하는가.** 중계는 장면마다 보고 싶은 것이 다르다. 리치가
+ * 걸린 순간에는 오름패와 위험패가 전부고, 배패 직후에는 배패 점수가 전부다.
+ * 그리고 「다음 쯔모」는 **가장 강한 스포일러**라 기본이 꺼짐이어야 한다 — 켜는
+ * 사람은 무엇을 보게 되는지 알고 켜야 하므로 스위치 옆에 그렇게 적는다.
  *
  * 대국자 화면에는 존재하지 않는다. 남의 손을 읽어 주는 물건이다.
  */
-function BroadcastPanel({
+function SpectateDock(props: {
+  view: PlayerView;
+  catalog: Record<string, AugmentCatalogEntry>;
+  prefs: DockPrefs;
+  onPrefs: (p: DockPrefs) => void;
+  insight?: SpectateInsightMessage;
+  pastRounds: PastRound[];
+  /** 아래 자리 (중계 카메라) */
+  focusSeat: string;
+  onFocusSeat: (s: string) => void;
+  spectateCode?: string;
+  liveRooms?: LiveRoomSummary[];
+  onSwitchTable?: (code: string) => void;
+  rewindAt: number | null;
+  rewindLen: number;
+  onRewind?: (at: number | null) => void;
+  overlayMode: OverlayMode;
+  onOverlayMode?: (m: OverlayMode) => void;
+  spectateDelay: number;
+  onSpectateDelay?: (sec: number) => void;
+  spectatePaused: boolean;
+  onTogglePause?: (paused: boolean) => void;
+  onRoomNotice?: (text: string, seconds: number) => void;
+  onExtendTime?: (seat: string, seconds: number) => void;
+  onVoidRound?: () => void;
+  noticeUp: boolean;
+}): JSX.Element {
+  const { prefs, onPrefs } = props;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  /*
+   * 되감는 중인가 — 구획마다 **말투가 달라져야 한다** (docs/36 D3).
+   *
+   * 되감을 때 보조값을 안 붙이는 것까지는 맞았는데(그 숫자는 «지금»의 것이라 지나간
+   * 화면 옆에 세우면 두 시점이 서로를 거짓말로 만든다), 그러면 도크가 「텐파이한
+   * 좌석이 없습니다」·「위험도를 매길 상대가 없습니다」를 그렸다 — 그건 **없다는
+   * 주장**이지 «지금은 안 붙인다»가 아니다. 이유를 적은 문구가 「관전 설정」 구획
+   * 안에만 있었는데, 그 구획은 끌 수 있다.
+   */
+  const rewinding = props.rewindAt !== null;
+  const setOn = (id: DockSectionId, v: boolean): void =>
+    onPrefs({ ...prefs, on: { ...prefs.on, [id]: v } });
+  const setOpen = (id: DockSectionId, v: boolean): void =>
+    onPrefs({ ...prefs, open: { ...prefs.open, [id]: v } });
+
+  /*
+   * 접힌 도크 — 열은 남기고 손잡이만 세운다. 폭을 0으로 만들면 되돌릴 길이
+   * 사라져 새로고침이 유일한 탈출구가 된다(오버레이 모드에서 실제로 그랬다).
+   */
+  if (!prefs.dockOpen) {
+    return (
+      <div className="spectate-dock spectate-dock-folded">
+        <button
+          type="button"
+          className="spectate-dock-handle"
+          onClick={() => onPrefs({ ...prefs, dockOpen: true })}
+          title="분석 도크를 펼칩니다"
+          aria-expanded="false"
+        >
+          <span aria-hidden="true">◀</span>
+          <span className="spectate-dock-handle-text">분석</span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <aside className="spectate-dock" aria-label="관전 분석 도크">
+      <div className="spectate-dock-head">
+        <span className="spectate-dock-title">
+          중계 도크
+          {props.spectateCode !== undefined ? (
+            <span className="spectate-dock-room num">{props.spectateCode}</span>
+          ) : null}
+        </span>
+        <button
+          type="button"
+          className={settingsOpen ? "spectate-dock-gear on" : "spectate-dock-gear"}
+          onClick={() => setSettingsOpen((v) => !v)}
+          title="어떤 구획을 볼지 고릅니다"
+          aria-expanded={settingsOpen}
+        >
+          ⚙
+        </button>
+        <button
+          type="button"
+          className="spectate-dock-fold"
+          onClick={() => onPrefs({ ...prefs, dockOpen: false })}
+          title="도크를 접습니다 — 가장자리 손잡이로 다시 펼칩니다"
+          aria-expanded="true"
+        >
+          ▶
+        </button>
+      </div>
+      {/* 구획 스위치 — «무엇이 사라지나»를 스위치 옆에 적는다. 특히 다음 쯔모는
+          켜는 순간 판의 결말이 화면에 서므로 경고를 그 자리에 둔다. */}
+      {settingsOpen ? (
+        <div className="spectate-dock-switches">
+          {DOCK_SECTIONS.map((s) => (
+            <label key={s.id} className="spectate-dock-switch" title={s.hint}>
+              <input
+                type="checkbox"
+                checked={prefs.on[s.id]}
+                onChange={(e) => setOn(s.id, e.target.checked)}
+              />
+              <span>{s.label}</span>
+              {s.id === "nextDraw" ? <span className="spectate-dock-warn">스포일러</span> : null}
+            </label>
+          ))}
+        </div>
+      ) : null}
+      {/* `tabIndex={0}` — 스크롤 상자에 포커스가 닿아야 키보드만 쓰는 사용자가
+          화살표로 굴릴 수 있다. 스크롤이 유일한 조작인 영역이라 `role` 은 주지 않고
+          접근 가능한 이름만 붙인다. */}
+      <div className="spectate-dock-body" tabIndex={0} aria-label="분석 구획 목록">
+        {DOCK_SECTIONS.filter((s) => prefs.on[s.id]).map((s) => (
+          <section key={s.id} className="dock-sec">
+            <button
+              type="button"
+              className="dock-sec-head"
+              onClick={() => setOpen(s.id, !prefs.open[s.id])}
+              aria-expanded={prefs.open[s.id]}
+            >
+              <span className="dock-sec-caret" aria-hidden="true">
+                {prefs.open[s.id] ? "▾" : "▸"}
+              </span>
+              <span className="dock-sec-title">{s.label}</span>
+            </button>
+            {prefs.open[s.id] ? (
+              <div className="dock-sec-body">
+                {s.id === "settings" ? (
+                  <DockSettings
+                    view={props.view}
+                    focusSeat={props.focusSeat}
+                    onFocusSeat={props.onFocusSeat}
+                    {...(props.spectateCode !== undefined ? { spectateCode: props.spectateCode } : {})}
+                    {...(props.liveRooms !== undefined ? { liveRooms: props.liveRooms } : {})}
+                    {...(props.onSwitchTable !== undefined ? { onSwitchTable: props.onSwitchTable } : {})}
+                    rewindAt={props.rewindAt}
+                    rewindLen={props.rewindLen}
+                    {...(props.onRewind !== undefined ? { onRewind: props.onRewind } : {})}
+                    overlayMode={props.overlayMode}
+                    {...(props.onOverlayMode !== undefined ? { onOverlayMode: props.onOverlayMode } : {})}
+                    spectateDelay={props.spectateDelay}
+                    {...(props.onSpectateDelay !== undefined ? { onSpectateDelay: props.onSpectateDelay } : {})}
+                    spectatePaused={props.spectatePaused}
+                    {...(props.onTogglePause !== undefined ? { onTogglePause: props.onTogglePause } : {})}
+                    {...(props.onRoomNotice !== undefined ? { onRoomNotice: props.onRoomNotice } : {})}
+                    {...(props.onExtendTime !== undefined ? { onExtendTime: props.onExtendTime } : {})}
+                    {...(props.onVoidRound !== undefined ? { onVoidRound: props.onVoidRound } : {})}
+                    noticeUp={props.noticeUp}
+                  />
+                ) : s.id === "seats" ? (
+                  <DockSeats
+                    view={props.view}
+                    catalog={props.catalog}
+                    rewinding={rewinding}
+                    {...(props.insight !== undefined ? { insight: props.insight } : {})}
+                  />
+                ) : s.id === "waits" ? (
+                  <DockWaits
+                    view={props.view}
+                    rewinding={rewinding}
+                    {...(props.insight !== undefined ? { insight: props.insight } : {})}
+                  />
+                ) : s.id === "danger" ? (
+                  <DockDanger
+                    view={props.view}
+                    rewinding={rewinding}
+                    {...(props.insight !== undefined ? { insight: props.insight } : {})}
+                  />
+                ) : s.id === "nextDraw" ? (
+                  <DockNextDraw view={props.view} rewinding={rewinding} />
+                ) : (
+                  <DockTrend view={props.view} pastRounds={props.pastRounds} />
+                )}
+              </div>
+            ) : null}
+          </section>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+/**
+ * 「관전 설정」 구획 — 예전 관전 띠에 몰려 있던 운영 손잡이 **전부**.
+ *
+ * 옮기기만 했다: 탁자 전환(D4) · 되감기(D3) · 오버레이(D2) · 송출 지연(C1) ·
+ * 중계 도구(B2·B3·B4) · 일시정지(B1) · 아래 자리(D1). 띠에 있을 때와 달리 여기서는
+ * 줄이 늘어나도 판을 덮지 않는다 — 자기 열 안에서 아래로 자랄 뿐이다.
+ */
+function DockSettings(props: {
+  view: PlayerView;
+  focusSeat: string;
+  onFocusSeat: (s: string) => void;
+  spectateCode?: string;
+  liveRooms?: LiveRoomSummary[];
+  onSwitchTable?: (code: string) => void;
+  rewindAt: number | null;
+  rewindLen: number;
+  onRewind?: (at: number | null) => void;
+  overlayMode: OverlayMode;
+  onOverlayMode?: (m: OverlayMode) => void;
+  spectateDelay: number;
+  onSpectateDelay?: (sec: number) => void;
+  spectatePaused: boolean;
+  onTogglePause?: (paused: boolean) => void;
+  onRoomNotice?: (text: string, seconds: number) => void;
+  onExtendTime?: (seat: string, seconds: number) => void;
+  onVoidRound?: () => void;
+  noticeUp: boolean;
+}): JSX.Element {
+  const { view, focusSeat, onFocusSeat } = props;
+  return (
+    <div className="dock-settings">
+      {/* 탁자 전환 (docs/36 D4) — 목록이 곧 카메라 선택 화면이다.
+          방 코드만으로는 어느 탁자가 볼 만한지 알 수 없어 국·리치를 함께 적는다. */}
+      {props.onSwitchTable !== undefined && (props.liveRooms?.length ?? 0) > 1 ? (
+        <span className="spectate-focus">
+          <span className="spectate-focus-label">탁자</span>
+          {(props.liveRooms ?? []).map((r) => (
+            <button
+              key={r.code}
+              className={`spectate-table${r.code === props.spectateCode ? " on" : ""}${
+                (r.riichiCount ?? 0) > 0 ? " hot" : ""
+              }`}
+              onClick={() => {
+                if (r.code !== props.spectateCode) props.onSwitchTable?.(r.code);
+              }}
+              title={`${r.players.map((p) => p.nickname).join(" · ")}${
+                r.roundLabel !== undefined ? ` — ${r.roundLabel}` : ""
+              }${(r.riichiCount ?? 0) > 0 ? ` · 리치 ${r.riichiCount}` : ""}${
+                r.paused === true ? " · 정지 중" : ""
+              }`}
+            >
+              {r.code}
+              {r.roundLabel !== undefined ? (
+                <span className="spectate-table-sub">{r.roundLabel}</span>
+              ) : null}
+              {(r.riichiCount ?? 0) > 0 ? <span className="spectate-table-riichi">리치</span> : null}
+              {r.paused === true ? <span className="spectate-table-sub">⏸</span> : null}
+            </button>
+          ))}
+        </span>
+      ) : null}
+      {/* 즉시 되감기 (docs/36 D3) — 방금 무슨 일이 있었는지 그 자리에서 되짚는다.
+          라이브로 돌아오면 지금 화면으로 이어진다(버퍼는 계속 쌓인다). */}
+      {props.onRewind !== undefined && props.rewindLen > 1 ? (
+        <span className="spectate-focus">
+          <span className="spectate-focus-label">되감기</span>
+          <button
+            className="spectate-focus-pick"
+            /* 버퍼 맨 앞에서는 더 갈 데가 없다. `Math.max(0, …)`로 클램프만 해
+               두면 버튼은 계속 활성인데 눌러도 아무 일이 없어, 짝인 ▶(아래)와
+               달리 «고장난 버튼»으로 읽혔다. */
+            disabled={(props.rewindAt ?? props.rewindLen - 1) <= 0}
+            onClick={() => {
+              const cur = props.rewindAt ?? props.rewindLen - 1;
+              props.onRewind?.(Math.max(0, cur - 1));
+            }}
+            title="한 장면 뒤로"
+          >
+            ◀
+          </button>
+          <span className="spectate-rewind-at num">
+            {props.rewindAt === null ? "라이브" : `-${props.rewindLen - 1 - props.rewindAt}`}
+          </span>
+          <button
+            className="spectate-focus-pick"
+            disabled={props.rewindAt === null}
+            onClick={() => {
+              const next = (props.rewindAt ?? props.rewindLen - 1) + 1;
+              props.onRewind?.(next >= props.rewindLen - 1 ? null : next);
+            }}
+            title="한 장면 앞으로"
+          >
+            ▶
+          </button>
+          {props.rewindAt !== null ? (
+            <button className="spectate-focus-pick on" onClick={() => props.onRewind?.(null)}>
+              라이브로
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+      {/* 되감는 동안에는 도크의 보조값이 통째로 사라진다 — 그 숫자는 «지금»의
+          것이라 지나간 화면 옆에 세우면 두 시점이 서로를 거짓말로 만든다
+          (docs/36 D3). 왜 비었는지 여기서 말해 준다. */}
+      {props.rewindAt !== null ? (
+        <p className="dock-note dock-note-warn">
+          되감는 중입니다 — 분석값(오름패·타점·위험패)은 «지금»의 것이라 붙이지 않습니다.
+        </p>
+      ) : null}
+      {/* 오버레이 모드 (docs/36 D2) — OBS에 얹을 때 배경과 곁가지를 걷는다 */}
+      {props.onOverlayMode !== undefined ? (
+        <span className="spectate-focus">
+          <span className="spectate-focus-label">오버레이</span>
+          {([
+            { key: "off", label: "끔" },
+            { key: "clear", label: "투명" },
+            { key: "green", label: "초록" },
+          ] as const).map((o) => (
+            <button
+              key={o.key}
+              className={props.overlayMode === o.key ? "spectate-focus-pick on" : "spectate-focus-pick"}
+              onClick={() => props.onOverlayMode?.(o.key)}
+              title={
+                o.key === "off"
+                  ? "평소 화면"
+                  : o.key === "clear"
+                    ? "배경을 비운다 — OBS 브라우저 소스의 투명 배경용. 이 도크도 함께 사라진다"
+                    : "배경을 크로마키 초록으로 채운다. 이 도크도 함께 사라진다"
+              }
+            >
+              {o.label}
+            </button>
+          ))}
+        </span>
+      ) : null}
+      {props.onSpectateDelay !== undefined ? (
+        <span className="spectate-focus">
+          <span className="spectate-focus-label">지연</span>
+          {[0, 5, 15, 30].map((sec) => (
+            <button
+              key={sec}
+              className={props.spectateDelay === sec ? "spectate-focus-pick on" : "spectate-focus-pick"}
+              onClick={() => props.onSpectateDelay?.(sec)}
+              title={
+                sec === 0
+                  ? "지연 없음 — 내부 감시용. 공개 중계에는 쓰지 마세요"
+                  : `${sec}초 늦춰 보냅니다 — 관전 화면을 보고 대국자에게 알려 주는 길을 막습니다`
+              }
+            >
+              {sec === 0 ? "없음" : `${sec}초`}
+            </button>
+          ))}
+        </span>
+      ) : null}
+      {props.onRoomNotice !== undefined && props.onExtendTime !== undefined ? (
+        <BroadcastTools
+          view={view}
+          onRoomNotice={props.onRoomNotice}
+          onExtendTime={props.onExtendTime}
+          onVoidRound={props.onVoidRound ?? (() => undefined)}
+          noticeUp={props.noticeUp}
+        />
+      ) : null}
+      {props.onTogglePause !== undefined ? (
+        <span className="spectate-focus spectate-pause">
+          <button
+            className={props.spectatePaused ? "spectate-pause-btn on" : "spectate-pause-btn"}
+            onClick={() => props.onTogglePause?.(!props.spectatePaused)}
+            title={
+              props.spectatePaused
+                ? "판을 다시 돌립니다 — 멈춘 자리에서 이어집니다"
+                : "판을 세웁니다 — 좌석의 제한 시간도, 봇의 차례도 함께 멈춥니다"
+            }
+          >
+            {props.spectatePaused ? "▶ 재개" : "⏸ 일시정지"}
+          </button>
+        </span>
+      ) : null}
+      {/* 아래 자리 고르기 — 화면 아래에 손패를 펼칠 좌석. 중계 카메라에 해당한다. */}
+      <span className="spectate-focus">
+        <span className="spectate-focus-label">아래 자리</span>
+        {[
+          { key: "dealer", label: "오야", title: "친이 바뀌면 시점도 따라갑니다" },
+          { key: "turn", label: "차례", title: "지금 차례인 사람을 따라갑니다" },
+        ].map((o) => (
+          <button
+            key={o.key}
+            className={focusSeat === o.key ? "spectate-focus-pick on" : "spectate-focus-pick"}
+            onClick={() => onFocusSeat(o.key)}
+            title={o.title}
+          >
+            {o.label}
+          </button>
+        ))}
+        {view.players.map((p) => (
+          <button
+            key={p.id}
+            className={focusSeat === p.id ? "spectate-focus-pick on" : "spectate-focus-pick"}
+            onClick={() => onFocusSeat(p.id)}
+            title={`${playerName(view, p)} 자리를 아래에 고정합니다`}
+          >
+            {playerName(view, p)}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 되감는 동안 구획이 내놓는 말. **«없다»가 아니라 «안 붙인다»** 여야 한다 —
+ * 앞엣말은 사실 주장이고, 뒤엣말은 화면의 규칙이다(docs/36 D3).
+ */
+const REWIND_NOTE = "되감는 중입니다 — 이 값은 «지금»의 것이라 지나간 화면 옆에 세우지 않습니다.";
+
+/**
+ * 한 화료값을 한 줄로 — 「3판 40부 7700점」 + 성립한 역.
+ *
+ * ⚠ **여기 오는 값은 «추정»이 아니다.** `SpectateWinValue`는 판이 실제로 쓰는
+ * 채점기가 그 대기패로 가상 화료를 시켜 낸 확정값이라, 화면에 「추정」이라 적으면
+ * 그건 화면 쪽이 거짓말이 된다. 「추정」은 노텐 구간(`estimate`)에만 붙인다.
+ */
+function winValueText(v: SpectateWinValue): string {
+  if (v.yakumanCount > 0) {
+    return v.yakumanCount > 1 ? `${v.yakumanCount}배역만 ${v.points.toLocaleString()}점` : `역만 ${v.points.toLocaleString()}점`;
+  }
+  const limit =
+    v.limit === "mangan"
+      ? "만관"
+      : v.limit === "haneman"
+        ? "하네만"
+        : v.limit === "baiman"
+          ? "배만"
+          : v.limit === "sanbaiman"
+            ? "삼배만"
+            : v.limit === "kazoe"
+              ? "헤아림역만"
+              : null;
+  /*
+   * 무형화료(`noYaku`) — 표준 마작에 없는 상태다. 점수표에 「0판」 칸이 없어
+   * `han: 0`이 그대로 나가는데, **그 숫자는 정산기가 실제로 지불하는 값**이다
+   * (`sysSettleWin`). 「0판 30부 500점」만 적으면 뜻 없는 숫자로 읽히므로 사실을
+   * 앞에 붙인다 — 결과 화면의 `RoundSettled.yakuless` 와 같은 말이다.
+   */
+  const head = v.noYaku === true ? "역 없이 성립 " : "";
+  return `${head}${v.han}판 ${v.fu}부${limit === null ? "" : ` ${limit}`} ${v.points.toLocaleString()}점`;
+}
+
+/**
+ * 이 값이 **하한**인가 — 리치 좌석은 뒷도라가 아직 안 열려 실제 타점이 더 높다.
+ *
+ * ⚠ 이걸 안 읽으면 중계가 가장 주목하는 좌석(리치)에서 화면이 실제보다 낮은
+ * 숫자를 «확정»이라 단언한다. 「추정 vs 확정」을 갈라 놓은 이번 작업의 취지를
+ * 정확히 그 자리에서 배신한다.
+ */
+function winValueCaveats(v: SpectateWinValue): { tag: string; tip: string }[] {
+  const out: { tag: string; tip: string }[] = [];
+  if (v.uraUnknown === true) {
+    out.push({
+      tag: "뒷도라 제외",
+      // `title` 속성은 평문이다 — 마크다운 별표를 쓰면 화면에 별표가 그대로 뜬다.
+      tip: "뒷도라가 아직 열리지 않아 이 값은 하한입니다 — 실제 타점은 이보다 높을 수 있습니다",
+    });
+  }
+  if (v.augAdjusted === true) {
+    /*
+     * 뒷도라와 **방향이 다르다.** 저쪽은 «더 높을 수 있다»(하한)지만 이쪽은 어느
+     * 쪽으로 움직일지도 모른다 — 그래서 문구를 갈라 둔다.
+     *
+     * 코어가 아무 좌석에나 붙이는 표식이 아니다: 엔진의 `ROUND_SETTLED` 인터셉터
+     * 목록과 `score.settleHanBonus` 질의 창구를 대조해, **창구를 안 내놓은 증강을
+     * 든 좌석**만 고른다. 그런 인터셉터는 부작용 없이 미리 태울 수 없다.
+     * 즉 이게 떠 있으면 정말로 못 따라간 것이라, 화면이 얼버무릴 자리가 아니다.
+     */
+    out.push({
+      tag: "증강 보정 미반영",
+      tip: "정산에서 점수를 고치는 증강이 있는데 관전 시점에는 미리 태울 수 없습니다 — 실제 수령액이 이 값과 다를 수 있습니다",
+    });
+  }
+  return out;
+}
+
+/** 값 뒤에 붙는 꼬리표 — 「3판 40부 5200점 (뒷도라 제외)」 */
+function winValueSuffix(v: SpectateWinValue): string {
+  const c = winValueCaveats(v);
+  return c.length === 0 ? "" : ` (${c.map((x) => x.tag).join(" · ")})`;
+}
+
+/** 그 값에 붙는 툴팁 — «확정»이라는 말을 하한일 때는 하지 않는다. */
+function winValueTip(v: SpectateWinValue, tsumoOnly: boolean): string {
+  const parts: string[] = [];
+  const caveats = winValueCaveats(v);
+  /*
+   * 사정이 **하나라도** 있으면 「확정값입니다」를 적지 않는다. 이 한 줄이 이번
+   * 작업의 전제(«확정»과 «추정»을 다른 말로 적는다)를 지키는 자리다 — 하한이나
+   * 미반영 보정을 안고서 확정이라 단언하면, 갈라 놓은 뜻이 그 자리에서 무너진다.
+   */
+  if (caveats.length === 0) {
+    parts.push("판이 실제로 쓰는 채점기가 낸 확정값입니다 (추정이 아닙니다)");
+  } else {
+    for (const c of caveats) parts.push(c.tip);
+  }
+  if (v.noYaku === true) parts.push("실역 0개로 성립한 화료입니다 (무형화료)");
+  // 증강 보너스 판은 `han` 에 **이미 포함**돼 있다 — 더하는 값이 아니라 출처다.
+  if ((v.augHan ?? 0) > 0) {
+    parts.push(`판수 ${v.han}판 중 ${v.augHan}판은 증강이 정산에서 얹는 몫입니다 (이미 포함)`);
+  }
+  if (tsumoOnly) parts.push("후리텐이라 론이 막혀 있어 쯔모 값입니다");
+  return parts.join(" · ");
+}
+
+/** 성립한 역 목록 — 도라류는 판수만 따로 붙인다(역이 아니다). */
+function yakuText(v: SpectateWinValue): string {
+  const parts = v.yaku.map((y) => `${y.name}${y.han > 0 ? ` ${y.han}` : ""}`);
+  if (v.doraHan > 0) parts.push(`도라 ${v.doraHan}`);
+  if (v.redHan > 0) parts.push(`적도라 ${v.redHan}`);
+  if (v.uraHan > 0) parts.push(`뒷도라 ${v.uraHan}`);
+  /*
+   * 증강이 정산에서 얹는 판 — **채점표 밖의 판**이라 역 목록 어디에도 안 잡힌다.
+   * 그런데 `han` 에는 이미 들어 있어서, 이 줄이 없으면 「역 1판인데 3판」이 되어
+   * 화면이 고장 난 것처럼 읽힌다. 결과 화면의 「증강 보너스 +N판」 줄과 같은 사실이다.
+   * (더하는 것이 아니라 **출처를 밝히는** 줄이다 — 합에 두 번 세지 않도록 주의.)
+   */
+  if ((v.augHan ?? 0) > 0) parts.push(`증강 +${v.augHan}판`);
+  return parts.join(" · ");
+}
+
+/**
+ * 「좌석 분석」 구획 — 좌석마다 한 장의 카드.
+ *
+ * 담는 것: 점수 · 얼마나 왔나(샹텐/텐파이/리치/후로/후리텐) · **지금 화료하면 얼마
+ * (확정)** · 성립 역 · 도라 수 · **배패 점수** · 증강 보유와 잔량.
+ *
+ * ⚠ 확정과 추정을 **다른 말로** 적는다. 텐파이 좌석의 `best`는 코어 채점기가 낸
+ * 확정값이고, 노텐 좌석의 `estimate`만 추정이다. 예전 화면은 봇의 값어치 모형을
+ * 그대로 찍어 「3.2판 4660점」처럼 마작에 없는 숫자를 냈다.
+ *
+ * 새 필드는 전부 optional 이다 — 서버가 아직 안 채우면 **그 줄이 아예 안 뜬다**
+ * (빈 칸을 남기면 «값이 0» 과 구별되지 않는다).
+ */
+function DockSeats({
   view,
   catalog,
   insight,
-  pastRounds,
+  rewinding,
 }: {
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
   insight?: SpectateInsightMessage;
-  pastRounds: PastRound[];
+  /** 되감는 중 — 보조값이 «없는» 것이 아니라 «안 붙인» 것이다 */
+  rewinding: boolean;
 }): JSX.Element {
   const bySeat = useMemo(() => {
     const m = new Map<string, SpectateInsightMessage["seats"][number]>();
     for (const s of insight?.seats ?? []) m.set(s.id, s);
     return m;
   }, [insight]);
-  // 점수 추이 — 국마다의 증감. 누적은 이름표의 점수가 이미 말하므로 여기서는
-  // "그 국에 무슨 일이 있었나"만 적는다 (A7).
-  const rows = useMemo(
-    () =>
-      pastRounds.slice(-8).map((r) => ({
-        label: r.label,
-        deltas: r.result.settle.deltas,
-      })),
-    [pastRounds],
-  );
   const order = [...view.players].sort((a, b) => a.seat - b.seat);
   return (
-    <div className="bcast-side" aria-hidden="true">
+    <div className="dock-seats">
       {order.map((p) => {
         const ins = bySeat.get(p.id);
         const pr = view.round.byPlayer[p.id];
         const turn = p.seat === view.round.turnSeat;
+        const best = ins?.best;
         return (
           <div key={p.id} className={`bcast-card${turn ? " bcast-card-turn" : ""}`}>
             <div className="bcast-card-head">
@@ -18813,21 +19375,97 @@ function BroadcastPanel({
                   {ins.shanten < 0 ? "화료형" : ins.shanten === 0 ? "텐파이" : `${ins.shanten}샹텐`}
                 </span>
               ) : null}
-              {pr?.furiten === true ? <span className="bcast-chip bcast-furiten">후리텐</span> : null}
+              {ins?.yakuless === true ? (
+                <span className="bcast-chip bcast-furiten" title="어떤 오름패로도 역이 없습니다 (형식텐파이)">
+                  역없음
+                </span>
+              ) : null}
+              {/* 「역없음」과 **다른 사실**이다 — 이쪽은 역이 있는데 격(win.minHan)에
+                  못 미쳐 거부되는 것이라, 손이 비싸지면 그대로 열린다. 같은 딱지를
+                  붙이면 해설이 «이 손은 죽었다»로 잘못 읽는다. */}
+              {ins?.belowMinHan === true ? (
+                <span
+                  className="bcast-chip bcast-below"
+                  title="역은 있는데 이 판의 최소 판수(격)에 못 미쳐 화료가 거부됩니다 — 손이 더 비싸지면 열립니다"
+                >
+                  격 미달
+                </span>
+              ) : null}
+              {/* 후리텐은 뷰(byPlayer)와 보조값(insight) 둘 다에서 온다 — 어느 쪽이든
+                  서면 적는다. 보조값 쪽은 `best` 가 쯔모 값이라는 뜻이기도 하다. */}
+              {pr?.furiten === true || ins?.furiten === true ? (
+                <span className="bcast-chip bcast-furiten">후리텐</span>
+              ) : null}
               {(pr?.meldCount ?? 0) > 0 ? (
                 <span className="bcast-chip">후로 {pr?.meldCount}</span>
               ) : null}
-            </div>
-            {/* 예상 타점 — 아직 완성되지 않은 손의 «확정 타점»이라는 것은 없다.
-                추정임을 그 자리에 적는다(툴팁이 아니라 라벨로). */}
-            {ins !== undefined && ins.points > 0 ? (
-              <div className="bcast-card-line">
-                <span className="bcast-label-sm">예상</span>
-                <span className="bcast-points num" title="봇이 쓰는 값어치 모형으로 잰 추정값입니다">
-                  {ins.points.toLocaleString()}점
+              {(ins?.dora ?? 0) > 0 ? (
+                <span className="bcast-chip bcast-dora" title="손 전체의 도라 + 적도라 장수">
+                  도라 {ins?.dora}
                 </span>
-                <span className="bcast-hanfu">
-                  {ins.han}판 {ins.fu}부
+              ) : null}
+            </div>
+            {/* 지금 화료하면 얼마 — **확정값**이다(판이 쓰는 채점기가 낸 숫자).
+                「추정」이라 적으면 화면 쪽이 거짓말이 된다. */}
+            {best !== undefined ? (
+              <div className="bcast-card-line">
+                {/* 후리텐이면 론이 막혀 있다 — `best` 는 쯔모 값이다. 라벨이 그렇게
+                    읽혀야 한다: 도달할 수 없는 론 값을 「지금 화료하면 얼마」로 적으면
+                    그건 확정이 아니라 거짓말이다. */}
+                <span className="bcast-label-sm">
+                  {ins?.furiten === true ? "쯔모하면" : "지금 화료"}
+                </span>
+                {/*
+                  * 꼬리표와 «확정색 죽이기»가 **같은 곳**(winValueCaveats)에서 나온다.
+                  * 따로 두면 언젠가 갈라져서 «금색인데 꼬리표가 붙은» 값이 생긴다 —
+                  * 그때 화면은 확정이라고도 아니라고도 말하는 셈이 된다.
+                  *
+                  * 뒷도라는 화료하는 순간에야 열리고(리치 좌석의 이 값은 **하한**),
+                  * 증강 정산 보정은 관전 시점에 미리 태울 수 없다. 어느 쪽이든
+                  * «확정»이라 단언한 채 내보내면 안 된다.
+                  */}
+                <span
+                  className={`bcast-points num${
+                    winValueCaveats(best).length > 0 ? " bcast-points-floor" : ""
+                  }`}
+                  title={winValueTip(best, ins?.furiten === true)}
+                >
+                  {winValueText(best)}
+                  {winValueCaveats(best).map((c) => (
+                    <span key={c.tag} className="bcast-floor-tag">
+                      {c.tag}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            ) : ins?.estimate !== undefined ? (
+              /* 노텐 구간 — 여기만 «추정»이다. 아직 완성되지 않은 손의 확정 타점이라는
+                 것은 없다. 정수 판수·점수표를 거친 값이라 숫자 자체는 실재한다. */
+              <div className="bcast-card-line">
+                <span className="bcast-label-sm">추정</span>
+                <span className="bcast-points bcast-points-est num" title="아직 텐파이가 아닌 손의 추정값입니다">
+                  {ins.estimate.han}판 {ins.estimate.fu}부 {ins.estimate.points.toLocaleString()}점
+                </span>
+              </div>
+            ) : null}
+            {best !== undefined && yakuText(best) !== "" ? (
+              <div className="bcast-yaku">{yakuText(best)}</div>
+            ) : null}
+            {/* 배패 점수 — 그 국에 받은 첫 13장의 값. 국 내내 변하지 않으므로
+                «운이 좋았나»를 한 숫자로 말한다. 서버가 안 채우면 줄째로 없다. */}
+            {ins?.handGrade !== undefined ? (
+              <div className="bcast-card-line">
+                <span className="bcast-label-sm">배패</span>
+                <span className="bcast-grade-bar" aria-hidden="true">
+                  <span
+                    className={`bcast-grade-fill${
+                      ins.handGrade >= 70 ? " hi" : ins.handGrade >= 40 ? " md" : ""
+                    }`}
+                    style={{ width: `${Math.max(0, Math.min(100, ins.handGrade))}%` }}
+                  />
+                </span>
+                <span className="bcast-grade-num num" title="배패(첫 13장) 점수 — 100점 만점. 국 내내 변하지 않습니다">
+                  {Math.round(ins.handGrade)}
                 </span>
               </div>
             ) : null}
@@ -18835,29 +19473,273 @@ function BroadcastPanel({
           </div>
         );
       })}
-      {rows.length > 0 ? (
-        <div className="bcast-card bcast-trend">
-          <div className="bcast-card-head">
-            <span className="bcast-card-name">점수 추이</span>
-          </div>
-          {rows.map((r, i) => (
-            <div key={i} className="bcast-trend-row">
-              <span className="bcast-trend-label">{r.label}</span>
-              {order.map((p) => {
-                const d = r.deltas[p.id] ?? 0;
-                return (
-                  <span
-                    key={p.id}
-                    className={`bcast-trend-d num${d > 0 ? " up" : d < 0 ? " down" : ""}`}
-                  >
-                    {d === 0 ? "·" : d > 0 ? `+${d}` : d}
-                  </span>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+      {insight === undefined ? (
+        <p className={`dock-note${rewinding ? " dock-note-warn" : ""}`}>
+          {rewinding ? "되감는 중입니다 — 분석값은 «지금»의 것이라 붙이지 않습니다." : "분석값을 기다리는 중입니다."}
+        </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * 「오름패」 구획 — 좌석별 오름패와 **남은 장수**, 그 패로 났을 때의 론/쯔모 값.
+ *
+ * 판 위의 오름패 뱃지는 «무엇을 기다리나»까지만 말한다. 중계에서 정작 궁금한 것은
+ * 「그게 나면 얼마인가」고, 대기마다 값이 다르다(3면대기에서 한 쪽만 만관인 손이
+ * 흔하다). 역이 없는 대기는 **그렇게 적는다** — 남은 장수만 크게 적어 두면
+ * 「4장 남았는데 왜 안 나지」가 된다.
+ */
+function DockWaits({
+  view,
+  insight,
+  rewinding,
+}: {
+  view: PlayerView;
+  insight?: SpectateInsightMessage;
+  /** 되감는 중 — 「텐파이한 좌석이 없다」는 **주장**을 해서는 안 된다 */
+  rewinding: boolean;
+}): JSX.Element {
+  const order = [...view.players].sort((a, b) => a.seat - b.seat);
+  const bySeat = useMemo(() => {
+    const m = new Map<string, SpectateInsightMessage["seats"][number]>();
+    for (const s of insight?.seats ?? []) m.set(s.id, s);
+    return m;
+  }, [insight]);
+  const rows = order
+    .map((p) => ({ p, ins: bySeat.get(p.id) }))
+    .filter((r) => (r.ins?.waits?.length ?? 0) > 0);
+  if (rows.length === 0) {
+    return (
+      <p className={`dock-note${rewinding ? " dock-note-warn" : ""}`}>
+        {rewinding ? REWIND_NOTE : "텐파이한 좌석이 없습니다."}
+      </p>
+    );
+  }
+  return (
+    <div className="dock-waits">
+      {rows.map(({ p, ins }) => (
+        <div key={p.id} className="dock-wait-seat">
+          <div className="dock-wait-name">
+            {playerName(view, p)}
+            {ins?.yakuless === true ? <span className="bcast-chip bcast-furiten">형식텐파이</span> : null}
+            {ins?.belowMinHan === true ? (
+              <span className="bcast-chip bcast-below" title="역은 있는데 격(최소 판수)에 못 미칩니다">
+                격 미달
+              </span>
+            ) : null}
+            {view.round.byPlayer[p.id]?.furiten === true || ins?.furiten === true ? (
+              <span className="bcast-chip bcast-furiten" title="론이 막혀 있습니다 — 쯔모만 가능">
+                후리텐
+              </span>
+            ) : null}
+          </div>
+          {(ins?.waits ?? []).map((w) => {
+            const kind = parseKindKey(w.kind);
+            // 론과 쯔모가 같은 값이면 한 번만 적는다 — 같은 숫자를 두 줄로 적으면
+            // «무엇이 다른가»를 찾느라 읽는 시간이 늘어난다.
+            const same =
+              w.ron !== null &&
+              w.tsumo !== null &&
+              w.ron.han === w.tsumo.han &&
+              w.ron.fu === w.tsumo.fu &&
+              w.ron.points === w.tsumo.points &&
+              // 꼬리표(하한·증강 보정 미반영)까지 같아야 한 줄로 합친다. 숫자만 보고
+              // 합치면 «한쪽만 단정할 수 없는» 경우에 그 사실이 조용히 사라진다.
+              winValueSuffix(w.ron) === winValueSuffix(w.tsumo);
+            return (
+              <div key={w.kind} className={`dock-wait-row${w.remaining === 0 ? " dock-wait-gone" : ""}`}>
+                <span className="dock-wait-tile">
+                  {kind === null ? w.kind : <TileImg tile={{ kind }} size="mini" />}
+                  <span className="dock-wait-left num">{w.remaining}장</span>
+                </span>
+                <span className="dock-wait-vals">
+                  {w.ron === null && w.tsumo === null ? (
+                    <span className="dock-wait-noyaku">역없음 — 이 패로는 못 납니다</span>
+                  ) : same && w.ron !== null ? (
+                    <span className="dock-wait-val" title={winValueTip(w.ron, false)}>
+                      {winValueText(w.ron)}
+                      {winValueSuffix(w.ron)}
+                    </span>
+                  ) : (
+                    <>
+                      <span
+                        className="dock-wait-val"
+                        {...(w.ron === null ? {} : { title: winValueTip(w.ron, false) })}
+                      >
+                        론 {w.ron === null ? "역없음" : winValueText(w.ron) + winValueSuffix(w.ron)}
+                      </span>
+                      <span
+                        className="dock-wait-val"
+                        {...(w.tsumo === null ? {} : { title: winValueTip(w.tsumo, false) })}
+                      >
+                        쯔모 {w.tsumo === null ? "역없음" : winValueText(w.tsumo) + winValueSuffix(w.tsumo)}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 「위험패」 구획 — 지금 두는 좌석이 무엇을 버릴 수 있나 (docs/36 A4).
+ *
+ * 판 위의 색칠(`.spec-danger-md`/`-hi`)과 **같은 값**을 쓴다. 여기서 따로 세면
+ * 두 표시가 언젠가 갈라지고, 그때 어느 쪽이 맞는지 알 방법이 없다. 도크는 그
+ * 색칠을 글로 한 번 더 말할 뿐이다(색을 못 가리는 사람에게는 이쪽이 본체다).
+ */
+function DockDanger({
+  view,
+  insight,
+  rewinding,
+}: {
+  view: PlayerView;
+  insight?: SpectateInsightMessage;
+  /** 되감는 중 — 「매길 상대가 없다」는 **주장**을 해서는 안 된다 */
+  rewinding: boolean;
+}): JSX.Element {
+  const seat = insight?.dangerSeat;
+  const danger = insight?.danger;
+  if (rewinding) return <p className="dock-note dock-note-warn">{REWIND_NOTE}</p>;
+  if (seat === undefined || danger === undefined) {
+    return <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>;
+  }
+  const p = view.players.find((x) => x.id === seat);
+  const ids = (view.zones[`hand:${seat}`]?.tileIds ?? []).filter((id) => danger[id] !== undefined);
+  if (ids.length === 0) return <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>;
+  const sorted = [...ids].sort((a, b) => (danger[b] ?? 0) - (danger[a] ?? 0));
+  return (
+    <div className="dock-danger">
+      <p className="dock-note">
+        {p === undefined ? seat : playerName(view, p)}의 손패 — 지금 버리면 얼마나 위험한가
+      </p>
+      <div className="dock-danger-row">
+        {sorted.map((id) => {
+          const lv = danger[id] ?? 0;
+          const cls = specDangerClass(lv);
+          return (
+            <span
+              key={id}
+              className={`dock-danger-tile${cls}`}
+              title={`위험도 ${Math.round(lv * 100)}%${
+                lv >= 0.66 ? " — 높음" : lv >= 0.33 ? " — 중간" : ""
+              }`}
+            >
+              <TileImg tile={view.tiles[id]} size="mini" />
+              {/* 색만으로 단계를 말하지 않는다 — 고대비·색약에서도 남는 글자를 붙인다 */}
+              {lv >= 0.33 ? (
+                <span className={`dock-danger-tag${lv >= 0.66 ? " hi" : ""}`}>
+                  {lv >= 0.66 ? "위험" : "주의"}
+                </span>
+              ) : null}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 「다음 쯔모」 구획 — 패산 앞 N장과 **누가 뽑는지**.
+ *
+ * ⚠ **이 화면에서 가장 강한 스포일러다.** 관전 뷰에는 패산이 실제 뽑히는 순서대로
+ * 전부 실려 오므로(코어가 관전자에게는 모든 zone을 공개한다), 여기를 켜면 판의
+ * 결말을 먼저 알게 된다. 그래서 기본이 꺼짐이고, 켠 사람에게 무엇을 보고 있는지
+ * 한 줄로 다시 말한다.
+ *
+ * 누가 뽑는지는 `projectedDrawSeats`를 그대로 쓴다 — 역행(`direction === -1`)과
+ * 후로로 차례가 건너뛴 경우까지 이미 처리돼 있다. 여기서 따로 세면 예지 모달이
+ * 고정 배열로 틀린 자리 이름을 확신 있게 보여 주던 그 버그를 그대로 되풀이한다.
+ */
+function DockNextDraw({
+  view,
+  rewinding,
+}: {
+  view: PlayerView;
+  /** 되감는 중 — 이 구획만 게이트 밖이었다(아래 주석) */
+  rewinding: boolean;
+}): JSX.Element {
+  /*
+   * ⚠ **되감는 동안에는 그리지 않는다.**
+   *
+   * 다른 구획은 `insight` 를 안 받아 저절로 비는데, 여기만 `view.zones["wall"]` 을
+   * 직접 읽어 «그 시점의 패산»을 그대로 채웠다 — 한 화면에서 시점이 섞인다.
+   * 게다가 되감기는 지나간 장면을 다시 보는 자리라, 거기 붙은 «다음 쯔모»는
+   * 이미 일어난 일을 미래처럼 보여 주는 셈이 된다.
+   */
+  if (rewinding) return <p className="dock-note dock-note-warn">{REWIND_NOTE}</p>;
+  const N = 6;
+  const ids = (view.zones["wall"]?.tileIds ?? []).slice(0, N);
+  const seats = projectedDrawSeats(
+    view.round.turnSeat,
+    view.round.direction,
+    view.players.length,
+    ids.length,
+  );
+  return (
+    <div className="dock-next">
+      <p className="dock-note dock-note-warn">
+        패산 앞장입니다 — 판의 결말을 먼저 보게 됩니다.
+      </p>
+      {ids.length === 0 ? (
+        <p className="dock-note">남은 패산이 없습니다.</p>
+      ) : (
+        <div className="dock-next-row">
+          {ids.map((id, i) => {
+            const p = view.players.find((x) => x.seat === seats[i]);
+            return (
+              <span key={id} className="dock-next-tile">
+                <TileImg tile={view.tiles[id]} size="mini" />
+                <span className="dock-next-who">{p === undefined ? "?" : playerName(view, p)}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 「점수 추이」 구획 — 국별 증감 (docs/36 A7). 누적은 이름표의 점수가 이미 말한다. */
+function DockTrend({
+  view,
+  pastRounds,
+}: {
+  view: PlayerView;
+  pastRounds: PastRound[];
+}): JSX.Element {
+  const rows = useMemo(
+    () =>
+      pastRounds.slice(-8).map((r) => ({
+        label: r.label,
+        deltas: r.result.settle.deltas,
+      })),
+    [pastRounds],
+  );
+  const order = [...view.players].sort((a, b) => a.seat - b.seat);
+  if (rows.length === 0) return <p className="dock-note">아직 끝난 국이 없습니다.</p>;
+  return (
+    <div className="bcast-trend">
+      {rows.map((r, i) => (
+        <div key={i} className="bcast-trend-row">
+          <span className="bcast-trend-label">{r.label}</span>
+          {order.map((p) => {
+            const d = r.deltas[p.id] ?? 0;
+            return (
+              <span key={p.id} className={`bcast-trend-d num${d > 0 ? " up" : d < 0 ? " down" : ""}`}>
+                {d === 0 ? "·" : d > 0 ? `+${d}` : d}
+              </span>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }

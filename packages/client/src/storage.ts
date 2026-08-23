@@ -97,6 +97,16 @@ export const STORAGE_KEYS = [
    * 가입해도 새 계정이 가입 직후 튜토리얼 판으로 안내되지 않았다.
    */
   "majak.tutorialDone",
+  /*
+   * 관전 도크(중계 분석 패널)의 취향값 — `spectateDock.ts`가 쓴다.
+   * 넷 다 관리자 관전 전용이지만 «처음부터»가 처음부터여야 하는 건 같다.
+   * 특히 `spectateDelay`는 안전장치라, 지우고 다시 시작하면 «없음»으로 돌아가야
+   * 운영자가 다시 한 번 고르게 된다.
+   */
+  "majak.spectateDock",
+  "majak.spectateDelay",
+  "majak.spectateOverlay",
+  "majak.spectateFocus",
 ] as const;
 
 /** 방 복귀 정보만 지운다 — 로그인은 유지한 채 "그 판"에서만 빠져나오는 용도. */

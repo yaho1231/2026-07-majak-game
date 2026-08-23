@@ -23,6 +23,7 @@
  */
 
 import {
+  SPECTATOR_ID,
   augmentRiichiTrust,
   augmentThreatMultiplier,
   discardsZone,
@@ -126,7 +127,22 @@ export function tileTracker(view: PlayerView): (kind: TileKind) => number {
   const countZone = (zoneId: string): void => {
     for (const id of view.zones[zoneId]?.tileIds ?? []) bump(id);
   };
-  countZone(handZone(view.playerId));
+  /*
+   * ⚠ **관전 뷰에는 «뷰어 본인 손패»라는 것이 없다** (2026-08-23 발견).
+   *
+   * 관전 뷰의 `playerId`는 `SPECTATOR_ID`라 `hand:__spectator` 존이 존재하지 않는다 —
+   * 예전에는 그 없는 존 하나만 세고 끝나서, **네 좌석 손패를 한 장도 세지 않았다.**
+   * 관전자는 네 사람의 손패를 다 보는데도 「이 종류는 아직 4장 남았다」고 읽었고,
+   * 중계 화면의 위험패가 그 과대평가된 장수 위에 매겨졌다.
+   *
+   * 대국자 뷰에서는 **한 글자도 달라지지 않는다** — 그쪽은 본인 손패 하나만 보인다는
+   * 사실이 이 함수의 전제이자 봇 판단의 근거다(남의 손패를 세면 봇이 치트를 한다).
+   */
+  if (view.playerId === SPECTATOR_ID) {
+    for (const p of view.players) countZone(handZone(p.id));
+  } else {
+    countZone(handZone(view.playerId));
+  }
   for (const p of view.players) {
     countZone(discardsZone(p.id));
     countZone(meldsZone(p.id));

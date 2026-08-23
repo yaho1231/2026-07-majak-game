@@ -1370,6 +1370,17 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("score.uncapped", false);
   /** 화료 시 추가 판 (역만 제외) — 동적 Modifier가 state에서 계산한다 */
   rules.define("score.extraHan", 0);
+  /*
+   * **정산 시점에 얹히는 보너스 판** (`addWinHanBonus` 계열). `score.extraHan`과 달리
+   * 이 값은 채점(`calculateScore`)에 들어가지 않는다 — 정산 인터셉터가 «그 판수로 다시
+   * 계산한 점수 − 실제 점수»만큼을 뱅크에서 지급하기 때문이다(무페널티 원칙).
+   *
+   * 그런데 관전 패널은 **화료자가 실제로 받는 값**을 적어야 한다. 인터셉터는 부작용 없이
+   * 미리 태울 수 없으므로, 증강이 같은 함수를 이 규칙으로도 한 번 더 내놓게 해서
+   * 관전 쪽이 «질의»할 수 있게 한다 (`information/spectateScore.ts`).
+   * 해석 문맥에 `winInfo`(가상 화료)가 실려 온다.
+   */
+  rules.define("score.settleHanBonus", 0);
   // 유국만관 — 표준 규칙(01_GAME_RULES). 유국역만 증강이 보유자에게만 끈다.
   rules.define("draw.nagashiMangan", true);
   /**

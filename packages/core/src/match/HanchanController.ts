@@ -33,6 +33,8 @@ import type { TileId } from "../mahjong/tiles/Tile.js";
 import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
 import type { AbortReason, RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
 import { uraIndicatorIds, winHandIdsOf } from "../mahjong/flow/helpers.js";
+import { buildSpectateSeatScores, gradeStartingHands } from "../information/spectateScore.js";
+import type { SpectateSeatScore } from "../information/spectateScore.js";
 import type { PlayerAgent } from "./PlayerAgent.js";
 import type {
   RankingEntry,
@@ -385,7 +387,13 @@ export interface HanchanEvents {
 export interface SpectatorSink {
   /** 관전자 식별자 (제거용) */
   readonly id: string;
-  sendView(view: PlayerView): void;
+  /**
+   * @param seatScores 관전 보조값의 **좌석 부분** (예상 타점·샹텐·배패 점수).
+   *   뷰와 **같은 순간에** 넘긴다 — 지연 관전석(`spectateDelayMs`)에서 뷰와 보조값이
+   *   따로 흘러가면 화면의 손패와 숫자가 몇 초씩 어긋난다. 컨트롤러가 상태를 쥐고
+   *   있는 이 자리에서 한 번만 계산해 관전석 전원이 나눠 쓴다.
+   */
+  sendView(view: PlayerView, seatScores?: readonly SpectateSeatScore[]): void;
   notify?(msg: ServerMessage): void;
 }
 
@@ -586,6 +594,18 @@ export class HanchanController {
    * 배치가 보인다. 배치가 없는 좌석(봇)은 코어가 표준 정렬로 폴백한다.
    */
   private readonly handOrder: Record<PlayerId, readonly TileId[]> = {};
+  /**
+   * 이 국의 **배패 점수** (0~100). 국 시작 직후 한 번 재고 국이 끝날 때까지 고정한다 —
+   * 중간에 다시 재면 그건 배패 점수가 아니라 그냥 «지금 손 점수»다. 관전자가 국 도중에
+   * 합류해도 배패 시점의 값을 그대로 보게 하려고 관전자 유무와 무관하게 잰다
+   * (4좌석 `shantenOf` 4회라 비용이 없다).
+   *
+   * **국이 끝나면 비운다.** 국과 국 사이(`runLoop`의 `broadcastViews`)는 다음 국의
+   * 배패가 아직 없는 구간이라, 안 비우면 그 프레임이 **지난 국의 배패 점수**를 실어
+   * 보낸다 — 지난 국의 손패가 함께 보이는 잔상 구간이지만 숫자는 숫자다
+   * (반장전 1판에서 31프레임 실측).
+   */
+  private handGrades: Record<PlayerId, number> = {};
   /**
    * 마지막 버림패가 손패 어느 자리에서 나왔는지. 배치를 아는 건 여기(handOrder)뿐이고
    * 패가 손을 떠난 뒤에는 자리를 복원할 수 없어 **버리기 직전**에 재어 둔다.
@@ -1295,6 +1315,8 @@ export class HanchanController {
     } finally {
       this.inRound = false;
       this.roundVoid = null;
+      // 국이 끝났다 — 다음 국의 배패를 받기 전까지 «이 국의 배패 점수»는 존재하지 않는다.
+      this.handGrades = {};
     }
   }
 
@@ -1305,6 +1327,12 @@ export class HanchanController {
     this.lastDiscardFrom = null;
     const flow = new FlowController(game.engine);
     let status: FlowStatus = flow.begin();
+    /*
+     * 배패 점수는 **첫 13장**에 대한 값이다. `begin()`은 `runAuto()`라 배패에서 멈추지
+     * 않고 오야의 첫 쯔모까지 진행하므로 이 자리에서 오야만 14장이다 —
+     * `gradeStartingHands`가 그 한 장을 도로 빼고 잰다(그 함수의 주석 참고).
+     */
+    this.handGrades = gradeStartingHands(game.engine.state, game.engine.rules);
     this.broadcastViews(game); // 배패 직후 — 손패가 보이는 첫 시점
 
     while (status.kind === "awaiting") {
@@ -1613,6 +1641,29 @@ export class HanchanController {
 
   // ─────────────────────────── 뷰 브로드캐스트 ───────────────────────────
 
+  /**
+   * **관전 시점에 계산할 수 없는 정산 보정이 남은 좌석**을 가려낸다 (검수 N1 (b)).
+   *
+   * `ROUND_SETTLED` 인터셉터로 점수를 고치는 증강은 부작용 없이 미리 태울 수 없다.
+   * 그중 `score.settleHanBonus`로 **질의 창구를 내놓은 것**(core의 `addWinHanBonus`
+   * 계열)은 관전 채점이 그대로 따라가므로 문제가 없다. 창구가 없는 나머지(content의
+   * `withAugPoint` 계열)만 남고, 그 좌석의 값에는 「단정하지 말라」는 표식이 붙는다.
+   *
+   * 여기서 계산하는 이유: 인터셉터 목록은 **엔진**의 것이라 코어 채점 모듈(엔진을
+   * 모른다)이 볼 수 없다. 값은 좌석 4개짜리 집합 하나라 브로드캐스트마다 만들어도 싸다.
+   */
+  private augAdjustedSeats(game: StandardGame): (id: PlayerId) => boolean {
+    const queryable = new Set(game.engine.rules.modifierSources("score.settleHanBonus"));
+    const opaque = new Set<PlayerId>();
+    for (const { source } of game.engine.effects.interceptorsFor(ROUND_SETTLED)) {
+      if (queryable.has(source)) continue;
+      // 증강 인스턴스 id는 `aug:{playerId}:{증강id}` (Augment.ts `augmentInstanceId`).
+      const m = /^aug:([^:]+):/.exec(source);
+      if (m !== null) opaque.add(m[1] as PlayerId);
+    }
+    return (id) => opaque.has(id);
+  }
+
   private broadcastViews(game: StandardGame, uraDoraIndicators?: TileId[]): void {
     const state = game.engine.state;
     const rules = game.engine.rules;
@@ -1641,7 +1692,26 @@ export class HanchanController {
     if (this.spectators.size > 0) {
       try {
         const specView = buildPlayerView(state, SPECTATOR_ID, rules, viewOpt);
-        for (const s of this.spectators.values()) s.sendView(specView);
+        /*
+         * 예상 타점 — **판이 실제로 쓰는 채점기**로 잰 확정값 (docs/36 A2).
+         *
+         * 관전자가 없으면 아예 계산하지 않는다. 이 브로드캐스트는 모든 상태 변화마다
+         * 일어나므로(쯔모·버림·부로 …) 아무도 안 보는 계산을 매 순 돌릴 이유가 없다.
+         * 계산이 던져도 뷰는 나가야 한다 — 보조값은 화면을 돕는 곁다리지 판이 아니다.
+         */
+        let scores: readonly SpectateSeatScore[] | undefined;
+        try {
+          scores = buildSpectateSeatScores(
+            state,
+            rules,
+            game.yaku,
+            this.handGrades,
+            this.augAdjustedSeats(game),
+          );
+        } catch (err) {
+          console.error("[hanchan] 관전 예상 타점 계산 실패 — 뷰만 보낸다", err);
+        }
+        for (const s of this.spectators.values()) s.sendView(specView, scores);
       } catch (err) {
         console.error("[hanchan] 관전 뷰 전송 실패 — 대국은 계속한다", err);
       }
@@ -1700,6 +1770,23 @@ export class HanchanController {
     this.spectators.set(sink.id, sink);
     if (this.game !== null) {
       if (this.catalogMsg !== null) sink.notify?.(this.catalogMsg);
+      /*
+       * 합류 첫 화면부터 예상 타점을 싣는다 — 없으면 다음 상태 변화가 올 때까지
+       * (남의 장고 시간이면 수십 초다) 패널이 비어 있다. 배패 점수도 이 국 시작 때
+       * 잰 값이 그대로 간다.
+       */
+      let scores: readonly SpectateSeatScore[] | undefined;
+      try {
+        scores = buildSpectateSeatScores(
+          this.game.engine.state,
+          this.game.engine.rules,
+          this.game.yaku,
+          this.handGrades,
+          this.augAdjustedSeats(this.game),
+        );
+      } catch (err) {
+        console.error("[hanchan] 관전 합류 예상 타점 계산 실패 — 뷰만 보낸다", err);
+      }
       sink.sendView(
         buildPlayerView(this.game.engine.state, SPECTATOR_ID, this.game.engine.rules, {
           // 형식텐파이·역없는 대기 계산용 — 관전 뷰는 네 좌석 모두 이 상세를 받는다.
@@ -1712,6 +1799,7 @@ export class HanchanController {
           // 결과 패널)가 어긋나면 그게 더 헷갈린다. 국 중이면 빈 배열이라 실리지 않는다.
           ...(this.lastRoundUra.length > 0 ? { uraDoraIndicators: this.lastRoundUra } : {}),
         }),
+        scores,
       );
       // 뷰 **다음에** 보낸다 — 결과 패널은 뷰 위에 얹히는 것이라 순서가 뒤집히면
       // 화면이 한 번 비었다가 다시 그려진다.

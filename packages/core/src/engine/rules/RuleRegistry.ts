@@ -21,6 +21,14 @@ export interface RuleContext {
   winType?: "tsumo" | "ron";
   /** 화료 문맥 규칙 해석 시 손이 멘젠인가 (안깡은 멘젠 유지) */
   isClosed?: boolean;
+  /**
+   * **가상의 화료 한 건** (`WinInfo` 모양). 정산 시점에만 알 수 있는 값을 보는 규칙
+   * (`score.settleHanBonus`)이 읽는다.
+   *
+   * 타입을 `unknown`으로 둔 이유: `WinInfo`는 `mahjong/flow`의 것이고 이 파일은
+   * 엔진 최하층이라 그쪽을 import하면 층이 뒤집힌다(`state`가 `unknown`인 것과 같은 이유).
+   */
+  winInfo?: unknown;
 }
 
 /** 등급이 높은 증강이 나중에 적용된다 (= 최종 발언권). System은 엔진 안전장치 전용. */
@@ -56,6 +64,21 @@ export class RuleRegistry {
   private readonly modifiers = new Map<RuleKey, StoredModifier[]>();
   private nextSeq = 0;
   /**
+   * **규칙 세대** — 이 레지스트리의 내용이 바뀔 때마다 하나씩 오른다.
+   *
+   * 규칙을 읽어 만든 값을 캐시하는 쪽(관전 채점 `information/spectateScore.ts`)이
+   * 「내가 본 뒤로 규칙이 바뀌었나」를 물을 자리가 필요하다. `GameState`로는 알 수
+   * 없다 — 증강 설치(`installAugment`)는 **상태를 갈지 않고 이 레지스트리만 바꾼다**.
+   * 그래서 국 사이 드래프트 직후, 상태 객체가 그대로인 채 규칙만 달라지는 창이 실제로
+   * 생기고, 상태를 키로 쓴 캐시는 **드래프트 이전 규칙으로 계산된 값**을 계속 내놓았다.
+   */
+  private ver = 0;
+
+  /** 규칙 세대 (내용이 바뀔 때마다 증가). 캐시 무효화 전용. */
+  get version(): number {
+    return this.ver;
+  }
+  /**
    * source(증강 인스턴스) 게이트 — 무장해제용. false를 돌려주는 source의 Modifier는
    * 합성에서 제외된다(문맥별). null(기본)이면 전부 적용해 종전 동작과 완전히 동일하다.
    * GameEngine이 state.augmentData의 비활성 목록을 읽어 설정한다(리플레이 안전).
@@ -65,6 +88,7 @@ export class RuleRegistry {
   /** 무장해제 게이트를 설정한다 (GameEngine 전용). null이면 게이팅 없음. */
   setSourceGate(gate: ((source: string, ctx: RuleContext) => boolean) | null): void {
     this.sourceGate = gate;
+    this.ver++;
   }
 
   /** 기본값 정의. 이미 정의된 규칙을 다시 정의하는 것은 버그이므로 즉시 실패한다. */
@@ -73,6 +97,7 @@ export class RuleRegistry {
       throw new Error(`Rule already defined: ${key}`);
     }
     this.base.set(key, baseValue);
+    this.ver++;
   }
 
   has(key: RuleKey): boolean {
@@ -97,6 +122,19 @@ export class RuleRegistry {
       apply: mod.apply as (current: unknown, ctx: RuleContext) => unknown,
     });
     this.modifiers.set(key, list);
+    this.ver++;
+  }
+
+  /**
+   * 이 규칙에 Modifier를 등록한 주체(증강 인스턴스 id) 목록.
+   *
+   * 관전 채점이 「이 좌석의 정산 보정을 내가 다 따라갔는가」를 판정하는 데 쓴다 —
+   * `score.settleHanBonus`를 등록한 증강은 관전값에 그대로 반영되지만, 그러지 않고
+   * `ROUND_SETTLED` 인터셉터만으로 점수를 고치는 증강은 관전 시점에 알 수 없다.
+   * 그 차이를 화면이 «단정하지 않게» 하려면 어느 쪽인지 셀 수 있어야 한다.
+   */
+  modifierSources(key: RuleKey): string[] {
+    return [...new Set((this.modifiers.get(key) ?? []).map((m) => m.source))];
   }
 
   /** 특정 주체(증강)가 등록한 모든 Modifier 제거. 증강 소멸·파괴 시 호출된다. */
@@ -105,6 +143,7 @@ export class RuleRegistry {
       const kept = list.filter((m) => m.source !== source);
       if (kept.length !== list.length) {
         this.modifiers.set(key, kept);
+        this.ver++;
       }
     }
   }

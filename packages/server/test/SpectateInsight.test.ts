@@ -13,14 +13,32 @@
  *    이 게임의 간판 요소인 증강을 든 좌석에서 정확히 틀린다 — 5멘쯔·만능패 좌석이
  *    가장 극적인 자리인데 하필 거기서.
  *
+ * 3. **화면에 실재하지 않는 숫자를 내보내지 않는다** (2026-08-23). 예전에는 네 좌석
+ *    전부를 봇의 값어치 모형(`bot/value.ts`)으로 찍어 「3.2판 4660점」이 나왔다. 그
+ *    모형은 만관 경계에서 봇이 요동치지 않도록 **일부러** 판수를 연속값으로 두고 점수를
+ *    보간한다 — 봇에게는 옳고 화면에는 틀리다. 텐파이 좌석의 확정 타점은 코어가
+ *    (`information/spectateScore.ts`) 실제 채점기로 내고, 여기 남은 **노텐 추정**만
+ *    이 파일이 정수 판수·점수표 눈금으로 고쳐 낸다.
+ * 4. **관전 뷰의 장 세기가 네 좌석 손패를 센다** (`bot/danger.ts`의 `tileTracker`).
+ *    관전 뷰의 `playerId`는 `SPECTATOR_ID`라 «본인 손패» 존이 없어서, 예전에는 네 좌석
+ *    손패를 **한 장도** 세지 않았다 — 관전자는 다 보는데도 남은 장수를 과대평가했고
+ *    위험패가 그 위에 매겨졌다. 대국자 뷰의 값은 한 글자도 달라지면 안 된다.
+ *
  * 뷰는 **손으로 짓는다.** 실제 대국을 돌려 우연히 그 손이 나오기를 기다리면 그때만
  * 도는 테스트가 되고, 어긋남을 실제로 관측한 손패(위 실측의 두 건)를 그대로 쓸 수도 없다.
  */
 
 import { describe, expect, it } from "vitest";
-import { SPECTATOR_ID, handZone, kindKey, meldsZone, shantenOf } from "@majak/core";
-import type { DecomposeOptions, PlayerId, PlayerView, TileKind } from "@majak/core";
+import { SPECTATOR_ID, calculateScore, handZone, kindKey, meldsZone, shantenOf } from "@majak/core";
+import type {
+  DecomposeOptions,
+  PlayerId,
+  PlayerView,
+  SpectateSeatScore,
+  TileKind,
+} from "@majak/core";
 import { buildSpectateInsight } from "../src/spectateInsight.js";
+import { tileTracker } from "../src/bot/danger.js";
 
 /** "man4" · "wind4" · "dragon3" → TileKind */
 function k(s: string): TileKind {
@@ -162,5 +180,193 @@ describe("관전 뷰가 아니면 아무 것도 만들지 않는다", () => {
     expect(buildSpectateInsight(asPlayer)).toBeNull();
     // 지어내지 않는다는 뜻이지, 좌석 표기(kindKey)까지 잊는다는 뜻은 아니다.
     expect(kindKey(k("man1"))).toBe("man1");
+  });
+});
+
+describe("노텐 좌석의 «추정»도 실재하는 숫자여야 한다", () => {
+  /*
+   * 예전에는 이 줄이 「3.2판 4660점」을 냈다. 봇 모형(`estimateHandValue`)이 판수를
+   * 연속값으로 두고 점수표 두 칸을 보간하기 때문이다 — 만관 경계에서 봇이 요동치지
+   * 않게 하려는 **의도된** 설계라 그 모형은 그대로 두고, 화면에 나가기 직전에
+   * 정수 판수·표 눈금 부수로 고쳐 `calculateScore`를 다시 태운다.
+   */
+  const REAL_TOTALS = (() => {
+    const set = new Set<number>();
+    for (const isDealer of [true, false]) {
+      for (let han = 1; han <= 13; han++) {
+        for (const fu of [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110]) {
+          set.add(calculateScore({ han, fu, isDealer, winType: "ron" }).total);
+        }
+      }
+    }
+    return set;
+  })();
+
+  const HANDS: Record<string, string[]> = {
+    // 노텐 손 넷 — 도라도 후로도 없이 순수하게 추정 구간만 본다.
+    p0: "man1 man3 man5 pin2 pin4 pin7 sou1 sou3 sou6 sou9 wind1 wind3 dragon2".split(" "),
+    p1: "man2 man2 man7 pin1 pin1 pin8 sou2 sou4 sou5 wind2 wind2 dragon1 dragon3".split(" "),
+    p2: "man4 man5 man6 pin3 pin3 pin4 sou7 sou8 wind4 wind4 dragon1 dragon1 man9".split(" "),
+    p3: "man1 man1 man1 pin9 pin9 pin9 sou1 sou1 wind1 wind1 wind1 dragon2 dragon2".split(" "),
+  };
+
+  it("판수는 정수, 부수는 표의 눈금, 점수는 점수표에 실재하는 값이다", () => {
+    const msg = buildSpectateInsight(spectatorView(HANDS));
+    expect(msg).not.toBeNull();
+    for (const s of msg!.seats) {
+      const est = s.estimate;
+      expect(est, `${s.id}에 노텐 추정이 없다 — 화면에 적을 것이 사라졌다`).toBeDefined();
+      expect(Number.isInteger(est!.han), `판수가 정수가 아니다: ${est!.han}`).toBe(true);
+      expect(est!.han, "1판 미만이라는 칸은 점수표에 없다").toBeGreaterThanOrEqual(1);
+      expect(
+        [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110],
+        `부수가 표의 눈금이 아니다: ${est!.fu}`,
+      ).toContain(est!.fu);
+      expect(
+        REAL_TOTALS.has(est!.points),
+        `점수표에 없는 점수다: ${est!.points} (${est!.han}판 ${est!.fu}부)`,
+      ).toBe(true);
+      // 옛 화면 호환 필드도 같은 값을 본다 — 두 자리가 갈리면 화면에서 갈린다.
+      expect(s.han).toBe(est!.han);
+      expect(s.points).toBe(est!.points);
+    }
+  });
+});
+
+describe("코어 좌석값이 실려 오면 그것이 화면의 값이다", () => {
+  /** 코어가 낸 확정값 한 벌 (여기서는 배관만 본다 — 값 자체는 core 쪽 테스트가 지킨다) */
+  const CORE: SpectateSeatScore[] = [
+    {
+      id: "p0",
+      shanten: 0,
+      meldCount: 1,
+      menzen: false,
+      dora: 2,
+      handGrade: 71,
+      waits: [
+        {
+          kind: "man3",
+          remaining: 3,
+          ron: {
+            han: 3,
+            fu: 40,
+            points: 5200,
+            yakumanCount: 0,
+            yaku: [{ name: "삼색동순", han: 1 }],
+            doraHan: 2,
+            redHan: 0,
+            uraHan: 0,
+          },
+          tsumo: null,
+        },
+      ],
+      best: {
+        han: 3,
+        fu: 40,
+        points: 5200,
+        yakumanCount: 0,
+        yaku: [{ name: "삼색동순", han: 1 }],
+        doraHan: 2,
+        redHan: 0,
+        uraHan: 0,
+      },
+    },
+  ];
+
+  const HAND = "man1 man2 man3 pin1 pin2 pin3 sou1 sou2 sou3 man5 man6 pin9 pin9".split(" ");
+
+  it("텐파이 좌석은 확정값을 쓰고 추정을 얹지 않는다", () => {
+    const msg = buildSpectateInsight(
+      spectatorView({ p0: HAND, p1: HAND, p2: HAND, p3: HAND }),
+      CORE,
+    );
+    const p0 = msg!.seats.find((s) => s.id === "p0");
+    expect(p0?.best?.points, "확정값이 화면까지 오지 않았다").toBe(5200);
+    expect(p0?.waits?.length).toBe(1);
+    expect(p0?.handGrade, "배패 점수가 화면까지 오지 않았다").toBe(71);
+    expect(p0?.shanten, "샹텐도 코어값을 써야 한다 — 두 셈이 갈리면 화면이 갈린다").toBe(0);
+    expect(
+      p0?.estimate,
+      "확정값이 있는데 추정까지 얹혔다 — 같은 줄에 숫자가 둘 뜬다",
+    ).toBeUndefined();
+    expect(p0?.han).toBe(3);
+    expect(p0?.fu).toBe(40);
+    expect(p0?.points).toBe(5200);
+    // 코어값이 없는 좌석은 예전처럼 이 파일이 재고 추정으로 떨어진다.
+    const p1 = msg!.seats.find((s) => s.id === "p1");
+    expect(p1?.estimate, "코어값이 없는 좌석의 추정이 사라졌다").toBeDefined();
+    expect(p1?.best).toBeUndefined();
+  });
+});
+
+describe("코어가 세운 표식은 하나도 잃지 않고 화면까지 간다", () => {
+  /*
+   * 「역없음」·「격 미달」·「후리텐」은 화면에 **다른 말로** 적어야 하는 다른 사실이다.
+   * 배관에서 하나라도 흘리면 그 좌석은 아무 설명 없이 값만 빈 카드가 된다
+   * (값 자체가 옳은지는 core의 `SpectateScore.test.ts`가 지킨다).
+   */
+  const HAND = "man1 man2 man3 pin1 pin2 pin3 sou1 sou2 sou3 man5 man6 pin9 pin9".split(" ");
+  const base = {
+    id: "p0",
+    shanten: 0,
+    meldCount: 0,
+    menzen: true,
+    dora: 0,
+  } as const;
+
+  const seatOf = (core: SpectateSeatScore) => {
+    const msg = buildSpectateInsight(
+      spectatorView({ p0: HAND, p1: HAND, p2: HAND, p3: HAND }),
+      [core],
+    );
+    return msg!.seats.find((s) => s.id === "p0")!;
+  };
+
+  it("격 미달(`belowMinHan`)이 화면까지 간다", () => {
+    const s = seatOf({ ...base, belowMinHan: true, waits: [] });
+    expect(s.belowMinHan, "격 미달 표식이 배관에서 사라졌다").toBe(true);
+    expect(s.yakuless, "역없음으로 바꿔 적으면 다른 사실을 말하는 것이다").toBeUndefined();
+  });
+
+  it("후리텐(`furiten`)이 화면까지 간다", () => {
+    expect(seatOf({ ...base, furiten: true, waits: [] }).furiten).toBe(true);
+  });
+
+  it("형식텐파이(`yakuless`)가 화면까지 간다", () => {
+    expect(seatOf({ ...base, yakuless: true, waits: [] }).yakuless).toBe(true);
+  });
+});
+
+describe("관전 뷰의 장 세기 — 네 좌석 손패를 센다", () => {
+  /*
+   * `bot/danger.ts`의 `tileTracker`는 «보이는 곳을 전부 세어 남은 장수를 낸다». 그
+   * «보이는 곳»에 뷰어 본인 손패가 들어 있는데, 관전 뷰는 `playerId`가 `SPECTATOR_ID`라
+   * 그 존이 아예 없다 — 그래서 네 좌석 손패를 **한 장도** 세지 않았다. 관전자는 네 손패를
+   * 다 보는데도 「아직 4장 남았다」고 읽었고, 중계의 위험패가 그 위에 매겨졌다.
+   */
+  const HANDS: Record<string, string[]> = {
+    p0: "man1 man1 pin2 pin3 pin4 sou5 sou6 sou7 man4 man5 man6 wind1 wind1".split(" "),
+    p1: "man1 pin5 pin5 pin6 sou1 sou2 sou3 man7 man8 man9 wind2 wind2 wind2".split(" "),
+    p2: "pin7 pin8 pin9 sou4 sou5 sou6 man2 man3 man4 dragon1 dragon1 wind3 wind3".split(" "),
+    p3: "pin1 pin1 pin1 sou8 sou9 man6 man7 man8 dragon2 dragon2 dragon3 wind4 wind4".split(" "),
+  };
+
+  it("관전 뷰는 네 좌석 손패를 세고, 대국자 뷰의 값은 그대로다", () => {
+    const spec = spectatorView(HANDS);
+    // man1은 p0가 2장 + p1이 1장 = 세상에 보이는 3장. 관전자는 그걸 다 본다.
+    expect(
+      tileTracker(spec)(k("man1")),
+      "관전 뷰가 네 좌석 손패를 안 세고 있다 — 남은 장수를 과대평가한다",
+    ).toBe(1);
+
+    /*
+     * 대국자 뷰에서는 **본인 손패만** 센다. 이건 고칠 대상이 아니라 봇 판단의 근거다 —
+     * 남의 손패를 세는 순간 봇이 치트를 한다. 값이 한 글자도 달라지면 안 된다.
+     */
+    const asP0 = { ...spec, playerId: "p0" as PlayerId };
+    expect(tileTracker(asP0)(k("man1")), "대국자 뷰의 장 세기가 달라졌다").toBe(2);
+    // 남이 든 패는 대국자에게 보이지 않으므로 4장 그대로여야 한다.
+    expect(tileTracker(asP0)(k("dragon1")), "대국자 뷰가 남의 손패를 세고 있다").toBe(4);
+    expect(tileTracker(spec)(k("dragon1")), "관전 뷰가 p2의 백 두 장을 못 세고 있다").toBe(2);
   });
 });

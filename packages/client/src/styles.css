@@ -385,9 +385,31 @@ button {
      (= (--panel + 2×(--river-gap + --river-h)) / --board).
      --board 를 정하는 데 쓰이므로 --panel 을 되먹일 수 없어 상수로 적는다 —
      **--panel-min 비율을 바꾸는 브레이크포인트에서는 여기도 같이 바꿔야 한다.** */
-  /* --own-band·--top-band 는 .game-root 에서 상속받는다 —
-     여기서 다시 선언하면 실측값(--own-band)이 덮이고, .table 바깥에 있는
-     .rotate-hint 가 같은 띠를 못 본다. */
+  /*
+   * ── 예약 띠를 «이 판이 실제로 서 있는 폭» 으로 다시 푼다 (2026-08-23) ──
+   *
+   * ⚠ `--own-band` 는 **여기서 선언하면 안 된다.** OwnArea 가 실측해 `.game-root`
+   *   에 써 넣는 값이고, `.table` 바깥의 `.rotate-hint` 도 같은 띠를 봐야 한다.
+   *   여기서 다시 선언하면 그 실측값이 덮인다.
+   *
+   * 나머지 넷(`--top-band`·`--side-strip-reserve`·`--waits-row-h`·`--own-reserve`)은
+   * 순수 CSS 값이고, 브레이크포인트가 전부 `@container ui (…)` 안에 있다. 그런데
+   * `.game-root` 는 관전 2열의 새 컨테이너(`.spectate-stage-board`) **바깥**이라
+   * 늘 창(body)을 본다 — 그래서 두 층이 서로 다른 폭을 믿는 구간이 생겼다.
+   * 1024×768 실측: 왼쪽 칸 724px 이라 `.table` 은 ≤900 규칙을 받아 보드가 422px 로
+   * 줄었는데, 같은 순간 `.game-root` 는 창이 1024라 `--side-strip-reserve: 56px` 를
+   * 유지했다 — 좌·우 상대 줄이 있지도 않은 배율 손잡이 자리를 비우고 그 절반만큼
+   * 아래로 밀려 섰다. 어긋나는 구간이 창 폭 1000~1840 으로 흔한 노트북 전부다.
+   *
+   * `.table` 은 관전이면 새 컨테이너 «안» 이라 자기 칸을 질의한다. 그래서 기본값을
+   * 여기에도 못 박아, 넓은 쪽 브레이크포인트 값이 상속으로 새어 들어오지 못하게 한다.
+   * 대국자 화면에서는 `.table` 도 body 를 보므로 `.game-root` 와 언제나 같은 값이다
+   * — 판이 한 픽셀도 달라지지 않는다.
+   */
+  --top-band: 76px;
+  --side-strip-reserve: 56px;
+  --waits-row-h: 75px;
+  --own-reserve: 0px;
   /* 띠와 보드 사이 숨통. 0으로 두면 액션 바가 떴을 때 그 위쪽 끝이 패널 아래 테두리를
      몇 px 스치고, 내 점수판과도 딱 붙는다(845×390 실측: 여유 0px). */
   --own-gutter: 16px;
@@ -1348,7 +1370,8 @@ button {
   /* 이미 아이콘 줄 **아래**로 내렸으므로 폭까지 비워 둘 이유가 없다 — 되돌린다.
      (안 되돌리면 세로 태블릿에서 맞은편 뒷패가 공연히 528px 몫만큼 작아진다) */
   .opp-strip-top { top: 64px; --top-side-reserve: 0px; }
-  .game-root { --top-band: 140px; }
+  .game-root,
+  .table { --top-band: 140px; }
 }
 
 /* 좌·우 자리 — 뒷면이 **세로**로 늘어선다. 한 장이 차지하는 높이는 폭×1.36,
@@ -2096,7 +2119,8 @@ button {
 }
 
 @container ui (max-width: 900px) {
-  .game-root { --waits-row-h: 63px; }
+  .game-root,
+  .table { --waits-row-h: 63px; }
   /* 라벨은 한 줄(nowrap)이라, 태그가 늘면 좁은 화면에서 뱃지가 판을 가로지른다.
      제일 먼저 접는 건 설명용 범례인 "남은 장수" — 숫자 자체와 그 툴팁은 그대로 남는다.
      후리텐·역없음은 칠지 말지를 바꾸는 정보라 좁아져도 남긴다. */
@@ -2104,7 +2128,8 @@ button {
 }
 
 @container ui (max-width: 700px) {
-  .game-root { --waits-row-h: 54px; }
+  .game-root,
+  .table { --waits-row-h: 54px; }
 }
 
 /*
@@ -5670,9 +5695,11 @@ button {
 .auglog {
   position: fixed;
   top: 62px;
-  right: 14px;
+  /* .ui-zoom 과 같은 이유로 도크 몫만큼 물러난다 — 이쪽이 더 컸다(340px 서랍이
+     도크 머리·구획 스위치·좌석 카드를 통째로 덮어 📜를 연 채로는 도크를 못 썼다). */
+  right: calc(14px + var(--dock-reserve, 0px));
   z-index: 90;
-  width: min(340px, calc(100cqw - 16px));
+  width: min(340px, calc(100cqw - 16px - var(--dock-reserve, 0px)));
   max-height: min(70cqh, calc(100cqh - 84px));
   display: flex;
   flex-direction: column;
@@ -7991,7 +8018,8 @@ button {
 
   /* 세로 화면은 위쪽 이름표 줄이 두 줄로 접혀 더 두껍다
      (.opp-strip-top top:48px + 두 줄 — 375×812 실측 아래끝 119px) */
-  .game-root {
+  .game-root,
+  .table {
     --top-band: 124px;
   }
 
@@ -8191,7 +8219,8 @@ button {
   /* 가로에서는 폭이 넉넉하다 — 맞은편 상대는 다시 한 줄로 */
   .opp-strip-top { top: 8px; flex-direction: row; gap: 10px; }
   /* 한 줄이라 위 띠도 얇다 (845×390 실측 아래끝 63px) */
-  .game-root { --top-band: 64px; }
+  .game-root,
+  .table { --top-band: 64px; }
   /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
   .quick-toggles:not(.quick-toggles-inline) {
     display: flex;
@@ -11017,29 +11046,33 @@ button {
   border-color: rgba(246, 127, 109, 0.9);
 }
 
-/* 서랍 — 띠 아래에 펼친다. 여기서는 클릭을 받아야 하므로 pointer-events를 켠다. */
+/*
+ * 서랍 — 도크의 「관전 설정」 안에서 아래로 펼친다.
+ *
+ * 예전에는 `position: absolute; top: 28px; left: 50%` 였다. 관전 띠 바로 아래를
+ * 노린 숫자인데, 띠가 좁은 화면에서 여러 줄로 자라면 그 28px 이 **띠를 뚫고**
+ * 겹쳤다. 도크 안에서는 그냥 흐름을 따라가면 되므로 좌표가 아예 필요 없다 —
+ * 어긋날 숫자를 없앤 것이 이 변경의 요점이다.
+ */
 .bcast-panel {
-  position: absolute;
-  top: 28px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 14px;
+  margin-top: 6px;
+  padding: 10px;
   border-radius: var(--r-md, 12px);
   background: rgba(9, 17, 14, 0.97);
   border: 1px solid rgba(246, 127, 109, 0.4);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
   pointer-events: auto;
-  z-index: 50;
 }
 
+/* 도크는 좁다 — 한 줄에 다 못 넣으면 줄바꿈한다(예전 띠에서는 `nowrap` 이라
+   가로로 삐져나가 판을 덮었다). */
 .bcast-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  white-space: nowrap;
 }
 
 .bcast-label {
@@ -11050,7 +11083,8 @@ button {
 }
 
 .bcast-input {
-  width: 260px;
+  flex: 1;
+  min-width: 120px;
   padding: 4px 10px;
   border-radius: 8px;
   border: 1px solid rgba(247, 243, 232, 0.24);
@@ -11112,10 +11146,36 @@ button {
   background: #00b140 !important; /* 표준 크로마키 초록 */
 }
 
-.table-overlay-clear .bcast-side,
-.table-overlay-green .bcast-side,
+/*
+ * 오버레이 모드에서 걷는 곁가지 — 방송 화면에 나갈 물건이 아닌 것들.
+ *
+ * ⚠ **도크 자체를 걷는 규칙은 여기 두지 않는다.** `.spectate-dock` 정의보다 앞이라
+ *   특이성이 같은 그 정의에 그대로 진다(2026-08-23 P0-1 이 정확히 이 함정이었다).
+ *   그 규칙은 파일 아래쪽, 도크 정의 **뒤**에 있다.
+ */
 .table-overlay-clear .quick-toggles,
-.table-overlay-green .quick-toggles {
+.table-overlay-green .quick-toggles,
+.table-overlay-clear .icon-btn,
+.table-overlay-green .icon-btn,
+.table-overlay-clear .spectate-bar,
+.table-overlay-green .spectate-bar {
+  display: none;
+}
+
+/*
+ * 배율 손잡이(`.ui-zoom`)와 기록 서랍(`.auglog`)도 방송에 나가면 안 된다.
+ *
+ * ⚠ 이 둘은 **body 포털**이다(FIXED_SURFACE_NOTE) — `.game-root` 의 후손이 아니라
+ *   **형제**다. 그래서 처음에 쓴 `.game-root:has(.table-overlay-green) .ui-zoom`
+ *   은 후손 결합자가 성립하지 않아 **한 번도 매치되지 않았고**, 크로마키 출력에
+ *   손잡이와 열린 📜 로그가 그대로 나갔다(2026-08-23 검수 지적). 소스만 보면
+ *   멀쩡해 보이는 종류의 실패라 브라우저로 매치 여부를 직접 확인해야 한다.
+ *
+ * 그래서 `--dock-reserve` 와 **같은 방식**으로 body 에 실린 신호를 본다.
+ * 표식은 App(GameTable)이 단다: 오버레이 중이면 `data-majak-dock="overlay"`.
+ */
+body[data-majak-dock="overlay"] .ui-zoom,
+body[data-majak-dock="overlay"] .auglog {
   display: none;
 }
 
@@ -11186,22 +11246,382 @@ button {
   pointer-events: none;
 }
 
-/* ─────────────── 중계 패널 (관전 전용) ─────────────── */
+/* ─────────────── 관전 2열 무대 · 분석 도크 (관전 전용) ─────────────── */
 
-/* 판의 오른쪽 여백에 세로로 선다. 클릭은 통과시키고 스크롤만 받는다 —
-   중계 화면에서 이 패널이 판을 집어삼키면 본말이 뒤집힌다. */
-.bcast-side {
+/*
+ * ## 왜 오버레이를 걷고 «열»로 나눴나 (2026-08-23)
+ *
+ * 중계 물건 셋(`.spectate-bar` · 옛 `.bcast-side` · `.bcast-panel`)이 전부 `.table`
+ * 위의 `position: absolute` 오버레이였고, **자기 크기를 레이아웃에 통보하지 않았다.**
+ * 보드 크기 `--board: min(83cqmin, 63cqw, …)` 는 좌우 여백을 `63cqw` 로 어림잡을 뿐
+ * 오른쪽 패널의 232px 을 모른다 — 그래서 오른쪽 상대의 손패가 후로로 길어지는 순간
+ * 패널이 그 위에 그대로 올라탔다(사용자 보고: "손패를 획득하는 순간 판을 덮는다").
+ * 오버레이를 옆으로 밀어 피하면 다음 창 크기에서 또 겹친다 — 그게 애초의 원인이다.
+ *
+ * 그래서 자리를 **나눈다**: 왼쪽 3/4가 판, 오른쪽 1/4가 분석 도크.
+ * 핵심은 `.spectate-stage-board` 가 **자기 container 컨텍스트**가 된다는 점이다.
+ * 그 안의 `cqw/cqh/cqmin` 은 창이 아니라 이 칸을 기준으로 풀리므로, `--board` 체인이
+ * 좁아진 폭을 그대로 따라 줄어든다. 겹칠 자리가 구조적으로 사라진다.
+ *
+ * ⚠ 컨테이너 이름을 `ui` 로 **똑같이** 둔다. `.table` 아래 `@container ui (…)` 규칙이
+ *   51개인데, 다른 이름을 쓰면 그것들이 계속 창(body) 을 보고 판이 «넓은 화면인 줄
+ *   아는 좁은 칸» 이 된다.
+ */
+.spectate-stage {
   position: absolute;
-  top: 96px;
-  right: 10px;
-  bottom: 96px;
+  inset: 0;
+  display: grid;
+  /* 25% 는 목표지 하한이 아니다 — 좁으면 도크가 판을 잡아먹고, 넓으면 도크만
+     허옇게 늘어난다. clamp 로 양쪽을 다 막는다. */
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 25%, 460px);
+  align-items: stretch;
+}
+
+/* 접힌 도크 — 폭을 0으로 만들지 않는다. 되돌릴 손잡이가 사라지면 탈출구가
+   새로고침뿐이 된다(오버레이 모드에서 실제로 그런 적이 있다). */
+.spectate-stage-folded {
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+
+/* 오버레이 모드(OBS) — 도크가 통째로 사라진다. React 쪽에서도 안 그리지만,
+   열 자체가 남아 있으면 판이 그만큼 좁은 채로 방송에 나간다. */
+.spectate-stage-nodock {
+  grid-template-columns: minmax(0, 1fr) 0;
+}
+
+.spectate-stage-board {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  container: ui / size;
+  /*
+   * 이 칸이 **판의 창 노릇**을 한다 — 대국자 화면에서 `.game-root { overflow: hidden }`
+   * 이 맡던 몫이다. `container-type: size` 는 레이아웃 봉쇄만 걸 뿐 **자르지는
+   * 않으므로**(자르는 것은 paint 봉쇄다) 이걸 빼면 판 안쪽이 도크로 새어 나간다.
+   * 실측(2026-08-23, 진짜 대국 화면을 2열에 넣고 잼): 창 1000px · 왼쪽 칸 700px 에서
+   * 손패 레일이 x=722 까지 뻗어 도크 왼쪽 끝(700)을 22px 물었다 — 좁은 폭에서 손패가
+   * 칸보다 넓어지는 것은 원래 있던 일이고(창 700px 짜리 대국 화면도 같다), 거기서는
+   * `.game-root` 가 잘라 줘서 드러나지 않았을 뿐이다.
+   * 자를 자리를 칸으로 옮겨야 «도크를 침범할 수 없다»가 구조적으로 성립한다.
+   */
+  overflow: hidden;
+}
+
+.spectate-dock {
+  position: relative;
   z-index: 40;
-  width: 232px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(7, 14, 12, 0.94);
+  border-left: 1px solid rgba(247, 243, 232, 0.16);
+  /* ⚠ 옛 `.bcast-side` 는 `aria-hidden` + `pointer-events: none` 이었다 —
+     읽기만 하는 패널이었으니 맞는 선택이었다. 도크는 **실제로 조작하는 물건**이라
+     둘 다 걷는다. 안 그러면 여기 옮겨 온 운영 손잡이가 하나도 안 눌린다. */
+  pointer-events: auto;
+}
+
+.spectate-dock-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(247, 243, 232, 0.12);
+  background: rgba(218, 98, 98, 0.12);
+}
+
+.spectate-dock-title {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #fabcad;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.spectate-dock-room {
+  color: rgba(247, 243, 232, 0.6);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spectate-dock-gear,
+.spectate-dock-fold {
+  flex: none;
+  padding: 2px 8px 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(246, 127, 109, 0.4);
+  background: rgba(13, 23, 18, 0.55);
+  color: #f0d5cd;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spectate-dock-gear.on {
+  background: rgba(246, 127, 109, 0.28);
+  border-color: rgba(246, 127, 109, 0.9);
+}
+
+.spectate-dock-gear:focus-visible,
+.spectate-dock-fold:focus-visible,
+.spectate-dock-handle:focus-visible,
+.spectate-dock-body:focus-visible,
+.spectate-overlay-escape:focus-visible,
+.dock-sec-head:focus-visible {
+  outline: 2px solid #ffd772;
+  outline-offset: 2px;
+}
+
+/*
+ * 오버레이 모드의 탈출구 (2026-08-23 P0-2).
+ *
+ * 「초록」을 켜면 도크와 관전 띠가 **동시에** 사라진다 — 그러면 화면에 남는
+ * 끔/투명/초록 단추가 0개다. 예전에는 `overlayMode` 가 휘발이라 새로고침이
+ * 탈출구였는데, 저장을 붙이면서 그 탈출구까지 없앴다: 다시 관전하면 같은 상태로
+ * 복귀해 운영자가 localStorage 를 지워야 빠져나왔다(검수가 실제로 갇혔다).
+ *
+ * 접힌 도크에 30px 레일을 남긴 것과 **같은 원칙**이다 — 되돌릴 손잡이가 사라지면
+ * 그건 모드가 아니라 함정이다.
+ *
+ * 다만 이 화면은 그대로 OBS 로 나가므로 손잡이가 픽셀 하나라도 더하면 안 된다.
+ * 그래서 평소에는 **완전히 투명**하고 마우스를 올리거나 포커스가 닿을 때만
+ * 드러난다 — 카메라에는 손이 없다. 키보드만 쓰는 사람을 위해 Esc 도 같은 일을 한다.
+ */
+.spectate-overlay-escape {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  padding: 4px 10px 5px;
+  border: 1px solid rgba(246, 127, 109, 0.6);
+  border-radius: 0 0 10px 0;
+  background: rgba(9, 17, 14, 0.94);
+  color: #fabcad;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0;
+}
+
+.spectate-overlay-escape:hover,
+.spectate-overlay-escape:focus-visible {
+  opacity: 1;
+}
+
+/* 접힘 상태 — 열은 30px 만 남고 그 안에 세로 손잡이가 선다. */
+.spectate-dock-folded {
+  background: rgba(7, 14, 12, 0.8);
+}
+
+.spectate-dock-handle {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  border-left: 1px solid rgba(246, 127, 109, 0.35);
+  background: rgba(218, 98, 98, 0.14);
+  color: #fabcad;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.spectate-dock-handle:hover {
+  background: rgba(218, 98, 98, 0.3);
+}
+
+.spectate-dock-handle-text {
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
+}
+
+/* 구획 스위치 — 무엇을 볼지 고르는 자리. 「다음 쯔모」에는 스포일러 딱지가 붙는다. */
+.spectate-dock-switches {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(247, 243, 232, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.spectate-dock-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #cfc7b6;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.spectate-dock-warn {
+  padding: 0 6px 1px;
+  border-radius: 999px;
+  background: rgba(218, 98, 98, 0.28);
+  color: #f0a79b;
+  font-size: 10px;
+}
+
+.spectate-dock-body {
+  flex: 1;
+  min-height: 0;
+  /* 스크롤 상자에는 포커스가 닿아야 한다 — 키보드만 쓰는 사용자가 화살표로 굴릴
+     방법이 이것뿐이다(`tabIndex={0}` 는 App 쪽). 포커스 링은 아래 focus-visible. */
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.dock-sec {
+  border-radius: var(--r-md, 12px);
+  border: 1px solid rgba(247, 243, 232, 0.12);
+  background: rgba(9, 17, 14, 0.7);
+  overflow: hidden;
+}
+
+.dock-sec-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px 7px;
+  border: none;
+  background: rgba(247, 243, 232, 0.05);
+  color: #e8dcc0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.dock-sec-caret {
+  color: rgba(247, 243, 232, 0.5);
+}
+
+.dock-sec-body {
+  padding: 8px 9px 9px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
-  pointer-events: none;
+}
+
+/* 값이 아직 없을 때의 한 줄. 빈 칸을 남기지 않는 이유: 빈 칸은 «값이 0» 과
+   구별되지 않는다 — 중계에서 그 둘은 완전히 다른 말이다. */
+.dock-note {
+  margin: 0;
+  color: rgba(247, 243, 232, 0.5);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dock-note-warn {
+  color: #f0a79b;
+}
+
+.dock-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* 띠에 있을 때는 가로로 흐르며 판을 덮었다. 도크에서는 줄마다 세로로 쌓인다 —
+   왼쪽 라벨과 오른쪽 단추 묶음. */
+.dock-settings .spectate-focus {
+  padding-left: 0;
+  border-left: none;
+}
+
+.dock-seats,
+.dock-waits {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/*
+ * ⚠ **이 블록은 반드시 `.spectate-stage`·`.spectate-dock` 정의보다 «뒤»에 있어야
+ * 한다.** 선택자 특이성이 같으므로 이기는 쪽은 소스 순서가 정한다. 앞에 두었더니
+ * (첫 판, 2026-08-23) 기본 규칙이 전부 되이겨서 살아남는 선언이 `width` 하나뿐이었다:
+ * 880×760 실측으로 열은 `580px 300px` 그대로인데 도크만 400px 로 부풀어 오른쪽
+ * 100px 이 창 밖으로 나갔고, 거기 실린 ⚙(구획 on/off)와 ▶(접기)에 **닿을 수가
+ * 없었다** — 고치려던 겹침이 그 폭대에서 그대로 재현됐다.
+ * 특이성을 올려 이기는 방식은 다음 규칙에서 같은 함정을 반복한다.
+ *
+ * 좁은 화면 — 2열을 억지로 유지하면 판이 뭉개진다. 도크를 **서랍으로 돌린다**:
+ * 열 폭은 0이 되고 도크는 판 위에 떠서 열린다. 겹치지만, 이 폭에서는 판과 분석을
+ * 동시에 볼 방법이 애초에 없다 — 겹치는 대신 «닫으면 판이 온전하다»가 성립한다.
+ */
+@container ui (max-width: 900px) {
+  .spectate-stage,
+  .spectate-stage-folded {
+    grid-template-columns: minmax(0, 1fr) 0;
+  }
+  .spectate-dock {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    /* 창 안에 반드시 들어와야 한다 — 넘치면 ⚙·▶ 에 닿을 길이 사라진다.
+       `.game-root { overflow: hidden }` 이라 스크롤로도 못 간다. */
+    width: min(86cqw, 400px);
+    box-shadow: -14px 0 34px rgba(0, 0, 0, 0.5);
+  }
+  .spectate-stage-folded .spectate-dock {
+    width: 30px;
+    box-shadow: none;
+  }
+}
+
+/* 오버레이 모드 — 도크를 통째로 걷는다. 정의 뒤라야 이긴다(위 ⚠ 와 같은 이유). */
+.spectate-stage-nodock .spectate-dock {
+  display: none;
+}
+
+/*
+ * ── 도크 몫 (`--dock-reserve`) ──
+ *
+ * `.auglog`(z 90)·`.ui-zoom`(z 85)은 **body 포털**이라(FIXED_SURFACE_NOTE) 열 분할
+ * 바깥에 산다 — 컨테이너 안에 있지 않으니 `container-type` 의 봉쇄도 걸리지 않는다.
+ * 그대로 두면 늘 «창» 오른쪽에 서서 도크 위에 올라탄다(1440×900 실측: 📜 서랍이
+ * 도크 머리·구획 스위치·좌석 카드를 통째로 덮어 그걸 연 채로는 도크를 못 썼다).
+ *
+ * 그래서 도크가 실제로 쓰는 폭을 body에 실어 두고, 그 둘이 그만큼 물러나게 한다.
+ * 값은 `.spectate-stage` 의 그리드 트랙과 **같은 식**을 쓴다 — 무대는 `.game-root`
+ * 를 `inset: 0` 으로 덮고 `.game-root` 는 body 폭 그대로라, `25cqw` 가 곧 트랙의 25%다.
+ * (JS로 재서 넣지 않는 이유: 한 값이 두 곳에서 따로 계산되면 언젠가 갈라진다.)
+ *
+ * 표식은 App(GameTable)이 `document.body.dataset.majakDock` 으로 단다.
+ * `"overlay"` 에는 몫이 없다 — 그 모드에서는 도크도 손잡이도 아예 안 그린다.
+ */
+body[data-majak-dock="open"] {
+  --dock-reserve: clamp(300px, 25cqw, 460px);
+}
+
+body[data-majak-dock="folded"] {
+  --dock-reserve: 30px;
+}
+
+/* 좁은 화면에서는 도크가 열이 아니라 **떠 있는 서랍**이라 자리를 쓰지 않는다.
+   `body` 는 자기 자신의 컨테이너를 질의할 수 없으므로(컨테이너는 자기를 못 잰다)
+   값을 쓰는 쪽에서 되돌린다 — 이 둘은 `ui` 컨테이너 «안»이라 질의가 성립한다. */
+@container ui (max-width: 900px) {
+  .auglog,
+  .ui-zoom {
+    --dock-reserve: 0px;
+  }
 }
 
 .bcast-card {
@@ -11319,6 +11739,189 @@ button {
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.35);
   font-size: 10px;
+}
+
+/* 노텐 구간의 «추정» — 확정값(`.bcast-points`)과 **색까지** 갈라 둔다.
+   라벨만 다르고 숫자가 똑같이 생기면 눈은 둘을 같은 종류로 읽는다. */
+.bcast-points-est {
+  color: rgba(247, 243, 232, 0.62);
+  font-weight: 700;
+}
+
+/* 성립한 역 — 「지금 화료하면 얼마」 바로 아래. 왜 그 값인지를 말한다. */
+.bcast-yaku {
+  margin-top: 4px;
+  color: rgba(159, 217, 197, 0.85);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.bcast-dora {
+  background: rgba(226, 178, 92, 0.2);
+  color: #f0c884;
+}
+
+/* 「격 미달」 — 「역없음」과 **다른 사실**이라 색도 가른다(저쪽은 붉은 계열).
+   이쪽은 손이 비싸지면 열리는 상태다: 죽은 손이 아니라 «아직 모자란» 손이다. */
+.bcast-below {
+  background: rgba(160, 140, 220, 0.22);
+  color: #cfc4ee;
+}
+
+/* 하한값 — 리치 좌석은 뒷도라가 아직 안 열려 실제 타점이 더 높다.
+   확정값(`.bcast-points`)의 금색을 그대로 쓰면 눈이 둘을 같은 것으로 읽는다. */
+.bcast-points-floor {
+  color: #e8dcc0;
+}
+
+.bcast-floor-tag {
+  margin-left: 4px;
+  padding: 0 5px 1px;
+  border-radius: 999px;
+  background: rgba(247, 243, 232, 0.14);
+  color: rgba(247, 243, 232, 0.75);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 배패 점수(0~100) — 막대 하나 + 숫자. 막대만 두면 「70과 60의 차이」가 안 읽히고,
+   숫자만 두면 넷을 훑을 때 비교가 안 된다. 그래서 둘 다 적는다. */
+.bcast-grade-bar {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(247, 243, 232, 0.12);
+  overflow: hidden;
+}
+
+.bcast-grade-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(247, 243, 232, 0.4);
+}
+
+.bcast-grade-fill.md {
+  background: rgba(226, 178, 92, 0.75);
+}
+
+.bcast-grade-fill.hi {
+  background: rgba(120, 196, 173, 0.85);
+}
+
+.bcast-grade-num {
+  min-width: 24px;
+  text-align: right;
+  color: #e8dcc0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ── 오름패 구획 ── */
+
+.dock-wait-seat {
+  padding: 6px 8px 7px;
+  border-radius: var(--r-md, 12px);
+  background: rgba(9, 17, 14, 0.86);
+  border: 1px solid rgba(247, 243, 232, 0.12);
+}
+
+.dock-wait-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #f7f3e8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dock-wait-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+/* 남은 0장 — 「4장 남았는데 왜 안 나지」의 반대 경우. 죽은 대기는 흐리게. */
+.dock-wait-gone {
+  opacity: 0.45;
+}
+
+.dock-wait-tile {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.dock-wait-left {
+  color: rgba(247, 243, 232, 0.65);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dock-wait-vals {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dock-wait-val {
+  color: #e8dcc0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.dock-wait-noyaku {
+  color: #f0a79b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── 위험패 구획 ── */
+
+.dock-danger-row,
+.dock-next-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dock-danger-tile,
+.dock-next-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 색만으로 단계를 말하지 않는다 — 고대비·색약에서도 남는 글자 채널.
+   판 위의 색칠(.spec-danger-md/-hi)과 **같은 값**을 쓴다. */
+.dock-danger-tag {
+  padding: 0 5px 1px;
+  border-radius: 999px;
+  background: rgba(226, 178, 92, 0.24);
+  color: #f0c884;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.dock-danger-tag.hi {
+  background: rgba(226, 96, 84, 0.28);
+  color: #f0a79b;
+}
+
+.dock-next-who {
+  max-width: 5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(247, 243, 232, 0.7);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .bcast-trend-row {
@@ -11811,7 +12414,15 @@ button {
 .ui-zoom {
   position: fixed;
   bottom: 8px;
-  right: 14px;
+  /*
+   * 관전 2열에서는 **도크 폭만큼 왼쪽으로** 물러난다 (`--dock-reserve`).
+   * `position: fixed` + body 포털이라 열 분할과 무관하게 늘 «창» 오른쪽에 서는데,
+   * 그 자리는 이제 도크의 것이다 — 1440×900 실측으로 도크 머리의 ⚙/▶ 바로 위에
+   * 올라탔다. 옛 `.bcast-side` 는 읽기 전용이라 덮여도 손해가 적었지만 도크는
+   * 조작하는 물건이라 «덮인다 = 못 쓴다»가 된다.
+   * 관전이 아니면 `--dock-reserve` 가 0이라 예전 자리 그대로다.
+   */
+  right: calc(14px + var(--dock-reserve, 0px));
   /* 설정·증강로그 패널(90)보다 **아래**. 그 패널들이 손잡이를 덮는 건 맞다 —
      패널을 열어 둔 채 배율을 만질 일은 없고, 반투명한 손잡이가 패널 위에 떠 있으면
      그게 더 이상하다. 판 위 오버레이(1~40)보다는 위다. */
@@ -11883,7 +12494,8 @@ button {
 
 /* 좁은 판: 아이콘 줄과 같은 눈금으로 작아진다 (구석 자리는 그대로) */
 @container ui (max-width: 900px) {
-  .game-root { --side-strip-reserve: 0px; }
+  .game-root,
+  .table { --side-strip-reserve: 0px; }
   .ui-zoom-btn { font-size: 15px; }
   .ui-zoom-now { min-width: 38px; font-size: 10.5px; }
 }
@@ -13554,7 +14166,7 @@ body.peeking .overlay-peekable > * {
    구석 쪽에 top 을 주면 bottom 과 둘 다 서서 손잡이가 세로로 늘어난다. */
 .ui-zoom {
   bottom: max(8px, env(safe-area-inset-bottom, 0px));
-  right: max(14px, env(safe-area-inset-right, 0px));
+  right: calc(max(14px, env(safe-area-inset-right, 0px)) + var(--dock-reserve, 0px));
 }
 
 @container ui (min-width: 901px) {
@@ -13711,7 +14323,8 @@ body.peeking .overlay-peekable > * {
    * + `.own-area`의 줄 간격 7px + 여유 1px. 360×740 실측으로 이 값에서 내 바닥
    * 아래끝과 바 윗끝 사이가 8px 남는다(0px이면 글꼴이 조금만 달라져도 다시 문다).
    */
-  .game-root { --own-reserve: 68px; }
+  .game-root,
+  .table { --own-reserve: 68px; }
   .action-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 6px 10px; }
   .act { padding: 8px 14px; font-size: 15px; letter-spacing: 1px; }
 
@@ -15183,6 +15796,34 @@ body:has(.prod-skip) .toast-stack {
   .hand-riichi .tile-face {
     outline: 3px solid #ff9a8c;
   }
+  /* 관전 도크 — 구획 경계가 옅은 회색 한 겹뿐이라 고대비에서는 사실상 없었다. */
+  .dock-sec,
+  .spectate-dock {
+    border-color: #f7f3e8;
+  }
+  /* 배패 점수 막대 — 채움과 바탕이 둘 다 흐린 회색이라 «몇 점인가»가 안 읽혔다.
+     테두리로 눈금 자체를 그려 주고 채움을 밝힌다(숫자는 옆에 늘 붙어 있다). */
+  .bcast-grade-bar {
+    border: 1px solid #f7f3e8;
+  }
+  .bcast-grade-fill {
+    background: #f7f3e8;
+  }
+  .bcast-grade-fill.md {
+    background: #ffd08a;
+  }
+  .bcast-grade-fill.hi {
+    background: #9fe8cf;
+  }
+  /* 위험도 딱지 — 판 위의 선종(파선/실선)과 짝을 이루는 글자 채널 */
+  .dock-danger-tag {
+    background: #6a4a00;
+    color: #ffe6b8;
+  }
+  .dock-danger-tag.hi {
+    background: #7a1408;
+    color: #ffd7d0;
+  }
 }
 
 @media (forced-colors: active) {
@@ -15200,6 +15841,26 @@ body:has(.prod-skip) .toast-stack {
   .spec-danger-hi {
     outline: 3px solid Highlight;
     outline-offset: -3px;
+  }
+  /* 도크 — 강제색에서는 배경이 전부 평탄해져 구획 경계가 사라진다. 선으로 남긴다. */
+  .spectate-dock,
+  .dock-sec,
+  .bcast-card,
+  .dock-wait-seat {
+    border: 1px solid CanvasText;
+  }
+  /* 배패 점수 막대는 배경색으로만 말한다 — 강제색에서 전부 같은 색이 되므로
+     테두리와 `Highlight` 채움으로 눈금을 남긴다. */
+  .bcast-grade-bar {
+    border: 1px solid CanvasText;
+  }
+  .bcast-grade-fill,
+  .bcast-grade-fill.md,
+  .bcast-grade-fill.hi {
+    background: Highlight;
+  }
+  .dock-danger-tag {
+    border: 1px solid CanvasText;
   }
 }
 
