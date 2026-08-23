@@ -1,17 +1,17 @@
 /**
- * uiScale — 자동 맞춤 × 수동 −/+ 배수.
+ * uiScale — 창 하나만 보고 정하는 자동 맞춤.
  *
  * 이 패키지에는 jsdom이 없다(a11yPerfGuards.test.ts 참고). uiScale.ts가 건드리는
  * 전역이 몇 개 안 되므로 **손으로 만든 최소 window/document**를 세워 놓고 실제 함수를
  * 돌린다 — 소스 문자열 스캔이 아니라 계산 결과를 본다.
  *
- * 여기서 못 박는 것: 수동 배수가 자동값을 **덮지 않고 곱한다**, 최종 배율이 읽히는
- * 범위를 못 벗어난다, 새 localStorage 키를 쓰고 옛 키는 계속 지운다, 그리고 배율을
- * **무엇으로 거는지**(zoom / transform)를 엔진을 재서 고른다.
+ * 여기서 못 박는 것: 배율이 **창을 원판(1920×1080)에 맞춘 값 하나**라는 것, 가상
+ * 뷰포트가 원판보다 좁아지지 않는다는 것, 옛 수동 배수 키를 계속 지운다는 것,
+ * 그리고 배율을 **무엇으로 거는지**(zoom / transform)를 엔진을 재서 고른다는 것.
  */
 
 import { readFileSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 type Uis = typeof import("../src/uiScale.js");
 
@@ -31,14 +31,14 @@ async function boot(opts: {
   h: number;
   fine?: boolean;
   dpr?: number;
-  stored?: string;
   /** 프로브가 잴 100cqw (기본 100 = 크로뮴처럼 zoom을 아는 엔진). */
   cq?: number;
   /** `zoom` 자체를 지원하는가 (기본 참). */
   zoom?: boolean;
+  /** 부팅 전에 넣어 둔 저장값을 지우지 않는다 (확대 표식 시험용). */
+  keepStore?: boolean;
 }): Promise<Uis> {
-  store.clear();
-  if (opts.stored !== undefined) store.set("majak.uiZoom", opts.stored);
+  if (opts.keepStore !== true) store.clear();
   cssVars = {};
   keyHandlers = [];
   modeAttr = null;
@@ -101,179 +101,112 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("자동 맞춤은 그대로다", () => {
-  it("기준 창(1100×680) 이상이면 1", async () => {
-    const m = await boot({ w: 1440, h: 900 });
+describe("배율은 창을 원판(1920×1080)에 맞춘 값 하나다", () => {
+  it("원판 그대로면 1", async () => {
+    const m = await boot({ w: 1920, h: 1080 });
     expect(m.getUiScale()).toBe(1);
     expect(appliedScale()).toBe(1);
   });
 
-  it("좁은 창은 줄인다 (소수 둘째 자리로 끊는다)", async () => {
-    // 990/1100 = 0.9 → 가상 뷰포트 1100×756, CRAMPED(900×620) 위라 그대로 적용
-    const m = await boot({ w: 990, h: 680 });
-    expect(m.getUiScale()).toBe(0.9);
+  it("16:9 창은 크기가 달라도 같은 가상 뷰포트로 수렴한다", async () => {
+    // 이게 이 설계의 요점이다 — 1366이든 4K든 «같은 그림이 크기만 다르게» 선다.
+    for (const [w, h] of [[2560, 1440], [3840, 2160], [1600, 900]] as const) {
+      const m = await boot({ w, h });
+      const s = m.getUiScale();
+      // 배율을 소수 둘째 자리로 «버리»므로 가상 뷰포트는 원판보다 조금 넓을 뿐이다.
+      expect(w / s, `${w}×${h}`).toBeGreaterThanOrEqual(1920);
+      expect(w / s, `${w}×${h}`).toBeLessThan(1920 * 1.02);
+      expect(h / s, `${w}×${h}`).toBeGreaterThanOrEqual(1080);
+      expect(h / s, `${w}×${h}`).toBeLessThan(1080 * 1.02);
+    }
+  });
+
+  it("가상 뷰포트는 어느 쪽도 원판보다 좁아지지 않는다 (하한에 걸리기 전까지)", async () => {
+    for (const [w, h] of [[1920, 1080], [2560, 1080], [1600, 900], [1512, 982], [1850, 860]] as const) {
+      const v = (await boot({ w, h })).layoutViewport();
+      expect(v.w, `${w}×${h}`).toBeGreaterThanOrEqual(1920);
+      expect(v.h, `${w}×${h}`).toBeGreaterThanOrEqual(1080);
+    }
+  });
+
+  it("큰 모니터에서는 1을 넘어 판이 화면을 따라 커진다", async () => {
+    expect((await boot({ w: 2560, h: 1440 })).getUiScale()).toBeGreaterThan(1);
+    // 4K 는 상한 2.0 — 원판을 정확히 두 배로 그린다
+    expect((await boot({ w: 3840, h: 2160 })).getUiScale()).toBe(2);
+    expect((await boot({ w: 7680, h: 4320 })).getUiScale()).toBe(2);
+  });
+
+  it("납작한 창은 1 아래로 내려가되 하한 0.75에서 멈춘다", async () => {
+    // 1850×860: 세로 쪽이 먼저 걸린다 → 860/1080 = 0.796 → 0.79
+    expect((await boot({ w: 1850, h: 860 })).getUiScale()).toBe(0.79);
+    // 1920×600: 0.556 → 하한
+    expect((await boot({ w: 1920, h: 600 })).getUiScale()).toBe(0.75);
+    expect((await boot({ w: 800, h: 600 })).getUiScale()).toBe(0.75);
+  });
+
+  it("어느 창에서도 [0.75, 2] 를 벗어나지 않는다", async () => {
+    for (const [w, h] of [[320, 480], [800, 600], [1366, 768], [1920, 1080], [5120, 2880]] as const) {
+      const s = (await boot({ w, h })).getUiScale();
+      expect(s, `${w}×${h}`).toBeGreaterThanOrEqual(0.75);
+      expect(s, `${w}×${h}`).toBeLessThanOrEqual(2);
+    }
   });
 
   it("마우스가 없는 기기는 손대지 않는다", async () => {
     const m = await boot({ w: 400, h: 800, fine: false });
     expect(m.getUiScale()).toBe(1);
   });
-});
 
-describe("수동 배수는 자동값을 덮지 않고 곱한다", () => {
-  it("자동 1인 창에서 +는 그대로 배수가 된다", async () => {
-    const m = await boot({ w: 1440, h: 900 });
-    expect(m.stepUiZoom(1)).toBe(true);
-    expect(m.getUiZoom()).toBe(1.1);
-    expect(m.getUiScale()).toBeCloseTo(1.1, 5);
-    expect(appliedScale()).toBeCloseTo(1.1, 5);
+  it("숨은 탭(0×0)에서는 아무것도 하지 않는다", async () => {
+    const m = await boot({ w: 0, h: 0 });
+    expect(m.getUiScale()).toBe(1);
   });
 
-  it("자동으로 줄어든 창에서는 그 값에 곱해진다", async () => {
-    const m = await boot({ w: 990, h: 680 }); // 자동 0.9
-    m.setUiZoom(1.2);
-    expect(m.getUiScale()).toBeCloseTo(0.9 * 1.2, 3);
-  });
-
-  it("−는 자동값 아래로 내려간다 (넓은 창)", async () => {
-    const m = await boot({ w: 1440, h: 900 });
-    m.stepUiZoom(-1);
-    expect(m.getUiScale()).toBeCloseTo(0.9, 5);
-  });
-
-  it("기본값으로 되돌리면 자동값만 남는다", async () => {
-    const m = await boot({ w: 990, h: 680 });
-    m.setUiZoom(1.4);
-    expect(m.resetUiZoom()).toBe(true);
-    expect(m.getUiZoom()).toBe(1);
-    expect(m.getUiScale()).toBe(0.9);
-  });
-});
-
-describe("고를 수 있는 칸은 전부 화면을 움직인다 (막다른 칸 없음)", () => {
-  it("자동이 이미 하한(0.6)이면 −가 꺼진다", async () => {
-    // 660/1100 = 0.6 → 가상 뷰포트 1100×1033 (CRAMPED 위)
-    const m = await boot({ w: 660, h: 620 });
-    expect(m.getUiScale()).toBe(0.6);
-    expect(m.canStepUiZoom(-1)).toBe(false);
-    expect(m.stepUiZoom(-1)).toBe(false);
-    expect(m.getUiScale()).toBe(0.6);
-    // 그래도 +는 살아 있어야 한다 — 양쪽이 다 막히면 갇힌다
-    expect(m.canStepUiZoom(1)).toBe(true);
-    expect(m.stepUiZoom(1)).toBe(true);
-    expect(m.getUiScale()).toBeGreaterThan(0.6);
-  });
-
-  it("사다리 끝에서는 더 못 간다", async () => {
-    const m = await boot({ w: 1440, h: 900 });
-    m.setUiZoom(2);
-    expect(m.canStepUiZoom(1)).toBe(false);
-    expect(m.stepUiZoom(1)).toBe(false);
-    m.setUiZoom(0.6);
-    expect(m.canStepUiZoom(-1)).toBe(false);
-  });
-
-  it("상한 2.0을 넘겨 달라고 해도 2.0에서 멈춘다", async () => {
-    const m = await boot({ w: 1440, h: 900 });
-    m.setUiZoom(9);
-    expect(m.getUiZoom()).toBe(2);
-    expect(m.getUiScale()).toBeLessThanOrEqual(2);
-  });
-
-  it("어느 창에서든 −/+ 를 눌러 봐도 배율이 [0.6, 2.0] 밖으로 안 나간다", async () => {
-    for (const [w, h] of [[1920, 1080], [1440, 900], [1100, 680], [990, 680], [660, 620]] as const) {
-      const m = await boot({ w, h });
-      for (const dir of [-1, 1] as const) {
-        for (let i = 0; i < 14; i++) m.stepUiZoom(dir);
-        expect(m.getUiScale(), `${w}×${h} dir=${dir}`).toBeGreaterThanOrEqual(0.6);
-        expect(m.getUiScale(), `${w}×${h} dir=${dir}`).toBeLessThanOrEqual(2);
-      }
-    }
-  });
-
-  it("작은 창에서 잠깐 당겨져도 저장된 취향은 안 잃는다", async () => {
-    // 큰 모니터에서 140%로 맞춰 둔 사람이 작은 창을 열었다 (자동 0.6 → 최대 2.0/0.6 = 3.3,
-    // 즉 1.4도 그대로 고를 수 있다). 반대로 70%를 저장해 둔 사람은 당겨진다.
-    const m = await boot({ w: 660, h: 620, stored: "0.7" });
-    expect(m.getUiZoom()).toBe(1); // 이 창에서는 70%를 고를 수 없다 → 당겨서 보여 준다
-    expect(m.getUiScale()).toBe(0.6);
-    // 저장값은 그대로 — 넓은 창으로 돌아가면 다시 70%다
-    expect(store.get("majak.uiZoom")).toBe("0.7");
-    const wide = await boot({ w: 1440, h: 900, stored: "0.7" });
-    expect(wide.getUiZoom()).toBe(0.7);
+  it("브라우저 확대를 켠 사람의 확대를 도로 깎지 않는다 (WCAG 1.4.4)", async () => {
+    // 확대를 켜 두고 연 세션 — 표식이 남아 있으면 부팅 시점 dpr과 무관하게 손을 뗀다.
+    store.set("majak.browserZoomed", "1");
+    const m = await boot({ w: 1280, h: 700, keepStore: true });
+    expect(m.getUiScale()).toBe(1);
   });
 });
 
 describe("좌표 변환이 최종 배율 하나만 본다", () => {
-  it("toLayoutPx·layoutViewport가 수동 배수까지 반영한다", async () => {
-    const m = await boot({ w: 1440, h: 900 });
-    m.setUiZoom(1.2);
+  it("toLayoutPx·layoutViewport 가 지금 걸린 배율을 그대로 쓴다", async () => {
+    const m = await boot({ w: 2560, h: 1440 });
     const s = m.getUiScale();
-    expect(s).toBeCloseTo(1.2, 5);
-    // 화면 좌표 600px → 레이아웃 좌표 500px. 여기가 어긋나면 패 드래그가 밀린다.
+    expect(s).toBeCloseTo(1.33, 2);
+    // 화면 좌표 → 레이아웃 좌표. 여기가 어긋나면 패 드래그가 밀린다.
     expect(m.toLayoutPx(600)).toBeCloseTo(600 / s, 5);
-    expect(m.layoutViewport().w).toBeCloseTo(1440 / s, 5);
+    expect(m.layoutViewport().w).toBeCloseTo(2560 / s, 5);
+    expect(m.layoutViewport().h).toBeCloseTo(1440 / s, 5);
   });
 });
 
-describe("저장", () => {
-  it("새 키에 저장하고 다음 부팅에 살아난다", async () => {
-    const m = await boot({ w: 1440, h: 900 });
-    m.setUiZoom(1.3);
-    expect(store.get("majak.uiZoom")).toBe("1.3");
-    // 같은 저장값으로 다시 부팅
-    const m2 = await boot({ w: 1440, h: 900, stored: "1.3" });
-    expect(m2.getUiZoom()).toBe(1.3);
-  });
-
-  it("기본값이면 키를 남기지 않는다 (다음에 자동에 맡긴다)", async () => {
-    const m = await boot({ w: 1440, h: 900, stored: "1.3" });
-    m.resetUiZoom();
-    expect(store.has("majak.uiZoom")).toBe(false);
-  });
-
-  it("옛 키(majak.uiScale)는 계속 지우고, 재활용하지 않는다", async () => {
+describe("갇히는 저장값을 남기지 않는다", () => {
+  /*
+   * 손잡이가 두 번 사라졌다 — 설정 패널의 "화면 크기"(2026-08-07)와 화면의 −/+
+   * (2026-08-24). 둘 다 localStorage 에 값을 남겼고, 그 값이 살아 있으면 **손잡이
+   * 없이 그 배율에 갇힌다**. 그래서 부팅 때마다 둘 다 지운다.
+   */
+  it("옛 키 둘(majak.uiScale · majak.uiZoom)을 부팅 때 지운다", async () => {
     store.set("majak.uiScale", "0.5");
-    const m = await boot({ w: 1440, h: 900 });
-    // boot()이 store를 비우므로 다시 넣고 재부팅한다
-    store.set("majak.uiScale", "0.5");
-    m.startUiScale();
+    store.set("majak.uiZoom", "0.6");
+    const m = await boot({ w: 1920, h: 1080, keepStore: true });
     expect(store.has("majak.uiScale")).toBe(false);
-    expect(m.getUiZoom()).toBe(1);
+    expect(store.has("majak.uiZoom")).toBe(false);
+    // 지워진 뒤에는 자동값만 남는다
+    expect(m.getUiScale()).toBe(1);
   });
 
-  it("망가진 저장값은 무시한다", async () => {
-    const m = await boot({ w: 1440, h: 900, stored: "abc" });
-    expect(m.getUiZoom()).toBe(1);
-  });
-});
-
-describe("단축키는 브라우저 확대와 겹치지 않는다", () => {
-  let mod: Uis;
-  beforeEach(async () => {
-    mod = await boot({ w: 1440, h: 900 });
+  it("옛 값이 있어도 배율에 영향을 주지 않는다", async () => {
+    store.set("majak.uiZoom", "0.6");
+    const m = await boot({ w: 1600, h: 900, keepStore: true });
+    expect(m.getUiScale()).toBe(0.83);
   });
 
-  function press(e: Record<string, unknown>): void {
-    const ev = { altKey: false, ctrlKey: false, metaKey: false, target: null, preventDefault() {}, ...e };
-    keyHandlers.forEach((fn) => fn(ev));
-  }
-
-  it("Alt + = / − / 0 으로 움직인다", () => {
-    press({ altKey: true, code: "Equal" });
-    expect(mod.getUiZoom()).toBe(1.1);
-    press({ altKey: true, code: "Minus" });
-    press({ altKey: true, code: "Minus" });
-    expect(mod.getUiZoom()).toBe(0.9);
-    press({ altKey: true, code: "Digit0" });
-    expect(mod.getUiZoom()).toBe(1);
-  });
-
-  it("Ctrl/⌘ + = 는 건드리지 않는다 (브라우저 확대는 브라우저 것)", () => {
-    press({ altKey: true, ctrlKey: true, code: "Equal" });
-    press({ altKey: true, metaKey: true, code: "Equal" });
-    press({ code: "Equal" });
-    expect(mod.getUiZoom()).toBe(1);
+  it("단축키를 걸지 않는다 — 만질 배수가 없다", async () => {
+    await boot({ w: 1920, h: 1080 });
+    expect(keyHandlers.length).toBe(0);
   });
 });
 

@@ -94,18 +94,29 @@ describe("📜 기록 — 상태 스냅샷이 아니라 append-only 로그", () 
 
 // ─────────────────────────── 3. UI 배율 ───────────────────────────
 
-describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌리지 않는다", () => {
-  it("배율 손잡이는 설정 패널이 아니라 화면 위에 있다 (2026-08-07 지시로 설정에서 걷어냈다)", () => {
+describe("UI 배율 — 창 크기에서 자동으로 나오고, Ctrl + 를 되돌리지 않는다", () => {
+  it("사람이 만지는 배율 손잡이는 어디에도 없다 (2026-08-24 지시로 −/+ 도 걷어냈다)", () => {
     expect(APP).not.toContain("UiScaleRow");
+    expect(APP).not.toContain("ScaleControl");
     expect(UISCALE).not.toContain("export function setUiScaleSetting");
+    expect(UISCALE).not.toContain("export function stepUiZoom");
     expect(CSS).not.toContain(".uiscale-auto");
+    expect(CSS).not.toContain(".ui-zoom");
   });
 
-  it("예전에 못 박아 둔 배율에 갇히지 않는다 — 부팅 때 지운다", () => {
+  it("예전에 못 박아 둔 배율에 갇히지 않는다 — 부팅 때 지운다 (옛 키 둘 다)", () => {
     expect(UISCALE).toContain("LEGACY_OVERRIDE_KEY");
+    expect(UISCALE).toContain("LEGACY_ZOOM_KEY");
     // 저장소 접근은 safeStorage 를 거친다(2026-08-17 §2-8). 지운다는 사실만 못 박고
     // 어느 래퍼를 쓰는지는 묶지 않는다 — 래퍼가 또 바뀌어도 이 가드의 뜻은 같다.
-    expect(UISCALE).toMatch(/removeItem\(LEGACY_OVERRIDE_KEY\)/);
+    expect(UISCALE).toMatch(/removeItem\(key\)/);
+  });
+
+  it("배율은 창을 원판(1920×1080)에 맞추는 하나의 식이다", () => {
+    // min() 이라 가상 뷰포트가 원판보다 좁아지지 않는다 — 16:9 창은 전부 같은 그림.
+    expect(UISCALE).toContain("const REF_W = 1920");
+    expect(UISCALE).toContain("const REF_H = 1080");
+    expect(UISCALE).toMatch(/Math\.min\(window\.innerWidth \/ REF_W, window\.innerHeight \/ REF_H\)/);
   });
 
   it("브라우저 확대를 감지해 자동 축소를 접는다 (WCAG 1.4.4)", () => {
@@ -114,18 +125,12 @@ describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌
     expect(UISCALE).toContain("if (userZoomedIn()) return 1;");
   });
 
-  it("−/+ 버튼이 어느 화면에서나 뜬다 (게임 루트 최상단, 로그인·로비 포함)", () => {
-    expect(APP).toContain("function ScaleControl(");
-    expect(APP).toContain("<ScaleControl />");
-    expect(CSS).toContain(".ui-zoom");
-  });
-
   it("배율은 body 하나로 화면 전체에 균일하게 걸린다 (기본은 zoom)", () => {
     // `transform: scale()` 은 그린 화면을 컴포지터가 늘려서 글자가 덜 선명하다.
     // `zoom` 은 레이아웃을 다시 풀고 최종 크기로 다시 래스터화한다 — 그래서 기본이다.
     expect(CSS).toContain('html[data-ui-scale-mode="zoom"] body');
     expect(CSS).toContain("zoom: var(--ui-scale, 1)");
-    // 되돌리기 scale 금지: 손잡이만 배율에서 빼면 옆 아이콘 줄과 높이가 어긋난다.
+    // 되돌리기 scale 금지: 무엇 하나만 배율에서 빼면 옆 것과 높이가 어긋난다.
     expect(CSS).not.toContain("transform: scale(calc(1 / var(--ui-scale, 1)))");
     // transform 은 대체 갈래 한 곳에만 있어야 한다.
     const scaleUses = [...CSS.matchAll(/transform: scale\(var\(--ui-scale/g)].length;
@@ -148,13 +153,10 @@ describe("UI 배율 — 자동 맞춤 위에 −/+ 를 얹고, Ctrl + 를 되돌
     expect(UISCALE).not.toContain("--ui-mag");
   });
 
-  it("단축키가 브라우저 확대(Ctrl/⌘ +/−)를 가로채지 않는다", () => {
-    expect(code(UISCALE)).toContain("if (!e.altKey || e.ctrlKey || e.metaKey) return;");
-  });
-
-  it("옛 키를 재활용하지 않는다 — 새 키를 쓴다", () => {
-    expect(UISCALE).toContain('const ZOOM_KEY = "majak.uiZoom"');
-    expect(code(UISCALE)).not.toMatch(/ZOOM_KEY\s*=\s*LEGACY_OVERRIDE_KEY/);
+  it("배율 단축키를 걸지 않는다 — 만질 배수가 없다", () => {
+    // 예전에는 Alt +/− 로 수동 배수를 만졌다. 손잡이를 없앴으니 키도 없앴다 —
+    // 브라우저 확대(Ctrl/⌘ +/−)는 원래부터 브라우저 것이고 그대로 듣는다.
+    expect(code(UISCALE)).not.toContain('addEventListener("keydown"');
   });
 
   it("viewport에 확대 금지가 걸려 있지 않다", () => {

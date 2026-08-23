@@ -72,7 +72,7 @@ const lesson = (id: string) => LESSONS.find((l) => l.id === id)!;
 const ARMED = ".own-top-main .aug-btn-armed";
 
 /** 마무리가 요구하는 강의들 (tutorial.ts의 `OUTRO_NEEDS`와 한 쌍 — 이름이 어긋나면 안 끝난다) */
-const OUTRO_IDS = ["hand", "dora", "aug-pill", "zoom", "quick-toggles", "codex", "help", "settings"];
+const OUTRO_IDS = ["hand", "dora", "aug-pill", "quick-toggles", "codex", "help", "settings"];
 
 describe("무엇을 언제 꺼내는가", () => {
   it("판에 들어오면 환영부터", () => {
@@ -225,48 +225,8 @@ describe("조작을 마치면 저절로 넘어간다", () => {
     expect(d.done?.(ctx({ hit: onScreen(".settings-panel") }))).toBe(true);
   });
 
-  it("배율 — 가운데 % 버튼이 눌리게 되면(=100%가 아니면) 끝", () => {
-    // 새 표식을 붙이지 않고 이미 화면에 있는 진실을 읽는다: 그 버튼은 100%일 때만
-    // disabled다(App.tsx `ScaleControl`).
-    const d = lesson("zoom");
-    expect(d.done?.(ctx())).toBe(false);
-    expect(d.done?.(ctx({ hit: onScreen(".ui-zoom-now:not(:disabled)") }))).toBe(true);
-  });
-});
-
-describe("배율 손잡이 강의", () => {
-  const seeing = (discards: number): CoachCtx =>
-    ctx({ view: viewWith(13, discards), hit: onScreen(".ui-zoom") });
-
-  it("화면 도구 중에서 가장 먼저다 — 판이 잘려 보이면 나머지 안내가 다 헛돈다", () => {
-    const tools = LESSONS.filter((l) => l.chapter === "화면 도구").map((l) => l.id);
-    expect(tools[0]).toBe("zoom");
-  });
-
-  it("손잡이가 화면에 있을 때만, 그리고 손이 빌 때 나온다", () => {
-    // 화면 도구는 **할 일이 없을 때**의 이야기다(`handsFree`) — 리치를 걸었거나
-    // 몇 순 지난 뒤. 첫 타패 직후에 열면 말풍선 열 개가 한 줄로 붙는다.
-    const riichi = { ...seeing(1), riichiDeclared: true };
-    expect(LESSONS.filter((l) => l.when(riichi)).map((l) => l.id)).toContain("zoom");
-    expect(LESSONS.filter((l) => l.when(seeing(1))).map((l) => l.id)).not.toContain("zoom");
-    // 손잡이가 없는 화면에서는 없는 버튼을 가리키지 않는다
-    expect(LESSONS.filter((l) => l.when(ctx({ view: viewWith(13, 4) }))).map((l) => l.id)).not.toContain("zoom");
-  });
-
-  it("자리가 화면마다 다르므로 위·아래 둘 다 알려 준다", () => {
-    // styles.css `.ui-zoom`: 대국+넓은 판이면 우상단 아이콘 줄 아래, 좁으면 오른쪽 아래 구석.
-    const { body } = lesson("zoom");
-    expect(body).toContain("오른쪽 위");
-    expect(body).toContain("오른쪽 아래");
-  });
-
-  it("버튼이 안 되는 자리를 대비해 키보드 두 벌을 함께 준다", () => {
-    // ⌥/Alt 는 이 게임의 배율, Ctrl(⌘) 은 브라우저 확대 — uiScale.ts 는 ctrl·meta 가
-    // 눌려 있으면 손을 떼므로 둘은 서로 먹히지 않고 각자 듣는다.
-    const todo = lesson("zoom").todo ?? "";
-    expect(todo).toContain("Alt");
-    expect(todo).toContain("Ctrl");
-  });
+  /* (배율 +/− 강의는 2026-08-24에 없앴다 — 손잡이 자체가 사라졌다. 배율은 창
+     크기에서 자동으로 나온다: uiScale.ts) */
 });
 
 describe("읽던 강의를 밀어내고 끼어든다", () => {
