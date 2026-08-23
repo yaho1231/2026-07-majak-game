@@ -518,13 +518,13 @@ describe("중계 관전 — 확정·하한·거부 상태 (코어 2차 필드)",
   const wv = APP.slice(APP.indexOf("function winValueText("), APP.indexOf("function DockSeats({"));
 
   it("리치 좌석의 값은 하한이라고 적는다 — 「확정」이라 단언하지 않는다", () => {
-    expect(seats).toContain("best.uraUnknown === true");
-    expect(seats).toMatch(/뒷도라 제외/);
-    // 툴팁이 하한일 때와 확정일 때 **다른 말**을 한다
     expect(wv).toContain("uraUnknown === true");
+    expect(wv).toMatch(/뒷도라 제외/);
     expect(wv).toMatch(/이 값은 하한입니다/);
+    // 툴팁이 하한일 때와 확정일 때 **다른 말**을 한다
     expect(wv).toMatch(/확정값입니다 \(추정이 아닙니다\)/);
     // 확정값과 색까지 가른다 — 라벨만 다르면 눈은 둘을 같은 종류로 읽는다
+    expect(seats).toContain("winValueCaveats(best).length > 0");
     expect(CSS).toContain(".bcast-points-floor");
   });
 
@@ -551,6 +551,52 @@ describe("중계 관전 — 확정·하한·거부 상태 (코어 2차 필드)",
  * 되감기(D3) — 보조값을 안 붙이는 것까지는 맞았는데, 그때 도크가 「텐파이한 좌석이
  * 없습니다」를 그렸다. 그건 **없다는 주장**이지 «지금은 안 붙인다»가 아니다.
  */
+/*
+ * 코어 3차 필드 둘. 하나는 **이미 포함된 판의 출처**고, 하나는 **따라갈 수 없는
+ * 보정**이다 — 뒤엣것은 `uraUnknown` 과 같은 층위로 다뤄야 한다.
+ */
+describe("중계 관전 — 증강 보너스 판 · 따라갈 수 없는 정산 보정 (코어 3차 필드)", () => {
+  const wv = APP.slice(APP.indexOf("function winValueText("), APP.indexOf("function DockSeats({"));
+  const seats = bodyOf("function DockSeats({");
+
+  it("증강이 얹은 판을 역 목록에 세운다 — 합계가 안 맞아 보이면 화면이 고장 난 줄 안다", () => {
+    const yt = APP.slice(APP.indexOf("function yakuText("), APP.indexOf("function DockSeats({"));
+    expect(yt).toContain("v.augHan ?? 0");
+    expect(yt).toMatch(/증강 \+\$\{v\.augHan\}판/);
+    // 더하는 값이 아니라 «출처»다 — 툴팁이 이미 포함이라고 말한다
+    expect(wv).toMatch(/이미 포함/);
+  });
+
+  it("따라갈 수 없는 보정은 하한과 같은 층위다 — 「확정값」이라 말하지 않는다", () => {
+    expect(wv).toContain("v.augAdjusted === true");
+    expect(wv).toMatch(/증강 보정 미반영/);
+    expect(wv).toMatch(/실제 수령액이 이 값과 다를 수 있습니다/);
+    /*
+     * 핵심: 사정이 **하나라도** 있으면 확정 문구를 쓰지 않는다.
+     * (`uraUnknown` 만 보던 옛 분기라면 `augAdjusted` 만 선 값이 「확정값입니다」로
+     *  나갔다 — 갈라 놓은 뜻이 정확히 그 자리에서 무너진다.)
+     */
+    expect(wv).toContain("if (caveats.length === 0)");
+  });
+
+  it("꼬리표와 «확정색 죽이기»가 한 곳에서 나온다 — 갈라지면 서로 다른 말을 한다", () => {
+    expect(wv).toContain("function winValueCaveats(");
+    // 색·꼬리표·툴팁·대기별 값이 전부 같은 출처를 본다
+    expect(seats).toContain("winValueCaveats(best).length > 0");
+    expect(seats).toContain("winValueCaveats(best).map(");
+    expect(wv).toMatch(/function winValueSuffix\(v: SpectateWinValue\): string \{\s*\n\s*const c = winValueCaveats\(v\);/);
+    expect(wv).toContain("const caveats = winValueCaveats(v);");
+  });
+
+  it("오름패의 대기별 값에도 같이 흐른다", () => {
+    const waits = bodyOf("function DockWaits({").replace(/\s+/g, " ");
+    expect(waits).toContain("winValueText(w.ron) + winValueSuffix(w.ron)");
+    expect(waits).toContain("winValueText(w.tsumo) + winValueSuffix(w.tsumo)");
+    // 꼬리표가 다르면 론/쯔모를 한 줄로 합치지 않는다 (합치면 그 사실이 사라진다)
+    expect(waits).toContain("winValueSuffix(w.ron) === winValueSuffix(w.tsumo)");
+  });
+});
+
 describe("중계 관전 — 되감는 동안의 말투", () => {
   it("구획이 «없다»가 아니라 «안 붙인다»고 적는다", () => {
     expect(APP).toContain("const REWIND_NOTE =");

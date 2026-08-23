@@ -19254,19 +19254,58 @@ function winValueText(v: SpectateWinValue): string {
  * 숫자를 «확정»이라 단언한다. 「추정 vs 확정」을 갈라 놓은 이번 작업의 취지를
  * 정확히 그 자리에서 배신한다.
  */
+function winValueCaveats(v: SpectateWinValue): { tag: string; tip: string }[] {
+  const out: { tag: string; tip: string }[] = [];
+  if (v.uraUnknown === true) {
+    out.push({
+      tag: "뒷도라 제외",
+      // `title` 속성은 평문이다 — 마크다운 별표를 쓰면 화면에 별표가 그대로 뜬다.
+      tip: "뒷도라가 아직 열리지 않아 이 값은 하한입니다 — 실제 타점은 이보다 높을 수 있습니다",
+    });
+  }
+  if (v.augAdjusted === true) {
+    /*
+     * 뒷도라와 **방향이 다르다.** 저쪽은 «더 높을 수 있다»(하한)지만 이쪽은 어느
+     * 쪽으로 움직일지도 모른다 — 그래서 문구를 갈라 둔다.
+     *
+     * 코어가 아무 좌석에나 붙이는 표식이 아니다: 엔진의 `ROUND_SETTLED` 인터셉터
+     * 목록과 `score.settleHanBonus` 질의 창구를 대조해, **창구를 안 내놓은 증강을
+     * 든 좌석**만 고른다. 그런 인터셉터는 부작용 없이 미리 태울 수 없다.
+     * 즉 이게 떠 있으면 정말로 못 따라간 것이라, 화면이 얼버무릴 자리가 아니다.
+     */
+    out.push({
+      tag: "증강 보정 미반영",
+      tip: "정산에서 점수를 고치는 증강이 있는데 관전 시점에는 미리 태울 수 없습니다 — 실제 수령액이 이 값과 다를 수 있습니다",
+    });
+  }
+  return out;
+}
+
+/** 값 뒤에 붙는 꼬리표 — 「3판 40부 5200점 (뒷도라 제외)」 */
 function winValueSuffix(v: SpectateWinValue): string {
-  return v.uraUnknown === true ? " +뒷도라 제외" : "";
+  const c = winValueCaveats(v);
+  return c.length === 0 ? "" : ` (${c.map((x) => x.tag).join(" · ")})`;
 }
 
 /** 그 값에 붙는 툴팁 — «확정»이라는 말을 하한일 때는 하지 않는다. */
 function winValueTip(v: SpectateWinValue, tsumoOnly: boolean): string {
   const parts: string[] = [];
-  parts.push(
-    v.uraUnknown === true
-      ? "뒷도라가 아직 열리지 않아 **이 값은 하한입니다** — 실제 타점은 이보다 높을 수 있습니다"
-      : "판이 실제로 쓰는 채점기가 낸 확정값입니다 (추정이 아닙니다)",
-  );
+  const caveats = winValueCaveats(v);
+  /*
+   * 사정이 **하나라도** 있으면 「확정값입니다」를 적지 않는다. 이 한 줄이 이번
+   * 작업의 전제(«확정»과 «추정»을 다른 말로 적는다)를 지키는 자리다 — 하한이나
+   * 미반영 보정을 안고서 확정이라 단언하면, 갈라 놓은 뜻이 그 자리에서 무너진다.
+   */
+  if (caveats.length === 0) {
+    parts.push("판이 실제로 쓰는 채점기가 낸 확정값입니다 (추정이 아닙니다)");
+  } else {
+    for (const c of caveats) parts.push(c.tip);
+  }
   if (v.noYaku === true) parts.push("실역 0개로 성립한 화료입니다 (무형화료)");
+  // 증강 보너스 판은 `han` 에 **이미 포함**돼 있다 — 더하는 값이 아니라 출처다.
+  if ((v.augHan ?? 0) > 0) {
+    parts.push(`판수 ${v.han}판 중 ${v.augHan}판은 증강이 정산에서 얹는 몫입니다 (이미 포함)`);
+  }
   if (tsumoOnly) parts.push("후리텐이라 론이 막혀 있어 쯔모 값입니다");
   return parts.join(" · ");
 }
@@ -19277,6 +19316,13 @@ function yakuText(v: SpectateWinValue): string {
   if (v.doraHan > 0) parts.push(`도라 ${v.doraHan}`);
   if (v.redHan > 0) parts.push(`적도라 ${v.redHan}`);
   if (v.uraHan > 0) parts.push(`뒷도라 ${v.uraHan}`);
+  /*
+   * 증강이 정산에서 얹는 판 — **채점표 밖의 판**이라 역 목록 어디에도 안 잡힌다.
+   * 그런데 `han` 에는 이미 들어 있어서, 이 줄이 없으면 「역 1판인데 3판」이 되어
+   * 화면이 고장 난 것처럼 읽힌다. 결과 화면의 「증강 보너스 +N판」 줄과 같은 사실이다.
+   * (더하는 것이 아니라 **출처를 밝히는** 줄이다 — 합에 두 번 세지 않도록 주의.)
+   */
+  if ((v.augHan ?? 0) > 0) parts.push(`증강 +${v.augHan}판`);
   return parts.join(" · ");
 }
 
@@ -19371,16 +19417,27 @@ function DockSeats({
                 <span className="bcast-label-sm">
                   {ins?.furiten === true ? "쯔모하면" : "지금 화료"}
                 </span>
+                {/*
+                  * 꼬리표와 «확정색 죽이기»가 **같은 곳**(winValueCaveats)에서 나온다.
+                  * 따로 두면 언젠가 갈라져서 «금색인데 꼬리표가 붙은» 값이 생긴다 —
+                  * 그때 화면은 확정이라고도 아니라고도 말하는 셈이 된다.
+                  *
+                  * 뒷도라는 화료하는 순간에야 열리고(리치 좌석의 이 값은 **하한**),
+                  * 증강 정산 보정은 관전 시점에 미리 태울 수 없다. 어느 쪽이든
+                  * «확정»이라 단언한 채 내보내면 안 된다.
+                  */}
                 <span
-                  className={`bcast-points num${best.uraUnknown === true ? " bcast-points-floor" : ""}`}
+                  className={`bcast-points num${
+                    winValueCaveats(best).length > 0 ? " bcast-points-floor" : ""
+                  }`}
                   title={winValueTip(best, ins?.furiten === true)}
                 >
                   {winValueText(best)}
-                  {/* 뒷도라는 화료하는 순간에야 열린다 — 리치 좌석의 이 값은 **하한**이다.
-                      «확정»이라 단언한 채 실제보다 낮은 숫자를 내보내면 안 된다. */}
-                  {best.uraUnknown === true ? (
-                    <span className="bcast-floor-tag">뒷도라 제외</span>
-                  ) : null}
+                  {winValueCaveats(best).map((c) => (
+                    <span key={c.tag} className="bcast-floor-tag">
+                      {c.tag}
+                    </span>
+                  ))}
                 </span>
               </div>
             ) : ins?.estimate !== undefined ? (
@@ -19488,7 +19545,10 @@ function DockWaits({
               w.tsumo !== null &&
               w.ron.han === w.tsumo.han &&
               w.ron.fu === w.tsumo.fu &&
-              w.ron.points === w.tsumo.points;
+              w.ron.points === w.tsumo.points &&
+              // 꼬리표(하한·증강 보정 미반영)까지 같아야 한 줄로 합친다. 숫자만 보고
+              // 합치면 «한쪽만 단정할 수 없는» 경우에 그 사실이 조용히 사라진다.
+              winValueSuffix(w.ron) === winValueSuffix(w.tsumo);
             return (
               <div key={w.kind} className={`dock-wait-row${w.remaining === 0 ? " dock-wait-gone" : ""}`}>
                 <span className="dock-wait-tile">
