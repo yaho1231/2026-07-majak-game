@@ -577,6 +577,10 @@ const ACTION_LABEL: Record<string, string> = {
   picky_unify: "편식 — 단색화",
   // 2026-08-07 (7차) 신규
   joker_call: "조커 — 백을 만능패로",
+  // 2026-08-23 — 상시 패시브에서 2국 1회 액티브로 바뀐 모양 규칙 3종
+  declare_mixed_triplet: "동수의 결속 — 커쯔의 무늬 지우기",
+  declare_broken_border: "무너진 국경 — 슌쯔의 무늬 지우기",
+  declare_async_chiitoi: "비대칭 — 또이쯔의 무늬 지우기",
 };
 
 /** 액티브 액션 → 그 액션을 만들어내는 증강 id (메뉴에서 어느 증강인지 표시용). */
@@ -656,6 +660,9 @@ const ACTION_AUGMENT: Record<string, string> = {
   soul_strike: "soul_strike",
   picky_unify: "picky_eater",
   joker_call: "joker",
+  declare_mixed_triplet: "mixed_triplet",
+  declare_broken_border: "broken_border",
+  declare_async_chiitoi: "async_chiitoi",
 };
 
 /**
@@ -749,6 +756,10 @@ const AUGMENT_ACTION_TYPES = new Set([
   "picky_unify",
   // 2026-08-07 (7차) 신규
   "joker_call",
+  // 2026-08-23 — 모양 규칙 3종
+  "declare_mixed_triplet",
+  "declare_broken_border",
+  "declare_async_chiitoi",
 ]);
 
 /**
@@ -832,6 +843,10 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "picky_eater",
   // 2026-08-07 (7차) 신규
   "joker",
+  // 2026-08-23 — 상시에서 2국 1회 액티브로 바뀐 모양 규칙 3종
+  "mixed_triplet",
+  "broken_border",
+  "async_chiitoi",
 ]);
 
 /** 이 증강이 '액티브 증강' 버튼으로 직접 발동되는지 (설명카드·툴팁 뱃지용). */
@@ -2116,14 +2131,22 @@ function waitDecompOptions(
   // 겹쳐도 안전하도록 조기 반환 대신 누적한다.)
   const opts: DecomposeOptions = {};
   const has = (id: string): boolean => player.augments.includes(id);
+  /**
+   * 모양 규칙 액티브 3종 — 보유만으로는 아무 일도 없고, **이번 국에 선언했을 때만**
+   * 열린다. 발동은 전원 공개 채널(`{증강id}:{playerId}`)에 실리므로 남의 손 대기도
+   * 서버와 같은 규칙으로 그린다(조커와 같은 규약).
+   */
+  const declaredNow = (id: string): boolean =>
+    has(id) && view?.augmentView[`${id}:${player.id}`] === true;
   // 진짜 용 — 5멘쯔 손이라 기본 4멘쯔 분해로는 텐파이가 잡히지 않는다
   if (has("true_dragon")) opts.totalSets = 5;
   // 무너진 국경 — 혼색 슌쯔만 허용한다(서버 broken_border.ts는 scoring.mixedRuns만
   // 킨다 — 혼색 커쯔는 mixed_triplet 전용). 예전엔 여기서 mixedTriplets까지 같이
   // 켜서 서버가 인정 안 하는 몸통을 화면이 정상으로 표시하는 desync가 있었다.
-  if (has("broken_border")) opts.mixedRuns = true;
+  // (2026-08-23부터 셋 다 **선언한 국에만** 열린다 — 공개 채널이 켜져 있을 때만 민다.)
+  if (declaredNow("broken_border")) opts.mixedRuns = true;
   // 동수의 결속 — 혼색 커쯔만 (슌쯔는 기존처럼)
-  if (has("mixed_triplet")) opts.mixedTriplets = true;
+  if (declaredNow("mixed_triplet")) opts.mixedTriplets = true;
   // 부숴진 벽 — 순환 슌쯔(8-9-1·9-1-2)
   if (has("broken_wall")) opts.wrapRuns = true;
   // 왕의 징표 — 국사 중복 허용(서버 royal_kokushi의 DUPES와 일치해야 한다)
@@ -2131,7 +2154,7 @@ function waitDecompOptions(
   // 양극 — 같은 무늬의 1·9로 이루는 커쯔 몸통(199·191·911)
   if (has("polar_ends")) opts.polarEnds = true;
   // 비대칭 치또이 — 무늬 무관 rank 쌍(1만+1통)
-  if (has("async_chiitoi")) opts.chiitoiMixedPairs = true;
+  if (declaredNow("async_chiitoi")) opts.chiitoiMixedPairs = true;
   // 바람의 계보 — 자패 슌쯔(동남서·남서북·백발중)
   if (has("wind_lineage")) opts.honorRuns = true;
   // 우는 국사무쌍 — 특수 퐁(kokushi_pon)을 한 순간 국사 외의 길이 닫힌다.
@@ -12259,6 +12282,17 @@ const SHAPE_RULE_AUGMENTS = new Set<string>([
 ]);
 
 /**
+ * 그중 **선언해야 열리는** 것들 (2026-08-23: 상시 → 2국에 1회 액티브).
+ * 보유만으로는 손을 성립시키지 않으므로, 결과창은 그 국의 공개 채널이 켜져 있을 때만
+ * 이름을 적는다 — 안 그러면 "이 손을 성립시킨 증강"이 아무 일도 안 한 카드를 가리킨다.
+ */
+const SHAPE_RULE_DECLARED = new Set<string>([
+  "mixed_triplet",
+  "broken_border",
+  "async_chiitoi",
+]);
+
+/**
  * 봇 난이도 표기 — 대기실 라디오와 게임 중 칩이 같은 말을 쓴다.
  *
  * 난이도는 `LobbyMessage`에만 실려서 게임에 들어가는 순간 확인할 데가 없었다. 성향
@@ -15817,6 +15851,23 @@ const SUIT_KO: Record<string, string> = { man: "만수", pin: "통수", sou: "�
  * 중앙에는 자리가 없다 — pill이 유일하게 여유 있는 자리다.
  */
 const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
+  /*
+   * 모양 규칙 3종 — 2026-08-23부터 **선언한 국에만** 열린다(2국에 1회). 상시였을 때는
+   * 이름표에 증강이 서 있는 것만으로 "이 사람에게는 무늬가 없다"가 전달됐는데, 이제는
+   * 켜져 있는 국과 아닌 국이 갈리므로 그 사실이 화면에 있어야 수비가 성립한다.
+   */
+  mixed_triplet: (raw) =>
+    raw === true
+      ? { chip: "커쯔 무늬X", note: "이번 국 이 사람의 커쯔는 무늬를 가리지 않는다" }
+      : null,
+  broken_border: (raw) =>
+    raw === true
+      ? { chip: "슌쯔 무늬X", note: "이번 국 이 사람의 슌쯔는 무늬를 가리지 않는다" }
+      : null,
+  async_chiitoi: (raw) =>
+    raw === true
+      ? { chip: "쌍 무늬X", note: "이번 국 이 사람의 치또이 쌍은 무늬를 가리지 않는다" }
+      : null,
   // 조커 — 발동하면 이번 국 내내 이 사람의 백이 만능패다 (전원 공개)
   joker: (raw) =>
     raw === true
@@ -22467,7 +22518,13 @@ function RoundResultPanel({
             {(() => {
               if (historical === true) return null;
               const augs = view.players.find((p) => p.id === w.winner)?.augments ?? [];
-              const shapes = augs.filter((a) => SHAPE_RULE_AUGMENTS.has(a));
+              const shapes = augs.filter(
+                (a) =>
+                  SHAPE_RULE_AUGMENTS.has(a) &&
+                  // 액티브로 바뀐 셋은 **그 국에 선언했을 때만** 손을 성립시킨다
+                  (!SHAPE_RULE_DECLARED.has(a) ||
+                    view.augmentView[`${a}:${w.winner}`] === true),
+              );
               if (shapes.length === 0) return null;
               return (
                 <div className="result-shape-augs">

@@ -334,19 +334,31 @@ describe("open_kokushi (우는 국사무쌍)", () => {
 // ─────────────────────────── broken_wall ───────────────────────────
 
 describe("broken_border (무너진 국경)", () => {
-  it("혼색 슌쯔(2만3통4삭)를 포함한 손으로 화료할 수 있다 (보유자만)", () => {
+  it("혼색 슌쯔(2만3통4삭)를 포함한 손으로 화료할 수 있다 (보유자만, 선언한 국)", () => {
     // 2m3p4s + 5m6p7s + 234p + 678s + 99p (14장, 멘젠쯔모 역으로 화료)
-    const game = createStandardGameFromState(
-      craft({
-        hands: { p0: "25m3p6p4s7s234p678s99p", p1: "*", p2: "*", p3: "*" },
-        phase: "turn.act",
-        turnSeat: 0,
-        drawnLastFor: "p0",
-      }),
-    );
+    const base = craft({
+      hands: { p0: "25m3p6p4s7s234p678s99p", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const game = createStandardGameFromState({
+      ...base,
+      players: base.players.map((p) =>
+        p.id === "p0" ? { ...p, augments: ["broken_border"] } : p,
+      ),
+    });
     expect(winValidate(game, "p0")).toBe("not a winning hand");
 
     installAugment(game.engine, brokenBorder, "p0", { yaku: game.yaku });
+    // 2026-08-23부터 상시가 아니라 **선언한 국 동안만** 열린다 (2국에 1회)
+    expect(winValidate(game, "p0")).toBe("not a winning hand");
+    const declared = game.engine.submit({
+      player: "p0",
+      type: "declare_broken_border",
+      payload: {},
+    });
+    expect(declared.ok, declared.ok ? "" : declared.reason).toBe(true);
     expect(winValidate(game, "p0")).toBeNull();
     // 규칙은 보유자 전용
     expect(

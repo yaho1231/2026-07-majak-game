@@ -624,8 +624,14 @@ describe("hand_swap3 — 등가교환", () => {
     expect(handIdsOf(state, "p1")).toContain(drawn);
   });
 
-  it("교환을 쓴 국에는 다시 지정할 수 없고, 국이 바뀌면 남은 횟수로 다시 쓴다", () => {
-    const game = createStandardGameFromState(craftSwapState());
+  // 매치 한도를 시험하는 자리라 **동풍전**으로 연다 — 예산이 동풍전 2회 · 반장전 3회라
+  // (2026-08-23) 반장전에서는 세 번째 지정이 정상이고, 상대가 셋뿐이라 한도에 못 닿는다.
+  it("교환을 쓴 국에는 다시 지정할 수 없고, 국이 바뀌면 남은 횟수로 다시 쓴다 (동풍전 2회)", () => {
+    const base = craftSwapState();
+    const game = createStandardGameFromState({
+      ...base,
+      config: { ...base.config, mode: "tonpuu" },
+    });
     installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
 
     expect(aim(game, "p1").ok).toBe(true);
@@ -660,7 +666,7 @@ describe("hand_swap3 — 등가교환", () => {
     expect(aim(game2, "p2").ok).toBe(true);
     expect(game2.engine.state.augmentData["hand_swap3:used:p0"]).toBe(2);
 
-    // 게임당 2회 — 세 번째 지정은 국이 바뀌어도 거부된다
+    // 동풍전 2회 — 세 번째 지정은 국이 바뀌어도 거부된다
     const game3 = nextRound(game2);
     const third = aim(game3, "p3");
     expect(third.ok).toBe(false);
@@ -779,8 +785,13 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
     return withAugments(s, "p0", ["full_hand_swap"]);
   }
 
-  it("첫 순에 상대 손패를 통째로 강탈한다 — 내 패는 패산 맨 밑으로 (게임당 2회)", () => {
-    const game = createStandardGameFromState(craftFullSwapState());
+  // 여기도 매치 한도를 시험하므로 **동풍전**(2회)이다 — 반장전 예산은 3회다.
+  it("첫 순에 상대 손패를 통째로 강탈한다 — 내 패는 패산 맨 밑으로 (동풍전 2회)", () => {
+    const base = craftFullSwapState();
+    const game = createStandardGameFromState({
+      ...base,
+      config: { ...base.config, mode: "tonpuu" },
+    });
     installAugment(game.engine, fullHandSwap, "p0", { yaku: game.yaku });
 
     const before = game.engine.state;
@@ -825,7 +836,7 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
     });
     expect(second.ok).toBe(true);
     expect(game.engine.state.augmentData["full_hand_swap:used:p0"]).toBe(2);
-    // 3회째는 거부 (게임당 2회)
+    // 3회째는 거부 (동풍전 2회)
     const again = game.engine.submit({
       player: "p0",
       type: "hand_swap",

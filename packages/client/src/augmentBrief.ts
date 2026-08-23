@@ -35,8 +35,12 @@ export interface AugmentBrief {
 
 /** 동풍전 1회 · 반장전 2회 — 가장 흔한 배지라 상수로 둔다 */
 const MODE_1_2 = "동풍전1·반장전2";
-/** 동풍전 2회 · 반장전 3회 (자리 바꿈 — 2026-07-31 버프로 +1) */
+/** 동풍전 2회 · 반장전 3회 (자리 바꿈·통째로 바꾸기·등가교환) */
 const MODE_2_3 = "동풍전2·반장전3";
+/** 동풍전 3회 · 반장전 5회 (날치기·만년 오야의 연장) */
+const MODE_3_5 = "동풍전3·반장전5";
+/** 동풍전 5회 · 반장전 8회 (연금술사·염색) */
+const MODE_5_8 = "동풍전5·반장전8";
 
 /*
  * ⚠ **배지에는 «가장 빡빡한 한도»를 적는다** (2026-08-23 사용자 지적).
@@ -85,12 +89,12 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   // 2026-08-07 7차 신규
   joker: { use: "2국에 1회", text: "이번 국 손패의 백이 무엇이든 되는 만능패가 된다." },
   time_pressure: { use: "이번 국만", text: "이 국에는 전원의 모든 결정이 5초 제한이다. 나도 포함이다." },
-  alchemist: { use: "게임 5회", text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 사용 가능하다." },
+  alchemist: { use: MODE_5_8, text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 사용 가능하다." },
   all_or_nothing: { use: "매 국 1회", text: "리치에 내 점수 절반을 건다. 이기면 그만큼 더 받고, 타가가 화료하면 절반을 잃는다." },
   always_tenpai: { use: "상시", text: "유국 때 늘 텐파이 취급 — 벌점을 안 내고 노텐인 상대마다 2,000점을 받는다." },
   ankan_dora: { use: "상시", text: "안깡할 때마다 깡친 네 장이 나만의 도라가 된다(+4판)." },
   aotenjou_ceiling: { use: "상시", text: "내 점수에 상한이 사라진다. 판이 오르는 만큼 끝없이 올라간다." },
-  async_chiitoi: { use: "상시", text: "치또이쯔의 무늬 제한이 사라진다 — 1만·1통도 한 또이쯔." },
+  async_chiitoi: { use: "2국에 1회", text: "이번 국 치또이쯔의 무늬 제한이 사라진다 — 1만·1통도 한 또이쯔." },
   avenger: { use: "상시", text: "나를 쏜 상대에게는 후리텐이어도 역이 없어도 론할 수 있다." },
   big_hand: { use: "2국에 1회", text: "국 첫 순에 선언하면 그 국의 화료가 최소 만관이 된다." },
   blame_shift: { use: "상시", text: "내 론 점수를 쏜 사람 혼자가 아니라 셋이 나눠 낸다(총액은 그대로)." },
@@ -99,7 +103,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   bottom_deal: { use: "매 순 1회", text: "패산 맨 밑 3장이 나만 보이고, 쓰면 다음 쯔모를 맨 밑에서 뽑는다." },
   bottom_yaku: { use: "상시", text: "내 버림패 모양에 따라 화료 시 최대 3판이 더 붙는다." },
   brief_fog: { use: MODE_1_2, text: "6순 동안 모두의 버림패를 가린다. 나만 그대로 볼 수 있다." },
-  broken_border: { use: "상시", text: "슌쯔의 무늬 제한이 사라진다 — 2만·3통·4삭도 한 몸통." },
+  broken_border: { use: "2국에 1회", text: "이번 국 슌쯔의 무늬 제한이 사라진다 — 2만·3통·4삭도 한 몸통." },
   broken_wall: { use: "상시", text: "슌쯔가 9에서 1로 이어진다 — 8-9-1, 9-1-2도 한 몸통." },
   call_seal: { use: MODE_1_2, text: "6순 동안 상대 셋이 치·퐁·대명깡을 하지 못한다." },
   cliff_bloom: { use: "상시", text: "영상패를 직접 고른다. 한 국에 깡을 두 번 하면 그 자리에서 화료." },
@@ -112,18 +116,18 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   disarm: { use: MODE_1_2, text: "상대 증강 하나를 골라 이번 국 동안 완전히 잠근다." },
   discard_lock: { use: "2국에 1회", text: "국 첫 순에 상대들의 손패 일부를 이번 국 동안 못 버리게 묶는다." },
   dora_conceal: { use: "상시", text: "도라 표시패가 상대에게는 가려진다 — 도라는 나만 알 수 있다." },
-  eternal_dealer: { use: "상시", text: "나는 늘 오야 취급 — 점수 1.5배에 역패 동이 하나 더. 연장은 게임 3회." },
+  eternal_dealer: { use: "상시", text: "늘 오야 취급 — 점수 1.5배에 역패 동 하나 더. 연장은 동풍전3·반장전5." },
   even_world: { use: "2국에 1회", text: "손패의 홀수 수패가 전부 한 칸 위 짝수로 바뀐다." },
   foresight: { use: "4순에 1회", text: "패산 다음 4장을 나만 본다. 국에 한 번은 그 순서까지 바꾼다." },
   frame_up: { use: "2국에 1회", text: "내가 버릴 패를 상대 바닥에 놓아 그 사람을 후리텐에 빠뜨린다." },
   free_riichi_discard: { use: "상시", text: "리치를 걸어도 오름패만 고정되고, 버리는 패는 계속 자유롭다." },
-  full_hand_swap: { use: "게임 2회", text: "국 첫 순에 상대의 손패를 통째로 빼앗는다." },
+  full_hand_swap: { use: MODE_2_3, text: "국 첫 순에 상대의 손패를 통째로 빼앗는다." },
   future_sight: { use: "3순에 1회", text: "손패 3장을 패산 위 3장과 바꾼다. 쓸수록 그 국 화료에 판이 붙는다." },
   genesis: { use: MODE_1_2, text: "손패의 자패는 수패로, 수패는 자패로 통째로 뒤바뀐다. 국당 1회." },
   giant_god: { use: "매 국 1회", text: "내 바닥의 국사무쌍 13종을 손으로 끌어올려 13면 텐파이 — 다음 순에 화료한다." },
   grave_rob: { use: MODE_1_2, text: "상대가 최근 버린 10장 중 1장을 파내 그대로 화료한다." },
   haitei_lord: { use: "상시", text: "텐파이로 해저패를 쯔모하면 대기와 상관없이 무조건 화료한다." },
-  hand_swap3: { use: "게임 2회", text: "상대 손패를 보고 내 3장과 맞바꾼다. 국당 1회, 지정하면 소모." },
+  hand_swap3: { use: MODE_2_3, text: "상대 손패를 보고 내 3장과 맞바꾼다. 국당 1회, 지정하면 소모." },
   hidden_blade: { use: "상시", text: "리치 없이 멘젠 론으로 이기면 +2판에 뒷도라까지 붙는다." },
   hidden_river: { use: MODE_1_2, text: "그 국 내내 모두의 버림패가 최근 6장만 보인다. 나만 그대로 본다." },
   honba_hunter: { use: "상시", text: "나만 본장 1개당 추가 점수가 300점이 아니라 1,500점이 된다." },
@@ -131,7 +135,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   hourglass: { use: "2국에 1회", text: "유국 때 내가 텐파이면 국이 안 끝나고 나 혼자 4장을 더 쯔모한다." },
   invincible: { use: "2국에 1회", text: "이번 국 동안 내 버림패로는 아무도 론할 수 없다(창깡은 제외)." },
   jackpot: { use: "매 국 1회", text: "국 첫 순에 룰렛을 돌려 그 국 점수에 0.5~3배를 곱한다." },
-  karma: { use: "상시", text: "잃은 점수가 게이지로 쌓이고, 8,000 이상이면 태워 그만큼 뺏는다." },
+  karma: { use: MODE_1_2, text: "잃은 점수가 게이지로 쌓이고, 8,000 이상이면 태워 그만큼 뺏는다." },
   last_stand: { use: "매 국 1회", text: "내 리치를 취소한다. 냈던 리치봉도 돌려받는다." },
   late_bloomer: { use: "상시(반장전)", text: "남4국에 들어서면 후리텐을 무시하고, 역이 없어도 화료한다." },
   late_bloomer_east: { use: "상시(동풍전)", text: "동4국에 들어서면 후리텐을 무시하고, 역이 없어도 화료한다." },
@@ -139,7 +143,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   let_it_ride: { use: "상시", text: "연속으로 화료할수록 내 점수 배수가 오른다(최대 4배)." },
   meld_dissolve: { use: "매 국 1회", text: "내 치·퐁 하나를 손으로 되돌린다. 하나뿐이었으면 멘젠이 복구된다." },
   mixed_nine_gates: { use: "상시", text: "구련보등이 무늬를 가리지 않는다. 멘젠 한정." },
-  mixed_triplet: { use: "상시", text: "커쯔의 무늬 제한이 사라진다 — 1만·1통·1삭도 한 커쯔." },
+  mixed_triplet: { use: "2국에 1회", text: "이번 국 커쯔의 무늬 제한이 사라진다 — 1만·1통·1삭도 한 커쯔." },
   nagashi_yakuman: { use: "상시", text: "유국만관이 역만이 되고, 남이 울어 가도 무효가 되지 않는다." },
   no_retreat: { use: "2국에 1회", text: "공탁 없이 리치를 건다. 리치·일발·뒷도라가 각 2판이 된다." },
   no_ron_pact: { use: "상시", text: "매 국 첫 6순은 론당하지 않는다. 리치·후로하면 조약이 사라진다." },
@@ -154,7 +158,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   parasite: { use: "매 국 1회", text: "상대 하나에 기생해, 그 국에 그가 버는 점수의 절반을 가져온다." },
   peek_riichi_waits: { use: "매 국 1회", text: "리치한 상대의 오름패를 확인하고, 한 번은 내 패를 그것으로 바꾼다." },
   polar_ends: { use: "상시", text: "1과 9의 구별이 사라진다 — 같은 무늬의 199·911도 한 커쯔." },
-  pond_snatch: { use: "게임 3회", text: "쯔모 대신 상대 셋의 최근 버림패 9장 중 1장을 줍는다." },
+  pond_snatch: { use: MODE_3_5, text: "쯔모 대신 상대 셋의 최근 버림패 9장 중 1장을 줍는다." },
   pseudo_dealer: { use: "2국에 1회", text: "그 자리에서 오야를 빼앗는다. 자풍도 나를 기준으로 다시 정해진다." },
   // 배지는 **매 국 1회**다. 예전에는 MODE_1_2(동풍전1·반장전2)가 붙어 있어서, 인게임에서는
   // forMode가 그걸 "게임 1회"로 줄여 요약과 상세(매 국 1회)가 정면으로 어긋났다
@@ -183,7 +187,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   tanyao_break: { use: "상시", text: "자패만 없으면 1·9가 섞여도 탕야오. 게다가 2판으로 값한다." },
   tenpai_scan: { use: "매 국 1회", text: "지금 텐파이인 상대가 누구인지 나에게만 알려 준다." },
   three_dragons_will: { use: MODE_1_2, text: "백·발·중 중 둘이 커쯔면 남은 한 장을 커쯔로 완성해 준다." },
-  tile_dyeing: { use: "게임 5회", text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다. 리치 중에도 사용 가능하다." },
+  tile_dyeing: { use: MODE_5_8, text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다. 리치 중에도 사용 가능하다." },
   tile_split: { use: "매 국 1회", text: "손패의 수패 1장을 합이 같은 두 장으로 쪼갠다(9통 → 4통+5통)." },
   time_stop: { use: "매 국 1회", text: "그 국에서 내 차례를 한 번 더 진행한다." },
   triple_peek: { use: "2국에 1회", text: "내 다음 쯔모 세 장이 무엇인지 나에게만 보인다." },

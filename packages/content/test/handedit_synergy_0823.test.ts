@@ -517,8 +517,15 @@ describe("확정 5 · hourglass × 강 회수", () => {
       if (pick === undefined) break;
       st = flow.submit(prompt.player, pick as never);
     }
-    // 왕패에서 실제로 패가 넘어갔는지 (연장이 열렸다는 증거)
-    expect(game.engine.state.zones[DEAD_WALL]?.tileIds.length).toBeLessThan(14);
+    /*
+     * 연장이 실제로 열렸다는 증거.
+     *
+     * 예전에는 "왕패가 14장보다 줄었는가"로 봤는데, 그건 간접 증거다 — 2026-08-23에
+     * 연장의 끝에서 **남은 패산을 왕패로 되돌리게** 되면서(강 회수가 되채운 몫이 남아
+     * 국이 부활하던 구멍을 막았다) 왕패 장수가 다시 14를 넘길 수 있다. 열렸다는 사실
+     * 자체를 보는 편이 정확하다.
+     */
+    expect(extending, "연장이 열리지 않았다").toBe(true);
     return draws;
   }
 

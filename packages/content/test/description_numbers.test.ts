@@ -144,13 +144,34 @@ describe("설명 ↔ 구현 수치 대조 ② 한도 표기", () => {
     expect(offenders, "게임 내 횟수가 코드와 안 맞는 증강").toEqual([]);
   });
 
-  it("'동풍전 1회 · 반장전 2회'는 matchUses 하나에서 나온다", () => {
-    // 1·2를 손으로 박으면 모드 정의가 바뀔 때 한쪽만 남는다 — util.matchUses가 단일 진실.
+  it("'동풍전 N회 · 반장전 M회'는 matchUses·scaledUses에서 나온다", () => {
+    // 숫자를 손으로 박으면 모드 정의가 바뀔 때 한쪽만 남는다 — util의 두 함수가 단일 진실.
     const offenders = ALL_AUGMENTS.filter((def) =>
-      /^\([^)]*동풍전 1회 · 반장전 2회/.test(def.description),
+      /^\([^)]*동풍전 \d+회 · 반장전 \d+회/.test(def.description),
     )
-      .filter((def) => !/matchUses/.test(codeOnly(sourceOf(def.id))))
+      .filter((def) => !/matchUses|scaledUses/.test(codeOnly(sourceOf(def.id))))
       .map((def) => def.id);
-    expect(offenders, "matchUses를 안 쓰고 모드별 횟수를 적은 증강").toEqual([]);
+    expect(offenders, "매치 예산 헬퍼를 안 쓰고 모드별 횟수를 적은 증강").toEqual([]);
+  });
+
+  /*
+   * 반장전 몫은 **동풍전의 1.5배(올림)** 다 (2026-08-23 사용자 지시).
+   * 매치 예산은 원래 전부 동풍전(4국) 기준이라, 국이 두 배 도는 반장전에서 같은 카드가
+   * 국당 절반 값이었다. 새 증강이 임의의 조합(3·4처럼)을 적는 것을 여기서 막는다.
+   */
+  it("두 모드의 횟수는 1.5배(올림) 관계다", () => {
+    const offenders: string[] = [];
+    for (const def of ALL_AUGMENTS) {
+      for (const m of `${def.description}\n${def.detail ?? ""}`.matchAll(
+        /동풍전 (\d+)회 · 반장전 (\d+)회/g,
+      )) {
+        const tonpuu = Number(m[1]);
+        const hanchan = Number(m[2]);
+        if (hanchan !== Math.ceil(tonpuu * 1.5)) {
+          offenders.push(`${def.id}: 동풍전 ${tonpuu} → 반장전 ${hanchan}`);
+        }
+      }
+    }
+    expect(offenders, "1.5배(올림)가 아닌 모드별 횟수").toEqual([]);
   });
 });

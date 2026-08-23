@@ -33,7 +33,7 @@ import {
   ROUND_SETTLED,
   scoringOptionsOf,
   SETTLE_STAGE,
-  TILE_DRAWN,
+  TILE_DISCARDED,
   TURN_PASSED,
   WALL,
   winHandKindsOf,
@@ -43,7 +43,7 @@ import type {
   GameState,
   PlayerId,
   RoundSettledPayload,
-  TileDrawnPayload,
+  TileDiscardedPayload,
   TileId,
 } from "@majak/core";
 import {
@@ -61,6 +61,8 @@ import { roundScopedKey } from "./roundScope.js";
 
 const ID = "hourglass";
 const EVENT = "HourglassOpened";
+/** 연장이 끝나는 순간 — 남은 패산을 왕패로 되돌려 그 자리에서 유국을 부른다 */
+const CLOSE_EVENT = "HourglassClosed";
 /**
  * 연장으로 넘겨받는 왕패 장수 — 넘겨받는 것은 **아직 안 쓴 영상패**다.
  *
@@ -113,13 +115,19 @@ function nagashiStanding(state: GameState, h: PlayerId): boolean {
 const openedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "opened", state, h);
 /**
- * 연장으로 **아직 남은 솔로 쯔모 횟수**.
+ * 연장으로 **아직 남은 솔로 순(順) 수**.
  *
  * 예전에는 연장의 끝을 "패산이 마르는 것"으로 판정했다. 그런데 강 회수 카드
  * (정적의 손·날치기)는 쯔모패를 `WALL` 로 되돌리며 **패산을 되채운다** — 연장이
  * 그만큼 늘어나 설명이 약속한 "최대 4장"이 실측 7회까지 갔다
  * (QA synergy3 handedit 확정 5, 2026-08-23). 넘겨받은 장수는 발동 시점에 이미
  * 정해져 있으니(`HourglassPayload.tiles.length`) 그 수를 세는 것이 단일 진실이다.
+ *
+ * ⚠ 세는 것은 **쯔모가 아니라 버림**이다 (2026-08-23 2차). 쯔모를 세면 패산에서
+ * 오지 않는 패 수급 — 날치기의 강 회수 — 이 한도를 지나쳐 간다: 주운 순은 카운터를
+ * 안 깎는데 턴은 그대로 한 번 도니까, 날치기 횟수만큼 연장이 늘어난다(반장전 예산이
+ * 1.5배가 되면서 실측 5회). 연장이 약속하는 것은 "패 4장"이 아니라 **내 순 4번**이고,
+ * 어떤 방식으로 패를 받았든 한 순은 정확히 한 번의 버림으로 끝난다.
  */
 const soloLeftKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "soloLeft", state, h);
@@ -173,6 +181,23 @@ export const hourglass: AugmentDef = defineAugment({
       });
     }
 
+    /*
+     * 연장이 끝나면 **남은 패산을 왕패로 되돌린다** — 그래야 다음 `turn.draw`에서
+     * 패산이 비어 표준 유국 정산이 돌아온다(FlowController는 패산이 비었을 때만 유국이다).
+     *
+     * 왜 남는가: 강 회수 카드(날치기·정적의 손)가 쯔모패를 패산으로 되돌리기 때문이다.
+     * 그 한 장이 남아 있으면 4순이 끝난 뒤에도 국이 **평범하게 이어져** 네 사람이 계속
+     * 친다 — 연장이 유국을 취소한 채 국을 부활시킨 셈이라, 카드가 약속한
+     * "넘어온 패를 다 쓰면 그대로 유국으로 정산된다"와 정반대다
+     * (QA synergy3 handedit 확정 5의 남은 구멍 — 2026-08-23 2차).
+     */
+    if (!engine.reducers.has(CLOSE_EVENT)) {
+      engine.reducers.register(CLOSE_EVENT, (state, event) => {
+        const p = event.payload as { tiles: TileId[] };
+        return { ...state, zones: moveTiles(state.zones, WALL, DEAD_WALL, p.tiles) };
+      });
+    }
+
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
     trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
@@ -209,16 +234,20 @@ export const hourglass: AugmentDef = defineAugment({
       };
     });
 
-    // 연장 중 보유자가 한 장 뽑을 때마다 남은 솔로 쯔모를 하나 깎는다.
-    // (영상패는 세지 않는다 — 깡의 보충 쯔모는 연장이 넘겨받은 4장이 아니다.)
-    ctx.reaction(TILE_DRAWN, (event, rc) => {
-      const p = event.payload as TileDrawnPayload;
-      if (p.player !== holder || p.rinshan) return;
+    // 연장 중 보유자가 한 순을 끝낼(=버릴) 때마다 남은 솔로 순을 하나 깎는다.
+    // 버림으로 세는 이유는 soloLeftKey 주석 참고 — 강 회수로 받은 순도 똑같이 센다.
+    ctx.reaction(TILE_DISCARDED, (event, rc) => {
+      const p = event.payload as TileDiscardedPayload;
+      if (p.player !== holder) return;
       const state = rc.state;
       if (!flagOf(state, openedKey(state, holder))) return;
       const left = counterOf(state, soloLeftKey(state, holder));
       if (left <= 0) return;
       rc.emit(augmentDataSet(soloLeftKey(state, holder), left - 1));
+      if (left - 1 > 0) return;
+      // 마지막 순을 끝냈다 — 남은 패산을 왕패로 되돌려 유국을 부른다 (위 주석 참고)
+      const wall = state.zones[WALL]?.tileIds ?? [];
+      if (wall.length > 0) rc.emit({ type: CLOSE_EVENT, payload: { tiles: [...wall] } });
     });
 
     // 연장 중에는 턴이 보유자에게 고정된다 (솔로 쯔모)

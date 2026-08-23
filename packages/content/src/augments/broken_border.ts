@@ -16,7 +16,12 @@
  * 그래서 역할을 갈랐다 — **무늬 없는 슌쯔는 무너진 국경, 무늬 없는 커쯔는 동수의 결속.**
  * 둘을 같이 뽑으면 그때 비로소 "랭크만 맞으면 뭐든 몸통"이 완성된다(진짜 시너지).
  *
- * 구현: 코어 규칙 하나(보유자 전용) — `scoring.mixedRuns`(혼색 슌쯔).
+ * # 2026-08-23 (사용자 지시) — 상시 → **2국에 1회 액티브**
+ *
+ * 자기 순에 선언한 **그 국 동안만** 무늬 제한이 사라진다. 배선은 형제 둘(동수의 결속·
+ * 비대칭)과 함께 `shapeDeclare.ts`가 들고 있다.
+ *
+ * 구현: 코어 규칙 하나(보유자 전용, 선언한 국 한정) — `scoring.mixedRuns`(혼색 슌쯔).
  * decompose.extractSets가 후보 슌쯔의 무늬 조합까지 시도하고, scoringOptionsOf가
  * 화료·텐파이·대기·후리텐 전 판정 지점에 같은 옵션을 흘린다.
  * **치(chi)도 같은 규칙을 본다** — standardActions의 validate와 FlowController의
@@ -29,6 +34,7 @@
 
 import { defineAugment } from "@majak/core";
 import type { AugmentDef } from "@majak/core";
+import { shapeDeclareParts } from "./shapeDeclare.js";
 
 export const brokenBorder: AugmentDef = defineAugment({
   id: "broken_border",
@@ -37,11 +43,14 @@ export const brokenBorder: AugmentDef = defineAugment({
   complexity: 2,
   name: "무너진 국경",
   description:
-    "(상시) 슌쯔의 무늬 제한이 사라진다 — 2만·3통·4삭도 한 몸통이다.",
+    "(2국에 1회) 자기 순에 발동하면 이번 국 동안 슌쯔의 무늬 제한이 사라진다 — 2만·3통·4삭도 한 몸통이다.",
   detail:
-    "(상시) 숫자만 연속이면 만·통·삭이 뒤섞여도 슌쯔가 되며, 화료·텐파이·대기 판정과 치 전부에 적용된다. 혼색으로 만든 슌쯔는 청일색·삼색동순·일기통관을 성립시키지 않는다.\n\n무늬 없는 커쯔(2만·2통·2삭)는 이 증강이 아니라 동수의 결속이 담당한다.",
-  install(ctx) {
-    // 슌쯔만 — 커쯔는 동수의 결속(mixed_triplet)이 담당한다(위 주석 참고).
-    ctx.setHolderRule("scoring.mixedRuns", true);
-  },
+    "(2국에 1회) 발동한 국에만 열리고, 한 번 쓰면 2국이 지나야 다시 열린다. 그 국 동안은 숫자만 연속이면 만·통·삭이 뒤섞여도 슌쯔가 되며, 화료·텐파이·대기 판정과 치 전부에 적용된다. 혼색으로 만든 슌쯔는 청일색·삼색동순·일기통관을 성립시키지 않는다.\n\n무늬 없는 커쯔(2만·2통·2삭)는 이 증강이 아니라 동수의 결속이 담당한다. 발동은 전원에게 공개되고, 리치 중에는 발동할 수 없다.",
+  // 배선은 셋(동수의 결속·무너진 국경·비대칭)이 공유한다 — shapeDeclare.ts 머리말 참고.
+  ...shapeDeclareParts({
+    id: "broken_border",
+    action: "declare_broken_border",
+    rule: "scoring.mixedRuns",
+    option: "mixedRuns",
+  }),
 });

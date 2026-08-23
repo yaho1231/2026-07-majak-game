@@ -1,13 +1,13 @@
 /**
  * 날치기 (pond_snatch, prism).
- * 게임에서 3회, 자기 턴에 쯔모하는 대신 상대가 **최근에 버린 3장** 중 1장을 주워 손에
+ * 동풍전 3회·반장전 5회, 자기 턴에 쯔모하는 대신 상대가 **최근에 버린 3장** 중 1장을 주워 손에
  * 넣는다. 후로로 치지 않아 멘젠이 유지되며(리치도 가능), 원래 주인의 바닥 기록은
  * 그대로 남아 그 상대의 후리텐 판정은 유지된다.
  *
  * # 버프 (2026-07-31 사용자 지시)
  *
  * 예전에는 **각자의 마지막 한 장**만 대상이라, 발동 가능한 순에 쓸모 있는 패가 깔려
- * 있을 확률이 낮았다. 쯔모 한 번을 통째로 내주는 비용에 비해 건질 것이 없어 3회를
+ * 있을 확률이 낮았다. 쯔모 한 번을 통째로 내주는 비용에 비해 건질 것이 없어 그 횟수를
  * 다 쓰지 못하고 게임이 끝나기 일쑤였다. 이제 **각 상대의 최근 3장**까지 손이 닿는다 —
  * 같은 값이면 지금 필요한 패를 고를 수 있어 "쯔모를 포기할 만한가"가 실제 판단이 된다.
  *
@@ -46,11 +46,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import {
-  counterOf,
-  publishUsesLeft,
-  replaceDrawnTile,
-} from "../util.js";
+import { counterOf, publishUsesLeft, replaceDrawnTile, scaledUses } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
@@ -59,7 +55,15 @@ import { handAlteredMark } from "./handAltered.js";
 const ID = "pond_snatch";
 const ACTION = "pond_snatch";
 const EVENT = "PondSnatchPerformed";
-const MAX_USES = 3;
+/**
+ * **동풍전 기준** 사용 횟수 — 반장전은 `scaledUses`가 1.5배(올림)로 늘린다
+ * (동풍전 3회 · 반장전 5회, 2026-08-23 사용자 지시).
+ * 매치 예산은 원래 동풍전(4국)을 기준으로 잡혀 있어서, 국이 두 배 도는 반장전에서
+ * 같은 카드가 국당 절반 값이 됐다.
+ */
+const TONPUU_USES = 3;
+/** 이 매치에서 쓸 수 있는 총 횟수 (동풍전 3 · 반장전 5) */
+const maxUses = (state: GameState): number => scaledUses(state, TONPUU_USES);
 /** 손이 닿는 깊이 — 각 상대의 **최근 SNATCH_DEPTH장** (2026-07-31 버프: 1 → 3) */
 const SNATCH_DEPTH = 3;
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
@@ -110,7 +114,7 @@ const pondSnatchAction: ActionDef<{ snatchId: TileId; fromPlayer: PlayerId }> = 
     if (state.round.byPlayer[req.player]?.riichi != null) {
       return "riichi: cannot snatch";
     }
-    if (counterOf(state, usedKey(req.player)) >= MAX_USES) return "no uses left";
+    if (counterOf(state, usedKey(req.player)) >= maxUses(state)) return "no uses left";
     if (state.round.lastDrawnTile == null) return "no drawn tile";
     if (state.round.lastDrawRinshan) return "cannot snatch after a rinshan draw";
     if (wallLen(state) === 0) return "wall is empty";
@@ -147,16 +151,16 @@ export const pondSnatch: AugmentDef = defineAugment({
   complexity: 2,
   name: "날치기",
   description:
-    "(게임 내 3회) 자기 순에 쯔모하는 대신, 상대 셋이 각각 최근에 버린 3장(최대 9장) 중 1장을 주워 손에 넣는다. 후로로 치지 않아 멘젠은 유지된다.",
+    "(동풍전 3회 · 반장전 5회) 자기 순에 쯔모하는 대신, 상대 셋이 각각 최근에 버린 3장(최대 9장) 중 1장을 주워 손에 넣는다. 후로로 치지 않아 멘젠은 유지된다.",
   detail:
-    "(게임 내 3회) 그 순의 쯔모패는 패산 맨 밑으로 가고, 주운 패를 넣은 뒤 한 장을 버린다. 원주인의 바닥 기록은 남아 그쪽 후리텐도 유지된다. 주운 패로 나는 화료는 지불이 쯔모 취급이지만 **후리텐이면 화료할 수 없다**. 리치 중이거나 영상패를 잡은 순, 패산이 바닥난 국에는 쓸 수 없다.",
+    "(동풍전 3회 · 반장전 5회) 그 순의 쯔모패는 패산 맨 밑으로 가고, 주운 패를 넣은 뒤 한 장을 버린다. 원주인의 바닥 기록은 남아 그쪽 후리텐도 유지된다. 주운 패로 나는 화료는 지불이 쯔모 취급이지만 **후리텐이면 화료할 수 없다**. 리치 중이거나 영상패를 잡은 순, 패산이 바닥난 국에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
     // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
     publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, MAX_USES - counterOf(state, usedKey(holder))),
-      total: MAX_USES,
+      left: Math.max(0, maxUses(state) - counterOf(state, usedKey(holder))),
+      total: maxUses(state),
     }));
 
     if (!engine.reducers.has(EVENT)) {
@@ -220,7 +224,7 @@ export const pondSnatch: AugmentDef = defineAugment({
     });
 
     ctx.holderTurnOptions((state) => {
-      if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];
+      if (counterOf(state, usedKey(holder)) >= maxUses(state)) return [];
       if (state.round.lastDrawnTile == null) return [];
       return recentDiscards(state, holder).map((d) => ({
         type: ACTION,
@@ -228,12 +232,12 @@ export const pondSnatch: AugmentDef = defineAugment({
       }));
     });
   },
-  // 쯔모 대신 상대 버림패를 줍는다(게임 3회) — 쯔모 기회를 쓰는 만큼, 주운 패가
+  // 쯔모 대신 상대 버림패를 줍는다(동풍전 3회·반장전 5회) — 쯔모 기회를 쓰는 만큼, 주운 패가
   // 확실히 손을 진전시킬 때만(짝을 만들거나 슌쯔로 이어질 때) 발동한다. 텐파이면
   // 그냥 오름패를 노리는 게 나으므로 발동하지 않는다.
   bot: plan({
     intent: "advance",
-    // 게임 내 3회뿐이다 — 회수할 순목이 남아 있을 때만 태운다.
+    // 매치 예산이 정해져 있다 — 회수할 순목이 남아 있을 때만 태운다.
     pick: ({ options, view, holder, tenpai }) => {
       if (tenpai) return null;
       const kinds = handKindsOf(view, holder);

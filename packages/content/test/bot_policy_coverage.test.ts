@@ -35,10 +35,29 @@ const BOT_SKIP = new Set(BOT_UNUSABLE_AUGMENTS);
 const OPTION_HOOKS = ["holderTurnOptions", "registerReactionOptions"];
 
 /**
- * 정책은 두 모양 중 하나다 — 손수 쓴 `bot: { choose }` 또는 의도 선언
- * `bot: plan({ intent, pick })`. 후자는 타이밍·강도를 공용 planner가 맡는다.
+ * 정책은 세 모양 중 하나다 — 손수 쓴 `bot: { choose }`, 의도 선언
+ * `bot: plan({ intent, pick })`, 또는 공용 배선이 만들어 주는 `bot: makePolicy(spec)`
+ * (형제 여럿이 같은 정책을 나눠 쓰는 경우 — `shapeDeclare`).
  */
-const hasBotPolicy = (src: string): boolean => /\n\s*bot:\s*(\{|plan\()/.test(src);
+const hasBotPolicy = (src: string): boolean => /\n\s*bot:\s*(\{|\w+\()/.test(src);
+
+/**
+ * 그 증강의 소스 + **같은 폴더에서 import하는 공용 모듈**의 소스 (한 겹).
+ * 배선을 공용 모듈에 위임한 증강(`shapeDeclare`를 쓰는 모양 규칙 3종)은 파일 하나만
+ * 읽으면 "액티브도 아니고 정책도 없다"로 잘못 읽힌다.
+ */
+function srcWithShared(dir: string, file: string): string {
+  const own = readFileSync(join(dir, file), "utf8");
+  const parts = [own];
+  for (const m of own.matchAll(/from "\.\/([\w.]+)\.js"/g)) {
+    try {
+      parts.push(readFileSync(join(dir, `${m[1] as string}.ts`), "utf8"));
+    } catch {
+      // 관례를 벗어난 경로는 건너뛴다
+    }
+  }
+  return parts.join("\n");
+}
 
 function augmentFiles(): string[] {
   return readdirSync(AUGMENTS_DIR)
@@ -49,7 +68,7 @@ describe("봇 액티브 증강 커버리지", () => {
   it("선택지를 내는 증강은 bot 정책이 있거나 문서화된 예외여야 한다", () => {
     const missing: string[] = [];
     for (const file of augmentFiles()) {
-      const src = readFileSync(join(AUGMENTS_DIR, file), "utf8");
+      const src = srcWithShared(AUGMENTS_DIR, file);
       if (!OPTION_HOOKS.some((h) => src.includes(h))) continue; // 액티브가 아님
       const id = file.replace(/\.ts$/, "");
       if (!hasBotPolicy(src) && !BOT_SKIP.has(id)) missing.push(id);

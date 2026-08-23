@@ -58,13 +58,28 @@ import { openKokushi } from "../src/augments/open_kokushi.js";
 import { polarEnds } from "../src/augments/polar_ends.js";
 import { royalKokushi } from "../src/augments/royal_kokushi.js";
 import { silentPact } from "../src/augments/silent_pact.js";
+import { roundScopedKey } from "../src/augments/roundScope.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
+/**
+ * 모양 규칙 액티브 3종 — 2026-08-23부터 상시가 아니라 **선언한 국 동안만** 열린다.
+ * 여기 장면은 대부분 리액션 페이즈(남의 버림)라 자기 순에만 되는 선언을 넣을 수 없으므로,
+ * 국 스코프 on 플래그를 그대로 심어 "이미 켜 둔 국"을 만든다.
+ */
+const SHAPE_DECLARED = new Set(["mixed_triplet", "broken_border", "async_chiitoi"]);
+
 /** 한 좌석에 증강 여러 개를 심고 게임을 세운다 (qa-lab 하네스와 같은 규약) */
 function start(state: GameState, defs: AugmentDef[], holder: PlayerId = "p0"): Game {
+  const declared: Record<string, unknown> = {};
+  for (const def of defs) {
+    if (SHAPE_DECLARED.has(def.id)) {
+      declared[roundScopedKey(def.id, "on", state, holder)] = true;
+    }
+  }
   const seeded: GameState = {
     ...state,
+    augmentData: { ...state.augmentData, ...declared },
     players: state.players.map((p) =>
       p.id === holder ? { ...p, augments: [...p.augments, ...defs.map((d) => d.id)] } : p,
     ),
