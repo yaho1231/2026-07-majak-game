@@ -398,7 +398,10 @@ describe("중계 관전 — 도크 구획 on/off · 접기 · 영속화", () => 
     // 접은 구획은 제목줄이 남아 «여기 있다»를 계속 말한다.
     expect(dock).toContain("prefs.on[s.id]");
     expect(dock).toContain("prefs.open[s.id]");
-    expect(dock).toMatch(/DOCK_SECTIONS\.filter\(\(s\) => prefs\.on\[s\.id\]\)/);
+    // `standalone: false` 인 구획(오름패)은 스위치에만 서고 상자를 만들지 않는다
+    expect(dock).toMatch(
+      /DOCK_SECTIONS\.filter\(\(s\) => prefs\.on\[s\.id\] && s\.standalone !== false\)/,
+    );
   });
 
   it("도크 전체도 접히고, 접었을 때 되돌릴 손잡이가 남는다", () => {
@@ -589,7 +592,7 @@ describe("중계 관전 — 증강 보너스 판 · 따라갈 수 없는 정산 
   });
 
   it("오름패의 대기별 값에도 같이 흐른다", () => {
-    const waits = bodyOf("function DockWaits({").replace(/\s+/g, " ");
+    const waits = bodyOf("function SeatWaits({").replace(/\s+/g, " ");
     expect(waits).toContain("winValueText(w.ron) + winValueSuffix(w.ron)");
     expect(waits).toContain("winValueText(w.tsumo) + winValueSuffix(w.tsumo)");
     // 꼬리표가 다르면 론/쯔모를 한 줄로 합치지 않는다 (합치면 그 사실이 사라진다)
@@ -601,9 +604,12 @@ describe("중계 관전 — 되감는 동안의 말투", () => {
   it("구획이 «없다»가 아니라 «안 붙인다»고 적는다", () => {
     expect(APP).toContain("const REWIND_NOTE =");
     expect(APP).toMatch(/되감는 중입니다 — 이 값은 «지금»의 것이라 지나간 화면 옆에 세우지 않습니다/);
-    for (const fn of ["function DockWaits({", "function DockDanger({"]) {
-      expect(bodyOf(fn)).toContain("REWIND_NOTE");
-    }
+    expect(bodyOf("function DockDanger({")).toContain("REWIND_NOTE");
+    /*
+     * 오름패는 이제 좌석 카드 안이라(`SeatWaits`) 자기 문구가 없다 — 되감을 때는
+     * `insight` 자체가 안 붙어 대기 목록이 비고, 카드가 그 이유를 한 번만 적는다.
+     * 같은 사실을 두 자리에서 적으면 그 둘이 언젠가 다른 말을 한다.
+     */
     expect(bodyOf("function DockSeats({")).toContain("rewinding");
   });
 
@@ -709,22 +715,49 @@ describe("중계 관전 — 두 층이 같은 폭을 본다", () => {
 });
 
 describe("중계 관전 — 오름패별 값 (A1 확장)", () => {
-  const waits = bodyOf("function DockWaits({");
+  const waits = bodyOf("function SeatWaits({");
+  const seatsBody = bodyOf("function DockSeats({");
 
-  it("오름패마다 남은 장수와 론/쯔모 값을 적는다", () => {
+  it("오름패마다 패 그림·남은 장수·론/쯔모 값을 적는다", () => {
     expect(waits).toContain("w.remaining");
+    // 패는 **그림으로** 선다 — 관전에서 `1m` 같은 글자를 읽게 두지 않는다
+    expect(waits).toContain("<TileImg tile={{ kind }} size=\"mini\" />");
     const waits1 = waits.replace(/\s+/g, " ");
-    expect(waits1).toContain('론 {w.ron === null ? "역없음" : winValueText(w.ron) + winValueSuffix(w.ron)}');
-    expect(waits1).toContain('쯔모 {w.tsumo === null ? "역없음" : winValueText(w.tsumo) + winValueSuffix(w.tsumo)}');
+    expect(waits1).toContain(
+      '<span className="dock-wait-kind">론</span> {w.ron === null ? "역없음" : winValueText(w.ron) + winValueSuffix(w.ron)}',
+    );
+    expect(waits1).toContain(
+      '<span className="dock-wait-kind">쯔모</span> {w.tsumo === null ? "역없음" : winValueText(w.tsumo) + winValueSuffix(w.tsumo)}',
+    );
   });
 
   it("역이 없는 대기는 그렇게 적는다 — 남은 장수만 적으면 «왜 안 나지»가 된다", () => {
     expect(waits).toMatch(/역없음 — 이 패로는 못 납니다/);
-    expect(waits).toContain("ins?.yakuless === true");
+    // 좌석 단위로 막히는 사실(형식텐파이)은 카드의 딱지줄이 말한다
+    expect(seatsBody).toContain("ins?.yakuless === true");
   });
 
-  it("텐파이한 좌석이 없으면 빈 칸이 아니라 그렇게 적는다", () => {
-    expect(waits).toContain("텐파이한 좌석이 없습니다");
+  /*
+   * 오름패가 **좌석 카드 안**으로 들어왔다 (2026-08-24 사용자 요구). 같은 사람의
+   * 「3판 5200점」과 「그게 무슨 패로 나는가」가 화면의 다른 자리에 있으면 중계가
+   * 한 문장으로 말하는 것을 눈이 두 번 찾아야 한다.
+   */
+  it("좌석 카드가 그 좌석의 오름패를 함께 그린다", () => {
+    expect(seatsBody).toContain("<SeatWaits waits={ins?.waits ?? []} />");
+    // 대기가 없으면 빈 제목만 남기지 않는다
+    expect(waits).toContain("if (waits.length === 0) return null;");
+  });
+
+  /*
+   * 「오름패」 스위치는 남는다 — 그 값이 도크뿐 아니라 **판 위의 «쏘이는 패»**까지
+   * 끄는 유일한 손잡이라, 없애면 「추정은 싫지만 사실은 보고 싶다」는 자리가 사라진다.
+   * 대신 자기 구획 상자를 갖지 않는다(`standalone: false`).
+   */
+  it("스위치는 남되 자기 구획 상자는 없다", () => {
+    expect(PREFS).toMatch(/id: "waits"[\s\S]{0,300}standalone: false/);
+    expect(APP).toContain("prefs.on[s.id] && s.standalone !== false");
+    expect(seatsBody).toContain("showWaits ? <SeatWaits");
+    expect(APP).toContain("showWaits={prefs.on.waits}");
   });
 });
 

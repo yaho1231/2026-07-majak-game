@@ -19374,7 +19374,9 @@ function SpectateDock(props: {
           화살표로 굴릴 수 있다. 스크롤이 유일한 조작인 영역이라 `role` 은 주지 않고
           접근 가능한 이름만 붙인다. */}
       <div className="spectate-dock-body" tabIndex={0} aria-label="분석 구획 목록">
-        {DOCK_SECTIONS.filter((s) => prefs.on[s.id]).map((s) => (
+        {/* `standalone: false` 인 구획(오름패)은 스위치에만 서고 내용은 다른 구획
+            안에서 그려진다 — 여기서 상자를 만들면 빈 제목줄만 남는다. */}
+        {DOCK_SECTIONS.filter((s) => prefs.on[s.id] && s.standalone !== false).map((s) => (
           <section key={s.id} className="dock-sec">
             <button
               type="button"
@@ -19416,12 +19418,7 @@ function SpectateDock(props: {
                     view={props.view}
                     catalog={props.catalog}
                     rewinding={rewinding}
-                    {...(props.insight !== undefined ? { insight: props.insight } : {})}
-                  />
-                ) : s.id === "waits" ? (
-                  <DockWaits
-                    view={props.view}
-                    rewinding={rewinding}
+                    showWaits={prefs.on.waits}
                     {...(props.insight !== undefined ? { insight: props.insight } : {})}
                   />
                 ) : s.id === "danger" ? (
@@ -19775,7 +19772,15 @@ function yakuText(v: SpectateWinValue): string {
  * 「좌석 분석」 구획 — 좌석마다 한 장의 카드.
  *
  * 담는 것: 점수 · 얼마나 왔나(샹텐/텐파이/리치/후로/후리텐) · **지금 화료하면 얼마
- * (확정)** · 성립 역 · 도라 수 · **배패 점수** · 증강 보유와 잔량.
+ * (확정)** · 성립 역 · **오름패(패 그림 + 남은 장수 + 그 패의 론/쯔모 값)** ·
+ * 도라 수 · **배패 점수** · 증강 보유와 잔량.
+ *
+ * ## 왜 오름패가 여기로 들어왔나 (2026-08-24 사용자 요구)
+ * 예전에는 「오름패」가 **따로 선 구획**이라, 한 좌석을 읽으려면 좌석 카드와 오름패
+ * 구획 사이를 오르내려야 했다 — 같은 사람의 「3판 5200점」과 「그게 무슨 패로 나는가」가
+ * 화면의 다른 자리에 있었다. 중계에서 이 둘은 언제나 한 문장으로 말해지므로 한 카드에
+ * 둔다. 스위치(`prefs.on.waits`)는 그대로 남는다 — 그 값이 **판 위의 «쏘이는 패»
+ * 표시**까지 끄는 유일한 손잡이라서다.
  *
  * ⚠ 확정과 추정을 **다른 말로** 적는다. 텐파이 좌석의 `best`는 코어 채점기가 낸
  * 확정값이고, 노텐 좌석의 `estimate`만 추정이다. 예전 화면은 봇의 값어치 모형을
@@ -19789,12 +19794,15 @@ function DockSeats({
   catalog,
   insight,
   rewinding,
+  showWaits,
 }: {
   view: PlayerView;
   catalog: Record<string, AugmentCatalogEntry>;
   insight?: SpectateInsightMessage;
   /** 되감는 중 — 보조값이 «없는» 것이 아니라 «안 붙인» 것이다 */
   rewinding: boolean;
+  /** 「오름패」 스위치 — 꺼져 있으면 카드 안의 오름패 줄도 함께 사라진다 */
+  showWaits: boolean;
 }): JSX.Element {
   const bySeat = useMemo(() => {
     const m = new Map<string, SpectateInsightMessage["seats"][number]>();
@@ -19898,6 +19906,8 @@ function DockSeats({
             {best !== undefined && yakuText(best) !== "" ? (
               <div className="bcast-yaku">{yakuText(best)}</div>
             ) : null}
+            {/* 오름패 — 「그 값이 무슨 패로 나는가」. 바로 위 타점 줄의 근거다. */}
+            {showWaits ? <SeatWaits waits={ins?.waits ?? []} /> : null}
             {/* 배패 점수 — 그 국에 받은 첫 13장의 값. 국 내내 변하지 않으므로
                 «운이 좋았나»를 한 숫자로 말한다. 서버가 안 채우면 줄째로 없다. */}
             {ins?.handGrade !== undefined ? (
@@ -19929,107 +19939,82 @@ function DockSeats({
   );
 }
 
+/** 한 좌석의 오름패 한 줄 — `SpectateInsightMessage` 가 실어 주는 그 형태 그대로. */
+type SeatWait = NonNullable<SpectateInsightMessage["seats"][number]["waits"]>[number];
+
 /**
- * 「오름패」 구획 — 좌석별 오름패와 **남은 장수**, 그 패로 났을 때의 론/쯔모 값.
+ * 좌석 카드 안의 **오름패 줄** — 패 그림 · 남은 장수 · 그 패로 났을 때의 론/쯔모 값.
  *
  * 판 위의 오름패 뱃지는 «무엇을 기다리나»까지만 말한다. 중계에서 정작 궁금한 것은
  * 「그게 나면 얼마인가」고, 대기마다 값이 다르다(3면대기에서 한 쪽만 만관인 손이
  * 흔하다). 역이 없는 대기는 **그렇게 적는다** — 남은 장수만 크게 적어 두면
  * 「4장 남았는데 왜 안 나지」가 된다.
+ *
+ * 좌석 이름·후리텐·형식텐파이 딱지는 **여기서 다시 적지 않는다** — 이 줄이 서는
+ * 카드의 머리와 딱지줄이 이미 그 좌석의 것이라, 되풀이하면 같은 사실이 한 카드에
+ * 두 번 선다(예전 「오름패」 구획은 따로 서 있어서 그 되풀이가 필요했다).
+ *
+ * 대기가 없으면 `null` — 노텐 좌석 카드에 빈 「오름패」 제목만 남기지 않는다.
  */
-function DockWaits({
-  view,
-  insight,
-  rewinding,
-}: {
-  view: PlayerView;
-  insight?: SpectateInsightMessage;
-  /** 되감는 중 — 「텐파이한 좌석이 없다」는 **주장**을 해서는 안 된다 */
-  rewinding: boolean;
-}): JSX.Element {
-  const order = [...view.players].sort((a, b) => a.seat - b.seat);
-  const bySeat = useMemo(() => {
-    const m = new Map<string, SpectateInsightMessage["seats"][number]>();
-    for (const s of insight?.seats ?? []) m.set(s.id, s);
-    return m;
-  }, [insight]);
-  const rows = order
-    .map((p) => ({ p, ins: bySeat.get(p.id) }))
-    .filter((r) => (r.ins?.waits?.length ?? 0) > 0);
-  if (rows.length === 0) {
-    return (
-      <p className={`dock-note${rewinding ? " dock-note-warn" : ""}`}>
-        {rewinding ? REWIND_NOTE : "텐파이한 좌석이 없습니다."}
-      </p>
-    );
-  }
+function SeatWaits({ waits }: { waits: readonly SeatWait[] }): JSX.Element | null {
+  if (waits.length === 0) return null;
   return (
-    <div className="dock-waits">
-      {rows.map(({ p, ins }) => (
-        <div key={p.id} className="dock-wait-seat">
-          <div className="dock-wait-name">
-            {playerName(view, p)}
-            {ins?.yakuless === true ? <span className="bcast-chip bcast-furiten">형식텐파이</span> : null}
-            {ins?.belowMinHan === true ? (
-              <span className="bcast-chip bcast-below" title="역은 있는데 격(최소 판수)에 못 미칩니다">
-                격 미달
-              </span>
-            ) : null}
-            {view.round.byPlayer[p.id]?.furiten === true || ins?.furiten === true ? (
-              <span className="bcast-chip bcast-furiten" title="론이 막혀 있습니다 — 쯔모만 가능">
-                후리텐
-              </span>
-            ) : null}
-          </div>
-          {(ins?.waits ?? []).map((w) => {
-            const kind = parseKindKey(w.kind);
-            // 론과 쯔모가 같은 값이면 한 번만 적는다 — 같은 숫자를 두 줄로 적으면
-            // «무엇이 다른가»를 찾느라 읽는 시간이 늘어난다.
-            const same =
-              w.ron !== null &&
-              w.tsumo !== null &&
-              w.ron.han === w.tsumo.han &&
-              w.ron.fu === w.tsumo.fu &&
-              w.ron.points === w.tsumo.points &&
-              // 꼬리표(하한·증강 보정 미반영)까지 같아야 한 줄로 합친다. 숫자만 보고
-              // 합치면 «한쪽만 단정할 수 없는» 경우에 그 사실이 조용히 사라진다.
-              winValueSuffix(w.ron) === winValueSuffix(w.tsumo);
-            return (
-              <div key={w.kind} className={`dock-wait-row${w.remaining === 0 ? " dock-wait-gone" : ""}`}>
-                <span className="dock-wait-tile">
-                  {kind === null ? w.kind : <TileImg tile={{ kind }} size="mini" />}
-                  <span className="dock-wait-left num">{w.remaining}장</span>
+    <div className="seat-waits">
+      <span className="seat-waits-label">오름패</span>
+      <div className="seat-waits-list">
+        {waits.map((w) => {
+          const kind = parseKindKey(w.kind);
+          // 론과 쯔모가 같은 값이면 한 번만 적는다 — 같은 숫자를 두 줄로 적으면
+          // «무엇이 다른가»를 찾느라 읽는 시간이 늘어난다.
+          const same =
+            w.ron !== null &&
+            w.tsumo !== null &&
+            w.ron.han === w.tsumo.han &&
+            w.ron.fu === w.tsumo.fu &&
+            w.ron.points === w.tsumo.points &&
+            // 꼬리표(하한·증강 보정 미반영)까지 같아야 한 줄로 합친다. 숫자만 보고
+            // 합치면 «한쪽만 단정할 수 없는» 경우에 그 사실이 조용히 사라진다.
+            winValueSuffix(w.ron) === winValueSuffix(w.tsumo);
+          return (
+            <div key={w.kind} className={`dock-wait-row${w.remaining === 0 ? " dock-wait-gone" : ""}`}>
+              <span className="dock-wait-tile">
+                {kind === null ? w.kind : <TileImg tile={{ kind }} size="mini" />}
+                {/* 남은 0장 — 죽은 대기라는 사실을 **글자로도** 말한다(흐림은 색 채널) */}
+                <span className={`dock-wait-left num${w.remaining === 0 ? " gone" : ""}`}>
+                  {w.remaining}
                 </span>
-                <span className="dock-wait-vals">
-                  {w.ron === null && w.tsumo === null ? (
-                    <span className="dock-wait-noyaku">역없음 — 이 패로는 못 납니다</span>
-                  ) : same && w.ron !== null ? (
-                    <span className="dock-wait-val" title={winValueTip(w.ron, false)}>
-                      {winValueText(w.ron)}
-                      {winValueSuffix(w.ron)}
+              </span>
+              <span className="dock-wait-vals">
+                {w.ron === null && w.tsumo === null ? (
+                  <span className="dock-wait-noyaku">역없음 — 이 패로는 못 납니다</span>
+                ) : same && w.ron !== null ? (
+                  <span className="dock-wait-val" title={winValueTip(w.ron, false)}>
+                    {winValueText(w.ron)}
+                    {winValueSuffix(w.ron)}
+                  </span>
+                ) : (
+                  <>
+                    <span
+                      className="dock-wait-val"
+                      {...(w.ron === null ? {} : { title: winValueTip(w.ron, false) })}
+                    >
+                      <span className="dock-wait-kind">론</span>
+                      {w.ron === null ? "역없음" : winValueText(w.ron) + winValueSuffix(w.ron)}
                     </span>
-                  ) : (
-                    <>
-                      <span
-                        className="dock-wait-val"
-                        {...(w.ron === null ? {} : { title: winValueTip(w.ron, false) })}
-                      >
-                        론 {w.ron === null ? "역없음" : winValueText(w.ron) + winValueSuffix(w.ron)}
-                      </span>
-                      <span
-                        className="dock-wait-val"
-                        {...(w.tsumo === null ? {} : { title: winValueTip(w.tsumo, false) })}
-                      >
-                        쯔모 {w.tsumo === null ? "역없음" : winValueText(w.tsumo) + winValueSuffix(w.tsumo)}
-                      </span>
-                    </>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+                    <span
+                      className="dock-wait-val"
+                      {...(w.tsumo === null ? {} : { title: winValueTip(w.tsumo, false) })}
+                    >
+                      <span className="dock-wait-kind">쯔모</span>
+                      {w.tsumo === null ? "역없음" : winValueText(w.tsumo) + winValueSuffix(w.tsumo)}
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -20152,6 +20137,21 @@ function DockDanger({
       <p className="dock-note">
         <strong className="dock-est-title">위험도(추정)</strong> — {p === undefined ? seat : playerName(view, p)}의
         손패를 봇의 눈으로 잰 값입니다
+      </p>
+      {/*
+        * **왜 위 「쏘이는 패」와 다른가** — 가장 자주 나오는 질문이라 화면에 적어 둔다
+        * (2026-08-24 사용자 질문: 「실제 쏘이는패와 완전 다른데 저게 왜 위험한건지」).
+        *
+        * 두 값은 보는 것이 다르다. 위쪽은 관전 뷰가 **상대의 손패를 실제로 보고** 판의
+        * 채점기로 태워 본 사실이고, 이 아래는 봇이 **손패를 보지 않은 채** 버림패·스지·
+        * 남은 장수·도라 근처만으로 잰 추정이다(`bot/danger.ts`). 대국자가 아는 것만으로
+        * 재야 봇의 판단과 같은 값이 되므로 그렇게 두는 것이 맞고, 그래서 둘은 자주
+        * 어긋난다 — 어긋난다는 사실 자체가 「저 사람이 지금 읽을 수 없는 패」라는 정보다.
+        */}
+      <p className="dock-note dock-note-quiet dock-est-why">
+        상대 손패를 보지 않고 <b>버림패·스지·남은 장수·도라 근처</b>만으로 잰 값이라, 위
+        「쏘이는 패」와 자주 어긋납니다 — 대국자가 그 자리에서 알 수 있는 것만으로 재기
+        때문입니다.
       </p>
       <div className="dock-danger-row">
         {sorted.map((id) => {

@@ -11595,11 +11595,10 @@ body[data-majak-dock="overlay"] .auglog {
   border-left: none;
 }
 
-.dock-seats,
-.dock-waits {
+.dock-seats {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 /*
@@ -11675,10 +11674,17 @@ body[data-majak-dock="folded"] {
   }
 }
 
+/*
+ * 좌석 카드 — 이 도크에서 가장 오래 보는 면이다. 위에서 아래로 «누구 → 상태 →
+ * 얼마 → 무슨 패로 → 배패 → 증강» 한 방향으로만 읽히게 두고, 층을 더 겹치지
+ * 않는다(카드 안에 카드를 만들면 그 순서가 끊긴다).
+ */
 .bcast-card {
-  padding: 8px 10px 9px;
+  padding: 9px 11px 10px;
   border-radius: var(--r-md, 12px);
-  background: rgba(9, 17, 14, 0.86);
+  /* 위가 살짝 밝은 한 겹 — 머리(이름·점수)가 앉을 자리를 배경 쪽에서 만들어 준다 */
+  background: linear-gradient(rgba(247, 243, 232, 0.045), rgba(247, 243, 232, 0) 46px),
+    rgba(9, 17, 14, 0.88);
   border: 1px solid rgba(247, 243, 232, 0.14);
 }
 
@@ -11693,21 +11699,26 @@ body[data-majak-dock="folded"] {
   align-items: baseline;
   justify-content: space-between;
   gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(247, 243, 232, 0.08);
 }
 
 .bcast-card-name {
   font-size: 13px;
   font-weight: 800;
   color: #f7f3e8;
+  letter-spacing: -0.015em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .bcast-card-score {
+  flex: none;
   font-size: 14px;
   font-weight: 800;
   color: #e8dcc0;
+  letter-spacing: -0.02em;
 }
 
 .bcast-card-line {
@@ -11715,43 +11726,53 @@ body[data-majak-dock="folded"] {
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 5px;
+  margin-top: 6px;
 }
 
 .bcast-chip {
   padding: 1px 7px 2px;
   border-radius: 999px;
-  background: rgba(247, 243, 232, 0.1);
+  background: rgba(247, 243, 232, 0.08);
+  border: 1px solid rgba(247, 243, 232, 0.1);
   color: #cfc7b6;
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .bcast-tenpai {
-  background: rgba(120, 196, 173, 0.2);
+  background: rgba(120, 196, 173, 0.18);
+  border-color: rgba(120, 196, 173, 0.4);
   color: #9fd9c5;
 }
 
 .bcast-riichi {
-  background: rgba(226, 178, 92, 0.22);
+  background: rgba(226, 178, 92, 0.2);
+  border-color: rgba(226, 178, 92, 0.42);
   color: #f0c884;
 }
 
 .bcast-furiten {
-  background: rgba(218, 98, 98, 0.22);
+  background: rgba(218, 98, 98, 0.2);
+  border-color: rgba(218, 98, 98, 0.42);
   color: #f0a79b;
 }
 
+/* 값 앞의 작은 라벨(「지금 화료」·「추정」·「배패」) — 값보다 먼저 눈에 들어오면
+   안 되지만, 무엇의 숫자인지는 늘 말해야 한다. 자간을 넓혀 «라벨»로 읽히게 둔다. */
 .bcast-label-sm {
-  color: rgba(247, 243, 232, 0.5);
-  font-size: 11px;
-  font-weight: 700;
+  flex: none;
+  color: rgba(247, 243, 232, 0.45);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
 }
 
 .bcast-points {
   font-size: 13px;
   font-weight: 800;
   color: #f0c884;
+  letter-spacing: -0.02em;
 }
 
 .bcast-hanfu {
@@ -11763,7 +11784,9 @@ body[data-majak-dock="folded"] {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
-  margin-top: 5px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(247, 243, 232, 0.08);
 }
 
 .bcast-aug {
@@ -11804,18 +11827,21 @@ body[data-majak-dock="folded"] {
   margin-top: 4px;
   color: rgba(159, 217, 197, 0.85);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
 }
 
 .bcast-dora {
-  background: rgba(226, 178, 92, 0.2);
+  background: rgba(226, 178, 92, 0.18);
+  border-color: rgba(226, 178, 92, 0.38);
   color: #f0c884;
 }
 
 /* 「격 미달」 — 「역없음」과 **다른 사실**이라 색도 가른다(저쪽은 붉은 계열).
    이쪽은 손이 비싸지면 열리는 상태다: 죽은 손이 아니라 «아직 모자란» 손이다. */
 .bcast-below {
-  background: rgba(160, 140, 220, 0.22);
+  background: rgba(160, 140, 220, 0.2);
+  border-color: rgba(160, 140, 220, 0.4);
   color: #cfc4ee;
 }
 
@@ -11869,47 +11895,74 @@ body[data-majak-dock="folded"] {
   font-weight: 800;
 }
 
-/* ── 오름패 구획 ── */
+/* ── 좌석 카드 안의 오름패 줄 (2026-08-24) ──
+ *
+ * 예전에는 따로 선 구획이었다. 카드 안으로 들어오면서 **좌석 이름줄이 사라진다** —
+ * 카드 머리가 이미 그 좌석의 것이라, 여기서 다시 적으면 같은 사실이 두 번 선다.
+ * 대신 위 타점 줄과 이어지는 것이 눈에 보이게, 왼쪽에 얇은 세로선 하나를 세운다
+ * (상자를 하나 더 겹치면 카드 안에 카드가 생겨 층이 두꺼워진다).
+ */
 
-.dock-wait-seat {
-  padding: 6px 8px 7px;
-  border-radius: var(--r-md, 12px);
-  background: rgba(9, 17, 14, 0.86);
-  border: 1px solid rgba(247, 243, 232, 0.12);
+.seat-waits {
+  margin-top: 7px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(120, 196, 173, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.dock-wait-name {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #f7f3e8;
-  font-size: 12px;
+/* 구획 제목 — 카드 안의 작은 머리글. 넓은 자간으로 «분류»임을 말한다
+   (대문자 변환은 하지 않는다 — 한글에 뜻이 없다). */
+.seat-waits-label {
+  color: rgba(159, 217, 197, 0.75);
+  font-size: 10px;
   font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.seat-waits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .dock-wait-row {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin-top: 5px;
+  gap: 8px;
 }
 
-/* 남은 0장 — 「4장 남았는데 왜 안 나지」의 반대 경우. 죽은 대기는 흐리게. */
+/* 남은 0장 — 「4장 남았는데 왜 안 나지」의 반대 경우. 죽은 대기는 흐리게.
+   흐림은 색 채널이라 숫자 쪽에 글자 채널(`.dock-wait-left.gone`)을 함께 둔다. */
 .dock-wait-gone {
-  opacity: 0.45;
+  opacity: 0.42;
 }
 
 .dock-wait-tile {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 
+/* 남은 장수 — 「장」을 떼고 숫자만 남긴 뒤 알약에 앉힌다. 오름패마다 한 번씩
+   반복되는 글자라, 넷이 세로로 서면 그 글자가 숫자보다 먼저 눈에 들어왔다. */
 .dock-wait-left {
-  color: rgba(247, 243, 232, 0.65);
-  font-size: 11px;
-  font-weight: 700;
+  min-width: 16px;
+  padding: 0 4px 1px;
+  border-radius: 999px;
+  background: rgba(247, 243, 232, 0.1);
+  color: rgba(247, 243, 232, 0.72);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.dock-wait-left.gone {
+  background: rgba(218, 98, 98, 0.18);
+  color: #f0a79b;
+  text-decoration: line-through;
 }
 
 .dock-wait-vals {
@@ -11922,7 +11975,19 @@ body[data-majak-dock="folded"] {
 .dock-wait-val {
   color: #e8dcc0;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+/* 「론」·「쯔모」 — 값을 읽는 눈이 걸리지 않게 한 단계 죽인다. 두 줄이 설 때만
+   나오는 글자라(값이 같으면 한 줄로 합쳐진다) 여기서 뜻은 «어느 쪽 값인가»다. */
+.dock-wait-kind {
+  display: inline-block;
+  min-width: 22px;
+  margin-right: 4px;
+  color: rgba(247, 243, 232, 0.45);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .dock-wait-noyaku {
@@ -11953,6 +12018,19 @@ body[data-majak-dock="folded"] {
 
 .dock-est-title {
   color: rgba(247, 243, 232, 0.7);
+}
+
+/* «왜 위 사실과 다른가» — 한 단계 더 죽인 각주. 굵은 글자만 훑어도 무엇으로 재는지가
+   남게 두고(버림패·스지·남은 장수·도라), 나머지는 읽고 싶은 사람만 읽는다. */
+.dock-est-why {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.dock-est-why b {
+  color: rgba(247, 243, 232, 0.62);
+  font-weight: 700;
 }
 
 .dock-note-quiet {
@@ -16031,6 +16109,18 @@ body:has(.prod-skip) .toast-stack {
   .spectate-dock {
     border-color: #f7f3e8;
   }
+  /* 카드 안의 오름패 줄 — 세로선과 머리글이 둘 다 옅은 청록이라 흐린 화면에서
+     카드 본문과 구별되지 않았다. */
+  .seat-waits {
+    border-left-color: #f7f3e8;
+  }
+  .seat-waits-label {
+    color: #9fe8cf;
+  }
+  .dock-wait-left {
+    background: #2a2a2a;
+    color: #f7f3e8;
+  }
   /* 배패 점수 막대 — 채움과 바탕이 둘 다 흐린 회색이라 «몇 점인가»가 안 읽혔다.
      테두리로 눈금 자체를 그려 주고 채움을 밝힌다(숫자는 옆에 늘 붙어 있다). */
   .bcast-grade-bar {
@@ -16086,9 +16176,12 @@ body:has(.prod-skip) .toast-stack {
   /* 도크 — 강제색에서는 배경이 전부 평탄해져 구획 경계가 사라진다. 선으로 남긴다. */
   .spectate-dock,
   .dock-sec,
-  .bcast-card,
-  .dock-wait-seat {
+  .bcast-card {
     border: 1px solid CanvasText;
+  }
+  /* 카드 안의 오름패 줄 — 경계가 옅은 세로선 하나뿐이라 강제색에서 사라진다. */
+  .seat-waits {
+    border-left: 2px solid CanvasText;
   }
   /* 배패 점수 막대는 배경색으로만 말한다 — 강제색에서 전부 같은 색이 되므로
      테두리와 `Highlight` 채움으로 눈금을 남긴다. */
