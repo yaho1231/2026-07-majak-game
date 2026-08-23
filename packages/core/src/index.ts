@@ -124,7 +124,15 @@ export {
   scoringOptionsOf,
   furitenOptionsOf,
   uraIndicatorIds,
+  requiresYakuFor,
+  outsideHandTileFinder,
 } from "./mahjong/flow/helpers.js";
+export {
+  buildSpectateSeatScores,
+  gradeStartingHand,
+  gradeStartingHands,
+} from "./information/spectateScore.js";
+export type { SpectateSeatScore } from "./information/spectateScore.js";
 export type { BuildWinContextOptions } from "./mahjong/flow/helpers.js";
 export { findPao } from "./mahjong/flow/pao.js";
 export type { PaoResult } from "./mahjong/flow/pao.js";
@@ -471,6 +479,8 @@ export type {
   SpectateStartedMessage,
   SpectateEndedMessage,
   SpectateInsightMessage,
+  SpectateWinValue,
+  SpectateWait,
   GamePausedMessage,
   RoomNoticeMessage,
   SandboxMessage,

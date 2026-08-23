@@ -56,6 +56,21 @@ export class RuleRegistry {
   private readonly modifiers = new Map<RuleKey, StoredModifier[]>();
   private nextSeq = 0;
   /**
+   * **규칙 세대** — 이 레지스트리의 내용이 바뀔 때마다 하나씩 오른다.
+   *
+   * 규칙을 읽어 만든 값을 캐시하는 쪽(관전 채점 `information/spectateScore.ts`)이
+   * 「내가 본 뒤로 규칙이 바뀌었나」를 물을 자리가 필요하다. `GameState`로는 알 수
+   * 없다 — 증강 설치(`installAugment`)는 **상태를 갈지 않고 이 레지스트리만 바꾼다**.
+   * 그래서 국 사이 드래프트 직후, 상태 객체가 그대로인 채 규칙만 달라지는 창이 실제로
+   * 생기고, 상태를 키로 쓴 캐시는 **드래프트 이전 규칙으로 계산된 값**을 계속 내놓았다.
+   */
+  private ver = 0;
+
+  /** 규칙 세대 (내용이 바뀔 때마다 증가). 캐시 무효화 전용. */
+  get version(): number {
+    return this.ver;
+  }
+  /**
    * source(증강 인스턴스) 게이트 — 무장해제용. false를 돌려주는 source의 Modifier는
    * 합성에서 제외된다(문맥별). null(기본)이면 전부 적용해 종전 동작과 완전히 동일하다.
    * GameEngine이 state.augmentData의 비활성 목록을 읽어 설정한다(리플레이 안전).
@@ -65,6 +80,7 @@ export class RuleRegistry {
   /** 무장해제 게이트를 설정한다 (GameEngine 전용). null이면 게이팅 없음. */
   setSourceGate(gate: ((source: string, ctx: RuleContext) => boolean) | null): void {
     this.sourceGate = gate;
+    this.ver++;
   }
 
   /** 기본값 정의. 이미 정의된 규칙을 다시 정의하는 것은 버그이므로 즉시 실패한다. */
@@ -73,6 +89,7 @@ export class RuleRegistry {
       throw new Error(`Rule already defined: ${key}`);
     }
     this.base.set(key, baseValue);
+    this.ver++;
   }
 
   has(key: RuleKey): boolean {
@@ -97,6 +114,7 @@ export class RuleRegistry {
       apply: mod.apply as (current: unknown, ctx: RuleContext) => unknown,
     });
     this.modifiers.set(key, list);
+    this.ver++;
   }
 
   /** 특정 주체(증강)가 등록한 모든 Modifier 제거. 증강 소멸·파괴 시 호출된다. */
@@ -105,6 +123,7 @@ export class RuleRegistry {
       const kept = list.filter((m) => m.source !== source);
       if (kept.length !== list.length) {
         this.modifiers.set(key, kept);
+        this.ver++;
       }
     }
   }

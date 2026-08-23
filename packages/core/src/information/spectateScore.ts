@@ -1,0 +1,636 @@
+/**
+ * 관전(중계) 좌석값 — **판이 실제로 쓰는 채점기로** 잰 확정 타점.
+ *
+ * ## 왜 이 파일이 생겼나
+ * 예전 중계 패널은 봇의 의사결정용 값어치 모형(`server/bot/value.ts`)을 그대로 화면에
+ * 찍었다. 그 모형은 만관 경계에서 봇의 판단이 요동치지 않도록 **일부러** 판수를
+ * 연속값으로 두고(리치 2.2판·부수 36부) 점수표 두 칸을 보간한다. 봇에게는 옳은 설계지만
+ * 화면에는 「3.2판 4660점」처럼 **마작에 존재할 수 없는 숫자**가 나온다. 해설이 읽는
+ * 숫자다.
+ *
+ * 저장소 안에 이미 정답이 있었다 — 실제 화료 정산이 쓰는 `buildWinContext` →
+ * `evaluateWin` → `calculateScore` 경로다. 그 경로를 타면 쿠이사가리·역없음·
+ * 「도라는 역이 있어야 센다」·좌석별 증강(`scoring.*`/`win.*`/분해 옵션)이 **전부
+ * 자동으로** 맞는다. 별도 근사식을 화면용으로 하나 더 두면 그 순간부터 두 숫자가
+ * 조용히 갈라지고, 어느 쪽이 거짓말인지 아무도 모른다.
+ *
+ * ## core에 두는 이유
+ * `buildWinContext`·`evaluateWin`은 core의 것이고, core는 server를 import할 수 없다.
+ * 그래서 **텐파이 확정값·샹텐·도라·배패 점수**까지가 여기 몫이고, 노텐 좌석의
+ * «추정» 타점은 봇 모형을 쥐고 있는 서버(`server/src/spectateInsight.ts`)가 얹는다.
+ *
+ * ## 성능 (실측 2026-08-23, Apple Silicon / node 22 · 캐시 우회 20회 평균)
+ * 4좌석 × 대기 최대 6종 × 2(론·쯔모) = 최대 48회 `evaluateWin`.
+ *
+ *   - 표준 손 4좌석 전원 텐파이 — **1.0~1.7ms**
+ *   - 국사 13면 3.1 / `royal_kokushi` 3.7 / `open_kokushi` 4.1 / `async_chiitoi` 4.2
+ *   - 만능패(`scoring.wildKinds`) 6.1 / 14장 다면장 6.4 / **부숴진 벽(`wrapRuns`) 7.9**
+ *   - 넷 다 겹친 최악 조합 — **7.1ms** (`test/SpectateScore.test.ts`가 20ms로 문턱을 건다)
+ *
+ * 즉 **「언제나 5ms 안」은 사실이 아니다** (2026-08-23 QA 2차 지적). 비싼 쪽은
+ * `evaluateWin`이 아니라 **분해를 넓히는 좌석의 샹텐·대기 계산**이다 — 만능패·순환
+ * 슌쯔는 한 번의 분해 자체를 비싸게 만든다. 판을 죽일 수준은 아니라 그대로 둔다:
+ * 관전자가 없으면 아예 돌지 않고, 있어도 브로드캐스트 한 번에 한 번이다.
+ *
+ * ⚠ 캐시는 상태 **와 규칙 세대**를 함께 본다. 「상태 객체가 곧 완벽한 캐시 키」
+ * (`helpers.ts §7-5`)는 관전 채점에는 **틀리다** — `SEAT_SCORE_CACHE` 주석 참고.
+ * 관전자가 하나도 없으면 호출부(`HanchanController.broadcastViews`)가 아예 부르지 않는다.
+ */
+
+import { discardsZone, handZone, meldsZone } from "../engine/zones/Zone.js";
+import type { PlayerId } from "../engine/zones/Zone.js";
+import type { GameState } from "../engine/state/GameState.js";
+import type { RuleRegistry } from "../engine/rules/RuleRegistry.js";
+import { kindKey, standardKinds } from "../mahjong/tiles/Tile.js";
+import type { TileId, TileKind } from "../mahjong/tiles/Tile.js";
+import { doraKindFor } from "../mahjong/scoring/dora.js";
+import { winningKinds } from "../mahjong/scoring/waits.js";
+import { shantenOf } from "../mahjong/scoring/shanten.js";
+import { evaluateWin } from "../mahjong/scoring/evaluate.js";
+import { calculateScore } from "../mahjong/scoring/score.js";
+import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
+import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
+import {
+  handIdsOf,
+  handKindsOf,
+  meldCountOf,
+  openMeldCountOf,
+  isFuriten,
+  outsideHandTileFinder,
+  requiresYakuFor,
+  scoringOptionsOf,
+  winHandIdsOf,
+  winHandKindsOf,
+  buildWinContext,
+} from "../mahjong/flow/helpers.js";
+import type { SpectateWait, SpectateWinValue } from "../network/protocol.js";
+
+/**
+ * 한 좌석의 관전값. `SpectateInsightMessage["seats"]` 중 **코어가 확정으로 낼 수 있는**
+ * 부분이다 — 노텐 추정(`estimate`)과 옛 화면 호환 필드는 서버가 얹는다.
+ */
+export interface SpectateSeatScore {
+  id: PlayerId;
+  shanten: number;
+  meldCount: number;
+  menzen: boolean;
+  dora: number;
+  best?: SpectateWinValue;
+  waits?: SpectateWait[];
+  yakuless?: boolean;
+  belowMinHan?: boolean;
+  furiten?: boolean;
+  handGrade?: number;
+}
+
+/** 코어 `LimitName` → 프로토콜 `limit` (셈수 역만 이름만 짧게 간다) */
+function limitName(limit: string | null): SpectateWinValue["limit"] {
+  if (limit === null) return undefined;
+  if (limit === "kazoe_yakuman") return "kazoe";
+  return limit as SpectateWinValue["limit"];
+}
+
+/**
+ * 보이는 모든 곳(**네 좌석 손패** + 전원 버림 + 전원 후로 + 도라 표시패)에서
+ * 종류별로 몇 장이 보였는지 센다.
+ *
+ * 관전자는 네 사람의 손패를 전부 본다 — 그러니 남은 장수도 관전자가 아는 만큼
+ * 정확해야 한다. 대국자 시점의 셈(`server/bot/danger.ts`)을 그대로 쓰면 남의 손에
+ * 든 오름패를 «아직 산에 있다»고 세어 대기의 값을 과대평가한다.
+ *
+ * ⚠ 증강 생성패(`attrs.conjured`)는 세지 않는다 — 증강은 «없던 패를 준다»를 기존
+ * 타일의 kind를 덮어쓰는 방식으로 구현하므로 같은 종류가 5장 넘게 존재할 수 있다
+ * (`bot/danger.ts:126` 과 같은 규약).
+ */
+function seenCounts(state: GameState): Map<string, number> {
+  const seen = new Map<string, number>();
+  const bump = (id: TileId): void => {
+    const tile = state.tiles[id];
+    if (tile === undefined) return;
+    if (tile.attrs.conjured === true) return;
+    const key = kindKey(tile.kind);
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  };
+  const countZone = (zoneId: string): void => {
+    for (const id of state.zones[zoneId]?.tileIds ?? []) bump(id);
+  };
+  for (const p of state.players) {
+    countZone(handZone(p.id));
+    countZone(discardsZone(p.id));
+    countZone(meldsZone(p.id));
+  }
+  for (const id of state.round.doraIndicators) bump(id);
+  return seen;
+}
+
+/** 이 국의 도라 종류 (표도라만 — 뒷도라는 화료 순간에야 열린다) */
+function doraKindsOf(state: GameState): TileKind[] {
+  const out: TileKind[] = [];
+  for (const id of state.round.doraIndicators) {
+    const tile = state.tiles[id];
+    if (tile !== undefined) out.push(doraKindFor(tile.kind));
+  }
+  return out;
+}
+
+/** 증강이 이 좌석에만 얹는 개인 도라 종류 (`scoring.extraDoraKinds`) */
+function extraDoraKindsOf(
+  state: GameState,
+  rules: RuleRegistry,
+  id: PlayerId,
+): TileKind[] {
+  if (!rules.has("scoring.extraDoraKinds")) return [];
+  const kinds = rules.resolve<readonly TileKind[]>("scoring.extraDoraKinds", {
+    playerId: id,
+    state,
+  });
+  return Array.isArray(kinds) ? [...kinds] : [];
+}
+
+/**
+ * **한 장 버린 뒤의 최선 샹텐** — 14장(3n+2) 시점의 옳은 셈 (docs/36:101).
+ *
+ * 서버에 있던 `bestShanten`과 **같은 셈**이다(같은 종류는 한 번만 시도). 좌석 뱃지와
+ * 패널이 다른 셈을 쓰면 같은 화면 안에서 두 숫자가 갈린다.
+ *
+ * @returns `[샹텐, 그 값을 내는 버림 후보 tileId 목록]` — 텐파이 대기를 낼 때
+ *          «어느 장을 버린 뒤의 텐파이인가»가 필요해서 후보까지 함께 돌려준다.
+ */
+function bestShanten(
+  state: GameState,
+  ids: readonly TileId[],
+  kinds: readonly TileKind[],
+  meldCount: number,
+  options: DecomposeOptions,
+): { shanten: number; drops: TileId[] } {
+  if (kinds.length % 3 !== 2) {
+    return { shanten: shantenOf(kinds, meldCount, options), drops: [] };
+  }
+  let best = Number.POSITIVE_INFINITY;
+  const byKey = new Map<string, number>();
+  const drops: TileId[] = [];
+  for (let i = 0; i < kinds.length; i++) {
+    const key = kindKey(kinds[i]!);
+    let s = byKey.get(key);
+    if (s === undefined) {
+      s = shantenOf(
+        kinds.filter((_, j) => j !== i),
+        meldCount,
+        options,
+      );
+      byKey.set(key, s);
+    }
+    if (s < best) {
+      best = s;
+      drops.length = 0;
+    }
+    if (s === best) {
+      const id = ids[i];
+      if (id !== undefined) drops.push(id);
+    }
+  }
+  if (!Number.isFinite(best)) {
+    return { shanten: shantenOf(kinds.slice(0, -1), meldCount, options), drops: [] };
+  }
+  return { shanten: best, drops };
+}
+
+/**
+ * 14장 시점에 «그 한 장을 버린» 상태를 만든다.
+ *
+ * `buildWinContext`는 `winHandIdsOf`(실손패)를 읽으므로, 버릴 패가 손에 남아 있으면
+ * 그 패까지 낀 15장을 채점하려 들어 분해가 통째로 실패한다. 손패 존만 갈아 끼운
+ * **얕은 사본**을 넘긴다 — 원본 상태는 건드리지 않는다(엔진의 불변 규약).
+ *
+ * 자유 선언(`hand.winTileIds` 스냅샷)이 걸린 좌석은 애초에 채점 손패가 13장이라
+ * 이 경로를 타지 않는다.
+ */
+function stateWithoutTile(state: GameState, id: PlayerId, drop: TileId): GameState {
+  const zoneId = handZone(id);
+  const zone = state.zones[zoneId];
+  if (zone === undefined) return state;
+  return {
+    ...state,
+    zones: {
+      ...state.zones,
+      [zoneId]: { ...zone, tileIds: zone.tileIds.filter((t) => t !== drop) },
+    },
+  };
+}
+
+/**
+ * 대기 하나의 평가 결과.
+ *
+ * 「값이 없다」를 `null` 하나로 뭉개면 **왜 없는지**가 사라진다 — 역이 없어서인지
+ * (`yaku`) 격에 못 미쳐서인지(`minHan`)는 화면에 다른 말로 적어야 하는 다른 사실이다
+ * (전자는 손을 바꿔야 하고 후자는 손을 키우면 열린다).
+ */
+type WaitEval =
+  | { value: SpectateWinValue }
+  | { value: null; blocked: "yaku" | "minHan" };
+
+/**
+ * 대기 하나를 **실제 채점기로** 평가한다.
+ *
+ * ⚠ 여기 붙는 계산은 전부 정산기(`standardActions.ts`의 `sysSettleWin`·`belowMinHan`)와
+ * **같은 규약이어야 한다.** `evaluateWin`은 판·부까지만 안다 — 증강이 얹는 추가 판
+ * (`score.extraHan`), 오야 취급(`win.treatAsDealer`), 격 게이트(`win.minHan`)는 전부
+ * 정산기 쪽에만 있다. 한 글자라도 갈리면 「화면 3판 5,800점 / 실제 6판」처럼 **화면과
+ * 정산이 갈리는** 상태가 그대로 돌아온다 (2026-08-23 QA 실측).
+ *
+ * 아직 못 따라가는 것 하나: `ROUND_SETTLED` **인터셉터**로 점수를 얹는 증강
+ * (`standardAugments.addWinHanBonus` · content의 `withAugPoint` 계열)은 채점이 끝난
+ * 뒤의 `deltas`를 고치므로 여기서 재현할 수 없다 — 그 좌석의 실제 수령액은 여기 값보다
+ * 높을 수 있다. 결과 화면도 같은 층위(`info.points` + "증강 +N판" 한 줄)로 보여 주므로
+ * 「채점된 값」이라는 뜻은 어긋나지 않지만, 최종 수령액과는 다르다.
+ */
+function evalWait(
+  state: GameState,
+  rules: RuleRegistry,
+  yaku: YakuRegistry,
+  id: PlayerId,
+  tileId: TileId,
+  winType: "tsumo" | "ron",
+  isDealer: boolean,
+  needYaku: boolean,
+  riichi: boolean,
+): WaitEval | null {
+  const ev = evaluateWin(buildWinContext(state, id, winType, tileId, { rules }), yaku);
+  if (ev === null) return null; // 화료형이 아니다 — 「막혔다」가 아니라 애초에 대기가 아니다
+  // 역이 필요 없는 좌석(무형화료 계열 증강)에는 «역없음»이라는 상태가 없다 —
+  // 그 손은 그냥 화료한다. `ok:false`를 막으면 증강이 열어 준 길을 화면이 닫는다.
+  if (!ev.ok && needYaku) return { value: null, blocked: "yaku" };
+
+  /*
+   * 증강이 더하는 추가 판 (`score.extraHan`) — **역만에는 붙지 않는다**.
+   * `sysSettleWin`(standardActions.ts:928-943)의 규약을 그대로 옮긴 것이다:
+   * 역만이면 0, 아니면 `Math.max(0, 합계)`. content의 5종(리치 강화·절벽의 꽃·
+   * 배수의 진·안깡 도라·북 장사꾼)이 이 훅을 쓴다.
+   */
+  const extraHan =
+    ev.yakumanCount > 0 || !rules.has("score.extraHan")
+      ? 0
+      : Math.max(0, rules.resolve<number>("score.extraHan", { playerId: id, state }));
+  const totalHan = ev.han + extraHan;
+
+  /*
+   * 격(`win.minHan` — rank_gate)에 못 미치면 **론 자체가 거부된다**
+   * (`WIN_BLOCKED_MIN_HAN`). `belowMinHan`(standardActions.ts:149-163)과 같은 규약:
+   * 역만 면제 · 추가 판을 합산한 뒤 비교. 이걸 안 보면 화면은 「2판 2,900점」이라
+   * 적는데 실제로는 그 대기로 화료할 수 없다.
+   */
+  if (ev.yakumanCount === 0 && rules.has("win.minHan")) {
+    const min = rules.resolve<number>("win.minHan", { playerId: id, state });
+    if (min > 0 && totalHan < min) return { value: null, blocked: "minHan" };
+  }
+
+  /*
+   * 오야 취급 (`win.treatAsDealer`) — 점수 계산만 오야다(연장은 실제 오야만).
+   * `sysSettleWin`(standardActions.ts:921-927)과 같다. 안 보면 자 좌석의 만관이
+   * 화면 3,900 / 정산 5,800으로 갈린다.
+   */
+  const scoresAsDealer =
+    isDealer ||
+    (rules.has("win.treatAsDealer") &&
+      rules.resolve<boolean>("win.treatAsDealer", { playerId: id, state }));
+
+  const score = calculateScore({
+    han: totalHan,
+    fu: ev.fu,
+    yakumanCount: ev.yakumanCount,
+    isDealer: scoresAsDealer,
+    winType,
+    ...(rules.has("score.uncapped") &&
+    rules.resolve<boolean>("score.uncapped", { playerId: id, state })
+      ? { uncapped: true }
+      : {}),
+  });
+  const limit = limitName(score.limit);
+  return {
+    value: {
+      han: totalHan,
+      fu: ev.fu,
+      points: score.total,
+      yakumanCount: ev.yakumanCount,
+      ...(limit !== undefined ? { limit } : {}),
+      yaku: ev.yaku.map((y) => ({ name: y.name, han: y.han })),
+      doraHan: ev.doraHan,
+      redHan: ev.redHan,
+      uraHan: ev.uraHan,
+      // 뒷도라는 화료 순간에야 열린다 — 관전 시점에 세면 스포일러다. 리치 좌석에는
+      // 「이 값은 하한이다」를 표식으로 남긴다 (protocol.ts `uraUnknown` 주석).
+      ...(riichi ? { uraUnknown: true as const } : {}),
+      // 실역 0개로 성립한 화료 — 「0판 30부 500점」은 정산기가 실제로 지불하는 값이다.
+      ...(!ev.ok ? { noYaku: true as const } : {}),
+    },
+  };
+}
+
+/** 「어느 대기가 제일 비싼가」 — 점수 우선, 같으면 판수 */
+function richer(a: SpectateWinValue | null, b: SpectateWinValue | null): SpectateWinValue | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  if (a.points !== b.points) return a.points > b.points ? a : b;
+  return a.han >= b.han ? a : b;
+}
+
+/**
+ * 상태 단위 캐시.
+ *
+ * ⚠ **상태만으로는 부족하다** (2026-08-23 QA 실측). `helpers.ts §7-5`가 적은
+ * 「상태 객체가 곧 완벽한 캐시 키」는 «상태가 바뀌면 값이 바뀐다»만 말하지
+ * «값이 바뀌면 상태가 바뀐다»는 말하지 않는다. 국 사이 드래프트에서
+ * `installAugment`는 **`GameState`를 갈지 않고 `RuleRegistry`만 바꾼다** —
+ * 루프가 돌아와 같은 상태 객체로 `broadcastViews`를 부르면 **드래프트 이전 규칙으로
+ * 계산된 패널**이 그대로 나갔다.
+ *
+ * 그래서 규칙 세대(`rules.version`)와 역 개수까지 키에 섞는다. 역 개수를 함께 보는
+ * 이유는 증강이 커스텀 역을 등록할 수 있기 때문이다(레지스트리 객체는 그대로다).
+ */
+const SEAT_SCORE_CACHE = new WeakMap<
+  GameState,
+  { key: string; scores: SpectateSeatScore[] }
+>();
+
+/**
+ * 관전 보조값의 **좌석 부분**을 만든다.
+ *
+ * @param handGrades 배패 점수 (국 시작 때 한 번 재서 국 내내 고정된 값)
+ */
+export function buildSpectateSeatScores(
+  state: GameState,
+  rules: RuleRegistry,
+  yaku: YakuRegistry,
+  handGrades: Readonly<Record<string, number>> = {},
+): SpectateSeatScore[] {
+  const cacheKey = `${rules.version}|${yaku.all().length}`;
+  const cached = SEAT_SCORE_CACHE.get(state);
+  if (cached !== undefined && cached.key === cacheKey) {
+    // 배패 점수만 나중에 붙는 경우가 있어(관전자가 국 도중 합류) 얕게 다시 얹는다.
+    return cached.scores.map((s) =>
+      handGrades[s.id] === undefined ? s : { ...s, handGrade: handGrades[s.id]! },
+    );
+  }
+
+  const seen = seenCounts(state);
+  const doraKinds = doraKindsOf(state);
+  const universe = standardKinds();
+  const out: SpectateSeatScore[] = [];
+
+  for (const p of state.players) {
+    const handIds = handIdsOf(state, p.id);
+    if (handIds.length === 0) continue; // 배패 전 — 잴 것이 없다
+    const meldIds = (state.round.byPlayer[p.id]?.melds ?? []).flatMap((m) => m.tileIds);
+    const opts = scoringOptionsOf(state, rules, p.id);
+    const meldCount = meldCountOf(state, p.id);
+    // 안깡·묵계(silent)는 손을 열지 않는다 (helpers.ts:757 규약) — 리치·멘젠쯔모·
+    // 우라도라가 그대로 살아 있으므로 점수상 멘젠이다.
+    const menzen = openMeldCountOf(state, p.id) === 0;
+    const isDealer = p.seat === state.round.dealerSeat;
+
+    // 도라 — 표도라 + 적도라 + 그 좌석만의 개인 도라
+    const doraSet = new Map<string, number>();
+    for (const k of [...doraKinds, ...extraDoraKindsOf(state, rules, p.id)]) {
+      doraSet.set(kindKey(k), (doraSet.get(kindKey(k)) ?? 0) + 1);
+    }
+    let dora = 0;
+    for (const tid of [...handIds, ...meldIds]) {
+      const tile = state.tiles[tid];
+      if (tile === undefined) continue;
+      dora += doraSet.get(kindKey(tile.kind)) ?? 0;
+      if (tile.attrs.red === true) dora++;
+    }
+
+    // 샹텐 — 14장이면 한 장 버린 뒤의 최선
+    const handKinds = handKindsOf(state, p.id);
+    const { shanten, drops } = bestShanten(state, handIds, handKinds, meldCount, opts);
+
+    const seat: SpectateSeatScore = {
+      id: p.id,
+      shanten,
+      meldCount,
+      menzen,
+      dora,
+      ...(handGrades[p.id] !== undefined ? { handGrade: handGrades[p.id]! } : {}),
+    };
+
+    if (shanten <= 0) {
+      /*
+       * 채점 손패가 14장(3n+2)이면 **어느 장을 버린 뒤의 텐파이인가**를 정해야 한다.
+       * 텐파이를 만드는 버림이 여럿이면 오름패 총 장수가 가장 많은 쪽을 고른다 —
+       * 화면에 한 줄만 적을 수 있으니, 사람이 실제로 고를 법한(=제일 넓은) 대기를
+       * 대표로 보여 주는 것이 덜 놀랍다.
+       */
+      const winIds = winHandIdsOf(state, rules, p.id);
+      let evalState = state;
+      let waitKinds: TileKind[] = [];
+      if (winIds.length % 3 === 2 && drops.length > 0) {
+        let bestWidth = -1;
+        for (const drop of drops) {
+          const s = stateWithoutTile(state, p.id, drop);
+          const w = winningKinds(
+            winHandKindsOf(s, rules, p.id),
+            meldCount,
+            universe,
+            opts,
+          );
+          if (w.length === 0) continue;
+          let width = 0;
+          for (const k of w) width += Math.max(0, 4 - (seen.get(kindKey(k)) ?? 0));
+          if (width > bestWidth) {
+            bestWidth = width;
+            evalState = s;
+            waitKinds = w;
+          }
+        }
+      } else {
+        waitKinds = winningKinds(
+          winHandKindsOf(state, rules, p.id),
+          meldCount,
+          universe,
+          opts,
+        );
+      }
+
+      if (waitKinds.length > 0) {
+        const needYaku = requiresYakuFor(evalState, p.id, rules);
+        const riichi = state.round.byPlayer[p.id]?.riichi != null;
+        /*
+         * **후리텐이면 론이 막힌다** — 그 좌석의 카드에 론 값을 대표로 적으면 도달할
+         * 수 없는 숫자를 「지금 화료하면 얼마」라고 적는 것이다. 14장 시점이면
+         * `evalState`(한 장 버린 뒤)로 재야 그 버림 이후의 사실이 나온다.
+         */
+        const furiten = isFuriten(evalState, p.id, opts, rules);
+        const outside = outsideHandTileFinder(evalState, rules, p.id);
+        const waits: SpectateWait[] = [];
+        let bestRon: SpectateWinValue | null = null;
+        let bestTsumo: SpectateWinValue | null = null;
+        // 「막혔다」의 사유 — 전부 막혔을 때 화면에 무엇이라 적을지가 여기서 갈린다.
+        let sawYakuBlock = false;
+        let sawMinHanBlock = false;
+        for (const kind of waitKinds) {
+          const tileId = outside(kind);
+          if (tileId === undefined) continue; // 그 종류 실물이 상태에 없다(방어적)
+          const ron = evalWait(
+            evalState, rules, yaku, p.id, tileId, "ron", isDealer, needYaku, riichi,
+          );
+          const tsumo = evalWait(
+            evalState, rules, yaku, p.id, tileId, "tsumo", isDealer, needYaku, riichi,
+          );
+          for (const r of [ron, tsumo]) {
+            if (r === null || r.value !== null) continue;
+            if (r.blocked === "minHan") sawMinHanBlock = true;
+            else sawYakuBlock = true;
+          }
+          waits.push({
+            kind: kindKey(kind),
+            remaining: Math.max(0, 4 - (seen.get(kindKey(kind)) ?? 0)),
+            ron: ron?.value ?? null,
+            tsumo: tsumo?.value ?? null,
+          });
+          bestRon = richer(bestRon, ron?.value ?? null);
+          bestTsumo = richer(bestTsumo, tsumo?.value ?? null);
+        }
+        if (waits.length > 0) {
+          seat.waits = waits;
+          if (furiten) seat.furiten = true;
+          // 후리텐이면 론은 못 한다 — 대표값은 쯔모 쪽이다.
+          const best = furiten ? bestTsumo : (bestRon ?? bestTsumo);
+          if (best !== null) seat.best = best;
+          else if (sawMinHanBlock && !sawYakuBlock) {
+            // 역은 있는데 격(`win.minHan`)에 못 미쳐 전부 막혔다 — 「역없음」과 다른 사실이다.
+            seat.belowMinHan = true;
+          } else if (needYaku && sawYakuBlock) {
+            // 텐파이인데 어떤 오름패로도 역이 없다 = 형식텐파이. 역이 필요 없는
+            // 좌석에는 이 상태 자체가 없다(위 `needYaku`와 같은 이유).
+            seat.yakuless = true;
+          }
+        }
+      }
+    }
+
+    out.push(seat);
+  }
+
+  SEAT_SCORE_CACHE.set(state, { key: cacheKey, scores: out });
+  return out;
+}
+
+// ─────────────────────────── 배패 점수 ───────────────────────────
+
+/**
+ * **배패 점수 0~100** — 이 국에 받은 첫 13장이 얼마나 좋은 패였나.
+ *
+ * 「타점이 높을수록, 빠를수록 높다」 하나를 세 축으로 나눠 잰다. 절대값보다 **순서**가
+ * 맞는 것이 중요하다 — 해설이 「이 배패가 저 배패보다 낫다」를 읽는 값이지 「71점짜리
+ * 배패」를 읽는 값이 아니다.
+ *
+ *   - **속도(0.5)** — 샹텐. 배패 샹텐은 대개 3~6이고 1~2면 아주 빠른 손이다.
+ *   - **타점(0.3)** — 도라 + 적도라 장수. 3장부터는 더 세도 손이 그만큼 세지지 않아
+ *     3에서 끊는다(그 위는 어차피 만관 위 구간이라 순서가 이미 갈렸다).
+ *   - **방향(0.2)** — 역이 될 씨앗이 손에 있는가: 역패 대자(2장 이상) · 탕야오
+ *     (요구패 3장 이하) · 색 치우침(한 색 7장 이상) · 치또이 방향(대자 4쌍 이상).
+ *
+ * 예시(실측값 — `test/SpectateScore.test.ts`가 이 순서를 고정한다):
+ *   - `123456789m 55s 77z` 도라 2 — 이미 텐파이·청일색 방향·역패 대자 → **90**
+ *   - `1358m 2479p 1469s 3z` 도라 1 — 4샹텐, 방향은 탕야오뿐 → **33**
+ *   - `159m 1479p 258s 134z` 도라 0 — 6샹텐, 연결도 도라도 없다 → **5**
+ *
+ * 값은 국 시작 때 한 번 재고 그 국 내내 고정한다 — 중간에 움직이면 그건 배패 점수가
+ * 아니라 그냥 현재 손 점수다.
+ */
+export function gradeStartingHand(
+  kinds: readonly TileKind[],
+  options?: DecomposeOptions,
+  doraCount = 0,
+): number {
+  if (kinds.length === 0) return 0;
+  const shanten = shantenOf(kinds, 0, options);
+
+  // 속도 — 6.5샹텐(사실상 최악)에서 1샹텐(사실상 최선)까지를 0~1로 편다.
+  const speed = clamp01((6.5 - shanten) / 5.5);
+
+  // 타점 — 도라 3장에서 만점
+  const value = clamp01(Math.min(doraCount, 3) / 3);
+
+  // 방향 — 역의 씨앗. 하나만 있어도 절반, 둘 이상이면 만점에 가깝다.
+  const counts = new Map<string, number>();
+  const bySuit = new Map<string, number>();
+  let terminals = 0;
+  for (const k of kinds) {
+    const key = kindKey(k);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    bySuit.set(k.suit, (bySuit.get(k.suit) ?? 0) + 1);
+    if (isHonorOrTerminal(k)) terminals++;
+  }
+  let pairs = 0;
+  let yakuhaiPair = false;
+  for (const [key, n] of counts) {
+    if (n >= 2) {
+      pairs++;
+      if (key.startsWith("dragon") || key.startsWith("wind")) yakuhaiPair = true;
+    }
+  }
+  const flush = Math.max(0, ...[...bySuit.entries()]
+    .filter(([s]) => s !== "wind" && s !== "dragon")
+    .map(([, n]) => n));
+  let seeds = 0;
+  if (yakuhaiPair) seeds++;
+  if (terminals <= 3) seeds++; // 탕야오 방향
+  if (flush >= 7) seeds++;
+  if (pairs >= 4) seeds++; // 치또이 방향
+  const direction = clamp01(seeds / 2);
+
+  return Math.round(100 * (0.5 * speed + 0.3 * value + 0.2 * direction));
+}
+
+function clamp01(n: number): number {
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+
+function isHonorOrTerminal(k: TileKind): boolean {
+  if (k.suit === "wind" || k.suit === "dragon") return true;
+  return k.rank === 1 || k.rank === 9;
+}
+
+/**
+ * 배패 직후 네 좌석의 배패 점수를 한 번에 잰다 (`HanchanController`가 국 시작 때 부른다).
+ *
+ * 도라 표시패는 배패 시점에 이미 한 장 열려 있으므로 그 도라까지 센다. 왕패(`DEAD_WALL`)
+ * 안쪽은 아직 아무도 모르는 정보라 보지 않는다.
+ *
+ * ⚠ **오야는 이 시점에 이미 14장이다.** `FlowController.begin()`은 `runAuto()`라
+ * 배패에서 멈추지 않고 **오야의 첫 쯔모까지** 진행한다 — 그래서 「배패 직후」로 보이는
+ * 첫 프레임의 오야 손패는 14장이다. 그걸 그대로 재면 오야만 매 국 체계적으로 높게
+ * 나오고(같은 손 13장 33점 → 14장 42점), 이 값의 **유일한 용도인 좌석 간 순서 비교**가
+ * 통째로 깨진다. 그래서 3n+2면 첫 쯔모패를 도로 뺀다.
+ */
+export function gradeStartingHands(
+  state: GameState,
+  rules: RuleRegistry,
+): Record<PlayerId, number> {
+  const doraSet = new Set(doraKindsOf(state).map(kindKey));
+  const out: Record<PlayerId, number> = {};
+  for (const p of state.players) {
+    let ids = [...handIdsOf(state, p.id)];
+    if (ids.length === 0) continue;
+    if (ids.length % 3 === 2) {
+      // 첫 쯔모패를 뺀다 — 어느 패인지는 상태가 알고 있다(`lastDrawnTile`). 그 값이
+      // 손에 없는 이상한 경우에만 마지막 자리로 떨어진다(배패 순서상 그 자리가 쯔모패다).
+      const drawn = state.round.lastDrawnTile;
+      const at = drawn === null ? -1 : ids.indexOf(drawn);
+      ids = at >= 0 ? ids.filter((_, i) => i !== at) : ids.slice(0, -1);
+    }
+    let dora = 0;
+    const kinds: TileKind[] = [];
+    for (const id of ids) {
+      const tile = state.tiles[id];
+      if (tile === undefined) continue;
+      kinds.push(tile.kind);
+      if (doraSet.has(kindKey(tile.kind))) dora++;
+      if (tile.attrs.red === true) dora++;
+    }
+    out[p.id] = gradeStartingHand(kinds, scoringOptionsOf(state, rules, p.id), dora);
+  }
+  return out;
+}

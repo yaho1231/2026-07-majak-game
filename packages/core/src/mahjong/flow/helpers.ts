@@ -667,8 +667,13 @@ export function isFuritenAsRon(
   );
 }
 
-/** 이 사람의 화료에 역이 필요한가 (`win.requiresYaku`. 규칙이 없으면 표준대로 true) */
-function requiresYakuFor(
+/**
+ * 이 사람의 화료에 역이 필요한가 (`win.requiresYaku`. 규칙이 없으면 표준대로 true)
+ *
+ * 관전 채점(`information/spectateScore.ts`)도 같은 판정을 써야 한다 — 무형화료 계열
+ * 증강을 든 좌석에 «역없음»을 띄우면 증강이 열어 준 길을 화면이 막는 셈이 된다.
+ */
+export function requiresYakuFor(
   state: GameState,
   id: PlayerId,
   rules: RuleRegistry,
@@ -784,7 +789,7 @@ export function tenpaiNoYaku(
  * ⚠ 화료패 tileId가 손 안에 있으면 buildWinContext가 그 패를 뺐다가 다시 붙여
  * 13장이 되어 **분해가 통째로 실패**한다(51차 함정 ②). 반드시 손 밖에서 골라야 한다.
  */
-function outsideHandTileFinder(
+export function outsideHandTileFinder(
   state: GameState,
   rules: RuleRegistry | undefined,
   id: PlayerId,

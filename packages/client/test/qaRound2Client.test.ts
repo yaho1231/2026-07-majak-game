@@ -443,8 +443,9 @@ describe("리플레이 조작이 사람 손을 따라간다", () => {
     expect(APP_CODE).toContain("disabled={idx <= 0}");
     expect(APP_CODE).toContain("disabled={idx >= total}");
     expect(APP_CODE).toContain("disabled={!playing && idx >= total}");
-    // 관전 되감기 ◀ 도 같은 규칙 (짝인 ▶ 에만 있었다)
-    expect(APP_CODE).toContain("disabled={(props.rewindAt ?? (props.rewindLen ?? 0) - 1) <= 0}");
+    // 관전 되감기 ◀ 도 같은 규칙 (짝인 ▶ 에만 있었다).
+    // 도크로 옮기면서 rewindLen 이 필수 prop 이 되어 `?? 0` 이 사라졌다 — 규칙은 그대로다.
+    expect(APP_CODE).toContain("disabled={(props.rewindAt ?? props.rewindLen - 1) <= 0}");
   });
 });
 

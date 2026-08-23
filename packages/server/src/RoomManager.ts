@@ -4358,7 +4358,7 @@ export class RoomManager {
     };
     const sink: SpectatorSink = {
       id: conn.id,
-      sendView: (view) => {
+      sendView: (view, seatScores) => {
         stream({ type: "view", view });
         /*
          * 중계 보조값(예상 타점·위험패)을 뷰와 **같은 순간에** 붙여 보낸다
@@ -4369,7 +4369,7 @@ export class RoomManager {
          * 판의 일부가 아니다.
          */
         try {
-          const insight = buildSpectateInsight(view);
+          const insight = buildSpectateInsight(view, seatScores);
           if (insight !== null) stream(insight);
         } catch (err) {
           this.logError(null, `중계 보조값 계산 실패 — 뷰는 그대로 보냈다: ${String(err)}`);
