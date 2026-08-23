@@ -925,16 +925,16 @@ httpServer.listen(PORT, HOST, () => {
   console.log(`Client dist : ${CLIENT_DIST}${existsSync(CLIENT_DIST) ? "" : "  (없음 — 개발은 vite dev 사용)"}`);
   console.log(`Replays     : ${REPLAY_DIR}`);
   console.log(`Database    : ${DB_PATH}`);
-  // 관리자 코드는 **부트스트랩(첫 관리자가 없을 때)** 에만 찍는다.
-  // 로그는 파일로 남고 어깨너머로도 보인다 — 관리자가 이미 있는 서버에서 매 부팅마다
-  // 마스터 키를 찍어 둘 이유가 없다. 코드는 쓰이는 즉시 회전하므로, 새로 하나 더
-  // 만들어야 하면 ADMIN_CODE 환경변수로 운영자가 직접 값을 정해 띄운다.
+  // 관리자 코드는 **매 부팅마다** 찍는다 (운영자 결정, 2026-08-24).
+  // 코드는 쓰이는 즉시 회전하므로(SiteDb.rotateAdminCode) 현재 값이 무엇인지 확인할
+  // 길이 로그밖에 없었다 — 예전에는 첫 관리자가 생긴 뒤로 영영 숨겨서, 관리자를 하나
+  // 더 만들려면 ADMIN_CODE 환경변수로 서버를 다시 띄우는 수밖에 없었다.
+  // ⚠ 이 줄은 콘솔뿐 아니라 로그 파일(.majak/server.log)에도 남는다.
   if (ADMIN_CODE !== "") {
     console.log(`관리자 코드  : ADMIN_CODE 환경변수 사용 (로그·DB에 남기지 않음)`);
-  } else if (!db.hasAdmin()) {
-    console.log(`관리자 가입 코드: ${db.adminCode()}  (회원가입 시 입력하면 관리자 계정 — 1회용)`);
   } else {
-    console.log(`관리자 코드  : 비공개 (관리자 계정 있음 · 재발급은 ADMIN_CODE 환경변수)`);
+    const bootstrap = db.hasAdmin() ? "" : "  (회원가입 시 입력하면 관리자 계정)";
+    console.log(`관리자 가입 코드: ${db.adminCode()}  — 1회용(쓰이면 회전)${bootstrap}`);
   }
   console.log(
     SIGNUP_CODE !== ""
