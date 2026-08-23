@@ -1579,6 +1579,64 @@ function isTypingTarget(t: EventTarget | null): boolean {
 }
 
 /**
+ * 포인터가 `ms` 동안 한 번도 안 움직였는가.
+ *
+ * ## 왜 이런 것이 필요한가
+ * 오버레이 모드의 탈출구는 요구가 둘인데 서로 반대다: 켠 사람에게는 **반드시 보여야**
+ * 하고(안 보이면 되돌리는 법을 배울 길이 없다 — 실제로 사용자가 갇혔다), 그 화면은
+ * 그대로 OBS 로 나가므로 **방송에는 없어야** 한다.
+ *
+ * 두 요구를 가르는 축이 하나 있다: **카메라에는 커서가 없다.** 사람이 화면을 만지는
+ * 동안에는 그 사람이 보고 있는 것이고, 손을 떼고 송출을 잡는 순간부터는 카메라의
+ * 시간이다. 그래서 「보임/숨김」을 «방송 중인가»가 아니라 «지금 만지고 있는가»에
+ * 묶는다. 상태 하나 없이도 성립하고, 잘못 판단해도 마우스를 한 번 흔들면 복구된다.
+ *
+ * 키보드도 «만지는 것»으로 친다 — 마우스 없이 Tab 으로 다니는 사람이 손잡이를
+ * 못 보는 일이 없어야 한다.
+ *
+ * `active` 가 false 면 아무것도 듣지 않는다(오버레이가 꺼져 있을 때 창 전체에
+ * pointermove 를 거는 것은 그냥 낭비다).
+ */
+function usePointerIdle(active: boolean, ms: number): boolean {
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setIdle(false);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // pointermove 는 초당 수십 번 온다 — 상태를 매번 건드리면 판 전체가 다시 그려진다.
+    // 실제로 «바뀔 때»만 setState 하려고 현재값을 ref 가 아니라 클로저 변수로 든다.
+    let cur = false;
+    const arm = (): void => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        cur = true;
+        setIdle(true);
+      }, ms);
+    };
+    const wake = (): void => {
+      if (cur) {
+        cur = false;
+        setIdle(false);
+      }
+      arm();
+    };
+    window.addEventListener("pointermove", wake, { passive: true });
+    window.addEventListener("pointerdown", wake, { passive: true });
+    window.addEventListener("keydown", wake);
+    arm();
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      window.removeEventListener("pointermove", wake);
+      window.removeEventListener("pointerdown", wake);
+      window.removeEventListener("keydown", wake);
+    };
+  }, [active, ms]);
+  return idle;
+}
+
+/**
  * 겉모습(함수 객체)은 절대 안 바뀌고 속은 항상 최신인 콜백.
  *
  * 왜 필요한가: GameTable에 넘기던 콜백 스무 개가 전부 그 자리에서 만든 화살표 함수라
@@ -4977,7 +5035,63 @@ export function App(): JSX.Element {
       // (`haptics.win` 은 만들어만 두고 호출부가 0건이었다 — QA 4라운드 ingame-ux P2)
       if (pv !== null && infos.some((w) => w.winner === pv.playerId)) haptics.win();
 
-      if (isYakuman) {
+      if (infos.length >= 2) {
+        /*
+         * ── 더블 론 ── 승자가 둘 이상이면 **한 장으로 합쳐** 말한다
+         * (2026-08-23 사용자 보고: 「더블 론 하면 한 명만 론 연출」).
+         *
+         * 엔진은 더블론을 이미 성립시킨다 — 아타마하네가 아니다. FlowController 가
+         * 승자 배열을 그대로 정산기에 넘기고 `winInfos` 가 복수이며, 결과 화면도
+         * 승자별로 그린다. **좁아지던 곳은 여기 한 줄이었다**: 배열을 다 받아 놓고
+         * `infos[0]`(정확히는 최고 등급 한 건)만 컷인으로 띄웠다.
+         *
+         * ⚠ **컷인을 두 번 띄우지 않는다.** `enqueueProduction` 은 순차 재생이라
+         *   「론!」 → 「론!」 으로 1.5초씩 두 번 끌린다 — 중계 흐름이 끊긴다.
+         *
+         * 등급이 갈릴 때(한쪽만 하네만, 다른 쪽은 리치도라1)는 **부제에 사람별로
+         * 둘 다** 적는다. 예전에는 높은 쪽만 뜨고 다른 화료는 언급조차 없었다.
+         * 밴드의 무게(tone·ttl·흔들림·소리)는 그 판의 **최고 등급**을 따른다 —
+         * 한 장으로 합쳤다고 역만이 평범한 론처럼 보이면 안 된다.
+         */
+        const gradeOf = (w: WinInfo): string =>
+          w.yakumanCount >= 2
+            ? yakumanName(w.yakumanCount)
+            : w.yakumanCount === 1
+              ? "역 만"
+              : w.limit !== null && LIMIT_NAMES[w.limit] !== undefined
+                ? LIMIT_NAMES[w.limit]!
+                : `${w.han}판`;
+        const sub = infos
+          .map(
+            (w) =>
+              `${pv !== null ? playerNameById(pv, w.winner) : w.winner} · ${gradeOf(w)} · ${w.points.toLocaleString()}점`,
+          )
+          .join("  /  ");
+        // 셋 이상 «동시 론»은 삼가화 도중유국이라 여기 오지 않는다(아래 abort 분기).
+        // 그래도 증강이 만드는 조합까지 안고 가려고 인원수로 적는다.
+        const allRon = infos.every((w) => w.winType === "ron");
+        const text = allRon
+          ? infos.length === 2
+            ? "더블 론!"
+            : `${infos.length}인 론!`
+          : `${infos.length}인 화료!`;
+        const tier = isYakuman ? undefined : (limitWin?.limit as LimitTier | undefined);
+        showCutIn(
+          text,
+          isYakuman ? "yakuman" : tier !== undefined ? "limit" : "ron",
+          sub,
+          isYakuman ? 2600 : 2200,
+          {
+            ...(tier !== undefined ? { tier } : {}),
+            sfx: isYakuman
+              ? sfx.yakuman
+              : tier !== undefined
+                ? () => sfx.mangan(tier)
+                : sfx.doubleRon,
+            impact: { shake: isYakuman ? 4 : 3, ...(isYakuman ? { delayMs: 450 } : {}) },
+          },
+        );
+      } else if (isYakuman) {
         // 배수 역만은 컷인 문구가 "더블 역만"처럼 배수를 그대로 말한다 —
         // "역 만"만 뜨면 대사희·국사 13면의 2배가 정산표에서야 보인다.
         // (헤아림 역만은 yakumanCount가 0이라 배수 이름을 붙이지 않는다.)
@@ -5028,6 +5142,22 @@ export function App(): JSX.Element {
           2200,
           { sfx: sfx.draw, impact: { shake: 4 } },
         );
+      } else if (msg.settle.abortReason === "tripleRon") {
+        /*
+         * ── 삼가화(트리플 론) ──
+         *
+         * **화료 연출로 만들면 안 된다.** 한 버림패에 세 명이 동시에 론하면 규칙이
+         * 그 국을 물린다(`FlowController` 의 `tripleRon` 도중유국) — 점수가 아예
+         * 움직이지 않는다. 「트리플 론!」을 론 컷인처럼 띄우면 화면이 «세 명이
+         * 났다»고 말하는데 정산표는 0을 찍는, 서로를 거짓말로 만드는 짝이 된다.
+         *
+         * 그래서 톤은 유국(`draw`) 그대로 두고 **사유만 밝힌다**. 여태는 다른 도중
+         * 유국과 똑같이 「도중 유국」 넉 자뿐이라, 셋이 동시에 손을 뻗은 그 장면이
+         * 화면 어디에도 안 남았다.
+         */
+        showCutIn("삼가화", "draw", "트리플 론 — 점수는 움직이지 않습니다", 2000, {
+          sfx: sfx.draw,
+        });
       } else {
         showCutIn(msg.outcome === "draw" ? "유 국" : "도중 유국", "draw", undefined, 1300, {
           sfx: sfx.draw,
@@ -12513,8 +12643,24 @@ const GameTable = memo(function GameTable(props: {
     saveDockPrefs(next);
   }, []);
   const dangerOn = dockPrefs.on.danger;
+  /**
+   * 「쏘이는 패」는 **`waits` 스위치에 묶는다** (`danger` 가 아니다).
+   *
+   * 성격이 그쪽이기 때문이다: 이건 위험도 «추정»이 아니라 좌석들의 **오름패**를
+   * 지금 두는 사람의 손 위로 옮겨 적은 것이다. `danger` 에 묶으면 봇의 추정을 끄는
+   * 순간 사실까지 함께 사라져, 「추정은 싫지만 사실은 보고 싶다」는 자리가 없어진다.
+   */
+  const waitsOn = dockPrefs.on.waits;
   /** 방송 오버레이가 켜져 있나 — 도크와 관전 띠가 함께 사라지는 조건 (docs/36 D2) */
   const overlayOn = (props.overlayMode ?? "off") !== "off";
+  /**
+   * 오버레이 탈출구가 지금 숨어 있나 — 포인터가 4초 넘게 멈춰 있으면 걷는다.
+   *
+   * 4초인 이유: 「손잡이를 읽고 마우스로 옮겨 가는 시간」보다 넉넉하고, 방송을
+   * 잡으러 손을 뗀 뒤 카메라가 기다리는 시간으로는 짧다. 숫자를 더 줄이면 읽기 전에
+   * 사라지고, 늘리면 장면 전환마다 방송에 걸린다.
+   */
+  const escapeIdle = usePointerIdle(overlayOn, 4000);
   /*
    * 도크가 실제로 쓰는 폭을 **body 에 표식으로 단다** (`--dock-reserve` 의 스위치).
    *
@@ -12608,6 +12754,22 @@ const GameTable = memo(function GameTable(props: {
         : null,
     [props.insight, props.spectator, dangerOn],
   );
+
+  /**
+   * ── 쏘이는 패 ── 지금 두는 좌석이 버리면 **실제로 론이 나는** 패 (관전 전용).
+   *
+   * 규칙은 `HotWaitContext` 머리말에 있다. 요약하면 «못 먹는 대기는 빼고, 남는 것만
+   * 칠한다» — `ron === null`(그 패로는 역이 없다)·후리텐·형식텐파이·격 미달·자기
+   * 자신은 전부 제외한다. 붉은 표시는 «여기서 점수가 움직인다»는 뜻이어야 한다.
+   *
+   * ⚠ `spectator` 가드는 `specDanger` 와 같은 이유로 여기에도 건다 — 남의 손패를
+   *   읽어 만든 값이라 대국자 화면에 서면 그대로 정보 누출이다.
+   */
+  const hotWaits = useMemo(() => {
+    if (props.spectator !== true || !waitsOn) return null;
+    const read = readHotWaits(view, props.insight);
+    return read === null || read.hot.size === 0 ? null : { seat: read.seat, byKind: read.hot };
+  }, [props.insight, props.spectator, waitsOn, view]);
 
   // ── 액티브 증강 클릭 발동(무장) 상태 — 게임판 전체가 공유(SelectionContext) ──
   const selection = useSelection(view, prompt, props.onSubmit);
@@ -12932,6 +13094,7 @@ const GameTable = memo(function GameTable(props: {
     <DoraContext.Provider value={doraFx}>
     <WaitCountContext.Provider value={waitRemaining}>
     <DangerContext.Provider value={specDanger}>
+    <HotWaitContext.Provider value={hotWaits}>
     <RelationProvider view={view}>
     {props.spectator === true ? (
       <div
@@ -12982,14 +13145,20 @@ const GameTable = memo(function GameTable(props: {
           * 사라지면 그건 모드가 아니라 함정이다.
           *
           * 다만 이건 OBS 로 나가는 화면이라 손잡이가 그대로 방송에 실리면 안 된다.
-          * 그래서 평소에는 완전히 투명하고(픽셀을 하나도 더하지 않는다) 마우스를
-          * 올리거나 Tab 으로 포커스가 닿을 때만 드러난다. 카메라에는 손이 없다.
-          * 키보드만 쓰는 사람을 위해 Esc 도 같은 일을 한다(App 쪽 핸들러).
+          *
+          * ⚠ 처음에는 그것을 `opacity: 0` + hover 로 풀었는데 **그게 사용자를 가뒀다**
+          * (2026-08-23 「오버레이 투명 누르면 다시 켤 수 없어」). 켠 순간 화면에
+          * 아무것도 없으면 «여기에 손잡이가 있다»를 배울 기회가 0이다.
+          *
+          * 지금은 **켠 직후에는 보이고, 포인터가 4초 멈추면 사라진다**(`escapeIdle`).
+          * 카메라에는 커서가 없다 — 만지는 동안은 사람의 시간, 손을 뗀 뒤는 카메라의
+          * 시간이다. 다시 만지면 즉시 돌아온다. 키보드만 쓰는 사람을 위해 Esc 도
+          * 같은 일을 한다(App 쪽 핸들러).
           */}
         {overlayOn && props.onOverlayMode !== undefined ? (
           <button
             type="button"
-            className="spectate-overlay-escape"
+            className={`spectate-overlay-escape${escapeIdle ? " is-idle" : ""}`}
             onClick={() => props.onOverlayMode?.("off")}
             title="오버레이 모드를 끕니다 (Esc)"
           >
@@ -13001,6 +13170,7 @@ const GameTable = memo(function GameTable(props: {
       tableEl
     )}
     </RelationProvider>
+    </HotWaitContext.Provider>
     </DangerContext.Provider>
     </WaitCountContext.Provider>
     </DoraContext.Provider>
@@ -15331,6 +15501,12 @@ const OppHandSlot = memo(function OppHandSlot({
   view: PlayerView;
   owner: string;
 }): JSX.Element {
+  /*
+   * ⚠ 컨텍스트는 **이른 return 위**에서 읽는다. 아래 분기(`gone`·`back`)는 같은 자리의
+   * 슬롯이 판 도중에 오가므로, 훅을 그 아래 두면 렌더마다 훅 개수가 달라진다.
+   */
+  const dg = useContext(DangerContext);
+  const hotCtx = useContext(HotWaitContext);
   const gapCls = gap ? " slot-drawn" : "";
   if (slot.kind === "gone") {
     return (
@@ -15346,20 +15522,39 @@ const OppHandSlot = memo(function OppHandSlot({
   const tile = view.tiles[slot.id];
   const hk = highlightKey(tile);
   // 중계 위험패 — 지금 두는 사람의 손패에만 붙는다(그 좌석이 아니면 언제나 빈 문자열)
-  const dg = useContext(DangerContext);
   const dangerCls = specDangerClass(dg?.seat === owner ? dg.danger[slot.id] : undefined);
+  /*
+   * 쏘이는 패 — 「이걸 버리면 실제로 론이 난다」. 위 `dangerCls`(봇의 추정)와는
+   * 다른 층위라 클래스도 채널도 갈라 둔다: 저쪽은 패 **안쪽** 링, 이쪽은 패
+   * **바깥쪽** box-shadow + 좌석 바람 글자다(styles.css `.spec-hot`).
+   */
+  const hot = hotWaitsOf(hotCtx, owner, tile);
+  const hotCls = hot === null ? "" : " spec-hot";
+  const hotMark =
+    hot === null ? null : (
+      <span className="spec-hot-mark" aria-hidden="true">
+        {hot.map((h) => h.wind).join("")}
+      </span>
+    );
+  const hotTitle = hot === null ? {} : { title: hotWaitTitle(hot) };
   if (side === "top") {
     return (
-      <span className={`open-tile${gapCls}${dangerCls}`} data-k={hk}>
+      <span className={`open-tile${gapCls}${dangerCls}${hotCls}`} data-k={hk} {...hotTitle}>
         <TileImg tile={tile} size="fill" owner={owner} />
+        {hotMark}
       </span>
     );
   }
   return (
-    <span className={`open-tile-lying open-${side}${gapCls}${dangerCls}`} data-k={hk}>
+    <span
+      className={`open-tile-lying open-${side}${gapCls}${dangerCls}${hotCls}`}
+      data-k={hk}
+      {...hotTitle}
+    >
       <span className="open-tile-inner">
         <TileImg tile={tile} size="fill" owner={owner} />
       </span>
+      {hotMark}
     </span>
   );
 });
@@ -16959,6 +17154,11 @@ function handReordered(order: number[], id: number, targetIdx: number): number[]
 const TIMER_COUNT_MS = 10_000;
 /** 굵게·붉게 전환하는 잔여 시간 */
 const TIMER_URGENT_MS = 5_000;
+/**
+ * 마감이 안 실려 온 프롬프트에서 막대가 도는 시간 — 서버의 기본 타임아웃과 같다.
+ * 예전에는 이 값이 CSS 기본값(`--timer-duration: 30s`)에 숨어 있었다.
+ */
+const PROMPT_FALLBACK_MS = 30_000;
 
 function PromptTimer(props: {
   seq: number;
@@ -16968,48 +17168,82 @@ function PromptTimer(props: {
 }): JSX.Element {
   const { deadline } = props;
   const paused = useContext(PausedContext);
-  const [left, setLeft] = useState<number | null>(
-    deadline === null ? null : Math.max(0, deadline - Date.now()),
-  );
+
+  /*
+   * 게이지의 «가득 참» 기준과, 마감이 없는 국의 어림 마감을 이 프롬프트 하나에
+   * 묶어 둔다.
+   *
+   * ⚠ `deadline` 이 아니라 `seq` 에 묶는다. 마감은 이 프롬프트가 사는 동안 **뒤로
+   *   밀린다**: 일시정지를 풀면 서버가 세워 둔 만큼 밀어 주고(gamePaused 처리),
+   *   중계석의 「+30초」도 같은 일을 한다. 마감이 바뀔 때마다 기준을 다시 잡으면
+   *   그 순간 막대가 가득 찬 자리로 **튀어 오른다**.
+   *
+   * 마감이 없는 국(초읽기 아님)에도 막대는 돈다 — 서버의 기본 타임아웃이 그대로
+   * 있기 때문이다. 예전에는 그 30초가 CSS 기본값(`--timer-duration: 30s`)에 숨어
+   * 있었는데, 막대를 React 가 그리게 되면서 여기로 나왔다.
+   */
+  const spanRef = useRef<{ seq: number; until: number; total: number }>({
+    seq: -1,
+    until: 0,
+    total: 0,
+  });
+  if (spanRef.current.seq !== props.seq) {
+    const until = deadline ?? Date.now() + PROMPT_FALLBACK_MS;
+    spanRef.current = { seq: props.seq, until, total: Math.max(0, until - Date.now()) };
+  }
+  /** 실제로 세는 마감 — 서버가 준 값이 있으면 언제나 그쪽이 진짜다. */
+  const until = deadline ?? spanRef.current.until;
+
+  const [left, setLeft] = useState<number>(() => Math.max(0, until - Date.now()));
   useEffect(() => {
-    if (deadline === null) {
-      setLeft(null);
-      return;
-    }
     // 판이 서 있으면 마지막 값에서 멈춘다 — 재개하면 서버가 세워 둔 만큼 마감이
     // 뒤로 밀려 있으므로(gamePaused 처리) 그 자리에서 이어 센다.
     if (paused) return;
-    setLeft(Math.max(0, deadline - Date.now()));
-    const t = setInterval(() => setLeft(Math.max(0, deadline - Date.now())), 100);
+    setLeft(Math.max(0, until - Date.now()));
+    const t = setInterval(() => setLeft(Math.max(0, until - Date.now())), 100);
     return () => clearInterval(t);
-  }, [deadline, paused]);
+  }, [until, paused]);
 
-  // 게이지 길이는 **이 마감을 처음 본 순간의 남은 시간**으로 한 번만 정한다.
-  // 렌더마다 다시 계산하면(0.1초마다 다시 렌더된다) CSS 애니메이션의 duration이 계속
-  // 줄어드는데, 진행도는 `경과/duration`이라 막대가 실제 시간의 두 배 속도로 비었다.
-  const total = useMemo(
-    () => (deadline === null ? null : Math.max(0, deadline - Date.now())),
-    [deadline],
-  );
-  // 남은 시간에 따라 조용함 → 숫자 → 경고 순으로 단계가 올라간다.
-  const showCount = left !== null && left <= TIMER_COUNT_MS;
-  const urgent = left !== null && left <= TIMER_URGENT_MS;
+  // 연장으로 남은 시간이 기준을 넘어서면 기준을 그만큼 늘린다 — 안 그러면 막대가
+  // 그릇 밖으로 나간다(scaleX > 1).
+  if (left > spanRef.current.total) spanRef.current.total = left;
+  const total = spanRef.current.total;
+
+  /*
+   * 남은 시간에 따라 조용함 → 숫자 → 경고 순으로 단계가 올라간다.
+   * **서버 마감이 있을 때만** 숫자를 말한다 — 없는 국의 남은 초는 화면이 지어낸
+   * 값이라, 막대(어림)와 달리 단정이 된다.
+   */
+  const showCount = deadline !== null && left <= TIMER_COUNT_MS;
+  const urgent = deadline !== null && left <= TIMER_URGENT_MS;
+  /*
+   * 막대를 **React 가 직접 민다** (CSS 애니메이션이 아니다).
+   *
+   * 예전에는 `animation: timer-run var(--timer-duration) linear` 였는데, 그러면 판이
+   * 서 있어도(`PausedContext`) **막대만 혼자 비어 간다** — 숫자는 서고 게이지는
+   * 흐르니 한 화면에서 두 시계가 서로를 거짓말로 만든다(2026-08-23 사용자 보고
+   * 「일시정지 제한시간바가 움직임」).
+   *
+   * `animation-play-state: paused` 로도 세울 수는 있지만 그것만으로는 **재개가 안
+   * 맞는다**: 마감이 바뀌면 새로 마운트해 애니메이션을 처음부터 돌리는 구조였으므로,
+   * 정지를 풀어 마감이 밀리는 순간 막대가 가득 찬 자리로 튀었다. 연장(+30초)도 같다.
+   * 남은 시간은 이미 0.1초마다 세고 있으므로(`left`), 그 값 하나로 막대를 그리면
+   * 정지·재개·연장 셋이 **저절로** 맞는다 — 세울 것도, 다시 마운트할 것도 없다.
+   * 0.1초 간격의 계단은 같은 길이의 linear transition 이 메운다(styles.css).
+   */
+  const ratio = total > 0 ? Math.max(0, Math.min(1, left / total)) : 0;
   return (
     <div
       className={`prompt-timer${urgent ? " prompt-timer-urgent" : ""}`}
-      // 마감이 바뀌면 새로 마운트해 애니메이션을 처음부터 돌린다
-      key={`${props.seq}:${deadline ?? "none"}`}
+      // 새 프롬프트면 새 게이지다 (마감이 바뀌는 것만으로는 다시 마운트하지 않는다)
+      key={props.seq}
       {...(props.onTimeout != null ? { title: props.onTimeout } : {})}
     >
       <div
         className="prompt-timer-fill"
-        style={
-          total === null
-            ? undefined
-            : ({ "--timer-duration": `${total}ms` } as CSSProperties)
-        }
+        style={{ transform: `scaleX(${ratio})` } as CSSProperties}
       />
-      {showCount && left !== null ? (
+      {showCount ? (
         <span className="prompt-timer-count">{(left / 1000).toFixed(1)}초</span>
       ) : null}
       {/* 급해진 구간에서만 실제로 띄운다 — 상시로 세워 두면 판을 가리기만 한다 */}
@@ -17891,6 +18125,13 @@ function OwnArea(props: {
   const specDangerCls = (id: number): string =>
     specDangerClass(specDanger?.seat === me.id ? specDanger.danger[id] : undefined);
 
+  /*
+   * 쏘이는 패 — 「이 사람이 이걸 버리면 실제로 론이 난다」 (관전 전용, 사실).
+   * 바로 위 `specDangerCls`(봇의 추정)와 **다른 층위**라 표시 채널을 갈라 둔다.
+   */
+  const hotCtx = useContext(HotWaitContext);
+  const hotOf = (id: number): HotWait[] | null => hotWaitsOf(hotCtx, me.id, view.tiles[id]);
+
   /**
    * 포인터 드래그 시작 — 시작 시점의 슬롯 중심 X를 한 번 측정해 둔다.
    * 실제 드래그(리프트·재정렬)는 임계값 이상 움직여야 시작하고, 그 전엔 클릭으로 처리된다.
@@ -18380,6 +18621,8 @@ function OwnArea(props: {
               dangerSet.size > 0 && tileKind !== undefined && dangerSet.has(kindKey(tileKind));
             // 텐파이면 이 패를 버렸을 때의 대기패를 hover 시 표시 (리치 모드 아니어도)
             const showWaits = hoverId === id && hoverWaits.length > 0;
+            // 쏘이는 패 — 관전에서만, 그리고 이 좌석이 지금 두는 사람일 때만 선다.
+            const hot = hotOf(id);
             return (
               <button
                 key={id}
@@ -18396,6 +18639,9 @@ function OwnArea(props: {
                   sealed ? "봉인됨" : null,
                   kuikae ? "쿠이카에 — 이번 순에만 버릴 수 없음" : null,
                   danger ? "위험패" : null,
+                  // 사실 기반 표시는 이름에도 실어야 한다 — 링과 바람 글자는 둘 다
+                  // 눈으로만 읽힌다(화면을 못 보면 중계 해설이 통째로 사라진다).
+                  hot === null ? null : hotWaitTitle(hot),
                   armedTileId === id ? "선택됨 — 한 번 더 누르면 버립니다" : null,
                   coachLocked ? "튜토리얼이 지금 막고 있음" : null,
                   !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
@@ -18429,7 +18675,7 @@ function OwnArea(props: {
                   armedAug !== null && !armable ? " hand-dimmed" : ""
                 }${
                   danger ? " hand-danger" : ""
-                }${specDangerCls(id)}`}
+                }${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
                 style={tileDragStyle(id, idx)}
                 onPointerDown={(e) => {
                   beginDrag(e, id, idx);
@@ -18583,6 +18829,13 @@ function OwnArea(props: {
                     ⚠
                   </span>
                 ) : null}
+                {/* 쏘이는 패 — **누구의** 오름패인지까지 말한다. 좌석이 넷이라
+                    「누군가 기다린다」만으로는 중계가 못 쓴다. */}
+                {hot === null ? null : (
+                  <span className="spec-hot-mark" title={hotWaitTitle(hot)}>
+                    {hot.map((h) => h.wind).join("")}
+                  </span>
+                )}
                 {/*
                  * "한 번 더" 안내는 **진짜 요소**여야 한다 — 의사요소로 두면 안 된다.
                  * 한 요소에 ::after는 하나뿐인데 마우스 hover 금테(.hand-clickable:hover::after)가
@@ -18828,6 +19081,149 @@ const FURITEN_REASON_TEXT: Record<FuritenReason, string> = {
  * 실제로 궁금한 것은 언제나 「지금 이 사람이 무엇을 버릴 수 있나」 하나다.
  */
 const DangerContext = createContext<{ seat: string; danger: Record<number, number> } | null>(null);
+
+/** 「이 패를 버리면 쏘인다」 한 건 — 어느 좌석이, 몇 장 남은 패로. */
+interface HotWait {
+  seat: string;
+  /** 좌석 바람 한 글자 — «누구인가»를 색이 아닌 글자로 말하는 채널 */
+  wind: string;
+  name: string;
+  /** 보이지 않는 곳에 남은 장수 (관전 뷰 기준의 실수) */
+  remaining: number;
+}
+
+/**
+ * **쏘이는 패** — 지금 두는 좌석이 버리면 실제로 론이 나는 패 (2026-08-23 사용자 요구:
+ * 「위험패도 그냥 손패만 가져옴. 따로 오름패를 붉게 표시해주고 하는 게 아니라」).
+ *
+ * ## `DangerContext` 와 무엇이 다른가 — **확신도가 정반대다**
+ * 저쪽은 봇의 위협 읽기가 매긴 **추정**(0~1)이다. 이쪽은 서버가 판의 채점기로 직접
+ * 태워 본 **사실**이다: 관전 뷰는 네 손패를 다 보므로 「이 좌석은 이 패로 이만큼짜리
+ * 론이 난다」가 계산으로 확정된다(`SpectateWait.ron`). 두 정보가 화면에서 같아
+ * 보이면 안 되므로 색·모양 채널을 갈라 둔다(styles.css `.spec-hot`).
+ *
+ * ## 무엇을 빼는가 — **못 먹는 대기를 붉게 칠하면 그건 거짓말이다**
+ * 다음은 이 지도에 **넣지 않는다**. 대기 자체는 있어도 그 패로 점수가 움직이지 않는다:
+ *  - `w.ron === null` — 그 패로는 역이 없다(론이 성립하지 않는다)
+ *  - 좌석이 `furiten` — 후리텐이면 론이 통째로 막힌다
+ *  - 좌석이 `yakuless` (형식텐파이) · `belowMinHan` (격 미달로 화료 거부)
+ *  - **지금 두는 좌석 자신** — 자기 버림패로는 못 쏜다
+ * 뺀 것들은 사라지지 않고 도크의 「위험패」 구획에서 **글로** 설명된다 — 판 위에서
+ * 조용한 이유를 아는 것이 중계에서는 그 자체로 정보다.
+ *
+ * 값은 `seat`(= 칠할 손패의 주인 = 지금 두는 좌석)과 kindKey → 대기 목록이다.
+ */
+const HotWaitContext = createContext<{ seat: string; byKind: Map<string, HotWait[]> } | null>(null);
+
+/**
+ * 이 패가 «쏘이는 패»인가 — 손패 한 장을 그리는 자리 전부가 같은 판정을 쓴다.
+ * 주인이 지금 두는 좌석이 아니면 언제나 null 이다: 네 좌석에 다 칠하면 판이 통째로
+ * 신호등이 되고, 중계에서 실제로 궁금한 것은 언제나 「지금 이 사람이 무엇을
+ * 버리면 쏘는가」 하나다.
+ */
+function hotWaitsOf(
+  hot: { seat: string; byKind: Map<string, HotWait[]> } | null,
+  owner: string,
+  tile: PublicTileView | undefined,
+): HotWait[] | null {
+  if (hot === null || hot.seat !== owner) return null;
+  const k = tile?.kind;
+  if (k === undefined) return null;
+  return hot.byKind.get(kindKey(k)) ?? null;
+}
+
+/**
+ * 쏘이는 패에 붙는 표식 — **좌석 바람 글자**.
+ *
+ * 색만으로 말하지 않는다는 규약(styles.css §고대비)을 지키는 자리이자, 좌석이 넷인
+ * 판에서 «누구의 오름패인가»를 답하는 유일한 채널이다. 바깥 링만 있으면 「누군가
+ * 기다린다」까지밖에 못 읽는다.
+ */
+function hotWaitTitle(hits: readonly HotWait[]): string {
+  return `쏘이는 패 — ${hits
+    .map((h) => `${h.wind} ${h.name} (남은 ${h.remaining}장)`)
+    .join(" · ")}`;
+}
+
+/** 대기이긴 한데 **그 패로는 점수가 안 움직이는** 좌석 — 판 위에서 뺀 것들. */
+interface ColdWaitSeat {
+  seat: string;
+  wind: string;
+  name: string;
+  /** 왜 못 먹나 — 사람 말 한 줄 */
+  why: string;
+  /** 그래도 대기이긴 한 패들 (kindKey) */
+  kinds: string[];
+}
+
+/**
+ * 「쏘이는 패」 지도를 만든다 — **판 위 색칠과 도크가 같은 함수를 쓴다.**
+ *
+ * 두 자리에서 따로 세면 언젠가 갈라지고, 그때 어느 쪽이 맞는지 알 방법이 없다
+ * (`DockDanger` 가 이미 판 위 위험도와 값을 공유하는 것과 같은 이유다).
+ *
+ * 판정 규칙은 `HotWaitContext` 머리말에 있다. 여기서는 **뺀 것도 함께 돌려준다** —
+ * 판 위에서 조용한 이유를 도크가 글로 말할 수 있어야 「왜 저 리치가 안 쏘지」에
+ * 답할 수 있다. 뺐다는 사실 자체가 중계에서는 정보다.
+ */
+function readHotWaits(
+  view: PlayerView,
+  insight: SpectateInsightMessage | undefined,
+): { seat: string; hot: Map<string, HotWait[]>; cold: ColdWaitSeat[] } | null {
+  if (insight === undefined) return null;
+  const turn = view.players.find((p) => p.seat === view.round.turnSeat);
+  if (turn === undefined) return null;
+  const hot = new Map<string, HotWait[]>();
+  const cold: ColdWaitSeat[] = [];
+  for (const s of insight.seats) {
+    const waits = s.waits ?? [];
+    if (waits.length === 0) continue;
+    const p = view.players.find((x) => x.id === s.id);
+    if (p === undefined) continue;
+    const wind = seatWindChar(view, p);
+    const name = playerName(view, p);
+    // 자기 버림패로는 못 쏜다 — 판 위에도 도크에도 올리지 않는다(설명할 것이 없다).
+    if (s.id === turn.id) continue;
+    /*
+     * 좌석 단위로 막히는 세 가지. 대기가 넓든 비싸든 **론이 성립하지 않는다** —
+     * 여기서 걸러 내지 않으면 판 위의 붉은 표시가 그대로 거짓말이 된다.
+     */
+    const seatWhy =
+      s.furiten === true
+        ? "후리텐 — 론이 막혀 있습니다 (쯔모만 가능)"
+        : s.yakuless === true
+          ? "형식텐파이 — 어떤 오름패로도 역이 없습니다"
+          : s.belowMinHan === true
+            ? "격 미달 — 역은 있지만 최소 판수에 못 미쳐 화료가 거부됩니다"
+            : null;
+    if (seatWhy !== null) {
+      cold.push({ seat: s.id, wind, name, why: seatWhy, kinds: waits.map((w) => w.kind) });
+      continue;
+    }
+    const noYaku: string[] = [];
+    for (const w of waits) {
+      if (w.ron === null) {
+        // 대기이긴 한데 그 패로는 역이 없다 — 나머지 대기는 여전히 쏜다.
+        noYaku.push(w.kind);
+        continue;
+      }
+      const hit: HotWait = { seat: s.id, wind, name, remaining: w.remaining };
+      const list = hot.get(w.kind);
+      if (list === undefined) hot.set(w.kind, [hit]);
+      else list.push(hit);
+    }
+    if (noYaku.length > 0) {
+      cold.push({
+        seat: s.id,
+        wind,
+        name,
+        why: "이 패로는 역이 없습니다 — 론이 성립하지 않습니다",
+        kinds: noYaku,
+      });
+    }
+  }
+  return { seat: turn.id, hot, cold };
+}
 
 /** 위험도 → 클래스 접미. 두 단계면 충분하다(세 단계는 색이 서로를 잡아먹는다). */
 function specDangerClass(level: number | undefined): string {
@@ -19641,9 +20037,16 @@ function DockWaits({
 /**
  * 「위험패」 구획 — 지금 두는 좌석이 무엇을 버릴 수 있나 (docs/36 A4).
  *
- * 판 위의 색칠(`.spec-danger-md`/`-hi`)과 **같은 값**을 쓴다. 여기서 따로 세면
- * 두 표시가 언젠가 갈라지고, 그때 어느 쪽이 맞는지 알 방법이 없다. 도크는 그
- * 색칠을 글로 한 번 더 말할 뿐이다(색을 못 가리는 사람에게는 이쪽이 본체다).
+ * 두 층위를 **이 순서로** 싣는다.
+ *  1. **쏘이는 패 (사실)** — 판의 채점기가 직접 낸 값(`readHotWaits`). 판 위 붉은
+ *     표시와 **같은 함수**를 쓴다. 못 먹는 대기(후리텐·형식텐파이·격 미달·역없음)는
+ *     여기서 빠지고, 대신 「대기는 있지만 못 먹는 손」으로 **이유와 함께** 적힌다 —
+ *     판 위가 왜 조용한지를 아는 것이 중계에서는 그 자체로 정보다.
+ *  2. **위험도 (추정)** — 봇의 위협 읽기. 판 위의 색칠(`.spec-danger-md`/`-hi`)과
+ *     같은 값을 쓴다. 여기서 따로 세면 두 표시가 언젠가 갈라지고, 그때 어느 쪽이
+ *     맞는지 알 방법이 없다.
+ *
+ * 색을 못 가리는 사람에게는 이 구획이 판 위 표시의 **본체**다 — 그래서 둘 다 글로 적는다.
  */
 function DockDanger({
   view,
@@ -19658,17 +20061,97 @@ function DockDanger({
   const seat = insight?.dangerSeat;
   const danger = insight?.danger;
   if (rewinding) return <p className="dock-note dock-note-warn">{REWIND_NOTE}</p>;
+  /*
+   * ── 사실 먼저, 추정은 그 다음 ──
+   *
+   * 「쏘이는 패」는 판의 채점기가 직접 낸 값이고(`readHotWaits`, 판 위 색칠과 **같은
+   * 함수**), 아래 위험도는 봇의 추정이다. 확신도가 다른 두 정보가 한 구획에 서므로
+   * 순서와 제목으로 그 차이를 먼저 말한다 — 섞어 두면 어느 쪽이 사실인지 알 길이 없다.
+   */
+  const read = readHotWaits(view, insight);
+  const hotRows =
+    read === null
+      ? []
+      : [...read.hot.entries()].map(([kind, hits]) => ({ kind, hits }));
+  const factNode =
+    read === null ? null : (
+      <div className="dock-hot">
+        <p className="dock-note">
+          <strong className="dock-hot-title">쏘이는 패</strong> — 지금 버리면 실제로 론이 납니다
+        </p>
+        {hotRows.length === 0 ? (
+          <p className="dock-note dock-note-quiet">
+            지금 버려서 쏘이는 패는 없습니다.
+            {read.cold.length > 0 ? " (아래 «대기는 있지만 못 먹는 손» 참고)" : ""}
+          </p>
+        ) : (
+          <div className="dock-hot-row">
+            {hotRows.map(({ kind, hits }) => {
+              const k = parseKindKey(kind);
+              return (
+                <span key={kind} className="dock-hot-tile" title={hotWaitTitle(hits)}>
+                  {k === null ? kind : <TileImg tile={{ kind: k }} size="mini" />}
+                  {/* 색이 아니라 **글자**로 누구인지 말한다 — 판 위 표식과 같은 어휘 */}
+                  <span className="dock-hot-who">{hits.map((h) => h.wind).join("")}</span>
+                  <span className="dock-hot-left num">
+                    {Math.max(...hits.map((h) => h.remaining))}장
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {read.cold.length > 0 ? (
+          <div className="dock-cold">
+            <p className="dock-note dock-note-quiet">대기는 있지만 못 먹는 손</p>
+            {read.cold.map((c) => (
+              <p key={`${c.seat}:${c.why}`} className="dock-cold-row">
+                <span className="dock-cold-who">
+                  {c.wind} {c.name}
+                </span>
+                <span className="dock-cold-why">{c.why}</span>
+                <span className="dock-cold-tiles">
+                  {c.kinds.map((kk) => {
+                    const k = parseKindKey(kk);
+                    return k === null ? (
+                      <span key={kk}>{kk}</span>
+                    ) : (
+                      <TileImg key={kk} tile={{ kind: k }} size="mini" />
+                    );
+                  })}
+                </span>
+              </p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+
   if (seat === undefined || danger === undefined) {
-    return <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>;
+    return (
+      <div className="dock-danger">
+        {factNode}
+        <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>
+      </div>
+    );
   }
   const p = view.players.find((x) => x.id === seat);
   const ids = (view.zones[`hand:${seat}`]?.tileIds ?? []).filter((id) => danger[id] !== undefined);
-  if (ids.length === 0) return <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>;
+  if (ids.length === 0) {
+    return (
+      <div className="dock-danger">
+        {factNode}
+        <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>
+      </div>
+    );
+  }
   const sorted = [...ids].sort((a, b) => (danger[b] ?? 0) - (danger[a] ?? 0));
   return (
     <div className="dock-danger">
+      {factNode}
       <p className="dock-note">
-        {p === undefined ? seat : playerName(view, p)}의 손패 — 지금 버리면 얼마나 위험한가
+        <strong className="dock-est-title">위험도(추정)</strong> — {p === undefined ? seat : playerName(view, p)}의
+        손패를 봇의 눈으로 잰 값입니다
       </p>
       <div className="dock-danger-row">
         {sorted.map((id) => {
@@ -22288,15 +22771,27 @@ function RoundResultPanel({
   const remainSec = Math.ceil(remainMs / 1000);
   const showCountdown = deadlineAt !== null && remainSec > 0;
 
-  // 역 스탬프 사운드 — CSS 스탬프 딜레이(0.15s + i*0.09s)와 동기한 펜타토닉 계단
-  const headRows = infos[0] !== undefined
-    ? infos[0].yaku.length +
-      (infos[0].yakuless === true && yakulessLabel(infos[0].winner) !== null ? 1 : 0) +
-      (infos[0].doraHan > 0 ? 1 : 0) +
-      (infos[0].uraHan > 0 ? 1 : 0) +
-      (infos[0].redHan > 0 ? 1 : 0) +
-      (infos[0].extraHan > 0 ? 1 : 0)
-    : 0;
+  /*
+   * 역 스탬프 사운드 — CSS 스탬프 딜레이(0.15s + i*0.09s)와 동기한 펜타토닉 계단.
+   *
+   * ⚠ **`infos[0]` 만 보면 안 된다** (2026-08-23). 결과 화면은 이미 승자별로 그리는데
+   *   (`infos.map`) 줄 수는 첫 승자 것만 셌다 — 더블론에서 두 번째 승자의 역이 화면에
+   *   스탬프로 찍히는 동안 계단은 이미 끝나 있었다. 두 손패는 나란히 서서 **같은
+   *   시각에** 찍히므로, 계단은 «가장 긴 쪽»만큼 올라가야 끝까지 따라붙는다.
+   */
+  const headRows = infos.reduce(
+    (max, w) =>
+      Math.max(
+        max,
+        w.yaku.length +
+          (w.yakuless === true && yakulessLabel(w.winner) !== null ? 1 : 0) +
+          (w.doraHan > 0 ? 1 : 0) +
+          (w.uraHan > 0 ? 1 : 0) +
+          (w.redHan > 0 ? 1 : 0) +
+          (w.extraHan > 0 ? 1 : 0),
+      ),
+    0,
+  );
   const stepsPlayedFor = useRef<RoundOverMessage | null>(null);
   useEffect(() => {
     if (stepsPlayedFor.current === result) return; // StrictMode 이중 마운트 가드

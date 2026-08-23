@@ -3039,13 +3039,23 @@ button {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/*
+ * 채움 — **길이는 React 가 인라인 `transform: scaleX()` 로 준다.**
+ *
+ * 예전에는 `animation: timer-run var(--timer-duration) linear forwards` 였는데,
+ * 그러면 판이 서도(`PausedContext`) 막대만 혼자 비어 갔다 — React 는 멈춰도 CSS
+ * 애니메이션은 계속 흐르기 때문이다(2026-08-23 「일시정지 제한시간바가 움직임」).
+ * 자세한 근거는 App.tsx `PromptTimer`.
+ *
+ * transition 길이는 PromptTimer 의 tick 간격(100ms)과 같아야 한다 — 짧으면 0.1초마다
+ * 계단이 보이고, 길면 막대가 실제 시간보다 뒤처진다.
+ */
 .prompt-timer-fill {
   height: 100%;
   border-radius: 3px;
   background: linear-gradient(90deg, #f0c86a, #e8825a);
   transform-origin: left;
-  /* 초읽기가 걸리면 PromptTimer가 --timer-duration을 실제 마감으로 덮어쓴다 */
-  animation: timer-run var(--timer-duration, 30s) linear forwards;
+  transition: transform 100ms linear;
 }
 
 /* 초읽기(time_pressure) — 실제 마감이 있는 국. 게이지를 굵게 하고 남은 초를 띄운다 */
@@ -3097,11 +3107,6 @@ button {
   color: #ffd9a0;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
   pointer-events: none;
-}
-
-@keyframes timer-run {
-  from { transform: scaleX(1); }
-  to { transform: scaleX(0); }
 }
 
 /* ─────────────── 액션 바 ─────────────── */
@@ -11388,8 +11393,22 @@ body[data-majak-dock="overlay"] .auglog {
  * 그건 모드가 아니라 함정이다.
  *
  * 다만 이 화면은 그대로 OBS 로 나가므로 손잡이가 픽셀 하나라도 더하면 안 된다.
- * 그래서 평소에는 **완전히 투명**하고 마우스를 올리거나 포커스가 닿을 때만
- * 드러난다 — 카메라에는 손이 없다. 키보드만 쓰는 사람을 위해 Esc 도 같은 일을 한다.
+ *
+ * ⚠ **처음 쓴 방법(`opacity: 0` + hover 에만 드러남)은 틀렸다** (2026-08-23 사용자
+ *   보고: 「오버레이 투명 누르면 다시 켤 수 없어」). 오버레이를 켠 사람의 화면에는
+ *   그 순간 아무것도 남지 않으므로, 되돌리는 손잡이가 «거기 있다»는 사실을 배울
+ *   기회가 0이다. 아무도 못 찾는 탈출구는 탈출구가 아니다 — 방송을 지키느라 사람을
+ *   가둔 셈이다.
+ *
+ * 그래서 **켠 직후에는 보이고, 포인터가 한동안 안 움직이면 사라진다**
+ * (`.is-idle` 은 App 이 단다 — `usePointerIdle`). 근거: **카메라에는 커서가 없다.**
+ * 송출을 잡는 순간 운영자는 마우스에서 손을 떼므로 몇 초 뒤 손잡이도 함께 사라지고,
+ * 다시 만지면 곧바로 되돌아온다. 「보여야 한다」와 「방송은 깨끗해야 한다」가 둘 다
+ * 성립하는 유일한 지점이다.
+ *
+ * ⚠ 아래 `:hover`/`:focus-visible` 규칙은 **`.is-idle` 보다 뒤에 있어야 한다.**
+ *   특이성이 (0,2,0) 로 같아서 순서가 곧 승패다 — 앞에 두면 숨어 있는 동안 마우스를
+ *   올려도 안 나타난다(P0-1 과 같은 함정).
  */
 .spectate-overlay-escape {
   position: absolute;
@@ -11404,12 +11423,24 @@ body[data-majak-dock="overlay"] .auglog {
   font: inherit;
   font-size: 12px;
   font-weight: 800;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+.spectate-overlay-escape.is-idle {
   opacity: 0;
 }
 
 .spectate-overlay-escape:hover,
 .spectate-overlay-escape:focus-visible {
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 사라짐/나타남은 유지한다(방송을 지키는 기능이다) — 페이드만 없앤다. */
+  .spectate-overlay-escape {
+    transition: none;
+  }
 }
 
 /* 접힘 상태 — 열은 30px 만 남고 그 안에 세로 손잡이가 선다. */
@@ -11485,7 +11516,27 @@ body[data-majak-dock="overlay"] .auglog {
   padding: 8px;
 }
 
+/*
+ * 구획 상자.
+ *
+ * ⚠ **`flex: 0 0 auto` 가 이 상자를 스크롤 가능하게 만드는 유일한 줄이다**
+ * (2026-08-23 사용자 보고: 「중계도크 칸들이 스크롤이 안 되서 짤림」).
+ *
+ * 부모(`.spectate-dock-body`)는 `overflow-y: auto` + `min-height: 0` 로 이미 맞게
+ * 짜여 있었는데도 스크롤바가 **생길 수가 없었다**: 이 상자가 flex 자식이라
+ * `flex-shrink: 1`(기본값)로 자리에 맞게 줄어들고, 아래 `overflow: hidden` 이 삐져
+ * 나온 내용을 그 자리에서 잘라 버렸기 때문이다. 즉 «넘치는 일» 자체가 일어나지 않아
+ * 부모의 `overflow-y: auto` 는 영원히 할 일이 없었다 — 구획을 다 켜고 좌석 4명 +
+ * 오름패가 차면 아래쪽 구획이 통째로 사라졌다.
+ *
+ * 줄어들지 않게 못 박으면 본문이 실제로 부모를 넘치고, 그제야 스크롤이 붙는다.
+ *
+ * `overflow: hidden` 은 남긴다 — 제목줄(`.dock-sec-head`)의 배경을 이 상자의 둥근
+ * 모서리로 잘라 주는 것이 이 선언이고, 빼면 사각 배경이 모서리 밖으로 삐져 나온다.
+ * 이제는 상자가 내용만큼 커지므로 이 선언이 무언가를 «잘라 없앨» 일이 없다.
+ */
 .dock-sec {
+  flex: 0 0 auto;
   border-radius: var(--r-md, 12px);
   border: 1px solid rgba(247, 243, 232, 0.12);
   background: rgba(9, 17, 14, 0.7);
@@ -11880,7 +11931,100 @@ body[data-majak-dock="folded"] {
   font-weight: 700;
 }
 
-/* ── 위험패 구획 ── */
+/* ── 위험패 구획 ──
+ *
+ * 한 구획에 **확신도가 다른 두 정보**가 선다: 위쪽 「쏘이는 패」는 판의 채점기가 낸
+ * 사실, 아래 「위험도」는 봇의 추정이다. 제목 굵기와 구분선으로 그 경계를 눈에
+ * 보이게 둔다 — 섞여 보이면 중계 해설이 추정을 사실처럼 말하게 된다.
+ */
+
+.dock-hot {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid rgba(247, 243, 232, 0.12);
+}
+
+.dock-hot-title {
+  color: #ff9b8c;
+}
+
+.dock-est-title {
+  color: rgba(247, 243, 232, 0.7);
+}
+
+.dock-note-quiet {
+  color: rgba(247, 243, 232, 0.38);
+}
+
+.dock-hot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* 패 한 장 + 좌석 바람 + 남은 장수. 판 위 표식(.spec-hot-mark)과 **같은 어휘**로
+   적는다 — 도크와 판이 다른 말을 쓰면 눈이 둘을 잇지 못한다. */
+.dock-hot-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px 2px;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px rgba(255, 74, 60, 0.85),
+    0 0 8px 1px rgba(255, 74, 60, 0.35);
+}
+
+.dock-hot-who {
+  color: #ffd0c8;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+
+.dock-hot-left {
+  color: rgba(247, 243, 232, 0.6);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 뺀 것들 — «판 위가 조용한 이유». 사실 쪽과 헷갈리지 않게 붉은 기를 전혀 안 쓴다. */
+.dock-cold {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.dock-cold-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.dock-cold-who {
+  color: rgba(247, 243, 232, 0.7);
+  font-weight: 800;
+}
+
+.dock-cold-why {
+  color: rgba(247, 243, 232, 0.45);
+}
+
+.dock-cold-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  opacity: 0.55;
+}
 
 .dock-danger-row,
 .dock-next-row {
@@ -11982,6 +12126,71 @@ body[data-majak-dock="folded"] {
 
 .hand-tile.spec-danger-hi {
   color: rgba(226, 96, 84, 0.95);
+}
+
+/* ── 쏘이는 패 ── 지금 두는 좌석이 버리면 **실제로 론이 나는** 패 (관전 전용)
+ *
+ * 바로 위 `.spec-danger-*` 와 **확신도가 정반대**다: 저쪽은 봇의 추정, 이쪽은 판의
+ * 채점기가 직접 태워 본 사실이다(`SpectateWait.ron`). 두 정보가 화면에서 같아
+ * 보이면 안 되므로 채널을 통째로 갈랐다.
+ *
+ * ⚠ **왜 바깥쪽 `box-shadow` 인가.** 패 위의 `outline`·`border`·안쪽 링은 이미 포화
+ *   상태다 — `.hand-danger`(붉은 outline) · `.spec-danger-md/-hi`(파선/실선 링) ·
+ *   `.tile-dora`(금테) · `.tile-dora-own`(이중선) · `.tile-red`(적테) ·
+ *   `.hand-riichi` · `.rt-latest`. 여기에 링을 하나 더 얹으면 이미 두 겹인 패가
+ *   세 겹이 되어 무엇이 무엇인지 못 읽는다. **바깥쪽(non-inset) box-shadow 는
+ *   아무도 안 쓰는 빈 채널**이라, 패 «둘레에 번지는 붉은 빛»이 겹치지 않는다.
+ *
+ * 색만으로 말하지 않는다: 좌석 바람 글자(`.spec-hot-mark`)가 «누구의 오름패인가»를
+ * 함께 적는다. 고대비·강제색에서는 아래쪽 블록이 선종 채널을 하나 더 얹는다.
+ */
+.spec-hot {
+  position: relative;
+  box-shadow:
+    0 0 0 2px rgba(255, 74, 60, 0.95),
+    0 0 10px 3px rgba(255, 74, 60, 0.55);
+  border-radius: 5px;
+}
+
+/*
+ * ⚠ 한 패가 **둘 다**일 수 있다 (봇이 위험하다고 본 패가 실제로 오름패이기도 하다).
+ *   `box-shadow` 는 규칙끼리 합쳐지지 않고 **통째로 덮어쓴다** — 위 `.spec-hot` 가
+ *   `.spec-danger-*` 보다 뒤에 있으므로, 이 결합 규칙이 없으면 겹치는 순간 추정
+ *   쪽 안쪽 링이 소리 없이 사라진다. 특이성 (0,2,0) 으로 둘 다 살린다.
+ */
+.spec-danger-md.spec-hot {
+  box-shadow:
+    inset 0 0 0 2px rgba(226, 178, 92, 0.75),
+    0 0 0 2px rgba(255, 74, 60, 0.95),
+    0 0 10px 3px rgba(255, 74, 60, 0.55);
+}
+
+.spec-danger-hi.spec-hot {
+  box-shadow:
+    inset 0 0 0 2px rgba(226, 96, 84, 0.9),
+    0 0 0 2px rgba(255, 74, 60, 0.95),
+    0 0 10px 3px rgba(255, 74, 60, 0.55);
+}
+
+/* 좌석 바람 — 붉은 빛이 «누가» 기다리는지까지 말하게 하는 글자 채널.
+   코너 마커 어휘(.rt-tsumo-dot)와 같은 자리에 붙인다. */
+.spec-hot-mark {
+  position: absolute;
+  right: -3px;
+  bottom: -4px;
+  z-index: 3;
+  min-width: 1.1em;
+  padding: 0 2px 1px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 74, 60, 0.9);
+  background: rgba(24, 6, 4, 0.95);
+  color: #ffd0c8;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+  letter-spacing: -0.5px;
+  pointer-events: none;
 }
 
 /* ─────────────── 일시정지 (관리자 중계) ─────────────── */
@@ -14037,9 +14246,10 @@ body.peeking .overlay-peekable > * {
    danger-pulse(1.3s ∞), 오름패 강조 hl-pulse(6px↔16px 그림자), 차례 표시 turn-pulse.
    전부 3Hz 아래지만 **넓은 면적의 밝기가 영원히 흔들리는 것**이 문제다.
 
-   왜 `*{animation:none}` 같은 전면 차단을 안 쓰나: 결정 제한시간 게이지(.prompt-timer-fill)가
-   `timer-run var(--timer-duration) forwards` 라는 **정보를 나르는 애니메이션**이다.
-   한 줄로 다 끄면 남은 시간을 못 보게 된다. 그래서 반복 연출만 이름을 불러 세운다.
+   왜 `*{animation:none}` 같은 전면 차단을 안 쓰나: **정보를 나르는 움직임**이 섞여 있기
+   때문이다. 한 줄로 다 끄면 그것까지 사라진다. 그래서 반복 연출만 이름을 불러 세운다.
+   (결정 제한시간 게이지 `.prompt-timer-fill` 은 이제 애니메이션이 아니라 React 가 미는
+   transform 이라 이 블록의 사정권 밖이다 — 일시정지에서 함께 서야 해서 옮겼다.)
 
    멈춘 자리가 어두운 쪽이면 경고 자체가 사라지므로, 아래 것들은 전부 **애니메이션 없이도
    보이는 정적 outline·box-shadow가 기본 규칙에 이미 있음을 확인하고** 껐다. */
@@ -15741,6 +15951,15 @@ body:has(.prod-skip) .toast-stack {
   outline-offset: -3px;
 }
 
+/* (3-1) 「쏘이는 패」(사실) vs 「위험도」(추정) — 둘 다 붉은 계열로 갈 수 있어서,
+ *       색을 못 가리면 확신도가 정반대인 두 표시가 하나로 보인다. 사실 쪽에는
+ *       패 **바깥**을 도는 굵은 실선 링을 하나 더 준다(안쪽 링과 자리가 다르다).
+ *       글자 채널(`.spec-hot-mark` 의 좌석 바람)은 평상시에도 늘 붙어 있다. */
+.spec-hot {
+  outline: 2px solid rgba(255, 74, 60, 0.95);
+  outline-offset: 2px;
+}
+
 /* (4) `prefers-contrast: more` — 여태 토큰 5개(--ink-2/3/4 · --line · --line-strong)만
  *     재정의하고 **판 위 규칙은 0건**이었다. 정작 중요한 표식이 전부 리터럴 색이라
  *     고대비를 켠 저시력 사용자에게 대국 화면은 사실상 아무것도 바뀌지 않았다.
@@ -15792,6 +16011,17 @@ body:has(.prod-skip) .toast-stack {
     outline-width: 4px;
     outline-offset: -4px;
   }
+  /* 쏘이는 패 — 사실 쪽은 더 굵게, 딱지도 진하게. */
+  .spec-hot {
+    outline-color: #ff4a3c;
+    outline-width: 3px;
+    outline-offset: 3px;
+  }
+  .spec-hot-mark {
+    background: #7a1408;
+    color: #ffe2dc;
+    border-color: #ffd7d0;
+  }
   /* 리치 선언패 */
   .hand-riichi .tile-face {
     outline: 3px solid #ff9a8c;
@@ -15841,6 +16071,17 @@ body:has(.prod-skip) .toast-stack {
   .spec-danger-hi {
     outline: 3px solid Highlight;
     outline-offset: -3px;
+  }
+  /* 쏘이는 패 — 강제색에서는 box-shadow 가 통째로 사라진다(붉은 빛이 곧 정보인데
+     그 채널이 없어진다). 패 **바깥**을 도는 링과 딱지 테두리로 남긴다. */
+  .spec-hot {
+    outline: 3px solid LinkText;
+    outline-offset: 2px;
+  }
+  .spec-hot-mark {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
   }
   /* 도크 — 강제색에서는 배경이 전부 평탄해져 구획 경계가 사라진다. 선으로 남긴다. */
   .spectate-dock,
