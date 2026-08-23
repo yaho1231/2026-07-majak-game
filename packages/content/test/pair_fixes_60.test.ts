@@ -760,6 +760,11 @@ describe("무너진 국경 / 동수의 결속 — 슌쯔와 커쯔를 나눠 담
       base,
       defs.map((def) => ({ def, holder: "p0" as PlayerId })),
     );
+    // 2026-08-23부터 둘 다 **선언해야 열리는** 액티브다(2국에 1회) — 자기 순에 켜고 본다.
+    for (const id of augs) {
+      const res = g.engine.submit({ player: "p0", type: `declare_${id}`, payload: {} });
+      expect(res.ok, res.ok ? "" : res.reason).toBe(true);
+    }
     return scoringOptionsOf(g.engine.state, g.engine.rules, "p0");
   }
 

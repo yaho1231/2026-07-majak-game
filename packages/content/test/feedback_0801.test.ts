@@ -50,7 +50,9 @@ describe("연금술사 — 남은 횟수 채널", () => {
     return withAugments(s, { p0: ["alchemist"] });
   }
 
-  it("설치 직후 남은 횟수(5)가 보유자 채널에 선다", () => {
+  // craft는 판을 안 정하면 반장전이다 — 연금술사 예산은 동풍전 5·반장전 8회
+  // (2026-08-23 사용자 지시로 반장전 몫이 1.5배가 됐다).
+  it("설치 직후 남은 횟수(8)가 보유자 채널에 선다", () => {
     const game = createStandardGameFromState(scene());
     installAugment(game.engine, alchemist, "p0", { yaku: game.yaku });
     const flow = new FlowController(game.engine);
@@ -69,13 +71,13 @@ describe("연금술사 — 남은 횟수 채널", () => {
     }
     expect(game.engine.eventLog.some((e) => e.type === "TileDrawn")).toBe(true);
     expect(game.engine.state.augmentData["view:p0:uses:alchemist"]).toEqual({
-      left: 5,
-      total: 5,
+      left: 8,
+      total: 8,
       scope: "match",
     });
   });
 
-  it("한 번 쓰면 4로 줄어든다", () => {
+  it("한 번 쓰면 7로 줄어든다", () => {
     const game = createStandardGameFromState(scene());
     installAugment(game.engine, alchemist, "p0", { yaku: game.yaku });
     const hand = game.engine.state.zones["hand:p0"]?.tileIds ?? [];
@@ -86,8 +88,8 @@ describe("연금술사 — 남은 횟수 채널", () => {
     });
     expect(res.ok).toBe(true);
     expect(game.engine.state.augmentData["view:p0:uses:alchemist"]).toEqual({
-      left: 4,
-      total: 5,
+      left: 7,
+      total: 8,
       scope: "match",
     });
   });

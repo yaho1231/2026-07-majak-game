@@ -115,7 +115,33 @@ export function honbaGainOf(p: RoundSettledPayload, player: PlayerId): number {
  * usesKey에는 roundKey를 섞지 않는다 — 게임(매치) 전체에 걸쳐 누적된다.
  */
 export function matchUses(state: GameState): number {
-  return state.config.mode === "tonpuu" ? 1 : 2;
+  return scaledUses(state, 1);
+}
+
+/**
+ * **매치 길이에 비례하는 사용 횟수** — 동풍전 기준 N회를 반장전에서는 올림 1.5배로 준다.
+ *
+ * 왜: "게임 내 5회" 같은 매치 예산은 전부 **동풍전(4국)을 기준으로** 정해져 있었는데,
+ * 반장전은 국이 두 배 가까이(8국+) 도는데도 같은 5회였다 — 같은 카드가 반장전에서만
+ * 국당 절반 값이 된다(2026-08-23 사용자 지시). 국 수에 정비례로 두 배를 주면 이번엔
+ * 매치당 총량이 너무 커지므로, **1.5배(올림)**로 그 사이를 잡는다.
+ *
+ * | 동풍전 | 1 | 2 | 3 | 5 |
+ * | 반장전 | 2 | 3 | 5 | 8 |
+ *
+ * `matchUses`(동풍전 1 · 반장전 2)가 이 함수의 N=1 자리다 — 두 곳으로 갈라지지 않게
+ * 그쪽이 이쪽을 부른다.
+ *
+ * 사용 패턴: `counterOf(state, usesKey(holder)) < scaledUses(state, N)`으로 남았는지 보고,
+ * 발동 시 `augmentDataSet(usesKey(holder), counterOf(state, usesKey(holder)) + 1)`.
+ * usesKey에는 roundKey를 섞지 않는다 — 게임(매치) 전체에 걸쳐 누적된다.
+ *
+ * @param tonpuuUses 동풍전에서의 횟수 (카드에 적히는 기준값)
+ */
+export function scaledUses(state: GameState, tonpuuUses: number): number {
+  return state.config.mode === "tonpuu"
+    ? tonpuuUses
+    : Math.ceil(tonpuuUses * 1.5);
 }
 
 /** 본인 전용 뷰 채널 키 (PlayerView.augmentView로 전달됨) */

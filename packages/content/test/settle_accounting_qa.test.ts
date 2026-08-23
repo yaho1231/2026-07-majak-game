@@ -468,8 +468,10 @@ describe("eternal_dealer — 더블론에서도 연장 횟수를 소모한다", 
       payload: { tileId: hand[0] },
     });
     expect(res.ok).toBe(true);
+    // 판을 안 정한 시나리오는 반장전이다 — 연장 예산은 동풍전 3회 · 반장전 5회
+    // (2026-08-23 사용자 지시로 반장전 몫이 1.5배가 됐다).
     expect(g.engine.state.augmentData["view:*:eternal_dealer:p2"]).toBe(
-      "연장 (남은 3회)",
+      "연장 (남은 5회)",
     );
   });
 });

@@ -40,7 +40,7 @@ function withAugment(state: GameState, player: PlayerId, id: string): GameState 
 }
 
 describe("남은 사용 횟수는 발동 즉시 갱신된다", () => {
-  it("날치기 — 주운 그 자리에서 3회 → 2회 (다음 버림을 기다리지 않는다)", () => {
+  it("날치기 — 주운 그 자리에서 5회 → 4회 (다음 버림을 기다리지 않는다)", () => {
     const base = craft({
       hands: { p0: "123m456m789m123p3m9p", p1: "*", p2: "*", p3: "*" },
       discards: { p0: "1z", p1: "2z3z3m", p2: "5z", p3: "6z" },
@@ -63,8 +63,8 @@ describe("남은 사용 횟수는 발동 즉시 갱신된다", () => {
     // 카운터는 리듀서가 올렸고, 뷰 채널도 **같은 제출 안에서** 따라왔다
     expect(game.engine.state.augmentData["pond_snatch:used:p0"]).toBe(1);
     expect(usesLeft(game.engine.state, "p0", "pond_snatch")).toEqual({
-      left: 2,
-      total: 3,
+      left: 4,
+      total: 5,
       scope: "match",
     });
   });

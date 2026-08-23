@@ -1,7 +1,7 @@
 /**
  * 연금술사 (alchemist, prism).
- * 게임 전체 5회, 자기 턴에 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9
- * 순환 없음, 리치 중에도 가능). 변환은 매번 전원 공개. 5회를 언제 쓰느냐가 자원 관리.
+ * 동풍전 5회·반장전 8회, 자기 턴에 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9
+ * 순환 없음, 리치 중에도 가능). 변환은 매번 전원 공개. 그 횟수를 언제 쓰느냐가 자원 관리.
  *
  * 구현: TileKindChanged(conjured) + 게임 단위 카운터. holderTurnOptions로 손패
  * 수패×유효 방향(±1) 후보 열거.
@@ -25,14 +25,22 @@ import type {
   TileAttrs,
   TileId,
 } from "@majak/core";
-import { counterOf, publishUsesLeft, roundKey, roundViewKey } from "../util.js";
+import { counterOf, publishUsesLeft, roundKey, roundViewKey, scaledUses } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { handAlteredKey } from "./handAltered.js";
 
 const ID = "alchemist";
 const ACTION = "alchemy";
-const MAX_USES = 5;
+/**
+ * **동풍전 기준** 사용 횟수 — 반장전은 `scaledUses`가 1.5배(올림)로 늘린다
+ * (동풍전 5회 · 반장전 8회, 2026-08-23 사용자 지시).
+ * 매치 예산은 원래 동풍전(4국)을 기준으로 잡혀 있어서, 국이 두 배 도는 반장전에서
+ * 같은 카드가 국당 절반 값이 됐다.
+ */
+const TONPUU_USES = 5;
+/** 이 매치에서 쓸 수 있는 총 횟수 (동풍전 5 · 반장전 8) */
+const maxUses = (state: GameState): number => scaledUses(state, TONPUU_USES);
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
 /** 마지막으로 사용한 '턴'의 서명 (한 턴에 한 번만 쓰게 막는다) */
 const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
@@ -45,7 +53,7 @@ const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
  */
 const revealViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 const usesLeft = (state: GameState, h: PlayerId): number =>
-  Math.max(0, MAX_USES - counterOf(state, usedKey(h)));
+  Math.max(0, maxUses(state) - counterOf(state, usedKey(h)));
 
 /**
  * 이 국에서 보유자의 현재 턴을 식별하는 서명.
@@ -77,7 +85,7 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
     }
     // 48차 무페널티: 리치 중 사용 금지 해제 — 리치 여부는 더 이상 보지 않는다.
     // (검사를 return null로 바꾸면 아래 한도·손패 검증이 통째로 건너뛰어지므로 삭제한다.)
-    if (counterOf(state, usedKey(req.player)) >= MAX_USES) return "no uses left";
+    if (counterOf(state, usedKey(req.player)) >= maxUses(state)) return "no uses left";
     if (usedThisTurn(state, req.player)) return "already used this turn";
     if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
       return "tile not in hand";
@@ -128,9 +136,9 @@ export const alchemist: AugmentDef = defineAugment({
   complexity: 1,
   name: "연금술사",
   description:
-    "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9 순환 없음).",
+    "(동풍전 5회 · 반장전 8회) 자기 순에 한 번, 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9 순환 없음).",
   detail:
-    "(게임 내 5회) 자패는 대상이 아니다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동하며, 무엇이 무엇으로 바뀌었는지는 매번 전원에게 공개된다.\n\n⚠ **적도라(빨간 5)를 옮기면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 숫자가 바뀌면 성립하지 않는다.",
+    "(동풍전 5회 · 반장전 8회) 자패는 대상이 아니다. 한 순에 한 번까지만 쓸 수 있고 리치 중에도 발동하며, 무엇이 무엇으로 바뀌었는지는 매번 전원에게 공개된다.\n\n⚠ **적도라(빨간 5)를 옮기면 그 빨간색은 사라진다** — 적도라는 '그 무늬의 5'라는 뜻이라 숫자가 바뀌면 성립하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -148,10 +156,10 @@ export const alchemist: AugmentDef = defineAugment({
      * "연금술사 남은 횟수 안 나옴"). `publishUsesLeft`는 모든 이벤트에서 값이 달라질
      * 때만 발행하므로 두 문제가 함께 사라진다.
      */
-    publishUsesLeft(ctx, (state) => ({ left: usesLeft(state, holder), total: MAX_USES }));
+    publishUsesLeft(ctx, (state) => ({ left: usesLeft(state, holder), total: maxUses(state) }));
 
     ctx.holderTurnOptions((state) => {
-      if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];
+      if (counterOf(state, usedKey(holder)) >= maxUses(state)) return [];
       if (usedThisTurn(state, holder)) return []; // 한 턴에 한 번만
 
       const opts: { type: string; payload: { tileId: TileId; delta: 1 | -1 } }[] = [];
@@ -164,11 +172,11 @@ export const alchemist: AugmentDef = defineAugment({
       return opts;
     });
   },
-  // 수패 1장을 ±1 옮겨 고립패를 짝·슌쯔에 붙인다(게임당 5회). 실제로 손이 나아지는
+  // 수패 1장을 ±1 옮겨 고립패를 짝·슌쯔에 붙인다(동풍전 5회·반장전 8회). 실제로 손이 나아지는
   // 변경(고립패 → 유용패)이 있을 때만 발동하고, 없으면 아낀다.
   bot: plan({
     intent: "advance",
-    // 게임 내 5회뿐이다 — 시간이 남아 있고 손이 닿는 거리일 때만 태운다.
+    // 매치 예산이 정해져 있다 — 시간이 남아 있고 손이 닿는 거리일 때만 태운다.
     // 유국 직전 3샹텐에 한 장 고쳐 봐야 회수할 순목이 없다.
     pick: ({ options, view, holder }) => {
       const kinds = handKindsOf(view, holder);

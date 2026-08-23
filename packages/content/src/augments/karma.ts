@@ -11,6 +11,13 @@
  *
  * 상대는 "쟤 게이지 찼다"를 보고 대응할 수 있고, 나는 언제 태울지 고른다.
  *
+ * ## 2026-08-23 (사용자 지시) — **동풍전 1회 · 반장전 2회**
+ *
+ * 게이지만 차면 몇 번이든 태울 수 있었다. 업보는 "잃은 만큼 되갚는다"라 지고 있을수록
+ * 자주 차고, 한 매치에서 서너 번 터지면 점수 이동의 총량이 다른 매치 예산 증강들과
+ * 자릿수가 달라진다. 이제 매치 예산(`matchUses`)을 얹어 **언제 태우는가**가 진짜
+ * 선택이 되게 한다 — 게이지 문턱(8,000)은 그대로다.
+ *
  * 구현:
  * - 적립: ROUND_SETTLED 리액션에서 payload.deltas[holder] < 0이면 그 절댓값을 더한다.
  *   (리액션의 state는 리듀서 적용 후지만 국번에 의존하지 않으므로 문제없다.)
@@ -35,7 +42,7 @@ import type {
   ProposedEvent,
   RoundSettledPayload,
 } from "@majak/core";
-import { counterOf, viewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
 
 const ID = "karma";
@@ -47,6 +54,11 @@ const UNIT = 100;
 
 /** 누적 업보 게이지 (게임 단위) */
 const gaugeKey = (holder: PlayerId): string => `${ID}:gauge:${holder}`;
+/** 매치당 사용 횟수 — **게임 단위**라 roundKey를 섞지 않는다 (동풍전 1 · 반장전 2) */
+const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
+/** 앞으로 몇 번 더 태울 수 있는가 */
+const usesLeft = (state: GameState, holder: PlayerId): number =>
+  Math.max(0, matchUses(state) - counterOf(state, usesKey(holder)));
 /** 전원 공개 뷰 채널 */
 const gaugeViewKey = (holder: PlayerId): string =>
   viewKey("*", `${ID}:${holder}`);
@@ -95,6 +107,7 @@ const karmaBurnAction: ActionDef<Record<string, never>> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
+    if (usesLeft(state, req.player) <= 0) return "karma no uses left";
     if (counterOf(state, gaugeKey(req.player)) < BURN_THRESHOLD) {
       return "karma gauge is not full enough";
     }
@@ -108,6 +121,10 @@ const karmaBurnAction: ActionDef<Record<string, never>> = {
       if (t.amount > 0) events.push(scoreChanged(t.id, -t.amount, ID));
     }
     events.push(scoreChanged(req.player, total, ID));
+    // 매치 예산 소모 — 태운 횟수는 게이지와 달리 국을 넘어 남는다
+    events.push(
+      augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+    );
     // 게이지를 전부 태운다 — 공개 뷰도 0으로
     events.push(augmentDataSet(gaugeKey(req.player), 0));
     events.push(augmentDataSet(gaugeViewKey(req.player), 0));
@@ -122,10 +139,16 @@ export const karma: AugmentDef = defineAugment({
   complexity: 2,
   name: "카르마",
   description:
-    "(상시 적립 · 게이지 8,000 이상일 때 발동) **국 정산에서** 잃은 점수가 업보 게이지로 쌓이고(전원 공개), 자기 순에 게이지를 태워 상대 셋에게서 1/3씩 뜯는다 — 못 뜯은 몫은 사라진다.",
+    "(동풍전 1회 · 반장전 2회 · 게이지 8,000 이상) **국 정산에서** 잃은 점수가 업보 게이지로 상시 쌓이고(전원 공개), 자기 순에 게이지를 태워 상대 셋에게서 1/3씩 뜯는다 — 못 뜯은 몫은 사라진다.",
   detail:
-    "(상시 적립 · 게이지 8,000 이상일 때 발동) 1인당 몫은 게이지의 1/3을 100점 단위로 내림한 값이고, **그 사람의 남은 점수**가 상한이다. 리치 공탁이나 남의 업보에 뜯긴 점수는 쌓이지 않는다. 태우면 게이지는 0이 된다.",
-  // 봇: 태우는 데 자해 위험이 없다 — 게이지가 차서 옵션이 뜨면 즉시 태운다.
+    "(동풍전 1회 · 반장전 2회 · 게이지 8,000 이상) 1인당 몫은 게이지의 1/3을 100점 단위로 내림한 값이고, **그 사람의 남은 점수**가 상한이다. 리치 공탁이나 남의 업보에 뜯긴 점수는 쌓이지 않는다. 태우면 게이지는 0이 된다.\n\n적립은 횟수를 다 쓴 뒤에도 계속되지만, 태울 수 있는 것은 **매치 전체에서 동풍전 1번 · 반장전 2번**뿐이다 — 남은 횟수는 증강 표식에 표시된다.",
+  /*
+   * 봇: 태우는 데 자해 위험이 없다 — 게이지가 차서 옵션이 뜨면 즉시 태운다.
+   *
+   * 매치 예산(동풍전 1·반장전 2회)이 생긴 뒤에도 정책은 같다. 게이지는 **다시 잃어야만**
+   * 차므로 아껴 두는 것이 곧 "더 크게 지고 오기를 기다린다"이고, 국이 끝날 때까지 안
+   * 태우면 그 국의 적립은 그대로 남지만 태울 기회 자체가 상대의 도비·종국으로 사라진다.
+   */
   bot: plan({
     intent: "score",
     fleeting: true,
@@ -138,6 +161,12 @@ export const karma: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(karmaBurnAction);
     }
+
+    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: usesLeft(state, holder),
+      total: matchUses(state),
+    }));
 
     // 잃은 만큼 즉시 적립 — 방총이든 쯔모당함이든 가리지 않는다
     ctx.reaction(ROUND_SETTLED, (event, rc) => {
@@ -153,7 +182,10 @@ export const karma: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(gaugeViewKey(holder), gauge));
     });
 
-    // 보유자 턴에 후보 노출 — 합법성은 validate가 최종 판정
-    ctx.holderTurnOptions(() => [{ type: ACTION, payload: {} }]);
+    // 보유자 턴에 후보 노출 — 합법성은 validate가 최종 판정.
+    // 다 쓴 뒤에는 버튼 자체를 내지 않는다(게이지는 계속 차므로 남아 있으면 오해를 부른다).
+    ctx.holderTurnOptions((state) =>
+      usesLeft(state, holder) > 0 ? [{ type: ACTION, payload: {} }] : [],
+    );
   },
 });

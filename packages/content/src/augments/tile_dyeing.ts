@@ -1,9 +1,9 @@
 /**
  * 염색 (tile_dyeing, gold).
- * 게임 전체 5회, 자기 턴에 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(3만→3통).
+ * 동풍전 5회·반장전 8회, 자기 턴에 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(3만→3통).
  * 변환은 전원 공개, 리치 중에도 사용할 수 있다. 혼일색·삼색 빌드의 윤활유.
  *
- * 구현: 연금술사(alchemist)와 같은 자원 구조 — 게임 단위 카운터 5회 + 한 순 1회 제한 +
+ * 구현: 연금술사(alchemist)와 같은 자원 구조 — 매치 단위 카운터(동풍전 5·반장전 8) + 한 순 1회 제한 +
  * 남은 횟수 뷰 채널. holderTurnOptions로 손패 수패×다른 무늬 후보(≤26)를 열거,
  * TileKindChanged로 변환한다.
  *
@@ -52,14 +52,22 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, roundKey, roundViewKey, statePrng, viewKey } from "../util.js";
+import { counterOf, roundKey, roundViewKey, scaledUses, statePrng, viewKey } from "../util.js";
 import { handAlteredKey } from "./handAltered.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
 const ID = "tile_dyeing";
 const ACTION = "tile_dye";
-const MAX_USES = 5;
+/**
+ * **동풍전 기준** 사용 횟수 — 반장전은 `scaledUses`가 1.5배(올림)로 늘린다
+ * (동풍전 5회 · 반장전 8회, 2026-08-23 사용자 지시).
+ * 매치 예산은 원래 동풍전(4국)을 기준으로 잡혀 있어서, 국이 두 배 도는 반장전에서
+ * 같은 카드가 국당 절반 값이 됐다.
+ */
+const TONPUU_USES = 5;
+/** 이 매치에서 쓸 수 있는 총 횟수 (동풍전 5 · 반장전 8) */
+const maxUses = (state: GameState): number => scaledUses(state, TONPUU_USES);
 const SUITS = ["man", "pin", "sou"] as const;
 type NumSuit = (typeof SUITS)[number];
 
@@ -79,7 +87,7 @@ const leftViewKey = (h: PlayerId): string => viewKey(h, `${ID}:left`);
  */
 const revealViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 const usesLeft = (state: GameState, h: PlayerId): number =>
-  Math.max(0, MAX_USES - counterOf(state, usedKey(h)));
+  Math.max(0, maxUses(state) - counterOf(state, usedKey(h)));
 
 /**
  * 이 국에서 보유자의 현재 턴을 식별하는 서명 (연금술사와 동일).
@@ -148,7 +156,7 @@ const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
     }
     // 48차 무페널티: 리치 중 사용 금지 해제 — 리치 여부는 더 이상 보지 않는다.
     // (검사를 return null로 바꾸면 아래 한도·손패 검증이 통째로 건너뛰어지므로 삭제한다.)
-    if (counterOf(state, usedKey(req.player)) >= MAX_USES) return "no uses left";
+    if (counterOf(state, usedKey(req.player)) >= maxUses(state)) return "no uses left";
     if (usedThisTurn(state, req.player)) return "already used this turn";
     if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
       return "tile not in hand";
@@ -211,9 +219,9 @@ export const tileDyeing: AugmentDef = defineAugment({
   complexity: 1,
   name: "염색",
   description:
-    "(게임 내 5회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",
+    "(동풍전 5회 · 반장전 8회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",
   detail:
-    "(게임 내 5회) 남은 횟수는 증강 표식에 상시 표시된다. 자패는 대상이 아니고, 무엇이 무엇으로 바뀌었는지는 전원에게 공개된다(그 국 동안 가장 최근 한 번).\n\n⚠ **넉 장이 이미 전부 드러난 종류로는 물들 수 없다.** 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다.",
+    "(동풍전 5회 · 반장전 8회) 남은 횟수는 증강 표식에 상시 표시된다. 자패는 대상이 아니고, 무엇이 무엇으로 바뀌었는지는 전원에게 공개된다(그 국 동안 가장 최근 한 번).\n\n⚠ **넉 장이 이미 전부 드러난 종류로는 물들 수 없다.** 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -230,7 +238,7 @@ export const tileDyeing: AugmentDef = defineAugment({
     });
 
     ctx.holderTurnOptions((state) => {
-      if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];
+      if (counterOf(state, usedKey(holder)) >= maxUses(state)) return [];
       if (usedThisTurn(state, holder)) return []; // 한 턴에 한 번만
 
       const opts: { type: string; payload: { tileId: TileId; suit: NumSuit } }[] = [];
@@ -247,11 +255,11 @@ export const tileDyeing: AugmentDef = defineAugment({
       return opts;
     });
   },
-  // 수패 1장의 무늬를 바꿔 고립패를 짝·슌쯔(또는 혼일·청일)에 붙인다(게임당 5회).
+  // 수패 1장의 무늬를 바꿔 고립패를 짝·슌쯔(또는 혼일·청일)에 붙인다(동풍전 5회·반장전 8회).
   // 실제로 손이 나아지는 변경이 있을 때만 발동한다.
   bot: plan({
     intent: "advance",
-    // 게임 내 5회뿐이다 — 회수할 순목이 남아 있을 때만 태운다(연금술사와 같은 이유).
+    // 매치 예산이 정해져 있다 — 회수할 순목이 남아 있을 때만 태운다(연금술사와 같은 이유).
     pick: ({ options, view, holder }) => {
       const kinds = handKindsOf(view, holder);
       for (const o of options) {

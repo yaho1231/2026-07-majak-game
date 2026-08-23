@@ -51,7 +51,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, flagOf, matchUses, publishUsesLeft, sameHandSize } from "../util.js";
+import { counterOf, flagOf, publishUsesLeft, sameHandSize, scaledUses } from "../util.js";
 import { clearedHandMarks } from "./handMarkChannels.js";
 import { roundScopedKey } from "./roundScope.js";
 import {
@@ -72,7 +72,9 @@ interface SeatsSwappedPayload {
 
 /** 매치당 사용 횟수 카운터 (게임 단위). 동풍전 2·반장전 3회 (2026-07-31 버프: +1). */
 const usesKey = (player: PlayerId): string => `seat_swap:uses:${player}`;
-const maxUses = (state: GameState): number => matchUses(state) + 1;
+// 동풍전 2회 → 반장전은 1.5배(올림) 3회. `matchUses(state) + 1`을 손으로 더하던 것을
+// 매치 예산 공용 헬퍼로 옮겼다 (2026-08-23) — 배수 규약이 한 곳에만 있게 한다.
+const maxUses = (state: GameState): number => scaledUses(state, 2);
 const hasUsesLeft = (state: GameState, player: PlayerId): boolean =>
   counterOf(state, usesKey(player)) < maxUses(state);
 

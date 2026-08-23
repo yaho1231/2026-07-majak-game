@@ -43,7 +43,9 @@ function withAugments(
 }
 
 describe("남은 사용 횟수 채널 (uses:{증강id})", () => {
-  it("등가교환 — 쯔모 한 번이면 '게임 내 2회 중 2회 남음'이 실린다", () => {
+  // 판을 지정하지 않은 craft는 반장전이다 — 등가교환의 매치 예산은 동풍전 2·반장전 3회
+  // (2026-08-23 사용자 지시로 반장전 예산이 1.5배가 됐다).
+  it("등가교환 — 쯔모 한 번이면 '반장전 3회 중 3회 남음'이 실린다", () => {
     // turn.draw로 시작하면 flow.begin()이 곧바로 sys.draw를 낸다 → 채널이 선다
     const scn = withAugments(
       craft({
@@ -59,8 +61,8 @@ describe("남은 사용 횟수 채널 (uses:{증강id})", () => {
     new FlowController(game.engine).begin();
 
     expect(game.engine.state.augmentData["view:p0:uses:hand_swap3"]).toEqual({
-      left: 2,
-      total: 2,
+      left: 3,
+      total: 3,
       scope: "match",
     });
   });
@@ -98,8 +100,8 @@ describe("남은 사용 횟수 채널 (uses:{증강id})", () => {
       left: number;
       total: number;
     };
-    expect(v.left).toBe(1);
-    expect(v.total).toBe(2);
+    expect(v.left).toBe(2);
+    expect(v.total).toBe(3);
   });
 
   /*

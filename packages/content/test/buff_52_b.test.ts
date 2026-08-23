@@ -311,7 +311,7 @@ function craftEastTripletTsumo(): GameState {
   return { ...s, round: { ...s.round, dealerSeat: 1, rotationSeat: 1 } };
 }
 
-describe("eternal_dealer (만년 오야) — 역패 동 추가 + 연장 3회", () => {
+describe("eternal_dealer (만년 오야) — 역패 동 추가 + 연장 (동풍전 3·반장전 5회)", () => {
   /**
    * 2026-08-15 사용자 지시: 자풍 **교체**(`scoring.seatWind` = 1)를 걷어내고 역패 동을
    * **추가**한다. 교체 시절에는 남가가 南 커쯔를 모아도 값이 0이라, 얻는 것 하나에
@@ -387,15 +387,16 @@ describe("eternal_dealer (만년 오야) — 역패 동 추가 + 연장 3회", (
     const holderSeat = game.engine.state.players.find((pl) => pl.id === "p0")?.seat;
     expect(lastSettled(game).dealerSeat).toBe(holderSeat);
     expect(game.engine.state.augmentData["eternal_dealer:keeps:p0"]).toBe(1);
+    // 시나리오는 판을 안 정했으니 반장전 = 예산 5회 (2026-08-23: 반장전 몫 1.5배)
     expect(game.engine.state.augmentData["view:*:eternal_dealer:p0"]).toBe(
-      "연장 (남은 2회)",
+      "연장 (남은 4회)",
     );
   });
 
-  it("게임당 3회를 다 쓰면 더는 연장되지 않는다 (무한 국 방지)", () => {
+  it("매치 예산(반장전 5회)을 다 쓰면 더는 연장되지 않는다 (무한 국 방지)", () => {
     const base = withAugmentData(
       withAugment(craftNonDealerWin(), "p0", "eternal_dealer"),
-      { "eternal_dealer:keeps:p0": 3 },
+      { "eternal_dealer:keeps:p0": 5 },
     );
     const game = createStandardGameFromState(structuredClone(base));
     installAugment(game.engine, eternalDealer, "p0");
@@ -407,7 +408,7 @@ describe("eternal_dealer (만년 오야) — 역패 동 추가 + 연장 3회", (
     ).toBe(false);
     runTsumoWin(game);
     expect(lastSettled(game).dealerSeat).not.toBe(1);
-    expect(game.engine.state.augmentData["eternal_dealer:keeps:p0"]).toBe(3);
+    expect(game.engine.state.augmentData["eternal_dealer:keeps:p0"]).toBe(5);
   });
 
   it("오야 취급 채점(win.treatAsDealer)은 그대로 유지된다", () => {

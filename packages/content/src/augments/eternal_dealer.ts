@@ -42,14 +42,21 @@ import {
   addYakuHolder,
   counterOf,
   publishUsesLeft,
+  scaledUses,
   settleInterceptor,
   viewKey,
   yakuHolders,
 } from "../util.js";
 
 const ID = "eternal_dealer";
-/** 게임당 허용되는 연장(렌짱) 횟수 — 무한 국 방지 안전장치 */
-const MAX_KEEPS = 3;
+/**
+ * **동풍전 기준** 연장(렌짱) 허용 횟수 — 무한 국 방지 안전장치.
+ * 반장전은 `scaledUses`가 1.5배(올림)로 늘린다 (동풍전 3회 · 반장전 5회,
+ * 2026-08-23 사용자 지시 — 매치 예산이 전부 동풍전 기준이었다).
+ */
+const TONPUU_KEEPS = 3;
+/** 이 매치에서 허용되는 연장 횟수 (동풍전 3 · 반장전 5) */
+const maxKeeps = (state: GameState): number => scaledUses(state, TONPUU_KEEPS);
 /** 바람패 랭크의 동 (1동 2남 3서 4북) */
 const EAST = 1;
 /** 덧붙는 역패 동의 역 id */
@@ -84,16 +91,16 @@ export const eternalDealer: AugmentDef = defineAugment({
   complexity: 3,
   name: "만년 오야",
   description:
-    "(상시 · 연장은 게임 내 3회) 내 화료는 언제나 오야 점수(약 1.5배)로 계산되고, 역패 '동'이 **하나 더 붙는다**. 내가 화료하면 다음 국의 오야가 내 자리로 온다.",
+    "(상시 · 연장은 동풍전 3회 · 반장전 5회) 내 화료는 언제나 오야 점수(약 1.5배)로 계산되고, 역패 '동'이 **하나 더 붙는다**. 내가 화료하면 다음 국의 오야가 내 자리로 온다.",
   detail:
-    "(상시 · 연장은 게임 내 3회) 원래 자풍은 그대로 두고 역패만 늘어난다 — 동 커쯔에 1판이 붙고, 장풍이 동인 국이면 더블동(2판)이 된다. 자풍이 이미 동인 동가에게는 더 붙지 않는다. 내가 진짜 오야인 국의 화료는 원래 규칙대로라 연장 횟수를 쓰지 않는다.",
+    "(상시 · 연장은 동풍전 3회 · 반장전 5회) 원래 자풍은 그대로 두고 역패만 늘어난다 — 동 커쯔에 1판이 붙고, 장풍이 동인 국이면 더블동(2판)이 된다. 자풍이 이미 동인 동가에게는 더 붙지 않는다. 내가 진짜 오야인 국의 화료는 원래 규칙대로라 연장 횟수를 쓰지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
     // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
     publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, MAX_KEEPS - counterOf(state, keepsKey(holder))),
-      total: MAX_KEEPS,
+      left: Math.max(0, maxKeeps(state) - counterOf(state, keepsKey(holder))),
+      total: maxKeeps(state),
     }));
 
     // 1) 보유자의 화료를 오야로 채점
@@ -125,7 +132,7 @@ export const eternalDealer: AugmentDef = defineAugment({
       addYakuHolder(ctx, yaku, EAST_YAKU);
     }
 
-    // 3) 내가 화료하면 연장 — 단, 게임당 MAX_KEEPS회까지
+    // 3) 내가 화료하면 연장 — 단, 매치 예산(동풍전 3 · 반장전 5)까지
     engine.rules.addModifier<boolean>("round.keepDealer", {
       source: ctx.instanceId,
       layer: ctx.layer,
@@ -133,7 +140,7 @@ export const eternalDealer: AugmentDef = defineAugment({
         if (rctx.playerId !== holder) return cur;
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return cur;
-        return counterOf(state, keepsKey(holder)) < MAX_KEEPS ? true : cur;
+        return counterOf(state, keepsKey(holder)) < maxKeeps(state) ? true : cur;
       },
     });
 
@@ -159,12 +166,12 @@ export const eternalDealer: AugmentDef = defineAugment({
        * 여기서 빠져나갔다. 그건 틀렸다 — 진짜 오야가 함께 올라도 `keepDealerSeat`에는
        * **보유자 자리**가 박혀 다음 국 오야가 내 쪽으로 옮겨 온다(standardActions).
        * 능력은 실제로 일했는데 표식이 안 남아 카운터가 오르지 않았고, 그 결과
-       * **게임 3회 한도를 우회**했다(QA score-a 확정 4). 예외 문구가 가리키는 것은
+       * **매치 연장 한도를 우회**했다(QA score-a 확정 4). 예외 문구가 가리키는 것은
        * "내가 진짜 오야인 국"뿐이며 그건 바로 위 줄이 이미 걸러 낸다.
        */
       // 오야 자리가 **내 자리로 옮겨 왔는가** (payload.dealerSeat = 다음 국의 오야 자리)
       if (p.dealerSeat !== holderSeat) return event;
-      if (counterOf(ic.state, keepsKey(holder)) >= MAX_KEEPS) return event;
+      if (counterOf(ic.state, keepsKey(holder)) >= maxKeeps(ic.state)) return event;
       return {
         type: event.type,
         payload: { ...p, extendedBy: [...(p.extendedBy ?? []), holder] },
@@ -191,7 +198,7 @@ export const eternalDealer: AugmentDef = defineAugment({
      */
     const publicKey = viewKey("*", `${ID}:${holder}`);
     ctx.reaction("*", (_event, rc) => {
-      const left = Math.max(0, MAX_KEEPS - counterOf(rc.state, keepsKey(holder)));
+      const left = Math.max(0, maxKeeps(rc.state) - counterOf(rc.state, keepsKey(holder)));
       const label = `연장 (남은 ${left}회)`;
       if (rc.state.augmentData[publicKey] === label) return;
       rc.emit(augmentDataSet(publicKey, label));

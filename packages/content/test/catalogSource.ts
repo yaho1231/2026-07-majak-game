@@ -30,14 +30,38 @@ export const ALL_AUGMENTS: readonly AugmentDef[] = [
 const STANDARD_IDS = new Set(standardAugments.map((a) => a.id));
 const cache = new Map<string, string>();
 
-/** 이 증강의 구현 모듈 소스 (표준 증강은 standardAugments.ts 전체) */
+/**
+ * 이 증강의 구현 모듈 소스 (표준 증강은 standardAugments.ts 전체).
+ *
+ * **같은 폴더의 공용 모듈을 import하면 그 소스도 함께 붙인다** (한 겹만).
+ * 증강이 배선을 공용 코어에 위임하는 일이 흔해졌는데(`suitUnifyCore`·`shapeDeclare`
+ * 처럼 형제 여럿이 같은 배선을 나눠 쓴다), 파일 하나만 읽으면 가드들이 "한도도 공개
+ * 채널도 없다"고 잘못 말한다 — 실제로는 공용 모듈에 있다. 위임을 벌주면 사양이 같은
+ * 증강마다 코드를 복붙하게 되고, 그게 이 저장소가 여러 번 겪은 실패다.
+ * (한 겹만 따라간다 — util.js 같은 상위 유틸까지 끌어오면 아무 숫자나 근거가 된다.)
+ */
 export function sourceOf(id: string): string {
   const cached = cache.get(id);
   if (cached !== undefined) return cached;
   const path = STANDARD_IDS.has(id) ? STANDARD_FILE : `${AUG_DIR}${id}.ts`;
-  const src = readFileSync(path, "utf8");
+  const own = readFileSync(path, "utf8");
+  const shared = STANDARD_IDS.has(id) ? [] : sharedModuleSources(own);
+  const src = [own, ...shared].join("\n");
   cache.set(id, src);
   return src;
+}
+
+/** `import … from "./xxx.js"` 로 끌어 쓰는 같은 폴더 모듈들의 소스 */
+function sharedModuleSources(src: string): string[] {
+  const out: string[] = [];
+  for (const m of src.matchAll(/from "\.\/([\w.]+)\.js"/g)) {
+    try {
+      out.push(readFileSync(`${AUG_DIR}${m[1] as string}.ts`, "utf8"));
+    } catch {
+      // 파일이 없으면 그냥 건너뛴다 (경로 관례를 벗어난 import)
+    }
+  }
+  return out;
 }
 
 /** 플레이어에게 보이는 글 전체 (한 줄 요약 + 도감 상세) */

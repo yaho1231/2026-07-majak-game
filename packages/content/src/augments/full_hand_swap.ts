@@ -1,5 +1,5 @@
 /**
- * full_hand_swap (통째로 바꾸기) — 게임당 2회, 국의 첫 순(turnCount<=1)에
+ * full_hand_swap (통째로 바꾸기) — 동풍전 2회·반장전 3회, 국의 첫 순(turnCount<=1)에
  * 상대의 손패를 **통째로 강탈**한다.
  *
  * 2026-07-22 (48차 재설계, 사용자 확정): 맞교환 → **일방적 강탈**.
@@ -30,7 +30,7 @@ import type {
   PlayerId,
   TileId,
 } from "@majak/core";
-import { counterOf, publishUsesLeft, roundViewKey, sameHandSize } from "../util.js";
+import { counterOf, publishUsesLeft, roundViewKey, sameHandSize, scaledUses } from "../util.js";
 import { handAlteredMark } from "./handAltered.js";
 import { clearedHandMarks } from "./handMarkChannels.js";
 import {
@@ -44,7 +44,15 @@ import { plan } from "./botPlan.js";
 const ID = "full_hand_swap";
 const ACTION = "hand_swap";
 /** 게임당 사용 가능 횟수 */
-const MAX_USES = 2;
+/**
+ * **동풍전 기준** 사용 횟수 — 반장전은 `scaledUses`가 1.5배(올림)로 늘린다
+ * (동풍전 2회 · 반장전 3회, 2026-08-23 사용자 지시).
+ * 매치 예산은 원래 동풍전(4국)을 기준으로 잡혀 있어서, 국이 두 배 도는 반장전에서
+ * 같은 카드가 국당 절반 값이 됐다.
+ */
+const TONPUU_USES = 2;
+/** 이 매치에서 쓸 수 있는 총 횟수 (동풍전 2 · 반장전 3) */
+const maxUses = (state: GameState): number => scaledUses(state, TONPUU_USES);
 /** 이 증강이 만들어내는 이벤트 — id에서 파생시켜 충돌 방지 */
 const FULL_HAND_SWAP_PERFORMED = "FullHandSwapPerformed";
 /** 게임 단위 사용 횟수 카운터 키 */
@@ -73,7 +81,7 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined) return "unknown player";
     if (!player.augments.includes(ID)) return "no full_hand_swap augment";
-    if (counterOf(state, usedKey(req.player)) >= MAX_USES) {
+    if (counterOf(state, usedKey(req.player)) >= maxUses(state)) {
       return "hand_swap already used";
     }
     if (state.round.phase !== "turn.act") return "not in act phase";
@@ -135,16 +143,16 @@ export const fullHandSwap: AugmentDef = defineAugment({
   complexity: 1,
   name: "통째로 바꾸기",
   description:
-    "(게임 내 2회) 국의 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다. 리치를 선언한 상대에게는 쓸 수 없다.",
+    "(동풍전 2회 · 반장전 3회) 국의 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다. 리치를 선언한 상대에게는 쓸 수 없다.",
   detail:
-    "(게임 내 2회) 교환이 아니라 강탈이라 내 배패가 상대에게 넘어가지는 않는다. 손패 장수가 다른 상대도 지정할 수 없다.\n\n**숨은 리치는 리치가 아닌 사람으로 보여 그대로 지정할 수 있고**, 손을 뺏기는 순간 풀린다. 쯔모패가 없는 상태나 패산이 모자랄 때도 발동하지 않는다.",
+    "(동풍전 2회 · 반장전 3회) 교환이 아니라 강탈이라 내 배패가 상대에게 넘어가지는 않는다. 손패 장수가 다른 상대도 지정할 수 없다.\n\n**숨은 리치는 리치가 아닌 사람으로 보여 그대로 지정할 수 있고**, 손을 뺏기는 순간 풀린다. 쯔모패가 없는 상태나 패산이 모자랄 때도 발동하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
     // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
     publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, MAX_USES - counterOf(state, usedKey(holder))),
-      total: MAX_USES,
+      left: Math.max(0, maxUses(state) - counterOf(state, usedKey(holder))),
+      total: maxUses(state),
     }));
 
     // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)

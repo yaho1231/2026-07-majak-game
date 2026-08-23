@@ -1,5 +1,5 @@
 /**
- * hand_swap3 (등가교환) — 게임당 2회, 자기 턴에 상대 한 명을 '지정'하면 그 상대의
+ * hand_swap3 (등가교환) — 동풍전 2회·반장전 3회, 자기 턴에 상대 한 명을 '지정'하면 그 상대의
  * 손패가 보유자에게만 진짜 패로 공개되고, **내 패 3장 ↔ 상대 패 3장을 한 번에**
  * 맞바꾼다. 주는 패도 받는 패도 전부 보유자가 고른다 — 무작위 없음
  * (10_AUGMENT_SYSTEM §0 무페널티 원칙: "나에게 불리할 수 있는 무작위"를 선택으로 대체).
@@ -49,6 +49,7 @@ import {
   publishUsesLeft,
   replaceDrawnTile,
   roundViewKey,
+  scaledUses,
   stringOf,
 } from "../util.js";
 import {
@@ -67,7 +68,15 @@ const GIVE_ACTION = "swap3_give";
 /** 가져올 상대 3장 선택 액션 (여기서 실제 교환이 일어난다) */
 const TAKE_ACTION = "swap3_take";
 /** 게임당 지정 가능 횟수 */
-const MAX_USES = 2;
+/**
+ * **동풍전 기준** 사용 횟수 — 반장전은 `scaledUses`가 1.5배(올림)로 늘린다
+ * (동풍전 2회 · 반장전 3회, 2026-08-23 사용자 지시).
+ * 매치 예산은 원래 동풍전(4국)을 기준으로 잡혀 있어서, 국이 두 배 도는 반장전에서
+ * 같은 카드가 국당 절반 값이 됐다.
+ */
+const TONPUU_USES = 2;
+/** 이 매치에서 쓸 수 있는 총 횟수 (동풍전 2 · 반장전 3) */
+const maxUses = (state: GameState): number => scaledUses(state, TONPUU_USES);
 /** 한 번에 맞바꾸는 장수 */
 const SWAP_TILES = 3;
 /** 교환 이벤트 — id에서 파생시켜 충돌 방지 */
@@ -87,7 +96,7 @@ const giveKey = (state: GameState, holder: PlayerId): string =>
 /**
  * 이번 국에 교환을 **완료**했는가 (55차 사용자 피드백: "발동한 국에는 재사용 불가").
  * 교환이 끝나는 순간(swap3_take 리듀서)에 세우고, 그 국에는 새 지정을 막는다.
- * 국 단위 키라 다음 국이 되면 자동 만료된다 — 게임당 2회 한도와는 별개의 제한이다.
+ * 국 단위 키라 다음 국이 되면 자동 만료된다 — 매치 횟수 한도와는 별개의 제한이다.
  */
 const doneKey = (state: GameState, holder: PlayerId): string =>
   roundScopedKey(ID, "done", state, holder);
@@ -166,7 +175,7 @@ function swapsLeft(state: GameState, holder: PlayerId): number {
  * 고른 3장을 그대로 버리거나 안깡으로 넣을 수 있는데, 예전에는 그러면
  * ① take가 "give tile not in hand"로 영구 반려되고
  * ② give는 `length > 0`이라 다시 고를 수 없어
- * 그 국의 교환이 조용히 죽었다 — 게임 2회 중 1회는 이미 소모된 채로.
+ * 그 국의 교환이 조용히 죽었다 — 매치 예산 한 번은 이미 소모된 채로.
  * 무효로 떨어뜨리면 give 후보가 다시 뜨고, 그 국 안에서 다시 고를 수 있다.
  */
 function pendingGives(state: GameState, holder: PlayerId): TileId[] {
@@ -243,7 +252,7 @@ const aimAction: ActionDef<{ target: PlayerId }> = {
   validate: (req, { state, rules }) => {
     const common = commonReject(state, req.player);
     if (common !== null) return common;
-    if (counterOf(state, usedKey(req.player)) >= MAX_USES) {
+    if (counterOf(state, usedKey(req.player)) >= maxUses(state)) {
       return "swap3 already used";
     }
     // 발동(교환 완료)한 국에는 다시 지정할 수 없다
@@ -352,16 +361,16 @@ export const handSwap3: AugmentDef = defineAugment({
   complexity: 1,
   name: "등가교환",
   description:
-    "(게임 내 2회 · 매 국 1회) 자기 순에 상대 한 명을 지정해 손패를 보고, 넘길 내 3장과 가져올 상대 3장을 골라 맞바꾼다. 리치를 선언한 상대는 지정할 수 없다.",
+    "(동풍전 2회 · 반장전 3회 · 매 국 1회) 자기 순에 상대 한 명을 지정해 손패를 보고, 넘길 내 3장과 가져올 상대 3장을 골라 맞바꾼다. 리치를 선언한 상대는 지정할 수 없다.",
   detail:
-    "(게임 내 2회 · 매 국 1회) 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로다. 손패와 오간 패는 당사자 둘에게만 보인다. **숨은 리치는 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 풀린다. 횟수는 지정하는 순간 소비된다.",
+    "(동풍전 2회 · 반장전 3회 · 매 국 1회) 무작위 없이 전부 내가 고르고 양쪽 손패 장수도 그대로다. 손패와 오간 패는 당사자 둘에게만 보인다. **숨은 리치는 그대로 지정할 수 있고**, 3장이 갈리는 순간 그 리치는 풀린다. 횟수는 지정하는 순간 소비된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
     // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
     publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, MAX_USES - counterOf(state, usedKey(holder))),
-      total: MAX_USES,
+      left: Math.max(0, maxUses(state) - counterOf(state, usedKey(holder))),
+      total: maxUses(state),
     }));
 
     // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
@@ -476,7 +485,7 @@ export const handSwap3: AugmentDef = defineAugment({
         }));
       }
 
-      if (counterOf(state, usedKey(holder)) >= MAX_USES) return [];
+      if (counterOf(state, usedKey(holder)) >= maxUses(state)) return [];
       // 이번 국에 이미 교환을 마쳤으면 새 지정을 제시하지 않는다
       if (swappedThisRound(state, holder)) return [];
       return state.players
