@@ -21,6 +21,14 @@ export interface RuleContext {
   winType?: "tsumo" | "ron";
   /** 화료 문맥 규칙 해석 시 손이 멘젠인가 (안깡은 멘젠 유지) */
   isClosed?: boolean;
+  /**
+   * **가상의 화료 한 건** (`WinInfo` 모양). 정산 시점에만 알 수 있는 값을 보는 규칙
+   * (`score.settleHanBonus`)이 읽는다.
+   *
+   * 타입을 `unknown`으로 둔 이유: `WinInfo`는 `mahjong/flow`의 것이고 이 파일은
+   * 엔진 최하층이라 그쪽을 import하면 층이 뒤집힌다(`state`가 `unknown`인 것과 같은 이유).
+   */
+  winInfo?: unknown;
 }
 
 /** 등급이 높은 증강이 나중에 적용된다 (= 최종 발언권). System은 엔진 안전장치 전용. */
@@ -115,6 +123,18 @@ export class RuleRegistry {
     });
     this.modifiers.set(key, list);
     this.ver++;
+  }
+
+  /**
+   * 이 규칙에 Modifier를 등록한 주체(증강 인스턴스 id) 목록.
+   *
+   * 관전 채점이 「이 좌석의 정산 보정을 내가 다 따라갔는가」를 판정하는 데 쓴다 —
+   * `score.settleHanBonus`를 등록한 증강은 관전값에 그대로 반영되지만, 그러지 않고
+   * `ROUND_SETTLED` 인터셉터만으로 점수를 고치는 증강은 관전 시점에 알 수 없다.
+   * 그 차이를 화면이 «단정하지 않게» 하려면 어느 쪽인지 셀 수 있어야 한다.
+   */
+  modifierSources(key: RuleKey): string[] {
+    return [...new Set((this.modifiers.get(key) ?? []).map((m) => m.source))];
   }
 
   /** 특정 주체(증강)가 등록한 모든 Modifier 제거. 증강 소멸·파괴 시 호출된다. */

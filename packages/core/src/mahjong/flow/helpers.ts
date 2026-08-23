@@ -798,14 +798,33 @@ export function outsideHandTileFinder(
     ...winHandIdsOf(state, rules, id),
     ...(state.round.byPlayer[id]?.melds ?? []).flatMap((m) => m.tileIds),
   ]);
+  /*
+   * ⚠ **적도라가 아닌 사본을 고른다.**
+   *
+   * 같은 종류라도 적5는 그 자체로 1판이다. 아무 사본이나 집으면 「5s 대기」의 값이
+   * 실제로 그 사람이 받을 값보다 **한 판 비싸게** 나온다 — 2026-08-23 3차 수정에서
+   * 관전값(5,200)과 실제 정산(2,600)이 정확히 이 이유로 갈렸다. 역 유무만 보는
+   * 기존 사용처(`tenpaiNoYaku`·`yakulessWaits`)에는 영향이 없다(적도라는 역이 아니다).
+   *
+   * 세상에 그 종류가 적5뿐인 극단적인 경우에만 적5로 떨어진다 — 없는 것보다 낫다.
+   */
   const byKind = new Map<string, TileId>();
+  const redFallback = new Map<string, TileId>();
   for (const key of Object.keys(state.tiles)) {
     const tileId = Number(key) as TileId;
     if (inHand.has(tileId)) continue;
-    const k = kindKey(state.tiles[tileId]!.kind);
+    const tile = state.tiles[tileId]!;
+    const k = kindKey(tile.kind);
+    if (tile.attrs.red === true) {
+      if (!redFallback.has(k)) redFallback.set(k, tileId);
+      continue;
+    }
     if (!byKind.has(k)) byKind.set(k, tileId);
   }
-  return (kind) => byKind.get(kindKey(kind));
+  return (kind) => {
+    const k = kindKey(kind);
+    return byKind.get(k) ?? redFallback.get(k);
+  };
 }
 
 /**

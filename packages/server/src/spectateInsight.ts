@@ -115,9 +115,10 @@ function snapFu(fu: number): number {
  * 바닥을 친다(그 좌석이 실제로 못 먹는다는 사실은 텐파이가 됐을 때 `yakuless`가 말한다).
  *
  * ⚠ **확정 경로에는 이 바닥이 없고, 없는 것이 맞다.** 무형화료(`win.requiresYaku` off)
- * 좌석은 실역 0개로도 화료하고 정산기가 실제로 «0판 30부 500점»을 지불한다 — 그건
- * 근사가 아니라 사실이라 반올림하면 안 된다(`SpectateWinValue.noYaku`가 그 사실을
- * 화면에 알린다). 여기 바닥은 **추정을 표의 칸에 앉히기 위한 것**이지 규칙이 아니다.
+ * 좌석은 실역 0개로도 화료한다 — 코어가 그 채점값에 정산 보너스(`score.settleHanBonus`)
+ * 까지 얹어 **실제 수령액**을 내므로, 반올림하면 그 사실을 덮는 것이 된다
+ * (`SpectateWinValue.noYaku`·`augHan`이 출처를 화면에 알린다). 여기 바닥은
+ * **추정을 표의 칸에 앉히기 위한 것**이지 규칙이 아니다.
  */
 function snapEstimate(
   han: number,

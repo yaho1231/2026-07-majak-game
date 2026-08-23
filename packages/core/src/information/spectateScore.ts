@@ -22,15 +22,18 @@
  * ## 성능 (실측 2026-08-23, Apple Silicon / node 22 · 캐시 우회 20회 평균)
  * 4좌석 × 대기 최대 6종 × 2(론·쯔모) = 최대 48회 `evaluateWin`.
  *
- *   - 표준 손 4좌석 전원 텐파이 — **1.0~1.7ms**
+ *   - 표준 손 4좌석 전원 텐파이 — **1.0~1.8ms**
  *   - 국사 13면 3.1 / `royal_kokushi` 3.7 / `open_kokushi` 4.1 / `async_chiitoi` 4.2
- *   - 만능패(`scoring.wildKinds`) 6.1 / 14장 다면장 6.4 / **부숴진 벽(`wrapRuns`) 7.9**
- *   - 넷 다 겹친 최악 조합 — **7.1ms** (`test/SpectateScore.test.ts`가 20ms로 문턱을 건다)
+ *   - 만능패(`scoring.wildKinds`) 6.1 / 14장 다면장 6.4 / 부숴진 벽(`wrapRuns`) 7.9
+ *   - 실전에서 볼 만한 최악(검수 독립 실측) — **13.2ms**
+ *   - **합성 최악** = 4좌석 전부 14장 구련보등형 + 만능패 + 부숴진 벽 — **24~25ms**
  *
- * 즉 **「언제나 5ms 안」은 사실이 아니다** (2026-08-23 QA 2차 지적). 비싼 쪽은
- * `evaluateWin`이 아니라 **분해를 넓히는 좌석의 샹텐·대기 계산**이다 — 만능패·순환
- * 슌쯔는 한 번의 분해 자체를 비싸게 만든다. 판을 죽일 수준은 아니라 그대로 둔다:
- * 관전자가 없으면 아예 돌지 않고, 있어도 브로드캐스트 한 번에 한 번이다.
+ * 즉 **「언제나 5ms 안」은 사실이 아니다.** 「이게 최악이다」를 두 번 틀린 뒤로는
+ * 손을 골라 재지 않고 **상한을 추정해서 그 손을 짓는다**: 좌석 4 × 버림 후보(14장이면
+ * 최대 13) × 대기 폭(표준 최대는 구련보등 9면, 분해를 넓히는 증강이 그 위에 더 얹는다).
+ * 시간의 출처는 `evaluateWin` 20.7 / 대기 계산 6.3 / 샹텐 0.5ms — **비싼 것은 채점
+ * 자체**다. 판을 죽일 수준은 아니라 그대로 둔다: 관전자가 없으면 아예 돌지 않고,
+ * 있어도 브로드캐스트 한 번에 한 번이며, 네 좌석이 동시에 그 조건일 확률은 사실상 0이다.
  *
  * ⚠ 캐시는 상태 **와 규칙 세대**를 함께 본다. 「상태 객체가 곧 완벽한 캐시 키」
  * (`helpers.ts §7-5`)는 관전 채점에는 **틀리다** — `SEAT_SCORE_CACHE` 주석 참고.
@@ -49,6 +52,7 @@ import { shantenOf } from "../mahjong/scoring/shanten.js";
 import { evaluateWin } from "../mahjong/scoring/evaluate.js";
 import { calculateScore } from "../mahjong/scoring/score.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
+import type { WinInfo } from "../mahjong/flow/flowEvents.js";
 import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
 import {
   handIdsOf,
@@ -254,6 +258,8 @@ function evalWait(
   isDealer: boolean,
   needYaku: boolean,
   riichi: boolean,
+  /** 이 좌석에 «관전 시점에 계산할 수 없는» 정산 보정이 남아 있는가 */
+  augAdjusted: boolean,
 ): WaitEval | null {
   const ev = evaluateWin(buildWinContext(state, id, winType, tileId, { rules }), yaku);
   if (ev === null) return null; // 화료형이 아니다 — 「막혔다」가 아니라 애초에 대기가 아니다
@@ -294,21 +300,82 @@ function evalWait(
     (rules.has("win.treatAsDealer") &&
       rules.resolve<boolean>("win.treatAsDealer", { playerId: id, state }));
 
+  /*
+   * **정산 시점에 얹히는 보너스 판** (`score.settleHanBonus` — `addWinHanBonus` 계열).
+   *
+   * 이건 `calculateScore`에 안 들어가는 판이라 예전에는 관전값에서 통째로 빠졌다.
+   * 무형화료 좌석의 형식텐파이가 화면 「0판 500점」, 실제 수령 2,000점 — **4배** 틀렸다
+   * (2026-08-23 검수 실측). 표식(`noYaku`)이 뜻은 붙여 줬지만 숫자가 틀린 것은 그대로였고,
+   * 하필 그 표식이 붙는 대표 사례가 정확히 이 증강이었다.
+   *
+   * 증강이 같은 함수를 규칙으로도 내놓게 해서(standardAugments.ts `addWinHanBonus`)
+   * 여기서 **질의**한다 — 인터셉터를 부작용 없이 태울 방법은 없다. 규칙은 정산 시점의
+   * 화료 한 건을 봐야 하므로 지금 재고 있는 가상 화료를 `winInfo`로 실어 보낸다.
+   *
+   * ⚠ 격(`win.minHan`) 판정에는 **넣지 않는다.** 정산기의 `belowMinHan`도 `score.extraHan`만
+   * 세기 때문이다 — 여기만 더 세면 「화면은 되는데 실제로는 거부」가 반대 방향으로 생긴다.
+   */
+  let augHan = 0;
+  if (rules.has("score.settleHanBonus")) {
+    const info: WinInfo = {
+      winner: id,
+      // 누가 쐈는지는 «아직 안 일어난 화료»라 알 수 없다. 보너스 함수들은 이 값을
+      // 보지 않는다(보면 그 증강은 이 창구로 질의할 수 없다는 뜻이다).
+      from: null,
+      winType,
+      winningTileId: tileId,
+      han: totalHan,
+      fu: ev.fu,
+      yakumanCount: ev.yakumanCount,
+      extraHan,
+      yaku: ev.yaku.map((y) => ({ id: y.id, name: y.name, han: y.han })),
+      doraHan: ev.doraHan,
+      uraHan: ev.uraHan,
+      redHan: ev.redHan,
+      yakuless: !ev.ok,
+      points: 0, // 보너스 함수는 판수만 본다 — 점수 차액 계산은 인터셉터 쪽 몫이다
+      limit: null,
+    };
+    augHan = Math.max(
+      0,
+      rules.resolve<number>("score.settleHanBonus", { playerId: id, state, winInfo: info }),
+    );
+  }
+  const paidHan = totalHan + augHan;
+
+  const uncapped =
+    rules.has("score.uncapped") &&
+    rules.resolve<boolean>("score.uncapped", { playerId: id, state });
   const score = calculateScore({
-    han: totalHan,
+    han: paidHan,
     fu: ev.fu,
     yakumanCount: ev.yakumanCount,
     isDealer: scoresAsDealer,
     winType,
-    ...(rules.has("score.uncapped") &&
-    rules.resolve<boolean>("score.uncapped", { playerId: id, state })
-      ? { uncapped: true }
-      : {}),
+    ...(uncapped ? { uncapped: true } : {}),
   });
-  const limit = limitName(score.limit);
+  /*
+   * **상한 이름은 상한을 씌운 계산에서 가져온다** (`score.uncapped` 규약 불일치, 검수 N4).
+   *
+   * 뚫린 천장 좌석에서 `calculateScore({uncapped:true})`는 `limit`을 안 매긴다. 그런데
+   * 정산기(`sysSettleWin`)는 **상한을 씌운 채** 채점하고 `aotenjou_ceiling`이 사후에
+   * 차액을 얹으므로, 결과 화면의 이름은 「만관 + 증강」이다. 총액은 같은데 이름만 두
+   * 층에서 갈리면 화면이 「하네만」이라 적고 결과 화면은 「만관」이라 적는다.
+   * 총액은 뚫린 값, 이름은 정산기와 같은 값 — 두 층이 같은 말을 하게 맞춘다.
+   */
+  const named = uncapped
+    ? calculateScore({
+        han: paidHan,
+        fu: ev.fu,
+        yakumanCount: ev.yakumanCount,
+        isDealer: scoresAsDealer,
+        winType,
+      })
+    : score;
+  const limit = limitName(named.limit);
   return {
     value: {
-      han: totalHan,
+      han: paidHan,
       fu: ev.fu,
       points: score.total,
       yakumanCount: ev.yakumanCount,
@@ -317,11 +384,15 @@ function evalWait(
       doraHan: ev.doraHan,
       redHan: ev.redHan,
       uraHan: ev.uraHan,
+      ...(augHan > 0 ? { augHan } : {}),
       // 뒷도라는 화료 순간에야 열린다 — 관전 시점에 세면 스포일러다. 리치 좌석에는
       // 「이 값은 하한이다」를 표식으로 남긴다 (protocol.ts `uraUnknown` 주석).
       ...(riichi ? { uraUnknown: true as const } : {}),
-      // 실역 0개로 성립한 화료 — 「0판 30부 500점」은 정산기가 실제로 지불하는 값이다.
+      // 실역 0개로 성립한 화료. 정산기도 여기까지는 같은 값을 채점하고, 그 위에
+      // 무형화료의 +2판이 `augHan`으로 얹혀 실제 수령액이 된다.
       ...(!ev.ok ? { noYaku: true as const } : {}),
+      // 아직 못 따라가는 정산 보정이 남아 있다 — 화면은 이 숫자를 단정하면 안 된다.
+      ...(augAdjusted ? { augAdjusted: true as const } : {}),
     },
   };
 }
@@ -362,14 +433,33 @@ export function buildSpectateSeatScores(
   rules: RuleRegistry,
   yaku: YakuRegistry,
   handGrades: Readonly<Record<string, number>> = {},
+  /**
+   * 이 좌석에 **관전 시점에 계산할 수 없는 정산 보정**이 남아 있는가.
+   * 호출부(`HanchanController`)가 엔진의 `ROUND_SETTLED` 인터셉터 목록과
+   * `score.settleHanBonus` 질의 창구를 대조해 만든다 — 이 파일은 엔진을 모른다.
+   */
+  augAdjustedFor: (id: PlayerId) => boolean = () => false,
 ): SpectateSeatScore[] {
   const cacheKey = `${rules.version}|${yaku.all().length}`;
   const cached = SEAT_SCORE_CACHE.get(state);
   if (cached !== undefined && cached.key === cacheKey) {
-    // 배패 점수만 나중에 붙는 경우가 있어(관전자가 국 도중 합류) 얕게 다시 얹는다.
-    return cached.scores.map((s) =>
-      handGrades[s.id] === undefined ? s : { ...s, handGrade: handGrades[s.id]! },
-    );
+    /*
+     * 배패 점수는 캐시 **바깥**에서 매번 다시 얹는다 (검수 N3).
+     *
+     * 예전에는 「있으면 덮는다」였다 — 그러니 넘어온 값이 **비었을 때** 캐시에 남아 있던
+     * 지난 값이 그대로 나갔다. 라이브에서는 국이 끝날 때 상태 객체가 갈려 안 터졌지만,
+     * `rules.version`도 상태도 그대로인 경로가 생기면 지난 국의 배패 점수가 샌다.
+     * 「지금 안 터진다」는 안전하다는 뜻이 아니다.
+     */
+    return cached.scores.map((s) => {
+      const grade = handGrades[s.id];
+      if (grade === undefined) {
+        if (s.handGrade === undefined) return s;
+        const { handGrade: _drop, ...rest } = s;
+        return rest;
+      }
+      return s.handGrade === grade ? s : { ...s, handGrade: grade };
+    });
   }
 
   const seen = seenCounts(state);
@@ -403,7 +493,7 @@ export function buildSpectateSeatScores(
 
     // 샹텐 — 14장이면 한 장 버린 뒤의 최선
     const handKinds = handKindsOf(state, p.id);
-    const { shanten, drops } = bestShanten(state, handIds, handKinds, meldCount, opts);
+      const { shanten, drops } = bestShanten(state, handIds, handKinds, meldCount, opts);
 
     const seat: SpectateSeatScore = {
       id: p.id,
@@ -461,6 +551,7 @@ export function buildSpectateSeatScores(
          * `evalState`(한 장 버린 뒤)로 재야 그 버림 이후의 사실이 나온다.
          */
         const furiten = isFuriten(evalState, p.id, opts, rules);
+        const adjusted = augAdjustedFor(p.id);
         const outside = outsideHandTileFinder(evalState, rules, p.id);
         const waits: SpectateWait[] = [];
         let bestRon: SpectateWinValue | null = null;
@@ -472,10 +563,10 @@ export function buildSpectateSeatScores(
           const tileId = outside(kind);
           if (tileId === undefined) continue; // 그 종류 실물이 상태에 없다(방어적)
           const ron = evalWait(
-            evalState, rules, yaku, p.id, tileId, "ron", isDealer, needYaku, riichi,
+            evalState, rules, yaku, p.id, tileId, "ron", isDealer, needYaku, riichi, adjusted,
           );
           const tsumo = evalWait(
-            evalState, rules, yaku, p.id, tileId, "tsumo", isDealer, needYaku, riichi,
+            evalState, rules, yaku, p.id, tileId, "tsumo", isDealer, needYaku, riichi, adjusted,
           );
           for (const r of [ron, tsumo]) {
             if (r === null || r.value !== null) continue;
@@ -497,8 +588,16 @@ export function buildSpectateSeatScores(
           // 후리텐이면 론은 못 한다 — 대표값은 쯔모 쪽이다.
           const best = furiten ? bestTsumo : (bestRon ?? bestTsumo);
           if (best !== null) seat.best = best;
-          else if (sawMinHanBlock && !sawYakuBlock) {
-            // 역은 있는데 격(`win.minHan`)에 못 미쳐 전부 막혔다 — 「역없음」과 다른 사실이다.
+          else if (sawMinHanBlock) {
+            /*
+             * 역은 있는데 격(`win.minHan`)에 못 미쳐 막혔다 — 「역없음」과 다른 사실이다.
+             *
+             * ⚠ 예전에는 `sawMinHanBlock && !sawYakuBlock`을 요구했다. 그래서 **론에는
+             * 역이 없고 쯔모에만 있는 손**(멘젠쯔모만 서는 손)이 두 사유를 동시에 내면
+             * 「역없음」으로 떨어졌다 — 형식텐파이가 아닌데 그렇게 적혔다(검수 N2 실측:
+             * `234m345p678p234s55z` + `minHan=5`). 격에 한 번이라도 걸렸다면 그 손에는
+             * 역이 있다는 뜻이므로, 「역없음」이 아니라 「격 미달」이 맞다.
+             */
             seat.belowMinHan = true;
           } else if (needYaku && sawYakuBlock) {
             // 텐파이인데 어떤 오름패로도 역이 없다 = 형식텐파이. 역이 필요 없는

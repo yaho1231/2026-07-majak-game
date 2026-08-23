@@ -69,6 +69,29 @@ function addWinHanBonus(
    * 돌았고(자기 자신보다도), 개문선언·무형화료를 둘이 나눠 가지면 서로 완전히 동률이라
    * 픽 순서로 갈렸다.
    */
+  /*
+   * **같은 함수를 규칙으로도 한 번 더 내놓는다** (`score.settleHanBonus`).
+   *
+   * 지급 자체는 아래 인터셉터가 하고, 이 모디파이어는 **질의 전용**이다 — 관전 패널이
+   * 「이 손으로 화료하면 실제로 얼마를 받나」를 물을 때 인터셉터를 부작용 없이 태울
+   * 방법이 없어서다. 예전에는 그래서 무형화료 좌석의 형식텐파이가 관전에 「0판 500점」,
+   * 실제 정산에는 2,000점으로 나갔다 (2026-08-23 검수 실측, 4배).
+   *
+   * ⚠ 두 등록이 **같은 `han` 함수**를 쓰는 것이 요점이다. 각자 계산식을 들면 그 순간
+   * 조용히 갈라지고, 이 파일이 없애려던 상태가 그대로 돌아온다.
+   */
+  ctx.engine.rules.addModifier<number>("score.settleHanBonus", {
+    source: ctx.instanceId,
+    layer: ctx.layer,
+    apply: (cur, rctx) => {
+      if (rctx.playerId !== ctx.holder) return cur;
+      const state = rctx.state as GameState | undefined;
+      const info = rctx.winInfo as WinInfo | undefined;
+      if (state === undefined || info === undefined) return cur;
+      return cur + Math.max(0, Math.round(han(state, info)));
+    },
+  });
+
   // ⚠ player.seat이 아니라 배열 인덱스다 — 자리 바꿈 뒤 재구성이 순서를 바꾸지 않게.
   //   (settleSeatAxis 주석 참고)
   const seat = settleSeatAxis(ctx.engine.state, ctx.holder);

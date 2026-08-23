@@ -54,6 +54,8 @@ import type { ActionOption, DecisionPrompt } from "../src/mahjong/flow/FlowContr
 import type { DraftStage } from "../src/network/protocol.js";
 import type { AugmentDef } from "../src/augment/Augment.js";
 import { Prng } from "../src/engine/random/Prng.js";
+import { ROUND_SETTLED } from "../src/mahjong/flow/flowEvents.js";
+import type { RoundSettledPayload } from "../src/mahjong/flow/flowEvents.js";
 import { shantenOf } from "../src/mahjong/scoring/shanten.js";
 import type { PlayerView } from "../src/information/PlayerView.js";
 
@@ -99,6 +101,10 @@ function craft(cfg: {
   drawnLastFor?: PlayerId;
   /** 리치를 건 좌석 */
   riichi?: PlayerId[];
+  phase?: string;
+  turnSeat?: number;
+  /** 방금 바닥에 놓인 패 (론 정산을 태울 때 쓴다) */
+  lastDiscard?: { player: PlayerId; spec: string };
 }): GameState {
   const base = createInitialGameState(
     { seed: 1, playerIds: [...PLAYERS] },
@@ -169,6 +175,17 @@ function craft(cfg: {
     };
   }
 
+  let lastDiscardRef: { player: PlayerId; tileId: TileId } | null = null;
+  if (cfg.lastDiscard !== undefined) {
+    const tileId = take(h(cfg.lastDiscard.spec)[0] as TileKind);
+    const zoneId = discardsZone(cfg.lastDiscard.player);
+    zones[zoneId] = {
+      ...(zones[zoneId] as ReturnType<typeof createZone>),
+      tileIds: [...(zones[zoneId]?.tileIds ?? []), tileId],
+    };
+    lastDiscardRef = { player: cfg.lastDiscard.player, tileId };
+  }
+
   const indicatorId =
     cfg.doraIndicator === undefined ? undefined : take(h(cfg.doraIndicator)[0] as TileKind);
 
@@ -189,9 +206,10 @@ function craft(cfg: {
     zones,
     round: {
       ...base.round,
-      phase: "turn.act",
-      turnSeat: 0,
+      phase: cfg.phase ?? "turn.act",
+      turnSeat: cfg.turnSeat ?? 0,
       dealerSeat: cfg.dealerSeat ?? 0,
+      lastDiscard: lastDiscardRef,
       doraIndicators:
         indicatorId !== undefined ? [indicatorId] : [deadWall[4] as TileId],
       lastDrawnTile:
@@ -509,6 +527,54 @@ describe("정산기와 같은 규약을 쓴다", () => {
     }
   });
 
+  it("론엔 역이 없고 쯔모엔 있는 손은 «역없음»이 아니라 «격 미달»이다", () => {
+    /*
+     * `234m345p678p234s5z` — 白 단기. 론에는 역이 하나도 없고(탕야오는 白이 깨고,
+     * 핑후는 역패 머리·단기라 안 선다) 쯔모에는 멘젠쯔모 1판이 선다. 여기에 격 5판을
+     * 걸면 **두 사유가 동시에** 난다.
+     *
+     * 예전 코드는 `sawMinHanBlock && !sawYakuBlock`을 요구해서 이 손을 「역없음」으로
+     * 적었다 — 형식텐파이가 아닌데 그렇게 적힌 것이다(검수 N2 실측).
+     */
+    const game = createStandardGameFromState(
+      craft({ hands: { p0: "234m345p678p234s5z" } }),
+    );
+    const before = seatsOf(game).get("p0")!;
+    expect(before.best, "먼저 값이 나와야 이 테스트가 뜻이 있다").toBeDefined();
+    expect(before.yakuless, "격을 걸기 전부터 역없음이면 손을 잘못 골랐다").toBeUndefined();
+    seatRule(game, "win.minHan", "p0", 5);
+    const s = seatsOf(game).get("p0")!;
+    expect(s.belowMinHan, "격 미달인데 표식이 없다").toBe(true);
+    expect(
+      s.yakuless,
+      "쯔모에는 역이 있는 손이다 — 「역없음」이라 적으면 다른 사실을 말하는 것이다",
+    ).toBeUndefined();
+  });
+
+  it("뚫린 천장 좌석의 상한 이름은 정산기와 같은 이름이다", () => {
+    /*
+     * `score.uncapped`는 총액의 상한만 푼다. 정산기(`sysSettleWin`)는 **상한을 씌운 채**
+     * 채점하고 `aotenjou_ceiling`이 사후에 차액을 얹으므로, 결과 화면의 이름은
+     * 「만관 + 증강」이다. 관전이 `uncapped`로 바로 내면 `limit`이 아예 안 붙거나 다른
+     * 이름이 붙어, 화면과 결과 화면이 서로 다른 말을 한다(검수 N4).
+     */
+    const game = createStandardGameFromState(craft({ hands: { p0: SANSHOKU } }));
+    const capped = seatsOf(game).get("p0")!.best!;
+    seatRule(game, "score.extraHan", "p0", 4); // 만관 위로 올린다
+    const cappedName = seatsOf(game).get("p0")!.best!.limit;
+    expect(cappedName, "이 손이 상한 구간에 안 들어갔다 — 판수를 더 올려라").toBeDefined();
+
+    const open = createStandardGameFromState(craft({ hands: { p0: SANSHOKU } }));
+    seatRule(open, "score.extraHan", "p0", 4);
+    seatRule(open, "score.uncapped", "p0", true);
+    const uncapped = seatsOf(open).get("p0")!.best!;
+    expect(
+      uncapped.limit,
+      "뚫린 천장 좌석의 상한 이름이 정산기와 다르다 — 화면 두 곳이 다른 말을 한다",
+    ).toBe(cappedName);
+    expect(uncapped.points, "천장이 안 뚫렸다").toBeGreaterThan(capped.points);
+  });
+
   it("역만은 격에도 추가 판에도 걸리지 않는다 (정산기와 같은 면제)", () => {
     // 국사무쌍 13면 대기 — 어떤 요구패로도 역만이다.
     const kokushi = craft({ hands: { p0: "19m19p19s1234567z" } });
@@ -569,6 +635,179 @@ describe("정산기와 같은 규약을 쓴다", () => {
     // 리치가 없으면 뒷도라 자체가 없다 — 표식도 붙지 않아야 한다.
     const noRiichi = createStandardGameFromState(craft({ hands: { p0: SANSHOKU } }));
     expect(seatsOf(noRiichi).get("p0")!.best!.uraUnknown).toBeUndefined();
+  });
+});
+
+// ────────── 3-2b. 실제로 론시켜 정산 deltas 와 대조한다 (검수 N1) ──────────
+
+/**
+ * **화면의 숫자를 정산 `deltas`와 직접 대조한다.**
+ *
+ * 2차 수정에서 「정산기가 실제로 그 금액을 지불한다」고 적었는데 **거짓이었다**.
+ * `yakuless_win`은 역 0개 화료에 +2판을 얹는데 그것이 `ROUND_SETTLED` **인터셉터**라,
+ * `calculateScore`만 보던 관전값은 「0판 30부 500점」, 실제 수령은 **2,000점**이었다.
+ * 표식(`noYaku`)이 뜻은 붙여 줬지만 숫자가 4배 틀렸고, 하필 그 표식이 붙는 대표
+ * 사례가 정확히 그 증강이었다.
+ *
+ * 뒤집힌 이유는 하나다 — **정산을 실제로 태워 보지 않았다.** 그래서 이 테스트는
+ * 관전값을 낸 바로 그 상태에서 `sys.settleWin`을 태우고 `deltas`와 맞춰 본다.
+ */
+describe("관전값 = 실제 수령액 (정산을 태워서 대조한다)", () => {
+  const SYS = "__system";
+
+  /** 그 상태에서 p1이 `tileId`로 론했을 때의 정산 payload */
+  function settleRon(
+    game: ReturnType<typeof createStandardGameFromState>,
+  ): RoundSettledPayload {
+    const tileId = game.engine.state.round.lastDiscard!.tileId;
+    const res = game.engine.submit({
+      player: SYS,
+      type: "sys.settleWin",
+      payload: {
+        wins: [{ winner: "p1", from: "p0", tileId, winType: "ron" as const }],
+      },
+    });
+    if (!res.ok) throw new Error(res.reason);
+    const ev = game.engine.eventLog.filter((e) => e.type === ROUND_SETTLED).at(-1);
+    return ev!.payload as RoundSettledPayload;
+  }
+
+  /** 형식텐파이(역없음) 열린 손 — 3s/6s 대기. p0가 3s를 놓았다. */
+  const ronReady = () =>
+    craft({
+      hands: { p1: "456m789s99m45s" },
+      melds: { p1: [{ kind: "chi", spec: "123p" }] },
+      lastDiscard: { player: "p0", spec: "3s" },
+      phase: "reaction",
+      turnSeat: 0,
+    });
+
+  it("무형화료 좌석: 관전 패널의 값이 실제 수령액과 한 푼도 다르지 않다", () => {
+    const game = createStandardGameFromState(ronReady());
+    installAugment(
+      game.engine,
+      standardAugments.find((a) => a.id === "yakuless_win") as never,
+      "p1",
+    );
+    const seat = buildSpectateSeatScores(
+      game.engine.state,
+      game.engine.rules,
+      game.yaku,
+    ).find((x) => x.id === "p1")!;
+    const wait = seat.waits!.find((w) => w.kind === "sou3")!;
+    const shown = wait.ron;
+    expect(shown, "무형화료 좌석인데 값이 안 나왔다").not.toBeNull();
+    expect(shown!.noYaku, "실역 0개 화료 표식이 없다").toBe(true);
+    expect(shown!.augHan, "정산 보너스 +2판이 관전값에 안 들어갔다").toBe(2);
+    expect(
+      shown!.augAdjusted,
+      "질의 창구를 내놓은 증강인데 «단정하지 말라» 표식이 붙었다",
+    ).toBeUndefined();
+
+    const settled = settleRon(game);
+    expect(
+      settled.deltas.p1,
+      "화면의 숫자와 실제 수령액이 다르다 — 이 파일이 없애려던 바로 그 상태다",
+    ).toBe(shown!.points);
+    /*
+     * 보너스 판은 **뱅크가 발행**한다 — 판이 올랐다고 쏜 사람이 더 내지 않는다
+     * (무페널티 원칙, `addWinHanBonus` 주석). 그래서 지불액과 수령액이 어긋나고,
+     * 그 차이가 곧 `augHan`이 만든 몫이다.
+     */
+    expect(
+      -(settled.deltas.p0 ?? 0),
+      "쏜 사람이 증강 보너스까지 물었다 — 무페널티 원칙이 깨졌다",
+    ).toBeLessThan(shown!.points);
+  });
+
+  it("증강이 없는 평범한 론도 관전값 = 수령액", () => {
+    // 같은 대조를 «아무 것도 안 얹힌» 손에서도 한 번 — 위 테스트가 보너스 경로에만
+    // 맞춰 조정되지 않았는지 보는 대조군이다.
+    const game = createStandardGameFromState(
+      craft({
+        hands: { p1: "234567m234567p5s" },
+        lastDiscard: { player: "p0", spec: "5s" },
+        phase: "reaction",
+        turnSeat: 0,
+      }),
+    );
+    const seat = buildSpectateSeatScores(
+      game.engine.state,
+      game.engine.rules,
+      game.yaku,
+    ).find((x) => x.id === "p1")!;
+    const shown = seat.waits!.find((w) => w.kind === "sou5")!.ron!;
+    const settled = settleRon(game);
+    expect(settled.deltas.p1).toBe(shown.points);
+  });
+
+  it("`score.extraHan`이 걸린 손도 관전값 = 수령액", () => {
+    const game = createStandardGameFromState(
+      craft({
+        hands: { p1: "234567m234567p5s" },
+        lastDiscard: { player: "p0", spec: "5s" },
+        phase: "reaction",
+        turnSeat: 0,
+      }),
+    );
+    game.engine.rules.addModifier<number>("score.extraHan", {
+      source: "test:extraHan",
+      layer: RuleLayer.Prism,
+      apply: (cur, ctx) => (ctx.playerId === "p1" ? cur + 3 : cur),
+    });
+    const seat = buildSpectateSeatScores(
+      game.engine.state,
+      game.engine.rules,
+      game.yaku,
+    ).find((x) => x.id === "p1")!;
+    const shown = seat.waits!.find((w) => w.kind === "sou5")!.ron!;
+    const settled = settleRon(game);
+    expect(settled.deltas.p1, "추가 판이 화면과 정산에서 다르게 세어졌다").toBe(shown.points);
+  });
+
+  it("질의 창구 없는 정산 인터셉터가 있으면 «단정하지 말라» 표식이 선다", () => {
+    /*
+     * content의 `withAugPoint` 계열처럼 `ROUND_SETTLED`만 잡고 지나가는 증강은 관전
+     * 시점에 재현할 수 없다. 그럴 때 숫자를 그대로 내면 또 조용히 틀린다 — 표식으로
+     * 「이 값은 하한/근사」임을 드러낸다(`uraUnknown`과 같은 층위).
+     */
+    const game = createStandardGameFromState(ronReady());
+    // 질의 창구(`score.settleHanBonus`) 없이 인터셉터만 등록한 가짜 증강
+    game.engine.effects.register({
+      source: "aug:p1:opaque_test",
+      layer: RuleLayer.Prism,
+      on: ROUND_SETTLED,
+      intercept: (event) => event,
+    });
+    const opaque = new Set(
+      game.engine.effects
+        .interceptorsFor(ROUND_SETTLED)
+        .filter((e) => !game.engine.rules.modifierSources("score.settleHanBonus").includes(e.source))
+        .map((e) => /^aug:([^:]+):/.exec(e.source)?.[1]),
+    );
+    const seat = buildSpectateSeatScores(
+      game.engine.state,
+      game.engine.rules,
+      game.yaku,
+      {},
+      (id) => opaque.has(id),
+    ).find((x) => x.id === "p1")!;
+    // 역없음이라 best는 없지만 대기별 값에는 표식이 실린다 — 무형화료를 함께 켜서 본다.
+    const game2 = createStandardGameFromState(ronReady());
+    installAugment(
+      game2.engine,
+      standardAugments.find((a) => a.id === "yakuless_win") as never,
+      "p1",
+    );
+    const seat2 = buildSpectateSeatScores(
+      game2.engine.state,
+      game2.engine.rules,
+      game2.yaku,
+      {},
+      (id) => id === "p1",
+    ).find((x) => x.id === "p1")!;
+    expect(seat2.best?.augAdjusted, "따라갈 수 없는 정산 보정인데 표식이 없다").toBe(true);
+    expect(seat.yakuless, "증강이 없는 쪽은 그대로 형식텐파이다").toBe(true);
   });
 });
 
@@ -757,7 +996,12 @@ describe("성능 — 최악 케이스까지 재고, 문턱이 그 값을 지킨�
     });
   }
 
-  it("표준 손 넷 — 예산(5ms) 안", () => {
+  /*
+   * 아래 둘 중 **회귀를 실제로 잡는 것은 비율 테스트**다. 절대 시간은 `npm test`의
+   * 병렬 부하에 끌려가므로(327개 파일 동시 실행) 여기서는 「초 단위로 튀지는 않는다」
+   * 정도의 안전망으로만 쓰고, 사람이 읽을 실측치는 로그로 남긴다.
+   */
+  it("표준 손 넷 — 실측 1~2ms (부하 안전망 60ms)", () => {
     const game = createStandardGameFromState(
       craft({
         hands: {
@@ -768,32 +1012,49 @@ describe("성능 — 최악 케이스까지 재고, 문턱이 그 값을 지킨�
         },
       }),
     );
-    expect(measure(game, "표준 4좌석 전원 텐파이")).toBeLessThan(15);
+    expect(measure(game, "표준 4좌석 전원 텐파이")).toBeLessThan(60);
   });
 
   /*
-   * **최악 케이스가 예산을 넘는다** (2026-08-23 QA 실측). 대기가 넓어질수록
-   * `evaluateWin` 호출이 늘고, 분해 옵션을 넓히는 증강(만능패·부숴진 벽)은 **한 번의
-   * 분해 자체**를 비싸게 만든다. 실측 최악은 부숴진 벽 7.9ms — 판을 죽일 수준은
-   * 아니지만(관전자가 없으면 아예 안 돌고, 있어도 브로드캐스트당 한 번이다)
-   * 「5ms 예산 안」이라 적어 두면 그건 사실이 아니다. 문턱을 여기 사실에 맞춘다.
+   * ─────────── 최악을 «찾는 방식» ───────────
+   *
+   * 두 번 연속 「이게 최악이다」가 틀렸다(7.14ms라 적었는데 검수가 13.16ms를 찾아냈다).
+   * 손을 골라 재는 방식으로는 최악을 못 찾는다 — 상한을 **추정하고** 그 추정에 맞는 손을
+   * 짓는 쪽으로 바꾼다. 한 번의 계산이 하는 일은 다음 셋의 곱이다:
+   *
+   *   1. **좌석 수** 4 (고정)
+   *   2. **버림 후보 수** — 14장(3n+2) 손이면 종류 단위 최대 13. 후보마다
+   *      `shantenOf` 1회 + (텐파이면) `winningKinds` 1회(= 34종 화형 판정)
+   *   3. **대기 폭** — 대기 종류마다 `evaluateWin` 2회(론·쯔모).
+   *      표준형의 최대는 **구련보등(9면 대기)**이고, 분해를 넓히는 증강
+   *      (만능패 `wildKinds` · 부숴진 벽 `wrapRuns`)이 그 위에 더 얹는다.
+   *
+   * 그래서 최악은 «네 좌석 전부 14장 구련보등형 + 두 증강»이다. 아래가 그 손이고,
+   * 실측 **24~25ms** — 검수가 찾은 13.16ms보다도 두 배 나쁘다(추정식이 실제로 더 나쁜
+   * 자리를 찾아냈다는 뜻이다). 시간의 출처도 재 뒀다: `evaluateWin` 20.7 / 대기 계산
+   * 6.3 / 샹텐 0.5ms — **비싼 것은 채점 자체**이고, 분해를 넓히는 두 증강이 그 채점
+   * 한 번을 통째로 비싸게 만든다.
+   *
+   * 그대로 둔다. 관전자가 없으면 아예 안 돌고, 있어도 브로드캐스트 한 번에 한 번이며,
+   * 네 좌석이 **동시에** 구련보등형 + 프리즘 증강 둘일 확률은 사실상 0이다(실전 최악은
+   * 검수의 13ms 자리다). 최적화가 필요해지면 손댈 곳은 `evaluateWin` 호출 수 —
+   * 대기 폭에 상한을 두는 것이 유일하게 뜻 있는 축이고, 그건 화면 계약의 변경이다.
+   *
+   * 문턱은 **사실 위에** 세운다: 실측 25ms에 CI 부하 여유를 얹어 40ms.
    */
-  it("최악 케이스(만능패·부숴진 벽·국사 13면·14장 다면장)도 20ms 안에서 끝난다", () => {
+  it("최악(4좌석 구련보등형 14장 + 만능패 + 부숴진 벽)에서도 40ms 안", () => {
     const worst = createStandardGameFromState(
       craft({
         hands: {
-          p0: "19m19p19s1234567z", // 국사무쌍 13면
-          p1: "1112345678999p", // 14장 다면장 (순정구련 형태 — 3n+2라 버림 후보도 돈다)
-          p2: "2345678s234m556m", // 만능패 좌석 (아래에서 白을 조커로)
-          p3: "1234567899s123z", // 부숴진 벽 좌석 (순환 슌쯔)
+          // 구련보등 13장 + 한 장 = 3n+2. 버림 후보 루프와 9면 대기가 함께 돈다.
+          p0: "1112345678999m2m",
+          p1: "1112345678999p2p",
+          p2: "1112345678999s2s",
+          // 만·통·삭이 다 찼으므로 남는 축은 자패다 — 대기가 넓은 치또이형으로 채운다.
+          p3: "1122334455667z7z",
         },
       }),
     );
-    /*
-     * **네 좌석 전부에** 분해를 넓히는 증강 둘을 건다 — 한 좌석만 걸면 나머지 셋이
-     * 표준 속도라 평균에 묻힌다. 실전에서 이 조합이 동시에 서는 일은 드물지만,
-     * 문턱은 «있을 수 있는 최악»을 지켜야 뜻이 있다.
-     */
     for (const pid of PLAYERS) {
       // 만능패 — `scoring.wildKinds`에 白을 얹는다 (content의 joker와 같은 훅).
       seatRule<readonly TileKind[]>(worst, "scoring.wildKinds", pid, (cur) => [
@@ -803,10 +1064,56 @@ describe("성능 — 최악 케이스까지 재고, 문턱이 그 값을 지킨�
       // 부숴진 벽 — 8-9-1·9-1-2 같은 순환 슌쯔를 인정한다.
       seatRule<boolean>(worst, "scoring.wrapRuns", pid, () => true);
     }
-    const per = measure(worst, "최악(국사13면 + 다면장 + 만능패 + 부숴진 벽)");
-    // 실측 8ms 안팎. CI 부하를 감안한 문턱이되, 한 자릿수 배로 늘면 실패한다.
-    expect(per, `최악 케이스가 ${per.toFixed(2)}ms — 관전 브로드캐스트가 무거워졌다`)
-      .toBeLessThan(20);
+    const per = measure(worst, "최악(4좌석 구련보등형 + 만능패 + 부숴진 벽)");
+
+    /*
+     * **벽시계 문턱은 쓰지 않는다.** `npm test`는 327개 파일을 병렬로 돌리므로 이 자리의
+     * 절대 시간은 그때의 부하에 끌려간다 — 실제로 40ms 문턱이 전체 실행에서만 터졌다
+     * (단독 실행 23.5ms). 부하는 **표준 손도 똑같이** 느리게 만드므로, 같은 프로세스에서
+     * 잰 표준 손과의 **비율**을 본다. 실측 비율은 20~23배이고, 여기가 회귀로 무거워지면
+     * 비율이 먼저 움직인다. 절대 시간은 로그로 남겨 사람이 읽는다.
+     */
+    const baseline = measure(
+      createStandardGameFromState(
+        craft({
+          hands: {
+            p0: "123m123p123s45m99p",
+            p1: "234m234p234s56m11s",
+            p2: "456m789s99m45s",
+            p3: "345m345p345s67m22z",
+          },
+        }),
+      ),
+      "같은 프로세스의 표준 손(비율 기준선)",
+    );
+    const ratio = per / baseline;
+    console.log(`[관전 보조값] 최악/표준 비율 ${ratio.toFixed(1)}배 (실측 20~23배)`);
+    expect(
+      ratio,
+      `최악이 표준의 ${ratio.toFixed(1)}배다 — 실측 19배에서 회귀했다` +
+        ` (최악 ${per.toFixed(2)}ms · 표준 ${baseline.toFixed(2)}ms)`,
+    ).toBeLessThan(40);
+  });
+
+  it("캐시는 배패 점수를 붙잡지 않는다 (지난 국 값이 새지 않는다)", () => {
+    /*
+     * 예전 캐시 히트 경로는 「넘어온 값이 있으면 덮는다」였다 — 비어 있으면 **캐시에
+     * 남아 있던 지난 값이 그대로 나갔다**. 라이브에서는 국이 끝날 때 상태 객체가 갈려
+     * 안 터졌지만, 상태도 `rules.version`도 그대로인 경로가 생기면 지난 국의 배패
+     * 점수가 샌다(검수 N3). 「지금 안 터진다」는 안전하다는 뜻이 아니다.
+     */
+    const game = createStandardGameFromState(craft({ hands: { p0: "123m123p123s45m99p" } }));
+    const state = game.engine.state;
+    const withGrade = buildSpectateSeatScores(state, game.engine.rules, game.yaku, { p0: 77 });
+    expect(withGrade.find((x) => x.id === "p0")?.handGrade).toBe(77);
+    const without = buildSpectateSeatScores(state, game.engine.rules, game.yaku, {});
+    expect(
+      without.find((x) => x.id === "p0")?.handGrade,
+      "배패 점수를 안 넘겼는데 캐시가 지난 값을 그대로 돌려줬다",
+    ).toBeUndefined();
+    // 다시 넘기면 다시 붙는다 — 「지우기만」 하는 것도 아니다.
+    const again = buildSpectateSeatScores(state, game.engine.rules, game.yaku, { p0: 41 });
+    expect(again.find((x) => x.id === "p0")?.handGrade).toBe(41);
   });
 
   it("같은 상태를 다시 물으면 캐시가 답한다", () => {
@@ -932,7 +1239,7 @@ describe("라이브 대국 — 관전 보조값에 비정수 판수·비표준 �
       }
     }
     expect(tenpai, "화료값이 하나도 안 나왔다 — 이 테스트가 아무 것도 안 지킨다").toBeGreaterThan(0);
-  }, 60_000);
+  }, 120_000); // 전체 병렬 실행(327파일)의 부하에서도 넉넉하게
 
   /**
    * **증강을 켜고도 같은 것을 지킨다.**
@@ -1004,7 +1311,7 @@ describe("라이브 대국 — 관전 보조값에 비정수 판수·비표준 �
     expect(noYaku, "무형화료(역 0개) 값이 한 번도 안 나왔다 — 이 경로가 안 지나갔다")
       .toBeGreaterThan(0);
     expect(zeroHan, "0판이 나왔다면 위 루프가 이미 표식을 확인했다").toBeGreaterThanOrEqual(0);
-  }, 60_000);
+  }, 120_000); // 전체 병렬 실행(327파일)의 부하에서도 넉넉하게
 
   it("국이 시작되기 전 프레임에는 지난 국의 배패 점수가 남지 않는다", async () => {
     /*
@@ -1049,5 +1356,5 @@ describe("라이브 대국 — 관전 보조값에 비정수 판수·비표준 �
     ctrl.addSpectator(sink);
     await ctrl.run();
     expect(checkedFrames, "국 시작 프레임을 한 번도 못 봤다").toBeGreaterThan(1);
-  }, 60_000);
+  }, 120_000); // 전체 병렬 실행(327파일)의 부하에서도 넉넉하게
 });

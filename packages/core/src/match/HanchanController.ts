@@ -1641,6 +1641,29 @@ export class HanchanController {
 
   // ─────────────────────────── 뷰 브로드캐스트 ───────────────────────────
 
+  /**
+   * **관전 시점에 계산할 수 없는 정산 보정이 남은 좌석**을 가려낸다 (검수 N1 (b)).
+   *
+   * `ROUND_SETTLED` 인터셉터로 점수를 고치는 증강은 부작용 없이 미리 태울 수 없다.
+   * 그중 `score.settleHanBonus`로 **질의 창구를 내놓은 것**(core의 `addWinHanBonus`
+   * 계열)은 관전 채점이 그대로 따라가므로 문제가 없다. 창구가 없는 나머지(content의
+   * `withAugPoint` 계열)만 남고, 그 좌석의 값에는 「단정하지 말라」는 표식이 붙는다.
+   *
+   * 여기서 계산하는 이유: 인터셉터 목록은 **엔진**의 것이라 코어 채점 모듈(엔진을
+   * 모른다)이 볼 수 없다. 값은 좌석 4개짜리 집합 하나라 브로드캐스트마다 만들어도 싸다.
+   */
+  private augAdjustedSeats(game: StandardGame): (id: PlayerId) => boolean {
+    const queryable = new Set(game.engine.rules.modifierSources("score.settleHanBonus"));
+    const opaque = new Set<PlayerId>();
+    for (const { source } of game.engine.effects.interceptorsFor(ROUND_SETTLED)) {
+      if (queryable.has(source)) continue;
+      // 증강 인스턴스 id는 `aug:{playerId}:{증강id}` (Augment.ts `augmentInstanceId`).
+      const m = /^aug:([^:]+):/.exec(source);
+      if (m !== null) opaque.add(m[1] as PlayerId);
+    }
+    return (id) => opaque.has(id);
+  }
+
   private broadcastViews(game: StandardGame, uraDoraIndicators?: TileId[]): void {
     const state = game.engine.state;
     const rules = game.engine.rules;
@@ -1678,7 +1701,13 @@ export class HanchanController {
          */
         let scores: readonly SpectateSeatScore[] | undefined;
         try {
-          scores = buildSpectateSeatScores(state, rules, game.yaku, this.handGrades);
+          scores = buildSpectateSeatScores(
+            state,
+            rules,
+            game.yaku,
+            this.handGrades,
+            this.augAdjustedSeats(game),
+          );
         } catch (err) {
           console.error("[hanchan] 관전 예상 타점 계산 실패 — 뷰만 보낸다", err);
         }
@@ -1753,6 +1782,7 @@ export class HanchanController {
           this.game.engine.rules,
           this.game.yaku,
           this.handGrades,
+          this.augAdjustedSeats(this.game),
         );
       } catch (err) {
         console.error("[hanchan] 관전 합류 예상 타점 계산 실패 — 뷰만 보낸다", err);
