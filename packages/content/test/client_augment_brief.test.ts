@@ -132,77 +132,68 @@ describe("증강 요약 (클라이언트 기본 설명)", () => {
 });
 
 /**
- * 화면마다 펼치는 층이 다르다 (augmentBrief.ts 헤더의 표).
- *   드래프트(카드·이름표 툴팁) → 요약 + **설명**. 판 중에 몇 초로 고르는 자리라 상세는 길다.
- *   도감(도감 상세·샌드박스 상세) → 요약 + **상세**. 목록에 이미 요약이 있고 설명은 상세와 겹친다.
+ * 펼치면 어디서나 **상세**가 온다 (augmentBrief.ts 헤더).
  *
- * 예전에는 도감 상세가 세 겹을 다 폈다 — 같은 얘기를 설명과 상세로 두 번 읽혔다.
- * 어느 한쪽으로 되돌아가는 것을 여기서 막는다.
+ * 2026-08-23 사용자 지시로 통일했다. 예전에는 드래프트(카드·이름표 툴팁)가 «설명»을,
+ * 도감·샌드박스가 «상세»를 폈다 — 판 중에 Shift로 읽은 글을 나중에 도감에서 찾으면
+ * 다른 글이 나왔다. 같은 증강의 «자세히»는 어디서 펴든 같은 글이어야 한다.
+ *
+ * 그리고 설명은 상세와 겹쳐 읽히면 안 된다 — 상세가 있는 증강은 설명을 펴지 않는다.
  */
-describe("설명 층 나누기 (화면별)", () => {
+describe("설명 층 나누기 (어디서나 상세)", () => {
   const DESC = "(매 국 1회) 조건과 예외를 담은 정식 문장이다.";
   const DETAIL = "작동 원리 문단.\n\n전략과 주의점 문단.";
 
-  it("드래프트는 설명만 편다 — 상세는 절대 섞이지 않는다", () => {
-    expect(expandParas("draft", DESC, DETAIL)).toEqual(["조건과 예외를 담은 정식 문장이다."]);
+  it("상세가 있으면 상세만 편다 — 설명은 섞이지 않는다", () => {
+    expect(expandParas(DESC, DETAIL)).toEqual(["작동 원리 문단.", "전략과 주의점 문단."]);
   });
 
-  it("도감은 상세만 편다 — 설명은 섞이지 않는다", () => {
-    expect(expandParas("codex", DESC, DETAIL)).toEqual(["작동 원리 문단.", "전략과 주의점 문단."]);
+  it("상세가 없는 증강만 설명이 그 자리를 대신한다", () => {
+    expect(expandParas(DESC, undefined)).toEqual(["조건과 예외를 담은 정식 문장이다."]);
+    expect(expandParas(DESC, "   ")).toEqual(["조건과 예외를 담은 정식 문장이다."]);
   });
 
-  it("상세가 없는 증강만 도감에서 설명이 그 자리를 대신한다", () => {
-    expect(expandParas("codex", DESC, undefined)).toEqual(["조건과 예외를 담은 정식 문장이다."]);
-    expect(expandParas("codex", DESC, "   ")).toEqual(["조건과 예외를 담은 정식 문장이다."]);
+  it("머리말 괄호는 본문에 남지 않는다 (배지가 이미 말한다)", () => {
+    const bad = ALL.filter((a) => expandParas(a.description, a.detail).some((p) => p.startsWith("(")));
+    expect(bad.map((a) => a.id)).toEqual([]);
   });
 
-  it("어느 쪽이든 머리말 괄호는 본문에 남지 않는다 (배지가 이미 말한다)", () => {
-    for (const v of ["draft", "codex"] as const) {
-      const bad = ALL.filter((a) => expandParas(v, a.description, a.detail).some((p) => p.startsWith("(")));
-      expect(bad.map((a) => a.id), v).toEqual([]);
-    }
-  });
-
-  it("실제 증강 전부에서 두 경로가 서로의 층을 끌어오지 않는다", () => {
+  it("실제 증강 전부 — 상세가 있으면 설명 본문이 끌려오지 않는다", () => {
     const withDetail = ALL.filter((a) => (a.detail ?? "").trim() !== "");
     // 상세를 가진 증강이 있어야 이 검사가 의미를 가진다
     expect(withDetail.length).toBeGreaterThan(0);
     for (const a of withDetail) {
-      const draft = expandParas("draft", a.description, a.detail).join("\n");
-      const codex = expandParas("codex", a.description, a.detail).join("\n");
-      // 드래프트에 상세 첫 문단이 실려 있으면 안 된다
-      const detailHead = a.detail!.trim().split(/\n\n+/)[0]!.trim();
-      expect(draft.includes(detailHead), `${a.id}: 드래프트에 상세가 샜다`).toBe(false);
-      // 도감에 설명 본문이 실려 있으면 안 된다
+      const shown = expandParas(a.description, a.detail).join("\n");
       const descBody = a.description.replace(/^\([^)]*\)\s*/, "").trim();
-      expect(codex.includes(descBody), `${a.id}: 도감에 설명이 샜다`).toBe(false);
+      expect(shown.includes(descBody), `${a.id}: 펼친 본문에 설명이 샜다`).toBe(false);
     }
   });
 
-  it("App.tsx의 모든 AugDesc 호출부가 variant를 명시한다", () => {
-    // 컴포넌트가 자기 위치를 추측하게 두면 화면이 늘 때마다 조용히 어긋난다
+  it("App.tsx의 AugDesc 호출부에 variant가 남아 있지 않다", () => {
+    // 예전 회귀: 화면마다 다른 층을 폈다 — 되돌아가는 것을 여기서 막는다
     const src = readFileSync(
       fileURLToPath(new URL("../../client/src/App.tsx", import.meta.url)),
       "utf8",
     );
-    const calls = [...src.matchAll(/<AugDesc\b[^>]*>/g)].map((m) => m[0]);
+    const calls = [...src.matchAll(/<AugDesc\b[\s\S]*?\/?>/g)].map((m) => m[0]);
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls.filter((c) => !/\bvariant="(draft|codex)"/.test(c))).toEqual([]);
+    expect(calls.filter((c) => /\bvariant=/.test(c))).toEqual([]);
+  });
+
+  it("드래프트 카드·이름표 툴팁이 상세를 실제로 넘긴다", () => {
+    // expandParas가 상세를 펴도, 호출부가 detail을 안 주면 화면은 그대로 설명이다
+    const src = readFileSync(
+      fileURLToPath(new URL("../../client/src/App.tsx", import.meta.url)),
+      "utf8",
+    );
+    const expandedCalls = [...src.matchAll(/<AugDesc\b[\s\S]*?\/>/g)]
+      .map((m) => m[0])
+      .filter((c) => !/expanded=\{false\}/.test(c));
+    expect(expandedCalls.length).toBeGreaterThan(0);
+    expect(expandedCalls.filter((c) => !/\bdetail=/.test(c))).toEqual([]);
   });
 });
 
-/**
- * "동풍전 1회 · 반장전 2회"는 판 밖 도감에서는 두 숫자가 다 필요하지만, 판이 정해져
- * 있으면 그 판의 숫자 하나면 된다 — 안 쓰는 숫자가 옆에 서 있으면 몇 번 남았는지 한 번
- * 더 셈해야 한다(2026-08-12 사용자 요청).
- *
- * 2026-08-23: **판 안의 모든 화면**으로 넓혔다(사용자 지시 "전부"). 예전에는 드래프트
- * 카드·이름표 툴팁(`variant="draft"`)만 줄이고 도감·샌드박스·관전 칩은 원문을 뒀는데,
- * 같은 증강이 카드에서는 「게임 1회」, 판 중에 연 도감에서는 「동풍전 1회 · 반장전 2회」로
- * 보여 두 자리가 다른 말을 했다. 이제 모드는 `GameModeContext` 하나가 정하고
- * (대국 = 그 판의 모드 · 대기실 = 방의 모드 · 그 밖 = null), 설명을 그리는 자리는
- * 전부 그 값을 통과시킨다.
- */
 describe("모드별 횟수 표기", () => {
   it("배지·머리말·본문 어디에 있든 그 판의 숫자 하나로 줄인다", () => {
     expect(forMode("동풍전1·반장전2", "tonpuu")).toBe("게임 1회");
@@ -236,7 +227,7 @@ describe("모드별 횟수 표기", () => {
           forMode(brief.use, mode),
           forMode(brief.text, mode),
           forMode(a.description, mode),
-          ...expandParas("draft", a.description, a.detail).map((p) => forMode(p, mode)),
+          ...expandParas(a.description, a.detail).map((p) => forMode(p, mode)),
         ];
         return texts.some((t) => both.test(t));
       });

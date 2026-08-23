@@ -58,7 +58,7 @@ describe("증강 도감 — 검색 코퍼스", () => {
    * 검색이 **카드에 인쇄된 낱말을 못 찾았다.**
    *
    * 술어가 이름·id·설명·상세 넷만 봤는데, 도감 카드 본문은
-   * `<AugDesc variant="codex" expanded={false} />` = **요약**(`augmentBrief.ts`)
+   * `<AugDesc expanded={false} />` = **요약**(`augmentBrief.ts`)
    * 한 줄이다. 검색창 안내가 "증강 이름·설명 검색"이고 사람은 눈앞에 보이는 낱말을
    * 치는데, 그 낱말만 코퍼스에서 빠져 있었다.
    * (`giant_god`+"텐파이", `danger_sense`+"방총", `true_dragon`+"몸통" — 확인된 셋.)
