@@ -80,7 +80,7 @@ import {
   standardKinds,
   winningKinds,
 } from "@majak/core";
-import { type AugmentDescVariant, type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
+import { type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
 import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
@@ -8210,14 +8210,14 @@ function AugmentMeta({
 //   2) 설명  — AugmentDef.description 원문. 조건·예외까지 담은 정식 문장.
 //   3) 상세  — AugmentDef.detail. 작동 원리·전략·주의점.
 //
-// 펼쳤을 때 (2)가 오는지 (3)이 오는지는 **화면마다 다르고, 호출부가 정한다**
-// (`AugmentDescVariant` — augmentBrief.ts의 표를 보라).
-//   · "draft" (드래프트 카드·이름표 툴팁) → 1 + 2. 판 중에 몇 초로 고르는 자리라 3은 길다.
-//   · "codex" (도감 상세·샌드박스 상세)   → 1 + 3. 목록에 이미 요약이 있고 2는 3과 겹친다.
+// 펼치면 **어디서나 (3)**이 온다 — 드래프트 카드·이름표 툴팁·도감 상세·샌드박스 상세
+// 넷 다 같은 글이다 (2026-08-23 사용자 지시로 통일). 예전에는 앞의 둘만 (2)를 펴서,
+// 판 중에 Shift로 읽은 글을 나중에 도감에서 찾으면 다른 글이 나왔다. (3)이 아직 없는
+// 증강만 (2)가 그 자리를 대신한다.
 //
 // 원래는 (2)가 곧바로 드래프트 카드와 이름표 툴팁에 박혀 있었다. 조건·예외까지 담은
 // 문장이라 좁은 카드에서 열 줄 가까이 흘렀고, 고르는 3초 동안 읽을 수 있는 분량이
-// 아니었다. 그래서 (1)을 새로 앞에 세우고 (2)를 한 번 더 누르는 자리로 물렸다.
+// 아니었다. 그래서 (1)을 새로 앞에 세우고 나머지를 한 번 더 누르는 자리로 물렸다.
 //
 // 그리고 어느 층이든 "슌쯔·커쯔·오름패" 같은 말은 그냥 나온다 — TermText가 glossary.ts에
 // 등록된 표기에 밑줄을 긋고, 잠시 올려 두면 초보자용 한 줄이 뜬다.
@@ -8366,8 +8366,8 @@ function TermText({ text }: { text: string }): JSX.Element {
 /**
  * 증강 설명 본문 — 기본은 요약 한 줄, `expanded`면 그 아래 층을 편다.
  *
- * 펼쳐서 **무엇이** 나오는지는 `variant`가 정한다(호출부가 명시한다).
- * 이 컴포넌트가 자기가 어디에 서 있는지 추측하지 않는다.
+ * 펼치면 어디서나 **상세**(`AugmentDef.detail`)가 온다 — 화면마다 다른 글을 폈던
+ * `variant`는 없앴다(2026-08-23). 상세가 없는 증강만 설명이 그 자리를 대신한다.
  *
  * `use`(사용 빈도)는 원문 머리말 `(상시)` `(매 국 1회)`를 배지로 떼어낸 것이라
  * 요약 본문은 순수하게 효과만 말한다. 그 덕에 좁은 카드에서도 다섯 줄을 넘지 않는다.
@@ -8376,14 +8376,12 @@ function AugDesc({
   id,
   description,
   detail,
-  variant,
   expanded,
   useOverride,
 }: {
   id: string;
   description: string | undefined;
   detail?: string | undefined;
-  variant: AugmentDescVariant;
   expanded: boolean;
   /**
    * 사용 빈도 배지를 대신할 글. 효과가 이미 끝난 선발동형("이번 국만")처럼 **배지가
@@ -8405,7 +8403,7 @@ function AugDesc({
   const raw = briefOf(id, description);
   const brief = { use: forMode(raw.use, mode), text: forMode(raw.text, mode) };
   const lead = splitLead(forMode(description ?? "", mode));
-  const paras = expandParas(variant, description, detail).map((p) => forMode(p, mode));
+  const paras = expandParas(description, detail).map((p) => forMode(p, mode));
   const showFull = expanded && paras.length > 0;
   /*
    * **배지는 펼쳐도 그대로다** (2026-08-23 사용자 보고: "개벽 인게임에서 횟수가 이상하게 바뀜").
@@ -8422,7 +8420,7 @@ function AugDesc({
   const use =
     useOverride !== undefined && useOverride !== "" ? useOverride : brief.use;
   const cond =
-    showFull && variant === "draft" && lead.use !== "" && lead.use !== brief.use
+    showFull && lead.use !== "" && lead.use !== brief.use
       ? lead.use
       : "";
   return (
@@ -8711,7 +8709,7 @@ function TierScreen(props: {
  * 도감 검색 술어 — 목록 필터와 계열 칩 개수가 **같은 코퍼스**를 봐야 한다.
  *
  * 원래는 이름·id·설명·상세 넷만 봤다. 그런데 도감 카드에 실제로 인쇄되는 본문은
- * `<AugDesc variant="codex" expanded={false} />` = **요약**(`augmentBrief.ts`) 한
+ * `<AugDesc expanded={false} />` = **요약**(`augmentBrief.ts`) 한
  * 줄이다 — 사람은 눈앞에 보이는 낱말을 치는데, 그 낱말만 검색에서 빠져 있었다.
  * (`giant_god`+"텐파이", `danger_sense`+"방총", `true_dragon`+"몸통" — 셋 다 카드에
  * 대놓고 적혀 있는데 검색 결과에서 사라졌다.)
@@ -8866,7 +8864,7 @@ function CodexScreen(props: {
     selRaw === null
       ? null
       : { use: forMode(selRaw.use, codexMode), text: forMode(selRaw.text, codexMode) };
-  const selParas = expandParas("codex", sel?.description, sel?.detail).map((para) =>
+  const selParas = expandParas(sel?.description, sel?.detail).map((para) =>
     forMode(para, codexMode),
   );
 
@@ -8944,7 +8942,7 @@ function CodexScreen(props: {
                 <div className="codex-card-name">{m.cat.name}</div>
                 {/* 카드는 요약만 — 원문과 상세는 카드를 눌러 여는 상세 오버레이에 있다 */}
                 <div className="codex-card-desc">
-                  <AugDesc id={m.cat.id} description={m.cat.description} variant="codex" expanded={false} />
+                  <AugDesc id={m.cat.id} description={m.cat.description} expanded={false} />
                 </div>
                 {m.srv !== undefined && m.srv.games > 0 ? (
                   <div className="codex-card-foot">
@@ -14713,7 +14711,7 @@ function SandboxPanel(props: {
                     {isActiveAugment(c.id) ? <ActiveBadge /> : null}
                   </span>
                   <span className="sbx-desc">
-                    <AugDesc id={c.id} description={c.description} variant="codex" expanded={false} />
+                    <AugDesc id={c.id} description={c.description} expanded={false} />
                   </span>
                 </button>
               </div>
@@ -14737,7 +14735,7 @@ function SandboxPanel(props: {
           {/* 샌드박스 상세는 도감과 같은 취급이다 — 목록 줄에 이미 요약이 서 있고,
               여기 오는 사람은 증강이 실제로 어떻게 도는지 보러 온다(= 상세).
               샌드박스는 판 위에 열리므로 횟수 표기도 그 판의 숫자 하나로 줄인다. */}
-          {expandParas("codex", detail.description, detail.detail).map((p, i) => (
+          {expandParas(detail.description, detail.detail).map((p, i) => (
             <p key={i} className="sbx-detail-body"><TermText text={forMode(p, sbxMode)} /></p>
           ))}
         </div>
@@ -16469,7 +16467,7 @@ const NamePlate = memo(function NamePlate({
                     <AugDesc
                       id={a}
                       description={entry?.description}
-                      variant="draft"
+                      detail={entry?.detail}
                       expanded={shiftHeld || detailFor === a}
                       useOverride={spent ? "효과 종료" : undefined}
                     />
@@ -22759,7 +22757,7 @@ function DraftOverlay({
    */
   const urgent = showTimer && remainSec <= 10;
   // 카드는 기본적으로 요약 한 줄만 보여준다 — 고르는 몇 초 안에 읽히는 분량이어야 한다.
-  // 원문 설명은 Shift를 누르고 있는 동안, 또는 카드의 "자세히"를 눌렀을 때만 펼친다.
+  // 도감의 상세 설명은 Shift를 누르고 있는 동안, 또는 카드의 "자세히"를 눌렀을 때만 펼친다.
   const shiftHeld = useShiftHeld();
   const [moreFor, setMoreFor] = useState<string | null>(null);
   /**
@@ -22806,7 +22804,7 @@ function DraftOverlay({
             고르려고 온 자리에서 읽을 것을 더 얹는 건 안내가 아니라 방해다
             (2026-08-18 사용자 요청). 조작 한 줄(아래)만 남긴다. */}
         <p className="draft-howto">
-          카드의 <b>자세히 ▾</b>를 누르면 원문 설명이 열립니다
+          카드의 <b>자세히 ▾</b>를 누르면 도감의 상세 설명이 열립니다
           <span className="draft-howto-key"> · Shift를 누르고 있으면 전부 펼쳐집니다</span>
         </p>
         {/* 왜 두 장이 어두운지 — 화면 안에서 한 줄로 답한다. 이 말이 없으면 잠긴
@@ -22886,7 +22884,12 @@ function DraftOverlay({
                   </span>
                   <strong className="draft-name">{c.name}</strong>
                   <span className="draft-desc">
-                    <AugDesc id={c.id} description={c.description} variant="draft" expanded={shiftHeld || moreFor === c.id} />
+                    <AugDesc
+                      id={c.id}
+                      description={c.description}
+                      detail={catalog[c.id]?.detail}
+                      expanded={shiftHeld || moreFor === c.id}
+                    />
                   </span>
                   <MoreToggle
                     open={shiftHeld || moreFor === c.id}
