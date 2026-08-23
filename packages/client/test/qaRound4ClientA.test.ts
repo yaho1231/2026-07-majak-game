@@ -225,13 +225,17 @@ describe("터치 44px 명단의 구멍을 메운다", () => {
 
 describe("판 위 표식이 색 하나에 매달리지 않는다", () => {
   /** 9-5 블록 — 색 말고 다른 채널을 얹는 규칙들이 사는 곳(파일 끝) */
-  const a11yBlock = CSS_CODE.slice(CSS_CODE.indexOf(".tile-red-art {"));
+  const a11yBlock = CSS_CODE.slice(CSS_CODE.indexOf(".tile-dora-own {\n  outline: 4px double"));
 
-  it("적5(전용 그림)도 비색 표식을 받는다", () => {
+  it("적5(전용 그림)의 비색 표식은 고대비에서만 켠다", () => {
     // 여태 `.tile-red` 를 **일부러** 빼는 바람에 forced-colors 의 유일한 비색 표식도
     // 5에는 안 걸렸다 — 고대비에서 붉은 잉크마저 평탄화되면 평범한 5와 같아진다.
+    // 다만 평상시에 파선을 두르면 도라 금테와 겹쳐 다른 도라들과 다르게 보인다
+    // (2026-08-23 사용자 보고) — 그래서 표식은 고대비 계열 안에서만 산다.
     expect(APP_CODE).toContain('" tile-red-art"');
-    expect(ruleBody(".tile-red-art")).toContain("border-style: dashed");
+    expect(CSS_CODE).not.toContain(".tile-red-art {\n  border");
+    const contrast = CSS_CODE.slice(CSS_CODE.indexOf("@media (prefers-contrast: more)"));
+    expect(contrast).toContain(".tile-red-art {\n    border-style: dashed;");
     const forced = CSS_CODE.slice(CSS_CODE.lastIndexOf("@media (forced-colors: active)"));
     expect(forced).toContain(".tile-red-art");
   });
