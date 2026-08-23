@@ -613,6 +613,33 @@ export const sfx = {
     sparkle(0.7, { count: 6, base: 2100, spread: 1600, span: 0.25, gain: 0.05 });
   },
 
+  /**
+   * 더블 론 — 두 사람이 **동시에** 손을 뻗은 소리.
+   *
+   * ⚠ `ron()` 을 두 번 부르면 안 된다. 이 엔진의 스케줄링은 전부 **절대 시각**
+   *   기준이라(`play`/`thump`/`noiseBurst` 의 `at` 은 now 에 더한다) 두 호출이
+   *   샘플 단위로 겹쳐 위상이 그대로 더해진다 — 새로운 소리가 아니라 **볼륨만
+   *   두 배**인 같은 소리가 되고, 마스터에서 클리핑까지 난다.
+   *
+   * 그래서 «두 명»은 **두 번째 겹**으로 말한다: 본체는 론 그대로 두고, 임팩트와
+   * 팡파르를 100ms 뒤에 반음 위(≈1.06배)로 한 겹 더 얹어 «따-닥» 으로 갈라 놓는다.
+   * 두 번째 겹은 본체보다 작다 — 중계 화면이라 놀라게 하는 것이 목적이 아니다.
+   */
+  doubleRon(): void {
+    sfx.ron();
+    const d = 0.1; // 두 번째 사람의 «닥» — 이보다 짧으면 한 소리로 뭉친다
+    const s = 1.06; // 반음
+    noiseBurst({ at: 0.2 + d, filter: "lowpass", freq: 460, dur: 0.14, gain: 0.19 });
+    noiseBurst({ at: 0.2 + d, filter: "bandpass", freq: 1400, q: 0.9, dur: 0.06, gain: 0.12 });
+    thump(0.2 + d, { from: 138, to: 34, dur: 0.15, gain: 0.24 });
+    play([
+      { freq: 523 * s, at: 0.38 + d, dur: 0.11, type: "triangle", gain: 0.06 },
+      { freq: 659 * s, at: 0.47 + d, dur: 0.11, type: "triangle", gain: 0.065 },
+      { freq: 784 * s, at: 0.56 + d, dur: 0.13, type: "triangle", gain: 0.07 },
+      { freq: 1046 * s, at: 0.66 + d, dur: 0.3, type: "triangle", gain: 0.07 },
+    ]);
+  },
+
   /** 쯔모 — 론과 구분: 픽업음 두 개 → 더 높은 슬램("패를 내려치는 딱!") → 밝고 빠른 팡파르 */
   tsumo(): void {
     play([

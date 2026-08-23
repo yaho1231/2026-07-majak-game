@@ -821,18 +821,55 @@ describe("중계 관전 — 되감기·오버레이·탁자 (D3·D2·D4)", () =>
    * 접힌 도크에 30px 레일을 남긴 것과 **같은 원칙**을 여기에도 건다.
    */
   it("오버레이 모드에 갇히지 않는다 — 판 위 손잡이와 Esc 둘 다", () => {
-    expect(APP).toContain('className="spectate-overlay-escape"');
+    expect(APP).toContain('className={`spectate-overlay-escape${escapeIdle ? " is-idle" : ""}`}');
     expect(APP1).toContain('{overlayOn && props.onOverlayMode !== undefined ? (');
-    // 방송에 픽셀을 더하지 않는다 — 평소 투명, hover·포커스에만 드러난다
-    const esc = CSS_RULES.filter(
-      (r) => r.selectors.includes(".spectate-overlay-escape") && r.conds.length === 0,
-    );
-    expect(declOf(esc[0]!, "opacity")).toBe("0");
-    expect(CSS).toMatch(/\.spectate-overlay-escape:hover[\s\S]{0,80}opacity: 1;/);
     // 키보드만 쓰는 사람의 문
     expect(APP).toContain('if (e.key !== "Escape" || isTypingTarget(e.target)) return;');
     // 저장까지 되돌린다 — 안 그러면 다음 관전에서 같은 화면으로 되살아난다
     expect(APP1).toContain('setOverlayMode("off"); saveOverlayMode("off");');
+  });
+
+  /*
+   * 2026-08-23 사용자 보고: 「오버레이 투명 누르면 다시 켤 수 없어」.
+   *
+   * 예전 손잡이는 `opacity: 0` 이고 hover 에만 드러났다 — 켠 사람의 화면에는 아무것도
+   * 남지 않으니 «여기 손잡이가 있다»를 배울 기회가 0이었다. 지금은 **켠 직후에는
+   * 보이고 포인터가 멈추면 사라진다**(카메라에는 커서가 없다).
+   */
+  it("탈출구는 켠 직후 보인다 — 안 보이는 탈출구는 탈출구가 아니다", () => {
+    const esc = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spectate-overlay-escape") && r.conds.length === 0,
+    );
+    expect(declOf(esc[0]!, "opacity")).toBe("1");
+    // 숨는 것은 «포인터가 멈췄을 때»뿐이다 (React 가 `.is-idle` 을 단다)
+    const idle = CSS_RULES.filter((r) => r.selectors.includes(".spectate-overlay-escape.is-idle"));
+    expect(idle.length).toBe(1);
+    expect(declOf(idle[0]!, "opacity")).toBe("0");
+    expect(APP).toContain("function usePointerIdle(");
+    expect(APP).toContain("const escapeIdle = usePointerIdle(overlayOn, 4000);");
+    // 오버레이가 꺼져 있으면 창 전역 리스너를 아예 안 건다
+    expect(APP1).toContain("if (!active) { setIdle(false); return; }");
+  });
+
+  /*
+   * 캐스케이드 함정 — `:hover` 와 `.is-idle` 은 특이성이 (0,2,0) 로 **같다**.
+   * hover 규칙이 앞에 오면 숨어 있는 동안 마우스를 올려도 안 나타난다(=다시 갇힌다).
+   * 문자열 검사로는 원리적으로 못 잡는 종류라 소스 순서를 못 박는다.
+   */
+  it("hover·focus 가 .is-idle 을 이긴다 — 순서로만 정해지는 승부다", () => {
+    const idle = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spectate-overlay-escape.is-idle") && r.conds.length === 0,
+    );
+    const wake = CSS_RULES.filter(
+      (r) =>
+        r.selectors.includes(".spectate-overlay-escape:hover") &&
+        r.selectors.includes(".spectate-overlay-escape:focus-visible") &&
+        r.conds.length === 0,
+    );
+    expect(idle.length).toBe(1);
+    expect(wake.length).toBe(1);
+    expect(declOf(wake[0]!, "opacity")).toBe("1");
+    expect(wake[0]!.at).toBeGreaterThan(idle[0]!.at);
   });
 
   it("저장값과 상태가 갈라지지 않는다 (방을 나올 때·서버가 확정할 때)", () => {
@@ -863,5 +900,218 @@ describe("중계 관전 — 국 무효 (B4)", () => {
     expect(tools).toMatch(/판 자체는 계속됩니다/);
     // 결과 화면의 사유도 규칙 유국과 말투를 가른다
     expect(APP).toMatch(/adminVoid: "운영 판정/);
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 2026-08-23 사용자 보고 5건 — 관전 화면
+ * ──────────────────────────────────────────────────────────────────────── */
+
+describe("일시정지 — 제한시간 게이지도 함께 선다", () => {
+  const timer = bodyOf("function PromptTimer(props: {");
+
+  /*
+   * 「일시정지 제한시간바가 움직임」. 숫자는 `PausedContext` 로 섰는데 게이지는 CSS
+   * 애니메이션이라 React 가 멈춰도 계속 흘렀다 — 한 화면의 두 시계가 서로를
+   * 거짓말로 만든다.
+   */
+  it("게이지가 CSS 애니메이션이 아니다 — React 가 멈추면 함께 멈춘다", () => {
+    const fill = CSS_RULES.filter(
+      (r) => r.selectors.includes(".prompt-timer-fill") && r.conds.length === 0,
+    );
+    expect(fill.length).toBeGreaterThan(0);
+    for (const r of fill) expect(declOf(r, "animation")).toBeNull();
+    // 이제는 남은 시간 하나로 길이를 그린다
+    expect(timer).toContain("transform: `scaleX(${ratio})`");
+    expect(timer).toContain("if (paused) return;");
+    // 사라진 키프레임이 어디서도 안 불린다
+    expect(CSS).not.toContain("@keyframes timer-run");
+    expect(CSS).not.toContain("--timer-duration,");
+  });
+
+  /*
+   * 재개하면 서버가 세워 둔 만큼 마감을 **뒤로 민다**. 예전 구조는 마감이 바뀌면
+   * 새로 마운트해 애니메이션을 처음부터 돌렸으므로, 그 순간 막대가 가득 찬 자리로
+   * 튀었다. 기준을 `seq` 에 묶어 그 튐을 없앤다.
+   */
+  it("재개·연장으로 마감이 밀려도 막대가 튀지 않는다", () => {
+    // 다시 마운트하는 조건에서 deadline 이 빠졌다
+    expect(timer).toContain("key={props.seq}");
+    expect(timer).not.toContain("key={`${props.seq}:${deadline");
+    // «가득 참» 기준은 프롬프트 단위다
+    expect(timer).toContain("if (spanRef.current.seq !== props.seq)");
+    // 연장(+30초)으로 남은 시간이 기준을 넘으면 기준을 늘린다 (scaleX > 1 방지)
+    expect(timer).toContain("if (left > spanRef.current.total) spanRef.current.total = left;");
+  });
+
+  it("마감이 없는 국에서도 막대는 돈다 — 숫자는 지어내지 않는다", () => {
+    expect(timer).toContain("deadline ?? Date.now() + PROMPT_FALLBACK_MS");
+    expect(APP).toContain("const PROMPT_FALLBACK_MS = 30_000;");
+    // 남은 «초»는 서버 마감이 있을 때만 적는다
+    expect(timer).toContain("const showCount = deadline !== null && left <= TIMER_COUNT_MS;");
+    expect(timer).toContain("const urgent = deadline !== null && left <= TIMER_URGENT_MS;");
+  });
+});
+
+describe("중계 도크 — 구획이 잘리지 않고 스크롤된다", () => {
+  /*
+   * 「중계도크 칸들이 스크롤이 안 되서 짤림」. 부모는 `overflow-y: auto` 로 맞았는데
+   * `.dock-sec` 이 flex 자식이라 `flex-shrink: 1` 로 줄어들고 자기 `overflow: hidden`
+   * 으로 잘렸다 — 넘칠 일이 없으니 스크롤이 **생길 수가 없었다.**
+   */
+  it(".dock-sec 은 줄어들지 않는다 — 이게 스크롤을 만드는 유일한 줄이다", () => {
+    const sec = CSS_RULES.filter(
+      (r) => r.selectors.includes(".dock-sec") && r.conds.length === 0 && declOf(r, "flex") !== null,
+    );
+    expect(sec.length).toBe(1);
+    expect(declOf(sec[0]!, "flex")).toBe("0 0 auto");
+  });
+
+  it("스크롤 상자 쪽 조건은 그대로다 (둘이 다 있어야 성립한다)", () => {
+    const body = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spectate-dock-body") && r.conds.length === 0,
+    );
+    expect(body.some((r) => declOf(r, "overflow-y") === "auto")).toBe(true);
+    expect(body.some((r) => declOf(r, "min-height") === "0")).toBe(true);
+  });
+});
+
+describe("더블 론 — 한 장으로 합친 컷인", () => {
+  const over = bodyOf("  function handleRoundOver(msg: RoundOverMessage): void {");
+
+  /*
+   * 「더블 론 하면 한 명만 론 연출」. 엔진은 이미 성립시키고(`winInfos` 가 복수)
+   * 결과 화면도 승자별로 그리는데, 컷인만 최고 등급 한 건으로 좁아졌다.
+   */
+  it("승자가 둘이면 「더블 론!」 한 장 — 두 번 띄우지 않는다", () => {
+    expect(over).toContain("if (infos.length >= 2) {");
+    expect(over).toContain('"더블 론!"');
+    // 큐가 순차 재생이라 두 번 부르면 1.5초씩 두 번 끌린다 — 분기 안에 showCutIn 은 하나뿐
+    const branch = over.slice(over.indexOf("if (infos.length >= 2) {"), over.indexOf("} else if (isYakuman) {"));
+    expect(branch.match(/showCutIn\(/g)?.length).toBe(1);
+  });
+
+  it("등급이 갈리면 부제에 **사람별로 둘 다** 적는다", () => {
+    const branch = over.slice(over.indexOf("if (infos.length >= 2) {"), over.indexOf("} else if (isYakuman) {"));
+    expect(branch).toContain("const gradeOf = (w: WinInfo): string =>");
+    expect(branch).toContain("infos\n          .map(");
+    expect(branch).toContain("gradeOf(w)");
+    // 밴드의 무게는 그 판의 최고 등급을 따른다
+    expect(branch).toContain('isYakuman ? "yakuman" : tier !== undefined ? "limit" : "ron"');
+  });
+
+  it("소리는 전용 변형이다 — ron() 을 두 번 부르면 볼륨만 2배가 된다", () => {
+    const SFX = readFileSync(join(HERE, "../src/sfx.ts"), "utf8");
+    expect(SFX).toContain("doubleRon(): void {");
+    // 절대시각 스케줄이라 같은 시각에 겹치면 위상이 더해진다 — 두 번째 겹은 늦고 높다
+    expect(SFX).toContain("const d = 0.1;");
+    expect(SFX).toContain("const s = 1.06;");
+    expect(APP).toContain("sfx.doubleRon");
+  });
+
+  /*
+   * 3인 동시 론은 **화료가 아니다** — `tripleRon` 도중유국이라 점수가 안 움직인다.
+   * 화료 연출로 만들면 화면과 정산표가 서로를 거짓말로 만든다.
+   */
+  it("트리플 론은 유국으로 말하되 사유를 밝힌다", () => {
+    expect(over).toContain('msg.settle.abortReason === "tripleRon"');
+    expect(over).toContain('showCutIn("삼가화", "draw", "트리플 론 — 점수는 움직이지 않습니다"');
+  });
+
+  it("역 스탬프 계단이 두 번째 승자까지 따라간다", () => {
+    // 예전에는 infos[0] 만 세서 더블론의 두 번째 손이 무음으로 찍혔다
+    expect(APP).toContain("const headRows = infos.reduce(");
+    expect(APP).not.toContain("const headRows = infos[0] !== undefined");
+  });
+});
+
+describe("쏘이는 패 — 추정이 아니라 사실 (2026-08-23)", () => {
+  const read = bodyOf("function readHotWaits(");
+
+  /*
+   * 「위험패도 그냥 손패만 가져옴. 따로 오름패를 붉게 표시해주고 하는 게 아니라」.
+   * 관전 뷰는 네 손패를 다 보므로 「이 패를 버리면 쏘인다」는 추정이 아니라 사실이다.
+   */
+  it("못 먹는 대기는 칠하지 않는다 — 붉게 칠하면 거짓말이다", () => {
+    // 좌석 단위로 막히는 셋
+    expect(read).toContain('s.furiten === true');
+    expect(read).toContain('s.yakuless === true');
+    expect(read).toContain('s.belowMinHan === true');
+    // 대기 단위 — 그 패로는 역이 없다
+    expect(read).toContain("if (w.ron === null) {");
+    // 자기 버림패로는 못 쏜다
+    expect(read).toContain("if (s.id === turn.id) continue;");
+  });
+
+  it("뺀 것들은 사라지지 않고 «이유»와 함께 도크에 남는다", () => {
+    expect(read).toContain("cold.push({");
+    expect(read).toMatch(/후리텐 — 론이 막혀 있습니다/);
+    expect(read).toMatch(/형식텐파이 — 어떤 오름패로도 역이 없습니다/);
+    expect(read).toMatch(/격 미달 —/);
+    const dd = bodyOf("function DockDanger({");
+    expect(dd).toContain("대기는 있지만 못 먹는 손");
+    expect(dd).toContain("c.why");
+  });
+
+  it("판 위와 도크가 **같은 함수**를 쓴다 — 따로 세면 언젠가 갈라진다", () => {
+    const dd = bodyOf("function DockDanger({");
+    expect(dd).toContain("const read = readHotWaits(view, insight);");
+    expect(APP).toContain("const read = readHotWaits(view, props.insight);");
+  });
+
+  it("«추정»(spec-danger)과 시각 채널이 겹치지 않는다 — 바깥 box-shadow 는 빈 자리였다", () => {
+    const hot = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spec-hot") && r.conds.length === 0 && declOf(r, "box-shadow") !== null,
+    );
+    expect(hot.length).toBe(1);
+    const shadow = declOf(hot[0]!, "box-shadow")!;
+    // 안쪽 링은 이미 포화 상태다 — 이쪽은 바깥으로만 번진다
+    expect(shadow).not.toContain("inset");
+    // 추정 쪽은 그대로 안쪽 링이다
+    const md = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spec-danger-md") && r.conds.length === 0 && declOf(r, "box-shadow") !== null,
+    );
+    expect(declOf(md[0]!, "box-shadow")).toContain("inset");
+  });
+
+  /*
+   * box-shadow 는 규칙끼리 합쳐지지 않고 통째로 덮어쓴다. 한 패가 둘 다일 수 있으므로
+   * 결합 규칙이 없으면 겹치는 순간 추정 쪽 링이 소리 없이 사라진다.
+   */
+  it("한 패가 «추정 + 사실» 둘 다일 때 두 링이 다 산다", () => {
+    for (const sel of [".spec-danger-md.spec-hot", ".spec-danger-hi.spec-hot"]) {
+      const r = CSS_RULES.filter((x) => x.selectors.includes(sel) && x.conds.length === 0);
+      expect(r.length, sel).toBe(1);
+      const sh = declOf(r[0]!, "box-shadow")!;
+      expect(sh).toContain("inset");
+      expect(sh).toContain("rgba(255, 74, 60, 0.95)");
+    }
+  });
+
+  it("색만으로 말하지 않는다 — 좌석 바람 글자 + 고대비·강제색 채널", () => {
+    expect(APP).toContain('<span className="spec-hot-mark"');
+    expect(APP).toContain("seatWindChar(view, p)");
+    // 이름(스크린리더)에도 실린다
+    expect(APP).toContain("hot === null ? null : hotWaitTitle(hot),");
+    // 색이 평탄해지는 두 환경에서 선종 채널이 남는다
+    const contrast = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spec-hot") && r.conds.some((c) => c.includes("prefers-contrast")),
+    );
+    const forced = CSS_RULES.filter(
+      (r) => r.selectors.includes(".spec-hot") && r.conds.some((c) => c.includes("forced-colors")),
+    );
+    expect(contrast.length).toBe(1);
+    expect(forced.length).toBe(1);
+    expect(declOf(forced[0]!, "outline")).toContain("solid");
+  });
+
+  it("끌 수 있다 — 성격상 «오름패» 스위치에 묶는다", () => {
+    expect(APP).toContain("const waitsOn = dockPrefs.on.waits;");
+    const at = APP.indexOf("const hotWaits = useMemo(");
+    const fn = APP.slice(at, APP.indexOf("  }, [", at));
+    expect(fn).toContain("!waitsOn");
+    // 대국자 화면에는 절대 서지 않는다 (남의 손패를 읽어 만든 값이다)
+    expect(fn).toContain("props.spectator !== true");
+    expect(PREFS).toContain("판 위의 «쏘이는 패» 표시도 함께 꺼집니다");
   });
 });
