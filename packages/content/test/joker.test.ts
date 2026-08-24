@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
   ROUND_STARTED,
 
+  botChosenOption,
   buildWinContext,
   buildPlayerView,
   createStandardGameFromState,
@@ -148,6 +149,68 @@ describe("조커 — 백이 손의 빈자리를 메운다", () => {
     fire(game);
     expect(optsOf(game).wildKinds?.map(kindKey)).toEqual(["dragon1"]);
     expect(waitsOf(game)).toEqual(["dragon1", "pin1", "pin4"]);
+  });
+});
+
+// ───────────────────── 2b. 발동할 때 손패 1장을 백으로 ─────────────────────
+
+describe("조커 — 고른 손패 1장이 백이 된다", () => {
+  /** 손패에서 그 종류의 첫 패 */
+  const findTile = (game: Game, key: string): TileId =>
+    handIdsOf(game.engine.state, "p0").find(
+      (id) => kindKey(game.engine.state.tiles[id]!.kind) === key,
+    ) as TileId;
+
+  it("백이 손에 없어도 지목한 패가 백이 되어 그 자리에서 조커가 된다", () => {
+    // 111999m 55m 23s 233p — 백이 한 장도 없다. 3통 하나를 백으로 바꾸면 텐파이.
+    const game = mk("111999m55m23s233p");
+    expect(waitsOf(game)).toEqual([]);
+    const target = findTile(game, "pin3");
+    const res = game.engine.submit({
+      player: "p0",
+      type: "joker_call",
+      payload: { tileId: target },
+    });
+    expect(res.ok).toBe(true);
+    expect(kindKey(game.engine.state.tiles[target]!.kind)).toBe("dragon1");
+    expect(game.engine.state.tiles[target]!.attrs?.conjured).toBe(true);
+    // 남은 23p·23s를 조커가 메운다
+    expect(waitsOf(game)).toEqual(["dragon1", "pin1", "pin4", "sou1", "sou4"]);
+  });
+
+  it("이미 백인 패를 고르면 아무것도 바뀌지 않는다 (해석만 켠다)", () => {
+    const game = mk("111999m55m23s23p5z");
+    const before = handKinds(game).map(kindKey);
+    const haku = findTile(game, "dragon1");
+    expect(
+      game.engine.submit({ player: "p0", type: "joker_call", payload: { tileId: haku } }).ok,
+    ).toBe(true);
+    expect(handKinds(game).map(kindKey)).toEqual(before);
+    expect(optsOf(game).wildKinds?.map(kindKey)).toEqual(["dragon1"]);
+  });
+
+  it("손에 없는 패는 고를 수 없다", () => {
+    const game = mk("111999m55m23s23p5z");
+    const outside = outsideTile(game, { suit: "sou", rank: 9 });
+    const res = game.engine.submit({
+      player: "p0",
+      type: "joker_call",
+      payload: { tileId: outside },
+    });
+    expect(res.ok).toBe(false);
+  });
+
+  it("후보는 손패 1장마다 하나씩 나온다", () => {
+    const game = mk("111999m55m23s23p5z");
+    const provs = (
+      game.engine as unknown as {
+        turnOptionProviders: ((s: GameState, id: PlayerId) => { type: string }[])[];
+      }
+    ).turnOptionProviders;
+    const opts = provs
+      .flatMap((f) => f(game.engine.state, "p0"))
+      .filter((o) => o.type === "joker_call");
+    expect(opts.length).toBe(handIdsOf(game.engine.state, "p0").length);
   });
 });
 
@@ -321,16 +384,39 @@ describe("조커 — 국 스코프와 쿨다운", () => {
 // ───────────────────────── 6. 봇 정책 ─────────────────────────
 
 describe("조커 — 봇 정책", () => {
-  const OPTION = { type: "joker_call", payload: {} };
-
+  /** 실제 후보와 같은 꼴 — 손패 1장마다 하나씩 */
   function ctxFor(hand: string): ReturnType<typeof botCtx> {
     const game = mk(hand);
     const view = buildPlayerView(game.engine.state, "p0", game.engine.rules);
-    return botCtx(view, [OPTION], { wallLeft: 60, turn: 4 });
+    const options = handIdsOf(game.engine.state, "p0").map((tileId) => ({
+      type: "joker_call",
+      payload: { tileId },
+    }));
+    return botCtx(view, options, { wallLeft: 60, turn: 4 });
   }
 
-  it("백이 없으면 켜지 않는다", () => {
-    expect(C.joker.bot?.choose(ctxFor("111999m55m23s233p"))).toBeNull();
+  /** 봇이 고른 후보가 백으로 바꾸려는 패의 종류 */
+  function pickedKind(hand: string): string | null {
+    const game = mk(hand);
+    const view = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    const picked = C.joker.bot?.choose(ctxFor(hand));
+    if (picked == null) return null;
+    const id = (botChosenOption(picked)?.payload as { tileId?: TileId }).tileId as TileId;
+    return kindKey(view.tiles[id]!.kind);
+  }
+
+  it("백이 없어도 손이 나아지면 켠다 — 바꿀 패까지 고른다", () => {
+    // 111999m 55m 23s 233p — 3통 하나를 백으로 바꾸면 23s·23p가 함께 산다
+    const picked = C.joker.bot?.choose(ctxFor("111999m55m23s233p"));
+    expect(picked).not.toBeNull();
+    expect(
+      (botChosenOption(picked ?? null)?.payload as { tileId?: TileId }).tileId,
+    ).toBeDefined();
+  });
+
+  it("이미 백을 쥐고 있고 그 백으로 충분하면 백을 골라 아무것도 태우지 않는다", () => {
+    // 111999m 55m 23s 23p + 백 — 백 하나로 이미 텐파이라 다른 패를 바꿀 이유가 없다
+    expect(pickedKind("111999m55m23s23p5z")).toBe("dragon1");
   });
 
   it("백이 손의 빈자리를 메우면 켠다", () => {
