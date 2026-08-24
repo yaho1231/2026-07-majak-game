@@ -87,6 +87,12 @@ export const STORAGE_KEYS = [
   "majak.settings",
   "majak.uiZoom",
   "majak.browserZoomed",
+  /*
+   * 「가로로 돌리세요」 안내를 닫은 사실(App.tsx `ROTATE_HINT_KEY`). 폰 세로에서
+   * 이 안내는 52px 짜리 띠를 차지하므로 한 번 닫은 것을 기억한다 — 그러니 «처음부터»
+   * 에는 다시 뜨는 것이 맞다(2026-08-25 폰 세로 재설계).
+   */
+  "majak.rotateHintOff",
   "majak.homeFolded",
   "majak.homeTab",
   "majak.sandboxMode",
