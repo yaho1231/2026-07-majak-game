@@ -18,6 +18,14 @@ type Uis = typeof import("../src/uiScale.js");
 const store = new Map<string, string>();
 let cssVars: Record<string, string> = {};
 let keyHandlers: ((e: unknown) => void)[] = [];
+let resizeHandlers: (() => void)[] = [];
+/** 지금 세워 둔 가짜 window — 세션 중 확대(창 크기 + dpr)를 흉내 낼 때 직접 고친다. */
+let win: {
+  innerWidth: number;
+  innerHeight: number;
+  devicePixelRatio: number;
+  [k: string]: unknown;
+};
 /** `<html>`에 실제로 쓰인 data-ui-scale-mode. */
 let modeAttr: string | null = null;
 /** 프로브가 재게 될 `100cqw` — 엔진 흉내. 100 = zoom을 아는 엔진, 200 = 모르는 엔진. */
@@ -41,11 +49,12 @@ async function boot(opts: {
   if (opts.keepStore !== true) store.clear();
   cssVars = {};
   keyHandlers = [];
+  resizeHandlers = [];
   modeAttr = null;
   probeCq = opts.cq ?? 100;
   zoomSupported = opts.zoom ?? true;
   const fine = opts.fine ?? true;
-  const win = {
+  win = {
     innerWidth: opts.w,
     innerHeight: opts.h,
     devicePixelRatio: opts.dpr ?? 1,
@@ -57,6 +66,7 @@ async function boot(opts: {
     },
     addEventListener: (type: string, fn: (e: unknown) => void) => {
       if (type === "keydown") keyHandlers.push(fn);
+      if (type === "resize") resizeHandlers.push(fn as () => void);
     },
   };
   vi.stubGlobal("window", win);
@@ -90,6 +100,17 @@ async function boot(opts: {
   const mod: Uis = await import("../src/uiScale.js");
   mod.startUiScale();
   return mod;
+}
+
+/**
+ * 세션 중 브라우저 확대를 흉내 낸다 — Ctrl/⌘ +/− 는 **두 가지를 함께** 움직인다:
+ * CSS 픽셀 창이 1/z 로 줄고, devicePixelRatio 가 z 배가 된다.
+ */
+function browserZoom(z: number, base: { w: number; h: number; dpr: number }): void {
+  win.innerWidth = Math.round(base.w / z);
+  win.innerHeight = Math.round(base.h / z);
+  win.devicePixelRatio = base.dpr * z;
+  resizeHandlers.forEach((fn) => fn());
 }
 
 /** body에 실제로 쓰인 --ui-scale (getUiScale()과 같아야 한다). */
@@ -162,10 +183,74 @@ describe("배율은 창을 원판(1920×1080)에 맞춘 값 하나다", () => {
     expect(m.getUiScale()).toBe(1);
   });
 
-  it("브라우저 확대를 켠 사람의 확대를 도로 깎지 않는다 (WCAG 1.4.4)", async () => {
-    // 확대를 켜 두고 연 세션 — 표식이 남아 있으면 부팅 시점 dpr과 무관하게 손을 뗀다.
+});
+
+/*
+ * 브라우저 확대(Ctrl/⌘ +/−)는 CSS 픽셀 창을 정확히 1/z 로 줄인다. 자동 맞춤이 그걸
+ * "작은 창"으로 읽고 배율을 1/z 로 낮추면 **사람이 요구한 확대가 정확히 상쇄된다** —
+ * Ctrl+ 를 눌러도 아무 일이 안 일어난다(WCAG 1.4.4 위반). 그래서 z 를 도로 곱한다.
+ */
+describe("브라우저 확대는 상쇄하지 않고 그 위에 곱한다", () => {
+  it("200% 로 키우면 배율이 그대로 남는다 = 화면에서는 두 배로 보인다", async () => {
+    const base = { w: 1920, h: 1080, dpr: 1 };
+    const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
+    expect(m.getUiScale()).toBe(1);
+    browserZoom(2, base);
+    // 창은 960×540 이 됐지만(맞춤만 보면 0.5 → 하한 0.75) 확대 배수 2가 곱해져 1.0.
+    // CSS px 자체가 두 배로 그려지므로 화면에서는 정확히 200%가 된다.
+    expect(m.getUiScale()).toBe(1);
+    expect(appliedScale()).toBe(1);
+  });
+
+  it("50% 로 줄이면 배율도 함께 내려간다", async () => {
+    const base = { w: 1920, h: 1080, dpr: 1 };
+    const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
+    browserZoom(0.5, base);
+    // 창 3840×2160 → 맞춤 2.0, 확대 배수 0.5 → 1.0. 화면에서는 절반 크기.
+    expect(m.getUiScale()).toBe(1);
+  });
+
+  it("Ctrl+0 으로 되돌리면 순수 자동 맞춤으로 돌아온다", async () => {
+    const base = { w: 1827, h: 852, dpr: 1 };
+    const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
+    expect(m.getUiScale()).toBe(0.78);
+    browserZoom(1.5, base);
+    browserZoom(1, base);
+    expect(m.getUiScale()).toBe(0.78);
+  });
+
+  it("dpr 이 미세하게 흔들리는 것은 확대로 읽지 않는다", async () => {
+    const m = await boot({ w: 1920, h: 1080, dpr: 1 });
+    win.devicePixelRatio = 1.01;
+    resizeHandlers.forEach((fn) => fn());
+    expect(m.getUiScale()).toBe(1);
+  });
+
+  it("모니터를 옮겨 dpr 이 크게 튀어도 배수가 [0.5, 2] 를 못 벗어난다", async () => {
+    const m = await boot({ w: 1920, h: 1080, dpr: 1 });
+    win.devicePixelRatio = 8;
+    resizeHandlers.forEach((fn) => fn());
+    expect(m.getUiScale()).toBeLessThanOrEqual(2);
+    win.devicePixelRatio = 0.05;
+    resizeHandlers.forEach((fn) => fn());
+    expect(m.getUiScale()).toBeGreaterThanOrEqual(0.75);
+  });
+
+  /*
+   * 2026-08-24 사용자 보고 회귀 — 예전에는 "이 사람은 확대를 쓴다"를 localStorage 에
+   * 적어 두고 그 표식이 있으면 자동 맞춤을 **통째로 껐다.** 한 번 붙으면 안 떨어져
+   * 1827×852 에서 배율이 0.78 이 아니라 1로 굳었다(= 판이 깨진 그 화면).
+   */
+  it("옛 «확대 사용자» 표식이 있어도 자동 맞춤이 걸린다 — 그리고 표식을 지운다", async () => {
     store.set("majak.browserZoomed", "1");
-    const m = await boot({ w: 1280, h: 700, keepStore: true });
+    const m = await boot({ w: 1827, h: 852, keepStore: true });
+    expect(m.getUiScale()).toBe(0.78);
+    expect(store.has("majak.browserZoomed")).toBe(false);
+  });
+
+  it("부팅 직후의 배수는 언제나 1 — 세션을 넘기는 상태가 없다", async () => {
+    // dpr 이 2인 기기(Retina)에서 열어도 그 자체는 확대가 아니다.
+    const m = await boot({ w: 1920, h: 1080, dpr: 2 });
     expect(m.getUiScale()).toBe(1);
   });
 });
