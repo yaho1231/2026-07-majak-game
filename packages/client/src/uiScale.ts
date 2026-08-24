@@ -22,6 +22,11 @@
  * 1을 넘어 판·글자가 화면을 따라 커지고(예전에는 4K에서도 850px 보드에 15px 글자였다),
  * 짧은 창에서는 1 아래로 내려가 고정 px 띠가 화면을 덜 먹는다. 누를 것이 없다.
  *
+ * 브라우저 확대(Ctrl/⌘ +/−)는 **상쇄하지 않고 그 위에 곱한다** — 자세한 것은
+ * `browserZoomFactor()` 주석. 예전에는 "확대를 쓰는 사람"이라는 표식을 저장해 두고
+ * 자동 맞춤을 통째로 껐는데, 그 표식이 한 번 붙으면 영영 안 떨어져 **배율이 1로 굳었다**
+ * (2026-08-24 사용자 보고 화면이 정확히 그 상태였다).
+ *
  * 배율로 다 못 푸는 구간(하한에 걸리는 아주 납작한 창)은 styles.css 의
  * `@container ui (max-height: …)` 안전망이 띠를 함께 줄여 받는다.
  *
@@ -106,53 +111,61 @@ const LEGACY_OVERRIDE_KEY = "majak.uiScale";
  */
 const LEGACY_ZOOM_KEY = "majak.uiZoom";
 
+/**
+ * "이 사람은 브라우저 확대를 쓴다"를 적어 두던 키. **자동 맞춤을 통째로 끄는 표식**
+ * 이라, 한 번 붙으면 창이 무엇이든 배율이 1로 굳었다(위 `browserZoomFactor()` 주석).
+ * 붙어 있는 사람이 이미 있으므로 부팅 때 지운다 — 안 지우면 그 사람만 계속 깨진 판을 본다.
+ */
+const LEGACY_ZOOMED_KEY = "majak.browserZoomed";
+
 let scale = 1;
 const listeners = new Set<() => void>();
 
 /**
- * 브라우저 확대율 감지 기준선 — 첫 측정 때의 devicePixelRatio.
- * Ctrl +/− 는 dpr을 그 배율만큼 움직인다(창 크기 변경·모니터 이동으로는 안 움직인다).
- * 페이지를 열 때 이미 확대돼 있었다면 그 상태가 기준선이 된다 — 그건 그대로 두는 게 맞다.
+ * 브라우저 확대의 기준선 — **부팅 시점의** devicePixelRatio.
+ *
+ * Ctrl/⌘ +/− 는 dpr을 그 배율만큼 움직인다(창 크기 변경으로는 안 움직인다).
+ * 그래서 «지금 dpr ÷ 부팅 때 dpr» 이 곧 «이 세션에서 사람이 누른 확대»다.
  */
 let baseDpr = 0;
 
-/**
- * "이 사람은 브라우저 확대를 쓴다"는 기억 (세션을 넘어간다).
- * 자세한 이유는 아래 `userZoomedIn()` 주석 참고.
- */
-const ZOOMED_KEY = "majak.browserZoomed";
-let zoomedInSticky = false;
+/** 사람이 누른 확대를 얹는 폭. 밖은 잘라 낸다 — 모니터를 옮겨 dpr이 튀어도 판이 안 깨진다. */
+const MIN_ZOOM_FACTOR = 0.5;
+const MAX_ZOOM_FACTOR = 2;
 
 /**
- * 사용자가 확대해 두었는가 — 그렇다면 자동 맞춤을 접는다.
+ * 이 세션에서 사람이 브라우저 확대를 얼마나 눌렀는가 (1 = 부팅 때 그대로).
  *
- * 브라우저 확대는 CSS 픽셀 창을 그만큼 좁힌다 → 자동 맞춤이 그걸 "작은 창"으로 읽고
- * 배율을 낮춰 **요구한 확대를 도로 깎는다.** 확대를 켠 사람은 대개 그게 필요해서
- * 켠 것이므로(WCAG 1.4.4) 그 자리에서는 손을 뗀다.
+ * ── 왜 «곱하는» 값인가 ──
  *
- * **이 세션의 dpr 변화만으로는 부족하다** (감사 2026-08-17 §6-4).
- * `baseDpr`은 **부팅 시점** 값이라, 브라우저 확대를 200%로 켜 **둔 채** 페이지를 열면
- * 그 200%가 그대로 기준선이 된다 → `userZoomedIn()`이 false → 자동 축소가 걸린다.
- * 1280×800 @200% 실측: scale 0.6이 곱해져 **요구한 200%가 실질 120%로 깎였다.**
+ * 브라우저 확대 Z는 CSS 픽셀 창을 정확히 1/Z로 줄인다. 자동 맞춤은 그 줄어든 창을
+ * 보고 배율을 1/Z 배로 낮추므로, 그대로 두면 **사람이 요구한 확대가 정확히 상쇄된다**
+ * (Ctrl+ 를 눌러도 아무 일도 안 일어난다 = WCAG 1.4.4 위반).
+ * 여기서 Z를 도로 곱해 주면 상쇄가 풀린다 — 화면에 보이는 크기는 Z배가 되고,
+ * 대신 가상 뷰포트가 그만큼 좁아진다. 확대란 원래 «크게 보는 대신 덜 담는» 거래다.
  *
- * 그래서 **기억한다**: 한 번이라도 확대한 것을 보면 그 사실을 저장해 두고, 다음
- * 세션에서는 부팅 시점 dpr이 무엇이든 자동 맞춤을 걸지 않는다. Ctrl+0 으로 확대를
- * 원래대로 되돌리면(= 기준선 아래로 내려오면) 표식을 지워 자동 맞춤이 돌아온다 —
- * 한 번 켜면 영영 못 돌아가는 상태를 만들지 않는다.
+ * ── 왜 아무것도 저장하지 않는가 ──
+ *
+ * 예전에는 "이 사람은 확대를 쓴다"를 localStorage(`majak.browserZoomed`)에 적어 두고
+ * 그 표식이 있으면 **자동 맞춤을 통째로 껐다.** 그게 덫이었다: 한 번이라도 Ctrl+ 를
+ * 누르거나(또는 창을 Retina 모니터로 옮기거나, 축소해 둔 채 연 페이지에서 Ctrl+0 을
+ * 누르거나) 하면 표식이 남아 **그 뒤로 영원히 배율이 1로 굳는다.** 2026-08-24 사용자
+ * 보고가 정확히 이 상태였다 — 1827×852에서 배율이 0.75가 아니라 1이었다
+ * (재현: `localStorage.setItem("majak.browserZoomed","1")` 후 새로고침).
+ *
+ * 그래서 **세션을 넘기는 상태를 두지 않는다.** 부팅하면 언제나 배수 1 = 순수 자동
+ * 맞춤이고, 그 자리에서 누른 확대만 얹힌다. 어떤 경로로도 «배율이 굳는» 상태가 없다.
+ * 대가: 확대를 켜 **둔 채** 페이지를 열면 그 확대는 자동 맞춤에 상쇄된다(부팅 시점이
+ * 기준선이므로 눌린 것을 볼 수가 없다). 판이 깨진 채 굳는 것보다는 이쪽이 낫다 —
+ * 크게 보고 싶으면 판을 연 뒤 한 번 더 누르면 그대로 듣는다.
  */
-function userZoomedIn(): boolean {
-  if (baseDpr <= 0) return zoomedInSticky;
-  // 1.02 여유 — 모니터 전환·소수 오차로 dpr이 미세하게 흔들리는 것을 무시한다.
-  const nowZoomed = window.devicePixelRatio > baseDpr * 1.02;
-  if (nowZoomed && !zoomedInSticky) {
-    zoomedInSticky = true;
-    safeStorage.setItem(ZOOMED_KEY, "1");
-  } else if (zoomedInSticky && window.devicePixelRatio < baseDpr * 0.99) {
-    // 기준선 **아래**로 내려왔다 = Ctrl− 또는 Ctrl+0 으로 확대를 접었다.
-    zoomedInSticky = false;
-    safeStorage.removeItem(ZOOMED_KEY);
-  }
-  return nowZoomed || zoomedInSticky;
+function browserZoomFactor(): number {
+  if (baseDpr <= 0) return 1;
+  const dpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : baseDpr;
+  const raw = dpr / baseDpr;
+  // 2% 여유 — 소수 오차로 dpr이 미세하게 흔들리는 것을 확대로 읽지 않는다.
+  if (raw > 0.98 && raw < 1.02) return 1;
+  return Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, raw));
 }
 
 // ── 배율을 무엇으로 거는가 (zoom vs transform) ──
@@ -231,9 +244,9 @@ function hasSize(): boolean {
  */
 function computeScale(): number {
   if (!isPointerFine() || !hasSize()) return 1;
-  // Ctrl + 로 키운 화면을 자동 맞춤이 도로 줄이지 않는다 (WCAG 1.4.4).
-  if (userZoomedIn()) return 1;
-  const raw = Math.min(window.innerWidth / REF_W, window.innerHeight / REF_H);
+  const fit = Math.min(window.innerWidth / REF_W, window.innerHeight / REF_H);
+  // 사람이 누른 브라우저 확대는 상쇄하지 않고 그대로 얹는다 (WCAG 1.4.4).
+  const raw = fit * browserZoomFactor();
   const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, raw));
   return Math.floor(clamped * 100) / 100;
 }
@@ -293,7 +306,7 @@ export function startUiScale(): void {
     /* DOM을 못 건드리는 환경이면 배율 자체가 의미 없다 */
   }
   // 손잡이가 사라진 지금, 예전 저장값은 갇히는 자리일 뿐이다 — 둘 다 지운다.
-  for (const key of [LEGACY_OVERRIDE_KEY, LEGACY_ZOOM_KEY]) {
+  for (const key of [LEGACY_OVERRIDE_KEY, LEGACY_ZOOM_KEY, LEGACY_ZOOMED_KEY]) {
     try {
       safeStorage.removeItem(key);
     } catch {
@@ -301,8 +314,6 @@ export function startUiScale(): void {
     }
   }
   baseDpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-  // 지난 세션에서 확대를 쓰던 사람이면 부팅 시점 dpr과 무관하게 자동 맞춤을 접는다.
-  zoomedInSticky = safeStorage.getItem(ZOOMED_KEY) === "1";
   apply();
   window.addEventListener("resize", apply);
   window.addEventListener("orientationchange", apply);

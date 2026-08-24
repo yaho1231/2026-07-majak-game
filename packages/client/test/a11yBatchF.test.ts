@@ -111,16 +111,27 @@ describe("차례를 보조기술에도 알린다", () => {
 
 // ─────────────── 6-4 확대 ───────────────
 
-describe("브라우저 확대를 자동 축소가 되돌리지 않는다", () => {
-  it("확대 사실을 세션 너머로 기억한다", () => {
-    // baseDpr 은 부팅 시점 값이라, 확대를 켜 둔 채 열면 그게 기준선이 되어
-    // 자동 축소가 걸렸다 — 요구한 200%가 실질 120%로 깎였다(WCAG 1.4.4).
-    expect(UISCALE).toContain("majak.browserZoomed");
-    expect(UISCALE).toContain("zoomedInSticky");
+describe("브라우저 확대를 자동 맞춤이 되돌리지 않는다", () => {
+  /*
+   * 확대 z 는 CSS 픽셀 창을 정확히 1/z 로 줄인다 → 자동 맞춤이 배율을 1/z 로 낮추면
+   * 요구한 확대가 **정확히 상쇄된다**(Ctrl+ 를 눌러도 아무 일이 없다, WCAG 1.4.4 위반).
+   * 그래서 z 를 도로 곱한다.
+   *
+   * ⚠ 예전에는 "이 사람은 확대를 쓴다"를 localStorage 에 적어 두고 자동 맞춤을
+   *   **통째로 껐다.** 한 번 붙으면 안 떨어져 창이 무엇이든 배율이 1로 굳었다
+   *   (2026-08-24 사용자 보고 · docs/42 §6). 저장하는 방식으로 되돌리면 안 된다.
+   */
+  it("확대를 상쇄하지 않고 그 위에 곱한다", () => {
+    expect(UISCALE).toContain("function browserZoomFactor");
+    expect(UISCALE).toContain("devicePixelRatio");
+    expect(UISCALE).toMatch(/fit \* browserZoomFactor\(\)/);
   });
 
-  it("확대를 접으면 표식도 지운다 (영영 못 돌아가는 상태를 만들지 않는다)", () => {
-    expect(UISCALE).toMatch(/removeItem\(ZOOMED_KEY\)/);
+  it("자동 맞춤을 끄는 상태를 저장하지 않는다 (굳는 자리를 만들지 않는다)", () => {
+    expect(UISCALE).not.toMatch(/setItem\(\s*ZOOMED_KEY/);
+    expect(UISCALE).not.toContain("zoomedInSticky");
+    // 이미 붙어 있는 사람이 있으므로 옛 표식은 부팅 때 지운다
+    expect(UISCALE).toContain('const LEGACY_ZOOMED_KEY = "majak.browserZoomed"');
   });
 });
 

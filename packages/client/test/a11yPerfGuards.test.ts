@@ -119,10 +119,24 @@ describe("UI 배율 — 창 크기에서 자동으로 나오고, Ctrl + 를 되�
     expect(UISCALE).toMatch(/Math\.min\(window\.innerWidth \/ REF_W, window\.innerHeight \/ REF_H\)/);
   });
 
-  it("브라우저 확대를 감지해 자동 축소를 접는다 (WCAG 1.4.4)", () => {
-    expect(UISCALE).toContain("function userZoomedIn");
+  it("브라우저 확대를 상쇄하지 않고 그 위에 곱한다 (WCAG 1.4.4)", () => {
+    // 확대는 CSS 픽셀 창을 1/z 로 줄인다 → 자동 맞춤이 배율을 1/z 로 낮추면 요구한
+    // 확대가 정확히 상쇄된다. z 를 도로 곱해야 Ctrl+ 가 실제로 듣는다.
+    expect(UISCALE).toContain("function browserZoomFactor");
     expect(UISCALE).toContain("devicePixelRatio");
-    expect(UISCALE).toContain("if (userZoomedIn()) return 1;");
+    expect(code(UISCALE)).toContain("fit * browserZoomFactor()");
+  });
+
+  /*
+   * 자동 맞춤을 **끄는** 상태를 저장하지 않는다. 예전에는 "이 사람은 확대를 쓴다"를
+   * localStorage 에 적어 두고 그 표식이 있으면 맞춤을 통째로 껐는데, 한 번 붙으면
+   * 안 떨어져 창이 무엇이든 배율이 1로 굳었다 (2026-08-24 사용자 보고).
+   */
+  it("자동 맞춤을 끄는 저장 상태가 없다 — 굳는 자리를 만들지 않는다", () => {
+    expect(code(UISCALE)).not.toContain('setItem("majak.browserZoomed"');
+    expect(UISCALE).toContain("LEGACY_ZOOMED_KEY");
+    // 이미 붙어 있는 사람이 있으므로 부팅 때 지운다
+    expect(code(UISCALE)).toMatch(/LEGACY_ZOOMED_KEY\]/);
   });
 
   it("배율은 body 하나로 화면 전체에 균일하게 걸린다 (기본은 zoom)", () => {
