@@ -237,6 +237,24 @@ describe("브라우저 확대는 상쇄하지 않고 그 위에 곱한다", () =
   });
 
   /*
+   * dpr 은 확대 말고 **모니터 이동**으로도 움직인다. 그때까지 확대로 읽으면 창을
+   * 옮겼을 뿐인데 판이 절반이 된 채 굳는다. 확대는 CSS 폭을 1/z 로 줄이므로
+   * `innerWidth × dpr` 이 보존되고, 모니터 이동은 그렇지 않다 — 그것으로 가른다.
+   */
+  it("모니터를 옮긴 것(창 크기는 그대로, dpr만 바뀜)은 확대로 읽지 않는다", async () => {
+    const m = await boot({ w: 1920, h: 1080, dpr: 1 });
+    expect(m.getUiScale()).toBe(1);
+    // Retina 로 끌어다 놓았다 — CSS 폭은 그대로인데 dpr 만 2배
+    win.devicePixelRatio = 2;
+    resizeHandlers.forEach((fn) => fn());
+    expect(m.getUiScale()).toBe(1);
+    // 그 자리에서 확대하면 그건 다시 확대로 읽힌다
+    browserZoom(2, { w: 1920, h: 1080, dpr: 2 });
+    expect(m.getUiScale()).toBe(1);
+    expect(win.innerWidth).toBe(960);
+  });
+
+  /*
    * 2026-08-24 사용자 보고 회귀 — 예전에는 "이 사람은 확대를 쓴다"를 localStorage 에
    * 적어 두고 그 표식이 있으면 자동 맞춤을 **통째로 껐다.** 한 번 붙으면 안 떨어져
    * 1827×852 에서 배율이 0.78 이 아니라 1로 굳었다(= 판이 깨진 그 화면).

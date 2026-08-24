@@ -17021,13 +17021,29 @@ interface HandDragState {
   targetIdx: number;
   /** 임계값 이상 움직여 실제 드래그가 시작됐는가 (아니면 그냥 클릭) */
   moved: boolean;
+  /** 이 드래그를 «움직였다»고 볼 거리(화면 px) — 포인터 종류가 정한다 */
+  threshold: number;
   /** 지금 바닥 드롭존(버리기) 위에 있는가 */
   overDiscard: boolean;
   /** 놓은 뒤 최종 자리로 애니메이션하는 중 */
   settling: boolean;
 }
 
-const HAND_DRAG_THRESHOLD = 5;
+/**
+ * 손패를 «끄는 것»으로 볼 최소 이동 거리(화면 px).
+ *
+ * 마우스와 손가락은 다른 물건이다. 마우스는 누른 자리에 그대로 서 있지만 손가락은
+ * 살에 닿는 순간부터 흔들린다 — 브라우저 자체의 탭 슬롭도 마우스 3~5px 대 터치
+ * 10~16px 로 갈라 놓는다. 5px 하나로 둘을 다 받으면 **탭이 드래그로 읽힌다**:
+ * `moved` 가 서면 손을 뗄 때 `suppressClickUntil` 이 찍히고(아래), 그 다음에 딸려
+ * 오는 진짜 click 을 타일이 통째로 삼킨다 → 화면에서는 «눌렀는데 아무 일도 안 남».
+ * `tapTwiceToDiscard` 를 켠 사람은 그 한 번이 삼켜져 세 번 눌러야 버려진다.
+ *
+ * 그래서 포인터 종류로 가른다. 값은 `beginDrag` 에서 한 번 정해 드래그 상태에
+ * 실어 둔다 — 도중에 포인터 종류가 바뀌지 않으므로 그게 가장 안전하다.
+ */
+const HAND_DRAG_THRESHOLD_MOUSE = 5;
+const HAND_DRAG_THRESHOLD_TOUCH = 14;
 
 /**
  * 드래그 뒤 딸려오는 유령 click 을 무시하는 시간(ms).
@@ -17626,6 +17642,13 @@ function OwnArea(props: {
     if (bandFull !== ownBandFullRef.current) {
       ownBandFullRef.current = bandFull;
       root.style.setProperty("--own-band-full", `${bandFull}px`);
+      /*
+       * body 에도 같은 값을 올린다 — 이 띠를 피해야 하는 것 중에 **body 포털**이
+       * 있다(`.rinshan-reopen` 「영상패 가져오기」 등, §FIXED_SURFACE_NOTE).
+       * 그것들은 `.game-root` 의 후손이 아니라 형제라 여기서 올린 변수를 상속받지
+       * 못하고, 고정 px 로 서 있다가 액션 바가 뜨면 손패 위에 얹혔다.
+       */
+      document.body.style.setProperty("--own-band-full", `${bandFull}px`);
     }
     /*
      * **내 후로 줄이 손패를 덮지 않게** 쓸 수 있는 폭을 함께 올려 준다.
@@ -17667,6 +17690,7 @@ function OwnArea(props: {
       if (root instanceof HTMLElement) {
         root.style.removeProperty("--own-band");
         root.style.removeProperty("--own-band-full");
+        document.body.style.removeProperty("--own-band-full");
         root.style.removeProperty("--own-corner-max");
       }
     };
@@ -18091,6 +18115,9 @@ function OwnArea(props: {
       curY: e.clientY,
       targetIdx: idx,
       moved: false,
+      // 손가락은 마우스보다 훨씬 잘 흔들린다 (위 HAND_DRAG_THRESHOLD_* 주석)
+      threshold:
+        e.pointerType === "mouse" ? HAND_DRAG_THRESHOLD_MOUSE : HAND_DRAG_THRESHOLD_TOUCH,
       overDiscard: false,
       settling: false,
     });
@@ -18128,7 +18155,7 @@ function OwnArea(props: {
       const b = dragRef.current;
       if (b === null || e.pointerId !== b.pointerId) return;
       const dist = Math.hypot(e.clientX - b.startX, e.clientY - b.startY);
-      if (!b.moved && dist < HAND_DRAG_THRESHOLD) return;
+      if (!b.moved && dist < b.threshold) return;
       const dz = dropzoneRef.current?.getBoundingClientRect();
       const overDiscard =
         dz !== undefined &&

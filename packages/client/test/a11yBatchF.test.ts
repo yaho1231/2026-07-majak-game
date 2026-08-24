@@ -179,7 +179,13 @@ describe("터치에서 잃는 것이 없다", () => {
   });
 
   it("세로 안내가 태블릿 세로까지 덮는다", () => {
-    // 상한이 560px 이라 iPad 세로(768)가 안내에도 좁은 배치에도 안 걸렸다.
-    expect(CSS).toMatch(/@media \(max-width: 900px\) and \(orientation: portrait\)/);
+    // 상한이 560px 이라 iPad 세로(768)가 안내에도 좁은 배치에도 안 걸렸다 → 900px.
+    // ⚠ 크기는 **가상 뷰포트**(@container ui)로 잰다. 실제 창(@media)으로 재면
+    //   배율이 1이 아닐 때 둘이 어긋나, 안내가 보드를 밀어내는 보정만 빠지고
+    //   안내는 그대로 떠서 보드를 도로 덮는다 (2026-08-24 모바일 QA · docs/43 §4).
+    expect(CSS).toMatch(/@media \(orientation: portrait\) and \(pointer: coarse\)/);
+    expect(CSS).toMatch(/@container ui \(max-width: 900px\)/);
+    // 크기로 배치를 가르는 @media 는 이 파일에 하나도 남아 있으면 안 된다
+    expect(code(CSS)).not.toMatch(/@media \([^)]*(?:max|min)-(?:width|height):/);
   });
 });
