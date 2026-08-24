@@ -82,6 +82,23 @@
 
   /* 이징 — 지수형 감속. 바운스(1.4 오버슈트)는 쓰지 않는다 */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── 우상단 아이콘 줄이 실제로 서는 자리 ──
+     그 아래에 서야 하는 것들(맞은편 상대 줄 · 위 띠 · 전체 화면 창의 제목)이 전부
+     이 두 값을 본다. **한 곳에서만** 정하는 이유는 2026-08-24 사고 때문이다:
+     폰 블록이 `.icon-btn { top: 8px }` 로 잡고 맞은편 줄을 `top: 56px`(= 8+44+4)로
+     계산해 두었는데, 파일 뒤쪽의 안전영역 규칙 `top: max(12px, env(...))` 이
+     **같은 특정도에 더 뒤라 이겼다.** 노치 폰(inset 47~59px)에서는 아이콘 줄이
+     y 59~103 에 서는데 맞은편 뒷패 줄은 56 그대로여서 통째로 겹쳤다.
+     계산의 근거를 값으로 만들어 두면 그런 어긋남이 생길 자리가 없다.
+
+     ⚠ `:root` 에 두는 이유: 이 값을 보는 것 중에 `.game-root` 바깥(body 포털)에
+     사는 것이 있다(증강 선택 창 등). `@container ui` 로는 `:root` 를 못 바꾸므로
+     (컨테이너는 자기 조상을 질의하지 못한다) 화면별로 갈라지지 않는 **상수**로 둔다.
+     아이콘은 폰에서 34~40px 로 그려지지만 터치 목표(§9-2)가 44px 로 키우므로
+     44 가 언제나 상한이다 — 넉넉한 쪽으로 잡아 두면 어느 화면에서도 안 겹친다. */
+  --chrome-top: max(12px, env(safe-area-inset-top, 0px));
+  --icon-h: 44px;
   --ease-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
@@ -415,7 +432,7 @@ button {
   --top-gutter: 12px;
   --board-vspan: 0.9;
   --board-fit-v: max(
-    200px,
+    var(--board-floor, 200px),
     calc(
       (
         100cqh - var(--top-band) - var(--rotate-band) - var(--top-gutter) - var(--own-band) -
@@ -2987,10 +3004,16 @@ button {
 }
 
 /* 모달을 닫은 뒤 다시 열기 위한 플로팅 버튼 */
+/*
+ * 「다시 열기」 알약 — `.emote-bar` 와 같은 구석에 사는데, 그쪽이 2026-08-19에 받은
+ * 수리를 이건 못 받았다(폰 규칙이 하나도 없었다). 375×812 에서 `--own-band-full`
+ * (액션 바까지 포함한 내 영역 실측 높이)이 150~193px 까지 자라므로 bottom:140px
+ * 고정으로는 액션 바·손패 오른쪽 끝에 그대로 얹힌다.
+ */
 .rinshan-reopen {
   position: fixed;
-  right: 20px;
-  bottom: 140px;
+  right: max(20px, env(safe-area-inset-right, 0px));
+  bottom: max(140px, calc(var(--own-band-full, 0px) + 10px));
   z-index: 60;
   padding: 10px 16px;
   border-radius: 999px;
@@ -3832,6 +3855,19 @@ button {
 
 .draft-panel {
   text-align: center;
+}
+
+/*
+ * 좁은 폭에서는 «증강 선택» 제목 줄이 우상단 아이콘 줄과 **같은 높이**에 선다 —
+ * 390×844 실측으로 제목 [35,12,320,41] 위에 📘·📖·⚙·✕(y 12~56, z58)이 그대로
+ * 얹혔다(2026-08-24). 넓은 화면에서는 제목이 가운데, 아이콘이 오른쪽 끝이라 서로
+ * 닿지 않아 안 보이던 겹침이다. 창을 아이콘 줄 아래에서 시작하게 한다.
+ */
+@container ui (max-width: 700px) {
+  .draft-panel,
+  .result-panel {
+    padding-top: calc(var(--chrome-top) + var(--icon-h) + 8px);
+  }
 }
 
 .draft-title {
@@ -6254,10 +6290,16 @@ button {
 }
 
 /* 바깥 클릭 감지판 — 목록보다 한 겹 아래 */
+/*
+ * 바깥을 눌러 닫는 덮개. `cursor: pointer` 가 **기능**이다 — iOS Safari 는 클릭
+ * 가능해 «보이는» 요소에만 탭에서 click 을 합성한다(빈 div 는 안 준다). 없으면
+ * 터치에서 이 덮개가 안 닫히고, z 2400 이라 화면 전체가 잠긴 채로 굳는다.
+ */
 .arch-menu-catch {
   position: fixed;
   inset: 0;
   z-index: 2400;
+  cursor: pointer;
 }
 
 .arch-menu {
@@ -8088,16 +8130,21 @@ button {
     --board-cy: 45%;
   }
 
-  /* 세로 화면은 위쪽 이름표 줄이 두 줄로 접혀 더 두껍다
-     (.opp-strip-top top:56px + 두 줄 — 375×812 실측 아래끝 127px) */
+  /* 세로 화면은 위쪽 줄이 두껍다 — 아이콘 줄 아래(위 `.opp-strip-top` 과 **같은 식**)
+     + 뒷패 줄 22px + 이름표 두 줄 82px.
+     ⚠ 이름표는 증강 뱃지가 늘면 두 줄로 접힌다. 76px(한 줄 기준)으로 잡아 두었더니
+     뱃지 세 개짜리 상대에서 줄 아래끝이 158px 까지 내려와 «가로로 돌리세요» 안내가
+     그 위에 얹혔고(390×844 실측 45%), 뱃지 세 개가 안내에 가려 안 눌렸다.
+     두 줄까지는 이 값이 받는다. */
   .game-root,
   .table {
-    --top-band: 132px;
+    --top-band: calc(var(--chrome-top) + var(--icon-h) + 104px);
   }
 
-  /* 상단 아이콘 버튼을 줄이고, 상대 이름표가 그 아래로 내려오게 한다 */
+  /* 상단 아이콘 버튼을 줄이고, 상대 이름표가 그 아래로 내려오게 한다.
+     `top` 은 여기서 정하지 않는다 — `--chrome-top`(:root) 한 곳이 정하고 그 값을
+     아래 `.opp-strip-top` 과 `--top-band` 가 함께 본다(위 --chrome-top 주석). */
   .icon-btn {
-    top: 8px;
     width: 34px;
     height: 34px;
     font-size: 15px;
@@ -8108,16 +8155,17 @@ button {
   .codex-btn { right: 128px; }
   .help-btn { right: 168px; }
 
-  /* 이름표가 화면 폭을 거의 다 쓰므로 우상단 아이콘 버튼 아래로 내린다.
-     56px = 아이콘 줄 top 8px + 터치 목표 44px(`@media (pointer: coarse)` 가 키운 값,
-     아래 §9-2) + 숨통 4px. 48px 이던 시절에는 그 4px 이 없어 뒷패 윗줄이 ⚙·📘 아래
-     끝을 물었다(375×812 실측 8~14%, 2026-08-24). */
+  /* 이름표가 화면 폭을 거의 다 쓰므로 우상단 아이콘 버튼 **아래**로 내린다.
+     아이콘 줄이 실제로 어디에 서는지는 `--chrome-top`(:root) 이 안다 — 노치 폰에서는
+     그만큼 내려가므로 여기도 따라가야 한다. +4px 은 숨통이다. */
   .opp-strip-top {
-    top: 56px;
+    top: calc(var(--chrome-top) + var(--icon-h) + 4px);
     gap: 5px;
   }
-  .opp-strip-left { left: 6px; }
-  .opp-strip-right { right: 6px; }
+  /* 가로 폰에서는 노치가 **옆**에 온다 — 6px 만으로는 좌·우 상대 줄이 노치·둥근
+     모서리에 잘린다(안전영역을 안 보던 자리다). */
+  .opp-strip-left { left: max(6px, env(safe-area-inset-left, 0px)); }
+  .opp-strip-right { right: max(6px, env(safe-area-inset-right, 0px)); }
   .opp-strip-left,
   .opp-strip-right {
     max-height: 100%;
@@ -8271,6 +8319,13 @@ button {
   .table {
     /* 세로가 병목: 보드 + 내 영역(이름표·액션바·손패)이 모두 들어가야 한다 */
     --board: min(56cqh, 44cqw, 460px, var(--board-fit-v));
+    /* 하한 200px 은 세로 360px 화면에서 «남는 높이»(≈160px)를 넘어, 보드 아래끝이
+       내 영역 안으로 밀려 들어가는 원인이었다. 가로에서는 하한을 낮춘다 —
+       작게 서는 편이 겹쳐 서는 편보다 낫다. */
+    /* 150px 이 하한인 이유: 그 아래로 내려가면 패널이 55px 이 되어 «東3국»·부제·도라가
+       패널 밖으로 다시 삐져나온다(740×360 실측). 여기서는 조금 겹치더라도 읽히는
+       쪽이 낫다 — 겹치는 것은 잠깐 뜨는 내 이름표 줄이고, 안 읽히는 것은 국·점수다. */
+    --board-floor: 150px;
     --panel-min: calc(var(--board) * 0.46);
     /* 위와 같은 이유 — --panel-min 0.46 이면 세로 비율은 1.01 이다 */
     --board-vspan: 1.01;
@@ -8281,34 +8336,146 @@ button {
     --hand-gap: 3px;
     --hand-pad: 10px;
     --mt-cap: clamp(16px, 4cqh, 30px);
-    --back-cap: clamp(14px, 3.6cqh, 26px);
+    /* 맞은편 줄이 우상단 아이콘 줄 밑으로 들어가지 않으려면 뒷패 14장(쯔모패 포함)이
+       `--top-side-reserve` 예산 안에 들어와야 한다 — 폭은 장수가 정하므로 한 장을
+       줄이는 수밖에 없다(740×360 실측: 14×17 = 247px → 예산 240px 을 7px 넘겼다). */
+    --back-cap: clamp(12px, 3.2cqh, 26px);
   }
-  .own-area { bottom: 6px; gap: 6px; }
+  /*
+   * ── 내 영역이 판을 덮지 않게 (2026-08-24 모바일 QA) ──
+   *
+   * 740×360 실측: `--own-band` 가 232px(세로의 64%)이라 내 영역 위끝이 y=45 —
+   * 보드(하한 200px에 걸려 y 73~273)의 한복판이었다. 「차례 나 …」 줄과
+   * 「✦ 액티브 증강」 단추가 **중앙 패널을 통째로 덮었다**.
+   *
+   * 232 의 내역: 오름패 줄 50(늘 비어 있다) + 이름표 줄 105(폭이 모자라 두 줄로
+   * 접힌다) + 손패 64 + 여백. 앞의 둘을 걷으면 123 이 되고, 내 영역 위끝이 y=237 로
+   * 내려가 패널(y≈101~197)이 열린다.
+   *   ① 오름패 줄은 가로에서 자리를 못 낸다 — 예약을 접는다. 텐파이가 되면 그때
+   *      한 번 줄이 늘어 보드가 살짝 줄지만(다른 화면에서 피하는 출렁임이다),
+   *      «판이 늘 덮여 있는 것»보다는 낫다.
+   *   ② 이름표 줄은 **화면 폭 전체**를 쓰게 해 한 줄로 편다. 세로로 접히던 것이
+   *      가로에서는 옆으로 펴진다 — 가로는 폭이 남는 쪽이다.
+   */
+  .game-root,
+  .table { --waits-row-h: 0px; }
+  .own-top-waits { min-height: 0; }
+  .own-area {
+    /* 가로에서도 홈 인디케이터(21px)를 피한다 — 안전영역 보정이 폰 «세로» 블록에만
+       있어서 가로에서는 손패 아랫부분이 그 아래로 들어갔다. */
+    bottom: max(6px, env(safe-area-inset-bottom, 0px));
+    gap: 6px;
+    width: calc(100cqw - 16px);
+  }
+  .own-top-main { flex-wrap: nowrap; justify-content: center; }
   .own-hand { padding: 6px var(--hand-pad) 5px; }
-  .icon-btn { top: 8px; width: 34px; height: 34px; font-size: 15px; }
+  /* `top` 은 `--chrome-top`(:root) 한 곳이 정한다 — 여기 적으면 파일 뒤쪽 안전영역
+     규칙에 지고 죽은 선언이 된다(위 --chrome-top 주석의 사고). */
+  .icon-btn { width: 34px; height: 34px; font-size: 15px; }
   .leave-btn { right: 8px; }
   .settings-btn { right: 48px; }
   .auglog-btn { right: 88px; }
   .codex-btn { right: 128px; }
   .help-btn { right: 168px; }
-  /* 가로에서는 폭이 넉넉하다 — 맞은편 상대는 다시 한 줄로 */
-  .opp-strip-top { top: 8px; flex-direction: row; gap: 10px; }
-  /* 한 줄이라 위 띠도 얇다 (845×390 실측 아래끝 63px) */
+  /*
+   * 맞은편 상대 줄 — 뒷패만 한 줄로 눕히고 **이름표는 걷는다.**
+   *
+   * 이름표를 옆에 붙이면 줄이 471px 이 되어 오른쪽 끝이 우상단 아이콘 줄을 문다
+   * (740×360 실측: 이름표 x 350~628 위에 📘·📖 가 그대로 얹혔다). 폭 예산
+   * (--top-side-reserve)으로는 못 푼다 — 뒷패 13장만으로 이미 예산을 넘는다.
+   * 아래로 내려 두 줄로 세우면 겹침은 풀리지만 위 띠가 95px 이 되고, 그러면
+   * «위 띠 + 내 이름표 줄 + 손패»가 360px 를 다 먹어 보드가 하한(150px)에 걸려
+   * **내 이름표 줄이 중앙 패널을 덮는다.** 세로 360px 에서는 셋을 다 못 세운다.
+   *
+   * 그래서 넷 중 하나를 접는다 — 좌·우 상대의 이름표는 좁은 화면에서 이미 접혀
+   * 있으므로 맞은편도 같이 접는 것이 일관된다(상대의 증강은 📜 기록에서 본다).
+   * 그 대가로 위 띠가 30px 이 되어 보드가 살아난다(740×360: 패널 69→82px).
+   */
+  .opp-strip-top {
+    top: var(--chrome-top);
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    /* 좌우로 비워 둘 폭 = 우상단 아이콘 줄(8 + 4칸×48 + 44 = 244) + 숨통.
+       0으로 두면 줄이 화면 폭을 다 써서 **쯔모패 한 장이** 아이콘 줄 밑으로 들어간다
+       (740×360 실측 75%). 뒷패 13장은 ≈230px 이라 이 예산 안에 들어온다. */
+    --top-side-reserve: 250px;
+  }
+  .opp-strip-top .nameplate { display: none; }
+  /* 뒷패 한 줄뿐이라 위 띠도 얇다 (740×360 실측 아래끝 = --chrome-top + 22px) */
   .game-root,
-  .table { --top-band: 64px; }
+  .table { --top-band: calc(var(--chrome-top) + 30px); }
   /* 세로가 아까우므로 빠른 토글은 비어 있는 왼쪽 아래 구석으로 되돌린다 */
   .quick-toggles:not(.quick-toggles-inline) {
     display: flex;
-    bottom: 8px;
     gap: 4px;
   }
   .quick-toggles-inline { display: none; }
-  .qt-item { padding: 4px 8px; font-size: 12px; }
+  /*
+   * 네 칸 세로 스택이 터치 목표(44px)로 서면 188px — 360px 화면 세로의 절반이라
+   * 왼쪽 상대의 뒷패 줄을 그대로 물었다(740×360 실측). 그림은 30px 로 두고
+   * **닿는 자리만** 44px 로 넓힌다(§9-2 의 «투명 껍데기»와 같은 수법).
+   */
+  .game-root .qt-item {
+    position: relative;
+    min-height: 30px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .game-root .qt-item::after {
+    content: "";
+    position: absolute;
+    inset: -7px -4px;
+  }
   .discard-dropzone { bottom: 150px; height: clamp(90px, 22cqh, 160px); }
-  .action-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 6px 10px; }
-  .act { padding: 8px 14px; font-size: 15px; letter-spacing: 1px; }
+  .action-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 5px 8px; }
+  .act { padding: 6px 10px; font-size: 15px; letter-spacing: 1px; }
+  /* 버튼 속 패 그림을 한 급 줄인다 — 가로에서는 이 줄이 중앙 패널 위로 자라므로
+     (docs/34 §3-1 이 «배치 변경이 필요하다»고 남겨 둔 자리다) 덜 가리는 쪽으로만
+     당겨 둔다. 가리는 시간 자체는 치·펑을 고르는 몇 초뿐이다. */
+  .act-tiles .tile-mini { width: 22px; height: 33px; }
   .draft-card { min-height: 0; height: auto; }
   .draft-title { font-size: 26px; }
+
+  /*
+   * ── 중앙 패널이 아주 작아진다 (740×360 실측 69px) ──
+   *
+   * 세로 360px 에서는 위 띠·내 영역을 빼고 남는 높이가 ≈124px 이라 보드가 그보다
+   * 커질 수 없고, 패널은 그 46%다. 그런데 패널 속 글자에는 **고정 px 하한**이 있어
+   * (국 표시 15px · 부제 10px) 69px 짜리 패널 안에서 내용이 82px 로 자랐다 —
+   * "東3국"이 패널 위로 삐져나와 위쪽 점수판에 얹혔다.
+   *
+   * 하한을 이 크기에 맞게 내리고, 점수판 띠를 피하는 안쪽 여백도 함께 좁힌다.
+   * 여기서만 내린다 — 다른 화면의 패널은 그대로다.
+   */
+  .center-round { font-size: max(12px, calc(var(--panel) * 0.15)); }
+  .center-sub { font-size: max(8px, calc(var(--panel) * 0.068)); }
+  .center-core {
+    inset: calc(var(--plate-h) * 0.4) var(--plate-h);
+    gap: 3px;
+  }
+
+  /*
+   * 내 영역은 화면 폭을 다 쓰면 안 된다 — 왼쪽 아래 빠른 토글(82px)과 오른쪽
+   * 「대화」 알약이 그 자리에 산다. 740×360 실측으로 「나 …」 이름표 줄 왼쪽 끝이
+   * 토글 위에 얹혔다. 양쪽으로 100px 씩 비켜서고, 그래도 좁으면 **줄바꿈이 아니라
+   * 줄임**으로 물러난다(줄바꿈은 띠를 두껍게 만들어 판을 다시 덮는다).
+   */
+  /*
+   * 내 이름표 줄은 **한 줄을 지켜야 한다** — 접히는 순간 아래 띠가 124→184px 이 되고,
+   * 그만큼 위로 자라 내 버림패 첫 단을 덮는다(740×360 실측 58%. 후리텐을 확인해야
+   * 하는 바로 그 줄이다).
+   *
+   * 한 줄에 필요한 폭은 ≈600px(이름표 278 + 액티브 증강 단추 150 + 상태 뱃지 170).
+   * 구석 위젯을 위·아래로 옮겨 둔 덕에(§9-1-c) 가로에서는 그만큼 내줄 수 있다:
+   * 빠른 토글은 왼쪽 **위**, 「대화」는 오른쪽 **아래 구석**이라 이 줄과 세로가 겹치지
+   * 않는다. 오른쪽 아래 구석(≈60px)만 비켜서면 된다.
+   */
+  .own-area { width: calc(100cqw - 140px); }
+  .own-top-main { min-width: 0; }
+  .own-top-main > * { min-width: 0; }
+  /* 액티브 증강 단추를 한 급 줄여 줄 폭 예산을 벌어 준다 */
+  .own-aug { padding: 6px 10px; font-size: 13px; }
 }
 
 /* ── 모바일: 홈·로비·대기실 ── */
@@ -9441,8 +9608,9 @@ button {
 }
 
 /* 좁은 화면 — 라벨을 윗줄로 올려 패 14장이 한 줄에 들어가게 한다.
-   (라벨과 같은 줄에 두면 완성형 마지막 두 장이 다음 줄로 떨어져 머리가 끊겨 보였다.) */
-@media (max-width: 640px) {
+   (라벨과 같은 줄에 두면 완성형 마지막 두 장이 다음 줄로 떨어져 머리가 끊겨 보였다.)
+   크기 질의는 실제 창이 아니라 **가상 뷰포트**를 본다 — 배율이 걸리면 둘이 다르다. */
+@container ui (max-width: 640px) {
   .help-fig-line { gap: 6px; }
   .help-fig-label { flex: 0 0 100%; min-width: 0; margin-bottom: 2px; }
   .help-fig-groups { gap: 5px; }
@@ -12768,7 +12936,8 @@ body[data-majak-dock="folded"] {
 /* ─────────────── 게임 무효 투표 배너 (설정과 무관하게 상단 전면 노출) ─────────────── */
 .abort-banner {
   position: fixed;
-  top: 0;
+  /* 노치 아래로 파고들면 찬성/반대 버튼의 첫 줄이 잘린다 — 유일한 의사 표시 수단이다 */
+  top: env(safe-area-inset-top, 0px);
   left: 0;
   right: 0;
   z-index: 290;
@@ -14384,7 +14553,7 @@ body.peeking .overlay-peekable > * {
 }
 
 .icon-btn {
-  top: max(12px, env(safe-area-inset-top, 0px));
+  top: var(--chrome-top);
 }
 
 .leave-btn { right: max(14px, env(safe-area-inset-right, 0px)); }
@@ -14400,9 +14569,57 @@ body.peeking .overlay-peekable > * {
    **세로로** 44px 를 확보하고, 패 사이 간격을 벌려 오탭을 줄인다. */
 @media (pointer: coarse) {
   .icon-btn { min-width: 44px; min-height: 44px; }
-  .qt-item { min-height: 40px; padding: 8px 14px; }
+  .qt-item { min-height: 44px; padding: 9px 14px; }
   .act { min-height: 46px; }
   .aug-pill { min-height: 28px; }
+
+  /*
+   * ── 겉모습은 그대로 두고 «닿는 자리»만 넓히는 방법 ──
+   *
+   * 어떤 버튼은 크기가 곧 디자인이다: 설정 패널의 ✕(30px), 스위치(52×29), 도감
+   * 상세 닫기(30px), 증강 다시 뽑기(52×28), 「자세히 보기」 알약(20px 높이)…
+   * 이것들을 44px 로 키우면 줄이 무너지거나 패널 머리가 통째로 두꺼워진다.
+   *
+   * 그래서 **보이지 않는 껍데기**를 씌운다. `::after` 로 상자 밖까지 뻗은 투명한
+   * 판을 깔면 그림은 한 픽셀도 안 변하고 손가락이 닿는 자리만 넓어진다.
+   * (2026-08-24 모바일 QA — 이 목록은 전부 «폰에서 그 화면의 유일한 출구»다.)
+   */
+  .settings-x,
+  .settings-seg-btn,
+  .codex-detail-close,
+  .sbx-x,
+  .wr-head-btn,
+  .auglog-close,
+  .draft-reroll,
+  .augdesc-more,
+  .rotate-hint-close,
+  .toggle {
+    position: relative;
+  }
+  .settings-x::after,
+  .settings-seg-btn::after,
+  .codex-detail-close::after,
+  .sbx-x::after,
+  .wr-head-btn::after,
+  .auglog-close::after,
+  .draft-reroll::after,
+  .augdesc-more::after,
+  .rotate-hint-close::after,
+  .toggle::after {
+    content: "";
+    position: absolute;
+    /* 어느 변이든 44px 까지 벌린다 — 가장 작은 것(26px)도 −9px 로 44 를 넘긴다 */
+    inset: -9px;
+    /* 그림은 아래 진짜 상자가 그린다. 이건 손가락만 받는다. */
+    border-radius: inherit;
+  }
+
+  /* 되묻는 창의 「확인/취소」는 폰에서 그 결정을 내리는 유일한 수단이다 — 4px 모자랐다 */
+  .confirm-btn { min-height: 44px; }
+  /* 정형구 버튼·「누른 채로 게임판 보기」도 같은 눈금으로 */
+  .emote-btn { min-height: 44px; }
+  .peek-btn { min-height: 44px; }
+  .wr-head .emote-toggle { min-height: 44px; }
 
   /*
    * 2026-08-18 모바일 실측으로 이 목록에서 빠져 있던 것들. 전부 **세로**만 키운다 —
@@ -14420,7 +14637,6 @@ body.peeking .overlay-peekable > * {
   .coach-quit {
     min-height: 44px;
   }
-  .rotate-hint-close,
   .home-refresh {
     min-width: 44px;
     min-height: 44px;
@@ -14564,82 +14780,106 @@ body.peeking .overlay-peekable > * {
    iPad 세로(768×1024)는 이 안내에도 안 걸리고, 좁은 화면 전용 배치(@container 700px)
    에도 안 걸려서 4방향 판이 세로 화면에 그대로 눌려 들어갔다. 900px 까지 올린다 —
    그 위(가로 태블릿·데스크톱)는 판이 실제로 들어가므로 안내가 방해만 된다. */
-@media (max-width: 900px) and (orientation: portrait) and (pointer: coarse) {
-  /*
-   * 화면 **맨 아래**에 붙여 두었더니 정작 내 손패를 덮었다 — 375×812 실측으로
-   * 힌트 y=763–804, 손패 타일 y=747–793 이라 타일 높이의 65%가 가려졌고, 닫을
-   * 수도 없었다(docs/28 §2-2). 두 가지를 고친다:
-   *   ① 대국 중에는 **위 띠**(--top-band, 맞은편 이름표 줄 바로 아래)로 올린다.
-   *      세로 화면에서 그 아래 보드가 시작하기 전까지가 유일하게 비어 있는 자리다 —
-   *      아래쪽은 내 영역(이름표·액션 바·손패)이 전부 쓴다.
-   *   ② 눌러서 닫을 수 있게 한다(App의 rotateHintOff).
-   *
-   * ⚠ **대국 화면에서만 띄운다** (`.game-root:has(.table)`). 예전에는 로그인·홈·규칙
-   * 에서도 화면 아래에 떴는데, 거기엔 "네 자리"가 아예 없어서 문구가 뜻이 없는 데다
-   * 같은 구석에 있던 배율 손잡이를 통째로 덮기도 했다(2026-08-13 사용자 보고:
-   * "스크롤이나 화면 줌아웃을 해도 안 보이는 부분이 생겨"). 그 손잡이는 2026-08-24에
-   * 없앴지만, 안내가 본문을 가리면 안 된다는 이유는 그대로다.
-   */
-  .game-root:has(.table) .rotate-hint {
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    top: calc(var(--top-band, 124px) + 8px);
-    /* 패널·오버레이(50~130)보다 **아래**. 300이던 시절에는 이 안내가 설정 패널의 첫
-       항목과 증강 드래프트 카드 위에 그대로 얹혔다 — 안내가 본문을 가리면 안 된다. */
-    z-index: 45;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    border-radius: var(--r-lg);
-    border: 1px solid var(--brass-line);
-    background: rgba(9, 16, 13, 0.94);
-    color: var(--ink-1);
-    font-size: 12.5px;
-    line-height: 1.5;
-    text-align: left;
-  }
+/* ⚠ 크기 질의는 **가상 뷰포트**(@container ui)로 본다 — 실제 창(@media)으로 재면
+   배율이 1이 아닐 때 둘이 어긋난다. 이 블록은 «가로로 돌리세요» 안내를 세우고
+   그만큼 보드를 내리는 곳이라, 어긋나면 안내가 보드를 도로 덮는다
+   (파일 §9-3 이 같은 이유로 이미 옮긴 자리다 — 여기만 남아 있었다). */
+@media (orientation: portrait) and (pointer: coarse) {
+  @container ui (max-width: 900px) {
+    /*
+     * 화면 **맨 아래**에 붙여 두었더니 정작 내 손패를 덮었다 — 375×812 실측으로
+     * 힌트 y=763–804, 손패 타일 y=747–793 이라 타일 높이의 65%가 가려졌고, 닫을
+     * 수도 없었다(docs/28 §2-2). 두 가지를 고친다:
+     *   ① 대국 중에는 **위 띠**(--top-band, 맞은편 이름표 줄 바로 아래)로 올린다.
+     *      세로 화면에서 그 아래 보드가 시작하기 전까지가 유일하게 비어 있는 자리다 —
+     *      아래쪽은 내 영역(이름표·액션 바·손패)이 전부 쓴다.
+     *   ② 눌러서 닫을 수 있게 한다(App의 rotateHintOff).
+     *
+     * ⚠ **대국 화면에서만 띄운다** (`.game-root:has(.table)`). 예전에는 로그인·홈·규칙
+     * 에서도 화면 아래에 떴는데, 거기엔 "네 자리"가 아예 없어서 문구가 뜻이 없는 데다
+     * 같은 구석에 있던 배율 손잡이를 통째로 덮기도 했다(2026-08-13 사용자 보고:
+     * "스크롤이나 화면 줌아웃을 해도 안 보이는 부분이 생겨"). 그 손잡이는 2026-08-24에
+     * 없앴지만, 안내가 본문을 가리면 안 된다는 이유는 그대로다.
+     */
+    .game-root:has(.table) .rotate-hint {
+      position: fixed;
+      left: 8px;
+      right: 8px;
+      top: calc(var(--top-band, 124px) + 8px);
+      /* 패널·오버레이(50~130)보다 **아래**. 300이던 시절에는 이 안내가 설정 패널의 첫
+         항목과 증강 드래프트 카드 위에 그대로 얹혔다 — 안내가 본문을 가리면 안 된다. */
+      z-index: 45;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      /*
+       * ── 얇게 ──
+       * 이 안내는 «세로로 들고 있다»는 사실 하나를 전하는 한 줄이다. 그런데 66px
+       * 짜리 띠로 서서 세로의 8%를 먹고, 그만큼 `--rotate-band` 로 보드를 밀어
+       * 중앙 패널이 더 작아졌다(390×844 실측: 띠 74px → 패널 116px).
+       * 문구는 그대로 두고 상자만 한 줄 크기로 줄인다 — 폰 세로는 세로 한 픽셀이
+       * 곧 판이다.
+       */
+      padding: 6px 10px;
+      border-radius: var(--r-md);
+      border: 1px solid var(--brass-line);
+      background: rgba(9, 16, 13, 0.94);
+      color: var(--ink-1);
+      font-size: 12.5px;
+      line-height: 1.35;
+      text-align: left;
+      /* 한 줄로 눕히고 넘치면 말줄임 — 두 줄이 되면 다시 띠가 두꺼워진다 */
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .game-root:has(.table) .rotate-hint > span:not(.rotate-hint-icon) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-  /*
-   * ③ **자리를 만들어 주고 앉는다** (2026-08-19 라이브 QA 확정 5).
-   *
-   * ①로 위 띠 아래에 올려 놓기는 했는데, 그 자리는 곧 **보드가 시작하는 자리**이기도
-   * 했다 — 375×812 실측으로 띠 [56,132,311,66] 밑에 맞은편(봇2) 버림패 6장이
-   * **100% 가려졌고**, `elementFromPoint` 도 그 자리에서 `.rotate-hint` 를 돌려줘
-   * 클릭까지 삼켰다. 안내가 사라지기 전까지 후리텐·위험패 판단의 기본 정보가
-   * 화면에 없었다. "돌리면 다 보인다"고 알리는 물건이 정작 보여야 할 것을 가렸다.
-   *
-   * 그래서 안내가 떠 있는 동안에는 `--rotate-band` 만큼 **보드를 내려** 자리를 만든다.
-   * 74px = 띠 실측 높이 66px(닫기 단추 44px[§9-2] + padding 10+10 + 테두리 1+1)
-   *        + 보드와의 숨통 8px. 문구가 두 줄까지 늘어나도(2줄 = 37.5px < 44px)
-   *        높이는 닫기 단추가 정하므로 66px 그대로다.
-   * 안내를 닫으면 `.rotate-hint` 가 DOM 에서 사라지고 → `:has` 가 풀려 → 보드가
-   * 곧바로 그 74px 을 도로 가져간다.
-   *
-   * ⚠ 세로가 아주 짧은 폰(<700px, iPhone SE 1세대 320×568 · 360×640류)에서는 켜지
-   * 않는다. 거기서는 `--board-fit-v` 가 이미 200px 하한에 걸려 있어(위 .table 주석)
-   * 74px 을 더 빼도 보드가 줄지 않고, 대신 clamp 가 뒤집혀 **보드 아래끝이 내 영역
-   * 안으로 밀려 들어간다**(320×568 실측: 보드 y215–415 vs 내 영역 y344 — 71px 침범).
-   * 가리는 것을 고치려다 더 크게 가리는 셈이라, 그 크기에서는 예전 동작을 남긴다.
-   * 360×740 실측으로는 보드 아래끝 427 · 내 영역 위끝 497 — 안전하다.
-   */
-  @media (min-height: 700px) {
-    .game-root:has(.table):has(.rotate-hint) { --rotate-band: 74px; }
-  }
+    /*
+     * ③ **자리를 만들어 주고 앉는다** (2026-08-19 라이브 QA 확정 5).
+     *
+     * ①로 위 띠 아래에 올려 놓기는 했는데, 그 자리는 곧 **보드가 시작하는 자리**이기도
+     * 했다 — 375×812 실측으로 띠 [56,132,311,66] 밑에 맞은편(봇2) 버림패 6장이
+     * **100% 가려졌고**, `elementFromPoint` 도 그 자리에서 `.rotate-hint` 를 돌려줘
+     * 클릭까지 삼켰다. 안내가 사라지기 전까지 후리텐·위험패 판단의 기본 정보가
+     * 화면에 없었다. "돌리면 다 보인다"고 알리는 물건이 정작 보여야 할 것을 가렸다.
+     *
+     * 그래서 안내가 떠 있는 동안에는 `--rotate-band` 만큼 **보드를 내려** 자리를 만든다.
+     * 74px = 띠 실측 높이 66px(닫기 단추 44px[§9-2] + padding 10+10 + 테두리 1+1)
+     *        + 보드와의 숨통 8px. 문구가 두 줄까지 늘어나도(2줄 = 37.5px < 44px)
+     *        높이는 닫기 단추가 정하므로 66px 그대로다.
+     * 안내를 닫으면 `.rotate-hint` 가 DOM 에서 사라지고 → `:has` 가 풀려 → 보드가
+     * 곧바로 그 74px 을 도로 가져간다.
+     *
+     * ⚠ 세로가 아주 짧은 폰(<700px, iPhone SE 1세대 320×568 · 360×640류)에서는 켜지
+     * 않는다. 거기서는 `--board-fit-v` 가 이미 200px 하한에 걸려 있어(위 .table 주석)
+     * 74px 을 더 빼도 보드가 줄지 않고, 대신 clamp 가 뒤집혀 **보드 아래끝이 내 영역
+     * 안으로 밀려 들어간다**(320×568 실측: 보드 y215–415 vs 내 영역 y344 — 71px 침범).
+     * 가리는 것을 고치려다 더 크게 가리는 셈이라, 그 크기에서는 예전 동작을 남긴다.
+     * 360×740 실측으로는 보드 아래끝 427 · 내 영역 위끝 497 — 안전하다.
+     */
+    @container ui (min-height: 700px) {
+      /* 상자를 한 줄로 줄였으므로 띠도 함께 줄인다 (390×844 실측: 상자 44px + 숨통 8px.
+         44px 는 닫기 단추 30px + 위아래 패딩 12px 가 정한다 — 상자를 더 줄이려면
+         그 단추부터 줄여야 한다). */
+      .game-root:has(.table):has(.rotate-hint) { --rotate-band: 52px; }
+    }
 
-  /* 닫기 — 손가락이 닿는 크기를 지키되 문구를 밀어내지 않게 오른쪽 끝에 붙인다 */
-  .rotate-hint-close {
-    margin-left: auto;
-    flex: none;
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    border: 1px solid var(--brass-line);
-    background: transparent;
-    color: var(--ink-1);
-    font-size: 15px;
-    line-height: 1;
+    /* 닫기 — 손가락이 닿는 크기를 지키되 문구를 밀어내지 않게 오른쪽 끝에 붙인다 */
+    .rotate-hint-close {
+      margin-left: auto;
+      flex: none;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid var(--brass-line);
+      background: transparent;
+      color: var(--ink-1);
+      font-size: 15px;
+      line-height: 1;
+    }
   }
 }
 
@@ -14934,6 +15174,19 @@ body.peeking .overlay-peekable > * {
    (elementFromPoint가 카드 안쪽 세 곳에서 전부 .emote-toggle을 돌려줬다), PC에서도 앱
    배율 140~170% 구간에서 정산 점수판(.result-total)을 물었다 (2026-08-18 실측).
    창이 떠 있는 동안 정형구를 보낼 일은 없으므로 위치를 다투는 대신 아예 비운다. */
+/*
+ * 운영자 공지 카드(z299)와 「다시 열기」 알약(z60)은 **판 위에 떠 있는 조각**인데
+ * 전체 화면 창(증강 선택·정산·설정·영상패 선택)보다 위이거나 그 위를 지나간다.
+ * 폰에서는 공지 카드 하나가 폭의 69%·세로 최대 40%를 차지하므로 «반드시 골라야 하는
+ * 창»의 왼쪽 열이 통째로 안 눌린다. 창이 떠 있는 동안에는 함께 걷는다 —
+ * 아래 `.emote-bar` 와 같은 이유·같은 방식이다.
+ */
+body:has(.overlay) .game-notice-float,
+body:has(.rinshan-pick-overlay) .game-notice-float,
+body:has(.overlay) .rinshan-reopen {
+  display: none;
+}
+
 body:has(.overlay) .emote-bar {
   display: none;
 }
@@ -14963,9 +15216,39 @@ body:has(.overlay) .emote-bar {
     bottom: max(150px, calc(var(--own-band-full, 0px) + 10px));
   }
   .emote-btn {
-    min-height: 40px; /* §9-2 터치 목표 */
+    min-height: 44px; /* §9-2 터치 목표 */
   }
 }
+
+/* 9-1-c. 가로 폰 — 구석에 사는 것들을 «실제로 비어 있는 구석»으로 옮긴다.
+ *
+ * 세로에서 비어 있던 왼쪽 아래·오른쪽 가운데가 가로에서는 **좌·우 상대의 뒷패 줄**
+ * 자리다(줄이 세로 한가운데 정렬이라 아래까지 내려온다). 740×360 실측:
+ *   · 빠른 토글 4칸 [14,220,96,352]  × 왼쪽 뒷패 줄 — 네 칸 전부 겹침
+ *   · 「대화」 알약 [670,184,726,228] × 오른쪽 뒷패 줄(y 66~294) — 겹침
+ *   · 모드 뱃지  [8,10,98,65]        × 왼쪽 뒷패 줄 윗단 — 71% 겹침
+ * 가로에서 실제로 비는 곳은 «모드 뱃지 자리(왼쪽 위)»와 «오른쪽 아래 구석»이다
+ * (손패 레일이 가운데 x 100~640 만 쓰므로 양 끝이 남는다).
+ *
+ * ⚠ 이 블록은 위 §9-1 안전영역 규칙 **뒤**에 있어야 한다 — 같은 속성(left/bottom)을
+ *   같은 특정도로 다투므로 앞에 두면 그쪽이 이긴다(§9-1 블록이 파일 앞이라 실제로
+ *   그렇게 졌다). */
+@container ui (max-height: 560px) and (orientation: landscape) {
+  .quick-toggles:not(.quick-toggles-inline) {
+    top: calc(var(--chrome-top) + 8px);
+    bottom: auto;
+    left: max(34px, calc(env(safe-area-inset-left, 0px) + 26px));
+  }
+  /* 모드 뱃지는 그 자리를 내준다 — 폰 세로(≤480)에서 이미 걷는 것과 같은 이유다.
+     두 클래스를 함께 짚어야 파일 뒤쪽 `.mode-badge.info-note` 를 이긴다. */
+  .game-root .info-note.mode-badge { display: none; }
+  .emote-bar {
+    top: auto;
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+  }
+}
+
 
 /* ── 두 번 눌러 버리기 (감사 §5-2) ──
    첫 번째로 누른 패를 들어 올려, 다음 한 번이 무엇을 버릴지 눈으로 확인시킨다.

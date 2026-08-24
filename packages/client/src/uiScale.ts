@@ -129,6 +129,9 @@ const listeners = new Set<() => void>();
  */
 let baseDpr = 0;
 
+/** 기준선을 잡을 때의 **기기 픽셀** 폭(= CSS 폭 × dpr). 확대와 모니터 이동을 가른다. */
+let baseDeviceW = 0;
+
 /** 사람이 누른 확대를 얹는 폭. 밖은 잘라 낸다 — 모니터를 옮겨 dpr이 튀어도 판이 안 깨진다. */
 const MIN_ZOOM_FACTOR = 0.5;
 const MAX_ZOOM_FACTOR = 2;
@@ -160,11 +163,27 @@ const MAX_ZOOM_FACTOR = 2;
  * 크게 보고 싶으면 판을 연 뒤 한 번 더 누르면 그대로 듣는다.
  */
 function browserZoomFactor(): number {
-  if (baseDpr <= 0) return 1;
+  if (baseDpr <= 0 || baseDeviceW <= 0) return 1;
   const dpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : baseDpr;
   const raw = dpr / baseDpr;
   // 2% 여유 — 소수 오차로 dpr이 미세하게 흔들리는 것을 확대로 읽지 않는다.
   if (raw > 0.98 && raw < 1.02) return 1;
+  /*
+   * dpr 이 움직이는 이유는 둘이다: **브라우저 확대**와 **모니터 이동**(배율이 다른
+   * 디스플레이로 창을 끌었다). 앞의 것만 배율에 얹어야 한다 — 뒤의 것까지 얹으면
+   * 창을 옮겼을 뿐인데 판이 절반으로 줄어든 채 굳는다.
+   *
+   * 가르는 법: 확대는 CSS 픽셀 창을 정확히 1/z 로 줄이므로 **`innerWidth × dpr`
+   * (= 기기 픽셀 폭)이 그대로**다. 모니터를 옮기면 dpr 만 바뀌고 CSS 폭은 거의
+   * 그대로라 그 곱이 dpr 배만큼 달라진다. 10% 넘게 어긋나면 확대가 아니라고 보고
+   * 기준선을 새 모니터에 맞춰 다시 잡는다.
+   */
+  const deviceW = window.innerWidth * dpr;
+  if (Math.abs(deviceW / baseDeviceW - 1) > 0.1) {
+    baseDpr = dpr;
+    baseDeviceW = deviceW;
+    return 1;
+  }
   return Math.min(MAX_ZOOM_FACTOR, Math.max(MIN_ZOOM_FACTOR, raw));
 }
 
@@ -314,6 +333,7 @@ export function startUiScale(): void {
     }
   }
   baseDpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+  baseDeviceW = window.innerWidth * baseDpr;
   apply();
   window.addEventListener("resize", apply);
   window.addEventListener("orientationchange", apply);
