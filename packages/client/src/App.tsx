@@ -572,7 +572,7 @@ const ACTION_LABEL: Record<string, string> = {
   soul_strike: "영혼의 일격 — 선언",
   picky_unify: "편식 — 단색화",
   // 2026-08-07 (7차) 신규
-  joker_call: "조커 — 백을 만능패로",
+  joker_call: "조커 — 백으로 바꿀 패 선택",
   // 2026-08-23 — 상시 패시브에서 2국 1회 액티브로 바뀐 모양 규칙 3종
   declare_mixed_triplet: "동수의 결속 — 커쯔의 무늬 지우기",
   declare_broken_border: "무너진 국경 — 슌쯔의 무늬 지우기",
@@ -927,6 +927,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   silent_take: "opp-river",
   // 영혼의 일격 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
   soul_strike: "hand",
+  // 조커 — 백으로 바꿀 손패를 클릭한다 (이미 백인 패를 고르면 바뀌는 것 없이 켜지기만 한다)
+  joker_call: "hand",
 };
 
 /** 이 액션이 클릭(무장) 방식으로 발동되는지 — 아니면 버튼으로 발동. */
@@ -984,6 +986,7 @@ function armPromptText(mode: ArmMode | null, type?: string | null): string {
   if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
     return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
   }
+  if (type === "joker_call") return "백으로 바꿀 손패를 클릭하세요 (백을 고르면 그대로 발동)";
   switch (mode) {
     case "opp":
       return "대상 상대를 클릭하세요";
