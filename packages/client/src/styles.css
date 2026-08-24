@@ -15220,6 +15220,259 @@ body:has(.overlay) .emote-bar {
   }
 }
 
+/* ─────────────── 9-1-d. 폰 세로 — 판을 먼저 세운다 (2026-08-25 재설계) ───────────────
+ *
+ * 사용자 보고: 「폰 세로판 너무 작은데, 갈아엎어서라도 새로 만들어볼래? 지금은 양옆
+ * 사람 이름이랑 증강도 안 보여.」
+ *
+ * ── 왜 작았나 (375×700 실측 — 사파리 툴바를 뺀 실제 아이폰 뷰포트) ──
+ *
+ *     위 띠 160 + 안내 띠 52 + 숨통 24 + 아래 띠 272 + 액션 바 자리 68 = 576
+ *     → 700 중 **82%가 판이 아닌 것**. 남은 124px 로는 보드 하한(200px)도 못 채워
+ *       보드가 하한에 걸리고 중앙 패널이 92px 이 됐다.
+ *
+ * 272 의 내역이 문제였다: 늘 비어 있는 오름패 줄 54 + 두 줄로 접힌 내 이름표 줄 75 +
+ * 빠른 토글 줄 44 + 손패 70. 그리고 160 의 내역: 아이콘 줄 44 + **맞은편 이름표
+ * 두 줄** 104. 좌·우 상대의 이름표는 아예 걷혀 있었다 — 자리가 없어서다.
+ *
+ * ── 다시 세운 규칙 ──
+ *
+ * ① **상대 셋의 이름·증강을 위쪽 한 줄에 모은다.** 세로 화면에서 좌·우 자리 옆에는
+ *    이름표가 설 폭이 없다(뒷패 줄이 21px 폭이다). 대신 아이콘 줄 바로 아래에 셋을
+ *    나란히 놓으면 30px 한 줄로 **셋 다** 보인다 — 맞은편 하나만 두 줄로 보여 주던
+ *    예전보다 정보가 늘고 자리는 74px 줄었다.
+ *    증강은 **계열 이모지만** 남긴다. 이름·상태칩은 눌러서 본다(툴팁은 이미 터치를
+ *    받는다 — `.aug-pill` 은 `tabindex=0` 에 `onClick` 고정까지 붙어 있다).
+ * ② **늘 비워 두던 오름패 줄(54px)을 없앤다.** 대신 텐파이가 되면 뱃지가 내 이름표 줄
+ *    **위에 떠서** 나온다(자리를 안 쓰므로 판이 출렁이지 않는다 — 예약의 목적이 그거였다).
+ * ③ 액션 바 자리·숨통·토글 줄을 폰 크기로 다시 잡는다.
+ * ④ 보드의 폭 상한을 80cqw → 88cqw 로 연다. 좌·우 뒷패 줄이 21px 이라 양쪽 22px 이면
+ *    충분하다.
+ *
+ * 결과(375×700 실측): 위 띠 160→96 · 아래 띠 272→190 · 중앙 패널 **92 → 143px**.
+ */
+@container ui (max-width: 700px) and (orientation: portrait) {
+  .game-root,
+  .table {
+    /* 아이콘 줄 + 상대 요약 줄 + 맞은편 뒷패 줄 + 숨통 */
+    --opp-chip-h: 30px;
+    --top-band: calc(var(--chrome-top) + var(--icon-h) + var(--opp-chip-h) + 34px);
+    /* 오름패 줄은 자리를 안 쓴다 (아래 `.own-top-waits` 가 떠서 나온다) */
+    --waits-row-h: 0px;
+  }
+  .table {
+    /* 폭 상한 84cqw 의 근거(375×700 실측): 좌·우 뒷패 줄이 `left/right: 6px` 에서
+       21px 폭으로 서므로 양쪽 27px 를 비켜야 한다. 84cqw = 315px → 보드 x 30~345,
+       줄과 3px 씩 뜬다. 88cqw(=330) 로 열었더니 보드의 좌·우 바닥이 그 줄을
+       27~38% 물었다. */
+    --board: min(84cqw, 48cqh, 460px, var(--board-fit-v));
+    /* 세로 예산이 빠듯한 화면이다 — 보드가 남는 높이보다 커지면 내 손패를 덮는다.
+       가로 폰과 같은 이유로 하한을 낮춘다(styles.css `--board-floor` 주석). */
+    --board-floor: 150px;
+    --own-gutter: 8px;
+    --top-gutter: 8px;
+    /* 액션 바(치·펑)가 내 바닥을 덮지 않게 비워 두는 자리.
+       내역: 버튼 44(터치 목표) + 바 패딩 10 + `.own-area` 줄 간격 5 + 여유 1 = 60.
+       폰에서 바를 한 줄로 좁혔으므로 68 → 60. */
+    --own-reserve: 60px;
+  }
+
+  /* ① 상대 셋을 위쪽 한 줄로 ─────────────────────────────
+     ⚠ `position: fixed` 다. 이름표는 각자 자기 줄(`.opp-strip-*`, 절대배치)의
+       자식이라 `absolute` 로는 그 줄을 기준으로 잡혀 셋을 한 줄에 못 모은다.
+       body 가 `container: ui / size`(= `contain: layout`)라 이 fixed 의 기준 상자는
+       뷰포트가 아니라 **body** 다 — 관전 2열에서도 자기 칸 안에 그대로 선다. */
+  .opp-strip-left .nameplate,
+  .opp-strip-top .nameplate,
+  .opp-strip-right .nameplate {
+    display: flex;
+    position: fixed;
+    top: calc(var(--chrome-top) + var(--icon-h) + 4px);
+    z-index: 41;
+    width: calc((100cqw - 24px) / 3);
+    max-width: none;
+    /* 높이를 못 박는다 — 상태(차례·잠금 등)에 따라 내용이 늘어도 아래 줄이 밀리면
+       안 된다. `--top-band` 가 이 값을 전제로 계산돼 있다. */
+    height: var(--opp-chip-h);
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    overflow: hidden;
+    /* 넘치는 자리를 흐리게 — 그냥 자르면 이모지가 반만 남아 «깨진 것»처럼 보인다 */
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent);
+  }
+  /* 화면에서의 자리 = 판에서의 자리. 왼쪽 상대는 왼쪽, 맞은편은 가운데, 오른쪽은 오른쪽. */
+  .opp-strip-left .nameplate { left: max(8px, env(safe-area-inset-left, 0px)); }
+  .opp-strip-right .nameplate { right: max(8px, env(safe-area-inset-right, 0px)); }
+  .opp-strip-top .nameplate { left: 50%; transform: translateX(-50%); }
+
+  /* 한 줄에 셋을 넣으려면 글자를 덜어야 한다. 남기는 것: 이름 + 증강 **계열 이모지**.
+     덜어내는 것: 봇 성향, 증강 이름, 상태 칩 — 전부 pill 을 눌러 툴팁으로 볼 수 있다. */
+  .opp-strip-left .nameplate .np-arch,
+  .opp-strip-top .nameplate .np-arch,
+  .opp-strip-right .nameplate .np-arch,
+  .opp-strip-left .nameplate .aug-pill-name,
+  .opp-strip-top .nameplate .aug-pill-name,
+  .opp-strip-right .nameplate .aug-pill-name,
+  .opp-strip-left .nameplate .aug-pill-chip,
+  .opp-strip-top .nameplate .aug-pill-chip,
+  .opp-strip-right .nameplate .aug-pill-chip {
+    display: none;
+  }
+  .opp-strip-left .nameplate .np-name,
+  .opp-strip-top .nameplate .np-name,
+  .opp-strip-right .nameplate .np-name {
+    max-width: 52px;
+    font-size: 12px;
+  }
+  /*
+   * ⚠ 잘라 두면 **증강 설명 툴팁까지 잘린다.** `.aug-tip` 은 `.aug-pill`(relative)
+   *   안에 사는 절대배치라, 그 위 어느 조상에 `overflow: hidden` 이 걸리면 함께
+   *   잘린다(360×640 실측: 눌러서 고정했는데 아무것도 안 보였다). 그런데 이 재설계는
+   *   «눌러서 읽는다»가 전제다 — 이름·상태칩을 그리로 미뤄 뒀다.
+   *
+   *   그래서 **읽으려고 연 순간에만 상자를 연다.** 평소에는 30px 한 줄로 잘려 있고,
+   *   pill 을 누르거나(고정) 포커스가 가면 그 칩만 넘침을 풀고 위로 올라선다.
+   */
+  .opp-strip-left .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-top .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill-pinned),
+  .opp-strip-top .nameplate:has(.aug-pill-pinned),
+  .opp-strip-right .nameplate:has(.aug-pill-pinned) {
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
+    z-index: 82;
+  }
+
+  /* 「차례」 알약도 한 급 줄인다 — 그대로 두면 칩이 30→42px 로 자라 바로 아래
+     맞은편 뒷패 줄을 문다(375×700 실측 31~38%). 지금 누구 차례인지는 이 알약과
+     중앙 패널의 빛나는 점수판이 함께 말한다. */
+  .opp-strip-left .nameplate .np-turn,
+  .opp-strip-top .nameplate .np-turn,
+  .opp-strip-right .nameplate .np-turn {
+    padding: 1px 6px;
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+  .opp-strip-left .nameplate .np-augs,
+  .opp-strip-top .nameplate .np-augs,
+  .opp-strip-right .nameplate .np-augs {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  .opp-strip-left .nameplate .aug-pill,
+  .opp-strip-top .nameplate .aug-pill,
+  .opp-strip-right .nameplate .aug-pill {
+    min-height: 22px;
+    padding: 2px 5px;
+    font-size: 12px;
+  }
+
+  /* 이름표가 줄에서 빠졌으니 맞은편 줄은 뒷패만 남는다 — 요약 줄 아래로 내린다.
+     ⚠ 세 줄 모두 **`transform` 을 걷어야 한다.** transform 이 걸린 요소는 그 안의
+     `position: fixed` 에게 기준 상자가 되므로(CSS 규격), 위 요약 줄이 각자 자기 줄
+     안에 갇혀 세 개가 제각각 다른 높이에 섰다(375×700 실측: y 154 / 284 / 289).
+     가운데·세로 가운데 정렬은 transform 대신 상자 + `justify-content` 로 낸다. */
+  .opp-strip-top {
+    top: calc(var(--chrome-top) + var(--icon-h) + var(--opp-chip-h) + 8px);
+    left: 0;
+    right: 0;
+    transform: none;
+    flex-direction: row;
+    justify-content: center;
+    --top-side-reserve: 0px;
+  }
+  .opp-strip-left,
+  .opp-strip-right {
+    /* «가로로 돌리세요» 안내가 서는 띠(--rotate-band)까지 함께 비켜야 한다 —
+       안 그러면 안내가 좌·우 뒷패 윗단을 덮는다(375×700 실측 45~100%). */
+    top: calc(var(--top-band) + var(--rotate-band, 0px));
+    bottom: calc(var(--own-band, 0px) + var(--own-reserve, 0px));
+    transform: none;
+    justify-content: center;
+  }
+
+  /* ② 오름패 뱃지는 자리를 쓰지 않고 **떠서** 나온다 ─────────────────
+     늘 54px 를 비워 두던 이유는 «자리가 들쭉날쭉하면 보드가 매 순 크기를 바꾼다»였다.
+     떠 있게 하면 그 이유가 사라진다 — 자리를 안 쓰니 보드는 움직이지 않는다.
+     텐파이인 그 순간에는 이 뱃지가 판의 그 부분보다 중요하다. */
+  .own-top { position: relative; }
+  .own-top-waits {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4px);
+    transform: translateX(-50%);
+    min-height: 0;
+    z-index: 12;
+  }
+
+  /*
+   * 「대화」 알약은 폰 세로에서 **갈 곳이 없다.** 오른쪽 가운데는 오른쪽 상대의 뒷패·
+   * 후로 줄이고(375×700 실측: 알약이 후로를 61% 덮었다), 아래는 손패가 폭을 다 쓰고,
+   * 왼쪽 가운데는 왼쪽 상대의 줄이다. 줄을 짧게 잡아 피할 수도 없다 — 줄 길이는
+   * 장수가 정하므로 상자를 줄이면 내용이 넘쳐 그대로 겹친다.
+   *
+   * 그래서 **떠 있는 알약을 없애고 우상단 아이콘 줄의 여섯 번째 칸으로 넣는다.**
+   * 다섯 칸(✕⚙📜📖📘)이 오른쪽에서 240px 를 쓰고, 좌상단 봇 난이도 뱃지가 75px 까지
+   * 이므로 그 사이가 정확히 한 칸 남는다. 정형구 목록은 눌렀을 때 아래로 펼쳐진다.
+   */
+  /* ⚠ 대국판의 정형구 줄만 옮긴다 (`.table >`). 대기실에는 같은 클래스가 창 머리줄
+     안에 따로 있고(`.wr-head .emote-bar`), 그쪽은 자리를 옮길 이유가 없다. */
+  .table > .emote-bar {
+    top: var(--chrome-top);
+    right: calc(max(8px, env(safe-area-inset-right, 0px)) + 240px);
+    bottom: auto;
+    z-index: 61;
+  }
+  .table > .emote-bar .emote-toggle {
+    width: var(--icon-h);
+    min-width: var(--icon-h);
+    height: var(--icon-h);
+    padding: 0;
+    border-radius: 9px;
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+
+  /* ③ 아래 띠를 폰 크기로 ─────────────────────────────
+     내 이름표 줄은 **한 줄을 지킨다.** 접히는 순간 아래 띠가 31px 두꺼워지고 그만큼
+     보드가 줄어든다(375×700 실측: 접히면 패널 121→107px). 넘치는 쪽은 줄임표로
+     물러난다 — 증강 효과 안내(`.active-info`)는 전체 문구를 눌러서 볼 수 있다. */
+  .own-top-main { flex-wrap: nowrap; }
+  .own-top-main > * { min-width: 0; }
+  .own-top-main .active-info {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .own-area { gap: 5px; }
+  .quick-toggles-inline { gap: 5px; }
+  /* 토글 줄은 그림 30px · 닿는 자리 44px (§9-2 의 «투명 껍데기»). 44px 로 그리면
+     이 줄만으로 세로의 6%를 먹고 그만큼 판이 줄어든다. */
+  .game-root .qt-item {
+    position: relative;
+    min-height: 30px;
+    padding: 5px 10px;
+    font-size: 12.5px;
+  }
+  .game-root .qt-item::after {
+    content: "";
+    position: absolute;
+    inset: -7px -2px;
+  }
+  /* 액션 바는 한 줄로 — 두 줄이 되면 `--own-reserve` 를 넘어 내 바닥을 문다 */
+  .action-bar { gap: 5px; padding: 5px 8px; }
+  .act { min-height: 44px; padding: 5px 10px; font-size: 14px; }
+  .act-tiles .tile-mini { width: 22px; height: 33px; }
+}
+
 /* 9-1-c. 가로 폰 — 구석에 사는 것들을 «실제로 비어 있는 구석»으로 옮긴다.
  *
  * 세로에서 비어 있던 왼쪽 아래·오른쪽 가운데가 가로에서는 **좌·우 상대의 뒷패 줄**

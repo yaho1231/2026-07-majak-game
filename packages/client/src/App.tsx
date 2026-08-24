@@ -87,6 +87,9 @@ import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
+
+/** "가로로 돌리세요" 안내를 닫은 사실을 기억하는 키 (위 rotateHintOff 주석). */
+const ROTATE_HINT_KEY = "majak.rotateHintOff";
 import {
   DEFAULT_DOCK_PREFS,
   DOCK_SECTIONS,
@@ -2827,8 +2830,17 @@ export function App(): JSX.Element {
   const [emotes, setEmotes] = useState<EmoteEntry[]>([]);
   /** 규칙·도움말 화면 열림 여부 (로그인 전·홈·게임 중 어디서나 열린다) */
   const [helpOpen, setHelpOpen] = useState(false);
-  /** "가로로 돌리세요" 안내를 닫았는가 — 한 번 읽으면 그만이다(docs/28 §2-2) */
-  const [rotateHintOff, setRotateHintOff] = useState(false);
+  /**
+   * "가로로 돌리세요" 안내를 닫았는가 — 한 번 읽으면 그만이다(docs/28 §2-2).
+   *
+   * **닫은 것을 기억한다.** 이 안내는 폰 세로에서 52px 짜리 띠(`--rotate-band`)를
+   * 차지하고, 그만큼 중앙 보드가 줄어든다 — 700px 화면의 7.4%다. 세션마다 다시 떠서
+   * 매번 닫아야 한다면 그 값을 매번 다시 무는 셈이다. 한 번 읽으면 그만인 안내이므로
+   * 기억해 둔다(2026-08-25 폰 세로 재설계).
+   */
+  const [rotateHintOff, setRotateHintOff] = useState(
+    () => safeStorage.getItem(ROTATE_HINT_KEY) === "1",
+  );
   /**
    * 지금 인증되어 있는가 — **live ref**. handleServerMessage는 마운트 시 소켓에
    * 고정된 클로저라 auth state가 스테일하다. 서버 오류를 로그인 폼에 넣을지
@@ -6069,7 +6081,10 @@ export function App(): JSX.Element {
             type="button"
             className="rotate-hint-close"
             aria-label="안내 닫기"
-            onClick={() => setRotateHintOff(true)}
+            onClick={() => {
+              setRotateHintOff(true);
+              safeStorage.setItem(ROTATE_HINT_KEY, "1");
+            }}
           >
             ✕
           </button>
