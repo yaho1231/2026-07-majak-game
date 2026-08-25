@@ -103,7 +103,11 @@ describe("염색 — 동풍전 5회 · 반장전 8회", () => {
       C.tileDyeing,
     );
     expect(dye(g, 0, "pin")).toBe(true);
-    expect(g.engine.state.augmentData["view:p0:tile_dyeing:left"]).toBe(2);
+    expect(g.engine.state.augmentData["view:p0:uses:tile_dyeing"]).toEqual({
+      left: 2,
+      total: 8,
+      scope: "match",
+    });
   });
 
   it("반장전도 8회에서는 막힌다", () => {
