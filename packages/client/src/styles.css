@@ -6769,18 +6769,25 @@ button {
   cursor: pointer;
 }
 
-/* 리치 브금 고르기 — 설명 아래로 버튼 줄이 내려가 좁은 화면에서도 접히지 않는다 */
-.settings-row-bgm {
-  flex-direction: column;
-  align-items: stretch;
-  cursor: default;
+/* 리치 브금 고르기 — 홈 로비의 카드 (설정창이 아니다) */
+.home-bgm-desc,
+.home-bgm-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.78;
+}
+
+.home-bgm-hint {
+  font-size: 12px;
+  opacity: 0.6;
 }
 
 .bgm-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 10px;
+  margin: 10px 0;
 }
 
 .bgm-pick-cell {
