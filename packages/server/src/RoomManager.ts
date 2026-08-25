@@ -5767,13 +5767,15 @@ export class RoomManager {
      * 시작 시점의 표를 파일에 굳혀 담지 않은 이유: 티어는 20판마다 움직이는
      * 값이라, 재개한 판만 몇 시간 전 표로 드래프트하면 오히려 어긋난다.
      */
+    // 집계는 모드별로 갈라져 있으므로(2026-08-25) **이 판의 모드** 표를 건다.
+    const resumeMode: GameMode = row.gameMode === "hanchan" ? "hanchan" : "tonpuu";
     if (this.augmentStats !== undefined) {
-      recon.game.augments.setWeightOverrides(this.augmentStats.weights());
+      recon.game.augments.setWeightOverrides(this.augmentStats.weights(resumeMode));
     }
 
     const room = this.newRoom({
       code: row.code,
-      gameMode: row.gameMode === "hanchan" ? "hanchan" : "tonpuu",
+      gameMode: resumeMode,
       botDifficulty: row.botDifficulty as BotDifficulty,
     });
     room.resumePath = row.replayPath;
@@ -5965,7 +5967,7 @@ export class RoomManager {
       seed: randomInt(0x1_0000_0000),
       // 티어 자동 조정 결과를 이 방의 드래프트에 건다 (없으면 정적 티어표)
       ...(this.augmentStats !== undefined
-        ? { augmentWeights: this.augmentStats.weights() }
+        ? { augmentWeights: this.augmentStats.weights(room.gameMode) }
         : {}),
       // 증강 훅이 던지면 엔진이 그 source만 격리하고 게임을 계속한다. 격리가 없던
       // 시절에는 예외 하나가 방 삭제로 이어졌다. 대신 여기서 반드시 남겨야
@@ -6231,9 +6233,14 @@ export class RoomManager {
           o.picked += a.picked;
         }
       }
-      if (this.augmentStats.record(results, offers)) {
-        const p = this.augmentStats.progress();
-        console.log(`[augment] 티어 자동 조정 #${p.adjustments} 적용 (${p.every}판 주기)`);
+      // 모드를 함께 넘긴다 — 동풍전과 반장전은 판 길이가 달라 같은 증강도 값어치가
+      // 다르다(2026-08-25). 한 통에 섞으면 반장전 전용/동풍전 전용 증강이 서로의
+      // 표본에 밀린다.
+      if (this.augmentStats.record(room.gameMode, results, offers)) {
+        const p = this.augmentStats.progress(room.gameMode);
+        console.log(
+          `[augment] 티어 자동 조정 #${p.adjustments} 적용 (${room.gameMode} · ${p.every}판 주기)`,
+        );
       }
     } catch (err) {
       console.error("Failed to record augment stats:", err);
