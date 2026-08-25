@@ -1688,6 +1688,12 @@ button {
 .np-name {
   font-weight: 700;
   color: #ece4d2;
+  /* 이름은 **줄지 않는다.** 좁은 이름표(폰 가로 740×360 의 22px 칩, 폰 세로의 117px 칩)에서
+     기본값 flex-shrink:1 이면 이름이 0px 까지 눌려 아예 사라졌다 — 배지·증강이 자리를
+     다 가져가고 이름만 지워지는 셈이다(실측: 봇3 이름 폭 0px). 모자란 폭은 오른쪽의
+     증강 알약이 진다: 알약은 눌러서 읽을 수 있고 이름은 그럴 수 없다.
+     `max-width`(아래)가 여전히 상한이라 긴 닉네임이 이름표를 밖으로 밀지는 못한다. */
+  flex-shrink: 0;
   max-width: 340px;
   white-space: nowrap;
   overflow: hidden;

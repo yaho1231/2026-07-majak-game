@@ -17053,7 +17053,7 @@ const NamePlate = memo(function NamePlate({
             {/* «선언»은 좁은 자리(폰 세로의 상대 이름표 칩)에서 접힌다 — 그 칩은 폭이
                 117px 고정이라 네 글자 배지가 이름을 통째로 밀어냈다. 두 글자만 남겨도
                 뜻이 서고, 전체 문안은 title 과 aria-label 에 그대로 있다. */}
-            <span className="np-wait-long">선언 </span>대기
+            <span className="np-wait-long">{"선언 "}</span>대기
           </span>
         ) : (
           <span className="np-turn" aria-label="현재 차례">차례</span>
