@@ -68,7 +68,9 @@ import type {
 import {
   counterOf,
   flagOf,
+  publishUsesLeft,
   roundViewKey,
+  scaledUses,
   widenPeek,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
@@ -81,6 +83,21 @@ const BLOOM_PICK_TAKEN = "BloomPickTaken";
 
 /** 만개까지 필요한 깡 횟수 */
 const KANS_TO_BLOOM = 2;
+/**
+ * **게임당 만개 횟수** (동풍전 1 · 반장전 2 — `scaledUses`, 반장전 QA 2026-08-25).
+ *
+ * 예전에는 "횟수 제한 없음 · 조건 없음"이었다. 만개 표식이 국 스코프(`bloomedKey`)라
+ * 국마다 다시 열렸고, 트리거는 «그 국에 깡 2회»뿐이며 텐파이 여부도 보지 않고 손패를
+ * 완성형으로 덮어쓴다. 그래서 국이 두 배인 반장전에서는 만개 기대 횟수도 그대로 두 배가
+ * 됐다 — 상한이 아예 없는 것이 문제였지 국당 밀도가 문제가 아니었다.
+ *
+ * 매치 예산으로 묶으면 «한 판에 한 번(반장전은 두 번) 일어나는 사건»이라는 성질이
+ * 두 모드에서 같아진다. 깡마다 영상패를 고르는 상시 편의는 그대로 둔다 — 그쪽은
+ * 국당 밀도가 모드와 무관하고, 이 증강의 하이라이트도 아니다.
+ */
+const bloomBudget = (state: GameState): number => scaledUses(state, 1);
+/** 이 게임에 이미 만개한 횟수 (매치 스코프 — 국이 바뀌어도 남는다) */
+const bloomsUsedKey = (h: PlayerId): string => `${ID}:blooms:${h}`;
 /**
  * 만개 화료의 **영상개화를 몇 판으로 취급하는가** (2026-07-26 사용자 확정).
  *
@@ -391,11 +408,17 @@ export const cliffBloom: AugmentDef = defineAugment({
   complexity: 3,
   name: "절벽 위에 피어난 꽃",
   description:
-    "(상시) 깡을 할 때마다 영상패를 **남아 있는 영상패 전부** 중에서 직접 고른다. 한 국에 깡을 두 번 하면 텐파이가 아니어도 손이 만개해 즉시 영상개화로 화료하며, 그 영상개화는 4판으로 취급된다.",
+    "(상시 · 만개는 동풍전 1회 · 반장전 2회) 깡을 할 때마다 영상패를 **남아 있는 영상패 전부** 중에서 직접 고른다. 한 국에 깡을 두 번 하면 텐파이가 아니어도 손이 만개해 즉시 영상개화로 화료하며, 그 영상개화는 4판으로 취급된다.",
   detail:
-    "(상시) 영상패는 국 시작 시 4장이고 누군가 깡을 칠 때마다 한 장씩 소모되어 보충되지 않으므로, 고를 수 있는 폭은 깡이 늘수록 좁아진다(네 번째 깡에서는 남은 한 장뿐이다).\n\n만개는 지금 손패에서 살릴 수 있는 패를 최대한 살린 화료형으로 재구성된다. 만개한 국이 아니면 화료에 아무것도 얹히지 않으며, 역만에는 미적용이다.",
+    "(상시) 영상패는 국 시작 시 4장이고 누군가 깡을 칠 때마다 한 장씩 소모되어 보충되지 않으므로, 고를 수 있는 폭은 깡이 늘수록 좁아진다(네 번째 깡에서는 남은 한 장뿐이다).\n\n만개는 지금 손패에서 살릴 수 있는 패를 최대한 살린 화료형으로 재구성된다. 만개한 국이 아니면 화료에 아무것도 얹히지 않으며, 역만에는 미적용이다.\n\n만개는 게임당 횟수가 정해져 있다(동풍전 1회 · 반장전 2회). 다 쓴 뒤에도 영상패를 고르는 것은 그대로 계속된다.",
   install(ctx) {
     const { engine, holder } = ctx;
+
+    // 남은 만개 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, bloomBudget(state) - counterOf(state, bloomsUsedKey(holder))),
+      total: bloomBudget(state),
+    }));
 
     if (!engine.actions.has(ACTION_PICK)) {
       engine.actions.register(bloomPickAction);
@@ -479,11 +502,23 @@ export const cliffBloom: AugmentDef = defineAugment({
       const state = rc.state;
       const kans = counterOf(state, kanCountKey(state, holder));
 
-      if (kans >= KANS_TO_BLOOM && !flagOf(state, bloomedKey(state, holder))) {
+      const bloomsLeft =
+        bloomBudget(state) - counterOf(state, bloomsUsedKey(holder));
+      if (
+        kans >= KANS_TO_BLOOM &&
+        bloomsLeft > 0 &&
+        !flagOf(state, bloomedKey(state, holder))
+      ) {
         const changes = bloomChanges(state, rc.rules, holder);
         if (changes !== null) {
           rc.emit(tileKindChanged(changes));
           rc.emit(augmentDataSet(bloomedKey(state, holder), true));
+          rc.emit(
+            augmentDataSet(
+              bloomsUsedKey(holder),
+              counterOf(state, bloomsUsedKey(holder)) + 1,
+            ),
+          );
           rc.emit(augmentDataSet(roundViewKey("*", `${ID}:${holder}`), "만개"));
           return; // 만개했으면 영상패를 고를 이유가 없다
         }

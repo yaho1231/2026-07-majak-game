@@ -42,6 +42,7 @@ import {
   settleInterceptor,
   withAugPoint,
 } from "../util.js";
+import { installPreArmRecharge, rechargeBotPolicy } from "./preArmRecharge.js";
 
 const ID = "sign_flip";
 
@@ -57,9 +58,9 @@ export const signFlip: AugmentDef = defineAugment({
   complexity: 1,
   name: "반전",
   description:
-    "(획득 즉시 · 이번 국만) 내 점수의 부호가 뒤집힌다 — 8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다.",
+    "(획득 즉시 · 이번 국만 · 반장전은 게임 내 1회 재장전) 내 점수의 부호가 뒤집힌다 — 8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다.",
   detail:
-    "(획득 즉시 · 이번 국만) 내 점수 증감에 부호가 반대로 적용된다. 방총, 쯔모 지불, 리치 공탁, 본장, 유국 텐파이료가 모두 포함된다.\n\n상대의 점수는 정상적으로 움직이며 차액은 뱅크가 발행한다. 발동은 전원에게 공개된다.",
+    "(획득 즉시 · 이번 국만) 내 점수 증감에 부호가 반대로 적용된다. 방총, 쯔모 지불, 리치 공탁, 본장, 유국 텐파이료가 모두 포함된다.\n\n상대의 점수는 정상적으로 움직이며 차액은 뱅크가 발행한다. 발동은 전원에게 공개된다.\n\n반장전에서는 게임 내 1회, 자기 순에 **다시 장전**할 수 있다 — 누른 다음 국에 한 번 더 켜진다. (동풍전에는 없다.)",
   install(ctx) {
     const { holder } = ctx;
 
@@ -68,6 +69,13 @@ export const signFlip: AugmentDef = defineAugment({
     armOnNextRound(ctx, ID, () => [
       augmentDataSet(roundViewKey("*", `${ID}:${holder}`), true),
     ]);
+
+    /*
+     * 반장전 한정 — 게임 내 1회, 원하는 타이밍에 다시 장전한다.
+     * 국이 두 배인 판에서 "그 국 하나"의 비중이 절반이 되는 것을 되돌린다
+     * (반장전 QA 2026-08-25, preArmRecharge.ts에 경위가 있다).
+     */
+    installPreArmRecharge(ctx, ID);
 
     // 리치 공탁 — 정산이 아니라 버림 리듀서가 즉시 깎는다.
     // 낸 만큼 되돌리고(+cost) 부호를 뒤집은 만큼 더 준다(+cost) = +2×cost.
@@ -115,5 +123,7 @@ export const signFlip: AugmentDef = defineAugment({
       };
     });
   },
-  // 봇 정책 없음 — 자동 발동이라 선택 지점이 없다.
+  // 자동 발동이라 선택 지점이 없었지만, 반장전 재장전 버튼만은 봇도 눌러야 한다
+  // (정책이 없으면 봇은 그 버튼을 영영 누르지 않는다).
+  bot: rechargeBotPolicy(ID),
 });

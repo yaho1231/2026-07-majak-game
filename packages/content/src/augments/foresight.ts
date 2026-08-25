@@ -38,6 +38,7 @@
  */
 
 import {
+  ROUND_SETTLED,
   TILE_DRAWN,
   WALL,
   augmentDataSet,
@@ -51,10 +52,19 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  RoundSettledPayload,
   TileDrawnPayload,
   TileId,
 } from "@majak/core";
-import { addWinHanBonus, cooldownTurnsViewKey, flagOf, roundKey, roundViewKey } from "../util.js";
+import {
+  addWinHanBonus,
+  cooldownTurnsViewKey,
+  counterOf,
+  flagOf,
+  roundKey,
+  roundViewKey,
+  scaledUses,
+} from "../util.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
 
@@ -68,6 +78,25 @@ const PEEK = 4;
 const COOLDOWN_TURNS = 4;
 /** 발동한 국에 화료하면 받는 추가 점수 */
 const WIN_BONUS_HAN = 2; // 구 +4500점 → 3판 → 2판 (2026-07-26 판수 통일·재조정)
+/**
+ * **+2판을 받을 수 있는 게임당 화료 횟수** (동풍전 2 · 반장전 3 — 반장전 QA 2026-08-25).
+ *
+ * 이 증강만 정보계에서 유일하게 점수 라이더를 얹는다. 소진·쿨다운이 전부 국 스코프이고
+ * 쿨다운 단위가 **순**이라, 한 국에 열 수 있는 횟수는 두 모드가 같은 대신 국 수가 두 배인
+ * 반장전에서는 발동 총량이 그대로 두 배가 됐다. 다른 정보계는 그래도 «정보가 두 배»에
+ * 그치지만 이쪽만 «점수 기대값이 두 배»가 된다 — 매치 단위 예산이 하나도 없는 것이
+ * 원인이었다(docs/qa-hanchan/info-etc.md).
+ *
+ * 예산은 라이더에만 건다 — **정보(공개·재배열)는 그대로 무제한**이다. 이 증강의 본체는
+ * 정보이고, 문제는 그 위에 얹힌 점수였다.
+ *
+ * ⚠ 동풍전도 2회로 묶인다. 4국 안에 «발동한 국에 화료»를 세 번 이상 해내는 판은 드물지만
+ * 0은 아니라, 엄밀히는 동풍전도 아주 얇게 함께 조여진다. 모드마다 다른 상수를 두는 대신
+ * 공용 `scaledUses` 한 눈금으로 두는 쪽을 택했다(두 곳으로 갈라지면 한쪽만 낡는다).
+ */
+const hanBudget = (state: GameState): number => scaledUses(state, 2);
+/** 이 게임에 +2판을 받은 화료 횟수 (매치 스코프) */
+const hanUsedKey = (h: PlayerId): string => `${ID}:hanUses:${h}`;
 
 /** 이번 국에 발동했는가 (점수 보너스 게이팅, roundKey 스코프) */
 const usedKey = (state: GameState, h: PlayerId): string =>
@@ -291,9 +320,9 @@ export const foresight: AugmentDef = defineAugment({
   complexity: 2,
   name: "예지",
   description:
-    "(열람 4순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 패산 다음 4장이 나에게만 공개되고(취소 불가), 국에 한 번은 드래그로 그 순서를 바꾼다. 발동한 국에 화료하면 +2판(역만에는 미적용).",
+    "(열람 4순에 1회 · 재배열은 국에 1회) 자기 순에 발동하면 패산 다음 4장이 나에게만 공개되고(취소 불가), 국에 한 번은 드래그로 그 순서를 바꾼다. 발동한 국에 화료하면 +2판(역만에는 미적용 · 동풍전 2회 · 반장전 3회까지).",
   detail:
-    "(열람 4순에 1회 · 재배열은 국에 1회) 공개된 4장은 **지금 차례 기준으로** 하가·대면·상가·나에게 차례로 배정된다. 중간에 누가 퐁·치를 하거나 밑장빼기·북빼기로 패산 앞을 건너뛰면 배정이 밀려 네 번째가 더 이상 내 쯔모가 아닐 수 있다.\n\n재배열은 한 국에 한 번이라, 그 국에 다시 발동하면 열람만 된다. 상대에게는 발동 사실만 보인다.",
+    "(열람 4순에 1회 · 재배열은 국에 1회) 공개된 4장은 **지금 차례 기준으로** 하가·대면·상가·나에게 차례로 배정된다. 중간에 누가 퐁·치를 하거나 밑장빼기·북빼기로 패산 앞을 건너뛰면 배정이 밀려 네 번째가 더 이상 내 쯔모가 아닐 수 있다.\n\n재배열은 한 국에 한 번이라, 그 국에 다시 발동하면 열람만 된다. 상대에게는 발동 사실만 보인다.\n\n+2판은 게임당 횟수가 정해져 있다(동풍전 2회 · 반장전 3회). 다 쓴 뒤에도 열람과 재배열은 그대로다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -415,10 +444,30 @@ export const foresight: AugmentDef = defineAugment({
       }
     });
 
-    // 발동한 국에 화료하면 +2판
+    // 발동한 국에 화료하면 +2판 — 단 게임당 예산 안에서만 (hanBudget 참고)
     addWinHanBonus(ctx, (state) =>
-      flagOf(state, usedKey(state, holder)) ? WIN_BONUS_HAN : 0,
+      flagOf(state, usedKey(state, holder)) &&
+      counterOf(state, hanUsedKey(holder)) < hanBudget(state)
+        ? WIN_BONUS_HAN
+        : 0,
     );
+
+    /*
+     * 라이더를 실제로 받은 화료를 한 번으로 센다.
+     *
+     * 정산이 끝난 뒤(`ROUND_SETTLED`)에 세는 것이 요점이다 — 위 모디파이어는 정산
+     * 계산 중에 돌면서 **이 카운터의 예전 값**을 보므로, 같은 화료가 자기 자신을
+     * 예산에서 밀어내지 않는다. 발동만 하고 화료하지 못한 국은 세지 않는다.
+     */
+    ctx.reaction(ROUND_SETTLED, (event, rc) => {
+      const p = event.payload as RoundSettledPayload;
+      if (p.outcome !== "win") return;
+      if (!(p.winInfos ?? []).some((w) => w.winner === holder)) return;
+      if (!flagOf(rc.state, usedKey(rc.state, holder))) return;
+      const used = counterOf(rc.state, hanUsedKey(holder));
+      if (used >= hanBudget(rc.state)) return;
+      rc.emit(augmentDataSet(hanUsedKey(holder), used + 1));
+    });
   },
   /**
    * 봇: **공개(reveal)까지만** 한다. 재배열(order)은 상대 손 정보 없이 판단할 수 없어

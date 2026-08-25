@@ -2,7 +2,8 @@
  * backlog_56_batch3 — 개벽·천하통일 동작 검증.
  *  - genesis(개벽): 자기 턴에 발동하면 손패 자↔수가 통째로 뒤바뀐다. 새 패는 패산의
  *    실물에서 무작위로 가져오고(모자랄 때만 conjured 생성), 나간 손패는 패산 맨 밑으로.
- *  - unification(천하통일): install이 보유자에게만 match.instantWinScore=45000을 세팅.
+ *  - unification(천하통일): install이 보유자에게만 match.instantWinScore를 세팅
+ *    (반장전 55000 · 동풍전 45000 — 2026-08-25 반장전 QA).
  *    (shouldEnd의 score≥threshold 로직은 score.finalAdjust와 동일 계열이라 자명)
  */
 
@@ -329,12 +330,12 @@ describe("허장성세 (bluff_pretense)", () => {
 });
 
 describe("천하통일 (unification)", () => {
-  it("install이 보유자에게만 match.instantWinScore=45000을 세팅한다", () => {
+  it("install이 보유자에게만 match.instantWinScore를 세팅한다 (반장전 55000)", () => {
     const game = createStandardGame({ seed: 1, extraAugments: [unification] });
     installAugment(game.engine, unification, "p0", { yaku: game.yaku });
     const rules = game.engine.rules;
     const state = game.engine.state;
-    expect(rules.resolve<number>("match.instantWinScore", { playerId: "p0", state })).toBe(45000);
+    expect(rules.resolve<number>("match.instantWinScore", { playerId: "p0", state })).toBe(55000);
     // 비보유자는 기본 0 (비활성)
     expect(rules.resolve<number>("match.instantWinScore", { playerId: "p1", state })).toBe(0);
   });

@@ -413,12 +413,15 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
         playerId: "p0",
         state: game.engine.state,
       }),
-    ).toBe(45000);
+    ).toBe(55000);
 
     // 문구가 곧 계약이다 — 카드에 적힌 수와 엔진이 쓰는 수가 같아야 한다
     // 4자리 이상은 전부 자릿점을 찍는다(2026-08-22 QA round2 확정 13④)
-    expect(unification.description).toContain("45,000");
-    expect(unification.detail).toContain("45,000");
+    // 문턱이 모드마다 다르므로 두 수가 다 적혀 있어야 한다(2026-08-25 반장전 QA)
+    for (const text of [unification.description, unification.detail ?? ""]) {
+      expect(text).toContain("55,000");
+      expect(text).toContain("45,000");
+    }
   });
 });
 

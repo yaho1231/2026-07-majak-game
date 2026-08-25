@@ -86,14 +86,18 @@ describe("conflicts가 가리키는 id는 전부 실재한다", () => {
   });
 });
 
-describe("천하통일 — 문턱은 45000 고정이다", () => {
-  function game(): ReturnType<typeof createStandardGameFromState> {
-    const base = craft({
+describe("천하통일 — 문턱은 모드를 따라간다 (반장 55000 · 동풍 45000)", () => {
+  function game(mode?: "tonpuu" | "hanchan"): ReturnType<typeof createStandardGameFromState> {
+    const crafted = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
       turnSeat: 0,
       drawnLastFor: "p0",
     });
+    const base: GameState =
+      mode === undefined
+        ? crafted
+        : { ...crafted, config: { ...crafted.config, mode } };
     const state: GameState = {
       ...base,
       players: base.players.map((p) =>
@@ -111,8 +115,13 @@ describe("천하통일 — 문턱은 45000 고정이다", () => {
       state: g.engine.state,
     });
 
-  it("기본 문턱은 45000이다", () => {
-    expect(threshold(game())).toBe(45000);
+  it("반장전 문턱은 55000이다 (모드 미지정 기본값도 반장전과 같다)", () => {
+    expect(threshold(game("hanchan"))).toBe(55000);
+    expect(threshold(game())).toBe(55000);
+  });
+
+  it("동풍전 문턱은 45000 그대로다", () => {
+    expect(threshold(game("tonpuu"))).toBe(45000);
   });
 
   it("증강이 발행한 점수가 있어도 문턱은 그대로다 (출처를 따지지 않는다)", () => {
@@ -140,7 +149,7 @@ describe("천하통일 — 문턱은 45000 고정이다", () => {
         },
       );
     }
-    expect(threshold(g)).toBe(45000);
+    expect(threshold(g)).toBe(55000);
   });
 });
 

@@ -221,12 +221,19 @@ function rulesAt(game: Game, player: PlayerId): {
 }
 
 describe("late_bloomer (대기만성 · 반장전) — 배율 대신 규칙 두 개", () => {
-  it("남4국 전에는 표준 규칙 그대로", () => {
-    const g = bloomGame(lateBloomer, 2, 3); // 남3국
+  // 만개 시점은 2026-08-25 반장전 QA에서 남4국 → **남3국**으로 앞당겼다 —
+  // 동풍전판이 판의 25%를 만개 구간으로 갖는 것과 비중을 맞추기 위해서다(8국 중 2국).
+  it("남2국까지는 표준 규칙 그대로", () => {
+    const g = bloomGame(lateBloomer, 2, 2); // 남2국
     expect(rulesAt(g, "p0")).toEqual({ yaku: true, furiten: true });
   });
 
-  it("남4국부터 후리텐 무시 + 무형화료를 얻는다", () => {
+  it("남3국부터 후리텐 무시 + 무형화료를 얻는다", () => {
+    const g = bloomGame(lateBloomer, 2, 3);
+    expect(rulesAt(g, "p0")).toEqual({ yaku: false, furiten: false });
+  });
+
+  it("남4국에도 만개가 유지된다", () => {
     const g = bloomGame(lateBloomer, 2, 4);
     expect(rulesAt(g, "p0")).toEqual({ yaku: false, furiten: false });
     // 상대에게는 아무 영향이 없다
