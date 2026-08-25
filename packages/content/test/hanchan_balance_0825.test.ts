@@ -25,7 +25,10 @@ import { deadWallMaster } from "../src/augments/dead_wall_master.js";
 import { blindRon } from "../src/augments/blind_ron.js";
 import { timePressure } from "../src/augments/time_pressure.js";
 import { signFlip } from "../src/augments/sign_flip.js";
-import { armedNow, preArmSpent } from "../src/util.js";
+import { invincible } from "../src/augments/invincible.js";
+import { cliffBloom } from "../src/augments/cliff_bloom.js";
+import { foresight } from "../src/augments/foresight.js";
+import { armedNow, counterOf, preArmSpent, scaledUses } from "../src/util.js";
 import type { AugmentDef } from "@majak/core";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
@@ -213,4 +216,87 @@ describe("선발동형 재무장 — 반장전에서만 게임 내 1회", () => 
       expect(rechargeOption(flow, id)).toBe(false);
     });
   }
+});
+
+// ───────────── 천하무적 — 쿨다운이 모드를 따라간다 (동풍 2국 · 반장 3국) ─────────────
+
+describe("invincible (천하무적) — 쿨다운은 모드를 따라간다", () => {
+  function setup(mode: "tonpuu" | "hanchan"): { game: Game; flow: FlowController } {
+    const base = craft({
+      hands: { p0: "234m345p456s678s22s", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+      seed: 5,
+    });
+    const state = withAugments(
+      { ...base, config: { ...base.config, mode } },
+      "p0",
+      ["invincible"],
+    );
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, invincible, "p0", { yaku: game.yaku });
+    return { game, flow: new FlowController(game.engine) };
+  }
+
+  it("동풍전은 2국 그대로 (기준선을 건드리지 않는다)", () => {
+    const { game, flow } = setup("tonpuu");
+    const opt = optionsFor(flow.begin(), "p0").find((o) => o.type === "invincible_guard");
+    expect(opt).toBeDefined();
+    flow.submit("p0", opt!);
+    expect(game.engine.state.augmentData["invincible:cd:p0"]).toBe(2);
+  });
+
+  it("반장전은 3국으로 늘어난다 (국이 두 배라 발동 총량이 2배였다)", () => {
+    const { game, flow } = setup("hanchan");
+    const opt = optionsFor(flow.begin(), "p0").find((o) => o.type === "invincible_guard");
+    expect(opt).toBeDefined();
+    flow.submit("p0", opt!);
+    expect(game.engine.state.augmentData["invincible:cd:p0"]).toBe(3);
+    // 잔여 쿨다운 표시도 같은 값이어야 한다 (이름표의 🕐N국 칩)
+    expect(game.engine.state.augmentData["view:p0:cooldown:invincible"]).toBe(3);
+  });
+});
+
+// ───────────── 만개·+2판 라이더 — 매치 예산이 모드를 따라간다 ─────────────
+
+describe("매치 예산이 모드를 따라간다 (scaledUses)", () => {
+  /** state 없이도 예산 함수가 두 모드에서 갈리는지 — 상한 자체를 못박는다 */
+  const budgetIn = (mode: "tonpuu" | "hanchan", n: number): number => {
+    const base = craft({ hands: { p0: "*", p1: "*", p2: "*", p3: "*" }, seed: 1 });
+    return scaledUses({ ...base, config: { ...base.config, mode } }, n);
+  };
+
+  it("cliff_bloom 만개: 동풍전 1회 · 반장전 2회", () => {
+    expect(budgetIn("tonpuu", 1)).toBe(1);
+    expect(budgetIn("hanchan", 1)).toBe(2);
+    // 문구가 곧 계약이다 — 카드에 적힌 수와 예산이 같아야 한다
+    expect(cliffBloom.description).toContain("동풍전 1회");
+    expect(cliffBloom.description).toContain("반장전 2회");
+  });
+
+  it("foresight +2판 라이더: 동풍전 2회 · 반장전 3회", () => {
+    expect(budgetIn("tonpuu", 2)).toBe(2);
+    expect(budgetIn("hanchan", 2)).toBe(3);
+    expect(foresight.description).toContain("동풍전 2회");
+    expect(foresight.description).toContain("반장전 3회");
+  });
+
+  it("만개 예산은 매치 스코프다 — 국이 바뀌어도 카운터가 남는다", () => {
+    const base = craft({
+      hands: { p0: "234m345p456s678s22s", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+      seed: 5,
+    });
+    const game = createStandardGameFromState(
+      withAugments(base, "p0", ["cliff_bloom"]),
+    );
+    installAugment(game.engine, cliffBloom, "p0", { yaku: game.yaku });
+    // 한 번 만개한 것으로 표시해 두고 국을 넘긴다
+    game.engine.state.augmentData["cliff_bloom:blooms:p0"] = 1;
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    expect(counterOf(game.engine.state, "cliff_bloom:blooms:p0")).toBe(1);
+  });
 });

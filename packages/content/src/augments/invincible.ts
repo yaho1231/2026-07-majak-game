@@ -29,8 +29,25 @@ import { roundScopedKey } from "./roundScope.js";
 
 const ID = "invincible";
 const ACTION = "invincible_guard";
-/** 선언한 국과 다음 국까지 잠긴다 */
-const COOLDOWN_ROUNDS = 2;
+/** 선언한 국과 다음 국까지 잠긴다 (동풍전 기준) */
+const COOLDOWN_ROUNDS_TONPUU = 2;
+/**
+ * 반장전 쿨다운 (반장전 QA 2026-08-25: 2국 → 3국).
+ *
+ * 쿨다운이 국 단위 상수라 발동 총량이 국 수에 정비례했다 — 동풍전 최대 2회,
+ * 반장전 최대 4회. 형제 카드인 죽기살기(die_hard)는 `matchUses`로 동풍 1·반장 2를
+ * 받는데(= 1.5~2배가 아니라 매치 예산) 이쪽만 2배 궤도라 둘의 격차가 반장전에서만
+ * 벌어졌다. 3국으로 늘리면 반장전 최대 3회가 되어 예산형 형제와 나란해진다.
+ * 동풍전은 기준선이라 손대지 않는다.
+ */
+const COOLDOWN_ROUNDS_HANCHAN = 3;
+
+/** 이 판의 쿨다운 국 수. state가 없으면 서버 기본과 같은 반장전으로 본다. */
+function cooldownRoundsOf(state: GameState): number {
+  return state.config.mode === "tonpuu"
+    ? COOLDOWN_ROUNDS_TONPUU
+    : COOLDOWN_ROUNDS_HANCHAN;
+}
 
 /** 이번 국에 무적을 켰는가 (roundKey 스코프 — 국이 바뀌면 자동 만료) */
 const activeKey = (state: GameState, h: PlayerId): string =>
@@ -65,12 +82,12 @@ const guardAction: ActionDef<Record<string, never>> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(activeKey(state, req.player), true),
-    augmentDataSet(cooldownKey(req.player), COOLDOWN_ROUNDS),
+    augmentDataSet(cooldownKey(req.player), cooldownRoundsOf(state)),
     // 전원 공개 — "이 사람에게는 이번 국 론이 안 된다"가 테이블에 보여야 한다
     augmentDataSet(activeViewKey(req.player), "이번 국 론 불가"),
     // 잔여 쿨다운도 공용 채널로 — 자체 카운터만 쓰던 탓에 이름표의 `🕐N국` 칩이
     // 서지 않아, 버튼이 사라진 이유를 화면에서 알 수 없었다.
-    augmentDataSet(cooldownViewKey(ID, req.player), COOLDOWN_ROUNDS),
+    augmentDataSet(cooldownViewKey(ID, req.player), cooldownRoundsOf(state)),
   ],
 };
 
@@ -81,9 +98,9 @@ export const invincible: AugmentDef = defineAugment({
   complexity: 1,
   name: "천하무적",
   description:
-    "(2국에 1회) 자기 순에 선언하면 이번 국이 끝날 때까지 상대는 내 버림패로 론할 수 없다. 내 가깡을 창깡당하는 것은 막지 못한다.",
+    "(동풍전 2국 · 반장전 3국에 1회) 자기 순에 선언하면 이번 국이 끝날 때까지 상대는 내 버림패로 론할 수 없다. 내 가깡을 창깡당하는 것은 막지 못한다.",
   detail:
-    "(2국에 1회) 선언한 사실은 국이 끝날 때까지 전원에게 표시된다. 상대의 쯔모 화료, 내가 가깡한 패를 창깡으로 잡히는 것, 유국 노텐 벌점은 막지 못한다.",
+    "(동풍전 2국 · 반장전 3국에 1회) 선언한 사실은 국이 끝날 때까지 전원에게 표시된다. 상대의 쯔모 화료, 내가 가깡한 패를 창깡으로 잡히는 것, 유국 노텐 벌점은 막지 못한다.",
   // 봇: 상대가 리치를 걸었을 때 켠다 — 방총 위험이 가장 큰 순간이 켤 값어치가 가장 크다.
   // 상대 리치가 실재할 때만 켠다 = 방어가 급한 국면. 예전에는 그 판정과 강도를
   // 이 파일이 직접 들고 있었는데, 둘 다 증강이 아니라 판의 문제라 planner가 맡는다.

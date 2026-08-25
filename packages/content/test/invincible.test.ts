@@ -64,7 +64,9 @@ describe("invincible (천하무적)", () => {
     expect(winValidate(game, "p1")).toBe("discarder is immune to ron");
   });
 
-  it("자기 턴에 선언하면 플래그와 쿨다운 2국이 기록되고, 쿨다운 중에는 막힌다", () => {
+  // 쿨다운은 2026-08-25 반장전 QA에서 모드별로 갈렸다 — 동풍전 2국 · 반장전 3국.
+  // 여기서는 동풍전(기준선)을 못박고, 반장전 쪽은 hanchan_balance_0825.test.ts가 본다.
+  it("자기 턴에 선언하면 플래그와 쿨다운(동풍전 2국)이 기록되고, 쿨다운 중에는 막힌다", () => {
     const base = craft({
       hands: { p0: "234m345p345s678s55s", p1: "*", p2: "*", p3: "*" },
       phase: "turn.act",
@@ -73,6 +75,7 @@ describe("invincible (천하무적)", () => {
     });
     const state: GameState = {
       ...base,
+      config: { ...base.config, mode: "tonpuu" },
       players: base.players.map((p) =>
         p.id === "p0" ? { ...p, augments: ["invincible"] } : p,
       ),
