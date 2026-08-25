@@ -1655,6 +1655,9 @@ button {
   align-items: center;
   padding: 2px 10px;
   border-radius: 999px;
+  /* 「차례」도 접히면 안 된다 — 좁은 칩에서 자리가 모자라면 «차/례» 두 줄(실측 22×28px)이
+     되어 30px 한 줄짜리 칩을 넘겼다. `.np-turn-wait` 와 같은 이유다. */
+  white-space: nowrap;
   /* 그라디언트 아래쪽 끝(#b8975c)에서 글자 대비가 3.94:1 까지 떨어졌다 — 13px 본문 기준 미달.
      단색 밝은 황동 + 더 어두운 글자로 올린다(약 10:1). */
   background: #f0c86a;
@@ -15804,6 +15807,8 @@ body:has(.overlay) .emote-bar {
     padding: 1px 6px;
     font-size: 11px;
     letter-spacing: 0;
+    /* 배지도 줄지 않는다 — 부족한 폭은 이름·점수 다음 순서인 증강 알약이 진다 */
+    flex: 0 0 auto;
   }
   .opp-strip-left .nameplate .np-augs,
   .opp-strip-top .nameplate .np-augs,
