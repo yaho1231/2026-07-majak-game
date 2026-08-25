@@ -8169,6 +8169,93 @@ function aggregateAugments(
   return { rows: toAugRows(map, catalog), masters };
 }
 
+/**
+ * 통계표 열 머리 정렬 (2026-08-25).
+ *
+ * 표가 늘 «평균순위 오름차순» 하나로 고정돼 있어서 "1위율 높은 순"이나 "판수 많은 순"을
+ * 보려면 눈으로 훑는 수밖에 없었다. 열 머리를 눌러 그 열 기준으로 정렬한다 — 같은 열을
+ * 다시 누르면 방향이 뒤집힌다. 열마다 «처음 눌렀을 때» 보고 싶은 방향이 다르므로
+ * (평균순위는 낮은 게 좋고, 1위율은 높은 게 좋다) 기본 방향을 열마다 준다.
+ */
+type SortDir = "asc" | "desc";
+type SortState = { key: string; dir: SortDir };
+
+function useTableSort(initial: SortState): { sort: SortState; toggle: (key: string, defaultDir: SortDir) => void } {
+  const [sort, setSort] = useState<SortState>(initial);
+  const toggle = useCallback((key: string, defaultDir: SortDir) => {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: defaultDir }));
+  }, []);
+  return { sort, toggle };
+}
+
+/** 정렬 키 → 값(숫자 또는 문자열)을 뽑아 정렬한다. 문자열은 한국어 사전순. */
+function sortRows<T>(rows: T[], sort: SortState, valueOf: (row: T, key: string) => number | string): T[] {
+  const sign = sort.dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const va = valueOf(a, sort.key);
+    const vb = valueOf(b, sort.key);
+    if (typeof va === "string" || typeof vb === "string") {
+      return sign * String(va).localeCompare(String(vb), "ko");
+    }
+    return sign * (va - vb);
+  });
+}
+
+/** 누를 수 있는 열 머리. 지금 정렬 중인 열에는 방향 화살표를 단다. */
+function SortTh({
+  sortKey,
+  label,
+  sort,
+  toggle,
+  defaultDir = "desc",
+  className,
+}: {
+  sortKey: string;
+  label: string;
+  sort: SortState;
+  toggle: (key: string, defaultDir: SortDir) => void;
+  defaultDir?: SortDir;
+  className?: string;
+}): JSX.Element {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={`${className ?? ""} th-sort${active ? " th-sort-on" : ""}`.trim()}
+      onClick={() => toggle(sortKey, defaultDir)}
+      title={`${label} 기준으로 정렬`}
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+    >
+      {label}
+      <span className="th-arrow">{active ? (sort.dir === "asc" ? "\u25b2" : "\u25bc") : "\u21c5"}</span>
+    </th>
+  );
+}
+
+/** 전체 플레이어 통계표의 정렬 키 → 값. rank = 서버가 준 원래 순서. */
+function lbValue(row: { e: LeaderboardEntry; rank: number }, key: string): number | string {
+  const s = row.e.stats;
+  switch (key) {
+    case "name": return row.e.nickname;
+    case "games": return s.games;
+    case "avg": return s.games > 0 ? s.avgPlacement : Number.POSITIVE_INFINITY;
+    case "top": return s.games > 0 ? s.topRate : -1;
+    case "win": return s.roundsPlayed > 0 ? s.winRate : -1;
+    case "deal": return s.roundsPlayed > 0 ? s.dealInRate : Number.POSITIVE_INFINITY;
+    default: return row.rank;
+  }
+}
+
+/** 증강 표(내 성적·증강 메타)의 정렬 키 → 값. 두 표가 같은 열을 쓰므로 하나로 둔다. */
+function augRowValue(r: AugRow, key: string): number | string {
+  switch (key) {
+    case "name": return r.name;
+    case "games": return r.games;
+    case "top": return r.topRate;
+    case "pick": return r.pickRate;
+    default: return r.avgPlacement;
+  }
+}
+
 /** 평균순위 색: 낮을수록(좋을수록) 초록, 높을수록 빨강. */
 function avgRankClass(avg: number): string {
   if (avg <= 0) return "";
@@ -8181,6 +8268,8 @@ function avgRankClass(avg: number): string {
 function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | null; catalog: AugCatalog }): JSX.Element {
   const rows = useMemo(() => toAugRows(stats?.augments, catalog), [stats, catalog]);
   const catalogSize = useMemo(() => Object.keys(catalog).length, [catalog]);
+  // 훅은 아래 early return보다 위에 있어야 한다 (기록이 없으면 표 대신 안내문을 낸다).
+  const { sort, toggle } = useTableSort({ key: "avg", dir: "asc" });
   if (stats === null || rows.length === 0) {
     return <p className="home-empty">아직 증강 기록이 없습니다. 증강 드래프트가 있는 대국을 완주해 보세요!</p>;
   }
@@ -8188,7 +8277,7 @@ function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | nul
   const held = rows.filter((r) => r.games > 0);
   const overallAvg = stats.games > 0 ? stats.placementSum / stats.games : 0;
   const signature = [...rows].filter((r) => r.picked > 0).sort((a, b) => b.picked - a.picked).slice(0, 3);
-  const bySkill = [...held].sort((a, b) => a.avgPlacement - b.avgPlacement);
+  const bySkill = sortRows(held, sort, augRowValue);
   const traps = held
     .filter((r) => r.picked >= 3 && overallAvg > 0 && r.avgPlacement > overallAvg + 0.3)
     .sort((a, b) => b.avgPlacement - a.avgPlacement);
@@ -8236,11 +8325,11 @@ function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | nul
           <table className="lb-table aug-table">
             <thead>
               <tr>
-                <th className="aug-name-h">증강</th>
-                <th>판</th>
-                <th>평균순위</th>
-                <th>1위율</th>
-                <th>픽률</th>
+                <SortTh sortKey="name" label="증강" sort={sort} toggle={toggle} defaultDir="asc" className="aug-name-h" />
+                <SortTh sortKey="games" label="판" sort={sort} toggle={toggle} />
+                <SortTh sortKey="avg" label="평균순위" sort={sort} toggle={toggle} defaultDir="asc" />
+                <SortTh sortKey="top" label="1위율" sort={sort} toggle={toggle} />
+                <SortTh sortKey="pick" label="픽률" sort={sort} toggle={toggle} />
               </tr>
             </thead>
             <tbody>
@@ -8277,7 +8366,11 @@ function AugmentMeta({
     [leaderboard, catalog],
   );
   const MIN_GAMES = 5;
-  const ranked = rows.filter((r) => r.games >= MIN_GAMES).sort((a, b) => a.avgPlacement - b.avgPlacement);
+  const { sort, toggle } = useTableSort({ key: "avg", dir: "asc" });
+  const ranked = useMemo(
+    () => sortRows(rows.filter((r) => r.games >= MIN_GAMES), sort, augRowValue),
+    [rows, sort],
+  );
 
   if (leaderboard === null) {
     return <p className="home-empty home-loading">불러오는 중…</p>;
@@ -8301,11 +8394,11 @@ function AugmentMeta({
             <thead>
               <tr>
                 <th className="aug-rank-h">#</th>
-                <th className="aug-name-h">증강</th>
-                <th>표본</th>
-                <th>평균순위</th>
-                <th>1위율</th>
-                <th>픽률</th>
+                <SortTh sortKey="name" label="증강" sort={sort} toggle={toggle} defaultDir="asc" className="aug-name-h" />
+                <SortTh sortKey="games" label="표본" sort={sort} toggle={toggle} />
+                <SortTh sortKey="avg" label="평균순위" sort={sort} toggle={toggle} defaultDir="asc" />
+                <SortTh sortKey="top" label="1위율" sort={sort} toggle={toggle} />
+                <SortTh sortKey="pick" label="픽률" sort={sort} toggle={toggle} />
               </tr>
             </thead>
             <tbody>
@@ -11090,6 +11183,8 @@ function HomeScreen(props: {
 
   // 오른쪽 탭 (readHomeTab 주석 참고)
   const [tab, setTab] = useState<HomeTabId>(() => readHomeTab(props.auth.isAdmin));
+  // 전체 플레이어 통계표 정렬 — 기본은 서버가 준 순서(=순위)를 그대로 쓴다.
+  const { sort: lbSort, toggle: toggleLbSort } = useTableSort({ key: "rank", dir: "asc" });
   // 이모지 아이콘을 뺐다 (2026-08-19). 탭 이름이 이미 한 단어라 그림이 뜻을 더해 주지
   // 않았고, 기기마다 다른 그림·다른 기준선이 와서 탭 줄의 글자 높이가 흔들렸다.
   const tabs: { id: HomeTabId; label: string }[] = [
@@ -11407,21 +11502,21 @@ function HomeScreen(props: {
               <table className="lb-table">
                 <thead>
                   <tr>
-                    <th className="lb-rank-h">#</th>
-                    <th className="lb-name-h">플레이어</th>
-                    <th>판수</th>
-                    <th>평균순위</th>
-                    <th>1위율</th>
-                    <th>화료율</th>
-                    <th>방총률</th>
+                    <SortTh sortKey="rank" label="#" sort={lbSort} toggle={toggleLbSort} defaultDir="asc" className="lb-rank-h" />
+                    <SortTh sortKey="name" label="플레이어" sort={lbSort} toggle={toggleLbSort} defaultDir="asc" className="lb-name-h" />
+                    <SortTh sortKey="games" label="판수" sort={lbSort} toggle={toggleLbSort} />
+                    <SortTh sortKey="avg" label="평균순위" sort={lbSort} toggle={toggleLbSort} defaultDir="asc" />
+                    <SortTh sortKey="top" label="1위율" sort={lbSort} toggle={toggleLbSort} />
+                    <SortTh sortKey="win" label="화료율" sort={lbSort} toggle={toggleLbSort} />
+                    <SortTh sortKey="deal" label="방총률" sort={lbSort} toggle={toggleLbSort} defaultDir="asc" />
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((e, i) => {
+                  {sortRows(rows.map((e, i) => ({ e, rank: i + 1 })), lbSort, lbValue).map(({ e, rank }) => {
                     const me = e.nickname === props.auth.username;
                     return (
                       <tr key={e.nickname} className={me ? "lb-me" : ""}>
-                        <td className="lb-rank">{i + 1}</td>
+                        <td className="lb-rank">{rank}</td>
                         <td className="lb-name">
                           {e.nickname}
                           {me ? <span className="seat-you"> (나)</span> : null}
