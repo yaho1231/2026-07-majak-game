@@ -2703,6 +2703,22 @@ export class RoomManager {
     }
     conn.user = user;
     conn.sessionToken = sessionToken;
+    /*
+     * **한 계정은 한 창에서만** (2026-08-25 사용자 지시).
+     *
+     * 같은 계정으로 새 탭에서 로그인하면 먼저 있던 탭을 끊는다. 두 창이 같은
+     * 계정으로 살아 있으면 좌석·재입장·친구 상태가 서로를 덮어써서, 어느 쪽도
+     * 자기 화면을 믿을 수 없게 된다(그게 «좀비 탭» 제보의 뿌리였다).
+     *
+     * 세션 토큰은 죽이지 않는다 — 쫓겨난 것은 «그 창»이지 계정이 아니다. 끊긴
+     * 쪽은 안내를 읽고 확인을 누르면 그 자리에서 정리된다(클라이언트).
+     */
+    this.evictOtherSessions(
+      user.id,
+      conn,
+      "새 접속이 감지되어 종료됩니다",
+      "SESSION_TAKEOVER",
+    );
     // 인증 완료 — 미인증 유예 타이머를 해제한다.
     if (conn.authDeadline !== null) {
       clearTimeout(conn.authDeadline);
@@ -4285,13 +4301,18 @@ export class RoomManager {
    *
    * @returns 실제로 끊은 연결 수
    */
-  private evictOtherSessions(userId: number, keep: Conn, message: string): number {
+  private evictOtherSessions(
+    userId: number,
+    keep: Conn,
+    message: string,
+    code = "SESSION_REVOKED",
+  ): number {
     let closed = 0;
     for (const c of this.conns) {
       if (c === keep || c.user?.id !== userId || c.guest) continue;
       c.user = null;
       c.sessionToken = null;
-      this.fail(c, "SESSION_REVOKED", message);
+      this.fail(c, code, message);
       closed++;
       try {
         c.ws.close();

@@ -126,63 +126,90 @@ afterEach(async () => {
 });
 
 describe("세션 회수는 열려 있는 소켓까지 끊는다", () => {
-  it("비밀번호 변경 — 다른 기기의 탭이 그 자리에서 끊긴다 (내 탭은 산다)", async () => {
+  it("같은 계정 두 번째 로그인 — 먼저 있던 탭이 SESSION_TAKEOVER로 끊긴다", async () => {
     const rm = await newHarness();
-    const mine = await speak(rm, {
+    const first = await speak(rm, {
+      type: "register",
+      username: "한창만",
+      password: "goodpass1234",
+    });
+    const second = await speak(rm, {
+      type: "login",
+      username: "한창만",
+      password: "goodpass1234",
+    });
+
+    // 늦게 온 쪽이 이긴다.
+    expect(second.last("authOk")).toBeDefined();
+    expect(second.readyState).toBe(1);
+    // 먼저 있던 탭은 사유를 듣고 닫힌다 — 클라이언트는 이 문구를 확인 창에 그대로 쓴다.
+    expect(first.last("error")?.code).toBe("SESSION_TAKEOVER");
+    expect(first.last("error")?.message).toContain("새 접속이 감지되어");
+    expect(first.readyState).toBe(3);
+
+    // 끊긴 연결은 권한도 잃는다 — 소켓만 되살려도 아무 답을 받지 못한다.
+    first.readyState = 1;
+    first.sent.length = 0;
+    first.clientSend({ type: "replayList" });
+    await tick();
+    expect(first.last("replayList")).toBeUndefined();
+  });
+
+  it("계정이 다르면 서로 쫓아내지 않는다", async () => {
+    const rm = await newHarness();
+    const a = await speak(rm, { type: "register", username: "갑", password: "goodpass1234" });
+    await speak(rm, { type: "register", username: "을", password: "goodpass1234" });
+    await tick();
+    expect(a.readyState).toBe(1);
+    expect(a.errors().some((e) => e.code === "SESSION_TAKEOVER")).toBe(false);
+  });
+
+  it("비밀번호 변경 — 남아 있던 다른 세션 토큰이 죽는다", async () => {
+    const rm = await newHarness();
+    const first = await speak(rm, {
       type: "register",
       username: "주인장",
       password: "goodpass1234",
     });
-    // 다른 기기 = 같은 계정으로 연 두 번째 연결.
-    const other = await speak(rm, {
+    const stale = first.last("authOk").sessionToken as string;
+
+    // 두 번째 창이 자리를 가져간다(첫 창은 끊긴다).
+    const mine = await speak(rm, {
       type: "login",
       username: "주인장",
       password: "goodpass1234",
     });
-    expect(other.last("authOk")).toBeDefined();
-    expect(other.readyState).toBe(1);
-
     const before = mine.last("authOk").sessionToken as string;
+
     mine.clientSend({
       type: "changePassword",
       currentPassword: "goodpass1234",
       newPassword: "brandnew5678",
     });
     await mine.waitFor((m) => m.type === "authOk" && m.sessionToken !== before);
-
-    // 남의 손에 있던 탭은 사유를 듣고 닫힌다.
-    expect(other.last("error")?.code).toBe("SESSION_REVOKED");
-    expect(other.readyState).toBe(3);
-    // 내 탭은 그대로 산다 — 비밀번호를 바꿨다고 자기 자신이 쫓겨나면 안 된다.
     expect(mine.readyState).toBe(1);
 
-    // 끊긴 연결은 **권한도 잃는다**: 계속 말을 걸어도 다시 인증하라고 답해야 한다.
-    other.readyState = 1; // 소켓만 되살려 서버 쪽 상태를 확인한다
-    other.sent.length = 0;
-    other.clientSend({ type: "replayList" });
-    await tick();
-    expect(other.last("replayList")).toBeUndefined();
+    // 남의 손에 있던 토큰은 더 이상 통하지 않는다.
+    const revived = await speak(rm, { type: "tokenLogin", sessionToken: stale });
+    expect(revived.last("authOk")).toBeUndefined();
+    expect(revived.last("error")?.code).toBe("TOKEN_INVALID");
   });
 
-  it("다른 기기에서 로그아웃 — 소켓을 끊고, 그 수를 문구에 싣는다", async () => {
+  it("다른 기기에서 로그아웃 — 남은 세션 수를 문구에 싣는다", async () => {
     const rm = await newHarness();
-    const mine = await speak(rm, {
-      type: "register",
+    await speak(rm, { type: "register", username: "여러기기", password: "goodpass1234" });
+    // 로그인할 때마다 세션 행이 하나씩 쌓인다(소켓은 마지막 하나만 산다).
+    await speak(rm, { type: "login", username: "여러기기", password: "goodpass1234" });
+    const last = await speak(rm, {
+      type: "login",
       username: "여러기기",
       password: "goodpass1234",
     });
-    const a = await speak(rm, { type: "login", username: "여러기기", password: "goodpass1234" });
-    const b = await speak(rm, { type: "login", username: "여러기기", password: "goodpass1234" });
 
-    mine.clientSend({ type: "logoutOthers" });
-    await mine.waitFor((m) => m.type === "error" && m.code === "SESSIONS_CLEARED");
-
-    expect(a.readyState).toBe(3);
-    expect(b.readyState).toBe(3);
-    expect(a.last("error")?.code).toBe("SESSION_REVOKED");
-    expect(mine.readyState).toBe(1);
-    // 문구는 실제로 끊은 수를 말해야 한다.
-    expect(mine.last("error").message).toContain("2곳");
+    last.clientSend({ type: "logoutOthers" });
+    await last.waitFor((m) => m.type === "error" && m.code === "SESSIONS_CLEARED");
+    expect(last.last("error").message).toContain("2곳");
+    expect(last.readyState).toBe(1);
   });
 
   it("끊을 것이 없으면 없다고 답한다 (거짓 안심을 주지 않는다)", async () => {
