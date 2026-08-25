@@ -211,11 +211,18 @@ function normalizeOptions(
     kokushiOnly: o.kokushiOnly ?? false,
     mixedRuns: o.mixedRuns ?? false,
     mixedTriplets: o.mixedTriplets ?? false,
-    // 동수의 결속(mixedTriplets)은 "같은 랭크면 같은 패"라는 재정의다 — 커쯔만
-    // 열고 머리를 닫아 두면 1통+1삭·5만+5삭 같은 **샹퐁 대기가 통째로 사라진다**
-    // (7m7p7p1p1s5m5s + 후로 2 → 777 + 111 + 55머리인데 머리가 혼색이라 불성립).
-    // 그래서 커쯔를 여는 옵션은 머리도 함께 연다. (2026-08-25 사용자 보고)
-    mixedPairs: (o.mixedPairs ?? false) || (o.mixedTriplets ?? false),
+    /*
+     * **머리(작두)는 동수의 결속을 따라 열지 않는다** (2026-08-25 사용자 확정).
+     *
+     * 잠깐 `mixedTriplets`가 `mixedPairs`를 함께 켜게 둔 적이 있다 — 혼색 샹퐁
+     * (7만7통7통·1통1삭·5만5삭 + 후로 2 → 777 + 111 + 55머리)을 살리려던 것이었다.
+     * 사용자가 그 확장을 물렀다: **커쯔만 무늬를 안 가리고 머리는 같은 무늬여야 한다.**
+     * 그래서 그 손은 머리 단기(7)만 대기로 서는 것이 의도된 동작이다 — 카드 설명에
+     * 이 제약을 명시해 두었다(`content/augments/mixed_triplet.ts`).
+     *
+     * `mixedPairs`는 그것을 직접 켜는 증강(비대칭 치또이 등)만의 옵션으로 남는다.
+     */
+    mixedPairs: o.mixedPairs ?? false,
     kokushiDupes: o.kokushiDupes ?? 0,
     polarEnds: o.polarEnds ?? false,
     chiitoiMixedPairs: o.chiitoiMixedPairs ?? false,
