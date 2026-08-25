@@ -2913,8 +2913,15 @@ export function App(): JSX.Element {
     if (el === null) return;
     let timer = 0;
     const io = new IntersectionObserver((entries) => {
-      if (timer === 0 && entries.some((e) => e.isIntersecting)) {
+      const shown = entries.some((e) => e.isIntersecting);
+      if (shown && timer === 0) {
         timer = window.setTimeout(() => setRotateHintFolded(true), 7000);
+      } else if (!shown && timer !== 0) {
+        /* 안 보이는 동안은 시계도 멈춘다 — 안 그러면 증강 선택 창(그 동안 안내는
+           `display:none` 이다)이 7초를 대신 흘려보내, 창을 닫고 판을 처음 보는
+           순간 이미 접혀 있다(375×700 실측으로 실제로 그랬다). */
+        window.clearTimeout(timer);
+        timer = 0;
       }
     });
     io.observe(el);
