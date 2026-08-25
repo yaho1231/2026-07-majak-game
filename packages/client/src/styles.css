@@ -2468,6 +2468,29 @@ button {
   pointer-events: none;
 }
 
+
+/* 현물 표시 — 리치를 건 사람 전원이 이미 버린 내 손패.
+   위험패(빨강 맥동)와 달리 **조용한 표식**이다: 안전은 재촉하지 않는 정보이고,
+   열네 장 중 여럿에 동시에 붙으므로 손패 전체가 번쩍이면 오히려 못 읽는다.
+   색만으로 말하지 않게 아래쪽 짧은 밑줄로 그린다(적록색맹·고대비에서도 남는다). */
+.hand-safe .tile-face {
+  position: relative;
+}
+
+.hand-safe .tile-face::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 40%;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: rgba(126, 200, 130, 0.95);
+  box-shadow: 0 0 5px rgba(126, 200, 130, 0.6);
+  pointer-events: none;
+}
+
 /* 삼세 예지 — 내 다음 쯔모 3장을 손패 바로 위에 크게 띄운다 (왼쪽 위 패널 대체). */
 .next-tsumo-strip {
   display: flex;
@@ -6156,6 +6179,69 @@ button {
 .mode-sub {
   font-size: 11px;
   opacity: 0.85;
+}
+
+
+/* ── 방 상세설정 (대기실) ─────────────────────────────────────────────
+   버튼은 `.mode-btn` 한 칸과 같은 결로 두되 줄 전체를 먹는다 — 고르는 자리가
+   아니라 «여는» 자리라 나란히 설 짝이 없다. */
+.lobby-rules-btn {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--chrome-line);
+  border-radius: var(--r-chip);
+  background: rgba(236, 228, 210, 0.03);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.lobby-rules-btn:hover {
+  border-color: var(--brass-line);
+  color: var(--ink-2);
+}
+
+.lobby-rules-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.lobby-rules-sub {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+/* 설정 창과 같은 표면을 쓴다(`.settings-panel`) — 화면에 창이 두 종류로 늘지 않게. */
+.room-rules-panel {
+  max-width: 420px;
+}
+
+.room-rules-num {
+  width: 96px;
+  flex: none;
+  padding: 6px 8px;
+  border: 1px solid var(--chrome-line);
+  border-radius: var(--r-chip);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink-1);
+  font-size: 14px;
+  text-align: right;
+}
+
+.room-rules-num:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.room-rules-note {
+  margin: 0 0 8px;
+  color: var(--ink-4);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* 좌석 넷은 **한 판의 네 자리**다. 저마다 둥근 상자로 띄워 두면 서로 무관한 카드
