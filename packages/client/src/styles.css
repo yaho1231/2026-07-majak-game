@@ -9011,6 +9011,13 @@ button {
    */
   .center-round { font-size: max(12px, calc(var(--panel) * 0.15)); }
   .center-sub { font-size: max(8px, calc(var(--panel) * 0.068)); }
+  /*
+   * 남은 패 수는 여기서도 부제보다 크게 두되(§`.wall-count`) **국 표시를 넘지는
+   * 않게** 하한을 13→11px 로 내린다. 세로용 13px 을 그대로 두면 740×360 에서
+   * «×69»(13px)가 «東1국»(12.2px)보다 커져 위계가 뒤집혔다(실측 2026-08-25).
+   * 11px = 740(패널 81px)에서 하한, 844(패널 93px)에서는 12.1px 로 계수가 이긴다.
+   */
+  .wall-count { font-size: max(11px, calc(var(--panel) * 0.13)); }
   .center-core {
     inset: calc(var(--plate-h) * 0.4) var(--plate-h);
     gap: 3px;
@@ -17646,6 +17653,46 @@ body:has(.prod-skip) .toast-stack {
     calc(28px + 52px + env(safe-area-inset-bottom, 0px)),
     calc(var(--own-band-full, 0px) + 12px + 52px + env(safe-area-inset-bottom, 0px))
   );
+}
+
+/* ─────────────── 9-2-d. 넓은 화면 — 토스트를 «빈 펠트»로 옮긴다 ───────────────
+ *
+ * 토스트는 «내 영역 위 12px» 에 가운데로 선다(위 `.toast-stack` 주석). 그 자리는
+ * 손패는 피하지만 **내 버림패 줄**은 못 피한다 — 보드 아래 모서리와 내 영역이
+ * 서로 물려 있어서(2560×1080 실측: 보드 아래끝 y870 vs 내 영역 위끝 y805) 가운데
+ * 열에는 애초에 빈 줄이 없다. 2026-08-25 QA §12(d): 「시간 초과 — 패스로 자동
+ * 진행했습니다」 토스트 [1149,767,261,45] 가 내 버림패 첫 줄(y613~) 위에 얹혔고,
+ * 강이 3단으로 쌓이면 첫 줄이 통째로 그 밑에 들어간다.
+ *
+ * 좁은 화면에서는 옮길 곳이 없다(그래서 그대로 둔다). 하지만 넓은 화면에서는
+ * **보드 양옆이 통째로 비어 있다** — 1280×800 실측으로 보드 왼쪽에 337px,
+ * 2560×1080 에서는 869px 이 빈 펠트다. 왼쪽으로 붙여 강에서 완전히 떼어 놓는다.
+ *  · 오른쪽이 아니라 왼쪽인 이유: 오른쪽 아래 구석은 정형구 바(`.emote-bar`,
+ *    1280×800 실측 [1227,668,42,33])가 이미 쓴다.
+ *  · 왼쪽 아래의 빠른 토글(1280×800 [11,669,76,117] · 2560×1080 [14,906,101,156])
+ *    과는 세로가 안 겹친다 — 토스트 아래끝이 각각 611 · 812 이다.
+ *  · 폭 상한은 «보드 왼쪽 여백 - 숨통» 그대로 식으로 적는다(`--board` 는 보드 크기).
+ *    손어림 값을 넣으면 배율·창 크기가 바뀔 때마다 다시 틀어진다.
+ * 기준을 1100px 로 잡은 것은 그 아래(태블릿 가로 1024 이하)에서는 여백이 토스트
+ * 한 줄보다 좁아 옮기는 것이 오히려 보드를 무는 짓이 되기 때문이다.
+ */
+@container ui (min-width: 1100px) {
+  .toast-stack {
+    left: max(24px, env(safe-area-inset-left, 0px));
+    transform: none;
+    align-items: flex-start;
+    max-width: calc(50cqw - var(--board, 0px) / 2 - 40px);
+  }
+  /* 등장 애니메이션의 `translate(-50%)` 는 «가운데 정렬»을 전제로 한 값이다 —
+     왼쪽에 붙은 채로 쓰면 0.25초 동안 제 폭의 절반만큼 화면 밖으로 나갔다 들어온다. */
+  .toast-stack .toast {
+    animation-name: toast-in-left;
+  }
+}
+
+@keyframes toast-in-left {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
 
 /* ─────────────── 9-4. InfoNote — 터치에서도 열리는 설명 칩 ───────────────
