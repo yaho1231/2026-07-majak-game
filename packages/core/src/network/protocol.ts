@@ -947,17 +947,6 @@ export interface SetRoomRulesMessage {
   rules: Partial<RoomRules>;
 }
 
-/**
- * 이 방의 상세설정 — 참가·변경·게임 시작 때 방 전체에 보낸다.
- *
- * 로비 메시지와 따로 두는 이유는 로비가 대기실에서만 나가기 때문이다: 힌트 표시처럼
- * **대국 중에 쓰이는** 항목이 있어서, 판이 시작된 뒤에도 화면이 값을 들고 있어야 한다.
- */
-export interface RoomRulesMessage {
-  type: "roomRules";
-  rules: RoomRules;
-}
-
 /** 게임 모드 변경 (방장 전용, 대기 중에만). 대기실에서 반장전/동풍전을 고른다. */
 export interface SetGameModeMessage {
   type: "setGameMode";
@@ -1398,6 +1387,20 @@ export interface LobbyPlayerEntry {
   ready: boolean;
   /** 누적(career) 통계 — 신규 플레이어면 null. */
   stats: PlayerStatsView | null;
+}
+
+/**
+ * 이 방의 상세설정 — 참가·변경·게임 시작 때 방 전체에 보낸다.
+ *
+ * 로비 메시지와 따로 두는 이유는 로비가 대기실에서만 나가기 때문이다: 힌트 표시처럼
+ * **대국 중에 쓰이는** 항목이 있어서, 판이 시작된 뒤에도 화면이 값을 들고 있어야 한다.
+ *
+ * ⚠ **서버 → 클라이언트 구간에 있어야 한다.** 앞 구간에 두면 재전송 정책 테스트가
+ * 이것을 클라이언트 메시지로 세어 「분류되지 않았다」로 떨어진다.
+ */
+export interface RoomRulesMessage {
+  type: "roomRules";
+  rules: RoomRules;
 }
 
 /**
