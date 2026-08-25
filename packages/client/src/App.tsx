@@ -23903,24 +23903,33 @@ function RoundResultPanel({
 
         {/* 확인 버튼 — 이 창을 넘기는 유일한 손잡이다. 남은 시간을 함께 달아
             "왜 저절로 넘어가는가"를 화면 안에서 설명한다. 대기가 없는 판
-            (interRoundDelayMs=0)에서는 초 표시 없이 버튼만 남는다. */}
-        <button
-          className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
-          onClick={onClose}
-        >
-          {historical === true ? "닫기" : "다음 국으로"}
+            (interRoundDelayMs=0)에서는 초 표시 없이 버튼만 남는다.
+
+            ⚠ 버튼과 안내를 `.result-cta` 로 묶는 이유 (2026-08-25 QA §7): 이 패널은
+            스크롤되는데 스크롤 표시가 없어서, 내용이 화면보다 길면 «유일한 손잡이»가
+            접힌 곳 아래로 사라졌다 — 740×360 에서 버튼 top 629 / 화면 360 (269px 밖),
+            375×700 세로에서도 top 978 / 700. 사람들은 버튼이 있는 줄도 모르고 「17초」
+            자동 넘김을 그냥 기다렸다. 묶어서 `position: sticky` 로 패널 바닥에 붙인다
+            (CSS `.result-cta`) — 스크롤 위치와 무관하게 늘 화면 안이다. */}
+        <div className="result-cta">
+          <button
+            className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
+            onClick={onClose}
+          >
+            {historical === true ? "닫기" : "다음 국으로"}
+            {showCountdown ? (
+              <span className="result-close-count" aria-hidden>
+                {remainSec}초
+              </span>
+            ) : null}
+          </button>
           {showCountdown ? (
-            <span className="result-close-count" aria-hidden>
-              {remainSec}초
-            </span>
+            <p className="result-close-note">
+              누르지 않아도 <strong>{remainSec}초</strong> 뒤 다음 국이 시작된다 —
+              천천히 읽어도 된다
+            </p>
           ) : null}
-        </button>
-        {showCountdown ? (
-          <p className="result-close-note">
-            누르지 않아도 <strong>{remainSec}초</strong> 뒤 다음 국이 시작된다 —
-            천천히 읽어도 된다
-          </p>
-        ) : null}
+        </div>
       </div>
     </div>
   );
