@@ -216,6 +216,10 @@ export const RIICHI_BGM_SRCS = [
   "/richiBGM2.mp3",
   "/richiBGM3.mp3",
   "/richiBGM4.mp3",
+  "/richiBGM5.mp3",
+  "/richiBGM6.mp3",
+  "/richiBGM7.mp3",
+  "/richiBGM8.mp3",
 ] as const;
 
 /** 리치 BGM 트랙 수 — 서버가 «랜덤»을 실제 트랙으로 풀 때 쓴다. */
