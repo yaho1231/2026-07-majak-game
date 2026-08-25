@@ -50,6 +50,7 @@ import type {
   ReplayDataMessage,
   RevealedHand,
   ReplayGameSummary,
+  RoomRules,
   RoundOverMessage,
   SandboxMessage,
   SandboxBotRules,
@@ -72,9 +73,15 @@ import {
   EMOTES,
   INVITE_COOLDOWN_MS,
   RIICHI_BGM_RANDOM,
+  DEFAULT_ROOM_RULES,
+  ROOM_SCORE_MIN,
+  ROOM_SCORE_MAX,
+  normalizeRoomRules,
   NOTICE_BODY_MAX,
   NOTICE_TITLE_MAX,
   SPECTATOR_ID,
+  augmentFuritenBreakReads,
+  discardsZone,
   doraKindFor,
   kindKey,
   shantenOf,
@@ -1171,6 +1178,14 @@ interface Settings {
   tapTwiceToDiscard: boolean;
   /** 내 오름패 표시 — 텐파이면 손패 위에 항상 화료패를 보여준다. */
   showMyWaits: boolean;
+  /**
+   * 현물 표시 — 리치를 건 사람에게 **이미 버려진** 내 손패에 안전 표식을 붙인다.
+   *
+   * 세는 것은 화면에 보이는 것뿐이다(그 사람의 버림패). 두 사람 이상이 리치를
+   * 걸었으면 **전원의 바닥에 있는** 패만 안전으로 친다 — 한 사람에게만 현물인 패를
+   * 초록으로 칠하면 화면이 거짓말을 한다.
+   */
+  showSafeTiles: boolean;
   /** 우클릭 쯔모기리 — 판 어디서든 오른쪽 버튼을 누르면 쯔모한 패를 그대로 버린다. */
   rightClickTsumogiri: boolean;
   /** 도라 반짝임 — 도라인 패를 금빛(전용 도라는 보랏금)으로 반짝이게 한다. */
@@ -1220,6 +1235,7 @@ const DEFAULT_SETTINGS: Settings = {
       ? window.matchMedia("(pointer: coarse)").matches
       : false,
   showMyWaits: true,
+  showSafeTiles: true,
   // 우클릭 쯔모기리는 기본 꺼짐 — 판 전체가 대상이라 모르고 켜져 있으면 실수로 패가 나간다.
   rightClickTsumogiri: false,
   doraFx: true,
@@ -2872,6 +2888,14 @@ export function App(): JSX.Element {
   const [lastGameId, setLastGameId] = useState<number | null>(null);
   const [joined, setJoined] = useState<JoinedMessage | null>(null);
   const [lobby, setLobby] = useState<LobbyMessage | null>(null);
+  /**
+   * 이 방의 상세설정 (방장이 대기실에서 고른 규칙).
+   *
+   * 로비 메시지와 따로 오는 이유는 **대국 중에도** 쓰이기 때문이다 — 힌트 표시가
+   * 꺼진 방에서는 판이 도는 내내 화면이 이 값을 봐야 한다. 방 밖(홈)에서는 기본값
+   * 그대로 두어, 연습 대국·체험처럼 대기실을 거치지 않는 판도 종전대로 굴러간다.
+   */
+  const [roomRules, setRoomRules] = useState<RoomRules>(DEFAULT_ROOM_RULES);
   const [stats, setStats] = useState<StatsMessage | null>(null);
   /**
    * 홈 카드의 목록들은 **`null`로 시작한다** — `[]`가 아니다 (감사 2026-08-17 §5-1).
@@ -3024,6 +3048,8 @@ export function App(): JSX.Element {
   const draftPickedRef = useRef(false);
   /** 직전 대기실 스냅샷 — 설정이 무엇에서 무엇으로 바뀌었는지 알려 주려고 둔다(같은 이유로 ref) */
   const prevLobby = useRef<LobbyMessage | null>(null);
+  /** 직전 상세설정 — 무엇이 바뀌었는지 말해 주려고 둔다(로비와 같은 이유로 ref). */
+  const prevRoomRules = useRef<RoomRules | null>(null);
   /** 중단 투표를 이미 알렸는가 — 투표가 갱신될 때마다 토스트가 쌓이지 않게 한 번만 띄운다 */
   const abortVoteNoticed = useRef(false);
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
@@ -3848,6 +3874,8 @@ export function App(): JSX.Element {
     coachHoldWanted.current = false;
     setJoined(null);
     setLobby(null);
+    setRoomRules(DEFAULT_ROOM_RULES);
+    prevRoomRules.current = null;
     prevLobby.current = null;
     abortVoteNoticed.current = false;
     setSandbox(null);
@@ -4687,6 +4715,25 @@ export function App(): JSX.Element {
         prev === null ? prev : { ...prev, botRules: msg.botRules, control: msg.control },
       );
       setControlling(msg.controlling);
+      return;
+    }
+    if (msg.type === "roomRules") {
+      // 방 상세설정 — 대기실·게임 시작·재접속 때 서버가 내려 준다.
+      //
+      // 방장이 고친 규칙은 값만 조용히 갈렸다 — 판 길이·봇 난이도가 그랬듯이
+      // (바로 아래 lobby 분기), 바뀐 항목을 그 자리에서 말해 준다. 처음 받는
+      // 값(방에 막 들어왔을 때)은 «바뀐 것»이 아니므로 조용히 넘긴다.
+      const before = prevRoomRules.current;
+      prevRoomRules.current = msg.rules;
+      if (before !== null) {
+        const changed = (Object.keys(msg.rules) as (keyof RoomRules)[]).filter(
+          (k) => before[k] !== msg.rules[k],
+        );
+        if (changed.length > 0) {
+          showToast(`방 규칙이 바뀌었습니다 — ${changed.map(roomRuleLabel).join(" · ")}`, "info");
+        }
+      }
+      setRoomRules(msg.rules);
       return;
     }
     if (msg.type === "riichiBgm") {
@@ -5884,6 +5931,11 @@ export function App(): JSX.Element {
     send({ type: "setGameMode", mode });
     sfx.pick();
   }
+  /** 방 상세설정 변경 (방장) — 바꾼 항목만 보낸다. 서버가 범위를 다시 자른다. */
+  function setRoomRulesPatch(patch: Partial<RoomRules>): void {
+    send({ type: "setRoomRules", rules: patch });
+    sfx.pick();
+  }
   function setBotDifficulty(difficulty: string): void {
     send({ type: "setBotDifficulty", difficulty });
     sfx.pick();
@@ -6360,6 +6412,7 @@ export function App(): JSX.Element {
           onAbortLeave={cbAbortLeave}
           onOpenCodex={cbOpenCodex}
           onOpenHelp={cbOpenHelp}
+          hintsOn={roomRules.hints}
           onToast={cbGameToast}
         />
       ) : inWaiting ? (
@@ -6376,6 +6429,8 @@ export function App(): JSX.Element {
           onStart={startGame}
           onSetGameMode={setGameMode}
           onSetBotDifficulty={setBotDifficulty}
+          rules={roomRules}
+          onSetRules={setRoomRulesPatch}
           onShuffleSeats={shuffleSeats}
           onLeave={returnHome}
           onToast={(t) => showToast(t, "info")}
@@ -12023,6 +12078,175 @@ function SeatInvite(props: {
   );
 }
 
+/**
+ * 방 상세설정을 한 줄로 요약한다 — 「기본 규칙」이거나 「기본과 3곳 다름」.
+ *
+ * 값을 전부 늘어놓지 않는 이유: 대기실 버튼 한 줄에 일곱 항목은 들어가지 않고,
+ * 들어간다 해도 읽히지 않는다. 필요한 신호는 «지금 이 방이 평범한가»뿐이고,
+ * 자세한 것은 열면 나온다.
+ */
+function roomRulesSummary(rules: RoomRules): string {
+  const keys = Object.keys(DEFAULT_ROOM_RULES) as (keyof RoomRules)[];
+  const diff = keys.filter((k) => rules[k] !== DEFAULT_ROOM_RULES[k]).length;
+  return diff === 0 ? "기본 규칙" : `기본과 ${diff}곳 다름`;
+}
+
+/** 상세설정 항목의 화면 이름 — 토스트와 창이 같은 말을 쓰게 한 곳에 둔다. */
+function roomRuleLabel(key: keyof RoomRules): string {
+  if (key === "startScore") return "시작 점수";
+  if (key === "returnScore") return "1위 필요점수";
+  return ROOM_RULE_TOGGLES.find((r) => r.key === key)?.label ?? key;
+}
+
+/** 상세설정의 on/off 항목 — 목록과 설명을 한 곳에 둔다(창과 요약이 어긋나지 않게). */
+const ROOM_RULE_TOGGLES: readonly {
+  key: "dobi" | "akaDora" | "kuitan" | "openHands" | "hints";
+  label: string;
+  desc: string;
+}[] = [
+  { key: "dobi", label: "토비", desc: "누군가 0점 이하가 되면 그 자리에서 판이 끝납니다. 끄면 마이너스 점수로 끝까지 갑니다" },
+  { key: "akaDora", label: "적도라", desc: "만·통·삭의 5가 한 장씩 적5가 되어 도라 1개로 셉니다" },
+  { key: "kuitan", label: "쿠이탕 (후로 탕야오)", desc: "울어서 만든 손의 탕야오를 인정합니다. 끄면 멘젠 탕야오만 성립합니다" },
+  { key: "openHands", label: "손패 공개", desc: "네 사람의 손패가 서로에게 보입니다 — 가르치거나 배울 때 씁니다" },
+  { key: "hints", label: "힌트 표시", desc: "현물 표시 · 대기 확인(내 오름패) · 도라 표시를 화면에 그립니다. 끄면 셋 다 사라집니다" },
+];
+
+/**
+ * 「방 상세설정」 창 (방장만 편집, 나머지는 읽기 전용).
+ *
+ * 점수 두 칸은 **입력 중에는 서버로 보내지 않는다** — 25000을 지우고 3만을 치는
+ * 동안 "3"·"30"이 그대로 나가면, 서버가 그때마다 범위를 잘라 되돌려 보내 커서
+ * 아래의 숫자가 제멋대로 바뀐다. 칸을 떠날 때(blur)나 Enter에서 한 번 보낸다.
+ */
+function RoomRulesDialog(props: {
+  rules: RoomRules;
+  canEdit: boolean;
+  onChange: (patch: Partial<RoomRules>) => void;
+  onClose: () => void;
+}): JSX.Element {
+  const [startDraft, setStartDraft] = useState(String(props.rules.startScore));
+  const [returnDraft, setReturnDraft] = useState(String(props.rules.returnScore));
+  // 남이 바꾼 값(다른 방장 조작·서버의 보정)이 오면 입력칸도 따라간다.
+  useEffect(() => setStartDraft(String(props.rules.startScore)), [props.rules.startScore]);
+  useEffect(() => setReturnDraft(String(props.rules.returnScore)), [props.rules.returnScore]);
+
+  function commitStart(): void {
+    const n = Number(startDraft);
+    if (!Number.isFinite(n)) return setStartDraft(String(props.rules.startScore));
+    props.onChange({ startScore: n });
+  }
+  function commitReturn(): void {
+    const n = Number(returnDraft);
+    if (!Number.isFinite(n)) return setReturnDraft(String(props.rules.returnScore));
+    props.onChange({ returnScore: n });
+  }
+  /** 지금 친 값이 서버에서 어떻게 정리될지 — 미리 같은 함수로 계산해 보여 준다. */
+  const preview = normalizeRoomRules(
+    { startScore: Number(startDraft), returnScore: Number(returnDraft) },
+    props.rules,
+  );
+  const willAdjust =
+    String(preview.startScore) !== startDraft.trim() ||
+    String(preview.returnScore) !== returnDraft.trim();
+
+  return createPortal(
+    <div
+      className="settings-panel room-rules-panel"
+      role="dialog"
+      aria-label="방 상세설정"
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          props.onClose();
+        }
+      }}
+    >
+      <div className="settings-head">
+        <span className="settings-title">방 상세설정</span>
+        <button className="settings-x" onClick={props.onClose} title="닫기">✕</button>
+      </div>
+      <div className="settings-body">
+        {!props.canEdit ? (
+          <p className="room-rules-note">방장만 바꿀 수 있습니다 — 지금 이 방의 규칙입니다.</p>
+        ) : null}
+        <label className="settings-row">
+          <div className="settings-text">
+            <span className="settings-label">시작 점수</span>
+            <span className="settings-desc">
+              각자 이 점수로 시작합니다 ({ROOM_SCORE_MIN.toLocaleString()}~{ROOM_SCORE_MAX.toLocaleString()}점)
+            </span>
+          </div>
+          <input
+            className="room-rules-num num"
+            type="number"
+            inputMode="numeric"
+            min={ROOM_SCORE_MIN}
+            max={ROOM_SCORE_MAX}
+            step={1000}
+            disabled={!props.canEdit}
+            aria-label="시작 점수"
+            value={startDraft}
+            onChange={(e) => setStartDraft(e.target.value)}
+            onBlur={commitStart}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitStart();
+            }}
+          />
+        </label>
+        <label className="settings-row">
+          <div className="settings-text">
+            <span className="settings-label">1위 필요점수</span>
+            <span className="settings-desc">
+              올라스에 1위가 이 점수에 못 미치면 한 장 더 갑니다 (남입·서입). 시작 점수보다 커야 합니다
+            </span>
+          </div>
+          <input
+            className="room-rules-num num"
+            type="number"
+            inputMode="numeric"
+            min={ROOM_SCORE_MIN}
+            max={ROOM_SCORE_MAX}
+            step={1000}
+            disabled={!props.canEdit}
+            aria-label="1위 필요점수"
+            value={returnDraft}
+            onChange={(e) => setReturnDraft(e.target.value)}
+            onBlur={commitReturn}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitReturn();
+            }}
+          />
+        </label>
+        {willAdjust ? (
+          <p className="room-rules-note" role="status">
+            지금 값으로는 {preview.startScore.toLocaleString()}점 / {preview.returnScore.toLocaleString()}점으로 맞춰집니다.
+          </p>
+        ) : null}
+        {ROOM_RULE_TOGGLES.map((r) => (
+          <label key={r.key} className="settings-row">
+            <div className="settings-text">
+              <span className="settings-label">{r.label}</span>
+              <span className="settings-desc">{r.desc}</span>
+            </div>
+            <button
+              className={`toggle${props.rules[r.key] ? " toggle-on" : ""}`}
+              role="switch"
+              aria-checked={props.rules[r.key]}
+              aria-label={r.label}
+              disabled={!props.canEdit}
+              onClick={() => props.onChange({ [r.key]: !props.rules[r.key] })}
+            >
+              <span className="toggle-knob" />
+            </button>
+          </label>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function WaitingRoom(props: {
   lobby: LobbyMessage | null;
   roomId: string;
@@ -12037,6 +12261,10 @@ function WaitingRoom(props: {
   onStart: () => void;
   onSetGameMode: (mode: GameMode) => void;
   onSetBotDifficulty: (difficulty: string) => void;
+  /** 이 방의 상세설정 (기본값이면 종전 규칙 그대로). */
+  rules: RoomRules;
+  /** 상세설정 변경 (방장만 — 다른 사람에게는 읽기 전용으로 보인다). */
+  onSetRules: (patch: Partial<RoomRules>) => void;
   onShuffleSeats: () => void;
   onLeave: () => void;
   onToast?: (text: string) => void;
@@ -12059,6 +12287,8 @@ function WaitingRoom(props: {
 }): JSX.Element {
   const { lobby } = props;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 「방 상세설정」 창이 열려 있는가 — 방장이 아니어도 열어 볼 수 있다(읽기 전용). */
+  const [rulesOpen, setRulesOpen] = useState(false);
   /**
    * 이 대기실에서 부른 사람 → 다시 부를 수 있게 되는 시각(epoch ms).
    *
@@ -12200,6 +12430,7 @@ function WaitingRoom(props: {
             settings={props.settings}
             onSetting={props.onSetting}
             onClose={() => setSettingsOpen(false)}
+            hintsOn={props.rules.hints}
           />
         ) : null}
 
@@ -12221,8 +12452,11 @@ function WaitingRoom(props: {
           {([
             // 서든데스를 적어 둔다 — westEntry가 두 모드 모두 켜져 있어(maxWindOf 주석)
             // "남4국까지"는 거짓이었다. 오라스라 믿고 짠 순위 계산이 통째로 틀어진다.
-            ["hanchan", "반장전", "동+남 · 남4국 뒤 1위가 30,000 미만이면 서장"],
-            ["tonpuu", "동풍전", "동장만 · 동4국 뒤 1위가 30,000 미만이면 남장"],
+            //
+            // 기준 점수는 **이 방의 1위 필요점수**다. 30,000을 문구에 박아 두면,
+            // 방장이 상세설정에서 그 값을 고친 순간 화면이 거짓말을 한다.
+            ["hanchan", "반장전", `동+남 · 남4국 뒤 1위가 ${props.rules.returnScore.toLocaleString()} 미만이면 서장`],
+            ["tonpuu", "동풍전", `동장만 · 동4국 뒤 1위가 ${props.rules.returnScore.toLocaleString()} 미만이면 남장`],
           ] as const).map(([mode, label, sub]) => {
             const active = lobby.gameMode === mode;
             return (
@@ -12268,6 +12502,33 @@ function WaitingRoom(props: {
             );
           })}
         </div>
+
+        {/*
+          방 상세설정 — 기본값으로 충분한 사람에게는 **버튼 하나**로만 보인다.
+
+          점수·토비·적도라 같은 것을 대기실 본문에 늘어놓으면, 처음 온 사람이 판을
+          시작하기 전에 일곱 가지를 먼저 읽어야 한다. 고를 사람만 열어 보게 하고,
+          아무것도 안 만지면 종전 규칙 그대로다. 기본과 달라진 항목이 있으면
+          버튼 옆에 몇 개인지 적어 «이 방은 평범하지 않다»를 숨기지 않는다.
+        */}
+        <div className="lobby-group-label">방 규칙</div>
+        <button
+          type="button"
+          className="btn-ghost lobby-rules-btn"
+          onClick={() => setRulesOpen(true)}
+          title={isHost ? "시작 점수·토비·적도라 등을 고칩니다" : "이 방의 규칙을 봅니다 (방장만 바꿀 수 있습니다)"}
+        >
+          <span className="lobby-rules-name">⚙ 방 상세설정</span>
+          <span className="lobby-rules-sub">{roomRulesSummary(props.rules)}</span>
+        </button>
+        {rulesOpen ? (
+          <RoomRulesDialog
+            rules={props.rules}
+            canEdit={isHost}
+            onChange={props.onSetRules}
+            onClose={() => setRulesOpen(false)}
+          />
+        ) : null}
 
         {/*
           초대 목록이 펴져 있는 동안에만 클립을 푼다.
@@ -12580,6 +12841,11 @@ const GameTable = memo(function GameTable(props: {
   catalog: Record<string, AugmentCatalogEntry>;
   scoreFx: Record<string, number>;
   settings: Settings;
+  /**
+   * 이 방이 힌트 표시를 허용하는가 (방 상세설정 · 기본 true).
+   * false면 내 오름패·현물 표시·도라 반짝임이 내 설정과 무관하게 꺼진다.
+   */
+  hintsOn?: boolean;
   /** 관전 모드 — 전 손패 공개·조작 없음 (관리자 실시간 관전·리플레이) */
   spectator?: boolean;
   /** 이 판이 관리자 일시정지로 서 있는가 (관전 띠의 단추 상태) */
@@ -12810,7 +13076,12 @@ const GameTable = memo(function GameTable(props: {
   };
 
   // ── 도라 반짝임 — 게임판 전체가 같은 도라 정보를 본다(DoraContext) ──
-  const doraFx = useDoraFx(view, props.settings.doraFx);
+  /*
+   * 힌트 표시를 끈 방에서는 내 설정과 무관하게 힌트가 전부 꺼진다 — 규칙이 취향을
+   * 덮는 자리다(설정창은 그 사실을 잠긴 토글로 함께 알린다).
+   */
+  const hintsOn = props.hintsOn !== false;
+  const doraFx = useDoraFx(view, props.settings.doraFx && hintsOn);
 
   /**
    * ── 오름패 남은 장수 — 판 전체가 같은 셈을 본다(WaitCountContext) ──
@@ -13073,6 +13344,7 @@ const GameTable = memo(function GameTable(props: {
           settings={props.settings}
           onSetting={props.onSetting}
           onClose={() => setSettingsOpen(false)}
+          hintsOn={props.hintsOn !== false}
           abortVote={props.spectator === true ? null : (props.abortVote ?? null)}
           iVoted={(props.abortVote?.voters ?? []).includes(view.playerId)}
           onVoteAbort={props.spectator === true ? undefined : props.onVoteAbort}
@@ -13146,7 +13418,8 @@ const GameTable = memo(function GameTable(props: {
         riichiMode={props.riichiMode}
         catalog={catalog}
         autoSort={props.settings.autoSort}
-        showMyWaits={props.settings.showMyWaits}
+        showMyWaits={props.settings.showMyWaits && hintsOn}
+        showSafeTiles={props.settings.showSafeTiles && hintsOn}
         tapTwiceToDiscard={props.settings.tapTwiceToDiscard}
         {...(props.spectator !== true
           ? {
@@ -13762,10 +14035,18 @@ function RiichiBgmPicker(props: {
   );
 }
 
+/** 방 상세설정에서 「힌트 표시」가 꺼지면 함께 잠기는 설정들. */
+const HINT_SETTING_KEYS: readonly (keyof Settings)[] = ["showMyWaits", "showSafeTiles", "doraFx"];
+
 function SettingsPanel(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   onClose: () => void;
+  /**
+   * 이 방이 힌트 표시를 허용하는가 (방 상세설정). false면 힌트 계열 토글을 잠근다 —
+   * 켜 놓고 화면에는 안 나오는 상태가 가장 나쁘다. 생략하면 허용(연습·리플레이).
+   */
+  hintsOn?: boolean;
   abortVote?: AbortVoteMessage | null;
   iVoted?: boolean;
   onVoteAbort?: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
@@ -13787,6 +14068,11 @@ function SettingsPanel(props: {
       key: "showMyWaits",
       label: "내 오름패 표시",
       desc: "텐파이면 손패 위에 화료패를 항상 표시합니다. 패 위 숫자는 아직 보이지 않은 그 패의 장수(기본 4장 − 버림패·후로·도라 표시패·내 손패에 나온 수)이며, 증강 생성패는 세지 않습니다. 0이면 그 패로는 날 수 없습니다",
+    },
+    {
+      key: "showSafeTiles",
+      label: "현물 표시",
+      desc: "리치를 건 사람이 이미 버린 패를 내 손에서 초록 점으로 표시합니다. 리치가 둘 이상이면 전원의 바닥에 있는 패만 표시합니다 (후리텐을 무시하는 증강 앞에서는 안전하지 않습니다)",
     },
     {
       key: "rightClickTsumogiri",
@@ -13850,16 +14136,27 @@ function SettingsPanel(props: {
         <button className="settings-x" onClick={props.onClose} title="닫기">✕</button>
       </div>
       <div className="settings-body">
-        {rows.map((r) => (
+        {rows.map((r) => {
+          /*
+           * 방이 힌트 표시를 껐으면 힌트 계열은 **잠근 채 꺼진 것으로** 보인다.
+           * 내 설정값은 그대로 남는다(방을 나가면 원래대로) — 방 규칙이 잠시
+           * 덮을 뿐이지 내 취향을 지우지는 않는다.
+           */
+          const hintLocked = props.hintsOn === false && HINT_SETTING_KEYS.includes(r.key);
+          const on = props.settings[r.key] && !hintLocked;
+          return (
           <label key={r.key} className="settings-row">
             <div className="settings-text">
               <span className="settings-label">{r.label}</span>
-              <span className="settings-desc" id={`set-desc-${r.key}`}>{r.desc}</span>
+              <span className="settings-desc" id={`set-desc-${r.key}`}>
+                {hintLocked ? "이 방은 힌트 표시를 껐습니다 — 방장이 방 상세설정에서 켤 수 있습니다" : r.desc}
+              </span>
             </div>
             <button
-              className={`toggle${props.settings[r.key] ? " toggle-on" : ""}`}
+              className={`toggle${on ? " toggle-on" : ""}`}
               role="switch"
-              aria-checked={props.settings[r.key]}
+              disabled={hintLocked}
+              aria-checked={on}
               /*
                * 이름을 명시한다 (감사 §6-6). 버튼 내용이 빈 `<span class="toggle-knob">`
                * 이라 이름이 없었고, 감싼 `<label>` 은 **button 에 이름을 주지 못한다**
@@ -13876,7 +14173,8 @@ function SettingsPanel(props: {
               <span className="toggle-knob" />
             </button>
           </label>
-        ))}
+          );
+        })}
         {/* 연출 속도 — on/off 사이의 자리 (감사 §5-15). 화면 효과를 끄는 것과는
             다른 요구다: 저쪽은 멀미·광과민이고 이쪽은 "이미 다 아는 연출"이다. */}
         <label className="settings-row settings-row-slider">
@@ -17562,6 +17860,8 @@ function OwnArea(props: {
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
   showMyWaits: boolean;
+  /** 현물 표시 — 리치를 건 사람 전원의 바닥에 있는 내 손패에 안전 표식을 붙인다. */
+  showSafeTiles: boolean;
   /** 두 번 눌러 버리기 — 첫 탭은 패를 들어 올리고 두 번째에 나간다 (감사 §5-2) */
   tapTwiceToDiscard: boolean;
   /** 좁은 화면에서 손패 바로 위에 눕는 빠른 토글 (모바일 전용, CSS가 표시를 결정) */
@@ -17960,6 +18260,46 @@ function OwnArea(props: {
     return { set: new Set(snap.items), turn: snap.turn };
   }, [view.augmentView, isSpectator]);
   const dangerSet = dangerScan.set;
+
+  /*
+   * 현물 — **리치를 건 사람 전원**의 버림패에 이미 있는 종류. 그 사람은 후리텐이라
+   * 그 패로는 론할 수 없다(사람이 탁자에서 손으로 세는 것과 같은 계산이다).
+   *
+   * 리치가 둘 이상이면 교집합만 쓴다: 한 사람에게만 현물인 패를 안전으로 칠하면,
+   * 그 표식을 믿고 다른 리치에게 그대로 쏜다 — 화면이 거짓말을 하는 쪽이 가장 나쁘다.
+   * 다마텐도 세지 않는다(보이지 않는 정보다). 후리텐을 무력화하는 증강 앞에서는
+   * 이 계산 자체가 성립하지 않으므로 그때는 표식을 통째로 접는다.
+   */
+  const safeSet = useMemo(() => {
+    const empty = new Set<string>();
+    if (isSpectator || !props.showSafeTiles) return empty;
+    const riichiPlayers = view.players.filter(
+      (p) => p.id !== me.id && view.round.byPlayer[p.id]?.riichiDeclared === true,
+    );
+    if (riichiPlayers.length === 0) return empty;
+    /*
+     * 후리텐을 무력화하는 증강(만개·조커·손바닥 뒤집기)을 **든 사람이 하나라도**
+     * 리치를 걸었으면 표식을 통째로 접는다. 봇은 채널까지 읽어 발동 여부를 가리지만
+     * (`bot/collect.ts` isFuritenBroken), 화면은 그렇게까지 하지 않는다 —
+     * 안전하다고 잘못 칠하는 쪽의 대가가 안 칠하는 쪽보다 훨씬 크다.
+     */
+    if (riichiPlayers.some((p) => augmentFuritenBreakReads(p.augments).length > 0)) return empty;
+    const discardKindsOf = (who: string): Set<string> => {
+      const kinds = new Set<string>();
+      for (const id of view.zones[discardsZone(who)]?.tileIds ?? []) {
+        const kind = view.tiles[id]?.kind;
+        if (kind !== undefined) kinds.add(kindKey(kind));
+      }
+      return kinds;
+    };
+    // 첫 사람의 바닥에서 시작해, 나머지 리치의 바닥에 없는 종류를 하나씩 걷어낸다(교집합).
+    const acc = discardKindsOf((riichiPlayers[0] as PlayerInfo).id);
+    for (const p of riichiPlayers.slice(1)) {
+      const kinds = discardKindsOf(p.id);
+      for (const k of [...acc]) if (!kinds.has(k)) acc.delete(k);
+    }
+    return acc;
+  }, [isSpectator, props.showSafeTiles, view, me.id]);
 
   // 삼세 예지 — 내 다음 쯔모 3장(종류). 왼쪽 위 대신 손패 바로 위 스트립에 크게 보여준다.
   const nextTsumoKinds = useMemo<TileKind[]>(() => {
@@ -18816,6 +19156,10 @@ function OwnArea(props: {
             // 지뢰 탐지 — 이 패를 지금 버리면 방총(위험). 실제 손패 위에 경고 표시.
             const danger =
               dangerSet.size > 0 && tileKind !== undefined && dangerSet.has(kindKey(tileKind));
+            // 현물 — 리치를 건 사람 전원이 이미 버린 종류. 위험 표식(지뢰 탐지)이
+            // 붙은 패에는 겹쳐 그리지 않는다: 두 표식이 반대말을 하면 둘 다 못 믿는다.
+            const safe =
+              !danger && safeSet.size > 0 && tileKind !== undefined && safeSet.has(kindKey(tileKind));
             // 텐파이면 이 패를 버렸을 때의 대기패를 hover 시 표시 (리치 모드 아니어도)
             const showWaits = hoverId === id && hoverWaits.length > 0;
             // 쏘이는 패 — 관전에서만, 그리고 이 좌석이 지금 두는 사람일 때만 선다.
@@ -18836,6 +19180,7 @@ function OwnArea(props: {
                   sealed ? "봉인됨" : null,
                   kuikae ? "쿠이카에 — 이번 순에만 버릴 수 없음" : null,
                   danger ? "위험패" : null,
+                  safe ? "현물 — 리치를 건 사람이 이미 버린 패" : null,
                   // 사실 기반 표시는 이름에도 실어야 한다 — 링과 바람 글자는 둘 다
                   // 눈으로만 읽힌다(화면을 못 보면 중계 해설이 통째로 사라진다).
                   hot === null ? null : hotWaitTitle(hot),
@@ -18872,7 +19217,7 @@ function OwnArea(props: {
                   armedAug !== null && !armable ? " hand-dimmed" : ""
                 }${
                   danger ? " hand-danger" : ""
-                }${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
+                }${safe ? " hand-safe" : ""}${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
                 style={tileDragStyle(id, idx)}
                 onPointerDown={(e) => {
                   beginDrag(e, id, idx);

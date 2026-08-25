@@ -851,6 +851,102 @@ export interface ShuffleSeatsMessage {
   type: "shuffleSeats";
 }
 
+
+// ── 방 상세설정 (고급 규칙) ──
+
+/**
+ * **방 상세설정** — 방장이 대기실에서 고르는 규칙 한 벌.
+ *
+ * 아무것도 고르지 않으면 `DEFAULT_ROOM_RULES` 그대로다(= 지금까지의 규칙). 방장만
+ * 바꿀 수 있고, 대기 중에만 바뀐다 — 판이 도는 중에 규칙이 바뀌면 이미 둔 수의
+ * 전제가 달라진다.
+ *
+ * 서버가 받은 값을 **그대로 믿지 않는다**: `normalizeRoomRules`가 범위를 자르고
+ * 「1위 필요점수 > 시작점수」를 강제한다. 클라이언트의 입력칸과 같은 규칙이므로
+ * 화면에서 막힌 값이 서버에서 조용히 다른 값이 되는 일이 없다.
+ */
+export interface RoomRules {
+  /** 시작 점수 (100~200000). */
+  startScore: number;
+  /**
+   * 1위 필요점수 = 반환점 (100~200000, 시작점수보다 커야 한다).
+   * 올라스에 1위가 이 점수 이하이면 남입/서입으로 넘어간다.
+   */
+  returnScore: number;
+  /** 토비 — 0점 이하가 나오면 즉시 종료. */
+  dobi: boolean;
+  /** 적도라 — 각 수패의 5 한 장이 적5가 된다. */
+  akaDora: boolean;
+  /** 쿠이탕 — 후로한 손의 탕야오를 인정한다. 끄면 멘젠 탕야오만 성립한다. */
+  kuitan: boolean;
+  /** 손패 공개 — 네 사람의 손패가 전원에게 보인다(연습·강습용). */
+  openHands: boolean;
+  /** 힌트 표시 — 현물 표시·대기 확인·도라 표시를 화면에 그린다. */
+  hints: boolean;
+}
+
+/** 점수 입력칸의 범위 — 클라이언트 입력칸과 서버 검증이 같은 값을 쓴다. */
+export const ROOM_SCORE_MIN = 100;
+export const ROOM_SCORE_MAX = 200000;
+
+/** 아무것도 고르지 않은 방의 규칙 (= 종전 동작 그대로). */
+export const DEFAULT_ROOM_RULES: RoomRules = {
+  startScore: 25000,
+  returnScore: 30000,
+  dobi: true,
+  akaDora: true,
+  kuitan: true,
+  openHands: false,
+  hints: true,
+};
+
+function clampScore(v: unknown, fallback: number): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
+  return Math.min(ROOM_SCORE_MAX, Math.max(ROOM_SCORE_MIN, Math.round(v)));
+}
+
+function boolOr(v: unknown, fallback: boolean): boolean {
+  return typeof v === "boolean" ? v : fallback;
+}
+
+/**
+ * 받은 값을 규칙으로 **정리한다** — 범위를 자르고, 빠진 항목은 기존 값(없으면 기본값)으로 둔다.
+ *
+ * 「1위 필요점수 > 시작점수」가 깨지면 시작점수 쪽을 그대로 두고 필요점수를 올린다:
+ * 방장이 방금 만진 칸을 되돌리는 것보다, 규칙이 성립하게 다른 칸을 미는 편이 덜 놀랍다.
+ * (그래도 상한을 넘길 수는 없으므로, 상한에 걸리면 시작점수를 내린다.)
+ */
+export function normalizeRoomRules(
+  patch: Partial<RoomRules> | undefined,
+  base: RoomRules = DEFAULT_ROOM_RULES,
+): RoomRules {
+  const p: Partial<RoomRules> = patch ?? {};
+  let startScore = clampScore(p.startScore, base.startScore);
+  let returnScore = clampScore(p.returnScore, base.returnScore);
+  if (returnScore <= startScore) {
+    if (startScore < ROOM_SCORE_MAX) returnScore = Math.min(ROOM_SCORE_MAX, startScore + 1);
+    else {
+      startScore = ROOM_SCORE_MAX - 1;
+      returnScore = ROOM_SCORE_MAX;
+    }
+  }
+  return {
+    startScore,
+    returnScore,
+    dobi: boolOr(p.dobi, base.dobi),
+    akaDora: boolOr(p.akaDora, base.akaDora),
+    kuitan: boolOr(p.kuitan, base.kuitan),
+    openHands: boolOr(p.openHands, base.openHands),
+    hints: boolOr(p.hints, base.hints),
+  };
+}
+
+/** 방 상세설정 변경 (방장 전용, 대기 중에만). 바꾸는 항목만 담아 보낸다. */
+export interface SetRoomRulesMessage {
+  type: "setRoomRules";
+  rules: Partial<RoomRules>;
+}
+
 /** 게임 모드 변경 (방장 전용, 대기 중에만). 대기실에서 반장전/동풍전을 고른다. */
 export interface SetGameModeMessage {
   type: "setGameMode";
@@ -890,6 +986,7 @@ export type ClientMessage =
   | KickPlayerMessage
   | StartGameMessage
   | SetGameModeMessage
+  | SetRoomRulesMessage
   | ShuffleSeatsMessage
   | StatsRequestMessage
   | VoteAbortMessage
@@ -1290,6 +1387,20 @@ export interface LobbyPlayerEntry {
   ready: boolean;
   /** 누적(career) 통계 — 신규 플레이어면 null. */
   stats: PlayerStatsView | null;
+}
+
+/**
+ * 이 방의 상세설정 — 참가·변경·게임 시작 때 방 전체에 보낸다.
+ *
+ * 로비 메시지와 따로 두는 이유는 로비가 대기실에서만 나가기 때문이다: 힌트 표시처럼
+ * **대국 중에 쓰이는** 항목이 있어서, 판이 시작된 뒤에도 화면이 값을 들고 있어야 한다.
+ *
+ * ⚠ **서버 → 클라이언트 구간에 있어야 한다.** 앞 구간에 두면 재전송 정책 테스트가
+ * 이것을 클라이언트 메시지로 세어 「분류되지 않았다」로 떨어진다.
+ */
+export interface RoomRulesMessage {
+  type: "roomRules";
+  rules: RoomRules;
 }
 
 /**
@@ -1964,6 +2075,7 @@ export type ServerMessage =
   | PongMessage
   | ServerInfoMessage
   | LobbyMessage
+  | RoomRulesMessage
   | RiichiBgmMessage
   | KickedMessage
   | StatsMessage

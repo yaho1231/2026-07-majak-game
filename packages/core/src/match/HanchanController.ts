@@ -107,6 +107,16 @@ export interface HanchanConfig {
   holdBetweenRounds?: () => boolean;
   /** 적도라 수 */
   redFivesPerSuit?: number;
+  /**
+   * 쿠이탕(후로 탕야오) 허용 (기본 true). false면 탕야오가 멘젠 전용이 된다.
+   * 방 상세설정에서 방장이 정한다.
+   */
+  kuitan?: boolean;
+  /**
+   * 손패 공개 (기본 false). true면 네 사람의 손패가 서로에게 보인다 —
+   * 강습·연습용 방 설정이다.
+   */
+  openHands?: boolean;
   /** 콘텐츠 팩 증강 카탈로그 (@majak/content 등) */
   extraAugments?: readonly import("../augment/Augment.js").AugmentDef[];
   /**
@@ -244,7 +254,9 @@ export type ResumableHanchanConfig = Pick<
   HanchanConfig,
   "mode" | "startScore" | "returnScore" | "dobi" | "maxWind" | "westEntry" | "uma" | "oka"
 > &
-  Partial<Pick<HanchanConfig, "agariYame" | "draftSchedules" | "redFivesPerSuit">>;
+  Partial<
+    Pick<HanchanConfig, "agariYame" | "draftSchedules" | "redFivesPerSuit" | "kuitan" | "openHands">
+  >;
 
 export function resumableHanchanConfig(config: HanchanConfig): ResumableHanchanConfig {
   return {
@@ -259,6 +271,8 @@ export function resumableHanchanConfig(config: HanchanConfig): ResumableHanchanC
     ...(config.agariYame !== undefined ? { agariYame: config.agariYame } : {}),
     ...(config.draftSchedules !== undefined ? { draftSchedules: config.draftSchedules } : {}),
     ...(config.redFivesPerSuit !== undefined ? { redFivesPerSuit: config.redFivesPerSuit } : {}),
+    ...(config.kuitan !== undefined ? { kuitan: config.kuitan } : {}),
+    ...(config.openHands !== undefined ? { openHands: config.openHands } : {}),
   };
 }
 
@@ -956,6 +970,8 @@ export class HanchanController {
       mode: this.config.mode,
       startScore: this.config.startScore,
       redFivesPerSuit: this.config.redFivesPerSuit ?? 1,
+      ...(this.config.kuitan !== undefined ? { kuitan: this.config.kuitan } : {}),
+      ...(this.config.openHands !== undefined ? { openHands: this.config.openHands } : {}),
       ...(this.config.extraAugments !== undefined
         ? { extraAugments: this.config.extraAugments }
         : {}),

@@ -84,7 +84,15 @@ export async function replayFile(
   }
 
   let state = createInitialGameState(init.payload.config, init.payload.options);
-  const game = createStandardGameFromState(state, undefined, extraAugments);
+  // 이 판이 쓰던 방 상세설정(쿠이탕·손패 공개)을 그대로 되건다 — 재구성이 원본과
+  // 다른 규칙으로 굴러가면 되살린 판의 역·정산이 파일과 어긋난다.
+  const game = createStandardGameFromState(
+    state,
+    undefined,
+    extraAugments,
+    undefined,
+    houseRulesOf(init),
+  );
   const events: GameEvent[] = [];
 
   for (const line of lines.slice(1)) {
@@ -194,6 +202,15 @@ function resumeConfigOf(init: ReplayInitLine): ResumableHanchanConfig {
   };
 }
 
+/** 이 판이 쓰던 방 상세설정(쿠이탕·손패 공개) — 옛 파일에는 없으므로 그때는 기본값이다. */
+function houseRulesOf(init: ReplayInitLine): { kuitan?: boolean; openHands?: boolean } {
+  const saved = init.payload.hanchan;
+  return {
+    ...(saved?.kuitan !== undefined ? { kuitan: saved.kuitan } : {}),
+    ...(saved?.openHands !== undefined ? { openHands: saved.openHands } : {}),
+  };
+}
+
 /**
  * 리플레이 JSONL 라인들로 "이어 돌릴 수 있는" StandardGame을 재구성한다 (동기).
  *
@@ -222,7 +239,7 @@ export function reconstructGame(
 
   // 1차: 임시 게임의 리듀서로 최종 상태를 계산 (엔진 상태는 건드리지 않는다)
   let state = createInitialGameState(init.payload.config, init.payload.options);
-  const tmp = createStandardGameFromState(state, undefined, extraAugments);
+  const tmp = createStandardGameFromState(state, undefined, extraAugments, undefined, houseRulesOf(init));
   const events: GameEvent[] = [];
   const eventLines: string[] = [];
   for (const line of clean.slice(1)) {
@@ -263,12 +280,19 @@ export function reconstructGame(
   }
 
   // 2차: 최종 상태를 담은 재개용 엔진 + 로그 시드 + 증강 재설치
-  const game = createStandardGameFromState(state, opts.processor, extraAugments, events);
+  //
+  // 방 상세설정(쿠이탕·손패 공개)도 함께 되건다 — 이어 돌린 판이 시작할 때와
+  // **다른 규칙**으로 끝나면 점수가 조용히 달라진다.
+  const resumed = resumeConfigOf(init);
+  const game = createStandardGameFromState(state, opts.processor, extraAugments, events, {
+    ...(resumed.kuitan !== undefined ? { kuitan: resumed.kuitan } : {}),
+    ...(resumed.openHands !== undefined ? { openHands: resumed.openHands } : {}),
+  });
   rebuildAugments(game.engine, game.augments, {
     yaku: game.yaku,
     catalog: game.augments,
   });
-  return { game, eventCount: events.length, hanchan: resumeConfigOf(init), eventLines };
+  return { game, eventCount: events.length, hanchan: resumed, eventLines };
 }
 
 /** 리플레이 파일을 동기로 읽어 재구성한다 (resume 트리거는 레이스 방지를 위해 동기 처리) */
