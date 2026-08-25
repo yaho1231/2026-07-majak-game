@@ -188,7 +188,7 @@ describe("선발동형 재무장 — 반장전에서만 게임 내 1회", () => 
       expect(rechargeOption(flow, id)).toBe(true);
     });
 
-    it(`${id}: 재장전하면 다음 국에 다시 켜지고, 두 번째 재장전은 없다`, () => {
+    it(`${id}: 재장전하면 그 자리에서 곧바로 켜지고, 두 번째 재장전은 없다`, () => {
       const { game, flow } = setup(def, id, "hanchan");
       burn(game);
 
@@ -197,16 +197,39 @@ describe("선발동형 재무장 — 반장전에서만 게임 내 1회", () => 
       );
       expect(opt).toBeDefined();
       flow.submit("p0", opt!);
-      // 누른 자리에서 바로 켜지지는 않는다 — 다음 국이다
-      expect(armedNow(game.engine.state, id, "p0")).toBe(false);
-
-      emit(game, { type: ROUND_STARTED, payload: {} });
+      // 누른 그 자리에서 곧바로 켜진다 — 다음 국을 기다리지 않는다
+      // (2026-08-25 사용자 확정: 고르는 것은 «어느 국»이 아니라 «이 순간»이다)
       expect(armedNow(game.engine.state, id, "p0")).toBe(true);
+      // 다 탔다는 표시도 함께 내려간다 (죽은 카드로 보이면 안 된다)
+      expect(preArmSpent(game.engine.state, id, "p0")).toBe(false);
 
       // 그 국이 지나가 다시 소진돼도, 게임 내 1회라 버튼은 열리지 않는다
       emit(game, { type: ROUND_STARTED, payload: {} });
       expect(preArmSpent(game.engine.state, id, "p0")).toBe(true);
       expect(rechargeOption(flow, id)).toBe(false);
+    });
+
+    it(`${id}: 재장전한 순간 공개 표시가 그 자리에서 다시 나간다`, () => {
+      // 켜졌는데 테이블에 안 보이면 이 셋은 대응 자체가 불가능해진다
+      // (상대가 «저 사람에게는 쏘지 않는다»로 맞설 수 있어야 한다).
+      const { game, flow } = setup(def, id, "hanchan");
+      emit(game, { type: ROUND_STARTED, payload: {} }); // 켜진다 → 표시가 나간다
+      const channel = Object.keys(game.engine.state.augmentData).find(
+        (k) => k.startsWith("view:*:") && k.includes(id),
+      );
+      expect(channel).toBeDefined();
+      const armedValue = game.engine.state.augmentData[channel!];
+
+      emit(game, { type: ROUND_STARTED, payload: {} }); // 그 국이 지나갔다
+      // 국 스코프 채널이라 값이 비워졌다 (또는 사라졌다)
+      expect(game.engine.state.augmentData[channel!]).not.toBe(armedValue);
+
+      const opt = optionsFor(flow.begin(), "p0").find(
+        (o) => o.type === `${id}_recharge`,
+      );
+      flow.submit("p0", opt!);
+      // 다시 켜졌으니 표시도 처음 켜졌을 때와 같은 값으로 돌아와야 한다
+      expect(game.engine.state.augmentData[channel!]).toEqual(armedValue);
     });
 
     it(`${id}: 동풍전에는 재장전 버튼이 아예 없다 (기준선 그대로)`, () => {

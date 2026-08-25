@@ -619,6 +619,30 @@ export function preArmSpent(
 }
 
 /**
+ * 다 타 버린 선발동형을 **지금 이 국에 곧바로 켠다** (재무장 전용).
+ *
+ * `preArmRestoreEvents`(표식을 지워 다음 국을 기다린다)와 갈라지는 지점이다. 이쪽은
+ * 켜진 국을 **지금**으로 못박으므로 누른 그 자리에서 효과가 산다 — 사용자가 고르는 것이
+ * «어느 국»이 아니라 «이 순간»이 된다(2026-08-25 사용자 확정).
+ *
+ * 다음 `ROUND_STARTED`에서 `armOnNextRound`는 표식이 이미 있는 것을 보고 «켜졌던 국이
+ * 지나갔다»로 처리한다 — 소진 표시가 정상적으로 다시 선다.
+ *
+ * 공개 채널(«발동했다» 표시)은 여기서 내지 않는다. 그것은 증강마다 다르므로 호출부가
+ * `armOnNextRound`에 넘기는 것과 **같은 이벤트**를 함께 낸다.
+ */
+export function preArmArmNowEvents(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+): ProposedEvent<string, unknown>[] {
+  return [
+    augmentDataSet(armedRoundKey(augmentId, holder), roundKey(state)),
+    augmentDataSet(spentViewKey(augmentId, holder), undefined),
+  ];
+}
+
+/**
  * 다 타 버린 선발동형을 **다시 장전한다** (재장전 전용).
  *
  * 표식 둘을 지우면 그만이다 — 다음 `ROUND_STARTED`에서 `armOnNextRound`가 "아직 켜진
