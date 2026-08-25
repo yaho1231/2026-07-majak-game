@@ -17045,8 +17045,15 @@ const NamePlate = memo(function NamePlate({
     >
       {isTurn ? (
         awaitingCall ? (
-          <span className="np-turn np-turn-wait" title="다른 자리의 선언(론·치·퐁·깡)을 기다리는 중입니다">
-            선언 대기
+          <span
+            className="np-turn np-turn-wait"
+            title="다른 자리의 선언(론·치·퐁·깡)을 기다리는 중입니다"
+            aria-label="선언 대기"
+          >
+            {/* «선언»은 좁은 자리(폰 세로의 상대 이름표 칩)에서 접힌다 — 그 칩은 폭이
+                117px 고정이라 네 글자 배지가 이름을 통째로 밀어냈다. 두 글자만 남겨도
+                뜻이 서고, 전체 문안은 title 과 aria-label 에 그대로 있다. */}
+            <span className="np-wait-long">선언 </span>대기
           </span>
         ) : (
           <span className="np-turn" aria-label="현재 차례">차례</span>
@@ -17065,6 +17072,31 @@ const NamePlate = memo(function NamePlate({
         </span>
       ) : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
+      {/*
+       * 점수 — 상대 점수를 **회전하지 않은 글자로** 읽는 유일한 길.
+       *
+       * 중앙 패널의 점수판은 마작 탁자 방향이라 맞은편은 180°, 좌·우는 90° 로 누워
+       * 있다. 그건 관습이라 그대로 둔다(QA 45 §12). 다만 한 손으로 폰을 든 채 오라스
+       * 점수를 확인하려면 폰을 뒤집어야 했다 — 이름표 칩이 이름과 증강 이모지만
+       * 보여 줬기 때문이다. 그 칩에 점수를 넣어 관습을 지키면서 읽을 길을 만든다.
+       *
+       * **내 자리에는 붙이지 않는다.** 내 점수는 중앙 패널 아래쪽에 눕지 않은 글자로
+       * 이미 크게 서 있고, 손패 위 이름표는 액션 바와 폭을 다툰다.
+       *
+       * 두 벌을 세워 CSS 가 고른다(`.np-score-full` / `.np-score-k`) — 좁은 칩에서는
+       * 25,000 → 25.0k. 점수는 100 의 배수라 소수 한 자리로 버림 없이 같은 값이다.
+       */}
+      {!isMe ? (
+        <span className="np-score" title={`점수 ${player.score.toLocaleString()}`}>
+          {/* 보이는 두 벌은 CSS 로 하나만 남으므로 읽어 주는 벌은 따로 둔다 —
+              축약형(25.0k)을 그대로 읽히면 «점 영 케이»가 된다. */}
+          <span className="sr-only">점수 {player.score.toLocaleString()}</span>
+          <span className="np-score-full" aria-hidden="true">{player.score.toLocaleString()}</span>
+          <span className="np-score-k" aria-hidden="true">
+            {(player.score / 1000).toFixed(1)}k
+          </span>
+        </span>
+      ) : null}
       {/* 봇 성향 — 이름만으로는 셋이 구분되지 않아서, 이름 옆에 원형을 세운다 */}
       {arch !== null ? (
         <span className="np-arch" title={`${arch.label} 봇 — ${arch.desc}`}>{arch.label}</span>
