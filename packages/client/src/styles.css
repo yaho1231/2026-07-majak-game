@@ -16151,6 +16151,58 @@ body:has(.overlay) .emote-bar {
     bottom: max(8px, env(safe-area-inset-bottom, 0px));
     right: max(8px, env(safe-area-inset-right, 0px));
   }
+
+  /*
+   * ── 액션 알약 줄을 «왼쪽 빈 펠트»로 세운다 (2026-08-25 QA §6) ──
+   *
+   * 가로에서는 판과 손패 사이에 알약이 앉을 빈 띠가 없다. 그래서 줄이 흐름대로
+   * 손패 위에 쌓이면 **판 위로 올라와** 중앙 패널 아래쪽(도라 표시패 + 내 점수)과
+   * 내 버림패를 통째로 덮었다 — 740×360 수정 전 실측: 알약 줄 [102,163,638,221] 이
+   * 패널 [331,96,409,174] 를 78×11, **내 버림패** [341,176,405,220] 를 64×44,
+   * 도라 줄과 점수판을 각각 물었다. 하필 «치를 할까»를 정하려면 도라(손패 가치)와
+   * 내 버림패(후리텐)를 봐야 하는 순간이다.
+   *
+   * 세로는 그 빈 띠가 있어 문제가 없다 — **가로에서만** 바꾼다.
+   *
+   * 가로에서 판은 화면의 24%뿐이고(740×360 실측 .table-center [286,51,454,219])
+   * 좌우가 통째로 빈 펠트다. 오른쪽 아래는 이미 임자가 있으니(후로 줄
+   * `.own-corner-right`, 「대화」 `.emote-bar`) **왼쪽**에 세로로 쌓는다.
+   *   · x 는 손패 레일 왼끝(122px)에 맞춘다. `.own-area` 는 이 블록에서
+   *     `width: calc(100cqw - 140px)` 라 화면 어디서든 왼끝이 70px 이므로
+   *     `left: 52px` 이면 122px 이다 — 빠른 토글(왼쪽 위, x 34~116)과 6px 뜬다.
+   *   · 아래끝은 손패 레일 바로 위(`--own-rail-h` + 6px). 레일 높이는 CSS 로 알 수
+   *     없어 App(OwnArea)이 띠를 재는 자리에서 함께 올려 준다.
+   *   · 알약이 많으면(치 3 + 퐁 + 깡 + 패스) 위가 아니라 **옆 칸으로** 접힌다.
+   *     한 칸에 4개(44px 짜리)까지 — 그 위는 상대 이름표 줄이라 max-height 로 막는다.
+   *     두 칸째는 오른쪽으로 자라 왼쪽 상대 버림패 언저리까지 가지만, 내 도라·내
+   *     버림패에는 닿지 않는다(6개 실측: 알약 [122,73,224,284]).
+   *
+   * 반투명은 답이 아니다 — 눌러야 하는 버튼이라 44px 터치 목표를 그대로 지킨다.
+   */
+  .own-area > .action-bar {
+    position: absolute;
+    left: max(52px, calc(env(safe-area-inset-left, 0px) + 52px));
+    bottom: calc(var(--own-rail-h, 64px) + 6px);
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: stretch;
+    align-content: flex-start;
+    max-height: calc(100cqh - var(--own-rail-h, 64px) - 80px);
+    max-width: none;
+    gap: 4px;
+    padding: 5px 6px;
+  }
+  .own-area > .action-bar .act {
+    justify-content: center;
+    min-height: 44px;
+    padding: 4px 10px;
+  }
+  /* 리치 안내 문구는 세로 줄에서 `flex-basis: 100%`(=높이 전체)를 잡으면 안 된다 */
+  .own-area > .action-bar .action-hint {
+    flex-basis: auto;
+    max-width: 150px;
+    white-space: normal;
+  }
 }
 
 
@@ -16271,6 +16323,52 @@ body:has(.overlay) .emote-bar {
   box-shadow:
     0 0 0 1px rgba(4, 9, 7, 0.6),
     0 18px 48px rgba(0, 0, 0, 0.62);
+}
+
+/*
+ * 폰 가로처럼 **낮은 화면**에서는 말풍선이 화면 높이의 절반을 넘지 않는다.
+ *
+ * 740×360 실측(2026-08-25 QA §9): 글이 세 줄 + "해 보세요" 한 줄이면 말풍선이
+ * 288px — 화면 360의 80%다. 그러면 위로 붙이든 아래로 붙이든 «자세히 ▾» 줄
+ * (y=230)을 물어서, 강의가 시킨 조작을 할 자리가 화면에 남지 않는다.
+ * 높이를 묶고 안에서 굴리면 **글은 다 읽을 수 있고** 과녁은 밖에 남는다.
+ * (자리 고르기 자체는 `placeBubble`의 `mustClear`가 한다 — 여기서는 «잘라 낼 수
+ * 있는 상자»를 만들어 주기만 한다.)
+ */
+@media (max-height: 430px) {
+  .coach-bubble {
+    max-height: 56vh;
+    /*
+     * **굴리는 것은 본문뿐이다.** 상자째 굴리게 두면 맨 아래에 있는 «해 보세요» 줄과
+     * 버튼 줄이 잘린 밖으로 밀려난다 — 실제로 첫 판에서 «건너뛰기»·«그만 보기»를
+     * `elementFromPoint`가 둘 다 못 집었고(740×360 실측), 정작 지시문도 안 보였다.
+     * 세로 흐름으로 세워 두고 본문에만 남은 높이를 준다: 장·제목·지시문·버튼은 늘 보이고
+     * 설명만 안에서 굴러간다.
+     */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* 잘린 줄이 상자 끝에 딱 붙어 "여기서 끝"처럼 보이지 않게 살짝 줄인다 */
+    padding: 14px 16px 12px;
+  }
+  .coach-body {
+    min-height: 0; /* 없으면 flex 항목이 안 줄어든다 — 내용 높이 그대로 버틴다 */
+    overflow-y: auto;
+  }
+  .coach-chapter,
+  .coach-title,
+  .coach-todo,
+  .coach-actions {
+    flex: 0 0 auto;
+  }
+  .coach-todo {
+    margin-top: 10px;
+    padding: 8px 10px;
+  }
+  .coach-actions {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
 }
 
 /* 장(章) 이름 — 제목 위 한 낱말. 진행률 막대 대신 쓴다(App.tsx 주석 참고). */

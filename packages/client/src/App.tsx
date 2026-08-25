@@ -18195,6 +18195,13 @@ function OwnArea(props: {
   const ownBandFullRef = useRef(-1);
   /** 내 후로 줄(`.own-corner-right`)이 손패를 안 건드리고 쓸 수 있는 최대 폭 */
   const ownCornerMaxRef = useRef(-1);
+  /**
+   * 손패 레일의 높이(`--own-rail-h`).
+   * 폰 가로에서 액션 알약 줄은 흐름 밖으로 나가 **레일 바로 위**에 세로로 선다
+   * (styles.css §9-1-c, QA §6). 그 «레일 바로 위»를 CSS 만으로는 짚을 수 없다 —
+   * 레일 높이는 타일 크기가 정하고 그 값은 레일 안에서만 산다.
+   */
+  const ownRailHRef = useRef(-1);
   // 렌더마다 다시 잰다(의존성 배열 없음). ResizeObserver를 먼저 써 봤는데, 손패가
   // 채워지거나 화면 크기가 바뀌어 띠가 자라도 콜백이 오지 않는 경우가 있어 띠가 낡았다.
   // 렌더는 뷰가 올 때마다 도므로 이쪽이 확실하다.
@@ -18211,6 +18218,12 @@ function OwnArea(props: {
       if (!(el instanceof HTMLElement)) continue;
       // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
       if (!el.matches(".action-bar, .prompt-timer, .arm-hint")) continue;
+      /*
+       * 흐름 밖으로 나간 줄은 **빼면 안 된다** — `area.offsetHeight`에 애초에 들어
+       * 있지 않으므로 한 번 더 빼면 띠가 그만큼 얇아지고, 그만큼 보드가 아래로 자라
+       * 내 이름표·손패를 파고든다. 폰 가로의 액션 알약 줄이 그렇다(position: absolute).
+       */
+      if (getComputedStyle(el).position === "absolute") continue;
       h -= el.offsetHeight + gap;
     }
     /*
@@ -18262,6 +18275,14 @@ function OwnArea(props: {
     const rail = area.querySelector(".own-hand-rail");
     const tableEl = area.closest(".table");
     const corner = area.parentElement?.querySelector(".own-corner-right") ?? null;
+    if (rail instanceof HTMLElement) {
+      // 폰 가로의 액션 알약 줄이 레일 «바로 위»에 서기 위한 값 (styles.css §9-1-c)
+      const railH = rail.offsetHeight;
+      if (railH !== ownRailHRef.current) {
+        ownRailHRef.current = railH;
+        root.style.setProperty("--own-rail-h", `${railH}px`);
+      }
+    }
     if (rail instanceof HTMLElement && tableEl instanceof HTMLElement) {
       const side =
         Math.floor((tableEl.clientWidth - rail.offsetWidth) / 2) - OWN_CORNER_GUTTER;
@@ -18317,12 +18338,14 @@ function OwnArea(props: {
       ownBandRef.current = -1;
       ownBandFullRef.current = -1;
       ownCornerMaxRef.current = -1;
+      ownRailHRef.current = -1;
       if (root instanceof HTMLElement) {
         root.style.removeProperty("--own-band");
         root.style.removeProperty("--own-band-full");
         document.body.style.removeProperty("--own-band-full");
         root.style.removeProperty("--own-corner-max");
         root.style.removeProperty("--own-corner-bottom");
+        root.style.removeProperty("--own-rail-h");
       }
     };
   }, []);
