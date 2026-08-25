@@ -11281,6 +11281,8 @@ function HomeScreen(props: {
           </button>
         </section>
 
+        <RiichiBgmPicker settings={props.settings} onSetting={props.onSetting} />
+
         {/* 친구는 **방을 만들기 직전에** 보는 것이다 (§4-6) — "지금 있나?"를 확인하고
             방을 만들지 말지를 정하는 자리라, 대국 카드 바로 아래여야 뜻이 산다.
             아래쪽(리플레이·관리자 카드 옆)에 두었더니 두 화면을 스크롤해야 만났다. */}
@@ -13584,6 +13586,87 @@ function useDraggablePanel(): {
   };
 }
 
+/**
+ * **리치 BGM 고르기** — 홈 로비의 카드 하나 (설정창이 아니다).
+ *
+ * 설정창에 두었더니 «내 리치에 남들이 무엇을 듣는가»라는, 방에 들어가기 전에
+ * 정하는 것이 볼륨 손잡이들 사이에 묻혔다. 방을 만들기 직전에 보는 자리에
+ * 내놓는다 — 곡을 고르고 그 자리에서 들어 보는 카드다.
+ */
+function RiichiBgmPicker(props: {
+  settings: Settings;
+  onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+}): JSX.Element {
+  /** 미리듣기 중인 트랙 (-1 = 없음) — 홈을 떠나면 소리도 함께 멈춘다. */
+  const [previewing, setPreviewing] = useState(-1);
+  useEffect(
+    () => () => {
+      riichiBgm.previewStop();
+    },
+    [],
+  );
+  return (
+    <section className="home-card home-bgm">
+      <h2>리치 BGM</h2>
+      <p className="home-bgm-desc">
+        내가 리치를 걸었을 때 나올 곡입니다 — <b>같은 방 네 사람 모두에게</b> 이 곡이
+        들립니다. 랜덤을 고르면 서버가 <b>내 곡 하나를 정해</b> 그 방 내내 씁니다
+        (되도록 다른 사람과 겹치지 않는 곡으로).
+      </p>
+      <div className="bgm-picker">
+        <button
+          type="button"
+          className={`bgm-pick${props.settings.riichiBgmTrack < 0 ? " bgm-pick-on" : ""}`}
+          onClick={() => {
+            riichiBgm.previewStop();
+            setPreviewing(-1);
+            props.onSetting("riichiBgmTrack", RIICHI_BGM_RANDOM);
+          }}
+        >
+          랜덤
+        </button>
+        {Array.from({ length: RIICHI_BGM_COUNT }, (_, i) => (
+          <span key={i} className="bgm-pick-cell">
+            <button
+              type="button"
+              className={`bgm-pick${props.settings.riichiBgmTrack === i ? " bgm-pick-on" : ""}`}
+              onClick={() => {
+                riichiBgm.previewStop();
+                setPreviewing(-1);
+                props.onSetting("riichiBgmTrack", i);
+              }}
+            >
+              {i + 1}번
+            </button>
+            <button
+              type="button"
+              className="bgm-play"
+              aria-label={`${i + 1}번 브금 ${previewing === i ? "정지" : "미리듣기"}`}
+              onClick={() => {
+                if (previewing === i) {
+                  riichiBgm.previewStop();
+                  setPreviewing(-1);
+                } else {
+                  riichiBgm.preview(i);
+                  setPreviewing(i);
+                }
+              }}
+            >
+              {previewing === i ? "■" : "▶"}
+            </button>
+          </span>
+        ))}
+      </div>
+      {/* 볼륨(0이면 아예 안 들린다)은 설정창에 있다 — 여기서 골라 놓고 "왜 안 들리지"가
+          되지 않게 어디서 끄고 켜는지를 한 줄로 알린다. */}
+      <p className="home-bgm-hint">
+        음량은 <b>설정 ▸ 리치 BGM 음량</b>에서 조절합니다 (0이면 나오지 않습니다).
+        {props.settings.riichiBgmVolume <= 0 ? " 지금은 0이라 미리듣기만 들립니다." : ""}
+      </p>
+    </section>
+  );
+}
+
 function SettingsPanel(props: {
   settings: Settings;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
@@ -13592,14 +13675,6 @@ function SettingsPanel(props: {
   iVoted?: boolean;
   onVoteAbort?: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
-  /** 미리듣기 중인 트랙 (-1 = 없음) — 패널을 닫으면 소리도 함께 멈춘다. */
-  const [previewing, setPreviewing] = useState(-1);
-  useEffect(
-    () => () => {
-      riichiBgm.previewStop();
-    },
-    [],
-  );
   // 불리언(토글) 설정만 — 숫자 설정(리치 BGM 볼륨)은 아래 슬라이더로 따로 렌더한다.
   type BoolSettingKey = {
     [K in keyof Settings]: Settings[K] extends boolean ? K : never;
@@ -13802,58 +13877,6 @@ function SettingsPanel(props: {
             </span>
           </div>
         </label>
-        <div className="settings-row settings-row-bgm">
-          <div className="settings-text">
-            <span className="settings-label">내 리치 BGM</span>
-            <span className="settings-desc">
-              내가 리치를 걸었을 때 나올 곡입니다 — <b>같은 방 네 사람 모두에게</b> 이 곡이
-              들립니다. 랜덤을 고르면 서버가 <b>내 곡 하나를 정해</b> 그 방 내내 씁니다
-              (되도록 다른 사람과 겹치지 않는 곡으로). ▶로 미리 들어 보세요.
-            </span>
-          </div>
-          <div className="bgm-picker">
-            <button
-              type="button"
-              className={`bgm-pick${props.settings.riichiBgmTrack < 0 ? " bgm-pick-on" : ""}`}
-              onClick={() => {
-                riichiBgm.previewStop();
-                props.onSetting("riichiBgmTrack", RIICHI_BGM_RANDOM);
-              }}
-            >
-              랜덤
-            </button>
-            {Array.from({ length: RIICHI_BGM_COUNT }, (_, i) => (
-              <span key={i} className="bgm-pick-cell">
-                <button
-                  type="button"
-                  className={`bgm-pick${props.settings.riichiBgmTrack === i ? " bgm-pick-on" : ""}`}
-                  onClick={() => {
-                    riichiBgm.previewStop();
-                    props.onSetting("riichiBgmTrack", i);
-                  }}
-                >
-                  {i + 1}번
-                </button>
-                <button
-                  type="button"
-                  className="bgm-play"
-                  aria-label={`${i + 1}번 브금 미리듣기`}
-                  onClick={() => {
-                    if (previewing === i) {
-                      riichiBgm.previewStop();
-                      setPreviewing(-1);
-                    } else {
-                      riichiBgm.preview(i);
-                      setPreviewing(i);
-                    }
-                  }}
-                >
-                  {previewing === i ? "■" : "▶"}
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
         {props.onVoteAbort !== undefined ? (
           <div className="settings-abort">
             <div className="settings-text">
