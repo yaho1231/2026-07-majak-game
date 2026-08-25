@@ -921,7 +921,23 @@ button {
   white-space: nowrap;
 }
 
+/*
+ * 남은 패 수 — `.center-sub` 의 다른 항목(본장·공탁)보다 **한 단 크게** 둔다.
+ *
+ * 왜: `.center-sub` 의 `max(10px, --panel * 0.068)` 은 폰 세로에서 그대로 하한에
+ * 걸린다(375×700 실측 2026-08-25: 패널 137px → 9.3px → 10px, 360 도 10px, 430 만
+ * 11.3px). 10px 짜리 «×69» 는 지하철에서 눈을 붙이지 않으면 못 읽는데, 남은 패 수는
+ * «유국까지 몇 순 남았나»를 재는 종반 판단의 단일 근거다. 밀도가 아니라 정보량으로
+ * 값이 정해져야 하는 항목이라 여기서 따로 잡는다.
+ *
+ * 하한 13px · 계수 0.088 = 패널이 137px 일 때 12.1px → 13px, 430(패널 166px)에서
+ * 14.6px. 줄 높이가 12→16px 로 4px 늘지만 `.center-core` 는 `justify-content:center`
+ * 라 위아래로 2px 씩 나눠 먹는다 — 375×700 실측으로 국 표시·도라가 밀려나지 않는다
+ * (코어 안 여백이 원래 8px 남아 있었다). (docs/45 §12)
+ */
 .wall-count {
+  font-size: max(13px, calc(var(--panel) * 0.088));
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: #ece4d2;
 }
@@ -5054,6 +5070,25 @@ button {
   to { opacity: 0.95; transform: none; }
 }
 
+/* ── 폰 가로: 컷인을 「건너뛰기」 알약 **위로** 올린다 ─────────────────
+ * `.prod-skip` 의 bottom 은 `max(12px, --own-band-full + 12px)` 인데, 폰 가로에서는
+ * 내 영역이 얇아서(844×390 실측 --own-band-full ≈ 136px) 알약이 bottom 148px,
+ * 즉 **화면 세로 한가운데**에 선다. 컷인 밴드도 top:50% 한가운데라 둘이 정확히
+ * 겹쳤다 — 844×390 실측(2026-08-25): 이름 [240,173,138,44] · 알약 [362,194,121,44],
+ * 겹친 넓이 368px². 「건너뛰기 Esc」가 «날치기»의 «치» 를 반쯤 지웠다.
+ *
+ * 알약은 못 옮긴다 — 세로에서 손패를 피해 자리 잡은 계산(§9-2, `--own-band-full`)이
+ * 그대로 살아 있어야 한다. 대신 **가로에서만** 컷인을 54px 올린다: 밴드는 top 을
+ * 그만큼 당기고, 글자 뭉치는 `padding-bottom` 으로 그리드 중심을 올린다(`.cutin-body`
+ * 는 슬램 애니메이션이 transform 을 이미 쓰고 있어 transform 을 못 쓴다).
+ * 54px = 밴드 최소 높이 120px 의 절반 − 6px 여유. 390px 높이에서 이름은 119~163,
+ * 알약은 198~242 로 35px 이 뜬다. 세로(375×700)는 이 블록 밖이라 그대로다.
+ * (docs/45 §12 «폰 가로에서 건너뛰기 칩이 증강 이름을 가린다») */
+@container ui (max-height: 560px) and (orientation: landscape) {
+  .cutin { padding-bottom: 108px; }
+  .cutin-band { top: calc(50% - 54px); }
+}
+
 .cutin-ron .cutin-band {
   background: linear-gradient(90deg, transparent, rgba(159, 31, 45, 0.95) 14%, rgba(104, 14, 26, 0.97) 86%, transparent);
   box-shadow: 0 0 80px rgba(243, 72, 89, 0.5);
@@ -5676,6 +5711,22 @@ button {
   max-width: none;
   min-width: min(320px, 60cqw);
   margin: 0;
+  /*
+   * 역 목록 **뒤에만** 불투명 판을 깐다.
+   *
+   * `.result-panel` 은 배경이 투명하고(꽃잎 연출이 뒤로 비치게) 오버레이의 방사
+   * 그라디언트 하나가 판 전체를 덮는데, 그 알파가 목록 자리에서 0.86 이라 1920×1080
+   * 에서 «리치/일발/핑후/도라» 줄 뒤로 마작패와 «東1국» 글자가 그대로 비쳤다
+   * (2026-08-25 실측). 글자는 읽히지만 숫자 옆에 다른 숫자가 겹쳐 보인다.
+   * 오버레이 전체를 더 어둡게 하면 꽃잎 연출까지 죽으므로, **목록 상자 하나만**
+   * 올린다 — 0.86 위에 0.9 를 겹치면 실효 0.986 이라 뒤가 사라진다.
+   * ⚠ 판 전체를 보고 싶을 때의 통로(`.overlay-peekable`, 「누른 채로 게임판 보기」)는
+   *   이 판이 `opacity` 가 아니라 배경색이라 그대로 동작한다. (docs/45 §12)
+   */
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(9, 16, 13, 0.9);
+  border: 1px solid rgba(236, 228, 210, 0.07);
 }
 
 /* 역 스탬프 — 위에서 찍히는 도장 (딜레이는 App이 인라인으로 0.15s + i*0.09s 주입,
@@ -9221,6 +9272,17 @@ button {
   100% { opacity: 0; }
 }
 
+/*
+ * 가장 짧은 폰(640 이하)에서는 「✦ 액티브 증강 — 내 턴에 직접 발동」 한 줄을 걷는다.
+ * 카드 높이가 하한 136px 에 붙는 구간이라 이 20px 이 곧 **설명 한 줄**이다 —
+ * 360×640 실측: 이 줄이 서 있으면 첫 두 카드에서 설명이 한 글자도 안 보였다.
+ * 같은 말이 카드 머리의 «✦ 액티브» 뱃지에 이미 있으므로 정보가 사라지지는 않는다.
+ * (640 위로는 자리가 있으니 그대로 둔다.)
+ */
+@container ui (max-width: 700px) and (max-height: 660px) and (orientation: portrait) {
+  .draft-active-note { display: none; }
+}
+
 /* ── 모바일: 홈·로비·대기실 ── */
 @container ui (max-width: 700px) {
   /* 상단 바 — 이름표·부제·닉네임이 서로 밀어내 세 줄로 접히던 곳.
@@ -11556,6 +11618,22 @@ button {
     gap: 6px;
     padding: 8px 10px;
     flex-wrap: wrap;
+  }
+  /*
+   * 접히는 자리를 **빈칸(.site-bar-spacer)에 고정**한다.
+   *
+   * 접기만 켜 놨더니 줄이 내용 폭에 따라 아무 데서나 끊겼다 — 375×700 실측
+   * (2026-08-25): 「← 닫기 · 증강 도감 · 0/117종 수집 · 탭」이 1줄에 서고 마지막
+   * ↻(44px)만 다음 줄 맨 왼쪽에 홀로 떨어졌다(줄 높이 111px). 한 줄에 다 넣으려면
+   * 404px 이 필요해서(실측 합) 375·360 에서는 애초에 불가능하다.
+   * → 어차피 두 줄이라면 «무엇을 보는 화면인가»(뒤로·제목·수집)와 «무엇을 하는가»
+   *   (탭·새로 고침)로 가른다. 빈칸에 `flex-basis:100%`를 주면 그 자리에서 반드시
+   *   끊기므로 ↻ 는 늘 탭 옆에 붙는다. 높이는 그대로다(44+44+여백).
+   * 한 줄에 들어가는 넓은 화면은 이 블록(≤700px) 밖이라 영향이 없다. (docs/45 §12)
+   */
+  .codex-nav .site-bar-spacer {
+    flex: 0 0 100%;
+    height: 0;
   }
   .codex-nav .codex-title {
     font-size: 13px;
@@ -13990,6 +14068,38 @@ body.reconnecting .abort-banner {
   text-shadow: 0 0 42px #a37ce8, 0 0 80px #7c5cff, 0 4px 0 rgba(0, 0, 0, 0.4);
 }
 
+/* ── 증강 컷인의 «누가 · 무엇을» 줄 ──────────────────────────────
+ * 증강 컷인은 이름만 크게 뜨고(«날치기»), 누가 발동했는지·무슨 일이 일어났는지는
+ * 곁줄(`.cutin-sub`)에 있었다. 그런데 곁줄은 `.cutin-body`(flex row)의 **마지막
+ * 칸**이라 거대한 이름 오른쪽에 붙어 서고, 연출이 1600ms 라 다시 볼 기회가 없다.
+ * 844×390 실측(2026-08-25): 이름 [158,177,184,44] 곁줄 [360,198,263,19] — 곁줄이
+ * 화면 오른쪽 절반으로 밀려 「건너뛰기」 알약([362,198,121,44])에 그대로 깔렸다.
+ * → 증강 컷인에서만 곁줄을 **이름 아래 한 줄**로 내린다. 밴드 높이가 120~190px
+ *   이라 44px 이름 + 두 줄 곁줄이 그 안에 들어간다.
+ * (docs/45 §12 «컷인이 누가/무엇을을 글자로 안 알려 준다») */
+.cutin-aug .cutin-body {
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 4px;
+}
+
+.cutin-aug .cutin-sub {
+  flex: 0 0 100%;
+  max-width: min(88cqw, 720px);
+  margin: 0 auto;
+  text-align: center;
+  line-height: 1.35;
+  white-space: normal;
+  /* 이름과 같은 무게로 읽히면 이름이 안 튄다 — 정보는 읽히되 한 단 아래 */
+  font-weight: 600;
+}
+
+/* 발동자 이름 — 곁줄의 «봇2 — » 앞머리를 색으로 떼어 준다 */
+.cutin-who {
+  color: var(--fx-color, #c7bcff);
+  font-weight: 800;
+}
+
 /* 무덤 도굴 — 흙빛 금 + 관 뚜껑이 열리듯 아래에서 솟는 빛 */
 .cutin-grave .cutin-band {
   background:
@@ -15719,7 +15829,61 @@ body.peeking .overlay-peekable > * {
       /* 상자를 한 줄로 줄였으므로 띠도 함께 줄인다 (390×844 실측: 상자 44px + 숨통 8px.
          44px 는 닫기 단추 30px + 위아래 패딩 12px 가 정한다 — 상자를 더 줄이려면
          그 단추부터 줄여야 한다). */
-      .game-root:has(.table):has(.rotate-hint) { --rotate-band: 52px; }
+      .game-root:has(.table):has(.rotate-hint:not(.rotate-hint-folded)) {
+        --rotate-band: 52px;
+      }
+    }
+
+    /*
+     * ③-b **7초 뒤에는 접혀서 띠를 돌려준다** (2026-08-25 QA §12(c)).
+     *
+     * ③이 만든 자리는 «닫기 전까지 계속» 보드에서 떼어 온 자리다. 닫는 것을 기억하게
+     * 해 두었어도(App 의 rotateHintOff) **처음 오는 사람은 매번 그 띠를 지고 시작**한다.
+     * 문구는 한 줄짜리 사실 하나라 몇 초면 읽히므로, 다 읽었을 무렵 스스로 접는다:
+     *   · 글자를 접고 ⟳ 만 남긴다 (알약 30×30 → 폭 34px, 세로 자리 0)
+     *   · `:not(.rotate-hint-folded)` 가 풀려 `--rotate-band` 가 0 으로 — 보드가
+     *     그 52px 을 곧바로 도로 가져간다.
+     *   · ⟳ 를 누르면 다시 펴진다. ✕ 는 그대로 «영영 닫기»(로컬 기억).
+     *
+     * ⚠ 자리는 **보드 왼쪽 위 모서리**다. 보드 상자는 정사각형이지만 네 모서리는
+     *   비어 있으므로(위 `.table-center` 주석) 띠가 사라진 뒤에도 알약이 남의
+     *   버림패·뒷패를 물지 않는다. 화면 왼쪽 끝(2px)에 붙여 보드 안쪽으로는
+     *   최대한 안 들어가게 둔다.
+     * ⚠ `right: auto` 를 반드시 되돌려야 한다 — ③이 `left:8/right:8` 로 화면 폭을
+     *   다 쓰게 잡아 두었기 때문에, 안 풀면 접혀도 상자만 투명해질 뿐 폭은 그대로다.
+     */
+    .game-root:has(.table) .rotate-hint-folded {
+      left: 2px;
+      right: auto;
+      width: auto;
+      padding: 2px;
+      gap: 0;
+      background: rgba(9, 16, 13, 0.86);
+    }
+    .game-root:has(.table) .rotate-hint-folded > span,
+    .game-root:has(.table) .rotate-hint-folded .rotate-hint-close {
+      display: none;
+    }
+
+    /* ⟳ 는 접힌 뒤 «다시 펴기» 단추가 된다 — 펼쳐져 있을 때는 눌러도 할 일이 없으므로
+       글자처럼 보이게 두고, 접히면 닿는 자리(30px, `.rotate-hint-close` 와 같은 크기)를
+       갖는다. button 기본 꾸밈은 여기서 전부 지운다. */
+    .rotate-hint-icon {
+      flex: none;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+      line-height: 1;
+      min-height: 0;
+      cursor: default;
+    }
+    .rotate-hint-folded .rotate-hint-icon {
+      width: 30px;
+      height: 30px;
+      font-size: 16px;
+      cursor: pointer;
     }
 
     /*
@@ -16089,9 +16253,30 @@ body:has(.overlay) .emote-bar {
  *   규칙과 같다 — 전체 화면 창은 body 직속 포털이고, 특정도도 함께 올려야
  *   `@container` 안의 `display: flex` 선언들을 덮는다.
  */
-body:has(.result-overlay):not(.peeking) .game-root .quick-toggles,
 body:has(.result-overlay):not(.peeking) .game-root .nameplate {
   display: none;
+}
+
+/*
+ * 빠른 토글은 **결과 창뿐 아니라 모든 전체 화면 창**에서 걷는다 (2026-08-25 QA §12(b)).
+ *
+ * 위 규칙이 `.result-overlay` 만 짚고 있어서 **증강 선택 창**에서는 그대로 남았다 —
+ * 667×375·740×360 실측: 토글 더미 [34,20,82,132] 가 드래프트 제목 「증강 선택」
+ * 왼쪽에 그대로 얹혀, 반투명 배경 위로 밝은 알약 네 개가 비쳤다(스크린샷 확인).
+ * 창이 떠 있는 동안 토글을 누를 일은 없으므로 자리를 다투는 대신 비운다 —
+ * `.emote-bar`·`.game-notice-float`·`.rotate-hint` 와 같은 이유·같은 방식이다.
+ *
+ * ⚠ `:not(.peeking)` 은 위 규칙과 같은 이유로 유지한다 — 「누른 채로 게임판 보기」로
+ *   창을 투명하게 만든 동안에는 판 위의 것들이 다시 보여야 한다.
+ * ⚠ 선택자가 `.quick-toggles` 라 **손패 위 가로 줄 변형(`.quick-toggles-inline`)까지
+ *   함께** 걷힌다(그쪽도 같은 클래스를 함께 단다). 그 줄은 내 영역 안에 흐름으로
+ *   놓여 있어 `display:none` 이면 띠가 줄고 보드가 잠깐 커졌다 되돌아온다 —
+ *   창이 떠 있는 동안 판이 덜컹거리는 셈이라 `visibility` 로 **자리는 남기고**
+ *   그리기만 멈춘다(375×700 실측: display:none 이면 `--own-band-full` 이 30px 줄었다).
+ */
+body:has(.overlay):not(.peeking) .game-root .quick-toggles,
+body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
+  visibility: hidden;
 }
 
 /* 대기실의 정형구 단추는 **창 머리줄 안**에 산다 (`.wr-head .emote-bar`, 대기실
@@ -16434,6 +16619,23 @@ body:has(.result-overlay):not(.peeking) .game-root .nameplate {
   /* 모드 뱃지는 그 자리를 내준다 — 폰 세로(≤480)에서 이미 걷는 것과 같은 이유다.
      두 클래스를 함께 짚어야 파일 뒤쪽 `.mode-badge.info-note` 를 이긴다. */
   .game-root .info-note.mode-badge { display: none; }
+  /*
+   * 봇 난이도 칩도 함께 내준다 (2026-08-25 QA §12 — QA 두 명·수정 담당 한 명이 각각 신고).
+   *
+   * 위 규칙이 걷는 것은 **모드 뱃지 하나뿐**이라 「🤖 보통」 칩이 그 자리에 그대로
+   * 남아 있었다(`@container ui (max-width:900px)` 의 `.mode-badge{top:8;left:8}` 이
+   * `.bot-diff-badge{top:60px}` 보다 파일 뒤라 이겨서, 세로에서 아래 단이던 칩이
+   * 가로에서는 맨 위 단으로 올라온다). 그 자리는 이 블록이 방금 빠른 토글에게 준
+   * 자리다 — 667×375·740×360·844×390 실측으로 칩 [8,8,61,24] 와 토글 더미
+   * [34,20,82,132] 이 x34~69 에서 겹쳐 칩 오른쪽 절반이 토글 알약 뒤로 들어갔고,
+   * 칩 한가운데를 `elementFromPoint` 로 찍으면 `.qt-item` 이 나왔다(= 100% 뒤).
+   *
+   * 반쯤 가려진 칩은 정보가 아니라 얼룩이다. 옮길 곳도 마땅치 않다 — 가로에서 비어
+   * 있는 구석은 이 왼쪽 위와 오른쪽 아래뿐인데 둘 다 이미 임자가 있다(토글·정형구).
+   * 봇 난이도는 **대국 중에 바뀌지 않는 값**이고 대기실에서 고르며 거기 그대로
+   * 적혀 있으므로, 세로가 360px 뿐인 화면에서는 모드 뱃지와 같은 이유로 접는다.
+   */
+  .game-root .mode-badge.bot-diff-badge { display: none; }
   .emote-bar {
     top: auto;
     bottom: max(8px, env(safe-area-inset-bottom, 0px));
@@ -17817,8 +18019,9 @@ body:has(.prod-skip) .toast-stack {
   .own-area > .action-bar {
     position: absolute;
     right: calc(50% + var(--board) / 2 + 10px);
-    /* 게이지 칸(30px) 위에 앉는다 — 게이지가 없는 프롬프트면 그만큼 낮게 설 뿐이다 */
-    bottom: calc(var(--own-rail-h, 0px) + 8px + 30px);
+    /* 게이지 칸(42px = 게이지 5 + 그 위의 남은 초 + 숨통) 위에 앉는다 —
+       게이지가 없는 프롬프트면 그만큼 낮게 설 뿐이다. */
+    bottom: calc(var(--own-rail-h, 0px) + 32px + 42px);
     flex-direction: column;
     flex-wrap: wrap-reverse;
     align-items: stretch;
@@ -17830,11 +18033,13 @@ body:has(.prod-skip) .toast-stack {
     padding: 8px 10px;
   }
   .own-area > .action-bar .act {
+    /* 세로 줄에서는 글자 폭이 제각각이라 가운데 정렬로 크기를 맞춘다.
+       크기(padding·font-size)는 **건드리지 않는다** — 이 화면은 `--ui-scale`(body zoom)
+       아래라 CSS px 를 줄이면 실제 픽셀은 그 비율만큼 더 줄어든다(1280×800 실측:
+       scale 0.75 → 63px 짜리 알약이 47px 로 그려진다). 44px 터치 목표를 지키려면
+       기본값 그대로가 맞다. 아래 min-height 는 글자가 짧은 「론」류를 위한 바닥값이다. */
     justify-content: center;
-    /* 세로 줄에서는 글자 폭이 제각각이라 가운데 정렬 + 최소 높이로 크기를 맞춘다 */
-    min-height: 48px;
-    padding: 10px 18px;
-    letter-spacing: 1px;
+    min-height: 58px;
   }
   /* 리치 안내 문구는 세로 줄에서 `flex-basis:100%`(=높이 전체)를 잡으면 안 된다 */
   .own-area > .action-bar .action-hint {
@@ -17845,7 +18050,14 @@ body:has(.prod-skip) .toast-stack {
   .own-area > .prompt-timer {
     position: absolute;
     right: calc(50% + var(--board) / 2 + 10px);
-    bottom: calc(var(--own-rail-h, 0px) + 8px);
+    /*
+     * `--own-rail-h` 는 레일의 `offsetHeight` 라 **밖으로 삐져나온 것**(방금 쯔모한
+     * 패가 들려 있는 높이)을 못 센다 — 1280×800 실측: 변수 147px 인데 레일이 실제로
+     * 차지하는 상자는 160px 이다. 8px 만 띄우면 게이지가 레일 윗변에 정확히 얹힌다.
+     * 게다가 그 차이는 쯔모패가 있느냐에 따라 139↔147px 로 흔들린다. 32px 이면
+     * 어느 쪽이든 레일 위로 7px 이상 남는다.
+     */
+    bottom: calc(var(--own-rail-h, 0px) + 32px);
     width: 176px;
   }
   /*

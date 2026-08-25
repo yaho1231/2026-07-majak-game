@@ -1507,6 +1507,15 @@ interface Production {
   channel: "banner" | "cutin";
   text: string;
   sub?: string;
+  /**
+   * 곁줄 맨 앞에 **색을 달리해** 세우는 발동 주체 ("봇2").
+   *
+   * 왜 따로 두나: 대부분의 컷인은 곁줄을 통문장으로 쓰지만("봇3 — 그 깡, 창깡으로
+   * 잡힌다"), 액티브 증강 발동(`actionFx`)만은 곁줄이 «누가 — 무엇을» 두 조각의
+   * 기계적 결합이다. 그 자리에서 이름이 효과 문장에 묻혀 «증강 이름만 보인다»는
+   * 보고가 나왔다(docs/45 §12). 이름을 따로 넘겨받아 `.cutin-who`로 떼어 세운다.
+   */
+  who?: string;
   tone: BannerTone | CutInTone;
   /** limit 컷인일 때만 — 만관/하네만/배만/삼배만 */
   tier?: LimitTier;
@@ -2876,6 +2885,24 @@ export function App(): JSX.Element {
     () => safeStorage.getItem(ROTATE_HINT_KEY) === "1",
   );
   /**
+   * **읽고 나면 저절로 접힌다** (2026-08-25 QA §12).
+   *
+   * 닫은 것을 기억하는 것만으로는 «처음 오는 사람»이 안 구제된다 — 그 사람은 판이
+   * 52px 줄어든 채로 첫 국을 친다(375 기준 세로의 7.4%). 문구는 한 줄짜리 사실
+   * 하나("돌리면 다 보인다")라 몇 초면 읽히는데, 띠는 닫기 전까지 계속 서 있었다.
+   *
+   * 그래서 7초 뒤 **아이콘 알약으로 접는다** — 띠(`--rotate-band`)를 보드에게
+   * 돌려주고, ⟳ 만 남겨 다시 펼 수 있게 둔다. 안내를 없애지는 않는다: 폰 가로가
+   * 실제로 더 낫다는 정보라 나중에라도 다시 읽을 수 있어야 한다.
+   * (7초 = 24자 한 줄을 두 번 읽을 시간. 초읽기 30초의 1/4 이라 첫 수 전에 접힌다.)
+   */
+  const [rotateHintFolded, setRotateHintFolded] = useState(false);
+  useEffect(() => {
+    if (rotateHintOff || rotateHintFolded) return;
+    const t = window.setTimeout(() => setRotateHintFolded(true), 7000);
+    return () => window.clearTimeout(t);
+  }, [rotateHintOff, rotateHintFolded]);
+  /**
    * 지금 인증되어 있는가 — **live ref**. handleServerMessage는 마운트 시 소켓에
    * 고정된 클로저라 auth state가 스테일하다. 서버 오류를 로그인 폼에 넣을지
    * 토스트로 띄울지는 이 ref로만 판단한다.
@@ -3189,7 +3216,11 @@ export function App(): JSX.Element {
         tone: p.tone,
         channel: p.channel,
         round: roundLabelRef.current,
-        ...(p.sub !== undefined ? { sub: p.sub } : {}),
+        // 📜 로그 줄에는 «누가»가 곁줄 앞머리로 합쳐진 형태로 들어간다 — 로그는
+        // 색을 쓰지 않는 한 줄짜리라 조각을 나눠 봐야 읽는 사람에게 달라지는 게 없다.
+        ...(p.sub !== undefined || p.who !== undefined
+          ? { sub: [p.who, p.sub].filter((s) => s !== undefined && s !== "").join(" — ") }
+          : {}),
         ...(p.augId !== undefined ? { augId: p.augId } : {}),
       };
       const next = [...prev, ev];
@@ -3233,6 +3264,8 @@ export function App(): JSX.Element {
       tileArrowAt?: number;
       impact?: ImpactSpec;
       augId?: string;
+      /** 곁줄 앞에 색을 달리해 세울 발동 주체 (Production.who) */
+      who?: string;
       /** 큐를 앞질러 나가는 등급 (Production.priority) — 리치와 짝지은 컷인만 쓴다 */
       priority?: number;
     } = {},
@@ -3244,6 +3277,7 @@ export function App(): JSX.Element {
       ttl: ms,
       ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
       ...(sub !== undefined ? { sub } : {}),
+      ...(opts.who !== undefined && opts.who !== "" ? { who: opts.who } : {}),
       ...(opts.tier !== undefined ? { tier: opts.tier } : {}),
       ...(opts.augId !== undefined ? { augId: opts.augId } : {}),
       ...(opts.sfx !== undefined ? { sfx: opts.sfx } : {}),
@@ -4611,10 +4645,21 @@ export function App(): JSX.Element {
         fxSeenRef.current.keys.add(key);
       }
       const who = pv !== null ? playerNameById(pv, msg.player) : msg.player;
+      /*
+       * 곁줄은 «누가 — 무엇이 일어나는가» 두 조각이다.
+       *
+       * 예전에는 뒷조각이 늘 "증강 발동"이라 곁줄 전체가 아무 정보도 주지 않았다.
+       * 화면에 남는 것은 증강 **이름**뿐인데(«날치기»), 처음 보는 증강이면 이름은
+       * 아무 뜻도 아니다 — 1600ms 뒤에 사라지고 다시 볼 방법도 없다(docs/45 §12).
+       * 도감 요약(`briefOf`, 60자 이내 한 문장)이 바로 그 자리에 필요한 글이라
+       * 그대로 가져다 쓴다. 요약이 없는 증강만 예전 문구로 물러난다.
+       */
+      const effect = briefOf(augId, catalogRef.current[augId]?.description).text;
       // 증강 발동은 후로(타악)와 계열이 다른 "번개 스침" 사운드 — 소리만으로 구분된다
-      showCutIn(label, "augment", `${who} — 증강 발동`, 1600, {
+      showCutIn(label, "augment", effect !== "" ? effect : "증강 발동", 1600, {
         sfx: () => sfx.augment(0),
         augId,
+        who,
       });
       return;
     }
@@ -6173,8 +6218,21 @@ export function App(): JSX.Element {
           없어서** 한 번 읽고 나면 계속 자리를 차지했다(docs/28 §2-2). 닫기만 상태로 둔다 —
           어디에 뜰지는 여전히 CSS가 정한다. */}
       {rotateHintOff ? null : (
-        <div className="rotate-hint" role="status">
-          <span aria-hidden="true">⟳</span>
+        <div
+          className={`rotate-hint${rotateHintFolded ? " rotate-hint-folded" : ""}`}
+          role="status"
+        >
+          {/* 접힌 뒤에는 이 ⟳ 가 «다시 펴기» 손잡이다 — 접힌 상태에서만 누를 것이
+              있으므로 펼쳐져 있을 때는 aria-expanded 로 그 사실만 알린다. */}
+          <button
+            type="button"
+            className="rotate-hint-icon"
+            aria-label="가로 화면 안내 다시 보기"
+            aria-expanded={!rotateHintFolded}
+            onClick={() => setRotateHintFolded(false)}
+          >
+            ⟳
+          </button>
           <span>가로로 돌리면 네 자리가 다 보입니다.</span>
           <button
             type="button"
@@ -6725,7 +6783,19 @@ export function App(): JSX.Element {
             <span className="cutin-text" data-long={activeProd.text.replace(/\s/g, "").length >= 4 ? "1" : undefined}>
               {activeProd.text}
             </span>
-            {activeProd.sub !== undefined ? <span className="cutin-sub">{activeProd.sub}</span> : null}
+            {/* 곁줄 — 증강 컷인은 이름 아래 한 줄로 내려간다(styles.css `.cutin-aug .cutin-sub`).
+                `who`가 있으면 그 앞머리를 계열색으로 떼어 세운다: «봇2 — 손패 …». */}
+            {activeProd.sub !== undefined || activeProd.who !== undefined ? (
+              <span className="cutin-sub">
+                {activeProd.who !== undefined ? (
+                  <>
+                    <span className="cutin-who">{activeProd.who}</span>
+                    {activeProd.sub !== undefined ? " — " : null}
+                  </>
+                ) : null}
+                {activeProd.sub}
+              </span>
+            ) : null}
             {activeProd.tiles !== undefined ? (
               <span className="cutin-tiles">
                 {activeProd.tiles.map((kind, i) => (
@@ -6777,7 +6847,7 @@ export function App(): JSX.Element {
           전부 이 큐를 지나므로, 여기 한 곳만 live로 열어 두면 게임 사건 전체가 들린다. */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {activeProd !== null
-          ? `${activeProd.text}${activeProd.sub !== undefined ? ` — ${activeProd.sub}` : ""}`
+          ? `${activeProd.text}${activeProd.who !== undefined ? ` — ${activeProd.who}` : ""}${activeProd.sub !== undefined ? ` — ${activeProd.sub}` : ""}`
           : ""}
       </div>
       {roundResult !== null && view !== null ? (
@@ -17685,12 +17755,13 @@ function handReordered(order: number[], id: number, targetIdx: number): number[]
  * 대신 **조용하게 시작해 급해질수록 커진다**. 매 타패마다 30초 시계가 큼직하게
  * 뛰면 판보다 시계를 보게 된다:
  * - 10초 넘게 남았으면 가는 막대만 (지금까지와 같은 모습)
- * - 10초 이하로 남으면 남은 초를 숫자로 띄우고
+ * - 남은 초는 늘 숫자로 띄우고(마감이 없는 국은 「약 12초」로 어림임을 밝힌다)
+ * - 10초 이하로 남으면 0.1초까지 세고
  * - 5초 이하면 막대를 굵게·붉게 하고 숫자를 맥동시킨다
  * 초읽기 국(마감이 애초에 5~10초)에서는 뜨자마자 이 단계로 들어가므로, 예전의
  * "굵은 붉은 게이지 + 숫자"가 그대로 재현된다.
  */
-/** 숫자를 띄우기 시작하는 잔여 시간 */
+/** 0.1초 단위로 세기 시작하는 잔여 시간 (그 위는 초 단위) */
 const TIMER_COUNT_MS = 10_000;
 /** 굵게·붉게 전환하는 잔여 시간 */
 const TIMER_URGENT_MS = 5_000;
@@ -17750,12 +17821,23 @@ function PromptTimer(props: {
   const total = spanRef.current.total;
 
   /*
-   * 남은 시간에 따라 조용함 → 숫자 → 경고 순으로 단계가 올라간다.
-   * **서버 마감이 있을 때만** 숫자를 말한다 — 없는 국의 남은 초는 화면이 지어낸
-   * 값이라, 막대(어림)와 달리 단정이 된다.
+   * 남은 초는 **늘 숫자로 말한다** (2026-08-25 QA §12).
+   *
+   * 예전에는 «초읽기 국 + 10초 이하»에서만 숫자를 띄웠다. 그래서 평소 프롬프트에서
+   * 남은 시간을 알리는 것이 **높이 5px 짜리 선 하나뿐**이었다 — 치·퐁·론은 초 단위
+   * 판단인데 «지금 몇 초 남았나»를 눈으로 셀 수가 없었다(막대의 길이를 30초로
+   * 환산하는 암산을 사람에게 시키는 셈이다).
+   *
+   * 마감이 안 실려 온 국의 숫자가 «화면이 지어낸 값»인 것은 그대로다. 그래서 숨기는
+   * 대신 **어림이라고 말한다**: 「약 12초」처럼 앞에 «약»을 붙이고 초 단위로만
+   * 끊는다. 0.1초까지 떠는 것은 마감이 진짜 있는 급한 구간(≤10초)뿐이다 —
+   * 상시로 소수점이 굴러가면 눈이 그쪽으로 끌려간다.
    */
-  const showCount = deadline !== null && left <= TIMER_COUNT_MS;
   const urgent = deadline !== null && left <= TIMER_URGENT_MS;
+  const precise = deadline !== null && left <= TIMER_COUNT_MS;
+  const countText = precise
+    ? `${(left / 1000).toFixed(1)}초`
+    : `${deadline === null ? "약 " : ""}${Math.ceil(left / 1000)}초`;
   /*
    * 막대를 **React 가 직접 민다** (CSS 애니메이션이 아니다).
    *
@@ -17783,9 +17865,7 @@ function PromptTimer(props: {
         className="prompt-timer-fill"
         style={{ transform: `scaleX(${ratio})` } as CSSProperties}
       />
-      {showCount ? (
-        <span className="prompt-timer-count">{(left / 1000).toFixed(1)}초</span>
-      ) : null}
+      <span className="prompt-timer-count">{countText}</span>
       {/* 급해진 구간에서만 실제로 띄운다 — 상시로 세워 두면 판을 가리기만 한다 */}
       {urgent && props.onTimeout != null ? (
         <span className="prompt-timer-note">{props.onTimeout}</span>
@@ -18202,6 +18282,41 @@ function OwnArea(props: {
    * 레일 높이는 타일 크기가 정하고 그 값은 레일 안에서만 산다.
    */
   const ownRailHRef = useRef(-1);
+  /*
+   * 창 크기·방향이 바뀌면 **리렌더를 한 번 억지로 일으켜** 아래 측정을 다시 돌린다
+   * (2026-08-25 QA 후속).
+   *
+   * 아래 이펙트는 «렌더 때마다» 도는데, 순수 리사이즈는 **리렌더를 일으키지 않는다** —
+   * 창을 끌어 늘이거나 폰을 돌리면 레일 높이·보드 폭이 바뀌는데도 `--own-band` ·
+   * `--own-corner-max` · `--own-rail-h` 가 이전 크기의 값으로 남아 있었다. 그러면
+   * 후로 줄과 액션 알약이 «옛 자리»에 선다(세로→가로 전환에서 가장 크게 틀린다).
+   *
+   * ⚠ ResizeObserver 는 쓰지 않는다. 아래 측정은 CSS 변수를 쓰고, 그 변수는 보드
+   * 크기를 바꾸고, 그 변화가 다시 관찰 대상의 크기를 바꿀 수 있다 — 되먹임 고리가
+   * 된다. `resize`·`orientationchange` 는 **사람이 창을 건드릴 때만** 오므로 우리가
+   * 쓴 값이 우리를 다시 부르는 일이 없다. (측정 자체는 값이 그대로면 아무것도 쓰지
+   * 않으므로, 한 번 더 도는 비용은 offsetHeight 읽기뿐이다.)
+   *
+   * 리사이즈는 끌리는 동안 초당 수십 번 온다 — 프레임 하나로 묶는다.
+   */
+  const [, remeasure] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    let raf = 0;
+    const bump = () => {
+      if (raf !== 0) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        remeasure();
+      });
+    };
+    window.addEventListener("resize", bump);
+    window.addEventListener("orientationchange", bump);
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", bump);
+      window.removeEventListener("orientationchange", bump);
+    };
+  }, []);
   // 렌더마다 다시 잰다(의존성 배열 없음). ResizeObserver를 먼저 써 봤는데, 손패가
   // 채워지거나 화면 크기가 바뀌어 띠가 자라도 콜백이 오지 않는 경우가 있어 띠가 낡았다.
   // 렌더는 뷰가 올 때마다 도므로 이쪽이 확실하다.
