@@ -9047,6 +9047,138 @@ button {
   .draft-reroll { width: 52px; height: 22px; font-size: 13px; }
 }
 
+/*
+ * ── 증강 드래프트(폰 «세로»): 셋째 카드를 화면 안으로 걸치고, 아래가 더 있음을 알린다
+ *    (2026-08-25 QA §2·§12) ──
+ *
+ * 가로는 3열로 풀었다(8271670). 세로는 폭이 없어 1열이 맞지만, 수정 전 실측을 보면
+ * 첫 화면에 **선택지가 셋이라는 사실 자체가 안 보였다**:
+ *   375×700 — 카드 top/bottom [251,471] [513,725] [767,1007]
+ *   360×640 — [251,491] [533,774] [816,1028]
+ * 스크롤은 된다(`.overlay` sh 985 / ch 576). 그러나 스크롤바도 페이드도 화살표도 없어
+ * «아래에 더 있다»는 신호가 하나도 없다. 70초 타이머가 도는 화면에서 셋 중 하나를
+ * 고르라는 것인데, 사실상 «맨 위 카드 아니면 랜덤»이 된다.
+ *
+ * 둘을 함께 한다.
+ *   ① 머리글을 접는다 — 가로에서 쓴 것과 같은 수법이다. 단계 줄(「대국 개시 — 동1국」,
+ *      37px)·타이머 안내문(30px)·조작 안내(30px)로 ≈97px 가 카드 위에서 사라진다.
+ *      「⏳ 남은 시간」 알약은 **절대 못 뺀다**(이 화면의 이유다). 접는 셋은 같은 정보가
+ *      다른 데 있다: 국 표시는 창 뒤 판에, 「랜덤으로 결정된다」는 타이머가 10초에
+ *      붉게 뛰는 것으로, 「자세히 ▾」는 카드 «안»에 칩으로 그대로 보인다.
+ *   ② 카드 높이를 화면에서 역산해 못 박는다. 세로 한 줄의 주기는
+ *      카드 + 슬롯 간격 5 + 리롤 22 + 카드 사이 12 = 카드 + 39 이고, 머리글을 접은
+ *      뒤 첫 카드 top 은 ≈154 다. 셋째 카드가 화면 안에 h 만큼 걸치려면
+ *        154 + 2·(카드+39) + h ≤ 화면높이 − 60(👁 단추 자리, `.overlay-peekable`)
+ *      h=70 을 잡으면 카드 ≤ (화면높이 − 362)/2 → 640:139 · 700:169 · 760:199 · 830:234.
+ *      그래서 `50cqh - 181px`. 하한 136px 은 계열 뱃지 + 이름 + 태그 + 설명 두 줄 +
+ *      «자세히 ▾» 가 들어가는 최소치다(320px 폭에서 실측). 이 아래로 더 줄이면
+ *      글자를 줄여야 해서 멈춘다 — 상한 240px 은 큰 폰에서 카드가 허옇게 비지 않게.
+ *      넘치는 설명은 가로와 똑같이 **카드 «안»에서만** 스크롤한다(이름·뱃지·칩은 상주).
+ *   ③ 그래도 셋째 카드는 «걸치는» 것이라, 걸친 것이 우연이 아님을 말해 주는 힌트를
+ *      화면 바닥에 고정한다(아래 `.overlay-peekable::after`).
+ *
+ * ⚠ `(orientation: portrait)` 를 반드시 붙인다. 667×375 같은 폰 «가로»도 폭이 700
+ * 아래라 `max-width: 700px` 블록을 함께 맞는다 — 안 붙이면 방금 만든 3열을 이 규칙이
+ * 도로 망가뜨린다.
+ */
+@container ui (max-width: 700px) and (orientation: portrait) {
+  .draft-stage { display: none; }
+  .draft-howto { display: none; }
+  .draft-timer-note { display: none; }
+  /*
+   * 타이머는 스크롤해도 붙어 있는다. 셋째 카드를 보려면 반드시 스크롤해야 하는데,
+   * 수정 전에는 그 순간 「⏳ 남은 시간」이 화면 위로 빠져나가 **남은 시간과 카드를
+   * 동시에 볼 수 없었다**(375×700 실측: 끝까지 내리면 타이머 top −260). 70초를 재는
+   * 화면에서 그건 재는 의미가 없다.
+   * `inline-flex` 그대로면 인라인 상자라 sticky 오프셋이 제대로 안 걸린다 —
+   * `flex` + `width: fit-content` 로 블록 상자로 만들고 좌우 auto 로 가운데 둔다.
+   * 붙어 있는 동안 카드 위에 겹치므로 알약 바탕을 불투명에 가깝게 올린다.
+   */
+  .draft-timer {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    width: fit-content;
+    margin-bottom: 10px;
+    background: rgba(11, 19, 16, 0.94);
+  }
+
+  .draft-cards { gap: 12px; }
+  .draft-slot { gap: 5px; }
+  .draft-reroll { width: 64px; height: 22px; font-size: 13px; }
+
+  .draft-card {
+    height: clamp(136px, calc(50cqh - 194px), 230px);
+    min-height: 0;
+    padding: 12px 14px 10px;
+    gap: 6px;
+    justify-content: flex-start;
+  }
+  .draft-desc {
+    /* 넘치는 것은 여기서만 스크롤한다 — 이름·뱃지·«자세히 ▾»는 늘 보인다.
+       스크롤바는 감추지 않는다: 잘린 줄이 곧 «더 있다»는 신호다. */
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  /* 펼쳤을 때 다섯 줄 제한이 걸려 있으면 스크롤할 것이 없다 — 여기서는 다 편다 */
+  .draft-card .augdesc-more { flex: 0 0 auto; }
+
+  /*
+   * ③ 스크롤 힌트 — «아래에 더 있다».
+   *
+   * 창 자신이 스크롤 상자라 안쪽에 두면 힌트가 같이 흘러 내려가 버린다. `.overlay` 는
+   * `backdrop-filter` 를 갖고 있어 **고정 위치의 자손에게 컨테이닝 블록이 된다** —
+   * 그래서 `position: fixed` 가 창의 테두리 상자에 고정되고(창은 `inset: 0`) 스크롤과
+   * 무관하게 바닥에 남는다. 자리는 👁 단추(60px)를 피해 그 «위»다.
+   * 살짝 깔리는 그라디언트는 셋째 카드가 잘린 자리를 «잘린 것»으로 읽히게 한다.
+   *
+   * `body.peeking .overlay-peekable { opacity: 0 }` 이 이 가상 요소까지 함께 지운다
+   * (자식 선택자 `> *` 와 달리 가상 요소는 부모의 투명도를 그대로 받는다).
+   */
+  .overlay-peekable.overlay-peekable::after {
+    content: "▾ 아래로 — 카드가 더 있습니다";
+    position: fixed;
+    left: 0;
+    right: 0;
+    /* ⚠ `.overlay` 의 `backdrop-filter` 가 컨테이닝 블록을 만들면 기준은 그 **패딩
+       상자**다 — 아래쪽 60px 테두리(👁 단추 자리)는 이미 빠져 있으므로 여기서 다시
+       60px 을 띄우면 둘째 카드의 리롤(↻) 위에 앉는다(375×700 실측). 0 이 맞다. */
+    bottom: 0;
+    z-index: 1;
+    padding: 22px 0 6px;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    color: #f0c86a;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    background: linear-gradient(180deg, rgba(11, 19, 16, 0) 0%, rgba(11, 19, 16, 0.82) 62%);
+    pointer-events: none;
+  }
+
+  /* 스크롤 끝에 닿으면 스스로 사라진다 — 아는 엔진에서만.
+     ⚠ `@supports` 로 감싸야 한다. 모르는 엔진은 `animation-timeline` 만 버리고
+     `animation` 은 남기는데, 시간이 없는 애니메이션(0s + both)은 **끝 상태**로
+     칠해져 힌트가 통째로 사라진다(WebKit). 아예 걸지 않는 편이 안전하다. */
+  @supports (animation-timeline: scroll()) {
+    .overlay-peekable.overlay-peekable::after {
+      animation: draft-scroll-hint-fade linear both;
+      animation-timeline: scroll(nearest block);
+      animation-range: contain;
+    }
+  }
+}
+
+@keyframes draft-scroll-hint-fade {
+  0%, 78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* ── 모바일: 홈·로비·대기실 ── */
 @container ui (max-width: 700px) {
   /* 상단 바 — 이름표·부제·닉네임이 서로 밀어내 세 줄로 접히던 곳.
@@ -16429,9 +16561,9 @@ body:has(.result-overlay):not(.peeking) .game-root .nameplate {
  * (자리 고르기 자체는 `placeBubble`의 `mustClear`가 한다 — 여기서는 «잘라 낼 수
  * 있는 상자»를 만들어 주기만 한다.)
  */
-@media (max-height: 430px) {
+@container ui (max-height: 430px) {
   .coach-bubble {
-    max-height: 56vh;
+    max-height: 56cqh;
     /*
      * 넘치는 것은 **설명(`.coach-body`)이 먼저다.** 세로 흐름으로 세우고 순서를
      * 바꿔서 «해 보세요»를 설명 위로 올린다 — 굴려서 밀려나는 것이 «지금 무엇을
@@ -16471,7 +16603,7 @@ body:has(.result-overlay):not(.peeking) .game-root .nameplate {
     background: rgba(14, 22, 19, 0.98);
   }
   /*
-   * 굴리지 않는 줄들은 **눌러 담는다.** 56vh(360 높이에서 201px) 안에 장·제목·
+   * 굴리지 않는 줄들은 **눌러 담는다.** 56cqh(360 높이에서 201px) 안에 장·제목·
    * 지시문·버튼이 다 들어가야 본문만 굴러간다 — 기본 크기 그대로면 그 넷만으로
    * 202px라 버튼 줄이 잘려 나갔다(740×360 실측). 글자는 한 단계만 줄인다.
    */
