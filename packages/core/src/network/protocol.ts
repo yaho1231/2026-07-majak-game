@@ -201,10 +201,25 @@ export interface JoinRoomMessage {
 }
 
 /**
- * 리치 BGM 트랙 수 — 클라이언트 에셋(`/richiBGM{n}.mp3`)과 맞춘다.
- * 서버가 «랜덤»을 실제 트랙으로 풀 때 이 값을 쓴다.
+ * **리치 BGM 목록 — 곡을 늘리는 자리는 여기 하나다.**
+ *
+ * 새 곡을 넣으려면 파일을 `packages/client/public/` 에 두고 이 배열 끝에 경로를
+ * 한 줄 더한다. 그러면 화면의 선택 버튼(«5번»…), 서버의 랜덤 배정, 미리듣기가
+ * 전부 따라온다 — 클라이언트·서버가 각자 개수를 들고 있으면 한쪽만 늘어난
+ * 순간 «없는 곡»이 배정된다.
+ *
+ * 순서가 곧 번호다(0번째 = 화면의 «1번») — 이미 있는 항목의 순서는 바꾸지 않는다.
+ * 곡마다 음량이 다르면 클라이언트의 `RIICHI_BGM_GAIN`에서 보정한다.
  */
-export const RIICHI_BGM_TRACKS = 4;
+export const RIICHI_BGM_SRCS = [
+  "/richiBGM1.mp3",
+  "/richiBGM2.mp3",
+  "/richiBGM3.mp3",
+  "/richiBGM4.mp3",
+] as const;
+
+/** 리치 BGM 트랙 수 — 서버가 «랜덤»을 실제 트랙으로 풀 때 쓴다. */
+export const RIICHI_BGM_TRACKS = RIICHI_BGM_SRCS.length;
 
 /** 랜덤 선택을 뜻하는 트랙 값 — 서버가 이 사람 몫으로 하나를 뽑아 준다. */
 export const RIICHI_BGM_RANDOM = -1;

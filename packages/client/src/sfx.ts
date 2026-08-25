@@ -179,6 +179,8 @@ function readyAudio(): { ac: AudioContext; out: GainNode } | null {
   return { ac, out };
 }
 
+import { RIICHI_BGM_SRCS as RIICHI_BGM_TRACK_SRCS } from "@majak/core";
+
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 
 /**
@@ -961,10 +963,16 @@ export const bgm = {
 // 트랙이 여러 개다. 리치 때마다 무작위로 하나를 고르되, 이미 BGM이 흐르는 중에
 // 다른 사람이 리치를 걸면 "직전과 다른" 트랙으로 갈아끼워 흐름이 바뀐 느낌을 준다.
 
-const RIICHI_BGM_SRCS = ["/richiBGM1.mp3", "/richiBGM2.mp3", "/richiBGM3.mp3", "/richiBGM4.mp3"];
+// 목록은 core(protocol)에 있다 — 서버도 같은 수를 봐야 «없는 곡»을 배정하지 않는다.
+// **곡을 늘리는 자리는 그 배열 하나다** (여기와 서버는 따라온다).
+const RIICHI_BGM_SRCS: readonly string[] = RIICHI_BGM_TRACK_SRCS;
 // 트랙별 상대 음량 배율 — 곡마다 녹음 레벨이 달라 "적절한 크기"로 맞추는 보정값.
-// 특정 곡이 크거나 작으면 여기 값만 조정한다 (0~1+). SRCS와 길이·순서를 맞춘다.
-const RIICHI_BGM_GAIN = [1, 1, 1, 1];
+// 특정 곡이 크거나 작으면 그 곡의 경로에 값을 적는다 (0~1+). 안 적은 곡은 1이다
+// — 곡을 늘릴 때 이 표를 같이 늘리는 것을 잊어도 소리가 사라지지 않게 경로로 건다.
+const RIICHI_BGM_GAIN_BY_SRC: Record<string, number> = {};
+const RIICHI_BGM_GAIN: readonly number[] = RIICHI_BGM_SRCS.map(
+  (src) => RIICHI_BGM_GAIN_BY_SRC[src] ?? 1,
+);
 
 /** 트랙 수 — 설정 화면(선택 버튼)과 서버(랜덤 풀기)가 같은 수를 본다. */
 export const RIICHI_BGM_COUNT = RIICHI_BGM_SRCS.length;

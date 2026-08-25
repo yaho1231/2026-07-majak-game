@@ -13807,7 +13807,8 @@ function SettingsPanel(props: {
             <span className="settings-label">내 리치 BGM</span>
             <span className="settings-desc">
               내가 리치를 걸었을 때 나올 곡입니다 — <b>같은 방 네 사람 모두에게</b> 이 곡이
-              들립니다. 랜덤을 고르면 판마다 서버가 한 곡을 뽑아 줍니다. ▶로 미리 들어 보세요.
+              들립니다. 랜덤을 고르면 서버가 <b>내 곡 하나를 정해</b> 그 방 내내 씁니다
+              (되도록 다른 사람과 겹치지 않는 곡으로). ▶로 미리 들어 보세요.
             </span>
           </div>
           <div className="bgm-picker">
