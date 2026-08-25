@@ -18237,15 +18237,49 @@ function OwnArea(props: {
      */
     const rail = area.querySelector(".own-hand-rail");
     const tableEl = area.closest(".table");
+    const corner = area.parentElement?.querySelector(".own-corner-right") ?? null;
     if (rail instanceof HTMLElement && tableEl instanceof HTMLElement) {
-      const free = Math.max(
-        OWN_CORNER_MIN_W,
-        Math.floor((tableEl.clientWidth - rail.offsetWidth) / 2) - OWN_CORNER_GUTTER,
-      );
+      const side =
+        Math.floor((tableEl.clientWidth - rail.offsetWidth) / 2) - OWN_CORNER_GUTTER;
+      /*
+       * 레일 옆에 최소폭조차 없으면 **손패 띠 위로 올린다** (2026-08-25 QA §5).
+       *
+       * 예전에는 남는 폭이 0이어도 `OWN_CORNER_MIN_W`를 그냥 줬다 — 상자가 사라지는
+       * 것을 막으려는 하한이었는데, 그 120px이 실제로는 **손패가 쓰고 있는 자리**라
+       * 폰 세로에서 후로 줄이 손패 위에 얹혔다(375×700 실측: 레일 41~334, 후로 줄
+       * 239~359 = 95px 겹침, 후로 하나만 있어도 겹쳤다). 게다가 그 120px 안에서
+       * 후로 2개부터 잘려 나갔다(120/130).
+       *
+       * 옆에 못 서면 위로 선다. 띠 위(=액션 바까지 포함한 `--own-band-full` 위)는
+       * 손패와 겹치지 않고 화면 폭을 통째로 쓸 수 있어, 375px에서도 후로 4개가
+       * 잘리지 않고 다 들어간다(실측은 아래 QA 표).
+       */
+      const stack = side < OWN_CORNER_MIN_W;
+      const free = stack
+        ? Math.max(OWN_CORNER_MIN_W, tableEl.clientWidth - 2 * OWN_CORNER_GUTTER)
+        : side;
       if (free !== ownCornerMaxRef.current) {
         ownCornerMaxRef.current = free;
         root.style.setProperty("--own-corner-max", `${free}px`);
       }
+      if (stack) {
+        root.style.setProperty(
+          "--own-corner-bottom",
+          "calc(var(--own-band-full, 0px) + 6px)",
+        );
+      } else {
+        root.style.removeProperty("--own-corner-bottom");
+      }
+    }
+    /*
+     * 넘쳤으면 그 사실을 CSS에 알린다 — `[data-of="1"]`이 오른쪽 끝을 흐린다.
+     * 펠트 위 상자에는 스크롤막대를 그리지 않기로 했으므로(styles.css «판 위의 작은
+     * 상자»), 이 속성이 «여기서 끝이 아니다»를 말하는 유일한 신호다. 페이드는
+     * 마스크라 레이아웃을 바꾸지 않는다 — 여기서 재고 켜도 되먹임이 없다.
+     */
+    if (corner instanceof HTMLElement) {
+      const of = corner.scrollWidth > corner.clientWidth + 1 ? "1" : "0";
+      if (corner.dataset["of"] !== of) corner.dataset["of"] = of;
     }
     if (band === ownBandRef.current) return;
     ownBandRef.current = band;
@@ -18264,6 +18298,7 @@ function OwnArea(props: {
         root.style.removeProperty("--own-band-full");
         document.body.style.removeProperty("--own-band-full");
         root.style.removeProperty("--own-corner-max");
+        root.style.removeProperty("--own-corner-bottom");
       }
     };
   }, []);
@@ -19439,7 +19474,17 @@ function OwnArea(props: {
         </div>
       </div>
       {myMelds.length > 0 || myPulled.length > 0 ? (
-        <div className="own-corner-right">
+        <div
+          className="own-corner-right"
+          /* 후로 개수 — CSS가 «몇 개를 이 폭에 담아야 하는지»를 알아야 타일 크기를
+             줄여 덜 넘치게 할 수 있다(styles.css `.own-corner-right`의 --mt-w).
+             북풍 상인의 빼놓은 北도 같은 줄에 서므로 하나로 센다. */
+          style={
+            {
+              "--own-meld-n": String(myMelds.length + (myPulled.length > 0 ? 1 : 0)),
+            } as CSSProperties
+          }
+        >
           {myMelds.map((m, i) => (
             <MeldGroup key={i} view={view} meld={m} owner={me} layout="row" />
           ))}

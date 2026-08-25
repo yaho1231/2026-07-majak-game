@@ -3193,7 +3193,7 @@ button {
   position: absolute;
   right: 16px;
   /*
-   * 세로 숨통 6px + bottom 14px = 예전의 bottom 20px.
+   * 세로 숨통 8px + bottom 12px = 예전의 bottom 20px.
    *
    * 타일 이미지는 제 상자보다 조금 크게 그려진다(1280×800 실측: 아래로 3.6px,
    * `overflow-y: hidden`이 그만큼을 잘라 눕힌 패 머리가 깎여 보였다 —
@@ -3204,8 +3204,8 @@ button {
    * 올려 주는 값이다(App.tsx의 띠 측정 자리). 폰 세로처럼 레일이 화면을 거의 다
    * 쓰는 곳에서는 옆에 최소폭조차 없어서, 예전에는 후로 줄이 손패 위에 얹혔다.
    */
-  bottom: var(--own-corner-bottom, 14px);
-  padding: 4px 0 6px;
+  bottom: var(--own-corner-bottom, 12px);
+  padding: 4px 0 8px;
   z-index: 11;
   display: flex;
   align-items: flex-end;
