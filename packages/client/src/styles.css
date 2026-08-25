@@ -3192,7 +3192,20 @@ button {
 .own-corner-right {
   position: absolute;
   right: 16px;
-  bottom: 20px;
+  /*
+   * 세로 숨통 6px + bottom 14px = 예전의 bottom 20px.
+   *
+   * 타일 이미지는 제 상자보다 조금 크게 그려진다(1280×800 실측: 아래로 3.6px,
+   * `overflow-y: hidden`이 그만큼을 잘라 눕힌 패 머리가 깎여 보였다 —
+   * clientHeight 78 / scrollHeight 86). 상자를 키우는 대신 안쪽 여백으로 숨통을
+   * 주고 bottom을 같은 만큼 당겨, **보이는 자리는 그대로 두고** 잘림만 없앤다.
+   *
+   * `--own-corner-bottom`은 손패 옆에 자리가 없을 때 OwnArea가 «손패 띠 위»로
+   * 올려 주는 값이다(App.tsx의 띠 측정 자리). 폰 세로처럼 레일이 화면을 거의 다
+   * 쓰는 곳에서는 옆에 최소폭조차 없어서, 예전에는 후로 줄이 손패 위에 얹혔다.
+   */
+  bottom: var(--own-corner-bottom, 14px);
+  padding: 4px 0 6px;
   z-index: 11;
   display: flex;
   align-items: flex-end;
@@ -3204,6 +3217,47 @@ button {
      막대는 그리지 않는다(아래 «판 위의 작은 상자» 규칙) — 후로 두어 개뿐인 줄에도
      회색 막대가 그어져 있었다. */
   overscroll-behavior-x: contain;
+  /*
+   * **후로가 많으면 타일을 줄여 애초에 덜 넘치게 한다** (2026-08-25 QA §5).
+   *
+   * 넘침 방지(max-width + overflow)는 손패를 지켰지만, 넘친 만큼은 소리 없이
+   * 잘려 나갔다 — 1280×800 후로 2개에서 벌써 302/378, 4개면 12장 중 8장이 잘렸다.
+   * 하필 «후로 4개 + 단기 대기»가 그 한 장을 봐야 하는 상황이다.
+   *
+   * 후로 하나의 폭은 실측 ≈ 3.5×(--mt-w) (치·퐁: 세운 패 둘 + 눕힌 패 하나 + 1px
+   * 간격 둘 = 52px 기준 184px). 깡은 조금 더 넓으므로 3.7로 잡아 여유를 둔다.
+   * 후로 사이 간격 10px도 예산에서 뺀다. `--own-meld-n`은 후로 개수(북풍 상인의
+   * 빼놓은 北 포함)로, App.tsx가 인라인으로 준다.
+   *
+   * 상한은 늘 `--mt-cap`(화면별 기본 크기)이라 후로가 한둘일 때는 지금 그대로다.
+   * 하한 22px 아래로는 줄이지 않는다 — 그 밑은 무슨 패인지 읽히지 않아, 다 보이지만
+   * 못 읽는 줄이 된다. 하한에 걸려 그래도 넘치면 아래 `[data-of]` 페이드가
+   * «더 있다»고 알린다.
+   */
+  --mt-w: min(
+    var(--mt-cap),
+    max(
+      22px,
+      calc(
+        (var(--own-corner-max, 9999px) - (var(--own-meld-n, 1) - 1) * 10px) /
+          (3.7 * var(--own-meld-n, 1))
+      )
+    )
+  );
+  --mt-h: calc(var(--mt-w) * 1.5);
+}
+
+/*
+ * 넘쳤다는 **신호**. `data-of`는 OwnArea가 scrollWidth > clientWidth일 때만 켠다.
+ *
+ * 스크롤막대로 알리는 손이 막혀 있다 — 펠트 위 작은 상자에는 막대를 그리지 않기로
+ * 했고(2026-08-23 사용자 지시, 아래 «판 위의 작은 상자» 규칙), 그 결정 자체는 옳다.
+ * 대신 넘칠 때만 오른쪽 끝을 흐려 «여기서 끝이 아니다»를 보인다. 스크롤은 그대로라
+ * 휠·터치로 나머지 후로에 닿는다.
+ */
+.own-corner-right[data-of="1"] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
 }
 
 /* 프롬프트 제한시간 게이지 (기본은 서버 30초 타임아웃 기준) */
