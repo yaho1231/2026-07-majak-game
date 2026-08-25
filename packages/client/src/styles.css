@@ -10311,6 +10311,23 @@ button {
 .lb-rank-h,
 .lb-name-h { text-align: left; }
 
+/* 누를 수 있는 열 머리 — 그 열 기준으로 정렬 (2026-08-25).
+   화살표 자리는 항상 잡아 둔다: 정렬 열이 바뀔 때마다 머리 글자가 흔들리지 않게. */
+.lb-table thead th.th-sort {
+  cursor: pointer;
+  user-select: none;
+}
+.lb-table thead th.th-sort:hover { color: #d8e6dc; }
+.lb-table thead th.th-sort-on { color: #e6d6a8; }
+.th-arrow {
+  display: inline-block;
+  width: 1em;
+  margin-left: 3px;
+  font-size: 10px;
+  opacity: 0.45;
+}
+.th-sort-on .th-arrow { opacity: 1; }
+
 .lb-table td.lb-rank {
   text-align: left;
   font-weight: 800;
