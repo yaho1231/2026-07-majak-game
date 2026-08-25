@@ -17853,23 +17853,23 @@ function PromptTimer(props: {
   const total = spanRef.current.total;
 
   /*
-   * 남은 초는 **늘 숫자로 말한다** (2026-08-25 QA §12).
+   * 남은 초는 **서버 마감이 있는 동안 내내** 숫자로 말한다 (2026-08-25 QA §12).
    *
-   * 예전에는 «초읽기 국 + 10초 이하»에서만 숫자를 띄웠다. 그래서 평소 프롬프트에서
+   * 예전에는 «마감 있음 + 10초 이하»에서만 숫자를 띄웠다. 그래서 평소 프롬프트에서
    * 남은 시간을 알리는 것이 **높이 5px 짜리 선 하나뿐**이었다 — 치·퐁·론은 초 단위
-   * 판단인데 «지금 몇 초 남았나»를 눈으로 셀 수가 없었다(막대의 길이를 30초로
-   * 환산하는 암산을 사람에게 시키는 셈이다).
+   * 판단인데 «지금 몇 초 남았나»를 눈으로 셀 수가 없었다(막대 길이를 30초로
+   * 환산하는 암산을 사람에게 시키는 셈이다). 그 게이트에서 «10초 이하»만 걷는다.
    *
-   * 마감이 안 실려 온 국의 숫자가 «화면이 지어낸 값»인 것은 그대로다. 그래서 숨기는
-   * 대신 **어림이라고 말한다**: 「약 12초」처럼 앞에 «약»을 붙이고 초 단위로만
-   * 끊는다. 0.1초까지 떠는 것은 마감이 진짜 있는 급한 구간(≤10초)뿐이다 —
-   * 상시로 소수점이 굴러가면 눈이 그쪽으로 끌려간다.
+   * ⚠ **마감이 없는 국에는 숫자를 아예 안 적는다.** 막대는 `PROMPT_FALLBACK_MS`
+   *   어림으로 돌지만 그 어림을 숫자로 옮기면 **화면이 지어낸 값**이 된다 —
+   *   「약 12초」처럼 «약»을 붙여도 지어낸 것은 지어낸 것이고, 사람은 그 12초를
+   *   믿고 판단한다. broadcastSpectator 테스트가 이 선을 지킨다
+   *   («마감이 없는 국에서도 막대는 돈다 — 숫자는 지어내지 않는다»).
    */
   const urgent = deadline !== null && left <= TIMER_URGENT_MS;
+  const showCount = deadline !== null;
   const precise = deadline !== null && left <= TIMER_COUNT_MS;
-  const countText = precise
-    ? `${(left / 1000).toFixed(1)}초`
-    : `${deadline === null ? "약 " : ""}${Math.ceil(left / 1000)}초`;
+  const countText = precise ? `${(left / 1000).toFixed(1)}초` : `${Math.ceil(left / 1000)}초`;
   /*
    * 막대를 **React 가 직접 민다** (CSS 애니메이션이 아니다).
    *
@@ -17897,7 +17897,7 @@ function PromptTimer(props: {
         className="prompt-timer-fill"
         style={{ transform: `scaleX(${ratio})` } as CSSProperties}
       />
-      <span className="prompt-timer-count">{countText}</span>
+      {showCount ? <span className="prompt-timer-count">{countText}</span> : null}
       {/* 급해진 구간에서만 실제로 띄운다 — 상시로 세워 두면 판을 가리기만 한다 */}
       {urgent && props.onTimeout != null ? (
         <span className="prompt-timer-note">{props.onTimeout}</span>
