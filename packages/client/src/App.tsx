@@ -4329,6 +4329,42 @@ export function App(): JSX.Element {
        * 로그인 화면으로 정리한다. 안 그러면 곧 닫힐 소켓 위에서 홈이 잠깐 살아
        * 있는 것처럼 보인다.
        */
+      /*
+       * **같은 계정이 다른 창에서 로그인했다** (2026-08-25 사용자 지시).
+       *
+       * 한 계정은 한 창에서만 산다. 늦게 온 쪽이 이기고, 이 창은 여기서 끝난다 —
+       * 서버가 곧 소켓을 닫으므로 자동 재연결을 막고(막지 않으면 저장된 토큰으로
+       * 다시 붙어 새 탭을 도로 쫓아내는 핑퐁이 된다), 토큰도 버린다.
+       *
+       * 토스트가 아니라 **되묻는 창**이다: 이건 흘려보내면 안 되는 통보이고,
+       * 확인을 누르는 순간 이 탭을 닫는다(스크립트로 연 탭이 아니면 브라우저가
+       * 닫기를 거부하므로 새로고침으로 로그인 화면에 돌려놓는다).
+       */
+      if (msg.code === "SESSION_TAKEOVER") {
+        intentionalCloseRef.current = true;
+        if (reconnectTimerRef.current !== null) {
+          window.clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        safeStorage.removeItem(SESSION_KEY);
+        activeRoomRef.current = null;
+        activeSpectateRef.current = null;
+        authedRef.current = false;
+        guestRef.current = false;
+        setAuth(null);
+        resetGameState();
+        void askConfirm({
+          title: "새 접속이 감지되어 종료됩니다",
+          body: "같은 계정으로 다른 창에서 로그인했습니다.\n이 창의 연결은 끊어집니다.",
+          confirmLabel: "확인",
+          cancelLabel: "그대로 두기",
+        }).then((ok) => {
+          if (!ok) return;
+          window.close();
+          window.location.reload();
+        });
+        return;
+      }
       if (msg.code === "SESSION_REVOKED") {
         safeStorage.removeItem(SESSION_KEY);
         activeRoomRef.current = null;

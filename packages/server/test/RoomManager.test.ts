@@ -401,24 +401,27 @@ describe("방 생성·참가 (코드)", () => {
     expect(guest.last("joined")?.roomId).toBe(code);
   });
 
-  it("같은 계정의 두 번째 연결은 새 자리가 아니라 **그 자리를 이어받는다**", async () => {
+  it("같은 계정의 두 번째 연결 — 옛 창을 끊고, 자리는 하나만 남는다", async () => {
     /*
-     * 예전에는 DUPLICATE_JOIN 으로 거절했다. 그 탓에 **폰에서 대기실에 앉아 있다가
-     * 컴퓨터로 옮겨 앉는 것이 불가능했다**(2026-08-18 사용자 보고). 게임 중 경로는
-     * 이미 이어받기로 동작하는데, 같은 의도가 대기 중이냐 진행 중이냐로 갈릴 이유가 없다.
+     * 한 계정은 한 창에서만 산다 (2026-08-25 사용자 지시). 새 창이 로그인하면 옛
+     * 창은 `SESSION_TAKEOVER`로 끊기고, 그 좌석은 평소의 접속 끊김 경로로 정리된다
+     * — 그러니 새 창이 다시 들어와도 **자리가 늘지 않는다**(유령 좌석 금지).
      */
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
     host.clientSend({ type: "createRoom" });
     const code = host.last("roomCreated").code;
-    const seatId = host.last("joined")?.playerId;
+    // 방이 사람 없이 사라지지 않도록 다른 계정 하나가 남아 있게 한다.
+    const other = await connectAndRegister(h, "Other");
+    other.clientSend({ type: "joinRoom", code });
 
     const dup = await connectAndLogin(h, "Host", "pw123456");
-    dup.clientSend({ type: "joinRoom", code });
+    expect(host.last("error")?.code).toBe("SESSION_TAKEOVER");
 
+    dup.clientSend({ type: "joinRoom", code });
     expect(dup.last("error")).toBeUndefined();
-    expect(dup.last("joined").playerId).toBe(seatId); // 원래 자리 그대로
-    expect(dup.last("lobby").players).toHaveLength(1); // 자리가 늘어나지 않는다
+    const players = dup.last("lobby").players as { playerId: string }[];
+    expect(players).toHaveLength(2); // Other + 새 창의 Host — 유령 좌석이 없다
   });
 
   it("봇 추가로 자리가 꽉 차도 자리는 그대로다 — 섞기는 '자리 섞기'를 눌렀을 때만", async () => {
