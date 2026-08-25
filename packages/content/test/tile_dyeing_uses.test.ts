@@ -64,13 +64,29 @@ describe("염색 — 매치 예산 (반장전 8회)", () => {
   it("7회를 썼으면 마지막 1회는 쓸 수 있고 남은 횟수가 0이 된다", () => {
     const game = setup(7);
     expect(dye(game, 0, "pin")).toBe(true);
-    expect(game.engine.state.augmentData["view:p0:tile_dyeing:left"]).toBe(0);
+    expect(game.engine.state.augmentData["view:p0:uses:tile_dyeing"]).toEqual({
+      left: 0,
+      total: 8,
+      scope: "match",
+    });
   });
 
-  it("남은 횟수 채널이 국 스코프가 아니라 게임 스코프 키로 실린다", () => {
+  /*
+   * 남은 횟수는 **횟수형 증강 공용 채널**(`view:{보유자}:uses:{증강id}`)로 나간다.
+   *
+   * 2026-08-25까지는 이 증강만 쓰는 `tile_dyeing:left`에 숫자 하나를 실었다. 총 횟수가
+   * 없으니 이름표 pill이 게이지도 "N회 중 n회 남음" 문구도 못 그렸고, 동기화가 쯔모
+   * 한 이벤트에만 걸려 있어 발동 직후에는 값이 다음 쯔모까지 옛날 값으로 서 있었다
+   * (사용자 보고: "염색은 횟수형인데 pill에 남은 횟수가 안 나온다").
+   */
+  it("남은 횟수가 공용 잔량 채널로, 국 스코프가 아닌 게임 스코프 키로 실린다", () => {
     const game = setup();
     expect(dye(game, 0, "pin")).toBe(true);
-    expect(game.engine.state.augmentData["view:p0:tile_dyeing:left"]).toBe(7);
+    expect(game.engine.state.augmentData["view:p0:uses:tile_dyeing"]).toEqual({
+      left: 7,
+      total: 8,
+      scope: "match",
+    });
     // 국이 바뀌어도 지워지지 않아야 하므로 roundKey가 섞이지 않은 고정 키다
     expect(game.engine.state.augmentData["tile_dyeing:used:p0"]).toBe(1);
   });

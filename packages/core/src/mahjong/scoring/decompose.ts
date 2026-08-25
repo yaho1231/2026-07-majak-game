@@ -211,7 +211,11 @@ function normalizeOptions(
     kokushiOnly: o.kokushiOnly ?? false,
     mixedRuns: o.mixedRuns ?? false,
     mixedTriplets: o.mixedTriplets ?? false,
-    mixedPairs: o.mixedPairs ?? false,
+    // 동수의 결속(mixedTriplets)은 "같은 랭크면 같은 패"라는 재정의다 — 커쯔만
+    // 열고 머리를 닫아 두면 1통+1삭·5만+5삭 같은 **샹퐁 대기가 통째로 사라진다**
+    // (7m7p7p1p1s5m5s + 후로 2 → 777 + 111 + 55머리인데 머리가 혼색이라 불성립).
+    // 그래서 커쯔를 여는 옵션은 머리도 함께 연다. (2026-08-25 사용자 보고)
+    mixedPairs: (o.mixedPairs ?? false) || (o.mixedTriplets ?? false),
     kokushiDupes: o.kokushiDupes ?? 0,
     polarEnds: o.polarEnds ?? false,
     chiitoiMixedPairs: o.chiitoiMixedPairs ?? false,

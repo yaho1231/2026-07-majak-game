@@ -20,10 +20,12 @@ import {
   counterOf,
   flagOf,
   matchUses,
+  preArmInstalled,
   preArmRestoreEvents,
   preArmSpent,
   publishUsesLeft,
   roundViewKey,
+  usesViewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
 
@@ -125,6 +127,33 @@ function reloadable(state: GameState, holder: PlayerId): string[] {
   );
 }
 
+/**
+ * 이 증강이 **재장전이 되살릴 수 있는 종류**인가 (아직 소진하지 않았어도).
+ *
+ * `spentModeOf`는 «지금 소진돼 있는가»를 보므로 드래프트 시점에는 전부 null이다.
+ * 여기서 보는 것은 «앞으로 소진될 수 있는가» — 두 종류다.
+ *  - 횟수형: 공용 잔량 채널(`view:{보유자}:uses:{id}`)을 내고 있다(`publishUsesLeft`).
+ *  - 선발동형: `armOnNextRound` 표식이 서 있다.
+ * 둘 다 install 시점 이후 상태에 흔적이 남으므로, 카탈로그를 뒤지지 않고 상태만 읽어
+ * 판정할 수 있다(드래프트 후보는 결정적이어야 한다).
+ */
+function restorableType(state: GameState, augId: string, holder: PlayerId): boolean {
+  if (state.augmentData[usesViewKey(holder, augId)] !== undefined) return true;
+  return preArmInstalled(state, augId, holder);
+}
+
+/**
+ * 재장전에 **되살릴 대상이 하나라도 있는가** — 드래프트 후보 가드(`draftRequires`).
+ *
+ * 액티브만 들고 있는데(=횟수형·선발동형이 하나도 없는데) 재장전이 3지선다에 떠서
+ * 한 칸이 통째로 죽어 있었다(2026-08-25 사용자 보고). `draftStages`로 스테이지를
+ * 늦춰 둔 것만으로는 «그때쯤엔 뭔가 소진했겠지»라는 추정에 지나지 않는다.
+ */
+function hasRestorableAugment(state: GameState, player: PlayerId): boolean {
+  const held = state.players.find((p) => p.id === player)?.augments ?? [];
+  return held.some((augId) => augId !== ID && restorableType(state, augId, player));
+}
+
 const reloadAction: ActionDef<{ augmentId: string }> = {
   type: ACTION,
   validate: (req, { state }) => {
@@ -185,8 +214,16 @@ export const reload: AugmentDef = defineAugment({
    * 두 번째 스테이지부터는 최소 한 장을 쳐 봤으므로 그때부터 나온다.
    */
   draftStages: ["eastThird", "eastFourth", "southEntry", "southThird"],
+  /**
+   * **되살릴 것이 하나도 없으면 후보로도 뜨지 않는다** (2026-08-25 사용자 지시).
+   *
+   * 위 `draftStages`는 "첫 스테이지에는 손이 비어 있다"까지만 막는다. 그런데 두 번째
+   * 스테이지 이후에도 손에 **횟수형·선발동형이 하나도 없을 수** 있고(전부 상시·쿨다운
+   * 액티브인 경우), 그때 재장전을 집으면 게임이 끝날 때까지 누를 수 없는 카드가 된다.
+   */
+  draftRequires: (state, player) => hasRestorableAugment(state, player),
   detail:
-    "(동풍전 1회 · 반장전 2회) 복구는 전원에게 공개된다. 대상은 게임 단위 사용 횟수를 쓰는 내 증강뿐이라 '게임 내 1회'조차 되돌릴 수 있고, 국 단위 쿨다운으로 도는 증강과 재장전 자신은 후보에 뜨지 않는다. 첫 증강 선택에는 나오지 않는다.",
+    "(동풍전 1회 · 반장전 2회) 복구는 전원에게 공개된다. 대상은 게임 단위 사용 횟수를 쓰는 내 증강뿐이라 '게임 내 1회'조차 되돌릴 수 있고, 국 단위 쿨다운으로 도는 증강과 재장전 자신은 후보에 뜨지 않는다. 첫 증강 선택에는 나오지 않고, **되살릴 수 있는 증강(횟수형·선발동형)을 하나도 들고 있지 않으면 드래프트에 아예 제시되지 않는다.**",
   install(ctx) {
     const { engine, holder } = ctx;
 

@@ -1,6 +1,6 @@
 /**
- * full_hand_swap (통째로 바꾸기) — 동풍전 2회·반장전 3회, 국의 첫 순(turnCount<=1)에
- * 상대의 손패를 **통째로 강탈**한다.
+ * full_hand_swap (통째로 바꾸기) — 동풍전 2회·반장전 3회, **보유자 자신의 첫 순**(아직
+ * 아무것도 버리지 않은 자기 턴)에 상대의 손패를 **통째로 강탈**한다.
  *
  * 2026-07-22 (48차 재설계, 사용자 확정): 맞교환 → **일방적 강탈**.
  *   ① 상대의 손패 전체가 내 손으로 온다.
@@ -88,7 +88,22 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (state.round.turnCount > 1) return "only on the first turn";
+    /*
+     * **내 첫 순**이면 된다 — 「국의 첫 바퀴」가 아니다 (2026-08-25 사용자 보고).
+     *
+     * 예전 조건은 `state.round.turnCount > 1`이었다. `turnCount`는 **친의 쯔모**에만
+     * 오르는데, 내 순이 오기 전에 누가 울면 내 자리는 통째로 건너뛰어진다. 그 뒤 친이
+     * 다시 쯔모하면 turnCount가 2가 되고, 그러면 **내가 이 국에 아직 한 장도 안 버렸는데
+     * 발동 창이 이미 닫혀 있었다** — 상대의 후로 한 번으로 「국의 첫 순」 증강이
+     * 무력화됐다.
+     *
+     * 그래서 큰손·일확천금·왕패 지배자와 같은 규약(`discardCount === 0`)으로 맞춘다:
+     * 내가 아직 아무것도 버리지 않은 내 순이면 그게 내 첫 순이다. 내가 직접 울었다면
+     * 그 순은 쯔모패가 없어 바로 아래 `lastDrawnTile` 검사가 잡는다.
+     */
+    if ((state.round.byPlayer[req.player]?.discardCount ?? 0) > 0) {
+      return "only on your first turn";
+    }
     // 보유자 자신이 리치 중이면 손패가 동결된다 — 대상의 리치만 보고 자기 리치를
     // 빠뜨리면 리치를 세워 둔 채 손 13장을 통째로 갈아치울 수 있었다
     // (2026-08-20 QA riichi 확정 7). `hand_swap3.commonReject`와 같은 규약.
@@ -98,7 +113,6 @@ const handSwapAction: ActionDef<{ target: PlayerId }> = {
     // 쯔모를 마친 순이어야 한다. 치·펑 직후에도 turn.act이지만 그때는 lastDrawnTile이
     // null이고, 교환 로직이 "보유자는 쯔모패 한 장을 더 들고 있다"를 전제하므로
     // **손패가 한 장 모자란 채로 남아 그 국 내내 벽돌**이 된다(docs/25 손패 #1).
-    // turnCount는 친의 쯔모에만 오르므로 첫 바퀴 내내 1이라, 후로 직후가 이 창에 든다.
     if (state.round.lastDrawnTile === null) return "no drawn tile";
     const target = state.players.find((p) => p.id === req.payload.target);
     if (target === undefined) return "unknown target";
@@ -143,9 +157,9 @@ export const fullHandSwap: AugmentDef = defineAugment({
   complexity: 1,
   name: "통째로 바꾸기",
   description:
-    "(동풍전 2회 · 반장전 3회) 국의 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다. 리치를 선언한 상대에게는 쓸 수 없다.",
+    "(동풍전 2회 · 반장전 3회) 내 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다. 리치를 선언한 상대에게는 쓸 수 없다.",
   detail:
-    "(동풍전 2회 · 반장전 3회) 교환이 아니라 강탈이라 내 배패가 상대에게 넘어가지는 않는다. 손패 장수가 다른 상대도 지정할 수 없다.\n\n**숨은 리치는 리치가 아닌 사람으로 보여 그대로 지정할 수 있고**, 손을 뺏기는 순간 풀린다. 쯔모패가 없는 상태나 패산이 모자랄 때도 발동하지 않는다.",
+    "(동풍전 2회 · 반장전 3회) 발동 창은 **내가 아직 한 장도 버리지 않은 내 순**이다 — 앞자리가 울어 내 순이 밀려도 창은 닫히지 않는다. 교환이 아니라 강탈이라 내 배패가 상대에게 넘어가지는 않는다. 손패 장수가 다른 상대도 지정할 수 없다.\n\n**숨은 리치는 리치가 아닌 사람으로 보여 그대로 지정할 수 있고**, 손을 뺏기는 순간 풀린다. 쯔모패가 없는 상태나 패산이 모자랄 때도 발동하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

@@ -16712,13 +16712,9 @@ function augmentPillStatus(
   // pill에만** 붙인다. 같은 증강을 남도 들면 내 잔량이 남의 pill에 찍힌다
   // (cooldownRoundsLeft 주석의 중복 보유 경로).
   const isSelf = playerId === view.playerId;
-  // (연금술사는 2026-08-17에 공용 잔량 채널 `uses:alchemist`로 옮겼다 — 아래 usesStatus가 읽는다)
-  // 염색 — 연금술사와 같은 게임 전체 5회 자원 (2026-08-04 국당 1회에서 개편)
-  if (augId === "tile_dyeing") {
-    const left = av["tile_dyeing:left"];
-    if (!isSelf || typeof left !== "number") return null;
-    return { chip: `${left}회`, note: `염색 ${left}회 남음` };
-  }
+  // (연금술사는 2026-08-17에, 염색은 2026-08-25에 공용 잔량 채널 `uses:{id}`로 옮겼다 —
+  //  아래 usesStatus가 읽는다. 전용 분기는 총 횟수를 모르니 게이지도 "N회 중 n회" 문구도
+  //  못 그렸고, `return null`로 여기서 끊겨 다른 상태 뱃지와 합쳐지지도 않았다.)
   /*
    * 예지 — 재배열은 **국에 1회**다. 소진되면 열람은 되는데 드래그 확정이 안 열리는데,
    * 그 이유가 화면 어디에도 없었다("증강이 고장 났다"로 읽힌다).

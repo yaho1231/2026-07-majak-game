@@ -11,8 +11,8 @@
  *   다른 증강과 모순되지 않는다.
  * - **지목형 공통 연출 규칙**: 지목 관계는 전원 공개 뷰 채널(`view:*:`)에 싣는다 —
  *   클라이언트가 피격자 전면 컷인 + 상시 뱃지 + 지목 관계 표식을 그린다.
- * - 발동 시점은 **국 첫 순**으로 못 박는다(아무도 아직 울지 않았고 내가 아직 버리지도
- *   않은 상태). 국이 진행된 뒤 상황을 보고 찍는 증강이 아니라, 국 시작에 거는 선언이다.
+ * - 발동 시점은 **내 첫 순**으로 못 박는다(내가 아직 버리지도 울지도 않은 상태 —
+ *   앞자리가 울어 내 순이 밀려도 창은 닫히지 않는다). 국이 진행된 뒤 상황을 보고 찍는 증강이 아니라, 국 시작에 거는 선언이다.
  * - 지목은 자해 위험이 전혀 없으므로 봇도 발동한다(옵션이 있으면 아무 상대나 지목).
  */
 
@@ -21,6 +21,7 @@ import {
   ROUND_STARTED,
   augmentDataSet,
   defineAugment,
+  meldCountOf,
   playerAtSeat,
 } from "@majak/core";
 import type {
@@ -50,10 +51,19 @@ function markedBy(state: GameState, holder: PlayerId): PlayerId | null {
   return stringOf(state, markKey(state, holder));
 }
 
-/** 아직 국 첫 순인가 (아무 후로·깡도 없고 보유자가 아직 버리지 않았다) */
+/**
+ * 지금이 **보유자 자신의 첫 순**인가 (아직 아무것도 버리지도 울지도 않았다).
+ *
+ * ⚠ `round.firstTurn`(첫 바퀴)은 보지 않는다 — 그 플래그는 **누구든** 울거나 깡을 하면
+ * 그 자리에서 내려간다. 그래서 내 순이 오기도 전에 앞자리가 한 번 퐁하면, 내가 이 국에
+ * 한 장도 버리지 않았는데 발동 창이 이미 닫혀 있었다(2026-08-25 사용자 보고).
+ * 국당 1회짜리 선언 증강이 상대의 후로 한 번으로 통째로 사라지는 셈이다.
+ *
+ * 큰손·일확천금·왕패 지배자와 같은 규약으로 맞춘다 — 판정은 **내 이력**만 본다.
+ */
 function atFirstTurn(state: GameState, holder: PlayerId): boolean {
-  if (!state.round.firstTurn) return false;
-  return (state.round.byPlayer[holder]?.discardCount ?? 0) === 0;
+  if ((state.round.byPlayer[holder]?.discardCount ?? 0) > 0) return false;
+  return meldCountOf(state, holder) === 0;
 }
 
 const markAction: ActionDef<{ target: PlayerId }> = {
@@ -93,9 +103,9 @@ export const rankGate: AugmentDef = defineAugment({
   complexity: 3,
   name: "격(格)",
   description:
-    "(매 국 1회) 국의 첫 순에 상대 한 명을 지목하면, 그 사람은 이번 국에 4판 이하로는 화료할 수 없다.",
+    "(매 국 1회) 내 첫 순에 상대 한 명을 지목하면, 그 사람은 이번 국에 4판 이하로는 화료할 수 없다.",
   detail:
-    "(매 국 1회) 아직 아무도 울지 않고 내가 버리지도 않은 국의 첫 순에만 지목할 수 있다. 판 계산에는 다른 증강이 얹어 주는 추가 판도 함께 센다.\n\n역만 손은 이 제한에서 면제된다. 지목은 전원에게 공개되고 국이 끝나면 풀린다.",
+    "(매 국 1회) 내가 아직 버리지도 울지도 않은 **내 첫 순**에만 지목할 수 있다 — 앞자리가 울어 내 순이 밀려도 창은 닫히지 않는다. 판 계산에는 다른 증강이 얹어 주는 추가 판도 함께 센다.\n\n역만 손은 이 제한에서 면제된다. 지목은 전원에게 공개되고 국이 끝나면 풀린다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

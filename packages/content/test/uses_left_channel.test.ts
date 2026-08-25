@@ -111,9 +111,6 @@ describe("남은 사용 횟수 채널 (uses:{증강id})", () => {
    * 비교하는 파일. 예외는 아래 표에 이유와 함께 적는다 — 조용히 빠지는 것만 막으면 된다.
    */
   const EXEMPT: Record<string, string> = {
-    // 자기 잔량 채널을 이미 갖고 있고 클라에 전용 분기가 있다 (`{id}:left`)
-    "alchemist.ts": "{id}:left 채널을 직접 낸다",
-    "tile_dyeing.ts": "{id}:left 채널을 직접 낸다",
     // 카운터가 '사용 횟수'가 아니다 — 방어한 횟수·연장한 판수·쌓인 층이다
     "yakuman_shield.ts": "막은 횟수(상한 없음)라 잔량이 아니다",
   };
