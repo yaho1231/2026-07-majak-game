@@ -116,6 +116,8 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   "sandboxBotRules", "sandboxControl",
   // 표시용 (마지막 것만 뜻이 있다 — 큐에서 앞엣것을 지운다)
   "handOrder",
+  // 내 리치 브금 선택 — "이 값으로 해 달라"는 상태 요청이라 늦게 도착해도 뜻이 같다.
+  "setRiichiBgm",
 ]);
 
 /*

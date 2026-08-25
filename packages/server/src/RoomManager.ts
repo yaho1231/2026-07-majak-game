@@ -36,7 +36,11 @@ import type { SeatConnection } from "@majak/core/information/PlayerView.js";
 import { kindKey, standardKinds } from "@majak/core/mahjong/tiles/Tile.js";
 import { handKindsOf, meldCountOf } from "@majak/core/mahjong/flow/helpers.js";
 import { winningKinds } from "@majak/core/mahjong/scoring/waits.js";
-import { isEmoteId, INVITE_COOLDOWN_MS } from "@majak/core/network/protocol.js";
+import {
+  isEmoteId,
+  INVITE_COOLDOWN_MS,
+  RIICHI_BGM_TRACKS,
+} from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
   ClientMessage,
@@ -237,6 +241,14 @@ interface Room {
   notice: { text: string; by: string; expiresAt: number | null } | null;
   /** 게임 무효(중단)에 동의한 사람 playerId 집합 (게임 중에만 의미). */
   abortVotes: Set<PlayerId>;
+  /**
+   * 좌석별 **리치 BGM 트랙** (0-based, 랜덤은 이미 풀린 값).
+   *
+   * 각자 로비에서 고르지만 재생은 네 사람 화면에서 함께 일어난다 — 그래서 선택을
+   * 방이 들고 있다가 전원에게 같은 값을 내려 준다. 고르지 않은 자리(봇 포함)는
+   * 처음 방송할 때 하나 뽑아 고정한다.
+   */
+  riichiBgm: Map<PlayerId, number>;
   /**
    * 방장이 강퇴한 사람들의 username. 이 방이 살아 있는 동안 재입장을 막는다 —
    * 코드만 알면 곧바로 되돌아올 수 있으면 강퇴가 아무 의미가 없다.
@@ -978,7 +990,22 @@ const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
   // 손님도 인사는 할 수 있어야 한다. 봇전이라 받는 사람이 없을 때도 있지만,
   // 사람이 낀 판을 나중에 열더라도 이 목록을 다시 손보지 않게 지금 넣어 둔다.
   "emote",
+  // 손님도 자기 리치 브금은 고를 수 있다 (봇전이라 듣는 사람이 자신뿐일 뿐).
+  "setRiichiBgm",
 ]);
+
+/**
+ * 클라이언트가 보낸 트랙 선택을 실제 트랙 번호로 푼다.
+ * 랜덤(-1)·범위 밖·정수가 아닌 값은 전부 «무작위 한 곡»으로 본다.
+ */
+function resolveRiichiBgm(track: unknown): number {
+  return typeof track === "number" &&
+    Number.isInteger(track) &&
+    track >= 0 &&
+    track < RIICHI_BGM_TRACKS
+    ? track
+    : randomInt(RIICHI_BGM_TRACKS);
+}
 
 /** 강제 배패에 쓸 수 있는 패 종류 (kindKey) — 표준 34종만. */
 const VALID_TILE_KEYS = new Set(
@@ -2026,6 +2053,13 @@ export class RoomManager {
         this.handleEmote(conn, msg.id);
         return;
       }
+      case "setRiichiBgm": {
+        // 아직 앉지 않았으면 조용히 무시한다 — 클라이언트가 방에 들어갈 때 다시 보낸다.
+        if (conn.room === null || conn.agent === null) return;
+        conn.room.riichiBgm.set(conn.agent.id, resolveRiichiBgm(msg.track));
+        this.broadcastRiichiBgm(conn.room);
+        return;
+      }
       case "leaveRoom": {
         const room = conn.room;
         // 체험 판에서 나가기 = 그 판의 끝. 남겨 두어도 손님은 돌아올 수 없다.
@@ -2945,6 +2979,7 @@ export class RoomManager {
       pauseReason: null,
       notice: null,
       abortVotes: new Set(),
+      riichiBgm: new Map(),
       kicked: new Set(),
       // 새 방의 기본은 **동풍전**이다 (2026-08-14 사용자 지시) — 한 판이 짧아
       // 처음 온 사람이 끝까지 가 보기 쉽다. 방장은 대기실에서 반장전으로 바꿀 수 있다.
@@ -3072,6 +3107,8 @@ export class RoomManager {
        * 지워져, 진짜로 기다리는 중인 선택지가 화면에서 사라진다.
        */
       this.send(conn.ws, { type: "joined", playerId: mine.id, roomId: code, token: "" });
+      // 대국 중에는 로비 방송이 없다 — 돌아온 사람에게 트랙표를 따로 다시 준다.
+      this.broadcastRiichiBgm(room);
       // 증강 테스트 방이면, 뷰·프롬프트 복원 전에 sandbox 패널 상태를 먼저 보낸다
       // (sandbox 메시지가 클라이언트에서 프롬프트를 초기화하므로 순서가 중요하다).
       mine.reconnect(conn.ws, room.sandbox ? () => this.sendSandboxState(room) : undefined);
@@ -3501,6 +3538,7 @@ export class RoomManager {
 
   private broadcastLobby(room: Room): void {
     if (room.phase !== "waiting") return;
+    this.broadcastRiichiBgm(room); // 자리 구성이 바뀌면 트랙표도 같이 갱신된다
     // 좌석(방위)은 agents 배열의 **순서**다 — 0번이 첫 동가(친).
     const players: LobbyPlayerEntry[] = room.agents.map((a, seat) => {
       const isBot = this.isBot(a);
@@ -3531,6 +3569,28 @@ export class RoomManager {
           players,
         });
       }
+    }
+  }
+
+  /**
+   * 방의 리치 BGM 트랙표를 사람 전원에게 보낸다.
+   *
+   * 아직 고르지 않은 자리(봇·방금 앉은 사람)는 여기서 한 곡을 뽑아 고정한다 —
+   * 브금이 울리는 순간에 정하면 네 화면이 서로 다른 곡을 틀 수 있다.
+   * 대기실 메시지와 달리 **대국 중에도** 나간다(그때 실제로 쓰이는 값이다).
+   */
+  private broadcastRiichiBgm(room: Room): void {
+    const tracks: Record<string, number> = {};
+    for (const a of room.agents) {
+      let t = room.riichiBgm.get(a.id);
+      if (t === undefined) {
+        t = randomInt(RIICHI_BGM_TRACKS);
+        room.riichiBgm.set(a.id, t);
+      }
+      tracks[a.id] = t;
+    }
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify({ type: "riichiBgm", tracks });
     }
   }
 
@@ -5449,6 +5509,8 @@ export class RoomManager {
   private async startGame(room: Room): Promise<void> {
     if (room.phase === "playing") return;
     if (this.shuttingDown) return;
+    // 트랙표를 «판이 서기 직전» 한 번 더 고정해 보낸다 — 이 뒤로는 로비 방송이 없다.
+    this.broadcastRiichiBgm(room);
     room.phase = "playing";
     /*
      * 이 방 사람들이 «대국 중»이 됐다 — 친구 목록의 표시가 지금 바뀌어야 한다

@@ -200,6 +200,28 @@ export interface JoinRoomMessage {
   reconnectToken?: string;
 }
 
+/**
+ * 리치 BGM 트랙 수 — 클라이언트 에셋(`/richiBGM{n}.mp3`)과 맞춘다.
+ * 서버가 «랜덤»을 실제 트랙으로 풀 때 이 값을 쓴다.
+ */
+export const RIICHI_BGM_TRACKS = 4;
+
+/** 랜덤 선택을 뜻하는 트랙 값 — 서버가 이 사람 몫으로 하나를 뽑아 준다. */
+export const RIICHI_BGM_RANDOM = -1;
+
+/**
+ * 내 리치 BGM 선택을 서버에 알린다 (로비에서 고른다).
+ *
+ * 내가 리치를 걸면 **네 사람 모두에게 이 곡이 들린다** — 그래서 각자 알아서 트는
+ * 것이 아니라 서버를 거친다. `RIICHI_BGM_RANDOM`이면 서버가 한 곡을 뽑아 고정하고,
+ * 그 결과를 `riichiBgm`으로 전원에게 돌려준다(모두 같은 곡을 들어야 하므로).
+ */
+export interface SetRiichiBgmMessage {
+  type: "setRiichiBgm";
+  /** 0-based 트랙 번호(화면의 1번 = 0), 또는 `RIICHI_BGM_RANDOM`. */
+  track: number;
+}
+
 /** 대기실에서 명시적으로 나가기. */
 export interface LeaveRoomMessage {
   type: "leaveRoom";
@@ -869,6 +891,7 @@ export type ClientMessage =
   | CreateRoomMessage
   | JoinRoomMessage
   | LeaveRoomMessage
+  | SetRiichiBgmMessage
   | EmoteMessage
   | ReplayListRequestMessage
   | ReplayGetMessage
@@ -1252,6 +1275,18 @@ export interface LobbyPlayerEntry {
   ready: boolean;
   /** 누적(career) 통계 — 신규 플레이어면 null. */
   stats: PlayerStatsView | null;
+}
+
+/**
+ * 같은 방 사람들의 **리치 BGM 트랙** (랜덤은 이미 풀린 실제 번호다).
+ *
+ * 참가·선택 변경·게임 시작 때 방 전체에 다시 보낸다. 로비 메시지와 따로 두는 이유는
+ * 로비 메시지가 대기실(waiting)에서만 나가기 때문이다 — 이 정보는 대국 중에 쓴다.
+ */
+export interface RiichiBgmMessage {
+  type: "riichiBgm";
+  /** playerId → 0-based 트랙 번호. */
+  tracks: Record<string, number>;
 }
 
 /**
@@ -1914,6 +1949,7 @@ export type ServerMessage =
   | PongMessage
   | ServerInfoMessage
   | LobbyMessage
+  | RiichiBgmMessage
   | KickedMessage
   | StatsMessage
   | LeaderboardMessage

@@ -71,6 +71,7 @@ import {
   AUGMENT_CATEGORIES,
   EMOTES,
   INVITE_COOLDOWN_MS,
+  RIICHI_BGM_RANDOM,
   NOTICE_BODY_MAX,
   NOTICE_TITLE_MAX,
   SPECTATOR_ID,
@@ -120,7 +121,15 @@ import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
-import { sfx, setSfxEnabled, setSfxVolume, riichiBgm, bgm, resumeAudio } from "./sfx.js";
+import {
+  sfx,
+  setSfxEnabled,
+  setSfxVolume,
+  riichiBgm,
+  RIICHI_BGM_COUNT,
+  bgm,
+  resumeAudio,
+} from "./sfx.js";
 import {
   getUiScale,
   isLayoutCramped,
@@ -1186,6 +1195,14 @@ interface Settings {
   glossaryTips: boolean;
   /** 리치 BGM 볼륨 (0~1). 0이면 재생하지 않음. 효과음(sfxOn)과 독립. */
   riichiBgmVolume: number;
+  /**
+   * **내 리치 BGM 트랙** (0-based, -1 = 랜덤).
+   *
+   * 내가 리치를 걸면 이 곡이 **네 사람 모두에게** 들린다 — 그래서 값은 서버로
+   * 보내지고(`setRiichiBgm`), 랜덤은 서버가 한 곡으로 풀어 전원에게 같은 번호를
+   * 돌려준다. 남의 리치에는 그 사람이 고른 곡이 나온다.
+   */
+  riichiBgmTrack: number;
   /** 평상시 대국 BGM 볼륨 (0~1). 0이면 재생하지 않음. 리치 BGM과 별도. */
   bgmVolume: number;
 }
@@ -1214,6 +1231,7 @@ const DEFAULT_SETTINGS: Settings = {
   haptics: true,
   glossaryTips: true,
   riichiBgmVolume: 0.5,
+  riichiBgmTrack: RIICHI_BGM_RANDOM,
   bgmVolume: 0.35,
 };
 
@@ -3055,6 +3073,15 @@ export function App(): JSX.Element {
    * → 브금이 연출보다 먼저 나오지 않는다. 배너가 뜨기 전에 국이 끝나면(빠른 론 등)
    * 무장을 풀어(fadeOut/stop 지점) 뒤늦게 브금이 켜졌다 안 꺼지는 일을 막는다. */
   const riichiBgmArmed = useRef(false);
+  /**
+   * 좌석별 리치 BGM 트랙 (서버가 내려 준 표, playerId → 0-based 번호).
+   * 리치 감지는 소켓 콜백 안의 고정 클로저에서 도므로 state가 아니라 ref로 든다.
+   */
+  const riichiBgmTracks = useRef<Record<string, number>>({});
+  /** 이 좌석이 고른 곡 (없으면 undefined → sfx가 알아서 고른다). */
+  function riichiBgmTrackOf(id: string): number | undefined {
+    return riichiBgmTracks.current[id];
+  }
   const [activeProd, setActiveProd] = useState<Production | null>(null);
   const [prodTick, setProdTick] = useState(0); // enqueue/변화 시 펌프 재실행 신호
   /** 📜 사건 기록 (append-only) — 후로·리치·화료·증강 발동이 일어난 순서대로 쌓인다 */
@@ -3392,6 +3419,12 @@ export function App(): JSX.Element {
     riichiBgm.setVolume(settings.riichiBgmVolume);
   }, [settings.riichiBgmVolume]);
 
+  // 리치 브금 선택이 바뀌면 방에 알린다 — 남들도 이 곡으로 듣게 된다.
+  // (방에 들어가는 순간에도 한 번 보낸다: `joined` 처리.)
+  useEffect(() => {
+    if (inRoomRef.current) send({ type: "setRiichiBgm", track: settings.riichiBgmTrack });
+  }, [settings.riichiBgmTrack]);
+
   // 평상시 대국 BGM 볼륨 동기화
   useEffect(() => {
     bgm.setVolume(settings.bgmVolume);
@@ -3417,8 +3450,8 @@ export function App(): JSX.Element {
   // (평상시 BGM 이펙트와 섞지 않는다: 볼륨 슬라이더를 만질 때마다 bgm.stop()이 돌아
   //  평상시 BGM이 처음으로 되감기는 일이 없어야 한다.)
   useEffect(() => {
-    if (bgmShouldPlay) riichiBgm.prepare();
-  }, [bgmShouldPlay, settings.riichiBgmVolume]);
+    if (bgmShouldPlay) riichiBgm.prepare(riichiBgmTrackOf(view?.playerId ?? ""));
+  }, [bgmShouldPlay, settings.riichiBgmVolume, view?.playerId]);
 
   /** 연출 큐·현재 연출·대기 결과를 모두 비운다 (리셋·관전 종료 시) */
   function clearProductions(): void {
@@ -4575,6 +4608,8 @@ export function App(): JSX.Element {
     }
     if (msg.type === "joined") {
       setJoined(msg);
+      // 내가 고른 리치 브금을 방에 알린다 — 앉은 뒤라야 서버가 좌석에 붙일 수 있다.
+      send({ type: "setRiichiBgm", track: settingsRef.current.riichiBgmTrack });
       inRoomRef.current = true;
       setBusyRoomCode(null); // 들어갔다 — 붙들고 있던 «대국 중» 코드를 놓는다
       /*
@@ -4652,6 +4687,11 @@ export function App(): JSX.Element {
         prev === null ? prev : { ...prev, botRules: msg.botRules, control: msg.control },
       );
       setControlling(msg.controlling);
+      return;
+    }
+    if (msg.type === "riichiBgm") {
+      // 좌석별로 어떤 곡을 틀지 — 대기실·게임 시작·재접속 때 서버가 내려 준다.
+      riichiBgmTracks.current = msg.tracks;
       return;
     }
     if (msg.type === "lobby") {
@@ -5158,7 +5198,8 @@ export function App(): JSX.Element {
       // 브금을 복원한다. (배너 onShow의 start()는 전이 때만 도는데 재접속엔 전이가
       //  없어, 이 시드가 없으면 리치 브금이 통째로 사라진다.)
       if (shown.riichi.size > 0 && next.round.phase !== "round.over") {
-        riichiBgm.start();
+        // 여러 명이 걸려 있으면 순서를 알 길이 없다 — 보이는 것 중 하나의 곡을 쓴다.
+        riichiBgm.start(riichiBgmTrackOf([...shown.riichi][0] ?? ""));
       }
       shown.melds = {};
       shown.kanAdded = new Set();
@@ -5229,7 +5270,12 @@ export function App(): JSX.Element {
             next.round.byPlayer[p.id]?.riichiDeclared !== true ||
             shown.riichi.has(p.id),
         );
-        if (allAnnounced) riichiBgm.start();
+        if (allAnnounced) {
+          const declarer = next.players.find(
+            (p) => next.round.byPlayer[p.id]?.riichiDeclared === true,
+          );
+          riichiBgm.start(declarer === undefined ? undefined : riichiBgmTrackOf(declarer.id));
+        }
       }
     }
 
@@ -5448,7 +5494,8 @@ export function App(): JSX.Element {
             // 연출(리치 배너)이 화면에 뜨는 이 순간에 브금을 시작한다 — 연출 → 브금 순서.
             sfx.riichi();
             haptics.declare();
-            if (riichiBgmArmed.current) riichiBgm.start();
+            // 선언한 사람이 로비에서 고른 곡을 튼다 — 네 화면에서 같은 곡이 흐른다.
+            if (riichiBgmArmed.current) riichiBgm.start(riichiBgmTrackOf(p.id));
           },
           riichiKind !== undefined ? [riichiKind] : undefined,
           // 추격·트리플은 기세를 강조해 컷인을 더 세게 흔든다
@@ -13545,6 +13592,14 @@ function SettingsPanel(props: {
   iVoted?: boolean;
   onVoteAbort?: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
+  /** 미리듣기 중인 트랙 (-1 = 없음) — 패널을 닫으면 소리도 함께 멈춘다. */
+  const [previewing, setPreviewing] = useState(-1);
+  useEffect(
+    () => () => {
+      riichiBgm.previewStop();
+    },
+    [],
+  );
   // 불리언(토글) 설정만 — 숫자 설정(리치 BGM 볼륨)은 아래 슬라이더로 따로 렌더한다.
   type BoolSettingKey = {
     [K in keyof Settings]: Settings[K] extends boolean ? K : never;
@@ -13747,6 +13802,57 @@ function SettingsPanel(props: {
             </span>
           </div>
         </label>
+        <div className="settings-row settings-row-bgm">
+          <div className="settings-text">
+            <span className="settings-label">내 리치 BGM</span>
+            <span className="settings-desc">
+              내가 리치를 걸었을 때 나올 곡입니다 — <b>같은 방 네 사람 모두에게</b> 이 곡이
+              들립니다. 랜덤을 고르면 판마다 서버가 한 곡을 뽑아 줍니다. ▶로 미리 들어 보세요.
+            </span>
+          </div>
+          <div className="bgm-picker">
+            <button
+              type="button"
+              className={`bgm-pick${props.settings.riichiBgmTrack < 0 ? " bgm-pick-on" : ""}`}
+              onClick={() => {
+                riichiBgm.previewStop();
+                props.onSetting("riichiBgmTrack", RIICHI_BGM_RANDOM);
+              }}
+            >
+              랜덤
+            </button>
+            {Array.from({ length: RIICHI_BGM_COUNT }, (_, i) => (
+              <span key={i} className="bgm-pick-cell">
+                <button
+                  type="button"
+                  className={`bgm-pick${props.settings.riichiBgmTrack === i ? " bgm-pick-on" : ""}`}
+                  onClick={() => {
+                    riichiBgm.previewStop();
+                    props.onSetting("riichiBgmTrack", i);
+                  }}
+                >
+                  {i + 1}번
+                </button>
+                <button
+                  type="button"
+                  className="bgm-play"
+                  aria-label={`${i + 1}번 브금 미리듣기`}
+                  onClick={() => {
+                    if (previewing === i) {
+                      riichiBgm.previewStop();
+                      setPreviewing(-1);
+                    } else {
+                      riichiBgm.preview(i);
+                      setPreviewing(i);
+                    }
+                  }}
+                >
+                  {previewing === i ? "■" : "▶"}
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
         {props.onVoteAbort !== undefined ? (
           <div className="settings-abort">
             <div className="settings-text">
