@@ -22,6 +22,11 @@ import {
 import type { ActionOption, GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
 import { deadWallMaster } from "../src/augments/dead_wall_master.js";
+import { blindRon } from "../src/augments/blind_ron.js";
+import { timePressure } from "../src/augments/time_pressure.js";
+import { signFlip } from "../src/augments/sign_flip.js";
+import { armedNow, preArmSpent } from "../src/util.js";
+import type { AugmentDef } from "@majak/core";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -125,4 +130,87 @@ describe("dead_wall_master (왕패의 주인) — 2국에 1회", () => {
     const key = "view:p0:dead_wall_master:remaining:p0#round";
     expect(game.engine.state.augmentData[key] ?? 0).toBe(0);
   });
+});
+
+// ─────────── 선발동형 재무장 — 반장전 한정 게임 내 1회 (blind_ron·time_pressure·sign_flip) ───────────
+
+describe("선발동형 재무장 — 반장전에서만 게임 내 1회", () => {
+  const trio: { def: AugmentDef; id: string }[] = [
+    { def: blindRon, id: "blind_ron" },
+    { def: timePressure, id: "time_pressure" },
+    { def: signFlip, id: "sign_flip" },
+  ];
+
+  function setup(
+    def: AugmentDef,
+    id: string,
+    mode: "tonpuu" | "hanchan",
+  ): { game: Game; flow: FlowController } {
+    const base = craft({
+      hands: { p0: "234m345p456s678s22s", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+      seed: 5,
+    });
+    const state = withAugments(
+      { ...base, config: { ...base.config, mode } },
+      "p0",
+      [id],
+    );
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, def, "p0", { yaku: game.yaku });
+    return { game, flow: new FlowController(game.engine) };
+  }
+
+  const rechargeOption = (flow: FlowController, id: string): boolean =>
+    optionsFor(flow.begin(), "p0").some((o) => o.type === `${id}_recharge`);
+
+  /** 켜진 국을 한 번 흘려보내 «다 타 버린» 상태로 만든다 */
+  function burn(game: Game): void {
+    emit(game, { type: ROUND_STARTED, payload: {} }); // 켜진다
+    emit(game, { type: ROUND_STARTED, payload: {} }); // 그 국이 지나갔다 → spent
+  }
+
+  for (const { def, id } of trio) {
+    it(`${id}: 반장전에서 다 탄 뒤에 재장전 버튼이 열린다`, () => {
+      const { game, flow } = setup(def, id, "hanchan");
+      // 아직 타는 중인 국에는 버튼이 없다 (한 번을 그냥 버리게 된다)
+      emit(game, { type: ROUND_STARTED, payload: {} });
+      expect(armedNow(game.engine.state, id, "p0")).toBe(true);
+      expect(rechargeOption(flow, id)).toBe(false);
+
+      emit(game, { type: ROUND_STARTED, payload: {} });
+      expect(preArmSpent(game.engine.state, id, "p0")).toBe(true);
+      expect(rechargeOption(flow, id)).toBe(true);
+    });
+
+    it(`${id}: 재장전하면 다음 국에 다시 켜지고, 두 번째 재장전은 없다`, () => {
+      const { game, flow } = setup(def, id, "hanchan");
+      burn(game);
+
+      const opt = optionsFor(flow.begin(), "p0").find(
+        (o) => o.type === `${id}_recharge`,
+      );
+      expect(opt).toBeDefined();
+      flow.submit("p0", opt!);
+      // 누른 자리에서 바로 켜지지는 않는다 — 다음 국이다
+      expect(armedNow(game.engine.state, id, "p0")).toBe(false);
+
+      emit(game, { type: ROUND_STARTED, payload: {} });
+      expect(armedNow(game.engine.state, id, "p0")).toBe(true);
+
+      // 그 국이 지나가 다시 소진돼도, 게임 내 1회라 버튼은 열리지 않는다
+      emit(game, { type: ROUND_STARTED, payload: {} });
+      expect(preArmSpent(game.engine.state, id, "p0")).toBe(true);
+      expect(rechargeOption(flow, id)).toBe(false);
+    });
+
+    it(`${id}: 동풍전에는 재장전 버튼이 아예 없다 (기준선 그대로)`, () => {
+      const { game, flow } = setup(def, id, "tonpuu");
+      burn(game);
+      expect(preArmSpent(game.engine.state, id, "p0")).toBe(true);
+      expect(rechargeOption(flow, id)).toBe(false);
+    });
+  }
 });

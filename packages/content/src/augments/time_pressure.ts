@@ -29,6 +29,7 @@ import {
 } from "@majak/core";
 import type { AugmentDef, AugmentDisarmedPayload } from "@majak/core";
 import { armOnNextRound, armedNow, roundViewKey } from "../util.js";
+import { installPreArmRecharge, rechargeBotPolicy } from "./preArmRecharge.js";
 
 const ID = "time_pressure";
 
@@ -48,7 +49,7 @@ export const timePressure: AugmentDef = defineAugment({
   complexity: 1,
   name: "초읽기",
   description:
-    "(획득 즉시 · 이번 국만) 전원의 모든 결정에 5초 제한이 걸린다 — 나도 포함이다. 시간을 넘기면 쯔모기리·패스로 자동 진행된다.",
+    "(획득 즉시 · 이번 국만 · 반장전은 게임 내 1회 재장전) 전원의 모든 결정에 5초 제한이 걸린다 — 나도 포함이다. 시간을 넘기면 쯔모기리·패스로 자동 진행된다.",
   /*
    * detail의 마무리 폴백 문구는 예전에 "남은 후보 중 하나가 **무작위로** 선택된다"였다.
    * 서버는 리플레이·재개 결정성을 위해 `Math.random()`을 **일부러 걷어내고** 후보 목록의
@@ -58,13 +59,20 @@ export const timePressure: AugmentDef = defineAugment({
    * 구현이 옳고 문장이 낡은 경우라 **문장을 고친다**.
    */
   detail:
-    "(획득 즉시 · 이번 국만) 타패, 론·치·퐁·깡 선언, 액티브 증강 선택이 모두 제한 대상이다. 되돌릴 수 없는 발동의 마무리 단계에서는 남은 후보 중 하나가 정해진 규칙에 따라 골라진다(리플레이가 같은 결과를 내야 하므로 무작위가 아니다).\n\n⚠ 5초 제한은 **사람에게만** 걸린다 — 봇은 받지 않는다.",
+    "(획득 즉시 · 이번 국만) 타패, 론·치·퐁·깡 선언, 액티브 증강 선택이 모두 제한 대상이다. 되돌릴 수 없는 발동의 마무리 단계에서는 남은 후보 중 하나가 정해진 규칙에 따라 골라진다(리플레이가 같은 결과를 내야 하므로 무작위가 아니다).\n\n⚠ 5초 제한은 **사람에게만** 걸린다 — 봇은 받지 않는다.\n\n반장전에서는 게임 내 1회, 자기 순에 **다시 장전**할 수 있다 — 누른 다음 국에 한 번 더 켜진다. (동풍전에는 없다.)",
   install(ctx) {
     // 획득 뒤 처음 시작되는 국 하나에만 켜진다.
     // 전원 공개 — 서버는 이 값으로 결정 대기 시간을 줄이고 클라는 카운트다운을 그린다.
     armOnNextRound(ctx, ID, () => [
       augmentDataSet(roundViewKey("*", TIME_PRESSURE_CHANNEL), TIME_PRESSURE_SECONDS),
     ]);
+
+    /*
+     * 반장전 한정 — 게임 내 1회, 원하는 타이밍에 다시 장전한다.
+     * 국이 두 배인 판에서 "그 국 하나"의 비중이 절반이 되는 것을 되돌린다
+     * (반장전 QA 2026-08-25, preArmRecharge.ts에 경위가 있다).
+     */
+    installPreArmRecharge(ctx, ID);
 
     /*
      * **무장해제되면 초읽기도 그 자리에서 꺼진다.**
@@ -102,5 +110,7 @@ export const timePressure: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(roundViewKey("*", TIME_PRESSURE_CHANNEL), undefined));
     });
   },
-  // 봇 정책 없음 — 자동 발동이라 선택 지점이 없다.
+  // 자동 발동이라 선택 지점이 없었지만, 반장전 재장전 버튼만은 봇도 눌러야 한다
+  // (정책이 없으면 봇은 그 버튼을 영영 누르지 않는다).
+  bot: rechargeBotPolicy(ID),
 });

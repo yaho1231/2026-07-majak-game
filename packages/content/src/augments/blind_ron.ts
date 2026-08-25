@@ -42,6 +42,7 @@ import {
   settleInterceptor,
   withAugNoteFor,
 } from "../util.js";
+import { installPreArmRecharge, rechargeBotPolicy } from "./preArmRecharge.js";
 
 const ID = "blind_ron";
 
@@ -77,9 +78,9 @@ export const blindRon: AugmentDef = defineAugment({
   complexity: 1,
   name: "눈먼 총알",
   description:
-    "(획득 즉시 · 이번 국만) 이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다. 화료자 자신이 뽑히면 손의 화료점을 자기가 문다.",
+    "(획득 즉시 · 이번 국만 · 반장전은 게임 내 1회 재장전) 이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다. 화료자 자신이 뽑히면 손의 화료점을 자기가 문다.",
   detail:
-    "(획득 즉시 · 이번 국만) 대상은 보유자를 포함한 자리에 앉은 넷 전부에서 고른다. 쯔모에는 적용되지 않고, 더블론처럼 한 사람이 여럿에게 물 때는 그 지불 전체가 같은 한 명에게 옮겨 간다. 옮겨 가는 것은 손의 지불분이며 공탁·본장은 원래대로 정산된다.\n\n켜지는 순간 전원에게 공개되고 국이 끝나면 꺼진다.",
+    "(획득 즉시 · 이번 국만) 대상은 보유자를 포함한 자리에 앉은 넷 전부에서 고른다. 쯔모에는 적용되지 않고, 더블론처럼 한 사람이 여럿에게 물 때는 그 지불 전체가 같은 한 명에게 옮겨 간다. 옮겨 가는 것은 손의 지불분이며 공탁·본장은 원래대로 정산된다.\n\n켜지는 순간 전원에게 공개되고 국이 끝나면 꺼진다.\n\n반장전에서는 게임 내 1회, 자기 순에 **다시 장전**할 수 있다 — 누른 다음 국에 한 번 더 켜진다. (동풍전에는 없다.)",
   install(ctx) {
     const { holder } = ctx;
 
@@ -88,6 +89,13 @@ export const blindRon: AugmentDef = defineAugment({
     armOnNextRound(ctx, ID, () => [
       augmentDataSet(roundViewKey("*", `${ID}:${holder}`), true),
     ]);
+
+    /*
+     * 반장전 한정 — 게임 내 1회, 원하는 타이밍에 다시 장전한다.
+     * 국이 두 배인 판에서 "그 국 하나"의 비중이 절반이 되는 것을 되돌린다
+     * (반장전 QA 2026-08-25, preArmRecharge.ts에 경위가 있다).
+     */
+    installPreArmRecharge(ctx, ID);
 
     /*
      * 그 국이 끝나는 순간 표시를 내린다.
@@ -188,5 +196,7 @@ export const blindRon: AugmentDef = defineAugment({
       };
     });
   },
-  // 봇 정책 없음 — 자동 발동이라 선택 지점이 없다.
+  // 자동 발동이라 선택 지점이 없었지만, 반장전 재장전 버튼만은 봇도 눌러야 한다
+  // (정책이 없으면 봇은 그 버튼을 영영 누르지 않는다).
+  bot: rechargeBotPolicy(ID),
 });
