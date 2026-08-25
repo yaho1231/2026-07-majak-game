@@ -581,6 +581,35 @@ describe("말풍선 자리 (placeBubble)", () => {
     }
   });
 
+  /*
+   * «누르라»고 한 과녁은 무슨 일이 있어도 비켜선다 (2026-08-25 QA §9, 375×700 실측).
+   *
+   * 증강 선택창은 화면을 다 덮으므로 늘 띠로 물러나는데, 아래쪽 띠 [14,400,347,288]이
+   * 카드 1·2번의 «자세히 ▾»(y=415·667)를 둘 다 물어 `elementFromPoint`가
+   * `.coach-bubble`을 돌려줬다 — 강의가 시킨 조작이 그 자리에서 안 됐다.
+   * 과녁(90×20)은 제목 줄보다 훨씬 작아서, 무겁게 치지 않으면 늘 진다.
+   */
+  it("«누르라»고 한 과녁은 제목 줄을 가리는 한이 있어도 비켜선다", () => {
+    const phone = { w: 375, h: 700 };
+    const bubble = { w: 347, h: 288 };
+    const panel: CoachRect = { top: 230, left: 8, w: 359, h: 470 };
+    const draftHead: CoachRect = { top: 120, left: 8, w: 359, h: 110 };
+    const more: CoachRect[] = [
+      { top: 415, left: 142, w: 90, h: 20 },
+      { top: 667, left: 142, w: 90, h: 20 },
+    ];
+    const box = boxOf(placeBubble(panel, bubble, phone, [draftHead], more), bubble, phone);
+    for (const m of more) expect(hits(box, m)).toBe(false);
+  });
+
+  it("과녁이 없으면 예전 그대로 — 아래쪽 띠로 비켜선다", () => {
+    const panel: CoachRect = { top: 40, left: 60, w: 1160, h: 640 };
+    const draftHead: CoachRect = { top: 20, left: 180, w: 920, h: 140 };
+    expect(placeBubble(panel, size, view, [draftHead], [])).toEqual(
+      placeBubble(panel, size, view, [draftHead]),
+    );
+  });
+
   it("좁은 폰 화면에서도 말풍선이 잘리지 않는다", () => {
     const phone = { w: 375, h: 812 };
     const small = { w: 343, h: 210 };

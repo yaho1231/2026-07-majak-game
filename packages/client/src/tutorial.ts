@@ -225,6 +225,20 @@ export interface Lesson {
    * 대본 강의에만 붙는다 — 잠글 패가 손에 있는지는 `when`이 이미 확인한다.
    */
   lock?: LessonLock;
+  /**
+   * **«누르라»고 한 과녁** — 말풍선이 절대 덮어서는 안 되는 것들의 선택자.
+   *
+   * `anchor`(강조할 곳)와 다르다. 증강 선택창처럼 강조가 화면을 거의 다 덮는
+   * 화면에서는 말풍선이 그 위에 얹힐 수밖에 없는데, 그때 **하필 눌러야 할 버튼을
+   * 덮으면 강의가 그 자리에서 막힌다** — 375×700 실측(2026-08-25 QA §9):
+   * 말풍선 [14,400,347,288]이 카드 1·2번의 «자세히 ▾»(y=415·667)를 둘 다 물어
+   * `elementFromPoint`가 `.coach-bubble`을 돌려줬다.
+   *
+   * 여기 적힌 것과의 겹침은 다른 무엇보다 무겁게 친다(`placeBubble`의 `MUST_CLEAR_WEIGHT`)
+   * — 제목이 조금 가려지는 것은 읽기 불편할 뿐이지만, 과녁이 가려지면 아무것도 못 한다.
+   * 화면에 여럿 있을 수 있으므로 **전부** 잰다(App.tsx `rectsOf`).
+   */
+  mustClear?: string;
   /** 지금 이 강의를 꺼낼 기회인가 */
   when: (c: CoachCtx) => boolean;
   /**
@@ -347,6 +361,8 @@ export const LESSONS: readonly Lesson[] = [
     body: "카드에 보이는 건 한 줄 요약입니다. 조건과 예외까지 담긴 원문은 따로 있습니다.",
     todo: "카드 아래 «자세히 ▾»를 누르거나, Shift를 누른 채로 보세요.",
     anchor: ".draft-cards",
+    // 세 장의 «자세히 ▾»를 전부 비켜선다 — 이 강의가 누르라고 한 것이 바로 그것이다.
+    mustClear: ".draft-card .augdesc-more",
     when: (c) => c.draftOpen,
     done: (c) => !c.draftOpen || c.hit(".draft-card .augdesc-body-full"),
   },
@@ -957,6 +973,14 @@ const EDGE_PAD = 8;
  * 결국 그 위에 얹힌다. 그때는 따라다니려 애쓰지 말고 위쪽 띠로 물러난다.
  */
 const HUGE_RING_RATIO = 0.6;
+/**
+ * «누르라»고 한 과녁(`Lesson.mustClear`)을 가리는 비용의 배수.
+ *
+ * 화면 넓이(폰 세로 375×700 = 262,500)보다 작은 과녁 하나(90×20 = 1,800)의 겹침이
+ * 어떤 «가리면 아쉬운 것»의 겹침도 이기도록 크게 잡는다. 1,000이면 과녁 1px²가
+ * 제목 1,000px²보다 비싸다 — 사실상 «과녁을 가리는 후보는 마지막에 고른다»가 된다.
+ */
+const MUST_CLEAR_WEIGHT = 1000;
 
 /** 두 사각형이 겹치는 넓이 (안 겹치면 0) */
 function overlapArea(a: CoachRect, b: CoachRect): number {
@@ -1007,6 +1031,12 @@ export function placeBubble(
   bubble: { w: number; h: number },
   view: { w: number; h: number },
   keepClear: readonly CoachRect[],
+  /**
+   * **누르라고 한 과녁** (`Lesson.mustClear`) — 가리는 넓이를 `MUST_CLEAR_WEIGHT`배로
+   * 친다. 과녁이 작아서(«자세히 ▾»는 90×20) 그냥 더하면 제목 한 줄을 가리는 비용에
+   * 언제나 진다 — 실제로 375×700에서 아래쪽 띠가 «자세히» 두 개를 물고도 이겼다.
+   */
+  mustClear: readonly CoachRect[] = [],
 ): BubbleSpot {
   const clampX = (x: number): number =>
     Math.min(Math.max(x, EDGE_PAD), Math.max(EDGE_PAD, view.w - bubble.w - EDGE_PAD));
@@ -1031,6 +1061,7 @@ export function placeBubble(
       const box = { top: b.top, left: b.left, w: bubble.w, h: bubble.h };
       let c = 0;
       for (const r of keepClear) c += overlapArea(box, r);
+      for (const r of mustClear) c += overlapArea(box, r) * MUST_CLEAR_WEIGHT;
       return c;
     };
     // 같으면 위쪽이 이긴다 — 아래쪽 절반에는 손패·액션 바가 있는 것이 기본 전제다.
@@ -1063,6 +1094,7 @@ export function placeBubble(
     const box = { top: c.top, left: c.left, w: bubble.w, h: bubble.h };
     let cost = overlapArea(box, ring) * 4;
     for (const r of keepClear) cost += overlapArea(box, r);
+    for (const r of mustClear) cost += overlapArea(box, r) * MUST_CLEAR_WEIGHT;
     if (cost < bestCost) {
       bestCost = cost;
       best = c;

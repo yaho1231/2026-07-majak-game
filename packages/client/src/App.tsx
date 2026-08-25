@@ -7148,6 +7148,27 @@ function rectOf(selector: string, pad = 0): CoachRect | null {
 }
 
 /**
+ * 같은 선택자에 걸리는 것을 **전부** 잰다 (`rectOf`는 첫 개 하나만 준다).
+ *
+ * 강의가 «누르라»고 한 과녁은 셋일 수도 있다 — 증강 카드 석 장의 «자세히 ▾»가 그렇다.
+ * 하나만 비켜서면 나머지 둘이 말풍선에 막힌다(2026-08-25 QA §9 실측).
+ */
+function rectsOf(selector: string, pad = 0): CoachRect[] {
+  const out: CoachRect[] = [];
+  for (const el of document.querySelectorAll(selector)) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    out.push({
+      top: toLayoutPx(r.top) - pad,
+      left: toLayoutPx(r.left) - pad,
+      w: toLayoutPx(r.width) + pad * 2,
+      h: toLayoutPx(r.height) + pad * 2,
+    });
+  }
+  return out;
+}
+
+/**
  * 액션 바(치·퐁·리치·론)가 **없을 때에도 비워 둘** 높이(레이아웃 px).
  *
  * 그 줄은 프롬프트가 있을 때만 뜬다. 없을 때 그 자리를 내주면 말풍선이 거기 앉았다가
@@ -7374,6 +7395,7 @@ function TutorialCoach(props: {
   }, [watching]);
 
   const anchor = props.hidden ? undefined : active?.anchor;
+  const mustClear = props.hidden ? undefined : active?.mustClear;
   const shown = active !== null && !props.hidden;
 
   /*
@@ -7431,13 +7453,15 @@ function TutorialCoach(props: {
         { w: toLayoutPx(b.width), h: toLayoutPx(b.height) },
         layoutViewport(),
         keepClearRects(),
+        // 이 강의가 «누르라»고 한 과녁은 무슨 일이 있어도 비켜선다 (`Lesson.mustClear`)
+        mustClear === undefined ? [] : rectsOf(mustClear, RING_PAD),
       );
       setSpot((prev) => (sameSpot(prev, next) ? prev : next));
     };
     place();
     const timer = window.setInterval(place, 160);
     return () => window.clearInterval(timer);
-  }, [shown, active?.id]);
+  }, [shown, active?.id, mustClear]);
 
   if (active === null || props.hidden) return null;
 
