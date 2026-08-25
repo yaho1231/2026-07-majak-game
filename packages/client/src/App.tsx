@@ -2897,11 +2897,32 @@ export function App(): JSX.Element {
    * (7초 = 24자 한 줄을 두 번 읽을 시간. 초읽기 30초의 1/4 이라 첫 수 전에 접힌다.)
    */
   const [rotateHintFolded, setRotateHintFolded] = useState(false);
+  /** ⟳ 로 **손수 다시 편** 뒤에는 자동으로 안 접는다 — 다시 접으면 읽던 것을 뺏는 셈이다. */
+  const [rotateHintAutoFold, setRotateHintAutoFold] = useState(true);
+  const rotateHintRef = useRef<HTMLDivElement | null>(null);
+  /*
+   * ⚠ 시계는 «앱이 뜬 순간»이 아니라 **«안내가 실제로 화면에 보인 순간»**부터 간다.
+   * 처음엔 마운트 기준으로 셌는데, 판이 서기까지(봇 입장 + 첫 증강 선택) 7초가
+   * 그냥 지나가서 375×700 실측으로 **대국 화면에 들어왔을 때 이미 접혀 있었다** —
+   * 아무도 못 읽는 안내가 된다. 안내는 로비·가로 화면에서는 `display:none` 이라
+   * 교차 자체가 일어나지 않으므로, IntersectionObserver 가 «보였다»의 정확한 신호다.
+   */
   useEffect(() => {
-    if (rotateHintOff || rotateHintFolded) return;
-    const t = window.setTimeout(() => setRotateHintFolded(true), 7000);
-    return () => window.clearTimeout(t);
-  }, [rotateHintOff, rotateHintFolded]);
+    if (rotateHintOff || rotateHintFolded || !rotateHintAutoFold) return;
+    const el = rotateHintRef.current;
+    if (el === null) return;
+    let timer = 0;
+    const io = new IntersectionObserver((entries) => {
+      if (timer === 0 && entries.some((e) => e.isIntersecting)) {
+        timer = window.setTimeout(() => setRotateHintFolded(true), 7000);
+      }
+    });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      if (timer !== 0) window.clearTimeout(timer);
+    };
+  }, [rotateHintOff, rotateHintFolded, rotateHintAutoFold]);
   /**
    * 지금 인증되어 있는가 — **live ref**. handleServerMessage는 마운트 시 소켓에
    * 고정된 클로저라 auth state가 스테일하다. 서버 오류를 로그인 폼에 넣을지
@@ -6221,6 +6242,7 @@ export function App(): JSX.Element {
         <div
           className={`rotate-hint${rotateHintFolded ? " rotate-hint-folded" : ""}`}
           role="status"
+          ref={rotateHintRef}
         >
           {/* 접힌 뒤에는 이 ⟳ 가 «다시 펴기» 손잡이다 — 접힌 상태에서만 누를 것이
               있으므로 펼쳐져 있을 때는 aria-expanded 로 그 사실만 알린다. */}
@@ -6229,7 +6251,10 @@ export function App(): JSX.Element {
             className="rotate-hint-icon"
             aria-label="가로 화면 안내 다시 보기"
             aria-expanded={!rotateHintFolded}
-            onClick={() => setRotateHintFolded(false)}
+            onClick={() => {
+              setRotateHintFolded(false);
+              setRotateHintAutoFold(false);
+            }}
           >
             ⟳
           </button>

@@ -16276,10 +16276,13 @@ body:has(.result-overlay):not(.peeking) .game-root .nameplate {
  * ⚠ `:not(.peeking)` 은 위 규칙과 같은 이유로 유지한다 — 「누른 채로 게임판 보기」로
  *   창을 투명하게 만든 동안에는 판 위의 것들이 다시 보여야 한다.
  * ⚠ 선택자가 `.quick-toggles` 라 **손패 위 가로 줄 변형(`.quick-toggles-inline`)까지
- *   함께** 걷힌다(그쪽도 같은 클래스를 함께 단다). 그 줄은 내 영역 안에 흐름으로
- *   놓여 있어 `display:none` 이면 띠가 줄고 보드가 잠깐 커졌다 되돌아온다 —
- *   창이 떠 있는 동안 판이 덜컹거리는 셈이라 `visibility` 로 **자리는 남기고**
- *   그리기만 멈춘다(375×700 실측: display:none 이면 `--own-band-full` 이 30px 줄었다).
+ *   함께** 걷힌다(그쪽도 같은 클래스를 함께 단다). 그 줄만은 판 위에 뜬 것이 아니라
+ *   **내 영역 안에 흐름으로** 놓여 있어서, 지우는 방식이 곧 «판이 덜컹거리느냐»가
+ *   된다 — 그래서 `display:none` 이 아니라 `visibility` 로 자리는 남기고 그리기만
+ *   멈춘다. (375×700 실측으로는 두 방식 모두 `--own-band-full` 이 188px 그대로였다.
+ *   OwnArea 가 재는 높이를 지금은 이 줄이 정하지 않기 때문인데, 그건 이 줄 위아래의
+ *   다른 줄들이 더 높아서 생긴 우연이지 보장이 아니다. 창이 떠 있는 동안 내 영역의
+ *   높이를 바꿀 이유가 없으므로 애초에 안 바꾸는 쪽을 고른다.)
  */
 body:has(.overlay):not(.peeking) .game-root .quick-toggles,
 body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
