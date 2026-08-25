@@ -15,10 +15,17 @@
  *
  * ## 어떻게 도는가
  *
- * 재장전(`reload`)이 이미 하고 있는 일과 **같은 규약**이다 — `preArmRestoreEvents`로
- * 표식 둘을 지우면 다음 `ROUND_STARTED`에서 `armOnNextRound`가 "아직 켜진 적 없는
- * 증강"으로 보고 그 국에 다시 켠다(공개 표시도 그때 함께 나간다). 그래서 «지금 눌러서
- * **다음 국**에 터뜨린다»가 되고, 고르는 것은 발동 국이다.
+ * 누르면 **그 자리에서 즉시** 켜진다(`preArmArmNowEvents` — 켜진 국을 «지금»으로
+ * 못박는다). 고르는 것은 «어느 국»이 아니라 «이 순간»이다: 상대가 리치를 걸어 위험해진
+ * 순간에 반전을 켜고, 큰 손이 오갈 것 같은 순간에 눈먼 총알을 켠다.
+ *
+ * 재장전(`reload`)은 같은 선발동형을 되살리면서도 **다음 국**을 기다린다
+ * (`preArmRestoreEvents`) — 그쪽은 남의 증강을 되살리는 물건이라 그 국의 판이 이미
+ * 굳은 뒤에 켜지면 안 되기 때문이다. 이쪽은 자기 증강을 자기 순에 켜는 것이라
+ * 즉시가 맞다(2026-08-25 사용자 확정).
+ *
+ * 공개 표시는 `armOnNextRound`에 넘기는 것과 **같은 이벤트**를 호출부가 함께 넘긴다
+ * (`onArm`) — 켜졌는데 테이블에 안 보이면 이 증강들은 대응이 불가능해진다.
  *
  * 조건은 셋뿐이다.
  *  - **반장전에서만.** 동풍전은 기준선 그대로 두는 것이 이 수정의 전제다.
@@ -37,8 +44,19 @@ import {
   isSourceDisarmed,
   playerAtSeat,
 } from "@majak/core";
-import type { AugmentContext, ActionDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, preArmRestoreEvents, preArmSpent, roundViewKey } from "../util.js";
+import type {
+  AugmentContext,
+  ActionDef,
+  GameState,
+  PlayerId,
+  ProposedEvent,
+} from "@majak/core";
+import {
+  counterOf,
+  preArmArmNowEvents,
+  preArmSpent,
+  roundViewKey,
+} from "../util.js";
 import { plan } from "./botPlan.js";
 
 /** 재무장을 몇 번 썼는가 (매치 스코프 — 국이 바뀌어도 남는다) */
@@ -79,7 +97,12 @@ export function canRecharge(
  *
  * 액션은 게임당 한 번만 등록한다(여러 플레이어가 같은 증강을 들 수 있다).
  */
-export function installPreArmRecharge(ctx: AugmentContext, augmentId: string): void {
+export function installPreArmRecharge(
+  ctx: AugmentContext,
+  augmentId: string,
+  /** 켜지는 순간 함께 낼 공개 표시 — `armOnNextRound`에 넘긴 것과 같아야 한다 */
+  onArm: (state: GameState) => ProposedEvent<string, unknown>[],
+): void {
   const { engine, holder } = ctx;
   const type = rechargeActionType(augmentId);
 
@@ -88,8 +111,10 @@ export function installPreArmRecharge(ctx: AugmentContext, augmentId: string): v
     validate: (req, { state }) =>
       canRecharge(state, augmentId, req.player) ? null : "cannot recharge now",
     toEvents: (req, { state }) => [
-      // 표식 둘을 지운다 → 다음 국 시작에 armOnNextRound가 다시 켠다
-      ...preArmRestoreEvents(augmentId, req.player),
+      // 지금 이 국에 곧바로 켠다 (다음 국을 기다리지 않는다)
+      ...preArmArmNowEvents(state, augmentId, req.player),
+      // 켜진 사실을 그 자리에서 공개한다 — 국이 시작될 때 나가는 것과 같은 표시다
+      ...onArm(state),
       augmentDataSet(
         rechargeKey(augmentId, req.player),
         counterOf(state, rechargeKey(augmentId, req.player)) + 1,

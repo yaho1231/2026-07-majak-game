@@ -81,7 +81,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   // 2026-08-04 6차 신규 8종
   blind_ron: {
     use: "이번 국만",
-    text: "이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다. 반장전은 게임 내 1회 다시 장전한다.",
+    text: "이 국의 모든 론이 무작위 한 명에게 청구된다. 반장전은 게임 내 1회 재장전.",
   },
   cornucopia: { use: "획득 즉시", text: "무작위 증강 2개를 획득한다. 전원에게 공개된다." },
   dora_afterimage: { use: "2국에 1회", text: "직전 국의 도라가 되살아나 이번 국 내 도라로 겹쳐진다." },
@@ -90,13 +90,13 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   soul_strike: { use: "2국에 1회", text: "리치(2판)를 걸고 혼자 연속 6쯔모. 그 사이 쯔모 화료는 일발." },
   sign_flip: {
     use: "이번 국만",
-    text: "이 국에는 내 점수의 부호가 뒤집힌다 — 쏘이면 오히려 받는다. 반장전은 게임 내 1회 다시 장전한다.",
+    text: "이 국엔 내 점수 부호가 뒤집힌다. 반장전은 게임 내 1회 재장전.",
   },
   // 2026-08-07 7차 신규
   joker: { use: "2국에 1회", text: "이번 국 손패의 백이 무엇이든 되는 만능패가 된다." },
   time_pressure: {
     use: "이번 국만",
-    text: "이 국에는 전원의 모든 결정이 5초 제한이다. 나도 포함이다. 반장전은 게임 내 1회 다시 장전한다.",
+    text: "이 국엔 전원의 결정이 5초 제한. 반장전은 게임 내 1회 재장전.",
   },
   alchemist: { use: MODE_5_8, text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 사용 가능하다." },
   all_or_nothing: { use: "매 국 1회", text: "리치에 내 점수 절반을 건다. 이기면 그만큼 더 받고, 타가가 화료하면 절반을 잃는다." },
@@ -133,7 +133,10 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   dora_conceal: { use: "상시", text: "도라 표시패가 상대에게는 가려진다 — 도라는 나만 알 수 있다." },
   eternal_dealer: { use: "상시", text: "늘 오야 취급 — 점수 1.5배에 역패 동 하나 더. 연장은 동풍전3·반장전5." },
   even_world: { use: "2국에 1회", text: "손패의 홀수 수패가 전부 한 칸 위 짝수로 바뀐다." },
-  foresight: { use: "4순에 1회", text: "패산 다음 4장을 나만 본다. 국에 한 번은 그 순서까지 바꾼다." },
+  foresight: {
+    use: "4순에 1회",
+    text: "패산 다음 4장을 나만 본다. 순서도 국에 한 번 바꾼다. 발동 국 화료 시 +2판.",
+  },
   frame_up: { use: "2국에 1회", text: "내가 버릴 패를 상대 바닥에 놓아 그 사람을 후리텐에 빠뜨린다." },
   free_riichi_discard: { use: "상시", text: "리치를 걸어도 오름패만 고정되고, 버리는 패는 계속 자유롭다." },
   full_hand_swap: { use: MODE_2_3, text: "국 첫 순에 상대의 손패를 통째로 빼앗는다." },
