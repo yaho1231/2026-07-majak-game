@@ -40,6 +40,7 @@ import {
   isEmoteId,
   INVITE_COOLDOWN_MS,
   RIICHI_BGM_TRACKS,
+  RIICHI_BGM_RANDOM,
 } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
@@ -249,6 +250,12 @@ interface Room {
    * 처음 방송할 때 하나 뽑아 고정한다.
    */
   riichiBgm: Map<PlayerId, number>;
+  /**
+   * 각자가 **고른 값** (-1 = 랜덤). 배정 결과(`riichiBgm`)와 따로 둔다 —
+   * 랜덤으로 되돌리면 배정을 풀고 다시 뽑아야 하고, 곡을 지정한 사람의 선택은
+   * 남이 같은 곡을 이미 배정받았더라도 그대로 지켜져야 한다.
+   */
+  riichiBgmChoice: Map<PlayerId, number>;
   /**
    * 방장이 강퇴한 사람들의 username. 이 방이 살아 있는 동안 재입장을 막는다 —
    * 코드만 알면 곧바로 되돌아올 수 있으면 강퇴가 아무 의미가 없다.
@@ -995,16 +1002,17 @@ const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * 클라이언트가 보낸 트랙 선택을 실제 트랙 번호로 푼다.
- * 랜덤(-1)·범위 밖·정수가 아닌 값은 전부 «무작위 한 곡»으로 본다.
+ * 클라이언트가 보낸 트랙 선택을 정제한다 — 유효한 번호면 그대로, 아니면 «랜덤».
+ * 실제 곡으로 푸는 것은 `broadcastRiichiBgm`이 한다(자리마다 다른 곡을 주려면
+ * 방 전체를 함께 봐야 한다).
  */
-function resolveRiichiBgm(track: unknown): number {
+function sanitizeRiichiBgm(track: unknown): number {
   return typeof track === "number" &&
     Number.isInteger(track) &&
     track >= 0 &&
     track < RIICHI_BGM_TRACKS
     ? track
-    : randomInt(RIICHI_BGM_TRACKS);
+    : RIICHI_BGM_RANDOM;
 }
 
 /** 강제 배패에 쓸 수 있는 패 종류 (kindKey) — 표준 34종만. */
@@ -2056,7 +2064,11 @@ export class RoomManager {
       case "setRiichiBgm": {
         // 아직 앉지 않았으면 조용히 무시한다 — 클라이언트가 방에 들어갈 때 다시 보낸다.
         if (conn.room === null || conn.agent === null) return;
-        conn.room.riichiBgm.set(conn.agent.id, resolveRiichiBgm(msg.track));
+        conn.room.riichiBgmChoice.set(conn.agent.id, sanitizeRiichiBgm(msg.track));
+        // 랜덤으로 되돌렸으면 배정도 풀어, 다음 방송에서 새로 뽑히게 한다.
+        if (sanitizeRiichiBgm(msg.track) === RIICHI_BGM_RANDOM) {
+          conn.room.riichiBgm.delete(conn.agent.id);
+        }
         this.broadcastRiichiBgm(conn.room);
         return;
       }
@@ -2980,6 +2992,7 @@ export class RoomManager {
       notice: null,
       abortVotes: new Set(),
       riichiBgm: new Map(),
+      riichiBgmChoice: new Map(),
       kicked: new Set(),
       // 새 방의 기본은 **동풍전**이다 (2026-08-14 사용자 지시) — 한 판이 짧아
       // 처음 온 사람이 끝까지 가 보기 쉽다. 방장은 대기실에서 반장전으로 바꿀 수 있다.
@@ -3581,14 +3594,27 @@ export class RoomManager {
    */
   private broadcastRiichiBgm(room: Room): void {
     const tracks: Record<string, number> = {};
+    // 1) 직접 고른 사람 먼저 — 그 선택은 무슨 일이 있어도 그대로다.
     for (const a of room.agents) {
-      let t = room.riichiBgm.get(a.id);
-      if (t === undefined) {
-        t = randomInt(RIICHI_BGM_TRACKS);
-        room.riichiBgm.set(a.id, t);
-      }
-      tracks[a.id] = t;
+      const chosen = room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM;
+      if (chosen !== RIICHI_BGM_RANDOM) room.riichiBgm.set(a.id, chosen);
     }
+    // 2) 랜덤·미선택(봇 포함)은 **아직 아무도 안 쓰는 곡** 중에서 하나씩 준다.
+    //    네 자리가 같은 곡을 뽑아 «랜덤인데 판마다 늘 같은 곡»이 되는 것을 막는다.
+    //    곡이 사람보다 적으면 그때만 겹친다(그건 곡을 더 넣어야 할 일이다).
+    for (const a of room.agents) {
+      const chosen = room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM;
+      if (chosen !== RIICHI_BGM_RANDOM) continue;
+      if (room.riichiBgm.has(a.id)) continue; // 이미 뽑아 준 곡은 판 내내 그대로
+      const used = new Set(
+        room.agents.filter((o) => o !== a).map((o) => room.riichiBgm.get(o.id)),
+      );
+      const free: number[] = [];
+      for (let i = 0; i < RIICHI_BGM_TRACKS; i++) if (!used.has(i)) free.push(i);
+      const pool = free.length > 0 ? free : Array.from({ length: RIICHI_BGM_TRACKS }, (_, i) => i);
+      room.riichiBgm.set(a.id, pool[randomInt(pool.length)] as number);
+    }
+    for (const a of room.agents) tracks[a.id] = room.riichiBgm.get(a.id) as number;
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.notify({ type: "riichiBgm", tracks });
     }

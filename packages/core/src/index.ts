@@ -363,6 +363,7 @@ export {
   NOTICE_TITLE_MAX,
   NOTICE_BODY_MAX,
   INVITE_COOLDOWN_MS,
+  RIICHI_BGM_SRCS,
   RIICHI_BGM_TRACKS,
   RIICHI_BGM_RANDOM,
 } from "./network/protocol.js";
