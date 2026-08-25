@@ -3048,6 +3048,8 @@ export function App(): JSX.Element {
   const draftPickedRef = useRef(false);
   /** 직전 대기실 스냅샷 — 설정이 무엇에서 무엇으로 바뀌었는지 알려 주려고 둔다(같은 이유로 ref) */
   const prevLobby = useRef<LobbyMessage | null>(null);
+  /** 직전 상세설정 — 무엇이 바뀌었는지 말해 주려고 둔다(로비와 같은 이유로 ref). */
+  const prevRoomRules = useRef<RoomRules | null>(null);
   /** 중단 투표를 이미 알렸는가 — 투표가 갱신될 때마다 토스트가 쌓이지 않게 한 번만 띄운다 */
   const abortVoteNoticed = useRef(false);
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
@@ -3873,6 +3875,7 @@ export function App(): JSX.Element {
     setJoined(null);
     setLobby(null);
     setRoomRules(DEFAULT_ROOM_RULES);
+    prevRoomRules.current = null;
     prevLobby.current = null;
     abortVoteNoticed.current = false;
     setSandbox(null);
@@ -4716,6 +4719,20 @@ export function App(): JSX.Element {
     }
     if (msg.type === "roomRules") {
       // 방 상세설정 — 대기실·게임 시작·재접속 때 서버가 내려 준다.
+      //
+      // 방장이 고친 규칙은 값만 조용히 갈렸다 — 판 길이·봇 난이도가 그랬듯이
+      // (바로 아래 lobby 분기), 바뀐 항목을 그 자리에서 말해 준다. 처음 받는
+      // 값(방에 막 들어왔을 때)은 «바뀐 것»이 아니므로 조용히 넘긴다.
+      const before = prevRoomRules.current;
+      prevRoomRules.current = msg.rules;
+      if (before !== null) {
+        const changed = (Object.keys(msg.rules) as (keyof RoomRules)[]).filter(
+          (k) => before[k] !== msg.rules[k],
+        );
+        if (changed.length > 0) {
+          showToast(`방 규칙이 바뀌었습니다 — ${changed.map(roomRuleLabel).join(" · ")}`, "info");
+        }
+      }
       setRoomRules(msg.rules);
       return;
     }
@@ -6395,6 +6412,7 @@ export function App(): JSX.Element {
           onAbortLeave={cbAbortLeave}
           onOpenCodex={cbOpenCodex}
           onOpenHelp={cbOpenHelp}
+          hintsOn={roomRules.hints}
           onToast={cbGameToast}
         />
       ) : inWaiting ? (
@@ -12071,6 +12089,13 @@ function roomRulesSummary(rules: RoomRules): string {
   const keys = Object.keys(DEFAULT_ROOM_RULES) as (keyof RoomRules)[];
   const diff = keys.filter((k) => rules[k] !== DEFAULT_ROOM_RULES[k]).length;
   return diff === 0 ? "기본 규칙" : `기본과 ${diff}곳 다름`;
+}
+
+/** 상세설정 항목의 화면 이름 — 토스트와 창이 같은 말을 쓰게 한 곳에 둔다. */
+function roomRuleLabel(key: keyof RoomRules): string {
+  if (key === "startScore") return "시작 점수";
+  if (key === "returnScore") return "1위 필요점수";
+  return ROOM_RULE_TOGGLES.find((r) => r.key === key)?.label ?? key;
 }
 
 /** 상세설정의 on/off 항목 — 목록과 설명을 한 곳에 둔다(창과 요약이 어긋나지 않게). */
