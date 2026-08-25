@@ -176,11 +176,36 @@ describe("재장전 (reload)", () => {
     const players: PlayerId[] = ["p0", "p1", "p2", "p3"];
     let laterOffers = 0;
     for (let seed = 1; seed <= 60; seed++) {
-      const g = createStandardGame({
+      /*
+       * 재장전은 «되살릴 수 있는 증강»이 손에 있어야 후보에 뜬다(draftRequires).
+       * 그 전제를 세워 둔다 — 전원이 횟수형 증강 하나를 들고, 그 공용 잔량 채널
+       * (`view:{보유자}:uses:{id}`)이 이미 서 있는 상태.
+       */
+      const seeded = createStandardGame({
         seed,
         mode: "hanchan",
         extraAugments: contentAugments,
       });
+      const g = createStandardGameFromState(
+        {
+          ...seeded.engine.state,
+          players: seeded.engine.state.players.map((p) => ({
+            ...p,
+            augments: ["call_seal"],
+          })),
+          augmentData: {
+            ...seeded.engine.state.augmentData,
+            ...Object.fromEntries(
+              players.map((p) => [
+                `view:${p}:uses:call_seal`,
+                { left: 2, total: 2, scope: "match" },
+              ]),
+            ),
+          },
+        },
+        undefined,
+        contentAugments,
+      );
       const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
       for (const p of players) {
         expect(draft.roll("gameStart", p).map((d) => d.id)).not.toContain("reload");
@@ -190,5 +215,31 @@ describe("재장전 (reload)", () => {
       }
     }
     expect(laterOffers).toBeGreaterThan(0);
+  });
+
+  /*
+   * 되살릴 것이 하나도 없으면 **어느 스테이지에서도** 안 나온다 (2026-08-25 사용자 지시).
+   *
+   * 액티브(쿨다운·상시)만 들고 있는데 재장전이 3지선다에 뜨면 그 칸은 게임이 끝날
+   * 때까지 누를 수 없는 죽은 칸이다. `draftStages`는 첫 스테이지만 막을 뿐이라
+   * 두 번째 스테이지 이후의 이 경우를 못 잡았다.
+   */
+  it("횟수형·선발동형 증강이 하나도 없으면 어느 스테이지에도 제시되지 않는다", () => {
+    const players: PlayerId[] = ["p0", "p1", "p2", "p3"];
+    let offers = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const g = createStandardGame({
+        seed,
+        mode: "hanchan",
+        extraAugments: contentAugments,
+      });
+      const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });
+      for (const p of players) {
+        for (const stage of ["gameStart", "eastThird", "southEntry", "southThird"] as const) {
+          if (draft.roll(stage, p).some((d) => d.id === "reload")) offers++;
+        }
+      }
+    }
+    expect(offers).toBe(0);
   });
 });

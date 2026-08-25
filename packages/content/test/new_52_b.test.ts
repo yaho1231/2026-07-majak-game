@@ -598,10 +598,29 @@ describe("rank_gate (격)", () => {
     ]);
   });
 
-  it("첫 순이 지나면 발동할 수 없다", () => {
+  /*
+   * 창의 기준은 **내 이력**이다 (2026-08-25).
+   *
+   * 예전 판정은 `round.firstTurn`이었는데, 그 플래그는 **누구든** 울면 내려간다.
+   * 그래서 내 순이 오기도 전에 앞자리가 한 번 퐁하면, 내가 이 국에 한 장도 버리지
+   * 않았는데 국당 1회짜리 선언이 통째로 사라졌다(사용자 보고).
+   */
+  it("남이 울어 round.firstTurn이 내려가도 내 첫 순이면 발동한다", () => {
     const base = rankGateScene();
     const state: GameState = { ...base, round: { ...base.round, firstTurn: false } };
     const { prompt } = start(state, rankGate);
+    expect(optionsOf(prompt, "rank_gate_mark")).toHaveLength(3);
+  });
+
+  it("내 첫 순이 지나면(이미 버렸으면) 발동할 수 없다", () => {
+    const base = craft({
+      hands: { p0: "123m456m789m123p3m9p", p1: "*", p2: "*", p3: "*" },
+      discards: { p0: "9p", p1: "", p2: "", p3: "" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const { prompt } = start(withAugments(base, "p0", ["rank_gate"]), rankGate);
     expect(optionsOf(prompt, "rank_gate_mark")).toHaveLength(0);
   });
 

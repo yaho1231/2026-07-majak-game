@@ -366,6 +366,22 @@ export interface AugmentDef {
    */
   conflicts?: readonly string[];
   /**
+   * 이 증강이 **지금 이 플레이어에게 쓸모가 있는가** — 드래프트 후보 제외용 (선택).
+   *
+   * `draftStages`(언제)·`modes`(어느 판)·`conflicts`(무엇과 함께)로는 표현할 수 없는,
+   * **보유 상황에 달린** 전제를 가진 증강을 위한 훅이다. 지금 쓰는 곳은 재장전 하나다:
+   * 그 카드는 «소진한 내 다른 증강을 1회 복구»하는 물건이라, 되살릴 것이 하나도 없으면
+   * 3지선다 한 칸이 **통째로 죽은 칸**이 된다(액티브만 들고 있는데 재장전이 떴다는
+   * 2026-08-25 사용자 보고). `draftStages`로 스테이지를 미뤄 봐야 «그때쯤엔 뭔가
+   * 소진했겠지»라는 추정일 뿐이라 근본이 아니다.
+   *
+   * false를 돌리면 그 플레이어의 그 스테이지 후보에서 **확정 배제**된다
+   * (`DraftController.excludeFor` · `grantAugments` 양쪽에서 함께 본다).
+   * 순수 함수여야 하고 상태만 읽어야 한다 — 드래프트 후보는 리플레이·재개에서 같은
+   * 결과가 나와야 한다.
+   */
+  draftRequires?: (state: GameState, player: PlayerId) => boolean;
+  /**
    * 봇(AI)이 이 증강의 액티브 액션을 상황에 맞게 발동하는 정책 (선택).
    * 생략하면 봇은 이 증강을 드래프트에서 뽑아도 게임 중 발동하지 않는다.
    * 정책은 순수 함수여야 한다(부수효과 금지) — BotAgent가 뷰만 넘겨 판단을 위임한다.
@@ -549,6 +565,8 @@ export function installAugment(
       const stageRaw = engine.state.augmentData[augmentStageKey(holder, def.id)];
       const stage = typeof stageRaw === "string" ? stageRaw : null;
       const offerableNow = (d: AugmentDef): boolean => {
+        // 보유 상황 전제(재장전의 «복구할 증강이 있는가») — 드래프트와 같은 훅을 본다.
+        if (d.draftRequires?.(engine.state, holder) === false) return false;
         if (d.draftStages === undefined) return true;
         return stage !== null && d.draftStages.includes(stage as DraftStage);
       };

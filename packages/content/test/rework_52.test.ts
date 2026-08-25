@@ -184,7 +184,7 @@ describe("tanyao_break (탕야오 해방) — 역 자체가 2판", () => {
 
 // ───────────────── counter (카운터) ─────────────────
 
-describe("counter (카운터) — 선제 리치자 직격 론 +4판", () => {
+describe("counter (카운터) — 선제 리치자 직격 론 +3판 (2026-08-25 재조정)", () => {
   const RIICHI = { double: false, ippatsu: false, discardIndex: 0 };
 
   /**
@@ -241,10 +241,10 @@ describe("counter (카운터) — 선제 리치자 직격 론 +4판", () => {
   const ronDelta = (from: PlayerId, prevTenpai: boolean): number =>
     ronScene(from, prevTenpai).delta;
 
-  it("선리치자를 직격 론으로 잡으면 정확히 +4판이 더 들어온다", () => {
+  it("선리치자를 직격 론으로 잡으면 정확히 +3판이 더 들어온다", () => {
     // p1이 노텐이라 손 가치 강탈은 0 — 남는 것은 직격 보너스뿐이다
     const { delta, info, before } = ronScene("p1", false);
-    const bonus = winPointsWithExtraHan(before, "p0", info, 4);
+    const bonus = winPointsWithExtraHan(before, "p0", info, 3);
     expect(bonus).toBeGreaterThan(0);
     expect(delta).toBe(bonus);
   });
@@ -258,7 +258,7 @@ describe("counter (카운터) — 선제 리치자 직격 론 +4판", () => {
     const direct = ronScene("p1", true); // 강탈 + 직격
     expect(other.delta).toBeGreaterThan(0);
     expect(direct.delta - other.delta).toBe(
-      winPointsWithExtraHan(direct.before, "p0", direct.info, 4),
+      winPointsWithExtraHan(direct.before, "p0", direct.info, 3),
     );
   });
 
