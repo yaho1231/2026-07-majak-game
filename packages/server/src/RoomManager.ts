@@ -41,6 +41,8 @@ import {
   INVITE_COOLDOWN_MS,
   RIICHI_BGM_TRACKS,
   RIICHI_BGM_RANDOM,
+  DEFAULT_ROOM_RULES,
+  normalizeRoomRules,
 } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
@@ -60,6 +62,7 @@ import type {
   PeriodStats,
   SandboxBotRules,
   ServerNotice,
+  RoomRules,
 } from "@majak/core/network/protocol.js";
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
@@ -263,6 +266,11 @@ interface Room {
   kicked: Set<string>;
   /** 선택된 게임 모드 (반장전/동풍전). 방장이 대기실에서 바꾼다. 기본 hanchan. */
   gameMode: GameMode;
+  /**
+   * 방 상세설정 (시작점수·1위 필요점수·토비·적도라·쿠이탕·손패 공개·힌트 표시).
+   * 방장이 대기실의 「방 상세설정」에서 바꾼다. 아무것도 안 만지면 기본값 그대로다.
+   */
+  rules: RoomRules;
   /**
    * 방장이 대기실에서 지정한 좌석별 봇 성향. 없는 자리는 시드에서 뽑은 그대로다.
    *
@@ -2140,6 +2148,7 @@ export class RoomManager {
       case "setBotDifficulty":
       case "kickPlayer":
       case "setGameMode":
+      case "setRoomRules":
       case "shuffleSeats":
       case "startGame": {
         if (conn.room === null || conn.agent === null) return;
@@ -2997,6 +3006,7 @@ export class RoomManager {
       // 새 방의 기본은 **동풍전**이다 (2026-08-14 사용자 지시) — 한 판이 짧아
       // 처음 온 사람이 끝까지 가 보기 쉽다. 방장은 대기실에서 반장전으로 바꿀 수 있다.
       gameMode: options.gameMode ?? "tonpuu",
+      rules: { ...DEFAULT_ROOM_RULES },
       sandbox: options.sandbox ?? false,
       guest: options.guest ?? false,
       tutorial: options.tutorial ?? false,
@@ -3120,8 +3130,9 @@ export class RoomManager {
        * 지워져, 진짜로 기다리는 중인 선택지가 화면에서 사라진다.
        */
       this.send(conn.ws, { type: "joined", playerId: mine.id, roomId: code, token: "" });
-      // 대국 중에는 로비 방송이 없다 — 돌아온 사람에게 트랙표를 따로 다시 준다.
+      // 대국 중에는 로비 방송이 없다 — 돌아온 사람에게 트랙표·상세설정을 따로 다시 준다.
       this.broadcastRiichiBgm(room);
+      this.broadcastRoomRules(room);
       // 증강 테스트 방이면, 뷰·프롬프트 복원 전에 sandbox 패널 상태를 먼저 보낸다
       // (sandbox 메시지가 클라이언트에서 프롬프트를 초기화하므로 순서가 중요하다).
       mine.reconnect(conn.ws, room.sandbox ? () => this.sendSandboxState(room) : undefined);
@@ -3535,6 +3546,15 @@ export class RoomManager {
         this.broadcastLobby(room);
         return;
       }
+      case "setRoomRules": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        // 받은 값을 그대로 믿지 않는다 — 범위를 자르고 「1위 필요점수 > 시작점수」를
+        // 여기서 강제한다. 화면에서 막힌 값이 서버에서 조용히 통과하는 길을 열지 않는다.
+        room.rules = normalizeRoomRules(msg.rules, room.rules);
+        this.broadcastLobby(room); // 상세설정 방송이 이 안에 들어 있다
+
+        return;
+      }
       case "startGame": {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         if (!this.canStart(room)) {
@@ -3552,6 +3572,7 @@ export class RoomManager {
   private broadcastLobby(room: Room): void {
     if (room.phase !== "waiting") return;
     this.broadcastRiichiBgm(room); // 자리 구성이 바뀌면 트랙표도 같이 갱신된다
+    this.broadcastRoomRules(room); // 새로 앉은 사람도 이 방의 규칙을 봐야 한다
     // 좌석(방위)은 agents 배열의 **순서**다 — 0번이 첫 동가(친).
     const players: LobbyPlayerEntry[] = room.agents.map((a, seat) => {
       const isBot = this.isBot(a);
@@ -3617,6 +3638,18 @@ export class RoomManager {
     for (const a of room.agents) tracks[a.id] = room.riichiBgm.get(a.id) as number;
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.notify({ type: "riichiBgm", tracks });
+    }
+  }
+
+  /**
+   * 이 방의 상세설정을 사람 전원에게 보낸다.
+   *
+   * 대기실 메시지와 달리 **대국 중에도** 나간다 — 힌트 표시처럼 판이 도는 동안
+   * 화면이 계속 봐야 하는 항목이 들어 있다. 참가·변경·게임 시작 때 다시 보낸다.
+   */
+  private broadcastRoomRules(room: Room): void {
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) a.notify({ type: "roomRules", rules: room.rules });
     }
   }
 
@@ -5537,6 +5570,8 @@ export class RoomManager {
     if (this.shuttingDown) return;
     // 트랙표를 «판이 서기 직전» 한 번 더 고정해 보낸다 — 이 뒤로는 로비 방송이 없다.
     this.broadcastRiichiBgm(room);
+    // 상세설정도 같은 이유로 한 번 더 — 힌트 표시는 판이 도는 동안 화면이 쓰는 값이다.
+    this.broadcastRoomRules(room);
     room.phase = "playing";
     /*
      * 이 방 사람들이 «대국 중»이 됐다 — 친구 목록의 표시가 지금 바뀌어야 한다
@@ -5984,7 +6019,24 @@ export class RoomManager {
       // 이어하기는 **그 판이 시작될 때의 설정**을 파일에서 읽어 쓴다. 지금 코드가
       // 만드는 한 벌을 쓰면, 그 사이 규칙이 바뀐 경우 재개한 판이 시작할 때와
       // 다른 규칙으로 끝난다 — 점수가 조용히 달라진다.
-      ...(resume !== undefined ? resume.hanchan : hanchanConfigForMode(room.gameMode)),
+      ...(resume !== undefined
+        ? resume.hanchan
+        : {
+            ...hanchanConfigForMode(room.gameMode),
+            /*
+             * 방장이 대기실에서 고른 상세설정. 아무것도 안 만졌으면 기본값이라
+             * 종전 판과 한 글자도 다르지 않다.
+             *
+             * 이어하기(resume)에는 얹지 않는다 — 그 판이 시작될 때의 규칙이 파일에
+             * 남아 있고, 지금 방의 값으로 덮으면 재개한 판이 다른 규칙으로 끝난다.
+             */
+            startScore: room.rules.startScore,
+            returnScore: room.rules.returnScore,
+            dobi: room.rules.dobi,
+            redFivesPerSuit: room.rules.akaDora ? 1 : 0,
+            kuitan: room.rules.kuitan,
+            openHands: room.rules.openHands,
+          }),
       extraAugments: contentAugments,
       interRoundDelayMs: this.interRoundDelayMs,
       autoMoveDelayMs: AUTO_MOVE_MS,

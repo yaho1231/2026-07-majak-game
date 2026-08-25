@@ -366,6 +366,10 @@ export {
   RIICHI_BGM_SRCS,
   RIICHI_BGM_TRACKS,
   RIICHI_BGM_RANDOM,
+  DEFAULT_ROOM_RULES,
+  ROOM_SCORE_MIN,
+  ROOM_SCORE_MAX,
+  normalizeRoomRules,
 } from "./network/protocol.js";
 export type {
   VisibilityRule,
@@ -468,6 +472,9 @@ export type {
   AdminSetNoticeMessage,
   LobbyPlayerEntry,
   LobbyMessage,
+  RoomRules,
+  SetRoomRulesMessage,
+  RoomRulesMessage,
   StatsEntry,
   StatsMessage,
   LeaderboardEntry,
