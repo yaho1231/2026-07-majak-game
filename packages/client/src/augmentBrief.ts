@@ -79,16 +79,25 @@ export function forMode(text: string, mode: DisplayMode | null): string {
 
 export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   // 2026-08-04 6차 신규 8종
-  blind_ron: { use: "이번 국만", text: "이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다." },
+  blind_ron: {
+    use: "이번 국만",
+    text: "이 국의 모든 론이 네 명 중 무작위 한 명에게 청구된다. 반장전은 게임 내 1회 다시 장전한다.",
+  },
   cornucopia: { use: "획득 즉시", text: "무작위 증강 2개를 획득한다. 전원에게 공개된다." },
   dora_afterimage: { use: "2국에 1회", text: "직전 국의 도라가 되살아나 이번 국 내 도라로 겹쳐진다." },
   mirror_dora: { use: "상시", text: "도라 표시패의 앞 패도 나에게만 도라가 된다." },
   picky_eater: { use: "2국에 1회", text: "한 무늬만 12장 버리면 손패의 수패를 원하는 한 색으로 바꾼다." },
   soul_strike: { use: "2국에 1회", text: "리치(2판)를 걸고 혼자 연속 6쯔모. 그 사이 쯔모 화료는 일발." },
-  sign_flip: { use: "이번 국만", text: "이 국에는 내 점수의 부호가 뒤집힌다 — 쏘이면 오히려 받는다." },
+  sign_flip: {
+    use: "이번 국만",
+    text: "이 국에는 내 점수의 부호가 뒤집힌다 — 쏘이면 오히려 받는다. 반장전은 게임 내 1회 다시 장전한다.",
+  },
   // 2026-08-07 7차 신규
   joker: { use: "2국에 1회", text: "이번 국 손패의 백이 무엇이든 되는 만능패가 된다." },
-  time_pressure: { use: "이번 국만", text: "이 국에는 전원의 모든 결정이 5초 제한이다. 나도 포함이다." },
+  time_pressure: {
+    use: "이번 국만",
+    text: "이 국에는 전원의 모든 결정이 5초 제한이다. 나도 포함이다. 반장전은 게임 내 1회 다시 장전한다.",
+  },
   alchemist: { use: MODE_5_8, text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 사용 가능하다." },
   all_or_nothing: { use: "매 국 1회", text: "리치에 내 점수 절반을 건다. 이기면 그만큼 더 받고, 타가가 화료하면 절반을 잃는다." },
   always_tenpai: { use: "상시", text: "유국 때 늘 텐파이 취급 — 벌점을 안 내고 노텐인 상대마다 2,000점을 받는다." },
@@ -106,11 +115,17 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   broken_border: { use: "2국에 1회", text: "이번 국 슌쯔의 무늬 제한이 사라진다 — 2만·3통·4삭도 한 몸통." },
   broken_wall: { use: "상시", text: "슌쯔가 9에서 1로 이어진다 — 8-9-1, 9-1-2도 한 몸통." },
   call_seal: { use: MODE_1_2, text: "6순 동안 상대 셋이 치·퐁·대명깡을 하지 못한다." },
-  cliff_bloom: { use: "상시", text: "영상패를 직접 고른다. 한 국에 깡을 두 번 하면 그 자리에서 화료." },
+  cliff_bloom: {
+    use: "상시",
+    text: "영상패를 직접 고른다. 한 국에 깡을 두 번 하면 그 자리에서 화료(만개는 동풍전 1회 · 반장전 2회).",
+  },
   conjure_draw: { use: "매 국 1회", text: "손패 1장을 지목하면 다음 쯔모가 그 패의 복제로 온다." },
   counter: { use: "매 국 1회", text: "상대 리치에 추격 리치로 반격 — 공탁을 떠넘기고 일발을 지운다." },
   danger_sense: { use: "매 국 1회", text: "지금 버리면 방총이 되는 패가 무엇인지 나에게만 알려 준다." },
-  dead_wall_master: { use: "매 국 2회", text: "왕패 14장이 다 보이고, 국 첫 순에 왕패와 손패를 2장까지 바꾼다." },
+  dead_wall_master: {
+    use: "2국에 1회",
+    text: "왕패 14장이 다 보이고, 발동한 국 첫 순에 왕패와 손패를 2장까지 바꾼다.",
+  },
   devils_advance: { use: "게임 1회", text: "10,000점을 미리 받고, 만관 이상으로 화료하면 상대가 각 3,000점씩 빚을 갚는다." },
   die_hard: { use: MODE_1_2, text: "점수가 0 아래로 떨어지면 그 마이너스만큼 플러스로 되돌아온다." },
   disarm: { use: MODE_1_2, text: "상대 증강 하나를 골라 이번 국 동안 완전히 잠근다." },
@@ -133,11 +148,14 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   honba_hunter: { use: "상시", text: "나만 본장 1개당 추가 점수가 300점이 아니라 1,500점이 된다." },
   honor_return: { use: MODE_1_2, text: "이번 국에 버린 자패를 최대 4장까지 다음 국 배패로 되받는다." },
   hourglass: { use: "2국에 1회", text: "유국 때 내가 텐파이면 국이 안 끝나고 나 혼자 4장을 더 쯔모한다." },
-  invincible: { use: "2국에 1회", text: "이번 국 동안 내 버림패로는 아무도 론할 수 없다(창깡은 제외)." },
+  invincible: {
+    use: "2·3국에 1회",
+    text: "이번 국 동안 내 버림패로는 아무도 론할 수 없다(창깡은 제외). 쿨다운은 동풍전 2국 · 반장전 3국.",
+  },
   jackpot: { use: "매 국 1회", text: "국 첫 순에 룰렛을 돌려 그 국 점수에 0.5~3배를 곱한다." },
   karma: { use: MODE_1_2, text: "잃은 점수가 게이지로 쌓이고, 8,000 이상이면 태워 그만큼 뺏는다." },
   last_stand: { use: "매 국 1회", text: "내 리치를 취소한다. 냈던 리치봉도 돌려받는다." },
-  late_bloomer: { use: "상시(반장전)", text: "남4국에 들어서면 후리텐을 무시하고, 역이 없어도 화료한다." },
+  late_bloomer: { use: "상시(반장전)", text: "남3국에 들어서면 후리텐을 무시하고, 역이 없어도 화료한다." },
   late_bloomer_east: { use: "상시(동풍전)", text: "동4국에 들어서면 후리텐을 무시하고, 역이 없어도 화료한다." },
   late_double: { use: "상시", text: "7순까지 건 리치는 더블리치가 되고 +1판이 더 붙는다." },
   let_it_ride: { use: "상시", text: "연속으로 화료할수록 내 점수 배수가 오른다(최대 4배)." },

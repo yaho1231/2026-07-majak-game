@@ -59,9 +59,20 @@ function srcWithShared(dir: string, file: string): string {
   return parts.join("\n");
 }
 
+/**
+ * 이 폴더에서 **실제로 증강을 정의하는** 파일만 (125개 중 113개).
+ *
+ * 나머지 12개는 여러 증강이 나눠 쓰는 공용 배선 모듈이다(`shapeDeclare`·`preArmRecharge`
+ * ·`roundScope` …). 예전에는 `botHelpers.ts` 하나만 이름으로 제외했는데, 그러다 보니
+ * **옵션을 등록하는 공용 모듈이 새로 생기면 «정책 없는 액티브 증강»으로 잡혔다**
+ * (2026-08-25 `preArmRecharge.ts`). 그 모듈은 증강이 아니라 배선이고, 정책은 그것을
+ * 쓰는 증강 쪽에 있다 — 그리고 그쪽은 `srcWithShared`가 이미 함께 읽는다.
+ * 이름 목록을 늘리는 대신 «`defineAugment`를 부르는가»로 가른다.
+ */
 function augmentFiles(): string[] {
   return readdirSync(AUGMENTS_DIR)
-    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && f !== "botHelpers.ts");
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+    .filter((f) => readFileSync(join(AUGMENTS_DIR, f), "utf8").includes("defineAugment("));
 }
 
 describe("봇 액티브 증강 커버리지", () => {
