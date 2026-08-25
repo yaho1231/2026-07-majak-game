@@ -966,12 +966,17 @@ const RIICHI_BGM_SRCS = ["/richiBGM1.mp3", "/richiBGM2.mp3", "/richiBGM3.mp3", "
 // 특정 곡이 크거나 작으면 여기 값만 조정한다 (0~1+). SRCS와 길이·순서를 맞춘다.
 const RIICHI_BGM_GAIN = [1, 1, 1, 1];
 
+/** 트랙 수 — 설정 화면(선택 버튼)과 서버(랜덤 풀기)가 같은 수를 본다. */
+export const RIICHI_BGM_COUNT = RIICHI_BGM_SRCS.length;
+
 const riichiBgmEls: (HTMLAudioElement | null)[] = RIICHI_BGM_SRCS.map(() => null);
 // 이번 리치 구간에 "선택된" 트랙 인덱스 (-1 = 리치 구간 아님).
 // 재생 여부는 이 값과 볼륨으로 결정된다 → 볼륨 0으로 내렸다가 다시 올려도
 // 선택이 유지돼 곧바로 재개된다 (음소거가 곧 정지는 아니다).
 let riichiBgmCurrent = -1;
 let riichiBgmVolume = 0.5; // 0~1, 설정에서 동기화
+/** 미리듣기 중인 트랙 (-1 = 없음) — 로비에서 곡을 골라 들어 볼 때만 쓴다. */
+let riichiBgmPreview = -1;
 
 /**
  * 다음 리치에 쓸 트랙 — **미리 골라 미리 받아 둔다** (-1 = 아직 안 골랐다).
@@ -1056,10 +1061,13 @@ export const riichiBgm = {
    * 재생은 하지 않으므로 자동재생 정책과 무관하다. 이미 받아 둔 트랙은 건드리지
    * 않는다(load()를 다시 걸면 버퍼링이 처음부터 다시 시작된다).
    */
-  prepare(): void {
+  prepare(track?: number): void {
     if (typeof window === "undefined" || typeof Audio === "undefined") return;
     if (riichiBgmVolume <= 0) return; // 꺼 둔 사람에게 6MB를 미리 받게 하지 않는다
-    if (riichiBgmNext < 0 || riichiBgmNext === riichiBgmCurrent) {
+    // 트랙이 정해져 있으면(내가 고른 곡) 그것을 받아 둔다 — 내 리치가 가장 잦다.
+    if (track !== undefined && track >= 0 && track < RIICHI_BGM_SRCS.length) {
+      riichiBgmNext = track;
+    } else if (riichiBgmNext < 0 || riichiBgmNext === riichiBgmCurrent) {
       riichiBgmNext = riichiBgmPick();
     }
     const i = riichiBgmNext;
@@ -1075,16 +1083,20 @@ export const riichiBgm = {
    * 이미 다른 트랙이 흐르는 중이면(연속 리치) 그것과 다른 트랙으로 갈아끼운다.
    * 볼륨이 0이어도 트랙 선택은 해 둔다 → 도중에 볼륨을 올리면 바로 재생된다.
    */
-  start(): void {
+  start(track?: number): void {
     if (typeof window === "undefined") return;
     bgmSetDucked(true); // 평상시 BGM은 리치 동안 비켜준다
     riichiBgmEndFade(); // 페이드 중 새 리치가 오면 즉시 마무리하고 새 곡으로
     // prepare()가 골라 둔 것이 있으면 그것을 쓴다 — 이미 버퍼에 들어와 있어
     // 컷인과 같은 순간에 소리가 난다. 없으면(준비 전 리치) 그 자리에서 고른다.
+    // 트랙이 지정되면(선언자가 로비에서 고른 곡) 그것을 그대로 쓴다 — 네 사람이
+    // 같은 곡을 들어야 하므로 여기서 무작위로 갈지 않는다.
     const next =
-      riichiBgmNext >= 0 && riichiBgmNext !== riichiBgmCurrent
-        ? riichiBgmNext
-        : riichiBgmPick();
+      track !== undefined && track >= 0 && track < RIICHI_BGM_SRCS.length
+        ? track
+        : riichiBgmNext >= 0 && riichiBgmNext !== riichiBgmCurrent
+          ? riichiBgmNext
+          : riichiBgmPick();
     // 이전 곡 완전 정지(되감기) 후 새 곡으로 전환
     if (riichiBgmCurrent >= 0) {
       const prev = riichiBgmEls[riichiBgmCurrent];
@@ -1149,6 +1161,45 @@ export const riichiBgm = {
       }
     }
     riichiBgmCurrent = -1;
+  },
+
+  /**
+   * **미리듣기** — 로비에서 고른 곡을 그 자리에서 들어 본다.
+   *
+   * 리치 구간 재생과 같은 엘리먼트를 쓰되 루프하지 않고, 볼륨이 0이어도(설정에서
+   * 꺼 둔 사람이 곡만 확인하는 경우) 들리도록 최소 볼륨을 보장한다.
+   */
+  preview(i: number): void {
+    if (typeof window === "undefined") return;
+    if (i < 0 || i >= RIICHI_BGM_SRCS.length) return;
+    riichiBgm.previewStop();
+    const el = riichiBgmAudio(i);
+    if (el === null) return;
+    el.loop = false;
+    el.volume = Math.max(0.3, riichiBgmVolume) * (RIICHI_BGM_GAIN[i] ?? 1);
+    el.currentTime = 0;
+    riichiBgmPreview = i;
+    void el.play().catch(() => {
+      /* 재생 거부·로드 실패 무시 */
+    });
+  },
+
+  /** 미리듣기 정지 — 루프 설정을 되돌려 리치 재생에 영향이 남지 않게 한다. */
+  previewStop(): void {
+    if (riichiBgmPreview < 0) return;
+    const el = riichiBgmEls[riichiBgmPreview];
+    riichiBgmPreview = -1;
+    if (el == null) return;
+    el.pause();
+    el.currentTime = 0;
+    el.loop = true;
+    const i = riichiBgmEls.indexOf(el);
+    el.volume = riichiBgmVolume * (RIICHI_BGM_GAIN[i] ?? 1);
+  },
+
+  /** 지금 미리듣기 중인 트랙 (-1 = 없음). */
+  previewing(): number {
+    return riichiBgmPreview;
   },
 
   /**

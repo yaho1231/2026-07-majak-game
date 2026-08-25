@@ -6769,6 +6769,51 @@ button {
   cursor: pointer;
 }
 
+/* 리치 브금 고르기 — 설명 아래로 버튼 줄이 내려가 좁은 화면에서도 접히지 않는다 */
+.settings-row-bgm {
+  flex-direction: column;
+  align-items: stretch;
+  cursor: default;
+}
+
+.bgm-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bgm-pick-cell {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.bgm-pick,
+.bgm-play {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.bgm-play {
+  padding: 6px 9px;
+}
+
+.bgm-pick:hover,
+.bgm-play:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.bgm-pick-on {
+  background: rgba(120, 200, 255, 0.28);
+  border-color: rgba(120, 200, 255, 0.7);
+  font-weight: 700;
+}
+
 /* 헤더 밑줄과 첫 항목의 윗줄이 겹쳐 두 줄로 보이지 않게 */
 .settings-body > .settings-row:first-child {
   border-top: none;

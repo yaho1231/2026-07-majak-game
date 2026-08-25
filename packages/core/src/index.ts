@@ -357,7 +357,15 @@ export {
 } from "./information/PlayerView.js";
 
 // 정형구 — 목록과 검증을 클라이언트·서버가 **한 벌로** 공유한다.
-export { EMOTES, isEmoteId, NOTICE_TITLE_MAX, NOTICE_BODY_MAX, INVITE_COOLDOWN_MS } from "./network/protocol.js";
+export {
+  EMOTES,
+  isEmoteId,
+  NOTICE_TITLE_MAX,
+  NOTICE_BODY_MAX,
+  INVITE_COOLDOWN_MS,
+  RIICHI_BGM_TRACKS,
+  RIICHI_BGM_RANDOM,
+} from "./network/protocol.js";
 export type {
   VisibilityRule,
   PeekVisibility,
