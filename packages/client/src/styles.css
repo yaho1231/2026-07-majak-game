@@ -1663,6 +1663,11 @@ button {
   font-weight: 700;
   letter-spacing: 0.4px;
   animation: none;
+  /* 네 글자짜리 배지는 **절대 접히면 안 된다.** 폰 세로의 좁은 이름표 칩(폭 117px,
+     높이 30px 한 줄)에서 이 배지가 "선/언/대/기" 3줄(실측 22×54px)로 접히면서 남은
+     폭을 전부 가져가, 바로 옆 `.np-name` 이 **폭 0px** 로 눌려 이름이 통째로
+     사라졌다(375×700 실측). 누가 론을 기다리는지 알려주려다 누구인지를 지운 셈이다. */
+  white-space: nowrap;
   cursor: help;
 }
 
@@ -1673,6 +1678,18 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 점수 — 이름표 칩에서 상대 점수를 읽는 길.
+   중앙 패널의 점수판은 마작 탁자 방향이라 맞은편 180°·좌우 90° 로 누워 있다.
+   그건 관습이라 그대로 두되(회전을 없애지 않는다), 폰을 뒤집지 않고도 읽을 곳이
+   하나는 있어야 한다 — 그 자리가 여기다. 이름 바로 뒤에 서서 "누가 얼마"를 한 눈에 준다. */
+.np-score {
+  font-weight: 700;
+  color: #cfc4a6;
+  /* 점수는 매 국 바뀐다 — 자릿수가 흔들리면 이름표 폭이 같이 흔들린다 */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* 봇 성향 — 이름 옆에 붙는 작은 표식. 이름보다 약하게 두어 순서가 뒤집히지 않게 한다 */
@@ -8587,6 +8604,10 @@ button {
    * 그래서 넷 중 하나를 접는다 — 좌·우 상대의 이름표는 좁은 화면에서 이미 접혀
    * 있으므로 맞은편도 같이 접는 것이 일관된다(상대의 증강은 📜 기록에서 본다).
    * 그 대가로 위 띠가 30px 이 되어 보드가 살아난다(740×360: 패널 69→82px).
+   *
+   * ⚠ 위 문단의 «접는다»는 2026-08-25 QA §1 에서 **되돌렸다.** 아래 이름표 규칙을
+   *   보라 — 접는 대신 **얇은 알약으로 줄여서** 셋 다 살렸다. 위 띠 30px 과
+   *   `--top-side-reserve: 250px` 은 그대로다(보드는 한 픽셀도 안 줄었다).
    */
   .opp-strip-top {
     top: var(--chrome-top);
@@ -8598,7 +8619,123 @@ button {
        (740×360 실측 75%). 뒷패 13장은 ≈230px 이라 이 예산 안에 들어온다. */
     --top-side-reserve: 250px;
   }
-  .opp-strip-top .nameplate { display: none; }
+  /*
+   * ── 상대 셋의 «누구인가 + 무슨 증강인가»를 판 위로 되살린다 (2026-08-25 QA §1) ──
+   *
+   * 그전까지 폰 가로에서는 상대 3명의 이름표가 **전부** `display: none` 이었다:
+   * 좌·우는 `max-width: 900px` 블록이, 맞은편은 바로 위 문단이 각각 접었다. 각
+   * 결정은 국소적으로 타당했는데 합치면 **상대 증강 정보가 0** 이 된다 — 대체 통로로
+   * 적어 둔 📜 기록 버튼은 증강이 한 번 발동해야 나타나므로 판 시작 시점에는 경로
+   * 자체가 없다. 증강이 승부를 가르는 룰에서 이건 치명적이다.
+   *
+   * 폰 «세로»가 같은 문제를 이미 푼 방식을 그대로 쓴다(§9-1-d ①): 이름표를 **얇은
+   * 알약**으로 줄여 이름 + 증강 **계열 이모지**만 남기고, 봇 성향·증강 이름·상태 칩은
+   * pill 을 눌러 툴팁으로 본다(`.aug-pill` 은 `tabindex=0` + 눌러서 고정).
+   *
+   * 세로와 다른 점은 **자리를 어디서 내느냐**다. 세로는 위 띠를 두껍게 만들 수 있었지만
+   * 가로는 세로가 360px 뿐이라 위 띠를 1px 도 못 늘린다(740×360 실측: 보드가 이미
+   * 화면의 11~16%다). 그래서 **띠를 안 건드린다**:
+   *   · 맞은편 — 뒷패 줄과 **같은 줄에** 붙인다. 줄은 22px 짜리 알약보다 높지 않으므로
+   *     위 띠(--chrome-top + 30px)는 그대로다. 폭만 예산 안에 들어오면 된다(아래 참고).
+   *   · 좌·우 — 세로줄 위에 얹는다. 줄은 화면 세로 한가운데 정렬이라 알약 22px 만큼
+   *     위아래로 11px 씩 자랄 뿐이고, 폭은 **판 옆의 빈 자리**를 쓴다(667×375 실측:
+   *     보드 왼끝이 x=234, 세로줄은 x=6 — 그 사이 228px 가 통째로 비어 있었다).
+   *     그 자리를 쓰려고 `align-items` 를 가장자리 쪽으로 바꾼다 — 가운데 정렬 그대로
+   *     두면 알약이 넓어진 만큼 뒷패 줄이 판 쪽으로 67px 밀려 들어간다.
+   *
+   * 맞은편 알약의 폭 상한 근거(줄이 가운데 정렬이므로 오른쪽 끝만 보면 된다):
+   *     줄 오른끝 = 50cqw + 줄폭/2 ≤ 우상단 아이콘 줄 왼끝(100cqw - 202px)
+   *   뒷패 13장이 ≈190px 이므로 알약은 `50cqw - 260px` 까지 쓸 수 있다
+   *   (667 → 73px · 740 → 110px · 844 → 162px). 160px 에서 한 번 더 자른다 —
+   *   그 위로는 알약이 커져도 읽히는 정보가 늘지 않는다.
+   */
+  .opp-strip-left .nameplate,
+  .opp-strip-right .nameplate {
+    display: flex;
+    max-width: min(150px, 24cqw);
+  }
+  .opp-strip-top .nameplate {
+    display: flex;
+    max-width: clamp(0px, calc(50cqw - 260px), 160px);
+  }
+  /* 뒷패 줄은 화면 가장자리에 그대로 두고, 넓어진 알약만 판 옆 빈 자리로 뻗게 한다 */
+  .opp-strip-left { align-items: flex-start; }
+  .opp-strip-right { align-items: flex-end; }
+
+  .opp-strip-left .nameplate,
+  .opp-strip-top .nameplate,
+  .opp-strip-right .nameplate {
+    /* 높이를 못 박는다 — 상태(차례·잠금)에 따라 내용이 늘어도 줄이 두꺼워지면 안 된다.
+       위 띠(--chrome-top + 30px)가 이 값을 전제로 계산돼 있다. */
+    height: 22px;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    overflow: hidden;
+    /* 넘치는 자리를 흐리게 — 그냥 자르면 이모지가 반만 남아 «깨진 것»처럼 보인다 */
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent);
+  }
+  /* 한 줄에 들어가려면 글자를 덜어야 한다. 남기는 것: 이름 + 증강 **계열 이모지**.
+     덜어내는 것: 봇 성향, 증강 이름, 상태 칩 — 전부 눌러서 툴팁으로 볼 수 있다. */
+  .opp-strip-left .nameplate .np-arch,
+  .opp-strip-top .nameplate .np-arch,
+  .opp-strip-right .nameplate .np-arch,
+  .opp-strip-left .nameplate .aug-pill-name,
+  .opp-strip-top .nameplate .aug-pill-name,
+  .opp-strip-right .nameplate .aug-pill-name,
+  .opp-strip-left .nameplate .aug-pill-chip,
+  .opp-strip-top .nameplate .aug-pill-chip,
+  .opp-strip-right .nameplate .aug-pill-chip {
+    display: none;
+  }
+  .opp-strip-left .nameplate .np-name,
+  .opp-strip-top .nameplate .np-name,
+  .opp-strip-right .nameplate .np-name {
+    max-width: 46px;
+    font-size: 11px;
+  }
+  .opp-strip-left .nameplate .np-turn,
+  .opp-strip-top .nameplate .np-turn,
+  .opp-strip-right .nameplate .np-turn {
+    padding: 0 5px;
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+  .opp-strip-left .nameplate .np-augs,
+  .opp-strip-top .nameplate .np-augs,
+  .opp-strip-right .nameplate .np-augs {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  .opp-strip-left .nameplate .aug-pill,
+  .opp-strip-top .nameplate .aug-pill,
+  .opp-strip-right .nameplate .aug-pill {
+    min-height: 18px;
+    padding: 1px 4px;
+    font-size: 11px;
+  }
+  /*
+   * ⚠ 잘라 두면 **증강 설명 툴팁까지 잘린다** — `.aug-tip` 은 `.aug-pill`(relative)
+   *   안의 절대배치라 조상의 `overflow: hidden` 에 함께 걸린다(§9-1-d 가 세로에서
+   *   겪은 사고 그대로다). 이 알약은 «눌러서 읽는다»가 전제이므로 치명적이다.
+   *   그래서 **읽으려고 연 순간에만** 그 알약의 넘침을 풀고 위로 올려 세운다.
+   */
+  .opp-strip-left .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-top .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill-pinned),
+  .opp-strip-top .nameplate:has(.aug-pill-pinned),
+  .opp-strip-right .nameplate:has(.aug-pill-pinned) {
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
+    z-index: 82;
+  }
   /* 뒷패 한 줄뿐이라 위 띠도 얇다 (740×360 실측 아래끝 = --chrome-top + 22px) */
   .game-root,
   .table { --top-band: calc(var(--chrome-top) + 30px); }
@@ -15093,9 +15230,16 @@ body.peeking .overlay-peekable > * {
      * 안 그리기만 한다 — DOM 에는 남으므로 위 ③의 `:has(.rotate-hint)` 는 그대로
      * 걸려 `--rotate-band` 가 유지된다. 창이 닫히는 순간 보드가 덜컹거리지 않는다.
      * (같은 이유·같은 방식으로 걷는 것들: `.emote-bar`·`.game-notice-float`.)
+     *
+     * ⚠ 선택자가 `body:has(...)` 인데 뒤에 `.game-root` 를 한 칸 더 붙이는 이유가 둘 있다:
+     *   ① 전체 화면 창들은 **body 직속 포털**이라(FIXED_SURFACE_NOTE) `.game-root:has(.overlay)`
+     *      로는 안 잡힌다 — 실제로 그렇게 썼다가 안 먹었다(2026-08-25 webkit 실측).
+     *   ② 위 ①의 `.game-root:has(.table) .rotate-hint` 가 특정도 (0,3,0)이라
+     *      `body:has(.overlay) .rotate-hint`(0,2,1)를 이겨 버린다. 한 칸 더 붙여
+     *      (0,3,1)로 올려야 `display:flex` 를 덮는다.
      */
-    .game-root:has(.overlay) .rotate-hint,
-    .game-root:has(.rinshan-pick-overlay) .rotate-hint {
+    body:has(.overlay) .game-root .rotate-hint,
+    body:has(.rinshan-pick-overlay) .game-root .rotate-hint {
       display: none;
     }
 
