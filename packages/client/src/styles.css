@@ -16369,10 +16369,32 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
     --board-floor: 150px;
     --own-gutter: 8px;
     --top-gutter: 8px;
-    /* 액션 바(치·펑)가 내 바닥을 덮지 않게 비워 두는 자리.
-       내역: 버튼 44(터치 목표) + 바 패딩 10 + `.own-area` 줄 간격 5 + 여유 1 = 60.
-       폰에서 바를 한 줄로 좁혔으므로 68 → 60. */
-    --own-reserve: 60px;
+    /*
+     * 액션 바(치·펑)가 **내 버림패**를 덮지 않게 비워 두는 자리.
+     *
+     * ⚠ 이 값은 «바 한 줄» 어림이었다(44 + 패딩 10 + 줄 간격 5 + 여유 1 = 60).
+     * 실제로는 두 군데서 모자랐다(2026-08-25 실측, 6개 = 치3+퐁+깡+패스):
+     *   · 한 줄이어도 6~7px 모자랐다 — 바 아래에 **타이머 줄(5px + 간격 5)** 이 하나
+     *     더 붙는 것을 안 셌다. 360×640 알약 1~3개: 바 [401,457] × 내 강 [336,408]
+     *     = 105×7 겹침. 375×700 도 33px 겹쳤다.
+     *   · 4개부터는 바가 **두 줄로 접혀**(`flex-wrap: wrap`) 105px 이 된다 —
+     *     360×640: 105×56, 375×700: 113×78 만큼 내 강을 물었다. 하필 후리텐을
+     *     판단하려면 내 강을 봐야 하는 순간이다.
+     *
+     * 알약을 더 줄여서 한 줄에 넣을 수는 없다: 치 세 벌은 «어느 패로 치느냐»가
+     * 정보라 미니 패 두 장을 못 뗀다(알약 하나가 87px), 6개면 568px 이라 폰 폭을
+     * 넘는다. 높이도 44px 터치 목표가 바닥이다. 그러니 **판이 비켜야 한다.**
+     *
+     * 그래서 하한(76px = 한 줄 + 타이머 실측)은 못 박아 두고, 그보다 두꺼워지는
+     * 경우에만 OwnArea 가 실측해 올려 주는 값을 따라간다.
+     * `--own-band-full` 은 «잠깐 뜨는 줄까지 포함한» 띠, `--own-band` 는 «그 줄들을
+     * 뺀» 띠다 — 차가 곧 지금 떠 있는 액션 바 + 타이머의 높이다(App.tsx OwnArea).
+     *
+     * 판이 출렁이지 않느냐: **흔한 쪽은 안 움직인다.** 알약이 없을 때와 1~3개일 때가
+     * 똑같이 하한 76px 이다(실측: 없을 때 차이 0~4px, 1~3개 76px). 두 줄로 접히는
+     * 드문 순간에만 보드가 그만큼 줄었다 돌아온다 — 그 대신 내 강이 안 가려진다.
+     */
+    --own-reserve: max(76px, calc(var(--own-band-full, 0px) - var(--own-band, 0px)));
   }
 
   /* ① 상대 셋을 위쪽 한 줄로 ─────────────────────────────
@@ -16682,12 +16704,25 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   .own-area > .action-bar {
     position: absolute;
     left: max(52px, calc(env(safe-area-inset-left, 0px) + 52px));
-    bottom: calc(var(--own-rail-h, 64px) + 6px);
+    /* 여유 6 → 20px (2026-08-25 실측 후속).
+       `--own-rail-h` 는 레일의 `offsetHeight`, 즉 **상자 높이**다. 그런데 손패는
+       상자 안에서 가만히 있지 않는다 — 고른 패(`.hand-armed`)와 방금 쯔모한 패는
+       위로 **14px 들려** 상자 밖으로 나온다(740×360 실측: 상자 위끝 290, 들린 패
+       위끝 283 = 297에서 14px). 그래서 「6px 떴다」던 알약 줄 아래끝(290)이 실제로는
+       들린 패를 7px 물었고, 패를 골랐다 놨다 할 때마다 겹침이 붙었다 떨어졌다 했다
+       (신고: 283↔294 로 흔들린다).
+       측정을 고치는 쪽(레일의 시각적 위끝을 재기)은 되먹임이 는다 — 들린 패는
+       `transform` 이라 `getBoundingClientRect` 로 재야 하고, 그러면 «고를 때마다»
+       띠 변수가 바뀌어 알약 줄이 손가락 밑에서 움직인다. 들림은 14px 로 못 박힌
+       값이므로 여유로 흡수하는 편이 조용하다: 6 + 14 = 20px. */
+    bottom: calc(var(--own-rail-h, 64px) + 20px);
     flex-direction: column;
     flex-wrap: wrap;
     align-items: stretch;
     align-content: flex-start;
-    max-height: calc(100cqh - var(--own-rail-h, 64px) - 80px);
+    /* 80 → 94: 아래끝이 위 주석대로 14px 올라갔으므로, 상한을 그대로 두면 위끝도
+       14px 만큼 상대 이름표 줄 쪽으로 더 자란다. 같은 값을 빼서 위끝은 제자리에 둔다. */
+    max-height: calc(100cqh - var(--own-rail-h, 64px) - 94px);
     max-width: none;
     gap: 4px;
     padding: 5px 6px;
