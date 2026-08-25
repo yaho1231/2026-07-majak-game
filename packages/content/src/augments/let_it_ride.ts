@@ -7,8 +7,9 @@
  *
  * - 연속 화료할 때마다 내 획득 배수가 오른다: 1번째 화료 **1배**, 2연속 **2배**,
  *   3연속 **3배**, 4연속 이상 **4배**(상한).
- * - 내가 방총하거나 유국이면 연승이 초기화되어 다음 화료는 다시 1배부터 시작한다
- *   (스택 소멸은 페널티가 아니라 자연 초기화다 — 잃는 점수는 하나도 없다).
+ * - 내가 방총하거나, 유국이거나, **상대가 론으로 화료하면** 연승이 초기화되어 다음
+ *   화료는 다시 1배부터 시작한다. 상대의 **쯔모는 연승을 끊지 않는다**.
+ *   (스택 소멸은 페널티가 아니라 자연 초기화다 — 잃는 점수는 하나도 없다.)
  * - 현재 연승 단계와 **다음 화료의 배수**를 전원 공개 뷰 채널에 싣는다 —
  *   "쟤 지금 3배다"가 그대로 테이블의 긴장이 된다.
  *
@@ -71,7 +72,7 @@ export const letItRide: AugmentDef = defineAugment({
   description:
     "(상시) 연속으로 화료할수록 **손의 점수**에 붙는 배수가 오른다 — 1배·2배·3배, 4연속 이상은 4배. 본장·공탁은 대상이 아니다.",
   detail:
-    "(상시) 본장 보너스(1본당 300)와 회수하는 리치봉(공탁)은 배수 없이 원래 액수 그대로 들어온다. 내가 방총하거나 유국이면 연승이 초기화되지만 잃는 점수는 없고, 상대의 쯔모는 연승을 끊지 않는다. 지금 몇 배인지는 전원에게 공개된다.",
+    "(상시) 본장 보너스(1본당 300)와 회수하는 리치봉(공탁)은 배수 없이 원래 액수 그대로 들어온다. 내가 방총하거나, 유국이거나, **상대가 론으로 화료하면** 연승이 초기화되지만 잃는 점수는 없다. 상대의 **쯔모는 연승을 끊지 않는다**. 지금 몇 배인지는 전원에게 공개된다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -112,12 +113,26 @@ export const letItRide: AugmentDef = defineAugment({
       const p = event.payload as RoundSettledPayload;
       const streak = counterOf(rc.state, streakKey(holder));
       const won = (p.winInfos ?? []).some((w) => w.winner === holder);
+      /*
+       * **연승을 끊는 것** (2026-08-25 사용자 지시):
+       *  - 내가 방총했다 (`from === holder`)
+       *  - 유국·도중유국 — 화료로 끝나지 않은 국은 전부
+       *  - **상대가 나보다 먼저 론으로 화료했다** — 내가 쏘지 않았어도 남의 론은 끊는다.
+       *
+       * 끊지 않는 것: **상대의 쯔모**. 아무도 손대지 않은 채 상대가 스스로 완성한 국은
+       * 내 연승과 무관하다(사용자 확정).
+       *
+       * 예전에는 "내가 방총 || 화료 없음"만 봤다. 그래서 옆에서 남이 남을 쏴 국이
+       * 끝나도 4배 스택이 그대로 살아남았고, 그 부분이 카드가 광고하는 「연속 화료」와
+       * 어긋났다. 도중유국(abort)만 빠져나가던 더 이른 버그는 2026-07-29에 고쳤다.
+       */
       const dealtIn = (p.winInfos ?? []).some((w) => w.from === holder);
+      const opponentRon = (p.winInfos ?? []).some(
+        (w) => w.winner !== holder && w.winType === "ron",
+      );
       let next = streak;
       if (p.outcome === "win" && won) next = streak + 1;
-      // 화료로 이어지지 않은 국은 전부 초기화 — 예전에는 도중유국(abort)만 빠져나가
-      // 구종구패 한 번으로 4배 스택이 그대로 살아남았다(2026-07-29 감사).
-      else if (p.outcome !== "win" || dealtIn) next = 0;
+      else if (p.outcome !== "win" || dealtIn || opponentRon) next = 0;
       if (next !== streak) rc.emit(augmentDataSet(streakKey(holder), next));
       if (!viewIsCurrent(rc.state, holder, next)) {
         rc.emit(augmentDataSet(rideViewKey(holder), viewValue(next)));

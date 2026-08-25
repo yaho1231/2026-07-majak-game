@@ -969,7 +969,18 @@ const RIICHI_BGM_SRCS: readonly string[] = RIICHI_BGM_TRACK_SRCS;
 // 트랙별 상대 음량 배율 — 곡마다 녹음 레벨이 달라 "적절한 크기"로 맞추는 보정값.
 // 특정 곡이 크거나 작으면 그 곡의 경로에 값을 적는다 (0~1+). 안 적은 곡은 1이다
 // — 곡을 늘릴 때 이 표를 같이 늘리는 것을 잊어도 소리가 사라지지 않게 경로로 건다.
-const RIICHI_BGM_GAIN_BY_SRC: Record<string, number> = {};
+const RIICHI_BGM_GAIN_BY_SRC: Record<string, number> = {
+  // 2026-08-25 실측(ffmpeg loudnorm, integrated LUFS)을 **가장 조용한 곡(1번)에**
+  // 맞춘 값이다 — 곡을 바꿀 때마다 볼륨을 다시 만지지 않게. 새 곡을 넣으면 같은
+  // 방법으로 재 보고 한 줄 더한다(안 적으면 1배 = 원본 그대로).
+  "/richiBGM2.mp3": 0.85, // -13.24 LUFS
+  "/richiBGM3.mp3": 0.87, // -13.51
+  "/richiBGM4.mp3": 0.93, // -14.08
+  "/richiBGM5.mp3": 0.89, // -13.67
+  "/richiBGM6.mp3": 0.84, // -13.29
+  "/richiBGM7.mp3": 0.78, // -12.49 — 가장 큰 곡
+  "/richiBGM8.mp3": 0.96, // -14.31
+};
 const RIICHI_BGM_GAIN: readonly number[] = RIICHI_BGM_SRCS.map(
   (src) => RIICHI_BGM_GAIN_BY_SRC[src] ?? 1,
 );

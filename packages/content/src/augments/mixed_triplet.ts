@@ -19,6 +19,12 @@
  * 이미 쓰는 규칙을 슌쯔(mixedRuns) 없이 커쯔에만 적용한 셈이다 — decompose.extractSets가
  * 혼색 커쯔 후보를 만들고, scoringOptionsOf가 화료·텐파이·대기·후로 판정에 같은 옵션을 흘린다.
  *
+ * ## 머리(작두)도 무늬를 안 가린다 (2026-08-25 사용자 보고)
+ * 커쯔만 열고 머리를 닫아 두면 **샹퐁 대기가 통째로 사라진다** — 7만7통7통·1통1삭·
+ * 5만5삭(+후로 2)은 777 커쯔 + 111 커쯔 + 55 머리인데, 머리가 혼색이라 텐파이가
+ * 안 잡혔다. `decompose.normalizeOptions`가 `mixedTriplets` → `mixedPairs`를 함께
+ * 켜서 화료·텐파이·대기가 한 규칙으로 움직인다.
+ *
  * ⚠ 무늬를 요구하는 커쯔 역(삼색동각)은 standardYaku의 `isPureTriplet` 가드가
  *    혼색 커쯔를 걸러낸다. 클라 waitDecompOptions도 이 옵션을 미러링해야 대기 표시가 맞다.
  */

@@ -30,7 +30,6 @@
  */
 
 import {
-  TILE_DRAWN,
   WALL,
   augmentDataSet,
   defineAugment,
@@ -52,7 +51,14 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, roundKey, roundViewKey, scaledUses, statePrng, viewKey } from "../util.js";
+import {
+  counterOf,
+  publishUsesLeft,
+  roundKey,
+  roundViewKey,
+  scaledUses,
+  statePrng,
+} from "../util.js";
 import { handAlteredKey } from "./handAltered.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
@@ -75,8 +81,6 @@ type NumSuit = (typeof SUITS)[number];
 const usedKey = (h: PlayerId): string => `${ID}:used:${h}`;
 /** 마지막으로 사용한 '턴'의 서명 (한 턴에 한 번만 쓰게 막는다) */
 const turnUsedKey = (h: PlayerId): string => `${ID}:turn:${h}`;
-/** 남은 횟수를 보유자 화면에 노출하는 채널 — 게임 스코프라 국 스코프 키를 쓰지 않는다. */
-const leftViewKey = (h: PlayerId): string => viewKey(h, `${ID}:left`);
 /**
  * 전원 공개: 이번 국에 무엇을 무엇으로 바꿨는가 ("man3→pin3").
  *
@@ -201,8 +205,6 @@ const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
       augmentDataSet(usedKey(req.player), counterOf(state, usedKey(req.player)) + 1),
       // 이번 턴에 썼음을 기록 → 같은 턴 재사용 차단 (버림으로 턴이 넘어가면 자동 해제)
       augmentDataSet(turnUsedKey(req.player), currentTurnSig(state, req.player)),
-      // 남은 횟수 갱신 (위 usedKey 증가를 반영해 -1)
-      augmentDataSet(leftViewKey(req.player), usesLeft(state, req.player) - 1),
       // 전원 공개 — 무엇이 무엇으로 물들었는지. 문자열이라 클라이언트 폴백이 그대로 읽는다.
       augmentDataSet(
         revealViewKey(req.player),
@@ -229,13 +231,20 @@ export const tileDyeing: AugmentDef = defineAugment({
       engine.actions.register(dyeAction);
     }
 
-    // 남은 횟수 채널 동기화 — 연금술사와 같은 이유로 ROUND_STARTED가 아니라 쯔모에 건다
-    // (게임 시작 드래프트는 1국 배패 뒤에 설치돼 첫 국 내내 채널이 비어 버린다).
-    ctx.reaction(TILE_DRAWN, (_event, rc) => {
-      const left = usesLeft(rc.state, holder);
-      if (rc.state.augmentData[leftViewKey(holder)] === left) return;
-      rc.emit(augmentDataSet(leftViewKey(holder), left));
-    });
+    /*
+     * 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+     *
+     * 예전에는 이 증강만 쓰는 `tile_dyeing:left`에 **숫자 하나**를 실었고, 동기화도
+     * 쯔모(TILE_DRAWN) 한 이벤트에만 걸려 있었다. 그래서 클라이언트가 총 횟수를 모르니
+     * 게이지도 "N회 중 n회 남음" 문구도 못 그렸고, 발동 직후(자기 이벤트)에는 값이
+     * 다음 쯔모까지 그대로 서 있었다 — 연금술사가 2026-08-17에 같은 이유로 버린 구조다.
+     * 공용 `publishUsesLeft`는 모든 이벤트에서 값이 달라질 때만 `{left,total,scope}`를
+     * 발행하므로 두 문제가 함께 사라진다.
+     */
+    publishUsesLeft(ctx, (state) => ({
+      left: usesLeft(state, holder),
+      total: maxUses(state),
+    }));
 
     ctx.holderTurnOptions((state) => {
       if (counterOf(state, usedKey(holder)) >= maxUses(state)) return [];

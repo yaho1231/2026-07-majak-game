@@ -605,6 +605,21 @@ export function armedNow(
 }
 
 /**
+ * 이 증강이 **선발동형인가** — `armOnNextRound` 배선을 실제로 쓰고 있는가.
+ *
+ * 판정은 그 배선이 남기는 «켜진 국» 표식의 존재로 한다. 표식은 획득 뒤 처음 시작되는
+ * 국에 굳고 게임이 끝날 때까지 남으므로, 한 국이라도 지난 뒤라면 확실히 잡힌다.
+ * (재장전이 «되살릴 것이 있는가»를 판정할 때 쓴다 — 선발동형도 복구 대상이다.)
+ */
+export function preArmInstalled(
+  state: GameState,
+  augmentId: string,
+  holder: PlayerId,
+): boolean {
+  return state.augmentData[armedRoundKey(augmentId, holder)] !== undefined;
+}
+
+/**
  * 선발동형이 **이미 다 타 버렸는가** — 켜졌던 국이 지나갔다.
  *
  * `armOnNextRound`가 그 사실을 공개 채널(`spentViewKey`)에 굳히므로 그것만 보면 된다.

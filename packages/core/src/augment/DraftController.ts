@@ -169,7 +169,7 @@ export class DraftController {
   /**
    * 이 스테이지·플레이어에게 제외할 증강 id
    * (보유 ∪ 스테이지/모드 부적합 ∪ 보유 증강과 상호 배제(conflicts) 관계
-   *  ∪ 첫 드래프트에 너무 어려운 것).
+   *  ∪ 첫 드래프트에 너무 어려운 것 ∪ 보유 상황 전제 불충족(`draftRequires`)).
    */
   private excludeFor(stage: DraftStage, player: PlayerId): Set<string> {
     const state = this.engine.state;
@@ -187,6 +187,19 @@ export class DraftController {
 
     for (const def of this.catalog.all()) {
       if (!this.offerable(def, stage) || this.tooHardForFirstDraft(def, stage)) {
+        exclude.add(def.id);
+        continue;
+      }
+      /*
+       * 보유 상황 전제(`draftRequires`) — 지금 이 사람에게 값이 서지 않는 카드는 뺀다.
+       *
+       * `offerable`(스테이지·모드)과 갈라 둔 이유: 저쪽은 **국 중에 변하지 않아** 칸
+       * 계산(`cellFor`)에 쓸 수 있는데(그 함수 주석), 이쪽은 사람마다·시점마다 달라진다.
+       * 칸 크기 계산에 섞으면 좌석마다 칸이 달라져 «서로 소» 불변식이 무너진다.
+       * 그래서 여기(좌석별 제외 목록)에만 얹는다 — 스테이지 시작에 한 번 굳는 스냅샷이라
+       * pick 검증(«제시된 것인가» 재계산)도 그대로 성립한다.
+       */
+      if (def.draftRequires?.(state, player) === false) {
         exclude.add(def.id);
         continue;
       }

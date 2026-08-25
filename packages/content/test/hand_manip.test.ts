@@ -872,11 +872,41 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
     expect(targets.sort()).toEqual(["p2", "p3"]);
   });
 
-  it("첫 순(turnCount<=1)이 지나면 쓸 수 없다", () => {
+  /*
+   * 창의 기준은 **내 이력**이다 (2026-08-25 사용자 보고).
+   *
+   * 예전 판정은 `round.turnCount > 1`이었다. turnCount는 **친의 쯔모**에만 오르는데,
+   * 내 순이 오기 전에 남이 울면 내 자리가 통째로 건너뛰어진다 — 그러고 친이 다시
+   * 쯔모하면 2가 되어, 내가 이 국에 한 장도 버리지 않았는데 창이 이미 닫혀 있었다.
+   */
+  it("남이 울어 바퀴가 돌았어도(turnCount 2) 내가 아직 안 버렸으면 쓸 수 있다", () => {
     const base = craftFullSwapState();
     const state: GameState = {
       ...base,
       round: { ...base.round, turnCount: 2 },
+    };
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, fullHandSwap, "p0", { yaku: game.yaku });
+    expect(
+      game.engine.submit({
+        player: "p0",
+        type: "hand_swap",
+        payload: { target: "p1" },
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("내 첫 순이 지나면(이미 버렸으면) 쓸 수 없다", () => {
+    const base = craftFullSwapState();
+    const state: GameState = {
+      ...base,
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p0: { ...base.round.byPlayer["p0"]!, discardCount: 1 },
+        },
+      },
     };
     const game = createStandardGameFromState(state);
     installAugment(game.engine, fullHandSwap, "p0", { yaku: game.yaku });
@@ -886,7 +916,7 @@ describe("full_hand_swap — 통째로 바꾸기", () => {
       payload: { target: "p1" },
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("only on the first turn");
+    if (!result.ok) expect(result.reason).toBe("only on your first turn");
   });
 });
 
