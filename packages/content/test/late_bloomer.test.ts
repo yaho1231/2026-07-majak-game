@@ -2,7 +2,9 @@
  * late_bloomer (대기만성) 테스트 — 후반 진입 시 규칙 획득 + 드래프트 스테이지 제한.
  *
  * 52차(2026-07-22, docs/16 §1b B): "획득 점수 3배"라는 보이지 않는 배율을 걷어내고,
- * 후반(남4국 이후·서입)에 **후리텐 무시 + 역 없이 화료**라는 규칙 두 개를 얻는 것으로 바꿨다.
+ * 후반(남3국 이후·서입)에 **후리텐 무시 + 역 없이 화료**라는 규칙 두 개를 얻는 것으로 바꿨다.
+ * (만개 시점은 2026-08-25 반장전 QA에서 남4국 → 남3국으로 앞당겼다 — 동풍전판이
+ * 판의 25%를 만개 구간으로 갖는 것과 비중을 맞추기 위해서다.)
  * 그래서 이 파일의 단언도 정산 배율이 아니라 **규칙 값**을 본다.
  */
 
@@ -95,6 +97,18 @@ describe("late_bloomer (대기만성)", () => {
     const rules = bloomedRules(atRound(craftTanyaoTsumo(), 2, 4));
     expect(rules.furiten).toBe(false);
     expect(rules.needYaku).toBe(false);
+  });
+
+  it("남3국에도 만개한다 (2026-08-25 앞당긴 시점 — 동풍전판의 25% 비중과 맞춘다)", () => {
+    const rules = bloomedRules(atRound(craftTanyaoTsumo(), 2, 3));
+    expect(rules.furiten).toBe(false);
+    expect(rules.needYaku).toBe(false);
+  });
+
+  it("남2국에서는 아직 만개하지 않는다 (앞당긴 시점의 경계)", () => {
+    const rules = bloomedRules(atRound(craftTanyaoTsumo(), 2, 2));
+    expect(rules.furiten).toBe(true);
+    expect(rules.needYaku).toBe(true);
   });
 
   it("동1국에서는 아무 규칙도 얻지 않는다 (표준 그대로)", () => {

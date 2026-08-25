@@ -2,10 +2,20 @@
  * 왕패의 주인 (dead_wall_master, prism) — 국 시작에 왕패를 뒤집어 손을 새로 짠다.
  *
  * 국이 시작될 때(자기 첫 순, 아직 아무것도 버리지 않았을 때) 왕패 14장을 전부 들여다보고,
- * **그중 최대 2장까지 내 손패와 1:1로 맞바꾼다.**
+ * **그중 최대 2장까지 내 손패와 1:1로 맞바꾼다. 단 2국에 한 번만.**
  *
  * ⚠ 밸런스(2026-07-26): 교환 4장 → **2장**, 화료 보너스 **+6000 삭제**.
  * 매 국 반복되는데 효과가 매치 1~2회짜리급이라 파워 티어 최상위였다(docs/20 §7c).
+ *
+ * ⚠ 밸런스(반장전 QA 2026-08-25): **매 국 → 2국에 1회**.
+ * 교환 창이 국 스코프(`roundScopedKey`)라 국이 두 배인 반장전에서 총 교환량이 그대로
+ * 두 배가 됐다(동풍전 8장 → 반장전 16장). 같은 체급의 매치 예산형 형제들이
+ * `scaledUses`로 1.5배만 받는 사이 이것만 2.0배 궤도라 격차가 벌어졌다.
+ * 2국 쿨다운은 **국당 밀도를 두 모드에서 같게** 만든다(soul_strike·big_hand와 같은 형태).
+ *
+ * 한 번의 발동에서 **1장만 바꿀지 2장을 바꿀지는 플레이어가 고른다** — 창이 열린 동안
+ * 최대 2장까지 이어서 바꿀 수 있고, 한 장만 바꾸고 첫 타패를 내면 그대로 창이 닫힌다.
+ * 쿨다운은 그 창에서 **처음 한 장을 바꾼 순간** 찍힌다(두 번째 장은 같은 발동으로 친다).
  *
  * 밑장빼기(bottom_deal)와의 차별 — **무대가 다르다**(2026-07-26, 도박사의 손 폐기와 함께 정리):
  * - 저쪽은 **패산** 담당이다. 맨 밑 3장을 보고 매 순 밑장을 쯔모한다. 패산 밑은 유국까지
@@ -16,7 +26,7 @@
  * 구현 지점:
  * - visibility.deadWall Modifier: 보유자에게 왕패 14장 전체 공개(도라 표시패·뒷도라 후보 포함).
  * - dw_swap 액션: 손패 1장 ↔ 왕패 deadIndex 자리 1장 (왕패 장수 보존 — 뺀 자리에 내 패를
- *   그대로 밀어 넣는다). 국당 2회까지 반복 발동해 최대 2장을 갈아 끼운다.
+ *   그대로 밀어 넣는다). 열린 창 안에서 2회까지 반복 발동해 최대 2장을 갈아 끼운다.
  *   후보는 손패(≤14) × 왕패(14) = 200개 미만이라 조합 폭발이 없다.
  * - 도라 표시패 자리를 집으면 표시패가 내 패로 교체되어 **그 자리에서 도라가 바뀐다**
  *   (막지 않는다 — 왕패의 주인이 도라까지 갈아 끼우는 것이 이 증강의 재미다).
@@ -24,7 +34,8 @@
  * - 남은 교환 횟수는 augmentData 카운터만으로는 클라이언트에 가지 않는다 —
  *   view:{holder}:dead_wall_master:remaining:{holder} 채널로 함께 실어 UI에 노출한다
  *   (bottom_deal의 armed 채널이 같은 구조다).
- * - 억제는 오직 "국 시작에만 · 국당 2장"이라는 창과 횟수뿐이다(무페널티 원칙).
+ * - 억제는 오직 "국 시작에만 · 2국에 1회 · 그 창에서 최대 2장"이라는 창과 횟수뿐이다
+ *   (무페널티 원칙).
  */
 
 import {
@@ -49,9 +60,14 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import {
+  cooldownReady,
+  cooldownUsedKey,
+  cooldownViewKey,
   counterOf,
   replaceDrawnTile,
+  roundSeqOf,
   roundViewKey,
+  trackRoundSeq,
   widenPeek,
 } from "../util.js";
 import { plan } from "./botPlan.js";
@@ -62,8 +78,10 @@ const ID = "dead_wall_master";
 const ACTION_SWAP = "dw_swap";
 /** 이 증강이 만들어내는 이벤트 — id에서 파생시켜 충돌 방지 */
 const DEAD_WALL_SWAPPED = "DeadWallMasterSwapped";
-/** 국당 교환 가능 장수 (2026-07-26 밸런스: 4 → 2) */
+/** 한 번의 발동에서 바꿀 수 있는 최대 장수 (2026-07-26 밸런스: 4 → 2) */
 const SWAPS_PER_ROUND = 2;
+/** 발동 간격 — 2국에 1회 (반장전 QA 2026-08-25: 매 국 → 2국) */
+const COOLDOWN_ROUNDS = 2;
 /**
  * 지금 왕패에 남은 장수 — 고를 수 있는 인덱스는 0 ~ (이 값-1).
  *
@@ -80,9 +98,26 @@ const swapsKey = (state: GameState, h: PlayerId): string =>
 const viewRemainingKey = (h: PlayerId): string =>
   roundViewKey(h, `${ID}:remaining:${h}`);
 
-/** 이번 국에 남은 교환 횟수 (창이 아직 열려 있는지는 보지 않는다) */
+/** 이번 국에 남은 교환 횟수 (창이 아직 열려 있는지·쿨다운은 보지 않는다) */
 function remainingSwaps(state: GameState, h: PlayerId): number {
   return Math.max(0, SWAPS_PER_ROUND - counterOf(state, swapsKey(state, h)));
+}
+
+/**
+ * 이번 국에 **이미 한 장이라도 바꿨는가** — 두 번째 장은 같은 발동으로 친다.
+ *
+ * 쿨다운은 창에서 처음 한 장을 바꿀 때만 본다. 이걸 안 보면 첫 교환이 쿨다운을 찍은
+ * 직후 두 번째 교환이 자기 쿨다운에 막혀, "최대 2장"이 영영 1장이 된다.
+ */
+function swappedThisRound(state: GameState, h: PlayerId): boolean {
+  return counterOf(state, swapsKey(state, h)) > 0;
+}
+
+/** 지금 이 국에 발동할 수 있는가 — 쿨다운이 풀렸거나 이미 이 국에서 시작한 교환이다 */
+function cooldownAllows(state: GameState, h: PlayerId): boolean {
+  return (
+    swappedThisRound(state, h) || cooldownReady(state, ID, h, COOLDOWN_ROUNDS)
+  );
 }
 
 /**
@@ -103,7 +138,9 @@ function swapWindowOpen(state: GameState, h: PlayerId): boolean {
 
 /** 이름표에 실을 "이번 국에 아직 쓸 수 있는 교환 횟수" */
 function publishedRemaining(state: GameState, h: PlayerId): number {
-  return swapWindowOpen(state, h) ? remainingSwaps(state, h) : 0;
+  if (!swapWindowOpen(state, h)) return 0;
+  if (!cooldownAllows(state, h)) return 0;
+  return remainingSwaps(state, h);
 }
 
 /**
@@ -120,6 +157,7 @@ function canSwap(state: GameState, h: PlayerId): boolean {
   if (r.phase !== "turn.act") return false;
   if (playerAtSeat(state, r.turnSeat).id !== h) return false;
   if (!swapWindowOpen(state, h)) return false;
+  if (!cooldownAllows(state, h)) return false;
   return remainingSwaps(state, h) > 0;
 }
 
@@ -139,7 +177,11 @@ const swapAction: ActionDef<{ handTileId: TileId; deadIndex: number }> = {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined) return "unknown player";
     if (!player.augments.includes(ID)) return "no dead_wall_master augment";
-    if (!canSwap(state, req.player)) return "not at the start of the round";
+    if (!canSwap(state, req.player)) {
+      return cooldownAllows(state, req.player)
+        ? "not at the start of the round"
+        : "dead wall master is on cooldown";
+    }
     const idx = req.payload.deadIndex;
     if (!Number.isInteger(idx) || idx < 0 || idx >= deadWallSize(state)) {
       return "invalid dead wall index";
@@ -172,9 +214,9 @@ export const deadWallMaster: AugmentDef = defineAugment({
   complexity: 3,
   name: "왕패의 주인",
   description:
-    "(상시 열람 · 매 국 2회 교환) 왕패가 처음부터 전부 보이고, 첫 순에 왕패의 패와 손패를 최대 2장까지 1:1로 맞바꾼다.",
+    "(상시 열람 · 2국에 1회 교환) 왕패가 처음부터 전부 보이고, 발동한 국의 첫 순에 왕패의 패와 손패를 최대 2장까지 1:1로 맞바꾼다.",
   detail:
-    "(상시 열람 · 매 국 2회 교환) 왕패 14장에는 도라·뒷도라 표시패도 들어 있어 표시패까지 바꿀 수 있고, **영상 쯔모는 보충되지 않아 깡마다 한 장씩 줄어든다.** 교환은 아직 아무것도 버리지 않은 첫 순에만 열리고, 내보낸 손패가 그 자리를 채운다.",
+    "(상시 열람 · 2국에 1회 교환) 왕패 14장에는 도라·뒷도라 표시패도 들어 있어 표시패까지 바꿀 수 있고, **영상 쯔모는 보충되지 않아 깡마다 한 장씩 줄어든다.** 교환은 아직 아무것도 버리지 않은 첫 순에만 열리고, 내보낸 손패가 그 자리를 채운다.\n\n한 번 발동하면 다음 국은 쉬고 그다음 국에 다시 열린다. 열린 창에서 두 장을 다 바꿀지 한 장만 바꿀지는 고르면 된다 — 한 장만 바꾸고 첫 패를 버려도 그 국은 쓴 것으로 친다.",
   // 봇: 손패에 같은 종류가 이미 있는 왕패 패를 가져오고, 홀로 뜬(1장뿐인) 손패를 내보낸다.
   //     확실한 개선만 고르므로 자해 위험이 없다.
   bot: plan({
@@ -219,6 +261,9 @@ export const deadWallMaster: AugmentDef = defineAugment({
   install(ctx) {
     const { engine, holder } = ctx;
 
+    // 2국 쿨다운의 기준이 되는 국 카운터 + 잔여 국 표시 (util.ts 규약)
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
+
     // 이벤트·액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.reducers.has(DEAD_WALL_SWAPPED)) {
       engine.reducers.register(DEAD_WALL_SWAPPED, (state, event) => {
@@ -234,7 +279,21 @@ export const deadWallMaster: AugmentDef = defineAugment({
           [p.handTileId],
           p.deadIndex,
         );
-        const used = counterOf(state, swapsKey(state, p.player)) + 1;
+        const before = counterOf(state, swapsKey(state, p.player));
+        const used = before + 1;
+        /*
+         * 쿨다운은 **그 창의 첫 장**에서만 찍는다. 두 번째 장은 같은 발동의 일부라
+         * 다시 찍으면 기준점이 한 국 뒤로 밀려 다음 발동이 한 국 더 늦어진다.
+         * 리듀서는 이벤트를 낼 수 없으므로(`cooldownUse`는 발동 시점의 헬퍼다)
+         * 같은 두 키를 여기서 직접 찍는다 — 읽는 쪽은 `cooldownLeft` 하나뿐이다.
+         */
+        const cooldownStamp =
+          before === 0
+            ? {
+                [cooldownUsedKey(ID, p.player)]: roundSeqOf(state, ID, p.player),
+                [cooldownViewKey(ID, p.player)]: COOLDOWN_ROUNDS,
+              }
+            : {};
         // 도라 표시패 자리를 집었다면 표시패는 그 자리를 채운 내 패로 바뀐다
         // (doraIndicators는 tileId 추적이라 자동으로 따라오지 않는다).
         const doraIndicators = state.round.doraIndicators.map((id) =>
@@ -259,6 +318,7 @@ export const deadWallMaster: AugmentDef = defineAugment({
             ...state.augmentData,
             // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
             ...handAlteredMark(state, p.player),
+            ...cooldownStamp,
             [swapsKey(state, p.player)]: used,
             [viewRemainingKey(p.player)]: Math.max(0, SWAPS_PER_ROUND - used),
           },
@@ -269,7 +329,8 @@ export const deadWallMaster: AugmentDef = defineAugment({
       engine.actions.register(swapAction);
     }
 
-    // 국이 시작될 때마다 남은 교환 횟수를 다시 발행 (매 국 2장으로 리셋된다)
+    // 국이 시작될 때마다 남은 교환 횟수를 다시 발행
+    // (쿨다운이 안 풀린 국에는 0이 실린다 — publishedRemaining 참고)
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
       rc.emit(
         augmentDataSet(viewRemainingKey(holder), publishedRemaining(rc.state, holder)),
