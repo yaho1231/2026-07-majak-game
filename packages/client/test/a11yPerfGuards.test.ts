@@ -387,7 +387,13 @@ describe("모바일 — 폰 크기 기준 규칙이 존재한다", () => {
   it("세로 폰에 회전 안내가 뜬다", () => {
     expect(CSS).toContain(".rotate-hint");
     expect(CSS).toContain("orientation: portrait");
-    expect(APP).toContain('className="rotate-hint"');
+    /*
+     * 2026-08-25 QA §12: 안내가 «7초 뒤 ⟳ 알약으로 접힘»으로 바뀌면서 className 이
+     * 템플릿 리터럴이 됐다(`rotate-hint${folded ? " rotate-hint-folded" : ""}`).
+     * 검사의 뜻은 «안내가 화면에 존재한다»이지 문자열 형태가 아니므로 그쪽을 본다.
+     */
+    expect(APP).toContain("rotate-hint");
+    expect(APP).toContain("rotate-hint-folded");
   });
 
   it("넘친 내용에 닿을 수 있다 (WCAG 1.4.10)", () => {

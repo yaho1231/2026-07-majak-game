@@ -1507,6 +1507,15 @@ interface Production {
   channel: "banner" | "cutin";
   text: string;
   sub?: string;
+  /**
+   * 곁줄 맨 앞에 **색을 달리해** 세우는 발동 주체 ("봇2").
+   *
+   * 왜 따로 두나: 대부분의 컷인은 곁줄을 통문장으로 쓰지만("봇3 — 그 깡, 창깡으로
+   * 잡힌다"), 액티브 증강 발동(`actionFx`)만은 곁줄이 «누가 — 무엇을» 두 조각의
+   * 기계적 결합이다. 그 자리에서 이름이 효과 문장에 묻혀 «증강 이름만 보인다»는
+   * 보고가 나왔다(docs/45 §12). 이름을 따로 넘겨받아 `.cutin-who`로 떼어 세운다.
+   */
+  who?: string;
   tone: BannerTone | CutInTone;
   /** limit 컷인일 때만 — 만관/하네만/배만/삼배만 */
   tier?: LimitTier;
@@ -2876,6 +2885,52 @@ export function App(): JSX.Element {
     () => safeStorage.getItem(ROTATE_HINT_KEY) === "1",
   );
   /**
+   * **읽고 나면 저절로 접힌다** (2026-08-25 QA §12).
+   *
+   * 닫은 것을 기억하는 것만으로는 «처음 오는 사람»이 안 구제된다 — 그 사람은 판이
+   * 52px 줄어든 채로 첫 국을 친다(375 기준 세로의 7.4%). 문구는 한 줄짜리 사실
+   * 하나("돌리면 다 보인다")라 몇 초면 읽히는데, 띠는 닫기 전까지 계속 서 있었다.
+   *
+   * 그래서 7초 뒤 **아이콘 알약으로 접는다** — 띠(`--rotate-band`)를 보드에게
+   * 돌려주고, ⟳ 만 남겨 다시 펼 수 있게 둔다. 안내를 없애지는 않는다: 폰 가로가
+   * 실제로 더 낫다는 정보라 나중에라도 다시 읽을 수 있어야 한다.
+   * (7초 = 24자 한 줄을 두 번 읽을 시간. 초읽기 30초의 1/4 이라 첫 수 전에 접힌다.)
+   */
+  const [rotateHintFolded, setRotateHintFolded] = useState(false);
+  /** ⟳ 로 **손수 다시 편** 뒤에는 자동으로 안 접는다 — 다시 접으면 읽던 것을 뺏는 셈이다. */
+  const [rotateHintAutoFold, setRotateHintAutoFold] = useState(true);
+  const rotateHintRef = useRef<HTMLDivElement | null>(null);
+  /*
+   * ⚠ 시계는 «앱이 뜬 순간»이 아니라 **«안내가 실제로 화면에 보인 순간»**부터 간다.
+   * 처음엔 마운트 기준으로 셌는데, 판이 서기까지(봇 입장 + 첫 증강 선택) 7초가
+   * 그냥 지나가서 375×700 실측으로 **대국 화면에 들어왔을 때 이미 접혀 있었다** —
+   * 아무도 못 읽는 안내가 된다. 안내는 로비·가로 화면에서는 `display:none` 이라
+   * 교차 자체가 일어나지 않으므로, IntersectionObserver 가 «보였다»의 정확한 신호다.
+   */
+  useEffect(() => {
+    if (rotateHintOff || rotateHintFolded || !rotateHintAutoFold) return;
+    const el = rotateHintRef.current;
+    if (el === null) return;
+    let timer = 0;
+    const io = new IntersectionObserver((entries) => {
+      const shown = entries.some((e) => e.isIntersecting);
+      if (shown && timer === 0) {
+        timer = window.setTimeout(() => setRotateHintFolded(true), 7000);
+      } else if (!shown && timer !== 0) {
+        /* 안 보이는 동안은 시계도 멈춘다 — 안 그러면 증강 선택 창(그 동안 안내는
+           `display:none` 이다)이 7초를 대신 흘려보내, 창을 닫고 판을 처음 보는
+           순간 이미 접혀 있다(375×700 실측으로 실제로 그랬다). */
+        window.clearTimeout(timer);
+        timer = 0;
+      }
+    });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      if (timer !== 0) window.clearTimeout(timer);
+    };
+  }, [rotateHintOff, rotateHintFolded, rotateHintAutoFold]);
+  /**
    * 지금 인증되어 있는가 — **live ref**. handleServerMessage는 마운트 시 소켓에
    * 고정된 클로저라 auth state가 스테일하다. 서버 오류를 로그인 폼에 넣을지
    * 토스트로 띄울지는 이 ref로만 판단한다.
@@ -3189,7 +3244,11 @@ export function App(): JSX.Element {
         tone: p.tone,
         channel: p.channel,
         round: roundLabelRef.current,
-        ...(p.sub !== undefined ? { sub: p.sub } : {}),
+        // 📜 로그 줄에는 «누가»가 곁줄 앞머리로 합쳐진 형태로 들어간다 — 로그는
+        // 색을 쓰지 않는 한 줄짜리라 조각을 나눠 봐야 읽는 사람에게 달라지는 게 없다.
+        ...(p.sub !== undefined || p.who !== undefined
+          ? { sub: [p.who, p.sub].filter((s) => s !== undefined && s !== "").join(" — ") }
+          : {}),
         ...(p.augId !== undefined ? { augId: p.augId } : {}),
       };
       const next = [...prev, ev];
@@ -3233,6 +3292,8 @@ export function App(): JSX.Element {
       tileArrowAt?: number;
       impact?: ImpactSpec;
       augId?: string;
+      /** 곁줄 앞에 색을 달리해 세울 발동 주체 (Production.who) */
+      who?: string;
       /** 큐를 앞질러 나가는 등급 (Production.priority) — 리치와 짝지은 컷인만 쓴다 */
       priority?: number;
     } = {},
@@ -3244,6 +3305,7 @@ export function App(): JSX.Element {
       ttl: ms,
       ...(opts.priority !== undefined ? { priority: opts.priority } : {}),
       ...(sub !== undefined ? { sub } : {}),
+      ...(opts.who !== undefined && opts.who !== "" ? { who: opts.who } : {}),
       ...(opts.tier !== undefined ? { tier: opts.tier } : {}),
       ...(opts.augId !== undefined ? { augId: opts.augId } : {}),
       ...(opts.sfx !== undefined ? { sfx: opts.sfx } : {}),
@@ -4611,10 +4673,21 @@ export function App(): JSX.Element {
         fxSeenRef.current.keys.add(key);
       }
       const who = pv !== null ? playerNameById(pv, msg.player) : msg.player;
+      /*
+       * 곁줄은 «누가 — 무엇이 일어나는가» 두 조각이다.
+       *
+       * 예전에는 뒷조각이 늘 "증강 발동"이라 곁줄 전체가 아무 정보도 주지 않았다.
+       * 화면에 남는 것은 증강 **이름**뿐인데(«날치기»), 처음 보는 증강이면 이름은
+       * 아무 뜻도 아니다 — 1600ms 뒤에 사라지고 다시 볼 방법도 없다(docs/45 §12).
+       * 도감 요약(`briefOf`, 60자 이내 한 문장)이 바로 그 자리에 필요한 글이라
+       * 그대로 가져다 쓴다. 요약이 없는 증강만 예전 문구로 물러난다.
+       */
+      const effect = briefOf(augId, catalogRef.current[augId]?.description).text;
       // 증강 발동은 후로(타악)와 계열이 다른 "번개 스침" 사운드 — 소리만으로 구분된다
-      showCutIn(label, "augment", `${who} — 증강 발동`, 1600, {
+      showCutIn(label, "augment", effect !== "" ? effect : "증강 발동", 1600, {
         sfx: () => sfx.augment(0),
         augId,
+        who,
       });
       return;
     }
@@ -6173,8 +6246,25 @@ export function App(): JSX.Element {
           없어서** 한 번 읽고 나면 계속 자리를 차지했다(docs/28 §2-2). 닫기만 상태로 둔다 —
           어디에 뜰지는 여전히 CSS가 정한다. */}
       {rotateHintOff ? null : (
-        <div className="rotate-hint" role="status">
-          <span aria-hidden="true">⟳</span>
+        <div
+          className={`rotate-hint${rotateHintFolded ? " rotate-hint-folded" : ""}`}
+          role="status"
+          ref={rotateHintRef}
+        >
+          {/* 접힌 뒤에는 이 ⟳ 가 «다시 펴기» 손잡이다 — 접힌 상태에서만 누를 것이
+              있으므로 펼쳐져 있을 때는 aria-expanded 로 그 사실만 알린다. */}
+          <button
+            type="button"
+            className="rotate-hint-icon"
+            aria-label="가로 화면 안내 다시 보기"
+            aria-expanded={!rotateHintFolded}
+            onClick={() => {
+              setRotateHintFolded(false);
+              setRotateHintAutoFold(false);
+            }}
+          >
+            ⟳
+          </button>
           <span>가로로 돌리면 네 자리가 다 보입니다.</span>
           <button
             type="button"
@@ -6725,7 +6815,19 @@ export function App(): JSX.Element {
             <span className="cutin-text" data-long={activeProd.text.replace(/\s/g, "").length >= 4 ? "1" : undefined}>
               {activeProd.text}
             </span>
-            {activeProd.sub !== undefined ? <span className="cutin-sub">{activeProd.sub}</span> : null}
+            {/* 곁줄 — 증강 컷인은 이름 아래 한 줄로 내려간다(styles.css `.cutin-aug .cutin-sub`).
+                `who`가 있으면 그 앞머리를 계열색으로 떼어 세운다: «봇2 — 손패 …». */}
+            {activeProd.sub !== undefined || activeProd.who !== undefined ? (
+              <span className="cutin-sub">
+                {activeProd.who !== undefined ? (
+                  <>
+                    <span className="cutin-who">{activeProd.who}</span>
+                    {activeProd.sub !== undefined ? " — " : null}
+                  </>
+                ) : null}
+                {activeProd.sub}
+              </span>
+            ) : null}
             {activeProd.tiles !== undefined ? (
               <span className="cutin-tiles">
                 {activeProd.tiles.map((kind, i) => (
@@ -6777,7 +6879,7 @@ export function App(): JSX.Element {
           전부 이 큐를 지나므로, 여기 한 곳만 live로 열어 두면 게임 사건 전체가 들린다. */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {activeProd !== null
-          ? `${activeProd.text}${activeProd.sub !== undefined ? ` — ${activeProd.sub}` : ""}`
+          ? `${activeProd.text}${activeProd.who !== undefined ? ` — ${activeProd.who}` : ""}${activeProd.sub !== undefined ? ` — ${activeProd.sub}` : ""}`
           : ""}
       </div>
       {roundResult !== null && view !== null ? (
@@ -7148,6 +7250,27 @@ function rectOf(selector: string, pad = 0): CoachRect | null {
 }
 
 /**
+ * 같은 선택자에 걸리는 것을 **전부** 잰다 (`rectOf`는 첫 개 하나만 준다).
+ *
+ * 강의가 «누르라»고 한 과녁은 셋일 수도 있다 — 증강 카드 석 장의 «자세히 ▾»가 그렇다.
+ * 하나만 비켜서면 나머지 둘이 말풍선에 막힌다(2026-08-25 QA §9 실측).
+ */
+function rectsOf(selector: string, pad = 0): CoachRect[] {
+  const out: CoachRect[] = [];
+  for (const el of document.querySelectorAll(selector)) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    out.push({
+      top: toLayoutPx(r.top) - pad,
+      left: toLayoutPx(r.left) - pad,
+      w: toLayoutPx(r.width) + pad * 2,
+      h: toLayoutPx(r.height) + pad * 2,
+    });
+  }
+  return out;
+}
+
+/**
  * 액션 바(치·퐁·리치·론)가 **없을 때에도 비워 둘** 높이(레이아웃 px).
  *
  * 그 줄은 프롬프트가 있을 때만 뜬다. 없을 때 그 자리를 내주면 말풍선이 거기 앉았다가
@@ -7374,6 +7497,7 @@ function TutorialCoach(props: {
   }, [watching]);
 
   const anchor = props.hidden ? undefined : active?.anchor;
+  const mustClear = props.hidden ? undefined : active?.mustClear;
   const shown = active !== null && !props.hidden;
 
   /*
@@ -7431,13 +7555,15 @@ function TutorialCoach(props: {
         { w: toLayoutPx(b.width), h: toLayoutPx(b.height) },
         layoutViewport(),
         keepClearRects(),
+        // 이 강의가 «누르라»고 한 과녁은 무슨 일이 있어도 비켜선다 (`Lesson.mustClear`)
+        mustClear === undefined ? [] : rectsOf(mustClear, RING_PAD),
       );
       setSpot((prev) => (sameSpot(prev, next) ? prev : next));
     };
     place();
     const timer = window.setInterval(place, 160);
     return () => window.clearInterval(timer);
-  }, [shown, active?.id]);
+  }, [shown, active?.id, mustClear]);
 
   if (active === null || props.hidden) return null;
 
@@ -17041,8 +17167,15 @@ const NamePlate = memo(function NamePlate({
     >
       {isTurn ? (
         awaitingCall ? (
-          <span className="np-turn np-turn-wait" title="다른 자리의 선언(론·치·퐁·깡)을 기다리는 중입니다">
-            선언 대기
+          <span
+            className="np-turn np-turn-wait"
+            title="다른 자리의 선언(론·치·퐁·깡)을 기다리는 중입니다"
+            aria-label="선언 대기"
+          >
+            {/* «선언»은 좁은 자리(폰 세로의 상대 이름표 칩)에서 접힌다 — 그 칩은 폭이
+                117px 고정이라 네 글자 배지가 이름을 통째로 밀어냈다. 두 글자만 남겨도
+                뜻이 서고, 전체 문안은 title 과 aria-label 에 그대로 있다. */}
+            <span className="np-wait-long">선언</span>대기
           </span>
         ) : (
           <span className="np-turn" aria-label="현재 차례">차례</span>
@@ -17061,6 +17194,31 @@ const NamePlate = memo(function NamePlate({
         </span>
       ) : null}
       <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
+      {/*
+       * 점수 — 상대 점수를 **회전하지 않은 글자로** 읽는 유일한 길.
+       *
+       * 중앙 패널의 점수판은 마작 탁자 방향이라 맞은편은 180°, 좌·우는 90° 로 누워
+       * 있다. 그건 관습이라 그대로 둔다(QA 45 §12). 다만 한 손으로 폰을 든 채 오라스
+       * 점수를 확인하려면 폰을 뒤집어야 했다 — 이름표 칩이 이름과 증강 이모지만
+       * 보여 줬기 때문이다. 그 칩에 점수를 넣어 관습을 지키면서 읽을 길을 만든다.
+       *
+       * **내 자리에는 붙이지 않는다.** 내 점수는 중앙 패널 아래쪽에 눕지 않은 글자로
+       * 이미 크게 서 있고, 손패 위 이름표는 액션 바와 폭을 다툰다.
+       *
+       * 두 벌을 세워 CSS 가 고른다(`.np-score-full` / `.np-score-k`) — 좁은 칩에서는
+       * 25,000 → 25.0k. 점수는 100 의 배수라 소수 한 자리로 버림 없이 같은 값이다.
+       */}
+      {!isMe ? (
+        <span className="np-score" title={`점수 ${player.score.toLocaleString()}`}>
+          {/* 보이는 두 벌은 CSS 로 하나만 남으므로 읽어 주는 벌은 따로 둔다 —
+              축약형(25.0k)을 그대로 읽히면 «점 영 케이»가 된다. */}
+          <span className="sr-only">점수 {player.score.toLocaleString()}</span>
+          <span className="np-score-full" aria-hidden="true">{player.score.toLocaleString()}</span>
+          <span className="np-score-k" aria-hidden="true">
+            {(player.score / 1000).toFixed(1)}k
+          </span>
+        </span>
+      ) : null}
       {/* 봇 성향 — 이름만으로는 셋이 구분되지 않아서, 이름 옆에 원형을 세운다 */}
       {arch !== null ? (
         <span className="np-arch" title={`${arch.label} 봇 — ${arch.desc}`}>{arch.label}</span>
@@ -17625,12 +17783,13 @@ function handReordered(order: number[], id: number, targetIdx: number): number[]
  * 대신 **조용하게 시작해 급해질수록 커진다**. 매 타패마다 30초 시계가 큼직하게
  * 뛰면 판보다 시계를 보게 된다:
  * - 10초 넘게 남았으면 가는 막대만 (지금까지와 같은 모습)
- * - 10초 이하로 남으면 남은 초를 숫자로 띄우고
+ * - 남은 초는 늘 숫자로 띄우고(마감이 없는 국은 「약 12초」로 어림임을 밝힌다)
+ * - 10초 이하로 남으면 0.1초까지 세고
  * - 5초 이하면 막대를 굵게·붉게 하고 숫자를 맥동시킨다
  * 초읽기 국(마감이 애초에 5~10초)에서는 뜨자마자 이 단계로 들어가므로, 예전의
  * "굵은 붉은 게이지 + 숫자"가 그대로 재현된다.
  */
-/** 숫자를 띄우기 시작하는 잔여 시간 */
+/** 0.1초 단위로 세기 시작하는 잔여 시간 (그 위는 초 단위) */
 const TIMER_COUNT_MS = 10_000;
 /** 굵게·붉게 전환하는 잔여 시간 */
 const TIMER_URGENT_MS = 5_000;
@@ -17690,12 +17849,23 @@ function PromptTimer(props: {
   const total = spanRef.current.total;
 
   /*
-   * 남은 시간에 따라 조용함 → 숫자 → 경고 순으로 단계가 올라간다.
-   * **서버 마감이 있을 때만** 숫자를 말한다 — 없는 국의 남은 초는 화면이 지어낸
-   * 값이라, 막대(어림)와 달리 단정이 된다.
+   * 남은 초는 **서버 마감이 있는 동안 내내** 숫자로 말한다 (2026-08-25 QA §12).
+   *
+   * 예전에는 «마감 있음 + 10초 이하»에서만 숫자를 띄웠다. 그래서 평소 프롬프트에서
+   * 남은 시간을 알리는 것이 **높이 5px 짜리 선 하나뿐**이었다 — 치·퐁·론은 초 단위
+   * 판단인데 «지금 몇 초 남았나»를 눈으로 셀 수가 없었다(막대 길이를 30초로
+   * 환산하는 암산을 사람에게 시키는 셈이다). 그 게이트에서 «10초 이하»만 걷는다.
+   *
+   * ⚠ **마감이 없는 국에는 숫자를 아예 안 적는다.** 막대는 `PROMPT_FALLBACK_MS`
+   *   어림으로 돌지만 그 어림을 숫자로 옮기면 **화면이 지어낸 값**이 된다 —
+   *   「약 12초」처럼 «약»을 붙여도 지어낸 것은 지어낸 것이고, 사람은 그 12초를
+   *   믿고 판단한다. broadcastSpectator 테스트가 이 선을 지킨다
+   *   («마감이 없는 국에서도 막대는 돈다 — 숫자는 지어내지 않는다»).
    */
-  const showCount = deadline !== null && left <= TIMER_COUNT_MS;
   const urgent = deadline !== null && left <= TIMER_URGENT_MS;
+  const showCount = deadline !== null;
+  const precise = deadline !== null && left <= TIMER_COUNT_MS;
+  const countText = precise ? `${(left / 1000).toFixed(1)}초` : `${Math.ceil(left / 1000)}초`;
   /*
    * 막대를 **React 가 직접 민다** (CSS 애니메이션이 아니다).
    *
@@ -17723,9 +17893,7 @@ function PromptTimer(props: {
         className="prompt-timer-fill"
         style={{ transform: `scaleX(${ratio})` } as CSSProperties}
       />
-      {showCount ? (
-        <span className="prompt-timer-count">{(left / 1000).toFixed(1)}초</span>
-      ) : null}
+      {showCount ? <span className="prompt-timer-count">{countText}</span> : null}
       {/* 급해진 구간에서만 실제로 띄운다 — 상시로 세워 두면 판을 가리기만 한다 */}
       {urgent && props.onTimeout != null ? (
         <span className="prompt-timer-note">{props.onTimeout}</span>
@@ -18135,6 +18303,48 @@ function OwnArea(props: {
   const ownBandFullRef = useRef(-1);
   /** 내 후로 줄(`.own-corner-right`)이 손패를 안 건드리고 쓸 수 있는 최대 폭 */
   const ownCornerMaxRef = useRef(-1);
+  /**
+   * 손패 레일의 높이(`--own-rail-h`).
+   * 폰 가로에서 액션 알약 줄은 흐름 밖으로 나가 **레일 바로 위**에 세로로 선다
+   * (styles.css §9-1-c, QA §6). 그 «레일 바로 위»를 CSS 만으로는 짚을 수 없다 —
+   * 레일 높이는 타일 크기가 정하고 그 값은 레일 안에서만 산다.
+   */
+  const ownRailHRef = useRef(-1);
+  /*
+   * 창 크기·방향이 바뀌면 **리렌더를 한 번 억지로 일으켜** 아래 측정을 다시 돌린다
+   * (2026-08-25 QA 후속).
+   *
+   * 아래 이펙트는 «렌더 때마다» 도는데, 순수 리사이즈는 **리렌더를 일으키지 않는다** —
+   * 창을 끌어 늘이거나 폰을 돌리면 레일 높이·보드 폭이 바뀌는데도 `--own-band` ·
+   * `--own-corner-max` · `--own-rail-h` 가 이전 크기의 값으로 남아 있었다. 그러면
+   * 후로 줄과 액션 알약이 «옛 자리»에 선다(세로→가로 전환에서 가장 크게 틀린다).
+   *
+   * ⚠ ResizeObserver 는 쓰지 않는다. 아래 측정은 CSS 변수를 쓰고, 그 변수는 보드
+   * 크기를 바꾸고, 그 변화가 다시 관찰 대상의 크기를 바꿀 수 있다 — 되먹임 고리가
+   * 된다. `resize`·`orientationchange` 는 **사람이 창을 건드릴 때만** 오므로 우리가
+   * 쓴 값이 우리를 다시 부르는 일이 없다. (측정 자체는 값이 그대로면 아무것도 쓰지
+   * 않으므로, 한 번 더 도는 비용은 offsetHeight 읽기뿐이다.)
+   *
+   * 리사이즈는 끌리는 동안 초당 수십 번 온다 — 프레임 하나로 묶는다.
+   */
+  const [, remeasure] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    let raf = 0;
+    const bump = () => {
+      if (raf !== 0) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        remeasure();
+      });
+    };
+    window.addEventListener("resize", bump);
+    window.addEventListener("orientationchange", bump);
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", bump);
+      window.removeEventListener("orientationchange", bump);
+    };
+  }, []);
   // 렌더마다 다시 잰다(의존성 배열 없음). ResizeObserver를 먼저 써 봤는데, 손패가
   // 채워지거나 화면 크기가 바뀌어 띠가 자라도 콜백이 오지 않는 경우가 있어 띠가 낡았다.
   // 렌더는 뷰가 올 때마다 도므로 이쪽이 확실하다.
@@ -18151,6 +18361,12 @@ function OwnArea(props: {
       if (!(el instanceof HTMLElement)) continue;
       // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
       if (!el.matches(".action-bar, .prompt-timer, .arm-hint")) continue;
+      /*
+       * 흐름 밖으로 나간 줄은 **빼면 안 된다** — `area.offsetHeight`에 애초에 들어
+       * 있지 않으므로 한 번 더 빼면 띠가 그만큼 얇아지고, 그만큼 보드가 아래로 자라
+       * 내 이름표·손패를 파고든다. 폰 가로의 액션 알약 줄이 그렇다(position: absolute).
+       */
+      if (getComputedStyle(el).position === "absolute") continue;
       h -= el.offsetHeight + gap;
     }
     /*
@@ -18201,15 +18417,57 @@ function OwnArea(props: {
      */
     const rail = area.querySelector(".own-hand-rail");
     const tableEl = area.closest(".table");
+    const corner = area.parentElement?.querySelector(".own-corner-right") ?? null;
+    if (rail instanceof HTMLElement) {
+      // 폰 가로의 액션 알약 줄이 레일 «바로 위»에 서기 위한 값 (styles.css §9-1-c)
+      const railH = rail.offsetHeight;
+      if (railH !== ownRailHRef.current) {
+        ownRailHRef.current = railH;
+        root.style.setProperty("--own-rail-h", `${railH}px`);
+      }
+    }
     if (rail instanceof HTMLElement && tableEl instanceof HTMLElement) {
-      const free = Math.max(
-        OWN_CORNER_MIN_W,
-        Math.floor((tableEl.clientWidth - rail.offsetWidth) / 2) - OWN_CORNER_GUTTER,
-      );
+      const side =
+        Math.floor((tableEl.clientWidth - rail.offsetWidth) / 2) - OWN_CORNER_GUTTER;
+      /*
+       * 레일 옆에 최소폭조차 없으면 **손패 띠 위로 올린다** (2026-08-25 QA §5).
+       *
+       * 예전에는 남는 폭이 0이어도 `OWN_CORNER_MIN_W`를 그냥 줬다 — 상자가 사라지는
+       * 것을 막으려는 하한이었는데, 그 120px이 실제로는 **손패가 쓰고 있는 자리**라
+       * 폰 세로에서 후로 줄이 손패 위에 얹혔다(375×700 실측: 레일 41~334, 후로 줄
+       * 239~359 = 95px 겹침, 후로 하나만 있어도 겹쳤다). 게다가 그 120px 안에서
+       * 후로 2개부터 잘려 나갔다(120/130).
+       *
+       * 옆에 못 서면 위로 선다. 띠 위(=액션 바까지 포함한 `--own-band-full` 위)는
+       * 손패와 겹치지 않고 화면 폭을 통째로 쓸 수 있어, 375px에서도 후로 4개가
+       * 잘리지 않고 다 들어간다(실측은 아래 QA 표).
+       */
+      const stack = side < OWN_CORNER_MIN_W;
+      const free = stack
+        ? Math.max(OWN_CORNER_MIN_W, tableEl.clientWidth - 2 * OWN_CORNER_GUTTER)
+        : side;
       if (free !== ownCornerMaxRef.current) {
         ownCornerMaxRef.current = free;
         root.style.setProperty("--own-corner-max", `${free}px`);
       }
+      if (stack) {
+        root.style.setProperty(
+          "--own-corner-bottom",
+          "calc(var(--own-band-full, 0px) + 6px)",
+        );
+      } else {
+        root.style.removeProperty("--own-corner-bottom");
+      }
+    }
+    /*
+     * 넘쳤으면 그 사실을 CSS에 알린다 — `[data-of="1"]`이 오른쪽 끝을 흐린다.
+     * 펠트 위 상자에는 스크롤막대를 그리지 않기로 했으므로(styles.css «판 위의 작은
+     * 상자»), 이 속성이 «여기서 끝이 아니다»를 말하는 유일한 신호다. 페이드는
+     * 마스크라 레이아웃을 바꾸지 않는다 — 여기서 재고 켜도 되먹임이 없다.
+     */
+    if (corner instanceof HTMLElement) {
+      const of = corner.scrollWidth > corner.clientWidth + 1 ? "1" : "0";
+      if (corner.dataset["of"] !== of) corner.dataset["of"] = of;
     }
     if (band === ownBandRef.current) return;
     ownBandRef.current = band;
@@ -18223,11 +18481,14 @@ function OwnArea(props: {
       ownBandRef.current = -1;
       ownBandFullRef.current = -1;
       ownCornerMaxRef.current = -1;
+      ownRailHRef.current = -1;
       if (root instanceof HTMLElement) {
         root.style.removeProperty("--own-band");
         root.style.removeProperty("--own-band-full");
         document.body.style.removeProperty("--own-band-full");
         root.style.removeProperty("--own-corner-max");
+        root.style.removeProperty("--own-corner-bottom");
+        root.style.removeProperty("--own-rail-h");
       }
     };
   }, []);
@@ -19403,7 +19664,17 @@ function OwnArea(props: {
         </div>
       </div>
       {myMelds.length > 0 || myPulled.length > 0 ? (
-        <div className="own-corner-right">
+        <div
+          className="own-corner-right"
+          /* 후로 개수 — CSS가 «몇 개를 이 폭에 담아야 하는지»를 알아야 타일 크기를
+             줄여 덜 넘치게 할 수 있다(styles.css `.own-corner-right`의 --mt-w).
+             북풍 상인의 빼놓은 北도 같은 줄에 서므로 하나로 센다. */
+          style={
+            {
+              "--own-meld-n": String(myMelds.length + (myPulled.length > 0 ? 1 : 0)),
+            } as CSSProperties
+          }
+        >
           {myMelds.map((m, i) => (
             <MeldGroup key={i} view={view} meld={m} owner={me} layout="row" />
           ))}
@@ -23775,24 +24046,33 @@ function RoundResultPanel({
 
         {/* 확인 버튼 — 이 창을 넘기는 유일한 손잡이다. 남은 시간을 함께 달아
             "왜 저절로 넘어가는가"를 화면 안에서 설명한다. 대기가 없는 판
-            (interRoundDelayMs=0)에서는 초 표시 없이 버튼만 남는다. */}
-        <button
-          className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
-          onClick={onClose}
-        >
-          {historical === true ? "닫기" : "다음 국으로"}
+            (interRoundDelayMs=0)에서는 초 표시 없이 버튼만 남는다.
+
+            ⚠ 버튼과 안내를 `.result-cta` 로 묶는 이유 (2026-08-25 QA §7): 이 패널은
+            스크롤되는데 스크롤 표시가 없어서, 내용이 화면보다 길면 «유일한 손잡이»가
+            접힌 곳 아래로 사라졌다 — 740×360 에서 버튼 top 629 / 화면 360 (269px 밖),
+            375×700 세로에서도 top 978 / 700. 사람들은 버튼이 있는 줄도 모르고 「17초」
+            자동 넘김을 그냥 기다렸다. 묶어서 `position: sticky` 로 패널 바닥에 붙인다
+            (CSS `.result-cta`) — 스크롤 위치와 무관하게 늘 화면 안이다. */}
+        <div className="result-cta">
+          <button
+            className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
+            onClick={onClose}
+          >
+            {historical === true ? "닫기" : "다음 국으로"}
+            {showCountdown ? (
+              <span className="result-close-count" aria-hidden>
+                {remainSec}초
+              </span>
+            ) : null}
+          </button>
           {showCountdown ? (
-            <span className="result-close-count" aria-hidden>
-              {remainSec}초
-            </span>
+            <p className="result-close-note">
+              누르지 않아도 <strong>{remainSec}초</strong> 뒤 다음 국이 시작된다 —
+              천천히 읽어도 된다
+            </p>
           ) : null}
-        </button>
-        {showCountdown ? (
-          <p className="result-close-note">
-            누르지 않아도 <strong>{remainSec}초</strong> 뒤 다음 국이 시작된다 —
-            천천히 읽어도 된다
-          </p>
-        ) : null}
+        </div>
       </div>
     </div>
   );

@@ -980,9 +980,20 @@ describe("일시정지 — 제한시간 게이지도 함께 선다", () => {
   it("마감이 없는 국에서도 막대는 돈다 — 숫자는 지어내지 않는다", () => {
     expect(timer).toContain("deadline ?? Date.now() + PROMPT_FALLBACK_MS");
     expect(APP).toContain("const PROMPT_FALLBACK_MS = 30_000;");
-    // 남은 «초»는 서버 마감이 있을 때만 적는다
-    expect(timer).toContain("const showCount = deadline !== null && left <= TIMER_COUNT_MS;");
+    /*
+     * 남은 «초»는 서버 마감이 있을 때만 적는다.
+     *
+     * 2026-08-25 QA §12 로 «마감이 있는 동안에는 내내» 숫자를 띄우게 바뀌었다
+     * (예전에는 ≤10초 구간에만 떠서, 평소엔 5px 짜리 선이 유일한 신호였다).
+     * 이 검사가 지키는 선은 그 «언제부터»가 아니라 **마감이 없으면 숫자가 아예
+     * 안 나온다**는 쪽이다 — 어림값에 «약»을 붙여 적는 것도 지어내는 것이다.
+     */
+    expect(timer).toContain("const showCount = deadline !== null;");
     expect(timer).toContain("const urgent = deadline !== null && left <= TIMER_URGENT_MS;");
+    // 게이트가 실제로 렌더를 막아야 한다 — 값만 계산하고 늘 그리면 의미가 없다
+    expect(timer).toContain('{showCount ? <span className="prompt-timer-count">');
+    // 어림값을 숫자로 옮기는 «약 N초» 표기가 되살아나지 않게
+    expect(timer).not.toContain('"약 "');
   });
 });
 
