@@ -263,7 +263,12 @@ describe("invincible (천하무적) — 쿨다운은 모드를 따라간다", ()
 describe("매치 예산이 모드를 따라간다 (scaledUses)", () => {
   /** state 없이도 예산 함수가 두 모드에서 갈리는지 — 상한 자체를 못박는다 */
   const budgetIn = (mode: "tonpuu" | "hanchan", n: number): number => {
-    const base = craft({ hands: { p0: "*", p1: "*", p2: "*", p3: "*" }, seed: 1 });
+    const base = craft({
+      hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      seed: 1,
+    });
     return scaledUses({ ...base, config: { ...base.config, mode } }, n);
   };
 
