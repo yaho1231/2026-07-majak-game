@@ -427,6 +427,16 @@ interface Conn {
    */
   guest: boolean;
   sessionToken: string | null;
+  /**
+   * **같은 계정의 새 창에 자리를 넘기고 끊긴 연결인가** (`SESSION_TAKEOVER`).
+   *
+   * 대기실 좌석을 여기서 비우면 혼자 있던 방이 그 자리에서 사라진다 — 폰에서
+   * 대기실에 앉아 있다가 PC로 옮겨 앉는 사람이 방을 잃는다(#338이 만든 «진행하던
+   * 방으로 재접속»이 가리킬 방 자체가 없어진다). 그래서 이 경우에만 좌석을
+   * 남겨 두고, 새 창이 `joinRoom`으로 이어받게 한다. 끝내 아무도 안 오면 유휴
+   * 청소가 방과 함께 걷어 간다.
+   */
+  takenOver: boolean;
   room: Room | null;
   agent: HumanAgent | null;
   spectating: Room | null;
@@ -1500,6 +1510,7 @@ export class RoomManager {
       user: null,
       guest: false,
       sessionToken: null,
+      takenOver: false,
       room: null,
       agent: null,
       spectating: null,
@@ -1745,7 +1756,8 @@ export class RoomManager {
       room.controller?.requestAbort();
       this.rooms.delete(room.code);
     } else if (room.phase === "waiting") {
-      this.leaveWaiting(room, conn.agent);
+      // 새 창에 넘긴 자리는 비우지 않는다 (Conn.takenOver 주석).
+      if (!conn.takenOver) this.leaveWaiting(room, conn.agent);
     } else {
       // 지금 이 좌석이 붙들고 있는 결정이 있으면 30초를 다 기다리지 않게 줄인다.
       conn.agent.noticeDisconnect();
@@ -2889,6 +2901,14 @@ export class RoomManager {
     }
   }
 
+  /** 이 닉네임으로 지금 열려 있는 연결이 있는가 (다른 창에서 접속 중인가). */
+  private hasOnlineConn(username: string): boolean {
+    for (const c of this.conns) {
+      if (!c.guest && c.user?.username === username) return true;
+    }
+    return false;
+  }
+
   /** 이 좌석을 지금 붙들고 있는 연결 (없으면 null). */
   private connOf(agent: HumanAgent): Conn | null {
     for (const c of this.conns) {
@@ -2916,6 +2936,15 @@ export class RoomManager {
     for (const a of [...room.agents]) {
       if (!(a instanceof HumanAgent)) continue;
       if (a.isConnected() && !a.isAbandoned) continue;
+      /*
+       * **새 창에 넘긴 자리는 유령이 아니다** (`Conn.takenOver`, 2026-08-25).
+       *
+       * 같은 계정의 새 창이 로그인하면 옛 소켓은 끊긴다. 그 순간 이 좌석은
+       * 「끊긴 사람」처럼 보이지만, 그 사람은 지금 **다른 창으로 접속해 있고**
+       * 로그인 응답(`authOk.resumeRoom`)이 바로 이 방으로 돌아오라고 알려 준 참이다.
+       * 여기서 걷어내면 그 안내가 «눌러야 비로소 방이 없다고 답하는 버튼»이 된다.
+       */
+      if (!a.isAbandoned && this.hasOnlineConn(a.nickname)) continue;
       const c = this.connOf(a);
       if (c !== null) {
         c.room = null;
@@ -4310,6 +4339,7 @@ export class RoomManager {
     let closed = 0;
     for (const c of this.conns) {
       if (c === keep || c.user?.id !== userId || c.guest) continue;
+      c.takenOver = code === "SESSION_TAKEOVER";
       c.user = null;
       c.sessionToken = null;
       this.fail(c, code, message);

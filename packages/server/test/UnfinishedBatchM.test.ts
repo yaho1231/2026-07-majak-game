@@ -219,19 +219,21 @@ describe("혼자 두는 기록 대국은 무효로 지울 수 없다", () => {
 // ─────────────── §10-4 비싼 조회 제한 키 ───────────────
 
 describe("비싼 조회 제한이 연결 수만큼 곱해지지 않는다", () => {
-  it("같은 계정의 다른 탭이 같은 창을 나눠 쓴다", async () => {
+  it("같은 계정의 다음 창이 같은 창을 이어받는다", async () => {
     const h = await newHarness();
     const tab1 = await connectRemote(h.rm, "Heavy", "198.51.100.9");
-    // 두 번째 탭 — 같은 계정으로 토큰 로그인.
     const token = tab1.last("authOk").sessionToken as string;
+
+    // 창당 5회다. 탭1에서 5회를 쓴다.
+    for (let i = 0; i < 5; i++) tab1.clientSend({ type: "replayList" });
+    await new Promise((r) => setTimeout(r, 100));
+
+    // 새 탭으로 다시 붙는다 — 탭1은 SESSION_TAKEOVER로 끊긴다(한 계정 한 창).
+    // 그래도 제한 창은 **계정**의 것이라 새 탭에서 이어진다.
     const tab2 = new FakeSocket();
     h.rm.handleConnection(tab2.asWs(), "198.51.100.9", false);
     tab2.clientSend({ type: "tokenLogin", sessionToken: token });
     await tab2.until(() => tab2.last("authOk") !== undefined);
-
-    // 창당 5회다. 탭1에서 5회를 쓰면 **탭2에서도** 막혀야 한다.
-    for (let i = 0; i < 5; i++) tab1.clientSend({ type: "replayList" });
-    await new Promise((r) => setTimeout(r, 100));
 
     const before = tab2.all("error").length;
     tab2.clientSend({ type: "replayList" });

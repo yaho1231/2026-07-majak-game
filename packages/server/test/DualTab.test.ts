@@ -1,5 +1,9 @@
 /**
- * **좌석이 다른 창으로 옮겨 가면 옛 창도 그 사실을 안다** (QA 2차 server 확정 2).
+ * **같은 계정이 새 창에서 로그인하면 옛 창이 끝난다** (2026-08-25 사용자 지시).
+ *
+ * 원래 이 파일은 «좌석이 옮겨 가도 옛 창은 살아 있다»(SESSION_REPLACED)를 못 박았다.
+ * 이제 규칙이 한 단계 위로 올라갔다 — 계정 하나가 창 하나다. 새 로그인이 옛 연결을
+ * `SESSION_TAKEOVER`로 끊고, 옛 탭은 안내를 띄운 뒤 스스로 정리한다.
  *
  * 한 좌석은 언제나 연결 하나만 몬다(`detachStaleConns`) — 그건 이미 맞다. 문제는
  * 떼어낸 뒤였다: 옛 연결의 `room`·`agent`를 조용히 null로만 만들고 아무 것도 보내지
@@ -130,22 +134,22 @@ describe("좀비 탭 — 좌석이 옮겨 간 창", () => {
     tab2.clientSend({ type: "joinRoom", code });
     await tab2.waitFor((m) => m.type === "view");
 
-    // 1) 옛 창에 사유가 간다.
-    const told = tab1.all("error").find((e) => e.code === "SESSION_REPLACED");
-    expect(told, "좌석이 옮겨 갔는데 옛 창에 아무 것도 알리지 않았다").toBeDefined();
-    expect(told.message).toContain("다른 곳");
-    // 소켓은 살려 둔다 — 계정이 무효가 된 것이 아니고, 끊으면 자동 재입장 핑퐁이 된다.
-    expect(tab1.closed, "옛 창의 소켓까지 닫으면 두 창이 서로를 끊는 핑퐁이 된다").toBe(false);
+    // 1) 옛 창은 **끊긴다** — 한 계정은 한 창에서만 산다(2026-08-25).
+    const told = tab1.all("error").find((e) => e.code === "SESSION_TAKEOVER");
+    expect(told, "새 창이 로그인했는데 옛 창에 아무 것도 알리지 않았다").toBeDefined();
+    expect(told.message).toContain("새 접속이 감지되어");
+    expect(tab1.closed, "쫓겨난 창의 소켓은 닫아야 한다").toBe(true);
 
-    // 2) 그 뒤 옛 창이 판을 움직이려 하면 거절이 돌아온다 (조용히 사라지지 않는다).
+    // 2) 그 뒤 옛 창이 판을 움직이려 하면 거절이 돌아온다 (조용히 삼켜지지 않는다).
+    tab1.readyState = 1; // 소켓만 되살려 서버 쪽 상태를 확인한다
     tab1.clear();
     tab1.clientSend({ type: "action", actionType: "pass", payload: {} });
     tab1.clientSend({ type: "roundContinue" });
-    await tab1.waitFor((m) => m.type === "error" && m.code === "NOT_IN_ROOM", 5_000);
+    await tab1.waitFor((m) => m.type === "error", 5_000);
     expect(
-      tab1.all("error").filter((e) => e.code === "NOT_IN_ROOM").length,
-      "옛 창의 조작이 오류도 없이 삼켜졌다",
-    ).toBeGreaterThanOrEqual(2);
+      tab1.all("error").length,
+      "쫓겨난 창의 조작이 오류도 없이 삼켜졌다",
+    ).toBeGreaterThanOrEqual(1);
 
     // 3) 좌석은 새 창이 정상적으로 몬다 — 떼어내기 자체가 망가지면 안 된다.
     expect(tab2.all("view").length).toBeGreaterThan(0);
