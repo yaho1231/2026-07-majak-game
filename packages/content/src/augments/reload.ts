@@ -223,7 +223,7 @@ export const reload: AugmentDef = defineAugment({
    */
   draftRequires: (state, player) => hasRestorableAugment(state, player),
   detail:
-    "(동풍전 1회 · 반장전 2회) 복구는 전원에게 공개된다. 대상은 게임 단위 사용 횟수를 쓰는 내 증강뿐이라 '게임 내 1회'조차 되돌릴 수 있고, 국 단위 쿨다운으로 도는 증강과 재장전 자신은 후보에 뜨지 않는다. 첫 증강 선택에는 나오지 않고, **되살릴 수 있는 증강(횟수형·선발동형)을 하나도 들고 있지 않으면 드래프트에 아예 제시되지 않는다.**",
+    "자기 순에 소진한 내 증강 하나를 지목해 그 사용 횟수를 한 번 되돌린다. 복구는 전원에게 공개된다.\n\n대상은 게임 단위 횟수를 쓰는 내 증강이다 — **'게임 내 1회'도 되돌릴 수 있다.** 국 단위 쿨다운으로 도는 증강과 재장전 자신은 고를 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

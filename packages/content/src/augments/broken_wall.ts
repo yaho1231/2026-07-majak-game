@@ -18,7 +18,7 @@ export const brokenWall: AugmentDef = defineAugment({
   description:
     "(상시) 슌쯔가 원을 그리며 순환한다 — 8-9-1, 9-1-2도 하나의 몸통으로 인정된다.",
   detail:
-    "(상시) 자신에게만 적용되며, 화료·텐파이·후리텐·대기·치 판정에 모두 반영된다.",
+    "자신에게만 적용되며, 화료·텐파이·후리텐·대기·치 판정에 모두 반영된다.",
   install(ctx) {
     ctx.setHolderRule("scoring.wrapRuns", true);
   },
