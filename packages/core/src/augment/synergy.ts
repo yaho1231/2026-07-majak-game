@@ -361,7 +361,19 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   scapegoat: e(["payout", "disrupt"]),
   blind_ron: e(["payout", "disrupt"]),
   parasite: e(["steal", "disrupt"]),
-  spy: e(["steal", "disrupt"]),
+  /*
+   * 스파이는 **상대가 화료해 주어야** 값이 나온다 — 찍어 둔 패로 상대가 화료하면 그
+   * 점수가 통째로 나에게 온다. 그래서 상대의 화료 빈도를 직접 깎는 카드와 함께 들면
+   * 자기 밥그릇을 걷어차는 셈이다(울음 봉인·리치 봉인). 다만 «함께 가질 수 없다»는
+   * 아니므로 conflicts가 아니라 가중치로 밀어낸다 — conflicts는 픽 하나를 아예
+   * 없애는 최후의 수단이다(docs/10 §상호 배제).
+   *
+   * 무장해제는 여기 넣지 않는다: 상대 증강 하나를 잠글 뿐 화료 자체를 막지 않아,
+   * 스파이의 수입이 줄어든다는 근거가 없다.
+   */
+  spy: e(["steal", "disrupt"], {
+    antiIds: ["call_seal", "riichi_seal"],
+  }),
 
   // ───────────────────────── 방해·템포 ─────────────────────────
   disarm: e(["disrupt"]),

@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { shantenOf, ukeireOf } from "../src/index.js";
+import { isTenpai, shantenOf, standardKinds, ukeireOf } from "../src/index.js";
 import type { TileKind } from "../src/index.js";
 
 /** "123m45p6s11z" → TileKind[] */
@@ -147,5 +147,96 @@ describe("ukeireOf — 받는 패의 실제 장수", () => {
     const wide = ukeireOf(h("234m567m345p22s47s"), 0, all4);
     const narrow = ukeireOf(h("234m567m345p22s19s"), 0, all4);
     expect(wide.tiles).toBeGreaterThan(narrow.tiles);
+  });
+});
+
+/**
+ * 무늬 확장 증강(무너진 국경 `mixedRuns` · 동수의 결속 `mixedTriplets` ·
+ * 비대칭 치또이 `chiitoiMixedPairs`)이 걸린 손.
+ *
+ * 예전에는 `shantenOf`가 이 옵션들을 **아예 보지 않아**, 확장으로 이미 텐파이인 손을
+ * 봇이 4샹텐으로 읽고 오름패를 그대로 흘렸다. 반대로 «옵션이 켜져 있으면 무조건 1
+ * 깎기» 같은 어림값은 낙관적으로 새서 텐파이가 아닌 손을 텐파이로 읽는다 — 샹텐 0은
+ * 봇의 텐파이·리치·푸시 판단 전체의 문지기라(read.ts) 그쪽이 훨씬 위험하다.
+ * 그래서 **줄어드는가**와 **거짓 텐파이가 없는가**를 함께 못 박는다.
+ */
+describe("shantenOf — 무늬 확장 옵션", () => {
+  it("무너진 국경(mixedRuns): 무늬가 섞인 슌쯔를 몸통으로 센다", () => {
+    // 1m2p3s · 4m5p6s · 7m8p9s · 123m + 9p — 랭크로는 3멘쯔 + 1멘쯔 + 머리 단기.
+    const hand = h("147m258p369s123m9p");
+    expect(shantenOf(hand, 0)).toBe(4); // 확장이 없으면 한참 멀다
+    expect(shantenOf(hand, 0, { mixedRuns: true })).toBe(0);
+  });
+
+  it("동수의 결속(mixedTriplets): 랭크만 같으면 커쯔다", () => {
+    const hand = h("2m2p2s5m5p5s8m8p8s11z1m");
+    expect(shantenOf(hand, 0)).toBe(6);
+    expect(shantenOf(hand, 0, { mixedTriplets: true })).toBe(1);
+  });
+
+  it("비대칭 치또이(chiitoiMixedPairs): 무늬가 달라도 랭크가 같으면 한 쌍이다", () => {
+    // 랭크로는 여섯 쌍 + 7m 단기 = 텐파이, 무늬로는 한 쌍도 없다.
+    const cross = h("1m1p2m2p3m3p4m4p5m5p6m6p7m9s");
+    expect(shantenOf(cross, 0, { chiitoiMixedPairs: true })).toBe(0);
+    // 같은 패 3장은 쌍으로 세지 않는다 (asyncChiitoiPairs의 «최대 2장» 규칙).
+    const triple = h("111m1p2m2p3m3p4m4p5m5p6m");
+    expect(shantenOf(triple, 0, { chiitoiMixedPairs: true })).toBeGreaterThanOrEqual(
+      shantenOf(h("11m1p2m2p3m3p4m4p5m5p6m6p"), 0, { chiitoiMixedPairs: true }),
+    );
+  });
+
+  it("확장은 손을 나쁘게 만들지 않는다 (언제나 표준 이하)", () => {
+    for (const spec of [
+      "123m456p789s11z22m",
+      "1235m5789p147s2z",
+      "1111m2222p3333s1z",
+      "159m159p159s1234z",
+      "123456789m1122p",
+    ]) {
+      const hand = h(spec);
+      const plain = shantenOf(hand, 0);
+      for (const opts of [
+        { mixedRuns: true },
+        { mixedTriplets: true },
+        { mixedPairs: true },
+        { mixedRuns: true, mixedTriplets: true, mixedPairs: true },
+        { chiitoiMixedPairs: true },
+      ]) {
+        expect(shantenOf(hand, 0, opts)).toBeLessThanOrEqual(plain);
+      }
+    }
+  });
+
+  /**
+   * **낙관 금지** — 무작위 손 2000개로, 샹텐이 0 이하라고 말한 손은 실제로 텐파이여야
+   * 한다(`isTenpai`가 같은 옵션으로 분해해 확인하는 진짜 판정이다). 어림값이 한 칸이라도
+   * 새면 여기서 잡힌다.
+   */
+  it("옵션이 켜져도 텐파이가 아닌 손을 텐파이로 읽지 않는다", () => {
+    const universe = standardKinds();
+    let rng = 12345;
+    const nextInt = (n: number): number => {
+      rng = (rng * 1103515245 + 12345) % 2147483648;
+      return rng % n;
+    };
+    const OPTS = [
+      { mixedRuns: true },
+      { mixedTriplets: true },
+      { mixedPairs: true },
+      { mixedRuns: true, mixedTriplets: true, mixedPairs: true },
+      { chiitoiMixedPairs: true },
+    ];
+    for (let n = 0; n < 2000; n++) {
+      const opts = OPTS[n % OPTS.length] as Record<string, boolean>;
+      const wall: TileKind[] = [];
+      for (const k of universe) for (let c = 0; c < 4; c++) wall.push(k);
+      const hand: TileKind[] = [];
+      for (let i = 0; i < 13; i++) hand.push(...wall.splice(nextInt(wall.length), 1));
+      if (shantenOf(hand, 0, opts) > 0) continue;
+      expect(
+        isTenpai(hand, 0, universe, opts),
+        `샹텐은 텐파이라는데 실제 대기가 없다: ${hand.map((k) => `${k.rank}${k.suit}`).join(" ")} / ${JSON.stringify(opts)}`,
+      ).toBe(true);
+    }
   });
 });

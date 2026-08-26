@@ -412,19 +412,24 @@ describe("yakuman_shield (역만 방어술) — 역만 전용 / 횟수 무제한
     expect(game.engine.state.augmentData["yakuman_shield:used:p0"]).toBe(6);
   });
 
-  it("하네만은 막지 않는다 — 역만 전용이다 (2026-07-26 밸런스)", () => {
+  /**
+   * 2026-08-26 이중 방어 — 역만은 전액, **배만·삼배만은 절반**이다.
+   * (여기 손패 `haneState`는 청일 치또이로 실제로는 배만 16000이 떨어진다.)
+   */
+  it("배만은 절반만 맞는다 (2026-08-26 이중 방어)", () => {
     const base = createStandardGameFromState(haneState());
     runRon(base, "p0", "p1");
     const baseDelta = lastSettled(base).deltas["p0"] ?? 0;
-    expect(baseDelta).toBeLessThanOrEqual(-12000); // 하네만 이상 실점
+    expect(baseDelta).toBe(-16000); // 배만 직격
 
     const game = createStandardGameFromState(
       withAugments(haneState(), { p0: ["yakuman_shield"] }),
     );
     installAugment(game.engine, yakumanShield, "p0", { yaku: game.yaku });
     runRon(game, "p0", "p1");
-    expect(lastSettled(game).deltas["p0"]).toBe(baseDelta);
-    expect(game.engine.state.augmentData["yakuman_shield:used:p0"]).toBeUndefined();
+    expect(lastSettled(game).deltas["p0"]).toBe(baseDelta / 2);
+    // 절반 방어도 «막아낸 횟수»로 센다 — 화면의 방어 카운터가 발동을 그대로 비춘다.
+    expect(game.engine.state.augmentData["yakuman_shield:used:p0"]).toBe(1);
   });
 
   it("만관 이하 방총에는 발동하지 않는다", () => {
