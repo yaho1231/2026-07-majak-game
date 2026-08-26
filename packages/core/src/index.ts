@@ -454,6 +454,7 @@ export type {
   ViewMessage,
   PromptMessage,
   DraftOfferMessage,
+  DraftProgressMessage,
   AugmentCatalogEntry,
   CatalogMessage,
   RevealedHand,

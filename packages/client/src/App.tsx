@@ -425,6 +425,7 @@ const GAME_STREAM_MESSAGES: ReadonlySet<ServerMessage["type"]> = new Set([
   "promptCancel",
   "draftOffer",
   "draftAutoPicked",
+  "draftProgress",
   "draftRerolled",
   "roundOver",
   "gameOver",
@@ -3119,6 +3120,8 @@ export function App(): JSX.Element {
   const draftDeadline = useRef<number | null>(null);
   /** 내가 이번 드래프트에서 이미 골랐는가 — 고른 뒤 "다른 플레이어 대기 중" 표시용 */
   const [draftPicked, setDraftPicked] = useState(false);
+  /** 이번 증강 선택에서 아직 안 고른 좌석 (서버 방송 `draftProgress`). */
+  const [draftPending, setDraftPending] = useState<readonly string[]>([]);
   // handleServerMessage는 마운트 시 고정된 스테일 클로저라 draftPicked state를
   // 못 읽는다 → 뷰 핸들러에서 "이미 골랐는가"를 판정할 ref를 따로 둔다.
   const draftPickedRef = useRef(false);
@@ -5158,6 +5161,15 @@ export function App(): JSX.Element {
       showBanner("자동 선택", "info", `시간 초과 — ${msg.name} 획득`, 2200);
       return;
     }
+    if (msg.type === "draftProgress") {
+      /*
+       * 아직 안 고른 사람 목록. **오퍼보다 먼저** 도착한다(서버가 기다림에 들어가기
+       * 직전에 한 번 보낸다) — 그래서 `draftOffer` 핸들러에서 지우면 안 된다.
+       * 다음 스테이지의 첫 방송이 그대로 덮으므로 낡은 값이 남지도 않는다.
+       */
+      setDraftPending(msg.pending);
+      return;
+    }
     if (msg.type === "draftRerolled") {
       // 그 슬롯만 갈아 끼우고 새로고침을 소진 처리한다. 서버가 이미 같은 판단을
       // 하고 보낸 것이므로 여기서 다시 검사하지 않는다 — 슬롯 번호만 맞춘다.
@@ -6903,6 +6915,15 @@ export function App(): JSX.Element {
           picked={draftPicked}
           owned={view?.players.find((p) => p.id === view.playerId)?.augments ?? []}
           catalog={catalog}
+          /* 아직 안 고른 사람 — 이름으로 바꿔 넘긴다(오버레이는 view를 안 본다).
+             내 자리는 뺀다: 이 줄은 «고른 뒤에» 뜨는 줄이라 나는 이미 끝났다. */
+          pendingNames={
+            view === null
+              ? []
+              : draftPending
+                  .filter((id) => id !== view.playerId)
+                  .map((id) => playerNameById(view, id))
+          }
         />
       ) : null}
       {activeProd !== null && activeProd.channel === "banner" && activeProd.tone === "riichi" ? (
@@ -17251,6 +17272,123 @@ function augmentPillStatus(
   return usesStatus;
 }
 
+/**
+ * 이름표를 눌러 여는 **증강 보기 시트** (모바일 전용 경로).
+ *
+ * 폰에서는 이름표가 22px 짜리 알약 한 줄이라, 증강 알약이 서면 이름을 밀어내고
+ * 서로 겹쳤다 — 무슨 증강을 골랐는지 사실상 볼 수 없었다(2026-08-27 사용자 지적).
+ * 그래서 좁은 화면에서는 알약에 **이름만** 남기고(CSS `.np-augs` 숨김), 그 이름을
+ * 누르면 이 시트가 뜬다. 여기서는 폭이 넉넉하므로 이름·계열·상태·설명을 전부 편다.
+ *
+ * 데스크톱에서는 알약 툴팁이 그대로 그 일을 하므로 이름은 눌리지 않는다
+ * (`.np-name-btn { pointer-events: none }` — 좁은 화면에서만 되살린다).
+ */
+function PlayerAugSheet({
+  view,
+  player,
+  catalog,
+  onClose,
+}: {
+  view: PlayerView;
+  player: PlayerInfo;
+  catalog: Record<string, AugmentCatalogEntry>;
+  onClose: () => void;
+}): JSX.Element {
+  const disarmed = disarmedAugmentsOf(view, player.id);
+  const reloaded = reloadedAugmentsOf(view, player.id);
+  const fromDice = cornucopiaGrantsOf(view, player.id);
+  const arch = player.isBot ? archetypeInfo(player.archetype) : null;
+  /** 상세 설명을 펼쳐 둔 증강 — 시트는 자리가 넉넉하지만 기본은 요약 한 줄이다 */
+  const [detailFor, setDetailFor] = useState<string | null>(null);
+  // Esc — 오버레이의 공통 손잡이
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const augs = player.augments;
+  return createPortal(
+    // overlay-peekable — '누른 채로 게임판 보기'가 붙는 표면(드래프트 창과 같은 규칙).
+    // ⚠ body 직속 포털이어야 한다(FIXED_SURFACE_NOTE).
+    <div
+      className="overlay overlay-peekable aug-sheet-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="aug-sheet" role="dialog" aria-label={`${playerName(view, player)} 증강`}>
+        <div className="aug-sheet-head">
+          <span className="aug-sheet-who">{playerName(view, player)}</span>
+          {arch !== null ? (
+            <span className="aug-sheet-arch" title={arch.desc}>{arch.label}</span>
+          ) : null}
+          <span className="aug-sheet-score">{player.score.toLocaleString()}점</span>
+          <button type="button" className="aug-sheet-close" onClick={onClose} aria-label="닫기">
+            ✕
+          </button>
+        </div>
+        {augs.length === 0 ? (
+          <p className="aug-sheet-empty">아직 증강이 없습니다.</p>
+        ) : (
+          <ul className="aug-sheet-list">
+            {augs.map((a) => {
+              const entry = catalog[a];
+              const locked = disarmed.has(a);
+              const status = augmentPillStatus(view, player.id, a);
+              const cooldown = cooldownRoundsLeft(view, player.id, a);
+              const cooldownTurns = cooldownTurnsLeft(view, player.id, a);
+              const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
+              return (
+                <li className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}`} key={a}>
+                  <div className="aug-sheet-row-head">
+                    <AugCatIcon id={a} />
+                    <span className="aug-sheet-name">{entry?.name ?? a}</span>
+                    <span className="aug-sheet-cat">{CATEGORY_META[augmentCategory(a)].label}</span>
+                  </div>
+                  <div className="aug-sheet-chips">
+                    {locked ? <span className="aug-sheet-chip">🔒 무장해제 — 이번 국 잠김</span> : null}
+                    {reloaded.has(a) ? <span className="aug-sheet-chip">♻ 재장전</span> : null}
+                    {fromDice.has(a) ? <span className="aug-sheet-chip">🎲 수상한 주사위</span> : null}
+                    {cooldown > 0 ? (
+                      <span className="aug-sheet-chip">🕐 쿨다운 {cooldown}국</span>
+                    ) : null}
+                    {cooldownTurns > 0 ? (
+                      <span className="aug-sheet-chip">🕐 쿨다운 {cooldownTurns}순</span>
+                    ) : null}
+                    {status !== null ? (
+                      <span className="aug-sheet-chip aug-sheet-chip-live">{status.chip}</span>
+                    ) : null}
+                    {isActiveAugment(a) ? (
+                      <span className="aug-sheet-chip">✦ 액티브</span>
+                    ) : null}
+                  </div>
+                  {status !== null ? <p className="aug-sheet-note">{status.note}</p> : null}
+                  <div className="aug-sheet-desc">
+                    <AugDesc
+                      id={a}
+                      description={entry?.description}
+                      detail={entry?.detail}
+                      expanded={detailFor === a}
+                      useOverride={spent ? "효과 종료" : undefined}
+                    />
+                  </div>
+                  <MoreToggle
+                    open={detailFor === a}
+                    onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 const NamePlate = memo(function NamePlate({
   view,
   player,
@@ -17318,6 +17456,8 @@ const NamePlate = memo(function NamePlate({
    * 여러 개를 동시에 고정할 수 있다(다시 누르면 풀린다, Esc는 전부 푼다).
    */
   const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
+  /** 이름을 눌러 연 증강 보기 시트 (폰 전용 경로 — PlayerAugSheet 주석) */
+  const [sheetOpen, setSheetOpen] = useState(false);
   const togglePin = (a: string): void =>
     setPinned((cur) => {
       const next = new Set(cur);
@@ -17409,7 +17549,31 @@ const NamePlate = memo(function NamePlate({
           {connLabel}
         </span>
       ) : null}
-      <span className="np-name" title={playerName(view, player)}>{playerName(view, player)}</span>
+      {/*
+        * 이름은 **누를 수 있는 알약**이다 — 폰에서만.
+        *
+        * 좁은 화면에서는 증강 알약을 이름표에서 걷어 냈으므로(CSS `.np-augs` 숨김),
+        * 무엇을 골랐는지 보는 길이 여기 하나뿐이다. 넓은 화면에서는 알약 툴팁이
+        * 그대로 있으므로 CSS 가 이 버튼의 `pointer-events` 를 꺼 둔다 — 이름을 눌러
+        * 모달이 뜨는 것은 데스크톱에서는 방해다.
+        */}
+      <button
+        type="button"
+        className="np-name np-name-btn"
+        title={playerName(view, player)}
+        aria-label={`${playerName(view, player)} — 증강 보기`}
+        onClick={() => setSheetOpen(true)}
+      >
+        {playerName(view, player)}
+      </button>
+      {sheetOpen ? (
+        <PlayerAugSheet
+          view={view}
+          player={player}
+          catalog={catalog}
+          onClose={() => setSheetOpen(false)}
+        />
+      ) : null}
       {/*
        * 점수 — 상대 점수를 **회전하지 않은 글자로** 읽는 유일한 길.
        *
@@ -24304,6 +24468,7 @@ function DraftOverlay({
   picked,
   owned,
   catalog,
+  pendingNames,
 }: {
   draft: DraftOfferMessage;
   /**
@@ -24319,6 +24484,8 @@ function DraftOverlay({
   /** 지금까지 내가 고른 증강 — 무엇을 이어 붙일지 판단하려면 눈앞에 있어야 한다 */
   owned: readonly string[];
   catalog: Record<string, AugmentCatalogEntry>;
+  /** 아직 안 고른 사람들의 표시 이름 (나는 빠져 있다) */
+  pendingNames: readonly string[];
 }): JSX.Element {
   // 남은 시간 카운트다운 — 오퍼 **도착 시각**에 굳힌 마감까지 센다. 이 창이 개막
   // 연출·결과 화면 뒤에서 늦게 떠도 화면의 숫자와 서버 타이머가 어긋나지 않는다.
@@ -24510,7 +24677,30 @@ function DraftOverlay({
           })}
         </div>
         {picked ? (
-          <p className="draft-waiting">✓ 선택 완료 — 다른 플레이어를 기다리는 중…</p>
+          /*
+           * 고른 뒤의 대기 줄. 예전에는 «다른 플레이어를 기다리는 중…» 한 줄뿐이라
+           * 누구를 몇 명 기다리는지 알 수 없었고, 그래서 판이 멈춘 것과 구분되지
+           * 않았다(2026-08-27 사용자 요청). 남은 사람 이름을 그대로 세운다.
+           * 목록이 빈 채로 화면이 남아 있는 순간(마지막 픽 직후 ~ 다음 뷰)에는
+           * 예전 문구로 되돌아간다 — «0명»이라고 적어 두면 그게 더 이상하다.
+           */
+          <div className="draft-waiting">
+            <p className="draft-waiting-line">
+              ✓ 선택 완료 —{" "}
+              {pendingNames.length > 0
+                ? `아직 ${pendingNames.length}명이 고르는 중…`
+                : "다른 플레이어를 기다리는 중…"}
+            </p>
+            {pendingNames.length > 0 ? (
+              <p className="draft-waiting-who">
+                {pendingNames.map((n) => (
+                  <span className="draft-waiting-name" key={n}>
+                    {n}
+                  </span>
+                ))}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>,
