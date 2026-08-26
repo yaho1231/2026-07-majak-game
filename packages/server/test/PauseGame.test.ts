@@ -224,7 +224,7 @@ describe("HumanAgent — 일시정지", () => {
     agent.setPaused(true);
     agent.setPaused(false);
     agent.setPaused(false);
-    await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS + 500);
+    await vi.advanceTimersByTimeAsync(DECISION_MS + 500);
     // 정확히 한 번만 만료된다 (타이머가 두 벌 걸렸다면 취소 메시지도 두 번 나간다)
     expect(sock.sent.filter((m) => m.type === "promptCancel")).toHaveLength(1);
   });
@@ -246,14 +246,14 @@ describe("HumanAgent — 시간 연장", () => {
     });
     const promptsBefore = sock.sent.filter((m) => m.type === "prompt").length;
 
-    await vi.advanceTimersByTimeAsync(10_000); // 15초 남았다 (25초 - 10초)
+    await vi.advanceTimersByTimeAsync(10_000); // DECISION_MS - 10초가 남았다
     const res = agent.extendTime(30_000);
     expect(res).toMatchObject({ kind: "decision", seat: "p0" });
     expect(res!.leftMs).toBeGreaterThan(DECISION_MS - 10_000 + 30_000 - 100);
     expect(sock.sent.filter((m) => m.type === "prompt")).toHaveLength(promptsBefore);
 
-    // 원래 마감(총 25초)을 지나도 살아 있어야 한다
-    await vi.advanceTimersByTimeAsync(25_000);
+    // 원래 마감(DECISION_MS)을 지나도 살아 있어야 한다
+    await vi.advanceTimersByTimeAsync(DECISION_MS);
     expect(chosen).toBeNull();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(chosen).not.toBeNull();
