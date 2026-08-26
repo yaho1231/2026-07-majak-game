@@ -4963,7 +4963,7 @@ export class RoomManager {
      * `voteAbort`가 게스트 화이트리스트에 없어 그 앞에서 걸린다. 손님은 창을 닫으면
      * 된다.)
      */
-    if (humans.length < 2 && !room.guest && !room.sandbox) {
+    if (!this.abortableByHumans(room, humans.length)) {
       return this.fail(
         conn,
         "SOLO_ABORT_FORBIDDEN",
@@ -4976,6 +4976,24 @@ export class RoomManager {
     else room.abortVotes.delete(conn.agent.id); // withdraw = 내 동의 철회
 
     this.retallyAbortVotes(room);
+  }
+
+  /**
+   * **기록되는 판을 사람 몇 명이 지울 수 있는가** — 무효 성립의 유일한 불변식.
+   *
+   * 기록 대국은 사람이 2명 이상 남아 있을 때만 무효로 접을 수 있다(감사 §10-3).
+   * 기록하지 않는 방(체험·증강 테스트)은 세탁할 전적이 없고, 무효가 그 방들의
+   * 유일한 정리 수단이라 예외다.
+   *
+   * **표를 던지는 자리와 표를 세는 자리 양쪽에서 물어야 한다.** 예전에는
+   * `handleVoteAbort`에만 있었는데, 실제로 `requestAbort()`를 부르는 것은
+   * `retallyAbortVotes`다 — 2인 방에서 한 명이 동의해 둔 뒤 상대가 끊기기만 하면
+   * 정족수가 1로 줄며 이미 모인 그 한 표로 무효가 성립했다(감사 2026-08-26 H-1).
+   * 검사를 한 함수에 모아 두 자리가 같은 답을 쓰게 한다.
+   */
+  private abortableByHumans(room: Room, humanCount: number): boolean {
+    if (room.guest || room.sandbox) return true;
+    return humanCount >= 2;
   }
 
   /**
@@ -5007,15 +5025,38 @@ export class RoomManager {
     };
     for (const h of humans) h.notify(status);
 
-    // 표를 낼 수 있는 사람 전원 동의 → 무효 종료 (onGameAborted가 정리한다)
-    if (voters.length >= needed) room.controller?.requestAbort();
+    /*
+     * 표를 낼 수 있는 사람 전원 동의 → 무효 종료 (onGameAborted가 정리한다).
+     *
+     * **정족수가 줄어서 성립한 무효는 성립시키지 않는다.** 남은 사람이 하나뿐인
+     * 기록 대국은 그 한 표로 판을 지울 수 없다 — 던지는 자리에서 막아 놓고 세는
+     * 자리에서 열어 두면 «상대가 끊기기를 기다렸다가 지운다»가 그대로 된다.
+     * 위의 집계 브로드캐스트는 그대로 내보낸다: 화면의 «1/2»가 «1/1»로 바뀌는
+     * 것까지 숨기면 남은 사람은 자기 표가 어디로 갔는지 알 수 없다.
+     */
+    if (voters.length >= needed && this.abortableByHumans(room, needed)) {
+      room.controller?.requestAbort();
+    }
   }
 
   /**
-   * 사람이 한 명도 남지 않은 판을 무효로 접는다 (기권으로 마지막 좌석이 빠졌을 때).
+   * 사람이 한 명도 남지 않은 판을 정리한다 (기권으로 마지막 좌석이 빠졌을 때).
    *
    * 끊긴 좌석은 세어 준다 — 재접속하면 이어서 둘 사람이다. 나가기(abandon)로
    * 확정된 좌석만 빠진 것으로 본다.
+   *
+   * **기록되는 판은 접지 않는다** (감사 2026-08-26 H-2). 예전에는 방 종류를 가리지
+   * 않고 무효로 접었는데, 무효는 정산·순위·통계는 물론 **리플레이 파일까지** 지운다
+   * (`onGameAborted` → `discardReplay`). 그래서 사람 1 + 봇 3 방에서는
+   * 「나가기」 한 번이 지는 판을 흔적 없이 없애는 버튼이었다 —
+   * `SOLO_ABORT_FORBIDDEN`이 무효 투표에서 막은 바로 그 세탁을, 옆문으로.
+   *
+   * 이제 그 판은 봇 자동 진행으로 완주해 정상 기록된다. 그게 `handleVoteAbort`의
+   * 주석이 줄곧 약속하던 «나가기와 무효의 차이»다. 나간 사람의 화면으로 그 판이
+   * 새지 않는 것은 좌석 쪽에서 막는다(`HumanAgent.abandon` → `muted`).
+   *
+   * 기록하지 않는 방(체험·증강 테스트)은 종전대로 접는다 — 남길 전적이 없고,
+   * 아무도 보지 않는 봇 판을 끝까지 돌릴 이유도 없다.
    */
   private abortIfNoHumansLeft(room: Room): void {
     if (room.phase !== "playing" || room.controller === null) return;
@@ -5024,6 +5065,10 @@ export class RoomManager {
       (a): a is HumanAgent => a instanceof HumanAgent && !a.isAbandoned,
     );
     if (humans.length > 0) return;
+    if (!this.abortableByHumans(room, 0)) {
+      this.log(room, "사람이 모두 나갔다 — 봇이 판을 마저 두고 기록한다");
+      return;
+    }
     this.log(room, "사람이 모두 나갔다 — 판을 무효로 접는다");
     room.controller.requestAbort();
   }
