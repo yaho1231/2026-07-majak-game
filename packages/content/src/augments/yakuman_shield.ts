@@ -1,18 +1,17 @@
 /**
- * 역만 방어술 (yakuman_shield) — 하네만 이상 피해에 **완전 면역**. 횟수 제한 없음.
+ * 역만 방어술 (yakuman_shield) — 역만은 **완전 면역**, 배만 이상은 절반만 피해. 횟수 제한 없음.
  *
- * 설계: docs/16_AUGMENT_REDESIGN.md §1b D (52차 버프) → 2026-07-26 재조정 → 2026-08-26 확대
+ * 설계: docs/16_AUGMENT_REDESIGN.md §1b D (52차 버프) → 2026-07-26 재조정 → 2026-08-26 조정
  *
- * 52차엔 "하네만 이상 · 게임당 2회"였다. 이제 **하네만·배만·삼배만·셈수역만·역만 전부**로 확대하면서
- * **횟수 제한을 없앤다** — 하네만 이상 화료 피해는 몇 번이 오든 전부 0이 된다.
- * 유국역만도 함께 방어한다.
+ * 52차엔 "하네만 이상 · 게임당 2회"였다. 이제는 **이중 방어** 구조:
+ * - **역만 · 셈수역만 · 유국역만**: 완전 면역 (손실 0)
+ * - **배만 · 삼배만**: 절반만 피해 (손실의 절반만 내고 나머지 절반은 뱅크가 냄)
+ * - **하네만 이하**: 아무 효과 없음
  *
  * 방어가 발동하면 **보유자가 그 화료에 낸 몫 전액**(론이면 직격분, 쯔모면 분담분)을
- * 돌려받는다. 표준 분담(`winInfo.payments`)에는 본장·공탁이 없으므로 그 부담은 남는다 —
- * 설명도 그렇게 적혀 있다. 화료 총액(`Σ points`)을 상한으로 쓰던 시절에는 쯔모에서
- * 상한이 한 번도 물리지 않아 본장까지 환급됐다(QA defcall 확정 2). 환급분은 그
- * 화료자(들)의 이득에서 (이득 한도까지) 차감하고, 부족분은 뱅크에서 발행한다 —
- * 화료자가 마이너스로 떨어지지 않으면서 보유자는 하네만 이상 피해에서 벗어난다.
+ * 돌려받는다(역만의 경우). 표준 분담(`winInfo.payments`)에는 본장·공탁이 없으므로 그 부담은 남는다 —
+ * 설명도 그렇게 적혀 있다. 환급분은 화료자(들)의 이득에서 (이득 한도까지) 차감하고, 부족분은
+ * 뱅크에서 발행한다 — 화료자가 마이너스로 떨어지지 않으면서 보유자는 역만 피해에서 벗어난다.
  *
  * 막아낸 역만 수는 전원 공개 뷰 채널(view:*:yakuman_shield:{holder})에 실어
  * "저 사람한테 역만이 안 통한다"가 테이블에 보이게 한다.
@@ -63,17 +62,16 @@ interface ShieldMark {
   shieldedBy?: PlayerId[];
 }
 
-/** 방어 대상: 하네만 이상 (하네만·배만·삼배만·셈수역만·역만 등) */
-function isHighWin(w: WinInfo): boolean {
+/** 완전 면역: 역만 전용 */
+function isYakuman(w: WinInfo): boolean {
   if (w.yakumanCount > 0) return true;
+  return w.limit === "kazoe_yakuman" || w.limit === "yakuman";
+}
+
+/** 절반만 피해: 배만 이상 */
+function isHalfDamage(w: WinInfo): boolean {
   const limit = w.limit;
-  return (
-    limit === "kazoe_yakuman" ||
-    limit === "yakuman" ||
-    limit === "sanbaiman" ||
-    limit === "baiman" ||
-    limit === "haneman"
-  );
+  return limit === "sanbaiman" || limit === "baiman";
 }
 
 export const yakumanShield: AugmentDef = defineAugment({
@@ -83,9 +81,9 @@ export const yakumanShield: AugmentDef = defineAugment({
   complexity: 3,
   name: "역만 방어술",
   description:
-    "(상시 · 횟수 제한 없음) 하네만 이상(하네만·배만·삼배만·역만·유국역만) 피해를 막는다 — 내가 낸 몫을 전액 돌려받는다. 본장·공탁 부담은 그대로 낸다.",
+    "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해는 완전히 막고, 배만 이상은 손실을 절반만 받는다.",
   detail:
-    "(상시 · 횟수 제한 없음) 직격(론)이면 내가 문 화료점 전액, 쯔모면 내 분담분이 돌아온다. 환급된 만큼 화료자의 획득이 줄고 모자란 몫은 뱅크가 낸다. 유국역만만은 화료자의 수령액이 줄지 않는다.",
+    "(상시 · 횟수 제한 없음) **역만·셈수역만·유국역만** — 내가 낸 몫을 전액 돌려받아 손실 0. **배만·삼배만** — 손실의 절반만 내고 나머지는 뱅크가 낸다. **하네만 이하** — 효과 없음. 직격(론)이면 내가 낸 화료점 전액, 쯔모면 내 분담분 기준이다. 유국역만만은 화료자의 수령액이 줄지 않는다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -98,13 +96,10 @@ export const yakumanShield: AugmentDef = defineAugment({
       const loss = p.deltas[holder] ?? 0;
       if (loss >= 0) return event;
 
-      // 역만 화료 건 전부 (자기 화료는 제외 — 잃는 쪽일 때만 발동).
-      //
-      // ⚠ 예전엔 `find`로 **첫 한 건만** 잡았다. 그래서 더블론으로 역만이 둘 떨어지면
-      // 두 번째 역만은 상한에 아예 안 들어가 그대로 얻어맞았다 — "역만 완전 면역"이
-      // 더블론에서만 조용히 거짓이 됐다.
-      const bigWins = p.winInfos.filter((w) => isHighWin(w) && w.winner !== holder);
-      if (bigWins.length === 0) return event;
+      // 역만은 완전 면역, 배만 이상은 절반만 피해
+      const yakumanWins = p.winInfos.filter((w) => isYakuman(w) && w.winner !== holder);
+      const halfDamageWins = p.winInfos.filter((w) => isHalfDamage(w) && w.winner !== holder);
+      if (yakumanWins.length === 0 && halfDamageWins.length === 0) return event;
 
       // 손실 전액 환급 → 보유자 손실 0. 환급분은 화료자 이득 한도까지 차감하고,
       // 부족분은 뱅크가 발행한다(제로섬 불변식은 아니다 — 프로젝트 허용).
@@ -161,33 +156,40 @@ export const yakumanShield: AugmentDef = defineAugment({
             : (w.payments?.others ?? w.points);
         return Math.max(0, share) + paoShare;
       };
-      const cap = bigWins.reduce((sum, w) => sum + paidFor(w), 0);
-      const refund = Math.min(-loss, cap);
-      if (refund <= 0) return event;
+      // 역만: 전액 환급 상한
+      const yakumanCap = yakumanWins.reduce((sum, w) => sum + paidFor(w), 0);
+      const yakumanRefund = Math.min(-loss, yakumanCap);
 
-      // 차감은 역만 화료자들에게 **이득이 큰 쪽부터** 결정적으로 나눠 문다
-      // (동점이면 winner id 순 — 리플레이에서 같은 결과가 나와야 한다).
+      // 배만 이상: 절반만 환급 (남은 손실의 절반)
+      const remainingLoss = loss + yakumanRefund; // 역만 환급 후 남은 손실
+      const halfDamageCap = halfDamageWins.reduce((sum, w) => sum + paidFor(w), 0);
+      const halfDamageRefund = Math.min(Math.ceil(-remainingLoss / 2), halfDamageCap / 2);
+
+      const totalRefund = yakumanRefund + halfDamageRefund;
+      if (totalRefund <= 0) return event;
+
+      // 환급 차감: 역만 화료자들에게 **이득이 큰 쪽부터** 결정적으로 나눠 문다
       const deltas = { ...p.deltas };
-      const order = [...bigWins].sort((a, b) => {
+      const allBigWins = [...yakumanWins, ...halfDamageWins].sort((a, b) => {
         const ga = p.deltas[a.winner] ?? 0;
         const gb = p.deltas[b.winner] ?? 0;
         return gb - ga || (a.winner < b.winner ? -1 : a.winner > b.winner ? 1 : 0);
       });
-      let rest = refund;
-      for (const w of order) {
+      let rest = totalRefund;
+      for (const w of allBigWins) {
         if (rest <= 0) break;
         const gain = deltas[w.winner] ?? 0;
         const deduct = Math.min(rest, Math.max(0, gain));
         deltas[w.winner] = gain - deduct;
         rest -= deduct;
       }
-      deltas[holder] = (deltas[holder] ?? 0) + refund; // = 0
+      deltas[holder] = (deltas[holder] ?? 0) + totalRefund;
       return {
         type: event.type,
         payload: {
           ...p,
           deltas,
-          augPoints: withAugPoint(p, ctx, refund),
+          augPoints: withAugPoint(p, ctx, totalRefund),
           shieldedBy: [...(p.shieldedBy ?? []), holder],
         },
       };
