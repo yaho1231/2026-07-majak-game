@@ -6142,6 +6142,14 @@ export class RoomManager {
       // 국이 하나 끝날 때마다 "마지막 소식" 시각을 갱신한다 (§2-10). 유휴 청소도
       // 같은 일을 하지만 그쪽은 1분 주기라, 국 경계에서 죽는 경우가 가장 흔한
       // 만큼 여기서도 한 번 찍어 둔다.
+      // 국이 새로 시작할 때마다 좌석별 제한시간 «은행»을 30초로 채운다
+      // (초읽기 방식 — 매 순 5초는 따로 주어지고, 그걸 넘긴 만큼만 이 은행에서
+      // 깎인다. HumanAgent.resetBank 주석 참고).
+      onRoundStart: () => {
+        for (const a of room.agents.values()) {
+          if (a instanceof HumanAgent) a.resetBank();
+        }
+      },
       onRoundEnd: () => {
         this.rememberLiveGame(room);
         // 튜토리얼 대본은 1국짜리다 — 그 국이 끝나면 이 방을 평범한 연습 대국으로
