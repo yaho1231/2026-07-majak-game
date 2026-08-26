@@ -95,7 +95,7 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 대기실 조작
   // 방 상세설정은 «상태를 이렇게 바꿔 달라»는 요청이라 늦게 도착해도 뜻이 그대로다
   // (서버가 대기 중·방장인지 다시 보고, 범위도 다시 자른다).
-  "ready", "startGame", "setGameMode", "setRoomRules", "shuffleSeats",
+  "ready", "startGame", "setGameMode", "setRoomRules", "setRoomPace", "shuffleSeats",
   "addBot", "removeBot", "setBotArchetype", "setBotDifficulty", "kickPlayer",
   // 조회
   "statsRequest", "replayList", "replayGet", "leaderboard", "liveGames",

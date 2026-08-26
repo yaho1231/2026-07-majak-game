@@ -371,6 +371,10 @@ export {
   ROOM_SCORE_MIN,
   ROOM_SCORE_MAX,
   normalizeRoomRules,
+  ROOM_PACES,
+  DEFAULT_ROOM_PACE,
+  isRoomPace,
+  paceMaxSeatMs,
 } from "./network/protocol.js";
 export type {
   VisibilityRule,
@@ -475,6 +479,9 @@ export type {
   LobbyMessage,
   RoomRules,
   SetRoomRulesMessage,
+  RoomPace,
+  RoomPaceSpec,
+  SetRoomPaceMessage,
   RoomRulesMessage,
   StatsEntry,
   StatsMessage,

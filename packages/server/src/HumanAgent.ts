@@ -16,6 +16,8 @@ import type { AugmentDef } from "@majak/core/augment/Augment.js";
 import type { DraftStage, ServerMessage, ClientMessage } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import { TIME_PRESSURE_CHANNEL } from "@majak/content";
+import { ROOM_PACES, DEFAULT_ROOM_PACE } from "@majak/core/network/protocol.js";
+import type { RoomPace } from "@majak/core/network/protocol.js";
 
 export const DECISION_TIMEOUT_MS = 30_000;
 
@@ -28,7 +30,7 @@ export const DECISION_TIMEOUT_MS = 30_000;
  * 다 쓰는 게 아니라 오래 걸린 순들이 쌓여서 은행을 갉아먹는 구조다. 은행이 0이 되면
  * 그 뒤로는 순마다 이 5초 안에 둬야 한다. 국이 바뀌면 `resetBank()`로 다시 30초를 채운다.
  */
-export const TURN_GRACE_MS = 5_000;
+export const TURN_GRACE_MS = ROOM_PACES.expert.turnGraceMs;
 
 /**
  * 초읽기 «은행»의 초기 잔액(ms) — 사용자가 못박은 값은 **30초**다.
@@ -37,7 +39,7 @@ export const TURN_GRACE_MS = 5_000;
  * 상한 등 다른 자리에도 쓰이는 값이라, 은행만 30초로 두려고 같이 건드리면 관계
  * 없는 제한 시간까지 끌려 내려간다.
  */
-export const TURN_BANK_MS = 30_000;
+export const TURN_BANK_MS = ROOM_PACES.expert.turnBankMs;
 
 /**
  * **판의 첫 증강 선택**에만 주는 제한 시간(ms) — QA 4차 onboard 확정 1.
@@ -60,7 +62,7 @@ export const TURN_BANK_MS = 30_000;
  * 두 번째 스테이지부터는 평소대로 30초다. 네 좌석 모두에게 같은 값이 걸리므로
  * 유불리가 생기지 않고, 판 전체가 한 번 60초 더 기다릴 뿐이다.
  */
-export const FIRST_DRAFT_TIMEOUT_MS = 75_000;
+export const FIRST_DRAFT_TIMEOUT_MS = ROOM_PACES.expert.firstDraftMs;
 
 /**
  * **시간 연장으로 만들 수 있는 «남은 시간»의 천장** (docs/36 B3 · QA 2차 server 의심 1).
@@ -283,6 +285,17 @@ export class HumanAgent implements PlayerAgent {
    * (`TUTORIAL_DECISION_TIMEOUT_MS`). RoomManager가 방을 열면서 켠다.
    */
   private tutorial = false;
+
+  /**
+   * 이 좌석에 걸린 **제한 시간 묶음** (`ROOM_PACES`). 대기실에서 방장이 고른 값을
+   * `RoomManager`가 판이 시작될 때 꽂는다. 기본은 종전 동작(`숙련자`)이다 —
+   * 대기실을 거치지 않는 방(게스트 체험·샌드박스)은 그대로 이 값을 쓴다.
+   *
+   * 매 순 유예·은행·증강 선택 제한이 전부 여기서 나온다. 상수
+   * (`TURN_GRACE_MS`·`TURN_BANK_MS`…)는 «숙련자» 값 그대로라 이 필드를 건드리지
+   * 않은 자리의 동작은 바뀌지 않는다.
+   */
+  private pace: RoomPace = DEFAULT_ROOM_PACE;
 
   /**
    * 이 좌석이 이번 판에서 **증강 선택 화면을 몇 번 봤는가**. 첫 번째만 넉넉한
@@ -846,15 +859,16 @@ export class HumanAgent implements PlayerAgent {
     this.lastView = null;
     this.lastViewFrame = null;
     this.viewSeat = null; // 새 판은 본인 시점에서 시작
-    this.bankMs = TURN_BANK_MS;
+    this.bankMs = this.paceSpec().turnBankMs;
   }
 
   /**
-   * 국이 새로 시작할 때 초읽기 은행을 30초(`TURN_BANK_MS`)로 다시 채운다.
-   * RoomManager가 `HanchanController`의 `onRoundStart`에서 좌석마다 부른다.
+   * 국이 새로 시작할 때 초읽기 은행을 이 방의 속도가 정한 값으로 다시 채운다
+   * (숙련자면 30초 = `TURN_BANK_MS`). RoomManager가 `HanchanController`의
+   * `onRoundStart`에서 좌석마다 부른다.
    */
   resetBank(): void {
-    this.bankMs = TURN_BANK_MS;
+    this.bankMs = this.paceSpec().turnBankMs;
   }
 
   /**
@@ -957,6 +971,23 @@ export class HumanAgent implements PlayerAgent {
   }
 
   /**
+   * 이 좌석의 제한 시간 묶음을 정한다 (`ROOM_PACES`). 방장이 대기실에서 고른 값이며
+   * `RoomManager`가 판을 세우면서 좌석마다 꽂는다.
+   *
+   * **은행도 함께 채운다** — 속도를 바꾸면 잔액의 기준이 달라지는데, 이걸 안 하면
+   * 왕초보 방을 골라 놓고 첫 국만 종전 잔액(30초)으로 도는 자리가 생긴다.
+   */
+  setPace(pace: RoomPace): void {
+    this.pace = pace;
+    this.bankMs = ROOM_PACES[pace].turnBankMs;
+  }
+
+  /** 이 좌석에 걸린 제한 시간 값들. */
+  private paceSpec(): { turnGraceMs: number; turnBankMs: number; draftMs: number; firstDraftMs: number } {
+    return ROOM_PACES[this.pace] ?? ROOM_PACES[DEFAULT_ROOM_PACE];
+  }
+
+  /**
    * 증강 선택을 이 하나로 못 박는다 (튜토리얼). null이면 평소대로 셋 다 유효하다.
    * 카드 목록 자체는 컨트롤러가 고정한다(`presetDraftChoices`) — 여기는 **답**만 본다.
    */
@@ -981,8 +1012,8 @@ export class HumanAgent implements PlayerAgent {
     if (typeof limit === "number" && limit > 0) {
       return Math.min(DECISION_TIMEOUT_MS, Math.round(limit * 1000));
     }
-    // 초읽기 은행 — 매 순 공짜 5초 + 이번 국에 남은 은행 잔액(`bankMs`).
-    return TURN_GRACE_MS + this.bankMs;
+    // 초읽기 은행 — 매 순 공짜 유예 + 이번 국에 남은 은행 잔액(`bankMs`).
+    return this.paceSpec().turnGraceMs + this.bankMs;
   }
 
   /**
@@ -1149,7 +1180,8 @@ export class HumanAgent implements PlayerAgent {
   private draftTimeoutMs(): number {
     if (this.tutorial) return TUTORIAL_DECISION_TIMEOUT_MS;
     // 이 판에서 처음 보는 카드 셋 — 30초로는 못 읽는다는 위 판단이 그대로 적용된다.
-    return this.draftsOffered <= 1 ? FIRST_DRAFT_TIMEOUT_MS : DECISION_TIMEOUT_MS;
+    const spec = this.paceSpec();
+    return this.draftsOffered <= 1 ? spec.firstDraftMs : spec.draftMs;
   }
 
   /** 이번 스테이지에 새로고침으로 갈아 낀 슬롯 (컨트롤러가 픽 직후에 읽는다). */
@@ -1346,11 +1378,12 @@ export class HumanAgent implements PlayerAgent {
       if (matched && entry !== undefined && seat !== null) {
         this.clearPendingTimer(entry);
         this.pending.delete(seat);
-        // 은행 차감 — 5초(TURN_GRACE_MS)까지는 공짜고, 넘긴 만큼만 깎는다.
+        // 은행 차감 — 이 방의 유예(숙련자 5초)까지는 공짜고, 넘긴 만큼만 깎는다.
         if (entry.bankEligible) {
           const elapsed = Date.now() - entry.armedAt;
-          if (elapsed > TURN_GRACE_MS) {
-            this.bankMs = Math.max(0, this.bankMs - (elapsed - TURN_GRACE_MS));
+          const grace = this.paceSpec().turnGraceMs;
+          if (elapsed > grace) {
+            this.bankMs = Math.max(0, this.bankMs - (elapsed - grace));
           }
         }
         entry.resolve(matched);
