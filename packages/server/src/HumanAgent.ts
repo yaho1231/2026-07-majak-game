@@ -22,13 +22,22 @@ export const DECISION_TIMEOUT_MS = 30_000;
 /**
  * 매 순 기본으로 주는 유예(ms) — 초읽기식 제한 시간의 «공짜 5초».
  *
- * 국이 시작하면 좌석마다 `DECISION_TIMEOUT_MS`(30초)짜리 은행이 차고, 매 결정은
+ * 국이 시작하면 좌석마다 `TURN_BANK_MS`(20초)짜리 은행이 차고, 매 결정은
  * 이 5초 + 그 은행 잔액을 제한 시간으로 받는다. 5초 안에 두면 은행은 그대로고,
- * 5초를 넘기면 넘긴 만큼만 은행에서 깎인다(`HumanAgent.bankMs`) — 한 번에 30초를
+ * 5초를 넘기면 넘긴 만큼만 은행에서 깎인다(`HumanAgent.bankMs`) — 한 번에 20초를
  * 다 쓰는 게 아니라 오래 걸린 순들이 쌓여서 은행을 갉아먹는 구조다. 은행이 0이 되면
- * 그 뒤로는 순마다 이 5초 안에 둬야 한다. 국이 바뀌면 `resetBank()`로 다시 30초를 채운다.
+ * 그 뒤로는 순마다 이 5초 안에 둬야 한다. 국이 바뀌면 `resetBank()`로 다시 20초를 채운다.
  */
 export const TURN_GRACE_MS = 5_000;
+
+/**
+ * 초읽기 «은행»의 초기 잔액(ms) — 사용자가 못박은 값은 **20초**다.
+ *
+ * `DECISION_TIMEOUT_MS`(30초)와 일부러 분리한다. 저쪽은 증강 드래프트·초읽기 증강의
+ * 상한 등 다른 자리에도 쓰이는 값이라, 은행만 20초로 줄이려고 같이 건드리면 관계
+ * 없는 제한 시간까지 끌려 내려간다.
+ */
+export const TURN_BANK_MS = 20_000;
 
 /**
  * **판의 첫 증강 선택**에만 주는 제한 시간(ms) — QA 4차 onboard 확정 1.
@@ -283,12 +292,12 @@ export class HumanAgent implements PlayerAgent {
   private draftsOffered = 0;
 
   /**
-   * 이번 국의 «초읽기 은행» 잔액(ms) — 국이 시작할 때 `DECISION_TIMEOUT_MS`(30초)로
+   * 이번 국의 «초읽기 은행» 잔액(ms) — 국이 시작할 때 `TURN_BANK_MS`(20초)로
    * 채워지고(`resetBank`, RoomManager의 `onRoundStart`가 매 국 부른다), 매 결정이
    * `TURN_GRACE_MS`(5초)를 넘긴 만큼만 여기서 깎인다. 국 안에서는 순이 바뀌어도
    * 초기화되지 않는다 — `decisionTimeoutMs()`·`handleMessage`의 은행 차감 참고.
    */
-  private bankMs = DECISION_TIMEOUT_MS;
+  private bankMs = TURN_BANK_MS;
 
   /**
    * 증강 선택에서 **이 하나만 유효하다** — 튜토리얼이 못 박은 픽 (없으면 null).
@@ -837,15 +846,15 @@ export class HumanAgent implements PlayerAgent {
     this.lastView = null;
     this.lastViewFrame = null;
     this.viewSeat = null; // 새 판은 본인 시점에서 시작
-    this.bankMs = DECISION_TIMEOUT_MS;
+    this.bankMs = TURN_BANK_MS;
   }
 
   /**
-   * 국이 새로 시작할 때 초읽기 은행을 30초로 다시 채운다.
+   * 국이 새로 시작할 때 초읽기 은행을 20초(`TURN_BANK_MS`)로 다시 채운다.
    * RoomManager가 `HanchanController`의 `onRoundStart`에서 좌석마다 부른다.
    */
   resetBank(): void {
-    this.bankMs = DECISION_TIMEOUT_MS;
+    this.bankMs = TURN_BANK_MS;
   }
 
   /**

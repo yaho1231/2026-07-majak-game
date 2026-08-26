@@ -10,7 +10,19 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
-import { DECISION_TIMEOUT_MS, EXTEND_LEFT_MAX_MS, HumanAgent } from "../src/HumanAgent.js";
+import {
+  DECISION_TIMEOUT_MS,
+  EXTEND_LEFT_MAX_MS,
+  HumanAgent,
+  TURN_BANK_MS,
+  TURN_GRACE_MS,
+} from "../src/HumanAgent.js";
+
+/**
+ * 한 결정에 실제로 걸리는 제한 시간 — 초읽기의 «매 순 5초 + 은행 20초»다.
+ * `DECISION_TIMEOUT_MS`(30초)는 드래프트·초읽기 증강 상한 쪽 값이라 여기서는 쓰지 않는다.
+ */
+const DECISION_MS = TURN_GRACE_MS + TURN_BANK_MS;
 
 class FakeSocket {
   readyState = 1; // OPEN
@@ -55,8 +67,8 @@ describe("HumanAgent — 일시정지", () => {
     expect(sock.last("promptCancel")).toBeUndefined();
 
     agent.setPaused(false);
-    // 정지 시점에 30초가 통째로 남아 있었으므로 그만큼이 그대로 남아 있다.
-    await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS - 200);
+    // 정지 시점에 제한 시간이 통째로 남아 있었으므로 그만큼이 그대로 남아 있다.
+    await vi.advanceTimersByTimeAsync(DECISION_MS - 200);
     expect(chosen).toBeNull();
     await vi.advanceTimersByTimeAsync(400);
     expect(chosen).not.toBeNull();
@@ -234,13 +246,13 @@ describe("HumanAgent — 시간 연장", () => {
     });
     const promptsBefore = sock.sent.filter((m) => m.type === "prompt").length;
 
-    await vi.advanceTimersByTimeAsync(10_000); // 20초 남았다
+    await vi.advanceTimersByTimeAsync(10_000); // 15초 남았다 (25초 - 10초)
     const res = agent.extendTime(30_000);
     expect(res).toMatchObject({ kind: "decision", seat: "p0" });
-    expect(res!.leftMs).toBeGreaterThan(45_000);
+    expect(res!.leftMs).toBeGreaterThan(DECISION_MS - 10_000 + 30_000 - 100);
     expect(sock.sent.filter((m) => m.type === "prompt")).toHaveLength(promptsBefore);
 
-    // 원래 마감(총 30초)을 지나도 살아 있어야 한다
+    // 원래 마감(총 25초)을 지나도 살아 있어야 한다
     await vi.advanceTimersByTimeAsync(25_000);
     expect(chosen).toBeNull();
     await vi.advanceTimersByTimeAsync(30_000);
@@ -262,13 +274,13 @@ describe("HumanAgent — 시간 연장", () => {
     });
     agent.setPaused(true);
     const res = agent.extendTime(30_000);
-    expect(res!.leftMs).toBe(DECISION_TIMEOUT_MS + 30_000);
+    expect(res!.leftMs).toBe(DECISION_MS + 30_000);
     // 정지 중에는 그 늘어난 시간도 흐르지 않는다
-    await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS * 3);
+    await vi.advanceTimersByTimeAsync(DECISION_MS * 3);
     expect(chosen).toBeNull();
 
     agent.setPaused(false);
-    await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS + 29_000);
+    await vi.advanceTimersByTimeAsync(DECISION_MS + 29_000);
     expect(chosen).toBeNull();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(chosen).not.toBeNull();

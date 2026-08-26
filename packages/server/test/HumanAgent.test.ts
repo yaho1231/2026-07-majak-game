@@ -10,6 +10,8 @@ import type { WebSocket } from "ws";
 import { TIME_PRESSURE_CHANNEL, TIME_PRESSURE_SECONDS } from "@majak/content";
 import {
   DECISION_TIMEOUT_MS,
+  TURN_BANK_MS,
+  TURN_GRACE_MS,
   FIRST_DRAFT_TIMEOUT_MS,
   DISCONNECT_GRACE_MS,
   HumanAgent,
@@ -256,7 +258,7 @@ describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진
     expect(done?.type).toBe("pass");
   });
 
-  it("유예 안에 재접속하면 제한 시간이 정상(30초)으로 되돌아온다", async () => {
+  it("유예 안에 재접속하면 제한 시간이 정상(5초+은행)으로 되돌아온다", async () => {
     const dead = new FakeSocket();
     dead.readyState = 3;
     const agent = new HumanAgent("p0", "Alice", dead.asWs());
@@ -269,7 +271,7 @@ describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진
     // 재전송된 프롬프트에는 되돌린 제한 시간이 실린다 (2초짜리 유령 프롬프트 금지)
     const resent = fresh.sent.filter((m) => m.type === "prompt");
     expect(resent).toHaveLength(1);
-    expect(resent[0].deadlineMs).toBe(DECISION_TIMEOUT_MS);
+    expect(resent[0].deadlineMs).toBe(TURN_GRACE_MS + TURN_BANK_MS);
 
     await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS);
     expect(done).toBeNull(); // 유예 타이머는 해제됐다
@@ -286,8 +288,9 @@ describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진
     const fresh = new FakeSocket();
     agent.reconnect(fresh.asWs());
     const resent = fresh.sent.filter((m) => m.type === "prompt");
-    expect(resent[0].deadlineMs).toBeGreaterThan(19_000);
-    expect(resent[0].deadlineMs).toBeLessThanOrEqual(20_000);
+    // 10초를 이미 썼으니 남은 것은 (5초 + 은행 20초) - 10초 = 15초 언저리다.
+    expect(resent[0].deadlineMs).toBeGreaterThan(14_000);
+    expect(resent[0].deadlineMs).toBeLessThanOrEqual(15_000);
   });
 
   it("포기(abandon)한 좌석은 유예도 없이 즉시 폴백한다", async () => {
@@ -318,12 +321,12 @@ describe("HumanAgent — 마감(deadlineMs)은 모든 프롬프트에 실린다"
     options: types.map((t) => ({ type: t, payload: {} })),
   });
 
-  it("평범한 프롬프트에도 30초 마감이 실린다", () => {
+  it("평범한 프롬프트에는 «5초 유예 + 은행 20초» 마감이 실린다", () => {
     const sock = new FakeSocket();
     const agent = new HumanAgent("p0", "Alice", sock.asWs());
     void agent.decide(prompt("p0", "discard"));
     const sent = sock.sent.find((m) => m.type === "prompt");
-    expect(sent.deadlineMs).toBe(DECISION_TIMEOUT_MS);
+    expect(sent.deadlineMs).toBe(TURN_GRACE_MS + TURN_BANK_MS);
   });
 
   it("초읽기(time_pressure)가 걸린 국에는 그 짧은 쪽이 이긴다", () => {
@@ -420,7 +423,7 @@ describe("HumanAgent.noticeDisconnect — 대기 중이던 결정도 유예로 �
     const fresh = new FakeSocket();
     agent.reconnect(fresh.asWs());
     expect(fresh.sent.filter((m) => m.type === "prompt")[0].deadlineMs).toBe(
-      DECISION_TIMEOUT_MS,
+      TURN_GRACE_MS + TURN_BANK_MS,
     );
     await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS);
     expect(done).toBeNull();
