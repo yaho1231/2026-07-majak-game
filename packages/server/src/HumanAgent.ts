@@ -20,6 +20,17 @@ import { TIME_PRESSURE_CHANNEL } from "@majak/content";
 export const DECISION_TIMEOUT_MS = 30_000;
 
 /**
+ * 매 순 기본으로 주는 유예(ms) — 초읽기식 제한 시간의 «공짜 5초».
+ *
+ * 국이 시작하면 좌석마다 `DECISION_TIMEOUT_MS`(30초)짜리 은행이 차고, 매 결정은
+ * 이 5초 + 그 은행 잔액을 제한 시간으로 받는다. 5초 안에 두면 은행은 그대로고,
+ * 5초를 넘기면 넘긴 만큼만 은행에서 깎인다(`HumanAgent.bankMs`) — 한 번에 30초를
+ * 다 쓰는 게 아니라 오래 걸린 순들이 쌓여서 은행을 갉아먹는 구조다. 은행이 0이 되면
+ * 그 뒤로는 순마다 이 5초 안에 둬야 한다. 국이 바뀌면 `resetBank()`로 다시 30초를 채운다.
+ */
+export const TURN_GRACE_MS = 5_000;
+
+/**
  * **판의 첫 증강 선택**에만 주는 제한 시간(ms) — QA 4차 onboard 확정 1.
  *
  * `draftTimeoutMs()`의 주석은 오래전부터 "카드 셋을 읽는 데만 30초가 넘게 걸린다"고
@@ -237,6 +248,15 @@ interface PendingDecision {
    * 초읽기 국에서 껐다 켜기가 시간 연장 수단이 된다.
    */
   graced: boolean;
+  /** 지금 걸린 타이머가 실제로 흐르기 시작한 시각(epoch ms) — 은행 차감의 기준점 */
+  armedAt: number;
+  /**
+   * 이 결정이 **은행 차감 대상**인가 — 평소(비접속 유예·정지·연장·1인 방 보류·
+   * 튜토리얼·초읽기 증강이 아닌) 정상 순서로 걸린 최초 타이머만 그렇다.
+   * 중간에 끊기거나 정지·연장이 끼어들면 그 뒤로는 은행을 건드리지 않는다 —
+   * 관리자 개입·통신 장애로 걸린 시간까지 플레이어의 은행에서 깎으면 안 된다.
+   */
+  bankEligible: boolean;
 }
 
 export class HumanAgent implements PlayerAgent {
@@ -261,6 +281,14 @@ export class HumanAgent implements PlayerAgent {
    * 되돌리지 않는다 — 두 번째 판을 시작하는 사람은 이미 카드를 한 벌 읽어 봤다.
    */
   private draftsOffered = 0;
+
+  /**
+   * 이번 국의 «초읽기 은행» 잔액(ms) — 국이 시작할 때 `DECISION_TIMEOUT_MS`(30초)로
+   * 채워지고(`resetBank`, RoomManager의 `onRoundStart`가 매 국 부른다), 매 결정이
+   * `TURN_GRACE_MS`(5초)를 넘긴 만큼만 여기서 깎인다. 국 안에서는 순이 바뀌어도
+   * 초기화되지 않는다 — `decisionTimeoutMs()`·`handleMessage`의 은행 차감 참고.
+   */
+  private bankMs = DECISION_TIMEOUT_MS;
 
   /**
    * 증강 선택에서 **이 하나만 유효하다** — 튜토리얼이 못 박은 픽 (없으면 null).
@@ -809,6 +837,25 @@ export class HumanAgent implements PlayerAgent {
     this.lastView = null;
     this.lastViewFrame = null;
     this.viewSeat = null; // 새 판은 본인 시점에서 시작
+    this.bankMs = DECISION_TIMEOUT_MS;
+  }
+
+  /**
+   * 국이 새로 시작할 때 초읽기 은행을 30초로 다시 채운다.
+   * RoomManager가 `HanchanController`의 `onRoundStart`에서 좌석마다 부른다.
+   */
+  resetBank(): void {
+    this.bankMs = DECISION_TIMEOUT_MS;
+  }
+
+  /**
+   * 지금 거는 결정이 은행 차감 대상인가 — 튜토리얼과 초읽기(time_pressure) 증강이
+   * 걸린 국은 각자 다른 제한 시간 체계를 쓰므로 은행을 건드리지 않는다.
+   */
+  private bankApplies(): boolean {
+    if (this.tutorial) return false;
+    const limit = this.lastView?.augmentView?.[TIME_PRESSURE_CHANNEL];
+    return !(typeof limit === "number" && limit > 0);
   }
 
   sendView(view: PlayerView): void {
@@ -922,8 +969,11 @@ export class HumanAgent implements PlayerAgent {
   private decisionTimeoutMs(): number {
     if (this.tutorial) return TUTORIAL_DECISION_TIMEOUT_MS;
     const limit = this.lastView?.augmentView?.[TIME_PRESSURE_CHANNEL];
-    if (typeof limit !== "number" || limit <= 0) return DECISION_TIMEOUT_MS;
-    return Math.min(DECISION_TIMEOUT_MS, Math.round(limit * 1000));
+    if (typeof limit === "number" && limit > 0) {
+      return Math.min(DECISION_TIMEOUT_MS, Math.round(limit * 1000));
+    }
+    // 초읽기 은행 — 매 순 공짜 5초 + 이번 국에 남은 은행 잔액(`bankMs`).
+    return TURN_GRACE_MS + this.bankMs;
   }
 
   /**
@@ -951,17 +1001,23 @@ export class HumanAgent implements PlayerAgent {
       : graced
         ? Math.min(this.decisionTimeoutMs(), DISCONNECT_GRACE_MS)
         : this.decisionTimeoutMs();
+    // 은행 차감은 정상 경로(비접속·1인 방 보류가 아닌)로 걸린 최초 타이머에만 건다.
+    const bankEligible = !held && !graced && this.bankApplies();
     // 마감은 **항상** 실어 보낸다. 예전에는 초읽기 국에만 실어서, 평소 30초 제한이
     // 화면에 전혀 안 보였다 — 자리를 비운 사람이 론을 조용히 흘렸다(QA P0-5).
     this.send({ type: "prompt", prompt, deadlineMs: this.shownDeadlineMs(timeoutMs, graced) });
     return new Promise<ActionOption>((resolve) => {
-      this.armDecision(seat, prompt, resolve, timeoutMs, graced);
+      this.armDecision(seat, prompt, resolve, timeoutMs, graced, bankEligible);
     });
   }
 
   /**
    * 좌석의 결정 타이머를 (다시) 건다. 최초 요청과 재접속 복원이 공유한다.
    * 만료되면 안전 폴백으로 resolve 하고 클라이언트에 취소를 알린다.
+   *
+   * `bankEligible`은 최초 호출(`decideFor`)에서만 켜서 넘긴다 — 정지·연장·재접속
+   * 유예처럼 도중에 다시 거는 경로는 전부 `false`로 부른다: 관리자 개입이나 통신
+   * 장애로 늘어난 시간까지 플레이어의 은행에서 깎으면 안 되기 때문이다.
    */
   private armDecision(
     seat: PlayerId,
@@ -969,6 +1025,7 @@ export class HumanAgent implements PlayerAgent {
     resolve: ResolveDecision,
     timeoutMs: number,
     graced: boolean,
+    bankEligible = false,
   ): void {
     // 판이 서 있으면 시계를 걸지 않는다 — 남은 시간만 적어 두고 재개 때 건다.
     // (재접속 복원이 이 경로로 들어와 세워 둔 판의 시계를 되살리던 구멍을 막는다.)
@@ -980,6 +1037,8 @@ export class HumanAgent implements PlayerAgent {
         timer: null,
         deadlineAt: Date.now() + timeoutMs,
         graced,
+        armedAt: Date.now(),
+        bankEligible,
       });
       return;
     }
@@ -1003,6 +1062,8 @@ export class HumanAgent implements PlayerAgent {
       // 유예로 흘린 것만 센다. 접속한 채로 시간을 넘긴 것은 자리를 비운 것이지
       // 연결이 끊긴 것이 아니므로 이탈로 확정하면 안 된다.
       if (graced) this.noteGraceTimeout();
+      // 5초 + 은행을 통째로 다 썼다 — 이번 국은 은행이 바닥났다.
+      if (bankEligible) this.bankMs = 0;
     }, timeoutMs);
     this.pending.set(seat, {
       prompt,
@@ -1010,6 +1071,8 @@ export class HumanAgent implements PlayerAgent {
       timer,
       deadlineAt: Date.now() + timeoutMs,
       graced,
+      armedAt: Date.now(),
+      bankEligible,
     });
   }
 
@@ -1274,6 +1337,13 @@ export class HumanAgent implements PlayerAgent {
       if (matched && entry !== undefined && seat !== null) {
         this.clearPendingTimer(entry);
         this.pending.delete(seat);
+        // 은행 차감 — 5초(TURN_GRACE_MS)까지는 공짜고, 넘긴 만큼만 깎는다.
+        if (entry.bankEligible) {
+          const elapsed = Date.now() - entry.armedAt;
+          if (elapsed > TURN_GRACE_MS) {
+            this.bankMs = Math.max(0, this.bankMs - (elapsed - TURN_GRACE_MS));
+          }
+        }
         entry.resolve(matched);
       } else if (this.riichiTargetOf(msg) !== null) {
         // 리치를 선언한 상대의 손패를 건드리려 했다 — 무엇이 막혔는지 그대로 말한다.
