@@ -32,7 +32,7 @@ import type { PlayerId } from "../engine/zones/Zone.js";
 import type { TileId } from "../mahjong/tiles/Tile.js";
 import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
 import type { AbortReason, RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
-import { uraIndicatorIds, winHandIdsOf } from "../mahjong/flow/helpers.js";
+import { revealedUraIndicatorIds, winHandIdsOf } from "../mahjong/flow/helpers.js";
 import { buildSpectateSeatScores, gradeStartingHands } from "../information/spectateScore.js";
 import type { SpectateSeatScore } from "../information/spectateScore.js";
 import type { PlayerAgent } from "./PlayerAgent.js";
@@ -1240,7 +1240,7 @@ export class HanchanController {
 
       roundIndex++;
       // 정산 후 뷰 전송 — 화료면 뒷도라까지 공개
-      const ura = outcome === "win" ? uraIndicatorIds(game.engine.state) : [];
+      const ura = outcome === "win" ? this.uraForReveal(game) : [];
       this.broadcastViews(game, ura);
       this.notifyRoundOver(game, outcome, ura);
 
@@ -1828,20 +1828,33 @@ export class HanchanController {
   }
 
   /** 국 결과 상세(역·판·부·점수 변동·뒷도라)를 전 플레이어에게 전송 */
+  /** 이 국의 마지막 ROUND_SETTLED 페이로드 (없으면 null) */
+  private lastSettle(game: StandardGame): RoundSettledPayload | null {
+    for (let i = game.engine.eventLog.length - 1; i >= 0; i--) {
+      const event = game.engine.eventLog[i];
+      if (event?.type === ROUND_SETTLED) return event.payload as RoundSettledPayload;
+    }
+    return null;
+  }
+
+  /**
+   * 이번 국에 **화면에 열어 보일** 뒷도라 표시패 — 판정의 단일 진실은
+   * `revealedUraIndicatorIds`다(리치 화료 또는 실제로 붙은 뒷도라 판수).
+   */
+  private uraForReveal(game: StandardGame): TileId[] {
+    return revealedUraIndicatorIds(
+      game.engine.state,
+      this.lastSettle(game)?.winInfos ?? [],
+    );
+  }
+
   private notifyRoundOver(
     game: StandardGame,
     outcome: "win" | "draw" | "abort",
     ura: TileId[],
   ): void {
     const state = game.engine.state;
-    let settle: RoundSettledPayload | null = null;
-    for (let i = game.engine.eventLog.length - 1; i >= 0; i--) {
-      const event = game.engine.eventLog[i];
-      if (event?.type === ROUND_SETTLED) {
-        settle = event.payload as RoundSettledPayload;
-        break;
-      }
-    }
+    const settle = this.lastSettle(game);
     if (settle === null) return;
 
     const tiles: Record<TileId, PublicTileView> = {};

@@ -124,6 +124,7 @@ export {
   scoringOptionsOf,
   furitenOptionsOf,
   uraIndicatorIds,
+  revealedUraIndicatorIds,
   requiresYakuFor,
   outsideHandTileFinder,
 } from "./mahjong/flow/helpers.js";
