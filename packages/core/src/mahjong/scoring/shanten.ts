@@ -36,6 +36,16 @@ interface Group {
   counts: number[];
   /** 슌쯔를 만들 수 있는 무늬인가 (수패만) */
   runs: boolean;
+  /**
+   * 커쯔를 만들 수 있는가 — 기본은 참이다.
+   *
+   * **랭크로 합친 그룹**(`mergedNumberGroup`)에서만 거짓이 된다: 거기서는 같은 칸의
+   * 3장이 서로 다른 무늬일 수 있어서, 커쯔를 허용하면 «동수의 결속»이 없는 손에까지
+   * 무늬를 섞은 커쯔를 인정해 버린다.
+   */
+  triplets?: boolean;
+  /** 작두(머리)를 만들 수 있는가 — 위와 같은 이유로 합친 그룹에서만 꺼진다. */
+  pairs?: boolean;
 }
 
 const profileCache = new Map<string, Profile[]>();
@@ -66,7 +76,9 @@ function toGroups(kinds: readonly TileKind[]): Group[] {
  * 반드시 끝난다. 손패 14장 규모에선 분기 수가 작고, 결과는 개수 문자열로 메모된다.
  */
 function profilesOf(group: Group): Profile[] {
-  const key = `${group.runs ? "n" : "h"}:${group.counts.join(",")}`;
+  const key = `${group.runs ? "n" : "h"}${group.triplets === false ? "-t" : ""}${
+    group.pairs === false ? "-p" : ""
+  }:${group.counts.join(",")}`;
   const cached = profileCache.get(key);
   if (cached !== undefined) return cached;
 
@@ -93,7 +105,7 @@ function profilesOf(group: Group): Profile[] {
       return;
     }
     // 커쯔
-    if (n >= 3) {
+    if (n >= 3 && group.triplets !== false) {
       counts[i] = n - 3;
       walk(i, sets + 1, partials, hasPair);
       counts[i] = n;
@@ -130,7 +142,7 @@ function profilesOf(group: Group): Profile[] {
       counts[i + 1] = a;
     }
     // 작두
-    if (n >= 2) {
+    if (n >= 2 && group.pairs !== false) {
       counts[i] = n - 2;
       walk(i, sets, partials + 1, true);
       counts[i] = n;
@@ -162,19 +174,66 @@ function profilesOf(group: Group): Profile[] {
   return result;
 }
 
+/**
+ * 무늬를 무시하고 **랭크로 합친** 수패 그룹 + 자패 그룹들.
+ *
+ * 무늬 확장 증강(무너진 국경 `mixedRuns` · 동수의 결속 `mixedTriplets` ·
+ * 비대칭 `mixedPairs`)이 걸린 손을 재기 위한 두 번째 모형이다. 켜진 축만 허용하고
+ * 나머지는 **막는다** — 예컨대 무너진 국경만 켜졌으면 이 그룹에서는 슌쯔만 만들고
+ * 커쯔·작두는 만들지 않는다(합쳐 놓은 탓에 무늬가 섞인 커쯔가 될 수 있다).
+ *
+ * 그래서 이 모형은 «합법 분해의 부분집합»만 센다 = 나온 값은 결코 진짜보다 작지
+ * 않다. 표준 모형과 **최솟값**을 취해도 낙관적으로 새지 않는다. 이게 중요한 이유는
+ * 샹텐 0이 봇의 텐파이·리치·푸시 판단 전체의 문지기이기 때문이다(read.ts) — 여기서
+ * 한 칸이라도 낙관적이면 봇이 텐파이가 아닌 손을 텐파이로 읽는다.
+ */
+function mergedRankGroups(
+  kinds: readonly TileKind[],
+  opts: DecomposeOptions,
+): Group[] {
+  const merged = new Array<number>(10).fill(0);
+  const honors: Group[] = [];
+  const honorBySuit = new Map<string, number[]>();
+  for (const k of kinds) {
+    if (NUMBER_SUITS.has(k.suit)) {
+      if (k.rank >= 0 && k.rank < merged.length) merged[k.rank] = (merged[k.rank] ?? 0) + 1;
+    } else {
+      let arr = honorBySuit.get(k.suit);
+      if (arr === undefined) {
+        arr = new Array<number>(10).fill(0);
+        honorBySuit.set(k.suit, arr);
+      }
+      if (k.rank >= 0 && k.rank < arr.length) arr[k.rank] = (arr[k.rank] ?? 0) + 1;
+    }
+  }
+  // 자패는 무늬 개념이 없어 어느 확장에도 걸리지 않는다 — 그대로 둔다.
+  for (const counts of honorBySuit.values()) honors.push({ counts, runs: false });
+  return [
+    {
+      counts: merged,
+      runs: opts.mixedRuns === true,
+      triplets: opts.mixedTriplets === true,
+      pairs: opts.mixedPairs === true,
+    },
+    ...honors,
+  ];
+}
+
 /** 표준형(4멘쯔 1작두) 샹텐 */
 function standardShanten(
   kinds: readonly TileKind[],
   meldCount: number,
   totalSets: number,
+  opts?: DecomposeOptions,
 ): number {
   const groups = toGroups(kinds);
   const maxBlocks = totalSets + 1;
   const base = totalSets * 2;
   let best = base;
+  let groupSet = groups;
 
   const combine = (idx: number, sets: number, partials: number, hasPair: boolean): void => {
-    if (idx >= groups.length) {
+    if (idx >= groupSet.length) {
       let m = meldCount + sets;
       let p = partials;
       if (m > totalSets) m = totalSets;
@@ -185,7 +244,7 @@ function standardShanten(
       if (s < best) best = s;
       return;
     }
-    const group = groups[idx];
+    const group = groupSet[idx];
     if (group === undefined) return;
     for (const prof of profilesOf(group)) {
       combine(
@@ -197,11 +256,31 @@ function standardShanten(
     }
   };
   combine(0, 0, 0, false);
+
+  /*
+   * 무늬 확장이 걸린 손은 «랭크로 합친» 모형으로 한 번 더 재고 더 좋은 쪽을 쓴다.
+   * 두 모형 모두 합법 분해만 세므로(`mergedRankGroups` 주석) 최솟값도 낙관적이지 않다.
+   */
+  if (
+    opts?.mixedRuns === true ||
+    opts?.mixedTriplets === true ||
+    opts?.mixedPairs === true
+  ) {
+    groupSet = mergedRankGroups(kinds, opts);
+    combine(0, 0, 0, false);
+  }
   return best;
 }
 
-/** 치또이쯔 샹텐 (멘젠 전용) */
-function chiitoiShanten(kinds: readonly TileKind[]): number {
+/**
+ * 치또이쯔 샹텐 (멘젠 전용).
+ *
+ * **비대칭 치또이**(`chiitoiMixedPairs`)가 걸리면 짝을 «랭크»로 센다 — 1만+1통도 한
+ * 쌍이다. 규칙은 `decompose.ts`의 `asyncChiitoiPairs`와 같다: 같은 패는 최대 2장까지만
+ * 쓸 수 있고(4장·3장 금지), 수패는 랭크별로 자패는 종류별로 짝을 짓는다.
+ */
+function chiitoiShanten(kinds: readonly TileKind[], opts?: DecomposeOptions): number {
+  if (opts?.chiitoiMixedPairs === true) return chiitoiMixedShanten(kinds);
   const counts = new Map<string, number>();
   for (const k of kinds) {
     const key = kindKey(k);
@@ -211,6 +290,31 @@ function chiitoiShanten(kinds: readonly TileKind[]): number {
   for (const c of counts.values()) if (c >= 2) pairs++;
   const kinds7 = counts.size;
   return 6 - pairs + Math.max(0, 7 - kinds7);
+}
+
+/** 비대칭 치또이(랭크로 짝짓기) 샹텐 — 표준 치또이의 상위집합이라 값이 더 작거나 같다. */
+function chiitoiMixedShanten(kinds: readonly TileKind[]): number {
+  // 짝 후보 묶음: 수패는 랭크로, 자패는 종류로 모은다.
+  const buckets = new Map<string, Map<string, number>>();
+  for (const k of kinds) {
+    const bucketKey = NUMBER_SUITS.has(k.suit) ? `n${k.rank}` : kindKey(k);
+    let byKind = buckets.get(bucketKey);
+    if (byKind === undefined) {
+      byKind = new Map<string, number>();
+      buckets.set(bucketKey, byKind);
+    }
+    const key = kindKey(k);
+    byKind.set(key, (byKind.get(key) ?? 0) + 1);
+  }
+  let pairs = 0;
+  for (const byKind of buckets.values()) {
+    // 같은 패는 최대 2장까지만 쓸 수 있다 (3장·4장 금지).
+    let usable = 0;
+    for (const c of byKind.values()) usable += Math.min(c, 2);
+    pairs += Math.floor(usable / 2);
+  }
+  const distinct = buckets.size;
+  return 6 - Math.min(pairs, 7) + Math.max(0, 7 - distinct);
 }
 
 const isOrphan = (k: TileKind): boolean =>
@@ -366,10 +470,10 @@ function shantenUncached(
     }
     return k;
   }
-  let best = standardShanten(rest, meldCount, totalSets) - wilds;
+  let best = standardShanten(rest, meldCount, totalSets, opts) - wilds;
   // 치또이·국사는 멘젠 13/14장 전용. 특수 화료형 증강이 걸린 손은 표준형만 본다.
   if (meldCount === 0 && totalSets === 4 && kinds.length >= 13) {
-    best = Math.min(best, chiitoiShanten(rest) - wilds, kokushiShanten(rest) - wilds);
+    best = Math.min(best, chiitoiShanten(rest, opts) - wilds, kokushiShanten(rest) - wilds);
   }
   /*
    * 조커 근사는 낙관적일 수 있다(블록 모형이 장수를 세지 않는다). **장수 바닥**을

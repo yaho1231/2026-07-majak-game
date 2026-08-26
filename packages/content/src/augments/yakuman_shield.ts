@@ -1,11 +1,19 @@
 /**
- * 역만 방어술 (yakuman_shield) — 역만 피해에 **완전 면역**. 횟수 제한 없음.
+ * 역만 방어술 (yakuman_shield) — 역만은 **완전 면역**, 배만·삼배만은 **절반만** 맞는다.
+ * 횟수 제한 없음.
  *
- * 설계: docs/16_AUGMENT_REDESIGN.md §1b D (52차 버프) → 2026-07-26 재조정
+ * 설계: docs/16_AUGMENT_REDESIGN.md §1b D (52차 버프) → 2026-07-26 재조정 → 2026-08-26 이중 방어
  *
- * 52차엔 "하네만 이상 · 게임당 2회"였다. 이제 이름 그대로 **역만 전용**으로 좁히는 대신
- * **횟수 제한을 없앤다** — 역만(셈수역만 포함)과 유국역만 피해는 몇 번이 오든 전부 0이 된다.
- * 하네만·배만·삼배만은 더 이상 막지 않는다.
+ * 52차엔 "하네만 이상 · 게임당 2회"였다. 2026-07-26에 이름 그대로 **역만 전용**으로
+ * 좁히는 대신 횟수 제한을 없앴는데, 그러자 카드가 **거의 발동하지 않았다** — 측정
+ * 1,496화료 중 역만이 0회다. 그래서 2026-08-26에 층을 하나 더 둔다:
+ *
+ * - **역만 · 셈수역만 · 유국역만** — 완전 면역(손실 0). 종전과 같다.
+ * - **배만 · 삼배만** — 내가 그 화료에 낸 몫의 **절반**만 돌려받는다(100점 단위 내림).
+ * - **하네만 이하** — 그대로 맞는다.
+ *
+ * 절반 환급을 «내가 낸 몫»에서 재는 것이 중요하다. 손실(deltas) 절반으로 재면 같은
+ * 국에 함께 난 평범한 화료·본장·공탁까지 절반이 되어 카드가 약속하지 않은 일을 한다.
  *
  * 방어가 발동하면 **보유자가 그 역만에 낸 몫 전액**(론이면 직격분, 쯔모면 분담분)을
  * 돌려받는다. 표준 분담(`winInfo.payments`)에는 본장·공탁이 없으므로 그 부담은 남는다 —
@@ -63,11 +71,19 @@ interface ShieldMark {
   shieldedBy?: PlayerId[];
 }
 
-/** 역만인가 (셈수역만·다중역만 포함. 하네만~삼배만은 대상이 아니다) */
+/** 완전 면역 대상인가 — 역만(셈수역만·다중역만 포함) */
 function isYakuman(w: WinInfo): boolean {
   if (w.yakumanCount > 0) return true;
   return w.limit === "kazoe_yakuman" || w.limit === "yakuman";
 }
+
+/** 절반 방어 대상인가 — 배만·삼배만 (하네만 이하는 그대로 맞는다) */
+function isHalfShielded(w: WinInfo): boolean {
+  return w.limit === "baiman" || w.limit === "sanbaiman";
+}
+
+/** 절반 환급은 100점 단위로 내린다 — 점수는 100점 격자 위에 있고, 내림은 보유자에게 불리한 쪽이다. */
+const halfOf = (paid: number): number => Math.floor(paid / 2 / 100) * 100;
 
 export const yakumanShield: AugmentDef = defineAugment({
   id: ID,
@@ -76,9 +92,9 @@ export const yakumanShield: AugmentDef = defineAugment({
   complexity: 3,
   name: "역만 방어술",
   description:
-    "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해를 막는다 — 내가 낸 몫을 전액 돌려받는다. 본장·공탁 부담은 그대로 낸다.",
+    "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해를 막고, 배만·삼배만은 절반만 맞는다 — 내가 낸 몫이 그만큼 돌아온다. 본장·공탁 부담은 그대로 낸다.",
   detail:
-    "(상시 · 횟수 제한 없음) 셈수역만도 막지만 하네만·배만·삼배만은 막지 않는다. 직격(론)이면 내가 문 화료점 전액, 쯔모면 내 분담분이 돌아온다. 환급된 만큼 화료자의 획득이 줄고 모자란 몫은 뱅크가 낸다. 유국역만만은 화료자의 수령액이 줄지 않는다.",
+    "(상시 · 횟수 제한 없음) **역만·셈수역만·유국역만**은 내가 낸 몫이 전액 돌아와 손실이 0이 된다. **배만·삼배만**은 내가 낸 몫의 절반이 돌아온다(100점 단위 내림). **하네만 이하**에는 발동하지 않는다. 직격(론)이면 내가 문 화료점, 쯔모면 내 분담분이 기준이다. 환급된 만큼 화료자의 획득이 줄고 모자란 몫은 뱅크가 낸다. 유국역만만은 화료자의 수령액이 줄지 않는다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -91,12 +107,14 @@ export const yakumanShield: AugmentDef = defineAugment({
       const loss = p.deltas[holder] ?? 0;
       if (loss >= 0) return event;
 
-      // 역만 화료 건 전부 (자기 화료는 제외 — 잃는 쪽일 때만 발동).
+      // 방어 대상 화료 건 전부 (자기 화료는 제외 — 잃는 쪽일 때만 발동).
       //
       // ⚠ 예전엔 `find`로 **첫 한 건만** 잡았다. 그래서 더블론으로 역만이 둘 떨어지면
       // 두 번째 역만은 상한에 아예 안 들어가 그대로 얻어맞았다 — "역만 완전 면역"이
       // 더블론에서만 조용히 거짓이 됐다.
-      const bigWins = p.winInfos.filter((w) => isYakuman(w) && w.winner !== holder);
+      const yakumanWins = p.winInfos.filter((w) => isYakuman(w) && w.winner !== holder);
+      const halfWins = p.winInfos.filter((w) => isHalfShielded(w) && w.winner !== holder);
+      const bigWins = [...yakumanWins, ...halfWins];
       if (bigWins.length === 0) return event;
 
       // 손실 전액 환급 → 보유자 손실 0. 환급분은 화료자 이득 한도까지 차감하고,
@@ -154,8 +172,19 @@ export const yakumanShield: AugmentDef = defineAugment({
             : (w.payments?.others ?? w.points);
         return Math.max(0, share) + paoShare;
       };
-      const cap = bigWins.reduce((sum, w) => sum + paidFor(w), 0);
-      const refund = Math.min(-loss, cap);
+      /*
+       * 두 층을 **따로** 잰다.
+       *
+       * 역만은 내가 낸 몫 전액까지, 배만·삼배만은 그 절반까지다. 절반을 «남은 손실의
+       * 절반»으로 재면 같은 국에 함께 난 평범한 화료나 본장·공탁까지 절반이 되어
+       * 설명이 약속하지 않은 것을 깎는다. 그래서 화료 건마다 «내가 낸 몫»을 먼저
+       * 재고 그 절반을 상한으로 쓴다.
+       */
+      const yakumanCap = yakumanWins.reduce((sum, w) => sum + paidFor(w), 0);
+      const yakumanRefund = Math.min(-loss, yakumanCap);
+      const halfCap = halfWins.reduce((sum, w) => sum + halfOf(paidFor(w)), 0);
+      const halfRefund = Math.min(-loss - yakumanRefund, halfCap);
+      const refund = yakumanRefund + halfRefund;
       if (refund <= 0) return event;
 
       // 차감은 역만 화료자들에게 **이득이 큰 쪽부터** 결정적으로 나눠 문다
@@ -174,7 +203,8 @@ export const yakumanShield: AugmentDef = defineAugment({
         deltas[w.winner] = gain - deduct;
         rest -= deduct;
       }
-      deltas[holder] = (deltas[holder] ?? 0) + refund; // = 0
+      // 역만만 맞은 국이면 여기서 정확히 0이 된다. 배만·삼배만이 섞이면 절반이 남는다.
+      deltas[holder] = (deltas[holder] ?? 0) + refund;
       return {
         type: event.type,
         payload: {

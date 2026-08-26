@@ -57,6 +57,15 @@ const usesKey = (state: GameState, h: PlayerId): string =>
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
   counterOf(state, usesKey(state, h)) < USES_PER_ROUND;
 /**
+ * 지금 이 국에 **아직 걸 수 있는가** — pill 표시용.
+ *
+ * 횟수가 남아 있어도 이미 리치를 선 뒤라면 올인은 얹을 수 없다(`validate`의
+ * "already riichi"). 규칙 훅(`riichi.blocked` 등)은 여기서 보지 않는다 — pill은
+ * 리듀서 밖에서 state만으로 그려지고, 룰 해석기는 그 자리에 없다.
+ */
+const usableNow = (state: GameState, h: PlayerId): boolean =>
+  hasUsesLeft(state, h) && state.round.byPlayer[h]?.riichi == null;
+/**
  * 이번 국에 건 올인 금액 (국 스코프 — 국이 바뀌면 자동 만료).
  *
  * ⚠ 예전에는 게임 스코프 키에 `"<roundKey>|<금액>"`을 넣고 정산 **리액션**에서 현재
@@ -168,15 +177,20 @@ export const allOrNothing: AugmentDef = defineAugment({
   install(ctx) {
     const { engine, holder } = ctx;
 
-    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
-    // 국 스코프라 국이 바뀌면 publishUsesLeft가 새 값(1회)으로 덮어쓴다.
+    /*
+     * 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
+     * 국 스코프라 국이 바뀌면 publishUsesLeft가 새 값(1회)으로 덮어쓴다.
+     *
+     * ⚠ **평범한 리치로 걸어 버린 국도 0으로 내린다.** 올인은 리치 선언에 얹는
+     * 것이라 이미 리치를 선 뒤에는 액션이 "already riichi"로 막힌다(`validate`).
+     * 그런데 pill은 카운터만 보고 있어서 그 국 내내 "1회 남음"이라고 적혀 있었다 —
+     * 화면이 쓸 수 없는 능력을 쓸 수 있다고 말하던 셈이다. pill과 액션이 같은
+     * 조건을 보게 맞춘다.
+     */
     publishUsesLeft(
       ctx,
       (state) => ({
-        left: Math.max(
-          0,
-          USES_PER_ROUND - counterOf(state, usesKey(state, holder)),
-        ),
+        left: usableNow(state, holder) ? USES_PER_ROUND : 0,
         total: USES_PER_ROUND,
       }),
       "round",

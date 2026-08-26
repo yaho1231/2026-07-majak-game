@@ -523,3 +523,95 @@ describe("대기만성 두 종은 이름으로 구분된다", () => {
     expect(lateBloomerEast.name).toContain("대기만성");
   });
 });
+
+/**
+ * 이중 방어 (2026-08-26) — 역만은 전액, 배만·삼배만은 절반, 하네만 이하는 그대로.
+ *
+ * 측정 1,496화료 중 역만이 0회라 카드가 사실상 죽어 있었다. 층을 하나 더 두되,
+ * 절반은 «남은 손실»이 아니라 **내가 그 화료에 낸 몫**에서 잰다 — 손실 절반으로 재면
+ * 같은 국의 다른 화료·본장·공탁까지 깎여 설명이 약속하지 않은 일을 한다.
+ */
+describe("역만 방어술 — 이중 방어(역만 전액 · 배만 절반)", () => {
+  /** limit을 직접 지정하는 WinInfo (winInfo 헬퍼는 역만/보통만 만든다) */
+  const limitWin = (
+    winner: PlayerId,
+    points: number,
+    limit: string,
+    winType: "ron" | "tsumo" = "ron",
+  ): WinInfo =>
+    ({
+      winner,
+      points,
+      han: 8,
+      fu: 30,
+      yakumanCount: 0,
+      limit,
+      yaku: [],
+      winType,
+      payments: winType === "ron" ? { discarder: points } : { others: points / 3 },
+    }) as unknown as WinInfo;
+
+  const shielded = (): ReturnType<typeof gameWith> =>
+    gameWith(withAugments(scene(), { p0: ["yakuman_shield"] }), [[yakumanShield, "p0"]]);
+
+  it("배만 직격은 절반만 남는다", () => {
+    const out = runSettle(shielded(), {
+      outcome: "win",
+      deltas: { p0: -16000, p1: 16000, p2: 0, p3: 0 },
+      winInfos: [limitWin("p1", 16000, "baiman")],
+    } as unknown as RoundSettledPayload);
+    expect(out.deltas["p0"]).toBe(-8000);
+    // 환급분은 화료자의 이득에서 빠진다 (부족분만 뱅크)
+    expect(out.deltas["p1"]).toBe(8000);
+  });
+
+  it("삼배만 직격도 절반이다", () => {
+    const out = runSettle(shielded(), {
+      outcome: "win",
+      deltas: { p0: -24000, p1: 24000, p2: 0, p3: 0 },
+      winInfos: [limitWin("p1", 24000, "sanbaiman")],
+    } as unknown as RoundSettledPayload);
+    expect(out.deltas["p0"]).toBe(-12000);
+  });
+
+  it("하네만 이하에는 발동하지 않는다", () => {
+    for (const limit of ["haneman", "mangan"]) {
+      const out = runSettle(shielded(), {
+        outcome: "win",
+        deltas: { p0: -12000, p1: 12000, p2: 0, p3: 0 },
+        winInfos: [limitWin("p1", 12000, limit)],
+      } as unknown as RoundSettledPayload);
+      expect(out.deltas["p0"], limit).toBe(-12000);
+    }
+  });
+
+  it("본장은 절반 방어에서도 그대로 남는다 (내가 낸 몫에서만 잰다)", () => {
+    // 배만 16000 + 2본장 600
+    const out = runSettle(shielded(), {
+      outcome: "win",
+      deltas: { p0: -16600, p1: 16600, p2: 0, p3: 0 },
+      winInfos: [limitWin("p1", 16000, "baiman")],
+    } as unknown as RoundSettledPayload);
+    // 8000만 돌아온다 — 본장 600은 손실에 그대로 남는다 (손실 절반이면 -8300이 됐다)
+    expect(out.deltas["p0"]).toBe(-8600);
+  });
+
+  it("역만과 배만이 함께 떨어지면 역만은 전액·배만은 절반이다", () => {
+    const out = runSettle(shielded(), {
+      outcome: "win",
+      deltas: { p0: -48000, p1: 32000, p2: 16000, p3: 0 },
+      winInfos: [winInfo("p1", 32000, 1), limitWin("p2", 16000, "baiman")],
+    } as unknown as RoundSettledPayload);
+    expect(out.deltas["p0"]).toBe(-8000); // 32000 전액 + 16000의 절반이 돌아온다
+  });
+
+  it("쯔모는 내 분담분의 절반이다 (화료 총액이 아니다)", () => {
+    // 배만 쯔모 16000 = 셋이 각 4000씩 문다 → 절반이면 2000이 돌아온다
+    const out = runSettle(shielded(), {
+      outcome: "win",
+      deltas: { p0: -4000, p1: 12000, p2: -4000, p3: -4000 },
+      winInfos: [limitWin("p1", 12000, "baiman", "tsumo")],
+    } as unknown as RoundSettledPayload);
+    expect(out.deltas["p0"]).toBe(-2000);
+  });
+});
