@@ -100,6 +100,20 @@ async function connectRemote(rm: RoomManager, username: string, ip: string): Pro
   return sock;
 }
 
+/**
+ * 소켓 프레임과 무관한 서버 상태를 기다린다.
+ *
+ * `FakeSocket.until`은 `send()`가 불릴 때만 조건을 다시 보므로, 프레임이 더는 오지
+ * 않는 상태(나간 좌석의 입막음 소켓)에서는 영영 깨어나지 않는다.
+ */
+async function poll(pred: () => boolean, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!pred()) {
+    if (Date.now() > deadline) throw new Error("poll timeout");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 afterEach(async () => {
   for (const m of managers.splice(0)) {
     m.shutdown("테스트 정리");
@@ -201,6 +215,71 @@ describe("혼자 두는 기록 대국은 무효로 지울 수 없다", () => {
     // 표가 실제로 세어졌다 (정족수 1을 그 표 하나로 채운다).
     expect(sock.last("abortVote")).toMatchObject({ votes: 1, needed: 1 });
   }, 60_000);
+
+  /*
+   * 아래 둘은 감사 2026-08-26이 찾은 **옆문** 회귀 가드다. 위의 «투표를 던지는 자리»만
+   * 막혀 있었고, 실제로 판을 지우는 두 경로에는 같은 검사가 없었다.
+   */
+
+  it("2인 방에서 한 명이 동의해 둔 뒤 상대가 끊겨도 판은 무효가 되지 않는다 (H-1)", async () => {
+    const h = await newHarness();
+    const a = await connectRemote(h.rm, "Stayer", "198.51.100.11");
+    const b = await connectRemote(h.rm, "Leaver", "198.51.100.12");
+    a.autoRespond = true;
+    b.autoRespond = true;
+
+    a.clientSend({ type: "createRoom" });
+    await a.until(() => a.last("roomCreated") !== undefined);
+    const code = a.last("roomCreated").code;
+    b.clientSend({ type: "joinRoom", code });
+    await b.until(() => b.last("joined") !== undefined);
+    b.clientSend({ type: "ready", ready: true }); // 방장 아닌 사람은 준비해야 시작된다
+    a.clientSend({ type: "addBot" });
+    a.clientSend({ type: "addBot" });
+    await a.until(() => (a.last("lobby")?.players?.length ?? 0) === 4);
+    a.clientSend({ type: "startGame" });
+    await a.until(() => a.last("view") !== undefined || a.last("draftOffer") !== undefined);
+
+    // 사람이 둘이라 이 투표 자체는 정상적으로 받아들여진다 (1/2).
+    a.clientSend({ type: "voteAbort", vote: "agree" });
+    await a.until(() => a.last("abortVote") !== undefined, 10_000);
+    expect(a.last("abortVote")).toMatchObject({ votes: 1, needed: 2 });
+
+    // 상대가 끊긴다 — 정족수가 1로 줄면서 «이미 던져 둔 표»가 판을 지우던 자리.
+    b.close();
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(a.last("gameAborted")).toBeUndefined();
+    expect(h.rm.healthSnapshot().playing).toBe(1);
+  }, 60_000);
+
+  it("혼자 남은 기록 대국에서 나가도 판은 봇이 마저 두고 기록된다 (H-2)", async () => {
+    const h = await newHarness();
+    const sock = await connectRemote(h.rm, "Bailer", "198.51.100.13");
+    sock.autoRespond = true;
+    sock.clientSend({ type: "createRoom" });
+    await sock.until(() => sock.last("roomCreated") !== undefined);
+    sock.clientSend({ type: "addBot" });
+    sock.clientSend({ type: "addBot" });
+    sock.clientSend({ type: "addBot" });
+    await sock.until(() => (sock.last("lobby")?.players?.length ?? 0) === 4);
+    sock.clientSend({ type: "startGame" });
+    await sock.until(() => sock.last("view") !== undefined || sock.last("draftOffer") !== undefined);
+
+    // 「나가기」 — 무효 투표가 막히자 이쪽으로 지우던 길이다.
+    sock.clientSend({ type: "leaveRoom" });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(sock.last("gameAborted")).toBeUndefined();
+
+    // 봇이 판을 끝까지 둔다 → 정산·기록이 남는다.
+    //
+    // `until`이 아니라 폴링이다 — 나간 좌석의 소켓은 이제 **아무것도 받지 않으므로**
+    // (`muted`, 이 수정의 절반) 프레임에 딸려 조건을 다시 볼 기회가 오지 않는다.
+    await poll(() => h.rm.healthSnapshot().playing === 0, 120_000);
+    sock.clientSend({ type: "replayList" });
+    await sock.until(() => sock.last("replayList") !== undefined, 10_000);
+    expect(sock.last("replayList").games).toHaveLength(1);
+  }, 180_000);
 
   it("체험 방은 애초에 투표가 안 온다 (화이트리스트가 앞에서 막는다)", async () => {
     const h = await newHarness();

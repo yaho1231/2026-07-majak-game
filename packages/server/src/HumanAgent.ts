@@ -365,6 +365,19 @@ export class HumanAgent implements PlayerAgent {
    */
   private abandonReason: "left" | "evicted" | "timeout" | null = null;
   /**
+   * 이 좌석으로 나가는 프레임을 막는다 — **돌아오지 않을 좌석의 소켓 입막음**.
+   *
+   * 나가기를 누른 사람의 소켓은 **살아 있다**(홈 화면으로 갔을 뿐 같은 연결이다).
+   * 좌석은 봇 자동 진행으로 판을 완주하므로, 막지 않으면 그 판의 뷰가 홈 화면
+   * 위로 계속 흘러 연출과 소리가 튀어나온다. 예전에는 이걸 «사람이 다 나간 판은
+   * 무효로 접는다»로 덮었는데, 그 길이 곧 **전적 세탁 통로**였다
+   * (감사 2026-08-26 H-2) — 새는 곳을 직접 막고 판은 그대로 완주시킨다.
+   *
+   * 돌아올 수 있는 이탈(`"timeout"`)에는 걸지 않는다. 그 좌석은 재접속 대상이고,
+   * 애초에 소켓이 닫혀 있어 `sendRaw`가 이미 조용하다.
+   */
+  private muted = false;
+  /**
    * **판을 세워 둔 상태**의 만료 시각(epoch ms). 0이면 세워 두지 않았다.
    *
    * `suspend()`가 켜고 `reconnect()`가 끈다. 켜져 있는 동안 이 좌석의 모든 결정은
@@ -808,6 +821,9 @@ export class HumanAgent implements PlayerAgent {
     if (this.abandoned) return;
     this.abandoned = true;
     this.abandonReason = reason;
+    // 돌아오지 않을 좌석이면 소켓으로 나가는 프레임을 여기서 끊는다 (`muted` 주석).
+    // 살아 있는 소켓에 남의 판이 계속 흘러가는 것을 막는 유일한 자리다.
+    if (reason !== "timeout") this.muted = true;
     // 국 사이 대기 중이었다면 즉시 해소 (봇처럼 다음 국으로 넘어가게)
     if (this.pendingContinue !== null) this.resolveContinue();
     for (const seat of [...this.pending.keys()]) this.cancelDecisionFor(seat);
@@ -1438,6 +1454,8 @@ export class HumanAgent implements PlayerAgent {
 
   /** 이미 직렬화된 프레임을 그대로 보낸다 (뷰 무변경 스킵이 문자열을 재사용한다). */
   private sendRaw(frame: string): void {
+    // 나가기·축출로 끝난 좌석 — 소켓은 살아 있어도 이 판의 프레임은 보내지 않는다.
+    if (this.muted) return;
     if (this.ws.readyState !== 1 /* OPEN */) return;
     // 백프레셔 가드 — RoomManager.send와 같은 상한. 인게임 프레임은 전부 여기를
     // 지나가므로 이 가드가 없으면 안 읽는 소켓 하나가 서버 메모리를 무한히 먹는다.

@@ -195,9 +195,11 @@ afterEach(async () => {
     m.shutdown("테스트 정리");
     m.stop();
   }
-  // 중단된 게임 루프가 마무리 콜백을 흘려보낼 틈을 준다 (임시 디렉터리 삭제 레이스 방지)
-  await new Promise((r) => setTimeout(r, 0));
-  for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
+  // 중단된 게임 루프가 마무리 콜백을 흘려보낼 틈을 준다 (임시 디렉터리 삭제 레이스 방지).
+  // `maxRetries`도 함께 건다 — 리플레이 writer가 마지막 줄을 흘리는 중이면 rmdir이
+  // ENOTEMPTY로 튄다. 사람이 나가도 판이 끝까지 가게 된 뒤로 이 틈이 넓어졌다.
+  await new Promise((r) => setTimeout(r, 50));
+  for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true, maxRetries: 5 });
   for (const db of dbs.splice(0)) db.close();
 });
 
@@ -850,11 +852,16 @@ describe("게임 완주·기록", () => {
     HANCHAN_TEST_MS,
   );
 
+  /*
+   * 이 자리는 원래 «혼자 하던 판에서 나가면 무효로 접힌다»였다. 막으려던 회귀는
+   * **나간 뒤에도 그 판의 연출·소리가 홈 화면 위로 새는 것**이었는데, 처방이
+   * 「판을 통째로 지운다」였다 — 그리고 무효는 정산·순위·통계·리플레이를 남기지
+   * 않으므로, 그게 곧 **지는 판을 흔적 없이 지우는 버튼**이었다
+   * (감사 2026-08-26 H-2). 이제 새는 곳(좌석의 소켓)을 직접 막고, 판은 기록한다.
+   */
   it(
-    "혼자 하던 판(봇전·증강 테스트)에서 나가면 게임이 무효로 접힌다",
+    "혼자 하던 기록 대국에서 나가도 판은 봇이 마저 두고 기록된다 (지워지지 않는다)",
     async () => {
-      // 회귀: 예전에는 나간 뒤에도 봇들끼리 판이 계속 돌아, 홈으로 나온 화면 위로
-      // 그 게임의 연출·소리가 계속 튀어나왔다.
       const h = await newHarness();
       const sock = await connectAndRegister(h, "Solo");
       sock.clientSend({ type: "createRoom" });
@@ -864,15 +871,55 @@ describe("게임 완주·기록", () => {
       await sock.waitFor((m) => m.type === "view");
 
       sock.clientSend({ type: "leaveRoom" });
+      const afterLeave = sock.sent.length;
 
-      // 무효 종료가 끝나면 방 자체가 사라진다 (봇들끼리 계속 두지 않는다)
+      // 판은 남아서 끝까지 간다 — 나가기는 무효가 아니다.
+      const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
+      await vi.waitFor(() => {
+        expect(rooms.has(code)).toBe(false); // 완주 → 정리
+      }, HANCHAN_MS);
+
+      // 그 판이 실제로 기록됐다 (무효였다면 아무것도 안 남는다).
+      sock.clientSend({ type: "replayList" });
+      await sock.waitFor((m) => m.type === "replayList");
+      const list = sock.last("replayList");
+      expect(list.games).toHaveLength(1);
+      expect(list.games[0].code).toBe(code);
+
+      /*
+       * **그리고 나간 화면으로는 그 판이 한 프레임도 새지 않았다** — 이게 원래
+       * 이 테스트가 지키던 것이다. 나가기를 누른 사람의 소켓은 살아 있으므로
+       * (홈 화면으로 갔을 뿐 같은 연결이다) 막지 않으면 봇들이 두는 판이 그대로
+       * 흘러들어 BGM과 컷인 효과음이 되살아난다.
+       */
+      const leaked = sock.sent
+        .slice(afterLeave)
+        .filter((m: { type: string }) => m.type === "view" || m.type === "roundOver");
+      expect(leaked).toHaveLength(0);
+      expect(sock.last("gameOver")).toBeUndefined();
+    },
+    HANCHAN_TEST_MS,
+  );
+
+  it(
+    "기록하지 않는 방(연습 대국)은 나가면 그대로 접힌다",
+    async () => {
+      // 세탁할 전적이 없는 방이다 — 아무도 보지 않는 봇 판을 끝까지 돌릴 이유가 없다.
+      const h = await newHarness();
+      const sock = await connectAndRegister(h, "Practicer");
+      sock.clientSend({ type: "practicePlay", mode: "tonpuu" });
+      await sock.waitFor((m) => m.type === "view");
+      const code = sock.last("joined").roomId as string;
+
+      sock.clientSend({ type: "leaveRoom" });
+
       const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
       await vi.waitFor(() => {
         expect(rooms.has(code)).toBe(false);
       }, 10_000);
       expect(sock.last("gameOver")).toBeUndefined();
     },
-    15_000,
+    30_000,
   );
 
   it(
