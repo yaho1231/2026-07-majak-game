@@ -1169,6 +1169,15 @@ interface Settings {
   /** 자동 버림 — 쯔모한 패를 자동으로 버린다(쯔모기리). 화료 가능하면 먼저 화료한다. */
   autoDiscard: boolean;
   /**
+   * 매 국 옵션 초기화 — 새 국이 시작될 때 좌하단 빠른 토글(자동정렬·자동화료·
+   * 후로없음·자동버림)을 기본값으로 되돌린다.
+   *
+   * 켜 두는 것이 기본이다: 지난 국에 켜 둔 자동버림이 그대로 남아, 새 국이
+   * 시작하자마자 첫 쯔모가 그대로 나가는 일이 있었다(2026-08-27 사용자 보고).
+   * 세팅을 국마다 유지하고 싶으면 끈다.
+   */
+  resetOptionsEachRound: boolean;
+  /**
    * 두 번 탭으로 버리기 — 첫 탭은 패를 들어 올리고 두 번째 탭에 나간다.
    *
    * 기본은 **터치 기기에서만 켜진다**(마우스는 정확하므로 데스크톱의 한 번 클릭
@@ -1228,6 +1237,7 @@ const DEFAULT_SETTINGS: Settings = {
   autoWin: false,
   autoNoMeld: false,
   autoDiscard: false,
+  resetOptionsEachRound: true,
   // 터치 기기에서만 기본 켜짐 — 오타패가 실제로 일어나는 곳이 거기다.
   // (matchMedia가 없는 환경에서는 꺼진 쪽으로 — 예전 동작 그대로.)
   tapTwiceToDiscard:
@@ -3213,6 +3223,43 @@ export function App(): JSX.Element {
     }
     setSettings((prev) => {
       const next = { ...prev, [key]: value };
+      try {
+        safeStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      } catch {
+        /* 저장 실패는 무시 (세션 내 설정은 유지) */
+      }
+      return next;
+    });
+  }
+
+  /**
+   * 새 국 시작 때 빠른 토글(자동정렬·자동화료·후로없음·자동버림)을 기본값으로 되돌린다.
+   * 「매 국 옵션 초기화」가 꺼져 있으면 아무것도 하지 않는다.
+   *
+   * ⚠ `settingsRef.current`도 **여기서 바로** 갱신한다 — 자동 응답(tryAutoRespond)은
+   *   ref를 읽고, 그 ref는 다음 렌더에서야 동기화된다. 같은 틱에 도착한 새 국 프롬프트가
+   *   초기화 이전 값으로 처리되면 초기화가 한 국 늦게 듣는 셈이 된다.
+   */
+  function resetRoundOptions(): void {
+    if (!settingsRef.current.resetOptionsEachRound) return;
+    const reset = {
+      autoSort: DEFAULT_SETTINGS.autoSort,
+      autoWin: DEFAULT_SETTINGS.autoWin,
+      autoNoMeld: DEFAULT_SETTINGS.autoNoMeld,
+      autoDiscard: DEFAULT_SETTINGS.autoDiscard,
+    };
+    const cur = settingsRef.current;
+    if (
+      cur.autoSort === reset.autoSort &&
+      cur.autoWin === reset.autoWin &&
+      cur.autoNoMeld === reset.autoNoMeld &&
+      cur.autoDiscard === reset.autoDiscard
+    ) {
+      return;
+    }
+    settingsRef.current = { ...cur, ...reset };
+    setSettings((prev) => {
+      const next = { ...prev, ...reset };
       try {
         safeStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
       } catch {
@@ -5453,6 +5500,9 @@ export function App(): JSX.Element {
       bgm.holdForResult(false);
       // 에코가 끝내 안 온 타패 id(접속 끊김 등)가 다음 국까지 남아 정상 타패음을 먹지 않게
       pendingOwnDiscards.current.clear();
+      // 좌하단 빠른 토글을 기본값으로 되돌린다(설정에서 끌 수 있다) — 지난 국의
+      // 자동버림이 남아 새 국 첫 쯔모가 그대로 나가던 문제.
+      resetRoundOptions();
       const label = `${WIND_CHAR[next.round.prevalentWind - 1] ?? "?"}${next.round.roundNumber}국`;
       // 부제에 "이 국이 어떤 국인가"를 싣는다. 서든데스(서입·남입)로 넘어온 것도, 지금이
       // 오라스라는 것도 예전에는 화면 어디에도 없었다 — 봇은 setGameMode로 올라스를
@@ -14254,6 +14304,11 @@ function SettingsPanel(props: {
           },
         ]
       : []),
+    {
+      key: "resetOptionsEachRound",
+      label: "매 국 옵션 초기화",
+      desc: "새 국이 시작될 때 좌하단 빠른 토글(자동정렬·자동화료·후로없음·자동버림)을 기본값으로 되돌립니다. 끄면 켜 둔 그대로 다음 국까지 이어집니다",
+    },
     {
       key: "glossaryTips",
       label: "용어 설명",
