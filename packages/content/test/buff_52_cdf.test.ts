@@ -367,12 +367,39 @@ describe("yakuman_shield (역만 방어술) — 역만 전용 / 횟수 무제한
     });
   }
 
-  /** p0(친)가 9m을 버려 p1의 청일색(하네만, 구련이 아니라 역만 아님)에 방총 */
-  function haneState(): GameState {
+  /**
+   * p0(친)가 9m을 버려 p1의 **배만**에 방총 — 청일색 6 + 이페코 1 + 도라 3 = 10판.
+   *
+   * 이름이 `haneState`였고 주석도 «하네만»이라 적혀 있었지만 실제로는 줄곧 배만이었다.
+   * 방어막이 역만 전용이던 시절에는 배만도 안 막혀서 아무도 눈치채지 못했고, 이중 방어가
+   * 들어오자 «하네만은 막지 않는다»가 배만을 재고 있었다는 것이 드러났다.
+   */
+  function baimanState(): GameState {
     return craft({
       hands: {
         p0: "2358p2358s1234z9m",
         p1: "2233445567899m",
+        p2: "147s147p2233445z",
+        p3: "258s369p5566677z",
+      },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+  }
+
+  /**
+   * p0(친)가 4m을 버려 p1의 **청일색 단독**(6판 = 하네만, 12,000)에 방총.
+   *
+   * 도라 표시패가 2m(=도라 3m)이고 5m은 적도라라, 판이 새지 않으려면 3m도 5m도 손에
+   * 없어야 한다 — 그래서 슌쯔를 678m·789m으로만 짜고 나머지를 커쯔로 채웠다.
+   * 량페코·일기통관·산안커가 서지 않게 4m 커쯔는 론으로 완성한다(밍커라 안커로 안 센다).
+   */
+  function haneState(): GameState {
+    return craft({
+      hands: {
+        p0: "2358p2358s1234z4m",
+        p1: "1144677889999m",
         p2: "147s147p2233445z",
         p3: "258s369p5566677z",
       },
@@ -412,24 +439,44 @@ describe("yakuman_shield (역만 방어술) — 역만 전용 / 횟수 무제한
     expect(game.engine.state.augmentData["yakuman_shield:used:p0"]).toBe(6);
   });
 
-  /**
-   * 2026-08-26 이중 방어 — 역만은 전액, **배만·삼배만은 절반**이다.
-   * (여기 손패 `haneState`는 청일 치또이로 실제로는 배만 16000이 떨어진다.)
-   */
+  /** 2026-08-26 이중 방어 — 역만은 전액, **배만·삼배만은 절반**이다. */
   it("배만은 절반만 맞는다 (2026-08-26 이중 방어)", () => {
-    const base = createStandardGameFromState(haneState());
+    const base = createStandardGameFromState(baimanState());
     runRon(base, "p0", "p1");
     const baseDelta = lastSettled(base).deltas["p0"] ?? 0;
+    expect(lastSettled(base).winInfos?.[0]?.limit).toBe("baiman");
     expect(baseDelta).toBe(-16000); // 배만 직격
 
     const game = createStandardGameFromState(
-      withAugments(haneState(), { p0: ["yakuman_shield"] }),
+      withAugments(baimanState(), { p0: ["yakuman_shield"] }),
     );
     installAugment(game.engine, yakumanShield, "p0", { yaku: game.yaku });
     runRon(game, "p0", "p1");
     expect(lastSettled(game).deltas["p0"]).toBe(baseDelta / 2);
     // 절반 방어도 «막아낸 횟수»로 센다 — 화면의 방어 카운터가 발동을 그대로 비춘다.
     expect(game.engine.state.augmentData["yakuman_shield:used:p0"]).toBe(1);
+  });
+
+  /**
+   * 이중 방어의 **아래 경계** — 배만이 절반이 된 뒤로 «어디부터 막느냐»를 재는 검사가
+   * 사라져 있었다(옛 「하네만은 막지 않는다」가 실제로는 배만을 재고 있었다).
+   */
+  it("하네만은 막지 않는다 — 방어는 배만부터다 (2026-08-26 이중 방어)", () => {
+    const base = createStandardGameFromState(haneState());
+    runRon(base, "p0", "p1");
+    const baseDelta = lastSettled(base).deltas["p0"] ?? 0;
+    // 손패가 진짜 하네만인지부터 못 박는다 — 이 자리가 배만으로 흘러 검사가 엉뚱한
+    // 구간을 쟀던 적이 있다. 배열이 다시 드리프트하면 여기서 먼저 걸린다.
+    expect(lastSettled(base).winInfos?.[0]?.limit).toBe("haneman");
+    expect(baseDelta).toBe(-12000);
+
+    const game = createStandardGameFromState(
+      withAugments(haneState(), { p0: ["yakuman_shield"] }),
+    );
+    installAugment(game.engine, yakumanShield, "p0", { yaku: game.yaku });
+    runRon(game, "p0", "p1");
+    expect(lastSettled(game).deltas["p0"]).toBe(baseDelta);
+    expect(game.engine.state.augmentData["yakuman_shield:used:p0"]).toBeUndefined();
   });
 
   it("만관 이하 방총에는 발동하지 않는다", () => {
