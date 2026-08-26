@@ -205,9 +205,56 @@ describe("모드별 횟수 표기", () => {
     expect(forMode("(동풍전 2회 · 반장전 3회, 국당 1회)", "hanchan")).toBe("(게임 3회, 국당 1회)");
   });
 
+  it("국 단위 쿨다운(무적)도 그 판의 숫자 하나만 남긴다", () => {
+    expect(forMode("(동풍전 2국 · 반장전 3국에 1회) 선언한다.", "tonpuu")).toBe("(2국에 1회) 선언한다.");
+    expect(forMode("(동풍전 2국 · 반장전 3국에 1회) 선언한다.", "hanchan")).toBe("(3국에 1회) 선언한다.");
+    expect(forMode("쿨다운은 동풍전 2국 · 반장전 3국.", "tonpuu")).toBe("쿨다운은 2국.");
+  });
+
+  it("점수 문턱(통일)도 그 판의 숫자 하나만 남긴다", () => {
+    // 여기만 반장전이 먼저 오고 자릿수 쉼표가 붙는다
+    expect(forMode("문턱(반장전 55,000점 · 동풍전 45,000점)", "tonpuu")).toBe("문턱(45,000점)");
+    expect(forMode("문턱(반장전 55,000점 · 동풍전 45,000점)", "hanchan")).toBe("문턱(55,000점)");
+    expect(forMode("문턱(반장전 55,000·동풍전 45,000)", "tonpuu")).toBe("문턱(45,000)");
+  });
+
   it("판 밖(mode=null)에서는 두 숫자를 그대로 둔다", () => {
     const raw = "(동풍전 1회 · 반장전 2회) 발동한다.";
     expect(forMode(raw, null)).toBe(raw);
+  });
+
+
+  /*
+   * **전수조사 가드** — 판이 정해진 자리에서 두 모드의 숫자가 나란히 남아 있으면 안 된다
+   * (2026-08-27 사용자 지적: "동풍전1/반장전2" 처럼 같이 나온다).
+   *
+   * 새 증강이 «동풍전 N… · 반장전 M…» 을 새로운 모양(회/국/점 …)으로 적으면 forMode가
+   * 못 줄이고 조용히 둘 다 노출된다 — 그 순간 여기서 걸린다.
+   */
+  it("모든 증강의 인게임 표기에 두 모드가 함께 남지 않는다", () => {
+    const bad: string[] = [];
+    for (const a of ALL) {
+      const brief = AUGMENT_BRIEF[a.id];
+      const fields: [string, string][] = [
+        ["description", a.description],
+        ["detail", a.detail ?? ""],
+        ["use", brief?.use ?? ""],
+        ["text", brief?.text ?? ""],
+      ];
+      for (const [key, value] of fields) {
+        if (value === "") continue;
+        for (const mode of ["tonpuu", "hanchan"] as const) {
+          for (const sentence of forMode(value, mode).split(/(?<=[.。])\s*/)) {
+            // 상충 목록은 증강 **이름**("대기만성 (동풍전)")이라 횟수 표기가 아니다
+            if (sentence.includes("함께 가질 수 없다")) continue;
+            if (/동풍전/.test(sentence) && /반장전/.test(sentence)) {
+              bad.push(`${a.id}.${key}[${mode}]: ${sentence.trim()}`);
+            }
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
   });
 
   it("모드 전용 증강의 '반장전 전용' 같은 말은 건드리지 않는다", () => {
