@@ -43,7 +43,7 @@ export const lateBloomerEast: AugmentDef = defineAugment({
   draftStages: ["gameStart"],
   modes: ["tonpuu"],
   detail:
-    "(상시 · 동풍전 전용 · 게임 시작 드래프트에서만 등장) 만개 후에는 머리 1개와 몸통 4개(4멘쯔)로 손이 완성되면 역이 없어도 화료할 수 있다. +2판은 역만에는 붙지 않는다.\n\n만개 사실은 전원에게 공개되며, 만개 전까지는 아무 효과도 없다.",
+    "만개 후에는 역이 하나도 없어도 화료할 수 있다. +2판은 역만에는 붙지 않는다.\n\n만개 사실은 전원에게 공개되며, 만개 전까지는 아무 효과도 없다.",
   install(ctx) {
     const { holder } = ctx;
     const vKey = viewKey("*", `${ID}:${holder}`);
