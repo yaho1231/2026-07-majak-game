@@ -105,6 +105,8 @@ export interface LiveGameRecord {
   replayPath: string;
   gameMode: string;
   botDifficulty: string;
+  /** 제한 시간 묶음(`RoomPace`). 열이 붙기 전에 쓰인 행은 null → 기본값으로 읽는다. */
+  pace?: string | null;
   seats: LiveSeatRecord[];
   startedAt: string;
   updatedAt: string;
@@ -415,6 +417,10 @@ export class SiteDb {
       "pause_reason TEXT",
       "notice TEXT",
       "notice_expires_at TEXT",
+      // 방이 고른 제한 시간 묶음(`ROOM_PACES`) — 2026-08-27. 이것도 리플레이 로그에
+      // 없다(엔진은 제한 시간을 모른다). 안 담으면 되살아난 왕초보 판이 조용히
+      // 숙련자 속도(30 + 10초)로 서서, 앉아 있던 사람의 차례가 대신 두어진다.
+      "pace TEXT",
     ]) {
       try {
         this.db.exec(`ALTER TABLE live_games ADD COLUMN ${col}`);
@@ -1214,13 +1220,14 @@ export class SiteDb {
    */
   saveLiveGame(rec: LiveGameRecord): void {
     this.stmt(
-      `INSERT INTO live_games (code, replay_path, game_mode, bot_difficulty, seats, started_at, updated_at,
+      `INSERT INTO live_games (code, replay_path, game_mode, bot_difficulty, pace, seats, started_at, updated_at,
                                paused, pause_reason, notice, notice_expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(code) DO UPDATE SET
          replay_path = excluded.replay_path,
          game_mode = excluded.game_mode,
          bot_difficulty = excluded.bot_difficulty,
+         pace = excluded.pace,
          seats = excluded.seats,
          updated_at = excluded.updated_at,
          paused = excluded.paused,
@@ -1232,6 +1239,7 @@ export class SiteDb {
       rec.replayPath,
       rec.gameMode,
       rec.botDifficulty,
+      rec.pace ?? null,
       JSON.stringify(rec.seats),
       rec.startedAt,
       rec.updatedAt,
@@ -1267,12 +1275,15 @@ export class SiteDb {
       pause_reason: string | null;
       notice: string | null;
       notice_expires_at: string | null;
+      pace: string | null;
     }[];
     return rows.map((r) => ({
       code: r.code,
       replayPath: r.replay_path,
       gameMode: r.game_mode,
       botDifficulty: r.bot_difficulty,
+      // NULL(= 열이 붙기 전에 쓰인 행)은 호출부가 기본 속도로 읽는다.
+      pace: r.pace ?? null,
       // 좌석 JSON이 깨져 있으면 그 판만 포기한다(빈 좌석 → 호출부가 건너뛴다).
       // 여기서 던지면 **다른 멀쩡한 판까지** 못 되살린다.
       seats: parseSeats(r.seats),

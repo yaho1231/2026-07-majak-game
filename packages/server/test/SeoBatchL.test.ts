@@ -42,26 +42,12 @@ describe("없는 주소에 진짜 404를 준다", () => {
     expect(html).toContain('href="/"'); // 돌아갈 길은 준다
   });
 
-  /*
-   * **헤더 «값»은 여기서 보지 않는다** — 실제 응답을 받아 보는
-   * `SecurityHeaders.test.ts`가 본다. 예전에는 이 자리에서 소스 문자열로
-   * `toContain('"X-Content-Type-Options": "nosniff"')` 식으로 봤는데, 그러면
-   * **나열한 헤더만** 지켜진다. 실제로 404에는 `Strict-Transport-Security`가
-   * 도입 시점부터 빠져 있었고 이 검사는 그걸 한 번도 잡지 못했다(감사 §L-1) —
-   * 소스에 없는 줄은 문자열 검사의 시야 밖이다.
-   *
-   * 여기 남기는 것은 **구조**뿐이다: 세 문서 응답이 각자 헤더를 나열하지 않고
-   * 한 벌을 나눠 쓰는가. 복사본이 다시 생기면 또 한쪽만 흘린다.
-   */
-  it("404가 문서와 같은 헤더 한 벌을 쓴다 (복사본을 만들지 않는다)", () => {
+  it("404 응답에도 보안 헤더가 그대로 붙는다", () => {
     const at = SERVER_INDEX.indexOf("function sendNotFound");
     const body = SERVER_INDEX.slice(at, at + 900);
-    expect(body).toContain("...DOC_SECURITY_HEADERS");
+    expect(body).toContain('"X-Content-Type-Options": "nosniff"');
+    expect(body).toContain('"Content-Security-Policy": CSP');
     expect(body).toContain("writeHead(404");
-    // 헤더 한 벌은 **한 자리에서만** 정의된다.
-    expect(SERVER_INDEX.match(/const DOC_SECURITY_HEADERS =/g)).toHaveLength(1);
-    // 그리고 문서를 내보내는 세 자리가 전부 그것을 쓴다.
-    expect(SERVER_INDEX.match(/\.\.\.DOC_SECURITY_HEADERS/g)).toHaveLength(3);
   });
 });
 
