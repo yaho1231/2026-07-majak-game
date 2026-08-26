@@ -288,9 +288,9 @@ describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진
     const fresh = new FakeSocket();
     agent.reconnect(fresh.asWs());
     const resent = fresh.sent.filter((m) => m.type === "prompt");
-    // 10초를 이미 썼으니 남은 것은 (5초 + 은행 20초) - 10초 = 15초 언저리다.
-    expect(resent[0].deadlineMs).toBeGreaterThan(14_000);
-    expect(resent[0].deadlineMs).toBeLessThanOrEqual(15_000);
+    // 10초를 이미 썼으니 남은 것은 (5초 + 은행) - 10초 언저리다.
+    expect(resent[0].deadlineMs).toBeGreaterThan(TURN_GRACE_MS + TURN_BANK_MS - 11_000);
+    expect(resent[0].deadlineMs).toBeLessThanOrEqual(TURN_GRACE_MS + TURN_BANK_MS - 10_000);
   });
 
   it("포기(abandon)한 좌석은 유예도 없이 즉시 폴백한다", async () => {
