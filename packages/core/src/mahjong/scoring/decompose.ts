@@ -212,7 +212,7 @@ function normalizeOptions(
     mixedRuns: o.mixedRuns ?? false,
     mixedTriplets: o.mixedTriplets ?? false,
     /*
-     * **머리(작두)는 동수의 결속을 따라 열지 않는다** (2026-08-25 사용자 확정).
+     * **머리(또이쯔)는 동수의 결속을 따라 열지 않는다** (2026-08-25 사용자 확정).
      *
      * 잠깐 `mixedTriplets`가 `mixedPairs`를 함께 켜게 둔 적이 있다 — 혼색 샹퐁
      * (7만7통7통·1통1삭·5만5삭 + 후로 2 → 777 + 111 + 55머리)을 살리려던 것이었다.
