@@ -106,6 +106,18 @@ export type DisplayMode = "hanchan" | "tonpuu";
 const MODE_COUNT_RE = /동풍전\s*(\d+)\s*회?\s*·\s*반장전\s*(\d+)\s*회?/g;
 
 /**
+ * "동풍전 2국 · 반장전 3국"처럼 **국 단위 쿨다운**을 두 모드로 적은 표기(무적).
+ * 횟수가 아니라 간격이라 "게임 N회"가 아니라 "N국"으로 줄인다.
+ */
+const MODE_ROUND_RE = /동풍전\s*(\d+)\s*국\s*·\s*반장전\s*(\d+)\s*국/g;
+
+/**
+ * "반장전 55,000점 · 동풍전 45,000점"처럼 **점수 문턱**을 두 모드로 적은 표기(통일).
+ * 반장전이 먼저 오고 자릿수 쉼표가 붙는다 — 위의 둘과 순서·모양이 달라 따로 받는다.
+ */
+const MODE_SCORE_RE = /반장전\s*([\d,]+)\s*(점?)\s*·\s*동풍전\s*([\d,]+)\s*(점?)/g;
+
+/**
  * 인게임 표기를 **지금 도는 판**의 횟수 하나로 줄인다 — 동풍전이면 "게임 1회",
  * 반장전이면 "게임 2회".
  *
@@ -115,8 +127,12 @@ const MODE_COUNT_RE = /동풍전\s*(\d+)\s*회?\s*·\s*반장전\s*(\d+)\s*회?/
  */
 export function forMode(text: string, mode: DisplayMode | null): string {
   if (mode === null) return text;
-  return text.replace(MODE_COUNT_RE, (_all, tonpuu: string, hanchan: string) =>
-    `게임 ${mode === "tonpuu" ? tonpuu : hanchan}회`);
+  const tonpuu = mode === "tonpuu";
+  return text
+    .replace(MODE_COUNT_RE, (_all, t: string, h: string) => `게임 ${tonpuu ? t : h}회`)
+    .replace(MODE_ROUND_RE, (_all, t: string, h: string) => `${tonpuu ? t : h}국`)
+    .replace(MODE_SCORE_RE, (_all, h: string, hUnit: string, t: string, tUnit: string) =>
+      tonpuu ? `${t}${tUnit}` : `${h}${hUnit}`);
 }
 
 export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
