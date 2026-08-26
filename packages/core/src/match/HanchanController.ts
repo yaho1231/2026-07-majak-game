@@ -1500,24 +1500,6 @@ export class HanchanController {
       offered.set(agent.id, draft.rollWithRerolls(stage, agent.id));
     }
 
-    /*
-     * 아직 안 고른 좌석 — 픽이 하나 들어올 때마다 전원에게 다시 알린다.
-     *
-     * 고른 사람의 화면에는 «다른 플레이어를 기다리는 중…» 한 줄뿐이라, 누구를
-     * 기다리는지도 몇 명이 남았는지도 알 수 없었다(2026-08-27 사용자 요청).
-     * 정보 방송일 뿐이라 엔진 상태·이벤트 로그에는 손대지 않는다 — 결정성 영향 없음.
-     */
-    const stillPending = new Set(pending.map((a) => a.id));
-    const notifyProgress = (): void => {
-      this.notifyAll({
-        type: "draftProgress",
-        stage,
-        pending: pending.map((a) => a.id).filter((id) => stillPending.has(id)),
-        total: pending.length,
-      });
-    };
-    notifyProgress();
-
     // 전원에게 '동시에' 오퍼를 보내고 응답을 병렬로 기다린다 (순차 대기 X). runRound과 동일하게
     // abortSignal과 레이스 — 드래프트 대기 중 무효 투표가 와도 30초 타임아웃까지 멈추지 않게 한다.
     const raced = await this.raceAbort(
@@ -1532,8 +1514,6 @@ export class HanchanController {
           );
           // 새로고침 여부는 **응답 직후에만** 읽을 수 있다 (좌석이 다음 스테이지에 덮어쓴다).
           const rerolled = agent.rerolledDraftSlots?.() ?? [];
-          stillPending.delete(agent.id);
-          notifyProgress();
           return { player: agent.id, pickedId, rerolled };
         }),
       ).then((picks) => ({ picks })),

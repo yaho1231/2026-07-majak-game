@@ -985,13 +985,24 @@ export interface RoomPaceSpec {
 }
 
 /**
- * 속도별 값. **숙련자는 종전 동작 그대로**다 — 이 표가 생기기 전의 상수
- * (`TURN_GRACE_MS`·`TURN_BANK_MS`·`DECISION_TIMEOUT_MS`·`FIRST_DRAFT_TIMEOUT_MS`)와
- * 같은 숫자여야 하고, 서버가 그걸 테스트로 못 박는다.
+ * 속도별 값 — **전부 사용자가 못박은 숫자다** (2026-08-27).
+ *
+ * | | 증강 선택 | 매 타패 |
+ * |---|---|---|
+ * | 숙련자 | 50초 | 30 + 10초 |
+ * | 초심자 | 120초 | 60 + 20초 |
+ * | 왕초보 | 300초 | 300 + 30초 |
+ *
+ * 서버의 옛 상수(`TURN_GRACE_MS`·`TURN_BANK_MS`·`FIRST_DRAFT_TIMEOUT_MS`)는 이제
+ * 이 표의 «숙련자» 칸을 그대로 읽는다 — 값이 두 벌로 갈라지지 않게 한다.
+ *
+ * `firstDraftMs`가 `draftMs`와 같은 이유: 세 속도 모두 «증강 선택 N초»를 한 값으로
+ * 정해 받았다. 첫 판만 더 주던 종전의 예외(30초 → 75초)는 평소 값이 이미 그만큼
+ * 넉넉해져서 할 일이 없어졌다.
  */
 export const ROOM_PACES: Record<RoomPace, RoomPaceSpec> = {
-  expert: { turnGraceMs: 5_000, turnBankMs: 30_000, draftMs: 30_000, firstDraftMs: 75_000 },
-  beginner: { turnGraceMs: 60_000, turnBankMs: 10_000, draftMs: 120_000, firstDraftMs: 120_000 },
+  expert: { turnGraceMs: 30_000, turnBankMs: 10_000, draftMs: 50_000, firstDraftMs: 50_000 },
+  beginner: { turnGraceMs: 60_000, turnBankMs: 20_000, draftMs: 120_000, firstDraftMs: 120_000 },
   novice: { turnGraceMs: 300_000, turnBankMs: 30_000, draftMs: 300_000, firstDraftMs: 300_000 },
 };
 
@@ -1183,24 +1194,6 @@ export interface DraftAutoPickedMessage {
   augmentId: string;
   /** 표시 이름 — 클라이언트가 카탈로그를 못 찾는 경우에도 이름은 말할 수 있게 함께 보낸다 */
   name: string;
-}
-
-/**
- * 이번 증강 선택에서 **아직 안 고른 사람**이 누구인가 (전원 방송).
- *
- * 고르고 나면 화면은 "다른 플레이어를 기다리는 중…" 한 줄만 남았다 — 누구를,
- * 몇 명을 기다리는지 알 길이 없어 «멈춘 것»과 구분되지 않았다(2026-08-27 사용자
- * 요청). 픽이 하나 들어올 때마다 남은 좌석을 다시 보낸다.
- *
- * 정보 메시지일 뿐 엔진 상태가 아니다 — 리플레이 이벤트에는 남기지 않는다.
- */
-export interface DraftProgressMessage {
-  type: "draftProgress";
-  stage: DraftStage;
-  /** 아직 고르지 않은 좌석 (고정 좌석 순서) */
-  pending: PlayerId[];
-  /** 이번 스테이지에 고를 좌석 수 (이미 마친 좌석은 애초에 빠져 있다) */
-  total: number;
 }
 
 export interface DraftOfferMessage {
@@ -2159,7 +2152,6 @@ export type ServerMessage =
   | PromptCancelMessage
   | DraftOfferMessage
   | DraftAutoPickedMessage
-  | DraftProgressMessage
   | DraftRerolledMessage
   | CatalogMessage
   | RoundOverMessage

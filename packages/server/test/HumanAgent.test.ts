@@ -248,13 +248,16 @@ describe("HumanAgent — 끊긴 좌석의 결정은 짧은 유예 뒤 자동 진
     expect(done?.type).toBe("pass"); // 절대 론을 대신 선언하지 않는다
   });
 
-  it("접속된 좌석은 종전대로 30초를 기다린다", async () => {
+  it("접속된 좌석은 유예로 잘리지 않고 제 시계를 끝까지 쓴다", async () => {
     const agent = new HumanAgent("p0", "Alice", new FakeSocket().asWs());
     let done: any = null;
     void agent.decide(prompt("p0", "pass", "ron")).then((o) => (done = o));
     await vi.advanceTimersByTimeAsync(DISCONNECT_GRACE_MS + 1000);
     expect(done).toBeNull();
-    await vi.advanceTimersByTimeAsync(DECISION_TIMEOUT_MS);
+    // 이 좌석의 시계는 «유예 + 은행»이다 (숙련자 30 + 10초). 숫자를 박지 않는다 —
+    // 값은 방이 고른 속도(`ROOM_PACES`)가 정하고, 여기서 볼 것은 «끊긴 좌석의 5초
+    // 유예가 접속된 좌석에는 걸리지 않는다»뿐이다.
+    await vi.advanceTimersByTimeAsync(TURN_GRACE_MS + TURN_BANK_MS);
     expect(done?.type).toBe("pass");
   });
 

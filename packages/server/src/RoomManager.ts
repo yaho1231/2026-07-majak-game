@@ -2174,6 +2174,7 @@ export class RoomManager {
       case "kickPlayer":
       case "setGameMode":
       case "setRoomRules":
+      case "setRoomPace":
       case "shuffleSeats":
       case "startGame": {
         if (conn.room === null || conn.agent === null) return;
@@ -5826,6 +5827,7 @@ export class RoomManager {
         replayPath: room.writer.path,
         gameMode: room.gameMode,
         botDifficulty: room.botDifficulty,
+        pace: room.pace,
         seats: room.agents.map((a) => ({
           id: a.id,
           nickname: a.nickname,
@@ -5961,6 +5963,10 @@ export class RoomManager {
       code: row.code,
       gameMode: resumeMode,
       botDifficulty: row.botDifficulty as BotDifficulty,
+      // 되살린 판도 **그 방이 고른 속도**로 서야 한다. 안 담으면 왕초보 방이
+      // 조용히 숙련자 속도(30 + 10초)로 돌아와, 앉아 있던 사람의 차례가 대신
+      // 두어진다. 열이 붙기 전에 쓰인 행(null)은 기본값이다.
+      ...(isRoomPace(row.pace) ? { pace: row.pace } : {}),
     });
     room.resumePath = row.replayPath;
     room.phase = "playing";
