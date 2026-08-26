@@ -24,6 +24,8 @@ const CSS = read("../src/styles.css");
 const TUTORIAL = read("../src/tutorial.ts");
 const GLOSSARY_SRC = read("../src/glossary.ts");
 const HUMAN_AGENT = read("../../server/src/HumanAgent.ts");
+const PROTOCOL = read("../../core/src/network/protocol.ts");
+const ROOM_MANAGER = read("../../server/src/RoomManager.ts");
 
 /** 주석을 걷어낸 코드만 — 주석에 적힌 옛 형태가 검사에 걸리지 않게 한다 */
 function code(src: string): string {
@@ -43,13 +45,16 @@ describe("① 처음 보는 증강 카드 셋에 30초를 걸지 않는다", () 
     // 코드가 스스로 "카드 셋을 읽는 데만 30초가 넘게 걸린다"고 적어 놓고, 그 판단을
     // 튜토리얼에만 적용했다. «바로 한 판»(게스트)·«연습 대국»은 tutorial=false다.
     expect(AGENT_CODE).toContain("FIRST_DRAFT_TIMEOUT_MS");
+    // 값은 2026-08-27부터 `ROOM_PACES`(core)가 쥔다 — 숙련자 칸이 곧 그 시절의 상수다.
     // 30초보다 넉넉하되 컨트롤러의 최후 그물(90초, `AGENT_DECIDE_TIMEOUT_MS`)보다는
     // **작아야** 한다 — 같으면 그물이 사람을 대신 골라 버린다.
-    const m = /export const FIRST_DRAFT_TIMEOUT_MS = ([\d_]+);/.exec(HUMAN_AGENT);
+    const m = /expert: \{[^}]*firstDraftMs: ([\d_]+)/.exec(PROTOCOL);
     expect(m).not.toBeNull();
     const ms = Number((m?.[1] ?? "0").replace(/_/g, ""));
     expect(ms).toBeGreaterThan(30_000);
     expect(ms).toBeLessThan(90_000);
+    // 초심자·왕초보는 그 90초를 넘긴다 — 그래서 방이 그물을 함께 늘려야 한다.
+    expect(ROOM_MANAGER).toContain("agentDecideTimeoutMs: paceMaxSeatMs(room.pace)");
   });
 
   it("`draftTimeoutMs` 가 «몇 번째 드래프트인가»로 가른다", () => {
@@ -57,7 +62,8 @@ describe("① 처음 보는 증강 카드 셋에 30초를 걸지 않는다", () 
     expect(at).toBeGreaterThan(0);
     const body = AGENT_CODE.slice(at, at + 400);
     expect(body).toContain("draftsOffered");
-    expect(body).toContain("FIRST_DRAFT_TIMEOUT_MS");
+    // 값 자체는 이 방의 속도(`ROOM_PACES`)에서 온다 — 가르는 기준은 그대로다.
+    expect(body).toContain("firstDraftMs");
     // 튜토리얼 예외는 그대로 남아 있어야 한다 — 그쪽은 사실상 무제한이다.
     expect(body).toContain("TUTORIAL_DECISION_TIMEOUT_MS");
   });

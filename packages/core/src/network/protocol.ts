@@ -951,6 +951,76 @@ export interface SetRoomRulesMessage {
   rules: Partial<RoomRules>;
 }
 
+// ── 방 진행 속도(제한 시간) ──
+
+/**
+ * **이 방의 제한 시간 묶음** — 대기실에서 방장이 고른다 (2026-08-27 사용자 지시).
+ *
+ * 지금까지 값은 하나뿐이었고(매 순 5초 + 국마다 30초 은행, 증강 선택 30초),
+ * 그건 «규칙을 이미 아는 사람»의 속도다. 처음 온 사람에게는 손패를 읽는 데만
+ * 그 시간이 다 가고, 증강 선택창은 시간이 다 되면 **무작위로 집는다**(`armDraft`) —
+ * 배우는 자리에서 그건 사고다. 그래서 같은 구조(«매 순 공짜 시간 + 국마다 차는
+ * 은행»)를 그대로 두고 **숫자만** 세 벌로 나눈다.
+ *
+ * 늘어나는 것은 **상한**이지 대기 시간이 아니다: 증강은 네 사람이 다 고르는 순간
+ * 남은 시간이 취소되고(`HanchanController.runDraft`가 픽을 모으는 즉시 다음으로
+ * 간다), 타패도 두는 순간 타이머가 걷힌다. 다 쓰는 사람이 없으면 왕초보 방도
+ * 숙련자 방과 같은 속도로 흐른다.
+ */
+export type RoomPace = "expert" | "beginner" | "novice";
+
+/** 한 벌의 제한 시간 값(ms). `HumanAgent`가 그대로 쓴다. */
+export interface RoomPaceSpec {
+  /** 매 순 공짜로 주는 유예(ms) — 이 안에 두면 은행이 깎이지 않는다. */
+  turnGraceMs: number;
+  /** 국마다 다시 차는 «초읽기 은행»의 잔액(ms). */
+  turnBankMs: number;
+  /** 증강 선택 제한 시간(ms). */
+  draftMs: number;
+  /**
+   * 판의 **첫** 증강 선택 제한 시간(ms) — 카드 셋을 처음 읽는 한 번만 더 준다.
+   * 초심자·왕초보는 평소 값이 이미 넉넉해 둘이 같다.
+   */
+  firstDraftMs: number;
+}
+
+/**
+ * 속도별 값. **숙련자는 종전 동작 그대로**다 — 이 표가 생기기 전의 상수
+ * (`TURN_GRACE_MS`·`TURN_BANK_MS`·`DECISION_TIMEOUT_MS`·`FIRST_DRAFT_TIMEOUT_MS`)와
+ * 같은 숫자여야 하고, 서버가 그걸 테스트로 못 박는다.
+ */
+export const ROOM_PACES: Record<RoomPace, RoomPaceSpec> = {
+  expert: { turnGraceMs: 5_000, turnBankMs: 30_000, draftMs: 30_000, firstDraftMs: 75_000 },
+  beginner: { turnGraceMs: 60_000, turnBankMs: 10_000, draftMs: 120_000, firstDraftMs: 120_000 },
+  novice: { turnGraceMs: 300_000, turnBankMs: 30_000, draftMs: 300_000, firstDraftMs: 300_000 },
+};
+
+/** 아무것도 고르지 않은 방의 속도 (= 종전 동작). */
+export const DEFAULT_ROOM_PACE: RoomPace = "expert";
+
+/** 받은 값이 아는 속도인가 — 서버가 클라이언트 문자열을 그대로 믿지 않으려고 쓴다. */
+export function isRoomPace(v: unknown): v is RoomPace {
+  return v === "expert" || v === "beginner" || v === "novice";
+}
+
+/**
+ * 이 속도에서 **한 좌석이 최대로 끌 수 있는 시간**(ms).
+ *
+ * `HanchanController`의 최후 그물(`agentDecideTimeoutMs`, 기본 90초)을 방이 다시
+ * 정할 때 쓴다. 그 그물의 전제는 «좌석 자신의 타이머가 항상 먼저 터진다»인데,
+ * 왕초보 방은 좌석 타이머가 330초라 90초 그물이 먼저 터져 **사람 대신 두어 버린다**.
+ */
+export function paceMaxSeatMs(pace: RoomPace): number {
+  const s = ROOM_PACES[pace];
+  return Math.max(s.turnGraceMs + s.turnBankMs, s.firstDraftMs, s.draftMs);
+}
+
+/** 방 진행 속도 변경 (방장 전용, 대기 중에만). */
+export interface SetRoomPaceMessage {
+  type: "setRoomPace";
+  pace: RoomPace;
+}
+
 /** 게임 모드 변경 (방장 전용, 대기 중에만). 대기실에서 반장전/동풍전을 고른다. */
 export interface SetGameModeMessage {
   type: "setGameMode";
@@ -991,6 +1061,7 @@ export type ClientMessage =
   | StartGameMessage
   | SetGameModeMessage
   | SetRoomRulesMessage
+  | SetRoomPaceMessage
   | ShuffleSeatsMessage
   | StatsRequestMessage
   | VoteAbortMessage
@@ -1441,6 +1512,8 @@ export interface LobbyMessage {
   gameMode: GameMode;
   /** 봇 난이도 (`easy`·`normal`·`hard`). 방장만 바꿀 수 있다. */
   botDifficulty: string;
+  /** 이 방의 제한 시간 묶음 (`ROOM_PACES`). 방장만 바꿀 수 있다. */
+  pace: RoomPace;
   players: LobbyPlayerEntry[];
 }
 
