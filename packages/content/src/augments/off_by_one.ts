@@ -59,6 +59,7 @@ export const offByOne: AugmentDef = defineAugment({
     "(상시) 리치 후 쯔모한 패가 오름패의 ±1이면 그 패가 한 칸 밀려 오름패로 바뀐다.",
   detail:
     "(상시) 리치를 선언한 뒤의 쯔모에만, 오름패와 같은 무늬이고 숫자가 1만큼 어긋난 수패에만 적용된다. 1과 9를 잇는 순환은 없고 자패에는 적용되지 않으며, 오름패가 이미 4장 다 나온 죽은 대기로는 밀리지 않는다.\n\n⚠ 바뀐 패로 화료하지 않으면 그 패가 손에 남는다 — 리치 중이라면 그대로 버리게 되어 그 국 후리텐이 된다.",
+  conflicts: ["open_riichi_reveal"],
   install(ctx) {
     const { engine, holder } = ctx;
 

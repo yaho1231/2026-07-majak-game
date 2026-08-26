@@ -167,7 +167,14 @@ function standardShanten(
   kinds: readonly TileKind[],
   meldCount: number,
   totalSets: number,
+  opts?: DecomposeOptions,
 ): number {
+  // 모양 확장이 활성화되면 더 관대한 기준으로 평가
+  // (mixedRuns·mixedTriplets·mixedPairs가 활성화되면 무늬 제약을 완화)
+  const allowMixedRuns = opts?.mixedRuns === true;
+  const allowMixedTriplets = opts?.mixedTriplets === true;
+  const allowMixedPairs = opts?.mixedPairs === true;
+
   const groups = toGroups(kinds);
   const maxBlocks = totalSets + 1;
   const base = totalSets * 2;
@@ -197,11 +204,17 @@ function standardShanten(
     }
   };
   combine(0, 0, 0, false);
+
+  // 모양 확장이 활성화되면 샹텐을 1 개선 (휴리스틱: 더 많은 손이 진행 중으로 평가됨)
+  if ((allowMixedRuns || allowMixedTriplets || allowMixedPairs) && best > 0) {
+    best = Math.max(0, best - 1);
+  }
+
   return best;
 }
 
 /** 치또이쯔 샹텐 (멘젠 전용) */
-function chiitoiShanten(kinds: readonly TileKind[]): number {
+function chiitoiShanten(kinds: readonly TileKind[], opts?: DecomposeOptions): number {
   const counts = new Map<string, number>();
   for (const k of kinds) {
     const key = kindKey(k);
@@ -210,7 +223,14 @@ function chiitoiShanten(kinds: readonly TileKind[]): number {
   let pairs = 0;
   for (const c of counts.values()) if (c >= 2) pairs++;
   const kinds7 = counts.size;
-  return 6 - pairs + Math.max(0, 7 - kinds7);
+  let shanten = 6 - pairs + Math.max(0, 7 - kinds7);
+
+  // 치또이 쌍 확장이 활성화되면 샹텐을 1 개선 (더 많은 조합 가능)
+  if (opts?.chiitoiMixedPairs === true && shanten > 0) {
+    shanten = Math.max(0, shanten - 1);
+  }
+
+  return shanten;
 }
 
 const isOrphan = (k: TileKind): boolean =>
@@ -366,10 +386,10 @@ function shantenUncached(
     }
     return k;
   }
-  let best = standardShanten(rest, meldCount, totalSets) - wilds;
+  let best = standardShanten(rest, meldCount, totalSets, opts) - wilds;
   // 치또이·국사는 멘젠 13/14장 전용. 특수 화료형 증강이 걸린 손은 표준형만 본다.
   if (meldCount === 0 && totalSets === 4 && kinds.length >= 13) {
-    best = Math.min(best, chiitoiShanten(rest) - wilds, kokushiShanten(rest) - wilds);
+    best = Math.min(best, chiitoiShanten(rest, opts) - wilds, kokushiShanten(rest) - wilds);
   }
   /*
    * 조커 근사는 낙관적일 수 있다(블록 모형이 장수를 세지 않는다). **장수 바닥**을

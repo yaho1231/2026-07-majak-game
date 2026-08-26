@@ -1,18 +1,18 @@
 /**
- * 역만 방어술 (yakuman_shield) — 역만 피해에 **완전 면역**. 횟수 제한 없음.
+ * 역만 방어술 (yakuman_shield) — 하네만 이상 피해에 **완전 면역**. 횟수 제한 없음.
  *
- * 설계: docs/16_AUGMENT_REDESIGN.md §1b D (52차 버프) → 2026-07-26 재조정
+ * 설계: docs/16_AUGMENT_REDESIGN.md §1b D (52차 버프) → 2026-07-26 재조정 → 2026-08-26 확대
  *
- * 52차엔 "하네만 이상 · 게임당 2회"였다. 이제 이름 그대로 **역만 전용**으로 좁히는 대신
- * **횟수 제한을 없앤다** — 역만(셈수역만 포함)과 유국역만 피해는 몇 번이 오든 전부 0이 된다.
- * 하네만·배만·삼배만은 더 이상 막지 않는다.
+ * 52차엔 "하네만 이상 · 게임당 2회"였다. 이제 **하네만·배만·삼배만·셈수역만·역만 전부**로 확대하면서
+ * **횟수 제한을 없앤다** — 하네만 이상 화료 피해는 몇 번이 오든 전부 0이 된다.
+ * 유국역만도 함께 방어한다.
  *
- * 방어가 발동하면 **보유자가 그 역만에 낸 몫 전액**(론이면 직격분, 쯔모면 분담분)을
+ * 방어가 발동하면 **보유자가 그 화료에 낸 몫 전액**(론이면 직격분, 쯔모면 분담분)을
  * 돌려받는다. 표준 분담(`winInfo.payments`)에는 본장·공탁이 없으므로 그 부담은 남는다 —
  * 설명도 그렇게 적혀 있다. 화료 총액(`Σ points`)을 상한으로 쓰던 시절에는 쯔모에서
  * 상한이 한 번도 물리지 않아 본장까지 환급됐다(QA defcall 확정 2). 환급분은 그
  * 화료자(들)의 이득에서 (이득 한도까지) 차감하고, 부족분은 뱅크에서 발행한다 —
- * 화료자가 마이너스로 떨어지지 않으면서 보유자는 역만 피해에서 벗어난다.
+ * 화료자가 마이너스로 떨어지지 않으면서 보유자는 하네만 이상 피해에서 벗어난다.
  *
  * 막아낸 역만 수는 전원 공개 뷰 채널(view:*:yakuman_shield:{holder})에 실어
  * "저 사람한테 역만이 안 통한다"가 테이블에 보이게 한다.
@@ -63,10 +63,17 @@ interface ShieldMark {
   shieldedBy?: PlayerId[];
 }
 
-/** 역만인가 (셈수역만·다중역만 포함. 하네만~삼배만은 대상이 아니다) */
-function isYakuman(w: WinInfo): boolean {
+/** 방어 대상: 하네만 이상 (하네만·배만·삼배만·셈수역만·역만 등) */
+function isHighWin(w: WinInfo): boolean {
   if (w.yakumanCount > 0) return true;
-  return w.limit === "kazoe_yakuman" || w.limit === "yakuman";
+  const limit = w.limit;
+  return (
+    limit === "kazoe_yakuman" ||
+    limit === "yakuman" ||
+    limit === "sanbaiman" ||
+    limit === "baiman" ||
+    limit === "haneman"
+  );
 }
 
 export const yakumanShield: AugmentDef = defineAugment({
@@ -76,9 +83,9 @@ export const yakumanShield: AugmentDef = defineAugment({
   complexity: 3,
   name: "역만 방어술",
   description:
-    "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해를 막는다 — 내가 낸 몫을 전액 돌려받는다. 본장·공탁 부담은 그대로 낸다.",
+    "(상시 · 횟수 제한 없음) 하네만 이상(하네만·배만·삼배만·역만·유국역만) 피해를 막는다 — 내가 낸 몫을 전액 돌려받는다. 본장·공탁 부담은 그대로 낸다.",
   detail:
-    "(상시 · 횟수 제한 없음) 셈수역만도 막지만 하네만·배만·삼배만은 막지 않는다. 직격(론)이면 내가 문 화료점 전액, 쯔모면 내 분담분이 돌아온다. 환급된 만큼 화료자의 획득이 줄고 모자란 몫은 뱅크가 낸다. 유국역만만은 화료자의 수령액이 줄지 않는다.",
+    "(상시 · 횟수 제한 없음) 직격(론)이면 내가 문 화료점 전액, 쯔모면 내 분담분이 돌아온다. 환급된 만큼 화료자의 획득이 줄고 모자란 몫은 뱅크가 낸다. 유국역만만은 화료자의 수령액이 줄지 않는다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -96,7 +103,7 @@ export const yakumanShield: AugmentDef = defineAugment({
       // ⚠ 예전엔 `find`로 **첫 한 건만** 잡았다. 그래서 더블론으로 역만이 둘 떨어지면
       // 두 번째 역만은 상한에 아예 안 들어가 그대로 얻어맞았다 — "역만 완전 면역"이
       // 더블론에서만 조용히 거짓이 됐다.
-      const bigWins = p.winInfos.filter((w) => isYakuman(w) && w.winner !== holder);
+      const bigWins = p.winInfos.filter((w) => isHighWin(w) && w.winner !== holder);
       if (bigWins.length === 0) return event;
 
       // 손실 전액 환급 → 보유자 손실 0. 환급분은 화료자 이득 한도까지 차감하고,

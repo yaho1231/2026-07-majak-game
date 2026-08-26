@@ -168,20 +168,6 @@ export const allOrNothing: AugmentDef = defineAugment({
   install(ctx) {
     const { engine, holder } = ctx;
 
-    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약).
-    // 국 스코프라 국이 바뀌면 publishUsesLeft가 새 값(1회)으로 덮어쓴다.
-    publishUsesLeft(
-      ctx,
-      (state) => ({
-        left: Math.max(
-          0,
-          USES_PER_ROUND - counterOf(state, usesKey(state, holder)),
-        ),
-        total: USES_PER_ROUND,
-      }),
-      "round",
-    );
-
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(allInRiichiAction);
     }
