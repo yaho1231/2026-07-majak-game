@@ -983,6 +983,17 @@ button {
 
 .center-ura {
   margin-top: 2px;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 뒷도라 줄 라벨 — 표도라 줄과 한 칸 아래 붙어 서므로 이름이 없으면 구분되지 않는다 */
+.ura-row-tag {
+  font-size: max(9px, calc(var(--panel) * 0.058));
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #f0c86a;
+  white-space: nowrap;
 }
 
 /* 이면투시 — 나만 확인한 뒷도라 표시패 (국 종료 전 홀더 전용). 보라 글로우 + 라벨. */

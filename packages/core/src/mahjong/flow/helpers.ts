@@ -888,6 +888,28 @@ export function uraIndicatorIds(state: GameState): TileId[] {
   return ura;
 }
 
+/**
+ * 이번 국에 **화면에 열어 보일** 뒷도라 표시패 (열지 않으면 빈 배열).
+ *
+ * 뒷도라는 리치로 화료했을 때만 세는 패다. 그런데 예전에는 화료면 무조건
+ * `uraIndicatorIds`를 실어 보내, 리치 없이 난 국에도 중앙 도라 줄 **바로 아래에
+ * 라벨 없는 패 몇 장**이 갑자기 나타났다 — 아무 데도 안 세는 패라 화면에 근거가 없고,
+ * 깡으로 표시패가 늘어난 국(장사진 깡 2회 = 표시패 3장)에서는 그 줄이 통째로 세 장이라
+ * «저건 어디서 나온 패냐»가 된다 (2026-08-27 사용자 보고).
+ *
+ * 판정은 **실제로 셌는가**로 한다: 화료자가 리치를 걸었거나, 리치 없이 뒷도라를 세는
+ * 증강(숨은 칼날 계열)이 실제로 판을 얹었을 때(`uraHan > 0`)만 연다.
+ */
+export function revealedUraIndicatorIds(
+  state: GameState,
+  wins: readonly { winner: PlayerId; uraHan: number }[],
+): TileId[] {
+  const counted = wins.some(
+    (w) => state.round.byPlayer[w.winner]?.riichi != null || w.uraHan > 0,
+  );
+  return counted ? uraIndicatorIds(state) : [];
+}
+
 export interface BuildWinContextOptions {
   includeUra?: boolean;
   /**

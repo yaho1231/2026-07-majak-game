@@ -15939,7 +15939,11 @@ function CenterPanel({
           );
         })()}
         {r.uraDoraIndicators !== null && r.uraDoraIndicators.length > 0 ? (
-          <div className="center-dora center-ura" title="뒷도라">
+          <div className="center-dora center-ura" title="뒷도라 표시패 — 리치 화료로 열렸다">
+            {/* 라벨이 없으면 도라 줄 바로 아래에 «출처 없는 패»가 갑자기 늘어선다 —
+                깡으로 표시패가 늘어난 국에서는 세 줄째까지 서서 어디서 나온 패인지
+                화면에 근거가 없었다(2026-08-27 사용자 보고). */}
+            <span className="ura-row-tag">뒷도라</span>
             {r.uraDoraIndicators.map((id) => (
               <span key={id} className="dora-slot">
                 <TileImg tile={view.tiles[id]} size="fill" />
