@@ -19,8 +19,8 @@
  *   목표로 바꾸고**(tileKindChanged, conjured) 손패 장수는 그대로 둔다. 쯔모 한 장을
  *   정상적으로 뽑되 그 한 장의 정체만 바뀌므로 손패 산술이 정확히 맞는다.
  * - 대기 중인 목표 kind는 augmentData(`conjure_draw:pending:<holder>`)에 TileKind
- *   객체로 저장한다({suit, rank} — JSON 직렬화 가능). 다음 정상 쯔모(TILE_DRAWN,
- *   rinshan=false)에서 소비하고 즉시 비운다.
+ *   객체로 저장한다({suit, rank} — JSON 직렬화 가능). **홀더의 다음 쯔모**(TILE_DRAWN,
+ *   영상패 포함)에서 소비하고 즉시 비운다.
  * - 국당 1회 플래그(`conjure_draw:used:<round>:<holder>`)는 roundKey 스코프 — 매 국 초기화.
  * - 결정적: 난수를 소비하지 않는다(이미 뽑힌 패의 kind만 바꾼다). prngState를 넘기지 않는다.
  */
@@ -121,7 +121,7 @@ export const conjureDraw: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 자기 순에 손패 1장을 지목하면, 다음 내 쯔모가 그 패의 복제(생성패)로 바뀐다.",
   detail:
-    "지목한 패의 종류가 목표가 되어, 그다음 내 쯔모 한 장이 그 종류로 물질화된다. 무엇을 불렀는지는 발동 즉시 전원에게 공개된다.\n\n깡으로 뽑는 영상패에는 반응하지 않는다.",
+    "지목한 패의 종류가 목표가 되어, 그다음 내 쯔모 한 장이 그 종류로 물질화된다. 무엇을 불렀는지는 발동 즉시 전원에게 공개된다.\n\n남이 후로해 순서가 밀려도 예약은 남는다 — 깡으로 뽑는 영상패를 포함해 내가 다음에 뽑는 한 장이 그 패가 된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -138,12 +138,20 @@ export const conjureDraw: AugmentDef = defineAugment({
       engine.actions.register(conjureAction);
     }
 
-    // 다음 정상 쯔모(영상패 아님)를 목표 패로 물질화한다 — "부른 패가 다음 쯔모로 온다".
+    // 홀더의 다음 쯔모를 목표 패로 물질화한다 — "부른 패가 다음 쯔모로 온다".
     // 이미 뽑힌 실물 패의 kind만 바꾸므로 난수를 소비하지 않는다(prngState 없음).
     ctx.reaction(TILE_DRAWN, (event, rc) => {
       const p = event.payload as TileDrawnPayload;
       if (p.player !== holder) return;
-      if (p.rinshan) return; // 영상패(깡 후 쯔모)에는 반응하지 않는다 — 정상 쯔모만
+      /*
+       * 영상패(깡 후 쯔모)도 대상이다 (2026-08-27 사용자 지시).
+       *
+       * 예전에는 `p.rinshan`이면 물러났다. 그러면 발동과 도착 사이에 남이 펑·치를 해
+       * 순서가 밀리고 홀더가 깡을 하는 등, **홀더가 다음에 실제로 뽑는 한 장이 영상패인
+       * 경우** 소환이 그 순을 통째로 건너뛴다 — "부른 패가 안 온다"로 보인다. 그 사이
+       * 국이 끝나면 예약은 국 스코프라 그대로 사라져 국당 1회를 헛되이 쓴 셈이 된다.
+       * 계약은 «다음 내 쯔모»이므로 쯔모의 종류를 가리지 않는다.
+       */
       const target = pendingKind(rc.state, holder);
       if (target === null) return;
       /*

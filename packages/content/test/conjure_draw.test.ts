@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   FlowController,
   createStandardGameFromState,
+  handIdsOf,
   installAugment,
   kindKey,
   kindOf,
@@ -140,5 +141,91 @@ describe("소환 (conjure_draw)", () => {
     const { status } = startFlow(used);
     const prompt = status.prompts.find((p) => p.player === "p0");
     expect(prompt?.options.filter((o) => o.type === "conjure_tsumo")).toHaveLength(0);
+  });
+  it("남이 펑해 순서가 밀려도 예약은 남고 다음 내 쯔모로 온다", () => {
+    // 2026-08-27 사용자 보고: "앞에서 퐁치고 순서가 바뀌면 부른 패가 안 올 때가 있다".
+    const base = craft({
+      hands: { p0: "123456789m1112p", p1: "99m123456789p1s", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const CHUN: TileKind = { suit: "dragon", rank: 3 };
+    const primed: GameState = {
+      ...withAugments(base, "p0", ["conjure_draw"]),
+      augmentData: { [pendingFor(base)]: CHUN },
+    };
+    const { game, flow } = startFlow(primed);
+    const now = () => game.engine.state;
+
+    // p0가 9만을 버린다 → p1이 펑(9만 대자) → 순서가 p1으로 넘어간다
+    const nineM = handIdsOf(now(), "p0").find((id) => {
+      const k = kindOf(now(), id);
+      return k.suit === "man" && k.rank === 9;
+    }) as TileId;
+    let status = flow.submit("p0", { type: "discard", payload: { tileId: nineM } });
+
+    let ponned = false;
+    let drawn: TileId | null = null;
+    for (let i = 0; i < 40 && status.kind === "awaiting"; i++) {
+      const pr = status.prompts[0];
+      if (pr === undefined) break;
+      const pass = pr.options.find((o) => o.type === "pass");
+      if (pass !== undefined) {
+        const pon = pr.player === "p1" ? pr.options.find((o) => o.type === "pon") : undefined;
+        if (pon !== undefined) ponned = true;
+        status = flow.submit(pr.player, pon ?? pass);
+        continue;
+      }
+      if (pr.player === "p0" && now().round.lastDrawnTile !== null) {
+        drawn = now().round.lastDrawnTile as TileId;
+        break;
+      }
+      const discard = pr.options.find((o) => o.type === "discard");
+      if (discard === undefined) break;
+      status = flow.submit(pr.player, discard);
+    }
+
+    expect(ponned).toBe(true); // 순서가 실제로 바뀌었다
+    expect(drawn).not.toBeNull();
+    expect(game.engine.state.tiles[drawn as TileId]?.kind).toEqual(CHUN);
+    expect(game.engine.state.augmentData[pendingFor(game.engine.state)]).toBeNull();
+  });
+
+  it("깡 후 영상패도 소환 대상이다 — 다음 쯔모라면 종류를 가리지 않는다", () => {
+    // 예전에는 영상패를 건너뛰어, 순서가 밀려 다음 쯔모가 영상패가 되면 그 순을
+    // 통째로 놓쳤다(국이 끝나면 예약째 사라진다).
+    const base = craft({
+      hands: { p0: "1111m23456789p1s", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    const CHUN: TileKind = { suit: "dragon", rank: 3 };
+    const primed: GameState = {
+      ...withAugments(base, "p0", ["conjure_draw"]),
+      augmentData: { [pendingFor(base)]: CHUN },
+    };
+    const { game, flow } = startFlow(primed);
+    const ids = handIdsOf(game.engine.state, "p0").filter(
+      (id) => kindKey(kindOf(game.engine.state, id)) === "man1",
+    );
+    let status = flow.submit("p0", {
+      type: "ankan",
+      payload: { tileIds: ids as [TileId, TileId, TileId, TileId] },
+    });
+    // 창깡(chankan) 등 리액션 프롬프트는 패스 → 영상패 쯔모까지 진행
+    for (let i = 0; i < 8 && status.kind === "awaiting"; i++) {
+      const pr = status.prompts[0];
+      const pass = pr?.options.find((o) => o.type === "pass");
+      if (pass === undefined) break;
+      status = flow.submit(pr!.player, pass);
+    }
+
+    const st = game.engine.state;
+    const rinshan = st.round.lastDrawnTile as TileId;
+    expect(st.tiles[rinshan]?.kind).toEqual(CHUN);
+    expect(st.tiles[rinshan]?.attrs.conjured).toBe(true);
+    expect(st.augmentData[pendingFor(st)]).toBeNull();
   });
 });
