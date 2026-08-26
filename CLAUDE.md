@@ -36,6 +36,8 @@ Actions 무료 한도를 다 써서 런이 계속 실패 메일을 보냈다. `.
 - 메인 체크아웃은 `master` 고정. 갱신은 `git pull` 만.
 - 작업은 워크트리에서 한다.
 - master 갱신 후 배포: `npm run serve` (클라 빌드 + 서버 재시작 포함). 확인은 서빙되는 에셋 해시가 방금 빌드한 `packages/client/dist/assets/` 와 일치하는지 본다.
+  - ⚠ **이미 떠 있는 공개 서버를 갈아 끼울 때는 `bash deploy/serve.sh restart` 다.** `npm run serve`는 `serve.sh start`라서 "이미 실행 중입니다"만 찍고 **아무것도 바꾸지 않는다**.
+  - ⚠ **`npm run restart` 는 공개 서버용이 아니다.** 그건 `scripts/majak.sh` 직행이라 `deploy/majak.env`(PORT=3011 등)를 읽지 않는다 — 공개 서버(3011)를 죽이고 **개발 기본 포트 3001로** 다시 세운다. 2026-08-26에 이걸로 사이트가 35초 내려갔다. 공개 서버는 언제나 `deploy/serve.sh` 로만 다룬다.
 - `restart` 는 **빌드를 먼저 하고 성공했을 때만** 서버를 교체한다(2026-08-17). 예전에는 stop → 빌드 → start 순서라 빌드가 깨진 커밋을 배포하면 서버가 내려간 채로 남았다.
 
 ### 서버 감시자 + 백업 (launchd)
