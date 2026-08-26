@@ -1,0 +1,203 @@
+# 보안 감사 2026-08-26 — 2026-08-12 재점검 이후 후속 점검
+
+[26_SECURITY_AUDIT_2026-08.md](26_SECURITY_AUDIT_2026-08.md)(2026-08-05)와
+[29_SECURITY_AUDIT_2026-08-12.md](29_SECURITY_AUDIT_2026-08-12.md)(2026-08-12) 이후 약 2주간
+쌓인 커밋(`git log --since=2026-08-12`)을 대상으로, 그때 이미 [완료]로 표시된 항목의 회귀 여부와
+그 사이 새로 들어온 코드의 신규 결함을 함께 확인했다.
+
+**선행 상태 재확인**: H-1(미인증 연결 슬롯 점유)·H-2(`TRUST_PROXY` 헤더 없을 때 면제)는 이번
+재점검에서 회귀 징후를 찾지 못했다. M-3(비밀번호 변경·세션 일괄 무효화 부재)은 이번 라운드의
+검증 대상에 포함되지 않아 상태를 갱신하지 못했다 — 2026-08-12 감사의 [보류] 표기가 유지되는
+것으로 본다. M-2(솔로 대국 무효 투표로 성적 세탁)는 **여전히 열려 있을 뿐 아니라, 직접 경로
+(`voteAbort`)가 막힌 뒤 두 개의 우회 경로가 새로 확인됐다** — 아래 H-1·H-2 항목 참고.
+
+---
+
+## 요약
+
+| # | 심각도 | 결함 | 성격 | 회귀여부 |
+|---|--------|------|------|----------|
+| H-1 | **높음** | 무효 투표 정족수 재계산(`retallyAbortVotes`)에 SOLO_ABORT_FORBIDDEN 가드가 없어, 2인 기록 대국에서 상대 접속 끊김만으로 정산 없이 게임이 끝난다 | 게임 무결성 (M-2 우회) | 아니오 — M-2 미해결의 확장 |
+| H-2 | **높음** | `leaveRoom`(나가기) 경로가 `abortIfNoHumansLeft`를 거치며 같은 가드를 우회해, 혼자 두는 대국을 리플레이까지 지우며 무효 처리할 수 있다 | 게임 무결성 (M-2 재발) | **회귀** |
+| M-1 | 중간 | 관리자 가입 코드가 관리자 존재 여부와 무관하게 매 부팅마다 로그(`.majak/server.log`)에 평문 출력된다 | 계정·권한 상승 | **회귀** |
+| L-1 | 낮음 | `sendNotFound`(404 응답)에 `Strict-Transport-Security` 헤더 누락 | 전송 계층 | 아니오 — 신규 코드(도입 시부터 누락) |
+
+---
+
+## H-1. [높음] `retallyAbortVotes`에 SOLO_ABORT_FORBIDDEN 가드가 없다 — 상대 접속 끊김만으로 기록 대국이 무효 처리된다
+
+**발견**. M-2(솔로 대국 무효 투표로 성적 세탁)는 `handleVoteAbort`(`packages/server/src/RoomManager.ts:4905-4952`)
+에서 **투표를 새로 던지는 시점**에만 막혀 있다. `humans.length < 2 && !room.guest && !room.sandbox`
+조건(RoomManager.ts:4939)이 SOLO_ABORT_FORBIDDEN을 거절한다.
+
+그런데 이미 모인 표를 다시 세어 정족수 충족 여부를 판정하고 실제로 `room.controller?.requestAbort()`
+를 호출하는 함수는 `retallyAbortVotes`(RoomManager.ts:4961-4985)이며, 여기에는 이 가드가
+**전혀 없다**. 이 함수는
+
+- `humans = room.agents.filter(a => a instanceof HumanAgent && !a.isAbandoned && a.isConnected())`
+  로 "지금 접속 중인 사람"만 다시 세고,
+- `needed = humans.length`로 정족수를 그 자리에서 낮춘 뒤,
+- 남아 있는 `room.abortVotes`가 새 `needed`를 채우면 room/guest/sandbox 조건 검사 없이
+  곧바로 `requestAbort()`를 호출한다(4984행).
+
+`HumanAgent.isConnected()`(`packages/server/src/HumanAgent.ts:520-522`)는 순수히
+`ws.readyState === 1`만 보는 즉시값이다 — 소켓이 끊기는 순간 바로 false가 된다. 반면 "이탈
+확정"(`isAbandoned`)은 `noteGraceTimeout()`이 `GRACE_TIMEOUTS_BEFORE_ABANDON`회 연속 유예를
+넘겨야 발동하는 지연된 값이다(HumanAgent.ts:790-800). `retallyAbortVotes` 자신의 주석
+(4957-4959, "좌석 하나가 이탈로 **확정**되면")은 후자를 전제하지만, 실제로는 전자(단순 연결
+끊김)만으로 즉시 트리거된다.
+
+이 함수는 가드 없이 세 곳에서 호출된다:
+- `handleClose`의 게임 중 분기, RoomManager.ts:1770 (재접속 유예 없이 동기 호출)
+- 재접속 처리 중, RoomManager.ts:3200
+- 좌석 이탈 확정 콜백 `setAbandonedListener`, RoomManager.ts:6040-6043
+
+`packages/server/test/RoomManager.test.ts:760`·`packages/server/test/UnfinishedBatchM.test.ts:168-217`
+의 기존 회귀 테스트는 "둘 다 동의"와 "처음부터 사람 1명" 케이스만 검증하며, "2명 중 1명이
+동의 후 상대가 끊긴다" 경로는 테스트되지 않는다.
+
+**공격**. 등록 계정 두 명(H1·H2, `room.guest=false`, `room.sandbox=false`)이 실제 기록 대국을
+둔다. 형세가 불리한 H1이 `voteAbort agree`를 눌러 둔다 — 이 시점엔 `needed=2`라 아무 일도
+일어나지 않고 거절되지도 않는다(2명이 접속 중이므로 SOLO_ABORT_FORBIDDEN에 걸리지 않는다).
+이후 H2의 소켓이 어떤 이유로든(모바일 네트워크 전환, Wi-Fi 순단, 탭 백그라운드, 새로고침 —
+공격자가 능동적으로 방해할 필요조차 없다) 순간적으로 끊기면, `handleClose`가 즉시
+`retallyAbortVotes`를 호출해 `humans=[H1]`, `needed=1`로 재계산하고 H1의 기존 표 1개만으로
+정족수가 충족돼 `requestAbort()`가 그 자리에서 발동한다. H2가 재접속 유예 안에 돌아와도
+방(`onGameAborted`, RoomManager.ts:6233-6278)은 이미 `discardReplay`로 리플레이를 지우고
+`rooms.delete()`로 삭제된 뒤다.
+
+**영향**. 무효 종료는 정산·순위·기록을 남기지 않으므로(RoomManager.ts:6259 주석), 지고 있는
+쪽이 상대의 우연한(혹은 유도한) 연결 끊김을 이용해 패배를 흔적 없이 지울 수 있다 —
+M-2가 막으려던 것과 동일한 결과가 "봇 방"이 아니라 정상적인 2인 이상 기록 대국에서 재현된다.
+또한 정말 재접속하려던 선의의 상대방은 진행 중이던 대국을 동의 없이 잃는다는 점에서 공정성
+문제이기도 하다.
+
+**조치(제안)**. `requestAbort()`를 실제로 호출하기 직전, `retallyAbortVotes`에도
+`handleVoteAbort`와 동일한 "기록 대국은 사람이 2명 미만이면 무효를 성립시키지 않는다" 불변식을
+다시 검사한다. 정족수 상태 브로드캐스트는 유지하되, 그 조건에서는 확정을 보류하고 재접속 유예가
+끝나 이탈이 **확정**된 뒤(즉 `isAbandoned` 기준)에만 재집계하도록 바꾼다. "2인 방에서 1인
+동의 → 상대 접속만 끊김 → 게임이 무효 처리되지 않고 계속 진행됨"을 검증하는 회귀 테스트를
+`UnfinishedBatchM.test.ts`에 추가한다.
+
+---
+
+## H-2. [높음] **[회귀]** `leaveRoom`이 `abortIfNoHumansLeft`를 거치며 SOLO_ABORT_FORBIDDEN을 우회한다 — 리플레이까지 지우며 성적을 세탁한다
+
+**발견**. SOLO_ABORT_FORBIDDEN 가드(RoomManager.ts:4939-4945, PR #306, 2026-08-18)는
+`handleVoteAbort`에만 적용됐다. 그런데 게임 진행 중 "나가기"를 처리하는 별도 경로
+(`packages/server/src/RoomManager.ts:2137-2149`, 재접속 뒤 지연 도착한 나가기를 처리하는
+2110-2135도 동일 로직)는 이 가드를 전혀 거치지 않는다:
+
+```
+conn.agent.abandon("left")  →  this.abortIfNoHumansLeft(room)
+```
+
+`abortIfNoHumansLeft`(RoomManager.ts:4993-5002)는 `room.guest`/`room.sandbox`나 인원수
+하한을 전혀 검사하지 않고, `humans.length === 0`이면 무조건 `room.controller.requestAbort()`
+를 호출한다. `onGameAborted`(RoomManager.ts:6233-6278)는 `recordGame`을 호출하지 않을 뿐 아니라,
+`preserveReplayOnAbort`가 기본 `false`(RoomManager.ts:3061)이므로 `discardReplay`(6251)가
+리플레이 `.jsonl` 파일까지 `writer.discard()`(5706-5711)로 통째로 지운다.
+
+이 `leaveRoom → abortIfNoHumansLeft` 경로(PR #257, 2026-08-13)는 SOLO_ABORT_FORBIDDEN
+가드(PR #306, 2026-08-18)보다 **먼저** 도입됐고, 이후 감사에서 `voteAbort`만 닫히고 이
+경로는 손대지 않은 채 남았다 — M-2를 부분적으로만 고친 것이 결과적으로 다른 문을 열어 둔
+셈이다. `packages/server/test/IdleAndLeave.test.ts:144-172`의 기존 테스트가 정확히 이
+시나리오(사람 1명+봇 3, `startGame` 후 `leaveRoom`)를 실행하지만 `resumableRoomFor`가
+`null`이 되는지만 검증하고 `recordGame` 스킵이나 리플레이 삭제 여부는 확인하지 않는다.
+
+**공격**. 정식 계정으로 `createRoom → addBot ×3 → startGame`으로 혼자+봇 3인 기록 대상
+방(`guest`/`sandbox` 아님)을 만든다. 대국이 불리하게 흘러가면, `voteAbort`는
+SOLO_ABORT_FORBIDDEN으로 거절되므로 대신 `leaveRoom`을 보낸다. 서버는 `abandon('left')` 후
+곧바로 `requestAbort()`를 호출해 무효 종료하며, `recordGame`이 스킵되고 리플레이도 삭제된다.
+원하는 결과가 나올 때까지 "무효 후 재시도"를 사실상 무제한으로 반복할 수 있다.
+
+**영향**. 리더보드·통계·전적 무결성이 깨진다 — 지고 있는 솔로 대국을 원할 때마다 흔적 없이
+지울 수 있다. `voteAbort` 경로와 달리 리플레이 파일까지 삭제돼 사후 감사·이의제기 대응조차
+불가능하다는 점에서 M-2 원 항목보다 결과가 더 나쁘다.
+
+**조치(제안)**. `abortIfNoHumansLeft`에도 `handleVoteAbort`와 동일한 가드(기록 대국이고
+이탈 직전 인원이 1명뿐이면 즉시 `requestAbort`하지 않음)를 적용한다. 설계 의도대로
+("나가기는 봇 자동 진행으로 완주해 기록에 남는다") 남은 좌석을 봇이 이어받아 정상
+`recordGame`으로 이어지게 하거나, 최소한 `recordGame`을 `abort` 여부와 무관하게 호출하도록
+분리한다. `IdleAndLeave.test.ts`의 solo-leave 테스트를 확장해 `recordGame` 호출 여부와
+리플레이 보존 여부까지 단언하는 회귀 테스트를 추가한다.
+
+---
+
+## M-1. [중간] **[회귀]** 관리자 가입 코드를 관리자 존재 여부와 무관하게 매 부팅 로그에 평문 출력
+
+**발견**. `packages/server/src/index.ts:930-940`. 커밋 26013ee("관리자 코드를 매 부팅 로그에
+다시 찍는다", #372, 2026-08-24)가 기존의 `db.hasAdmin()` 게이트("관리자가 이미 있으면
+부팅 로그에 코드를 찍지 않는다")를 걷어냈다. `ADMIN_CODE` 환경변수가 없으면 관리자 계정이
+이미 존재하든 말든 `db.adminCode()`(현재 유효한, 아직 소비되지 않은 1회용 관리자 가입 코드)를
+매 부팅마다 콘솔과 `.majak/server.log`에 그대로 찍는다. `SiteDb.ts:455-458`의 주석
+("관리자가 이미 있으면 부팅 로그에도 찍지 않는다")은 이번 변경으로 실제 동작과 어긋난 채
+남아 있다.
+
+`SiteDb.ts:900-943`의 `register()`는 유효한 `adminCode`가 실려 오면 관리자 존재 여부와
+무관하게 신규 계정을 관리자로 만들며, `rotateAdminCode()`는 코드가 **쓰인 뒤에만** 회전한다
+(943행) — 즉 유출되고 아직 아무도 쓰지 않은 코드는 재부팅마다 동일한 값으로 반복 노출된다.
+
+**공격**. 이미 관리자 계정이 있는 운영 서버에서 `.majak/server.log`나 콘솔 출력을 어떤 경로로든
+볼 수 있는 사람(모니터링 도구, 디버깅 중 화면 공유, 지원 티켓에 첨부된 로그, 서버에 제한된
+셸 접근을 가진 계정 등 — DB 파일 자체보다 훨씬 넓은 노출면)이 `관리자 가입 코드: <값>` 줄을
+찾아 `{type:"register", ..., adminCode:"<값>"}`을 보내면 즉시 신규 관리자 계정이 만들어진다.
+
+**영향**. 완전한 수직 권한 상승 — 유저 삭제, 진행 중인 판 강제 종료, 전 유저 통계 열람,
+임의 방 관전(전원 손패 노출) 등 관리자 전용 기능 전부를 얻는다. 다만 운영자가 `ADMIN_CODE`
+환경변수를 고정해 두면 로그·DB 어디에도 값이 남지 않아 회피 가능하며, 이 트레이드오프 자체는
+`SECURITY.md`와 배포 체크리스트에 문서화돼 있다 — 즉 완전히 검토되지 않은 결함이라기보다는,
+운영자가 되돌린 방어의 재노출로 봐야 한다.
+
+**조치(제안)**. `hasAdmin()` 게이트를 되살려 관리자 계정이 하나라도 있으면 코드를 로그에
+찍지 않거나, 필요할 때만(예: 관리자 인증 후 조회 가능한 별도 메시지로) 값을 보여 주는 방식으로
+바꾼다. 되돌리지 않을 경우에도 최소한 운영 환경에서는 `ADMIN_CODE`를 고정하고 로그 파일 접근
+권한(`chmod`)을 관리자로 제한할 것을 재확인해 둔다.
+
+---
+
+## L-1. [낮음] `sendNotFound`(404 응답)에 `Strict-Transport-Security` 헤더 누락
+
+**발견**. `packages/server/src/index.ts:328-344`의 `sendNotFound`(§8-2 감사로 2026-08-17
+도입, docs/33_COMPLETION_DONE_H_N.md 참고)는 X-Content-Type-Options·X-Frame-Options·
+Referrer-Policy·CSP 네 헤더는 넣지만 **Strict-Transport-Security만 빠져 있다**. `git log -p`로
+확인한 결과 이 함수는 도입 시점부터 지금까지 한 번도 HSTS를 넣은 적이 없다 — 회귀가 아니라
+애초에 빠진 채로 2026-08-12 감사 이후 새로 들어온 코드다. 반면 같은 파일의 다른 두 문서
+응답(초대 코드 주입 응답 652-663, 일반 정적 파일 응답 669-682)은 HSTS를 포함한 다섯 헤더를
+모두 붙인다. 이 앱은 경로 라우팅이 없어(같은 파일 주석 594-597) `/`·`/index.html` 외 모든
+GET 요청이 이 404 경로를 탄다.
+
+**공격**. 이 SPA는 쿼리 파라미터(`?room=`, `?replay=`)만 쓰므로 오타·만료 링크·구식 북마크가
+실질적으로 전부 이 404 응답을 탄다. 능동적 중간자가 사용자를 평문 HTTP로 이런 URL로 유도하면
+브라우저는 이 방문에서 HSTS를 학습하지 못해, 이후 다른 평문 링크를 클릭할 때 가로채기 창이
+남는다.
+
+**영향**. 즉시적 데이터 유출은 아니며, 앞단 프록시(Cloudflare 등)가 자체적으로 HTTPS·HSTS를
+강제하고 있다면 실질 위험은 낮다(운영 설정은 저장소 범위 밖이라 확인하지 못함). 다만 오리진
+코드 자체의 "모든 정적 응답에 보안 헤더를 일관되게 붙인다"는 설계 원칙을 이 경로 하나가 깨고
+있고, 통계적으로 사용자의 "첫 접촉"이 될 확률이 낮지 않다.
+
+**조치(제안)**. `sendNotFound`의 `writeHead` 헤더 객체에
+`"Strict-Transport-Security": "max-age=31536000; includeSubDomains"`를 추가해 다른 두 응답과
+일치시킨다. 다섯 헤더를 공통 상수/헬퍼로 뽑아 앞으로 새 응답 경로가 추가될 때 같은 종류의
+누락이 재발하지 않게 한다.
+
+---
+
+## 권고 순서
+
+1. **H-1 (`retallyAbortVotes` 가드 추가)** — 정상적인 2인 기록 대국이 상대의 단순 접속
+   끊김만으로 강제 무효 처리되는, 능동적 공격 없이도 실전에서 발생 가능한 결함이다. 게임
+   무결성뿐 아니라 선의의 상대에 대한 공정성 문제이기도 해 최우선.
+2. **H-2 (`abortIfNoHumansLeft` 가드 추가)** — H-1과 근본 원인은 다르지만 결과(무효 처리를
+   통한 성적 세탁)와 위험도가 같고, 리플레이까지 삭제해 사후 감사를 불가능하게 만든다는 점에서
+   동급 우선순위. 두 항목을 함께 고치면서 "정족수 재계산"과 "인원 0명 자동 무효" 두 경로에
+   공통되는 가드 함수를 하나로 통합하는 것을 권한다.
+3. **M-1 (관리자 코드 로그 노출 되돌리기)** — 이미 관리자가 있는 서버에서 매 부팅마다 마스터
+   키급 값을 로그에 남기는 것은 운영 결정이라도 노출면이 넓다. `hasAdmin()` 게이트 복원 또는
+   `ADMIN_CODE` 고정을 배포 체크리스트에 강제 항목으로 올린다.
+4. **L-1 (HSTS 헤더 보강)** — 위험도는 낮지만 수정 비용도 낮다. 다른 두 응답과 헤더를 공유하는
+   리팩터링을 겸해 처리한다.
+
+M-2는 H-1·H-2가 반영돼야 실질적으로 닫힌 것으로 볼 수 있다. M-3(비밀번호 변경·세션 일괄
+무효화)은 이번 라운드에서 재검증되지 않았으므로 다음 점검에서 별도로 확인이 필요하다.
