@@ -335,10 +335,7 @@ function sendNotFound(req: IncomingMessage, res: import("node:http").ServerRespo
     "Cache-Control": "no-cache",
     Vary: "Accept-Encoding",
     ...(gzipped ? { "Content-Encoding": "gzip" } : {}),
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": CSP,
+    ...DOC_SECURITY_HEADERS,
   });
   res.end(req.method === "HEAD" ? undefined : out);
 }
@@ -407,6 +404,33 @@ const CSP = [
   // 외부로 POST하는 고전적 탈출로를 하나 줄인다.
   "form-action 'none'",
 ].join("; ");
+
+/**
+ * **문서 응답에 붙는 보안 헤더 한 벌** — 세 응답 경로가 이것 하나를 나눠 쓴다.
+ *
+ * 전에는 같은 다섯 줄이 세 군데(진짜 404 · 초대 메타를 주입한 index.html · 일반 정적
+ * 파일)에 각각 복사돼 있었고, **404에만 `Strict-Transport-Security`가 빠져 있었다**
+ * (감사 2026-08-26 L-1). 도입 시점부터 한 번도 있던 적이 없다 — 복사한 쪽이 한 줄을
+ * 흘린 것이다. 이 앱에는 경로 라우팅이 없어서(`/`·`/index.html` 외 모든 GET이 404다)
+ * 오타·만료된 초대 링크·낡은 북마크가 실질적으로 전부 그 응답을 타는데, 하필 그
+ * 경로가 HSTS를 심어 주지 않았다.
+ *
+ * 값을 한 자리로 모은 것이 요점이다. 헤더를 늘리거나 고칠 때 세 곳을 기억해야 하면
+ * 같은 종류의 누락이 또 난다.
+ *
+ * 문서가 아닌 응답(초대 카드 PNG · `/healthz` JSON)은 각자의 최소 헤더를 그대로 둔다 —
+ * 프레임·CSP·리퍼러는 문서에만 의미가 있고, 그 둘은 사람의 브라우저가 첫 접촉으로
+ * 여는 주소가 아니다(크롤러와 루프백 감시자다).
+ */
+const DOC_SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  // TLS는 앞단(Cloudflare/Caddy)이 종단한다 — 브라우저가 다음부터 평문으로
+  // 시도조차 하지 않게 해 첫 요청 가로채기(SSL stripping) 창을 좁힌다.
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+  "Content-Security-Policy": CSP,
+} as const;
 
 /**
  * **HTTP 요청 IP 레이트리밋** (QA 4라운드 ops P0·P1).
@@ -655,11 +679,7 @@ const httpServer = createServer((req, res) => {
       "Cache-Control": "no-cache",
       Vary: "Accept-Encoding",
       ...(gzipped ? { "Content-Encoding": "gzip" } : {}),
-      "X-Content-Type-Options": "nosniff",
-      "X-Frame-Options": "DENY",
-      "Referrer-Policy": "no-referrer",
-      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-      "Content-Security-Policy": CSP,
+      ...DOC_SECURITY_HEADERS,
     });
     res.end(req.method === "HEAD" ? undefined : out);
     return;
@@ -672,13 +692,7 @@ const httpServer = createServer((req, res) => {
     // 압축 여부가 Accept-Encoding에 따라 갈리므로 중간 캐시가 섞지 않게 알린다.
     Vary: "Accept-Encoding",
     ...(encoding === null ? {} : { "Content-Encoding": encoding }),
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-    // TLS는 앞단(Cloudflare/Caddy)이 종단한다 — 브라우저가 다음부터 평문으로
-    // 시도조차 하지 않게 해 첫 요청 가로채기(SSL stripping) 창을 좁힌다.
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-    "Content-Security-Policy": CSP,
+    ...DOC_SECURITY_HEADERS,
   });
   if (req.method === "HEAD") {
     res.end();
