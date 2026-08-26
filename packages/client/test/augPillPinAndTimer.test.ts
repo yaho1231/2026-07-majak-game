@@ -6,7 +6,7 @@
  *      설명(`.act-target`) 자리를 파고든다 (1280×800 실측: 숫자 y=528–544 ×
  *      액션 바 아래끝 y=534). 게이지가 5~8px짜리 실선이라 위아래로 숨통이 없다.
  *   ② `.nameplate-turn` 이 opacity 로 깜빡이면 **쌓임 맥락**이 생겨, 눌러 고정한
- *      설명(`.aug-tip`, z-index 80)이 이름표 밖으로 못 올라간다 — 바로 위 액션 바
+ *      설명(`.aug-tip`, z-index 95)이 이름표 밖으로 못 올라간다 — 바로 위 액션 바
  *      밑에 깔려 읽히지 않고, 고정한 설명까지 2.4초 주기로 같이 흐려진다.
  *
  * qaPredeployClient.test.ts 와 같은 **정적 소스 스캔**이다 (이 패키지에는 jsdom이
@@ -93,6 +93,20 @@ describe("증강 pill — 눌러서 설명을 고정한다", () => {
     // 버튼 클릭이 pill의 토글까지 타고 올라가면 두 번 토글돼 아무 일도 안 일어난다
     expect(APP_CODE).toMatch(/className="aug-tip-pin"[\s\S]{0,120}stopPropagation\(\)/);
     expect(rule(".aug-tip-pin")).toContain("cursor: pointer");
+  });
+
+  /*
+   * 2026-08-26 사용자 요청 — "증강 설명 팝업은 리치·론 버튼보다 항상 위, 맨 위에".
+   * 설명은 이름표에서 위로 자라 액션 바 자리에 그대로 겹친다. 둘 다 `.own-area`
+   * 안이라 같은 맥락에서 겨루므로, 숫자 하나만 뒤집혀도 설명이 다시 잘린다.
+   */
+  it("설명 툴팁이 액션 바보다 위에 선다", () => {
+    const z = (sel: string): number => {
+      const m = /z-index:\s*(\d+)/.exec(rule(sel));
+      expect(m, `${sel} 에 z-index가 없다`).not.toBeNull();
+      return Number(m?.[1]);
+    };
+    expect(z(".aug-tip")).toBeGreaterThan(z(".action-bar"));
   });
 
   it("차례 이름표가 opacity로 깜빡이지 않는다 (쌓임 맥락)", () => {
