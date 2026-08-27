@@ -4344,6 +4344,26 @@ button {
   font-size: 15px;
   letter-spacing: 0.5px;
 }
+.draft-waiting-line {
+  margin: 0;
+}
+/* 아직 안 고른 사람 이름 — 한 줄에 알약으로 눕힌다(4명까지라 접힐 일이 드물다) */
+.draft-waiting-who {
+  margin: 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.draft-waiting-name {
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(163, 226, 186, 0.45);
+  background: rgba(163, 226, 186, 0.12);
+  color: #cdebd8;
+  font-size: 13px;
+  letter-spacing: 0;
+}
 
 .draft-card {
   position: relative;
@@ -18338,4 +18358,188 @@ body:has(.prod-skip) .toast-stack {
 .rinshan-arr-take:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* ─────────────── 이름표 → 증강 보기 시트 (폰 전용 경로) ───────────────
+ *
+ * 폰에서는 이름표가 22px 짜리 알약 한 줄이다. 거기에 증강 알약이 서면 이름을 밀어내고
+ * 서로 겹쳐서, 무엇을 골랐는지 사실상 못 봤다(2026-08-27 사용자 지적). 좁은 화면에서는
+ * 알약에 **이름만** 남기고, 그 이름을 누르면 시트(PlayerAugSheet)가 뜨게 한다.
+ *
+ * 넓은 화면은 그대로 둔다 — 증강 알약과 그 툴팁이 이미 같은 일을 더 빠르게 한다.
+ * 그래서 이름 버튼은 기본적으로 «눌리지 않는 글자»이고, 아래 좁은 화면 블록에서만
+ * 되살아난다.
+ */
+.np-name-btn {
+  /* span 이던 자리를 button 이 이어받는다 — 생김새는 한 픽셀도 바뀌지 않아야 한다 */
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  line-height: inherit;
+  text-align: left;
+  color: inherit;
+  /* 넓은 화면: 이름은 그냥 글자다 (툴팁·title 은 그대로 뜬다) */
+  pointer-events: none;
+  cursor: default;
+}
+
+/* 좁은 화면 셋 — ① 폰 세로 ② 폰 가로 ③ 태블릿 세로.
+   같은 규칙 세 벌: 상대 이름표에서 증강 알약을 걷고, 이름을 누를 수 있게 한다. */
+@container ui (max-width: 700px) {
+  .np-name-btn {
+    pointer-events: auto;
+    cursor: pointer;
+    /* 눌리는 자리라는 표시 — 알약 안이라 밑줄 대신 점선 한 줄만 */
+    text-decoration: underline dotted rgba(236, 228, 210, 0.5);
+    text-underline-offset: 2px;
+  }
+  .opp-strip-left .nameplate .np-augs,
+  .opp-strip-top .nameplate .np-augs,
+  .opp-strip-right .nameplate .np-augs {
+    display: none;
+  }
+}
+@container ui (max-height: 560px) and (orientation: landscape) {
+  .np-name-btn {
+    pointer-events: auto;
+    cursor: pointer;
+    text-decoration: underline dotted rgba(236, 228, 210, 0.5);
+    text-underline-offset: 2px;
+  }
+  .opp-strip-left .nameplate .np-augs,
+  .opp-strip-top .nameplate .np-augs,
+  .opp-strip-right .nameplate .np-augs {
+    display: none;
+  }
+}
+@container ui (min-width: 701px) and (max-width: 900px) and (orientation: portrait) {
+  .np-name-btn {
+    pointer-events: auto;
+    cursor: pointer;
+    text-decoration: underline dotted rgba(236, 228, 210, 0.5);
+    text-underline-offset: 2px;
+  }
+  .opp-strip-left .nameplate .np-augs,
+  .opp-strip-right .nameplate .np-augs {
+    display: none;
+  }
+}
+
+.aug-sheet-overlay {
+  /* 시트는 아래에서 올라오는 판 — 판을 덜 가리게 화면 아래쪽에 붙인다 */
+  align-items: flex-end;
+}
+.aug-sheet {
+  width: min(560px, 96cqw);
+  max-height: 76cqh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 auto 8px;
+  padding: 14px 14px 18px;
+  border-radius: 18px 18px 12px 12px;
+  border: 1px solid rgba(199, 188, 255, 0.35);
+  background: rgba(22, 18, 38, 0.97);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5);
+  color: var(--ink-1, #ece4d2);
+}
+.aug-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(199, 188, 255, 0.22);
+}
+.aug-sheet-who {
+  font-size: 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aug-sheet-arch,
+.aug-sheet-score {
+  flex: 0 0 auto;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.aug-sheet-close {
+  margin-left: auto;
+  flex: 0 0 auto;
+  /* 터치 목표 44px — 시트를 닫는 유일한 손잡이는 아니지만(바깥·Esc) 가장 눈에 띈다 */
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+.aug-sheet-empty {
+  margin: 18px 0 6px;
+  text-align: center;
+  opacity: 0.7;
+}
+.aug-sheet-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.aug-sheet-row {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(199, 188, 255, 0.14);
+}
+.aug-sheet-row:last-child {
+  border-bottom: 0;
+}
+.aug-sheet-row-locked .aug-sheet-name {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+.aug-sheet-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.aug-sheet-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+.aug-sheet-cat {
+  font-size: 11px;
+  opacity: 0.65;
+}
+.aug-sheet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.aug-sheet-chips:empty {
+  display: none;
+}
+.aug-sheet-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(199, 188, 255, 0.16);
+  font-size: 11px;
+}
+.aug-sheet-chip-live {
+  background: rgba(199, 188, 255, 0.9);
+  color: #1b1630;
+  font-weight: 700;
+}
+.aug-sheet-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.aug-sheet-desc {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
 }
