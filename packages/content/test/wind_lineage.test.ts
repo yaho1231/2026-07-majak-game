@@ -274,10 +274,11 @@ describe("바람의 계보 — 동남서북 깡 ×4 화료의 역", () => {
   });
 });
 
-describe("바람의 계보 — 바람 슌쯔에 낀 역패 (2026-08-12 상향)", () => {
+describe("바람의 계보 — 바람 슌쯔에 낀 역패", () => {
   /**
-   * 동남서를 몸통으로 쓴 손. 동1국·동가면 장풍(동)과 자풍(동)이 모두 그 슌쯔 안에 있다.
-   * 표준 역패는 커쯔만 보므로, 이 판수는 계보가 등록한 두 역이 만든다.
+   * 동남서를 몸통으로 쓴 손. 표준 역패는 커쯔만 보므로 이 판수는 계보가 등록한 역이
+   * 만든다. 2026-08-27 사용자 확정으로 자풍 갈래·장풍 갈래가 `wind_lineage_wind`
+   * 하나로 합쳐졌다 — 한 몸통에 자풍과 장풍이 둘 다 들어도 1판이다.
    */
   function winWith(handSpec: string): string[] {
     const base = craft({
@@ -293,25 +294,28 @@ describe("바람의 계보 — 바람 슌쯔에 낀 역패 (2026-08-12 상향)",
     return (evaluateWin(ctx, game.yaku)?.yaku ?? []).map((y) => y.id);
   }
 
-  it("동가·동장의 동남서는 자풍·장풍 두 판이 붙는다", () => {
+  /*
+   * ⚠ 뒤집은 옛 단언 (2026-08-27): 예전에는 "동가·동장의 동남서는 자풍·장풍 두 판"
+   * (`wind_lineage_seat` + `wind_lineage_prevalent`)이었다. 사용자 확정 사양에서
+   * 값의 단위는 **몸통**이라, 같은 손이 이제 한 줄 1판이다.
+   */
+  it("동가·동장의 동남서는 한 몸통 1판이다", () => {
     const ids = winWith("1z2z3z123m456m789m99p");
-    expect(ids).toContain("wind_lineage_seat");
-    expect(ids).toContain("wind_lineage_prevalent");
+    expect(ids.filter((id) => id.startsWith("wind_lineage_"))).toEqual([
+      "wind_lineage_wind",
+    ]);
   });
 
   it("남서북에는 붙지 않는다 (동가·동장이라 동이 없다)", () => {
     const ids = winWith("2z3z4z123m456m789m99p");
-    expect(ids).not.toContain("wind_lineage_seat");
-    expect(ids).not.toContain("wind_lineage_prevalent");
+    expect(ids.filter((id) => id.startsWith("wind_lineage_"))).toHaveLength(0);
   });
 
   it("백발중(삼원 슌쯔) 몸통 하나는 1판이다 — 바람 쪽 역은 붙지 않는다", () => {
     const ids = winWith("5z6z7z123m456m789m99p");
     // 삼원패 셋이 모두 역패지만 장수를 세지 않고 몸통 하나에 1판이다
-    // (몸통이 둘이면 2판 — 아래 "몸통마다 1판" 블록이 따로 못박는다)
     expect(ids.filter((id) => id === "wind_lineage_dragon")).toHaveLength(1);
-    expect(ids).not.toContain("wind_lineage_seat");
-    expect(ids).not.toContain("wind_lineage_prevalent");
+    expect(ids).not.toContain("wind_lineage_wind");
   });
 
   it("바람 슌쯔에는 삼원 역이 붙지 않는다 (대조군)", () => {
@@ -343,35 +347,45 @@ describe("바람의 계보 — 동남서북 깡의 북(北)도 역패로 센다 
   }
 
   for (const [name, rank] of [["동", 1], ["남", 2], ["서", 3], ["북", 4]] as const) {
-    it(`자풍이 ${name}이어도 계보 자풍역이 붙는다`, () => {
-      expect(kanWinYaku(rank, 1)).toContain("wind_lineage_seat");
+    it(`자풍이 ${name}이어도 계보 바람역이 붙는다`, () => {
+      // 자풍(rank)이 깡 안에 있으므로 1판. 장풍은 동(1)이라 같은 몸통에 함께 들지만
+      // 값은 몸통 단위라 한 줄뿐이다.
+      expect(kanWinYaku(rank, 1)).toContain("wind_lineage_wind");
     });
   }
 
-  it("장풍이 북(서입 이후)이어도 계보 장풍역이 붙는다", () => {
-    expect(kanWinYaku(1, 4)).toContain("wind_lineage_prevalent");
+  it("장풍이 북(서입 이후)이어도 계보 바람역이 붙는다", () => {
+    expect(kanWinYaku(1, 4)).toContain("wind_lineage_wind");
   });
 
-  /**
-   * 문안 회귀 (2026-08-27): detail이 "자풍과 장풍이 같으면 그 한 장에 2판"(더블 동과
-   * 같은 셈)이라고 약속한다. 성능은 손대지 않았고, **현재 동작을 못박아** 문안이
-   * 조용히 어긋나는 것을 막는다.
+  /*
+   * ⚠ 뒤집은 옛 단언 (2026-08-27): 예전에는 "자풍 = 장풍이면 자풍역·장풍역이 함께
+   * 붙어 합 2판"(더블 동과 같은 셈)이었다. 사용자 확정 사양은 몸통 단위 1판이라
+   * 같은 몸통에 두 바람이 걸려도 한 줄이다.
    */
-  it("자풍 = 장풍이면 자풍역·장풍역이 함께 붙는다 (합 2판)", () => {
+  it("자풍 = 장풍이어도 그 몸통은 1판이다", () => {
     const ids = kanWinYaku(1, 1);
-    expect(ids).toContain("wind_lineage_seat");
-    expect(ids).toContain("wind_lineage_prevalent");
+    expect(ids.filter((id) => id.startsWith("wind_lineage_"))).toEqual([
+      "wind_lineage_wind",
+    ]);
+  });
+
+  it("네 바람 깡은 자풍·장풍이 둘 다 없으면 0판이다 (북·북 아닌 자리)", () => {
+    // 깡 자체가 동남서북이라 어떤 바람이든 들어 있다 — 이 케이스는 성립할 수 없으므로
+    // 형태만 확인한다: 네 바람 깡은 항상 자풍/장풍을 포함하니 늘 1판이다.
+    expect(kanWinYaku(2, 3)).toContain("wind_lineage_wind");
   });
 });
 
-describe("바람의 계보 — 몸통마다 1판 (2026-08-27 사용자 지시)", () => {
+describe("바람의 계보 — 몸통마다 1판 (2026-08-27 사용자 확정)", () => {
   /**
-   * 판정 기준: **자풍이 든 바람 몸통 N개 → N판**, **장풍이 든 바람 몸통 M개 → M판**,
-   * **백발중 몸통 K개 → K판** (합 N+M+K). 자풍과 장풍이 같으면 한 몸통이 양쪽에 다
-   * 걸린다(더블 동과 같은 셈) — 그건 종전 그대로다.
+   * 판정 기준: **자풍 또는 장풍이 든 바람 몸통 N개 → N판**, **백발중 몸통 K개 → K판**
+   * (합 N+K). 한 몸통에 자풍과 장풍이 둘 다 들어도 그 몸통은 1판이다.
    *
-   * ⚠ 예전 사양은 "같은 갈래는 몸통이 몇 개든 한 번만"이었다. 아래 테스트가 그걸
-   * 뒤집는다 — 옛 사양을 못박은 단언은 남기지 않는다.
+   * ⚠ 이 블록은 두 번 뒤집혔다. ① 예전 사양 "같은 갈래는 몸통이 몇 개든 한 번만" →
+   * ② "갈래마다 몸통 수만큼"(자풍 갈래 + 장풍 갈래가 따로) → ③ 지금의 "몸통 하나에
+   * 1판, 바람 갈래는 하나". ②를 못박았던 단언(동남서 하나에 자풍·장풍 2판,
+   * 자풍=장풍이면 4판)은 새 사양으로 뒤집었다.
    *
    * 구현은 갈래마다 "몸통 n개 이상"인 1판짜리 역을 겹쳐 등록하는 방식이라,
    * 2몸통째부터는 `..._x2`·`_x3`·`_x4` id로 **결과창에 별도 줄**로 뜬다.
@@ -416,18 +430,53 @@ describe("바람의 계보 — 몸통마다 1판 (2026-08-27 사용자 지시)",
   const lineageHan = (ids: string[]): number =>
     ids.filter((id) => id.startsWith("wind_lineage_")).length;
 
-  it("동남서 + 남서북 = 3판 (자풍 서 두 몸통 + 장풍 동 한 몸통)", () => {
-    // 서가(자풍 서) · 동장(장풍 동): 서는 두 몸통 모두에 들어 2판, 동은 한 몸통 1판
+  it("동장·남가: 동남서 = 1판 (사용자 예시 — 동·남이 둘 다 들어도 몸통 1판)", () => {
     const { ids } = evalWin({
-      hand: "1z2z3z2z3z4z123m456m99p",
-      seatWind: 3,
+      hand: "1z2z3z123m456m789m99p",
+      seatWind: 2,
       prevalentWind: 1,
     });
-    expect(ids).toContain("wind_lineage_seat");
-    expect(ids).toContain("wind_lineage_seat_x2");
-    expect(ids).toContain("wind_lineage_prevalent");
-    expect(ids).not.toContain("wind_lineage_prevalent_x2");
-    expect(lineageHan(ids)).toBe(3);
+    expect(ids).toContain("wind_lineage_wind");
+    expect(ids).not.toContain("wind_lineage_wind_x2");
+    expect(lineageHan(ids)).toBe(1);
+  });
+
+  it("동장·남가: 동남서 + 남서북 = 2판 (사용자 예시)", () => {
+    const { ids } = evalWin({
+      hand: "1z2z3z2z3z4z123m456m99p",
+      seatWind: 2,
+      prevalentWind: 1,
+    });
+    expect(ids).toContain("wind_lineage_wind");
+    expect(ids).toContain("wind_lineage_wind_x2");
+    expect(ids).not.toContain("wind_lineage_wind_x3");
+    expect(lineageHan(ids)).toBe(2);
+  });
+
+  it("오야(자풍 = 장풍 = 동): 동남서 = 1판", () => {
+    const { ids } = evalWin({
+      hand: "1z2z3z123m456m789m99p",
+      seatWind: 1,
+      prevalentWind: 1,
+    });
+    expect(lineageHan(ids)).toBe(1);
+  });
+
+  it("자풍도 장풍도 안 든 바람 몸통은 0판이다 (형태만 열린다)", () => {
+    // 북가·북장(4). 동남서에는 북이 없다 → 몸통은 서지만 계보 판수는 없다.
+    const { ids } = evalWin({
+      hand: "1z2z3z123m456m789m99p",
+      seatWind: 4,
+      prevalentWind: 4,
+    });
+    expect(lineageHan(ids)).toBe(0);
+  });
+
+  it("백발중 하나 = 1판 (둘째 줄이 헛성립하지 않는다)", () => {
+    const { ids } = evalWin({ hand: "5z6z7z123m456m789m99p" });
+    expect(ids).toContain("wind_lineage_dragon");
+    expect(ids).not.toContain("wind_lineage_dragon_x2");
+    expect(lineageHan(ids)).toBe(1);
   });
 
   it("백발중 둘 = 2판", () => {
@@ -438,34 +487,33 @@ describe("바람의 계보 — 몸통마다 1판 (2026-08-27 사용자 지시)",
     expect(lineageHan(ids)).toBe(2);
   });
 
-  it("백발중 하나 = 1판 (둘째 줄이 헛성립하지 않는다)", () => {
-    const { ids } = evalWin({ hand: "5z6z7z123m456m789m99p" });
-    expect(ids).toContain("wind_lineage_dragon");
-    expect(ids).not.toContain("wind_lineage_dragon_x2");
-    expect(lineageHan(ids)).toBe(1);
-  });
-
-  it("자풍 = 장풍인 오야: 동남서 하나에 2판 (더블 동과 같은 셈)", () => {
+  it("동동동 커쯔는 계보 0판이되 기존 자풍·장풍 역패는 그대로 성립한다", () => {
+    // 동가·동장의 동동동 커쯔. 계보는 슌쯔만 보므로 얹지 않는다.
     const { ids } = evalWin({
-      hand: "1z2z3z123m456m789m99p",
+      hand: "111z123m456m789m99p",
       seatWind: 1,
       prevalentWind: 1,
     });
-    expect(ids).toContain("wind_lineage_seat");
-    expect(ids).toContain("wind_lineage_prevalent");
-    expect(ids).not.toContain("wind_lineage_seat_x2");
-    expect(lineageHan(ids)).toBe(2);
+    expect(lineageHan(ids)).toBe(0);
+    expect(ids).toContain("yakuhai_seat");
+    expect(ids).toContain("yakuhai_prevalent");
   });
 
-  it("자풍 = 장풍이고 그 바람이 든 몸통이 둘이면 4판", () => {
-    // 서가·서장(서입 이후). 서는 동남서·남서북 두 몸통 모두에 들어 있고,
-    // 그 두 몸통이 자풍 갈래·장풍 갈래에 각각 2판씩 붙는다.
+  it("백백백 커쯔는 계보 0판이되 기존 삼원 역패는 그대로 성립한다", () => {
+    const { ids } = evalWin({ hand: "555z123m456m789m99p" });
+    expect(lineageHan(ids)).toBe(0);
+    expect(ids).toContain("yakuhai_haku");
+  });
+
+  it("동남서북 네 바람 깡 = 1판 (북가·북장이어도 붙는다)", () => {
     const { ids } = evalWin({
-      hand: "1z2z3z2z3z4z123m456m99p",
-      seatWind: 3,
-      prevalentWind: 3,
+      hand: "123m456p789s11p",
+      melds: [{ kind: "kan_closed", spec: "1234z" }],
+      seatWind: 4,
+      prevalentWind: 4,
     });
-    expect(lineageHan(ids)).toBe(4);
+    expect(ids).toContain("wind_lineage_wind");
+    expect(lineageHan(ids)).toBe(1);
   });
 
   it("후로(치)해도 몸통마다 1판이다", () => {
@@ -475,8 +523,8 @@ describe("바람의 계보 — 몸통마다 1판 (2026-08-27 사용자 지시)",
       seatWind: 3,
       prevalentWind: 1,
     });
-    // 멘젠 손과 같은 3판 (openHan도 1)
-    expect(lineageHan(ids)).toBe(3);
+    // 동남서(장풍 동) + 남서북(자풍 서) = 2판. openHan도 1이라 멘젠과 같다.
+    expect(lineageHan(ids)).toBe(2);
   });
 
   it("무장해제되면 추가분(2몸통째)까지 함께 잠긴다", () => {
@@ -486,7 +534,7 @@ describe("바람의 계보 — 몸통마다 1판 (2026-08-27 사용자 지시)",
       prevalentWind: 1,
       disarmed: ["aug:p0:wind_lineage"],
     });
-    expect(ids.filter((id) => id.startsWith("wind_lineage_"))).toHaveLength(0);
+    expect(lineageHan(ids)).toBe(0);
   });
 
   it("역만에는 얹히지 않는다 (자일색 — 계보 역은 한 줄도 안 남는다)", () => {
@@ -497,6 +545,6 @@ describe("바람의 계보 — 몸통마다 1판 (2026-08-27 사용자 지시)",
       prevalentWind: 1,
     });
     expect(yakuman).toBeGreaterThan(0);
-    expect(ids.filter((id) => id.startsWith("wind_lineage_"))).toHaveLength(0);
+    expect(lineageHan(ids)).toBe(0);
   });
 });

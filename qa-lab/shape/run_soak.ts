@@ -4,7 +4,7 @@ import type { WinRec } from "./soak.js";
 const AUX = new Set(["bottom_flow", "bottom_letgo"]);
 const CUSTOM = new Set([
   "tanyao_break", "mixed_nine_gates", "bottom_flow", "bottom_letgo",
-  "wind_lineage_seat", "wind_lineage_prevalent", "wind_lineage_dragon",
+  "wind_lineage_wind", "wind_lineage_dragon",
 ]);
 
 const n = Number(process.argv[2] ?? 30);
