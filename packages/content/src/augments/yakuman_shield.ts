@@ -89,7 +89,8 @@ export const yakumanShield: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "defense",
-  complexity: 3,
+  // 난도 2 (2026-08-27 재평가): '역만 피해를 막는다' — 역만의 내용을 몰라도 방어라는 뜻이 선다.
+  complexity: 2,
   name: "역만 방어술",
   description:
     "(상시 · 횟수 제한 없음) 역만(유국역만 포함) 피해를 막고, 배만·삼배만은 절반만 맞는다 — 내가 낸 몫이 그만큼 돌아온다. 본장·공탁 부담은 그대로 낸다.",

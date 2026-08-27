@@ -52,7 +52,8 @@ export const hiddenBlade: AugmentDef = defineAugment({
   id: ID,
   tier: "gold",
   category: "scoring",
-  complexity: 3,
+  // 난도 2 (2026-08-27 재평가): '리치 안 건 멘젠 론에 +2판' — 조건 하나·효과 하나다.
+  complexity: 2,
   name: "숨은 칼날",
   description:
     "(상시) 리치를 선언하지 않은 멘젠 론 화료에 +2판이 붙고, 뒷도라가 적용된다.",

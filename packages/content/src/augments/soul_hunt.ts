@@ -33,7 +33,8 @@ export const soulHunt: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
-  complexity: 3,
+  // 난도 2 (2026-08-27 재평가): '리치한 상대를 론하면 내 화료가 리치 취급' — 리치 하나로 읽힌다.
+  complexity: 2,
   name: "혼 사냥",
   description:
     "(상시) 리치 중인 상대를 론하면 그의 리치를 강탈한다 — 내 화료가 리치로 취급되어 뒷도라가 적용된다.",

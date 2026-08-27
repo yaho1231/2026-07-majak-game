@@ -280,7 +280,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   unification: { use: "상시", text: "내 점수가 문턱(반장전 55,000·동풍전 45,000)에 닿으면 그 자리에서 게임이 끝난다." },
   ura_peek: { use: "매 국 1회", text: "뒷도라 표시패를 나만 확인하고, 한 번은 다른 패로 바꿔치기한다." },
   void_kan: { use: "상시(리치 중 X)", text: "리치를 안 걸었고 텐파이면, 상대의 깡을 오름패와 상관없이 창깡으로 가로챈다." },
-  wind_lineage: { use: "상시", text: "자패로 슌쯔를 만든다 — 동남서·남서북·백발중도 한 몸통." },
+  wind_lineage: { use: "상시", text: "자패로 슌쯔를 만든다 — 자풍·장풍이 든 몸통과 백발중은 하나당 1판." },
   xray_hand: { use: MODE_1_2, text: "그 국이 끝날 때까지 상대 셋의 손패가 나에게만 보인다." },
   yakuman_shield: { use: "상시", text: "역만 피해는 완전 면역. 배만·삼배만은 절반만 잃는다." },
   iron_wall: { use: "상시", text: "후리텐이어도 론할 수 있다. 진짜 후리텐이었으면 +3판." },

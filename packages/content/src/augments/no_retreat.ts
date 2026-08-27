@@ -172,7 +172,8 @@ export const noRetreat: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "riichi",
-  complexity: 3,
+  // 난도 2 (2026-08-27 재평가): 리치 계열 용어뿐이고 효과는 '그 판들이 2배' — 규칙이 겹치지 않는다.
+  complexity: 2,
   name: "물러설 수 없는 선언",
   description:
     "(2국에 1회) 텐파이에서 버릴 패를 골라 리치를 건다. 공탁 1,000점이 면제되고 그 국의 리치·일발이 각각 2판, 뒷도라는 **장당 2판**이 된다. 역만 손에는 붙지 않는다.",

@@ -53,7 +53,8 @@ export const unification: AugmentDef = defineAugment({
   id: "unification",
   tier: "prism",
   category: "scoring",
-  complexity: 3,
+  // 난도 2 (2026-08-27 재평가): '점수 문턱에 닿으면 게임 종료' — 마작 지식이 사실상 필요 없다.
+  complexity: 2,
   name: "천하통일",
   description:
     "(상시) 내 점수가 문턱(반장전 55,000점 · 동풍전 45,000점)에 도달하면 남은 국을 전부 무시하고 그 자리에서 게임이 끝난다.",
