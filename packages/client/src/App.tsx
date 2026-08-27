@@ -12617,6 +12617,48 @@ function WaitingRoom(props: {
     refreshFriends?.();
   }, [refreshFriends]);
 
+  /*
+   * 첫 스크롤 위치 (2026-08-27).
+   *
+   * `.waitroom` 은 위아래로 45cqh 씩 여유를 두므로 내용이 **항상** 통보다 길다 —
+   * 그대로 두면 scrollTop 0, 즉 «위쪽 빈 칸»이 첫 화면이 된다. 들어온 순간에는
+   * 카드가 보여야 하므로 여기서 잡아 준다:
+   *   · 카드가 창에 들어가면 → 화면 한가운데 (예전 `align-content: center` 모양)
+   *   · 카드가 창보다 길면  → 카드 위끝을 창 위에서 16px 아래에
+   * 창 크기가 바뀌면(회전·확대 배수) 다시 잡는다.
+   */
+  const waitroomRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    function place(): void {
+      const box = waitroomRef.current;
+      const card = box?.querySelector<HTMLElement>(".waitroom-card") ?? null;
+      if (box === null || card === null) return;
+      /* ⚠ getBoundingClientRect 를 쓰면 안 된다 — UI 배수가 transform 모드일 때
+         rect 는 배수가 곱해진 값이고 scrollTop·offsetHeight 는 레이아웃 px 라
+         둘을 섞으면 자리가 어긋난다. offsetTop 끼리 빼서 레이아웃 px 로만 센다
+         (`.waitroom` 은 static 이라 둘의 offsetParent 가 `.game-root` 로 같다). */
+      const top = card.offsetTop - box.offsetTop;
+      const slack = box.clientHeight - card.offsetHeight;
+      box.scrollTop = top - (slack > 0 ? slack / 2 : 16);
+    }
+    /* 창 크기·UI 배수가 바뀌면 다시 잡는다. `resize` 이벤트 대신 통을 직접 보는
+       이유는 UI 배수(zoom/transform)처럼 창 크기 없이 통만 바뀌는 경우가 있어서다.
+       관찰 대상은 **통뿐**이다 — 카드(사람이 들어오면 길어진다)까지 보면 남이 앉을
+       때마다 보고 있던 자리가 튄다. */
+    const box = waitroomRef.current;
+    if (box === null) return;
+    place();
+    /* 한 프레임 뒤 한 번 더: 첫 배치 때는 통 높이(cqh)·글꼴이 아직 안 잡혀 있어
+       scrollTop 이 0 으로 잘려 나가는 창이 있다. */
+    const raf = requestAnimationFrame(place);
+    const ro = new ResizeObserver(place);
+    ro.observe(box);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [lobby === null]);
+
   function copyCode(): void {
     const code = props.roomId;
     /*
@@ -12677,7 +12719,7 @@ function WaitingRoom(props: {
   const needReady = lobby.players.filter((p) => !p.isHost && !p.isBot).length;
 
   return (
-    <div className="waitroom">
+    <div className="waitroom" ref={waitroomRef}>
       <div className="waitroom-card">
         {/*
           ── 창 머리 ──
