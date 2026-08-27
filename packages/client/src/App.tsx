@@ -24593,6 +24593,26 @@ function DraftOverlay({
   const shiftHeld = useShiftHeld();
   const [moreFor, setMoreFor] = useState<string | null>(null);
   /**
+   * 방금 펼친 카드 — 폰 세로에서 카드는 «펼치면 자란다»(`.draft-card-open`).
+   * 자란 만큼 카드 아래가 화면 밖으로 나가면 방금 펼친 글을 못 읽으므로 화면 안으로
+   * 끌어온다. `scroll-margin`(styles.css `.draft-slot`)이 붙어 있는 타이머와 👁 단추
+   * 자리를 비켜 준다.
+   *
+   * ⚠ 스크롤은 **커밋이 끝난 뒤**(useEffect)라야 한다. 클릭 핸들러 안에서
+   * `requestAnimationFrame`으로 부르면 — 두 번 겹쳐도 — 아직 «자라기 전» 높이로
+   * 계산해 절반만 움직인다(375×812 실측: 250px 이 필요한데 39px 만 갔다).
+   */
+  const openSlotRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (moreFor === null) return;
+    /*
+     * `behavior: "smooth"` 는 쓰지 않는다 — 이 창은 1초마다 타이머가 다시 그려지고,
+     * 그 사이 렌더가 진행 중인 부드러운 스크롤을 중간에서 끊었다(375×812 실측:
+     * 243px 이 필요한데 98px 에서 멈췄다). 즉시 이동은 끊길 구간이 없다.
+     */
+    openSlotRef.current?.scrollIntoView({ block: "nearest" });
+  }, [moreFor]);
+  /**
    * 튜토리얼이 못 박은 카드 (`DraftOfferMessage.lockedId`) — 없으면 null.
    * 화면에 그 카드가 실제로 서 있을 때만 잠근다: 서버와 어긋나 있어도 "아무것도
    * 못 고르는 화면"이 되지는 않게 한다.
@@ -24679,13 +24699,17 @@ function DraftOverlay({
             /** 튜토리얼이 잠근 카드인가 — 눌러도 안 나간다 */
             const lockedOut = locked !== null && c.id !== locked;
             return (
-              <div className="draft-slot" key={i}>
+              <div
+                className="draft-slot"
+                key={i}
+                ref={moreFor === c.id ? openSlotRef : undefined}
+              >
                 <button
                   // key를 카드 id로 잡아 새로고침 때 카드가 새로 등장하는 연출을 다시 태운다
                   key={c.id}
                   className={`draft-card draft-card-cat aug-cat-${augmentCategory(c.id)}${
                     lockedOut ? " draft-card-locked" : ""
-                  }`}
+                  }${shiftHeld || moreFor === c.id ? " draft-card-open" : ""}`}
                   style={{ animationDelay: `${i * 120}ms` }}
                   onClick={lockedOut || picked ? undefined : () => onPick(c.id)}
                   /*
