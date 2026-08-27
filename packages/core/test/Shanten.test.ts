@@ -178,9 +178,10 @@ describe("shantenOf — 무늬 확장 옵션", () => {
     // 랭크로는 여섯 쌍 + 7m 단기 = 텐파이, 무늬로는 한 쌍도 없다.
     const cross = h("1m1p2m2p3m3p4m4p5m5p6m6p7m9s");
     expect(shantenOf(cross, 0, { chiitoiMixedPairs: true })).toBe(0);
-    // 같은 패 3장은 쌍으로 세지 않는다 (asyncChiitoiPairs의 «최대 2장» 규칙).
+    // 같은 패 3장은 «2장 한 쌍 + 남은 1장이 다른 무늬와 짝»으로 두 쌍이 된다
+    // (asyncChiitoiPairs의 «최대 3장» 규칙 — 1만1만 · 1만1통).
     const triple = h("111m1p2m2p3m3p4m4p5m5p6m");
-    expect(shantenOf(triple, 0, { chiitoiMixedPairs: true })).toBeGreaterThanOrEqual(
+    expect(shantenOf(triple, 0, { chiitoiMixedPairs: true })).toBe(
       shantenOf(h("11m1p2m2p3m3p4m4p5m5p6m6p"), 0, { chiitoiMixedPairs: true }),
     );
   });

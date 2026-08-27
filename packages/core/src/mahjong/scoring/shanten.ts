@@ -276,8 +276,8 @@ function standardShanten(
  * 치또이쯔 샹텐 (멘젠 전용).
  *
  * **비대칭 치또이**(`chiitoiMixedPairs`)가 걸리면 짝을 «랭크»로 센다 — 1만+1통도 한
- * 쌍이다. 규칙은 `decompose.ts`의 `asyncChiitoiPairs`와 같다: 같은 패는 최대 2장까지만
- * 쓸 수 있고(4장·3장 금지), 수패는 랭크별로 자패는 종류별로 짝을 짓는다.
+ * 쌍이다. 규칙은 `decompose.ts`의 `asyncChiitoiPairs`와 같다: 같은 패는 최대 3장까지만
+ * 쓸 수 있고(4장 금지), 수패는 랭크별로 자패는 종류별로 짝을 짓는다.
  */
 function chiitoiShanten(kinds: readonly TileKind[], opts?: DecomposeOptions): number {
   if (opts?.chiitoiMixedPairs === true) return chiitoiMixedShanten(kinds);
@@ -308,9 +308,9 @@ function chiitoiMixedShanten(kinds: readonly TileKind[]): number {
   }
   let pairs = 0;
   for (const byKind of buckets.values()) {
-    // 같은 패는 최대 2장까지만 쓸 수 있다 (3장·4장 금지).
+    // 같은 패는 최대 3장까지만 쓸 수 있다 (4장 금지 — 같은 쌍이 두 번 나온다).
     let usable = 0;
-    for (const c of byKind.values()) usable += Math.min(c, 2);
+    for (const c of byKind.values()) usable += Math.min(c, 3);
     pairs += Math.floor(usable / 2);
   }
   const distinct = buckets.size;
