@@ -22035,26 +22035,16 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   // 순서는 그대로다 — 뱃지가 늘어서는 차례가 바뀌면 눈이 찾던 자리가 흔들린다.
   const avEntries = Object.entries(av);
   const roundKeyStr = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
-  const badges: JSX.Element[] = [];
+  // 뱃지는 **데이터로** 모은다 — 같은 목록을 좁은 화면에서는 한 줄로(줄임표),
+  // 눌러서 여는 시트에서는 전문으로 두 번 그려야 하기 때문이다(ActiveInfoRow).
+  const badges: ActiveInfoItem[] = [];
 
   const tilesBadge = (key: string, label: string, kinds: TileKind[]): void => {
     if (kinds.length === 0) return;
-    badges.push(
-      <span key={key} className="ai-badge">
-        <span className="ai-badge-tag">{label}</span>
-        <span className="ai-badge-tiles">
-          {kinds.map((kind, i) => <TileImg key={i} tile={{ kind }} size="mini" />)}
-        </span>
-      </span>,
-    );
+    badges.push({ key, label, kinds });
   };
   const textBadge = (key: string, label: string, text: string): void => {
-    badges.push(
-      <span key={key} className="ai-badge">
-        <span className="ai-badge-tag">{label}</span>
-        <span className="ai-badge-text">{text}</span>
-      </span>,
-    );
+    badges.push({ key, label, text });
   };
   const kindsOf = (v: unknown): TileKind[] =>
     Array.isArray(v)
@@ -22249,8 +22239,114 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   }
 
   if (badges.length === 0) return null;
-  return <div className="active-info">{badges}</div>;
+  return <ActiveInfoRow items={badges} />;
 });
+
+/** 손패 옆 뱃지 줄 한 칸 — 그림표(kinds)이거나 글줄(text)이다. */
+type ActiveInfoItem = {
+  key: string;
+  label: string;
+  text?: string;
+  kinds?: TileKind[];
+};
+
+/**
+ * 손패 옆 증강 뱃지 줄 + **눌러서 여는 상세 시트** (좁은 화면 경로).
+ *
+ * 폰 세로에서 이 줄은 한 줄로 눌러 담긴다(`.own-top-main .active-info`). 그런데
+ * 줄임표는 **글자에만** 걸려서, 안쪽 뱃지(inline-flex)는 그냥 칸 밖으로 잘려
+ * 나갔다 — 390px 실측에서 167px 칸에 272px 짜리 뱃지가 들어가 «봇3의 선언 —
+ * 최근 6장만 보인다» 의 뒤쪽이 통째로 사라졌다(2026-08-27 QA). 게다가 원 주석이
+ * 약속한 «눌러서 볼 수 있다» 는 실제로 붙어 있지 않아, 잘린 글을 읽을 길이 없었다.
+ *
+ * 이름표 증강 시트(PlayerAugSheet)와 **같은 방식**으로 고친다 — 좁은 화면에서는
+ * 뱃지가 눌리는 단추가 되고, 누르면 이 줄의 **모든** 뱃지를 전문으로 편 시트가
+ * 뜬다. 넓은 화면은 그대로다(`pointer-events: none`).
+ */
+function ActiveInfoRow({ items }: { items: ActiveInfoItem[] }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  // Esc — 다른 오버레이와 같은 손잡이
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+  const body = (it: ActiveInfoItem): JSX.Element =>
+    it.kinds !== undefined ? (
+      <span className="ai-badge-tiles">
+        {it.kinds.map((kind, i) => <TileImg key={i} tile={{ kind }} size="mini" />)}
+      </span>
+    ) : (
+      <span className="ai-badge-text">{it.text}</span>
+    );
+  return (
+    <>
+      <div className="active-info">
+        {items.map((it) => (
+          // 넓은 화면에서는 CSS 가 pointer-events 를 꺼서 «그냥 글자» 로 남는다.
+          <button
+            key={it.key}
+            type="button"
+            className="ai-badge ai-badge-btn"
+            onClick={() => setOpen(true)}
+            aria-label={`${it.label} ${it.text ?? ""} — 눌러서 전체 보기`}
+          >
+            <span className="ai-badge-tag">{it.label}</span>
+            {body(it)}
+          </button>
+        ))}
+      </div>
+      {open
+        ? createPortal(
+            // overlay-peekable — '누른 채로 게임판 보기'가 붙는 표면.
+            // ⚠ body 직속 포털이어야 한다(FIXED_SURFACE_NOTE).
+            <div
+              className="overlay overlay-peekable aug-sheet-overlay"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setOpen(false);
+              }}
+            >
+              <div className="aug-sheet" role="dialog" aria-label="증강 상태 자세히">
+                <div className="aug-sheet-head">
+                  <span className="aug-sheet-who">증강 상태</span>
+                  <button
+                    type="button"
+                    className="aug-sheet-close"
+                    onClick={() => setOpen(false)}
+                    aria-label="닫기"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <ul className="aug-sheet-list">
+                  {items.map((it) => (
+                    <li key={it.key} className="aug-sheet-row">
+                      <div className="aug-sheet-row-head">
+                        <span className="ai-sheet-tag">{it.label}</span>
+                      </div>
+                      {it.kinds !== undefined ? (
+                        <span className="ai-badge-tiles">
+                          {it.kinds.map((kind, i) => (
+                            <TileImg key={i} tile={{ kind }} size="mini" />
+                          ))}
+                        </span>
+                      ) : (
+                        <p className="ai-sheet-text">{it.text}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
 
 // ─────────────────────────── 액티브 증강 버튼 ───────────────────────────
 
