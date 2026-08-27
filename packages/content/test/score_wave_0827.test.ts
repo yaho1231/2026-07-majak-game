@@ -6,7 +6,8 @@
  *  2. 책임전가(blame_shift): 론 화료 +2판 (blame_shift.test.ts).
  *  3. 덤터기(scapegoat): 쯔모 화료 +2판, 론에는 0판.
  *  4. 등 떠밀기(push_riichi): 내가 떠밀어 리치를 걸게 만든 그 사람을 직격 론으로
- *     잡으면 +3판. 떠민 적이 없거나 다른 사람에게 론하면 0판.
+ *     잡으면 +2판(2026-08-27 사용자 지시로 +3판에서 내렸다 — 저판 오야에서 스윙이
+ *     너무 컸다). 떠민 적이 없거나 다른 사람에게 론하면 0판.
  */
 
 import { describe, expect, it } from "vitest";
@@ -168,6 +169,28 @@ describe("덤터기 (scapegoat) — 쯔모 화료 +2판", () => {
       (settled.augPoints ?? []).filter((n) => n.augId === "scapegoat"),
     ).toEqual([]);
   });
+
+  /*
+   * 2026-08-27 사용자 지시 — 판수를 **지목한 국의 쯔모**로 좁혔다.
+   *
+   * 처음에는 «쯔모면 무조건»이라, 능력을 한 번도 안 쓴 국에도 판수가 붙어 이 카드가
+   * «지목해서 지불을 몰아준다»가 아니라 «쯔모 보너스»가 됐다. 지목이 본체인데 값이
+   * 지목과 무관한 곳에서 나오면 안 된다 — 이제 판수와 지불 재배선이 같은 조건에 선다.
+   */
+  it("지목하지 않은 국에는 쯔모로 나도 판수가 붙지 않는다", () => {
+    const { flow } = start(tsumoScene("scapegoat"), scapegoat);
+    // 지목을 하지 않는다 — scapegoat_mark를 제출하지 않은 채 그대로 화료한다.
+    flow.submit("p0", { type: "win", payload: {} });
+
+    const settled = lastSettled(flow);
+    expect(settled.winInfos?.[0]?.winType).toBe("tsumo");
+    expect(
+      (settled.augPoints ?? []).filter((n) => n.augId === "scapegoat"),
+    ).toEqual([]);
+    // 재배선도 일어나지 않는다 — 지목 대상이 없으니 나머지 둘이 표준대로 낸다.
+    expect(settled.deltas["p2"] ?? 0).toBeLessThan(0);
+    expect(settled.deltas["p3"] ?? 0).toBeLessThan(0);
+  });
 });
 
 /* ────────────────────────── 4. 등 떠밀기 직격 ────────────────────────── */
@@ -213,7 +236,7 @@ function p1LastTile(game: { engine: { state: GameState } }): TileId {
 }
 
 describe("등 떠밀기 (push_riichi) — 강제 리치자 직격 론", () => {
-  it("내가 떠밀어 리치를 걸게 만든 사람을 론으로 잡으면 +3판", () => {
+  it("내가 떠밀어 리치를 걸게 만든 사람을 론으로 잡으면 +2판", () => {
     const { game, flow } = start(pushScene("p1"), pushRiichi);
     flow.submit("p1", {
       type: "discard",
@@ -232,7 +255,7 @@ describe("등 떠밀기 (push_riichi) — 강제 리치자 직격 론", () => {
     const settled = lastSettled(flow);
     expect(settled.winInfos?.[0]?.winType).toBe("ron");
     expect(settled.winInfos?.[0]?.from).toBe("p1");
-    expect(hanOf(settled, "push_riichi", "p0")).toBe(3);
+    expect(hanOf(settled, "push_riichi", "p0")).toBe(2);
   });
 
   it("떠민 적이 없으면(낙인 없음) 같은 론에도 판수가 붙지 않는다", () => {

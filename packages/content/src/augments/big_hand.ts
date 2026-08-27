@@ -98,7 +98,8 @@ export const bigHand: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
-  complexity: 3,
+  // 난도 2 (2026-08-27 재평가): '화료하면 최소 만관' 한 줄 — 만관이라는 값 하나만 알면 뜻이 선다.
+  complexity: 2,
   name: "큰손",
   description:
     "(2국에 1회) 국의 첫 순에 선언하면, 그 국에 화료했을 때 내가 받는 **총액**이 최소 만관(오야 12,000 · 자 8,000)이 된다.",

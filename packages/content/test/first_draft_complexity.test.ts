@@ -11,9 +11,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { DraftController, createStandardGame } from "@majak/core";
+import { AUGMENT_POWER_TIERS, DraftController, createStandardGame } from "@majak/core";
 import type { DraftStage, PlayerId } from "@majak/core";
 import { contentAugments } from "../src/index.js";
+import { ALL_AUGMENTS } from "./catalogSource.js";
 
 const PLAYERS: PlayerId[] = ["p0", "p1", "p2", "p3"];
 const LATER_STAGES: DraftStage[] = ["eastThird", "southEntry", "southThird"];
@@ -87,5 +88,41 @@ describe("드래프트 결정성", () => {
       );
       expect(draft.roll("eastThird", p).length).toBe(3);
     }
+  });
+});
+
+/**
+ * 첫 드래프트 풀의 **축 균형** (2026-08-27).
+ *
+ * 난도 3 제외는 초보 보호가 목적인데, 실측해 보니 난도 3에 타점형이 몰려 있어서
+ * (41종 중 61%) 게이트가 사실상 **"첫 픽에서 타점형을 빼는" 장치**로 돌고 있었다 —
+ * "초반엔 무조건 속도 증강"이라는 인식의 구조적 원인이다. 난도 값을 다시 매겨
+ * (게이트 자체는 그대로) 타점형 비율을 28.8% → 35.8%로 올렸다. 여기서 못박는다.
+ *
+ * 축은 `AUGMENT_POWER_TIERS`의 p(타점)·s(속도)로 본다. 개벽·단색 세계는 의도된
+ * 잭팟이라 집계에서 뺀다.
+ */
+describe("첫 드래프트 풀의 타점/속도 균형", () => {
+  const JACKPOT = new Set(["genesis", "suit_unify"]);
+
+  it("타점우위가 35% 이상이고 속도우위와의 격차가 12%p 이내다", () => {
+    const pool = ALL_AUGMENTS.filter(
+      (a) =>
+        !JACKPOT.has(a.id) &&
+        (a.draftStages === undefined || a.draftStages.includes("gameStart")) &&
+        (a.complexity ?? 2) < 3,
+    );
+    let power = 0;
+    let speed = 0;
+    for (const a of pool) {
+      const e = AUGMENT_POWER_TIERS[a.id];
+      if (e === undefined) continue;
+      if (e.p > e.s) power += 1;
+      else if (e.s > e.p) speed += 1;
+    }
+    const pRatio = power / pool.length;
+    const sRatio = speed / pool.length;
+    expect(pRatio, `첫 드래프트 타점우위 비율 (${power}/${pool.length})`).toBeGreaterThanOrEqual(0.35);
+    expect(sRatio - pRatio, "속도우위가 타점우위보다 이만큼 많다").toBeLessThanOrEqual(0.12);
   });
 });
