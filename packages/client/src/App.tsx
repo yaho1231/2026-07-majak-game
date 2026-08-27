@@ -129,13 +129,15 @@ import {
 import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
 
 /**
- * **자동응답이 패를 내려놓는 데 쓰는 시간(ms)** — 2026-08-27 사용자 지시("0.5초 정도").
+ * **자동응답이 패를 내려놓는 데 쓰는 시간(ms)** — 2026-08-27 사용자 지시.
  *
  * 자동 화료·자동버림·후로없음은 프롬프트가 도착한 프레임에 그대로 답을 쏘고 있었다.
  * 그 결과 내 수가 앞 사람의 버림과 한 프레임에 붙어, 무엇이 나갔는지 보이지 않았다.
- * 서버가 리치의 강제 쯔모기리에 두는 박자(`AUTO_MOVE_MS`)와 **같은 값**이다.
+ * 처음엔 0.5초를 뒀는데 **그것도 빨랐다** — 타패가 놓이는 것을 보고 나서 한 박자,
+ * 그러니까 **1초**다(같은 날 재지시). 서버가 리치의 강제 쯔모기리에 두는 박자
+ * (`AUTO_MOVE_MS`)·봇의 생각 시간(`BOT_THINK_MS`)과 **같은 값**이다.
  */
-const AUTO_RESPOND_MS = 500;
+const AUTO_RESPOND_MS = 1000;
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
