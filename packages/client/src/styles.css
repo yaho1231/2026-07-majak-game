@@ -7436,6 +7436,31 @@ button {
   font-weight: 600;
   color: #f7f3e8;
 }
+/* 뱃지가 단추가 되어도 «글자»로 남는다 — 넓은 화면에서는 눌리지도 않는다
+   (좁은 화면 블록에서만 pointer-events 를 되살린다: .np-name-btn 과 같은 규칙). */
+.ai-badge-btn {
+  border: 1px solid rgba(199, 188, 255, 0.55);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  pointer-events: none;
+  cursor: default;
+}
+/* 시트 안에서는 자리가 넉넉하다 — 태그는 한 줄, 본문은 통째로 편다. */
+.ai-sheet-tag {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: rgba(226, 220, 255, 0.95);
+}
+.ai-sheet-text {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  /* 줄바꿈을 허용해야 «전문»이 된다 — 줄 위의 뱃지는 nowrap 이다. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .ai-badge-tiles {
   display: inline-flex;
   gap: 3px;
@@ -16842,6 +16867,32 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+  /*
+   * ⚠ 줄임표는 **글자에만** 걸린다 — 위 규칙만으로는 안쪽 뱃지(inline-flex)가
+   * 그냥 칸 밖으로 잘려 나갔다(390px 실측: 167px 칸에 272px 뱃지 → 뒤쪽 105px 이
+   * «…» 도 없이 사라졌다). 뱃지와 그 글줄까지 줄어들 수 있게 열어 줘야 비로소
+   * 줄임표가 선다.
+   */
+  .own-top-main .active-info .ai-badge {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .own-top-main .active-info .ai-badge-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* 그리고 잘린 것은 **눌러서** 전문을 본다 — 이름표 증강 시트와 같은 방식.
+     점선 밑줄이 «누를 수 있다»를 말한다(.np-name-btn 과 같은 표식). */
+  .own-top-main .active-info .ai-badge-btn {
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .own-top-main .active-info .ai-badge-btn .ai-badge-text {
+    text-decoration: underline dotted rgba(247, 243, 232, 0.5);
+    text-underline-offset: 2px;
   }
   .own-area { gap: 5px; }
   .quick-toggles-inline { gap: 5px; }
