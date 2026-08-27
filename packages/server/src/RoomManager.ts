@@ -548,14 +548,16 @@ function delayEnv(name: string, fallback: number, min = 0, max = MAX_DELAY_MS): 
 const BOT_THINK_MS = delayEnv("BOT_THINK_MS", process.env.VITEST ? 0 : 1000);
 /**
  * 강제 수(리치 쯔모기리)를 서버가 대신 두기 전의 한 박자(ms) — 고민이 아니라
- * "패가 놓이는 것을 보는" 시간이라 봇 생각 시간보다 짧다. 이게 0이면 앞 사람의
+ * "패가 놓이는 것을 보는" 시간이다. 이게 0이면 앞 사람의
  * 버림과 같은 프레임에 나가 리치가 무엇을 흘렸는지 화면에서 사라진다.
  *
  * 클라이언트의 자동응답(자동 화료·자동버림·후로없음)이 같은 이유로 같은 길이의
- * 박자를 둔다(`AUTO_RESPOND_MS`) — 사용자가 못박은 값은 **0.5초**이고, 둘을 같이
- * 맞춰야 «대신 두어진 수»의 속도가 어디서나 같다 (2026-08-27 지시).
+ * 박자를 둔다(`AUTO_RESPOND_MS`) — 둘을 같이 맞춰야 «대신 두어진 수»의 속도가
+ * 어디서나 같다. 값은 **1초**다: 0.5초로 뒀더니 "타패하는 게 보인 다음"이라기엔
+ * 여전히 빨랐다 (2026-08-27 재지시). 봇 생각 시간(`BOT_THINK_MS`)과도 같아져,
+ * 사람이 두든 서버가 대신 두든 판의 박자가 하나로 흐른다.
  */
-const AUTO_MOVE_MS = delayEnv("AUTO_MOVE_MS", process.env.VITEST ? 0 : 500);
+const AUTO_MOVE_MS = delayEnv("AUTO_MOVE_MS", process.env.VITEST ? 0 : 1000);
 /** 방 코드 문자 집합 — 혼동 문자는 제외 (O/0, I/1) */
 export const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export const CODE_LEN = 6;

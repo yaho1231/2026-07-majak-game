@@ -1,5 +1,5 @@
 /**
- * 자동응답의 «패를 내려놓는 시간» — 2026-08-27 사용자 지시("0.5초 정도는 줘").
+ * 자동응답의 «패를 내려놓는 시간» — 2026-08-27 사용자 지시("타패하는 게 보인 다음 1초").
  *
  * 자동 화료·자동버림·후로없음은 프롬프트가 도착한 프레임에 그대로 답을 쏘고 있었다.
  * 그러면 내 수가 앞 사람의 버림과 한 프레임에 붙어, 무엇이 나갔는지 보이지 않는다.
@@ -27,7 +27,7 @@ function code(src: string): string {
 const APP_CODE = code(APP);
 
 describe("자동응답은 한 박자 뒤에 나간다", () => {
-  it("클라이언트의 박자와 서버의 강제 수 박자가 같은 0.5초다", () => {
+  it("클라이언트의 박자와 서버의 강제 수 박자가 같은 1초다", () => {
     const client = /const AUTO_RESPOND_MS = ([\d_]+);/.exec(APP);
     expect(client).not.toBeNull();
     const server = /delayEnv\("AUTO_MOVE_MS", process\.env\.VITEST \? 0 : ([\d_]+)\)/.exec(
@@ -35,7 +35,7 @@ describe("자동응답은 한 박자 뒤에 나간다", () => {
     );
     expect(server).not.toBeNull();
     const ms = Number((client?.[1] ?? "0").replace(/_/g, ""));
-    expect(ms).toBe(500);
+    expect(ms).toBe(1000);
     expect(Number((server?.[1] ?? "0").replace(/_/g, ""))).toBe(ms);
   });
 
