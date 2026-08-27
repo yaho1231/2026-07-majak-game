@@ -435,7 +435,7 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
 
   it("거신병: 요구패 13종을 '내가 직접 버려' 둬야 한다는 전제조건이 드러난다", () => {
     expect(giantGod.description).toContain("조건");
-    expect(giantGod.detail).toContain("증강이 요구패를 깔아 주지 않는다");
+    expect(giantGod.detail).toContain("요구패는 내가 직접 버려 둬야 한다");
   });
 
   it("파혼: 손으로 돌아오는 것이 2장뿐임을 요약에서 밝힌다", () => {
