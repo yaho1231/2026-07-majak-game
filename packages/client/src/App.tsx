@@ -51,6 +51,7 @@ import type {
   RevealedHand,
   ReplayGameSummary,
   RoomRules,
+  RoomPace,
   RoundOverMessage,
   SandboxMessage,
   SandboxBotRules,
@@ -77,6 +78,7 @@ import {
   ROOM_SCORE_MIN,
   ROOM_SCORE_MAX,
   normalizeRoomRules,
+  ROOM_PACES,
   NOTICE_BODY_MAX,
   NOTICE_TITLE_MAX,
   SPECTATOR_ID,
@@ -125,6 +127,15 @@ import {
   PROD_TTL_FLOOR_MS,
 } from "./productionQueue.js";
 import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
+
+/**
+ * **자동응답이 패를 내려놓는 데 쓰는 시간(ms)** — 2026-08-27 사용자 지시("0.5초 정도").
+ *
+ * 자동 화료·자동버림·후로없음은 프롬프트가 도착한 프레임에 그대로 답을 쏘고 있었다.
+ * 그 결과 내 수가 앞 사람의 버림과 한 프레임에 붙어, 무엇이 나갔는지 보이지 않았다.
+ * 서버가 리치의 강제 쯔모기리에 두는 박자(`AUTO_MOVE_MS`)와 **같은 값**이다.
+ */
+const AUTO_RESPOND_MS = 500;
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
@@ -1172,6 +1183,15 @@ interface Settings {
   /** 자동 버림 — 쯔모한 패를 자동으로 버린다(쯔모기리). 화료 가능하면 먼저 화료한다. */
   autoDiscard: boolean;
   /**
+   * 매 국 옵션 초기화 — 새 국이 시작될 때 좌하단 빠른 토글(자동정렬·자동화료·
+   * 후로없음·자동버림)을 기본값으로 되돌린다.
+   *
+   * 켜 두는 것이 기본이다: 지난 국에 켜 둔 자동버림이 그대로 남아, 새 국이
+   * 시작하자마자 첫 쯔모가 그대로 나가는 일이 있었다(2026-08-27 사용자 보고).
+   * 세팅을 국마다 유지하고 싶으면 끈다.
+   */
+  resetOptionsEachRound: boolean;
+  /**
    * 두 번 탭으로 버리기 — 첫 탭은 패를 들어 올리고 두 번째 탭에 나간다.
    *
    * 기본은 **터치 기기에서만 켜진다**(마우스는 정확하므로 데스크톱의 한 번 클릭
@@ -1231,6 +1251,7 @@ const DEFAULT_SETTINGS: Settings = {
   autoWin: false,
   autoNoMeld: false,
   autoDiscard: false,
+  resetOptionsEachRound: true,
   // 터치 기기에서만 기본 켜짐 — 오타패가 실제로 일어나는 곳이 거기다.
   // (matchMedia가 없는 환경에서는 꺼진 쪽으로 — 예전 동작 그대로.)
   tapTwiceToDiscard:
@@ -3128,6 +3149,47 @@ export function App(): JSX.Element {
       return next;
     });
   };
+  /**
+   * **자동응답이 걸어 둔 «패를 내려놓는 시간»** — 좌석별 타이머 id.
+   *
+   * 자동 화료·후로없음·자동버림은 프롬프트가 도착한 프레임에 그대로 답을 쏘고 있었다.
+   * 그러면 내 패가 언제 나갔는지 보이지 않는다 — 화면에는 앞 사람의 버림과 내 쯔모기리·
+   * 론이 **같은 프레임에** 붙어 나오고, 자동 화료는 손패를 볼 새도 없이 정산 화면이
+   * 뜬다(2026-08-27 사용자 지시: "패를 내려놓는 시간 0.5초 정도는 줘").
+   *
+   * 서버가 리치의 강제 쯔모기리에 이미 같은 한 박자를 두고 있다
+   * (`HanchanController.pauseForAutoMove`) — 그쪽과 같은 길이로 맞춘다.
+   *
+   * 취소가 필요하다 — 이 반 박자 사이에 상대의 더 센 선언이 확정되면(`promptCancel`)
+   * 이미 접힌 프롬프트에 답을 쏘게 된다. 방을 떠날 때도 같이 걷는다.
+   */
+  const autoRespondTimers = useRef<Map<string, number>>(new Map());
+  /** 이 좌석에 걸린 자동응답 대기를 걷는다 (없으면 아무 일도 없다). */
+  const cancelAutoRespond = (seat?: string): void => {
+    const timers = autoRespondTimers.current;
+    if (seat === undefined) {
+      for (const t of timers.values()) window.clearTimeout(t);
+      timers.clear();
+      return;
+    }
+    const t = timers.get(seat);
+    if (t !== undefined) {
+      window.clearTimeout(t);
+      timers.delete(seat);
+    }
+  };
+  /**
+   * 자동응답을 **한 박자 뒤에** 보낸다. 프롬프트는 (호출부에서) 즉시 접히므로
+   * 화면에 버튼이 깜빡이지 않고, 패는 사람이 둔 것과 같은 속도로 내려간다.
+   */
+  const scheduleAutoRespond = (seat: string, fire: () => void): void => {
+    cancelAutoRespond(seat); // 같은 좌석에 두 개가 겹치지 않게
+    const t = window.setTimeout(() => {
+      autoRespondTimers.current.delete(seat);
+      fire();
+    }, AUTO_RESPOND_MS);
+    autoRespondTimers.current.set(seat, t);
+  };
   const [catalog, setCatalog] = useState<Record<string, AugmentCatalogEntry>>({});
   // 연출 큐 — 대기열(ref)과 현재 재생 중(active) 하나. 한 번에 하나씩 순서대로.
   const productionQueue = useRef<Production[]>([]);
@@ -3216,6 +3278,43 @@ export function App(): JSX.Element {
     }
     setSettings((prev) => {
       const next = { ...prev, [key]: value };
+      try {
+        safeStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      } catch {
+        /* 저장 실패는 무시 (세션 내 설정은 유지) */
+      }
+      return next;
+    });
+  }
+
+  /**
+   * 새 국 시작 때 빠른 토글(자동정렬·자동화료·후로없음·자동버림)을 기본값으로 되돌린다.
+   * 「매 국 옵션 초기화」가 꺼져 있으면 아무것도 하지 않는다.
+   *
+   * ⚠ `settingsRef.current`도 **여기서 바로** 갱신한다 — 자동 응답(tryAutoRespond)은
+   *   ref를 읽고, 그 ref는 다음 렌더에서야 동기화된다. 같은 틱에 도착한 새 국 프롬프트가
+   *   초기화 이전 값으로 처리되면 초기화가 한 국 늦게 듣는 셈이 된다.
+   */
+  function resetRoundOptions(): void {
+    if (!settingsRef.current.resetOptionsEachRound) return;
+    const reset = {
+      autoSort: DEFAULT_SETTINGS.autoSort,
+      autoWin: DEFAULT_SETTINGS.autoWin,
+      autoNoMeld: DEFAULT_SETTINGS.autoNoMeld,
+      autoDiscard: DEFAULT_SETTINGS.autoDiscard,
+    };
+    const cur = settingsRef.current;
+    if (
+      cur.autoSort === reset.autoSort &&
+      cur.autoWin === reset.autoWin &&
+      cur.autoNoMeld === reset.autoNoMeld &&
+      cur.autoDiscard === reset.autoDiscard
+    ) {
+      return;
+    }
+    settingsRef.current = { ...cur, ...reset };
+    setSettings((prev) => {
+      const next = { ...prev, ...reset };
       try {
         safeStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
       } catch {
@@ -3675,12 +3774,16 @@ export function App(): JSX.Element {
     const pass = opts.find((o) => o.type === "pass");
     // 자동 화료 — 화료 가능하면 즉시 론·쯔모
     if (auto.autoWin && win !== undefined) {
-      send({ type: "action", actionType: "win", payload: win.payload, seat });
+      scheduleAutoRespond(seat, () =>
+        send({ type: "action", actionType: "win", payload: win.payload, seat }),
+      );
       return true;
     }
     // 후로 없음 — 후로(치·펑·깡)만 있는 프롬프트를 즉시 패스
     if (auto.autoNoMeld && pass !== undefined && isCallOnlyPrompt(opts)) {
-      send({ type: "action", actionType: "pass", payload: pass.payload, seat });
+      scheduleAutoRespond(seat, () =>
+        send({ type: "action", actionType: "pass", payload: pass.payload, seat }),
+      );
       return true;
     }
     // 자동 버림(쯔모기리) — 내 턴에 쯔모한 패를 자동으로 버린다.
@@ -3696,10 +3799,14 @@ export function App(): JSX.Element {
           (o.payload as { tileId?: unknown })?.tileId === drawn,
       );
       if (disc !== undefined) {
-        sfx.discard();
-        haptics.discard();
-        rememberOwnDiscard(disc.payload);
-        send({ type: "action", actionType: disc.type, payload: disc.payload, seat });
+        // 소리·진동도 함께 미룬다 — 패가 아직 안 나갔는데 «탁» 소리부터 나면
+        // 그 반 박자가 더 어색하다.
+        scheduleAutoRespond(seat, () => {
+          sfx.discard();
+          haptics.discard();
+          rememberOwnDiscard(disc.payload);
+          send({ type: "action", actionType: disc.type, payload: disc.payload, seat });
+        });
         return true;
       }
     }
@@ -3911,6 +4018,9 @@ export function App(): JSX.Element {
 
   /** 게임/방 관련 로컬 상태만 초기화 (연결·로그인은 유지) */
   function resetGameState(): void {
+    // 아직 안 나간 자동응답이 있으면 여기서 걷는다 — 방을 떠난 뒤에 도착하는
+    // 액션은 갈 곳이 없고, 다음 방의 첫 프롬프트와 섞일 이유도 없다.
+    cancelAutoRespond();
     /*
      * **튜토리얼 코치는 방을 떠나는 순간 함께 꺼진다.**
      *
@@ -4863,6 +4973,9 @@ export function App(): JSX.Element {
         if (prev.gameMode !== msg.gameMode) {
           showToast(`판 길이가 ${MODE_BADGE[msg.gameMode]?.name ?? msg.gameMode}으로 바뀌었습니다`, "info");
         }
+        if (prev.pace !== msg.pace) {
+          showToast(`제한 시간: ${ROOM_PACE_LABEL[msg.pace] ?? msg.pace} (${paceSub(msg.pace)})`, "info");
+        }
         if (prev.botDifficulty !== msg.botDifficulty) {
           showToast(`봇 난이도: ${BOT_DIFFICULTY_LABEL[msg.botDifficulty] ?? msg.botDifficulty}`, "info");
         }
@@ -5005,6 +5118,8 @@ export function App(): JSX.Element {
       } else if (msg.reason === "preempted") {
         showToast("다른 사람의 선언이 우선합니다", "info", 2600);
       }
+      // 반 박자 뒤에 나갈 예정이던 자동응답을 걷는다 — 이미 접힌 프롬프트다.
+      cancelAutoRespond(msg.seat);
       if (msg.seat !== undefined) dropPrompt(msg.seat);
       else setPrompts({});
       setPromptDeadline(null);
@@ -5456,6 +5571,9 @@ export function App(): JSX.Element {
       bgm.holdForResult(false);
       // 에코가 끝내 안 온 타패 id(접속 끊김 등)가 다음 국까지 남아 정상 타패음을 먹지 않게
       pendingOwnDiscards.current.clear();
+      // 좌하단 빠른 토글을 기본값으로 되돌린다(설정에서 끌 수 있다) — 지난 국의
+      // 자동버림이 남아 새 국 첫 쯔모가 그대로 나가던 문제.
+      resetRoundOptions();
       const label = `${WIND_CHAR[next.round.prevalentWind - 1] ?? "?"}${next.round.roundNumber}국`;
       // 부제에 "이 국이 어떤 국인가"를 싣는다. 서든데스(서입·남입)로 넘어온 것도, 지금이
       // 오라스라는 것도 예전에는 화면 어디에도 없었다 — 봇은 setGameMode로 올라스를
@@ -6052,6 +6170,11 @@ export function App(): JSX.Element {
     send({ type: "setBotDifficulty", difficulty });
     sfx.pick();
   }
+  /** 대기실 제한 시간 변경 (방장) — 서버가 아는 값인지 다시 본다. */
+  function setRoomPace(pace: RoomPace): void {
+    send({ type: "setRoomPace", pace });
+    sfx.pick();
+  }
   /** 자리 섞기 (방장) — 서버가 동남서북을 다시 뽑아 대기실에 그대로 반영한다 */
   function shuffleSeats(): void {
     send({ type: "shuffleSeats" });
@@ -6558,6 +6681,7 @@ export function App(): JSX.Element {
           onStart={startGame}
           onSetGameMode={setGameMode}
           onSetBotDifficulty={setBotDifficulty}
+          onSetPace={setRoomPace}
           rules={roomRules}
           onSetRules={setRoomRulesPatch}
           onShuffleSeats={shuffleSeats}
@@ -12426,6 +12550,7 @@ function WaitingRoom(props: {
   onStart: () => void;
   onSetGameMode: (mode: GameMode) => void;
   onSetBotDifficulty: (difficulty: string) => void;
+  onSetPace: (pace: RoomPace) => void;
   /** 이 방의 상세설정 (기본값이면 종전 규칙 그대로). */
   rules: RoomRules;
   /** 상세설정 변경 (방장만 — 다른 사람에게는 읽기 전용으로 보인다). */
@@ -12663,6 +12788,35 @@ function WaitingRoom(props: {
               >
                 <span className="mode-name">{label}</span>
                 <span className="mode-sub">{sub}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 제한 시간 — 「얼마나 잘 두는가」(봇 난이도) 다음에 「얼마나 급한가」다.
+            늘어나는 것은 상한뿐이라, 다 쓰는 사람이 없으면 속도는 그대로다
+            (증강은 넷이 다 고르면·타패는 두는 순간 남은 시간이 취소된다). */}
+        <div className="lobby-group-label">제한 시간</div>
+        <div className="mode-select" role="radiogroup" aria-label="제한 시간">
+          {ROOM_PACE_ORDER.map((pace) => {
+            const active = (lobby.pace ?? "expert") === pace;
+            return (
+              <button
+                key={pace}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                className={`mode-btn ${active ? "mode-active" : ""}`}
+                disabled={!isHost}
+                onClick={() => isHost && !active && props.onSetPace(pace)}
+                title={
+                  isHost
+                    ? `${ROOM_PACE_LABEL[pace]} 제한 시간으로 변경 (다음 판부터)`
+                    : "방장만 변경할 수 있습니다"
+                }
+              >
+                <span className="mode-name">{ROOM_PACE_LABEL[pace]}</span>
+                <span className="mode-sub">{paceSub(pace)}</span>
               </button>
             );
           })}
@@ -12969,6 +13123,23 @@ const BOT_DIFFICULTY: readonly (readonly [string, string, string])[] = [
 const BOT_DIFFICULTY_LABEL: Record<string, string> = Object.fromEntries(
   BOT_DIFFICULTY.map(([id, label]) => [id, label]),
 );
+
+/**
+ * 제한 시간 묶음의 화면 문구 — 숫자는 `ROOM_PACES`(core)에서 그대로 읽는다.
+ * 두 벌로 적어 두면 서버가 늘린 시간이 화면에서 옛날 값으로 남는다.
+ */
+const ROOM_PACE_ORDER: readonly RoomPace[] = ["expert", "beginner", "novice"];
+const ROOM_PACE_LABEL: Record<RoomPace, string> = {
+  expert: "숙련자",
+  beginner: "초심자",
+  novice: "왕초보",
+};
+/** «타패 5 + 30초 · 증강 30초» 꼴의 한 줄 요약. */
+function paceSub(pace: RoomPace): string {
+  const p = ROOM_PACES[pace];
+  const sec = (ms: number): number => Math.round(ms / 1000);
+  return `타패 ${sec(p.turnGraceMs)} + ${sec(p.turnBankMs)}초 · 증강 ${sec(p.draftMs)}초`;
+}
 
 function ModeBadge(props: { mode: GameMode }): JSX.Element {
   const m = MODE_BADGE[props.mode] ?? MODE_BADGE.hanchan;
@@ -14257,6 +14428,11 @@ function SettingsPanel(props: {
           },
         ]
       : []),
+    {
+      key: "resetOptionsEachRound",
+      label: "매 국 옵션 초기화",
+      desc: "새 국이 시작될 때 좌하단 빠른 토글(자동정렬·자동화료·후로없음·자동버림)을 기본값으로 되돌립니다. 끄면 켜 둔 그대로 다음 국까지 이어집니다",
+    },
     {
       key: "glossaryTips",
       label: "용어 설명",
@@ -15910,7 +16086,11 @@ function CenterPanel({
           );
         })()}
         {r.uraDoraIndicators !== null && r.uraDoraIndicators.length > 0 ? (
-          <div className="center-dora center-ura" title="뒷도라">
+          <div className="center-dora center-ura" title="뒷도라 표시패 — 리치 화료로 열렸다">
+            {/* 라벨이 없으면 도라 줄 바로 아래에 «출처 없는 패»가 갑자기 늘어선다 —
+                깡으로 표시패가 늘어난 국에서는 세 줄째까지 서서 어디서 나온 패인지
+                화면에 근거가 없었다(2026-08-27 사용자 보고). */}
+            <span className="ura-row-tag">뒷도라</span>
             {r.uraDoraIndicators.map((id) => (
               <span key={id} className="dora-slot">
                 <TileImg tile={view.tiles[id]} size="fill" />

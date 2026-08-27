@@ -91,8 +91,15 @@ async function playUntilView(sock: FakeSocket, timeoutMs = 20_000): Promise<void
 }
 
 afterEach(async () => {
-  for (const m of managers.splice(0)) m.stop();
-  for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
+  for (const m of managers.splice(0)) {
+    // `stop()`만으로는 **진행 중인 판이 계속 돈다** — 사람이 나가도 기록 대국은
+    // 끝까지 가게 된 뒤로(감사 2026-08-26 H-2), 그 판의 리플레이 writer가 아래
+    // rmdir과 겹쳐 ENOTEMPTY로 튀었다. 판부터 접고 지운다.
+    m.shutdown("테스트 정리");
+    m.stop();
+  }
+  await new Promise((r) => setTimeout(r, 50));
+  for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true, maxRetries: 5 });
   for (const db of dbs.splice(0)) db.close();
   delete process.env.ROOM_IDLE_TTL_MS;
   delete process.env.ROOM_IDLE_WARN_MS;

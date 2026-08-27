@@ -43,6 +43,9 @@ import {
   RIICHI_BGM_RANDOM,
   DEFAULT_ROOM_RULES,
   normalizeRoomRules,
+  DEFAULT_ROOM_PACE,
+  isRoomPace,
+  paceMaxSeatMs,
 } from "@majak/core/network/protocol.js";
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import type {
@@ -63,6 +66,7 @@ import type {
   SandboxBotRules,
   ServerNotice,
   RoomRules,
+  RoomPace,
 } from "@majak/core/network/protocol.js";
 import { StatsTracker, deriveStats, createEmptyStats } from "@majak/core/stats/PlayerStats.js";
 import type { AugmentStatsStore } from "./AugmentStatsStore.js";
@@ -282,6 +286,11 @@ interface Room {
   botGeneration: number;
   /** 봇 난이도. 기본 hard = skill 1.0 = 종전 봇 그대로. */
   botDifficulty: BotDifficulty;
+  /**
+   * 이 방의 제한 시간 묶음 (`ROOM_PACES`). 기본 `expert` = 종전 동작 그대로.
+   * 방장이 대기실에서 고르고, 판이 서면서 좌석마다 꽂힌다(`applyPace`).
+   */
+  pace: RoomPace;
   /**
    * 증강 테스트(샌드박스) 방 — 관리자 1명 + 봇 3명, 드래프트 없음.
    * 리플레이 파일·게임 인덱스·누적 통계를 남기지 않는다(실대국 데이터 오염 방지).
@@ -541,8 +550,12 @@ const BOT_THINK_MS = delayEnv("BOT_THINK_MS", process.env.VITEST ? 0 : 1000);
  * 강제 수(리치 쯔모기리)를 서버가 대신 두기 전의 한 박자(ms) — 고민이 아니라
  * "패가 놓이는 것을 보는" 시간이라 봇 생각 시간보다 짧다. 이게 0이면 앞 사람의
  * 버림과 같은 프레임에 나가 리치가 무엇을 흘렸는지 화면에서 사라진다.
+ *
+ * 클라이언트의 자동응답(자동 화료·자동버림·후로없음)이 같은 이유로 같은 길이의
+ * 박자를 둔다(`AUTO_RESPOND_MS`) — 사용자가 못박은 값은 **0.5초**이고, 둘을 같이
+ * 맞춰야 «대신 두어진 수»의 속도가 어디서나 같다 (2026-08-27 지시).
  */
-const AUTO_MOVE_MS = delayEnv("AUTO_MOVE_MS", process.env.VITEST ? 0 : 450);
+const AUTO_MOVE_MS = delayEnv("AUTO_MOVE_MS", process.env.VITEST ? 0 : 500);
 /** 방 코드 문자 집합 — 혼동 문자는 제외 (O/0, I/1) */
 export const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export const CODE_LEN = 6;
@@ -2161,6 +2174,7 @@ export class RoomManager {
       case "kickPlayer":
       case "setGameMode":
       case "setRoomRules":
+      case "setRoomPace":
       case "shuffleSeats":
       case "startGame": {
         if (conn.room === null || conn.agent === null) return;
@@ -3022,6 +3036,8 @@ export class RoomManager {
       tutorial?: boolean;
       gameMode?: GameMode;
       botDifficulty?: BotDifficulty;
+      /** 제한 시간 묶음 (기본 `expert` = 종전 동작). */
+      pace?: RoomPace;
       /**
        * 방 코드를 지정한다 (이어하기 전용). 되살린 판은 **그 방 코드 그대로**
        * 서야 한다 — 사람들의 브라우저에 `majak.lastRoomCode`로 남아 있는 값이고,
@@ -3070,6 +3086,9 @@ export class RoomManager {
       // 그 사람은 대기실을 거치지 않아 고를 화면 자체가 없고, 마작을 처음 보는
       // 사람의 첫 판이 최선을 두는 봇 셋이면 배우기 전에 끝난다 (감사 §3-3).
       botDifficulty: options.botDifficulty ?? "hard",
+      // 제한 시간은 «숙련자»가 기본 — 대기실을 거치지 않는 방(체험·샌드박스)까지
+      // 포함해 종전과 같은 속도로 선다. 방장은 대기실에서 늦출 수 있다.
+      pace: options.pace ?? DEFAULT_ROOM_PACE,
       sandboxBotRules: {},
       sandboxControl: true,
       sandboxRestarting: false,
@@ -3591,6 +3610,14 @@ export class RoomManager {
         this.broadcastLobby(room);
         return;
       }
+      case "setRoomPace": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        // 받은 문자열을 그대로 믿지 않는다 — 아는 값이 아니면 조용히 무시한다.
+        if (!isRoomPace(msg.pace)) return;
+        room.pace = msg.pace;
+        this.broadcastLobby(room);
+        return;
+      }
       case "setRoomRules": {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         // 받은 값을 그대로 믿지 않는다 — 범위를 자르고 「1위 필요점수 > 시작점수」를
@@ -3645,6 +3672,7 @@ export class RoomManager {
           canStart,
           gameMode: room.gameMode,
           botDifficulty: room.botDifficulty,
+          pace: room.pace,
           players,
         });
       }
@@ -4936,7 +4964,7 @@ export class RoomManager {
      * `voteAbort`가 게스트 화이트리스트에 없어 그 앞에서 걸린다. 손님은 창을 닫으면
      * 된다.)
      */
-    if (humans.length < 2 && !room.guest && !room.sandbox) {
+    if (!this.abortableByHumans(room, humans.length)) {
       return this.fail(
         conn,
         "SOLO_ABORT_FORBIDDEN",
@@ -4949,6 +4977,24 @@ export class RoomManager {
     else room.abortVotes.delete(conn.agent.id); // withdraw = 내 동의 철회
 
     this.retallyAbortVotes(room);
+  }
+
+  /**
+   * **기록되는 판을 사람 몇 명이 지울 수 있는가** — 무효 성립의 유일한 불변식.
+   *
+   * 기록 대국은 사람이 2명 이상 남아 있을 때만 무효로 접을 수 있다(감사 §10-3).
+   * 기록하지 않는 방(체험·증강 테스트)은 세탁할 전적이 없고, 무효가 그 방들의
+   * 유일한 정리 수단이라 예외다.
+   *
+   * **표를 던지는 자리와 표를 세는 자리 양쪽에서 물어야 한다.** 예전에는
+   * `handleVoteAbort`에만 있었는데, 실제로 `requestAbort()`를 부르는 것은
+   * `retallyAbortVotes`다 — 2인 방에서 한 명이 동의해 둔 뒤 상대가 끊기기만 하면
+   * 정족수가 1로 줄며 이미 모인 그 한 표로 무효가 성립했다(감사 2026-08-26 H-1).
+   * 검사를 한 함수에 모아 두 자리가 같은 답을 쓰게 한다.
+   */
+  private abortableByHumans(room: Room, humanCount: number): boolean {
+    if (room.guest || room.sandbox) return true;
+    return humanCount >= 2;
   }
 
   /**
@@ -4980,15 +5026,38 @@ export class RoomManager {
     };
     for (const h of humans) h.notify(status);
 
-    // 표를 낼 수 있는 사람 전원 동의 → 무효 종료 (onGameAborted가 정리한다)
-    if (voters.length >= needed) room.controller?.requestAbort();
+    /*
+     * 표를 낼 수 있는 사람 전원 동의 → 무효 종료 (onGameAborted가 정리한다).
+     *
+     * **정족수가 줄어서 성립한 무효는 성립시키지 않는다.** 남은 사람이 하나뿐인
+     * 기록 대국은 그 한 표로 판을 지울 수 없다 — 던지는 자리에서 막아 놓고 세는
+     * 자리에서 열어 두면 «상대가 끊기기를 기다렸다가 지운다»가 그대로 된다.
+     * 위의 집계 브로드캐스트는 그대로 내보낸다: 화면의 «1/2»가 «1/1»로 바뀌는
+     * 것까지 숨기면 남은 사람은 자기 표가 어디로 갔는지 알 수 없다.
+     */
+    if (voters.length >= needed && this.abortableByHumans(room, needed)) {
+      room.controller?.requestAbort();
+    }
   }
 
   /**
-   * 사람이 한 명도 남지 않은 판을 무효로 접는다 (기권으로 마지막 좌석이 빠졌을 때).
+   * 사람이 한 명도 남지 않은 판을 정리한다 (기권으로 마지막 좌석이 빠졌을 때).
    *
    * 끊긴 좌석은 세어 준다 — 재접속하면 이어서 둘 사람이다. 나가기(abandon)로
    * 확정된 좌석만 빠진 것으로 본다.
+   *
+   * **기록되는 판은 접지 않는다** (감사 2026-08-26 H-2). 예전에는 방 종류를 가리지
+   * 않고 무효로 접었는데, 무효는 정산·순위·통계는 물론 **리플레이 파일까지** 지운다
+   * (`onGameAborted` → `discardReplay`). 그래서 사람 1 + 봇 3 방에서는
+   * 「나가기」 한 번이 지는 판을 흔적 없이 없애는 버튼이었다 —
+   * `SOLO_ABORT_FORBIDDEN`이 무효 투표에서 막은 바로 그 세탁을, 옆문으로.
+   *
+   * 이제 그 판은 봇 자동 진행으로 완주해 정상 기록된다. 그게 `handleVoteAbort`의
+   * 주석이 줄곧 약속하던 «나가기와 무효의 차이»다. 나간 사람의 화면으로 그 판이
+   * 새지 않는 것은 좌석 쪽에서 막는다(`HumanAgent.abandon` → `muted`).
+   *
+   * 기록하지 않는 방(체험·증강 테스트)은 종전대로 접는다 — 남길 전적이 없고,
+   * 아무도 보지 않는 봇 판을 끝까지 돌릴 이유도 없다.
    */
   private abortIfNoHumansLeft(room: Room): void {
     if (room.phase !== "playing" || room.controller === null) return;
@@ -4997,6 +5066,10 @@ export class RoomManager {
       (a): a is HumanAgent => a instanceof HumanAgent && !a.isAbandoned,
     );
     if (humans.length > 0) return;
+    if (!this.abortableByHumans(room, 0)) {
+      this.log(room, "사람이 모두 나갔다 — 봇이 판을 마저 두고 기록한다");
+      return;
+    }
     this.log(room, "사람이 모두 나갔다 — 판을 무효로 접는다");
     room.controller.requestAbort();
   }
@@ -5754,6 +5827,7 @@ export class RoomManager {
         replayPath: room.writer.path,
         gameMode: room.gameMode,
         botDifficulty: room.botDifficulty,
+        pace: room.pace,
         seats: room.agents.map((a) => ({
           id: a.id,
           nickname: a.nickname,
@@ -5889,6 +5963,10 @@ export class RoomManager {
       code: row.code,
       gameMode: resumeMode,
       botDifficulty: row.botDifficulty as BotDifficulty,
+      // 되살린 판도 **그 방이 고른 속도**로 서야 한다. 안 담으면 왕초보 방이
+      // 조용히 숙련자 속도(30 + 10초)로 돌아와, 앉아 있던 사람의 차례가 대신
+      // 두어진다. 열이 붙기 전에 쓰인 행(null)은 기본값이다.
+      ...(isRoomPace(row.pace) ? { pace: row.pace } : {}),
     });
     room.resumePath = row.replayPath;
     room.phase = "playing";
@@ -6031,6 +6109,9 @@ export class RoomManager {
         agent.setSeatConnectionSource(() => this.seatConnections(room));
         // 튜토리얼 좌석은 결정 제한 시간을 사실상 없앤다 (`TUTORIAL_ROOM_NOTE` 4).
         agent.setTutorial(room.tutorial);
+        // 방장이 대기실에서 고른 제한 시간 묶음을 좌석에 꽂는다 (`ROOM_PACES`).
+        // 판이 서는 시점에 준다 — 대기실에서는 아직 바뀔 수 있는 값이다.
+        agent.setPace(room.pace);
         // 증강 선택은 연금술사 하나로 못 박는다 — 카드 목록 자체는 컨트롤러가
         // 고정하고(`presetDraftChoices`), 좌석은 **답**을 검증한다.
         agent.setForcedDraftPick(room.tutorial ? TUTORIAL_DRAFT_PICK : null);
@@ -6091,6 +6172,21 @@ export class RoomManager {
       extraAugments: contentAugments,
       interRoundDelayMs: this.interRoundDelayMs,
       autoMoveDelayMs: AUTO_MOVE_MS,
+      /*
+       * 최후의 그물은 **이 방의 제한 시간보다 넉넉해야** 한다.
+       *
+       * 그물(`AGENT_DECIDE_TIMEOUT_MS`, 90초)의 전제는 «좌석 자신의 타이머가 항상
+       * 먼저 터진다»이다. 초심자(120초)·왕초보(330초) 방은 그 전제가 깨져서, 아직
+       * 생각 중인 사람의 차례를 그물이 대신 두어 버린다 — 튜토리얼에서 실제로 그렇게
+       * 유국이 났던 것과 같은 사고다(`TUTORIAL_AGENT_TIMEOUT_MS` 주석).
+       *
+       * **숙련자 방은 손대지 않는다.** 그쪽 좌석 최대(첫 증강 75초)는 90초보다 짧게
+       * 고른 값이고(`FIRST_DRAFT_TIMEOUT_MS` 주석이 그 근거를 적어 두었다), 여기서
+       * 값을 얹으면 종전 판의 그물이 이유 없이 달라진다.
+       */
+      ...(room.pace === DEFAULT_ROOM_PACE
+        ? {}
+        : { agentDecideTimeoutMs: paceMaxSeatMs(room.pace) + 60_000 }),
       // 매 게임 새 시드 — 안 넣으면 프로세스 내 모든 게임이 같은 시드를 써서
       // 배패·증강 선택지가 매번 똑같이 반복된다("증강이 초기화 안 됨"의 원인).
       seed: randomInt(0x1_0000_0000),
