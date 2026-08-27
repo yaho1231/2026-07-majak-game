@@ -125,6 +125,17 @@ describe("비대칭 치또이 (chiitoiMixedPairs)", () => {
     expect(decompose(hand, 0, { chiitoiMixedPairs: true })[0]?.form).toBe("chiitoitsu");
   });
 
+  it("같은 패 3장은 «한 쌍 + 교차 쌍»으로 갈라진다 (3삭3장 + 3만)", () => {
+    // 3s×3 + 3m → 3삭3삭 · 3삭3만. 나머지 다섯 쌍은 평범한 동종쌍. 14장.
+    const hand = h("333s3m11m22m44p55p66p");
+    const chiitoi = decompose(hand, 0, { chiitoiMixedPairs: true }).filter(
+      (x) => x.form === "chiitoitsu",
+    );
+    expect(chiitoi.length).toBeGreaterThan(0);
+    // 옵션이 없으면 여전히 불성립(3s가 3장이라 표준 7쌍이 안 된다)
+    expect(decompose(hand, 0).filter((x) => x.form === "chiitoitsu")).toHaveLength(0);
+  });
+
   it("같은 패 4장은 2쌍으로 쓰지 못한다", () => {
     // 1m×4 + 2m·3p·4p·5s·6s 각 2장 = 14장. 같은 패 4장은 금지.
     const bad = h("1111m22m33p44p55s66s");

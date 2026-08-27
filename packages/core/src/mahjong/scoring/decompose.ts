@@ -142,7 +142,7 @@ export interface DecomposeOptions {
   polarEnds?: boolean;
   /**
    * 치또이쯔에서 무늬가 달라도 숫자가 같으면 한 쌍으로 인정한다 (비대칭 치또이) —
-   * 1만+1통도 머리다. 자패는 기존처럼 같은 종류 2장. 같은 패는 최대 2장까지만(4장 금지).
+   * 1만+1통도 머리다. 자패는 기존처럼 같은 종류 2장. 같은 패는 최대 3장까지만(4장 금지).
    * 수패는 랭크별 짝수, 자패는 종류별 짝수여야 7쌍이 성립한다. 표준 치또이의 상위집합.
    */
   chiitoiMixedPairs?: boolean;
@@ -285,13 +285,15 @@ const NUMBER_SUITS: ReadonlySet<Suit> = new Set([Suits.Man, Suits.Pin, Suits.Sou
 
 /**
  * 비대칭 치또이(무늬 무관 rank 머리) 성립 판정 + 대표 쌍 목록.
- * - 같은 패(kind)는 최대 2장(4장·3장 금지) — 표준 치또이의 동일 패 4장 금지 확장.
+ * - 같은 패(kind)는 최대 3장(4장만 금지) — 표준 치또이의 «같은 쌍 두 번 금지»를 옮긴 것이다.
+ *   3장은 «같은 패 2장 한 쌍 + 나머지 1장이 다른 무늬와 짝»이라 쌍이 겹치지 않는다
+ *   (3삭3장+3만 → 3삭3삭 · 3삭3만). 4장이라야 같은 쌍이 두 번 나온다.
  * - 수패는 랭크별 짝수(무늬 무관 짝지음), 자패는 종류별 짝수(자패는 교차 짝 없음).
  * 위를 만족하면 14장이 전부 7쌍으로 갈라진다. 표준 치또이(7종×2)의 상위집합이다.
  * 반환: 성립 시 대표 쌍 kind 7개(표시·구조용, 실제 역 판정은 handKinds로 한다), 아니면 null.
  */
 function asyncChiitoiPairs(hand: readonly TileKind[]): TileKind[] | null {
-  // 같은 kind 최대 2장
+  // 같은 kind 최대 3장 — 4장이라야 같은 쌍이 두 번 나온다
   const byKind = new Map<string, TileKind[]>();
   for (const k of hand) {
     const key = kindKey(k);
@@ -299,7 +301,7 @@ function asyncChiitoiPairs(hand: readonly TileKind[]): TileKind[] | null {
     arr.push(k);
     byKind.set(key, arr);
   }
-  for (const arr of byKind.values()) if (arr.length > 2) return null;
+  for (const arr of byKind.values()) if (arr.length > 3) return null;
 
   // 수패: 랭크별(무늬 무관) 짝수 / 자패: 종류별 짝수
   const numberByRank = new Map<number, TileKind[]>();
@@ -319,7 +321,9 @@ function asyncChiitoiPairs(hand: readonly TileKind[]): TileKind[] | null {
   const pairs: TileKind[] = [];
   for (const arr of numberByRank.values()) {
     if (arr.length % 2 !== 0) return null;
-    for (let i = 0; i < arr.length; i += 2) pairs.push(arr[i] as TileKind);
+    // 같은 패끼리 먼저 붙도록 정렬한다 — 3삭3삭3삭3만이 3삭3삭 · 3삭3만으로 갈라진다.
+    const sorted = [...arr].sort((a, b) => kindKey(a).localeCompare(kindKey(b)));
+    for (let i = 0; i < sorted.length; i += 2) pairs.push(sorted[i] as TileKind);
   }
   for (const arr of honorByKind.values()) {
     if (arr.length % 2 !== 0) return null;
@@ -694,9 +698,9 @@ function asyncChiitoiWithWilds(
   };
   for (const [g, s] of size) {
     if (s % 2 === 0) continue;
-    // 같은 패 2장을 넘지 않는 자리를 그 그룹 안에서 고른다
+    // 같은 패 3장을 넘지 않는 자리를 그 그룹 안에서 고른다
     const slot = ctx.freeKinds.find(
-      (k) => groupOf(k) === g && (count.get(kindKey(k)) ?? 0) < 2,
+      (k) => groupOf(k) === g && (count.get(kindKey(k)) ?? 0) < 3,
     );
     if (slot === undefined) return null;
     bump(slot);
