@@ -103,18 +103,22 @@ describe("rinshan_preview — 영상 정찰", () => {
     return game;
   }
 
-  it("보유자 뷰: 다음 영상패(왕패 맨 앞 1장) 공개, 나머지는 장수만", () => {
+  it("보유자 뷰: 남은 영상패 전부(4장) 공개, 표시패 10장은 장수만", () => {
     const game = setup();
     const st = game.engine.state;
     const view = buildPlayerView(st, "p0", game.engine.rules);
     const zone = zoneOf(view, DEAD_WALL);
 
-    // sys.drawRinshan은 항상 deadWall[0]을 뽑으므로 맨 앞 1장만이 정확한 다음 영상패다.
+    /*
+     * 2026-08-27 버프: 열람 범위가 맨 앞 1장 → **남은 영상패 전부**로 넓어졌다.
+     * 경계는 `rinshanRemaining()`과 같다 — 왕패 길이 − 표시패 블록(10). 국 시작
+     * 시점이라 4장이고, **도라 표시패 구간은 단 한 장도 열리지 않아야 한다**.
+     */
     expect(zone.tileIds).toEqual(
-      (st.zones[DEAD_WALL]?.tileIds ?? []).slice(0, 1),
+      (st.zones[DEAD_WALL]?.tileIds ?? []).slice(0, 4),
     );
-    expect(zone.tileIds).toHaveLength(1);
-    expect(zone.hiddenCount).toBe(13); // 왕패 14장 중 1장만 공개
+    expect(zone.tileIds).toHaveLength(4);
+    expect(zone.hiddenCount).toBe(10); // 왕패 14장 중 표시패 블록 10장은 그대로 비공개
     for (const id of zone.tileIds) expect(view.tiles[id]).toBeDefined();
   });
 

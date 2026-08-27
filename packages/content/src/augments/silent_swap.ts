@@ -2,7 +2,12 @@
  * 정적의 손 (silent_swap, prism) — "아무도 리치를 걸지 않은 조용한 국에서만 열리는 창".
  *
  * 그 국에 리치가 단 하나도 없을 때, 자기 턴에 **상대 세 명의 바닥(버림패 더미)**에서
- * 아무 패나 1장을 골라 손으로 가져온다. 국당 1회. 발동한 국에 화료하면 +2판.
+ * 아무 패나 1장을 골라 손으로 가져온다. 국당 1회.
+ *
+ * 2026-08-27 (사용자 지시, 밸런스 웨이브): **발동 국 화료 +2판을 삭제**하고, 대신
+ * **후리텐이라도 집어 온 그 패로는 쯔모 화료할 수 있게** 풀었다. 판수 보너스는
+ * "보이지 않는 정산 보정"이라 이 카드의 재미가 아니었고, 후리텐 봉쇄는 카드의 유일한
+ * 발동을 자주 무의미하게 만들었다. 이제 순수하게 "남의 바닥에서 한 장 가져오는" 카드다.
  *
  * 설계 결정:
  * - **이 증강만은 무페널티 원칙의 명시적 예외다**(사용자 지정). 리스크는 방총이다 —
@@ -17,9 +22,16 @@
  *   자기 바닥도 후보라, "방금 버린 내 오름패를 도로 집어 후리텐인 채로 화료"가 이 증강의
  *   가장 쉬운 사용법이 되어 있었다. 후보가 수십 장이 되므로 클라이언트는 전용 모달로
  *   바닥을 통째로 펼쳐 보여준다 — payload는 `{ tileId }` 하나로 유지한다.
- * - **집은 패로 나는 것은 남이 버린 패로 나는 것이다.** 날치기(pond_snatch)·무덤 도굴과
- *   같이, 집은 패가 지금의 쯔모패인 동안 `win.tsumoFuriten`을 켜서 후리텐이면 쯔모
- *   화료를 막는다.
+ * - **후리텐 봉쇄는 이 카드에만 없다** (2026-08-27). 날치기(pond_snatch)·무덤 도굴
+ *   (grave_rob)은 집은 패가 지금의 쯔모패인 동안 `win.tsumoFuriten`을 켜서 후리텐이면
+ *   쯔모 화료를 막는다 — **그 둘의 동작은 그대로다.** 이 카드는 그 모디파이어를 아예
+ *   등록하지 않아 표준 쯔모와 같은 판정을 받는다(후리텐은 론만 막는다).
+ *   악용 경로는 규칙이 아니라 **후보 단계**에서 이미 막혀 있다: 자기 바닥은 대상이
+ *   아니고(`cannot take from your own pond`), 누명(frame_up)으로 남의 바닥에 심은
+ *   내 버림패도 `discardedByPlayer`가 걸러낸다. 즉 "방금 내가 버린 오름패를 도로
+ *   집어 후리텐 화료"는 여전히 불가능하다.
+ * - 집어 온 패의 표식(`takenKey`)은 **남긴다** — 무르기(take_back)가 `riverTaken.ts`로
+ *   이 값을 읽어 "바닥에서 온 쯔모패는 패산에 묻을 수 없다"를 지킨다.
  * - 원주인의 바닥 기록(discardedKinds)은 **건드리지 않는다** — 바닥에서 패가 빠져도
  *   후리텐 판정은 이 이력을 쓰므로 그대로 둬야 안전하다.
  * - 리치가 하나라도 걸린 국에서는 발동할 수 없다. "정적"이 이 증강의 조건이다.
@@ -46,7 +58,6 @@ import type {
   TileId,
 } from "@majak/core";
 import {
-  addWinHanBonus,
   flagOf,
   publishUsesLeft,
   replaceDrawnTile,
@@ -61,8 +72,10 @@ import { handAlteredMark } from "./handAltered.js";
 const ID = "silent_swap";
 const ACTION = "silent_take";
 const EVENT = "SilentSwapTaken";
-/** 발동한 국에 화료하면 얻는 추가 판수 (구 +4500점 → 3판 → 2판, 2026-07-26) */
-const WIN_BONUS_HAN = 2;
+/*
+ * ⚠ 삭제됨 (2026-08-27, 사용자 지시): `WIN_BONUS_HAN = 2` — 발동 국 화료 +2판.
+ * 구 +4500점 → 3판 → 2판(2026-07-26)을 거쳐 0으로. 되살리지 말 것.
+ */
 
 /** 국당 1회 — roundKey가 섞여 국이 바뀌면 자동 만료 */
 const usedKey = (state: GameState, h: PlayerId): string =>
@@ -163,9 +176,9 @@ export const silentSwap: AugmentDef = defineAugment({
   complexity: 2,
   name: "정적의 손",
   description:
-    "(매 국 1회 · 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 **상대 세 명의 바닥**에서 버림패 1장을 골라 손으로 가져온다. 발동한 국에 화료하면 +2판(역만 제외).",
+    "(매 국 1회 · 그 국에 아무도 리치를 걸지 않았을 때) 자기 순에 **상대 세 명의 바닥**에서 버림패 1장을 골라 손으로 가져온다. **내가 후리텐이어도 그 패로 쯔모 화료할 수 있다.**",
   detail:
-    "내 바닥은 대상이 아니고, 원래 주인의 후리텐은 그대로 남는다. 가져온 패는 그 순의 쯔모패가 되어 쯔모 화료로 값하지만, **내가 후리텐이면 그 패로는 화료할 수 없다**.",
+    "내 바닥은 대상이 아니고, 원래 주인의 후리텐은 그대로 남는다. 가져온 패는 그 순의 쯔모패가 되어 쯔모 화료로 값한다.\n\n후리텐이 이 화료를 막지 않는 것은 이 카드뿐이다 — 날치기나 무덤 도굴로 주워 온 패에는 여전히 후리텐이 걸린다. 다만 내가 버린 패는 남의 바닥에 놓여 있더라도 가져올 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -256,33 +269,21 @@ export const silentSwap: AugmentDef = defineAugment({
       return out;
     });
 
-    /**
-     * 집은 패가 지금의 쯔모패인 동안, 이 보유자의 **쯔모 화료에 후리텐을 태운다**.
-     * 남이 버린 패로 나는 것이므로 표준 론과 같은 판정을 받아야 한다
-     * (날치기 pond_snatch·무덤 도굴 grave_rob과 같은 규약).
+    /*
+     * ⚠ **`win.tsumoFuriten` 모디파이어를 일부러 등록하지 않는다** (2026-08-27 사용자 지시).
+     *
+     * 날치기(pond_snatch)·무덤 도굴(grave_rob)은 각자 자기 파일에서 이 모디파이어를
+     * 등록해 "집은 패로는 후리텐 쯔모 불가"를 지킨다 — 규칙 자체는 코어에 그대로 있고,
+     * 그 둘의 동작도 그대로다. 이 카드만 그 등록을 빼서 후리텐이어도 집어 온 패로
+     * 쯔모 화료할 수 있다. 규칙을 전역으로 끄는 것이 아니라 **이 배선만 없는** 형태다.
+     *
+     * 판수 보너스(addWinHanBonus)도 같은 날 함께 삭제했다 — 파일 상단 주석 참고.
      */
-    ctx.engine.rules.addModifier<boolean>("win.tsumoFuriten", {
-      source: ctx.instanceId,
-      layer: ctx.layer,
-      apply: (cur, rctx) => {
-        if (rctx.playerId !== holder) return cur;
-        const state = rctx.state as GameState | undefined;
-        if (state === undefined) return cur;
-        const taken = state.augmentData[takenKey(state, holder)];
-        if (typeof taken !== "number") return cur;
-        return state.round.lastDrawnTile === taken ? true : cur;
-      },
-    });
-
-    // 발동한 국에 화료하면 +2판
-    addWinHanBonus(ctx, (state) =>
-      flagOf(state, usedKey(state, holder)) ? WIN_BONUS_HAN : 0,
-    );
   },
   /**
    * 봇: 상대 세 바닥을 통틀어 **내 손을 진전시키는 패**(짝을 만들거나 슌쯔 이웃)가 있으면
    * 가져온다 — 날치기(pond_snatch)와 같은 판단이다. 텐파이면 대기를 흐트러뜨리지
-   * 않도록 손대지 않는다. (발동 국 화료 시 +2판이 따라온다.)
+   * 않도록 손대지 않는다.
    */
   bot: plan({
     intent: "advance",

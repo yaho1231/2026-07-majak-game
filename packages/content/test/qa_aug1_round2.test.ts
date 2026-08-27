@@ -185,8 +185,17 @@ describe("확정 2 · 책임전가(blame_shift)의 끝수는 쏜 사람이 흡�
       ),
     );
     const d = out.deltas as Record<string, number>;
-    expect(sum(d)).toBe(0);
-    expect(d["p0"]).toBe(8000); // 홀더 수령액 불변
+    /*
+     * 2026-08-27 사양 변경: 론 화료 +2판이 얹힌다(뱅크 발행). 이 테스트가 보는 것은
+     * **지불자 분산의 끝수 처리**이므로 그 가산분은 홀더 줄에서만 따로 확인하고,
+     * 재배선 자체(=지불자 세 명의 몫)는 종전 그대로여야 한다.
+     */
+    const bonus = ((out.augPoints ?? []) as { player: string; augId: string; points: number }[])
+      .filter((n) => n.player === "p0" && n.augId === "blame_shift")
+      .reduce((a, n) => a + n.points, 0);
+    expect(bonus).toBeGreaterThan(0);
+    expect(sum(d)).toBe(bonus);
+    expect(d["p0"]).toBe(8000 + bonus); // 재배선 자체는 홀더 수령액을 건드리지 않는다
     // 쏜 사람(p1)이 끝수까지 진다 — 예전에는 -2600으로 **가장 적게** 냈다
     expect(d["p1"]).toBe(-2800);
     expect(d["p2"]).toBe(-2600);

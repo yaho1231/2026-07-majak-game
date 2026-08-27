@@ -2,8 +2,12 @@
  * 책임전가 (blame_shift, prism) — "방총의 책임을 셋으로 흩는다".
  *
  * 보유자가 **론으로 화료**하면 그 지불이 쏜 한 사람에게 몰리지 않고 **세 명(나 제외
- * 전원)에게 쯔모처럼 3분할**된다. 보유자가 받는 총액은 그대로다 — 손해 보는 사람도,
- * 이득 보는 사람도 없이 **지불자만 분산**된다(§0 무페널티: 홀더 수령액 불변).
+ * 전원)에게 쯔모처럼 3분할**된다.
+ *
+ * 2026-08-27 (사용자 지시, 밸런스 웨이브): 여기에 **론 화료 +2판**을 얹었다. 예전에는
+ * 지불자만 재배선할 뿐 보유자의 순이득이 정확히 0이라, 카드를 뽑아도 내 점수가 한 푼도
+ * 움직이지 않았다 — "누가 무느냐"만 바뀌는 카드는 뽑는 사람에게 보상이 없다. 거울상인
+ * 덤터기(`scapegoat`)의 **쯔모 +2판**과 대칭을 이룬다. 쯔모 화료에는 붙지 않는다.
  *
  * 구현: 순수 패시브 인터셉터. 액티브 버튼·클라 배선 없음(발동은 론 그 자체).
  * - `ROUND_SETTLED` 인터셉터에서 보유자의 론 WinInfo를 찾고, 쏜 사람(from)의 지불
@@ -16,9 +20,11 @@
 
 import { defineAugment, ROUND_SETTLED, SETTLE_STAGE } from "@majak/core";
 import type { AugmentDef, PlayerId, RoundSettledPayload } from "@majak/core";
-import { settleInterceptor, withAugNoteFor } from "../util.js";
+import { addWinHanBonus, settleInterceptor, withAugNoteFor } from "../util.js";
 
 const ID = "blame_shift";
+/** 론 화료에 얹히는 판수 (2026-08-27 사용자 지시 — 덤터기의 쯔모 +2판과 대칭) */
+const RON_BONUS_HAN = 2;
 
 /** total(양수)을 n명에게 100점 단위로 최대한 고르게 나눈다. 합은 정확히 total.
  *  마지막 몫이 나머지를 흡수한다(호출부에서 쏜 사람을 마지막에 둔다). */
@@ -72,11 +78,20 @@ export const blameShift: AugmentDef = defineAugment({
   complexity: 2,
   name: "책임전가",
   description:
-    "(상시) 내가 론으로 화료하면 그 지불이 쏜 사람 혼자가 아니라 세 명에게 쯔모처럼 분담된다.",
+    "(상시) 내가 론으로 화료하면 **+2판**을 얻고, 그 지불이 쏜 사람 혼자가 아니라 세 명에게 쯔모처럼 분담된다.",
   detail:
-    "내가 받는 총액은 변하지 않고 지불자만 분산된다. 더블론이면 화료자를 뺀 나머지끼리 나누므로 3분할이 아니라 2분할이 된다.\n\n쯔모 화료는 이미 분담이므로 관여하지 않고, 100점 단위로 떨어지지 않는 끝수는 원래 쏜 사람이 흡수한다.",
+    "판수를 빼면 내가 받는 총액은 변하지 않고 지불자만 분산된다. 더블론이면 화료자를 뺀 나머지끼리 나누므로 3분할이 아니라 2분할이 된다.\n\n쯔모 화료에는 판수도 붙지 않고 분담도 이미 되어 있어 관여하지 않으며(역만에는 판수가 얹히지 않는다), 100점 단위로 떨어지지 않는 끝수는 원래 쏜 사람이 흡수한다.",
   install(ctx) {
     const { holder } = ctx;
+
+    /*
+     * 론 화료에 +2판. 화료 유형은 **내 WinInfo**로 본다 — 더블론에서 남이 론했다고
+     * 내 쯔모에 붙으면 안 되고, 반대로 내가 론한 국에 남이 쯔모할 수는 없다.
+     * (`addWinHanBonus`는 역만에서 자동으로 무시된다.)
+     */
+    addWinHanBonus(ctx, (_state, info) =>
+      info.winType === "ron" ? RON_BONUS_HAN : 0,
+    );
 
     /*
      * 정산 단계: Redistribute — 지불자만 재배선한다 — 총액·홀더 수령액 불변. 재분배가

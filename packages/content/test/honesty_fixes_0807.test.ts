@@ -359,13 +359,13 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
     expect(roundChannel(game, "view:*:invincible:p0")).toBe("이번 국 론 불가");
   });
 
-  it("영상 정찰: 교환은 전원에게 공개된다 (다음에 깡을 치는 사람이 알아야 한다)", () => {
+  it("영상 정찰: 순서지정·교환은 전원에게 공개된다 (다음에 깡을 치는 사람이 알아야 한다)", () => {
     const state = withAugments(scene(), { p0: ["rinshan_preview"] });
     const game = gameWith(state, [[rinshanPreview, "p0"]]);
     const r = game.engine.submit({
       player: "p0",
-      type: "rinshan_pull",
-      payload: {},
+      type: "rinshan_arrange",
+      payload: { order: [0, 1, 2, 3], take: 0 },
     });
     expect(r.ok).toBe(true);
     expect(typeof roundChannel(game, "view:*:rinshan_preview:p0")).toBe("string");

@@ -161,13 +161,14 @@ describe("정적의 손 — 집은 패로 나는 화료", () => {
     expect(promptOptions(flow, status).some((o) => o.type === "win")).toBe(true);
   });
 
-  it("후리텐이면 남의 바닥에서 집었어도 그 패로 화료할 수 없다", () => {
+  // 2026-08-27 사양 변경(사용자 지시): 정적의 손만 후리텐 봉쇄를 푼다.
+  it("후리텐이어도 집어 온 패로는 쯔모 화료할 수 있다", () => {
     const { game, flow } = start(scene("silent_swap", true), silentSwap);
     const tileId = pondThreeMan(game.engine.state, "p1");
     const status = flow.submit("p0", { type: "silent_take", payload: { tileId } });
     expect(game.engine.state.round.lastDrawnTile).toBe(tileId);
-    expect(winValidate(game)).toBe("furiten");
-    expect(promptOptions(flow, status).some((o) => o.type === "win")).toBe(false);
+    expect(winValidate(game)).toBeNull();
+    expect(promptOptions(flow, status).some((o) => o.type === "win")).toBe(true);
   });
 
   it("내 바닥의 패는 후보에 없고 집으려 해도 거부된다", () => {

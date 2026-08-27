@@ -1,10 +1,15 @@
 /**
  * 천리안 (tenpai_scan, prism) — "지금 누가 완성 직전인지, 한 번 꿰뚫어 본다".
  *
- * 매 국 1회, 자기 턴에 선언하면 그 순간 **텐파이인 상대가 누구인지**가
- * 오직 보유자에게만 공개된다. 손패의 내용이나 대기패까지 보여 주는 게 아니라,
- * "이 사람은 완성 직전이다 / 아니다"라는 한 겹의 정보만 준다. 손을 바꾸지도,
- * 점수를 옮기지도 않는다 — 순수하게 판을 읽는 정보 능력이다.
+ * 매 국 1회, 자기 턴에 선언하면 그 순간 **텐파이인 상대가 누구인지**와
+ * **그 대기가 얼마나 넓은지**가 오직 보유자에게만 공개된다. 손패의 내용이나 대기패
+ * 자체를 보여 주는 게 아니라, "이 사람은 완성 직전이다 / 아니다"와 "좁다·보통·넓다"
+ * 두 겹의 정보만 준다. 손을 바꾸지도, 점수를 옮기지도 않는다 — 순수하게 판을 읽는
+ * 정보 능력이다.
+ *
+ * 2026-08-27 (사용자 지시 "대기폭 힌트 지급") 버프: 대기 폭 3단계 힌트를 함께 준다.
+ * 대기패 자체는 여전히 공개하지 않는다 — 그건 선언 간파(peek_riichi_waits)의 무대다.
+ * granularity의 근거는 아래 `widthOf` 주석.
  *
  * 설계: docs/16_AUGMENT_REDESIGN.md §2b.
  *
@@ -28,11 +33,11 @@
 import {
   augmentDataSet,
   defineAugment,
-  isTenpai,
   meldCountOf,
   playerAtSeat,
   scoringOptionsOf,
   winHandKindsOf,
+  winningKinds,
 } from "@majak/core";
 import type {
   ActionDef,
@@ -58,23 +63,54 @@ const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
 /** 스캔 결과(텐파이인 상대 id 배열)를 실을 보유자 전용 뷰 채널 */
 const resultKey = (holder: PlayerId): string => roundViewKey(holder, ID);
 
-/** 나를 뺀 상대 중 지금 텐파이인 사람들의 id (채점 변형 반영) */
+/**
+ * 대기 폭 힌트 — **구간으로 뭉갠 3단계**다 (2026-08-27 사용자 지시 "대기폭 힌트 지급").
+ *
+ * ⚠ 정확한 종류 수를 그대로 주면 안 된다. 바닥·후로가 공개돼 있는 상태에서 "3종"이라는
+ * 숫자는 손 모양 후보를 급격히 좁혀, 사실상 대기패를 특정할 수 있게 된다. 그건
+ * **선언 간파(peek_riichi_waits)의 무대**이고 이 카드가 밟을 자리가 아니다.
+ * 그래서 값이 아니라 «밀지 접을지»에 필요한 굵기만 남긴다.
+ *
+ *   좁다   1~2종 — 통과할 여지가 있다
+ *   보통   3~4종
+ *   넓다   5종 이상 — 무엇을 버려도 위험하다
+ *
+ * 경계를 2/4에 둔 이유: 단기·간짱(1종)과 량면(2종)이 같은 «좁다»로 묶여 어느 쪽인지
+ * 드러나지 않고, 5종 이상은 대개 다면장이라 «아무 패나 위험»이라는 실전 판단과 그대로
+ * 맞아떨어진다.
+ */
+type WaitWidth = "narrow" | "mid" | "wide";
+
+const widthOf = (kinds: number): WaitWidth =>
+  kinds <= 2 ? "narrow" : kinds <= 4 ? "mid" : "wide";
+
+/**
+ * 나를 뺀 상대 중 지금 텐파이인 사람들 (채점 변형 반영).
+ *
+ * `winningKinds`로 대기 종류를 직접 세어 텐파이 판정과 폭을 **한 번에** 얻는다 —
+ * `isTenpai`는 내부적으로 같은 계산을 하고 길이 > 0만 보던 것이라, 계보가 갈라지지
+ * 않는다(scoringOptionsOf를 그 상대 기준으로 넘기는 것도 그대로다).
+ */
 function tenpaiOpponents(
   state: GameState,
   rules: RuleRegistry,
   holder: PlayerId,
-): PlayerId[] {
-  return state.players
-    .filter((p) => p.id !== holder)
-    .filter((p) =>
-      isTenpai(
-        winHandKindsOf(state, rules, p.id),
-        meldCountOf(state, p.id),
-        undefined,
-        scoringOptionsOf(state, rules, p.id),
-      ),
-    )
-    .map((p) => p.id);
+): { players: PlayerId[]; widths: WaitWidth[] } {
+  const players: PlayerId[] = [];
+  const widths: WaitWidth[] = [];
+  for (const p of state.players) {
+    if (p.id === holder) continue;
+    const waits = winningKinds(
+      winHandKindsOf(state, rules, p.id),
+      meldCountOf(state, p.id),
+      undefined,
+      scoringOptionsOf(state, rules, p.id),
+    );
+    if (waits.length === 0) continue;
+    players.push(p.id);
+    widths.push(widthOf(waits.length));
+  }
+  return { players, widths };
 }
 
 const scanAction: ActionDef<Record<string, never>> = {
@@ -100,7 +136,7 @@ const scanAction: ActionDef<Record<string, never>> = {
      * 감안할 수 있다(docs/25 정보 계열 — 스냅샷 표시 잔류).
      */
     augmentDataSet(resultKey(req.player), {
-      players: tenpaiOpponents(state, rules, req.player),
+      ...tenpaiOpponents(state, rules, req.player),
       turn: state.round.turnCount,
     }),
     // 국 단위 사용 카운터
@@ -118,9 +154,9 @@ export const tenpaiScan: AugmentDef = defineAugment({
   complexity: 2,
   name: "천리안",
   description:
-    "(매 국 1회) 자기 순에 선언하면 그 순간 텐파이인 상대가 누구인지 나에게만 밝혀진다.",
+    "(매 국 1회) 자기 순에 선언하면 그 순간 텐파이인 상대가 누구인지, 그리고 그 대기가 얼마나 넓은지가 나에게만 밝혀진다.",
   detail:
-    "리치를 걸지 않은 다마텐도 잡아내지만, 손패 내용이나 대기패까지는 알 수 없다. 결과는 선언한 순간의 스냅샷이다.\n\n발동 사실도 밝혀진 목록도 상대에게는 공개되지 않는다.",
+    "리치를 걸지 않은 다마텐도 잡아내지만, 손패 내용이나 대기패까지는 알 수 없다. 대기 폭은 **좁다(1~2종) · 보통(3~4종) · 넓다(5종 이상)** 세 단계로만 나오고 정확한 숫자는 주지 않는다.\n\n결과는 선언한 순간의 스냅샷이다 — 몇 순 기준인지가 함께 표시된다. 발동 사실도 밝혀진 목록도 상대에게는 공개되지 않는다.",
   // 봇: 발동 타이밍(언제가 판이 무르익은 순간인지)을 정량화하기 어렵고,
   //     정보만 주므로 잘못 써도 자해가 없다 — 판단이 필요한 액티브라 봇에게 맡기지 않는다.
   install(ctx) {

@@ -1,8 +1,13 @@
 /**
  * 죽기살기 (die_hard, gold).
- * 동풍전 1·반장전 2회, 국 정산 결과 점수가 0 미만이 되면 **마이너스로 떨어진 만큼을
- * 그대로 플러스로 되돌려 받는다** — −8000이면 그 자리에서 +8000이 된다.
- * 밑바닥을 친 깊이가 곧 반등폭이라 "크게 맞을수록 크게 돌아온다".
+ * **게임당 단 한 번**, 정산 시점의 내 점수가 시작 점수의 절반 이하(≤12,500)이면
+ * 그 국의 내 실점이 **그대로 플러스로 뒤집힌다** — 8,000점을 방총하면 상대는
+ * +8,000을 받고 나도 뱅크에서 +8,000을 받는다(차액은 뱅크가 낸다).
+ *
+ * ⚠ 2026-08-27 사용자 지시로 **발동 조건을 전면 교체**했다. 예전에는 "정산 결과 점수가
+ * 0 미만"이어야 켜졌다 — 실제로는 거의 오지 않는 순간이라 카드가 죽어 있었다. 이제
+ * 바닥권(시작 점수 절반 이하)이면 마이너스로 내려갈 필요 없이 켜진다. 대신 매치
+ * 횟수(동1/반2)를 **게임당 1회**로 줄였다(사용자 "단 한번").
  *
  * 구현: 정산 인터셉터(SETTLE_STAGE.Shield) — 배수·가산·이동이 전부 끝난 **최종 손실**을
  * 보고 deltas를 직접 고친다. 방어이므로 반드시 마지막 단계여야 한다(settleStages 규약).
@@ -28,7 +33,6 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
-  matchUses,
   publishUsesLeft,
   roundViewKey,
   settleInterceptor,
@@ -38,17 +42,28 @@ import {
 const ID = "die_hard";
 
 /**
- * 반등 폭의 상한 — **판의 시작 점수 한 벌**(`DEFAULT_HANCHAN_CONFIG.startScore`).
+ * **판의 시작 점수 한 벌**(`DEFAULT_HANCHAN_CONFIG.startScore`).
  *
  * 상수로 두는 이유: 시작 점수는 매치 설정(`HanchanController`)에 있고 엔진 상태에는
  * 실리지 않는다. 설정을 바꿔 쓰게 될 때 함께 손봐야 하는 자리다.
+ * 반등 폭의 상한이자, 발동 문턱(절반 = 12,500)의 밑값이기도 하다 — 두 값이 같은
+ * 출처에서 나와야 설정을 바꿀 때 한쪽만 어긋나지 않는다.
  */
-const REVIVE_CAP = 25_000;
+const START_SCORE = 25_000;
 
-/** 매치당 발동 횟수 카운터 (게임 단위). 동풍전 1·반장전 2회. */
+/** 반등 폭의 상한 — 시작 점수 한 벌 */
+const REVIVE_CAP = START_SCORE;
+
+/** 발동 문턱 — 정산 시점 내 점수가 이 이하이면 켜진다 */
+const DESPERATE_AT = START_SCORE / 2;
+
+/** 게임당 발동 횟수 — 모드와 무관하게 단 1회 (2026-08-27 사용자 확정) */
+const MAX_USES = 1;
+
+/** 게임당 발동 횟수 카운터. */
 const usesKey = (h: PlayerId): string => `${ID}:uses:${h}`;
 const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
-  counterOf(state, usesKey(h)) < matchUses(state);
+  counterOf(state, usesKey(h)) < MAX_USES;
 
 /** 이번 정산에서 부활한 보유자 목록 (인터셉터 → reaction 신호) */
 interface ReviveMark {
@@ -62,9 +77,9 @@ export const dieHard: AugmentDef = defineAugment({
   complexity: 1,
   name: "죽기살기",
   description:
-    "(동풍전 1회 · 반장전 2회) 국 정산 결과 점수가 0 아래로 떨어지면, 내려간 만큼이 그대로 플러스로 뒤집힌다 — −8,000점이 되면 즉시 +8,000점.",
+    "(게임 내 1회) 내 점수가 12,500점 이하일 때 국에서 잃은 점수가 그대로 플러스로 뒤집힌다 — 8,000점을 방총하면 상대도 나도 +8,000점.",
   detail:
-    "국 정산이 끝난 점수가 마이너스면 내려간 깊이가 그대로 플러스가 된다. 토비 판정보다 먼저 반영되어 그 자리에서 되살아난다.\n\n되돌아오는 폭은 판의 시작 점수(25,000) 한 벌까지다.",
+    "(게임 내 1회) 국 정산 시점에 내 점수가 시작 점수의 절반(12,500) 이하이면, 그 국에서 내가 잃을 점수의 부호가 뒤집힌다. 상대가 받을 몫은 그대로 받고, 차액은 뱅크가 낸다 — 8,000점을 방총하면 상대 +8,000, 나도 +8,000이다.\n\n뒤집혀 돌아오는 폭은 판의 시작 점수(25,000) 한 벌까지다. 점수가 늘어나는 국에는 발동하지 않고 횟수도 줄지 않는다.",
   /*
    * 상호 배제 — 죽기살기는 **크게 잃는 순간**을 자원으로 쓴다. 그 순간을 없애는 증강과
    * 함께 들면 수비가 성공할수록 죽기살기의 수익이 0에 수렴한다(docs/21 §C-3).
@@ -82,6 +97,11 @@ export const dieHard: AugmentDef = defineAugment({
    *
    * 2026-08-18 사용자 확정: 효과를 바꾸는 대신 **픽 단계에서 상호 배제**한다(C-1
    * 스텔스 리치와 같은 방식). 배제는 대칭이라 이쪽 한 줄로 양방향이 잠긴다.
+   *
+   * 2026-08-27 재검토(트리거 교체 뒤): **네 줄 모두 유지**한다. 트리거가 "0 미만"에서
+   * "점수 절반 이하"로 느슨해졌어도 **수익의 원천은 여전히 내 실점**이라, 실점을 지우는
+   * 증강과의 역시너지는 그대로다. `yakuman_shield`는 그에 더해 같은 Shield 단계·같은
+   * 자리라는 순서 문제(위)가 남아 있어 더더욱 유지해야 한다.
    */
   conflicts: ["yakuman_shield", "invincible", "no_ron_pact", "always_tenpai"],
   install(ctx) {
@@ -89,19 +109,26 @@ export const dieHard: AugmentDef = defineAugment({
 
     // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
     publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
-      total: matchUses(state),
+      left: Math.max(0, MAX_USES - counterOf(state, usesKey(holder))),
+      total: MAX_USES,
     }));
 
     // 방어는 반드시 마지막 단계 — 어떤 경로로 생긴 손실이든 **최종값**을 봐야 한다.
     settleInterceptor(ctx, SETTLE_STAGE.Shield, (event, ic) => {
       const p = event.payload as RoundSettledPayload & ReviveMark;
       if (!hasUsesLeft(ic.state, holder)) return event;
-      const before = ic.state.players.find((pl) => pl.id === holder)?.score ?? 0;
-      const after = before + (p.deltas[holder] ?? 0);
-      if (after >= 0) return event;
       /*
-       * after=-8000 → 최종 +8000. 부호가 뒤집힌다.
+       * 발동 문턱은 **정산 시점(= 이 국의 증감을 적용하기 전) 내 점수**다. 정산 뒤
+       * 점수로 보면 "이 국에 크게 맞아서 절반 아래로 내려간" 사람까지 켜져 버려
+       * 사용자가 말한 «이미 바닥권인 사람»의 카드가 아니게 된다.
+       */
+      const before = ic.state.players.find((pl) => pl.id === holder)?.score ?? 0;
+      if (before > DESPERATE_AT) return event;
+      const loss = p.deltas[holder] ?? 0;
+      if (loss >= 0) return event; // 잃는 국에만 — 버는 국에는 횟수도 안 쓴다
+      /*
+       * loss=-8000 → 최종 +8000. 부호가 뒤집힌다. 상대의 수령액은 건드리지 않으므로
+       * 차액 16,000은 뱅크가 낸다(사용자 예시 그대로).
        *
        * ⚠ 다만 **되돌아오는 폭은 시작 점수(25,000) 한 벌까지다** (2026-08-23 QA
        * synergy3 score 확정 3). 손실을 한 사람에게 몰아 주는 증강(덤터기·눈먼 총알)과
@@ -115,8 +142,8 @@ export const dieHard: AugmentDef = defineAugment({
        * 이 게임에서 "한 사람 몫"의 자연스러운 크기이고, 카드의 예시(−8,000 → +8,000)는
        * 그 아래라 한 글자도 달라지지 않는다.
        */
-      const revived = Math.min(-after, REVIVE_CAP);
-      const adjust = revived - after;
+      const revived = Math.min(-loss, REVIVE_CAP);
+      const adjust = revived - loss;
       return {
         type: event.type,
         payload: {

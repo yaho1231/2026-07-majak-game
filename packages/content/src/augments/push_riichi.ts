@@ -9,6 +9,14 @@
  * 열면 멘젠이 깨져 조건이 안 서므로 그 국은 넘길 수 있다 — 텐파이를 늦추거나 싸게 여는
  * 것이 회피 루트다.
  *
+ * 2026-08-27 (사용자 지시, 밸런스 웨이브): **내가 떠밀어 리치를 걸게 만든 바로 그 사람을
+ * 직격 론으로 잡으면 +3판.** 이 카드는 파워 티어 23점으로 카탈로그 최하위권이었다 —
+ * 상대에게 리치봉 1,000점과 일발·우라도라를 쥐여 주면서 내가 얻는 것은 "다마텐을 못 쓴다"는
+ * 정보뿐이라, 순수 손해로 끝나는 국이 흔했다. 판수는 이웃 카드 카운터(`counter`)의
+ * "선리치자 직격 론 +3판"과 같은 값으로 맞췄다 — 조건의 무게가 같다(내가 지목한 한 사람에게서,
+ * 론으로, 그 국에). 원수 한정 +2판인 복수자(`avenger`)보다 한 판 높은 것은 이쪽이
+ * **미리 지목한 한 사람**으로 좁혀져 있고 상대에게 리치라는 이득을 먼저 건네기 때문이다.
+ *
  * ⚠ 예전에는 낙인이 **국을 넘어** 살아남았다. 그런데 "매 국 1회" 표식(usedKey)은 낙인을
  * **찍은 국**에 찍히므로, E1에 찍은 낙인이 E2에 터지면 E2에는 표식이 없어 **같은 국에
  * 낙인을 한 번 더** 찍을 수 있었다(2026-08-12 사용자 보고: "국이 지나갔는데 남아 있고
@@ -44,7 +52,13 @@ import type {
   TileDiscardedPayload,
   TileKind,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundViewKey, stringOf } from "../util.js";
+import {
+  addWinHanBonus,
+  flagOf,
+  publishUsesLeft,
+  roundViewKey,
+  stringOf,
+} from "../util.js";
 import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 import { plan } from "./botPlan.js";
@@ -63,6 +77,17 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
  */
 const brandKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "brand", state, h);
+/**
+ * **내가 실제로 떠밀어 리치를 걸게 만든 사람** (국 단위, 없으면 null).
+ *
+ * `brandKey`는 리치가 성립하는 순간 비워지므로(낙인 소진) 화료 시점에는 아무 흔적이
+ * 남지 않는다 — 직격 보너스를 판정하려면 별도 기록이 필요하다. **강제 리치일 때만**
+ * 적는다: 낙인 대상이 스스로 건 리치는 이 카드가 한 일이 아니다.
+ */
+const forcedKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "forced", state, h);
+/** 떠밀린 그 사람을 직격 론으로 잡았을 때 얻는 판수 (카운터의 선리치자 직격과 같은 값) */
+const DIRECT_HIT_HAN = 3;
 /** 낙인 표시 채널 (전원 공개, 국 스코프 — 국 경계에서 엔진이 지운다) */
 const brandViewKey = (h: PlayerId): string => roundViewKey("*", `${ID}:${h}`);
 /** 강제 리치 발동 연출 채널 (전원 공개, 국 스코프) */
@@ -134,9 +159,9 @@ export const pushRiichi: AugmentDef = defineAugment({
   complexity: 2,
   name: "등 떠밀기",
   description:
-    "(매 국 1회) 자기 순에 상대 한 명에게 낙인을 찍는다(전원 공개). 그가 리치 가능한 상태에서 패를 버리는 순간 그 버림이 강제 리치가 된다.",
+    "(매 국 1회) 자기 순에 상대 한 명에게 낙인을 찍는다(전원 공개). 그가 리치 가능한 상태에서 패를 버리는 순간 그 버림이 강제 리치가 된다. 그렇게 떠민 사람을 **직격 론**으로 잡으면 **+3판**.",
   detail:
-    "낙인자가 멘젠 텐파이로 패를 버리려 하면 리치봉이 강제로 던져진다 — 다마텐으로 숨을 수 없다. 리치봉을 낼 점수와 패산이 남아 있어야 성립한다. 후로한 손이나 리치가 봉인된 손에는 조건이 서지 않는다.\n\n낙인은 찍은 국 동안만 살아 있고, **강제든 스스로 건 것이든** 리치가 성립하거나 국이 끝나면 소멸한다.",
+    "내가 떠밀어 리치를 걸게 만든 바로 그 사람의 버림패로 화료하면 +3판을 얻는다(역만 제외). 낙인만 찍고 리치가 터지지 않았거나, 그가 스스로 건 리치이거나, 다른 사람에게 론하거나 쯔모로 나면 붙지 않는다.\n\n낙인자가 멘젠 텐파이로 패를 버리려 하면 리치봉이 강제로 던져진다 — 다마텐으로 숨을 수 없다. 리치봉을 낼 점수와 패산이 남아 있어야 성립한다. 후로한 손이나 리치가 봉인된 손에는 조건이 서지 않는다.\n\n낙인은 찍은 국 동안만 살아 있고, **강제든 스스로 건 것이든** 리치가 성립하거나 국이 끝나면 소멸한다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -152,6 +177,20 @@ export const pushRiichi: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(brandAction);
     }
+
+    /*
+     * 떠밀린 그 사람에게서 **직격 론**으로 화료하면 +3판.
+     *
+     * 대상은 `forcedKey`가 단일 진실이다 — 낙인만 찍고 터지지 않았거나, 대상이 스스로
+     * 리치를 걸어 낙인이 소진된 국에는 값이 없어 0판이다. 다른 사람에게 론했거나
+     * 쯔모로 났으면 붙지 않는다. (`addWinHanBonus`는 역만에서 자동으로 무시된다.)
+     */
+    addWinHanBonus(ctx, (state, info) => {
+      if (info.winType !== "ron") return 0;
+      const forced = stringOf(state, forcedKey(state, holder));
+      if (forced === null || forced === "") return 0;
+      return info.from === forced ? DIRECT_HIT_HAN : 0;
+    });
 
     // 낙인 대상의 버림을 가로채, 리치 성립 조건이면 강제 리치로 만든다.
     ctx.interceptor(TILE_DISCARDED, (event, ic) => {
@@ -211,6 +250,8 @@ export const pushRiichi: AugmentDef = defineAugment({
        */
       if (p.riichiForced !== holder) return;
       rc.emit(augmentDataSet(firedViewKey(holder), target));
+      // 직격 보너스의 근거 — 낙인이 비워진 뒤에도 "내가 떠민 사람"이 남아야 한다.
+      rc.emit(augmentDataSet(forcedKey(rc.state, holder), target));
     });
 
     /*

@@ -6,7 +6,7 @@
  * 한쪽이 다른 쪽의 하위호환처럼 읽혔다(docs/17 §개편 후보). 이쪽은 무대를 **패산**으로 옮긴다.
  *
  * ① 열람(상시): 패산 **맨 밑 3장**이 보유자에게만 보인다.
- * ② 액티브(매 순 1회): 자기 순에 선언하면 **다음 쯔모를 패산 위가 아니라 맨 밑에서** 빼온다.
+ * ② 액티브(2순에 1회 — 2026-08-27 밸런스, 아래 COOLDOWN_TURNS 참고): 자기 순에 선언하면 **다음 쯔모를 패산 위가 아니라 맨 밑에서** 빼온다.
  *    3장 중에서 고르는 게 아니다 — 늘 맨 아래 한 장이다. 열람 3장은 "밑장을 세 번 빼면
  *    무엇이 순서대로 나오는가"를 알려 주는 예고편이고, 그래서 미리 대기를 설계할 수 있다.
  *
@@ -34,7 +34,7 @@
  *   Rule #4(대응 가능)의 전제이고, 정보 공개는 페널티가 아니다(docs/10 §0).
  * - **리치 중에도 쓸 수 있다.** 뽑는 자리만 바꾸므로 손이 잠긴 것과 충돌하지 않는다.
  *   인위적 금지는 무페널티 원칙이 막는다(docs/10 §0 — "리치 중 사용 불가" ❌).
- * - 억제는 오직 "자기 순에 한 번, 다음 쯔모 한 장"이라는 창뿐이다.
+ * - 억제는 "자기 순에 한 번, 다음 쯔모 한 장"이라는 창과 **2순 쿨다운**이다.
  */
 
 import {
@@ -56,6 +56,7 @@ import type {
   VisibilityRule,
 } from "@majak/core";
 import {
+  cooldownTurnsViewKey,
   flagOf,
   roundViewKey,
   widenPeek,
@@ -71,9 +72,41 @@ const BOTTOM_DEAL_ARMED = "BottomDealArmed";
 /** 보유자에게 보여 주는 패산 밑 장수 */
 const PEEK = 3;
 
+/**
+ * 쿨다운 간격 — 마지막 **선언** 이후 이만큼 내 턴이 지나야 다시 예약할 수 있다.
+ *
+ * ⚠ 밸런스 2026-08-27: 예전에는 쿨다운이 아예 없었다. `canArm`이 "이미 예약됐는가"만
+ * 보므로, 예약 → 다음 쯔모에 소비 → **그 턴에 곧바로 재예약**이 성립해 국이 끝날 때까지
+ * 매 순 밑장을 빼왔다. 열람 3장이 "밑장을 세 번 빼면 무엇이 나오는가"의 예고편인데,
+ * 무제한이면 그 3장을 순서대로 전부 가져가는 카드가 된다. 2순에 1회면 세 장을 다
+ * 챙기는 데 여섯 순이 들고, 그동안 다른 사람의 깡·미래시가 밑장을 밀어 놓을 수 있다.
+ *
+ * "순"의 기준은 무르기(take_back)와 같다 — **내가 버린 수** = 내 턴 번호다.
+ */
+const COOLDOWN_TURNS = 2;
+
 /** 다음 쯔모를 밑장으로 예약했는가 (roundKey 스코프 — 국이 바뀌면 자동으로 풀린다) */
 const armedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "armed", state, h);
+/** 마지막으로 선언한 턴 번호(국 스코프 — 국이 바뀌면 키가 사라져 자동 해제) */
+const lastUsedKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey(ID, "last", state, h);
+
+/**
+ * 이 국에서 보유자의 현재 턴 번호 (= 내가 버린 수).
+ * 누명(frame_up)이 `discardedKinds`를 남의 이력으로 돌리므로 실제 버림 횟수로 센다
+ * (docs/25 P5 — take_back과 같은 기준).
+ */
+function turnNo(state: GameState, h: PlayerId): number {
+  return state.round.byPlayer[h]?.discardCount ?? 0;
+}
+
+/** 쿨다운 중인가 (마지막 선언 이후 아직 2턴이 지나지 않았다) */
+function onCooldown(state: GameState, h: PlayerId): boolean {
+  const last = state.augmentData[lastUsedKey(state, h)];
+  if (typeof last !== "number") return false; // 이 국에 아직 안 썼다
+  return turnNo(state, h) - last < COOLDOWN_TURNS;
+}
 /** 보유자 뷰 전용 채널 — 지금 예약 상태인지 UI에 노출한다 */
 const viewArmedKey = (h: PlayerId): string => roundViewKey(h, `${ID}:armed:${h}`);
 /** 전원 공개 마커 — 누가 밑장빼기를 선언했는지는 모두가 안다 (내용은 아니다) */
@@ -101,16 +134,22 @@ function bottomTile(state: GameState): TileId | undefined {
   return wall[wall.length - 1];
 }
 
-/** 지금 예약할 수 있는가 — 자기 순(turn.act)이고, 아직 예약이 안 걸렸고, 패산이 남았을 때 */
+/**
+ * 지금 예약할 수 있는가 — 자기 순(turn.act)이고, 아직 예약이 안 걸렸고, 쿨다운이 풀렸고,
+ * 패산이 남았을 때.
+ */
 function canArm(state: GameState, h: PlayerId): boolean {
   if (state.round.phase !== "turn.act") return false;
   if (playerAtSeat(state, state.round.turnSeat).id !== h) return false;
   if (flagOf(state, armedKey(state, h))) return false;
+  if (onCooldown(state, h)) return false;
   return bottomTile(state) !== undefined;
 }
 
 interface BottomDealArmedPayload {
   player: PlayerId;
+  /** 선언한 턴 번호 (쿨다운 기준점) */
+  turnNo: number;
 }
 
 const armAction: ActionDef<Record<string, never>> = {
@@ -126,13 +165,17 @@ const armAction: ActionDef<Record<string, never>> = {
     if (flagOf(state, armedKey(state, req.player))) {
       return "bottom deal already armed";
     }
+    if (onCooldown(state, req.player)) return "bottom deal is on cooldown";
     if (bottomTile(state) === undefined) return "wall is empty";
     return null;
   },
-  toEvents: (req) => [
+  toEvents: (req, { state }) => [
     {
       type: BOTTOM_DEAL_ARMED,
-      payload: { player: req.player } satisfies BottomDealArmedPayload,
+      payload: {
+        player: req.player,
+        turnNo: turnNo(state, req.player),
+      } satisfies BottomDealArmedPayload,
     },
   ],
 };
@@ -144,9 +187,9 @@ export const bottomDeal: AugmentDef = defineAugment({
   complexity: 2,
   name: "밑장빼기",
   description:
-    "(상시 열람 · 매 순 1회) 패산 맨 밑 3장이 나에게만 보인다. 자기 순에 '밑장빼기'를 선언하면 다음 쯔모를 패산 위가 아니라 맨 밑에서 빼온다.",
+    "(상시 열람 · 2순에 1회) 패산 맨 밑 3장이 나에게만 보인다. 자기 순에 '밑장빼기'를 선언하면 다음 쯔모를 패산 위가 아니라 맨 밑에서 빼온다.",
   detail:
-    "보이는 3장은 오른쪽 끝이 맨 밑장이고, 밑장을 뺄 때마다 그 옆의 패가 새 밑장이 된다.\n\n선언한 사실은 전원에게 공개되지만 **무엇이 보이는지는 나만 안다.** 깡의 영상패는 밑장이 아니며, 리치 중에도 쓸 수 있다.",
+    "보이는 3장은 오른쪽 끝이 맨 밑장이고, 밑장을 뺄 때마다 그 옆의 패가 새 밑장이 된다.\n\n한 번 선언하면 내 순이 두 번 지나야 다시 열리고(남은 순은 이름표에 표시된다), 국이 바뀌면 즉시 초기화된다. 쿨다운은 선언한 순간부터 세므로 예약해 두고 미뤄도 늦춰지지 않는다.\n\n선언한 사실은 전원에게 공개되지만 **무엇이 보이는지는 나만 안다.** 깡의 영상패는 밑장이 아니며, 리치 중에도 쓸 수 있다.",
   // 봇: ① 텐파이면 밑장이 오름패일 때 예약해 그 자리에서 화료하고,
   //     ② 아니면 밑장이 손에 쓸모 있을 때만 예약한다. 확실한 개선만 고른다.
   bot: plan({
@@ -185,6 +228,22 @@ export const bottomDeal: AugmentDef = defineAugment({
   install(ctx) {
     const { engine, holder } = ctx;
 
+    /*
+     * 남은 쿨다운(순)을 이름표 pill에 상시로 낸다 — 무르기(take_back)와 같은 규약.
+     * 채널이 없으면 다시 쓸 수 없다는 걸 **버튼이 사라진 것으로만** 알 수 있다.
+     * 값이 같으면 아무것도 내지 않으므로 반응 연쇄는 한 겹에서 멈춘다.
+     */
+    ctx.reaction("*", (_event, rc) => {
+      const last = rc.state.augmentData[lastUsedKey(rc.state, holder)];
+      const left =
+        typeof last === "number"
+          ? Math.max(0, COOLDOWN_TURNS - (turnNo(rc.state, holder) - last))
+          : 0;
+      if (rc.state.augmentData[cooldownTurnsViewKey(ID, holder)] !== left) {
+        rc.emit(augmentDataSet(cooldownTurnsViewKey(ID, holder), left));
+      }
+    });
+
     // 이벤트·액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.reducers.has(BOTTOM_DEAL_ARMED)) {
       engine.reducers.register(BOTTOM_DEAL_ARMED, (state, event) => {
@@ -194,6 +253,9 @@ export const bottomDeal: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             [armedKey(state, p.player)]: true,
+            // 쿨다운은 **선언 시점**부터 센다 (소비 시점이 아니다 — 예약해 놓고
+            // 국이 끝날 때까지 안 뽑는 식으로 쿨다운을 미룰 수 없게)
+            [lastUsedKey(state, p.player)]: p.turnNo,
             [viewArmedKey(p.player)]: true,
             [noticeKey(p.player)]: true,
           },

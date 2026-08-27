@@ -78,10 +78,6 @@ describe("책임전가 (blame_shift)", () => {
     expect(settled.outcome).toBe("win");
     expect(settled.winInfos?.[0]?.winner).toBe("p0");
 
-    // 총액 보존
-    const total = Object.values(settled.deltas).reduce((a, b) => a + b, 0);
-    expect(total).toBe(0);
-
     // 나를 뺀 세 명이 전부 지불한다 (한 명에게 몰리지 않음)
     const losers: PlayerId[] = ["p1", "p2", "p3"];
     for (const id of losers) {
@@ -90,9 +86,51 @@ describe("책임전가 (blame_shift)", () => {
     // 홀더는 받는다
     expect(settled.deltas["p0"] ?? 0).toBeGreaterThan(0);
 
-    // 홀더 수령액 = 세 명 지불 합의 절대값
+    /*
+     * 2026-08-27 사양 변경: 여기에 **론 +2판**이 얹힌다 — 뱅크 발행이라 지불자는 더
+     * 내지 않는다. 그래서 정산 총합은 더 이상 0이 아니고 정확히 그 판수 가산분이며,
+     * 홀더 수령액도 "세 명 지불 합 + 가산분"이다. 재배선 자체는 여전히 총액 불변이다.
+     */
+    const bonus = (settled.augPoints ?? [])
+      .filter((n) => n.player === "p0" && n.augId === "blame_shift")
+      .reduce((a, n) => a + n.points, 0);
+    expect(bonus).toBeGreaterThan(0);
+    expect(
+      (settled.augPoints ?? []).find(
+        (n) => n.player === "p0" && n.augId === "blame_shift",
+      )?.han,
+    ).toBe(2);
+
+    const total = Object.values(settled.deltas).reduce((a, b) => a + b, 0);
+    expect(total).toBe(bonus);
+
     const paid = losers.reduce((a, id) => a + (settled.deltas[id] ?? 0), 0);
-    expect(settled.deltas["p0"]).toBe(-paid);
+    expect(settled.deltas["p0"]).toBe(-paid + bonus);
+  });
+
+  it("쯔모 화료에는 판수가 붙지 않는다", () => {
+    // p0가 9s 쯔모로 화료 — 재배선도 판수도 관여하지 않는 경우
+    const state = withAugments(
+      craft({
+        hands: { p0: "123m123p123s678s99s", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
+      }),
+      "p0",
+      ["blame_shift"],
+    );
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, blameShift, "p0", { yaku: game.yaku });
+    const flow = new FlowController(game.engine);
+    flow.begin();
+    flow.submit("p0", { type: "win", payload: {} });
+    const settled = lastSettled(flow);
+    expect(settled.winInfos?.[0]?.winType).toBe("tsumo");
+    expect(
+      (settled.augPoints ?? []).filter((n) => n.augId === "blame_shift"),
+    ).toEqual([]);
+    expect(Object.values(settled.deltas).reduce((a, b) => a + b, 0)).toBe(0);
   });
 
   it("증강이 없으면 쏜 사람 혼자 문다 (대조군)", () => {

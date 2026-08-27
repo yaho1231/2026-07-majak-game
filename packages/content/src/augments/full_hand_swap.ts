@@ -9,6 +9,10 @@
  * 예전 맞교환은 내 배패가 상대에게 넘어가 **상대를 강화**할 수 있었다 —
  * 무페널티 원칙(10_AUGMENT_SYSTEM §0)에 어긋나므로 그 경로를 끊었다.
  *
+ * 2026-08-27 (사용자 지시) 버프: 선택 화면에서 **내 손보다 샹텐이 빠른 상대에게만
+ * 「빠름」 표식**이 붙는다. 샹텐 숫자도 손패 내용도 나가지 않는다 — 블라인드 성격을
+ * 절반만 남기는 것이 목적이다. 자세한 규약은 아래 `fasterOpponents` 주석.
+ *
  * 패 수지: 내 13장이 패산에 들어가고 상대가 패산에서 13장을 받으므로 패산 총량은 불변.
  * 내 패는 배열 끝(맨 밑)에 들어가고 상대는 앞에서 받으므로, 상대가 방금 빼앗긴
  * 자기 패를 그대로 돌려받는 일은 없다.
@@ -20,15 +24,21 @@ import {
   defineAugment,
   handIdsOf,
   handZone,
+  meldCountOf,
   moveTiles,
   playerAtSeat,
+  scoringOptionsOf,
+  shantenOf,
+  winHandKindsOf,
 } from "@majak/core";
 import type {
   ActionDef,
   AugmentDef,
   GameState,
   PlayerId,
+  RuleRegistry,
   TileId,
+  TileKind,
 } from "@majak/core";
 import { counterOf, publishUsesLeft, roundViewKey, sameHandSize, scaledUses } from "../util.js";
 import { handAlteredMark } from "./handAltered.js";
@@ -74,6 +84,71 @@ interface FullHandSwapPayload {
 
 const wallLen = (state: GameState): number =>
   state.zones[WALL]?.tileIds.length ?? 0;
+
+/**
+ * ── 「빠름」 표식 (2026-08-27 사용자 지시) ──────────────────────────────
+ *
+ * 원문: *"내 손패보다 샹텐이 빠를것으로 추정되는 패에 표시해주기"*.
+ *
+ * 이 카드는 «상대 손을 못 보고 지른다»가 본질이었고 그래서 실측 기대 이득이 거의 0이었다
+ * (docs/17 과약 판정). 그렇다고 손패를 보여 주면 블라인드 성격이 통째로 사라지므로,
+ * **정확한 샹텐을 계산하되 노출은 이진(빠름 / 표식 없음)으로만** 한다 — 사용자 확정.
+ * 샹텐 숫자도, 패 내용도, «얼마나» 빠른지도 나가지 않는다.
+ *
+ * 계산 규약:
+ * - 상대는 13장(후로하면 그만큼 짧다)이라 `shantenOf(kinds, meldCountOf)` 그대로.
+ * - 나는 쯔모패까지 14장이라 그대로 재면 상대보다 한 걸음 유리하게 나온다. 그래서
+ *   **한 장 버린 뒤의 최소 샹텐**으로 재어 같은 잣대에 올린다.
+ * - 손 kinds는 `winHandKindsOf`로 뽑는다 — 손패를 갈아치우는 증강의 override까지
+ *   따라간다(천리안과 같은 계보).
+ * - 분해 옵션은 **그 사람 기준** `scoringOptionsOf`다 — 상대가 무너진 국경·동수의
+ *   결속을 켰으면 그 사람의 샹텐이 실제로 달라진다.
+ */
+const fasterKey = (holder: PlayerId): string => roundViewKey(holder, `${ID}:faster`);
+
+/** 14장 손을 «한 장 버린 뒤»의 최소 샹텐으로 잰다 (13장 손과 같은 잣대) */
+function bestDiscardShanten(
+  kinds: readonly TileKind[],
+  meldCount: number,
+  opts: ReturnType<typeof scoringOptionsOf>,
+): number {
+  let out = shantenOf(kinds, meldCount, opts);
+  for (let i = 0; i < kinds.length; i++) {
+    out = Math.min(
+      out,
+      shantenOf(
+        kinds.filter((_k, j) => j !== i),
+        meldCount,
+        opts,
+      ),
+    );
+  }
+  return out;
+}
+
+/** 지금 나보다 샹텐이 낮은(=더 빠른) 상대들의 id */
+function fasterOpponents(
+  state: GameState,
+  rules: RuleRegistry,
+  holder: PlayerId,
+): PlayerId[] {
+  const mine = bestDiscardShanten(
+    winHandKindsOf(state, rules, holder),
+    meldCountOf(state, holder),
+    scoringOptionsOf(state, rules, holder),
+  );
+  return state.players
+    .filter((p) => p.id !== holder)
+    .filter(
+      (p) =>
+        shantenOf(
+          winHandKindsOf(state, rules, p.id),
+          meldCountOf(state, p.id),
+          scoringOptionsOf(state, rules, p.id),
+        ) < mine,
+    )
+    .map((p) => p.id);
+}
 
 const handSwapAction: ActionDef<{ target: PlayerId }> = {
   type: ACTION,
@@ -157,9 +232,9 @@ export const fullHandSwap: AugmentDef = defineAugment({
   complexity: 1,
   name: "통째로 바꾸기",
   description:
-    "(동풍전 2회 · 반장전 3회) 내 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 내 손패는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다. 리치를 선언한 상대에게는 쓸 수 없다.",
+    "(동풍전 2회 · 반장전 3회) 내 첫 순에 상대를 지정해 그 손패를 통째로 강탈한다. 고를 때 내 손보다 완성이 빠른 상대에게 표식이 붙는다. 내 손패는 패산 맨 밑으로 들어가고, 상대는 패산에서 새로 받는다. 리치를 선언한 상대에게는 쓸 수 없다.",
   detail:
-    "발동 창은 **내가 아직 한 장도 버리지 않은 내 순**이다. 빼앗긴 상대는 패산 위에서 같은 장수를 새로 받고, 내가 들고 있던 손패는 패산 가장 밑에 깔린다 — 교환이 아니라 강탈이라 내 배패가 상대 손에 들어가지는 않는다.\n\n리치를 걸어 둔 상대는 후보에서 빠지지만, 숨은 리치는 그대로 지정할 수 있고, 손을 뺏기는 순간 풀린다. 손패 장수가 다른 상대는 지정할 수 없고, 직전에 울어 쯔모패가 없는 순에는 발동하지 않는다.",
+    "고르는 화면에서 **내 손보다 샹텐이 빠른 상대에게만 「빠름」 표식**이 붙는다 — 나에게만 보이고, 얼마나 빠른지도 무슨 패인지도 알 수 없다. 표식은 고르는 그 순간에만 계산되고 순이 넘어가면 사라진다.\n\n발동 창은 **내가 아직 한 장도 버리지 않은 내 순**이다. 빼앗긴 상대는 패산 위에서 같은 장수를 새로 받고, 내가 들고 있던 손패는 패산 가장 밑에 깔린다 — 교환이 아니라 강탈이라 내 배패가 상대 손에 들어가지는 않는다.\n\n리치를 걸어 둔 상대는 후보에서 빠지지만, 숨은 리치는 그대로 지정할 수 있고, 손을 뺏기는 순간 풀린다. 손패 장수가 다른 상대는 지정할 수 없고, 직전에 울어 쯔모패가 없는 순에는 발동하지 않는다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -168,6 +243,34 @@ export const fullHandSwap: AugmentDef = defineAugment({
       left: Math.max(0, maxUses(state) - counterOf(state, usedKey(holder))),
       total: maxUses(state),
     }));
+
+    /*
+     * 「빠름」 표식을 **선택 창이 열려 있는 동안에만** 보유자 채널에 싣는다.
+     *
+     * 정보 노출이 늘어난 만큼 새는 곳이 없어야 한다:
+     * - 채널은 `roundViewKey(holder, …)` — 보유자 시점에만 실린다.
+     * - 창이 닫히면(내가 한 장이라도 버렸다·소진했다·내 순이 아니다) **즉시 지운다**.
+     *   국 내내 남겨 두면 «지금도 저 사람이 빠르다»는 갱신되지 않는 거짓말이 된다.
+     * - 값이 같으면 아무것도 내지 않아 반응 연쇄는 한 겹에서 멈춘다.
+     */
+    ctx.reaction("*", (_event, rc) => {
+      const state = rc.state;
+      const open =
+        counterOf(state, usedKey(holder)) < maxUses(state) &&
+        state.round.phase === "turn.act" &&
+        playerAtSeat(state, state.round.turnSeat).id === holder &&
+        (state.round.byPlayer[holder]?.discardCount ?? 0) === 0 &&
+        state.round.byPlayer[holder]?.riichi == null &&
+        state.round.lastDrawnTile !== null;
+      const cur = state.augmentData[fasterKey(holder)];
+      if (!open && cur === undefined) return; // 아직 한 번도 열린 적 없다 — 쓸 것도 없다
+      const next = open ? fasterOpponents(state, engine.rules, holder) : [];
+      const same =
+        Array.isArray(cur) &&
+        cur.length === next.length &&
+        next.every((id, i) => (cur as unknown[])[i] === id);
+      if (!same) rc.emit(augmentDataSet(fasterKey(holder), next));
+    });
 
     // 숨은 리치 해제 리듀서 (손을 바꾸는 증강 공용 — 등록은 멱등)
     ensureStealthBreakReducer(engine);
@@ -241,7 +344,21 @@ export const fullHandSwap: AugmentDef = defineAugment({
       if (!handIsPoor(ctx)) return null;
       const mine = ctx.options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
-      return mine[ctx.rng.int(mine.length)] ?? mine[0] ?? null;
+      /*
+       * 「빠름」 표식(2026-08-27)이 생겼으니 봇도 그 표식을 본다 — 사람이 보는 정보와
+       * 봇이 보는 정보가 같아야 한다(봇 정책 공용 규약). 표식이 붙은 상대가 있으면
+       * 그중에서, 없으면 예전처럼 무작위로 고른다.
+       */
+      const raw = ctx.view.augmentView[`${ID}:faster`];
+      const faster = new Set(Array.isArray(raw) ? (raw as string[]) : []);
+      const pool =
+        mine.filter((o) => faster.has(String((o.payload as { target?: unknown }).target)))
+          .length > 0
+          ? mine.filter((o) =>
+              faster.has(String((o.payload as { target?: unknown }).target)),
+            )
+          : mine;
+      return pool[ctx.rng.int(pool.length)] ?? pool[0] ?? null;
     },
   }),
 });

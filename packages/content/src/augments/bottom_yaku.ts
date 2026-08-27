@@ -3,12 +3,15 @@
  *
  * 유국역만(nagashi_yakuman)의 거울상이다. 유국이 아니라 **실제 화료**에 얹히는 역으로,
  * 화료 순간 내가 **버린 패의 이력**을 읽어 두 갈래로 판을 더한다.
- *   - 한 무늬(만·통·삭 중 하나)의 1~9가 **모두** 내 바닥에 있으면 '역류 통관' **2판**.
+ *   - 한 무늬(만·통·삭 중 하나)의 숫자 **7종 이상**이 내 바닥에 있으면 '역류 통관' **2판**.
  *   - 같은 패를 3장 이상 버렸으면(어느 종류든) '미련 없음' **1판**.
  * 두 조건은 겹칠 수 있다 — 둘 다 붙으면 **+3판**. 유국이면 화료가 없으니 무용지물이다.
  *
- * 부수는 상식: 역은 손에서 나온다 — 여기선 **버린 패가** 역을 만든다. 내가 흘려보낸
- * 한 무늬의 처음부터 끝까지, 미련 없이 겹쳐 버린 자리가 그대로 점수가 된다.
+ * 부수는 상식: 역은 손에서 나온다 — 여기선 **버린 패가** 역을 만든다. 내가 한 무늬를
+ * 통째로 흘려보낸 자리, 미련 없이 겹쳐 버린 자리가 그대로 점수가 된다.
+ *
+ * ⚠ 밸런스 2026-08-27: 역류 통관의 문턱을 **1~9 전부(9종) → 같은 무늬 7종**으로 낮췄다.
+ * 아래 `FLOW_RANKS` 주석 참고.
  *
  * 설계: docs/16_AUGMENT_REDESIGN.md §2 (원안: 역류/yaku-break).
  *
@@ -83,7 +86,16 @@ function myDiscardKinds(state: GameState, holder: PlayerId): readonly string[] {
   return ownDiscardKindsOf(state, holder);
 }
 
-/** 어느 수패 무늬(만·통·삭)든 1~9를 전부 버렸는가 */
+/**
+ * 어느 수패 무늬(만·통·삭)든 **서로 다른 숫자 7종 이상**을 버렸는가.
+ *
+ * ⚠ 밸런스 2026-08-27: **9종(1~9 전부) → 7종**. 1~9 전부는 한 무늬를 통째로 흘리고도
+ * 화료까지 해야 하는 조건이라, 실전 표본에서 '역류 통관'이 거의 붙지 않았다. 어느
+ * 7종이든(1~7이든 3~9든 흩어져 있든) 같은 무늬 안에서 서로 다른 숫자 7개면 성립한다 —
+ * "한 무늬를 미련 없이 흘렸다"는 그림은 그대로 남고 문턱만 두 칸 내려온다.
+ */
+const FLOW_RANKS = 7;
+
 function hasFullSuitRun(state: GameState, holder: PlayerId): boolean {
   const ranksBySuit = new Map<string, Set<number>>();
   for (const key of myDiscardKinds(state, holder)) {
@@ -98,14 +110,8 @@ function hasFullSuitRun(state: GameState, holder: PlayerId): boolean {
     ranks.add(kind.rank);
   }
   for (const ranks of ranksBySuit.values()) {
-    let complete = true;
-    for (let r = 1; r <= 9; r++) {
-      if (!ranks.has(r)) {
-        complete = false;
-        break;
-      }
-    }
-    if (complete) return true;
+    // 숫자 종류 수만 센다 — 연속일 필요도, 1이나 9를 포함할 필요도 없다
+    if (ranks.size >= FLOW_RANKS) return true;
   }
   return false;
 }
@@ -128,9 +134,9 @@ export const bottomYaku: AugmentDef = defineAugment({
   complexity: 3,
   name: "바닥의 족보",
   description:
-    "(상시) 화료할 때 내 버림패가 판을 얹어 준다 — 한 무늬의 1~9를 모두 버렸으면 2판, 같은 패를 3장 이상 버렸으면 1판, 둘이 겹치면 3판이다.",
+    "(상시) 화료할 때 내 버림패가 판을 얹어 준다 — 한 무늬의 숫자 7종을 버렸으면 2판, 같은 패를 3장 이상 버렸으면 1판, 둘이 겹치면 3판이다.",
   detail:
-    "화료하는 순간 내 버림패 이력 전체를 판정한다 — 만·통·삭 중 한 무늬의 1~9가 전부 내 바닥을 지났으면 '역류 통관' 2판, 같은 종류를 3장 이상 흘렸으면 '미련 없음' 1판, 둘 다면 3판이다. 남이 후로해 간 버림패도 그대로 세고, 멘젠·후로는 가리지 않는다.\n\n⚠ 둘 다 도라처럼 **판만 더하는 보조역**이라, 손에서 나온 역이 하나도 없으면 화료가 성립하지 않는다.",
+    "화료하는 순간 내 버림패 이력 전체를 판정한다 — 만·통·삭 중 **한 무늬에서 서로 다른 숫자 7종 이상**이 내 바닥을 지났으면 '역류 통관' 2판, 같은 종류를 3장 이상 흘렸으면 '미련 없음' 1판, 둘 다면 3판이다. 7종은 연속일 필요도, 1이나 9를 포함할 필요도 없다(1~7이든 3~9든 흩어져 있든 같다). 남이 후로해 간 버림패도 그대로 세고, 멘젠·후로는 가리지 않는다.\n\n⚠ 둘 다 도라처럼 **판만 더하는 보조역**이라, 손에서 나온 역이 하나도 없으면 화료가 성립하지 않는다.",
   install(ctx) {
     const yaku = ctx.yaku;
     if (yaku === undefined) return;

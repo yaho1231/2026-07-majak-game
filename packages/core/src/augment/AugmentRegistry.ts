@@ -28,6 +28,17 @@ export class AugmentRegistry {
     this.weightOverrides = weights;
   }
 
+  /**
+   * 이 게임에 적용 중인 가중치 덮어쓰기 (2026-08-27).
+   *
+   * 지급형 증강(`ctx.grantAugments`)의 추첨이 드래프트와 **같은 가중치**를 읽게 하려고
+   * 연다. 지급 경로는 카탈로그를 구조적 타입(`AugmentExtras.catalog`)으로만 받으므로,
+   * 조정값을 꺼낼 통로가 없으면 정적 티어표로 갈라진다.
+   */
+  weights(): Readonly<Record<string, number>> {
+    return this.weightOverrides;
+  }
+
   add(def: AugmentDef): void {
     if (this.defs.has(def.id)) {
       throw new Error(`Augment already in catalog: ${def.id}`);

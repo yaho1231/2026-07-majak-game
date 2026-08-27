@@ -1,6 +1,9 @@
 /**
- * die_hard (죽기살기) 테스트 — 게임당 1회, 정산으로 점수가 0 아래로 떨어지면
- * 내려간 만큼이 그대로 플러스로 뒤집힌다 (−8000 → +8000).
+ * die_hard (죽기살기) 테스트 — 게임당 1회, **정산 시점 내 점수가 12,500 이하**이면
+ * 그 국의 실점이 그대로 플러스로 뒤집힌다 (−8000 → +8000).
+ *
+ * 2026-08-27 사양 교체: 옛 트리거("정산 결과 점수가 0 미만")를 못박고 있던 테스트를
+ * 새 사양으로 고쳤다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -70,23 +73,48 @@ function settleDelta(game: Game, id: string): number | undefined {
   return (e.payload as RoundSettledPayload).deltas[id];
 }
 
-describe("die_hard (죽기살기)", () => {
-  it("마이너스로 내려간 만큼이 그대로 플러스가 되고 사용 플래그가 남는다", () => {
-    // p0 점수 1000 < 론 지불(탕야오 멘젠 론 ≥ 1300) → 증강 없으면 음수
-    const plain = createStandardGameFromState(craftRonSetup(1000));
-    runRonSettle(plain);
-    const sunk = scoreOf(plain, "p0"); // 증강 없을 때의 음수 점수
+/** 증강 없이 같은 정산을 돌렸을 때 p0가 잃는 금액 (양수) */
+function plainLoss(p0Score: number): number {
+  const plain = createStandardGameFromState(craftRonSetup(p0Score));
+  runRonSettle(plain);
+  return -(settleDelta(plain, "p0") as number);
+}
 
-    const game = createStandardGameFromState(craftRonSetup(1000));
+describe("die_hard (죽기살기)", () => {
+  it("점수가 시작 점수 절반 이하면 0 아래로 떨어지지 않아도 실점이 플러스로 뒤집힌다", () => {
+    // 12,500(= 25,000의 절반) — 론을 맞아도 점수는 여전히 양수다. 옛 사양이라면
+    // 발동하지 않았을 자리다.
+    const loss = plainLoss(12_500);
+    expect(loss).toBeGreaterThan(0);
+
+    const game = createStandardGameFromState(craftRonSetup(12_500));
     installAugment(game.engine, dieHard, "p0");
     runRonSettle(game);
 
-    expect(sunk).toBeLessThan(0);
-    expect(scoreOf(game, "p0")).toBe(-sunk); // 부호가 뒤집힌다
+    expect(settleDelta(game, "p0")).toBe(loss); // −loss → +loss
+    expect(scoreOf(game, "p0")).toBe(12_500 + loss);
     expect(game.engine.state.augmentData[USES_KEY]).toBe(1);
-    // 부활분이 정산 deltas 안에 들어 있다 (결과 화면 증감과 일치)
-    const plainDelta = settleDelta(plain, "p0") as number;
-    expect(settleDelta(game, "p0")).toBe(plainDelta - 2 * sunk);
+  });
+
+  it("사용자 예시: 방총해도 상대와 내가 **같은 금액**을 나란히 받는다", () => {
+    // "8000점을 론당하면 상대는 8000점을 얻고, 나도 뱅크에서 8000점을 얻는다."
+    const game = createStandardGameFromState(craftRonSetup(12_500));
+    installAugment(game.engine, dieHard, "p0");
+    runRonSettle(game);
+
+    const mine = settleDelta(game, "p0") as number;
+    const theirs = settleDelta(game, "p1") as number;
+    expect(mine).toBeGreaterThan(0);
+    expect(mine).toBe(theirs); // 상대 +X · 나도 +X — 차액은 뱅크가 낸다
+  });
+
+  it("점수가 절반보다 많으면 발동하지 않는다", () => {
+    const game = createStandardGameFromState(craftRonSetup(12_600));
+    installAugment(game.engine, dieHard, "p0");
+    runRonSettle(game);
+
+    expect(settleDelta(game, "p0")).toBeLessThan(0);
+    expect(game.engine.state.augmentData[USES_KEY]).toBeUndefined(); // 카운터 소모 없음
   });
 
   it("증강이 없으면 같은 상황에서 점수가 음수가 된다 (대조군)", () => {
@@ -95,11 +123,11 @@ describe("die_hard (죽기살기)", () => {
     expect(scoreOf(game, "p0")).toBeLessThan(0);
   });
 
-  it("이미 사용했으면 발동하지 않는다 (게임당 1회)", () => {
+  it("이미 한 번 썼으면 반장전이어도 다시 발동하지 않는다 (게임당 1회)", () => {
     const base = craftRonSetup(1000);
     const spent: GameState = {
       ...base,
-      augmentData: { ...base.augmentData, [USES_KEY]: 2 },
+      augmentData: { ...base.augmentData, [USES_KEY]: 1 },
     };
     const game = createStandardGameFromState(spent);
     installAugment(game.engine, dieHard, "p0");
@@ -108,13 +136,9 @@ describe("die_hard (죽기살기)", () => {
     expect(scoreOf(game, "p0")).toBeLessThan(0); // 재발동 없음
   });
 
-  it("점수가 0 미만으로 떨어지지 않는 정산에서는 발동하지 않는다", () => {
-    // 기본 25000점 — 론 지불 후에도 충분히 양수
-    const game = createStandardGameFromState(craftRonSetup());
-    installAugment(game.engine, dieHard, "p0");
-    runRonSettle(game);
-
-    expect(scoreOf(game, "p0")).toBeGreaterThan(0);
-    expect(game.engine.state.augmentData[USES_KEY]).toBeUndefined(); // 카운터 소모 없음
+  it("문안이 새 사양(게임 내 1회 · 12,500 이하)을 그대로 적는다", () => {
+    expect(dieHard.description).toMatch(/게임 내 1회/);
+    expect(dieHard.description).toMatch(/12,500/);
+    expect(dieHard.detail).toMatch(/게임 내 1회/);
   });
 });
