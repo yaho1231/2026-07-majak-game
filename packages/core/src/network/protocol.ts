@@ -1196,6 +1196,24 @@ export interface DraftAutoPickedMessage {
   name: string;
 }
 
+/**
+ * 이번 증강 선택에서 **아직 안 고른 사람**이 누구인가 (전원 방송).
+ *
+ * 고르고 나면 화면은 "다른 플레이어를 기다리는 중…" 한 줄만 남았다 — 누구를,
+ * 몇 명을 기다리는지 알 길이 없어 «멈춘 것»과 구분되지 않았다(2026-08-27 사용자
+ * 요청). 픽이 하나 들어올 때마다 남은 좌석을 다시 보낸다.
+ *
+ * 정보 메시지일 뿐 엔진 상태가 아니다 — 리플레이 이벤트에는 남기지 않는다.
+ */
+export interface DraftProgressMessage {
+  type: "draftProgress";
+  stage: DraftStage;
+  /** 아직 고르지 않은 좌석 (고정 좌석 순서) */
+  pending: PlayerId[];
+  /** 이번 스테이지에 고를 좌석 수 (이미 마친 좌석은 애초에 빠져 있다) */
+  total: number;
+}
+
 export interface DraftOfferMessage {
   type: "draftOffer";
   stage: DraftStage;
@@ -2152,6 +2170,7 @@ export type ServerMessage =
   | PromptCancelMessage
   | DraftOfferMessage
   | DraftAutoPickedMessage
+  | DraftProgressMessage
   | DraftRerolledMessage
   | CatalogMessage
   | RoundOverMessage
