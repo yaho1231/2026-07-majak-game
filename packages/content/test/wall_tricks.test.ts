@@ -286,11 +286,22 @@ describe("bottom_deal — 밑장빼기", () => {
   };
   const VIEW_ARMED_KEY = "view:p0:bottom_deal:armed:p0#round";
   const NOTICE_KEY = "view:*:bottom_deal:armed:p0#round";
+  /** 마지막 선언 턴 번호 키 (2026-08-27 2순 쿨다운) */
+  const lastUsedKey = (s: GameState): string => {
+    const r = s.round;
+    return `bottom_deal:last:${r.prevalentWind}-${r.roundNumber}-${r.honba}:p0#round`;
+  };
+  /** 쿨다운 잔량 pill 채널 (보유자 전용) */
+  const COOLDOWN_VIEW_KEY = "view:p0:cooldownTurns:bottom_deal";
 
-  /** 자기 턴(turn.act, 14장) — 예약 절차를 보는 장면 */
-  function actScene(): GameState {
+  /**
+   * 자기 턴(turn.act, 14장) — 예약 절차를 보는 장면.
+   * `myDiscards`로 내 버림 수(= 내 턴 번호)를 조절해 쿨다운 경계를 만든다.
+   */
+  function actScene(myDiscards = ""): GameState {
     const s = craft({
       hands: { p0: "123m456m789m123p99p", p1: "*", p2: "*", p3: "*" },
+      discards: { p0: myDiscards, p1: "", p2: "", p3: "" },
       phase: "turn.act",
       turnSeat: 0,
       drawnLastFor: "p0",
@@ -473,7 +484,7 @@ describe("bottom_deal — 밑장빼기", () => {
     expect(other.zones[WALL]?.tileIds).toEqual([]);
   });
 
-  it("매 순 1회 — 이미 예약했으면 후보도 사라지고 제출도 거부된다", () => {
+  it("이미 예약했으면 후보도 사라지고 제출도 거부된다", () => {
     const base = actScene();
     const game = createStandardGameFromState(
       withAugmentData(base, { [armedKey(base)]: true }),
@@ -487,7 +498,72 @@ describe("bottom_deal — 밑장빼기", () => {
     if (!r.ok) expect(r.reason).toBe("bottom deal already armed");
   });
 
-  it("예약이 소비되면 같은 국에 다시 예약할 수 있다", () => {
+  /*
+   * 밸런스 2026-08-27: **매 순 무제한 → 2순에 1회**.
+   * 예전에는 canArm이 "이미 예약됐는가"만 봐서, 예약 → 다음 쯔모에 소비 → 그 턴에
+   * 곧바로 재예약이 성립해 국 내내 매 순 밑장을 빼올 수 있었다.
+   * 기준은 무르기(take_back)와 같은 **내가 버린 수(= 내 턴 번호)**다.
+   */
+  describe("2순 쿨다운", () => {
+    /** 선언 턴 `last`, 현재 턴 `now`인 장면에서 예약 버튼이 뜨는가 */
+    function armableAt(last: number, now: number): boolean {
+      const base = actScene(
+        Array.from({ length: now }, (_, i) => `${i + 1}z`).join(""),
+      );
+      expect(base.round.byPlayer["p0"]?.discardCount).toBe(now);
+      const game = createStandardGameFromState(
+        withAugmentData(base, { [lastUsedKey(base)]: last }),
+      );
+      installAugment(game.engine, bottomDeal, "p0", { yaku: game.yaku });
+      const { prompt } = turnPromptFor(game, "p0");
+      const offered = prompt.options.some((o) => o.type === "bottom_deal");
+      const res = game.engine.submit({ player: "p0", type: "bottom_deal", payload: {} });
+      // 후보 목록과 validate는 반드시 같은 판정을 쓴다
+      expect(res.ok).toBe(offered);
+      if (!res.ok) expect(res.reason).toBe("bottom deal is on cooldown");
+      return offered;
+    }
+
+    it("선언한 그 순에는 다시 걸 수 없다", () => {
+      expect(armableAt(1, 1)).toBe(false);
+    });
+
+    it("한 순만 지나도 아직 잠겨 있다", () => {
+      expect(armableAt(1, 2)).toBe(false);
+    });
+
+    it("두 순이 지나면 다시 열린다", () => {
+      expect(armableAt(1, 3)).toBe(true);
+    });
+
+    it("선언하면 그 순 번호가 기록되고 잔량 pill이 2로 찬다", () => {
+      const base = actScene("1z2z"); // 내 턴 번호 2
+      const game = createStandardGameFromState(base);
+      installAugment(game.engine, bottomDeal, "p0", { yaku: game.yaku });
+      const { flow } = turnPromptFor(game, "p0");
+      flow.submit("p0", { type: "bottom_deal", payload: {} });
+      const st = game.engine.state;
+      // 쿨다운은 **선언 시점**부터 센다 (소비 시점이 아니다)
+      expect(st.augmentData[lastUsedKey(st)]).toBe(2);
+      expect(st.augmentData[COOLDOWN_VIEW_KEY]).toBe(2);
+    });
+
+    it("국이 바뀌면 쿨다운도 함께 풀린다 (roundKey 스코프)", () => {
+      const base = actScene();
+      const stale: GameState = {
+        ...base,
+        // 옛 국의 쿨다운 기록 — 본장이 다르면 이번 국에서 읽히지 않는다
+        augmentData: { ...base.augmentData, [lastUsedKey(base)]: 5 },
+        round: { ...base.round, honba: base.round.honba + 1 },
+      };
+      const game = createStandardGameFromState(stale);
+      installAugment(game.engine, bottomDeal, "p0", { yaku: game.yaku });
+      const { prompt } = turnPromptFor(game, "p0");
+      expect(prompt.options.some((o) => o.type === "bottom_deal")).toBe(true);
+    });
+  });
+
+  it("예약이 소비되고 쿨다운이 없으면 같은 국에 다시 예약할 수 있다", () => {
     const game = createStandardGameFromState(drawScene(true));
     installAugment(game.engine, bottomDeal, "p0", { yaku: game.yaku });
 
@@ -613,11 +689,11 @@ describe("bottom_deal — 밑장빼기", () => {
  * 리듀서의 몫이다 — augment/events.ts). validate가 보유 여부를 보므로 withAugments로
  * 실제 보유 상태를 만들어야 후보가 제시된다.
  */
-describe("bottom_deal — 실게임 한 국 완주 (매 순 재예약)", () => {
+describe("bottom_deal — 실게임 한 국 완주 (기회가 될 때마다 재예약)", () => {
   const SEEDS = [1, 2, 3, 7, 11, 42, 100, 999];
 
   for (const seed of SEEDS) {
-    it(`seed ${seed} — 밑장빼기를 매 순 걸어도 완주한다`, () => {
+    it(`seed ${seed} — 열릴 때마다 걸어도 완주하고, 간격은 항상 2순 이상이다`, () => {
       const state = withAugments(
         craft({
           hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
@@ -633,23 +709,33 @@ describe("bottom_deal — 실게임 한 국 완주 (매 순 재예약)", () => {
       const flow = new FlowController(game.engine);
       let status = flow.begin();
       let guard = 0;
-      let armedCount = 0;
+      /** 예약을 건 내 턴 번호들 (= 그 시점의 내 버림 수) */
+      const armedTurns: number[] = [];
       let maxHand = 0;
       while (status.kind === "awaiting" && guard++ < 2000) {
         const prompt = status.prompts[0]!;
         maxHand = Math.max(maxHand, handIdsOf(game.engine.state, "p0").length);
         const win = prompt.options.find((o) => o.type === "win");
-        // 제시되면 무조건 예약한다 — 재예약이 매 순 일어나게 만든다
+        // 제시되면 무조건 예약한다 — 쿨다운이 허락하는 최대 빈도를 만든다
         const arm = prompt.options.find((o) => o.type === "bottom_deal");
         const discard = prompt.options.find((o) => o.type === "discard");
         const pass = prompt.options.find((o) => o.type === "pass");
         const choice = win ?? arm ?? discard ?? pass ?? prompt.options[0]!;
-        if (choice === arm) armedCount++;
+        if (choice === arm) {
+          armedTurns.push(game.engine.state.round.byPlayer["p0"]?.discardCount ?? 0);
+        }
         status = flow.submit(prompt.player, choice);
       }
       expect(status.kind).toBe("roundOver");
-      // 한 국에 여러 번 걸렸다 = 소비 → 재예약이 실제로 반복됐다
-      expect(armedCount).toBeGreaterThan(1);
+      // 한 번은 걸렸다 (경로 자체가 돈다)
+      expect(armedTurns.length).toBeGreaterThan(0);
+      /*
+       * 밸런스 2026-08-27: 예전에는 여기서 `> 1`을 요구했다 — 매 순 무제한 재예약이
+       * 사양이었기 때문이다. 이제는 **간격**이 계약이다. 짧은 국이면 한 번으로 끝난다.
+       */
+      for (let i = 1; i < armedTurns.length; i++) {
+        expect(armedTurns[i]! - armedTurns[i - 1]!).toBeGreaterThanOrEqual(2);
+      }
       // 밑장을 계속 빼도 손패가 불어나지 않는다 (교환이 아니라 쯔모 자리 변경이다)
       expect(maxHand).toBeLessThanOrEqual(14);
     });

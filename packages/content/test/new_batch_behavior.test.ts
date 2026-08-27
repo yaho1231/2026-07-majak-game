@@ -115,9 +115,13 @@ describe("scapegoat (덤터기)", () => {
     expect(at(withAug,"p2")).toBe(0);
     expect(at(withAug,"p3")).toBe(0);
     expect(at(withAug,"p1")).toBeLessThan(0);
-    // 제로섬 보존
+    /*
+     * 2026-08-27 사양 변경: 덤터기에 **쯔모 +2판**이 붙었다(뱅크 발행). 재배선 자체는
+     * 여전히 총액 불변이라, 총합은 0이 아니라 정확히 그 판수 가산분만큼 양수다.
+     */
     const sum = at(withAug,"p0") + at(withAug,"p1") + at(withAug,"p2") + at(withAug,"p3");
-    expect(sum).toBe(0);
+    expect(sum).toBeGreaterThan(0);
+    expect(at(withAug, "p0")).toBe(-(at(withAug, "p1")) + sum);
   });
 });
 

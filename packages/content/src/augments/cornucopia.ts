@@ -12,6 +12,11 @@
  *   화료형이 어긋나 국을 벽돌로 만들기 때문이다.
  * - 선택은 `(게임 시드 ⊕ 보유자)`에서 파생된 **독립 PRNG**다. 게임 진행용 PRNG를
  *   건드리지 않으므로 이 증강이 있고 없고로 패산이 달라지지 않는다.
+ * - **추첨은 일반 드래프트와 같은 가중 추출이다** (2026-08-27). 예전에는 후보에서
+ *   완전 균등으로 뽑아, 드래프트가 `powerTier.ts`의 `POWER_TIER_WEIGHT`로 눌러 둔
+ *   확률(SS+ ×0.70 … D ×1.12)과 서버의 실전 자동 조정 오프셋을 이 경로만 통째로
+ *   우회했다. 이제 코어가 넘겨 주는 `rollWeighted`(=`AugmentRegistry.rollFrom`)를
+ *   쓴다 — 티어와 등장 확률이 갈라지지 않는다. 시드 파생은 그대로라 결정성은 유지된다.
  * - 지급 결과는 상태(`augmentGrantKey`)에 남아, 이어하기·리플레이의 재설치에서
  *   **다시 뽑지 않는다**.
  */
@@ -23,8 +28,7 @@ import {
   augmentGrantKey,
   defineAugment,
 } from "@majak/core";
-import type { AugmentDef, PlayerId } from "@majak/core";
-import { viewKey } from "../util.js";
+import type { AugmentDef, PlayerId } from "@majak/core";import { viewKey } from "../util.js";
 
 const ID = "cornucopia";
 
@@ -52,22 +56,18 @@ export const cornucopia: AugmentDef = defineAugment({
   description:
     "(획득 즉시) 무작위 증강 2개를 획득한다. 무엇이 나왔는지는 전원에게 공개된다.",
   detail:
-    "이미 보유한 증강, 보유 증강과 함께 가질 수 없는 증강, 이 모드에서 쓰이지 않는 증강은 후보에서 제외된다.\n\n후보가 모자라면 1개만, 또는 하나도 지급되지 않을 수 있다. 지급은 획득 순간 한 번뿐이다.",
+    "이미 보유한 증강, 보유 증강과 함께 가질 수 없는 증강, 이 모드에서 쓰이지 않는 증강은 후보에서 제외된다.\n\n추첨은 일반 드래프트와 같은 확률표를 쓴다 — 강한 증강일수록 덜 나오고 약한 증강일수록 더 자주 나온다.\n\n후보가 모자라면 1개만, 또는 하나도 지급되지 않을 수 있다. 지급은 획득 순간 한 번뿐이다.",
   install(ctx) {
     const { holder } = ctx;
 
-    ctx.grantAugments((available) => {
+    ctx.grantAugments((available, rollWeighted) => {
       if (available.length === 0) return [];
       // 게임 진행용 PRNG를 건드리지 않는 독립 시드 — 리플레이·재개에서도 같은 결과
       const prng = new Prng(
         (ctx.engine.state.config.seed ^ hashString(`${ID}:${holder}`)) >>> 0,
       );
-      const pool = [...available];
-      const chosen: AugmentDef[] = [];
-      for (let i = 0; i < GRANT_COUNT && pool.length > 0; i++) {
-        chosen.push(...pool.splice(prng.int(pool.length), 1));
-      }
-      return chosen;
+      // 드래프트와 **같은** 비복원 가중 추출(AugmentRegistry.rollFrom)이다.
+      return rollWeighted(prng, GRANT_COUNT, available);
     });
 
     // 무엇이 쏟아졌는지 전원 공개.

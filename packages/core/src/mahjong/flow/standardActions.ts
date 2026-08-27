@@ -1431,6 +1431,12 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("scoring.mixedPairs", false);
   /** 순환 슌쯔 (8-9-1, 9-1-2) 허용 — 부숴진 벽 */
   rules.define("scoring.wrapRuns", false);
+  /**
+   * 증강의 ±1 숫자 이동이 1↔9를 넘어 순환한다 — 끝없는 윤회(2026-08-27).
+   * 채점 분해와 무관하므로 `scoring.*`(= DecomposeOptions)이 아니라 손패 축에 둔다.
+   * 연금술사(9→1 · 1→9)와 한 끗 차이(9 대기에 1을 잡아도 밀린다)가 읽는다.
+   */
+  rules.define("hand.wrapRanks", false);
   /** 표준형에 필요한 멘쯔 수 (진짜 용 = 5) */
   rules.define("scoring.totalSets", 4);
   /** 요구패 펑 1개를 국사 구성으로 인정 */

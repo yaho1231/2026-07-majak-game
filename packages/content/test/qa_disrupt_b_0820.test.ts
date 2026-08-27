@@ -41,6 +41,14 @@ function afterFirstGoAround(overrides: Parameters<typeof craft>[0]): GameState {
   });
 }
 
+/*
+ * 2026-08-27 — 함구령·박무의 재사용 게이트가 **매치 사용 횟수 → 국 단위 쿨다운**으로
+ * 바뀌었다(동풍전 2국·반장전 3국). 재장전은 사용 카운터(`<id>:uses:`)를 되돌리는
+ * 물건이라 **국 단위 쿨다운 증강은 애초에 후보가 아니다**(text 확정 34, 아래 describe).
+ * 그래서 "재장전이 지속 중인 6순 효과를 끈다"는 경로 자체가 사라졌다 — 확정 2의 요구
+ * (효과가 걷히면 안 된다)는 그대로 두고, 재장전이 이제 이 둘을 되살리지 못한다는
+ * 사실을 함께 못박는다.
+ */
 describe("재장전 — 지속 중인 6순 효과를 끄지 않는다 (disrupt-b 확정 2)", () => {
   function scene(augs: string[]): ReturnType<typeof createStandardGameFromState> {
     const s = withAug(
@@ -65,11 +73,12 @@ describe("재장전 — 지속 중인 6순 효과를 끄지 않는다 (disrupt-b
     expect(blocked()).toBe(false);
     expect(game.engine.submit({ player: "p0", type: "call_seal_use", payload: {} }).ok).toBe(true);
     expect(blocked()).toBe(true);
+    // 쿨다운형이라 재장전 대상이 아니다 (사용 카운터가 없다)
     expect(
       game.engine.submit({ player: "p0", type: "reload_use", payload: { augmentId: "call_seal" } })
         .ok,
-    ).toBe(true);
-    expect(game.engine.state.augmentData["call_seal:uses:p0"]).toBe(0);
+    ).toBe(false);
+    expect(game.engine.state.augmentData["call_seal:uses:p0"]).toBeUndefined();
     expect(blocked()).toBe(true); // ← 예전에는 여기서 봉인이 걷혔다
   });
 
@@ -85,7 +94,8 @@ describe("재장전 — 지속 중인 6순 효과를 끄지 않는다 (disrupt-b
     expect(
       game.engine.submit({ player: "p0", type: "reload_use", payload: { augmentId: "brief_fog" } })
         .ok,
-    ).toBe(true);
+    ).toBe(false);
+    expect(game.engine.state.augmentData["brief_fog:uses:p0"]).toBeUndefined();
     expect(vis()).toBe("count_only");
   });
 });
@@ -363,7 +373,7 @@ describe("국 스코프 데이터 키 — 국 경계에서 엔진이 지운다 (
     );
     expect(keys).toHaveLength(1);
     expect(keys[0]?.endsWith(ROUND_SCOPED_MARK)).toBe(true);
-    // 매치 스코프(사용 횟수)에는 표식이 붙지 않는다
-    expect(game.engine.state.augmentData["call_seal:uses:p0"]).toBe(1);
+    // 게임 스코프(쿨다운 기준점)에는 표식이 붙지 않는다 — 국을 넘어 살아야 한다
+    expect(typeof game.engine.state.augmentData["call_seal:usedSeq:p0"]).toBe("number");
   });
 });

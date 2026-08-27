@@ -141,6 +141,16 @@ const RON_24K = (g: Game): RoundSettledPayload =>
     win({ winner: "p0", winType: "ron", from: "p1", points: 24000, han: 8, fu: 40 }),
   ]);
 
+/**
+ * 책임전가가 홀더에게 뱅크에서 발행한 판수 가산분 (2026-08-27 사양 — 론 +2판).
+ * 지불 재배선 자체는 여전히 총액 불변이라, 정산 총합은 정확히 이 값이 된다.
+ */
+function blameBonus(out: RoundSettledPayload): number {
+  return (out.augPoints ?? [])
+    .filter((n) => n.player === "p0" && n.augId === "blame_shift")
+    .reduce((a, n) => a + n.points, 0);
+}
+
 describe("책임전가 × 눈먼 총알 — 쏜 사람이 흑자가 되지 않는다", () => {
   it("두 재배선이 겹쳐도 방총자의 최종 증감은 0 이하다", () => {
     for (const bulletHolder of ["p0", "p2", "p3"] as PlayerId[]) {
@@ -154,7 +164,8 @@ describe("책임전가 × 눈먼 총알 — 쏜 사람이 흑자가 되지 않�
       );
       const out = settle(g, RON_24K(g));
       expect(out.deltas["p1"]).toBeLessThanOrEqual(0);
-      expect(sum(out.deltas)).toBe(0);
+      // 2026-08-27: 책임전가에 론 +2판(뱅크 발행)이 붙어 총합은 그 가산분만큼 양수다.
+      expect(sum(out.deltas)).toBe(blameBonus(out));
       // 누구도 손값보다 많이 물지 않는다
       for (const v of Object.values(out.deltas)) expect(v).toBeGreaterThanOrEqual(-24000);
     }
@@ -170,7 +181,7 @@ describe("책임전가 × 뚫린 천장 — 상한 해제분도 함께 3분할�
     const out = settle(g, RON_24K(g));
     expect(out.deltas["p1"]).toBe(out.deltas["p2"]);
     expect(out.deltas["p2"]).toBe(out.deltas["p3"]);
-    expect(sum(out.deltas)).toBe(0);
+    expect(sum(out.deltas)).toBe(blameBonus(out));
   });
 });
 
@@ -267,19 +278,25 @@ describe("죽기살기 — 반등 폭은 시작 점수 한 벌까지다", () => 
         win({ winner: "p0", winType: "tsumo", points: 24000, han: 8, fu: 40 }),
       ]),
     );
-    // 되돌아오는 폭은 25,000 한 벌까지 — 예전에는 상한이 없어 113,000이 그대로 뒤집혔다
-    expect(5000 + (out.deltas["p1"] ?? 0)).toBeLessThanOrEqual(25000);
+    /*
+     * 되돌아오는 폭은 25,000 한 벌까지 — 예전에는 상한이 없어 113,000이 그대로 뒤집혔다.
+     * 2026-08-27 트리거 교체 뒤에는 상한이 **뒤집혀 들어오는 금액**에 걸린다
+     * (0 미만으로 내려간 깊이가 아니라 그 국의 실점이 뒤집히기 때문).
+     */
+    expect(out.deltas["p1"] ?? 0).toBeLessThanOrEqual(25000);
   });
 
-  it("카드의 예시(−8,000 → +8,000)는 그대로다", () => {
-    const g = withAugs(blank(), [{ player: "p1", def: dieHard }]);
+  it("카드의 예시(−8,000 → +8,000) — 바닥권이면 실점이 그대로 뒤집힌다", () => {
+    // 2026-08-27: 트리거가 "정산 후 0 미만"에서 "정산 시점 점수 ≤12,500"으로 바뀌었다.
+    const g = withAugs(blank(10000), [{ player: "p1", def: dieHard }]);
     const out = settle(
       g,
-      winPayload(g, { p0: 33000, p1: -33000, p2: 0, p3: 0 }, [
-        win({ winner: "p0", winType: "ron", from: "p1", points: 33000, han: 11, fu: 40 }),
+      winPayload(g, { p0: 8000, p1: -8000, p2: 0, p3: 0 }, [
+        win({ winner: "p0", winType: "ron", from: "p1", points: 8000, han: 5, fu: 40 }),
       ]),
     );
-    expect(25000 + (out.deltas["p1"] ?? 0)).toBe(8000);
+    expect(out.deltas["p1"]).toBe(8000); // 상대도 +8,000, 나도 +8,000
+    expect(out.deltas["p0"]).toBe(8000);
   });
 });
 

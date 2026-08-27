@@ -1,6 +1,6 @@
 /**
  * 바닥의 족보 (bottom_yaku) — 화료 순간 자기 **버림 이력**을 읽어 판을 얹는 거울상 역.
- * 여기서는 evaluateWin이 실제로 (a) 한 무늬 1~9 완주 → +2판(역류 통관),
+ * 여기서는 evaluateWin이 실제로 (a) 한 무늬 숫자 7종 → +2판(역류 통관),
  * (b) 같은 패 3장 → +1판(미련 없음), (c) 둘 겹침 → +3판을 합산하고,
  * (d) 비보유자·빈 바닥에는 아무것도 얹지 않는지 확인한다.
  */
@@ -57,7 +57,7 @@ function hanOf(ev: WinEvaluation | null, id: string): number | undefined {
 }
 
 describe("바닥의 족보 (bottom_yaku)", () => {
-  it("(a) 한 무늬 1~9를 모두 버렸으면 역류 통관 +2판", () => {
+  it("(a) 한 무늬 숫자 7종 이상을 버렸으면 역류 통관 +2판", () => {
     const ev = evalP0Ron(setup(craftRon("123456789m")));
     expect(ev?.ok).toBe(true);
     expect(hanOf(ev, FLOW)).toBe(2);
@@ -154,8 +154,38 @@ describe("바닥의 족보 (bottom_yaku)", () => {
   });
 
   it("(e4) 애초에 버리지 않은 패는 여전히 세지 않는다 (이력에도 없다)", () => {
-    // 1~8만만 버렸다 — 9만이 없으니 완주가 아니다
-    const ev = evalP0Ron(setup(craftRon("12345678m")));
+    // 1~6만만 버렸다 — 6종이라 7종 문턱에 한 종 모자란다
+    const ev = evalP0Ron(setup(craftRon("123456m")));
     expect(hanOf(ev, FLOW)).toBeUndefined();
+  });
+
+  /*
+   * 밸런스 2026-08-27: 역류 통관 문턱 **9종(1~9 전부) → 같은 무늬 7종**.
+   * 예전 사양(1~9 완주)을 못박던 (a)·(e4)도 이 새 사양으로 고쳤다.
+   */
+  describe("(f) 역류 통관 문턱은 같은 무늬 7종", () => {
+    it("연속 7종(1~7만)이면 붙는다", () => {
+      expect(hanOf(evalP0Ron(setup(craftRon("1234567m"))), FLOW)).toBe(2);
+    });
+
+    it("흩어진 7종(1·3·5·6·7·8·9만)이어도 붙는다 — 연속일 필요가 없다", () => {
+      expect(hanOf(evalP0Ron(setup(craftRon("1356789m"))), FLOW)).toBe(2);
+    });
+
+    it("6종이면 붙지 않는다 (경계는 정확히 7)", () => {
+      expect(hanOf(evalP0Ron(setup(craftRon("135789m"))), FLOW)).toBeUndefined();
+    });
+
+    it("같은 숫자를 여러 장 버려도 종류 수로만 센다", () => {
+      // 1만 3장 + 2~6만 = 숫자 6종 → 역류 통관은 없고 미련 없음만 붙는다
+      const ev = evalP0Ron(setup(craftRon("111m23456m")));
+      expect(hanOf(ev, FLOW)).toBeUndefined();
+      expect(hanOf(ev, LETGO)).toBe(1);
+    });
+
+    it("7종이 무늬를 넘나들면 붙지 않는다 (한 무늬 안에서만 센다)", () => {
+      // 만 4종 + 통 4종 = 어느 무늬도 7종이 아니다
+      expect(hanOf(evalP0Ron(setup(craftRon("1234m6789p"))), FLOW)).toBeUndefined();
+    });
   });
 });

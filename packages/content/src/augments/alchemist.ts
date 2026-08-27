@@ -5,6 +5,10 @@
  *
  * 구현: TileKindChanged(conjured) + 게임 단위 카운터. holderTurnOptions로 손패
  * 수패×유효 방향(±1) 후보 열거.
+ *
+ * 2026-08-27: 끝없는 윤회(broken_wall)가 켜는 `hand.wrapRanks`가 있으면 1↔9 순환이
+ * 열린다(9→1, 1→9). 규칙을 통해서만 통신하므로 이 파일은 그 증강의 id를 모른다.
+ * — wrapRanks.ts 머리말 참고.
  */
 
 import {
@@ -27,6 +31,7 @@ import type {
 } from "@majak/core";
 import { counterOf, publishUsesLeft, roundKey, roundViewKey, scaledUses } from "../util.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
+import { shiftRank, wrapRanksOn } from "./wrapRanks.js";
 import { plan } from "./botPlan.js";
 import { handAlteredKey } from "./handAltered.js";
 
@@ -74,7 +79,7 @@ function usedThisTurn(state: GameState, h: PlayerId): boolean {
 
 const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined || !player.augments.includes(ID)) {
       return "no alchemist augment";
@@ -92,17 +97,21 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
     }
     const k = kindOf(state, req.payload.tileId);
     if (!isNumberSuit(k)) return "not a number tile";
-    const nr = k.rank + req.payload.delta;
-    if (nr < 1 || nr > 9) return "out of range";
+    // 끝없는 윤회 보유 시에만 9→1 · 1→9가 열린다.
+    const nr = shiftRank(k.rank, req.payload.delta, wrapRanksOn(state, rules, req.player));
+    if (nr === null) return "out of range";
     return null;
   },
-  toEvents: (req, { state }) => {
+  toEvents: (req, { state, rules }) => {
     const k = kindOf(state, req.payload.tileId);
+    // validate가 통과시킨 뒤이므로 null이 아니다(순환 여부는 같은 규칙으로 판단한다).
+    const nr =
+      shiftRank(k.rank, req.payload.delta, wrapRanksOn(state, rules, req.player)) ?? k.rank;
     return [
       tileKindChanged([
         {
           tileId: req.payload.tileId,
-          kind: { suit: k.suit, rank: k.rank + req.payload.delta },
+          kind: { suit: k.suit, rank: nr },
           // 적도라 표식은 **숫자와 함께 옮기지 않는다** — 적5를 4나 6으로 옮기면
           // 존재할 수 없는 '적4·적6'이 생겨 +1판이 그대로 따라왔다(2026-07-29 감사).
           // (undefined는 TileKindChanged 규약상 해당 키를 제거한다)
@@ -123,7 +132,7 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
       // 전원 공개 — 무엇이 무엇이 됐는지. 문자열이라 클라이언트 폴백이 그대로 읽는다.
       augmentDataSet(
         revealViewKey(req.player),
-        `${kindKey(k)}→${kindKey({ suit: k.suit, rank: k.rank + req.payload.delta })}`,
+        `${kindKey(k)}→${kindKey({ suit: k.suit, rank: nr })}`,
       ),
     ];
   },
@@ -159,6 +168,7 @@ export const alchemist: AugmentDef = defineAugment({
     publishUsesLeft(ctx, (state) => ({ left: usesLeft(state, holder), total: maxUses(state) }));
 
     ctx.holderTurnOptions((state) => {
+      const wrap = wrapRanksOn(state, engine.rules, holder);
       if (counterOf(state, usedKey(holder)) >= maxUses(state)) return [];
       if (usedThisTurn(state, holder)) return []; // 한 턴에 한 번만
 
@@ -166,8 +176,8 @@ export const alchemist: AugmentDef = defineAugment({
       for (const id of handIdsOf(state, holder)) {
         const k = kindOf(state, id);
         if (!isNumberSuit(k)) continue;
-        if (k.rank > 1) opts.push({ type: ACTION, payload: { tileId: id, delta: -1 } });
-        if (k.rank < 9) opts.push({ type: ACTION, payload: { tileId: id, delta: 1 } });
+        if (wrap || k.rank > 1) opts.push({ type: ACTION, payload: { tileId: id, delta: -1 } });
+        if (wrap || k.rank < 9) opts.push({ type: ACTION, payload: { tileId: id, delta: 1 } });
       }
       return opts;
     });
@@ -186,7 +196,10 @@ export const alchemist: AugmentDef = defineAugment({
         if (p.tileId === undefined || p.delta === undefined) continue;
         const orig = view.tiles[p.tileId]?.kind;
         if (orig === undefined) continue;
-        const next = { ...orig, rank: orig.rank + p.delta };
+        // 후보로 나왔다는 건 그 이동이 합법이라는 뜻이다 — 범위를 벗어난 값은
+        // 끝없는 윤회로 순환한 경우뿐이므로 반대쪽 끝으로 감는다(9+1=1, 1-1=9).
+        const raw = orig.rank + p.delta;
+        const next = { ...orig, rank: raw > 9 ? 1 : raw < 1 ? 9 : raw };
         if (tileSwapImproves(kinds, orig, next)) return o;
       }
       return null;

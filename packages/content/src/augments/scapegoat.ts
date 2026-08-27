@@ -5,6 +5,11 @@
  * 동안 자신의 쯔모 화료 지불은 분담 없이 그 상대가 전액 부담한다
  * (총액 불변, 분배만 변경).
  *
+ * 2026-08-27 (사용자 지시, 밸런스 웨이브): 여기에 **쯔모 화료 +2판**을 얹었다. 예전에는
+ * 지불자만 바꿀 뿐 보유자의 순이득이 정확히 0이라, 카드를 뽑아도 내 점수는 한 푼도
+ * 움직이지 않았다. 거울상인 책임전가(`blame_shift`)의 **론 +2판**과 대칭이다.
+ * 론 화료에는 붙지 않는다 — 이 카드가 아무 일도 하지 않는 화료다.
+ *
  * 구현: parasite 패턴. 지목 커스텀 액션 + augmentData(공개 뷰), ROUND_SETTLED
  * 인터셉터에서 보유자 쯔모 시 나머지 두 명의 지불(음수 delta)을 지목 대상에게 이전.
  */
@@ -25,6 +30,7 @@ import type {
   SettleStage,
 } from "@majak/core";
 import {
+  addWinHanBonus,
   roundViewKey,
   settleInterceptor,
   stringOf,
@@ -36,6 +42,8 @@ import { roundScopedKey } from "./roundScope.js";
 
 const ID = "scapegoat";
 const ACTION = "scapegoat_mark";
+/** 쯔모 화료에 얹히는 판수 (2026-08-27 사용자 지시 — 책임전가의 론 +2판과 대칭) */
+const TSUMO_BONUS_HAN = 2;
 const targetKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "target", state, h);
 
@@ -93,15 +101,25 @@ export const scapegoat: AugmentDef = defineAugment({
   complexity: 2,
   name: "덤터기",
   description:
-    "(매 국 1회) 자기 순에 상대 한 명을 공개 지목한다. 내 쯔모가 그 사람을 지정한 론처럼 작동해, 쯔모 점수 전액을 그 사람 혼자 낸다 — 내가 받는 점수는 그대로다.",
+    "(매 국 1회) 자기 순에 상대 한 명을 공개 지목한다. 내가 쯔모로 화료하면 **+2판**을 얻고, 그 쯔모 점수 전액을 지목당한 사람 혼자 낸다.",
   detail:
-    "나머지 두 명은 한 푼도 내지 않으며, 그 국 정산에서 다른 증강이 새로 부과하는 지불까지 지목당한 사람에게 몰린다.\n\n지목은 자기 순에 공개로 하고 한 번 정하면 그 국에는 못 바꾼다. **론으로 화료할 때는 아무것도 바뀌지 않는다.** 전액을 문 사람은 점수가 모자라면 마이너스로 떨어져 탈락할 수 있다.",
+    "판수를 빼면 내가 받는 점수는 그대로다. 나머지 두 명은 한 푼도 내지 않으며, 그 국 정산에서 다른 증강이 새로 부과하는 지불까지 지목당한 사람에게 몰린다.\n\n지목은 자기 순에 공개로 하고 한 번 정하면 그 국에는 못 바꾼다. **론으로 화료할 때는 판수도 붙지 않고 아무것도 바뀌지 않는다.** 판수는 역만에는 얹히지 않는다. 전액을 문 사람은 점수가 모자라면 마이너스로 떨어져 탈락할 수 있다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(markAction);
     }
+
+    /*
+     * 쯔모 화료에 +2판. 화료 유형은 **내 WinInfo**로 본다 — 더블론에 내가 끼어 있어도
+     * 그건 론이라 붙지 않는다. 지목 여부와는 무관하다: 지목하지 못한 국(무장해제·순번
+     * 부족)에도 쯔모로 났다면 카드값은 한다.
+     * (`addWinHanBonus`는 역만에서 자동으로 무시된다.)
+     */
+    addWinHanBonus(ctx, (_state, info) =>
+      info.winType === "tsumo" ? TSUMO_BONUS_HAN : 0,
+    );
 
     // 정산 단계: Redistribute — 쯔모 지불을 지목 대상 한 명에게 몰아준다 — 총액 불변, 분배만 변경.
     //

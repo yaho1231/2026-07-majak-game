@@ -7,7 +7,9 @@
  * 설계 결정:
  * - **리치 필수 + 쯔모 한정.** 리치를 걸어 손을 굳힌 사람에게만 주는 보상이며,
  *   론에는 적용하지 않는다(후리텐 판정과 상대의 버림 선택을 흔들지 않기 위해).
- * - **1↔9 순환 없음.** 랭크 1의 -1, 랭크 9의 +1은 존재하지 않으므로 자연히 빠진다.
+ * - **1↔9 순환 없음** — 단, 끝없는 윤회(broken_wall)가 켜는 `hand.wrapRanks`가 있으면
+ *   9와 1도 이웃이 되어 9 대기에 1을(1 대기에 9를) 잡아도 밀린다(2026-08-27 버프).
+ *   규칙으로만 통신하므로 이 파일은 그 증강의 id를 모른다 — wrapRanks.ts 머리말 참고.
  * - 자패는 대상이 아니다(±1이라는 개념이 없다).
  * - 추가 점수 없음. "빗나간 패가 오름패가 된다"는 그림 하나가 보상의 전부다.
  *
@@ -35,6 +37,7 @@ import {
 } from "@majak/core";
 import type { AugmentDef, GameState, TileKind, TileDrawnPayload } from "@majak/core";
 import { copiesLeftUndrawn, roundViewKey } from "../util.js";
+import { rankAdjacent, wrapRanksOn } from "./wrapRanks.js";
 
 const ID = "off_by_one";
 
@@ -58,7 +61,7 @@ export const offByOne: AugmentDef = defineAugment({
   description:
     "(상시) 리치 후 쯔모한 패가 오름패의 ±1이면 그 패가 한 칸 밀려 오름패로 바뀐다.",
   detail:
-    "쯔모한 패가 오름패의 이웃이면 한 칸 밀려 오름패가 된다. 리치를 선언한 뒤의 쯔모에만 적용되고, 대상은 오름패와 같은 무늬이면서 숫자가 1만큼 어긋난 수패다. 1과 9를 잇는 순환은 없으며, 오름패가 이미 4장 다 나온 죽은 대기로는 밀리지 않는다.\n\n⚠ 바꾼 패로 화료하지 않으면 그대로 버리게 되어 그 국은 후리텐이 된다.",
+    "쯔모한 패가 오름패의 이웃이면 한 칸 밀려 오름패가 된다. 리치를 선언한 뒤의 쯔모에만 적용되고, 대상은 오름패와 같은 무늬이면서 숫자가 1만큼 어긋난 수패다. 1과 9를 잇는 순환은 없으며(끝없는 윤회를 함께 들면 열린다), 오름패가 이미 4장 다 나온 죽은 대기로는 밀리지 않는다.\n\n⚠ 바꾼 패로 화료하지 않으면 그대로 버리게 되어 그 국은 후리텐이 된다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -85,10 +88,12 @@ export const offByOne: AugmentDef = defineAugment({
       // 이미 진짜 오름패면 손대지 않는다
       if (waits.some((w) => sameKind(w, drawn))) return;
 
+      // 순환이 켜져 있으면 9-1도 "한 칸 옆"이다
+      const wrap = wrapRanksOn(state, engine.rules, holder);
       const target = waits.find(
         (w) =>
           w.suit === drawn.suit &&
-          Math.abs(w.rank - drawn.rank) === 1 &&
+          rankAdjacent(w.rank, drawn.rank, wrap) &&
           // 죽은 대기(남은 장수 0)에는 밀지 않는다 — 5번째 장이 생긴다
           copiesLeftUndrawn(state, w) > 0,
       );

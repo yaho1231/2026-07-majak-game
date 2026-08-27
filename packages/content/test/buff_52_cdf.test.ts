@@ -124,7 +124,7 @@ const deadWallOf = (game: Game): TileId[] =>
 
 // ───────────────────────── C. 정보형 ─────────────────────────
 
-describe("rinshan_preview (영상 정찰) — 영상패 끌어오기", () => {
+describe("rinshan_preview (영상 정찰) — 순서지정 + 1회 교환", () => {
   function setup(): Game {
     const state = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
@@ -139,6 +139,10 @@ describe("rinshan_preview (영상 정찰) — 영상패 끌어오기", () => {
     return game;
   }
 
+  /** 국 시작 시점의 남은 영상패 = 왕패 14 − 표시패 10 = 4 */
+  const N = 4;
+  const identity = [0, 1, 2, 3];
+
   it("깡 없이 영상패를 쯔모패와 맞바꾼다 — 왕패 장수는 그대로, 쯔모패가 갱신된다", () => {
     const game = setup();
     const beforeDeadWall = [...deadWallOf(game)];
@@ -147,8 +151,9 @@ describe("rinshan_preview (영상 정찰) — 영상패 끌어오기", () => {
     const rinshanTile = beforeDeadWall[0] as TileId;
     expect(drawn).not.toBe(rinshanTile);
 
-    expect(validateOf(game, "rinshan_pull", "p0", {})).toBeNull();
-    submitOk(game, "p0", "rinshan_pull", {});
+    const payload = { order: identity, take: 0 };
+    expect(validateOf(game, "rinshan_arrange", "p0", payload)).toBeNull();
+    submitOk(game, "p0", "rinshan_arrange", payload);
 
     const after = deadWallOf(game);
     // 왕패 장수 보존 + 뺀 자리(맨 앞)에 쯔모패가 들어간다
@@ -159,21 +164,77 @@ describe("rinshan_preview (영상 정찰) — 영상패 끌어오기", () => {
     expect(handIdsOf(game.engine.state, "p0")).toContain(rinshanTile);
     expect(handIdsOf(game.engine.state, "p0")).not.toContain(drawn);
     expect(game.engine.state.round.lastDrawnTile).toBe(rinshanTile);
+    // 깡을 하지 않았으므로 영상개화 플래그는 내려간다 (2026-07-29 감사)
+    expect(game.engine.state.round.lastDrawRinshan).toBe(false);
     // 손패 장수는 그대로 (한 장 나가고 한 장 들어온다)
     expect(game.engine.state.zones[handZone("p0")]?.tileIds).toHaveLength(
       beforeHandSize,
     );
   });
 
+  it("「선택 안 하기」 — 순서만 바꾸면 손패도 쯔모패도 그대로다", () => {
+    const game = setup();
+    const before = [...deadWallOf(game)];
+    const drawn = game.engine.state.round.lastDrawnTile as TileId;
+    const beforeHand = [...handIdsOf(game.engine.state, "p0")];
+
+    submitOk(game, "p0", "rinshan_arrange", { order: [3, 2, 1, 0], take: null });
+
+    const after = deadWallOf(game);
+    // ⚠ 왕패 장수 · 도라 표시패 블록(뒤 10장)은 절대 흔들리지 않는다
+    expect(after).toHaveLength(before.length);
+    expect(after.slice(N)).toEqual(before.slice(N));
+    expect(after.slice(0, N)).toEqual([...before.slice(0, N)].reverse());
+    expect(handIdsOf(game.engine.state, "p0")).toEqual(beforeHand);
+    expect(game.engine.state.round.lastDrawnTile).toBe(drawn);
+  });
+
+  it("재배열 + 교환을 함께 해도 왕패 구성이 보존된다 (take는 **새 순서** 기준)", () => {
+    const game = setup();
+    const before = [...deadWallOf(game)];
+    const drawn = game.engine.state.round.lastDrawnTile as TileId;
+    // 새 순서 [2,0,3,1] 에서 0번째 자리 = 원래 index 2
+    submitOk(game, "p0", "rinshan_arrange", { order: [2, 0, 3, 1], take: 0 });
+
+    const after = deadWallOf(game);
+    expect(after).toHaveLength(before.length);
+    expect(after.slice(N)).toEqual(before.slice(N));
+    // 새 앞 4장 = [내 쯔모패, 원래0, 원래3, 원래1]
+    expect(after.slice(0, N)).toEqual([
+      drawn,
+      before[0] as TileId,
+      before[3] as TileId,
+      before[1] as TileId,
+    ]);
+    // 빠져나간 것은 원래 index 2 한 장뿐
+    expect(handIdsOf(game.engine.state, "p0")).toContain(before[2] as TileId);
+    expect(game.engine.state.round.lastDrawnTile).toBe(before[2] as TileId);
+  });
+
   it("국당 1회 — 두 번째 발동은 거부된다", () => {
     const game = setup();
-    submitOk(game, "p0", "rinshan_pull", {});
-    expect(validateOf(game, "rinshan_pull", "p0", {})).toBe("already used this round");
+    submitOk(game, "p0", "rinshan_arrange", { order: identity, take: null });
+    expect(validateOf(game, "rinshan_arrange", "p0", { order: identity, take: 0 })).toBe(
+      "already used this round",
+    );
+  });
+
+  it("순열이 아닌 order·범위 밖 take는 거부된다", () => {
+    const game = setup();
+    expect(validateOf(game, "rinshan_arrange", "p0", { order: [0, 0, 1, 2], take: null })).toBe(
+      "invalid order",
+    );
+    expect(validateOf(game, "rinshan_arrange", "p0", { order: [0, 1, 2], take: null })).toBe(
+      "invalid order",
+    );
+    expect(validateOf(game, "rinshan_arrange", "p0", { order: identity, take: N })).toBe(
+      "invalid take",
+    );
   });
 
   it("비보유자는 쓸 수 없다", () => {
     const game = setup();
-    expect(validateOf(game, "rinshan_pull", "p1", {})).toBe(
+    expect(validateOf(game, "rinshan_arrange", "p1", { order: identity, take: null })).toBe(
       "no rinshan_preview augment",
     );
   });

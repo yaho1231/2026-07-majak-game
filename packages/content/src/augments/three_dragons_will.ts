@@ -1,19 +1,24 @@
 /**
  * 삼원의 의지 (three_dragons_will, prism) — "한 장으로 대삼원?!"
  *
- * 백·발·중 중 **두 종류를 커쯔로 만들고 나머지 한 종류를 1장이라도 쥐고 있으면**, 자기 턴에
- * 발동해 그 한 장을 **커쯔로 완성**한다 — 삼원패 9장을 모아야 하는 대삼원이 7장에서 선다.
+ * 백·발·중 중 **두 종류를 커쯔로 만들면**, 자기 턴에 발동해 **나머지 한 종류를 커쯔로
+ * 세운다** — 삼원패 9장을 모아야 하는 대삼원이 6장에서 선다.
+ *
+ * ⚠ 2026-08-27 사용자 지시로 **발동 조건을 완화**했다. 예전에는 나머지 종류를 1~2장
+ * 쥐고 있어야 했는데("의지"), 0장이어도 3장 전부를 물질화해 커쯔를 세운다. 커쯔를
+ * 세워 줄 뿐 **화료를 보장하지는 않는다** — 남은 몸통과 머리는 스스로 맞춰야 한다.
  *
  * 구현: 손패 장수 불변식을 지키는 유일한 길로 **재료 소모형 생성**을 쓴다(허장성세 `bluff_pretense`·
  * 분열 `tile_split`과 같은 계열). 엔진은 실물 없는 새 tileId를 만들 수 없으므로, 손패에서 가장
- * 고립된 잡패를 부족한 만큼(한두 장) 삼원패로 변환(`tileKindChanged`, conjured)해 커쯔를 채운다.
+ * 고립된 잡패를 부족한 만큼(한~세 장) 삼원패로 변환(`tileKindChanged`, conjured)해 커쯔를 채운다.
  * 재료에서 도라·적도라는 뺀다 — 판정은 형제 둘과 같은 `isPreciousMaterial` 하나를 쓴다.
  *
  * docs/16 §2의 "conjured 2장 보충" 노트를 그대로 따른 것이며, 결과적으로 **코어 변경이 없다** —
  * 세 삼원 커쯔가 실제로 손에 서므로 대삼원·소삼원·부수가 표준 채점에서 자연히 따라온다
  * (분해 단계를 건드렸다면 부수·역 판정 전반을 함께 손봐야 했다).
  *
- * ⚠ 손에 잡패가 2장 없으면(전부 몸통에 묶여 있으면) 발동할 수 없다. 리치 중에도 발동 불가.
+ * ⚠ 재료로 쓸 잡패가 모자라면(전부 몸통에 묶여 있으면) 발동할 수 없다 — 0장에서 세우려면
+ * 잡패 3장이 필요하다. 리치 중에도 발동 불가.
  */
 
 import {
@@ -79,8 +84,8 @@ function dragonCounts(state: GameState, holder: PlayerId): Map<number, number> {
 /**
  * 발동 조건을 만족하면 채워야 할 삼원패 종류와 필요 장수를 돌려준다.
  * - 삼원패 두 종류가 각각 3장 이상(커쯔)
- * - 나머지 한 종류가 1~2장 (0장이면 '의지'가 없다)
- * 반환: { kind, need } — need는 3장을 채우기 위해 생성할 장수(1 또는 2).
+ * - 나머지 한 종류가 0~2장 (2026-08-27: 0장이어도 3장 전부를 세운다)
+ * 반환: { kind, need } — need는 3장을 채우기 위해 생성할 장수(1~3).
  */
 function pendingDragon(
   state: GameState,
@@ -92,7 +97,7 @@ function pendingDragon(
   const rest = DRAGON_RANKS.find((r) => !complete.includes(r));
   if (rest === undefined) return null;
   const have = counts.get(rest) ?? 0;
-  if (have <= 0 || have >= 3) return null;
+  if (have >= 3) return null;
   return { kind: { suit: "dragon", rank: rest }, need: 3 - have };
 }
 
@@ -148,7 +153,7 @@ const willAction: ActionDef<Record<string, never>> = {
     if (!hasUsesLeft(state, req.player)) return "no uses left this game";
     if (inRiichi(state, req.player)) return "cannot invoke during riichi";
     const pending = pendingDragon(state, req.player);
-    if (pending === null) return "need two dragon triplets and one of the third";
+    if (pending === null) return "need exactly two dragon triplets";
     if (pickMaterials(state, req.player, pending.need) === null) {
       return "not enough spare tiles to conjure";
     }
@@ -181,9 +186,9 @@ export const threeDragonsWill: AugmentDef = defineAugment({
   complexity: 3,
   name: "삼원의 의지",
   description:
-    "(동풍전 1회 · 반장전 2회) 삼원패(백·발·중) 중 두 종류를 커쯔로 세우고 나머지 한 종류를 한 장이라도 쥐고 있으면, 자기 순에 발동해 그 한 장을 커쯔로 완성한다.",
+    "(동풍전 1회 · 반장전 2회) 삼원패(백·발·중) 중 두 종류를 커쯔로 세우면, 자기 순에 발동해 나머지 한 종류를 한 장도 안 쥐었어도 커쯔로 세운다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 부족한 만큼(한두 장)이 손패의 잡패에서 물질화해 커쯔를 채우므로 손패 장수는 변하지 않는다. 재료는 가장 고립된 잡패가 자동으로 뽑히고, 도라·적도라는 재료가 되지 않는다.\n\n재료로 쓸 잡패가 모자라거나 리치 중이면 발동할 수 없다.",
+    "(동풍전 1회 · 반장전 2회) 부족한 만큼(한 장~세 장)이 손패의 잡패에서 물질화해 커쯔를 채우므로 손패 장수는 변하지 않는다. 재료는 가장 고립된 잡패가 자동으로 뽑히고, 도라·적도라는 재료가 되지 않는다.\n\n세워 주는 것은 커쯔뿐이고 화료를 보장하지는 않는다 — 남은 몸통과 머리는 스스로 맞춰야 한다.\n\n재료로 쓸 잡패가 모자라거나 리치 중이면 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

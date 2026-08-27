@@ -20,7 +20,9 @@ import type { GameMode } from "../engine/state/GameState.js";
 import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
 import type { PlayerView } from "../information/PlayerView.js";
 import type { TileKind } from "../mahjong/tiles/Tile.js";
+import type { Prng } from "../engine/random/Prng.js";
 import { augmentGrantKey, augmentStageKey } from "./events.js";
+import { AugmentRegistry } from "./AugmentRegistry.js";
 import type { DraftStage } from "./DraftController.js";
 
 export type AugmentTier = "silver" | "gold" | "prism";
@@ -320,7 +322,21 @@ export interface AugmentContext {
    * 재구성(rebuildAugments)에서 install이 다시 불려도 다시 뽑지 않는다.
    * 카탈로그를 넘기지 않은 경로(최소 테스트 게임)에서는 아무 일도 하지 않는다.
    */
-  grantAugments(pick: (available: readonly AugmentDef[]) => readonly AugmentDef[]): void;
+  grantAugments(
+    pick: (
+      available: readonly AugmentDef[],
+      /**
+       * **드래프트와 같은 가중 추출**(`AugmentRegistry.rollFrom`)을 그대로 부르는 통로
+       * (2026-08-27). 파워 티어 가중 + 이 게임의 자동 조정 오프셋이 함께 실린다.
+       * 균등 추출을 직접 짜면 티어와 확률이 갈라지므로 지급형은 이걸 쓴다.
+       */
+      rollWeighted: (
+        prng: Prng,
+        count: number,
+        candidates: readonly AugmentDef[],
+      ) => AugmentDef[],
+    ) => readonly AugmentDef[],
+  ): void;
 }
 
 export interface AugmentDef {
@@ -422,6 +438,11 @@ export interface AugmentExtras {
   catalog?: {
     all(): readonly AugmentDef[];
     get(id: string): AugmentDef | undefined;
+    /**
+     * 이 게임의 드래프트 가중치 덮어쓰기(티어 자동 조정 결과). `AugmentRegistry.weights()`.
+     * 없으면 정적 티어표만 쓴다 — 최소 테스트 카탈로그를 위한 선택 항목이다.
+     */
+    weights?(): Readonly<Record<string, number>>;
   };
   /**
    * **이번 스테이지에 다른 좌석이 집을 수도 있는 증강 id** — 지급형(`ctx.grantAugments`)의
@@ -583,7 +604,19 @@ export function installAugment(
             (d.modes === undefined || d.modes.includes(mode)) &&
             offerableNow(d),
         );
-      const chosen = pick(available);
+      /*
+       * 지급 추첨도 **드래프트와 같은 가중 추출**을 쓴다 (2026-08-27).
+       * 균등으로 뽑으면 파워 티어 가중(SS+ ×0.70 … D ×1.12)과 서버의 자동 조정
+       * 오프셋을 이 경로만 통째로 우회한다.
+       */
+      const overrides = catalog.weights?.() ?? {};
+      const rollWeighted = (
+        prng: Prng,
+        count: number,
+        candidates: readonly AugmentDef[],
+      ): AugmentDef[] =>
+        AugmentRegistry.rollFrom(prng, count, candidates, new Set(), overrides);
+      const chosen = pick(available, rollWeighted);
       /*
        * 준 것들끼리도 상호 배제를 검사한다. 예전에는 **이미 가진 것**과만 비교해서,
        * 한 번에 상호 배타 쌍(`true_dragon` + `royal_kokushi` 등)을 그대로 넘겼다 —

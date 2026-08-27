@@ -350,4 +350,15 @@ describe("바람의 계보 — 동남서북 깡의 북(北)도 역패로 센다 
   it("장풍이 북(서입 이후)이어도 계보 장풍역이 붙는다", () => {
     expect(kanWinYaku(1, 4)).toContain("wind_lineage_prevalent");
   });
+
+  /**
+   * 문안 회귀 (2026-08-27): detail이 "자풍과 장풍이 같으면 그 한 장에 2판"(더블 동과
+   * 같은 셈)이라고 약속한다. 성능은 손대지 않았고, **현재 동작을 못박아** 문안이
+   * 조용히 어긋나는 것을 막는다.
+   */
+  it("자풍 = 장풍이면 자풍역·장풍역이 함께 붙는다 (합 2판)", () => {
+    const ids = kanWinYaku(1, 1);
+    expect(ids).toContain("wind_lineage_seat");
+    expect(ids).toContain("wind_lineage_prevalent");
+  });
 });

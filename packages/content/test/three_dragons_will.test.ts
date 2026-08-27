@@ -1,8 +1,9 @@
 /**
  * 삼원의 의지 (three_dragons_will) — 7장 대삼원.
- *  1. 삼원패 2커쯔 + 나머지 1장이면 발동해 부족분을 잡패에서 물질화한다(손패 장수 불변).
- *  2. 그 결과 세 삼원 커쯔가 실제로 서서 대삼원(역만)이 표준 채점으로 성립한다.
- *  3. 조건 미충족(커쯔 1개·나머지 0장)·리치 중은 거부된다.
+ *  1. 삼원패 2커쯔면 발동해 나머지 한 종류의 부족분을 잡패에서 물질화한다(손패 장수 불변).
+ *  2. 나머지를 0장 쥐었어도 3장 전부를 세운다 (2026-08-27 사양 완화).
+ *  3. 그 결과 세 삼원 커쯔가 실제로 서서 대삼원(역만)이 표준 채점으로 성립한다.
+ *  4. 조건 미충족(커쯔 1개)·리치 중은 거부된다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -111,11 +112,42 @@ describe("삼원의 의지 (three_dragons_will)", () => {
     expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(false);
   });
 
-  it("나머지 한 종류를 하나도 안 쥐었으면 발동할 수 없다", () => {
-    // 백3 발3 + 중 0장
+  /*
+   * 2026-08-27 사양 변경: 예전에는 "나머지 한 종류를 0장 쥐었으면 발동 불가"였다
+   * (옛 테스트가 그 사양을 못박고 있었다). 이제 3장 전부를 물질화한다.
+   */
+  it("나머지 한 종류를 하나도 안 쥐었어도 잡패 3장이 그 종류로 물질화한다", () => {
+    // 백3 발3 + 중 0장 + 123m + 잡패 5장(456m9m1p) = 14장
     const game = setup(scene("555z666z123m456m9m1p"));
-    expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(false);
+    const before = handKeys(game).length;
+
+    const r = game.engine.submit({ player: "p0", type: "dragons_will", payload: {} });
+    expect(r.ok).toBe(true);
+
+    const after = handKeys(game);
+    expect(after.length).toBe(before); // 손패 장수 불변
+    expect(after.filter((k) => k === CHUN).length).toBe(3);
+    const st = game.engine.state;
+    const conjured = handIdsOf(st, "p0").filter(
+      (id) => kindKey(kindOf(st, id)) === CHUN && st.tiles[id]?.attrs?.conjured === true,
+    );
+    expect(conjured.length).toBe(3);
   });
+
+  it("0장에서 세워도 대삼원(역만)이 표준 채점으로 성립한다", () => {
+    // 백3 발3 + 중 0장 + 123m(멘쯔) + 9p9p(머리) + 고립 자패 3장(東南西).
+    // 고립 자패 3장이 재료로 뽑혀 중이 된다 → 백3 발3 중3 + 123m + 9p9p (14장).
+    const game = setup(scene("555z666z123m9p9p1z2z3z"));
+    expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(true);
+
+    const st = game.engine.state;
+    const winTile = handIdsOf(st, "p0").at(-1) as TileId;
+    const ctx = buildWinContext(st, "p0", "tsumo", winTile, { rules: game.engine.rules });
+    const result = evaluateWin(ctx, game.yaku);
+    expect(result?.ok).toBe(true);
+    expect(result?.yaku.some((y) => y.id === "daisangen")).toBe(true);
+  });
+
 
   it("리치 중에는 발동할 수 없다", () => {
     const game = setup(scene("555z666z7z123m9m1p5p9s", true));

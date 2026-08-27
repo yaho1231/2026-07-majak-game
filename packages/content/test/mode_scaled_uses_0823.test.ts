@@ -7,7 +7,9 @@
  *  2. **카르마에 매치 예산이 생겼다** — 게이지만 차면 몇 번이든 태우던 것을
  *     동풍전 1회 · 반장전 2회로 잠갔다.
  *  3. **모양 규칙 3종이 액티브가 됐다** — 동수의 결속·무너진 국경·비대칭은 상시가
- *     아니라 **선언한 그 국 동안만** 열리고, 쿨다운은 2국이다.
+ *     아니라 **선언한 그 국 동안만** 열리고, 쿨다운은 동풍전 2국·반장전 3국이다
+ *     (2026-08-27 사용자 지시로 모드 스케일 + 국 첫 순 한정이 붙었다 —
+ *     첫 순 제한 자체의 회귀 테스트는 `shape_first_turn_0827.test.ts`).
  */
 
 import { describe, expect, it } from "vitest";
@@ -215,9 +217,18 @@ const SHAPE: {
   },
 ];
 
-describe.each(SHAPE)("$id — 선언한 국에만 열린다 (2국에 1회)", ({ id, def, action, option }) => {
-  const mk = (data?: Record<string, unknown>): Game =>
-    game(scene({ augments: [id], ...(data === undefined ? {} : { data }) }), def);
+describe.each(SHAPE)(
+  "$id — 선언한 국에만 열린다 (동풍전 2국 · 반장전 3국에 1회)",
+  ({ id, def, action, option }) => {
+  const mk = (data?: Record<string, unknown>, mode?: GameMode): Game =>
+    game(
+      scene({
+        augments: [id],
+        ...(mode === undefined ? {} : { mode }),
+        ...(data === undefined ? {} : { data }),
+      }),
+      def,
+    );
   const optsOf = (g: Game): Record<string, unknown> =>
     scoringOptionsOf(g.engine.state, g.engine.rules, "p0") as Record<string, unknown>;
   const fire = (g: Game): boolean =>
@@ -233,7 +244,15 @@ describe.each(SHAPE)("$id — 선언한 국에만 열린다 (2국에 1회)", ({ 
     expect(optsOf(g)[option]).toBe(true);
     const view = buildPlayerView(g.engine.state, "p1", g.engine.rules);
     expect(view.augmentView[`${id}:p0`]).toBe(true);
-    expect(g.engine.state.augmentData[cooldownViewKey(id, "p0")]).toBe(2);
+    // 기본 모드는 반장전 → 쿨다운 3국 (2026-08-27)
+    expect(g.engine.state.augmentData[cooldownViewKey(id, "p0")]).toBe(3);
+    expect(
+      (() => {
+        const t = mk(undefined, "tonpuu");
+        expect(fire(t)).toBe(true);
+        return t.engine.state.augmentData[cooldownViewKey(id, "p0")];
+      })(),
+    ).toBe(2);
   });
 
   it("같은 국에 두 번은 못 켠다", () => {
@@ -254,12 +273,22 @@ describe.each(SHAPE)("$id — 선언한 국에만 열린다 (2국에 1회)", ({ 
     expect(optsOf(next)[option]).toBeUndefined();
   });
 
-  it("쿨다운이 2국이다 — 바로 다음 국에는 다시 못 켠다", () => {
-    const g = mk({ [`${id}:usedSeq:p0`]: 3, [`${id}:seq:p0`]: 4 });
-    expect(fire(g)).toBe(false);
-    // 2국이 지나면 다시 열린다
-    const ok = mk({ [`${id}:usedSeq:p0`]: 3, [`${id}:seq:p0`]: 5 });
-    expect(fire(ok)).toBe(true);
+  it("동풍전 쿨다운은 2국이다 — 1국만 지나면 아직 잠겨 있다", () => {
+    const seq = (n: number): Record<string, unknown> => ({
+      [`${id}:usedSeq:p0`]: 3,
+      [`${id}:seq:p0`]: n,
+    });
+    expect(fire(mk(seq(4), "tonpuu"))).toBe(false);
+    expect(fire(mk(seq(5), "tonpuu"))).toBe(true);
+  });
+
+  it("반장전 쿨다운은 3국이다 — 2국이 지나도 아직 잠겨 있다 (2026-08-27)", () => {
+    const seq = (n: number): Record<string, unknown> => ({
+      [`${id}:usedSeq:p0`]: 3,
+      [`${id}:seq:p0`]: n,
+    });
+    expect(fire(mk(seq(5), "hanchan"))).toBe(false);
+    expect(fire(mk(seq(6), "hanchan"))).toBe(true);
   });
 
   it("리치 중에는 선언할 수 없다 — 잠긴 대기가 다시 계산되면 안 된다", () => {
@@ -291,4 +320,5 @@ describe.each(SHAPE)("$id — 선언한 국에만 열린다 (2국에 1회)", ({ 
     expect(fire(g)).toBe(false);
     expect(playerOf(g.engine.state, "p0").augments).toContain(id);
   });
-});
+},
+);

@@ -144,3 +144,56 @@ describe("천리안 (tenpai_scan)", () => {
     ).toHaveLength(1);
   });
 });
+
+/**
+ * 대기 폭 힌트 (2026-08-27 사용자 지시 "대기폭 힌트 지급").
+ *
+ * 계약:
+ *  - `widths[i]`가 `players[i]`와 짝이다.
+ *  - 값은 `"narrow" | "mid" | "wide"` 세 단계뿐 — **정확한 종류 수도, 대기패 자체도
+ *    실리지 않는다**(그건 선언 간파 peek_riichi_waits의 무대다).
+ */
+describe("천리안 — 대기 폭 힌트", () => {
+  /** p1은 1p 단기(1종 = 좁음), p3는 구련보등 13면 대기(9종 = 넓음) */
+  function widthScene(): GameState {
+    const base = craft({
+      hands: {
+        p0: "123456789m123p1s",
+        p1: "123m456m789m123p1p", // 1p 단기 — 대기 1종
+        p2: "147m147p258s1234z", // 노텐 (1s는 p3의 구련보등이 다 쓴다)
+        p3: "1112345678999s", // 구련보등 — 소자 9종 전부가 대기(가장 넓다)
+      },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    return withAugments(base, "p0", ["tenpai_scan"]);
+  }
+
+  it("텐파이 상대마다 폭이 3단계로만 실린다 (숫자·대기패는 안 나간다)", () => {
+    const { game, flow } = startFlow(widthScene());
+    flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+
+    const result = game.engine.state.augmentData[VIEW_KEY] as {
+      players: PlayerId[];
+      widths: string[];
+      turn: number;
+    };
+    expect(result.widths).toHaveLength(result.players.length);
+    for (const w of result.widths) {
+      expect(["narrow", "mid", "wide"]).toContain(w);
+    }
+    // 채널에 실린 것은 목록 · 폭 · 순뿐 — 대기패가 새어 나가면 안 된다
+    expect(Object.keys(result).sort()).toEqual(["players", "turn", "widths"]);
+
+    // 1p 단기(1종)는 반드시 "좁음"
+    const i1 = result.players.indexOf("p1");
+    expect(i1).toBeGreaterThanOrEqual(0);
+    expect(result.widths[i1]).toBe("narrow");
+
+    // 구련보등 13면 대기는 9종이라 "넓음"
+    const i3 = result.players.indexOf("p3");
+    expect(i3).toBeGreaterThanOrEqual(0);
+    expect(result.widths[i3]).toBe("wide");
+  });
+});

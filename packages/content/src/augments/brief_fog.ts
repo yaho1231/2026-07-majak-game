@@ -1,7 +1,7 @@
 /**
  * 박무 (brief_fog, prism) — hidden_river의 "순간 집중형 6순 한정" 형제.
  *
- * 동풍전 1·반장전 2회, 자기 턴에 선언하면 그 순간부터 **6순 동안** 테이블의 모든 바닥에
+ * 동풍전 2국에 1회·반장전 3국에 1회, 자기 턴에 선언하면 그 순간부터 **6순 동안** 테이블의 모든 바닥에
  * 안개가 낀다. 6순이 지나면 안개는 저절로 걷히고 모든 바닥이 다시 정상으로 보인다.
  * `hidden_river`(선언하면 게임이 끝날 때까지)의 시간 제한판 — 짧고 굵게,
  * 결정적인 한 판의 몇 순 동안만 상대의 현물 읽기를 통째로 지운다.
@@ -11,15 +11,15 @@
  * - brief_fog:    선언 시점의 turnCount를 저장하고, `turnCount < declaredTurn + 6`
  *                 인 동안에만 안개가 유효하다. 창이 지나면 visibility 모디파이어가
  *                 그냥 원래 값(cur)을 돌려주므로 별도의 "안개 해제" 처리가 필요 없다.
- * - 발동은 **동풍전 1·반장전 2회**다(안개가 걷힌 뒤에도 다시 선언할 수 없다). 그래서
- *   'used' 플래그는 게임 단위로 영구히 남고(roundKey를 섞지 않는다), 안개가 지금
- *   유효한지는 그와 별개의 '시간 계산'이다.
+ * - 재사용은 **국 단위 쿨다운**이다 — 동풍전 2국에 1회·반장전 3국에 1회
+ *   (2026-08-27 사용자 지시. 예전에는 매치당 횟수였다). 쿨다운 기준점은 게임 단위
+ *   키(`brief_fog:usedSeq:`)에 남고, 안개가 지금 유효한지는 그와 별개의 '시간 계산'이다.
  *
  * 안개 중에도 각 플레이어의 마지막 버림패 한 장은 전원에게 보인다 —
  * 론·후로 판정과 최소한의 현물 수비가 죽지 않도록 hidden_river와 똑같이 유지한다.
  *
  * 구현:
- * - 액션 `declare_brief_fog {}` — turn.act·자기 턴·동풍전 1·반장전 2회(used 플래그).
+ * - 액션 `declare_brief_fog {}` — turn.act·자기 턴·쿨다운(동풍전 2국·반장전 3국).
  * - `visibility.discards`를 `rules.addModifier`로 걸어 **안개가 지금 유효할 때만**
  *   (선언됨 && 6순 창 이내) 비보유자에게 count_only를 돌려준다(state undefined 방어).
  * - 각자의 마지막 버림패 맵을 전원 공개 뷰 채널 + `revealTiles:fog` 코어 채널에 실어
@@ -45,7 +45,13 @@ import type {
   TileId,
   VisibilityRule,
 } from "@majak/core";
-import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import {
+  cooldownReady,
+  cooldownUse,
+  roundViewKey,
+  scaledCooldown,
+  trackRoundSeq,
+} from "../util.js";
 import { clearViewOnDisarm } from "./disarmBanner.js";
 import {
   BRIEF_FOG_TURNS,
@@ -60,10 +66,16 @@ const ACTION = "declare_brief_fog";
 /** 안개가 유효한 순 수 — 선언한 순부터 이 수만큼 (turnCount는 오야가 뽑을 때만 +1 = 진짜 순) */
 const FOG_TURNS = BRIEF_FOG_TURNS;
 
-/** 매치당 사용 횟수 카운터 — **게임 단위**라 roundKey를 섞지 않는다. 동풍전 1·반장전 2회. */
-const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
-const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
-  counterOf(state, usesKey(holder)) < matchUses(state);
+/**
+ * 다시 열릴 때까지의 국 수 — **동풍전 2국 / 반장전 3국** (2026-08-27 사용자 지시).
+ *
+ * 예전에는 매치당 사용 횟수(`matchUses`, 동풍전 1·반장전 2회)였다. 매치 예산이라
+ * 승부처에 몰아 태울 수 있었고, "짧고 굵게 몇 순"이라는 설계와 달리 매치의 특정
+ * 구간만 통째로 흐려졌다. 국 단위 쿨다운은 같은 총량을 매치 전체에 고르게 편다.
+ */
+const cooldownRounds = (state: GameState): number => scaledCooldown(state, 2);
+const cooldownOpen = (state: GameState, holder: PlayerId): boolean =>
+  cooldownReady(state, ID, holder, cooldownRounds(state));
 /** 선언 순(6순 창의 기준점) 키 — 국 스코프. 정의는 fogScope가 소유한다. */
 const turnKey = briefFogTurnKey;
 /** 선언 사실을 전원에게 알리는 공개 뷰 채널 */
@@ -116,14 +128,14 @@ const declareBriefFogAction: ActionDef<Record<string, never>> = {
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
     }
-    if (!hasUsesLeft(state, req.player)) return "brief_fog no uses left";
+    if (!cooldownOpen(state, req.player)) return "brief_fog on cooldown";
     if (fogActive(state, req.player)) return "fog still active";
     return null;
   },
   toEvents: (req, { state }) => {
     const map = lastDiscardMap(state);
     return [
-      augmentDataSet(usesKey(req.player), counterOf(state, usesKey(req.player)) + 1),
+      ...cooldownUse(state, ID, req.player, cooldownRounds(state)),
       augmentDataSet(turnKey(state, req.player), state.round.turnCount),
       // 선언 시점의 state에는 아직 uses·turnKey가 반영되지 않았다 — 방금 건 안개이므로
       // 남은 순은 정의상 FOG_TURNS다. 이후 갱신은 TILE_DISCARDED 틱이 맡는다.
@@ -141,9 +153,9 @@ export const briefFog: AugmentDef = defineAugment({
   complexity: 1,
   name: "박무",
   description:
-    "(동풍전 1회 · 반장전 2회) 선언하면 6순 동안 네 사람의 버림패가 가려지고, 나만 네 개의 바닥을 그대로 본다.",
+    "(동풍전 2국에 1회 · 반장전 3국에 1회) 선언하면 6순 동안 네 사람의 버림패가 가려지고, 나만 네 개의 바닥을 그대로 본다.",
   detail:
-    "남에게는 버림패의 장수만 보인다. 각자의 **마지막 버림패 한 장**은 안개 속에서도 전원에게 공개되어 론·후로 판정이 유지된다.\n\n안개가 걷히기 전에는 다시 선언할 수 없고, 6순이 지나거나 국이 끝나면 걷힌다(사용 횟수는 돌아오지 않는다).",
+    "남에게는 버림패의 장수만 보인다. 각자의 **마지막 버림패 한 장**은 안개 속에서도 전원에게 공개되어 론·후로 판정이 유지된다.\n\n안개가 걷히기 전에는 다시 선언할 수 없고, 6순이 지나거나 국이 끝나면 걷힌다(쿨다운은 그대로 돈다). 한 번 쓰면 동풍전은 2국, 반장전은 3국이 지나야 다시 열린다.",
   // 봇: 자해 위험이 전혀 없다 — 옵션이 뜨면 곧바로 선언한다.
   /*
    * 봇: 6순짜리 안개를 정보가 거의 없는 첫 순에 태우지 않는다 — 상대가 리치를 걸었거나
@@ -160,11 +172,8 @@ export const briefFog: AugmentDef = defineAugment({
   install(ctx) {
     const { engine, holder } = ctx;
 
-    // 남은 사용 횟수를 이름표 pill에 상시 노출한다 (횟수형 증강 공용 규약)
-    publishUsesLeft(ctx, (state) => ({
-      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(holder))),
-      total: matchUses(state),
-    }));
+    // 쿨다운 기준 — 국이 시작될 때마다 +1, 잔량은 보유자 pill에 그려진다
+    trackRoundSeq(ctx, ID, cooldownRounds);
 
     // 액션은 게임당 한 번만 등록 (여러 플레이어가 같은 증강 보유 가능)
     if (!engine.actions.has(ACTION)) {
@@ -260,7 +269,7 @@ export const briefFog: AugmentDef = defineAugment({
     ]);
 
     // 국이 바뀌면 바닥이 비므로 지난 국 tileId가 새지 않게 맵을 비운다
-    // (used 플래그는 게임 단위라 그대로 유지된다 — 동풍전 1·반장전 2회).
+    // (쿨다운 기준점은 게임 단위라 그대로 유지된다 — 동풍전 2국·반장전 3국).
     // 국 시작에는 **조건 없이** 비운다. 안개 활성 여부로 게이트를 걸면, 안개가 이미
     // 만료된 국에서는 정리가 건너뛰어져 지난 국의 tileId가 전원에게 계속 실물 공개된다.
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
@@ -279,9 +288,9 @@ export const briefFog: AugmentDef = defineAugment({
       }
     });
 
-    // 사용 횟수가 남았고 안개가 활성 중이 아니면 보유자 턴에 선언 후보를 낸다
+    // 쿨다운이 풀렸고 안개가 활성 중이 아니면 보유자 턴에 선언 후보를 낸다
     ctx.holderTurnOptions((state) =>
-      hasUsesLeft(state, holder) && !fogActive(state, holder)
+      cooldownOpen(state, holder) && !fogActive(state, holder)
         ? [{ type: ACTION, payload: {} }]
         : [],
     );

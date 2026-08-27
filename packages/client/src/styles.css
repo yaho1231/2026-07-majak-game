@@ -7512,6 +7512,14 @@ button {
   font-weight: 700;
 }
 
+/* 통째로 바꾸기 — 내 손보다 완성이 빠른 상대(2026-08-27). 나에게만 보이는 표식이라
+   다른 강조와 색을 갈라 둔다: 「고를 수 있다」가 아니라 「여기가 값이 난다」다. */
+.opp-arm-tag.opp-arm-fast {
+  border-color: rgba(255, 214, 120, 0.95);
+  color: #ffe9b0;
+  box-shadow: 0 0 14px rgba(255, 200, 100, 0.65);
+}
+
 /* 무장(클릭 발동) 대상 — 바닥(버림패) 한 장 강조 */
 .rt.rt-armable {
   /* .river-wrap이 pointer-events:none이라 무장 대상 패만 클릭을 되살린다
@@ -18211,3 +18219,58 @@ body:has(.prod-skip) .toast-stack {
  * 분산되고 잘 안 보인다). 예전에는 여기서 보드 왼쪽 빈 펠트로 옮겼었는데,
  * 그러면 알약·타이머가 화면 중앙에서 멀리 떨어져 오히려 놓치기 쉬웠다.
  */
+
+/* ── 영상 정찰(rinshan_arrange) 모달 — 예지 탭의 칸을 그대로 쓰되, 한 칸 안에
+   «집기(드래그) / 좌우 이동 / 교환» 세 조작이 들어간다 (2026-08-27 버프).
+   예지와 달리 칸 자체가 <div>다 — 안에 버튼이 셋 들어가야 하므로 버튼을 중첩할 수 없다. */
+.rinshan-arr-grab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: grab;
+  padding: 0;
+}
+.rinshan-arr-grab:active {
+  cursor: grabbing;
+}
+.rinshan-arr-nudge {
+  display: flex;
+  gap: 6px;
+}
+.rinshan-arr-nudge button {
+  /* 터치 표적 최소 크기 — 폰 세로에서 손가락으로 눌러야 한다 (docs/44) */
+  min-width: 34px;
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(199, 188, 255, 0.45);
+  background: rgba(31, 22, 56, 0.7);
+  color: #dbd4ff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rinshan-arr-nudge button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.rinshan-arr-take {
+  min-height: 34px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 200, 106, 0.65);
+  background: rgba(90, 68, 26, 0.6);
+  color: #f6e2b0;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.rinshan-arr-take:hover:not(:disabled) {
+  background: rgba(126, 96, 32, 0.75);
+}
+.rinshan-arr-take:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

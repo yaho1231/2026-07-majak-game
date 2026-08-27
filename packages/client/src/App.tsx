@@ -558,7 +558,7 @@ const ACTION_LABEL: Record<string, string> = {
   stealth_riichi: "스텔스 리치",
   jackpot_roll: "일확천금 — 룰렛",
   karma_burn: "카르마 — 업보 청산",
-  rinshan_pull: "영상패 끌어오기",
+  rinshan_arrange: "영상 정찰 — 순서·교환",
   declare_fog: "안개 덮인 바닥 — 선언",
   genesis_flip: "개벽 — 발동",
   table_flip_do: "밥상 뒤엎기 — 발동",
@@ -640,7 +640,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   stealth_riichi: "stealth_riichi",
   jackpot_roll: "jackpot",
   karma_burn: "karma",
-  rinshan_pull: "rinshan_preview",
+  rinshan_arrange: "rinshan_preview",
   declare_fog: "hidden_river",
   genesis_flip: "genesis",
   table_flip_do: "table_flip",
@@ -736,7 +736,7 @@ const AUGMENT_ACTION_TYPES = new Set([
   "stealth_riichi",
   "jackpot_roll",
   "karma_burn",
-  "rinshan_pull",
+  "rinshan_arrange",
   "peek_forge",
   "ura_swap",
   "declare_fog",
@@ -1071,6 +1071,9 @@ const MODAL_PICK_TYPES = new Set<string>([
   "red_touch", // 적도라로 만들 숫자 지정 (1~9)
   "ura_swap", // 뒷도라 표시패와 맞바꿀 왕패 자리
   "picky_unify", // 편식 — 단색 세계와 같은 무늬 선택 모달
+  // 영상 정찰 — 남은 영상패를 펼쳐 드래그로 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다
+  // (2026-08-27 버프. 후보가 순열×교환자리라 최대 120개 — 텍스트 버튼으로는 못 고른다.)
+  "rinshan_arrange",
 ]);
 
 // ─────────────────────────── 증강 카테고리 (분류·아이콘) ───────────────────────────
@@ -15072,7 +15075,30 @@ function augmentLogRows(
        * 밝히지 않으면 시간이 지날수록 **틀린 정보를 확신 있게** 보여 주게 된다.
        */
       const snap = readScanSnapshot(value, "players");
-      const names = snap.items.map((id) => playerNameById(view, id)).filter((n) => n !== "");
+      /*
+       * 대기 폭 힌트(2026-08-27) — `widths[i]`가 `players[i]`와 짝이다.
+       * 세 단계뿐이고 대기패 자체는 실려 오지 않는다(그건 선언 간파의 무대다).
+       * 구 리플레이에는 `widths`가 없으므로 없으면 이름만 그린다.
+       */
+      const widthRaw = (
+        typeof value === "object" && value !== null
+          ? (value as Record<string, unknown>)["widths"]
+          : undefined
+      );
+      const widths = Array.isArray(widthRaw) ? (widthRaw as string[]) : [];
+      const widthLabel: Record<string, string> = {
+        narrow: "좁음",
+        mid: "보통",
+        wide: "넓음",
+      };
+      const names = snap.items
+        .map((id, i) => {
+          const who = playerNameById(view, id);
+          if (who === "") return "";
+          const w = widthLabel[widths[i] ?? ""];
+          return w === undefined ? who : `${who}(대기 ${w})`;
+        })
+        .filter((n) => n !== "");
       const asOf = snap.turn === null ? "" : ` (${snap.turn}순 기준)`;
       rows.push(
         textRow(
@@ -16336,6 +16362,18 @@ function OpponentStrip({
   // 손패를 건드리는 증강을 무장했는데 이 상대가 리치라 대상이 될 수 없다 —
   // 강조도 클릭도 없는 자리에 이유만 적어 준다 (없으면 "왜 안 눌리지?"가 된다).
   const oppRiichiBlocked = sel.oppRiichiBlocked(player.id);
+  /*
+   * 통째로 바꾸기(hand_swap) — **내 손보다 샹텐이 빠른** 상대에게만 붙는 표식
+   * (2026-08-27 사용자 지시). 서버가 보유자 전용 채널에 «누가 빠른가»만 싣고,
+   * 샹텐 숫자도 손패도 보내지 않는다 — 블라인드 성격을 절반 남기기 위해서다.
+   * 채널은 고르는 창이 열려 있는 동안에만 채워지고 순이 넘어가면 비워진다.
+   */
+  const swapFaster =
+    sel.armedType === "hand_swap" &&
+    (() => {
+      const raw = view.augmentView["full_hand_swap:faster"];
+      return Array.isArray(raw) && (raw as unknown[]).includes(player.id);
+    })();
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
     ? {
@@ -16467,7 +16505,9 @@ function OpponentStrip({
         {...armProps}
       >
         {oppArmable ? (
-          <div className="opp-arm-tag">✦ 여기 클릭</div>
+          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
+            {swapFaster ? "⚡ 나보다 빠름 — 여기 클릭" : "✦ 여기 클릭"}
+          </div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
         ) : null}
@@ -16503,7 +16543,9 @@ function OpponentStrip({
       {...armProps}
     >
       {oppArmable ? (
-          <div className="opp-arm-tag">✦ 여기 클릭</div>
+          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
+            {swapFaster ? "⚡ 나보다 빠름 — 여기 클릭" : "✦ 여기 클릭"}
+          </div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
         ) : null}
@@ -21879,6 +21921,12 @@ function ActiveAugmentControl(props: {
    * 크게 띄운다. 닫아도 스트립은 남아 공개된 패는 계속 보인다.
    */
   const [foresightTab, setForesightTab] = useState(false);
+  /**
+   * 영상 정찰 — 재배열 중인 순서. arr[새 자리] = 원래 인덱스. null이면 아직 안 열었다.
+   * (예지와 같은 규약이라 조작감도 같다 — 드래그 / 두 번 누르기 / 좌우 이동 버튼.)
+   */
+  const [rinshanArr, setRinshanArr] = useState<number[] | null>(null);
+  const [rinshanDragFrom, setRinshanDragFrom] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   // 메뉴가 열려 있을 때 바깥을 누르면 닫는다 (실수로 눌러도 다른 곳 클릭으로 취소)
   useEffect(() => {
@@ -22232,6 +22280,53 @@ function ActiveAugmentControl(props: {
     });
   };
 
+  /*
+   * ── 영상 정찰 — 남은 영상패를 펼쳐 순서를 짜고, 원하면 한 장을 쯔모패와 맞바꾼다 ──
+   *
+   * 후보는 «순열 × 교환 자리(+선택 안 하기)»라 최대 120개다. 텍스트 버튼으로는 고를 수
+   * 없으므로 전용 모달에서 드래그로 순서를 만들고, 그 순서에 해당하는 후보를 키로 찾아
+   * 제출한다(예지 foresight_order와 같은 규약 — 리플레이가 payload만으로 재현된다).
+   */
+  const rinshanArrOpts = pickModal === "rinshan_arrange" ? (byType.get("rinshan_arrange") ?? []) : [];
+  /** `"order|take"` → 후보. take가 null이면 `"order|-"`. */
+  const rinshanArrByKey = new Map<string, ActionOption>();
+  for (const o of rinshanArrOpts) {
+    const p = o.payload as { order?: unknown; take?: unknown };
+    if (!Array.isArray(p.order)) continue;
+    const take = typeof p.take === "number" ? String(p.take) : "-";
+    rinshanArrByKey.set(`${p.order.join(",")}|${take}`, o);
+  }
+  /** 남은 영상패 장수 — 후보의 order 길이가 곧 서버가 본 장수다(뷰와 어긋날 여지가 없다) */
+  const rinshanCount = (() => {
+    const first = rinshanArrOpts[0]?.payload as { order?: unknown } | undefined;
+    return Array.isArray(first?.order) ? (first.order as number[]).length : 0;
+  })();
+  /** 왕패 앞 n장의 tileId — 열람(visibility.deadWall peek)으로 정체가 실려 온다 */
+  const rinshanIds = (view.zones["deadWall"]?.tileIds ?? []).slice(0, rinshanCount);
+  const rinshanOrder: number[] =
+    rinshanArr !== null && rinshanArr.length === rinshanCount
+      ? rinshanArr
+      : Array.from({ length: rinshanCount }, (_v, i) => i);
+  /** from 자리의 패를 빼서 to 자리에 끼워 넣는다 (드래그·탭·이동 버튼이 함께 쓴다) */
+  const moveRinshan = (from: number, to: number): void => {
+    setRinshanDragFrom(null);
+    if (from === to || to < 0 || to >= rinshanCount) return;
+    const next = [...rinshanOrder];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved as number);
+    setRinshanArr(next);
+  };
+  /** 이 순서 + 교환 자리로 확정한다 (take가 null이면 순서만) */
+  const submitRinshan = (take: number | null): void => {
+    const opt = rinshanArrByKey.get(
+      `${rinshanOrder.join(",")}|${take === null ? "-" : String(take)}`,
+    );
+    if (opt !== undefined) sel.submit(opt);
+    setRinshanArr(null);
+    setRinshanDragFrom(null);
+    closeModal();
+  };
+
   // ── 왕패의 주인 — 내 손패 ↔ 왕패를 **여러 쌍 한 번에** 고른다 ──
   // 고른 쌍은 바로 보내지 않고 아래에 쌓아 두었다가 '확정'에서 dwQueue로 넘긴다
   // (서버는 교환 1회 = 액션 1개라 위쪽 effect가 프롬프트마다 하나씩 흘려보낸다).
@@ -22292,6 +22387,8 @@ function ActiveAugmentControl(props: {
     setPickModal(null);
     setModalPick([]);
     setDwPairs([]);
+    setRinshanArr(null);
+    setRinshanDragFrom(null);
   };
 
   return (
@@ -22467,6 +22564,113 @@ function ActiveAugmentControl(props: {
             <button className="rinshan-pick-skip" onClick={closeModal}>
               닫기 (줍지 않고 진행)
             </button>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+      {/*
+        영상 정찰 — 남은 영상패를 전부 펼쳐 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다.
+
+        조작 세 갈래(예지 탭과 같은 규약):
+        ① 드래그(마우스) ② 두 자리를 차례로 누르기(터치 — 모바일 브라우저는 터치에서
+        dragstart를 아예 내지 않는다) ③ 각 칸의 ◀ ▶ 이동 버튼(키보드·스크린리더).
+        드래그만 두면 폰에서도 키보드에서도 순서를 바꿀 길이 없다.
+      */}
+      {pickModal === "rinshan_arrange" && rinshanCount > 0 ? createPortal(
+        <div className="rinshan-pick-overlay" data-arm-zone="1">
+          <div className="rinshan-pick-panel aug-pick-wide">
+            <PickTimer deadline={props.promptDeadline ?? null} />
+            <div className="rinshan-pick-title">
+              🀫 {augNameFor("rinshan_arrange")} — 남은 영상패 {rinshanCount}장
+            </div>
+            <div className="rinshan-pick-sub">
+              왼쪽부터 차례로 <b>다음 깡의 보충패</b>가 됩니다. 옮길 패를 끌어다 놓거나,
+              옮길 패와 놓을 자리를 차례로 누르세요. 한 장을 <b>[이 패와 교환]</b> 하면 그
+              패가 내 쯔모패와 맞바뀌고, 내 쯔모패가 맨 앞자리에 들어갑니다.
+              <br />
+              이 국에 한 번뿐이며, <b>순서만 바꿔도 상대에게 «영상패를 손댔다»가 공개</b>됩니다.
+            </div>
+            <div className="foresight-tab-row">
+              {rinshanOrder.map((origIdx, pos) => {
+                const tileId = rinshanIds[origIdx];
+                const tile = tileId !== undefined ? view.tiles[tileId] : undefined;
+                const picked = rinshanDragFrom === pos;
+                return (
+                  <div
+                    key={pos}
+                    className={`foresight-tab-cell${picked ? " foresight-dragging" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="rinshan-arr-grab"
+                      title="끌거나, 두 자리를 차례로 눌러 순서 변경"
+                      aria-label={`${pos + 1}번째 영상패 — 누르면 집기/놓기`}
+                      draggable
+                      onDragStart={() => setRinshanDragFrom(pos)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (rinshanDragFrom === null) return;
+                        moveRinshan(rinshanDragFrom, pos);
+                      }}
+                      onDragEnd={() => setRinshanDragFrom(null)}
+                      onClick={() => {
+                        if (rinshanDragFrom === null) setRinshanDragFrom(pos);
+                        else moveRinshan(rinshanDragFrom, pos);
+                      }}
+                    >
+                      <span className="foresight-tab-ord">{pos + 1}번째</span>
+                      {tile !== undefined ? <TileImg tile={tile} size="hand" /> : null}
+                      <span className="foresight-tab-label">
+                        {pos === 0 ? "★ 다음 깡" : "그다음"}
+                      </span>
+                    </button>
+                    {/* 드래그 대안 — 키보드·스크린리더 사용자도 순서를 바꿀 수 있어야 한다 */}
+                    <span className="rinshan-arr-nudge">
+                      <button
+                        type="button"
+                        aria-label={`${pos + 1}번째 패를 앞으로`}
+                        disabled={pos === 0}
+                        onClick={() => moveRinshan(pos, pos - 1)}
+                      >
+                        ◀
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${pos + 1}번째 패를 뒤로`}
+                        disabled={pos === rinshanCount - 1}
+                        onClick={() => moveRinshan(pos, pos + 1)}
+                      >
+                        ▶
+                      </button>
+                    </span>
+                    <button
+                      type="button"
+                      className="rinshan-arr-take"
+                      disabled={
+                        rinshanArrByKey.get(`${rinshanOrder.join(",")}|${pos}`) === undefined
+                      }
+                      title="이 패를 내 쯔모패와 맞바꾼다 (교환은 국에 한 번)"
+                      onClick={() => submitRinshan(pos)}
+                    >
+                      이 패와 교환
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="foresight-tab-hint">
+              {rinshanDragFrom !== null
+                ? "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
+                : "순서를 바꾼 뒤 [이 패와 교환]을 누르거나, 아래에서 순서만 확정하세요."}
+            </div>
+            <div className="foresight-tab-actions">
+              <button className="foresight-tab-confirm" onClick={() => submitRinshan(null)}>
+                선택 안 하기 (순서만 확정)
+              </button>
+              <button className="rinshan-pick-skip" onClick={closeModal}>
+                닫기 (발동하지 않고 진행)
+              </button>
+            </div>
           </div>
         </div>,
         document.body,

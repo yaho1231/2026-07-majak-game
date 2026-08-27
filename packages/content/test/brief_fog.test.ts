@@ -5,7 +5,8 @@
  * (a) 선언 후 6순 창 이내: 비보유자는 타가 바닥을 장수만 본다(count_only).
  * (b) 보유자는 여전히 모든 바닥을 그대로 본다.
  * (c) 6순이 지나면 안개가 걷힌다 — visibility.discards가 기본값(public)으로 돌아온다.
- * (d) 게임당 1회 — 두 번째 선언 거부 + 후보에서 사라짐(안개가 걷힌 뒤에도).
+ * (d) 안개 활성 중 재선언 거부 + 후보에서 사라짐.
+ *     (재사용 게이트는 2026-08-27부터 국 단위 쿨다운 — 동풍전 2국·반장전 3국.)
  */
 
 import { describe, expect, it } from "vitest";
@@ -24,13 +25,17 @@ import type {
   RuleContext,
 } from "@majak/core";
 import { craft } from "./helpers.js";
-import { roundViewKey, viewKey } from "../src/util.js";
+import { cooldownUsedKey, cooldownViewKey, roundViewKey, viewKey } from "../src/util.js";
 
 import { briefFog } from "../src/augments/brief_fog.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
-const USES_KEY = "brief_fog:uses:p0";
+/**
+ * 2026-08-27부터 재사용 게이트는 **국 단위 쿨다운**이다(동풍전 2국·반장전 3국).
+ * 예전의 매치 사용 카운터(`brief_fog:uses:p0`)는 더 이상 쓰이지 않는다.
+ */
+const USED_SEQ_KEY = cooldownUsedKey("brief_fog", "p0");
 /** 선언 순 키는 국 스코프다 (국이 바뀌면 자동 만료) */
 const turnKeyFor = (st: GameState): string =>
   `brief_fog:turn:${st.round.prevalentWind}-${st.round.roundNumber}-${st.round.honba}:p0${ROUND_SCOPED_MARK}`;
@@ -94,7 +99,7 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
     const view = buildPlayerView(game.engine.state, "p1", game.engine.rules);
     expect(zoneOf(view, discardsZone("p0")).hiddenCount).toBe(0);
     expect(zoneOf(view, discardsZone("p0")).tileIds).toHaveLength(2);
-    expect(game.engine.state.augmentData[USES_KEY]).toBeUndefined();
+    expect(game.engine.state.augmentData[USED_SEQ_KEY]).toBeUndefined();
     expect(discardVisibility(game, "p1", game.engine.state)).toBe("public");
   });
 
@@ -112,7 +117,9 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
     expect(r.ok).toBe(true);
 
     const s = game.engine.state;
-    expect(s.augmentData[USES_KEY]).toBe(1);
+    expect(typeof s.augmentData[USED_SEQ_KEY]).toBe("number");
+    // 기본 모드는 반장전 → 다시 열릴 때까지 3국
+    expect(s.augmentData[cooldownViewKey("brief_fog", "p0")]).toBe(3);
     expect(s.augmentData[turnKeyFor(s)]).toBe(0); // 선언 순 = turnCount 0
     // 표식은 남은 순을 함께 밝힌다 — 안개가 걷힌 뒤에도 "안개"가 떠 있던 문제(docs/25 #4)
     expect(s.augmentData[roundViewKey("*", "brief_fog:p0")]).toBe("안개 (6순 남음)");
@@ -193,8 +200,8 @@ describe("brief_fog — 박무 (6순 한정 안개)", () => {
   it("(d) 안개 활성 중에는 다시 선언할 수 없다", () => {
     const game = setup();
     game.engine.submit({ player: "p0", type: "declare_brief_fog", payload: {} });
-    // 안개가 활성인 동안에는 사용 횟수가 남아도 재선언이 막힌다
-    expect(game.engine.state.augmentData[USES_KEY]).toBe(1);
+    // 안개가 활성인 동안에는 (쿨다운과 별개로) 재선언이 막힌다
+    expect(typeof game.engine.state.augmentData[USED_SEQ_KEY]).toBe("number");
     expect(
       turnOptions(game).some((o) => o.type === "declare_brief_fog"),
     ).toBe(false);

@@ -144,6 +144,43 @@ export function scaledUses(state: GameState, tonpuuUses: number): number {
     : Math.ceil(tonpuuUses * 1.5);
 }
 
+/**
+ * **매치 길이에 비례하는 쿨다운 국 수** — 동풍전 기준 N국을 반장전에서는 올림 1.5배로.
+ *
+ * (2026-08-27 밸런스 웨이브) "N국에 1회" 액티브의 N도 매치 길이를 따라야 한다.
+ * 반장전은 국이 두 배 가까이 도는데 쿨다운이 그대로면 같은 카드가 반장전에서만
+ * **매치당 발동 횟수가 두 배**가 된다 — `scaledUses`가 횟수 쪽에서 바로잡은 것과
+ * 정확히 같은 왜곡이 쿨다운 쪽에 남아 있었다.
+ *
+ * | 동풍전 | 1 | 2 | 3 |
+ * | 반장전 | 2 | 3 | 5 |
+ *
+ * ⚠ **`scaledUses`와 산식은 같지만 의미가 다르다.** 저쪽은 "매치 동안 몇 번",
+ * 이쪽은 "다시 열릴 때까지 몇 국". 한 함수로 합치면 나중에 한쪽 곡선만 손볼 때
+ * 다른 쪽이 조용히 함께 움직인다 — 그래서 일부러 따로 둔다.
+ *
+ * @param tonpuuRounds 동풍전에서의 쿨다운 국 수 (카드에 적히는 기준값)
+ */
+export function scaledCooldown(state: GameState, tonpuuRounds: number): number {
+  return state.config.mode === "tonpuu"
+    ? tonpuuRounds
+    : Math.ceil(tonpuuRounds * 1.5);
+}
+
+/**
+ * 지금이 이 플레이어의 **국 첫 순**인가 — 아직 이 국에 한 장도 버리지 않은 자기 턴.
+ *
+ * 저장소 공용 규약이다(일확천금 `atFirstTurn`·밥상 뒤엎기 `atFirstHand`·통째로
+ * 바꾸기가 전부 `discardCount === 0`을 본다). **`turnCount`로 재지 않는다** —
+ * `turnCount`는 친의 쯔모에만 오르므로, 내 순이 오기 전에 누가 울면 내가 아직
+ * 아무것도 하지 않았는데 창이 닫힌다(2026-08-25 사용자 보고).
+ */
+export function atHolderFirstTurn(state: GameState, player: PlayerId): boolean {
+  if (state.round.phase !== "turn.act") return false;
+  if (playerAtSeat(state, state.round.turnSeat).id !== player) return false;
+  return (state.round.byPlayer[player]?.discardCount ?? 0) === 0;
+}
+
 /** 본인 전용 뷰 채널 키 (PlayerView.augmentView로 전달됨) */
 export function viewKey(player: PlayerId | "*", key: string): string {
   return `view:${player}:${key}`;
@@ -526,19 +563,24 @@ export function cooldownUse(
  *
  * `cooldownRounds`를 넘기면 국이 바뀔 때마다 잔량 표시(`cooldownViewKey`)도 같이
  * 갱신한다 — 카운터를 올린 **뒤**의 값으로 계산해야 하므로 여기서 직접 뺀다.
+ *
+ * 쿨다운 국 수가 매치 길이에 따라 달라지는 증강(`scaledCooldown`)은 **함수**로 넘긴다
+ * (2026-08-27) — 상수로 굳히면 모드를 모르는 채 잔량을 그린다.
  */
 export function trackRoundSeq(
   ctx: AugmentContext,
   augmentId: string,
-  cooldownRounds?: number,
+  cooldownRounds?: number | ((state: GameState) => number),
 ): void {
   ctx.reaction(ROUND_STARTED, (_event, rc) => {
     const key = roundSeqKey(augmentId, ctx.holder);
     const next = counterOf(rc.state, key) + 1;
     rc.emit(augmentDataSet(key, next));
     if (cooldownRounds === undefined) return;
+    const rounds =
+      typeof cooldownRounds === "number" ? cooldownRounds : cooldownRounds(rc.state);
     const used = rc.state.augmentData[cooldownUsedKey(augmentId, ctx.holder)];
-    const left = typeof used === "number" ? Math.max(0, cooldownRounds - (next - used)) : 0;
+    const left = typeof used === "number" ? Math.max(0, rounds - (next - used)) : 0;
     rc.emit(augmentDataSet(cooldownViewKey(augmentId, ctx.holder), left));
   });
 }

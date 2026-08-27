@@ -127,10 +127,18 @@ describe("공개해서는 안 되는 것", () => {
     // 왕패는 원래 안 보이는 것이 맞다. 채널이 싣는 것도 사실 한 줄뿐이라,
     // 클라가 패를 그리려 들면 없는 정보를 지어내는 셈이 된다.
     const src = readFileSync(join(AUG_DIR, "rinshan_preview.ts"), "utf8");
-    const pub = /augmentDataSet\(\s*pullViewKey\([^)]*\)\s*,\s*"([^"]*)"/.exec(src);
-    expect(pub?.[1], "공개 채널 값이 바뀌었다 — 패가 새는지 다시 본다").toBe(
-      "영상패 맨 앞을 자기 쯔모패와 맞바꿨다",
-    );
+    /*
+     * 2026-08-27 버프로 발동이 «순서지정 + 선택적 교환»이 되면서 문구가 둘로 갈렸다.
+     * 둘 다 **한 줄짜리 사실**이어야 한다 — 바뀐 순서도, 넣은 패도 실리면 안 된다.
+     * (순서만 바꾼 경우도 공개한다: 다음에 깡을 치는 사람이 뽑는 패가 달라진다.)
+     */
+    const at = src.indexOf("augmentDataSet(\n        arrangeViewKey(");
+    expect(at, "공개 채널 emit을 못 찾았다").toBeGreaterThan(0);
+    const pub = [...src.slice(at, at + 200).matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+    expect(pub, "공개 채널 값이 바뀌었다 — 패가 새는지 다시 본다").toEqual([
+      "영상패 순서를 다시 짰다",
+      "영상패 순서를 다시 짜고 한 장을 자기 쯔모패와 맞바꿨다",
+    ]);
     // 클라 쪽도 이 채널을 컷인(패를 함께 띄우는 자리)에 올리지 않는다.
     expect(AUG_EVENT_KEYS).not.toContain("rinshan_preview");
   });

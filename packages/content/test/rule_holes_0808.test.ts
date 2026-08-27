@@ -22,12 +22,17 @@ import { stealthRiichi } from "../src/augments/stealth_riichi.js";
 import { discardLock } from "../src/augments/discard_lock.js";
 import { voidKan } from "../src/augments/void_kan.js";
 
-describe("거울 — 뒷도라는 뒷도라 표시패의 앞 패다", () => {
+describe("거울 — 표도라·깡도라만, 뒷도라는 제외", () => {
   /**
-   * 예전에는 `extraUraDoraKinds`에도 **표도라 표시패**의 앞 패를 넣었다. 그래서
-   * 같은 패가 도라·뒷도라로 두 번 세지고, 진짜 뒷도라 앞패는 영영 안 붙었다.
+   * 2026-08-08에는 "뒷도라 쪽도 **뒷도라 표시패**의 앞 패여야 한다"를 못박던 자리였다
+   * (그전엔 표도라 표시패를 재사용해 같은 패를 두 번 셌다).
+   *
+   * ⚠ 2026-08-27 밸런스로 **뒷도라 자체가 거울의 대상에서 빠졌다.** 그래서 이 테스트는
+   * 새 사양으로 뒤집는다 — `extraDoraKinds`에는 표도라 표시패의 앞 패가 그대로 들어오고,
+   * `extraUraDoraKinds`에는 거울이 **아무것도 얹지 않는다**. 예전 버그(표도라 앞패가
+   * 뒷도라 쪽에 새어 들어감)도 이 단언 하나로 함께 막힌다.
    */
-  it("표도라 앞패와 뒷도라 앞패가 서로 다른 패다", () => {
+  it("표도라 앞패만 붙고 뒷도라 쪽에는 아무것도 얹지 않는다", () => {
     const base = craft({ hands: { p0: "*", p1: "*", p2: "*", p3: "*" }, phase: "turn.act", turnSeat: 0 });
     // craft의 기본 왕패에서는 표시패와 뒷도라 표시패의 앞 패가 우연히 같아
     // 두 경로를 구분하지 못한다. 뒷도라 표시패의 종류만 바꿔 확실히 갈라 놓는다.
@@ -66,8 +71,9 @@ describe("거울 — 뒷도라는 뒷도라 표시패의 앞 패다", () => {
     expect(omoteFront).not.toEqual(uraFront);
 
     expect(extraDora.map(kindKey)).toEqual(omoteFront);
-    // 핵심: 뒷도라 쪽은 **뒷도라 표시패**에서 나온다 (표도라 표시패 재사용 아님)
-    expect(extraUra.map(kindKey)).toEqual(uraFront);
+    // 핵심: 뒷도라 쪽은 비어 있다 — 표도라 앞패가 새어 들어가지도, 뒷도라 앞패가 붙지도 않는다
+    expect(extraUra).toEqual([]);
+    expect(extraUra.map(kindKey)).not.toEqual(uraFront);
   });
 
   it("보유자가 아니면 어느 쪽에도 안 붙는다", () => {
@@ -88,6 +94,31 @@ describe("거울 — 뒷도라는 뒷도라 표시패의 앞 패다", () => {
       });
       expect(got).toEqual([]);
     }
+  });
+
+  /**
+   * 밸런스 2026-08-27 회귀: 보유자 **본인**의 뒷도라 채널도 비어 있어야 한다.
+   * 리치를 걸어 뒷도라를 세는 손에서만 값이 줄어드는 것이 이 변경의 전부다.
+   */
+  it("보유자 본인에게도 뒷도라 추가 종류가 없다", () => {
+    const base = craft({ hands: { p0: "*", p1: "*", p2: "*", p3: "*" }, phase: "turn.act", turnSeat: 0 });
+    const state: GameState = {
+      ...base,
+      players: base.players.map((p) =>
+        p.id === "p0" ? { ...p, augments: ["mirror_dora"] } : p,
+      ),
+    };
+    const game = createStandardGameFromState(state, undefined, [mirrorDora]);
+    installAugment(game.engine, mirrorDora, "p0", { yaku: game.yaku });
+    const s = game.engine.state;
+    const ctx = { playerId: "p0" as const, state: s };
+    // 표도라 쪽은 그대로 붙는다 (능력이 사라진 것이 아니다)
+    expect(
+      game.engine.rules.resolve<readonly unknown[]>("scoring.extraDoraKinds", ctx).length,
+    ).toBeGreaterThan(0);
+    expect(
+      game.engine.rules.resolve<readonly unknown[]>("scoring.extraUraDoraKinds", ctx),
+    ).toEqual([]);
   });
 });
 

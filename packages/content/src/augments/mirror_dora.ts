@@ -3,13 +3,15 @@
  *
  * (상시) 도라 표시패의 **앞 패**도 나에게만 도라가 된다. 표시패가 5통이면 표준 도라
  * 6통에 더해 **4통**도 내 도라다. 순환은 표준 도라의 정확한 역방향이다 —
- * 1→9, 동→북, 백→중. 깡도라 표시패에도, 뒷도라 표시패에도 똑같이 적용된다
- * (뒷도라 쪽은 평소처럼 뒷도라를 세는 손, 즉 리치한 손에만 얹힌다).
+ * 1→9, 동→북, 백→중. 깡도라 표시패에도 똑같이 적용된다.
  *
- * 도라 판 폭이 통째로 두 배가 되므로, 표시패 한 장이 뒤집힐 때마다 나만 두 종류를
- * 본다 — 전원 공개라 상대는 내 도라가 무엇인지 알고 흘리지 않을 수 있다(Rule #4).
+ * ⚠ 밸런스 2026-08-27: **뒷도라는 제외한다.** 예전에는 뒷도라 표시패의 앞 패까지
+ * 개인 도라로 줘서, 리치를 건 손에서만 값이 한 겹 더 붙었다 — 리치+거울 조합이
+ * 표도라·깡도라·뒷도라 세 갈래를 전부 두 배로 만들어 하네만/배만이 예사로 났다.
+ * 이제 표도라·깡도라만 두 배가 된다. 리치를 걸지 않는 손에는 원래 뒷도라가
+ * 없었으므로 **리치 손만** 값이 줄어든다.
  *
- * 구현: 코어 규칙 `scoring.extraDoraKinds`·`scoring.extraUraDoraKinds`에 보유자 전용
+ * 구현: 코어 규칙 `scoring.extraDoraKinds`에 보유자 전용
  * Modifier를 건다. 정상 도라 계산 경로(`buildWinContext` → `countDora`)를 그대로 타므로
  * **화료패·후로·손패가 전부 포함**되고, 표시패가 겹쳐 도라가 중첩되는 것도 그대로다.
  * (`score.extraHan`으로 흉내 내면 손패 Zone에 없는 론 화료패 한 장이 조용히 샌다.)
@@ -21,7 +23,6 @@ import {
   frontDoraKindFor,
   kindKey,
   kindOf,
-  uraIndicatorIds,
 } from "@majak/core";
 import type {
   AugmentDef,
@@ -49,19 +50,6 @@ function frontKinds(state: GameState): TileKind[] {
   return state.round.doraIndicators.map((t) => frontDoraKindFor(kindOf(state, t)));
 }
 
-/**
- * **뒷도라** 표시패의 앞 패 종류.
- *
- * 예전에는 뒷도라 쪽에도 `frontKinds`(표도라 표시패)를 그대로 넣었다. 그래서
- * 표시패가 4통이면 표도라로 3통이 붙고, 뒷도라에도 **같은 3통**이 또 붙어
- * 한 장을 두 번 셌다 — 정작 진짜 뒷도라 표시패의 앞 패는 영영 안 붙었다.
- * 설명("뒷도라 표시패에도 똑같이 적용된다")이 약속한 것과 다른 동작이었다
- * (2026-08-08 QA 2-9).
- */
-function uraFrontKinds(state: GameState): TileKind[] {
-  return uraIndicatorIds(state).map((t) => frontDoraKindFor(kindOf(state, t)));
-}
-
 export const mirrorDora: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
@@ -69,9 +57,9 @@ export const mirrorDora: AugmentDef = defineAugment({
   complexity: 2,
   name: "거울",
   description:
-    "(상시) 도라 표시패의 앞 패도 나에게만 도라가 된다 — 표시패가 5통이면 6통과 함께 4통도 내 도라다. 깡도라·뒷도라 표시패에도 똑같이 적용된다.",
+    "(상시) 도라 표시패의 앞 패도 나에게만 도라가 된다 — 표시패가 5통이면 6통과 함께 4통도 내 도라다. 깡도라 표시패에도 똑같이 적용된다.",
   detail:
-    "도라 표시패 하나가 나에게는 두 종류를 만든다. 앞은 표준 도라의 역방향으로, 1의 앞은 9, 동의 앞은 북, 백의 앞은 중이다.\n\n깡도라 표시패에도, 뒷도라 표시패에도 똑같이 적용된다(뒷도라 쪽은 뒷도라를 세는 손에만 얹힌다). 무엇이 내 도라가 됐는지는 전원에게 공개된다.",
+    "도라 표시패 하나가 나에게는 두 종류를 만든다. 앞은 표준 도라의 역방향으로, 1의 앞은 9, 동의 앞은 북, 백의 앞은 중이다.\n\n깡도라 표시패에도 똑같이 적용되지만 **뒷도라에는 적용되지 않는다** — 리치로 뒤집는 뒷도라 표시패는 평소대로 한 종류만 센다. 무엇이 내 도라가 됐는지는 전원에게 공개된다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -87,11 +75,12 @@ export const mirrorDora: AugmentDef = defineAugment({
         },
       });
     };
-    // 표도라·깡도라는 표시패의 앞 패, 뒷도라는 **뒷도라 표시패**의 앞 패.
-    // 둘은 서로 다른 왕패이므로 각자 읽어야 한다 — 예전에는 양쪽 모두 표도라
-    // 표시패를 봐서 같은 패를 두 번 셌다.
+    /*
+     * 표도라·깡도라의 앞 패만 준다. **뒷도라 쪽(`scoring.extraUraDoraKinds`)은
+     * 일부러 걸지 않는다** — 2026-08-27 밸런스로 제외했다(파일 상단 참고).
+     * 되살릴 일이 생기면 `uraIndicatorIds`를 읽어 같은 모양으로 한 줄 더 걸면 된다.
+     */
     addKinds("scoring.extraDoraKinds", frontKinds);
-    addKinds("scoring.extraUraDoraKinds", uraFrontKinds);
 
     /*
      * 표시패가 **바뀔 때마다** 내 앞도라가 무엇인지 전원에게 알린다.

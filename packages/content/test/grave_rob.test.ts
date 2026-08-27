@@ -118,8 +118,8 @@ describe("무덤 도굴 (grave_rob)", () => {
     for (const id of junk) expect(offered.has(id)).toBe(false);
   });
 
-  it("최근 10장보다 깊이 묻힌 패는 파낼 수 없다 (2026-07-31 무덤 깊이 제한)", () => {
-    // p1 바닥 맨 앞의 3만 뒤로 상대 셋이 12장을 더 버린다 → 3만은 창(10장) 밖으로 밀려난다
+  it("최근 6장보다 깊이 묻힌 패는 파낼 수 없다 (2026-08-27 무덤 깊이 10 → 6)", () => {
+    // p1 바닥 맨 앞의 3만 뒤로 상대 셋이 12장을 더 버린다 → 3만은 창(6장) 밖으로 밀려난다
     const base = craft({
       hands: { p0: "123m456m789m123p3m9p", p1: "*", p2: "*", p3: "*" },
       discards: { p0: "1z", p1: "3m2z3z4z5z", p2: "1z2z3z4z", p3: "5z6z7z1z" },
@@ -139,6 +139,33 @@ describe("무덤 도굴 (grave_rob)", () => {
     });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe("that tile is buried too deep");
+  });
+
+  /**
+   * 깊이 경계를 **정확히 6**에 못 박는다 (2026-08-27 밸런스: 10 → 6).
+   * 상대 셋의 바닥을 시간 순(순번 → 자리 순)으로 늘어놓았을 때 뒤에서 6번째까지가 창이다.
+   */
+  it("창 경계는 정확히 6장이다 — 6번째면 파낼 수 있고 7번째면 못 판다", () => {
+    const withTail = (p1: string, p2: string, p3: string): GameState =>
+      withAugments(
+        craft({
+          hands: { p0: "123m456m789m123p3m9p", p1: "*", p2: "*", p3: "*" },
+          discards: { p0: "1z", p1, p2, p3 },
+          phase: "turn.act",
+          turnSeat: 0,
+          drawnLastFor: "p0",
+        }),
+        "p0",
+        ["grave_rob"],
+      );
+
+    // 상대 바닥 합계 6장, 3만이 그중 가장 오래된 한 장 → 아슬아슬하게 창 안
+    const inWindow = startWithGraveRob(withTail("3m2z3z", "5z6z", "7z"));
+    expect(robOptions(inWindow.prompt).length).toBeGreaterThan(0);
+
+    // 한 장만 더 쌓이면(합계 7장) 3만이 창 밖으로 밀려난다
+    const outOfWindow = startWithGraveRob(withTail("3m2z3z", "5z6z", "7z1z"));
+    expect(robOptions(outOfWindow.prompt)).toHaveLength(0);
   });
 
   it("자기 바닥은 도굴 대상이 아니다 (후리텐 존중)", () => {

@@ -277,6 +277,17 @@ describe("blood_contract — 배수는 손의 화료점에만 걸린다", () => 
 
 // ─────────────────────── 책임전가 (blame_shift) ───────────────────────
 
+/**
+ * 이 정산에서 **뱅크가 판수로 발행한** 가산분 합계 (표시 전용 재배선 줄은 han이 없다).
+ * 2026-08-27 밸런스 웨이브로 책임전가·덤터기가 판수 보너스를 갖게 되면서, 재배선
+ * 증강의 정산 총합이 더 이상 0이 아니게 됐다.
+ */
+function hanBonusTotal(out: RoundSettledPayload): number {
+  return (out.augPoints ?? [])
+    .filter((n) => n.han !== undefined)
+    .reduce((a, n) => a + n.points, 0);
+}
+
 describe("blame_shift — 내 화료 몫만, WinInfo에서 직접 센다", () => {
   /** 더블론: p2가 첫 화료자(본장 900을 받는다), p0가 둘째. p1이 쐈다. */
   const doubleRon = (g: Game): RoundSettledPayload =>
@@ -292,7 +303,9 @@ describe("blame_shift — 내 화료 몫만, WinInfo에서 직접 센다", () =>
     // (2026-08-22 QA aug-1 확정 2 — 예전에는 Math.round라 애먼 p3가 3,900으로 더 냈다)
     expect(out.deltas["p3"]).toBe(-3800);
     expect(out.deltas["p1"]).toBe(-16600 + 7700 - 3900);
-    expect(sum(out.deltas)).toBe(sum(doubleRon(g).deltas));
+    // 2026-08-27: 론 +2판(뱅크 발행)이 얹히므로 총합은 그 가산분만큼만 늘어난다 —
+    // 지불 재배선 자체는 여전히 총액 불변이다.
+    expect(sum(out.deltas)).toBe(sum(doubleRon(g).deltas) + hanBonusTotal(out));
   });
 
   it("두 명이 함께 들어도 각자 자기 몫을 나눈다", () => {
@@ -304,7 +317,9 @@ describe("blame_shift — 내 화료 몫만, WinInfo에서 직접 센다", () =>
     // p2 몫 8,900(본장 포함) ÷2 = 4,400 + p0 몫 7,700 ÷2 = 3,800.
     // 두 끝수(100+100)는 모두 쏜 사람 p1에게 간다 — 확정 2의 내림 규칙.
     expect(out.deltas["p3"]).toBe(-8200);
-    expect(sum(out.deltas)).toBe(sum(doubleRon(g).deltas));
+    // 2026-08-27: 론 +2판(뱅크 발행)이 얹히므로 총합은 그 가산분만큼만 늘어난다 —
+    // 지불 재배선 자체는 여전히 총액 불변이다.
+    expect(sum(out.deltas)).toBe(sum(doubleRon(g).deltas) + hanBonusTotal(out));
   });
 });
 
@@ -360,7 +375,15 @@ describe("scapegoat — '나머지 둘은 한 푼도 내지 않는다'", () => {
     expect(out.deltas["p1"]).toBe(0);
     expect(out.deltas["p3"]).toBe(0);
     expect(out.deltas["p2"]).toBe(-12000);
-    expect(sum(out.deltas)).toBe(0);
+    /*
+     * 2026-08-27 사양 변경: 덤터기에 **쯔모 +2판**이 붙었다(뱅크 발행이라 지불자는 더
+     * 내지 않는다). 재배선 자체는 여전히 총액 불변이므로, 총합은 정확히 그 가산분이다.
+     */
+    const bonus = ((out.augPoints ?? []) as { player: string; augId: string; points: number }[])
+      .filter((n) => n.player === "p0" && n.augId === "scapegoat")
+      .reduce((a, n) => a + n.points, 0);
+    expect(bonus).toBeGreaterThan(0);
+    expect(sum(out.deltas)).toBe(bonus);
   });
 });
 

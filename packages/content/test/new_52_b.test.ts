@@ -231,10 +231,15 @@ describe("silent_swap (정적의 손)", () => {
     expect(game.engine.state.round.phase).toBe("turn.act");
   });
 
-  it("발동한 국에 화료하면 +2판 — 정산창에도 점수가 아니라 판으로 적힌다", () => {
+  /*
+   * 2026-08-27 사양 변경(사용자 지시): 발동 국 화료 **+2판을 삭제**했다. 이 카드는
+   * 이제 점수를 한 푼도 움직이지 않는 순수 "패 가져오기"다 — 정산창에도 줄이 없다.
+   * (그 대신 후리텐 쯔모 봉쇄가 풀렸다: grave_rob_silent_swap_furiten.test.ts)
+   */
+  it("발동한 국에 화료해도 판수가 붙지 않는다", () => {
     const state = silentScene();
     const target = state.zones[discardsZone("p1")]?.tileIds[0] as TileId;
-    const { game, flow } = start(state, silentSwap);
+    const { flow } = start(state, silentSwap);
     const afterTake = flow.submit("p0", {
       type: "silent_take",
       payload: { tileId: target },
@@ -243,22 +248,15 @@ describe("silent_swap (정적의 손)", () => {
     const prompt = afterTake.prompts.find((p) => p.player === "p0")!;
     const win = optionsOf(prompt, "win")[0];
     expect(win).toBeDefined();
-    const before = game.engine.state;
     flow.submit("p0", win!);
 
     const settled = lastSettled(flow);
     const info = (settled.winInfos ?? []).find((w) => w.winner === "p0");
     expect(info).toBeDefined();
-    const bonus = hanBonusPoints(before, "p0", info!, 2);
-    expect(bonus).toBeGreaterThan(0);
-    expect(settled.deltas.p0).toBe(info!.points + bonus);
-    // 2026-08-07 사용자 보고: "+2판인데 정산에 +6000점이 붙는다" — 표시 단위는 판이다.
-    const note = (settled.augPoints ?? []).find(
-      (a) => a.player === "p0" && a.augId === "silent_swap",
-    );
-    expect(note).toBeDefined();
-    expect(note!.han).toBe(2);
-    expect(note!.points).toBe(bonus);
+    expect(settled.deltas.p0).toBe(info!.points);
+    expect(
+      (settled.augPoints ?? []).filter((a) => a.augId === "silent_swap"),
+    ).toEqual([]);
   });
 
   it("여러 시드로 한 국을 완주한다", () => {
