@@ -39,6 +39,7 @@ import {
 import type {
   ActionDef,
   AugmentDef,
+  BotAugmentOption,
   GameState,
   PlayerId,
   TileId,
@@ -59,6 +60,8 @@ import {
 } from "./stealthBreak.js";
 import { roundScopedKey } from "./roundScope.js";
 import { handAlteredMark } from "./handAltered.js";
+import { plan } from "./botPlan.js";
+import { shantenIfSwapped, worstHandTiles } from "./botHelpers.js";
 
 const ID = "hand_swap3";
 /** 대상 지정 액션 (손패는 움직이지 않는다) */
@@ -499,7 +502,71 @@ export const handSwap3: AugmentDef = defineAugment({
         .map((p) => ({ type: AIM_ACTION, payload: { target: p.id } }));
     });
   },
-  // 봇 정책 없음 — 지정→넘길 3장→가져올 3장으로 이어지는 3단계 액션이라, 한 번의
-  // choose()로는 조율할 수 없다(여러 프롬프트에 걸친 계획이 필요). 단순 규칙으로 두면
-  // 반쪽짜리 교환이 되기 쉬워 정책을 두지 않는다.
+  /**
+   * 봇 — **세 프롬프트가 서로 다른 질문**이라는 것을 알면 판단이 선다
+   * (미래를 보는 자와 같은 착시, 2026-08-28 botnew 웨이브 — 실측 387회 제시·0회
+   * 선택으로 사실상 죽어 있던 증강이었다).
+   *
+   * **1단계(지정)** — 아직 상대 손이 안 보이므로 손익을 따질 정보가 없다. 뒤 두
+   * 단계가 실제 손익을 정하므로 여기서는 그냥 제시된 첫 후보를 고른다.
+   *
+   * **2단계(넘길 3장)** — `worstHandTiles`(분열·조커와 같은 `isolatedIndex` 규칙)로
+   * 내 손에서 가장 고립된 3장을 고른다. 상대에게 무엇을 받을지 아직 모르지만,
+   * "빼도 손해가 가장 적은 3장"은 받는 패와 무관하게 항상 옳다.
+   *
+   * **3단계(가져올 3장)** — 지정 시점에 상대 손이 `revealTiles`로 이미 **진짜 패**로
+   * 열려 있다(view.tiles에 실제 kind가 실린다). 2단계에서 넘긴(= worstHandTiles가
+   * 고를) 3장을 뺀 내 손에 후보 3장을 더했을 때 샹텐이 가장 낮아지는 조합을 고른다
+   * (`shantenIfSwapped`). 상대 대기 추정 같은 건 필요 없다 — 내 손이 좋아지는가만
+   * 보면 된다.
+   */
+  bot: plan({
+    intent: "advance",
+    // 지정을 마치고 나면(넘길/가져올 3장 프롬프트) 미룰 이유가 없다 — 상대가 다음
+    // 순에 리치라도 걸면 교환이 막힌다(riichiBlocksSwap). 미래를 보는 자와 같은 이유.
+    fleeting: ({ options }) =>
+      options.some((o) => o.type === GIVE_ACTION || o.type === TAKE_ACTION),
+    pick: (ctx) => {
+      const { options, view, holder } = ctx;
+
+      const give = options.filter((o) => o.type === GIVE_ACTION);
+      if (give.length > 0) {
+        const worst = worstHandTiles(view, holder, SWAP_TILES);
+        const match = give.find((o) => {
+          const ids = (o.payload as { gives?: TileId[] }).gives ?? [];
+          return ids.length === worst.length && ids.every((id, i) => id === worst[i]);
+        });
+        return match ?? give[0] ?? null;
+      }
+
+      const take = options.filter((o) => o.type === TAKE_ACTION);
+      if (take.length > 0) {
+        // 2단계와 같은 규칙으로 다시 계산 — 손패는 그대로라 같은 3장이 나온다.
+        const gave = worstHandTiles(view, holder, SWAP_TILES);
+        let best: BotAugmentOption | null = null;
+        let bestShanten = Infinity;
+        for (const o of take) {
+          const ids = (o.payload as { takes?: TileId[] }).takes ?? [];
+          const kinds = ids
+            .map((id) => view.tiles[id]?.kind)
+            .filter((k): k is TileKind => k !== undefined);
+          if (kinds.length !== ids.length) continue; // 아직 안 열린 패는 건너뛴다
+          const shanten = shantenIfSwapped(view, holder, gave, kinds);
+          if (shanten < bestShanten) {
+            bestShanten = shanten;
+            best = o;
+          }
+        }
+        return best ?? take[0] ?? null;
+      }
+
+      // 지정 단계 — 상대 손이 아직 안 보여 손익을 못 따진다. 첫 후보로 지정한다.
+      //
+      // ⚠ `options`는 **이번 순 전체 후보**다(버림·후로 등 다른 액션이 섞여 있다) —
+      // 정책은 자기 타입만 걸러야 한다. 필터 없이 `options[0]`을 그대로 돌려주면
+      // 대개 그냥 버림이 뽑혀 지정이 영영 발동하지 않는다(2026-08-28 실전 검증에서
+      // 발견 — qa-lab/launch/fix/botnew/verify.ts).
+      return options.find((o) => o.type === AIM_ACTION) ?? null;
+    },
+  }),
 });

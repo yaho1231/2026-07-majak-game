@@ -1,0 +1,110 @@
+
+=== 반장 병합(1500판): 표본 플래그 분포 === {'OK': 112, 'LOW': 2, 'TOO_SMALL': 2}
+  TOO_SMALL: ['frame_up', 'hand_swap3']
+
+=== 동풍(1800판): 표본 플래그 분포 === {'OK': 112, 'LOW': 2, 'TOO_SMALL': 2}
+  TOO_SMALL: ['frame_up', 'hand_swap3']
+
+=== 반장 병합(1500판): 파워 티어 vs 실측 순위 이탈 (games>=60, n=112) ===
+-- 과대평가(파워 상위인데 실측 하위 45%) --
+  let_it_ride          tier=S+  avgPl=2.742 winRate=0.142 games= 225 rank=110/112
+  wind_lineage         tier=S+  avgPl=2.738 winRate=0.165 games= 260 rank=109/112
+  discard_recall       tier=S   avgPl=2.653 winRate=0.190 games= 242 rank=97/112
+  big_hand             tier=S   avgPl=2.640 winRate=0.178 games= 236 rank=92/112
+  silent_pact          tier=S+  avgPl=2.639 winRate=0.236 games= 241 rank=90/112
+  regret               tier=S   avgPl=2.635 winRate=0.235 games= 260 rank=89/112
+  time_stop            tier=S   avgPl=2.625 winRate=0.213 games= 192 rank=83/112
+  hourglass            tier=S   avgPl=2.619 winRate=0.244 games= 168 rank=82/112
+  three_dragons_will   tier=S   avgPl=2.618 winRate=0.193 games= 212 rank=81/112
+  dead_wall_master     tier=S+  avgPl=2.603 winRate=0.194 games= 232 rank=75/112
+  aotenjou_ceiling     tier=S   avgPl=2.603 winRate=0.238 games= 151 rank=76/112
+  genesis              tier=SS+ avgPl=2.576 winRate=0.237 games= 304 rank=71/112
+  north_trader         tier=S   avgPl=2.565 winRate=0.238 games= 168 rank=69/112
+  free_riichi_discard  tier=S+  avgPl=2.543 winRate=0.231 games= 247 rank=64/112
+  eternal_dealer       tier=S+  avgPl=2.542 winRate=0.246 games= 203 rank=63/112
+-- 과소평가(파워 하위인데 실측 상위 20%) --
+  parasite             tier=C   avgPl=1.863 winRate=0.451 games= 175 rank=2/112
+  karma                tier=D   avgPl=2.199 winRate=0.218 games= 156 rank=5/112
+  always_tenpai        tier=D   avgPl=2.207 winRate=0.310 games=  87 rank=6/112
+  nagashi_yakuman      tier=C   avgPl=2.361 winRate=0.286 games= 147 rank=16/112
+  seat_swap            tier=C   avgPl=2.402 winRate=0.304 games= 102 rank=21/112
+  blame_shift          tier=C   avgPl=2.413 winRate=0.273 games= 143 rank=23/112
+
+=== 동풍(1800판): 파워 티어 vs 실측 순위 이탈 (games>=60, n=112) ===
+-- 과대평가(파워 상위인데 실측 하위 45%) --
+  cliff_bloom          tier=S+  avgPl=2.738 winRate=0.159 games= 145 rank=109/112
+  yakuless_win         tier=S+  avgPl=2.719 winRate=0.200 games= 285 rank=108/112
+  late_bloomer_east    tier=S   avgPl=2.708 winRate=0.207 games= 106 rank=107/112
+  three_dragons_will   tier=S   avgPl=2.693 winRate=0.162 games= 192 rank=106/112
+  let_it_ride          tier=S+  avgPl=2.647 winRate=0.212 games= 241 rank=102/112
+  dead_wall_master     tier=S+  avgPl=2.626 winRate=0.210 games= 171 rank=101/112
+  open_riichi          tier=S+  avgPl=2.604 winRate=0.201 games= 293 rank=97/112
+  bluff_pretense       tier=S   avgPl=2.603 winRate=0.222 games= 239 rank=95/112
+  genesis              tier=SS+ avgPl=2.596 winRate=0.253 games= 265 rank=90/112
+  silent_pact          tier=S+  avgPl=2.587 winRate=0.234 games= 218 rank=86/112
+  time_stop            tier=S   avgPl=2.570 winRate=0.237 games= 249 rank=79/112
+  mixed_triplet        tier=S+  avgPl=2.564 winRate=0.227 games= 321 rank=77/112
+  eternal_dealer       tier=S+  avgPl=2.557 winRate=0.270 games= 167 rank=75/112
+  polar_ends           tier=S+  avgPl=2.555 winRate=0.210 games= 229 rank=73/112
+  pond_snatch          tier=S   avgPl=2.545 winRate=0.234 games= 299 rank=70/112
+  hourglass            tier=S   avgPl=2.545 winRate=0.254 games= 134 rank=71/112
+  open_kokushi         tier=S+  avgPl=2.537 winRate=0.284 games= 162 rank=68/112
+  bottom_deal          tier=S   avgPl=2.531 winRate=0.260 games= 258 rank=63/112
+-- 과소평가(파워 하위인데 실측 상위 20%) --
+  always_tenpai        tier=D   avgPl=2.061 winRate=0.424 games=  99 rank=3/112
+  parasite             tier=C   avgPl=2.154 winRate=0.354 games= 175 rank=4/112
+  blame_shift          tier=C   avgPl=2.317 winRate=0.345 games= 145 rank=8/112
+  seat_swap            tier=C   avgPl=2.337 winRate=0.283 games=  92 rank=11/112
+  last_stand           tier=C   avgPl=2.349 winRate=0.276 games= 152 rank=13/112
+  no_ron_pact          tier=C   avgPl=2.381 winRate=0.333 games=  84 rank=15/112
+  die_hard             tier=D   avgPl=2.393 winRate=0.279 games=  61 rank=18/112
+  full_hand_swap       tier=C   avgPl=2.398 winRate=0.285 games= 186 rank=20/112
+  giant_god            tier=C   avgPl=2.409 winRate=0.268 games= 127 rank=21/112
+
+=== 반장(hanchan) vs 동풍(tonpuu) — 같은 증강의 순위차 (양쪽 games>=40) ===
+-- 동풍에서 훨씬 좋다(반장에서 상대적으로 약하다), diff = 반장avgPl - 동풍avgPl, 음수=동풍이 더 나쁨 --
+id                     hanchanAvgPl  tonpuuAvgPl   diff  hGames tGames power
+cliff_bloom                  2.383       2.738  -0.355     167    145  38
+parasite                     1.863       2.154  -0.291     175    175  26
+karma                        2.199       2.447  -0.248     156    141  24
+nagashi_yakuman              2.361       2.600  -0.239     147    135  28
+picky_eater                  2.282       2.516  -0.234     241    219  31
+avenger                      2.658       2.857  -0.199      79     70  22
+yakuless_win                 2.530       2.719  -0.189     266    285  38
+push_riichi                  2.585       2.773  -0.188     188    176  26
+joker                        1.642       1.822  -0.180     226    169  36
+die_hard                     2.220       2.393  -0.173      41     61  16
+unification                  2.515       2.686  -0.171     204    207  30
+haitei_lord                  2.460       2.622  -0.162     124    119  27
+-- 반장에서 훨씬 좋다(동풍에서 상대적으로 약하다) --
+no_ron_pact                  2.701       2.381  +0.320      87     84  27
+devils_advance               2.240       1.960  +0.280      75     99  30
+wind_lineage                 2.738       2.484  +0.254     260    281  38
+riichi_seal                  2.664       2.419  +0.245     223    222  32
+aotenjou_ceiling             2.603       2.363  +0.240     151    124  35
+call_seal                    2.667       2.429  +0.238      99     84  20
+brief_fog                    2.750       2.526  +0.224     104     95  20
+north_trader                 2.565       2.386  +0.179     168    140  34
+discard_recall               2.653       2.475  +0.178     242    223  34
+meld_dissolve                2.709       2.533  +0.176     134    120  28
+hidden_river                 2.650       2.490  +0.160     217    208  30
+palm_flip                    2.670       2.514  +0.156     209    185  29
+
+=== 1차 관심 증강 재확인 (반장 1500판 병합 vs 반장 600판 1차) ===
+id                    games   avgPl  winRate   tonpuu games  tonpuu avgPl
+silent_pact             241   2.639    0.236            218         2.587
+joker                   226   1.642    0.593            169         1.822
+genesis                 304   2.576    0.237            265         2.596
+parasite                175   1.863    0.451            175         2.154
+hand_swap3                5   2.800    0.200              4         2.250
+frame_up                  6   1.667    0.500              5         2.600
+let_it_ride             225   2.742    0.142            241         2.647
+tile_split              215   2.172    0.400            207         2.164
+async_chiitoi           286   2.318    0.304            250         2.172
+broken_border           286   2.332    0.290            310         2.342
+mixed_triplet           283   2.523    0.247            321         2.564
+grave_rob               269   2.353    0.290            251         2.514
+mirror_dora             247   2.441    0.291            267         2.528
+bottom_deal             232   2.539    0.246            258         2.531
+silent_swap             218   2.472    0.248            228         2.395
+cornucopia              255   2.373    0.275            275         2.495

@@ -39,6 +39,8 @@ import {
   trackRoundSeq,
 } from "../util.js";
 import { roundScopedKey } from "./roundScope.js";
+import { plan } from "./botPlan.js";
+import { pickIsolatedDiscard } from "./botHelpers.js";
 
 const ID = "frame_up";
 const ACTION = "frame_discard";
@@ -220,5 +222,46 @@ export const frameUp: AugmentDef = defineAugment({
       return opts;
     });
   },
-  // 봇 정책 없음 — 어떤 패를 누구에게 심어야 이득인지는 상대 대기 추정이 필요하다.
+  /**
+   * 봇 — "상대 대기 추정이 필요하다"고 두었던 자리인데, 발동 자체는 대기 추정을
+   * 쓰지 않는다(2026-08-28 botnew 웨이브). 최적해(상대가 못 쓰게 만들 패를 정확히
+   * 골라 심는 것)는 못 하지만, "명백히 자해가 아닌" 선택은 충분히 가능하다.
+   *
+   * - **어떤 패를 버릴까** — `isolatedIndex`(분열·hand_swap3와 같은 규칙)로 내 손에서
+   *   가장 고립된 패를 고른다. 어차피 이번 순에 버릴 만한 패이므로 명의만 남에게
+   *   돌리는 셈이라 손해가 없다.
+   * - **누구에게 심을까** — **드러난 리치**가 있으면 그쪽을 우선한다. 심긴 패가
+   *   그 사람의 대기와 우연히 맞아도, 아니어도 나에게 손해가 없고 맞으면 그 자리에서
+   *   후리텐으로 막는 값진 방해가 된다. 리치가 없으면 아무나(첫 후보) 지목한다 —
+   *   내 후리텐 회피라는 기본 이득은 대상과 무관하게 그대로 얻는다.
+   */
+  bot: plan({
+    intent: "disrupt",
+    pick: (ctx) => {
+      const { options, view, holder } = ctx;
+      if (options.length === 0) return null;
+
+      // 옵션들 중 "빼도 손해가 가장 적은" 패를 고른다 — 리치류가 안전패를 고를 때
+      // 쓰는 것과 같은 도구다(pickIsolatedDiscard는 제시된 옵션에서만 고르므로,
+      // 손패 전체에서 가장 고립된 패가 이번 후보에 없어도 헤매지 않는다).
+      const isolated = pickIsolatedDiscard(view, holder, options, ACTION);
+      const tileId = (isolated?.payload as { tileId?: TileId } | undefined)?.tileId;
+      const sameTile =
+        tileId === undefined
+          ? options
+          : options.filter((o) => (o.payload as { tileId?: TileId }).tileId === tileId);
+
+      // 그 패로 골랐다면, 심을 상대는 **드러난 리치**가 있는 쪽을 우선한다 — 심긴
+      // 패가 그 사람의 대기와 맞으면 후리텐으로 막고, 안 맞아도 나는 손해가 없다.
+      const riichiTarget = view.players.find(
+        (p) => p.id !== holder && view.round.byPlayer[p.id]?.riichiDeclared === true,
+      )?.id;
+      const preferred =
+        riichiTarget !== undefined
+          ? sameTile.find((o) => (o.payload as { target?: PlayerId }).target === riichiTarget)
+          : undefined;
+
+      return preferred ?? sameTile[0] ?? options[0] ?? null;
+    },
+  }),
 });
