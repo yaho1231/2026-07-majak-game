@@ -2,7 +2,7 @@
  * 봉인술사 (discard_lock, prism) — 액티브 증강.
  * 자기 턴의 국 시작(첫 행동, 아직 아무것도 버리지 않은 순간)에만 액티브 버튼이 활성화되며,
  * 눌러 발동하면 자신을 제외한 각 상대의 현재 손패에서 무작위 수패 2종류를 골라
- * **그 순간 손에 있던 그 패들**을 버릴 수 없게 잠근다.
+ * **그 종류마다 한 장씩**(최대 2장) 버릴 수 없게 잠근다.
  * 한 번 쓰면 2국이 지나야 다시 쓸 수 있다(2국에 한 번).
  * (예전엔 첫 국 시작 시 자동으로 상대당 종류를 잠가 게임 내내 지속되는 영구 디버프였다 —
  *  액티브·쿨다운으로 바꿔, 언제 잠글지 고르는 판단과 재사용 타이밍이 걸리게 했다.)
@@ -147,11 +147,25 @@ function pickSeals(state: GameState, holder: PlayerId): {
       kinds.splice(idx, 1);
     }
     seals[p.id] = picked;
-    // 봉인된 종류에 해당하는 상대의 실제 손패 tile id (보유자에게 진짜 패로 노출)
-    const pickedSet = new Set(picked);
-    sealTiles[p.id] = handIdsOf(state, p.id).filter((tileId) =>
-      pickedSet.has(kindKey(kindOf(state, tileId))),
-    );
+    /*
+     * 종류마다 **한 장씩만** 잠근다 (2026-08-28 사용자 지시).
+     *
+     * 예전에는 고른 종류에 해당하는 손패를 전부 걸렀다. 그래서 1만을 세 장 쥔 손에서
+     * 1만이 뽑히면 세 장이 통째로 묶여, 같은 발동이 상대에 따라 2장이 되기도 6장이
+     * 되기도 했다 — 커쯔·안커를 쥔 손일수록 더 아팠다. 이 파일 머리말과 아래 모디파이어가
+     * 처음부터 «봉인된 그 2장»이라고 적고 있었으니 글이 아니라 코드가 어긋나 있었다.
+     *
+     * 같은 종류의 패는 서로 구별되지 않으므로 손패 순서의 첫 장을 집는다 —
+     * 무엇을 집든 결과가 같고, 리플레이가 같은 값을 내야 하므로 난수를 쓰지 않는다.
+     */
+    const sealed: number[] = [];
+    for (const key of picked) {
+      const id = handIdsOf(state, p.id).find(
+        (tileId) => kindKey(kindOf(state, tileId)) === key,
+      );
+      if (id !== undefined) sealed.push(id);
+    }
+    sealTiles[p.id] = sealed;
   }
   return { seals, sealTiles, prngState: prng.getState() };
 }
@@ -196,9 +210,9 @@ export const discardLock: AugmentDef = defineAugment({
   complexity: 2,
   name: "봉인술사",
   description:
-    "(2국에 1회) 자기 순의 국 시작에 발동하면, 상대 각자의 손패에서 무작위 수패 2종류에 해당하는 그 순간의 패들이 이번 국 동안 봉인되어 버릴 수 없게 된다.",
+    "(2국에 1회) 자기 순의 국 시작에 발동하면, 상대 각자의 손패에서 무작위 수패 2종류를 골라 그 종류마다 한 장씩, 이번 국 동안 버릴 수 없게 잠근다.",
   detail:
-    "잠기는 것은 **그 순간의 패뿐**이라 같은 종류를 나중에 새로 쯔모하면 그 패는 자유롭게 버릴 수 있고, 국이 끝나면 봉인은 모두 풀린다.\n\n상대는 자기 봉인 패에 자물쇠 표시만 보고, 나는 각 상대의 봉인된 실제 패를 그대로 확인한다.",
+    "**같은 종류를 여러 장 쥐고 있어도 잠기는 것은 한 장뿐이다** — 상대마다 최대 2장이다. 잠기는 것은 발동 순간의 그 패라, 같은 종류를 나중에 새로 쯔모하면 그 패는 자유롭게 버릴 수 있고, 국이 끝나면 봉인은 모두 풀린다.\n\n상대는 자기 봉인 패에 자물쇠 표시만 보고, 나는 각 상대의 봉인된 실제 패를 그대로 확인한다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
