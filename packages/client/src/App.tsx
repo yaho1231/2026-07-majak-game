@@ -2520,6 +2520,25 @@ function tileImageSrcOf(kind: TileKind, red: boolean): string | null {
 }
 
 /**
+ * 이미 로드가 끝난 타일 그림의 src 모음.
+ *
+ * `<img>`가 붙기 전 구간에는 `.tile-face`의 크림색 배경만 보인다 — 그것이 사용자가
+ * 말한 «흰 패»다(2026-08-28). 그래서 로드 전에는 뒷면 무늬를 깔아 두는데, **이미
+ * 받아 둔 그림까지 뒷면으로 한 프레임 깜빡이면 그게 더 나쁘다**. 리렌더·재마운트가
+ * 잦은 화면이라(패 한 장이 200장 중 하나로 계속 다시 그려진다) 한 번 로드된 src는
+ * 여기 적어 두고, 다음부터는 처음부터 «로드됨»으로 시작한다.
+ *
+ * **프리로드가 이 집합을 채우는 것이 핵심이다.** 이 집합은 모듈 스코프라 새로고침마다
+ * 비고, `<img>`의 `complete`는 src를 막 지정한 프레임에서는 브라우저 캐시에 있어도
+ * false다(로드 태스크가 아직 안 돌았다). 그래서 프리로드가 안 채우면 **캐시가
+ * 멀쩡한데도** 판이 처음 뜰 때 모든 패가 한 프레임 뒷면으로 깜빡인다.
+ */
+const loadedTileSrcs = new Set<string>();
+
+/** 프리로드를 이미 시작했는가 — 아래 호출 지점이 여럿이라 중복 요청을 막는다. */
+let tilePreloadStarted = false;
+
+/**
  * 모든 타일 이미지를 미리 받아 브라우저 캐시에 넣는다.
  * (안 하면 패가 처음 보일 때 png 로딩 전까지 흰 타일이 잠깐 번쩍인다.)
  *
@@ -2527,12 +2546,22 @@ function tileImageSrcOf(kind: TileKind, red: boolean): string | null {
  * 즉시 실행했다 — 그래서 **로그인 화면 하나를 보는 데 타일 38장**을 받았다.
  * 로그인·가입만 하고 나가는 사람, 랜딩만 보고 떠나는 사람이 전부 그 비용을 냈다.
  *
- * 지금은 판에 들어갈 것이 확실해진 시점(인증 성공)에 한 번만 부른다. 그 시점부터
- * 첫 배패까지는 방을 만들고 사람을 기다리는 시간이 있어, 미리 받는 목적은 그대로
- * 달성된다. 두 번 불려도 브라우저 캐시가 받아 주므로 가드는 두지 않는다.
+ * 그래서 인증 성공(`authOk`)으로 미뤘는데, 이번에는 **너무 늦었다** (2026-08-28
+ * 사용자 보고: "손패가 흰색으로 보일 때가 잦다"). `authOk` 핸들러가 그 자리에서
+ * 곧바로 판을 여는 경로가 셋이다 — 갓 가입한 사람의 연습 대국(`startCoach`),
+ * 초대 링크 입장, 재연결 복귀. 프리로드 시작 시각과 첫 배패 시각이 같은 틱이라
+ * 미리 받는 효과가 0이었다. 실측으로 4장 받는 데 658ms, 37장이면 그 몇 배다.
+ * 리플레이 공유 링크(`?replay=`)는 인증을 기다리지 않으므로 아예 돌지도 않았다.
+ *
+ * 지금은 «판으로 갈 것이 확실해진 가장 이른 순간»마다 부른다 — 로그인·가입·체험을
+ * **누른 순간**(응답을 기다리는 왕복만큼 앞선다)과, 소켓이 열릴 때 이미 돌아갈
+ * 곳이 정해져 있는 경우(토큰 로그인·게스트 복귀·리플레이 링크). 로그인 화면을
+ * 보기만 하고 떠나는 사람은 여전히 한 장도 받지 않는다.
  */
 function preloadTileImages(): void {
   if (typeof window === "undefined") return;
+  if (tilePreloadStarted) return;
+  tilePreloadStarted = true;
   const srcs: string[] = [];
   for (const suit of ["man", "pin", "sou"] as const) {
     for (let rank = 1; rank <= 9; rank++) {
@@ -2553,6 +2582,15 @@ function preloadTileImages(): void {
   for (const src of srcs) {
     const img = new Image();
     img.src = src;
+    // 받아만 두면 첫 페인트에서 디코드 비용을 다시 낸다 — 여기서 함께 끝내 둔다.
+    // 끝나면 «로드됨»으로 적어, 판이 처음 뜰 때 뒷면 한 프레임을 건너뛴다.
+    // 실패는 무시한다: 프리로드가 못 받아도 실제 <img>가 다시 시도한다.
+    void img
+      .decode()
+      .then(() => {
+        loadedTileSrcs.add(src);
+      })
+      .catch(() => {});
   }
 }
 
@@ -2582,6 +2620,8 @@ const TileImg = memo(function TileImg({
   owner?: string | undefined;
 }): JSX.Element {
   const doraFx = useContext(DoraContext);
+  // 그림이 아직 안 왔는가 — 왔으면 뒷면 무늬를 걷는다 (위 loadedTileSrcs 참고).
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
   // 각인 적도라(redFor)는 **그 주인의 손에서만** 붉게 그린다 (§10-1) — 남이 울어
   // 간 뒤에도 빨간 그림이 서 있으면 화면이 점수와 다른 말을 한다.
   const isRed = tileIsRed(tile, owner);
@@ -2609,12 +2649,43 @@ const TileImg = memo(function TileImg({
       </span>
     );
   }
+  /*
+   * png가 도착하기 전에는 **뒷면 무늬**를 깐다 (2026-08-28).
+   *
+   * 예전에는 `.tile-face`의 크림색 배경이 그대로 드러나 «내용 없는 흰 패»가 됐다 —
+   * 마작에서 흰 패는 백(白)이라는 **실재하는 패**라, 잠깐이라도 그렇게 보이면 화면이
+   * 거짓말을 한다. 뒷면은 "아직 안 보인다"를 뜻하므로 거짓이 아니다.
+   *
+   * `loaded` 판정에 src를 함께 담는 이유: 같은 자리의 패가 다른 종류로 바뀌면
+   * (쯔모·울음·색 변환) 새 그림을 다시 받아야 하고, 그동안 옛 그림이 서 있으면
+   * 안 된다. src가 달라지면 자동으로 «아직»으로 돌아간다.
+   */
+  const loaded = loadedSrc === src || loadedTileSrcs.has(src);
   return (
-    <span className={`tile-face tile-${size}${conjured}${red}${dora}`}>
+    <span className={`tile-face tile-${size}${conjured}${red}${dora}${loaded ? "" : " tile-loading"}`}>
       {/* `owner` 를 넘긴다 — 각인 적도라(redFor)는 그 주인의 손에서만 붉게 **그리는데**
           이 alt 만 owner 를 안 넘겨서 남의 손에 있는 같은 패를 「赤5만」으로 읽었다.
           눈으로 보는 사람과 듣는 사람이 서로 다른 판을 봤다. (QA 4라운드 mobile-a11y) */}
-      <img src={src} alt={formatTile(tile, owner)} draggable={false} />
+      <img
+        src={src}
+        alt={formatTile(tile, owner)}
+        draggable={false}
+        onLoad={() => {
+          loadedTileSrcs.add(src);
+          setLoadedSrc(src);
+        }}
+        /* 못 받은 그림에 뒷면을 영원히 세워 두면 판을 읽을 수 없다 —
+           alt 텍스트라도 보이게 «로드됨»으로 넘긴다. */
+        onError={() => setLoadedSrc(src)}
+        ref={(el) => {
+          // 캐시에서 즉시 온 그림은 ref가 붙는 시점에 이미 complete다 — 그때는
+          // onLoad가 오지 않을 수 있어(React가 붙기 전에 끝난 경우) 여기서 본다.
+          if (el?.complete === true && el.naturalWidth > 0) {
+            loadedTileSrcs.add(src);
+            setLoadedSrc(src);
+          }
+        }}
+      />
     </span>
   );
 });
@@ -3857,6 +3928,9 @@ export function App(): JSX.Element {
       const relogin = token !== null && token !== "" && issuer === url;
       if (relogin) {
         send({ type: "tokenLogin", sessionToken: token });
+        // 토큰이 있다 = 판으로 돌아갈 사람이다. `authOk`를 기다리면 그 핸들러가
+        // 같은 틱에 방을 여는 경로(초대 링크·재연결 복귀)와 겹친다 (§7-12).
+        preloadTileImages();
       }
       // 공유 링크로 들어왔다면 인증과 무관하게 그 리플레이부터 청한다 (§4-8).
       // 한 번 쓰면 비운다 — 재연결마다 다시 열면 보던 화면이 튄다.
@@ -3865,6 +3939,9 @@ export function App(): JSX.Element {
         pendingReplayRef.current = null;
         clearReplayFromUrl();
         send({ type: "replayGet", shareToken: sharedReplay });
+        // 리플레이는 인증을 거치지 않는다 — `authOk`에만 걸어 두면 이 화면은
+        // 프리로드 없이 패를 그린다(그래서 흰 패가 가장 오래 남던 자리다).
+        preloadTileImages();
       }
       // 계정이 없는 사람이 체험 판을 두다 끊겼다면 그 판으로 돌려보낸다 (§2-5).
       // 계정 로그인이 우선이다 — 둘 다 있으면 계정이 이긴다(체험 토큰은 어차피
@@ -3873,6 +3950,7 @@ export function App(): JSX.Element {
       const guestResuming = guestToken !== null && guestToken !== "";
       if (guestResuming) {
         send({ type: "guestResume", token: guestToken });
+        preloadTileImages();
       }
       sendFailNotified.current = false; // 다음 끊김에는 다시 알린다
       /*
@@ -6516,18 +6594,28 @@ export function App(): JSX.Element {
              * (`TUTORIAL_ROOM_NOTE`). 무작위 판에서는 그 강의들이 성립하지 않거나
              * 없는 증강 이름을 부른다.
              */
+            preloadTileImages();
             send({ type: "guestPlay" });
           }}
           onTutorial={() => {
             setAuthError(null);
             // **일부러 누른 사람**이다 — 저장된 "이미 봤다"와 무관하게 코치를 켠다.
             startCoach(true);
+            preloadTileImages();
             send({ type: "guestPlay", tutorial: true });
           }}
-          onLogin={(u, p) => send({ type: "login", username: u, password: p })}
+          onLogin={(u, p) => {
+            // 누른 순간이 «판으로 간다»가 확정되는 가장 이른 시점이다 — 서버 왕복
+            // 한 번만큼 `authOk`보다 앞선다 (§7-12).
+            preloadTileImages();
+            send({ type: "login", username: u, password: p });
+          }}
           onRegister={(u, p, code, signup) => {
             // authOk는 가입과 로그인을 구별해 주지 않는다 — 여기서 표시해 둔다.
             justRegistered.current = true;
+            // 갓 가입한 사람은 `authOk` 핸들러가 **그 자리에서** 연습 대국을 연다
+            // (startCoach). 거기서 프리로드를 시작하면 첫 배패와 같은 틱이다.
+            preloadTileImages();
             send({
               type: "register",
               username: u,

@@ -3574,6 +3574,23 @@ button {
   display: block;
 }
 
+/* ── 그림이 아직 안 온 패 (2026-08-28) ──
+   png가 도착하기 전에는 .tile-face의 크림색 배경만 보였다 — 내용 없는 «흰 패»다.
+   마작에서 흰 패는 백(白)이라는 실재하는 패라, 잠깐이라도 그렇게 보이면 화면이
+   거짓말을 한다. 그동안은 뒷면 무늬를 깐다: "아직 안 보인다"는 참이다.
+   그라디언트·테두리는 .back-v / .tile-back-face 와 같은 값이다 — 같은 뜻이면
+   같게 보여야 한다. 전환은 없다(패는 200장이 동시에 서 있고, 페이드가 겹치면
+   판 전체가 일렁인다). */
+.tile-face.tile-loading {
+  background: linear-gradient(180deg, #3e5548 0%, #22332a 60%, #1c2b24 100%);
+  border-color: #152119;
+}
+
+.tile-face.tile-loading img {
+  /* 알파가 있는 png는 반쯤 그려지는 순간이 있다 — 다 오기 전에는 아예 감춘다. */
+  visibility: hidden;
+}
+
 /* 증강이 새로 만들어낸 패 — 프리즘 보라 글로우 + 반짝임으로 원본과 구분 */
 .tile-conjured {
   border-color: #c7bcff;
