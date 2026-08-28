@@ -121,6 +121,11 @@ describe("discard_lock (봉인술사)", () => {
         expect(handIdsOf(state, pid)).toContain(id);
         expect(list).toContain(kindKey(kindOf(state, id)));
       }
+      // **종류마다 한 장씩** — 잠긴 장수가 곧 잠긴 종류 수다 (2026-08-28 사용자 지시).
+      expect(blockedIds).toHaveLength(list.length);
+      expect(new Set(blockedIds.map((id) => kindKey(kindOf(state, id)))).size).toBe(
+        blockedIds.length,
+      );
     }
     // 보유자 본인은 봉인 대상이 아니다
     expect(state.augmentData[roundViewKey("p0", "sealed:p0")]).toBeUndefined();
@@ -131,6 +136,43 @@ describe("discard_lock (봉인술사)", () => {
     const sealedEvent = game.engine.eventLog.find((e) => e.type === "DiscardLockSealed");
     expect(sealedEvent).toBeDefined();
     expect((sealedEvent?.payload as { prngState: number }).prngState).toBe(state.prngState);
+  });
+
+  /*
+   * 커쯔를 쥔 손이 통째로 묶이던 회귀 (2026-08-28 사용자 보고).
+   *
+   * 예전 `pickSeals`는 고른 종류의 손패를 **전부** 걸렀다. 1만을 세 장 쥔 상대에게
+   * 1만이 뽑히면 세 장이 함께 잠겨, 같은 발동이 상대에 따라 2장이 되기도 6장이 되기도
+   * 했다 — 파일 머리말과 모디파이어 주석은 처음부터 «봉인된 그 2장»이라고 적고 있었다.
+   */
+  it("같은 종류를 여러 장 쥐어도 한 장만 잠긴다 (커쯔가 통째로 묶이지 않는다)", () => {
+    // p1 의 수패는 **모든 종류가 2장 이상**이다 — 어느 종류가 뽑히든 검사가 성립하도록
+    // 손패를 짜 두어, 난수 배열이 바뀌어도 이 검사가 시드 운에 기대지 않는다.
+    const base = withAugments(
+      craft({
+        hands: { p0: "*", p1: "111m999p2233444s", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+        seed: 7,
+      }),
+      { p0: ["discard_lock"] },
+    );
+    const game = createStandardGameFromState(base);
+    installAugment(game.engine, discardLock, "p0", { yaku: game.yaku });
+    expect(game.engine.submit({ player: "p0", type: "seal_hands", payload: {} }).ok).toBe(true);
+
+    const state = game.engine.state;
+    const blocked = [...lockedDiscardIds(state, game.engine.rules, "p1")];
+    const kinds = blocked.map((id) => kindKey(kindOf(state, id)));
+    // 최대 2종 × 한 장 = 최대 2장. 같은 종류가 두 번 잠기지 않는다.
+    expect(blocked.length).toBeLessThanOrEqual(2);
+    expect(new Set(kinds).size).toBe(blocked.length);
+    // 손에 그 종류가 셋 있어도 잠긴 것은 하나뿐이다.
+    for (const key of kinds) {
+      const inHand = handIdsOf(state, "p1").filter((id) => kindKey(kindOf(state, id)) === key);
+      expect(inHand.length).toBeGreaterThan(1); // 이 손패는 실제로 커쯔를 쥐고 있다
+      expect(blocked.filter((id) => kindKey(kindOf(state, id)) === key)).toHaveLength(1);
+    }
   });
 
   it("국 시작만으로는 봉인하지 않고, 매 국 쿨다운 카운터만 오른다 (자동 발동 없음)", () => {
