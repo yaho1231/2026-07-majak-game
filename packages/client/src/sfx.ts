@@ -37,7 +37,11 @@ function audio(): AudioContext | null {
       return null;
     }
   }
-  if (ctx.state === "suspended") void ctx.resume();
+  // ⚠ `"suspended"` 하나만 보면 안 된다 (2026-08-29). iOS Safari 는 전화·알람·다른 앱의
+  // 소리로 오디오가 끊기면 컨텍스트를 **`"interrupted"`** 로 둔다 — 표준 상태값이 아니라
+  // 위 비교에 걸리지 않아 resume 이 영영 안 불렸고, 그 뒤로는 소리가 통째로 안 났다.
+  // running / closed 가 아닌 모든 상태는 «깨워야 하는 상태»로 본다.
+  if (ctx.state !== "running" && ctx.state !== "closed") void ctx.resume();
   return ctx;
 }
 
@@ -63,14 +67,29 @@ function installAudioUnlock(): void {
     }
     if (ac !== null && ac.state === "running") {
       loadSamples(); // 첫 입력에 프리로드 — 첫 타패·후로부터 소리가 나게
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
-      window.removeEventListener("touchstart", unlock);
     }
   };
-  window.addEventListener("pointerdown", unlock);
-  window.addEventListener("keydown", unlock);
-  window.addEventListener("touchstart", unlock);
+  /*
+   * ⚠ 리스너를 **떼지 않는다** (2026-08-29).
+   *
+   * 예전에는 한 번 running 이 되면 세 리스너를 전부 떼었다. 그런데 오디오가 한 번
+   * 열렸다고 계속 열려 있는 게 아니다 — 탭을 뒤로 보내거나 화면을 끄면 브라우저가
+   * 컨텍스트를 스스로 suspend 하고, iOS 는 전화 한 통에 interrupted 로 만든다.
+   * 그렇게 잠든 뒤에는 다시 깨울 손잡이가 아무 데도 없어서, 돌아와도 **그 판이
+   * 끝날 때까지 소리가 안 났다**(「가끔 소리가 안 난다」의 실체).
+   * 리스너는 passive 로 계속 붙여 둔다 — 이미 running 이면 unlock 은 사실상 무비용이다.
+   */
+  const opts: AddEventListenerOptions = { passive: true };
+  window.addEventListener("pointerdown", unlock, opts);
+  window.addEventListener("keydown", unlock, opts);
+  window.addEventListener("touchstart", unlock, opts);
+  // 탭으로 돌아온 순간·bfcache 복귀에도 곧바로 깨운다 — 첫 소리를 기다리지 않는다.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") audio();
+  });
+  window.addEventListener("pageshow", () => {
+    audio();
+  });
 }
 
 installAudioUnlock();
