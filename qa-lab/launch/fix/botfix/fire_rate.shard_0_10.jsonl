@@ -1,0 +1,10 @@
+{"id":"red_five_touch","category":"hand","roundsHeld":628,"roundsFired":76,"fireRate":0.12101910828025478,"gamesRun":20,"gamesTimedOut":0}
+{"id":"ura_peek","category":"info","roundsHeld":888,"roundsFired":397,"fireRate":0.44707207207207206,"gamesRun":20,"gamesTimedOut":0}
+{"id":"take_back","category":"hand","roundsHeld":788,"roundsFired":747,"fireRate":0.9479695431472082,"gamesRun":20,"gamesTimedOut":0}
+{"id":"free_riichi_discard","category":"riichi","roundsHeld":920,"roundsFired":140,"fireRate":0.15217391304347827,"gamesRun":20,"gamesTimedOut":0}
+{"id":"peek_riichi_waits","category":"info","roundsHeld":780,"roundsFired":424,"fireRate":0.5435897435897435,"gamesRun":20,"gamesTimedOut":0}
+{"id":"xray_hand","category":"info","roundsHeld":900,"roundsFired":160,"fireRate":0.17777777777777778,"gamesRun":20,"gamesTimedOut":0}
+{"id":"rinshan_preview","category":"info","roundsHeld":768,"roundsFired":650,"fireRate":0.8463541666666666,"gamesRun":20,"gamesTimedOut":0}
+{"id":"pseudo_dealer","category":"disrupt","roundsHeld":900,"roundsFired":281,"fireRate":0.31222222222222223,"gamesRun":20,"gamesTimedOut":0}
+{"id":"last_stand","category":"defense","roundsHeld":920,"roundsFired":18,"fireRate":0.01956521739130435,"gamesRun":20,"gamesTimedOut":0}
+{"id":"tile_dyeing","category":"hand","roundsHeld":816,"roundsFired":203,"fireRate":0.24877450980392157,"gamesRun":20,"gamesTimedOut":0}

@@ -287,7 +287,11 @@ export async function runMatch(o: RunOpts): Promise<MatchReport> {
     },
   });
   try {
-    const ranks = await withTimeout(ctrl.run(), o.timeoutMs ?? 120_000);
+    // ⚠ 타임아웃이 실제로 판을 끊어야 한다 — 안 그러면 시간 초과로 이 호출은
+    // reject되고 스위프는 다음 판으로 넘어가지만, 버려진 ctrl.run()은 백그라운드에서
+    // 영원히 계속 돈다(2026-08-28 감사: 5시간 GC 스래싱의 원인). requestAbort()를
+    // onTimeout으로 넘겨 타임아웃 순간 루프가 다음 체크 지점에서 즉시 빠져나가게 한다.
+    const ranks = await withTimeout(ctrl.run(), o.timeoutMs ?? 120_000, () => ctrl.requestAbort());
     report.rankings = ranks;
   } catch (e) {
     report.crash = e instanceof Error ? `${e.message}\n${(e.stack ?? "").split("\n").slice(1, 6).join("\n")}` : String(e);
@@ -328,9 +332,21 @@ export async function runMatch(o: RunOpts): Promise<MatchReport> {
   return report;
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+/**
+ * ⚠ 이 래퍼는 **바깥 프로미스만** 제시간에 끊는다. `p` 자체(예: ctrl.run())는 취소되지
+ * 않는다 — JS 프로미스는 외부에서 강제로 멈출 수 없다. 그래서 타임아웃이 실제로
+ * 자원을 되찾으려면 `onTimeout`으로 **작업 쪽에 스스로 멈추라는 신호**를 줘야 한다
+ * (HanchanController.requestAbort()가 그 신호다 — 다음 체크 지점에서 루프가 나간다).
+ * 신호를 주지 않으면 타임아웃은 "이 호출을 기다리지 않는다"일 뿐 "일을 멈춘다"가
+ * 아니다 — 버려진 판이 백그라운드에서 계속 돌며 CPU·메모리를 먹는다
+ * (2026-08-28 감사: qa-lab/launch/augbug.md §5 — 5시간 GC 스래싱).
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
   return new Promise<T>((res, rej) => {
-    const t = setTimeout(() => rej(new Error(`TIMEOUT ${ms}ms (soft-lock 의심)`)), ms);
+    const t = setTimeout(() => {
+      onTimeout?.();
+      rej(new Error(`TIMEOUT ${ms}ms (soft-lock 의심)`));
+    }, ms);
     p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
   });
 }

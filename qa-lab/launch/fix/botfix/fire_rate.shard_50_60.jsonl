@@ -1,0 +1,10 @@
+{"id":"conjure_draw","category":"hand","roundsHeld":736,"roundsFired":724,"fireRate":0.9836956521739131,"gamesRun":20,"gamesTimedOut":0}
+{"id":"tenpai_scan","category":"info","roundsHeld":924,"roundsFired":710,"fireRate":0.7683982683982684,"gamesRun":20,"gamesTimedOut":0}
+{"id":"danger_sense","category":"info","roundsHeld":884,"roundsFired":793,"fireRate":0.8970588235294118,"gamesRun":20,"gamesTimedOut":0}
+{"id":"triple_peek","category":"info","roundsHeld":876,"roundsFired":448,"fireRate":0.5114155251141552,"gamesRun":20,"gamesTimedOut":0}
+{"id":"meld_dissolve","category":"call","roundsHeld":824,"roundsFired":128,"fireRate":0.1553398058252427,"gamesRun":20,"gamesTimedOut":0}
+{"id":"wind_lineage","category":"shape","roundsHeld":840,"roundsFired":0,"fireRate":0,"gamesRun":20,"gamesTimedOut":0}
+{"id":"silent_pact","category":"call","roundsHeld":856,"roundsFired":184,"fireRate":0.21495327102803738,"gamesRun":20,"gamesTimedOut":0}
+{"id":"disarm","category":"disrupt","roundsHeld":860,"roundsFired":160,"fireRate":0.18604651162790697,"gamesRun":20,"gamesTimedOut":0}
+{"id":"push_riichi","category":"disrupt","roundsHeld":864,"roundsFired":852,"fireRate":0.9861111111111112,"gamesRun":20,"gamesTimedOut":0}
+{"id":"reload","category":"etc","roundsHeld":836,"roundsFired":0,"fireRate":0,"gamesRun":20,"gamesTimedOut":0}

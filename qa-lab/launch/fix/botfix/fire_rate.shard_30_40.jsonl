@@ -1,0 +1,10 @@
+{"id":"broken_border","category":"shape","roundsHeld":800,"roundsFired":112,"fireRate":0.14,"gamesRun":20,"gamesTimedOut":0}
+{"id":"pond_snatch","category":"hand","roundsHeld":888,"roundsFired":108,"fireRate":0.12162162162162163,"gamesRun":20,"gamesTimedOut":0}
+{"id":"grave_rob","category":"hand","roundsHeld":816,"roundsFired":23,"fireRate":0.028186274509803922,"gamesRun":20,"gamesTimedOut":0}
+{"id":"spy","category":"scoring","roundsHeld":824,"roundsFired":821,"fireRate":0.9963592233009708,"gamesRun":20,"gamesTimedOut":0}
+{"id":"karma","category":"scoring","roundsHeld":948,"roundsFired":86,"fireRate":0.09071729957805907,"gamesRun":20,"gamesTimedOut":0}
+{"id":"time_stop","category":"disrupt","roundsHeld":864,"roundsFired":364,"fireRate":0.4212962962962963,"gamesRun":20,"gamesTimedOut":0}
+{"id":"silent_swap","category":"hand","roundsHeld":852,"roundsFired":849,"fireRate":0.9964788732394366,"gamesRun":20,"gamesTimedOut":0}
+{"id":"foresight","category":"info","roundsHeld":868,"roundsFired":855,"fireRate":0.9850230414746544,"gamesRun":20,"gamesTimedOut":0}
+{"id":"rank_gate","category":"disrupt","roundsHeld":884,"roundsFired":868,"fireRate":0.9819004524886877,"gamesRun":20,"gamesTimedOut":0}
+{"id":"dead_wall_master","category":"hand","roundsHeld":876,"roundsFired":452,"fireRate":0.5159817351598174,"gamesRun":20,"gamesTimedOut":0}

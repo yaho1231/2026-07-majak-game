@@ -1,0 +1,10 @@
+{"id":"scapegoat","category":"scoring","roundsHeld":860,"roundsFired":395,"fireRate":0.45930232558139533,"gamesRun":20,"gamesTimedOut":0}
+{"id":"open_riichi_reveal","category":"riichi","roundsHeld":756,"roundsFired":227,"fireRate":0.3002645502645503,"gamesRun":20,"gamesTimedOut":0}
+{"id":"invincible","category":"defense","roundsHeld":888,"roundsFired":298,"fireRate":0.3355855855855856,"gamesRun":20,"gamesTimedOut":0}
+{"id":"hidden_river","category":"disrupt","roundsHeld":844,"roundsFired":160,"fireRate":0.1895734597156398,"gamesRun":20,"gamesTimedOut":0}
+{"id":"suit_unify","category":"hand","roundsHeld":724,"roundsFired":158,"fireRate":0.21823204419889503,"gamesRun":20,"gamesTimedOut":0}
+{"id":"hand_swap3","category":"hand","roundsHeld":772,"roundsFired":240,"fireRate":0.31088082901554404,"gamesRun":20,"gamesTimedOut":0}
+{"id":"full_hand_swap","category":"hand","roundsHeld":832,"roundsFired":216,"fireRate":0.25961538461538464,"gamesRun":20,"gamesTimedOut":0}
+{"id":"discard_lock","category":"disrupt","roundsHeld":912,"roundsFired":474,"fireRate":0.5197368421052632,"gamesRun":20,"gamesTimedOut":0}
+{"id":"open_kokushi","category":"call","roundsHeld":888,"roundsFired":12,"fireRate":0.013513513513513514,"gamesRun":20,"gamesTimedOut":0}
+{"id":"seat_swap","category":"disrupt","roundsHeld":944,"roundsFired":176,"fireRate":0.1864406779661017,"gamesRun":20,"gamesTimedOut":0}

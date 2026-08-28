@@ -38,11 +38,24 @@ import type {
  * - **미래를 보는 자** — "2단계라 조율 불가"라고 했지만 정책은 프롬프트마다 다시 불린다.
  *   1단계는 "손을 고칠까"(샹텐 문제), 2단계는 "무엇을 바닥에 놓을까"(**안전패 문제**)로
  *   서로 다른 질문이고, 각각은 봇이 이미 답할 수 있는 것이다.
+ *
+ * 2026-08-28: 두 종이 더 빠졌다(botnew, qa-lab/launch/fix/FIXBRIEF.md 웨이브). 실측
+ * (qa-lab/launch/balance.md)에서 **hand_swap3가 387회 제시·0회 선택**으로 완전히
+ * 죽어 있었던 것이 계기다.
+ * - **hand_swap3(등가교환)** — "한 번의 choose로 조율 불가"라고 했지만 미래를 보는 자와
+ *   같은 착시다. 지정(swap3)→넘길 3장(swap3_give)→가져올 3장(swap3_take)은 매 프롬프트
+ *   서로 다른 질문이다. 지정은 정보가 없어 아무나 골라도 되고(교환의 손익은 뒤 두
+ *   단계가 정한다), 넘길 3장은 "내 손에서 가장 고립된 3장"(`worstHandTiles` — 분열·
+ *   조커와 같은 `isolatedIndex` 규칙), 가져올 3장은 상대 손이 이미 `revealTiles`로
+ *   실제 패로 공개돼 있으므로 "그 3장을 넣으면 샹텐이 얼마가 되는가"
+ *   (`shantenIfSwapped`)로 바로 답할 수 있다. 셋 다 봇이 이미 가진 도구다.
+ * - **frame_up(누명)** — "상대 대기 추정 필요"라고 했지만 발동에 대기 추정은 안 쓰인다.
+ *   버릴 패는 **내가 이번 순에 버릴 만한 패**(가장 고립된 패, `isolatedIndex`)로 정하고,
+ *   지목 대상은 **위협이 없는 상대**(리치가 아니고 텐파이 기색이 낮은 쪽)로 두면 된다 —
+ *   최적해는 아니지만(진짜 최적은 상대 대기까지 읽어야 한다) "명백히 자해가 아닌" 선택은
+ *   충분히 가능하다. 완벽한 대기 추정이 아니어도 봇 정책은 최적해를 요구하지 않는다.
  */
-export const BOT_UNUSABLE_AUGMENTS: readonly string[] = [
-  "hand_swap3", // 지정→3장 넘김→3장 받음의 다단계 — 한 번의 choose로 조율 불가
-  "frame_up", // 어떤 패를 누구에게 심을지 — 상대 대기 추정 필요
-];
+export const BOT_UNUSABLE_AUGMENTS: readonly string[] = [];
 
 const isNum = (k: TileKind): boolean =>
   k.suit === "man" || k.suit === "pin" || k.suit === "sou";
@@ -315,6 +328,55 @@ export function isolatedIndex(kinds: readonly TileKind[], exceptIdx: number): nu
     if (best < 0 || cost(i) < cost(best)) best = i;
   }
   return best;
+}
+
+/**
+ * 손패에서 "빼도 가장 손해가 적은" 패 count장 — hand_swap3처럼 **여러 장을 한 번에**
+ * 넘겨야 할 때 쓴다. `isolatedIndex`를 반복 적용해 매번 남은 손에서 가장 고립된 패를
+ * 하나씩 골라낸다(탐욕적 선택 — 3장을 동시에 최적화하지는 않지만, 어차피 넘긴 자리는
+ * 상대 손으로 채워질 3장이 정해지지 않은 시점이라 완전 탐색은 의미가 없다).
+ *
+ * 반환값은 tileId 오름차순 — hand_swap3의 옵션 payload(`isSortedTriple`)와 그대로
+ * 비교할 수 있다.
+ */
+export function worstHandTiles(
+  view: PlayerView,
+  holder: PlayerId,
+  count: number,
+): TileId[] {
+  const ids = handIdsOfView(view, holder);
+  const kinds = handKindsOf(view, holder);
+  const remaining = ids.map((id, i) => ({ id, kind: kinds[i] as TileKind }));
+  const chosen: TileId[] = [];
+  for (let step = 0; step < count && remaining.length > 0; step++) {
+    const idx = isolatedIndex(
+      remaining.map((r) => r.kind),
+      -1,
+    );
+    if (idx < 0) break;
+    chosen.push(remaining[idx]!.id);
+    remaining.splice(idx, 1);
+  }
+  return chosen.sort((a, b) => a - b);
+}
+
+/**
+ * removeIds 장을 손에서 빼고 add를 더하면 샹텐이 몇이 되는가 — **tileId 버전**.
+ *
+ * `shantenIfChanged`은 인덱스(자리)를 받는데, hand_swap3 같은 다장 교환 판단은
+ * 옵션 payload가 tileId 조합으로 오므로 여기서 인덱스로 변환해 넘긴다.
+ */
+export function shantenIfSwapped(
+  view: PlayerView,
+  holder: PlayerId,
+  removeIds: readonly TileId[],
+  add: readonly TileKind[],
+): number {
+  const ids = handIdsOfView(view, holder);
+  const removeIdx = removeIds
+    .map((id) => ids.indexOf(id))
+    .filter((i) => i >= 0);
+  return shantenIfChanged(view, holder, removeIdx, add);
 }
 
 /**
