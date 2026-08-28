@@ -5409,7 +5409,9 @@ export function App(): JSX.Element {
               ? "역 만"
               : w.limit !== null && LIMIT_NAMES[w.limit] !== undefined
                 ? LIMIT_NAMES[w.limit]!
-                : `${w.han}판`;
+                // 정산 보너스 판(augPoints[].han)은 `han`에 없다 — 결과 화면의 총 판수와
+                // 같은 값으로 말한다.
+                : `${w.han + settleBonusHanOf(msg.settle, w)}판`;
         const sub = infos
           .map(
             (w) =>
@@ -24173,6 +24175,19 @@ function drawWaitsOf(
 }
 
 /** 이 사람에게 증강이 얹은(또는 뺀) 점수 합 — 결과창의 최종 획득점 계산용 */
+/**
+ * 정산 시점에 증강이 얹은 보너스 판 (`augPoints[].han`). 채점을 지나 뱅크에서
+ * 지급되므로 `WinInfo.han`에는 들어 있지 않다 — 화면에 총 판수를 적을 때 더한다.
+ * 역만은 판이 아니라 배수로 말하므로 세지 않는다.
+ */
+function settleBonusHanOf(settle: RoundOverMessage["settle"], w: WinInfo): number {
+  if (w.yakumanCount > 0) return 0;
+  return (settle.augPoints ?? [])
+    .filter((a) => a.player === w.winner && a.han !== undefined && a.han > 0)
+    .reduce((n, a) => n + (a.han ?? 0), 0);
+}
+
+
 function augPointsOf(
   settle: RoundOverMessage["settle"],
   player: string,
@@ -24490,6 +24505,16 @@ function RoundResultPanel({
           // 역 목록이 비었는지가 아니라 **실역 0개 화료였는지**로 본다 — 역 없는 손도
           // 도라·적도라로 판을 세므로 목록에 줄이 설 수 있다(2026-08-17).
           const yakulessName = w.yakuless === true ? yakulessLabel(w.winner) : null;
+          /*
+           * 큰 원의 판수는 `w.han`만 적었다 — 그런데 정산 시점에 얹히는 증강 보너스
+           * (`addWinHanBonus`/`withAugPoint` 계열의 `augPoints[].han`)는 채점을 지나
+           * 뱅크에서 지급되므로 `w.han`에 들어가지 않는다. 그래서 역 목록에는
+           * 「기본 2판 + 증강 +1판」이 서 있는데 총 판수만 「2판」으로 떴다
+           * (2026-08-29 사용자 보고). 점수는 이미 3판으로 나간 뒤였다.
+           * 역만은 판이 아니라 배수로 말하므로 손대지 않는다.
+           */
+          const settleBonusHan = settleBonusHanOf(settle, w);
+          const shownHan = w.han + settleBonusHan;
           const yakuRows: { key: string; label: string; han: string; aug?: boolean }[] = [
             ...(yakulessName !== null
               ? [{ key: "yakuless", label: yakulessName, han: "역 없음", aug: true }]
@@ -24676,7 +24701,7 @@ function RoundResultPanel({
                     처음 화료한 사람이 "판이 뭔데? 부가 뭔데?"를 물을 유일한 자리다.
                     (`han` 은 `\d+판`, `fu` 는 `\d+부` 로 잡는다 — glossary.ts) */}
                 <b className="result-han-big" data-len={`${w.yakumanCount >= 2 ? yakumanName(w.yakumanCount).length : 0}`}>
-                  <TermText text={w.yakumanCount > 0 ? yakumanName(w.yakumanCount) : `${w.han}판`} />
+                  <TermText text={w.yakumanCount > 0 ? yakumanName(w.yakumanCount) : `${shownHan}판`} />
                 </b>
                 <i className="result-fu-sm">
                   {/* 배수는 큰 글자가 이미 "더블 역만"으로 말한다 — 작은 줄은 등급만 */}
