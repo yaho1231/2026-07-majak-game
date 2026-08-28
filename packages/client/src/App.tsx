@@ -13181,28 +13181,64 @@ function WaitingRoom(props: {
  *   (personal은 "이 사람 앞에서만 도라"용 범용 슬롯 — 보유자 한정 도라 증강이 다시
  *    생기면 여기에 채널을 추가한다.)
  */
+function doraFxOf(view: PlayerView, enabled: boolean): DoraFx {
+  if (!enabled) return NO_DORA;
+  const common = new Set<string>();
+  for (const id of [...view.round.doraIndicators, ...(view.round.uraDoraIndicators ?? [])]) {
+    const kind = view.tiles[id]?.kind;
+    if (kind !== undefined) common.add(kindKey(doraKindFor(kind)));
+  }
+  const personal: Record<string, Set<string>> = {};
+  const add = (pid: string, kk: string): void => {
+    (personal[pid] ??= new Set<string>()).add(kk);
+  };
+  // 이면투시로 본 것은 뒷도라 '표시패'라, 다음 패로 넘겨야 진짜 도라가 된다
+  const ura = view.augmentView["ura"];
+  if (Array.isArray(ura)) {
+    for (const raw of ura as unknown[]) {
+      const kind = typeof raw === "string" ? parseKindKey(raw) : null;
+      if (kind !== null) add(view.playerId, kindKey(doraKindFor(kind)));
+    }
+  }
+  return { common, personal };
+}
+
+/** 두 DoraFx가 같은 내용인가 — 값이 그대로면 객체도 그대로 두기 위한 비교. */
+function sameDoraFx(a: DoraFx, b: DoraFx): boolean {
+  if (a === b) return true;
+  const sameSet = (x: Set<string>, y: Set<string>): boolean => {
+    if (x.size !== y.size) return false;
+    for (const v of x) if (!y.has(v)) return false;
+    return true;
+  };
+  if (!sameSet(a.common, b.common)) return false;
+  const ka = Object.keys(a.personal);
+  const kb = Object.keys(b.personal);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    const yb = b.personal[k];
+    const ya = a.personal[k];
+    if (yb === undefined || ya === undefined || !sameSet(ya, yb)) return false;
+  }
+  return true;
+}
+
 function useDoraFx(view: PlayerView, enabled: boolean): DoraFx {
-  return useMemo<DoraFx>(() => {
-    if (!enabled) return NO_DORA;
-    const common = new Set<string>();
-    for (const id of [...view.round.doraIndicators, ...(view.round.uraDoraIndicators ?? [])]) {
-      const kind = view.tiles[id]?.kind;
-      if (kind !== undefined) common.add(kindKey(doraKindFor(kind)));
-    }
-    const personal: Record<string, Set<string>> = {};
-    const add = (pid: string, kk: string): void => {
-      (personal[pid] ??= new Set<string>()).add(kk);
-    };
-    // 이면투시로 본 것은 뒷도라 '표시패'라, 다음 패로 넘겨야 진짜 도라가 된다
-    const ura = view.augmentView["ura"];
-    if (Array.isArray(ura)) {
-      for (const raw of ura as unknown[]) {
-        const kind = typeof raw === "string" ? parseKindKey(raw) : null;
-        if (kind !== null) add(view.playerId, kindKey(doraKindFor(kind)));
-      }
-    }
-    return { common, personal };
-  }, [view, enabled]);
+  /*
+   * ⚠ 의존성으로 `view`를 통째로 걸면 안 된다 (2026-08-29).
+   *
+   * 서버 뷰는 **결정 하나마다** 새 객체로 온다 — 봇 셋이 도는 동안 초당 여러 번이다.
+   * 도라는 국이 시작할 때 정해지고 깡 때나 늘어나는데, view를 의존성으로 두면 도라가
+   * 그대로여도 DoraContext 값이 매번 새 객체가 됐다. 이 컨텍스트는 패 한 장(TileImg)
+   * 마다 읽으므로, memo 막이 통째로 무너져 **화면의 패 200장이 뷰가 올 때마다 전부
+   * 다시 그려졌다** — 손패가 뜨고 움직일 때의 «렉»이 여기서 나왔다.
+   * 계산은 매 렌더 돌리되(표시패 몇 장짜리라 싸다), **값이 실제로 바뀔 때만** 새
+   * 객체를 내보내 memo가 서게 한다.
+   */
+  const next = doraFxOf(view, enabled);
+  const held = useRef<DoraFx>(next);
+  if (!sameDoraFx(held.current, next)) held.current = next;
+  return held.current;
 }
 
 /**
