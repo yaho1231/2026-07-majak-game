@@ -3,8 +3,8 @@
  *
  * 지켜야 할 것 셋:
  *  · 직접 고른 곡은 **그 사람의 곡**이다 (남의 화면에서도 그 곡이 나온다).
- *  · 랜덤은 그 방에서 **한 곡으로 배정**되고 그 뒤로 흔들리지 않는다 — 리치 때마다
- *    다시 뽑으면 자리마다 다른 곡이 나와 "모두 같은 곡"이 깨진다.
+ *  · 랜덤은 그 판에서 **한 곡으로 배정**되고 그 뒤로 흔들리지 않는다 — 랜덤을 고른
+ *    사람이 여럿이어도 같은 곡이다(판 시작 때 하나 뽑아 그 판 내내 그 곡).
  *  · 배정된 곡은 **본인에게도** 같은 값으로 내려간다 (내 브금을 나만 못 듣는 일 없음).
  *
  * Emote.test.ts와 같은 FakeSocket 방식(실제 네트워크·파일 없음).
@@ -148,7 +148,7 @@ describe("리치 BGM — 사람마다 한 곡, 모두가 같은 값을 본다", 
     expect(b.last("riichiBgm").tracks[bId]).toBe(assigned);
   });
 
-  it("랜덤끼리는 서로 다른 곡을 받는다 (곡이 사람보다 많을 때)", async () => {
+  it("랜덤끼리는 같은 곡을 받는다 — 그 판의 랜덤 곡은 하나다", async () => {
     const { a, b } = await seatedPair();
     const aId = idOf(a);
     const bId = idOf(b);
@@ -161,6 +161,6 @@ describe("리치 BGM — 사람마다 한 곡, 모두가 같은 값을 본다", 
         typeof m.tracks[bId] === "number",
     );
     const t = b.last("riichiBgm").tracks;
-    expect(t[aId]).not.toBe(t[bId]);
+    expect(t[aId]).toBe(t[bId]);
   });
 });
