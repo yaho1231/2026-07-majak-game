@@ -17901,6 +17901,26 @@ const NamePlate = memo(function NamePlate({
                 {pinned.has(a) ? (
                   <span className="aug-pill-pin-mark" aria-hidden="true">📌</span>
                 ) : null}
+                {/*
+                 * 폰에서는 **알약을 눌러도** 이름을 누른 것과 같이 시트가 열린다
+                 * (2026-08-28 사용자 요청: "이름을 눌러야만 나오네").
+                 *
+                 * 알약 자신의 onClick 은 툴팁 고정이다 — 좁은 화면에서 그 툴팁은
+                 * 이름표 옆 좁은 자리에 뜨느라 읽기 어려웠고, 시트가 이미 같은 것을
+                 * 훨씬 넓게 편다. 그래서 좁은 화면에서만 이 투명 껍데기가 살아나
+                 * 알약 전체를 덮고 시트를 연다(CSS `.aug-pill-sheet-hit`).
+                 * 넓은 화면에서는 `pointer-events: none` 이라 툴팁 고정이 그대로다.
+                 */}
+                <button
+                  type="button"
+                  className="aug-pill-sheet-hit"
+                  aria-label={`${entry?.name ?? a} — 증강 보기`}
+                  onClick={(e) => {
+                    // 알약의 «고정» 토글까지 함께 터지면 시트 뒤에 툴팁이 남는다
+                    e.stopPropagation();
+                    setSheetOpen(true);
+                  }}
+                />
                 {/* 고정해 둔 것은 손을 떼도 그린다 — 그래야 판과 설명을 나란히 볼 수 있다 */}
                 {tipFor === a || pinned.has(a) ? (
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>

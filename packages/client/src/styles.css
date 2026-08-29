@@ -18453,9 +18453,27 @@ body:has(.prod-skip) .toast-stack {
   cursor: default;
 }
 
+/*
+ * 증강 알약을 덮는 투명 껍데기 — 눌러서 증강 시트를 연다 (폰 전용 경로).
+ *
+ * 이름만 눌러야 시트가 열리는 것이 불편하다는 지적(2026-08-28)에 따라, 알약
+ * 자체도 같은 곳으로 이어 준다. 넓은 화면에서는 알약 툴팁 고정이 이미 같은 일을
+ * 더 빠르게 하므로 여기서는 `pointer-events` 를 꺼 둔다 — `.np-name-btn` 과 같은 규칙.
+ */
+.aug-pill-sheet-hit {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  pointer-events: none;
+  cursor: pointer;
+}
+
 /* 좁은 화면 셋 — ① 폰 세로 ② 폰 가로 ③ 태블릿 세로.
    같은 규칙 세 벌: 상대 이름표에서 증강 알약을 걷고, 이름을 누를 수 있게 한다. */
 @container ui (max-width: 700px) {
+  .aug-pill-sheet-hit { pointer-events: auto; }
   .np-name-btn {
     pointer-events: auto;
     cursor: pointer;
@@ -18470,6 +18488,7 @@ body:has(.prod-skip) .toast-stack {
   }
 }
 @container ui (max-height: 560px) and (orientation: landscape) {
+  .aug-pill-sheet-hit { pointer-events: auto; }
   .np-name-btn {
     pointer-events: auto;
     cursor: pointer;
@@ -18483,6 +18502,7 @@ body:has(.prod-skip) .toast-stack {
   }
 }
 @container ui (min-width: 701px) and (max-width: 900px) and (orientation: portrait) {
+  .aug-pill-sheet-hit { pointer-events: auto; }
   .np-name-btn {
     pointer-events: auto;
     cursor: pointer;
