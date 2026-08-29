@@ -1291,7 +1291,14 @@ button {
   animation: latest-glow 1.2s ease-in-out infinite;
 }
 
-/* 최신 타패만: 착지 화이트 플래시 + 더스트 링.
+/* 최신 타패만: 착지 플래시 + 더스트 링.
+
+   ⚠ **패를 하얗게 덮지 않는다** (2026-08-29: "바닥에 버리니까 흰색으로 나오다가 바뀐다").
+   예전에는 `rgba(255,255,255,.85)` 판을 패 위에 통째로 깔고 opacity 를 .75 까지 올렸다
+   — 실효 백색이 0.64라 160ms 동안 **패 그림이 안 보였다.** 사용자에게는 연출이 아니라
+   «그림이 늦게 뜨는 렉»으로 읽힌다. 마작에서 흰 패는 백(白)이라는 실재하는 패라
+   더 그렇다. 착지의 «탁» 느낌은 짧고 밝은 기운이면 충분하다 — 얼굴을 가리지 않을
+   만큼만 올린다(실효 0.25 안팎). */
    주의 — .rt-latest에 animation 프로퍼티를 덮어쓰지 말 것: 다음 타패로 클래스가
    이전 타일에서 제거될 때 computed animation-name이 바뀌며 tile-in이 재재생된다.
    의사요소로만 강화한다 (클래스 제거 시 조용히 사라짐). */
@@ -1304,12 +1311,12 @@ button {
   background: rgba(255, 255, 255, 0.85);
   opacity: 0;
   pointer-events: none;
-  animation: tile-flash 0.16s ease-out 0.1s;
+  animation: tile-flash 0.14s ease-out 0.1s;
 }
 
 @keyframes tile-flash {
   0% { opacity: 0; }
-  30% { opacity: 0.75; }
+  30% { opacity: 0.3; }
   100% { opacity: 0; }
 }
 
