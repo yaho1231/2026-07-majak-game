@@ -264,6 +264,14 @@ interface Room {
    */
   riichiBgmChoice: Map<PlayerId, number>;
   /**
+   * 이 판의 **랜덤 곡** (null = 아직 안 뽑았다).
+   *
+   * "랜덤"은 리치마다 다른 곡이 아니라 **판 시작 때 하나 뽑아 그 판 내내 그 곡**이다
+   * (2026-08-29 사용자 지시). 랜덤을 고른 사람이 여럿이어도 같은 곡을 쓴다 — 리치를
+   * 누가 걸든 그 판에서 들리는 곡은 하나다. 판이 설 때(`startGame`) 다시 뽑는다.
+   */
+  riichiBgmRandom: number | null;
+  /**
    * 방장이 강퇴한 사람들의 username. 이 방이 살아 있는 동안 재입장을 막는다 —
    * 코드만 알면 곧바로 되돌아올 수 있으면 강퇴가 아무 의미가 없다.
    */
@@ -3065,6 +3073,7 @@ export class RoomManager {
       abortVotes: new Set(),
       riichiBgm: new Map(),
       riichiBgmChoice: new Map(),
+      riichiBgmRandom: null,
       kicked: new Set(),
       // 새 방의 기본은 **동풍전**이다 (2026-08-14 사용자 지시) — 한 판이 짧아
       // 처음 온 사람이 끝까지 가 보기 쉽다. 방장은 대기실에서 반장전으로 바꿀 수 있다.
@@ -3695,20 +3704,19 @@ export class RoomManager {
       const chosen = room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM;
       if (chosen !== RIICHI_BGM_RANDOM) room.riichiBgm.set(a.id, chosen);
     }
-    // 2) 랜덤·미선택(봇 포함)은 **아직 아무도 안 쓰는 곡** 중에서 하나씩 준다.
-    //    네 자리가 같은 곡을 뽑아 «랜덤인데 판마다 늘 같은 곡»이 되는 것을 막는다.
-    //    곡이 사람보다 적으면 그때만 겹친다(그건 곡을 더 넣어야 할 일이다).
+    // 2) 랜덤·미선택(봇 포함)은 **이 판의 랜덤 곡 하나**를 함께 쓴다.
+    //    리치마다 새로 뽑으면 한 판에서 곡이 계속 바뀐다 — 랜덤은 «판 시작 때
+    //    하나 정해 그 판 내내 그 곡»이다.
+    const anyRandom = room.agents.some(
+      (a) => (room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM) === RIICHI_BGM_RANDOM,
+    );
+    if (anyRandom && room.riichiBgmRandom === null) {
+      room.riichiBgmRandom = randomInt(RIICHI_BGM_TRACKS);
+    }
     for (const a of room.agents) {
       const chosen = room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM;
       if (chosen !== RIICHI_BGM_RANDOM) continue;
-      if (room.riichiBgm.has(a.id)) continue; // 이미 뽑아 준 곡은 판 내내 그대로
-      const used = new Set(
-        room.agents.filter((o) => o !== a).map((o) => room.riichiBgm.get(o.id)),
-      );
-      const free: number[] = [];
-      for (let i = 0; i < RIICHI_BGM_TRACKS; i++) if (!used.has(i)) free.push(i);
-      const pool = free.length > 0 ? free : Array.from({ length: RIICHI_BGM_TRACKS }, (_, i) => i);
-      room.riichiBgm.set(a.id, pool[randomInt(pool.length)] as number);
+      room.riichiBgm.set(a.id, room.riichiBgmRandom as number);
     }
     for (const a of room.agents) tracks[a.id] = room.riichiBgm.get(a.id) as number;
     for (const a of room.agents) {
@@ -5695,6 +5703,13 @@ export class RoomManager {
     if (room.phase === "playing") return;
     if (this.shuttingDown) return;
     // 트랙표를 «판이 서기 직전» 한 번 더 고정해 보낸다 — 이 뒤로는 로비 방송이 없다.
+    // 랜덤 곡은 여기서 다시 뽑는다 — 판마다 하나, 그 판 내내 그 곡.
+    room.riichiBgmRandom = null;
+    for (const a of room.agents) {
+      if ((room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM) === RIICHI_BGM_RANDOM) {
+        room.riichiBgm.delete(a.id);
+      }
+    }
     this.broadcastRiichiBgm(room);
     // 상세설정도 같은 이유로 한 번 더 — 힌트 표시는 판이 도는 동안 화면이 쓰는 값이다.
     this.broadcastRoomRules(room);
