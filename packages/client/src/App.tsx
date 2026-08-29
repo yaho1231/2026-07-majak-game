@@ -2670,6 +2670,20 @@ const TileImg = memo(function TileImg({
         src={src}
         alt={formatTile(tile, owner)}
         draggable={false}
+        /*
+         * ⚠ `sync` 가 필요하다 (2026-08-29: "바닥에 버리니까 아직도 흰색으로 나오다가 바뀐다").
+         *
+         * 이건 «아직 안 받은 패»가 아니다 — 뒷면(.tile-loading)이 아니라 **크림색**이
+         * 보인다는 게 그 증거다. 이미 받아 둔 그림이라 `loaded` 가 참이고 뒷면은
+         * 걷혔는데, **새로 붙은 `<img>` 는 브라우저가 디코드를 끝내야 비로소 칠한다.**
+         * 기본값(auto)에서는 그 디코드가 다음 프레임 이후로 밀려서, 그 사이 한두
+         * 프레임 동안 `.tile-face` 의 크림 배경만 서 있다 — 그게 «흰 패»다.
+         * 바닥에 한 장 버릴 때마다 `<img>` 가 하나씩 새로 붙으므로 매번 보인다.
+         *
+         * `sync` 는 그 프레임 안에서 디코드를 끝내고 그리게 한다. 패 그림은 80×129
+         * png 라 디코드가 수십 µs 수준이고, 이미 캐시에 있는 그림에만 걸리는 비용이다.
+         */
+        decoding="sync"
         onLoad={() => {
           loadedTileSrcs.add(src);
           setLoadedSrc(src);
