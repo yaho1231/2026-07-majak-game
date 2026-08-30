@@ -971,9 +971,18 @@ export type RoomPace = "expert" | "beginner" | "novice";
 
 /** 한 벌의 제한 시간 값(ms). `HumanAgent`가 그대로 쓴다. */
 export interface RoomPaceSpec {
-  /** 매 순 공짜로 주는 유예(ms) — 이 안에 두면 은행이 깎이지 않는다. */
+  /**
+   * **매 순 다시 차는** 몫(ms) — 이 안에 두면 은행이 깎이지 않는다. 숙련자 방은 10초다.
+   *
+   * ⚠ 이 값이 «표의 뒷 숫자»다 (`30 + 10초`의 10). 2026-08-30까지 두 칸이 서로
+   * 바뀌어 들어가 있어서, 숙련자 방이 매 순 30초를 새로 받고 국 전체에 10초만
+   * 얹히고 있었다 — 표가 처음부터 말하던 것(«기본 30초 + 매 순 10초»)의 반대다.
+   */
   turnGraceMs: number;
-  /** 국마다 다시 차는 «초읽기 은행»의 잔액(ms). */
+  /**
+   * **국마다 한 번** 차는 «초읽기 은행»의 잔액(ms) — 기본으로 주는 밑천이다.
+   * 숙련자 방은 30초. 매 순 몫을 다 쓴 뒤에야 여기서 깎인다.
+   */
   turnBankMs: number;
   /** 증강 선택 제한 시간(ms). */
   draftMs: number;
@@ -987,11 +996,17 @@ export interface RoomPaceSpec {
 /**
  * 속도별 값 — **전부 사용자가 못박은 숫자다** (2026-08-27).
  *
- * | | 증강 선택 | 매 타패 |
+ * | | 증강 선택 | 매 타패 (은행 + 매 순) |
  * |---|---|---|
  * | 숙련자 | 50초 | 30 + 10초 |
  * | 초심자 | 120초 | 60 + 20초 |
  * | 왕초보 | 300초 | 300 + 30초 |
+ *
+ * ⚠ 「매 타패」칸의 **앞 숫자가 은행**(`turnBankMs`, 국마다 한 번 찬다)이고 **뒷
+ * 숫자가 매 순 다시 차는 몫**(`turnGraceMs`)이다. 2026-08-30까지 두 칸이 뒤집혀
+ * 들어가 있었다 — 숙련자 방이 매 순 30초를 새로 받고 국 전체 밑천은 10초뿐이라,
+ * 표가 말하던 «기본 30초 + 매 순 10초»의 정반대로 굴러갔다(사용자 보고). 한 순에
+ * 쓸 수 있는 총량(40초)은 같아서 합계만 보는 검사에는 걸리지 않았다.
  *
  * 서버의 옛 상수(`TURN_GRACE_MS`·`TURN_BANK_MS`·`FIRST_DRAFT_TIMEOUT_MS`)는 이제
  * 이 표의 «숙련자» 칸을 그대로 읽는다 — 값이 두 벌로 갈라지지 않게 한다.
@@ -1001,9 +1016,9 @@ export interface RoomPaceSpec {
  * 넉넉해져서 할 일이 없어졌다.
  */
 export const ROOM_PACES: Record<RoomPace, RoomPaceSpec> = {
-  expert: { turnGraceMs: 30_000, turnBankMs: 10_000, draftMs: 50_000, firstDraftMs: 50_000 },
-  beginner: { turnGraceMs: 60_000, turnBankMs: 20_000, draftMs: 120_000, firstDraftMs: 120_000 },
-  novice: { turnGraceMs: 300_000, turnBankMs: 30_000, draftMs: 300_000, firstDraftMs: 300_000 },
+  expert: { turnGraceMs: 10_000, turnBankMs: 30_000, draftMs: 50_000, firstDraftMs: 50_000 },
+  beginner: { turnGraceMs: 20_000, turnBankMs: 60_000, draftMs: 120_000, firstDraftMs: 120_000 },
+  novice: { turnGraceMs: 30_000, turnBankMs: 300_000, draftMs: 300_000, firstDraftMs: 300_000 },
 };
 
 /** 아무것도 고르지 않은 방의 속도 (= 종전 동작). */

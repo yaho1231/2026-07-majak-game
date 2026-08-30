@@ -3229,7 +3229,7 @@ export function App(): JSX.Element {
    * 진짜 남은 시간이 실려 온다.
    */
   const [promptDeadline, setPromptDeadline] = useState<number | null>(null);
-  /** 위 마감 중 은행에서 나온 몫(ms) — 「30 + 10초」의 뒷 숫자. 0이면 갈라 세지 않는다. */
+  /** 위 마감 중 은행에서 나온 몫(ms) — 「30 + 10초」의 **앞** 숫자. 0이면 갈라 세지 않는다. */
   const [promptBankMs, setPromptBankMs] = useState(0);
   /** 좌석 하나의 프롬프트만 지운다 (제출·취소) */
   const dropPrompt = (seat: string): void => {
@@ -13346,11 +13346,16 @@ const ROOM_PACE_LABEL: Record<RoomPace, string> = {
   beginner: "초심자",
   novice: "왕초보",
 };
-/** «타패 5 + 30초 · 증강 30초» 꼴의 한 줄 요약. */
+/**
+ * «타패 30 + 10초 · 증강 50초» 꼴의 한 줄 요약.
+ *
+ * 순서는 판 위의 시계와 같다 — **앞이 국마다 차는 은행, 뒤가 매 순 다시 차는 몫**이다.
+ * (`PromptTimer`의 「30 + 10초」와 같은 자리에 같은 숫자가 서야 한다.)
+ */
 function paceSub(pace: RoomPace): string {
   const p = ROOM_PACES[pace];
   const sec = (ms: number): number => Math.round(ms / 1000);
-  return `타패 ${sec(p.turnGraceMs)} + ${sec(p.turnBankMs)}초 · 증강 ${sec(p.draftMs)}초`;
+  return `타패 ${sec(p.turnBankMs)} + ${sec(p.turnGraceMs)}초 · 증강 ${sec(p.draftMs)}초`;
 }
 
 function ModeBadge(props: { mode: GameMode }): JSX.Element {
