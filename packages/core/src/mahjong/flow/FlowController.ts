@@ -33,6 +33,7 @@ import {
   furitenOptionsOf,
   scoringOptionsOf,
   sameCallBody,
+  sameCallQuad,
   sameCallKind,
   mixedTripletsFor,
   polarEndsFor,
@@ -276,6 +277,33 @@ export class FlowController {
         continue;
       }
       if (phase === "turn.act") {
+        /*
+         * "그 패로 화료한다"고 약속한 증강(무덤 도굴)의 자동 쯔모 — `turn.autoWin`.
+         * 증강 id를 코어가 알 필요 없게 규칙 하나로 통신한다. 정산은 아래 resolve의
+         * `win` 경로와 **같은 sys.settleWin**을 부른다(경로가 갈라지지 않는다).
+         */
+        const actor = playerAtSeat(state, state.round.turnSeat).id;
+        if (
+          this.engine.rules.has("turn.autoWin") &&
+          this.engine.rules.resolve<boolean>("turn.autoWin", {
+            playerId: actor,
+            state,
+          }) &&
+          this.validateOk(actor, "win", {})
+        ) {
+          this.submitPlayer(actor, { type: "win", payload: {} });
+          this.sys("sys.settleWin", {
+            wins: [
+              {
+                winner: actor,
+                from: null,
+                tileId: state.round.lastDrawnTile as TileId,
+                winType: "tsumo",
+              },
+            ],
+          } satisfies SettleWinRequest);
+          continue;
+        }
         return this.awaitDecisions([this.turnPrompt()]);
       }
       if (phase === "reaction") {
@@ -336,15 +364,20 @@ export class FlowController {
       // 안깡 (ankan) — 같은 종류는 한 번만 제시 (서로 다른 종류의 안깡 2개는 각각 유지).
       // 무너진 국경이면 무늬가 섞인 4장(랭크만 같음)도 안깡이 된다.
       const mixedTri = mixedTripletsFor(state, this.engine.rules, player);
-      /** 양극 — 가깡 후보 생성에서 같은 무늬의 1·9를 한 패로 본다 (안깡은 종전대로) */
+      /** 양극 — 같은 무늬의 1·9를 한 패로 본다. 가깡뿐 아니라 **안깡 재료로도** 쓴다
+       *  (2026-08-31 사용자 지시 — 퐁은 되는데 깡만 안 되던 반쪽을 없앴다). */
       const polarKan = polarEndsFor(state, this.engine.rules, player);
       const sameTiles = hand
-        .filter((t) => sameCallKind(kindOf(state, t), kindOf(state, tileId), mixedTri))
+        .filter((t) => sameCallKind(kindOf(state, t), kindOf(state, tileId), mixedTri, polarKan))
         .slice(0, 4);
       if (sameTiles.length === 4) {
         const k = kindOf(state, tileId);
-        // 혼색 안깡은 무늬가 달라도 한 묶음이므로 랭크로 중복을 막는다
-        const key = mixedTri ? `rank:${k.suit === "wind" || k.suit === "dragon" ? kindKey(k) : k.rank}` : kindKey(k);
+        const isTerm = polarKan && (k.rank === 1 || k.rank === 9) && k.suit !== "wind" && k.suit !== "dragon";
+        // 혼색 안깡은 무늬가 달라도 한 묶음이므로 랭크로 중복을 막는다.
+        // 양극의 1·9 혼합 깡은 랭크까지 섞이므로 «그 무늬의 노두패» 한 묶음으로 센다.
+        const key = isTerm
+          ? `polar:${mixedTri ? "*" : k.suit}`
+          : mixedTri ? `rank:${k.suit === "wind" || k.suit === "dragon" ? kindKey(k) : k.rank}` : kindKey(k);
         if (!ankanKindsSeen.has(key) && this.validateOk(player, "ankan", { tileIds: sameTiles })) {
           ankanKindsSeen.add(key);
           options.push({ type: "ankan", payload: { tileIds: sameTiles } });
@@ -487,8 +520,8 @@ export class FlowController {
         if (lock !== null) locked.push(lock);
       }
 
-      // 무너진 국경이면 무늬를 안 가리고 랭크만, 양극이면 같은 무늬 1·9를 같은 패로 본다.
-      // (양극은 퐁만 — 깡 재료로는 쓰지 않으므로 minkan은 아래에서 pure/mixed로만 판정된다)
+      // 무너진 국경이면 무늬를 안 가리고 랭크만, 양극이면 1·9를 같은 패로 본다
+      // (퐁·깡이 같은 규칙을 본다 — helpers.sameCallBody/sameCallQuad).
       const mixedTri = mixedTripletsFor(state, this.engine.rules, p.id);
       const polar = polarEndsFor(state, this.engine.rules, p.id);
       const matching = handIdsOf(state, p.id).filter((t) =>
@@ -538,9 +571,29 @@ export class FlowController {
         }
       }
       if (matching.length >= 3) {
-        const payload = { tileIds: [matching[0]!, matching[1]!, matching[2]!] as [TileId, TileId, TileId] };
-        if (this.validateOk(p.id, "minkan", payload)) {
-          options.push({ type: "minkan", payload });
+        /*
+         * 넉 장이 **한 규칙 안에서** 닫히는 조합을 찾는다 — 퐁과 같은 규약.
+         * 양극·동수의 결속을 함께 들면 앞 세 장이 서로 다른 규칙으로 하나씩 통과해
+         * 잡종 깡이 후보로 서는 일이 생긴다(sameCallBody 주석의 그 경로).
+         */
+        const trio = ((): [TileId, TileId, TileId] | null => {
+          for (let i = 0; i < matching.length; i++) {
+            for (let j = i + 1; j < matching.length; j++) {
+              for (let k = j + 1; k < matching.length; k++) {
+                const ids = [matching[i]!, matching[j]!, matching[k]!] as [TileId, TileId, TileId];
+                if (sameCallQuad([discardKind, ...ids.map((t) => kindOf(state, t))], mixedTri, polar)) {
+                  return ids;
+                }
+              }
+            }
+          }
+          return null;
+        })();
+        if (trio !== null) {
+          const payload = { tileIds: trio };
+          if (this.validateOk(p.id, "minkan", payload)) {
+            options.push({ type: "minkan", payload });
+          }
         }
       }
 

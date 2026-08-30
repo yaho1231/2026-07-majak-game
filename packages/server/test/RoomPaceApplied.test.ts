@@ -18,7 +18,12 @@ import type { WebSocket } from "ws";
 import { RoomManager } from "../src/RoomManager.js";
 import { StatsStore } from "../src/StatsStore.js";
 import { SiteDb } from "../src/SiteDb.js";
-import { ROOM_PACES, DEFAULT_ROOM_PACE, paceMaxSeatMs } from "@majak/core/network/protocol.js";
+import {
+  ROOM_PACES,
+  DEFAULT_ROOM_PACE,
+  LOBBY_DEFAULT_ROOM_PACE,
+  paceMaxSeatMs,
+} from "@majak/core/network/protocol.js";
 import type { RoomPace } from "@majak/core/network/protocol.js";
 import { TIME_PRESSURE_CHANNEL } from "@majak/content";
 
@@ -188,10 +193,12 @@ describe("대기실에서 고른 제한 시간이 판에 그대로 걸린다", (
     }, 30_000);
   }
 
-  it("아무것도 고르지 않은 방은 숙련자(기본)로 선다", async () => {
-    const spec = ROOM_PACES[DEFAULT_ROOM_PACE];
+  // 2026-08-31 사용자 지시 — 대기실에서 만든 방의 기본은 «초심자»다.
+  // (대기실을 거치지 않는 방·좌석 기본값은 그대로 `DEFAULT_ROOM_PACE` = 숙련자다.)
+  it("아무것도 고르지 않은 방은 초심자(대기실 기본)로 선다", async () => {
+    const spec = ROOM_PACES[LOBBY_DEFAULT_ROOM_PACE];
     const { lobbyPace, draftDeadlineMs, turnDeadlineMs } = await paceProbe(undefined);
-    expect(lobbyPace).toBe(DEFAULT_ROOM_PACE);
+    expect(lobbyPace).toBe(LOBBY_DEFAULT_ROOM_PACE);
     expect(draftDeadlineMs).toBe(spec.firstDraftMs);
     expect(turnDeadlineMs).toBe(spec.turnGraceMs + spec.turnBankMs);
   }, 30_000);
@@ -199,7 +206,7 @@ describe("대기실에서 고른 제한 시간이 판에 그대로 걸린다", (
   it("모르는 값은 무시한다 — 방의 속도가 바뀌지 않는다", async () => {
     const { sock } = await playedWith(undefined);
     sock.clientSend({ type: "setRoomPace", pace: "instant" });
-    expect(sock.last("lobby").pace).toBe(DEFAULT_ROOM_PACE);
+    expect(sock.last("lobby").pace).toBe(LOBBY_DEFAULT_ROOM_PACE);
   }, 30_000);
 
   it("느린 방은 컨트롤러의 최후 그물(90초)도 함께 늘어난다", async () => {
@@ -226,12 +233,12 @@ describe("대기실에서 고른 제한 시간이 판에 그대로 걸린다", (
   }, 30_000);
 
   it("속도가 안 담긴 옛 행(null)은 기본값으로 읽는다", async () => {
-    // 열이 붙기 전에 쓰인 행 — 모르는 것을 «가장 급한 속도»로 읽으면 안 된다는
-    // 뜻은 아니고(기본이 곧 숙련자다), 되살리기가 그 자리에서 죽지 않아야 한다.
+    // 열이 붙기 전에 쓰인 행 — 되살리기가 그 자리에서 죽지 않아야 한다.
+    // (여기 방은 대기실에서 만든 방이므로 기본은 초심자다.)
     const { h } = await playedWith(undefined);
     const db = (h.rm as any).db;
     const row = db.listLiveGames()[0];
-    expect(row.pace).toBe(DEFAULT_ROOM_PACE);
+    expect(row.pace).toBe(LOBBY_DEFAULT_ROOM_PACE);
   }, 30_000);
 
   it("숙련자 방은 그물을 건드리지 않는다 — 좌석 최대가 90초보다 짧다", async () => {

@@ -154,12 +154,14 @@ const NUMBERED = new Set<string>([Suits.Man, Suits.Pin, Suits.Sou]);
  * 반드시 끼거나 자패라서 이 조건에 걸리지 않는다 — 두 계열을 가르는 유일한 안전한 기준이다.
  */
 function isPolarBody(tiles: readonly TileKind[]): boolean {
-  const first = tiles[0] as TileKind;
+  /*
+   * 무늬 일치는 **요구하지 않는다** — 양극과 동수의 결속을 함께 들면 1만·9통도 한 몸통이
+   * 되기 때문이다(2026-08-31 사용자 지시). 그래도 안전한 이유: 랭크가 섞인 다른 깡은
+   * 노두패 아닌 랭크가 반드시 끼거나(장사진의 4연속) 자패라서(바람의 계보) 여기 들지 않는다.
+   */
   return (
-    NUMBERED.has(first.suit) &&
-    tiles.every(
-      (t) => t.suit === first.suit && (t.rank === 1 || t.rank === 9),
-    )
+    tiles.every((t) => NUMBERED.has(t.suit)) &&
+    tiles.every((t) => t.rank === 1 || t.rank === 9)
   );
 }
 

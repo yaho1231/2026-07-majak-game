@@ -535,6 +535,28 @@ function extractSets(
         ],
       });
     }
+    /*
+     * 양극 + 동수의 결속을 **함께** 들면 무늬 국경까지 지워진다 — 1만·9통·1삭도 한 커쯔다
+     * (2026-08-31 사용자 지시). 후로(퐁·깡)가 그 몸통을 열어 주므로(helpers.sameCallBody)
+     * 손 안의 분해도 같은 것을 볼 수 있어야 «울면 되는데 손에서는 안 되는» 반쪽이 안 생긴다.
+     * 위에서 이미 만든 조합은 `push`의 중복 제거가 걸러 낸다.
+     */
+    if (ctx.mixedTri) {
+      const terms: TileKind[] = [];
+      for (const suit of ctx.seqSuits) {
+        terms.push({ suit: suit as Suit, rank: 1 }, { suit: suit as Suit, rank: 9 });
+      }
+      for (let i = 0; i < terms.length; i++) {
+        for (let j = i; j < terms.length; j++) {
+          for (let k = j; k < terms.length; k++) {
+            push({
+              type: "triplet",
+              tiles: [terms[i] as TileKind, terms[j] as TileKind, terms[k] as TileKind],
+            });
+          }
+        }
+      }
+    }
   }
 
   if (ctx.seqSuits.has(kind.suit)) {

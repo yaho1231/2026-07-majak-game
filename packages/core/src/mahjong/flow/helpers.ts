@@ -253,7 +253,8 @@ export function scoringOptionsOf(
  * 후로(치·펑) 판정에서 "같은 패로 볼 것인가".
  * - 동수의 결속(scoring.mixedTriplets): 무늬를 안 가리고 **랭크만** 본다 (2만·2통·2삭이 한 펑).
  * - 양극(scoring.polarEnds, polarEnds=true): 같은 무늬의 1·9를 동일 패로 본다 —
- *   199·191·911이 한 펑이 된다(퐁 한정, 깡은 4장 도라·영상 규약과 충돌해 제외).
+ *   199·191·911이 한 펑이 된다. **깡도 같은 규칙을 본다**(2026-08-31 사용자 지시 —
+ *   퐁은 되는데 깡만 안 되던 반쪽을 없앴다).
  * 자패는 무늬 개념이 없어 언제나 동일 kind만 인정한다.
  */
 export function sameCallKind(
@@ -266,11 +267,13 @@ export function sameCallKind(
     k.suit === "man" || k.suit === "pin" || k.suit === "sou";
   if (numbered(a) && numbered(b)) {
     if (mixedTriplets && a.rank === b.rank) return true;
-    // 양극: 같은 무늬의 노두패(1·9)는 서로 같은 패로 통한다
+    // 양극: 같은 무늬의 노두패(1·9)는 서로 같은 패로 통한다.
+    // **동수의 결속을 함께 들면 무늬 국경까지 지워진다** — 1만·9통도 한 패다
+    // (2026-08-31 사용자 지시, `sameCallBody` 머리말 참고).
     const isTerminal = (r: number): boolean => r === 1 || r === 9;
     if (
       polarEnds &&
-      a.suit === b.suit &&
+      (mixedTriplets || a.suit === b.suit) &&
       isTerminal(a.rank) &&
       isTerminal(b.rank)
     ) {
@@ -306,13 +309,49 @@ export function sameCallBody(
     (k) => k.suit === "man" || k.suit === "pin" || k.suit === "sou",
   );
   if (!numbered) return false; // 자패는 무늬 개념이 없어 언제나 동일 kind만
-  // 동수의 결속: 무늬를 안 가리고 랭크만
-  if (mixedTriplets && three.every((k) => k.rank === target.rank)) return true;
-  // 양극: 같은 무늬의 노두패(1·9)끼리
-  return (
-    polarEnds &&
-    three.every((k) => k.suit === target.suit && (k.rank === 1 || k.rank === 9))
+  return sameBodyKinds(three, mixedTriplets, polarEnds);
+}
+
+/**
+ * 깡 넉 장이 **하나의 규칙 안에서** 커쯔로 닫히는가 — `sameCallBody`의 4장판.
+ * 안깡(손패 4장)·대명깡(버림 1 + 손패 3)이 같은 판정을 쓴다.
+ */
+export function sameCallQuad(
+  kinds: readonly TileKind[],
+  mixedTriplets: boolean,
+  polarEnds = false,
+): boolean {
+  if (kinds.length !== 4) return false;
+  const first = kinds[0] as TileKind;
+  const key = kindKey(first);
+  if (kinds.every((k) => kindKey(k) === key)) return true; // 순수 깡
+  return sameBodyKinds(kinds, mixedTriplets, polarEnds);
+}
+
+/**
+ * 몸통(커쯔·깡) 후보가 **한 규칙 안에서** 닫히는가 — 3장·4장 공용 알맹이.
+ *
+ * - 동수의 결속(mixedTriplets): 랭크만 같으면 무늬는 안 본다.
+ * - 양극(polarEnds): **같은 무늬의** 노두패(1·9)끼리.
+ * - 둘을 함께 들면: 무늬도 랭크도 안 보고 **노두패이기만** 하면 된다
+ *   (2026-08-31 사용자 지시 — "1·9를 하나로 보는 카드"와 "무늬를 지우는 카드"를
+ *    같이 들었으면 무늬 다른 1·9도 한 몸통이어야 한다). 규칙을 하나씩 따로 통과하는
+ *    잡종은 여전히 막힌다 — 셋(넷)을 언제나 **한꺼번에** 보기 때문이다.
+ */
+function sameBodyKinds(
+  kinds: readonly TileKind[],
+  mixedTriplets: boolean,
+  polarEnds: boolean,
+): boolean {
+  const first = kinds[0] as TileKind;
+  const numbered = kinds.every(
+    (k) => k.suit === "man" || k.suit === "pin" || k.suit === "sou",
   );
+  if (!numbered) return false; // 자패는 무늬 개념이 없어 언제나 동일 kind만
+  if (mixedTriplets && kinds.every((k) => k.rank === first.rank)) return true;
+  const terminals = kinds.every((k) => k.rank === 1 || k.rank === 9);
+  if (!polarEnds || !terminals) return false;
+  return mixedTriplets || kinds.every((k) => k.suit === first.suit);
 }
 
 /** 이 사람에게 혼색 커쯔(동수의 결속)가 열려 있는가 — 후로 판정용 */
@@ -327,7 +366,7 @@ export function mixedTripletsFor(
   );
 }
 
-/** 이 사람에게 양극(1·9 혼합 커쯔)이 열려 있는가 — 퐁 판정용 */
+/** 이 사람에게 양극(1·9 혼합 커쯔)이 열려 있는가 — 퐁·깡 판정용 */
 export function polarEndsFor(
   state: GameState,
   rules: RuleRegistry,

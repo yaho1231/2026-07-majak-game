@@ -300,7 +300,7 @@ export const graveRob: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회) 자기 순에 상대들이 **최근에 버린 6장** 중 1장을 파내 그대로 화료한다. 지불은 쯔모 취급으로 세 명이 분담하며, 후리텐이면 화료할 수 없다.",
   detail:
-    "후보는 상대 셋의 바닥을 시간 순으로 훑어 **가장 최근 6장**까지다 — 그보다 오래전에 흘린 패는 이미 창 밖이라 파낼 수 없다. 그중 화료가 성립하는 패만 후보로 뜨고, 지불은 쯔모 취급이라 상대 셋이 나눠 낸다. 안개로 가려진 패와 내 바닥의 패는 파낼 수 없다. 그 순의 쯔모패는 패산으로 돌아간다.\n\n원주인의 바닥 기록은 남아 그 사람의 후리텐 판정도 유지된다. **내가 후리텐이면** 그 패는 후보에 오르지 않는다.",
+    "후보는 상대 셋의 바닥을 시간 순으로 훑어 **가장 최근 6장**까지다 — 그보다 오래전에 흘린 패는 이미 창 밖이라 파낼 수 없다. 그중 화료가 성립하는 패만 후보로 뜨고, 지불은 쯔모 취급이라 상대 셋이 나눠 낸다. 안개로 가려진 패와 내 바닥의 패는 파낼 수 없다. 그 순의 쯔모패는 패산으로 돌아간다.\n\n원주인의 바닥 기록은 남아 그 사람의 후리텐 판정도 유지된다. **내가 후리텐이면** 그 패는 후보에 오르지 않는다.\n\n파내는 순간 그대로 쯔모 화료가 성립한다 — 따로 «쯔모»를 누르지 않는다. **리치 중에는 사실상 쓸 수 없다**: 파낸 패로 나는 것은 남이 버린 패로 나는 것이라 후리텐 판정을 받는데, 리치 뒤의 대기는 이미 바닥에 흘러간 패라 거의 언제나 후리텐이다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -341,6 +341,27 @@ export const graveRob: AugmentDef = defineAugment({
      * 한다(날치기 pond_snatch와 같은 규약). setHolderRule은 상수만 걸 수 있어
      * 여기서는 Modifier로 직접 짠다.
      */
+    /**
+     * **파낸 그 순간 그대로 화료한다** — `turn.autoWin`.
+     *
+     * 카드가 "파내 그대로 화료한다"고 적어 놓고 실제로는 패만 손에 들어오고 «쯔모»를
+     * 다시 눌러야 했다(2026-08-31 사용자 보고). 후보는 이미 «화료가 성립하는 패»만
+     * 남기므로 물어볼 것이 없다 — 파낸 패가 지금의 쯔모패인 동안 표준 쯔모를 자동으로
+     * 성립시킨다(정산은 표준 파이프라인 그대로).
+     */
+    ctx.engine.rules.addModifier<boolean>("turn.autoWin", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        const robbed = state.augmentData[robbedKey(state, holder)];
+        if (typeof robbed !== "number") return cur;
+        return state.round.lastDrawnTile === robbed ? true : cur;
+      },
+    });
+
     ctx.engine.rules.addModifier<boolean>("win.tsumoFuriten", {
       source: ctx.instanceId,
       layer: ctx.layer,

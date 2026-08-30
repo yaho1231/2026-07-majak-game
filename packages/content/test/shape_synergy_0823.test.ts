@@ -15,7 +15,11 @@
  * 4. `giant_god` × `nagashi_yakuman` — 각성의 버림-이력 재작성이 같은 48,000을
  *    지웠다(shape 확정 3).
  * 5. `polar_ends` × `mixed_triplet` — 펑 판정이 버림패와의 1:1 비교뿐이라 어느 카드로도
- *    몸통이 아닌 잡종 펑 `{1만,9만,1통}`이 열렸다(shape 확정 2).
+ *    몸통이 아닌 잡종 펑이 열렸다(shape 확정 2). 세 장을 **한꺼번에** 보는 그물은
+ *    그대로다. 다만 2026-08-31 사용자 지시로 **두 카드를 다 들었을 때의 노두패 조합**
+ *    (`{1만,9만,1통}`)은 정식으로 열렸다 — "1·9를 하나로 보는 카드"와 "무늬를 지우는
+ *    카드"를 같이 들었으면 무늬 다른 1·9도 한 몸통이어야 한다. 규칙을 **하나씩 따로**
+ *    통과하는 조합(한 장만 들었을 때)은 여전히 막힌다.
  * 6. `silent_pact` × `meld_dissolve` — "전부 잃는다"던 묵계 멘젠이 평범한 퐁을 파혼하는
  *    순간 되살아났다(relax 확정 4).
  * 7. `mixed_triplet` × `silent_pact`/`bluff_pretense` — 두 커스텀 콜의 손패 매칭이
@@ -344,9 +348,14 @@ describe("양극 × 동수의 결속 — 잡종 펑이 열리지 않는다 (shap
     const m9 = { suit: "man", rank: 9 } as const;
     const p1 = { suit: "pin", rank: 1 } as const;
     const s1 = { suit: "sou", rank: 1 } as const;
-    // 잡종 — 랭크도 무늬도 안 맞는다
-    expect(sameCallBody(m1, m9, p1, true, true)).toBe(false);
-    expect(sameCallBody(m1, m9, s1, true, true)).toBe(false);
+    // 둘 다 들면 노두패는 무늬·랭크를 모두 넘어 한 몸통이다 (2026-08-31)
+    expect(sameCallBody(m1, m9, p1, true, true)).toBe(true);
+    expect(sameCallBody(m1, m9, s1, true, true)).toBe(true);
+    // 한 장만 들었으면 그 카드 하나의 규칙 안에서 닫혀야 한다 — 잡종은 여전히 막힌다
+    expect(sameCallBody(m1, m9, p1, false, true)).toBe(false);
+    expect(sameCallBody(m1, m9, p1, true, false)).toBe(false);
+    // 노두패가 아닌 랭크가 끼면 둘을 다 들어도 몸통이 아니다
+    expect(sameCallBody(m1, m9, { suit: "pin", rank: 2 }, true, true)).toBe(false);
     // 각 규칙 안에서는 그대로 성립한다
     expect(sameCallBody(m1, m9, m9, false, true)).toBe(true);
     expect(sameCallBody(m1, p1, s1, true, false)).toBe(true);
@@ -364,10 +373,14 @@ describe("양극 × 동수의 결속 — 잡종 펑이 열리지 않는다 (shap
       lastDiscard: { player: "p1", spec: "1m" },
     });
 
-  it("잡종 손패(9만+1통)에는 펑 후보가 뜨지 않는다", () => {
-    expect(reactionTypes(start(scene("9m1p345p345s99s"), [polarEnds, mixedTriplet]))).not.toContain(
+  it("둘을 다 들면 9만+1통에도 펑이 열린다 (2026-08-31 사용자 지시)", () => {
+    expect(reactionTypes(start(scene("9m1p345p345s99s"), [polarEnds, mixedTriplet]))).toContain(
       "pon",
     );
+  });
+
+  it("한 장만 들었으면 잡종은 그대로 막힌다 — 양극만 든 9만+1통", () => {
+    expect(reactionTypes(start(scene("9m1p345p345s99s"), [polarEnds]))).not.toContain("pon");
   });
 
   it("양극 정상(9만+9만)·결속 정상(1통+1삭)은 그대로 뜬다", () => {

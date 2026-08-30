@@ -1021,8 +1021,23 @@ export const ROOM_PACES: Record<RoomPace, RoomPaceSpec> = {
   novice: { turnGraceMs: 30_000, turnBankMs: 300_000, draftMs: 300_000, firstDraftMs: 300_000 },
 };
 
-/** 아무것도 고르지 않은 방의 속도 (= 종전 동작). */
+/**
+ * 아무것도 고르지 않은 방의 속도 (= 종전 동작).
+ *
+ * **대기실을 거치지 않는 방**(게스트 체험·샌드박스·튜토리얼)과 `HumanAgent`의 좌석
+ * 기본값이 이 값을 쓴다. 대기실에서 사람이 세운 방은 아래 `LOBBY_DEFAULT_ROOM_PACE`다.
+ */
 export const DEFAULT_ROOM_PACE: RoomPace = "expert";
+
+/**
+ * **대기실에서 새로 만든 방**의 기본 속도 — 2026-08-31 사용자 지시로 «초심자»다.
+ *
+ * 방을 세우고 아무것도 건드리지 않은 채 시작하는 것이 가장 흔한 경로인데, 그 자리에
+ * 숙련자 속도(증강 50초 · 타패 30+10초)가 서 있으면 처음 온 사람은 증강을 읽다가
+ * 시간이 먼저 터진다(못 고르면 서버가 무작위로 집는다). 빠르게 치고 싶은 방은 방장이
+ * 대기실에서 숙련자로 내리면 된다 — 잘못 골랐을 때 손해가 작은 쪽을 기본으로 둔다.
+ */
+export const LOBBY_DEFAULT_ROOM_PACE: RoomPace = "beginner";
 
 /** 받은 값이 아는 속도인가 — 서버가 클라이언트 문자열을 그대로 믿지 않으려고 쓴다. */
 export function isRoomPace(v: unknown): v is RoomPace {
