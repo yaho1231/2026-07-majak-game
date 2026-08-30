@@ -44,6 +44,7 @@ import {
   DEFAULT_ROOM_RULES,
   normalizeRoomRules,
   DEFAULT_ROOM_PACE,
+  LOBBY_DEFAULT_ROOM_PACE,
   isRoomPace,
   paceMaxSeatMs,
 } from "@majak/core/network/protocol.js";
@@ -3097,9 +3098,22 @@ export class RoomManager {
       // 그 사람은 대기실을 거치지 않아 고를 화면 자체가 없고, 마작을 처음 보는
       // 사람의 첫 판이 최선을 두는 봇 셋이면 배우기 전에 끝난다 (감사 §3-3).
       botDifficulty: options.botDifficulty ?? "hard",
-      // 제한 시간은 «숙련자»가 기본 — 대기실을 거치지 않는 방(체험·샌드박스)까지
-      // 포함해 종전과 같은 속도로 선다. 방장은 대기실에서 늦출 수 있다.
-      pace: options.pace ?? DEFAULT_ROOM_PACE,
+      /*
+       * 제한 시간 기본값은 **어디서 세운 방인가**로 갈린다 (2026-08-31 사용자 지시).
+       *
+       * 대기실에서 사람이 만든 방은 «초심자»다 — 아무것도 안 고르고 그대로 시작하는
+       * 것이 가장 흔한 경로라, 그 자리에 숙련자 속도가 서 있으면 증강을 읽다가 시간이
+       * 먼저 터진다. 방장은 대기실에서 숙련자로 내릴 수 있다.
+       *
+       * 대기실을 **거치지 않는** 방(게스트 체험·튜토리얼·샌드박스)은 종전대로 둔다 —
+       * 그쪽은 자기 시계를 따로 들고 있고(체험판은 사실상 무제한), 여기서 값을 바꾸면
+       * 그 설계가 조용히 흔들린다.
+       */
+      pace:
+        options.pace ??
+        (options.guest === true || options.tutorial === true || options.sandbox === true
+          ? DEFAULT_ROOM_PACE
+          : LOBBY_DEFAULT_ROOM_PACE),
       sandboxBotRules: {},
       sandboxControl: true,
       sandboxRestarting: false,
@@ -6201,7 +6215,10 @@ export class RoomManager {
        * 고른 값이고(`FIRST_DRAFT_TIMEOUT_MS` 주석이 그 근거를 적어 두었다), 여기서
        * 값을 얹으면 종전 판의 그물이 이유 없이 달라진다.
        */
-      ...(room.pace === DEFAULT_ROOM_PACE
+      // ⚠ 기준은 «방의 기본값»이 아니라 **숙련자**다. 2026-08-31에 대기실 방의 기본이
+      // 초심자로 바뀌었으므로, 여기서 기본값과 비교하면 그 방(좌석 120초)이 90초 그물
+      // 아래로 들어가 그물이 사람 대신 두게 된다.
+      ...(room.pace === "expert"
         ? {}
         : { agentDecideTimeoutMs: paceMaxSeatMs(room.pace) + 60_000 }),
       // 매 게임 새 시드 — 안 넣으면 프로세스 내 모든 게임이 같은 시드를 써서

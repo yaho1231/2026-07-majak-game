@@ -186,30 +186,35 @@ describe("무덤 도굴 (grave_rob)", () => {
     }
   });
 
-  it("도굴 직후 같은 턴에 쯔모 옵션이 열린다 (막힌 상태가 없다)", () => {
+  /**
+   * 2026-08-31 사용자 지시 — 카드가 "파내 **그대로 화료한다**"고 적어 놓고 실제로는
+   * 패만 가져다 놓고 «쯔모»를 다시 눌러야 했다. 후보는 이미 화료가 성립하는 패만
+   * 남으므로 물어볼 것이 없다 — 파내는 순간 국이 끝난다(코어 규칙 `turn.autoWin`).
+   */
+  it("파내는 순간 그대로 쯔모 화료가 성립한다 (두 박자가 아니다)", () => {
     const state = scene();
     const { game, flow, prompt } = startWithGraveRob(state);
     const opt = robOptions(prompt)[0];
     expect(opt).toBeDefined();
 
     const status = flow.submit("p0", opt as { type: string; payload: unknown });
-    // 도굴은 버림을 소비하지 않으므로 같은 턴 프롬프트가 다시 열린다
-    expect(status.kind).toBe("awaiting");
-    if (status.kind !== "awaiting") return;
-    const next = status.prompts.find((p) => p.player === "p0");
-    expect(next?.options.some((o) => o.type === "win")).toBe(true);
-    // 파낸 패가 새 쯔모패가 됐다
-    const robbed = (opt as { payload: { graveId: TileId } }).payload.graveId;
-    expect(game.engine.state.round.lastDrawnTile).toBe(robbed);
-    // 게임당 1회 — 같은 국에서 두 번 제시되지 않는다
-    expect(robOptions(next as { options: { type: string; payload: unknown }[] })).toHaveLength(0);
+    expect(status.kind).toBe("roundOver");
+    if (status.kind !== "roundOver") return;
+    expect(status.outcome).toBe("win");
+    // 파낸 패로 난 쯔모 화료다
+    const info = lastSettled(flow).winInfos?.[0];
+    expect(info?.winType).toBe("tsumo");
+    expect(info?.winner).toBe("p0");
+    expect(game.engine.state.round.phase).toBe("round.over");
   });
 
-  it("이어서 화료하면 지불은 쯔모처럼 전원이 분담한다", () => {
+  it("지불은 쯔모처럼 전원이 분담한다", () => {
     const state = scene();
     const { flow, prompt } = startWithGraveRob(state);
-    flow.submit("p0", robOptions(prompt)[0] as { type: string; payload: unknown });
-    const status = flow.submit("p0", { type: "win", payload: {} });
+    const status = flow.submit(
+      "p0",
+      robOptions(prompt)[0] as { type: string; payload: unknown },
+    );
 
     expect(status.kind).toBe("roundOver");
     if (status.kind !== "roundOver") return;

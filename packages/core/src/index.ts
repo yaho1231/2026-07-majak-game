@@ -373,6 +373,7 @@ export {
   normalizeRoomRules,
   ROOM_PACES,
   DEFAULT_ROOM_PACE,
+  LOBBY_DEFAULT_ROOM_PACE,
   isRoomPace,
   paceMaxSeatMs,
 } from "./network/protocol.js";

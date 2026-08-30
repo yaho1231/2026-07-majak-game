@@ -61,6 +61,7 @@ import {
   lockedDiscardIds,
   mixedTripletsFor,
   polarEndsFor,
+  sameCallQuad,
   honorRunsFor,
   isFourWinds,
   isRunQuad,
@@ -527,10 +528,12 @@ const ankanAction: ActionDef<{ tileIds: [TileId, TileId, TileId, TileId] }> = {
     if (new Set(ids).size !== 4) return "duplicate tile ids";
     const hand = handIdsOf(state, req.player);
     if (!ids.every((id) => hand.includes(id))) return "tiles not in hand";
-    const k = kindOf(state, ids[0]!);
     const mixedTri = mixedTripletsFor(state, rules, req.player);
+    // 양극(polarEnds)도 깡 재료를 연다 — 같은 무늬의 1·9 넉 장(1만1만9만9만)이 한 깡이다.
+    // 동수의 결속을 함께 들면 무늬까지 지워진다(helpers.sameCallQuad).
+    const polar = polarEndsFor(state, rules, req.player);
     const kinds = ids.map((id) => kindOf(state, id));
-    const allSame = ids.every((id) => sameCallKind(kindOf(state, id), k, mixedTri));
+    const allSame = sameCallQuad(kinds, mixedTri, polar);
     // 바람의 계보(honorRuns) 보유자는 동·남·서·북 각 한 장을 '동남서북 깡'으로 낼 수 있다.
     const fourWinds =
       honorRunsFor(state, rules, req.player) && isFourWinds(kinds);
@@ -597,7 +600,9 @@ const minkanAction: ActionDef<{ tileIds: [TileId, TileId, TileId] }> = {
     if (!ids.every((id) => hand.includes(id))) return "tiles not in hand";
     const k = kindOf(state, last.tileId);
     const mixedTri = mixedTripletsFor(state, rules, req.player);
-    if (!ids.every((id) => sameCallKind(kindOf(state, id), k, mixedTri))) {
+    const polar = polarEndsFor(state, rules, req.player);
+    // 넉 장을 **한꺼번에** 본다 — 규칙끼리 섞인 잡종 깡을 막는 그물(sameCallBody와 같은 규약).
+    if (!sameCallQuad([k, ...ids.map((id) => kindOf(state, id))], mixedTri, polar)) {
       return "tiles do not match the discard";
     }
     return null;
@@ -1445,6 +1450,15 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
   rules.define("scoring.kokushiDupes", 0);
   /** 1·9만으로 커쯔 몸통(199·191·911) 허용 — 양극 */
   rules.define("scoring.polarEnds", false);
+  /**
+   * **지금 이 사람의 쯔모 화료를 묻지 않고 그대로 성립시킨다** (turn.act 한정).
+   *
+   * "그 패로 화료한다"고 적힌 증강(무덤 도굴)이 패만 가져다 놓고 다시 «쯔모» 버튼을
+   * 기다리면, 카드가 약속한 한 동작이 두 박자로 갈라진다(2026-08-31 사용자 보고).
+   * FlowController가 턴 프롬프트를 세우기 전에 이 규칙을 보고, 켜져 있고 표준 `win`이
+   * 합법이면 그 자리에서 정산으로 보낸다 — 화료 판정·정산 경로는 표준 그대로다.
+   */
+  rules.define("turn.autoWin", false);
   /** 치또이 쌍을 무늬 무관 rank로 인정(1만+1통) — 비대칭 치또이 */
   rules.define("scoring.chiitoiMixedPairs", false);
   /** 자패 슌쯔 허용(동남서·남서북·백발중) — 바람의 계보 */

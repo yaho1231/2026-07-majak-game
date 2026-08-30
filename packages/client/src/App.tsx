@@ -16288,20 +16288,9 @@ function CenterPanel({
             ),
           )}
         </div>
-        {/* 가려진 도라 — 표시패가 한 장도 없으면 "아직 안 열린 것"과 그림이 같다.
-            숨긴 사람은 증강 보유가 공개라 여기서 바로 찾을 수 있다. */}
-        {(() => {
-          if (r.doraIndicators.length > 0) return null;
-          const holder = view.players.find(
-            (p) => p.augments.includes("dora_conceal") && p.id !== view.playerId,
-          );
-          if (holder === undefined) return null;
-          return (
-            <div className="dora-concealed" title="가려진 도라 — 이번 국의 도라 표시패는 그 사람만 본다">
-              🌑 가려진 도라 — {holder.nickname}
-            </div>
-          );
-        })()}
+        {/* 가려진 도라 — 알림은 **내 손패 위 뱃지 줄 한 곳**에서만 낸다.
+            여기(판 한가운데 도라 줄)에도 같은 문구가 서서 한 사실이 두 번 알려졌다
+            (2026-08-31 사용자 지시). 뱃지 줄이 눈이 가는 자리라 그쪽을 남긴다. */}
         {r.uraDoraIndicators !== null && r.uraDoraIndicators.length > 0 ? (
           <div className="center-dora center-ura" title="뒷도라 표시패 — 리치 화료로 열렸다">
             {/* 라벨이 없으면 도라 줄 바로 아래에 «출처 없는 패»가 갑자기 늘어선다 —
@@ -17298,120 +17287,18 @@ function augmentPillStatus(
   augId: string,
 ): PillStatus | null {
   const av = view.augmentView;
-
-  /*
-   * 선발동형("뽑자마자 이번 국만") — 그 국이 지나가면 콘텐츠가 `spent:{id}:{좌석}`을
-   * 올린다. 효과 표시는 국 스코프라 조용히 사라지는데 pill은 그대로 서 있어서, 이미
-   * 끝난 증강이 아직 걸려 있는 것처럼 보였다(2026-08-13 사용자 보고).
-   * 다른 어떤 분기보다 먼저 본다 — 끝난 증강에 살아 있는 상태를 붙일 이유가 없다.
-   */
-  if (av[`spent:${augId}:${playerId}`] === true) {
-    return { chip: "종료", tone: "spent", note: "이번 국 전용 — 그 국이 지나 효과가 남아 있지 않다" };
-  }
-
   // 보유자 화면에만 실리는 잔량 채널 — 채널 이름에 좌석이 없으므로 **뷰어 자신의
   // pill에만** 붙인다. 같은 증강을 남도 들면 내 잔량이 남의 pill에 찍힌다
   // (cooldownRoundsLeft 주석의 중복 보유 경로).
   const isSelf = playerId === view.playerId;
-  // (연금술사는 2026-08-17에, 염색은 2026-08-25에 공용 잔량 채널 `uses:{id}`로 옮겼다 —
-  //  아래 usesStatus가 읽는다. 전용 분기는 총 횟수를 모르니 게이지도 "N회 중 n회" 문구도
-  //  못 그렸고, `return null`로 여기서 끊겨 다른 상태 뱃지와 합쳐지지도 않았다.)
   /*
-   * 예지 — 재배열은 **국에 1회**다. 소진되면 열람은 되는데 드래그 확정이 안 열리는데,
-   * 그 이유가 화면 어디에도 없었다("증강이 고장 났다"로 읽힌다).
-   * 이 채널은 보유자 전용이고 값이 그냥 true라, 공개 열람 채널을 읽는 아래 일반
-   * 경로(`av[augId:좌석]`)로는 볼 수 없어 여기서 따로 본다.
+   * ⚠ 잔량은 **어떤 분기보다 먼저** 계산한다 (2026-08-31 사용자 보고: "횟수형 증강의
+   * 횟수가 또 안 나온다"). 예전에는 이 계산이 함수 한참 아래에 있어서, 자기만의 상태
+   * 채널을 가진 증강들(선발동 종료 표식·예지·왕패의 주인·밀실의 도라·거울의 도라·편식·
+   * 초읽기)이 그 **위에서** `return null`·`return {...}`로 끊어 버리면 «게임 내 N회»가
+   * 통째로 묻혔다. 그 분기들은 이제 전부 `withUses`/`usesStatus`를 거쳐 나간다 —
+   * 상태가 없어도 잔량은 남고, 둘 다 있으면 «상태 · n회»로 함께 선다.
    */
-  if (augId === "foresight" && isSelf && av["foresight:reorderSpent"] === true) {
-    return {
-      chip: "재배열 완료",
-      tone: "spent",
-      note: "이번 국 재배열은 이미 썼다 — 앞을 보는 것만 된다",
-    };
-  }
-  if (augId === "dead_wall_master") {
-    const left = av[`dead_wall_master:remaining:${playerId}`];
-    if (typeof left !== "number" || left <= 0) return null;
-    return { chip: `${left}회`, note: `이번 국 왕패 교환 ${left}회 남음` };
-  }
-
-  // (울기 봉인 `call_seal`은 잔량(`usesStatus`)과 함께 보여야 해서 아래
-  //  `withUses` 뒤로 내려갔다 — 그쪽 주석 참고.)
-  /*
-   * 밀실의 도라 — **깡에 들어간 네 장**이 이 사람만의 도라가 된다(전원 공개).
-   * 종류가 아니라 그 네 장이라, 손패에 같은 패가 있어도 판이 붙지 않는다.
-   * 그래서 문구도 "이 종류가 도라"가 아니라 "깡친 네 장이 도라"로 적는다.
-   */
-  if (augId === "ankan_dora") {
-    const m = av[`ankan_dora:${playerId}`] as { kinds?: string[] } | null;
-    const kinds = (Array.isArray(m?.kinds) ? m.kinds : [])
-      .map(parseKindKey)
-      .filter((k): k is TileKind => k !== null);
-    if (kinds.length === 0) return null;
-    const names = kinds.map((kind) => formatTile({ kind })).join("·");
-    return {
-      chip: names,
-      note: `안깡한 ${names}${kinds.length > 1 ? "" : " 네 장"}이 이 사람에게만 도라 — 손패의 같은 패에는 붙지 않는다`,
-    };
-  }
-
-  // 거울의 도라 · 도라의 잔상 — 이 사람에게만 도라가 되는 종류(전원 공개)
-  if (augId === "mirror_dora" || augId === "dora_afterimage") {
-    const raw = av[`${augId}:${playerId}`];
-    const kinds = (Array.isArray(raw) ? raw : [])
-      .filter((k): k is string => typeof k === "string")
-      .map(parseKindKey)
-      .filter((k): k is TileKind => k !== null);
-    if (kinds.length === 0) {
-      // 잔상은 아직 안 썼어도 **무엇을 되살릴 수 있는지**를 보유자 본인에게만 보여 준다
-      // — 값어치를 보고 발동할지 정하라는 증강이라, 안 보이면 도박이 된다.
-      if (augId === "dora_afterimage") {
-        const prev = (Array.isArray(av[`dora_afterimage:prev:${playerId}`])
-          ? (av[`dora_afterimage:prev:${playerId}`] as unknown[])
-          : [])
-          .filter((k): k is string => typeof k === "string")
-          .map(parseKindKey)
-          .filter((k): k is TileKind => k !== null);
-        if (prev.length === 0) return null;
-        const prevNames = prev.map((kind) => formatTile({ kind })).join("·");
-        return {
-          chip: `↺ ${prevNames}`,
-          note: `직전 국의 도라 — 발동하면 ${prevNames}이(가) 나에게만 도라로 겹쳐진다 (나에게만 보인다)`,
-        };
-      }
-      return null;
-    }
-    const names = kinds.map((kind) => formatTile({ kind })).join("·");
-    return { chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` };
-  }
-
-  // 편식 — 퀘스트 진행도. 발동 뒤에는 아래 PILL_CUSTOM이 통일된 무늬를 그린다.
-  if (augId === "picky_eater" && av[`picky_eater:${playerId}`] === undefined) {
-    const m = av[`picky_eater:progress:${playerId}`] as
-      | { suit?: string | null; count?: number; need?: number; failed?: boolean }
-      | null;
-    if (m === null || typeof m !== "object" || typeof m.count !== "number") return null;
-    const need = m.need ?? 12;
-    if (m.failed === true) {
-      return { chip: "실패", note: "다른 무늬를 버려 이번 국 퀘스트는 깨졌다" };
-    }
-    if (m.count === 0) return null;
-    const ko = m.suit == null ? "자패" : (SUIT_KO[m.suit] ?? m.suit);
-    return {
-      chip: `${m.count}/${need}`,
-      note: `${ko}만 버리는 중 — ${need}장을 채우면 손패를 한 색으로 물들인다`,
-    };
-  }
-
-  // 초읽기 — 테이블 전원에게 걸리는 제한이라 채널에 보유자가 없다
-  if (augId === "time_pressure") {
-    const sec = av["time_pressure"];
-    if (typeof sec !== "number" || sec <= 0) return null;
-    return { chip: `${sec}초`, note: `이번 국 전원의 모든 결정이 ${sec}초 제한이다` };
-  }
-
-  const raw = av[`${augId}:${playerId}`];
-
   /*
    * 남은 사용 횟수 — 횟수형 증강 공용 채널(`uses:{증강id}`, content/util publishUsesLeft).
    *
@@ -17455,6 +17342,120 @@ function augmentPillStatus(
       ...(usesStatus.gauge !== undefined ? { gauge: usesStatus.gauge } : {}),
     };
   };
+
+  /*
+   * 선발동형("뽑자마자 이번 국만") — 그 국이 지나가면 콘텐츠가 `spent:{id}:{좌석}`을
+   * 올린다. 효과 표시는 국 스코프라 조용히 사라지는데 pill은 그대로 서 있어서, 이미
+   * 끝난 증강이 아직 걸려 있는 것처럼 보였다(2026-08-13 사용자 보고).
+   * 다른 어떤 분기보다 먼저 본다 — 끝난 증강에 살아 있는 상태를 붙일 이유가 없다.
+   */
+  if (av[`spent:${augId}:${playerId}`] === true) {
+    return withUses({
+      chip: "종료",
+      tone: "spent",
+      note: "이번 국 전용 — 그 국이 지나 효과가 남아 있지 않다",
+    });
+  }
+
+  // (연금술사는 2026-08-17에, 염색은 2026-08-25에 공용 잔량 채널 `uses:{id}`로 옮겼다 —
+  //  아래 usesStatus가 읽는다. 전용 분기는 총 횟수를 모르니 게이지도 "N회 중 n회" 문구도
+  //  못 그렸고, `return null`로 여기서 끊겨 다른 상태 뱃지와 합쳐지지도 않았다.)
+  /*
+   * 예지 — 재배열은 **국에 1회**다. 소진되면 열람은 되는데 드래그 확정이 안 열리는데,
+   * 그 이유가 화면 어디에도 없었다("증강이 고장 났다"로 읽힌다).
+   * 이 채널은 보유자 전용이고 값이 그냥 true라, 공개 열람 채널을 읽는 아래 일반
+   * 경로(`av[augId:좌석]`)로는 볼 수 없어 여기서 따로 본다.
+   */
+  if (augId === "foresight" && isSelf && av["foresight:reorderSpent"] === true) {
+    return withUses({
+      chip: "재배열 완료",
+      tone: "spent",
+      note: "이번 국 재배열은 이미 썼다 — 앞을 보는 것만 된다",
+    });
+  }
+  if (augId === "dead_wall_master") {
+    const left = av[`dead_wall_master:remaining:${playerId}`];
+    if (typeof left !== "number" || left <= 0) return usesStatus;
+    return withUses({ chip: `${left}회`, note: `이번 국 왕패 교환 ${left}회 남음` });
+  }
+
+  // (울기 봉인 `call_seal`은 잔량(`usesStatus`)과 함께 보여야 해서 아래
+  //  `withUses` 뒤로 내려갔다 — 그쪽 주석 참고.)
+  /*
+   * 밀실의 도라 — **깡에 들어간 네 장**이 이 사람만의 도라가 된다(전원 공개).
+   * 종류가 아니라 그 네 장이라, 손패에 같은 패가 있어도 판이 붙지 않는다.
+   * 그래서 문구도 "이 종류가 도라"가 아니라 "깡친 네 장이 도라"로 적는다.
+   */
+  if (augId === "ankan_dora") {
+    const m = av[`ankan_dora:${playerId}`] as { kinds?: string[] } | null;
+    const kinds = (Array.isArray(m?.kinds) ? m.kinds : [])
+      .map(parseKindKey)
+      .filter((k): k is TileKind => k !== null);
+    if (kinds.length === 0) return usesStatus;
+    const names = kinds.map((kind) => formatTile({ kind })).join("·");
+    return withUses({
+      chip: names,
+      note: `안깡한 ${names}${kinds.length > 1 ? "" : " 네 장"}이 이 사람에게만 도라 — 손패의 같은 패에는 붙지 않는다`,
+    });
+  }
+
+  // 거울의 도라 · 도라의 잔상 — 이 사람에게만 도라가 되는 종류(전원 공개)
+  if (augId === "mirror_dora" || augId === "dora_afterimage") {
+    const raw = av[`${augId}:${playerId}`];
+    const kinds = (Array.isArray(raw) ? raw : [])
+      .filter((k): k is string => typeof k === "string")
+      .map(parseKindKey)
+      .filter((k): k is TileKind => k !== null);
+    if (kinds.length === 0) {
+      // 잔상은 아직 안 썼어도 **무엇을 되살릴 수 있는지**를 보유자 본인에게만 보여 준다
+      // — 값어치를 보고 발동할지 정하라는 증강이라, 안 보이면 도박이 된다.
+      if (augId === "dora_afterimage") {
+        const prev = (Array.isArray(av[`dora_afterimage:prev:${playerId}`])
+          ? (av[`dora_afterimage:prev:${playerId}`] as unknown[])
+          : [])
+          .filter((k): k is string => typeof k === "string")
+          .map(parseKindKey)
+          .filter((k): k is TileKind => k !== null);
+        if (prev.length === 0) return usesStatus;
+        const prevNames = prev.map((kind) => formatTile({ kind })).join("·");
+        return withUses({
+          chip: `↺ ${prevNames}`,
+          note: `직전 국의 도라 — 발동하면 ${prevNames}이(가) 나에게만 도라로 겹쳐진다 (나에게만 보인다)`,
+        });
+      }
+      return usesStatus;
+    }
+    const names = kinds.map((kind) => formatTile({ kind })).join("·");
+    return withUses({ chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` });
+  }
+
+  // 편식 — 퀘스트 진행도. 발동 뒤에는 아래 PILL_CUSTOM이 통일된 무늬를 그린다.
+  if (augId === "picky_eater" && av[`picky_eater:${playerId}`] === undefined) {
+    const m = av[`picky_eater:progress:${playerId}`] as
+      | { suit?: string | null; count?: number; need?: number; failed?: boolean }
+      | null;
+    if (m === null || typeof m !== "object" || typeof m.count !== "number") return usesStatus;
+    const need = m.need ?? 12;
+    if (m.failed === true) {
+      return withUses({ chip: "실패", note: "다른 무늬를 버려 이번 국 퀘스트는 깨졌다" });
+    }
+    if (m.count === 0) return usesStatus;
+    const ko = m.suit == null ? "자패" : (SUIT_KO[m.suit] ?? m.suit);
+    return withUses({
+      chip: `${m.count}/${need}`,
+      note: `${ko}만 버리는 중 — ${need}장을 채우면 손패를 한 색으로 물들인다`,
+    });
+  }
+
+  // 초읽기 — 테이블 전원에게 걸리는 제한이라 채널에 보유자가 없다
+  if (augId === "time_pressure") {
+    const sec = av["time_pressure"];
+    if (typeof sec !== "number" || sec <= 0) return usesStatus;
+    return withUses({ chip: `${sec}초`, note: `이번 국 전원의 모든 결정이 ${sec}초 제한이다` });
+  }
+
+  const raw = av[`${augId}:${playerId}`];
+
 
   /*
    * 울기 봉인 — 몇 순 남았는지. 값이 객체라 예전엔 어떤 표시에도 안 걸려

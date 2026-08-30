@@ -107,10 +107,12 @@ describe("무덤 도굴 — 파낸 패로 나는 화료", () => {
         (o.payload as { graveId: TileId }).graveId === graveId,
     );
     expect(offered).toBeDefined();
+    // 2026-08-31부터 도굴은 **그 자리에서** 쯔모 화료가 된다(`turn.autoWin`) —
+    // 예전처럼 «쯔모» 버튼을 한 번 더 누르지 않는다.
     const status = flow.submit("p0", offered as { type: string; payload: unknown });
-    expect(game.engine.state.round.lastDrawnTile).toBe(graveId);
-    expect(winValidate(game)).toBeNull();
-    expect(promptOptions(flow, status).some((o) => o.type === "win")).toBe(true);
+    expect(status.kind).toBe("roundOver");
+    if (status.kind !== "roundOver") return;
+    expect(status.outcome).toBe("win");
   });
 
   it("후리텐이면 그 패가 후보에 오르지 않고 도굴도 거부된다", () => {
