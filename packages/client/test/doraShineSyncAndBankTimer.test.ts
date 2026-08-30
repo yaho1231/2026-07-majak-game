@@ -7,9 +7,10 @@
  *    곳으로 모으고 상속되는 커스텀 속성으로 자리만 읽게 해야 «동시에 시작하고
  *    동시에 끝난다»가 성립한다.
  *
- * ② **제한 시간은 «유예 + 은행»으로 갈라 보인다.** 서버 마감은 매 순 초기화되는
+ * ② **제한 시간은 «은행 + 유예»로 갈라 보인다.** 서버 마감은 매 순 초기화되는
  *    유예(30초)와 국 하나짜리 은행(10초)의 합인데, 합만 그리면 「40초」한 덩어리라
- *    지금 닳는 쪽이 어디인지가 사라진다. 실제 소비 순서대로 앞 숫자부터 줄인다.
+ *    지금 닳는 쪽이 어디인지가 사라진다. 매 순 초기화되며 먼저 닳는 유예를 **뒤**에
+ *    둬서 「서 있는 잔액 + 이번 순의 카운트다운」으로 읽히게 한다.
  *
  * 이 패키지에는 jsdom이 없다 — 저장소의 다른 클라이언트 가드들과 같은 정적 소스
  * 스캔이다(augPillPinAndTimer.test.ts).
@@ -64,11 +65,12 @@ describe("결정 타이머 — 「30 + 10초」로 갈라 센다", () => {
     expect(APP_CODE).toContain("const bankMs = useContext(PromptBankContext);");
   });
 
-  it("앞 숫자(유예)부터 줄고, 그것이 0이 된 뒤에야 은행이 준다", () => {
+  it("뒷 숫자(매 순 초기화되는 유예)부터 줄고, 그것이 0이 된 뒤에야 은행이 준다", () => {
     expect(APP_CODE).toContain("const bank = Math.min(bankMs, left);");
     expect(APP_CODE).toContain("const grace = Math.max(0, left - bank);");
-    expect(APP_CODE).toContain("`${precise ? tenth(grace) : whole(grace)} + ${whole(bank)}초`");
-    expect(APP_CODE).toContain("`0 + ${precise ? tenth(bank) : whole(bank)}초`");
+    // 흐르는 숫자는 **뒤**, 서 있는 잔액이 앞이다 (「10 + 30초」→「10 + 29초」)
+    expect(APP_CODE).toContain("`${whole(bank)} + ${precise ? tenth(grace) : whole(grace)}초`");
+    expect(APP_CODE).toContain("`${precise ? tenth(bank) : whole(bank)} + 0초`");
   });
 
   it("갈라 셀 것이 없으면(은행 0·구 서버) 예전처럼 한 덩어리다", () => {
