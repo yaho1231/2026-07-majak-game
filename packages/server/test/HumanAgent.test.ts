@@ -343,6 +343,33 @@ describe("HumanAgent — 마감(deadlineMs)은 모든 프롬프트에 실린다"
     const sent = sock.sent.find((m) => m.type === "prompt");
     expect(sent.deadlineMs).toBe(TIME_PRESSURE_SECONDS * 1000);
   });
+
+  /*
+   * 마감은 «매 순 초기화되는 유예 + 국 하나짜리 은행»의 합인데, 화면이 그 합만
+   * 받으면 40초 한 덩어리로밖에 못 그린다 — 어느 쪽이 닳는지, 이 순을 늘리면 뒤에서
+   * 무엇을 잃는지가 사라진다(2026-08-30 사용자 지시 「30 + 10초처럼 갈라 보여 달라」).
+   */
+  it("은행 몫(bankMs)이 마감과 함께 실린다 — 화면이 «유예 + 은행»으로 갈라 센다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    void agent.decide(prompt("p0", "discard"));
+    const sent = sock.sent.find((m) => m.type === "prompt");
+    expect(sent.bankMs).toBe(TURN_BANK_MS);
+    // 앞 숫자(유예)는 둘의 차 — 화면은 이 뺄셈으로 「30 + 10초」를 만든다.
+    expect(sent.deadlineMs - sent.bankMs).toBe(TURN_GRACE_MS);
+  });
+
+  it("초읽기 국에는 갈라 셀 것이 없다 — bankMs는 0이다", () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Alice", sock.asWs());
+    agent.sendView({
+      players: [{ id: "p0" }],
+      augmentView: { [TIME_PRESSURE_CHANNEL]: TIME_PRESSURE_SECONDS },
+    } as never);
+    void agent.decide(prompt("p0", "discard"));
+    const sent = sock.sent.find((m) => m.type === "prompt");
+    expect(sent.bankMs).toBe(0);
+  });
 });
 
 /** 좌석 접속 상태는 뷰의 이름표로 실려 나간다 (QA P0-3b) — 새 메시지 타입 없이. */

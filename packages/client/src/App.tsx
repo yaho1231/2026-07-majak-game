@@ -3229,9 +3229,12 @@ export function App(): JSX.Element {
    * 진짜 남은 시간이 실려 온다.
    */
   const [promptDeadline, setPromptDeadline] = useState<number | null>(null);
+  /** 위 마감 중 은행에서 나온 몫(ms) — 「30 + 10초」의 뒷 숫자. 0이면 갈라 세지 않는다. */
+  const [promptBankMs, setPromptBankMs] = useState(0);
   /** 좌석 하나의 프롬프트만 지운다 (제출·취소) */
   const dropPrompt = (seat: string): void => {
     setPromptDeadline(null);
+    setPromptBankMs(0);
     setPrompts((prev) => {
       if (!(seat in prev)) return prev;
       const next = { ...prev };
@@ -5191,6 +5194,7 @@ export function App(): JSX.Element {
           ? Date.now() + msg.deadlineMs
           : null,
       );
+      setPromptBankMs(msg.bankMs !== undefined && msg.bankMs > 0 ? msg.bankMs : 0);
       setPromptSeq((s) => s + 1);
       setDraft(null);
       setDraftPicked(false);
@@ -5220,6 +5224,7 @@ export function App(): JSX.Element {
       if (msg.seat !== undefined) dropPrompt(msg.seat);
       else setPrompts({});
       setPromptDeadline(null);
+      setPromptBankMs(0);
       setRiichiMode(false);
       /*
        * **취소도 «프롬프트가 바뀐 사건»이다.** 예전에는 도착 경로에서만
@@ -6494,6 +6499,7 @@ export function App(): JSX.Element {
 
   return (
     <PausedContext.Provider value={pause !== null}>
+    <PromptBankContext.Provider value={promptBankMs}>
     <GlossaryTipsContext.Provider value={settings.glossaryTips}>
     {/* 판이 정해져 있을 때만 모드를 내려 준다 — 증강 설명의 "동풍전 N회 · 반장전 M회"가
         그 판의 숫자 하나로 줄어든다. 홈·도감(판 밖)에서는 null이라 둘 다 그대로 보인다.
@@ -7270,6 +7276,7 @@ export function App(): JSX.Element {
     </CoachLockContext.Provider>
     </GameModeContext.Provider>
     </GlossaryTipsContext.Provider>
+    </PromptBankContext.Provider>
     </PausedContext.Provider>
   );
 }
@@ -18433,6 +18440,8 @@ function PromptTimer(props: {
 }): JSX.Element {
   const { deadline } = props;
   const paused = useContext(PausedContext);
+  /** 제한 시간 중 초읽기 은행 몫(ms) — 0이면 갈라 세지 않는다. */
+  const bankMs = useContext(PromptBankContext);
 
   /*
    * 게이지의 «가득 참» 기준과, 마감이 없는 국의 어림 마감을 이 프롬프트 하나에
@@ -18491,7 +18500,31 @@ function PromptTimer(props: {
   const urgent = deadline !== null && left <= TIMER_URGENT_MS;
   const showCount = deadline !== null;
   const precise = deadline !== null && left <= TIMER_COUNT_MS;
-  const countText = precise ? `${(left / 1000).toFixed(1)}초` : `${Math.ceil(left / 1000)}초`;
+  /*
+   * 숫자를 «유예 + 은행»으로 **갈라** 적는다 (2026-08-30 사용자 지시).
+   *
+   * 제한 시간은 원래부터 두 통이었다 — 매 순 30초로 초기화되는 유예와, 국 하나를
+   * 통틀어 10초뿐인 은행(`bankMs`). 서버는 유예를 먼저 태우고 넘긴 만큼만 은행에서
+   * 깎는데, 화면은 둘을 더한 「40초」한 덩어리로만 말했다: 지금 닳는 것이 어느 쪽인지,
+   * 이 순에서 5초를 더 쓰면 남은 순들에서 무엇을 잃는지가 숫자에 전혀 없었다.
+   *
+   * 그래서 실제 소비 순서 그대로 앞 숫자(유예)부터 줄인다:
+   *   30 + 10초 → 29 + 10초 → … → 0 + 10초 → 0 + 9초 → …
+   * 은행이 0이거나(소진·초읽기 국·튜토리얼) 서버가 몫을 안 실어 보내면 예전처럼
+   * 한 덩어리다.
+   */
+  const bank = Math.min(bankMs, left);
+  const grace = Math.max(0, left - bank);
+  // 0.1초까지 세는 것은 **지금 닳고 있는 쪽**뿐이다. 둘 다 소수로 적으면 서 있는
+  // 숫자까지 흔들려 어느 쪽이 흐르는지가 도리어 안 보인다.
+  const tenth = (ms: number): string => (ms / 1000).toFixed(1);
+  const whole = (ms: number): string => String(Math.ceil(ms / 1000));
+  const countText =
+    bankMs <= 0
+      ? `${precise ? tenth(left) : whole(left)}초`
+      : grace > 0
+        ? `${precise ? tenth(grace) : whole(grace)} + ${whole(bank)}초`
+        : `0 + ${precise ? tenth(bank) : whole(bank)}초`;
   /*
    * 막대를 **React 가 직접 민다** (CSS 애니메이션이 아니다).
    *
@@ -20669,6 +20702,20 @@ function specDangerClass(level: number | undefined): string {
 }
 
 const PausedContext = createContext(false);
+
+/**
+ * 지금 떠 있는 결정 프롬프트의 제한 시간 중 **초읽기 은행 몫**(ms).
+ *
+ * 제한 시간은 «매 순 초기화되는 유예(30초) + 이번 국에 남은 은행(10초)»인데 화면에는
+ * 40초 한 덩어리로만 보였다 — 지금 닳고 있는 것이 어느 쪽인지, 이 순을 늘리면 뒤의
+ * 순들에서 무엇을 잃는지가 숫자에 없었다(2026-08-30 사용자 지시). 서버가 실어 보내는
+ * `prompt.bankMs`를 여기 담아 두고 `PromptTimer`가 갈라 센다.
+ *
+ * 프롭으로 내리지 않는 이유: 시계는 `.own-area` 안쪽 깊숙이 있고 그 사이 컴포넌트
+ * 대여섯은 이 값과 아무 상관이 없다 — 같은 이유로 이미 `PausedContext`가 있다.
+ * 0이면 갈라 셀 것이 없다(튜토리얼·초읽기 국·은행 소진·구 서버).
+ */
+const PromptBankContext = createContext(0);
 
 const WaitCountContext = createContext<((kind: TileKind) => number) | null>(null);
 

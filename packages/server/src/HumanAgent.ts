@@ -523,10 +523,12 @@ export class HumanAgent implements PlayerAgent {
         } else {
           leftMs = Math.max(0, p.deadlineAt - Date.now());
         }
+        const shown = this.shownDeadlineMs(leftMs, false);
         this.send({
           type: "prompt",
           prompt: p.prompt,
-          deadlineMs: this.shownDeadlineMs(leftMs, false),
+          deadlineMs: shown,
+          bankMs: this.shownBankMs(shown, p.bankEligible),
         });
       }
     } else if (this.pendingDraft !== null && this.pendingDraftChoices !== null) {
@@ -1069,6 +1071,28 @@ export class HumanAgent implements PlayerAgent {
     return this.tutorial && !graced ? 0 : timeoutMs;
   }
 
+  /**
+   * 화면에 실어 보낼 «은행 몫»(ms) — 제한 시간 중 매 순 초기화되지 **않는** 부분이다.
+   *
+   * 클라이언트는 이 값으로 남은 시간을 «유예 + 은행»으로 갈라 센다(「30 + 10초」).
+   * 갈라 보여 줄 것이 없는 자리 — 튜토리얼(시계 자체가 없다), 초읽기 증강이 걸린
+   * 국(은행을 쓰지 않는 별도 체계), 은행이 이미 바닥난 국 — 에서는 0이다. 0이면
+   * 클라이언트는 예전처럼 한 덩어리로 센다.
+   *
+   * `eligible`은 이 제한 시간이 실제로 «유예 + 은행»으로 세워졌는가다 — 끊김 유예나
+   * 1인 방 보류처럼 다른 셈으로 걸린 시계는 갈라 봐야 거짓말이 된다(`bankEligible`).
+   *
+   * 잔액은 이 결정이 **끝난 뒤에** 깎이므로(`armDecision`의 폴백·응답 경로),
+   * 프롬프트가 떠 있는 동안에는 `bankMs`가 그대로다 — 재접속 재전송에도 같은 값을
+   * 쓸 수 있다.
+   */
+  private shownBankMs(shownDeadline: number, eligible: boolean): number {
+    if (!eligible || shownDeadline <= 0 || !this.bankApplies()) return 0;
+    // 끊김 유예(5초)처럼 제한 시간이 유예보다도 짧게 걸린 자리에서는 은행 몫이
+    // 남은 시간을 넘어설 수 있다 — 화면이 «-2 + 10초»를 그리지 않게 잘라 둔다.
+    return Math.min(this.bankMs, shownDeadline);
+  }
+
   private decideFor(seat: PlayerId, prompt: DecisionPrompt): Promise<ActionOption> {
     if (this.abandoned) return Promise.resolve(safeFallbackOption(prompt.options));
     // 같은 좌석에 이전 대기가 남아 있으면(정상 흐름에는 없다) 폴백으로 정리한다
@@ -1088,7 +1112,13 @@ export class HumanAgent implements PlayerAgent {
     const bankEligible = !held && !graced && this.bankApplies();
     // 마감은 **항상** 실어 보낸다. 예전에는 초읽기 국에만 실어서, 평소 30초 제한이
     // 화면에 전혀 안 보였다 — 자리를 비운 사람이 론을 조용히 흘렸다(QA P0-5).
-    this.send({ type: "prompt", prompt, deadlineMs: this.shownDeadlineMs(timeoutMs, graced) });
+    const shownDeadline = this.shownDeadlineMs(timeoutMs, graced);
+    this.send({
+      type: "prompt",
+      prompt,
+      deadlineMs: shownDeadline,
+      bankMs: this.shownBankMs(shownDeadline, bankEligible),
+    });
     return new Promise<ActionOption>((resolve) => {
       this.armDecision(seat, prompt, resolve, timeoutMs, graced, bankEligible);
     });
