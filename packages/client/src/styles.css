@@ -3701,7 +3701,37 @@ button {
     0 0 13px 3px rgba(246, 114, 198, 0.95);
 }
 
-/* 패 표면을 훑고 지나가는 광택 — 도라의 "반짝" 그 자체 */
+/* 패 표면을 훑고 지나가는 광택 — 도라의 "반짝" 그 자체.
+
+   ⚠ **패마다 각자 애니메이션을 돌리지 않는다** (2026-08-30 사용자 보고: "모든 도라가
+   한번에 반짝여야 한다"). CSS 애니메이션은 그 요소가 **붙는 순간**부터 시작하므로,
+   손패·바닥패·후로패·도라 표시패가 서로 다른 시점에 마운트되면(패를 하나 뽑을 때마다
+   손패가 다시 붙는다) 반짝임의 위상이 제각각으로 흩어진다 — 화면에 도라가 여러 장이면
+   따로따로 번쩍이는 것으로 보였다.
+
+   그래서 **시계는 `:root` 한 곳에서만 돌린다**. 애니메이션되는 것은 상속되는 커스텀
+   속성 두 개(`--dora-shine-x` · `--dora-shine-o`)뿐이고, 각 광택은 그 값을 읽어 자기
+   자리를 그린다. 언제 붙은 패든 지금의 위상을 그대로 받으므로 전부 같은 순간에
+   시작하고 같은 순간에 끝난다. 그리는 속성은 예전과 같이 transform·opacity 뿐이다. */
+@property --dora-shine-x {
+  syntax: "<percentage>";
+  inherits: true;
+  initial-value: 0%;
+}
+@property --dora-shine-o {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+/* 시계는 `:root` 다 — 손패·바닥패·후로패뿐 아니라 도라 표시패·결과창·증강 모달 안의
+   패까지 **한 조상 아래**에 두려면 여기밖에 없다. 값이 바뀔 때 도는 것은 스타일
+   재계산뿐이고(그리는 속성은 여전히 transform·opacity 둘), 예전처럼 도라 장수만큼의
+   애니메이션이 각자 도는 것보다 싸다. */
+:root {
+  animation: dora-shine-clock 2.2s ease-in-out infinite;
+}
+
 .tile-dora::before,
 .tile-dora-own::before {
   content: "";
@@ -3712,8 +3742,8 @@ button {
   width: 55%;
   pointer-events: none;
   mix-blend-mode: screen;
-  transform: skewX(-20deg);
-  animation: dora-shine 2.2s ease-in-out infinite;
+  transform: translateX(var(--dora-shine-x)) skewX(-20deg);
+  opacity: var(--dora-shine-o);
 }
 
 .tile-dora::before {
@@ -3724,11 +3754,12 @@ button {
   background: linear-gradient(90deg, transparent, rgba(247, 243, 232, 0.95), transparent);
 }
 
-@keyframes dora-shine {
-  0% { transform: translateX(0) skewX(-20deg); opacity: 0; }
-  10% { opacity: 1; }
-  45% { opacity: 1; }
-  55%, 100% { transform: translateX(330%) skewX(-20deg); opacity: 0; }
+/* 온 화면의 도라가 공유하는 «한 개짜리» 시계 — 값의 자취는 옛 `dora-shine`과 같다. */
+@keyframes dora-shine-clock {
+  0% { --dora-shine-x: 0%; --dora-shine-o: 0; }
+  10% { --dora-shine-o: 1; }
+  45% { --dora-shine-o: 1; }
+  55%, 100% { --dora-shine-x: 330%; --dora-shine-o: 0; }
 }
 
 .tile-hand {
@@ -15728,6 +15759,10 @@ body.peeking .overlay-peekable > * {
      이 블록이 조용히 받아 준다. */
   .tile-dora,
   .tile-dora-own { animation: none; }
+  /* 광택의 시계는 이제 `:root` 하나가 쥐고 있다(모든 도라를 같은 위상으로 묶기 위해).
+     위 블록이 광택 자체를 이미 지웠으니 시계도 함께 세운다 — 안 그러면 아무도 읽지
+     않는 커스텀 속성이 초당 60번 갱신된다. */
+  :root { animation: none; }
 
   /* 드래프트 제목의 발광 — 순수 장식 */
   .draft-title { animation: none; }
