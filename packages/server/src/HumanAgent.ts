@@ -22,7 +22,12 @@ import type { RoomPace } from "@majak/core/network/protocol.js";
 export const DECISION_TIMEOUT_MS = 30_000;
 
 /**
- * 매 순 기본으로 주는 유예(ms) — 초읽기식 제한 시간의 «공짜 시간». 숙련자 방은 30초다.
+ * **매 순 다시 차는** 몫(ms) — 초읽기식 제한 시간의 «공짜 시간». 숙련자 방은 10초다.
+ *
+ * ⚠ 2026-08-30까지 이 값과 `TURN_BANK_MS`가 서로 **바뀌어** 들어가 있었다(숙련자
+ * 30초/10초). 표(`ROOM_PACES`)가 처음부터 말하던 것은 «기본 30초 + 매 순 10초»인데
+ * 실제로는 매 순 30초를 새로 받고 국 전체 밑천이 10초뿐이었다 — 합(40초)이 같아서
+ * 합계만 보는 검사에는 걸리지 않았다.
  *
  * 국이 시작하면 좌석마다 `TURN_BANK_MS`짜리 은행이 차고, 매 결정은 이 유예 + 그 은행
  * 잔액을 제한 시간으로 받는다. 유예 안에 두면 은행은 그대로고, 넘기면 넘긴 만큼만
@@ -37,7 +42,8 @@ export const DECISION_TIMEOUT_MS = 30_000;
 export const TURN_GRACE_MS = ROOM_PACES.expert.turnGraceMs;
 
 /**
- * 초읽기 «은행»의 초기 잔액(ms) — 숙련자 방은 **10초**다 (2026-08-27 사용자 지시).
+ * 초읽기 «은행»의 초기 잔액(ms) — 기본으로 주는 밑천이다. 숙련자 방은 **30초**다
+ * (2026-08-27 사용자 지시 · 2026-08-30 `TURN_GRACE_MS`와 자리를 바로잡았다).
  *
  * `DECISION_TIMEOUT_MS`와 일부러 분리한다. 저쪽은 초읽기 증강의 상한 등 다른 자리에도
  * 쓰이는 값이라, 은행만 고치려고 같이 건드리면 관계 없는 제한 시간까지 끌려간다.
@@ -1057,7 +1063,7 @@ export class HumanAgent implements PlayerAgent {
     if (typeof limit === "number" && limit > 0) {
       return Math.min(DECISION_TIMEOUT_MS, Math.round(limit * 1000));
     }
-    // 초읽기 은행 — 매 순 공짜 유예(숙련자 30초) + 이번 국에 남은 은행 잔액(`bankMs`).
+    // 초읽기 은행 — 매 순 다시 차는 몫(숙련자 10초) + 이번 국에 남은 은행 잔액(숙련자 30초).
     return this.paceSpec().turnGraceMs + this.bankMs;
   }
 
@@ -1074,7 +1080,8 @@ export class HumanAgent implements PlayerAgent {
   /**
    * 화면에 실어 보낼 «은행 몫»(ms) — 제한 시간 중 매 순 초기화되지 **않는** 부분이다.
    *
-   * 클라이언트는 이 값으로 남은 시간을 «유예 + 은행»으로 갈라 센다(「30 + 10초」).
+   * 클라이언트는 이 값으로 남은 시간을 «은행 + 매 순 몫»으로 갈라 센다(「30 + 10초」 —
+   * 앞이 이 값, 뒤가 매 순 다시 차는 몫이다).
    * 갈라 보여 줄 것이 없는 자리 — 튜토리얼(시계 자체가 없다), 초읽기 증강이 걸린
    * 국(은행을 쓰지 않는 별도 체계), 은행이 이미 바닥난 국 — 에서는 0이다. 0이면
    * 클라이언트는 예전처럼 한 덩어리로 센다.

@@ -2,7 +2,7 @@
  * 대기실 제한 시간 묶음 (`ROOM_PACES`) — 2026-08-27 사용자 지시.
  *
  * 규칙(사용자 확정):
- * - 숙련자 = 증강 50초, 타패 30 + 10초.
+ * - 숙련자 = 증강 50초, 타패 «은행 30초 + 매 순 10초».
  * - 초심자 = 증강 120초, 타패 60 + 20초.
  * - 왕초보 = 증강 300초, 타패 300 + 30초.
  * - 남은 시간은 «다 고르면/두면» 취소된다 — 프로미스가 그 자리에서 풀린다.
@@ -55,34 +55,36 @@ const draftDeadline = (agent: HumanAgent, sock: FakeSocket, stage: any): number 
 };
 
 describe("ROOM_PACES — 사용자가 못박은 값", () => {
-  it("숙련자 = 증강 50초 · 타패 30 + 10초", () => {
+  it("숙련자 = 증강 50초 · 타패 «은행 30초 + 매 순 10초»", () => {
     expect(ROOM_PACES.expert).toEqual({
-      turnGraceMs: 30_000,
-      turnBankMs: 10_000,
+      // 앞 숫자가 은행(밑천), 뒷 숫자가 매 순 다시 차는 몫이다 — 2026-08-30까지
+      // 두 칸이 뒤집혀 있었다(합이 같아 이 검사도 그때는 통과했다).
+      turnGraceMs: 10_000,
+      turnBankMs: 30_000,
       draftMs: 50_000,
       firstDraftMs: 50_000,
     });
     // 서버의 옛 상수는 이 칸을 그대로 읽는다 — 값이 두 벌로 갈라지지 않게.
     expect([TURN_GRACE_MS, TURN_BANK_MS, FIRST_DRAFT_TIMEOUT_MS]).toEqual([
-      30_000, 10_000, 50_000,
+      10_000, 30_000, 50_000,
     ]);
     // 초읽기 증강(time_pressure)의 상한은 이 표와 무관하게 그대로다.
     expect(DECISION_TIMEOUT_MS).toBe(30_000);
   });
 
-  it("초심자 = 증강 120초 · 타패 60 + 20초", () => {
+  it("초심자 = 증강 120초 · 타패 «은행 60초 + 매 순 20초»", () => {
     expect(ROOM_PACES.beginner).toEqual({
-      turnGraceMs: 60_000,
-      turnBankMs: 20_000,
+      turnGraceMs: 20_000,
+      turnBankMs: 60_000,
       draftMs: 120_000,
       firstDraftMs: 120_000,
     });
   });
 
-  it("왕초보 = 증강 300초 · 타패 300 + 30초", () => {
+  it("왕초보 = 증강 300초 · 타패 «은행 300초 + 매 순 30초»", () => {
     expect(ROOM_PACES.novice).toEqual({
-      turnGraceMs: 300_000,
-      turnBankMs: 30_000,
+      turnGraceMs: 30_000,
+      turnBankMs: 300_000,
       draftMs: 300_000,
       firstDraftMs: 300_000,
     });
@@ -128,9 +130,9 @@ describe("HumanAgent.setPace", () => {
     const sock = new FakeSocket();
     const agent = new HumanAgent("p0", "Alice", sock.asWs());
     agent.setPace("beginner");
-    // 유예(60초)를 5초 넘겨 두면 은행에서 그만큼만 깎인다.
+    // 매 순 몫(20초)을 5초 넘겨 두면 은행(60초)에서 그만큼만 깎인다.
     void agent.decide(prompt("p0", "discard"));
-    await vi.advanceTimersByTimeAsync(65_000);
+    await vi.advanceTimersByTimeAsync(25_000);
     agent.handleMessage({ type: "action", actionType: "discard", payload: {} } as never);
     await vi.advanceTimersByTimeAsync(0);
     expect(turnDeadline(agent, sock)).toBe(80_000 - 5_000);
