@@ -19,6 +19,7 @@
 
 import {
   TURN_PASSED,
+  WALL,
   augmentDataSet,
   defineAugment,
   playerAtSeat,
@@ -166,6 +167,13 @@ export const timeStop: AugmentDef = defineAugment({
         const state = ic.state;
         if (!flagOf(state, armedKey(state, holder))) return event;
         if (state.round.lastDiscard?.player !== holder) return event; // 남이 운 경우 유지
+        /*
+         * 패산이 비었으면 추가 순이 성립하지 않는다 — 한 순은 «쯔모 + 버림»이라 뽑을
+         * 패가 없으면 그 자리에서 유국이다. 되돌려 봐야 아무 일도 없이 armed만 풀린다
+         * (폭주·연장이 같은 자리에 같은 가드를 둔다). 물러나면 예약이 남아 다음 국에…
+         * 는 아니고(국 스코프), 적어도 이 국의 남은 자기 순에 다시 노린다.
+         */
+        if ((state.zones[WALL]?.tileIds.length ?? 0) === 0) return event;
         const seat = seatOf(state, holder);
         if (seat === undefined) return event;
         const payload = event.payload as { nextSeat: number };

@@ -25,6 +25,7 @@ import {
 } from "./danger.js";
 import type { DefenseContext, Threat } from "./danger.js";
 import { effectiveAugmentsOf } from "./collect.js";
+import { readIntel, snapshotTrust } from "./intel.js";
 import { exactTenpai, hasUnmodeledShapeOptions } from "./shape.js";
 import { NEUTRAL_PROFILE } from "./profile.js";
 import type { BotProfile } from "./profile.js";
@@ -269,7 +270,18 @@ export function buildRead(
     if (k !== undefined) doraKinds.push(doraKindFor(k));
   }
   // 위협 읽기는 도라를 알아야 한다 — 상대 후로에 눕혀진 도라가 예상 실점을 바꾼다
-  const threats = readThreats(view, me, doraKinds, context.traitsOf ?? (() => NEUTRAL_TRAITS));
+  /**
+   * **내 정보 증강이 열어 준 것**(`bot/intel.ts`) — 뷰에 실려 온 것만 읽는다.
+   * 정보 증강이 없으면 빈 값이라 종전 판단과 한 글자도 다르지 않다 (A-14).
+   */
+  const intel = readIntel(view, me, opts);
+  const threats = readThreats(
+    view,
+    me,
+    doraKinds,
+    context.traitsOf ?? (() => NEUTRAL_TRAITS),
+    intel,
+  );
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {
     const key = kindKey(d);
@@ -311,6 +323,16 @@ export function buildRead(
     turn: view.round.turnCount,
     doraKinds,
     sujiTrust: flags.has("noSuji") ? 0 : profile.sujiTrust,
+    /*
+     * **지뢰 탐지**가 찍어 준 「지금 버리면 쏘이는 종류」 (A-14). 스냅샷이라
+     * 나이만큼만 믿는다 — 사람 화면이 「N순 기준」이라고 밝히는 것과 같은 취급.
+     */
+    ...(intel.dangerKinds.size > 0
+      ? {
+          confirmedDanger: intel.dangerKinds,
+          confirmedDangerTrust: snapshotTrust(view.round.turnCount, intel.dangerTurn ?? undefined),
+        }
+      : {}),
   };
 
   const mine = view.round.byPlayer[me];

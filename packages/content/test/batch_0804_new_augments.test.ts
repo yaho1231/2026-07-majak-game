@@ -628,9 +628,19 @@ describe("영혼의 일격 (soul_strike)", () => {
         installAugment(game.engine, soulStrike, "p0", { yaku: game.yaku });
       },
     );
-    // 뱅크 발행이라 상대가 더 내지는 않는다 — 내 수령만 늘어난다
+    /*
+     * 2026-08-31 사양 변경 (QA synergy4 C-7): 이 +1판은 **실판**이다.
+     * 예전에는 `addWinHanBonus`(정산 시점 점수 밴드 차액을 뱅크가 발행)라 판수가
+     * `han` 열에 나타나지 않았고, 밴드 안에 갇힌 국에서는 한 푼도 안 붙었다.
+     * 이제 `score.extraHan`으로 실려 표준 리치 1판과 같은 곡선을 타므로
+     * — 표준 리치 판이 그렇듯 — **방총자가 그만큼 더 낸다.**
+     */
     expect(boosted.deltas["p0"] ?? 0).toBeGreaterThan(plain.deltas["p0"] ?? 0);
-    expect(boosted.deltas["p1"]).toBe(plain.deltas["p1"]);
+    expect(boosted.deltas["p1"] ?? 0).toBeLessThan(plain.deltas["p1"] ?? 0);
+    // 총합은 보존된다 — 뱅크 발행이 아니라 순수 이동이다
+    expect(
+      Object.values(boosted.deltas).reduce((a, b) => a + b, 0),
+    ).toBe(Object.values(plain.deltas).reduce((a, b) => a + b, 0));
   });
 
   it("리치를 물리면(승부수·손바닥 뒤집기) 판수 보너스도 함께 사라진다", () => {

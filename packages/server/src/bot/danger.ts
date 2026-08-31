@@ -40,6 +40,8 @@ import {
   readCollect,
   readDealInShare,
 } from "./collect.js";
+import { NO_INTEL, snapshotTrust } from "./intel.js";
+import type { BotIntel } from "./intel.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
 import type { OpponentTraits } from "./opponents.js";
 import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.js";
@@ -93,6 +95,12 @@ export interface Threat {
    * (`bot/collect.ts`).
    */
   kindRisk: (kind: TileKind) => number;
+  /**
+   * **내 정보 증강이 열어 준 이 사람의 정확한 대기**(kindKey). 손패가 통째로 보일
+   * 때만 채워진다(투시 등 — `bot/intel.ts`가 뷰에 실려 온 것만으로 계산한다).
+   * 채워져 있으면 스지·벽·장수 추정을 덮는다: 추정할 필요가 없기 때문이다.
+   */
+  knownWaits?: ReadonlySet<string>;
 }
 
 /**
@@ -163,6 +171,11 @@ export function readThreats(
   doraKinds: readonly TileKind[] = [],
   /** 지금까지 읽어 낸 이 사람의 성향 (없으면 '보통 사람') */
   traitsOf: (p: PlayerId) => OpponentTraits = () => NEUTRAL_TRAITS,
+  /**
+   * **내 정보 증강이 열어 준 것** (`bot/intel.ts`). 기본은 «아무것도 없음»이라
+   * 정보 증강이 없는 봇의 판단은 종전과 한 글자도 다르지 않다.
+   */
+  intel: BotIntel = NO_INTEL,
 ): Threat[] {
   const out: Threat[] = [];
   const turn = view.round.turnCount;
@@ -269,6 +282,32 @@ export function readThreats(
      */
     if (!riichi && isFolding(view, p.id, discards, ponds)) level *= 0.25;
 
+    /**
+     * **내 정보 증강이 이 사람에 대해 확정해 준 것**(`bot/intel.ts`).
+     *
+     * 추정 위에 얹는 것이 아니라 **덮는다** — 손패가 통째로 보이면 텐파이 여부는
+     * 추정할 것이 없다. 천리안은 대기 내용 없이 「텐파이다/아니다」만 주므로
+     * 하한·상한으로만 쓰고, 스냅샷의 나이만큼 믿음을 깎는다.
+     */
+    const seen = intel.byPlayer.get(p.id);
+    let knownWaits: ReadonlySet<string> | undefined;
+    if (seen?.exactWaits !== undefined) {
+      knownWaits = seen.exactWaits;
+      level = seen.exactWaits.size > 0 ? 1 : 0;
+    } else if (seen?.scanTenpai !== undefined) {
+      const trust = snapshotTrust(turn, seen.scanTurn);
+      if (seen.scanTenpai) {
+        const floor = 0.85 * trust;
+        if (floor > level) level = floor;
+      } else if (!riichi) {
+        // 그 순 기준으로 노텐이었다 — 새로 텐파이할 시간만큼만 남겨 둔다
+        const cap = 1 - trust + 0.15 * trust;
+        if (level > cap) level = cap;
+      }
+    }
+    // 론당하지 않는 상대는 무엇을 알든 0이다 (위 규칙이 이겨야 한다)
+    if (isRonImmune(view, p.id)) level = 0;
+
     const isDealer =
       view.players.find((x) => x.id === p.id)?.seat === view.round.dealerSeat;
 
@@ -296,6 +335,7 @@ export function readThreats(
       riichi,
       isDealer,
       kindRisk: collect.riskOf,
+      ...(knownWaits === undefined ? {} : { knownWaits }),
       // 눈먼 총알이 켜진 국에는 내가 쏴도 **내가 물 확률이 1/4**이다 (지불자 무작위 재배선).
       // 나머지 몫은 무엇을 버리든 똑같이 걸리므로 버림 판단에서는 내 몫만 센다.
       value: dealInShare * augMult * estimateThreatValue(view, p.id, {
@@ -673,6 +713,13 @@ export interface DefenseContext {
   doraKinds: readonly TileKind[];
   /** 0(현물주의) ~ 1(스지면 민다). `profile.sujiTrust` */
   sujiTrust: number;
+  /**
+   * **지뢰 탐지**(`danger_sense`)가 「지금 버리면 쏘인다」고 찍어 준 내 손패 종류
+   * (kindKey). 내 전용 정보 채널에서 왔다 — `bot/intel.ts`의 치트 경계 주석 참고.
+   */
+  confirmedDanger?: ReadonlySet<string>;
+  /** 그 스냅샷을 얼마나 믿는가 0~1 (순이 지나면 낡는다) */
+  confirmedDangerTrust?: number;
 }
 
 /** 성격도 도라도 모를 때 쓰는 값 — 교과서적인 중립 수비 */
@@ -723,6 +770,33 @@ function tileRisk(
   doraSet: ReadonlySet<string>,
 ): number {
   if (threat.genbutsu.has(kindKey(kind))) return 0;
+  /*
+   * **대기를 정확히 아는 상대**에게는 추정을 하지 않는다 (A-14). 오름패면 1,
+   * 아니면 0 — 사람 플레이어가 투시 화면을 보고 하는 판단과 같다.
+   */
+  if (threat.knownWaits !== undefined) {
+    return threat.knownWaits.has(kindKey(kind)) ? 1 : 0;
+  }
+  /*
+   * **지뢰 탐지가 찍은 패**는 「누군가의 대기와 실제로 겹친다」가 확인된 것이다
+   * (어느 상대인지는 알려 주지 않으므로 상대별 위험의 **하한**으로 쓴다).
+   */
+  if (defense.confirmedDanger?.has(kindKey(kind)) === true) {
+    const floor = defense.confirmedDangerTrust ?? 1;
+    const rest = riskWithoutIntel(kind, threat, remainingOf, defense, doraSet);
+    return Math.max(floor, rest);
+  }
+  return riskWithoutIntel(kind, threat, remainingOf, defense, doraSet);
+}
+
+/** 정보 증강을 빼고 본 순수 판형 위험 (스지·벽·장수·수집 읽기) */
+function riskWithoutIntel(
+  kind: TileKind,
+  threat: Threat,
+  remainingOf: (k: TileKind) => number,
+  defense: DefenseContext,
+  doraSet: ReadonlySet<string>,
+): number {
 
   const sujiCredit = isNumber(kind)
     ? Math.max(0, Math.min(1, defense.sujiTrust)) *

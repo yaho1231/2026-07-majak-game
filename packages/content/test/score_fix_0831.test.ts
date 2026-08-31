@@ -395,7 +395,10 @@ describe("C-7 — soul_strike의 리치 2판은 실판이다", () => {
         ...st.round,
         byPlayer: {
           ...st.round.byPlayer,
-          p0: { ...st.round.byPlayer["p0"]!, riichi: { turn: 1, ippatsu: false } },
+          p0: {
+            ...st.round.byPlayer["p0"]!,
+            riichi: { turn: 1, ippatsu: false, double: false, discardIndex: 0 },
+          },
         },
       },
     } as GameState;

@@ -497,8 +497,15 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
     expect(deadWallMaster.detail).toContain("줄어든다");
   });
 
-  it("짝수의 세계: 도라·적도라는 그대로 남는다 (변환 결과가 도라가 되는 것은 막지 않는다)", () => {
-    expect(evenWorld.description).toContain("도라는 그대로 남는다");
+  /**
+   * 2026-08-31 사용자 지시로 뒤집힌 항목 — 도라·적도라 **예외를 전부 없앴다**.
+   * 글이 아직 "도라는 남는다"를 말하면, 도라 5통을 쥔 채 발동해 놓고 그 5통이 6통이 된
+   * 것을 버그로 읽는다.
+   */
+  it("짝수의 세계: 예외 없이 전부 짝수가 된다 (변환 결과가 도라가 되는 것도 막지 않는다)", () => {
+    expect(evenWorld.description).toContain("자패만 그대로 남는다");
+    expect(evenWorld.description).not.toContain("도라는 그대로 남는다");
+    expect(evenWorld.detail).toContain("적도라(빨간 5)도 예외 없이 짝수가 된다");
     expect(evenWorld.detail).toContain("바꾼 **결과**가 도라가 되는 것은 막지 않는다");
   });
 
