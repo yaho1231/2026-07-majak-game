@@ -25,6 +25,7 @@
  *   남의 안개에 갇힌다 — 태운 횟수의 대가는 그 창 안에서만 돌려받는다.
  */
 
+import { DISARMED_SOURCES_KEY, augmentInstanceId } from "@majak/core";
 import { flagOf } from "../util.js";
 import type { GameState, PlayerId } from "@majak/core";
 import { roundScopedKey } from "./roundScope.js";
@@ -80,4 +81,39 @@ export function briefFogActive(state: GameState, holder: PlayerId): boolean {
  */
 export function fogCasterNow(state: GameState, viewer: PlayerId): boolean {
   return hiddenRiverDeclared(state, viewer) || briefFogActive(state, viewer);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 다중 보유 면제 술어 (공통) — 이 파일이 안개에서 배운 것을 일반화한 자리다.
+ *
+ * 「나만 본다」류 정보 은닉 증강은 전부 **같은 함정**을 밟는다: 모디파이어가
+ * `rctx.playerId === holder` 로 **자기 인스턴스의 보유자 하나만** 면제하면,
+ * 같은 증강을 둘이 들었을 때 서로의 모디파이어에 걸려 **양쪽 다 실명한다.**
+ * 안개(위 `fogCasterNow`)가 그렇게 한 번 터졌고, 「가려진 도라」에서 똑같이
+ * 다시 터졌다(2026-08-31 QA synergy4 info 확정 1).
+ *
+ * 면제 판정의 규약은 **«보는 사람이 그 증강을 지금 살아 있는 채로 들고 있는가»** 다 —
+ * 어느 인스턴스가 이 모디파이어를 걸었는지는 보지 않는다. 새 은닉 증강을 만들 때는
+ * `holdsAugmentNow`를 쓰고, 보유만으로는 부족한(선언·지속시간이 있는) 계열은
+ * `fogCasterNow` 처럼 여기에 술어를 하나 더 올린다.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 이 좌석이 `augmentId`를 **지금 유효하게** 보유하고 있는가.
+ *
+ * 무장해제로 잠긴 인스턴스는 «들고 있지 않다»로 센다 — 잠긴 증강은 규칙도 효과도
+ * 서지 않으므로, 그 증강이 주는 면제만 살아남으면 잠금이 반쪽이 된다.
+ */
+export function holdsAugmentNow(
+  state: GameState,
+  viewer: PlayerId,
+  augmentId: string,
+): boolean {
+  const p = state.players.find((x) => x.id === viewer);
+  if (p === undefined || !p.augments.includes(augmentId)) return false;
+  const disarmed = state.augmentData[DISARMED_SOURCES_KEY];
+  if (Array.isArray(disarmed) && disarmed.includes(augmentInstanceId(viewer, augmentId))) {
+    return false;
+  }
+  return true;
 }

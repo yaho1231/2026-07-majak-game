@@ -210,14 +210,19 @@ describe("오픈 리치 직격 역만 — 상대가 리치를 걸 수 있었을 
     expect(play(["open_riichi_reveal"])).toBeGreaterThanOrEqual(48000);
   });
 
-  it("리치 봉인으로 상대의 리치를 잠갔으면 역만이 아니다", () => {
-    // 봉인 카드는 "추가 점수는 붙지 않는다"고 적혀 있다 — 그런데 예전에는
-    // 탈출구를 지우는 것만으로 화료값을 두 배로 만들었다.
-    expect(play(["open_riichi_reveal", "riichi_seal"])).toBeLessThan(48000);
+  /*
+   * 2026-08-31 (QA synergy4 A-7)로 **범위가 좁혀졌다**: 게이트가 내려가는 것은
+   * 봉인의 주체가 **남**일 때뿐이다. 내가 봉인 카드를 함께 들어 잠근 것이라면
+   * 역만은 그대로 선다 — 예전에는 내 카드가 내 골드 카드의 결정타를 스스로 지워
+   * 48,000이 18,000이 됐고, 봉인을 든 쪽이 안 든 쪽보다 약해졌다.
+   * 자세한 회귀는 riichi_fix_0831.test.ts.
+   */
+  it("내가 함께 든 리치 봉인은 내 역만을 지우지 않는다", () => {
+    expect(play(["open_riichi_reveal", "riichi_seal"])).toBeGreaterThanOrEqual(48000);
   });
 
-  it("리치 승격(하가 봉인)으로 잠근 경우도 마찬가지다", () => {
-    expect(play(["open_riichi_reveal", "riichi_upgrade"])).toBeLessThan(48000);
+  it("내가 함께 든 리치 승격(하가 봉인)도 마찬가지다", () => {
+    expect(play(["open_riichi_reveal", "riichi_upgrade"])).toBeGreaterThanOrEqual(48000);
   });
 });
 

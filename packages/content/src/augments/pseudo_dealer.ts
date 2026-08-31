@@ -33,6 +33,7 @@ import {
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { plan } from "./botPlan.js";
 import { cooldownViewKey } from "../util.js";
+import { roundScopedKey } from "./roundScope.js";
 
 const ID = "pseudo_dealer";
 const ACTION = "claim_dealer";
@@ -41,6 +42,22 @@ const EVENT = "DealerUsurped";
 const cooldownKey = (player: PlayerId): string => `${ID}:cd:${player}`;
 /** 선언 시 설정하는 쿨다운(선언한 국 + 다음 국) */
 const COOLDOWN_ROUNDS = 2;
+
+/**
+ * **이번 국에 오야를 강탈한 사람**(PlayerId). 국 경계에서 엔진이 지운다.
+ *
+ * 왜 필요한가 (2026-08-31 QA synergy4 B-12): 오야는 `round.dealerSeat` — **자리**에
+ * 붙는 값이다. 그래서 강탈 뒤 `seat_swap`으로 자리를 바꾸면 오야가 그 자리에 남아
+ * **지목한 상대가 오야**가 됐다. 쿨다운 2국과 자리바꿈 횟수를 함께 태우고 결과는
+ * 마이너스다(역순 swap → claim은 정상).
+ *
+ * 원래 오야가 자리를 바꿔 오야를 넘겨주는 것은 자리 바꿈의 설명 그대로다("자풍·오야가
+ * 넘어온다"). 다르게 다뤄야 하는 것은 **강탈해서 사람에게 온 오야**뿐이라, 그 사실을
+ * 자리가 아니라 사람에 매어 둔다. `seat_swap`의 리듀서가 이 값을 읽어 오야를 사람에게
+ * 따라 붙인다.
+ */
+export const usurperKey = (state: GameState): string =>
+  roundScopedKey(ID, "usurper", state);
 
 interface DealerUsurpedPayload {
   holder: PlayerId;
@@ -73,6 +90,8 @@ const claimDealerAction: ActionDef<Record<string, never>> = {
         seat: playerOf(state, req.player).seat,
       } satisfies DealerUsurpedPayload,
     },
+    // 강탈한 오야를 **사람**에 매어 둔다 (자리 바꿈이 읽는다 — B-12)
+    augmentDataSet(usurperKey(state), req.player),
     augmentDataSet(cooldownKey(req.player), COOLDOWN_ROUNDS),
     // 잔여 쿨다운을 공용 채널로도 낸다 — 자체 카운터만 쓰던 탓에 이름표의 `🕐N국`
     // 칩이 서지 않아, 버튼이 사라진 이유를 화면에서 알 수 없었다.

@@ -47,7 +47,11 @@ import type {
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
-import { haiteiLordWaits } from "./haitei_lord.js";
+import {
+  conjurePendingKey,
+  conjurePendingKind,
+  yieldsDrawTo,
+} from "./drawMutators.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "conjure_draw";
@@ -60,26 +64,13 @@ const ACTION = "conjure_tsumo";
  * 예약이 그대로 남아, 다음 국의 첫 쯔모를 강탈하고 그 국의 소환권(국당 1회)까지 한 번 더
  * 주는 이중 발동이 됐다(2026-07-29 감사). 국 스코프로 두면 저절로 만료된다.
  */
-const pendingKey = (state: GameState, h: PlayerId): string =>
-  roundScopedKey(ID, "pending", state, h);
+const pendingKey = conjurePendingKey;
 /** 국당 1회 소진 플래그 (roundKey 스코프 — 매 국 초기화) */
 const usedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "used", state, h);
 
-/** augmentData에 저장된 대기 목표 kind를 읽는다 (없거나 비었으면 null) */
-function pendingKind(state: GameState, h: PlayerId): TileKind | null {
-  const v = state.augmentData[pendingKey(state, h)];
-  if (
-    v !== null &&
-    typeof v === "object" &&
-    typeof (v as { suit?: unknown }).suit === "string" &&
-    typeof (v as { rank?: unknown }).rank === "number"
-  ) {
-    const k = v as TileKind;
-    return { suit: k.suit, rank: k.rank };
-  }
-  return null;
-}
+/** augmentData에 저장된 대기 목표 kind를 읽는다 (없거나 비었으면 null) — 공용 술어 */
+const pendingKind = conjurePendingKind;
 
 const conjureAction: ActionDef<{ tileId: TileId }> = {
   type: ACTION,
@@ -155,18 +146,29 @@ export const conjureDraw: AugmentDef = defineAugment({
       const target = pendingKind(rc.state, holder);
       if (target === null) return;
       /*
-       * ⚠ **해저패는 해저의 지배자의 것이다** — 이 한 장은 양보하고 예약도 남긴다.
+       * ⚠ **더 센 쯔모 변형에 이 한 장을 양보한다** — 예약은 남긴다.
        *
-       * 같은 좌석이 `haitei_lord`를 함께 들면 둘이 같은 tileId에 `tileKindChanged`를
-       * 쏴서, 나중에 설치된 쪽(= 드래프트 픽 순서)이 이기고 진 쪽은 조용히 죽었다
-       * (2026-08-23, QA synergy3 kandora 확정 2). 여기서 물러나는 이유는 보유자에게
-       * 그쪽이 언제나 낫기 때문이다 — 오름패로 바뀌면 그 자리에서 해저로월 화료 + 3판.
+       * 같은 좌석이 `haitei_lord`·`giant_god`를 함께 들면 셋이 같은 tileId에
+       * `tileKindChanged`를 쏴서, 나중에 설치된 쪽(= 드래프트 픽 순서)이 이기고 진 쪽은
+       * 조용히 죽었다(2026-08-23 QA synergy3 kandora 확정 2 · 2026-08-31 synergy4
+       * handedit 확정 1). 우선순위와 근거는 `drawMutators.ts` 한곳에 모여 있다.
        *
-       * 예약(`pendingKey`)은 **비우지 않는다.** 지배자가 못 가져간 경우에만 이 아래로
-       * 내려오므로 여기서 남기는 것은 순수한 양보다. 국 스코프라 국이 끝나면 저절로
-       * 만료된다(위 pendingKey 주석).
+       * 예약(`pendingKey`)은 **비우지 않는다.** 여기서 남기는 것은 순수한 양보라,
+       * 소환의 «국당 1회»는 타지 않고 그다음 쯔모에 그대로 온다. 국 스코프라 국이
+       * 끝나면 저절로 만료된다(위 pendingKey 주석).
        */
-      if (haiteiLordWaits(rc.state, engine.rules, holder, p.tileId).length > 0) return;
+      if (
+        yieldsDrawTo(
+          ID,
+          rc.state,
+          engine.rules,
+          holder,
+          p.tileId,
+          p.rinshan === true,
+        )
+      ) {
+        return;
+      }
       // 방금 뽑은 패 그 한 장을 목표 kind로 변환(conjured). 손패 장수 불변.
       rc.emit(
         tileKindChanged([

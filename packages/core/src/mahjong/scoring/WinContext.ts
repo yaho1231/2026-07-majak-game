@@ -362,8 +362,21 @@ export function buildVariants(ctx: WinContext): ScoringVariant[] {
     for (const winTile of winTiles) {
       const winKey = kindKey(winTile);
 
+      /*
+       * 머리가 품는 kind는 **하나가 아닐 수 있다.** 혼색 머리(뒤섞인 아홉 개의
+       * 연꽃의 2만+2통)는 `Decomposition.pair`에 대표 한쪽만 실린다 — 대표로만
+       * 견주면 다른 쪽 무늬로 화료할 때 단기 변형이 0개가 되어, 대기에는 잡히는
+       * 손이 「화료형 아님」으로 떨어졌다(A-5, 역만이 통째로 사라졌다).
+       */
+      const pairKeys =
+        decomp.pairKinds !== undefined
+          ? new Set(decomp.pairKinds.map(kindKey))
+          : decomp.pair !== null
+            ? new Set([kindKey(decomp.pair)])
+            : new Set<string>();
+
       for (const meldSets of meldCombos) {
-        if (decomp.pair !== null && kindKey(decomp.pair) === winKey) {
+        if (decomp.pair !== null && pairKeys.has(winKey)) {
           localPush(winKey, {
             form: "standard",
             pair: decomp.pair,

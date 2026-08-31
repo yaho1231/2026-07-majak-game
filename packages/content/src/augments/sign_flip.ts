@@ -47,6 +47,22 @@ import { installPreArmRecharge, rechargeBotPolicy } from "./preArmRecharge.js";
 
 const ID = "sign_flip";
 
+/**
+ * **뱅크가 이 카드 하나로 새로 발행하는 액수의 상한** — 판의 시작 점수 한 벌.
+ *
+ * 형제 카드인 죽기살기(`die_hard.REVIVE_CAP`)와 **같은 값·같은 이유**다(2026-08-23
+ * QA synergy3 score 확정 3 → 2026-08-31 synergy4 A-10에서 이쪽에도 옮겼다).
+ * 손실을 한 사람에게 몰아 주는 증강(덤터기 `scapegoat`·눈먼 총알 `blind_ron`·
+ * 책임전가)과 겹치면 «내가 잃는 액수»에 상한이 없다 — 실측으로 8,000 방총이
+ * 덤터기로 24,000이 되고 반전이 그것을 뒤집어 **뱅크가 48,000을 발행, 테이블 합
+ * +60,000**이 됐다. 뚫린 천장까지 끼면 아예 무제한이다.
+ *
+ * 자르는 것은 **뱅크 발행(잃는 국)뿐**이다. 버는 국을 뒤집어 뱅크가 **거둬들이는**
+ * 쪽에는 상한이 없다 — 그쪽은 새 점수를 만들지 않으므로 자를 이유가 없고, 자르면
+ * "번 만큼 빼앗긴다"는 카드 문구가 큰 손에서만 거짓이 된다.
+ */
+const FLIP_CAP = 25_000;
+
 /** 이미 이 증강이 서명한 발행인가 — 자기 보정(`sign_flip`)과 뒤집은 발행(`X+sign_flip`) 둘 다. */
 function isOwnReason(reason: string | undefined): boolean {
   return reason === ID || (reason !== undefined && reason.endsWith(`+${ID}`));
@@ -61,7 +77,7 @@ export const signFlip: AugmentDef = defineAugment({
   description:
     "(획득 즉시 · 이번 국만 · 반장전은 게임 내 1회 재장전) 내 점수의 부호가 뒤집힌다 — 8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다.",
   detail:
-    "8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다. 방총, 쯔모 지불, 리치 공탁, 본장, 유국 텐파이료가 모두 포함된다.\n\n상대의 점수는 정상적으로 움직이며 차액은 뱅크가 발행한다. 발동은 전원에게 공개된다.\n\n반장전에서는 게임 내 1회, 자기 순에 **다시 장전**할 수 있다 — 누르면 그 자리에서 곧바로 그 국에 켜진다. (동풍전에는 없다.)",
+    "8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다. 방총, 쯔모 지불, 리치 공탁, 본장, 유국 텐파이료가 모두 포함된다.\n\n뒤집혀 돌아오는 폭은 판의 시작 점수(25,000) 한 벌까지다.\n\n상대의 점수는 정상적으로 움직이며 차액은 뱅크가 발행한다. 발동은 전원에게 공개된다.\n\n반장전에서는 게임 내 1회, 자기 순에 **다시 장전**할 수 있다 — 누르면 그 자리에서 곧바로 그 국에 켜진다. (동풍전에는 없다.)",
   install(ctx) {
     const { holder } = ctx;
 
@@ -114,14 +130,16 @@ export const signFlip: AugmentDef = defineAugment({
       if (!armedNow(ic.state, ID, holder)) return event;
       const before = p.deltas[holder] ?? 0;
       if (before === 0) return event;
-      const deltas = { ...p.deltas, [holder]: -before };
+      // 잃는 국을 뒤집어 **뱅크가 발행하는** 폭만 상한을 둔다 (FLIP_CAP 주석 참조).
+      const after = before < 0 ? Math.min(-before, FLIP_CAP) : -before;
+      const deltas = { ...p.deltas, [holder]: after };
       return {
         type: event.type,
         payload: {
           ...p,
           deltas,
           // 결과 화면에 "부호 반전으로 이만큼 움직였다" 한 줄
-          augPoints: withAugPoint(p, ctx, -before * 2),
+          augPoints: withAugPoint(p, ctx, after - before),
         },
       };
     });

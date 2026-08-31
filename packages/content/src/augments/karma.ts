@@ -30,13 +30,16 @@
 import {
   ROUND_SETTLED,
   augmentDataSet,
+  baseDeltaOf,
   defineAugment,
+  installLossSnapshot,
   playerAtSeat,
   scoreChanged,
 } from "@majak/core";
 import type {
   ActionDef,
   AugmentDef,
+  BaseDeltasMark,
   GameState,
   PlayerId,
   ProposedEvent,
@@ -141,7 +144,7 @@ export const karma: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회 · 게이지 8,000 이상) **국 정산에서** 잃은 점수가 업보 게이지로 상시 쌓이고(전원 공개), 자기 순에 게이지를 태워 상대 셋에게서 1/3씩 뜯는다 — 못 뜯은 몫은 사라진다.",
   detail:
-    "게이지가 8,000 이상일 때 자기 순에 태우면 상대 셋에게서 한꺼번에 뜯어 온다. 1인당 몫은 게이지의 1/3을 100점 단위로 내림한 값이고, **그 사람의 남은 점수**가 상한이다 — 상한에 걸려 못 받은 몫은 그대로 사라진다. 태우면 게이지는 0이 된다.\n\n게이지에 쌓이는 것은 국 정산에서 잃은 점수뿐이다.",
+    "게이지가 8,000 이상일 때 자기 순에 태우면 상대 셋에게서 한꺼번에 뜯어 온다. 1인당 몫은 게이지의 1/3을 100점 단위로 내림한 값이고, **그 사람의 남은 점수**가 상한이다 — 상한에 걸려 못 받은 몫은 그대로 사라진다. 태우면 게이지는 0이 된다.\n\n게이지에 쌓이는 것은 국 정산에서 잃은 점수뿐이며, 부호 반전·부활로 그 손실이 플러스가 되어도 **원래 잃은 만큼** 쌓인다.",
   /*
    * 봇: 태우는 데 자해 위험이 없다 — 게이지가 차서 옵션이 뜨면 즉시 태운다.
    *
@@ -168,10 +171,29 @@ export const karma: AugmentDef = defineAugment({
       total: matchUses(state),
     }));
 
+    /*
+     * 게이지가 보는 손실은 **부호 반전 이전의 원본 손익**이다 — LossRecord 단계가
+     * 그 사본을 payload에 찍어 둔다(자세한 이유는 아래 리액션 주석).
+     */
+    installLossSnapshot(ctx);
+
     // 잃은 만큼 즉시 적립 — 방총이든 쯔모당함이든 가리지 않는다
     ctx.reaction(ROUND_SETTLED, (event, rc) => {
-      const p = event.payload as RoundSettledPayload;
-      const loss = Math.max(0, -(p.deltas[holder] ?? 0));
+      const p = event.payload as RoundSettledPayload & BaseDeltasMark;
+      /*
+       * ⚠ `p.deltas`를 그대로 보면 안 된다 (2026-08-31 QA synergy4 A-9).
+       *
+       * 이 리액션이 보는 payload는 **정산 인터셉터가 전부 끝난 뒤**의 것이다. 그래서
+       * 같은 «잃을수록 이득» 계열인 반전(`sign_flip`, SignFlip 550)이나
+       * 죽기살기(`die_hard`, Shield 600)를 함께 들면 그들이 이미 손실을 플러스로
+       * 뒤집어 놓아 **게이지가 한 국도 차지 않았다** — 16,000 방총에 단독은 16,000,
+       * 함께 들면 0. 프리즘 카드 한 장이 매치 내내 아무 일도 하지 않는다.
+       * («동수의 결속 + 양극»과 정확히 같은 모양이다.)
+       *
+       * `baseDeltaOf`는 부호 반전 직전(LossRecord)의 값을 준다 — 재배선·배수·이동은
+       * 전부 반영되고(그건 정말로 내가 진 빚이다) 부호만 원본으로 남는다.
+       */
+      const loss = Math.max(0, -baseDeltaOf(p, holder));
       if (loss <= 0) return;
       // 게이지도 100점 단위로 떨어뜨린다 — 증강이 100 단위가 아닌 점수를 옮겼더라도
       // 화면에 3,033 같은 수치가 뜨지 않게 한다. (통상 손실은 이미 100 단위다.)

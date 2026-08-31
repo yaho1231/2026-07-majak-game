@@ -3,6 +3,9 @@
  * **내 손패의 홀수 수패가 전부 한 칸 위 짝수로 다시 태어난다**: 1→2, 3→4, 5→6, 7→8, 9→8.
  * 자패(바람·삼원)는 불변, 짝수 수패도 불변. 결과는 결정적(무작위 아님).
  *
+ * **예외는 없다** (2026-08-31 사용자 지시): 지금 도라인 홀수 패도, 적도라(빨간 5)도
+ * 함께 짝수가 된다. 자세한 것은 아래 `shouldFlip` 주석.
+ *
  * 단색 세계(suit_unify)의 짝수판 — 색이 아니라 홀짝을 정렬한다. 손이 순식간에 짝수로
  * 몰리면서 탕야오(단타)·또이또이가 단숨에 사정권에 든다. 9만 예외적으로 아래(8)로 내려온다
  * (10 위쪽이 없으니 짝수 세계로 끌어들이려면 8로 붙일 수밖에 없다).
@@ -21,7 +24,6 @@
 import {
   augmentDataSet,
   defineAugment,
-  doraKindFor,
   handIdsOf,
   isNumberSuit,
   kindKey,
@@ -53,33 +55,26 @@ function toEvenRank(rank: number): number {
   return rank === 9 ? 8 : rank + 1;
 }
 
-/** 지금 활성 도라 종류 집합 (kindKey). 도라 표시패로부터 파생한다. */
-function activeDoraKeys(state: GameState): Set<string> {
-  const keys = new Set<string>();
-  for (const t of state.round.doraIndicators) {
-    keys.add(kindKey(doraKindFor(kindOf(state, t))));
-  }
-  return keys;
-}
-
 /**
- * 이 홀수 수패를 짝수로 바꿔야 하는가.
- * 도라(표시패 도라·적도라)는 값이 크므로 **바꾸지 않고 남긴다**(사용자 지시).
- * 반대로 **바꾼 결과가 도라가 되는 것은 막지 않는다** — 7통·9통이 도라 8통으로
+ * 이 패를 짝수로 바꿔야 하는가 — **예외는 없다.**
+ *
+ * 홀수 **수패**면 전부 바뀐다. 자패(바람·삼원)는 수패가 아니므로 그대로다.
+ *
+ * 2026-08-31 사용자 지시로 **예외를 전부 없앴다.** 예전에는 ①지금 도라인 홀수 패와
+ * ②적도라(빨간 5)를 "값이 크니 남긴다"고 건드리지 않았는데, 그러면 «홀수가 전부 짝수가
+ * 되는 세계»라는 한 줄이 도라 표시패에 따라 국마다 달라졌다 — 카드 문구가 약속하는 것과
+ * 손패에서 벌어지는 일이 갈렸다. 이제 도라인 홀수 패도, 적5도 짝수가 된다.
+ *
+ * (적도라 표식은 종류가 바뀌는 순간 코어가 스스로 뗀다 — `tileKindChanged`의 `withoutRed`.
+ *  "이 무늬의 5"라는 뜻이라 6이 되면 의미를 잃는다. 즉 빨간 5는 짝수가 되면서 적도라
+ *  1판을 잃는다.)
+ *
+ * 반대로 **바꾼 결과가 도라가 되는 것도 막지 않는다** — 7통·9통이 도라 8통으로
  * 태어나는 것은 이 증강의 이득이다(2026-08-15 사용자 지시로 조건 삭제).
  */
-function shouldFlip(
-  state: GameState,
-  tileId: number,
-  dora: Set<string>,
-): boolean {
+function shouldFlip(state: GameState, tileId: number): boolean {
   const kind = kindOf(state, tileId);
-  if (!isNumberSuit(kind) || kind.rank % 2 !== 1) return false;
-  if (dora.has(kindKey(kind))) return false; // 표시패 도라 — 유지
-  if (state.tiles[tileId]?.attrs.red === true) return false; // 적도라(빨간 5) — 유지
-  // 2026-08-15 사용자 지시로 세 번째 조건("바꾼 결과가 도라가 되면 안 바꾼다")을 삭제했다.
-  // 도라가 8통인 국에서 7통·9통이 8통이 되어 도라가 생기는 것은 이제 의도된 이득이다.
-  return true;
+  return isNumberSuit(kind) && kind.rank % 2 === 1;
 }
 
 /** 자기 턴(turn.act)이고 리치 중이 아니면 발동 가능 */
@@ -91,21 +86,16 @@ function canFlip(state: GameState, holder: PlayerId): boolean {
   return true;
 }
 
-/** 손패에 바꿀(도라 아닌) 홀수 수패가 하나라도 있는가 — 아무것도 안 바뀌면 발동을 막는다. */
+/** 손패에 홀수 수패가 하나라도 있는가 — 아무것도 안 바뀌면 발동을 막는다. */
 function hasOddSuited(state: GameState, holder: PlayerId): boolean {
-  const dora = activeDoraKeys(state);
-  for (const tileId of handIdsOf(state, holder)) {
-    if (shouldFlip(state, tileId, dora)) return true;
-  }
-  return false;
+  return handIdsOf(state, holder).some((tileId) => shouldFlip(state, tileId));
 }
 
-/** 손패의 (도라 아닌) 홀수 수패를 전부 한 칸 위 짝수로 바꾸는 이벤트들 (결정적). */
+/** 손패의 홀수 수패를 **전부** 한 칸 위 짝수로 바꾸는 이벤트들 (결정적). */
 function evenEvents(state: GameState, holder: PlayerId) {
-  const dora = activeDoraKeys(state);
   const changes: TileKindChangedPayload["changes"] = [];
   for (const tileId of handIdsOf(state, holder)) {
-    if (!shouldFlip(state, tileId, dora)) continue;
+    if (!shouldFlip(state, tileId)) continue;
     const kind = kindOf(state, tileId);
     // 색은 그대로, 랭크만 짝수로 — 새로 만들어낸 패라 conjured로 표시해 클라이언트가 구분해 그린다
     // (원래 4장 한도를 넘는 중복이 생길 수 있으므로 원본 패와 시각적으로 구별)
@@ -150,9 +140,9 @@ export const evenWorld: AugmentDef = defineAugment({
   complexity: 2,
   name: "짝수의 세계",
   description:
-    "(2국에 1회) 자기 순에 발동하면 손패의 홀수 수패가 한 칸 위 짝수로 다시 태어난다(1→2, 3→4, 5→6, 7→8, 9→8). 자패와 도라는 그대로 남는다.",
+    "(2국에 1회) 자기 순에 발동하면 손패의 홀수 수패가 **예외 없이** 한 칸 위 짝수로 다시 태어난다(1→2, 3→4, 5→6, 7→8, 9→8). 자패만 그대로 남는다.",
   detail:
-    "무늬는 그대로 두고 홀수만 오르며, 9는 위가 없어 8로 내려온다. 자패와, 지금 도라인 홀수 패·적도라(빨간 5)는 건드리지 않는다.\n\n바꾼 **결과**가 도라가 되는 것은 막지 않는다. 리치 중에는 발동할 수 없다. 쿨다운은 본장도 한 국으로 센다.",
+    "무늬는 그대로 두고 홀수만 오르며, 9는 위가 없어 8로 내려온다. 수패가 아닌 자패만 그대로 남는다 — **지금 도라인 홀수 패도, 적도라(빨간 5)도 예외 없이 짝수가 된다**(빨간 5는 5가 아니게 되므로 적도라 1판을 잃는다).\n\n바꾼 **결과**가 도라가 되는 것은 막지 않는다. 리치 중에는 발동할 수 없다. 쿨다운은 본장도 한 국으로 센다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

@@ -23,10 +23,13 @@ import {
   ROUND_SETTLED,
   SETTLE_STAGE,
   augmentDataSet,
+  baseDeltaOf,
   defineAugment,
+  installLossSnapshot,
 } from "@majak/core";
 import type {
   AugmentDef,
+  BaseDeltasMark,
   GameState,
   PlayerId,
   RoundSettledPayload,
@@ -113,9 +116,15 @@ export const dieHard: AugmentDef = defineAugment({
       total: MAX_USES,
     }));
 
+    /*
+     * «잃는 국인가»는 **부호 반전 이전의 원본 손익**으로 판정한다 (LossRecord 단계가
+     * 그 사본을 payload에 찍어 둔다).
+     */
+    installLossSnapshot(ctx);
+
     // 방어는 반드시 마지막 단계 — 어떤 경로로 생긴 손실이든 **최종값**을 봐야 한다.
     settleInterceptor(ctx, SETTLE_STAGE.Shield, (event, ic) => {
-      const p = event.payload as RoundSettledPayload & ReviveMark;
+      const p = event.payload as RoundSettledPayload & ReviveMark & BaseDeltasMark;
       if (!hasUsesLeft(ic.state, holder)) return event;
       /*
        * 발동 문턱은 **정산 시점(= 이 국의 증감을 적용하기 전) 내 점수**다. 정산 뒤
@@ -126,6 +135,21 @@ export const dieHard: AugmentDef = defineAugment({
       if (before > DESPERATE_AT) return event;
       const loss = p.deltas[holder] ?? 0;
       if (loss >= 0) return event; // 잃는 국에만 — 버는 국에는 횟수도 안 쓴다
+      /*
+       * ⚠ **원본 부호도 함께 본다** (2026-08-31 QA synergy4 A-8).
+       *
+       * 반전(`sign_flip`)은 이 카드 바로 앞 단계(SignFlip 550)에서 보유자의 delta에
+       * -1을 곱한다. 그래서 `deltas`만 보면 **버는 국이 손실로 보인다** — 오야
+       * 국사무쌍 쯔모(+96,000)가 반전으로 −96,000이 되고, 이 카드가 그것을 진짜
+       * 실점으로 읽어 REVIVE_CAP에 잘린 +25,000으로 «되살렸다». 단독으로 들었을 때보다
+       * 71,000점 손해를 보면서 **게임 내 단 1회까지 태운다.** detail의 "점수가 늘어나는
+       * 국에는 발동하지 않고 횟수도 줄지 않는다"와 정면으로 어긋난다.
+       *
+       * 반대로 원본이 실점인데 반전이 이미 플러스로 만들어 준 국은 위 `loss >= 0`에서
+       * 걸러진다 — 되살릴 손실이 남아 있지 않으니 횟수도 쓰지 않는다. 둘을 함께 들면
+       * "반전이 먼저 살리고, 죽기살기는 아껴 둔다"가 된다.
+       */
+      if (baseDeltaOf(p, holder) >= 0) return event;
       /*
        * loss=-8000 → 최종 +8000. 부호가 뒤집힌다. 상대의 수령액은 건드리지 않으므로
        * 차액 16,000은 뱅크가 낸다(사용자 예시 그대로).

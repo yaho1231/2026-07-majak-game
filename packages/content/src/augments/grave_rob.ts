@@ -225,7 +225,34 @@ function robWins(
   ) {
     return false;
   }
+  // 격(`win.minHan` — rank_gate)에 걸리는 싼 손도 화료할 수 없다. 실제 자동 화료는
+  // `standardActions.ts`의 `belowMinHan`(WIN_BLOCKED_MIN_HAN)이 막는데, 후보 단계에서
+  // 이걸 안 보면 «화료가 성립하는 패만 제시한다»는 이 증강의 약속이 깨진다 —
+  // 누르면 `uses`만 오른 채 화료 없이 국이 계속됐다(2026-08-31 QA synergy4 B-9).
+  if (belowMinHan(sim, rules, holder, ev)) return false;
   return true;
+}
+
+/**
+ * 최소 판 게이트(win.minHan)에 걸리는가 — `standardActions.ts`의 `belowMinHan`과 같은
+ * 계산(역만 면제 + `score.extraHan` 합산). 코어가 내보내지 않는 내부 함수라
+ * `danger_sense.ts`와 마찬가지로 여기서 같은 계산을 다시 쓴다. 판정이 갈리면
+ * 「후보로 떴는데 정산기가 거부하는」 상태가 그대로 되살아난다.
+ */
+function belowMinHan(
+  state: GameState,
+  rules: RuleRegistry,
+  pid: PlayerId,
+  ev: { han: number; yakumanCount: number },
+): boolean {
+  if (ev.yakumanCount > 0) return false;
+  if (!rules.has("win.minHan")) return false;
+  const min = rules.resolve<number>("win.minHan", { playerId: pid, state });
+  if (min <= 0) return false;
+  const extra = rules.has("score.extraHan")
+    ? Math.max(0, rules.resolve<number>("score.extraHan", { playerId: pid, state }))
+    : 0;
+  return ev.han + extra < min;
 }
 
 function makeAction(yaku: YakuRegistry): ActionDef<{

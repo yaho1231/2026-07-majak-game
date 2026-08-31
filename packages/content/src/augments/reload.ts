@@ -43,10 +43,17 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
  * `<id>:used:<holder>`로 이름 붙인 증강도 넷 있다(연금술사·등가교환·연못 강탈·역만 방어술).
  * 예전에는 `uses`만 봐서 그 넷은 **재장전이 광고하는 "소진 복구"의 사각지대**였다
  * (2026-07-29 감사). 키를 옮기면 기존 상태·테스트가 깨지므로 여기서 둘 다 인정한다.
+ *
+ * `<id>:keeps:<holder>` — **만년 오야(eternal_dealer)** 하나가 쓰는 이름이다. 「남은
+ * 연장 횟수」라 뜻이 `uses`와 같고 `publishUsesLeft`로 같은 잔량 채널까지 내는데,
+ * 이름만 규약 밖이라 재장전이 **유일하게 못 되살리는 횟수형**이었다(2026-08-31 QA
+ * synergy4 C-1). 카운터 이름을 옮기는 쪽은 저장된 상태·리플레이·기존 테스트가
+ * 함께 깨지므로, `used:` 때와 같은 판단으로 **여기서 인정**한다.
  */
 const targetUsesKeys = (augId: string, h: PlayerId): string[] => [
   `${augId}:uses:${h}`,
   `${augId}:used:${h}`,
+  `${augId}:keeps:${h}`,
 ];
 
 /**

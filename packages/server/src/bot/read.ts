@@ -13,7 +13,6 @@ import {
   kindKey,
   meldsZone,
   shantenOf,
-  winningKinds,
 } from "@majak/core";
 import type { DecomposeOptions, PlayerId, PlayerView, TileId, TileKind } from "@majak/core";
 import {
@@ -26,6 +25,7 @@ import {
 } from "./danger.js";
 import type { DefenseContext, Threat } from "./danger.js";
 import { effectiveAugmentsOf } from "./collect.js";
+import { exactTenpai, hasUnmodeledShapeOptions } from "./shape.js";
 import { NEUTRAL_PROFILE } from "./profile.js";
 import type { BotProfile } from "./profile.js";
 import { readMatch } from "./match.js";
@@ -236,26 +236,31 @@ export function buildRead(
   const closedKanCount = myMelds.filter((m) => m.kind === "kan_closed").length;
   const opts: DecomposeOptions = view.scoringOptions ?? {};
   const remainingOf = tileTracker(view);
-  const shanten = shantenOf(hand, meldCount, opts);
+  let shanten = shantenOf(hand, meldCount, opts);
 
-  // 텐파이·대기는 정확해야 한다 — 코어 계산기에 화료형 옵션을 그대로 넘긴다.
-  // (13장이면 그대로, 14장이면 한 장씩 빼 보며 대기형을 찾는다.)
+  /*
+   * 텐파이·대기는 정확해야 한다 — 코어 계산기에 화료형 옵션을 그대로 넘긴다.
+   *
+   * ⚠ 문지기를 `shanten <= 0` **하나로 두면 안 된다** (QA synergy4 A-13). 코어의
+   * `shantenOf`는 형 완화 옵션 중 일부만 읽어서, 양극·끝없는 윤회·바람의 계보가
+   * 걸린 손에서는 **진짜 텐파이인데 샹텐이 1 이상**으로 나온다(실측 누락률 각각
+   * 90.5% · 57.8% · 99.1%). 그러면 여기서 대기를 계산조차 하지 않아 봇이 자기
+   * 텐파이를 노텐으로 보고 오름패를 흘렸다.
+   *
+   * 그래서 「샹텐이 모르는 옵션이 켜져 있으면」 정확 판정을 한 번 더 돈다
+   * (`bot/shape.ts` — 예외 목록이 아니라 **모델링된 옵션의 여집합**이라 옵션이
+   * 늘어나도 자동으로 따라온다). 표준 손에서는 종전과 한 글자도 다르지 않다.
+   */
+  const mayMissTenpai = hasUnmodeledShapeOptions(opts);
   let waits: TileKind[] = [];
   let tenpai = false;
-  if (shanten <= 0 && hand.length > 0) {
-    waits = winningKinds(hand, meldCount, undefined, opts);
-    if (waits.length > 0) {
-      tenpai = true;
-    } else {
-      for (let i = 0; i < hand.length; i++) {
-        const rest = hand.slice(0, i).concat(hand.slice(i + 1));
-        const w = winningKinds(rest, meldCount, undefined, opts);
-        if (w.length > 0) {
-          tenpai = true;
-          if (w.length > waits.length) waits = w;
-        }
-      }
-    }
+  if ((shanten <= 0 || mayMissTenpai) && hand.length > 0) {
+    const exact = exactTenpai(hand, meldCount, opts);
+    tenpai = exact.tenpai;
+    waits = exact.waits;
+    // 텐파이가 확인됐으면 샹텐 값도 그 사실에 맞춘다 — 밀기·리치·후로 판단이
+    // 전부 이 숫자를 쓴다(0보다 큰 값이 남아 있으면 그쪽에서 다시 노텐이 된다).
+    if (tenpai && shanten > 0) shanten = 0;
   }
 
   const doraKinds: TileKind[] = [];

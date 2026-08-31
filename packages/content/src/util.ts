@@ -823,7 +823,21 @@ export function addWinPointBonus(
     const raw = points(ic.state, info, hanSoFar);
     const asObj = typeof raw === "number" ? { points: raw } : raw;
     const bonus = Math.max(0, Math.round(asObj.points));
-    if (bonus === 0) return event;
+    const han = Math.max(0, Math.round(asObj.han ?? 0));
+    /*
+     * **환산액이 0이어도 판수 표식은 남긴다** (2026-08-31 QA synergy4 B-7).
+     * 밴드 안에서 "+2판"이 0원이 되는 국이 있다 — 예전에는 여기서 통째로
+     * 빠져나가 augPoints에 줄이 남지 않았고, 그러면 **뒤에 도는 "+N판" 카드의
+     * `hanSoFar`가 그만큼 낮아져** 자기 몫까지 잘렸다(밑값 8판에서 8,000점).
+     * 판수 표식은 hanSoFar의 유일한 저장소이므로 0원이어도 반드시 남아야 한다.
+     */
+    if (bonus === 0 && han === 0) return event;
+    if (bonus === 0) {
+      return {
+        type: event.type,
+        payload: { ...p, augPoints: withAugPoint(p, ctx, 0, han) },
+      };
+    }
     const deltas = {
       ...p.deltas,
       [ctx.holder]: (p.deltas[ctx.holder] ?? 0) + bonus,

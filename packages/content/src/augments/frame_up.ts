@@ -238,7 +238,17 @@ export const frameUp: AugmentDef = defineAugment({
   bot: plan({
     intent: "disrupt",
     pick: (ctx) => {
-      const { options, view, holder } = ctx;
+      const { view, holder } = ctx;
+      /*
+       * ⚠ `ctx.options`는 **이번 순 전체 후보**다(버림·치·펑이 섞여 있다) — 정책은
+       * 자기 액션만 골라야 한다. 예전에는 `pickIsolatedDiscard`가 null일 때
+       * `sameTile === options`가 되어 `options[0]`(대개 `discard`)이 그대로 반환됐고,
+       * BotAgent는 그것을 «제시된 옵션»이라 정상 입찰로 받아 1층에서 이겼다 —
+       * 그러면 버림·리치·후로 평가(2층)가 통째로 건너뛰어진다. 실측으로 누명을
+       * **들고만 있어도** 반장 평균 −17,483점(t=−10.6)이었다(QA synergy4 A-0).
+       * `hand_swap3.ts`가 2026-08-28에 고친 것과 같은 실수다.
+       */
+      const options = ctx.options.filter((o) => o.type === ACTION);
       if (options.length === 0) return null;
 
       // 옵션들 중 "빼도 손해가 가장 적은" 패를 고른다 — 리치류가 안전패를 고를 때
@@ -261,7 +271,7 @@ export const frameUp: AugmentDef = defineAugment({
           ? sameTile.find((o) => (o.payload as { target?: PlayerId }).target === riichiTarget)
           : undefined;
 
-      return preferred ?? sameTile[0] ?? options[0] ?? null;
+      return preferred ?? sameTile[0] ?? options[0] ?? null; // options는 위에서 ACTION만 남겼다
     },
   }),
 });

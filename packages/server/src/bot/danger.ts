@@ -128,21 +128,24 @@ export function tileTracker(view: PlayerView): (kind: TileKind) => number {
     for (const id of view.zones[zoneId]?.tileIds ?? []) bump(id);
   };
   /*
-   * ⚠ **관전 뷰에는 «뷰어 본인 손패»라는 것이 없다** (2026-08-23 발견).
-   *
-   * 관전 뷰의 `playerId`는 `SPECTATOR_ID`라 `hand:__spectator` 존이 존재하지 않는다 —
-   * 예전에는 그 없는 존 하나만 세고 끝나서, **네 좌석 손패를 한 장도 세지 않았다.**
-   * 관전자는 네 사람의 손패를 다 보는데도 「이 종류는 아직 4장 남았다」고 읽었고,
-   * 중계 화면의 위험패가 그 과대평가된 장수 위에 매겨졌다.
-   *
-   * 대국자 뷰에서는 **한 글자도 달라지지 않는다** — 그쪽은 본인 손패 하나만 보인다는
-   * 사실이 이 함수의 전제이자 봇 판단의 근거다(남의 손패를 세면 봇이 치트를 한다).
+   * (2026-08-23) 관전 뷰의 `playerId`는 `SPECTATOR_ID`라 `hand:__spectator` 존이
+   * 없다 — 그 하나만 세던 시절 관전 화면은 네 좌석 손패를 한 장도 세지 않았다.
    */
-  if (view.playerId === SPECTATOR_ID) {
-    for (const p of view.players) countZone(handZone(p.id));
-  } else {
-    countZone(handZone(view.playerId));
-  }
+  /*
+   * **뷰에 실제로 실려 온 손패는 전부 센다** (2026-08-31, QA synergy4 A-14).
+   *
+   * 예전에는 대국자 뷰에서 «본인 손패 하나»만 셌다. 그건 치트 방지가 아니라 정보
+   * 증강을 죽이는 것이었다 — 투시(xray_hand)를 켜면 상대 손패가 **내 뷰에 합법적으로
+   * 공개**되는데(visibility.hand 모디파이어 → "public"), 봇은 그걸 세지 않아 증강
+   * 614회 발동에 30/30판 결과가 **완전히 동일**했다.
+   *
+   * 치트 경계는 여기가 아니라 **뷰 생성기**가 긋는다: `view.tiles`에는
+   * `collectVisibleTileIds`가 고른, 이 뷰어에게 공개된 패만 들어 있다. 가려진 손패는
+   * id는 있어도 `view.tiles[id]`가 없어 위 `bump`가 조용히 건너뛴다. 그래서 여기서
+   * 네 좌석을 다 훑어도 **볼 수 없는 패는 한 장도 세지지 않는다** — 관전 뷰가 이미
+   * 같은 이유로 같은 길을 쓰고 있었다.
+   */
+  for (const p of view.players) countZone(handZone(p.id));
   for (const p of view.players) {
     countZone(discardsZone(p.id));
     countZone(meldsZone(p.id));

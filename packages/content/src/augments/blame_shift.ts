@@ -47,6 +47,16 @@ function splitEvenly(total: number, n: number): number[] {
   return out;
 }
 
+/**
+ * 첫 패스(`Redistribute`)가 끝난 직후의 `deltas` 사본 — 보유자별로 남긴다.
+ *
+ * `Reassert`가 "그 뒤에 **누구에게** 얼마가 더 붙었는가"를 재는 밑값이다. 자세한
+ * 이유는 `Reassert` 인터셉터 주석에.
+ */
+interface BlameBaseMark {
+  blameShiftBase?: Record<PlayerId, Record<PlayerId, number>>;
+}
+
 /** 그 화료 때문에 쏜 사람이 무는 금액 (파오분은 책임자가 따로 문다) */
 function owedToMe(info: {
   points: number;
@@ -98,7 +108,7 @@ export const blameShift: AugmentDef = defineAugment({
      * 방어(Shield)보다 먼저 돌아야 역만 방어술이 "새로 부과된 지불"까지 보고 막을 수 있다.
      */
     settleInterceptor(ctx, SETTLE_STAGE.Redistribute, (event, ic) => {
-      const p = event.payload as RoundSettledPayload;
+      const p = event.payload as RoundSettledPayload & BlameBaseMark;
       if (p.outcome !== "win") return event;
       const info = (p.winInfos ?? []).find(
         (w) => w.winner === holder && w.winType === "ron" && w.from !== null,
@@ -149,7 +159,16 @@ export const blameShift: AugmentDef = defineAugment({
         deltas[id] = (deltas[id] ?? 0) - share;
         notes = withAugNoteFor({ ...p, augPoints: notes }, ID, id, -share);
       });
-      return { type: event.type, payload: { ...p, deltas, augPoints: notes } };
+      return {
+        type: event.type,
+        payload: {
+          ...p,
+          deltas,
+          augPoints: notes,
+          // Reassert가 "그 뒤에 누구에게 얼마가 더 붙었는가"를 잴 밑값
+          blameShiftBase: { ...(p as BlameBaseMark).blameShiftBase, [holder]: deltas },
+        },
+      };
     });
 
     /*
@@ -168,7 +187,7 @@ export const blameShift: AugmentDef = defineAugment({
      * 두 패스가 이중으로 나누지 않는다.
      */
     settleInterceptor(ctx, SETTLE_STAGE.Reassert, (event, ic) => {
-      const p = event.payload as RoundSettledPayload;
+      const p = event.payload as RoundSettledPayload & BlameBaseMark;
       if (p.outcome !== "win") return event;
       const info = (p.winInfos ?? []).find(
         (w) => w.winner === holder && w.winType === "ron" && w.from !== null,
@@ -192,7 +211,36 @@ export const blameShift: AugmentDef = defineAugment({
             w.winner !== holder && w.winType === "ron" && w.from === discarder,
         )
         .reduce((sum, w) => sum + owedToMe(w), 0);
-      const extra = -(p.deltas[discarder] ?? 0) - myShareLast - otherOwed;
+      /*
+       * **모두에게 똑같이 붙은 부담은 내 화료의 지불이 아니다** (2026-08-31 QA
+       * synergy4 B-8). 가불 인생(`devils_advance`)은 `Transfer`에서 상대 **셋 전부**에게
+       * 3,000씩 «상환»을 물리는데, 아래 `extra` 식은 쏜 사람에게 붙은 3,000까지
+       * «새로 붙은 내 화료의 지불»로 읽고 다시 3분할했다 — 상환 9,000이
+       * 3,000/3,000/3,000이 아니라 **1,000/4,000/4,000**이 되어, 쏜 사람이 상환금
+       * 2,000을 면제받고 나머지 둘이 대신 물었다. 두 카드 문구가 서로 다른 돈을
+       * 말하는데(책임전가 = "**그 지불**", 가불 인생 = "**각 3,000점**") 뒤엣것이
+       * 앞엣것에 먹힌 것이다.
+       *
+       * 그래서 첫 패스 직후의 사본과 견줘 **지불자 전원에게 공통으로 늘어난 몫**을
+       * 빼고 본다. 한 사람에게만 붙는 부담(뚫린 천장의 상한 해제분 등)은 공통분이
+       * 0이라 예전 그대로 나뉜다. 공통분을 음수로 두지 않는 것이 요점이다 — 덤터기·
+       * 눈먼 총알이 남의 지불을 **덜어 주면** 그 감소가 «공통»으로 잡혀 오히려 extra를
+       * 부풀린다. 사본이 없으면(첫 패스가 일찍 물러난 국) 0으로 폴백해 예전과 같다.
+       */
+      const base = p.blameShiftBase?.[holder];
+      const coLosers = losers.filter((id) => id !== discarder);
+      const common =
+        base === undefined || coLosers.length === 0
+          ? 0
+          : Math.max(
+              0,
+              Math.min(
+                ...coLosers.map(
+                  (id) => -((p.deltas[id] ?? 0) - (base[id] ?? 0)),
+                ),
+              ),
+            );
+      const extra = -(p.deltas[discarder] ?? 0) - myShareLast - otherOwed - common;
       if (extra <= 0) return event;
 
       const shares = splitEvenly(extra, losers.length);

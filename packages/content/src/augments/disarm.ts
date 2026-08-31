@@ -157,13 +157,32 @@ export const disarm: AugmentDef = defineAugment({
       engine.actions.register(disarmAction);
     }
 
-    // 국이 끝나면 이번 국에 잠근 대상을 **전부** 되돌린다 (다음 국엔 정상 작동)
+    /*
+     * 국이 끝나면 이번 국에 잠근 대상을 **전부** 되돌린다 (다음 국엔 정상 작동).
+     *
+     * ⚠ 이 리액션은 **보유자마다 하나씩** 돈다. 예전에는 각자
+     * `disarmedList(rc.state).filter(내 것 제외)` 로 **목록 전체를 다시 써서**,
+     * 둘 이상이 들면 전부 같은(정산 전) 스냅샷을 읽고 **마지막 쓰기만 이겼다** —
+     * 먼저 돈 사람이 지운 항목이 되살아나 국 경계에 잠금이 하나 남았다
+     * (2026-08-31 QA synergy4 disrupt 확정 3).
+     *
+     * 그래서 «내 몫만 빼기»가 아니라 **모든 무장해제 보유자의 잠금 목록을 합쳐 빼는**
+     * 멱등한 식으로 바꾼다 — 누가 몇 번 돌든, 어떤 순서로 겹쳐 쓰든 결과가 같다.
+     * (자기 자신이 무장해제로 잠겨 리액션이 안 도는 보유자가 있어도, 다른 보유자의
+     *  리액션이 그 몫까지 함께 지운다. 셋 다 잠긴 극단은 예나 지금이나 못 푼다 —
+     *  `lockedKey`가 국 스코프라 다음 국 시작에 엔진이 지운다.)
+     */
     ctx.reaction(ROUND_SETTLED, (_event, rc) => {
-      const locked = lockedList(rc.state, holder);
-      if (locked.length === 0) return;
-      const list = disarmedList(rc.state).filter((s) => !locked.includes(s));
+      const mine = lockedList(rc.state, holder);
+      const all = new Set<string>();
+      for (const p of rc.state.players) {
+        if (!p.augments.includes(ID)) continue;
+        for (const src of lockedList(rc.state, p.id)) all.add(src);
+      }
+      if (all.size === 0) return;
+      const list = disarmedList(rc.state).filter((s) => !all.has(s));
       rc.emit(augmentDataSet(DISARMED_SOURCES_KEY, list));
-      rc.emit(augmentDataSet(lockedKey(holder), []));
+      if (mine.length > 0) rc.emit(augmentDataSet(lockedKey(holder), []));
     });
 
     // 아직 안 썼으면 보유자 턴에 각 상대의 각 증강을 지목 후보로 낸다

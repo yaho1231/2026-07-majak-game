@@ -60,6 +60,8 @@ const STRIKE_YAKU = "open_riichi_strike";
 /** 리치를 3판으로 취급한 차액 (표준 리치 1판은 이미 손패에 들어 있다) */
 /** 이 카드가 리치를 몇 판으로 취급하는가 (카드 문구: "3판으로 취급") */
 const RIICHI_TREAT_AS_HAN = 3;
+/** 표준 리치의 판수 — "3판으로 취급"의 밑값 (차액 = +2판) */
+const STANDARD_RIICHI_HAN = 1;
 /** 이번 국에 오픈 리치를 선언했는가 (roundKey 스코프 — 국이 바뀌면 자동 만료) */
 const declaredKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "declared", state, h);
@@ -166,7 +168,7 @@ export const openRiichiReveal: AugmentDef = defineAugment({
   description:
     "(매 국 1회 · 리치는 국당 한 번) 멘젠 텐파이에서 공탁 1,000점을 걸고 오픈 리치를 선언한다 — 오름패가 전원에게 공개된다.",
   detail:
-    "공개되는 것은 손패 전체가 아니라 오름패뿐이다. 리치를 안 건 사람이 쏘이면 그 화료가 역만이 된다.\n\n그 외의 화료(쯔모 · 리치자에게서 론)에서는 그 리치를 3판으로 취급한다(역만에는 미적용).",
+    "공개되는 것은 손패 전체가 아니라 오름패뿐이다. 리치를 안 건 사람이 쏘이면 그 화료가 역만이 된다.\n\n그 외의 화료(쯔모 · 리치자에게서 론)에서는 그 리치를 3판으로 취급한다 — 표준 리치 1판과의 차이인 +2판이 얹힌다(역만에는 미적용). 리치를 키우는 다른 증강과 겹치면 그 위에 더해진다.\n\n리치는 국당 한 번이므로, 리치를 선언하는 증강을 여럿 들었어도 그 국에 쓸 수 있는 것은 그중 하나뿐이다.",
   // A급 파괴(docs/25 §conflicts): 직격 역만의 게이트가 "이번 국에 선언했는가"뿐이라,
   // 리치를 취소하고 완전히 다른 대기로 화료해도 역만이 성립한다. 공개된 대기는
   // 갱신되지 않아 상대는 이미 무효인 정보를 보고 판단한다 → 회피 불가능한 역만.
@@ -192,6 +194,39 @@ export const openRiichiReveal: AugmentDef = defineAugment({
       engine.actions.register(openRiichiAction);
     }
 
+    /**
+     * 쏜 사람이 **남의 봉인 때문에** 리치를 못 걸었는가.
+     *
+     * 직격 역만은 "걸 수 있었는데 안 걸었을 때"의 벌이다. 그래서 제3자의 봉인으로
+     * 추격 리치가 원천 봉쇄된 좌석에서는 역만 게이트를 내린다
+     * (2026-08-23 QA synergy3 riichi 확정 1).
+     *
+     * 다만 **그 봉인이 내 것일 때는 내리지 않는다** (2026-08-31 QA synergy4 확정 3).
+     * 리치 봉인·이중 선언은 내가 카드 한 장과 «그 국의 첫 리치»를 치러 켜는 것인데,
+     * 예전에는 그 봉인이 내 오픈 리치의 결정타를 **스스로** 지워 48,000이 18,000이 됐다
+     * — 봉인을 함께 든 쪽이 안 든 쪽보다 약해지는 조합이었다. 게다가 이 카드의 진짜
+     * 회피 수단은 추격 리치가 아니라 **공개된 오름패를 안 버리는 것**이고, 그건 봉인과
+     * 무관하게 그대로 남는다.
+     *
+     * 판정은 증강 id를 나열하지 않고 `riichi.blocked`에 Modifier를 등록한 **주체**로
+     * 한다(인스턴스 id는 `aug:{보유자}:{증강id}`). 내 것이 아닌 주체가 하나라도 섞여
+     * 있으면 누가 잠갔는지 가릴 수 없으므로 보수적으로 «남의 봉인»으로 본다.
+     */
+    const blockedByOthers = (
+      state: GameState,
+      winner: PlayerId,
+      from: PlayerId | undefined,
+    ): boolean => {
+      if (from === undefined) return false;
+      if (!engine.rules.resolve<boolean>("riichi.blocked", { playerId: from, state })) {
+        return false;
+      }
+      const minePrefix = `aug:${winner}:`;
+      return engine.rules
+        .modifierSources("riichi.blocked")
+        .some((src) => !src.startsWith(minePrefix));
+    };
+
     // 48차 무페널티: 손패 전체 공개를 삭제했다. 상대가 대기를 완벽히 회피할 수 있는
     // 구조는 "선언해 놓고 손해를 계산하게" 만든다. 대기(오름패) 공개는 유지한다 —
     // 전원 공개는 Rule #4의 전제이고, 좁은 대기여도 회피 난도가 남기 때문.
@@ -213,25 +248,15 @@ export const openRiichiReveal: AugmentDef = defineAugment({
         isYakuman: true,
         /*
          * "리치를 걸지 않은 사람에게서 론" — 그 사람이 **걸 수 있었는데 안 걸었을 때**만이다.
-         *
-         * 리치 봉인(riichi_seal)·리치 승격(riichi_upgrade)이 그 좌석의 리치를 잠가 두면
-         * `fromRiichi`는 영영 false다. 그러면 상대에게 남은 유일한 탈출구(추격 리치)가
-         * 사라져 **누가 쏘든 무조건 48,000점**이 된다 — "추가 점수는 붙지 않는다"고 적힌
-         * 봉인 카드가 화료값을 두 배로 만든 셈이다(2026-08-23 QA synergy3 riichi 확정 1).
-         * 봉인당한 좌석에서는 역만 대신 아래의 "3판 취급"만 남는다.
+         * 남의 봉인으로 추격 리치가 막혀 있었다면 역만 대신 아래의 "3판 취급"만 남는다.
+         * 판정은 blockedByOthers 참조(내 봉인은 게이트를 내리지 않는다).
          */
         check: (_variant, wctx) =>
           wctx.winnerId !== undefined &&
           yakuHolders(yaku, ID).has(wctx.winnerId) &&
           wctx.winType === "ron" &&
           wctx.fromRiichi !== true &&
-          !(
-            wctx.fromPlayerId !== undefined &&
-            engine.rules.resolve<boolean>("riichi.blocked", {
-              playerId: wctx.fromPlayerId,
-              state: engine.state,
-            })
-          ),
+          !blockedByOthers(engine.state, wctx.winnerId, wctx.fromPlayerId),
       });
     }
     if (yaku !== undefined) addYakuHolder(ctx, yaku, ID);
@@ -259,44 +284,31 @@ export const openRiichiReveal: AugmentDef = defineAugment({
         from != null && state.round.byPlayer[from]?.riichi != null;
       /*
        * 비리치 상대 론 = 직격 역만이 이미 적용됐다 → 추가 판을 얹지 않는다.
-       * 단 **봉인 때문에** 역만이 안 터진 경우(위 check의 riichi.blocked)는 얹는다 —
-       * 그때는 이 카드가 한 일이 "3판 취급"뿐이다.
+       * 단 **남의 봉인 때문에** 역만이 안 터진 경우는 얹는다 — 그때는 이 카드가
+       * 한 일이 "3판 취급"뿐이다. (게이트는 위 yaku.check와 같은 술어를 쓴다.)
        */
-      const blocked =
-        from != null &&
-        engine.rules.resolve<boolean>("riichi.blocked", {
-          playerId: from,
-          state,
-        });
-      if (info.winType === "ron" && !fromRiichi && !blocked) return 0;
+      if (
+        info.winType === "ron" &&
+        !fromRiichi &&
+        !blockedByOthers(state, holder, from ?? undefined)
+      ) {
+        return 0;
+      }
       /*
-       * **"3판으로 취급"은 덮어쓰기다 — 차액만 얹는다.**
+       * **다른 리치 판수 증강과는 덧셈이다** (2026-08-31 QA synergy4 확정 2).
        *
-       * 예전에는 조건 없이 +2판을 더했다. 그래서 리치를 이미 키워 놓은 카드와 겹치면
-       * 카드 둘이 각각 "3판"을 약속하는데 결과가 5판이 됐다 — 뒤늦은 출진(더블 2 + 1)
-       * 위에 2가 또 얹혔고, 리치 승격(트리플 4판)이면 6판이었다
-       * (2026-08-23 QA synergy3 riichi 확정 6).
+       * 예전에는 "3판 취급은 덮어쓰기"라며 리치 판수를 키우는 증강(뒤늦은 출진 ·
+       * 리치 승격 · 개문선언)을 골라 세어 그만큼 빼 두었다. 그러면 그 카드들과 겹칠 때
+       * 차액이 **정확히 0**이 되어, 공탁 1,000점을 내고 오름패를 전원에게 공개하고도
+       * 이 카드가 한 일이 하나도 남지 않았다 — A+B가 B 단독보다 나쁜 조합이었다.
        *
-       * ⚠ 지금 리치가 몇 판인지는 한곳에 모여 있지 않다 — 리치 역 자체(1판/더블 2판)와
-       * 이를 키우는 증강의 `score.extraHan`이 따로 논다. 그래서 여기서 **리치 판수에
-       * 관여하는 증강만 골라** 세어 준다. 새 리치 판수 증강을 만들면 이 목록도 채워야
-       * 한다(더 옳은 길은 `riichi.han` 규칙 하나로 모으는 것인데, 그건 채점 경로를
-       * 통째로 건드려야 해서 이번 수정 범위 밖이다).
+       * 그래서 표준 리치 1판을 밑값으로 한 고정 차액(+2판)만 얹는다. 다른 증강이 이미
+       * 올려 둔 판수는 `info.han`(실판 경로)과 `hanSoFar`(다른 뱅크 환산 증강의 판)에
+       * 들어 있고, `addWinHanBonus` → `winPointsWithExtraHan(..., hanSoFar)`가 그 위에서
+       * 계산하므로 겹쳐도 순서와 무관하게 정확히 덧셈이 된다.
+       * 카드 문구도 "리치 1판을 3판으로 = +2판"으로 함께 고쳤다.
        */
-      const rs = state.round.byPlayer[holder]?.riichi;
-      const mine = playerOf(state, holder).augments;
-      let riichiHan = rs?.double === true ? 2 : 1;
-      // 뒤늦은 출진: 더블 승격에 +1
-      if (rs?.double === true && mine.includes("late_double")) riichiHan += 1;
-      // 리치 승격(트리플): 더블 2판 위에 +2
-      if (mine.includes("riichi_upgrade") && flagOf(state, `riichi_upgrade:triple:${holder}`)) {
-        riichiHan += 2;
-      }
-      // 개문선언: 후로 리치를 2판으로 만들어 둔다
-      if (openMeldCountOf(state, holder) > 0 && mine.includes("open_riichi")) {
-        riichiHan += 1;
-      }
-      return Math.max(0, RIICHI_TREAT_AS_HAN - riichiHan);
+      return RIICHI_TREAT_AS_HAN - STANDARD_RIICHI_HAN;
     });
 
     // 아직 리치 전이고 이번 국에 선언하지 않았을 때만, 버려도 텐파이가 유지되는

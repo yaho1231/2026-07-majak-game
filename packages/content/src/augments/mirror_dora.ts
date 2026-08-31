@@ -59,7 +59,7 @@ export const mirrorDora: AugmentDef = defineAugment({
   description:
     "(상시) 도라 표시패의 앞 패도 나에게만 도라가 된다 — 표시패가 5통이면 6통과 함께 4통도 내 도라다. 깡도라 표시패에도 똑같이 적용된다.",
   detail:
-    "도라 표시패 하나가 나에게는 두 종류를 만든다. 앞은 표준 도라의 역방향으로, 1의 앞은 9, 동의 앞은 북, 백의 앞은 중이다.\n\n깡도라 표시패에도 똑같이 적용되지만 **뒷도라에는 적용되지 않는다** — 리치로 뒤집는 뒷도라 표시패는 평소대로 한 종류만 센다. 무엇이 내 도라가 됐는지는 전원에게 공개된다.",
+    "도라 표시패 하나가 나에게는 두 종류를 만든다. 앞은 표준 도라의 역방향으로, 1의 앞은 9, 동의 앞은 북, 백의 앞은 중이다.\n\n깡도라 표시패에도 똑같이 적용되지만 **뒷도라에는 적용되지 않는다** — 리치로 뒤집는 뒷도라 표시패는 평소대로 한 종류만 센다. 무엇이 내 도라가 됐는지는 전원에게 공개된다 — 다만 도라 표시패가 가려진 국(가려진 도라)에서는 표시패를 볼 수 있는 사람에게만 보이고, 나 자신도 그 목록을 받지 못한다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -132,16 +132,27 @@ export const mirrorDora: AugmentDef = defineAugment({
      * 알게 됐다(2026-08-23, QA synergy3 kandora 확정 1).
      *
      * 그래서 표시패가 가려진 국에서는 공개 채널을 쓰지 않고, **표시패를 실제로 볼 수 있는
-     * 좌석**(+ 보유자 본인)에게만 좌석 전용 채널로 보낸다. 그들은 표시패에서 앞도라를
-     * 어차피 스스로 계산할 수 있으니 새로 새는 정보가 없고, 보유자 본인은
-     * `dora_conceal`의 면책 문구("다른 증강으로 도라를 들여다보는 것까지 막지는 못한다")
-     * 그대로 자기 도라를 안다.
+     * 좌석에만** 좌석 전용 채널로 보낸다. 그들은 표시패에서 앞도라를 어차피 스스로
+     * 계산할 수 있으니 새로 새는 정보가 없다.
+     *
+     * ⚠ **거울 보유자 본인도 예외가 아니다**(2026-08-31). 예전에는 `id === holder`로
+     * 보유자를 면제했고, 그 근거로 `dora_conceal`의 «면책 문구»를 인용했다 —
+     * **그런 문구는 실제 카드에 없다.** 가려진 도라의 텍스트는 "도라는 나만 알 수 있다"
+     * 뿐이고, 앞도라는 표시패의 정확한 역함수라 이 채널 하나가 그 카드의 유일한 능력을
+     * 산수로 되돌려 놓았다(QA synergy4 info 확정 3). 사용자 결정으로 **구현을 고쳤다** —
+     * 은폐 중에는 거울 보유자도 앞도라 목록을 받지 못한다.
+     *
+     * 점수는 그대로다 — `scoring.extraDoraKinds`는 상태에서 계산하므로 앞도라는
+     * 정확히 붙는다. 가려지는 것은 «무엇이 내 앞도라인지»라는 **정보**뿐이다.
      */
     const announce = (rc: { state: GameState; emit: (e: ProposedEvent) => void }): void => {
       const kinds = frontKinds(rc.state).map(kindKey);
       if (kinds.length === 0) return;
       const seats = rc.state.players.map((p) => p.id);
-      const concealed = seats.some((id) => id !== holder && indicatorsHiddenFor(rc.state, id));
+      // 한 좌석이라도 가려져 있으면 공개 채널을 끈다 — **보유자 자신이 그 한 좌석일
+      // 때도** 마찬가지다(예전에는 `id !== holder`로 자기 자신을 세지 않아, 남들이 전부
+      // 은폐를 들고 거울 보유자만 가려진 판에서 공개 채널이 그대로 켜졌다).
+      const concealed = seats.some((id) => indicatorsHiddenFor(rc.state, id));
       if (!concealed) {
         // 평시 — 전원 공개(관전자 포함). 좌석 채널은 남아 있으면 지운다.
         put(rc, publicKey(holder), kinds);
@@ -150,7 +161,7 @@ export const mirrorDora: AugmentDef = defineAugment({
       }
       put(rc, publicKey(holder), undefined);
       for (const id of seats) {
-        const visible = id === holder || !indicatorsHiddenFor(rc.state, id);
+        const visible = !indicatorsHiddenFor(rc.state, id);
         put(rc, seatKey(id, holder), visible ? kinds : undefined);
       }
     };

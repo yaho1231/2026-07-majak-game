@@ -8,7 +8,8 @@
  *  `dead_wall_master`와 이름만 같던 충돌을 해소한다.)
  *
  * 구현: 순수 패시브. 코어 규칙 `visibility.doraIndicators.hidden`(playerId = **보는 사람**)을
- * **비보유자에게만** true로 거는 Modifier. PlayerView가 그 뷰어의 도라 표시패를 비워
+ * **이 증강을 안 든 뷰어에게만** true로 거는 Modifier(보유자가 둘이면 둘 다 면제 —
+ * 술어는 `fogScope.holdsAugmentNow`). PlayerView가 그 뷰어의 도라 표시패를 비워
  * 뒷면으로 렌더한다. `setHolderRule`은 '보유자에게만' 거는 것이라 여기선 못 쓴다 —
  * 반대로 '보유자가 아닌 뷰어'에게 걸어야 하므로 addModifier로 직접 짠다.
  * 액티브 버튼·발동 없음(국 시작과 함께 상시).
@@ -16,6 +17,7 @@
 
 import { defineAugment } from "@majak/core";
 import type { AugmentDef, GameState } from "@majak/core";
+import { holdsAugmentNow } from "./fogScope.js";
 
 const ID = "dora_conceal";
 
@@ -36,8 +38,17 @@ export const doraConceal: AugmentDef = defineAugment({
       source: ctx.instanceId,
       layer: ctx.layer,
       apply: (cur, rctx) => {
-        if (rctx.playerId === holder) return cur;
         const state = rctx.state as GameState | undefined;
+        // ⚠ 면제는 «이 인스턴스의 보유자»가 아니라 «가려진 도라를 지금 들고 있는 사람
+        //   누구든»이다. 예전에는 `rctx.playerId === holder` 하나뿐이라 둘이 들면
+        //   서로의 모디파이어에 걸려 **양쪽 다 자기 도라를 잃었다** — 카드 문구
+        //   ("도라는 나만 알 수 있다")의 정반대(2026-08-31 QA synergy4 info 확정 1).
+        //   안개가 먼저 밟은 같은 함정이라, 술어를 fogScope의 공통 자리로 올렸다.
+        const viewer = rctx.playerId;
+        const exempt =
+          viewer !== undefined &&
+          (state === undefined ? viewer === holder : holdsAugmentNow(state, viewer, ID));
+        if (exempt) return cur;
         // 종국 공개(결과 화면)에서는 감추지 않는다 — detail이 "표시패는 종국 공개에서
         // 뒤집힌다"고 약속하는데 예전에는 끝까지 덮여 있었다(2026-07-29 감사).
         if (state?.round.phase === "round.over") return cur;

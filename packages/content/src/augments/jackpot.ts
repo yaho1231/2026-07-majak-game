@@ -37,6 +37,7 @@ import type {
 } from "@majak/core";
 import {
   counterOf,
+  honbaGainOf,
   riichiPotGainOf,
   roundViewKey,
   settleInterceptor,
@@ -198,9 +199,9 @@ export const jackpot: AugmentDef = defineAugment({
   complexity: 1,
   name: "일확천금",
   description:
-    "(매 국 1회 · 국의 첫 순) 배패를 받은 직후 룰렛을 돌려 0.5·1·2·3배 중 하나를 뽑는다. 그 국에 얻는 점수(공탁 회수분 제외)에 뽑힌 배수가 곱해진다.",
+    "(매 국 1회 · 국의 첫 순) 배패를 받은 직후 룰렛을 돌려 0.5·1·2·3배 중 하나를 뽑는다. 그 국에 얻는 점수(본장·공탁 회수분 제외)에 뽑힌 배수가 곱해진다.",
   detail:
-    "룰렛 결과(0.5배 30%·1배 30%·2배 30%·3배 10%)는 전원에게 공개된다. 배수는 그 국 획득 점수가 양수일 때만 걸리며, 본장 보너스는 함께 곱해지지만 공탁(리치봉) 회수분은 곱해지지 않는다.\n\n**늘어난 몫은 뱅크가 내고 줄어든 몫은 지불자에게 돌아간다.**",
+    "룰렛 결과(0.5배 30%·1배 30%·2배 30%·3배 10%)는 전원에게 공개된다. 배수는 그 국 획득 점수가 양수일 때만 걸리며, 본장 보너스와 공탁(리치봉) 회수분은 곱해지지 않는다. 다른 배수 증강이 이미 불린 몫에도 겹쳐 걸리지 않는다 — 밑값은 언제나 손의 화료점이다.\n\n**늘어난 몫은 뱅크가 내고 줄어든 몫은 지불자에게 돌아간다.**",
   // 봇: 기대값이 여전히 플러스다(0.5×.3 + 1×.3 + 2×.3 + 3×.1 = 1.35배) — 옵션이 뜨면 무조건 굴린다.
   bot: plan({
     intent: "score",
@@ -264,7 +265,33 @@ export const jackpot: AugmentDef = defineAugment({
       // ⚠ `p.riichiPot`은 **다음 국으로 넘길 값이라 화료 정산에서 항상 0**이다 —
       // 회수액은 winInfo.riichiPotGain에만 있다(riichiPotGainOf).
       const pot = riichiPotGainOf(p, holder);
-      const base = Math.max(0, d - pot);
+      /*
+       * 본장도 배수 대상이 아니다 — 공탁과 같은 이유다(형제 두 장과 통일,
+       * 2026-08-31 QA synergy4 B-6). 본장은 상대가 실제로 더 내는 돈이라
+       * 여기서 3배로 불리면 그 차액을 뱅크가 새로 발행한다. `jackpot`만
+       * 본장을 배수에 태워, `honba_hunter`와 겹치면 본장분만으로 뱅크 발행이
+       * +12,000까지 갔다.
+       */
+      const honba = honbaGainOf(p, holder);
+      /*
+       * ⚠ 밑값은 **손의 화료점**이지 델타 전체가 아니다 (2026-08-31 QA synergy4
+       * A-1·A-2). 같은 Multiply 단계의 let_it_ride·blood_contract가 먼저 돌아
+       * 델타를 부풀려 놓으면, 델타를 밑값으로 삼는 순간 그 부풀린 몫에까지 배수가
+       * 다시 걸려 **곱으로 겹친다** — 8,000 쯔모 + 4배 + 3배가 48,000이 아니라
+       * 96,000이 됐고, 0.5배는 부푼 밑값에서 계산된 축소액이 지불액 전액을 덮어
+       * 지불자 셋이 전원 0원이 됐다. 형제 두 장(let_it_ride:96-99,
+       * blood_contract:129-138)과 같은 규약으로 맞춘다 — winInfos[].points를
+       * 밑값으로 쓰고, 앞 단계가 얹은 몫에는 손대지 않는다.
+       *
+       * 화료가 아닌 국(유국 텐파이 수령·유국만관·유국역만)은 winInfos가 비어
+       * 있으므로 종전대로 «공탁을 뺀 델타 전부»가 밑값이다 — 그 경로는
+       * 위 §무페널티 주석이 지키려는 바로 그 경로다.
+       */
+      const outside = Math.max(0, d - pot - honba);
+      const winPoints = (p.winInfos ?? [])
+        .filter((w) => w.winner === holder)
+        .reduce((sum, w) => sum + w.points, 0);
+      const base = winPoints > 0 ? Math.min(winPoints, outside) : outside;
       // 0.5배가 있으므로 100점 격자로 맞춘다 — 안 맞추면 소지점이 100의 배수가
       // 아니게 되어 결과창·순위 표시가 깨진다(docs/25 역/점수 #7).
       const scaled = round100(base * mult);
@@ -292,7 +319,8 @@ export const jackpot: AugmentDef = defineAugment({
        *    되돌릴 곳이 없는데 깎으면 그게 곧 점수 소멸이다.
        */
       if (scaled >= base) {
-        const after = scaled + pot;
+        // 밑값이 델타 전체가 아니므로 «늘어난 몫»만 델타에 얹는다.
+        const after = d + (scaled - base);
         if (after === d) return event;
         return {
           type: event.type,

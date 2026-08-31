@@ -207,7 +207,7 @@ describe("확정 1 dora_conceal × mirror_dora — 앞도라 공개가 가려진
     expect(channels(game, SPECTATOR_ID)["mirror_dora:p0"]).toEqual(["man3"]);
   });
 
-  it("가려진 국에는 앞도라가 비보유자에게 가지 않는다 (보유자 본인은 그대로 본다)", () => {
+  it("가려진 국에는 앞도라가 비보유자에게 가지 않는다 (표시패를 보는 은닉자 본인은 그대로)", () => {
     const game = scene([
       { def: doraConceal, holder: "p0" },
       { def: mirrorDora, holder: "p0" },
@@ -228,8 +228,10 @@ describe("확정 1 dora_conceal × mirror_dora — 앞도라 공개가 가려진
     // p2·p3 은 증강이 하나도 없는 좌석이다 — 이번 국 도라를 알 방법이 없어야 한다
     expect(channels(game, "p2")["mirror_dora:p1"]).toBeUndefined();
     expect(channels(game, "p3")["mirror_dora:p1"]).toBeUndefined();
-    // 거울 보유자 본인은 안다 (dora_conceal detail의 면책 문구 그대로)
-    expect(channels(game, "p1")["mirror_dora:p1"]).toEqual(["man3"]);
+    // 2026-08-31(synergy4 C-3) — **거울 보유자 본인에게도 가지 않는다.** 예전에는
+    // dora_conceal의 「면책 문구」를 근거로 면제했는데 그런 문구는 카드에 없었고,
+    // 앞도라는 표시패의 정확한 역함수라 그 한 줄이 은폐를 산수로 뚫었다.
+    expect(channels(game, "p1")["mirror_dora:p1"]).toBeUndefined();
     // 은닉자는 표시패를 직접 보므로 앞도라를 스스로 계산할 수 있다 — 숨길 것이 없다
     expect(channels(game, "p0")["mirror_dora:p1"]).toEqual(["man3"]);
   });

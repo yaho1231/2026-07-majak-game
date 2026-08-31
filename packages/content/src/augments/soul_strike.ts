@@ -33,7 +33,7 @@
  *   그래서 폭주 중 보유자의 쯔모마다 **일발을 되살리는 전용 이벤트**를 낸다
  *   (내 안깡의 영상 쯔모도 마찬가지 — 상대의 일발은 건드리지 않는다).
  * - **리치 2판 취급**: 표준 리치 1판·더블리치 2판과의 차이가 둘 다 **+1판**이라
- *   `addWinHanBonus(+1)` 한 줄이다. 뱅크 발행이므로 상대가 더 내지는 않는다.
+ *   `score.extraHan +1` 한 줄이다. 표준 리치 판과 같은 실판이라 지불자가 낸다.
  *
  * 폭주 중 내가 버리는 여섯 장은 **평소대로 전부 론 대상**이고, 타가는 울어서 끊을 수
  * 있다 — 상대에게 분명한 대응 수단이 있다(Rule #4). 페널티는 없다: 여섯 순을 당겨
@@ -73,7 +73,6 @@ import type {
   TurnPassedPayload,
 } from "@majak/core";
 import {
-  addWinHanBonus,
   cooldownReady,
   cooldownUse,
   counterOf,
@@ -115,7 +114,7 @@ const declaredKey = (state: GameState, h: PlayerId): string =>
  *
  * ⚠ 국 스코프 플래그만 보면 안 된다 — **리치가 취소되면 폭주도 끝나야 한다.**
  * 카드는 "리치를 걸고 여섯 순을 달린다"이고, 승부수(`last_stand`)·은밀한 리치의
- * 해제(`stealthBreak`)는 그 국의 리치를 실제로 지운다. 판수 보너스(`addWinHanBonus`)는
+ * 해제(`stealthBreak`)는 그 국의 리치를 실제로 지운다. 판수 보너스(`score.extraHan`)는
  * 이미 라이브 리치를 함께 보는데 **연속 6쯔모만 그 게이트를 안 타서**, 리치만 무르고
  * 여섯 순은 그대로 챙기는 모양이 됐다(2026-08-22 QA aug-4 의심 5). 같은 판단을
  * 한 곳에서 하도록 여기에 합친다.
@@ -207,9 +206,9 @@ export const soulStrike: AugmentDef = defineAugment({
   complexity: 3,
   name: "영혼의 일격",
   description:
-    "(2국에 1회) 텐파이에서 발동하면 그 패로 리치를 걸고 연속 6쯔모에 들어간다. 그 리치는 2판(더블리치는 3판)으로 값하고, 폭주 중 쯔모 화료는 언제나 일발이다.",
+    "(2국에 1회 · 리치는 국당 한 번) 텐파이에서 발동하면 그 패로 리치를 걸고 연속 6쯔모에 들어간다. 그 리치는 2판(더블리치는 3판)으로 값하고, 폭주 중 쯔모 화료는 언제나 일발이다.",
   detail:
-    "연속 쯔모는 패산을 실제로 소모하며, 그동안 버리는 패는 평소대로 론 대상이다. 역만에는 추가 판이 붙지 않는다.\n\n**연속 쯔모는 셋 중 먼저 오는 것으로 끝난다** — 방총, 상대의 후로(후로한 사람부터 진행), 여섯 번째 이후의 쯔모패를 버리기(하가부터 진행). 안깡의 영상 쯔모도 여섯 번 중 하나로 세고, 여섯 장을 다 뽑은 뒤의 안깡은 세지 않는다.",
+    "연속 쯔모는 패산을 실제로 소모하며, 그동안 버리는 패는 평소대로 론 대상이다. 역만에는 추가 판이 붙지 않는다.\n\n**연속 쯔모는 셋 중 먼저 오는 것으로 끝난다** — 방총, 상대의 후로(후로한 사람부터 진행), 여섯 번째 이후의 쯔모패를 버리기(하가부터 진행). 안깡의 영상 쯔모도 여섯 번 중 하나로 세고, 여섯 장을 다 뽑은 뒤의 안깡은 세지 않는다.\n\n리치는 국당 한 번이므로, 리치를 선언하는 증강을 여럿 들었어도 그 국에 쓸 수 있는 것은 그중 하나뿐이다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -317,17 +316,31 @@ export const soulStrike: AugmentDef = defineAugment({
     /*
      * 이 리치를 2판(더블리치면 3판)으로 취급한다 — 표준과의 차이 +1판을 얹는다.
      *
+     * ⚠ 예전에는 `addWinHanBonus`(= 정산 시점 **점수 밴드 차액**을 뱅크가 발행)였다.
+     * 그래서 판수가 `han` 열에 나타나지 않고, 밴드 안에 갇힌 국에서는 **한 푼도 안
+     * 붙었다** — `soul_strike` 단독 24,000, `riichi_upgrade + soul_strike`도 24,000
+     * (2026-08-31 QA synergy4 C-7 = synergy3 확정 10 재보고). 리치 판수는 표준 리치와
+     * 같은 «진짜 판»이므로 실판 경로(`score.extraHan`)로 옮긴다 — 판수 증강과 하나의
+     * `calculateScore`에서 덧셈이 되고, 격(`win.minHan`) 게이트·상한 해제와도 같은
+     * 곡선을 탄다. 표준 리치 1판이 그렇듯 이 1판은 지불자가 낸다.
+     *
      * 발동 플래그만 보면 안 된다. 플래그는 국 스코프라 ROUND_SETTLED까지 남는데,
      * 승부수로 그 국에 리치를 취소하면 **리치가 없는 손에 리치
      * 판수가 그대로 붙는다**. 판수는 리치의 값어치이므로 리치가 사라지면 함께
      * 사라져야 한다 (이중 선언이 같은 이유로 이미 라이브 상태를 함께 본다).
      */
-    addWinHanBonus(ctx, (state) =>
-      flagOf(state, declaredKey(state, holder)) &&
-      state.round.byPlayer[holder]?.riichi != null
-        ? RIICHI_HAN_BONUS
-        : 0,
-    );
+    ctx.engine.rules.addModifier<number>("score.extraHan", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        if (!flagOf(state, declaredKey(state, holder))) return cur;
+        if (state.round.byPlayer[holder]?.riichi == null) return cur;
+        return cur + RIICHI_HAN_BONUS;
+      },
+    });
   },
   bot: plan({
     intent: "score",

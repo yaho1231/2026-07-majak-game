@@ -48,6 +48,12 @@ const armedKey = (state: GameState, h: PlayerId): string =>
 const usedKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "used", state, h);
 
+/**
+ * 되돌림을 **누가** 걸었는지 TURN_PASSED payload에 남기는 표식.
+ * 값은 보유자 id — 같은 증강을 여러 명이 들어도 서로의 것을 자기 것으로 읽지 않는다.
+ */
+const APPLIED_MARK = "timeStopApplied";
+
 const seatOf = (state: GameState, h: PlayerId): number | undefined =>
   state.players.find((p) => p.id === h)?.seat;
 
@@ -138,31 +144,55 @@ export const timeStop: AugmentDef = defineAugment({
       return [{ type: ACTION, payload: {} }];
     });
 
-    // 보유자의 버림이 지나갈 때 다음 자리를 보유자로 되돌린다 (추가 턴)
-    ctx.interceptor(TURN_PASSED, (event, ic) => {
-      const state = ic.state;
-      if (!flagOf(state, armedKey(state, holder))) return event;
-      if (state.round.lastDiscard?.player !== holder) return event; // 남이 운 경우 유지
-      const seat = seatOf(state, holder);
-      if (seat === undefined) return event;
-      const payload = event.payload as { nextSeat: number };
-      return { type: event.type, payload: { ...payload, nextSeat: seat } };
-    });
+    /*
+     * 보유자의 버림이 지나갈 때 다음 자리를 보유자로 되돌린다 (추가 턴).
+     *
+     * ⚠ **이미 보유자 자리면 아무것도 하지 않는다.** 영혼의 일격(`soul_strike`)의
+     * 폭주·모래시계(`hourglass`)의 연장은 같은 `TURN_PASSED` 인터셉터에서 nextSeat을
+     * 보유자로 **이미 고정해 둔다**. 그 위에 덮어써 봐야 값이 같으므로 추가 순은 한 순도
+     * 붙지 않는다 — 예전에는 그런데도 armed이 풀려 «매 국 1회»가 효과 0으로 탔다
+     * (2026-08-31 QA synergy4 handedit 확정 3: 버림 순서열이 폭주 7순·연장 4순으로
+     * 완전히 동일했다). 여기서 물러나면 armed이 남아, 폭주·연장이 끝난 뒤 **다음 자기
+     * 버림**에 제대로 발동한다 — detail의 "소멸하지는 않는다"가 그 뜻이다.
+     *
+     * 적용 표식(`APPLIED_MARK`)을 payload에 얹는 이유는, 리액션이 보는 것이 **인터셉터를
+     * 전부 거친 뒤의 이벤트**라서다. 상태(`round.turnSeat === seat`)로는 «내가 바꿨다»와
+     * «남이 이미 바꿔 뒀다»를 구분할 수 없다 — 그게 바로 이 결함이었다. 리듀서는
+     * `nextSeat`만 읽으므로 여분 필드는 무해하고, 값이 상태에서만 파생돼 결정적이다.
+     */
+    ctx.interceptor(
+      TURN_PASSED,
+      (event, ic) => {
+        const state = ic.state;
+        if (!flagOf(state, armedKey(state, holder))) return event;
+        if (state.round.lastDiscard?.player !== holder) return event; // 남이 운 경우 유지
+        const seat = seatOf(state, holder);
+        if (seat === undefined) return event;
+        const payload = event.payload as { nextSeat: number };
+        if (payload.nextSeat === seat) return event; // 남이 이미 되돌려 놨다 — 태우지 않는다
+        return {
+          type: event.type,
+          payload: { ...payload, nextSeat: seat, [APPLIED_MARK]: holder },
+        };
+      },
+      /*
+       * **맨 뒤에서 본다.** "남이 이미 되돌려 놨나"는 다른 인터셉터가 전부 지나간 뒤의
+       * 값을 봐야 알 수 있다 — 내가 먼저 쓰면 뒤따르는 폭주·연장이 «값이 같다»며 물러나
+       * 결국 순서열은 그대로인데 내 armed만 풀린다(§3 모래시계에서 실측). 실행 순서는
+       * (layer, priority, 등록 순서)라, prism(300)에서 priority를 크게 잡으면 다른 층·
+       * 같은 층의 기본 priority(0)보다 항상 뒤다.
+       */
+      { priority: 100 },
+    );
 
-    // 되돌림이 실제로 적용됐으면 armed 해제 (리듀서 적용 후 turnSeat=보유자 확인)
+    // **내 인터셉터가 실제로 값을 바꿨을 때만** armed 해제 (위 주석)
     ctx.reaction(TURN_PASSED, (event, rc) => {
-      void event;
+      const applied = (event.payload as Record<string, unknown>)[APPLIED_MARK];
+      if (applied !== holder) return;
       const state = rc.state;
       if (!flagOf(state, armedKey(state, holder))) return;
-      const seat = seatOf(state, holder);
-      if (
-        seat !== undefined &&
-        state.round.lastDiscard?.player === holder &&
-        state.round.turnSeat === seat
-      ) {
-        rc.emit(augmentDataSet(armedKey(state, holder), false));
-        rc.emit(augmentDataSet(roundViewKey(holder, `${ID}:armed`), false));
-      }
+      rc.emit(augmentDataSet(armedKey(state, holder), false));
+      rc.emit(augmentDataSet(roundViewKey(holder, `${ID}:armed`), false));
     });
   },
 });
