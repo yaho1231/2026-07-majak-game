@@ -14545,6 +14545,29 @@ function RiichiBgmPicker(props: {
     },
     [],
   );
+
+  /**
+   * 화면에 늘어놓는 선택지 — 0번 자리가 「랜덤」, 그다음이 1~8번 곡이다.
+   * 좌우 화살표로 이 배열 위를 걸어 다니고, 서 있는 자리가 곧 내 선택이다.
+   */
+  const slides = [RIICHI_BGM_RANDOM, ...Array.from({ length: RIICHI_BGM_COUNT }, (_, i) => i)];
+  const at = Math.max(
+    0,
+    slides.indexOf(props.settings.riichiBgmTrack < 0 ? RIICHI_BGM_RANDOM : props.settings.riichiBgmTrack),
+  );
+
+  /** 한 칸 옮긴다 — 양끝에서는 반대편으로 돌아간다(끝에서 막히면 되레 답답하다). */
+  function step(delta: number): void {
+    const next = slides[(at + delta + slides.length) % slides.length] ?? RIICHI_BGM_RANDOM;
+    riichiBgm.previewStop();
+    setPreviewing(-1);
+    props.onSetting("riichiBgmTrack", next);
+  }
+
+  const track = slides[at] ?? RIICHI_BGM_RANDOM;
+  const isRandom = track < 0;
+  const playing = !isRandom && previewing === track;
+
   return (
     <section className="home-card home-bgm">
       <h2>리치 BGM</h2>
@@ -14553,48 +14576,69 @@ function RiichiBgmPicker(props: {
         들립니다. 랜덤을 고르면 서버가 <b>내 곡 하나를 정해</b> 그 방 내내 씁니다
         (되도록 다른 사람과 겹치지 않는 곡으로).
       </p>
-      <div className="bgm-picker">
-        <button
-          type="button"
-          className={`bgm-pick${props.settings.riichiBgmTrack < 0 ? " bgm-pick-on" : ""}`}
-          onClick={() => {
-            riichiBgm.previewStop();
-            setPreviewing(-1);
-            props.onSetting("riichiBgmTrack", RIICHI_BGM_RANDOM);
-          }}
-        >
-          랜덤
+      <div
+        className="bgm-carousel"
+        role="group"
+        aria-label="리치 BGM 고르기"
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            step(-1);
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            step(1);
+          }
+        }}
+      >
+        <button type="button" className="bgm-arrow" aria-label="이전 곡" onClick={() => step(-1)}>
+          ‹
         </button>
-        {Array.from({ length: RIICHI_BGM_COUNT }, (_, i) => (
-          <span key={i} className="bgm-pick-cell">
-            <button
-              type="button"
-              className={`bgm-pick${props.settings.riichiBgmTrack === i ? " bgm-pick-on" : ""}`}
-              onClick={() => {
+        <div className={`bgm-stage${isRandom ? " bgm-stage-random" : ""}`}>
+          <span className="bgm-stage-kind">{isRandom ? "무작위" : "트랙"}</span>
+          <span className="bgm-stage-name">{isRandom ? "랜덤" : `${track + 1}번`}</span>
+          <button
+            type="button"
+            className={`bgm-play${playing ? " bgm-play-on" : ""}`}
+            disabled={isRandom}
+            aria-label={
+              isRandom
+                ? "랜덤은 미리듣기가 없습니다"
+                : `${track + 1}번 브금 ${playing ? "정지" : "미리듣기"}`
+            }
+            onClick={() => {
+              if (isRandom) return;
+              if (playing) {
                 riichiBgm.previewStop();
                 setPreviewing(-1);
-                props.onSetting("riichiBgmTrack", i);
-              }}
-            >
-              {i + 1}번
-            </button>
-            <button
-              type="button"
-              className="bgm-play"
-              aria-label={`${i + 1}번 브금 ${previewing === i ? "정지" : "미리듣기"}`}
-              onClick={() => {
-                if (previewing === i) {
-                  riichiBgm.previewStop();
-                  setPreviewing(-1);
-                } else {
-                  riichiBgm.preview(i);
-                  setPreviewing(i);
-                }
-              }}
-            >
-              {previewing === i ? "■" : "▶"}
-            </button>
-          </span>
+              } else {
+                riichiBgm.preview(track);
+                setPreviewing(track);
+              }
+            }}
+          >
+            {playing ? "■ 정지" : "▶ 미리듣기"}
+          </button>
+        </div>
+        <button type="button" className="bgm-arrow" aria-label="다음 곡" onClick={() => step(1)}>
+          ›
+        </button>
+      </div>
+      <div className="bgm-dots">
+        {slides.map((t, i) => (
+          <button
+            key={t}
+            type="button"
+            className={`bgm-dot${i === at ? " bgm-dot-on" : ""}${t < 0 ? " bgm-dot-random" : ""}`}
+            aria-label={t < 0 ? "랜덤" : `${t + 1}번`}
+            aria-current={i === at}
+            onClick={() => {
+              riichiBgm.previewStop();
+              setPreviewing(-1);
+              props.onSetting("riichiBgmTrack", t);
+            }}
+          >
+            {t < 0 ? "★" : t + 1}
+          </button>
         ))}
       </div>
       {/* 볼륨(0이면 아예 안 들린다)은 설정창에 있다 — 여기서 골라 놓고 "왜 안 들리지"가
