@@ -47,7 +47,7 @@ export const doraConceal: AugmentDef = defineAugment({
         const viewer = rctx.playerId;
         const exempt =
           viewer !== undefined &&
-          (state === undefined ? viewer === holder : holdsAugmentNow(state, viewer, ID));
+          viewer === holder;
         if (exempt) return cur;
         // 종국 공개(결과 화면)에서는 감추지 않는다 — detail이 "표시패는 종국 공개에서
         // 뒤집힌다"고 약속하는데 예전에는 끝까지 덮여 있었다(2026-07-29 감사).
