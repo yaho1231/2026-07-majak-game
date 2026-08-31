@@ -19,8 +19,10 @@
 import { isTenpai, shantenOf, ukeireOf, winningKinds } from "@majak/core";
 import type { ActionOption } from "@majak/core/mahjong/flow/FlowController.js";
 import type { TileId, TileKind } from "@majak/core";
-import { removeKinds } from "./read.js";
+import { kindKey } from "@majak/core";
+import { meldKindsOf, removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
+import type { KnownDrawEffect } from "./value.js";
 import type { BotProfile } from "./profile.js";
 import { riskSight, skillOf } from "./skill.js";
 import { waitTilesOf } from "./value.js";
@@ -121,15 +123,41 @@ function gainOfKan(
     shanten <= 0
       ? waitTilesOf(winningKinds(rest, meldCount, undefined, read.opts), read.remainingOf)
       : 0;
-  const ukeire = ukeireOf(rest, meldCount, read.remainingOf, read.opts).tiles;
+  const u = ukeireOf(rest, meldCount, read.remainingOf, read.opts);
+  const ukeire = u.tiles;
+  const waits =
+    shanten <= 0 ? winningKinds(rest, meldCount, undefined, read.opts) : [];
   const shape = { shanten, waitTiles, ukeireTiles: ukeire };
 
   // 안깡·가깡은 멘젠을 깨지 않는다 — 값어치 계산의 meldCount는 그대로 둔다
   const value = read.valueOf({ plan });
+
+  /**
+   * **왕패가 보이면 깡의 두 몫을 어림하지 않고 그대로 읽는다** (왕패의 주인·영상 정찰).
+   *
+   *  - 영상패: 그 한 장이 오름패면 이 깡은 **그 자리에서 화료**다(영상개화). 헛패면
+   *    "쯔모 한 번 더"의 값이 0이다 — 어림값 `extraDraws: 1`이 거짓이 되는 자리다.
+   *  - 새 도라: 평균 0.26배(`KAN_VALUE_GAIN`) 대신 **내 손에 실제로 몇 장 붙는지**를 센다.
+   *
+   * 안 보이면 둘 다 null이라 종전 어림으로 떨어진다.
+   */
+  const seen = read.intel.deadWall;
+  const known = knownAfterKan(read, seen.rinshan, waits, u.kinds);
+  const newDora =
+    seen.nextDora === null
+      ? null
+      : [...rest, ...meldKindsOf(read)].filter(
+          (k) => kindKey(k) === kindKey(seen.nextDora as TileKind),
+        ).length;
+  const afterKanPoints =
+    newDora === null
+      ? value.points * (1 + KAN_VALUE_GAIN)
+      : read.valueOf({ plan, doraDelta: newDora }).points;
+
   // 깡을 친 판 − 안 친 판. 깡은 값어치(새 도라)와 **기회(영상패 = 쯔모 한 번)를
   // 동시에 준다 — 둘 다 세야 "도라가 안 붙어도 깡이 이득"이 설명된다.
   const mine =
-    read.winChanceOf({ ...shape, extraDraws: 1 }) * value.points * (1 + KAN_VALUE_GAIN) -
+    read.winChanceOf({ ...shape, extraDraws: 1, known }) * afterKanPoints -
     read.winChanceOf(shape) * value.points;
 
   // 남에게도 도라가 붙는다 — 위협이 실재할수록 비싸진다
@@ -143,6 +171,31 @@ function gainOfKan(
   // 난이도 — 초보는 **남에게 붙는 도라**를 잘 안 센다(`bot/skill.ts`). 그래서 깡이
   // 자기 손을 키우는 면만 보이고, 판을 키워 놓고 자기가 맞는 일이 잦아진다.
   return mine * (1 + bias) - theirs * (1 - bias) * riskSight(skillOf(profile));
+}
+
+/**
+ * 깡 뒤의 확정 쯔모 — **영상패가 맨 앞에 끼어든다**.
+ *
+ * 패산 쪽 확정 쯔모(삼세 예지·예지)는 그대로 뒤로 밀린다. 영상패는 왕패에서 오므로
+ * 패산 순서를 소모하지 않는다 — 그래서 뒤 장들의 순번은 하나씩 늘어날 뿐 내용은 같다.
+ */
+function knownAfterKan(
+  read: BotRead,
+  rinshan: TileKind | null,
+  waits: readonly TileKind[],
+  ukeireKinds: readonly TileKind[],
+): KnownDrawEffect | undefined {
+  const wall = read.knownDrawsFor(waits, ukeireKinds);
+  if (rinshan === null) return wall;
+  const key = kindKey(rinshan);
+  const isWait = waits.some((k) => kindKey(k) === key);
+  const isUp = ukeireKinds.some((k) => kindKey(k) === key);
+  const shifted = wall?.hitAt == null ? null : wall.hitAt + 1;
+  return {
+    hitAt: isWait ? 1 : shifted,
+    advances: (wall?.advances ?? 0) + (isUp && !isWait ? 1 : 0),
+    misses: (wall?.misses ?? 0) + (!isUp && !isWait ? 1 : 0),
+  };
 }
 
 /** 깡을 칠 것인가 (예전 진입점 — 입찰의 얇은 껍데기) */

@@ -369,6 +369,15 @@ function evOfPass(read: BotRead, plan: HandPlan, profile: BotProfile): number {
     ukeireTiles: u.tiles,
     // 이미 열린 손이면 패스한 뒤에도 계속 부를 수 있다 — 콜 쪽과 같은 자로 재야 한다
     open: read.meldCount > 0 ? { hand: read.hand, ukeireKinds: u.kinds } : undefined,
+    /*
+     * **패스하면 예고된 내 쯔모가 그대로 온다** (삼세 예지·예지 — `bot/intel.ts`).
+     *
+     * 울면 오지 않는다: 펑·치는 차례를 가져오는 대신 배분을 통째로 다시 돌려, 내
+     * 몫으로 예고돼 있던 그 장들이 다른 자리로 간다. 그래서 콜 쪽(`evOfCall`)에는
+     * 이 값을 넘기지 않는다 — 두 EV의 이 **비대칭**이 곧 "다음 장에 오름패가 오니
+     * 이 펑은 참는다"는 사람의 판단이다.
+     */
+    known: read.knownDrawsFor(read.waits, u.kinds),
   });
   const noten = read.tenpai && read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   const s = scales(read, profile);

@@ -22,8 +22,14 @@ const to = Number(process.argv[3] ?? 10);
 const cards = (process.argv[4] ?? "").split(",").filter((x) => x !== "");
 if (cards.length === 0) throw new Error("cards required");
 
-mkdirSync("qa-lab/synergy4/build/info_out", { recursive: true });
-const outFile = `qa-lab/synergy4/build/info_out/s${from}-${to}.jsonl`;
+/**
+ * 출력 디렉터리. 기본은 종전 자리이고, `INFO_OUT`으로 갈아 끼운다 —
+ * **배선 전/후를 같은 시드로 짝지어 비교**하려면 두 벌의 원자료가 섞이면 안 된다
+ * (2026-08-31 봇 정보 배선).
+ */
+const outDir = process.env["INFO_OUT"] ?? "qa-lab/synergy4/build/info_out";
+mkdirSync(outDir, { recursive: true });
+const outFile = `${outDir}/s${from}-${to}.jsonl`;
 
 async function one(seed: number, ids: readonly string[]): Promise<Record<string, unknown>> {
   const preset = { p0: ids, p1: [], p2: [], p3: [] } as Record<PlayerId, readonly string[]>;

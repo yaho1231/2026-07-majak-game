@@ -163,6 +163,12 @@ export function tileTracker(view: PlayerView): (kind: TileKind) => number {
   return (kind) => Math.max(0, 4 - (seen.get(kindKey(kind)) ?? 0));
 }
 
+/**
+ * 바닥이 가려진 상대의 위협에 곱하는 값. 크게 잡지 않는다 — 정보가 없는 것이지
+ * 그 사람이 실제로 더 위험해진 것은 아니다. 안전패를 못 고른다는 사실만큼만 올린다.
+ */
+const FOG_THREAT_BUMP = 1.2;
+
 /** 상대들의 위협도를 읽는다 (자기 자신은 제외). 위험한 순으로 정렬 */
 export function readThreats(
   view: PlayerView,
@@ -304,6 +310,17 @@ export function readThreats(
         const cap = 1 - trust + 0.15 * trust;
         if (level > cap) level = cap;
       }
+    }
+    /**
+     * **이 사람의 바닥이 나에게 가려져 있다** (안개 덮인 바닥·박무 — 안개 계열의
+     * 반대 방향). 현물도 스지도 남의 강에서 나오는데 그 강의 일부가 안 보이면,
+     * 내 안전 읽기는 실제보다 얕다. 얕다는 사실을 «안전»으로 읽지 않도록 위협을
+     * 조금 올린다 — 정보가 없는 상대를 사람도 그렇게 다룬다.
+     *
+     * 정확한 정보(손패가 보인다·간파했다)가 있으면 손대지 않는다. 그쪽이 더 낫다.
+     */
+    if (seen?.riverHidden === true && knownWaits === undefined) {
+      level = Math.min(1, level * FOG_THREAT_BUMP);
     }
     // 론당하지 않는 상대는 무엇을 알든 0이다 (위 규칙이 이겨야 한다)
     if (isRonImmune(view, p.id)) level = 0;

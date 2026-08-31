@@ -26,12 +26,14 @@ import {
 import type { DefenseContext, Threat } from "./danger.js";
 import { effectiveAugmentsOf } from "./collect.js";
 import { readIntel, snapshotTrust } from "./intel.js";
+import type { BotIntel } from "./intel.js";
 import { exactTenpai, hasUnmodeledShapeOptions } from "./shape.js";
 import { NEUTRAL_PROFILE } from "./profile.js";
 import type { BotProfile } from "./profile.js";
 import { readMatch } from "./match.js";
 import type { BotGameMode, MatchContext } from "./match.js";
 import { callableUkeireTiles, estimateHandValue, waitTilesOf, winChance } from "./value.js";
+import type { KnownDrawEffect } from "./value.js";
 import type { YakuName } from "./yaku.js";
 import type { HandValue } from "./value.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
@@ -140,6 +142,8 @@ export interface BotRead {
      * 전진하므로 쯔모만 세면 체계적으로 느리게 보인다.
      */
     open?: { hand: readonly TileKind[]; ukeireKinds: readonly TileKind[] } | undefined;
+    /** 확정 쯔모가 이 모양에 하는 것 (`knownDrawsFor`의 결과를 그대로 넘긴다) */
+    known?: KnownDrawEffect | undefined;
   }): number;
   /** 텐파이일 때 오름패의 남은 장수 합 (노텐이면 0) */
   waitTiles: number;
@@ -169,11 +173,30 @@ export interface BotRead {
    */
   flags: BotFlags;
   /**
+   * **내 정보 증강이 이번 결정에 열어 준 것 전부** (`bot/intel.ts`).
+   * 정보 증강이 없으면 `NO_INTEL`과 같은 빈 값이라 종전 판단과 다르지 않다.
+   */
+  intel: BotIntel;
+  /**
+   * **확정된 내 다음 쯔모**가 이 모양에 무엇을 하는가 (삼세 예지·예지).
+   * 확정 쯔모가 없으면 `undefined`를 돌려주므로 호출부는 종전 경로 그대로 간다.
+   */
+  knownDrawsFor(
+    waitKinds: readonly TileKind[],
+    ukeireKinds: readonly TileKind[],
+  ): KnownDrawEffect | undefined;
+  /**
    * 콜 기회가 어디서 걸렸는지 세는 집계기 (`bot/callAudit.ts`). 측정 전용이라
    * 실대국은 `undefined`다 — 그러면 기록 호출 자체가 일어나지 않는다.
    */
   callAudit?: CallAudit | undefined;
 }
+
+/**
+ * 표시패 한 장이 **내 손에 붙여 줄 도라의 기대 장수**. 손패 14장 / 종류 34가지 =
+ * 0.41장. 가려진 표시패를 «모르지만 있다»로 셀 때 쓰는 값이다.
+ */
+const HIDDEN_DORA_EXPECTED = 14 / 34;
 
 const sameKind = (a: TileKind, b: TileKind): boolean =>
   a.suit === b.suit && a.rank === b.rank;
@@ -304,7 +327,41 @@ export function buildRead(
   for (const id of [...(view.zones[handZone(me)]?.tileIds ?? []), ...meldTiles]) {
     if (view.tiles[id]?.attrs.red === true) reds++;
   }
-  const handDora = doraIn(hand) + doraIn(meldKinds) + reds;
+  /**
+   * **가려진 도라 표시패의 몫** (`dora_conceal` — 정보 은폐 계열의 «당하는 쪽»).
+   *
+   * 표시패가 가려지면 뷰의 `doraIndicators`가 그만큼 짧아진다. 봇은 그 자리를 여태
+   * **0장**으로 셌다 — 도라가 존재한다는 사실 자체는 아는데(깡을 몇 번 쳤는지가
+   * 공개다) 그 손을 도라 없는 손으로 값매겼다는 뜻이라, 상대의 실버 한 장에
+   * 봇이 조용히 자기 손을 싸게 보고 접었다.
+   *
+   * 사람은 이 자리에서 «모르지만 있다»로 둔다. 그 «있다»의 기대값은 표시패 한 장당
+   * 손패 14장 중 약 14/34장이다. 표시패가 다 보이면 이 항은 정확히 0이라 종전과
+   * 한 글자도 다르지 않다.
+   */
+  let kanCount = 0;
+  for (const p of view.players) {
+    for (const m of view.round.byPlayer[p.id]?.melds ?? []) {
+      if (m.kind.startsWith("kan")) kanCount++;
+    }
+  }
+  /*
+   * 조건을 둘 다 요구한다 — **표시패가 통째로 비어서 왔고, 그것을 가릴 수 있는
+   * 사람이 실제로 앉아 있을 때만**.
+   *
+   * 「비어 있다」 하나로는 새는 자리가 있다: 배패 직후·깡 직후처럼 표시패가 아직
+   * 안 뒤집힌 한 순간이 그렇고, 손으로 세운 시험 장면도 그렇다. 그쪽으로 새면 봇이
+   * **없는 도라를 믿는다** — 이 보정이 막으려던 것과 정반대의 잘못이다. 보유 증강은
+   * 뷰에 전원 공개이므로(`PlayerInfo.augments`) 이 확인 자체가 합법이고, 무장해제로
+   * 잠긴 증강은 빼고 본다(`effectiveAugmentsOf` — 나머지 판단과 같은 규율).
+   */
+  const someoneConceals = view.players.some((p) =>
+    effectiveAugmentsOf(view, p.id).includes("dora_conceal"),
+  );
+  const hiddenIndicators =
+    someoneConceals && view.round.doraIndicators.length === 0 ? 1 + kanCount : 0;
+  const handDora =
+    doraIn(hand) + doraIn(meldKinds) + reds + hiddenIndicators * HIDDEN_DORA_EXPECTED;
 
   const seat = view.players.find((p) => p.id === me)?.seat ?? 0;
   const n = view.players.length || 4;
@@ -377,6 +434,52 @@ export function buildRead(
   const furiten = mine?.furiten === true;
   const waitTiles = waitTilesOf(waits, remainingOf);
 
+  /**
+   * **이면투시로 본 뒷도라가 내 손에 몇 장 붙는가** — 표시패가 아니라 도라 종류로
+   * 이미 옮겨져 있다(`bot/intel.ts`). 손패 + 후로를 함께 센다.
+   */
+  const uraDora =
+    intel.uraDoraKinds.length === 0
+      ? undefined
+      : (() => {
+          const ura = new Map<string, number>();
+          for (const k of intel.uraDoraKinds) {
+            ura.set(kindKey(k), (ura.get(kindKey(k)) ?? 0) + 1);
+          }
+          let n = 0;
+          for (const k of [...hand, ...meldKinds]) n += ura.get(kindKey(k)) ?? 0;
+          return n;
+        })();
+
+  /**
+   * 확정 쯔모(`intel.myDraws`)를 확률식이 쓰는 셋으로 줄인다.
+   *
+   * **어림이라는 것을 적어 둔다**: 첫 전진 이후 손이 바뀌면 뒤 장의 쓸모도 달라지는데
+   * 여기서는 지금 모양 기준으로 한 번에 센다. 그래도 «오름패가 몇 번째로 온다»는
+   * 정확하고, 판단을 뒤집는 것은 대부분 그 한 가지다.
+   */
+  const knownDrawsFor = (
+    waitKinds: readonly TileKind[],
+    ukeireKinds: readonly TileKind[],
+  ): KnownDrawEffect | undefined => {
+    if (intel.myDraws.length === 0) return undefined;
+    const waitSet = new Set(waitKinds.map(kindKey));
+    const upSet = new Set(ukeireKinds.map(kindKey));
+    let hitAt: number | null = null;
+    let advances = 0;
+    let misses = 0;
+    for (let i = 0; i < intel.myDraws.length; i++) {
+      const key = kindKey(intel.myDraws[i] as TileKind);
+      if (waitSet.has(key)) {
+        if (hitAt === null) hitAt = i + 1;
+        continue;
+      }
+      if (upSet.has(key)) advances++;
+      else misses++;
+    }
+    return { hitAt, advances, misses };
+  };
+
   const read: BotRead = {
     view,
     me,
@@ -441,6 +544,8 @@ export function buildRead(
          * 손봐야 한다 — 그때 이 스위치로 다시 재면 된다.
          */
         menzenFu: flags.has("menzenfu"),
+        // 뒷도라를 실제로 봤으면 리치 값어치에 그 수를 그대로 넣는다 (이면투시)
+        ...(uraDora === undefined ? {} : { uraDora }),
       }),
     winChanceOf: (input) =>
       winChance({
@@ -455,11 +560,14 @@ export function buildRead(
           input.open === undefined
             ? undefined
             : callableUkeireTiles(input.open.hand, input.open.ukeireKinds, remainingOf),
+        known: input.known,
       }),
     doraIn,
     handDora,
     seatWind,
     flags,
+    intel,
+    knownDrawsFor,
     callAudit: context.callAudit,
     furiten,
     riichiDeclared: mine?.riichiDeclared === true,
