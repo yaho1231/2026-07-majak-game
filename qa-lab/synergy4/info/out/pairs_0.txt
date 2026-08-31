@@ -1,0 +1,621 @@
+# pairs: 210 조합 × 1 시드 (shard 0/4)
+
+[ura_peek + rinshan_preview] seed=1000 rounds=4
+   P p1 p0의 전용 채널 «ura»이 내 뷰에 실림
+  ... 0/210
+
+[ura_peek + foresight] seed=1004 rounds=4
+   P p1 p0의 전용 채널 «ura»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «foresight_peek»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «foresight:reorderSpent»이 내 뷰에 실림
+
+[ura_peek + peek_riichi_waits] seed=1008 rounds=4
+   P p1 p0의 전용 채널 «ura»이 내 뷰에 실림
+
+[ura_peek + full_hand_swap] seed=1012 rounds=4
+   P p1 p0의 전용 채널 «ura»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «full_hand_swap:faster»이 내 뷰에 실림
+
+[ura_peek + danger_sense] seed=1016 rounds=4
+   P p1 p0의 전용 채널 «ura»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «danger_sense»이 내 뷰에 실림
+
+[rinshan_preview + future_sight] seed=1020 rounds=5
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+  ... 20/210
+
+[rinshan_preview + dora_conceal] seed=1032 rounds=4
+   CB p0 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p2)
+   CB p2 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p2)
+
+[future_sight + cliff_bloom] seed=1040 rounds=4
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+  ... 40/210
+
+[future_sight + triple_peek] seed=1044 rounds=4
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   P p2 p0의 전용 채널 «triple_peek»이 내 뷰에 실림
+   S p2 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 20장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 19장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 20장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 19장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+
+[future_sight + hand_swap3] seed=1048 rounds=4
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p2)
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 7장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 10장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 9장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 8장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 11장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 12장 (채널: revealTiles:p2,revealTiles:future)
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:future,revealTiles:p1)
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:future,revealTiles:p1)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:future,revealTiles:p1)
+   S p0 tiles에 존 밖 패 4장 (채널: revealTiles:future,revealTiles:p1)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:future,revealTiles:p1)
+   S p0 tiles에 존 밖 패 5장 (채널: revealTiles:future,revealTiles:p1)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   P p1 p0/p2/p3의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+   S p1 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 19장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 18장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 17장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 16장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 21장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 20장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 15장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 14장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:future,revealTiles:p3)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   P p3 p0/p2의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+   S p3 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 19장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+
+[future_sight + tenpai_scan] seed=1052 rounds=4
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   P p2 p0의 전용 채널 «tenpai_scan»이 내 뷰에 실림
+   S p2 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+
+[future_sight + dora_afterimage] seed=1056 rounds=4
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 1장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p0 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p1 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 19장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+   S p2 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 6장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 8장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 7장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 10장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 9장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 12장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 11장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 13장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 14장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 15장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 17장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 16장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 5장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 4장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 18장 (채널: revealTiles:future)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:future)
+  ... 60/210
+
+[bottom_deal + brief_fog] seed=1068 rounds=4
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p0 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+  ... 80/210
+
+[cliff_bloom + brief_fog] seed=1084 rounds=4
+   S p0 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+
+[foresight + triple_peek] seed=1092 rounds=4
+   P p1 p0의 전용 채널 «foresight_peek»이 내 뷰에 실림
+   P p1 p0의 전용 채널 «foresight:reorderSpent»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «triple_peek»이 내 뷰에 실림
+
+[foresight + hand_swap3] seed=1096 rounds=4
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p3)
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p2)
+   P p1 p0의 전용 채널 «foresight_peek»이 내 뷰에 실림
+   P p1 p0의 전용 채널 «foresight:reorderSpent»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «revealTiles:p3»이 내 뷰에 실림
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 9장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 8장 (채널: revealTiles:p3)
+   P p2 p0/p3의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:p0)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:p0)
+
+[foresight + tenpai_scan] seed=1100 rounds=4
+   P p1 p0의 전용 채널 «foresight_peek»이 내 뷰에 실림
+   P p1 p0의 전용 채널 «foresight:reorderSpent»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «tenpai_scan»이 내 뷰에 실림
+  ... 100/210
+
+[foresight + dora_afterimage] seed=1104 rounds=4
+   P p1 p0의 전용 채널 «foresight_peek»이 내 뷰에 실림
+   P p1 p0의 전용 채널 «foresight:reorderSpent»이 내 뷰에 실림
+
+[dead_wall_master + dora_conceal] seed=1112 rounds=4
+   CB p0 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p2)
+   CB p2 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p2)
+  ... 120/210
+
+[conjure_draw + full_hand_swap] seed=1124 rounds=4
+   P p2 p0의 전용 채널 «full_hand_swap:faster»이 내 뷰에 실림
+
+[conjure_draw + danger_sense] seed=1128 rounds=4
+   P p2 p0의 전용 채널 «danger_sense»이 내 뷰에 실림
+
+[triple_peek + peek_riichi_waits] seed=1132 rounds=4
+   P p1 p0의 전용 채널 «triple_peek»이 내 뷰에 실림
+
+[triple_peek + full_hand_swap] seed=1136 rounds=4
+   P p1 p0의 전용 채널 «triple_peek»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «full_hand_swap:faster»이 내 뷰에 실림
+
+[triple_peek + danger_sense] seed=1140 rounds=4
+   P p1 p0의 전용 채널 «triple_peek»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «danger_sense»이 내 뷰에 실림
+  ... 140/210
+
+[peek_riichi_waits + dora_conceal] seed=1148 rounds=4
+   CB p0 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p2)
+   CB p2 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p2)
+
+[xray_hand + hand_swap3] seed=1156 rounds=4
+   P p0 p2의 전용 채널 «revealTiles:p3»이 내 뷰에 실림
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 13장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 12장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 11장 (채널: revealTiles:p3)
+   S p2 tiles에 존 밖 패 10장 (채널: revealTiles:p3)
+   P p2 p0/p1의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+   P p3 p0/p1의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+
+[xray_hand + tenpai_scan] seed=1160 rounds=4
+   P p2 p0의 전용 채널 «tenpai_scan»이 내 뷰에 실림
+  ... 160/210
+
+[hidden_river + brief_fog] seed=1168 rounds=4
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p2 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+
+[hand_swap3 + brief_fog] seed=1176 rounds=4
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p2)
+   S p0 tiles에 존 밖 패 3장 (채널: revealTiles:p2,revealTiles:fog:p0,revealTiles:fog:p2)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:p2,revealTiles:fog:p0,revealTiles:fog:p2)
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p3)
+   S p0 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p0 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 14장 (채널: revealTiles:fog:p0,revealTiles:p0)
+   P p1 p0/p2의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0,revealTiles:p0)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:p0,revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 13장 (채널: revealTiles:p0)
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:fog:p2)
+   P p3 p0/p2/p1의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p2,revealTiles:fog:p0)
+
+[hand_swap3 + mirror_dora] seed=1180 rounds=4
+   S p0 tiles에 존 밖 패 13장 (채널: revealTiles:p1)
+   S p1 tiles에 존 밖 패 13장 (채널: revealTiles:p0)
+   S p1 tiles에 존 밖 패 13장 (채널: revealTiles:p2)
+   P p2 p0/p1의 전용 채널 «hand_swap3:swapped»이 내 뷰에 실림
+  ... 180/210
+
+[full_hand_swap + tenpai_scan] seed=1184 rounds=4
+   P p1 p0의 전용 채널 «full_hand_swap:faster»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «tenpai_scan»이 내 뷰에 실림
+
+[full_hand_swap + dora_afterimage] seed=1188 rounds=4
+   P p1 p0의 전용 채널 «full_hand_swap:faster»이 내 뷰에 실림
+
+[dora_conceal + red_five_touch] seed=1192 rounds=4
+   CB p0 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p1)
+   CB p1 보유자인데 도라 표시패가 하나도 안 보임 (은폐자 p0,p1)
+
+[brief_fog + danger_sense] seed=1196 rounds=4
+   S p1 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p1 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p2 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0,revealTiles:fog:p1)
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:fog:p1)
+   S p2 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p1)
+   P p2 p0의 전용 채널 «danger_sense»이 내 뷰에 실림
+   S p2 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0)
+   S p3 tiles에 존 밖 패 1장 (채널: revealTiles:fog:p0,revealTiles:fog:p1)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0,revealTiles:fog:p1)
+   S p3 tiles에 존 밖 패 3장 (채널: revealTiles:fog:p0,revealTiles:fog:p1)
+   S p3 tiles에 존 밖 패 2장 (채널: revealTiles:fog:p0)
+
+[tenpai_scan + danger_sense] seed=1200 rounds=4
+   P p1 p0의 전용 채널 «tenpai_scan»이 내 뷰에 실림
+   P p2 p0의 전용 채널 «danger_sense»이 내 뷰에 실림
+  ... 200/210
+
+[danger_sense + red_five_touch] seed=1204 rounds=4
+   P p1 p0의 전용 채널 «danger_sense»이 내 뷰에 실림
+
+# 끝

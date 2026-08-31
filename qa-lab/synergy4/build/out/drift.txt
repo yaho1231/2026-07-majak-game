@@ -1,0 +1,8 @@
+판=96 crash=0
+[
+ [
+  "SCORE_DRIFT_ATTRIBUTED",
+  9
+ ]
+]
+
