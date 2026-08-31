@@ -57,7 +57,9 @@ function withAugments(state: GameState, augs: Record<string, string[]>): GameSta
   return {
     ...state,
     players: state.players.map((p) =>
-      augs[p.id] === undefined ? p : { ...p, augments: [...p.augments, ...augs[p.id]] },
+      augs[p.id] === undefined
+        ? p
+        : { ...p, augments: [...p.augments, ...(augs[p.id] as string[])] },
     ),
   };
 }
@@ -300,7 +302,10 @@ describe("B-5 시간 정지 — 남이 이미 되돌려 놓은 순에는 «매 �
     const s = afterMyDiscard(game);
     const dry: GameState = {
       ...s,
-      zones: { ...s.zones, [WALL]: { ...(s.zones[WALL] as never), tileIds: [] } },
+      zones: {
+        ...s.zones,
+        [WALL]: { ...(s.zones[WALL] as object), tileIds: [] },
+      } as GameState["zones"],
     };
     expect(runInterceptors(game, dry, 1)["timeStopApplied"]).toBeUndefined();
   });
@@ -363,16 +368,14 @@ describe("짝수의 세계 — 예외 없이 모든 홀수 수패가 짝수가 �
     const fiveId = handIdsOf(base, "p0").find(
       (id) => kindKey(kindOf(base, id)) === "man5",
     ) as TileId;
+    const fiveTile = base.tiles[fiveId] as NonNullable<GameState["tiles"][number]>;
     const withRed: GameState = {
       ...base,
       tiles: {
         ...base.tiles,
-        [fiveId]: {
-          ...base.tiles[fiveId],
-          attrs: { ...base.tiles[fiveId].attrs, red: true },
-        },
+        [fiveId]: { ...fiveTile, attrs: { ...fiveTile.attrs, red: true } },
       },
-    } as GameState;
+    };
     const { game, flow } = build(withDoraIndicator(withRed, "pin4"), ["even_world"]);
 
     const flip = optionsFor(flow, "p0").find((o) => o.type === "even_world_flip");

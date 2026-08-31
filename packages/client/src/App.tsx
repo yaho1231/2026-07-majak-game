@@ -24720,15 +24720,27 @@ function RoundResultPanel({
              * 점수 줄 하나만 단위가 튀면 오히려 읽기 어렵다. 누가 냈는지는 적지 않는다:
              * 화료점이 오른 만큼 지불자가 내는 것은 당연한 일이라 설명할 값이 아니다.
              */
+            /*
+             * ⚠ 줄을 그리는 기준은 **총 판수를 세는 기준(`settleBonusHanOf`)과 같아야 한다.**
+             * 예전에는 `points !== 0` 만 봤는데, 판수 표식은 환산액이 0원이어도 남는다
+             * (2026-08-31 B-7 수정 — 밴드가 흡수해 델타가 안 움직인 경우). 그러면 위의
+             * 제목은 "N판"으로 올라가는데 상세 목록에는 **근거 줄이 하나도 없는** 화면이
+             * 됐다. 판수로 세어지는 줄(`countsHan`)은 금액이 0이어도 그린다.
+             */
             ...(settle.augPoints ?? [])
-              .filter((a) => a.player === w.winner && a.points !== 0)
-              .map((a) => ({
+              .filter((a) => a.player === w.winner)
+              .map((a) => {
+                // 역만은 판수를 세지 않는다 — settleBonusHanOf 와 같은 규약
+                const countsHan = w.yakumanCount === 0 && (a.han ?? 0) > 0;
+                return { a, countsHan };
+              })
+              .filter(({ a, countsHan }) => a.points !== 0 || countsHan)
+              .map(({ a, countsHan }) => ({
                 key: `augpt:${a.augId}`,
                 label: augmentDisplayName(a.augId),
-                han:
-                  a.han !== undefined && a.han > 0
-                    ? `+${a.han}판`
-                    : `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
+                han: countsHan
+                  ? `+${a.han ?? 0}판${a.points === 0 ? " (점수 변동 없음)" : ""}`
+                  : `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
                 aug: true,
               })),
             /*

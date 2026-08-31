@@ -101,7 +101,7 @@ function emit(
     game.engine.actions.register({
       type: "test.emit",
       validate: () => null,
-      toEvents: (req) => [
+      toEvents: (req: { payload: unknown }) => [
         req.payload as { type: string; payload: unknown },
       ],
     } as never);
