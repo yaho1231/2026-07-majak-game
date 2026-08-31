@@ -85,6 +85,24 @@ function spectatorView(
   } as unknown as PlayerView;
 }
 
+
+/**
+ * 관전 뷰를 **한 좌석의 대국자 뷰**로 깎는다 — 남의 손패는 `tiles`에서 통째로 빠지고
+ * 존에는 장수만 남는다(코어 `collectVisibleTileIds`가 실제로 하는 일과 같은 모양).
+ */
+function playerViewOf(spec: PlayerView, me: PlayerId): PlayerView {
+  const tiles: PlayerView["tiles"] = { ...spec.tiles };
+  const zones: PlayerView["zones"] = { ...spec.zones };
+  for (const p of spec.players) {
+    if (p.id === me) continue;
+    const zone = zones[handZone(p.id)];
+    if (zone === undefined) continue;
+    for (const id of zone.tileIds) delete tiles[id];
+    zones[handZone(p.id)] = { ...zone, tileIds: [], hiddenCount: zone.tileIds.length };
+  }
+  return { ...spec, playerId: me, tiles, zones };
+}
+
 /** 좌석 뱃지가 쓰는 셈 — 모든 버림 후보를 돌려 최소값 (App.tsx:14745-14751 과 같다). */
 function badgeShanten(hand: string[], options?: DecomposeOptions): number {
   const kinds = hand.map(k);
@@ -360,10 +378,14 @@ describe("관전 뷰의 장 세기 — 네 좌석 손패를 센다", () => {
     ).toBe(1);
 
     /*
-     * 대국자 뷰에서는 **본인 손패만** 센다. 이건 고칠 대상이 아니라 봇 판단의 근거다 —
-     * 남의 손패를 세는 순간 봇이 치트를 한다. 값이 한 글자도 달라지면 안 된다.
+     * 대국자 뷰에서는 **자기에게 보이는 손패만** 센다.
+     *
+     * 경계는 «내 존이냐»가 아니라 «뷰에 실려 왔느냐»다 (2026-08-31, QA synergy4 A-14):
+     * 투시 같은 정보 증강은 상대 손패를 그 좌석의 뷰에 합법적으로 실어 주고, 그때는
+     * 사람도 화면에서 그 패를 세므로 봇도 세야 한다. 반대로 안 열린 손패는 `view.tiles`에
+     * 아예 없다 — 그래서 아래처럼 «남의 패를 지운» 진짜 대국자 뷰에서는 한 장도 세지 않는다.
      */
-    const asP0 = { ...spec, playerId: "p0" as PlayerId };
+    const asP0 = playerViewOf(spec, "p0");
     expect(tileTracker(asP0)(k("man1")), "대국자 뷰의 장 세기가 달라졌다").toBe(2);
     // 남이 든 패는 대국자에게 보이지 않으므로 4장 그대로여야 한다.
     expect(tileTracker(asP0)(k("dragon1")), "대국자 뷰가 남의 손패를 세고 있다").toBe(4);

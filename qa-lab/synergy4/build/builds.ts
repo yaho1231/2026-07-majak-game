@@ -1,0 +1,58 @@
+/** synergy4 — 축을 가로지르는 실전 빌드 (3장). 같은 축 2장 + 다른 축 1장이 기본. */
+export interface BuildDef {
+  key: string;
+  name: string;
+  ids: readonly [string, string, string];
+  predict: string;
+}
+
+export const BUILDS: readonly BuildDef[] = [
+  { key: "dora_menzen", name: "도라 + 멘젠론", ids: ["mirror_dora", "dora_afterimage", "hidden_blade"],
+    predict: "mirror_dora(상시 도라 배증)와 dora_afterimage(직전 국 도라 부활)가 도라 판을 겹쳐 쌓고, hidden_blade가 멘젠 론에 +2판+뒷도라를 준다. 3장 > 2장 > 1장 순으로 평균 타점이 올라야 한다." },
+  { key: "dora_riichi", name: "도라 + 리치가치", ids: ["soul_hunt", "ura_peek", "mirror_dora"],
+    predict: "soul_hunt로 상대 리치를 강탈해 뒷도라가 붙고, ura_peek이 그 뒷도라를 미리 보고 바꿔치기, mirror_dora가 도라 수를 배로 만든다. 셋이 곱해져야 한다." },
+  { key: "kan_dora", name: "깡 도라 + 왕패", ids: ["ankan_dora", "snake_kan", "cliff_bloom"],
+    predict: "snake_kan이 깡 횟수를 늘리고 ankan_dora가 깡마다 +4판, cliff_bloom이 영상패를 고르게 해 깡 후 손이 좋아진다. 깡 축 3장이 서로를 키워야 한다." },
+  { key: "han_stack", name: "판수 곱셈", ids: ["let_it_ride", "blood_contract", "aotenjou_ceiling"],
+    predict: "let_it_ride(연속 화료 배수)·blood_contract(1.5배)가 곱해지고 aotenjou_ceiling이 상한을 없애 폭발해야 한다. 배수끼리 곱/합 어느 쪽인지 확인." },
+  { key: "bank_han", name: "뱅크 + 판수", ids: ["jackpot", "unification", "let_it_ride"],
+    predict: "jackpot 배수 × let_it_ride 배수로 큰 점수가 나고 unification 문턱(55,000)에 빨리 도달해 게임이 조기 종료. 3장일 때 국 수가 줄어야 한다." },
+  { key: "payout", name: "지불 왜곡", ids: ["blame_shift", "scapegoat", "blind_ron"],
+    predict: "blame_shift(론 +2판·분담)·scapegoat(쯔모 +2판·전가)가 화료 경로별로 나뉘어 겹치지 않고, blind_ron은 획득 즉시 1국짜리. 판수 가산이 중복 적용되는지 본다." },
+  { key: "loss_gain", name: "손실 역전", ids: ["die_hard", "sign_flip", "karma"],
+    predict: "sign_flip(1국 부호 반전)과 die_hard(12,500 이하에서 손실 반전)가 같은 국에 겹치면 이중 반전이 될 수 있다. karma는 손실 게이지를 먹으므로 둘과 자원 경합." },
+  { key: "river_yaku", name: "바닥 활용", ids: ["bottom_yaku", "grave_rob", "pond_snatch"],
+    predict: "pond_snatch·grave_rob이 남의 바닥에서 패를 가져오고 bottom_yaku가 내 바닥으로 판을 얹는다. 다만 pond_snatch로 손이 빨라지면 버림패가 적어져 bottom_yaku 조건과 상충할 수 있다." },
+  { key: "river_info", name: "바닥 은폐", ids: ["hidden_river", "brief_fog", "frame_up"],
+    predict: "hidden_river·brief_fog는 둘 다 '바닥을 가린다'라 효과가 겹쳐 한쪽이 무의미해질 수 있다(중복). frame_up은 남의 바닥에 내 패를 심는다." },
+  { key: "terminal", name: "요구패 몸통", ids: ["polar_ends", "broken_wall", "royal_kokushi"],
+    predict: "polar_ends(1=9)·broken_wall(순환 슌쯔)이 끝수 몸통을 쉽게 만들고 royal_kokushi가 국사 완화. 다만 국사(13종)와 몸통 손은 서로 다른 손이라 서로 못 도울 수 있다." },
+  { key: "honor_shape", name: "자패 몸통", ids: ["wind_lineage", "joker", "honor_return"],
+    predict: "wind_lineage로 자패 슌쯔가 서고, joker가 백으로 아무 패나 대체, honor_return이 버린 자패를 다음 국 배패로 돌려준다. 자패 축이 서로를 키워야 한다." },
+  { key: "suit_edit", name: "색 통일", ids: ["tile_dyeing", "suit_unify", "picky_eater"],
+    predict: "셋 다 '수패의 색을 바꾼다'. suit_unify·picky_eater는 통짜 변환이라 서로 완전 중복일 가능성이 높다 — 2장이 1장보다 나을 이유가 적다." },
+  { key: "hand_steal", name: "손패 강탈", ids: ["hand_swap3", "full_hand_swap", "xray_hand"],
+    predict: "xray_hand로 남의 손을 보고 hand_swap3/full_hand_swap의 대상을 잘 고른다. 두 스왑은 같은 자원(첫 순)을 두고 경합할 수 있다." },
+  { key: "wall_edit", name: "패산 조작", ids: ["future_sight", "conjure_draw", "dead_wall_master"],
+    predict: "future_sight로 손을 갈고 conjure_draw로 원하는 패를 복제, dead_wall_master로 왕패와 교환. 서로 다른 순의 자원이라 곱해져야 한다." },
+  { key: "tempo", name: "순 조작", ids: ["take_back", "time_stop", "hourglass"],
+    predict: "time_stop(2순 연속)·take_back(쯔모 되돌리기)로 유효 쯔모가 늘고 hourglass가 유국을 연장. 순 수가 늘어 화료율이 올라야 한다." },
+  { key: "call_menzen", name: "후로 멘젠", ids: ["silent_pact", "meld_dissolve", "bluff_pretense"],
+    predict: "bluff_pretense로 1장 퐁이 가능해지고 silent_pact가 그 퐁의 멘젠을 지킨다 — 이게 이 빌드의 핵심 콤보다. meld_dissolve는 후로를 되돌려 멘젠 복구. 3장이 뚜렷이 세야 한다." },
+  { key: "call_shape", name: "후로 몸통", ids: ["mixed_triplet", "broken_border", "omni_chi"],
+    predict: "omni_chi로 어디서나 치, broken_border로 무늬 무시 슌쯔, mixed_triplet으로 무늬 무시 커쯔 — 화료율이 크게 올라야 한다. broken_border·mixed_triplet은 둘 다 '국 첫 순 발동'이라 경합 가능." },
+  { key: "riichi_open", name: "오픈 리치", ids: ["open_riichi_reveal", "off_by_one", "all_or_nothing"],
+    predict: "오픈 리치 계열 셋. open_riichi_reveal과 all_or_nothing은 둘 다 '리치를 대신 선언'하는 액티브라 서로 기회를 잡아먹을 것(선례: no_retreat×stealth_riichi)." },
+  { key: "riichi_deny", name: "리치 봉쇄", ids: ["riichi_upgrade", "siege_riichi", "free_riichi_discard"],
+    predict: "siege_riichi로 노텐 리치를 걸고 riichi_upgrade가 그걸 더블리치로 만들며 하가의 리치를 막고, free_riichi_discard가 리치 후에도 자유 타패를 준다 — 노텐 리치의 위험을 상쇄하는 콤보." },
+  { key: "opp_riichi", name: "상대 리치 사냥", ids: ["counter", "soul_hunt", "push_riichi"],
+    predict: "push_riichi로 상대의 리치를 강제하고, counter로 반격, soul_hunt로 그 리치를 강탈해 뒷도라를 먹는다 — 셋이 한 사슬이다. 3장이 1장보다 확실히 세야 한다." },
+  { key: "disrupt", name: "방해", ids: ["discard_lock", "rank_gate", "time_pressure"],
+    predict: "상대 화료를 막아 p0의 상대 순위를 떨어뜨린다. 직접 타점은 안 오르므로 점수보다 순위/상대 화료 수로 본다." },
+  { key: "defense_info", name: "정보 수비", ids: ["tenpai_scan", "danger_sense", "no_ron_pact"],
+    predict: "tenpai_scan·danger_sense는 봇이 정보를 실제로 쓰는지가 관건 — 안 쓰면 3장이 1장과 다르지 않다. no_ron_pact는 6순 무적." },
+  { key: "dealer", name: "오야 유지", ids: ["eternal_dealer", "honba_hunter", "pseudo_dealer"],
+    predict: "pseudo_dealer로 오야를 빼앗고 eternal_dealer로 연장, honba_hunter로 본장 1개당 1,500점. 본장이 쌓일수록 곱해져야 한다." },
+  { key: "altwin", name: "변칙 화료", ids: ["void_kan", "haitei_lord", "grave_rob"],
+    predict: "세 가지 다른 '오름패가 아니어도 화료' 경로. 서로 독립이라 합쳐지면 화료 수가 단순 합처럼 늘어야 한다." },
+];

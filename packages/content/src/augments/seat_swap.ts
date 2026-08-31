@@ -59,6 +59,7 @@ import {
   ensureStealthBreakReducer,
   riichiBlocksSwap,
 } from "./stealthBreak.js";
+import { usurperKey } from "./pseudo_dealer.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 
@@ -231,16 +232,63 @@ export const seatSwap: AugmentDef = defineAugment({
                 ? { ...m, calledFrom: p.a }
                 : m,
           );
+        /*
+         * ⚠ `silent`(묵계 — "울고도 멘젠") 표식은 **보유자에게 귀속된 능력**이라
+         * 몸통과 함께 넘기면 안 된다. 통째로 맞바꾸던 예전 구현에서는 묵계를 갖지도
+         * 않은 사람이 보이는 퐁을 깔고도 멘젠이 되어 **리치를 걸 수 있었다**
+         * (hidden_blade와 겹치면 5,800 → 18,000이 통째로 남에게 갔다 —
+         * 2026-08-31 QA synergy4 B-3). 같은 파일이 스텔스 리치는 이미 명시적으로
+         * 해제하는데(breakStealthRiichiEvents) 묵계만 빠져 있었다.
+         *
+         * 후로 자체는 그대로 넘긴다 — 새 주인에게는 **평범한 퐁**이 된다. 새 주인도
+         * 묵계 보유자면 그 사람의 능력으로 표식이 유지된다.
+         */
+        const retagSilent = (melds: readonly Meld[], owner: PlayerId): Meld[] => {
+          const keeps =
+            state.players.find((x) => x.id === owner)?.augments.includes("silent_pact") ??
+            false;
+          if (keeps) return [...melds];
+          return melds.map((m) => {
+            if (m.silent !== true) return m;
+            const { silent: _dropped, ...rest } = m;
+            return rest;
+          });
+        };
+        const moveMelds = (melds: readonly Meld[], owner: PlayerId): Meld[] =>
+          retagSilent(swapCalledFrom(melds), owner);
         const rsA = state.round.byPlayer[p.a];
         const rsB = state.round.byPlayer[p.b];
         const byPlayer =
           rsA !== undefined && rsB !== undefined
             ? {
                 ...state.round.byPlayer,
-                [p.a]: { ...rsA, melds: swapCalledFrom(rsB.melds) },
-                [p.b]: { ...rsB, melds: swapCalledFrom(rsA.melds) },
+                [p.a]: { ...rsA, melds: moveMelds(rsB.melds, p.a) },
+                [p.b]: { ...rsB, melds: moveMelds(rsA.melds, p.b) },
               }
             : state.round.byPlayer;
+
+        /*
+         * 강탈한 오야(pseudo_dealer)는 **사람을 따라간다** — 2026-08-31 QA synergy4 B-12.
+         * dealerSeat는 자리에 붙는 값이라 강탈 후 자리를 바꾸면 오야가 자리에 남아
+         * 지목한 상대에게 넘어갔다(쿨다운 2국 + 자리바꿈 횟수를 태우고 결과는 마이너스).
+         * 원래(로테이션) 오야가 자리를 바꿔 오야를 넘겨주는 것은 카드 설명 그대로라
+         * 그대로 둔다 — 이 국에 강탈이 실제로 있었고 그 강탈자가 교환 당사자일 때만 옮긴다.
+         */
+        const usurper = state.augmentData[usurperKey(state)];
+        const usurperNow =
+          typeof usurper === "string" && (usurper === p.a || usurper === p.b)
+            ? (usurper as PlayerId)
+            : null;
+        const dealerHolder =
+          usurperNow === null
+            ? null
+            : state.players.find((x) => x.id === usurperNow);
+        const dealerSeat =
+          dealerHolder !== undefined &&
+          dealerHolder !== null &&
+          state.round.dealerSeat === dealerHolder.seat
+            ? seatAfter(dealerHolder.id, state.round.dealerSeat)
+            : state.round.dealerSeat;
 
         return {
           ...state,
@@ -264,6 +312,7 @@ export const seatSwap: AugmentDef = defineAugment({
           round: {
             ...state.round,
             byPlayer,
+            dealerSeat,
             turnSeat: seatAfter(turnPlayer, state.round.turnSeat),
           },
         };

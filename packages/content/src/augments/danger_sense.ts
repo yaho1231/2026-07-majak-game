@@ -27,6 +27,7 @@
  */
 
 import {
+  belowMinHan,
   augmentDataSet,
   buildWinContext,
   defineAugment,
@@ -136,29 +137,9 @@ function canRonWith(
    * 격(`win.minHan` — rank_gate)에 걸려 **론할 수 없는 싼 손**도 위험이 아니다.
    * 표준 론 검증의 `belowMinHan`과 같은 계산이다(역만 면제 + score.extraHan 합산).
    */
-  return !belowMinHan(state, rules, pid, ev);
+  return !belowMinHan(ev, state, rules, pid);
 }
 
-/**
- * 최소 판 게이트에 걸리는가 — `standardActions.ts`의 `belowMinHan`을 그대로 옮긴 것.
- * (코어가 내보내지 않는 내부 함수라 여기서 같은 계산을 다시 쓴다. 판정이 갈리면
- * "위험하다고 칠했는데 실제로는 론이 거부되는" 오탐이 된다.)
- */
-function belowMinHan(
-  state: GameState,
-  rules: RuleRegistry,
-  pid: PlayerId,
-  ev: { han: number; yakumanCount: number },
-): boolean {
-  if (ev.yakumanCount > 0) return false;
-  if (!rules.has("win.minHan")) return false;
-  const min = rules.resolve<number>("win.minHan", { playerId: pid, state });
-  if (min <= 0) return false;
-  const extra = rules.has("score.extraHan")
-    ? Math.max(0, rules.resolve<number>("score.extraHan", { playerId: pid, state }))
-    : 0;
-  return ev.han + extra < min;
-}
 
 /**
  * 발동 시점 기준, 보유자 손패 중 지금 버리면 방총이 되는 종류(kindKey, 중복 제거·정렬).

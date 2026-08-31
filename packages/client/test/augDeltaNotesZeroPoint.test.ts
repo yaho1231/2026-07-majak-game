@@ -50,8 +50,15 @@ describe("AugDeltaNotes — 승자라고 사람 통째로 건너뛰지 않는다
     expect(filter.slice(0, 200)).toContain("a.points === 0");
   });
 
-  it("화료자 블록은 여전히 0점 노트를 빼서 같은 줄을 두 번 적지 않는다", () => {
-    // 승자 블록(augpt:) 쪽 필터는 그대로 `points !== 0` 이어야 중복이 안 생긴다.
-    expect(SRC).toContain("a.player === w.winner && a.points !== 0");
+  it("화료자 블록은 0점 노트를 빼되, **판수로 세어지는 줄**만 예외로 남긴다", () => {
+    /*
+     * 2026-08-31(B-7) — 판수 표식은 환산액이 0원이어도 남는다(밴드가 델타를 흡수한
+     * 경우). 그 줄까지 빼면 제목의 총 판수(`settleBonusHanOf`)는 올라가는데 상세
+     * 목록에 근거가 하나도 없는 화면이 된다. 그래서 승자 블록의 기준을
+     * «금액이 움직였거나, 판수로 세어지거나»로 넓혔다 — 판수가 없는 0점 노트
+     * (마왕의 진군)는 예전 그대로 증감표 쪽에만 남아 중복되지 않는다.
+     */
+    expect(SRC).toContain("a.points !== 0 || countsHan");
+    expect(SRC).toContain("w.yakumanCount === 0 && (a.han ?? 0) > 0");
   });
 });

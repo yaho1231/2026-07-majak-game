@@ -57,6 +57,7 @@ import {
 } from "../util.js";
 import { bottomDealArmed } from "./bottom_deal.js";
 import { plan } from "./botPlan.js";
+import { reservedNextDrawKind } from "./drawMutators.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "triple_peek";
@@ -121,6 +122,14 @@ function nextDrawSeat(state: GameState, dir: number): number {
  * 아니면 앞에서 한 장 가져간다. 예약은 쓰면 사라지므로(국당 여러 번이지만 매 순
  * 1회) 한 좌석당 한 번만 뒤를 쓴다. 예약 여부는 이미 전원 공개 정보다
  * (`bottom_deal`의 noticeKey) — 새로 새는 정보가 없다.
+ *
+ * ⚠ **뽑은 뒤에 종류가 바뀌는 카드**도 같은 결의 구멍이었다(2026-08-31, QA synergy4
+ * info 확정 2). 소환(`conjure_draw`)의 예약이 서 있는데도 예고는 패산 kind 그대로였다 —
+ * 예고 pin9/sou1/sou2, 실제로 들어온 것은 man1. 그래서 **내 다음 한 장**에는
+ * `reservedNextDrawKind`(쯔모 변형 카드의 공용 술어)를 얹는다: 무엇이 올지 확정적으로
+ * 아는 소환은 그 kind로 갈아 끼우고, 그때의 손패가 정하는 거신병(`giant_god`)의
+ * 오름패는 **예고하지 않는다**(목록에서 뺀다). 셋 다 보유자 자신의 예약이라 새로 새는
+ * 정보가 없다.
  */
 function peekMyDrawKinds(
   state: GameState,
@@ -148,6 +157,10 @@ function peekMyDrawKinds(
     }
     seat = nextSeat(state, seat, dir);
   }
+  // 내 다음 한 장에 쯔모 변형이 예약돼 있으면 그 한 장을 바로잡는다 (위 ⚠ 주석)
+  const reserved = reservedNextDrawKind(state, holder);
+  if (reserved === "unknown") kinds.shift();
+  else if (reserved !== null && kinds.length > 0) kinds[0] = kindKey(reserved.kind);
   return kinds;
 }
 

@@ -32,6 +32,7 @@
  * | `Transfer`     | 정액을 남에게서 가져오거나 남에게 넘긴다 | 가불 인생 폭발 · 스파이 · 기생충 |
  * | `Reassert`     | 이동까지 끝난 뒤 **자기 약속을 다시 확인**한다 | 큰손(하한) · 덤터기(재배선) |
  * | `DrawPatch`    | 유국 전용 재정산 | 유국역만 · 승승장구 |
+ * | `LossRecord`   | **부호를 뒤집기 직전의 손익을 payload에 찍는다** | 카르마 · 죽기살기 |
  * | `SignFlip`     | 이 사람의 최종 증감에 부호를 뒤집는다 | 음양 반전 |
  * | `Shield`       | 방어·환급. **위 전부가 끝난 최종 손실**을 보고 막는다 | 역만 방어술 |
  * | `Observe`      | deltas를 바꾸지 않고 결과만 관찰 | 만년 오야(연장 판정) |
@@ -54,6 +55,14 @@
  *   전부 끝난 뒤 **모자란 부분만** 손보므로(이미 약속이 지켜졌으면 아무 일도 하지 않는다)
  *   앞 단계를 대체하지 않고 **덧댄다** — 앞 단계가 있어야 하한이 뚫린 천장 같은 가산형
  *   이동의 밑값이 되고, 뒤 확인이 있어야 탈취형 이동에도 약속이 산다.
+ * - **손익 기록(`LossRecord`)은 부호 반전 바로 앞**이다. "이 국에 내가 실제로 얼마를
+ *   잃었는가"를 묻는 증강(카르마의 업보 게이지, 죽기살기의 «잃는 국에만» 판정)은
+ *   부호 반전·방어가 그 손실을 이득으로 바꿔 놓은 **뒤의** 값을 보면 안 된다. 그 값을
+ *   보던 시절에는 «잃을수록 이득» 계열 두 장을 함께 들면 뒤에 도는 한 장이 앞의 것을
+ *   **완전히 무력화**했다 — 카르마는 한 국도 충전되지 않았고(게이지 0), 죽기살기는
+ *   반대로 반전이 만든 «가짜 손실»을 진짜로 읽어 **버는 국에** 게임 내 1회를 태웠다
+ *   (2026-08-31 QA synergy4 A-8·A-9). 이 단계는 deltas를 고치지 않는다 — 그 시점의
+ *   사본을 `baseDeltas`로 payload에 얹어 둘 뿐이라 다른 증강에 아무 영향이 없다.
  * - 부호 반전(`SignFlip`)은 **돈이 움직이는 모든 단계 뒤, 방어 앞**이다. 앞에 두면 나중에
  *   더해지는 가산·이동이 반전을 빠져나가고, 방어 뒤에 두면 방어가 0으로 만든 손실을
  *   다시 뒤집어 0이 되어 능력이 사라진다.
@@ -74,6 +83,9 @@
 import { RuleLayer } from "../engine/rules/RuleRegistry.js";
 import type { GameState } from "../engine/state/GameState.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
+import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
+import type { RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
+import type { AugmentContext } from "./Augment.js";
 
 /**
  * 정산 인터셉터가 공통으로 쓰는 레이어.
@@ -94,6 +106,7 @@ export const SETTLE_STAGE = {
   Transfer: 400,
   Reassert: 450,
   DrawPatch: 500,
+  LossRecord: 525,
   SignFlip: 550,
   Shield: 600,
   Observe: 900,
@@ -141,7 +154,8 @@ function idFraction(augmentId: string): number {
  * ⚠ 이 소수는 순서를 **결정론적으로 만들 뿐, 의미를 주지는 않는다.** 어떤 두 증강의
  * 앞뒤가 규칙상 반드시 정해져야 한다면 소수에 기대지 말고 **단계를 나눠라.**
  *
- * 단계 간격이 100이고 `자리 + id소수 < 4`라 단계 경계는 절대 넘지 않는다.
+ * 단계 간격은 가장 좁은 곳이 25(`LossRecord`↔`SignFlip`)이고 `자리 + id소수 < 4`라
+ * 단계 경계는 절대 넘지 않는다.
  */
 export function settlePriority(
   stage: SettleStage,
@@ -169,4 +183,59 @@ export function settlePriority(
 export function settleSeatAxis(state: GameState, holder: PlayerId): number {
   const at = state.players.findIndex((p) => p.id === holder);
   return at < 0 ? 0 : at;
+}
+
+/**
+ * **부호 반전 직전의 손익 사본** — `installLossSnapshot`이 payload에 얹는다.
+ *
+ * `RoundSettledPayload`에 직접 넣지 않고 마크 인터페이스로 둔 이유: 이 값은 정산
+ * 이벤트의 «내용»이 아니라 정산 **도중의 중간 상태**이고, 필요로 하는 증강이 있을
+ * 때만 실린다. 없으면 `baseDeltaOf`가 현재 `deltas`로 폴백한다.
+ */
+export interface BaseDeltasMark {
+  baseDeltas?: Record<PlayerId, number>;
+}
+
+/**
+ * **"이 국에 내가 실제로 얼마를 잃었는가"** — 부호 반전(`SignFlip`)·방어(`Shield`)가
+ * 손실을 이득으로 바꾸기 **직전**의 값.
+ *
+ * `installLossSnapshot`을 부른 증강만 이 값을 쓸 수 있다(안 부르면 현재 deltas로
+ * 폴백하므로 안전하다).
+ */
+export function baseDeltaOf(
+  payload: RoundSettledPayload & BaseDeltasMark,
+  player: PlayerId,
+): number {
+  return payload.baseDeltas?.[player] ?? payload.deltas[player] ?? 0;
+}
+
+/**
+ * `LossRecord` 단계에서 그 시점의 `deltas` 사본을 payload에 한 번만 찍는다.
+ *
+ * **멱등이다** — 이미 찍혀 있으면 그대로 지나간다. 그래서 여러 증강이(카르마·죽기살기,
+ * 보유자가 여럿이어도) 함께 불러도 «가장 이른 LossRecord 인터셉터가 본 값» 하나로
+ * 수렴한다. 같은 단계 안의 순서는 `settlePriority`가 자리·id로 못박으므로 픽 순서와
+ * 무관하다. deltas를 고치지 않으므로 이 인터셉터 자체는 어떤 증강에도 영향을 주지 않는다.
+ */
+export function installLossSnapshot(ctx: AugmentContext): void {
+  ctx.interceptor(
+    ROUND_SETTLED,
+    (event) => {
+      const p = event.payload as RoundSettledPayload & BaseDeltasMark;
+      if (p.baseDeltas !== undefined) return event;
+      return {
+        type: event.type,
+        payload: { ...p, baseDeltas: { ...p.deltas } },
+      };
+    },
+    {
+      layer: SETTLE_LAYER,
+      priority: settlePriority(
+        SETTLE_STAGE.LossRecord,
+        settleSeatAxis(ctx.engine.state, ctx.holder),
+        ctx.augmentId,
+      ),
+    },
+  );
 }

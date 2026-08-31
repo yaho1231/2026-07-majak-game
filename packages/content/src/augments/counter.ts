@@ -48,6 +48,7 @@ import type {
   YakuRegistry,
 } from "@majak/core";
 import {
+  addWinHanBonus,
   counterOf,
   flagOf,
   riichiHidden,
@@ -361,18 +362,9 @@ export const counter: AugmentDef = defineAugment({
       if (infos.some((w) => w.winner === target)) return event;
 
       // ① 선리치자의 손 가치 강탈 (yaku가 없으면 가상 화료를 평가할 수 없다)
-      let bonus =
+      // ② 직격 +3판은 여기서 다루지 않는다 — 아래 addWinHanBonus로 옮겼다.
+      const bonus =
         yaku === undefined ? 0 : bestWinValue(ic.state, target, ctx.engine.rules, yaku);
-      // ② 그 선리치자에게서 직접 론으로 잡았다면 확정 +3판 (①과 중복)
-      if (mine.winType === "ron" && mine.from === target) {
-        bonus += winPointsWithExtraHan(
-          ic.state,
-          holder,
-          mine,
-          DIRECT_HIT_BONUS_HAN,
-          ctx.engine.rules,
-        );
-      }
       if (bonus <= 0) return event;
       return {
         type: event.type,
@@ -386,5 +378,36 @@ export const counter: AugmentDef = defineAugment({
         },
       };
     });
+
+    /*
+     * ② 그 선리치자에게서 **직접 론**으로 잡았다면 확정 +3판 (①과 중복).
+     *
+     * ⚠ 예전에는 이 자리에서 `winPointsWithExtraHan`을 직접 불렀고 **여섯 번째 인자
+     * `hanSoFar`를 빠뜨렸다** — 2026-08-23에 «+N판은 순서와 무관하게 덧셈»으로 못 박은
+     * 규약의 유일한 누락이었다(2026-08-31 QA synergy4 A-4). 밑값 1~12판 스캔에서
+     * 12판 중 11판이 어긋났고 최대 ±8,000점이 갈렸다: 등 떠밀기(+2판)와 겹치면
+     * 오야 청일색에서 그쪽 +2판이 0원이 되고, 저타점에서는 반대로 과지급됐다.
+     * 게다가 판수 표식(augPoint의 han)도 남지 않아 **뒤에 도는 "+N판" 카드가
+     * 이 3판을 못 봤다**.
+     *
+     * 이제 공용 헬퍼 `addWinHanBonus`를 탄다 — hanSoFar를 받고, 판수를 결과 화면과
+     * augPoints에 «판»으로 남겨 다른 "+N판" 증강과 정확히 덧셈이 된다.
+     * (`score.extraHan`으로는 옮길 수 없다: 그 규칙의 해석 문맥에는 playerId·state뿐이라
+     *  «누구에게서 론으로 잡았는가»를 알 수 없고, 쯔모 화료에까지 3판이 붙는다.
+     *  WinInfo가 실려 오는 이 경로가 직격 조건을 볼 수 있는 유일한 자리다.)
+     *
+     * 더블론 가드는 여기에 없어도 된다 — `from === target`이면 target은 자기 버림패로
+     * 오를 수 없으므로 «상대도 같이 올랐다»가 성립하지 않는다.
+     */
+    addWinHanBonus(ctx, (state, info) => {
+      if (info.winType !== "ron" || info.from !== target0(state, holder)) return 0;
+      if (!flagOf(state, struckKey(holder))) return 0;
+      return DIRECT_HIT_BONUS_HAN;
+    });
   },
 });
+
+/** 이번 국에 먼저 리치를 선언한 상대 (반격 대상) */
+function target0(state: GameState, holder: PlayerId): PlayerId | null {
+  return stringOf(state, prevKey(holder)) as PlayerId | null;
+}

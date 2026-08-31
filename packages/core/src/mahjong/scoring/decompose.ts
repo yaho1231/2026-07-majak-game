@@ -21,6 +21,16 @@ export interface Decomposition {
   form: "standard" | "chiitoitsu" | "kokushi";
   /** standard: 작두 / kokushi: 중복된 요구패 / chiitoitsu: null */
   pair: TileKind | null;
+  /**
+   * standard 작두의 **실제 두 장**. 혼색 머리(2만+2통)는 `pair`에 대표 한쪽만
+   * 실리므로, 두 kind를 잃지 않도록 여기에 함께 싣는다.
+   *
+   * 왜 필요한가: `buildVariants`가 화료패를 머리와 견줄 때 대표 하나로만 맞추면
+   * **다른 쪽 무늬로 화료할 때 단기 변형이 하나도 안 만들어져** 완성된 손이
+   * 「화료형 아님」이 된다(대기·후리텐은 그 패를 오름패로 세는데 화료만 안 됨).
+   * 순수 머리에서는 undefined다 — 그때는 `pair` 한 kind가 곧 두 장이다.
+   */
+  pairKinds?: TileKind[];
   /** chiitoitsu의 7종 */
   pairs?: TileKind[];
   /** standard의 손패 쪽 멘쯔 (후로 멘쯔 제외) */
@@ -994,7 +1004,7 @@ function decomposeInternal(
             ctx,
           )) {
             add(
-              { form: "standard", pair: a, sets: sol.sets },
+              { form: "standard", pair: a, pairKinds: [a, b], sets: sol.sets },
               [...take.wildAs, ...sol.wildAs],
             );
             if (done()) break;

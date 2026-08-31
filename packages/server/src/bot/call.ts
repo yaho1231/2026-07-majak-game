@@ -12,7 +12,10 @@
  * 예외 하나: 종반에 울어서 텐파이가 되면 **형식텐파이**(노텐벌부 회피)로 부른다.
  */
 
-import { kindKey, shantenOf, ukeireOf, winningKinds } from "@majak/core";
+import { kindKey, ukeireOf, winningKinds } from "@majak/core";
+// 후로 전/후 샹텐도 형 완화를 봐야 한다 — 코어 shantenOf를 직접 쓰면 «울면 텐파이»를
+// 통째로 놓친다(QA synergy4 A-13, `bot/shape.ts`).
+import { botShantenOf as shantenOf } from "./shape.js";
 import type { ActionOption } from "@majak/core/mahjong/flow/FlowController.js";
 import type { TileId, TileKind } from "@majak/core";
 import { meldKindsOf, removeKinds } from "./read.js";

@@ -85,6 +85,7 @@ import {
   augmentFuritenBreakReads,
   discardsZone,
   doraKindFor,
+  isConcealedTileId,
   kindKey,
   shantenOf,
   standardKinds,
@@ -2391,6 +2392,24 @@ const DEAD_WALL_START = 14;
  */
 function rinshanSpentOf(view: PlayerView): number {
   return Math.max(0, DEAD_WALL_START - deadWallSizeOf(view));
+}
+
+/**
+ * 지금까지 **공개된** 도라 표시패 수 — 「가려진 도라」에 흔들리지 않는 값.
+ *
+ * `view.round.doraIndicators`는 은폐된 뷰어에게 **빈 배열**로 온다. 그걸 그대로
+ * `deadWallSlotInfo(flipped)`에 넘기면 이미 뒤집힌 표시패 자리가 「깡 N회 시」(아직 안
+ * 열린 자리)로 적혀, 왕패의 주인 모달이 열려 있는 자리를 닫힌 자리로 광고했다
+ * (2026-08-31 QA synergy4 info C-4).
+ *
+ * 코어는 은폐 시 표시패 실물을 **자리표 id**(`isConcealedTileId`)로 바꿔 자리는 그대로
+ * 남겨 둔다(PlayerView §deadWall). 그래서 «보이는 표시패 + 자리표» 를 합치면 은폐와
+ * 무관하게 열린 장수가 나온다. 자리 수(어느 자리가 열렸는가)는 어차피 공개 정보다 —
+ * 가려지는 것은 그 패의 **정체**뿐이다.
+ */
+function flippedIndicatorCount(view: PlayerView): number {
+  const ids = view.zones["deadWall"]?.tileIds ?? [];
+  return view.round.doraIndicators.length + ids.filter((id) => isConcealedTileId(id)).length;
 }
 
 /**
@@ -22406,10 +22425,20 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   // 가려진 도라 — 뷰 채널이 없는 순수 Modifier라, 비보유자 화면에서는 도라 표시패가
   // 그냥 빈 뒷면으로만 뜬다. "아직 안 열린 슬롯"과 그림이 똑같아 버그로 읽혔다.
   // 증강 보유 자체는 공개 정보이므로 보유자를 여기서 바로 찾아 쓴다.
-  if (view.round.doraIndicators.length === 0) {
-    const holder = view.players.find((p) => p.augments.includes("dora_conceal"));
-    if (holder !== undefined && holder.id !== me.id) {
-      textBadge("dora_conceal", "🌑 가려진 도라", `${holder.nickname} — 이번 국 도라는 그 사람만 안다`);
+  // ⚠ 보유자를 **한 명만** 찾아 쓰면 안 된다 — 둘이 들면 서로를 가리지 않으므로(2026-08-31
+  // 수정, dora_conceal의 면제 술어) 내가 보유자면 도라가 보이고, 남이 여럿이면 그 전부가
+  // 도라를 안다. 예전에는 `find` 하나가 자기 자신이나 임의의 한 명을 집어 «그 사람만 안다»고
+  // 거짓말했다.
+  {
+    const holders = view.players.filter((p) => p.augments.includes("dora_conceal"));
+    const others = holders.filter((p) => p.id !== me.id);
+    if (view.round.doraIndicators.length === 0 && others.length > 0) {
+      const who = others.map((p) => p.nickname).join(" · ");
+      textBadge(
+        "dora_conceal",
+        "🌑 가려진 도라",
+        `${who} — 이번 국 도라는 ${others.length > 1 ? "그들만" : "그 사람만"} 안다`,
+      );
     }
   }
   // 역만 방어술 방어 횟수 · 연금술 잔여 · 왕패 교환 잔여도 이름표 pill로 옮겼다
@@ -23427,7 +23456,7 @@ function ActiveAugmentControl(props: {
                     const staged = dwStagedDead.has(idx);
                     const slot = deadWallSlotInfo(
                       idx,
-                      view.round.doraIndicators.length,
+                      flippedIndicatorCount(view),
                       deadWallSizeOf(view),
                     );
                     // 대기 중인 손패가 없고 예약도 아니면 누를 게 없다 (손패부터 고른다)
@@ -24691,15 +24720,27 @@ function RoundResultPanel({
              * 점수 줄 하나만 단위가 튀면 오히려 읽기 어렵다. 누가 냈는지는 적지 않는다:
              * 화료점이 오른 만큼 지불자가 내는 것은 당연한 일이라 설명할 값이 아니다.
              */
+            /*
+             * ⚠ 줄을 그리는 기준은 **총 판수를 세는 기준(`settleBonusHanOf`)과 같아야 한다.**
+             * 예전에는 `points !== 0` 만 봤는데, 판수 표식은 환산액이 0원이어도 남는다
+             * (2026-08-31 B-7 수정 — 밴드가 흡수해 델타가 안 움직인 경우). 그러면 위의
+             * 제목은 "N판"으로 올라가는데 상세 목록에는 **근거 줄이 하나도 없는** 화면이
+             * 됐다. 판수로 세어지는 줄(`countsHan`)은 금액이 0이어도 그린다.
+             */
             ...(settle.augPoints ?? [])
-              .filter((a) => a.player === w.winner && a.points !== 0)
-              .map((a) => ({
+              .filter((a) => a.player === w.winner)
+              .map((a) => {
+                // 역만은 판수를 세지 않는다 — settleBonusHanOf 와 같은 규약
+                const countsHan = w.yakumanCount === 0 && (a.han ?? 0) > 0;
+                return { a, countsHan };
+              })
+              .filter(({ a, countsHan }) => a.points !== 0 || countsHan)
+              .map(({ a, countsHan }) => ({
                 key: `augpt:${a.augId}`,
                 label: augmentDisplayName(a.augId),
-                han:
-                  a.han !== undefined && a.han > 0
-                    ? `+${a.han}판`
-                    : `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
+                han: countsHan
+                  ? `+${a.han ?? 0}판${a.points === 0 ? " (점수 변동 없음)" : ""}`
+                  : `${a.points > 0 ? "+" : ""}${a.points.toLocaleString()}점`,
                 aug: true,
               })),
             /*

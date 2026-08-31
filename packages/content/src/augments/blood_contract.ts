@@ -87,6 +87,13 @@ export const bloodContract: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  /**
+   * 순수 배수 3종(일확천금·판돈 굴리기·핏빛 계약)은 **서로 배제한다**
+   * (2026-08-31 사용자 결정). 밑값 규약을 원본 화료점 고정으로 통일해
+   * 겹쳐도 곱셈 폭발은 나지 않게 고쳤지만(QA synergy4 A-1·A-2), 배수를 여러 장
+   * 겹치는 것 자체가 한 국의 진폭으로 판을 끝낸다 — 애초에 함께 들 수 없게 잠근다.
+   */
+  conflicts: ["jackpot", "let_it_ride"],
   complexity: 3,
   name: "핏빛 계약",
   description:
@@ -100,7 +107,11 @@ export const bloodContract: AugmentDef = defineAugment({
       engine.actions.register(declareAction);
     }
 
-    // 정산 단계: Multiply — 내 획득에 1.5배. 다른 배수 증강과 같은 단계라 서로 곱해진다.
+    // 정산 단계: Multiply — 내 획득에 1.5배.
+    // ⚠ 다른 배수 증강과 «서로 곱해진다»고 적혀 있었으나 **사실이 아니다**: 아래 밑값은
+    // 원본 화료점(`winInfos[].points`)으로 고정돼 있어 같은 단계의 다른 배수가 이미 부풀린
+    // 몫에는 겹치지 않는다. 2026-08-31에 일확천금도 같은 규약으로 맞췄고(QA synergy4 A-1),
+    // 셋은 이제 `conflicts`로 서로 배제한다.
     settleInterceptor(ctx, SETTLE_STAGE.Multiply, (event, ic) => {
       const p = event.payload as RoundSettledPayload;
       if (p.outcome !== "win") return event;

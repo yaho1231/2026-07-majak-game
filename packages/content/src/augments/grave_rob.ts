@@ -23,6 +23,7 @@
  */
 
 import {
+  belowMinHan,
   WALL,
   buildWinContext,
   defineAugment,
@@ -225,8 +226,14 @@ function robWins(
   ) {
     return false;
   }
+  // 격(`win.minHan` — rank_gate)에 걸리는 싼 손도 화료할 수 없다. 실제 자동 화료는
+  // `standardActions.ts`의 `belowMinHan`(WIN_BLOCKED_MIN_HAN)이 막는데, 후보 단계에서
+  // 이걸 안 보면 «화료가 성립하는 패만 제시한다»는 이 증강의 약속이 깨진다 —
+  // 누르면 `uses`만 오른 채 화료 없이 국이 계속됐다(2026-08-31 QA synergy4 B-9).
+  if (belowMinHan(ev, sim, rules, holder)) return false;
   return true;
 }
+
 
 function makeAction(yaku: YakuRegistry): ActionDef<{
   graveId: TileId;

@@ -51,7 +51,7 @@ function countKind(game: Game, spec: TileKind): number {
     .length;
 }
 
-describe("짝수의 세계 — 도라는 지키되, 도라를 만드는 것은 막지 않는다", () => {
+describe("짝수의 세계 — 예외 없이 전부 짝수 (도라를 만드는 것도 막지 않는다)", () => {
   it("변환 결과가 도라가 되는 패도 그대로 바뀐다 (2026-08-15 조건 삭제)", () => {
     // 표시패 7p → 도라는 8p. 손의 7p·9p는 짝수로 바꾸면 8p가 되어 도라가 생긴다 —
     // 예전에는 이걸 막았지만 지금은 의도된 이득이다.
@@ -72,10 +72,9 @@ describe("짝수의 세계 — 도라는 지키되, 도라를 만드는 것은 �
     const res = game.engine.submit({ player: "p0", type: "even_world_flip", payload: {} });
     if (!res.ok) throw new Error(`even_world_flip rejected: ${res.reason}`);
     const s = game.engine.state;
-    // 적도라(빨간 5)는 설계상 그대로 남는다 — 도라를 지킨다는 규칙의 일부다
+    // 2026-08-31 사양 변경: 예외가 없다 — 적도라(빨간 5)도 함께 짝수가 된다.
     const odd = handIdsOf(s, "p0").filter((id) => {
       const k = kindOf(s, id);
-      if (s.tiles[id]?.attrs.red === true) return false;
       return k.suit !== "wind" && k.suit !== "dragon" && k.rank % 2 === 1;
     });
     expect(odd).toEqual([]);

@@ -165,6 +165,7 @@ export type {
   WinInfo,
 } from "./mahjong/flow/flowEvents.js";
 export {
+  belowMinHan,
   defineStandardFlowRules,
   registerStandardActions,
 } from "./mahjong/flow/standardActions.js";
@@ -207,8 +208,15 @@ export type {
   BotRng,
 } from "./augment/Augment.js";
 export { AugmentRegistry } from "./augment/AugmentRegistry.js";
-export { SETTLE_LAYER, SETTLE_STAGE, settlePriority, settleSeatAxis } from "./augment/settleStages.js";
-export type { SettleStage } from "./augment/settleStages.js";
+export {
+  SETTLE_LAYER,
+  SETTLE_STAGE,
+  baseDeltaOf,
+  installLossSnapshot,
+  settlePriority,
+  settleSeatAxis,
+} from "./augment/settleStages.js";
+export type { BaseDeltasMark, SettleStage } from "./augment/settleStages.js";
 export {
   SCORE_CHANGED,
   AUGMENT_DRAFTED,

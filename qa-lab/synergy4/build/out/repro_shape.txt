@@ -1,0 +1,2 @@
+set=mixed_triplet+broken_border+async_chiitoi 국=85 발동국=25 같은국에2개이상=3 내역=[["broken_border",15],["async_chiitoi",12],["mixed_triplet",4]]
+set=mixed_triplet+broken_border 국=63 발동국=13 같은국에2개이상=2 내역=[["broken_border",12],["mixed_triplet",3]]

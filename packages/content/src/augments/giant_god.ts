@@ -62,12 +62,9 @@ import {
   isTerminalOrHonor,
   kindKey,
   kindOf,
-  meldCountOf,
   moveTiles,
   playerAtSeat,
-  scoringOptionsOf,
   tileKindChanged,
-  winningKinds,
 } from "@majak/core";
 import type {
   ActionDef,
@@ -80,6 +77,12 @@ import type {
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import {
+  KOKUSHI_KINDS,
+  giantGodTsumoKey,
+  giantGodWinTargets,
+  yieldsDrawTo,
+} from "./drawMutators.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "giant_god";
@@ -92,8 +95,7 @@ const EVENT = "GiantGodAwakened";
  * 게임 스코프로 두면 소비 전에 국이 끝났을 때(남의 화료·유국) 예약이 다음 국의 첫
  * 쯔모를 강탈한다 — 소환(conjure_draw)이 같은 이유로 국 스코프를 쓴다.
  */
-const tsumoKey = (state: GameState, h: PlayerId): string =>
-  roundScopedKey(ID, "tsumo", state, h);
+const tsumoKey = giantGodTsumoKey;
 
 /**
  * **국당 1회** 소진 플래그 — 국 스코프(매 국 자동 초기화).
@@ -130,21 +132,6 @@ function kindFromKey(key: string): TileKind {
 }
 
 /** 국사무쌍 13종 (1·9 수패 + 동남서북 + 백발중) */
-const KOKUSHI_KINDS = [
-  { suit: "man", rank: 1 },
-  { suit: "man", rank: 9 },
-  { suit: "pin", rank: 1 },
-  { suit: "pin", rank: 9 },
-  { suit: "sou", rank: 1 },
-  { suit: "sou", rank: 9 },
-  { suit: "wind", rank: 1 },
-  { suit: "wind", rank: 2 },
-  { suit: "wind", rank: 3 },
-  { suit: "wind", rank: 4 },
-  { suit: "dragon", rank: 1 },
-  { suit: "dragon", rank: 2 },
-  { suit: "dragon", rank: 3 },
-] as const;
 
 const KOKUSHI_KEYS: string[] = KOKUSHI_KINDS.map(kindKey);
 
@@ -357,18 +344,22 @@ export const giantGod: AugmentDef = defineAugment({
       if (p.player !== holder) return;
       if (p.rinshan) return; // 영상패(깡 후 쯔모)가 아니라 정상 쯔모 한 장이다
       if (!flagOf(rc.state, tsumoKey(rc.state, holder))) return;
+      /*
+       * ⚠ **해저패는 해저의 지배자의 것이다** — 이 한 장을 양보하고 예약도 남긴다.
+       *
+       * 같은 좌석이 `haitei_lord`를 함께 들면 둘이 같은 tileId에 `tileKindChanged`를
+       * 쏴서 설치 순서(= 드래프트 픽 순서)가 승패를 정했다. 우선순위와 근거는
+       * `drawMutators.ts` 한곳에 모여 있다 — 지배자가 가져가도 그 자리에서 화료라
+       * «다음 순에 반드시 화료한다»는 약속은 그대로 지켜진다.
+       */
+      // 여기까지 왔으면 정상 쯔모다(영상패는 위에서 걸렀다)
+      if (yieldsDrawTo(ID, rc.state, rc.rules, holder, p.tileId, false)) {
+        return;
+      }
       // 예약은 한 번뿐 — 부를 수 있는 패가 없어도 여기서 비운다
       rc.emit(augmentDataSet(tsumoKey(rc.state, holder), null));
-      // 쯔모패를 뺀 손패로 화료가 되는 요구패
-      const hand13 = handIdsOf(rc.state, holder)
-        .filter((id) => id !== p.tileId)
-        .map((id) => kindOf(rc.state, id));
-      const wins = winningKinds(
-        hand13,
-        meldCountOf(rc.state, holder),
-        KOKUSHI_KINDS,
-        scoringOptionsOf(rc.state, rc.rules, holder),
-      );
+      // 쯔모패를 뺀 손패로 화료가 되는 요구패 (공용 술어 — 소환이 같은 것을 읽고 물러난다)
+      const wins = giantGodWinTargets(rc.state, rc.rules, holder, p.tileId);
       const target = wins[0];
       // 스스로 요구패를 버려 손을 무너뜨렸다면 부를 패가 없다 — 아무 일도 하지 않는다
       if (target === undefined) return;

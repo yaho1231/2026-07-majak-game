@@ -44,6 +44,11 @@ const ID = "devils_advance";
 const ADVANCE = 10000;
 /** 폭발 시 상대 1명에게서 뜯는 액수 */
 const BURST_PER_OPPONENT = 3000;
+/**
+ * 가불금 지급 리액션의 순서 — **국 시작 리액션 중 가장 뒤**.
+ * 다른 증강의 ROUND_STARTED 리액션은 전부 기본값 0이다. 근거는 install 안의 주석.
+ */
+const GRANT_PRIORITY = 1000;
 
 const grantedKey = (h: PlayerId): string => `${ID}:granted:${h}`;
 /** 빚이 이미 폭발했는가 (게임당 1회) — 48차의 exempt 키를 재사용 */
@@ -69,13 +74,34 @@ export const devilsAdvance: AugmentDef = defineAugment({
     const { holder } = ctx;
     const vKey = viewKey("*", `${ID}:${holder}`);
 
-    // 획득 후 첫 국 시작에 가불금 지급 (1회) — 빚 문서가 테이블에 붙는다
-    ctx.reaction(ROUND_STARTED, (_event, rc) => {
-      if (flagOf(rc.state, grantedKey(holder))) return;
-      rc.emit(scoreChanged(holder, ADVANCE, ID));
-      rc.emit(augmentDataSet(grantedKey(holder), true));
-      rc.emit(augmentDataSet(vKey, `가불 ${ADVANCE}`));
-    });
+    /*
+     * 획득 후 첫 국 시작에 가불금 지급 (1회) — 빚 문서가 테이블에 붙는다.
+     *
+     * ⚠ **priority가 있어야 한다** (2026-08-31 QA synergy4 A-12). 이 지급은
+     * `ScoreChanged`이고, 반전(`sign_flip`)은 «자기가 켜진 국»의 `ScoreChanged`를
+     * 통째로 뒤집는다. 그런데 반전이 «켜졌다»는 표식도 같은 `ROUND_STARTED` 리액션
+     * (`armOnNextRound`)이 쓰므로, 두 리액션 중 어느 쪽이 먼저 도느냐로 가불금이
+     * **+10,000이 되기도 −10,000이 되기도** 했다 — 그 순서는 `EffectRegistry`의 등록
+     * 순서 = `installAugment` 호출 순서 = **드래프트 픽 순서**였다. 같은 시드·같은
+     * 카드로 최종 점수가 32,100 vs 12,100으로 갈렸고, 이어하기·리플레이 재구성에서도
+     * 갈릴 수 있었다. 정산 인터셉터는 `settlePriority`로 이 문제를 없앴지만
+     * ROUND_STARTED 리액션 경로에는 같은 장치가 없다.
+     *
+     * 그래서 **지급을 마지막으로 민다**(다른 리액션은 전부 기본 priority 0). 이제 반전이
+     * 켜져 있으면 가불금은 **언제나** 뒤집힌다 — "증강이 국 중에 직접 옮기는 점수도
+     * 같은 국이면 부호를 뒤집는다"(`sign_flip.ts`)는 규약을 그대로 따르는 한 값이고,
+     * 상태만으로 정해지므로 픽 순서·재구성과 무관하다.
+     */
+    ctx.reaction(
+      ROUND_STARTED,
+      (_event, rc) => {
+        if (flagOf(rc.state, grantedKey(holder))) return;
+        rc.emit(scoreChanged(holder, ADVANCE, ID));
+        rc.emit(augmentDataSet(grantedKey(holder), true));
+        rc.emit(augmentDataSet(vKey, `가불 ${ADVANCE}`));
+      },
+      { priority: GRANT_PRIORITY },
+    );
 
     /*
      * 만관 이상 화료 → 빚이 폭발한다 (게임당 1회, 제로섬 강탈).

@@ -60,6 +60,7 @@ import { chooseDraft } from "./bot/draft.js";
 import { NO_FLAGS } from "./bot/flags.js";
 import type { BotFlags } from "./bot/flags.js";
 import { shouldDeclineRon } from "./bot/winCall.js";
+import { STANDARD_ACTION_TYPES, isAugmentActionType } from "./bot/augmentPick.js";
 
 /** 후로(리액션 콜)로 취급하는 액션 — 봇 후로 금지 시 후보에서 뺀다 */
 const CALL_TYPES = new Set(["pon", "chi", "minkan"]);
@@ -87,23 +88,6 @@ const HOLD_MAX_MS = 5 * 60_000;
 function logContentFailure(where: string, err: unknown): void {
   console.error(`[BotAgent] 증강 코드 실패 (${where}) — 이 판단만 건너뛴다:`, err);
 }
-
-/**
- * 표준 마작 액션 — 이 밖의 액션 타입은 전부 액티브 증강의 발동이다
- * (증강이 자기 이름의 액션을 등록한다). 봇 증강 금지 판정에 쓴다.
- */
-const STANDARD_ACTION_TYPES = new Set([
-  "discard",
-  "riichi",
-  "win",
-  "pon",
-  "chi",
-  "ankan",
-  "minkan",
-  "shouminkan",
-  "kyushuKyuhai",
-  "pass",
-]);
 
 /**
  * 봇 제약(증강 테스트)에 걸리는 선택지를 후보에서 뺀다.
@@ -746,6 +730,21 @@ export class BotAgent implements PlayerAgent {
       try {
         const picked = policy.choose(ctx);
         if (picked === null) continue;
+        {
+          /*
+           * **정책은 표준 마작 액션을 돌려줄 수 없다** (`bot/augmentPick.ts`).
+           * 자기 타입으로 거르는 것을 잊은 정책이 `options[0]`을 그대로 돌려주면
+           * 그것이 1층에서 이겨 **버림·리치·후로 평가가 통째로 사라진다.**
+           * 개별 카드가 아니라 여기서 막는다 — 같은 사고가 두 번 났다(A-0).
+           */
+          const opt = "option" in picked ? picked.option : picked;
+          if (!isAugmentActionType(opt.type)) {
+            console.warn(
+              `[BotAgent] 증강 ${augId} 정책이 표준 액션(${opt.type})을 돌려줬다 — 이번 순 무시`,
+            );
+            continue;
+          }
+        }
         const weighted =
           "option" in picked
             ? picked
