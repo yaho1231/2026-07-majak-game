@@ -52,11 +52,14 @@ for (const c of cards) {
 }
 out.sort((a, b) => b.t - a.t);
 
-console.log("카드 | n쌍 | 완전동일 | 평균점수차 | ±se | t | 순위차 | 화료차 | 방총차 | 발동수");
+console.log("카드 | n쌍 | 완전동일 | 평균점수차 | ±se | 95% CI | t | 순위차 | 화료차 | 방총차 | 발동수");
 for (const o of out) {
+  const lo = o.m - 1.96 * o.se;
+  const hi = o.m + 1.96 * o.se;
   console.log(
     `${o.card} | ${o.n} | ${o.same}/${o.n} | ${o.m >= 0 ? "+" : ""}${o.m.toFixed(0)}` +
-    ` | ${o.se.toFixed(0)} | ${o.t.toFixed(2)} | ${o.dr.toFixed(2)} | ${o.dw.toFixed(2)}` +
+    ` | ${o.se.toFixed(0)} | [${lo.toFixed(0)}, ${hi.toFixed(0)}]` +
+    ` | ${o.t.toFixed(2)} | ${o.dr.toFixed(2)} | ${o.dw.toFixed(2)}` +
     ` | ${o.dd.toFixed(2)} | ${o.fires}`,
   );
 }
