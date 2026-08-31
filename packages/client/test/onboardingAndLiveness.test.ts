@@ -102,7 +102,9 @@ describe("첫 방문자가 막히는 자리를 막지 않는다", () => {
 
   it("체험 뒤 '계정 만들고 계속하기'는 가입 탭으로 연다", () => {
     expect(APP_CODE).toContain('logout("register")');
-    expect(APP_CODE).toContain('props.initialTab ?? "login"');
+    // `?? "login"` 이던 자리 — 이벤트 객체가 그대로 통과해 로그인 제출이 가입으로
+    // 나갔다(2026-08-31, logoutTab.test.ts). 이제 값 자체를 확인한다.
+    expect(APP_CODE).toContain('props.initialTab === "register" ? "register" : "login"');
   });
 
   it("대기실에도 규칙·도감 단추가 있다", () => {

@@ -7015,7 +7015,14 @@ export function App(): JSX.Element {
             });
           }}
           onRefresh={refreshHome}
-          onLogout={logout}
+          /*
+           * `onLogout={logout}` 로 두면 안 된다 (2026-08-31 사용자 보고).
+           * onClick 이 넘기는 **마우스 이벤트**가 `nextTab` 자리에 들어가
+           * `authTab` 이 "login"도 "register"도 아닌 값이 된다 → 다음에 뜨는
+           * 로그인 화면이 로그인 폼처럼 보이면서 제출은 **가입**으로 나갔다
+           * («가입 코드가 필요합니다»). 새로고침해야 풀렸다.
+           */
+          onLogout={() => logout()}
         />
       )}
 
@@ -8084,7 +8091,9 @@ function AuthScreen(props: {
   // 예전에는 무조건 로그인 탭이었다: 체험 뒤 "계정 만들고 계속하기"를 누른 사람이
   // 로그인 폼을 보고 다시 "회원가입"을 눌러야 했다 — 전환 퍼널의 마지막 한 클릭을
   // 스스로 버리고 있었다 (감사 §3-8).
-  const [tab, setTab] = useState<"login" | "register">(props.initialTab ?? "login");
+  // 넘어온 값이 둘 중 하나가 아니면 로그인으로 — 잘못된 initialTab 하나가
+  // 로그인 제출을 가입으로 보내 버린 적이 있다(2026-08-31).
+  const [tab, setTab] = useState<"login" | "register">(props.initialTab === "register" ? "register" : "login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -8128,7 +8137,7 @@ function AuthScreen(props: {
    *
    * 그래서 **보낼 때의 탭을 적어 두고**, 지금 탭의 답일 때만 보여 준다.
    */
-  const sentFrom = useRef<"login" | "register">(props.initialTab ?? "login");
+  const sentFrom = useRef<"login" | "register">(props.initialTab === "register" ? "register" : "login");
   const [errorTab, setErrorTab] = useState<"login" | "register" | null>(null);
   useEffect(() => {
     if (props.serverErrorSeq > 0) {
@@ -11853,7 +11862,7 @@ function HomeScreen(props: {
             />
           ) : null}
         </div>
-        <button className="btn-line site-bar-btn" onClick={props.onLogout}>로그아웃</button>
+        <button className="btn-line site-bar-btn" onClick={() => props.onLogout()}>로그아웃</button>
       </header>
 
       <main className="home-main">
