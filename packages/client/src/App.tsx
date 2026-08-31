@@ -10733,7 +10733,7 @@ function FeedbackBoard(props: {
       <ListCard
         items={props.entries}
         empty="아직 등록된 제보가 없습니다."
-        emptyHint="증강 아이디어나 버그를 적어 주세요 — 위 칸에 쓰면 바로 올라갑니다."
+        emptyHint="증강 아이디어나 버그를 적어 주세요 — 위 칸에 쓰면 바로 등록됩니다."
       >
         {(rows) => (
         <ul className="fb-list">
@@ -14364,7 +14364,7 @@ function QuickToggles(props: {
               if (next && (it.key === "autoDiscard" || it.key === "autoWin")) {
                 props.onToast?.(
                   it.key === "autoDiscard"
-                    ? "자동버림 켜짐 — 쯔모한 패가 그대로 나갑니다"
+                    ? "자동버림 켜짐 — 쯔모한 패를 그대로 버립니다"
                     : "자동화료 켜짐 — 화료가 가능하면 즉시 화료합니다",
                 );
               }
@@ -19980,7 +19980,7 @@ function OwnArea(props: {
                 myPrompt.options.some((o) => o.type === "pass")
                   ? "시간이 다 되면 자동으로 패스합니다"
                   : myPrompt.options.some((o) => o.type === "discard")
-                    ? "시간이 다 되면 쯔모한 패가 그대로 나갑니다"
+                    ? "시간이 다 되면 쯔모한 패를 그대로 버립니다"
                     : null
               }
             />
@@ -20839,7 +20839,7 @@ function SpectateDock(props: {
           type="button"
           className="spectate-dock-fold"
           onClick={() => onPrefs({ ...prefs, dockOpen: false })}
-          title="도크를 접습니다 — 가장자리 손잡이로 다시 펼칩니다"
+          title="도크를 접습니다 — 가장자리 손잡이를 누르면 다시 펼쳐집니다"
           aria-expanded="true"
         >
           ▶
