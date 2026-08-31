@@ -165,6 +165,7 @@ export type {
   WinInfo,
 } from "./mahjong/flow/flowEvents.js";
 export {
+  belowMinHan,
   defineStandardFlowRules,
   registerStandardActions,
 } from "./mahjong/flow/standardActions.js";

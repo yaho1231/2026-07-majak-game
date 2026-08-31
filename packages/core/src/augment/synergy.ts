@@ -201,7 +201,10 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
     anti: ["riichi_declare"],
   }),
   open_riichi_reveal: e(["riichi", "riichi_declare", "riichi_open"], {
-    anti: ["riichi_declare"],
+    // `riichi_deny`(봉인·이중 선언)와는 `riichi`·`riichi_open` 축을 둘 공유해 표가 서로를
+    // 강하게 끌어당겼다. 역만이 지워지던 결함은 고쳤지만(2026-08-31 QA synergy4 A-7),
+    // «봉인 + 오픈 리치»는 상대에게서 회피 여지를 거의 다 걷어 가므로 함께 뜨는 것을 누른다.
+    anti: ["riichi_declare", "riichi_deny"],
   }),
   all_or_nothing: e(["riichi", "riichi_declare", "riichi_open", "bank"], {
     anti: ["riichi_declare"],
@@ -313,6 +316,11 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
       "riichi_upgrade",
       "counter",
       "true_dragon",
+      // 배수 계열과 겹치면 상한이 없는 채로 몇 배가 된다 (2026-08-31 QA synergy4 A-1·B-6).
+      "jackpot",
+      "let_it_ride",
+      "blood_contract",
+      "big_hand",
     ],
   }),
   unification: e(["bank", "han"], {
@@ -326,11 +334,23 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
       "counter",
     ],
   }),
-  big_hand: e(["han", "bank"]),
-  jackpot: e(["han", "bank"]),
+  // 순수 배수 3종(jackpot·let_it_ride·blood_contract)은 카드 `conflicts`로 **서로 배제**한다
+  // (2026-08-31 사용자 결정). 표에도 antiIds를 남겨 «한계 해제» 계열과 겹치는 것까지 누른다 —
+  // 밑값 규약은 원본 화료점 고정으로 통일했으므로 겹쳐도 폭발하지는 않지만, 배수와 상한 해제가
+  // 같은 손에 모이면 한 국의 진폭이 판을 끝낸다.
+  big_hand: e(["han", "bank"], {
+    antiIds: ["jackpot", "let_it_ride", "blood_contract", "aotenjou_ceiling"],
+  }),
+  jackpot: e(["han", "bank"], {
+    antiIds: ["let_it_ride", "blood_contract", "aotenjou_ceiling", "big_hand"],
+  }),
   devils_advance: e(["bank", "han"]),
-  blood_contract: e(["han"]),
-  let_it_ride: e(["han"]),
+  blood_contract: e(["han"], {
+    antiIds: ["jackpot", "let_it_ride", "aotenjou_ceiling", "big_hand"],
+  }),
+  let_it_ride: e(["han"], {
+    antiIds: ["jackpot", "blood_contract", "aotenjou_ceiling", "big_hand"],
+  }),
   bottom_yaku: e(["river"]),
   haitei_lord: e(["draw"]),
   honba_hunter: e(["dealer", "han"]),
@@ -340,8 +360,11 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   // ───────────────────────── 수비·역이용 ─────────────────────────
   invincible: e(["defense"], { antiIds: ["no_ron_pact"] }),
   no_ron_pact: e(["defense", "menzen"], {
-    // 리치·후로 순간 파기된다 — 그 둘을 요구하는 증강과는 서로 죽는다.
-    anti: ["call", "riichi"],
+    // 리치·후로·**깡** 순간 파기된다 — 그 셋을 요구하는 증강과는 서로 죽는다.
+    // `kan`이 빠져 있어서 `ankan_dora`(밀실의 도라)와 `menzen`을 공유해 오히려 함께
+    // 떴다 — 밀실의 도라의 유일한 발동(안깡)이 조약을 영구 파기한다
+    // (2026-08-31 QA synergy4 B-13).
+    anti: ["call", "riichi", "kan"],
   }),
   die_hard: e(["loss_gain"], {
     // docs/21 §C-3 — 수비가 성공할수록 죽기살기의 수익이 0에 수렴한다.

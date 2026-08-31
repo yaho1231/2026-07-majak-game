@@ -144,22 +144,30 @@ export const WIN_BLOCKED_RON_IMMUNE = "discarder is immune to ron";
 
 /**
  * 최소 판 게이트(win.minHan — 격/rank_gate)에 걸리는가.
+ *
+ * **화료 후보를 내는 증강은 반드시 이것을 거친다.** 사본을 만들면 판정이 갈리고,
+ * 그 순간 «누르면 자원만 타고 화료는 안 되는 후보»가 다시 생긴다
+ * (2026-08-31 QA synergy4 B-9 — 무덤 도굴이 정확히 그랬다).
+ *
  * 역만은 면제한다 — 막고 싶은 것은 "싼 손 속공"이지 최상급 손이 아니다.
  * 증강이 얹는 추가 판(score.extraHan)도 함께 세어, 판을 올려 주는 증강과 모순되지 않게 한다.
  */
-function belowMinHan(
-  ev: WinEvaluation,
+export function belowMinHan(
+  ev: Pick<WinEvaluation, "han" | "yakumanCount">,
   state: GameState,
   rules: RuleRegistry,
   player: PlayerId,
 ): boolean {
   if (ev.yakumanCount > 0) return false;
+  if (!rules.has("win.minHan")) return false;
   const min = rules.resolve<number>("win.minHan", { playerId: player, state });
   if (min <= 0) return false;
-  const extra = Math.max(
-    0,
-    rules.resolve<number>("score.extraHan", { playerId: player, state }),
-  );
+  const extra = rules.has("score.extraHan")
+    ? Math.max(
+        0,
+        rules.resolve<number>("score.extraHan", { playerId: player, state }),
+      )
+    : 0;
   return ev.han + extra < min;
 }
 

@@ -196,6 +196,13 @@ export const jackpot: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "scoring",
+  /**
+   * 순수 배수 3종(일확천금·판돈 굴리기·핏빛 계약)은 **서로 배제한다**
+   * (2026-08-31 사용자 결정). 밑값 규약을 원본 화료점 고정으로 통일해
+   * 겹쳐도 곱셈 폭발은 나지 않게 고쳤지만(QA synergy4 A-1·A-2), 배수를 여러 장
+   * 겹치는 것 자체가 한 국의 진폭으로 판을 끝낸다 — 애초에 함께 들 수 없게 잠근다.
+   */
+  conflicts: ["let_it_ride", "blood_contract"],
   complexity: 1,
   name: "일확천금",
   description:

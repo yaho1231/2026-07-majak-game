@@ -239,7 +239,10 @@ function play(
       yaku: (info.yaku ?? []).map((y) =>
         typeof y === "string" ? y : (y as { id: string }).id,
       ),
-      openBonus: note === undefined ? null : { points: note.points, han: note.han },
+      openBonus:
+        note === undefined
+          ? null
+          : { points: note.points, ...(note.han === undefined ? {} : { han: note.han }) },
     };
   }
   throw new Error("no settlement");
