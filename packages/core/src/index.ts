@@ -513,6 +513,8 @@ export type {
   SpectateStartedMessage,
   SpectateEndedMessage,
   SpectateInsightMessage,
+  SpectateDraftMessage,
+  SpectateDraftEndMessage,
   SpectateWinValue,
   SpectateWait,
   GamePausedMessage,

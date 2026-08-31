@@ -61,6 +61,7 @@ import type {
   PeriodStats,
   ServerInfoMessage,
   ServerNotice,
+  SpectateDraftMessage,
   SpectateInsightMessage,
   SpectateWinValue,
   ServerMessage,
@@ -430,6 +431,8 @@ const GAME_STREAM_MESSAGES: ReadonlySet<ServerMessage["type"]> = new Set([
   "draftAutoPicked",
   "draftProgress",
   "draftRerolled",
+  "spectateDraft",
+  "spectateDraftEnd",
   "roundOver",
   "gameOver",
   "abortVote",
@@ -3153,6 +3156,14 @@ export function App(): JSX.Element {
    */
   const [insight, setInsight] = useState<SpectateInsightMessage | null>(null);
   /**
+   * **관전 중계: 네 좌석이 지금 보고 있는 증강 카드** (관전자에게만 온다).
+   *
+   * 증강 선택 동안 판은 통째로 멈춰 있다 — 그래서 이 줄은 탁자 위에 그대로 얹는다
+   * (2026-08-31 사용자 요청: 도구창 말고 게임 화면에). 마지막 사람이 고르면 서버가
+   * `spectateDraftEnd`로 걷는다.
+   */
+  const [spectateDraft, setSpectateDraft] = useState<SpectateDraftMessage | null>(null);
+  /**
    * 이 관전석에 걸린 송출 지연(초). 0이면 지연 없음 (docs/36 C1).
    *
    * **저장한다.** 여태 새로고침 한 번에 0으로 돌아갔는데, 이건 취향이 아니라
@@ -3788,6 +3799,7 @@ export function App(): JSX.Element {
     if (roomNoticeTimer.current !== null) clearTimeout(roomNoticeTimer.current);
     roomNoticeTimer.current = null;
     setInsight(null);
+    setSpectateDraft(null);
     setSpectatedBy(0);
     viewBuffer.current = [];
     setRewindAt(null);
@@ -4924,6 +4936,7 @@ export function App(): JSX.Element {
       activeSpectateRef.current = null;
       // gameOver 모달이 떠 있으면 그대로 두고, 뷰·연출만 정리한다
       setSpectating(null);
+      setSpectateDraft(null);
       setView(null);
       setCenterView(null);
       clearProductions();
@@ -5317,6 +5330,15 @@ export function App(): JSX.Element {
         return { ...cur, choices, rerollable };
       });
       sfx.draft();
+      return;
+    }
+    if (msg.type === "spectateDraft") {
+      // 관전 중계 — 좌석 넉 줄을 통째로 갈아 끼운다(서버가 스냅샷을 보낸다).
+      setSpectateDraft(msg);
+      return;
+    }
+    if (msg.type === "spectateDraftEnd") {
+      setSpectateDraft(null);
       return;
     }
     if (msg.type === "roundOver") {
@@ -7089,6 +7111,15 @@ export function App(): JSX.Element {
                   .map((id) => playerNameById(view, id))
           }
         />
+      ) : null}
+      {/*
+        관전 중계 — 네 좌석의 증강 선택창을 탁자 위에 그대로 얹는다
+        (2026-08-31 사용자 요청). 이 구간에는 판이 멈춰 있으므로 탁자를 가려도
+        잃는 것이 없고, 되감기 중에는 걷는다 — 그때 화면의 탁자는 과거인데
+        이 줄만 «지금»이라 두 시각이 한 화면에서 어긋난다.
+      */}
+      {isSpectator && spectateDraft !== null && view !== null && rewindAt === null ? (
+        <SpectateDraftPanel draft={spectateDraft} view={view} catalog={catalog} />
       ) : null}
       {activeProd !== null && activeProd.channel === "banner" && activeProd.tone === "riichi" ? (
         // 리치 전용 풀 연출 — 비네트 암전 + 붉은 밴드 + 천점봉 슬라이드-인 + 금속성 글자
@@ -25158,6 +25189,105 @@ function RoundResultPanel({
 }
 
 // ─────────────────────────── 드래프트 오버레이 ───────────────────────────
+
+/**
+ * **관전 중계: 증강 선택판** — 네 좌석이 지금 각자 무엇을 보고 있는가 (관전 전용).
+ *
+ * 증강 선택이 열린 동안 판은 통째로 멈춰 있다. 예전 관전 화면에는 그 몇십 초가
+ * 「아무 일도 일어나지 않는 탁자」로만 보였다 — 정작 그때 이 판의 다음 절반이
+ * 정해지는데도(2026-08-31 사용자 요청). 좌석마다 한 줄씩, 그 사람 화면에 실제로
+ * 서 있는 카드 3장을 세우고 새로고침(↻)과 픽(✓)을 실시간으로 따라 그린다.
+ *
+ * 서버가 보내는 `spectateDraft`는 **스냅샷**이라, 이 컴포넌트는 상태를 쌓지 않는다.
+ * 마지막 사람이 고르면 `spectateDraftEnd`가 와서 이 창이 통째로 사라진다.
+ *
+ * 스크림은 `pointer-events: none`이다(styles.css) — 이 창은 사람이 닫는 것이 아니라
+ * 서버가 걷는 것이라, 그 아래 되감기·정지 손잡이가 이 몇십 초 동안 죽으면 안 된다.
+ */
+function SpectateDraftPanel({
+  draft,
+  view,
+  catalog,
+}: {
+  draft: SpectateDraftMessage;
+  /** 좌석 이름·자풍을 얻는 곳 (관전 뷰) */
+  view: PlayerView;
+  catalog: Record<string, AugmentCatalogEntry>;
+}): JSX.Element {
+  const mode = useContext(GameModeContext);
+  const done = draft.seats.filter((s) => s.picked !== undefined).length;
+  return createPortal(
+    <div className="spec-draft">
+      <div className="spec-draft-panel">
+        <div className="spec-draft-head">
+          <span className="spec-draft-tag">증강 선택 중</span>
+          <span className="spec-draft-stage">
+            {DRAFT_STAGE_HEADLINE[draft.stage] ?? "증강 획득"}
+          </span>
+          <span className="spec-draft-count">
+            {done} / {draft.seats.length} 선택 완료
+          </span>
+        </div>
+        {draft.seats.map((seat) => {
+          const info = view.players.find((x) => x.id === seat.player);
+          return (
+            <div
+              className={`spec-draft-row${seat.picked !== undefined ? " spec-draft-row-done" : ""}`}
+              key={seat.player}
+            >
+              <div className="spec-draft-who">
+                <span className="spec-draft-wind">
+                  {info !== undefined ? seatWindChar(view, info) : "?"}
+                </span>
+                <span className="spec-draft-name">{playerNameById(view, seat.player)}</span>
+                <span className="spec-draft-state">
+                  {seat.picked !== undefined ? "✓ 선택 완료" : "고르는 중…"}
+                </span>
+              </div>
+              <div className="spec-draft-cards">
+                {seat.choices.map((c, i) => {
+                  const chosen = seat.picked === c.id;
+                  // 고른 뒤에는 «안 고른 두 장»을 죽여 무엇을 집었는지가 한눈에 보이게 한다.
+                  const passed = seat.picked !== undefined && !chosen;
+                  const brief = briefOf(c.id, catalog[c.id]?.description ?? c.description);
+                  return (
+                    <div
+                      className={`spec-draft-card aug-cat-${augmentCategory(c.id)}${
+                        chosen ? " spec-draft-card-picked" : ""
+                      }${passed ? " spec-draft-card-passed" : ""}`}
+                      key={`${i}-${c.id}`}
+                      // 요약만으로 부족할 때를 위해 원문을 툴팁에 남긴다.
+                      title={forMode(catalog[c.id]?.description ?? c.description, mode)}
+                    >
+                      <span className="spec-draft-card-head">
+                        <span className={`spec-draft-cat aug-cat-${augmentCategory(c.id)}`}>
+                          {CATEGORY_META[augmentCategory(c.id)].icon}{" "}
+                          {CATEGORY_META[augmentCategory(c.id)].label}
+                        </span>
+                        {seat.rerolled[i] === true ? (
+                          <span
+                            className="spec-draft-swapped"
+                            title="이 자리를 새로고침으로 갈아 끼웠다"
+                          >
+                            ↻ 교체
+                          </span>
+                        ) : null}
+                      </span>
+                      <strong className="spec-draft-card-name">{c.name}</strong>
+                      <span className="spec-draft-card-desc">{forMode(brief.text, mode)}</span>
+                      {chosen ? <span className="spec-draft-got">✓ 획득</span> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 function DraftOverlay({
   draft,

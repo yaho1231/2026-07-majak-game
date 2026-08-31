@@ -39,6 +39,7 @@ import type { PlayerAgent } from "./PlayerAgent.js";
 import type {
   RankingEntry,
   DraftStage,
+  SpectateDraftMessage,
   GameEndReason,
   RevealedHand,
   RoundOverMessage,
@@ -530,6 +531,13 @@ export class HanchanController {
   private draftedStages = new Set<DraftStage>();
   /** 관전자 목록 — 뷰 브로드캐스트·notifyAll에 함께 포함된다 */
   private readonly spectators = new Map<string, SpectatorSink>();
+  /**
+   * 지금 열려 있는 증강 선택의 **관전 중계 스냅샷** (없으면 null).
+   *
+   * 늦게 합류한 관전석도 이 한 통으로 화면을 세운다(`addSpectator`) — 드래프트는
+   * 몇십 초씩 서 있는 구간이라, 다음 방송을 기다리라고 하면 그 사이 내내 빈 탁자다.
+   */
+  private draftSpectate: SpectateDraftMessage | null = null;
   /** 진행 중인 게임 (관전자 중도 합류 시 즉시 뷰 전송용) */
   private game: StandardGame | null = null;
   /**
@@ -763,6 +771,7 @@ export class HanchanController {
     stage: DraftStage,
     choices: AugmentDef[],
     rerolls: readonly AugmentDef[] = [],
+    onCardSwap?: (slot: number, choice: AugmentDef) => void,
   ): Promise<string> {
     const first = choices[0]?.id;
     // 후보가 비어 있으면 고를 것이 없다 — 호출부가 이 좌석을 건너뛰게 한다.
@@ -781,7 +790,7 @@ export class HanchanController {
         fire(first);
       });
       const picked = await Promise.race([
-        agent.decideDraft(stage, choices, rerolls),
+        agent.decideDraft(stage, choices, rerolls, onCardSwap),
         guard,
       ]);
       await this.gatePaused(); // 나가는 문 (safeDecide와 같다)
@@ -1507,6 +1516,57 @@ export class HanchanController {
      * 기다리는지도 몇 명이 남았는지도 알 수 없었다(2026-08-27 사용자 요청).
      * 정보 방송일 뿐이라 엔진 상태·이벤트 로그에는 손대지 않는다 — 결정성 영향 없음.
      */
+    /*
+     * 관전 중계 — 좌석마다 «지금 그 화면에 서 있는 3장»을 들고 있다가, 픽이나
+     * 새로고침이 하나 들어올 때마다 스냅샷을 통째로 다시 보낸다
+     * (`SpectateDraftMessage`). 증강 선택 동안 판은 멈춰 있는데 관전석에는 그
+     * 몇십 초가 빈 탁자로만 보였다 — 정작 그때 판의 다음 절반이 정해진다.
+     *
+     * ⚠ **관전자에게만** 나간다(`notifySpectators`). 대국자 쪽으로 새면 남의 후보를
+     * 보고 고르는 판이 된다.
+     */
+    const specSeats = new Map<
+      PlayerId,
+      { cards: AugmentDef[]; rerolled: boolean[]; picked?: string }
+    >();
+    for (const agent of pending) {
+      const pool = offered.get(agent.id);
+      if (pool === undefined) continue;
+      specSeats.set(agent.id, {
+        cards: [...pool.choices],
+        rerolled: pool.choices.map(() => false),
+      });
+    }
+    const pushDraftSpectate = (): void => {
+      const seats = pending.flatMap((a) => {
+        const seat = specSeats.get(a.id);
+        if (seat === undefined) return [];
+        return [
+          {
+            player: a.id,
+            choices: seat.cards.map((c) => ({
+              id: c.id,
+              tier: c.tier,
+              name: c.name,
+              description: c.description,
+            })),
+            rerolled: [...seat.rerolled],
+            ...(seat.picked !== undefined ? { picked: seat.picked } : {}),
+          },
+        ];
+      });
+      if (seats.length === 0) return;
+      this.draftSpectate = { type: "spectateDraft", stage, seats };
+      this.notifySpectators(this.draftSpectate);
+    };
+    /** 중계 줄을 걷는다 — 안 걷으면 카드 넉 줄이 다음 국 내내 탁자 위에 남는다. */
+    const endDraftSpectate = (): void => {
+      if (this.draftSpectate === null) return;
+      this.draftSpectate = null;
+      this.notifySpectators({ type: "spectateDraftEnd" });
+    };
+    pushDraftSpectate();
+
     const stillPending = new Set(pending.map((a) => a.id));
     const notifyProgress = (): void => {
       this.notifyAll({
@@ -1524,23 +1584,37 @@ export class HanchanController {
       Promise.all(
         pending.map(async (agent) => {
           const pool = offered.get(agent.id) ?? draft.rollWithRerolls(stage, agent.id);
+          const seat = specSeats.get(agent.id);
           const pickedId = await this.safeDecideDraft(
             agent,
             stage,
             pool.choices,
             pool.rerolls,
+            // 갈아 낀 **그 순간** 중계에 반영한다 — 관전석은 새로고침이 돌아가는 것까지 본다.
+            (slot, choice) => {
+              if (seat === undefined || slot < 0 || slot >= seat.cards.length) return;
+              seat.cards[slot] = choice;
+              seat.rerolled[slot] = true;
+              pushDraftSpectate();
+            },
           );
           // 새로고침 여부는 **응답 직후에만** 읽을 수 있다 (좌석이 다음 스테이지에 덮어쓴다).
           const rerolled = agent.rerolledDraftSlots?.() ?? [];
           stillPending.delete(agent.id);
           notifyProgress();
+          // 빈 id는 «고를 후보가 없었다»는 뜻이라 중계에도 적지 않는다.
+          if (seat !== undefined && pickedId !== "") seat.picked = pickedId;
+          pushDraftSpectate();
           return { player: agent.id, pickedId, rerolled };
         }),
       ).then((picks) => ({ picks })),
     );
 
     // 무효 요청 — 픽을 하나도 적용하지 않고 즉시 반환 (일부만 적용하면 리플레이가 비결정적).
-    if ("abort" in raced) return;
+    if ("abort" in raced) {
+      endDraftSpectate();
+      return;
+    }
 
     const answers = new Map(raced.picks.map((p) => [p.player, p] as const));
 
@@ -1577,6 +1651,9 @@ export class HanchanController {
       draft.pick(stage, agent.id, pickedId);
     }
 
+    // 중계 줄은 판이 다시 돌기 **직전에** 걷는다 — 카드가 남은 채 탁자가 움직이면
+    // 관전석에는 두 화면이 겹쳐 보인다.
+    endDraftSpectate();
     this.broadcastViews(game); // 모든 픽 적용 후 한 번만 공개
     this.events.onDraftEnd?.(stage);
   }
@@ -1783,6 +1860,16 @@ export class HanchanController {
   }
 
   /**
+   * **관전자에게만** 보낸다 — 대국자에게는 한 글자도 가지 않는다.
+   *
+   * 증강 선택 중계(`SpectateDraftMessage`)가 쓴다. 남의 후보 3장은 관전 뷰와 같은
+   * 등급의 정보라, 대국자에게 새면 그 판은 완전정보 대국이 된다.
+   */
+  private notifySpectators(msg: ServerMessage): void {
+    for (const s of this.spectators.values()) s.notify?.(msg);
+  }
+
+  /**
    * **그 좌석과 관전자에게만** 보낸다 — 발동 사실이 비밀인 연출용
    * (FX_PRIVATE_ACTION_TYPES). 관전자는 이미 모든 정보를 보는 시점이라 포함한다.
    */
@@ -1840,6 +1927,9 @@ export class HanchanController {
       // 뷰 **다음에** 보낸다 — 결과 패널은 뷰 위에 얹히는 것이라 순서가 뒤집히면
       // 화면이 한 번 비었다가 다시 그려진다.
       if (this.lastRoundOverMsg !== null) sink.notify?.(this.lastRoundOverMsg);
+      // 증강 선택이 열려 있는 중에 합류했으면 그 판을 그대로 세워 준다 —
+      // 이 구간은 판이 통째로 멈춰 있어, 다음 방송이 올 때까지 화면이 빈다.
+      if (this.draftSpectate !== null) sink.notify?.(this.draftSpectate);
     }
   }
 

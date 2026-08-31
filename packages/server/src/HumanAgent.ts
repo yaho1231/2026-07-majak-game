@@ -372,6 +372,12 @@ export class HumanAgent implements PlayerAgent {
   private pendingDraftRerolls: readonly AugmentDef[] = [];
   /** 이번 드래프트에 이미 새로고침을 쓴 슬롯 — 슬롯당 1회뿐이다 */
   private draftRerollUsed = new Set<number>();
+  /**
+   * 슬롯을 갈아 낀 순간 컨트롤러에 알리는 통로 (관전 중계용 · `SpectateDraftMessage`).
+   * 컨트롤러가 `decideDraft`에 넘겨 준다. 관전자가 없어도 그냥 호출한다 — 걸러 내는
+   * 것은 컨트롤러 쪽 일이다.
+   */
+  private draftCardSwap: ((slot: number, choice: AugmentDef) => void) | null = null;
   private pendingDraftStage: DraftStage | null = null;
   private draftTimeout: ReturnType<typeof setTimeout> | null = null;
   /** 드래프트 자동 선택 시각(epoch ms) — 재접속 시 남은 시간을 알려 준다 */
@@ -882,6 +888,7 @@ export class HumanAgent implements PlayerAgent {
       this.pendingDraft = null;
       this.pendingDraftChoices = null;
       this.pendingDraftRerolls = [];
+      this.draftCardSwap = null;
       this.pendingDraftStage = null;
       resolve(firstId);
     }
@@ -905,6 +912,7 @@ export class HumanAgent implements PlayerAgent {
     this.pendingDraftChoices = null;
     this.pendingDraftRerolls = [];
     this.draftRerollUsed = new Set();
+    this.draftCardSwap = null;
     this.pendingDraftStage = null;
     this.pendingContinue = null;
     this.lastView = null;
@@ -1225,6 +1233,7 @@ export class HumanAgent implements PlayerAgent {
     stage: DraftStage,
     choices: AugmentDef[],
     rerolls: readonly AugmentDef[] = [],
+    onCardSwap?: (slot: number, choice: AugmentDef) => void,
   ): Promise<string> {
     if (this.abandoned) return choices[0]!.id;
     // 화면에 서는 배열은 **여기서 복사**한다 — 새로고침이 이 배열을 제자리에서 갈아 끼우는데,
@@ -1232,6 +1241,7 @@ export class HumanAgent implements PlayerAgent {
     this.pendingDraftChoices = [...choices];
     this.pendingDraftRerolls = rerolls;
     this.draftRerollUsed = new Set();
+    this.draftCardSwap = onCardSwap ?? null;
     this.pendingDraftStage = stage;
     this.draftsOffered += 1;
     // 드래프트는 네 사람이 다 고를 때까지 판 전체가 멈춘다 — 끊긴 좌석은 결정과
@@ -1313,6 +1323,8 @@ export class HumanAgent implements PlayerAgent {
     if (swap === undefined) return;
     this.draftRerollUsed.add(slot);
     this.pendingDraftChoices[slot] = swap;
+    // 관전 중계에 그 자리에서 반영한다 — 관전석은 새로고침이 도는 것까지 실시간으로 본다.
+    this.draftCardSwap?.(slot, swap);
     this.send({
       type: "draftRerolled",
       slot,
@@ -1351,6 +1363,7 @@ export class HumanAgent implements PlayerAgent {
       this.pendingDraft = null;
       this.pendingDraftChoices = null;
       this.pendingDraftRerolls = [];
+      this.draftCardSwap = null;
       this.pendingDraftStage = null;
       this.draftTimeout = null;
       // 후보가 비었을 리는 없지만(컨트롤러가 빈 목록으로는 부르지 않는다), 그래도
@@ -1515,6 +1528,7 @@ export class HumanAgent implements PlayerAgent {
         this.pendingDraft = null;
         this.pendingDraftChoices = null;
         this.pendingDraftRerolls = [];
+        this.draftCardSwap = null;
         this.pendingDraftStage = null;
         resolve(valid.id);
       } else {

@@ -438,3 +438,107 @@ describe("재시작 — 세워 둔 탁자는 세워진 채로 되살아난다", 
     expect(revived.notice).toBeNull();
   }, 120_000);
 });
+
+/*
+ * 증강 선택 구간의 관전 중계 (2026-08-31 사용자 요청).
+ *
+ * 이 몇십 초 동안 판은 통째로 멈춰 있는데, 관전석에는 그것이 「아무 일도 없는
+ * 탁자」로만 보였다 — 정작 그때 판의 다음 절반이 정해진다. 네 좌석이 각자 무엇을
+ * 보고 있는지, 무엇을 갈아 끼웠고 무엇을 집었는지를 실시간으로 내보낸다.
+ *
+ * 함께 지켜야 하는 것이 하나 더 있다: 이 정보는 **관전 뷰와 같은 등급**이다.
+ * 대국자에게 한 글자라도 새면 남의 후보를 보고 고르는 판이 된다.
+ */
+describe("증강 선택 중계 — 네 좌석이 지금 무엇을 보고 있는가", () => {
+  it("좌석별 카드 3장 · 새로고침 · 픽이 실시간으로 관전석에 오고, 끝나면 걷힌다", async () => {
+    const h = await newHarness();
+    // autoRespond 를 켜지 않는다 — 사람 좌석의 선택창을 열어 둔 채로 재야 한다.
+    const a = await connectAs(h, "PlayerA");
+    const admin = await connectAs(h, "Boss", true);
+
+    a.clientSend({ type: "createRoom" });
+    await a.waitFor((m) => m.type === "roomCreated");
+    const code = a.last("roomCreated").code as string;
+    a.clientSend({ type: "setGameMode", mode: "tonpuu" });
+    for (let i = 0; i < 3; i++) a.clientSend({ type: "addBot" });
+    a.clientSend({ type: "startGame" });
+    await a.waitFor((m) => m.type === "draftOffer");
+    const stage = a.last("draftOffer").stage as string;
+
+    // ── 합류 즉시 스냅샷 하나로 화면이 선다 (다음 방송을 기다리면 그 사이 내내 빈 탁자다)
+    admin.clientSend({ type: "spectate", code });
+    await admin.waitFor((m) => m.type === "spectateDraft");
+    const first = admin.last("spectateDraft");
+    expect(first.stage).toBe(stage);
+    expect(first.seats, "네 좌석이 다 서야 한다").toHaveLength(4);
+    for (const s of first.seats) {
+      expect(s.choices).toHaveLength(3);
+      expect(s.rerolled).toEqual([false, false, false]);
+    }
+    // 사람 좌석 — 선택창을 열어 둔 그 자리다 (봇은 스스로 곧 고른다).
+    const room = (h.rm as any).rooms.get(code);
+    const meId = room.agents.find((ag: any) => !ag.isBot).id as string;
+    const mySeat = first.seats.find((s: any) => s.player === meId);
+    expect(mySeat, "사람 좌석이 중계에 없다").toBeDefined();
+    expect(mySeat.picked, "아직 고르지 않았는데 픽이 실렸다").toBeUndefined();
+    // 관전석이 보는 카드는 그 사람 화면에 실제로 서 있는 카드다.
+    expect(mySeat.choices.map((c: any) => c.id)).toEqual(
+      (a.last("draftOffer").choices as any[]).map((c) => c.id),
+    );
+    // 봇 셋은 곧 고르고, 그때마다 스냅샷이 다시 온다.
+    await admin.waitFor(
+      (m) =>
+        m.type === "spectateDraft" &&
+        m.seats.filter((s: any) => s.picked !== undefined).length === 3,
+    );
+
+    // ── 새로고침: 갈아 낀 그 순간 중계에 반영된다
+    admin.clear();
+    a.clientSend({ type: "draftReroll", stage, slot: 0 });
+    await a.waitFor((m) => m.type === "draftRerolled");
+    const swapped = a.last("draftRerolled").choice.id as string;
+    await admin.waitFor(
+      (m) => m.type === "spectateDraft" && m.seats.some((s: any) => s.rerolled[0] === true),
+    );
+    const afterReroll = admin
+      .last("spectateDraft")
+      .seats.find((s: any) => s.player === meId);
+    expect(afterReroll.choices[0].id, "갈아 낀 카드가 중계에 안 실렸다").toBe(swapped);
+    expect(afterReroll.rerolled).toEqual([true, false, false]);
+
+    // ── 픽: 무엇을 집었는지가 실린 뒤, 드래프트가 끝나면 줄이 걷힌다
+    admin.clear();
+    const pick = afterReroll.choices[1].id as string;
+    a.clientSend({ type: "draftPick", stage, augmentId: pick });
+    await admin.waitFor((m) => m.type === "spectateDraftEnd");
+    const lastSnap = admin.all("spectateDraft").at(-1);
+    expect(
+      lastSnap.seats.find((s: any) => s.player === meId).picked,
+      "마지막 스냅샷에 픽이 안 실렸다",
+    ).toBe(pick);
+
+    // ── 대국자에게는 한 글자도 가지 않는다 (관전 뷰와 같은 등급의 정보다)
+    expect(
+      a.all("spectateDraft"),
+      "남의 후보가 대국자에게 샜다 — 그 판은 완전정보 대국이 된다",
+    ).toHaveLength(0);
+    expect(a.all("spectateDraftEnd")).toHaveLength(0);
+  }, 90_000);
+
+  it("관전을 접으면 중계도 끊긴다 — 다음 스테이지 카드가 따라오지 않는다", async () => {
+    const h = await newHarness();
+    const a = await connectAs(h, "PlayerA");
+    a.autoRespond = true; // 이 판은 알아서 굴러가게 둔다
+    const admin = await connectAs(h, "Boss", true);
+    const code = await startGame(h, a);
+
+    admin.clientSend({ type: "spectate", code });
+    await admin.waitFor((m) => m.type === "spectateStarted");
+    admin.clientSend({ type: "spectateStop" });
+    await sleep(50);
+    admin.clear();
+    // 동3국 드래프트가 열려도 접은 관전석에는 오지 않는다.
+    await sleep(1500);
+    expect(admin.all("spectateDraft")).toHaveLength(0);
+  }, 90_000);
+});
