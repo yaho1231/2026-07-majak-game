@@ -2144,6 +2144,55 @@ export interface SpectateInsightMessage {
 }
 
 /**
+ * **관전 중계 전용** — 지금 네 좌석이 각자 어떤 증강 카드를 보고 있는가.
+ *
+ * 증강 선택이 열린 동안 판은 통째로 멈춰 있는데, 관전석에는 그 몇십 초가
+ * 「아무 일도 안 일어나는 탁자」로만 보였다 — 정작 그 시간에 이 판의 다음
+ * 절반이 정해지고 있는데도(2026-08-31 사용자 요청). 좌석마다 화면에 서 있는
+ * 3장·새로고침으로 갈아 낀 자리·무엇을 골랐는지를 실시간으로 중계한다.
+ *
+ * ⚠ **관전자에게만** 간다(`HanchanController.notifySpectators`). 대국자에게
+ * 한 글자라도 새면 남의 후보를 보고 고르는 판이 된다 — 관전 뷰(손패 전공개)와
+ * 같은 등급의 정보다.
+ *
+ * 픽·새로고침이 하나 들어올 때마다 **전체 스냅샷**을 다시 보낸다. 좌석 4개짜리
+ * 메시지라 부분 갱신을 만들 이유가 없고, 늦게 합류한 관전석도 같은 메시지 하나로
+ * 화면을 세울 수 있다(`addSpectator`).
+ */
+export interface SpectateDraftMessage {
+  type: "spectateDraft";
+  stage: DraftStage;
+  /**
+   * 이번 스테이지에 고를 좌석 (고정 좌석 순서). 이미 마친 좌석은 애초에 빠져 있다
+   * (재개 판). 비는 일은 없다 — 고를 사람이 없으면 이 메시지 자체를 보내지 않는다.
+   */
+  seats: Array<{
+    player: PlayerId;
+    /** 지금 그 사람 화면에 **실제로 서 있는** 3장 (새로고침이 반영된 뒤의 카드) */
+    choices: Array<{
+      id: string;
+      tier: AugmentTier;
+      name: string;
+      description: string;
+    }>;
+    /** 슬롯별 «새로고침으로 갈아 낀 자리인가» (choices와 같은 길이·순서) */
+    rerolled: boolean[];
+    /** 고른 증강 id — 아직 안 골랐으면 없다 */
+    picked?: string;
+  }>;
+}
+
+/**
+ * 증강 선택이 끝났다 — 관전석은 중계 줄을 걷는다.
+ *
+ * 마지막 픽이 들어온 순간에 보낸다. 이게 없으면 카드 넉 줄이 다음 국 내내
+ * 탁자 위에 남는다.
+ */
+export interface SpectateDraftEndMessage {
+  type: "spectateDraftEnd";
+}
+
+/**
  * 판이 섰다 / 다시 돈다 (관리자 중계 일시정지). 대국자·관전자 **모두**에게 간다.
  *
  * 받은 쪽은 화면의 시계를 그 자리에서 멈추고(재개하면 멈춘 지점부터 이어 센다),
@@ -2249,6 +2298,8 @@ export type ServerMessage =
   | RoomNoticeMessage
   | PromptExtendedMessage
   | SpectateInsightMessage
+  | SpectateDraftMessage
+  | SpectateDraftEndMessage
   | SpectatedMessage
   | SandboxMessage
   | SandboxConfigMessage

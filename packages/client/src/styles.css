@@ -18779,3 +18779,211 @@ body:has(.prod-skip) .toast-stack {
      packages/client/test/a11yBatchF.test.ts). 배율이 1이 아닐 때 창 폭과 어긋난다. */
   .draft-uncollected { margin: 4px 0 1px; font-size: 10.5px; }
 }
+
+/* ─────────── 관전 중계: 증강 선택판 (SpectateDraftPanel) ───────────
+ *
+ * 증강 선택 동안 판은 통째로 멈춰 있다 — 그래서 이 창은 탁자 «위에» 얹는다
+ * (2026-08-31 사용자 요청: 옆 도구창 말고 게임 화면에). 가리는 대가가 없는
+ * 유일한 구간이다.
+ *
+ * ⚠ 스크림에 `pointer-events: none`을 준다. 이 창은 사람이 닫는 것이 아니라
+ * 서버가 걷는 것이라(`spectateDraftEnd`), 그 아래 되감기·정지·오버레이 손잡이가
+ * 이 몇십 초 동안 통째로 죽으면 안 된다. 판 자체(`.spec-draft-panel`)만 되살린다.
+ */
+.spec-draft {
+  /* `fixed`가 아니라 `absolute`다 — body가 `container: ui / size` + transform으로
+     가상 뷰포트를 만들어(uiScale.ts) fixed의 기준이 실제 창이 아니게 된다. 이 파일의
+     다른 전체화면 층(`.overlay`·`.screen-overlay`)과 같은 규약이다. */
+  position: absolute;
+  inset: 0;
+  z-index: 46; /* 탁자 위 · 결과/드래프트 오버레이(50) 아래 */
+  display: grid;
+  align-content: safe center;
+  justify-items: center;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+  background: rgba(11, 19, 16, 0.62);
+  animation: overlay-in 0.25s ease-out;
+}
+
+.spec-draft-panel {
+  pointer-events: auto;
+  width: min(1120px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(184, 151, 92, 0.42);
+  background: linear-gradient(180deg, rgba(20, 30, 25, 0.95), rgba(12, 20, 17, 0.95));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.spec-draft-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(184, 151, 92, 0.22);
+}
+
+.spec-draft-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #0d1512;
+  background: #f0c86a;
+}
+
+.spec-draft-stage {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0c86a;
+}
+
+.spec-draft-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #a8bcaf;
+}
+
+/* 좌석 한 줄 — 이름표 + 카드 3장 */
+.spec-draft-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* 다 고른 줄은 한 톤 죽인다 — 아직 고르는 중인 줄이 눈에 먼저 들어와야 한다 */
+.spec-draft-row-done { background: rgba(97, 218, 164, 0.07); }
+
+.spec-draft-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.spec-draft-wind {
+  font-size: 15px;
+  font-weight: 800;
+  color: #f0c86a;
+}
+
+.spec-draft-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f7f3e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spec-draft-state {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a8bcaf;
+}
+
+.spec-draft-row-done .spec-draft-state { color: #61daa4; }
+
+.spec-draft-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.spec-draft-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--fx-color, #b8975c) 38%, transparent);
+  background: color-mix(in srgb, var(--fx-color, #b8975c) 9%, rgba(0, 0, 0, 0.34));
+}
+
+/* 고른 카드 — 계열 색으로 테를 세운다 */
+.spec-draft-card-picked {
+  border-color: #61daa4;
+  background: rgba(97, 218, 164, 0.14);
+  box-shadow: 0 0 0 1px rgba(97, 218, 164, 0.35), 0 0 22px rgba(97, 218, 164, 0.22);
+}
+
+/* 안 고른 두 장 — 죽여 둔다 */
+.spec-draft-card-passed { opacity: 0.34; }
+
+.spec-draft-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.spec-draft-cat {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--fx-color, #b8975c) 78%, #f7f3e8);
+}
+
+/* 새로고침으로 갈아 낀 자리 — 관전석은 그것이 도는 것까지 본다 */
+.spec-draft-swapped {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #cfae76;
+  background: rgba(184, 151, 92, 0.16);
+  border: 1px solid rgba(184, 151, 92, 0.5);
+}
+
+.spec-draft-card-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #f7f3e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spec-draft-card-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #b9c8bf;
+  /* 두 줄까지만 — 넉 줄 × 석 장이 화면을 넘기면 중계로서 쓸모가 없다 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.spec-draft-got {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #61daa4;
+}
+
+/* 폰·좁은 폭 — 이름표를 카드 위로 올린다(세로 쌓기).
+   ⚠ 크기로 배치를 가르는 것은 **@container ui** 여야 한다(@media 금지 —
+   packages/client/test/a11yBatchF.test.ts). */
+@container ui (max-width: 720px) {
+  .spec-draft-panel { padding: 8px 9px; gap: 6px; }
+  .spec-draft-row { grid-template-columns: minmax(0, 1fr); gap: 5px; }
+  .spec-draft-who { flex-direction: row; align-items: baseline; gap: 6px; }
+  .spec-draft-cards { gap: 5px; }
+  .spec-draft-card { padding: 5px 7px; }
+  .spec-draft-card-name { font-size: 11.5px; }
+  .spec-draft-card-desc { font-size: 10px; -webkit-line-clamp: 2; }
+}

@@ -70,11 +70,16 @@ export interface PlayerAgent {
    * @param rerolls 슬롯별 **새로고침 교체분** — `rerolls[i]`가 `choices[i]`를 대신한다.
    *   컨트롤러가 제시와 같은 추첨에서 미리 뽑아 넘긴다(좌석 간 겹침 금지가 여기에도 걸린다).
    *   봇처럼 새로고침을 쓰지 않는 구현체는 그냥 무시하면 된다.
+   * @param onCardSwap 슬롯을 갈아 낀 **그 순간** 컨트롤러에 알린다 — 관전 중계가
+   *   그 좌석의 카드를 실시간으로 따라 그린다(`SpectateDraftMessage`). 픽이 끝난 뒤에
+   *   읽는 `rerolledDraftSlots`로는 «지금 무엇을 보고 있나»를 중계할 수 없다.
+   *   새로고침이 없는 구현체(봇)는 부르지 않으면 된다.
    */
   decideDraft(
     stage: DraftStage,
     choices: AugmentDef[],
     rerolls?: readonly AugmentDef[],
+    onCardSwap?: (slot: number, choice: AugmentDef) => void,
   ): Promise<string>;
   /**
    * 방금 끝난 드래프트에서 **새로고침으로 갈아 낀 슬롯 번호**.
