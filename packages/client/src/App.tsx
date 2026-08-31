@@ -14365,7 +14365,7 @@ function QuickToggles(props: {
                 props.onToast?.(
                   it.key === "autoDiscard"
                     ? "자동버림 켜짐 — 쯔모한 패가 그대로 나갑니다"
-                    : "자동화료 켜짐 — 화료 가능해지면 바로 냅니다",
+                    : "자동화료 켜짐 — 화료가 가능하면 즉시 화료합니다",
                 );
               }
             }}
