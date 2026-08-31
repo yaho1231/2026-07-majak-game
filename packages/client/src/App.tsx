@@ -1172,8 +1172,8 @@ function ActiveBadge(): JSX.Element {
  */
 function UncollectedBadge(): JSX.Element {
   return (
-    <span className="aug-new-badge" title="아직 한 번도 골라 본 적 없는 증강입니다 (도감 미수집)">
-      ✧ 미수집
+    <span className="draft-uncollected" title="아직 한 번도 골라 본 적 없는 증강입니다 (도감 미수집)">
+      ✧ 미수집 — 처음 보는 증강
     </span>
   );
 }
@@ -25362,9 +25362,11 @@ function DraftOverlay({
                       </span>
                       <QuestBadge id={c.id} />
                       {isActiveAugment(c.id) ? <ActiveBadge /> : null}
-                      {collected !== null && !collected.has(c.id) ? <UncollectedBadge /> : null}
                     </span>
                   </span>
+                  {/* 미수집 줄은 이름 **바로 위에 따로** 선다. 계열·액티브 뱃지 옆에
+                      끼워 두면 알약 셋 중 하나로 묻혀 눈에 안 띈다(2026-08-31 사용자 지적). */}
+                  {collected !== null && !collected.has(c.id) ? <UncollectedBadge /> : null}
                   <strong className="draft-name">{c.name}</strong>
                   <span className="draft-desc">
                     <AugDesc
