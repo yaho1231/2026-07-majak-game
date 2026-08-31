@@ -306,16 +306,18 @@ describe("yakuman_shield — 역만 방어술", () => {
     const baseP0 = baseline.engine.state.players[0]?.score ?? 0;
     expect(baseP0).toBeLessThan(25000);
 
-    // 증강: 잃을 점수 전액(=역만 점수)이 환급되고, 화료자 이득도 같은 만큼 감소
+    // 증강: 잃을 점수 전액(=역만 점수)이 환급된다.
+    // 2026-08-31: 그 재원은 **뱅크**다 — 화료자의 수령은 깎지 않는다(유국역만 경로와 통일).
     const augP0 = withAug.engine.state.players[0]?.score ?? 0;
     const augP1 = withAug.engine.state.players[1]?.score ?? 0;
+    const baseP1 = baseline.engine.state.players[1]?.score ?? 0;
     expect(augP0).toBe(25000);
-    expect(augP1).toBe(25000);
-    // 제로섬 유지: 총점 보존
+    expect(augP1).toBe(baseP1);
+    // 제로섬이 아니다 — 총점은 뱅크 발행액만큼 늘어난다.
     const total =
       withAug.engine.state.players.reduce((s, p) => s + p.score, 0) +
       withAug.engine.state.round.riichiPot;
-    expect(total).toBe(100000);
+    expect(total).toBe(100000 + (25000 - baseP0));
   });
 
   it("역만이 아닌 방총에는 발동하지 않는다", () => {

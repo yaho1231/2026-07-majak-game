@@ -185,8 +185,8 @@ describe("역만 방어술 — 더블론의 두 번째 역만도 막는다", () 
 
     // 예전에는 첫 건(32000)만 상한이라 -32000이 남았다
     expect(out.deltas["p0"]).toBe(0);
-    // 환급분은 두 화료자에게서 나뉘어 빠진다 (뱅크 발행은 부족분만)
-    expect((out.deltas["p1"] ?? 0) + (out.deltas["p2"] ?? 0)).toBe(0);
+    // 2026-08-31: 환급분은 전액 뱅크가 낸다 — 두 화료자의 수령은 그대로다.
+    expect((out.deltas["p1"] ?? 0) + (out.deltas["p2"] ?? 0)).toBe(64000);
   });
 
   it("차감 순서가 설치 순서가 아니라 상태로 정해진다 (리플레이 결정성)", () => {
@@ -568,8 +568,8 @@ describe("역만 방어술 — 이중 방어(역만 전액 · 배만 절반)", (
       winInfos: [limitWin("p1", 16000, "baiman")],
     } as unknown as RoundSettledPayload);
     expect(out.deltas["p0"]).toBe(-8000);
-    // 환급분은 화료자의 이득에서 빠진다 (부족분만 뱅크)
-    expect(out.deltas["p1"]).toBe(8000);
+    // 2026-08-31: 환급분은 전액 뱅크가 낸다 — 화료자 수령은 그대로다.
+    expect(out.deltas["p1"]).toBe(16000);
   });
 
   it("삼배만 직격도 절반이다", () => {

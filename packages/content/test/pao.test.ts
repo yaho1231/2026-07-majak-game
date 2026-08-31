@@ -302,9 +302,8 @@ describe("파오 × 증강 정산 파이프라인", () => {
     // 파오로 p3에게 32000이 몰렸지만 방어술이 그 손실을 되돌린다
     expect(infoOf(p, "p1").pao?.responsible).toBe("p3");
     expect(p.deltas["p3"]).toBe(0);
-    // 파오로 p3 혼자가 부담자였으므로 환급 재원도 화료자 이득뿐이다 —
-    // 방어술 설계대로 화료자 이득에서 (이득 한도까지) 되돌린다.
-    expect(p.deltas["p1"]).toBe(0);
+    // 2026-08-31: 환급 재원은 뱅크다 — 파오 화료자의 수령은 그대로 32,000이다.
+    expect(p.deltas["p1"]).toBe(32000);
     expect(p.deltas["p0"]).toBe(0);
     expect(p.deltas["p2"]).toBe(0);
   });
