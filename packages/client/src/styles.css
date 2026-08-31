@@ -18756,18 +18756,26 @@ body:has(.prod-skip) .toast-stack {
   line-height: 1.5;
 }
 
-/* 미수집 증강 뱃지 (드래프트 카드) — 액티브·퀘스트 뱃지와 같은 알약 꼴이되,
-   «고르면 좋다»는 권유로 읽히지 않게 색은 무채색에 가깝게 둔다. 이 표시는
-   도감의 «수집»과 같은 기준이다(App.tsx `UncollectedBadge`). */
-.aug-new-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
+/* 미수집 줄 (드래프트 카드) — 증강 이름 바로 위에 **제 줄 하나로** 선다.
+   계열·액티브 뱃지 옆의 알약으로 두었더니 셋 중 하나로 묻혀 안 보였다
+   (2026-08-31 사용자 지적). 그래서 폭을 채우고 왼쪽에 색 띠를 세운다.
+   색은 여전히 «권유»가 아니다 — 무채색에 가까운 청회색이다. */
+.draft-uncollected {
+  display: block;
+  margin: 6px 0 2px;
+  padding: 3px 8px;
+  border-left: 3px solid rgba(150, 190, 230, 0.75);
+  border-radius: 3px;
+  background: rgba(150, 190, 230, 0.13);
+  font-size: 11.5px;
   font-weight: 800;
-  color: #b9c2cc;
-  background: rgba(160, 176, 194, 0.12);
-  border: 1px dashed rgba(160, 176, 194, 0.5);
+  letter-spacing: 0.2px;
+  color: #a9c7e4;
+}
+
+@container ui (max-width: 720px) {
+  /* 폰 세로에서는 카드 높이가 곧 화면이다 — 줄은 남기되 여백·글자를 줄인다.
+     ⚠ 크기로 배치를 가르는 것은 **@container ui** 여야 한다(@media 금지 —
+     packages/client/test/a11yBatchF.test.ts). 배율이 1이 아닐 때 창 폭과 어긋난다. */
+  .draft-uncollected { margin: 4px 0 1px; font-size: 10.5px; }
 }
