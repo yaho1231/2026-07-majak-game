@@ -142,10 +142,12 @@ describe("확정 1 — yakuman_shield × scapegoat: 덤터기가 몰아준 역�
     const game = run({ p0: ["scapegoat"], p1: ["yakuman_shield"] }, true);
     const p = lastSettled(game);
     expect(p.deltas["p1"]).toBe(0);
-    // 나머지 둘은 덤터기 약속대로 한 푼도 내지 않고, 총합은 그대로 0이다.
+    // 나머지 둘은 덤터기 약속대로 한 푼도 내지 않는다.
     expect(p.deltas["p2"]).toBe(0);
     expect(p.deltas["p3"]).toBe(0);
-    expect(Object.values(p.deltas).reduce((a, b) => a + b, 0)).toBe(0);
+    // 2026-08-31: 면제분은 뱅크가 낸다 — 화료자 수령은 깎지 않으므로 총합은 환급액만큼 는다.
+    expect(p.deltas["p0"]).toBe(96000);
+    expect(Object.values(p.deltas).reduce((a, b) => a + b, 0)).toBe(96000);
 
     // "막았다"고 찍히는 카운터·공개 채널이 실제 결과와 일치해야 한다 —
     // 예전에는 카운터가 +1 인데 64,000을 물어, 화면에서 원인을 읽을 수 없었다.

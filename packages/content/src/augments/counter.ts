@@ -22,6 +22,7 @@
 
 import {
   augmentDataSet,
+  belowMinHan,
   buildWinContext,
   calculateScore,
   defineAugment,
@@ -62,6 +63,13 @@ import {
 /**
  * 이 플레이어의 손이 지금 올랐다면 받았을 최고 점수.
  * 대기패마다 가상 론을 평가해 가장 비싼 값을 고른다 (역 없는 대기는 건너뛴다).
+ *
+ * ⚠ **격(`win.minHan` — rank_gate)에 걸리는 대기는 0으로 센다** (2026-08-31 QA synergy4 후속).
+ * 이 카드가 강탈하는 것은 "그 상대가 올랐다면 받았을 점수"인데, 격에 걸린 손은 코어의
+ * 표준 론 검증(`belowMinHan` → WIN_BLOCKED_MIN_HAN)이 막아 **실제로는 화료가 안 된다**.
+ * 게이트 없이 세면 오르지도 못할 손이 밑값이 되어 강탈액이 통째로 부푼다
+ * (실측: 격에 걸린 오야 탕야오 텐파이에서 뱅크 발행 11,600 → 0).
+ * 판정은 사본을 만들지 않고 코어의 `belowMinHan`을 그대로 쓴다 — 무덤 도굴(B-9)과 같은 규약.
  */
 function bestWinValue(
   state: GameState,
@@ -98,6 +106,7 @@ function bestWinValue(
       yaku,
     );
     if (ev === null || !ev.ok) continue;
+    if (belowMinHan(ev, state, rules, player)) continue;
     const total = calculateScore({
       han: ev.han,
       fu: ev.fu,

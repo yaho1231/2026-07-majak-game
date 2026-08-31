@@ -436,7 +436,8 @@ describe("yakuman_shield — 환급 상한은 '내가 낸 몫'", () => {
       ]),
     );
     expect(out.deltas["p0"]).toBe(-100); // 본장 몫만 남는다
-    expect(out.deltas["p1"]).toBe(32300 - 16000);
+    // 2026-08-31: 면제분은 뱅크가 낸다 — 화료자 수령은 깎이지 않는다.
+    expect(out.deltas["p1"]).toBe(32300);
   });
 
   it("역만 직격(론)은 종전대로 본장만 남긴다", () => {

@@ -1,0 +1,15 @@
+{"card":"none","seed":25,"score":37700,"rank":1,"rounds":6,"wins":2,"winPts":12900,"dealIn":0,"dealInPts":0,"riichi":2,"crash":null,"fires":[]}
+{"card":"xray_hand","seed":25,"score":17900,"rank":3,"rounds":11,"wins":1,"winPts":8000,"dealIn":1,"dealInPts":7700,"riichi":0,"crash":null,"fires":[["xray_hand",5]]}
+{"card":"tenpai_scan","seed":25,"score":37700,"rank":1,"rounds":6,"wins":2,"winPts":12900,"dealIn":0,"dealInPts":0,"riichi":2,"crash":null,"fires":[["tenpai_scan",13]]}
+{"card":"danger_sense","seed":25,"score":37700,"rank":1,"rounds":6,"wins":2,"winPts":12900,"dealIn":0,"dealInPts":0,"riichi":2,"crash":null,"fires":[["danger_sense",13]]}
+{"card":"hidden_river","seed":25,"score":28200,"rank":3,"rounds":13,"wins":2,"winPts":6200,"dealIn":0,"dealInPts":0,"riichi":2,"crash":null,"fires":[["hidden_river",5]]}
+{"card":"brief_fog","seed":25,"score":27900,"rank":2,"rounds":11,"wins":2,"winPts":9200,"dealIn":0,"dealInPts":0,"riichi":3,"crash":null,"fires":[["brief_fog",78]]}
+{"card":"dora_conceal","seed":25,"score":23200,"rank":3,"rounds":11,"wins":1,"winPts":5200,"dealIn":3,"dealInPts":5500,"riichi":3,"crash":null,"fires":[]}
+{"card":"triple_peek","seed":25,"score":37700,"rank":1,"rounds":6,"wins":2,"winPts":12900,"dealIn":0,"dealInPts":0,"riichi":2,"crash":null,"fires":[["triple_peek",36]]}
+{"card":"peek_riichi_waits","seed":25,"score":37700,"rank":1,"rounds":6,"wins":2,"winPts":12900,"dealIn":0,"dealInPts":0,"riichi":2,"crash":null,"fires":[["peek_riichi_waits",12]]}
+{"card":"foresight","seed":25,"score":22200,"rank":3,"rounds":10,"wins":0,"winPts":0,"dealIn":1,"dealInPts":1300,"riichi":3,"crash":null,"fires":[["foresight",484]]}
+{"card":"bottom_deal","seed":25,"score":26600,"rank":2,"rounds":11,"wins":2,"winPts":9000,"dealIn":1,"dealInPts":2600,"riichi":2,"crash":null,"fires":[["bottom_deal",163]]}
+{"card":"rinshan_preview","seed":25,"score":46400,"rank":1,"rounds":6,"wins":3,"winPts":18100,"dealIn":0,"dealInPts":0,"riichi":3,"crash":null,"fires":[["rinshan_preview",16]]}
+{"card":"ura_peek","seed":25,"score":12100,"rank":4,"rounds":10,"wins":1,"winPts":8000,"dealIn":3,"dealInPts":19600,"riichi":3,"crash":null,"fires":[["ura_peek",13]]}
+{"card":"dead_wall_master","seed":25,"score":17200,"rank":4,"rounds":9,"wins":1,"winPts":1100,"dealIn":1,"dealInPts":3900,"riichi":1,"crash":null,"fires":[["dead_wall_master",28]]}
+{"card":"mixed_triplet","seed":25,"score":25900,"rank":2,"rounds":13,"wins":2,"winPts":6500,"dealIn":1,"dealInPts":2600,"riichi":4,"crash":null,"fires":[["mixed_triplet",13]]}

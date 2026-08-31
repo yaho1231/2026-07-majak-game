@@ -1,0 +1,11 @@
+{"card":"none","seed":9,"score":28700,"rank":2,"rounds":11,"wins":2,"winPts":10000,"dealIn":0,"dealInPts":0,"riichi":4,"crash":null,"fires":[]}
+{"card":"xray_hand","seed":9,"score":10700,"rank":4,"rounds":14,"wins":2,"winPts":10000,"dealIn":3,"dealInPts":11700,"riichi":4,"crash":null,"fires":[["xray_hand",5]]}
+{"card":"tenpai_scan","seed":9,"score":28700,"rank":2,"rounds":11,"wins":2,"winPts":10000,"dealIn":0,"dealInPts":0,"riichi":4,"crash":null,"fires":[["tenpai_scan",25]]}
+{"card":"danger_sense","seed":9,"score":28700,"rank":2,"rounds":11,"wins":2,"winPts":10000,"dealIn":0,"dealInPts":0,"riichi":4,"crash":null,"fires":[["danger_sense",28]]}
+{"card":"hidden_river","seed":9,"score":-400,"rank":4,"rounds":10,"wins":0,"winPts":0,"dealIn":3,"dealInPts":19700,"riichi":7,"crash":null,"fires":[["hidden_river",5]]}
+{"card":"brief_fog","seed":9,"score":37800,"rank":1,"rounds":14,"wins":3,"winPts":14900,"dealIn":2,"dealInPts":5200,"riichi":6,"crash":null,"fires":[["brief_fog",111]]}
+{"card":"dora_conceal","seed":9,"score":38600,"rank":1,"rounds":13,"wins":4,"winPts":25100,"dealIn":2,"dealInPts":11900,"riichi":5,"crash":null,"fires":[]}
+{"card":"triple_peek","seed":9,"score":28700,"rank":2,"rounds":11,"wins":2,"winPts":10000,"dealIn":0,"dealInPts":0,"riichi":4,"crash":null,"fires":[["triple_peek",71]]}
+{"card":"peek_riichi_waits","seed":9,"score":28700,"rank":2,"rounds":11,"wins":2,"winPts":10000,"dealIn":0,"dealInPts":0,"riichi":4,"crash":null,"fires":[["peek_riichi_waits",28]]}
+{"card":"foresight","seed":9,"score":34400,"rank":2,"rounds":9,"wins":2,"winPts":10000,"dealIn":0,"dealInPts":0,"riichi":4,"crash":null,"fires":[["foresight",443]]}
+{"card":"bottom_deal","seed":9,"score":24900,"rank":2,"rounds":9,"wins":1,"winPts":7900,"dealIn":1,"dealInPts":3900,"riichi":4,"crash":null,"fires":[["bottom_deal",91]]}
