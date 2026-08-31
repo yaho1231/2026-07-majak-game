@@ -95,6 +95,17 @@ export interface BotViewOptions {
   augmentView?: Record<string, unknown>;
   /** 증강이 넓힌 화료형 옵션 (`view.scoringOptions`) */
   scoringOptions?: PlayerView["scoringOptions"];
+  /**
+   * **왕패가 나에게 열려 있을 때의 내용** (왕패의 주인·영상 정찰·이면투시 발동 중).
+   * 스펙 순서가 곧 왕패 자리다 — 0번이 다음 영상패, 뒤 10장이 표시패 블록이다.
+   * 생략하면 왕패 Zone 자체가 없다(= 안 보인다).
+   */
+  deadWall?: string;
+  /**
+   * **이 사람들의 버림패가 나에게 다 안 보인다** (안개 덮인 바닥·박무).
+   * 해당 좌석의 `discards` Zone에 `hiddenCount`를 세운다.
+   */
+  hiddenDiscards?: Partial<Record<string, number>>;
 }
 
 export interface BotScene {
@@ -158,11 +169,19 @@ export function botScene(opts: BotViewOptions): BotScene {
     const discardIds = h(opts.discards?.[p] ?? "").map((k) => add(k));
     discardIdsByPlayer[p] = discardIds;
     zoneOf(`discards:${p}`, "discards", discardIds, p);
+    const fog = opts.hiddenDiscards?.[p] ?? 0;
+    const dz = zones[`discards:${p}`];
+    if (fog > 0 && dz !== undefined) dz.hiddenCount = fog;
   }
 
   const doraIndicators = opts.doraIndicator === undefined
     ? []
     : h(opts.doraIndicator).map((k) => add(k));
+
+  // 왕패 — 열어 준 증강이 있을 때만 내용이 보인다 (없으면 Zone 자체를 두지 않는다)
+  if (opts.deadWall !== undefined) {
+    zoneOf("deadWall", "deadWall", h(opts.deadWall).map((k) => add(k)));
+  }
 
   // 패산은 내용이 보이지 않는다 (장수만)
   zones["wall"] = { id: "wall", kind: "wall", tileIds: [], hiddenCount: opts.wallLeft ?? 60 };

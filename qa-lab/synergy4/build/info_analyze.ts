@@ -13,7 +13,7 @@ interface Row {
   fires?: [string, number][];
 }
 
-const dir = "qa-lab/synergy4/build/info_out";
+const dir = process.env["INFO_OUT"] ?? "qa-lab/synergy4/build/info_out";
 const rows: Row[] = [];
 for (const f of readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
   for (const line of readFileSync(`${dir}/${f}`, "utf8").split("\n")) {

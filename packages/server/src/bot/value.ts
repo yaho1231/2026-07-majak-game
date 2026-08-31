@@ -47,6 +47,9 @@ export interface HandValue {
  */
 const RIICHI_HAN = 2.2;
 
+/** 위 2.2판에 섞여 있는 **뒷도라의 기대 판수** — 실제로 본 값으로 갈아 끼울 때 뺀다 */
+const EXPECTED_URA_HAN = 0.55;
+
 /** 역을 못 찾은 멘젠 손에 얹는 기본 판수 (핑후·탕야오·이페코 중 하나는 대개 붙는다) */
 const MENZEN_BASE_HAN = 1;
 
@@ -177,6 +180,15 @@ export interface HandValueInput {
    * 부수를 올리면 패스가 이긴다. 그래서 기본을 종전으로 두고 2:2로 재는 자리를 만든다.
    */
   menzenFu?: boolean;
+  /**
+   * **이면투시로 실제로 세어 본 뒷도라 장수** (`bot/intel.ts`).
+   *
+   * `RIICHI_HAN` 2.2판 안에는 뒷도라의 **기대값** 0.55판이 이미 섞여 있다. 표시패를
+   * 직접 본 국에는 그 기대값을 빼고 **본 값**을 넣는다 — 그것이 이 카드가 파는
+   * 것이고("리치를 걸지 다마로 갈지"), 봇은 여태 그 숫자를 한 번도 안 봤다.
+   * 생략하면 종전대로 기대값만 쓴다.
+   */
+  uraDora?: number | undefined;
 }
 
 /**
@@ -204,7 +216,11 @@ export function estimateHandValue(input: HandValueInput): HandValue {
    * 열린 손에서도 붙지만(리치 선언만으로 정해지는 것들이다) 기대값이라 여기 안 센다.
    */
   const riichiHan = menzen ? RIICHI_HAN : (input.openRiichiHan ?? 0);
-  const withRiichi = base + riichiHan;
+  // 뒷도라를 실제로 봤으면 기대값을 그 값으로 갈아 끼운다 (열린 손에는 리치 판수가
+  // 확정값이라 기대 뒷도라가 안 섞여 있으므로 멘젠일 때만 바꾼다)
+  const uraAdjust =
+    menzen && input.uraDora !== undefined ? input.uraDora - EXPECTED_URA_HAN : 0;
+  const withRiichi = base + riichiHan + uraAdjust;
   const han = input.riichiDeclared ? withRiichi : base;
 
   /**
@@ -314,6 +330,43 @@ export interface WinChanceInput {
    * 닫힌 손에서는 주지 않는다(그 손은 실제로 쯔모만 기다린다).
    */
   openUkeire?: number | undefined;
+  /**
+   * **확정된 내 다음 쯔모들**이 이 손에 무엇을 하는가 (`bot/intel.ts` — 삼세 예지·예지).
+   *
+   * 정보 증강이 없으면 `undefined`라 아래 식은 종전과 한 글자도 다르지 않다.
+   */
+  known?: KnownDrawEffect | undefined;
+}
+
+/**
+ * 확정 쯔모가 지금 손에 무엇을 하는가 — 확률식이 쓸 수 있는 모양으로 줄인 것.
+ *
+ * 채널이 주는 것은 «종류 목록»이지만 확률에 필요한 것은 셋뿐이다: 오름패가 **몇
+ * 번째**로 오는가, 전진하는 장이 몇 장인가, 확실히 헛도는 장이 몇 장인가.
+ */
+export interface KnownDrawEffect {
+  /** 확정 쯔모 중 오름패가 오는 순번 (1 = 바로 다음 쯔모). 없으면 null */
+  hitAt: number | null;
+  /** 확정 쯔모 중 샹텐을 줄이는 장수 */
+  advances: number;
+  /** 확정 쯔모 중 이 손에 아무 쓸모 없는 장수 */
+  misses: number;
+}
+
+/**
+ * **확정 헛쯔모 한 장이 잃는 전진**. 한 순 전부가 아니라 반 순으로 본다 —
+ * 그 순에도 원래 우케이레를 만날 기대는 1보다 훨씬 작았기 때문이다(기대 손실은
+ * 한 순어치가 아니라 «한 순 × 명중률»에 가깝다). 반올림한 보수적인 값이다.
+ */
+const KNOWN_MISS_COST = 0.5;
+
+/**
+ * **확정 오름패가 눈앞에 있을 때** 남는 위험은 하나뿐이다 — 그 순이 오기 전에
+ * 남이 끝내는 것. 국 전체에 걸리는 `RACE_FACTOR`를 그 몇 순 몫으로 나눠 쓴다.
+ */
+function certainDrawChance(hitAt: number, draws: number): number {
+  const share = Math.min(1, hitAt / Math.max(1, draws));
+  return Math.min(0.95, 1 - (1 - RACE_FACTOR) * share);
 }
 
 // ─────────────────────────── 열린 손의 전진 속도 ───────────────────────────
@@ -421,6 +474,23 @@ export function winChance(input: WinChanceInput): number {
     if (input.waitTiles <= 0) return 0; // 죽은 대기 — 시간이 남아도 오를 패가 없다
     if (draws <= 0) return hopelessFloor(input.waitTiles);
     const perTurn = Math.min(0.9, (input.waitTiles / unseen) * chances);
+    /*
+     * **오름패가 오는 것을 이미 봤다.** 확률을 다시 셀 이유가 없다 — 남은 위험은
+     * "그 순이 오기 전에 남이 끝내는가" 하나다. 이것이 삼세 예지·예지를 든 봇이
+     * 위험패를 안고도 밀어야 하는 이유이고, 여태 그 판단이 없었다(A-14).
+     */
+    const hitAt = input.known?.hitAt ?? null;
+    if (hitAt !== null && hitAt <= draws) return certainDrawChance(hitAt, draws);
+    /*
+     * 반대로 **확정 헛쯔모**는 그 순의 쯔모 몫을 지운다. 론은 그대로 살아 있으므로
+     * (남이 버려 주는 길) 기회 전체가 사라지지는 않는다.
+     */
+    const misses = Math.min(input.known?.misses ?? 0, draws);
+    if (misses > 0) {
+      const ronOnly = Math.min(0.9, (input.waitTiles / unseen) * Math.max(0, chances - 1));
+      const survive = (1 - ronOnly) ** misses * (1 - perTurn) ** (draws - misses);
+      return (1 - survive) * RACE_FACTOR;
+    }
     return (1 - (1 - perTurn) ** draws) * RACE_FACTOR;
   }
 
@@ -430,7 +500,14 @@ export function winChance(input: WinChanceInput): number {
   // 열린 손은 남의 버림패로도 전진하므로 실효 장수(`openUkeire`)로 잰다.
   const ukeire = Math.max(1, input.openUkeire ?? input.ukeireTiles);
   const turnsPerStep = (unseen / ukeire) * 0.75;
-  const remain = draws - turnsPerStep * input.shanten;
+  /*
+   * **확정 쯔모가 샹텐을 줄여 준다면 그만큼은 기다릴 필요가 없다.** 우케이레
+   * 확률로 세던 걸음을 확정으로 바꾸는 것이 정보의 값이다 — 반대로 확정 헛쯔모는
+   * 걸음을 그만큼 늦춘다(`KNOWN_MISS_COST`).
+   */
+  const steps = Math.max(0, input.shanten - (input.known?.advances ?? 0));
+  const remain =
+    draws - turnsPerStep * steps - (input.known?.misses ?? 0) * KNOWN_MISS_COST;
   if (remain <= 0) return hopelessFloor(input.ukeireTiles);
 
   // 텐파이 후의 대기는 평균 6장으로 본다 (량면 8 · 칸짱 4의 가운데)

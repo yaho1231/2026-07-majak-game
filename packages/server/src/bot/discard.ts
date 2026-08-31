@@ -185,6 +185,8 @@ interface Shape {
   /** 버린 뒤의 손패와 우케이레 종류 — 열린 손의 전진 속도를 잴 때 쓴다 */
   hand: TileKind[];
   ukeireKinds: readonly TileKind[];
+  /** 텐파이일 때 오름패 종류 — 확정 쯔모가 «오름패인가»를 묻는 데 쓴다 */
+  waitKinds: readonly TileKind[];
 }
 
 /**
@@ -203,6 +205,7 @@ function shapesOf(read: BotRead, cands: readonly Candidate[]): Map<string, Shape
       waitTiles: 0,
       hand: [],
       ukeireKinds: [],
+      waitKinds: [],
     });
   }
   let bestShanten = Infinity;
@@ -218,10 +221,9 @@ function shapesOf(read: BotRead, cands: readonly Candidate[]): Map<string, Shape
     shape.hand = rest;
     shape.ukeireKinds = u.kinds;
     if (shape.shanten <= 0) {
-      shape.waitTiles = waitTilesOf(
-        winningKinds(rest, read.meldCount, undefined, read.opts),
-        read.remainingOf,
-      );
+      const w = winningKinds(rest, read.meldCount, undefined, read.opts);
+      shape.waitKinds = w;
+      shape.waitTiles = waitTilesOf(w, read.remainingOf);
     }
   }
   return out;
@@ -259,8 +261,27 @@ function lineEV(
       read.meldCount > 0
         ? { hand: shape.hand, ukeireKinds: shape.ukeireKinds }
         : undefined,
+    /*
+     * **확정 쯔모가 이 모양에 하는 것** (삼세 예지·예지 — `bot/intel.ts`).
+     * 후보마다 다르다: 같은 3장을 봐도 «무엇을 버리느냐»에 따라 그중 오름패가
+     * 되는 것이 있고 헛도는 것이 있다. 그래서 버림 선택 자체가 여기서 갈린다.
+     */
+    known:
+      // 최선 샹텐을 유지하는 후보만 우케이레·대기를 정밀하게 쟀다(`shapesOf`).
+      // 안 잰 후보에 이 값을 걸면 확정 쯔모가 **전부 헛쯔모로** 세어져, 어차피
+      // 지는 후보를 한 번 더 깎는 셈이 된다 — 재지 않은 것을 «없다»로 읽지 않는다.
+      shape.hand.length === 0
+        ? undefined
+        : read.knownDrawsFor(shape.waitKinds, shape.ukeireKinds),
   });
   if (opts.riichi) pWin *= FOLD_PRESSURE; // 알리면 상대가 조심한다
+  /*
+   * **내 바닥이 안개에 덮여 있으면 상대는 나를 못 읽는다** (안개 덮인 바닥·박무).
+   * 현물도 스지도 내 강에서 나오는데 그 강이 안 보이면, 상대는 나에게 안전한 패를
+   * 고를 수 없어 그만큼 더 흘린다. 사람이 이 카드를 켜고 미는 이유가 이것이다.
+   * 리치의 `FOLD_PRESSURE`와 정확히 반대 방향이라 같은 크기로 되돌린다.
+   */
+  if (read.intel.myRiverHidden) pWin = Math.min(0.95, pWin / FOLD_PRESSURE);
 
   /**
    * 순위 압박이 점수의 값어치 자체를 바꾼다. 올라스 선두에게 추가 점수는 거의
