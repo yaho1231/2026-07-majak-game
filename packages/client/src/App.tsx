@@ -1164,6 +1164,20 @@ function ActiveBadge(): JSX.Element {
   );
 }
 
+/**
+ * 아직 한 번도 골라 본 적 없는 증강 뱃지 — 드래프트 카드용.
+ * 도감의 «수집»과 같은 기준이다(내 통계에 picked·games 가 하나라도 있으면 수집).
+ * 통계를 아직 못 받았거나 게스트라 아예 없을 때는 아무 말도 하지 않는다 —
+ * 그 상태에서 세 장 모두에 «미수집»이 붙으면 그건 정보가 아니라 소음이다.
+ */
+function UncollectedBadge(): JSX.Element {
+  return (
+    <span className="aug-new-badge" title="아직 한 번도 골라 본 적 없는 증강입니다 (도감 미수집)">
+      ✧ 미수집
+    </span>
+  );
+}
+
 /** 조건을 달성해야 열리는 퀘스트형 증강 뱃지 — 드래프트 카드용. */
 function QuestBadge({ id }: { id: string }): JSX.Element | null {
   const goal = QUEST_GOAL[id];
@@ -6370,6 +6384,21 @@ export function App(): JSX.Element {
    */
   const cbRefreshFriends = useStableFn(() => send({ type: "friendList" }));
 
+  /**
+   * 내가 이미 «수집»한 증강 id — 드래프트 카드의 미수집 표시에 쓴다.
+   * 기준은 도감(`CodexMerged.collected`)과 같다: 고른 적이 있거나 판에 들고 나갔으면 수집.
+   * 통계가 아직 없으면 null — 그때는 표시를 걷는다.
+   */
+  const myAugStats = stats?.career.find((e) => e.nickname === auth?.username)?.stats.augments;
+  const collectedAugs = useMemo<ReadonlySet<string> | null>(() => {
+    if (myAugStats === undefined) return null;
+    const set = new Set<string>();
+    for (const [id, v] of Object.entries(myAugStats)) {
+      if (v.picked > 0 || v.games > 0) set.add(id);
+    }
+    return set;
+  }, [myAugStats]);
+
   // ── 화면 라우팅 ──
   const isSpectator = spectating !== null;
   const inGame = (joined !== null || isSpectator) && view !== null;
@@ -7049,6 +7078,7 @@ export function App(): JSX.Element {
           picked={draftPicked}
           owned={view?.players.find((p) => p.id === view.playerId)?.augments ?? []}
           catalog={catalog}
+          collected={collectedAugs}
           /* 아직 안 고른 사람 — 이름으로 바꿔 넘긴다(오버레이는 view를 안 본다).
              내 자리는 뺀다: 이 줄은 «고른 뒤에» 뜨는 줄이라 나는 이미 끝났다. */
           pendingNames={
@@ -25138,6 +25168,7 @@ function DraftOverlay({
   owned,
   catalog,
   pendingNames,
+  collected,
 }: {
   draft: DraftOfferMessage;
   /**
@@ -25155,6 +25186,11 @@ function DraftOverlay({
   catalog: Record<string, AugmentCatalogEntry>;
   /** 아직 안 고른 사람들의 표시 이름 (나는 빠져 있다) */
   pendingNames: readonly string[];
+  /**
+   * 도감에서 «수집»으로 잡히는 증강 id 집합. null이면 아직 모른다(게스트·통계 미도착)
+   * — 그때는 미수집 표시를 아예 걷는다(`UncollectedBadge` 주석).
+   */
+  collected: ReadonlySet<string> | null;
 }): JSX.Element {
   // 남은 시간 카운트다운 — 오퍼 **도착 시각**에 굳힌 마감까지 센다. 이 창이 개막
   // 연출·결과 화면 뒤에서 늦게 떠도 화면의 숫자와 서버 타이머가 어긋나지 않는다.
@@ -25326,6 +25362,7 @@ function DraftOverlay({
                       </span>
                       <QuestBadge id={c.id} />
                       {isActiveAugment(c.id) ? <ActiveBadge /> : null}
+                      {collected !== null && !collected.has(c.id) ? <UncollectedBadge /> : null}
                     </span>
                   </span>
                   <strong className="draft-name">{c.name}</strong>

@@ -18755,3 +18755,19 @@ body:has(.prod-skip) .toast-stack {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* 미수집 증강 뱃지 (드래프트 카드) — 액티브·퀘스트 뱃지와 같은 알약 꼴이되,
+   «고르면 좋다»는 권유로 읽히지 않게 색은 무채색에 가깝게 둔다. 이 표시는
+   도감의 «수집»과 같은 기준이다(App.tsx `UncollectedBadge`). */
+.aug-new-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #b9c2cc;
+  background: rgba(160, 176, 194, 0.12);
+  border: 1px dashed rgba(160, 176, 194, 0.5);
+}
