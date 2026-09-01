@@ -1,7 +1,8 @@
 /**
  * 반전 (sign_flip, prism) — "이 국만은, 잃을수록 번다".
  *
- * 뽑는 순간 자동으로 발동해 **그 국 하나 동안** 내 점수의 부호가 통째로 뒤집힌다.
+ * **자기 첫 순에 직접 발동하는 액티브**(3국에 1회)로, 발동한 **그 국 하나 동안** 내 점수의
+ * 부호가 통째로 뒤집힌다.
  * 8000점을 쏘이면 잃는 대신 **뱅크에서 8000점을 받고**, 화료해서 1000점을 벌면
  * 그 1000점을 뱅크에 빼앗긴다. 리치 공탁 1000점도, 유국 텐파이료도, 본장도 예외가 없다.
  *
@@ -11,6 +12,18 @@
  * 그래서 이 국의 최적 플레이는 리치마작의 상식을 정면으로 뒤집는다 — 위험패를 골라
  * 버리고, 상대의 큰 손에 일부러 쏘이고, 화료는 피한다. 전원 공개라 상대는 "저 사람에게는
  * 쏘지 않는다(=화료를 미룬다)"로 맞설 수 있다.
+ *
+ * # 발동 방식 (2026-09-01 사용자 지시)
+ *
+ * 예전에는 뽑는 순간 자동으로 켜져 그 국 하나만 타고 끝나는 **선발동형**이었고(게임 내
+ * 1회), 반장전에만 게임 내 1회 재장전이 붙어 있었다. 이제는 **액티브 · 3국에 1회 ·
+ * 동풍전 반장전 공통**이다 — 언제 터뜨릴지를 플레이어가 고르고, 판이 길어져도 카드가
+ * 죽은 칸으로 남지 않는다.
+ *
+ * 발동은 **자기 첫 순에만** 열린다(그 국에 아직 한 장도 버리지 않았을 때). 판이 굳은
+ * 뒤에 «지금 위험하니 켠다»가 되면 이 카드는 «이번 국을 통째로 건다»가 아니라 방총
+ * 보험이 된다 — 상대가 국 초반에 대응(저 사람에게는 쏘지 않는다)을 정할 수 있어야
+ * 전원 공개가 의미를 갖는다는 것도 같은 이유다.
  *
  * 구현:
  * - `ROUND_SETTLED` 인터셉터(`SignFlip` 단계 — 돈이 움직이는 모든 단계 뒤, 방어 앞)에서
@@ -26,24 +39,33 @@ import {
   SETTLE_STAGE,
   TILE_DISCARDED,
   augmentDataSet,
+  augmentInstanceId,
   defineAugment,
+  isSourceDisarmed,
+  playerAtSeat,
   scoreChanged,
 } from "@majak/core";
 import type {
+  ActionDef,
   AugmentDef,
+  GameState,
+  PlayerId,
   ProposedEvent,
   RoundSettledPayload,
   ScoreChangedPayload,
   TileDiscardedPayload,
 } from "@majak/core";
 import {
-  armOnNextRound,
-  armedNow,
+  cooldownReady,
+  cooldownUse,
+  roundKey,
   roundViewKey,
   settleInterceptor,
+  stringOf,
+  trackRoundSeq,
   withAugPoint,
 } from "../util.js";
-import { installPreArmRecharge, rechargeBotPolicy } from "./preArmRecharge.js";
+import { plan } from "./botPlan.js";
 
 const ID = "sign_flip";
 
@@ -63,6 +85,44 @@ const ID = "sign_flip";
  */
 const FLIP_CAP = 25_000;
 
+/** 발동 주기 — 켠 국으로부터 몇 국이 지나야 다시 켤 수 있는가 (2026-09-01) */
+const COOLDOWN_ROUNDS = 3;
+const ACTION = "sign_flip_use";
+
+/**
+ * 이 증강이 켜진 국 (보유자별).
+ *
+ * 선발동형의 `armedRound`(util)와 **일부러 다른 키**다. 그쪽 이름을 쓰면 재장전·복구가
+ * 상태만 보고 «이건 선발동형»으로 판정하는데(`preArmInstalled`), 반전은 더 이상
+ * 선발동형이 아니다.
+ */
+const armedKey = (h: PlayerId): string => `${ID}:onRound:${h}`;
+
+/** 지금 이 국에 켜져 있는가 */
+function armedNow(state: GameState, holder: PlayerId): boolean {
+  return stringOf(state, armedKey(holder)) === roundKey(state);
+}
+
+/** 이 국에서 아직 한 장도 버리지 않았는가 — «자기 첫 순» */
+function firstTurn(state: GameState, holder: PlayerId): boolean {
+  return (state.round.byPlayer[holder]?.discardCount ?? 0) === 0;
+}
+
+/**
+ * 지금 켤 수 있는가 — 자기 첫 순, 쿨다운이 풀렸고, 이미 켜져 있지 않다.
+ * (액션 validate와 후보 열거가 같은 판정을 봐야 하므로 한 곳에 둔다.)
+ */
+function canUse(state: GameState, holder: PlayerId): boolean {
+  const player = state.players.find((p) => p.id === holder);
+  if (player === undefined || !player.augments.includes(ID)) return false;
+  if (state.round.phase !== "turn.act") return false;
+  if (playerAtSeat(state, state.round.turnSeat).id !== holder) return false;
+  if (isSourceDisarmed(state, augmentInstanceId(holder, ID))) return false;
+  if (!firstTurn(state, holder)) return false;
+  if (armedNow(state, holder)) return false;
+  return cooldownReady(state, ID, holder, COOLDOWN_ROUNDS);
+}
+
 /** 이미 이 증강이 서명한 발행인가 — 자기 보정(`sign_flip`)과 뒤집은 발행(`X+sign_flip`) 둘 다. */
 function isOwnReason(reason: string | undefined): boolean {
   return reason === ID || (reason !== undefined && reason.endsWith(`+${ID}`));
@@ -75,33 +135,37 @@ export const signFlip: AugmentDef = defineAugment({
   complexity: 1,
   name: "반전",
   description:
-    "(획득 즉시 · 이번 국만 · 반장전은 게임 내 1회 재장전) 내 점수의 부호가 뒤집힌다 — 8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다.",
+    "(3국에 1회 · 자기 첫 순 · 이번 국만) 내 점수의 부호가 뒤집힌다 — 8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다.",
   detail:
-    "8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다. 방총, 쯔모 지불, 리치 공탁, 본장, 유국 텐파이료가 모두 포함된다.\n\n뒤집혀 돌아오는 폭은 판의 시작 점수(25,000) 한 벌까지다.\n\n상대의 점수는 정상적으로 움직이며 차액은 뱅크가 발행한다. 발동은 전원에게 공개된다.\n\n반장전에서는 게임 내 1회, 자기 순에 **다시 장전**할 수 있다 — 누르면 그 자리에서 곧바로 그 국에 켜진다. (동풍전에는 없다.)",
+    "8,000점을 방총하면 뱅크에서 8,000점을 받고, 1,000점을 벌면 1,000점을 빼앗긴다. 방총, 쯔모 지불, 리치 공탁, 본장, 유국 텐파이료가 모두 포함된다.\n\n뒤집혀 돌아오는 폭은 판의 시작 점수(25,000) 한 벌까지다.\n\n상대의 점수는 정상적으로 움직이며 차액은 뱅크가 발행한다. 발동은 전원에게 공개된다.\n\n발동은 **자기 첫 순**(그 국에 아직 한 장도 버리지 않았을 때)에만 열리고, 누르면 그 자리에서 곧바로 그 국에 켜진다. 켠 국으로부터 3국이 지나면 다시 쓸 수 있다 — 횟수 제한은 없고 동풍전·반장전 모두 같다.",
   install(ctx) {
-    const { holder } = ctx;
+    const { engine, holder } = ctx;
 
-    // 획득 뒤 처음 시작되는 국 하나에만 켜진다.
-    // 켜지는 순간 전원 공개 — 상대가 "저 사람에게는 쏘지 않는다"로 맞설 수 있어야 한다.
-    // 켜지는 순간의 공개 표시 — 국 시작 자동 발동과 재무장이 **같은 이벤트**를 낸다
-    const announce = (): ProposedEvent<string, unknown>[] => [
-      augmentDataSet(roundViewKey("*", `${ID}:${holder}`), true),
-    ];
-    armOnNextRound(ctx, ID, announce);
+    // 3국에 1회 — 국 카운터와 잔여 쿨다운 표시(이름표의 🕐N국 칩)를 함께 돌린다.
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
-    /*
-     * 반장전 한정 — 게임 내 1회, 원하는 타이밍에 다시 장전한다.
-     * 국이 두 배인 판에서 "그 국 하나"의 비중이 절반이 되는 것을 되돌린다
-     * (반장전 QA 2026-08-25, preArmRecharge.ts에 경위가 있다).
-     */
-    installPreArmRecharge(ctx, ID, announce);
+    const action: ActionDef<Record<string, never>> = {
+      type: ACTION,
+      validate: (req, { state }) => (canUse(state, req.player) ? null : "cannot flip now"),
+      toEvents: (req, { state }) => [
+        // 이 국에 켠다
+        augmentDataSet(armedKey(req.player), roundKey(state)),
+        ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
+        // 켜지는 순간 전원 공개 — 상대가 "저 사람에게는 쏘지 않는다"로 맞설 수 있어야 한다
+        augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), true),
+      ],
+    };
+    if (!engine.actions.has(ACTION)) engine.actions.register(action);
+
+    // 합법성의 최종 판정은 validate가 한다 — 같은 `canUse`를 본다.
+    ctx.holderTurnOptions((state) => (canUse(state, holder) ? [{ type: ACTION, payload: {} }] : []));
 
     // 리치 공탁 — 정산이 아니라 버림 리듀서가 즉시 깎는다.
     // 낸 만큼 되돌리고(+cost) 부호를 뒤집은 만큼 더 준다(+cost) = +2×cost.
     ctx.reaction(TILE_DISCARDED, (event, rc) => {
       const p = event.payload as TileDiscardedPayload;
       if (p.player !== holder || !p.riichi || p.riichiCost <= 0) return;
-      if (!armedNow(rc.state, ID, holder)) return;
+      if (!armedNow(rc.state, holder)) return;
       rc.emit(scoreChanged(holder, p.riichiCost * 2, ID));
     });
 
@@ -110,7 +174,7 @@ export const signFlip: AugmentDef = defineAugment({
     ctx.interceptor(SCORE_CHANGED, (event, ic) => {
       const p = event.payload as ScoreChangedPayload;
       if (p.player !== holder || isOwnReason(p.reason)) return event;
-      if (!armedNow(ic.state, ID, holder)) return event;
+      if (!armedNow(ic.state, holder)) return event;
       // 뒤집은 발행에는 **반드시 서명한다**. reason을 그대로 두면 원장이
       // "카르마가 피해자에게 +4,000을 줬다"고 거짓말을 한다(QA verify-score 확정 3).
       // 원인을 지우지 않고 뒤에 붙여 "karma+sign_flip"으로 남긴다.
@@ -127,7 +191,7 @@ export const signFlip: AugmentDef = defineAugment({
     // 정산 단계: SignFlip — 돈이 움직이는 모든 단계 뒤, 방어 앞.
     settleInterceptor(ctx, SETTLE_STAGE.SignFlip, (event, ic) => {
       const p = event.payload as RoundSettledPayload;
-      if (!armedNow(ic.state, ID, holder)) return event;
+      if (!armedNow(ic.state, holder)) return event;
       const before = p.deltas[holder] ?? 0;
       if (before === 0) return event;
       // 잃는 국을 뒤집어 **뱅크가 발행하는** 폭만 상한을 둔다 (FLIP_CAP 주석 참조).
@@ -144,7 +208,16 @@ export const signFlip: AugmentDef = defineAugment({
       };
     });
   },
-  // 자동 발동이라 선택 지점이 없었지만, 반장전 재장전 버튼만은 봇도 눌러야 한다
-  // (정책이 없으면 봇은 그 버튼을 영영 누르지 않는다).
-  bot: rechargeBotPolicy(ID),
+  /*
+   * 봇 정책 — 열리면 미룬다 없이 누른다.
+   *
+   * 사람은 «어느 국에 터뜨릴까»를 고르지만, 발동 창이 자기 첫 순 하나뿐이라 미루는
+   * 것은 곧 그 국을 통째로 버리는 것이다. 정책이 없으면 봇은 이 버튼을 영영 누르지
+   * 않는다(docs/27).
+   */
+  bot: plan({
+    intent: "setup",
+    fleeting: true,
+    pick: ({ options }) => options.find((o) => o.type === ACTION) ?? null,
+  }),
 });

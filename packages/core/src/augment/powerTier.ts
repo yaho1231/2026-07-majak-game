@@ -1231,7 +1231,7 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     s: 1,
     u: 5,
     f: 2,
-    note: "그 국만 내 점수 부호 반전 — 큰 손에 일부러 쏘이면 그대로 이득. 국 하나뿐",
+    note: "켠 국만 내 점수 부호 반전 — 큰 손에 일부러 쏘이면 그대로 이득. 자기 첫 순에만, 3국에 1회",
   },
   dora_afterimage: {
     p: 4,

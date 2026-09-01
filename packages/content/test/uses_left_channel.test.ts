@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   FlowController,
+  buildPlayerView,
   createStandardGameFromState,
   installAugment,
 } from "@majak/core";
@@ -65,6 +66,62 @@ describe("남은 사용 횟수 채널 (uses:{증강id})", () => {
       total: 3,
       scope: "match",
     });
+  });
+
+  /*
+   * 잔량은 **상대에게도 보인다** (2026-09-01 사용자 지시: "pill 정보는 모두에게").
+   * 보유자 전용 채널만 있던 시절에는 상대 화면에 값이 아예 안 내려가, 「저 사람의
+   * 날치기가 몇 번 남았는가」를 볼 수 없었다. 좌석이 붙은 공개 사본이 함께 나간다.
+   */
+  it("상대 화면에도 좌석이 붙은 잔량이 내려간다", () => {
+    const scn = withAugments(
+      craft({
+        hands: { p0: "123m456p789s11z2z", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.draw",
+        turnSeat: 0,
+      }),
+      "p0",
+      ["hand_swap3"],
+    );
+    const game = createStandardGameFromState(scn);
+    installAugment(game.engine, handSwap3, "p0", { yaku: game.yaku });
+    new FlowController(game.engine).begin();
+
+    const opponent = buildPlayerView(game.engine.state, "p1", game.engine.rules, {
+      yaku: game.yaku,
+    });
+    expect(opponent.augmentView["seat:p0:uses:hand_swap3"]).toEqual({
+      left: 3,
+      total: 3,
+      scope: "match",
+    });
+    // 좌석 없는 채널은 남의 것이 섞이지 않게 여전히 보유자에게만 간다
+    expect(opponent.augmentView["uses:hand_swap3"]).toBeUndefined();
+  });
+
+  /*
+   * 쿨다운 잔량도 같은 규약이다 — pill이 그리는 값은 전부 좌석이 붙어 전원에게 간다.
+   * (발행처가 증강마다 흩어져 있어 코어의 뷰 빌더 한 곳에서 연다.)
+   */
+  it("쿨다운 잔량도 좌석이 붙어 상대 화면에 내려간다", () => {
+    const base = withAugments(
+      craft({
+        hands: { p0: "123m456p789s11z2z", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+      }),
+      "p0",
+      ["invincible"],
+    );
+    const scn = {
+      ...base,
+      augmentData: { ...base.augmentData, "view:p0:cooldown:invincible": 2 },
+    };
+    const game = createStandardGameFromState(scn);
+    const opponent = buildPlayerView(game.engine.state, "p1", game.engine.rules, {
+      yaku: game.yaku,
+    });
+    expect(opponent.augmentView["seat:p0:cooldown:invincible"]).toBe(2);
   });
 
   it("한 번 쓰면 남은 횟수가 줄어든다", () => {

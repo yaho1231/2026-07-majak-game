@@ -33,6 +33,7 @@ import { counterOf, publishUsesLeft, roundKey, roundViewKey, scaledUses } from "
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { shiftRank, wrapRanksOn } from "./wrapRanks.js";
 import { plan } from "./botPlan.js";
+import { editableUnderRiichi, inRiichi } from "./riichiDrawOnly.js";
 import { handAlteredKey } from "./handAltered.js";
 
 const ID = "alchemist";
@@ -95,6 +96,10 @@ const alchemyAction: ActionDef<{ tileId: TileId; delta: 1 | -1 }> = {
     if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
       return "tile not in hand";
     }
+    // 리치 중에는 고정된 손패가 아니라 **쯔모패 한 장**만 대상이다 (riichiDrawOnly.ts)
+    if (!editableUnderRiichi(state, req.player, req.payload.tileId)) {
+      return "riichi: only the drawn tile can be altered";
+    }
     const k = kindOf(state, req.payload.tileId);
     if (!isNumberSuit(k)) return "not a number tile";
     // 끝없는 윤회 보유 시에만 9→1 · 1→9가 열린다.
@@ -147,7 +152,7 @@ export const alchemist: AugmentDef = defineAugment({
   description:
     "(동풍전 5회 · 반장전 8회) 자기 순에 한 번, 손패의 수패 1장의 숫자를 ±1 바꾼다(무늬 유지, 1↔9 순환 없음).",
   detail:
-    "손패의 수패 한 장이 무늬는 그대로인 채 숫자만 한 칸 오르내린다. 자패는 대상이 아니고, 1을 더 내리거나 9를 더 올릴 수는 없다. 한 순에 한 장까지 쓸 수 있고 리치 중에도 발동하며, 무엇이 무엇으로 바뀌었는지는 매번 전원에게 공개된다.\n\n⚠ **적도라(빨간 5)를 옮기면 그 빨간색은 사라진다.**",
+    "손패의 수패 한 장이 무늬는 그대로인 채 숫자만 한 칸 오르내린다. 자패는 대상이 아니고, 1을 더 내리거나 9를 더 올릴 수는 없다. 한 순에 한 장까지 쓸 수 있고, 리치 중에는 **쯔모해 온 그 한 장에만** 쓸 수 있으며(고정된 손패는 건드릴 수 없다), 무엇이 무엇으로 바뀌었는지는 매번 전원에게 공개된다.\n\n⚠ **적도라(빨간 5)를 옮기면 그 빨간색은 사라진다.**",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -173,7 +178,15 @@ export const alchemist: AugmentDef = defineAugment({
       if (usedThisTurn(state, holder)) return []; // 한 턴에 한 번만
 
       const opts: { type: string; payload: { tileId: TileId; delta: 1 | -1 } }[] = [];
-      for (const id of handIdsOf(state, holder)) {
+      // 리치 중이면 쯔모패 한 장만 후보다 — 고정된 손을 건드리면 그 국은 화료가
+      // 불가능해진다(riichiDrawOnly.ts). 자패를 쯔모하면 후보가 비어 자동 쯔모기리다.
+      const drawn = state.round.lastDrawnTile;
+      const targets = inRiichi(state, holder)
+        ? drawn === null
+          ? []
+          : handIdsOf(state, holder).filter((id) => id === drawn)
+        : handIdsOf(state, holder);
+      for (const id of targets) {
         const k = kindOf(state, id);
         if (!isNumberSuit(k)) continue;
         if (wrap || k.rank > 1) opts.push({ type: ACTION, payload: { tileId: id, delta: -1 } });

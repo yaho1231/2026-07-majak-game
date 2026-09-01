@@ -17397,9 +17397,25 @@ const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
  * 중복을 막지만 수상한 주사위의 `grantAugments`는 자기 보유분만 걸러서 중복이 실제로
  * 성립한다(core/Augment.ts). 그러면 상대가 그 증강을 쓸 수 있는지를 정반대로 읽는다.
  */
+/**
+ * pill에 실리는 값은 좌석이 붙은 공개 채널(`seat:{좌석}:...`)을 먼저 본다 —
+ * 남은 횟수·쿨다운은 이제 전원에게 보인다(2026-09-01: "모든 pill 정보는 모두에게").
+ * 좌석 없는 옛 채널은 뷰어 자신에게만 폴백으로 쓴다(이름에 주인이 없어 남의 pill에
+ * 쓰면 내 값이 남에게 찍힌다).
+ */
+function seatChannel(
+  view: PlayerView,
+  playerId: string,
+  channel: string,
+): unknown {
+  return (
+    view.augmentView[`seat:${playerId}:${channel}`] ??
+    (playerId === view.playerId ? view.augmentView[channel] : undefined)
+  );
+}
+
 function cooldownRoundsLeft(view: PlayerView, playerId: string, augId: string): number {
-  if (playerId !== view.playerId) return 0;
-  const left = view.augmentView[`cooldown:${augId}`];
+  const left = seatChannel(view, playerId, `cooldown:${augId}`);
   return typeof left === "number" && left > 0 ? left : 0;
 }
 
@@ -17408,8 +17424,7 @@ function cooldownRoundsLeft(view: PlayerView, playerId: string, augId: string): 
  * 단위만 다르다 — 채널이 아예 없던 시절에는 버튼이 사라진 것으로만 알 수 있었다.
  */
 function cooldownTurnsLeft(view: PlayerView, playerId: string, augId: string): number {
-  if (playerId !== view.playerId) return 0;
-  const left = view.augmentView[`cooldownTurns:${augId}`];
+  const left = seatChannel(view, playerId, `cooldownTurns:${augId}`);
   return typeof left === "number" && left > 0 ? left : 0;
 }
 
@@ -17419,9 +17434,6 @@ function augmentPillStatus(
   augId: string,
 ): PillStatus | null {
   const av = view.augmentView;
-  // 보유자 화면에만 실리는 잔량 채널 — 채널 이름에 좌석이 없으므로 **뷰어 자신의
-  // pill에만** 붙인다. 같은 증강을 남도 들면 내 잔량이 남의 pill에 찍힌다
-  // (cooldownRoundsLeft 주석의 중복 보유 경로).
   const isSelf = playerId === view.playerId;
   /*
    * ⚠ 잔량은 **어떤 분기보다 먼저** 계산한다 (2026-08-31 사용자 보고: "횟수형 증강의
@@ -17442,7 +17454,15 @@ function augmentPillStatus(
    * 일확천금·조커…)은 **발동한 국에 잔량이 통째로 묻혔다**(2026-08-15 "횟수류가 안
    * 나온다"). 이제 둘 다 있으면 상태 뱃지 뒤에 `·n회`로 붙여 함께 보여준다.
    */
-  const uses = (isSelf ? av[`uses:${augId}`] : undefined) as
+  /*
+   * 좌석이 붙은 **전원 공개** 채널을 먼저 본다 (`seat:{좌석}:uses:{id}`).
+   * 예전에는 좌석 없는 보유자 전용 채널만 읽어서 «남의 남은 횟수»가 통째로 안 보였다
+   * (2026-09-01 사용자 지적: "날치기 남은 횟수가 내 것만 보인다"). pill에 실리는 정보는
+   * 전원에게 보여야 한다 — content의 `publishUsesLeft`가 공개 사본을 함께 낸다.
+   * 좌석 없는 채널은 폴백으로만 남긴다(자기 pill에만 붙인다 — 이름에 주인이 없어서
+   * 남의 pill에 쓰면 내 잔량이 남에게 찍힌다).
+   */
+  const uses = seatChannel(view, playerId, `uses:${augId}`) as
     | { left?: unknown; total?: unknown; scope?: unknown }
     | undefined;
   const usesStatus: PillStatus | null =

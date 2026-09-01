@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createStandardGameFromState, installAugment } from "@majak/core";
+import { buildPlayerView, createStandardGameFromState, installAugment } from "@majak/core";
 import type { GameState, TileId } from "@majak/core";
 import { tileDyeing } from "../src/augments/tile_dyeing.js";
 import { craft } from "./helpers.js";
@@ -89,5 +89,25 @@ describe("염색 — 매치 예산 (반장전 8회)", () => {
     });
     // 국이 바뀌어도 지워지지 않아야 하므로 roundKey가 섞이지 않은 고정 키다
     expect(game.engine.state.augmentData["tile_dyeing:used:p0"]).toBe(1);
+  });
+});
+
+/**
+ * 잔량은 **전원 공개**다 (2026-09-01 사용자 지시: "pill 정보는 모두에게 보여야 한다").
+ *
+ * 채널은 그대로 보유자 전용(`view:{보유자}:uses:{id}`)이고, 좌석을 붙여 내보내는 것은
+ * 코어의 `buildPlayerView`다 — 발행처가 수십 군데인 쿨다운까지 한 곳에서 함께 연다.
+ * 뷰까지 실제로 내려가는지는 `uses_left_channel.test.ts`가 상대 시점으로 못 박는다.
+ */
+describe("염색 — 남은 횟수는 전원 공개", () => {
+  it("보유자 전용 채널에 값이 서고, 뷰가 좌석을 붙여 내보낸다", () => {
+    const game = setup(7);
+    expect(dye(game, 0, "pin")).toBe(true);
+    const value = { left: 0, total: 8, scope: "match" };
+    expect(game.engine.state.augmentData["view:p0:uses:tile_dyeing"]).toEqual(value);
+    const opponent = buildPlayerView(game.engine.state, "p1", game.engine.rules, {
+      yaku: game.yaku,
+    });
+    expect(opponent.augmentView["seat:p0:uses:tile_dyeing"]).toEqual(value);
   });
 });

@@ -37,7 +37,8 @@ function scene(armed: readonly PlayerId[]): GameState {
     drawnLastFor: "p0",
   });
   const data: Record<string, unknown> = { "karma:gauge:p0": 12000 };
-  for (const a of armed) data[`sign_flip:armedRound:${a}`] = "1-1-0";
+  for (const a of armed) // 2026-09-01: 반전은 액티브가 됐다 — 켜진 국 표식 키가 `onRound`다(선발동형과 구분).
+    data[`sign_flip:onRound:${a}`] = "1-1-0";
   return { ...base, augmentData: { ...base.augmentData, ...data } };
 }
 

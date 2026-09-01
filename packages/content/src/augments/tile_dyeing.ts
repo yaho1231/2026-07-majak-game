@@ -62,6 +62,7 @@ import {
 import { handAlteredKey } from "./handAltered.js";
 import { handKindsOf, tileSwapImproves } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { editableUnderRiichi, inRiichi } from "./riichiDrawOnly.js";
 
 const ID = "tile_dyeing";
 const ACTION = "tile_dye";
@@ -165,6 +166,10 @@ const dyeAction: ActionDef<{ tileId: TileId; suit: NumSuit }> = {
     if (!handIdsOf(state, req.player).includes(req.payload.tileId)) {
       return "tile not in hand";
     }
+    // 리치 중에는 고정된 손패가 아니라 **쯔모패 한 장**만 대상이다 (riichiDrawOnly.ts)
+    if (!editableUnderRiichi(state, req.player, req.payload.tileId)) {
+      return "riichi: only the drawn tile can be dyed";
+    }
     const k = kindOf(state, req.payload.tileId);
     if (!isNumberSuit(k)) return "not a number tile";
     if (k.suit === req.payload.suit) return "same suit";
@@ -221,9 +226,9 @@ export const tileDyeing: AugmentDef = defineAugment({
   complexity: 1,
   name: "염색",
   description:
-    "(동풍전 5회 · 반장전 8회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에도 쓸 수 있다.",
+    "(동풍전 5회 · 반장전 8회) 자기 순에 한 번, 손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다(예: 3만 → 3통). 리치 중에는 쯔모해 온 패만 물들일 수 있다.",
   detail:
-    "손패의 수패 한 장이 숫자는 그대로인 채 다른 무늬로 물든다. 자패는 대상이 아니고, 한 순에 한 장까지만 물들일 수 있으며 리치 중에도 발동한다. 무엇이 무엇으로 바뀌었는지는 전원에게 공개된다.\n\n⚠ **넉 장이 이미 전부 드러난 종류로는 물들 수 없다.** 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다.",
+    "손패의 수패 한 장이 숫자는 그대로인 채 다른 무늬로 물든다. 자패는 대상이 아니고, 한 순에 한 장까지만 물들일 수 있다. 리치 중에는 **쯔모해 온 그 한 장에만** 쓸 수 있다 — 고정된 손패는 건드릴 수 없다. 무엇이 무엇으로 바뀌었는지는 전원에게 공개된다.\n\n⚠ **넉 장이 이미 전부 드러난 종류로는 물들 수 없다.** 적도라(빨간 5)를 물들이면 그 빨간색은 사라진다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -251,7 +256,14 @@ export const tileDyeing: AugmentDef = defineAugment({
       if (usedThisTurn(state, holder)) return []; // 한 턴에 한 번만
 
       const opts: { type: string; payload: { tileId: TileId; suit: NumSuit } }[] = [];
-      for (const id of handIdsOf(state, holder)) {
+      // 리치 중이면 쯔모패 한 장만 후보다 (riichiDrawOnly.ts 참고)
+      const drawn = state.round.lastDrawnTile;
+      const targets = inRiichi(state, holder)
+        ? drawn === null
+          ? []
+          : handIdsOf(state, holder).filter((id) => id === drawn)
+        : handIdsOf(state, holder);
+      for (const id of targets) {
         const k = kindOf(state, id);
         if (!isNumberSuit(k)) continue;
         for (const suit of SUITS) {
