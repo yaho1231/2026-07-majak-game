@@ -1,0 +1,5 @@
+# 원시 시뮬레이션 로그 78MB — 저장소에 넣지 않는다.
+# 시드가 결정론적이라(runner.ts gameSeed) shards.txt·shards-b.txt·pools.json만 있으면
+# 같은 판이 그대로 재생성된다. 파생 결과(stats/regression/measured/retier.json)는 커밋한다.
+out/
+logs/
