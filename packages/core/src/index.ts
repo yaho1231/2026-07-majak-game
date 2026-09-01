@@ -266,11 +266,16 @@ export {
   shiftTier,
   deviatesFromFormula,
   defaultBotWeight,
+  AUGMENT_MEASURED,
+  MEASURED_CUTS,
+  measuredTier,
+  baseTier,
 } from "./augment/powerTier.js";
 export type {
   PowerTier,
   PowerTierEntry,
   PowerTierSpec,
+  MeasuredEntry,
 } from "./augment/powerTier.js";
 export {
   AUGMENT_SYNERGY,

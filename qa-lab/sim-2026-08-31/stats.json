@@ -1,0 +1,7696 @@
+{
+ "rowCount": 40200,
+ "gameCount": 10050,
+ "baseline": {
+  "id": "(전체)",
+  "name": "(전체)",
+  "tier": null,
+  "offered": 0,
+  "picked": 0,
+  "pickRate": 0,
+  "games": 40200,
+  "avgPlacement": 2.5,
+  "placementSE": 0.005576316066914724,
+  "top1Rate": 0.25,
+  "rentaiRate": 0.5,
+  "lastRate": 0.25,
+  "avgScore": 1569.318407960199,
+  "avgRawScore": 26569.3184079602,
+  "maxRawScore": 363000,
+  "minRawScore": -85700,
+  "winRate": 0.19026430520356938,
+  "avgWinPoints": 7456.488345092435,
+  "tsumoRate": 0.41521325865346587,
+  "dealInRate": 0.11024449687824676,
+  "avgDealInPoints": 6670.42827259716,
+  "riichiRate": 0.25832143862817636,
+  "callRate": 0.1940584733995553,
+  "drawTenpaiRate": 0.38340634125990825,
+  "pickByPersona": {}
+ },
+ "byPersona": {
+  "category": {
+   "id": "category",
+   "name": "category",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 5776,
+   "avgPlacement": 2.4549861495844874,
+   "placementSE": 0.014781667414882422,
+   "top1Rate": 0.268005540166205,
+   "rentaiRate": 0.5159279778393352,
+   "lastRate": 0.2389196675900277,
+   "avgScore": 2847.437673130194,
+   "avgRawScore": 27397.29916897507,
+   "maxRawScore": 248900,
+   "minRawScore": -36600,
+   "winRate": 0.19593721144967682,
+   "avgWinPoints": 7529.380515808414,
+   "tsumoRate": 0.40810556079170596,
+   "dealInRate": 0.10929236968018131,
+   "avgDealInPoints": 6572.1505376344085,
+   "riichiRate": 0.26787543020230004,
+   "callRate": 0.19645765130529674,
+   "drawTenpaiRate": 0.3930344729748901,
+   "pickByPersona": {}
+  },
+  "contrarian": {
+   "id": "contrarian",
+   "name": "contrarian",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 5754,
+   "avgPlacement": 2.629822732012513,
+   "placementSE": 0.014213482845671926,
+   "top1Rate": 0.19151894334376085,
+   "rentaiRate": 0.4516857838025721,
+   "lastRate": 0.273027459158846,
+   "avgScore": -2398.2273201251305,
+   "avgRawScore": 23900,
+   "maxRawScore": 345500,
+   "minRawScore": -34200,
+   "winRate": 0.1598240469208211,
+   "avgWinPoints": 6833.966044500686,
+   "tsumoRate": 0.3947063165664874,
+   "dealInRate": 0.10963359962247615,
+   "avgDealInPoints": 6648.1936971560335,
+   "riichiRate": 0.22019415512185256,
+   "callRate": 0.17492500084268717,
+   "drawTenpaiRate": 0.38234257104576547,
+   "pickByPersona": {}
+  },
+  "fun": {
+   "id": "fun",
+   "name": "fun",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 5702,
+   "avgPlacement": 2.5073658365485794,
+   "placementSE": 0.01477174115841527,
+   "top1Rate": 0.24570326201332865,
+   "rentaiRate": 0.49824622939319535,
+   "lastRate": 0.2513153279551035,
+   "avgScore": 1017.7481585408628,
+   "avgRawScore": 26091.406524026657,
+   "maxRawScore": 179700,
+   "minRawScore": -39600,
+   "winRate": 0.18441151955364282,
+   "avgWinPoints": 7257.199520339452,
+   "tsumoRate": 0.4117701319066507,
+   "dealInRate": 0.1087825539660129,
+   "avgDealInPoints": 6598.6551993745115,
+   "riichiRate": 0.2513480871621277,
+   "callRate": 0.18881725551567524,
+   "drawTenpaiRate": 0.3847647820457488,
+   "pickByPersona": {}
+  },
+  "synergy": {
+   "id": "synergy",
+   "name": "synergy",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 5717,
+   "avgPlacement": 2.45338464229491,
+   "placementSE": 0.01498386782417859,
+   "top1Rate": 0.27531922336889975,
+   "rentaiRate": 0.5137309777855519,
+   "lastRate": 0.24243484344936156,
+   "avgScore": 3126.6748294560084,
+   "avgRawScore": 27660.521252405106,
+   "maxRawScore": 327000,
+   "minRawScore": -71700,
+   "winRate": 0.20199309425318793,
+   "avgWinPoints": 7676.127612761276,
+   "tsumoRate": 0.4150799695354151,
+   "dealInRate": 0.11059450958941575,
+   "avgDealInPoints": 6604.683153013911,
+   "riichiRate": 0.2748794912994428,
+   "callRate": 0.20277939215753307,
+   "drawTenpaiRate": 0.39306059036768515,
+   "pickByPersona": {}
+  },
+  "archetype": {
+   "id": "archetype",
+   "name": "archetype",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 5754,
+   "avgPlacement": 2.5269377824122348,
+   "placementSE": 0.014558704191054997,
+   "top1Rate": 0.2340980187695516,
+   "rentaiRate": 0.4899200556134863,
+   "lastRate": 0.2509558567952729,
+   "avgScore": 537.5217240180743,
+   "avgRawScore": 25806.899548140424,
+   "maxRawScore": 183400,
+   "minRawScore": -36100,
+   "winRate": 0.1840835875845847,
+   "avgWinPoints": 7439.083333333333,
+   "tsumoRate": 0.4249074074074074,
+   "dealInRate": 0.11205236155380184,
+   "avgDealInPoints": 6755.0654091877095,
+   "riichiRate": 0.25030254478515057,
+   "callRate": 0.1898958564148017,
+   "drawTenpaiRate": 0.37218354667265513,
+   "pickByPersona": {}
+  },
+  "greedy": {
+   "id": "greedy",
+   "name": "greedy",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 5767,
+   "avgPlacement": 2.4445985781168718,
+   "placementSE": 0.01482884272588587,
+   "top1Rate": 0.27171839778047513,
+   "rentaiRate": 0.5224553494017686,
+   "lastRate": 0.23877232529911566,
+   "avgScore": 3273.0015606034335,
+   "avgRawScore": 27718.98734177215,
+   "maxRawScore": 141600,
+   "minRawScore": -85700,
+   "winRate": 0.20657013697698923,
+   "avgWinPoints": 7629.37885643768,
+   "tsumoRate": 0.41793500617030027,
+   "dealInRate": 0.10953060738927976,
+   "avgDealInPoints": 6788.114817688131,
+   "riichiRate": 0.2748886849529248,
+   "callRate": 0.20427585738078244,
+   "drawTenpaiRate": 0.38085090748769196,
+   "pickByPersona": {}
+  },
+  "meta": {
+   "id": "meta",
+   "name": "meta",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 5730,
+   "avgPlacement": 2.4828970331588134,
+   "placementSE": 0.014984466869741527,
+   "top1Rate": 0.2636998254799302,
+   "rentaiRate": 0.5080279232111693,
+   "lastRate": 0.2546247818499127,
+   "avgScore": 2581.5881326352533,
+   "avgRawScore": 27410.558464223384,
+   "maxRawScore": 363000,
+   "minRawScore": -63400,
+   "winRate": 0.19935106182080378,
+   "avgWinPoints": 7689.364450568378,
+   "tsumoRate": 0.4305890458146745,
+   "dealInRate": 0.11186458136620371,
+   "avgDealInPoints": 6724.739103744629,
+   "riichiRate": 0.26913766759944374,
+   "callRate": 0.20149702140809284,
+   "drawTenpaiRate": 0.3769486907825034,
+   "pickByPersona": {}
+  }
+ },
+ "byArchetype": {
+  "balanced": {
+   "id": "balanced",
+   "name": "balanced",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 6692,
+   "avgPlacement": 2.4726539151225344,
+   "placementSE": 0.013761771231153703,
+   "top1Rate": 0.2601613867304244,
+   "rentaiRate": 0.5159892408846384,
+   "lastRate": 0.24880454273759714,
+   "avgScore": 2011.7453676031082,
+   "avgRawScore": 26738.284518828452,
+   "maxRawScore": 198500,
+   "minRawScore": -54500,
+   "winRate": 0.19563505948215534,
+   "avgWinPoints": 7427.326924510023,
+   "tsumoRate": 0.42104478724197036,
+   "dealInRate": 0.11384709587123863,
+   "avgDealInPoints": 6670.329107440133,
+   "riichiRate": 0.2701335432703522,
+   "callRate": 0.20366806624679262,
+   "drawTenpaiRate": 0.3998241979029321,
+   "pickByPersona": {}
+  },
+  "wildcard": {
+   "id": "wildcard",
+   "name": "wildcard",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 6705,
+   "avgPlacement": 2.5058911260253542,
+   "placementSE": 0.013678297669596672,
+   "top1Rate": 0.25100671140939596,
+   "rentaiRate": 0.4942580164056674,
+   "lastRate": 0.2511558538404176,
+   "avgScore": 1557.703206562267,
+   "avgRawScore": 26616.61446681581,
+   "maxRawScore": 363000,
+   "minRawScore": -85700,
+   "winRate": 0.19475945519378032,
+   "avgWinPoints": 7394.642455166204,
+   "tsumoRate": 0.4046672169280408,
+   "dealInRate": 0.11616589700122756,
+   "avgDealInPoints": 6722.48081519688,
+   "riichiRate": 0.2745659671479511,
+   "callRate": 0.225287893844625,
+   "drawTenpaiRate": 0.41046885035324343,
+   "pickByPersona": {}
+  },
+  "attacker": {
+   "id": "attacker",
+   "name": "attacker",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 6698,
+   "avgPlacement": 2.4478948939982086,
+   "placementSE": 0.013912496113457323,
+   "top1Rate": 0.276500447894894,
+   "rentaiRate": 0.5235891310839056,
+   "lastRate": 0.24798447297700807,
+   "avgScore": 3249.5670349358015,
+   "avgRawScore": 27728.515974917886,
+   "maxRawScore": 345500,
+   "minRawScore": -63400,
+   "winRate": 0.20690108157814074,
+   "avgWinPoints": 7409.869488536156,
+   "tsumoRate": 0.41735449735449737,
+   "dealInRate": 0.1224182977915955,
+   "avgDealInPoints": 6792.989149874807,
+   "riichiRate": 0.2973829020157347,
+   "callRate": 0.22339478331946694,
+   "drawTenpaiRate": 0.45474530494315685,
+   "pickByPersona": {}
+  },
+  "defender": {
+   "id": "defender",
+   "name": "defender",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 6748,
+   "avgPlacement": 2.6228512151748666,
+   "placementSE": 0.012875045761081937,
+   "top1Rate": 0.1890930646117368,
+   "rentaiRate": 0.44072317723770005,
+   "lastRate": 0.2526674570243035,
+   "avgScore": -1870.3764078245406,
+   "avgRawScore": 24358.135743924126,
+   "maxRawScore": 262200,
+   "minRawScore": -45900,
+   "winRate": 0.1531139750881993,
+   "avgWinPoints": 7636.903978181134,
+   "tsumoRate": 0.41728580833254963,
+   "dealInRate": 0.08252573979408165,
+   "avgDealInPoints": 6427.447216890595,
+   "riichiRate": 0.18244654042767658,
+   "callRate": 0.12273021815825473,
+   "drawTenpaiRate": 0.23552567829457363,
+   "pickByPersona": {}
+  },
+  "speedster": {
+   "id": "speedster",
+   "name": "speedster",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 6710,
+   "avgPlacement": 2.4347242921013414,
+   "placementSE": 0.01393120734511227,
+   "top1Rate": 0.28241430700447095,
+   "rentaiRate": 0.5286140089418778,
+   "lastRate": 0.24575260804769,
+   "avgScore": 3475.1713859910583,
+   "avgRawScore": 27822.41430700447,
+   "maxRawScore": 248900,
+   "minRawScore": -32300,
+   "winRate": 0.21277460759971542,
+   "avgWinPoints": 7139.436331377098,
+   "tsumoRate": 0.41415313225058004,
+   "dealInRate": 0.1181339025133946,
+   "avgDealInPoints": 6802.728613569321,
+   "riichiRate": 0.28071321746453515,
+   "callRate": 0.25158629902281077,
+   "drawTenpaiRate": 0.4541387024608501,
+   "pickByPersona": {}
+  },
+  "valueHunter": {
+   "id": "valueHunter",
+   "name": "valueHunter",
+   "tier": null,
+   "offered": 0,
+   "picked": 0,
+   "pickRate": 0,
+   "games": 6647,
+   "avgPlacement": 2.515270046637581,
+   "placementSE": 0.013655989057585104,
+   "top1Rate": 0.24116142620731157,
+   "rentaiRate": 0.49721678952911086,
+   "lastRate": 0.2536482623740033,
+   "avgScore": 1010.5160222656838,
+   "avgRawScore": 26163.216488641494,
+   "maxRawScore": 327000,
+   "minRawScore": -38300,
+   "winRate": 0.17871984258674617,
+   "avgWinPoints": 7834.771177388875,
+   "tsumoRate": 0.4173034261769781,
+   "dealInRate": 0.10870618639961234,
+   "avgDealInPoints": 6518.492503039309,
+   "riichiRate": 0.24553237103713602,
+   "callRate": 0.1380449626290363,
+   "drawTenpaiRate": 0.3509269769201665,
+   "pickByPersona": {}
+  }
+ },
+ "augments": [
+  {
+   "id": "broken_wall",
+   "name": "끝없는 윤회",
+   "tier": "A",
+   "offered": 4100,
+   "picked": 1442,
+   "pickRate": 0.3517073170731707,
+   "games": 1481,
+   "avgPlacement": 2.49966239027684,
+   "placementSE": 0.029366434282188672,
+   "top1Rate": 0.25320729237002026,
+   "rentaiRate": 0.5070898041863605,
+   "lastRate": 0.2599594868332208,
+   "avgScore": 945.4422687373396,
+   "avgRawScore": 25942.06617150574,
+   "maxRawScore": 118100,
+   "minRawScore": -19000,
+   "winRate": 0.19718936792572808,
+   "avgWinPoints": 7047.049338922928,
+   "tsumoRate": 0.41180264430828767,
+   "dealInRate": 0.11140785959557421,
+   "avgDealInPoints": 6592.979452054795,
+   "riichiRate": 0.24780618084700495,
+   "callRate": 0.1954724659799059,
+   "drawTenpaiRate": 0.3642276422764228,
+   "pickByPersona": {
+    "category": {
+     "offered": 578,
+     "picked": 218,
+     "rate": 0.3771626297577855
+    },
+    "contrarian": {
+     "offered": 559,
+     "picked": 60,
+     "rate": 0.1073345259391771
+    },
+    "synergy": {
+     "offered": 579,
+     "picked": 261,
+     "rate": 0.45077720207253885
+    },
+    "greedy": {
+     "offered": 620,
+     "picked": 258,
+     "rate": 0.4161290322580645
+    },
+    "fun": {
+     "offered": 592,
+     "picked": 183,
+     "rate": 0.3091216216216216
+    },
+    "archetype": {
+     "offered": 568,
+     "picked": 206,
+     "rate": 0.3626760563380282
+    },
+    "meta": {
+     "offered": 604,
+     "picked": 256,
+     "rate": 0.423841059602649
+    }
+   }
+  },
+  {
+   "id": "bottom_deal",
+   "name": "밑장빼기",
+   "tier": "S",
+   "offered": 3783,
+   "picked": 1544,
+   "pickRate": 0.40814168649220195,
+   "games": 1565,
+   "avgPlacement": 2.4952076677316293,
+   "placementSE": 0.028320980323283465,
+   "top1Rate": 0.25431309904153354,
+   "rentaiRate": 0.4984025559105431,
+   "lastRate": 0.24792332268370607,
+   "avgScore": 1874.1214057507987,
+   "avgRawScore": 26826.19808306709,
+   "maxRawScore": 127200,
+   "minRawScore": -27600,
+   "winRate": 0.20077453709306547,
+   "avgWinPoints": 7177.697408077155,
+   "tsumoRate": 0.4321880650994575,
+   "dealInRate": 0.11273145346726371,
+   "avgDealInPoints": 6470.960815888352,
+   "riichiRate": 0.2658840614788818,
+   "callRate": 0.1939973375287426,
+   "drawTenpaiRate": 0.3786997885835095,
+   "pickByPersona": {
+    "category": {
+     "offered": 549,
+     "picked": 246,
+     "rate": 0.44808743169398907
+    },
+    "meta": {
+     "offered": 526,
+     "picked": 284,
+     "rate": 0.5399239543726235
+    },
+    "greedy": {
+     "offered": 547,
+     "picked": 300,
+     "rate": 0.5484460694698354
+    },
+    "archetype": {
+     "offered": 522,
+     "picked": 215,
+     "rate": 0.4118773946360153
+    },
+    "fun": {
+     "offered": 543,
+     "picked": 189,
+     "rate": 0.34806629834254144
+    },
+    "contrarian": {
+     "offered": 553,
+     "picked": 38,
+     "rate": 0.06871609403254973
+    },
+    "synergy": {
+     "offered": 543,
+     "picked": 272,
+     "rate": 0.5009208103130756
+    }
+   }
+  },
+  {
+   "id": "take_back",
+   "name": "무르기",
+   "tier": "B",
+   "offered": 4185,
+   "picked": 1147,
+   "pickRate": 0.2740740740740741,
+   "games": 1180,
+   "avgPlacement": 2.3686440677966103,
+   "placementSE": 0.032357740248181735,
+   "top1Rate": 0.28559322033898304,
+   "rentaiRate": 0.5610169491525424,
+   "lastRate": 0.21525423728813559,
+   "avgScore": 4633.8983050847455,
+   "avgRawScore": 28320.338983050846,
+   "maxRawScore": 173800,
+   "minRawScore": -16800,
+   "winRate": 0.2227813723140826,
+   "avgWinPoints": 7274.65041233417,
+   "tsumoRate": 0.42416636787378986,
+   "dealInRate": 0.11766115504433261,
+   "avgDealInPoints": 6665.784114052954,
+   "riichiRate": 0.3024203211119099,
+   "callRate": 0.17733045770428948,
+   "drawTenpaiRate": 0.4268292682926829,
+   "pickByPersona": {
+    "category": {
+     "offered": 599,
+     "picked": 174,
+     "rate": 0.2904841402337229
+    },
+    "greedy": {
+     "offered": 633,
+     "picked": 144,
+     "rate": 0.22748815165876776
+    },
+    "contrarian": {
+     "offered": 643,
+     "picked": 147,
+     "rate": 0.2286158631415241
+    },
+    "fun": {
+     "offered": 589,
+     "picked": 195,
+     "rate": 0.3310696095076401
+    },
+    "meta": {
+     "offered": 608,
+     "picked": 149,
+     "rate": 0.2450657894736842
+    },
+    "synergy": {
+     "offered": 551,
+     "picked": 134,
+     "rate": 0.24319419237749546
+    },
+    "archetype": {
+     "offered": 562,
+     "picked": 204,
+     "rate": 0.36298932384341637
+    }
+   }
+  },
+  {
+   "id": "joker",
+   "name": "조커",
+   "tier": "S+",
+   "offered": 2760,
+   "picked": 1565,
+   "pickRate": 0.5670289855072463,
+   "games": 1591,
+   "avgPlacement": 1.71024512884978,
+   "placementSE": 0.024281011061153282,
+   "top1Rate": 0.5763670647391578,
+   "rentaiRate": 0.792583280955374,
+   "lastRate": 0.07919547454431175,
+   "avgScore": 25373.16153362665,
+   "avgRawScore": 42475.61282212445,
+   "maxRawScore": 331500,
+   "minRawScore": -14600,
+   "winRate": 0.3261730469218769,
+   "avgWinPoints": 7901.21412803532,
+   "tsumoRate": 0.3730684326710817,
+   "dealInRate": 0.09204368174726989,
+   "avgDealInPoints": 6344.328552803129,
+   "riichiRate": 0.3675747029881195,
+   "callRate": 0.16350654026161046,
+   "drawTenpaiRate": 0.3744047619047619,
+   "pickByPersona": {
+    "category": {
+     "offered": 402,
+     "picked": 292,
+     "rate": 0.7263681592039801
+    },
+    "meta": {
+     "offered": 401,
+     "picked": 310,
+     "rate": 0.773067331670823
+    },
+    "greedy": {
+     "offered": 430,
+     "picked": 326,
+     "rate": 0.7581395348837209
+    },
+    "contrarian": {
+     "offered": 349,
+     "picked": 2,
+     "rate": 0.0057306590257879654
+    },
+    "fun": {
+     "offered": 375,
+     "picked": 128,
+     "rate": 0.3413333333333333
+    },
+    "synergy": {
+     "offered": 428,
+     "picked": 329,
+     "rate": 0.7686915887850467
+    },
+    "archetype": {
+     "offered": 375,
+     "picked": 178,
+     "rate": 0.4746666666666667
+    }
+   }
+  },
+  {
+   "id": "pond_snatch",
+   "name": "날치기",
+   "tier": "S",
+   "offered": 3860,
+   "picked": 1806,
+   "pickRate": 0.4678756476683938,
+   "games": 1832,
+   "avgPlacement": 2.6042576419213974,
+   "placementSE": 0.0262198931311154,
+   "top1Rate": 0.22489082969432314,
+   "rentaiRate": 0.4557860262008734,
+   "lastRate": 0.2849344978165939,
+   "avgScore": -1742.1943231441048,
+   "avgRawScore": 24300.38209606987,
+   "maxRawScore": 164700,
+   "minRawScore": -85700,
+   "winRate": 0.18972595709740325,
+   "avgWinPoints": 6971.030565323235,
+   "tsumoRate": 0.39572626453881526,
+   "dealInRate": 0.10915529097813816,
+   "avgDealInPoints": 6734.273624823695,
+   "riichiRate": 0.25951965513702147,
+   "callRate": 0.1834137329364672,
+   "drawTenpaiRate": 0.3746875710065894,
+   "pickByPersona": {
+    "category": {
+     "offered": 578,
+     "picked": 321,
+     "rate": 0.5553633217993079
+    },
+    "greedy": {
+     "offered": 522,
+     "picked": 354,
+     "rate": 0.6781609195402298
+    },
+    "archetype": {
+     "offered": 539,
+     "picked": 227,
+     "rate": 0.42115027829313545
+    },
+    "meta": {
+     "offered": 517,
+     "picked": 331,
+     "rate": 0.6402321083172147
+    },
+    "synergy": {
+     "offered": 583,
+     "picked": 369,
+     "rate": 0.6329331046312179
+    },
+    "fun": {
+     "offered": 560,
+     "picked": 188,
+     "rate": 0.3357142857142857
+    },
+    "contrarian": {
+     "offered": 561,
+     "picked": 16,
+     "rate": 0.0285204991087344
+    }
+   }
+  },
+  {
+   "id": "genesis",
+   "name": "개벽",
+   "tier": "A",
+   "offered": 4300,
+   "picked": 1382,
+   "pickRate": 0.3213953488372093,
+   "games": 1414,
+   "avgPlacement": 2.4115983026874117,
+   "placementSE": 0.03048216558577376,
+   "top1Rate": 0.28995756718529,
+   "rentaiRate": 0.5438472418670438,
+   "lastRate": 0.2454031117397454,
+   "avgScore": 4517.963224893918,
+   "avgRawScore": 28633.946251768033,
+   "maxRawScore": 129600,
+   "minRawScore": -30700,
+   "winRate": 0.19858628967724726,
+   "avgWinPoints": 8133.3445265278715,
+   "tsumoRate": 0.4298186702484889,
+   "dealInRate": 0.10876233662309949,
+   "avgDealInPoints": 6674.187614960148,
+   "riichiRate": 0.2785409442518005,
+   "callRate": 0.17244598559615898,
+   "drawTenpaiRate": 0.40917628119130667,
+   "pickByPersona": {
+    "category": {
+     "offered": 624,
+     "picked": 215,
+     "rate": 0.34455128205128205
+    },
+    "meta": {
+     "offered": 599,
+     "picked": 196,
+     "rate": 0.327212020033389
+    },
+    "fun": {
+     "offered": 649,
+     "picked": 185,
+     "rate": 0.2850539291217257
+    },
+    "contrarian": {
+     "offered": 582,
+     "picked": 128,
+     "rate": 0.21993127147766323
+    },
+    "synergy": {
+     "offered": 617,
+     "picked": 227,
+     "rate": 0.3679092382495948
+    },
+    "greedy": {
+     "offered": 592,
+     "picked": 184,
+     "rate": 0.3108108108108108
+    },
+    "archetype": {
+     "offered": 637,
+     "picked": 247,
+     "rate": 0.3877551020408163
+    }
+   }
+  },
+  {
+   "id": "eternal_dealer",
+   "name": "만년 오야",
+   "tier": "S+",
+   "offered": 2247,
+   "picked": 1387,
+   "pickRate": 0.6172674677347575,
+   "games": 1405,
+   "avgPlacement": 2.4797153024911034,
+   "placementSE": 0.03029689788968652,
+   "top1Rate": 0.2661921708185053,
+   "rentaiRate": 0.507473309608541,
+   "lastRate": 0.25338078291814947,
+   "avgScore": 2866.476868327402,
+   "avgRawScore": 27663.629893238434,
+   "maxRawScore": 173800,
+   "minRawScore": -33700,
+   "winRate": 0.18809614650896606,
+   "avgWinPoints": 8445.977011494253,
+   "tsumoRate": 0.4354293441514537,
+   "dealInRate": 0.11255246089278902,
+   "avgDealInPoints": 6467.175141242938,
+   "riichiRate": 0.267327991860613,
+   "callRate": 0.1911484166348722,
+   "drawTenpaiRate": 0.3926430517711172,
+   "pickByPersona": {
+    "category": {
+     "offered": 312,
+     "picked": 269,
+     "rate": 0.8621794871794872
+    },
+    "synergy": {
+     "offered": 323,
+     "picked": 269,
+     "rate": 0.8328173374613003
+    },
+    "greedy": {
+     "offered": 357,
+     "picked": 317,
+     "rate": 0.8879551820728291
+    },
+    "meta": {
+     "offered": 314,
+     "picked": 282,
+     "rate": 0.8980891719745223
+    },
+    "fun": {
+     "offered": 348,
+     "picked": 106,
+     "rate": 0.3045977011494253
+    },
+    "archetype": {
+     "offered": 283,
+     "picked": 143,
+     "rate": 0.5053003533568905
+    },
+    "contrarian": {
+     "offered": 310,
+     "picked": 1,
+     "rate": 0.0032258064516129032
+    }
+   }
+  },
+  {
+   "id": "rinshan_preview",
+   "name": "영상 정찰",
+   "tier": "B",
+   "offered": 2855,
+   "picked": 836,
+   "pickRate": 0.2928196147110333,
+   "games": 854,
+   "avgPlacement": 2.4028103044496487,
+   "placementSE": 0.03777416323839343,
+   "top1Rate": 0.27049180327868855,
+   "rentaiRate": 0.544496487119438,
+   "lastRate": 0.21779859484777517,
+   "avgScore": 4332.786885245901,
+   "avgRawScore": 28360.88992974239,
+   "maxRawScore": 154100,
+   "minRawScore": -23800,
+   "winRate": 0.21111710739341608,
+   "avgWinPoints": 7126.6359918200405,
+   "tsumoRate": 0.4325153374233129,
+   "dealInRate": 0.10512682137075013,
+   "avgDealInPoints": 6459.240246406571,
+   "riichiRate": 0.28850512682137075,
+   "callRate": 0.1866162978953049,
+   "drawTenpaiRate": 0.39933046389287424,
+   "pickByPersona": {
+    "category": {
+     "offered": 416,
+     "picked": 121,
+     "rate": 0.29086538461538464
+    },
+    "greedy": {
+     "offered": 362,
+     "picked": 97,
+     "rate": 0.26795580110497236
+    },
+    "fun": {
+     "offered": 425,
+     "picked": 150,
+     "rate": 0.35294117647058826
+    },
+    "contrarian": {
+     "offered": 433,
+     "picked": 89,
+     "rate": 0.20554272517321015
+    },
+    "synergy": {
+     "offered": 427,
+     "picked": 115,
+     "rate": 0.2693208430913349
+    },
+    "meta": {
+     "offered": 383,
+     "picked": 101,
+     "rate": 0.26370757180156656
+    },
+    "archetype": {
+     "offered": 409,
+     "picked": 163,
+     "rate": 0.39853300733496333
+    }
+   }
+  },
+  {
+   "id": "tile_split",
+   "name": "분열",
+   "tier": "S",
+   "offered": 3871,
+   "picked": 1598,
+   "pickRate": 0.41281322655644537,
+   "games": 1621,
+   "avgPlacement": 2.106724244293646,
+   "placementSE": 0.02688812288804399,
+   "top1Rate": 0.3837137569401604,
+   "rentaiRate": 0.6637877853177051,
+   "lastRate": 0.15422578655151142,
+   "avgScore": 13219.37075879087,
+   "avgRawScore": 34286.61320172733,
+   "maxRawScore": 282500,
+   "minRawScore": -20800,
+   "winRate": 0.269244247167387,
+   "avgWinPoints": 7595.618221258134,
+   "tsumoRate": 0.4160520607375271,
+   "dealInRate": 0.10355098703422497,
+   "avgDealInPoints": 6688.4376762549355,
+   "riichiRate": 0.3694077794650158,
+   "callRate": 0.15237705875481836,
+   "drawTenpaiRate": 0.44313832695462,
+   "pickByPersona": {
+    "category": {
+     "offered": 544,
+     "picked": 261,
+     "rate": 0.4797794117647059
+    },
+    "fun": {
+     "offered": 556,
+     "picked": 195,
+     "rate": 0.35071942446043164
+    },
+    "archetype": {
+     "offered": 524,
+     "picked": 223,
+     "rate": 0.4255725190839695
+    },
+    "greedy": {
+     "offered": 568,
+     "picked": 314,
+     "rate": 0.5528169014084507
+    },
+    "meta": {
+     "offered": 576,
+     "picked": 303,
+     "rate": 0.5260416666666666
+    },
+    "synergy": {
+     "offered": 545,
+     "picked": 268,
+     "rate": 0.4917431192660551
+    },
+    "contrarian": {
+     "offered": 558,
+     "picked": 34,
+     "rate": 0.06093189964157706
+    }
+   }
+  },
+  {
+   "id": "dora_conceal",
+   "name": "가려진 도라",
+   "tier": "D",
+   "offered": 4779,
+   "picked": 1016,
+   "pickRate": 0.212596777568529,
+   "games": 1068,
+   "avgPlacement": 2.7237827715355807,
+   "placementSE": 0.03252509985238197,
+   "top1Rate": 0.16760299625468164,
+   "rentaiRate": 0.4054307116104869,
+   "lastRate": 0.29681647940074907,
+   "avgScore": -4815.730337078651,
+   "avgRawScore": 22422.097378277154,
+   "maxRawScore": 94100,
+   "minRawScore": -38300,
+   "winRate": 0.16047862044694702,
+   "avgWinPoints": 6835.30701754386,
+   "tsumoRate": 0.42160087719298245,
+   "dealInRate": 0.11217666725321133,
+   "avgDealInPoints": 6288.6274509803925,
+   "riichiRate": 0.22241773711068097,
+   "callRate": 0.18001055780397676,
+   "drawTenpaiRate": 0.35944003026863414,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 710,
+     "picked": 507,
+     "rate": 0.7140845070422536
+    },
+    "fun": {
+     "offered": 709,
+     "picked": 236,
+     "rate": 0.3328631875881523
+    },
+    "archetype": {
+     "offered": 693,
+     "picked": 123,
+     "rate": 0.1774891774891775
+    },
+    "meta": {
+     "offered": 661,
+     "picked": 12,
+     "rate": 0.018154311649016642
+    },
+    "synergy": {
+     "offered": 641,
+     "picked": 21,
+     "rate": 0.0327613104524181
+    },
+    "category": {
+     "offered": 696,
+     "picked": 97,
+     "rate": 0.13936781609195403
+    },
+    "greedy": {
+     "offered": 669,
+     "picked": 20,
+     "rate": 0.029895366218236172
+    }
+   }
+  },
+  {
+   "id": "no_retreat",
+   "name": "물러설 수 없는 선언",
+   "tier": "S",
+   "offered": 3565,
+   "picked": 1433,
+   "pickRate": 0.40196353436185134,
+   "games": 1452,
+   "avgPlacement": 2.4738292011019283,
+   "placementSE": 0.029439743879780385,
+   "top1Rate": 0.26170798898071623,
+   "rentaiRate": 0.5068870523415978,
+   "lastRate": 0.24242424242424243,
+   "avgScore": 2914.876033057851,
+   "avgRawScore": 27653.168044077134,
+   "maxRawScore": 127200,
+   "minRawScore": -20100,
+   "winRate": 0.18145774135994186,
+   "avgWinPoints": 8747.560087399854,
+   "tsumoRate": 0.4085943190094683,
+   "dealInRate": 0.11180863014603847,
+   "avgDealInPoints": 6623.463356973995,
+   "riichiRate": 0.2839489856604771,
+   "callRate": 0.19883697878807904,
+   "drawTenpaiRate": 0.38294314381270905,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 512,
+     "picked": 34,
+     "rate": 0.06640625
+    },
+    "greedy": {
+     "offered": 515,
+     "picked": 263,
+     "rate": 0.5106796116504855
+    },
+    "fun": {
+     "offered": 510,
+     "picked": 177,
+     "rate": 0.34705882352941175
+    },
+    "archetype": {
+     "offered": 498,
+     "picked": 195,
+     "rate": 0.39156626506024095
+    },
+    "meta": {
+     "offered": 493,
+     "picked": 265,
+     "rate": 0.537525354969574
+    },
+    "synergy": {
+     "offered": 510,
+     "picked": 274,
+     "rate": 0.5372549019607843
+    },
+    "category": {
+     "offered": 527,
+     "picked": 225,
+     "rate": 0.4269449715370019
+    }
+   }
+  },
+  {
+   "id": "hand_swap3",
+   "name": "등가교환",
+   "tier": "S",
+   "offered": 3975,
+   "picked": 1820,
+   "pickRate": 0.4578616352201258,
+   "games": 1841,
+   "avgPlacement": 2.0152091254752853,
+   "placementSE": 0.024931560575956874,
+   "top1Rate": 0.42857142857142855,
+   "rentaiRate": 0.6920152091254753,
+   "lastRate": 0.13579576317218903,
+   "avgScore": 15255.676262900597,
+   "avgRawScore": 35407.76751765345,
+   "maxRawScore": 248900,
+   "minRawScore": -39600,
+   "winRate": 0.2804301522156995,
+   "avgWinPoints": 7762.523156724713,
+   "tsumoRate": 0.4540570581696925,
+   "dealInRate": 0.10187542209984934,
+   "avgDealInPoints": 6325.140234574197,
+   "riichiRate": 0.3637591563198088,
+   "callRate": 0.16032001662424022,
+   "drawTenpaiRate": 0.41160626836434866,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 606,
+     "picked": 18,
+     "rate": 0.0297029702970297
+    },
+    "category": {
+     "offered": 606,
+     "picked": 294,
+     "rate": 0.48514851485148514
+    },
+    "meta": {
+     "offered": 531,
+     "picked": 346,
+     "rate": 0.6516007532956686
+    },
+    "fun": {
+     "offered": 551,
+     "picked": 186,
+     "rate": 0.33756805807622503
+    },
+    "greedy": {
+     "offered": 610,
+     "picked": 390,
+     "rate": 0.639344262295082
+    },
+    "synergy": {
+     "offered": 586,
+     "picked": 360,
+     "rate": 0.6143344709897611
+    },
+    "archetype": {
+     "offered": 485,
+     "picked": 226,
+     "rate": 0.465979381443299
+    }
+   }
+  },
+  {
+   "id": "hidden_blade",
+   "name": "숨은 칼날",
+   "tier": "B",
+   "offered": 3806,
+   "picked": 1067,
+   "pickRate": 0.28034682080924855,
+   "games": 1099,
+   "avgPlacement": 2.6251137397634214,
+   "placementSE": 0.03316842990354757,
+   "top1Rate": 0.20473157415832574,
+   "rentaiRate": 0.45222929936305734,
+   "lastRate": 0.2820746132848044,
+   "avgScore": -2004.9135577798,
+   "avgRawScore": 24246.223839854414,
+   "maxRawScore": 154100,
+   "minRawScore": -20800,
+   "winRate": 0.17708333333333334,
+   "avgWinPoints": 7316.176470588235,
+   "tsumoRate": 0.4117647058823529,
+   "dealInRate": 0.11145833333333334,
+   "avgDealInPoints": 6654.906542056075,
+   "riichiRate": 0.2453125,
+   "callRate": 0.1868923611111111,
+   "drawTenpaiRate": 0.3793745346239762,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 601,
+     "picked": 133,
+     "rate": 0.22129783693843594
+    },
+    "category": {
+     "offered": 577,
+     "picked": 148,
+     "rate": 0.2564991334488735
+    },
+    "archetype": {
+     "offered": 512,
+     "picked": 178,
+     "rate": 0.34765625
+    },
+    "greedy": {
+     "offered": 511,
+     "picked": 144,
+     "rate": 0.28180039138943247
+    },
+    "meta": {
+     "offered": 537,
+     "picked": 150,
+     "rate": 0.27932960893854747
+    },
+    "synergy": {
+     "offered": 520,
+     "picked": 147,
+     "rate": 0.2826923076923077
+    },
+    "fun": {
+     "offered": 548,
+     "picked": 167,
+     "rate": 0.30474452554744524
+    }
+   }
+  },
+  {
+   "id": "iron_wall",
+   "name": "철벽",
+   "tier": "A",
+   "offered": 6727,
+   "picked": 2365,
+   "pickRate": 0.3515683068232496,
+   "games": 2418,
+   "avgPlacement": 2.543010752688172,
+   "placementSE": 0.022626442282253592,
+   "top1Rate": 0.23118279569892472,
+   "rentaiRate": 0.489247311827957,
+   "lastRate": 0.26344086021505375,
+   "avgScore": -79.90074441687345,
+   "avgRawScore": 25350.206782464847,
+   "maxRawScore": 345500,
+   "minRawScore": -26700,
+   "winRate": 0.18681751882366854,
+   "avgWinPoints": 6991.749314201308,
+   "tsumoRate": 0.3929098966026588,
+   "dealInRate": 0.1083691410099736,
+   "avgDealInPoints": 6483.121134958166,
+   "riichiRate": 0.2411794851578823,
+   "callRate": 0.20416288879252573,
+   "drawTenpaiRate": 0.363048656005444,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 953,
+     "picked": 93,
+     "rate": 0.09758656873032528
+    },
+    "category": {
+     "offered": 961,
+     "picked": 355,
+     "rate": 0.36940686784599375
+    },
+    "greedy": {
+     "offered": 1017,
+     "picked": 416,
+     "rate": 0.40904621435594885
+    },
+    "synergy": {
+     "offered": 941,
+     "picked": 402,
+     "rate": 0.42720510095642933
+    },
+    "meta": {
+     "offered": 936,
+     "picked": 378,
+     "rate": 0.40384615384615385
+    },
+    "archetype": {
+     "offered": 959,
+     "picked": 386,
+     "rate": 0.40250260688216893
+    },
+    "fun": {
+     "offered": 960,
+     "picked": 335,
+     "rate": 0.3489583333333333
+    }
+   }
+  },
+  {
+   "id": "always_tenpai",
+   "name": "승승장구",
+   "tier": "D",
+   "offered": 4460,
+   "picked": 915,
+   "pickRate": 0.20515695067264575,
+   "games": 935,
+   "avgPlacement": 2.2310160427807486,
+   "placementSE": 0.03447787285973113,
+   "top1Rate": 0.3122994652406417,
+   "rentaiRate": 0.6106951871657754,
+   "lastRate": 0.15401069518716579,
+   "avgScore": 8958.181818181818,
+   "avgRawScore": 31268.342245989305,
+   "maxRawScore": 345500,
+   "minRawScore": -13300,
+   "winRate": 0.16146361240624366,
+   "avgWinPoints": 6707.532956685499,
+   "tsumoRate": 0.42310106716886375,
+   "dealInRate": 0.1093654976687614,
+   "avgDealInPoints": 6583.03985171455,
+   "riichiRate": 0.21558889114129334,
+   "callRate": 0.17828907358605312,
+   "drawTenpaiRate": 0.7758620689655172,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 599,
+     "picked": 558,
+     "rate": 0.9315525876460768
+    },
+    "category": {
+     "offered": 648,
+     "picked": 69,
+     "rate": 0.10648148148148148
+    },
+    "meta": {
+     "offered": 648,
+     "picked": 2,
+     "rate": 0.0030864197530864196
+    },
+    "synergy": {
+     "offered": 646,
+     "picked": 0,
+     "rate": 0
+    },
+    "greedy": {
+     "offered": 660,
+     "picked": 1,
+     "rate": 0.0015151515151515152
+    },
+    "archetype": {
+     "offered": 635,
+     "picked": 72,
+     "rate": 0.11338582677165354
+    },
+    "fun": {
+     "offered": 624,
+     "picked": 213,
+     "rate": 0.34134615384615385
+    }
+   }
+  },
+  {
+   "id": "giant_god",
+   "name": "마작의 거신병",
+   "tier": "D",
+   "offered": 3355,
+   "picked": 654,
+   "pickRate": 0.19493293591654248,
+   "games": 703,
+   "avgPlacement": 2.5576102418207682,
+   "placementSE": 0.04168211735771247,
+   "top1Rate": 0.21763869132290184,
+   "rentaiRate": 0.49359886201991465,
+   "lastRate": 0.26884779516358465,
+   "avgScore": -905.6899004267425,
+   "avgRawScore": 24670.41251778094,
+   "maxRawScore": 248900,
+   "minRawScore": -15000,
+   "winRate": 0.1890520694259012,
+   "avgWinPoints": 6874.576271186441,
+   "tsumoRate": 0.4300847457627119,
+   "dealInRate": 0.11321762349799733,
+   "avgDealInPoints": 6500,
+   "riichiRate": 0.2626168224299065,
+   "callRate": 0.1822429906542056,
+   "drawTenpaiRate": 0.41044776119402987,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 433,
+     "picked": 187,
+     "rate": 0.43187066974595845
+    },
+    "greedy": {
+     "offered": 494,
+     "picked": 33,
+     "rate": 0.06680161943319839
+    },
+    "archetype": {
+     "offered": 489,
+     "picked": 132,
+     "rate": 0.26993865030674846
+    },
+    "meta": {
+     "offered": 481,
+     "picked": 42,
+     "rate": 0.08731808731808732
+    },
+    "fun": {
+     "offered": 433,
+     "picked": 144,
+     "rate": 0.3325635103926097
+    },
+    "synergy": {
+     "offered": 532,
+     "picked": 51,
+     "rate": 0.09586466165413533
+    },
+    "category": {
+     "offered": 493,
+     "picked": 65,
+     "rate": 0.13184584178498987
+    }
+   }
+  },
+  {
+   "id": "karma",
+   "name": "카르마",
+   "tier": "D",
+   "offered": 4414,
+   "picked": 915,
+   "pickRate": 0.20729497054825555,
+   "games": 953,
+   "avgPlacement": 2.2581322140608604,
+   "placementSE": 0.03209405602697812,
+   "top1Rate": 0.27492130115424973,
+   "rentaiRate": 0.5865687303252886,
+   "lastRate": 0.11962224554039874,
+   "avgScore": 7744.281217208814,
+   "avgRawScore": 30325.603357817417,
+   "maxRawScore": 127500,
+   "minRawScore": -26700,
+   "winRate": 0.16532538499751614,
+   "avgWinPoints": 6843.689903846154,
+   "tsumoRate": 0.40685096153846156,
+   "dealInRate": 0.11296572280178838,
+   "avgDealInPoints": 6464.555848724714,
+   "riichiRate": 0.21271733730750125,
+   "callRate": 0.1724788872329856,
+   "drawTenpaiRate": 0.3320545609548167,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 667,
+     "picked": 484,
+     "rate": 0.7256371814092953
+    },
+    "meta": {
+     "offered": 575,
+     "picked": 12,
+     "rate": 0.020869565217391306
+    },
+    "archetype": {
+     "offered": 626,
+     "picked": 130,
+     "rate": 0.20766773162939298
+    },
+    "category": {
+     "offered": 639,
+     "picked": 73,
+     "rate": 0.11424100156494522
+    },
+    "fun": {
+     "offered": 617,
+     "picked": 188,
+     "rate": 0.3047001620745543
+    },
+    "greedy": {
+     "offered": 660,
+     "picked": 14,
+     "rate": 0.021212121212121213
+    },
+    "synergy": {
+     "offered": 630,
+     "picked": 14,
+     "rate": 0.022222222222222223
+    }
+   }
+  },
+  {
+   "id": "scapegoat",
+   "name": "덤터기",
+   "tier": "D",
+   "offered": 4674,
+   "picked": 1012,
+   "pickRate": 0.21651690201112536,
+   "games": 1034,
+   "avgPlacement": 2.6034816247582206,
+   "placementSE": 0.03450129244676277,
+   "top1Rate": 0.218568665377176,
+   "rentaiRate": 0.45454545454545453,
+   "lastRate": 0.2765957446808511,
+   "avgScore": -1234.139264990329,
+   "avgRawScore": 24800.676982591875,
+   "maxRawScore": 136400,
+   "minRawScore": -17200,
+   "winRate": 0.16216709230207954,
+   "avgWinPoints": 6828.908886389201,
+   "tsumoRate": 0.40551181102362205,
+   "dealInRate": 0.11300620211601606,
+   "avgDealInPoints": 6573.446327683616,
+   "riichiRate": 0.22190806275082087,
+   "callRate": 0.1743889091572419,
+   "drawTenpaiRate": 0.3542082169924212,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 723,
+     "picked": 536,
+     "rate": 0.7413554633471646
+    },
+    "greedy": {
+     "offered": 605,
+     "picked": 10,
+     "rate": 0.01652892561983471
+    },
+    "archetype": {
+     "offered": 706,
+     "picked": 128,
+     "rate": 0.1813031161473088
+    },
+    "meta": {
+     "offered": 613,
+     "picked": 14,
+     "rate": 0.022838499184339316
+    },
+    "category": {
+     "offered": 687,
+     "picked": 94,
+     "rate": 0.13682678311499272
+    },
+    "synergy": {
+     "offered": 647,
+     "picked": 13,
+     "rate": 0.02009273570324575
+    },
+    "fun": {
+     "offered": 693,
+     "picked": 217,
+     "rate": 0.31313131313131315
+    }
+   }
+  },
+  {
+   "id": "push_riichi",
+   "name": "등 떠밀기",
+   "tier": "C",
+   "offered": 4548,
+   "picked": 1029,
+   "pickRate": 0.2262532981530343,
+   "games": 1063,
+   "avgPlacement": 2.601128880526811,
+   "placementSE": 0.033841530069616536,
+   "top1Rate": 0.2116650987770461,
+   "rentaiRate": 0.46378174976481656,
+   "lastRate": 0.27657572906867356,
+   "avgScore": -2008.7488240827845,
+   "avgRawScore": 24002.539981185324,
+   "maxRawScore": 128600,
+   "minRawScore": -19000,
+   "winRate": 0.17191926345609065,
+   "avgWinPoints": 6995.365602471678,
+   "tsumoRate": 0.417610710607621,
+   "dealInRate": 0.10941926345609065,
+   "avgDealInPoints": 6371.925566343042,
+   "riichiRate": 0.2361012747875354,
+   "callRate": 0.18015226628895184,
+   "drawTenpaiRate": 0.35700934579439253,
+   "pickByPersona": {
+    "fun": {
+     "offered": 697,
+     "picked": 246,
+     "rate": 0.35294117647058826
+    },
+    "meta": {
+     "offered": 594,
+     "picked": 30,
+     "rate": 0.050505050505050504
+    },
+    "category": {
+     "offered": 659,
+     "picked": 109,
+     "rate": 0.165402124430956
+    },
+    "contrarian": {
+     "offered": 720,
+     "picked": 406,
+     "rate": 0.5638888888888889
+    },
+    "archetype": {
+     "offered": 652,
+     "picked": 150,
+     "rate": 0.23006134969325154
+    },
+    "greedy": {
+     "offered": 606,
+     "picked": 48,
+     "rate": 0.07920792079207921
+    },
+    "synergy": {
+     "offered": 620,
+     "picked": 40,
+     "rate": 0.06451612903225806
+    }
+   }
+  },
+  {
+   "id": "open_riichi_reveal",
+   "name": "오픈 리치",
+   "tier": "C",
+   "offered": 4014,
+   "picked": 947,
+   "pickRate": 0.23592426507224715,
+   "games": 960,
+   "avgPlacement": 2.534375,
+   "placementSE": 0.03677192090282893,
+   "top1Rate": 0.25,
+   "rentaiRate": 0.4895833333333333,
+   "lastRate": 0.27395833333333336,
+   "avgScore": 2531.7708333333335,
+   "avgRawScore": 27875.520833333332,
+   "maxRawScore": 138500,
+   "minRawScore": -11600,
+   "winRate": 0.15480304077401522,
+   "avgWinPoints": 7820.089285714285,
+   "tsumoRate": 0.5688775510204082,
+   "dealInRate": 0.11067232698193306,
+   "avgDealInPoints": 6840.053523639607,
+   "riichiRate": 0.291045512883799,
+   "callRate": 0.1998222924276829,
+   "drawTenpaiRate": 0.46954043462771644,
+   "pickByPersona": {
+    "fun": {
+     "offered": 516,
+     "picked": 169,
+     "rate": 0.32751937984496127
+    },
+    "greedy": {
+     "offered": 572,
+     "picked": 85,
+     "rate": 0.1486013986013986
+    },
+    "synergy": {
+     "offered": 606,
+     "picked": 83,
+     "rate": 0.13696369636963696
+    },
+    "meta": {
+     "offered": 565,
+     "picked": 85,
+     "rate": 0.1504424778761062
+    },
+    "archetype": {
+     "offered": 560,
+     "picked": 164,
+     "rate": 0.29285714285714287
+    },
+    "category": {
+     "offered": 595,
+     "picked": 155,
+     "rate": 0.2605042016806723
+    },
+    "contrarian": {
+     "offered": 600,
+     "picked": 206,
+     "rate": 0.3433333333333333
+    }
+   }
+  },
+  {
+   "id": "soul_hunt",
+   "name": "혼 사냥",
+   "tier": "B",
+   "offered": 4182,
+   "picked": 1153,
+   "pickRate": 0.27570540411286465,
+   "games": 1198,
+   "avgPlacement": 2.6035058430717863,
+   "placementSE": 0.03165208426261518,
+   "top1Rate": 0.21285475792988315,
+   "rentaiRate": 0.4507512520868113,
+   "lastRate": 0.2671118530884808,
+   "avgScore": -1648.330550918197,
+   "avgRawScore": 24386.727879799666,
+   "maxRawScore": 96800,
+   "minRawScore": -23800,
+   "winRate": 0.18152285872751764,
+   "avgWinPoints": 7102.400698384985,
+   "tsumoRate": 0.3958969882147534,
+   "dealInRate": 0.10878694239759132,
+   "avgDealInPoints": 6490.968681718864,
+   "riichiRate": 0.25734886300610094,
+   "callRate": 0.18698993740591077,
+   "drawTenpaiRate": 0.39013898080741233,
+   "pickByPersona": {
+    "fun": {
+     "offered": 595,
+     "picked": 178,
+     "rate": 0.2991596638655462
+    },
+    "category": {
+     "offered": 614,
+     "picked": 179,
+     "rate": 0.2915309446254072
+    },
+    "synergy": {
+     "offered": 579,
+     "picked": 136,
+     "rate": 0.23488773747841105
+    },
+    "archetype": {
+     "offered": 611,
+     "picked": 226,
+     "rate": 0.3698854337152209
+    },
+    "contrarian": {
+     "offered": 572,
+     "picked": 134,
+     "rate": 0.23426573426573427
+    },
+    "meta": {
+     "offered": 594,
+     "picked": 158,
+     "rate": 0.265993265993266
+    },
+    "greedy": {
+     "offered": 617,
+     "picked": 142,
+     "rate": 0.23014586709886548
+    }
+   }
+  },
+  {
+   "id": "triple_peek",
+   "name": "삼세 예지",
+   "tier": "D",
+   "offered": 4483,
+   "picked": 942,
+   "pickRate": 0.21012714699977694,
+   "games": 970,
+   "avgPlacement": 2.6804123711340204,
+   "placementSE": 0.03453353773242065,
+   "top1Rate": 0.17216494845360825,
+   "rentaiRate": 0.44432989690721647,
+   "lastRate": 0.29690721649484536,
+   "avgScore": -4044.3298969072166,
+   "avgRawScore": 22759.79381443299,
+   "maxRawScore": 107800,
+   "minRawScore": -13800,
+   "winRate": 0.16832261835184104,
+   "avgWinPoints": 6696.064814814815,
+   "tsumoRate": 0.3894675925925926,
+   "dealInRate": 0.11299435028248588,
+   "avgDealInPoints": 6419.051724137931,
+   "riichiRate": 0.23787258912916423,
+   "callRate": 0.18273913890512372,
+   "drawTenpaiRate": 0.3874323761964211,
+   "pickByPersona": {
+    "fun": {
+     "offered": 645,
+     "picked": 208,
+     "rate": 0.32248062015503876
+    },
+    "meta": {
+     "offered": 710,
+     "picked": 6,
+     "rate": 0.008450704225352112
+    },
+    "contrarian": {
+     "offered": 645,
+     "picked": 550,
+     "rate": 0.8527131782945736
+    },
+    "category": {
+     "offered": 620,
+     "picked": 77,
+     "rate": 0.12419354838709677
+    },
+    "greedy": {
+     "offered": 641,
+     "picked": 10,
+     "rate": 0.015600624024960999
+    },
+    "synergy": {
+     "offered": 629,
+     "picked": 9,
+     "rate": 0.014308426073131956
+    },
+    "archetype": {
+     "offered": 593,
+     "picked": 82,
+     "rate": 0.13827993254637436
+    }
+   }
+  },
+  {
+   "id": "nagashi_yakuman",
+   "name": "유국역만",
+   "tier": "D",
+   "offered": 3568,
+   "picked": 766,
+   "pickRate": 0.21468609865470853,
+   "games": 813,
+   "avgPlacement": 2.6027060270602704,
+   "placementSE": 0.03862095052030638,
+   "top1Rate": 0.21279212792127922,
+   "rentaiRate": 0.4575645756457565,
+   "lastRate": 0.2730627306273063,
+   "avgScore": -1606.2730627306273,
+   "avgRawScore": 24420.78720787208,
+   "maxRawScore": 98800,
+   "minRawScore": -20200,
+   "winRate": 0.17299483262188273,
+   "avgWinPoints": 6884.545454545455,
+   "tsumoRate": 0.43116883116883115,
+   "dealInRate": 0.10997528645248258,
+   "avgDealInPoints": 6171.195097037794,
+   "riichiRate": 0.23904740507751068,
+   "callRate": 0.17995955964951696,
+   "drawTenpaiRate": 0.39085337105139084,
+   "pickByPersona": {
+    "fun": {
+     "offered": 506,
+     "picked": 167,
+     "rate": 0.3300395256916996
+    },
+    "archetype": {
+     "offered": 521,
+     "picked": 162,
+     "rate": 0.31094049904030713
+    },
+    "contrarian": {
+     "offered": 493,
+     "picked": 190,
+     "rate": 0.385395537525355
+    },
+    "synergy": {
+     "offered": 510,
+     "picked": 52,
+     "rate": 0.10196078431372549
+    },
+    "category": {
+     "offered": 503,
+     "picked": 69,
+     "rate": 0.13717693836978131
+    },
+    "meta": {
+     "offered": 488,
+     "picked": 51,
+     "rate": 0.10450819672131148
+    },
+    "greedy": {
+     "offered": 547,
+     "picked": 75,
+     "rate": 0.13711151736745886
+    }
+   }
+  },
+  {
+   "id": "true_dragon",
+   "name": "진짜 용",
+   "tier": "S+",
+   "offered": 2154,
+   "picked": 1549,
+   "pickRate": 0.7191272051996286,
+   "games": 1593,
+   "avgPlacement": 2.273069679849341,
+   "placementSE": 0.028377313508139528,
+   "top1Rate": 0.34588826114249843,
+   "rentaiRate": 0.5768989328311362,
+   "lastRate": 0.1958568738229755,
+   "avgScore": 9560.326428123039,
+   "avgRawScore": 32291.023226616446,
+   "maxRawScore": 275600,
+   "minRawScore": -26000,
+   "winRate": 0.1821239788563191,
+   "avgWinPoints": 10329.617414248021,
+   "tsumoRate": 0.4112796833773087,
+   "dealInRate": 0.10157376261412783,
+   "avgDealInPoints": 6300.118273211117,
+   "riichiRate": 0.23228015377222488,
+   "callRate": 0.23540365209034117,
+   "drawTenpaiRate": 0.37100317305345376,
+   "pickByPersona": {
+    "fun": {
+     "offered": 297,
+     "picked": 103,
+     "rate": 0.3468013468013468
+    },
+    "archetype": {
+     "offered": 288,
+     "picked": 189,
+     "rate": 0.65625
+    },
+    "synergy": {
+     "offered": 314,
+     "picked": 312,
+     "rate": 0.9936305732484076
+    },
+    "greedy": {
+     "offered": 330,
+     "picked": 330,
+     "rate": 1
+    },
+    "category": {
+     "offered": 293,
+     "picked": 293,
+     "rate": 1
+    },
+    "contrarian": {
+     "offered": 310,
+     "picked": 0,
+     "rate": 0
+    },
+    "meta": {
+     "offered": 322,
+     "picked": 322,
+     "rate": 1
+    }
+   }
+  },
+  {
+   "id": "cliff_bloom",
+   "name": "절벽 위에 피어난 꽃",
+   "tier": "S+",
+   "offered": 2223,
+   "picked": 1180,
+   "pickRate": 0.5308142150247414,
+   "games": 1238,
+   "avgPlacement": 2.4733441033925687,
+   "placementSE": 0.03151122071990907,
+   "top1Rate": 0.2560581583198708,
+   "rentaiRate": 0.5040387722132472,
+   "lastRate": 0.2334410339256866,
+   "avgScore": 1764.8626817447496,
+   "avgRawScore": 26498.303715670438,
+   "maxRawScore": 168800,
+   "minRawScore": -18600,
+   "winRate": 0.19582066869300913,
+   "avgWinPoints": 7143.616608459449,
+   "tsumoRate": 0.42801707411719053,
+   "dealInRate": 0.10585106382978723,
+   "avgDealInPoints": 6561.306532663317,
+   "riichiRate": 0.265273556231003,
+   "callRate": 0.1967325227963526,
+   "drawTenpaiRate": 0.3852090032154341,
+   "pickByPersona": {
+    "fun": {
+     "offered": 316,
+     "picked": 109,
+     "rate": 0.3449367088607595
+    },
+    "contrarian": {
+     "offered": 319,
+     "picked": 5,
+     "rate": 0.01567398119122257
+    },
+    "meta": {
+     "offered": 298,
+     "picked": 224,
+     "rate": 0.7516778523489933
+    },
+    "category": {
+     "offered": 345,
+     "picked": 229,
+     "rate": 0.663768115942029
+    },
+    "archetype": {
+     "offered": 307,
+     "picked": 155,
+     "rate": 0.504885993485342
+    },
+    "synergy": {
+     "offered": 320,
+     "picked": 224,
+     "rate": 0.7
+    },
+    "greedy": {
+     "offered": 318,
+     "picked": 234,
+     "rate": 0.7358490566037735
+    }
+   }
+  },
+  {
+   "id": "discard_recall",
+   "name": "회수",
+   "tier": "S",
+   "offered": 6447,
+   "picked": 2551,
+   "pickRate": 0.3956879168605553,
+   "games": 2603,
+   "avgPlacement": 2.5562812139838647,
+   "placementSE": 0.021940761263872104,
+   "top1Rate": 0.23434498655397618,
+   "rentaiRate": 0.47791010372646947,
+   "lastRate": 0.2685363042643104,
+   "avgScore": -335.5743373031118,
+   "avgRawScore": 25227.237802535536,
+   "maxRawScore": 193300,
+   "minRawScore": -36100,
+   "winRate": 0.18912972914487683,
+   "avgWinPoints": 7071.4149504195275,
+   "tsumoRate": 0.41361556064073224,
+   "dealInRate": 0.11169618061817002,
+   "avgDealInPoints": 6478.85050048434,
+   "riichiRate": 0.25163198326540914,
+   "callRate": 0.19800194756013995,
+   "drawTenpaiRate": 0.3889737324373855,
+   "pickByPersona": {
+    "fun": {
+     "offered": 938,
+     "picked": 332,
+     "rate": 0.35394456289978676
+    },
+    "greedy": {
+     "offered": 887,
+     "picked": 459,
+     "rate": 0.5174746335963923
+    },
+    "contrarian": {
+     "offered": 962,
+     "picked": 57,
+     "rate": 0.059251559251559255
+    },
+    "archetype": {
+     "offered": 856,
+     "picked": 336,
+     "rate": 0.3925233644859813
+    },
+    "meta": {
+     "offered": 912,
+     "picked": 462,
+     "rate": 0.506578947368421
+    },
+    "synergy": {
+     "offered": 933,
+     "picked": 471,
+     "rate": 0.5048231511254019
+    },
+    "category": {
+     "offered": 959,
+     "picked": 434,
+     "rate": 0.45255474452554745
+    }
+   }
+  },
+  {
+   "id": "mixed_triplet",
+   "name": "동수의 결속",
+   "tier": "S",
+   "offered": 3742,
+   "picked": 2030,
+   "pickRate": 0.5424906467129877,
+   "games": 2073,
+   "avgPlacement": 2.585142305836951,
+   "placementSE": 0.024816273558139656,
+   "top1Rate": 0.2392667631452002,
+   "rentaiRate": 0.45296671490593343,
+   "lastRate": 0.2773757838880849,
+   "avgScore": -765.5089242643512,
+   "avgRawScore": 25085.91413410516,
+   "maxRawScore": 147900,
+   "minRawScore": -63400,
+   "winRate": 0.18553645524599882,
+   "avgWinPoints": 7265.249447038585,
+   "tsumoRate": 0.41508970262963873,
+   "dealInRate": 0.11089325612147188,
+   "avgDealInPoints": 6633.840460526316,
+   "riichiRate": 0.24964661894122475,
+   "callRate": 0.2008572340522548,
+   "drawTenpaiRate": 0.3745871381387216,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 563,
+     "picked": 438,
+     "rate": 0.7779751332149201
+    },
+    "archetype": {
+     "offered": 493,
+     "picked": 251,
+     "rate": 0.5091277890466531
+    },
+    "category": {
+     "offered": 535,
+     "picked": 309,
+     "rate": 0.577570093457944
+    },
+    "fun": {
+     "offered": 544,
+     "picked": 172,
+     "rate": 0.3161764705882353
+    },
+    "greedy": {
+     "offered": 515,
+     "picked": 383,
+     "rate": 0.7436893203883496
+    },
+    "meta": {
+     "offered": 598,
+     "picked": 466,
+     "rate": 0.7792642140468228
+    },
+    "contrarian": {
+     "offered": 494,
+     "picked": 11,
+     "rate": 0.022267206477732792
+    }
+   }
+  },
+  {
+   "id": "danger_sense",
+   "name": "지뢰 탐지",
+   "tier": "D",
+   "offered": 4651,
+   "picked": 999,
+   "pickRate": 0.21479251773812083,
+   "games": 1037,
+   "avgPlacement": 2.6470588235294117,
+   "placementSE": 0.033654608558809085,
+   "top1Rate": 0.1880424300867888,
+   "rentaiRate": 0.4493731918997107,
+   "lastRate": 0.2844744455159113,
+   "avgScore": -2857.762777242044,
+   "avgRawScore": 23612.825458052073,
+   "maxRawScore": 93500,
+   "minRawScore": -38300,
+   "winRate": 0.16617674076795885,
+   "avgWinPoints": 6688.723051409618,
+   "tsumoRate": 0.4085129906025428,
+   "dealInRate": 0.10141466103251884,
+   "avgDealInPoints": 6663.858695652174,
+   "riichiRate": 0.22956090391328313,
+   "callRate": 0.18004776777512402,
+   "drawTenpaiRate": 0.38659392049883085,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 638,
+     "picked": 7,
+     "rate": 0.0109717868338558
+    },
+    "greedy": {
+     "offered": 666,
+     "picked": 3,
+     "rate": 0.0045045045045045045
+    },
+    "category": {
+     "offered": 636,
+     "picked": 76,
+     "rate": 0.11949685534591195
+    },
+    "meta": {
+     "offered": 669,
+     "picked": 7,
+     "rate": 0.01046337817638266
+    },
+    "contrarian": {
+     "offered": 725,
+     "picked": 593,
+     "rate": 0.8179310344827586
+    },
+    "fun": {
+     "offered": 678,
+     "picked": 210,
+     "rate": 0.30973451327433627
+    },
+    "archetype": {
+     "offered": 639,
+     "picked": 103,
+     "rate": 0.16118935837245696
+    }
+   }
+  },
+  {
+   "id": "time_pressure",
+   "name": "초읽기",
+   "tier": "D",
+   "offered": 4805,
+   "picked": 1025,
+   "pickRate": 0.2133194588969823,
+   "games": 1073,
+   "avgPlacement": 2.6644920782851815,
+   "placementSE": 0.03263692846925143,
+   "top1Rate": 0.17707362534948742,
+   "rentaiRate": 0.4408201304753029,
+   "lastRate": 0.28238583410997203,
+   "avgScore": -3870.5498602050325,
+   "avgRawScore": 22774.370922646784,
+   "maxRawScore": 125100,
+   "minRawScore": -33700,
+   "winRate": 0.16363636363636364,
+   "avgWinPoints": 6826.282051282052,
+   "tsumoRate": 0.40705128205128205,
+   "dealInRate": 0.10917832167832167,
+   "avgDealInPoints": 6535.0680544435545,
+   "riichiRate": 0.22508741258741258,
+   "callRate": 0.17447552447552447,
+   "drawTenpaiRate": 0.3531746031746032,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 670,
+     "picked": 0,
+     "rate": 0
+    },
+    "archetype": {
+     "offered": 716,
+     "picked": 55,
+     "rate": 0.07681564245810056
+    },
+    "meta": {
+     "offered": 700,
+     "picked": 0,
+     "rate": 0
+    },
+    "contrarian": {
+     "offered": 715,
+     "picked": 691,
+     "rate": 0.9664335664335665
+    },
+    "fun": {
+     "offered": 632,
+     "picked": 206,
+     "rate": 0.3259493670886076
+    },
+    "category": {
+     "offered": 697,
+     "picked": 73,
+     "rate": 0.10473457675753228
+    },
+    "greedy": {
+     "offered": 675,
+     "picked": 0,
+     "rate": 0
+    }
+   }
+  },
+  {
+   "id": "peek_riichi_waits",
+   "name": "선언 간파",
+   "tier": "C",
+   "offered": 4355,
+   "picked": 923,
+   "pickRate": 0.21194029850746268,
+   "games": 941,
+   "avgPlacement": 2.6705632306057385,
+   "placementSE": 0.035486193155682536,
+   "top1Rate": 0.19128586609989373,
+   "rentaiRate": 0.42826780021253985,
+   "lastRate": 0.29011689691817216,
+   "avgScore": -3743.9957492029757,
+   "avgRawScore": 22961.63655685441,
+   "maxRawScore": 82200,
+   "minRawScore": -34200,
+   "winRate": 0.16534643537551388,
+   "avgWinPoints": 6666.343238326258,
+   "tsumoRate": 0.39660400242571253,
+   "dealInRate": 0.10558507971523112,
+   "avgDealInPoints": 6553.086419753086,
+   "riichiRate": 0.2336308031685551,
+   "callRate": 0.1823924596410308,
+   "drawTenpaiRate": 0.3769198837691988,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 555,
+     "picked": 26,
+     "rate": 0.04684684684684685
+    },
+    "greedy": {
+     "offered": 591,
+     "picked": 35,
+     "rate": 0.05922165820642978
+    },
+    "archetype": {
+     "offered": 659,
+     "picked": 165,
+     "rate": 0.2503793626707132
+    },
+    "contrarian": {
+     "offered": 656,
+     "picked": 343,
+     "rate": 0.5228658536585366
+    },
+    "category": {
+     "offered": 602,
+     "picked": 92,
+     "rate": 0.15282392026578073
+    },
+    "fun": {
+     "offered": 642,
+     "picked": 217,
+     "rate": 0.338006230529595
+    },
+    "meta": {
+     "offered": 650,
+     "picked": 45,
+     "rate": 0.06923076923076923
+    }
+   }
+  },
+  {
+   "id": "stealth_riichi",
+   "name": "스텔스 리치",
+   "tier": "S",
+   "offered": 3355,
+   "picked": 2016,
+   "pickRate": 0.6008941877794337,
+   "games": 2056,
+   "avgPlacement": 2.526750972762646,
+   "placementSE": 0.024713649226064786,
+   "top1Rate": 0.24319066147859922,
+   "rentaiRate": 0.4897859922178988,
+   "lastRate": 0.259727626459144,
+   "avgScore": 499.9027237354086,
+   "avgRawScore": 25767.412451361866,
+   "maxRawScore": 99900,
+   "minRawScore": -54500,
+   "winRate": 0.19154514927089564,
+   "avgWinPoints": 7235.710854947166,
+   "tsumoRate": 0.3611911623439001,
+   "dealInRate": 0.11380468282809697,
+   "avgDealInPoints": 6596.281325788197,
+   "riichiRate": 0.3016698100188601,
+   "callRate": 0.19425916555499334,
+   "drawTenpaiRate": 0.3644822807364878,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 491,
+     "picked": 443,
+     "rate": 0.9022403258655805
+    },
+    "category": {
+     "offered": 518,
+     "picked": 345,
+     "rate": 0.666023166023166
+    },
+    "archetype": {
+     "offered": 439,
+     "picked": 239,
+     "rate": 0.5444191343963554
+    },
+    "fun": {
+     "offered": 480,
+     "picked": 133,
+     "rate": 0.27708333333333335
+    },
+    "contrarian": {
+     "offered": 469,
+     "picked": 0,
+     "rate": 0
+    },
+    "meta": {
+     "offered": 462,
+     "picked": 409,
+     "rate": 0.8852813852813853
+    },
+    "greedy": {
+     "offered": 496,
+     "picked": 447,
+     "rate": 0.9012096774193549
+    }
+   }
+  },
+  {
+   "id": "broken_border",
+   "name": "무너진 국경",
+   "tier": "S",
+   "offered": 3644,
+   "picked": 1975,
+   "pickRate": 0.54198682766191,
+   "games": 1996,
+   "avgPlacement": 2.278557114228457,
+   "placementSE": 0.02459674849010224,
+   "top1Rate": 0.31462925851703405,
+   "rentaiRate": 0.5951903807615231,
+   "lastRate": 0.18837675350701402,
+   "avgScore": 7427.50501002004,
+   "avgRawScore": 30213.07615230461,
+   "maxRawScore": 184900,
+   "minRawScore": -24000,
+   "winRate": 0.2368791662754671,
+   "avgWinPoints": 7070.868014268728,
+   "tsumoRate": 0.4304399524375743,
+   "dealInRate": 0.10280724814571401,
+   "avgDealInPoints": 6559.315068493151,
+   "riichiRate": 0.2940099521171721,
+   "callRate": 0.19012299314618344,
+   "drawTenpaiRate": 0.377929890064302,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 534,
+     "picked": 418,
+     "rate": 0.7827715355805244
+    },
+    "contrarian": {
+     "offered": 519,
+     "picked": 4,
+     "rate": 0.007707129094412331
+    },
+    "greedy": {
+     "offered": 518,
+     "picked": 409,
+     "rate": 0.7895752895752896
+    },
+    "category": {
+     "offered": 525,
+     "picked": 293,
+     "rate": 0.5580952380952381
+    },
+    "meta": {
+     "offered": 535,
+     "picked": 426,
+     "rate": 0.7962616822429907
+    },
+    "fun": {
+     "offered": 526,
+     "picked": 172,
+     "rate": 0.3269961977186312
+    },
+    "archetype": {
+     "offered": 487,
+     "picked": 253,
+     "rate": 0.5195071868583162
+    }
+   }
+  },
+  {
+   "id": "mixed_nine_gates",
+   "name": "뒤섞인 아홉 개의 연꽃",
+   "tier": "D",
+   "offered": 3369,
+   "picked": 787,
+   "pickRate": 0.2336004749183734,
+   "games": 851,
+   "avgPlacement": 2.481786133960047,
+   "placementSE": 0.0373014466141512,
+   "top1Rate": 0.23736780258519388,
+   "rentaiRate": 0.5099882491186839,
+   "lastRate": 0.2291421856639248,
+   "avgScore": 1213.7485311398354,
+   "avgRawScore": 26031.609870740307,
+   "maxRawScore": 121200,
+   "minRawScore": -24100,
+   "winRate": 0.19022146143147534,
+   "avgWinPoints": 6763.498312710911,
+   "tsumoRate": 0.39707536557930256,
+   "dealInRate": 0.10516743340109126,
+   "avgDealInPoints": 6509.969481180061,
+   "riichiRate": 0.25131058093505937,
+   "callRate": 0.18647694447416283,
+   "drawTenpaiRate": 0.36603088101725706,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 490,
+     "picked": 105,
+     "rate": 0.21428571428571427
+    },
+    "category": {
+     "offered": 468,
+     "picked": 59,
+     "rate": 0.12606837606837606
+    },
+    "greedy": {
+     "offered": 526,
+     "picked": 81,
+     "rate": 0.15399239543726237
+    },
+    "meta": {
+     "offered": 499,
+     "picked": 87,
+     "rate": 0.1743486973947896
+    },
+    "contrarian": {
+     "offered": 437,
+     "picked": 152,
+     "rate": 0.34782608695652173
+    },
+    "fun": {
+     "offered": 477,
+     "picked": 150,
+     "rate": 0.31446540880503143
+    },
+    "archetype": {
+     "offered": 472,
+     "picked": 153,
+     "rate": 0.3241525423728814
+    }
+   }
+  },
+  {
+   "id": "full_hand_swap",
+   "name": "통째로 바꾸기",
+   "tier": "C",
+   "offered": 4823,
+   "picked": 1035,
+   "pickRate": 0.2145967240306863,
+   "games": 1078,
+   "avgPlacement": 2.531539888682746,
+   "placementSE": 0.033672957692166286,
+   "top1Rate": 0.23191094619666047,
+   "rentaiRate": 0.4907235621521336,
+   "lastRate": 0.2541743970315399,
+   "avgScore": 26.34508348794063,
+   "avgRawScore": 25341.743970315398,
+   "maxRawScore": 179700,
+   "minRawScore": -29200,
+   "winRate": 0.1937937062937063,
+   "avgWinPoints": 6912.855209742896,
+   "tsumoRate": 0.39557961208840775,
+   "dealInRate": 0.11346153846153846,
+   "avgDealInPoints": 6458.089368258859,
+   "riichiRate": 0.27534965034965037,
+   "callRate": 0.17325174825174824,
+   "drawTenpaiRate": 0.39148612694792856,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 716,
+     "picked": 65,
+     "rate": 0.09078212290502793
+    },
+    "archetype": {
+     "offered": 730,
+     "picked": 190,
+     "rate": 0.2602739726027397
+    },
+    "greedy": {
+     "offered": 630,
+     "picked": 53,
+     "rate": 0.08412698412698413
+    },
+    "contrarian": {
+     "offered": 663,
+     "picked": 290,
+     "rate": 0.4374057315233786
+    },
+    "meta": {
+     "offered": 706,
+     "picked": 70,
+     "rate": 0.09915014164305949
+    },
+    "fun": {
+     "offered": 690,
+     "picked": 230,
+     "rate": 0.3333333333333333
+    },
+    "category": {
+     "offered": 688,
+     "picked": 137,
+     "rate": 0.19912790697674418
+    }
+   }
+  },
+  {
+   "id": "polar_ends",
+   "name": "양극",
+   "tier": "S",
+   "offered": 2570,
+   "picked": 1613,
+   "pickRate": 0.6276264591439689,
+   "games": 1652,
+   "avgPlacement": 2.51271186440678,
+   "placementSE": 0.027792409246053112,
+   "top1Rate": 0.2536319612590799,
+   "rentaiRate": 0.4927360774818402,
+   "lastRate": 0.25907990314769974,
+   "avgScore": 1013.1961259079903,
+   "avgRawScore": 26140.314769975786,
+   "maxRawScore": 275600,
+   "minRawScore": -24300,
+   "winRate": 0.197021635290812,
+   "avgWinPoints": 7052.082144894466,
+   "tsumoRate": 0.4298345693097547,
+   "dealInRate": 0.11475133464456308,
+   "avgDealInPoints": 6438.981390793339,
+   "riichiRate": 0.26962629952233774,
+   "callRate": 0.20370890699634728,
+   "drawTenpaiRate": 0.3986535224813657,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 417,
+     "picked": 375,
+     "rate": 0.8992805755395683
+    },
+    "archetype": {
+     "offered": 393,
+     "picked": 207,
+     "rate": 0.5267175572519084
+    },
+    "greedy": {
+     "offered": 360,
+     "picked": 312,
+     "rate": 0.8666666666666667
+    },
+    "category": {
+     "offered": 338,
+     "picked": 291,
+     "rate": 0.8609467455621301
+    },
+    "fun": {
+     "offered": 365,
+     "picked": 116,
+     "rate": 0.3178082191780822
+    },
+    "meta": {
+     "offered": 356,
+     "picked": 311,
+     "rate": 0.8735955056179775
+    },
+    "contrarian": {
+     "offered": 341,
+     "picked": 1,
+     "rate": 0.002932551319648094
+    }
+   }
+  },
+  {
+   "id": "tenpai_scan",
+   "name": "천리안",
+   "tier": "D",
+   "offered": 4586,
+   "picked": 959,
+   "pickRate": 0.20911469690361972,
+   "games": 982,
+   "avgPlacement": 2.6374745417515273,
+   "placementSE": 0.03450486077472233,
+   "top1Rate": 0.1924643584521385,
+   "rentaiRate": 0.4460285132382892,
+   "lastRate": 0.2759674134419552,
+   "avgScore": -2626.3747454175154,
+   "avgRawScore": 23748.37067209776,
+   "maxRawScore": 92300,
+   "minRawScore": -28400,
+   "winRate": 0.16546485914815884,
+   "avgWinPoints": 7017.896571760604,
+   "tsumoRate": 0.39511911679256245,
+   "dealInRate": 0.10354773579463514,
+   "avgDealInPoints": 6552.367688022284,
+   "riichiRate": 0.22190174021728679,
+   "callRate": 0.17738678973175656,
+   "drawTenpaiRate": 0.3599214145383104,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 683,
+     "picked": 112,
+     "rate": 0.16398243045387995
+    },
+    "greedy": {
+     "offered": 660,
+     "picked": 6,
+     "rate": 0.00909090909090909
+    },
+    "contrarian": {
+     "offered": 655,
+     "picked": 543,
+     "rate": 0.8290076335877863
+    },
+    "meta": {
+     "offered": 636,
+     "picked": 1,
+     "rate": 0.0015723270440251573
+    },
+    "fun": {
+     "offered": 636,
+     "picked": 220,
+     "rate": 0.34591194968553457
+    },
+    "synergy": {
+     "offered": 659,
+     "picked": 11,
+     "rate": 0.01669195751138088
+    },
+    "category": {
+     "offered": 657,
+     "picked": 66,
+     "rate": 0.1004566210045662
+    }
+   }
+  },
+  {
+   "id": "all_or_nothing",
+   "name": "모 아니면 도",
+   "tier": "A",
+   "offered": 3874,
+   "picked": 1293,
+   "pickRate": 0.33376355188435725,
+   "games": 1312,
+   "avgPlacement": 2.535823170731707,
+   "placementSE": 0.033238750124397705,
+   "top1Rate": 0.29039634146341464,
+   "rentaiRate": 0.48323170731707316,
+   "lastRate": 0.3094512195121951,
+   "avgScore": 8489.253048780487,
+   "avgRawScore": 33847.48475609756,
+   "maxRawScore": 363000,
+   "minRawScore": -63400,
+   "winRate": 0.18302231979509695,
+   "avgWinPoints": 7239.024390243902,
+   "tsumoRate": 0.42463014794082365,
+   "dealInRate": 0.11664837175265276,
+   "avgDealInPoints": 6752.446675031368,
+   "riichiRate": 0.29388949871935605,
+   "callRate": 0.190267105744603,
+   "drawTenpaiRate": 0.3832599118942731,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 533,
+     "picked": 200,
+     "rate": 0.37523452157598497
+    },
+    "contrarian": {
+     "offered": 543,
+     "picked": 87,
+     "rate": 0.16022099447513813
+    },
+    "fun": {
+     "offered": 568,
+     "picked": 197,
+     "rate": 0.34683098591549294
+    },
+    "category": {
+     "offered": 543,
+     "picked": 173,
+     "rate": 0.31860036832412525
+    },
+    "meta": {
+     "offered": 550,
+     "picked": 206,
+     "rate": 0.37454545454545457
+    },
+    "synergy": {
+     "offered": 581,
+     "picked": 225,
+     "rate": 0.387263339070568
+    },
+    "archetype": {
+     "offered": 556,
+     "picked": 205,
+     "rate": 0.368705035971223
+    }
+   }
+  },
+  {
+   "id": "off_by_one",
+   "name": "한 끗 차이",
+   "tier": "S",
+   "offered": 3892,
+   "picked": 1933,
+   "pickRate": 0.4966598150051387,
+   "games": 1968,
+   "avgPlacement": 2.473069105691057,
+   "placementSE": 0.025324230475030945,
+   "top1Rate": 0.25914634146341464,
+   "rentaiRate": 0.5147357723577236,
+   "lastRate": 0.24695121951219512,
+   "avgScore": 2479.471544715447,
+   "avgRawScore": 27210.162601626016,
+   "maxRawScore": 184100,
+   "minRawScore": -24000,
+   "winRate": 0.1995711222301644,
+   "avgWinPoints": 7505.348615090736,
+   "tsumoRate": 0.5124164278892073,
+   "dealInRate": 0.11203240409816535,
+   "avgDealInPoints": 6370.7358570820925,
+   "riichiRate": 0.25489635453895637,
+   "callRate": 0.19285203716940671,
+   "drawTenpaiRate": 0.3465020576131687,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 557,
+     "picked": 401,
+     "rate": 0.7199281867145422
+    },
+    "category": {
+     "offered": 577,
+     "picked": 302,
+     "rate": 0.5233968804159446
+    },
+    "contrarian": {
+     "offered": 545,
+     "picked": 12,
+     "rate": 0.022018348623853212
+    },
+    "meta": {
+     "offered": 551,
+     "picked": 383,
+     "rate": 0.6950998185117967
+    },
+    "archetype": {
+     "offered": 570,
+     "picked": 253,
+     "rate": 0.443859649122807
+    },
+    "synergy": {
+     "offered": 568,
+     "picked": 404,
+     "rate": 0.7112676056338029
+    },
+    "fun": {
+     "offered": 524,
+     "picked": 178,
+     "rate": 0.33969465648854963
+    }
+   }
+  },
+  {
+   "id": "invincible",
+   "name": "천하무적",
+   "tier": "B",
+   "offered": 3940,
+   "picked": 1082,
+   "pickRate": 0.27461928934010155,
+   "games": 1113,
+   "avgPlacement": 2.4276729559748427,
+   "placementSE": 0.03226487940773725,
+   "top1Rate": 0.25336927223719674,
+   "rentaiRate": 0.5220125786163522,
+   "lastRate": 0.20305480682839172,
+   "avgScore": 3741.7789757412397,
+   "avgRawScore": 28018.50853548967,
+   "maxRawScore": 183400,
+   "minRawScore": -21100,
+   "winRate": 0.18914794404408647,
+   "avgWinPoints": 7128.955625280143,
+   "tsumoRate": 0.39085611833258627,
+   "dealInRate": 0.07952522255192879,
+   "avgDealInPoints": 6486.780383795309,
+   "riichiRate": 0.24044086477320897,
+   "callRate": 0.18923272573124206,
+   "drawTenpaiRate": 0.3636685552407932,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 531,
+     "picked": 143,
+     "rate": 0.2693032015065913
+    },
+    "fun": {
+     "offered": 562,
+     "picked": 185,
+     "rate": 0.3291814946619217
+    },
+    "synergy": {
+     "offered": 522,
+     "picked": 97,
+     "rate": 0.18582375478927204
+    },
+    "archetype": {
+     "offered": 575,
+     "picked": 211,
+     "rate": 0.36695652173913046
+    },
+    "contrarian": {
+     "offered": 609,
+     "picked": 161,
+     "rate": 0.26436781609195403
+    },
+    "category": {
+     "offered": 585,
+     "picked": 148,
+     "rate": 0.252991452991453
+    },
+    "meta": {
+     "offered": 556,
+     "picked": 137,
+     "rate": 0.24640287769784172
+    }
+   }
+  },
+  {
+   "id": "disarm",
+   "name": "무장해제",
+   "tier": "D",
+   "offered": 4591,
+   "picked": 1066,
+   "pickRate": 0.2321934219124374,
+   "games": 1107,
+   "avgPlacement": 2.6603432700993674,
+   "placementSE": 0.031153703138558187,
+   "top1Rate": 0.16802168021680217,
+   "rentaiRate": 0.4281842818428184,
+   "lastRate": 0.2565492321589883,
+   "avgScore": -3303.884372177055,
+   "avgRawScore": 23299.54832881662,
+   "maxRawScore": 163500,
+   "minRawScore": -24000,
+   "winRate": 0.15846672283066554,
+   "avgWinPoints": 6800.691121743754,
+   "tsumoRate": 0.392876129718235,
+   "dealInRate": 0.10994102780117944,
+   "avgDealInPoints": 6187.126436781609,
+   "riichiRate": 0.2185341196293176,
+   "callRate": 0.18601516427969672,
+   "drawTenpaiRate": 0.37053883834849544,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 632,
+     "picked": 0,
+     "rate": 0
+    },
+    "category": {
+     "offered": 653,
+     "picked": 82,
+     "rate": 0.12557427258805512
+    },
+    "contrarian": {
+     "offered": 729,
+     "picked": 710,
+     "rate": 0.9739368998628258
+    },
+    "archetype": {
+     "offered": 679,
+     "picked": 72,
+     "rate": 0.10603829160530191
+    },
+    "synergy": {
+     "offered": 584,
+     "picked": 0,
+     "rate": 0
+    },
+    "fun": {
+     "offered": 647,
+     "picked": 202,
+     "rate": 0.312210200927357
+    },
+    "meta": {
+     "offered": 667,
+     "picked": 0,
+     "rate": 0
+    }
+   }
+  },
+  {
+   "id": "late_bloomer",
+   "name": "대기만성 (반장전)",
+   "tier": "S+",
+   "offered": 1226,
+   "picked": 601,
+   "pickRate": 0.4902120717781403,
+   "games": 604,
+   "avgPlacement": 2.4321192052980134,
+   "placementSE": 0.04580693038478043,
+   "top1Rate": 0.2731788079470199,
+   "rentaiRate": 0.5314569536423841,
+   "lastRate": 0.2367549668874172,
+   "avgScore": 3430.298013245033,
+   "avgRawScore": 27751.490066225164,
+   "maxRawScore": 100600,
+   "minRawScore": -24300,
+   "winRate": 0.19678914266799072,
+   "avgWinPoints": 7254.920100925147,
+   "tsumoRate": 0.4062237174095879,
+   "dealInRate": 0.11486262826878517,
+   "avgDealInPoints": 6574.92795389049,
+   "riichiRate": 0.2600132406487918,
+   "callRate": 0.1949685534591195,
+   "drawTenpaiRate": 0.3512367491166078,
+   "pickByPersona": {
+    "category": {
+     "offered": 171,
+     "picked": 61,
+     "rate": 0.3567251461988304
+    },
+    "fun": {
+     "offered": 163,
+     "picked": 60,
+     "rate": 0.36809815950920244
+    },
+    "contrarian": {
+     "offered": 175,
+     "picked": 4,
+     "rate": 0.022857142857142857
+    },
+    "synergy": {
+     "offered": 177,
+     "picked": 124,
+     "rate": 0.7005649717514124
+    },
+    "greedy": {
+     "offered": 192,
+     "picked": 149,
+     "rate": 0.7760416666666666
+    },
+    "archetype": {
+     "offered": 170,
+     "picked": 73,
+     "rate": 0.4294117647058823
+    },
+    "meta": {
+     "offered": 178,
+     "picked": 130,
+     "rate": 0.7303370786516854
+    }
+   }
+  },
+  {
+   "id": "call_seal",
+   "name": "함구령",
+   "tier": "D",
+   "offered": 4526,
+   "picked": 1019,
+   "pickRate": 0.225143614670791,
+   "games": 1046,
+   "avgPlacement": 2.718929254302103,
+   "placementSE": 0.03386217335802193,
+   "top1Rate": 0.1835564053537285,
+   "rentaiRate": 0.41204588910133844,
+   "lastRate": 0.31453154875717015,
+   "avgScore": -4606.40535372849,
+   "avgRawScore": 22582.88718929254,
+   "maxRawScore": 154100,
+   "minRawScore": -24000,
+   "winRate": 0.1612170753860127,
+   "avgWinPoints": 6727.43661971831,
+   "tsumoRate": 0.39943661971830985,
+   "dealInRate": 0.10999091734786558,
+   "avgDealInPoints": 6467.464905037159,
+   "riichiRate": 0.23115349682107175,
+   "callRate": 0.17556766575840146,
+   "drawTenpaiRate": 0.37490774907749075,
+   "pickByPersona": {
+    "category": {
+     "offered": 628,
+     "picked": 76,
+     "rate": 0.12101910828025478
+    },
+    "archetype": {
+     "offered": 671,
+     "picked": 81,
+     "rate": 0.12071535022354694
+    },
+    "contrarian": {
+     "offered": 695,
+     "picked": 628,
+     "rate": 0.9035971223021583
+    },
+    "fun": {
+     "offered": 655,
+     "picked": 229,
+     "rate": 0.34961832061068704
+    },
+    "greedy": {
+     "offered": 663,
+     "picked": 2,
+     "rate": 0.0030165912518853697
+    },
+    "meta": {
+     "offered": 604,
+     "picked": 1,
+     "rate": 0.0016556291390728477
+    },
+    "synergy": {
+     "offered": 610,
+     "picked": 2,
+     "rate": 0.003278688524590164
+    }
+   }
+  },
+  {
+   "id": "red_five_touch",
+   "name": "붉은 손길",
+   "tier": "A",
+   "offered": 3913,
+   "picked": 1253,
+   "pickRate": 0.32021466905187834,
+   "games": 1300,
+   "avgPlacement": 2.2853846153846153,
+   "placementSE": 0.03183202556262509,
+   "top1Rate": 0.3453846153846154,
+   "rentaiRate": 0.58,
+   "lastRate": 0.21076923076923076,
+   "avgScore": 8019.2307692307695,
+   "avgRawScore": 30873.076923076922,
+   "maxRawScore": 186000,
+   "minRawScore": -23300,
+   "winRate": 0.19046546546546547,
+   "avgWinPoints": 9864.564446196295,
+   "tsumoRate": 0.42451714623571146,
+   "dealInRate": 0.11606606606606606,
+   "avgDealInPoints": 6395.924967658473,
+   "riichiRate": 0.24324324324324326,
+   "callRate": 0.19962462462462463,
+   "drawTenpaiRate": 0.3838449111470113,
+   "pickByPersona": {
+    "category": {
+     "offered": 565,
+     "picked": 189,
+     "rate": 0.3345132743362832
+    },
+    "fun": {
+     "offered": 580,
+     "picked": 196,
+     "rate": 0.33793103448275863
+    },
+    "archetype": {
+     "offered": 566,
+     "picked": 200,
+     "rate": 0.35335689045936397
+    },
+    "meta": {
+     "offered": 596,
+     "picked": 217,
+     "rate": 0.3640939597315436
+    },
+    "greedy": {
+     "offered": 541,
+     "picked": 180,
+     "rate": 0.33271719038817005
+    },
+    "contrarian": {
+     "offered": 580,
+     "picked": 106,
+     "rate": 0.18275862068965518
+    },
+    "synergy": {
+     "offered": 485,
+     "picked": 165,
+     "rate": 0.3402061855670103
+    }
+   }
+  },
+  {
+   "id": "last_stand",
+   "name": "승부수",
+   "tier": "C",
+   "offered": 4566,
+   "picked": 936,
+   "pickRate": 0.2049934296977661,
+   "games": 983,
+   "avgPlacement": 2.584944048830112,
+   "placementSE": 0.03437518664616091,
+   "top1Rate": 0.2034587995930824,
+   "rentaiRate": 0.4669379450661241,
+   "lastRate": 0.25534079348931843,
+   "avgScore": -1272.3296032553408,
+   "avgRawScore": 24577.11088504578,
+   "maxRawScore": 157300,
+   "minRawScore": -29700,
+   "winRate": 0.17408713890742683,
+   "avgWinPoints": 6750.438116100767,
+   "tsumoRate": 0.39868565169769987,
+   "dealInRate": 0.11049671083992754,
+   "avgDealInPoints": 6409.145815358067,
+   "riichiRate": 0.2355801315664029,
+   "callRate": 0.18772046906282772,
+   "drawTenpaiRate": 0.3866396761133603,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 647,
+     "picked": 416,
+     "rate": 0.642967542503864
+    },
+    "fun": {
+     "offered": 625,
+     "picked": 211,
+     "rate": 0.3376
+    },
+    "synergy": {
+     "offered": 665,
+     "picked": 23,
+     "rate": 0.03458646616541353
+    },
+    "meta": {
+     "offered": 699,
+     "picked": 21,
+     "rate": 0.030042918454935622
+    },
+    "category": {
+     "offered": 622,
+     "picked": 78,
+     "rate": 0.12540192926045016
+    },
+    "greedy": {
+     "offered": 676,
+     "picked": 25,
+     "rate": 0.03698224852071006
+    },
+    "archetype": {
+     "offered": 632,
+     "picked": 162,
+     "rate": 0.2563291139240506
+    }
+   }
+  },
+  {
+   "id": "dora_afterimage",
+   "name": "잔상",
+   "tier": "B",
+   "offered": 4191,
+   "picked": 1147,
+   "pickRate": 0.27368169887854926,
+   "games": 1174,
+   "avgPlacement": 2.62350936967632,
+   "placementSE": 0.03208429056573222,
+   "top1Rate": 0.2061328790459966,
+   "rentaiRate": 0.4505962521294719,
+   "lastRate": 0.28023850085178875,
+   "avgScore": -2370.528109028961,
+   "avgRawScore": 23864.565587734243,
+   "maxRawScore": 143000,
+   "minRawScore": -29100,
+   "winRate": 0.16828165374677004,
+   "avgWinPoints": 7564.53934740883,
+   "tsumoRate": 0.4088291746641075,
+   "dealInRate": 0.11627906976744186,
+   "avgDealInPoints": 6811.527777777777,
+   "riichiRate": 0.24208656330749354,
+   "callRate": 0.18588501291989665,
+   "drawTenpaiRate": 0.3644295302013423,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 582,
+     "picked": 141,
+     "rate": 0.2422680412371134
+    },
+    "meta": {
+     "offered": 635,
+     "picked": 146,
+     "rate": 0.22992125984251968
+    },
+    "fun": {
+     "offered": 599,
+     "picked": 208,
+     "rate": 0.34724540901502504
+    },
+    "archetype": {
+     "offered": 598,
+     "picked": 220,
+     "rate": 0.36789297658862874
+    },
+    "synergy": {
+     "offered": 595,
+     "picked": 129,
+     "rate": 0.21680672268907564
+    },
+    "category": {
+     "offered": 608,
+     "picked": 186,
+     "rate": 0.3059210526315789
+    },
+    "greedy": {
+     "offered": 574,
+     "picked": 117,
+     "rate": 0.2038327526132404
+    }
+   }
+  },
+  {
+   "id": "snake_kan",
+   "name": "장사진",
+   "tier": "C",
+   "offered": 3059,
+   "picked": 644,
+   "pickRate": 0.21052631578947367,
+   "games": 664,
+   "avgPlacement": 2.6370481927710845,
+   "placementSE": 0.043040647676777746,
+   "top1Rate": 0.20481927710843373,
+   "rentaiRate": 0.45180722891566266,
+   "lastRate": 0.2936746987951807,
+   "avgScore": -2079.5180722891564,
+   "avgRawScore": 24290.963855421687,
+   "maxRawScore": 148500,
+   "minRawScore": -34200,
+   "winRate": 0.17474775784753363,
+   "avgWinPoints": 6843.384121892542,
+   "tsumoRate": 0.4113873295910184,
+   "dealInRate": 0.10692264573991031,
+   "avgDealInPoints": 6661.205766710354,
+   "riichiRate": 0.2436939461883408,
+   "callRate": 0.19829035874439463,
+   "drawTenpaiRate": 0.39443155452436196,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 455,
+     "picked": 194,
+     "rate": 0.42637362637362636
+    },
+    "archetype": {
+     "offered": 442,
+     "picked": 111,
+     "rate": 0.251131221719457
+    },
+    "meta": {
+     "offered": 431,
+     "picked": 59,
+     "rate": 0.1368909512761021
+    },
+    "fun": {
+     "offered": 417,
+     "picked": 136,
+     "rate": 0.3261390887290168
+    },
+    "greedy": {
+     "offered": 445,
+     "picked": 53,
+     "rate": 0.11910112359550562
+    },
+    "synergy": {
+     "offered": 417,
+     "picked": 46,
+     "rate": 0.11031175059952038
+    },
+    "category": {
+     "offered": 452,
+     "picked": 45,
+     "rate": 0.09955752212389381
+    }
+   }
+  },
+  {
+   "id": "time_stop",
+   "name": "시간 정지",
+   "tier": "S",
+   "offered": 3487,
+   "picked": 1418,
+   "pickRate": 0.40665328362489245,
+   "games": 1445,
+   "avgPlacement": 2.6006920415224912,
+   "placementSE": 0.02904776639251127,
+   "top1Rate": 0.21591695501730104,
+   "rentaiRate": 0.45674740484429066,
+   "lastRate": 0.27335640138408307,
+   "avgScore": -1554.1868512110727,
+   "avgRawScore": 24452.73356401384,
+   "maxRawScore": 89700,
+   "minRawScore": -30700,
+   "winRate": 0.1860676491592547,
+   "avgWinPoints": 7202.651779483601,
+   "tsumoRate": 0.44556873691556176,
+   "dealInRate": 0.11724988638576901,
+   "avgDealInPoints": 6641.5282392026575,
+   "riichiRate": 0.25410634292021034,
+   "callRate": 0.18684671817178472,
+   "drawTenpaiRate": 0.366277491175672,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 483,
+     "picked": 33,
+     "rate": 0.06832298136645963
+    },
+    "greedy": {
+     "offered": 524,
+     "picked": 301,
+     "rate": 0.5744274809160306
+    },
+    "synergy": {
+     "offered": 482,
+     "picked": 243,
+     "rate": 0.504149377593361
+    },
+    "category": {
+     "offered": 464,
+     "picked": 189,
+     "rate": 0.4073275862068966
+    },
+    "archetype": {
+     "offered": 519,
+     "picked": 198,
+     "rate": 0.3815028901734104
+    },
+    "meta": {
+     "offered": 522,
+     "picked": 289,
+     "rate": 0.553639846743295
+    },
+    "fun": {
+     "offered": 493,
+     "picked": 165,
+     "rate": 0.33468559837728196
+    }
+   }
+  },
+  {
+   "id": "discard_lock",
+   "name": "봉인술사",
+   "tier": "D",
+   "offered": 4587,
+   "picked": 1017,
+   "pickRate": 0.22171353826030085,
+   "games": 1063,
+   "avgPlacement": 2.556914393226717,
+   "placementSE": 0.03322642153995568,
+   "top1Rate": 0.21260583254938853,
+   "rentaiRate": 0.48071495766698025,
+   "lastRate": 0.2502351834430856,
+   "avgScore": -577.140169332079,
+   "avgRawScore": 24992.003762935088,
+   "maxRawScore": 157200,
+   "minRawScore": -16000,
+   "winRate": 0.17479422957783874,
+   "avgWinPoints": 6671.037974683544,
+   "tsumoRate": 0.419746835443038,
+   "dealInRate": 0.1017789184883618,
+   "avgDealInPoints": 6435.826086956522,
+   "riichiRate": 0.2320559341534649,
+   "callRate": 0.18957429861049652,
+   "drawTenpaiRate": 0.36827680712572797,
+   "pickByPersona": {
+    "meta": {
+     "offered": 689,
+     "picked": 13,
+     "rate": 0.018867924528301886
+    },
+    "greedy": {
+     "offered": 616,
+     "picked": 7,
+     "rate": 0.011363636363636364
+    },
+    "fun": {
+     "offered": 649,
+     "picked": 242,
+     "rate": 0.3728813559322034
+    },
+    "category": {
+     "offered": 628,
+     "picked": 82,
+     "rate": 0.1305732484076433
+    },
+    "archetype": {
+     "offered": 708,
+     "picked": 126,
+     "rate": 0.17796610169491525
+    },
+    "synergy": {
+     "offered": 598,
+     "picked": 9,
+     "rate": 0.015050167224080268
+    },
+    "contrarian": {
+     "offered": 699,
+     "picked": 538,
+     "rate": 0.7696709585121603
+    }
+   }
+  },
+  {
+   "id": "yakuman_shield",
+   "name": "역만 방어술",
+   "tier": "D",
+   "offered": 4493,
+   "picked": 959,
+   "pickRate": 0.2134431337636323,
+   "games": 1005,
+   "avgPlacement": 2.645771144278607,
+   "placementSE": 0.033758187129565256,
+   "top1Rate": 0.1781094527363184,
+   "rentaiRate": 0.4557213930348259,
+   "lastRate": 0.2796019900497512,
+   "avgScore": -3107.5621890547263,
+   "avgRawScore": 23350.149253731342,
+   "maxRawScore": 87600,
+   "minRawScore": -14500,
+   "winRate": 0.16536964980544747,
+   "avgWinPoints": 6443.417366946779,
+   "tsumoRate": 0.4084033613445378,
+   "dealInRate": 0.10700389105058365,
+   "avgDealInPoints": 6648.138528138528,
+   "riichiRate": 0.2215119510839355,
+   "callRate": 0.17593107281823236,
+   "drawTenpaiRate": 0.3907823392718823,
+   "pickByPersona": {
+    "meta": {
+     "offered": 620,
+     "picked": 5,
+     "rate": 0.008064516129032258
+    },
+    "category": {
+     "offered": 652,
+     "picked": 84,
+     "rate": 0.12883435582822086
+    },
+    "archetype": {
+     "offered": 649,
+     "picked": 107,
+     "rate": 0.16486902927580893
+    },
+    "fun": {
+     "offered": 677,
+     "picked": 221,
+     "rate": 0.32644017725258495
+    },
+    "synergy": {
+     "offered": 640,
+     "picked": 4,
+     "rate": 0.00625
+    },
+    "contrarian": {
+     "offered": 638,
+     "picked": 531,
+     "rate": 0.8322884012539185
+    },
+    "greedy": {
+     "offered": 617,
+     "picked": 7,
+     "rate": 0.011345218800648298
+    }
+   }
+  },
+  {
+   "id": "conjure_draw",
+   "name": "소환",
+   "tier": "S+",
+   "offered": 3438,
+   "picked": 1980,
+   "pickRate": 0.5759162303664922,
+   "games": 1995,
+   "avgPlacement": 2.3834586466165413,
+   "placementSE": 0.02502706099369487,
+   "top1Rate": 0.28922305764411027,
+   "rentaiRate": 0.544360902255639,
+   "lastRate": 0.21704260651629073,
+   "avgScore": 4803.007518796992,
+   "avgRawScore": 28637.593984962405,
+   "maxRawScore": 143000,
+   "minRawScore": -15200,
+   "winRate": 0.2182957153787299,
+   "avgWinPoints": 7559.408543263965,
+   "tsumoRate": 0.4238773274917853,
+   "dealInRate": 0.11452754399387911,
+   "avgDealInPoints": 6613.611691022965,
+   "riichiRate": 0.3035099464422341,
+   "callRate": 0.1796576128538638,
+   "drawTenpaiRate": 0.42031449213769656,
+   "pickByPersona": {
+    "meta": {
+     "offered": 466,
+     "picked": 384,
+     "rate": 0.8240343347639485
+    },
+    "category": {
+     "offered": 506,
+     "picked": 328,
+     "rate": 0.6482213438735178
+    },
+    "archetype": {
+     "offered": 481,
+     "picked": 250,
+     "rate": 0.5197505197505198
+    },
+    "fun": {
+     "offered": 528,
+     "picked": 171,
+     "rate": 0.32386363636363635
+    },
+    "synergy": {
+     "offered": 521,
+     "picked": 439,
+     "rate": 0.8426103646833013
+    },
+    "contrarian": {
+     "offered": 452,
+     "picked": 0,
+     "rate": 0
+    },
+    "greedy": {
+     "offered": 484,
+     "picked": 408,
+     "rate": 0.8429752066115702
+    }
+   }
+  },
+  {
+   "id": "picky_eater",
+   "name": "편식",
+   "tier": "B",
+   "offered": 4670,
+   "picked": 1348,
+   "pickRate": 0.2886509635974304,
+   "games": 1366,
+   "avgPlacement": 2.4224011713030746,
+   "placementSE": 0.030960214229267837,
+   "top1Rate": 0.29502196193265007,
+   "rentaiRate": 0.5197657393850659,
+   "lastRate": 0.23718887262079064,
+   "avgScore": 4478.038067349927,
+   "avgRawScore": 28702.049780380672,
+   "maxRawScore": 134800,
+   "minRawScore": -28700,
+   "winRate": 0.19191848698443714,
+   "avgWinPoints": 8423.309090909092,
+   "tsumoRate": 0.45381818181818184,
+   "dealInRate": 0.11577918905715681,
+   "avgDealInPoints": 6412.839059674503,
+   "riichiRate": 0.2611487193802778,
+   "callRate": 0.17886802986949543,
+   "drawTenpaiRate": 0.467702620353443,
+   "pickByPersona": {
+    "meta": {
+     "offered": 654,
+     "picked": 170,
+     "rate": 0.2599388379204893
+    },
+    "greedy": {
+     "offered": 668,
+     "picked": 172,
+     "rate": 0.25748502994011974
+    },
+    "fun": {
+     "offered": 635,
+     "picked": 205,
+     "rate": 0.3228346456692913
+    },
+    "synergy": {
+     "offered": 679,
+     "picked": 180,
+     "rate": 0.2650957290132548
+    },
+    "contrarian": {
+     "offered": 666,
+     "picked": 150,
+     "rate": 0.22522522522522523
+    },
+    "category": {
+     "offered": 679,
+     "picked": 230,
+     "rate": 0.3387334315169367
+    },
+    "archetype": {
+     "offered": 689,
+     "picked": 241,
+     "rate": 0.3497822931785196
+    }
+   }
+  },
+  {
+   "id": "even_world",
+   "name": "짝수의 세계",
+   "tier": "S",
+   "offered": 3782,
+   "picked": 1772,
+   "pickRate": 0.4685351665785299,
+   "games": 1790,
+   "avgPlacement": 2.5391061452513966,
+   "placementSE": 0.026000006064325953,
+   "top1Rate": 0.22960893854748604,
+   "rentaiRate": 0.482122905027933,
+   "lastRate": 0.2508379888268156,
+   "avgScore": 420.83798882681566,
+   "avgRawScore": 25811.89944134078,
+   "maxRawScore": 143800,
+   "minRawScore": -20800,
+   "winRate": 0.19354667796969377,
+   "avgWinPoints": 7391.89707090063,
+   "tsumoRate": 0.4256775253216534,
+   "dealInRate": 0.11200593408922327,
+   "avgDealInPoints": 6494.701986754967,
+   "riichiRate": 0.2704249231747377,
+   "callRate": 0.1903147186605913,
+   "drawTenpaiRate": 0.39501133786848075,
+   "pickByPersona": {
+    "meta": {
+     "offered": 532,
+     "picked": 340,
+     "rate": 0.6390977443609023
+    },
+    "category": {
+     "offered": 539,
+     "picked": 300,
+     "rate": 0.5565862708719852
+    },
+    "greedy": {
+     "offered": 571,
+     "picked": 358,
+     "rate": 0.626970227670753
+    },
+    "synergy": {
+     "offered": 553,
+     "picked": 339,
+     "rate": 0.6130198915009042
+    },
+    "contrarian": {
+     "offered": 532,
+     "picked": 25,
+     "rate": 0.046992481203007516
+    },
+    "fun": {
+     "offered": 540,
+     "picked": 184,
+     "rate": 0.34074074074074073
+    },
+    "archetype": {
+     "offered": 515,
+     "picked": 226,
+     "rate": 0.4388349514563107
+    }
+   }
+  },
+  {
+   "id": "riichi_upgrade",
+   "name": "이중 선언",
+   "tier": "A",
+   "offered": 2719,
+   "picked": 877,
+   "pickRate": 0.3225450533284296,
+   "games": 913,
+   "avgPlacement": 2.511500547645126,
+   "placementSE": 0.03761522468346693,
+   "top1Rate": 0.25301204819277107,
+   "rentaiRate": 0.5027382256297919,
+   "lastRate": 0.2672508214676889,
+   "avgScore": 2084.118291347207,
+   "avgRawScore": 27199.123767798468,
+   "maxRawScore": 163500,
+   "minRawScore": -18400,
+   "winRate": 0.18537187532146898,
+   "avgWinPoints": 8211.875693673695,
+   "tsumoRate": 0.43562708102108766,
+   "dealInRate": 0.1131570826046703,
+   "avgDealInPoints": 6446.727272727273,
+   "riichiRate": 0.2588211089394095,
+   "callRate": 0.19679045365703116,
+   "drawTenpaiRate": 0.39140170174652933,
+   "pickByPersona": {
+    "meta": {
+     "offered": 395,
+     "picked": 154,
+     "rate": 0.389873417721519
+    },
+    "category": {
+     "offered": 385,
+     "picked": 117,
+     "rate": 0.3038961038961039
+    },
+    "fun": {
+     "offered": 391,
+     "picked": 126,
+     "rate": 0.32225063938618925
+    },
+    "greedy": {
+     "offered": 392,
+     "picked": 145,
+     "rate": 0.36989795918367346
+    },
+    "synergy": {
+     "offered": 413,
+     "picked": 147,
+     "rate": 0.3559322033898305
+    },
+    "archetype": {
+     "offered": 407,
+     "picked": 140,
+     "rate": 0.343980343980344
+    },
+    "contrarian": {
+     "offered": 336,
+     "picked": 48,
+     "rate": 0.14285714285714285
+    }
+   }
+  },
+  {
+   "id": "blame_shift",
+   "name": "책임전가",
+   "tier": "C",
+   "offered": 4225,
+   "picked": 892,
+   "pickRate": 0.2111242603550296,
+   "games": 918,
+   "avgPlacement": 2.547930283224401,
+   "placementSE": 0.03666066718306172,
+   "top1Rate": 0.23093681917211328,
+   "rentaiRate": 0.48257080610021785,
+   "lastRate": 0.26143790849673204,
+   "avgScore": 982.0261437908497,
+   "avgRawScore": 26461.32897603486,
+   "maxRawScore": 140900,
+   "minRawScore": -16800,
+   "winRate": 0.16681989988762896,
+   "avgWinPoints": 6645.315370483772,
+   "tsumoRate": 0.3808940600122474,
+   "dealInRate": 0.11002145265093473,
+   "avgDealInPoints": 6634.7260909935,
+   "riichiRate": 0.2170803963632649,
+   "callRate": 0.19215445908673,
+   "drawTenpaiRate": 0.3623570800351803,
+   "pickByPersona": {
+    "meta": {
+     "offered": 593,
+     "picked": 18,
+     "rate": 0.03035413153456998
+    },
+    "category": {
+     "offered": 585,
+     "picked": 89,
+     "rate": 0.15213675213675212
+    },
+    "contrarian": {
+     "offered": 603,
+     "picked": 377,
+     "rate": 0.6252072968490879
+    },
+    "synergy": {
+     "offered": 604,
+     "picked": 24,
+     "rate": 0.039735099337748346
+    },
+    "fun": {
+     "offered": 613,
+     "picked": 216,
+     "rate": 0.3523654159869494
+    },
+    "greedy": {
+     "offered": 596,
+     "picked": 19,
+     "rate": 0.031879194630872486
+    },
+    "archetype": {
+     "offered": 631,
+     "picked": 149,
+     "rate": 0.23613312202852615
+    }
+   }
+  },
+  {
+   "id": "dead_wall_master",
+   "name": "왕패의 주인",
+   "tier": "S+",
+   "offered": 2566,
+   "picked": 1564,
+   "pickRate": 0.6095089633671084,
+   "games": 1585,
+   "avgPlacement": 2.5141955835962144,
+   "placementSE": 0.028420670675119615,
+   "top1Rate": 0.2555205047318612,
+   "rentaiRate": 0.489589905362776,
+   "lastRate": 0.2593059936908517,
+   "avgScore": 1497.8548895899053,
+   "avgRawScore": 26639.81072555205,
+   "maxRawScore": 331500,
+   "minRawScore": -22400,
+   "winRate": 0.19681284168896127,
+   "avgWinPoints": 7283.451536643026,
+   "tsumoRate": 0.39864066193853426,
+   "dealInRate": 0.11376061416773293,
+   "avgDealInPoints": 6295.143149284254,
+   "riichiRate": 0.26933814121205074,
+   "callRate": 0.18872862626497616,
+   "drawTenpaiRate": 0.3953900709219858,
+   "pickByPersona": {
+    "meta": {
+     "offered": 396,
+     "picked": 328,
+     "rate": 0.8282828282828283
+    },
+    "fun": {
+     "offered": 373,
+     "picked": 120,
+     "rate": 0.32171581769436997
+    },
+    "greedy": {
+     "offered": 354,
+     "picked": 299,
+     "rate": 0.844632768361582
+    },
+    "archetype": {
+     "offered": 364,
+     "picked": 179,
+     "rate": 0.49175824175824173
+    },
+    "contrarian": {
+     "offered": 323,
+     "picked": 0,
+     "rate": 0
+    },
+    "category": {
+     "offered": 385,
+     "picked": 337,
+     "rate": 0.8753246753246753
+    },
+    "synergy": {
+     "offered": 371,
+     "picked": 301,
+     "rate": 0.8113207547169812
+    }
+   }
+  },
+  {
+   "id": "hourglass",
+   "name": "뒤집힌 모래시계",
+   "tier": "S",
+   "offered": 2635,
+   "picked": 1038,
+   "pickRate": 0.3939278937381404,
+   "games": 1107,
+   "avgPlacement": 2.5971093044263776,
+   "placementSE": 0.03372226323870499,
+   "top1Rate": 0.22944896115627822,
+   "rentaiRate": 0.45257452574525747,
+   "lastRate": 0.2791327913279133,
+   "avgScore": -1854.6522131887984,
+   "avgRawScore": 24116.44083107498,
+   "maxRawScore": 126800,
+   "minRawScore": -33700,
+   "winRate": 0.18725099601593626,
+   "avgWinPoints": 6938.886373924853,
+   "tsumoRate": 0.435038478949751,
+   "dealInRate": 0.11452064084089175,
+   "avgDealInPoints": 6574.463360473723,
+   "riichiRate": 0.24658811562261593,
+   "callRate": 0.19030261930999406,
+   "drawTenpaiRate": 0.31675392670157065,
+   "pickByPersona": {
+    "meta": {
+     "offered": 365,
+     "picked": 183,
+     "rate": 0.5013698630136987
+    },
+    "greedy": {
+     "offered": 358,
+     "picked": 194,
+     "rate": 0.5418994413407822
+    },
+    "contrarian": {
+     "offered": 403,
+     "picked": 23,
+     "rate": 0.05707196029776675
+    },
+    "synergy": {
+     "offered": 362,
+     "picked": 182,
+     "rate": 0.5027624309392266
+    },
+    "archetype": {
+     "offered": 383,
+     "picked": 147,
+     "rate": 0.3838120104438642
+    },
+    "category": {
+     "offered": 374,
+     "picked": 185,
+     "rate": 0.4946524064171123
+    },
+    "fun": {
+     "offered": 390,
+     "picked": 124,
+     "rate": 0.31794871794871793
+    }
+   }
+  },
+  {
+   "id": "async_chiitoi",
+   "name": "비대칭",
+   "tier": "B",
+   "offered": 4323,
+   "picked": 1546,
+   "pickRate": 0.35762202174415914,
+   "games": 1570,
+   "avgPlacement": 2.245222929936306,
+   "placementSE": 0.02732002239719918,
+   "top1Rate": 0.321656050955414,
+   "rentaiRate": 0.6044585987261146,
+   "lastRate": 0.17133757961783438,
+   "avgScore": 8690.764331210192,
+   "avgRawScore": 31142.993630573248,
+   "maxRawScore": 331500,
+   "minRawScore": -28400,
+   "winRate": 0.22931097338680276,
+   "avgWinPoints": 7553.047164811871,
+   "tsumoRate": 0.4099099099099099,
+   "dealInRate": 0.10268562401263823,
+   "avgDealInPoints": 6527.810650887574,
+   "riichiRate": 0.2768866204885162,
+   "callRate": 0.17274273909345,
+   "drawTenpaiRate": 0.36879432624113473,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 650,
+     "picked": 237,
+     "rate": 0.3646153846153846
+    },
+    "greedy": {
+     "offered": 655,
+     "picked": 264,
+     "rate": 0.4030534351145038
+    },
+    "synergy": {
+     "offered": 637,
+     "picked": 281,
+     "rate": 0.4411302982731554
+    },
+    "meta": {
+     "offered": 644,
+     "picked": 275,
+     "rate": 0.42701863354037267
+    },
+    "contrarian": {
+     "offered": 599,
+     "picked": 74,
+     "rate": 0.12353923205342238
+    },
+    "fun": {
+     "offered": 550,
+     "picked": 193,
+     "rate": 0.3509090909090909
+    },
+    "category": {
+     "offered": 588,
+     "picked": 222,
+     "rate": 0.37755102040816324
+    }
+   }
+  },
+  {
+   "id": "table_flip",
+   "name": "밥상 뒤엎기",
+   "tier": "A",
+   "offered": 3929,
+   "picked": 1370,
+   "pickRate": 0.34868923390175616,
+   "games": 1419,
+   "avgPlacement": 2.4770965468639887,
+   "placementSE": 0.030174083634791567,
+   "top1Rate": 0.2677942212825934,
+   "rentaiRate": 0.5081042988019733,
+   "lastRate": 0.25299506694855534,
+   "avgScore": 1833.6856941508104,
+   "avgRawScore": 26604.6511627907,
+   "maxRawScore": 140900,
+   "minRawScore": -36600,
+   "winRate": 0.20140919968093593,
+   "avgWinPoints": 7201.287128712871,
+   "tsumoRate": 0.41914191419141916,
+   "dealInRate": 0.11074182398298325,
+   "avgDealInPoints": 6543.217286914766,
+   "riichiRate": 0.27466099441637865,
+   "callRate": 0.1776788088274395,
+   "drawTenpaiRate": 0.3931671800616074,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 583,
+     "picked": 181,
+     "rate": 0.31046312178387653
+    },
+    "meta": {
+     "offered": 582,
+     "picked": 238,
+     "rate": 0.40893470790378006
+    },
+    "category": {
+     "offered": 561,
+     "picked": 213,
+     "rate": 0.37967914438502676
+    },
+    "synergy": {
+     "offered": 556,
+     "picked": 236,
+     "rate": 0.4244604316546763
+    },
+    "greedy": {
+     "offered": 569,
+     "picked": 237,
+     "rate": 0.4165202108963093
+    },
+    "contrarian": {
+     "offered": 525,
+     "picked": 74,
+     "rate": 0.14095238095238094
+    },
+    "fun": {
+     "offered": 553,
+     "picked": 191,
+     "rate": 0.3453887884267631
+    }
+   }
+  },
+  {
+   "id": "regret",
+   "name": "미련",
+   "tier": "S",
+   "offered": 3746,
+   "picked": 1726,
+   "pickRate": 0.4607581420181527,
+   "games": 1758,
+   "avgPlacement": 2.4829351535836177,
+   "placementSE": 0.026645435134817604,
+   "top1Rate": 0.25369738339021614,
+   "rentaiRate": 0.5085324232081911,
+   "lastRate": 0.24516496018202502,
+   "avgScore": 2185.0398179749714,
+   "avgRawScore": 27014.39135381115,
+   "maxRawScore": 282500,
+   "minRawScore": -63400,
+   "winRate": 0.197274913171253,
+   "avgWinPoints": 7358.2069339111595,
+   "tsumoRate": 0.42118093174431204,
+   "dealInRate": 0.10579748864547155,
+   "avgDealInPoints": 6507.474747474747,
+   "riichiRate": 0.2658829815655891,
+   "callRate": 0.18920651883515896,
+   "drawTenpaiRate": 0.3592896174863388,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 498,
+     "picked": 215,
+     "rate": 0.43172690763052207
+    },
+    "category": {
+     "offered": 576,
+     "picked": 275,
+     "rate": 0.4774305555555556
+    },
+    "greedy": {
+     "offered": 542,
+     "picked": 356,
+     "rate": 0.6568265682656826
+    },
+    "fun": {
+     "offered": 526,
+     "picked": 162,
+     "rate": 0.30798479087452474
+    },
+    "meta": {
+     "offered": 531,
+     "picked": 349,
+     "rate": 0.6572504708097928
+    },
+    "contrarian": {
+     "offered": 510,
+     "picked": 24,
+     "rate": 0.047058823529411764
+    },
+    "synergy": {
+     "offered": 563,
+     "picked": 345,
+     "rate": 0.6127886323268206
+    }
+   }
+  },
+  {
+   "id": "wind_lineage",
+   "name": "바람의 계보",
+   "tier": "S+",
+   "offered": 3580,
+   "picked": 1921,
+   "pickRate": 0.5365921787709497,
+   "games": 1953,
+   "avgPlacement": 2.535074244751664,
+   "placementSE": 0.02524634268294854,
+   "top1Rate": 0.23707117255504354,
+   "rentaiRate": 0.48847926267281105,
+   "lastRate": 0.2606246799795187,
+   "avgScore": 53.14900153609831,
+   "avgRawScore": 25403.89144905274,
+   "maxRawScore": 179700,
+   "minRawScore": -54500,
+   "winRate": 0.18786279683377308,
+   "avgWinPoints": 7254.570990806946,
+   "tsumoRate": 0.43564862104187946,
+   "dealInRate": 0.11148956584312784,
+   "avgDealInPoints": 6509.595524956971,
+   "riichiRate": 0.2548332933557208,
+   "callRate": 0.19237227152794434,
+   "drawTenpaiRate": 0.387032219331599,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 517,
+     "picked": 269,
+     "rate": 0.5203094777562862
+    },
+    "greedy": {
+     "offered": 494,
+     "picked": 385,
+     "rate": 0.7793522267206477
+    },
+    "fun": {
+     "offered": 518,
+     "picked": 189,
+     "rate": 0.36486486486486486
+    },
+    "synergy": {
+     "offered": 538,
+     "picked": 406,
+     "rate": 0.7546468401486989
+    },
+    "contrarian": {
+     "offered": 496,
+     "picked": 4,
+     "rate": 0.008064516129032258
+    },
+    "category": {
+     "offered": 522,
+     "picked": 298,
+     "rate": 0.5708812260536399
+    },
+    "meta": {
+     "offered": 495,
+     "picked": 370,
+     "rate": 0.7474747474747475
+    }
+   }
+  },
+  {
+   "id": "free_riichi_discard",
+   "name": "자유 선언",
+   "tier": "S",
+   "offered": 2627,
+   "picked": 1737,
+   "pickRate": 0.6612105062809288,
+   "games": 1783,
+   "avgPlacement": 2.538418395961862,
+   "placementSE": 0.026236543550192514,
+   "top1Rate": 0.2327537857543466,
+   "rentaiRate": 0.48513740886146944,
+   "lastRate": 0.25630959057767805,
+   "avgScore": 498.8782950084128,
+   "avgRawScore": 25883.06225462703,
+   "maxRawScore": 262200,
+   "minRawScore": -17800,
+   "winRate": 0.19023551479783243,
+   "avgWinPoints": 7050.205423171734,
+   "tsumoRate": 0.40235551903588057,
+   "dealInRate": 0.1033243017924135,
+   "avgDealInPoints": 6467.574382249118,
+   "riichiRate": 0.2635994164235098,
+   "callRate": 0.19367444768653605,
+   "drawTenpaiRate": 0.3756906077348066,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 353,
+     "picked": 207,
+     "rate": 0.5864022662889519
+    },
+    "category": {
+     "offered": 369,
+     "picked": 320,
+     "rate": 0.8672086720867209
+    },
+    "contrarian": {
+     "offered": 309,
+     "picked": 1,
+     "rate": 0.003236245954692557
+    },
+    "meta": {
+     "offered": 397,
+     "picked": 356,
+     "rate": 0.8967254408060453
+    },
+    "fun": {
+     "offered": 331,
+     "picked": 106,
+     "rate": 0.3202416918429003
+    },
+    "synergy": {
+     "offered": 449,
+     "picked": 394,
+     "rate": 0.8775055679287305
+    },
+    "greedy": {
+     "offered": 419,
+     "picked": 353,
+     "rate": 0.8424821002386634
+    }
+   }
+  },
+  {
+   "id": "die_hard",
+   "name": "죽기살기",
+   "tier": "C",
+   "offered": 4085,
+   "picked": 812,
+   "pickRate": 0.19877600979192167,
+   "games": 837,
+   "avgPlacement": 2.5675029868578254,
+   "placementSE": 0.036796718658862214,
+   "top1Rate": 0.2054958183990442,
+   "rentaiRate": 0.4647550776583035,
+   "lastRate": 0.23775388291517324,
+   "avgScore": -260.57347670250897,
+   "avgRawScore": 25414.45639187575,
+   "maxRawScore": 107900,
+   "minRawScore": -25500,
+   "winRate": 0.16893640967923468,
+   "avgWinPoints": 6996.535642904731,
+   "tsumoRate": 0.3944037308461026,
+   "dealInRate": 0.10894766460326392,
+   "avgDealInPoints": 6469.524793388429,
+   "riichiRate": 0.22678671918964546,
+   "callRate": 0.18097917839054586,
+   "drawTenpaiRate": 0.33886255924170616,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 606,
+     "picked": 27,
+     "rate": 0.04455445544554455
+    },
+    "contrarian": {
+     "offered": 530,
+     "picked": 530,
+     "rate": 1
+    },
+    "fun": {
+     "offered": 533,
+     "picked": 182,
+     "rate": 0.34146341463414637
+    },
+    "greedy": {
+     "offered": 629,
+     "picked": 0,
+     "rate": 0
+    },
+    "category": {
+     "offered": 572,
+     "picked": 73,
+     "rate": 0.12762237762237763
+    },
+    "meta": {
+     "offered": 608,
+     "picked": 0,
+     "rate": 0
+    },
+    "synergy": {
+     "offered": 607,
+     "picked": 0,
+     "rate": 0
+    }
+   }
+  },
+  {
+   "id": "soul_strike",
+   "name": "영혼의 일격",
+   "tier": "S",
+   "offered": 2618,
+   "picked": 1593,
+   "pickRate": 0.608479755538579,
+   "games": 1609,
+   "avgPlacement": 2.4642635177128653,
+   "placementSE": 0.028286850775204094,
+   "top1Rate": 0.2666252330640149,
+   "rentaiRate": 0.5214418893722809,
+   "lastRate": 0.25233064014916096,
+   "avgScore": 3142.9459291485396,
+   "avgRawScore": 27785.58110627719,
+   "maxRawScore": 106500,
+   "minRawScore": -20200,
+   "winRate": 0.19383825417201542,
+   "avgWinPoints": 8267.609873570138,
+   "tsumoRate": 0.5051173991571343,
+   "dealInRate": 0.11576613373789241,
+   "avgDealInPoints": 6466.935483870968,
+   "riichiRate": 0.2719687244719337,
+   "callRate": 0.20340763216244603,
+   "drawTenpaiRate": 0.385070214338507,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 361,
+     "picked": 196,
+     "rate": 0.5429362880886427
+    },
+    "category": {
+     "offered": 367,
+     "picked": 320,
+     "rate": 0.8719346049046321
+    },
+    "greedy": {
+     "offered": 350,
+     "picked": 304,
+     "rate": 0.8685714285714285
+    },
+    "contrarian": {
+     "offered": 390,
+     "picked": 1,
+     "rate": 0.002564102564102564
+    },
+    "fun": {
+     "offered": 414,
+     "picked": 139,
+     "rate": 0.3357487922705314
+    },
+    "meta": {
+     "offered": 395,
+     "picked": 342,
+     "rate": 0.8658227848101265
+    },
+    "synergy": {
+     "offered": 341,
+     "picked": 291,
+     "rate": 0.8533724340175953
+    }
+   }
+  },
+  {
+   "id": "counter",
+   "name": "카운터",
+   "tier": "C",
+   "offered": 3548,
+   "picked": 771,
+   "pickRate": 0.2173055242390079,
+   "games": 820,
+   "avgPlacement": 2.5658536585365854,
+   "placementSE": 0.03922785637152841,
+   "top1Rate": 0.2304878048780488,
+   "rentaiRate": 0.48048780487804876,
+   "lastRate": 0.27682926829268295,
+   "avgScore": -241.58536585365854,
+   "avgRawScore": 25416.951219512193,
+   "maxRawScore": 154100,
+   "minRawScore": -25700,
+   "winRate": 0.17233281145157683,
+   "avgWinPoints": 6810.188189487346,
+   "tsumoRate": 0.391304347826087,
+   "dealInRate": 0.10556922388727354,
+   "avgDealInPoints": 6564.830508474576,
+   "riichiRate": 0.2407738760903601,
+   "callRate": 0.1799373741892194,
+   "drawTenpaiRate": 0.3587257617728532,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 520,
+     "picked": 139,
+     "rate": 0.2673076923076923
+    },
+    "meta": {
+     "offered": 494,
+     "picked": 39,
+     "rate": 0.07894736842105263
+    },
+    "category": {
+     "offered": 489,
+     "picked": 50,
+     "rate": 0.10224948875255624
+    },
+    "greedy": {
+     "offered": 480,
+     "picked": 29,
+     "rate": 0.06041666666666667
+    },
+    "contrarian": {
+     "offered": 572,
+     "picked": 300,
+     "rate": 0.5244755244755245
+    },
+    "fun": {
+     "offered": 487,
+     "picked": 169,
+     "rate": 0.3470225872689938
+    },
+    "synergy": {
+     "offered": 506,
+     "picked": 45,
+     "rate": 0.08893280632411067
+    }
+   }
+  },
+  {
+   "id": "royal_kokushi",
+   "name": "왕의 징표",
+   "tier": "S+",
+   "offered": 2369,
+   "picked": 1594,
+   "pickRate": 0.6728577458843393,
+   "games": 1623,
+   "avgPlacement": 2.583487369069624,
+   "placementSE": 0.027303179731330552,
+   "top1Rate": 0.21256931608133087,
+   "rentaiRate": 0.47443006777572394,
+   "lastRate": 0.270486752926679,
+   "avgScore": -1018.977202711029,
+   "avgRawScore": 24815.896487985214,
+   "maxRawScore": 127200,
+   "minRawScore": -34700,
+   "winRate": 0.1922305620810176,
+   "avgWinPoints": 6840.238450074516,
+   "tsumoRate": 0.4232488822652757,
+   "dealInRate": 0.11333295135506789,
+   "avgDealInPoints": 6739.4337714863495,
+   "riichiRate": 0.2637368933707672,
+   "callRate": 0.2014553371913138,
+   "drawTenpaiRate": 0.3953204971971728,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 351,
+     "picked": 190,
+     "rate": 0.5413105413105413
+    },
+    "category": {
+     "offered": 363,
+     "picked": 343,
+     "rate": 0.9449035812672176
+    },
+    "meta": {
+     "offered": 308,
+     "picked": 291,
+     "rate": 0.9448051948051948
+    },
+    "synergy": {
+     "offered": 335,
+     "picked": 315,
+     "rate": 0.9402985074626866
+    },
+    "contrarian": {
+     "offered": 324,
+     "picked": 1,
+     "rate": 0.0030864197530864196
+    },
+    "fun": {
+     "offered": 326,
+     "picked": 112,
+     "rate": 0.34355828220858897
+    },
+    "greedy": {
+     "offered": 362,
+     "picked": 342,
+     "rate": 0.9447513812154696
+    }
+   }
+  },
+  {
+   "id": "late_double",
+   "name": "뒤늦은 출진",
+   "tier": "A",
+   "offered": 4375,
+   "picked": 1607,
+   "pickRate": 0.3673142857142857,
+   "games": 1627,
+   "avgPlacement": 2.52120467117394,
+   "placementSE": 0.02744053850803788,
+   "top1Rate": 0.23601720958819913,
+   "rentaiRate": 0.4941610325752919,
+   "lastRate": 0.25138291333743085,
+   "avgScore": 974.3085433312846,
+   "avgRawScore": 26186.35525507068,
+   "maxRawScore": 184100,
+   "minRawScore": -63400,
+   "winRate": 0.17671122378428208,
+   "avgWinPoints": 8226.866644929898,
+   "tsumoRate": 0.4235409194652755,
+   "dealInRate": 0.10987554736114312,
+   "avgDealInPoints": 6590.92815941269,
+   "riichiRate": 0.2535722516708919,
+   "callRate": 0.18737036183452407,
+   "drawTenpaiRate": 0.3687071614275585,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 617,
+     "picked": 245,
+     "rate": 0.39708265802269044
+    },
+    "archetype": {
+     "offered": 602,
+     "picked": 245,
+     "rate": 0.4069767441860465
+    },
+    "contrarian": {
+     "offered": 615,
+     "picked": 76,
+     "rate": 0.12357723577235773
+    },
+    "category": {
+     "offered": 631,
+     "picked": 233,
+     "rate": 0.3692551505546751
+    },
+    "fun": {
+     "offered": 637,
+     "picked": 212,
+     "rate": 0.3328100470957614
+    },
+    "meta": {
+     "offered": 593,
+     "picked": 262,
+     "rate": 0.4418212478920742
+    },
+    "synergy": {
+     "offered": 680,
+     "picked": 334,
+     "rate": 0.49117647058823527
+    }
+   }
+  },
+  {
+   "id": "bottom_yaku",
+   "name": "바닥의 족보",
+   "tier": "D",
+   "offered": 3361,
+   "picked": 621,
+   "pickRate": 0.1847664385599524,
+   "games": 674,
+   "avgPlacement": 2.678041543026706,
+   "placementSE": 0.04207816573890153,
+   "top1Rate": 0.1913946587537092,
+   "rentaiRate": 0.4258160237388724,
+   "lastRate": 0.2952522255192878,
+   "avgScore": -3659.19881305638,
+   "avgRawScore": 23121.21661721068,
+   "maxRawScore": 173800,
+   "minRawScore": -14500,
+   "winRate": 0.171618073787481,
+   "avgWinPoints": 6772.141706924315,
+   "tsumoRate": 0.40660225442834136,
+   "dealInRate": 0.11648473124222744,
+   "avgDealInPoints": 6594.068801897984,
+   "riichiRate": 0.23670029017548708,
+   "callRate": 0.1801851595965179,
+   "drawTenpaiRate": 0.39338452451269934,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 481,
+     "picked": 1,
+     "rate": 0.002079002079002079
+    },
+    "meta": {
+     "offered": 481,
+     "picked": 2,
+     "rate": 0.004158004158004158
+    },
+    "fun": {
+     "offered": 499,
+     "picked": 155,
+     "rate": 0.3106212424849699
+    },
+    "category": {
+     "offered": 451,
+     "picked": 4,
+     "rate": 0.008869179600886918
+    },
+    "synergy": {
+     "offered": 485,
+     "picked": 3,
+     "rate": 0.006185567010309278
+    },
+    "archetype": {
+     "offered": 516,
+     "picked": 71,
+     "rate": 0.1375968992248062
+    },
+    "contrarian": {
+     "offered": 448,
+     "picked": 385,
+     "rate": 0.859375
+    }
+   }
+  },
+  {
+   "id": "no_ron_pact",
+   "name": "불가침 조약",
+   "tier": "C",
+   "offered": 2244,
+   "picked": 465,
+   "pickRate": 0.2072192513368984,
+   "games": 510,
+   "avgPlacement": 2.5313725490196077,
+   "placementSE": 0.04803620849540312,
+   "top1Rate": 0.22941176470588234,
+   "rentaiRate": 0.4725490196078431,
+   "lastRate": 0.23333333333333334,
+   "avgScore": -138.62745098039215,
+   "avgRawScore": 25175.098039215685,
+   "maxRawScore": 78600,
+   "minRawScore": -33700,
+   "winRate": 0.17017280240420737,
+   "avgWinPoints": 7019.867549668874,
+   "tsumoRate": 0.4249448123620309,
+   "dealInRate": 0.10443275732531931,
+   "avgDealInPoints": 6335.791366906475,
+   "riichiRate": 0.22332832456799398,
+   "callRate": 0.19290007513148008,
+   "drawTenpaiRate": 0.3789392774788624,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 314,
+     "picked": 36,
+     "rate": 0.11464968152866242
+    },
+    "category": {
+     "offered": 360,
+     "picked": 28,
+     "rate": 0.07777777777777778
+    },
+    "synergy": {
+     "offered": 307,
+     "picked": 25,
+     "rate": 0.08143322475570032
+    },
+    "meta": {
+     "offered": 285,
+     "picked": 24,
+     "rate": 0.08421052631578947
+    },
+    "fun": {
+     "offered": 315,
+     "picked": 116,
+     "rate": 0.3682539682539683
+    },
+    "contrarian": {
+     "offered": 356,
+     "picked": 158,
+     "rate": 0.4438202247191011
+    },
+    "archetype": {
+     "offered": 307,
+     "picked": 78,
+     "rate": 0.254071661237785
+    }
+   }
+  },
+  {
+   "id": "bluff_pretense",
+   "name": "허장성세",
+   "tier": "S",
+   "offered": 3652,
+   "picked": 1445,
+   "pickRate": 0.3956736035049288,
+   "games": 1465,
+   "avgPlacement": 2.484641638225256,
+   "placementSE": 0.02932107264637428,
+   "top1Rate": 0.25597269624573377,
+   "rentaiRate": 0.5078498293515359,
+   "lastRate": 0.2484641638225256,
+   "avgScore": 1875.7679180887371,
+   "avgRawScore": 26722.184300341298,
+   "maxRawScore": 136900,
+   "minRawScore": -26400,
+   "winRate": 0.22203672787979967,
+   "avgWinPoints": 6375.650665124349,
+   "tsumoRate": 0.41382301908617697,
+   "dealInRate": 0.11063310645948375,
+   "avgDealInPoints": 6655.368543238537,
+   "riichiRate": 0.2066906382432259,
+   "callRate": 0.4286631565429562,
+   "drawTenpaiRate": 0.40907768402676753,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 550,
+     "picked": 298,
+     "rate": 0.5418181818181819
+    },
+    "category": {
+     "offered": 520,
+     "picked": 207,
+     "rate": 0.39807692307692305
+    },
+    "synergy": {
+     "offered": 493,
+     "picked": 268,
+     "rate": 0.5436105476673428
+    },
+    "contrarian": {
+     "offered": 498,
+     "picked": 38,
+     "rate": 0.07630522088353414
+    },
+    "fun": {
+     "offered": 560,
+     "picked": 168,
+     "rate": 0.3
+    },
+    "archetype": {
+     "offered": 511,
+     "picked": 208,
+     "rate": 0.4070450097847358
+    },
+    "meta": {
+     "offered": 520,
+     "picked": 258,
+     "rate": 0.49615384615384617
+    }
+   }
+  },
+  {
+   "id": "aotenjou_ceiling",
+   "name": "뚫린 천장",
+   "tier": "S+",
+   "offered": 2007,
+   "picked": 894,
+   "pickRate": 0.445440956651719,
+   "games": 922,
+   "avgPlacement": 2.5206073752711498,
+   "placementSE": 0.03756235317324518,
+   "top1Rate": 0.2592190889370933,
+   "rentaiRate": 0.48590021691973967,
+   "lastRate": 0.26572668112798264,
+   "avgScore": 1460.3036876355748,
+   "avgRawScore": 26666.37744034707,
+   "maxRawScore": 186000,
+   "minRawScore": -14100,
+   "winRate": 0.1868583162217659,
+   "avgWinPoints": 7194.89010989011,
+   "tsumoRate": 0.40604395604395604,
+   "dealInRate": 0.10893223819301848,
+   "avgDealInPoints": 6544.674835061263,
+   "riichiRate": 0.2757700205338809,
+   "callRate": 0.18952772073921972,
+   "drawTenpaiRate": 0.37430406852248393,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 265,
+     "picked": 165,
+     "rate": 0.6226415094339622
+    },
+    "archetype": {
+     "offered": 278,
+     "picked": 125,
+     "rate": 0.44964028776978415
+    },
+    "meta": {
+     "offered": 275,
+     "picked": 172,
+     "rate": 0.6254545454545455
+    },
+    "category": {
+     "offered": 289,
+     "picked": 163,
+     "rate": 0.5640138408304498
+    },
+    "fun": {
+     "offered": 278,
+     "picked": 84,
+     "rate": 0.302158273381295
+    },
+    "contrarian": {
+     "offered": 324,
+     "picked": 11,
+     "rate": 0.033950617283950615
+    },
+    "synergy": {
+     "offered": 298,
+     "picked": 174,
+     "rate": 0.5838926174496645
+    }
+   }
+  },
+  {
+   "id": "ankan_dora",
+   "name": "밀실의 도라",
+   "tier": "A",
+   "offered": 2907,
+   "picked": 911,
+   "pickRate": 0.3133814929480564,
+   "games": 957,
+   "avgPlacement": 2.579937304075235,
+   "placementSE": 0.03626370963447524,
+   "top1Rate": 0.22466039707419017,
+   "rentaiRate": 0.477533960292581,
+   "lastRate": 0.28213166144200624,
+   "avgScore": -545.0365726227795,
+   "avgRawScore": 25254.33646812957,
+   "maxRawScore": 128900,
+   "minRawScore": -16800,
+   "winRate": 0.18357816908259558,
+   "avgWinPoints": 7225.914149443562,
+   "tsumoRate": 0.3852676205617382,
+   "dealInRate": 0.11411615915945131,
+   "avgDealInPoints": 6413.725490196079,
+   "riichiRate": 0.25848817978402566,
+   "callRate": 0.19029088432726918,
+   "drawTenpaiRate": 0.39581589958158997,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 420,
+     "picked": 131,
+     "rate": 0.3119047619047619
+    },
+    "contrarian": {
+     "offered": 405,
+     "picked": 64,
+     "rate": 0.1580246913580247
+    },
+    "meta": {
+     "offered": 420,
+     "picked": 133,
+     "rate": 0.31666666666666665
+    },
+    "fun": {
+     "offered": 393,
+     "picked": 132,
+     "rate": 0.33587786259541985
+    },
+    "synergy": {
+     "offered": 415,
+     "picked": 145,
+     "rate": 0.3493975903614458
+    },
+    "category": {
+     "offered": 447,
+     "picked": 155,
+     "rate": 0.34675615212527966
+    },
+    "archetype": {
+     "offered": 407,
+     "picked": 151,
+     "rate": 0.371007371007371
+    }
+   }
+  },
+  {
+   "id": "yakuless_win",
+   "name": "무형화료",
+   "tier": "S",
+   "offered": 6047,
+   "picked": 3233,
+   "pickRate": 0.5346452786505705,
+   "games": 3270,
+   "avgPlacement": 2.5700305810397555,
+   "placementSE": 0.019692696370612106,
+   "top1Rate": 0.23516819571865444,
+   "rentaiRate": 0.4709480122324159,
+   "lastRate": 0.2761467889908257,
+   "avgScore": -92.90519877675841,
+   "avgRawScore": 25607.400611620797,
+   "maxRawScore": 363000,
+   "minRawScore": -28300,
+   "winRate": 0.2006702490321835,
+   "avgWinPoints": 6334.2643247912465,
+   "tsumoRate": 0.40282176792398505,
+   "dealInRate": 0.11322008435892991,
+   "avgDealInPoints": 6638.759887726461,
+   "riichiRate": 0.22239556248916623,
+   "callRate": 0.3191483214884151,
+   "drawTenpaiRate": 0.3874491869918699,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 869,
+     "picked": 689,
+     "rate": 0.7928653624856157
+    },
+    "synergy": {
+     "offered": 826,
+     "picked": 649,
+     "rate": 0.7857142857142857
+    },
+    "category": {
+     "offered": 855,
+     "picked": 501,
+     "rate": 0.5859649122807018
+    },
+    "meta": {
+     "offered": 851,
+     "picked": 649,
+     "rate": 0.7626321974148061
+    },
+    "contrarian": {
+     "offered": 919,
+     "picked": 24,
+     "rate": 0.026115342763873776
+    },
+    "archetype": {
+     "offered": 804,
+     "picked": 407,
+     "rate": 0.5062189054726368
+    },
+    "fun": {
+     "offered": 923,
+     "picked": 314,
+     "rate": 0.3401950162513543
+    }
+   }
+  },
+  {
+   "id": "omni_chi",
+   "name": "사방치기",
+   "tier": "C",
+   "offered": 4691,
+   "picked": 1111,
+   "pickRate": 0.2368364954167555,
+   "games": 1139,
+   "avgPlacement": 2.597892888498683,
+   "placementSE": 0.03257993207919228,
+   "top1Rate": 0.21246707638279191,
+   "rentaiRate": 0.46093064091308167,
+   "lastRate": 0.2712906057945566,
+   "avgScore": -1493.064091308165,
+   "avgRawScore": 24485.864793678666,
+   "maxRawScore": 193300,
+   "minRawScore": -29200,
+   "winRate": 0.18170436524497122,
+   "avgWinPoints": 6873.725310059715,
+   "tsumoRate": 0.4212218649517685,
+   "dealInRate": 0.1120106835823387,
+   "avgDealInPoints": 6599.031296572281,
+   "riichiRate": 0.23654119021784492,
+   "callRate": 0.2195142308655371,
+   "drawTenpaiRate": 0.3869924541861301,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 721,
+     "picked": 98,
+     "rate": 0.13592233009708737
+    },
+    "category": {
+     "offered": 651,
+     "picked": 133,
+     "rate": 0.20430107526881722
+    },
+    "fun": {
+     "offered": 659,
+     "picked": 228,
+     "rate": 0.34597875569044007
+    },
+    "meta": {
+     "offered": 675,
+     "picked": 126,
+     "rate": 0.18666666666666668
+    },
+    "synergy": {
+     "offered": 693,
+     "picked": 143,
+     "rate": 0.20634920634920634
+    },
+    "archetype": {
+     "offered": 694,
+     "picked": 194,
+     "rate": 0.27953890489913547
+    },
+    "contrarian": {
+     "offered": 598,
+     "picked": 189,
+     "rate": 0.31605351170568563
+    }
+   }
+  },
+  {
+   "id": "silent_swap",
+   "name": "정적의 손",
+   "tier": "A",
+   "offered": 3891,
+   "picked": 1228,
+   "pickRate": 0.31560010280133644,
+   "games": 1252,
+   "avgPlacement": 2.527156549520767,
+   "placementSE": 0.03156037485681195,
+   "top1Rate": 0.2380191693290735,
+   "rentaiRate": 0.4952076677316294,
+   "lastRate": 0.26038338658146964,
+   "avgScore": 1593.849840255591,
+   "avgRawScore": 26865.415335463258,
+   "maxRawScore": 310800,
+   "minRawScore": -22400,
+   "winRate": 0.19348329721246543,
+   "avgWinPoints": 7200.579374275782,
+   "tsumoRate": 0.4275782155272306,
+   "dealInRate": 0.10813840520140498,
+   "avgDealInPoints": 6402.764340013821,
+   "riichiRate": 0.26029444735072116,
+   "callRate": 0.19841566400119573,
+   "drawTenpaiRate": 0.39928986442866365,
+   "pickByPersona": {
+    "category": {
+     "offered": 588,
+     "picked": 193,
+     "rate": 0.3282312925170068
+    },
+    "fun": {
+     "offered": 518,
+     "picked": 174,
+     "rate": 0.3359073359073359
+    },
+    "greedy": {
+     "offered": 577,
+     "picked": 192,
+     "rate": 0.3327556325823224
+    },
+    "meta": {
+     "offered": 523,
+     "picked": 197,
+     "rate": 0.37667304015296366
+    },
+    "archetype": {
+     "offered": 537,
+     "picked": 201,
+     "rate": 0.3743016759776536
+    },
+    "synergy": {
+     "offered": 580,
+     "picked": 193,
+     "rate": 0.33275862068965517
+    },
+    "contrarian": {
+     "offered": 568,
+     "picked": 78,
+     "rate": 0.13732394366197184
+    }
+   }
+  },
+  {
+   "id": "ura_peek",
+   "name": "이면투시",
+   "tier": "C",
+   "offered": 4804,
+   "picked": 964,
+   "pickRate": 0.2006661115736886,
+   "games": 990,
+   "avgPlacement": 2.6585858585858584,
+   "placementSE": 0.03475390144248222,
+   "top1Rate": 0.19494949494949496,
+   "rentaiRate": 0.43636363636363634,
+   "lastRate": 0.2898989898989899,
+   "avgScore": -2763.2323232323233,
+   "avgRawScore": 23822.62626262626,
+   "maxRawScore": 159400,
+   "minRawScore": -30700,
+   "winRate": 0.17343630816170863,
+   "avgWinPoints": 6892.028587135789,
+   "tsumoRate": 0.3952721275426058,
+   "dealInRate": 0.11327231121281464,
+   "avgDealInPoints": 6540.572390572391,
+   "riichiRate": 0.2477116704805492,
+   "callRate": 0.18278032036613273,
+   "drawTenpaiRate": 0.39106366152629496,
+   "pickByPersona": {
+    "category": {
+     "offered": 700,
+     "picked": 100,
+     "rate": 0.14285714285714285
+    },
+    "synergy": {
+     "offered": 688,
+     "picked": 30,
+     "rate": 0.0436046511627907
+    },
+    "meta": {
+     "offered": 730,
+     "picked": 34,
+     "rate": 0.04657534246575343
+    },
+    "fun": {
+     "offered": 660,
+     "picked": 224,
+     "rate": 0.3393939393939394
+    },
+    "archetype": {
+     "offered": 663,
+     "picked": 149,
+     "rate": 0.22473604826546004
+    },
+    "greedy": {
+     "offered": 733,
+     "picked": 26,
+     "rate": 0.03547066848567531
+    },
+    "contrarian": {
+     "offered": 630,
+     "picked": 401,
+     "rate": 0.6365079365079365
+    }
+   }
+  },
+  {
+   "id": "honor_return",
+   "name": "귀환",
+   "tier": "C",
+   "offered": 4570,
+   "picked": 949,
+   "pickRate": 0.2076586433260394,
+   "games": 974,
+   "avgPlacement": 2.717659137577002,
+   "placementSE": 0.034367525863787586,
+   "top1Rate": 0.1704312114989733,
+   "rentaiRate": 0.41478439425051333,
+   "lastRate": 0.3028747433264887,
+   "avgScore": -5045.687885010267,
+   "avgRawScore": 22130.903490759752,
+   "maxRawScore": 83800,
+   "minRawScore": -20800,
+   "winRate": 0.16454342118058932,
+   "avgWinPoints": 6798.581560283688,
+   "tsumoRate": 0.4107565011820331,
+   "dealInRate": 0.11426626470874258,
+   "avgDealInPoints": 6502.212765957447,
+   "riichiRate": 0.22328114363512594,
+   "callRate": 0.18934163181950792,
+   "drawTenpaiRate": 0.362119315811431,
+   "pickByPersona": {
+    "category": {
+     "offered": 641,
+     "picked": 120,
+     "rate": 0.187207488299532
+    },
+    "contrarian": {
+     "offered": 616,
+     "picked": 281,
+     "rate": 0.45616883116883117
+    },
+    "synergy": {
+     "offered": 641,
+     "picked": 55,
+     "rate": 0.08580343213728549
+    },
+    "fun": {
+     "offered": 655,
+     "picked": 192,
+     "rate": 0.2931297709923664
+    },
+    "meta": {
+     "offered": 690,
+     "picked": 53,
+     "rate": 0.07681159420289856
+    },
+    "greedy": {
+     "offered": 664,
+     "picked": 58,
+     "rate": 0.08734939759036145
+    },
+    "archetype": {
+     "offered": 663,
+     "picked": 190,
+     "rate": 0.2865761689291101
+    }
+   }
+  },
+  {
+   "id": "rank_gate",
+   "name": "격(格)",
+   "tier": "D",
+   "offered": 3150,
+   "picked": 679,
+   "pickRate": 0.21555555555555556,
+   "games": 718,
+   "avgPlacement": 2.554317548746518,
+   "placementSE": 0.03989526073938722,
+   "top1Rate": 0.2075208913649025,
+   "rentaiRate": 0.4777158774373259,
+   "lastRate": 0.2395543175487465,
+   "avgScore": -378.9693593314763,
+   "avgRawScore": 25164.206128133705,
+   "maxRawScore": 86900,
+   "minRawScore": -14500,
+   "winRate": 0.16807464380279916,
+   "avgWinPoints": 6996.0990247561895,
+   "tsumoRate": 0.41260315078769694,
+   "dealInRate": 0.10238305383936452,
+   "avgDealInPoints": 6417.241379310345,
+   "riichiRate": 0.2212835707981339,
+   "callRate": 0.18282688185600807,
+   "drawTenpaiRate": 0.3391866913123845,
+   "pickByPersona": {
+    "category": {
+     "offered": 438,
+     "picked": 11,
+     "rate": 0.02511415525114155
+    },
+    "archetype": {
+     "offered": 469,
+     "picked": 98,
+     "rate": 0.208955223880597
+    },
+    "meta": {
+     "offered": 424,
+     "picked": 6,
+     "rate": 0.014150943396226415
+    },
+    "greedy": {
+     "offered": 423,
+     "picked": 2,
+     "rate": 0.004728132387706856
+    },
+    "contrarian": {
+     "offered": 529,
+     "picked": 392,
+     "rate": 0.7410207939508506
+    },
+    "fun": {
+     "offered": 428,
+     "picked": 163,
+     "rate": 0.3808411214953271
+    },
+    "synergy": {
+     "offered": 439,
+     "picked": 7,
+     "rate": 0.015945330296127564
+    }
+   }
+  },
+  {
+   "id": "alchemist",
+   "name": "연금술사",
+   "tier": "B",
+   "offered": 4336,
+   "picked": 1088,
+   "pickRate": 0.25092250922509224,
+   "games": 1127,
+   "avgPlacement": 2.5084294587400175,
+   "placementSE": 0.03330575338446999,
+   "top1Rate": 0.24312333629103816,
+   "rentaiRate": 0.5048802129547472,
+   "lastRate": 0.25643300798580304,
+   "avgScore": 1037.3558118899734,
+   "avgRawScore": 26121.650399290153,
+   "maxRawScore": 363000,
+   "minRawScore": -36600,
+   "winRate": 0.1937295666023975,
+   "avgWinPoints": 7100.735612289052,
+   "tsumoRate": 0.41151016875811336,
+   "dealInRate": 0.10889429122306983,
+   "avgDealInPoints": 6520.631254811394,
+   "riichiRate": 0.26448151563416883,
+   "callRate": 0.18249643725375136,
+   "drawTenpaiRate": 0.39163916391639164,
+   "pickByPersona": {
+    "category": {
+     "offered": 638,
+     "picked": 155,
+     "rate": 0.24294670846394983
+    },
+    "greedy": {
+     "offered": 666,
+     "picked": 104,
+     "rate": 0.15615615615615616
+    },
+    "contrarian": {
+     "offered": 579,
+     "picked": 212,
+     "rate": 0.36614853195164077
+    },
+    "archetype": {
+     "offered": 616,
+     "picked": 210,
+     "rate": 0.3409090909090909
+    },
+    "synergy": {
+     "offered": 573,
+     "picked": 99,
+     "rate": 0.17277486910994763
+    },
+    "meta": {
+     "offered": 620,
+     "picked": 94,
+     "rate": 0.15161290322580645
+    },
+    "fun": {
+     "offered": 644,
+     "picked": 214,
+     "rate": 0.33229813664596275
+    }
+   }
+  },
+  {
+   "id": "avenger",
+   "name": "복수자",
+   "tier": "D",
+   "offered": 3027,
+   "picked": 574,
+   "pickRate": 0.18962669309547406,
+   "games": 596,
+   "avgPlacement": 2.721476510067114,
+   "placementSE": 0.04403910198591151,
+   "top1Rate": 0.1644295302013423,
+   "rentaiRate": 0.4261744966442953,
+   "lastRate": 0.31208053691275167,
+   "avgScore": -4915.604026845637,
+   "avgRawScore": 22299.161073825504,
+   "maxRawScore": 82800,
+   "minRawScore": -11500,
+   "winRate": 0.15449176251165683,
+   "avgWinPoints": 6829.678068410462,
+   "tsumoRate": 0.4386317907444668,
+   "dealInRate": 0.10646565122785204,
+   "avgDealInPoints": 6369.63503649635,
+   "riichiRate": 0.2214796394156046,
+   "callRate": 0.18386695679204226,
+   "drawTenpaiRate": 0.3688085676037483,
+   "pickByPersona": {
+    "meta": {
+     "offered": 421,
+     "picked": 7,
+     "rate": 0.0166270783847981
+    },
+    "greedy": {
+     "offered": 454,
+     "picked": 6,
+     "rate": 0.013215859030837005
+    },
+    "archetype": {
+     "offered": 417,
+     "picked": 70,
+     "rate": 0.16786570743405277
+    },
+    "fun": {
+     "offered": 453,
+     "picked": 152,
+     "rate": 0.3355408388520971
+    },
+    "contrarian": {
+     "offered": 408,
+     "picked": 327,
+     "rate": 0.8014705882352942
+    },
+    "synergy": {
+     "offered": 458,
+     "picked": 6,
+     "rate": 0.013100436681222707
+    },
+    "category": {
+     "offered": 416,
+     "picked": 6,
+     "rate": 0.014423076923076924
+    }
+   }
+  },
+  {
+   "id": "blind_ron",
+   "name": "눈먼 총알",
+   "tier": "C",
+   "offered": 4472,
+   "picked": 974,
+   "pickRate": 0.21779964221824688,
+   "games": 1004,
+   "avgPlacement": 2.604581673306773,
+   "placementSE": 0.03443406398478231,
+   "top1Rate": 0.20418326693227093,
+   "rentaiRate": 0.46215139442231074,
+   "lastRate": 0.27091633466135456,
+   "avgScore": -1790.3386454183267,
+   "avgRawScore": 24255.478087649404,
+   "maxRawScore": 88800,
+   "minRawScore": -18200,
+   "winRate": 0.17612359550561799,
+   "avgWinPoints": 6933.8118022328545,
+   "tsumoRate": 0.3902179691653376,
+   "dealInRate": 0.11292134831460675,
+   "avgDealInPoints": 6477.529021558872,
+   "riichiRate": 0.22808988764044943,
+   "callRate": 0.17837078651685392,
+   "drawTenpaiRate": 0.3584827011254689,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 651,
+     "picked": 132,
+     "rate": 0.20276497695852536
+    },
+    "greedy": {
+     "offered": 626,
+     "picked": 28,
+     "rate": 0.04472843450479233
+    },
+    "fun": {
+     "offered": 679,
+     "picked": 232,
+     "rate": 0.34167893961708395
+    },
+    "contrarian": {
+     "offered": 725,
+     "picked": 431,
+     "rate": 0.5944827586206897
+    },
+    "synergy": {
+     "offered": 601,
+     "picked": 33,
+     "rate": 0.05490848585690516
+    },
+    "meta": {
+     "offered": 591,
+     "picked": 17,
+     "rate": 0.028764805414551606
+    },
+    "category": {
+     "offered": 599,
+     "picked": 101,
+     "rate": 0.1686143572621035
+    }
+   }
+  },
+  {
+   "id": "devils_advance",
+   "name": "가불 인생",
+   "tier": "B",
+   "offered": 1468,
+   "picked": 373,
+   "pickRate": 0.25408719346049047,
+   "games": 380,
+   "avgPlacement": 2.110526315789474,
+   "placementSE": 0.052921711084154534,
+   "top1Rate": 0.3526315789473684,
+   "rentaiRate": 0.6657894736842105,
+   "lastRate": 0.12894736842105264,
+   "avgScore": 13290.526315789473,
+   "avgRawScore": 34395.78947368421,
+   "maxRawScore": 138500,
+   "minRawScore": -17800,
+   "winRate": 0.17674298945201955,
+   "avgWinPoints": 7400.291120815138,
+   "tsumoRate": 0.4017467248908297,
+   "dealInRate": 0.10342166195009005,
+   "avgDealInPoints": 6821.641791044776,
+   "riichiRate": 0.2168767687162336,
+   "callRate": 0.20298430666323644,
+   "drawTenpaiRate": 0.36774193548387096,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 219,
+     "picked": 65,
+     "rate": 0.2968036529680365
+    },
+    "fun": {
+     "offered": 199,
+     "picked": 72,
+     "rate": 0.36180904522613067
+    },
+    "greedy": {
+     "offered": 201,
+     "picked": 29,
+     "rate": 0.14427860696517414
+    },
+    "contrarian": {
+     "offered": 208,
+     "picked": 74,
+     "rate": 0.3557692307692308
+    },
+    "meta": {
+     "offered": 208,
+     "picked": 37,
+     "rate": 0.1778846153846154
+    },
+    "synergy": {
+     "offered": 223,
+     "picked": 28,
+     "rate": 0.12556053811659193
+    },
+    "category": {
+     "offered": 210,
+     "picked": 68,
+     "rate": 0.3238095238095238
+    }
+   }
+  },
+  {
+   "id": "jackpot",
+   "name": "일확천금",
+   "tier": "B",
+   "offered": 3896,
+   "picked": 1100,
+   "pickRate": 0.28234086242299794,
+   "games": 1140,
+   "avgPlacement": 2.574561403508772,
+   "placementSE": 0.03379145031100552,
+   "top1Rate": 0.2394736842105263,
+   "rentaiRate": 0.4745614035087719,
+   "lastRate": 0.2885964912280702,
+   "avgScore": 1483.0701754385964,
+   "avgRawScore": 27228.684210526317,
+   "maxRawScore": 345500,
+   "minRawScore": -25700,
+   "winRate": 0.17969642565692834,
+   "avgWinPoints": 7122.11625794732,
+   "tsumoRate": 0.3891916439600363,
+   "dealInRate": 0.11930798106740656,
+   "avgDealInPoints": 6597.264021887825,
+   "riichiRate": 0.25265219520156684,
+   "callRate": 0.19022360045699363,
+   "drawTenpaiRate": 0.359697386519945,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 526,
+     "picked": 135,
+     "rate": 0.25665399239543724
+    },
+    "synergy": {
+     "offered": 588,
+     "picked": 132,
+     "rate": 0.22448979591836735
+    },
+    "archetype": {
+     "offered": 558,
+     "picked": 195,
+     "rate": 0.34946236559139787
+    },
+    "category": {
+     "offered": 587,
+     "picked": 196,
+     "rate": 0.3339011925042589
+    },
+    "contrarian": {
+     "offered": 508,
+     "picked": 126,
+     "rate": 0.24803149606299213
+    },
+    "meta": {
+     "offered": 581,
+     "picked": 150,
+     "rate": 0.25817555938037867
+    },
+    "fun": {
+     "offered": 548,
+     "picked": 166,
+     "rate": 0.3029197080291971
+    }
+   }
+  },
+  {
+   "id": "honba_hunter",
+   "name": "본장 사냥꾼",
+   "tier": "D",
+   "offered": 4628,
+   "picked": 964,
+   "pickRate": 0.20829732065687123,
+   "games": 1001,
+   "avgPlacement": 2.5884115884115886,
+   "placementSE": 0.03525879169843375,
+   "top1Rate": 0.22077922077922077,
+   "rentaiRate": 0.47052947052947053,
+   "lastRate": 0.27972027972027974,
+   "avgScore": -1325.1748251748252,
+   "avgRawScore": 24558.941058941058,
+   "maxRawScore": 95100,
+   "minRawScore": -34700,
+   "winRate": 0.16600189933523266,
+   "avgWinPoints": 6868.70709382151,
+   "tsumoRate": 0.39187643020594964,
+   "dealInRate": 0.11348528015194682,
+   "avgDealInPoints": 6619.916317991632,
+   "riichiRate": 0.2312440645773979,
+   "callRate": 0.1737891737891738,
+   "drawTenpaiRate": 0.37757882444530944,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 654,
+     "picked": 17,
+     "rate": 0.02599388379204893
+    },
+    "category": {
+     "offered": 659,
+     "picked": 92,
+     "rate": 0.13960546282245828
+    },
+    "archetype": {
+     "offered": 673,
+     "picked": 155,
+     "rate": 0.2303120356612184
+    },
+    "meta": {
+     "offered": 659,
+     "picked": 14,
+     "rate": 0.021244309559939303
+    },
+    "synergy": {
+     "offered": 648,
+     "picked": 10,
+     "rate": 0.015432098765432098
+    },
+    "fun": {
+     "offered": 660,
+     "picked": 193,
+     "rate": 0.2924242424242424
+    },
+    "contrarian": {
+     "offered": 675,
+     "picked": 483,
+     "rate": 0.7155555555555555
+    }
+   }
+  },
+  {
+   "id": "let_it_ride",
+   "name": "판돈 굴리기",
+   "tier": "B",
+   "offered": 3978,
+   "picked": 1120,
+   "pickRate": 0.2815485168426345,
+   "games": 1151,
+   "avgPlacement": 2.4960903562119894,
+   "placementSE": 0.03334477908155713,
+   "top1Rate": 0.2571676802780191,
+   "rentaiRate": 0.5039096437880104,
+   "lastRate": 0.2571676802780191,
+   "avgScore": 2586.7940920938313,
+   "avgRawScore": 27547.697654213727,
+   "maxRawScore": 186000,
+   "minRawScore": -23300,
+   "winRate": 0.18439306358381502,
+   "avgWinPoints": 7179.579041648007,
+   "tsumoRate": 0.399910434393193,
+   "dealInRate": 0.1101568951279934,
+   "avgDealInPoints": 6585.532233883058,
+   "riichiRate": 0.24822460776218003,
+   "callRate": 0.19248554913294796,
+   "drawTenpaiRate": 0.3551736484067311,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 569,
+     "picked": 151,
+     "rate": 0.26537785588752194
+    },
+    "category": {
+     "offered": 575,
+     "picked": 174,
+     "rate": 0.3026086956521739
+    },
+    "synergy": {
+     "offered": 536,
+     "picked": 121,
+     "rate": 0.22574626865671643
+    },
+    "fun": {
+     "offered": 566,
+     "picked": 186,
+     "rate": 0.3286219081272085
+    },
+    "meta": {
+     "offered": 556,
+     "picked": 133,
+     "rate": 0.2392086330935252
+    },
+    "contrarian": {
+     "offered": 585,
+     "picked": 147,
+     "rate": 0.2512820512820513
+    },
+    "archetype": {
+     "offered": 591,
+     "picked": 208,
+     "rate": 0.35194585448392557
+    }
+   }
+  },
+  {
+   "id": "hidden_river",
+   "name": "안개 덮인 바닥",
+   "tier": "B",
+   "offered": 4287,
+   "picked": 1048,
+   "pickRate": 0.24445999533473292,
+   "games": 1110,
+   "avgPlacement": 2.642342342342342,
+   "placementSE": 0.03205676558161974,
+   "top1Rate": 0.1864864864864865,
+   "rentaiRate": 0.43963963963963965,
+   "lastRate": 0.26846846846846845,
+   "avgScore": -3249.009009009009,
+   "avgRawScore": 23174.414414414416,
+   "maxRawScore": 104600,
+   "minRawScore": -71700,
+   "winRate": 0.1732376530181511,
+   "avgWinPoints": 6973.440545808967,
+   "tsumoRate": 0.4044834307992203,
+   "dealInRate": 0.10958210215280709,
+   "avgDealInPoints": 6451.078582434515,
+   "riichiRate": 0.23013929928239762,
+   "callRate": 0.1897002954833263,
+   "drawTenpaiRate": 0.3507057546145494,
+   "pickByPersona": {
+    "category": {
+     "offered": 628,
+     "picked": 124,
+     "rate": 0.19745222929936307
+    },
+    "greedy": {
+     "offered": 588,
+     "picked": 93,
+     "rate": 0.15816326530612246
+    },
+    "contrarian": {
+     "offered": 664,
+     "picked": 216,
+     "rate": 0.3253012048192771
+    },
+    "fun": {
+     "offered": 582,
+     "picked": 196,
+     "rate": 0.33676975945017185
+    },
+    "synergy": {
+     "offered": 581,
+     "picked": 105,
+     "rate": 0.18072289156626506
+    },
+    "archetype": {
+     "offered": 616,
+     "picked": 202,
+     "rate": 0.32792207792207795
+    },
+    "meta": {
+     "offered": 628,
+     "picked": 112,
+     "rate": 0.17834394904458598
+    }
+   }
+  },
+  {
+   "id": "palm_flip",
+   "name": "손바닥 뒤집기",
+   "tier": "B",
+   "offered": 4235,
+   "picked": 982,
+   "pickRate": 0.23187721369539552,
+   "games": 1027,
+   "avgPlacement": 2.6504381694255112,
+   "placementSE": 0.034518404956039285,
+   "top1Rate": 0.20642648490749757,
+   "rentaiRate": 0.4342745861733204,
+   "lastRate": 0.2911392405063291,
+   "avgScore": -2780.4284323271663,
+   "avgRawScore": 23723.953261927945,
+   "maxRawScore": 129600,
+   "minRawScore": -22000,
+   "winRate": 0.1711229946524064,
+   "avgWinPoints": 7122.144396551724,
+   "tsumoRate": 0.40625,
+   "dealInRate": 0.1105476673427992,
+   "avgDealInPoints": 6550.542118432027,
+   "riichiRate": 0.24294670846394983,
+   "callRate": 0.18725797529042965,
+   "drawTenpaiRate": 0.36294027565084225,
+   "pickByPersona": {
+    "category": {
+     "offered": 591,
+     "picked": 109,
+     "rate": 0.1844331641285956
+    },
+    "fun": {
+     "offered": 613,
+     "picked": 197,
+     "rate": 0.32137030995106036
+    },
+    "greedy": {
+     "offered": 602,
+     "picked": 83,
+     "rate": 0.1378737541528239
+    },
+    "contrarian": {
+     "offered": 593,
+     "picked": 222,
+     "rate": 0.37436762225969644
+    },
+    "archetype": {
+     "offered": 593,
+     "picked": 194,
+     "rate": 0.327150084317032
+    },
+    "synergy": {
+     "offered": 649,
+     "picked": 93,
+     "rate": 0.14329738058551617
+    },
+    "meta": {
+     "offered": 594,
+     "picked": 84,
+     "rate": 0.1414141414141414
+    }
+   }
+  },
+  {
+   "id": "tile_dyeing",
+   "name": "염색",
+   "tier": "C",
+   "offered": 4513,
+   "picked": 1269,
+   "pickRate": 0.28118768003545314,
+   "games": 1305,
+   "avgPlacement": 2.3938697318007662,
+   "placementSE": 0.03102082617518781,
+   "top1Rate": 0.2827586206896552,
+   "rentaiRate": 0.5486590038314176,
+   "lastRate": 0.22528735632183908,
+   "avgScore": 4813.333333333333,
+   "avgRawScore": 28752.030651340996,
+   "maxRawScore": 327000,
+   "minRawScore": -29200,
+   "winRate": 0.21377466213774662,
+   "avgWinPoints": 7554.496281271129,
+   "tsumoRate": 0.4337390128465179,
+   "dealInRate": 0.10912770109127701,
+   "avgDealInPoints": 6443.973509933775,
+   "riichiRate": 0.29341620293416204,
+   "callRate": 0.1753992917539929,
+   "drawTenpaiRate": 0.3950900163666121,
+   "pickByPersona": {
+    "category": {
+     "offered": 685,
+     "picked": 183,
+     "rate": 0.2671532846715328
+    },
+    "meta": {
+     "offered": 640,
+     "picked": 152,
+     "rate": 0.2375
+    },
+    "archetype": {
+     "offered": 647,
+     "picked": 232,
+     "rate": 0.35857805255023184
+    },
+    "synergy": {
+     "offered": 639,
+     "picked": 155,
+     "rate": 0.24256651017214398
+    },
+    "fun": {
+     "offered": 619,
+     "picked": 227,
+     "rate": 0.3667205169628433
+    },
+    "contrarian": {
+     "offered": 581,
+     "picked": 156,
+     "rate": 0.2685025817555938
+    },
+    "greedy": {
+     "offered": 702,
+     "picked": 164,
+     "rate": 0.2336182336182336
+    }
+   }
+  },
+  {
+   "id": "sign_flip",
+   "name": "반전",
+   "tier": "A",
+   "offered": 3967,
+   "picked": 1231,
+   "pickRate": 0.3103100579783212,
+   "games": 1267,
+   "avgPlacement": 2.575374901341752,
+   "placementSE": 0.029978503575275896,
+   "top1Rate": 0.19652722967640096,
+   "rentaiRate": 0.47829518547750594,
+   "lastRate": 0.250197316495659,
+   "avgScore": -127.07182320441989,
+   "avgRawScore": 25626.6771902131,
+   "maxRawScore": 146000,
+   "minRawScore": -33700,
+   "winRate": 0.17601662214306915,
+   "avgWinPoints": 7176.559865092749,
+   "tsumoRate": 0.39291736930860033,
+   "dealInRate": 0.10893440189967349,
+   "avgDealInPoints": 6578.405994550409,
+   "riichiRate": 0.2393885425942416,
+   "callRate": 0.17891065598100325,
+   "drawTenpaiRate": 0.34290220820189277,
+   "pickByPersona": {
+    "category": {
+     "offered": 571,
+     "picked": 204,
+     "rate": 0.3572679509632224
+    },
+    "meta": {
+     "offered": 577,
+     "picked": 189,
+     "rate": 0.3275563258232236
+    },
+    "contrarian": {
+     "offered": 622,
+     "picked": 98,
+     "rate": 0.15755627009646303
+    },
+    "archetype": {
+     "offered": 598,
+     "picked": 232,
+     "rate": 0.3879598662207358
+    },
+    "greedy": {
+     "offered": 512,
+     "picked": 170,
+     "rate": 0.33203125
+    },
+    "fun": {
+     "offered": 561,
+     "picked": 189,
+     "rate": 0.33689839572192515
+    },
+    "synergy": {
+     "offered": 526,
+     "picked": 149,
+     "rate": 0.2832699619771863
+    }
+   }
+  },
+  {
+   "id": "tanyao_break",
+   "name": "탕야오 해방",
+   "tier": "S",
+   "offered": 3373,
+   "picked": 1558,
+   "pickRate": 0.4619033501334124,
+   "games": 1609,
+   "avgPlacement": 2.454319453076445,
+   "placementSE": 0.027878755349653415,
+   "top1Rate": 0.2666252330640149,
+   "rentaiRate": 0.5133623368551895,
+   "lastRate": 0.23430702299564948,
+   "avgScore": 3650.0932256059664,
+   "avgRawScore": 28193.287756370417,
+   "maxRawScore": 363000,
+   "minRawScore": -71700,
+   "winRate": 0.19041342121030558,
+   "avgWinPoints": 8417.621145374449,
+   "tsumoRate": 0.3904971680302077,
+   "dealInRate": 0.11300179748352307,
+   "avgDealInPoints": 6401.961823966066,
+   "riichiRate": 0.25314559616536847,
+   "callRate": 0.19862192929898143,
+   "drawTenpaiRate": 0.36909323116219667,
+   "pickByPersona": {
+    "meta": {
+     "offered": 494,
+     "picked": 341,
+     "rate": 0.6902834008097166
+    },
+    "category": {
+     "offered": 496,
+     "picked": 229,
+     "rate": 0.46169354838709675
+    },
+    "greedy": {
+     "offered": 488,
+     "picked": 307,
+     "rate": 0.6290983606557377
+    },
+    "synergy": {
+     "offered": 455,
+     "picked": 295,
+     "rate": 0.6483516483516484
+    },
+    "fun": {
+     "offered": 486,
+     "picked": 167,
+     "rate": 0.3436213991769547
+    },
+    "archetype": {
+     "offered": 458,
+     "picked": 205,
+     "rate": 0.44759825327510916
+    },
+    "contrarian": {
+     "offered": 496,
+     "picked": 14,
+     "rate": 0.028225806451612902
+    }
+   }
+  },
+  {
+   "id": "haitei_lord",
+   "name": "해저의 지배자",
+   "tier": "D",
+   "offered": 3091,
+   "picked": 594,
+   "pickRate": 0.19217081850533807,
+   "games": 644,
+   "avgPlacement": 2.5388198757763973,
+   "placementSE": 0.044173843575698486,
+   "top1Rate": 0.24378881987577639,
+   "rentaiRate": 0.4767080745341615,
+   "lastRate": 0.2593167701863354,
+   "avgScore": 402.01863354037266,
+   "avgRawScore": 25790.217391304348,
+   "maxRawScore": 99600,
+   "minRawScore": -27600,
+   "winRate": 0.18676764789939984,
+   "avgWinPoints": 7026.243305279266,
+   "tsumoRate": 0.4636572302983933,
+   "dealInRate": 0.10945984567019149,
+   "avgDealInPoints": 6731.723237597911,
+   "riichiRate": 0.22963703915404401,
+   "callRate": 0.1959131180337239,
+   "drawTenpaiRate": 0.3474358974358974,
+   "pickByPersona": {
+    "meta": {
+     "offered": 447,
+     "picked": 37,
+     "rate": 0.08277404921700224
+    },
+    "greedy": {
+     "offered": 433,
+     "picked": 29,
+     "rate": 0.06697459584295612
+    },
+    "category": {
+     "offered": 432,
+     "picked": 28,
+     "rate": 0.06481481481481481
+    },
+    "fun": {
+     "offered": 450,
+     "picked": 159,
+     "rate": 0.35333333333333333
+    },
+    "archetype": {
+     "offered": 459,
+     "picked": 101,
+     "rate": 0.22004357298474944
+    },
+    "synergy": {
+     "offered": 424,
+     "picked": 24,
+     "rate": 0.05660377358490566
+    },
+    "contrarian": {
+     "offered": 446,
+     "picked": 216,
+     "rate": 0.484304932735426
+    }
+   }
+  },
+  {
+   "id": "brief_fog",
+   "name": "박무",
+   "tier": "D",
+   "offered": 4714,
+   "picked": 983,
+   "pickRate": 0.20852778956300383,
+   "games": 1001,
+   "avgPlacement": 2.653346653346653,
+   "placementSE": 0.03378712356789634,
+   "top1Rate": 0.18581418581418582,
+   "rentaiRate": 0.4325674325674326,
+   "lastRate": 0.27172827172827174,
+   "avgScore": -3212.187812187812,
+   "avgRawScore": 23321.278721278723,
+   "maxRawScore": 91000,
+   "minRawScore": -21200,
+   "winRate": 0.16564359240721505,
+   "avgWinPoints": 6831.128848346636,
+   "tsumoRate": 0.3945267958950969,
+   "dealInRate": 0.10945320615733309,
+   "avgDealInPoints": 6595.944779982744,
+   "riichiRate": 0.21994522617810935,
+   "callRate": 0.17470960430635565,
+   "drawTenpaiRate": 0.3614005835764902,
+   "pickByPersona": {
+    "meta": {
+     "offered": 619,
+     "picked": 1,
+     "rate": 0.0016155088852988692
+    },
+    "fun": {
+     "offered": 653,
+     "picked": 221,
+     "rate": 0.33843797856049007
+    },
+    "synergy": {
+     "offered": 672,
+     "picked": 1,
+     "rate": 0.001488095238095238
+    },
+    "category": {
+     "offered": 704,
+     "picked": 75,
+     "rate": 0.10653409090909091
+    },
+    "greedy": {
+     "offered": 669,
+     "picked": 1,
+     "rate": 0.0014947683109118087
+    },
+    "contrarian": {
+     "offered": 668,
+     "picked": 617,
+     "rate": 0.9236526946107785
+    },
+    "archetype": {
+     "offered": 729,
+     "picked": 67,
+     "rate": 0.09190672153635117
+    }
+   }
+  },
+  {
+   "id": "foresight",
+   "name": "예지",
+   "tier": "S+",
+   "offered": 3259,
+   "picked": 1813,
+   "pickRate": 0.5563056152193925,
+   "games": 1835,
+   "avgPlacement": 2.3553133514986375,
+   "placementSE": 0.026359412694689936,
+   "top1Rate": 0.3073569482288828,
+   "rentaiRate": 0.5525885558583107,
+   "lastRate": 0.21525885558583105,
+   "avgScore": 7492.425068119891,
+   "avgRawScore": 31045.558583106267,
+   "maxRawScore": 160600,
+   "minRawScore": -20700,
+   "winRate": 0.1868036389655525,
+   "avgWinPoints": 7309.712722298222,
+   "tsumoRate": 0.4246238030095759,
+   "dealInRate": 0.10789123990595932,
+   "avgDealInPoints": 6538.323069635244,
+   "riichiRate": 0.25401206173975266,
+   "callRate": 0.19033016457119492,
+   "drawTenpaiRate": 0.3673513986013986,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 467,
+     "picked": 237,
+     "rate": 0.5074946466809421
+    },
+    "contrarian": {
+     "offered": 448,
+     "picked": 3,
+     "rate": 0.006696428571428571
+    },
+    "category": {
+     "offered": 483,
+     "picked": 275,
+     "rate": 0.5693581780538303
+    },
+    "meta": {
+     "offered": 463,
+     "picked": 400,
+     "rate": 0.8639308855291576
+    },
+    "greedy": {
+     "offered": 461,
+     "picked": 378,
+     "rate": 0.8199566160520607
+    },
+    "fun": {
+     "offered": 476,
+     "picked": 142,
+     "rate": 0.29831932773109243
+    },
+    "synergy": {
+     "offered": 461,
+     "picked": 378,
+     "rate": 0.8199566160520607
+    }
+   }
+  },
+  {
+   "id": "spy",
+   "name": "스파이",
+   "tier": "A",
+   "offered": 3756,
+   "picked": 1347,
+   "pickRate": 0.3586261980830671,
+   "games": 1369,
+   "avgPlacement": 2.501826150474799,
+   "placementSE": 0.029720437598962906,
+   "top1Rate": 0.23593864134404674,
+   "rentaiRate": 0.5054784514243974,
+   "lastRate": 0.24324324324324326,
+   "avgScore": 912.417823228634,
+   "avgRawScore": 25930.679327976624,
+   "maxRawScore": 145300,
+   "minRawScore": -39600,
+   "winRate": 0.1810671256454389,
+   "avgWinPoints": 7214.182509505704,
+   "tsumoRate": 0.4102661596958175,
+   "dealInRate": 0.11277108433734939,
+   "avgDealInPoints": 6381.868131868132,
+   "riichiRate": 0.24647160068846816,
+   "callRate": 0.19077452667814113,
+   "drawTenpaiRate": 0.38752249550089984,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 511,
+     "picked": 200,
+     "rate": 0.3913894324853229
+    },
+    "synergy": {
+     "offered": 511,
+     "picked": 214,
+     "rate": 0.4187866927592955
+    },
+    "contrarian": {
+     "offered": 596,
+     "picked": 62,
+     "rate": 0.1040268456375839
+    },
+    "category": {
+     "offered": 564,
+     "picked": 235,
+     "rate": 0.4166666666666667
+    },
+    "meta": {
+     "offered": 513,
+     "picked": 211,
+     "rate": 0.41130604288499023
+    },
+    "greedy": {
+     "offered": 503,
+     "picked": 226,
+     "rate": 0.44930417495029823
+    },
+    "fun": {
+     "offered": 558,
+     "picked": 199,
+     "rate": 0.35663082437275984
+    }
+   }
+  },
+  {
+   "id": "future_sight",
+   "name": "미래를 보는 자",
+   "tier": "C",
+   "offered": 4718,
+   "picked": 998,
+   "pickRate": 0.21153030945315812,
+   "games": 1018,
+   "avgPlacement": 2.412573673870334,
+   "placementSE": 0.03497887090902893,
+   "top1Rate": 0.2819253438113949,
+   "rentaiRate": 0.5245579567779961,
+   "lastRate": 0.21905697445972494,
+   "avgScore": 4837.917485265226,
+   "avgRawScore": 28963.654223968566,
+   "maxRawScore": 282500,
+   "minRawScore": -29100,
+   "winRate": 0.1725550901475141,
+   "avgWinPoints": 6984.6437994722955,
+   "tsumoRate": 0.41319261213720315,
+   "dealInRate": 0.09961755600072847,
+   "avgDealInPoints": 6450.73126142596,
+   "riichiRate": 0.22500455290475324,
+   "callRate": 0.17956656346749225,
+   "drawTenpaiRate": 0.3373058866016613,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 664,
+     "picked": 176,
+     "rate": 0.26506024096385544
+    },
+    "greedy": {
+     "offered": 676,
+     "picked": 47,
+     "rate": 0.0695266272189349
+    },
+    "category": {
+     "offered": 654,
+     "picked": 120,
+     "rate": 0.1834862385321101
+    },
+    "contrarian": {
+     "offered": 626,
+     "picked": 333,
+     "rate": 0.5319488817891374
+    },
+    "fun": {
+     "offered": 698,
+     "picked": 242,
+     "rate": 0.3467048710601719
+    },
+    "synergy": {
+     "offered": 723,
+     "picked": 48,
+     "rate": 0.06639004149377593
+    },
+    "meta": {
+     "offered": 677,
+     "picked": 32,
+     "rate": 0.047267355982274745
+    }
+   }
+  },
+  {
+   "id": "big_hand",
+   "name": "큰손",
+   "tier": "S+",
+   "offered": 3160,
+   "picked": 1260,
+   "pickRate": 0.3987341772151899,
+   "games": 1275,
+   "avgPlacement": 2.5780392156862746,
+   "placementSE": 0.0313945193486286,
+   "top1Rate": 0.23607843137254902,
+   "rentaiRate": 0.4556862745098039,
+   "lastRate": 0.2698039215686274,
+   "avgScore": -18.901960784313726,
+   "avgRawScore": 25761.49019607843,
+   "maxRawScore": 182100,
+   "minRawScore": -54500,
+   "winRate": 0.18056375442739078,
+   "avgWinPoints": 7192.439722108705,
+   "tsumoRate": 0.4102983244789538,
+   "dealInRate": 0.11415289256198347,
+   "avgDealInPoints": 6589.528118939884,
+   "riichiRate": 0.2614374262101535,
+   "callRate": 0.19259149940968123,
+   "drawTenpaiRate": 0.37700706486833657,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 461,
+     "picked": 247,
+     "rate": 0.5357917570498916
+    },
+    "fun": {
+     "offered": 445,
+     "picked": 152,
+     "rate": 0.3415730337078652
+    },
+    "category": {
+     "offered": 478,
+     "picked": 193,
+     "rate": 0.40376569037656906
+    },
+    "archetype": {
+     "offered": 408,
+     "picked": 183,
+     "rate": 0.4485294117647059
+    },
+    "meta": {
+     "offered": 458,
+     "picked": 227,
+     "rate": 0.49563318777292575
+    },
+    "synergy": {
+     "offered": 445,
+     "picked": 224,
+     "rate": 0.503370786516854
+    },
+    "contrarian": {
+     "offered": 465,
+     "picked": 34,
+     "rate": 0.07311827956989247
+    }
+   }
+  },
+  {
+   "id": "reload",
+   "name": "재장전",
+   "tier": "D",
+   "offered": 1573,
+   "picked": 332,
+   "pickRate": 0.21106166560712014,
+   "games": 344,
+   "avgPlacement": 2.6540697674418605,
+   "placementSE": 0.05718394808229884,
+   "top1Rate": 0.17732558139534885,
+   "rentaiRate": 0.438953488372093,
+   "lastRate": 0.2703488372093023,
+   "avgScore": -2736.3372093023254,
+   "avgRawScore": 23804.36046511628,
+   "maxRawScore": 90200,
+   "minRawScore": -23800,
+   "winRate": 0.17487220877051385,
+   "avgWinPoints": 6734.461538461538,
+   "tsumoRate": 0.4,
+   "dealInRate": 0.1089588377723971,
+   "avgDealInPoints": 6307.16049382716,
+   "riichiRate": 0.24239978477266613,
+   "callRate": 0.1802528921172989,
+   "drawTenpaiRate": 0.3869179600886918,
+   "pickByPersona": {
+    "category": {
+     "offered": 221,
+     "picked": 1,
+     "rate": 0.004524886877828055
+    },
+    "fun": {
+     "offered": 237,
+     "picked": 89,
+     "rate": 0.3755274261603376
+    },
+    "meta": {
+     "offered": 195,
+     "picked": 9,
+     "rate": 0.046153846153846156
+    },
+    "greedy": {
+     "offered": 205,
+     "picked": 6,
+     "rate": 0.02926829268292683
+    },
+    "archetype": {
+     "offered": 244,
+     "picked": 42,
+     "rate": 0.1721311475409836
+    },
+    "contrarian": {
+     "offered": 275,
+     "picked": 180,
+     "rate": 0.6545454545454545
+    },
+    "synergy": {
+     "offered": 196,
+     "picked": 5,
+     "rate": 0.025510204081632654
+    }
+   }
+  },
+  {
+   "id": "meld_dissolve",
+   "name": "파혼",
+   "tier": "C",
+   "offered": 3740,
+   "picked": 746,
+   "pickRate": 0.19946524064171123,
+   "games": 780,
+   "avgPlacement": 2.623076923076923,
+   "placementSE": 0.039440489089594674,
+   "top1Rate": 0.2128205128205128,
+   "rentaiRate": 0.43974358974358974,
+   "lastRate": 0.27564102564102566,
+   "avgScore": -1225.3846153846155,
+   "avgRawScore": 25005.384615384617,
+   "maxRawScore": 160600,
+   "minRawScore": -22000,
+   "winRate": 0.17305848513902206,
+   "avgWinPoints": 7310.803324099723,
+   "tsumoRate": 0.4099722991689751,
+   "dealInRate": 0.10774209012464046,
+   "avgDealInPoints": 6380.200222469411,
+   "riichiRate": 0.2582694151486098,
+   "callRate": 0.1830057526366251,
+   "drawTenpaiRate": 0.35088633993743484,
+   "pickByPersona": {
+    "category": {
+     "offered": 546,
+     "picked": 61,
+     "rate": 0.11172161172161173
+    },
+    "fun": {
+     "offered": 514,
+     "picked": 155,
+     "rate": 0.301556420233463
+    },
+    "archetype": {
+     "offered": 493,
+     "picked": 132,
+     "rate": 0.26774847870182555
+    },
+    "synergy": {
+     "offered": 597,
+     "picked": 79,
+     "rate": 0.1323283082077052
+    },
+    "contrarian": {
+     "offered": 437,
+     "picked": 181,
+     "rate": 0.41418764302059496
+    },
+    "meta": {
+     "offered": 590,
+     "picked": 68,
+     "rate": 0.1152542372881356
+    },
+    "greedy": {
+     "offered": 563,
+     "picked": 70,
+     "rate": 0.12433392539964476
+    }
+   }
+  },
+  {
+   "id": "open_riichi",
+   "name": "개문선언",
+   "tier": "S+",
+   "offered": 5866,
+   "picked": 3739,
+   "pickRate": 0.6374019774974429,
+   "games": 3783,
+   "avgPlacement": 2.5263018768173406,
+   "placementSE": 0.018103699861328617,
+   "top1Rate": 0.23922812582606398,
+   "rentaiRate": 0.4903515728257996,
+   "lastRate": 0.2558815754692043,
+   "avgScore": 882.1305841924399,
+   "avgRawScore": 26145.149352365846,
+   "maxRawScore": 310800,
+   "minRawScore": -34700,
+   "winRate": 0.18590096630451108,
+   "avgWinPoints": 7488.957716132508,
+   "tsumoRate": 0.4233773229194721,
+   "dealInRate": 0.10962299103790117,
+   "avgDealInPoints": 6450.102763187942,
+   "riichiRate": 0.28841435938516996,
+   "callRate": 0.19721624192660092,
+   "drawTenpaiRate": 0.3673229188957843,
+   "pickByPersona": {
+    "greedy": {
+     "offered": 836,
+     "picked": 789,
+     "rate": 0.94377990430622
+    },
+    "fun": {
+     "offered": 853,
+     "picked": 290,
+     "rate": 0.3399765533411489
+    },
+    "archetype": {
+     "offered": 824,
+     "picked": 462,
+     "rate": 0.5606796116504854
+    },
+    "synergy": {
+     "offered": 821,
+     "picked": 770,
+     "rate": 0.9378806333739342
+    },
+    "category": {
+     "offered": 897,
+     "picked": 639,
+     "rate": 0.7123745819397993
+    },
+    "meta": {
+     "offered": 830,
+     "picked": 789,
+     "rate": 0.9506024096385542
+    },
+    "contrarian": {
+     "offered": 805,
+     "picked": 0,
+     "rate": 0
+    }
+   }
+  },
+  {
+   "id": "suit_unify",
+   "name": "단색 세계",
+   "tier": "SS+",
+   "offered": 2937,
+   "picked": 1938,
+   "pickRate": 0.6598569969356486,
+   "games": 1958,
+   "avgPlacement": 2.140449438202247,
+   "placementSE": 0.02562630823476095,
+   "top1Rate": 0.40398365679264553,
+   "rentaiRate": 0.6338100102145046,
+   "lastRate": 0.17824310520939735,
+   "avgScore": 12943.973442288048,
+   "avgRawScore": 34348.46782431052,
+   "maxRawScore": 194100,
+   "minRawScore": -12400,
+   "winRate": 0.21615687839928147,
+   "avgWinPoints": 9815.83564173592,
+   "tsumoRate": 0.4605263157894737,
+   "dealInRate": 0.10987475674866523,
+   "avgDealInPoints": 6410.990009082652,
+   "riichiRate": 0.3114615039169702,
+   "callRate": 0.1792824709345841,
+   "drawTenpaiRate": 0.46145982416683706,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 409,
+     "picked": 0,
+     "rate": 0
+    },
+    "synergy": {
+     "offered": 418,
+     "picked": 409,
+     "rate": 0.9784688995215312
+    },
+    "meta": {
+     "offered": 437,
+     "picked": 425,
+     "rate": 0.9725400457665904
+    },
+    "category": {
+     "offered": 442,
+     "picked": 337,
+     "rate": 0.7624434389140271
+    },
+    "greedy": {
+     "offered": 412,
+     "picked": 404,
+     "rate": 0.9805825242718447
+    },
+    "archetype": {
+     "offered": 384,
+     "picked": 227,
+     "rate": 0.5911458333333334
+    },
+    "fun": {
+     "offered": 435,
+     "picked": 136,
+     "rate": 0.31264367816091954
+    }
+   }
+  },
+  {
+   "id": "unification",
+   "name": "천하통일",
+   "tier": "C",
+   "offered": 4093,
+   "picked": 1029,
+   "pickRate": 0.25140483752748594,
+   "games": 1075,
+   "avgPlacement": 2.6269767441860465,
+   "placementSE": 0.033288927258612475,
+   "top1Rate": 0.19627906976744186,
+   "rentaiRate": 0.4586046511627907,
+   "lastRate": 0.28186046511627905,
+   "avgScore": -2409.6744186046512,
+   "avgRawScore": 23860.093023255813,
+   "maxRawScore": 75600,
+   "minRawScore": -34700,
+   "winRate": 0.1737424188369604,
+   "avgWinPoints": 6905.64681724846,
+   "tsumoRate": 0.39835728952772076,
+   "dealInRate": 0.10640385301462718,
+   "avgDealInPoints": 6456.2447611064545,
+   "riichiRate": 0.23465929361398502,
+   "callRate": 0.19193721013200143,
+   "drawTenpaiRate": 0.3662490788504053,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 577,
+     "picked": 189,
+     "rate": 0.3275563258232236
+    },
+    "category": {
+     "offered": 565,
+     "picked": 135,
+     "rate": 0.23893805309734514
+    },
+    "fun": {
+     "offered": 576,
+     "picked": 194,
+     "rate": 0.3368055555555556
+    },
+    "synergy": {
+     "offered": 626,
+     "picked": 95,
+     "rate": 0.15175718849840256
+    },
+    "archetype": {
+     "offered": 579,
+     "picked": 191,
+     "rate": 0.3298791018998273
+    },
+    "greedy": {
+     "offered": 597,
+     "picked": 107,
+     "rate": 0.17922948073701842
+    },
+    "meta": {
+     "offered": 573,
+     "picked": 118,
+     "rate": 0.20593368237347295
+    }
+   }
+  },
+  {
+   "id": "void_kan",
+   "name": "성립하지 않는 깡",
+   "tier": "C",
+   "offered": 3229,
+   "picked": 694,
+   "pickRate": 0.21492722205017034,
+   "games": 736,
+   "avgPlacement": 2.604619565217391,
+   "placementSE": 0.0398241915566138,
+   "top1Rate": 0.19972826086956522,
+   "rentaiRate": 0.4592391304347826,
+   "lastRate": 0.26358695652173914,
+   "avgScore": -2413.3152173913045,
+   "avgRawScore": 23632.880434782608,
+   "maxRawScore": 163500,
+   "minRawScore": -11900,
+   "winRate": 0.17266549207148252,
+   "avgWinPoints": 6832.725947521866,
+   "tsumoRate": 0.39504373177842567,
+   "dealInRate": 0.11024414799899321,
+   "avgDealInPoints": 6464.3835616438355,
+   "riichiRate": 0.23533853511200603,
+   "callRate": 0.18411779511704002,
+   "drawTenpaiRate": 0.3694130317716747,
+   "pickByPersona": {
+    "fun": {
+     "offered": 477,
+     "picked": 163,
+     "rate": 0.3417190775681342
+    },
+    "contrarian": {
+     "offered": 546,
+     "picked": 316,
+     "rate": 0.5787545787545788
+    },
+    "category": {
+     "offered": 443,
+     "picked": 17,
+     "rate": 0.03837471783295711
+    },
+    "archetype": {
+     "offered": 498,
+     "picked": 117,
+     "rate": 0.23493975903614459
+    },
+    "synergy": {
+     "offered": 408,
+     "picked": 25,
+     "rate": 0.061274509803921566
+    },
+    "meta": {
+     "offered": 443,
+     "picked": 26,
+     "rate": 0.05869074492099323
+    },
+    "greedy": {
+     "offered": 414,
+     "picked": 30,
+     "rate": 0.07246376811594203
+    }
+   }
+  },
+  {
+   "id": "open_kokushi",
+   "name": "우는 국사무쌍",
+   "tier": "S+",
+   "offered": 2396,
+   "picked": 1533,
+   "pickRate": 0.6398163606010017,
+   "games": 1568,
+   "avgPlacement": 2.5503826530612246,
+   "placementSE": 0.028026789486487368,
+   "top1Rate": 0.2315051020408163,
+   "rentaiRate": 0.47831632653061223,
+   "lastRate": 0.2602040816326531,
+   "avgScore": -17.346938775510203,
+   "avgRawScore": 25486.479591836734,
+   "maxRawScore": 101800,
+   "minRawScore": -24900,
+   "winRate": 0.1928686231323293,
+   "avgWinPoints": 7083.148148148148,
+   "tsumoRate": 0.43549382716049384,
+   "dealInRate": 0.11167331388773141,
+   "avgDealInPoints": 6715.45842217484,
+   "riichiRate": 0.2553723435918805,
+   "callRate": 0.21608429073159116,
+   "drawTenpaiRate": 0.40014847809948034,
+   "pickByPersona": {
+    "category": {
+     "offered": 362,
+     "picked": 311,
+     "rate": 0.8591160220994475
+    },
+    "contrarian": {
+     "offered": 298,
+     "picked": 2,
+     "rate": 0.006711409395973154
+    },
+    "meta": {
+     "offered": 336,
+     "picked": 298,
+     "rate": 0.8869047619047619
+    },
+    "greedy": {
+     "offered": 368,
+     "picked": 320,
+     "rate": 0.8695652173913043
+    },
+    "fun": {
+     "offered": 334,
+     "picked": 116,
+     "rate": 0.3473053892215569
+    },
+    "synergy": {
+     "offered": 362,
+     "picked": 307,
+     "rate": 0.8480662983425414
+    },
+    "archetype": {
+     "offered": 336,
+     "picked": 179,
+     "rate": 0.5327380952380952
+    }
+   }
+  },
+  {
+   "id": "mirror_dora",
+   "name": "거울",
+   "tier": "S",
+   "offered": 3571,
+   "picked": 1683,
+   "pickRate": 0.4712965555866704,
+   "games": 1704,
+   "avgPlacement": 2.517018779342723,
+   "placementSE": 0.02698731449661841,
+   "top1Rate": 0.24471830985915494,
+   "rentaiRate": 0.48884976525821594,
+   "lastRate": 0.2505868544600939,
+   "avgScore": 1051.5258215962442,
+   "avgRawScore": 26221.713615023473,
+   "maxRawScore": 128600,
+   "minRawScore": -26000,
+   "winRate": 0.18252200066837473,
+   "avgWinPoints": 7900.671345743058,
+   "tsumoRate": 0.4116570033567287,
+   "dealInRate": 0.10538041662025176,
+   "avgDealInPoints": 6534.672304439746,
+   "riichiRate": 0.25080761947198393,
+   "callRate": 0.19950985852734768,
+   "drawTenpaiRate": 0.37342207941243977,
+   "pickByPersona": {
+    "category": {
+     "offered": 551,
+     "picked": 303,
+     "rate": 0.5499092558983666
+    },
+    "archetype": {
+     "offered": 504,
+     "picked": 216,
+     "rate": 0.42857142857142855
+    },
+    "contrarian": {
+     "offered": 546,
+     "picked": 15,
+     "rate": 0.027472527472527472
+    },
+    "fun": {
+     "offered": 538,
+     "picked": 181,
+     "rate": 0.33643122676579923
+    },
+    "meta": {
+     "offered": 473,
+     "picked": 324,
+     "rate": 0.6849894291754757
+    },
+    "greedy": {
+     "offered": 453,
+     "picked": 311,
+     "rate": 0.6865342163355408
+    },
+    "synergy": {
+     "offered": 506,
+     "picked": 333,
+     "rate": 0.658102766798419
+    }
+   }
+  },
+  {
+   "id": "cornucopia",
+   "name": "수상한 주사위",
+   "tier": "S+",
+   "offered": 3154,
+   "picked": 1904,
+   "pickRate": 0.6036778693722258,
+   "games": 1904,
+   "avgPlacement": 2.4480042016806722,
+   "placementSE": 0.025869604515982768,
+   "top1Rate": 0.27153361344537813,
+   "rentaiRate": 0.5220588235294118,
+   "lastRate": 0.2415966386554622,
+   "avgScore": 3223.109243697479,
+   "avgRawScore": 27703.1512605042,
+   "maxRawScore": 136900,
+   "minRawScore": -38300,
+   "winRate": 0.19678414974113898,
+   "avgWinPoints": 7502.327346319251,
+   "tsumoRate": 0.4227169238552998,
+   "dealInRate": 0.11250497809637594,
+   "avgDealInPoints": 6410.70796460177,
+   "riichiRate": 0.26657706093189965,
+   "callRate": 0.19638590203106332,
+   "drawTenpaiRate": 0.3916245791245791,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 440,
+     "picked": 5,
+     "rate": 0.011363636363636364
+    },
+    "synergy": {
+     "offered": 448,
+     "picked": 384,
+     "rate": 0.8571428571428571
+    },
+    "category": {
+     "offered": 473,
+     "picked": 315,
+     "rate": 0.6659619450317125
+    },
+    "archetype": {
+     "offered": 437,
+     "picked": 241,
+     "rate": 0.551487414187643
+    },
+    "meta": {
+     "offered": 441,
+     "picked": 402,
+     "rate": 0.9115646258503401
+    },
+    "greedy": {
+     "offered": 449,
+     "picked": 392,
+     "rate": 0.8730512249443207
+    },
+    "fun": {
+     "offered": 466,
+     "picked": 165,
+     "rate": 0.3540772532188841
+    }
+   }
+  },
+  {
+   "id": "xray_hand",
+   "name": "투시",
+   "tier": "B",
+   "offered": 4064,
+   "picked": 938,
+   "pickRate": 0.23080708661417323,
+   "games": 962,
+   "avgPlacement": 2.6226611226611225,
+   "placementSE": 0.03465112533375145,
+   "top1Rate": 0.1891891891891892,
+   "rentaiRate": 0.4584199584199584,
+   "lastRate": 0.2702702702702703,
+   "avgScore": -1998.856548856549,
+   "avgRawScore": 24227.754677754678,
+   "maxRawScore": 121400,
+   "minRawScore": -23300,
+   "winRate": 0.17438000390548722,
+   "avgWinPoints": 6900.055991041433,
+   "tsumoRate": 0.41041433370660696,
+   "dealInRate": 0.09822300331966413,
+   "avgDealInPoints": 6394.93041749503,
+   "riichiRate": 0.22847100175746923,
+   "callRate": 0.1859011911735989,
+   "drawTenpaiRate": 0.3230452674897119,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 605,
+     "picked": 248,
+     "rate": 0.4099173553719008
+    },
+    "fun": {
+     "offered": 600,
+     "picked": 190,
+     "rate": 0.31666666666666665
+    },
+    "synergy": {
+     "offered": 581,
+     "picked": 65,
+     "rate": 0.11187607573149742
+    },
+    "meta": {
+     "offered": 599,
+     "picked": 67,
+     "rate": 0.11185308848080133
+    },
+    "greedy": {
+     "offered": 526,
+     "picked": 80,
+     "rate": 0.1520912547528517
+    },
+    "archetype": {
+     "offered": 563,
+     "picked": 166,
+     "rate": 0.29484902309058614
+    },
+    "category": {
+     "offered": 590,
+     "picked": 122,
+     "rate": 0.20677966101694914
+    }
+   }
+  },
+  {
+   "id": "north_trader",
+   "name": "북풍 상인",
+   "tier": "S",
+   "offered": 2648,
+   "picked": 1121,
+   "pickRate": 0.4233383685800604,
+   "games": 1154,
+   "avgPlacement": 2.481802426343154,
+   "placementSE": 0.03319455743001143,
+   "top1Rate": 0.2608318890814558,
+   "rentaiRate": 0.5069324090121318,
+   "lastRate": 0.24956672443674177,
+   "avgScore": 2257.8856152513,
+   "avgRawScore": 27075.909878682844,
+   "maxRawScore": 122000,
+   "minRawScore": -23800,
+   "winRate": 0.19505494505494506,
+   "avgWinPoints": 7456.7108533554265,
+   "tsumoRate": 0.4237779618889809,
+   "dealInRate": 0.10843568196509373,
+   "avgDealInPoints": 6461.624441132638,
+   "riichiRate": 0.26381706528765353,
+   "callRate": 0.18972204266321913,
+   "drawTenpaiRate": 0.3700034164673727,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 373,
+     "picked": 25,
+     "rate": 0.06702412868632708
+    },
+    "greedy": {
+     "offered": 372,
+     "picked": 193,
+     "rate": 0.5188172043010753
+    },
+    "category": {
+     "offered": 374,
+     "picked": 191,
+     "rate": 0.5106951871657754
+    },
+    "archetype": {
+     "offered": 400,
+     "picked": 176,
+     "rate": 0.44
+    },
+    "synergy": {
+     "offered": 382,
+     "picked": 198,
+     "rate": 0.518324607329843
+    },
+    "fun": {
+     "offered": 389,
+     "picked": 144,
+     "rate": 0.37017994858611825
+    },
+    "meta": {
+     "offered": 358,
+     "picked": 194,
+     "rate": 0.5418994413407822
+    }
+   }
+  },
+  {
+   "id": "riichi_seal",
+   "name": "리치 봉인",
+   "tier": "A",
+   "offered": 3756,
+   "picked": 1241,
+   "pickRate": 0.33040468583599575,
+   "games": 1283,
+   "avgPlacement": 2.578332034294622,
+   "placementSE": 0.030726371433075616,
+   "top1Rate": 0.21590023382696805,
+   "rentaiRate": 0.4731098986749805,
+   "lastRate": 0.2673421667965705,
+   "avgScore": -1254.0140296180825,
+   "avgRawScore": 24529.306313328136,
+   "maxRawScore": 183400,
+   "minRawScore": -22000,
+   "winRate": 0.18025561921551345,
+   "avgWinPoints": 7040.749796251019,
+   "tsumoRate": 0.41157294213528933,
+   "dealInRate": 0.11047451153224622,
+   "avgDealInPoints": 6485.771276595745,
+   "riichiRate": 0.2511385338622007,
+   "callRate": 0.19156750403995887,
+   "drawTenpaiRate": 0.3780718336483932,
+   "pickByPersona": {
+    "fun": {
+     "offered": 527,
+     "picked": 174,
+     "rate": 0.3301707779886148
+    },
+    "category": {
+     "offered": 545,
+     "picked": 193,
+     "rate": 0.3541284403669725
+    },
+    "meta": {
+     "offered": 524,
+     "picked": 193,
+     "rate": 0.3683206106870229
+    },
+    "synergy": {
+     "offered": 535,
+     "picked": 184,
+     "rate": 0.34392523364485983
+    },
+    "greedy": {
+     "offered": 556,
+     "picked": 195,
+     "rate": 0.35071942446043164
+    },
+    "archetype": {
+     "offered": 549,
+     "picked": 213,
+     "rate": 0.3879781420765027
+    },
+    "contrarian": {
+     "offered": 520,
+     "picked": 89,
+     "rate": 0.17115384615384616
+    }
+   }
+  },
+  {
+   "id": "seat_swap",
+   "name": "자리 바꿈",
+   "tier": "C",
+   "offered": 3272,
+   "picked": 696,
+   "pickRate": 0.21271393643031786,
+   "games": 738,
+   "avgPlacement": 2.4796747967479673,
+   "placementSE": 0.0423214998515845,
+   "top1Rate": 0.27371273712737126,
+   "rentaiRate": 0.508130081300813,
+   "lastRate": 0.26151761517615174,
+   "avgScore": 2264.6341463414633,
+   "avgRawScore": 27061.38211382114,
+   "maxRawScore": 148500,
+   "minRawScore": -22000,
+   "winRate": 0.18961625282167044,
+   "avgWinPoints": 7286.375661375661,
+   "tsumoRate": 0.4212962962962963,
+   "dealInRate": 0.11198896413343366,
+   "avgDealInPoints": 6162.038073908175,
+   "riichiRate": 0.25344870830198146,
+   "callRate": 0.18572861800852772,
+   "drawTenpaiRate": 0.3966630785791173,
+   "pickByPersona": {
+    "synergy": {
+     "offered": 412,
+     "picked": 27,
+     "rate": 0.06553398058252427
+    },
+    "greedy": {
+     "offered": 432,
+     "picked": 19,
+     "rate": 0.04398148148148148
+    },
+    "archetype": {
+     "offered": 468,
+     "picked": 107,
+     "rate": 0.22863247863247863
+    },
+    "meta": {
+     "offered": 458,
+     "picked": 23,
+     "rate": 0.05021834061135371
+    },
+    "contrarian": {
+     "offered": 562,
+     "picked": 327,
+     "rate": 0.5818505338078291
+    },
+    "fun": {
+     "offered": 465,
+     "picked": 163,
+     "rate": 0.35053763440860214
+    },
+    "category": {
+     "offered": 475,
+     "picked": 30,
+     "rate": 0.06315789473684211
+    }
+   }
+  },
+  {
+   "id": "three_dragons_will",
+   "name": "삼원의 의지",
+   "tier": "A",
+   "offered": 2959,
+   "picked": 1466,
+   "pickRate": 0.49543764785400474,
+   "games": 1491,
+   "avgPlacement": 2.5010060362173037,
+   "placementSE": 0.02926568792331478,
+   "top1Rate": 0.2575452716297787,
+   "rentaiRate": 0.4969818913480885,
+   "lastRate": 0.25553319919517103,
+   "avgScore": 1530.8517773306505,
+   "avgRawScore": 26540.91213950369,
+   "maxRawScore": 127700,
+   "minRawScore": -25700,
+   "winRate": 0.1970921852478536,
+   "avgWinPoints": 7242.829888712242,
+   "tsumoRate": 0.4260731319554849,
+   "dealInRate": 0.10766434793507551,
+   "avgDealInPoints": 6622.176949941792,
+   "riichiRate": 0.27091558563639784,
+   "callRate": 0.1929560694366109,
+   "drawTenpaiRate": 0.39477766287487076,
+   "pickByPersona": {
+    "category": {
+     "offered": 430,
+     "picked": 289,
+     "rate": 0.672093023255814
+    },
+    "contrarian": {
+     "offered": 383,
+     "picked": 7,
+     "rate": 0.018276762402088774
+    },
+    "fun": {
+     "offered": 352,
+     "picked": 118,
+     "rate": 0.3352272727272727
+    },
+    "synergy": {
+     "offered": 460,
+     "picked": 288,
+     "rate": 0.6260869565217392
+    },
+    "archetype": {
+     "offered": 416,
+     "picked": 183,
+     "rate": 0.43990384615384615
+    },
+    "meta": {
+     "offered": 459,
+     "picked": 298,
+     "rate": 0.6492374727668845
+    },
+    "greedy": {
+     "offered": 459,
+     "picked": 283,
+     "rate": 0.616557734204793
+    }
+   }
+  },
+  {
+   "id": "siege_riichi",
+   "name": "공성계",
+   "tier": "C",
+   "offered": 4896,
+   "picked": 1024,
+   "pickRate": 0.20915032679738563,
+   "games": 1046,
+   "avgPlacement": 2.71414913957935,
+   "placementSE": 0.033674769950534866,
+   "top1Rate": 0.17686424474187382,
+   "rentaiRate": 0.4225621414913958,
+   "lastRate": 0.3135755258126195,
+   "avgScore": -4358.986615678777,
+   "avgRawScore": 22782.504780114723,
+   "maxRawScore": 124500,
+   "minRawScore": -19300,
+   "winRate": 0.1664534989950667,
+   "avgWinPoints": 6777.991218441273,
+   "tsumoRate": 0.3907793633369923,
+   "dealInRate": 0.11026859126621597,
+   "avgDealInPoints": 6198.922949461475,
+   "riichiRate": 0.2388086972410013,
+   "callRate": 0.18773981363054998,
+   "drawTenpaiRate": 0.33633633633633636,
+   "pickByPersona": {
+    "fun": {
+     "offered": 659,
+     "picked": 209,
+     "rate": 0.3171471927162367
+    },
+    "category": {
+     "offered": 683,
+     "picked": 122,
+     "rate": 0.17862371888726208
+    },
+    "meta": {
+     "offered": 742,
+     "picked": 72,
+     "rate": 0.09703504043126684
+    },
+    "contrarian": {
+     "offered": 690,
+     "picked": 320,
+     "rate": 0.463768115942029
+    },
+    "synergy": {
+     "offered": 708,
+     "picked": 62,
+     "rate": 0.08757062146892655
+    },
+    "greedy": {
+     "offered": 721,
+     "picked": 66,
+     "rate": 0.09153952843273232
+    },
+    "archetype": {
+     "offered": 693,
+     "picked": 173,
+     "rate": 0.24963924963924963
+    }
+   }
+  },
+  {
+   "id": "pseudo_dealer",
+   "name": "찬탈자",
+   "tier": "B",
+   "offered": 4214,
+   "picked": 989,
+   "pickRate": 0.23469387755102042,
+   "games": 1048,
+   "avgPlacement": 2.5114503816793894,
+   "placementSE": 0.035743637077119625,
+   "top1Rate": 0.2643129770992366,
+   "rentaiRate": 0.5038167938931297,
+   "lastRate": 0.27958015267175573,
+   "avgScore": 1647.328244274809,
+   "avgRawScore": 26761.8320610687,
+   "maxRawScore": 122000,
+   "minRawScore": -20700,
+   "winRate": 0.17591881981751514,
+   "avgWinPoints": 8236.403296170625,
+   "tsumoRate": 0.40571982549684926,
+   "dealInRate": 0.11239021062505329,
+   "avgDealInPoints": 6290.591805766313,
+   "riichiRate": 0.26187430715442994,
+   "callRate": 0.19280293340155197,
+   "drawTenpaiRate": 0.407343857240906,
+   "pickByPersona": {
+    "category": {
+     "offered": 609,
+     "picked": 136,
+     "rate": 0.2233169129720854
+    },
+    "archetype": {
+     "offered": 617,
+     "picked": 163,
+     "rate": 0.26418152350081037
+    },
+    "contrarian": {
+     "offered": 697,
+     "picked": 263,
+     "rate": 0.37733142037302725
+    },
+    "fun": {
+     "offered": 608,
+     "picked": 199,
+     "rate": 0.32730263157894735
+    },
+    "synergy": {
+     "offered": 556,
+     "picked": 78,
+     "rate": 0.14028776978417265
+    },
+    "meta": {
+     "offered": 552,
+     "picked": 73,
+     "rate": 0.1322463768115942
+    },
+    "greedy": {
+     "offered": 575,
+     "picked": 77,
+     "rate": 0.13391304347826086
+    }
+   }
+  },
+  {
+   "id": "parasite",
+   "name": "기생충",
+   "tier": "B",
+   "offered": 4355,
+   "picked": 1103,
+   "pickRate": 0.25327210103329506,
+   "games": 1122,
+   "avgPlacement": 2.0463458110516934,
+   "placementSE": 0.030857081597648012,
+   "top1Rate": 0.3894830659536542,
+   "rentaiRate": 0.6862745098039216,
+   "lastRate": 0.12210338680926916,
+   "avgScore": 13981.372549019608,
+   "avgRawScore": 34444.83065953654,
+   "maxRawScore": 143000,
+   "minRawScore": -39600,
+   "winRate": 0.17193691872219977,
+   "avgWinPoints": 7063.311382878645,
+   "tsumoRate": 0.41439322671683915,
+   "dealInRate": 0.1123331985442782,
+   "avgDealInPoints": 6520.878329733621,
+   "riichiRate": 0.23170238576627578,
+   "callRate": 0.17832591993530125,
+   "drawTenpaiRate": 0.3406098406098406,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 734,
+     "picked": 242,
+     "rate": 0.329700272479564
+    },
+    "fun": {
+     "offered": 629,
+     "picked": 222,
+     "rate": 0.35294117647058826
+    },
+    "meta": {
+     "offered": 605,
+     "picked": 94,
+     "rate": 0.15537190082644628
+    },
+    "synergy": {
+     "offered": 600,
+     "picked": 111,
+     "rate": 0.185
+    },
+    "archetype": {
+     "offered": 606,
+     "picked": 205,
+     "rate": 0.33828382838283827
+    },
+    "greedy": {
+     "offered": 591,
+     "picked": 85,
+     "rate": 0.14382402707275804
+    },
+    "category": {
+     "offered": 590,
+     "picked": 144,
+     "rate": 0.2440677966101695
+    }
+   }
+  },
+  {
+   "id": "silent_pact",
+   "name": "묵계",
+   "tier": "S+",
+   "offered": 2707,
+   "picked": 1925,
+   "pickRate": 0.7111193202807536,
+   "games": 1963,
+   "avgPlacement": 2.606214977075904,
+   "placementSE": 0.02487232008800484,
+   "top1Rate": 0.21395822720326033,
+   "rentaiRate": 0.4533876719307183,
+   "lastRate": 0.27356087620988284,
+   "avgScore": -1270.8609271523178,
+   "avgRawScore": 24791.288843606726,
+   "maxRawScore": 136400,
+   "minRawScore": -45900,
+   "winRate": 0.18721655328798187,
+   "avgWinPoints": 7080.671208680293,
+   "tsumoRate": 0.4168559172344184,
+   "dealInRate": 0.10941043083900227,
+   "avgDealInPoints": 6645.379965457686,
+   "riichiRate": 0.24456727135298564,
+   "callRate": 0.24277210884353742,
+   "drawTenpaiRate": 0.3665038665038665,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 388,
+     "picked": 213,
+     "rate": 0.5489690721649485
+    },
+    "category": {
+     "offered": 376,
+     "picked": 364,
+     "rate": 0.9680851063829787
+    },
+    "synergy": {
+     "offered": 439,
+     "picked": 427,
+     "rate": 0.9726651480637813
+    },
+    "greedy": {
+     "offered": 427,
+     "picked": 413,
+     "rate": 0.9672131147540983
+    },
+    "fun": {
+     "offered": 364,
+     "picked": 120,
+     "rate": 0.32967032967032966
+    },
+    "meta": {
+     "offered": 395,
+     "picked": 388,
+     "rate": 0.9822784810126582
+    },
+    "contrarian": {
+     "offered": 318,
+     "picked": 0,
+     "rate": 0
+    }
+   }
+  },
+  {
+   "id": "grave_rob",
+   "name": "무덤 도굴",
+   "tier": "S",
+   "offered": 3622,
+   "picked": 1676,
+   "pickRate": 0.4627277747101049,
+   "games": 1696,
+   "avgPlacement": 2.530070754716981,
+   "placementSE": 0.026940640804392485,
+   "top1Rate": 0.24056603773584906,
+   "rentaiRate": 0.4793632075471698,
+   "lastRate": 0.25,
+   "avgScore": 638.3254716981132,
+   "avgRawScore": 25939.033018867925,
+   "maxRawScore": 262200,
+   "minRawScore": -36600,
+   "winRate": 0.1928400689310134,
+   "avgWinPoints": 7243.240126837705,
+   "tsumoRate": 0.478524070337273,
+   "dealInRate": 0.10595363833453778,
+   "avgDealInPoints": 6510.1259181532005,
+   "riichiRate": 0.2503752293067986,
+   "callRate": 0.19039412974595588,
+   "drawTenpaiRate": 0.36466618462280065,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 551,
+     "picked": 239,
+     "rate": 0.4337568058076225
+    },
+    "category": {
+     "offered": 502,
+     "picked": 270,
+     "rate": 0.5378486055776892
+    },
+    "greedy": {
+     "offered": 507,
+     "picked": 325,
+     "rate": 0.6410256410256411
+    },
+    "contrarian": {
+     "offered": 534,
+     "picked": 19,
+     "rate": 0.035580524344569285
+    },
+    "meta": {
+     "offered": 507,
+     "picked": 337,
+     "rate": 0.6646942800788954
+    },
+    "synergy": {
+     "offered": 514,
+     "picked": 315,
+     "rate": 0.6128404669260701
+    },
+    "fun": {
+     "offered": 507,
+     "picked": 171,
+     "rate": 0.33727810650887574
+    }
+   }
+  },
+  {
+   "id": "blood_contract",
+   "name": "핏빛 계약",
+   "tier": "B",
+   "offered": 2591,
+   "picked": 741,
+   "pickRate": 0.2859899652643767,
+   "games": 762,
+   "avgPlacement": 2.561679790026247,
+   "placementSE": 0.03960551477385582,
+   "top1Rate": 0.21391076115485563,
+   "rentaiRate": 0.484251968503937,
+   "lastRate": 0.25984251968503935,
+   "avgScore": -207.74278215223097,
+   "avgRawScore": 25409.055118110235,
+   "maxRawScore": 154100,
+   "minRawScore": -12000,
+   "winRate": 0.17835311039194535,
+   "avgWinPoints": 7370.9005376344085,
+   "tsumoRate": 0.4314516129032258,
+   "dealInRate": 0.10296056574373727,
+   "avgDealInPoints": 6354.016298020954,
+   "riichiRate": 0.25002996524032123,
+   "callRate": 0.1879419872947381,
+   "drawTenpaiRate": 0.365441906653426,
+   "pickByPersona": {
+    "contrarian": {
+     "offered": 369,
+     "picked": 96,
+     "rate": 0.2601626016260163
+    },
+    "meta": {
+     "offered": 345,
+     "picked": 83,
+     "rate": 0.24057971014492754
+    },
+    "category": {
+     "offered": 365,
+     "picked": 105,
+     "rate": 0.2876712328767123
+    },
+    "fun": {
+     "offered": 402,
+     "picked": 140,
+     "rate": 0.3482587064676617
+    },
+    "greedy": {
+     "offered": 370,
+     "picked": 105,
+     "rate": 0.28378378378378377
+    },
+    "synergy": {
+     "offered": 366,
+     "picked": 78,
+     "rate": 0.21311475409836064
+    },
+    "archetype": {
+     "offered": 374,
+     "picked": 134,
+     "rate": 0.3582887700534759
+    }
+   }
+  },
+  {
+   "id": "frame_up",
+   "name": "누명",
+   "tier": "A",
+   "offered": 3084,
+   "picked": 1055,
+   "pickRate": 0.3420881971465629,
+   "games": 1114,
+   "avgPlacement": 2.5906642728904847,
+   "placementSE": 0.033402174954084776,
+   "top1Rate": 0.2199281867145422,
+   "rentaiRate": 0.46947935368043087,
+   "lastRate": 0.2800718132854578,
+   "avgScore": -1431.7773788150807,
+   "avgRawScore": 24474.865350089767,
+   "maxRawScore": 111500,
+   "minRawScore": -24000,
+   "winRate": 0.17568795967275433,
+   "avgWinPoints": 6926.15239887112,
+   "tsumoRate": 0.40357478833490124,
+   "dealInRate": 0.10751177588629039,
+   "avgDealInPoints": 6283.397386625673,
+   "riichiRate": 0.24121973390628873,
+   "callRate": 0.19469465333443517,
+   "drawTenpaiRate": 0.36636023152877084,
+   "pickByPersona": {
+    "archetype": {
+     "offered": 431,
+     "picked": 142,
+     "rate": 0.3294663573085847
+    },
+    "meta": {
+     "offered": 428,
+     "picked": 179,
+     "rate": 0.4182242990654206
+    },
+    "greedy": {
+     "offered": 384,
+     "picked": 158,
+     "rate": 0.4114583333333333
+    },
+    "category": {
+     "offered": 430,
+     "picked": 184,
+     "rate": 0.42790697674418604
+    },
+    "contrarian": {
+     "offered": 508,
+     "picked": 48,
+     "rate": 0.09448818897637795
+    },
+    "fun": {
+     "offered": 469,
+     "picked": 169,
+     "rate": 0.3603411513859275
+    },
+    "synergy": {
+     "offered": 434,
+     "picked": 175,
+     "rate": 0.4032258064516129
+    }
+   }
+  }
+ ]
+}
