@@ -24,7 +24,6 @@ import { craft } from "./helpers.js";
 import { deadWallMaster } from "../src/augments/dead_wall_master.js";
 import { blindRon } from "../src/augments/blind_ron.js";
 import { timePressure } from "../src/augments/time_pressure.js";
-import { signFlip } from "../src/augments/sign_flip.js";
 import { invincible } from "../src/augments/invincible.js";
 import { cliffBloom } from "../src/augments/cliff_bloom.js";
 import { foresight } from "../src/augments/foresight.js";
@@ -135,13 +134,15 @@ describe("dead_wall_master (왕패의 주인) — 2국에 1회", () => {
   });
 });
 
-// ─────────── 선발동형 재무장 — 반장전 한정 게임 내 1회 (blind_ron·time_pressure·sign_flip) ───────────
+// ─────────── 선발동형 재무장 — 반장전 한정 게임 내 1회 (blind_ron·time_pressure) ───────────
+//
+// 반전(sign_flip)은 2026-09-01부터 이 규약이 아니라 «3국에 1회, 모드 무관»이다 —
+// `sign_flip_recharge_cycle_0901.test.ts`가 그쪽을 못 박는다.
 
 describe("선발동형 재무장 — 반장전에서만 게임 내 1회", () => {
   const trio: { def: AugmentDef; id: string }[] = [
     { def: blindRon, id: "blind_ron" },
     { def: timePressure, id: "time_pressure" },
-    { def: signFlip, id: "sign_flip" },
   ];
 
   function setup(

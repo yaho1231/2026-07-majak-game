@@ -10,6 +10,8 @@
  */
 
 import { ROUND_SCOPED_MARK } from "../engine/state/GameState.js";
+import { isSourceDisarmed } from "../engine/GameEngine.js";
+import { augmentInstanceId } from "../augment/Augment.js";
 import type { GameMode, GameState, Meld, PlayerRoundState, RoundState } from "../engine/state/GameState.js";
 import type { RuleRegistry } from "../engine/rules/RuleRegistry.js";
 import type { PlayerId, ZoneId } from "../engine/zones/Zone.js";
@@ -641,6 +643,31 @@ export function buildPlayerView(
    * 빈 값은 여기서 잘라, 어느 증강이든 ""로 비우면 화면에서도 사라지게 한다.
    */
   const cleared = (v: unknown): boolean => v === undefined || v === null || v === "";
+  /**
+   * **이름표 pill에 실리는 값은 전원이 본다** (2026-09-01 사용자 지시).
+   *
+   * 남은 횟수(`uses:{id}`)와 쿨다운 잔량(`cooldown:{id}`·`cooldownTurns:{id}`)은 원래
+   * 보유자 전용 채널이라, 상대의 pill에는 값이 아예 내려가지 않았다 — 「저 사람의
+   * 날치기가 몇 번 남았는가」를 자기 것만 볼 수 있었다. 관전 뷰만 좌석을 붙인 사본으로
+   * 네 좌석을 함께 볼 수 있었다.
+   *
+   * 여는 자리를 **여기 한 곳**으로 잡은 이유: 이 세 채널은 발행처가 수십 군데(쿨다운은
+   * 증강마다 직접 쓴다)라, 증강 쪽에서 사본을 하나씩 더 내면 새 증강이 조용히 빠진다.
+   * 채널 이름은 관전 사본과 똑같이 `seat:{좌석}:{채널}`이라 클라이언트는 한 곳만 읽는다.
+   *
+   * 잠긴 증강(무장해제)은 내보내지 않는다 — «효과가 꺼지면 공개 표시도 함께 내린다»가
+   * 규약인데(disrupt_synergy_0823 확정 4), 이 채널들은 잠긴 뒤로 반응 자체가 돌지 않아
+   * 마지막 값이 얼어붙는다. 자기 파일 안에서는 지울 수 없으므로(잠그는 이벤트가 그
+   * 반응을 끈다) 내보내는 자리에서 거른다.
+   */
+  const SEAT_PUBLIC_PREFIXES = ["uses:", "cooldown:", "cooldownTurns:"] as const;
+  const seatPublic = (ch: string): string | null =>
+    SEAT_PUBLIC_PREFIXES.find((p) => ch.startsWith(p)) ?? null;
+  const lockedChannel = (owner: PlayerId, ch: string): boolean => {
+    const prefix = seatPublic(ch);
+    if (prefix === null) return false;
+    return isSourceDisarmed(state, augmentInstanceId(owner, ch.slice(prefix.length)));
+  };
   for (const [key, value] of Object.entries(state.augmentData)) {
     if (cleared(value)) continue;
     if (key.startsWith(publicPrefix)) {
@@ -657,13 +684,28 @@ export function buildPlayerView(
       const rest = key.slice("view:".length);
       const sep = rest.indexOf(":");
       if (sep > 0) {
-        const owner = rest.slice(0, sep);
+        const owner = rest.slice(0, sep) as PlayerId;
         const ch = channel(rest.slice(sep + 1));
+        if (lockedChannel(owner, ch)) continue;
         augmentView[ch] = value;
         augmentView[`seat:${owner}:${ch}`] = value;
       }
     } else if (key.startsWith(ownPrefix)) {
-      augmentView[channel(key.slice(ownPrefix.length))] = value;
+      const ch = channel(key.slice(ownPrefix.length));
+      if (lockedChannel(viewerId, ch)) continue;
+      augmentView[ch] = value;
+    } else if (key.startsWith("view:")) {
+      /*
+       * 남의 전용 채널 중 **pill 값 셋**만 좌석을 붙여 내보낸다 (위 주석).
+       * 나머지 전용 채널은 예전 그대로 주인에게만 간다.
+       */
+      const rest = key.slice("view:".length);
+      const sep = rest.indexOf(":");
+      if (sep <= 0) continue;
+      const owner = rest.slice(0, sep) as PlayerId;
+      const ch = channel(rest.slice(sep + 1));
+      if (seatPublic(ch) === null || lockedChannel(owner, ch)) continue;
+      augmentView[`seat:${owner}:${ch}`] = value;
     }
   }
 

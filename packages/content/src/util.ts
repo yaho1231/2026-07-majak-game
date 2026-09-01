@@ -215,6 +215,13 @@ export function usesViewKey(holder: PlayerId, augmentId: string): string {
   return viewKey(holder, `uses:${augmentId}`);
 }
 
+/**
+ * 잔량·쿨다운은 **채널을 하나 더 만들지 않는다** — 보유자 전용 채널 그대로 두고,
+ * 코어의 `buildPlayerView`가 좌석을 붙인 공개 사본(`seat:{좌석}:uses:{id}`)을 내보낸다
+ * (2026-09-01: "pill 정보는 모두에게 보여야 한다"). 발행처가 수십 군데인 쿨다운까지
+ * 한 곳에서 함께 열 수 있고, 이벤트도 늘지 않는다.
+ */
+
 /** `usesViewKey` 채널에 실리는 값 */
 export interface UsesLeftView {
   /** 앞으로 몇 번 더 쓸 수 있는가 */

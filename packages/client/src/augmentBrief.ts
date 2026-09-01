@@ -153,8 +153,8 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   picky_eater: { use: "2국에 1회", text: "한 국에 한 무늬만 12장 버리면 손패의 수패를 원하는 한 색으로 바꾼다." },
   soul_strike: { use: "2국에 1회", text: "리치(2판)를 걸고 혼자 연속 6쯔모. 그 사이 쯔모 화료는 일발." },
   sign_flip: {
-    use: "이번 국만",
-    text: "이 국엔 내 점수 부호가 뒤집힌다. 반장전은 게임 내 1회 재장전.",
+    use: "3국에 1회",
+    text: "자기 첫 순에 켜면 이 국엔 내 점수 부호가 뒤집힌다.",
   },
   // 2026-08-07 7차 신규
   joker: { use: "2국에 1회", text: "손패 1장을 백으로 바꾸고, 이번 국 내 손패의 백은 전부 만능패가 된다." },
@@ -162,7 +162,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
     use: "이번 국만",
     text: "이 국엔 전원의 결정이 5초 제한. 반장전은 게임 내 1회 재장전.",
   },
-  alchemist: { use: MODE_5_8, text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에도 쓸 수 있다." },
+  alchemist: { use: MODE_5_8, text: "손패의 수패 1장을 숫자 ±1로 바꾼다. 리치 중에는 쯔모패만 대상." },
   all_or_nothing: { use: "매 국 1회", text: "리치에 내 점수 절반을 건다. 이기면 그만큼 더 받고, 타가가 화료하면 판돈 절반을 잃는다." },
   always_tenpai: { use: "상시", text: "유국 때 늘 텐파이 취급 — 벌점을 안 내고 노텐인 상대마다 2,000점을 받는다." },
   ankan_dora: { use: "상시", text: "안깡할 때마다 깡친 네 장이 나만의 도라가 된다(+4판)." },
@@ -272,7 +272,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   tanyao_break: { use: "상시", text: "자패만 없으면 1·9가 섞여도 탕야오. 그 탕야오는 2판으로 값한다." },
   tenpai_scan: { use: "매 국 1회", text: "지금 텐파이인 상대가 누구인지, 그 대기가 얼마나 넓은지 나에게만 알려 준다." },
   three_dragons_will: { use: MODE_1_2, text: "백·발·중 중 둘이 커쯔면 남은 한 종류를 0장이어도 커쯔로 만든다 — 잡패가 재료다." },
-  tile_dyeing: { use: MODE_5_8, text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다. 리치 중에도 쓸 수 있다." },
+  tile_dyeing: { use: MODE_5_8, text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다. 리치 중에는 쯔모패만 대상." },
   tile_split: { use: "매 국 1회", text: "수패 1장을 합이 같은 두 장으로 쪼갠다(9통→4통+5통) — 잡패 1장이 재료로 쓰인다." },
   time_stop: { use: "매 국 1회", text: "내 차례를 한 번 더 진행한다." },
   triple_peek: { use: "2국에 1회", text: "내 다음 쯔모 세 장이 무엇인지 나에게만 보인다." },

@@ -169,8 +169,12 @@ function winPayload(
 }
 
 /** 반전이 «이번 국에 켜졌다» 표식 */
+// 선발동형은 `armedRound`, 반전(2026-09-01부터 액티브)만 `onRound`를 쓴다.
+const armedKeyOf = (id: string, holder: PlayerId): string =>
+  id === "sign_flip" ? `${id}:onRound:${holder}` : `${id}:armedRound:${holder}`;
+
 const armed = (id: string, holder: PlayerId) => (s: GameState) => ({
-  [`${id}:armedRound:${holder}`]: roundKey(s),
+  [armedKeyOf(id, holder)]: roundKey(s),
 });
 
 /** p0(오야) 국사무쌍 쯔모 — 셋에게서 32,000씩 = +96,000 */
@@ -346,8 +350,9 @@ describe("A-12 가불 인생 × 반전 — 픽 순서로 갈리지 않는다", (
     delta: number;
     reason: string | undefined;
   } {
-    // 반전은 **자기 armOnNextRound로** 이 국에 켜진다 — 미리 심지 않는다.
     // 두 리액션이 같은 ROUND_STARTED 물결에서 부딪히는 실제 상황이다.
+    // 반전은 2026-09-01부터 **자기 첫 순에 직접 켜는 액티브**라 국 시작에는 꺼져 있다 —
+    // 국 시작 지급은 그대로 +10,000이고, 순서에 따라 갈리지 않는 것만 남는다.
     const g = withAugs(
       blank(),
       order.map((def) => ({ player: "p0" as PlayerId, def })),
@@ -367,9 +372,13 @@ describe("A-12 가불 인생 × 반전 — 픽 순서로 갈리지 않는다", (
     const b = advanceOnRoundStart([signFlip, devilsAdvance]);
     // 예전: +10,000 vs −10,000 (최종 점수 32,100 vs 12,100)
     expect(a).toEqual(b);
-    // 반전이 켜진 국이므로 «증강이 옮기는 점수»는 뒤집힌다 — 서명도 남는다
-    expect(a.delta).toBe(-10000);
-    expect(a.reason).toBe("devils_advance+sign_flip");
+    /*
+     * 국 시작 지급은 뒤집히지 않는다 — 반전이 아직 꺼져 있기 때문이다(자기 첫 순에
+     * 켠다). 켠 뒤에 오는 «증강이 옮기는 점수»가 뒤집히는 것은 그대로이고,
+     * 그쪽은 `sign_flip_reason.test.ts`가 켜진 국을 심어 놓고 못 박는다.
+     */
+    expect(a.delta).toBe(10000);
+    expect(a.reason).toBe("devils_advance");
   });
 
   it("반전이 없으면 그대로 +10,000", () => {

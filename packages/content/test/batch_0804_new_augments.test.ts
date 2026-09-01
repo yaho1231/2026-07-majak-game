@@ -404,7 +404,7 @@ describe("반전 (sign_flip)", () => {
     expect(loss).toBeLessThan(0);
 
     const staged = withData(withAugments(base, "p1", ["sign_flip"]), {
-      [`sign_flip:armedRound:p1`]: roundKeyOf(base),
+      [`sign_flip:onRound:p1`]: roundKeyOf(base),
     });
     const flipped = settleRon(staged, (game) => {
       installAugment(game.engine, signFlip, "p1", { yaku: game.yaku });
@@ -418,7 +418,7 @@ describe("반전 (sign_flip)", () => {
     const base = ronScene();
     const plain = settleRon(base);
     const staged = withData(withAugments(base, "p0", ["sign_flip"]), {
-      [`sign_flip:armedRound:p0`]: roundKeyOf(base),
+      [`sign_flip:onRound:p0`]: roundKeyOf(base),
     });
     const flipped = settleRon(staged, (game) => {
       installAugment(game.engine, signFlip, "p0", { yaku: game.yaku });

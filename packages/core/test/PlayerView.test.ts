@@ -217,11 +217,28 @@ describe("PlayerView — 관전자(SPECTATOR_ID)", () => {
     expect(spec["seat:p0:uses:alchemist"]).toEqual({ left: 1, total: 2 });
     expect(spec["seat:p2:uses:alchemist"]).toEqual({ left: 0, total: 2 });
 
-    // 대국자에게는 예전 그대로 — 남의 전용 채널은 한 글자도 가지 않는다.
+    /*
+     * 대국자도 **pill에 실리는 값**(남은 횟수·쿨다운)은 좌석이 붙어 받는다
+     * (2026-09-01 사용자 지시: "모든 pill 정보는 모두에게 보여야 한다"). 예전에는
+     * 남의 전용 채널이 한 글자도 가지 않아, 「저 사람의 날치기가 몇 번 남았는가」를
+     * 자기 것만 볼 수 있었다. 그 외의 전용 채널은 예전 그대로 주인에게만 간다.
+     */
     const mine = buildPlayerView(state, "p0", rules).augmentView;
     expect(mine["uses:alchemist"]).toEqual({ left: 1, total: 2 });
-    expect(mine["seat:p2:uses:alchemist"]).toBeUndefined();
-    expect(mine["seat:p0:uses:alchemist"]).toBeUndefined();
+    expect(mine["seat:p2:uses:alchemist"]).toEqual({ left: 0, total: 2 });
+    // 좌석 없는 평평한 채널에는 남의 값이 섞이지 않는다 (내 pill에 남의 잔량이 찍힌다)
+    expect(mine["uses:alchemist"]).toEqual({ left: 1, total: 2 });
+  });
+
+  it("pill이 아닌 남의 전용 채널은 대국자에게 가지 않는다", () => {
+    const base = makeState();
+    const state: GameState = {
+      ...base,
+      augmentData: { ...base.augmentData, "view:p2:foresight:reorderSpent": true },
+    };
+    const mine = buildPlayerView(state, "p0", makeRules()).augmentView;
+    expect(mine["seat:p2:foresight:reorderSpent"]).toBeUndefined();
+    expect(mine["foresight:reorderSpent"]).toBeUndefined();
   });
 
   it("관전자는 네 좌석 모두의 후리텐·일발 상세를 받는다 (대국자는 본인 것만)", () => {
