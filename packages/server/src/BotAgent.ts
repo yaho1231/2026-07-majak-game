@@ -237,13 +237,28 @@ export class BotAgent implements PlayerAgent {
    */
   private readonly thinkAborts = new Set<() => void>();
 
+  /**
+   * 생각 시간을 없앤다 — **보는 사람이 아무도 없는 판**을 마저 두게 할 때만 쓴다.
+   *
+   * 사람이 전부 나간 기록 대국은 무효로 접지 않고 봇이 완주시킨다
+   * (`RoomManager.abortIfNoHumansLeft`). 그런데 한 수마다 1초를 끌면 그 판이
+   * 10분 넘게 «혼자 굴러가는 게임»으로 남아, 나간 사람 눈에는 끝나지 않는
+   * 게임으로 보였다. 아무도 안 보는 판에서 연출용 뜸을 들일 이유가 없다.
+   *
+   * 이미 걸려 있는 대기도 함께 깨운다.
+   */
+  rush(): void {
+    this.thinkMs = 0;
+    for (const abort of [...this.thinkAborts]) abort();
+  }
+
   constructor(
     id: PlayerId,
     nickname?: string,
     seed?: number,
     catalog?: Iterable<AugmentDef>,
     /** 행동 전 생각 시간(ms). 0이면 즉시 결정(테스트 기본) */
-    private readonly thinkMs = 0,
+    private thinkMs = 0,
     /**
      * 원형 고정 — 방장이 대기실에서 이 자리의 성향을 지정했을 때만 온다.
      * 생략하면 종전대로 시드에서 뽑는다.

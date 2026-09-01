@@ -5091,7 +5091,13 @@ export class RoomManager {
     );
     if (humans.length > 0) return;
     if (!this.abortableByHumans(room, 0)) {
-      this.log(room, "사람이 모두 나갔다 — 봇이 판을 마저 두고 기록한다");
+      /*
+       * 보는 사람이 없으니 **연출용 뜸도 없앤다**. 봇 생각 시간(1초/수)을 그대로
+       * 두면 이 판은 10분 넘게 혼자 굴러가고, 나간 사람에게는 «나갔는데 안 끝나는
+       * 게임»으로 남는다. 결과는 같고(완주해서 기록된다) 걸리는 시간만 줄인다.
+       */
+      for (const agent of room.agents) if (agent instanceof BotAgent) agent.rush();
+      this.log(room, "사람이 모두 나갔다 — 봇이 판을 즉시 마저 두고 기록한다");
       return;
     }
     this.log(room, "사람이 모두 나갔다 — 판을 무효로 접는다");

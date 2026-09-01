@@ -794,8 +794,11 @@ describe("중계 관전 — 위험패 (A4)", () => {
 });
 
 describe("중계 관전 — 기록 (A6)", () => {
-  it("관전에서는 기록이 처음부터 펼쳐져 있다 (대국자는 종전대로 접힘)", () => {
-    expect(APP).toContain("useState(props.spectator === true)");
+  // 2026-09-01 사용자 지시로 되돌렸다 — 관전에 들어서자마자 판을 덮는 패널이
+  // 먼저 보이는 게 더 거슬렸다. 기록은 관전에서도 우상단에서 열어 본다.
+  it("기록은 관전에서도 접혀 있다", () => {
+    expect(APP).toContain("const [logOpen, setLogOpen] = useState(false);");
+    expect(APP).not.toContain("useState(props.spectator === true)");
   });
 });
 

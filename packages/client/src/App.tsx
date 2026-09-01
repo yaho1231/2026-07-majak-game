@@ -13578,13 +13578,12 @@ const GameTable = memo(function GameTable(props: {
   // 증강 정보 로그 — 기본은 접힘. 예전엔 왼쪽 위에 상시로 펼쳐져 왼쪽 상대를 덮었다.
   // 설정 패널과 같은 자리(우상단)에 뜨므로 둘 중 하나만 열린다.
   /*
-   * 📜 기록 — 평소에는 접혀 있다. **중계 관전에서는 처음부터 펼친다**(docs/36 A6).
+   * 📜 기록 — 평소에는 접혀 있다. **관전도 마찬가지다.**
    *
-   * 중계에서 필요한 정보는 «눌러서 여는 것»이 아니다. 리치가 언제 걸렸고 누가
-   * 무엇을 울었는지는 해설이 말하는 그 순간 화면에 이미 있어야 한다. 대국자에게는
-   * 종전 그대로다 — 판을 두는 사람의 화면을 가릴 이유가 없다.
+   * 예전에는 중계 관전에서 처음부터 펼쳤는데(docs/36 A6), 관전에 들어서자마자
+   * 판을 덮는 패널이 먼저 보이는 게 더 거슬렸다. 필요하면 우상단에서 연다.
    */
-  const [logOpen, setLogOpen] = useState(props.spectator === true);
+  const [logOpen, setLogOpen] = useState(false);
   // 증강 테스트 시점 전환: sandbox.seat이 내 실제 좌석, view.playerId는 지금 보고 있는 좌석.
   // 둘이 다르면 상대(또는 전체공개) 시점을 관찰 중이다.
   const sbxSelfId = props.sandbox?.seat ?? null;
@@ -17996,7 +17995,7 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 || cooldownTurns > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 || cooldownTurns > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${status?.tone === "spent" ? " aug-pill-spent" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
