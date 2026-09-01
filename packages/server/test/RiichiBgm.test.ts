@@ -163,4 +163,59 @@ describe("리치 BGM — 사람마다 한 곡, 모두가 같은 값을 본다", 
     const t = b.last("riichiBgm").tracks;
     expect(t[aId]).toBe(t[bId]);
   });
+
+  /*
+   * 봇은 사람 곡도, 서로도 피해 나눠 쓴다 (2026-09-01 사용자 요청).
+   * 예전에는 봇이 «판의 랜덤 곡 하나»를 함께 써서, 봇 셋인 판의 리치 브금이 두 곡뿐이었다.
+   */
+  it("봇 셋은 사람이 고른 곡을 빼고 서로 다른 곡을 나눠 쓴다", async () => {
+    const h = await newHarness();
+    const a = await connectAs(h, "Alice");
+    a.clientSend({ type: "createRoom" });
+    await a.waitFor((m) => m.type === "roomCreated");
+    const aId = idOf(a);
+    for (let i = 0; i < 3; i++) a.clientSend({ type: "addBot" });
+    a.clientSend({ type: "setRiichiBgm", track: 1 });
+    await a.waitFor(
+      (m) => m.type === "riichiBgm" && Object.keys(m.tracks).length === 4 && m.tracks[aId] === 1,
+    );
+    const tracks = a.last("riichiBgm").tracks as Record<string, number>;
+    const botTracks = Object.entries(tracks)
+      .filter(([id]) => id !== aId)
+      .map(([, t]) => t);
+    expect(botTracks).toHaveLength(3);
+    expect(botTracks).not.toContain(1); // 사람이 고른 곡은 피한다
+    expect(new Set(botTracks).size).toBe(3); // 서로도 겹치지 않는다
+  });
+
+  it("사람 둘이 1·2를 고르면 봇 둘은 나머지에서 서로 다른 곡을 받는다", async () => {
+    const h = await newHarness();
+    const a = await connectAs(h, "Alice");
+    a.clientSend({ type: "createRoom" });
+    await a.waitFor((m) => m.type === "roomCreated");
+    const code = a.last("roomCreated").code as string;
+    const b = await connectAs(h, "Bob");
+    b.clientSend({ type: "joinRoom", code });
+    await b.waitFor((m) => m.type === "joined");
+    const aId = idOf(a);
+    const bId = idOf(b);
+    a.clientSend({ type: "setRiichiBgm", track: 1 });
+    b.clientSend({ type: "setRiichiBgm", track: 2 });
+    for (let i = 0; i < 2; i++) a.clientSend({ type: "addBot" });
+    await a.waitFor(
+      (m) =>
+        m.type === "riichiBgm" &&
+        Object.keys(m.tracks).length === 4 &&
+        m.tracks[aId] === 1 &&
+        m.tracks[bId] === 2,
+    );
+    const tracks = a.last("riichiBgm").tracks as Record<string, number>;
+    const botTracks = Object.entries(tracks)
+      .filter(([id]) => id !== aId && id !== bId)
+      .map(([, t]) => t);
+    expect(botTracks).toHaveLength(2);
+    expect(botTracks).not.toContain(1);
+    expect(botTracks).not.toContain(2);
+    expect(new Set(botTracks).size).toBe(2);
+  });
 });

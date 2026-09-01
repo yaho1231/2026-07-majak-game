@@ -3718,19 +3718,50 @@ export class RoomManager {
       const chosen = room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM;
       if (chosen !== RIICHI_BGM_RANDOM) room.riichiBgm.set(a.id, chosen);
     }
-    // 2) 랜덤·미선택(봇 포함)은 **이 판의 랜덤 곡 하나**를 함께 쓴다.
+    // 2) 랜덤을 고른 **사람**들은 **이 판의 랜덤 곡 하나**를 함께 쓴다.
     //    리치마다 새로 뽑으면 한 판에서 곡이 계속 바뀐다 — 랜덤은 «판 시작 때
     //    하나 정해 그 판 내내 그 곡»이다.
-    const anyRandom = room.agents.some(
-      (a) => (room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM) === RIICHI_BGM_RANDOM,
+    const humansRandom = room.agents.filter(
+      (a) =>
+        a instanceof HumanAgent &&
+        (room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM) === RIICHI_BGM_RANDOM,
     );
-    if (anyRandom && room.riichiBgmRandom === null) {
+    if (humansRandom.length > 0 && room.riichiBgmRandom === null) {
       room.riichiBgmRandom = randomInt(RIICHI_BGM_TRACKS);
     }
-    for (const a of room.agents) {
-      const chosen = room.riichiBgmChoice.get(a.id) ?? RIICHI_BGM_RANDOM;
-      if (chosen !== RIICHI_BGM_RANDOM) continue;
+    for (const a of humansRandom) {
       room.riichiBgm.set(a.id, room.riichiBgmRandom as number);
+    }
+    /*
+     * 3) 봇은 **서로도, 사람과도 겹치지 않게** 나눠 쓴다 (2026-09-01 사용자 요청).
+     *
+     * 예전에는 봇도 사람의 랜덤과 같은 «판의 랜덤 곡 하나»를 썼다 — 네 자리 중 셋이
+     * 봇인 흔한 판에서 리치 브금이 사실상 두 곡뿐이었다. 사람이 1번을 고르면 봇 셋은
+     * 남은 곡에서 서로 다른 셋을 가져간다.
+     *
+     * 곡 수(8)보다 자리가 많아 남는 곡이 없으면 그때만 아무 곡이나 다시 쓴다.
+     * 이미 배정된 봇의 곡은 사람과 부딪히지 않는 한 그대로 둔다 — 판이 도는 중에
+     * 트랙표가 다시 나가도 봇의 곡이 흔들리지 않는다.
+     */
+    const taken = new Set<number>();
+    for (const a of room.agents) {
+      if (!(a instanceof HumanAgent)) continue;
+      const t = room.riichiBgm.get(a.id);
+      if (t !== undefined) taken.add(t);
+    }
+    for (const a of room.agents) {
+      if (a instanceof HumanAgent) continue;
+      const cur = room.riichiBgm.get(a.id);
+      if (cur !== undefined && !taken.has(cur)) {
+        taken.add(cur);
+        continue;
+      }
+      const free: number[] = [];
+      for (let t = 0; t < RIICHI_BGM_TRACKS; t++) if (!taken.has(t)) free.push(t);
+      const pick =
+        free.length > 0 ? (free[randomInt(free.length)] as number) : randomInt(RIICHI_BGM_TRACKS);
+      room.riichiBgm.set(a.id, pick);
+      taken.add(pick);
     }
     for (const a of room.agents) tracks[a.id] = room.riichiBgm.get(a.id) as number;
     for (const a of room.agents) {
