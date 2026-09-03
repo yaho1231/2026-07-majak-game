@@ -512,6 +512,8 @@ export type {
   LeaderboardMessage,
   AdminUserEntry,
   AdminUsersMessage,
+  AdminOnlineMessage,
+  AdminOnlineUser,
   AugmentTierEntry,
   AdminAugmentTiersMessage,
   AuthOkMessage,

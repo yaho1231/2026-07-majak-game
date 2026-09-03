@@ -18,6 +18,7 @@ import type {
   ActionOption,
   ActionMessage,
   AdminAugmentTiersMessage,
+  AdminOnlineMessage,
   AdminUserEntry,
   AnalyticsDayEntry,
   AugmentCatalogEntry,
@@ -3125,6 +3126,14 @@ export function App(): JSX.Element {
   const [controlling, setControlling] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null);
   const [adminUsers, setAdminUsers] = useState<AdminUserEntry[] | null>(null);
+  /**
+   * **지금 접속해 있는 사람들** (관리자 전용, 2026-09-03 사용자 요청).
+   *
+   * 여태 관리자가 볼 수 있는 것은 «계정 목록»(가입한 전부)과 «진행 중인 대국»뿐이라,
+   * 「지금 누가 붙어 있나 · 로비인가 대기실인가」를 알 길이 없었다. 서버가 한 번
+   * 스냅샷을 주고, 그 뒤 접속·퇴장·입장이 있을 때마다 스스로 밀어 준다.
+   */
+  const [adminOnline, setAdminOnline] = useState<AdminOnlineMessage | null>(null);
   /** 제보 게시판 — 내가 볼 수 있는 글만 온다(내 글, 관리자면 전체). */
   const [feedback, setFeedback] = useState<FeedbackEntry[] | null>(null);
   /**
@@ -4579,6 +4588,7 @@ export function App(): JSX.Element {
       if (msg.isAdmin) {
         send({ type: "liveGames" });
         send({ type: "adminUsers" });
+        send({ type: "adminOnline" });
         send({ type: "adminAugmentTiers" });
         send({ type: "adminAnalytics" });
       }
@@ -4865,6 +4875,11 @@ export function App(): JSX.Element {
     }
     if (msg.type === "adminUsers") {
       setAdminUsers(msg.users);
+      return;
+    }
+    if (msg.type === "adminOnline") {
+      // 접속자 스냅샷 — 서버가 변동 때마다 다시 밀어 주므로 그대로 갈아 끼운다.
+      setAdminOnline(msg);
       return;
     }
     if (msg.type === "feedbackList") {
@@ -7019,6 +7034,7 @@ export function App(): JSX.Element {
           leaderboard={leaderboard}
           catalog={catalog}
           adminUsers={adminUsers}
+          adminOnline={adminOnline}
           feedback={feedback}
           onSubmitFeedback={(kind, title, body) =>
             send({ type: "feedbackSubmit", kind, title, body })
@@ -7072,7 +7088,14 @@ export function App(): JSX.Element {
               if (ok) send({ type: "adminAbortGame", code });
             });
           }}
-          onRefreshUsers={() => send({ type: "adminUsers" })}
+          onRefreshUsers={() => {
+            send({ type: "adminUsers" });
+            send({ type: "adminOnline" });
+          }}
+          onRefreshOnline={() => send({ type: "adminOnline" })}
+          onRenameUser={(userId, username) =>
+            send({ type: "adminRenameUser", userId: String(userId), username })
+          }
           onStartSandbox={(mode) => send({ type: "sandboxStart", mode })}
           onPractice={(tutorial) => {
             // 튜토리얼을 **직접 누른** 사람은 다시 배우고 싶다는 뜻이다 — 저장된
@@ -11176,6 +11199,100 @@ function FoldButton(props: { folded: boolean; onToggle: () => void; label: strin
   );
 }
 
+/** 접속자의 «지금 어디» 표기 — 서버의 `where` 와 1:1 (protocol AdminOnlineUser) */
+const ONLINE_WHERE_LABEL: Record<"lobby" | "waiting" | "playing" | "spectating", string> = {
+  lobby: "로비",
+  waiting: "대기실",
+  playing: "대국 중",
+  spectating: "관전 중",
+};
+
+/** 접속한 지 얼마나 됐나 — 초·분·시간 한 단위로만 (표가 아니라 곁줄이다) */
+function sinceText(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec}초`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분`;
+  return `${Math.floor(min / 60)}시간 ${min % 60}분`;
+}
+
+/**
+ * 계정 한 줄 — 삭제와 **닉네임 바꾸기** (2026-09-03 사용자 요청).
+ *
+ * 이름을 고치는 길을 모달로 내지 않고 줄 안에서 연다. 관리자가 이름을 바꾸는 상황은
+ * 대개 «이 사람 이름이 문제다»를 목록에서 발견한 그 자리이고, 그때 창이 하나 더 뜨면
+ * 어느 줄을 고치고 있었는지가 사라진다. Enter로 저장 · Esc로 취소.
+ *
+ * 서버가 가입과 **같은 규칙**으로 다시 검사하므로(SiteDb `renameUser`) 여기서는
+ * 형식을 막지 않는다 — 두 곳에서 따로 검사하면 언젠가 서로 다른 말을 한다.
+ */
+function AdminUserRow({
+  user,
+  isMe,
+  onDelete,
+  onRename,
+}: {
+  user: AdminUserEntry;
+  isMe: boolean;
+  onDelete: (userId: number, username: string) => void;
+  onRename: (userId: number, username: string) => void;
+}): JSX.Element {
+  const [editing, setEditing] = useState<string | null>(null);
+  if (editing !== null) {
+    const commit = (): void => {
+      const name = editing.trim();
+      setEditing(null);
+      if (name.length > 0 && name !== user.username) onRename(user.id, name);
+    };
+    return (
+      <li className="user-row user-row-editing">
+        <input
+          className="user-rename-input"
+          value={editing}
+          autoFocus
+          maxLength={12}
+          aria-label={`${user.username} 의 새 닉네임`}
+          onChange={(e) => setEditing(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(null);
+          }}
+        />
+        <button className="user-rename-save" onClick={commit}>저장</button>
+        <button className="user-rename-cancel" onClick={() => setEditing(null)}>취소</button>
+      </li>
+    );
+  }
+  return (
+    <li className="user-row">
+      <span className="user-name">
+        {user.username}
+        {user.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
+        {isMe ? <span className="seat-you"> (나)</span> : null}
+      </span>
+      <span className="user-meta">
+        <span className="user-games">{user.games}판</span>
+        <span className="user-date">{new Date(user.createdAt).toLocaleDateString()}</span>
+      </span>
+      <button
+        className="user-rename"
+        onClick={() => setEditing(user.username)}
+        title="닉네임 바꾸기"
+      >
+        이름
+      </button>
+      <button
+        className="user-delete"
+        disabled={isMe}
+        onClick={() => onDelete(user.id, user.username)}
+        title={isMe ? "본인 계정은 삭제할 수 없습니다" : "계정 삭제"}
+      >
+        삭제
+      </button>
+    </li>
+  );
+}
+
 function ListCard<T>(props: {
   items: T[] | null;
   /** 정말로 비었을 때의 문장 */
@@ -11771,6 +11888,11 @@ function HomeScreen(props: {
   leaderboard: LeaderboardEntry[] | null;
   catalog: Record<string, AugmentCatalogEntry>;
   adminUsers: AdminUserEntry[] | null;
+  /** 지금 접속해 있는 사람들 (관리자 전용) */
+  adminOnline: AdminOnlineMessage | null;
+  onRefreshOnline: () => void;
+  /** 닉네임 바꾸기 (관리자 전용) */
+  onRenameUser: (userId: number, username: string) => void;
   /** 비밀번호 변경 · 다른 기기 로그아웃 (§10-2). */
   onChangePassword: (current: string, next: string) => void;
   onLogoutOthers: () => void;
@@ -12425,6 +12547,64 @@ function HomeScreen(props: {
         ) : null}
 
         {props.auth.isAdmin ? (
+          /*
+           * **지금 접속해 있는 사람** (2026-09-03 사용자 요청: 「관리자는 온라인인
+           * 유저 파악 가능하게, 대기실에 있는지도 파악 가능하게」).
+           *
+           * 계정 목록(아래 «플레이어 관리»)은 «가입한 전부»라 지금 누가 붙어 있는지를
+           * 말해 주지 않고, «진행 중인 대국»은 판이 시작된 뒤에야 보인다 — 그 사이,
+           * 즉 로비와 대기실에 있는 사람이 어느 화면에도 없었다. 서버가 접속·퇴장·
+           * 입장이 있을 때마다 스스로 다시 밀어 주므로 새로 고침을 누를 일은 드물다.
+           */
+          <section className="home-card home-admin home-online">
+            <div className="home-card-head">
+              <h2>지금 접속 중 <span className="home-admin-badge">관리자</span></h2>
+              <RefreshButton onRefresh={props.onRefreshOnline} title="새로 고침" />
+            </div>
+            {props.adminOnline === null ? (
+              <p className="home-empty">접속자를 불러오는 중…</p>
+            ) : props.adminOnline.users.length === 0 ? (
+              <p className="home-empty">지금 접속해 있는 사람이 없습니다.</p>
+            ) : (
+              <>
+                <div className="online-counts">
+                  <span className="online-chip">전체 <b>{props.adminOnline.counts.total}</b></span>
+                  <span className="online-chip online-chip-lobby">
+                    로비 <b>{props.adminOnline.counts.lobby}</b>
+                  </span>
+                  <span className="online-chip online-chip-playing">
+                    대국 <b>{props.adminOnline.counts.playing}</b>
+                  </span>
+                  <span className="online-chip online-chip-spec">
+                    관전 <b>{props.adminOnline.counts.spectating}</b>
+                  </span>
+                  <span className="online-chip online-chip-guest">
+                    손님 <b>{props.adminOnline.counts.guests}</b>
+                  </span>
+                </div>
+                <ul className="online-list">
+                  {props.adminOnline.users.map((u, i) => (
+                    <li key={`${u.userId ?? "guest"}:${u.name}:${i}`} className="online-row">
+                      <span className="online-name">
+                        {u.name}
+                        {u.admin ? <span className="home-admin-badge">관리자</span> : null}
+                        {u.guest ? <span className="online-guest">손님</span> : null}
+                        {u.tabs > 1 ? <span className="online-tabs">×{u.tabs}</span> : null}
+                      </span>
+                      <span className={`online-where online-where-${u.where}`}>
+                        {ONLINE_WHERE_LABEL[u.where]}
+                        {u.room !== undefined ? <b className="online-room">{u.room}</b> : null}
+                      </span>
+                      <span className="online-since">{sinceText(u.sinceMs)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        ) : null}
+
+        {props.auth.isAdmin ? (
           <section className="home-card home-admin home-users">
             <div className="home-card-head">
               <h2>플레이어 관리 <span className="home-admin-badge">관리자</span></h2>
@@ -12433,30 +12613,15 @@ function HomeScreen(props: {
             <ListCard items={props.adminUsers} empty="등록된 계정이 없습니다.">
               {(rows) => (
               <ul className="user-list">
-                {rows.map((u) => {
-                  const isMe = u.username === props.auth.username;
-                  return (
-                    <li key={u.id} className="user-row">
-                      <span className="user-name">
-                        {u.username}
-                        {u.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
-                        {isMe ? <span className="seat-you"> (나)</span> : null}
-                      </span>
-                      <span className="user-meta">
-                        <span className="user-games">{u.games}판</span>
-                        <span className="user-date">{new Date(u.createdAt).toLocaleDateString()}</span>
-                      </span>
-                      <button
-                        className="user-delete"
-                        disabled={isMe}
-                        onClick={() => props.onDeleteUser(u.id, u.username)}
-                        title={isMe ? "본인 계정은 삭제할 수 없습니다" : "계정 삭제"}
-                      >
-                        삭제
-                      </button>
-                    </li>
-                  );
-                })}
+                {rows.map((u) => (
+                  <AdminUserRow
+                    key={u.id}
+                    user={u}
+                    isMe={u.username === props.auth.username}
+                    onDelete={props.onDeleteUser}
+                    onRename={props.onRenameUser}
+                  />
+                ))}
               </ul>
               )}
             </ListCard>

@@ -223,8 +223,18 @@ describe("클릭하기 전에 이 게임이 무엇인지 보인다", () => {
   });
 
   it("로그인 칸이 첫 화면을 가로채지 않는다", () => {
-    // autoFocus 는 포커스된 칸을 화면 안으로 끌어와 제목·시작 버튼을 밀어냈다.
-    expect(APP_CODE).not.toContain("autoFocus");
+    /*
+     * autoFocus 는 포커스된 칸을 화면 안으로 끌어와 제목·시작 버튼을 밀어냈다.
+     *
+     * 2026-09-03: 관리자 목록의 «닉네임 바꾸기» 인라인 입력칸 하나만 예외다 —
+     * 그건 첫 화면이 아니라 **사람이 그 줄의 «이름»을 누른 뒤에** 나타나는 칸이라,
+     * 포커스가 가는 것이 오히려 기대 동작이다. 그래서 «어디에도 없다»가 아니라
+     * «인증 폼에는 없다 · 딱 그 한 곳뿐이다»로 못 박는다.
+     */
+    expect([...APP_CODE.matchAll(/autoFocus/g)]).toHaveLength(1);
+    expect(APP_CODE).toContain('className="user-rename-input"');
+    const auth = APP_CODE.slice(APP_CODE.indexOf("function AuthScreen"));
+    expect(auth.slice(0, auth.indexOf("\nfunction "))).not.toContain("autoFocus");
   });
 });
 
