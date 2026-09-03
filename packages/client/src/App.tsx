@@ -328,6 +328,13 @@ function serverUrlToUse(): string {
   return defaultServerUrl();
 }
 
+/**
+ * 대국에 들어선 뒤 리치 BGM을 미리 받기까지 기다리는 시간(ms).
+ *
+ * 판이 서는 순간의 회선을 비워 두기 위한 것이다 — 자세한 이유는 쓰는 자리의 주석.
+ */
+const RIICHI_BGM_PREWARM_DELAY_MS = 8000;
+
 const WIND_CHAR = ["東", "南", "西", "北"];
 const WIND_KO = ["동", "남", "서", "북"];
 
@@ -3799,8 +3806,24 @@ export function App(): JSX.Element {
   // 리치 브금 선행 다운로드 — 대국에 들어와 있고 볼륨이 0이 아닐 때 한 번.
   // (평상시 BGM 이펙트와 섞지 않는다: 볼륨 슬라이더를 만질 때마다 bgm.stop()이 돌아
   //  평상시 BGM이 처음으로 되감기는 일이 없어야 한다.)
+  //
+  // ⚠ **첫 배패와 같은 순간에 받기 시작하지 않는다** (2026-09-04 사용자 보고:
+  // "바로 한 판을 하면 연출에 이펙트가 없고 렉이 좀 있음").
+  //
+  // 판이 서는 그 순간에 이미 대국 BGM 8.7MB가 내려오는 중이고, 처음 온 사람은
+  // 타일 그림 37장도 같은 회선으로 받고 있다. 거기에 리치 BGM 한 곡(1.5~8.7MB)을
+  // 겹치면 판이 뜨는 동안 15MB가 회선을 물고 늘어진다 — 로그인 화면에서 바로
+  // 시작한 사람에게만 유독 크게 나타난다(브라우저 캐시가 비어 있는 유일한 경로다).
+  //
+  // 잃는 것은 없다: 리치는 아무리 빨라도 한 바퀴는 돌아야 나오므로 이 지연 안에
+  // 리치가 걸릴 수 없고, 걸리더라도 `start()`가 그 자리에서 받아 튼다(예전 동작).
   useEffect(() => {
-    if (bgmShouldPlay) riichiBgm.prepare(riichiBgmTrackOf(view?.playerId ?? ""));
+    if (!bgmShouldPlay) return;
+    const t = window.setTimeout(
+      () => riichiBgm.prepare(riichiBgmTrackOf(view?.playerId ?? "")),
+      RIICHI_BGM_PREWARM_DELAY_MS,
+    );
+    return () => window.clearTimeout(t);
   }, [bgmShouldPlay, settings.riichiBgmVolume, view?.playerId]);
 
   /** 연출 큐·현재 연출·대기 결과를 모두 비운다 (리셋·관전 종료 시) */
