@@ -137,9 +137,12 @@ describe("홈 카드를 접어 둘 수 있다", () => {
     expect(block).not.toMatch(/setFolded\(\s*\(prev\)/);
   });
 
-  it("기본은 펼침이다", () => {
-    // 처음 온 사람에게 접힌 카드를 보이면 그건 빈 화면이다.
-    expect(APP_CODE).toMatch(/useState\(\(\) => readFolded\(\)\[id\] === true\)/);
+  it("기본은 펼침이다 — 카드가 스스로 접힘을 고르지 않는 한", () => {
+    // 처음 온 사람에게 접힌 카드를 보이면 그건 빈 화면이다. 그래서 기본값은 «펼침»이고,
+    // 접힌 채로 시작할 카드만 두 번째 인자로 그것을 밝힌다(리치 BGM처럼 가끔 여는 것).
+    expect(APP_CODE).toMatch(/function useFold\(id: string, defaultFolded = false\)/);
+    // 저장된 값이 있으면 언제나 그것이 이긴다 — 사람이 접은 카드가 다시 펴지지 않게.
+    expect(APP_CODE).toMatch(/useState\(\(\) => readFolded\(\)\[id\] \?\? defaultFolded\)/);
   });
 });
 
