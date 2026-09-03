@@ -4861,6 +4861,27 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "spectateStarted") {
+      /*
+       * **새 탁자에 붙는 순간, 앞 탁자의 잔상을 통째로 버린다** (2026-09-03 사용자 보고
+       * 두 건을 한 자리에서 고친다).
+       *
+       *  ① 「증강 선택 중일 때 다른 탁자로 가면 증강 선택 패널이 안 꺼진다」 —
+       *     `spectateDraft`는 여태 `spectateDraftEnd`가 와야만 걷혔는데, 그 메시지는
+       *     **앞 탁자**의 것이라 B탁자를 보는 내내 A탁자의 카드가 화면을 덮었다.
+       *  ② 「라이브로 왔다 갔다 하면 필요 없는 이전 연출들이 몰아쳐 온다」 —
+       *     연출 큐(`productionQueue`)에 쌓여 있던 앞 탁자의 컷인·배너가 새 탁자의
+       *     첫 뷰 위로 쏟아졌다. 게다가 `prevViewRef`가 남아 있어 새 탁자의 첫 뷰가
+       *     «전이»로 읽혔다 — 이미 서 있던 리치·후로·증강 발동이 그 자리에서 전부
+       *     다시 터진다(재접속 경로에서 이미 겪고 고친 것과 같은 문제다).
+       *
+       * `prevViewRef`를 비우면 `detectTransitions`가 첫 뷰 경로로 들어가 **지금 상태를
+       * 조용히 시드만** 한다 — 즉 "그 시점에서 그냥 이어서 본다"가 된다.
+       */
+      clearProductions();
+      prevViewRef.current = null;
+      resetFxSeen();
+      setCenterView(null);
+      setRoundResult(null);
       setSpectating(msg.code);
       // 서버가 확정해 준 값이 곧 «지금 걸린 지연»이다 — 저장도 여기서 맞춘다.
       // (요청은 보냈는데 서버가 다른 값으로 확정하면 저장값만 옛것으로 남는다.)
@@ -5335,6 +5356,22 @@ export function App(): JSX.Element {
     if (msg.type === "spectateDraft") {
       // 관전 중계 — 좌석 넉 줄을 통째로 갈아 끼운다(서버가 스냅샷을 보낸다).
       setSpectateDraft(msg);
+      /*
+       * **정산 창은 여기서 걷는다** (2026-09-03 사용자 보고: 「관전은 화료 후 자동으로
+       * 다음 국으로 안 됨 — 증강 선택 단계일 때」).
+       *
+       * 대국자의 정산 창은 «다음 국의 첫 뷰»가 오면 정리된다. 그런데 화료 뒤에 증강
+       * 드래프트가 열리는 국에서는 그 뷰가 수십 초 뒤에나 온다 — 관전자는 버튼을
+       * 누를 일이 없으니(누가 눌러도 서버에는 안 보낸다) 정산 창이 그대로 서서
+       * 그 사이의 드래프트 중계를 통째로 덮었다.
+       *
+       * 드래프트가 열렸다는 것은 그 국이 이미 끝났다는 뜻이다 — 정산 창의 수명은
+       * 거기까지다.
+       */
+      if (spectatingRef.current) {
+        setRoundResult(null);
+        pendingResult.current = null;
+      }
       return;
     }
     if (msg.type === "spectateDraftEnd") {
@@ -5958,12 +5995,28 @@ export function App(): JSX.Element {
       if (!nowRiichi && shown.riichi.has(p.id)) {
         shown.riichi.delete(p.id);
         riichiWasCancelled = true;
-        showBanner(
-          "리치 해제",
-          "info",
-          p.id === next.playerId ? "리치를 물렀다 — 리치봉이 돌아온다" : `${playerNameById(next, p.id)} — 리치를 물렀다`,
-          1400,
-        );
+        /*
+         * ⚠ **국이 끝나서 리치 표식이 사라진 것은 «해제»가 아니다** (2026-09-03
+         * 사용자 보고: 「리치해제 알림은 왜 나오는 거야, 갑자기」).
+         *
+         * 정산 뷰(`round.over`)와 새 국의 첫 뷰에서는 `riichiDeclared`가 그냥 내려간다.
+         * 그런데 `shown.riichi`는 국이 **실제로** 시작될 때만 비워지므로(위 새 국 분기),
+         * 그 사이에 이 분기가 좌석마다 한 번씩 걸려 화료 컷인 위로 「리치 해제」가
+         * 뜬금없이 올라왔다. 아무도 리치를 물리지 않았는데.
+         *
+         * 진짜 해제(승부수·손바닥 뒤집기·손을 빼앗김)는 **국이 도는 중에만** 일어난다.
+         * 그러니 국이 끝났거나 국 키가 이미 넘어간 뷰에서는 조용히 정리만 한다 —
+         * 브금 정리(`riichiWasCancelled`)는 그대로 돌아야 리치 브금이 이월되지 않는다.
+         */
+        const roundStillRunning = next.round.phase !== "round.over" && rk === shown.roundKey;
+        if (roundStillRunning) {
+          showBanner(
+            "리치 해제",
+            "info",
+            p.id === next.playerId ? "리치를 물렀다 — 리치봉이 돌아온다" : `${playerNameById(next, p.id)} — 리치를 물렀다`,
+            1400,
+          );
+        }
       }
 
       // 후로 (치/펑/깡) — 후로 수가 이전 알림보다 늘었을 때만. 화료·리치처럼 컷인 연출.
@@ -7277,6 +7330,13 @@ export function App(): JSX.Element {
            * 코치를 끄면(«그만 보기») 그 순간부터 평소의 시계가 돌아온다.
            */
           deadlineAt={coachOn ? null : roundResultDeadline.current}
+          /*
+           * 관전석에는 «다음 국으로»를 누를 사람이 없다 — 눌러도 서버에는 아무것도
+           * 가지 않는다(`closeRoundResult`). 그래서 대기가 끝나면 스스로 내려간다.
+           * 드래프트가 열리는 국은 위 `spectateDraft` 분기가 먼저 걷고, 그렇지 않은
+           * 국은 이 시계가 걷는다 — 어느 쪽으로 가든 관전 화면이 멈춰 서지 않는다.
+           */
+          autoClose={isSpectator}
           onClose={closeRoundResult}
         />
       ) : null}
@@ -13784,8 +13844,34 @@ const GameTable = memo(function GameTable(props: {
       : focusSeat === "turn"
         ? (view.players.find((p) => p.seat === view.round.turnSeat) ?? null)
         : (view.players.find((p) => p.id === focusSeat) ?? null);
+  /*
+   * **정산 중에는 자리를 돌리지 않는다** (2026-09-03 사용자 보고: 「관전에서 론당하자마자
+   * 자리 바뀜」).
+   *
+   * 관전석의 «아래 자리» 기본값은 오야다(`focusSeat === "dealer"`). 그런데 정산 뷰
+   * (`round.over`)에는 **이미 다음 국의 오야**가 실려 있다 — ROUND_SETTLED가 국 번호와
+   * 친을 미리 올리기 때문이다. 그래서 론이 나는 그 프레임에 네 자리가 통째로 돌아가,
+   * 화료 컷인과 점수표를 방금까지와 다른 배치로 보게 됐다.
+   *
+   * 국이 **도는 동안에만** 오야를 다시 읽고, 정산 중에는 마지막 배치를 붙든다.
+   * 다음 국이 실제로 시작되면(phase가 round.over를 벗어나면) 그때 새 오야를 따라간다 —
+   * 「새 게임이 시작했을 때 오야 위치를 따라가게」가 그대로 지켜진다.
+   */
+  const dealerAnchor = useRef<string | null>(null);
+  const followsDealer = props.spectator === true && focusSeat === "dealer";
+  if (!followsDealer) {
+    dealerAnchor.current = null;
+  } else if (view.round.phase !== "round.over" || dealerAnchor.current === null) {
+    dealerAnchor.current =
+      view.players.find((p) => p.seat === view.round.dealerSeat)?.id ?? null;
+  }
+  const anchoredDealer =
+    dealerAnchor.current === null
+      ? null
+      : (view.players.find((p) => p.id === dealerAnchor.current) ?? null);
   const me = view.players.find((p) => p.id === view.playerId)
     ?? focusPlayer
+    ?? anchoredDealer
     ?? view.players.find((p) => p.seat === view.round.dealerSeat)
     ?? view.players.find((p) => p.seat === 0)
     ?? view.players[0]!;
@@ -13955,13 +14041,16 @@ const GameTable = memo(function GameTable(props: {
           </span>
         </div>
       ) : null}
-      {/* 「이 판은 중계 중」 — 대국자에게만 (docs/36 C4).
-          관전 뷰는 손패를 전부 공개한다. 밝힐 수 있는 것을 굳이 숨기지 않는다. */}
-      {props.spectator !== true && (props.spectatedBy ?? 0) > 0 ? (
-        <div className="spectated-badge" role="status" title="관리자가 이 판을 관전 중입니다 — 관전 화면에는 모든 손패가 공개됩니다">
-          ● 중계 중{(props.spectatedBy ?? 0) > 1 ? ` ×${props.spectatedBy}` : ""}
-        </div>
-      ) : null}
+      {/* 「이 판은 중계 중」 표식은 **띄우지 않는다** (2026-09-03 사용자 지시:
+          「관리자가 관전하면 중계중 표시 안 나오게」).
+
+          docs/36 C4에서 이 뱃지를 붙인 이유는 「대국자는 자기 판이 중계되는지 모른다」
+          였다. 그런데 관전은 관리자 계정만 할 수 있고(docs/36 §0-1), 실제로 붙여 보니
+          운영자가 판을 잠깐 들여다볼 때마다 판 위에 붉은 점이 켜져 대국자들이 «내 판에
+          무슨 문제가 생겼나»로 읽었다. 판정에 개입하지 않는 열람을 알릴 값이 없다.
+
+          서버는 `spectated`(관전자 수)를 그대로 보낸다 — 관리자 화면 쪽에서 쓰고,
+          되살릴 일이 있으면 이 자리에 다시 그리면 된다. */}
       {/* 이 탁자에 걸린 공지 — 대국자·관전자가 같은 것을 본다 (docs/36 B2). */}
       {props.roomNotice !== undefined ? (
         <div className={`room-notice${props.spectator === true ? " room-notice-spec" : ""}`} role="status">
@@ -15451,6 +15540,17 @@ function armedRoundNotices(view: PlayerView): ArmedRoundNotice[] {
  * `shown.roundKey`는 진짜 다음 국이 시작될 때만 갱신되고, 그때 augEvents 집합도 함께
  * 비워진다 — 그래서 국이 넘어가면 같은 사건이 다시 정상적으로 터진다.
  */
+/**
+ * 국 식별 키 (장풍-국번호-본장) — 컴포넌트 밖에서도 쓴다.
+ *
+ * `App` 안의 `roundKeyOf`와 **같은 식**이고, 콘텐츠(`content/util.ts` `roundKey`)가
+ * 채널에 적어 두는 값과도 같은 식이다. 세 곳이 어긋나면 「이번 국인가」 판정이
+ * 조용히 틀린다 — 바꿀 때는 셋을 함께 바꾼다.
+ */
+function roundKeyOfView(v: PlayerView): string {
+  return `${v.round.prevalentWind}-${v.round.roundNumber}-${v.round.honba}`;
+}
+
 function augEventSig(key: string, raw: unknown, roundKey: string): string {
   return `${key}=${JSON.stringify(raw)}@${roundKey}`;
 }
@@ -17559,7 +17659,7 @@ function augmentPillStatus(
    * 남의 pill에 쓰면 내 잔량이 남에게 찍힌다).
    */
   const uses = seatChannel(view, playerId, `uses:${augId}`) as
-    | { left?: unknown; total?: unknown; scope?: unknown }
+    | { left?: unknown; total?: unknown; scope?: unknown; spentRound?: unknown }
     | undefined;
   const usesStatus: PillStatus | null =
     uses !== undefined && uses !== null && typeof uses.left === "number"
@@ -17567,13 +17667,28 @@ function augmentPillStatus(
           const left = uses.left as number;
           const total = typeof uses.total === "number" ? uses.total : left;
           const where = uses.scope === "round" ? "이번 국" : "게임 내";
+          /*
+           * **다 썼다고 그 국에 바로 죽이지 않는다** (2026-09-03 사용자 지시:
+           * 「이번 국에 사용했고 이번 국에 계속 적용되는 거라면 굳이 어두워지게
+           * 안 해도 된다 — 액티브 사용이 불가능해지는 다음 국부터 비활성화 처리」).
+           *
+           * 마지막 한 번을 쓴 그 국에는 대개 효과가 아직 판 위에 살아 있다. 그런데
+           * 잔량이 0이 되는 순간 pill이 «죽은 증강»으로 바뀌어, 방금 건 효과가
+           * 이미 끝난 것처럼 읽혔다. 콘텐츠가 0이 된 국을 `spentRound`에 적어 두므로
+           * (content/util.ts `publishUsesLeft`), **그 국 동안에는 회색으로 내리지
+           * 않는다.** 국이 넘어가면 키가 달라져 그때부터 죽은 것으로 그린다.
+           */
+          const spentRound = typeof uses.spentRound === "string" ? uses.spentRound : undefined;
+          const stillThisRound = left === 0 && spentRound !== undefined && spentRound === roundKeyOfView(view);
           return {
             chip: `${left}회`,
             note:
               left > 0
                 ? `${where} ${total}회 중 ${left}회 남음`
-                : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
-            ...(left === 0 ? { tone: "spent" as const } : {}),
+                : stillThisRound
+                  ? `${where} ${total}회를 모두 사용했다 — 이번 국의 효과는 아직 살아 있다`
+                  : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
+            ...(left === 0 && !stillThisRound ? { tone: "spent" as const } : {}),
             ...(total > 0 ? { gauge: left / total } : {}),
           };
         })()
@@ -21893,19 +22008,46 @@ function DockDanger({
         「쏘이는 패」와 자주 어긋납니다 — 대국자가 그 자리에서 알 수 있는 것만으로 재기
         때문입니다.
       </p>
+      {/*
+        * ⚠ **수치가 빠지면 이 구획은 그냥 «패 나열»로 읽힌다** (2026-09-03 사용자 보고:
+        * 「위험도(추정)인데 그냥 패 나열한 거로밖에 안 보임」).
+        *
+        * 예전에는 0.33 미만이면 색도 글자도 붙지 않았다. 그런데 봇의 추정치는 대부분
+        * 그 아래에 깔린다(안전패가 많은 것이 정상이다) — 그래서 실제 화면에서는
+        * 표식이 하나도 없는 손패 13장이 그냥 늘어서 있었고, 「이게 위험도라는 걸
+        * 어떻게 아나」가 됐다.
+        *
+        * 그래서 **모든 패에 값을 적는다**: 숫자(%)와 그 값만큼 차는 막대. 위험한 쪽이
+        * 앞에 서도록 이미 정렬돼 있으므로, 왼쪽이 높고 오른쪽으로 갈수록 낮아지는
+        * 그림이 한눈에 잡힌다. 색·글자 뱃지(주의·위험)는 그대로 위에 얹는다 —
+        * 색만으로 단계를 말하지 않는다는 규칙은 유지한다.
+        */}
+      <p className="dock-note dock-note-quiet dock-danger-legend">
+        <span className="dock-danger-legend-bar" aria-hidden />
+        왼쪽이 위험한 쪽 — 숫자는 봇이 «이 패를 버리면 쏘일 확률»로 잰 값입니다
+      </p>
       <div className="dock-danger-row">
         {sorted.map((id) => {
           const lv = danger[id] ?? 0;
           const cls = specDangerClass(lv);
+          const pct = Math.round(lv * 100);
           return (
             <span
               key={id}
               className={`dock-danger-tile${cls}`}
-              title={`위험도 ${Math.round(lv * 100)}%${
-                lv >= 0.66 ? " — 높음" : lv >= 0.33 ? " — 중간" : ""
-              }`}
+              title={`위험도 ${pct}%${lv >= 0.66 ? " — 높음" : lv >= 0.33 ? " — 중간" : " — 낮음"}`}
             >
               <TileImg tile={view.tiles[id]} size="mini" />
+              {/* 값을 그림과 숫자 둘 다로 — 막대는 훑어보는 눈에, 숫자는 세는 눈에 */}
+              <span className="dock-danger-meter" aria-hidden>
+                <span
+                  className={`dock-danger-meter-fill${lv >= 0.66 ? " hi" : lv >= 0.33 ? " md" : ""}`}
+                  style={{ transform: `scaleX(${Math.max(0.04, lv)})` }}
+                />
+              </span>
+              <span className={`dock-danger-pct num${lv >= 0.66 ? " hi" : lv >= 0.33 ? " md" : ""}`}>
+                {pct}%
+              </span>
               {/* 색만으로 단계를 말하지 않는다 — 고대비·색약에서도 남는 글자를 붙인다 */}
               {lv >= 0.33 ? (
                 <span className={`dock-danger-tag${lv >= 0.66 ? " hi" : ""}`}>
@@ -24726,6 +24868,7 @@ function RoundResultPanel({
   view,
   catalog,
   deadlineAt,
+  autoClose,
   onClose,
   historical,
 }: {
@@ -24744,6 +24887,15 @@ function RoundResultPanel({
    * (interRoundDelayMs=0 — 테스트·봇 게임). 카운트다운 표시에만 쓴다.
    */
   deadlineAt: number | null;
+  /**
+   * 마감이 지나면 **스스로 닫는가** — 관전석 전용.
+   *
+   * 대국자는 사람이 눌러 닫는 것이 규약이고(작혼·천봉), 그동안 서버가 상한에서
+   * 다음 국을 시작하면 새 국 뷰가 창을 정리한다. 관전자에게는 그 «새 국 뷰»가
+   * 늦게 오거나(증강 드래프트) 아예 자기 조작으로는 앞당길 수 없어, 창이 그대로
+   * 서서 중계를 덮었다 (2026-09-03).
+   */
+  autoClose?: boolean;
   onClose: () => void;
 }): JSX.Element {
   const { settle } = result;
@@ -24791,6 +24943,13 @@ function RoundResultPanel({
   }, [deadlineAt, paused]);
   const remainSec = Math.ceil(remainMs / 1000);
   const showCountdown = deadlineAt !== null && remainSec > 0;
+
+  // 관전석: 마감이 지나면 스스로 내려간다 (판이 서 있으면 시계도 서 있으므로 닫지 않는다).
+  useEffect(() => {
+    if (autoClose !== true || deadlineAt === null || paused) return;
+    if (remainMs > 0) return;
+    onClose();
+  }, [autoClose, deadlineAt, paused, remainMs, onClose]);
 
   /*
    * 역 스탬프 사운드 — CSS 스탬프 딜레이(0.15s + i*0.09s)와 동기한 펜타토닉 계단.
@@ -24866,6 +25025,20 @@ function RoundResultPanel({
         </div>
       ) : null}
       <div className="result-panel">
+        {/* 읽는 몫과 넘기는 몫을 **층으로 가른다** (2026-09-03 사용자 보고: 「더블론일 때
+            다음 국으로가 맨 하단이 아니라 조금 위에 보이고, 화료 화면 전체가 살짝 위에
+            있어 밑이 빈다」).
+
+            예전에는 정산 내용과 CTA가 한 스크롤 상자 안에 나란히 있었고, CTA는
+            `position: sticky`로 바닥에 붙었다. 그런데 sticky는 **내용이 넘칠 때만**
+            바닥에 선다 — 더블론은 두 손패가 나란히 서서 세로가 오히려 짧아지므로
+            넘치지 않고, 그러면 CTA는 그냥 내용 끝에 붙어 «가운데 정렬된 덩어리»의
+            일부가 된다. 그래서 화면 아래가 통째로 비었다.
+
+            이제 스크롤은 `.result-body`가 맡고 `.result-cta`는 그 **밖**에 서서 늘
+            패널 바닥이다. 내용이 짧으면 위 칸 안에서 가운데 정렬되고, 길면 그 칸만
+            스크롤된다 — 두 경우 모두 버튼 자리는 움직이지 않는다. */}
+        <div className="result-body">
         <h2 className="result-title">
           {isWin ? "화 료" : isDraw ? "유 국" : "도중 유국"}
         </h2>
@@ -25278,6 +25451,7 @@ function RoundResultPanel({
           <p className="result-next">{nextRoundNote.join(" · ")}</p>
         ) : null}
 
+        </div>
         {/* 확인 버튼 — 이 창을 넘기는 유일한 손잡이다. 남은 시간을 함께 달아
             "왜 저절로 넘어가는가"를 화면 안에서 설명한다. 대기가 없는 판
             (interRoundDelayMs=0)에서는 초 표시 없이 버튼만 남는다.

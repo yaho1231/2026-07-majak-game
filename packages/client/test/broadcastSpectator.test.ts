@@ -812,9 +812,14 @@ describe("중계 관전 — 방송 안전 (C1·C4)", () => {
     expect(APP).toMatch(/spectateDelayRef\.current > 0 \? \{ delaySeconds: spectateDelayRef\.current \}/);
   });
 
-  it("대국자에게 «중계 중»을 알린다 (관전자에게는 띄우지 않는다)", () => {
-    expect(APP).toMatch(/props\.spectator !== true && \(props\.spectatedBy \?\? 0\) > 0/);
-    expect(CSS).toContain(".spectated-badge");
+  /*
+   * 2026-09-03 사용자 지시로 «중계 중» 뱃지를 내렸다 — 관전은 관리자 전용이라
+   * 판정에 개입하지 않는 열람인데, 판 위 붉은 점이 대국자에게 «내 판에 문제가
+   * 생겼다»로 읽혔다. 그래서 검사도 뒤집는다: **그리지 않는다**가 지금의 약속이다.
+   */
+  it("«중계 중» 표식은 판 위에 그리지 않는다", () => {
+    expect(APP).not.toMatch(/className="spectated-badge"/);
+    expect(APP).toContain("관리자가 관전하면 중계중 표시 안 나오게");
   });
 });
 

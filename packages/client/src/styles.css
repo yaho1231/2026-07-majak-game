@@ -1403,7 +1403,11 @@ button {
  * 튀어나오면 창을 가린다.
  */
 .opp-strip:has(.aug-pill-pinned),
-.opp-strip:has(.aug-pill:focus-within) {
+.opp-strip:has(.aug-pill:focus-within),
+/* 마우스로 얹어 읽는 경우도 같다 (2026-09-03). 예전에는 «고정(pin)»과 «포커스»만
+   올렸는데, 설명은 `:hover` 로도 열린다(§ 증강 hover 툴팁) — 그래서 그냥 얹어
+   읽을 때만 상대 손패 밑으로 깔렸다. 여는 조건과 올리는 조건이 같아야 한다. */
+.opp-strip:has(.aug-pill:hover) {
   z-index: 47;
 }
 
@@ -4746,16 +4750,36 @@ button {
    지금 살아 있는 능력인지가 한눈에 안 잡혔다(2026-09-01 사용자 요청 "쿨타임일 때
    살짝 어둡게"). 글씨를 못 읽을 만큼 내리지는 않는다 — 잔량 칩("2회")과 남은 국
    칩("🕐2국")은 그대로 읽혀야 pill 하나로 상태를 다 읽는다는 약속이 선다. */
-.aug-pill-cd,
-.aug-pill-spent,
-.aug-pill-locked {
+/* ⚠ **흐리게 하는 것은 pill 자신이 아니라 그 «내용»이다** (2026-09-03 사용자 보고:
+   「비활성화된 증강은 설명창이 투명해서 글이 안 보이고, 상대 손패에 가린다」).
+
+   예전에는 `.aug-pill-cd/-spent/-locked { opacity: .62 }` 로 pill 자체를 내렸다.
+   그 한 줄이 두 가지를 한꺼번에 망가뜨렸다.
+     ① 설명(`.aug-tip`)은 pill의 **자식**이라 같이 0.62로 깔린다 — 읽으려고 연 창이
+        반투명해져 글자가 뒤 판에 묻혔다. 자식에서 opacity를 1로 되돌릴 수도 없다.
+     ② `opacity < 1` 은 **쌓임 맥락을 만든다.** 그 순간 `.aug-tip`의 z-index 95는
+        pill 안에 갇히고, pill은 판 위 요소들(상대 손패·중앙 패널) 밑으로 깔린다 —
+        살아 있는 증강의 설명은 맨 앞에 서는데 죽은 증강만 뒤로 숨는 이유가 이것이다.
+
+   그래서 pill의 **직계 자식 중 설명이 아닌 것**만 내린다. 보이는 결과(이름·잔량 칩·
+   게이지가 한 단계 죽는다)는 그대로이고, 설명은 살아 있는 증강과 똑같이 불투명하게
+   맨 앞에 선다. */
+.aug-pill-cd > :not(.aug-tip),
+.aug-pill-spent > :not(.aug-tip),
+.aug-pill-locked > :not(.aug-tip) {
   opacity: 0.62;
 }
 
 /* 빛나는 동안에는 덮지 않는다 — 「지금 쓸 수 있다」가 「못 쓴다」보다 우선한다.
    (쿨다운 중인 증강은 애초에 액티브 후보로 서지 않지만, 두 클래스가 겹쳐도
    신호가 서로 깎이지 않게 못 박아 둔다.) */
-.aug-pill-usable {
+.aug-pill-usable > :not(.aug-tip) {
+  opacity: 1;
+}
+
+/* 설명은 어떤 상태에서도 **완전히 불투명**하다 — 위 규칙이 새 상태 클래스에
+   딸려 다시 새지 않게 못 박아 둔다. */
+.aug-tip {
   opacity: 1;
 }
 
@@ -5410,23 +5434,37 @@ button {
   background: radial-gradient(130% 110% at 50% 16%, rgba(36, 26, 61, 0.86), rgba(11, 19, 16, 0.96));
 }
 
-/* 작혼式 풀스크린 정산 — 카드가 아니라 화면을 꽉 채운다 */
+/* 작혼式 풀스크린 정산 — 카드가 아니라 화면을 꽉 채운다.
+   패널은 «층 두 개»만 담는다: 읽는 칸(`.result-body`, 스크롤)과 넘기는 줄
+   (`.result-cta`, 늘 바닥). 그래서 여기서는 스크롤도 padding 도 갖지 않는다. */
 .result-panel {
   position: relative;
   z-index: 1;
   width: 100%;
   height: 100%;
   max-height: 100%;
-  overflow-y: auto;
-  padding: clamp(16px, 3.4cqh, 40px) 20px;
+  overflow: hidden;
   background: transparent; /* 배경은 .result-overlay가 그린다 (꽃잎이 뒤로 비치게) */
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  animation: result-in 0.4s var(--ease);
+}
+
+/* 읽는 칸 — 남는 세로를 전부 갖고, 넘치면 여기만 스크롤된다.
+   `min-height: 0` 이 없으면 flex 자식의 기본 최소 크기(min-content) 때문에
+   상자가 내용만큼 부풀어 스크롤이 패널 밖으로 밀린다. */
+.result-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  padding: clamp(16px, 3.4cqh, 40px) 20px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: safe center; /* 콘텐츠가 화면보다 커도 위가 잘리지 않게 */
   gap: clamp(8px, 1.8cqh, 18px);
-  animation: result-in 0.4s var(--ease);
 }
 
 @keyframes result-in {
@@ -8896,6 +8934,8 @@ button {
    */
   .opp-strip-left .nameplate:has(.aug-pill:focus-within),
   .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill:hover),
+  .opp-strip-right .nameplate:has(.aug-pill:hover),
   .opp-strip-left .nameplate:has(.aug-pill-pinned),
   .opp-strip-right .nameplate:has(.aug-pill-pinned) {
     overflow: visible;
@@ -9347,6 +9387,9 @@ button {
   .opp-strip-left .nameplate:has(.aug-pill:focus-within),
   .opp-strip-top .nameplate:has(.aug-pill:focus-within),
   .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill:hover),
+  .opp-strip-top .nameplate:has(.aug-pill:hover),
+  .opp-strip-right .nameplate:has(.aug-pill:hover),
   .opp-strip-left .nameplate:has(.aug-pill-pinned),
   .opp-strip-top .nameplate:has(.aug-pill-pinned),
   .opp-strip-right .nameplate:has(.aug-pill-pinned) {
@@ -13836,6 +13879,67 @@ body[data-majak-dock="folded"] {
   color: #f0a79b;
 }
 
+/* 위험도 막대 + 숫자 (2026-09-03) — 값이 없으면 이 구획은 «패 나열»로 읽힌다.
+   막대는 패 폭에 맞춰 눕고, 채움은 scaleX로 값을 그대로 그린다. */
+.dock-danger-meter {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.dock-danger-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transform-origin: left;
+  background: rgba(140, 200, 170, 0.75);
+  transition: transform 0.25s var(--ease);
+}
+
+.dock-danger-meter-fill.md {
+  background: rgba(226, 178, 92, 0.9);
+}
+
+.dock-danger-meter-fill.hi {
+  background: rgba(226, 96, 84, 0.95);
+}
+
+.dock-danger-pct {
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(247, 243, 232, 0.62);
+}
+
+.dock-danger-pct.md {
+  color: #f0c884;
+}
+
+.dock-danger-pct.hi {
+  color: #f0a79b;
+}
+
+/* 무엇을 보고 있는지 한 줄 — 왼쪽이 위험한 쪽이라는 정렬 규칙을 작은 그라디언트로 함께 말한다 */
+.dock-danger-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dock-danger-legend-bar {
+  flex: none;
+  width: 34px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(226, 96, 84, 0.95),
+    rgba(226, 178, 92, 0.9),
+    rgba(140, 200, 170, 0.75)
+  );
+}
+
 .dock-next-who {
   max-width: 5em;
   overflow: hidden;
@@ -15699,20 +15803,18 @@ body.peeking .overlay-peekable > * {
  * 버튼만 스크롤을 따라오지 않는다. 남은 초(`.result-close-count`)와 「안 눌러도
  * 넘어간다」 한 줄도 같이 묶여 있으니 «왜 저절로 넘어가는가»도 함께 늘 보인다.
  *
- * ⚠ `bottom: 0` 이 닿는 곳은 «스크롤 상자의 padding box 바닥»이 아니라 담는 상자
- *   (= `.result-panel` 의 content box) 바닥까지다. 패널의 아래 padding
- *   (clamp(16px,3.4cqh,40px))만큼은 늘 여백으로 남는다 — 화면 맨 밑에 딱 붙지 않아
- *   홈바·노치와도 다투지 않는다.
- * ⚠ 좌우로는 `align-self: stretch` + 음수 마진으로 패널의 20px padding 까지 덮는다.
- *   가림막(그라디언트)이 글자 폭에서 끊기면 밑에서 올라오는 줄이 반쯤 비쳐 보인다.
+ * ⚠ 2026-09-03: 예전에는 `position: sticky; bottom: 0` 이었다. sticky 는 **내용이
+ *   넘칠 때만** 바닥에 서므로, 더블론처럼 두 손패가 나란히 서서 세로가 짧아지는
+ *   화면에서는 그냥 내용 끝에 붙어 «가운데 정렬된 덩어리»의 일부가 됐다 — 버튼이
+ *   화면 중간쯤에 뜨고 아래가 통째로 비었다(사용자 보고). 이제 스크롤은
+ *   `.result-body` 가 맡고 이 줄은 그 **밖**에 서는 형제라, 내용 길이와 무관하게
+ *   언제나 패널 바닥이다. 아래 padding 은 홈바·노치와 다투지 않을 만큼만 남긴다.
  */
 .result-cta {
-  position: sticky;
-  bottom: 0;
+  flex: none;
   z-index: 2;
   align-self: stretch;
-  margin: 0 -20px;
-  padding: 10px 20px 2px;
+  padding: 10px 20px max(6px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -15735,7 +15837,7 @@ body.peeking .overlay-peekable > * {
    패널의 절반을 먹어 정산 줄을 그만큼 더 덮는다. 「16초」는 버튼 안 알약이 이미
    같은 숫자를 세고 있으므로, 여기서는 문장을 접고 자리를 정산표에 돌려준다. */
 @container ui (max-height: 560px) and (orientation: landscape) {
-  .result-cta { padding: 6px 20px 0; }
+  .result-cta { padding: 6px 20px max(2px, env(safe-area-inset-bottom)); }
   .result-cta .result-close-note { display: none; }
 }
 
@@ -16322,7 +16424,7 @@ body.peeking .overlay-peekable > * {
    전체화면 도감을 열어도 아래쪽 40%에 홈 화면(제보 게시판)이 그대로 남아 있었다
    (2026-08-14 사용자 보고). cqh는 body 상자를 재므로 배율과 무관하게 화면 전체다. */
 .screen-overlay,
-.result-panel,
+.result-body,
 .codex {
   max-height: 100cqh;
   overflow-y: auto;
@@ -17083,6 +17185,9 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   .opp-strip-left .nameplate:has(.aug-pill:focus-within),
   .opp-strip-top .nameplate:has(.aug-pill:focus-within),
   .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill:hover),
+  .opp-strip-top .nameplate:has(.aug-pill:hover),
+  .opp-strip-right .nameplate:has(.aug-pill:hover),
   .opp-strip-left .nameplate:has(.aug-pill-pinned),
   .opp-strip-top .nameplate:has(.aug-pill-pinned),
   .opp-strip-right .nameplate:has(.aug-pill-pinned) {
