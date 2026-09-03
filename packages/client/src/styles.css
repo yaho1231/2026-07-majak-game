@@ -1631,8 +1631,8 @@ button {
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px 10px;
-  padding: 8px 16px;
+  gap: 0.47em 0.6em;
+  padding: 0.47em 0.95em;
   /* 긴 닉네임·증강 이름도 밖으로 튀지 않도록 넉넉히 늘리되 화면 안에 가둔다.
      width:max-content가 없으면 좌·우 자리(절대배치 shrink-to-fit)에서 이름표가
      자식의 min-content(=한 글자)까지 쪼그라들어 증강 이름이 세로로 한 자씩 깨졌다. */
@@ -1641,7 +1641,10 @@ button {
   border-radius: 18px;
   background: rgba(11, 19, 16, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  font-size: 17px;
+  /* 화면이 줄면 이름표도 같이 준다 — 손패(--hand-pref)는 cq로 줄어드는데 이름표·증강
+     알약만 px로 굳어 있으면, 좁은 창에서 그 줄이 자리를 그대로 차지해 패만 더 작아진다.
+     넓은 화면에서는 예전 값(17px) 그대로다. 안쪽 칩·알약은 전부 em이라 함께 따라온다. */
+  font-size: clamp(12px, 2.2cqmin, 17px);
   transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
@@ -1771,12 +1774,12 @@ button {
 
 /* 봇 성향 — 이름 옆에 붙는 작은 표식. 이름보다 약하게 두어 순서가 뒤집히지 않게 한다 */
 .np-arch {
-  padding: 1px 6px;
+  padding: 0.1em 0.5em;
   border-radius: 999px;
   border: 1px solid rgba(240, 200, 106, 0.3);
   background: rgba(240, 200, 106, 0.1);
   color: #dcbe7c;
-  font-size: 11px;
+  font-size: 0.65em;
   font-weight: 700;
   white-space: nowrap;
   cursor: help;
@@ -1785,7 +1788,7 @@ button {
 .np-augs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 0.24em;
   max-width: 100%;
 }
 
@@ -1795,8 +1798,8 @@ button {
    그래서 이름표에 붙는 칩(증강 pill·지목 표식)의 **이름만** 접고 아이콘은 남긴다.
    가려도 되는 건 이름뿐이다: 잔량 칩·자물쇠·🎲·툴팁·title은 그대로다. */
 .nameplate-dense .aug-pill {
-  padding: 2px 6px;
-  gap: 2px;
+  padding: 0.17em 0.5em;
+  gap: 0.17em;
 }
 
 .nameplate-dense .aug-pill-name {
@@ -1821,7 +1824,7 @@ button {
 }
 
 .aug-pill-dice-mark {
-  font-size: 10px;
+  font-size: 0.83em;
   line-height: 1;
   opacity: 0.9;
 }
@@ -1830,7 +1833,7 @@ button {
 .nameplate-dense .aug-pill::after {
   content: "⋯";
   opacity: 0.55;
-  font-size: 10px;
+  font-size: 0.83em;
   line-height: 1;
 }
 
@@ -1838,12 +1841,13 @@ button {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 0.25em;
   /* 100%: 좁게 묶인 좌·우 이름표 안에서 pill이 밖으로 삐져나오지 않게 */
   max-width: min(320px, 100%);
-  padding: 2px 9px;
-  border-radius: 12px;
-  font-size: 12px;
+  padding: 0.17em 0.75em;
+  border-radius: 1em;
+  /* 이름표와 같은 이유로 화면 크기를 따라간다(위 .nameplate 주석). 넓은 화면 = 12px. */
+  font-size: clamp(9px, 1.55cqmin, 12px);
   line-height: 1.35;
   /* 증강 이름은 한 줄 유지 — 한글이 한 자씩 세로로 깨지지 않게 (keep-all).
      너무 길면 띄어쓰기에서만 줄바꿈, 그래도 넘치면 마지막 수단으로 분해. */
@@ -1859,31 +1863,31 @@ button {
 /* 일발 — 살아 있는 동안만 선다. 사라지는 것 자체가 정보다. */
 .np-ippatsu {
   color: #93dfa8;
-  font-size: 11px;
+  font-size: 0.65em;
   font-weight: 700;
   border: 1px solid rgba(147, 223, 168, 0.6);
   border-radius: 4px;
-  padding: 0 6px;
+  padding: 0 0.55em;
   cursor: help;
 }
 
 .np-furiten {
   cursor: help;
   color: #f08a7c;
-  font-size: 11px;
+  font-size: 0.65em;
   font-weight: 700;
   border: 1px solid rgba(246, 127, 109, 0.6);
   border-radius: 4px;
-  padding: 0 6px;
+  padding: 0 0.55em;
 }
 
 .np-noyaku {
   color: #f0c86a;
-  font-size: 11px;
+  font-size: 0.65em;
   font-weight: 700;
   border: 1px solid rgba(184, 151, 92, 0.6);
   border-radius: 4px;
-  padding: 0 6px;
+  padding: 0 0.55em;
 }
 
 /* ─────────────── 후로 ─────────────── */
@@ -4671,14 +4675,14 @@ button {
 }
 
 .aug-pill-chip {
-  margin-left: 2px;
-  padding: 0 6px;
+  margin-left: 0.17em;
+  padding: 0 0.5em;
   border-radius: 999px;
   background: rgba(199, 188, 255, 0.9);
   color: #16142a;
-  font-size: 10.5px;
+  font-size: 0.875em;
   font-weight: 800;
-  line-height: 15px;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
@@ -4731,14 +4735,14 @@ button {
 
 /* 남은 국 수 칩 — 잔량 칩과 나란히 서므로 색으로 갈라 둔다 */
 .aug-pill-cd-chip {
-  margin-left: 2px;
-  padding: 0 6px;
+  margin-left: 0.17em;
+  padding: 0 0.5em;
   border-radius: 999px;
   background: rgba(120, 150, 190, 0.85);
   color: #0f1620;
-  font-size: 10.5px;
+  font-size: 0.875em;
   font-weight: 800;
-  line-height: 15px;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
