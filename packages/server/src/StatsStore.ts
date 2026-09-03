@@ -96,6 +96,39 @@ export class StatsStore {
     await this.save();
   }
 
+  /**
+   * **누적 통계를 새 닉네임으로 옮긴다** (닉네임 변경 시 호출, 2026-09-04 사용자 보고:
+   * 「이름을 변경했을 때 내 통계 같은 게 다 사라져 버려」).
+   *
+   * 이 저장소의 키는 계정 id가 아니라 **닉네임**이다(파일 머리말 — 계정이 없던
+   * 시절의 구조가 그대로 남았다). 그래서 관리자가 이름을 바꾸면 누적 통계와
+   * 리더보드 줄이 옛 이름 밑에 남고, 그 계정에서는 «전적 없음»이 된다.
+   * 기간 성적·리플레이 목록은 `user_id`로 조회하므로 멀쩡했다 — 사라진 것처럼
+   * 보인 것이 정확히 이 표 하나다.
+   *
+   * 목적지에 이미 값이 있으면 **합친다.** 계정 이름은 서로 겹칠 수 없으므로
+   * (`users.username` UNIQUE COLLATE NOCASE) 그 값은 게스트나 이미 삭제된 계정이
+   * 남긴 것이고, 이제 그 이름을 쓸 수 있는 계정은 이 하나뿐이라 두면 영영 닿지 않는
+   * 값이 된다. 합치는 쪽이 잃는 것이 없다.
+   *
+   * 대소문자만 바꾸는 개명(`Kim` → `KIM`)도 이 표에서는 **다른 키**라 반드시 옮겨야
+   * 한다 — 계정 표에서는 같은 행이어서 그냥 지나가기 쉬운 자리다.
+   *
+   * @returns 실제로 옮겼는가 (옛 이름에 값이 없었으면 false — 할 일이 없다)
+   */
+  async rename(from: string, to: string): Promise<boolean> {
+    if (!this.loaded) await this.load();
+    if (from === to) return false;
+    const moving = this.data.players[from];
+    if (moving === undefined) return false;
+    const prev = this.data.players[to] ?? createEmptyStats();
+    this.data.players[to] = mergeStats(prev, moving);
+    delete this.data.players[from];
+    this.rev++;
+    await this.save();
+    return true;
+  }
+
   /** 닉네임의 누적 통계를 삭제하고 저장한다 (계정 삭제 시 호출). */
   async remove(nickname: string): Promise<void> {
     if (!this.loaded) await this.load();

@@ -1063,33 +1063,59 @@ export class SiteDb {
    * 자기 자신을 빼야 한다: 대소문자만 바꾸는 개명(`Kim` → `KIM`)은 스키마의
    * `UNIQUE COLLATE NOCASE`상 같은 행이라 «이미 사용 중»이 아니다.
    *
-   * @returns 못 바꾸면 그 사유 문자열, 성공하면 null
+   * **옛 이름을 돌려준다** (`deleteUser`와 같은 규약, 2026-09-04). 누적 통계
+   * 저장소(`StatsStore`)는 계정 id가 아니라 **닉네임**을 키로 쓰므로, 호출자가 그
+   * 표의 줄도 새 이름으로 옮겨 줘야 한다 — 안 그러면 개명한 사람의 전적이 옛 이름
+   * 밑에 남아 «전적 없음»이 된다(사용자 보고).
+   *
+   * 지난 판의 `game_players.nickname`은 **바꾸지 않는다.** 그건 «그 판을 무슨 이름으로
+   * 뒀는가»의 기록이고, 같은 판의 다른 참가자 리플레이·순위도 그 값을 가리킨다.
+   * 반면 제보 글의 작성자 이름(`feedback.author`)은 «지금 이 사람이 누구인가»의
+   * 표시용 사본이라 함께 갈아 끼운다.
+   *
+   * @returns `{ ok: true, from }` — from 은 옛 닉네임. 실패면 `{ ok: false, error }`
    */
-  renameUser(userId: number, username: string): string | null {
-    if (!Number.isInteger(userId)) return "잘못된 사용자 ID입니다";
+  renameUser(
+    userId: number,
+    username: string,
+  ): { ok: boolean; from?: string; error?: string } {
+    if (!Number.isInteger(userId)) return { ok: false, error: "잘못된 사용자 ID입니다" };
     const row = this.stmt("SELECT username FROM users WHERE id = ?").get(userId) as
       | { username: string }
       | undefined;
-    if (row === undefined) return "존재하지 않는 계정입니다";
-    if (row.username === username) return null; // 같은 이름 — 할 일이 없다
+    if (row === undefined) return { ok: false, error: "존재하지 않는 계정입니다" };
+    // 같은 이름 — 할 일이 없다(옮길 통계도 없다).
+    if (row.username === username) return { ok: true, from: row.username };
     /*
      * 이름 규칙(글자·길이·예약어·bot_ 사칭)은 가입과 공용이다. 중복만 따로 보는데,
      * `usernameProblem`의 중복 검사는 «자기 자신»도 걸리기 때문이다.
      */
     const problem = this.usernameProblem(username);
-    if (problem !== null && problem !== "이미 사용 중인 닉네임입니다") return problem;
+    if (problem !== null && problem !== "이미 사용 중인 닉네임입니다") {
+      return { ok: false, error: problem };
+    }
     const taken = this.stmt(
       "SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id <> ?",
     ).get(username, userId);
-    if (taken !== undefined) return "이미 사용 중인 닉네임입니다";
+    if (taken !== undefined) return { ok: false, error: "이미 사용 중인 닉네임입니다" };
+    // 이름과 그 이름을 쓰는 표시용 사본을 한 덩어리로 바꾼다 — 한쪽만 바뀌면
+    // 제보 목록에 옛 이름이 남는다.
+    this.db.exec("BEGIN");
     try {
       this.stmt("UPDATE users SET username = ? WHERE id = ?").run(username, userId);
+      this.stmt("UPDATE feedback SET author = ? WHERE user_id = ?").run(username, userId);
+      this.db.exec("COMMIT");
     } catch {
       // 검사와 UPDATE 사이의 경합 — UNIQUE 제약이 막아 준다.
-      return "이미 사용 중인 닉네임입니다";
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        /* 이미 열려 있지 않으면 되돌릴 것도 없다 */
+      }
+      return { ok: false, error: "이미 사용 중인 닉네임입니다" };
     }
     this.usersRev++;
-    return null;
+    return { ok: true, from: row.username };
   }
 
   deleteUser(userId: number): { ok: boolean; username?: string; error?: string } {

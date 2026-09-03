@@ -4344,30 +4344,80 @@ export class RoomManager {
       return this.fail(conn, "BAD_REQUEST", "잘못된 사용자 ID입니다");
     }
     const name = typeof username === "string" ? username.trim() : "";
-    let problem: string | null;
+    let res: { ok: boolean; from?: string; error?: string };
     try {
-      problem = db.renameUser(userId, name);
+      res = db.renameUser(userId, name);
     } catch (err) {
       console.error("renameUser error:", err);
       return this.fail(conn, "BAD_REQUEST", "닉네임 변경 중 오류가 발생했습니다");
     }
-    if (problem !== null) return this.fail(conn, "BAD_REQUEST", problem);
+    if (!res.ok) return this.fail(conn, "BAD_REQUEST", res.error ?? "닉네임을 바꿀 수 없습니다");
+    const from = res.from;
+    const moved = from !== undefined && from !== name;
 
     /*
      * 살아 있는 소켓의 신원을 갈아 끼운다.
      *
      * 닉네임을 키로 쓰는 자리가 셋 있다 — 친구 목록(`onlineMap`은 username으로
-     * 센다), 대기실 좌석 이름(`HumanAgent.nickname`), 통계 저장소. 앞의 둘은 여기서
-     * 지금 맞춘다. 통계는 **옛 이름 그대로 둔다**: 지난 대국의 기록은 그때의
-     * 이름으로 남는 것이 맞고, 옮기면 리더보드의 과거 줄이 통째로 흔들린다.
+     * 센다), 좌석 이름(`HumanAgent.nickname`), 누적 통계 저장소(`StatsStore`).
+     * **셋 다 여기서 맞춘다.**
      */
     const oldNames = new Set<string>();
+    if (from !== undefined) oldNames.add(from);
     const rooms = new Set<Room>();
     for (const c of this.conns) {
       if (c.user === null || c.guest || c.user.id !== userId) continue;
       oldNames.add(c.user.username);
       c.user = { ...c.user, username: name };
       if (c.room !== null) rooms.add(c.room);
+    }
+    /*
+     * **좌석 이름표까지 갈아 끼운다** (2026-09-04).
+     *
+     * `HumanAgent`는 생성 시점의 닉네임을 들고 있다. 그대로 두면 두 가지가 어긋난다:
+     *  ① 대기실·판 위 이름표가 옛 이름으로 남는다(로비 방송이 `agent.nickname`을 읽는다).
+     *  ② **이 판이 끝날 때 누적 통계가 다시 옛 이름으로 기록된다** — 방금 옮겨 놓은
+     *     통계가 그 자리에서 또 갈라진다. 조용히 새는 쪽이라 이게 더 나쁘다.
+     *
+     * 끊긴 채 좌석만 남아 있는 사람(재접속 대기)도 같이 바꿔야 하므로 소켓이 아니라
+     * **방의 좌석**을 훑는다. 계정 닉네임은 서로 겹칠 수 없고 봇은 `bot_` 접두라
+     * 이름으로 찾아도 남을 잘못 건드릴 수 없다.
+     */
+    if (moved && from !== undefined) {
+      for (const room of this.rooms.values()) {
+        for (const a of room.agents) {
+          if (this.isBot(a) || a.nickname !== from) continue;
+          if (a instanceof HumanAgent) a.rename(name);
+          rooms.add(room);
+        }
+      }
+    }
+    /*
+     * **누적 통계를 새 이름으로 옮긴다** (2026-09-04 사용자 보고: 「이름을 변경했을 때
+     * 내 통계 같은 게 다 사라져 버려」).
+     *
+     * `StatsStore`의 키는 계정 id가 아니라 닉네임이다 — 계정이 없던 시절의 구조가
+     * 그대로 남아 있다. 그래서 개명하면 누적 통계와 리더보드 줄이 옛 이름 밑에 남고
+     * 그 계정에서는 «전적 없음»이 됐다(기간 성적·리플레이는 `user_id` 조회라 멀쩡했다 —
+     * 사라진 것처럼 보인 것이 이 표 하나다).
+     *
+     * 파일에 쓰는 일이라 비동기다. 다 옮긴 **뒤에** 그 사람 화면의 누적 통계와 대기실
+     * 줄을 다시 보낸다 — 먼저 보내면 옛 값(없음)을 한 번 더 그린다.
+     */
+    if (moved && from !== undefined && this.statsStore) {
+      const store = this.statsStore;
+      void store
+        .rename(from, name)
+        .then(() => {
+          for (const c of this.conns) {
+            if (c.user === null || c.guest || c.user.id !== userId) continue;
+            this.sendCareerStats(c);
+          }
+          for (const room of rooms) this.broadcastLobby(room);
+        })
+        .catch((err: unknown) => {
+          this.logError(null, "닉네임 변경 — 누적 통계 이전 실패:", err);
+        });
     }
     // 대기실·대국 화면의 이름표. 좌석 이름은 로비 방송이 읽어 간다.
     for (const room of rooms) this.broadcastLobby(room);
