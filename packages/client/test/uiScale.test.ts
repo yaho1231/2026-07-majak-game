@@ -157,18 +157,29 @@ describe("배율은 창을 원판(1920×1080)에 맞춘 값 하나다", () => {
     expect((await boot({ w: 7680, h: 4320 })).getUiScale()).toBe(2);
   });
 
-  it("납작한 창은 1 아래로 내려가되 하한 0.75에서 멈춘다", async () => {
+  it("작은 창은 1 아래로 내려가되 하한 0.5에서 멈춘다", async () => {
     // 1850×860: 세로 쪽이 먼저 걸린다 → 860/1080 = 0.796 → 0.79
     expect((await boot({ w: 1850, h: 860 })).getUiScale()).toBe(0.79);
-    // 1920×600: 0.556 → 하한
-    expect((await boot({ w: 1920, h: 600 })).getUiScale()).toBe(0.75);
-    expect((await boot({ w: 800, h: 600 })).getUiScale()).toBe(0.75);
+    // 1920×600: 0.556 → 아직 하한 위. 균일 배율이 그대로 듣는다.
+    expect((await boot({ w: 1920, h: 600 })).getUiScale()).toBe(0.55);
+    // 800×600: 0.555 → 세로가 아니라 가로가 먼저 걸린다(800/1920 = 0.416) → 하한
+    expect((await boot({ w: 800, h: 600 })).getUiScale()).toBe(0.5);
   });
 
-  it("어느 창에서도 [0.75, 2] 를 벗어나지 않는다", async () => {
+  /* 하한이 곧 «비율이 유지되는 구간의 끝»이다 — 960×540 까지는 가상 뷰포트가
+     정확히 원판(1920×1080)으로 서야 요소들이 따로 줄지 않는다. */
+  it("960×540 까지는 가상 뷰포트가 원판 밑으로 내려가지 않는다", async () => {
+    for (const [w, h] of [[960, 540], [1280, 720], [1440, 810], [1024, 640]] as const) {
+      const s = (await boot({ w, h })).getUiScale();
+      expect(w / s, `${w}×${h} 가로`).toBeGreaterThanOrEqual(1920 - 20);
+      expect(h / s, `${w}×${h} 세로`).toBeGreaterThanOrEqual(1080 - 12);
+    }
+  });
+
+  it("어느 창에서도 [0.5, 2] 를 벗어나지 않는다", async () => {
     for (const [w, h] of [[320, 480], [800, 600], [1366, 768], [1920, 1080], [5120, 2880]] as const) {
       const s = (await boot({ w, h })).getUiScale();
-      expect(s, `${w}×${h}`).toBeGreaterThanOrEqual(0.75);
+      expect(s, `${w}×${h}`).toBeGreaterThanOrEqual(0.5);
       expect(s, `${w}×${h}`).toBeLessThanOrEqual(2);
     }
   });
