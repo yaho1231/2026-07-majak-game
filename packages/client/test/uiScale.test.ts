@@ -208,22 +208,23 @@ describe("배율은 창을 원판(1920×1080)에 맞춘 값 하나다", () => {
  * "작은 창"으로 읽고 배율을 1/z 로 낮추면 **사람이 요구한 확대가 정확히 상쇄된다** —
  * Ctrl+ 를 눌러도 아무 일이 안 일어난다(WCAG 1.4.4 위반). 그래서 z 를 도로 곱한다.
  */
-describe("브라우저 확대는 배율에 곱하지 않는다 — 무대가 창을 넘치면 안 된다", () => {
-  it("200% 로 키워도 무대는 창에 맞춘 그대로다 (화면에서는 아무것도 안 바뀐다)", async () => {
+describe("브라우저 확대는 상쇄하지 않고 그 위에 곱한다 (무대가 창보다 커지면 스크롤)", () => {
+  it("200% 로 키우면 배율이 그대로 남는다 = 화면에서는 두 배로 보인다", async () => {
     const base = { w: 1920, h: 1080, dpr: 1 };
     const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
     expect(m.getUiScale()).toBe(1);
     browserZoom(2, base);
-    // CSS 픽셀 창 960×540 → 배율 0.5. CSS px 가 두 배로 그려지니 화면에서는 그대로.
-    expect(m.getUiScale()).toBe(0.5);
-    expect(appliedScale()).toBe(0.5);
+    // 창은 960×540 이 됐지만(맞춤만 보면 0.5) 확대 배수 2가 곱해져 1.0 — 무대가 창의
+    // 두 배라 body 가 스크롤된다. CSS px 자체가 두 배로 그려지므로 화면에서는 정확히 200%.
+    expect(m.getUiScale()).toBe(1);
+    expect(appliedScale()).toBe(1);
   });
 
-  it("50% 로 줄여도 마찬가지", async () => {
+  it("50% 로 줄이면 배율도 함께 내려간다", async () => {
     const base = { w: 1920, h: 1080, dpr: 1 };
     const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
     browserZoom(0.5, base);
-    expect(m.getUiScale()).toBe(2);
+    expect(m.getUiScale()).toBe(1);
   });
 
   it("Ctrl+0 으로 되돌리면 원래 배율로 돌아온다", async () => {
@@ -264,9 +265,9 @@ describe("브라우저 확대는 배율에 곱하지 않는다 — 무대가 창
     win.devicePixelRatio = 2;
     resizeHandlers.forEach((fn) => fn());
     expect(m.getUiScale()).toBe(1);
-    // 그 자리에서 확대하면 CSS 픽셀 창이 반으로 줄고 무대도 그에 맞춘다
+    // 그 자리에서 확대하면 그건 다시 확대로 읽힌다
     browserZoom(2, { w: 1920, h: 1080, dpr: 2 });
-    expect(m.getUiScale()).toBe(0.5);
+    expect(m.getUiScale()).toBe(1);
     expect(win.innerWidth).toBe(960);
   });
 

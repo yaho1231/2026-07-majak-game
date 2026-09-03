@@ -169,8 +169,7 @@ const MAX_ZOOM_FACTOR = 2;
  * 기준선이므로 눌린 것을 볼 수가 없다). 판이 깨진 채 굳는 것보다는 이쪽이 낫다 —
  * 크게 보고 싶으면 판을 연 뒤 한 번 더 누르면 그대로 듣는다.
  */
-/** (배율에는 더 이상 곱하지 않는다 — 무대가 창을 넘치면 안 된다. 잰 값은 참고용.) */
-export function browserZoomFactor(): number {
+function browserZoomFactor(): number {
   if (baseDpr <= 0 || baseDeviceW <= 0) return 1;
   const dpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : baseDpr;
   const raw = dpr / baseDpr;
@@ -279,12 +278,12 @@ function computeScale(): number {
    * 상한·하한이 없다 — 무대(1920×1080)가 창에 **정확히 들어가는** 배율 하나다.
    * 창이 작으면 무대도 그만큼 작아지고(비율은 그대로), 크면 그만큼 커진다.
    *
-   * 브라우저 확대(Ctrl/⌘ +/−)도 곱하지 않는다. 곱하면 무대가 창보다 커져 가장자리가
-   * 잘린다 — 무대가 늘 창 안에 통째로 보인다는 약속이 먼저다. 확대를 누르면 CSS 픽셀
-   * 창이 1/z 로 줄고 배율이 그만큼 내려가 화면에서는 아무것도 안 바뀐다(=상쇄).
-   * (0.5 안전 하한은 없다 — 0 이 되는 것만 막는다.)
+   * 브라우저 확대(Ctrl/⌘ +/−)는 상쇄하지 않고 그 위에 곱한다(WCAG 1.4.4). 그러면
+   * 무대가 창보다 커지는데, 그때는 body 가 스크롤된다(styles.css 고정 무대 블록) —
+   * 여느 웹 페이지를 확대했을 때와 같은 동작이다. 잘리지 않는다.
    */
-  const safe = Math.max(0.05, fit);
+  const raw = fit * browserZoomFactor();
+  const safe = Math.max(0.05, raw);
   return Math.floor(safe * 100) / 100;
 }
 

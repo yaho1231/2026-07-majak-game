@@ -194,16 +194,19 @@ html[data-ui-scale-mode="transform"] body {
    body 포털(툴팁·드래프트 창)은 그쪽을 본다. */
 html[data-ui-stage="fixed"] body {
   display: flex;
-  align-items: center;
-  justify-content: center;
   background: #000;
-  overflow: hidden;
+  /* 브라우저 확대(Ctrl +)로 무대가 창보다 커지면 body 가 스크롤된다 — 여느 페이지를
+     확대했을 때와 같다. 가운데 정렬은 align/justify 가 아니라 아래 #root 의
+     `margin: auto` 로 한다: flex 정렬은 넘치는 항목의 위·왼쪽을 잘라 버리지만
+     auto 마진은 음수가 되지 않아 넘칠 때는 시작점에 붙는다. */
+  overflow: auto;
 }
 
 html[data-ui-stage="fixed"] #root {
   flex: none;
   width: 1920px;
   height: 1080px;
+  margin: auto;
   container: ui / size;
   overflow: hidden;
   position: relative;
