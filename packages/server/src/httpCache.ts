@@ -29,9 +29,26 @@
  * `public/` 손수 작성 파일이 Cloudflare 캐시에 4시간 갇히는 문제를 이미 겪었다.
  */
 const LONG_CACHE_DIRS = ["/tiles/", "/sfx/", "/icons/", "/brand/"] as const;
+
+/**
+ * BGM 파일 (2026-09-04). `public/` 바로 아래에 있어 위의 «디렉터리» 규칙에 안 걸리고
+ * `no-cache` 로 떨어졌다 — 게다가 이 응답에는 ETag·Last-Modified 가 없어서 재검증이
+ * 304 로 끝날 수가 없다. 즉 **판을 열 때마다 대국 BGM 8.7MB + 리치 BGM 한 곡(1.5~8.7MB)을
+ * 통째로 다시 받았다.** 하필 그 다운로드가 시작되는 순간이 첫 배패가 그려지는 순간이라
+ * (App.tsx `bgmShouldPlay`), 처음 온 사람이 «바로 한 판»을 누르면 판이 서는 동안
+ * 15MB가 같은 회선을 물고 늘어졌다 — 사용자가 말한 그 «렉»이다.
+ *
+ * 타일·효과음과 같은 정책으로 묶는다: 이름이 고정이라 immutable 은 못 주지만,
+ * 하루가 지나면 뒤에서 다시 받아 오되 그동안 화면(과 소리)은 즉시 뜬다.
+ */
+const LONG_CACHE_EXTS = [".mp3", ".wav", ".ogg", ".m4a"] as const;
+
 export function cacheControlFor(filePath: string): string {
   if (filePath.includes("/assets/")) return "public, max-age=31536000, immutable";
-  if (LONG_CACHE_DIRS.some((d) => filePath.includes(d))) {
+  if (
+    LONG_CACHE_DIRS.some((d) => filePath.includes(d)) ||
+    LONG_CACHE_EXTS.some((e) => filePath.endsWith(e))
+  ) {
     // 하루가 지나면 백그라운드에서 다시 받아 오되, 그동안 화면은 옛것으로 즉시 뜬다.
     return "public, max-age=86400, stale-while-revalidate=604800";
   }

@@ -241,7 +241,54 @@ const MIME: Record<string, string> = {
   ".ico": "image/x-icon",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
+  /*
+   * 오디오 (2026-09-04). 여기 없으면 `application/octet-stream` 으로 나가는데,
+   * 바로 아래에서 **`X-Content-Type-Options: nosniff`** 를 같이 보낸다 — 즉
+   * 브라우저가 «오디오가 아니다» 라고 못 박힌 바이트를 받고 그대로 재생을 거부한다.
+   * 대국 BGM(8.7MB)·리치 BGM 8곡이 전부 그 길로 나가고 있었다.
+   */
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
 };
+
+/**
+ * `Range: bytes=...` 헤더를 파싱한다 (2026-09-04).
+ *
+ * 받는 것은 **단일 구간뿐**이다 — 여러 구간(multipart/byteranges)은 이 서버가
+ * 내주는 어떤 파일에도 쓰이지 않고, 만들면 경계 문자열 조립이 통째로 따라온다.
+ * 꼴이 낯설면 `null`(= 전체 응답)로 떨어뜨린다: 구간 요청을 못 알아들었을 때
+ * 200으로 전부 주는 것은 규격이 허락하는 답이다.
+ *
+ * `"unsatisfiable"` 은 «꼴은 맞는데 파일 밖» — 이건 416으로 답해야 한다.
+ */
+function byteRangeOf(
+  header: string | string[] | undefined,
+  size: number,
+): { start: number; end: number } | "unsatisfiable" | null {
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (raw === undefined || size <= 0) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(raw.trim());
+  if (m === null) return null;
+  const [, from, to] = m;
+  let start: number;
+  let end: number;
+  if (from === "") {
+    // `bytes=-500` — 끝에서 500바이트. 파일보다 크면 파일 전체다.
+    if (to === "") return null;
+    const n = Number(to);
+    if (!Number.isFinite(n) || n <= 0) return "unsatisfiable";
+    start = Math.max(0, size - n);
+    end = size - 1;
+  } else {
+    start = Number(from);
+    if (!Number.isFinite(start) || start >= size) return "unsatisfiable";
+    end = to === "" ? size - 1 : Math.min(size - 1, Number(to));
+    if (!Number.isFinite(end) || end < start) return "unsatisfiable";
+  }
+  return { start, end };
+}
 
 /**
  * 압축해서 보낼 확장자.
@@ -665,9 +712,31 @@ const httpServer = createServer((req, res) => {
     return;
   }
   const ext = extname(filePath);
-  const encoding = encodingFor(req, ext, statSync(realPath).size);
-  res.writeHead(200, {
+  const size = statSync(realPath).size;
+  const encoding = encodingFor(req, ext, size);
+  /*
+   * 구간 요청 (2026-09-04).
+   *
+   * BGM은 8.7MB짜리 `<audio>` 다. 여태 `Accept-Ranges` 를 한 번도 보내지 않아서
+   * 브라우저는 **파일 하나를 통째로 받는 것 말고 다른 수가 없었다** — 앞부분만
+   * 받아 틀기 시작하는 길도, 끊긴 자리에서 이어받는 길도 막혀 있었다. 압축해
+   * 보내는 응답에는 걸지 않는다(구간이 압축 스트림의 바이트를 가리키게 된다).
+   */
+  const rangeable = encoding === null;
+  const range = rangeable ? byteRangeOf(req.headers.range, size) : null;
+  if (range === "unsatisfiable") {
+    res.writeHead(416, { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" }).end();
+    return;
+  }
+  res.writeHead(range === null ? 200 : 206, {
     "Content-Type": MIME[ext] ?? "application/octet-stream",
+    ...(rangeable
+      ? {
+          "Accept-Ranges": "bytes",
+          "Content-Length": range === null ? size : range.end - range.start + 1,
+          ...(range === null ? {} : { "Content-Range": `bytes ${range.start}-${range.end}/${size}` }),
+        }
+      : {}),
     "Cache-Control": cacheControlFor(filePath),
     // 압축 여부가 Accept-Encoding에 따라 갈리므로 중간 캐시가 섞지 않게 알린다.
     Vary: "Accept-Encoding",
@@ -684,7 +753,8 @@ const httpServer = createServer((req, res) => {
     res.end();
     return;
   }
-  const stream = createReadStream(realPath);
+  const stream =
+    range === null ? createReadStream(realPath) : createReadStream(realPath, range);
   // 스트림 error(EMFILE·EACCES·TOCTOU 등)에 리스너가 없으면 Node가 uncaught로
   // 프로세스를 죽인다. 응답을 끊어 요청만 실패시키고 서버는 살려 둔다.
   stream.on("error", () => res.destroy());
