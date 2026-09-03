@@ -21,6 +21,8 @@ import type { WebSocket } from "ws";
 import { RoomManager } from "../src/RoomManager.js";
 import { StatsStore } from "../src/StatsStore.js";
 import { SiteDb } from "../src/SiteDb.js";
+import { createEmptyStats } from "@majak/core/stats/PlayerStats.js";
+import type { PlayerStatsRaw } from "@majak/core/stats/PlayerStats.js";
 
 class FakeSocket {
   readyState = 1; // OPEN
@@ -82,6 +84,8 @@ const managers: RoomManager[] = [];
 interface Harness {
   rm: RoomManager;
   db: SiteDb;
+  /** 누적 통계 저장소 — 개명이 이 표의 줄을 옮기는지 보는 데 쓴다 */
+  store: StatsStore;
 }
 
 async function newHarness(): Promise<Harness> {
@@ -93,7 +97,7 @@ async function newHarness(): Promise<Harness> {
   dbs.push(db);
   const manager = new RoomManager(replayDir, store, 0, db);
   managers.push(manager);
-  return { rm: manager, db };
+  return { rm: manager, db, store };
 }
 
 /** 가입해서 붙는다. `adminCode`를 주면 관리자 계정이 된다. */
@@ -263,7 +267,127 @@ describe("관리자 — 닉네임 바꾸기", () => {
     const h = await newHarness();
     await connectUser(h, "Kimchi");
     const id = h.db.userByName("Kimchi")!.id;
-    expect(h.db.renameUser(id, "KIMCHI")).toBeNull();
+    // 2026-09-04: 반환이 «사유 문자열 | null» 에서 `deleteUser` 와 같은 꼴로 바뀌었다 —
+    // 호출자가 옛 이름을 알아야 누적 통계(닉네임 키)를 함께 옮길 수 있다.
+    expect(h.db.renameUser(id, "KIMCHI")).toEqual({ ok: true, from: "Kimchi" });
     expect(h.db.userByName("KIMCHI")?.id).toBe(id);
+  });
+});
+
+/*
+ * ── 개명이 «내 것»을 데려간다 (2026-09-04 사용자 보고) ──
+ *
+ * 「이름을 변경했을 때 내 통계 같은 게 다 사라져 버려.」
+ *
+ * `StatsStore`의 키는 계정 id가 아니라 **닉네임**이다(계정이 없던 시절의 구조가
+ * 그대로 남았다). 그래서 개명하면 누적 통계와 리더보드 줄이 옛 이름 밑에 남고 그
+ * 계정에서는 «전적 없음»이 됐다. 기간 성적·리플레이 목록은 `user_id` 조회라 멀쩡했으니,
+ * 사라진 것처럼 보인 것은 정확히 이 표 하나다.
+ */
+describe("관리자 — 개명해도 전적은 그대로 간다", () => {
+  /** 판수 n 만큼의 최소 누적 통계 */
+  const career = (games: number, wins = 0): PlayerStatsRaw => ({
+    ...createEmptyStats(),
+    games,
+    wins,
+    roundsPlayed: games * 4,
+  });
+
+  it("누적 통계가 새 이름으로 따라온다 — 옛 이름 밑에 남지 않는다", async () => {
+    const h = await newHarness();
+    const admin = await connectUser(h, "전적관리자", h.db.adminCode());
+    await connectUser(h, "옛이름");
+    await h.store.record([{ nickname: "옛이름", raw: career(7, 3) }]);
+    const id = h.db.userByName("옛이름")!.id;
+
+    admin.clientSend({ type: "adminRenameUser", userId: String(id), username: "새이름" });
+    await admin.waitFor((m) => m.type === "adminUsers" && m.users.some((u: any) => u.username === "새이름"));
+    await h.store.flush();
+
+    expect(h.store.get("새이름")?.games).toBe(7);
+    expect(h.store.get("새이름")?.wins).toBe(3);
+    expect(h.store.get("옛이름")).toBeNull();
+  });
+
+  it("그 사람 화면의 누적 통계도 그 자리에서 갱신된다 (새로고침을 기다리지 않는다)", async () => {
+    const h = await newHarness();
+    const admin = await connectUser(h, "전적관리자2", h.db.adminCode());
+    const me = await connectUser(h, "따라올사람");
+    await h.store.record([{ nickname: "따라올사람", raw: career(5) }]);
+    const id = h.db.userByName("따라올사람")!.id;
+
+    me.sent.length = 0;
+    admin.clientSend({ type: "adminRenameUser", userId: String(id), username: "바뀐사람" });
+    await me.waitFor((m) => m.type === "stats" && m.career.length > 0);
+    const stats = me.last("stats");
+    expect(stats.career[0].nickname).toBe("바뀐사람");
+    expect(stats.career[0].stats.games).toBe(5);
+  });
+
+  it("목적지에 남아 있던 값이 있으면 합친다 — 어느 쪽도 버리지 않는다", async () => {
+    const h = await newHarness();
+    const admin = await connectUser(h, "합치기관리자", h.db.adminCode());
+    await connectUser(h, "합칠사람");
+    // 게스트나 이미 삭제된 계정이 그 이름으로 남겨 둔 줄. 계정 이름은 겹칠 수 없으므로
+    // 이 값은 앞으로 어느 계정도 닿을 수 없다 — 합치는 쪽이 잃는 것이 없다.
+    await h.store.record([
+      { nickname: "합칠사람", raw: career(2) },
+      { nickname: "빈자리아님", raw: career(3) },
+    ]);
+    const id = h.db.userByName("합칠사람")!.id;
+
+    admin.clientSend({ type: "adminRenameUser", userId: String(id), username: "빈자리아님" });
+    await admin.waitFor((m) => m.type === "adminUsers" && m.users.some((u: any) => u.username === "빈자리아님"));
+    await h.store.flush();
+
+    expect(h.store.get("빈자리아님")?.games).toBe(5);
+    expect(h.store.get("합칠사람")).toBeNull();
+  });
+
+  it("대소문자만 바꾸는 개명에서도 옮긴다 — 이 표에서는 다른 키다", async () => {
+    const h = await newHarness();
+    const admin = await connectUser(h, "대소문자관리자", h.db.adminCode());
+    await connectUser(h, "Nick");
+    await h.store.record([{ nickname: "Nick", raw: career(4) }]);
+    const id = h.db.userByName("Nick")!.id;
+
+    admin.clientSend({ type: "adminRenameUser", userId: String(id), username: "NICK" });
+    await admin.waitFor((m) => m.type === "adminUsers" && m.users.some((u: any) => u.username === "NICK"));
+    await h.store.flush();
+
+    expect(h.store.get("NICK")?.games).toBe(4);
+    expect(h.store.get("Nick")).toBeNull();
+  });
+
+  it("좌석 이름표까지 갈아 끼운다 — 안 그러면 이 판이 끝날 때 옛 이름으로 다시 기록된다", async () => {
+    const h = await newHarness();
+    const admin = await connectUser(h, "좌석관리자", h.db.adminCode());
+    const player = await connectUser(h, "앉은사람");
+    player.clientSend({ type: "createRoom" });
+    await player.waitFor((m) => m.type === "lobby");
+    const id = h.db.userByName("앉은사람")!.id;
+
+    player.sent.length = 0;
+    admin.clientSend({ type: "adminRenameUser", userId: String(id), username: "새좌석" });
+    await player.waitFor(
+      (m) => m.type === "lobby" && m.players.some((p: any) => p.nickname === "새좌석"),
+    );
+    const lobby = player.last("lobby");
+    expect(lobby.players.map((p: any) => p.nickname)).not.toContain("앉은사람");
+  });
+
+  it("제보 글의 작성자 이름도 따라온다 (지난 판의 기록은 그대로 둔다)", async () => {
+    const h = await newHarness();
+    const admin = await connectUser(h, "제보관리자", h.db.adminCode());
+    const me = await connectUser(h, "제보한사람");
+    me.clientSend({ type: "feedbackSubmit", kind: "bug", title: "제목", body: "본문" });
+    await me.waitFor((m) => m.type === "feedbackList" && m.entries.length > 0);
+    const id = h.db.userByName("제보한사람")!.id;
+
+    admin.clientSend({ type: "adminRenameUser", userId: String(id), username: "이름바꿈" });
+    await admin.waitFor((m) => m.type === "adminUsers" && m.users.some((u: any) => u.username === "이름바꿈"));
+
+    const entries = h.db.listFeedback(h.db.userByName("이름바꿈")!);
+    expect(entries[0]?.author).toBe("이름바꿈");
   });
 });

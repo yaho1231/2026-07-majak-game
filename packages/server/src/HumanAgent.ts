@@ -292,7 +292,11 @@ interface PendingDecision {
 
 export class HumanAgent implements PlayerAgent {
   readonly id: PlayerId;
-  readonly nickname: string;
+  /**
+   * 좌석 이름표. **`readonly` 가 아니다** — 관리자가 닉네임을 바꿀 수 있다
+   * (`rename`, 2026-09-04). 밖에서 대입하지 말고 그 메서드를 쓴다.
+   */
+  nickname: string;
   readonly isBot = false;
   /**
    * 이 좌석이 앉아 있는 방 코드 — 로그에만 쓴다. 타임아웃 폴백이 어느 판에서
@@ -1246,6 +1250,18 @@ export class HumanAgent implements PlayerAgent {
 
   watchChoices(watch: (ev: SeatChoiceEvent) => void): void {
     this.choiceWatch = watch;
+  }
+
+  /**
+   * **좌석 이름을 바꾼다** (관리자 개명, 2026-09-04).
+   *
+   * 이 값은 이름표에만 쓰이는 것이 아니다 — 판이 끝나면 누적 통계가 **이 이름을 키로**
+   * 기록된다(`RoomManager.recordGameStats` → `StatsStore.record`). 그래서 개명한
+   * 사람이 앉아 있는 좌석을 안 갈아 끼우면, 그 판이 끝나는 순간 통계가 다시 옛 이름
+   * 밑으로 들어가 방금 옮겨 놓은 것이 또 갈라진다.
+   */
+  rename(nickname: string): void {
+    this.nickname = nickname;
   }
 
   /** 이 좌석의 결정을 지금 기다리고 있는가 (조종 해제 시 판별용). */
