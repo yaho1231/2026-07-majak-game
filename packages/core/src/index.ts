@@ -132,8 +132,16 @@ export {
   buildSpectateSeatScores,
   gradeStartingHand,
   gradeStartingHands,
+  gradeSeatHand,
+  emptyHandGrades,
+  initialHandGrades,
+  refreshHandGrades,
 } from "./information/spectateScore.js";
-export type { SpectateSeatScore } from "./information/spectateScore.js";
+export type {
+  SpectateSeatScore,
+  SeatHandGrade,
+  HandGradeState,
+} from "./information/spectateScore.js";
 export type { BuildWinContextOptions } from "./mahjong/flow/helpers.js";
 export { findPao } from "./mahjong/flow/pao.js";
 export type { PaoResult } from "./mahjong/flow/pao.js";
@@ -520,6 +528,8 @@ export type {
   SpectateInsightMessage,
   SpectateDraftMessage,
   SpectateDraftEndMessage,
+  SpectateChoiceMessage,
+  SpectateChoiceEndMessage,
   SpectateWinValue,
   SpectateWait,
   GamePausedMessage,

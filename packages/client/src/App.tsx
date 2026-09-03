@@ -61,6 +61,7 @@ import type {
   PeriodStats,
   ServerInfoMessage,
   ServerNotice,
+  SpectateChoiceMessage,
   SpectateDraftMessage,
   SpectateInsightMessage,
   SpectateWinValue,
@@ -3165,6 +3166,18 @@ export function App(): JSX.Element {
    */
   const [spectateDraft, setSpectateDraft] = useState<SpectateDraftMessage | null>(null);
   /**
+   * **관전 중계: 지금 어느 좌석이 무엇을 고르고 있는가** (관전자에게만 온다).
+   *
+   * 액티브 증강(연금술사·염색·날치기…)을 쓰면 그 사람 화면에는 «무엇을 무엇으로»를
+   * 고르는 패널이 열린다. 그런데 관전 화면에는 그 몇 초가 통째로 «아무 일도 없는
+   * 탁자»로만 보였다 — 정작 이 게임에서 제일 볼 만한 순간이 거기다(2026-09-03 사용자
+   * 요청: 「연금술사로 증강 사용하면 띄우는 패널을 관전에서도 실시간으로 볼 수 있게」).
+   *
+   * 서버가 프롬프트를 스냅샷으로 실어 보내고(`spectateChoice`) 그 선택이 끝나면
+   * `spectateChoiceEnd`로 걷는다 — 증강 드래프트 중계와 같은 구조다.
+   */
+  const [spectateChoice, setSpectateChoice] = useState<SpectateChoiceMessage | null>(null);
+  /**
    * 이 관전석에 걸린 송출 지연(초). 0이면 지연 없음 (docs/36 C1).
    *
    * **저장한다.** 여태 새로고침 한 번에 0으로 돌아갔는데, 이건 취향이 아니라
@@ -3801,6 +3814,7 @@ export function App(): JSX.Element {
     roomNoticeTimer.current = null;
     setInsight(null);
     setSpectateDraft(null);
+    setSpectateChoice(null);
     setSpectatedBy(0);
     viewBuffer.current = [];
     setRewindAt(null);
@@ -5377,6 +5391,16 @@ export function App(): JSX.Element {
     }
     if (msg.type === "spectateDraftEnd") {
       setSpectateDraft(null);
+      return;
+    }
+    if (msg.type === "spectateChoice") {
+      // 관전 중계 — 어느 좌석의 선택창이 열렸다(스냅샷이라 그대로 갈아 끼운다).
+      setSpectateChoice(msg);
+      return;
+    }
+    if (msg.type === "spectateChoiceEnd") {
+      // 다른 좌석의 뒤늦은 종료 통보가 방금 열린 창을 걷어 가지 않게 좌석을 확인한다.
+      setSpectateChoice((cur) => (cur === null || cur.seat === msg.seat ? null : cur));
       return;
     }
     if (msg.type === "roundOver") {
@@ -7181,6 +7205,14 @@ export function App(): JSX.Element {
       */}
       {isSpectator && spectateDraft !== null && view !== null && rewindAt === null ? (
         <SpectateDraftPanel draft={spectateDraft} view={view} catalog={catalog} />
+      ) : null}
+      {/*
+        관전 중계 — 액티브 증강의 선택창을 관전 화면에도 그대로 띄운다 (2026-09-03).
+        드래프트 중계와 같은 조건이다: 관전 중이고, 되감기 중이 아닐 때만. 되감는
+        동안 이 줄만 «지금»이면 한 화면에 두 시각이 서게 된다.
+      */}
+      {isSpectator && spectateChoice !== null && view !== null && rewindAt === null ? (
+        <SpectateChoicePanel choice={spectateChoice} view={view} />
       ) : null}
       {activeProd !== null && activeProd.channel === "banner" && activeProd.tone === "riichi" ? (
         // 리치 전용 풀 연출 — 비네트 암전 + 붉은 밴드 + 천점봉 슬라이드-인 + 금속성 글자
@@ -25497,6 +25529,65 @@ function RoundResultPanel({
 }
 
 // ─────────────────────────── 드래프트 오버레이 ───────────────────────────
+
+/**
+ * **관전 중계: 액티브 증강 선택창** — 지금 이 좌석이 무엇을 고르고 있는가 (관전 전용).
+ *
+ * 연금술사·염색처럼 «무엇을 무엇으로»를 사람이 직접 고르는 증강은, 그 몇 초 동안
+ * 대국자 화면에만 패널이 열리고 관전 화면은 멈춘 탁자로만 보였다 — 이 게임에서
+ * 제일 볼 만한 순간이 통째로 중계에서 빠진 셈이다(2026-09-03 사용자 요청).
+ *
+ * 서버가 그 사람 프롬프트의 «증강 몫»만 추려 스냅샷으로 보낸다(`spectateChoice`).
+ * 여기서는 쌓지 않고 그대로 그리고, 선택이 끝나면 `spectateChoiceEnd`가 걷는다.
+ *
+ * 스크림은 `pointer-events: none`이다 — 이 창은 사람이 닫는 것이 아니라 서버가
+ * 걷는 것이라, 그 아래 되감기·정지 손잡이가 이 몇 초 동안 죽으면 안 된다.
+ * 판이 도는 중이므로 드래프트 중계와 달리 **탁자를 어둡게 덮지 않는다.**
+ */
+function SpectateChoicePanel({
+  choice,
+  view,
+}: {
+  choice: SpectateChoiceMessage;
+  /** 좌석 이름·자풍을 얻는 곳 (관전 뷰) */
+  view: PlayerView;
+}): JSX.Element {
+  const info = view.players.find((x) => x.id === choice.seat);
+  return createPortal(
+    <div className="spec-choice">
+      <div className="spec-choice-panel">
+        <div className="spec-choice-head">
+          <span className="spec-choice-tag">증강 사용 중</span>
+          <span className="spec-choice-who">
+            <span className="spec-choice-wind">
+              {info !== undefined ? seatWindChar(view, info) : "?"}
+            </span>
+            {playerNameById(view, choice.seat)}
+          </span>
+        </div>
+        <strong className="spec-choice-title">{choice.title}</strong>
+        {choice.options.length === 0 ? (
+          <p className="spec-choice-empty">고르는 중…</p>
+        ) : (
+          <div className="spec-choice-opts">
+            {choice.options.map((o, i) => (
+              <span className="spec-choice-opt" key={`${i}-${o.label}`}>
+                <span className="spec-choice-opt-label">{o.label}</span>
+                {o.detail !== undefined ? (
+                  <span className="spec-choice-opt-detail">{o.detail}</span>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        )}
+        <p className="spec-choice-note">
+          이 좌석의 화면에 지금 서 있는 선택지입니다 — 고르면 곧 판에 반영됩니다
+        </p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 /**
  * **관전 중계: 증강 선택판** — 네 좌석이 지금 각자 무엇을 보고 있는가 (관전 전용).

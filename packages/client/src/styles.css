@@ -19138,7 +19138,10 @@ body:has(.prod-skip) .toast-stack {
   display: grid;
   align-content: safe center;
   justify-items: center;
-  padding: 12px;
+  /* 도크가 무대를 넓혀 두었으면(`--stage-extra`) 그만큼 오른쪽을 비워 **판 위에**
+     가운데 정렬한다 — 안 그러면 도크까지 포함한 폭의 한가운데라 판에서 오른쪽으로
+     밀린다 (2026-09-03 무대 확장과 함께). */
+  padding: 12px calc(12px + var(--stage-extra, 0px)) 12px 12px;
   overflow-y: auto;
   overscroll-behavior: contain;
   pointer-events: none;
@@ -19324,4 +19327,119 @@ body:has(.prod-skip) .toast-stack {
   .spec-draft-card { padding: 5px 7px; }
   .spec-draft-card-name { font-size: 11.5px; }
   .spec-draft-card-desc { font-size: 10px; -webkit-line-clamp: 2; }
+}
+
+/* ─────────── 관전 중계: 액티브 증강 선택창 (SpectateChoicePanel) ───────────
+ *
+ * 드래프트 중계(`.spec-draft`)와 형제지만 **판이 도는 중**에 뜬다. 그래서 탁자를
+ * 어둡게 덮지 않는다 — 몇 초짜리 선택 하나 때문에 중계 화면이 매번 깜빡이면
+ * 보는 쪽이 더 피곤하다(2026-09-03). 카드 하나만 판 가운데 아래쪽에 얹는다.
+ *
+ * ⚠ `fixed`가 아니라 `absolute`다 — body 가 배율의 기준이라 fixed 의 기준이 창이
+ *   아니게 된다(`.spec-draft` 머리말과 같은 규약).
+ * ⚠ 스크림은 `pointer-events: none` — 서버가 걷는 창이라 그 아래 손잡이를 죽이면
+ *   안 된다. 카드만 되살린다.
+ */
+.spec-choice {
+  position: absolute;
+  inset: 0;
+  z-index: 46; /* 탁자 위 · 결과/드래프트 오버레이(50) 아래 */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* 도크 몫을 비워 판 위에 가운데로 선다 (무대 확장) */
+  padding: 0 calc(12px + var(--stage-extra, 0px)) 20cqh 12px;
+  pointer-events: none;
+}
+
+.spec-choice-panel {
+  pointer-events: auto;
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 11px;
+  border-radius: 14px;
+  border: 1px solid rgba(199, 188, 255, 0.5);
+  background: linear-gradient(180deg, rgba(24, 22, 44, 0.96), rgba(13, 14, 26, 0.96));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  animation: overlay-in 0.2s ease-out;
+}
+
+.spec-choice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.spec-choice-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(199, 188, 255, 0.9);
+  color: #16142a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.spec-choice-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(247, 243, 232, 0.86);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.spec-choice-wind {
+  padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+}
+
+.spec-choice-title {
+  color: #d8d2ff;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+}
+
+.spec-choice-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  /* 후보가 수십 개인 증강(왕패의 주인·연금술사)도 있다 — 카드가 화면을 먹지
+     않도록 여기만 스크롤한다. */
+  max-height: 22cqh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.spec-choice-opt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 8px 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(199, 188, 255, 0.32);
+  background: rgba(199, 188, 255, 0.12);
+}
+
+.spec-choice-opt-label {
+  color: rgba(247, 243, 232, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spec-choice-opt-detail {
+  color: rgba(247, 243, 232, 0.6);
+  font-size: 11px;
+}
+
+.spec-choice-empty,
+.spec-choice-note {
+  margin: 0;
+  color: rgba(247, 243, 232, 0.55);
+  font-size: 11px;
+  line-height: 1.45;
 }
