@@ -25715,6 +25715,33 @@ function RoundResultPanel({
 // ─────────────────────────── 드래프트 오버레이 ───────────────────────────
 
 /**
+ * 선택지 한 줄의 **표기** — 서버가 보내는 기계용 라벨을 사람이 읽는 것으로 바꾼다.
+ *
+ * 서버(`HanchanController.optionLabel`)는 `"alchemy man3 1"` 처럼 «액션 타입 + 인자»
+ * 를 그대로 보낸다. core 에는 패의 한국어 표기가 없기 때문이다(그건 이 파일의 몫이다).
+ * 그래서 여기서 첫 토막은 액션 이름표(`ACTION_LABEL`)로, 패 키(`man3`)는 실제 패
+ * 그림으로 갈아 끼운다 — 남는 숫자·문자는 그대로 둔다(방향 ±1 같은 인자다).
+ */
+function ChoiceLabel({ label }: { label: string }): JSX.Element {
+  const [head, ...rest] = label.split(" ");
+  return (
+    <span className="spec-choice-opt-label">
+      <span className="spec-choice-opt-act">{ACTION_LABEL[head ?? ""] ?? head}</span>
+      {rest.map((tok, i) => {
+        const kind = parseKindKey(tok);
+        return kind === null ? (
+          <span className="spec-choice-opt-arg" key={`${i}-${tok}`}>
+            {tok}
+          </span>
+        ) : (
+          <TileImg key={`${i}-${tok}`} tile={{ kind }} size="mini" />
+        );
+      })}
+    </span>
+  );
+}
+
+/**
  * **관전 중계: 액티브 증강 선택창** — 지금 이 좌석이 무엇을 고르고 있는가 (관전 전용).
  *
  * 연금술사·염색처럼 «무엇을 무엇으로»를 사람이 직접 고르는 증강은, 그 몇 초 동안
@@ -25756,7 +25783,7 @@ function SpectateChoicePanel({
           <div className="spec-choice-opts">
             {choice.options.map((o, i) => (
               <span className="spec-choice-opt" key={`${i}-${o.label}`}>
-                <span className="spec-choice-opt-label">{o.label}</span>
+                <ChoiceLabel label={o.label} />
                 {o.detail !== undefined ? (
                   <span className="spec-choice-opt-detail">{o.detail}</span>
                 ) : null}

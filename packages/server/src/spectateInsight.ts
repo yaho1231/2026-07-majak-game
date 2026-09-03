@@ -231,6 +231,7 @@ export function buildSpectateInsight(
       ...(core?.belowMinHan === true ? { belowMinHan: true } : {}),
       ...(core?.furiten === true ? { furiten: true } : {}),
       ...(core?.handGrade !== undefined ? { handGrade: core.handGrade } : {}),
+      ...(core?.handGradeRegraded === true ? { handGradeRegraded: true } : {}),
       ...(estimate !== undefined ? { estimate } : {}),
       // 옛 화면 호환 — 확정값이 있으면 그것, 없으면 추정. 어느 쪽이든 **실재하는 숫자**다.
       han: best?.han ?? estimate?.han ?? 0,

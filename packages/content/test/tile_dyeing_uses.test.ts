@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { buildPlayerView, createStandardGameFromState, installAugment } from "@majak/core";
 import type { GameState, TileId } from "@majak/core";
 import { tileDyeing } from "../src/augments/tile_dyeing.js";
+import { roundKey } from "../src/util.js";
 import { craft } from "./helpers.js";
 
 /** used = 이미 쓴 횟수 (게임 스코프 카운터를 미리 세팅해 한도를 시험한다) */
@@ -68,6 +69,9 @@ describe("염색 — 매치 예산 (반장전 8회)", () => {
       left: 0,
       total: 8,
       scope: "match",
+      // 다 쓴 «그 국»의 키가 함께 실린다 — 그 국 동안에는 pill을 흐리게 칠하지
+      // 않는다(2026-09-03, `uses_left_spent_round.test.ts`).
+      spentRound: roundKey(game.engine.state),
     });
   });
 
@@ -103,7 +107,13 @@ describe("염색 — 남은 횟수는 전원 공개", () => {
   it("보유자 전용 채널에 값이 서고, 뷰가 좌석을 붙여 내보낸다", () => {
     const game = setup(7);
     expect(dye(game, 0, "pin")).toBe(true);
-    const value = { left: 0, total: 8, scope: "match" };
+    // `spentRound`는 다 쓴 국의 키다 — 보유자 채널과 좌석 사본이 같은 값을 실어야 한다.
+    const value = {
+      left: 0,
+      total: 8,
+      scope: "match",
+      spentRound: roundKey(game.engine.state),
+    };
     expect(game.engine.state.augmentData["view:p0:uses:tile_dyeing"]).toEqual(value);
     const opponent = buildPlayerView(game.engine.state, "p1", game.engine.rules, {
       yaku: game.yaku,

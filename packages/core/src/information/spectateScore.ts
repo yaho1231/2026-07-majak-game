@@ -85,6 +85,8 @@ export interface SpectateSeatScore {
   belowMinHan?: boolean;
   furiten?: boolean;
   handGrade?: number;
+  /** 손패가 통째로 바뀌어 배패 점수를 다시 쟀다 (교환 증강) */
+  handGradeRegraded?: boolean;
 }
 
 /** 코어 `LimitName` → 프로토콜 `limit` (셈수 역만 이름만 짧게 간다) */
@@ -439,6 +441,11 @@ export function buildSpectateSeatScores(
    * `score.settleHanBonus` 질의 창구를 대조해 만든다 — 이 파일은 엔진을 모른다.
    */
   augAdjustedFor: (id: PlayerId) => boolean = () => false,
+  /**
+   * 이 좌석의 배패 점수가 **국 도중에 다시 매겨졌는가** (손패 교환 증강).
+   * 숫자가 움직인 이유를 화면이 한 줄로 말할 수 있게 하려는 표식이다.
+   */
+  handGradeRegraded: Readonly<Record<string, boolean>> = {},
 ): SpectateSeatScore[] {
   const cacheKey = `${rules.version}|${yaku.all().length}`;
   const cached = SEAT_SCORE_CACHE.get(state);
@@ -454,11 +461,14 @@ export function buildSpectateSeatScores(
     return cached.scores.map((s) => {
       const grade = handGrades[s.id];
       if (grade === undefined) {
-        if (s.handGrade === undefined) return s;
-        const { handGrade: _drop, ...rest } = s;
+        if (s.handGrade === undefined && s.handGradeRegraded === undefined) return s;
+        const { handGrade: _drop, handGradeRegraded: _drop2, ...rest } = s;
         return rest;
       }
-      return s.handGrade === grade ? s : { ...s, handGrade: grade };
+      const regraded = handGradeRegraded[s.id] === true;
+      if (s.handGrade === grade && (s.handGradeRegraded === true) === regraded) return s;
+      const { handGradeRegraded: _old, ...base } = s;
+      return { ...base, handGrade: grade, ...(regraded ? { handGradeRegraded: true } : {}) };
     });
   }
 
@@ -502,6 +512,9 @@ export function buildSpectateSeatScores(
       menzen,
       dora,
       ...(handGrades[p.id] !== undefined ? { handGrade: handGrades[p.id]! } : {}),
+      ...(handGrades[p.id] !== undefined && handGradeRegraded[p.id] === true
+        ? { handGradeRegraded: true as const }
+        : {}),
     };
 
     if (shanten <= 0) {
@@ -708,28 +721,123 @@ export function gradeStartingHands(
   state: GameState,
   rules: RuleRegistry,
 ): Record<PlayerId, number> {
-  const doraSet = new Set(doraKindsOf(state).map(kindKey));
   const out: Record<PlayerId, number> = {};
   for (const p of state.players) {
-    let ids = [...handIdsOf(state, p.id)];
-    if (ids.length === 0) continue;
-    if (ids.length % 3 === 2) {
-      // 첫 쯔모패를 뺀다 — 어느 패인지는 상태가 알고 있다(`lastDrawnTile`). 그 값이
-      // 손에 없는 이상한 경우에만 마지막 자리로 떨어진다(배패 순서상 그 자리가 쯔모패다).
-      const drawn = state.round.lastDrawnTile;
-      const at = drawn === null ? -1 : ids.indexOf(drawn);
-      ids = at >= 0 ? ids.filter((_, i) => i !== at) : ids.slice(0, -1);
-    }
-    let dora = 0;
-    const kinds: TileKind[] = [];
-    for (const id of ids) {
-      const tile = state.tiles[id];
-      if (tile === undefined) continue;
-      kinds.push(tile.kind);
-      if (doraSet.has(kindKey(tile.kind))) dora++;
-      if (tile.attrs.red === true) dora++;
-    }
-    out[p.id] = gradeStartingHand(kinds, scoringOptionsOf(state, rules, p.id), dora);
+    const graded = gradeSeatHand(state, rules, p.id);
+    if (graded !== null) out[p.id] = graded.grade;
   }
   return out;
+}
+
+/** 한 좌석의 배패 점수와 **그 점수를 잰 패 id 집합** */
+export interface SeatHandGrade {
+  grade: number;
+  /** 이 점수를 만든 손패 id들 — 손이 통째로 바뀌었는지 판정하는 데 쓴다 */
+  ids: readonly TileId[];
+}
+
+/**
+ * **한 좌석**의 배패 점수를 잰다 (`gradeStartingHands`의 좌석 단위 버전).
+ *
+ * 왜 좌석 단위가 따로 필요한가: 배패 점수는 국 시작 때 한 번 재고 고정인데,
+ * **손패 교환 증강**(등가교환·손패 교환·자리 바꾸기)이 손을 통째로 갈아 끼우면
+ * 중계 패널이 «없어진 손»의 점수를 국 내내 붙들고 있었다(2026-09-03 사용자 보고).
+ * 바뀐 좌석만 다시 재려면 좌석 하나를 잴 수 있어야 한다.
+ *
+ * 잰 패 id를 함께 돌려주는 것은 «바뀌었나»의 판정 근거다 — 쯔모·버림은 한 번에
+ * 한 장만 움직이므로 «절반 미만만 겹친다»에 절대 걸리지 않고, 그래서 이 값은
+ * 예전처럼 국 내내 가만히 서 있는다.
+ */
+export function gradeSeatHand(
+  state: GameState,
+  rules: RuleRegistry,
+  player: PlayerId,
+): SeatHandGrade | null {
+  const doraSet = new Set(doraKindsOf(state).map(kindKey));
+  let ids = [...handIdsOf(state, player)];
+  if (ids.length === 0) return null;
+  if (ids.length % 3 === 2) {
+    // 첫 쯔모패를 뺀다 — 어느 패인지는 상태가 알고 있다(`lastDrawnTile`). 그 값이
+    // 손에 없는 이상한 경우에만 마지막 자리로 떨어진다(배패 순서상 그 자리가 쯔모패다).
+    const drawn = state.round.lastDrawnTile;
+    const at = drawn === null ? -1 : ids.indexOf(drawn);
+    ids = at >= 0 ? ids.filter((_, i) => i !== at) : ids.slice(0, -1);
+  }
+  let dora = 0;
+  const kinds: TileKind[] = [];
+  for (const id of ids) {
+    const tile = state.tiles[id];
+    if (tile === undefined) continue;
+    kinds.push(tile.kind);
+    if (doraSet.has(kindKey(tile.kind))) dora++;
+    if (tile.attrs.red === true) dora++;
+  }
+  return {
+    grade: gradeStartingHand(kinds, scoringOptionsOf(state, rules, player), dora),
+    ids,
+  };
+}
+
+/**
+ * 국 하나 동안의 배패 점수 상태 — 점수 + 그 점수를 잰 패 id + 다시 잰 표식.
+ *
+ * `HanchanController`가 국 시작 때 만들고(`initialHandGrades`), 관전 방송마다
+ * `refreshHandGrades`로 «손이 통째로 바뀐 좌석»만 다시 잰다.
+ */
+export interface HandGradeState {
+  grades: Record<PlayerId, number>;
+  /** 좌석별로 «이 점수를 잰 패 id 집합» */
+  gradedIds: Record<PlayerId, ReadonlySet<TileId>>;
+  /** 국 도중에 다시 잰 좌석 */
+  regraded: Record<PlayerId, boolean>;
+}
+
+export function emptyHandGrades(): HandGradeState {
+  return { grades: {}, gradedIds: {}, regraded: {} };
+}
+
+/** 배패 직후 — 네 좌석을 한 번에 재서 시작 상태를 만든다 */
+export function initialHandGrades(state: GameState, rules: RuleRegistry): HandGradeState {
+  const out = emptyHandGrades();
+  for (const p of state.players) {
+    const graded = gradeSeatHand(state, rules, p.id);
+    if (graded === null) continue;
+    out.grades[p.id] = graded.grade;
+    out.gradedIds[p.id] = new Set(graded.ids);
+  }
+  return out;
+}
+
+/**
+ * 손패가 **교체된** 좌석의 배패 점수를 다시 잰다 (2026-09-03 사용자 보고).
+ *
+ * 배패 점수는 국 내내 고정이라고 문서화돼 있고 그게 옳다 — 「지금 손 점수」가 아니라
+ * 「어떤 배패를 받았나」의 값이기 때문이다. 그런데 등가교환·손패 교환·자리 바꾸기처럼
+ * 손을 **통째로 갈아 끼우는** 증강이 지나가면 그 전제가 깨진다: 화면에는 이제 존재하지
+ * 않는 손의 점수가 국이 끝날 때까지 서 있었다.
+ *
+ * 판정 기준은 «잰 패 집합과 지금 손이 **절반도 안 겹친다**». 쯔모·버림·후로는 한 번에
+ * 한두 장만 움직이므로 절대 걸리지 않는다 — 즉 평소에는 예전과 완전히 같은 동작이고,
+ * 손이 통째로 바뀐 그 순간에만 값이 움직인다. 장수(13장)를 세지 않고 비율로 보는 것은
+ * 후로·깡으로 손패 장수 자체가 줄어들기 때문이다.
+ */
+export function refreshHandGrades(
+  state: GameState,
+  rules: RuleRegistry,
+  hg: HandGradeState,
+): void {
+  for (const p of state.players) {
+    const before = hg.gradedIds[p.id];
+    if (before === undefined || before.size === 0) continue;
+    const now = handIdsOf(state, p.id);
+    if (now.length === 0) continue;
+    let shared = 0;
+    for (const id of now) if (before.has(id)) shared++;
+    if (shared * 2 >= before.size) continue; // 절반 이상 그대로 — 평범한 쯔모·버림
+    const graded = gradeSeatHand(state, rules, p.id);
+    if (graded === null) continue;
+    hg.grades[p.id] = graded.grade;
+    hg.gradedIds[p.id] = new Set(graded.ids);
+    hg.regraded[p.id] = true;
+  }
 }

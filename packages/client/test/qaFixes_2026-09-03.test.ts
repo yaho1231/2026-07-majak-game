@@ -222,6 +222,9 @@ describe("⑫ 관전자도 액티브 증강의 선택창을 본다", () => {
     expect(code(APP)).toContain('if (msg.type === "spectateChoice")');
     expect(code(APP)).toContain("cur === null || cur.seat === msg.seat ? null : cur");
     expect(APP).toContain("<SpectateChoicePanel choice={spectateChoice} view={view} />");
+    // 서버는 기계용 라벨("alchemy man3 1")을 보낸다 — 표기는 이 파일의 몫이다
+    expect(APP).toContain("function ChoiceLabel(");
+    expect(APP).toContain('ACTION_LABEL[head ?? ""] ?? head');
   });
 
   it("판이 도는 중이므로 탁자를 어둡게 덮지 않는다 (드래프트 중계와 다른 점)", () => {

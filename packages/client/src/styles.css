@@ -19582,9 +19582,19 @@ body:has(.prod-skip) .toast-stack {
 }
 
 .spec-choice-opt-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: rgba(247, 243, 232, 0.92);
   font-size: 12px;
   font-weight: 700;
+}
+
+/* 액션 이름은 그대로, 남은 인자(방향 ±1 등)는 한 단계 죽여 패 그림이 먼저 읽히게 */
+.spec-choice-opt-arg {
+  color: rgba(247, 243, 232, 0.55);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .spec-choice-opt-detail {

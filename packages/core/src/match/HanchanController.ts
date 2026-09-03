@@ -30,16 +30,25 @@ import type { DiscardOrigin, PlayerView, PublicTileView } from "../information/P
 import type { GameState } from "../engine/state/GameState.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import type { TileId } from "../mahjong/tiles/Tile.js";
+import { kindKey } from "../mahjong/tiles/Tile.js";
 import { ROUND_SETTLED } from "../mahjong/flow/flowEvents.js";
 import type { AbortReason, RoundSettledPayload } from "../mahjong/flow/flowEvents.js";
 import { revealedUraIndicatorIds, winHandIdsOf } from "../mahjong/flow/helpers.js";
-import { buildSpectateSeatScores, gradeStartingHands } from "../information/spectateScore.js";
+import {
+  buildSpectateSeatScores,
+  emptyHandGrades,
+  initialHandGrades,
+  refreshHandGrades,
+} from "../information/spectateScore.js";
+import type { HandGradeState } from "../information/spectateScore.js";
 import type { SpectateSeatScore } from "../information/spectateScore.js";
-import type { PlayerAgent } from "./PlayerAgent.js";
+import type { PlayerAgent, SeatChoiceEvent } from "./PlayerAgent.js";
+import { augmentIdForActionType, isAugmentActionType } from "../augment/Augment.js";
 import type {
   RankingEntry,
   DraftStage,
   SpectateDraftMessage,
+  SpectateChoiceMessage,
   GameEndReason,
   RevealedHand,
   RoundOverMessage,
@@ -538,6 +547,14 @@ export class HanchanController {
    * 몇십 초씩 서 있는 구간이라, 다음 방송을 기다리라고 하면 그 사이 내내 빈 탁자다.
    */
   private draftSpectate: SpectateDraftMessage | null = null;
+  /**
+   * 지금 열려 있는 **증강 선택 판**의 관전 중계 스냅샷 (좌석별).
+   *
+   * 드래프트 중계(`draftSpectate`)와 같은 이유로 들고 있는다 — 선택이 열려 있는
+   * 동안 판은 그 사람만 움직이므로, 늦게 합류한 관전석은 다음 방송이 올 때까지
+   * 「왜 얼어 있는지」를 알 수 없다(`addSpectator`에서 그대로 세워 준다).
+   */
+  private readonly choiceSpectate = new Map<PlayerId, SpectateChoiceMessage>();
   /** 진행 중인 게임 (관전자 중도 합류 시 즉시 뷰 전송용) */
   private game: StandardGame | null = null;
   /**
@@ -627,7 +644,7 @@ export class HanchanController {
    * 보낸다 — 지난 국의 손패가 함께 보이는 잔상 구간이지만 숫자는 숫자다
    * (반장전 1판에서 31프레임 실측).
    */
-  private handGrades: Record<PlayerId, number> = {};
+  private handGrades: HandGradeState = emptyHandGrades();
   /**
    * 마지막 버림패가 손패 어느 자리에서 나왔는지. 배치를 아는 건 여기(handOrder)뿐이고
    * 패가 손을 떠난 뒤에는 자리를 복원할 수 없어 **버리기 직전**에 재어 둔다.
@@ -652,6 +669,8 @@ export class HanchanController {
     events: HanchanEvents = {},
   ) {
     this.agents = new Map(agents.map((a) => [a.id, a]));
+    // 관전 중계 — 좌석에 증강 선택 판이 열리고 닫히는 것을 그때그때 받는다.
+    for (const a of this.agents.values()) a.watchChoices?.((ev) => this.onSeatChoice(ev));
     this.config = { ...DEFAULT_HANCHAN_CONFIG, ...config };
     this.events = events;
   }
@@ -1341,7 +1360,9 @@ export class HanchanController {
       this.inRound = false;
       this.roundVoid = null;
       // 국이 끝났다 — 다음 국의 배패를 받기 전까지 «이 국의 배패 점수»는 존재하지 않는다.
-      this.handGrades = {};
+      this.handGrades = emptyHandGrades();
+      // 열려 있던 선택 중계도 함께 걷는다 — 안 걷으면 다음 국 내내 도크에 남는다.
+      this.closeAllChoiceSpectate();
     }
   }
 
@@ -1357,7 +1378,7 @@ export class HanchanController {
      * 않고 오야의 첫 쯔모까지 진행하므로 이 자리에서 오야만 14장이다 —
      * `gradeStartingHands`가 그 한 장을 도로 빼고 잰다(그 함수의 주석 참고).
      */
-    this.handGrades = gradeStartingHands(game.engine.state, game.engine.rules);
+    this.handGrades = initialHandGrades(game.engine.state, game.engine.rules);
     this.broadcastViews(game); // 배패 직후 — 손패가 보이는 첫 시점
 
     while (status.kind === "awaiting") {
@@ -1814,12 +1835,19 @@ export class HanchanController {
          */
         let scores: readonly SpectateSeatScore[] | undefined;
         try {
+          /*
+           * 손패가 통째로 갈린 좌석은 배패 점수를 다시 잰다 (2026-09-03 사용자 보고 —
+           * 교환 증강이 지나가도 중계 패널이 «없어진 손»의 점수를 붙들고 있었다).
+           * 평범한 쯔모·버림은 여기서 아무것도 하지 않는다 — `refreshHandGrades` 주석.
+           */
+          refreshHandGrades(state, rules, this.handGrades);
           scores = buildSpectateSeatScores(
             state,
             rules,
             game.yaku,
-            this.handGrades,
+            this.handGrades.grades,
             this.augAdjustedSeats(game),
+            this.handGrades.regraded,
           );
         } catch (err) {
           console.error("[hanchan] 관전 예상 타점 계산 실패 — 뷰만 보낸다", err);
@@ -1870,6 +1898,94 @@ export class HanchanController {
   }
 
   /**
+   * 좌석에 열린 «증강 선택»을 관전석에 중계한다 (2026-09-03 사용자 보고).
+   *
+   * 증강의 액티브 판이 뜨면 그 사람 화면에는 모달이 서지만 관전자에게는 아무것도
+   * 가지 않아 탁자가 그냥 얼어붙은 것처럼 보였다 — 드래프트 중계와 같은 설계로
+   * 「누가 무엇을 고르고 있나」를 세우고, 끝나면 걷는다.
+   *
+   * **평범한 버림·후로 프롬프트는 거른다.** 그건 매 순 나가는 소음이고, 관전 화면은
+   * 이미 버림과 후로 버튼을 그대로 그린다. 판정은 액션 타입 하나로 한다
+   * (`isAugmentActionType` — 표준 마작 액션이 아닌 것 = 증강이 세운 것).
+   */
+  private onSeatChoice(ev: SeatChoiceEvent): void {
+    if (!ev.open) {
+      if (!this.choiceSpectate.has(ev.seat)) return;
+      this.choiceSpectate.delete(ev.seat);
+      const label =
+        ev.picked !== undefined && isAugmentActionType(ev.picked.type)
+          ? this.optionLabel(ev.picked)
+          : undefined;
+      this.notifySpectators({
+        type: "spectateChoiceEnd",
+        seat: ev.seat,
+        ...(label !== undefined ? { picked: label } : {}),
+      });
+      return;
+    }
+    const augOptions = ev.options.filter((o) => isAugmentActionType(o.type));
+    if (augOptions.length === 0) return; // 평범한 버림·후로 — 중계하지 않는다
+    const msg: SpectateChoiceMessage = {
+      type: "spectateChoice",
+      seat: ev.seat,
+      title: this.choiceTitle(augOptions),
+      options: augOptions.map((o) => ({ label: this.optionLabel(o) })),
+      ...(ev.deadline !== undefined ? { deadline: ev.deadline } : {}),
+    };
+    this.choiceSpectate.set(ev.seat, msg);
+    this.notifySpectators(msg);
+  }
+
+  /**
+   * 이 선택 판의 제목 — 선택지를 세운 증강의 **표시 이름**.
+   *
+   * 액션 타입 → 증강 id는 증강이 자기 선택지를 세울 때 core가 기록해 둔 것을 쓴다
+   * (`augmentIdForActionType`). 클라이언트가 들고 있던 손표(`alchemy: "alchemist"`)를
+   * 서버로 옮기지 않은 이유가 이것이다 — 손표는 증강이 늘 때 조용히 낡는다.
+   * 이름을 못 찾으면 "선택"이다(중계가 비는 것보다 낫다).
+   */
+  private choiceTitle(options: readonly ActionOption[]): string {
+    for (const o of options) {
+      const id = augmentIdForActionType(o.type);
+      if (id === undefined) continue;
+      const name = this.game?.augments.get(id)?.name;
+      if (name !== undefined) return name;
+    }
+    return "선택";
+  }
+
+  /**
+   * 선택지 한 줄의 짧은 라벨.
+   *
+   * 관전 화면은 이미 네 좌석의 손패를 전부 보고 있으므로 여기서 패를 적는 것은
+   * 정보 누출이 아니다. 다만 **짧아야** 한다 — 중계 도크는 한 줄이다. 패 이름은
+   * core에 한국어 표기가 없어 `kindKey`("man3")로 적고 표기는 화면이 맡는다.
+   */
+  private optionLabel(option: ActionOption): string {
+    const state = this.game?.engine.state;
+    const parts: string[] = [];
+    const payload = option.payload;
+    if (payload !== null && typeof payload === "object") {
+      for (const v of Object.values(payload as Record<string, unknown>)) {
+        if (typeof v === "number" && state !== undefined && state.tiles[v] !== undefined) {
+          parts.push(kindKey(state.tiles[v]!.kind));
+        } else if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
+          parts.push(String(v));
+        }
+      }
+    }
+    return parts.length > 0 ? `${option.type} ${parts.join(" ")}` : option.type;
+  }
+
+  /** 열려 있던 선택 중계를 전부 걷는다 (국이 끝났다·판이 끝났다) */
+  private closeAllChoiceSpectate(): void {
+    for (const seat of [...this.choiceSpectate.keys()]) {
+      this.choiceSpectate.delete(seat);
+      this.notifySpectators({ type: "spectateChoiceEnd", seat });
+    }
+  }
+
+  /**
    * **그 좌석과 관전자에게만** 보낸다 — 발동 사실이 비밀인 연출용
    * (FX_PRIVATE_ACTION_TYPES). 관전자는 이미 모든 정보를 보는 시점이라 포함한다.
    */
@@ -1900,12 +2016,15 @@ export class HanchanController {
        */
       let scores: readonly SpectateSeatScore[] | undefined;
       try {
+        // 합류 시점에도 교환 증강이 이미 지나갔을 수 있다 — 같은 판정을 한 번 돌린다.
+        refreshHandGrades(this.game.engine.state, this.game.engine.rules, this.handGrades);
         scores = buildSpectateSeatScores(
           this.game.engine.state,
           this.game.engine.rules,
           this.game.yaku,
-          this.handGrades,
+          this.handGrades.grades,
           this.augAdjustedSeats(this.game),
+          this.handGrades.regraded,
         );
       } catch (err) {
         console.error("[hanchan] 관전 합류 예상 타점 계산 실패 — 뷰만 보낸다", err);
@@ -1930,6 +2049,9 @@ export class HanchanController {
       // 증강 선택이 열려 있는 중에 합류했으면 그 판을 그대로 세워 준다 —
       // 이 구간은 판이 통째로 멈춰 있어, 다음 방송이 올 때까지 화면이 빈다.
       if (this.draftSpectate !== null) sink.notify?.(this.draftSpectate);
+      // 증강 선택 판이 열려 있는 중에 합류했으면 그것도 세워 준다 — 드래프트와 같은
+      // 이유다(그 구간에는 다음 방송이 오지 않는다).
+      for (const msg of this.choiceSpectate.values()) sink.notify?.(msg);
     }
   }
 

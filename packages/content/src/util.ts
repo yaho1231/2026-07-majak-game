@@ -230,6 +230,20 @@ export interface UsesLeftView {
   total: number;
   /** 카운터가 게임(매치) 전체인가, 국 단위인가 */
   scope: "match" | "round";
+  /**
+   * `left` 가 0이 된 국의 키 (`roundKey`). 그 국 동안에는 «아직 살아 있다»로 그린다.
+   *
+   * 왜: 클라이언트는 `left === 0`이면 증강 pill을 흐리게 칠한다. 그런데 **이번 국에**
+   * 마지막 한 번을 쓴 증강은 그 국이 끝날 때까지 효과가 살아 있는 경우가 많다 —
+   * 다 쓰자마자 회색이 되니 "아직 걸려 있는데 죽은 것처럼 보인다"였다(2026-09-03
+   * 사용자 보고). 그래서 «0이 된 국»을 함께 실어 보내고, 클라이언트는 지금 국이
+   * 그 국이면 흐리게 칠하지 않는다. 다음 국이 되면 국 키가 달라져 흐려진다.
+   *
+   * 한 번 적힌 값은 다시 쓰지 않는다 — 매 이벤트마다 현재 국 키로 덮으면 «0이 된 국»이
+   * 아니라 «지금 국»이 되어 영원히 살아 있는 것으로 보인다. `left`가 다시 0보다
+   * 커지면(충전) 필드를 지운다.
+   */
+  spentRound?: string;
 }
 
 /**
@@ -265,15 +279,33 @@ export function publishUsesLeft(
     const next = compute(rc.state);
     if (next === null) return;
     const cur = rc.state.augmentData[key] as UsesLeftView | undefined;
+    /*
+     * «0이 된 국»은 0이 되는 그 순간에만 적고 그 뒤로는 그대로 들고 간다(위 필드 주석).
+     * 이미 0이면서 기록이 있으면 그 값을 유지하고, 방금 0이 됐으면 지금 국을 적는다.
+     */
+    const spentRound =
+      next.left > 0
+        ? undefined
+        : cur !== undefined && cur.left === 0 && cur.spentRound !== undefined
+          ? cur.spentRound
+          : roundKey(rc.state);
     if (
       cur !== undefined &&
       cur.left === next.left &&
       cur.total === next.total &&
-      cur.scope === scope
+      cur.scope === scope &&
+      cur.spentRound === spentRound
     ) {
       return;
     }
-    rc.emit(augmentDataSet(key, { left: next.left, total: next.total, scope }));
+    rc.emit(
+      augmentDataSet(key, {
+        left: next.left,
+        total: next.total,
+        scope,
+        ...(spentRound !== undefined ? { spentRound } : {}),
+      }),
+    );
   };
   ctx.reaction("*", sync);
 }

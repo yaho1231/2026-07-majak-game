@@ -1055,6 +1055,43 @@ export class SiteDb {
    * 남긴다(다른 참가자의 리플레이·순위를 훼손하지 않기 위함). 삭제된 username을
    * 반환해 호출자가 통계 저장소(닉네임 키)도 함께 정리할 수 있게 한다.
    */
+  /**
+   * **닉네임을 바꾼다** (관리자 전용, 2026-09-03 사용자 요청).
+   *
+   * 판정은 가입과 **같은 규칙**을 쓴다(`usernameProblem`) — 갈라 두면 가입에서
+   * 막히는 이름이 관리자 화면으로는 들어오는 뒷문이 된다. 다만 중복 검사는
+   * 자기 자신을 빼야 한다: 대소문자만 바꾸는 개명(`Kim` → `KIM`)은 스키마의
+   * `UNIQUE COLLATE NOCASE`상 같은 행이라 «이미 사용 중»이 아니다.
+   *
+   * @returns 못 바꾸면 그 사유 문자열, 성공하면 null
+   */
+  renameUser(userId: number, username: string): string | null {
+    if (!Number.isInteger(userId)) return "잘못된 사용자 ID입니다";
+    const row = this.stmt("SELECT username FROM users WHERE id = ?").get(userId) as
+      | { username: string }
+      | undefined;
+    if (row === undefined) return "존재하지 않는 계정입니다";
+    if (row.username === username) return null; // 같은 이름 — 할 일이 없다
+    /*
+     * 이름 규칙(글자·길이·예약어·bot_ 사칭)은 가입과 공용이다. 중복만 따로 보는데,
+     * `usernameProblem`의 중복 검사는 «자기 자신»도 걸리기 때문이다.
+     */
+    const problem = this.usernameProblem(username);
+    if (problem !== null && problem !== "이미 사용 중인 닉네임입니다") return problem;
+    const taken = this.stmt(
+      "SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id <> ?",
+    ).get(username, userId);
+    if (taken !== undefined) return "이미 사용 중인 닉네임입니다";
+    try {
+      this.stmt("UPDATE users SET username = ? WHERE id = ?").run(username, userId);
+    } catch {
+      // 검사와 UPDATE 사이의 경합 — UNIQUE 제약이 막아 준다.
+      return "이미 사용 중인 닉네임입니다";
+    }
+    this.usersRev++;
+    return null;
+  }
+
   deleteUser(userId: number): { ok: boolean; username?: string; error?: string } {
     if (!Number.isInteger(userId)) return { ok: false, error: "잘못된 사용자 ID입니다" };
     const row = this.stmt("SELECT username FROM users WHERE id = ?")

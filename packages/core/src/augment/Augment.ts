@@ -28,6 +28,59 @@ import type { DraftStage } from "./DraftController.js";
 export type AugmentTier = "silver" | "gold" | "prism";
 
 /**
+ * **액션 타입 → 그 액션을 세운 증강 id.**
+ *
+ * 왜 필요한가: 증강의 액티브 선택지는 «평범한 마작 액션»과 똑같이 `DecisionPrompt`의
+ * `ActionOption`으로 내려간다. 그래서 프롬프트만 보고는 「이건 연금술사가 연 판이다」를
+ * 알 수 없다 — 클라이언트는 `App.tsx`에 `alchemy: "alchemist"` 같은 손표를 들고 있었고,
+ * 증강이 늘 때마다 그 표를 빠뜨리면 이름이 조용히 사라진다.
+ *
+ * 손표 대신 **증강이 자기 액션을 세우는 그 자리**에서 기록한다 — 관전 중계가 「어느
+ * 좌석이 지금 무엇을 고르고 있는가」를 적을 때 이 맵으로 이름을 찾는다(2026-09-03).
+ * 액션 타입은 증강마다 유일하므로 게임을 넘어 공유해도 안전하다(같은 정의 = 같은 타입).
+ */
+const AUGMENT_ACTION_OWNER = new Map<string, string>();
+
+/** 증강이 세운 선택지들의 타입을 기록하고 그대로 돌려준다 (등록 경로 전용) */
+function noteAugmentActions<T extends { type: string }>(
+  augmentId: string,
+  options: T[],
+): T[] {
+  for (const o of options) {
+    if (!AUGMENT_ACTION_OWNER.has(o.type)) AUGMENT_ACTION_OWNER.set(o.type, augmentId);
+  }
+  return options;
+}
+
+/** 이 액션 타입을 세운 증강 id (모르면 undefined) */
+export function augmentIdForActionType(type: string): string | undefined {
+  return AUGMENT_ACTION_OWNER.get(type);
+}
+
+/**
+ * 마작 본판의 표준 액션 타입 — 「이 선택지는 증강이 연 것인가」의 반대편.
+ * `standardActions.ts`가 등록하는 **사람에게 제시되는** 타입 전부다(`sys.*`는
+ * 엔진 내부용이라 프롬프트에 오르지 않지만 함께 막아 둔다).
+ */
+export const STANDARD_ACTION_TYPES: ReadonlySet<string> = new Set([
+  "discard",
+  "riichi",
+  "win",
+  "pon",
+  "chi",
+  "ankan",
+  "minkan",
+  "shouminkan",
+  "kyushuKyuhai",
+  "pass",
+]);
+
+/** 이 액션 타입이 **증강이 연 선택**인가 (표준 마작 액션이 아닌가) */
+export function isAugmentActionType(type: string): boolean {
+  return !STANDARD_ACTION_TYPES.has(type) && !type.startsWith("sys.");
+}
+
+/**
  * 증강 계열 — "이 증강은 무엇을 하는 물건인가"의 단일 축.
  *
  * 등급(tier)이 폐기된 뒤 증강의 유일한 시각 분류다. 드래프트 카드·이름표 pill·
@@ -510,7 +563,7 @@ export function installAugment(
         // 무장해제: 잠긴 증강은 액티브 버튼도 사라진다. FlowController가 제시되지
         // 않은 옵션의 submit을 거부하므로, 여기서 후보를 비우면 액션도 함께 막힌다.
         if (isSourceDisarmed(state, instanceId)) return [];
-        return build(state);
+        return noteAugmentActions(def.id, build(state));
       }, instanceId);
     },
     holderReactionOptions(build) {
@@ -518,7 +571,7 @@ export function installAugment(
         if (player !== holder) return [];
         // holderTurnOptions와 동일한 무장해제 가드 — 잠기면 콜 버튼도 함께 사라진다
         if (isSourceDisarmed(state, instanceId)) return [];
-        return build(state, discard);
+        return noteAugmentActions(def.id, build(state, discard));
       }, instanceId);
     },
     onUninstall(cleanup) {
