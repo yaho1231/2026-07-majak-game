@@ -484,6 +484,73 @@ describe("PlayerView — RoundView", () => {
     expect(afterRiver[idx as number]).toBe(declaredId);
   });
 
+  it("선언패를 상대가 후로해 가면 표식이 다음 버림패로 옮겨간다", () => {
+    /*
+     * 실제 탁자 규칙 — 리치 선언패가 몸통으로 넘어가면 가로 놓기는 사라지지 않고
+     * 리치자의 **다음 버림패**로 옮긴다. 예전에는 선언패가 바닥에서 사라졌다는
+     * 이유만으로 표식을 통째로 내려서, 후로 뒤 아무 패도 가로로 놓이지 않았다.
+     */
+    const base = makeState();
+    const p0 = base.round.byPlayer["p0"];
+    const p1 = base.round.byPlayer["p1"];
+    if (p0 === undefined || p1 === undefined) throw new Error("missing player");
+    const wall = base.zones[WALL]?.tileIds ?? [];
+    const river = wall.slice(0, 6);
+    const zone = base.zones[discardsZone("p0")];
+    if (zone === undefined) throw new Error("no discards zone");
+    const declaredId = river[4];
+    if (declaredId === undefined) throw new Error("river too short");
+    const meldTiles = wall.slice(10, 12);
+    const rules = makeRules();
+
+    // 선언패(4번)를 p1이 펑으로 가져가 바닥에서 빠졌다 — 뒤의 5번 패가 4번 자리로 당겨진다
+    const called: GameState = {
+      ...base,
+      zones: {
+        ...base.zones,
+        [discardsZone("p0")]: { ...zone, tileIds: river.filter((id) => id !== declaredId) },
+      },
+      round: {
+        ...base.round,
+        byPlayer: {
+          ...base.round.byPlayer,
+          p0: {
+            ...p0,
+            riichi: { double: false, ippatsu: true, discardIndex: 4, discardTileId: declaredId },
+          },
+          p1: {
+            ...p1,
+            melds: [
+              {
+                kind: "pon" as const,
+                tileIds: [...meldTiles, declaredId],
+                calledFrom: "p0",
+                calledTileId: declaredId,
+              },
+            ],
+          },
+        },
+      },
+    };
+    const after = buildPlayerView(called, "p1", rules);
+    const idx = after.round.byPlayer["p0"]?.riichiTileIndex;
+    expect(idx).toBe(4);
+    // 그 자리에 놓인 패는 선언 **다음** 버림패다
+    expect((after.zones[discardsZone("p0")]?.tileIds ?? [])[idx as number]).toBe(river[5]);
+
+    // 아직 다음 패를 안 버렸으면 표식은 잠시 없다 (다음 버림 때 생긴다)
+    const noNext: GameState = {
+      ...called,
+      zones: {
+        ...called.zones,
+        [discardsZone("p0")]: { ...zone, tileIds: river.slice(0, 4) },
+      },
+    };
+    expect(
+      buildPlayerView(noNext, "p1", rules).round.byPlayer["p0"]?.riichiTileIndex,
+    ).toBeUndefined();
+  });
+
   it("myDrawnTile: 본인 손패에 있는 쯔모패만 노출, 타인 뷰는 null", () => {
     const state = makeState();
     const drawn = state.zones[handZone("p0")]?.tileIds[0];
