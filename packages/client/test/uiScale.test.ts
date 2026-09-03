@@ -28,6 +28,8 @@ let win: {
 };
 /** `<html>`에 실제로 쓰인 data-ui-scale-mode. */
 let modeAttr: string | null = null;
+/** `<html>`에 실제로 쓰인 data-ui-stage. */
+let stageAttr: string | null = null;
 /** 프로브가 재게 될 `100cqw` — 엔진 흉내. 100 = zoom을 아는 엔진, 200 = 모르는 엔진. */
 let probeCq = 100;
 /** `CSS.supports("zoom", "2")` 가 참인가. */
@@ -51,6 +53,7 @@ async function boot(opts: {
   keyHandlers = [];
   resizeHandlers = [];
   modeAttr = null;
+  stageAttr = null;
   probeCq = opts.cq ?? 100;
   zoomSupported = opts.zoom ?? true;
   const fine = opts.fine ?? true;
@@ -77,7 +80,13 @@ async function boot(opts: {
       appendChild: () => {},
     },
     documentElement: {
-      setAttribute: (k: string, v: string) => void (k === "data-ui-scale-mode" && (modeAttr = v)),
+      setAttribute: (k: string, v: string) => {
+        if (k === "data-ui-scale-mode") modeAttr = v;
+        if (k === "data-ui-stage") stageAttr = v;
+      },
+      removeAttribute: (k: string) => {
+        if (k === "data-ui-stage") stageAttr = null;
+      },
     },
     createElement: () => ({
       setAttribute: () => {},
@@ -150,38 +159,36 @@ describe("배율은 창을 원판(1920×1080)에 맞춘 값 하나다", () => {
     }
   });
 
-  it("큰 모니터에서는 1을 넘어 판이 화면을 따라 커진다", async () => {
+  it("큰 모니터에서는 1을 넘어 판이 화면을 따라 커진다 — 상한 없음", async () => {
     expect((await boot({ w: 2560, h: 1440 })).getUiScale()).toBeGreaterThan(1);
-    // 4K 는 상한 2.0 — 원판을 정확히 두 배로 그린다
     expect((await boot({ w: 3840, h: 2160 })).getUiScale()).toBe(2);
-    expect((await boot({ w: 7680, h: 4320 })).getUiScale()).toBe(2);
+    expect((await boot({ w: 7680, h: 4320 })).getUiScale()).toBe(4);
   });
 
-  it("작은 창은 1 아래로 내려가되 하한 0.5에서 멈춘다", async () => {
+  it("작은 창은 하한 없이 창에 딱 맞게 내려간다", async () => {
     // 1850×860: 세로 쪽이 먼저 걸린다 → 860/1080 = 0.796 → 0.79
     expect((await boot({ w: 1850, h: 860 })).getUiScale()).toBe(0.79);
-    // 1920×600: 0.556 → 아직 하한 위. 균일 배율이 그대로 듣는다.
     expect((await boot({ w: 1920, h: 600 })).getUiScale()).toBe(0.55);
-    // 800×600: 0.555 → 세로가 아니라 가로가 먼저 걸린다(800/1920 = 0.416) → 하한
-    expect((await boot({ w: 800, h: 600 })).getUiScale()).toBe(0.5);
+    // 800×600: 가로가 먼저 걸린다(800/1920 = 0.416)
+    expect((await boot({ w: 800, h: 600 })).getUiScale()).toBe(0.41);
+    expect((await boot({ w: 480, h: 270 })).getUiScale()).toBe(0.25);
   });
 
-  /* 하한이 곧 «비율이 유지되는 구간의 끝»이다 — 960×540 까지는 가상 뷰포트가
-     정확히 원판(1920×1080)으로 서야 요소들이 따로 줄지 않는다. */
-  it("960×540 까지는 가상 뷰포트가 원판 밑으로 내려가지 않는다", async () => {
-    for (const [w, h] of [[960, 540], [1280, 720], [1440, 810], [1024, 640]] as const) {
-      const s = (await boot({ w, h })).getUiScale();
-      expect(w / s, `${w}×${h} 가로`).toBeGreaterThanOrEqual(1920 - 20);
-      expect(h / s, `${w}×${h} 세로`).toBeGreaterThanOrEqual(1080 - 12);
+  /* 무대는 어느 창에서든 1920×1080 비율 그대로 창 안에 통째로 들어간다 —
+     가상 뷰포트(body)는 무대보다 좁아지지 않는다. */
+  it("어느 창에서도 가상 뷰포트가 무대(1920×1080) 밑으로 내려가지 않는다", async () => {
+    for (const [w, h] of [[480, 270], [800, 600], [960, 540], [1366, 768], [1920, 1080], [5120, 2880]] as const) {
+      const v = (await boot({ w, h })).layoutViewport();
+      expect(v.w, `${w}×${h} 가로`).toBeGreaterThanOrEqual(1920 - 1);
+      expect(v.h, `${w}×${h} 세로`).toBeGreaterThanOrEqual(1080 - 1);
     }
   });
 
-  it("어느 창에서도 [0.5, 2] 를 벗어나지 않는다", async () => {
-    for (const [w, h] of [[320, 480], [800, 600], [1366, 768], [1920, 1080], [5120, 2880]] as const) {
-      const s = (await boot({ w, h })).getUiScale();
-      expect(s, `${w}×${h}`).toBeGreaterThanOrEqual(0.5);
-      expect(s, `${w}×${h}`).toBeLessThanOrEqual(2);
-    }
+  it("마우스 기기에서는 <html data-ui-stage=\"fixed\"> 무대 표식이 선다", async () => {
+    await boot({ w: 1280, h: 720 });
+    expect(stageAttr).toBe("fixed");
+    await boot({ w: 400, h: 800, fine: false });
+    expect(stageAttr).toBeNull();
   });
 
   it("마우스가 없는 기기는 손대지 않는다", async () => {
@@ -201,14 +208,14 @@ describe("배율은 창을 원판(1920×1080)에 맞춘 값 하나다", () => {
  * "작은 창"으로 읽고 배율을 1/z 로 낮추면 **사람이 요구한 확대가 정확히 상쇄된다** —
  * Ctrl+ 를 눌러도 아무 일이 안 일어난다(WCAG 1.4.4 위반). 그래서 z 를 도로 곱한다.
  */
-describe("브라우저 확대는 상쇄하지 않고 그 위에 곱한다", () => {
+describe("브라우저 확대는 상쇄하지 않고 그 위에 곱한다 (무대가 창보다 커지면 스크롤)", () => {
   it("200% 로 키우면 배율이 그대로 남는다 = 화면에서는 두 배로 보인다", async () => {
     const base = { w: 1920, h: 1080, dpr: 1 };
     const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
     expect(m.getUiScale()).toBe(1);
     browserZoom(2, base);
-    // 창은 960×540 이 됐지만(맞춤만 보면 0.5 → 하한 0.75) 확대 배수 2가 곱해져 1.0.
-    // CSS px 자체가 두 배로 그려지므로 화면에서는 정확히 200%가 된다.
+    // 창은 960×540 이 됐지만(맞춤만 보면 0.5) 확대 배수 2가 곱해져 1.0 — 무대가 창의
+    // 두 배라 body 가 스크롤된다. CSS px 자체가 두 배로 그려지므로 화면에서는 정확히 200%.
     expect(m.getUiScale()).toBe(1);
     expect(appliedScale()).toBe(1);
   });
@@ -217,11 +224,10 @@ describe("브라우저 확대는 상쇄하지 않고 그 위에 곱한다", () =
     const base = { w: 1920, h: 1080, dpr: 1 };
     const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
     browserZoom(0.5, base);
-    // 창 3840×2160 → 맞춤 2.0, 확대 배수 0.5 → 1.0. 화면에서는 절반 크기.
     expect(m.getUiScale()).toBe(1);
   });
 
-  it("Ctrl+0 으로 되돌리면 순수 자동 맞춤으로 돌아온다", async () => {
+  it("Ctrl+0 으로 되돌리면 원래 배율로 돌아온다", async () => {
     const base = { w: 1827, h: 852, dpr: 1 };
     const m = await boot({ w: base.w, h: base.h, dpr: base.dpr });
     expect(m.getUiScale()).toBe(0.78);

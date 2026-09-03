@@ -1,6 +1,25 @@
 /**
  * UI 자동 맞춤 — 창이 무엇이든 "의도한 배치"가 그대로 서게 한다.
  *
+ * ── 2026-09-03: 고정 무대 ──
+ *
+ * 화면은 **어느 창에서든 1920×1080 비율로 고정**된다(사용자 지시). 창이 그보다
+ * 옆으로 길면 양옆이, 위아래로 길면 위아래가 검게 남는다(레터박스). 창이 작아지면
+ * 무대가 비율 그대로 통째로 작아지고, 커지면 통째로 커진다 — 상한·하한이 없다.
+ *
+ *     scale = min(창너비 / 1920, 창높이 / 1080)
+ *
+ * body 는 여전히 창 전체(`창 / scale`, 즉 무대보다 크거나 같다)를 덮는 zoom 표면이고,
+ * 그 안에서 `#root` 가 정확히 1920×1080 으로 서서 가운데 놓인다(styles.css
+ * `html[data-ui-stage="fixed"]`). 그래서 `#root` 안의 cq 단위와 `@container ui` 는
+ * 언제나 1920×1080 을 본다 — 브레이크포인트는 마우스 기기에서 더는 안 걸린다.
+ * body 포털(툴팁·드래프트 창)은 body 를 컨테이너로 보므로 예전과 같은 좌표계다:
+ * fixed 는 창 기준, 창과 무대는 중심이 같아 가운데 정렬은 그대로 맞는다.
+ *
+ * 폰·태블릿(pointer: coarse)은 손대지 않는다 — 좁은 화면 전용 배치가 따로 있다.
+ *
+ * ── 예전 이야기 ──
+ *
  * ── 무엇이 문제였나 ──
  *
  * 예전에는 자동 축소(작은 창일 때만) 위에 **사람이 누르는 −/+ 배수**가 곱해졌다.
@@ -14,7 +33,7 @@
  * 사람이 하던 그 일을 **창 크기에서 바로 뽑는다.** 이 배치의 원판(1920×1080)에
  * 창을 맞추는 배율 하나다:
  *
- *     scale = clamp(min(창너비 / 1920, 창높이 / 1080), MIN_SCALE, MAX_SCALE)
+ *     scale = min(창너비 / 1920, 창높이 / 1080)   (지금은 상·하한 없음)
  *
  * min() 이므로 **가상 뷰포트(= 창 / scale)는 어느 쪽도 기준 판보다 좁아지지 않는다.**
  * 흔한 16:9·16:10 창은 늘 세로 쪽이 먼저 걸려 가상 세로가 정확히 960으로 고정된다 —
@@ -73,38 +92,13 @@ import { safeStorage } from "./storage.js";
  * 16:9 창은 — 1366×768이든 4K든 — 가상 1920×1080으로 수렴해 **같은 그림이 크기만
  * 다르게** 선다. 16:10·21:9 처럼 비율이 다른 창은 남는 쪽이 여백으로 붙을 뿐이다.
  *
- * (하한 MIN_SCALE(0.5)에 걸리는 아주 작은 창만 예외 — 그쪽은 styles.css 의
+ * (예전엔 하한에 걸리는 창만 예외였다 — 그쪽은 styles.css 의
  *  `@container ui (max-height: …)` 안전망이 띠를 함께 줄여 받는다.)
  */
 const REF_W = 1920;
 const REF_H = 1080;
 
-/**
- * 배율 하한.
- *
- * ⚠ 이 값이 곧 **«비율이 유지되는 구간의 끝»**이다. 배율이 하한에 걸리는 순간부터
- * 가상 뷰포트가 원판(1920×1080)보다 좁아지고, 그때부터는 균일 배율이 아니라
- * styles.css 의 `@container ui (…)` 브레이크포인트들이 요소를 **따로따로** 줄인다 —
- * 손패만 46px로 뚝 떨어지고 이름표·띠는 그대로 남는 식이라, 창을 조금 줄였을 뿐인데
- * 패가 갑자기 안 보이게 된다(2026-09-03 사용자 보고: "화면을 이리저리 줄여보면 갑자기
- * 패가 엄청 작아져서 안보이고").
- *
- * 0.75 였을 때 그 지점이 **세로 810px**이었다 — 1440×900 창의 실제 뷰포트가 대략
- * 그 언저리라, 흔한 창 크기에서 바로 어긋난 그림이 나왔다. 0.5 로 내리면 960×540
- * 창까지 가상 뷰포트가 정확히 1920×1080으로 서서 **같은 그림이 크기만 다르게** 선다.
- *
- * 대가는 글자다(15px 본문 → 7.5px). 다만 그건 창이 실제로 그만큼 작을 때뿐이고,
- * 그 구간에서 예전 동작은 «글자는 읽히는데 패가 안 보이는» 판이었다. 더 작아지면
- * 그때부터 예전처럼 `@container ui (max-height: …)` 안전망이 받는다.
- */
-const MIN_SCALE = 0.5;
-
-/**
- * 배율 상한. 큰 모니터에서 판이 화면을 따라 커지되 무한정 가지는 않게 막는다.
- * 2.0 = 4K(3840×2160)가 딱 여기다 — 원판을 정확히 두 배로 그린다.
- * 200%는 WCAG 1.4.4가 요구하는 확대 폭이기도 하다.
- */
-const MAX_SCALE = 2;
+/* (예전의 MIN_SCALE 0.75→0.5 / MAX_SCALE 2 는 없앴다 — 무대는 창에 딱 맞는 배율 하나다.) */
 
 /** 이보다 좁은 가상 뷰포트는 데스크톱 배치가 어차피 깨진다 → 안내 대상. */
 const CRAMPED_W = 900;
@@ -205,6 +199,9 @@ function browserZoomFactor(): number {
 /** styles.css가 보는 표식. `<html data-ui-scale-mode="zoom|transform">`. */
 const MODE_ATTR = "data-ui-scale-mode";
 
+/** styles.css가 보는 무대 표식. `<html data-ui-stage="fixed">` 이면 #root 가 1920×1080 무대다. */
+const STAGE_ATTR = "data-ui-stage";
+
 export type ScaleMode = "zoom" | "transform";
 
 /**
@@ -277,10 +274,17 @@ function hasSize(): boolean {
 function computeScale(): number {
   if (!isPointerFine() || !hasSize()) return 1;
   const fit = Math.min(window.innerWidth / REF_W, window.innerHeight / REF_H);
-  // 사람이 누른 브라우저 확대는 상쇄하지 않고 그대로 얹는다 (WCAG 1.4.4).
+  /*
+   * 상한·하한이 없다 — 무대(1920×1080)가 창에 **정확히 들어가는** 배율 하나다.
+   * 창이 작으면 무대도 그만큼 작아지고(비율은 그대로), 크면 그만큼 커진다.
+   *
+   * 브라우저 확대(Ctrl/⌘ +/−)는 상쇄하지 않고 그 위에 곱한다(WCAG 1.4.4). 그러면
+   * 무대가 창보다 커지는데, 그때는 body 가 스크롤된다(styles.css 고정 무대 블록) —
+   * 여느 웹 페이지를 확대했을 때와 같은 동작이다. 잘리지 않는다.
+   */
   const raw = fit * browserZoomFactor();
-  const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, raw));
-  return Math.floor(clamped * 100) / 100;
+  const safe = Math.max(0.05, raw);
+  return Math.floor(safe * 100) / 100;
 }
 
 function apply(): void {
@@ -290,6 +294,15 @@ function apply(): void {
   }
   // 값이 그대로여도 매번 쓴다 — 첫 적용(scale이 초기값 1과 같은 경우)에도 변수가 서야 한다.
   document.body.style.setProperty("--ui-scale", String(scale));
+  // 무대를 쓰는지 알린다 — styles.css 는 이 표식이 있을 때만 #root 를 1920×1080 으로
+  // 못 박고 남는 자리를 검게 칠한다. 폰·태블릿(pointer: coarse)은 표식이 없어 예전
+  // 배치(창 = 뷰포트) 그대로다.
+  try {
+    if (isPointerFine() && hasSize()) document.documentElement.setAttribute(STAGE_ATTR, "fixed");
+    else document.documentElement.removeAttribute(STAGE_ATTR);
+  } catch {
+    /* DOM 이 없으면 무대도 없다 */
+  }
   // 배율이 그대로여도(하한에 걸린 채 창만 조금 바뀐 경우) 안내 조건은 달라질 수 있다.
   listeners.forEach((fn) => fn());
 }
@@ -307,6 +320,11 @@ export function toLayoutPx(v: number): number {
 /** 레이아웃 좌표계에서 본 창 크기 = 가상 뷰포트. */
 export function layoutViewport(): { w: number; h: number } {
   return { w: window.innerWidth / scale, h: window.innerHeight / scale };
+}
+
+/** 무대(1920×1080)를 쓰는 화면인가 — 마우스 기기에서 창 크기를 잴 수 있을 때. */
+export function isFixedStage(): boolean {
+  return isPointerFine() && hasSize();
 }
 
 /**

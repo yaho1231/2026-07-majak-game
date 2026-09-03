@@ -186,6 +186,32 @@ html[data-ui-scale-mode="transform"] body {
   height: 100%;
 }
 
+/* ── 고정 무대 (마우스 기기) ──
+   `#root` 가 정확히 1920×1080 무대다(uiScale.ts 머리 주석). body 는 창 전체를 덮는
+   zoom 표면이라 무대보다 크거나 같고, 남는 자리는 검다 — 창이 옆으로 길면 양옆,
+   위아래로 길면 위아래에 검은 띠가 선다. 무대 자신도 `ui` 컨테이너라 그 안의 cq 단위와
+   `@container ui` 는 언제나 1920×1080 을 본다. body 의 컨테이너는 그대로 둔다:
+   body 포털(툴팁·드래프트 창)은 그쪽을 본다. */
+html[data-ui-stage="fixed"] body {
+  display: flex;
+  background: #000;
+  /* 브라우저 확대(Ctrl +)로 무대가 창보다 커지면 body 가 스크롤된다 — 여느 페이지를
+     확대했을 때와 같다. 가운데 정렬은 align/justify 가 아니라 아래 #root 의
+     `margin: auto` 로 한다: flex 정렬은 넘치는 항목의 위·왼쪽을 잘라 버리지만
+     auto 마진은 음수가 되지 않아 넘칠 때는 시작점에 붙는다. */
+  overflow: auto;
+}
+
+html[data-ui-stage="fixed"] #root {
+  flex: none;
+  width: 1920px;
+  height: 1080px;
+  margin: auto;
+  container: ui / size;
+  overflow: hidden;
+  position: relative;
+}
+
 /* ── 빈 곳을 끌어도 파랗게 긁히지 않는다 ──
    웹 문서의 기본 동작(드래그 = 텍스트 선택)이 게임 화면에서는 늘 사고다. 패를 끌어
    옮기거나 버튼을 눌렀다 떼는 동작마다 이름표·안내문이 통째로 파랗게 잡혔다
