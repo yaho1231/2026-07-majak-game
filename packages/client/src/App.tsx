@@ -18,6 +18,7 @@ import type {
   ActionOption,
   ActionMessage,
   AdminAugmentTiersMessage,
+  AdminOnlineMessage,
   AdminUserEntry,
   AnalyticsDayEntry,
   AugmentCatalogEntry,
@@ -61,6 +62,7 @@ import type {
   PeriodStats,
   ServerInfoMessage,
   ServerNotice,
+  SpectateChoiceMessage,
   SpectateDraftMessage,
   SpectateInsightMessage,
   SpectateWinValue,
@@ -156,6 +158,7 @@ import {
   getUiScale,
   isLayoutCramped,
   layoutViewport,
+  setStageExtraWidth,
   subscribeUiScale,
   toLayoutPx,
 } from "./uiScale.js";
@@ -3123,6 +3126,14 @@ export function App(): JSX.Element {
   const [controlling, setControlling] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[] | null>(null);
   const [adminUsers, setAdminUsers] = useState<AdminUserEntry[] | null>(null);
+  /**
+   * **지금 접속해 있는 사람들** (관리자 전용, 2026-09-03 사용자 요청).
+   *
+   * 여태 관리자가 볼 수 있는 것은 «계정 목록»(가입한 전부)과 «진행 중인 대국»뿐이라,
+   * 「지금 누가 붙어 있나 · 로비인가 대기실인가」를 알 길이 없었다. 서버가 한 번
+   * 스냅샷을 주고, 그 뒤 접속·퇴장·입장이 있을 때마다 스스로 밀어 준다.
+   */
+  const [adminOnline, setAdminOnline] = useState<AdminOnlineMessage | null>(null);
   /** 제보 게시판 — 내가 볼 수 있는 글만 온다(내 글, 관리자면 전체). */
   const [feedback, setFeedback] = useState<FeedbackEntry[] | null>(null);
   /**
@@ -3163,6 +3174,18 @@ export function App(): JSX.Element {
    * `spectateDraftEnd`로 걷는다.
    */
   const [spectateDraft, setSpectateDraft] = useState<SpectateDraftMessage | null>(null);
+  /**
+   * **관전 중계: 지금 어느 좌석이 무엇을 고르고 있는가** (관전자에게만 온다).
+   *
+   * 액티브 증강(연금술사·염색·날치기…)을 쓰면 그 사람 화면에는 «무엇을 무엇으로»를
+   * 고르는 패널이 열린다. 그런데 관전 화면에는 그 몇 초가 통째로 «아무 일도 없는
+   * 탁자»로만 보였다 — 정작 이 게임에서 제일 볼 만한 순간이 거기다(2026-09-03 사용자
+   * 요청: 「연금술사로 증강 사용하면 띄우는 패널을 관전에서도 실시간으로 볼 수 있게」).
+   *
+   * 서버가 프롬프트를 스냅샷으로 실어 보내고(`spectateChoice`) 그 선택이 끝나면
+   * `spectateChoiceEnd`로 걷는다 — 증강 드래프트 중계와 같은 구조다.
+   */
+  const [spectateChoice, setSpectateChoice] = useState<SpectateChoiceMessage | null>(null);
   /**
    * 이 관전석에 걸린 송출 지연(초). 0이면 지연 없음 (docs/36 C1).
    *
@@ -3800,6 +3823,7 @@ export function App(): JSX.Element {
     roomNoticeTimer.current = null;
     setInsight(null);
     setSpectateDraft(null);
+    setSpectateChoice(null);
     setSpectatedBy(0);
     viewBuffer.current = [];
     setRewindAt(null);
@@ -4564,6 +4588,7 @@ export function App(): JSX.Element {
       if (msg.isAdmin) {
         send({ type: "liveGames" });
         send({ type: "adminUsers" });
+        send({ type: "adminOnline" });
         send({ type: "adminAugmentTiers" });
         send({ type: "adminAnalytics" });
       }
@@ -4852,6 +4877,11 @@ export function App(): JSX.Element {
       setAdminUsers(msg.users);
       return;
     }
+    if (msg.type === "adminOnline") {
+      // 접속자 스냅샷 — 서버가 변동 때마다 다시 밀어 주므로 그대로 갈아 끼운다.
+      setAdminOnline(msg);
+      return;
+    }
     if (msg.type === "feedbackList") {
       setFeedback(msg.entries);
       return;
@@ -4861,6 +4891,27 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "spectateStarted") {
+      /*
+       * **새 탁자에 붙는 순간, 앞 탁자의 잔상을 통째로 버린다** (2026-09-03 사용자 보고
+       * 두 건을 한 자리에서 고친다).
+       *
+       *  ① 「증강 선택 중일 때 다른 탁자로 가면 증강 선택 패널이 안 꺼진다」 —
+       *     `spectateDraft`는 여태 `spectateDraftEnd`가 와야만 걷혔는데, 그 메시지는
+       *     **앞 탁자**의 것이라 B탁자를 보는 내내 A탁자의 카드가 화면을 덮었다.
+       *  ② 「라이브로 왔다 갔다 하면 필요 없는 이전 연출들이 몰아쳐 온다」 —
+       *     연출 큐(`productionQueue`)에 쌓여 있던 앞 탁자의 컷인·배너가 새 탁자의
+       *     첫 뷰 위로 쏟아졌다. 게다가 `prevViewRef`가 남아 있어 새 탁자의 첫 뷰가
+       *     «전이»로 읽혔다 — 이미 서 있던 리치·후로·증강 발동이 그 자리에서 전부
+       *     다시 터진다(재접속 경로에서 이미 겪고 고친 것과 같은 문제다).
+       *
+       * `prevViewRef`를 비우면 `detectTransitions`가 첫 뷰 경로로 들어가 **지금 상태를
+       * 조용히 시드만** 한다 — 즉 "그 시점에서 그냥 이어서 본다"가 된다.
+       */
+      clearProductions();
+      prevViewRef.current = null;
+      resetFxSeen();
+      setCenterView(null);
+      setRoundResult(null);
       setSpectating(msg.code);
       // 서버가 확정해 준 값이 곧 «지금 걸린 지연»이다 — 저장도 여기서 맞춘다.
       // (요청은 보냈는데 서버가 다른 값으로 확정하면 저장값만 옛것으로 남는다.)
@@ -5335,10 +5386,36 @@ export function App(): JSX.Element {
     if (msg.type === "spectateDraft") {
       // 관전 중계 — 좌석 넉 줄을 통째로 갈아 끼운다(서버가 스냅샷을 보낸다).
       setSpectateDraft(msg);
+      /*
+       * **정산 창은 여기서 걷는다** (2026-09-03 사용자 보고: 「관전은 화료 후 자동으로
+       * 다음 국으로 안 됨 — 증강 선택 단계일 때」).
+       *
+       * 대국자의 정산 창은 «다음 국의 첫 뷰»가 오면 정리된다. 그런데 화료 뒤에 증강
+       * 드래프트가 열리는 국에서는 그 뷰가 수십 초 뒤에나 온다 — 관전자는 버튼을
+       * 누를 일이 없으니(누가 눌러도 서버에는 안 보낸다) 정산 창이 그대로 서서
+       * 그 사이의 드래프트 중계를 통째로 덮었다.
+       *
+       * 드래프트가 열렸다는 것은 그 국이 이미 끝났다는 뜻이다 — 정산 창의 수명은
+       * 거기까지다.
+       */
+      if (spectatingRef.current) {
+        setRoundResult(null);
+        pendingResult.current = null;
+      }
       return;
     }
     if (msg.type === "spectateDraftEnd") {
       setSpectateDraft(null);
+      return;
+    }
+    if (msg.type === "spectateChoice") {
+      // 관전 중계 — 어느 좌석의 선택창이 열렸다(스냅샷이라 그대로 갈아 끼운다).
+      setSpectateChoice(msg);
+      return;
+    }
+    if (msg.type === "spectateChoiceEnd") {
+      // 다른 좌석의 뒤늦은 종료 통보가 방금 열린 창을 걷어 가지 않게 좌석을 확인한다.
+      setSpectateChoice((cur) => (cur === null || cur.seat === msg.seat ? null : cur));
       return;
     }
     if (msg.type === "roundOver") {
@@ -5958,12 +6035,28 @@ export function App(): JSX.Element {
       if (!nowRiichi && shown.riichi.has(p.id)) {
         shown.riichi.delete(p.id);
         riichiWasCancelled = true;
-        showBanner(
-          "리치 해제",
-          "info",
-          p.id === next.playerId ? "리치를 물렀다 — 리치봉이 돌아온다" : `${playerNameById(next, p.id)} — 리치를 물렀다`,
-          1400,
-        );
+        /*
+         * ⚠ **국이 끝나서 리치 표식이 사라진 것은 «해제»가 아니다** (2026-09-03
+         * 사용자 보고: 「리치해제 알림은 왜 나오는 거야, 갑자기」).
+         *
+         * 정산 뷰(`round.over`)와 새 국의 첫 뷰에서는 `riichiDeclared`가 그냥 내려간다.
+         * 그런데 `shown.riichi`는 국이 **실제로** 시작될 때만 비워지므로(위 새 국 분기),
+         * 그 사이에 이 분기가 좌석마다 한 번씩 걸려 화료 컷인 위로 「리치 해제」가
+         * 뜬금없이 올라왔다. 아무도 리치를 물리지 않았는데.
+         *
+         * 진짜 해제(승부수·손바닥 뒤집기·손을 빼앗김)는 **국이 도는 중에만** 일어난다.
+         * 그러니 국이 끝났거나 국 키가 이미 넘어간 뷰에서는 조용히 정리만 한다 —
+         * 브금 정리(`riichiWasCancelled`)는 그대로 돌아야 리치 브금이 이월되지 않는다.
+         */
+        const roundStillRunning = next.round.phase !== "round.over" && rk === shown.roundKey;
+        if (roundStillRunning) {
+          showBanner(
+            "리치 해제",
+            "info",
+            p.id === next.playerId ? "리치를 물렀다 — 리치봉이 돌아온다" : `${playerNameById(next, p.id)} — 리치를 물렀다`,
+            1400,
+          );
+        }
       }
 
       // 후로 (치/펑/깡) — 후로 수가 이전 알림보다 늘었을 때만. 화료·리치처럼 컷인 연출.
@@ -6941,6 +7034,7 @@ export function App(): JSX.Element {
           leaderboard={leaderboard}
           catalog={catalog}
           adminUsers={adminUsers}
+          adminOnline={adminOnline}
           feedback={feedback}
           onSubmitFeedback={(kind, title, body) =>
             send({ type: "feedbackSubmit", kind, title, body })
@@ -6994,7 +7088,14 @@ export function App(): JSX.Element {
               if (ok) send({ type: "adminAbortGame", code });
             });
           }}
-          onRefreshUsers={() => send({ type: "adminUsers" })}
+          onRefreshUsers={() => {
+            send({ type: "adminUsers" });
+            send({ type: "adminOnline" });
+          }}
+          onRefreshOnline={() => send({ type: "adminOnline" })}
+          onRenameUser={(userId, username) =>
+            send({ type: "adminRenameUser", userId: String(userId), username })
+          }
           onStartSandbox={(mode) => send({ type: "sandboxStart", mode })}
           onPractice={(tutorial) => {
             // 튜토리얼을 **직접 누른** 사람은 다시 배우고 싶다는 뜻이다 — 저장된
@@ -7127,6 +7228,14 @@ export function App(): JSX.Element {
       */}
       {isSpectator && spectateDraft !== null && view !== null && rewindAt === null ? (
         <SpectateDraftPanel draft={spectateDraft} view={view} catalog={catalog} />
+      ) : null}
+      {/*
+        관전 중계 — 액티브 증강의 선택창을 관전 화면에도 그대로 띄운다 (2026-09-03).
+        드래프트 중계와 같은 조건이다: 관전 중이고, 되감기 중이 아닐 때만. 되감는
+        동안 이 줄만 «지금»이면 한 화면에 두 시각이 서게 된다.
+      */}
+      {isSpectator && spectateChoice !== null && view !== null && rewindAt === null ? (
+        <SpectateChoicePanel choice={spectateChoice} view={view} />
       ) : null}
       {activeProd !== null && activeProd.channel === "banner" && activeProd.tone === "riichi" ? (
         // 리치 전용 풀 연출 — 비네트 암전 + 붉은 밴드 + 천점봉 슬라이드-인 + 금속성 글자
@@ -7277,6 +7386,13 @@ export function App(): JSX.Element {
            * 코치를 끄면(«그만 보기») 그 순간부터 평소의 시계가 돌아온다.
            */
           deadlineAt={coachOn ? null : roundResultDeadline.current}
+          /*
+           * 관전석에는 «다음 국으로»를 누를 사람이 없다 — 눌러도 서버에는 아무것도
+           * 가지 않는다(`closeRoundResult`). 그래서 대기가 끝나면 스스로 내려간다.
+           * 드래프트가 열리는 국은 위 `spectateDraft` 분기가 먼저 걷고, 그렇지 않은
+           * 국은 이 시계가 걷는다 — 어느 쪽으로 가든 관전 화면이 멈춰 서지 않는다.
+           */
+          autoClose={isSpectator}
           onClose={closeRoundResult}
         />
       ) : null}
@@ -11083,6 +11199,100 @@ function FoldButton(props: { folded: boolean; onToggle: () => void; label: strin
   );
 }
 
+/** 접속자의 «지금 어디» 표기 — 서버의 `where` 와 1:1 (protocol AdminOnlineUser) */
+const ONLINE_WHERE_LABEL: Record<"lobby" | "waiting" | "playing" | "spectating", string> = {
+  lobby: "로비",
+  waiting: "대기실",
+  playing: "대국 중",
+  spectating: "관전 중",
+};
+
+/** 접속한 지 얼마나 됐나 — 초·분·시간 한 단위로만 (표가 아니라 곁줄이다) */
+function sinceText(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec}초`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분`;
+  return `${Math.floor(min / 60)}시간 ${min % 60}분`;
+}
+
+/**
+ * 계정 한 줄 — 삭제와 **닉네임 바꾸기** (2026-09-03 사용자 요청).
+ *
+ * 이름을 고치는 길을 모달로 내지 않고 줄 안에서 연다. 관리자가 이름을 바꾸는 상황은
+ * 대개 «이 사람 이름이 문제다»를 목록에서 발견한 그 자리이고, 그때 창이 하나 더 뜨면
+ * 어느 줄을 고치고 있었는지가 사라진다. Enter로 저장 · Esc로 취소.
+ *
+ * 서버가 가입과 **같은 규칙**으로 다시 검사하므로(SiteDb `renameUser`) 여기서는
+ * 형식을 막지 않는다 — 두 곳에서 따로 검사하면 언젠가 서로 다른 말을 한다.
+ */
+function AdminUserRow({
+  user,
+  isMe,
+  onDelete,
+  onRename,
+}: {
+  user: AdminUserEntry;
+  isMe: boolean;
+  onDelete: (userId: number, username: string) => void;
+  onRename: (userId: number, username: string) => void;
+}): JSX.Element {
+  const [editing, setEditing] = useState<string | null>(null);
+  if (editing !== null) {
+    const commit = (): void => {
+      const name = editing.trim();
+      setEditing(null);
+      if (name.length > 0 && name !== user.username) onRename(user.id, name);
+    };
+    return (
+      <li className="user-row user-row-editing">
+        <input
+          className="user-rename-input"
+          value={editing}
+          autoFocus
+          maxLength={12}
+          aria-label={`${user.username} 의 새 닉네임`}
+          onChange={(e) => setEditing(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(null);
+          }}
+        />
+        <button className="user-rename-save" onClick={commit}>저장</button>
+        <button className="user-rename-cancel" onClick={() => setEditing(null)}>취소</button>
+      </li>
+    );
+  }
+  return (
+    <li className="user-row">
+      <span className="user-name">
+        {user.username}
+        {user.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
+        {isMe ? <span className="seat-you"> (나)</span> : null}
+      </span>
+      <span className="user-meta">
+        <span className="user-games">{user.games}판</span>
+        <span className="user-date">{new Date(user.createdAt).toLocaleDateString()}</span>
+      </span>
+      <button
+        className="user-rename"
+        onClick={() => setEditing(user.username)}
+        title="닉네임 바꾸기"
+      >
+        이름
+      </button>
+      <button
+        className="user-delete"
+        disabled={isMe}
+        onClick={() => onDelete(user.id, user.username)}
+        title={isMe ? "본인 계정은 삭제할 수 없습니다" : "계정 삭제"}
+      >
+        삭제
+      </button>
+    </li>
+  );
+}
+
 function ListCard<T>(props: {
   items: T[] | null;
   /** 정말로 비었을 때의 문장 */
@@ -11678,6 +11888,11 @@ function HomeScreen(props: {
   leaderboard: LeaderboardEntry[] | null;
   catalog: Record<string, AugmentCatalogEntry>;
   adminUsers: AdminUserEntry[] | null;
+  /** 지금 접속해 있는 사람들 (관리자 전용) */
+  adminOnline: AdminOnlineMessage | null;
+  onRefreshOnline: () => void;
+  /** 닉네임 바꾸기 (관리자 전용) */
+  onRenameUser: (userId: number, username: string) => void;
   /** 비밀번호 변경 · 다른 기기 로그아웃 (§10-2). */
   onChangePassword: (current: string, next: string) => void;
   onLogoutOthers: () => void;
@@ -12332,6 +12547,64 @@ function HomeScreen(props: {
         ) : null}
 
         {props.auth.isAdmin ? (
+          /*
+           * **지금 접속해 있는 사람** (2026-09-03 사용자 요청: 「관리자는 온라인인
+           * 유저 파악 가능하게, 대기실에 있는지도 파악 가능하게」).
+           *
+           * 계정 목록(아래 «플레이어 관리»)은 «가입한 전부»라 지금 누가 붙어 있는지를
+           * 말해 주지 않고, «진행 중인 대국»은 판이 시작된 뒤에야 보인다 — 그 사이,
+           * 즉 로비와 대기실에 있는 사람이 어느 화면에도 없었다. 서버가 접속·퇴장·
+           * 입장이 있을 때마다 스스로 다시 밀어 주므로 새로 고침을 누를 일은 드물다.
+           */
+          <section className="home-card home-admin home-online">
+            <div className="home-card-head">
+              <h2>지금 접속 중 <span className="home-admin-badge">관리자</span></h2>
+              <RefreshButton onRefresh={props.onRefreshOnline} title="새로 고침" />
+            </div>
+            {props.adminOnline === null ? (
+              <p className="home-empty">접속자를 불러오는 중…</p>
+            ) : props.adminOnline.users.length === 0 ? (
+              <p className="home-empty">지금 접속해 있는 사람이 없습니다.</p>
+            ) : (
+              <>
+                <div className="online-counts">
+                  <span className="online-chip">전체 <b>{props.adminOnline.counts.total}</b></span>
+                  <span className="online-chip online-chip-lobby">
+                    로비 <b>{props.adminOnline.counts.lobby}</b>
+                  </span>
+                  <span className="online-chip online-chip-playing">
+                    대국 <b>{props.adminOnline.counts.playing}</b>
+                  </span>
+                  <span className="online-chip online-chip-spec">
+                    관전 <b>{props.adminOnline.counts.spectating}</b>
+                  </span>
+                  <span className="online-chip online-chip-guest">
+                    손님 <b>{props.adminOnline.counts.guests}</b>
+                  </span>
+                </div>
+                <ul className="online-list">
+                  {props.adminOnline.users.map((u, i) => (
+                    <li key={`${u.userId ?? "guest"}:${u.name}:${i}`} className="online-row">
+                      <span className="online-name">
+                        {u.name}
+                        {u.admin ? <span className="home-admin-badge">관리자</span> : null}
+                        {u.guest ? <span className="online-guest">손님</span> : null}
+                        {u.tabs > 1 ? <span className="online-tabs">×{u.tabs}</span> : null}
+                      </span>
+                      <span className={`online-where online-where-${u.where}`}>
+                        {ONLINE_WHERE_LABEL[u.where]}
+                        {u.room !== undefined ? <b className="online-room">{u.room}</b> : null}
+                      </span>
+                      <span className="online-since">{sinceText(u.sinceMs)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        ) : null}
+
+        {props.auth.isAdmin ? (
           <section className="home-card home-admin home-users">
             <div className="home-card-head">
               <h2>플레이어 관리 <span className="home-admin-badge">관리자</span></h2>
@@ -12340,30 +12613,15 @@ function HomeScreen(props: {
             <ListCard items={props.adminUsers} empty="등록된 계정이 없습니다.">
               {(rows) => (
               <ul className="user-list">
-                {rows.map((u) => {
-                  const isMe = u.username === props.auth.username;
-                  return (
-                    <li key={u.id} className="user-row">
-                      <span className="user-name">
-                        {u.username}
-                        {u.isAdmin ? <span className="home-admin-badge">관리자</span> : null}
-                        {isMe ? <span className="seat-you"> (나)</span> : null}
-                      </span>
-                      <span className="user-meta">
-                        <span className="user-games">{u.games}판</span>
-                        <span className="user-date">{new Date(u.createdAt).toLocaleDateString()}</span>
-                      </span>
-                      <button
-                        className="user-delete"
-                        disabled={isMe}
-                        onClick={() => props.onDeleteUser(u.id, u.username)}
-                        title={isMe ? "본인 계정은 삭제할 수 없습니다" : "계정 삭제"}
-                      >
-                        삭제
-                      </button>
-                    </li>
-                  );
-                })}
+                {rows.map((u) => (
+                  <AdminUserRow
+                    key={u.id}
+                    user={u}
+                    isMe={u.username === props.auth.username}
+                    onDelete={props.onDeleteUser}
+                    onRename={props.onRenameUser}
+                  />
+                ))}
               </ul>
               )}
             </ListCard>
@@ -13769,13 +14027,22 @@ const GameTable = memo(function GameTable(props: {
   useEffect(() => {
     if (dockFlag === null) {
       delete document.body.dataset.majakDock;
+      setStageExtraWidth(0);
       return;
     }
     document.body.dataset.majakDock = dockFlag;
+    /*
+     * 도크는 판의 1920을 나눠 갖지 않고 **무대를 그만큼 넓힌다** (2026-09-03 사용자
+     * 지시: 「분석창은 기본창(일반적인 비율) 옆에 추가 — 비율이 달라져도 됨」).
+     * 여기서 넘기는 폭이 styles.css 의 도크 트랙 폭(`--spec-dock-w`)과 **같은 값**이라야
+     * 판 칸이 정확히 1920px 로 풀린다. 세 값을 함께 바꾼다.
+     */
+    setStageExtraWidth(dockFlag === "open" ? 460 : dockFlag === "folded" ? 30 : 0);
     // 관전을 접거나 방을 나가면 표식도 걷는다 — 남으면 대국자 화면에서 배율
     // 손잡이가 있지도 않은 도크를 피해 왼쪽으로 물러난 채로 굳는다.
     return () => {
       delete document.body.dataset.majakDock;
+      setStageExtraWidth(0);
     };
   }, [dockFlag]);
   const focusPlayer =
@@ -13784,8 +14051,34 @@ const GameTable = memo(function GameTable(props: {
       : focusSeat === "turn"
         ? (view.players.find((p) => p.seat === view.round.turnSeat) ?? null)
         : (view.players.find((p) => p.id === focusSeat) ?? null);
+  /*
+   * **정산 중에는 자리를 돌리지 않는다** (2026-09-03 사용자 보고: 「관전에서 론당하자마자
+   * 자리 바뀜」).
+   *
+   * 관전석의 «아래 자리» 기본값은 오야다(`focusSeat === "dealer"`). 그런데 정산 뷰
+   * (`round.over`)에는 **이미 다음 국의 오야**가 실려 있다 — ROUND_SETTLED가 국 번호와
+   * 친을 미리 올리기 때문이다. 그래서 론이 나는 그 프레임에 네 자리가 통째로 돌아가,
+   * 화료 컷인과 점수표를 방금까지와 다른 배치로 보게 됐다.
+   *
+   * 국이 **도는 동안에만** 오야를 다시 읽고, 정산 중에는 마지막 배치를 붙든다.
+   * 다음 국이 실제로 시작되면(phase가 round.over를 벗어나면) 그때 새 오야를 따라간다 —
+   * 「새 게임이 시작했을 때 오야 위치를 따라가게」가 그대로 지켜진다.
+   */
+  const dealerAnchor = useRef<string | null>(null);
+  const followsDealer = props.spectator === true && focusSeat === "dealer";
+  if (!followsDealer) {
+    dealerAnchor.current = null;
+  } else if (view.round.phase !== "round.over" || dealerAnchor.current === null) {
+    dealerAnchor.current =
+      view.players.find((p) => p.seat === view.round.dealerSeat)?.id ?? null;
+  }
+  const anchoredDealer =
+    dealerAnchor.current === null
+      ? null
+      : (view.players.find((p) => p.id === dealerAnchor.current) ?? null);
   const me = view.players.find((p) => p.id === view.playerId)
     ?? focusPlayer
+    ?? anchoredDealer
     ?? view.players.find((p) => p.seat === view.round.dealerSeat)
     ?? view.players.find((p) => p.seat === 0)
     ?? view.players[0]!;
@@ -13955,13 +14248,16 @@ const GameTable = memo(function GameTable(props: {
           </span>
         </div>
       ) : null}
-      {/* 「이 판은 중계 중」 — 대국자에게만 (docs/36 C4).
-          관전 뷰는 손패를 전부 공개한다. 밝힐 수 있는 것을 굳이 숨기지 않는다. */}
-      {props.spectator !== true && (props.spectatedBy ?? 0) > 0 ? (
-        <div className="spectated-badge" role="status" title="관리자가 이 판을 관전 중입니다 — 관전 화면에는 모든 손패가 공개됩니다">
-          ● 중계 중{(props.spectatedBy ?? 0) > 1 ? ` ×${props.spectatedBy}` : ""}
-        </div>
-      ) : null}
+      {/* 「이 판은 중계 중」 표식은 **띄우지 않는다** (2026-09-03 사용자 지시:
+          「관리자가 관전하면 중계중 표시 안 나오게」).
+
+          docs/36 C4에서 이 뱃지를 붙인 이유는 「대국자는 자기 판이 중계되는지 모른다」
+          였다. 그런데 관전은 관리자 계정만 할 수 있고(docs/36 §0-1), 실제로 붙여 보니
+          운영자가 판을 잠깐 들여다볼 때마다 판 위에 붉은 점이 켜져 대국자들이 «내 판에
+          무슨 문제가 생겼나»로 읽었다. 판정에 개입하지 않는 열람을 알릴 값이 없다.
+
+          서버는 `spectated`(관전자 수)를 그대로 보낸다 — 관리자 화면 쪽에서 쓰고,
+          되살릴 일이 있으면 이 자리에 다시 그리면 된다. */}
       {/* 이 탁자에 걸린 공지 — 대국자·관전자가 같은 것을 본다 (docs/36 B2). */}
       {props.roomNotice !== undefined ? (
         <div className={`room-notice${props.spectator === true ? " room-notice-spec" : ""}`} role="status">
@@ -15451,6 +15747,17 @@ function armedRoundNotices(view: PlayerView): ArmedRoundNotice[] {
  * `shown.roundKey`는 진짜 다음 국이 시작될 때만 갱신되고, 그때 augEvents 집합도 함께
  * 비워진다 — 그래서 국이 넘어가면 같은 사건이 다시 정상적으로 터진다.
  */
+/**
+ * 국 식별 키 (장풍-국번호-본장) — 컴포넌트 밖에서도 쓴다.
+ *
+ * `App` 안의 `roundKeyOf`와 **같은 식**이고, 콘텐츠(`content/util.ts` `roundKey`)가
+ * 채널에 적어 두는 값과도 같은 식이다. 세 곳이 어긋나면 「이번 국인가」 판정이
+ * 조용히 틀린다 — 바꿀 때는 셋을 함께 바꾼다.
+ */
+function roundKeyOfView(v: PlayerView): string {
+  return `${v.round.prevalentWind}-${v.round.roundNumber}-${v.round.honba}`;
+}
+
 function augEventSig(key: string, raw: unknown, roundKey: string): string {
   return `${key}=${JSON.stringify(raw)}@${roundKey}`;
 }
@@ -17559,7 +17866,7 @@ function augmentPillStatus(
    * 남의 pill에 쓰면 내 잔량이 남에게 찍힌다).
    */
   const uses = seatChannel(view, playerId, `uses:${augId}`) as
-    | { left?: unknown; total?: unknown; scope?: unknown }
+    | { left?: unknown; total?: unknown; scope?: unknown; spentRound?: unknown }
     | undefined;
   const usesStatus: PillStatus | null =
     uses !== undefined && uses !== null && typeof uses.left === "number"
@@ -17567,13 +17874,28 @@ function augmentPillStatus(
           const left = uses.left as number;
           const total = typeof uses.total === "number" ? uses.total : left;
           const where = uses.scope === "round" ? "이번 국" : "게임 내";
+          /*
+           * **다 썼다고 그 국에 바로 죽이지 않는다** (2026-09-03 사용자 지시:
+           * 「이번 국에 사용했고 이번 국에 계속 적용되는 거라면 굳이 어두워지게
+           * 안 해도 된다 — 액티브 사용이 불가능해지는 다음 국부터 비활성화 처리」).
+           *
+           * 마지막 한 번을 쓴 그 국에는 대개 효과가 아직 판 위에 살아 있다. 그런데
+           * 잔량이 0이 되는 순간 pill이 «죽은 증강»으로 바뀌어, 방금 건 효과가
+           * 이미 끝난 것처럼 읽혔다. 콘텐츠가 0이 된 국을 `spentRound`에 적어 두므로
+           * (content/util.ts `publishUsesLeft`), **그 국 동안에는 회색으로 내리지
+           * 않는다.** 국이 넘어가면 키가 달라져 그때부터 죽은 것으로 그린다.
+           */
+          const spentRound = typeof uses.spentRound === "string" ? uses.spentRound : undefined;
+          const stillThisRound = left === 0 && spentRound !== undefined && spentRound === roundKeyOfView(view);
           return {
             chip: `${left}회`,
             note:
               left > 0
                 ? `${where} ${total}회 중 ${left}회 남음`
-                : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
-            ...(left === 0 ? { tone: "spent" as const } : {}),
+                : stillThisRound
+                  ? `${where} ${total}회를 모두 사용했다 — 이번 국의 효과는 아직 살아 있다`
+                  : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
+            ...(left === 0 && !stillThisRound ? { tone: "spent" as const } : {}),
             ...(total > 0 ? { gauge: left / total } : {}),
           };
         })()
@@ -21649,10 +21971,22 @@ function DockSeats({
             {/* 오름패 — 「그 값이 무슨 패로 나는가」. 바로 위 타점 줄의 근거다. */}
             {showWaits ? <SeatWaits waits={ins?.waits ?? []} /> : null}
             {/* 배패 점수 — 그 국에 받은 첫 13장의 값. 국 내내 변하지 않으므로
-                «운이 좋았나»를 한 숫자로 말한다. 서버가 안 채우면 줄째로 없다. */}
+                «운이 좋았나»를 한 숫자로 말한다. 서버가 안 채우면 줄째로 없다.
+
+                **딱 한 가지 예외**: 교환 증강(통째로 바꾸기·손패 3장 교환·자리 바꿈)에
+                손이 통째로 갈리면 서버가 다시 잰다(`handGradeRegraded`, 2026-09-03
+                사용자 확인 요청: 「손패 교환당하면 배패점수도 바뀌는지」). 숫자가
+                움직인 이유가 화면에 없으면 «고장»으로 읽히므로 표식을 함께 세운다. */}
             {ins?.handGrade !== undefined ? (
               <div className="bcast-card-line">
-                <span className="bcast-label-sm">배패</span>
+                <span className="bcast-label-sm">
+                  배패
+                  {ins.handGradeRegraded === true ? (
+                    <span className="bcast-regraded" title="손패가 통째로 바뀌어 배패 점수를 다시 쟀습니다 (교환 증강)">
+                      ↺
+                    </span>
+                  ) : null}
+                </span>
                 <span className="bcast-grade-bar" aria-hidden="true">
                   <span
                     className={`bcast-grade-fill${
@@ -21661,7 +21995,14 @@ function DockSeats({
                     style={{ width: `${Math.max(0, Math.min(100, ins.handGrade))}%` }}
                   />
                 </span>
-                <span className="bcast-grade-num num" title="배패(첫 13장) 점수 — 100점 만점. 국 내내 변하지 않습니다">
+                <span
+                  className="bcast-grade-num num"
+                  title={
+                    ins.handGradeRegraded === true
+                      ? "배패 점수 — 100점 만점. 손패가 교환되어 지금 손으로 다시 쟀습니다"
+                      : "배패(첫 13장) 점수 — 100점 만점. 국 내내 변하지 않습니다"
+                  }
+                >
                   {Math.round(ins.handGrade)}
                 </span>
               </div>
@@ -21893,19 +22234,46 @@ function DockDanger({
         「쏘이는 패」와 자주 어긋납니다 — 대국자가 그 자리에서 알 수 있는 것만으로 재기
         때문입니다.
       </p>
+      {/*
+        * ⚠ **수치가 빠지면 이 구획은 그냥 «패 나열»로 읽힌다** (2026-09-03 사용자 보고:
+        * 「위험도(추정)인데 그냥 패 나열한 거로밖에 안 보임」).
+        *
+        * 예전에는 0.33 미만이면 색도 글자도 붙지 않았다. 그런데 봇의 추정치는 대부분
+        * 그 아래에 깔린다(안전패가 많은 것이 정상이다) — 그래서 실제 화면에서는
+        * 표식이 하나도 없는 손패 13장이 그냥 늘어서 있었고, 「이게 위험도라는 걸
+        * 어떻게 아나」가 됐다.
+        *
+        * 그래서 **모든 패에 값을 적는다**: 숫자(%)와 그 값만큼 차는 막대. 위험한 쪽이
+        * 앞에 서도록 이미 정렬돼 있으므로, 왼쪽이 높고 오른쪽으로 갈수록 낮아지는
+        * 그림이 한눈에 잡힌다. 색·글자 뱃지(주의·위험)는 그대로 위에 얹는다 —
+        * 색만으로 단계를 말하지 않는다는 규칙은 유지한다.
+        */}
+      <p className="dock-note dock-note-quiet dock-danger-legend">
+        <span className="dock-danger-legend-bar" aria-hidden />
+        왼쪽이 위험한 쪽 — 숫자는 봇이 «이 패를 버리면 쏘일 확률»로 잰 값입니다
+      </p>
       <div className="dock-danger-row">
         {sorted.map((id) => {
           const lv = danger[id] ?? 0;
           const cls = specDangerClass(lv);
+          const pct = Math.round(lv * 100);
           return (
             <span
               key={id}
               className={`dock-danger-tile${cls}`}
-              title={`위험도 ${Math.round(lv * 100)}%${
-                lv >= 0.66 ? " — 높음" : lv >= 0.33 ? " — 중간" : ""
-              }`}
+              title={`위험도 ${pct}%${lv >= 0.66 ? " — 높음" : lv >= 0.33 ? " — 중간" : " — 낮음"}`}
             >
               <TileImg tile={view.tiles[id]} size="mini" />
+              {/* 값을 그림과 숫자 둘 다로 — 막대는 훑어보는 눈에, 숫자는 세는 눈에 */}
+              <span className="dock-danger-meter" aria-hidden>
+                <span
+                  className={`dock-danger-meter-fill${lv >= 0.66 ? " hi" : lv >= 0.33 ? " md" : ""}`}
+                  style={{ transform: `scaleX(${Math.max(0.04, lv)})` }}
+                />
+              </span>
+              <span className={`dock-danger-pct num${lv >= 0.66 ? " hi" : lv >= 0.33 ? " md" : ""}`}>
+                {pct}%
+              </span>
               {/* 색만으로 단계를 말하지 않는다 — 고대비·색약에서도 남는 글자를 붙인다 */}
               {lv >= 0.33 ? (
                 <span className={`dock-danger-tag${lv >= 0.66 ? " hi" : ""}`}>
@@ -24726,6 +25094,7 @@ function RoundResultPanel({
   view,
   catalog,
   deadlineAt,
+  autoClose,
   onClose,
   historical,
 }: {
@@ -24744,6 +25113,15 @@ function RoundResultPanel({
    * (interRoundDelayMs=0 — 테스트·봇 게임). 카운트다운 표시에만 쓴다.
    */
   deadlineAt: number | null;
+  /**
+   * 마감이 지나면 **스스로 닫는가** — 관전석 전용.
+   *
+   * 대국자는 사람이 눌러 닫는 것이 규약이고(작혼·천봉), 그동안 서버가 상한에서
+   * 다음 국을 시작하면 새 국 뷰가 창을 정리한다. 관전자에게는 그 «새 국 뷰»가
+   * 늦게 오거나(증강 드래프트) 아예 자기 조작으로는 앞당길 수 없어, 창이 그대로
+   * 서서 중계를 덮었다 (2026-09-03).
+   */
+  autoClose?: boolean;
   onClose: () => void;
 }): JSX.Element {
   const { settle } = result;
@@ -24791,6 +25169,13 @@ function RoundResultPanel({
   }, [deadlineAt, paused]);
   const remainSec = Math.ceil(remainMs / 1000);
   const showCountdown = deadlineAt !== null && remainSec > 0;
+
+  // 관전석: 마감이 지나면 스스로 내려간다 (판이 서 있으면 시계도 서 있으므로 닫지 않는다).
+  useEffect(() => {
+    if (autoClose !== true || deadlineAt === null || paused) return;
+    if (remainMs > 0) return;
+    onClose();
+  }, [autoClose, deadlineAt, paused, remainMs, onClose]);
 
   /*
    * 역 스탬프 사운드 — CSS 스탬프 딜레이(0.15s + i*0.09s)와 동기한 펜타토닉 계단.
@@ -24866,6 +25251,20 @@ function RoundResultPanel({
         </div>
       ) : null}
       <div className="result-panel">
+        {/* 읽는 몫과 넘기는 몫을 **층으로 가른다** (2026-09-03 사용자 보고: 「더블론일 때
+            다음 국으로가 맨 하단이 아니라 조금 위에 보이고, 화료 화면 전체가 살짝 위에
+            있어 밑이 빈다」).
+
+            예전에는 정산 내용과 CTA가 한 스크롤 상자 안에 나란히 있었고, CTA는
+            `position: sticky`로 바닥에 붙었다. 그런데 sticky는 **내용이 넘칠 때만**
+            바닥에 선다 — 더블론은 두 손패가 나란히 서서 세로가 오히려 짧아지므로
+            넘치지 않고, 그러면 CTA는 그냥 내용 끝에 붙어 «가운데 정렬된 덩어리»의
+            일부가 된다. 그래서 화면 아래가 통째로 비었다.
+
+            이제 스크롤은 `.result-body`가 맡고 `.result-cta`는 그 **밖**에 서서 늘
+            패널 바닥이다. 내용이 짧으면 위 칸 안에서 가운데 정렬되고, 길면 그 칸만
+            스크롤된다 — 두 경우 모두 버튼 자리는 움직이지 않는다. */}
+        <div className="result-body">
         <h2 className="result-title">
           {isWin ? "화 료" : isDraw ? "유 국" : "도중 유국"}
         </h2>
@@ -25278,6 +25677,7 @@ function RoundResultPanel({
           <p className="result-next">{nextRoundNote.join(" · ")}</p>
         ) : null}
 
+        </div>
         {/* 확인 버튼 — 이 창을 넘기는 유일한 손잡이다. 남은 시간을 함께 달아
             "왜 저절로 넘어가는가"를 화면 안에서 설명한다. 대기가 없는 판
             (interRoundDelayMs=0)에서는 초 표시 없이 버튼만 남는다.
@@ -25313,6 +25713,92 @@ function RoundResultPanel({
 }
 
 // ─────────────────────────── 드래프트 오버레이 ───────────────────────────
+
+/**
+ * 선택지 한 줄의 **표기** — 서버가 보내는 기계용 라벨을 사람이 읽는 것으로 바꾼다.
+ *
+ * 서버(`HanchanController.optionLabel`)는 `"alchemy man3 1"` 처럼 «액션 타입 + 인자»
+ * 를 그대로 보낸다. core 에는 패의 한국어 표기가 없기 때문이다(그건 이 파일의 몫이다).
+ * 그래서 여기서 첫 토막은 액션 이름표(`ACTION_LABEL`)로, 패 키(`man3`)는 실제 패
+ * 그림으로 갈아 끼운다 — 남는 숫자·문자는 그대로 둔다(방향 ±1 같은 인자다).
+ */
+function ChoiceLabel({ label }: { label: string }): JSX.Element {
+  const [head, ...rest] = label.split(" ");
+  return (
+    <span className="spec-choice-opt-label">
+      <span className="spec-choice-opt-act">{ACTION_LABEL[head ?? ""] ?? head}</span>
+      {rest.map((tok, i) => {
+        const kind = parseKindKey(tok);
+        return kind === null ? (
+          <span className="spec-choice-opt-arg" key={`${i}-${tok}`}>
+            {tok}
+          </span>
+        ) : (
+          <TileImg key={`${i}-${tok}`} tile={{ kind }} size="mini" />
+        );
+      })}
+    </span>
+  );
+}
+
+/**
+ * **관전 중계: 액티브 증강 선택창** — 지금 이 좌석이 무엇을 고르고 있는가 (관전 전용).
+ *
+ * 연금술사·염색처럼 «무엇을 무엇으로»를 사람이 직접 고르는 증강은, 그 몇 초 동안
+ * 대국자 화면에만 패널이 열리고 관전 화면은 멈춘 탁자로만 보였다 — 이 게임에서
+ * 제일 볼 만한 순간이 통째로 중계에서 빠진 셈이다(2026-09-03 사용자 요청).
+ *
+ * 서버가 그 사람 프롬프트의 «증강 몫»만 추려 스냅샷으로 보낸다(`spectateChoice`).
+ * 여기서는 쌓지 않고 그대로 그리고, 선택이 끝나면 `spectateChoiceEnd`가 걷는다.
+ *
+ * 스크림은 `pointer-events: none`이다 — 이 창은 사람이 닫는 것이 아니라 서버가
+ * 걷는 것이라, 그 아래 되감기·정지 손잡이가 이 몇 초 동안 죽으면 안 된다.
+ * 판이 도는 중이므로 드래프트 중계와 달리 **탁자를 어둡게 덮지 않는다.**
+ */
+function SpectateChoicePanel({
+  choice,
+  view,
+}: {
+  choice: SpectateChoiceMessage;
+  /** 좌석 이름·자풍을 얻는 곳 (관전 뷰) */
+  view: PlayerView;
+}): JSX.Element {
+  const info = view.players.find((x) => x.id === choice.seat);
+  return createPortal(
+    <div className="spec-choice">
+      <div className="spec-choice-panel">
+        <div className="spec-choice-head">
+          <span className="spec-choice-tag">증강 사용 중</span>
+          <span className="spec-choice-who">
+            <span className="spec-choice-wind">
+              {info !== undefined ? seatWindChar(view, info) : "?"}
+            </span>
+            {playerNameById(view, choice.seat)}
+          </span>
+        </div>
+        <strong className="spec-choice-title">{choice.title}</strong>
+        {choice.options.length === 0 ? (
+          <p className="spec-choice-empty">고르는 중…</p>
+        ) : (
+          <div className="spec-choice-opts">
+            {choice.options.map((o, i) => (
+              <span className="spec-choice-opt" key={`${i}-${o.label}`}>
+                <ChoiceLabel label={o.label} />
+                {o.detail !== undefined ? (
+                  <span className="spec-choice-opt-detail">{o.detail}</span>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        )}
+        <p className="spec-choice-note">
+          이 좌석의 화면에 지금 서 있는 선택지입니다 — 고르면 곧 판에 반영됩니다
+        </p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 /**
  * **관전 중계: 증강 선택판** — 네 좌석이 지금 각자 무엇을 보고 있는가 (관전 전용).

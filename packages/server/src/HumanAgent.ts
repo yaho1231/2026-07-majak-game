@@ -9,7 +9,7 @@
  */
 
 import type { WebSocket } from "ws";
-import type { PlayerAgent } from "@majak/core/match/PlayerAgent.js";
+import type { PlayerAgent, SeatChoiceEvent } from "@majak/core/match/PlayerAgent.js";
 import type { PlayerView, SeatConnection } from "@majak/core/information/PlayerView.js";
 import type { ActionOption, DecisionPrompt } from "@majak/core/mahjong/flow/FlowController.js";
 import type { AugmentDef } from "@majak/core/augment/Augment.js";
@@ -460,6 +460,14 @@ export class HumanAgent implements PlayerAgent {
   private lastCatalog: ServerMessage | null = null;
   /** 방의 좌석별 접속 상태 조회 (RoomManager가 꽂는다). 없으면 뷰를 그대로 보낸다. */
   private seatConnections: (() => Record<PlayerId, SeatConnection>) | null = null;
+  /**
+   * 관전 중계 창구 (`HanchanController`가 꽂는다).
+   *
+   * 「선택 판이 열렸다/닫혔다」를 아는 것은 이 클래스뿐이다 — 컨트롤러는 `decide()`를
+   * await할 뿐이라 시간 초과 폴백과 사람이 실제로 누른 것을 구별할 수 없다
+   * (2026-09-03: 관전자에게 증강 선택 판이 아예 안 보였다).
+   */
+  private choiceWatch: ((ev: SeatChoiceEvent) => void) | null = null;
 
   constructor(
     id: PlayerId,
@@ -1134,6 +1142,14 @@ export class HumanAgent implements PlayerAgent {
       deadlineMs: shownDeadline,
       bankMs: this.shownBankMs(shownDeadline, bankEligible),
     });
+    // 관전 중계 — 「이 좌석이 지금 무엇을 고르고 있다」. 증강 선택인지 아닌지의
+    // 판정과 걸러내기는 컨트롤러 몫이다(여기는 열렸다는 사실과 마감만 알린다).
+    this.choiceWatch?.({
+      open: true,
+      seat,
+      options: prompt.options,
+      ...(shownDeadline > 0 ? { deadline: Date.now() + shownDeadline } : {}),
+    });
     return new Promise<ActionOption>((resolve) => {
       this.armDecision(seat, prompt, resolve, timeoutMs, graced, bankEligible);
     });
@@ -1186,6 +1202,8 @@ export class HumanAgent implements PlayerAgent {
         reason: "timeout",
         ...(label !== undefined ? { chosen: label } : {}),
       });
+      // 관전 중계 — 시간 초과다. 고른 것이 없으므로 `picked`를 싣지 않는다.
+      this.choiceWatch?.({ open: false, seat });
       resolve(picked);
       // 유예로 흘린 것만 센다. 접속한 채로 시간을 넘긴 것은 자리를 비운 것이지
       // 연결이 끊긴 것이 아니므로 이탈로 확정하면 안 된다.
@@ -1221,7 +1239,13 @@ export class HumanAgent implements PlayerAgent {
     this.pending.delete(seat);
     // 시간이 남았는데 접힌 것이므로 사유가 다르다 — 더 높은 선언이 이미 확정됐다.
     this.send({ type: "promptCancel", seat, reason: "preempted" });
+    // 관전 중계 — 더 높은 선언에 접혔다. 이 사람이 고른 것은 없다.
+    this.choiceWatch?.({ open: false, seat });
     p.resolve(safeFallbackOption(p.prompt.options));
+  }
+
+  watchChoices(watch: (ev: SeatChoiceEvent) => void): void {
+    this.choiceWatch = watch;
   }
 
   /** 이 좌석의 결정을 지금 기다리고 있는가 (조종 해제 시 판별용). */
@@ -1479,6 +1503,8 @@ export class HumanAgent implements PlayerAgent {
             this.bankMs = Math.max(0, this.bankMs - (elapsed - grace));
           }
         }
+        // 관전 중계 — 실제로 고른 것을 그대로 알린다.
+        this.choiceWatch?.({ open: false, seat, picked: matched });
         entry.resolve(matched);
       } else if (this.riichiTargetOf(msg) !== null) {
         // 리치를 선언한 상대의 손패를 건드리려 했다 — 무엇이 막혔는지 그대로 말한다.

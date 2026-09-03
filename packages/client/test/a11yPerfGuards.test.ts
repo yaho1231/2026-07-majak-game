@@ -116,7 +116,15 @@ describe("UI 배율 — 창 크기에서 자동으로 나오고, Ctrl + 를 되�
     // min() 이라 가상 뷰포트가 원판보다 좁아지지 않는다 — 16:9 창은 전부 같은 그림.
     expect(UISCALE).toContain("const REF_W = 1920");
     expect(UISCALE).toContain("const REF_H = 1080");
-    expect(UISCALE).toMatch(/Math\.min\(window\.innerWidth \/ REF_W, window\.innerHeight \/ REF_H\)/);
+    /*
+     * 2026-09-03: 관전 도크가 무대를 오른쪽으로 넓히므로(`stageExtraW`) 폭 쪽 분모가
+     * `REF_W + stageExtraW` 다. 도크가 없으면 0이라 예전 식과 완전히 같다 — 여기서
+     * 못 박는 것은 «창을 무대에 맞추는 min() 하나»라는 형태 그 자체다.
+     */
+    expect(UISCALE).toMatch(
+      /Math\.min\(\s*window\.innerWidth \/ \(REF_W \+ stageExtraW\),\s*window\.innerHeight \/ REF_H,?\s*\)/,
+    );
+    expect(UISCALE).toContain("let stageExtraW = 0");
   });
 
   it("브라우저 확대를 상쇄하지 않고 그 위에 곱한다 (WCAG 1.4.4)", () => {

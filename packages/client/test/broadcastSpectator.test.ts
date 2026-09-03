@@ -129,9 +129,17 @@ describe("중계 관전 — 아래 자리 고르기 (D1)", () => {
   });
 
   it("고른 좌석이 하단 시점(me)이 된다 — 못 찾으면 예전처럼 오야로 되돌아간다", () => {
+    /*
+     * 2026-09-03: 오야 폴백 앞에 «붙들어 둔 오야»(`anchoredDealer`)가 한 겹 들어왔다 —
+     * 정산 뷰에는 이미 다음 국의 오야가 실려 있어서, 론이 나는 그 프레임에 네 자리가
+     * 통째로 돌아갔기 때문이다. 붙든 좌석을 못 찾으면 그 아래 옛 폴백이 그대로 받는다.
+     */
     expect(APP).toMatch(
-      /const me = view\.players\.find\(\(p\) => p\.id === view\.playerId\)\s*\n\s*\?\? focusPlayer\s*\n\s*\?\? view\.players\.find\(\(p\) => p\.seat === view\.round\.dealerSeat\)/,
+      /const me = view\.players\.find\(\(p\) => p\.id === view\.playerId\)\s*\n\s*\?\? focusPlayer\s*\n\s*\?\? anchoredDealer\s*\n\s*\?\? view\.players\.find\(\(p\) => p\.seat === view\.round\.dealerSeat\)/,
     );
+    // 붙드는 조건: 관전 + 오야 따라가기 + 국이 끝난 뷰
+    expect(APP).toContain('const followsDealer = props.spectator === true && focusSeat === "dealer"');
+    expect(APP).toContain('} else if (view.round.phase !== "round.over" || dealerAnchor.current === null) {');
   });
 
   it("관전이 아닐 때는 좌석 고르기가 시점을 건드리지 않는다", () => {
@@ -288,10 +296,22 @@ describe("중계 관전 — 2열 무대 (인게임 3/4 + 분석 도크 1/4)", ()
     expect(branch.slice(0, branch.indexOf("tableEl\n    )}"))).toContain("<SpectateDock");
   });
 
-  it("도크 폭은 clamp — 25%는 목표지 하한이 아니다", () => {
+  it("도크 폭 — 고정 무대에서는 460px, 그 밖에서는 clamp 폴백", () => {
+    /*
+     * 2026-09-03: 도크가 1920을 **나눠 갖지 않는다.** 고정 무대(마우스 기기)에서는
+     * 무대가 도크만큼 넓어지고(`#root` = calc(1920px + var(--stage-extra))) 왼쪽 칸이
+     * 정확히 1920px 로 풀린다 — 판이 대국 화면과 같은 비율로 남는다는 뜻이다.
+     * 폰·태블릿에는 넓힐 무대가 없으므로 예전 clamp 가 폴백으로 그대로 산다.
+     */
     expect(CSS).toMatch(
-      /\.spectate-stage \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) clamp\(300px, 25%, 460px\);/,
+      /\.spectate-stage \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) var\(--spec-dock-w, clamp\(300px, 25%, 460px\)\);/,
     );
+    expect(CSS).toMatch(
+      /html\[data-ui-stage="fixed"\] \.spectate-stage \{\s*--spec-dock-w: 460px;/,
+    );
+    expect(CSS).toMatch(/width: calc\(1920px \+ var\(--stage-extra, 0px\)\);/);
+    // 세 값(도크 트랙 · 무대 덧폭 · 접힌 폭)은 함께 움직여야 한다
+    expect(APP).toContain('setStageExtraWidth(dockFlag === "open" ? 460 : dockFlag === "folded" ? 30 : 0)');
   });
 
   it("왼쪽 칸이 자기 container가 된다 — 이게 겹침을 «구조적으로» 없애는 자리다", () => {
@@ -373,7 +393,7 @@ describe("중계 관전 — 2열 무대 (인게임 3/4 + 분석 도크 1/4)", ()
     // 무대는 두 칸이고, 도크 칸이 곧 도크 폭이다
     const stage = rulesFor(".spectate-stage", "grid-template-columns")[0];
     expect(declOf(stage!, "grid-template-columns")).toBe(
-      "minmax(0, 1fr) clamp(300px, 25%, 460px)",
+      "minmax(0, 1fr) var(--spec-dock-w, clamp(300px, 25%, 460px))",
     );
   });
 
@@ -812,9 +832,14 @@ describe("중계 관전 — 방송 안전 (C1·C4)", () => {
     expect(APP).toMatch(/spectateDelayRef\.current > 0 \? \{ delaySeconds: spectateDelayRef\.current \}/);
   });
 
-  it("대국자에게 «중계 중»을 알린다 (관전자에게는 띄우지 않는다)", () => {
-    expect(APP).toMatch(/props\.spectator !== true && \(props\.spectatedBy \?\? 0\) > 0/);
-    expect(CSS).toContain(".spectated-badge");
+  /*
+   * 2026-09-03 사용자 지시로 «중계 중» 뱃지를 내렸다 — 관전은 관리자 전용이라
+   * 판정에 개입하지 않는 열람인데, 판 위 붉은 점이 대국자에게 «내 판에 문제가
+   * 생겼다»로 읽혔다. 그래서 검사도 뒤집는다: **그리지 않는다**가 지금의 약속이다.
+   */
+  it("«중계 중» 표식은 판 위에 그리지 않는다", () => {
+    expect(APP).not.toMatch(/className="spectated-badge"/);
+    expect(APP).toContain("관리자가 관전하면 중계중 표시 안 나오게");
   });
 });
 
@@ -914,7 +939,8 @@ describe("중계 관전 — 되감기·오버레이·탁자 (D3·D2·D4)", () =>
     expect(reset.slice(0, 900)).toContain('saveOverlayMode("off")');
     // 지연은 «서버가 확정한 값»이 진짜다 — 저장도 거기에 맞춘다
     const started = APP.slice(APP.indexOf('if (msg.type === "spectateStarted")'));
-    expect(started.slice(0, 600)).toContain("saveSpectateDelay(msg.delaySeconds ?? 0)");
+    // 2026-09-03: 앞 탁자의 잔상을 걷는 주석·정리 코드가 앞에 붙어 슬라이스를 넓혔다.
+    expect(started.slice(0, 2600)).toContain("saveSpectateDelay(msg.delaySeconds ?? 0)");
   });
 
   it("탁자 전환기는 국·리치를 함께 보여준다", () => {

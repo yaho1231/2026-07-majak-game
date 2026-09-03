@@ -59,6 +59,8 @@ import type {
   StatsEntry,
   LeaderboardEntry,
   AugmentCatalogEntry,
+  AdminOnlineMessage,
+  AdminOnlineUser,
   AugmentTierEntry,
   AnalyticsDayEntry,
   FeedbackEntry,
@@ -430,6 +432,12 @@ interface Room {
 }
 
 /** 연결 1개의 상태 — 인증·방 참가·관전을 소켓 단위로 추적한다 */
+/**
+ * 관리자 접속자 목록을 밀어 주는 최소 간격(ms). 프레즌스는 대국 시작 한 번에도
+ * 좌석 수만큼 흔들리므로, 그 안의 변화는 마지막 하나로 합쳐 보낸다.
+ */
+const ADMIN_ONLINE_PUSH_MS = 1000;
+
 interface Conn {
   id: string;
   ws: WebSocket;
@@ -438,6 +446,13 @@ interface Conn {
    * 있던 연결부터** 회수하는 기준이다(`ANON_EVICT_GRACE_MS`).
    */
   openedAt: number;
+  /**
+   * 이 소켓이 **관리자 접속자 목록을 한 번이라도 요청했는가**.
+   *
+   * 요청한 적 있는 관리자에게만 프레즌스 변화를 밀어 준다 — 관리자 화면을 안 연
+   * 소켓에까지 보내면 그냥 낭비다. 소켓과 함께 사라지므로 따로 걷을 것이 없다.
+   */
+  adminOnline: boolean;
   user: UserRow | null;
   /**
    * 계정 없는 게스트 세션인가. `user`는 DB에 없는 임시 신원(id = GUEST_USER_ID)이라
@@ -1190,6 +1205,8 @@ export class RoomManager {
   private rooms = new Map<string, Room>();
   /** 모든 활성 연결 — 계정 삭제·세션 무효화 시 강제 로그아웃 대상 조회용. */
   private conns = new Set<Conn>();
+  /** 관리자 접속자 목록 밀어내기 디바운스 타이머 (`scheduleAdminOnline`) */
+  private adminOnlineTimer: ReturnType<typeof setTimeout> | null = null;
   /** IP별 동시 연결 수 (연결 상한 판정용). */
   private ipConnCount = new Map<string, number>();
   /** IP별 인증 시도 슬라이딩 윈도우 (연결 우회 무차별 대입 차단). */
@@ -1531,6 +1548,7 @@ export class RoomManager {
       id: randomUUID(),
       ws,
       openedAt: Date.now(),
+      adminOnline: false,
       user: null,
       guest: false,
       sessionToken: null,
@@ -1739,6 +1757,8 @@ export class RoomManager {
      * 게스트는 친구 관계가 없으므로 건너뛴다.
      */
     if (!conn.guest) this.notifyPresenceChanged(conn.user?.username);
+    // 게스트도 접속자 목록에는 잡힌다 — 위 경로를 안 타므로 여기서 한 번 더 건다.
+    this.scheduleAdminOnline();
     // 미인증 유예 타이머 해제 — 닫힌 연결에 대고 타이머가 남지 않게 한다.
     if (conn.authDeadline !== null) {
       clearTimeout(conn.authDeadline);
@@ -2406,6 +2426,16 @@ export class RoomManager {
       case "adminAugmentTiers": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
         return this.sendAugmentTiers(conn);
+      }
+      case "adminOnline": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        // 한 번 요청하면 그 뒤로는 프레즌스가 바뀔 때마다 밀어 준다(§adminOnline).
+        conn.adminOnline = true;
+        return this.sendAdminOnline(conn);
+      }
+      case "adminRenameUser": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        return this.adminRenameUser(conn, msg.userId, msg.username);
       }
       // 자체 집계 (§8-6) — 외부 스크립트 없이 서버가 직접 센 수.
       case "adminAnalytics": {
@@ -3309,6 +3339,7 @@ export class RoomManager {
     this.stopSpectating(conn);
     conn.room = room;
     conn.agent = agent;
+    this.scheduleAdminOnline(); // 방에 앉았다 — 관리자 접속자 목록의 «어디»가 바뀐다
   }
 
   /**
@@ -3347,6 +3378,7 @@ export class RoomManager {
   private leaveWaiting(room: Room, agent: HumanAgent): void {
     const idx = room.agents.indexOf(agent);
     if (idx < 0) return;
+    this.scheduleAdminOnline(); // 대기실을 떠났다
     room.agents.splice(idx, 1);
     room.ready.delete(agent.id);
 
@@ -3915,6 +3947,8 @@ export class RoomManager {
    * 접속·입장 경로는 자기 목록을 이미 따로 받는다.
    */
   private notifyPresenceChanged(username: string | undefined): void {
+    // 관리자 접속자 화면도 같은 신호로 따라간다 (접속·이탈·대국 시작).
+    this.scheduleAdminOnline();
     const db = this.db;
     if (db === undefined || username === undefined) return;
     let names: string[];
@@ -4198,6 +4232,152 @@ export class RoomManager {
     const res = this.db.deleteFeedback(id as number, user);
     if (!res.ok) return this.fail(conn, "FEEDBACK_FAILED", res.error ?? "제보 삭제에 실패했습니다");
     this.sendFeedback(conn, user);
+  }
+
+  /**
+   * **지금 접속해 있는 사람들** (관리자 전용, 2026-09-03 사용자 요청).
+   *
+   * 계정 목록은 «가입한 사람»이라 «지금 몇 명이 붙어 있고 어디에 있는가»를 볼
+   * 창구가 아예 없었다. `this.conns`를 그대로 훑어 만든다 — DB를 보지 않으므로
+   * 게스트도 함께 잡힌다(게스트는 계정이 없어 어느 표에도 안 나온다).
+   *
+   * **한 사람 = 한 줄.** 탭을 셋 열어 둔 사람이 세 줄로 나오면 접속자 수 자체가
+   * 거짓말이 된다. 계정은 id로, 게스트는 이름으로 묶는다. 대표로 삼는 소켓은
+   * «가장 안쪽에 있는» 것이다(대국 > 관전 > 대기실 > 로비) — 대국 중인 사람이
+   * 로비 탭 하나 때문에 «로비»로 보이면 안 된다.
+   */
+  private onlineSnapshot(): AdminOnlineMessage {
+    const rank = (w: AdminOnlineUser["where"]): number =>
+      w === "playing" ? 3 : w === "spectating" ? 2 : w === "waiting" ? 1 : 0;
+    const byIdentity = new Map<string, AdminOnlineUser>();
+    for (const c of this.conns) {
+      if (c.user === null) continue; // 아직 인증 전인 소켓 — 신원이 없다
+      const where: AdminOnlineUser["where"] =
+        c.spectating !== null
+          ? "spectating"
+          : c.room !== null && c.room.phase === "playing"
+            ? "playing"
+            : c.room !== null
+              ? "waiting"
+              : "lobby";
+      const room = c.spectating?.code ?? c.room?.code;
+      const row: AdminOnlineUser = {
+        name: c.user.username,
+        ...(c.guest ? {} : { userId: String(c.user.id) }),
+        guest: c.guest,
+        admin: c.user.isAdmin,
+        where,
+        ...(room !== undefined ? { room } : {}),
+        tabs: 1,
+        sinceMs: Math.max(0, Date.now() - c.openedAt),
+      };
+      const key = c.guest ? `guest:${c.user.username}` : `user:${c.user.id}`;
+      const prev = byIdentity.get(key);
+      if (prev === undefined) {
+        byIdentity.set(key, row);
+        continue;
+      }
+      // 같은 사람 — 줄을 합친다. 자리는 «가장 안쪽», 접속 시각은 «가장 오래된 탭».
+      prev.tabs++;
+      prev.sinceMs = Math.max(prev.sinceMs, row.sinceMs);
+      if (rank(row.where) > rank(prev.where)) {
+        prev.where = row.where;
+        if (row.room !== undefined) prev.room = row.room;
+        else delete prev.room;
+      }
+    }
+    const users = [...byIdentity.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      type: "adminOnline",
+      users,
+      counts: {
+        total: users.length,
+        guests: users.filter((u) => u.guest).length,
+        lobby: users.filter((u) => u.where === "lobby").length,
+        playing: users.filter((u) => u.where === "playing").length,
+        spectating: users.filter((u) => u.where === "spectating").length,
+      },
+    };
+  }
+
+  private sendAdminOnline(conn: Conn): void {
+    this.send(conn.ws, this.onlineSnapshot());
+  }
+
+  /**
+   * 프레즌스가 바뀌었다 — 화면을 열어 둔 관리자에게 새 목록을 민다.
+   *
+   * **한 번에 몰아서** 보낸다. 대국 시작 하나가 좌석 넷 × 프레즌스 알림을 부르고,
+   * 방이 깨질 때는 그보다 더 많이 부른다 — 그때마다 스냅샷을 만들어 쏘면 관리자
+   * 소켓에 같은 목록이 수십 장 쌓인다. 1초 안의 변화는 마지막 것 하나로 합친다.
+   */
+  private scheduleAdminOnline(): void {
+    if (this.adminOnlineTimer !== null) return;
+    this.adminOnlineTimer = setTimeout(() => {
+      this.adminOnlineTimer = null;
+      this.flushAdminOnline();
+    }, ADMIN_ONLINE_PUSH_MS);
+    // 서버 종료를 이 타이머 하나가 붙들지 않게 한다 (표시용 갱신이다).
+    this.adminOnlineTimer.unref?.();
+  }
+
+  /** 지금 즉시 관리자들에게 접속자 목록을 보낸다 (테스트·디바운스 만료) */
+  private flushAdminOnline(): void {
+    const watchers = [...this.conns].filter((c) => c.adminOnline && c.user?.isAdmin === true);
+    if (watchers.length === 0) return;
+    const msg = this.onlineSnapshot();
+    for (const c of watchers) this.send(c.ws, msg);
+  }
+
+  /**
+   * **닉네임 바꾸기** (관리자 전용, 2026-09-03 사용자 요청).
+   *
+   * 판정은 가입과 같은 규칙(`SiteDb.renameUser`)이고, 성공하면 **살아 있는 소켓의
+   * 신원까지** 함께 갈아 끼운다. 안 그러면 그 사람은 로그아웃했다 들어올 때까지
+   * 옛 이름으로 앉아 있고, 대기실 목록·친구 목록에도 옛 이름이 남는다.
+   */
+  private adminRenameUser(conn: Conn, rawUserId: string, username: string): void {
+    const db = this.db;
+    if (db === undefined) return this.fail(conn, "BAD_REQUEST", "계정 기능이 꺼져 있습니다");
+    const userId = Number(rawUserId);
+    if (!Number.isInteger(userId)) {
+      return this.fail(conn, "BAD_REQUEST", "잘못된 사용자 ID입니다");
+    }
+    const name = typeof username === "string" ? username.trim() : "";
+    let problem: string | null;
+    try {
+      problem = db.renameUser(userId, name);
+    } catch (err) {
+      console.error("renameUser error:", err);
+      return this.fail(conn, "BAD_REQUEST", "닉네임 변경 중 오류가 발생했습니다");
+    }
+    if (problem !== null) return this.fail(conn, "BAD_REQUEST", problem);
+
+    /*
+     * 살아 있는 소켓의 신원을 갈아 끼운다.
+     *
+     * 닉네임을 키로 쓰는 자리가 셋 있다 — 친구 목록(`onlineMap`은 username으로
+     * 센다), 대기실 좌석 이름(`HumanAgent.nickname`), 통계 저장소. 앞의 둘은 여기서
+     * 지금 맞춘다. 통계는 **옛 이름 그대로 둔다**: 지난 대국의 기록은 그때의
+     * 이름으로 남는 것이 맞고, 옮기면 리더보드의 과거 줄이 통째로 흔들린다.
+     */
+    const oldNames = new Set<string>();
+    const rooms = new Set<Room>();
+    for (const c of this.conns) {
+      if (c.user === null || c.guest || c.user.id !== userId) continue;
+      oldNames.add(c.user.username);
+      c.user = { ...c.user, username: name };
+      if (c.room !== null) rooms.add(c.room);
+    }
+    // 대기실·대국 화면의 이름표. 좌석 이름은 로비 방송이 읽어 간다.
+    for (const room of rooms) this.broadcastLobby(room);
+    // 친구들 화면의 «접속 중» 줄 — 옛 이름과 새 이름 양쪽을 갱신해야 한 쪽이 남지 않는다.
+    for (const old of oldNames) this.notifyPresenceChanged(old);
+    this.notifyPresenceChanged(name);
+    // 요청한 관리자에게는 새 목록 둘을 그 자리에서 돌려준다.
+    this.sendAdminUsers(conn);
+    this.sendAdminOnline(conn);
+    this.flushAdminOnline();
   }
 
   /** 전체 계정 목록 (관리자 전용). */
@@ -4632,6 +4812,7 @@ export class RoomManager {
     };
     room.spectators.add(conn);
     conn.spectating = room;
+    this.scheduleAdminOnline(); // 관전 시작 — 관리자 접속자 목록의 «어디»가 바뀐다
     /*
      * 감사 로그 (docs/36 C3). 관전 뷰는 **네 사람의 손패 전부**를 내보내는 창이다 —
      * 그런 창을 누가 언제 어느 판에 열었는지가 어디에도 안 남으면, 나중에 「그 판을
@@ -4932,6 +5113,7 @@ export class RoomManager {
     room.spectators.delete(conn);
     room.controller?.removeSpectator(conn.id);
     conn.spectating = null;
+    this.scheduleAdminOnline(); // 관전 종료 — 자리가 로비로 돌아간다
     /*
      * 지연 송출 대기분을 처리한다.
      *

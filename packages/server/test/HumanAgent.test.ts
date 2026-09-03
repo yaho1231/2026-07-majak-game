@@ -719,3 +719,51 @@ describe("HumanAgent — 이탈 사유에 따라 돌아올 수 있는지가 갈�
     expect(sock.sent.some((m) => m.type === "prompt"), "프롬프트가 나가지 않았다").toBe(true);
   });
 });
+
+/**
+ * **관전 중계 창구** (`watchChoices`, 2026-09-03).
+ *
+ * 「선택 판이 열렸다/닫혔다」를 아는 것은 이 클래스뿐이다 — 컨트롤러는 `decide()`를
+ * await할 뿐이라 시간 초과 폴백과 사람이 실제로 누른 것을 구별할 수 없다. 그래서
+ * 끝을 알리는 쪽이 좌석이고, 무엇을 중계할지(증강 선택인가)를 고르는 쪽이 컨트롤러다.
+ */
+describe("HumanAgent — 관전 중계 창구", () => {
+  const prompt = (player: string, ...types: string[]): any => ({
+    player,
+    options: types.map((t) => ({ type: t, payload: {} })),
+  });
+
+  it("프롬프트가 뜨면 열림을, 사람이 누르면 고른 것을 그대로 알린다", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Boss", sock.asWs());
+    const evs: any[] = [];
+    agent.watchChoices((e) => evs.push(e));
+
+    const mine = agent.decide(prompt("p0", "pass", "alchemy"));
+    await tick();
+    expect(evs[0].open).toBe(true);
+    expect(evs[0].seat).toBe("p0");
+    expect(evs[0].options.map((o: any) => o.type)).toEqual(["pass", "alchemy"]);
+    // 마감이 실려야 관전 화면이 남은 시간을 그린다
+    expect(evs[0].deadline).toBeGreaterThan(Date.now());
+
+    agent.handleMessage({ type: "action", actionType: "alchemy", payload: {} } as never);
+    await mine;
+    expect(evs[1]).toMatchObject({ open: false, seat: "p0" });
+    expect(evs[1].picked.type).toBe("alchemy");
+  });
+
+  it("시간 초과·취소는 «고른 것 없음»으로 끝난다", async () => {
+    const sock = new FakeSocket();
+    const agent = new HumanAgent("p0", "Boss", sock.asWs());
+    const evs: any[] = [];
+    agent.watchChoices((e) => evs.push(e));
+
+    const bots = agent.decideAs("p2" as never, prompt("p2", "pass", "alchemy"));
+    agent.cancelDecisionFor("p2" as never);
+    await bots;
+    const end = evs.find((e) => !e.open);
+    expect(end).toMatchObject({ open: false, seat: "p2" });
+    expect(end.picked).toBeUndefined();
+  });
+});

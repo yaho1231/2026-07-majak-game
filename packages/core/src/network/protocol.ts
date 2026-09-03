@@ -478,6 +478,22 @@ export interface AdminAugmentTiersRequestMessage {
   type: "adminAugmentTiers";
 }
 
+/** 관리자 — 지금 접속해 있는 사람 목록 요청 */
+export interface AdminOnlineRequestMessage {
+  type: "adminOnline";
+}
+
+/**
+ * 관리자 — 닉네임 바꾸기.
+ *
+ * 판정은 가입과 같은 규칙을 쓴다(`SiteDb.renameUser` → `usernameProblem`).
+ */
+export interface AdminRenameUserMessage {
+  type: "adminRenameUser";
+  userId: string;
+  username: string;
+}
+
 /** 계정 삭제 (관리자 전용). */
 export interface AdminDeleteUserMessage {
   type: "adminDeleteUser";
@@ -1140,6 +1156,8 @@ export type ClientMessage =
   | AdminAugmentTiersRequestMessage
   | AdminAnalyticsRequestMessage
   | AdminDeleteUserMessage
+  | AdminOnlineRequestMessage
+  | AdminRenameUserMessage
   | LiveGamesRequestMessage
   | AdminAbortGameMessage
   | CheckUsernameMessage
@@ -1694,6 +1712,46 @@ export interface AdminUsersMessage {
 }
 
 /**
+ * 관리자 — **지금 접속해 있는 사람들**.
+ *
+ * 왜: 계정 목록(`adminUsers`)은 «가입한 사람»이지 «지금 있는 사람»이 아니다. 서버에
+ * 몇 명이 붙어 있고 어디에 있는지(로비·대기실·대국·관전)를 볼 방법이 아예 없었다
+ * (2026-09-03 사용자 요청). 프레즌스가 바뀔 때마다(접속·이탈·방 참가·대국 시작·관전
+ * 시작/종료) 요청한 관리자에게 다시 밀어 준다.
+ *
+ * 한 사람이 탭을 여럿 열어 두면 **한 줄로 합치고** `tabs`에 소켓 수를 적는다 —
+ * 같은 사람이 목록에 세 번 나오면 접속자 수 자체가 거짓말이 된다.
+ */
+export interface AdminOnlineMessage {
+  type: "adminOnline";
+  users: AdminOnlineUser[];
+  counts: {
+    total: number;
+    guests: number;
+    lobby: number;
+    playing: number;
+    spectating: number;
+  };
+}
+
+export interface AdminOnlineUser {
+  /** 화면에 보이는 이름 */
+  name: string;
+  /** 계정이면 그 id (게스트는 없다) */
+  userId?: string;
+  guest: boolean;
+  admin: boolean;
+  /** 지금 어디에 있는가 — 로비 / 대기실(방에 앉아 대기) / 대국 중 / 관전 중 */
+  where: "lobby" | "waiting" | "playing" | "spectating";
+  /** 방 코드 (대기실·대국·관전 중일 때) */
+  room?: string;
+  /** 같은 사람이 열어 둔 소켓 수 */
+  tabs: number;
+  /** 접속한 지 얼마나 됐나 (ms) */
+  sinceMs: number;
+}
+
+/**
  * 증강 파워 티어표 한 줄 (관리자 전용).
  * **실시간**: 서버가 살아 있는 카탈로그와 `AUGMENT_POWER_TIERS`를 매 요청마다 조인한다 —
  * 티어 표에 없는 증강은 `tier: null`(미분류)로 그대로 드러나고, 카탈로그에서 사라진
@@ -2127,9 +2185,12 @@ export interface SpectateInsightMessage {
     estimate?: { han: number; fu: number; points: number };
     /**
      * **배패 점수** 0~100 — 이 국에 받은 첫 13장이 얼마나 좋은 패였나.
-     * 빠를수록(샹텐이 낮을수록)·비쌀수록 높다. 국이 끝날 때까지 값이 변하지 않는다.
+     * 빠를수록(샹텐이 낮을수록)·비쌀수록 높다. 국이 끝날 때까지 값이 변하지 않는다 —
+     * **단 하나의 예외**가 손패 교환 증강이다(아래 `handGradeRegraded`).
      */
     handGrade?: number;
+    /** 손패가 통째로 바뀌어 배패 점수를 다시 쟀다 (교환 증강) */
+    handGradeRegraded?: boolean;
     /** @deprecated 옛 화면 호환 — `best?.han ?? estimate?.han ?? 0` */
     han: number;
     /** @deprecated 옛 화면 호환 */
@@ -2190,6 +2251,38 @@ export interface SpectateDraftMessage {
  */
 export interface SpectateDraftEndMessage {
   type: "spectateDraftEnd";
+}
+
+/**
+ * 관전 중계 — 어느 좌석이 지금 무엇을 고르고 있는가 (증강 액티브 등).
+ *
+ * 왜: 증강의 액티브 선택 판이 뜨면 그 사람 화면에는 모달이 서지만 **관전자에게는
+ * 아무것도 가지 않아** 탁자가 그냥 얼어붙은 것처럼 보였다(2026-09-03 사용자 보고).
+ * 증강 드래프트가 같은 문제를 `SpectateDraftMessage`로 이미 풀어 두었고, 이건 그
+ * 설계를 그대로 옮긴 것이다 — 스냅샷 하나로 화면을 세우고, 끝나면 걷는 메시지를
+ * 따로 보낸다(늦게 합류한 관전석도 `addSpectator`에서 같은 메시지로 화면을 세운다).
+ *
+ * ⚠ **평범한 버림·후로 프롬프트는 보내지 않는다.** 그건 매 순 나가는 소음이고,
+ * 관전 화면은 이미 버림·후로를 그대로 그린다.
+ */
+export interface SpectateChoiceMessage {
+  type: "spectateChoice";
+  /** 고르고 있는 좌석 */
+  seat: string;
+  /** 무엇 때문에 열렸는가 — 증강 이름(모르면 "선택") */
+  title: string;
+  /** 그 사람 화면에 지금 서 있는 선택지 */
+  options: { label: string; detail?: string }[];
+  /** 이 선택의 마감 (Date.now 기준 ms). 없으면 무제한 */
+  deadline?: number;
+}
+
+/** 관전 중계 — 그 선택이 끝났다 */
+export interface SpectateChoiceEndMessage {
+  type: "spectateChoiceEnd";
+  seat: string;
+  /** 실제로 고른 것의 라벨 (시간 초과·취소면 없음) */
+  picked?: string;
 }
 
 /**
@@ -2280,6 +2373,7 @@ export type ServerMessage =
   | LeaderboardMessage
   | FeedbackListMessage
   | AdminUsersMessage
+  | AdminOnlineMessage
   | AdminAugmentTiersMessage
   | AdminAnalyticsMessage
   | AuthOkMessage
@@ -2300,6 +2394,8 @@ export type ServerMessage =
   | SpectateInsightMessage
   | SpectateDraftMessage
   | SpectateDraftEndMessage
+  | SpectateChoiceMessage
+  | SpectateChoiceEndMessage
   | SpectatedMessage
   | SandboxMessage
   | SandboxConfigMessage

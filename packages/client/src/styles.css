@@ -204,7 +204,11 @@ html[data-ui-stage="fixed"] body {
 
 html[data-ui-stage="fixed"] #root {
   flex: none;
-  width: 1920px;
+  /* 원판은 1920×1080 이고, 관전 도크가 열리면 그 폭만큼 **오른쪽으로 넓어진다**
+     (`--stage-extra`, uiScale.ts `setStageExtraWidth`). 판 칸은 그대로 1920 이라
+     대국 화면과 같은 비율·같은 크기로 남는다 — 도크가 판을 눌러 비율이 달라지던
+     예전 구조를 여기서 끊는다(2026-09-03). */
+  width: calc(1920px + var(--stage-extra, 0px));
   height: 1080px;
   margin: auto;
   container: ui / size;
@@ -1403,7 +1407,11 @@ button {
  * 튀어나오면 창을 가린다.
  */
 .opp-strip:has(.aug-pill-pinned),
-.opp-strip:has(.aug-pill:focus-within) {
+.opp-strip:has(.aug-pill:focus-within),
+/* 마우스로 얹어 읽는 경우도 같다 (2026-09-03). 예전에는 «고정(pin)»과 «포커스»만
+   올렸는데, 설명은 `:hover` 로도 열린다(§ 증강 hover 툴팁) — 그래서 그냥 얹어
+   읽을 때만 상대 손패 밑으로 깔렸다. 여는 조건과 올리는 조건이 같아야 한다. */
+.opp-strip:has(.aug-pill:hover) {
   z-index: 47;
 }
 
@@ -4746,18 +4754,33 @@ button {
    지금 살아 있는 능력인지가 한눈에 안 잡혔다(2026-09-01 사용자 요청 "쿨타임일 때
    살짝 어둡게"). 글씨를 못 읽을 만큼 내리지는 않는다 — 잔량 칩("2회")과 남은 국
    칩("🕐2국")은 그대로 읽혀야 pill 하나로 상태를 다 읽는다는 약속이 선다. */
-.aug-pill-cd,
-.aug-pill-spent,
-.aug-pill-locked {
+/* ⚠ **흐리게 하는 것은 pill 자신이 아니라 그 «내용»이다** (2026-09-03 사용자 보고:
+   「비활성화된 증강은 설명창이 투명해서 글이 안 보이고, 상대 손패에 가린다」).
+
+   예전에는 `.aug-pill-cd/-spent/-locked { opacity: .62 }` 로 pill 자체를 내렸다.
+   그 한 줄이 두 가지를 한꺼번에 망가뜨렸다.
+     ① 설명(`.aug-tip`)은 pill의 **자식**이라 같이 0.62로 깔린다 — 읽으려고 연 창이
+        반투명해져 글자가 뒤 판에 묻혔다. 자식에서 opacity를 1로 되돌릴 수도 없다.
+     ② `opacity < 1` 은 **쌓임 맥락을 만든다.** 그 순간 `.aug-tip`의 z-index 95는
+        pill 안에 갇히고, pill은 판 위 요소들(상대 손패·중앙 패널) 밑으로 깔린다 —
+        살아 있는 증강의 설명은 맨 앞에 서는데 죽은 증강만 뒤로 숨는 이유가 이것이다.
+
+   그래서 pill의 **직계 자식 중 설명이 아닌 것**만 내린다. 보이는 결과(이름·잔량 칩·
+   게이지가 한 단계 죽는다)는 그대로이고, 설명은 살아 있는 증강과 똑같이 불투명하게
+   맨 앞에 선다. */
+.aug-pill-cd > :not(.aug-tip),
+.aug-pill-spent > :not(.aug-tip),
+.aug-pill-locked > :not(.aug-tip) {
   opacity: 0.62;
 }
 
 /* 빛나는 동안에는 덮지 않는다 — 「지금 쓸 수 있다」가 「못 쓴다」보다 우선한다.
    (쿨다운 중인 증강은 애초에 액티브 후보로 서지 않지만, 두 클래스가 겹쳐도
    신호가 서로 깎이지 않게 못 박아 둔다.) */
-.aug-pill-usable {
+.aug-pill-usable > :not(.aug-tip) {
   opacity: 1;
 }
+
 
 /* 남은 국 수 칩 — 잔량 칩과 나란히 서므로 색으로 갈라 둔다 */
 .aug-pill-cd-chip {
@@ -5410,23 +5433,37 @@ button {
   background: radial-gradient(130% 110% at 50% 16%, rgba(36, 26, 61, 0.86), rgba(11, 19, 16, 0.96));
 }
 
-/* 작혼式 풀스크린 정산 — 카드가 아니라 화면을 꽉 채운다 */
+/* 작혼式 풀스크린 정산 — 카드가 아니라 화면을 꽉 채운다.
+   패널은 «층 두 개»만 담는다: 읽는 칸(`.result-body`, 스크롤)과 넘기는 줄
+   (`.result-cta`, 늘 바닥). 그래서 여기서는 스크롤도 padding 도 갖지 않는다. */
 .result-panel {
   position: relative;
   z-index: 1;
   width: 100%;
   height: 100%;
   max-height: 100%;
-  overflow-y: auto;
-  padding: clamp(16px, 3.4cqh, 40px) 20px;
+  overflow: hidden;
   background: transparent; /* 배경은 .result-overlay가 그린다 (꽃잎이 뒤로 비치게) */
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  animation: result-in 0.4s var(--ease);
+}
+
+/* 읽는 칸 — 남는 세로를 전부 갖고, 넘치면 여기만 스크롤된다.
+   `min-height: 0` 이 없으면 flex 자식의 기본 최소 크기(min-content) 때문에
+   상자가 내용만큼 부풀어 스크롤이 패널 밖으로 밀린다. */
+.result-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  padding: clamp(16px, 3.4cqh, 40px) 20px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: safe center; /* 콘텐츠가 화면보다 커도 위가 잘리지 않게 */
   gap: clamp(8px, 1.8cqh, 18px);
-  animation: result-in 0.4s var(--ease);
 }
 
 @keyframes result-in {
@@ -8265,6 +8302,9 @@ button {
    * 바가 사는 `.own-area`(10) 위라 그대로 살아 있다.
    */
   z-index: 95;
+  /* 어떤 상태(쿨다운·소진·무장해제)에서도 **완전히 불투명**하다. 위쪽
+     `.aug-pill-*` 흐림 규칙이 새 클래스에 딸려 다시 새지 않게 못 박아 둔다. */
+  opacity: 1;
   display: none;
   flex-direction: column;
   gap: 4px;
@@ -8896,6 +8936,8 @@ button {
    */
   .opp-strip-left .nameplate:has(.aug-pill:focus-within),
   .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill:hover),
+  .opp-strip-right .nameplate:has(.aug-pill:hover),
   .opp-strip-left .nameplate:has(.aug-pill-pinned),
   .opp-strip-right .nameplate:has(.aug-pill-pinned) {
     overflow: visible;
@@ -9347,6 +9389,9 @@ button {
   .opp-strip-left .nameplate:has(.aug-pill:focus-within),
   .opp-strip-top .nameplate:has(.aug-pill:focus-within),
   .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill:hover),
+  .opp-strip-top .nameplate:has(.aug-pill:hover),
+  .opp-strip-right .nameplate:has(.aug-pill:hover),
   .opp-strip-left .nameplate:has(.aug-pill-pinned),
   .opp-strip-top .nameplate:has(.aug-pill-pinned),
   .opp-strip-right .nameplate:has(.aug-pill-pinned) {
@@ -12300,6 +12345,156 @@ button {
 .user-delete:hover:not(:disabled) { background: rgba(218, 98, 98, 0.34); }
 .user-delete:disabled { opacity: 0.35; cursor: not-allowed; }
 
+/* 닉네임 바꾸기 (2026-09-03) — 줄 안에서 연다. 파괴적인 «삭제»와 색으로 갈라
+   나란히 서도 손이 헷갈리지 않게 한다. */
+.user-rename {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: var(--r-chip);
+  border: 1px solid rgba(199, 188, 255, 0.42);
+  background: rgba(199, 188, 255, 0.14);
+  color: #d8d2ff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.user-rename:hover { background: rgba(199, 188, 255, 0.26); }
+
+.user-row-editing { gap: 8px; }
+
+.user-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--r-chip);
+  border: 1px solid rgba(199, 188, 255, 0.55);
+  background: rgba(10, 15, 20, 0.75);
+  color: #f7f3e8;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.user-rename-save,
+.user-rename-cancel {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: var(--r-chip);
+  border: 1px solid rgba(199, 188, 255, 0.42);
+  background: rgba(199, 188, 255, 0.18);
+  color: #d8d2ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.user-rename-cancel {
+  border-color: rgba(247, 243, 232, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(247, 243, 232, 0.7);
+}
+
+/* ─────────────── 관리자 — 지금 접속 중 ─────────────── */
+
+.online-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.online-chip {
+  padding: 3px 10px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 243, 232, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(247, 243, 232, 0.7);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.online-chip b { color: #f7f3e8; }
+.online-chip-lobby { border-color: rgba(140, 200, 170, 0.4); color: #a9d8c2; }
+.online-chip-playing { border-color: rgba(226, 178, 92, 0.45); color: #f0c884; }
+.online-chip-spec { border-color: rgba(199, 188, 255, 0.45); color: #d8d2ff; }
+.online-chip-guest { border-color: rgba(247, 243, 232, 0.18); }
+
+.online-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.online-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.online-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 700;
+  color: #ece4d2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.online-guest,
+.online-tabs {
+  flex: none;
+  padding: 1px 6px 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(247, 243, 232, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* «지금 어디» — 색으로 로비/대기실/대국/관전을 가른다. 글자도 함께 남는다. */
+.online-where {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 9px 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 243, 232, 0.18);
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(247, 243, 232, 0.72);
+}
+
+.online-where-lobby { border-color: rgba(140, 200, 170, 0.42); color: #a9d8c2; }
+.online-where-waiting { border-color: rgba(150, 190, 230, 0.45); color: #a9c7e4; }
+.online-where-playing { border-color: rgba(226, 178, 92, 0.5); color: #f0c884; }
+.online-where-spectating { border-color: rgba(199, 188, 255, 0.5); color: #d8d2ff; }
+
+.online-room {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.5px;
+}
+
+.online-since {
+  flex: 0 0 auto;
+  min-width: 3.5em;
+  text-align: right;
+  color: #93a89b;
+  font-size: 12px;
+}
+
 /* ─────────────── 제보 게시판 ─────────────── */
 
 .home-feedback { grid-column: 1 / -1; }
@@ -12979,8 +13174,18 @@ body[data-majak-dock="overlay"] .auglog {
   display: grid;
   /* 25% 는 목표지 하한이 아니다 — 좁으면 도크가 판을 잡아먹고, 넓으면 도크만
      허옇게 늘어난다. clamp 로 양쪽을 다 막는다. */
-  grid-template-columns: minmax(0, 1fr) clamp(300px, 25%, 460px);
+  grid-template-columns: minmax(0, 1fr) var(--spec-dock-w, clamp(300px, 25%, 460px));
   align-items: stretch;
+}
+
+/*
+ * 고정 무대(마우스 기기)에서는 도크 폭이 **고정 460px** 이고, 무대가 그만큼 넓어져
+ * 있다(`#root` 의 `--stage-extra`) — 그래서 왼쪽 `1fr` 이 정확히 1920px 로 풀린다.
+ * 폰·태블릿(무대 표식이 없다)에서는 넓힐 창이 없으므로 위의 clamp 가 그대로 남아
+ * 예전처럼 판과 도크가 폭을 나눠 갖는다.
+ */
+html[data-ui-stage="fixed"] .spectate-stage {
+  --spec-dock-w: 460px;
 }
 
 /* 접힌 도크 — 폭을 0으로 만들지 않는다. 되돌릴 손잡이가 사라지면 탈출구가
@@ -13363,6 +13568,12 @@ body[data-majak-dock="open"] {
 
 body[data-majak-dock="folded"] {
   --dock-reserve: 30px;
+}
+
+/* 고정 무대에서는 도크 폭이 못 박힌 460px 다(무대가 그만큼 넓어져 있다) — 어림식이
+   아니라 그 값을 그대로 쓴다 (2026-09-03 무대 확장). */
+html[data-ui-stage="fixed"] body[data-majak-dock="open"] {
+  --dock-reserve: 460px;
 }
 
 /* 좁은 화면에서는 도크가 열이 아니라 **떠 있는 서랍**이라 자리를 쓰지 않는다.
@@ -13834,6 +14045,67 @@ body[data-majak-dock="folded"] {
 .dock-danger-tag.hi {
   background: rgba(226, 96, 84, 0.28);
   color: #f0a79b;
+}
+
+/* 위험도 막대 + 숫자 (2026-09-03) — 값이 없으면 이 구획은 «패 나열»로 읽힌다.
+   막대는 패 폭에 맞춰 눕고, 채움은 scaleX로 값을 그대로 그린다. */
+.dock-danger-meter {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.dock-danger-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transform-origin: left;
+  background: rgba(140, 200, 170, 0.75);
+  transition: transform 0.25s var(--ease);
+}
+
+.dock-danger-meter-fill.md {
+  background: rgba(226, 178, 92, 0.9);
+}
+
+.dock-danger-meter-fill.hi {
+  background: rgba(226, 96, 84, 0.95);
+}
+
+.dock-danger-pct {
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(247, 243, 232, 0.62);
+}
+
+.dock-danger-pct.md {
+  color: #f0c884;
+}
+
+.dock-danger-pct.hi {
+  color: #f0a79b;
+}
+
+/* 무엇을 보고 있는지 한 줄 — 왼쪽이 위험한 쪽이라는 정렬 규칙을 작은 그라디언트로 함께 말한다 */
+.dock-danger-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dock-danger-legend-bar {
+  flex: none;
+  width: 34px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(226, 96, 84, 0.95),
+    rgba(226, 178, 92, 0.9),
+    rgba(140, 200, 170, 0.75)
+  );
 }
 
 .dock-next-who {
@@ -15699,20 +15971,18 @@ body.peeking .overlay-peekable > * {
  * 버튼만 스크롤을 따라오지 않는다. 남은 초(`.result-close-count`)와 「안 눌러도
  * 넘어간다」 한 줄도 같이 묶여 있으니 «왜 저절로 넘어가는가»도 함께 늘 보인다.
  *
- * ⚠ `bottom: 0` 이 닿는 곳은 «스크롤 상자의 padding box 바닥»이 아니라 담는 상자
- *   (= `.result-panel` 의 content box) 바닥까지다. 패널의 아래 padding
- *   (clamp(16px,3.4cqh,40px))만큼은 늘 여백으로 남는다 — 화면 맨 밑에 딱 붙지 않아
- *   홈바·노치와도 다투지 않는다.
- * ⚠ 좌우로는 `align-self: stretch` + 음수 마진으로 패널의 20px padding 까지 덮는다.
- *   가림막(그라디언트)이 글자 폭에서 끊기면 밑에서 올라오는 줄이 반쯤 비쳐 보인다.
+ * ⚠ 2026-09-03: 예전에는 `position: sticky; bottom: 0` 이었다. sticky 는 **내용이
+ *   넘칠 때만** 바닥에 서므로, 더블론처럼 두 손패가 나란히 서서 세로가 짧아지는
+ *   화면에서는 그냥 내용 끝에 붙어 «가운데 정렬된 덩어리»의 일부가 됐다 — 버튼이
+ *   화면 중간쯤에 뜨고 아래가 통째로 비었다(사용자 보고). 이제 스크롤은
+ *   `.result-body` 가 맡고 이 줄은 그 **밖**에 서는 형제라, 내용 길이와 무관하게
+ *   언제나 패널 바닥이다. 아래 padding 은 홈바·노치와 다투지 않을 만큼만 남긴다.
  */
 .result-cta {
-  position: sticky;
-  bottom: 0;
+  flex: none;
   z-index: 2;
   align-self: stretch;
-  margin: 0 -20px;
-  padding: 10px 20px 2px;
+  padding: 10px 20px max(6px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -15735,7 +16005,7 @@ body.peeking .overlay-peekable > * {
    패널의 절반을 먹어 정산 줄을 그만큼 더 덮는다. 「16초」는 버튼 안 알약이 이미
    같은 숫자를 세고 있으므로, 여기서는 문장을 접고 자리를 정산표에 돌려준다. */
 @container ui (max-height: 560px) and (orientation: landscape) {
-  .result-cta { padding: 6px 20px 0; }
+  .result-cta { padding: 6px 20px max(2px, env(safe-area-inset-bottom)); }
   .result-cta .result-close-note { display: none; }
 }
 
@@ -16322,7 +16592,7 @@ body.peeking .overlay-peekable > * {
    전체화면 도감을 열어도 아래쪽 40%에 홈 화면(제보 게시판)이 그대로 남아 있었다
    (2026-08-14 사용자 보고). cqh는 body 상자를 재므로 배율과 무관하게 화면 전체다. */
 .screen-overlay,
-.result-panel,
+.result-body,
 .codex {
   max-height: 100cqh;
   overflow-y: auto;
@@ -17083,6 +17353,9 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   .opp-strip-left .nameplate:has(.aug-pill:focus-within),
   .opp-strip-top .nameplate:has(.aug-pill:focus-within),
   .opp-strip-right .nameplate:has(.aug-pill:focus-within),
+  .opp-strip-left .nameplate:has(.aug-pill:hover),
+  .opp-strip-top .nameplate:has(.aug-pill:hover),
+  .opp-strip-right .nameplate:has(.aug-pill:hover),
   .opp-strip-left .nameplate:has(.aug-pill-pinned),
   .opp-strip-top .nameplate:has(.aug-pill-pinned),
   .opp-strip-right .nameplate:has(.aug-pill-pinned) {
@@ -19021,7 +19294,10 @@ body:has(.prod-skip) .toast-stack {
   display: grid;
   align-content: safe center;
   justify-items: center;
-  padding: 12px;
+  /* 도크가 무대를 넓혀 두었으면(`--stage-extra`) 그만큼 오른쪽을 비워 **판 위에**
+     가운데 정렬한다 — 안 그러면 도크까지 포함한 폭의 한가운데라 판에서 오른쪽으로
+     밀린다 (2026-09-03 무대 확장과 함께). */
+  padding: 12px calc(12px + var(--stage-extra, 0px)) 12px 12px;
   overflow-y: auto;
   overscroll-behavior: contain;
   pointer-events: none;
@@ -19207,4 +19483,137 @@ body:has(.prod-skip) .toast-stack {
   .spec-draft-card { padding: 5px 7px; }
   .spec-draft-card-name { font-size: 11.5px; }
   .spec-draft-card-desc { font-size: 10px; -webkit-line-clamp: 2; }
+}
+
+/* ─────────── 관전 중계: 액티브 증강 선택창 (SpectateChoicePanel) ───────────
+ *
+ * 드래프트 중계(`.spec-draft`)와 형제지만 **판이 도는 중**에 뜬다. 그래서 탁자를
+ * 어둡게 덮지 않는다 — 몇 초짜리 선택 하나 때문에 중계 화면이 매번 깜빡이면
+ * 보는 쪽이 더 피곤하다(2026-09-03). 카드 하나만 판 가운데 아래쪽에 얹는다.
+ *
+ * ⚠ `fixed`가 아니라 `absolute`다 — body 가 배율의 기준이라 fixed 의 기준이 창이
+ *   아니게 된다(`.spec-draft` 머리말과 같은 규약).
+ * ⚠ 스크림은 `pointer-events: none` — 서버가 걷는 창이라 그 아래 손잡이를 죽이면
+ *   안 된다. 카드만 되살린다.
+ */
+.spec-choice {
+  position: absolute;
+  inset: 0;
+  z-index: 46; /* 탁자 위 · 결과/드래프트 오버레이(50) 아래 */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* 도크 몫을 비워 판 위에 가운데로 선다 (무대 확장) */
+  padding: 0 calc(12px + var(--stage-extra, 0px)) 20cqh 12px;
+  pointer-events: none;
+}
+
+.spec-choice-panel {
+  pointer-events: auto;
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 11px;
+  border-radius: 14px;
+  border: 1px solid rgba(199, 188, 255, 0.5);
+  background: linear-gradient(180deg, rgba(24, 22, 44, 0.96), rgba(13, 14, 26, 0.96));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  animation: overlay-in 0.2s ease-out;
+}
+
+.spec-choice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.spec-choice-tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(199, 188, 255, 0.9);
+  color: #16142a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.spec-choice-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(247, 243, 232, 0.86);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.spec-choice-wind {
+  padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+}
+
+.spec-choice-title {
+  color: #d8d2ff;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+}
+
+.spec-choice-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  /* 후보가 수십 개인 증강(왕패의 주인·연금술사)도 있다 — 카드가 화면을 먹지
+     않도록 여기만 스크롤한다. */
+  max-height: 22cqh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.spec-choice-opt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 8px 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(199, 188, 255, 0.32);
+  background: rgba(199, 188, 255, 0.12);
+}
+
+.spec-choice-opt-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: rgba(247, 243, 232, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 액션 이름은 그대로, 남은 인자(방향 ±1 등)는 한 단계 죽여 패 그림이 먼저 읽히게 */
+.spec-choice-opt-arg {
+  color: rgba(247, 243, 232, 0.55);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.spec-choice-opt-detail {
+  color: rgba(247, 243, 232, 0.6);
+  font-size: 11px;
+}
+
+.spec-choice-empty,
+.spec-choice-note {
+  margin: 0;
+  color: rgba(247, 243, 232, 0.55);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* 배패 점수를 다시 쟀다는 표식 — 교환 증강으로 손이 통째로 갈린 좌석 (2026-09-03) */
+.bcast-regraded {
+  margin-left: 3px;
+  color: #d8d2ff;
+  font-size: 11px;
+  font-weight: 800;
 }

@@ -13,6 +13,30 @@ import type { ActionOption, DecisionPrompt } from "../mahjong/flow/FlowControlle
 import type { AugmentDef } from "../augment/Augment.js";
 import type { DraftStage, ServerMessage } from "../network/protocol.js";
 
+/**
+ * 이 좌석에 «선택 판»이 열렸다 / 닫혔다 — 관전 중계용 신호 (`watchChoices`).
+ *
+ * 왜 구현체가 알려 줘야 하나: 컨트롤러는 `decide()`를 await할 뿐이라 **어떻게**
+ * 끝났는지를 모른다. 시간 초과 폴백도, 더 높은 선언에 접힌 것도, 사람이 실제로
+ * 누른 것도 전부 «옵션 하나가 resolve됐다»로 똑같이 보인다. 관전 화면은 그 셋을
+ * 구별해 적어야 하므로(고른 것이 있는가) 아는 쪽인 좌석 구현체가 말한다.
+ */
+export type SeatChoiceEvent =
+  | {
+      open: true;
+      seat: PlayerId;
+      /** 지금 그 사람 화면에 서 있는 선택지 전부 (표준 마작 액션 포함 — 거르는 것은 컨트롤러) */
+      options: readonly ActionOption[];
+      /** 마감 시각 (Date.now 기준). 무제한이면 없다 */
+      deadline?: number;
+    }
+  | {
+      open: false;
+      seat: PlayerId;
+      /** 실제로 고른 것 (시간 초과·취소면 없다) */
+      picked?: ActionOption;
+    };
+
 export interface PlayerAgent {
   readonly id: PlayerId;
   /** 닉네임 (로비·랭킹 표시용) */
@@ -54,6 +78,14 @@ export interface PlayerAgent {
    * 미구현(봇)이면 컨트롤러가 그냥 응답을 기다린다 — 봇은 즉시 답하므로 문제없다.
    */
   cancelDecision?(): void;
+  /**
+   * 관전 중계 창구를 꽂는다 — 이 좌석에 선택 판이 열리고 닫힐 때마다 부른다.
+   *
+   * `decideDraft`의 `onCardSwap`과 같은 방식이다: «지금 무엇을 보고 있나»는 결과만
+   * 봐서는 복원할 수 없으므로, 그 순간에 알린다. 봇처럼 화면이 없는 구현체는
+   * 구현하지 않으면 된다 — 중계할 판이 애초에 없다.
+   */
+  watchChoices?(watch: (ev: SeatChoiceEvent) => void): void;
   /**
    * **판이 섰다 / 다시 돈다** — 관리자 중계 일시정지 (docs/36 §7).
    *
