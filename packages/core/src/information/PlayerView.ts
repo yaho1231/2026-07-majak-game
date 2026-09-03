@@ -936,9 +936,24 @@ function buildRoundView(
       if (declaredId === undefined) return { riichiTileIndex: pr.riichi.discardIndex };
       const river = state.zones[discardsZone(pid)]?.tileIds ?? [];
       const at = river.indexOf(declaredId);
-      // 선언패 자체가 바닥에서 사라졌으면(도굴 대상이 선언패였다) 표식을 내린다 —
-      // 없는 패를 가리키느니 아무것도 안 가리키는 편이 정직하다.
-      return at >= 0 ? { riichiTileIndex: at } : {};
+      if (at >= 0) return { riichiTileIndex: at };
+      /*
+       * 선언패가 바닥에서 사라졌다. 둘로 갈린다.
+       *
+       * (1) **누군가 후로해 갔다** — 실제 탁자에서는 선언패가 몸통으로 넘어가면
+       *     리치 표식(가로 놓기)을 **그 사람의 다음 버림패로 옮긴다**. 리치가
+       *     몇 순째였는지는 공개 정보라 표식이 사라져서는 안 된다.
+       *     선언패가 빠지면 뒤가 한 칸 당겨지므로, 다음 버림패는 지금 바닥의
+       *     `discardIndex` 자리다(아직 안 버렸으면 자리가 없다 → 다음 버림 때 생긴다).
+       * (2) 도굴(grave_rob)처럼 바닥에서 패를 빼 간 경우 — 표식을 내린다.
+       *     없는 패를 가리키느니 아무것도 안 가리키는 편이 정직하다.
+       */
+      const calledAway = Object.values(state.round.byPlayer).some((o) =>
+        o.melds.some((m) => m.calledTileId === declaredId || m.tileIds.includes(declaredId)),
+      );
+      if (!calledAway) return {};
+      const next = pr.riichi.discardIndex;
+      return next < river.length ? { riichiTileIndex: next } : {};
     })();
     // 쯔모패가 손패와 떨어져 있는가 — 배치의 **마지막 한 장**이 이번 쯔모패면 그렇다.
     // (버리면 lastDrawnTile이 비므로 자연히 false가 된다.)
