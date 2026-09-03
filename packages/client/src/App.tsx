@@ -11019,14 +11019,15 @@ function readFolded(): Record<string, boolean> {
  * 로 짰다가 StrictMode가 updater를 두 번 부르는 개발 모드에서 저장이 어긋났다
  * (접었는데 localStorage에는 안 남는 판이 생겼다). updater는 순수해야 한다.
  */
-function useFold(id: string): [boolean, () => void] {
-  const [folded, setFolded] = useState(() => readFolded()[id] === true);
+function useFold(id: string, defaultFolded = false): [boolean, () => void] {
+  // 저장된 값이 있으면 그것이 답이고, 없을 때만 기본값을 쓴다. 예전 값은 true만
+  // 저장했으므로(펼침 = 키 삭제) 그대로 읽힌다 — 지금은 접힘/펼침 둘 다 적는다.
+  const [folded, setFolded] = useState(() => readFolded()[id] ?? defaultFolded);
   const toggle = (): void => {
     const next = !folded;
     setFolded(next);
     const all = readFolded();
-    if (next) all[id] = true;
-    else delete all[id];
+    all[id] = next;
     safeStorage.setItem(FOLD_KEY, JSON.stringify(all));
   };
   return [folded, toggle];
@@ -11886,14 +11887,29 @@ function HomeScreen(props: {
           <h2>대국</h2>
           {/* 표식은 CSS가 그린다 (`.mk-*`) — 예전 `＋`는 전각 문자라 글꼴에 따라
               폭과 기준선이 제각각이었고, 버튼 글자와 높이가 안 맞았다. */}
+          {/* ── 주 동작 하나 ──
+              예전에는 이 카드 안에 같은 폭의 버튼이 넷(방 만들기·참가·튜토리얼·연습)
+              나란히 서 있고 그 사이에 설명 문단이 끼어 있었다 — 넷 다 «누를 것»처럼
+              보여서 정작 여기 온 이유(대국을 시작하는 것)를 눈으로 못 집었다
+              (2026-09-03 사용자 보고: "대국시작이 찾기 힘들다").
+
+              지금은 **크기로 순위를 말한다**: 대국 시작 한 장이 카드 폭을 다 쓰고,
+              코드 참가는 그 아래 한 줄, 혼자 하는 두 문은 맨 아래 작은 두 칸이다.
+              설명 문단은 지웠다 — 하던 말(6자리 코드·빈 자리는 봇)이 버튼 부제로
+              들어갔으니 같은 말을 두 번 하지 않는다. */}
           <button className="home-create" onClick={props.onCreateRoom}>
             <i className="mk mk-plus" aria-hidden="true" />
-            방 만들기
+            <span className="home-create-t">
+              <b>대국 시작</b>
+              <small>방을 만들고 6자리 코드로 친구를 부릅니다 · 빈 자리는 봇</small>
+            </span>
           </button>
           <div className="home-join">
+            <label className="home-join-label" htmlFor="home-join-code">코드로 참가</label>
             <input
+              id="home-join-code"
               value={code}
-              placeholder="방 코드 입력 (예: AB3XK7)"
+              placeholder="AB3XK7"
               maxLength={6}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && joinByCode()}
@@ -11923,10 +11939,6 @@ function HomeScreen(props: {
               <b className="num">{props.lastRoomCode}</b>
             </button>
           ) : null}
-          <p className="home-hint">
-            방을 만들면 6자리 코드가 발급됩니다. 친구에게 코드를 알려주고, 모두
-            준비되면 방장이 시작하세요. 빈 자리는 봇으로 채울 수 있습니다.
-          </p>
           {/* 혼자 익히는 두 문 — 둘 다 대기실을 거치지 않고 봇 3명과 바로 시작하고,
               리플레이·통계·순위 어디에도 남지 않는다.
 
@@ -11935,12 +11947,16 @@ function HomeScreen(props: {
               것이고(판이 고정되고 안내가 붙는다), 하나는 그냥 **한 판 두러** 오는
               것이다(무작위 실전). 한 버튼에 묶여 있으면 안내를 다시 보고 싶은 사람도,
               안내 없이 두고 싶은 사람도 원하는 것을 못 고른다. */}
-          <button className="home-practice" onClick={() => props.onPractice(true)}>
-            튜토리얼 (화면 조작 안내 · 5~10분)
-          </button>
-          <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
-            연습 대국 (봇 3명 · 안내 없음 · 기록 안 남음)
-          </button>
+          <div className="home-solo">
+            <button className="home-practice" onClick={() => props.onPractice(true)}>
+              튜토리얼
+              <small>화면 조작 안내 · 5~10분</small>
+            </button>
+            <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
+              연습 대국
+              <small>봇 3명 · 기록 안 남음</small>
+            </button>
+          </div>
         </section>
 
         <RiichiBgmPicker settings={props.settings} onSetting={props.onSetting} />
@@ -14608,6 +14624,7 @@ function RiichiBgmPicker(props: {
 }): JSX.Element {
   /** 미리듣기 중인 트랙 (-1 = 없음) — 홈을 떠나면 소리도 함께 멈춘다. */
   const [previewing, setPreviewing] = useState(-1);
+  const [folded, toggleFold] = useFold("riichibgm", true);
   useEffect(
     () => () => {
       riichiBgm.previewStop();
@@ -14638,8 +14655,18 @@ function RiichiBgmPicker(props: {
   const playing = !isRandom && previewing === track;
 
   return (
-    <section className="home-card home-bgm">
-      <h2>리치 BGM</h2>
+    /* 홈에서 이 카드는 «가끔 한 번 고르는 것»이다 — 대국 카드 바로 아래에 늘 펼쳐져
+       있으면 친구 카드와 시작 버튼 사이를 곡 캐러셀이 갈라 놓는다. 기본은 접힘,
+       한 번 펼쳐 두면 그 상태가 남는다 (2026-09-03 로비 정리). */
+    <section className={`home-card home-bgm${folded ? " home-card-folded" : ""}`}>
+      <div className="home-card-head">
+        <h2>리치 BGM<span className="home-bgm-now">{isRandom ? "랜덤" : `${track + 1}번`}</span></h2>
+        <div className="home-card-tools">
+          <FoldButton folded={folded} onToggle={toggleFold} label="리치 BGM" />
+        </div>
+      </div>
+      {folded ? null : (
+      <>
       <p className="home-bgm-desc">
         내가 리치를 걸었을 때 나올 곡입니다 — <b>같은 방 네 사람 모두에게</b> 이 곡이
         들립니다. 랜덤을 고르면 서버가 <b>내 곡 하나를 정해</b> 그 방 내내 씁니다
@@ -14716,6 +14743,8 @@ function RiichiBgmPicker(props: {
         음량은 <b>설정 ▸ 리치 BGM 음량</b>에서 조절합니다 (0이면 나오지 않습니다).
         {props.settings.riichiBgmVolume <= 0 ? " 지금은 0이라 미리듣기만 들립니다." : ""}
       </p>
+      </>
+      )}
     </section>
   );
 }

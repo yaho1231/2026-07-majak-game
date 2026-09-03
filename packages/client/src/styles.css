@@ -9738,9 +9738,16 @@ button {
     padding: 16px 14px;
   }
   .home-create {
-    padding: 14px;
-    font-size: 16px;
-    letter-spacing: 1px;
+    padding: 13px 14px;
+  }
+  .home-create-t b { font-size: 17px; }
+  /* 좁은 화면에서 «코드로 참가» 라벨·칸·버튼 셋이 한 줄에 다 못 선다 — 라벨을
+     칸 위로 올린다(줄이 밀려 버튼이 잘리는 것보다 낫다). */
+  .home-join {
+    flex-wrap: wrap;
+  }
+  .home-join-label {
+    flex: 0 0 100%;
   }
   /* 자간 4px이 placeholder까지 늘려 "방 코드 입력 (예: AB"에서 잘렸다 */
   .home-join input {
@@ -11207,8 +11214,24 @@ button {
 /* 접힌 상태에서는 삼각형이 오른쪽(▸)을 가리킨다 — 누르면 열린다는 뜻 */
 .home-fold-on { transform: rotate(-90deg); }
 
-/* 접힌 카드는 제목 한 줄만 남는다 — 아래 여백까지 줄여야 정말 접힌 것처럼 보인다 */
-.home-card-folded { padding-bottom: 8px; }
+/* 접힌 카드는 제목 한 줄만 남는다 — 아래 여백까지 줄여야 정말 접힌 것처럼 보인다.
+   머리는 카드 여백을 음수로 상쇄해 얹혀 있으므로(위 `.home-card-head` 규칙), 접혔을
+   때는 아래쪽 상쇄 여백까지 0으로 만든다 — 안 그러면 제목 밑에 빈 띠가 남는다. */
+.home-card-folded { padding-bottom: 0; }
+.home-card-folded > .home-card-head { margin-bottom: 0; border-bottom: 0; }
+
+/* 접혀 있어도 «지금 무엇으로 되어 있는지»는 머리에 남는다 — 접힌 카드가
+   무엇을 감추고 있는지 모르면 펼칠 이유도 알 수 없다. */
+.home-bgm-now {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-3);
+  vertical-align: middle;
+}
 .home-card-folded .home-card-head h2,
 .home-card-folded .home-card-tools { margin-bottom: 0; }
 
@@ -11226,36 +11249,72 @@ button {
 
 /* 홈에서 유일한 주 동작. 자간 3px + 18px 였다 — "방 만 들 기"로 떨어져 읽혔다.
    키는 간판이 아니므로 자간을 좁히고, 크기 대신 **채움**으로 주 동작임을 말한다. */
+/* 홈에서 유일한 주 동작 — 카드 안의 다른 무엇보다 **눈에 먼저 들어와야** 한다
+   (2026-09-03 사용자 보고). 두 줄짜리 판때기다: 굵은 이름 + 무엇이 일어나는지
+   한 줄. 부제는 예전 `.home-hint` 문단이 하던 말을 버튼 안으로 들여온 것이다. */
 .home-create {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
   width: 100%;
-  padding: 13px;
+  padding: 15px 18px;
   border: 1px solid var(--brass-bright);
   border-radius: var(--r-chip);
   background: var(--brass);
   color: #1a1408;
-  font-size: 15px;
+  text-align: left;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 230, 0.3),
+    0 6px 18px rgba(0, 0, 0, 0.28);
+  transition: background 0.12s var(--ease), transform 0.12s var(--ease);
+}
+
+.home-create .mk { flex: none; transform: scale(1.25); }
+
+.home-create-t {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.home-create-t b {
+  font-size: 19px;
   font-weight: 800;
   letter-spacing: 1px;
-  box-shadow: inset 0 1px 0 rgba(255, 248, 230, 0.3);
-  transition: background 0.12s var(--ease);
+  line-height: 1.15;
+}
+.home-create-t small {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgba(26, 20, 8, 0.72);
 }
 
 .home-create:hover { background: var(--brass-bright); }
+.home-create:active { transform: translateY(1px); }
 
 .home-join {
   display: flex;
+  align-items: center;
   gap: 6px;
   margin-top: 10px;
+}
+
+/* 코드 참가는 주 동작이 아니다 — 칸에 붙은 라벨 한 마디로 «이건 다른 길»임을
+   말하고, 칸 자체는 6자리만 받는 좁은 자리로 줄인다. */
+.home-join-label {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--ink-4);
 }
 
 /* 방 코드는 사람이 옮겨 적는 값이다 — 고정폭이라야 O 와 0, I 와 1 이 갈린다 */
 .home-join input {
   flex: 1;
   min-width: 0;
-  padding: 11px 12px;
+  padding: 9px 12px;
   border-radius: var(--r-chip);
   border: 1px solid var(--chrome-line);
   background: var(--field-fill);
@@ -11272,7 +11331,7 @@ button {
    팔레트 밖에서 굴러들어온 버튼처럼 보였다. */
 .home-join button {
   flex: none;
-  padding: 11px 18px;
+  padding: 9px 16px;
   border: 1px solid var(--chrome-line);
   border-radius: var(--r-chip);
   background: rgba(236, 228, 210, 0.035);
@@ -17502,10 +17561,22 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
 
 /* 튜토리얼 — 방 만들기 아래의 두 번째 문. 방 만들기(주 동작)보다 조용하게 둔다.
    점선 테두리를 뺐다: 점선은 "아직 안 만든 것 · 임시" 로 읽힌다. */
+/* 혼자 하는 두 문은 **한 줄에 나란히** 선다. 세로로 쌓아 두면 주 동작과 같은
+   폭의 버튼이 셋 이어져 어느 것이 큰 문인지 사라진다. */
+.home-solo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 12px;
+}
+
 .home-practice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   width: 100%;
-  margin-top: 8px;
-  padding: 9px 12px;
+  padding: 9px 10px;
   border: 1px solid var(--brass-line);
   border-radius: var(--r-chip);
   background: rgba(154, 123, 66, 0.1);
@@ -17514,6 +17585,12 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   font-weight: 600;
   cursor: pointer;
 }
+.home-practice small {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--ink-4);
+  letter-spacing: 0;
+}
 .home-practice:hover {
   background: rgba(154, 123, 66, 0.2);
 }
@@ -17521,7 +17598,6 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
 /* 연습 대국 — 튜토리얼과 같은 크기의 두 번째 문이지만 안내가 없다.
    금색을 걷어 "이건 배우는 자리가 아니다"를 색으로 먼저 말한다. */
 .home-practice-plain {
-  margin-top: 6px;
   border-color: var(--chrome-line);
   background: rgba(236, 228, 210, 0.035);
   color: var(--ink-3);
