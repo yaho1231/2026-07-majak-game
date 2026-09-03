@@ -11158,6 +11158,84 @@ button {
   align-items: start;
 }
 
+/* ── 처음 온 사람의 안내 카드 (전적 탭 맨 위, 한 판 끝내면 사라진다) ──
+   두 열 위에 통째로 한 줄을 차지한다 — 이 사람에게는 통계 카드 셋보다 이것이 먼저다. */
+.home-welcome {
+  grid-column: 1 / -1;
+}
+.home-welcome-lead {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+.home-welcome-lead b { color: var(--brass-bright); }
+
+/* 세 걸음 — 번호 원 + 두 줄. 넓으면 가로 셋, 좁으면 세로로 접힌다. */
+.home-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.home-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  border: 1px solid var(--chrome-line);
+  border-radius: var(--r-chip);
+  background: rgba(236, 228, 210, 0.03);
+}
+.home-steps li > b {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brass);
+  color: #1a1408;
+  font-size: 12px;
+  font-weight: 800;
+}
+.home-steps li > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.home-steps strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-1);
+  line-height: 1.3;
+}
+.home-steps small {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-4);
+}
+.home-welcome-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.home-welcome-ctas .home-empty-cta { margin-top: 0; }
+/* 규칙·도감은 튜토리얼 다음 순서다 — 황동을 빼서 «먼저 누를 것»이 하나로 남게 */
+.home-empty-cta-quiet {
+  border-color: var(--chrome-line);
+  background: rgba(236, 228, 210, 0.035);
+  color: var(--ink-3);
+}
+.home-empty-cta-quiet:hover {
+  background: rgba(236, 228, 210, 0.075);
+  color: var(--ink-1);
+}
+
 /* 두 열을 감당 못 하는 폭 ── 634px = 내 통계가 안 깨지는 최소치 277px(통계 타일
    5칸의 min-content 229px + 카드 패딩 48px) + 간격 18px + 증강 열 340px. 이보다
    좁으면 둘 중 하나는 반드시 깨진다.
@@ -17584,6 +17662,24 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+/* 첫 판 전에만 붙는 «처음이라면 여기» — 버튼 위 모서리에 얹힌 작은 황동 띠 */
+.home-practice { position: relative; }
+.home-practice-first { border-color: var(--brass); }
+.home-practice-badge {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--brass);
+  color: #1a1408;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  line-height: 1.5;
 }
 .home-practice small {
   font-size: 10.5px;
