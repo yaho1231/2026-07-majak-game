@@ -11456,7 +11456,7 @@ function FriendsCard(props: {
           <ListCard
             items={props.friends}
             empty="아직 친구가 없습니다."
-            emptyHint="닉네임으로 요청을 보내고 상대가 수락하면 서로 친구가 됩니다. 그때부터 접속 여부가 보이고 대기실로 부를 수 있습니다."
+            emptyHint="닉네임으로 요청 → 상대가 수락하면 친구. 접속 여부가 보이고 대기실로 바로 부를 수 있습니다."
           >
             {(rows) => (
               <ul className="friend-list">
@@ -11748,6 +11748,13 @@ function HomeScreen(props: {
   const [statsFolded, toggleStatsFold] = useFold("mystats");
   const [replaysFolded, toggleReplaysFold] = useFold("replays");
   const career = props.stats?.career.find((e) => e.nickname === props.auth.username) ?? null;
+  /**
+   * 아직 기록에 남는 판을 한 번도 끝내지 않은 사람. 이 사람에게 홈은 «전적이 없다»는
+   * 빈 카드 셋이 아니라 **무엇을 어떻게 시작하는지**가 먼저 보여야 한다
+   * (2026-09-03 사용자 지시: "처음 접속하는 사람도 바로 이해할 수 있게").
+   * `stats`가 아직 안 왔을 때(null)도 여기에 든다 — 로딩 중 빈 카드보다 안내가 낫다.
+   */
+  const newcomer = career === null || career.stats.games === 0;
 
   // 오른쪽 탭 (readHomeTab 주석 참고)
   const [tab, setTab] = useState<HomeTabId>(() => readHomeTab(props.auth.isAdmin));
@@ -11755,12 +11762,14 @@ function HomeScreen(props: {
   const { sort: lbSort, toggle: toggleLbSort } = useTableSort({ key: "rank", dir: "asc" });
   // 이모지 아이콘을 뺐다 (2026-08-19). 탭 이름이 이미 한 단어라 그림이 뜻을 더해 주지
   // 않았고, 기기마다 다른 그림·다른 기준선이 와서 탭 줄의 글자 높이가 흔들렸다.
-  const tabs: { id: HomeTabId; label: string }[] = [
-    { id: "record", label: "전적" },
-    { id: "meta", label: "증강 메타" },
-    { id: "feedback", label: "제보" },
-    { id: "account", label: "계정" },
-    ...(props.auth.isAdmin ? [{ id: "admin" as const, label: "관리" }] : []),
+  // `hint`는 title로만 붙는다 — 탭 이름은 한 단어로 두되, «증강 메타»처럼 처음 온
+  // 사람에게 낯선 말은 올려 보면 무엇이 있는지 알 수 있게.
+  const tabs: { id: HomeTabId; label: string; hint: string }[] = [
+    { id: "record", label: "전적", hint: "내 통계 · 리플레이 · 내 증강 성적" },
+    { id: "meta", label: "증강 메타", hint: "서버 전체에서 어떤 증강이 많이 뽑히고 잘 이기는지" },
+    { id: "feedback", label: "제보", hint: "버그 신고 · 건의 · 운영자 답변" },
+    { id: "account", label: "계정", hint: "비밀번호 변경 · 다른 기기 로그아웃" },
+    ...(props.auth.isAdmin ? [{ id: "admin" as const, label: "관리", hint: "서버 관리 (관리자 전용)" }] : []),
   ];
   /** 저장은 setState updater 밖에서 (useFold와 같은 이유) */
   function pickTab(id: HomeTabId): void {
@@ -11948,7 +11957,13 @@ function HomeScreen(props: {
               것이다(무작위 실전). 한 버튼에 묶여 있으면 안내를 다시 보고 싶은 사람도,
               안내 없이 두고 싶은 사람도 원하는 것을 못 고른다. */}
           <div className="home-solo">
-            <button className="home-practice" onClick={() => props.onPractice(true)}>
+            <button
+              className={`home-practice${newcomer ? " home-practice-first" : ""}`}
+              onClick={() => props.onPractice(true)}
+            >
+              {/* 한 판도 안 둔 사람에게만 «처음이라면 여기»를 단다 — 익힌 사람에게 계속
+                  붙어 있으면 표식이 아니라 장식이 된다. */}
+              {newcomer ? <span className="home-practice-badge">처음이라면 여기</span> : null}
               튜토리얼
               <small>화면 조작 안내 · 5~10분</small>
             </button>
@@ -11988,6 +12003,7 @@ function HomeScreen(props: {
                   aria-selected={tab === t.id}
                   aria-controls="home-tabpanel"
                   className={`home-tab${tab === t.id ? " home-tab-on" : ""}`}
+                  title={t.hint}
                   onClick={() => pickTab(t.id)}
                 >
                   {t.label}
@@ -12008,6 +12024,57 @@ function HomeScreen(props: {
                   열을 준다**. 남는 세로 공간은 카드 안이 아니라 카드 사이에 남는다. */}
               {tab === "record" ? (
                 <>
+        {/* ── 처음 온 사람의 첫 화면 ──
+            전적 탭은 원래 «내 통계 · 리플레이 · 내 증강 통계» 셋인데, 한 판도 안 둔
+            사람에게는 셋 다 «아직 없습니다»다. 빈 상자 셋은 이 게임이 무엇인지도,
+            무엇을 눌러야 하는지도 말해 주지 않는다. 그 자리에 **세 걸음**을 먼저
+            세운다 — 판을 하나 끝내면 저절로 사라지고 원래 카드들이 그 자리를 잇는다. */}
+        {newcomer ? (
+        <section className="home-card home-welcome">
+          <div className="home-card-head">
+            <h2>처음이신가요?</h2>
+          </div>
+          <p className="home-welcome-lead">
+            이능마작은 리치마작에 <b>증강</b>을 더한 게임입니다 — 정해진 국마다 카드
+            하나를 골라 내 손패·점수·규칙을 바꾸는 능력이 붙습니다. 마작을 안다면 세
+            걸음이면 시작합니다.
+          </p>
+          <ol className="home-steps">
+            <li>
+              <b className="num">1</b>
+              <span>
+                <strong>튜토리얼로 화면 익히기</strong>
+                <small>5~10분 · 손패가 고정되고 안내가 따라붙습니다 · 기록에 안 남습니다</small>
+              </span>
+            </li>
+            <li>
+              <b className="num">2</b>
+              <span>
+                <strong>«대국 시작» → 코드 공유</strong>
+                <small>6자리 코드를 친구에게 알려 주세요 · 빈 자리는 봇이 채웁니다</small>
+              </span>
+            </li>
+            <li>
+              <b className="num">3</b>
+              <span>
+                <strong>증강 고르고 한 판</strong>
+                <small>끝난 판은 전적·리플레이로 여기에 쌓입니다</small>
+              </span>
+            </li>
+          </ol>
+          <div className="home-welcome-ctas">
+            <button className="home-empty-cta" onClick={() => props.onPractice(true)}>
+              튜토리얼 시작
+            </button>
+            <button className="home-empty-cta home-empty-cta-quiet" onClick={props.onOpenHelp}>
+              규칙 읽기
+            </button>
+            <button className="home-empty-cta home-empty-cta-quiet" onClick={props.onOpenCodex}>
+              증강 도감 보기
+            </button>
+          </div>
+        </section>
+        ) : null}
         <div className="home-record-left">
         <section className={`home-card home-mystats${statsFolded ? " home-card-folded" : ""}`}>
           <div className="home-card-head">
