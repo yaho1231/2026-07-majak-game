@@ -21971,10 +21971,22 @@ function DockSeats({
             {/* 오름패 — 「그 값이 무슨 패로 나는가」. 바로 위 타점 줄의 근거다. */}
             {showWaits ? <SeatWaits waits={ins?.waits ?? []} /> : null}
             {/* 배패 점수 — 그 국에 받은 첫 13장의 값. 국 내내 변하지 않으므로
-                «운이 좋았나»를 한 숫자로 말한다. 서버가 안 채우면 줄째로 없다. */}
+                «운이 좋았나»를 한 숫자로 말한다. 서버가 안 채우면 줄째로 없다.
+
+                **딱 한 가지 예외**: 교환 증강(통째로 바꾸기·손패 3장 교환·자리 바꿈)에
+                손이 통째로 갈리면 서버가 다시 잰다(`handGradeRegraded`, 2026-09-03
+                사용자 확인 요청: 「손패 교환당하면 배패점수도 바뀌는지」). 숫자가
+                움직인 이유가 화면에 없으면 «고장»으로 읽히므로 표식을 함께 세운다. */}
             {ins?.handGrade !== undefined ? (
               <div className="bcast-card-line">
-                <span className="bcast-label-sm">배패</span>
+                <span className="bcast-label-sm">
+                  배패
+                  {ins.handGradeRegraded === true ? (
+                    <span className="bcast-regraded" title="손패가 통째로 바뀌어 배패 점수를 다시 쟀습니다 (교환 증강)">
+                      ↺
+                    </span>
+                  ) : null}
+                </span>
                 <span className="bcast-grade-bar" aria-hidden="true">
                   <span
                     className={`bcast-grade-fill${
@@ -21983,7 +21995,14 @@ function DockSeats({
                     style={{ width: `${Math.max(0, Math.min(100, ins.handGrade))}%` }}
                   />
                 </span>
-                <span className="bcast-grade-num num" title="배패(첫 13장) 점수 — 100점 만점. 국 내내 변하지 않습니다">
+                <span
+                  className="bcast-grade-num num"
+                  title={
+                    ins.handGradeRegraded === true
+                      ? "배패 점수 — 100점 만점. 손패가 교환되어 지금 손으로 다시 쟀습니다"
+                      : "배패(첫 13장) 점수 — 100점 만점. 국 내내 변하지 않습니다"
+                  }
+                >
                   {Math.round(ins.handGrade)}
                 </span>
               </div>

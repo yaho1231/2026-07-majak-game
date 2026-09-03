@@ -19593,3 +19593,11 @@ body:has(.prod-skip) .toast-stack {
   font-size: 11px;
   line-height: 1.45;
 }
+
+/* 배패 점수를 다시 쟀다는 표식 — 교환 증강으로 손이 통째로 갈린 좌석 (2026-09-03) */
+.bcast-regraded {
+  margin-left: 3px;
+  color: #d8d2ff;
+  font-size: 11px;
+  font-weight: 800;
+}
