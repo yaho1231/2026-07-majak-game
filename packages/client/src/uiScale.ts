@@ -271,9 +271,39 @@ function hasSize(): boolean {
  * 않는다»는 약속을 지키기 위해서다(올림 쪽으로 끊으면 1512×982에서 가상 폭이
  * 1913px 로 6px 모자란다).
  */
+/**
+ * 무대 오른쪽에 **덧붙은 폭**(px, 레이아웃 좌표계). 기본 0.
+ *
+ * 관전(관리자 전용)은 판 옆에 분석 도크를 세우는데, 여태 그 도크가 1920 안에서
+ * 자리를 나눠 가져 **판이 눌렸다** — 대국 화면과 다른 비율로 보이고, 손패·이름표가
+ * 그만큼 작아졌다(2026-09-03 사용자 지시: 「분석창은 기본창(일반적인 비율) 옆에
+ * 추가. 비율이 달라져도 됨 — 관리자 전용 관전이니」).
+ *
+ * 그래서 도크는 1920을 나누지 않고 **무대를 넓힌다**: 무대가 (1920+도크)×1080 이 되고
+ * 배율은 그 넓어진 무대를 창에 맞춘다. 판 칸은 정확히 1920×1080 이라 대국 화면과
+ * 픽셀 단위로 같은 그림이다.
+ */
+let stageExtraW = 0;
+
+/** 무대에 덧붙일 폭을 정한다(관전 도크). 0이면 순수 1920×1080. */
+export function setStageExtraWidth(px: number): void {
+  const v = Math.max(0, Math.round(px));
+  if (v === stageExtraW) return;
+  stageExtraW = v;
+  apply();
+}
+
+/** 지금 덧붙어 있는 폭(px). */
+export function stageExtraWidth(): number {
+  return stageExtraW;
+}
+
 function computeScale(): number {
   if (!isPointerFine() || !hasSize()) return 1;
-  const fit = Math.min(window.innerWidth / REF_W, window.innerHeight / REF_H);
+  const fit = Math.min(
+    window.innerWidth / (REF_W + stageExtraW),
+    window.innerHeight / REF_H,
+  );
   /*
    * 상한·하한이 없다 — 무대(1920×1080)가 창에 **정확히 들어가는** 배율 하나다.
    * 창이 작으면 무대도 그만큼 작아지고(비율은 그대로), 크면 그만큼 커진다.
@@ -294,6 +324,8 @@ function apply(): void {
   }
   // 값이 그대로여도 매번 쓴다 — 첫 적용(scale이 초기값 1과 같은 경우)에도 변수가 서야 한다.
   document.body.style.setProperty("--ui-scale", String(scale));
+  // 무대 폭을 styles.css 에 넘긴다 — `#root` 가 `calc(1920px + var(--stage-extra))`.
+  document.body.style.setProperty("--stage-extra", `${stageExtraW}px`);
   // 무대를 쓰는지 알린다 — styles.css 는 이 표식이 있을 때만 #root 를 1920×1080 으로
   // 못 박고 남는 자리를 검게 칠한다. 폰·태블릿(pointer: coarse)은 표식이 없어 예전
   // 배치(창 = 뷰포트) 그대로다.

@@ -100,6 +100,9 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   // 조회
   "statsRequest", "replayList", "replayGet", "leaderboard", "liveGames",
   "feedbackList", "adminUsers", "adminAugmentTiers", "adminAnalytics",
+  // 접속자 목록 조회(2026-09-03) — 늦게 도착해도 «지금 접속해 있는 사람»을 새로
+  // 그려 주므로 뜻이 그대로다. 서버는 이 요청을 한 관리자에게 이후 변동도 밀어 준다.
+  "adminOnline",
   // 도감 카탈로그 — 로그인 전에도 통하는 유일한 조회다(§3-7). 끊긴 사이 눌렀다면
   // 다시 붙었을 때 도감이 여전히 비어 있으므로, 늦게 도착해도 뜻이 그대로다.
   "catalogRequest",
@@ -112,6 +115,9 @@ export const RESENDABLE_MESSAGES: ReadonlySet<string> = new Set([
   "friendRequest", "friendRespond", "friendCancel", "friendRemove", "friendList",
   // 쓰기 요청 (전송 실패한 것만 큐에 담기므로 중복 등록이 되지 않는다)
   "feedbackSubmit", "feedbackUpdate", "feedbackDelete", "adminDeleteUser",
+  // 닉네임 바꾸기(2026-09-03) — «이 계정을 이 이름으로»라는 요청이라 늦게 도착해도
+  // 뜻이 그대로다. 두 번 닿아도 두 번째는 «이미 그 이름»이라 서버가 흡수한다.
+  "adminRenameUser",
   // 관전·증강 테스트
   "spectate", "spectateStop",
   "sandboxStart", "sandboxGrant", "sandboxReset", "sandboxViewAs",

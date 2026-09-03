@@ -204,7 +204,11 @@ html[data-ui-stage="fixed"] body {
 
 html[data-ui-stage="fixed"] #root {
   flex: none;
-  width: 1920px;
+  /* 원판은 1920×1080 이고, 관전 도크가 열리면 그 폭만큼 **오른쪽으로 넓어진다**
+     (`--stage-extra`, uiScale.ts `setStageExtraWidth`). 판 칸은 그대로 1920 이라
+     대국 화면과 같은 비율·같은 크기로 남는다 — 도크가 판을 눌러 비율이 달라지던
+     예전 구조를 여기서 끊는다(2026-09-03). */
+  width: calc(1920px + var(--stage-extra, 0px));
   height: 1080px;
   margin: auto;
   container: ui / size;
@@ -4777,11 +4781,6 @@ button {
   opacity: 1;
 }
 
-/* 설명은 어떤 상태에서도 **완전히 불투명**하다 — 위 규칙이 새 상태 클래스에
-   딸려 다시 새지 않게 못 박아 둔다. */
-.aug-tip {
-  opacity: 1;
-}
 
 /* 남은 국 수 칩 — 잔량 칩과 나란히 서므로 색으로 갈라 둔다 */
 .aug-pill-cd-chip {
@@ -8303,6 +8302,9 @@ button {
    * 바가 사는 `.own-area`(10) 위라 그대로 살아 있다.
    */
   z-index: 95;
+  /* 어떤 상태(쿨다운·소진·무장해제)에서도 **완전히 불투명**하다. 위쪽
+     `.aug-pill-*` 흐림 규칙이 새 클래스에 딸려 다시 새지 않게 못 박아 둔다. */
+  opacity: 1;
   display: none;
   flex-direction: column;
   gap: 4px;
@@ -13022,8 +13024,18 @@ body[data-majak-dock="overlay"] .auglog {
   display: grid;
   /* 25% 는 목표지 하한이 아니다 — 좁으면 도크가 판을 잡아먹고, 넓으면 도크만
      허옇게 늘어난다. clamp 로 양쪽을 다 막는다. */
-  grid-template-columns: minmax(0, 1fr) clamp(300px, 25%, 460px);
+  grid-template-columns: minmax(0, 1fr) var(--spec-dock-w, clamp(300px, 25%, 460px));
   align-items: stretch;
+}
+
+/*
+ * 고정 무대(마우스 기기)에서는 도크 폭이 **고정 460px** 이고, 무대가 그만큼 넓어져
+ * 있다(`#root` 의 `--stage-extra`) — 그래서 왼쪽 `1fr` 이 정확히 1920px 로 풀린다.
+ * 폰·태블릿(무대 표식이 없다)에서는 넓힐 창이 없으므로 위의 clamp 가 그대로 남아
+ * 예전처럼 판과 도크가 폭을 나눠 갖는다.
+ */
+html[data-ui-stage="fixed"] .spectate-stage {
+  --spec-dock-w: 460px;
 }
 
 /* 접힌 도크 — 폭을 0으로 만들지 않는다. 되돌릴 손잡이가 사라지면 탈출구가

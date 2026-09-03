@@ -156,6 +156,7 @@ import {
   getUiScale,
   isLayoutCramped,
   layoutViewport,
+  setStageExtraWidth,
   subscribeUiScale,
   toLayoutPx,
 } from "./uiScale.js";
@@ -13829,13 +13830,22 @@ const GameTable = memo(function GameTable(props: {
   useEffect(() => {
     if (dockFlag === null) {
       delete document.body.dataset.majakDock;
+      setStageExtraWidth(0);
       return;
     }
     document.body.dataset.majakDock = dockFlag;
+    /*
+     * 도크는 판의 1920을 나눠 갖지 않고 **무대를 그만큼 넓힌다** (2026-09-03 사용자
+     * 지시: 「분석창은 기본창(일반적인 비율) 옆에 추가 — 비율이 달라져도 됨」).
+     * 여기서 넘기는 폭이 styles.css 의 도크 트랙 폭(`--spec-dock-w`)과 **같은 값**이라야
+     * 판 칸이 정확히 1920px 로 풀린다. 세 값을 함께 바꾼다.
+     */
+    setStageExtraWidth(dockFlag === "open" ? 460 : dockFlag === "folded" ? 30 : 0);
     // 관전을 접거나 방을 나가면 표식도 걷는다 — 남으면 대국자 화면에서 배율
     // 손잡이가 있지도 않은 도크를 피해 왼쪽으로 물러난 채로 굳는다.
     return () => {
       delete document.body.dataset.majakDock;
+      setStageExtraWidth(0);
     };
   }, [dockFlag]);
   const focusPlayer =

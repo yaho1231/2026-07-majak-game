@@ -36,9 +36,18 @@ describe("국 결과 화면 — 스스로 닫지 않는다", () => {
     // onClose를 타이머에 물린 흔적 자체를 금지한다 (5000이든 다른 값이든)
     expect(/setTimeout\([^)]*onClose/.test(body)).toBe(false);
     expect(body).not.toContain("onCloseRef");
-    // onClose는 오직 사람이 누르는 자리(onClick)에서만 불린다 — 코드에서 직접
-    // 호출하는 형태(`onClose()`)는 어디에도 없어야 한다.
-    expect(/onClose\s*\(/.test(body)).toBe(false);
+    /*
+     * **대국자 화면에서는** onClose 가 사람이 누르는 자리(onClick)에서만 불린다.
+     *
+     * 2026-09-03에 딱 한 가지 예외가 생겼다: `autoClose`(관전석 전용)다. 관전자는
+     * 누를 수 있는 사람이 아니다 — 눌러도 서버에 아무것도 가지 않고(`closeRoundResult`),
+     * 증강 드래프트가 열리는 국에서는 창을 걷어 줄 «새 국 뷰»가 수십 초 뒤에나 온다.
+     * 그래서 관전석에서만 마감이 지나면 스스로 내려간다. 그 예외가 대국자 경로로
+     * 새지 않도록 **조건에 autoClose 가 반드시 걸려 있어야 한다**는 것을 여기서 못 박는다.
+     */
+    const autoCloseCalls = [...body.matchAll(/onClose\s*\(/g)];
+    expect(autoCloseCalls).toHaveLength(1);
+    expect(body).toContain("if (autoClose !== true || deadlineAt === null || paused) return;");
     expect([...body.matchAll(/onClick=\{onClose\}/g)]).toHaveLength(1);
   });
 
