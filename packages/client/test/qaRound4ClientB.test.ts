@@ -43,7 +43,7 @@ const byKey = new Map(GLOSSARY.map((g) => [g.key, g]));
 describe("① 처음 보는 증강 카드 셋에 30초를 걸지 않는다", () => {
   it("판의 첫 드래프트만 넉넉한 상한을 받는다", () => {
     // 코드가 스스로 "카드 셋을 읽는 데만 30초가 넘게 걸린다"고 적어 놓고, 그 판단을
-    // 튜토리얼에만 적용했다. «바로 한 판»(게스트)·«연습 대국»은 tutorial=false다.
+    // 튜토리얼에만 적용했다. «체험하기»(게스트)·«연습 대국»은 tutorial=false다.
     expect(AGENT_CODE).toContain("FIRST_DRAFT_TIMEOUT_MS");
     // 값은 2026-08-27부터 `ROOM_PACES`(core)가 쥔다 — 숙련자 칸이 곧 그 시절의 상수다.
     // 30초보다 넉넉하되 컨트롤러의 최후 그물(90초, `AGENT_DECIDE_TIMEOUT_MS`)보다는
@@ -92,13 +92,13 @@ describe("② 튜토리얼이 실전의 30초 제한을 가르친다", () => {
     expect(body).toMatch(/패스|나갑니다/);
   });
 
-  it("랜딩도 두 문을 갈라 적는다 — «바로 한 판»은 실전과 같은 판이다", () => {
+  it("랜딩도 두 문을 갈라 적는다 — «체험하기»는 실전과 같은 판이다", () => {
     const at = APP_CODE.indexOf('className="landing-key-note"');
     expect(at).toBeGreaterThan(0);
     const note = APP_CODE.slice(at, at + 600);
     expect(note).toContain("30초");
     // 예전에는 "시간 제한이 없습니다"가 둘 다에 걸리는 것처럼 읽혔다.
-    expect(note).toContain("바로 한 판");
+    expect(note).toContain("체험하기");
   });
 });
 
@@ -184,7 +184,7 @@ describe("④ 판에서 빠져나가는 몸짓을 한 번 붙잡는다", () => {
 describe("① 초대를 들고 온 사람이 게스트 문으로 새지 않는다", () => {
   it("게스트 두 문이 초대 코드를 먼저 본다", () => {
     expect(APP_CODE).toContain("function inviteNeedsAccount()");
-    // 두 버튼(튜토리얼·바로 한 판) **모두**에 걸려 있어야 한다 — 한쪽만 막으면
+    // 두 버튼(튜토리얼·체험하기) **모두**에 걸려 있어야 한다 — 한쪽만 막으면
     // 다른 쪽으로 그대로 샌다.
     expect([...APP_CODE.matchAll(/if \(inviteNeedsAccount\(\)\) return;/g)].length).toBe(2);
   });
