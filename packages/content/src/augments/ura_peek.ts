@@ -5,28 +5,24 @@
  *
  * ① 확인(기존): 국당 1회, 자기 턴에 뒷도라 표시패를 본인만 확인한다. 한 번 열어 두면
  *    그 국에 깡으로 뒷도라가 늘어날 때마다 새 표시패도 자동으로 보인다.
- * ② 바꿔치기: 이면투시를 이미 발동한 국에 한해 **국당 1회**, 뒷도라 표시패(첫 번째 것)를
- *    **내 손패 1장**과 자리째 맞바꾼다 — 표시패 자리에 내가 고른 패가 들어가고 원래
- *    표시패는 내 손으로 온다. 알고도 아무것도 못 하던 정보형에서 "내 손에 맞는 뒷도라를
- *    직접 심는" 능동형이 된다 (2026-09-04. 그전에는 왕패의 영상패와 맞바꿨다).
+ * ② 바꿔치기(신규): 이면투시를 이미 발동한 국에 한해 **국당 1회**, 뒷도라 표시패
+ *    (첫 번째 것)를 왕패의 **영상패**와 자리째 맞바꾼다 — 알고도 아무것도 못 하던
+ *    정보형에서 "내 손에 맞는 뒷도라를 직접 고르는" 능동형이 된다.
  *
  * 구현: peek_riichi_waits 패턴. 커스텀 액션 + 리듀서가 왕패의 뒷도라 표시패 kind를
  * 읽어 viewKey(holder,"ura")에 기록. 국당 1회 플래그. 새 국에 지운다.
- * 바꿔치기 리듀서는 왕패의 뒷도라 표시패 자리에 손패를 그대로 밀어 넣으므로(왕패의 주인과
- * 같은 `moveTiles` 2단) 왕패 장수·표시패의 절대 인덱스가 보존되고, 교환 직후 보유자의
- * 뒷도라 뷰를 새 패로 갱신한다. 손패 장수도 1:1이라 그대로다.
+ * 바꿔치기 리듀서는 왕패 배열의 두 자리를 그대로 맞바꾸므로 왕패 장수·도라 표시패의
+ * 절대 인덱스가 보존되고, 교환 직후 보유자의 뒷도라 뷰를 새 패로 갱신한다.
  */
 
 import {
   DEAD_WALL,
+  INDICATOR_BLOCK_SIZE,
   ROUND_STARTED,
   augmentDataSet,
   defineAugment,
-  handIdsOf,
-  handZone,
   kindKey,
   kindOf,
-  moveTiles,
   playerAtSeat,
   uraIndicatorIds,
 } from "@majak/core";
@@ -38,7 +34,7 @@ import type {
   TileId,
 } from "@majak/core";
 import type { VisibilityRule } from "@majak/core";
-import { flagOf, publishUsesLeft, roundViewKey, widenPeek } from "../util.js";
+import { flagOf, publishUsesLeft, roundViewKey, viewKey, widenPeek } from "../util.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
 
@@ -62,14 +58,38 @@ interface UraPeekedPayload {
 
 interface UraSwappedPayload {
   holder: PlayerId;
-  /** 지금 뒷도라 표시패 자리에 있는 패 — 내 손으로 온다 */
+  /** 지금 뒷도라 표시패 자리에 있는 패 */
   uraTileId: TileId;
-  /** 그 자리로 밀어 넣을 내 손패 */
-  handTileId: TileId;
-  /** 뒷도라 표시패의 왕패 자리 (손패를 여기로 밀어 넣는다) */
-  uraIndex: number;
+  /** 그 자리로 밀어 넣을 왕패의 다른 패 */
+  otherTileId: TileId;
   viewKey: string;
   swappedKey: string;
+}
+
+/**
+ * 손대면 안 되는 왕패 자리.
+ *
+ * ⚠ 예전에는 **이미 뒤집힌** 표시패와 그 +1만 잠갔다. 그래서 2번째(=다음 깡) 도라
+ * 표시패 자리도, 그 뒷도라 자리도 전부 교환 후보로 열려 있었고, 왕패 전체가 보이는
+ * 이 증강의 홀더가 **다음 깡 도라를 직접 심고** 스스로 깡을 쳐서 여는 조합이 성립했다
+ * (2026-08-22 QA aug-4 확정 5). 깡 도라는 테이블 전원의 손에 붙는다.
+ * 카드는 "도라 표시패 자리는 건드릴 수 없다"고 못 박았는데 구현이 그 반대였다.
+ *
+ * 표시패 블록은 늘 왕패의 **마지막 10장**이고(`INDICATOR_BLOCK_SIZE`), 자리는
+ * 뒤집혔는지와 무관하게 `doraIndicatorIndex(state, k) = len - 10 + 2k`로 처음부터
+ * 정해져 있다(core `GameState.ts`). 규약이 코어에 있으니 그대로 따라 블록 전체를 잠근다.
+ *
+ * 남는 후보는 앞쪽 **영상패 자리**뿐이다. 왕패는 영상패 4 + 표시패 블록 10이 전부라,
+ * 영상패까지 잠그면 교환 상대가 하나도 남지 않아 능력이 통째로 죽는다 — 그래서
+ * 여기서는 잠그지 않고, 대신 detail에 "영상패와 맞바꾼다"를 명시했다(같은 감사 의심 4:
+ * `deadIndex:0`은 `sys.drawRinshan`이 뽑는 다음 깡의 쯔모다). 이 축을 정말 닫으려면
+ * 교환 상대를 왕패가 아니라 패산에서 가져오는 **재설계**가 필요하다.
+ */
+function lockedIndices(state: GameState): Set<number> {
+  const len = state.zones[DEAD_WALL]?.tileIds.length ?? 0;
+  const locked = new Set<number>();
+  for (let i = Math.max(0, len - INDICATOR_BLOCK_SIZE); i < len; i++) locked.add(i);
+  return locked;
 }
 
 const uraPeekAction: ActionDef<Record<string, never>> = {
@@ -97,7 +117,7 @@ const uraPeekAction: ActionDef<Record<string, never>> = {
   },
 };
 
-const uraSwapAction: ActionDef<{ handTileId: TileId }> = {
+const uraSwapAction: ActionDef<{ deadIndex: number }> = {
   type: ACTION_SWAP,
   validate: (req, { state }) => {
     const player = state.players.find((p) => p.id === req.player);
@@ -113,23 +133,24 @@ const uraSwapAction: ActionDef<{ handTileId: TileId }> = {
     if (flagOf(state, swappedKey(state, req.player))) {
       return "already swapped this round";
     }
-    const uraId = uraIndicatorIds(state)[0];
-    if (uraId === undefined) return "no ura indicator";
-    if ((state.zones[DEAD_WALL]?.tileIds ?? []).indexOf(uraId) < 0) {
-      return "ura indicator not in dead wall";
+    if (uraIndicatorIds(state)[0] === undefined) return "no ura indicator";
+    const deadWall = state.zones[DEAD_WALL]?.tileIds ?? [];
+    const idx = req.payload.deadIndex;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= deadWall.length) {
+      return "invalid dead wall index";
     }
-    if (!handIdsOf(state, req.player).includes(req.payload.handTileId)) {
-      return "tile not in hand";
-    }
+    // 표시패 블록 전체(도라·뒷도라 10자리)는 뒤집혔든 아니든 건드리지 않는다
+    // — lockedIndices 주석 참고
+    if (lockedIndices(state).has(idx)) return "cannot swap with an indicator slot";
     return null;
   },
   toEvents: (req, { state }) => {
-    const uraId = uraIndicatorIds(state)[0] as TileId;
     const payload: UraSwappedPayload = {
       holder: req.player,
-      uraTileId: uraId,
-      handTileId: req.payload.handTileId,
-      uraIndex: (state.zones[DEAD_WALL]?.tileIds ?? []).indexOf(uraId),
+      uraTileId: uraIndicatorIds(state)[0] as TileId,
+      otherTileId: (state.zones[DEAD_WALL]?.tileIds ?? [])[
+        req.payload.deadIndex
+      ] as TileId,
       viewKey: uraViewKey(req.player),
       swappedKey: swappedKey(state, req.player),
     };
@@ -144,9 +165,9 @@ export const uraPeek: AugmentDef = defineAugment({
   complexity: 2,
   name: "이면투시",
   description:
-    "(매 국 1회 + 바꿔치기 1회) 뒷도라 표시패를 나만 확인하고, 한 번은 내 손패 하나를 골라 바꿔치기한다.",
+    "(매 국 1회 + 바꿔치기 1회) 자기 순에 뒷도라 표시패를 나만 확인한다. 확인한 국에는 1회, 첫 번째 뒷도라 표시패를 왕패의 다른 패와 바꿔치기할 수 있다.",
   detail:
-    "한 번 열면 그 국 동안 유지되어, 깡으로 뒷도라가 늘면 새 표시패도 자동으로 보인다. 바꿔치기는 **내 손패 1장을 뒷도라 표시패 자리에 밀어 넣고**, 원래 표시패를 손으로 가져온다 — 손패 장수는 그대로다. 도라 표시패 자리는 건드리지 않는다.\n\n표시패로 심은 패의 **다음 패**가 뒷도라가 된다(5통을 심으면 6통). 확인한 뒤에는 바꿔치기를 쓰기 전까지 왕패 전체가 나에게만 보인다. 국이 바뀌면 확인한 정보는 지워진다.",
+    "한 번 열면 그 국 동안 유지되어, 깡으로 뒷도라가 늘면 새 표시패도 자동으로 보인다. 바꿔치기 상대는 왕패의 **영상패**뿐이다 — 도라·뒷도라 표시패 자리는 뒤집혔든 아니든 건드릴 수 없다.\n\n확인한 뒤에는 바꿔치기를 쓰기 전까지 왕패 전체가 나에게만 보인다. 국이 바뀌면 확인한 정보는 지워진다.",
   // 봇: 텐파이일 때 확인한다 — 리치를 걸지 다마텐으로 갈지 판단할 정보가 가장 필요한 시점.
   //     (바꿔치기는 내 손패와 맞춰 골라야 해서 봇에게 맡기지 않는다.)
   bot: plan({
@@ -187,22 +208,18 @@ export const uraPeek: AugmentDef = defineAugment({
       engine.actions.register(uraSwapAction);
       engine.reducers.register(EVENT_SWAP, (state, event) => {
         const p = event.payload as UraSwappedPayload;
-        if (state.zones[DEAD_WALL] === undefined) {
-          throw new Error("UraSwapped: no dead wall");
-        }
-        // 뒷도라 표시패 → 내 손 / 비워진 그 자리에 내 손패를 밀어 넣는다
-        // (왕패 장수와 표시패의 절대 인덱스가 보존된다 — 왕패의 주인과 같은 2단 이동)
-        let zones = moveTiles(state.zones, DEAD_WALL, handZone(p.holder), [
-          p.uraTileId,
-        ]);
-        zones = moveTiles(
-          zones,
-          handZone(p.holder),
-          DEAD_WALL,
-          [p.handTileId],
-          p.uraIndex,
-        );
-        const next: GameState = { ...state, zones };
+        const zone = state.zones[DEAD_WALL];
+        if (zone === undefined) throw new Error("UraSwapped: no dead wall");
+        const ids = [...zone.tileIds];
+        const i = ids.indexOf(p.uraTileId);
+        const j = ids.indexOf(p.otherTileId);
+        if (i < 0 || j < 0) throw new Error("UraSwapped: tile not in dead wall");
+        ids[i] = p.otherTileId;
+        ids[j] = p.uraTileId;
+        const next: GameState = {
+          ...state,
+          zones: { ...state.zones, [DEAD_WALL]: { ...zone, tileIds: ids } },
+        };
         // 바뀐 뒷도라를 보유자 뷰에 즉시 반영 — 무엇으로 바뀌었는지 그 자리에서 본다
         return {
           ...next,
@@ -275,14 +292,16 @@ export const uraPeek: AugmentDef = defineAugment({
       const options: { type: string; payload: unknown }[] = [
         { type: ACTION, payload: {} },
       ];
-      // 이미 확인했고 아직 안 바꿨으면 손패 한 장을 표시패 자리로 보낼 수 있다
+      // 이미 확인했고 아직 안 바꿨으면 왕패 자리별 교환 후보 (validate가 최종 판정)
       if (
         flagOf(state, usedKey(state, holder)) &&
-        !flagOf(state, swappedKey(state, holder)) &&
-        uraIndicatorIds(state)[0] !== undefined
+        !flagOf(state, swappedKey(state, holder))
       ) {
-        for (const handTileId of handIdsOf(state, holder)) {
-          options.push({ type: ACTION_SWAP, payload: { handTileId } });
+        const locked = lockedIndices(state);
+        const size = state.zones[DEAD_WALL]?.tileIds.length ?? 0;
+        for (let i = 0; i < size; i++) {
+          if (locked.has(i)) continue;
+          options.push({ type: ACTION_SWAP, payload: { deadIndex: i } });
         }
       }
       return options;

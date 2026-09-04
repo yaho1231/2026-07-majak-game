@@ -26,7 +26,7 @@ export const siegeRiichi: AugmentDef = defineAugment({
   complexity: 2,
   name: "공성계",
   description:
-    "(상시) 텐파이가 아니어도 가짜 리치를 걸 수 있다 — 그 상태로는 화료할 수 없다.",
+    "(상시) 텐파이가 아니어도 리치를 선언할 수 있다. 단 텐파이가 아니라면 화료는 할 수 없다.",
   detail:
     "손이 잠기고 쯔모기리가 강제되는 것은 진짜 리치와 같다. 리치봉 1,000점과 유국 시 노텐 벌부도 그대로 걸린다.",
   /*

@@ -25,6 +25,7 @@ import {
 } from "./danger.js";
 import type { DefenseContext, Threat } from "./danger.js";
 import { effectiveAugmentsOf } from "./collect.js";
+import type { FiredSight } from "./collect.js";
 import { readIntel, snapshotTrust } from "./intel.js";
 import type { BotIntel } from "./intel.js";
 import { exactTenpai, hasUnmodeledShapeOptions } from "./shape.js";
@@ -229,6 +230,11 @@ export interface ReadContext {
   flags?: BotFlags;
   /** 콜 기회 집계기 (측정 전용) */
   callAudit?: CallAudit | undefined;
+  /**
+   * 상대의 증강 발동을 **이 국에 언제 처음 봤는가** (뷰가 아니라 기억에서 온다 —
+   * `OpponentMemory.firedSightOf`). 없으면 "언제부터인지 모른다 = 익었다"로 읽는다.
+   */
+  sightOf?: (player: PlayerId, augmentId: string) => FiredSight | undefined;
 }
 
 /** 뷰 하나로 이번 결정의 판 읽기를 만든다 */
@@ -304,6 +310,11 @@ export function buildRead(
     doraKinds,
     context.traitsOf ?? (() => NEUTRAL_TRAITS),
     intel,
+    {
+      // 증강 신호를 얼마나 믿는가는 성격이다 — 없으면 표의 값 그대로(0.5)
+      ...(context.profile === undefined ? {} : { credence: context.profile.credence }),
+      ...(context.sightOf === undefined ? {} : { sightOf: context.sightOf }),
+    },
   );
   const doraCount = new Map<string, number>();
   for (const d of doraKinds) {

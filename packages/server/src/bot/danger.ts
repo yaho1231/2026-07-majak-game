@@ -40,6 +40,7 @@ import {
   readCollect,
   readDealInShare,
 } from "./collect.js";
+import type { FiredSight } from "./collect.js";
 import { NO_INTEL, snapshotTrust } from "./intel.js";
 import type { BotIntel } from "./intel.js";
 import { NEUTRAL_TRAITS } from "./opponents.js";
@@ -48,6 +49,14 @@ import { KABE_CREDIT, pairWaitFactor, sujiConfidence, waitFactor } from "./suji.
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 const isNumber = (k: TileKind): boolean => NUMBER_SUITS.has(k.suit);
+
+/** `readThreats`가 "무엇을 모으는가" 읽기에 넘기는 문맥 */
+export interface ThreatReadContext {
+  /** 0(확인된 것만) ~ 1(액면대로) — `profile.credence` */
+  credence?: number;
+  /** 그 사람의 그 증강 발동을 언제 처음 봤는가 (`OpponentMemory.firedSightOf`) */
+  sightOf?: (player: PlayerId, augmentId: string) => FiredSight | undefined;
+}
 
 /** 한 상대의 위협 상태 */
 export interface Threat {
@@ -95,6 +104,12 @@ export interface Threat {
    * (`bot/collect.ts`).
    */
   kindRisk: (kind: TileKind) => number;
+  /**
+   * **텐파이라면 이 패가 오름패일 확률**을 발동 신호가 못 박은 분류 (`bot/collect.ts`).
+   * 있으면 상대 눈금(`tileRisk × DEAL_IN_SCALE`) 대신 이 확률을 쓴다 — 자패 손에 자패를
+   * 흘리는 것은 리치에 무스지를 흘리는 것과 다른 종류의 위험이라 같은 눈금에 안 실린다.
+   */
+  dealInOf?: (kind: TileKind) => number | undefined;
   /**
    * **내 정보 증강이 열어 준 이 사람의 정확한 대기**(kindKey). 손패가 통째로 보일
    * 때만 채워진다(투시 등 — `bot/intel.ts`가 뷰에 실려 온 것만으로 계산한다).
@@ -182,6 +197,11 @@ export function readThreats(
    * 정보 증강이 없는 봇의 판단은 종전과 한 글자도 다르지 않다.
    */
   intel: BotIntel = NO_INTEL,
+  /**
+   * "무엇을 모으는가" 읽기에 얹는 문맥 (`bot/collect.ts`) — 이 봇이 증강 신호를 얼마나
+   * 믿는가(`profile.credence`)와 그 발동을 언제 처음 봤는가(기억). 없으면 표의 값 그대로다.
+   */
+  collectCtx: ThreatReadContext = {},
 ): Threat[] {
   const out: Threat[] = [];
   const turn = view.round.turnCount;
@@ -266,7 +286,12 @@ export function readThreats(
      * 접기 판정(바로 아래)보다 **앞에** 둔다 — 접은 사람은 하한을 세워 준 뒤에도
      * 함께 깎여야 한다. 뒤에 두면 접은 사람이 다시 살아난다.
      */
-    const collect = readCollect(view, p.id);
+    const collect = readCollect(view, p.id, {
+      ...(collectCtx.credence === undefined ? {} : { credence: collectCtx.credence }),
+      ...(collectCtx.sightOf === undefined
+        ? {}
+        : { sightOf: (id: string) => collectCtx.sightOf?.(p.id, id) }),
+    });
     if (collect.minLevel > level) level = collect.minLevel;
 
     /**
@@ -352,6 +377,7 @@ export function readThreats(
       riichi,
       isDealer,
       kindRisk: collect.riskOf,
+      ...(collect.dealInOf === undefined ? {} : { dealInOf: collect.dealInOf }),
       ...(knownWaits === undefined ? {} : { knownWaits }),
       // 눈먼 총알이 켜진 국에는 내가 쏴도 **내가 물 확률이 1/4**이다 (지불자 무작위 재배선).
       // 나머지 몫은 무엇을 버리든 똑같이 걸리므로 버림 판단에서는 내 몫만 센다.
@@ -839,10 +865,19 @@ function riskWithoutIntel(
    * 앞에 두면 스지 한 줄이 "저 사람 손은 통째로 자패다"라는 경고를 도로 지운다.
    * 현물은 위에서 이미 0으로 빠져나갔으므로 여기서 되살아나지 않는다.
    */
-  return Math.min(
+  const relative = Math.min(
     1,
     baseRisk(kind) * factor * doraProximity(kind, doraSet) * threat.kindRisk(kind),
   );
+  /*
+   * **대기의 범위가 못 박힌 상대** (개벽 = 자패, 거신병 = 요구패 — `bot/collect.ts`).
+   * 상대 눈금은 상한 1 × 0.11 = 11%가 끝인데 자패 손에 산 자패를 흘리는 것은 3할
+   * 언저리다. 확률을 직접 받아 눈금으로 되돌려 넣는다(더 큰 쪽) — 현물은 위에서
+   * 이미 0으로 빠졌으므로 여기서 되살아나지 않는다.
+   */
+  const pinned = threat.dealInOf?.(kind);
+  if (pinned !== undefined) return Math.max(relative, pinned / DEAL_IN_SCALE);
+  return relative;
 }
 
 const EMPTY_RANKS: ReadonlySet<number> = new Set<number>();

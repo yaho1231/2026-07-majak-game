@@ -2118,7 +2118,7 @@ export class RoomManager {
       case "createRoom":
         return this.createRoom(conn, user);
       case "practicePlay":
-        return this.practicePlay(conn, user, msg.mode, msg.tutorial === true, msg.lobby === true);
+        return this.practicePlay(conn, user, msg.mode, msg.tutorial === true);
       case "joinRoom":
         return this.joinRoom(conn, user, msg.code);
       case "emote": {
@@ -5577,13 +5577,7 @@ export class RoomManager {
    * **판을 세워 두고 기다린다**(§2-5, `SOLO_HOLD_MS`). 봇 셋뿐인 방이라 기다려도
    * 잃는 사람이 없다. 시한이 지나면 유휴 청소가 접는다.
    */
-  private practicePlay(
-    conn: Conn,
-    user: UserRow,
-    mode?: GameMode,
-    tutorial = false,
-    lobby = false,
-  ): void {
+  private practicePlay(conn: Conn, user: UserRow, mode?: GameMode, tutorial = false): void {
     this.sweepGhostSeats();
     let existing = this.membershipOf(user.username);
     if (existing !== null && this.releaseOwnStaleSeat(conn, existing, user.username)) {
@@ -5618,30 +5612,14 @@ export class RoomManager {
       guest: true,
       tutorial,
       gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
-      /*
-       * 대기실을 거치지 않는 판은 체험판과 같은 이유로 난이도를 한 칸 낮춘다 —
-       * 고를 화면 자체가 없고, 배우는 자리에서 봇이 최선을 두면 배우기 전에
-       * 끝난다. 튜토리얼은 거기서 한 칸 더 (`guestPlay` 주석과 같은 이유).
-       *
-       * 반대로 **대기실에 세우는 연습 대국**(2026-09-04 사용자 지시)은 봇의
-       * 최선으로 연다 — 그건 배우는 자리가 아니라 연습하는 자리이고, 무엇보다
-       * 대기실에서 직접 내릴 수 있다.
-       */
-      botDifficulty: lobby ? "hard" : tutorial ? "easy" : "normal",
-      // 연습 대기실은 «왕초보» 속도로 연다 — 혼자 봇과 두는 판이라 시간에 쫓길
-      // 이유가 없다. 급한 사람은 대기실에서 내린다.
-      ...(lobby ? { pace: "novice" as const } : {}),
+      // 체험판과 같은 이유로 한 칸 낮춘다 — 대기실을 안 거치므로 난이도를 고를
+      // 화면 자체가 없고, 배우는 자리에서 봇이 최선을 두면 배우기 전에 끝난다.
+      // 튜토리얼은 거기서 한 칸 더 (`guestPlay` 주석과 같은 이유).
+      botDifficulty: tutorial ? "easy" : "normal",
     });
     this.send(conn.ws, { type: "roomCreated", code: room.code });
     this.seat(conn, user, room);
     this.addBots(room, MAX_PLAYERS - room.agents.length);
-    // 대기실 연습은 여기서 멈춘다 — 시작은 사람이 «게임 시작»으로 누른다.
-    // `addBots`는 명단만 채우므로 여기서 대기실을 한 번 다시 보낸다(안 보내면
-    // 화면에 사람 혼자 앉아 있고 «시작»이 잠긴 방이 선다).
-    if (lobby) {
-      this.broadcastLobby(room);
-      return;
-    }
     void this.startGame(room);
   }
 
