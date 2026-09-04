@@ -15244,7 +15244,6 @@ function SettingsPanel(props: {
     },
     { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝입니다 (나만의 도라는 보랏금)" },
     { key: "screenFx", label: "화면 효과", desc: "화료·리치 때 화면 흔들림·번쩍임·파티클 (멀미·광과민이면 끄세요)" },
-    { key: "sfxOn", label: "효과음", desc: "모든 게임 효과음을 켭니다" },
     // 진동 장치가 없는 기기에서는 아예 보여 주지 않는다 — 죽은 스위치를 두지 않는다.
     ...(hapticsSupported()
       ? [
@@ -15304,6 +15303,90 @@ function SettingsPanel(props: {
         <button className="settings-x" onClick={props.onClose} title="닫기">✕</button>
       </div>
       <div className="settings-body">
+        <label className="settings-row settings-row-slider">
+          <div className="settings-text">
+            <span className="settings-label">배경음악 음량</span>
+            <span className="settings-desc">
+              대국 중 흐르는 배경음악의 음량입니다 (0이면 끔). 리치가 걸리면 리치 BGM에
+              자리를 내주고, 그 국이 끝나면 돌아옵니다.
+            </span>
+          </div>
+          <div className="settings-slider">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(props.settings.bgmVolume * 100)}
+              onChange={(e) => props.onSetting("bgmVolume", Number(e.target.value) / 100)}
+              aria-label="배경음악 음량"
+            />
+            <span className="settings-slider-val">{Math.round(props.settings.bgmVolume * 100)}</span>
+          </div>
+        </label>
+        {/* 효과음 on/off — 음량 손잡이 사이에 둔다. 위의 배경음악·아래의 리치 BGM과
+            같은 자리에서 소리를 다루게 하려고 일반 스위치 목록에서 여기로 옮겼다. */}
+        <label className="settings-row">
+          <div className="settings-text">
+            <span className="settings-label">효과음</span>
+            <span className="settings-desc" id="set-desc-sfxOn">모든 게임 효과음을 켭니다</span>
+          </div>
+          <button
+            className={`toggle${props.settings.sfxOn ? " toggle-on" : ""}`}
+            role="switch"
+            aria-checked={props.settings.sfxOn}
+            aria-label="효과음"
+            aria-describedby="set-desc-sfxOn"
+            onClick={() => {
+              props.onSetting("sfxOn", !props.settings.sfxOn);
+            }}
+          >
+            <span className="toggle-knob" />
+          </button>
+        </label>
+        {/* 효과음 음량 — 마스터 게인은 이미 있었고 손잡이만 없었다 (감사 §5-4).
+            BGM은 슬라이더가 둘인데 효과음만 on/off 뿐이라, "소리는 듣고 싶은데
+            이렇게 크진 않다"는 자리가 없었다. */}
+        <label className="settings-row settings-row-slider">
+          <div className="settings-text">
+            <span className="settings-label">효과음 음량</span>
+            <span className="settings-desc">
+              패를 놓는 소리·선언·화료 등 게임 효과음의 음량입니다. 위의 "효과음"을 끄면
+              이 값과 무관하게 들리지 않습니다.
+            </span>
+          </div>
+          <div className="settings-slider">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(props.settings.sfxVolume * 100)}
+              onChange={(e) => props.onSetting("sfxVolume", Number(e.target.value) / 100)}
+              aria-label="효과음 음량"
+            />
+            <span className="settings-slider-val">{Math.round(props.settings.sfxVolume * 100)}</span>
+          </div>
+        </label>
+        <label className="settings-row settings-row-slider">
+          <div className="settings-text">
+            <span className="settings-label">리치 BGM 음량</span>
+            <span className="settings-desc">
+              리치 선언 시 나오는 전용 BGM의 음량입니다 (0이면 끔)
+            </span>
+          </div>
+          <div className="settings-slider">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(props.settings.riichiBgmVolume * 100)}
+              onChange={(e) => props.onSetting("riichiBgmVolume", Number(e.target.value) / 100)}
+              aria-label="리치 BGM 음량"
+            />
+            <span className="settings-slider-val">
+              {Math.round(props.settings.riichiBgmVolume * 100)}
+            </span>
+          </div>
+        </label>
         {rows.map((r) => {
           /*
            * 방이 힌트 표시를 껐으면 힌트 계열은 **잠근 채 꺼진 것으로** 보인다.
@@ -15372,70 +15455,6 @@ function SettingsPanel(props: {
                 {o.label}
               </button>
             ))}
-          </div>
-        </label>
-        {/* 효과음 음량 — 마스터 게인은 이미 있었고 손잡이만 없었다 (감사 §5-4).
-            BGM은 슬라이더가 둘인데 효과음만 on/off 뿐이라, "소리는 듣고 싶은데
-            이렇게 크진 않다"는 자리가 없었다. */}
-        <label className="settings-row settings-row-slider">
-          <div className="settings-text">
-            <span className="settings-label">효과음 음량</span>
-            <span className="settings-desc">
-              패를 놓는 소리·선언·화료 등 게임 효과음의 음량입니다. 위의 "효과음"을 끄면
-              이 값과 무관하게 들리지 않습니다.
-            </span>
-          </div>
-          <div className="settings-slider">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(props.settings.sfxVolume * 100)}
-              onChange={(e) => props.onSetting("sfxVolume", Number(e.target.value) / 100)}
-              aria-label="효과음 음량"
-            />
-            <span className="settings-slider-val">{Math.round(props.settings.sfxVolume * 100)}</span>
-          </div>
-        </label>
-        <label className="settings-row settings-row-slider">
-          <div className="settings-text">
-            <span className="settings-label">배경음악 음량</span>
-            <span className="settings-desc">
-              대국 중 흐르는 배경음악의 음량입니다 (0이면 끔). 리치가 걸리면 리치 BGM에
-              자리를 내주고, 그 국이 끝나면 돌아옵니다.
-            </span>
-          </div>
-          <div className="settings-slider">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(props.settings.bgmVolume * 100)}
-              onChange={(e) => props.onSetting("bgmVolume", Number(e.target.value) / 100)}
-              aria-label="배경음악 음량"
-            />
-            <span className="settings-slider-val">{Math.round(props.settings.bgmVolume * 100)}</span>
-          </div>
-        </label>
-        <label className="settings-row settings-row-slider">
-          <div className="settings-text">
-            <span className="settings-label">리치 BGM 음량</span>
-            <span className="settings-desc">
-              리치 선언 시 나오는 전용 BGM의 음량입니다 (0이면 끔)
-            </span>
-          </div>
-          <div className="settings-slider">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(props.settings.riichiBgmVolume * 100)}
-              onChange={(e) => props.onSetting("riichiBgmVolume", Number(e.target.value) / 100)}
-              aria-label="리치 BGM 음량"
-            />
-            <span className="settings-slider-val">
-              {Math.round(props.settings.riichiBgmVolume * 100)}
-            </span>
           </div>
         </label>
         {props.onVoteAbort !== undefined ? (
