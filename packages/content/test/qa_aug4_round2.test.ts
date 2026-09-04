@@ -17,6 +17,7 @@ import {
   handIdsOf,
   installAugment,
   kindKey,
+  uraIndicatorIds,
 } from "@majak/core";
 import type { GameState, PlayerId, TileId } from "@majak/core";
 import { craft } from "./helpers.js";
@@ -266,7 +267,7 @@ describe("성립하지 않는 깡 — 위조 후보와 재료 (aug-4 확정 4 ·
 
 // ───────────────────── 확정 5. 이면투시 (ura_peek) ─────────────────────
 
-describe("이면투시 — 도라 표시패 블록은 통째로 잠긴다 (aug-4 확정 5)", () => {
+describe("이면투시 — 바꿔치기 후보는 내 손패뿐이다 (aug-4 확정 5)", () => {
   function setup(): Game {
     const base = craft({
       hands: { p0: "1111m234p567p55s", p1: "*", p2: "*", p3: "*" },
@@ -280,49 +281,45 @@ describe("이면투시 — 도라 표시패 블록은 통째로 잠긴다 (aug-4
     return game;
   }
 
-  it("확정 5: 아직 안 뒤집힌 2번째(다음 깡) 도라 표시패 자리와는 바꿀 수 없다", () => {
+  /*
+   * 확정 5는 "왕패 자리를 골라 **다음 깡 도라를 직접 심는다**"였다. 2026-09-04에
+   * 바꿔치기 상대가 왕패에서 **내 손패**로 바뀌면서 그 축이 통째로 사라졌다 —
+   * 이제 고를 수 있는 것은 내 손패뿐이고, 손대는 왕패 자리는 뒷도라 표시패 하나다.
+   */
+  it("확정 5: 왕패 자리는 후보에 없다 — 도라 표시패 자리도 못 심는다", () => {
     const game = setup();
-    const nextDora = doraIndicatorIndex(game.engine.state, 1);
-    const res = game.engine.submit({
-      player: "p0",
-      type: "ura_swap",
-      payload: { deadIndex: nextDora },
-    });
-    expect(res.ok).toBe(false);
-    // 후보 열거에서도 빠진다 (클라이언트가 못 고른다)
     const provider = game.engine.turnOptionProviders[0];
     const opts = provider ? provider(game.engine.state, "p0") : [];
+    const swaps = opts.filter((o) => o.type === "ura_swap");
+    expect(swaps.length).toBeGreaterThan(0);
     expect(
-      opts.some(
-        (o) =>
-          o.type === "ura_swap" &&
-          (o.payload as { deadIndex?: number }).deadIndex === nextDora,
+      swaps.every(
+        (o) => (o.payload as { deadIndex?: number }).deadIndex === undefined,
       ),
+    ).toBe(true);
+    // 왕패 자리를 직접 찔러도 거절된다 (손패가 아니다)
+    const nextDora = doraIndicatorIndex(game.engine.state, 1);
+    expect(
+      game.engine.submit({
+        player: "p0",
+        type: "ura_swap",
+        payload: { deadIndex: nextDora },
+      }).ok,
     ).toBe(false);
   });
 
-  it("표시패 블록 다섯 쌍이 전부 잠긴다 — 영상패 자리만 남는다", () => {
+  it("바꿔치기해도 도라 표시패는 흔들리지 않는다", () => {
     const game = setup();
-    const len = game.engine.state.zones[DEAD_WALL]?.tileIds.length ?? 0;
-    for (let k = 0; k < 5; k++) {
-      const idx = doraIndicatorIndex(game.engine.state, k);
-      expect(
-        game.engine.submit({ player: "p0", type: "ura_swap", payload: { deadIndex: idx } })
-          .ok,
-      ).toBe(false);
-      expect(
-        game.engine.submit({
-          player: "p0",
-          type: "ura_swap",
-          payload: { deadIndex: idx + 1 },
-        }).ok,
-      ).toBe(false);
-    }
-    // 영상패 자리(블록 앞)는 그대로 열려 있다 — 능력이 죽지 않았다
-    expect(len).toBeGreaterThan(10);
+    const doraBefore = [...game.engine.state.round.doraIndicators];
+    const handTileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
     expect(
-      game.engine.submit({ player: "p0", type: "ura_swap", payload: { deadIndex: 1 } }).ok,
+      game.engine.submit({ player: "p0", type: "ura_swap", payload: { handTileId } }).ok,
     ).toBe(true);
+    expect(game.engine.state.round.doraIndicators).toEqual(doraBefore);
+    expect(uraIndicatorIds(game.engine.state)[0]).toBe(handTileId);
+    expect(game.engine.state.zones[DEAD_WALL]?.tileIds).toHaveLength(
+      (game.engine.state.zones[DEAD_WALL]?.tileIds ?? []).length,
+    );
   });
 });
 

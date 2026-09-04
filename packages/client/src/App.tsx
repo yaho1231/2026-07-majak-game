@@ -1107,7 +1107,7 @@ const MODAL_PICK_TYPES = new Set<string>([
   // (예지 foresight_order는 2026-07-25 발동[reveal]→드래그 재배열 전용 흐름으로 전환 — 여기서 제외)
   "dw_swap", // 왕패 14장 ↔ 내 손패 1장
   "red_touch", // 적도라로 만들 숫자 지정 (1~9)
-  "ura_swap", // 뒷도라 표시패와 맞바꿀 왕패 자리
+  "ura_swap", // 뒷도라 표시패 자리로 밀어 넣을 내 손패
   "picky_unify", // 편식 — 단색 세계와 같은 무늬 선택 모달
   // 영상 정찰 — 남은 영상패를 펼쳐 드래그로 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다
   // (2026-08-27 버프. 후보가 순열×교환자리라 최대 120개 — 텍스트 버튼으로는 못 고른다.)
@@ -23928,28 +23928,26 @@ function ActiveAugmentControl(props: {
         </div>,
         document.body,
       ) : null}
-      {/* 이면투시 — 뒷도라 표시패와 맞바꿀 왕패 자리를 고른다 */}
+      {/* 이면투시 — 뒷도라 표시패 자리로 밀어 넣을 내 손패를 고른다 */}
       {pickModal === "ura_swap" ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">🔮 {augNameFor("ura_swap")}</div>
             <div className="rinshan-pick-sub">
-              지금 뒷도라 표시패를 왕패의 다른 패와 맞바꿉니다 — 본 것을 원하는 대로 고쳐 쓰세요.
-              도라·뒷도라 표시패 자리는 고를 수 없습니다.
+              고른 손패가 뒷도라 표시패 자리로 들어가고, 지금 표시패는 내 손으로 옵니다 —
+              심은 패의 다음 패가 뒷도라가 됩니다(5통을 심으면 6통).
             </div>
             <div className="aug-pick-rows">
               <div className="aug-pick-row aug-pick-row-static">
-                <span className="aug-pick-row-label">왕패</span>
+                <span className="aug-pick-row-label">내 손패</span>
                 <span className="aug-pick-row-tiles">
                   {(byType.get("ura_swap") ?? []).map((o, i) => {
-                    const idx = (o.payload as { deadIndex?: unknown }).deadIndex;
-                    if (typeof idx !== "number") return null;
-                    const tileId = deadWallIds[idx];
-                    if (tileId === undefined) return null;
+                    const tileId = (o.payload as { handTileId?: unknown }).handTileId;
+                    if (typeof tileId !== "number") return null;
                     return (
                       <button
-                        key={`${idx}-${i}`}
+                        key={`${tileId}-${i}`}
                         className="aug-pick-tile"
                         onClick={() => {
                           sel.submit(o);

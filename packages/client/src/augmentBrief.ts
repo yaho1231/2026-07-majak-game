@@ -278,7 +278,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   triple_peek: { use: "2국에 1회", text: "내 다음 쯔모 세 장이 무엇인지 나에게만 보인다." },
   true_dragon: { use: "상시", text: "배패를 16장 받고 몸통 5개로 화료한다. 화료 시 +3판." },
   unification: { use: "상시", text: "내 점수가 문턱(반장전 55,000·동풍전 45,000)에 닿으면 그 자리에서 게임이 끝난다." },
-  ura_peek: { use: "매 국 1회", text: "뒷도라 표시패를 나만 확인하고, 한 번은 다른 패로 바꿔치기한다." },
+  ura_peek: { use: "매 국 1회", text: "뒷도라 표시패를 나만 확인하고, 한 번은 내 손패 하나와 바꿔치기한다." },
   void_kan: { use: "상시(리치 중 X)", text: "리치를 안 걸었고 텐파이면, 상대의 깡을 오름패와 상관없이 창깡으로 가로챈다." },
   wind_lineage: { use: "상시", text: "자패로 슌쯔를 만든다 — 자풍·장풍이 든 바람 몸통과 백발중 몸통은 각 1판." },
   xray_hand: { use: MODE_1_2, text: "그 국이 끝날 때까지 상대 셋의 손패가 나에게만 보인다." },
