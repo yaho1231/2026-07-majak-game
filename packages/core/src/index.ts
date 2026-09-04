@@ -101,6 +101,7 @@ export {
   buildWinContext,
   isFuriten,
   isFuritenAsRon,
+  isSelfDiscardedWinTile,
   isRunQuad,
   ownDiscardKindsOf,
   discardedByPlayer,

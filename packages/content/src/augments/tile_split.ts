@@ -31,12 +31,14 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  RuleRegistry,
   TileId,
+  TileKind,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
-import { isPreciousMaterial } from "./bluff_pretense.js";
 import { plan } from "./botPlan.js";
-import { handIdsOfView, handKindsOf, isolatedIndex, shantenIfChanged } from "./botHelpers.js";
+import { handIdsOfView, handKindsOf, shantenIfChanged } from "./botHelpers.js";
+import { hasSpareTile, pickSpareTile } from "./spareTile.js";
 import { roundScopedKey } from "./roundScope.js";
 import { handAlteredKey } from "./handAltered.js";
 
@@ -54,38 +56,38 @@ const inRiichi = (state: GameState, h: PlayerId): boolean =>
   state.round.byPlayer[h]?.riichi != null;
 
 /**
- * 재료로 쓸 잡패 하나 — 가장 고립된 패(주변에 이어지는 손패가 가장 적은 패).
- * 쪼갤 대상(targetId)은 제외한다. 결정적이다.
+ * 재료로 쓸 잡패 하나 — **쪼갠 뒤의 손이 가장 좋아지는 장**을 고른다.
  *
- * 판정 규칙은 `botHelpers.isolatedIndex` **한 곳**에 있다 — 예전에는 같은 계산을 여기에
- * 한 벌 더 적어 두었는데, 봇이 "쪼개면 손이 어떻게 되는가"를 셀 때 쓰는 쪽만 고치면
- * 두 벌이 조용히 갈라진다. 순위는 ① 손패에 이어지는 정도 ② 자패 → 노두패 → 그 밖의 수패
- * ③ 손패 순서 앞쪽이다.
+ * 판정은 `spareTile.pickSpareTiles` 한 곳에 있다. 예전에는 "이웃이 가장 적은 패"만
+ * 봤는데, 그 계산은 손을 모양으로 읽지 않아 **이미 완성된 몸통 한쪽을 재료로 태우는**
+ * 일이 있었다(2026-09-04 사용자 보고). 이제는 후보마다 "쪼갠 뒤의 손"(대상 → a,
+ * 재료 → b)을 그대로 만들어 샹텐을 재고 가장 낮은 것을 고른다 — 몸통을 깨는 선택은
+ * 그 자리에서 샹텐이 올라가므로 절대 뽑히지 않는다. 동점이면 예전 고립도 순서다.
+ *
+ * 도라·적도라는 여전히 마지막에 태운다(`isPreciousMaterial`). 조커(백)는 태우면
+ * 샹텐이 올라가므로 이 계산이 알아서 남긴다.
  */
 function pickMaterial(
   state: GameState,
+  rules: RuleRegistry | undefined,
   holder: PlayerId,
   targetId: TileId,
+  a: number,
 ): TileId | undefined {
-  const all = handIdsOf(state, holder);
-  if (all.length <= 1) return undefined;
-  /*
-   * 도라·적도라는 '잡패'가 아니다 — 고립도만 보면 그 국의 도라이자 적도라인 외톨이
-   * 패가 1순위 재료로 뽑혀 도라 1판 + 적도라 1판이 한 번에 증발했다
-   * (2026-08-20 QA text 확정 14). 판정은 허장성세와 같은 함수 하나를 쓴다.
-   * 쪼갤 대상은 후보에서 빠지지만 이웃 계산에는 남아 있어야 하므로 배열에 유지한다.
-   * 태울 것이 도라뿐이면 그때만 도라가 재료가 된다(발동 자체가 막히지 않도록).
-   */
-  const spare = all.filter(
-    (id) => id === targetId || !isPreciousMaterial(state, id),
-  );
-  const hand = spare.length > 1 ? spare : all;
-  const targetIdx = hand.indexOf(targetId);
-  const idx = isolatedIndex(
-    hand.map((id) => kindOf(state, id)),
-    targetIdx,
-  );
-  return idx < 0 ? undefined : hand[idx];
+  const target = kindOf(state, targetId);
+  const b = target.rank - a;
+  const ids = handIdsOf(state, holder);
+  if (ids.length <= 1) return undefined;
+  return pickSpareTile(state, rules, holder, {
+    usable: (id) => id !== targetId,
+    ignoreForIsolation: targetId,
+    resultKinds: (picked): TileKind[] =>
+      ids.map((id): TileKind => {
+        if (id === targetId) return { suit: target.suit, rank: a };
+        if (picked.includes(id)) return { suit: target.suit, rank: b };
+        return kindOf(state, id);
+      }),
+  });
 }
 
 /** 쪼갤 수 있는 손패인가 — 수패이면서 랭크 2 이상 */
@@ -96,7 +98,7 @@ function splittable(state: GameState, id: TileId): boolean {
 
 const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined || !player.augments.includes(ID)) {
       return "no tile_split augment";
@@ -116,16 +118,22 @@ const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
     const r = kindOf(state, req.payload.tileId).rank;
     const a = req.payload.a;
     if (!Number.isInteger(a) || a < 1 || a * 2 > r) return "invalid split";
-    if (pickMaterial(state, req.player, req.payload.tileId) === undefined) {
+    if (pickMaterial(state, rules, req.player, req.payload.tileId, a) === undefined) {
       return "no material tile to split into";
     }
     return null;
   },
-  toEvents: (req, { state }) => {
+  toEvents: (req, { state, rules }) => {
     const target = kindOf(state, req.payload.tileId);
     const a = req.payload.a;
     const b = target.rank - a;
-    const material = pickMaterial(state, req.player, req.payload.tileId) as TileId;
+    const material = pickMaterial(
+      state,
+      rules,
+      req.player,
+      req.payload.tileId,
+      a,
+    ) as TileId;
     return [
       // 대상은 작은 조각(a)으로, 재료 잡패는 나머지 조각(b)으로 — 둘 다 원래 무늬·conjured
       tileKindChanged([
@@ -164,7 +172,7 @@ export const tileSplit: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 자기 순에 손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통 → 4통 + 5통).",
   detail:
-    "쪼갤 수 있는 것은 랭크 2 이상의 수패이고 무늬는 그대로다. 두 번째 조각은 가장 고립된 잡패가 바뀌어 생긴다 — **재료는 도라·적도라를 피한다**(없을 때만 도라를 쓴다). 결과는 공개되고 리치 중에는 쓸 수 없다.",
+    "쪼갤 수 있는 것은 랭크 2 이상의 수패이고 무늬는 그대로다. 두 번째 조각은 잡패 한 장이 바뀌어 생긴다 — 재료는 **쪼갠 뒤의 손이 가장 좋아지도록** 자동으로 뽑히므로 이미 완성된 몸통·머리는 건드리지 않고, **도라·적도라를 피한다**(없을 때만 도라를 쓴다). 결과는 공개되고 리치 중에는 쓸 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -188,9 +196,9 @@ export const tileSplit: AugmentDef = defineAugment({
       const opts: { type: string; payload: unknown }[] = [];
       for (const id of handIdsOf(state, holder)) {
         if (!splittable(state, id)) continue;
-        if (pickMaterial(state, holder, id) === undefined) continue;
         const r = kindOf(state, id).rank;
         for (let a = 1; a * 2 <= r; a++) {
+          if (!hasSpareTile(state, holder, { usable: (m) => m !== id })) continue;
           opts.push({ type: ACTION, payload: { tileId: id, a } });
         }
       }
@@ -225,17 +233,27 @@ export const tileSplit: AugmentDef = defineAugment({
         const targetIdx = ids.indexOf(p.tileId);
         const target = kinds[targetIdx];
         if (targetIdx < 0 || target === undefined) continue;
-        const materialIdx = isolatedIndex(kinds, targetIdx);
-        if (materialIdx < 0) continue;
-        const after = shantenIfChanged(
-          view,
-          holder,
-          [targetIdx, materialIdx],
-          [
-            { suit: target.suit, rank: p.a },
-            { suit: target.suit, rank: target.rank - p.a },
-          ],
-        );
+        /*
+         * 재료는 규칙이 "쪼갠 뒤의 손이 가장 좋아지는 장"으로 고른다(`pickMaterial`).
+         * 봇이 그 선택을 따로 재현할 필요는 없다 — 규칙이 최소 샹텐을 고르므로,
+         * 후보 전부를 훑어 **가장 낮은 샹텐**을 세면 그것이 곧 발동 후의 손이다.
+         */
+        let after = Number.POSITIVE_INFINITY;
+        for (let m = 0; m < kinds.length; m++) {
+          if (m === targetIdx) continue;
+          after = Math.min(
+            after,
+            shantenIfChanged(
+              view,
+              holder,
+              [targetIdx, m],
+              [
+                { suit: target.suit, rank: p.a },
+                { suit: target.suit, rank: target.rank - p.a },
+              ],
+            ),
+          );
+        }
         if (after < bestShanten) {
           bestShanten = after;
           best = o;
