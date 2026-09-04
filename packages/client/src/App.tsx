@@ -8606,11 +8606,11 @@ function AuthScreen(props: {
                 props.onTutorial();
               }}
               disabled={!guestOk}
-              title="화면 보는 법부터 증강 쓰는 법까지 — 판 위에서 순서대로 (5~10분)"
+              title="화면 보는 법부터 증강 쓰는 법까지 — 판 위에서 순서대로 (3분)"
             >
               <i className="mk mk-steps" aria-hidden="true" />
               튜토리얼
-              <span className="landing-key-meta num">5~10분</span>
+              <span className="landing-key-meta num">3분</span>
             </button>
             <button
               className="btn-line landing-key"
@@ -12264,7 +12264,7 @@ function HomeScreen(props: {
                   붙어 있으면 표식이 아니라 장식이 된다. */}
               {newcomer ? <span className="home-practice-badge">처음이라면 여기</span> : null}
               튜토리얼
-              <small>화면 조작 안내 · 5~10분</small>
+              <small>화면 조작 안내 · 3분</small>
             </button>
             <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
               연습 대국
@@ -12343,7 +12343,7 @@ function HomeScreen(props: {
               <b className="num">1</b>
               <span>
                 <strong>튜토리얼로 화면 익히기</strong>
-                <small>5~10분 · 손패가 고정되고 안내가 따라붙습니다 · 기록에 안 남습니다</small>
+                <small>3분 · 손패가 고정되고 안내가 따라붙습니다 · 기록에 안 남습니다</small>
               </span>
             </li>
             <li>
