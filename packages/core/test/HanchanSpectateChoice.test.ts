@@ -112,6 +112,22 @@ describe("관전 중계 — 증강 선택 판", () => {
     expect(msgs[0].title.length).toBeGreaterThan(0);
   });
 
+  /*
+   * 2026-09-04 — 관전 화면은 「지금 선택창(모달)이 떠 있다」와 「쓸 수 있는 증강 단추가
+   * 있다」를 구별해 그려야 한다. 버림과 섞인 프롬프트에서 그 사람 화면에 서 있는 것은
+   * 단추뿐이다 — 이걸 선택창으로 그리면 매 순 «증강 사용 중»이 뜨는 거짓말이 된다.
+   */
+  it("버림과 섞인 프롬프트는 mixed로, 증강만 남은 프롬프트는 mixed 없이 간다", () => {
+    const { seat, sink } = harness();
+    seat.watch!({ open: true, seat: "p0", options: [DISCARD, ALCHEMY_UP] });
+    seat.watch!({ open: false, seat: "p0", picked: DISCARD });
+    seat.watch!({ open: true, seat: "p0", options: [ALCHEMY_UP, ALCHEMY_DOWN] });
+    const msgs = sink.ofType("spectateChoice");
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].mixed).toBe(true);
+    expect(msgs[1].mixed).toBeUndefined();
+  });
+
   it("고른 것이 있으면 picked가, 시간 초과·취소면 없이 끝을 알린다", () => {
     const { seat, sink } = harness();
     seat.watch!({ open: true, seat: "p0", options: [ALCHEMY_UP, ALCHEMY_DOWN] });

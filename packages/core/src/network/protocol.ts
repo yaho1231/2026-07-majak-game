@@ -2275,6 +2275,12 @@ export interface SpectateChoiceMessage {
   options: { label: string; detail?: string }[];
   /** 이 선택의 마감 (Date.now 기준 ms). 없으면 무제한 */
   deadline?: number;
+  /**
+   * 평범한 버림·후로와 **섞인** 프롬프트다 — 그 사람 화면에는 모달이 아니라
+   * «쓸 수 있는 증강» 단추만 서 있다. 관전 화면은 이걸 선택창으로 그리면 거짓말이
+   * 된다(매 순 «증강 사용 중»이 뜬다). 없거나 false면 증강만 남은 선택창(모달)이다.
+   */
+  mixed?: boolean;
 }
 
 /** 관전 중계 — 그 선택이 끝났다 */

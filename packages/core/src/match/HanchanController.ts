@@ -1931,6 +1931,9 @@ export class HanchanController {
       title: this.choiceTitle(augOptions),
       options: augOptions.map((o) => ({ label: this.optionLabel(o) })),
       ...(ev.deadline !== undefined ? { deadline: ev.deadline } : {}),
+      // 버림·후로가 함께 서 있으면 그 화면은 모달이 아니라 단추다 — 관전 화면이
+      // 「지금 선택창이 떠 있다」와 「쓸 수 있는 증강이 있다」를 구별해 그린다.
+      ...(augOptions.length < ev.options.length ? { mixed: true } : {}),
     };
     this.choiceSpectate.set(ev.seat, msg);
     this.notifySpectators(msg);

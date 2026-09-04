@@ -230,6 +230,45 @@ describe("PlayerView — 관전자(SPECTATOR_ID)", () => {
     expect(mine["uses:alchemist"]).toEqual({ left: 1, total: 2 });
   });
 
+  /*
+   * 관전 시점 이동(2026-09-04 사용자 보고): 「시점을 옮겼는데 그 좌석이 보고 있는
+   * 증강 정보(삼세 예지의 다음 쯔모 3장)가 안 보인다」. 평평한 키는 마지막 사람 것만
+   * 남고, 화면은 어느 키가 전용 채널이었는지 알 수 없어 «그 사람 화면»을 조립할 수
+   * 없었다. 좌석별 맵을 따로 싣는다.
+   */
+  it("관전 뷰는 좌석별 전용 채널 맵(augmentViewBySeat)을 싣고, 대국자 뷰에는 없다", () => {
+    const base = makeState();
+    const state: GameState = {
+      ...base,
+      augmentData: {
+        ...base.augmentData,
+        "view:p0:triple_peek": ["man1", "pin2", "sou3"],
+        "view:p2:triple_peek": ["wind1", "wind2", "wind3"],
+        "view:p2:danger_sense": { kinds: ["man9"], turn: 4 },
+        "view:*:open_notice": "전원 공개",
+      },
+    };
+    const rules = makeRules();
+    const spec = buildPlayerView(state, SPECTATOR_ID, rules);
+    expect(spec.augmentViewBySeat).toBeDefined();
+    expect(spec.augmentViewBySeat!["p0"]).toEqual({ triple_peek: ["man1", "pin2", "sou3"] });
+    expect(spec.augmentViewBySeat!["p2"]).toEqual({
+      triple_peek: ["wind1", "wind2", "wind3"],
+      danger_sense: { kinds: ["man9"], turn: 4 },
+    });
+    // 전원 공개 채널은 좌석 맵에 들어가지 않는다 — 평평한 키가 그대로 진실이다
+    for (const m of Object.values(spec.augmentViewBySeat!)) {
+      expect(m["open_notice"]).toBeUndefined();
+    }
+    expect(spec.augmentView["open_notice"]).toBe("전원 공개");
+    // 평평한 키·seat 사본은 예전 그대로다 (이미 읽는 화면이 있다)
+    expect(spec.augmentView["seat:p0:triple_peek"]).toEqual(["man1", "pin2", "sou3"]);
+
+    const mine = buildPlayerView(state, "p0", rules);
+    expect(mine.augmentViewBySeat).toBeUndefined();
+    expect(mine.augmentView["triple_peek"]).toEqual(["man1", "pin2", "sou3"]);
+  });
+
   it("pill이 아닌 남의 전용 채널은 대국자에게 가지 않는다", () => {
     const base = makeState();
     const state: GameState = {

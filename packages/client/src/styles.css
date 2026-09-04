@@ -19610,6 +19610,73 @@ body:has(.prod-skip) .toast-stack {
   line-height: 1.45;
 }
 
+/* 고른 것을 보여 주는 마지막 장면 — 고른 것만 밝히고 나머지는 죽인다 (2026-09-04) */
+.spec-choice-opt-picked {
+  border-color: rgba(124, 196, 156, 0.95);
+  background: rgba(124, 196, 156, 0.28);
+  box-shadow: 0 0 10px rgba(124, 196, 156, 0.45);
+}
+.spec-choice-opt-dim {
+  opacity: 0.35;
+}
+.spec-choice-picked-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #b9e6c9;
+  font-weight: 800;
+}
+
+/* 초점 좌석의 선택창 — 그 사람 화면을 같이 보는 셈이라 중계 카드가 아니라
+   그 사람에게 뜬 창처럼 손패 위에 크게 세운다 (2026-09-04) */
+.spec-choice-focus {
+  align-items: center;
+  padding-bottom: 0;
+}
+.spec-choice-focus .spec-choice-panel {
+  width: min(680px, 100%);
+  border-color: rgba(255, 214, 120, 0.7);
+  box-shadow: 0 0 0 2px rgba(255, 214, 120, 0.25), 0 18px 60px rgba(0, 0, 0, 0.6);
+}
+.spec-choice-focus .spec-choice-tag {
+  background: rgba(255, 214, 120, 0.95);
+}
+.spec-choice-focus .spec-choice-opts {
+  max-height: 34cqh;
+}
+
+/* 쓸 수 있는 증강 — 초점 좌석의 액티브 증강 단추 자리에 서는 읽기 전용 띠 (관전) */
+.spec-usable {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px dashed rgba(199, 188, 255, 0.5);
+  background: rgba(24, 22, 44, 0.75);
+}
+.spec-usable-tag {
+  color: rgba(247, 243, 232, 0.6);
+  font-size: 11px;
+  font-weight: 800;
+}
+.spec-usable-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(199, 188, 255, 0.2);
+  color: rgba(247, 243, 232, 0.92);
+  font-size: 11px;
+  font-weight: 800;
+}
+.spec-usable-picked {
+  background: rgba(124, 196, 156, 0.35);
+  color: #d8f5e3;
+}
+.spec-usable-dim {
+  opacity: 0.4;
+}
+
 /* 배패 점수를 다시 쟀다는 표식 — 교환 증강으로 손이 통째로 갈린 좌석 (2026-09-03) */
 .bcast-regraded {
   margin-left: 3px;
