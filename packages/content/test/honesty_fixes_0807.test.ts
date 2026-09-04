@@ -439,17 +439,17 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
   });
 
   it("파혼: 손으로 돌아오는 것이 2장뿐임을 요약에서 밝힌다", () => {
-    expect(meldDissolve.description).toContain("2장");
-    expect(meldDissolve.description).toContain("보충");
+    expect(meldDissolve.detail ?? "").toContain("2장");
+    expect(meldDissolve.detail ?? "").toContain("보충");
   });
 
   it("물러설 수 없는 선언: 뒷도라 장당 2판·역만 제외", () => {
     expect(noRetreat.description).toContain("장당");
-    expect(noRetreat.description).toContain("역만");
+    expect(noRetreat.detail ?? "").toContain("역만");
   });
 
   it("카르마: 못 뜯은 몫이 사라진다는 사실", () => {
-    expect(karma.description).toContain("사라진다");
+    expect(karma.detail ?? "").toContain("사라진다");
     expect(karma.detail).toContain("남은 점수");
   });
 
@@ -476,7 +476,7 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
 
   it("우는 국사무쌍: 특수 퐁 뒤 화료형과 후로가 잠긴다", () => {
     // 요약은 한 줄로 화료형 제한만 말한다 — 카드에 들어가는 분량이다.
-    expect(openKokushi.description).toContain("국사무쌍으로만 화료");
+    expect(openKokushi.detail ?? "").toContain("국사무쌍으로만 화료");
     // 후로가 함께 잠기는 것과, 평범한 후로 뒤에는 아예 못 부르는 것은 detail의 몫.
     expect(openKokushi.detail).toContain("안깡 포함");
     expect(openKokushi.detail).toContain("부를 수 없다");

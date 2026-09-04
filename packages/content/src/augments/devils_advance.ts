@@ -67,7 +67,7 @@ export const devilsAdvance: AugmentDef = defineAugment({
   name: "가불 인생",
   draftStages: ["gameStart"],
   description:
-    "(게임 내 1회 · 게임 시작 드래프트 전용) 10,000점을 미리 받고, 만관 이상으로 화료하면 상대 셋이 3,000점씩 내 빚을 대신 갚는다.",
+    "10000점을 미리 받고, 만관 이상으로 화료시 내 빚을 상대가 대신 3000점씩 갚는다.",
   detail:
     "빚은 갚을 때까지 전원에게 공개된다. 걷은 9,000점은 내 화료점에 더해지지 않는다 — 상대 셋만 줄어든다. 끝내 만관을 못 쳐도 상환은 없다.",
   install(ctx) {

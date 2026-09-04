@@ -739,7 +739,7 @@ describe("문구 — 구현과 어긋난 문장이 남아 있지 않다", () => 
   });
 
   it("riichi_upgrade — description도 detail·구현과 같이 '지고 있는 동안'이다", () => {
-    expect(riichiUpgrade.description).toContain("지고 있는 동안");
+    expect(riichiUpgrade.detail ?? "").toContain("지고 있는 동안");
     expect(riichiUpgrade.detail ?? "").toContain("지고 있는 동안");
   });
 

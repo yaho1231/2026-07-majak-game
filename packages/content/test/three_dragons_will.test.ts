@@ -157,7 +157,7 @@ describe("삼원의 의지 (three_dragons_will)", () => {
   it("설명 문구가 실제 사용 횟수 제한(동풍전 1회·반장전 2회)을 숨기지 않는다", () => {
     // 코드는 matchUses로 실제 캡을 거는데 예전 설명은 "(상시)"로만 적혀 있어
     // 무제한처럼 보였다 — 다른 액티브 증강들과 같은 문구 규약을 지키는지 회귀 검증.
-    expect(threeDragonsWill.description).toMatch(/동풍전 1회.*반장전 2회/);
+    expect(threeDragonsWill.detail ?? "").toMatch(/동풍전 1회.*반장전 2회/);
     expect(threeDragonsWill.detail).toMatch(/동풍전 1회.*반장전 2회/);
   });
 });
