@@ -30,7 +30,7 @@ export const royalKokushi: AugmentDef = defineAugment({
   complexity: 3,
   name: "왕의 징표",
   description:
-    "(상시) 국사무쌍이 한 종류가 빠져도(12종) 성립한다 — 그 자리는 다른 요구패의 중복으로 메운다.",
+    "국사무쌍이 한 종류가 빠져도(12종) 성립한다. 그 자리는 다른 요구패의 중복으로 메운다.",
   detail:
     "빠진 요구패 한 종류의 자리는 다른 요구패를 2장 이상 중복해 메운다. 손패는 여전히 14장 전부 요구패여야 한다.",
   install(ctx) {
