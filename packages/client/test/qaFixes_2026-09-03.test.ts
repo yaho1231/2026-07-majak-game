@@ -221,7 +221,8 @@ describe("⑫ 관전자도 액티브 증강의 선택창을 본다", () => {
   it("서버 스냅샷을 그대로 그리고, 끝나면 그 좌석의 것만 걷는다", () => {
     expect(code(APP)).toContain('if (msg.type === "spectateChoice")');
     expect(code(APP)).toContain("cur === null || cur.seat === msg.seat ? null : cur");
-    expect(APP).toContain("<SpectateChoicePanel choice={spectateChoice} view={view} />");
+    // 2026-09-04: 패널은 초점 좌석을 아는 OwnArea가 그린다 (spectateFocusSeat.test.ts)
+    expect(APP.replace(/\s+/g, " ")).toContain("<SpectateChoicePanel choice={props.spectateChoice} view={view}");
     // 서버는 기계용 라벨("alchemy man3 1")을 보낸다 — 표기는 이 파일의 몫이다
     expect(APP).toContain("function ChoiceLabel(");
     expect(APP).toContain('ACTION_LABEL[head ?? ""] ?? head');
@@ -231,7 +232,7 @@ describe("⑫ 관전자도 액티브 증강의 선택창을 본다", () => {
     expect(rule(".spec-choice")).not.toContain("background:");
     expect(rule(".spec-choice")).toContain("pointer-events: none");
     // 되감는 중에는 띄우지 않는다 — 한 화면에 두 시각이 서면 안 된다
-    expect(APP).toContain("isSpectator && spectateChoice !== null && view !== null && rewindAt === null");
+    expect(APP).toContain("isSpectator && spectateChoice !== null && rewindAt === null ? { spectateChoice } : {}");
   });
 });
 

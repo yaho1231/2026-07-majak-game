@@ -1090,6 +1090,16 @@ function readScanSnapshot(
  * 차례가 건너뛴 뒤에도 라벨이 실제 쯔모 순서와 어긋나지 않는다.
  */
 
+/**
+ * 관전 화면이 들고 있는 선택 중계 — 서버 스냅샷에 **고른 것**을 잠깐 얹은 형태.
+ * 픽은 `spectateChoiceEnd`에만 실리므로, 걷기 전에 그걸 보여 주려면 여기 붙여야 한다.
+ */
+type SpectateChoiceShown = SpectateChoiceMessage & { picked?: string };
+/** 고른 것을 보여 준 채 선택창을 세워 두는 시간 (ms) */
+const SPECTATE_PICK_HOLD_MS = 1600;
+/** 밑장빼기가 보유자에게 여는 패산 맨 밑 장수 (content `bottom_deal` PEEK와 같은 값) */
+const BOTTOM_DEAL_PEEK = 3;
+
 const MODAL_PICK_TYPES = new Set<string>([
   "mono_world",
   // 2026-07-22 (52차) 신규 — 전부 "무엇을 고르는지 패로 보여야 하는" 액션이다
@@ -3192,7 +3202,13 @@ export function App(): JSX.Element {
    * 서버가 프롬프트를 스냅샷으로 실어 보내고(`spectateChoice`) 그 선택이 끝나면
    * `spectateChoiceEnd`로 걷는다 — 증강 드래프트 중계와 같은 구조다.
    */
-  const [spectateChoice, setSpectateChoice] = useState<SpectateChoiceMessage | null>(null);
+  const [spectateChoice, setSpectateChoice] = useState<SpectateChoiceShown | null>(null);
+  /**
+   * 고른 것을 **잠깐 보여 준 뒤** 걷는 타이머 — 「그걸 선택하는 과정까지 관전에서
+   * 보여야 한다」(2026-09-04 사용자 요청). 끝 통보와 함께 즉시 걷으면 관전자는 무엇을
+   * 골랐는지 영영 모른다(픽은 끝 메시지에만 실린다).
+   */
+  const spectateChoiceHold = useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
    * 이 관전석에 걸린 송출 지연(초). 0이면 지연 없음 (docs/36 C1).
    *
@@ -5433,12 +5449,29 @@ export function App(): JSX.Element {
     }
     if (msg.type === "spectateChoice") {
       // 관전 중계 — 어느 좌석의 선택창이 열렸다(스냅샷이라 그대로 갈아 끼운다).
+      if (spectateChoiceHold.current !== null) {
+        clearTimeout(spectateChoiceHold.current);
+        spectateChoiceHold.current = null;
+      }
       setSpectateChoice(msg);
       return;
     }
     if (msg.type === "spectateChoiceEnd") {
       // 다른 좌석의 뒤늦은 종료 통보가 방금 열린 창을 걷어 가지 않게 좌석을 확인한다.
-      setSpectateChoice((cur) => (cur === null || cur.seat === msg.seat ? null : cur));
+      const picked = msg.picked;
+      if (picked === undefined) {
+        setSpectateChoice((cur) => (cur === null || cur.seat === msg.seat ? null : cur));
+        return;
+      }
+      // 고른 것이 있으면 그걸 표시한 채 잠깐 세워 두고 걷는다 — 선택 «과정»의 마지막 장면.
+      setSpectateChoice((cur) =>
+        cur === null || cur.seat !== msg.seat ? cur : { ...cur, picked },
+      );
+      if (spectateChoiceHold.current !== null) clearTimeout(spectateChoiceHold.current);
+      spectateChoiceHold.current = setTimeout(() => {
+        spectateChoiceHold.current = null;
+        setSpectateChoice((cur) => (cur === null || cur.seat === msg.seat ? null : cur));
+      }, SPECTATE_PICK_HOLD_MS);
       return;
     }
     if (msg.type === "roundOver") {
@@ -6867,6 +6900,8 @@ export function App(): JSX.Element {
           {/* 되감는 동안에는 보조값을 붙이지 않는다 — 그 숫자는 «지금»의 것이라,
               지나간 화면 옆에 세우면 두 시점이 한 화면에서 서로를 거짓말로 만든다. */
           ...(insight !== null && isSpectator && rewindAt === null ? { insight } : {})}
+          {/* 되감기 중에는 선택창도 붙이지 않는다 — 한 화면에 두 시각이 서면 안 된다 */
+          ...(isSpectator && spectateChoice !== null && rewindAt === null ? { spectateChoice } : {})}
           {...(spectating !== null && liveRooms !== null ? { liveRooms } : {})}
           rewindAt={rewindAt}
           rewindLen={viewBuffer.current.length}
@@ -7253,13 +7288,10 @@ export function App(): JSX.Element {
         <SpectateDraftPanel draft={spectateDraft} view={view} catalog={catalog} />
       ) : null}
       {/*
-        관전 중계 — 액티브 증강의 선택창을 관전 화면에도 그대로 띄운다 (2026-09-03).
-        드래프트 중계와 같은 조건이다: 관전 중이고, 되감기 중이 아닐 때만. 되감는
-        동안 이 줄만 «지금»이면 한 화면에 두 시각이 서게 된다.
+        관전 중계 — 액티브 증강의 선택창(2026-09-03)은 이제 GameTable 안에서 그린다.
+        어느 좌석이 아래 자리(초점)인지는 GameTable만 알기 때문이다 — 초점 좌석의
+        선택창은 «그 사람 화면»으로, 다른 좌석의 것은 중계 카드로 그린다(2026-09-04).
       */}
-      {isSpectator && spectateChoice !== null && view !== null && rewindAt === null ? (
-        <SpectateChoicePanel choice={spectateChoice} view={view} />
-      ) : null}
       {activeProd !== null && activeProd.channel === "banner" && activeProd.tone === "riichi" ? (
         // 리치 전용 풀 연출 — 비네트 암전 + 붉은 밴드 + 천점봉 슬라이드-인 + 금속성 글자
         <div
@@ -13871,6 +13903,8 @@ const GameTable = memo(function GameTable(props: {
   roomNotice?: { text: string; by?: string };
   /** 중계 보조값 (관전 전용) — 예상 타점·위험패 */
   insight?: SpectateInsightMessage;
+  /** 관전 중계 — 지금 어느 좌석에 증강 선택창이 서 있는가 (관전 전용) */
+  spectateChoice?: SpectateChoiceShown;
   /** 이 관전석에 걸린 송출 지연(초) */
   spectateDelay?: number;
   /** 지연을 바꾼다 (관전 중인 관리자 전용) */
@@ -14476,6 +14510,7 @@ const GameTable = memo(function GameTable(props: {
         onHoverKind={setHoverKind}
         {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
         {...(props.onHandOrder !== undefined ? { onHandOrder: props.onHandOrder } : {})}
+        {...(props.spectateChoice !== undefined ? { spectateChoice: props.spectateChoice } : {})}
       />
     </div>
   );
@@ -19278,6 +19313,8 @@ function PickTimer(props: { deadline: number | null }): JSX.Element | null {
 function OwnArea(props: {
   view: PlayerView;
   me: PlayerInfo;
+  /** 관전 중계 — 지금 어느 좌석에 증강 선택창이 서 있는가 (관전 전용, GameTable이 넘긴다) */
+  spectateChoice?: SpectateChoiceShown;
   prompt: PromptMessage["prompt"] | null;
   promptSeq: number;
   /** 초읽기가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
@@ -19309,6 +19346,36 @@ function OwnArea(props: {
   const myMeldCount = view.round.byPlayer[me.id]?.meldCount ?? 0;
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
   const isMyTurn = view.round.turnSeat === me.seat;
+  /*
+   * ── 초점 좌석이 보는 증강 채널 (관전) ──
+   *
+   * 관전 뷰의 `augmentView`는 네 좌석의 전용 채널을 **주인을 떼고** 평평하게 담아
+   * 온다 — 세 사람이 같은 채널을 쓰면 마지막 사람 것만 남는다. 그래서 시점을 어느
+   * 좌석으로 옮겨도 「그 사람이 보는 정보」(삼세 예지의 다음 쯔모 3장, 지뢰 탐지…)를
+   * 조립할 수 없었고, 화면은 아예 관전에서 그 정보를 껐다(2026-09-04 사용자 보고).
+   *
+   * core가 좌석별 맵(`augmentViewBySeat`)을 함께 싣는다. 전용 채널(어느 좌석의 맵에든
+   * 있는 채널)을 평평한 키에서 걷어 내고 **아래 자리 좌석의 몫**을 덮어 쓰면 그게 곧
+   * 그 사람의 augmentView다. `seat:{좌석}:…` 사본은 그대로 둔다(pill이 읽는다).
+   * 관전이 아니면 뷰 그대로다 — 대국자 화면에는 아무 영향이 없다.
+   */
+  const focusAv = useMemo<Record<string, unknown>>(() => {
+    const bySeat = view.augmentViewBySeat;
+    if (!isSpectator || bySeat === undefined) return view.augmentView;
+    const privateChannels = new Set<string>();
+    for (const m of Object.values(bySeat)) for (const ch of Object.keys(m)) privateChannels.add(ch);
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(view.augmentView)) {
+      if (!privateChannels.has(k)) out[k] = v;
+    }
+    Object.assign(out, bySeat[me.id] ?? {});
+    return out;
+  }, [view.augmentView, view.augmentViewBySeat, isSpectator, me.id]);
+  /** `view`에 초점 좌석의 augmentView를 입힌 사본 — 「그 사람 화면」을 그리는 부품에 넘긴다 */
+  const focusView = useMemo<PlayerView>(
+    () => (focusAv === view.augmentView ? view : { ...view, augmentView: focusAv }),
+    [view, focusAv],
+  );
   const riichiDeclared = !isSpectator && view.round.byPlayer[me.id]?.riichiDeclared === true;
 
   const drawnId = view.round.myDrawnTile;
@@ -19773,11 +19840,11 @@ function OwnArea(props: {
    * 왼쪽 위 대신 실제 손패 위에 ⚠로 표시한다. 갱신되지 않는 스냅샷이라 몇 순
    * 기준인지 함께 들고 다니며 ⚠ 툴팁에 밝힌다.
    */
+  // 관전은 초점 좌석의 것을 그대로 본다(focusAv) — 그 사람 화면과 같은 ⚠이다.
   const dangerScan = useMemo(() => {
-    if (isSpectator) return { set: new Set<string>(), turn: null as number | null };
-    const snap = readScanSnapshot(view.augmentView["danger_sense"], "kinds");
+    const snap = readScanSnapshot(focusAv["danger_sense"], "kinds");
     return { set: new Set(snap.items), turn: snap.turn };
-  }, [view.augmentView, isSpectator]);
+  }, [focusAv]);
   const dangerSet = dangerScan.set;
 
   /*
@@ -19821,26 +19888,29 @@ function OwnArea(props: {
   }, [isSpectator, props.showSafeTiles, view, me.id]);
 
   // 삼세 예지 — 내 다음 쯔모 3장(종류). 왼쪽 위 대신 손패 바로 위 스트립에 크게 보여준다.
+  // 관전이면 초점 좌석의 것이다(focusAv) — 시점을 옮기면 그 사람이 보는 3장이 따라온다.
   const nextTsumoKinds = useMemo<TileKind[]>(() => {
-    if (isSpectator) return [];
-    const v = view.augmentView["triple_peek"];
+    const v = focusAv["triple_peek"];
     return Array.isArray(v)
       ? (v as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
       : [];
-  }, [view.augmentView, isSpectator]);
+  }, [focusAv]);
 
   // 밑장빼기 — 패산 맨 밑 3장. 열람 증강이 visibility.wall을 peek(back)으로 열어 주므로
   // 뷰의 wall 존에 **실물 tileId**가 들어온다(삼세 예지처럼 kind 스냅샷이 아니다).
   // 매 상태마다 다시 계산되니 다른 증강이 밑에 패를 밀어 넣으면 창이 그대로 따라 밀린다.
+  // 관전 뷰는 패산이 통째로 열려 있다 — 초점 좌석이 밑장빼기를 **들고 있을 때만**
+  // 그 사람이 보는 만큼(맨 밑 3장)을 잘라 보여 준다. 안 들었으면 그 사람 화면에 없다.
   const bottomWallIds = useMemo<number[]>(() => {
-    if (isSpectator) return [];
-    return [...(view.zones["wall"]?.tileIds ?? [])];
-  }, [view.zones, isSpectator]);
+    const wall = view.zones["wall"]?.tileIds ?? [];
+    if (!isSpectator) return [...wall];
+    return me.augments.includes("bottom_deal") ? wall.slice(-BOTTOM_DEAL_PEEK) : [];
+  }, [view.zones, isSpectator, me.augments]);
   // 다음 쯔모를 밑장으로 예약해 뒀는가 (선언 사실은 전원 공개, 무엇이 보이는지는 나만)
-  const bottomDealArmed = useMemo(() => {
-    if (isSpectator) return false;
-    return view.augmentView[`bottom_deal:armed:${me.id}`] === true;
-  }, [view.augmentView, me.id, isSpectator]);
+  const bottomDealArmed = useMemo(
+    () => focusAv[`bottom_deal:armed:${me.id}`] === true,
+    [focusAv, me.id],
+  );
 
   // 등가교환 3:3 교환 — 넘길 내 3장(swap3_give) → 가져올 상대 3장(swap3_take)을
   // 각각 '한 번에' 고른다. 서버는 3장 조합(정렬된 배열)을 통째로 후보로 보내므로,
@@ -19977,8 +20047,8 @@ function OwnArea(props: {
 
   // 자유 선언으로 고정된 오름패 (있으면 물리 손패와 무관하게 이게 진짜 대기다)
   const frozenWaits = useMemo<TileKind[]>(
-    () => (isSpectator ? [] : freeDeclareWaits(view, me.id)),
-    [view, me.id, isSpectator],
+    () => freeDeclareWaits(focusView, me.id),
+    [focusView, me.id],
   );
 
   // 이 패를 버렸을 때의 화료패(대기) — 텐파이면 hover 시 미리 보여준다 (클라 계산).
@@ -20430,7 +20500,18 @@ function OwnArea(props: {
                 onUsableHint={(ids) => setUsableHint(ids === null ? null : new Set(ids))}
               />
             ) : null}
-            {!isSpectator ? <ActiveInfoBadges view={view} me={me} /> : null}
+            {/*
+              관전 중계 — 초점 좌석에 «버림과 섞인» 증강 선택지가 서 있으면 그 사람
+              화면의 액티브 증강 단추 자리에 같은 것을 읽기 전용으로 세운다.
+              (증강만 남은 선택창은 아래 SpectateChoicePanel이 그 사람 화면처럼 띄운다.)
+            */}
+            {isSpectator &&
+            props.spectateChoice !== undefined &&
+            props.spectateChoice.mixed === true &&
+            props.spectateChoice.seat === me.id ? (
+              <SpectateUsableStrip choice={props.spectateChoice} />
+            ) : null}
+            <ActiveInfoBadges view={focusView} me={me} spectator={isSpectator} />
           </div>
           <div className="own-top-waits">
             {mySpecShanten !== null ? (
@@ -20591,6 +20672,13 @@ function OwnArea(props: {
               </span>
             ))}
           </div>
+        ) : null}
+        {isSpectator && props.spectateChoice !== undefined && props.spectateChoice.mixed !== true ? (
+          <SpectateChoicePanel
+            choice={props.spectateChoice}
+            view={view}
+            focus={props.spectateChoice.seat === me.id}
+          />
         ) : null}
         {bottomWallIds.length > 0 ? (
           <div
@@ -22882,9 +22970,16 @@ function pushRiichiImminent(view: PlayerView, me: PlayerInfo): boolean {
 const ActiveInfoBadges = memo(function ActiveInfoBadges({
   view,
   me,
+  spectator = false,
 }: {
   view: PlayerView;
   me: PlayerInfo;
+  /**
+   * 관전 시점이다 — `view`는 초점 좌석의 augmentView를 입힌 사본이라 채널은 그 사람
+   * 것이지만, **왕패는 관전 뷰라 통째로 열려 있다.** 영상패 뱃지는 영상 정찰을 든
+   * 좌석에서만 세운다 — 안 든 사람 화면에는 없는 것이다.
+   */
+  spectator?: boolean;
 }): JSX.Element | null {
   const av = view.augmentView;
   // 아래 분기들이 저마다 Object.entries(av)를 다시 돌던 것을 한 번으로 합친다.
@@ -22912,7 +23007,10 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   // 영상 정찰 — 공개된 영상패.
   // 깡으로 영상패가 소모되면 왕패 앞 4장이 더는 전부 영상패가 아니므로(07 §2)
   // 남은 영상패 수만큼만 자른다 — 안 그러면 도라 표시패가 '영상패'로 새어 보인다.
-  const dw = view.zones["deadWall"]?.tileIds ?? [];
+  const dw =
+    spectator && !me.augments.includes("rinshan_preview")
+      ? []
+      : (view.zones["deadWall"]?.tileIds ?? []);
   const rinshanShown = Math.min(dw.length, rinshanLeftOf(view));
   if (rinshanShown > 0) {
     tilesBadge(
@@ -25781,17 +25879,26 @@ function ChoiceLabel({ label }: { label: string }): JSX.Element {
 function SpectateChoicePanel({
   choice,
   view,
+  focus = false,
 }: {
-  choice: SpectateChoiceMessage;
+  choice: SpectateChoiceShown;
   /** 좌석 이름·자풍을 얻는 곳 (관전 뷰) */
   view: PlayerView;
+  /**
+   * 고르는 좌석이 지금 **아래 자리(초점)** 다 — 그 사람 화면을 같이 보는 셈이므로
+   * 중계 카드가 아니라 그 사람에게 뜬 선택창처럼 크게 세운다(2026-09-04).
+   */
+  focus?: boolean;
 }): JSX.Element {
   const info = view.players.find((x) => x.id === choice.seat);
+  const picked = choice.picked;
   return createPortal(
-    <div className="spec-choice">
+    <div className={`spec-choice${focus ? " spec-choice-focus" : ""}`}>
       <div className="spec-choice-panel">
         <div className="spec-choice-head">
-          <span className="spec-choice-tag">증강 사용 중</span>
+          <span className="spec-choice-tag">
+            {picked !== undefined ? "선택 완료" : focus ? "이 좌석의 선택창" : "증강 사용 중"}
+          </span>
           <span className="spec-choice-who">
             <span className="spec-choice-wind">
               {info !== undefined ? seatWindChar(view, info) : "?"}
@@ -25805,7 +25912,16 @@ function SpectateChoicePanel({
         ) : (
           <div className="spec-choice-opts">
             {choice.options.map((o, i) => (
-              <span className="spec-choice-opt" key={`${i}-${o.label}`}>
+              <span
+                className={`spec-choice-opt${
+                  picked !== undefined
+                    ? o.label === picked
+                      ? " spec-choice-opt-picked"
+                      : " spec-choice-opt-dim"
+                    : ""
+                }`}
+                key={`${i}-${o.label}`}
+              >
                 <ChoiceLabel label={o.label} />
                 {o.detail !== undefined ? (
                   <span className="spec-choice-opt-detail">{o.detail}</span>
@@ -25814,12 +25930,54 @@ function SpectateChoicePanel({
             ))}
           </div>
         )}
-        <p className="spec-choice-note">
-          이 좌석의 화면에 지금 서 있는 선택지입니다 — 고르면 곧 판에 반영됩니다
-        </p>
+        {picked !== undefined ? (
+          <p className="spec-choice-note spec-choice-picked-line">
+            ✓ 골랐습니다: <ChoiceLabel label={picked} /> — 곧 판에 반영됩니다
+          </p>
+        ) : (
+          <p className="spec-choice-note">
+            {focus
+              ? "지금 이 좌석 화면에 떠 있는 선택창입니다 — 고르면 곧 판에 반영됩니다"
+              : "이 좌석의 화면에 지금 서 있는 선택지입니다 — 고르면 곧 판에 반영됩니다"}
+          </p>
+        )}
       </div>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * **관전 중계: 쓸 수 있는 증강** — 초점 좌석의 프롬프트에 버림과 함께 서 있는 증강 선택지.
+ *
+ * 그 사람 화면에는 이때 모달이 아니라 액티브 증강 **단추**만 서 있다. 관전 화면이
+ * 이걸 선택창으로 그리면 매 순 «증강 사용 중»이 뜨는 거짓말이 되므로, 단추 자리에
+ * 같은 것을 읽기 전용 띠로 세운다. 액션 타입별로 하나씩만 적는다(연금술사처럼
+ * 패마다 후보가 서는 증강은 수십 개다). 고르면(`picked`) 그 증강에 ✓가 붙는다.
+ */
+function SpectateUsableStrip({ choice }: { choice: SpectateChoiceShown }): JSX.Element | null {
+  const types: string[] = [];
+  for (const o of choice.options) {
+    const head = o.label.split(" ")[0] ?? "";
+    if (head !== "" && !types.includes(head)) types.push(head);
+  }
+  if (types.length === 0) return null;
+  const pickedHead = choice.picked?.split(" ")[0];
+  return (
+    <div className="spec-usable" title="이 좌석의 화면에 서 있는 액티브 증강 단추 (관전 중계)">
+      <span className="spec-usable-tag">쓸 수 있는 증강</span>
+      {types.map((t) => (
+        <span
+          key={t}
+          className={`spec-usable-chip${
+            pickedHead !== undefined ? (t === pickedHead ? " spec-usable-picked" : " spec-usable-dim") : ""
+          }`}
+        >
+          {t === pickedHead ? "✓ " : ""}
+          {ACTION_LABEL[t] ?? t}
+        </span>
+      ))}
+    </div>
   );
 }
 

@@ -371,6 +371,21 @@ export interface PlayerView {
    * 관전 뷰가 아니면 `undefined`: 대국자에게는 남의 화료형이 곧 남의 손 정보다.
    */
   seatScoringOptions?: Record<PlayerId, DecomposeOptions>;
+  /**
+   * **좌석별** 전용 채널 — 관전 뷰에만 실린다 (2026-09-04 사용자 보고: 「관전에서
+   * 시점을 옮겼는데 그 좌석이 보고 있는 증강 정보(삼세 예지의 다음 쯔모 3장)가 안 보인다」).
+   *
+   * `augmentView`의 평평한 키는 `view:{주인}:{채널}`을 주인을 떼고 담은 것이라, 세
+   * 사람이 같은 채널을 쓰면 마지막 사람 것만 남는다. `seat:{주인}:{채널}` 사본이 있지만
+   * 화면 쪽은 「이 채널이 전용 채널이었나」를 알 길이 없어, 관전 시점을 어느 좌석에
+   * 두든 **그 좌석의 화면**을 조립할 수 없었다.
+   *
+   * 여기에는 좌석마다 `{채널: 값}`만 담는다 — 관전 화면은 어느 좌석을 아래에 두든
+   * `augmentView`에서 전용 채널을 걷어 내고 이 맵의 그 좌석 몫을 덮어 쓰면
+   * **그 사람이 보는 augmentView**가 된다. 잠긴 증강(무장해제)의 채널은 `augmentView`와
+   * 같은 기준으로 뺀다. 관전 뷰가 아니면 `undefined`.
+   */
+  augmentViewBySeat?: Record<PlayerId, Record<string, unknown>>;
 }
 
 // ─────────────────────────── 표준 가시성 규칙 등록 ───────────────────────────
@@ -624,6 +639,8 @@ export function buildPlayerView(
 
   // ── 증강 정보 채널 (view:{viewer}:* 본인 전용, view:*:* 전원 공개) ──
   const augmentView: Record<string, unknown> = {};
+  /** 관전 뷰 전용 — 좌석별 전용 채널 (`augmentViewBySeat` 주석 참고) */
+  const augmentViewBySeat: Record<PlayerId, Record<string, unknown>> = {};
   const ownPrefix = `view:${viewerId}:`;
   const publicPrefix = "view:*:";
   /**
@@ -689,6 +706,7 @@ export function buildPlayerView(
         if (lockedChannel(owner, ch)) continue;
         augmentView[ch] = value;
         augmentView[`seat:${owner}:${ch}`] = value;
+        (augmentViewBySeat[owner] ??= {})[ch] = value;
       }
     } else if (key.startsWith(ownPrefix)) {
       const ch = channel(key.slice(ownPrefix.length));
@@ -751,6 +769,7 @@ export function buildPlayerView(
           seatScoringOptions: Object.fromEntries(
             players.map((p) => [p.id, scoringOptionsOf(state, rules, p.id)]),
           ) as Record<PlayerId, DecomposeOptions>,
+          augmentViewBySeat,
         }
       : {}),
   };
