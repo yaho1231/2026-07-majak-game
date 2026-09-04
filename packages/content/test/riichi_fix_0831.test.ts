@@ -312,7 +312,8 @@ describe("C-6 리치 선언 5종은 «국당 하나만»이라고 글에 적혀 
   for (const id of DECLARERS) {
     it(`${id} — 설명 첫머리와 detail이 국당 1회 제한을 말한다`, () => {
       const def = defOf(id);
-      expect(def.description, id).toContain("리치는 국당 한 번");
+      // 짧은 설명은 사용자 원문 그대로다(2026-09-05) — 제한은 detail이 말한다.
+      expect(def.detail ?? "", id).toContain("리치는 국당 한 번");
       expect(def.detail ?? "", id).toContain("리치는 국당 한 번이므로");
     });
   }
