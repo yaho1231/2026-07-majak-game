@@ -93,6 +93,12 @@ export const STORAGE_KEYS = [
    * 에는 다시 뜨는 것이 맞다(2026-08-25 폰 세로 재설계).
    */
   "majak.rotateHintOff",
+  /*
+   * 판 위 전역 공지를 닫은 표식(App.tsx `NOTICE_DISMISS_KEY`). 「점검 5분 전」을
+   * 한 번 닫으면 새로고침해도 계속 닫혀 있게 하는 값이라, «처음부터»에는 지워져
+   * 다시 떠야 한다.
+   */
+  "majak.noticeDismissed",
   "majak.homeFolded",
   "majak.homeTab",
   "majak.sandboxMode",
