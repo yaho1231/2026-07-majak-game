@@ -1097,7 +1097,7 @@ const MODAL_PICK_TYPES = new Set<string>([
   // (예지 foresight_order는 2026-07-25 발동[reveal]→드래그 재배열 전용 흐름으로 전환 — 여기서 제외)
   "dw_swap", // 왕패 14장 ↔ 내 손패 1장
   "red_touch", // 적도라로 만들 숫자 지정 (1~9)
-  "ura_swap", // 뒷도라 표시패 자리로 밀어 넣을 내 손패
+  "ura_swap", // 뒷도라 표시패와 맞바꿀 왕패 자리
   "picky_unify", // 편식 — 단색 세계와 같은 무늬 선택 모달
   // 영상 정찰 — 남은 영상패를 펼쳐 드래그로 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다
   // (2026-08-27 버프. 후보가 순열×교환자리라 최대 120개 — 텍스트 버튼으로는 못 고른다.)
@@ -7126,15 +7126,7 @@ export function App(): JSX.Element {
             // 않는다(그 버튼의 약속이 "안내 없음"이다).
             startCoach(tutorial);
             setWasPractice(true);
-            /*
-             * 연습 대국은 **대기실로 간다** (2026-09-04 사용자 지시) — 봇이 이미
-             * 꽉 찬 방(동풍전·어려움·왕초보)이 서고, 시작은 사람이 누른다.
-             * 튜토리얼은 종전대로 곧바로 판을 연다(그 버튼의 약속이 "지금 한 판").
-             */
-            send({
-              type: "practicePlay",
-              ...(tutorial ? { tutorial: true } : { lobby: true }),
-            });
+            send({ type: "practicePlay", ...(tutorial ? { tutorial: true } : {}) });
           }}
           onDeleteUser={(userId, username) => {
             void askConfirm({
@@ -7444,7 +7436,7 @@ export function App(): JSX.Element {
             ? {
                 onPracticeAgain: () => {
                   returnHome();
-                  send({ type: "practicePlay", lobby: true });
+                  send({ type: "practicePlay" });
                 },
               }
             : {})}
@@ -11417,21 +11409,11 @@ function NoticeBanner({ notice }: { notice: ServerNotice | undefined }): JSX.Ele
  * 배타적이지 않아 그 아래로 내려간다).
  */
 /**
- * 좌상단 공지 카드가 시작하는 높이(px).
- *
- * 예전에는 100이었다 — 모드 배지(top 12 · 아래끝 ≈56)·봇 난이도 배지(top 60 ·
- * 아래끝 ≈90) 아래로 비켜 주려던 값이다. 그런데 그 자리는 «왼쪽 위»도 «화면
- * 가운데»도 아닌 어중간한 높이로 읽혔다(2026-09-04 사용자 지시: "그냥 확실하게
- * 왼쪽 위에"). 배지를 잠깐 덮는 값을 치르고 귀퉁이에 붙인다 — 공지는 ✕로 내릴 수
- * 있고, 이제 그 닫음은 새로고침해도 남는다(`NOTICE_DISMISS_KEY`).
+ * 좌상단 공지 카드가 시작하는 높이(px). 모드 배지(top 12 · 아래끝 ≈56)와 봇 난이도
+ * 배지(top 60 · 아래끝 ≈90) 아래다 — 배지는 판 컨테이너 안의 absolute라 이쪽(fixed)과
+ * 서로 밀어내지 못하므로 숫자로 비켜 준다.
  */
-const NOTICE_TOP_OFFSET = 8;
-
-/**
- * 판 위 공지를 닫은 표식을 담는 저장 키. 값은 닫은 공지 한 건의 키
- * (제목\0본문\0수정시각) 하나다 — 공지가 바뀌면 키가 달라져 다시 뜬다.
- */
-const NOTICE_DISMISS_KEY = "majak.noticeDismissed";
+const NOTICE_TOP_OFFSET = 100;
 
 function GameNoticeBanner({
   notice,
@@ -11450,15 +11432,11 @@ function GameNoticeBanner({
    *
    * 닫은 표식은 **그 공지 한 건**(제목·본문·수정 시각)에만 붙는다 — 운영자가 공지를
    * 고치거나 새로 세우면 키가 달라져 다시 뜬다. 「점검 5분 전」이 닫혀 있어서 안 보이는
-   * 일이 없어야 한다.
-   *
-   * 그 표식은 **저장한다** (2026-09-04 사용자 지시: "같은 공지를 한번 껐으면
-   * 새로고침해도 계속 꺼져있게"). 예전에는 상태로만 들고 있어서, 끊겼다 붙거나
-   * 새로고침할 때마다 이미 읽은 공지가 왼쪽 위에 다시 섰다.
+   * 일이 없어야 한다. 저장하지 않으므로 새로고침하면 다시 선다.
    */
   const key =
     notice === undefined ? "" : `${notice.title}\u0000${notice.body}\u0000${notice.updatedAt}`;
-  const [dismissed, setDismissed] = useState(() => safeStorage.getItem(NOTICE_DISMISS_KEY) ?? "");
+  const [dismissed, setDismissed] = useState("");
   if (notice === undefined || dismissed === key) return null;
   return (
     <div
@@ -11471,10 +11449,7 @@ function GameNoticeBanner({
       <button
         type="button"
         className="notice-close"
-        onClick={() => {
-          setDismissed(key);
-          safeStorage.setItem(NOTICE_DISMISS_KEY, key);
-        }}
+        onClick={() => setDismissed(key)}
         aria-label="공지 닫기"
         title="공지 닫기"
       >
@@ -11989,10 +11964,7 @@ function HomeScreen(props: {
    * 연습 대국 — 봇 3명과 곧바로 한 판(기록에 안 남는다). 첫 판 코치가 함께 뜬다.
    * 가입 직후 자동으로 한 번 열리지만, 나중에 다시 익히고 싶은 사람에게도 문이 있어야 한다.
    */
-  /**
-   * 봇 3명. `tutorial`이면 판을 고정하고 코치를 얹어 **곧바로** 시작하고,
-   * 아니면 봇이 꽉 찬 **대기실**로 간다(2026-09-04 사용자 지시).
-   */
+  /** 봇 3명과 바로 한 판. `tutorial`이면 판을 고정하고 코치를 얹는다. */
   onPractice: (tutorial: boolean) => void;
   onDeleteUser: (userId: number, username: string) => void;
   onRefresh: () => void;
@@ -12235,7 +12207,7 @@ function HomeScreen(props: {
             </button>
             <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
               연습 대국
-              <small>봇 3명 · 대기실에서 시작 · 기록 안 남음</small>
+              <small>봇 3명 · 기록 안 남음</small>
             </button>
           </div>
         </section>
@@ -23811,26 +23783,28 @@ function ActiveAugmentControl(props: {
         </div>,
         document.body,
       ) : null}
-      {/* 이면투시 — 뒷도라 표시패 자리로 밀어 넣을 내 손패를 고른다 */}
+      {/* 이면투시 — 뒷도라 표시패와 맞바꿀 왕패 자리를 고른다 */}
       {pickModal === "ura_swap" ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">🔮 {augNameFor("ura_swap")}</div>
             <div className="rinshan-pick-sub">
-              고른 손패가 뒷도라 표시패 자리로 들어가고, 지금 표시패는 내 손으로 옵니다 —
-              심은 패의 다음 패가 뒷도라가 됩니다(5통을 심으면 6통).
+              지금 뒷도라 표시패를 왕패의 다른 패와 맞바꿉니다 — 본 것을 원하는 대로 고쳐 쓰세요.
+              도라·뒷도라 표시패 자리는 고를 수 없습니다.
             </div>
             <div className="aug-pick-rows">
               <div className="aug-pick-row aug-pick-row-static">
-                <span className="aug-pick-row-label">내 손패</span>
+                <span className="aug-pick-row-label">왕패</span>
                 <span className="aug-pick-row-tiles">
                   {(byType.get("ura_swap") ?? []).map((o, i) => {
-                    const tileId = (o.payload as { handTileId?: unknown }).handTileId;
-                    if (typeof tileId !== "number") return null;
+                    const idx = (o.payload as { deadIndex?: unknown }).deadIndex;
+                    if (typeof idx !== "number") return null;
+                    const tileId = deadWallIds[idx];
+                    if (tileId === undefined) return null;
                     return (
                       <button
-                        key={`${tileId}-${i}`}
+                        key={`${idx}-${i}`}
                         className="aug-pick-tile"
                         onClick={() => {
                           sel.submit(o);

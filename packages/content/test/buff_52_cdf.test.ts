@@ -317,13 +317,12 @@ describe("ura_peek (이면투시) — 뒷도라 바꿔치기", () => {
 
   it("확인하기 전에는 바꿔치기할 수 없다", () => {
     const game = setup();
-    const handTileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
-    expect(validateOf(game, "ura_swap", "p0", { handTileId })).toBe(
+    expect(validateOf(game, "ura_swap", "p0", { deadIndex: 0 })).toBe(
       "ura not revealed yet",
     );
   });
 
-  it("뒷도라 표시패를 내 손패와 맞바꾸고, 새 뒷도라가 보유자에게 보인다", () => {
+  it("뒷도라 표시패를 왕패의 다른 패와 맞바꾸고, 새 뒷도라가 보유자에게 보인다", () => {
     const game = setup();
     submitOk(game, "p0", "ura_peek_reveal", {});
 
@@ -331,48 +330,48 @@ describe("ura_peek (이면투시) — 뒷도라 바꿔치기", () => {
     const doraBefore = [...game.engine.state.round.doraIndicators];
     const uraId = uraIndicatorIds(game.engine.state)[0] as TileId;
     const uraPos = before.indexOf(uraId);
-    const handBefore = [...handIdsOf(game.engine.state, "p0")];
-    const handTileId = handBefore[0] as TileId;
+    const target = before[0] as TileId;
     expect(game.engine.state.augmentData["view:p0:ura#round"]).toEqual([
       kindKey(kindOf(game.engine.state, uraId)),
     ]);
 
-    expect(validateOf(game, "ura_swap", "p0", { handTileId })).toBeNull();
-    submitOk(game, "p0", "ura_swap", { handTileId });
+    expect(validateOf(game, "ura_swap", "p0", { deadIndex: 0 })).toBeNull();
+    submitOk(game, "p0", "ura_swap", { deadIndex: 0 });
 
     const after = deadWallOf(game);
     expect(after).toHaveLength(before.length);
-    expect(after[uraPos]).toBe(handTileId); // 뒷도라 자리에 내 손패가 들어왔다
+    expect(after[uraPos]).toBe(target); // 뒷도라 자리에 고른 패가 들어왔다
+    expect(after[0]).toBe(uraId); // 원래 뒷도라는 그 자리로 밀려났다
     // 도라 표시패는 그대로 (도라가 흔들리지 않는다)
     expect(game.engine.state.round.doraIndicators).toEqual(doraBefore);
-    expect(uraIndicatorIds(game.engine.state)[0]).toBe(handTileId);
-    // 손패 장수는 그대로고, 내보낸 자리에 원래 표시패가 들어온다
-    const handAfter = handIdsOf(game.engine.state, "p0");
-    expect(handAfter).toHaveLength(handBefore.length);
-    expect(handAfter).toContain(uraId);
-    expect(handAfter).not.toContain(handTileId);
+    expect(uraIndicatorIds(game.engine.state)[0]).toBe(target);
     // 보유자 뷰가 새 뒷도라로 갱신된다
     expect(game.engine.state.augmentData["view:p0:ura#round"]).toEqual([
-      kindKey(kindOf(game.engine.state, handTileId)),
+      kindKey(kindOf(game.engine.state, target)),
     ]);
   });
 
-  it("손패가 아닌 패로는 바꿀 수 없고, 국당 1회만 가능하다", () => {
+  it("도라·뒷도라 표시패 자리와는 바꿀 수 없고, 국당 1회만 가능하다", () => {
     const game = setup();
     submitOk(game, "p0", "ura_peek_reveal", {});
-    const notMine = deadWallOf(game)[0] as TileId;
-    expect(validateOf(game, "ura_swap", "p0", { handTileId: notMine })).toBe(
-      "tile not in hand",
+    const deadWall = deadWallOf(game);
+    const doraPos = deadWall.indexOf(
+      game.engine.state.round.doraIndicators[0] as TileId,
+    );
+    expect(validateOf(game, "ura_swap", "p0", { deadIndex: doraPos })).toBe(
+      "cannot swap with an indicator slot",
+    );
+    expect(validateOf(game, "ura_swap", "p0", { deadIndex: doraPos + 1 })).toBe(
+      "cannot swap with an indicator slot",
     );
 
-    const hand = [...handIdsOf(game.engine.state, "p0")];
-    submitOk(game, "p0", "ura_swap", { handTileId: hand[0] as TileId });
-    expect(validateOf(game, "ura_swap", "p0", { handTileId: hand[1] as TileId })).toBe(
+    submitOk(game, "p0", "ura_swap", { deadIndex: 0 });
+    expect(validateOf(game, "ura_swap", "p0", { deadIndex: 1 })).toBe(
       "already swapped this round",
     );
   });
 
-  it("확인한 뒤에는 보유자에게 왕패가 전부 보인다 (바뀔 표시패를 봐야 하므로)", () => {
+  it("확인한 뒤에는 보유자에게 왕패가 전부 보인다 (바꿔치기 상대를 골라야 하므로)", () => {
     const game = setup();
     const size = deadWallOf(game).length;
 
@@ -382,6 +381,7 @@ describe("ura_peek (이면투시) — 뒷도라 바꿔치기", () => {
 
     submitOk(game, "p0", "ura_peek_reveal", {});
     const after = buildPlayerView(game.engine.state, "p0", game.engine.rules);
+    // deadIndex는 이 배열의 인덱스라, 순서까지 그대로여야 클라이언트가 고를 수 있다
     expect(after.zones[DEAD_WALL]?.tileIds).toEqual(deadWallOf(game));
     expect(after.zones[DEAD_WALL]?.tileIds).toHaveLength(size);
     // 상대에게는 여전히 안 보인다
@@ -389,8 +389,7 @@ describe("ura_peek (이면투시) — 뒷도라 바꿔치기", () => {
     expect(opp.zones[DEAD_WALL]?.tileIds ?? []).toHaveLength(0);
 
     // 바꿔치기를 쓰고 나면 다시 닫힌다
-    const handTileId = handIdsOf(game.engine.state, "p0")[0] as TileId;
-    submitOk(game, "p0", "ura_swap", { handTileId });
+    submitOk(game, "p0", "ura_swap", { deadIndex: 0 });
     const done = buildPlayerView(game.engine.state, "p0", game.engine.rules);
     expect(done.zones[DEAD_WALL]?.tileIds ?? []).toHaveLength(0);
   });

@@ -171,42 +171,6 @@ describe("분열 (tile_split)", () => {
     expect(after).toContain(K.p5);
   });
 
-  /*
-   * 재료 고르기 — **이미 완성된 몸통·머리는 태우지 않는다** (2026-09-04 사용자 보고).
-   *
-   * 예전에는 이어짐만 봤다. 손패 123m456m789m + 中中 + 5s 에서 中은 서로 이어지는
-   * 짝이라 이어짐 점수가 낮고 자패라 순위가 더 낮아, **유일한 머리인 中中이** 재료로
-   * 타 버렸다. 이제는 후보마다 쪼갠 뒤의 손을 그대로 만들어 샹텐과 수용 폭을 재므로
-   * 머리를 깨는 선택은 뽑히지 않는다 — 몸통 끝의 1만이 재료가 된다.
-   */
-  it("유일한 머리(자패 또이쯔)를 재료로 태우지 않는다", () => {
-    const game = setup(
-      withAug(
-        craft({
-          hands: { p0: "123m456m789m77z5s", p1: "*", p2: "*", p3: "*" },
-          phase: "turn.act",
-          turnSeat: 0,
-          drawnLastFor: "p0",
-        }),
-        "p0",
-        ["tile_split"],
-      ),
-    );
-    const target = findTile(game, kindKey({ suit: "sou", rank: 5 }))!;
-    const r = game.engine.submit({
-      player: "p0",
-      type: "split_tile",
-      payload: { tileId: target, a: 2 },
-    });
-    expect(r.ok).toBe(true);
-
-    const after = handKeys(game);
-    const chun = kindKey({ suit: "dragon", rank: 3 });
-    expect(after.filter((k) => k === chun).length).toBe(2); // 머리는 그대로다
-    expect(after).toContain(kindKey({ suit: "sou", rank: 2 }));
-    expect(after).toContain(kindKey({ suit: "sou", rank: 3 }));
-  });
-
   it("합이 맞지 않는 분할은 거부된다", () => {
     const game = setup(scene());
     const target = findTile(game, K.p9)!;

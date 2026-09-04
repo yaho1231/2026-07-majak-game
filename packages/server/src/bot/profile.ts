@@ -76,6 +76,21 @@ export interface BotProfile {
    * 후보 사이에서만 작동하므로 값을 치르지 않는 거짓말이다.
    */
   bluff: number;
+  /**
+   * 0(확인된 것만 믿는다) ~ 1(신호를 액면대로 받는다) — **증강 신호를 얼마나 믿는가**.
+   *
+   * 개벽이 터진 것은 사실이지만 "그래서 지금 자일색 텐파이다"는 **추정**이다. 그 추정을
+   * 받는 태도는 사람마다 갈린다 — "그거 안 나와" 하고 자기 손을 미는 사람과 "역만
+   * 신호에 자패는 절대 안 낸다"는 사람. `aggression`이 실점 전체를 어떻게 저울질하느냐라면,
+   * 이 값은 **그 실점 추정 자체를 얼마나 크게 보느냐**다. 둘은 얽혀 있지만 같지 않다 —
+   * 타점형은 밀기 자체는 보통이지만 역만 신호는 무겁게 받는다.
+   *
+   * 분기가 아니라 저울이다. `collect.credenceScale`이 표가 준 **텐파이 하한**에 곱할
+   * 뿐이고(값어치에는 안 곱한다), 오픈 리치의 공개 대기 같은 **사실**에는 곱하지 않는다.
+   * 0.5에서 정확히 1이라 표의 값 그대로다. 원형은 전부 0.5 이하다 — **아무도 표를 부풀리지
+   * 않고**, 공격 쪽만 깎는다. 수비형에 0.7~0.9를 줘 봤더니 도라 넷 텐파이까지 접었다(실측).
+   */
+  credence: number;
   /** 생각 시간 배율 — 사람처럼 들쭉날쭉하게 */
   tempo: number;
   /**
@@ -111,6 +126,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     patience: 0.25,
     // 스지를 '통한다'의 근거로 삼는다 — 미는 사람에게 스지는 밀 구실이다
     sujiTrust: 0.9,
+    // "그거 안 나와" — 역만 신호를 보고도 자기 손이 빠르면 자패를 낸다
+    credence: 0.2,
     noise: 0.3,
     bluff: 0.5,
   },
@@ -123,6 +140,9 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     patience: 0.75,
     // 현물이 있는 한 스지에 손대지 않는다 — 스지 걸기에 쏘여 본 사람의 태도다
     sujiTrust: 0.28,
+    // 표의 값 그대로 받는다. 0.7~0.9로 올려 봤더니 도라 넷 텐파이까지 접었다(실측) —
+    // 그건 수비가 아니라 겁이다. 수비형의 수비는 신호를 부풀리는 게 아니라 실점을 무겁게 저울질하는 데서 나온다(aggression)
+    credence: 0.5,
     noise: 0.15,
     bluff: 0.4,
   },
@@ -135,6 +155,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     patience: 0.3,
     // 깊게 안 읽는다. 스지면 낸다 — 손이 싸서 잃을 것도 적다
     sujiTrust: 0.72,
+    // 남의 손을 깊게 안 읽는다 — 내 손이 빠르면 그게 답이다
+    credence: 0.3,
     noise: 0.35,
     bluff: 0.3,
   },
@@ -147,6 +169,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     patience: 0.85,
     // 비싼 손을 들고 있으니 방총 한 방이 뼈아프다 — 스지를 액면대로 믿지 않는다
     sujiTrust: 0.42,
+    // 표의 값 그대로 — 비싼 손을 지키는 것은 aggression·valueBias가 이미 한다
+    credence: 0.5,
     noise: 0.2,
     bluff: 0.55,
   },
@@ -159,6 +183,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     patience: 0.5,
     // 교과서 — 현물 다음이 스지, 스지 다음이 벽
     sujiTrust: 0.6,
+    // 표의 값 그대로
+    credence: 0.5,
     noise: 0.25,
     bluff: 0.35,
   },
@@ -171,6 +197,8 @@ const ARCHETYPES: Record<ArchetypeName, Archetype> = {
     patience: 0.2,
     // 읽히지 않는 사람 — 스지도 그날 기분대로다(흔들림이 큰 만큼 폭도 넓다)
     sujiTrust: 0.68,
+    // 남의 신호에 크게 개의치 않는다
+    credence: 0.4,
     noise: 0.8,
     bluff: 0.8,
   },
@@ -209,6 +237,7 @@ export function rollProfile(rng: Prng, forced?: ArchetypeName): BotProfile {
     valueBias: shake(base.valueBias),
     patience: shake(base.patience),
     sujiTrust: shake(base.sujiTrust),
+    credence: shake(base.credence),
     noise: shake(base.noise),
     bluff: shake(base.bluff),
     tempo: 0.6 + rng.next() * 0.9,

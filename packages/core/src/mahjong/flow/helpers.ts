@@ -669,30 +669,6 @@ function furitenAgainst(
   return discarded.some((k) => waitKeys.has(k));
 }
 
-/**
- * **자기가 버린 적 있는 패로 론하려는가** — 화료패 한 장만 보는 후리텐 판정.
- *
- * `isFuriten`은 "대기 중 하나라도 자기 버림패에 있는가"를 보는데, 조커(`joker`)가
- * 켜진 손에서는 그 대기 계산이 통째로 헐거워진다: 후리텐용 대기는 조커가 넓힌 몫을
- * 빼려고 백을 **문자 그대로 백으로** 두고 재는데, 조커 덕분에 텐파이가 된 손은 그
- * 계산에서 대기가 0개로 나와(`waits.length === 0`) 후리텐이 아예 성립하지 않았다.
- * 실제로 분열+조커+개벽 손이 **자기가 버린 패로 론**하는 것이 보고됐다(2026-09-04).
- *
- * 조커가 넓힌 대기를 후리텐으로 세지 않는다는 규칙(2026-08-07 지시)은 그대로 둔다.
- * 다만 그 완화가 후리텐의 마지막 한 줄까지 지우지는 못한다 — **자기가 버린 그 패로
- * 나는 것**은 어떤 능력으로도 열리지 않는다. 그래서 이 판정은 대기 집합을 거치지 않고
- * 화료패 종류만 자기 버림패 이력과 맞춰 본다.
- */
-export function isSelfDiscardedWinTile(
-  state: GameState,
-  id: PlayerId,
-  winTileId: TileId,
-): boolean {
-  const discarded = state.round.byPlayer[id]?.discardedKinds ?? [];
-  if (discarded.length === 0) return false;
-  return discarded.includes(kindKey(kindOf(state, winTileId)));
-}
-
 export function isFuriten(
   state: GameState,
   id: PlayerId,
@@ -718,8 +694,6 @@ export function isFuritenAsRon(
   opts?: DecomposeOptions,
   rules?: RuleRegistry,
 ): boolean {
-  // 자기가 버린 패로는 못 난다 — 대기 계산과 무관한 마지막 한 줄(isSelfDiscardedWinTile).
-  if (isSelfDiscardedWinTile(state, id, winTileId)) return true;
   const ids = [...winHandIdsOf(state, rules, id)];
   const at = ids.indexOf(winTileId);
   if (at >= 0) ids.splice(at, 1);

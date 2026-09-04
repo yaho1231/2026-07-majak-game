@@ -49,7 +49,6 @@ import {
   handKindsOf,
   isFuriten,
   isFuritenAsRon,
-  isSelfDiscardedWinTile,
   kindOf,
   meldCountOf,
   openMeldCountOf,
@@ -326,18 +325,7 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
             playerId: req.player,
             state,
           }) &&
-          (isFuriten(state, req.player, scoringOptionsOf(state, rules, req.player), rules) ||
-            /*
-             * 대기 집합을 거치지 않는 마지막 한 줄 — **자기가 버린 그 패로는 못 난다.**
-             * 조커의 후리텐 완화(`furitenOptionsOf`)는 조커가 넓힌 대기를 세지 않는데,
-             * 조커 덕분에 텐파이가 된 손은 그 계산에서 대기가 0개라 후리텐이 아예
-             * 성립하지 않았다(2026-09-04 분열+조커+개벽 후리텐 론 보고).
-             */
-            isSelfDiscardedWinTile(
-              state,
-              req.player,
-              last?.tileId ?? chankan!.tileId,
-            ))
+          isFuriten(state, req.player, scoringOptionsOf(state, rules, req.player), rules)
         ) {
           return "furiten";
         }

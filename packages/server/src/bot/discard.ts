@@ -60,6 +60,36 @@ function candidatesOf(read: BotRead, options: readonly ActionOption[]): Candidat
 const PUSH_HORIZON = 2.5;
 
 /**
+ * **이 한 장 뒤에 위험패가 몇 장 더 남는가**로 지평을 줄인다.
+ *
+ * `PUSH_HORIZON`은 "리치에 맞서 끝까지 밀면 두세 장 더 통과시켜야 한다"는 평균이다.
+ * 그 평균이 맞는 자리와 틀린 자리가 있다. 리치 상대에게 무스지가 가득한 손은 맞다.
+ * 그런데 개벽 쓴 상대에게 자패 **한 장**만 내면 텐파이고 나머지는 전부 수패인 손에서
+ * 그 한 장에 2.5장치 실점을 물리면, 봇은 "이거 하나만 내면 끝인데"를 셀 줄 모르는
+ * 사람이 된다 — 사람이 밀 때 실제로 세는 것은 **앞으로 몇 번 더 위험을 무릅써야
+ * 하는가**다. 현물이 넉넉한 손도 같다: 이 한 장을 통과시키면 그 뒤는 현물로 돌릴 수 있다.
+ *
+ * 그래서 버린 뒤의 손에 이 패의 4할 넘게 위험한 종류가 몇이나 남는지 세어, 둘 이상이면
+ * 종전 그대로(2.5), 하나도 없으면 1.75까지 내린다. 리치 상대의 보통 손은 대개 둘을
+ * 넘으므로 그 자리의 판단은 종전과 같다 — 갈리는 것은 위험이 **한 분류에 몰린** 상대
+ * (증강 발동)와 현물이 많은 손뿐이다. 바닥이 1이 아닌 이유는 **앞으로 뽑을 패**다 —
+ * 텐파이를 붙들고 있으면 뽑히는 자패도 내야 하고, 자패 상대에게 그건 다섯 순에 한 장꼴이다.
+ */
+function pushHorizonOf(read: BotRead, shape: Shape, lossNow: number): number {
+  if (shape.hand.length === 0 || lossNow <= 0) return PUSH_HORIZON;
+  const bar = Math.max(40, lossNow * 0.4);
+  const seen = new Set<string>();
+  let dangerous = 0;
+  for (const k of shape.hand) {
+    const key = kindKey(k);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (read.expectedLoss(k) >= bar) dangerous++;
+  }
+  return 1 + (PUSH_HORIZON - 1) * Math.min(1, (dangerous + 2) / 4);
+}
+
+/**
  * **공격성이 저울에 주는 폭.**
  *
  * 밀기와 접기의 비교는 결국 이 부등식이고(안전패의 기대 실점은 0이므로),
@@ -306,9 +336,11 @@ function lineEV(
   // 속도냐 타점이냐 — 어느 쪽도 틀리지 않는 취향이라 EV를 뒤엎지 않고 기울이기만 한다
   gain *= valueTilt(value.points, profile);
 
-  // 리치는 손을 고정시켜 남은 순의 위험패를 전부 통과시켜야 한다 — 위험이 더 길다
-  const horizon = opts.riichi ? LOCKED_PUSH_HORIZON : PUSH_HORIZON;
-  const loss = read.expectedLoss(c.kind) * horizon;
+  // 리치는 손을 고정시켜 남은 순의 위험패를 전부 통과시켜야 한다 — 위험이 더 길다.
+  // 평시에는 이 한 장 뒤에 위험패가 몇 장 더 남는지로 지평을 줄인다(`pushHorizonOf`).
+  const lossNow = read.expectedLoss(c.kind);
+  const horizon = opts.riichi ? LOCKED_PUSH_HORIZON : pushHorizonOf(read, shape, lossNow);
+  const loss = lossNow * horizon;
 
   return (
     gain * scale.gain -

@@ -184,15 +184,6 @@ export interface PracticePlayMessage {
   mode?: GameMode;
   /** 튜토리얼 판으로 열기 — `GuestPlayMessage.tutorial`과 같은 뜻이다. */
   tutorial?: boolean;
-  /**
-   * 판을 곧바로 열지 않고 **대기실에 세운다** (2026-09-04 사용자 지시).
-   *
-   * 「연습 대국」은 봇이 이미 꽉 찬 대기실로 들어가서, 사람이 «게임 시작»을 눌러
-   * 시작한다 — 시작 전에 모드·난이도·제한 시간을 눈으로 확인하고 바꿀 수 있어야
-   * 한다는 뜻이다. 튜토리얼(`tutorial`)은 종전대로 곧바로 연다: 그쪽의 약속이
-   * «지금 당장 한 판»이다.
-   */
-  lobby?: boolean;
 }
 
 // ── 방 생성·참가 (15) ──

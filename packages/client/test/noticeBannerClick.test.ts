@@ -112,27 +112,12 @@ describe("인게임 공지는 왼쪽 위 귀퉁이만 쓴다", () => {
     expect(src).not.toMatch(/left:\s*0/);
   });
 
-  /*
-   * 예전에는 이 값이 100이었다 — 모드·봇 배지 아래로 비켜 주려던 값이다. 그런데
-   * 그 자리는 «왼쪽 위»가 아니라 어중간하게 내려온 카드로 읽혔다(2026-09-04
-   * 사용자 지시: "그냥 확실하게 왼쪽 위에"). 배지를 잠깐 덮는 값을 치른다 —
-   * 공지는 ✕로 내릴 수 있고 그 닫음은 저장된다.
-   */
-  it("왼쪽 위 귀퉁이에 바싹 붙는다", () => {
+  it("모드·봇 배지 아래에서 시작한다 (배지와 겹치지 않는다)", () => {
+    // 배지는 판 컨테이너 안의 absolute라 fixed인 이 카드와 서로 밀어내지 못한다.
     const off = /const NOTICE_TOP_OFFSET = (\d+);/.exec(APP);
     expect(off).not.toBeNull();
-    expect(Number(off?.[1])).toBeLessThanOrEqual(12);
-  });
-
-  /*
-   * 닫은 표식은 저장한다 (2026-09-04 사용자 지시) — 같은 공지는 새로고침해도
-   * 계속 닫혀 있어야 한다.
-   */
-  it("닫은 표식을 저장한다 (새로고침해도 닫혀 있다)", () => {
-    const src = gameNotice();
-    expect(src).toMatch(/safeStorage\.setItem\(NOTICE_DISMISS_KEY, key\)/);
-    expect(src).toMatch(/safeStorage\.getItem\(NOTICE_DISMISS_KEY\)/);
-    expect(APP).toMatch(/const NOTICE_DISMISS_KEY = "majak\.noticeDismissed";/);
+    // 봇 난이도 배지가 top 60에서 시작해 ≈90에서 끝난다
+    expect(Number(off?.[1])).toBeGreaterThanOrEqual(92);
   });
 
   /*

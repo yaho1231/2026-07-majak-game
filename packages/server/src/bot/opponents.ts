@@ -26,7 +26,10 @@
  * 상대를 파악해 가는 속도와 비슷하다.
  */
 
+import { augmentFiredReads, discardsZone } from "@majak/core";
 import type { PlayerId, PlayerView } from "@majak/core";
+import { effectiveAugmentsOf, firedSignalOf } from "./collect.js";
+import type { FiredSight } from "./collect.js";
 
 /** 한 상대에 대해 지금까지 읽어 낸 성향 */
 export interface OpponentTraits {
@@ -64,6 +67,15 @@ interface RoundFlags {
   riichi: boolean;
   riichiTurn: number;
   called: boolean;
+  /**
+   * **이 국에 이 사람의 발동 채널을 처음 본 순간** (증강 id → 기록).
+   *
+   * 채널은 "켜져 있다"만 말한다. 개벽 컷인이 방금 떴는지 여섯 순 전에 떴는지는 본
+   * 사람만 안다 — 방금 뒤집힌 열세 장은 뒤죽박죽이고 여섯 순 다듬은 손은 텐파이
+   * 근처다. `bot/collect.ts`의 `ripeness`가 이 기록으로 그 차이를 센다. 그때 바닥
+   * 장수도 함께 적어 "발동 뒤에 버린 것"을 가른다.
+   */
+  fired: Map<string, FiredSight>;
 }
 
 interface Totals {
@@ -73,7 +85,12 @@ interface Totals {
   riichiTurnSum: number;
 }
 
-const emptyFlags = (): RoundFlags => ({ riichi: false, riichiTurn: 0, called: false });
+const emptyFlags = (): RoundFlags => ({
+  riichi: false,
+  riichiTurn: 0,
+  called: false,
+  fired: new Map(),
+});
 const emptyTotals = (): Totals => ({ rounds: 0, riichis: 0, calls: 0, riichiTurnSum: 0 });
 
 export class OpponentMemory {
@@ -107,7 +124,24 @@ export class OpponentMemory {
         f.riichiTurn = view.round.turnCount;
       }
       if ((rs.meldCount ?? 0) > 0) f.called = true;
+      // 발동 공개 채널이 켜진 것을 처음 본 순간을 적는다 (국이 바뀌면 함께 비워진다)
+      for (const { id, fired } of augmentFiredReads(effectiveAugmentsOf(view, p.id))) {
+        if (f.fired.has(id)) continue;
+        if (firedSignalOf(view, p.id, id, fired) === null) continue;
+        f.fired.set(id, {
+          turn: view.round.turnCount,
+          riverLen: view.zones[discardsZone(p.id)]?.tileIds.length ?? 0,
+        });
+      }
     }
+  }
+
+  /**
+   * 이 상대의 그 증강 발동을 **이 국에 언제 처음 봤는가**. 못 봤으면 undefined —
+   * 그러면 읽기는 "언제부터인지 모른다 = 익었다"로 안전하게 처리한다.
+   */
+  firedSightOf(player: PlayerId, augmentId: string): FiredSight | undefined {
+    return this.flags.get(player)?.fired.get(augmentId);
   }
 
   /** 진행 중이던 국의 관측을 총계에 넣는다 */

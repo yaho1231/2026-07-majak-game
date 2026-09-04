@@ -50,7 +50,7 @@ import {
   isHonor,
   meldsZone,
 } from "@majak/core";
-import type { PlayerId, PlayerView, Suit, TileKind } from "@majak/core";
+import type { AugmentFired, PlayerId, PlayerView, Suit, TileKind } from "@majak/core";
 
 /** 한 상대에 대한 "무엇을 모으는가" 읽기 */
 export interface CollectRead {
@@ -60,6 +60,17 @@ export interface CollectRead {
   hanBonus: number;
   /** 위협도(텐파이 확률)의 하한 — 확정 신호가 있을 때만 0보다 크다 */
   minLevel: number;
+  /**
+   * **그 사람이 텐파이라면 이 패가 오름패일 확률** — 발동이 대기의 범위를 못 박은
+   * 분류에만 있다(개벽 = 자패, 거신병 = 요구패). 없으면 undefined.
+   *
+   * 봇의 방총 확률은 `tileRisk × DEAL_IN_SCALE(0.11)`이고, 그 눈금은 리치의 무스지
+   * 중장패(6%)에 맞춰져 있다. 자패는 상한이 1이라 아무리 배수를 얹어도 **11%**가 끝인데,
+   * 열세 장이 전부 자패인 손의 대기는 자패 두어 종이라 살아 있는 자패 하나를 흘리면
+   * 일곱 종 중 둘, 3할 언저리다. 그 3배 차이를 배수로는 못 메운다(상한에 막힌다) —
+   * 그래서 이 분류는 상대 눈금을 거치지 않고 **확률을 직접** 준다.
+   */
+  dealInOf?: (kind: TileKind) => number | undefined;
   /** 무엇을 읽었는가 — 테스트와 로그가 읽는다 */
   tags: string[];
 }
@@ -80,6 +91,16 @@ export const NEUTRAL_COLLECT: CollectRead = {
  * 없고(어차피 잘린다) 신호가 겹칠 때 판단만 극단으로 민다.
  */
 const RISK_CAP = 2.8;
+
+/**
+ * 개벽처럼 **손이 통째로 자패가 된** 사람에게 수패가 얼마나 안전한가 (수패 위험 배수).
+ *
+ * 0으로 두지 않는다 — 뒤집힐 때 남은 수패 두어 장으로 단기·샤보가 설 수 있고, 다른 두
+ * 색을 "안전하다고 지우는 것은 언제나 더 위험하다"(단색 세계 주석). 0.5면 수패의
+ * 기대 실점이 자패의 1/5 아래로 내려가 「자패 하나만 내면 그 뒤는 편하다」가 계산에
+ * 잡힌다.
+ */
+const HONOR_HAND_NUMBER_DISCOUNT = 0.5;
 
 const NUMBER_SUITS: ReadonlySet<string> = new Set<Suit>(["man", "pin", "sou"]);
 const isTerminal = (k: TileKind): boolean =>
@@ -112,6 +133,13 @@ interface Bias {
   suit: Map<string, number>;
   /** 짝수 수패 (짝수의 세계) */
   even: number;
+  /**
+   * **수패 전체**에 곱하는 할인 (1 = 중립). 손이 통째로 자패가 된 사람(개벽)에게 수패는
+   * 거의 안전하다 — 남아 있던 수패 두어 장으로만 대기가 설 수 있다. 사람은 개벽 컷인을
+   * 본 뒤 수패를 거의 현물처럼 낸다. 이걸 안 깎으면 "자패 한 장만 내면 끝"인 손에서
+   * 뒤에 남은 수패까지 위험패로 세어 지평(`discard.pushHorizonOf`)이 줄지 않는다.
+   */
+  numbers: number;
   /** **바로 그 패**들 (오픈 리치의 공개 대기, 자패의 귀환이 되받은 자패 …) */
   kinds: Map<string, number>;
 }
@@ -248,19 +276,232 @@ export function isFuritenBroken(view: PlayerView, player: PlayerId): boolean {
 }
 
 /**
+ * 발동 공개 채널 하나를 읽는다 — **지금 켜져 있는가**, 켜져 있으면 무엇이 실려 있는가.
+ *
+ * `readCollect`와 `OpponentMemory`(발동을 처음 본 순을 기억한다)가 **같은 판정**을 써야
+ * 한다. 한쪽은 켜졌다고 보고 다른 쪽은 아니라고 보면 "본 지 몇 순인가"가 어긋난다.
+ *
+ * @returns 꺼져 있으면 null. 켜져 있으면 무늬(`suit`)·패 목록(`kinds`)·아무것도 안
+ *   짚는 플래그(`{}`) 중 하나.
+ */
+export function firedSignalOf(
+  view: PlayerView,
+  player: PlayerId,
+  id: string,
+  fired: AugmentFired,
+): { suit?: string; kinds?: string[] } | null {
+  const value = view.augmentView[firedChannelKey(id, fired, player)];
+  if (fired.kind === "flag") return value === true ? {} : null;
+  if (fired.kind === "kinds") {
+    const kinds = kindKeysOf(value);
+    return kinds.length === 0 ? null : { kinds }; // 빈 배열 = 아직 없거나 이미 지나갔다
+  }
+  if (typeof value !== "string" || !NUMBER_SUITS.has(value)) return null;
+  return { suit: value };
+}
+
+/**
+ * **발동을 처음 본 순간**의 기록 (`OpponentMemory.firedSightOf`).
+ *
+ * 채널은 "켜져 있다"만 말하고 **언제부터**인지는 말하지 않는다. 그런데 사람은 그걸
+ * 안다 — 개벽 컷인이 뜬 것이 방금인지 여섯 순 전인지. 방금 뒤집힌 열세 장은 뒤죽박죽이고
+ * 여섯 순 다듬은 손은 텐파이 근처다. 봇도 그 차이를 알아야 한다.
+ */
+export interface FiredSight {
+  /** 처음 본 순목 (`view.round.turnCount`) */
+  turn: number;
+  /** 그때 그 사람 바닥의 장수 — 그 뒤로 버린 것이 "발동 후 버림"이다 */
+  riverLen: number;
+}
+
+/**
+ * `readCollect`에 얹는 문맥 — 없으면 전부 기본값이라 종전과 한 글자도 다르지 않다.
+ */
+export interface CollectContext {
+  /**
+   * 0(확인된 것만 믿는다) ~ 1(신호를 액면대로 받는다) — `profile.credence`.
+   * 아래 `credenceScale` 참고. 기본 0.5 = 표의 값 그대로.
+   */
+  credence?: number;
+  /** 이 사람의 그 증강 발동을 **언제 처음 봤는가** (기억이 없으면 undefined) */
+  sightOf?: (augmentId: string) => FiredSight | undefined;
+}
+
+/**
+ * **신호를 얼마나 믿는가**가 텐파이 하한에 곱하는 저울 (0.7 ~ 1.3).
+ *
+ * 개벽이 터졌다는 것은 사실이지만 "그래서 지금 자일색 텐파이다"는 **추정**이다.
+ * 사람마다 그 추정을 받는 태도가 다르다 — "그거 안 나와" 하고 자기 손을 미는 사람과
+ * "역만 신호에 자패는 절대 안 낸다"는 사람.
+ *
+ * **확률에만 곱하고 값어치에는 안 곱한다.** 태도가 바꾸는 것은 "지금 텐파이일 것
+ * 같은가"이지 "쏘이면 얼마인가"가 아니다 — 자일색은 누가 봐도 역만이다. 둘 다에
+ * 곱하면 같은 태도를 두 번 세어(확률 × 실점) 수비형이 만관 텐파이까지 접는다.
+ * 오픈 리치의 공개 대기처럼 **사실**인 것에는 아예 곱하지 않는다.
+ *
+ * 분기가 아니라 저울이다(`bot/profile.ts`의 규율). 0.5에서 정확히 1이라 균형형과
+ * 문맥 없는 호출은 표의 값 그대로다.
+ */
+export function credenceScale(credence: number | undefined): number {
+  const c = credence === undefined ? 0.5 : Math.max(0, Math.min(1, credence));
+  return 0.7 + 0.6 * c;
+}
+
+/**
+ * **발동 뒤 몇 순 지났는가**가 텐파이 하한에 곱하는 익음 정도 (0.4 ~ 1).
+ *
+ * 개벽 직후의 열세 장은 무작위 자패 더미다 — 대개 2~3샹텐이다. 그걸 다듬어 텐파이에
+ * 가는 데 몇 순이 걸린다. 그래서 하한은 본 순간 바닥(0.4)에서 시작해 `RIPEN_TURNS`
+ * 순에 걸쳐 표의 값까지 자란다. **기억이 없으면 1** — 언제부터인지 모르면 익었다고
+ * 보는 쪽이 안전하다(덜 무서워하는 오차는 방총으로 갚는다).
+ */
+export function ripeness(sight: FiredSight | undefined, turn: number): number {
+  if (sight === undefined) return 1;
+  const age = Math.max(0, turn - sight.turn);
+  return RIPE_FLOOR + (1 - RIPE_FLOOR) * Math.min(1, age / RIPEN_TURNS);
+}
+const RIPE_FLOOR = 0.4;
+const RIPEN_TURNS = 5;
+
+/** 보이는 모든 곳의 종류별 장수 — 내 손·전원 바닥·전원 후로·도라 표시패 */
+function visibleCounts(view: PlayerView): Map<string, number> {
+  const seen = new Map<string, number>();
+  const bump = (id: number | undefined): void => {
+    const tile = id === undefined ? undefined : view.tiles[id];
+    if (tile === undefined || tile.attrs.conjured === true) return;
+    const key = `${tile.kind.suit}${tile.kind.rank}`;
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  };
+  for (const zone of Object.values(view.zones)) {
+    if (zone.kind === "wall" || zone.kind === "deadWall") continue;
+    for (const id of zone.tileIds) bump(id);
+  }
+  for (const id of view.round.doraIndicators) bump(id);
+  return seen;
+}
+
+const HONOR_KEYS: readonly string[] = [
+  "wind1", "wind2", "wind3", "wind4", "dragon1", "dragon2", "dragon3",
+];
+const YAOCHU_KEYS: readonly string[] = [
+  ...HONOR_KEYS,
+  "man1", "man9", "pin1", "pin9", "sou1", "sou9",
+];
+
+/**
+ * **그 손이 아직 성립하는가** — 발동 신호의 판수 보너스에 곱하는 실현 가능성 (0.2 ~ 1).
+ *
+ * 표의 판수(개벽 +8 = 자일색·대사희급)는 **최선의 경우**다. 사람은 거기서 셈을 시작해
+ * 보이는 것으로 깎는다 — "東은 석 장 나왔고 저 사람이 발동 뒤 白·發을 버렸으니
+ * 자일색은 물 건너갔다, 남은 건 혼일색 아니면 역패." 봇도 같은 셈을 한다.
+ *
+ * - **자패**(개벽): 자일색은 자패 **다섯 종**이 필요하다(몸통 넷 + 머리). 밖에 석 장
+ *   이상 보이는 종류와 그 사람이 발동 뒤 버린 종류는 못 쓴다. 살아 있는 종류가 5 미만이면
+ *   자일색은 없다 — 남는 것은 혼일색·소사희·역패라 0으로 두지 않는다.
+ * - **요구패**(거신병 = 국사): 열세 종이 **전부** 필요하다. 어느 한 종이 밖에 넉 장 다
+ *   보이면 끝이다(왕의 징표를 함께 든 사람은 예외). 발동 뒤 요구패를 둘 이상 버렸다면
+ *   국사를 쥔 사람의 버림이 아니다.
+ * - **한 색**(단색 세계·편식): 청일색은 그 색 열넷이 필요하다. 밖에 그 색이 스물 넘게
+ *   보이면 그 사람 손에 열셋이 다 그 색일 수는 없다.
+ *
+ * 여기 안 걸리는 분류(짝수·특정 패)는 1이다.
+ */
+function feasibilityOf(
+  view: PlayerView,
+  player: PlayerId,
+  augments: readonly string[],
+  danger: AugmentFired["danger"],
+  dangerSuit: string | null,
+  thrownSinceFire: readonly TileKind[],
+): { feas: number; live: ReadonlySet<string> } {
+  const seen = visibleCounts(view);
+  const count = (key: string): number => seen.get(key) ?? 0;
+  const thrown = new Set(thrownSinceFire.map((k) => `${k.suit}${k.rank}`));
+  switch (danger) {
+    case "honor": {
+      const live = new Set(HONOR_KEYS.filter((k) => count(k) <= 2 && !thrown.has(k)));
+      const n = live.size;
+      return { feas: n >= 5 ? 1 : n === 4 ? 0.6 : n === 3 ? 0.35 : 0.2, live };
+    }
+    case "terminal": {
+      const royal = augments.includes("royal_kokushi");
+      const live = new Set(YAOCHU_KEYS.filter((k) => count(k) < 4 && !thrown.has(k)));
+      if (!royal && live.size < YAOCHU_KEYS.length) return { feas: 0.2, live };
+      const thrownYaochu = thrownSinceFire.filter(
+        (k) => isHonor(k) || k.rank === 1 || k.rank === 9,
+      ).length;
+      return { feas: thrownYaochu >= 2 ? 0.4 : 1, live };
+    }
+    case "channelSuit": {
+      const live = new Set<string>();
+      if (dangerSuit === null) return { feas: 1, live };
+      let outside = 0;
+      for (let r = 1; r <= 9; r++) outside += count(`${dangerSuit}${r}`);
+      return { feas: outside >= 23 ? 0.2 : outside >= 19 ? 0.6 : 1, live };
+    }
+    default:
+      return { feas: 1, live: new Set() };
+  }
+}
+
+/**
+ * **텐파이라면 이 패가 오름패일 확률** — 대기의 범위가 못 박힌 분류에서.
+ *
+ * - 자패 손(개벽): 대기는 샤보(두 종)거나 단기(한 종)라 평균 1.6종이고, 후보는 살아 있는
+ *   자패 종류 전부다. → 살아 있는 종류 하나에 `1.6 / 살아 있는 종수`, 상한 0.5. 일곱 종이
+ *   다 살아 있으면 0.23 — 리치 무스지(6%)의 네 배쯤이고, 그게 사람의 체감이다.
+ * - 국사(거신병): 열세 종 중 한 종 대기(13면이면 전부)다. → 살아 있는 요구패 하나에 0.2.
+ *
+ * 밖에 다 보이거나 본인이 버린 종류는 undefined — 상대 눈금(남은 장수 셈)에 맡긴다.
+ */
+function pinnedDealIn(
+  danger: AugmentFired["danger"],
+  live: ReadonlySet<string>,
+  feas: number,
+): ((kind: TileKind) => number | undefined) | undefined {
+  if (live.size === 0) return undefined;
+  const of = (kind: TileKind): number | undefined => {
+    if (!live.has(`${kind.suit}${kind.rank}`)) return undefined;
+    if (danger === "honor") return Math.min(0.5, 1.6 / live.size);
+    if (danger === "terminal") return 0.2 * feas;
+    return undefined;
+  };
+  return of;
+}
+
+/**
  * 이 사람이 무엇을 모으는지 읽는다.
  *
  * 신호가 여럿이면 배수는 곱하고 판수는 더한다 — "자패 증강을 들었고 자패를 한 장도
  * 안 버렸다"는 둘 중 하나만 있을 때보다 확실히 진한 신호다. 상한은 `RISK_CAP`.
  */
-export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
-  const bias: Bias = { honor: 1, terminal: 1, suit: new Map(), even: 1, kinds: new Map() };
+export function readCollect(
+  view: PlayerView,
+  player: PlayerId,
+  ctx: CollectContext = {},
+): CollectRead {
+  const bias: Bias = {
+    honor: 1,
+    terminal: 1,
+    suit: new Map(),
+    even: 1,
+    kinds: new Map(),
+    numbers: 1,
+  };
   const tags: string[] = [];
   let hanBonus = 0;
   let minLevel = 0;
+  const pinned: ((kind: TileKind) => number | undefined)[] = [];
+  /**
+   * 텐파이 **하한**에만 곱하는 저울 (`credenceScale`). 실점 추정(판수)에는 곱하지
+   * 않고, "바로 그 패"(오픈 리치 공개 대기)처럼 사실인 것에도 곱하지 않는다.
+   */
+  const trust = credenceScale(ctx.credence);
+  const turn = view.round.turnCount;
 
   const augments = effectiveAugmentsOf(view, player);
   const av = view.augmentView;
+  const river = discardKindsOf(view, player);
   const suitMul = (suit: string, m: number): void => {
     bias.suit.set(suit, (bias.suit.get(suit) ?? 1) * m);
   };
@@ -277,22 +518,33 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
    * 평범한 손이라 자패를 무서워할 이유가 없고, **쓴** 사람의 손은 통째로 자패다.
    */
   for (const { id, fired } of augmentFiredReads(augments)) {
-    const value = av[firedChannelKey(id, fired, player)];
-    let dangerSuit: string | null = null;
-    let dangerKinds: string[] = [];
-    if (fired.kind === "flag") {
-      if (value !== true) continue;
-    } else if (fired.kind === "kinds") {
-      dangerKinds = kindKeysOf(value);
-      if (dangerKinds.length === 0) continue; // 빈 배열 = 아직 없거나 이미 지나갔다
-    } else {
-      if (typeof value !== "string" || !NUMBER_SUITS.has(value)) continue;
-      dangerSuit = value;
-    }
-    const mul = fired.riskMul ?? 1;
+    const signal = firedSignalOf(view, player, id, fired);
+    if (signal === null) continue;
+    const dangerSuit = signal.suit ?? null;
+    const dangerKinds = signal.kinds ?? [];
+    /*
+     * **언제 터졌고, 그 뒤로 어떻게 됐는가.** 표는 최선의 경우를 적어 두었고, 여기서
+     * 보이는 것으로 깎는다 — 발동 직후는 아직 뒤죽박죽이고(`ripeness`), 밖에 다 나온
+     * 종류와 본인이 버린 종류로는 그 손이 안 선다(`feasibilityOf`). 그래서 같은 개벽이라도
+     * 3순째 본 것과 9순째 본 것, 東이 넉 장 다 보이는 판과 아닌 판의 대응이 다르다.
+     * "바로 그 패"는 확정이라 깎지 않는다.
+     */
+    const sight = ctx.sightOf?.(id);
+    const thrown = sight === undefined ? [] : river.slice(sight.riverLen);
+    const exact = fired.danger === "channelKinds";
+    const feasRead = feasibilityOf(view, player, augments, fired.danger, dangerSuit, thrown);
+    const feas = exact ? 1 : feasRead.feas;
+    const ripe = exact ? 1 : ripeness(sight, turn);
+    const pin = pinnedDealIn(fired.danger, feasRead.live, feas);
+    if (pin !== undefined) pinned.push(pin);
+    const belief = exact ? 1 : trust;
+    // 배수는 "무엇을 모으는가"라 실현 가능성만 살짝 탄다 — 자일색이 없어도 자패는 모은다
+    const mul = 1 + ((fired.riskMul ?? 1) - 1) * (0.6 + 0.4 * feas);
     switch (fired.danger) {
       case "honor":
         bias.honor *= mul;
+        // 손이 통째로 자패다 — 수패로는 대기가 거의 안 선다 (다른 신호가 겹치면 더 진한 쪽)
+        bias.numbers = Math.min(bias.numbers, HONOR_HAND_NUMBER_DISCOUNT);
         break;
       case "terminal":
         bias.terminal *= mul;
@@ -311,9 +563,15 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
       default:
         break; // 패를 짚지 않는 신호 — 판수·하한만 얹는다
     }
-    hanBonus += fired.hanBonus ?? 0;
-    if (fired.minLevel !== undefined) minLevel = Math.max(minLevel, fired.minLevel);
+    hanBonus += (fired.hanBonus ?? 0) * feas;
+    if (fired.minLevel !== undefined) {
+      // 자일색이 없어도 혼일색 텐파이일 수는 있다 — 하한은 실현 가능성에 반만 기댄다
+      const floor = fired.minLevel * ripe * (0.5 + 0.5 * feas) * belief;
+      minLevel = Math.max(minLevel, floor);
+    }
     tags.push(dangerSuit !== null ? `${id}:${dangerSuit}` : id);
+    if (feas < 1) tags.push(`${id}:feas:${feas.toFixed(2)}`);
+    if (ripe < 1) tags.push(`${id}:ripe:${ripe.toFixed(2)}`);
   }
 
   /*
@@ -376,7 +634,7 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
 
   // ── 3. 버림패·후로 읽기 — 증강이 없어도 성립하는 순수 마작 쪽 ──
 
-  const discards = discardKindsOf(view, player);
+  const discards = river;
   const melds = meldKindsOf(view, player);
 
   /*
@@ -404,7 +662,7 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
   if (melds.length >= 6 && melds.every(isHonor)) {
     bias.honor *= 1.9;
     hanBonus += 3;
-    minLevel = Math.max(minLevel, 0.3);
+    minLevel = Math.max(minLevel, 0.3 * trust);
     tags.push("honor-melds");
   }
 
@@ -435,10 +693,25 @@ export function readCollect(view: PlayerView, player: PlayerId): CollectRead {
       if (exact !== undefined) m = Math.max(m, exact);
       // 대기가 넓은 상대에게는 수패 전체가 조금씩 더 위험하다 (곱한다 — 다른 축이다)
       if (NUMBER_SUITS.has(kind.suit)) m *= wide;
+      // 손이 통째로 자패인 사람에게 수패는 거의 안전하다 — 단, 그 색·짝수를 따로 짚는
+      // 신호가 겹쳐 m이 이미 1을 넘었으면 그 신호가 이긴다
+      if (NUMBER_SUITS.has(kind.suit) && m <= 1) m *= bias.numbers;
       return Math.min(RISK_CAP, m);
     },
     hanBonus,
     minLevel,
     tags,
+    ...(pinned.length === 0
+      ? {}
+      : {
+          dealInOf: (kind: TileKind): number | undefined => {
+            let best: number | undefined;
+            for (const pin of pinned) {
+              const p = pin(kind);
+              if (p !== undefined && (best === undefined || p > best)) best = p;
+            }
+            return best;
+          },
+        }),
   };
 }

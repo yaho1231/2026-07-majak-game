@@ -666,6 +666,8 @@ export class BotAgent implements PlayerAgent {
     this.read = buildRead(this.lastView, this.id, {
       mode: this.mode,
       traitsOf: (p) => this.opponents.traitsOf(p),
+      // 개벽 컷인을 방금 봤는지 여섯 순 전에 봤는지 — 채널이 아니라 기억이 안다
+      sightOf: (p, id) => this.opponents.firedSightOf(p, id),
       // 수비도 성격을 탄다 — 스지를 밀 구실로 쓰는 사람과 현물만 내는 사람이 갈린다
       profile: this.profile,
       flags: this.flags,

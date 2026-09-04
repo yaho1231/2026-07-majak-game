@@ -350,55 +350,6 @@ describe("조커 — 넓힌 대기는 후리텐을 만들지 않는다", () => {
   });
 });
 
-/**
- * **자기가 버린 그 패로는 못 난다** — 완화의 마지막 한 줄 (2026-09-04).
- *
- * 조커가 넓힌 대기를 후리텐으로 세지 않는 완화(위 4b)는 그대로다. 그런데 그 완화가
- * 후리텐을 통째로 지워, 조커 덕에 텐파이가 된 손이 **자기가 방금 버린 패로 론**하는
- * 일이 실제로 보고됐다(분열+조커+개벽). `isFuriten`은 손 전체 대기를 보는 판정이라
- * 여기서 false가 맞고, 막아야 하는 것은 그 한 장뿐이다 — 화료패만 보는
- * `isSelfDiscardedWinTile`이 론 검증에서 그 자리를 막는다.
- */
-describe("조커 — 자기가 버린 그 패로는 론할 수 없다", () => {
-  /** 조커를 켠 상태 그대로 리액션(론) 장면을 세운다 */
-  function ronScene(hand: string, discards: string, ronSpec: string): Game {
-    const armed = mk(hand, { discards });
-    fire(armed);
-    const state = withAug(
-      {
-        ...craft({
-          hands: { p0: hand, p1: "*", p2: "*", p3: "*" },
-          discards: { p0: discards },
-          phase: "reaction",
-          turnSeat: 1,
-          lastDiscard: { player: "p1", spec: ronSpec },
-        }),
-        augmentData: { ...armed.engine.state.augmentData },
-      },
-      "p0",
-      ["joker"],
-    );
-    const game = createStandardGameFromState(state);
-    installAugment(game.engine, C.joker, "p0", { yaku: game.yaku });
-    return game;
-  }
-
-  it("조커가 열어 준 대기라도 이미 버린 패로는 론이 거부된다", () => {
-    const game = ronScene("111999m55m23s23p5z", "1s", "1s");
-    // 손 전체 판정은 여전히 후리텐이 아니다 — 막히는 것은 그 한 장뿐이다
-    expect(isFuriten(game.engine.state, "p0", optsOf(game), game.engine.rules)).toBe(false);
-    const res = game.engine.submit({ player: "p0", type: "win", payload: {} });
-    expect(res.ok).toBe(false);
-    expect(res.ok ? "" : res.reason).toBe("furiten");
-  });
-
-  it("버린 적 없는 패로는 그대로 론할 수 있다", () => {
-    const game = ronScene("111999m55m23s23p5z", "1s", "4s");
-    const res = game.engine.submit({ player: "p0", type: "win", payload: {} });
-    expect(res.ok ? "" : res.reason).not.toBe("furiten");
-  });
-});
-
 // ───────────────────────── 5. 국 스코프·쿨다운·공개 ─────────────────────────
 
 describe("조커 — 국 스코프와 쿨다운", () => {

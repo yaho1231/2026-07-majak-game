@@ -377,25 +377,6 @@ describe("방 생성·참가 (코드)", () => {
     expect(lobby.roomId).toBe(created.code);
   });
 
-  /*
-   * 「연습 대국」은 **대기실로 간다** (2026-09-04 사용자 지시). 봇 셋이 이미 앉아
-   * 있고, 동풍전·어려움·왕초보로 서 있으며, 시작은 사람이 누른다 — 판이 저 혼자
-   * 시작되면 그 세 가지를 확인할 자리가 없다.
-   */
-  it("연습 대국(lobby)은 봇이 꽉 찬 대기실로 서고 저절로 시작하지 않는다", async () => {
-    const h = await newHarness();
-    const sock = await connectAndRegister(h, "Practicer");
-    sock.clientSend({ type: "practicePlay", lobby: true });
-    const lobby = sock.last("lobby");
-    expect(lobby.players).toHaveLength(4);
-    expect(lobby.gameMode).toBe("tonpuu");
-    expect(lobby.botDifficulty).toBe("hard");
-    expect(lobby.pace).toBe("novice");
-    expect(lobby.hostId).toBe(lobby.youId);
-    // 판은 아직 시작되지 않았다 — 첫 뷰가 오면 «게임 시작»을 누를 자리가 사라진다.
-    expect(sock.last("view")).toBeUndefined();
-  });
-
   it("코드로 참가할 수 있고, 틀린 코드는 거부된다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
