@@ -36,11 +36,12 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  RuleRegistry,
   TileId,
   TileKind,
 } from "@majak/core";
 import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
-import { isPreciousMaterial } from "./bluff_pretense.js";
+import { hasSpareTile, pickSpareTiles } from "./spareTile.js";
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { handAlteredKey } from "./handAltered.js";
@@ -102,46 +103,35 @@ function pendingDragon(
 }
 
 /**
- * 재료로 쓸 잡패 n장 — 삼원패가 아니면서 가장 고립된 패부터.
- * 결정적(유용도 오름차순, 동점은 손패 순서). 부족하면 null.
+ * 재료로 쓸 잡패 n장 — **바꾼 뒤의 손이 가장 좋아지는 장부터.**
+ *
+ * 삼원패는 후보에서 뺀다(그건 이미 몸통이다). 예전에는 "이웃이 가장 적은 패"만 봤는데,
+ * 그 계산은 손을 모양으로 읽지 않아 이미 완성된 몸통 한쪽이 재료로 타 버렸다
+ * (2026-09-04 사용자 보고). 이제 판정은 분열·허장성세와 같은
+ * `spareTile.pickSpareTiles` 한 곳이고, 후보마다 "그 패가 삼원패로 바뀐 뒤의 손"을
+ * 그대로 만들어 샹텐을 재 가장 낮은 것부터 고른다(여러 장이면 탐욕적으로 한 장씩).
+ * 동점이면 예전 고립도 순서다. 도라·적도라는 마지막에 태운다.
  */
 function pickMaterials(
   state: GameState,
+  rules: RuleRegistry | undefined,
   holder: PlayerId,
   n: number,
+  dragon: TileKind,
 ): TileId[] | null {
-  const all = handIdsOf(state, holder).filter((id) => !isDragon(kindOf(state, id)));
-  if (all.length < n) return null;
-  /*
-   * 도라·적도라는 '잡패'가 아니다 — 고립도만 보면 그 국의 도라이자 적도라인 외톨이
-   * 패가 1순위 재료로 뽑혀 도라 1판 + 적도라 1판이 조용히 증발한다
-   * (2026-08-22 QA round2 의심 1). 판정은 분열·허장성세와 같은 함수 하나를 쓴다.
-   * 태울 것이 도라뿐이면 그때만 도라가 재료가 된다 — 발동 자체가 막히지 않도록.
-   */
-  const spare = all.filter((id) => !isPreciousMaterial(state, id));
-  const hand = spare.length >= n ? spare : all;
-  const kinds = hand.map((id) => kindOf(state, id));
-  const usefulness = (i: number): number => {
-    const k = kinds[i] as TileKind;
-    let u = 0;
-    for (let j = 0; j < hand.length; j++) {
-      if (j === i) continue;
-      const o = kinds[j] as TileKind;
-      if (o.suit !== k.suit) continue;
-      if (o.rank === k.rank) u += 2;
-      else if (isNumberSuit(k) && Math.abs(o.rank - k.rank) <= 2) u += 1;
-    }
-    return u;
-  };
-  const order = hand
-    .map((id, i) => ({ id, u: usefulness(i), i }))
-    .sort((a, b) => a.u - b.u || a.i - b.i);
-  return order.slice(0, n).map((e) => e.id);
+  return pickSpareTiles(state, rules, holder, {
+    count: n,
+    usable: (id) => !isDragon(kindOf(state, id)),
+    resultKinds: (picked): TileKind[] =>
+      handIdsOf(state, holder).map((id) =>
+        picked.includes(id) ? dragon : kindOf(state, id),
+      ),
+  });
 }
 
 const willAction: ActionDef<Record<string, never>> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined || !player.augments.includes(ID)) {
       return "no three_dragons_will augment";
@@ -154,14 +144,20 @@ const willAction: ActionDef<Record<string, never>> = {
     if (inRiichi(state, req.player)) return "cannot invoke during riichi";
     const pending = pendingDragon(state, req.player);
     if (pending === null) return "need exactly two dragon triplets";
-    if (pickMaterials(state, req.player, pending.need) === null) {
+    if (pickMaterials(state, rules, req.player, pending.need, pending.kind) === null) {
       return "not enough spare tiles to conjure";
     }
     return null;
   },
-  toEvents: (req, { state }) => {
+  toEvents: (req, { state, rules }) => {
     const pending = pendingDragon(state, req.player) as { kind: TileKind; need: number };
-    const materials = pickMaterials(state, req.player, pending.need) as TileId[];
+    const materials = pickMaterials(
+      state,
+      rules,
+      req.player,
+      pending.need,
+      pending.kind,
+    ) as TileId[];
     return [
       tileKindChanged(
         materials.map((tileId) => ({
@@ -188,7 +184,7 @@ export const threeDragonsWill: AugmentDef = defineAugment({
   description:
     "(동풍전 1회 · 반장전 2회) 삼원패(백·발·중) 중 두 종류를 커쯔로 만들면, 자기 순에 발동해 나머지 한 종류를 한 장도 안 쥐었어도 커쯔로 만든다.",
   detail:
-    "(동풍전 1회 · 반장전 2회) 부족한 만큼(한 장~세 장)은 손패의 잡패가 그 패로 바뀌어 채우므로 손패 장수는 변하지 않는다. 재료는 가장 고립된 잡패가 자동으로 뽑히고, 도라·적도라는 재료가 되지 않는다.\n\n완성되는 것은 커쯔뿐이고 화료를 보장하지는 않는다 — 남은 몸통과 머리는 스스로 맞춰야 한다.\n\n재료로 쓸 잡패가 모자라거나 리치 중이면 발동할 수 없다.",
+    "(동풍전 1회 · 반장전 2회) 부족한 만큼(한 장~세 장)은 손패의 잡패가 그 패로 바뀌어 채우므로 손패 장수는 변하지 않는다. 재료는 **바꾼 뒤의 손이 가장 좋아지도록** 자동으로 뽑혀 이미 완성된 몸통·머리는 건드리지 않고, 도라·적도라는 재료가 되지 않는다.\n\n완성되는 것은 커쯔뿐이고 화료를 보장하지는 않는다 — 남은 몸통과 머리는 스스로 맞춰야 한다.\n\n재료로 쓸 잡패가 모자라거나 리치 중이면 발동할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -207,7 +203,14 @@ export const threeDragonsWill: AugmentDef = defineAugment({
       if (inRiichi(state, holder)) return [];
       const pending = pendingDragon(state, holder);
       if (pending === null) return [];
-      if (pickMaterials(state, holder, pending.need) === null) return [];
+      if (
+        !hasSpareTile(state, holder, {
+          count: pending.need,
+          usable: (id) => !isDragon(kindOf(state, id)),
+        })
+      ) {
+        return [];
+      }
       return [{ type: ACTION, payload: {} }];
     });
   },

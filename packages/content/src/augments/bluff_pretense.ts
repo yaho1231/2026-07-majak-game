@@ -44,6 +44,7 @@ import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
+import { hasSpareTile, pickSpareTile } from "./spareTile.js";
 
 const ID = "bluff_pretense";
 const ACTION = "bluff_pon";
@@ -98,46 +99,30 @@ function matchingIds(
 }
 
 /**
- * 희생할 잡패 하나를 고른다 — 가장 고립된 패(주변에 이어지는 손패가 가장 적은 패).
- * 진짜 매칭 패(realId)와 화료패 kind는 제외. 결정적(동점은 tileId 오름차순).
+ * 희생할 잡패 하나를 고른다 — **펑을 만든 뒤의 손이 가장 좋아지는 장.**
+ *
+ * 진짜 매칭 패(realId)와 화료패 kind는 후보에서 뺀다. 예전에는 "이웃이 가장 적은 패"만
+ * 봤는데, 그 계산은 손을 모양으로 읽지 않아 이미 완성된 몸통 한쪽이 재료로 타 버렸다
+ * (2026-09-04 사용자 보고). 이제 판정은 분열·삼원패의 유언과 같은
+ * `spareTile.pickSpareTiles` 한 곳이고, 후보마다 "펑을 하고 난 뒤의 손"(진짜 1장과
+ * 재료 1장이 빠지고 후로가 하나 늘어난 손)을 그대로 만들어 샹텐을 재 가장 낮은 것을
+ * 고른다. 동점이면 예전 고립도 순서다. 도라·적도라는 마지막에 태운다.
  */
 function pickSacrifice(
   state: GameState,
+  rules: RuleRegistry | undefined,
   holder: PlayerId,
   realId: TileId,
   targetKey: string,
 ): TileId | undefined {
-  const all = handIdsOf(state, holder).filter(
-    (id) => id !== realId && kindKey(kindOf(state, id)) !== targetKey,
-  );
-  // 도라·적도라는 '잡패'가 아니다 — 태울 것이 그것뿐일 때만 어쩔 수 없이 쓴다.
-  const spare = all.filter((id) => !isPreciousMaterial(state, id));
-  const hand = spare.length > 0 ? spare : all;
-  if (hand.length === 0) return undefined;
-  const kinds = hand.map((id) => kindOf(state, id));
-  const usefulness = (i: number): number => {
-    const k = kinds[i]!;
-    let n = 0;
-    for (let j = 0; j < hand.length; j++) {
-      if (j === i) continue;
-      const o = kinds[j]!;
-      if (o.suit === k.suit) {
-        if (o.rank === k.rank) n += 2; // 같은 패(또이쯔 씨앗)
-        else if (
-          (k.suit === "man" || k.suit === "pin" || k.suit === "sou") &&
-          Math.abs(o.rank - k.rank) <= 2
-        ) {
-          n += 1; // 슌쯔로 이어질 수 있는 이웃
-        }
-      }
-    }
-    return n;
-  };
-  let best = 0;
-  for (let i = 1; i < hand.length; i++) {
-    if (usefulness(i) < usefulness(best)) best = i;
-  }
-  return hand[best];
+  return pickSpareTile(state, rules, holder, {
+    usable: (id) => id !== realId && kindKey(kindOf(state, id)) !== targetKey,
+    meldDelta: 1,
+    resultKinds: (picked): TileKind[] =>
+      handIdsOf(state, holder)
+        .filter((id) => id !== realId && !picked.includes(id))
+        .map((id) => kindOf(state, id)),
+  });
 }
 
 const bluffPonAction: ActionDef<{ tileId: TileId }> = {
@@ -172,16 +157,16 @@ const bluffPonAction: ActionDef<{ tileId: TileId }> = {
     // 허장성세는 "1장뿐일 때"만 — 2장 이상이면 표준 펑을 쓰면 된다
     if (matches.length !== 1) return "bluff pon needs exactly one matching tile";
     if (matches[0] !== req.payload.tileId) return "tile is not the matching one";
-    if (pickSacrifice(state, req.player, req.payload.tileId, targetKey) === undefined) {
+    if (pickSacrifice(state, rules, req.player, req.payload.tileId, targetKey) === undefined) {
       return "no tile to sacrifice";
     }
     return null;
   },
-  toEvents: (req, { state }) => {
+  toEvents: (req, { state, rules }) => {
     const last = state.round.lastDiscard as { player: PlayerId; tileId: TileId };
     const targetKind = kindOf(state, last.tileId);
     const targetKey = kindKey(targetKind);
-    const sacrifice = pickSacrifice(state, req.player, req.payload.tileId, targetKey) as TileId;
+    const sacrifice = pickSacrifice(state, rules, req.player, req.payload.tileId, targetKey) as TileId;
     return [
       // ① 잡패를 목표패로 변환(conjured) — 세 번째 장 생성
       tileKindChanged([
@@ -214,7 +199,7 @@ export const bluffPretense: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 상대가 버린 패에 대해, 손에 같은 패가 1장뿐이어도 퐁을 선언할 수 있다.",
   detail:
-    "모자란 세 번째 장은 손패에서 가장 고립된 잡패 하나가 그 패로 변신해 채운다 — **재료는 도라·적도라가 아닌 패에서 고른다**(그런 패가 없을 때만 도라를 태운다).\n\n리치 중, 후로가 봉인된 동안, 패산이 떨어진 마지막 버림에는 발동하지 않는다.",
+    "모자란 세 번째 장은 손패의 잡패 하나가 그 패로 변신해 채운다 — 재료는 **펑을 하고 난 뒤의 손이 가장 좋아지도록** 자동으로 뽑혀 이미 완성된 몸통·머리는 건드리지 않고, **도라·적도라가 아닌 패에서 고른다**(그런 패가 없을 때만 도라를 태운다).\n\n리치 중, 후로가 봉인된 동안, 패산이 떨어진 마지막 버림에는 발동하지 않는다.",
   /**
    * 봇: 잡패 한 장을 태워 커쯔를 만드는 콜이라, **역패**(그 커쯔 자체가 역)일 때만 쓴다.
    * 수패로 부르면 손만 열리고 역이 안 서는 일이 잦다.
@@ -256,7 +241,11 @@ export const bluffPretense: AugmentDef = defineAugment({
       const targetKey = kindKey(targetKind);
       const matches = matchingIds(state, ctx.engine.rules, holder, targetKind);
       if (matches.length !== 1) return []; // 정확히 1장일 때만
-      if (pickSacrifice(state, holder, matches[0] as TileId, targetKey) === undefined) {
+      if (
+        !hasSpareTile(state, holder, {
+          usable: (id) => id !== matches[0] && kindKey(kindOf(state, id)) !== targetKey,
+        })
+      ) {
         return [];
       }
       return [{ type: ACTION, payload: { tileId: matches[0] as TileId } }];
