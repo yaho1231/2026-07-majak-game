@@ -56,7 +56,7 @@ export const lateBloomer: AugmentDef = defineAugment({
   // 남3국 템포는 반장전 전용 — 동풍전에는 동4국판(late_bloomer_east)이 대신 나온다.
   modes: ["hanchan"],
   detail:
-    "만개 후에는 역이 하나도 없어도 화료할 수 있다. +3판은 역만에는 붙지 않는다.\n\n만개 사실은 전원에게 공개되며, 만개 전까지는 아무 효과도 없다.",
+    "남3국(서입 연장 포함)부터 만개한다 — 그 뒤로는 후리텐을 무시하고 론할 수 있고, 역이 하나도 없어도 화료할 수 있으며(머리 1+몸통 4 형태는 갖춰야 한다), 화료에 +3판이 붙는다.\n\n+3판은 역만에는 붙지 않는다. 만개 전까지는 아무 효과도 없다.",
   install(ctx) {
     const { holder } = ctx;
     const vKey = viewKey("*", `${ID}:${holder}`);

@@ -43,7 +43,7 @@ export const lateBloomerEast: AugmentDef = defineAugment({
   draftStages: ["gameStart"],
   modes: ["tonpuu"],
   detail:
-    "만개 후에는 역이 하나도 없어도 화료할 수 있다. +2판은 역만에는 붙지 않는다.\n\n만개 사실은 전원에게 공개되며, 만개 전까지는 아무 효과도 없다.",
+    "동4국(남입 연장 포함)부터 만개한다 — 그 뒤로는 후리텐을 무시하고 론할 수 있고, 역이 하나도 없어도 화료할 수 있으며(머리 1+몸통 4 형태는 갖춰야 한다), 화료에 +2판이 붙는다.\n\n+2판은 역만에는 붙지 않는다. 만개 전까지는 아무 효과도 없다.",
   install(ctx) {
     const { holder } = ctx;
     const vKey = viewKey("*", `${ID}:${holder}`);
