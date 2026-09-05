@@ -196,7 +196,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   discard_lock: { use: "2국에 1회", text: "국 첫 순에 상대마다 무작위 수패 2장을 이번 국 동안 못 버리게 묶는다." },
   dora_conceal: { use: "상시", text: "도라 표시패가 상대에게는 가려진다 — 도라는 나만 알 수 있다." },
   eternal_dealer: { use: "상시", text: "늘 오야 취급 — 점수 1.5배에 역패 동 하나 더. 연장은 동풍전3·반장전5." },
-  even_world: { use: "2국에 1회", text: "손패의 홀수 수패가 한 칸 위 짝수로 바뀐다(도라·적도라는 그대로)." },
+  even_world: { use: "2국에 1회", text: "손패의 홀수 수패가 예외 없이 한 칸 위 짝수로 바뀐다." },
   foresight: {
     use: "4순에 1회",
     text: "패산 다음 4장을 나만 본다. 순서도 국에 한 번 바꾼다. 발동 국 화료 시 +2판.",

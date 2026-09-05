@@ -505,8 +505,8 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
   it("짝수의 세계: 예외 없이 전부 짝수가 된다 (변환 결과가 도라가 되는 것도 막지 않는다)", () => {
     expect(evenWorld.description).toContain("자패만 그대로 남는다");
     expect(evenWorld.description).not.toContain("도라는 그대로 남는다");
-    expect(evenWorld.detail).toContain("적도라(빨간 5)도 예외 없이 짝수가 된다");
-    expect(evenWorld.detail).toContain("바꾼 **결과**가 도라가 되는 것은 막지 않는다");
+    // 예외가 없으니 도라 얘기 자체를 빼 둔다 — 남겨 두면 «예외가 있나?»로 읽힌다 (2026-09-05)
+    expect(evenWorld.detail).not.toContain("도라");
   });
 
   /**
