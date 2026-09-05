@@ -230,7 +230,7 @@ export const reload: AugmentDef = defineAugment({
    */
   draftRequires: (state, player) => hasRestorableAugment(state, player),
   detail:
-    "자기 순에 소진한 내 증강 하나를 지목해 그 사용 횟수를 한 번 되돌린다. 복구는 전원에게 공개된다.\n\n대상은 게임 단위 횟수를 쓰는 내 증강이다 — **'게임 내 1회'도 되돌릴 수 있다.** 국 단위 쿨다운으로 도는 증강과 재장전 자신은 고를 수 없다.",
+    "소진한 내 증강 하나를 지목해 사용 횟수를 한 번 되돌린다 — «게임 내 1회»도 되돌릴 수 있다.\n\n국 단위 쿨다운으로 도는 증강과 재장전 자신은 고를 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
