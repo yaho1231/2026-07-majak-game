@@ -1997,6 +1997,15 @@ export interface LiveRoomSummary {
   riichiCount?: number;
   /** 이 국의 순목(turnCount) — 판이 얼마나 진행됐는지. */
   turnCount?: number;
+  /**
+   * **이 탁자가 어떤 판인가** — 없으면 평범한 대국이다 (2026-09-06 사용자 지시).
+   *
+   * 체험·연습·증강 테스트 방은 실대국이 아니라서 이 목록에서 통째로 빠져 있었다.
+   * 그런데 관리자가 손을 대야 하는 판은 오히려 그쪽이다 — 처음 온 사람이 막힌
+   * 자리를 볼 수도, 저 혼자 세워진 채 방 예산을 물고 있는 체험 방을 끊을 수도
+   * 없었다. 그래서 목록에 올리되 **무슨 판인지 적어** 실대국과 섞이지 않게 한다.
+   */
+  kind?: "tutorial" | "practice" | "sandbox";
 }
 
 export interface LiveGamesMessage {

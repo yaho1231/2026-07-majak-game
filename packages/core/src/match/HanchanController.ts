@@ -601,6 +601,16 @@ export class HanchanController {
    * 첫 국이 끝나면 꺼지고, 그때부터 배패는 평범한 무작위로 돌아간다.
    */
   private presetHandsActive = true;
+  /**
+   * 고정 드래프트가 아직 살아 있는가 (`presetDraftChoices`).
+   *
+   * 고정 배패와 **같은 수명**을 준다. 대본은 1국짜리인데 못 박은 석 장은 게임
+   * 단위라, 2스테이지에도 같은 카드가 섰다 — 그중 하나는 1스테이지에 이미 고른
+   * 것이고, 그걸 다시 고르면 판이 예외로 접혔다(`DraftController.forced` 주석).
+   * 저쪽에서 «보유분은 뺀다»로 막았지만, 못 박기 자체가 첫 국에서 끝나는 것이
+   * 뜻에 맞다 — 졸업한 판의 증강 선택은 평범한 추첨이어야 한다.
+   */
+  private presetDraftActive = true;
   /** 정지 중에는 흐르지 않는 타이머들 (무응답 안전망) */
   private readonly pausable = new Set<PausableTimer>();
 
@@ -1263,7 +1273,10 @@ export class HanchanController {
       // 대본이 쓰는 국은 하나뿐이다 — 여기서 고정을 푼다 (`presetHandsFirstRoundOnly`).
       // 호출부(`onRoundEnd`)보다 **먼저** 끄는 이유: 그 훅이 방을 다음 국으로
       // 준비시키므로, 훅이 보는 세계와 다음 배패가 보는 세계가 같아야 한다.
-      if (this.config.presetHandsFirstRoundOnly === true) this.presetHandsActive = false;
+      if (this.config.presetHandsFirstRoundOnly === true) {
+        this.presetHandsActive = false;
+        this.presetDraftActive = false;
+      }
       this.events.onRoundEnd?.(game, outcome, roundIndex);
 
       roundIndex++;
@@ -1512,7 +1525,10 @@ export class HanchanController {
       game.augments,
       { yaku: game.yaku, catalog: game.augments },
       // 튜토리얼처럼 카드를 못 박아 둔 좌석 (`presetDraftChoices`).
-      { forcedChoices: (_stage, player) => this.config.presetDraftChoices?.[player] },
+      {
+        forcedChoices: (_stage, player) =>
+          this.presetDraftActive ? this.config.presetDraftChoices?.[player] : undefined,
+      },
     );
 
     // 아직 이 스테이지를 마치지 않은 에이전트만 대상. 재개 시 이미 뽑은 사람은 건너뛴다 —

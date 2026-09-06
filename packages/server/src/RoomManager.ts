@@ -145,6 +145,19 @@ const SPECTATE_DELAY_MAX_S = 60;
 const WIND_CHAR = ["동", "남", "서", "북"];
 
 /**
+ * 이 방이 **어떤 판인가** — 관리자 목록의 꼬리표 (`LiveRoomSummary.kind`).
+ *
+ * 평범한 대국이면 아무 것도 싣지 않는다. 튜토리얼은 **졸업하면 연습으로 바뀐다** —
+ * 졸업한 판에 「체험」이 붙어 있으면 관리자가 아직 대본이 도는 줄 알고 읽는다.
+ */
+function liveRoomKind(room: Room): { kind?: "tutorial" | "practice" | "sandbox" } {
+  if (room.sandbox) return { kind: "sandbox" };
+  if (room.tutorial && !room.tutorialGraduated) return { kind: "tutorial" };
+  if (room.guest) return { kind: "practice" };
+  return {};
+}
+
+/**
  * 진행 중인 방 하나의 «지금 무슨 국인가» 요약 (docs/36 D4).
  *
  * 게임이 아직 안 붙었거나(대기실 잔해) 상태를 못 읽으면 아무 것도 싣지 않는다 —
@@ -4509,8 +4522,18 @@ export class RoomManager {
     this.send(conn.ws, {
       type: "liveGames",
       rooms: [...this.rooms.values()]
-        // 증강 테스트·게스트 체험 방은 실대국이 아니므로 관전 목록에서 제외한다
-        .filter((r) => r.phase === "playing" && !r.sandbox && !r.guest)
+        /*
+         * **체험·연습·증강 테스트 방도 올린다** (2026-09-06 사용자 지시).
+         *
+         * 예전에는 «실대국이 아니므로» 셋 다 걸러 냈다. 그런데 관리자가 손을 대야
+         * 하는 판은 오히려 그쪽이다 — 처음 온 사람이 막힌 자리를 볼 수도, 저 혼자
+         * 세워진 채 방 예산(손님 몫)을 물고 있는 체험 방을 끊을 수도 없었다.
+         * 관전·강제 종료 쪽 문(`spectate`·`adminAbortGame`)은 원래부터 방 종류를
+         * 가리지 않았으므로, 막고 있던 것은 **목록 한 줄**뿐이었다.
+         *
+         * 대신 `kind`로 무슨 판인지 적어 실대국과 섞이지 않게 한다.
+         */
+        .filter((r) => r.phase === "playing")
         .map((r) => ({
           code: r.code,
           startedAt: r.startedAt ?? "",
@@ -4519,6 +4542,7 @@ export class RoomManager {
             isBot: this.isBot(a),
           })),
           ...(r.paused ? { paused: true } : {}),
+          ...liveRoomKind(r),
           // 탁자를 고르는 화면이 방 코드만 보고 고를 수는 없다 (docs/36 D4) —
           // 「지금 무슨 국인가 · 리치가 걸렸나」가 볼 만한 탁자의 가장 값싼 신호다.
           ...liveRoundSummary(r),

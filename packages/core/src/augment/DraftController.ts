@@ -122,8 +122,24 @@ export class DraftController {
   private forced(stage: DraftStage, player: PlayerId): AugmentDef[] | null {
     const ids = this.opts.forcedChoices?.(stage, player);
     if (ids === undefined || ids.length === 0) return null;
+    /*
+     * **이미 가진 것은 못 박기에서도 뺀다** (2026-09-06).
+     *
+     * 못 박기는 추첨을 통째로 건너뛰므로 `excludeFor`의 «보유분 제외»를 지나치지
+     * 않는다. 그래서 같은 석 장이 두 스테이지에 걸쳐 서면, 1스테이지에 고른 카드가
+     * 2스테이지에 **또** 선다. 그걸 고르면 `draftPick`이 "already owns this augment"로
+     * 거절하고, 거절은 `pick`에서 throw가 되어 **판 전체가 예외로 접힌다** —
+     * 실제로 체험 방에서 하루 다섯 판이 이렇게 죽었다(서버 로그 2026-09-03~06).
+     *
+     * 남은 장이 없으면 null을 돌려 평범한 추첨으로 넘긴다. 못 박기가 풀리는 것이
+     * 판이 죽는 것보다 낫다.
+     */
+    const held = new Set(
+      this.engine.state.players.find((p) => p.id === player)?.augments ?? [],
+    );
     const defs: AugmentDef[] = [];
     for (const id of ids) {
+      if (held.has(id)) continue;
       const def = this.catalog.get(id);
       // 이름이 틀렸으면 그 한 장만 빠진다 — 못 박기가 통째로 무너지는 것보다 낫다.
       if (def !== undefined) defs.push(def);

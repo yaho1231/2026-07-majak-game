@@ -402,7 +402,13 @@ describe("게스트 — 기록 없음", () => {
     expect(admin.last("error").code).toBe("ROOM_NOT_FOUND");
   });
 
-  it("진행 중인 게스트 방은 관리자 관전 목록에도 뜨지 않는다", async () => {
+  /*
+   * 2026-09-06 사용자 지시로 **뒤집혔다.** 예전에는 게스트(체험·연습) 방을 관전
+   * 목록에서 통째로 뺐는데, 그래서 관리자가 처음 온 사람이 막힌 자리를 볼 수도,
+   * 저 혼자 세워진 채 손님 방 예산을 물고 있는 판을 끊을 수도 없었다. 지금은
+   * 목록에 오르되 `kind`로 실대국과 갈라 둔다.
+   */
+  it("진행 중인 게스트 방은 관리자 관전 목록에 «연습»으로 뜬다", async () => {
     const h = await newHarness();
     await connectGuest(h);
 
@@ -412,6 +418,8 @@ describe("게스트 — 기록 없음", () => {
     await admin.waitFor((m) => m.type === "authOk");
     admin.clientSend({ type: "liveGames" });
     await admin.waitFor((m) => m.type === "liveGames");
-    expect(admin.last("liveGames").rooms).toEqual([]);
+    const rooms = admin.last("liveGames").rooms;
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].kind).toBe("practice");
   });
 });
