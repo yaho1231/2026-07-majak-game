@@ -33,7 +33,7 @@
 
 너의 스크립트는 `qa-lab/synergy3/<너의id>/*.ts` 에 두고 tsx로 돌린다:
 ```bash
-/Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy3/<너의id>/x.ts
+~/majak/node_modules/.bin/tsx qa-lab/synergy3/<너의id>/x.ts
 ```
 (vitest로 돌려도 된다: `npx vitest run <파일>` — 단 테스트 파일을 `packages/` 안에 만들지 마라.)
 

@@ -54,7 +54,7 @@
 - `probe_settle.ts` — 의심 국을 그대로 재현해 `RoundSettled.deltas`·`augPoints`·
   `ScoreChanged`를 전부 찍어 점수의 출처를 특정한다.
 
-실행 예: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/pairs/run3.ts 0 3 hanchan 9000`
+실행 예: `~/majak/node_modules/.bin/tsx qa-lab/pairs/run3.ts 0 3 hanchan 9000`
 
 ---
 

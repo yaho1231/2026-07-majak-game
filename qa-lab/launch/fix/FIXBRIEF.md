@@ -49,7 +49,7 @@ npx vitest run packages/content/test/bot_policy_coverage.test.ts packages/conten
 
 ## 환경
 - 워크트리 루트에서 작업. `node_modules/@majak/*` 링크 걸려 있음.
-- tsx: `/Users/skul/majak/node_modules/.bin/tsx`
+- tsx: `~/majak/node_modules/.bin/tsx`
 - ⚠ `pkill -f` 금지(PID 로만). 공개 서버 PID 40070(포트 3011) 금지.
 - ⚠ `git checkout -- ` · `git restore` · `git stash` 금지.
 - 재위임 금지 — Agent/Task 도구를 쓰지 마라. 직접 한다.

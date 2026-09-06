@@ -41,7 +41,7 @@ danger_sense dead_wall_master devils_advance die_hard disarm discard_lock dora_a
   "이미 옮겨졌다"는 사실을 볼 수 없다.
   결과적으로 같은 이동이 **정확히 두 번** 적용된다 — 쏜 사람은 `+owed` 만큼 **이득**을 보고,
   엉뚱하게 맞은 사람이 `2 × owed` 를 문다. (세 좌석이 들면 3배가 된다.)
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t1_blindron_double.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t1_blindron_double.ts`
   ```
   === 1인 보유 ===
   holders=["p0"]
@@ -95,7 +95,7 @@ danger_sense dead_wall_master devils_advance die_hard disarm discard_lock dora_a
   쏜 사람이 덜 낸다.** 8,000점 론이 대표적이다 — 8000/3 = 2666.7 → per = 2,700 →
   애먼 둘이 2,700씩, **쏜 사람은 2,600**. 방총한 사람이 테이블에서 가장 적게 내는 그림이다.
   (5,200점처럼 내림이 나오는 금액에서는 반대로 쏜 사람이 더 낸다 — 금액에 따라 갈린다.)
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t2_dual_settle.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t2_dual_settle.ts`
   ```
   ### blame_shift 2인(p0 화료, p3도 보유)
     before={"p0":8000,"p1":-8000,"p2":0,"p3":0}
@@ -123,7 +123,7 @@ danger_sense dead_wall_master devils_advance die_hard disarm discard_lock dora_a
   본다. 마작에서 왕패는 "절대 나오지 않는 패"라, 이 4장을 아는 것은
   **남은 산에 그 4종이 몇 장 남았는지를 정확히 아는 것**과 같다 — 수비(현물 계산)와
   대기 선택에 그대로 쓰이는, 카드가 제시하지 않은 상시 정보 우위다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t3_cliffbloom_peek.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t3_cliffbloom_peek.ts`
   ```
   증강 없음 / 뷰어=p0: 왕패 0칸 중 실제 id로 보이는 것 0개 []
   p0 = cliff_bloom / 뷰어=p0: 왕패 4칸 중 실제 id로 보이는 것 4개 [52,53,54,55]
@@ -157,7 +157,7 @@ danger_sense dead_wall_master devils_advance die_hard disarm discard_lock dora_a
   결과적으로 **리치를 걸지 않은 채** 순 +1,000점을 벌고, 상대의 일발을 지웠으며,
   「손 가치 강탈 + 직격 +4판」의 전제인 `struck` 플래그까지 그대로 남는다.
   `counter`에는 `conflicts`가 하나도 없어 드래프트가 이 조합을 막지 않는다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t4_counter_lastsand.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-1/t4_counter_lastsand.ts`
   ```
   ① 시작            점수={"p0":25000,"p1":25000,...}  공탁=1000  p1.riichi.ippatsu=true
   ② 추격 리치        점수={"p0":25000,"p1":24000,...}  공탁=2000

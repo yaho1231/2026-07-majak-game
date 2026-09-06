@@ -23,7 +23,7 @@ const r = await runMatch({
 // r.crash, r.effectErrors, r.violations, r.actionsTaken, r.finalScores, r.rounds
 ```
 
-실행: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/<너의폴더>/x.ts`
+실행: `~/majak/node_modules/.bin/tsx qa-lab/<너의폴더>/x.ts`
 (워크트리 루트에서 실행. `npm test`도 쓸 수 있다: `npx vitest run <파일>`)
 
 기본 불변식(harness의 `checkState`)이 이미 검사하는 것: 패 중복, 왕패 초과, 손패 장수 이상,

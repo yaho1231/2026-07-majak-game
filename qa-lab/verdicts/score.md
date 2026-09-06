@@ -12,7 +12,7 @@
 > 발동하지 않는다**. 내 스크립트는 전부 `roundScopedKey`로 키를 만든다.
 
 내 스크립트는 `qa-lab/verify-score/` 아래에만 있다. 실행:
-`/Users/skul/majak/node_modules/.bin/tsx qa-lab/verify-score/<파일>`
+`~/majak/node_modules/.bin/tsx qa-lab/verify-score/<파일>`
 
 | # | 원 의심 | 판정 |
 |---|---|---|

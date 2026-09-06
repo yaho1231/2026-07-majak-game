@@ -3,7 +3,7 @@
 ## 요약
 
 - 환경: **워크트리 전용 임시 서버** `PORT=3911` · `DB_PATH=/tmp/majak-qa/majak.db` · 리플레이는
-  워크트리 `replays/`. 운영 서버(pid 90538 · 포트 3011)와 `/Users/skul/majak` 체크아웃은
+  워크트리 `replays/`. 운영 서버(pid 90538 · 포트 3011)와 `~/majak` 체크아웃은
   **건드리지 않았다**. 기동은 전부 `preview_start`(`.claude/launch.json`의 `qa-server`·`client`),
   클라는 vite dev(5173) + `localStorage["majak.serverUrl"]="ws://localhost:3911"` 로 임시 서버를 가리켰다.
 - 계정: 관리자 `큐에이관리자` (ADMIN_CODE 로 가입) → `관리` 탭의 **증강 테스트** 샌드박스.

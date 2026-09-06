@@ -6,7 +6,7 @@
  *  ① 다른 사람의 구종구패(kyushuKyuhai — win.firstTurn 요구)가 사라지는가
  *  ② 다른 사람의 지화(chihou — firstTurn && !goAroundBroken) 전제가 깨지는가
  *
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_north_firstturn.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_north_firstturn.ts
  */
 import { handIdsOf } from "@majak/core";
 import type { GameState, TileId } from "@majak/core";

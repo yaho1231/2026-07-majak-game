@@ -2,7 +2,7 @@
  * ① 죽기살기 / 역만 방어술 — 문구에 없는 **드래프트 배제**가 실제로 걸린다.
  * ② 만년 오야 — "남은 횟수는 전원에게 보인다"가 실제로는 보유자 전용 채널이다.
  *
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_conflicts_and_uses.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_conflicts_and_uses.ts
  */
 import { contentAugments } from "@majak/content";
 import type { AugmentDef } from "@majak/core";

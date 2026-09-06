@@ -32,7 +32,7 @@
 - 실제: 오야가 첫 순에 염색 한 번으로 손을 완성시키면 표식이 없어 코어 게이트
   (`packages/core/src/mahjong/flow/helpers.ts` `handAlteredByAugment`)가 통과하고
   **천화(天和)가 그대로 선다**.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-dye-tenhou.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-dye-tenhou.ts`
   ```
   [대조 · 증강없음] ok=true yaku=[] yakumanCount=undefined p0델타=48000   ← 진짜 천화
   [염색으로 완성]: dye submit ok=true
@@ -69,7 +69,7 @@
 - 실제: 오야가 첫 순에 쯔모패를 무르고 새로 뽑은 패로 완성하면 표식이 없어 코어 게이트
   (`helpers.ts` `handAlteredByAugment`)가 통과하고 **천화(天和)가 선다.**
   무르기는 실버 티어에 **쿨다운 3순**이라 첫 순에 반드시 열려 있다(국이 바뀌면 즉시 초기화).
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-takeback-tenhou.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-takeback-tenhou.ts`
   ```
   [무르기로 완성 · 첫순]:   take_back ok=true
   [무르기로 완성 · 첫순]:   무른 뒤 손패 = man1..man9 pin2 pin3 pin1 pin1 pin1
@@ -97,7 +97,7 @@
   실물과 1:1로 맞바꾸고, 패산에 남지 않았을 때만 생성한다. 공용 자 `copiesLeftUndrawn`
   (`content/src/util.ts`)도 `off_by_one`·`peek_riichi_waits`가 쓰고 있다.
 - 실제: 4장이 이미 다 보인 종류로도 그냥 물든다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-dye-fifth-copy.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-dye-fifth-copy.ts`
   ```
   [전] pin3 — 게임 전체 4장 · 이미 보인 장수 4장 · copiesLeftUndrawn=0
   염색 submit ok= true
@@ -122,7 +122,7 @@
   그 함수의 주석이 못을 박는다 — *"세 번째 자리가 생기면 여기를 쓴다."* void_kan 이 그
   세 번째 자리인데 안 쓴다. (`off_by_one` · `peek_riichi_waits` 만 쓰고 있다.)
 - 실제: 네 장이 이미 다 나온 종류로도 손패를 갈아 끼운다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-voidkan-fifth-copy.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-voidkan-fifth-copy.ts`
   ```
   [전] p0 손패 = man2 man3 man4 man5 man6 man7 pin2..pin7 sou1
   [전] sou1 게임 전체 = 4 장 · copiesLeftUndrawn = 0     ← 1삭은 이미 소진(바닥 3 + 내 손 1)
@@ -156,7 +156,7 @@
 - 실제: 2번째(=다음 깡) 도라 표시패 자리도, 그 뒷도라 자리도, **영상패 자리(index 0 = 다음 깡 쯔모)** 도
   전부 교환 후보로 열려 있다. 게다가 이 증강은 바꿔치기 전까지 홀더에게 **왕패 전체를
   보여 주므로**(`visibility.deadWall`) 어디에 무엇이 있는지 다 알고 고른다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-urapeek-next-dora.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/aug-4/repro-urapeek-next-dora.ts`
   ```
   왕패 길이 = 14 · 영상패 남음 = 4
   2번째(=다음 깡) 도라 표시패 자리 index = 6, 지금 그 자리 = 53:pin5

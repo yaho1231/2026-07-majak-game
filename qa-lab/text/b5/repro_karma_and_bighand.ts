@@ -4,7 +4,7 @@
  * ② 큰손 — "본장 수령분과 회수하는 리치봉이 전부 총액에 들어간다" 실측.
  * ③ 판돈 굴리기 — "본장·공탁은 배수 대상이 아니다" 실측 (대조군).
  *
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_karma_and_bighand.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_karma_and_bighand.ts
  */
 import type { GameState, PlayerId } from "@majak/core";
 import { craft, lastSettled, start } from "../../score-b/scene.js";

@@ -161,7 +161,7 @@
 - 실제: 10쌍이 **보너스 ×2~×3**을 받는다. `DraftController.excludeFor`가 어차피
   제외하므로 그 배수는 **한 장도 뽑히지 않는 카드에 실린 죽은 가중치**다 —
   의도한 시너지 축으로 가야 할 편향 질량이 그만큼 새어 나간다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/synergy/static_audit.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/synergy/static_audit.ts`
   ```
   CONFLICT_BUT_SYNERGY_PULL avenger + late_bloomer = x2
   CONFLICT_BUT_SYNERGY_PULL avenger + late_bloomer_east = x2

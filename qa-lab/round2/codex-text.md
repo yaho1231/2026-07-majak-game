@@ -47,7 +47,7 @@
 
 ## 재현 스크립트
 
-전부 `/Users/skul/majak/node_modules/.bin/tsx <경로>` 로 돈다. `packages/` 는 읽기만 했다.
+전부 `~/majak/node_modules/.bin/tsx <경로>` 로 돈다. `packages/` 는 읽기만 했다.
 
 | 스크립트 | 무엇을 보나 |
 | --- | --- |

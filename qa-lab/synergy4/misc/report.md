@@ -2,7 +2,7 @@
 
 작성 2026-08-31. 소스는 **한 줄도 고치지 않았다** — 조사·증거·재현 스크립트만.
 모든 스크립트는 `qa-lab/synergy4/misc/` 아래, 실행은 워크트리 루트에서
-`/Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy4/misc/<파일>.ts`.
+`~/majak/node_modules/.bin/tsx qa-lab/synergy4/misc/<파일>.ts`.
 
 ## 담당 카드 (카탈로그 전수)
 

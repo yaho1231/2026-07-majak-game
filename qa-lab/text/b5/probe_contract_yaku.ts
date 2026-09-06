@@ -1,6 +1,6 @@
 /**
  * 핏빛 계약 — detail의 "지정 역 목록(… 치또이 **등**)"이 실제로 몇 종인가.
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_contract_yaku.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_contract_yaku.ts
  */
 import type { GameState, PlayerId } from "@majak/core";
 import { craft, start } from "../../score-b/scene.js";

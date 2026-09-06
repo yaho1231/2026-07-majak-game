@@ -6,7 +6,7 @@
 
 전부 유닛 재현(`craft` + `installAugment` + 강제 화료)으로 4칸 대조군을 찍었다.
 스크립트는 `qa-lab/synergy3/score/*.ts`, 실행은
-`/Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy3/score/<파일>.ts`.
+`~/majak/node_modules/.bin/tsx qa-lab/synergy3/score/<파일>.ts`.
 
 이미 판정된 것(배율 연쇄 `let_it_ride×jackpot×blood_contract` · `devils_advance` 드리프트 ·
 `seat_swap` 정산 순서 · conflicts↔synergy 표 모순)은 **한 건도 다시 적지 않았다.**

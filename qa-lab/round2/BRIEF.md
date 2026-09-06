@@ -12,9 +12,9 @@
 
 ## 환경
 
-워크트리 루트: `/Users/skul/majak/.claude/worktrees/qa-team-bug-testing-9be422`
+워크트리 루트: `~/majak/.claude/worktrees/qa-team-bug-testing-9be422`
 workspace 링크는 이미 만들어져 있다(`node_modules/@majak/*` → 이 워크트리).
-tsx: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/<네파일>.ts`
+tsx: `~/majak/node_modules/.bin/tsx qa-lab/round2/<네파일>.ts`
 테스트: `npx vitest run <파일>`
 
 ## 플레이 하네스

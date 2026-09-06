@@ -32,7 +32,7 @@
  * 넘기지 않게 하는 것이 요점이다(`run_shards.sh` 참고).
  *
  * 실행(단독, 전체):
- *   /Users/skul/majak/node_modules/.bin/tsx qa-lab/launch/fix/botfix/fire_rate.ts [games] [outFile]
+ *   ~/majak/node_modules/.bin/tsx qa-lab/launch/fix/botfix/fire_rate.ts [games] [outFile]
  * 실행(덩이 — start·end는 활성 증강 배열의 [start,end) 인덱스):
  *   ... fire_rate.ts [games] [outFile] [start] [end]
  *

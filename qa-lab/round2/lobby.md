@@ -16,7 +16,7 @@
 | 6 | 🟡 | 제보 «제출»이 한 번 실패하면 «올리는 중…»에 영구 고착 + 연타 방지도 실제로는 안 걸린다 |
 
 재현 스크립트: `qa-lab/round2/lobby/`
-(`/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/lobby/<파일>.ts`)
+(`~/majak/node_modules/.bin/tsx qa-lab/round2/lobby/<파일>.ts`)
 `t1-room` 방·대기실 / `t2-friend` 친구 / `t3-stats` 전적·통계(판 3개, ~15분) /
 `t4b-replay` 리플레이 재구성 대조(판 1개, ~5분) / `t5-misc` 초대·제보·공지 /
 `t6-room2` 대기실 나머지 / `t7-replayperm` 리플레이 권한·공유 / `t8-online` 온라인 표시.

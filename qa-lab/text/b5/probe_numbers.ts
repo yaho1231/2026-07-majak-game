@@ -1,6 +1,6 @@
 /**
  * 문구에 적힌 숫자를 하나씩 실측한다 (b5 배치).
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_numbers.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_numbers.ts
  */
 import { Prng, calculateScore } from "@majak/core";
 

@@ -49,7 +49,7 @@ DOM이 필요해 브라우저 없이는 못 잰다. 도움말 «증강이란» �
   🔒 배지가 붙고, 눌러 보면 「봉인된 패 — 이번 국 동안 버릴 수 없습니다」(둘 다 거짓),
   거기에 화면 배너로 「누군가 내 패 2장을 봉인했습니다」가 흔들리며 뜬다 —
   **아무도 아무것도 안 했고 자기가 방금 친 것이다.** 증강이 하나도 없는 판에서도 뜬다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/onboard/kuikaeSeal.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/onboard/kuikaeSeal.ts`
   ```
   증강 보유: p0:0 p1:0 p2:0 p3:0
   치 직후 잠긴 손패: [ 'man3', 'man6' ]
@@ -121,7 +121,7 @@ DOM이 필요해 브라우저 없이는 못 잰다. 도움말 «증강이란» �
   드래프트 경로(`BotAgent.ts:775`)와 국 사이 붙들기(`holdBetweenRounds`)도 같은 신호를
   읽으므로 같은 창을 가진다.
 
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/onboard/holdRace.ts 5 60`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/onboard/holdRace.ts 5 60`
   (사람이 한 수 둔 뒤 60ms — RTT+렌더 흉내 — 만에 `hold:true`를 보내고 3초를 읽는 척한다.
    그 3초 동안 봇이 버리면 샌 것이다.)
   ```
@@ -235,7 +235,7 @@ DOM이 필요해 브라우저 없이는 못 잰다. 도움말 «증강이란» �
   즉 그 사람은 «이제 진짜 판을 두는 중»이라고 믿으면서 **혼자만 이기는 인형극**을 계속한다.
   화면 어디에도 그 사실이 없다. 게다가 `onFinish`가 `TUTORIAL_KEY="1"`을 저장하므로
   "튜토리얼은 이미 봤다"로 기록까지 된다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/onboard/afterQuit.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/onboard/afterQuit.ts`
   ```
   1국 배패: man2 man3 man4 man5 man6 man7 pin4 pin5 pin6 pin7 sou1 sou2 sou2 sou9
   1국: 1장 1국 0본장

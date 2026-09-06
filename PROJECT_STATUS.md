@@ -519,7 +519,7 @@ Deploy
 
 Repo
 
-- `/Users/skul/majak` (npm workspaces 모노레포 · 2026-08-18에 `~/Documents` 밖으로 옮겼다 — 아래 CLAUDE.md TCC 절)
+- `~/majak` (npm workspaces 모노레포 · 2026-08-18에 `~/Documents` 밖으로 옮겼다 — 아래 CLAUDE.md TCC 절)
 - 패키지: `@majak/core` / `@majak/content` / `@majak/server` / `@majak/client`
 
 ---

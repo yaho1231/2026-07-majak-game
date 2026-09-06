@@ -1,6 +1,6 @@
 # synergy4 — 방해·수비·강(disrupt / defense / river / steal) 축 보고서
 
-작업 워크트리: `/Users/skul/majak/.claude/worktrees/augment-synergy-qa-test-ef77c4`
+작업 워크트리: `~/majak/.claude/worktrees/augment-synergy-qa-test-ef77c4`
 스크립트: `qa-lab/synergy4/disrupt/*.ts` (실행 `node_modules/.bin/tsx qa-lab/synergy4/disrupt/<파일>.ts`, 워크트리 루트에서)
 **소스는 한 줄도 고치지 않았다.**
 

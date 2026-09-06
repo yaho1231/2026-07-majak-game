@@ -18,7 +18,7 @@
 mp3 가 없다. 메인 체크아웃에는 있고, 공개 서버는 정상으로 준다:
 
 ```
-$ ls /Users/skul/majak/packages/client/public/*.mp3
+$ ls ~/majak/packages/client/public/*.mp3
 BackgroundBGM.mp3  richiBGM1.mp3  richiBGM2.mp3
 $ curl -o /dev/null -w "%{http_code} %{size_download}" http://localhost:3011/BackgroundBGM.mp3
 200 8690882bytes

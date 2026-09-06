@@ -12,3 +12,5 @@ replays/
 *.mp3
 # 배포 설정(비밀 — SIGNUP_CODE 등). deploy/majak.env.example만 커밋한다.
 deploy/majak.env
+__pycache__/
+*.pyc

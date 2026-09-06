@@ -30,7 +30,7 @@
 - **실제**: 미래를 보는 자(future_sight)의 교환이 패산 앞 3장을 통째로 소비하는데 resync가 걸리지 않아,
   `view:{holder}:triple_peek` 채널이 **이미 사라진 패**를 "다음 쯔모"로 계속 표시한다. 그 상태로 다음 쯔모가 오면 표시와 실제가 다르다.
   같은 증강의 알고리즘(`peekMyDrawKinds`)을 그 자리에서 다시 계산해 비교하면 값이 갈린다.
-- **재현**: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/info/repro_triple_fs.ts 1 1`
+- **재현**: `~/majak/node_modules/.bin/tsx qa-lab/info/repro_triple_fs.ts 1 1`
   (noDraft, `p0: ["triple_peek","future_sight"]`, `p1~p3: ["triple_peek"]`, 전원 masher)
 
   ```

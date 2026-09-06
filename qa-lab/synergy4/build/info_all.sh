@@ -11,7 +11,7 @@ N=$(( (TO - FROM + 1 + 7) / 8 ))
 for i in $(seq 0 7); do
   a=$(( FROM + i * N )); b=$(( a + N - 1 )); [ "$b" -gt "$TO" ] && b=$TO
   [ "$a" -gt "$TO" ] && continue
-  /Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy4/build/info_tier.ts "$a" "$b" "$CARDS" \
+  ~/majak/node_modules/.bin/tsx qa-lab/synergy4/build/info_tier.ts "$a" "$b" "$CARDS" \
     >> "$OUT/log.txt" 2>&1 &
 done
 wait

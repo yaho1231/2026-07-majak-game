@@ -5,7 +5,7 @@
 # 10종 × 20판 = 200판이라 그 절반 수준이다.
 set -e
 cd "$(dirname "$0")/../../../.." # repo root
-TSX=/Users/skul/majak/node_modules/.bin/tsx
+TSX=~/majak/node_modules/.bin/tsx
 GAMES=20
 OUTDIR=qa-lab/launch/fix/botfix
 mkdir -p "$OUTDIR"

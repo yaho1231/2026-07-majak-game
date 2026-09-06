@@ -8,7 +8,7 @@
 ## 규칙
 - 카탈로그: `qa-lab/synergy4/catalog.tsv` (id/이름/시너지축/anti/antiIds/conflicts/설명)
 - 하네스: `qa-lab/harness.ts` (`runMatch`, preset으로 좌석별 증강 강제, presetHands로 배패 강제)
-- 실행: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy4/<축>/<파일>.ts` (워크트리 루트에서)
+- 실행: `~/majak/node_modules/.bin/tsx qa-lab/synergy4/<축>/<파일>.ts` (워크트리 루트에서)
 - **먼저 예측을 글로 적고**(각각 단독일 때 숫자 vs 함께일 때 숫자), 그 상황을 강제로 만들어 재고, 다르면 원인을 소스에서 확인한다.
 - 단독 A, 단독 B, A+B 세 조건을 **같은 시드/같은 상황**으로 재서 비교한다. 이게 이 라운드의 핵심 방법이다.
 - `conflicts`로 잠긴 조합은 제외한다(같이 들 수 없다). `anti`는 제외하지 않는다 — 확률만 낮출 뿐 같이 들 수 있다.

@@ -30,7 +30,7 @@
 ## 참고
 
 - 원 보고서: `qa-lab/synergy3/<축>.md` — 위치·기대·실제·재현 스크립트가 다 적혀 있다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy3/<축>/<파일>.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/synergy3/<축>/<파일>.ts`
 - 유닛 테스트 본보기: `packages/content/test/settle_synergy_0823.test.ts`(오케스트레이터가 방금 쓴 것),
   `packages/content/test/discard_lock_hand_swap.test.ts`, `packages/content/test/helpers.ts`.
 

@@ -302,7 +302,7 @@
 | `sweep_live.ts` | 2장 조합 377개 실판 스위프 |
 | `sweep_cross.ts` | 좌석 교차 30조합 × 2시드 실판 스위프 |
 
-실행: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy4/kandora/<파일>.ts` (워크트리 루트에서)
+실행: `~/majak/node_modules/.bin/tsx qa-lab/synergy4/kandora/<파일>.ts` (워크트리 루트에서)
 
 > ⚠ 스위프 두 종은 결과를 표준출력으로만 남긴다. 세션 스크래치패드는 **형제 에이전트와 공유**되므로
 > 리다이렉트 경로를 겹치지 않게 잡을 것(이번에 한 번 겹쳐 로그가 섞였다).

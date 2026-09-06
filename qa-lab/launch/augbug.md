@@ -53,7 +53,7 @@
 직접 짜서 돌렸다(`craft()` + `FlowController`/`sys.settleDraw`/`sys.settleWin`으로 정확한
 국면을 세워, 실제 정산 파이프라인을 통과시켰다). 실행:
 ```
-/Users/skul/majak/node_modules/.bin/tsx qa-lab/launch/augbug/boundary_repro.ts
+~/majak/node_modules/.bin/tsx qa-lab/launch/augbug/boundary_repro.ts
 ```
 
 **① 황패유국(형식텐파이 포함) — die_hard가 노텐 벌부에도 반응하는가.**
@@ -139,8 +139,8 @@ p2의 버림을 p0·p1이 동시에 론(둘 다 탕야오만으로 야쿠 확보
 
 이어서 돌리려면(다음 라운드용):
 ```bash
-cd /Users/skul/majak/.claude/worktrees/game-launch-qa-plan-09cd26
-/Users/skul/majak/node_modules/.bin/tsx qa-lab/sweep.ts 94000 500 >> qa-lab/launch/augbug/sweep.log 2>&1 &
+cd ~/majak/.claude/worktrees/game-launch-qa-plan-09cd26
+~/majak/node_modules/.bin/tsx qa-lab/sweep.ts 94000 500 >> qa-lab/launch/augbug/sweep.log 2>&1 &
 ```
 
 ## 확정 항목
@@ -352,9 +352,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout?: () => void): Prom
 새로 고친 `withTimeout`으로 600판을 채운다. 하나가 다시 걸려도 그 프로세스만 멈추고
 나머지는 영향받지 않는다:
 ```bash
-cd /Users/skul/majak/.claude/worktrees/game-launch-qa-plan-09cd26
+cd ~/majak/.claude/worktrees/game-launch-qa-plan-09cd26
 for s in 95000 95100 95200 95300 95400 95500; do
-  nohup /Users/skul/majak/node_modules/.bin/tsx qa-lab/sweep.ts $s 100 \
+  nohup ~/majak/node_modules/.bin/tsx qa-lab/sweep.ts $s 100 \
     >> qa-lab/launch/augbug/sweep.log 2>&1 &
   disown
 done
