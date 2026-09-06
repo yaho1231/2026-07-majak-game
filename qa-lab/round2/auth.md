@@ -8,7 +8,7 @@
 - 실측: FakeSocket + 실제 `RoomManager`/`SiteDb`(임시 DB·임시 리플레이 디렉터리)로 7종 스크립트.
   **운영 체크아웃·운영 DB·운영 서버는 건드리지 않았다.** 브라우저 자동화 미사용.
 - 스크립트: `qa-lab/round2/auth/harness.ts`, `probe1.ts` ~ `probe7.ts`
-  (`/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/auth/probeN.ts`)
+  (`~/majak/node_modules/.bin/tsx qa-lab/round2/auth/probeN.ts`)
 - 커버리지: 가입 규칙 18종 · 비밀번호 규칙 6종 · 세션(발급·TTL·로그아웃·재사용·상한 10)
   · 비밀번호 변경 · 다른 기기 로그아웃 · 게스트(시작·이어하기·전환·방 예산) · 레이트리밋
   · DB 평문 검사 · 클라이언트 폼.

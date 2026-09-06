@@ -1,7 +1,7 @@
 /**
  * 재검증 6 보조: **실제 서버 대국 리플레이**의 종국 분포.
  *
- * /Users/skul/majak/replays/*.jsonl 을 읽어 마지막 RoundStarted 의 장풍을 본다.
+ * 운영 체크아웃의 replays/*.jsonl 을 읽어 마지막 RoundStarted 의 장풍을 본다.
  *  - prevalentWind: 1=동 2=남 3=서
  *  - 반장전(남까지)에서 장풍 3(서)에 도달한 판 = 서입
  * 사람이 낀 판(playerMeta.isBot=false 가 하나라도)과 봇만인 판을 갈라 센다.
@@ -9,8 +9,11 @@
  * 실행: tsx qa-lab/verify-disrupt/r6_real_replays.ts
  */
 import { readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 
-const DIR = "/Users/skul/majak/replays";
+// 운영 체크아웃의 리플레이 폴더. 다른 곳에 있으면 REPLAY_DIR 로 준다.
+const DIR = process.env.REPLAY_DIR ?? resolve(homedir(), "majak/replays");
 const files = readdirSync(DIR).filter((f) => f.endsWith(".jsonl"));
 
 interface Row { human: boolean; maxWind: number; rounds: number; mode: string; }

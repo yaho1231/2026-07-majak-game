@@ -41,7 +41,7 @@ RoomManager 를 in-process 로 띄우고 FakeSocket 으로 WS 프레임을 주�
   루프 밖이라 플래그가 그대로 살아 있고, **다음 국의 첫 결정 지점**에서 소비되어
   다음 국이 시작하자마자 `adminVoid` 도중유국이 된다.
   요청 쪽(`requestRoundVoid`)에도 `room.phase === "playing"` 외의 시점 검사가 없다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/admin/04-voidround.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/admin/04-voidround.ts`
   ```
   roundOver#0 draw   reason=- round=2 honba=1     ← 물리려던 국. 그대로 정산됐다
   roundOver#1 abort  reason=- round=2 honba=2     ← 엉뚱한 다음 국이 즉시 무효
@@ -74,7 +74,7 @@ RoomManager 를 in-process 로 띄우고 FakeSocket 으로 WS 프레임을 주�
      간다. 서버는 `if (room.paused === paused) return;`(RoomManager.ts:4001)로
      **응답 없이 조용히 무시**한다 → `gamePaused` 가 안 오니 state 가 안 바뀌고
      버튼은 영구히 «재개»에 박힌다. 관전을 완전히 접기 전까지 B방엔 일시정지를 쓸 수 없다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/admin/03-spectate.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/admin/03-spectate.ts`
   ```
   FAIL  탁자를 옮기면 앞 탁자의 «정지»가 해제되어 전달된다 — gamePaused(false)=false
         spectateEnded=false 받은=["spectateStarted","catalog","view","spectateInsight"]
@@ -101,7 +101,7 @@ RoomManager 를 in-process 로 띄우고 FakeSocket 으로 WS 프레임을 주�
   `NoticeBanner` 는 로그인 화면과 홈 화면에만 렌더된다. 대국 화면·대기실에는
   공지를 그리는 자리가 아예 없다. 방 공지(`roomNotice`)는 대국 화면에 자리가 있지만
   (App.tsx:12009) 전역 공지와는 다른 채널이다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/admin/07-static.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/admin/07-static.ts`
   ```
   FAIL  전역 공지 띠가 대국/대기실 화면에도 선다 — 렌더 자리 = AuthScreen:7146, HomeScreen:10391
   ```
@@ -125,7 +125,7 @@ RoomManager 를 in-process 로 띄우고 FakeSocket 으로 WS 프레임을 주�
     시작 실패 `:5210`) → `endSpectating` → `conn.spectating = null` 만 하고
     **로그 없음 · `conn.spectateSince` 안 비움 · `conn.spectateTimers` 안 걷음**.
     (`spectating` 이 null 이 됐으므로 뒤이은 `stopSpectating` 도 즉시 return 한다.)
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/admin/12-spectate-end.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/admin/12-spectate-end.ts`
   ```
   FAIL  판이 끝나 관전이 끊길 때도 «관전 종료» 감사 로그가 남는다 — (로그에 강제종료만 있다)
   FAIL  ... spectateSince 가 0으로 돌아간다 — spectateSince=1787353470490
@@ -150,7 +150,7 @@ RoomManager 를 in-process 로 띄우고 FakeSocket 으로 WS 프레임을 주�
   보지 못하고, 실제로 `VOLATILE_MESSAGES` 에도 `RESENDABLE_MESSAGES` 에도 없다.
   경고 주석이 가리키는 것과 **정반대 방향**의 같은 실수다.
 - 재현: `grep -n "adminSetNotice" packages/client/src/resendPolicy.ts` → 없음.
-  `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/admin/07-static.ts` 의
+  `~/majak/node_modules/.bin/tsx qa-lab/round2/admin/07-static.ts` 의
   "adminSetNotice 가 재전송 정책 두 목록 중 하나에 분류돼 있다" FAIL.
 - 영향: 런타임 피해는 작다 — `isResendable` 기본값이 false 라 사실상 볼라틸로 동작한다.
   다만 (a) 끊긴 사이 세운 «점검 예고» 공지가 **아무 알림 없이 조용히 사라지고**,
@@ -210,7 +210,7 @@ RoomManager 를 in-process 로 띄우고 FakeSocket 으로 WS 프레임을 주�
 
 ## 재현 스크립트
 전부 `qa-lab/round2/admin/` 에 있다.
-실행: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/admin/<파일>.ts`
+실행: `~/majak/node_modules/.bin/tsx qa-lab/round2/admin/<파일>.ts`
 
 | 파일 | 내용 | 결과 |
 |---|---|---|

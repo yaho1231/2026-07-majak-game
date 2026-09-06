@@ -2,7 +2,7 @@
 
 기준 커밋: `e3e53b5` (89건 수정 이후 소스). 모든 판정은 **실행 출력**으로 뒷받침한다.
 재현 스크립트는 `qa-lab/verify-hand/` 아래에 있고, 실행은 워크트리 루트에서
-`/Users/skul/majak/node_modules/.bin/tsx qa-lab/verify-hand/<파일>` 이다.
+`~/majak/node_modules/.bin/tsx qa-lab/verify-hand/<파일>` 이다.
 
 **결과: 확정 5건 · 기각 2건 · 보류 0건.**
 

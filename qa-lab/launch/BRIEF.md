@@ -42,15 +42,15 @@
 - 다른 담당 파일(`qa-lab/launch/*.md`)을 덮어쓰지 마라. 네 파일만 쓴다.
 
 ## 환경 (필수 준수)
-- 워크트리 루트: `/Users/skul/majak/.claude/worktrees/game-launch-qa-plan-09cd26`. 여기서만 작업.
+- 워크트리 루트: `~/majak/.claude/worktrees/game-launch-qa-plan-09cd26`. 여기서만 작업.
   `node_modules/@majak/*` 링크는 이미 걸려 있다.
-- tsx 실행: `/Users/skul/majak/node_modules/.bin/tsx <파일>`
+- tsx 실행: `~/majak/node_modules/.bin/tsx <파일>`
 - 서버가 필요하면 **자기 포트 + 격리 DB**로 직접 띄운다:
   ```bash
   PORT=<배정포트> DB_PATH=/tmp/qa-launch-<담당>/majak.db REPLAY_DIR=/tmp/qa-launch-<담당>/replays \
-    /Users/skul/majak/node_modules/.bin/tsx packages/server/src/index.ts &
+    ~/majak/node_modules/.bin/tsx packages/server/src/index.ts &
   ```
 - ⚠ **포트 3011 = 공개 서버.** 절대 건드리지 마라. `pkill -f` 금지 — 죽일 때는 **PID로만**.
 - ⚠ `git checkout -- ` / `git restore` / `git stash` 금지 (미커밋 변경이 날아간다).
 - 클라이언트 UI를 봐야 하면 `npm run dev:client` (vite) 대신
-  `/Users/skul/majak/node_modules/.bin/vite --port <배정vite포트>` 를 `packages/client` 에서 띄운다.
+  `~/majak/node_modules/.bin/vite --port <배정vite포트>` 를 `packages/client` 에서 띄운다.

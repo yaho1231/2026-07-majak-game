@@ -124,7 +124,7 @@
   [재접속]   정지 — 결과 화면 뜬 지 463ms · 정지 유지 26069ms · 복귀했다
              재개 후 첫 새 뷰까지: 1ms       → FAIL (대기가 통째로 사라졌다)
   ```
-  단위 재현(서버 불필요): `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/spectate/s03-pause-continue.ts`
+  단위 재현(서버 불필요): `~/majak/node_modules/.bin/tsx qa-lab/round2/spectate/s03-pause-continue.ts`
   → `정지 중인데 국간 대기가 스스로 풀렸는가: true` / 대조군 `결정은 정지 중 재접속에도 서 있는가: true`
 - 영향: 대회에서 정지를 거는 이유의 절반이 "결과 화면을 띄워 놓고 해설한다"이다. 그 사이 선수 한
   명의 네트워크가 한 번만 끊겼다 붙어도(대회장 와이파이에서 흔하다), 재개 버튼을 누르는 순간

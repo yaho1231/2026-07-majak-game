@@ -29,9 +29,9 @@
   경로를 격리할 수 있다고 전제하지만, 서버 본체(`index.ts`)는 이 값을 전혀 읽지 않고
   **항상 `process.cwd()/../../replays`로 고정**돼 있다. `DB_PATH`는 env로 오버라이드
   가능하지만(`index.ts:66`) `REPLAY_DIR`은 아니다.
-- 재현/근거: 워크트리 루트(`/Users/skul/majak/.claude/worktrees/game-launch-qa-plan-09cd26`)에서
+- 재현/근거: 워크트리 루트(`~/majak/.claude/worktrees/game-launch-qa-plan-09cd26`)에서
   `PORT=3110 DB_PATH=/tmp/qa-launch-ops/replays/majak.db REPLAY_DIR=/tmp/qa-launch-ops/replays`로
-  기동했더니, 부팅 로그가 `Replays     : /Users/skul/majak/.claude/replays`를 찍었다 —
+  기동했더니, 부팅 로그가 `Replays     : ~/majak/.claude/replays`를 찍었다 —
   지정한 `/tmp/qa-launch-ops/replays`가 아니라 **워크트리 두 단계 위, `.claude` 바로
   아래의 공유 경로**로 실제 리플레이·통계 파일이 쓰였다(`stats.analytics.json` 생성 확인,
   정리 후 삭제함). 프로덕션은 `scripts/majak.sh:88`이 항상 `cd "$ROOT/packages/server"` 뒤에

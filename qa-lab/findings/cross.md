@@ -34,7 +34,7 @@
   - 한 스테이지의 진행은 (전원 오퍼 추첨 → 전원 응답 → **고정 좌석 순서로 pick 적용**)이다.
   - p0가 cornucopia를 픽하는 순간 지급이 즉시 일어나는데, 그 시점에 p3의 픽은 **아직 적용 전**이라
     `heldByAnyone`에 없다. 곧바로 p3의 픽이 적용되면서 같은 증강이 두 사람 손에 남는다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/cross/repro_dup_live.ts 3443 tonpuu`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/cross/repro_dup_live.ts 3443 tonpuu`
   (실제 대국, 페르소나 무작위, preset 없음)
   ```
   --- gameStart @1-1-0
@@ -66,7 +66,7 @@
   수상한 주사위가 한 스테이지에 3장을 밀어 넣으면 그 대응이 깨진다. 게다가 원본에서는
   지급분이 **cornucopia 자신보다 먼저** 등록된다(`grantAugments`가 `install()` 안에서 즉시 설치하고,
   cornucopia 자신의 `ctx.reaction`은 그 뒤에 등록된다).
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/cross/rebuild_order.ts 300`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/cross/rebuild_order.ts 300`
   ```
   300 seeds × 2 모드 = 600 게임
   cornucopia 등장 76, 설치 순서 불일치 75
@@ -90,7 +90,7 @@
   (`future_sight:stacks:2-1-4:p0`, `spy:marked:3-1-8:p2`, `hidden_river:fog:1-1-0:p0`,
   `cliff_bloom:kans:2-3-6:p2`, `pond_snatch:taken:1-2-1:p1`, `suit_unify:unified:2-4-7:p3` …).
   이런 키는 **읽히지 않게 될 뿐 지워지지 않는다** — `augmentData`가 국마다 단조 증가한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/cross/keygrowth.ts 7 hanchan`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/cross/keygrowth.ts 7 hanchan`
   ```
   R1 1-1-0  keys=10 (+10/-0)   R5  2-1-4  keys=43 (+16/-0)
   R8 2-4-7  keys=71 (+9/-0)    R12 3-4-11 keys=94 (+5/-0)

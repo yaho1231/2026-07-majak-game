@@ -2,7 +2,7 @@
  * ① 격(格) — "지목은 … 국이 끝나면 풀린다"인데 전원 공개 지목 배지가 정산 뒤에도 남는다.
  * ② 덤터기 — "나머지 두 명은 한 푼도 내지 않는다"가 Transfer 단계 증강 앞에서 깨진다.
  *
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_rank_gate_and_scapegoat.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_rank_gate_and_scapegoat.ts
  */
 import type { GameState, PlayerId } from "@majak/core";
 import { craft, lastSettled, start } from "../../score-b/scene.js";

@@ -8,7 +8,7 @@
 워크트리 루트에서:
 
 ```bash
-/Users/skul/majak/node_modules/.bin/tsx qa-lab/<경로>.ts
+~/majak/node_modules/.bin/tsx qa-lab/<경로>.ts
 ```
 
 > 워크트리라면 먼저 workspace 링크를 만들어야 **이 워크트리의 소스**를 검사한다

@@ -303,7 +303,7 @@ docs/26 기준 **함께 뜨도록 설계된 조합**이다.)
 
 ## 스크립트
 
-전부 `/Users/skul/majak/.claude/worktrees/augment-qa-testing-550e60/qa-lab/synergy3/relax/` 아래.
+전부 `~/majak/.claude/worktrees/augment-qa-testing-550e60/qa-lab/synergy3/relax/` 아래.
 
 - `lib.ts` — 공용 하네스(craft 래핑 · 다중 증강 설치 · 화료/유국 정산 실행)
 - `repro_han_stack.ts` · `repro_yakuless.ts` · `repro_openriichi.ts` — 확정 1

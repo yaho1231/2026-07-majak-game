@@ -43,7 +43,7 @@
   하드 필터링**한다. 노텐이면 후보가 0개라 프롬프트에 액션이 한 개도 실리지 않는다.
   옵션은 validate로 한 번 더 걸러지므로(리치 봉인 실험으로 확인) 후보 0 = 실행 불가다.
   결과적으로 docs/25 리치 #11의 수정은 **세 증강에서 그대로 무효**다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/riichi/probe_siege.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/riichi/probe_siege.ts`
   (p0 = 완전 노텐 `147m147p147s1234z5z`, 증강 = `siege_riichi` + 대상 1종)
   ```
   stealth_riichi       노텐: 표준riichi후보=14 stealth_riichi후보=0    validate=null
@@ -68,7 +68,7 @@
     리치 해제가 아니라 **대기 교체**가 되었다(리치·공탁 그대로).
 - 기대: 문구대로라면 palm_flip 발동 시 봉인이 풀리고 판돈이 사라져야 한다.
 - 실제: palm_flip을 써도 리치가 그대로 서 있으므로 봉인도 판돈도 그대로다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/riichi/probe_palmflip_texts.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/riichi/probe_palmflip_texts.ts`
   ```
   [riichi_seal × palm_flip]   flip.ok=true riichi유지=true p1봉인 true -> true
   [all_or_nothing × palm_flip] flip.ok=true riichi유지=true 판돈=12000
@@ -86,7 +86,7 @@
 - 실제: 오름패의 남은 장수를 전혀 보지 않는다. 3통/9삭 샹퐁 대기에서 3통 4장이 이미
   (내 손 2장 + 상대 손 2장) 전부 소진된 상태여도, 4통을 쯔모하면 3통으로 밀려 화료가 뜬다.
   그 순간 게임 안에 **3통이 5장** 존재한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/riichi/probe_offbyone_fifth.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/riichi/probe_offbyone_fifth.ts`
   ```
   쯔모 전: pin3=4 pin4=4
   쯔모 후: pin3=5 pin4=3 드로우패종류=pin3
@@ -104,7 +104,7 @@
   **공탁을 내지 않으므로** 점수가 500점이어도 걸 수 있다(두 액션의 validate에 점수 조건이 없다).
 - 실제: 점수 500점인 보유자의 본인 뷰에 `riichiBlocked="notEnoughPoints"`가 실린다 —
   같은 프롬프트에 그 증강의 리치 후보가 14개 떠 있는데도.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/riichi/probe_blocked_ui.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/riichi/probe_blocked_ui.ts`
   ```
   stealth_riichi   score=500 stealth_riichi후보=14 표준riichi후보=0 view.riichiBlocked=notEnoughPoints
   no_retreat       score=500 no_retreat_riichi후보=14 표준riichi후보=0 view.riichiBlocked=notEnoughPoints
@@ -121,7 +121,7 @@
   리치는 3개뿐이므로 사가리치가 성립할 이유가 없다.
 - 실제: 공개 리치 3 + 스텔스 리치 1이면 **그 순간 유국(round.over)** 이 된다. 정산이 열리면서
   숨어 있던 리치가 드러난다(정산은 은닉 대상이 아니다).
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/riichi/probe_four_riichi.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/riichi/probe_four_riichi.ts`
   ```
   three          status=awaiting  phase=turn.act   p0가 보는 p3리치=false   ← 3리치는 계속 진행
   three+stealth  status=roundOver phase=round.over p0가 보는 p3리치=true    ← 스텔스가 4번째로 세어져 유국
@@ -148,7 +148,7 @@
 - 파급: **이중 선언(riichi_upgrade)의 트리플리치 판정도 같은 값을 본다** —
   `riichi_upgrade.ts:97` `naturalDouble = rs.riichi.discardIndex === 0 && !goAroundBroken`,
   그리고 `discardIndex` 역시 `discardsBefore`다. 그래서 같은 상황에서 리치가 **4판**으로 값한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/riichi/probe_double_pond.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/riichi/probe_double_pond.ts`
   (p0가 이미 2장을 버린 상태 `discards: {p0:"1z2z"}` — 바닥만 비우고 `discardCount`는 2 그대로)
   ```
   바닥비움=false submit.ok=true discardCount(선언전)=2 바닥길이(선언전)=2 → riichi.double=false
@@ -180,7 +180,7 @@
   (docs/24 §1의 알려진 `seat_swap`×리치는 **대상** 쪽 가드 이야기라 다른 건이다.)
 - 실제: 리치 중인 보유자가 자기 손 13장을 통째로 남의 손과 맞바꾼다. **리치는 그대로 서 있고
   공탁도 그대로**라, 공개된 리치 선언패와 완전히 무관한 손으로 화료할 수 있다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/riichi/probe_selfswap.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/riichi/probe_selfswap.ts`
   ```
   full_hand_swap   submit.ok=true  손패바뀜=true  리치유지=true 공탁=1000
   hand_swap3       submit.ok=false 손패바뀜=false 리치유지=true 공탁=1000   ← 가드 있음(정상)

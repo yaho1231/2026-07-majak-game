@@ -52,7 +52,7 @@
   - 단기 해석: 333m(안커4) + 456m + 777p(안커4) + 234s + 머리 66m + 단기2 + 쯔모2 = 32 → **40부**
   - 샹퐁 해석: 666m(안커4) + 345m + 777p(안커4) + 234s + 머리 33m + 쯔모2 = **30부**
   - 엔진은 단기 변형을 아예 만들지 않고 30부로 정산한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/rules/repro_tanki_filter.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/rules/repro_tanki_filter.ts`
   ```
   ■ 333m 456m 66m 777p 234s — 6m 쯔모 (자)
     변형 2개: shanpon, ryanmen  (단기 포함? false)
@@ -90,7 +90,7 @@
 - 실제: `discardAction.validate` 는 (1) 턴/페이즈 (2) 손에 있는 패인지 (3) 리치 중이면 쯔모패인지
   (4) 증강이 봉인한 패인지 — 이 넷만 본다. 직전 후로 몸통은 **한 번도 참조하지 않는다.**
   `state.round.lastCall`/직전 Meld를 보는 코드가 없다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/rules/flow.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/rules/flow.ts`
   ```
   FAIL 쿠이카에(현물) 금지 — validate=null
   FAIL 쿠이카에(스지) 금지 — validate=null
@@ -119,7 +119,7 @@
 - 실제: 도중유국도 장풍·국번이 그대로 남으므로 `agariYameTriggers` 가 렌짱으로 읽는다.
   남4국에서 도중유국이 나고 오야가 단독 1위이면 **게임이 그 자리에서 끝난다**.
   누가 선언했는지도 보지 않는다 — **1위 오야 본인이 구종구패를 선언해 종국을 확정**할 수 있다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/round2/rules/endgame.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/round2/rules/endgame.ts`
   (남4국·오야=p3·점수 20000/20000/20000/40000 상태를 세우고 `HanchanController.resume` 으로 돌린다)
   ```
   FAIL 도중유국(구종구패)로 게임이 끝나지 않는다 — reason=agariYame outcomes=abort@2-4-1 시작된국=1

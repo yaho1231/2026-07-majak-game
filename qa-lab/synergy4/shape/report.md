@@ -1,7 +1,7 @@
 # synergy4 — 화료형·역만 축 (shape / yakuman / kokushi / chiitoi / tanyao / terminal / honor / suit / relax_win)
 
 작성 2026-08-31. 소스는 한 줄도 고치지 않았다. 스크립트는 전부 이 디렉터리 안에 있다.
-실행: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/synergy4/shape/<파일>.ts` (워크트리 루트에서)
+실행: `~/majak/node_modules/.bin/tsx qa-lab/synergy4/shape/<파일>.ts` (워크트리 루트에서)
 
 ## 담당 증강 26장
 

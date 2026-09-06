@@ -1,6 +1,6 @@
 # 반장전 밸런스 QA 공통 브리프
 
-저장소: /Users/skul/majak/.claude/worktrees/augment-balancing-qa-review-95f55a (읽기 전용 감사. 코드 수정 금지.)
+저장소: ~/majak/.claude/worktrees/augment-balancing-qa-review-95f55a (읽기 전용 감사. 코드 수정 금지.)
 
 ## 배경
 - 두 모드가 있다: `tonpuu`(동풍전, maxWind=1, 드래프트 3회: gameStart/eastThird/eastFourth)와

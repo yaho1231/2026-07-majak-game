@@ -50,7 +50,7 @@
 - 실제: 후리텐 상대를 통째로 건너뛴다. 그런데 **철벽(iron_wall)은 "후리텐을 무시하고 론할 수
   있다"**가 능력의 전부다. 철벽을 든 후리텐 상대는 탐지에서 완전히 사라지고, 화면은
   "위험패 없음"을 보여 준다. 오탐을 없애려고 넣은 필터가 정반대의 **거짓 안전**을 만들었다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_danger_iron.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_danger_iron.ts`
   ```
   A 후리텐X · 철벽X: kinds=["man3"]  3m위험표시=true
   B 후리텐O · 철벽X (표시 안 되는 게 맞음): kinds=[]  3m위험표시=false
@@ -67,7 +67,7 @@
   뺀 근거로 "오탐은 곧 능력값의 손실"이라고 적어 두었으니, 기준은 **실제로 쏘이는가**다.
 - 실제: 후로해서 역이 하나도 없는 텐파이 상대(론 불가)의 대기가 그대로 위험패로 뜬다.
   후리텐은 빼고 무역은 안 빼는 **반쪽 기준**이다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_danger_noyaku.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_danger_noyaku.ts`
   ```
   지뢰 탐지 결과 = ["man1","man9","sou2"]  → 2s를 위험으로 표시? true
   2s를 버린 뒤 p1 옵션 = ["chi","pass"] → 실제 론 가능=false
@@ -83,7 +83,7 @@
   내보낸다'는 곧 버림이고, 버림은 후리텐을 만든다.
 - 실제: 화면상 그 패는 내 바닥에 놓여 있는데 후리텐이 걸리지 않아, **자기 바닥에 놓인
   바로 그 패로 론한다.**
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_recall.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_recall.ts`
   ```
   쯔모패=pin3  p1 바닥=wind1
   회수 후: p1 손패 14장, 바닥=pin3, discardedKinds=["wind1"]     ← pin3이 이력에 없다
@@ -105,7 +105,7 @@
   문구를 믿고 4번째 자리에 오름패를 놓아 둔 플레이어는 그 패를 남에게 넘긴다.
   (같은 계열인 `triple_peek`은 detail에 "차례가 밀려도 지금 기준으로 다시 계산된다"고
   적고 실제로 다시 계산한다 — 예지에는 그 문장도 그 계산도 없다.)
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_foresight_seat.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_foresight_seat.ts`
   ```
   [퐁 없음] 발동 후 p0 채널 = ["pin6","pin6","pin7","pin7"]
     p0가 실제로 쯔모한 패 = pin7 → 예고 4장 중 **4번째**   일치=true
@@ -126,7 +126,7 @@
 - 실제: `visibility.discards` 모디파이어는 **자기 보유자만** 면제한다. 다른 사람이 건
   안개의 모디파이어는 나를 면제하지 않으므로, 안개 둘이 겹치면 **양쪽 보유자가 모두**
   최근 6장만 보게 된다. 횟수를 태워 시야를 얻는 증강이 시야를 잃는 결과가 된다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_fog_two.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b1/repro_fog_two.ts`
   (표기: 각 관전자가 보는 **p2의 바닥**)
   ```
   보유=p0     선언=p0     → p0: "public"                              ← 정상
@@ -148,7 +148,7 @@
   추격하면 대납할 원금이 없어 0원**이 된다. 일발 소멸과 손 가치 강탈은 그대로라
   발동은 "성공"으로 보이는데, 문구가 약속한 1000점만 조용히 사라진다.
   (detail은 예외를 하나만 적어 두었다 — "상대가 1000점 미만이면 그만큼만". 이 경우는 없다.)
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_counter.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_counter.ts`
   ```
   A 추격리치=riichi             p0공탁=1000 p1점수 24000→23000 (대납 1000) 일발=false struck=true
   A 추격리치=no_retreat_riichi  p0공탁=0    p1점수 24000→24000 (대납 0)    일발=false struck=true
@@ -165,7 +165,7 @@
 - 실제: 카운터의 대상은 "그 국에 **가장 먼저 리치를 건 한 사람**"이고, 그 대상 id가
   전원 공개 채널에 실린다. 숨은 리치자가 첫 리치였다면 **"저 사람이 리치다"가 그대로
   공개**된다. 리치 표시 자체는 여전히 false라, 화면 두 곳이 서로 다른 말을 한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_counter.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_counter.ts`
   ```
   B 스텔스선언ok=true 추격리치ok=true
     p2가 보는 p1의 리치표시 = false            ← 은닉은 유지되는 척
@@ -183,7 +183,7 @@
   버렸거나 후로로 순서가 흐트러졌어도 상관없다."** 방해에 강하다고 명시한 카드다.
 - 실제: 안깡 한 번이 `turnCount`를 7→8로 밀어, **플레이어가 세기에 7순째인 리치**가
   승격에서 빠진다. 리치 2판 + 보너스 1판, 합 3판이 통째로 증발한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_latedouble_kan.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_latedouble_kan.ts`
   ```
   ① 오야 7순 · 깡 없음   riichi.ok=true turnCount=7 double=true
   ② 안깡 후 turnCount 7 → 8 (영상 쯔모가 오야 쯔모로 세어졌다) rinshan=true
@@ -202,7 +202,7 @@
 - 기대: detail — **"파기되면 그 뒤로는 평범하게 론당한다."** 파기는 되돌릴 수 없는 사건이다.
 - 실제: 리치로 조약을 깬 뒤 `last_stand`(승부수)로 리치를 취소하면 `rs.riichi`가 다시
   `null`이 되어 **면역이 그대로 돌아온다.** 배너도 "조약 유효 — 6순까지 론 불가"로 되돌아간다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_noronpact.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_noronpact.ts`
   ```
   ① 3순, 리치 전         ronImmune=true  배너=undefined
   ② 리치 선언 직후        ronImmune=false 배너="조약 파기 — 론 가능"
@@ -219,7 +219,7 @@
   자기 차례가 도는 횟수다.
 - 실제: 다른 사람이 영혼의 일격으로 혼자 6번 뽑는 동안 `turnCount`가 1→7이 되어,
   **내가 한 번도 더 버리지 않았는데** 조약이 만료된다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_soulstrike_turncount.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_soulstrike_turncount.ts`
   ```
   시작: turnCount=1 p1(불가침) ronImmune=true
   영혼의 일격 6쯔모 뒤: turnCount=7 p1(불가침) ronImmune=false
@@ -236,7 +236,7 @@
 - 기대: 둘 중 하나가 맞아야 한다. 카드 앞면(description)은 **모든 깡**이 파기라고 읽힌다.
 - 실제: 구현은 detail 쪽이다 — **안깡은 손을 열지 않는다.** 묵계 퐁 + 안깡 손은 그대로
   멘젠이라 리치가 열리고 멘젠쯔모가 붙는다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_silentpact_ankan.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_silentpact_ankan.ts`
   ```
   묵계퐁 + none : openMeldCount=0 표준riichi=null                              yaku=menzen_tsumo,yakuhai_haku
   묵계퐁 + ankan: openMeldCount=0 표준riichi=null                              yaku=menzen_tsumo,yakuhai_haku
@@ -255,7 +255,7 @@
   그 결과 ① 같은 국에 스텔스 리치를 **한 번 더** 걸 수 있고(후보 2개, 제출 성공),
   ② 그 뒤 **공탁 1000점을 낸 평범한 표준 리치까지 `hidden=true`가 되어 숨는다.**
   공탁은 냈는데 남들 화면에는 리치가 없다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_stealth_laststand.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_stealth_laststand.ts`
   ```
   ① stealth_riichi ok=true riichi={"double":true,"ippatsu":true,…,"cost":0} hidden=true
   ② cancel_riichi ok=true riichi=null
@@ -275,7 +275,7 @@
   대상은 전원에게 공개된다."** 공개 표시는 봉인과 같이 살고 같이 죽어야 한다.
 - 실제: 승부수로 리치를 취소하면 봉인은 즉시 풀리는데(`p1봉인=false`) 공개 채널은
   여전히 `"p1"`이다. **하가는 리치를 걸 수 있는데 화면은 "너는 봉인됐다"고 말한다.**
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_upgrade_seal.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b2/repro_upgrade_seal.ts`
   ```
   ① 선언 전            p1봉인=false
   ② 이중 선언 리치 후    p1봉인=true  공개채널="p1"
@@ -294,7 +294,7 @@
   기준은 이미 저장소 안에 있다.
 - 실제: 고립도만 보므로 **그 국의 도라이면서 적도라이기도 한 패**가 재료로 뽑혀 사라진다.
   경고 문구도 없다(`alchemist`·`tile_dyeing`은 둘 다 ⚠로 적도라 소멸을 경고한다).
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b3/probe.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b3/probe.ts`
   ```
   ##### 1. tile_split
     도라 표시패: pin4 → 도라는 pin5
@@ -312,7 +312,7 @@
 - 기대: detail — **"부족한 세 번째 장은 손패에서 가장 고립된 **잡패** 하나가 그 패로
   변신(생성패)해 채우며"**. 이 카드도 적도라 경고가 없다.
 - 실제: 적5가 재료로 뽑혀 다른 패로 덮어써지고 빨간색이 사라진다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b3/probe.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b3/probe.ts`
   ```
   ##### 3. bluff_pretense
     발동 전 손패: man1 … man9 pin5(적) wind1
@@ -331,7 +331,7 @@
 - 실제: 진짜 적5(적도라)도, 붉은 손길이 각인한 적도라도 **평범한 패로 돌아온다.**
   코드에는 "보존하는 것은 kind뿐이므로 적도라 표식은 따라오지 않는 게 맞다"는 의도 주석이
   달려 있다 — 구현은 의도대로지만 **문구가 그 의도를 한 글자도 안 적었다.**
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b3/repro_regret_red.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b3/repro_regret_red.ts`
   ```
   유국 직전 p0 손패(13장): man1 … man5(적)[p0] … pin4 pin5(적)
   보존된 값(regret:keep:p0): [{"suit":"man","rank":1}, … ]
@@ -353,7 +353,7 @@
   같은 상태의 후리텐 이력(`discardedKinds`)은 울려 나간 패도 그대로 센다.
 - 실제: 東·南·白·白 넉 장을 버렸는데 그중 白 한 장이 퐁당하면 **세 장만** 기억된다.
   자패를 흘려 두는 것이 이 카드의 플레이인데, 그 자패를 상대가 울어 가면 손해가 두 번 난다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b3/repro_honor_return_called.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b3/repro_honor_return_called.ts`
   ```
   p0가 白 버림 → p0 바닥: wind1 wind2 dragon1 dragon1
   p1 퐁 후 p0 바닥: wind1 wind2 dragon1
@@ -376,7 +376,7 @@
   ① 쯔모패가 아예 없어서(`lastDrawnTile=null`) 남는 한 장이 **내 옛 손패 중 아무 패**가 된다.
   ② 나도 울었으므로 `sameHandSize`가 **"이미 울어 둔 상대"를 후보로 올린다** —
      문구는 조건 없이 "뜨지 않는다"고 적었다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b3/repro_seat_swap_postcall.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b3/repro_seat_swap_postcall.ts`
   ```
   === B) p0가 펑한 직후 (p0 멘쯔 1, 상대는 전부 멘쯔 0)
     seat_swap 후보 대상 = []
@@ -405,7 +405,7 @@
 - 경위: docs/30 §357이 "`conflicts` 3종도 미기재"를 지적했고 2026-08-17 `1afddb4`가 문장을
   넣어 고쳤는데, 그때 센 것은 **자기 파일의 배열 3개뿐**이라 2026-08-05에 반대편에서 걸어 둔
   네 번째 배제가 빠졌다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/repro_open_riichi_conflicts.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/repro_open_riichi_conflicts.ts`
   ```
   DETAIL 끝문장: 승부수·손바닥 뒤집기·염색과는 함께 가질 수 없다.
   실제 conflicts: [ 'last_stand(승부수)', 'palm_flip(손바닥 뒤집기)', 'tile_dyeing(염색)' ]
@@ -427,7 +427,7 @@
 - 실제: 역만이 뜨는 순간 보너스가 0이 된다. 하필 이 둘은 역만과 겹치기 쉬운 카드다 —
   해저의 지배자는 해저 쯔모를 확정시켜 스안커·사암각 같은 손에 얹히고,
   절벽 위에 피어난 꽃은 깡 두 번(=산깡쯔·스깡쯔 사정권)을 조건으로 만개한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b4/han_bonus_yakuman.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b4/han_bonus_yakuman.ts`
   ```
   평범한 손 (3판 40부 자 쯔모)   기본 5200점 → +3판 보너스 = 6800점
   만관 직전 (4판 40부)           기본 8000점 → +3판 보너스 = 4000점
@@ -451,7 +451,7 @@
   (대표 1m에 1m)는 되지만, 같은 몸통에 9m를 얹는 것은 거부된다. 퐁한 순서에 따라
   대표가 9m이 되면 반대로 9m만 되고 1m이 막힌다 — 플레이어에게는 **같은 몸통인데 어떤 날은
   되고 어떤 날은 안 되는** 것으로 보인다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b4/polar_kakan.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b4/polar_kakan.ts`
   ```
   === detail의 예시 그대로: 퐁 1m1m9m 위에 1m 가깡
     퐁 몸통=[1m,1m,9m] 대표=1m / 얹는 패=1m   submit(shouminkan) -> ok=true
@@ -475,7 +475,7 @@
     들면 당연히 탕야오가 안 붙는다.
   - **찬타·준찬타도 같은 구멍**이다 — 1-2-3-4m 장사진이 `run:123m`으로 잡히면 요구패가
     아닌 4m이 사라져 찬타가 붙는다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b4/snake.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b4/snake.ts`
   ```
   === ⚠ 4번째 패가 allKinds에서 사라지는가 (탕야오·찬타)
     kan6789m(9m 포함!) + 234p567p345s22s → 탕야오가 붙나?
@@ -501,7 +501,7 @@
 - 기대: detail — **"지정 역 목록(탕야오·핑후·또이또이·혼일색·청일색·삼색·일기통관·치또이 **등**) 중
   하나를 골라"**. '등'은 더 있다는 뜻이다.
 - 실제: 그 여덟이 **전부**다. 산안커·찬타·준찬타·량페코·혼노두·삼색동각·소삼원은 전부 거부된다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_contract_yaku.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_contract_yaku.ts`
   ```
     sanankou         → 불가(not a contractable yaku)
     chanta           → 불가(not a contractable yaku)
@@ -523,7 +523,7 @@
 - 실제: 국 정산 밖에서 빠져나가는 점수는 하나도 안 쌓인다. 확인한 두 경로 —
   ① **남의 카르마에 뜯긴 점수**(4,000점을 뜯겨도 게이지 0), ② **리치 공탁 1,000점**.
   ①은 특히 고약하다 — 카르마끼리 만나면 먼저 태운 쪽만 계속 이득을 본다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_karma_and_bighand.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_karma_and_bighand.ts`
   ```
   ===== ① 카르마 게이지 적립원
     소각 전 점수  p0:25000 p1:25000 p2:25000 p3:25000
@@ -546,7 +546,7 @@
 - 실제: 큰손이 12,000까지 채워 넣은 **뒤에** 기생충이 그 획득의 절반을 떼 간다.
   최종 수령액은 6,000 — 약속한 하한의 절반이다. 큰손의 표시(`points: 8100`)는
   여전히 "8,100을 채웠다"고 말한다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_karma_and_bighand.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_karma_and_bighand.ts`
   ```
   ===== ④ 큰손 × 기생충 — '내가 받는 총액이 최소 만관' 이 지켜지는가
     큰손만           : 손=3900 → deltas={"p0":12000,…} aug=[{big_hand, points:8100}]
@@ -567,7 +567,7 @@
   적어 두었다.
 - 실제: 첫 순 북빼기 한 번에 **아직 한 번도 순이 오지 않은 상대들의** 지화 전제가 무너지고,
   구종구패(아홉 종류 요구패 유국) 선언까지 막힌다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_north_firstturn.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_north_firstturn.ts`
   ```
   [초기]      firstTurn=true  goAroundBroken=false
   [초기]      p1 구종구패 = 가능
@@ -586,7 +586,7 @@
 - 실제: 국이 끝나 정산이 다 돌아간 뒤에도 배지가 `{target:"p1", minHan:5}` 그대로 살아 있다.
   다음 국이 시작될 때까지, 즉 **정산 화면과 증강 드래프트 내내** 지목이 걸려 있는 것처럼
   보인다. 실제 제한은 이미 끝났다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_rank_gate_and_scapegoat.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_rank_gate_and_scapegoat.ts`
   ```
   [지목 직후] view:*:rank_gate:p0 = {"round":"1-1-0","by":"p0","target":"p1","minHan":5}
   화료=roundOver
@@ -604,7 +604,7 @@
   나머지 두 명은 한 푼도 내지 않는다."** 굵게 강조된 단언이다.
 - 실제: 내가 `aotenjou_ceiling`(뚫린 천장)으로 늘린 초과분, `devils_advance`(가불 인생)의
   상환 3,000점은 **재배선 밖**이라 나머지 둘에게 그대로 청구된다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_rank_gate_and_scapegoat.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_rank_gate_and_scapegoat.ts`
   ```
   덤터기만            : deltas={"p0":48000,"p1":0,"p2":-48000,"p3":0}
      나머지 둘이 무는가 = 아니오                       ← 문구대로
@@ -622,7 +622,7 @@
 - 기대: detail — **"③은 게임 내 3회까지만 발동하고, 남은 횟수는 전원에게 보인다."**
 - 실제: 공개 채널이 하나도 없다. 상대는 만년 오야의 연장이 앞으로 몇 번 남았는지 알 수 없다 —
   이 정보는 "지금 이 사람을 떨어뜨려야 하는가"를 가르는 판단 재료다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_conflicts_and_uses.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b5/repro_conflicts_and_uses.ts`
   ```
   ===== eternal_dealer 남은 연장 횟수 채널
     view:p2:uses:eternal_dealer = {"left":3,"total":3,"scope":"match"}  ← 보유자 전용
@@ -643,7 +643,7 @@
   그 국 내내 잠들어 있으니, 둘 중 하나를 골라야 한다."**
 - 실제: 리치 중에도 **안깡 창깡 론이 그대로 성립한다.** 손패가 안 바뀔 뿐 능력의 본체
   (국사무쌍만 안깡을 창깡할 수 있다는 표준 예외의 무력화)는 살아 있다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_void_kan_riichi.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_void_kan_riichi.ts`
   ```
   void_kan=false  안깡:true  p0 리치 중 안깡 창깡 론: false  거부(closed kan can only be robbed by kokushi)
                   win.closedKanRobbable(p0) = false
@@ -663,7 +663,7 @@
 - 실제: 예시 하나만 동작한다. `three_dragons_will`(삼원의 의지)이 잡패 2장을 물질화해
   세운 대삼원은 그 증강을 잠가도 **그대로 남는다.** 무장해제를 대삼원 대응 카드로 쥔
   플레이어는 잠그고도 역만을 맞는다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_disarm_no_revert.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_disarm_no_revert.ts`
   ```
   발동 전 p0 손의 삼원패: dragon1 ×3 dragon2 ×3 dragon3 ×1
   삼원의 의지 발동: true
@@ -684,7 +684,7 @@
 - 실제: 누군가 퐁을 하면 `firstTurn=false`가 되어, **네 사람의 버림 수가 전부 0인 상태에서**
   누명 후보가 0개에서 30개로 열린다. 첫 바퀴에 심는 것을 막아 둔 이유(아직 아무 정보도
   없는 상대에게 후리텐을 걸어 버리는 것)가 그대로 뚫린다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_frameup_first_goaround.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_frameup_first_goaround.ts`
   ```
   첫 바퀴인가: true  각자 버림 수: 0/0/0/0
   퐁 전 p1의 누명 후보: 0 (문구대로 0)
@@ -705,7 +705,7 @@
 - 실제: 요구패 하나를 국 중에 두 번 흘렸다면 **13면 대기 전체가 후리텐**이 되어 론이
   통째로 막힌다. 거신병은 "요구패 13종을 내가 손수 버려 모아야" 발동하는 카드라
   같은 요구패를 두 번 버리는 것은 흔한 진행이다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_giant_god_furiten.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_giant_god_furiten.ts`
   ```
   [중복 없음]  발동:true
     발동 후 내 버림 이력: man2 man3 … sou2 sou2      → 후리텐: false (론 가능)
@@ -728,7 +728,7 @@
   쿨다운이 즉시 풀린다.** 같은 국에 봉인을 두 번 건다. 대조군인 `hourglass`·`frame_up`은
   문구대로 거부된다("that augment has no spent use to restore") — 즉 규칙은 맞게 짰는데
   키 이름이 겹친 한 종만 새는 것이다.
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_reload_discard_lock.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_reload_discard_lock.ts`
   ```
   재장전 후보(= '복구 가능'이라고 화면에 뜨는 것): [ 'discard_lock' ]
     기대: 국 단위 쿨다운 증강(discard_lock/hourglass/frame_up)은 하나도 없어야 한다
@@ -754,7 +754,7 @@
 - 실제: 후보 목록의 해시로 고른다 — 같은 상황이면 **언제나 같은 선택**이다. 리플레이·재개
   결정성을 위해 의도적으로 바꾼 것이고(docs/25 시스템 횡단 #14), 코드 주석이 그 경위를
   적어 두었다. **문구만 옛 동작에 남았다.**
-- 재현: `/Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_time_pressure_random.ts`
+- 재현: `~/majak/node_modules/.bin/tsx qa-lab/text/b6/repro_time_pressure_random.ts`
   ```
   후보 5개 × 200회 호출 → 서로 다른 결과 수: 1
     나온 것: [ '{"tileId":102}' ]

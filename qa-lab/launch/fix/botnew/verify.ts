@@ -3,7 +3,7 @@
  * 실제로 봇이 그 증강을 발동하는지 확인한다. 네 자리 전부 BotAgent, 프리셋으로
  * 두 증강을 강제 배포한다.
  *
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/launch/fix/botnew/verify.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/launch/fix/botnew/verify.ts
  */
 import { DEFAULT_HANCHAN_CONFIG, HanchanController } from "@majak/core";
 import type { PlayerId } from "@majak/core";

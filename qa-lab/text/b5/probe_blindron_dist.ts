@@ -2,7 +2,7 @@
  * 눈먼 총알 — "네 명 중 무작위 … 보유자도 25%로 맞는다"의 실제 분포.
  * blind_ron.ts:106-111 과 **같은 식**으로 대상을 뽑아 본다
  *   new Prng((seed ^ hash(`blind_ron:{roundKey}:{shooter}`)) >>> 0).int(4)
- * 실행: /Users/skul/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_blindron_dist.ts
+ * 실행: ~/majak/node_modules/.bin/tsx qa-lab/text/b5/probe_blindron_dist.ts
  */
 import { Prng } from "@majak/core";
 

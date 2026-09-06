@@ -292,7 +292,7 @@ $ npm run build:client                   # ✓ built in 3.25s
   dist/assets/index-*.js    564.78 kB │ gzip: 199.02 kB
 ```
 
-재현 스크립트도 다시 돌렸다(`/Users/skul/majak/node_modules/.bin/tsx`):
+재현 스크립트도 다시 돌렸다(`~/majak/node_modules/.bin/tsx`):
 
 - `t02-storage-reset` → **「빠진 키 : (없음)」 · 「재현 실패」**
 - `t03-overlay-mode-stuck` → 「resetGameState 이 overlayMode 를 되돌리는가 : **true**」

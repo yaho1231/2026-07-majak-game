@@ -237,7 +237,7 @@
 
 ## 기각 6. ✅ 반장전 서입 58% — 하네스(페르소나 봇) 탓이다
 
-- 실제 **서버 리플레이** 263판(`/Users/skul/majak/replays/*.jsonl`):
+- 실제 **서버 리플레이** 263판(`~/majak/replays/*.jsonl`):
   `tsx qa-lab/verify-disrupt/r6_real_replays.ts`
   ```
   리플레이 263판 (mode 표기: hanchan 32 / tonpuu 189 / 미표기 42)
