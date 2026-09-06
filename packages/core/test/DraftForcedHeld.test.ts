@@ -19,10 +19,11 @@ import { createStandardGame } from "../src/mahjong/flow/standardGame.js";
 import type { AugmentDef } from "../src/augment/Augment.js";
 
 function dummies(n: number): AugmentDef[] {
+  const cats = ["score", "info", "hand", "shape", "call", "riichi", "defense", "disrupt"] as const;
   return Array.from({ length: n }, (_, i) => ({
     id: `dummy_${i}`,
     tier: (["silver", "gold", "prism"] as const)[i % 3]!,
-    category: "score",
+    category: cats[i % cats.length]!,
     complexity: 1,
     name: `더미${i}`,
     description: "테스트용",

@@ -229,11 +229,18 @@ describe("증강 테스트 — 시작", () => {
     expect(other.last("error")?.code).toBe("ROOM_NOT_FOUND");
   });
 
-  it("관전 목록(liveGames)에 테스트 게임은 뜨지 않는다", async () => {
+  /*
+   * 2026-09-06 사용자 지시로 뒤집혔다 — 증강 테스트 방도 목록에 올린다. 관리자가
+   * 손대야 할 판을 목록에서 숨겨 두면 끊을 손잡이가 어디에도 없다. 대신 `kind`가
+   * «증강 테스트»라고 적어 실대국과 섞이지 않게 한다.
+   */
+  it("관전 목록(liveGames)에 테스트 게임은 «증강 테스트»로 뜬다", async () => {
     const h = await newHarness();
     const admin = await startSandbox(h);
     admin.clientSend({ type: "liveGames" });
-    expect(admin.last("liveGames").rooms).toEqual([]);
+    const rooms = admin.last("liveGames").rooms;
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].kind).toBe("sandbox");
   });
 });
 
