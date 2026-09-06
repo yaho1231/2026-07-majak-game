@@ -12568,6 +12568,14 @@ function HomeScreen(props: {
                       {/* 세워 둔 채 잊힌 탁자를 목록에서 알아볼 수 있어야 한다 —
                           세운 사람이 자리를 뜨면 판은 영영 서 있게 된다. */}
                       {r.paused === true ? <span className="live-paused">⏸ 정지 중</span> : null}
+                      {/* 체험·연습·증강 테스트 방도 목록에 오른다 (2026-09-06 사용자
+                          지시). 실대국과 섞이면 관리자가 «사람 넷이 두는 판»으로
+                          읽으므로, 무슨 판인지 꼬리표로 갈라 둔다. */}
+                      {r.kind !== undefined ? (
+                        <span className={`live-kind live-kind-${r.kind}`}>
+                          {r.kind === "tutorial" ? "체험" : r.kind === "practice" ? "연습" : "증강 테스트"}
+                        </span>
+                      ) : null}
                     </span>
                     <button className="replay-open" onClick={() => props.onSpectate(r.code)}>
                       👁 관전
