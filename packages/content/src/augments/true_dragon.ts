@@ -118,6 +118,18 @@ export const trueDragon: AugmentDef = defineAugment({
     "async_chiitoi", // 치또이 분해가 totalSets===4에서만 → 무효
     "mixed_nine_gates", // isMixedNineGates가 hand.length===14 요구 → 17장 화료엔 미성립
     "void_kan", // forgeWait가 13-melds*3 텐파이를 하드코딩 → 16장 보유자에겐 영영 미발동
+    /*
+     * 손패를 통째로 옮기는 둘 (2026-09-07 사용자 보고 — 무작위 2개로 진짜 용 +
+     * 자리 바꿈이 함께 나왔다).
+     *
+     * 소프트락은 나지 않는다 — `sameHandSize`(util.ts)가 장수·슬롯이 다른 상대와의
+     * 교환을 이미 막는다. 문제는 그 가드가 **언제나** 걸린다는 것이다: 16장인 나와
+     * 손패 슬롯 수가 같은 사람은 이 탁자에 없으므로, 두 증강은 한 번도 발동하지
+     * 못하는 **죽은 픽**이 된다. 3지선다 한 칸이 통째로 사라지는 것이라 다른
+     * 배타와 같은 이유로 여기서 막는다.
+     */
+    "seat_swap", // 자리 바꿈 — 바꿀 수 있는 상대가 영영 없다
+    "full_hand_swap", // 통째로 바꾸기 — 같은 이유
   ],
   install(ctx) {
     // 배패 16장 (보유자만)

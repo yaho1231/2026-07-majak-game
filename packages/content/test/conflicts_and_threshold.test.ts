@@ -64,6 +64,14 @@ describe("B급 — 조용히 사표가 되는 조합도 막는다", () => {
     ["hidden_blade", "soul_hunt"],
     ["avenger", "late_bloomer"],
     ["avenger", "late_bloomer_east"],
+    /*
+     * 진짜 용(16장·5몸통) ↔ 손패를 통째로 옮기는 둘 (2026-09-07 사용자 보고).
+     * `sameHandSize` 가드가 장수·슬롯이 다른 상대와의 교환을 막으므로 소프트락은
+     * 나지 않지만, 17장인 손과 슬롯이 같은 사람은 탁자에 없어 **한 번도 발동하지
+     * 못한다** — 3지선다 한 칸이 통째로 죽은 칸이 된다.
+     */
+    ["true_dragon", "seat_swap"],
+    ["true_dragon", "full_hand_swap"],
   ];
   for (const [a, b] of cases) {
     it(`${a} ↔ ${b}`, () => {

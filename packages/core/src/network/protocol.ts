@@ -900,6 +900,24 @@ export interface ShuffleSeatsMessage {
   type: "shuffleSeats";
 }
 
+/**
+ * 자리 옮기기 (방장 전용, 대기 중에만) — 한 자리를 집어 원하는 자리에 끼운다.
+ *
+ * 「자리 섞기」는 무작위라 «저 사람을 내 하가에» 같은 뜻을 담을 수 없다. 대기실에서
+ * 줄을 끌어 옮기는 것이 그 뜻을 그대로 적는 방법이라 손잡이를 하나 더 둔다.
+ *
+ * `seat`은 **옮긴 뒤의 자리 번호**다(0=동 1=남 2=서 3=북). 집은 자리를 배열에서 빼고
+ * 그 자리에 끼우는 «잘라 붙이기»이므로, 사이에 있던 사람들은 한 칸씩 밀린다 —
+ * 두 자리만 맞바꾸면 나머지 둘의 상대 위치가 뜻하지 않게 뒤집히기 때문이다.
+ */
+export interface MoveSeatMessage {
+  type: "moveSeat";
+  /** 옮길 사람(또는 봇)의 좌석 id. */
+  playerId: PlayerId;
+  /** 옮긴 뒤의 자리 번호 (0-based). 범위 밖이면 서버가 조용히 무시한다. */
+  seat: number;
+}
+
 
 // ── 방 상세설정 (고급 규칙) ──
 
@@ -1150,6 +1168,7 @@ export type ClientMessage =
   | SetRoomRulesMessage
   | SetRoomPaceMessage
   | ShuffleSeatsMessage
+  | MoveSeatMessage
   | StatsRequestMessage
   | VoteAbortMessage
   | RegisterMessage
