@@ -19,6 +19,9 @@
 import {
   CALL_MADE,
   augmentDataSet,
+  belowMinHan,
+  buildWinContext,
+  evaluateWin,
   augmentInstanceId,
   defineAugment,
   doraKindFor,
@@ -39,8 +42,9 @@ import type {
   RuleRegistry,
   TileId,
   TileKind,
+  YakuRegistry,
 } from "@majak/core";
-import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
+import { flagOf, publishUsesLeft, replaceDrawnTile, roundViewKey } from "../util.js";
 import { isYakuhaiFor, lastDiscardKind } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { roundScopedKey } from "./roundScope.js";
@@ -167,6 +171,46 @@ function sacrificePreview(
   return pickSacrifice(state, holder, matches[0] as TileId, kindKey(targetKind)) ?? null;
 }
 
+/**
+ * **퐁 하나로 손이 끝났을 때** 화료패로 삼을 손패 한 장 (없으면 undefined).
+ *
+ * ## 왜 필요한가 (2026-09-08 사용자 보고)
+ *
+ * 허장성세는 잡패 한 장을 목표패로 바꿔 커쯔를 채운다. 그래서 **퐁이 손을 완성시키는**
+ * 자리가 생긴다 — 남은 열한 장이 이미 3멘쯔 + 머리면 커쯔가 서는 순간 4멘쯔 + 머리다.
+ * 그런데 표준 화료 액션은 자기 순(`turn.act`)에서 `lastDrawnTile`을 요구하고 그 값은
+ * 콜 직후 null이라, 완성된 손을 눈앞에 두고도 **화료 버튼이 뜨지 않았다.** 사람은
+ * 이길 수 없는 손을 들고 타패를 강요당했다.
+ *
+ * 여기서 하는 일은 «그 화료패가 무엇인가»를 정하는 것뿐이고, 정산은 표준 파이프라인이
+ * 그대로 한다(`무덤 도굴`과 같은 규약 — FlowController는 `win` 액션에서만 sys.settleWin을
+ * 부른다). **지불은 쯔모 취급**이다: 버린 사람은 «펑당했을 뿐»이고 그 패로 쏘인 것이
+ * 아니라(그 패 하나로는 손이 안 섰다) 방총 책임을 혼자 지우는 것이 부당하다.
+ *
+ * 어느 손패를 화료패로 보든 **손의 구성은 한 장도 달라지지 않는다**(빼서 다시 얹는
+ * 자리라 종류 다발이 같다). 갈리는 것은 대기 모양이 정하는 부수뿐이라, 역이 서는
+ * 첫 장을 결정론적으로 쓴다.
+ */
+function completedWinTile(
+  state: GameState,
+  holder: PlayerId,
+  rules: RuleRegistry,
+  yaku: YakuRegistry,
+): TileId | undefined {
+  const needYaku = rules.resolve<boolean>("win.requiresYaku", { playerId: holder, state });
+  for (const id of handIdsOf(state, holder)) {
+    const ev = evaluateWin(buildWinContext(state, holder, "tsumo", id, { rules }), yaku);
+    if (ev === null) continue;
+    if (needYaku && !ev.ok) continue;
+    if (belowMinHan(ev, state, rules, holder)) continue;
+    return id;
+  }
+  return undefined;
+}
+
+/** 완성된 손의 화료패를 «방금 뽑은 패» 자리에 앉힌다 (표준 화료 액션의 문을 연다) */
+const BLUFF_WIN_READY = "BluffPretenseWinReady";
+
 const bluffPonAction: ActionDef<{ tileId: TileId }> = {
   type: ACTION,
   validate: (req, { state, rules }) => {
@@ -241,7 +285,7 @@ export const bluffPretense: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 상대가 버린 패에 대해, 손에 같은 패가 1장뿐이어도 퐁을 선언할 수 있다.",
   detail:
-    "손에 같은 패가 1장뿐이어도 퐁할 수 있다 — 모자란 한 장은 손패의 가장 고립된 잡패가 그 패로 변해 채운다(도라·적도라는 피한다).\n\n리치 중, 후로 봉인 중, 패산이 떨어진 마지막 버림에는 쓸 수 없다.",
+    "손에 같은 패가 1장뿐이어도 퐁할 수 있다 — 모자란 한 장은 손패의 가장 고립된 잡패가 그 패로 변해 채운다(도라·적도라는 피한다).\n\n이 퐁으로 손이 완성되면 그대로 화료한다(지불은 쯔모 취급).\n\n리치 중, 후로 봉인 중, 패산이 떨어진 마지막 버림에는 쓸 수 없다.",
   /**
    * 봇: 잡패 한 장을 태워 커쯔를 만드는 콜이라, **역패**(그 커쯔 자체가 역)일 때만 쓴다.
    * 수패로 부르면 손만 열리고 역이 안 서는 일이 잦다.
@@ -273,6 +317,36 @@ export const bluffPretense: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(bluffPonAction);
     }
+
+    if (!engine.reducers.has(BLUFF_WIN_READY)) {
+      engine.reducers.register(BLUFF_WIN_READY, (state, event) => {
+        const p = event.payload as { tileId: TileId };
+        return { ...state, round: replaceDrawnTile(state.round, p.tileId) };
+      });
+    }
+
+    /*
+     * **퐁으로 손이 완성됐으면 화료할 수 있어야 한다** (위 `completedWinTile` 주석).
+     *
+     * 이 콜에서만 연다 — 표준 펑은 열지 않는다. 표준 펑으로 손이 완성되는 자리는
+     * 애초에 그 패로 **론**이 되는 자리라(후리텐이면 못 하는 것이 규칙이다), 여기서
+     * 문을 열면 후리텐을 우회하는 뒷문이 된다. 그래서 «방금 눕힌 몸통에 생성패가
+     * 섞여 있는가»로 이 증강의 콜만 골라낸다.
+     */
+    ctx.reaction(CALL_MADE, (event, rc) => {
+      const called = event.payload as { caller: PlayerId };
+      if (called.caller !== holder) return;
+      const state = rc.state;
+      if (state.round.lastDrawnTile !== null) return;
+      const melds = state.round.byPlayer[holder]?.melds ?? [];
+      const made = melds[melds.length - 1];
+      if (made === undefined) return;
+      if (!made.tileIds.some((id) => state.tiles[id]?.attrs.conjured === true)) return;
+      if (ctx.yaku === undefined) return;
+      const winTile = completedWinTile(state, holder, engine.rules, ctx.yaku);
+      if (winTile === undefined) return;
+      rc.emit({ type: BLUFF_WIN_READY, payload: { tileId: winTile } });
+    });
 
     // 리액션 프롬프트에 bluff_pon 후보를 노출(합법성은 validate가 최종 판정).
     // 표준 펑/치 사이 우선순위로 처리되는 커스텀 콜(24차).
