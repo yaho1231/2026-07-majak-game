@@ -16964,16 +16964,6 @@ body.peeking .overlay-peekable > * {
   color: #e8a0a0;
   border-color: rgba(232, 160, 160, 0.4);
 }
-.crash-note {
-  margin: 14px 0 0;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--ink-4);
-}
-.crash-note b {
-  color: var(--ink-3);
-  font-weight: 600;
-}
 .crash-report {
   display: flex;
   gap: 14px;

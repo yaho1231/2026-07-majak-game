@@ -11,7 +11,7 @@
  * 그래서 이 화면의 핵심은 "다시 불러오기"가 아니라 **그 판에서 빠져나오는 길**이다.
  *
  * 복구 수단을 셋 준다 — 왼쪽일수록 잃는 게 적다:
- *   1. 다시 그리기      상태만 초기화하고 같은 화면을 다시 시도 (일시적 오류)
+ *   1. 다시 불러오기    상태만 초기화하고 같은 화면을 다시 시도 (일시적 오류)
  *   2. 방에서 나가기    lastRoomCode만 지우고 새로고침 (그 판이 문제일 때)
  *   3. 처음부터         저장된 것 전부 지우고 새로고침 (최후)
  */
@@ -86,7 +86,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <div className="crash-icon" aria-hidden="true">
             ⚠
           </div>
-          <h1 className="crash-title">화면을 그리다 문제가 생겼습니다</h1>
+          <h1 className="crash-title">화면 구성중 문제가 생겼습니다</h1>
           <p className="crash-lead">
             {repeated
               ? "같은 문제가 반복됩니다. 지금 있는 방이 원인일 수 있으니 아래 ‘방에서 나가기’를 눌러 보세요."
@@ -95,7 +95,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
           <div className="crash-actions">
             <button className="crash-btn primary" onClick={this.retry}>
-              다시 그리기
+              다시 불러오기
             </button>
             <button className="crash-btn" onClick={this.leaveRoom}>
               방에서 나가기
@@ -104,10 +104,6 @@ export class ErrorBoundary extends React.Component<Props, State> {
               처음부터
             </button>
           </div>
-          <p className="crash-note">
-            <b>다시 그리기</b>는 잃는 것이 없습니다 · <b>방에서 나가기</b>는 그 판으로 돌아가지 않습니다 ·{" "}
-            <b>처음부터</b>는 로그인과 설정까지 지웁니다.
-          </p>
 
           <div className="crash-report">
             <button className="crash-link" onClick={this.report}>
