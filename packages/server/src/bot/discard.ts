@@ -27,7 +27,18 @@ import type { TileId, TileKind } from "@majak/core";
 import { removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
-import { blunderFloor, looseness, placementSight, riskSight, skillOf } from "./skill.js";
+import {
+  BLUNDER_CUT,
+  LAPSE_TOP,
+  blunderFloor,
+  blunderTemp,
+  lapseChance,
+  looseness,
+  placementSight,
+  riskSight,
+  shapeSlack,
+  skillOf,
+} from "./skill.js";
 import { NOTEN_PENALTY, NOTEN_WALL, waitTilesOf } from "./value.js";
 import { readDiscardQuest } from "./quest.js";
 import type { QuestGain } from "./quest.js";
@@ -220,11 +231,16 @@ interface Shape {
 }
 
 /**
- * 후보마다 버린 뒤의 모양을 잰다. 같은 종류는 한 번만 계산하고, **최선 샹텐을
- * 유지하는 후보만** 우케이레·대기까지 정밀하게 잰다 — 그보다 나쁜 형태는 어차피
- * 화료 확률에서 지므로 비싼 계산을 할 이유가 없다.
+ * 후보마다 버린 뒤의 모양을 잰다. 같은 종류는 한 번만 계산하고, **최선 샹텐에서
+ * `slack`만큼 뒤처지는 데까지** 우케이레·대기를 정밀하게 잰다.
+ *
+ * 기본(`slack = 0`)은 최선 샹텐만이다 — 그보다 나쁜 형태는 어차피 화료 확률에서
+ * 지므로 비싼 계산을 할 이유가 없다. **난이도가 1보다 낮을 때만** 한 칸을 더 잰다
+ * (`skill.shapeSlack`): 그래야 「텐파이가 한 발 늦어지는 대신 대기가 넓어지는 형태」가
+ * 제 EV를 갖고 후보에 올라오고, 초보 봇이 그걸 가끔 고를 수 있다. 안 재면 그 후보는
+ * 우케이레 0으로 남아 **구조적으로** 선택될 수 없다.
  */
-function shapesOf(read: BotRead, cands: readonly Candidate[]): Map<string, Shape> {
+function shapesOf(read: BotRead, cands: readonly Candidate[], slack = 0): Map<string, Shape> {
   const out = new Map<string, Shape>();
   for (const c of cands) {
     const key = kindKey(c.kind);
@@ -242,7 +258,7 @@ function shapesOf(read: BotRead, cands: readonly Candidate[]): Map<string, Shape
   for (const s of out.values()) if (s.shanten < bestShanten) bestShanten = s.shanten;
 
   for (const [key, shape] of out) {
-    if (shape.shanten > bestShanten) continue;
+    if (shape.shanten > bestShanten + slack) continue;
     const c = cands.find((x) => kindKey(x.kind) === key);
     if (c === undefined) continue;
     const rest = removeKinds(read.hand, [c.kind]);
@@ -350,6 +366,38 @@ function lineEV(
   );
 }
 
+/** 우케이레·대기를 재지 않은 형태 — 뒤처지는 후보를 **종전과 같은 값**으로 겨루게 한다 */
+function blankShape(shape: Shape): Shape {
+  return {
+    shanten: shape.shanten,
+    ukeire: 0,
+    waitTiles: 0,
+    hand: [],
+    ukeireKinds: [],
+    waitKinds: [],
+  };
+}
+
+/** 값매김이 끝난 후보 하나 */
+interface Scored {
+  c: Candidate;
+  ev: number;
+  /** 최선보다 샹텐이 뒤처지는 형태인가 (난이도가 낮을 때만 생긴다) */
+  slow: boolean;
+}
+
+/**
+ * 고르기에 쓰는 **유효 EV**. 느린 후보는 최선보다 **최소 한 온도만큼** 낮게 본다.
+ *
+ * 「지금 텐파이가 늦어지는 대신 나중에 대기가 넓어진다」는 사람이 실제로 하는 저울질이고,
+ * 그래서 아예 후보에서 빼지는 않는다. 다만 그 저울의 값을 `winChanceOf`에 맡길 수는
+ * 없다(위 `bestShanten` 주석 — 우케이레를 크게 보아 뒤집힌다). 그래서 «최선보다 한
+ * 단계 아래»로 못 박는다: 온도가 정한 비율(`exp(-1) ≈ 37%`)만큼만 뽑히는 차선이 된다.
+ */
+function evalOf(x: Scored, bestEV: number, temp: number): number {
+  return x.slow ? Math.min(x.ev, bestEV - temp) : x.ev;
+}
+
 /** 사람다운 흔들림에 쓰는 결정론 난수 (BotAgent의 시드 PRNG) */
 export interface BotJitter {
   /** 0 이상 n 미만 정수 */
@@ -367,11 +415,11 @@ export interface BotJitter {
  * 변덕스러워도 후보에 들어오지 않는다 — 사람다움을 위해 실력을 버리지는 않는다.
  */
 function wobble(
-  scored: readonly { c: Candidate; ev: number }[],
+  scored: readonly Scored[],
   bestEV: number,
   profile: BotProfile,
   jitter: BotJitter | undefined,
-): { c: Candidate; ev: number } | null {
+): Scored | null {
   const skill = skillOf(profile);
   if (jitter === undefined || scored.length < 2) return null;
   if (profile.noise <= 0 && skill >= 1) return null;
@@ -379,9 +427,9 @@ function wobble(
   // 바닥을 둔다. 바닥이 크면 그런 국면에서 **모든 후보가 후보로 묶여** 성격 차이가
   // 사라지므로 작게 잡는다. 성격이 그 폭을 정하고, 난이도가 그 위에 곱해진다.
   /**
-   * **난이도가 붙는 유일한 자리**(`profile.skill`). 실력이 낮을수록 "엇비슷하다"고
-   * 보는 폭이 넓어져, 봇은 규칙을 몰라서가 아니라 **고르기를 흔들려서** 진다 —
-   * 사람이 실수하는 모습과 같다. `skill = 1`이면 곱이 정확히 1이라 종전과 같다.
+   * **난이도**(`profile.skill`). 실력이 낮을수록 "엇비슷하다"고 보는 폭이 넓어져,
+   * 봇은 규칙을 몰라서가 아니라 **고르기를 흔들려서** 진다 — 사람이 실수하는 모습과
+   * 같다. `skill = 1`이면 곱이 정확히 1이라 종전과 같다.
    */
   const clumsy = 1 + (1 - skill) * BLUNDER_SPAN;
   /**
@@ -392,10 +440,84 @@ function wobble(
    */
   const band =
     profile.noise * clumsy * Math.max(30, Math.abs(bestEV) * 0.06) + blunderFloor(skill);
-  const near = scored.filter((x) => x.ev >= bestEV - band);
+  /**
+   * **난이도의 고르기 온도**(`bot/skill.ts` `blunderTemp`). 실력이 1이면 0이라
+   * 아래 가중 추첨이 통째로 꺼지고 **종전의 균등 추첨 그대로**다 — 성격(`noise`)이
+   * 만드는 사람다움은 hard에서도 예전과 한 치도 다르지 않다.
+   */
+  const temp = blunderTemp(skill);
+  /*
+   * **이 순번이 «느슨한 순번»인가**(`skill.lapseChance`). 매 순번을 온도로 고르면
+   * 어긋남이 국 내내 곱해져 손이 통째로 무너진다(실측: easy 화료율 0.005). 초보다움은
+   * 가끔 한 번 다르게 두는 것이므로, 느슨한 고르기는 확률로 켠다 — 나머지 순번은
+   * 성격만 흔들리는 종전 경로다.
+   */
+  const lapse = temp > 0 && jitter.int(WEIGHT_STEPS) / WEIGHT_STEPS < lapseChance(skill);
+  // 느슨한 순번에서만 후보의 폭을 온도만큼 넓힌다 — 평소 폭은 성격이 정한다
+  const reach = lapse ? Math.max(band, temp * BLUNDER_CUT) : band;
+  /*
+   * 느린 후보(샹텐이 뒤처지는 형태)는 **느슨한 순번에만** 후보다. 평소 순번은
+   * 종전 그대로 — hard는 애초에 느린 후보를 재지도 않으므로 한 치도 안 변한다.
+   */
+  let near = scored.filter((x) => (lapse || !x.slow) && evalOf(x, bestEV, temp) >= bestEV - reach);
   if (near.length < 2) return null;
-  return near[jitter.int(near.length)] ?? null;
+  if (!lapse) return near[jitter.int(near.length)] ?? null;
+  /*
+   * **놓고 보는 것은 상위 몇 장뿐이다**(`skill.LAPSE_TOP`). 폭만으로 자르면 EV가
+   * 다 고만고만한 국면에서 손패가 통째로 후보가 되어 «아무거나»가 된다. 사람이
+   * 망설이는 것은 한두 장 사이다 — 그 셋을 남기고 손패 순서는 그대로 둔다.
+   */
+  const rank = (x: Scored): number => evalOf(x, bestEV, temp);
+  /*
+   * 자리 하나는 **느린 후보 몫**이다. 느린 후보는 정의상 최선보다 한 온도 아래로
+   * 못 박혀 있어(`evalOf`), 그냥 줄을 세우면 엇비슷한 최선급 후보들에 밀려 한 번도
+   * 올라오지 못한다 — 그러면 「텐파이가 늦어져도 대기가 넓은 쪽」이라는 선택지 자체가
+   * 없는 것과 같다. 나머지 자리는 최선 샹텐 후보 중 EV 상위가 채운다.
+   */
+  const slow = near.filter((x) => x.slow).sort((a, b) => b.ev - a.ev)[0];
+  /*
+   * **최선은 이 순번의 후보가 아니다.** 느슨한 순번이란 「알지만 이번엔 저쪽으로
+   * 두는」 순번이라, 여기서 다시 최선이 가장 자주 뽑히면 난이도가 사라진다 —
+   * 그러면 `lapseChance`를 올려도 실수 빈도가 늘지 않는다(실측으로 easy가 hard보다
+   * **덜** 흔들렸다). 최선을 빼면 느슨한 순번의 비율이 곧 실수 빈도가 된다.
+   */
+  const fast = near
+    .filter((x) => !x.slow && x.ev < bestEV)
+    .sort((a, b) => rank(b) - rank(a));
+  const pick = [...fast.slice(0, slow === undefined ? LAPSE_TOP : LAPSE_TOP - 1)];
+  if (slow !== undefined) pick.push(slow);
+  if (pick.length === 0) return null; // 차선이 없다 — 최선뿐이면 최선이다
+  // 손패 순서를 되살린다 — 난수를 한 번만 쓰고, 뽑히는 패가 EV 순서로 읽히지 않는다
+  near = near.filter((x) => pick.includes(x));
+  if (near.length === 1) return near[0] ?? null;
+  /*
+   * **EV 차이에 따라 확률이 부드럽게 떨어지는 추첨**(`exp(-Δ/T)`).
+   *
+   * 최선이 여전히 가장 자주 뽑히고, 조금 나쁜 수는 가끔, 많이 나쁜 수는 드물게
+   * 나온다 — 「이쪽이 나은 건 알지만 넓은 대기가 탐나서」 고르는 사람의 모양이다.
+   * 순서는 **손패 순서 그대로** 둔다(EV로 정렬하지 않는다): 난수를 한 번만 쓰고,
+   * 같은 가중치라도 뽑히는 패가 손패 위치에 따라 갈려 읽히지 않는다.
+   */
+  let total = 0;
+  const weights = near.map((x) => {
+    const w = Math.exp((rank(x) - bestEV) / temp);
+    total += w;
+    return w;
+  });
+  if (!(total > 0)) return near[jitter.int(near.length)] ?? null;
+  let roll = (jitter.int(WEIGHT_STEPS) / WEIGHT_STEPS) * total;
+  for (let i = 0; i < near.length; i++) {
+    roll -= weights[i] ?? 0;
+    if (roll <= 0) return near[i] ?? null;
+  }
+  return near[near.length - 1] ?? null;
 }
+
+/**
+ * 가중 추첨의 눈금 수 — `BotJitter`가 정수 난수만 주므로 이 칸 수로 실수를 만든다.
+ * 폭이 수천 점이라 1/2^20(≈ 0.001점)이면 반올림이 선택을 바꾸지 못한다.
+ */
+const WEIGHT_STEPS = 1 << 20;
 
 /**
  * 실력이 0일 때 흔들림 폭이 몇 배가 되는가.
@@ -486,7 +608,8 @@ export function bidDiscard(
   const cands = candidatesOf(read, options);
   if (cands.length === 0) return null;
 
-  const shapes = shapesOf(read, cands);
+  const slack = shapeSlack(skillOf(profile));
+  const shapes = shapesOf(read, cands, slack);
   // 종반에 텐파이를 붙들면 노텐벌부를 피한다 — 화료와 별개로 값이 있는 결과다
   const notenStake = read.wallLeft <= NOTEN_WALL ? NOTEN_PENALTY : 0;
   const tsumoOnly = read.menzen && !hasYakuNow(read);
@@ -510,12 +633,38 @@ export function bidDiscard(
     if (k !== undefined) myDiscards.add(kindKey(k));
   }
 
-  const scored: { c: Candidate; ev: number }[] = [];
+  const scored: Scored[] = [];
+  /**
+   * 느린 후보(샹텐이 뒤처지는 형태)를 **정밀하게 잰 값**. 최선 고르기에는 쓰지 않고
+   * `wobble`의 느슨한 순번에만 올린다 — 아래 `bestShanten` 주석을 보라.
+   */
+  const slowPool: Scored[] = [];
   let best: Candidate | null = null;
   let bestEV = -Infinity;
+  /**
+   * **최선 샹텐** — 이보다 뒤처지는 형태는 «느린 후보»로만 다룬다.
+   *
+   * 난이도가 낮으면 한 샹텐 뒤처지는 형태까지 정밀하게 재는데(`shapeSlack`), 그 값을
+   * 최선과 **같은 저울에 올려서는 안 된다**: `winChanceOf`는 우케이레를 크게 보므로
+   * 샹텐이 하나 나쁘고 우케이레가 넓은 형태가 텐파이 직전 형태를 이기는 일이 생긴다
+   * (실측: easy 봇이 매 순번 샹텐5·우케이레87을 골라 화료율이 0.010까지 떨어졌다).
+   * 넓은 우케이레가 한 샹텐의 값을 한다는 근거는 없다 — 그건 측정이 아니라 저울의 결함이다.
+   *
+   * 그래서 **최선 고르기는 종전 계산 그대로** 둔다: 뒤처지는 형태는 예전처럼 우케이레를
+   * 세지 않은 값(`blankShape`)으로 겨룬다. 이게 중요한 이유는 **접기**다 — 남의 리치에
+   * 손을 헐어 현물을 내는 수는 거의 언제나 샹텐을 깨는 수이고, 그 수는 지금도 예전처럼
+   * 이길 수 있어야 한다(느린 후보를 최선에서 빼 봤더니 수비 장면 테스트가 12건 깨졌다).
+   * 정밀하게 잰 값은 아래 `slowPool`에만 담아 **느슨한 순번의 차선**으로만 쓴다.
+   */
+  let bestShanten = Infinity;
+  for (const c of cands) {
+    const sh = shapes.get(kindKey(c.kind));
+    if (sh !== undefined && sh.shanten < bestShanten) bestShanten = sh.shanten;
+  }
   for (const c of cands) {
     const shape = shapes.get(kindKey(c.kind));
     if (shape === undefined) continue;
+    const slower = shape.shanten > bestShanten;
     // 텐파이가 되는 후보에만 뜻이 있다 — 샹텐이 남은 손에는 대기 자체가 없다.
     let selfFuriten = false;
     if (shape.shanten === 0) {
@@ -531,13 +680,18 @@ export function bidDiscard(
         return k === declKey || myDiscards.has(k);
       });
     }
-    const ev = lineEV(read, c, shape, plan, profile, {
+    const opts = {
       riichi: false,
       tsumoOnly: tsumoOnly || selfFuriten,
       notenStake,
       quest,
-    });
-    scored.push({ c, ev });
+    };
+    // 뒤처지는 형태는 **종전과 같은 값**으로 겨룬다 (우케이레를 세지 않은 값)
+    const ev = lineEV(read, c, slower ? blankShape(shape) : shape, plan, profile, opts);
+    scored.push({ c, ev, slow: false });
+    if (slower && slack > 0) {
+      slowPool.push({ c, ev: lineEV(read, c, shape, plan, profile, opts), slow: true });
+    }
     // 동점이면 뒤쪽(쯔모패 쪽)을 버린다 — 사람도 쓸모 같으면 쯔모기리한다
     if (ev >= bestEV) {
       bestEV = ev;
@@ -545,7 +699,9 @@ export function bidDiscard(
     }
   }
   if (best === null) return null;
-  const wobbled = wobble(scored, bestEV, profile, jitter);
+  // 느린 후보는 최선으로 뽑힌 패와 겹치지 않을 때만 차선 자리에 올린다
+  const pool = [...scored, ...slowPool.filter((x) => x.c !== best)];
+  const wobbled = wobble(pool, bestEV, profile, jitter);
   if (wobbled !== null) {
     best = wobbled.c;
     bestEV = wobbled.ev;
