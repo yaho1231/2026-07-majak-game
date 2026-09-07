@@ -7086,6 +7086,7 @@ export function App(): JSX.Element {
           rules={roomRules}
           onSetRules={setRoomRulesPatch}
           onShuffleSeats={shuffleSeats}
+          onMoveSeat={(playerId, seat) => send({ type: "moveSeat", playerId, seat })}
           onLeave={returnHome}
           onToast={(t) => showToast(t, "info")}
           onOpenHelp={() => setHelpOpen(true)}
@@ -13267,6 +13268,11 @@ function WaitingRoom(props: {
   /** 상세설정 변경 (방장만 — 다른 사람에게는 읽기 전용으로 보인다). */
   onSetRules: (patch: Partial<RoomRules>) => void;
   onShuffleSeats: () => void;
+  /**
+   * 자리 옮기기 (방장 전용) — 끌어 놓은 줄을 그 자리에 끼운다.
+   * `seat`은 옮긴 뒤의 자리 번호다(0=동). 맞바꾸기가 아니라 잘라 붙이기다.
+   */
+  onMoveSeat: (playerId: string, seat: number) => void;
   onLeave: () => void;
   onToast?: (text: string) => void;
   /**
@@ -13428,6 +13434,55 @@ function WaitingRoom(props: {
   );
   const readyCount = lobby.players.filter((p) => !p.isHost && p.ready).length;
   const needReady = lobby.players.filter((p) => !p.isHost && !p.isBot).length;
+
+  /*
+   * ── 끌어서 자리 옮기기 (2026-09-07 사용자 지시) ──
+   *
+   * 「자리 섞기」는 무작위라 «저 사람을 내 하가에»라는 뜻을 담을 수 없다. 끌어 놓기가
+   * 그 뜻을 그대로 적는 조작이라 자리표 줄에 붙인다. **방장만** 끌 수 있고, 놓을 수
+   * 있는 곳은 **사람이 앉아 있는 줄**뿐이다 — 빈자리는 자리 번호가 아니라 «아직
+   * 아무도 없다»라서, 거기로 옮기면 서버가 조용히 버린다.
+   *
+   * 자리는 서버가 되돌려 주는 `lobby`로만 바뀐다(낙관적 갱신 없음) — 방장 둘이
+   * 있을 수 없는 화면이라 지연이 짧고, 화면이 먼저 움직이면 서버가 거절했을 때
+   * 자리표가 조용히 거짓말을 한다.
+   */
+  const [dragSeat, setDragSeat] = useState<number | null>(null);
+  const [dropSeat, setDropSeat] = useState<number | null>(null);
+  const canDragSeats = isHost && lobby.players.length >= 2;
+  const seatDragProps = (i: number, p: LobbyPlayerEntry | null) => {
+    if (!canDragSeats || p === null) return {};
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        setDragSeat(i);
+        e.dataTransfer.effectAllowed = "move";
+        // 일부 브라우저는 데이터가 비면 드래그 자체를 시작하지 않는다.
+        e.dataTransfer.setData("text/plain", p.playerId);
+      },
+      onDragEnd: () => {
+        setDragSeat(null);
+        setDropSeat(null);
+      },
+      onDragOver: (e: React.DragEvent) => {
+        if (dragSeat === null) return;
+        e.preventDefault(); // 이걸 막지 않으면 drop이 오지 않는다
+        e.dataTransfer.dropEffect = "move";
+        if (dropSeat !== i) setDropSeat(i);
+      },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        const from = dragSeat;
+        setDragSeat(null);
+        setDropSeat(null);
+        if (from === null || from === i) return;
+        const moving = slots[from];
+        if (moving === null || moving === undefined) return;
+        sfx.slide();
+        props.onMoveSeat(moving.playerId, i);
+      },
+    };
+  };
 
   return (
     <div className="waitroom" ref={waitroomRef}>
@@ -13613,7 +13668,16 @@ function WaitingRoom(props: {
         */}
         <div className={`seat-list${inviteSeat !== null ? " seat-list-open" : ""}`}>
           {slots.map((p, i) => (
-            <div key={i} className={`seat-row ${p === null ? "seat-empty" : ""} ${p?.playerId === lobby.youId ? "seat-me" : ""}`}>
+            <div
+              key={i}
+              className={`seat-row ${p === null ? "seat-empty" : ""} ${p?.playerId === lobby.youId ? "seat-me" : ""}${
+                canDragSeats && p !== null ? " seat-draggable" : ""
+              }${dragSeat === i ? " seat-dragging" : ""}${
+                dropSeat === i && dragSeat !== null && dragSeat !== i ? " seat-droptarget" : ""
+              }`}
+              title={canDragSeats && p !== null ? "끌어서 자리를 옮깁니다" : undefined}
+              {...seatDragProps(i, p)}
+            >
               <span className="seat-idx">{WIND_KO[i]}</span>
               {p === null ? (
                 <>

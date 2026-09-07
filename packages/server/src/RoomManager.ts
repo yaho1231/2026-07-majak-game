@@ -20,6 +20,7 @@ import type { WebSocket } from "ws";
 import { contentAugments } from "@majak/content";
 import { AugmentRegistry } from "@majak/core/augment/AugmentRegistry.js";
 import { standardAugments } from "@majak/core/augment/standardAugments.js";
+import type { AugmentDef } from "@majak/core/augment/Augment.js";
 import {
   AUGMENT_POWER_TIERS,
   POWER_TIER_LABEL,
@@ -99,6 +100,25 @@ import type { AuthResult, LiveGameRecord, SiteDb, UserRow } from "./SiteDb.js";
  * buildAugmentCatalog와 달리 install·bot 등 원본 필드가 살아 있어 BotAgent가 정책을 읽는다.
  */
 const ALL_AUGMENT_DEFS = [...standardAugments, ...contentAugments];
+
+/**
+ * 왕초보 방에서 **빼는 증강** (2026-09-07 사용자 지시).
+ *
+ * 초읽기(`time_pressure`)는 그 국 동안 전원의 모든 결정을 5초로 조인다. 왕초보 방은
+ * 정확히 그 반대를 고른 자리다 — 한 수에 300초를 준 방에서 5초가 걸리면, 아직 무엇을
+ * 고를지 읽고 있는 사람의 차례가 통째로 쯔모기리로 흘러간다.
+ *
+ * **카탈로그에서 뺀다** — 드래프트 후보(`DraftController`)와 지급형 증강(수상한
+ * 주사위 `ctx.grantAugments`)이 둘 다 이 카탈로그 하나만 보므로, 여기서 빼면 두 길이
+ * 함께 막힌다. 드래프트 쪽에만 필터를 얹으면 지급 경로가 그대로 옆문이 된다.
+ */
+const NOVICE_EXCLUDED_AUGMENTS = new Set(["time_pressure"]);
+
+/** 이 방의 속도에 맞는 콘텐츠 증강 목록. 왕초보만 줄어들고 나머지는 그대로다. */
+export function augmentsForPace(pace: RoomPace): readonly AugmentDef[] {
+  if (pace !== "novice") return contentAugments;
+  return contentAugments.filter((a) => !NOVICE_EXCLUDED_AUGMENTS.has(a.id));
+}
 
 /** 게임 레지스트리와 동일 구성(standard + content)의 정적 증강 카탈로그를 만든다. */
 function buildAugmentCatalog(): AugmentCatalogEntry[] {
@@ -2240,6 +2260,7 @@ export class RoomManager {
       case "setRoomRules":
       case "setRoomPace":
       case "shuffleSeats":
+      case "moveSeat":
       case "startGame": {
         if (conn.room === null || conn.agent === null) return;
         this.handleLobbyMessage(conn.room, conn.agent, msg);
@@ -3690,6 +3711,32 @@ export class RoomManager {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         if (room.sandbox) return; // 증강 테스트 방은 자리를 고정한다
         this.shuffleSeats(room);
+        this.broadcastLobby(room);
+        return;
+      }
+      /*
+       * 자리 옮기기 (2026-09-07 사용자 지시) — 대기실에서 줄을 끌어 자리를 정한다.
+       *
+       * 「자리 섞기」는 무작위라 «저 사람을 내 하가에»라는 뜻을 담을 수 없었다.
+       * 여기는 `shuffleSeats`와 같은 문(방장 · 대기 중 · 증강 테스트 방 제외)을
+       * 쓰고, 바꾸는 것도 같은 것 하나다 — `room.agents`의 **순서**.
+       *
+       * 맞바꾸기(swap)가 아니라 **잘라 붙이기**다: 두 자리만 맞바꾸면 사이에 낀
+       * 나머지 둘의 상대 위치가 뜻하지 않게 뒤집힌다(끌어 놓는 조작의 뜻은
+       * «이 줄을 여기로»이지 «이 둘을 맞바꿔»가 아니다).
+       */
+      case "moveSeat": {
+        if (room.phase !== "waiting" || agent.id !== room.hostId) return;
+        if (room.sandbox) return; // 증강 테스트 방은 자리를 고정한다
+        if (typeof msg.playerId !== "string" || !Number.isInteger(msg.seat)) return;
+        const from = room.agents.findIndex((a) => a.id === msg.playerId);
+        // 빈자리로는 옮길 수 없다 — 자리 번호는 **앉아 있는 사람들** 사이의 순서다.
+        if (from < 0 || msg.seat < 0 || msg.seat >= room.agents.length) return;
+        if (from === msg.seat) return;
+        const [moved] = room.agents.splice(from, 1);
+        if (moved === undefined) return; // 위 검사로 도달 불가 — 타입을 좁힌다
+        room.agents.splice(msg.seat, 0, moved);
+        this.log(room, `자리 옮김 — ${moved.nickname} ${from} → ${msg.seat}`);
         this.broadcastLobby(room);
         return;
       }
@@ -6535,7 +6582,15 @@ export class RoomManager {
             kuitan: room.rules.kuitan,
             openHands: room.rules.openHands,
           }),
-      extraAugments: contentAugments,
+      /*
+       * 왕초보 방에서는 초읽기를 빼고 연다 (`augmentsForPace`).
+       *
+       * 이어하기(resume)도 같은 값을 쓴다 — 방의 속도는 판이 도는 동안 바뀌지
+       * 않으므로 시작 때와 같은 카탈로그가 나오고, 재구성 쪽
+       * (`restoreLiveGame`)은 파일에 적힌 보유 증강을 그대로 다시 세워야 하므로
+       * 거기서는 거르지 않는다.
+       */
+      extraAugments: augmentsForPace(room.pace),
       interRoundDelayMs: this.interRoundDelayMs,
       autoMoveDelayMs: AUTO_MOVE_MS,
       /*

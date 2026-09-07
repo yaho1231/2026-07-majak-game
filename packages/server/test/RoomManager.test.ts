@@ -661,6 +661,63 @@ describe("방 생성·참가 (코드)", () => {
     expect(seatsOf(guest)).toBe(before);
   });
 
+  /*
+   * 자리 옮기기 (2026-09-07 사용자 지시). 「자리 섞기」와 같은 문을 쓰지만 뜻이
+   * 다르다 — 무작위가 아니라 **잘라 붙이기**다: 집은 줄을 빼고 그 자리에 끼우므로
+   * 사이에 있던 사람들이 한 칸씩 밀린다(맞바꾸기라면 나머지 둘의 상대 위치가
+   * 뜻하지 않게 뒤집힌다).
+   */
+  it("자리 옮기기는 잘라 붙이기다 — 사이에 낀 자리는 한 칸씩 밀린다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    for (let i = 0; i < 3; i++) host.clientSend({ type: "addBot" });
+
+    const orderOf = (): string[] =>
+      [...(host.last("lobby").players as { playerId: string; seat: number }[])]
+        .sort((a, b) => a.seat - b.seat)
+        .map((p) => p.playerId);
+    const before = orderOf();
+    expect(before).toHaveLength(4);
+
+    // 0번 자리를 2번으로 — [a,b,c,d] → [b,c,a,d]
+    host.clientSend({ type: "moveSeat", playerId: before[0], seat: 2 });
+    expect(orderOf()).toEqual([before[1], before[2], before[0], before[3]]);
+
+    // 되돌린다 — 같은 손잡이로 원래 자리에 다시 끼운다
+    host.clientSend({ type: "moveSeat", playerId: before[0], seat: 0 });
+    expect(orderOf()).toEqual(before);
+  });
+
+  it("자리 옮기기는 방장 전용이고, 빈자리·범위 밖으로는 옮기지 않는다", async () => {
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const code = host.last("roomCreated").code;
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code });
+    host.clientSend({ type: "addBot" }); // 3인 — 4번째 자리는 비어 있다
+
+    const orderOf = (sock: FakeSocket): string[] =>
+      [...(sock.last("lobby").players as { playerId: string; seat: number }[])]
+        .sort((a, b) => a.seat - b.seat)
+        .map((p) => p.playerId);
+    const before = orderOf(host);
+    expect(before).toHaveLength(3);
+
+    // 방장이 아닌 사람은 못 옮긴다
+    guest.clientSend({ type: "moveSeat", playerId: before[0], seat: 2 });
+    expect(orderOf(host)).toEqual(before);
+
+    // 빈자리(3번)로는 못 옮긴다 — 자리 번호는 앉아 있는 사람들 사이의 순서다
+    host.clientSend({ type: "moveSeat", playerId: before[0], seat: 3 });
+    expect(orderOf(host)).toEqual(before);
+
+    // 없는 좌석 id도 조용히 무시한다
+    host.clientSend({ type: "moveSeat", playerId: "p9", seat: 1 });
+    expect(orderOf(host)).toEqual(before);
+  });
+
   it("대기실에서 나가면(소켓 close) 자리가 비고, 방장이 나가면 승계된다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
