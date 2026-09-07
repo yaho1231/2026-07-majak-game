@@ -251,22 +251,36 @@ describe("난이도", () => {
     expect(easy.aggression).toBe(base.aggression);
   });
 
-  it("초보 봇은 값이 더 벌어진 후보까지 흔들린다 (실수한다)", () => {
+  /**
+   * **초보는 최선이 아닌 패를 더 자주 고른다.**
+   *
+   * 예전에는 「고르는 패의 **종류**가 더 많다」로 쟀는데, 그건 난이도가 «최선보다
+   * 이만큼 손해까지는 아무거나»였을 때의 모습이다. 지금 난이도의 본체는 폭이 아니라
+   * **빈도**다(`bot/skill.ts` `lapseChance`) — 초보는 더 넓게 흩뿌리는 것이 아니라
+   * 그럴듯한 차선을 더 자주 고른다. 그래서 종류 수가 아니라 «최선에서 벗어난 횟수»를 센다.
+   */
+  it("초보 봇은 최선이 아닌 패를 더 자주 고른다 (실수한다)", () => {
     const scene = botScene({ hand: "123m456p78s1122z9s", turnCount: 8 });
     const read = buildRead(scene.view, "p0");
     const options = scene.discardOptions();
-    /** 난수를 바꿔 가며 실제로 몇 종류의 패가 나오는지 센다 */
-    const spread = (skill: number): number => {
-      const out = new Set<TileId | undefined>();
-      const profile = { ...profileOf("balanced"), skill };
-      for (let seed = 0; seed < 30; seed++) {
+    const idOf = (b: ReturnType<typeof bidDiscard>): TileId | undefined =>
+      (b?.option.payload as { tileId?: TileId }).tileId;
+    /**
+     * 난수를 바꿔 가며 «결정론적 최선»에서 벗어난 횟수를 센다.
+     * 성격은 **조용하게**(noise 0) 둔다 — 그래야 흔들림이 성격이 아니라 난이도에서만 온다.
+     */
+    const strays = (skill: number): number => {
+      const profile = { ...profileOf("balanced"), noise: 0, skill };
+      const best = idOf(bidDiscard(read, options, null, profile));
+      let n = 0;
+      for (let seed = 0; seed < 60; seed++) {
         const rng = new Prng(seed);
-        const bid = bidDiscard(read, options, null, profile, { int: (n) => rng.int(n) });
-        out.add((bid?.option.payload as { tileId?: TileId }).tileId);
+        const bid = bidDiscard(read, options, null, profile, { int: (x) => rng.int(x) });
+        if (idOf(bid) !== best) n++;
       }
-      return out.size;
+      return n;
     };
-    expect(spread(0.35)).toBeGreaterThan(spread(1));
+    expect(strays(0.35)).toBeGreaterThan(strays(1));
   });
 });
 

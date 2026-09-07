@@ -21,6 +21,20 @@ import type { PlayerView } from "@majak/core";
 const easy: BotProfile = withDifficulty(NEUTRAL_PROFILE, "easy");
 const hard: BotProfile = withDifficulty(NEUTRAL_PROFILE, "hard");
 
+/**
+ * 결정론 난수 지터 — 고정값(`int: () => 0`)으로는 가중 추첨의 **맨 앞만** 뽑혀
+ * 「가끔 이쪽」이 한 번도 안 나온다. 씨앗을 바꿔 가며 분포를 본다.
+ */
+function jitterFrom(seed: number): { int(n: number): number } {
+  let s = ((seed + 1) * 2654435761) % 4294967296;
+  return {
+    int(n: number): number {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return Math.floor((s / 4294967296) * n);
+    },
+  };
+}
+
 function readOf(view: PlayerView, profile: BotProfile, mode: "hanchan" | "tonpuu" = "hanchan") {
   return buildRead(view, "p0", { mode, profile });
 }
@@ -109,6 +123,55 @@ describe("난이도가 판단에 닿는다", () => {
     expect(sharp?.option).toBe(best?.option);
     // 초보는 최선보다 나쁜 패를 고를 수 있다 (되돌리면 둘이 항상 같아진다)
     expect(soft?.option).not.toBe(best?.option);
+  });
+
+  /**
+   * **손 효율에 난이도가 닿는다** (2026-09-07).
+   *
+   * `shapesOf`는 원래 최선 샹텐을 유지하는 후보만 정밀하게 쟀고, 그래서 「지금 텐파이가
+   * 늦어지는 대신 대기가 넓어지는 형태」는 우케이레 0으로 남아 **구조적으로 선택될 수
+   * 없었다** — 난이도를 아무리 낮춰도 텐파이 속도가 hard와 똑같았던 이유다.
+   * 실력이 1보다 낮으면 한 샹텐 뒤처지는 형태까지 잰다(`skill.shapeSlack`).
+   */
+  it("초보만 한 샹텐 뒤처지는 형태까지 후보로 잰다", () => {
+    const scene = botScene({
+      hand: "1259m3679p2488s1z",
+      doraIndicator: "5z",
+      turnCount: 5,
+      wallLeft: 50,
+    });
+    const options = scene.discardOptions();
+    const seen = new Set<number>();
+    // 지터를 여러 번 다르게 줘서 easy가 실제로 느린 형태를 고르는 순간을 잡는다
+    for (let i = 0; i < 200; i++) {
+      const bid = bidDiscard(readOf(scene.view, easy), options, null, easy, jitterFrom(i));
+      const m = /샹텐(\d+)/.exec(bid?.reason ?? "");
+      if (m?.[1] !== undefined) seen.add(Number(m[1]));
+    }
+    const sharp = bidDiscard(readOf(scene.view, hard), options, null, hard);
+    const bestShanten = Number(/샹텐(\d+)/.exec(sharp?.reason ?? "")?.[1] ?? 0);
+    // 초보는 최선 샹텐도 고르고, 한 발 늦는 형태도 고른다
+    expect(seen.has(bestShanten)).toBe(true);
+    expect([...seen].some((s) => s > bestShanten)).toBe(true);
+  });
+
+  /**
+   * 느린 형태는 **이길 수 없다**. `winChanceOf`가 우케이레를 크게 보므로 그냥 같은
+   * 저울에 올리면 샹텐이 나쁘고 우케이레만 넓은 형태가 텐파이 직전 형태를 이긴다 —
+   * 실측으로 easy 봇이 매 순번 그걸 골라 화료율이 0.010까지 떨어졌다(hard 0.274).
+   */
+  it("느린 형태가 최선을 밀어내지는 않는다 (흔들림이 없으면 최선 그대로)", () => {
+    const scene = botScene({
+      hand: "1259m3679p2488s1z",
+      doraIndicator: "5z",
+      turnCount: 5,
+      wallLeft: 50,
+    });
+    const options = scene.discardOptions();
+    // 지터를 안 넘기면 결정론적 최선이다 — 난이도가 달라도 같은 패여야 한다
+    const soft = bidDiscard(readOf(scene.view, easy), options, null, easy);
+    const sharp = bidDiscard(readOf(scene.view, hard), options, null, hard);
+    expect(soft?.option).toBe(sharp?.option);
   });
 });
 
