@@ -210,4 +210,57 @@ describe("분열 (tile_split)", () => {
     // 9 → a=1,2,3,4
     expect(forTarget.map((o) => (o.payload as { a: number }).a).sort()).toEqual([1, 2, 3, 4]);
   });
+
+  /*
+   * **재료 미리보기** — 카드는 "가장 고립된 잡패가 변해 생긴다"고만 말하고 어느 패인지는
+   * 말하지 않아, 누르고 나서야 무엇을 잃었는지 알 수 있었다(2026-09-07 사용자 요청).
+   * 화면은 이 채널만 읽는다 — 클라가 같은 계산을 한 벌 더 갖고 있으면 짚는 패와 실제로
+   * 타는 패가 조용히 갈린다.
+   */
+  it("발동 전에 «쪼갤 패 → 사라질 재료» 표를 보유자 채널로 알려 준다", () => {
+    const game = setup(scene());
+    // 채널은 이벤트가 한 번 돌아야 실린다 — 고립된 자패 한 장을 버려 한 순을 흘린다.
+    const z = findTile(game, K.e)!;
+    expect(game.engine.submit({ player: "p0", type: "discard", payload: { tileId: z } }).ok).toBe(true);
+
+    const st = game.engine.state;
+    const table = st.augmentData["view:p0:tile_split:material#round"] as
+      | Record<string, TileId>
+      | undefined;
+    expect(table, "재료 미리보기 채널이 비어 있다").toBeDefined();
+
+    const target = findTile(game, K.p9)!;
+    const promised = table![String(target)];
+    expect(promised, "9통을 쪼갤 때의 재료가 표에 없다").toBeDefined();
+    // 재료는 쪼갤 대상 자신이 아니고, 손에 실제로 있는 «잡패»(여기서는 고립된 자패)다
+    expect(promised).not.toBe(target);
+    expect(handIdsOf(st, "p0")).toContain(promised);
+    expect(kindOf(st, promised!).suit).toBe("dragon");
+
+    // 표는 **쪼갤 수 있는 패마다** 한 줄이다 (재료가 대상에 따라 달라질 수 있으므로)
+    for (const id of handIdsOf(st, "p0")) {
+      const k = kindOf(st, id);
+      const splittable = (k.suit === "man" || k.suit === "pin" || k.suit === "sou") && k.rank >= 2;
+      expect(Object.hasOwn(table!, String(id))).toBe(splittable);
+    }
+  });
+
+  it("예고한 그 패가 실제로 타는 패다 — 자패 재료가 나머지 조각(5통)이 된다", () => {
+    const game = setup(scene());
+    const target = findTile(game, K.p9)!;
+    const honorsBefore = handIdsOf(game.engine.state, "p0").filter((id) => {
+      const su = kindOf(game.engine.state, id).suit;
+      return su === "wind" || su === "dragon";
+    });
+    expect(honorsBefore.length).toBe(2); // 1z · 5z — 둘 다 고립된 잡패다
+
+    expect(
+      game.engine.submit({ player: "p0", type: "split_tile", payload: { tileId: target, a: 4 } }).ok,
+    ).toBe(true);
+
+    // 자패 **한 장**이 사라지고 그 자리에 5통이 섰다 (미리보기가 짚던 바로 그 패다)
+    const after = game.engine.state;
+    const burned = honorsBefore.filter((id) => kindKey(kindOf(after, id)) === K.p5);
+    expect(burned.length).toBe(1);
+  });
 });
