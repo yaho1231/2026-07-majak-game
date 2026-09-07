@@ -19,6 +19,18 @@
  *  역패·사희가 헛성립한다)
  *
  * ⚠ 리치 중에는 선언할 수 없다 — 4연속 깡은 언제나 대기를 바꾼다(표준 안깡 안전성 규칙).
+ *
+ * # 2026-09-07 (사용자 지시) — 무너진 국경을 선언한 국에는 **혼색 4연속**도 깡이다
+ *
+ * 3만·4통·5삭·6만도 한 깡이 된다. 근거는 이 증강이 넉 장을 **슌쯔의 일종**으로 세운다는
+ * 것이다(`WinContext.meldToSet`이 슌쯔성 몸통으로 내보낸다) — 무너진 국경이 «슌쯔에서
+ * 무늬라는 국경을 지운다»면 4연속 깡에만 그 국경이 남을 이유가 없다.
+ * 판정은 `isRunQuad(kinds, wrap, mixed)` 한 곳이고, 후보 생성(FlowController)·
+ * validate(standardActions)·이 파일의 봇 정책이 모두 같은 함수를 본다.
+ *
+ * ⚠ **혼색 4연속은 커쯔로 세지 않는다** — `WinContext.meldToSetChoices`의 커쯔 해석은
+ * 같은 무늬일 때만 열린다. 무늬가 섞인 커쯔는 동수의 결속(`mixedTriplets`) 담당이라,
+ * 무너진 국경 하나로 또이또이·산안커까지 열리면 두 증강의 역할 분담이 무너진다.
  */
 
 /*
@@ -52,7 +64,7 @@ export const snakeKan: AugmentDef = defineAugment({
   description:
     "(상시) 같은 무늬 연속 4장(예: 3-4-5-6)을 '장사진'으로 선언해 깡으로 낼 수 있다 — 영상패를 뽑고 새로운 도라가 열린다.",
   detail:
-    "같은 무늬 연속 4장(3-4-5-6)을 깡으로 낼 수 있다 — 영상패를 뽑고 깡도라가 열린다.\n\n슌쯔로도 커쯔로도 세어 비싼 쪽이 잡히지만, 삼색동각처럼 같은 숫자를 요구하는 역에는 들어가지 않는다. 리치 중에는 선언할 수 없다. 끝없는 윤회를 함께 들면 9-1을 넘는 연속도 된다.",
+    "같은 무늬 연속 4장(3-4-5-6)을 깡으로 낼 수 있다 — 영상패를 뽑고 깡도라가 열린다.\n\n슌쯔로도 커쯔로도 세어 비싼 쪽이 잡히지만, 삼색동각처럼 같은 숫자를 요구하는 역에는 들어가지 않는다. 리치 중에는 선언할 수 없다. 끝없는 윤회를 함께 들면 9-1을 넘는 연속도 되고, 무너진 국경을 선언한 국에는 무늬가 섞인 3만4통5삭6만도 한 깡이다.",
   install(ctx) {
     ctx.setHolderRule("call.snakeKan", true);
   },
@@ -84,8 +96,17 @@ export const snakeKan: AugmentDef = defineAugment({
           const k = ctx.view.tiles[id]?.kind;
           if (k !== undefined) kinds.push(k);
         }
-        // 끝없는 윤회를 함께 들고 있으면 8-9-1-2 같은 순환 4연속도 이 정책이 맡는다
-        if (!isRunQuad(kinds, ctx.view.scoringOptions?.wrapRuns === true)) continue;
+        // 끝없는 윤회를 함께 들고 있으면 8-9-1-2 같은 순환 4연속도, 무너진 국경을
+        // 선언했으면 혼색 4연속(3만4통5삭6만)도 이 정책이 맡는다.
+        if (
+          !isRunQuad(
+            kinds,
+            ctx.view.scoringOptions?.wrapRuns === true,
+            ctx.view.scoringOptions?.mixedRuns === true,
+          )
+        ) {
+          continue;
+        }
         // (같은 패 4장은 BotAgent의 일반 규칙 담당)
         const rest = without(hand, kinds);
         const waits = winningKinds(rest, meldCount + 1, undefined, ctx.view.scoringOptions);

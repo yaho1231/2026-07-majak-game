@@ -14,13 +14,23 @@ import type { GameEngine } from "../../engine/GameEngine.js";
 import type { PlayerId } from "../../engine/zones/Zone.js";
 import { WALL, discardsZone } from "../../engine/zones/Zone.js";
 import { sameKind, kindKey } from "../tiles/Tile.js";
-import type { TileId, TileKind } from "../tiles/Tile.js";
+import type { Suit, TileId, TileKind } from "../tiles/Tile.js";
 import { winningKinds } from "../scoring/waits.js";
 import { DEFAULT_SEQUENCE_SUITS, decompose, honorMaxRank } from "../scoring/decompose.js";
 import { ROUND_SETTLED, KAN_DECLARED } from "./flowEvents.js";
 import type { AbortReason, RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
 import type { SettleWinRequest } from "./standardActions.js";
 import { WIN_BLOCKED_MIN_HAN, WIN_BLOCKED_RON_IMMUNE } from "./standardActions.js";
+
+/**
+ * 혼색 4연속 깡(무너진 국경 × 장사진)을 **화면에 세우는 수**의 상한.
+ *
+ * 자리 넷 × 무늬 셋이라 조합의 상한이 81이다 — 3·4·5·6이 세 무늬로 다 모인 손이면
+ * 정말로 그만큼 나오고, 그걸 다 버튼으로 세우면 프롬프트가 깡 목록으로 뒤덮인다.
+ * 규칙이 아니라 **목록의 길이만** 자르는 값이다: validate(`standardActions`)는 잘린
+ * 조합도 그대로 받으므로, 목록에 없다고 금지된 것이 아니다.
+ */
+const SNAKE_MIXED_MAX = 12;
 import {
   SYSTEM_PLAYER,
   handIdsOf,
@@ -404,26 +414,57 @@ export class FlowController {
         }
       }
       
-      // 4연속 안깡 (장사진) — 같은 무늬 연속 4장을 한 깡으로 (시작 랭크당 한 번만 제시)
-      // 끝없는 윤회를 함께 들고 있으면 7-8-9-1·8-9-1-2·9-1-2-3까지 이어서 제시한다.
+      // 4연속 안깡 (장사진) — 연속 4장을 한 깡으로 (같은 재료 조합은 한 번만 제시)
+      // 끝없는 윤회를 함께 들고 있으면 7-8-9-1·8-9-1-2·9-1-2-3까지 이어서 제시하고,
+      // 무너진 국경을 선언했으면 무늬가 섞인 3만4통5삭6만도 후보에 든다.
       if (snakeKanFor(state, this.engine.rules, player)) {
-        const snakeWrap =
-          scoringOptionsOf(state, this.engine.rules, player).wrapRuns === true;
+        const snakeOpts = scoringOptionsOf(state, this.engine.rules, player);
+        const snakeWrap = snakeOpts.wrapRuns === true;
+        const snakeMixed = snakeOpts.mixedRuns === true;
+        const lastStart = snakeWrap ? 9 : 6;
+        const tileAt = (su: Suit, rank: number): number | undefined =>
+          hand.find((t) => {
+            const kk = kindOf(state, t);
+            return kk.suit === su && kk.rank === rank;
+          });
+        /** 넉 장을 후보로 올린다 — 이미 올린 조합이면 아무 일도 하지 않는다. */
+        const offerQuad = (quad: number[]): boolean => {
+          const seenKey = `snake:${[...quad].sort((a, b) => a - b).join(",")}`;
+          if (ankanKindsSeen.has(seenKey)) return false;
+          if (!this.validateOk(player, "ankan", { tileIds: quad })) return false;
+          ankanKindsSeen.add(seenKey);
+          options.push({ type: "ankan", payload: { tileIds: quad } });
+          return true;
+        };
+
+        // ① 단색 4연속 — 종전 그대로. 혼색이 열려 있어도 **먼저** 올린다(아래 상한에
+        //    잘리더라도 종전부터 있던 후보는 반드시 살아남게 하려는 순서다).
         for (const suit of DEFAULT_SEQUENCE_SUITS) {
-          for (let start = 1; start <= (snakeWrap ? 9 : 6); start++) {
-            const seenKey = `snake:${suit}${start}`;
-            if (ankanKindsSeen.has(seenKey)) continue;
-            const ids = [0, 1, 2, 3].map((d) =>
-              hand.find((t) => {
-                const kk = kindOf(state, t);
-                return kk.suit === suit && kk.rank === ((start - 1 + d) % 9) + 1;
-              }),
-            );
+          for (let start = 1; start <= lastStart; start++) {
+            const ids = [0, 1, 2, 3].map((d) => tileAt(suit, ((start - 1 + d) % 9) + 1));
             if (!ids.every((x): x is number => x !== undefined)) continue;
-            const quad = ids as [number, number, number, number];
-            if (this.validateOk(player, "ankan", { tileIds: quad })) {
-              ankanKindsSeen.add(seenKey);
-              options.push({ type: "ankan", payload: { tileIds: quad } });
+            offerQuad(ids as number[]);
+          }
+        }
+
+        // ② 혼색 4연속 (무너진 국경 선언 중) — 자리마다 무늬를 따로 고를 수 있다.
+        //    조합이 손패에 있는 것만 세도 최대 81가지라, 세우는 수는 상한으로 자른다.
+        if (snakeMixed) {
+          const suits = [...DEFAULT_SEQUENCE_SUITS];
+          let shown = 0;
+          for (let start = 1; start <= lastStart && shown < SNAKE_MIXED_MAX; start++) {
+            const ranks = [0, 1, 2, 3].map((d) => ((start - 1 + d) % 9) + 1);
+            let combos: number[][] = [[]];
+            for (const rank of ranks) {
+              const here = suits
+                .map((su) => tileAt(su, rank))
+                .filter((x): x is number => x !== undefined);
+              combos = combos.flatMap((prefix) => here.map((x) => [...prefix, x]));
+              if (combos.length === 0) break;
+            }
+            for (const quad of combos) {
+              if (shown >= SNAKE_MIXED_MAX) break;
+              if (offerQuad(quad)) shown++;
             }
           }
         }
