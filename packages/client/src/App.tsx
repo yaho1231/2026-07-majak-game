@@ -13458,6 +13458,27 @@ function WaitingRoom(props: {
     else fail();
   }
 
+  /*
+   * ── 끌어서 자리 옮기기 (2026-09-07 사용자 지시) ──
+   *
+   * 「자리 섞기」는 무작위라 «저 사람을 내 하가에»라는 뜻을 담을 수 없다. 끌어 놓기가
+   * 그 뜻을 그대로 적는 조작이라 자리표 줄에 붙인다. **방장만** 끌 수 있고, 놓을 수
+   * 있는 곳은 **사람이 앉아 있는 줄**뿐이다 — 빈자리는 자리 번호가 아니라 «아직
+   * 아무도 없다»라서, 거기로 옮기면 서버가 조용히 버린다.
+   *
+   * 자리는 서버가 되돌려 주는 `lobby`로만 바뀐다(낙관적 갱신 없음) — 방장 둘이
+   * 있을 수 없는 화면이라 지연이 짧고, 화면이 먼저 움직이면 서버가 거절했을 때
+   * 자리표가 조용히 거짓말을 한다.
+   *
+   * ⚠ 이 두 훅은 **아래의 `lobby === null` 빠른 반환보다 위**에 있어야 한다
+   *   (2026-09-07 크래시). 아래에 두면 «입장 중…»을 그린 렌더(훅 5개)와 대기실을
+   *   그린 렌더(훅 7개)의 훅 개수가 달라져 React가 #310 «Rendered more hooks than
+   *   during the previous render»으로 트리를 통째로 던진다 — 방을 만들거나 증강
+   *   테스트를 시작하는 사람마다 크래시 화면을 봤다. 훅은 조건 위에 둔다.
+   */
+  const [dragSeat, setDragSeat] = useState<number | null>(null);
+  const [dropSeat, setDropSeat] = useState<number | null>(null);
+
   if (lobby === null) {
     return (
       <div className="lobby">
@@ -13485,20 +13506,6 @@ function WaitingRoom(props: {
   const readyCount = lobby.players.filter((p) => !p.isHost && p.ready).length;
   const needReady = lobby.players.filter((p) => !p.isHost && !p.isBot).length;
 
-  /*
-   * ── 끌어서 자리 옮기기 (2026-09-07 사용자 지시) ──
-   *
-   * 「자리 섞기」는 무작위라 «저 사람을 내 하가에»라는 뜻을 담을 수 없다. 끌어 놓기가
-   * 그 뜻을 그대로 적는 조작이라 자리표 줄에 붙인다. **방장만** 끌 수 있고, 놓을 수
-   * 있는 곳은 **사람이 앉아 있는 줄**뿐이다 — 빈자리는 자리 번호가 아니라 «아직
-   * 아무도 없다»라서, 거기로 옮기면 서버가 조용히 버린다.
-   *
-   * 자리는 서버가 되돌려 주는 `lobby`로만 바뀐다(낙관적 갱신 없음) — 방장 둘이
-   * 있을 수 없는 화면이라 지연이 짧고, 화면이 먼저 움직이면 서버가 거절했을 때
-   * 자리표가 조용히 거짓말을 한다.
-   */
-  const [dragSeat, setDragSeat] = useState<number | null>(null);
-  const [dropSeat, setDropSeat] = useState<number | null>(null);
   const canDragSeats = isHost && lobby.players.length >= 2;
   const seatDragProps = (i: number, p: LobbyPlayerEntry | null) => {
     if (!canDragSeats || p === null) return {};

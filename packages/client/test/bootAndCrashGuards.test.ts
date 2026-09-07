@@ -191,3 +191,55 @@ describe("링크를 붙였을 때 보여 줄 것이 있다", () => {
     expect(HTML).toContain('class="boot"');
   });
 });
+
+// ───────── 5. 조건부 훅 (2026-09-07 크래시) ─────────
+
+/**
+ * **빠른 반환보다 아래에 있는 훅**을 잡는다.
+ *
+ * 2026-09-07: 대기실의 «끌어서 자리 옮기기» useState 두 개가 `lobby === null` 빠른
+ * 반환 **아래**에 들어갔다. 「입장 중…」을 그린 렌더는 훅 5개, 자리표를 그린 렌더는
+ * 7개 — React가 #310(«Rendered more hooks than during the previous render»)으로
+ * 트리를 통째로 던져, 방을 만들거나 증강 테스트를 시작한 사람마다 크래시 화면을 봤다.
+ * 프로덕션 빌드에서는 번호만 남는 오류라 원인 찾기도 비쌌다. 여기서 못을 박는다.
+ *
+ * 스캔 규칙(파일은 전부 2칸 들여쓰기다): 컴포넌트 본문 깊이(들여쓰기 2칸)의 반환과
+ * 그 깊이의 `if` 블록 안 반환만 «빠른 반환»으로 센다 — 콜백·중첩 함수 안의 반환은
+ * 세지 않는다. 훅도 본문 깊이의 호출만 본다.
+ */
+describe("훅이 빠른 반환보다 아래에 있지 않다", () => {
+  const HOOK = /\buse(?:State|Effect|LayoutEffect|Memo|Ref|Callback|Context|Reducer|[A-Z][A-Za-z]*)\s*[<(]/;
+
+  it("클라이언트 컴포넌트 전부", () => {
+    const lines = code(APP).split("\n");
+    const starts: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (/^(export )?(function [A-Za-z]|const [A-Za-z_$]+ ?=)/.test(lines[i] ?? "")) starts.push(i);
+    }
+    starts.push(lines.length);
+
+    const bad: string[] = [];
+    for (let k = 0; k < starts.length - 1; k++) {
+      const a = starts[k] as number;
+      const b = starts[k + 1] as number;
+      let earlyReturn: number | null = null;
+      for (let i = a + 1; i < b; i++) {
+        const l = lines[i] ?? "";
+        if (earlyReturn === null) {
+          if (/^ {2}(return\b|if \(.*\) return\b)/.test(l)) earlyReturn = i;
+          else if (/^ {2}if \(/.test(l)) {
+            // 본문 깊이의 if 블록 — 닫힐 때까지 안쪽 반환을 본다
+            for (let j = i + 1; j < b && !/^ {2}\}/.test(lines[j] ?? ""); j++) {
+              if (/^ {4}return\b/.test(lines[j] ?? "")) { earlyReturn = j; break; }
+            }
+          }
+        }
+        if (earlyReturn !== null && earlyReturn < i && HOOK.test(l) && /^ {2}\S/.test(l)) {
+          bad.push(`${(lines[a] ?? "").trim().slice(0, 40)} — ${(l).trim().slice(0, 50)} (line ${i + 1})`);
+          break;
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
