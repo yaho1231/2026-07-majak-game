@@ -196,6 +196,22 @@ const RECONNECT_MAX_MS = 10_000;
  */
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const HEARTBEAT_TIMEOUT_MS = 8_000;
+/**
+ * **이 탭이 스스로 멎어 있었다**고 볼 지연(ms) — 하트비트 타이머가 예정보다 이만큼
+ * 늦게 깨어났으면, 그 사이 흐른 시간은 소켓에 대한 증거가 아니다 (2026-09-07).
+ *
+ * 이게 없어서 실제로 사고가 났다. 판정이 `Date.now() - 보낸시각 > 8초` 하나뿐이라
+ * **«회선이 죽었다»와 «내 메인 스레드가 8초 넘게 멎어 있었다»를 구별하지 못했다.**
+ * 뒤쪽일 때 pong은 소켓 버퍼에 멀쩡히 도착해 있고 큐에서 순서를 기다릴 뿐인데,
+ * 타이머 콜백이 먼저 깨면 «답이 없다»로 읽고 **살아 있는 연결을 우리가 끊는다.**
+ * 사용자가 본 것이 정확히 그것이다 — 포그라운드에서 조작 중에 화면이 한 번 멎고,
+ * 곧바로 «재연결 중»이 뜬다. 멎은 것이 원인이고 재연결은 우리가 만든 결과다.
+ *
+ * 공개 서버 로그가 이 해석을 뒷받침한다: 끊김 531건 중 467건이 **단독**이고,
+ * 방 안에서 끊긴 127건 중 다른 방 사람과 4초 안에 함께 끊긴 것은 4건뿐이다.
+ * 서버 이벤트 루프가 멎었다면 방을 가리지 않고 뭉쳐서 끊겨야 한다.
+ */
+const HEARTBEAT_STALL_DRIFT_MS = 2_000;
 type Side = "bottom" | "right" | "top" | "left";
 
 
@@ -2812,6 +2828,10 @@ export function App(): JSX.Element {
   /** 연결 생존 확인 — 주기 타이머와 "답을 기다리는 중인 ping"의 발신 시각. */
   const heartbeatTimerRef = useRef<number | null>(null);
   const pingSentAtRef = useRef<number | null>(null);
+  /** 하트비트 회차의 **다음 예정 시각** — 타이머가 얼마나 늦게 깨어났는지 재는 기준. */
+  const heartbeatDueAtRef = useRef(0);
+  /** 서버에서 **무엇이든** 마지막으로 받은 시각 — 소켓이 살아 있다는 가장 넓은 증거. */
+  const lastRecvAtRef = useRef(0);
   /**
    * 초대 링크(`?room=CODE`)로 들어왔다 — 인증이 끝나면 이 방으로 들어간다.
    * 부팅 시 한 번만 읽는다: 그 뒤 주소창은 지워지고, 이 값은 한 번 쓰면 비워진다.
@@ -4091,6 +4111,9 @@ export function App(): JSX.Element {
       // 파싱 실패를 잡는다 — 서버가 정상이면 오지 않는 프레임이지만, 중간 프록시나
       // 확장 프로그램이 끼어들면 여기서 예외가 나고 그 뒤 처리가 통째로 멈춘다.
       // 한 프레임을 버리고 다음 프레임을 계속 받는 편이 낫다 (감사 2026-08-12 §L-7).
+      // 프레임이 왔다 = 이 소켓은 살아 있다. 파싱 전에 적는다 — 해석하지 못한
+      // 프레임도 «서버가 말하고 있다»는 증거로는 똑같이 유효하다.
+      lastRecvAtRef.current = Date.now();
       let msg: ServerMessage;
       try {
         msg = JSON.parse(event.data as string) as ServerMessage;
@@ -4147,11 +4170,43 @@ export function App(): JSX.Element {
 
   function startHeartbeat(ws: WebSocket): void {
     stopHeartbeat();
+    // 이 회차가 «제때» 깨어났는지 재려면 다음 예정 시각을 알고 있어야 한다.
+    heartbeatDueAtRef.current = Date.now() + HEARTBEAT_INTERVAL_MS;
     heartbeatTimerRef.current = window.setInterval(() => {
+      const now = Date.now();
+      const drift = now - heartbeatDueAtRef.current;
+      heartbeatDueAtRef.current = now + HEARTBEAT_INTERVAL_MS;
       if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
       const sentAt = pingSentAtRef.current;
-      if (sentAt !== null && Date.now() - sentAt > HEARTBEAT_TIMEOUT_MS) {
-        // 앞선 ping이 끝내 답을 못 받았다 = 이 소켓은 죽었다.
+      /*
+       * ── 이 탭이 멎어 있었으면 소켓을 재판하지 않는다 (`HEARTBEAT_STALL_DRIFT_MS`) ──
+       *
+       * 타이머가 예정보다 한참 늦게 깨어났다 = 그 사이 메인 스레드가 막혀 있었다
+       * (무거운 렌더·연출, 탭 스로틀, 기기 절전). 그동안 pong은 도착해 있어도
+       * 처리될 차례가 오지 않았을 뿐이다. 이 한 회차는 **판정을 건너뛰고** 창을
+       * 새로 연다 — 정말 회선이 죽었다면 다음 회차가 잡는다(최대 한 주기 늦어질
+       * 뿐이고, 서버 하트비트도 60초 안에 좀비를 걷는다).
+       */
+      if (drift > HEARTBEAT_STALL_DRIFT_MS) {
+        const stalledMs = Math.round(drift + HEARTBEAT_INTERVAL_MS);
+        console.warn(`[ws] 이 탭이 약 ${stalledMs}ms 멎어 있었습니다 — 연결 판정을 건너뜁니다`);
+        // 서버 로그에 남겨 둔다. 무엇이 화면을 멈추는지는 이 보고가 쌓여야 보인다.
+        if (sentAt !== null) send({ type: "clientStall", ms: stalledMs });
+        pingSentAtRef.current = null;
+        return;
+      }
+      if (sentAt !== null && now - sentAt > HEARTBEAT_TIMEOUT_MS) {
+        /*
+         * 답이 늦었다 — 다만 **다른 프레임이 오고 있으면 소켓은 살아 있다.** pong
+         * 하나가 어디선가 새어도(프록시·확장 프로그램·우리 쪽 처리 순서) 판이
+         * 흐르는 중이면 view·prompt가 계속 도착한다. 그걸 두고 끊는 것은 멀쩡한
+         * 연결을 버리는 것이다.
+         */
+        if (now - lastRecvAtRef.current <= HEARTBEAT_TIMEOUT_MS) {
+          pingSentAtRef.current = null;
+          return;
+        }
+        // 앞선 ping이 끝내 답을 못 받았고, 서버에서 오는 것도 없다 = 이 소켓은 죽었다.
         console.warn("[ws] 하트비트 응답 없음 — 연결을 끊고 다시 붙습니다");
         pingSentAtRef.current = null;
         ws.close();
