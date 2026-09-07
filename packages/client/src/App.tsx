@@ -727,13 +727,14 @@ const ACTION_AUGMENT: Record<string, string> = {
 /**
  * **이 액션을 누르면 재료로 사라지는 내 손패** (tileId 목록).
  *
- * 허장성세(퐁)·분열은 손패의 «가장 고립된 잡패» 한 장을 태워 효과를 만든다. 어느 패인지는
+ * 허장성세(퐁)·분열·삼원의 의지는 손패의 «가장 고립된 잡패»를 태워 효과를 만든다. 어느 패인지는
  * 규칙이 결정론적으로 정해 두는데(무작위 없음) 화면에는 남지 않아, 누르고 나서야 무엇을
  * 잃었는지 알 수 있었다(2026-09-07 사용자 요청). 서버가 보유자 채널로 실어 주는 값을
  * 그대로 읽는다 — 여기서 다시 계산하면 짚는 패와 실제로 타는 패가 갈린다.
  *
  * 분열은 재료가 **쪼갤 대상에 따라** 달라지므로 «대상 → 재료» 표가 온다. 대상이 아직
  * 안 정해졌으면(버튼 위) 표의 값 전부를, 정해졌으면(무장 후 그 패 위) 그 하나만 짚는다.
+ * 삼원의 의지는 모자란 장수만큼 한 번에 태우므로 처음부터 목록이다(2026-09-08 사용자 보고).
  */
 function doomedTileIdsOf(
   view: PlayerView,
@@ -744,6 +745,11 @@ function doomedTileIdsOf(
   if (actionType === "bluff_pon") {
     const id = av["bluff_pretense:material"];
     return typeof id === "number" ? [id] : [];
+  }
+  if (actionType === "dragons_will") {
+    // 삼원의 의지는 부족한 장수만큼(한~세 장) 한꺼번에 태운다 — 그래서 목록이다.
+    const ids = av["three_dragons_will:material"];
+    return Array.isArray(ids) ? ids.filter((v): v is number => typeof v === "number") : [];
   }
   if (actionType === "split_tile") {
     const table = av["tile_split:material"];

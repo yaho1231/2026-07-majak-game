@@ -149,6 +149,33 @@ describe("삼원의 의지 (three_dragons_will)", () => {
   });
 
 
+  /*
+   * **재료 미리보기** — 카드는 "잡패를 재료로 쓴다"고만 말하고 어느 패인지는 말하지
+   * 않아, 누르고 나서야 무엇을 잃었는지 알 수 있었다(2026-09-08 사용자 보고).
+   * 화면은 이 채널만 읽는다 — 클라가 같은 계산을 한 벌 더 갖고 있으면 짚는 패와
+   * 실제로 타는 패가 조용히 갈린다(허장성세·분열과 같은 규약).
+   */
+  it("발동 전에 «사라질 재료» 목록을 보유자 채널로 알려 준다", () => {
+    const game = setup(scene("555z666z7z123m9m1p5p9s"));
+    // 채널은 이벤트가 한 번 돌아야 실린다 — 잡패 한 장을 버려 한 순을 흘린다.
+    const spare = handIdsOf(game.engine.state, "p0").find(
+      (id) => kindKey(kindOf(game.engine.state, id)) === kindKey({ suit: "sou", rank: 9 }),
+    ) as TileId;
+    expect(game.engine.submit({ player: "p0", type: "discard", payload: { tileId: spare } }).ok).toBe(true);
+
+    const st = game.engine.state;
+    const ids = st.augmentData["view:p0:three_dragons_will:material#round"] as TileId[] | undefined;
+    expect(ids, "재료 미리보기 채널이 비어 있다").toBeDefined();
+    // 중이 1장이니 두 장을 태운다 — 전부 손에 실제로 있는 삼원패 아닌 패다
+    expect(ids).toHaveLength(2);
+    for (const id of ids!) {
+      expect(handIdsOf(st, "p0")).toContain(id);
+      expect(kindOf(st, id).suit).not.toBe("dragon");
+    }
+
+    // 미리보기와 발동은 같은 `pickMaterials` 하나를 부른다 — 목록이 곧 태울 패다.
+  });
+
   it("리치 중에는 발동할 수 없다", () => {
     const game = setup(scene("555z666z7z123m9m1p5p9s", true));
     expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(false);

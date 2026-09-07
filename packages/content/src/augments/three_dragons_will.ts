@@ -139,6 +139,28 @@ function pickMaterials(
   return order.slice(0, n).map((e) => e.id);
 }
 
+/**
+ * **지금 발동을 누르면 재료로 사라지는 손패** — 버튼의 미리보기.
+ *
+ * 카드는 "잡패가 재료로 쓰인다"고만 말하고 **어느 패인지는 말하지 않아서**, 누르고
+ * 나서야 무엇을 잃었는지 알 수 있었다(2026-09-08 사용자 보고). 재료 선택에는 무작위가
+ * 하나도 없으므로(`pickMaterials`) 미리 보여 주는 것이 정보 누설이 아니다 — 이미
+ * 결정돼 있는 것을 말해 줄 뿐이다. 허장성세·분열이 쓰는 것과 같은 규약이다.
+ *
+ * 게이트는 손 쪽 조건(횟수·리치·삼원 두 커쯔·재료 유무)까지다 — «내 순인가»는 넣지
+ * 않는다(분열 `tile_split`과 같다). 화면은 발동 버튼에 손을 올렸을 때만 이 값을 읽는데
+ * 그 버튼 자체가 자기 순에만 뜨고, 순 조건까지 걸면 채널이 남의 순마다 지워졌다 켜져
+ * 이벤트만 늘어난다. 계산은 발동 경로와 **같은 `pickMaterials` 하나**를 쓴다
+ * (두 벌로 갈리면 짚는 패와 실제로 타는 패가 조용히 어긋난다).
+ */
+function materialPreview(state: GameState, holder: PlayerId): TileId[] | null {
+  if (!hasUsesLeft(state, holder)) return null;
+  if (inRiichi(state, holder)) return null;
+  const pending = pendingDragon(state, holder);
+  if (pending === null) return null;
+  return pickMaterials(state, holder, pending.need);
+}
+
 const willAction: ActionDef<Record<string, never>> = {
   type: ACTION,
   validate: (req, { state }) => {
@@ -209,6 +231,15 @@ export const threeDragonsWill: AugmentDef = defineAugment({
       if (pending === null) return [];
       if (pickMaterials(state, holder, pending.need) === null) return [];
       return [{ type: ACTION, payload: {} }];
+    });
+
+    // 재료 미리보기를 보유자 채널로 실어 준다 (위 materialPreview 주석).
+    const materialKey = roundViewKey(holder, `${ID}:material`);
+    ctx.reaction("*", (_event, rc) => {
+      const next = materialPreview(rc.state, holder);
+      const cur = (rc.state.augmentData[materialKey] ?? null) as TileId[] | null;
+      if (JSON.stringify(cur) === JSON.stringify(next)) return;
+      rc.emit(augmentDataSet(materialKey, next));
     });
   },
   // 봇: 조건이 서면 곧바로 발동한다 — 역만이 걸리는 순수 이득이고 자해 위험이 없다.
