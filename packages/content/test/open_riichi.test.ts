@@ -108,7 +108,7 @@ describe("open_riichi_reveal (오픈 리치)", () => {
     );
   });
 
-  it("선언해도 손패는 공개되지 않는다 — 오름패만 공개 (48차 무페널티)", () => {
+  it("선언하면 손패 전체가 전원에게 공개된다 (오름패 배지도 함께)", () => {
     const game = createStandardGameFromState(craftTenpai());
     installAugment(game.engine, openRiichiReveal, "p0", { yaku: game.yaku });
 
@@ -121,12 +121,14 @@ describe("open_riichi_reveal (오픈 리치)", () => {
     const tileId = handTilesOfKind(game, "p0", "sou5")[0] as TileId;
     expect(game.engine.submit({ player: "p0", type: "open_riichi", payload: { tileId } }).ok).toBe(true);
 
-    // 선언 후에도 손패 Zone은 owner 가시성 그대로 — 상대가 대기를 완벽히 회피할 수
-    // 있는 구조는 페널티라 삭제했다. 대신 오름패(대기)는 view:* 채널로 공개된다.
+    // 선언 후: 손패 Zone이 public이 되어 상대에게 패가 그대로 보인다.
     const after = buildPlayerView(game.engine.state, "p1", game.engine.rules);
     const handAfter = after.zones[handZone("p0")]!;
-    expect(handAfter.tileIds.length).toBe(0);
-    expect(handAfter.hiddenCount).toBeGreaterThan(0);
+    expect(handAfter.tileIds.length).toBe(13);
+    expect(handAfter.hiddenCount).toBe(0);
+    // 다른 사람 손패까지 열리는 것은 아니다
+    const otherHand = after.zones[handZone("p2")]!;
+    expect(otherHand.tileIds.length).toBe(0);
     expect(after.augmentView["open_riichi_reveal:p0"]).toBeDefined();
   });
 

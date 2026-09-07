@@ -236,7 +236,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   off_by_one: { use: "상시", text: "리치 후 쯔모한 패가 오름패의 ±1이면 그 패가 오름패로 바뀐다." },
   omni_chi: { use: "상시", text: "상가뿐 아니라 누구의 버림패로든 치를 할 수 있다." },
   open_kokushi: { use: "상시", text: "요구패 3장을 퐁해 국사무쌍을 만들 수 있다. 한번 국사퐁을 사용하면 국사로만 화료할 수 있다." },
-  open_riichi_reveal: { use: "매 국 1회", text: "오름패를 공개하고 리치. 리치를 걸지않은 사람이 방총당하면 그 화료는 역만이 된다." },
+  open_riichi_reveal: { use: "매 국 1회", text: "손패와 오름패를 공개하고 리치. 리치를 걸지않은 사람이 방총당하면 그 화료는 역만이 된다." },
   // 구현은 2국 쿨다운(COOLDOWN_ROUNDS=2)이고 설명도 "(2국에 1회)"다 — 배지만 옛
   // MODE_1_2로 남아 있었다. push_riichi와 같은 어긋남이라 아래 테스트가 함께 막는다.
   palm_flip: { use: "2국에 1회", text: "리치 중 자기 순에, 쯔모기리 대신 원하는 패를 버려 대기를 갈아탄다." },
