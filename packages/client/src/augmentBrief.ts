@@ -150,7 +150,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   cornucopia: { use: "획득 즉시", text: "무작위 증강 2개를 획득한다. 전원에게 공개된다." },
   dora_afterimage: { use: "2국에 1회", text: "직전 국의 도라가 되살아나 이번 국 내 도라로 겹쳐진다." },
   mirror_dora: { use: "상시", text: "도라 표시패의 앞 패도 나에게만 도라가 된다." },
-  picky_eater: { use: "2국에 1회", text: "한 국에 한 무늬(자패포함)만 12장 버리면 활성화되며, 손패의 수패를 원하는 색으로 바꾼다." },
+  picky_eater: { use: "2국에 1회", text: "한 국에 한 무늬(자패포함)만 12장 버리면 활성화되며, 손패의 수패를 원하는 무늬로 바꾼다." },
   soul_strike: { use: "2국에 1회", text: "리치(2판)를 걸고 혼자 연속 6쯔모. 그 사이 쯔모 화료는 일발." },
   sign_flip: {
     use: "3국에 1회",
