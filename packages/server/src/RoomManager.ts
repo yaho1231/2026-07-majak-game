@@ -1863,6 +1863,26 @@ export class RoomManager {
       case "ping":
         this.send(conn.ws, { type: "pong" });
         return;
+      /*
+       * 「이 탭이 잠깐 멎어 있었다」 보고 — 받아 **적기만** 한다 (2026-09-07).
+       *
+       * 상태를 바꾸지 않는 진단용 한 줄이다. 이게 없으면 화면이 멈추는 원인을 서버
+       * 쪽에서 찾을 길이 없다 — 로그에는 「연결 닫힘 → 1초 뒤 재접속」이라는 결과만
+       * 남고, 원인은 그 사람의 브라우저 안에 있다.
+       *
+       * 값은 여기서 다시 자른다: 클라이언트가 보내는 숫자이므로 그대로 믿지 않는다.
+       * 짧은 것(한 주기 남짓)은 적지 않는다 — 그건 평범한 지터라 로그만 흐려진다.
+       */
+      case "clientStall": {
+        const raw = typeof msg.ms === "number" && Number.isFinite(msg.ms) ? msg.ms : 0;
+        const ms = Math.min(600_000, Math.round(raw));
+        if (ms < 12_000) return;
+        this.log(
+          conn.room,
+          `${conn.user?.username ?? conn.key} 화면 멈춤 보고 — 약 ${ms}ms (연결은 유지)`,
+        );
+        return;
+      }
       // ── 인증 ──
       case "register": {
         const db = this.db;

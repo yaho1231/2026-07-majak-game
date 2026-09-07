@@ -765,6 +765,26 @@ export interface PingMessage {
 }
 
 /**
+ * **이 탭이 잠깐 멎어 있었다**는 보고 (2026-09-07).
+ *
+ * 클라이언트 하트비트는 예정보다 한참 늦게 깨어난 회차를 «내 메인 스레드가 막혀
+ * 있었다»로 읽고 연결 판정을 건너뛴다(`HEARTBEAT_STALL_DRIFT_MS`). 그 사실을 서버
+ * 로그에도 남기는 것이 이 메시지다.
+ *
+ * 없으면 **무엇이 화면을 멈추는지 영영 알 수 없다.** 멈춤은 그 사람의 브라우저에서
+ * 일어나고, 서버 로그에는 「연결 닫힘 → 1초 뒤 재접속」이라는 결과만 남는다 — 그걸
+ * 보고 서버를 아무리 뒤져도 원인이 없다(실제로 그렇게 헤맸다). 보고가 쌓이면
+ * «언제·얼마나» 멎는지가 국면과 함께 남아 원인을 좁힐 수 있다.
+ *
+ * 이건 진단용이지 조작이 아니다 — 서버는 받아 적기만 하고 아무 상태도 바꾸지 않는다.
+ */
+export interface ClientStallMessage {
+  type: "clientStall";
+  /** 멎어 있던 것으로 추정되는 시간(ms). 서버가 상한을 다시 건다. */
+  ms: number;
+}
+
+/**
  * 내 손패 배치(왼→오른쪽 순서)를 서버에 알린다.
  *
  * 손패 배치는 실제 탁자에서 전원이 함께 보는 정보다 — 뒷면이라 내용은 안 보여도
@@ -1115,6 +1135,7 @@ export type ClientMessage =
   | DraftPickMessage
   | DraftRerollMessage
   | PingMessage
+  | ClientStallMessage
   | HandOrderMessage
   | RoundContinueMessage
   | TutorialHoldMessage

@@ -1284,6 +1284,25 @@ describe("입력 검증·견고성", () => {
     sock.clientSend({ type: "ping" });
     expect(sock.last("pong")).toBeDefined();
   });
+
+  /*
+   * 「화면 멈춤 보고」(`clientStall`)는 **받아 적기만** 한다 — 상태를 바꾸지 않고,
+   * 답도 하지 않고, 무엇을 보내든 연결이 멀쩡해야 한다. 진단용 한 줄이 조작 경로가
+   * 되면 그때부터는 클라이언트가 보내는 숫자를 서버가 믿는 셈이 된다.
+   */
+  it("화면 멈춤 보고는 무엇이 오든 연결을 흔들지 않는다", async () => {
+    const h = await newHarness();
+    const sock = await connectAndRegister(h, "Alice");
+    for (const bad of [undefined, "abc", NaN, Infinity, -1, 1e12, {}, null] as unknown[]) {
+      sock.clientSend(bad === undefined ? { type: "clientStall" } : { type: "clientStall", ms: bad });
+    }
+    sock.clientSend({ type: "clientStall", ms: 30_000 });
+    // 답하지 않는다 — 보고는 물음이 아니다.
+    expect(sock.last("error")).toBeUndefined();
+    // 그리고 연결은 그대로다.
+    sock.clientSend({ type: "ping" });
+    expect(sock.last("pong")).toBeDefined();
+  });
 });
 
 describe("관리자 관전", () => {
