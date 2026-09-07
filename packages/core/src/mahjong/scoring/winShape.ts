@@ -47,7 +47,7 @@ function ordered(groups: WinShapeGroup[]): WinShapeGroup[] {
   );
 }
 
-export type WinShapeGroupType = "run" | "triplet" | "pair" | "single";
+export type WinShapeGroupType = "run" | "triplet" | "pair" | "single" | "gates";
 
 export interface WinShapeGroup {
   type: WinShapeGroupType;
@@ -61,7 +61,7 @@ export interface WinShapeGroup {
 }
 
 export interface WinShape {
-  form: "standard" | "chiitoitsu" | "kokushi";
+  form: "standard" | "chiitoitsu" | "kokushi" | "chuuren";
   /** 손패(후로 제외)의 몸통. 후로는 화면이 이미 따로 그린다 */
   groups: WinShapeGroup[];
 }
@@ -137,14 +137,71 @@ function kokushiGroups(hand: readonly TileKind[]): WinShapeGroup[] {
   });
 }
 
+/** 구련보등 계열의 역 id — 이 역이 붙은 손은 몸통이 아니라 **뼈대**로 읽힌다 */
+const CHUUREN_YAKU = new Set(["chuuren", "chuuren_junsei", "mixed_nine_gates"]);
+
+/** 구련 뼈대 1112345678999 의 랭크별 장수 (index 0은 쓰지 않는다) */
+const GATES_BASE: readonly number[] = [0, 3, 1, 1, 1, 1, 1, 1, 1, 3];
+
+/**
+ * 구련보등을 **뼈대 + 남는 한 장**으로 가른다.
+ *
+ * 구련은 4멘쯔+작두로도 분해되지만, 그 분해로 그리면 화면에 「슌쯔·커쯔·머리」가 늘어서서
+ * 평범한 손과 구분이 안 된다 — 정작 이 손을 역만으로 만든 것은 **1112345678999 라는
+ * 배열 자체**인데 그게 화면 어디에도 남지 않았다(2026-09-07 사용자 보고). 그래서 구련만은
+ * 채점 분해를 버리고 뼈대 13장 + 넘치는 1장으로 늘어놓는다.
+ *
+ * 랭크로만 센다 — 「뒤섞인 아홉 개의 연꽃」은 무늬를 가리지 않으므로(mixed_nine_gates)
+ * 무늬로 묶으면 그 손의 뼈대가 세 조각으로 흩어진다. 뼈대 안의 순서는 랭크 → 무늬다.
+ */
+function gatesGroups(hand: readonly TileKind[]): WinShapeGroup[] | null {
+  if (hand.length !== 14) return null;
+  const byRank: TileKind[][] = Array.from({ length: 10 }, () => []);
+  for (const k of hand) {
+    if (k.rank < 1 || k.rank > 9) return null;
+    (byRank[k.rank] as TileKind[]).push(k);
+  }
+  const skeleton: TileKind[] = [];
+  const surplus: TileKind[] = [];
+  for (let r = 1; r <= 9; r++) {
+    const tiles = [...(byRank[r] as TileKind[])].sort((a, b) => kindOrder(a) - kindOrder(b));
+    const base = GATES_BASE[r] as number;
+    if (tiles.length < base) return null;
+    skeleton.push(...tiles.slice(0, base));
+    surplus.push(...tiles.slice(base));
+  }
+  if (surplus.length !== 1) return null;
+  return [
+    { type: "gates", tiles: skeleton, concealed: true },
+    { type: "single", tiles: surplus, concealed: true },
+  ];
+}
+
 /**
  * 채택된 변형 → 표시용 몸통 목록. 손패로 설명이 안 되면 null (화면은 종전대로 정렬만 한다).
  *
  * @param variant evaluate가 고른 변형
  * @param ctx     그 변형을 만든 문맥 (후로 개수만 본다)
+ * @param yakuIds 이 화료에 붙은 역 id — 구련보등처럼 **분해가 아니라 배열이 근거인** 역만
+ *                따로 그리기 위해서다. 넘기지 않으면 종전대로 분해 그대로 그린다.
  */
-export function winShapeOf(variant: ScoringVariant, ctx: WinContext): WinShape | null {
+export function winShapeOf(
+  variant: ScoringVariant,
+  ctx: WinContext,
+  yakuIds?: readonly string[],
+): WinShape | null {
   const hand = variant.handKinds ?? [...ctx.hand];
+
+  // 구련보등 — 채점 분해(4멘쯔+작두)가 아니라 뼈대로 읽는다. 후로가 있으면 성립하지
+  // 않는 역이지만, 방어적으로 손패 14장일 때만 이 길로 간다.
+  if (
+    yakuIds !== undefined &&
+    ctx.melds.length === 0 &&
+    yakuIds.some((id) => CHUUREN_YAKU.has(id))
+  ) {
+    const groups = gatesGroups(hand);
+    if (groups !== null) return { form: "chuuren", groups };
+  }
 
   if (variant.form === "chiitoitsu") {
     const groups = chiitoiPairs(hand);

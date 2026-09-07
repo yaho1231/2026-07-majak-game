@@ -189,3 +189,28 @@ describe("증강이 만든 모양", () => {
     expect(render(shape)).toEqual(["123m", "456m", "789m", "123p", "11p"]);
   });
 });
+
+/*
+ * 구련보등 — 4멘쯔+작두 분해로 그리면 화면에 「슌쯔·커쯔·머리」만 남아, 정작 이 손을
+ * 역만으로 만든 **1112345678999 라는 배열**이 어디에도 안 보였다(2026-09-07 사용자 보고).
+ */
+describe("구련보등은 몸통이 아니라 뼈대로 그린다", () => {
+  it("뼈대 13장 + 남는 한 장 — 두 덩이뿐이다", () => {
+    const shape = shapeOf("11123456789999m", "9m");
+    expect(shape.form).toBe("chuuren");
+    expect(shape.groups.map((g) => g.type)).toEqual(["gates", "single"]);
+    expect(render(shape)).toEqual(["1112345678999m", "9m"]);
+    expect(coversHand(shape, "11123456789999m")).toBe(true);
+  });
+
+  it("남는 한 장이 뼈대 가운데 랭크여도 뼈대는 그대로 선다", () => {
+    const shape = shapeOf("11123345678999m", "3m");
+    expect(shape.form).toBe("chuuren");
+    expect(render(shape)).toEqual(["1112345678999m", "3m"]);
+    expect(coversHand(shape, "11123345678999m")).toBe(true);
+  });
+
+  it("구련이 아닌 평범한 손은 종전대로 몸통으로 끊는다 (뼈대 길로 새지 않는다)", () => {
+    expect(shapeOf("123m456m789m234p55p", "5p").form).toBe("standard");
+  });
+});

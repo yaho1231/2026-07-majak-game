@@ -140,6 +140,33 @@ function pickSacrifice(
   return hand[best];
 }
 
+/**
+ * **지금 허장성세 퐁을 누르면 사라지는 패** — 발동 버튼의 미리보기 재료.
+ *
+ * 카드는 "손패의 잡패 하나가 그 패로 바뀐다"고만 말하고 **어느 패인지는 말하지 않아서**,
+ * 누르기 전에는 무엇을 잃는지 알 수 없었다(2026-09-07 사용자 요청). 희생패 선택에는
+ * 무작위가 하나도 없으므로(`pickSacrifice`) 미리 보여 주는 것이 정보 누설이 아니다.
+ *
+ * 게이트는 `holderReactionOptions`와 **같은 조건**이다 — 버튼이 뜨지 않는 자리에서
+ * 미리보기만 떠 있으면 화면이 있지도 않은 선택지를 말하게 된다.
+ */
+function sacrificePreview(
+  state: GameState,
+  rules: RuleRegistry,
+  holder: PlayerId,
+): TileId | null {
+  if (state.round.phase !== "reaction") return null;
+  if (flagOf(state, usedKey(state, holder))) return null;
+  if (state.round.byPlayer[holder]?.riichi != null) return null;
+  const last = state.round.lastDiscard;
+  if (last === null || last.player === holder) return null;
+  if (wallLen(state) === 0) return null;
+  const targetKind = kindOf(state, last.tileId);
+  const matches = matchingIds(state, rules, holder, targetKind);
+  if (matches.length !== 1) return null;
+  return pickSacrifice(state, holder, matches[0] as TileId, kindKey(targetKind)) ?? null;
+}
+
 const bluffPonAction: ActionDef<{ tileId: TileId }> = {
   type: ACTION,
   validate: (req, { state, rules }) => {
@@ -260,6 +287,15 @@ export const bluffPretense: AugmentDef = defineAugment({
         return [];
       }
       return [{ type: ACTION, payload: { tileId: matches[0] as TileId } }];
+    });
+
+    // 희생패 미리보기를 보유자 채널로 실어 준다 (위 sacrificePreview 주석).
+    const materialKey = roundViewKey(holder, `${ID}:material`);
+    ctx.reaction("*", (_event, rc) => {
+      const next = sacrificePreview(rc.state, ctx.engine.rules, holder);
+      const cur = (rc.state.augmentData[materialKey] ?? null) as TileId | null;
+      if (cur === next) return;
+      rc.emit(augmentDataSet(materialKey, next));
     });
   },
 });

@@ -39,6 +39,11 @@ function isUnusual(type: WinShapeGroupType, tiles: readonly TileKind[]): boolean
   const first = tiles[0];
   if (first === undefined) return false;
   if (type === "single") return false;
+  /*
+   * 구련 뼈대 — 표준 구련은 «평범한 몸통은 아니지만 표준 룰 그대로»이므로 강조하지
+   * 않는다. 무늬가 섞인 뼈대만이 증강(뒤섞인 아홉 개의 연꽃)이 만든 자리다.
+   */
+  if (type === "gates") return tiles.some((t) => t.suit !== first.suit);
   if (type === "triplet" || type === "pair") {
     // 커쯔·머리는 원래 **같은 패**로만 이뤄진다 — 무늬가 섞였거나(동수의 결속·비대칭)
     // 랭크가 섞였으면(양극의 1·9) 증강이 만든 몸통이다.
@@ -109,6 +114,9 @@ export function shapeGroupLabel(
   type: WinShapeGroupType,
   form: WinShape["form"],
 ): string {
+  // 구련보등 — 슌쯔·커쯔로 끊지 않고 뼈대와 남는 한 장으로 읽는다.
+  if (type === "gates") return "1112345678999";
+  if (form === "chuuren" && type === "single") return "남는 한 장";
   if (type === "run") return "슌쯔";
   if (type === "triplet") return "커쯔";
   if (type === "pair") return form === "chiitoitsu" ? "쌍" : "머리";

@@ -16,6 +16,7 @@ import {
   createInitialGameState,
   installAugment,
   handIdsOf,
+  kindKey,
   kindOf,
   isHonor,
   isNumberSuit,
@@ -317,6 +318,52 @@ describe("허장성세 (bluff_pretense)", () => {
             kindOf(game.engine.state, id),
           );
           expect(new Set(kinds.map((k) => `${k.suit}${k.rank}`)).size).toBe(1);
+          triggered = true;
+          break;
+        }
+        const win = opts.find((o) => o.type === "win");
+        const move = win ?? opts.find((o) => o.type === "discard") ?? opts.find((o) => o.type === "pass") ?? opts[0];
+        status = flow.submit(prompt.player, move!);
+      }
+    }
+    expect(triggered).toBe(true);
+  });
+
+  /*
+   * **희생패 미리보기** — 카드는 "손패의 잡패 하나가 그 패로 바뀐다"고만 말하고 어느
+   * 패인지는 말하지 않아, 누르고 나서야 무엇을 잃었는지 알 수 있었다(2026-09-07 요청).
+   * 화면은 이 채널만 읽으므로, **버튼이 서는 그 순간에 이미 실려 있어야** 하고
+   * 예고한 패가 실제로 타는 패여야 한다.
+   */
+  it("퐁 버튼이 서는 순간 «사라질 잡패»가 보유자 채널에 실려 있고, 그 패가 탄다", () => {
+    let triggered = false;
+    for (let seed = 1; seed <= 60 && !triggered; seed++) {
+      const game = gameWithAugment(seed, "p0", "bluff_pretense");
+      installAugment(game.engine, bluffPretense, "p0", { yaku: game.yaku });
+      const flow = new FlowController(game.engine);
+      let status = flow.begin();
+      let guard = 0;
+      while (status.kind === "awaiting" && guard++ < 400) {
+        const prompt = status.prompts[0]!;
+        const opts = prompt.options as ActionOption[];
+        const bluff = opts.find((o) => o.type === "bluff_pon");
+        if (bluff && prompt.player === "p0") {
+          const key = "view:p0:bluff_pretense:material#round";
+          const promised = game.engine.state.augmentData[key] as number | undefined;
+          expect(promised, "퐁 버튼은 섰는데 미리보기 채널이 비어 있다").toBeDefined();
+          // 예고된 패는 지금 내 손에 있고, 진짜로 맞는 그 한 장은 아니다
+          const hand = handIdsOf(game.engine.state, "p0");
+          expect(hand).toContain(promised);
+          expect(promised).not.toBe((bluff.payload as { tileId: number }).tileId);
+
+          const targetKey = kindKey(
+            kindOf(game.engine.state, game.engine.state.round.lastDiscard!.tileId),
+          );
+          status = flow.submit("p0", bluff);
+          // 예고한 그 패가 목표패로 변한(conjured) 생성패다
+          const after = game.engine.state;
+          expect(kindKey(kindOf(after, promised!))).toBe(targetKey);
+          expect(after.tiles[promised!]?.attrs?.conjured).toBe(true);
           triggered = true;
           break;
         }

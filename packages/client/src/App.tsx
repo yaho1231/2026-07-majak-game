@@ -725,6 +725,40 @@ const ACTION_AUGMENT: Record<string, string> = {
 };
 
 /**
+ * **이 액션을 누르면 재료로 사라지는 내 손패** (tileId 목록).
+ *
+ * 허장성세(퐁)·분열은 손패의 «가장 고립된 잡패» 한 장을 태워 효과를 만든다. 어느 패인지는
+ * 규칙이 결정론적으로 정해 두는데(무작위 없음) 화면에는 남지 않아, 누르고 나서야 무엇을
+ * 잃었는지 알 수 있었다(2026-09-07 사용자 요청). 서버가 보유자 채널로 실어 주는 값을
+ * 그대로 읽는다 — 여기서 다시 계산하면 짚는 패와 실제로 타는 패가 갈린다.
+ *
+ * 분열은 재료가 **쪼갤 대상에 따라** 달라지므로 «대상 → 재료» 표가 온다. 대상이 아직
+ * 안 정해졌으면(버튼 위) 표의 값 전부를, 정해졌으면(무장 후 그 패 위) 그 하나만 짚는다.
+ */
+function doomedTileIdsOf(
+  view: PlayerView,
+  actionType: string,
+  targetTileId?: number,
+): number[] {
+  const av = view.augmentView;
+  if (actionType === "bluff_pon") {
+    const id = av["bluff_pretense:material"];
+    return typeof id === "number" ? [id] : [];
+  }
+  if (actionType === "split_tile") {
+    const table = av["tile_split:material"];
+    if (table === null || typeof table !== "object") return [];
+    const map = table as Record<string, unknown>;
+    if (targetTileId !== undefined) {
+      const one = map[String(targetTileId)];
+      return typeof one === "number" ? [one] : [];
+    }
+    return [...new Set(Object.values(map).filter((v): v is number => typeof v === "number"))];
+  }
+  return [];
+}
+
+/**
  * 액티브 액션 타입 → 화면에 쓸 이름. 카탈로그(서버가 보내는 증강 정의)의 증강 이름을
  * 우선 쓰고, 매칭이 없으면 액션 라벨로 떨어진다.
  */
@@ -5859,6 +5893,22 @@ export function App(): JSX.Element {
           continue;
         }
         shown.augEvents.add(augEventSig(key, raw, shown.roundKey));
+      }
+      /*
+       * 숨은 리치가 풀렸다는 **당사자 전용 통보**도 같은 이유로 시드한다.
+       *
+       * 이 채널(`stealth_riichi:broken:*`)은 국이 끝날 때까지 값을 그대로 들고 있는데,
+       * 걸러 내는 집합(`shown.stealthBroken`)만 첫 뷰에서 비워져 있었다. 그래서 이미
+       * 한참 전에 끝난 사건이 **첫 뷰 다음 뷰에서** 다시 터졌다 — 관전은 탁자를
+       * 옮길 때마다(`spectateStarted` → prevViewRef=null) 이 경로를 타므로, 옮겨
+       * 다닐 때마다 「리치 해제」 컷인이 뜬금없이 올라왔다(2026-09-07 사용자 보고:
+       * 「관전에서 자꾸 리치 해제 알림이 나옴」). 관전 뷰는 완전정보라 네 좌석의
+       * 전용 채널이 전부 실린다는 점이 그 빈도를 네 배로 만든다.
+       */
+      shown.stealthBroken = new Set();
+      for (const key of Object.keys(next.augmentView ?? {})) {
+        if (!key.startsWith("stealth_riichi:broken:")) continue;
+        shown.stealthBroken.add(`${key}:${shown.roundKey}`);
       }
       // 국 시작에 저절로 켜지는 증강(초읽기·눈먼 총알·반전)도 같은 집합을 쓴다.
       // 빠뜨리면 국 도중에 재접속할 때마다 이미 켜져 있던 발동 컷인이 다시 터진다.
@@ -19661,7 +19711,29 @@ function OwnArea(props: {
   // (상대·바닥 클릭도 같은 무장을 소비). armSub만 손패 국지 상태로 남긴다
   // (한 패에 선택지가 여럿일 때 — 무늬·±1).
   const sel = useContext(SelectionContext);
+  /*
+   * **눌렀을 때 사라지는 내 패** — 발동 버튼(허장성세 퐁·분열) 위에 손을 올리고 있는 동안
+   * 그 패를 손패에서 직접 짚는다.
+   *
+   * 허장성세·분열은 손패의 «가장 고립된 잡패» 한 장을 재료로 태우는데, 어느 패인지는
+   * 누르고 나서야 알 수 있었다 — 카드 문구가 규칙을 말해도 «지금 내 손에서는 어느
+   * 것인가»는 화면 어디에도 없었다(2026-09-07 사용자 요청). 서버가 보유자 채널로
+   * 실어 주는 값(`{augId}:material`)을 그대로 쓴다: 계산이 두 벌이 되면 짚는 패와
+   * 실제로 타는 패가 조용히 갈린다.
+   */
+  const [doomedHint, setDoomedHint] = useState<ReadonlySet<number> | null>(null);
   const armedAug = sel.armedType;
+  /*
+   * 지금 짚어야 할 «사라지는 패» — 버튼/메뉴 hover가 올려 준 목록(doomedHint)이 기본이다.
+   * 다만 분열을 무장한 채 쪼갤 패를 고르는 중이면 재료가 **그 대상에 따라 달라지므로**,
+   * 손이 올라간 대상에 맞는 하나로 좁힌다 (`doomedTileIdsOf`의 targetTileId).
+   */
+  const doomedNow = useMemo<ReadonlySet<number>>(() => {
+    if (armedAug === "split_tile" && hoverId !== null) {
+      return new Set(doomedTileIdsOf(view, "split_tile", hoverId));
+    }
+    return doomedHint ?? new Set<number>();
+  }, [armedAug, hoverId, view, doomedHint]);
   const swapTarget = sel.swapTarget;
   const swapGive = sel.swapGive;
   const [armSub, setArmSub] = useState<{ tileId: number; options: ActionOption[] } | null>(null);
@@ -20673,6 +20745,7 @@ function OwnArea(props: {
                 promptDeadline={props.promptDeadline}
                 {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
                 onUsableHint={(ids) => setUsableHint(ids === null ? null : new Set(ids))}
+                onDoomedHint={(ids) => setDoomedHint(ids === null ? null : new Set(ids))}
               />
             ) : null}
             {/*
@@ -20817,6 +20890,7 @@ function OwnArea(props: {
               catalog={props.catalog}
               onRiichiMode={props.onRiichiMode}
               onSubmit={props.onSubmit}
+              onDoomedHint={(ids) => setDoomedHint(ids === null ? null : new Set(ids))}
             />
             <PromptTimer
               seq={props.promptSeq}
@@ -20934,6 +21008,9 @@ function OwnArea(props: {
             const tileKind = view.tiles[id]?.kind;
             const sealed = sealedSet.has(id);
             const kuikae = kuikaeSet.has(id);
+            // 발동 버튼 위에 손이 올라가 있는 동안, 그 발동이 태울 패를 짚는다.
+            // 분열을 무장한 채 쪼갤 패를 고르는 중이면 그 대상에 맞는 재료 하나로 좁힌다.
+            const doomed = doomedNow.has(id);
             const lockedTile = sealed || kuikae;
             // 지뢰 탐지 — 이 패를 지금 버리면 방총(위험). 실제 손패 위에 경고 표시.
             const danger =
@@ -20960,6 +21037,7 @@ function OwnArea(props: {
                   formatTile(view.tiles[id]),
                   isDrawn ? "방금 쯔모" : null,
                   sealed ? "봉인됨" : null,
+                  doomed ? "이 발동의 재료 — 누르면 사라짐" : null,
                   kuikae ? "쿠이카에 — 이번 순에만 버릴 수 없음" : null,
                   danger ? "위험패" : null,
                   safe ? "현물 — 리치를 건 사람이 이미 버린 패" : null,
@@ -20999,7 +21077,7 @@ function OwnArea(props: {
                   armedAug !== null && !armable ? " hand-dimmed" : ""
                 }${
                   danger ? " hand-danger" : ""
-                }${safe ? " hand-safe" : ""}${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
+                }${doomed ? " hand-doomed" : ""}${safe ? " hand-safe" : ""}${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
                 style={tileDragStyle(id, idx)}
                 onPointerDown={(e) => {
                   beginDrag(e, id, idx);
@@ -23513,6 +23591,8 @@ function ActiveAugmentControl(props: {
    * (2026-08-15 사용자 요청)
    */
   onUsableHint?: (ids: readonly string[] | null) => void;
+  /** 손을 올린 동안 «사라지는 내 패»를 짚어 달라는 신호 (허장성세·분열의 재료) */
+  onDoomedHint?: (ids: readonly number[] | null) => void;
 }): JSX.Element | null {
   const { view, me, prompt } = props;
   // pill 발광 신호를 보내는 콜백 — 훅(effect) 안에서도 써야 해서 여기서 한 번 꺼낸다.
@@ -23750,10 +23830,24 @@ function ActiveAugmentControl(props: {
    * "이게 내가 가진 그 증강"이 바로 안 이어져서, 액션 이름(예: '되돌리기')과 증강 이름이
    * 다른 것들은 특히 헷갈렸다 (2026-08-15 사용자 요청).
    */
-  const hintOne = (type: string): void =>
+  /*
+   * 같은 손짓에 «사라지는 패» 신호도 함께 실어 보낸다 — 발동 버튼 위에서는 지금 쓸 수
+   * 있는 것 전부의 재료를, 메뉴 한 줄 위에서는 그 하나의 재료를 손패에서 짚는다
+   * (2026-09-07 사용자 요청 · `doomedTileIdsOf`). 재료가 없는 증강은 빈 배열이라
+   * 아무것도 안 짚는다.
+   */
+  const hintOne = (type: string): void => {
     props.onUsableHint?.([ACTION_AUGMENT[type] ?? type]);
-  const hintAll = (): void => props.onUsableHint?.(usableAugIds);
-  const hintNone = (): void => props.onUsableHint?.(null);
+    props.onDoomedHint?.(doomedTileIdsOf(view, type));
+  };
+  const hintAll = (): void => {
+    props.onUsableHint?.(usableAugIds);
+    props.onDoomedHint?.([...new Set(types.flatMap((t) => doomedTileIdsOf(view, t)))]);
+  };
+  const hintNone = (): void => {
+    props.onUsableHint?.(null);
+    props.onDoomedHint?.(null);
+  };
 
   const augNameFor = (type: string): string => augActionName(props.catalog, type);
 
@@ -24682,6 +24776,8 @@ function ActiveAugmentControl(props: {
 // ─────────────────────────── 액션 바 ───────────────────────────
 
 function ActionBar(props: {
+  /** 버튼 위에 손을 올린 동안 «사라지는 내 패»를 짚어 달라는 신호 (허장성세 퐁) */
+  onDoomedHint?: (ids: readonly number[] | null) => void;
   view: PlayerView;
   prompt: NonNullable<PromptMessage["prompt"]>;
   riichiMode: boolean;
@@ -24848,6 +24944,11 @@ function ActionBar(props: {
                 key={`${o.type}-${i}`}
                 className={`act ${tone}`}
                 onClick={() => props.onSubmit(o)}
+                /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
+                onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+                onMouseLeave={() => props.onDoomedHint?.(null)}
+                onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+                onBlur={() => props.onDoomedHint?.(null)}
                 title={
                   o.type === "win"
                     ? `${label} — 단축키 ${hotIndex(i)} 또는 R`
@@ -25340,7 +25441,9 @@ function WinHand({
     );
   }
 
-  const labeled = groups.some((g) => g.unusual);
+  // 구련보등은 «뼈대 + 남는 한 장»으로 갈라 그린다 — 이름표(1112345678999)가 곧
+  // 그 손을 역만으로 만든 근거라, 몸통이 이상하지 않아도 언제나 붙인다.
+  const labeled = shape.form === "chuuren" || groups.some((g) => g.unusual);
   let seq = 0;
   return (
     <div className={`result-hand result-hand-shaped${labeled ? " result-hand-labeled" : ""}`}>

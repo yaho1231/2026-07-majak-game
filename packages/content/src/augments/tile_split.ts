@@ -88,6 +88,33 @@ function pickMaterial(
   return idx < 0 ? undefined : hand[idx];
 }
 
+/**
+ * **쪼갤 패마다, 그때 재료로 사라지는 패** — 발동 버튼의 미리보기 재료.
+ *
+ * 화면이 "가장 고립된 잡패 1장이 사라진다"고만 말하고 **어느 패인지는 말하지 않아서**,
+ * 누르기 전에는 무엇을 잃는지 알 수 없었다(2026-09-07 사용자 요청). 재료 선택에는
+ * 무작위가 하나도 없으므로(`pickMaterial`) 미리 보여 주는 것이 정보 누설이 아니다 —
+ * 이미 결정돼 있는 것을 말해 줄 뿐이다.
+ *
+ * 재료는 **쪼갤 대상에 따라 달라질 수 있다**(대상 자신은 후보에서 빠진다). 그래서 값 하나가
+ * 아니라 «대상 → 재료» 표를 싣는다. 화면은 버튼 위에서 표의 값 전부를, 대상을 고른
+ * 뒤에는 그 하나만 짚는다. 계산은 발동 경로와 **같은 `pickMaterial` 하나**를 쓴다.
+ */
+function materialPreview(
+  state: GameState,
+  holder: PlayerId,
+): Record<string, TileId> | null {
+  if (!hasUsesLeft(state, holder)) return null;
+  if (inRiichi(state, holder)) return null;
+  const out: Record<string, TileId> = {};
+  for (const id of handIdsOf(state, holder)) {
+    if (!splittable(state, id)) continue;
+    const material = pickMaterial(state, holder, id);
+    if (material !== undefined) out[String(id)] = material;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** 쪼갤 수 있는 손패인가 — 수패이면서 랭크 2 이상 */
 function splittable(state: GameState, id: TileId): boolean {
   const k = kindOf(state, id);
@@ -195,6 +222,15 @@ export const tileSplit: AugmentDef = defineAugment({
         }
       }
       return opts;
+    });
+
+    // 재료 미리보기를 보유자 채널로 실어 준다 (위 materialPreview 주석).
+    const materialKey = roundViewKey(holder, `${ID}:material`);
+    ctx.reaction("*", (_event, rc) => {
+      const next = materialPreview(rc.state, holder);
+      const cur = (rc.state.augmentData[materialKey] ?? null) as Record<string, TileId> | null;
+      if (JSON.stringify(cur) === JSON.stringify(next)) return;
+      rc.emit(augmentDataSet(materialKey, next));
     });
   },
   /**

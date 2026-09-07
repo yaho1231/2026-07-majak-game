@@ -196,7 +196,9 @@ export function evaluateWin(
   const { variant, ...evaluation } = best;
   // 채택된 변형의 몸통 구성 — 결과 화면이 "어떻게 화료가 됐는지"를 그리는 근거다.
   // 채점에는 쓰지 않는다(표시 전용).
-  const shape = winShapeOf(variant, ctx);
+  // 역 id를 함께 넘긴다 — 구련보등처럼 «분해가 아니라 배열»이 근거인 역은 몸통이
+  // 아니라 뼈대(1112345678999 + 남는 한 장)로 그려야 화면이 근거를 남긴다.
+  const shape = winShapeOf(variant, ctx, evaluation.yaku.map((y) => y.id));
   return shape === null ? evaluation : { ...evaluation, shape };
 }
 
