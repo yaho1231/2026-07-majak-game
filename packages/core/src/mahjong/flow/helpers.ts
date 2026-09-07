@@ -417,18 +417,35 @@ export function snakeKanFor(
 }
 
 /**
- * 이 네 패가 **같은 수패 무늬의 연속 4장**(예: 3-4-5-6)인가 — 장사진의 '4연속 깡' 재료.
+ * 이 네 패가 **수패 연속 4장**(예: 3-4-5-6)인가 — 장사진의 '4연속 깡' 재료.
  * 자패는 순서 개념이 없으므로 제외한다(자패 4연속은 바람의 계보의 동남서북 깡이 담당).
  *
  * @param wrap 끝없는 윤회(scoring.wrapRuns)를 함께 들고 있으면 9→1을 넘는 8-9-1-2·
  *             9-1-2-3도 하나의 연속으로 본다. 슌쯔가 순환하는 사람에게 4연속만
  *             순환하지 않을 이유가 없다(2026-08-15 사용자 요청).
+ * @param mixed 무너진 국경(scoring.mixedRuns)을 선언했으면 **무늬가 섞여도** 연속이면
+ *             한 깡이다(3만·4통·5삭·6만). 그 증강의 뜻은 «슌쯔에서 무늬라는 국경이
+ *             사라진다»이고, 4연속 깡은 채점에서 슌쯔성 몸통으로 나가는 물건이라
+ *             (`WinContext.meldToSet`) 한쪽에만 무늬 제한이 남을 이유가 없다
+ *             (2026-09-07 사용자 지시).
+ *
+ *             ⚠ **깡의 무늬 제한 일반이 풀리는 것은 아니다.** 같은 랭크 넉 장의 혼색 깡
+ *             (4만4통4삭4만)은 동수의 결속(`scoring.mixedTriplets`) 담당이고, 여기는
+ *             «연속»만 본다.
  */
-export function isRunQuad(kinds: readonly TileKind[], wrap = false): boolean {
+export function isRunQuad(
+  kinds: readonly TileKind[],
+  wrap = false,
+  mixed = false,
+): boolean {
   if (kinds.length !== 4) return false;
   const suit = kinds[0]?.suit;
   if (suit === undefined || !DEFAULT_SEQUENCE_SUITS.has(suit)) return false;
-  if (!kinds.every((k) => k.suit === suit)) return false;
+  // 무늬가 섞여도 좋지만 **수패여야** 한다 — 자패에는 순서가 없다.
+  const suitOk = mixed
+    ? kinds.every((k) => DEFAULT_SEQUENCE_SUITS.has(k.suit))
+    : kinds.every((k) => k.suit === suit);
+  if (!suitOk) return false;
   return runQuadStart(kinds.map((k) => k.rank), wrap) !== null;
 }
 

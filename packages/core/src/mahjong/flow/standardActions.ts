@@ -545,11 +545,13 @@ const ankanAction: ActionDef<{ tileIds: [TileId, TileId, TileId, TileId] }> = {
     // 바람의 계보(honorRuns) 보유자는 동·남·서·북 각 한 장을 '동남서북 깡'으로 낼 수 있다.
     const fourWinds =
       honorRunsFor(state, rules, req.player) && isFourWinds(kinds);
-    // 장사진(call.snakeKan) 보유자는 같은 무늬 연속 4장(3-4-5-6)을 한 깡으로 낼 수 있다.
-    // 끝없는 윤회(scoring.wrapRuns)를 함께 들고 있으면 8-9-1-2처럼 9를 넘는 연속도 깡이 된다.
+    // 장사진(call.snakeKan) 보유자는 연속 4장(3-4-5-6)을 한 깡으로 낼 수 있다.
+    // 끝없는 윤회(scoring.wrapRuns)를 함께 들고 있으면 8-9-1-2처럼 9를 넘는 연속도 깡이 되고,
+    // 무너진 국경(scoring.mixedRuns)을 선언했으면 무늬가 섞인 3만4통5삭6만도 한 깡이다.
+    const snakeOpts = scoringOptionsOf(state, rules, req.player);
     const snake =
       snakeKanFor(state, rules, req.player) &&
-      isRunQuad(kinds, scoringOptionsOf(state, rules, req.player).wrapRuns === true);
+      isRunQuad(kinds, snakeOpts.wrapRuns === true, snakeOpts.mixedRuns === true);
     if (!allSame && !fourWinds && !snake) {
       return "tiles are not identical";
     }
