@@ -204,6 +204,23 @@ describe("대기실은 판 밖의 문법을 쓴다", () => {
     expect(rule(".waitroom-code")).not.toMatch(/dashed/);
   });
 
+  it("자리 옮기기는 손패와 같은 포인터 드래그다 (HTML5 drag 아님)", () => {
+    /*
+     * 처음에는 HTML5 drag-and-drop(`draggable` + `onDragStart`)이었다. 그래서
+     * **터치에서는 아예 끌리지 않았고**(모바일에 drag 이벤트가 오지 않는다),
+     * 끄는 동안 줄이 움직이지 않아 판 위의 손패와 감각이 달랐다. 자리표 줄은
+     * 손패와 같은 물건이어야 한다 — 포인터 이벤트로 잡고, 이웃 줄이 비켜선다.
+     */
+    expect(WR).toMatch(/onPointerDown=\{[\s\S]{0,80}beginSeatDrag/);
+    // `seat-draggable`(클래스 이름)은 남는다 — 막는 것은 **속성** `draggable` 이다
+    expect(WR).not.toMatch(/\sdraggable(=|[\s/>])/);
+    expect(WR).not.toMatch(/onDragStart|onDrop\b/);
+    // 손가락이 끄는 동안 브라우저가 그 제스처를 스크롤로 가져가면 줄이 안 따라온다
+    expect(rule(".seat-row.seat-draggable")).toMatch(/touch-action:\s*none/);
+    // 잡은 줄이 이웃 위로 올라오려면 배치 컨텍스트가 있어야 한다 (z-index는 인라인)
+    expect(rule(".seat-row")).toMatch(/position:\s*relative/);
+  });
+
   it("시작·준비 버튼에 세로 그라디언트가 없다", () => {
     // 판 밖의 주 동작은 전부 평평한 채움 + 위 1px 하이라이트다(.btn-key).
     for (const sel of [".wr-start", ".wr-ready", ".wr-unready"]) {
