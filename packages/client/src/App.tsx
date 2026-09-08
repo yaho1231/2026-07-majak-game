@@ -13543,12 +13543,16 @@ function WaitingRoom(props: {
     function onUp(e: PointerEvent): void {
       const b = seatDragRef.current;
       if (b === null || e.pointerId !== b.pointerId) return;
-      if (!b.moved || b.targetIdx === b.fromIdx) {
-        setSeatDragBoth(null);
+      if (!b.moved) {
+        setSeatDragBoth(null); // 그냥 눌렀다 뗀 것 — 줄은 움직인 적이 없다
         return;
       }
-      sfx.slide();
-      moveSeatRef.current(b.playerId, b.targetIdx);
+      // 제자리로 돌아온 드래그는 보내지 않는다. 다만 **안착은 똑같이** 시킨다 —
+      // 여기서 상태를 바로 지우면 들려 있던 줄이 트랜지션 없이 툭 떨어진다.
+      if (b.targetIdx !== b.fromIdx) {
+        sfx.slide();
+        moveSeatRef.current(b.playerId, b.targetIdx);
+      }
       // 안착 애니메이션이 끝난 뒤에 놓아 준다 — 그때쯤 새 `lobby`가 와 있다.
       setSeatDragBoth({ ...b, settling: true });
       window.setTimeout(() => setSeatDragBoth(null), SEAT_SETTLE_MS);
