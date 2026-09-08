@@ -13304,6 +13304,33 @@ function RoomRulesDialog(props: {
   );
 }
 
+/**
+ * 대기실 자리 드래그 상태 — 손패 드래그(`HandDragState`)의 세로판이다.
+ *
+ * 다른 점은 둘뿐이다: 축이 Y이고, 놓을 자리가 «앉아 있는 줄»로 한정된다
+ * (`slotCenter.length` = 앉은 사람 수). 버리기 드롭존이 없어 그만큼 단순하다.
+ */
+interface SeatDragState {
+  playerId: string;
+  pointerId: number;
+  fromIdx: number;
+  /** 앉아 있는 줄의 화면 Y 중심 (드래그 시작 시 1회 측정 — 피드백 루프 방지) */
+  slotCenter: number[];
+  startY: number;
+  curY: number;
+  /** 잡은 줄이 놓일 최종 자리 (0=동 … ) */
+  targetIdx: number;
+  /** 임계값 이상 움직여 실제 드래그가 됐는가 (아니면 그냥 탭) */
+  moved: boolean;
+  /** 이 드래그를 «움직였다»고 볼 거리(화면 px) — 포인터 종류가 정한다 */
+  threshold: number;
+  /** 손을 떼고 최종 자리로 안착하는 중 */
+  settling: boolean;
+}
+
+/** 자리 안착 애니메이션 길이(ms) — 손패(0.16s)와 같은 길이로 맞춘다. */
+const SEAT_SETTLE_MS = 160;
+
 function WaitingRoom(props: {
   lobby: LobbyMessage | null;
   roomId: string;
@@ -13472,18 +13499,74 @@ function WaitingRoom(props: {
    * 있는 곳은 **사람이 앉아 있는 줄**뿐이다 — 빈자리는 자리 번호가 아니라 «아직
    * 아무도 없다»라서, 거기로 옮기면 서버가 조용히 버린다.
    *
+   * 조작은 **손패 드래그와 같은 물건**이다(포인터 이벤트 · `HandDragState` 참고):
+   * 잡은 줄은 손끝을 그대로 따라오고, 나머지 줄은 `transform`으로 비켜서 끼울 자리를
+   * 미리 비운다. 손을 떼면 그 자리로 안착한다. 예전에는 HTML5 drag-and-drop이라
+   * (1) **터치에서는 아예 동작하지 않았고**, (2) 끄는 동안 줄이 움직이지 않아 판 위의
+   * 손패와 감각이 달랐다.
+   *
    * 자리는 서버가 되돌려 주는 `lobby`로만 바뀐다(낙관적 갱신 없음) — 방장 둘이
    * 있을 수 없는 화면이라 지연이 짧고, 화면이 먼저 움직이면 서버가 거절했을 때
-   * 자리표가 조용히 거짓말을 한다.
+   * 자리표가 조용히 거짓말을 한다. 대신 `moveSeat`는 **손을 뗀 순간** 보내고 안착
+   * 애니메이션(160ms) 동안 화면을 붙잡아 둔다 — 그 사이에 새 `lobby`가 와서 스냅백이
+   * 보이지 않는다.
    *
-   * ⚠ 이 두 훅은 **아래의 `lobby === null` 빠른 반환보다 위**에 있어야 한다
-   *   (2026-09-07 크래시). 아래에 두면 «입장 중…»을 그린 렌더(훅 5개)와 대기실을
-   *   그린 렌더(훅 7개)의 훅 개수가 달라져 React가 #310 «Rendered more hooks than
-   *   during the previous render»으로 트리를 통째로 던진다 — 방을 만들거나 증강
-   *   테스트를 시작하는 사람마다 크래시 화면을 봤다. 훅은 조건 위에 둔다.
+   * ⚠ 이 훅들은 **아래의 `lobby === null` 빠른 반환보다 위**에 있어야 한다
+   *   (2026-09-07 크래시). 아래에 두면 «입장 중…»을 그린 렌더와 대기실을 그린 렌더의
+   *   훅 개수가 달라져 React가 #310 «Rendered more hooks than during the previous
+   *   render»으로 트리를 통째로 던진다 — 방을 만들거나 증강 테스트를 시작하는 사람마다
+   *   크래시 화면을 봤다. 훅은 조건 위에 둔다.
    */
-  const [dragSeat, setDragSeat] = useState<number | null>(null);
-  const [dropSeat, setDropSeat] = useState<number | null>(null);
+  const [seatDrag, setSeatDrag] = useState<SeatDragState | null>(null);
+  const seatDragRef = useRef<SeatDragState | null>(null);
+  const setSeatDragBoth = (next: SeatDragState | null): void => {
+    seatDragRef.current = next;
+    setSeatDrag(next);
+  };
+  const seatListRef = useRef<HTMLDivElement | null>(null);
+  /** 드래그가 끝나는 시점에 필요한 것 — 콜백은 렌더마다 새로 오므로 ref로 붙잡는다. */
+  const moveSeatRef = useRef(props.onMoveSeat);
+  moveSeatRef.current = props.onMoveSeat;
+
+  // 드래그 중에는 window에서 포인터를 좇는다 (줄 밖으로 나가도 따라오게).
+  useEffect(() => {
+    if (seatDrag === null) return;
+    function onMove(e: PointerEvent): void {
+      const b = seatDragRef.current;
+      if (b === null || e.pointerId !== b.pointerId || b.settling) return;
+      if (!b.moved && Math.abs(e.clientY - b.startY) < b.threshold) return;
+      const targetIdx = dragTargetIdx(b.slotCenter, b.fromIdx, e.clientY);
+      // 한 자리 넘어갈 때마다 "칙" — 손패를 넘길 때와 같은 촉감
+      if (targetIdx !== b.targetIdx) sfx.slide();
+      setSeatDragBoth({ ...b, curY: e.clientY, moved: true, targetIdx });
+    }
+    function onUp(e: PointerEvent): void {
+      const b = seatDragRef.current;
+      if (b === null || e.pointerId !== b.pointerId) return;
+      if (!b.moved) {
+        setSeatDragBoth(null); // 그냥 눌렀다 뗀 것 — 줄은 움직인 적이 없다
+        return;
+      }
+      // 제자리로 돌아온 드래그는 보내지 않는다. 다만 **안착은 똑같이** 시킨다 —
+      // 여기서 상태를 바로 지우면 들려 있던 줄이 트랜지션 없이 툭 떨어진다.
+      if (b.targetIdx !== b.fromIdx) {
+        sfx.slide();
+        moveSeatRef.current(b.playerId, b.targetIdx);
+      }
+      // 안착 애니메이션이 끝난 뒤에 놓아 준다 — 그때쯤 새 `lobby`가 와 있다.
+      setSeatDragBoth({ ...b, settling: true });
+      window.setTimeout(() => setSeatDragBoth(null), SEAT_SETTLE_MS);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seatDrag !== null]);
 
   if (lobby === null) {
     return (
@@ -13513,39 +13596,72 @@ function WaitingRoom(props: {
   const needReady = lobby.players.filter((p) => !p.isHost && !p.isBot).length;
 
   const canDragSeats = isHost && lobby.players.length >= 2;
-  const seatDragProps = (i: number, p: LobbyPlayerEntry | null) => {
-    if (!canDragSeats || p === null) return {};
-    return {
-      draggable: true,
-      onDragStart: (e: React.DragEvent) => {
-        setDragSeat(i);
-        e.dataTransfer.effectAllowed = "move";
-        // 일부 브라우저는 데이터가 비면 드래그 자체를 시작하지 않는다.
-        e.dataTransfer.setData("text/plain", p.playerId);
-      },
-      onDragEnd: () => {
-        setDragSeat(null);
-        setDropSeat(null);
-      },
-      onDragOver: (e: React.DragEvent) => {
-        if (dragSeat === null) return;
-        e.preventDefault(); // 이걸 막지 않으면 drop이 오지 않는다
-        e.dataTransfer.dropEffect = "move";
-        if (dropSeat !== i) setDropSeat(i);
-      },
-      onDrop: (e: React.DragEvent) => {
-        e.preventDefault();
-        const from = dragSeat;
-        setDragSeat(null);
-        setDropSeat(null);
-        if (from === null || from === i) return;
-        const moving = slots[from];
-        if (moving === null || moving === undefined) return;
-        sfx.slide();
-        props.onMoveSeat(moving.playerId, i);
-      },
-    };
-  };
+  /** 사람(봇 포함)이 앉아 있는 줄 수 — 놓을 수 있는 자리는 여기까지다. */
+  const seatedCount = slots.filter((q) => q !== null).length;
+
+  function beginSeatDrag(e: React.PointerEvent, p: LobbyPlayerEntry, idx: number): void {
+    if (!canDragSeats) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // 줄 안의 단추(성향·강퇴·초대)는 끌기가 아니라 눌리는 것이어야 한다.
+    if ((e.target as HTMLElement).closest("button") !== null) return;
+    const list = seatListRef.current;
+    if (list === null) return;
+    /*
+     * 잡을 수 있는 자리 = **사람이 앉아 있는 줄**뿐이다. 서버의 `seat`은
+     * `room.agents` 안의 순서라 앉은 사람들이 앞쪽 자리를 빈틈없이 채운다 —
+     * 그래서 앞의 N줄만 재고 빈자리는 애초에 놓을 자리 후보에서 빠진다.
+     */
+    const centers = Array.from(list.querySelectorAll<HTMLElement>(".seat-row"))
+      .slice(0, seatedCount)
+      .map((n) => {
+        const r = n.getBoundingClientRect();
+        return r.top + r.height / 2;
+      });
+    if (idx >= centers.length) return;
+    setSeatDragBoth({
+      playerId: p.playerId,
+      pointerId: e.pointerId,
+      fromIdx: idx,
+      slotCenter: centers,
+      startY: e.clientY,
+      curY: e.clientY,
+      targetIdx: idx,
+      moved: false,
+      // 손가락은 마우스보다 훨씬 잘 흔들린다 (HAND_DRAG_THRESHOLD_* 주석 참고)
+      threshold:
+        e.pointerType === "mouse" ? HAND_DRAG_THRESHOLD_MOUSE : HAND_DRAG_THRESHOLD_TOUCH,
+      settling: false,
+    });
+  }
+
+  /** 드래그 중 줄 하나의 transform — 잡은 줄은 손끝을, 나머지는 비켜설 자리를 따른다. */
+  function seatDragStyle(idx: number): CSSProperties | undefined {
+    const b = seatDrag;
+    if (b === null || !b.moved) return undefined;
+    const { fromIdx, slotCenter, startY, curY, targetIdx, settling } = b;
+    const base = slotCenter[fromIdx] ?? 0;
+    if (idx === fromIdx) {
+      // slotCenter·clientY는 화면 좌표, transform은 레이아웃 좌표다 (uiScale.ts 참고)
+      if (settling) {
+        return {
+          transform: `translateY(${toLayoutPx((slotCenter[targetIdx] ?? base) - base)}px)`,
+          transition: `transform ${SEAT_SETTLE_MS}ms ease`,
+          zIndex: 5,
+        };
+      }
+      return {
+        transform: `translateY(${toLayoutPx(curY - startY)}px) scale(1.02)`,
+        transition: "none",
+        zIndex: 5,
+        pointerEvents: "none",
+      };
+    }
+    if (idx >= slotCenter.length) return undefined; // 빈자리는 비켜서지 않는다
+    const j = idx < fromIdx ? idx : idx - 1;
+    const finalIdx = j < targetIdx ? j : j + 1;
+    const ty = toLayoutPx((slotCenter[finalIdx] ?? slotCenter[idx] ?? 0) - (slotCenter[idx] ?? 0));
+    return { transform: `translateY(${ty}px)`, transition: `transform ${SEAT_SETTLE_MS}ms ease` };
+  }
 
   return (
     <div className="waitroom" ref={waitroomRef}>
@@ -13729,17 +13845,21 @@ function WaitingRoom(props: {
           주기 때문에 좌표가 어긋난다(uiScale.ts) — 클립을 잠깐 푸는 쪽이
           정확하고, 모서리가 잠시 각지는 대가뿐이다.
         */}
-        <div className={`seat-list${inviteSeat !== null ? " seat-list-open" : ""}`}>
+        <div
+          className={`seat-list${inviteSeat !== null ? " seat-list-open" : ""}`}
+          ref={seatListRef}
+        >
           {slots.map((p, i) => (
             <div
               key={i}
               className={`seat-row ${p === null ? "seat-empty" : ""} ${p?.playerId === lobby.youId ? "seat-me" : ""}${
                 canDragSeats && p !== null ? " seat-draggable" : ""
-              }${dragSeat === i ? " seat-dragging" : ""}${
-                dropSeat === i && dragSeat !== null && dragSeat !== i ? " seat-droptarget" : ""
-              }`}
+              }${seatDrag?.moved === true && seatDrag.fromIdx === i ? " seat-dragging" : ""}`}
               title={canDragSeats && p !== null ? "끌어서 자리를 옮깁니다" : undefined}
-              {...seatDragProps(i, p)}
+              style={seatDragStyle(i)}
+              onPointerDown={
+                canDragSeats && p !== null ? (e) => beginSeatDrag(e, p, i) : undefined
+              }
             >
               <span className="seat-idx">{WIND_KO[i]}</span>
               {p === null ? (
@@ -19255,8 +19375,12 @@ const OWN_CORNER_GUTTER = 28;
 /** 후로 줄이 아무리 좁아도 이만큼은 준다 — 0이 되면 스크롤 상자가 사라진다 */
 const OWN_CORNER_MIN_W = 120;
 
-/** 커서 X로 드래그 패의 최종 인덱스를 구한다 (자기 원래 슬롯은 건너뛴다). */
-function handDragTargetIdx(
+/**
+ * 커서 좌표로 끌고 있는 것의 최종 인덱스를 구한다 (자기 원래 슬롯은 건너뛴다).
+ *
+ * 축은 부르는 쪽이 정한다 — 손패는 X(가로 레일), 대기실 자리표는 Y(세로 목록).
+ */
+function dragTargetIdx(
   slotCenter: number[],
   fromIdx: number,
   curX: number,
@@ -20595,7 +20719,7 @@ function OwnArea(props: {
       const live = dragLiveRef.current;
       const targetIdx = live.autoSort
         ? b.fromIdx
-        : handDragTargetIdx(b.slotCenter, b.fromIdx, e.clientX);
+        : dragTargetIdx(b.slotCenter, b.fromIdx, e.clientX);
       // 슬롯을 하나 넘길 때마다 "칙" — 패를 스르륵 넘기는 촉감. (재정렬 모드에서만)
       if (!live.autoSort && targetIdx !== b.targetIdx) sfx.slide();
       setDragBoth({ ...b, curX: e.clientX, curY: e.clientY, moved: true, overDiscard, targetIdx });
