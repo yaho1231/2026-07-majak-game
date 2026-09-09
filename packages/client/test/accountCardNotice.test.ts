@@ -49,7 +49,7 @@ describe("성공과 실패가 다르게 생긴다", () => {
     // 아닌지 모르는 채로 있고, 사용자는 확인할 방법이 없다.
     expect(APP_CODE).toMatch(/pwChangePending\.current = true/);
     expect(APP_CODE).toMatch(/if \(pwChangePending\.current\) \{/);
-    expect(APP_CODE).toMatch(/setPwNotice\("password", true, "비밀번호를 바꿨습니다/);
+    expect(APP_CODE).toMatch(/setPwNotice\("password", true, "비밀번호를 변경했습니다/);
   });
 
   it("실패 사유는 토스트가 아니라 카드로 간다", () => {

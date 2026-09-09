@@ -38,7 +38,7 @@ describe("오름패 뱃지 — 후리텐", () => {
   });
 
   it("낱장 툴팁에도 론 불가를 적는다 — 남은 장수만 보고 살아 있다고 읽지 않게", () => {
-    expect(badge).toMatch(/furitenOn[\s\S]{0,120}론 불가/);
+    expect(badge).toMatch(/furitenOn[\s\S]{0,120}론은 할 수 없고/);
   });
 
   it("사유 세 가지(버림·일시·리치)를 전부 사람 말로 풀어 둔다", () => {

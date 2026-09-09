@@ -94,11 +94,11 @@ describe("증강 도감 — 검색 코퍼스", () => {
 
 describe("마작 규칙 문안 — 울기 표기", () => {
   it("치·퐁·깡으로 쓴다", () => {
-    expect(SRC).toContain("울기 — 치 · 퐁 · 깡");
+    expect(SRC).toContain("울기(치·퐁·깡)");
   });
 
   it("'폰'·'캉' 표기가 남아 있지 않다", () => {
-    const start = SRC.indexOf("울기 — 치 · 퐁 · 깡");
+    const start = SRC.indexOf("울기(치·퐁·깡)");
     const section = SRC.slice(start, start + 600);
     expect(section).not.toContain("폰");
     expect(section).not.toContain("캉");

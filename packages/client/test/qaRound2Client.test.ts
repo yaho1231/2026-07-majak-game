@@ -421,7 +421,7 @@ describe("리플레이 조작이 사람 손을 따라간다", () => {
   });
 
   it("드래프트 경고가 실제 남은 초를 말한다 (확정 26)", () => {
-    expect(APP_CODE).toContain("`🎲 ${remainSec}초 남았다");
+    expect(APP_CODE).toContain("`🎲 ${remainSec}초 남았습니다");
     expect(APP).not.toContain('"🎲 10초 남았다');
   });
 

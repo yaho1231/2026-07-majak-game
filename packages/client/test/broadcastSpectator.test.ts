@@ -469,7 +469,7 @@ describe("중계 관전 — 다음 쯔모 미리보기 (기본 OFF)", () => {
 
   it("켤 때 무엇을 보게 되는지 적는다", () => {
     expect(PREFS).toContain("스포일러");
-    expect(next).toMatch(/판의 결말을 먼저 보게 됩니다/);
+    expect(next).toMatch(/이 국의 결과를 미리 알게 됩니다/);
   });
 
   it("누가 뽑는지는 drawOrder를 그대로 쓴다 — 역행·후로 건너뜀이 거기 들어 있다", () => {
@@ -497,7 +497,7 @@ describe("중계 관전 — 좌석 분석 (A2·A5·A7)", () => {
     expect(seats).toMatch(/지금 화료/);
     // 확정/하한/후리텐을 툴팁이 갈라 말한다 (winValueTip)
     expect(seats).toContain("winValueTip(best,");
-    expect(APP).toMatch(/확정값입니다 \(추정이 아닙니다\)/);
+    expect(APP).toMatch(/확정값입니다\. 추정값이 아닙니다/);
     // 「추정」은 노텐 구간(estimate)에만
     expect(seats).toMatch(/ins\?\.estimate !== undefined/);
     expect(seats).toMatch(/bcast-points-est/);
@@ -543,9 +543,9 @@ describe("중계 관전 — 확정·하한·거부 상태 (코어 2차 필드)",
   it("리치 좌석의 값은 하한이라고 적는다 — 「확정」이라 단언하지 않는다", () => {
     expect(wv).toContain("uraUnknown === true");
     expect(wv).toMatch(/뒷도라 제외/);
-    expect(wv).toMatch(/이 값은 하한입니다/);
+    expect(wv).toMatch(/이 값은 최소값입니다/);
     // 툴팁이 하한일 때와 확정일 때 **다른 말**을 한다
-    expect(wv).toMatch(/확정값입니다 \(추정이 아닙니다\)/);
+    expect(wv).toMatch(/확정값입니다\. 추정값이 아닙니다/);
     // 확정값과 색까지 가른다 — 라벨만 다르면 눈은 둘을 같은 종류로 읽는다
     expect(seats).toContain("winValueCaveats(best).length > 0");
     expect(CSS).toContain(".bcast-points-floor");
@@ -593,7 +593,7 @@ describe("중계 관전 — 증강 보너스 판 · 따라갈 수 없는 정산 
   it("따라갈 수 없는 보정은 하한과 같은 층위다 — 「확정값」이라 말하지 않는다", () => {
     expect(wv).toContain("v.augAdjusted === true");
     expect(wv).toMatch(/증강 보정 미반영/);
-    expect(wv).toMatch(/실제 수령액이 이 값과 다를 수 있습니다/);
+    expect(wv).toMatch(/실제 점수는 이 값과 다를 수 있습니다/);
     /*
      * 핵심: 사정이 **하나라도** 있으면 확정 문구를 쓰지 않는다.
      * (`uraUnknown` 만 보던 옛 분기라면 `augAdjusted` 만 선 값이 「확정값입니다」로
@@ -623,7 +623,7 @@ describe("중계 관전 — 증강 보너스 판 · 따라갈 수 없는 정산 
 describe("중계 관전 — 되감는 동안의 말투", () => {
   it("구획이 «없다»가 아니라 «안 붙인다»고 적는다", () => {
     expect(APP).toContain("const REWIND_NOTE =");
-    expect(APP).toMatch(/되감는 중입니다 — 이 값은 «지금»의 것이라 지나간 화면 옆에 세우지 않습니다/);
+    expect(APP).toMatch(/되감는 중입니다\. 이 값은 현재 시점 기준이라 되감기 화면에는 표시하지 않습니다/);
     expect(bodyOf("function DockDanger({")).toContain("REWIND_NOTE");
     /*
      * 오름패는 이제 좌석 카드 안이라(`SeatWaits`) 자기 문구가 없다 — 되감을 때는
@@ -752,7 +752,7 @@ describe("중계 관전 — 오름패별 값 (A1 확장)", () => {
   });
 
   it("역이 없는 대기는 그렇게 적는다 — 남은 장수만 적으면 «왜 안 나지»가 된다", () => {
-    expect(waits).toMatch(/역없음 — 이 패로는 못 납니다/);
+    expect(waits).toMatch(/역없음\. 이 패로는 화료할 수 없습니다/);
     // 좌석 단위로 막히는 사실(형식텐파이)은 카드의 딱지줄이 말한다
     expect(seatsBody).toContain("ins?.yakuless === true");
   });
@@ -959,7 +959,7 @@ describe("중계 관전 — 국 무효 (B4)", () => {
 
   it("판을 접는 것과 다르다고 화면에 적는다", () => {
     const tools = bodyOf("function BroadcastTools({");
-    expect(tools).toMatch(/판 자체는 계속됩니다/);
+    expect(tools).toMatch(/게임은 계속됩니다/);
     // 결과 화면의 사유도 규칙 유국과 말투를 가른다
     expect(APP).toMatch(/adminVoid: "운영 판정/);
   });
@@ -1088,7 +1088,7 @@ describe("더블 론 — 한 장으로 합친 컷인", () => {
    */
   it("트리플 론은 유국으로 말하되 사유를 밝힌다", () => {
     expect(over).toContain('msg.settle.abortReason === "tripleRon"');
-    expect(over).toContain('showCutIn("삼가화", "draw", "트리플 론 — 점수는 움직이지 않습니다"');
+    expect(over).toContain('showCutIn("삼가화", "draw", "트리플 론으로 유국되어 점수 변동이 없습니다"');
   });
 
   it("역 스탬프 계단이 두 번째 승자까지 따라간다", () => {
@@ -1118,11 +1118,11 @@ describe("쏘이는 패 — 추정이 아니라 사실 (2026-08-23)", () => {
 
   it("뺀 것들은 사라지지 않고 «이유»와 함께 도크에 남는다", () => {
     expect(read).toContain("cold.push({");
-    expect(read).toMatch(/후리텐 — 론이 막혀 있습니다/);
-    expect(read).toMatch(/형식텐파이 — 어떤 오름패로도 역이 없습니다/);
-    expect(read).toMatch(/격 미달 —/);
+    expect(read).toMatch(/후리텐이라 론은 안 되고 쯔모만 가능합니다/);
+    expect(read).toMatch(/형식텐파이라 어떤 오름패로도 역이 없습니다/);
+    expect(read).toMatch(/격 미달:/);
     const dd = bodyOf("function DockDanger({");
-    expect(dd).toContain("대기는 있지만 못 먹는 손");
+    expect(dd).toContain("대기는 있지만 화료할 수 없는 손");
     expect(dd).toContain("c.why");
   });
 

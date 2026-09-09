@@ -359,7 +359,7 @@ const WIND_KO = ["동", "남", "서", "북"];
  * 국이 끝나면 채널과 함께 사라진다. 예전 문구가 "이 게임 동안"이라 영구 봉인으로 읽혔고,
  * 그러면 그 패를 안고 손을 다시 짤 이유가 없어져 판단이 통째로 어긋났다.
  */
-const SEAL_HINT = "🔒 봉인된 패 — 이번 국 동안 버릴 수 없습니다";
+const SEAL_HINT = "🔒 봉인된 패입니다. 이번 국 동안 버릴 수 없습니다";
 
 /**
  * 쿠이카에 안내 — 봉인과 **다른 문구여야 한다**.
@@ -369,7 +369,7 @@ const SEAL_HINT = "🔒 봉인된 패 — 이번 국 동안 버릴 수 없습니
  * 보내 화면이 구분하지 못했고, 증강이 하나도 없는 판에서 치를 한 것만으로
  * 「누군가 내 패를 봉인했습니다」가 떴다(QA 2차 onboard 확정 1).
  */
-const KUIKAE_HINT = "🔒 방금 울어서 만든 몸통과 같은 패 — 이번 순에만 버릴 수 없습니다 (쿠이카에 금지)";
+const KUIKAE_HINT = "🔒 방금 울어서 만든 몸통과 같은 패는 이번 순에 버릴 수 없습니다 (쿠이카에 금지)";
 
 /**
  * 그 모드의 마지막 장(場) — 동풍전은 동장(1), 반장전은 남장(2)까지가 정규 구간이다.
@@ -498,13 +498,13 @@ type AccountNotice = {
 
 /** 도중유국 사유 (RoundSettledPayload.abortReason) — 결과 화면 부제 */
 const ABORT_REASONS: Record<string, string> = {
-  kyushuKyuhai: "구종구패 — 배패에 요구패·자패가 9종 이상이라 국을 물렸다",
-  fourKan: "사깡산료 — 서로 다른 두 사람 이상이 깡을 넷 만들었다",
-  fourWind: "사풍연타 — 첫 순에 네 명이 같은 풍패를 버렸다",
-  fourRiichi: "사가리치 — 네 명이 모두 리치를 걸었다",
-  tripleRon: "삼가화 — 한 버림패에 세 명이 동시에 론했다",
+  kyushuKyuhai: "구종구패입니다. 배패에 요구패와 자패가 9종 이상이었습니다.",
+  fourKan: "사깡산료입니다. 두 명 이상이 합쳐서 깡을 네 번 했습니다.",
+  fourWind: "사풍연타입니다. 첫 순에 네 명이 같은 풍패를 버렸습니다.",
+  fourRiichi: "사가리치입니다. 네 명이 모두 리치를 걸었습니다.",
+  tripleRon: "삼가화입니다. 버림패 한 장에 세 명이 동시에 론했습니다.",
   // 규칙이 만든 유국이 아니라 **사람이 내린 판정**이다 — 말투를 갈라 둔다(docs/36 B4).
-  adminVoid: "운영 판정 — 관리자가 이 국을 물렸다 (판은 계속됩니다)",
+  adminVoid: "운영 판정입니다. 관리자가 이 국을 무효로 했습니다. 게임은 계속됩니다.",
 };
 
 /**
@@ -549,10 +549,10 @@ const ACTION_LABEL: Record<string, string> = {
   win: "화료",
   pon: "퐁",
   chi: "치",
-  bluff_pon: "허장성세 — 퐁",
-  silent_pon: "묵계 — 멘젠 퐁",
+  bluff_pon: "허장성세 퐁",
+  silent_pon: "묵계 멘젠 퐁",
   // 우는 국사무쌍의 특수 후로 — 버려진 요구패 1장 + 손패 2장(서로 다른 요구패 3종)
-  kokushi_pon: "우는 국사무쌍 — 요구패 퐁",
+  kokushi_pon: "우는 국사무쌍 요구패 퐁",
   minkan: "깡",
   ankan: "안깡",
   shouminkan: "가깡",
@@ -560,9 +560,9 @@ const ACTION_LABEL: Record<string, string> = {
   pass: "패스",
   recall: "회수",
   peek_waits: "선언 간파",
-  swap3: "등가교환 — 대상 지정",
-  swap3_give: "등가교환 — 넘길 3장",
-  swap3_take: "등가교환 — 가져올 3장",
+  swap3: "등가교환 대상 지정",
+  swap3_give: "등가교환 넘길 3장",
+  swap3_take: "등가교환 가져올 3장",
   hand_swap: "손패 강탈",
   red_touch: "붉은 손길",
   future_exchange: "미래 보기",
@@ -595,51 +595,51 @@ const ACTION_LABEL: Record<string, string> = {
   invincible_guard: "천하무적",
   // 2026-07-22 (52차) 신규 12종 — docs/16 §1c
   silent_take: "정적의 손",
-  foresight_reveal: "예지 — 발동(공개)",
-  foresight_order: "예지 — 패산 재배열",
-  rank_gate_mark: "격 — 지목",
+  foresight_reveal: "예지 발동 (공개)",
+  foresight_order: "예지 패산 재배열",
+  rank_gate_mark: "격 지목",
   dw_swap: "왕패의 주인",
   stealth_riichi: "스텔스 리치",
-  jackpot_roll: "일확천금 — 룰렛",
-  karma_burn: "카르마 — 업보 청산",
-  rinshan_arrange: "영상 정찰 — 순서·교환",
-  declare_fog: "안개 덮인 바닥 — 선언",
-  genesis_flip: "개벽 — 발동",
-  table_flip_do: "밥상 뒤엎기 — 발동",
-  future_arm: "미래를 보는 자 — 발동",
+  jackpot_roll: "일확천금 룰렛",
+  karma_burn: "카르마 업보 청산",
+  rinshan_arrange: "영상 정찰 (순서·교환)",
+  declare_fog: "안개 덮인 바닥 선언",
+  genesis_flip: "개벽 발동",
+  table_flip_do: "밥상 뒤엎기 발동",
+  future_arm: "미래를 보는 자 발동",
   peek_forge: "대기패 위조",
   ura_swap: "뒷도라 바꿔치기",
   // 2026-07-25 (5차 §2b) 신규 — 액티브 선언형
-  even_world_flip: "짝수의 세계 — 발동",
-  declare_brief_fog: "박무 — 선언",
-  giant_god: "마작의 거신병 — 각성",
-  call_seal_use: "함구령 — 선언",
-  conjure_tsumo: "소환 — 패 지목",
+  even_world_flip: "짝수의 세계 발동",
+  declare_brief_fog: "박무 선언",
+  giant_god: "마작의 거신병 각성",
+  call_seal_use: "함구령 선언",
+  conjure_tsumo: "소환할 패 지목",
   // 배치 2
-  tenpai_scan_use: "천리안 — 텐파이 감지",
+  tenpai_scan_use: "천리안 텐파이 감지",
   danger_sense_use: "지뢰 탐지",
   triple_peek_use: "삼세 예지",
-  dissolve_meld: "파혼 — 후로 해체",
-  disarm_lock: "무장해제 — 증강 봉인",
-  xray_reveal: "투시 — 발동",
-  push_brand: "등 떠밀기 — 낙인",
-  reload_use: "재장전 — 복구",
-  honor_recall: "귀환 — 자패 회수",
-  split_tile: "분열 — 패 쪼개기",
-  frame_discard: "누명 — 심기",
-  dragons_will: "삼원의 의지 — 발동",
-  flip_riichi: "손바닥 뒤집기 — 손 풀기",
-  north_pull: "북풍 상인 — 북빼기",
+  dissolve_meld: "파혼 후로 해체",
+  disarm_lock: "무장해제 증강 봉인",
+  xray_reveal: "투시 발동",
+  push_brand: "등 떠밀기 낙인",
+  reload_use: "재장전 복구",
+  honor_recall: "귀환 자패 회수",
+  split_tile: "분열 패 쪼개기",
+  frame_discard: "누명 패 심기",
+  dragons_will: "삼원의 의지 발동",
+  flip_riichi: "손바닥 뒤집기 손패 골라 버리기",
+  north_pull: "북풍 상인 북빼기",
   // 2026-08-04 (6차) 신규
-  dora_recall: "도라의 잔상 — 되살리기",
-  soul_strike: "영혼의 일격 — 선언",
-  picky_unify: "편식 — 단색화",
+  dora_recall: "도라의 잔상 되살리기",
+  soul_strike: "영혼의 일격 선언",
+  picky_unify: "편식 단색화",
   // 2026-08-07 (7차) 신규
-  joker_call: "조커 — 백으로 바꿀 패 선택",
+  joker_call: "조커 (백으로 바꿀 패 선택)",
   // 2026-08-23 — 상시 패시브에서 2국 1회 액티브로 바뀐 모양 규칙 3종
-  declare_mixed_triplet: "동수의 결속 — 커쯔의 무늬 지우기",
-  declare_broken_border: "무너진 국경 — 슌쯔의 무늬 지우기",
-  declare_async_chiitoi: "비대칭 — 또이쯔의 무늬 지우기",
+  declare_mixed_triplet: "동수의 결속 선언",
+  declare_broken_border: "무너진 국경 선언",
+  declare_async_chiitoi: "비대칭 선언",
 };
 
 /** 액티브 액션 → 그 액션을 만들어내는 증강 id (메뉴에서 어느 증강인지 표시용). */
@@ -965,9 +965,9 @@ function isActiveAugment(id: string): boolean {
  * 단순히 "자기 턴에" · "첫 순에" 같은 타이밍 제약만 있는 것은 퀘스트가 아니다.
  */
 const QUEST_GOAL: Record<string, string> = {
-  picky_eater: "한 무늬(+자패)만 12장 버리기",
+  picky_eater: "한 가지 무늬와 자패만 12장 버리기",
   karma: "잃은 점수를 업보 8,000까지 쌓기",
-  cliff_bloom: "한 국에 깡 두 번 (만개)",
+  cliff_bloom: "한 국에서 깡을 두 번 하기 (만개)",
 };
 
 /**
@@ -1056,7 +1056,7 @@ const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
  * (2026-08-01 사용자 요청: 오픈 리치·스텔스 리치를 드래그로도 걸 수 있게)
  * (2026-08-08 사용자 요청: 영혼의 일격도 리치 선언이라 같은 손놀림으로 — 여기 빠져 있었다)
  *
- * (2026-08-16 사용자 요청: 손바닥 뒤집기도 결국 "이 패를 버린다"라 같은 손놀림이어야 한다.
+ * (2026-08-16 사용자 요청: 손바닥 뒤집기도 결국 "이 패 버리기"라 같은 손놀림이어야 한다.
  *  리치 중에는 손패가 통째로 어두워져 있어서, 버튼을 눌러도 정말 바꿀 수 있는 건지
  *  손이 멎었다 — 드래그를 열고 액션 바에 전용 버튼을 세운다.)
  *
@@ -1089,14 +1089,14 @@ function armPromptText(mode: ArmMode | null, type?: string | null): string {
   if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
     return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
   }
-  if (type === "joker_call") return "백으로 바꿀 손패를 클릭하세요 (백을 고르면 그대로 발동)";
+  if (type === "joker_call") return "백으로 바꿀 손패를 클릭하세요. 백을 고르면 바로 발동합니다";
   switch (mode) {
     case "opp":
       return "대상 상대를 클릭하세요";
     case "own-river":
-      return "내 버림패(바닥)를 클릭하세요";
+      return "내 바닥의 버림패를 클릭하세요";
     case "opp-river":
-      return "주울 상대의 버림패를 클릭하세요";
+      return "가져올 상대의 버림패를 클릭하세요";
     case "hand":
     default:
       return "발동할 손패를 클릭하세요";
@@ -1251,8 +1251,8 @@ function ActiveBadge(): JSX.Element {
  */
 function UncollectedBadge(): JSX.Element {
   return (
-    <span className="draft-uncollected" title="아직 한 번도 골라 본 적 없는 증강입니다 (도감 미수집)">
-      ✧ 미수집 — 처음 보는 증강
+    <span className="draft-uncollected" title="아직 골라 본 적이 없는 증강입니다. 도감에 수집되지 않았습니다">
+      ✧ 미수집 (처음 보는 증강)
     </span>
   );
 }
@@ -1262,7 +1262,7 @@ function QuestBadge({ id }: { id: string }): JSX.Element | null {
   const goal = QUEST_GOAL[id];
   if (goal === undefined) return null;
   return (
-    <span className="aug-quest-badge" title={`퀘스트 — ${goal}`}>
+    <span className="aug-quest-badge" title={`퀘스트 목표: ${goal}`}>
       🎯 퀘스트
     </span>
   );
@@ -1390,9 +1390,9 @@ function loadSettings(): Settings {
  */
 function lockedReasonText(l: LockedOption): string {
   if (l.reason === "minHan") {
-    return `잠김 — 이번 국은 ${l.minHan ?? 5}판 이상이어야 화료할 수 있습니다 (격(格)에 지목당했습니다)`;
+    return `격(格)에 지목당해 잠겼습니다. 이번 국은 ${l.minHan ?? 5}판 이상이어야 화료할 수 있습니다`;
   }
-  return "잠김 — 이 사람의 버림패는 지금 론당하지 않습니다 (천하무적·불가침 조약)";
+  return "천하무적이나 불가침 조약 때문에 잠겼습니다. 이 사람의 버림패는 지금 론할 수 없습니다";
 }
 
 /** 버튼 안에 한 줄로 들어가는 짧은 사유 */
@@ -1457,7 +1457,7 @@ interface SelectionCtx {
   swapTarget: string | null;
   /** swap3: 넘길 내 손패 3장. */
   swapGive: number[];
-  /** swap3: 상대 지정 변경(내 영역 "상대 다시"용). */
+  /** swap3: 상대 지정 변경(내 영역 "상대 다시 고르기"용). */
   setSwapTarget: (pid: string | null) => void;
   /** swap3: 넘길 3장 갱신. */
   setSwapGive: (ids: number[]) => void;
@@ -2104,12 +2104,12 @@ function seatWindChar(view: PlayerView, player: PlayerInfo): string {
  * 우는 문턱도, 타점 취향도 다르다. 이름표에 성향을 붙여 그 차이를 먼저 알려 준다.
  */
 const ARCHETYPE_INFO: Record<string, { label: string; desc: string }> = {
-  attacker: { label: "공격형", desc: "밀고 걸고 물러서지 않는다. 상대 리치에도 잘 포기하지 않는다." },
-  defender: { label: "수비형", desc: "방총을 극히 싫어한다. 아니다 싶으면 일찍 포기한다." },
-  speedster: { label: "속공형", desc: "타점이 낮아도 좋으니 빨리. 뭐든 울어서 텐파이를 잡는다." },
-  valueHunter: { label: "타점형", desc: "멘젠으로 크게. 잘 울지 않고 비싸질 때까지 기다린다." },
-  balanced: { label: "균형형", desc: "교과서대로 둔다. 치우친 데가 없다." },
-  wildcard: { label: "변덕형", desc: "읽히지 않는다. 같은 자리에서 매번 다르게 두고 허세가 잦다." },
+  attacker: { label: "공격형", desc: "리치를 걸고 밀어붙이며 물러서지 않습니다. 상대가 리치를 해도 잘 포기하지 않습니다." },
+  defender: { label: "수비형", desc: "방총을 매우 싫어합니다. 아니다 싶으면 일찍 포기합니다." },
+  speedster: { label: "속공형", desc: "타점이 낮아도 빠르게 갑니다. 무엇이든 울어서 텐파이를 만듭니다." },
+  valueHunter: { label: "타점형", desc: "멘젠으로 큰 손을 노립니다. 잘 울지 않고 타점이 오를 때까지 기다립니다." },
+  balanced: { label: "균형형", desc: "교과서대로 둡니다. 특별히 치우친 성향이 없습니다." },
+  wildcard: { label: "변덕형", desc: "예측하기 어렵습니다. 같은 상황에서도 매번 다르게 두고 허세가 잦습니다." },
 };
 
 /** 선택 목록에 세우는 순서 — 공격↔수비를 양 끝에 두고 사이를 채운다 */
@@ -2135,7 +2135,7 @@ function BotArchetypeChip(props: { archetype: string | null | undefined }): JSX.
   const info = archetypeInfo(props.archetype);
   if (info === null) return <span className="stat-chip stat-chip-empty">봇</span>;
   return (
-    <span className="stat-chip stat-chip-arch" title={`${info.label} 봇 — ${info.desc}`}>
+    <span className="stat-chip stat-chip-arch" title={`${info.label} 봇: ${info.desc}`}>
       {info.label}
     </span>
   );
@@ -2218,7 +2218,7 @@ function BotArchetypePicker(props: {
         type="button"
         ref={btnRef}
         className={`seat-arch-pick${open ? " seat-arch-open" : ""}`}
-        title={info !== null ? `${info.label} 봇 — ${info.desc}` : "봇 성향 선택"}
+        title={info !== null ? `${info.label} 봇: ${info.desc}` : "봇 성향 선택"}
         aria-label="봇 성향"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -2526,14 +2526,14 @@ function deadWallSlotInfo(
 ): { label: string; cls: string } {
   const first = size - INDICATOR_BLOCK; // 표시패 블록 시작 = 남은 영상패 장수
   if (idx < first) {
-    return { label: idx === 0 ? "다음 영상패" : `영상패 ${idx + 1}번째`, cls: "rinshan" };
+    return { label: idx === 0 ? "다음 영상패" : `${idx + 1}번째 영상패`, cls: "rinshan" };
   }
   const off = idx - first;
   if (off % 2 === 0) {
     const n = off / 2 + 1;
     return n <= flipped
       ? { label: `도라 표시 ${n} (공개됨)`, cls: "dora-open" }
-      : { label: `도라 표시 ${n} (깡 ${n - 1}회 시)`, cls: "dora" };
+      : { label: `도라 표시 ${n} (깡 ${n - 1}회 후 공개)`, cls: "dora" };
   }
   const n = (off - 1) / 2 + 1;
   return { label: `뒷도라 ${n}`, cls: "ura" };
@@ -2833,7 +2833,7 @@ function LayoutHint(): JSX.Element | null {
     <div className="layout-hint" role="status">
       <span className="layout-hint-icon">⤢</span>
       <span>
-        창이 좁아 배치가 겹칠 수 있습니다 — <b>{mod} + −</b> 로 화면을 줄여 보세요.
+        창이 좁아 화면이 겹쳐 보일 수 있습니다. <b>{mod} + −</b> 로 화면을 줄여 보세요.
       </span>
       <button
         type="button"
@@ -3603,7 +3603,7 @@ export function App(): JSX.Element {
         // 📜 로그 줄에는 «누가»가 곁줄 앞머리로 합쳐진 형태로 들어간다 — 로그는
         // 색을 쓰지 않는 한 줄짜리라 조각을 나눠 봐야 읽는 사람에게 달라지는 게 없다.
         ...(p.sub !== undefined || p.who !== undefined
-          ? { sub: [p.who, p.sub].filter((s) => s !== undefined && s !== "").join(" — ") }
+          ? { sub: [p.who, p.sub].filter((s) => s !== undefined && s !== "").join(": ") }
           : {}),
         ...(p.augId !== undefined ? { augId: p.augId } : {}),
       };
@@ -3983,7 +3983,7 @@ export function App(): JSX.Element {
       // ping은 스스로 다시 오므로 조용히 버린다.
       if (msg.type !== "ping" && !sendFailNotified.current) {
         sendFailNotified.current = true;
-        showToast("서버와 연결이 끊겼습니다 — 다시 연결되면 눌러 주세요");
+        showToast("서버와 연결이 끊겼습니다. 다시 연결된 뒤에 눌러 주세요.");
       }
       return false;
     }
@@ -4641,7 +4641,7 @@ export function App(): JSX.Element {
        */
       if (pwChangePending.current) {
         pwChangePending.current = false;
-        setPwNotice("password", true, "비밀번호를 바꿨습니다 — 다른 기기의 로그인은 모두 끊겼습니다");
+        setPwNotice("password", true, "비밀번호를 변경했습니다. 다른 기기에서는 모두 로그아웃되었습니다.");
       }
       guestRef.current = msg.guest === true;
       const guest = msg.guest === true;
@@ -4659,7 +4659,7 @@ export function App(): JSX.Element {
          *
          * 브라우저에 남은 코드는 방이 서버에서 사라지는 길(재시작·유휴 청소·내가
          * 없는 동안 접힌 판) 어디에서도 지워지지 않아, 홈의 재접속 버튼이 대부분
-         * **눌러야 "그 방은 이미 사라졌습니다"를 보는 버튼**이 되어 있었다.
+         * **눌러야 "방이 이미 없어졌습니다"를 보는 버튼**이 되어 있었다.
          * 이제 로그인할 때마다 실제로 돌아갈 수 있는 방으로 맞춘다.
          *
          * `undefined`면 이 값을 모르는 응답이다(비밀번호 변경 뒤 재발급 등) —
@@ -4782,10 +4782,10 @@ export function App(): JSX.Element {
         setAuth(null);
         resetGameState();
         void askConfirm({
-          title: "새 접속이 감지되어 종료됩니다",
+          title: "다른 곳에서 로그인했습니다",
           body: "같은 계정으로 다른 창에서 로그인했습니다.\n이 창의 연결은 끊어집니다.",
           confirmLabel: "확인",
-          cancelLabel: "그대로 두기",
+          cancelLabel: "이 창 유지",
         }).then((ok) => {
           if (!ok) return;
           window.close();
@@ -4843,7 +4843,7 @@ export function App(): JSX.Element {
        * 계정 카드의 답은 **카드 안에** 남긴다 (2026-08-21 사용자 보고).
        *
        * 로그인 폼에 대해 이미 내린 것과 같은 판단이다: 정정할 수 있는 사유
-       * ("지금 비밀번호가 올바르지 않습니다", "비밀번호는 8자 이상이어야 합니다")를
+       * ("현재 비밀번호가 올바르지 않습니다", "비밀번호는 8자 이상이어야 합니다")를
        * 3.2초 토스트로 흘려보내면 사람은 읽기도 전에 놓치고, 칸은 이미 비어 있어
        * **성공한 것과 똑같이 생긴 화면**만 남는다. 그러고는 바뀌지도 않은 새
        * 비밀번호로 로그인을 시도하다 "닉네임·비번이 맞는데 안 들어가진다"가 된다.
@@ -4902,7 +4902,7 @@ export function App(): JSX.Element {
           msg.code === "KICKED"
             ? "방장이 방에서 내보냈습니다"
             : msg.code === "ROOM_NOT_FOUND"
-              ? "그 방은 이미 사라졌습니다"
+              ? "방이 이미 없어졌습니다"
               : msg.message,
           "info",
         );
@@ -4918,7 +4918,7 @@ export function App(): JSX.Element {
         const busy = joinTargetRef.current;
         setBusyRoomCode(busy);
         showToast(
-          `${busy} 방은 지금 대국 중입니다 — 끝나면 다시 들어갈 수 있습니다. 코드를 홈에 남겨 뒀습니다.`,
+          `${busy} 방은 지금 대국 중입니다. 대국이 끝나면 다시 들어갈 수 있습니다. 방 코드는 홈의 참가 칸에 채워 두었습니다.`,
           "info",
           6000,
         );
@@ -4978,15 +4978,15 @@ export function App(): JSX.Element {
           next.delete(msg.gameId);
           return next;
         });
-        showToast("공유 링크를 내렸습니다 — 기존 링크는 더 이상 열리지 않습니다", "info", 4000);
+        showToast("공유를 해제했습니다. 기존 링크는 더 이상 열리지 않습니다.", "info", 4000);
         return;
       }
       setSharedGames((cur) => (cur.has(msg.gameId) ? cur : new Set(cur).add(msg.gameId)));
       const url = replayLinkFor(msg.token);
       void navigator.clipboard
         ?.writeText(url)
-        .then(() => showToast("공유 링크를 복사했습니다 — 링크를 가진 사람만 볼 수 있습니다", "info", 4000))
-        .catch(() => showToast(`공유 링크: ${url}`, "info", 8000));
+        .then(() => showToast("공유 링크를 복사했습니다. 링크가 있는 사람만 볼 수 있습니다.", "info", 4000))
+        .catch(() => showToast(`링크를 복사하지 못했습니다. 공유 링크: ${url}`, "info", 8000));
       return;
     }
     if (msg.type === "liveGames") {
@@ -5093,7 +5093,7 @@ export function App(): JSX.Element {
       // 마감 하나만 갈아 끼운다 — 프롬프트를 다시 그리면 골라 둔 패가 떨어진다.
       if (msg.kind === "draft") draftDeadline.current = performance.now() + msg.deadlineMs;
       else setPromptDeadline(Date.now() + msg.deadlineMs);
-      showToast(`시간이 ${Math.round(msg.deadlineMs / 1000)}초로 늘었습니다`, "info", 2600);
+      showToast(`남은 시간이 ${Math.round(msg.deadlineMs / 1000)}초로 늘어났습니다`, "info", 2600);
       return;
     }
     if (msg.type === "gamePaused") {
@@ -5103,7 +5103,7 @@ export function App(): JSX.Element {
           ...(msg.reason !== undefined ? { reason: msg.reason } : {}),
           ...(msg.by !== undefined ? { by: msg.by } : {}),
         });
-        showToast(msg.reason ?? "관리자가 판을 세웠습니다", "info", 4000);
+        showToast(msg.reason ?? "관리자가 게임을 일시정지했습니다", "info", 4000);
       } else {
         /*
          * 재개 — 서 있던 만큼 **마감을 뒤로 민다**.
@@ -5123,12 +5123,12 @@ export function App(): JSX.Element {
         }
         pausedAt.current = null;
         setPause(null);
-        showToast("판을 다시 시작합니다", "info", 2600);
+        showToast("게임을 재개합니다", "info", 2600);
       }
       return;
     }
     if (msg.type === "spectateEnded") {
-      showToast(`관전 종료 — ${msg.reason}`, "info");
+      showToast(`${msg.reason} 관전을 종료합니다.`, "info");
       activeSpectateRef.current = null;
       // gameOver 모달이 떠 있으면 그대로 두고, 뷰·연출만 정리한다
       setSpectating(null);
@@ -5294,7 +5294,7 @@ export function App(): JSX.Element {
           (k) => before[k] !== msg.rules[k],
         );
         if (changed.length > 0) {
-          showToast(`방 규칙이 바뀌었습니다 — ${changed.map(roomRuleLabel).join(" · ")}`, "info");
+          showToast(`바뀐 방 규칙: ${changed.map(roomRuleLabel).join(", ")}`, "info");
         }
       }
       setRoomRules(msg.rules);
@@ -5323,10 +5323,10 @@ export function App(): JSX.Element {
           showToast(`판 길이가 ${MODE_BADGE[msg.gameMode]?.name ?? msg.gameMode}으로 바뀌었습니다`, "info");
         }
         if (prev.pace !== msg.pace) {
-          showToast(`제한 시간: ${ROOM_PACE_LABEL[msg.pace] ?? msg.pace} (${paceSub(msg.pace)})`, "info");
+          showToast(`제한 시간이 ${ROOM_PACE_LABEL[msg.pace] ?? msg.pace}(${paceSub(msg.pace)})로 바뀌었습니다`, "info");
         }
         if (prev.botDifficulty !== msg.botDifficulty) {
-          showToast(`봇 난이도: ${BOT_DIFFICULTY_LABEL[msg.botDifficulty] ?? msg.botDifficulty}`, "info");
+          showToast(`봇 난이도가 ${BOT_DIFFICULTY_LABEL[msg.botDifficulty] ?? msg.botDifficulty}(으)로 바뀌었습니다`, "info");
         }
         const seatOf = (m: LobbyMessage): number | null =>
           m.players.find((p) => p.playerId === m.youId)?.seat ?? null;
@@ -5337,7 +5337,7 @@ export function App(): JSX.Element {
           // 옮긴 것일 수도 있다. 둘 다 맞는 말로 적는다. 내가 끌어 옮긴 결과는
           // 방금 내 손으로 한 일이라 아무 말도 하지 않는다.
           if (!seatMovedByMe) {
-            showToast(`자리가 바뀌었습니다 — 당신은 ${WIND_KO[after] ?? "?"}가입니다`, "info");
+            showToast(`자리가 바뀌었습니다. 당신은 ${WIND_KO[after] ?? "?"}가입니다`, "info");
           }
         }
         if (prev.hostId !== msg.hostId && msg.hostId === msg.youId) {
@@ -5465,8 +5465,8 @@ export function App(): JSX.Element {
       if (msg.reason === "timeout") {
         showToast(
           msg.chosen !== undefined
-            ? `시간 초과 — ${msg.chosen}로 자동 진행했습니다`
-            : "시간 초과 — 자동으로 진행했습니다",
+            ? `시간이 초과되어 ${msg.chosen}(으)로 자동 진행했습니다`
+            : "시간이 초과되어 자동으로 진행했습니다",
           "error",
           3600,
         );
@@ -5514,7 +5514,7 @@ export function App(): JSX.Element {
       setDraft(null);
       setDraftPicked(false);
       draftPickedRef.current = false;
-      showBanner("자동 선택", "info", `시간 초과 — ${msg.name} 획득`, 2200);
+      showBanner("자동 선택", "info", `시간 초과로 ${msg.name} 획득`, 2200);
       return;
     }
     if (msg.type === "draftProgress") {
@@ -5635,7 +5635,7 @@ export function App(): JSX.Element {
       if (msg.votes > 0 && !abortVoteNoticed.current) {
         abortVoteNoticed.current = true;
         showToast(
-          `게임 무효 투표가 올라왔습니다 (${msg.votes}/${msg.needed}) — 설정 맨 아래에서 응답할 수 있습니다`,
+          `게임 무효 투표가 시작되었습니다 (${msg.votes}/${msg.needed}). 설정 맨 아래에서 응답할 수 있습니다`,
           "info",
           5000,
         );
@@ -5831,7 +5831,7 @@ export function App(): JSX.Element {
          * 유국과 똑같이 「도중 유국」 넉 자뿐이라, 셋이 동시에 손을 뻗은 그 장면이
          * 화면 어디에도 안 남았다.
          */
-        showCutIn("삼가화", "draw", "트리플 론 — 점수는 움직이지 않습니다", 2000, {
+        showCutIn("삼가화", "draw", "트리플 론으로 유국되어 점수 변동이 없습니다", 2000, {
           sfx: sfx.draw,
         });
       } else {
@@ -6016,7 +6016,7 @@ export function App(): JSX.Element {
       const maxWind = maxWindOf(next.round.mode);
       const subParts: string[] = [];
       if (next.round.prevalentWind > maxWind) {
-        subParts.push("서든데스 — 30,000점을 먼저 넘기면 종료");
+        subParts.push("서든데스, 30,000점을 먼저 넘기면 종료");
       } else if (next.round.prevalentWind === maxWind && next.round.roundNumber === 4) {
         subParts.push("오라스");
       }
@@ -6114,7 +6114,7 @@ export function App(): JSX.Element {
       showCutIn(
         "등 떠밀기",
         "augment",
-        `${playerNameById(next, by)} — ${playerNameById(next, raw)}는 숨을 수 없다`,
+        `${playerNameById(next, by)}가 ${playerNameById(next, raw)}에게 리치를 강제했습니다`,
         2000,
         {
           sfx: () => sfx.augment(1),
@@ -6162,8 +6162,8 @@ export function App(): JSX.Element {
           riichiBgmArmed.current = false;
           showToast(
             next.round.byPlayer[p.id]?.doubleRiichi === true
-              ? "스텔스 리치 — 더블리치로 성립했습니다 (타가에게는 보이지 않습니다)"
-              : "스텔스 리치 — 성립했습니다 (타가에게는 보이지 않습니다)",
+              ? "스텔스 리치가 더블리치로 성립했습니다. 상대에게는 보이지 않습니다"
+              : "스텔스 리치가 성립했습니다. 상대에게는 보이지 않습니다",
             "info",
             2600,
           );
@@ -6243,7 +6243,9 @@ export function App(): JSX.Element {
           showBanner(
             "리치 해제",
             "info",
-            p.id === next.playerId ? "리치를 물렀다 — 리치봉이 돌아온다" : `${playerNameById(next, p.id)} — 리치를 물렀다`,
+            p.id === next.playerId
+              ? "리치가 취소되었습니다. 리치봉이 돌아옵니다"
+              : `${playerNameById(next, p.id)}의 리치가 취소되었습니다`,
             1400,
           );
         }
@@ -6319,7 +6321,7 @@ export function App(): JSX.Element {
       showBanner(
         "봉 인",
         "seal",
-        `누군가 내 패 ${sealedNow}장을 봉인했습니다 — 🔒 이 패는 버릴 수 없음`,
+        `누군가 내 패 ${sealedNow}장을 봉인했습니다. 봉인된 패는 버릴 수 없습니다`,
         2400,
         sfx.augmentSoft,
         undefined,
@@ -6335,7 +6337,7 @@ export function App(): JSX.Element {
       shown.spyCaught.add(key);
       const holder = key.slice("spy:caught:".length);
       const kind = typeof raw === "string" ? parseKindKey(raw) : null;
-      showCutIn("스파이", "spy", `${playerNameById(next, holder)} — 화료 점수를 통째로 가져갔다`, 2200, {
+      showCutIn("스파이", "spy", `${playerNameById(next, holder)}가 화료 점수를 전부 가져갔습니다`, 2200, {
         sfx: () => sfx.augment(1),
         ...(kind !== null ? { tiles: [kind] } : {}),
         impact: { shake: 3 },
@@ -6354,7 +6356,7 @@ export function App(): JSX.Element {
       shown.voidKan.add(seen);
       const holder = key.slice("void_kan:".length);
       const kind = parseKindKey(raw);
-      showCutIn("성립하지 않는 깡", "augment", `${playerNameById(next, holder)} — 그 깡, 창깡으로 잡힌다`, 2200, {
+      showCutIn("성립하지 않는 깡", "augment", `${playerNameById(next, holder)}의 그 깡을 창깡으로 론할 수 있습니다`, 2200, {
         sfx: () => sfx.augment(1),
         augId: "void_kan",
         ...(kind !== null ? { tiles: [kind] } : {}),
@@ -6382,7 +6384,7 @@ export function App(): JSX.Element {
       const tiles = augEventTiles(raw);
       // "전 → 후"를 한 줄에 늘어놓는 사건(염색·연금술사·분열)은 가운데를 화살표로 가른다.
       const arrowAt = augEventArrowAt(raw);
-      showCutIn(def.title, def.tone ?? "augment", `${who !== "" ? `${who} — ` : ""}${def.sub}`, def.ms ?? 2000, {
+      showCutIn(def.title, def.tone ?? "augment", `${who !== "" ? `${who}: ` : ""}${def.sub}`, def.ms ?? 2000, {
         sfx: () => sfx.augment(1),
         augId: def.augId,
         ...(tiles.length > 0 ? { tiles } : {}),
@@ -6409,7 +6411,7 @@ export function App(): JSX.Element {
       showCutIn(
         "리치 해제",
         "augment",
-        `${playerNameById(next, mark.by ?? "")}에게 손을 빼앗겨 숨은 리치가 풀렸다`,
+        `${playerNameById(next, mark.by ?? "")}의 증강으로 손패가 바뀌어 스텔스 리치가 해제되었습니다`,
         2400,
         { sfx: () => sfx.augment(1), augId: "stealth_riichi", impact: { shake: 2 } },
       );
@@ -6442,8 +6444,8 @@ export function App(): JSX.Element {
         "등가교환",
         "augment",
         n.holder === true
-          ? `${who}와 3장을 맞바꿨다 — 넘긴 패 → 받은 패`
-          : `${who}에게 3장을 빼앗겼다 — 넘어간 패 → 받은 패`,
+          ? `${who}와 패 3장을 교환했습니다. 왼쪽이 넘긴 패, 오른쪽이 받은 패입니다`
+          : `${who}의 등가교환으로 패 3장이 바뀌었습니다. 왼쪽이 넘어간 패, 오른쪽이 받은 패입니다`,
         3200, // 6장을 훑을 시간
         {
           sfx: () => sfx.augment(1),
@@ -6498,7 +6500,7 @@ export function App(): JSX.Element {
       const seen = `${key}:${mark.round ?? ""}`;
       if (shown.rankGate.has(seen)) continue;
       shown.rankGate.add(seen);
-      showCutIn("격(格)", "augment", `${playerNameById(next, mark.by ?? "")}에게 지목당했다 — 이번 국은 ${mark.minHan ?? 5}판 미만으로 화료할 수 없다`, 2400, {
+      showCutIn("격(格)", "augment", `${playerNameById(next, mark.by ?? "")}에게 지목당했습니다. 이번 국은 ${mark.minHan ?? 5}판 미만으로 화료할 수 없습니다`, 2400, {
         sfx: () => sfx.augment(1),
         augId: "rank_gate",
         impact: { shake: 2 },
@@ -6758,8 +6760,8 @@ export function App(): JSX.Element {
       void askConfirm({
         title: "지금 두던 판에서 나갈까요?",
         body: isGuestSeat
-          ? "계정이 없어도 이 브라우저로 다시 열면 같은 판으로 돌아옵니다 — 다만 판이 끝난 뒤에는 돌아올 수 없습니다."
-          : "홈의 «진행하던 방으로»로 다시 들어올 수 있습니다.",
+          ? "계정이 없어도 이 브라우저로 다시 열면 같은 게임으로 돌아옵니다. 게임이 끝난 뒤에는 돌아올 수 없습니다."
+          : "홈의 '진행하던 방으로 재접속' 버튼으로 다시 들어올 수 있습니다.",
         confirmLabel: "나가기",
       }).then((ok) => {
         // 방금 쌓아 둔 완충 항목 + 뒤로가기가 먹은 것, 둘을 되돌린다.
@@ -7516,7 +7518,7 @@ export function App(): JSX.Element {
                 {activeProd.who !== undefined ? (
                   <>
                     <span className="cutin-who">{activeProd.who}</span>
-                    {activeProd.sub !== undefined ? " — " : null}
+                    {activeProd.sub !== undefined ? ": " : null}
                   </>
                 ) : null}
                 {activeProd.sub}
@@ -7560,7 +7562,7 @@ export function App(): JSX.Element {
           type="button"
           className="prod-skip"
           onClick={skipProduction}
-          title="연출 건너뛰기 (Esc · Space)"
+          title="연출 건너뛰기 (Esc 또는 Space)"
         >
           건너뛰기
           {productionQueue.current.length > 0 ? (
@@ -7573,7 +7575,7 @@ export function App(): JSX.Element {
           전부 이 큐를 지나므로, 여기 한 곳만 live로 열어 두면 게임 사건 전체가 들린다. */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {activeProd !== null
-          ? `${activeProd.text}${activeProd.who !== undefined ? ` — ${activeProd.who}` : ""}${activeProd.sub !== undefined ? ` — ${activeProd.sub}` : ""}`
+          ? `${activeProd.text}${activeProd.who !== undefined ? `, ${activeProd.who}` : ""}${activeProd.sub !== undefined ? `. ${activeProd.sub}` : ""}`
           : ""}
       </div>
       {roundResult !== null && view !== null ? (
@@ -7640,7 +7642,7 @@ export function App(): JSX.Element {
           {invites.map((v) => (
             <div key={`${v.from}:${v.code}`} className="invite-card">
               <div className="invite-text">
-                <b className="invite-from">{v.from}</b> 님이 대기실로 불렀습니다
+                <b className="invite-from">{v.from}</b> 님이 대기실로 초대했습니다
                 <span className="invite-code num">{v.code}</span>
               </div>
               <button
@@ -7710,9 +7712,9 @@ function PauseOverlay({
     >
       <div className="pause-card">
         <div className="pause-title">⏸ 일시정지</div>
-        <div className="pause-reason">{pause.reason ?? "관리자가 판을 세웠습니다"}</div>
+        <div className="pause-reason">{pause.reason ?? "관리자가 게임을 일시정지했습니다"}</div>
         <div className="pause-hint">
-          제한 시간도 함께 멈춰 있습니다 — 재개하면 멈춘 자리에서 이어집니다.
+          제한 시간도 함께 멈춰 있습니다. 재개하면 멈춘 곳부터 이어집니다.
           {pause.by !== undefined ? ` (${pause.by})` : ""}
         </div>
       </div>
@@ -7842,7 +7844,7 @@ function PeekButton(): JSX.Element | null {
       onContextMenu={(e) => e.preventDefault()}
     >
       <span className="peek-btn-icon" aria-hidden="true">👁</span>
-      <span className="peek-btn-text">{peeking ? "떼면 다시 덮임" : "누른 채로 게임판 보기"}</span>
+      <span className="peek-btn-text">{peeking ? "떼면 다시 가려집니다" : "누른 채로 게임판 보기"}</span>
     </button>,
     document.body,
   );
@@ -7862,7 +7864,7 @@ function IntroOverlay({ view }: { view: PlayerView }): JSX.Element {
         {WIND_KO[r.prevalentWind - 1] ?? "동"}
         {r.roundNumber}국
       </div>
-      <div className="intro-seat">내 자리 — {windKo}</div>
+      <div className="intro-seat">내 자리: {windKo}</div>
       <div className="intro-line" />
     </div>
   );
@@ -7920,9 +7922,9 @@ function coachBlocksDiscard(
 function coachBlockHint(lock: LessonLock): string {
   return lock.how === "discard"
     ? lock.kind === DRAWN_TILE
-      ? "튜토리얼 — 방금 가져온 패(오른쪽 끝)를 버려야 합니다"
-      : "튜토리얼 — 지금은 빛나는 패만 버릴 수 있습니다"
-    : "튜토리얼 — 먼저 «✦ 액티브 증강»을 누르고 그 패를 고르세요";
+      ? "튜토리얼: 오른쪽 끝의 방금 가져온 패를 버려야 합니다"
+      : "튜토리얼: 지금은 빛나는 패만 버릴 수 있습니다"
+    : "튜토리얼: 먼저 '✦ 액티브 증강' 버튼을 누른 뒤 그 패를 고르세요";
 }
 
 /**
@@ -8476,7 +8478,7 @@ function AuthScreen(props: {
     if (!sending) return;
     const t = window.setTimeout(() => {
       setSending(false);
-      setLocalError("서버가 응답하지 않습니다 — 다시 시도해 주세요");
+      setLocalError("서버가 응답하지 않습니다. 다시 시도해 주세요.");
     }, 12_000);
     return () => window.clearTimeout(t);
   }, [sending]);
@@ -8517,7 +8519,7 @@ function AuthScreen(props: {
     if (props.invitedCode === null) return false;
     switchTab("register");
     setLocalError(
-      `${props.invitedCode} 방에 들어가려면 계정이 필요합니다 — 가입하면 바로 그 방으로 들어갑니다.`,
+      `${props.invitedCode} 방에 들어가려면 계정이 필요합니다. 가입하면 바로 그 방으로 들어갑니다.`,
     );
     setErrorTab("register");
     return true;
@@ -8552,7 +8554,7 @@ function AuthScreen(props: {
        * 칸에는 이미 «(필수)»가 붙어 있으니 화면이 먼저 답하는 게 맞다.
        */
       if (gateOn && signupCode.trim() === "") {
-        return setLocalError("가입 코드를 입력해 주세요 — 이 서버는 초대제입니다");
+        return setLocalError("이 서버는 초대제입니다. 가입 코드를 입력해 주세요.");
       }
     }
     setSending(true);
@@ -8600,10 +8602,10 @@ function AuthScreen(props: {
   const trimmedName = username.trim();
   const pwRules: { ok: boolean; label: string }[] = [
     { ok: password.length >= 8, label: "8자 이상" },
-    { ok: !/^\d+$/.test(password), label: "숫자만으로 이루어지지 않을 것" },
+    { ok: !/^\d+$/.test(password), label: "숫자만 사용 불가" },
     {
       ok: !(trimmedName.length >= 4 && password.toLowerCase().includes(trimmedName.toLowerCase())),
-      label: "닉네임을 포함하지 않을 것",
+      label: "닉네임 포함 불가",
     },
   ];
   // 아직 한 글자도 안 친 칸에 빨간 줄을 세우지 않는다 — 그건 실수가 아니라 시작이다.
@@ -8690,12 +8692,12 @@ function AuthScreen(props: {
           {/* h1 은 남긴다 — 문서의 제목은 사이트 이름이 맞다. 글자 대신 그림이
               들어가므로 alt 가 그 h1 의 본문이다(스크린리더·이미지 차단 시). */}
           <h1 className="landing-logo">
-            <img src="/logo.png" alt="이능마작 — 증강으로 뒤바뀌는 마작" width={946} height={870} />
+            <img src="/logo.png" alt="이능마작, 증강으로 뒤바뀌는 마작" width={946} height={870} />
           </h1>
 
           {props.invitedCode !== null ? (
             <p className="landing-invite">
-              <b className="num">{props.invitedCode}</b> 방에 초대받았습니다 — 로그인하면 바로 들어갑니다.
+              <b className="num">{props.invitedCode}</b> 방에 초대받았습니다. 로그인하면 바로 들어갑니다.
               {/* 이 문장 바로 옆(같은 상자)에 가장 큰 버튼인 «계정 없이 시작»이 서 있다.
                   계정이 없는 사람이 그걸 누르면 친구 방이 아니라 봇 3명짜리 체험 판이
                   열리고 초대 코드는 조용히 버려졌다 (QA 4차 loop 확정 1). 서버가 게스트에게
@@ -8744,7 +8746,7 @@ function AuthScreen(props: {
                 props.onTutorial();
               }}
               disabled={!guestOk}
-              title="화면 보는 법부터 증강 쓰는 법까지 — 판 위에서 순서대로 (3분)"
+              title="화면 보는 법부터 증강 사용법까지 게임 화면에서 순서대로 안내합니다. 약 3분 걸립니다."
             >
               <i className="mk mk-steps" aria-hidden="true" />
               튜토리얼
@@ -8758,16 +8760,16 @@ function AuthScreen(props: {
                 props.onGuest();
               }}
               disabled={!guestOk}
-              title="계정 없이 봇 3명과 한 판 — 기록은 남지 않습니다"
+              title="계정 없이 봇 3명과 한 판 플레이합니다. 기록은 남지 않습니다."
             >
               <i className="mk mk-play" aria-hidden="true" />
               체험하기
               <span className="landing-key-meta">봇 3명</span>
             </button>
             <p className="landing-key-note">
-              튜토리얼은 손패와 증강을 고정해 두고 화면 조작을 하나씩 짚어 줍니다 — 시간
-              제한이 없습니다. «체험하기»는 실전과 같은 판이라 한 수에 30초가 걸립니다
-              (첫 증강 고르기만 넉넉합니다). 둘 다 기록·순위에 남지 않습니다.
+              튜토리얼은 손패와 증강을 고정해 두고 화면 조작을 하나씩 안내합니다. 시간
+              제한은 없습니다. 체험하기는 실전과 같은 게임이라서 한 수에 30초 제한이
+              있습니다. 첫 증강 선택 시간만 넉넉합니다. 둘 다 기록과 순위에 남지 않습니다.
             </p>
           </div>
         </section>
@@ -8832,7 +8834,7 @@ function AuthScreen(props: {
         {tab === "register" && nameCheck !== null && nameCheck.state !== "checking" ? (
           <p className={nameCheck.state === "ok" ? "auth-check-ok" : "auth-check-bad"}>
             {nameCheck.state === "ok"
-              ? `«${nameCheck.username}» — 사용할 수 있습니다`
+              ? `'${nameCheck.username}' 닉네임은 사용할 수 있습니다`
               : (nameCheck.reason ?? "사용할 수 없는 닉네임입니다")}
           </p>
         ) : null}
@@ -8855,11 +8857,11 @@ function AuthScreen(props: {
                 `aria-live`로 읽어 주는 이유: 화면을 못 보는 사람에게는 색이 없다. */}
             {!pwTouched ? (
               <p className="auth-rule">
-                비밀번호 규칙 — <b>8자 이상</b>, 숫자로만 이루어질 수 없고, 닉네임을 포함할 수 없습니다.
+                비밀번호는 8자 이상이어야 하며, 숫자로만 만들 수 없고 닉네임을 포함할 수 없습니다.
               </p>
             ) : pwAllOk ? (
               <p className="auth-check-ok" aria-live="polite">
-                ✓ 비밀번호 규칙을 모두 만족합니다
+                비밀번호 규칙을 모두 만족합니다
               </p>
             ) : (
               <ul className="auth-rule-list" aria-live="polite">
@@ -8882,7 +8884,7 @@ function AuthScreen(props: {
             </label>
             {/* 확인 칸도 같은 규칙이다 — 누르기 전에 안다. 비어 있을 때는 침묵한다. */}
             {pw2Mismatch ? (
-              <p className="auth-check-bad" aria-live="polite">✕ 비밀번호 확인이 일치하지 않습니다</p>
+              <p className="auth-check-bad" aria-live="polite">비밀번호 확인이 일치하지 않습니다</p>
             ) : null}
             {gateOn ? (
               <label>
@@ -8941,7 +8943,7 @@ function AuthScreen(props: {
 
         {gateOn && tab === "register" ? (
           <p className="auth-gate-note">
-            지금 이 서버는 <b>초대제</b>입니다 — 가입 코드가 있어야 계정을 만들 수 있습니다.
+            지금 이 서버는 초대제입니다. 가입 코드가 있어야 계정을 만들 수 있습니다.
             {/* 시작 버튼은 이제 이 패널 **위**에 붙어 있다 — 가리키는 말도 같이 옮긴다.
                 예전 문구는 "위의 게스트로 바로 체험"이었는데, 그때는 그 버튼이 화면
                 가운데 따로 서 있었다. 없는 것을 가리키는 안내가 되지 않게 한다. */}
@@ -9156,7 +9158,7 @@ function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | nul
   // 훅은 아래 early return보다 위에 있어야 한다 (기록이 없으면 표 대신 안내문을 낸다).
   const { sort, toggle } = useTableSort({ key: "avg", dir: "asc" });
   if (stats === null || rows.length === 0) {
-    return <p className="home-empty">아직 증강 기록이 없습니다. 증강 드래프트가 있는 대국을 완주해 보세요!</p>;
+    return <p className="home-empty">아직 증강 기록이 없습니다. 증강 드래프트가 있는 대국을 끝까지 플레이하면 기록됩니다.</p>;
   }
 
   const held = rows.filter((r) => r.games > 0);
@@ -9189,7 +9191,7 @@ function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | nul
 
       {traps.length > 0 ? (
         <div className="aug-block">
-          <div className="aug-block-title aug-trap-title">⚠️ 함정 주의 (자주 고르지만 성적 저조)</div>
+          <div className="aug-block-title aug-trap-title">자주 고르지만 성적이 낮은 증강</div>
           <div className="aug-trap-row">
             {traps.slice(0, 4).map((r) => (
               <span key={r.id} className="aug-trap">
@@ -9261,7 +9263,7 @@ function AugmentMeta({
     return <p className="home-empty home-loading">불러오는 중…</p>;
   }
   if (ranked.length === 0) {
-    return <p className="home-empty">증강 메타를 집계할 표본이 아직 부족합니다 (증강별 {MIN_GAMES}판 이상 필요).</p>;
+    return <p className="home-empty">아직 증강 통계를 낼 기록이 부족합니다. 증강마다 {MIN_GAMES}판 이상 기록되면 표시됩니다.</p>;
   }
 
   const masterList = ranked
@@ -9273,7 +9275,7 @@ function AugmentMeta({
   return (
     <div className="aug-stats">
       <div className="aug-block">
-        <div className="aug-block-title">증강 티어 (평균순위 · {MIN_GAMES}판+ 표본)</div>
+        <div className="aug-block-title">증강 티어 (평균 순위 기준, {MIN_GAMES}판 이상)</div>
         <div className="lb-scroll aug-table-scroll">
           <table className="lb-table aug-table">
             <thead>
@@ -9306,7 +9308,7 @@ function AugmentMeta({
 
       {masterList.length > 0 ? (
         <div className="aug-block">
-          <div className="aug-block-title">증강 장인 (증강별 최고 평균순위 · 3판+)</div>
+          <div className="aug-block-title">증강 장인 (증강별 평균 순위 1위, 3판 이상)</div>
           <div className="aug-master-row">
             {masterList.map(({ row, master }) => (
               <div key={row.id} className="aug-master">
@@ -9607,10 +9609,10 @@ const CODEX_STAGE_LABEL: Record<string, string> = {
 
 /** 드래프트 오버레이 부제 — 지금 어느 국에 들어서며 받는 증강인가. */
 const DRAFT_STAGE_HEADLINE: Record<string, string> = {
-  gameStart: "대국 개시 — 동1국",
+  gameStart: "동1국, 대국 시작",
   eastThird: "동3국 돌입",
   eastFourth: "동4국 돌입",
-  southEntry: "남장 돌입 — 남1국",
+  southEntry: "남1국, 남장 시작",
   southThird: "남3국 돌입",
 };
 const CODEX_MODE_LABEL: Record<string, string> = { hanchan: "반장전", tonpuu: "동풍전" };
@@ -9711,7 +9713,7 @@ function TierScreen(props: {
       </td>
       <td>
         <span className={`tier-chip ${tierClass(e.tier)}`}>{e.tier ?? "미분류"}</span>
-        {e.rare ? <span className="tier-rare" title="조건이 드물어 한 단계 낮춤">희귀</span> : null}
+        {e.rare ? <span className="tier-rare" title="발동 조건이 드물어 티어를 한 단계 낮췄습니다">희귀</span> : null}
       </td>
       <td className="tier-num">{e.p ?? "-"}</td>
       <td className="tier-num">{e.s ?? "-"}</td>
@@ -9732,16 +9734,16 @@ function TierScreen(props: {
             영영 못 읽는다(QA 4라운드 mobile-a11y P1). 오른쪽 두 열은 표 끝이라
             팝오버를 왼쪽으로 뒤집는다. */}
         <th className="tier-num">
-          <InfoNote note="타점 — 화료 1회당 점수가 얼마나 뛰는가">타점</InfoNote>
+          <InfoNote note="타점: 화료 한 번의 점수가 얼마나 커지는지">타점</InfoNote>
         </th>
         <th className="tier-num">
-          <InfoNote note="속도 — 화료가 얼마나 쉬워지는가">속도</InfoNote>
+          <InfoNote note="속도: 화료가 얼마나 쉬워지는지">속도</InfoNote>
         </th>
         <th className="tier-num">
-          <InfoNote note="무대응 — 상대가 알고도 못 막는가">무대응</InfoNote>
+          <InfoNote note="무대응: 상대가 알아도 막을 수 없는지">무대응</InfoNote>
         </th>
         <th className="tier-num">
-          <InfoNote note="빈도 — 실제로 몇 번 작동하는가">빈도</InfoNote>
+          <InfoNote note="빈도: 실제로 얼마나 자주 발동하는지">빈도</InfoNote>
         </th>
         <th className="tier-num">
           <InfoNote align="right" note="타점×3 + 속도×3 + 무대응×2 + 빈도×2">총점</InfoNote>
@@ -9807,7 +9809,7 @@ function TierScreen(props: {
                   </span>
                 ) : (
                   <span className="tier-group-weight tier-warn">
-                    powerTier.ts에 아직 등재되지 않았습니다 — 균등 확률로 나옵니다
+                    아직 티어가 매겨지지 않아 균등 확률로 나옵니다
                   </span>
                 )}
                 <span className="tier-group-label">
@@ -10209,10 +10211,10 @@ function GuestOutro(props: {
     <div className="lobby">
       <div className="lobby-card auth-card">
         <h1 className="lobby-title">이능마작</h1>
-        <p className="lobby-tag">게스트 체험 — {props.username}</p>
+        <p className="lobby-tag">게스트 체험 · {props.username}</p>
         <p className="guest-note">
-          체험 게임은 <b>기록에 남지 않습니다</b> — 리플레이·누적 통계·리더보드 어디에도
-          올라가지 않고, 창을 닫으면 이 손님 이름도 사라집니다.
+          체험 게임은 <b>기록에 남지 않습니다</b>. 리플레이, 누적 통계, 리더보드 어디에도
+          반영되지 않고, 창을 닫으면 이 게스트 이름도 사라집니다.
         </p>
         <button className="lobby-join" onClick={props.onPlayAgain}>
           <i className="mk mk-play" aria-hidden="true" />
@@ -10230,8 +10232,8 @@ function GuestOutro(props: {
           <button className="wr-btn wr-bot" onClick={props.onOpenCodex}>증강 도감</button>
         </div>
         <p className="guest-note">
-          계정을 만들면 친구와 방 코드로 함께 두고, 전적·리플레이·리더보드가 쌓이고,
-          제보 게시판으로 증강 아이디어를 낼 수 있습니다.
+          계정을 만들면 방 코드로 친구와 함께 게임할 수 있고, 전적과 리플레이, 리더보드가
+          기록됩니다. 제보 게시판에 증강 아이디어를 낼 수도 있습니다.
         </p>
         <button className="home-create" onClick={props.onSignUp}>계정 만들고 계속하기</button>
       </div>
@@ -10362,7 +10364,7 @@ const HELP_BASICS: HelpSection[] = [
     title: "무엇을 하는 게임인가",
     paras: [
       "네 사람이 각자 손에 패 13장을 쥐고, 차례마다 한 장을 가져와 한 장을 버립니다. 목표는 남보다 먼저 손패를 완성해 화료하는 것입니다.",
-      "완성형은 언제나 같습니다 — 3장짜리 묶음 4개 + 같은 패 2장(머리) 1개. 묶음은 같은 패 3장(커쯔) 또는 같은 종류의 연속 3장(슌쯔)입니다.",
+      "완성형은 언제나 같습니다. 3장짜리 묶음 4개와 같은 패 2장(머리) 1개입니다. 묶음은 같은 패 3장(커쯔) 또는 같은 무늬의 연속 3장(슌쯔)입니다.",
     ],
     figure: [
       { label: "슌쯔", tiles: "456p", note: "같은 무늬의 연속 3장." },
@@ -10371,7 +10373,7 @@ const HELP_BASICS: HelpSection[] = [
       {
         label: "완성형",
         tiles: "234m 678m 345p 111s 99p",
-        note: "**묶음 4개 + 머리 1개 = 14장.** 어떤 화료형이든 결국 이 모양입니다.",
+        note: "**묶음 4개와 머리 1개로 14장.** 어떤 화료형이든 결국 이 모양입니다.",
       },
     ],
   },
@@ -10385,12 +10387,12 @@ const HELP_BASICS: HelpSection[] = [
       {
         mark: "ok",
         tiles: "234m 678m 345p 567s 55p",
-        note: "1·9와 자패가 하나도 없습니다 — **탕야오**. 역이 있으니 화료할 수 있습니다.",
+        note: "1·9와 자패가 하나도 없어 **탕야오**입니다. 역이 있으니 화료할 수 있습니다.",
       },
       {
         mark: "no",
         tiles: "111m 678m 345p 567s 55p",
-        note: "모양은 똑같이 완성입니다. 그런데 1만이 섞여 탕야오가 아니고, 커쯔가 있어 핑후도 아닙니다 — 리치를 걸지 않았다면 **화료할 수 없습니다.**",
+        note: "모양은 똑같이 완성입니다. 그런데 1만이 섞여 탕야오가 아니고, 커쯔가 있어 핑후도 아닙니다. 리치를 걸지 않았다면 **화료할 수 없습니다.**",
       },
     ],
   },
@@ -10398,8 +10400,8 @@ const HELP_BASICS: HelpSection[] = [
     title: "리치",
     paras: [
       "손패를 남에게 하나도 보이지 않은 채(멘젠) 한 장만 더 오면 완성인 상태(텐파이)가 되면, 1,000점을 걸고 리치를 선언할 수 있습니다.",
-      "리치를 걸면 그 뒤로는 손패를 바꿀 수 없습니다 — 가져온 패를 그대로 버립니다. 대신 역이 확정되고, 도라를 한 겹 더 받고(우라도라), 타점이 크게 뜁니다.",
-      "화면에 뜨는 오름패에는 작은 숫자가 붙습니다 — 그 패가 **아직 보이지 않은 장수**입니다. 기본 4장에서 버림패·울음·도라 표시패·내 손패에 이미 나온 만큼을 뺀 값이고(증강이 만들어 낸 패는 세지 않습니다), **0이면 그 패는 다 나가서 그것으로는 날 수 없습니다.**",
+      "리치를 걸면 그 뒤로는 손패를 바꿀 수 없고, 가져온 패를 그대로 버립니다. 대신 역이 확정되고, 도라를 하나 더 받고(우라도라), 타점이 크게 오릅니다.",
+      "화면에 표시되는 오름패에는 작은 숫자가 붙습니다. 그 패가 **아직 보이지 않은 장수**입니다. 기본 4장에서 버림패, 울음, 도라 표시패, 내 손패에 이미 나온 만큼을 뺀 값입니다. 증강이 만들어 낸 패는 세지 않습니다. **0이면 그 패는 모두 나와서 그 패로는 화료할 수 없습니다.**",
     ],
     figure: [
       {
@@ -10410,42 +10412,42 @@ const HELP_BASICS: HelpSection[] = [
       {
         label: "대기",
         tiles: "6s 9s",
-        note: "이 둘 중 하나가 오면 화료. 이 상태에서 **리치**를 선언할 수 있습니다.",
+        note: "이 둘 중 하나가 오면 화료입니다. 이 상태에서 **리치**를 선언할 수 있습니다.",
       },
     ],
   },
   {
-    title: "도라 — 보너스 패",
+    title: "도라(보너스 패)",
     paras: [
-      "판마다 표시패 한 장이 공개되고, 그 다음 패가 도라가 됩니다. 도라를 몇 장 쥐고 있느냐가 그대로 타점이 됩니다.",
+      "국마다 표시패 한 장이 공개되고, 그 다음 패가 도라가 됩니다. 손에 든 도라 장수만큼 타점이 오릅니다.",
       "도라는 역이 아닙니다. 도라만 잔뜩 있어도 역이 없으면 화료할 수 없습니다.",
     ],
     figure: [
       { label: "표시패", tiles: "5p", then: "6p", note: "표시패의 **다음** 패가 도라입니다." },
       { label: "표시패", tiles: "9s", then: "1s", note: "9 다음은 1로 돌아옵니다." },
-      { label: "표시패", tiles: "4z", then: "1z", note: "바람은 동→남→서→북→동, 삼원패는 백→발→중→백 순으로 돕니다." },
+      { label: "표시패", tiles: "4z", then: "1z", note: "바람은 동, 남, 서, 북, 다시 동 순서이고, 삼원패는 백, 발, 중, 다시 백 순서입니다." },
     ],
   },
   {
-    title: "울기 — 치 · 퐁 · 깡",
+    title: "울기(치·퐁·깡)",
     paras: [
       "남이 버린 패를 가져와 묶음을 완성할 수 있습니다. 연속 두 장을 들고 있으면 바로 위(상가)에게서만 치, 같은 패 2장을 들고 있으면 누구에게서든 퐁입니다. 같은 패 4장은 깡입니다.",
-      "울면 그 묶음이 공개되고 멘젠이 깨집니다 — 리치를 걸 수 없고 쓸 수 있는 역이 줄어듭니다.",
+      "울면 그 묶음이 공개되고 멘젠이 깨집니다. 리치를 걸 수 없고, 사용할 수 있는 역이 줄어듭니다.",
       // 2026-08-22: 규칙이 실제로 생겼는데 도움말에 없으면, 사람은 자물쇠만 보고
       // 「버그인가?」 한다. 규칙을 만들면 그 규칙을 설명하는 자리도 함께 만든다.
-      "울고 난 바로 그 순에는 **방금 만든 묶음과 같은 패를 버릴 수 없습니다**(쿠이카에 금지). 예를 들어 4만5만으로 3만을 치했다면 손에 있는 3만도, 반대쪽 6만도 그 순에는 버리지 못합니다 — 버릴 수 없는 패에는 자물쇠가 걸립니다. 다음 순부터는 평범하게 버릴 수 있습니다.",
+      "울고 난 바로 그 순에는 **방금 만든 묶음과 같은 패를 버릴 수 없습니다**(쿠이카에 금지). 예를 들어 4만5만으로 3만을 치했다면 손에 있는 3만도, 반대쪽 6만도 그 순에는 버리지 못합니다. 버릴 수 없는 패에는 자물쇠 표시가 붙습니다. 다음 순부터는 버릴 수 있습니다.",
     ],
     figure: [
       { label: "치", tiles: "34m", then: "234m", note: "연속 두 장을 들고 있을 때, **왼쪽 사람(상가)** 이 버린 2만이나 5만만 가져올 수 있습니다." },
-      { label: "퐁", tiles: "77p", then: "777p", note: "같은 패 두 장. 이쪽은 **누가 버려도** 가져옵니다." },
+      { label: "퐁", tiles: "77p", then: "777p", note: "같은 패 두 장. 퐁은 **누가 버려도** 가져올 수 있습니다." },
       { label: "깡", tiles: "777s", then: "7777s", note: "같은 패 넷. 도라 표시패가 한 장 늘고 패를 한 장 더 가져옵니다." },
     ],
   },
   {
-    title: "후리텐 — 내가 버린 패로는 못 난다",
+    title: "후리텐이면 내가 버린 패로는 화료할 수 없다",
     paras: [
       "내 대기(화료할 수 있는 패) 중 하나라도 내 버림패에 있으면, 남이 버린 패로는 화료할 수 없습니다. 이것이 후리텐입니다.",
-      "이때도 스스로 가져와서 나는 것(쯔모)은 됩니다. 리치 뒤에 후리텐이 되면 그 국 내내 풀리지 않습니다.",
+      "이때도 스스로 가져와서 화료하는 것(쯔모)은 됩니다. 리치 뒤에 후리텐이 되면 그 국이 끝날 때까지 풀리지 않습니다.",
     ],
     figure: [
       { label: "내 대기", tiles: "3s 6s", note: "이 손패는 3삭·6삭으로 화료할 수 있습니다." },
@@ -10453,25 +10455,25 @@ const HELP_BASICS: HelpSection[] = [
         label: "내 버림패",
         tiles: "1p 9m 6s 2z",
         mark: "no",
-        note: "대기 중 하나(6삭)가 내 버림패에 있습니다 — 이러면 3삭이 나와도 **론할 수 없습니다.** 쯔모는 그대로 됩니다.",
+        note: "대기 중 하나(6삭)가 내 버림패에 있습니다. 이러면 3삭이 나와도 **론할 수 없습니다.** 쯔모는 됩니다.",
       },
     ],
   },
   {
     title: "점수는 대략 이렇게 정해진다",
     paras: [
-      "판(역과 도라의 개수)과 부(손패 모양)로 점수가 정해집니다. 판이 커질수록 점수는 계단처럼 뜁니다 — 만관·하네만·배만·역만.",
+      "판(역과 도라의 개수)과 부(손패 모양)로 점수가 정해집니다. 판이 커질수록 점수는 만관, 하네만, 배만, 역만 순으로 단계적으로 커집니다.",
       "남이 버린 패로 나면 그 사람만 냅니다(론). 스스로 가져와서 나면 나머지 셋이 나눠 냅니다(쯔모). 친(동가)은 더 받고 더 냅니다.",
     ],
   },
   {
     title: "대국은 언제 끝나는가",
     paras: [
-      "동1국부터 시작합니다. 반장전은 남4국까지, 동풍전은 동4국까지가 정규 구간입니다. 친이 화료하거나 텐파이로 유국하면 그 자리가 이어집니다(연장).",
+      "동1국부터 시작합니다. 반장전은 남4국까지, 동풍전은 동4국까지가 정규 구간입니다. 친이 화료하거나 텐파이로 유국하면 친이 바뀌지 않고 이어집니다(연장).",
       // 2026-08-22: 예전에는 "남4국까지 / 동4국까지"에서 문장이 끝나 **거짓**이었다 —
       // 서든데스(westEntry)와 도비가 두 모드 모두 켜져 있고, 같은 화면의 로비 툴팁은
       // 이미 그렇게 적고 있어 한 제품 안에서 두 곳이 다른 말을 했다 (QA 2차 onboard 확정 3).
-      "정규 구간이 끝났는데 1위가 30,000점에 못 미치면 장이 하나 더 붙습니다(서든데스 — 동풍전은 남장, 반장전은 서장). 반대로 누구든 점수가 0점 아래로 내려가면 그 자리에서 끝납니다(토비).",
+      "정규 구간이 끝났는데 1위가 30,000점에 못 미치면 장이 하나 더 이어집니다(서든데스). 동풍전은 남장, 반장전은 서장입니다. 반대로 누구든 점수가 0점 아래로 내려가면 그 자리에서 끝납니다(토비).",
       "마지막 국이 끝나면 점수 순으로 1~4위가 정해집니다. 성적은 순위로 남습니다.",
     ],
   },
@@ -10479,7 +10481,7 @@ const HELP_BASICS: HelpSection[] = [
     title: "조작",
     paras: [
       "지금 할 수 있는 행동은 화면 아래에 버튼으로 뜹니다. 처음 보는 용어에는 밑줄이 있어 누르면 풀이가 나옵니다.",
-      "손패는 끌어서 순서를 바꿀 수 있습니다. 자동 정렬·대기 표시 같은 것은 설정(⚙)에서 켜고 끕니다.",
+      "손패는 끌어서 순서를 바꿀 수 있습니다. 자동 정렬, 대기 표시 같은 기능은 설정(⚙)에서 켜고 끌 수 있습니다.",
     ],
   },
 ];
@@ -10501,46 +10503,46 @@ function helpAugmentSections(kinds: number): HelpSection[] {
   {
     title: "증강",
     paras: [
-      "타점 보너스가 아니라 규칙을 바꾸는 카드입니다. 후리텐인 채로 론하고, 백을 만능패로 쓰고, 남의 버림패를 손으로 가져오고, 리치를 건 뒤에 손패를 바꿉니다.",
-      `${kinds}종이 점수·손패 조작·화료형·정보·리치·수비·후로·교란 계열로 나뉩니다.`,
+      "타점 보너스가 아니라 규칙을 바꾸는 카드입니다. 후리텐인 채로 론하거나, 백을 만능패로 사용하거나, 남의 버림패를 손으로 가져오거나, 리치를 건 뒤에 손패를 바꿀 수 있습니다.",
+      `${kinds}종이 점수, 손패 조작, 화료형, 정보, 리치, 수비, 후로, 교란의 8개 계열로 나뉩니다.`,
     ],
     figure: [
       {
         label: "예 · 백은 만능패",
         tiles: "23m 5z",
         then: "234m",
-        note: "백 한 장이 없는 4만 자리를 그대로 메웁니다. 타점이 아니라 **규칙**이 바뀐 것입니다.",
+        note: "백 한 장이 없는 4만 자리를 대신합니다. 타점이 아니라 **규칙**이 바뀐 것입니다.",
       },
     ],
   },
   {
-    title: "언제 몇 개",
+    title: "언제 몇 개를 받는가",
     paras: [
-      "반장전은 네 번 — 동1국 개시, 동3국, 남1국, 남3국. 동풍전은 세 번 — 동1국 개시, 동3국, 동4국.",
-      "그 국에 들어서는 순간 네 명이 동시에 각자 후보를 받아 하나씩 고릅니다. 후보는 자리마다 다르고, 한 게임에 같은 증강이 두 번 나오지 않습니다.",
+      "반장전은 동1국 시작, 동3국, 남1국, 남3국의 네 번입니다. 동풍전은 동1국 시작, 동3국, 동4국의 세 번입니다.",
+      "그 국이 시작되면 네 명이 동시에 각자 후보를 받아 하나씩 고릅니다. 후보는 자리마다 다르고, 한 게임에 같은 증강이 두 번 나오지 않습니다.",
     ],
   },
   {
     title: "상시형과 액티브형",
     paras: [
-      "상시형은 가진 것만으로 적용됩니다. 규칙이 이미 바뀐 상태라 따로 쓸 것이 없습니다.",
-      "액티브형은 조건이 맞는 순간 행동 버튼 줄에 그 증강의 버튼이 뜹니다. 누를지 말지, 언제 누를지가 선택입니다. 패를 고르는 증강은 선택창이 열리고 바뀔 결과를 먼저 보여 줍니다.",
-      "증강 버튼은 **보랏빛**이라 론·퐁·패스와 한눈에 구분됩니다.",
+      "상시형은 가지고 있기만 하면 적용됩니다. 규칙이 이미 바뀐 상태이므로 따로 사용할 것이 없습니다.",
+      "액티브형은 조건이 맞으면 행동 버튼 줄에 그 증강의 버튼이 나타납니다. 누를지, 언제 누를지는 직접 정합니다. 패를 고르는 증강은 선택창이 열리고 바뀔 결과를 먼저 보여 줍니다.",
+      "증강 버튼은 **보라색**이어서 론·퐁·패스 버튼과 한눈에 구분됩니다.",
     ],
     mock: "action-bar",
   },
   {
-    title: "제한 — 이름표에 다 뜬다",
+    title: "제한은 이름표에 모두 표시된다",
     paras: [
       "제한은 증강마다 다르고, 지금 상태는 이름표 옆 증강 칸에 표시됩니다.",
-      "✦ 액티브 는 직접 눌러 발동하는 증강(저절로 터지지 않습니다) · 🕐N국 쿨다운 · 게이지는 퀘스트 진행도(조건을 채워야 열립니다) · 🔒 는 상대의 무장해제로 잠긴 것 · ♻ 는 재장전으로 되살린 것 · 🎲 는 주사위로 얻은 것. 사용 횟수는 각 증강 설명에 적혀 있습니다.",
+      "✦ 액티브는 직접 눌러 발동하는 증강입니다(저절로 발동하지 않습니다). 🕐N국은 쿨다운이 N국 남았다는 뜻이고, 게이지는 퀘스트 진행도입니다(조건을 채워야 사용할 수 있습니다). 🔒는 상대의 무장해제로 잠긴 증강, ♻는 재장전으로 되살린 증강, 🎲는 주사위로 얻은 증강입니다. 사용 횟수는 각 증강 설명에 적혀 있습니다.",
       "발동에 점수를 지불하지 않습니다. 제한은 횟수와 조건으로만 걸립니다.",
     ],
   },
   {
     title: "상대의 증강은 전부 공개된다",
     paras: [
-      "누가 무엇을 들고 있는지 이름표 옆에 그대로 보입니다. 감춰지는 정보가 아닙니다.",
+      "누가 어떤 증강을 가지고 있는지 이름표 옆에 항상 표시됩니다. 감춰지는 정보가 아닙니다.",
       `게임 중 아무 때나 📖 도감에서 ${kinds}종 전체를 찾아볼 수 있습니다.`,
     ],
   },
@@ -10603,7 +10605,7 @@ const HELP_YAKU: YakuGroup[] = [
         name: "핑후",
         han: "1판 · 멘젠",
         tiles: "234m 567m 345p 678s 99p",
-        note: "슌쯔 4개 + 역패가 아닌 머리, 그리고 양쪽으로 기다리는 대기. 커쯔가 하나라도 있으면 아닙니다.",
+        note: "슌쯔 4개와 역패가 아닌 머리, 그리고 양면 대기. 커쯔가 하나라도 있으면 성립하지 않습니다.",
       },
       {
         name: "탕야오",
@@ -10618,16 +10620,16 @@ const HELP_YAKU: YakuGroup[] = [
         note: "똑같은 슌쯔 두 벌.",
       },
       {
-        name: "역패 — 백 · 발 · 중",
+        name: "역패 (백 · 발 · 중)",
         han: "1판",
         tiles: "555z 234m 678p 345s 99s",
-        note: "삼원패(백·발·중) 커쯔. 세 종류 각각이 1판이라 두 종류를 모으면 2판입니다.",
+        note: "삼원패(백·발·중) 커쯔. 종류마다 1판이므로 두 종류를 모으면 2판입니다.",
       },
       {
-        name: "역패 — 자풍 · 장풍",
+        name: "역패 (자풍 · 장풍)",
         han: "1판",
         tiles: "111z 234m 678p 345s 99s",
-        note: "내 자리 바람(자풍) 또는 그 판의 바람(장풍) 커쯔. 동장의 동가라면 동 커쯔 하나가 2판입니다.",
+        note: "내 자리 바람(자풍) 또는 그 장의 바람(장풍) 커쯔. 동장의 동가라면 동 커쯔 하나가 2판입니다.",
       },
       { name: "해저로월 · 하저로어", han: "1판", note: "마지막 패로 쯔모(해저) 하거나, 마지막 버림패로 론(하저)." },
       { name: "영상개화", han: "1판", note: "깡을 하고 가져온 영상패로 그대로 화료." },
@@ -10637,12 +10639,12 @@ const HELP_YAKU: YakuGroup[] = [
   {
     title: "2판",
     items: [
-      { name: "더블리치", han: "2판 · 멘젠", note: "첫 순번에, 아무도 울지 않은 채 건 리치." },
+      { name: "더블리치", han: "2판 · 멘젠", note: "아무도 울지 않은 첫 순에 건 리치." },
       {
         name: "치또이쯔",
         han: "2판 · 멘젠",
         tiles: "11m 44m 77m 22p 99p 33s 55z",
-        note: "같은 패 2장씩 일곱 쌍. 이것만 묶음 4개+머리 규칙에서 벗어납니다.",
+        note: "같은 패 2장씩 일곱 쌍. 이 역만 묶음 4개와 머리 1개 규칙에서 벗어납니다.",
       },
       {
         name: "또이또이",
@@ -10759,7 +10761,7 @@ const HELP_YAKU: YakuGroup[] = [
         name: "순정구련보등",
         han: "2배역만 · 멘젠",
         tiles: "1112345678999m 5m",
-        note: "뼈대 1112345678999를 그대로 세운 채 그 무늬 9종 전부로 기다린 것. 다른 대기로 완성한 구련은 역만 하나입니다.",
+        note: "1112345678999 모양을 유지한 채 그 무늬 9종 전부를 기다리는 형태. 다른 대기로 완성한 구련보등은 역만 하나입니다.",
       },
       { name: "스깡쯔", han: "역만", tiles: "1111m 4444p 7777s 2222z 99m", note: "깡 4개." },
       { name: "천화 · 지화", han: "역만 · 멘젠", note: "친이 배패 그대로 화료하면 천화, 자식이 첫 쯔모로 화료하면 지화." },
@@ -10799,11 +10801,11 @@ function YakuTab(): JSX.Element {
 /** 탭마다 맨 위에 서는 한 줄 — 여기 읽는 사람이 누구인지 먼저 말한다. */
 const HELP_LEAD: Record<HelpTab, string> = {
   basics:
-    "리치마작을 한 번도 해 본 적 없어도 길을 잃지 않을 만큼만 적었습니다. 게임 안에서는 처음 나오는 용어에 밑줄이 그어져 있어 누르면 풀이가 뜹니다.",
-  yaku: "모양을 완성해도 이 중 하나는 있어야 화료할 수 있습니다. 자주 나오는 것부터, 예시 손패와 함께.",
+    "리치마작을 처음 하는 사람도 따라올 수 있을 만큼만 적었습니다. 게임 안에서는 처음 나오는 용어에 밑줄이 있어, 누르면 풀이가 나옵니다.",
+  yaku: "모양을 완성해도 이 중 하나는 있어야 화료할 수 있습니다. 자주 나오는 역부터 예시 손패와 함께 정리했습니다.",
   terms:
-    "게임 안에서 밑줄 그어진 말에 마우스를 올리면 뜨는 풀이를 한자리에 모았습니다. 검색하거나 분류로 좁혀 찾으세요.",
-  augment: "증강이 무엇이고, 언제 뽑고, 어떻게 작동하는지.",
+    "게임 안에서 밑줄 친 용어에 마우스를 올리거나 누르면 나오는 풀이를 한곳에 모았습니다. 검색하거나 분류로 좁혀서 찾을 수 있습니다.",
+  augment: "증강이 무엇이고, 언제 뽑고, 어떻게 작동하는지 설명합니다.",
 };
 
 /**
@@ -10982,7 +10984,7 @@ function HelpScreen(props: {
             여기서 도감으로 바로 건너뛴다 — 홈까지 나갔다 다시 들어올 이유가 없다. */}
         {tab === "augment" && props.onOpenCodex !== undefined ? (
           <button className="home-codex-cta" onClick={props.onOpenCodex}>
-            증강 도감 열기 — {props.augmentKinds}종 전체 상세 설명
+            증강 도감 열기 · {props.augmentKinds}종 전체 설명
           </button>
         ) : null}
       </main>
@@ -11090,7 +11092,7 @@ function FeedbackBoard(props: {
       <p className="home-hint">
         버그를 발견했거나 새 증강 아이디어가 떠올랐다면 남겨 주세요.
         {props.auth.isAdmin
-          ? " 관리자는 모든 제보를 보고 상태·답변을 남길 수 있습니다."
+          ? " 관리자는 모든 제보를 보고 상태를 바꾸거나 답변을 남길 수 있습니다."
           : " 내가 쓴 글은 나와 관리자에게만 보입니다."}
       </p>
 
@@ -11124,7 +11126,7 @@ function FeedbackBoard(props: {
           rows={5}
           placeholder={
             kind === "bug"
-              ? "무엇을 했고, 무엇을 기대했고, 실제로 무슨 일이 일어났는지 적어 주세요. 방 코드·증강 이름이 있으면 큰 도움이 됩니다."
+              ? "무엇을 했고, 무엇을 기대했고, 실제로 무슨 일이 일어났는지 적어 주세요. 방 코드나 증강 이름이 있으면 큰 도움이 됩니다."
               : "어떤 증강인가요? 발동 조건과 효과, 그리고 왜 재미있을지 적어 주세요."
           }
           onChange={(e) => setBody(e.target.value)}
@@ -11140,7 +11142,7 @@ function FeedbackBoard(props: {
       <ListCard
         items={props.entries}
         empty="아직 등록된 제보가 없습니다."
-        emptyHint="증강 아이디어나 버그를 적어 주세요 — 위 칸에 쓰면 바로 등록됩니다."
+        emptyHint="위 칸에 증강 아이디어나 버그를 적어 제출하면 바로 등록됩니다."
       >
         {(rows) => (
         <ul className="fb-list">
@@ -11453,7 +11455,7 @@ function AdminUserRow({
           value={editing}
           autoFocus
           maxLength={12}
-          aria-label={`${user.username} 의 새 닉네임`}
+          aria-label={`${user.username}의 새 닉네임`}
           onChange={(e) => setEditing(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
@@ -11691,13 +11693,13 @@ function NoticeEditor({
         <h2>공지<span className="home-admin-badge">관리자</span></h2>
       </div>
       <p className="home-hint">
-        홈과 로그인 화면 맨 위에 뜹니다. <b>제목을 비우고 저장하면 내려갑니다.</b>
+        홈과 로그인 화면 맨 위에 표시됩니다. 제목을 비우고 저장하면 공지가 내려갑니다.
       </p>
       <input
         className="fb-input"
         value={title}
         maxLength={NOTICE_TITLE_MAX}
-        placeholder="한 줄 제목 (비우면 공지를 내린다)"
+        placeholder="제목 (비우고 저장하면 공지가 내려갑니다)"
         onChange={(e) => setTitle(e.target.value)}
       />
       <textarea
@@ -11705,11 +11707,11 @@ function NoticeEditor({
         value={body}
         maxLength={NOTICE_BODY_MAX}
         rows={4}
-        placeholder="본문 (선택) — '자세히'를 눌러야 펼쳐집니다"
+        placeholder="본문 (선택, 자세히 버튼을 눌러야 보입니다)"
         onChange={(e) => setBody(e.target.value)}
       />
       <button className="lobby-join" onClick={() => onSave(title, body)}>
-        저장 — 지금 접속 중인 모두에게 바로 나갑니다
+        저장
       </button>
     </section>
   );
@@ -11733,7 +11735,7 @@ function PeriodStatsRow({ periods }: { periods: PeriodStats[] | undefined }): JS
         <div key={p.days} className="period-card">
           <span className="period-label">최근 {p.days}일</span>
           {p.games === 0 ? (
-            <span className="period-none">둔 판 없음</span>
+            <span className="period-none">기록 없음</span>
           ) : (
             <>
               <span className="period-games">{p.games}판</span>
@@ -11872,7 +11874,7 @@ function FriendsCard(props: {
                     <button
                       className="friend-del"
                       onClick={() => props.onCancel(n)}
-                      aria-label={`${n} 님에게 보낸 요청 취소`}
+                      aria-label={`${n}님에게 보낸 요청 취소`}
                       title="요청 취소"
                     >
                       ✕
@@ -11885,7 +11887,7 @@ function FriendsCard(props: {
           <ListCard
             items={props.friends}
             empty="아직 친구가 없습니다."
-            emptyHint="닉네임으로 요청 → 상대가 수락하면 친구. 접속 여부가 보이고 대기실로 바로 부를 수 있습니다."
+            emptyHint="닉네임으로 요청을 보내고 상대가 수락하면 친구가 됩니다. 친구의 접속 여부를 볼 수 있고 대기실로 바로 초대할 수 있습니다."
           >
             {(rows) => (
               <ul className="friend-list">
@@ -11902,8 +11904,8 @@ function FriendsCard(props: {
                     <button
                       className="friend-del"
                       onClick={() => props.onRemove(f.nickname)}
-                      aria-label={`${f.nickname} 친구에서 빼기`}
-                      title="친구에서 빼기"
+                      aria-label={`${f.nickname} 친구 삭제`}
+                      title="친구 삭제"
                     >
                       ✕
                     </button>
@@ -11941,13 +11943,13 @@ function AnalyticsCard(props: {
         <RefreshButton onRefresh={props.onRefresh} title="새로 고침" />
       </div>
       <p className="home-hint">
-        서버가 직접 셉니다(외부 분석 도구 없음 · IP·UA는 저장하지 않습니다).
-        캐시 때문에 실제보다 <b>적게</b> 잡히는 하한값입니다.
+        외부 분석 도구 없이 서버가 직접 집계합니다. IP와 브라우저 정보는 저장하지 않습니다.
+        캐시 때문에 실제보다 <b>적게</b> 집계될 수 있습니다.
       </p>
       <ListCard
         items={recent}
         empty="아직 집계된 방문이 없습니다."
-        emptyHint="첫 방문이 들어오면 여기에 날짜별로 쌓입니다."
+        emptyHint="방문이 집계되면 날짜별로 표시됩니다."
       >
         {(rows) => (
           <ul className="analytics-list">
@@ -12046,7 +12048,7 @@ function AccountCard(props: {
         <h2>계정</h2>
       </div>
       <p className="home-hint">
-        비밀번호를 바꾸면 <b>다른 기기의 로그인이 전부 끊깁니다.</b> 이 기기는 그대로 남습니다.
+        비밀번호를 바꾸면 다른 기기에서는 모두 로그아웃됩니다. 이 기기는 로그인 상태가 유지됩니다.
       </p>
       <input
         className="fb-input"
@@ -12074,7 +12076,7 @@ function AccountCard(props: {
       />
       {mismatch ? <p className="home-empty-hint">새 비밀번호가 서로 다릅니다.</p> : null}
       {/* 답은 **이 자리**에 남는다 (2026-08-21 사용자 보고). 예전에는 3.2초 토스트라
-          "지금 비밀번호가 올바르지 않습니다"를 읽기도 전에 사라졌고, 칸은 이미
+          "현재 비밀번호가 올바르지 않습니다"를 읽기도 전에 사라졌고, 칸은 이미
           비어 있어 성공과 실패가 똑같이 생긴 화면만 남았다. */}
       {localError !== null ? (
         <p className="auth-error" aria-live="polite">{localError}</p>
@@ -12236,7 +12238,7 @@ function HomeScreen(props: {
       <ListCard
         items={props.replays}
         empty="저장된 리플레이가 없습니다."
-        emptyHint="한 판 두고 나면 여기에 쌓입니다 — 끝난 판은 처음부터 다시 볼 수 있습니다."
+        emptyHint="대국을 한 판 마치면 여기에 저장됩니다. 끝난 대국은 처음부터 다시 볼 수 있습니다."
       >
         {(rows) => (
         <ul className="replay-list">
@@ -12347,7 +12349,7 @@ function HomeScreen(props: {
             <i className="mk mk-plus" aria-hidden="true" />
             <span className="home-create-t">
               <b>대국 시작</b>
-              <small>방을 만들고 6자리 코드로 친구를 부릅니다 · 빈 자리는 봇</small>
+              <small>방을 만들고 6자리 코드로 친구를 초대합니다. 빈 자리는 봇이 채웁니다</small>
             </span>
           </button>
           <div className="home-join">
@@ -12366,8 +12368,8 @@ function HomeScreen(props: {
               없으니(관리자 전용) 사람이 할 수 있는 일을 여기서 말해 준다. */}
           {busy !== null ? (
             <p className="home-join-busy">
-              <b className="num">{busy}</b> 방은 지금 대국 중입니다. 한 판이 끝나면 들어갈 수
-              있으니 «참가»를 다시 눌러 보세요 — 반장전이면 30~40분 걸립니다.
+              <b className="num">{busy}</b> 방은 지금 대국 중입니다. 대국이 끝나면 들어갈 수
+              있으니 참가 버튼을 다시 눌러 주세요. 반장전은 보통 30~40분 걸립니다.
             </p>
           ) : null}
           {/* 이 버튼이 뜨는 근거는 **서버가 들고 있는 좌석**이다 — 로그인 때
@@ -12406,7 +12408,7 @@ function HomeScreen(props: {
             </button>
             <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
               연습 대국
-              <small>봇 3명 · 대기실에서 시작 · 기록 안 남음</small>
+              <small>봇 3명 · 대기실에서 시작 · 기록에 남지 않음</small>
             </button>
           </div>
         </section>
@@ -12472,30 +12474,30 @@ function HomeScreen(props: {
             <h2>처음이신가요?</h2>
           </div>
           <p className="home-welcome-lead">
-            이능마작은 리치마작에 <b>증강</b>을 더한 게임입니다 — 정해진 국마다 카드
-            하나를 골라 내 손패·점수·규칙을 바꾸는 능력이 붙습니다. 마작을 안다면 세
-            걸음이면 시작합니다.
+            이능마작은 리치마작에 <b>증강</b>을 더한 게임입니다. 정해진 국마다 카드
+            하나를 골라 내 손패나 점수, 규칙을 바꾸는 능력을 얻습니다. 마작을 안다면
+            아래 세 단계로 바로 시작할 수 있습니다.
           </p>
           <ol className="home-steps">
             <li>
               <b className="num">1</b>
               <span>
                 <strong>튜토리얼로 화면 익히기</strong>
-                <small>3분 · 손패가 고정되고 안내가 따라붙습니다 · 기록에 안 남습니다</small>
+                <small>약 3분. 손패가 고정되고 안내가 표시됩니다. 기록에 남지 않습니다</small>
               </span>
             </li>
             <li>
               <b className="num">2</b>
               <span>
-                <strong>«대국 시작» → 코드 공유</strong>
-                <small>6자리 코드를 친구에게 알려 주세요 · 빈 자리는 봇이 채웁니다</small>
+                <strong>대국 시작을 누르고 코드 공유하기</strong>
+                <small>6자리 코드를 친구에게 알려 주세요. 빈 자리는 봇이 채웁니다</small>
               </span>
             </li>
             <li>
               <b className="num">3</b>
               <span>
                 <strong>증강 고르고 한 판</strong>
-                <small>끝난 판은 전적·리플레이로 여기에 쌓입니다</small>
+                <small>끝난 대국은 전적과 리플레이로 여기에 남습니다</small>
               </span>
             </li>
           </ol>
@@ -12533,13 +12535,13 @@ function HomeScreen(props: {
             <p className="home-empty">
               아직 완료한 대국이 없습니다.
               <span className="home-empty-hint">
-                한 판 두고 나면 승률·평균 순위가 여기에 쌓입니다.
+                대국을 한 판 마치면 승률과 평균 순위가 여기에 표시됩니다.
                 {/* 예전에는 여기서 «튜토리얼로 한 판»만 권했는데, 그 버튼이 여는 판은
                     서버가 게스트 방으로 열어 **아무 기록도 남기지 않는다**
                     (QA 4차 loop 확정 4). 시키는 대로 한 판 두고 돌아오면 화면이 글자
                     하나 안 바뀐 채 같은 문장으로 다시 맞이했다. 두 문을 다 놓고,
                     어느 쪽이 기록에 남는지를 적는다. */}
-                {" "}튜토리얼과 연습 대국은 기록에 남지 않습니다 — 익힌 뒤 방을 만들어 보세요.
+                {" "}튜토리얼과 연습 대국은 기록에 남지 않습니다. 익숙해지면 방을 만들어 보세요.
               </span>
               {/* 전적이 0인 사람 = 아직 한 판도 안 끝낸 사람이다. 배우는 문과
                   기록이 남는 문을 나란히 준다. */}
@@ -12568,7 +12570,7 @@ function HomeScreen(props: {
           </div>
           <PersonalAugmentStats stats={career?.stats ?? null} catalog={props.catalog} />
           <button className="home-codex-cta" onClick={props.onOpenCodex}>
-            증강 도감 전체 보기 — {Object.keys(props.catalog).length || "?"}종 상세 설명 · 서버 전체 통계
+            증강 도감 전체 보기 ({Object.keys(props.catalog).length || "?"}종 상세 설명과 서버 전체 통계)
           </button>
         </section>
                 </>
@@ -12745,9 +12747,9 @@ function HomeScreen(props: {
               <button className="home-refresh" onClick={props.onOpenTiers} title="티어표 열기">↗</button>
             </div>
             <p className="home-hint">
-              드롭 확률 조정용 <b>순수 파워</b> 티어(타점·속도·무대응·빈도). 도감의 재미 등급과 다릅니다.
-              서버가 <b>살아 있는 카탈로그와 실시간으로 대조</b>하므로, 새로 추가했는데 티어를 안 매긴 증강은
-              "미분류"로 바로 드러납니다.
+              드롭 확률 조정에 쓰는 순수 파워 티어입니다(타점, 속도, 무대응, 빈도 기준). 도감의 재미 등급과는 다릅니다.
+              서버가 현재 증강 목록과 실시간으로 비교하므로, 새로 추가했지만 티어를 정하지 않은 증강은
+              "미분류"로 표시됩니다.
             </p>
             {props.augmentTiers === null ? (
               <p className="home-empty">티어표를 불러오는 중…</p>
@@ -12771,7 +12773,7 @@ function HomeScreen(props: {
               </div>
             )}
             <button className="home-codex-cta" onClick={props.onOpenTiers}>
-              티어표 전체 보기 — {props.augmentTiers?.entries.length ?? "?"}종 · 축별 점수 · 권장 가중치
+              티어표 전체 보기 ({props.augmentTiers?.entries.length ?? "?"}종, 축별 점수와 권장 가중치)
             </button>
           </section>
         ) : null}
@@ -12894,15 +12896,15 @@ function StatsChips({ s }: { s: PlayerStatsView }): JSX.Element {
   if (s.roundsPlayed < THIN_ROUNDS) {
     return (
       <span className="stat-chips">
-        <span className="stat-chip stat-chip-thin" title="아직 표본이 적어 비율을 접었습니다">
-          전적 {s.roundsPlayed}국 — 아직 적음
+        <span className="stat-chip stat-chip-thin" title="아직 국 수가 적어 비율을 표시하지 않습니다">
+          전적 {s.roundsPlayed}국 (아직 적음)
         </span>
       </span>
     );
   }
   return (
     <span className="stat-chips">
-      <span className="stat-chip stat-chip-n" title="표본 — 이 비율들이 몇 국에서 나온 값인가">
+      <span className="stat-chip stat-chip-n" title="이 비율을 계산한 판 수와 국 수입니다">
         {s.games > 0 ? `${s.games}판 · ` : ""}{s.roundsPlayed}국
       </span>
       <span className="stat-chip" title="화료율">화료 {pct(s.winRate)}</span>
@@ -12995,17 +12997,17 @@ const WAITROOM_TIPS: readonly string[] = [
   "패 오른쪽 아래에 동그라미 표시가 있는 건 쯔모기리(뽑아서 바로 버린) 패입니다.",
   "동풍전은 동1·3·4국에서 증강을 총 3번, 반장전은 동1·3국과 남1·3국에서 총 4번 획득합니다.",
   "증강의 상세 설명은 Shift 키를 누르고 있는 동안 볼 수 있습니다.",
-  "증강을 클릭해 두면 증강 설명창을 고정해 둘 수 있습니다.",
+  "증강을 클릭하면 증강 설명창을 고정할 수 있습니다.",
   "용어의 상세 설명은 마우스를 잠시 올려 두면 볼 수 있습니다.",
   "용어 설명을 볼지 말지는 설정에서 켜고 끌 수 있습니다.",
   "노란색으로 계속 반짝이는 패는 도라입니다.",
-  "보라색으로 계속 반짝이는 패는 원래의 4개 패가 아니라 증강 등으로 새로 만들어진 패입니다.",
-  "상대가 타패한 뒤 점선 표시를 보면 그 패를 어디서 냈는지 알 수 있습니다.",
+  "보라색으로 계속 반짝이는 패는 원래 패 세트에 없던, 증강 등으로 새로 만들어진 패입니다.",
+  "상대가 패를 버린 뒤 점선 표시를 보면 손패의 어느 위치에서 냈는지 알 수 있습니다.",
   "게임 무효 투표는 설정 맨 아래에 있습니다.",
-  "✦ 액티브 표시가 붙은 증강은 저절로 터지지 않습니다. 조건이 되면 버튼이 사용 가능해지니 직접 눌러 발동하세요.",
-  "🎯 퀘스트 증강은 게이지가 조건 진행도입니다 — 퀘스트를 달성해야 능력을 사용할 수 있습니다.",
-  "이름표의 증강에 🔒이 걸리면 상대의 무장해제로 이번 국만 잠긴 것, 🕐N국은 쿨다운, ♻는 재장전, 🎲는 주사위로 얻은 증강입니다.",
-  "화면 배치가 겹치거나 어색하면 오른쪽 위 +/− 버튼이나 Alt(⌥) + − / + 로 맞춰 보세요. 그래도 좁으면 브라우저 확대 Ctrl(⌘) + − 를 씁니다.",
+  "✦ 액티브 표시가 붙은 증강은 자동으로 발동하지 않습니다. 조건이 충족되면 버튼이 활성화되니 직접 눌러 발동하세요.",
+  "🎯 퀘스트 증강의 게이지는 조건 진행도입니다. 퀘스트를 달성해야 능력을 사용할 수 있습니다.",
+  "이름표의 증강에 🔒 표시가 있으면 상대의 무장해제로 이번 국만 잠긴 것입니다. 🕐N국은 쿨다운, ♻는 재장전, 🎲는 주사위로 얻은 증강을 뜻합니다.",
+  "화면 배치가 겹치거나 어색하면 오른쪽 위 +/− 버튼이나 Alt(⌥) + − / + 로 조정하세요. 그래도 좁으면 브라우저 축소(Ctrl 또는 ⌘ + −)를 사용하세요.",
 ];
 
 const WAITROOM_TIP_MS = 10_000;
@@ -13117,7 +13119,7 @@ function SeatInvite(props: {
             <div className="seat-invite-empty">불러오는 중…</div>
           ) : online.length === 0 ? (
             <div className="seat-invite-empty">
-              지금 부를 수 있는 친구가 없습니다. 방 코드를 눌러 링크를 보내 보세요.
+              지금 초대할 수 있는 친구가 없습니다. 방 코드를 눌러 링크를 보내 보세요.
             </div>
           ) : (
             <ul className="seat-invite-list">
@@ -13144,8 +13146,8 @@ function SeatInvite(props: {
                         f.playing
                           ? "대국 중입니다"
                           : cooling
-                            ? `방금 불렀습니다 — ${left}초 뒤에 다시 부를 수 있습니다`
-                            : "대기실로 부르기"
+                            ? `방금 초대했습니다. ${left}초 뒤에 다시 초대할 수 있습니다`
+                            : "대기실로 초대"
                       }
                     >
                       {f.playing ? "대국 중" : cooling ? `${left}초` : "초대"}
@@ -13171,7 +13173,7 @@ function SeatInvite(props: {
 function roomRulesSummary(rules: RoomRules): string {
   const keys = Object.keys(DEFAULT_ROOM_RULES) as (keyof RoomRules)[];
   const diff = keys.filter((k) => rules[k] !== DEFAULT_ROOM_RULES[k]).length;
-  return diff === 0 ? "기본 규칙" : `기본과 ${diff}곳 다름`;
+  return diff === 0 ? "기본 규칙" : `기본 규칙에서 ${diff}개 변경`;
 }
 
 /** 상세설정 항목의 화면 이름 — 토스트와 창이 같은 말을 쓰게 한 곳에 둔다. */
@@ -13187,11 +13189,11 @@ const ROOM_RULE_TOGGLES: readonly {
   label: string;
   desc: string;
 }[] = [
-  { key: "dobi", label: "토비", desc: "누군가 0점 이하가 되면 그 자리에서 판이 끝납니다. 끄면 마이너스 점수로 끝까지 갑니다" },
+  { key: "dobi", label: "토비", desc: "누군가 0점 이하가 되면 즉시 대국이 끝납니다. 끄면 마이너스 점수여도 끝까지 진행합니다" },
   { key: "akaDora", label: "적도라", desc: "만·통·삭의 5가 한 장씩 적5가 되어 도라 1개로 셉니다" },
   { key: "kuitan", label: "쿠이탕 (후로 탕야오)", desc: "울어서 만든 손의 탕야오를 인정합니다. 끄면 멘젠 탕야오만 성립합니다" },
-  { key: "openHands", label: "손패 공개", desc: "네 사람의 손패가 서로에게 보입니다 — 가르치거나 배울 때 씁니다" },
-  { key: "hints", label: "힌트 표시", desc: "현물 표시 · 대기 확인(내 오름패) · 도라 표시를 화면에 그립니다. 끄면 셋 다 사라집니다" },
+  { key: "openHands", label: "손패 공개", desc: "네 사람의 손패가 서로에게 보입니다. 가르치거나 배울 때 사용합니다" },
+  { key: "hints", label: "힌트 표시", desc: "현물 표시, 대기 확인(내 오름패), 도라 표시를 화면에 보여 줍니다. 끄면 셋 다 표시되지 않습니다" },
 ];
 
 /**
@@ -13251,7 +13253,7 @@ function RoomRulesDialog(props: {
       </div>
       <div className="settings-body">
         {!props.canEdit ? (
-          <p className="room-rules-note">방장만 바꿀 수 있습니다 — 지금 이 방의 규칙입니다.</p>
+          <p className="room-rules-note">현재 이 방의 규칙입니다. 방장만 바꿀 수 있습니다.</p>
         ) : null}
         <label className="settings-row">
           <div className="settings-text">
@@ -13281,7 +13283,7 @@ function RoomRulesDialog(props: {
           <div className="settings-text">
             <span className="settings-label">1위 필요점수</span>
             <span className="settings-desc">
-              올라스에 1위가 이 점수에 못 미치면 한 장 더 갑니다 (남입·서입). 시작 점수보다 커야 합니다
+              올라스에서 1위가 이 점수에 못 미치면 남입 또는 서입으로 연장합니다. 시작 점수보다 커야 합니다
             </span>
           </div>
           <input
@@ -13303,7 +13305,7 @@ function RoomRulesDialog(props: {
         </label>
         {willAdjust ? (
           <p className="room-rules-note" role="status">
-            지금 값으로는 {preview.startScore.toLocaleString()}점 / {preview.returnScore.toLocaleString()}점으로 맞춰집니다.
+            입력한 값은 {preview.startScore.toLocaleString()}점 / {preview.returnScore.toLocaleString()}점으로 조정됩니다.
           </p>
         ) : null}
         {ROOM_RULE_TOGGLES.map((r) => (
@@ -13507,7 +13509,7 @@ function WaitingRoom(props: {
      */
     const link = inviteLinkFor(code);
     const ok = (): void =>
-      props.onToast?.("초대 링크가 복사되었습니다 — 친구에게 보내면 바로 들어옵니다!");
+      props.onToast?.("초대 링크를 복사했습니다. 친구에게 보내면 바로 입장할 수 있습니다.");
     const fail = (): void => props.onToast?.(`방 코드: ${code}`);
     // navigator.clipboard는 보안 컨텍스트(HTTPS·localhost)에서만 존재한다.
     // 평문 HTTP(LAN·gol.n-e.kr:포트) 배포에서는 undefined라 무반응이었다 → execCommand로 폴백.
@@ -13766,8 +13768,8 @@ function WaitingRoom(props: {
             //
             // 기준 점수는 **이 방의 1위 필요점수**다. 30,000을 문구에 박아 두면,
             // 방장이 상세설정에서 그 값을 고친 순간 화면이 거짓말을 한다.
-            ["hanchan", "반장전", `동+남 · 남4국 뒤 1위가 ${props.rules.returnScore.toLocaleString()} 미만이면 서장`],
-            ["tonpuu", "동풍전", `동장만 · 동4국 뒤 1위가 ${props.rules.returnScore.toLocaleString()} 미만이면 남장`],
+            ["hanchan", "반장전", `동장과 남장. 남4국이 끝난 뒤 1위가 ${props.rules.returnScore.toLocaleString()}점 미만이면 서장까지 진행합니다`],
+            ["tonpuu", "동풍전", `동장만. 동4국이 끝난 뒤 1위가 ${props.rules.returnScore.toLocaleString()}점 미만이면 남장까지 진행합니다`],
           ] as const).map(([mode, label, sub]) => {
             const active = lobby.gameMode === mode;
             return (
@@ -13805,7 +13807,7 @@ function WaitingRoom(props: {
                 className={`mode-btn ${active ? "mode-active" : ""}`}
                 disabled={!isHost}
                 onClick={() => isHost && !active && props.onSetBotDifficulty(level)}
-                title={isHost ? `${label}으로 변경 (다음 판부터)` : "방장만 변경할 수 있습니다"}
+                title={isHost ? `${label}으로 변경합니다. 다음 판부터 적용됩니다` : "방장만 변경할 수 있습니다"}
               >
                 <span className="mode-name">{label}</span>
                 <span className="mode-sub">{sub}</span>
@@ -13832,7 +13834,7 @@ function WaitingRoom(props: {
                 onClick={() => isHost && !active && props.onSetPace(pace)}
                 title={
                   isHost
-                    ? `${ROOM_PACE_LABEL[pace]} 제한 시간으로 변경 (다음 판부터)`
+                    ? `${ROOM_PACE_LABEL[pace]} 제한 시간으로 변경합니다. 다음 판부터 적용됩니다`
                     : "방장만 변경할 수 있습니다"
                 }
               >
@@ -13858,7 +13860,7 @@ function WaitingRoom(props: {
           onClick={() => setRulesOpen(true)}
           title={isHost ? "시작 점수·토비·적도라 등을 고칩니다" : "이 방의 규칙을 봅니다 (방장만 바꿀 수 있습니다)"}
         >
-          <span className="lobby-rules-name">⚙ 방 상세설정</span>
+          <span className="lobby-rules-name">방 상세설정</span>
           <span className="lobby-rules-sub">{roomRulesSummary(props.rules)}</span>
         </button>
         {rulesOpen ? (
@@ -14018,7 +14020,7 @@ function WaitingRoom(props: {
                 className="wr-btn wr-shuffle"
                 onClick={props.onShuffleSeats}
                 disabled={lobby.players.length < 2}
-                title="동남서북 자리를 다시 뽑습니다 (친이 바뀝니다)"
+                title="동남서북 자리를 무작위로 다시 정합니다. 친도 바뀝니다"
               >
                 자리 섞기
               </button>
@@ -14041,9 +14043,9 @@ function WaitingRoom(props: {
         </div>
         <p className="waitroom-hint">
           {isHost
-            ? "방장입니다 — 자리(동남서북)는 여기 보이는 그대로 시작합니다. 4인이 모두 준비되면 게임을 시작하세요."
+            ? "방장입니다. 자리는 지금 보이는 동남서북 순서대로 시작합니다. 4명이 모두 준비되면 게임을 시작하세요."
             : iAmReady
-              ? "준비 완료. 방장이 시작하기를 기다립니다…"
+              ? "준비를 마쳤습니다. 방장이 게임을 시작할 때까지 기다려 주세요."
               : "준비 완료 버튼을 누르면 방장이 게임을 시작할 수 있습니다."}
         </p>
         <WaitroomTips />
@@ -14084,7 +14086,7 @@ function doraFxOf(view: PlayerView, enabled: boolean): DoraFx {
   return { common, personal };
 }
 
-/** 두 DoraFx가 같은 내용인가 — 값이 그대로면 객체도 그대로 두기 위한 비교. */
+/** 두 DoraFx가 같은 내용인가 — 값이 그대로면 객체도 이 창 유지 위한 비교. */
 function sameDoraFx(a: DoraFx, b: DoraFx): boolean {
   if (a === b) return true;
   const sameSet = (x: Set<string>, y: Set<string>): boolean => {
@@ -14174,21 +14176,21 @@ const SHAPE_RULE_DECLARED = new Set<string>([
  */
 /** 리치가 막힌 평범한 사유 — 엔진의 riichi validate와 같은 판정을 서버가 실어 준다 */
 const RIICHI_BLOCK_TEXT: Record<"notEnoughPoints" | "wallTooShort", string> = {
-  notEnoughPoints: "점수가 리치봉(1,000점)에 못 미쳐 리치를 걸 수 없습니다",
+  notEnoughPoints: "점수가 1,000점보다 적어 리치를 걸 수 없습니다",
   wallTooShort: "패산이 얼마 안 남아 리치를 걸 수 없습니다",
 };
 
 const GAME_END_NOTE: Partial<Record<GameEndReason, string>> = {
-  dobi: "토비 — 누군가 0점 아래로 떨어져 그 자리에서 끝났습니다",
-  agariYame: "아가리야메 — 마지막 국에서 오야가 연장하며 단독 1위라 그대로 끝났습니다",
-  westEntryDecided: "서든데스 종료 — 30,000점을 넘긴 사람이 나왔습니다",
-  instantWin: "천하통일 — 문턱 점수에 닿아 남은 국 없이 끝났습니다",
+  dobi: "토비: 점수가 0점 아래로 내려간 사람이 나와 바로 게임이 끝났습니다",
+  agariYame: "아가리야메: 마지막 국에서 오야가 연장 조건을 채웠지만 단독 1위여서 게임이 끝났습니다",
+  westEntryDecided: "서든데스 종료: 30,000점을 넘긴 사람이 나와 게임이 끝났습니다",
+  instantWin: "천하통일: 목표 점수에 도달해 남은 국을 진행하지 않고 게임이 끝났습니다",
 };
 
 const BOT_DIFFICULTY: readonly (readonly [string, string, string])[] = [
-  ["easy", "쉬움", "실수를 자주 한다"],
-  ["normal", "보통", "가끔 흘린다"],
-  ["hard", "어려움", "봇의 최선"],
+  ["easy", "쉬움", "실수를 자주 합니다"],
+  ["normal", "보통", "가끔 실수합니다"],
+  ["hard", "어려움", "실수 없이 최선을 다합니다"],
 ];
 const BOT_DIFFICULTY_LABEL: Record<string, string> = Object.fromEntries(
   BOT_DIFFICULTY.map(([id, label]) => [id, label]),
@@ -14213,7 +14215,7 @@ const ROOM_PACE_LABEL: Record<RoomPace, string> = {
 function paceSub(pace: RoomPace): string {
   const p = ROOM_PACES[pace];
   const sec = (ms: number): number => Math.round(ms / 1000);
-  return `타패 ${sec(p.turnBankMs)} + ${sec(p.turnGraceMs)}초 · 증강 ${sec(p.draftMs)}초`;
+  return `타패 ${sec(p.turnBankMs)}초 + ${sec(p.turnGraceMs)}초, 증강 선택 ${sec(p.draftMs)}초`;
 }
 
 function ModeBadge(props: { mode: GameMode }): JSX.Element {
@@ -14223,7 +14225,7 @@ function ModeBadge(props: { mode: GameMode }): JSX.Element {
        영영 안 보인다(QA 4라운드 mobile-a11y P1). 탭해서 열 수 있게 바꾼다. */
     <InfoNote
       className="mode-badge"
-      note={`${m.name} — 증강 획득: ${m.drafts}\n정규 구간이 끝나도 1위가 30,000점에 못 미치면 장이 하나 더 붙는다(서든데스). 그 장에는 증강 획득이 없다.`}
+      note={`${m.name}. 증강은 ${m.drafts}에 획득합니다.\n정해진 국을 모두 마쳐도 1위가 30,000점 미만이면 서든데스로 장을 하나 더 진행합니다. 서든데스 장에서는 증강을 획득하지 않습니다.`}
     >
       <span className="mode-badge-name">{m.name}</span>
       <span className="mode-badge-drafts">증강 {m.drafts}</span>
@@ -14674,7 +14676,7 @@ const GameTable = memo(function GameTable(props: {
       {props.spectator === true ? (
         <div className="spectate-bar">
           <span className="spectate-bar-label">
-            👁 관전 중{props.spectateCode != null ? ` — 방 ${props.spectateCode}` : ""} (모든 손패 공개)
+            👁 관전 중{props.spectateCode != null ? `, 방 ${props.spectateCode}` : ""} (모든 손패 공개)
           </span>
         </div>
       ) : null}
@@ -14706,7 +14708,7 @@ const GameTable = memo(function GameTable(props: {
           {view.playerId === SPECTATOR_ID
             ? "전체 공개 시점으로 관찰 중"
             : `${playerNameById(view, view.playerId)} 시점으로 ${driving ? "직접 조작 중" : "관찰 중"}`}
-          {myTurnWhileObserving ? " · 내 차례입니다!" : ""}
+          {myTurnWhileObserving ? ", 지금 내 차례입니다" : ""}
           {sbxSelfId !== null && props.onSandboxViewAs !== undefined ? (
             <button
               className="sbx-observe-back"
@@ -14723,7 +14725,7 @@ const GameTable = memo(function GameTable(props: {
       {props.botDifficulty != null && view.players.some((p) => p.isBot) ? (
         <div
           className="mode-badge bot-diff-badge"
-          title={`봇 난이도 — ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
+          title={`봇 난이도: ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
         >
           <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? props.botDifficulty}</span>
         </div>
@@ -14770,7 +14772,7 @@ const GameTable = memo(function GameTable(props: {
           if (soloWithBots) {
             void askConfirm({
               title: "게임을 무효 처리하고 나갈까요?",
-              body: "사람이 나뿐이라 판은 그 자리에서 무효가 됩니다. 기록도 남지 않습니다.",
+              body: "사람 참가자가 나뿐이므로 게임은 바로 무효 처리됩니다. 기록도 남지 않습니다.",
               confirmLabel: "무효 처리하고 나가기",
               danger: true,
             }).then((ok) => {
@@ -14780,7 +14782,7 @@ const GameTable = memo(function GameTable(props: {
           }
           void askConfirm({
             title: "게임을 포기하고 나갈까요?",
-            body: "남은 판은 자동으로 진행되고, 그 대국에는 다시 들어올 수 없습니다. 순위와 전적은 그대로 기록됩니다.",
+            body: "남은 국은 자동으로 진행되고, 이 게임에는 다시 들어올 수 없습니다. 순위와 전적은 정상적으로 기록됩니다.",
             confirmLabel: "포기하고 나가기",
             danger: true,
           }).then((ok) => {
@@ -15234,7 +15236,7 @@ function QuickToggles(props: {
     { key: "autoSort", label: "자동정렬", desc: "끄면 손패를 드래그해 순서를 바꿀 수 있습니다" },
     { key: "autoWin", label: "자동화료", desc: AUTO_WIN_DESC },
     { key: "autoNoMeld", label: "후로없음", desc: "치·퐁·깡 기회를 자동으로 넘깁니다" },
-    { key: "autoDiscard", label: "자동버림", desc: "쯔모한 패를 자동으로 버립니다(화료 가능한 순에는 멈춥니다)" },
+    { key: "autoDiscard", label: "자동버림", desc: "쯔모한 패를 자동으로 버립니다. 화료할 수 있는 순에는 멈춥니다" },
   ];
   return (
     <div className={`quick-toggles${props.inline === true ? " quick-toggles-inline" : ""}`}>
@@ -15262,13 +15264,13 @@ function QuickToggles(props: {
               if (next && (it.key === "autoDiscard" || it.key === "autoWin")) {
                 props.onToast?.(
                   it.key === "autoDiscard"
-                    ? "자동버림 켜짐 — 쯔모한 패를 그대로 버립니다"
-                    : "자동화료 켜짐 — 화료가 가능하면 즉시 화료합니다",
+                    ? "자동버림을 켰습니다. 쯔모한 패를 바로 버립니다"
+                    : "자동화료를 켰습니다. 화료할 수 있으면 바로 화료합니다",
                 );
               }
             }}
-            title={`${it.label} — ${it.desc} (지금 ${active ? "켜짐" : "꺼짐"})`}
-            aria-label={`${it.label} ${active ? "켜짐" : "꺼짐"} — ${it.desc}`}
+            title={`${it.label}: ${it.desc} (현재 ${active ? "켜짐" : "꺼짐"})`}
+            aria-label={`${it.label} ${active ? "켜짐" : "꺼짐"}. ${it.desc}`}
           >
             <span className="qt-dot" />
             <span className="qt-label">{it.label}</span>
@@ -15290,7 +15292,7 @@ function QuickToggles(props: {
  * 가로막아 정작 그 순간의 결정을 놓쳤다. 설명은 툴팁으로 그대로 남는다.
  */
 const AUTO_WIN_DESC =
-  "화료 가능해지는 즉시 되묻지 않고 론·쯔모합니다 (점수·역을 보지 않습니다)";
+  "화료할 수 있게 되면 확인 없이 바로 론이나 쯔모를 합니다. 점수와 역은 따지지 않습니다";
 
 // ─────────────────────────── 설정 패널 ───────────────────────────
 
@@ -15462,9 +15464,9 @@ function RiichiBgmPicker(props: {
       {folded ? null : (
       <>
       <p className="home-bgm-desc">
-        내가 리치를 걸었을 때 나올 곡입니다 — <b>같은 방 네 사람 모두에게</b> 이 곡이
-        들립니다. 랜덤을 고르면 서버가 <b>내 곡 하나를 정해</b> 그 게임에서 사용합니다
-        (되도록 다른 사람과 겹치지 않는 곡으로).
+        내가 리치를 걸었을 때 나오는 곡입니다. <b>같은 게임의 네 사람 모두에게</b> 이 곡이
+        들립니다. 랜덤을 고르면 서버가 <b>내 곡 하나를 정해</b> 그 게임에서 사용합니다.
+        이때 다른 사람과 겹치지 않는 곡을 되도록 고릅니다.
       </p>
       <div
         className="bgm-carousel"
@@ -15493,7 +15495,7 @@ function RiichiBgmPicker(props: {
             aria-label={
               isRandom
                 ? "랜덤은 미리듣기가 없습니다"
-                : `${track + 1}번 브금 ${playing ? "정지" : "미리듣기"}`
+                : `${track + 1}번 곡 ${playing ? "정지" : "미리듣기"}`
             }
             onClick={() => {
               if (isRandom) return;
@@ -15534,8 +15536,8 @@ function RiichiBgmPicker(props: {
       {/* 볼륨(0이면 아예 안 들린다)은 설정창에 있다 — 여기서 골라 놓고 "왜 안 들리지"가
           되지 않게 어디서 끄고 켜는지를 한 줄로 알린다. */}
       <p className="home-bgm-hint">
-        음량은 <b>설정 ▸ 리치 BGM 음량</b>에서 조절합니다 (0이면 나오지 않습니다).
-        {props.settings.riichiBgmVolume <= 0 ? " 지금은 0이라 미리듣기만 들립니다." : ""}
+        음량은 설정 창의 <b>리치 BGM 음량</b>에서 조절합니다. 0이면 들리지 않습니다.
+        {props.settings.riichiBgmVolume <= 0 ? " 지금은 음량이 0이어서 미리듣기만 들립니다." : ""}
       </p>
       </>
       )}
@@ -15570,44 +15572,44 @@ function SettingsPanel(props: {
     {
       key: "tapTwiceToDiscard",
       label: "두 번 눌러 버리기",
-      desc: "첫 번째로 누른 패가 들어 올려지고, 한 번 더 눌러야 실제로 나갑니다. 다른 패를 누르면 그쪽으로 옮겨 갑니다 (폰에서는 기본으로 켜져 있습니다 — 패 사이가 좁아 옆 패를 짚기 쉽습니다)",
+      desc: "패를 한 번 누르면 들어 올려지고, 한 번 더 눌러야 버려집니다. 다른 패를 누르면 그 패가 대신 선택됩니다. 휴대폰에서는 패 사이가 좁아 옆 패를 잘못 누르기 쉬우므로 기본으로 켜져 있습니다",
     },
     {
       key: "showMyWaits",
       label: "내 오름패 표시",
-      desc: "텐파이면 손패 위에 화료패를 항상 표시합니다. 패 위 숫자는 아직 보이지 않은 그 패의 장수(기본 4장 − 버림패·후로·도라 표시패·내 손패에 나온 수)이며, 증강 생성패는 세지 않습니다. 0이면 그 패로는 날 수 없습니다",
+      desc: "텐파이면 손패 위에 화료패를 항상 표시합니다. 패 위 숫자는 아직 보이지 않은 그 패의 장수입니다. 4장에서 버림패, 후로, 도라 표시패, 내 손패에 나온 수를 뺀 값이며, 증강으로 생성된 패는 세지 않습니다. 0이면 그 패로는 화료할 수 없습니다",
     },
     {
       key: "showSafeTiles",
       label: "현물 표시",
-      desc: "리치를 건 사람이 이미 버린 패를 내 손에서 초록 점으로 표시합니다. 리치가 둘 이상이면 전원의 바닥에 있는 패만 표시합니다 (후리텐을 무시하는 증강 앞에서는 안전하지 않습니다)",
+      desc: "리치를 건 사람이 이미 버린 패를 내 손패에 초록 점으로 표시합니다. 리치한 사람이 둘 이상이면 그 모두의 버림패에 있는 패만 표시합니다. 후리텐을 무시하는 증강에는 안전하지 않습니다",
     },
     {
       key: "rightClickTsumogiri",
       label: "우클릭 쯔모기리",
-      desc: "판 어디서든 오른쪽 버튼을 누르면 방금 쯔모한 패를 그대로 버립니다 (리치할 패를 고르는 중·증강 선택 중에는 듣지 않습니다)",
+      desc: "게임 화면 어디서든 마우스 오른쪽 버튼을 누르면 방금 쯔모한 패를 바로 버립니다. 리치할 패를 고르는 중이거나 증강을 선택하는 중에는 동작하지 않습니다",
     },
-    { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝입니다 (나만의 도라는 보랏금)" },
-    { key: "screenFx", label: "화면 효과", desc: "화료·리치 때 화면 흔들림·번쩍임·파티클 (멀미·광과민이면 끄세요)" },
+    { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝이게 합니다. 나만의 도라는 보랏빛 금색으로 표시합니다" },
+    { key: "screenFx", label: "화면 효과", desc: "화료나 리치 때 화면 흔들림, 번쩍임, 파티클 효과를 보여 줍니다. 멀미가 나거나 빛에 민감하면 꺼 주세요" },
     // 진동 장치가 없는 기기에서는 아예 보여 주지 않는다 — 죽은 스위치를 두지 않는다.
     ...(hapticsSupported()
       ? [
           {
             key: "haptics" as const,
             label: "진동",
-            desc: "패를 버리거나 선언할 때 짧게 진동합니다. 효과음과 별개라 소리를 꺼도 남습니다 (움직임 줄이기를 켜 두면 진동도 함께 꺼집니다)",
+            desc: "패를 버리거나 선언할 때 짧게 진동합니다. 효과음과 별개이므로 소리를 꺼도 진동은 유지됩니다. 기기의 움직임 줄이기 설정이 켜져 있으면 진동도 함께 꺼집니다",
           },
         ]
       : []),
     {
       key: "resetOptionsEachRound",
       label: "매 국 옵션 초기화",
-      desc: "새 국이 시작될 때 좌하단 빠른 토글(자동정렬·자동화료·후로없음·자동버림)을 기본값으로 되돌립니다. 끄면 켜 둔 그대로 다음 국까지 이어집니다",
+      desc: "새 국이 시작될 때 왼쪽 아래 빠른 토글(자동정렬, 자동화료, 후로없음, 자동버림)을 기본값으로 되돌립니다. 끄면 설정한 상태가 다음 국에도 유지됩니다",
     },
     {
       key: "glossaryTips",
       label: "용어 설명",
-      desc: "증강 설명의 마작 용어(슌쯔·오름패…)에 밑줄을 긋고, 올려 두면 풀이를 띄웁니다",
+      desc: "증강 설명에 나오는 마작 용어(슌쯔, 오름패 등)에 밑줄을 표시하고, 마우스를 올리면 뜻을 보여 줍니다",
     },
   ];
   const votes = props.abortVote?.votes ?? 0;
@@ -15652,8 +15654,8 @@ function SettingsPanel(props: {
           <div className="settings-text">
             <span className="settings-label">배경음악 음량</span>
             <span className="settings-desc">
-              대국 중 흐르는 배경음악의 음량입니다 (0이면 끔). 리치가 걸리면 리치 BGM에
-              자리를 내주고, 그 국이 끝나면 돌아옵니다.
+              게임 중 나오는 배경음악의 음량입니다. 0이면 꺼집니다. 누군가 리치를 걸면
+              리치 BGM으로 바뀌고, 그 국이 끝나면 배경음악이 다시 나옵니다.
             </span>
           </div>
           <div className="settings-slider">
@@ -15715,7 +15717,7 @@ function SettingsPanel(props: {
           <div className="settings-text">
             <span className="settings-label">리치 BGM 음량</span>
             <span className="settings-desc">
-              리치 선언 시 나오는 전용 BGM의 음량입니다 (0이면 끔)
+              리치를 걸었을 때 나오는 전용 BGM의 음량입니다. 0이면 꺼집니다
             </span>
           </div>
           <div className="settings-slider">
@@ -15745,7 +15747,7 @@ function SettingsPanel(props: {
             <div className="settings-text">
               <span className="settings-label">{r.label}</span>
               <span className="settings-desc" id={`set-desc-${r.key}`}>
-                {hintLocked ? "이 방은 힌트 표시를 껐습니다 — 방장이 방 상세설정에서 켤 수 있습니다" : r.desc}
+                {hintLocked ? "이 방은 힌트 표시가 꺼져 있습니다. 방장이 방 상세설정에서 켤 수 있습니다" : r.desc}
               </span>
             </div>
             <button
@@ -15777,8 +15779,8 @@ function SettingsPanel(props: {
           <div className="settings-text">
             <span className="settings-label">연출 속도</span>
             <span className="settings-desc">
-              화료·리치·증강 컷인이 화면에 머무는 시간입니다. 짧게 둘수록 판이 빨리
-              넘어갑니다 (Esc 로 그때그때 건너뛰는 것은 그대로 됩니다).
+              화료, 리치, 증강 컷인이 화면에 표시되는 시간입니다. 짧을수록 게임이 빨리
+              진행됩니다. Esc로 그때그때 건너뛰는 기능은 계속 사용할 수 있습니다.
             </span>
           </div>
           <div className="settings-seg" role="group" aria-label="연출 속도">
@@ -15807,7 +15809,7 @@ function SettingsPanel(props: {
             <div className="settings-text">
               <span className="settings-label">게임 무효 요청</span>
               <span className="settings-desc">
-                사람 전원이 동의하면 게임을 무효 처리합니다 (봇은 자동 동의).
+                사람 참가자 모두가 동의하면 게임을 무효 처리합니다. 봇은 자동으로 동의합니다.
                 {needed > 0 ? ` 현재 ${votes}/${needed} 동의.` : ""}
               </span>
             </div>
@@ -15842,7 +15844,7 @@ function AbortVoteBanner(props: {
       <div className="abort-banner-info">
         <span className="abort-banner-title">게임 무효 투표</span>
         <span className="abort-banner-sub">
-          {props.requesterName}님이 무효를 요청했습니다 · 동의 {votes}/{needed}
+          {props.requesterName}님이 무효를 요청했습니다. 동의 {votes}/{needed}
         </span>
       </div>
       <div className="abort-banner-actions">
@@ -15929,21 +15931,21 @@ const RELATION_CUTINS: Record<
   full_hand_swap: {
     title: "통째로 바꾸기",
     holder: (o) => `${o}의 손패를 통째로 빼앗았다`,
-    target: (o) => `${o}에게 손패를 통째로 빼앗겼다 — 패산에서 새 손을 받는다`,
+    target: (o) => `${o}에게 손패를 통째로 빼앗겼다. 패산에서 새 손패를 받는다`,
     ms: 2600,
     shake: 3,
   },
   counter: {
     title: "카운터",
-    holder: (o) => `${o}의 선제 리치를 받아쳤다 — 공탁을 대신 물리고 일발을 지웠다`,
-    target: (o) => `${o}의 추격 리치 — 공탁을 대납하고 일발이 사라졌다`,
+    holder: (o) => `${o}의 선제 리치에 반격했다. 공탁은 ${o}가 대신 내고 ${o}의 일발은 사라진다`,
+    target: (o) => `${o}가 추격 리치로 반격했다. ${o}의 공탁을 내가 대신 내고 내 일발은 사라진다`,
     ms: 2400,
     shake: 2,
   },
   frame_up: {
     title: "누명",
     holder: (o) => `${o}의 바닥에 패를 심었다`,
-    target: (o) => `${o}가 내 바닥에 패를 심었다 — 그 패로는 론할 수 없다`,
+    target: (o) => `${o}가 내 바닥에 패를 심었다. 그 패로는 론할 수 없다`,
     ms: 2400,
     shake: 2,
   },
@@ -16057,10 +16059,10 @@ const AUG_EVENTS: Record<
   // 소환은 **발동 알림 하나뿐**이다. 예전에는 도착 시점의 `conjure_draw:done`
   // ("소환 성공")이 따로 있어 한 번의 소환에 컷인이 두 번 터졌다 —
   // 2026-08-15 사용자 지시로 도착 알림을 없앴다(콘텐츠 쪽 채널도 함께 삭제).
-  conjure_draw: { title: "소환", sub: "다음 쯔모로 이 패를 부른다", augId: "conjure_draw" },
-  three_dragons_will: { title: "삼원패의 의지", sub: "삼원패가 손으로 걸어 들어온다", augId: "three_dragons_will" },
+  conjure_draw: { title: "소환", sub: "다음 쯔모로 이 패를 가져온다", augId: "conjure_draw" },
+  three_dragons_will: { title: "삼원패의 의지", sub: "삼원패가 손패로 들어온다", augId: "three_dragons_will" },
   haitei_lord: { title: "해저의 주인", sub: "마지막 한 장을 손에 넣었다", augId: "haitei_lord" },
-  off_by_one: { title: "한 끗 차이", sub: "한 끗을 비틀어 손을 맞췄다", augId: "off_by_one" },
+  off_by_one: { title: "한 끗 차이", sub: "쯔모한 패가 한 칸 밀려 오름패가 됐다", augId: "off_by_one" },
   // 무덤 도굴만 전용 톤 — 바닥에서 패가 걸어 나오는 순간이 이 증강의 전부다
   grave_rob: {
     title: "무덤 도굴",
@@ -16073,27 +16075,27 @@ const AUG_EVENTS: Record<
   // 문구가 "방금 버린 패를 도로 집었다"였던 탓에 컷인에 뜬 패가 자기 버림패로 읽혔다
   // (2026-08-01 사용자 보고: "방금 버린 패가 계속 뜸").
   take_back: { title: "무르기", sub: "쯔모패를 패산 맨 밑으로 돌려보내고 다시 뽑았다", augId: "take_back" },
-  silent_swap: { title: "정적의 손", sub: "상대의 바닥에서 소리 없이 가져갔다", augId: "silent_swap" },
-  foresight: { title: "예지", sub: "앞을 보고 손을 다시 짰다", augId: "foresight" },
-  palm_flip: { title: "손바닥 뒤집기", sub: "판이 통째로 뒤집힌다", augId: "palm_flip" },
+  silent_swap: { title: "정적의 손", sub: "상대의 바닥에서 패 한 장을 가져갔다", augId: "silent_swap" },
+  foresight: { title: "예지", sub: "패산의 다음 4장을 미리 봤다", augId: "foresight" },
+  palm_flip: { title: "손바닥 뒤집기", sub: "리치 중 한 순만 손패에서 골라 버린다", augId: "palm_flip" },
   tile_split: { title: "패 쪼개기", sub: "한 장이 두 장으로 갈라졌다", augId: "tile_split" },
   // 밥상 뒤엎기 — 반납한 배패 13장은 **전원 공개**가 대가다. 그런데 채널만 실려 있고
   // 그리는 곳이 없어 아무에게도 안 보였다(2026-08-02 사용자 보고). 상태가 아니라
   // 사건이므로 국 내내 붙여 두지 않고 컷인으로 잠깐 크게 보여주고 지운다.
   table_flip: {
     title: "밥상 뒤엎기",
-    sub: "이 손패를 통째로 산에 반납했다",
+    sub: "이 손패를 전부 패산에 반납했다",
     augId: "table_flip",
     shake: 3,
     ms: 3600, // 13장을 훑을 시간
   },
-  meld_dissolve: { title: "후로 해체", sub: "이미 울어 둔 묶음이 풀렸다", augId: "meld_dissolve" },
+  meld_dissolve: { title: "후로 해체", sub: "치·퐁 하나를 후로하기 전으로 되돌렸다", augId: "meld_dissolve" },
   // 뒤집힌 모래시계 — 판이 가장 크게 뒤집히는 순간인데 신호가 이름표 pill "4장"
   // 하나뿐이었다. 전원이 유국을 기다리는데 국이 안 끝나고 한 사람만 계속 뽑는다.
   // (ROUND_SETTLED 인터셉터라 액션 컷인 경로를 타지 않는다.)
   hourglass: {
     title: "뒤집힌 모래시계",
-    sub: "유국이 취소됐다 — 왕패에서 넘어온 패를 혼자 뽑는다",
+    sub: "유국이 취소됐다. 남은 영상패를 혼자 연속으로 뽑는다",
     augId: "hourglass",
     shake: 3,
     ms: 2600,
@@ -16103,7 +16105,7 @@ const AUG_EVENTS: Record<
   // 있는지는 안 새고, 상대가 읽는 것은 "무엇이 무엇이 됐다"는 사실뿐이다 — 설명이
   // 약속한 그대로다. 발동 순간에만 의미가 있는 사건이라 상태 뱃지가 아니라 컷인이다.
   // (남은 횟수는 별도 채널 `{id}:left`로 이름표 pill이 이미 그린다 — 겹치지 않는다.)
-  tile_dyeing: { title: "염색", sub: "손패 한 장이 다른 무늬로 물들었다", augId: "tile_dyeing" },
+  tile_dyeing: { title: "염색", sub: "손패 한 장의 무늬가 바뀌었다", augId: "tile_dyeing" },
   alchemist: { title: "연금술사", sub: "손패 한 장의 숫자가 한 칸 움직였다", augId: "alchemist" },
   "bottom_deal:armed": {
     title: "밑장빼기",
@@ -16149,7 +16151,7 @@ function armedRoundNotices(view: PlayerView): ArmedRoundNotice[] {
       raw: sec,
       title: "초읽기",
       augId: "time_pressure",
-      line: `이번 국 전원의 모든 결정이 ${sec}초 제한이다`,
+      line: `이번 국은 모든 플레이어의 결정에 ${sec}초 제한이 걸린다`,
       ms: 1600,
     });
   }
@@ -16164,7 +16166,7 @@ function armedRoundNotices(view: PlayerView): ArmedRoundNotice[] {
         raw,
         title: "눈먼 총알",
         augId: head,
-        line: `${who} — 이번 국의 모든 론이 무작위 한 명에게 청구된다`,
+        line: `${who}가 발동했다. 이번 국의 모든 론은 넷 중 무작위 한 명이 지불한다`,
         ms: 2400,
       });
     } else if (head === "sign_flip") {
@@ -16173,7 +16175,7 @@ function armedRoundNotices(view: PlayerView): ArmedRoundNotice[] {
         raw,
         title: "반전",
         augId: head,
-        line: `${who} — 이번 국 이 사람의 점수 부호가 뒤집힌다`,
+        line: `이번 국 ${who}의 점수 변동 부호가 뒤집힌다`,
         ms: 2400,
       });
     }
@@ -16445,7 +16447,7 @@ function augmentLogRows(
         : [];
       if (ids.length === 0) continue;
       const names = ids.map((id) => catalog[id]?.name ?? id).join(", ");
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} — ` : ""}${names}`));
+      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who}에게 ` : ""}${names}`));
     } else if (head === "tenpai_scan") {
       /*
        * 천리안 — 스캔한 순간 텐파이였던 상대 목록 (보유자 전용 채널).
@@ -16495,7 +16497,7 @@ function augmentLogRows(
       if (!value) continue;
       rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}발동`));
     } else if (typeof value === "number") {
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} — ` : ""}스택 ${value}`));
+      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}누적 ${value}`));
     } else if (typeof value === "string") {
       // 폴백 안전망 — 내부값이 그대로 새어나가지 않게 좌석 id·패 키·roundKey를 먼저 푼다.
       const asKind = parseKindKey(value);
@@ -16584,7 +16586,7 @@ function AugmentLog({
         type="button"
         className={`icon-btn auglog-btn${open ? " auglog-btn-on" : ""}`}
         onClick={onToggle}
-        title="기록 — 후로·리치·화료·증강 발동"
+        title="기록 보기 (후로, 리치, 화료, 증강 발동)"
         aria-label="기록 열기"
       >
         📜
@@ -16758,7 +16760,7 @@ function SandboxPanel(props: {
       .filter((k): k is TileKind => k !== undefined)
       .map((k) => `${k.suit}${k.rank}`);
     if (keys.length === 0) {
-      props.onToast?.("그 좌석의 손패가 지금 화면에 보이지 않습니다 (시점을 옮겨 보세요)");
+      props.onToast?.("그 좌석의 손패가 지금 화면에 보이지 않습니다. 시점을 바꾼 뒤 다시 시도하세요.");
       return;
     }
     setHandOf(targetId, keys.slice(0, SANDBOX_HAND_MAX));
@@ -16772,7 +16774,7 @@ function SandboxPanel(props: {
   const grant = (c: AugmentCatalogEntry): void => {
     if (owned.has(c.id)) return;
     props.onGrant?.(c.id, targetId);
-    props.onToast?.(`${c.name} 획득 — ${playerNameById(view, targetId)}`);
+    props.onToast?.(`${playerNameById(view, targetId)}에게 ${c.name} 지급`);
   };
 
   const detail = detailId !== null ? catalog[detailId] : undefined;
@@ -16812,7 +16814,7 @@ function SandboxPanel(props: {
             props.onReset?.({}, {});
             props.onToast?.("증강·손패 지정을 모두 비우고 새 판을 시작합니다");
           }}
-          title="증강·손패 지정을 모두 제거하고 백지 상태로 다시 시작"
+          title="증강·손패 지정을 모두 제거하고 처음부터 다시 시작"
         >
           ⟲ 초기화
         </button>
@@ -16980,9 +16982,9 @@ function SandboxPanel(props: {
       ) : null}
 
       <p className="sbx-hint">
-        증강 획득은 즉시 적용됩니다. 배패·국 시작에 개입하는 증강(패 변형 등)과
-        <b> 손패 지정</b>은 국 시작에만 개입할 수 있으니 <b>새 판</b>으로 확인하세요.
-        이 게임은 리플레이·통계에 남지 않습니다.
+        증강 획득은 즉시 적용됩니다. 배패나 국 시작에 관여하는 증강(패 변형 등)과
+        <b> 손패 지정</b>은 국 시작에만 적용되므로 <b>새 판</b>으로 확인하세요.
+        이 게임은 리플레이와 통계에 남지 않습니다.
       </p>
     </div>
   );
@@ -17021,7 +17023,7 @@ function SandboxHandEditor(props: {
           {props.hand.length}/{SANDBOX_HAND_MAX}
         </span>
         <span className="home-spacer" />
-        <button className="sbx-btn sbx-btn-sm" onClick={props.onCopyVisible} title="지금 보이는 손패를 그대로 담는다">
+        <button className="sbx-btn sbx-btn-sm" onClick={props.onCopyVisible} title="지금 화면에 보이는 손패를 그대로 불러옵니다">
           현재 손패 담기
         </button>
         <button className="sbx-btn sbx-btn-sm sbx-btn-danger" onClick={props.onClear}>
@@ -17031,14 +17033,14 @@ function SandboxHandEditor(props: {
 
       <div className="sbx-hand-picked" data-arm-zone>
         {props.hand.length === 0 ? (
-          <span className="sbx-hand-empty">지정 없음 — 평소대로 무작위 배패</span>
+          <span className="sbx-hand-empty">지정한 패가 없습니다. 평소대로 무작위로 배패됩니다</span>
         ) : (
           props.hand.map((key, i) => (
             <button
               key={`${key}-${i}`}
               className={`sbx-hand-chip${i >= SANDBOX_DEAL_SIZE ? " sbx-hand-chip-draw" : ""}`}
               onClick={() => props.onRemoveAt(i)}
-              title={i >= SANDBOX_DEAL_SIZE ? "첫 쯔모 — 빼기" : "빼기"}
+              title={i >= SANDBOX_DEAL_SIZE ? "첫 쯔모 패 빼기" : "빼기"}
             >
               <TileImg tile={{ kind: kindFromKey(key) }} size="mini" />
               {i >= SANDBOX_DEAL_SIZE ? <span className="sbx-hand-chip-tag">쯔모</span> : null}
@@ -17070,10 +17072,10 @@ function SandboxHandEditor(props: {
         ▶ 이 손패로 새 판
       </button>
       <p className="sbx-hint">
-        앞 13장이 배패이고, <b>14번째 한 장은 그 좌석의 첫 쯔모</b>가 됩니다 — 14장을 고르면
-        첫 순의 손 그대로 시작합니다. 지정한 패는 <b>매 국</b> 다시 배패됩니다. 패산에 남은
-        사본이 없으면(다른 좌석이 같은 패를 먼저 가져갔거나 4장을 넘겼으면) 그 자리는
-        조용히 무작위로 채워집니다.
+        앞 13장이 배패이고 14번째 한 장은 그 좌석의 첫 쯔모가 됩니다. 14장을 고르면
+        첫 순의 손패 그대로 시작합니다. 지정한 패는 매 국 다시 배패됩니다. 다른 좌석이
+        같은 패를 먼저 가져갔거나 4장을 넘겨 패산에 남은 패가 없으면 그 자리는
+        무작위로 채워집니다.
       </p>
     </div>
   );
@@ -17091,7 +17093,7 @@ function kindFromKey(key: string): TileKind {
  * 봇 설정 — 행동 제약 4종과 봇 좌석 직접 조작 모드.
  *
  * 제약은 판을 갈아엎지 않고 다음 결정부터 바로 먹는다(체크하는 순간 적용).
- * 조작 모드를 켜면 시점 전환으로 들어간 봇 좌석을 내가 직접 둔다 — 상대의 특정 타패나
+ * 조작 모드를 켜면 시점을 옮긴 봇 좌석을 내가 직접 조작합니다 — 상대의 특정 타패나
  * 증강 발동이 있어야만 확인되는 상황을 손으로 만들 수 있다.
  */
 function SandboxBotSettings(props: {
@@ -17103,10 +17105,10 @@ function SandboxBotSettings(props: {
   onControl?: (enabled: boolean) => void;
 }): JSX.Element {
   const items: Array<[keyof SandboxBotRules, string, string]> = [
-    ["noCall", "후로 불가", "봇이 퐁·치·대명깡을 하지 않는다"],
-    ["noRiichi", "리치 불가", "봇이 리치를 선언하지 않는다 (다마텐은 친다)"],
-    ["noWin", "화료 불가", "봇이 론·쯔모를 하지 않는다 — 판이 끝까지 흐른다"],
-    ["noAugment", "증강 사용 불가", "봇이 액티브 증강을 발동하지 않는다"],
+    ["noCall", "후로 불가", "봇이 퐁·치·대명깡을 하지 않습니다"],
+    ["noRiichi", "리치 불가", "봇이 리치를 선언하지 않습니다. 다마텐 화료는 합니다"],
+    ["noWin", "화료 불가", "봇이 론·쯔모를 하지 않습니다. 국이 끝까지 진행됩니다"],
+    ["noAugment", "증강 사용 불가", "봇이 액티브 증강을 발동하지 않습니다"],
   ];
   return (
     <div className="sbx-bot">
@@ -17128,7 +17130,7 @@ function SandboxBotSettings(props: {
       {props.onControl !== undefined ? (
         <div className="sbx-bot-group">
           <span className="sbx-label">봇 좌석 조작</span>
-          <label className="sbx-check" title="시점 전환으로 들어간 봇 좌석을 내가 직접 둔다">
+          <label className="sbx-check" title="시점을 옮긴 봇 좌석을 내가 직접 조작합니다">
             <input
               type="checkbox"
               checked={props.control}
@@ -17136,15 +17138,15 @@ function SandboxBotSettings(props: {
             />
             <span className="sbx-check-label">봇 시점에서 직접 조작</span>
             <span className="sbx-check-hint">
-              그 좌석의 타패·리치·후로·증강 발동이 봇 대신 나에게 온다
+              그 좌석의 타패, 리치, 후로, 증강 발동을 봇 대신 내가 결정합니다
             </span>
           </label>
           <p className="sbx-hint">
             {props.control
               ? props.controlling !== null
                 ? `지금 ${props.controllingName ?? props.controlling} 좌석을 조작 중입니다.`
-                : "위 시점 버튼으로 봇 좌석을 고르면 그 자리를 직접 두게 됩니다."
-              : "꺼져 있습니다 — 봇 시점은 관찰만 됩니다."}
+                : "위 시점 버튼으로 봇 좌석을 고르면 그 좌석을 직접 조작합니다."
+              : "꺼져 있습니다. 봇 시점에서는 관찰만 할 수 있습니다."}
           </p>
         </div>
       ) : null}
@@ -17231,7 +17233,7 @@ function CenterPanel({
         <div className="center-sub">
           <span
             className="wall-count"
-            title={`${glossaryTitle("wall")}\n남은 ${wallLeft}장 · 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
+            title={`${glossaryTitle("wall")}\n남은 패 ${wallLeft}장, 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
             /* "×57" 만으로는 무엇의 57인지 알 수 없다 — 라벨이 `title` 에만 있었다(감사 §6-7) */
             aria-label={`패산에 남은 패 ${wallLeft}장, 내 쯔모 약 ${Math.ceil(wallLeft / 4)}번`}
           >
@@ -17241,11 +17243,11 @@ function CenterPanel({
               setGameMode) 사람만 국 번호로 역산해야 했다. 서든데스 구간은 "몇 국까지"가
               정해져 있지 않으므로 오라스 대신 그 사실을 적는다. */}
           {r.prevalentWind > maxWindOf(r.mode) ? (
-            <span className="last-round" title="정규 구간이 끝난 서든데스 — 30,000점을 먼저 넘기면 종료">
+            <span className="last-round" title="정규 구간이 끝난 서든데스, 30,000점을 먼저 넘기면 종료">
               서든데스
             </span>
           ) : r.prevalentWind === maxWindOf(r.mode) && r.roundNumber === 4 ? (
-            <span className="last-round" title="이 판의 마지막 국(오라스)">
+            <span className="last-round" title="이 게임의 마지막 국(오라스)">
               오라스
             </span>
           ) : null}
@@ -17277,7 +17279,7 @@ function CenterPanel({
             여기(판 한가운데 도라 줄)에도 같은 문구가 서서 한 사실이 두 번 알려졌다
             (2026-08-31 사용자 지시). 뱃지 줄이 눈이 가는 자리라 그쪽을 남긴다. */}
         {r.uraDoraIndicators !== null && r.uraDoraIndicators.length > 0 ? (
-          <div className="center-dora center-ura" title="뒷도라 표시패 — 리치 화료로 열렸다">
+          <div className="center-dora center-ura" title="뒷도라 표시패입니다. 리치 화료로 공개되었습니다">
             {/* 라벨이 없으면 도라 줄 바로 아래에 «출처 없는 패»가 갑자기 늘어선다 —
                 깡으로 표시패가 늘어난 국에서는 세 줄째까지 서서 어디서 나온 패인지
                 화면에 근거가 없었다(2026-08-27 사용자 보고). */}
@@ -17304,14 +17306,14 @@ function CenterPanel({
           return (
             <div
               className="center-dora center-ura center-ura-peek"
-              title="이면투시 — 나만 확인한 뒷도라 표시패"
+              title="이면투시로 나만 미리 확인한 뒷도라 표시패입니다"
             >
               {peeked.map((kind, i) => (
                 <span key={i} className="dora-slot">
                   <TileImg tile={{ kind }} size="fill" />
                 </span>
               ))}
-              <span className="ura-peek-tag">이면투시 · 나만 봄</span>
+              <span className="ura-peek-tag">이면투시 (나만 보임)</span>
             </div>
           );
         })()}
@@ -17403,7 +17405,7 @@ const River = memo(function River({
                   // 바닥에는 같은 그림의 패가 여럿이라 그것만으로는 고를 수가 없다.
                   ...clickableProps(
                     () => sel.submit(armOpt),
-                    `${formatTile(view.tiles[id])} — 이 버림패 고르기`,
+                    `${formatTile(view.tiles[id])} 버림패 고르기`,
                   ),
                 }
               : {})}
@@ -17637,7 +17639,7 @@ function SealBadge({
   owner: string;
 }): JSX.Element {
   return (
-    <div className="seal-badge" title={`${owner}의 봉인된 손패 — 나만 보인다`}>
+    <div className="seal-badge" title={`${owner}의 봉인된 손패입니다. 나에게만 보입니다`}>
       <span className="seal-badge-label">
         🔒 봉인
         <span className="seal-badge-owner">{owner}</span>
@@ -17877,10 +17879,10 @@ function OpponentStrip({
       >
         {oppArmable ? (
           <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
-            {swapFaster ? "⚡ 나보다 빠름 — 여기 클릭" : "✦ 여기 클릭"}
+            {swapFaster ? "⚡ 나보다 빠름. 여기를 클릭" : "여기를 클릭"}
           </div>
         ) : oppRiichiBlocked ? (
-          <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
+          <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
         ) : null}
         {badges}
         {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
@@ -17915,10 +17917,10 @@ function OpponentStrip({
     >
       {oppArmable ? (
           <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
-            {swapFaster ? "⚡ 나보다 빠름 — 여기 클릭" : "✦ 여기 클릭"}
+            {swapFaster ? "⚡ 나보다 빠름. 여기를 클릭" : "여기를 클릭"}
           </div>
         ) : oppRiichiBlocked ? (
-          <div className="opp-arm-tag opp-arm-blocked">리치 — 손패를 건드릴 수 없다</div>
+          <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
         ) : null}
       {badges}
       {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
@@ -18033,7 +18035,7 @@ const PILL_NUMBER: Record<string, (n: number) => PillStatus | null> = {
           gauge: Math.min(1, n / KARMA_FULL),
           note:
             n >= KARMA_FULL
-              ? `업보 ${n.toLocaleString()} — 청산 가능`
+              ? `업보 ${n.toLocaleString()}. 청산할 수 있습니다`
               : `업보 ${n.toLocaleString()} / ${KARMA_FULL.toLocaleString()}`,
         }
       : null,
@@ -18042,10 +18044,10 @@ const PILL_NUMBER: Record<string, (n: number) => PillStatus | null> = {
   // 미래를 보는 자 — 이번 국에 쌓인 층 = 화료 시 얹히는 판수. 몇 판이 붙어 있는지
   // 화면 어디에도 없어 "쌓이는 게 안 보인다"는 피드백이 있었다(2026-08-02).
   future_sight: (n) =>
-    n > 0 ? { chip: `+${n}판`, note: `이번 국 ${n}번 교환 — 화료하면 +${n}판` } : null,
+    n > 0 ? { chip: `+${n}판`, note: `이번 국에 ${n}번 교환했습니다. 화료하면 ${n}판이 추가됩니다` } : null,
   // 폭주 리치 — 남은 연속 쯔모 횟수
   soul_strike: (n) =>
-    n > 0 ? { chip: `${n}쯔모`, note: `연속 쯔모 ${n}번 남음 — 타가가 후로하면 끝난다` } : null,
+    n > 0 ? { chip: `${n}쯔모`, note: `연속 쯔모 ${n}번 남음. 타가가 후로하면 끝납니다` } : null,
 };
 
 /** 값이 상태 문자열인 채널 — 그 글을 그대로 pill에 붙인다 */
@@ -18096,41 +18098,41 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
    */
   mixed_triplet: (raw) =>
     raw === true
-      ? { chip: "커쯔 무늬X", note: "이번 국 이 사람의 커쯔는 무늬를 가리지 않는다" }
+      ? { chip: "커쯔 무늬 무관", note: "이번 국에는 이 사람의 커쯔가 무늬를 가리지 않습니다" }
       : null,
   broken_border: (raw) =>
     raw === true
-      ? { chip: "슌쯔 무늬X", note: "이번 국 이 사람의 슌쯔는 무늬를 가리지 않는다" }
+      ? { chip: "슌쯔 무늬 무관", note: "이번 국에는 이 사람의 슌쯔가 무늬를 가리지 않습니다" }
       : null,
   async_chiitoi: (raw) =>
     raw === true
-      ? { chip: "쌍 무늬X", note: "이번 국 이 사람의 치또이 쌍은 무늬를 가리지 않는다" }
+      ? { chip: "쌍 무늬 무관", note: "이번 국에는 이 사람의 치또이 쌍이 무늬를 가리지 않습니다" }
       : null,
   // 조커 — 발동하면 이번 국 내내 이 사람의 백이 만능패다 (전원 공개)
   joker: (raw) =>
     raw === true
-      ? { chip: "白 만능", note: "이번 국 이 사람의 손패에서 백이 무엇이든 된다" }
+      ? { chip: "白 만능", note: "이번 국에는 이 사람의 손패에 있는 백이 어떤 패든 될 수 있습니다" }
       : null,
   suit_unify: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
     const ko = SUIT_KO[raw] ?? raw;
-    return { chip: ko, note: `이번 국 손패가 ${ko}로 통일된다` };
+    return { chip: ko, note: `이번 국에는 손패가 ${ko}로 통일됩니다` };
   },
   blood_contract: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
     const yaku = YAKU_NAMES[raw] ?? raw;
-    return { chip: yaku, note: `계약한 역 — ${yaku}으로만 화료할 수 있다` };
+    return { chip: yaku, note: `계약한 역은 ${yaku}입니다. 이 역으로만 화료할 수 있습니다` };
   },
   all_or_nothing: (raw) => {
     if (typeof raw !== "number" || raw <= 0) return null;
-    return { chip: `${raw.toLocaleString()}점`, note: `${raw.toLocaleString()}점을 걸었다` };
+    return { chip: `${raw.toLocaleString()}점`, note: `${raw.toLocaleString()}점을 걸었습니다` };
   },
   let_it_ride: (raw) => {
     const m = raw as { streak?: number; multiplier?: number } | null;
     if (m === null || typeof m !== "object") return null;
     const mult = m.multiplier ?? 1;
     if (mult <= 1) return null;
-    return { chip: `×${mult}`, note: `${m.streak ?? 0}연승 — 다음 화료 ×${mult}` };
+    return { chip: `×${mult}`, note: `${m.streak ?? 0}연승 중입니다. 다음 화료 점수가 ${mult}배가 됩니다` };
   },
   jackpot: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
@@ -18144,11 +18146,11 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     if (m === null || typeof m !== "object" || typeof m.left !== "number") return null;
     const total = m.threshold ?? 45000;
     if (m.left <= 0) {
-      return { chip: "도달", note: `${total.toLocaleString()}점 도달 — 이 국으로 게임이 끝난다` };
+      return { chip: "도달", note: `${total.toLocaleString()}점에 도달했습니다. 이 국으로 게임이 끝납니다` };
     }
     return {
       chip: `${m.left.toLocaleString()}점`,
-      note: `${total.toLocaleString()}점까지 ${m.left.toLocaleString()}점 — 닿으면 남은 국 없이 끝난다`,
+      note: `${total.toLocaleString()}점까지 ${m.left.toLocaleString()}점 남았습니다. 도달하면 남은 국 없이 게임이 끝납니다`,
       gauge: Math.min(1, Math.max(0, (total - m.left) / total)),
     };
   },
@@ -18156,7 +18158,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
   picky_eater: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
     const ko = SUIT_KO[raw] ?? raw;
-    return { chip: ko, note: `손패의 수패가 ${ko}로 통일됐다` };
+    return { chip: ko, note: `손패의 수패가 ${ko}로 통일되었습니다` };
   },
   // 천하통일은 문턱이 45000 고정이라 공개 채널이 없다 — 카드 문구가 곧 목표다.
   // (증강 발행분만큼 문턱이 올라가던 시절에는 "지금 목표"를 pill로 계속 띄웠다.)
@@ -18181,7 +18183,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
    */
   invincible: (raw) =>
     typeof raw === "string" && raw !== ""
-      ? { chip: "🛡 론 불가", note: `${raw} — 쯔모 화료와 유국 노텐 벌점은 그대로다`, tone: "guard" }
+      ? { chip: "🛡 론 불가", note: `${raw}. 쯔모 화료와 유국 노텐 벌점은 그대로 적용됩니다`, tone: "guard" }
       : null,
   /*
    * 붉은 손길 — 이 사람이 각인한 숫자(`red_five_touch:{보유자}` 전원 공개, 게임 내내 유지).
@@ -18195,7 +18197,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     if (rank === undefined) return { chip: raw, note: raw };
     return {
       chip: `${rank} 각인`,
-      note: `이 사람의 ${rank}만·${rank}통·${rank}삭은 이 사람에게만 적도라 — 버린 것을 울어 가도 도라가 붙지 않는다`,
+      note: `이 사람의 ${rank}만·${rank}통·${rank}삭은 이 사람에게만 적도라입니다. 버린 패를 후로해 가져와도 도라가 되지 않습니다`,
     };
   },
   /*
@@ -18208,7 +18210,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
    */
   rinshan_preview: (raw) =>
     typeof raw === "string" && raw !== ""
-      ? { chip: "영상패 교체", note: `${raw} — 무슨 패인지는 공개되지 않는다` }
+      ? { chip: "영상패 교체", note: `${raw}. 어떤 패인지는 공개되지 않습니다` }
       : null,
   honba_hunter: (raw) => {
     const m = raw as { honba?: number; value?: number } | null;
@@ -18216,7 +18218,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
     const value = m.value ?? 0;
     return {
       chip: `+${value.toLocaleString()}`,
-      note: `${m.honba}본장 = 화료 시 +${value.toLocaleString()}점`,
+      note: `${m.honba}본장이라 화료하면 ${value.toLocaleString()}점을 더 받습니다`,
     };
   },
 };
@@ -18343,8 +18345,8 @@ function augmentPillStatus(
               left > 0
                 ? `${where} ${total}회 중 ${left}회 남음`
                 : stillThisRound
-                  ? `${where} ${total}회를 모두 사용했다 — 이번 국의 효과는 아직 살아 있다`
-                  : `${where} ${total}회를 모두 사용했다 — 더는 사용할 수 없다`,
+                  ? `${where} ${total}회를 모두 사용했습니다. 이번 국에는 효과가 계속 적용됩니다`
+                  : `${where} ${total}회를 모두 사용했습니다. 더는 사용할 수 없습니다`,
             ...(left === 0 && !stillThisRound ? { tone: "spent" as const } : {}),
             ...(total > 0 ? { gauge: left / total } : {}),
           };
@@ -18358,7 +18360,7 @@ function augmentPillStatus(
     return {
       ...base,
       chip: `${base.chip} · ${usesStatus.chip}`,
-      note: `${base.note} — ${usesStatus.note}`,
+      note: `${base.note}. ${usesStatus.note}`,
       ...(usesStatus.gauge !== undefined ? { gauge: usesStatus.gauge } : {}),
     };
   };
@@ -18373,7 +18375,7 @@ function augmentPillStatus(
     return withUses({
       chip: "종료",
       tone: "spent",
-      note: "이번 국 전용 — 그 국이 지나 효과가 남아 있지 않다",
+      note: "뽑은 국에만 적용되는 증강입니다. 그 국이 지나 지금은 효과가 없습니다",
     });
   }
 
@@ -18390,7 +18392,7 @@ function augmentPillStatus(
     return withUses({
       chip: "재배열 완료",
       tone: "spent",
-      note: "이번 국 재배열은 이미 썼다 — 앞을 보는 것만 된다",
+      note: "이번 국의 재배열은 이미 사용했습니다. 앞으로 올 패를 보는 것만 할 수 있습니다",
     });
   }
   if (augId === "dead_wall_master") {
@@ -18415,7 +18417,7 @@ function augmentPillStatus(
     const names = kinds.map((kind) => formatTile({ kind })).join("·");
     return withUses({
       chip: names,
-      note: `안깡한 ${names}${kinds.length > 1 ? "" : " 네 장"}이 이 사람에게만 도라 — 손패의 같은 패에는 붙지 않는다`,
+      note: `안깡한 ${names}${kinds.length > 1 ? "" : " 네 장"}은 이 사람에게만 도라입니다. 손패에 있는 같은 패는 도라가 아닙니다`,
     });
   }
 
@@ -18440,13 +18442,13 @@ function augmentPillStatus(
         const prevNames = prev.map((kind) => formatTile({ kind })).join("·");
         return withUses({
           chip: `↺ ${prevNames}`,
-          note: `직전 국의 도라 — 발동하면 ${prevNames}이(가) 나에게만 도라로 겹쳐진다 (나에게만 보인다)`,
+          note: `직전 국의 도라입니다. 발동하면 ${prevNames}이(가) 나에게만 도라로 추가됩니다. 이 정보는 나에게만 보입니다`,
         });
       }
       return usesStatus;
     }
     const names = kinds.map((kind) => formatTile({ kind })).join("·");
-    return withUses({ chip: names, note: `이 사람에게만 도라가 되는 패 — ${names}` });
+    return withUses({ chip: names, note: `${names}은 이 사람에게만 도라입니다` });
   }
 
   // 편식 — 퀘스트 진행도. 발동 뒤에는 아래 PILL_CUSTOM이 통일된 무늬를 그린다.
@@ -18457,13 +18459,13 @@ function augmentPillStatus(
     if (m === null || typeof m !== "object" || typeof m.count !== "number") return usesStatus;
     const need = m.need ?? 12;
     if (m.failed === true) {
-      return withUses({ chip: "실패", note: "다른 무늬를 버려 이번 국 퀘스트는 깨졌다" });
+      return withUses({ chip: "실패", note: "다른 무늬를 버려서 이번 국 퀘스트에 실패했습니다" });
     }
     if (m.count === 0) return usesStatus;
     const ko = m.suit == null ? "자패" : (SUIT_KO[m.suit] ?? m.suit);
     return withUses({
       chip: `${m.count}/${need}`,
-      note: `${ko}만 버리는 중 — ${need}장을 채우면 손패를 한 색으로 물들인다`,
+      note: `${ko}만 버리는 중입니다. ${need}장을 채우면 손패가 한 무늬로 통일됩니다`,
     });
   }
 
@@ -18471,7 +18473,7 @@ function augmentPillStatus(
   if (augId === "time_pressure") {
     const sec = av["time_pressure"];
     if (typeof sec !== "number" || sec <= 0) return usesStatus;
-    return withUses({ chip: `${sec}초`, note: `이번 국 전원의 모든 결정이 ${sec}초 제한이다` });
+    return withUses({ chip: `${sec}초`, note: `이번 국은 모든 플레이어의 결정에 ${sec}초 제한이 걸린다` });
   }
 
   const raw = av[`${augId}:${playerId}`];
@@ -18494,7 +18496,7 @@ function augmentPillStatus(
     if (left <= 0) return usesStatus;
     return withUses({
       chip: `${left}순`,
-      note: `앞으로 ${left}순 동안 아무도 후로할 수 없다`,
+      note: `앞으로 ${left}순 동안 아무도 후로할 수 없습니다`,
     });
   }
 
@@ -18512,7 +18514,7 @@ function augmentPillStatus(
     const who = playerNameById(view, raw);
     return withUses({
       chip: `→ ${who}`,
-      note: `${who}와(과) 바꾸기로 지정했다 — 넘길 내 3장과 가져올 상대 3장을 고르면 교환이 끝난다`,
+      note: `${who}와(과) 교환하기로 지정했습니다. 넘길 내 패 3장과 가져올 상대 패 3장을 고르면 교환이 완료됩니다`,
     });
   }
 
@@ -18526,7 +18528,7 @@ function augmentPillStatus(
     return withUses({ chip: raw, note: raw });
   }
   if (PILL_FLAG.has(augId) && raw === true) {
-    return withUses({ chip: "발동", note: "이번 국에 발동했다" });
+    return withUses({ chip: "발동", note: "이번 국에 발동했습니다" });
   }
   return usesStatus;
 }
@@ -18607,7 +18609,7 @@ function PlayerAugSheet({
                     <span className="aug-sheet-cat">{CATEGORY_META[augmentCategory(a)].label}</span>
                   </div>
                   <div className="aug-sheet-chips">
-                    {locked ? <span className="aug-sheet-chip">🔒 무장해제 — 이번 국 잠김</span> : null}
+                    {locked ? <span className="aug-sheet-chip">🔒 무장해제로 이번 국 잠김</span> : null}
                     {reloaded.has(a) ? <span className="aug-sheet-chip">♻ 재장전</span> : null}
                     {fromDice.has(a) ? <span className="aug-sheet-chip">🎲 수상한 주사위</span> : null}
                     {cooldown > 0 ? (
@@ -18784,7 +18786,7 @@ const NamePlate = memo(function NamePlate({
         awaitingCall ? (
           <span
             className="np-turn np-turn-wait"
-            title="다른 자리의 선언(론·치·퐁·깡)을 기다리는 중입니다"
+            title="다른 플레이어의 론·치·퐁·깡 선언을 기다리는 중입니다"
             aria-label="선언 대기"
           >
             {/* «선언»은 좁은 자리(폰 세로의 상대 이름표 칩)에서 접힌다 — 그 칩은 폭이
@@ -18801,8 +18803,8 @@ const NamePlate = memo(function NamePlate({
           className="np-conn"
           title={
             conn === "disconnected"
-              ? "이 자리의 접속이 끊겼습니다 — 돌아올 때까지 결정이 자동 처리됩니다"
-              : "이 자리는 기권했습니다 — 남은 국은 자동 진행됩니다"
+              ? "이 플레이어의 접속이 끊겼습니다. 돌아올 때까지 결정이 자동으로 처리됩니다"
+              : "이 플레이어는 기권했습니다. 남은 국은 자동으로 진행됩니다"
           }
         >
           {connLabel}
@@ -18820,7 +18822,7 @@ const NamePlate = memo(function NamePlate({
         type="button"
         className="np-name np-name-btn"
         title={playerName(view, player)}
-        aria-label={`${playerName(view, player)} — 증강 보기`}
+        aria-label={`${playerName(view, player)}의 증강 보기`}
         onClick={() => setSheetOpen(true)}
       >
         {playerName(view, player)}
@@ -18860,7 +18862,7 @@ const NamePlate = memo(function NamePlate({
       ) : null}
       {/* 봇 성향 — 이름만으로는 셋이 구분되지 않아서, 이름 옆에 원형을 세운다 */}
       {arch !== null ? (
-        <span className="np-arch" title={`${arch.label} 봇 — ${arch.desc}`}>{arch.label}</span>
+        <span className="np-arch" title={`${arch.label} 봇. ${arch.desc}`}>{arch.label}</span>
       ) : null}
       {pills.length > 0 ? (
         <span className="np-augs">
@@ -18909,13 +18911,13 @@ const NamePlate = memo(function NamePlate({
                 {/* 이름만 별도 span — 무장해제 취소선이 잔량 칩까지 그어지지 않게 */}
                 <span className="aug-pill-name">{entry?.name ?? a}</span>
                 {cooldown > 0 ? (
-                  <span className="aug-pill-cd-chip" title={`쿨다운 — ${cooldown}국 남음`}>
+                  <span className="aug-pill-cd-chip" title={`쿨다운 ${cooldown}국 남음`}>
                     🕐{cooldown}국
                   </span>
                 ) : null}
                 {/* 순 단위 쿨다운 — 국 단위와 같은 자리, 단위만 다르다 */}
                 {cooldownTurns > 0 ? (
-                  <span className="aug-pill-cd-chip" title={`쿨다운 — ${cooldownTurns}순 남음`}>
+                  <span className="aug-pill-cd-chip" title={`쿨다운 ${cooldownTurns}순 남음`}>
                     🕐{cooldownTurns}순
                   </span>
                 ) : null}
@@ -18947,7 +18949,7 @@ const NamePlate = memo(function NamePlate({
                 <button
                   type="button"
                   className="aug-pill-sheet-hit"
-                  aria-label={`${entry?.name ?? a} — 증강 보기`}
+                  aria-label={`${entry?.name ?? a} 증강 보기`}
                   onClick={(e) => {
                     // 알약의 «고정» 토글까지 함께 터지면 시트 뒤에 툴팁이 남는다
                     e.stopPropagation();
@@ -18963,32 +18965,32 @@ const NamePlate = memo(function NamePlate({
                   </span>
                   <span className="aug-tip-cat">{CATEGORY_META[augmentCategory(a)].label} 계열</span>
                   {locked ? (
-                    <span className="aug-tip-locked">🔒 무장해제 — 이번 국 동안 잠김</span>
+                    <span className="aug-tip-locked">🔒 무장해제로 이번 국 동안 사용할 수 없습니다</span>
                   ) : null}
                   {cooldown > 0 ? (
                     <span className="aug-tip-cd">
-                      🕐 쿨다운 — 지금은 쓸 수 없다 (앞으로 {cooldown}국)
+                      🕐 쿨다운 중입니다. 앞으로 {cooldown}국 동안 사용할 수 없습니다
                     </span>
                   ) : null}
                   {cooldownTurns > 0 ? (
                     <span className="aug-tip-cd">
-                      🕐 쿨다운 — 지금은 쓸 수 없다 (앞으로 {cooldownTurns}순)
+                      🕐 쿨다운 중입니다. 앞으로 {cooldownTurns}순 동안 사용할 수 없습니다
                     </span>
                   ) : null}
                   {reloaded.has(a) ? (
-                    <span className="aug-tip-status">♻ 재장전 — 이번 국에 되살렸다</span>
+                    <span className="aug-tip-status">♻ 재장전으로 이번 국에 사용 횟수를 1회 복구했습니다</span>
                   ) : null}
                   {fromDice.has(a) ? (
-                    <span className="aug-tip-status">🎲 수상한 주사위에서 굴러 나왔다</span>
+                    <span className="aug-tip-status">🎲 수상한 주사위로 얻은 증강입니다</span>
                   ) : null}
                   {status !== null ? (
                     <span className="aug-tip-status">{status.note}</span>
                   ) : null}
                   {QUEST_GOAL[a] !== undefined ? (
-                    <span className="aug-tip-quest">🎯 퀘스트 증강 — {QUEST_GOAL[a]}</span>
+                    <span className="aug-tip-quest">🎯 퀘스트 목표: {QUEST_GOAL[a]}</span>
                   ) : null}
                   {isActiveAugment(a) ? (
-                    <span className="aug-tip-active">✦ 액티브 증강 (직접 발동)</span>
+                    <span className="aug-tip-active">✦ 직접 발동하는 액티브 증강입니다</span>
                   ) : null}
                   <span className="aug-tip-desc">
                     <AugDesc
@@ -19016,8 +19018,8 @@ const NamePlate = memo(function NamePlate({
                     }}
                   >
                     {pinned.has(a)
-                      ? "📌 고정됨 — 눌러서 내리기 (Esc: 전부, 바깥을 눌러도 내려간다)"
-                      : "📌 눌러서 이대로 띄워 두기"}
+                      ? "📌 고정됨. 눌러서 해제 (Esc는 전부 해제, 바깥 클릭도 해제)"
+                      : "📌 눌러서 고정하기"}
                   </button>
                 </span>
                 ) : null}
@@ -19038,7 +19040,7 @@ const NamePlate = memo(function NamePlate({
                 className={`np-rel${outgoing ? " np-rel-out" : " np-rel-in"}${hovered === r.key ? " np-rel-on" : ""}`}
                 style={{ color: r.color }}
                 tabIndex={0}
-                title={`${r.label} — ${playerNameById(view, r.from)} → ${playerNameById(view, r.to)}`}
+                title={`${r.label}: ${playerNameById(view, r.from)}에서 ${playerNameById(view, r.to)}로`}
                 onMouseEnter={() => setHovered(r.key)}
                 onMouseLeave={() => setHovered(null)}
                 onFocus={() => setHovered(r.key)}
@@ -19052,13 +19054,13 @@ const NamePlate = memo(function NamePlate({
           })}
         </span>
       ) : null}
-      {ippatsu ? <span className="np-ippatsu" title="일발이 살아 있습니다 — 누가 울면 사라집니다">일발</span> : null}
+      {ippatsu ? <span className="np-ippatsu" title="일발이 유효합니다. 누군가 후로하면 사라집니다">일발</span> : null}
       {furiten ? (
         <span
           className="np-furiten"
           title={
             furitenReasons.length > 0
-              ? `${furitenReasons.map((r) => FURITEN_REASON_TEXT[r]).join(" · ")} — 론은 안 되고 쯔모로만 화료할 수 있습니다`
+              ? `${furitenReasons.map((r) => FURITEN_REASON_TEXT[r]).join(". ")}. 론은 할 수 없고 쯔모로만 화료할 수 있습니다`
               : "론은 안 되고 쯔모로만 화료할 수 있습니다"
           }
         >
@@ -19110,7 +19112,7 @@ function PulledGroup({
   return (
     <span
       className={`${layout === "row" ? "meld meld-row" : "meld meld-col"} meld-pulled`}
-      title="북풍 상인 — 빼놓은 北 (버림패가 아닙니다)"
+      title="북풍 상인으로 빼놓은 北입니다. 버림패가 아닙니다"
     >
       {ids.map((id) => (
         <MeldTile
@@ -19700,7 +19702,7 @@ function PickTimer(props: { deadline: number | null }): JSX.Element | null {
     >
       ⏳ 남은 시간 <strong>{Math.ceil(left / 1000)}</strong>초
       <span className="pick-timer-note">
-        {urgent ? " — 시간이 다 되면 서버가 대신 고른다" : " (지나면 서버가 대신 고른다)"}
+        {urgent ? ". 시간이 다 되면 자동으로 선택됩니다" : ". 시간이 지나면 자동으로 선택됩니다"}
       </span>
     </div>
   );
@@ -20454,7 +20456,7 @@ function OwnArea(props: {
     ) ?? false;
 
   /**
-   * 액티브 증강 버튼에 손이 올라가 있는 동안 **지금 쓸 수 있는 증강 id들**.
+   * 액티브 증강 버튼에 손이 올라가 있는 동안 **지금 사용 가능한 증강 id들**.
    *
    * "액티브 증강 (2)"의 2가 넷 중 어느 둘인지가 화면 어디에도 없었다 — 버튼을 눌러
    * 메뉴를 열어야 알 수 있었고, 그러면 판을 보면서 확인할 수가 없다(2026-08-15 요청).
@@ -20863,10 +20865,10 @@ function OwnArea(props: {
         >
           <span className="discard-dropzone-label">
             {armedAug !== null
-              ? `✦ 여기에 놓아 ${armName}`
+              ? `✦ 여기에 놓으면 ${armName} 발동`
               : props.riichiMode
-                ? "⚡ 여기에 놓아 리치"
-                : "🀫 여기에 놓아 버리기"}
+                ? "⚡ 여기에 놓으면 리치"
+                : "🀫 여기에 놓으면 버리기"}
           </span>
         </div>
       ) : null}
@@ -20952,7 +20954,7 @@ function OwnArea(props: {
           <div className="arm-hint arm-swap">
             {swapTarget === null ? (
               <>
-                <span className="arm-hint-text">✦ {armName} — 교환할 상대를 클릭하세요</span>
+                <span className="arm-hint-text">{armName}: 교환할 상대를 클릭하세요</span>
                 <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
                   취소
                 </button>
@@ -20960,7 +20962,7 @@ function OwnArea(props: {
             ) : (
               <>
                 <span className="arm-hint-text">
-                  ✦ {armName} → <b>{playerNameById(view, swapTarget)}</b> — 넘길 내 패 3장을 클릭 ({swapGive.length}/3)
+                  {armName}: <b>{playerNameById(view, swapTarget)}</b>에게 넘길 내 패 3장을 클릭하세요 ({swapGive.length}/3)
                 </span>
                 <button
                   className="arm-hint-cancel"
@@ -20969,7 +20971,7 @@ function OwnArea(props: {
                     sel.setSwapGive([]);
                   }}
                 >
-                  상대 다시
+                  상대 다시 고르기
                 </button>
                 <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
                   취소
@@ -20979,7 +20981,7 @@ function OwnArea(props: {
           </div>
         ) : armedAug !== null ? (
           <div className="arm-hint">
-            <span className="arm-hint-text">✦ {armName} — {armPromptText(sel.armMode, armedAug)}</span>
+            <span className="arm-hint-text">{armName}: {armPromptText(sel.armMode, armedAug)}</span>
             <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
               취소
             </button>
@@ -21003,7 +21005,7 @@ function OwnArea(props: {
             <div className="rinshan-pick-panel">
               <PickTimer deadline={props.promptDeadline} />
               <div className="rinshan-pick-title">
-                ✦ {armName} — {armSub.options[0]?.type === "split_tile" ? "어떻게 쪼갤까요?" : "무엇으로 바꿀까요?"}
+                {armName}: {armSub.options[0]?.type === "split_tile" ? "어떻게 나눌지 선택" : "무엇으로 바꿀지 선택"}
               </div>
               <div className="rinshan-pick-sub">
                 {armSub.options[0]?.type === "split_tile"
@@ -21040,13 +21042,13 @@ function OwnArea(props: {
                           <ActionTiles view={view} option={o} />
                         )}
                       </span>
-                      <span className="rinshan-pick-label">{optionDetail(view, o) || "이걸로 바꾼다"}</span>
+                      <span className="rinshan-pick-label">{optionDetail(view, o) || "이렇게 바꾸기"}</span>
                     </button>
                   );
                 })}
               </div>
               <button className="rinshan-pick-skip" onClick={() => setArmSub(null)}>
-                취소 (바꾸지 않고 닫기)
+                바꾸지 않고 닫기
               </button>
             </div>
           </div>,
@@ -21067,7 +21069,7 @@ function OwnArea(props: {
               seq={props.promptSeq}
               deadline={props.promptDeadline}
               // 시간이 다 되면 무슨 일이 일어나는지를 **미리** 말한다. 드래프트 창은
-              // "시간이 다 되면 랜덤으로 결정된다"를 상시로 적어 두는데 여기만 없어서,
+              // "시간이 다 되면 무작위로 결정됩니다"를 상시로 적어 두는데 여기만 없어서,
               // 되돌릴 수 없는 손실(론 흘림·의도치 않은 타패)이 예고 없이 일어났다.
               // 폴백 순서는 서버의 safeFallbackOption과 같다: 패스가 있으면 패스.
               onTimeout={
@@ -21083,8 +21085,8 @@ function OwnArea(props: {
         {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
             맞는다). 국 끝물에 내 몫의 쯔모가 모자라면 두 칸·한 칸으로 줄어든다. */}
         {nextTsumoKinds.length > 0 ? (
-          <div className="next-tsumo-strip" title="삼세 예지 — 내 다음 쯔모 (실시간, 최대 세 장)">
-            <span className="next-tsumo-tag">삼세 예지 · 다음 쯔모</span>
+          <div className="next-tsumo-strip" title="삼세 예지: 내 다음 쯔모 패를 최대 세 장까지 미리 보여 줍니다. 상황에 따라 바뀝니다.">
+            <span className="next-tsumo-tag">삼세 예지: 다음 쯔모</span>
             {nextTsumoKinds.map((kind, i) => (
               <span key={i} className="next-tsumo-cell">
                 <TileImg tile={{ kind }} size="mini" />
@@ -21103,10 +21105,10 @@ function OwnArea(props: {
         {bottomWallIds.length > 0 ? (
           <div
             className={`bottom-deal-strip${bottomDealArmed ? " bottom-deal-armed" : ""}`}
-            title="밑장빼기 — 패산 맨 밑 3장 (오른쪽 끝이 다음에 빼올 밑장)"
+            title="밑장빼기: 패산 맨 밑 3장입니다. 오른쪽 끝 패를 다음에 가져옵니다."
           >
             <span className="bottom-deal-tag">
-              밑장빼기 · 패산 밑{bottomDealArmed ? " (예약됨)" : ""}
+              밑장빼기: 패산 밑{bottomDealArmed ? " (예약됨)" : ""}
             </span>
             {bottomWallIds.map((id, i) => (
               <span
@@ -21208,15 +21210,15 @@ function OwnArea(props: {
                   formatTile(view.tiles[id]),
                   isDrawn ? "방금 쯔모" : null,
                   sealed ? "봉인됨" : null,
-                  doomed ? "이 발동의 재료 — 누르면 사라짐" : null,
-                  kuikae ? "쿠이카에 — 이번 순에만 버릴 수 없음" : null,
+                  doomed ? "누르면 이 발동에 쓰여 사라지는 패" : null,
+                  kuikae ? "쿠이카에라 이번 순에는 버릴 수 없음" : null,
                   danger ? "위험패" : null,
-                  safe ? "현물 — 리치를 건 사람이 이미 버린 패" : null,
+                  safe ? "리치한 사람이 이미 버린 현물" : null,
                   // 사실 기반 표시는 이름에도 실어야 한다 — 링과 바람 글자는 둘 다
                   // 눈으로만 읽힌다(화면을 못 보면 중계 해설이 통째로 사라진다).
                   hot === null ? null : hotWaitTitle(hot),
-                  armedTileId === id ? "선택됨 — 한 번 더 누르면 버립니다" : null,
-                  coachLocked ? "튜토리얼이 지금 막고 있음" : null,
+                  armedTileId === id ? "선택됨. 한 번 더 누르면 버림" : null,
+                  coachLocked ? "튜토리얼 진행 중이라 지금은 누를 수 없음" : null,
                   !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
                 ]
                   .filter((x) => x !== null)
@@ -21395,7 +21397,7 @@ function OwnArea(props: {
                 {danger ? (
                   <span
                     className="hand-danger-badge"
-                    title={`지뢰 탐지 — 이 패는 방총${
+                    title={`지뢰 탐지: 이 패를 버리면 방총입니다${
                       dangerScan.turn === null ? "" : ` (${dangerScan.turn}순 기준)`
                     }`}
                   >
@@ -21463,8 +21465,8 @@ function OwnArea(props: {
             <PickTimer deadline={props.promptDeadline} />
             <div className="rinshan-pick-title">
               {swap3Pick.stage === "give"
-                ? "🔄 등가교환 — 넘길 내 패 3장"
-                : "🔄 등가교환 — 가져올 상대 패 3장"}
+                ? "🔄 등가교환: 넘길 내 패 3장"
+                : "🔄 등가교환: 가져올 상대 패 3장"}
             </div>
             <div className="rinshan-pick-sub">
               {swap3Pick.stage === "give"
@@ -21499,7 +21501,7 @@ function OwnArea(props: {
               disabled={swap3Sel.length === 0}
               onClick={() => setSwap3Sel([])}
             >
-              {swap3Sel.length > 0 ? "← 선택 다시" : "세 장을 고르면 교환됩니다"}
+              {swap3Sel.length > 0 ? "선택 초기화" : "세 장을 고르면 교환됩니다"}
             </button>
           </div>
         </div>,
@@ -21515,9 +21517,9 @@ function OwnArea(props: {
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
             <PickTimer deadline={props.promptDeadline} />
-            <div className="rinshan-pick-title">🔮 미래를 보는 자 — 버릴 패 선택</div>
+            <div className="rinshan-pick-title">🔮 미래를 보는 자: 버릴 패 선택</div>
             <div className="rinshan-pick-sub">
-              손에서 이 세 장이 뽑혔습니다. 바닥에 버릴 한 장을 고르세요 — 나머지 두 장은
+              손에서 이 세 장이 뽑혔습니다. 바닥에 버릴 한 장을 고르세요. 나머지 두 장은
               패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다.
             </div>
             <div className="rinshan-pick-tiles">
@@ -21535,7 +21537,7 @@ function OwnArea(props: {
                     }}
                   >
                     <TileImg tile={tile} size="hand" />
-                    <span className="rinshan-pick-label">이 패를 버린다</span>
+                    <span className="rinshan-pick-label">이 패 버리기</span>
                   </button>
                 );
               })}
@@ -21550,7 +21552,7 @@ function OwnArea(props: {
                 setFutureDismissed(true);
               }}
             >
-              🎲 아무거나 (랜덤으로 버리기)
+              🎲 무작위로 버리기
             </button>
           </div>
         </div>,
@@ -21563,10 +21565,10 @@ function OwnArea(props: {
           <div className="rinshan-pick-panel">
             <PickTimer deadline={props.promptDeadline} />
             <div className="rinshan-pick-title">
-              🌸 절벽 위에 피어난 꽃 — 영상패 선택
+              🌸 절벽 위에 피어난 꽃: 영상패 선택
             </div>
             <div className="rinshan-pick-sub">
-              깡을 선언했습니다. 남은 영상패 중에서 원하는 패를 골라 가져오세요 (도라 표시패는 보이지 않습니다).
+              깡을 선언했습니다. 남은 영상패 중에서 원하는 패를 골라 가져오세요. 도라 표시패는 보이지 않습니다.
             </div>
             {/* 고를 수 있는 것은 **영상패뿐**이라 그것만 늘어놓는다 */}
             <div className="rinshan-pick-tiles">
@@ -21582,7 +21584,7 @@ function OwnArea(props: {
                   const tileId = view.zones["deadWall"]?.tileIds[idx];
                   const tile = tileId !== undefined ? view.tiles[tileId] : undefined;
                   if (opt === undefined || tile === undefined) return null;
-                  const label = idx === 0 ? "다음 영상패" : `영상패 ${idx + 1}번째`;
+                  const label = idx === 0 ? "다음 영상패" : `${idx + 1}번째 영상패`;
                   return (
                     <button
                       key={idx}
@@ -21602,7 +21604,7 @@ function OwnArea(props: {
               className="rinshan-pick-skip"
               onClick={() => setRinshanDismissed(true)}
             >
-              닫기 (가져오지 않고 진행)
+              가져오지 않고 진행
             </button>
           </div>
         </div>,
@@ -21635,8 +21637,8 @@ const WAIT_TILE_CAP = 9;
  */
 const FURITEN_REASON_TEXT: Record<FuritenReason, string> = {
   discard: "내가 이미 버린 패가 오름패에 있습니다",
-  temporary: "남이 낸 오름패를 넘겨 일시 후리텐입니다 (다음 내 쯔모까지)",
-  riichi: "리치 뒤 오름패를 넘겨 이 국 내내 후리텐입니다",
+  temporary: "다른 사람이 버린 오름패를 론하지 않아 다음 내 쯔모까지 일시 후리텐입니다",
+  riichi: "리치 후 오름패를 론하지 않아 이 국이 끝날 때까지 후리텐입니다",
 };
 
 /**
@@ -21723,9 +21725,9 @@ function hotWaitsOf(
  * 기다린다」까지밖에 못 읽는다.
  */
 function hotWaitTitle(hits: readonly HotWait[]): string {
-  return `쏘이는 패 — ${hits
+  return `쏘이는 패: ${hits
     .map((h) => `${h.wind} ${h.name} (남은 ${h.remaining}장)`)
-    .join(" · ")}`;
+    .join(", ")}`;
 }
 
 /** 대기이긴 한데 **그 패로는 점수가 안 움직이는** 좌석 — 판 위에서 뺀 것들. */
@@ -21773,11 +21775,11 @@ function readHotWaits(
      */
     const seatWhy =
       s.furiten === true
-        ? "후리텐 — 론이 막혀 있습니다 (쯔모만 가능)"
+        ? "후리텐이라 론은 안 되고 쯔모만 가능합니다"
         : s.yakuless === true
-          ? "형식텐파이 — 어떤 오름패로도 역이 없습니다"
+          ? "형식텐파이라 어떤 오름패로도 역이 없습니다"
           : s.belowMinHan === true
-            ? "격 미달 — 역은 있지만 최소 판수에 못 미쳐 화료가 거부됩니다"
+            ? "격 미달: 역은 있지만 최소 판수에 못 미쳐 화료할 수 없습니다"
             : null;
     if (seatWhy !== null) {
       cold.push({ seat: s.id, wind, name, why: seatWhy, kinds: waits.map((w) => w.kind) });
@@ -21800,7 +21802,7 @@ function readHotWaits(
         seat: s.id,
         wind,
         name,
-        why: "이 패로는 역이 없습니다 — 론이 성립하지 않습니다",
+        why: "이 패로는 역이 없어 론할 수 없습니다",
         kinds: noYaku,
       });
     }
@@ -21944,7 +21946,7 @@ function SpectateDock(props: {
           type="button"
           className="spectate-dock-fold"
           onClick={() => onPrefs({ ...prefs, dockOpen: false })}
-          title="도크를 접습니다 — 가장자리 손잡이를 누르면 다시 펼쳐집니다"
+          title="도크를 접습니다. 가장자리의 손잡이를 누르면 다시 펼칩니다"
           aria-expanded="true"
         >
           ▶
@@ -22084,7 +22086,7 @@ function DockSettings(props: {
                 if (r.code !== props.spectateCode) props.onSwitchTable?.(r.code);
               }}
               title={`${r.players.map((p) => p.nickname).join(" · ")}${
-                r.roundLabel !== undefined ? ` — ${r.roundLabel}` : ""
+                r.roundLabel !== undefined ? ` · ${r.roundLabel}` : ""
               }${(r.riichiCount ?? 0) > 0 ? ` · 리치 ${r.riichiCount}` : ""}${
                 r.paused === true ? " · 정지 중" : ""
               }`}
@@ -22144,7 +22146,7 @@ function DockSettings(props: {
           (docs/36 D3). 왜 비었는지 여기서 말해 준다. */}
       {props.rewindAt !== null ? (
         <p className="dock-note dock-note-warn">
-          되감는 중입니다 — 분석값(오름패·타점·위험패)은 «지금»의 것이라 붙이지 않습니다.
+          되감는 중입니다. 오름패·타점·위험패 분석값은 현재 시점 기준이라 되감기 화면에는 표시하지 않습니다.
         </p>
       ) : null}
       {/* 오버레이 모드 (docs/36 D2) — OBS에 얹을 때 배경과 곁가지를 걷는다 */}
@@ -22164,8 +22166,8 @@ function DockSettings(props: {
                 o.key === "off"
                   ? "평소 화면"
                   : o.key === "clear"
-                    ? "배경을 비운다 — OBS 브라우저 소스의 투명 배경용. 이 도크도 함께 사라진다"
-                    : "배경을 크로마키 초록으로 채운다. 이 도크도 함께 사라진다"
+                    ? "배경을 투명하게 합니다. OBS 브라우저 소스용이며 이 도크도 함께 숨겨집니다"
+                    : "배경을 크로마키 초록으로 채웁니다. 이 도크도 함께 숨겨집니다"
               }
             >
               {o.label}
@@ -22183,8 +22185,8 @@ function DockSettings(props: {
               onClick={() => props.onSpectateDelay?.(sec)}
               title={
                 sec === 0
-                  ? "지연 없음 — 내부 감시용. 공개 중계에는 쓰지 마세요"
-                  : `${sec}초 늦춰 보냅니다 — 관전 화면을 보고 대국자에게 알려 주는 길을 막습니다`
+                  ? "지연 없음. 내부 확인용이며 공개 중계에는 사용하지 않는 것이 좋습니다"
+                  : `${sec}초 늦게 보냅니다. 관전 화면을 보고 대국자에게 알려 주는 것을 막기 위한 설정입니다`
               }
             >
               {sec === 0 ? "없음" : `${sec}초`}
@@ -22208,8 +22210,8 @@ function DockSettings(props: {
             onClick={() => props.onTogglePause?.(!props.spectatePaused)}
             title={
               props.spectatePaused
-                ? "판을 다시 돌립니다 — 멈춘 자리에서 이어집니다"
-                : "판을 세웁니다 — 좌석의 제한 시간도, 봇의 차례도 함께 멈춥니다"
+                ? "게임을 재개합니다. 멈춘 시점부터 이어집니다"
+                : "게임을 일시정지합니다. 각 좌석의 제한 시간과 봇의 차례도 함께 멈춥니다"
             }
           >
             {props.spectatePaused ? "▶ 재개" : "⏸ 일시정지"}
@@ -22251,7 +22253,7 @@ function DockSettings(props: {
  * 되감는 동안 구획이 내놓는 말. **«없다»가 아니라 «안 붙인다»** 여야 한다 —
  * 앞엣말은 사실 주장이고, 뒤엣말은 화면의 규칙이다(docs/36 D3).
  */
-const REWIND_NOTE = "되감는 중입니다 — 이 값은 «지금»의 것이라 지나간 화면 옆에 세우지 않습니다.";
+const REWIND_NOTE = "되감는 중입니다. 이 값은 현재 시점 기준이라 되감기 화면에는 표시하지 않습니다.";
 
 /**
  * 한 화료값을 한 줄로 — 「3판 40부 7700점」 + 성립한 역.
@@ -22282,7 +22284,7 @@ function winValueText(v: SpectateWinValue): string {
    * (`sysSettleWin`). 「0판 30부 500점」만 적으면 뜻 없는 숫자로 읽히므로 사실을
    * 앞에 붙인다 — 결과 화면의 `RoundSettled.yakuless` 와 같은 말이다.
    */
-  const head = v.noYaku === true ? "역 없이 성립 " : "";
+  const head = v.noYaku === true ? "역 없음 · " : "";
   return `${head}${v.han}판 ${v.fu}부${limit === null ? "" : ` ${limit}`} ${v.points.toLocaleString()}점`;
 }
 
@@ -22299,7 +22301,7 @@ function winValueCaveats(v: SpectateWinValue): { tag: string; tip: string }[] {
     out.push({
       tag: "뒷도라 제외",
       // `title` 속성은 평문이다 — 마크다운 별표를 쓰면 화면에 별표가 그대로 뜬다.
-      tip: "뒷도라가 아직 열리지 않아 이 값은 하한입니다 — 실제 타점은 이보다 높을 수 있습니다",
+      tip: "뒷도라가 아직 공개되지 않아 이 값은 최소값입니다. 실제 타점은 이보다 높을 수 있습니다",
     });
   }
   if (v.augAdjusted === true) {
@@ -22314,7 +22316,7 @@ function winValueCaveats(v: SpectateWinValue): { tag: string; tip: string }[] {
      */
     out.push({
       tag: "증강 보정 미반영",
-      tip: "정산에서 점수를 고치는 증강이 있는데 관전 시점에는 미리 태울 수 없습니다 — 실제 수령액이 이 값과 다를 수 있습니다",
+      tip: "정산 때 점수를 바꾸는 증강이 있어 관전 화면에서는 미리 계산할 수 없습니다. 실제 점수는 이 값과 다를 수 있습니다",
     });
   }
   return out;
@@ -22336,16 +22338,16 @@ function winValueTip(v: SpectateWinValue, tsumoOnly: boolean): string {
    * 미반영 보정을 안고서 확정이라 단언하면, 갈라 놓은 뜻이 그 자리에서 무너진다.
    */
   if (caveats.length === 0) {
-    parts.push("판이 실제로 쓰는 채점기가 낸 확정값입니다 (추정이 아닙니다)");
+    parts.push("실제 정산과 같은 계산으로 구한 확정값입니다. 추정값이 아닙니다");
   } else {
     for (const c of caveats) parts.push(c.tip);
   }
-  if (v.noYaku === true) parts.push("실역 0개로 성립한 화료입니다 (무형화료)");
+  if (v.noYaku === true) parts.push("역 없이 성립한 화료입니다 (무형화료)");
   // 증강 보너스 판은 `han` 에 **이미 포함**돼 있다 — 더하는 값이 아니라 출처다.
   if ((v.augHan ?? 0) > 0) {
-    parts.push(`판수 ${v.han}판 중 ${v.augHan}판은 증강이 정산에서 얹는 몫입니다 (이미 포함)`);
+    parts.push(`${v.han}판 중 ${v.augHan}판은 증강이 정산 때 더하는 판수이며, 이미 포함된 값입니다`);
   }
-  if (tsumoOnly) parts.push("후리텐이라 론이 막혀 있어 쯔모 값입니다");
+  if (tsumoOnly) parts.push("후리텐이어서 론은 할 수 없으므로 쯔모 기준 값입니다");
   return parts.join(" · ");
 }
 
@@ -22438,7 +22440,7 @@ function DockSeats({
               {ins?.belowMinHan === true ? (
                 <span
                   className="bcast-chip bcast-below"
-                  title="역은 있는데 이 판의 최소 판수(격)에 못 미쳐 화료가 거부됩니다 — 손이 더 비싸지면 열립니다"
+                  title="역은 있지만 최소 판수(격)에 못 미쳐 화료할 수 없습니다. 판수가 올라가면 화료할 수 있습니다"
                 >
                   격 미달
                 </span>
@@ -22517,7 +22519,7 @@ function DockSeats({
                 <span className="bcast-label-sm">
                   배패
                   {ins.handGradeRegraded === true ? (
-                    <span className="bcast-regraded" title="손패가 통째로 바뀌어 배패 점수를 다시 쟀습니다 (교환 증강)">
+                    <span className="bcast-regraded" title="교환 증강으로 손패가 바뀌어 배패 점수를 다시 계산했습니다">
                       ↺
                     </span>
                   ) : null}
@@ -22534,8 +22536,8 @@ function DockSeats({
                   className="bcast-grade-num num"
                   title={
                     ins.handGradeRegraded === true
-                      ? "배패 점수 — 100점 만점. 손패가 교환되어 지금 손으로 다시 쟀습니다"
-                      : "배패(첫 13장) 점수 — 100점 만점. 국 내내 변하지 않습니다"
+                      ? "배패 점수(100점 만점)입니다. 손패가 교환되어 현재 손패로 다시 계산했습니다"
+                      : "처음 받은 13장의 배패 점수(100점 만점)입니다. 국이 끝날 때까지 변하지 않습니다"
                   }
                 >
                   {Math.round(ins.handGrade)}
@@ -22548,7 +22550,7 @@ function DockSeats({
       })}
       {insight === undefined ? (
         <p className={`dock-note${rewinding ? " dock-note-warn" : ""}`}>
-          {rewinding ? "되감는 중입니다 — 분석값은 «지금»의 것이라 붙이지 않습니다." : "분석값을 기다리는 중입니다."}
+          {rewinding ? "되감는 중입니다. 분석값은 현재 시점 기준이라 되감기 화면에는 표시하지 않습니다." : "분석값을 기다리는 중입니다."}
         </p>
       ) : null}
     </div>
@@ -22602,7 +22604,7 @@ function SeatWaits({ waits }: { waits: readonly SeatWait[] }): JSX.Element | nul
               </span>
               <span className="dock-wait-vals">
                 {w.ron === null && w.tsumo === null ? (
-                  <span className="dock-wait-noyaku">역없음 — 이 패로는 못 납니다</span>
+                  <span className="dock-wait-noyaku">역없음. 이 패로는 화료할 수 없습니다</span>
                 ) : same && w.ron !== null ? (
                   <span className="dock-wait-val" title={winValueTip(w.ron, false)}>
                     {winValueText(w.ron)}
@@ -22641,7 +22643,7 @@ function SeatWaits({ waits }: { waits: readonly SeatWait[] }): JSX.Element | nul
  * 두 층위를 **이 순서로** 싣는다.
  *  1. **쏘이는 패 (사실)** — 판의 채점기가 직접 낸 값(`readHotWaits`). 판 위 붉은
  *     표시와 **같은 함수**를 쓴다. 못 먹는 대기(후리텐·형식텐파이·격 미달·역없음)는
- *     여기서 빠지고, 대신 「대기는 있지만 못 먹는 손」으로 **이유와 함께** 적힌다 —
+ *     여기서 빠지고, 대신 「대기는 있지만 화료할 수 없는 손」으로 **이유와 함께** 적힌다 —
  *     판 위가 왜 조용한지를 아는 것이 중계에서는 그 자체로 정보다.
  *  2. **위험도 (추정)** — 봇의 위협 읽기. 판 위의 색칠(`.spec-danger-md`/`-hi`)과
  *     같은 값을 쓴다. 여기서 따로 세면 두 표시가 언젠가 갈라지고, 그때 어느 쪽이
@@ -22678,12 +22680,12 @@ function DockDanger({
     read === null ? null : (
       <div className="dock-hot">
         <p className="dock-note">
-          <strong className="dock-hot-title">쏘이는 패</strong> — 지금 버리면 실제로 론이 납니다
+          <strong className="dock-hot-title">쏘이는 패</strong> 지금 버리면 실제로 론을 맞는 패입니다
         </p>
         {hotRows.length === 0 ? (
           <p className="dock-note dock-note-quiet">
             지금 버려서 쏘이는 패는 없습니다.
-            {read.cold.length > 0 ? " (아래 «대기는 있지만 못 먹는 손» 참고)" : ""}
+            {read.cold.length > 0 ? " 아래의 '대기는 있지만 화료할 수 없는 손'을 참고하세요." : ""}
           </p>
         ) : (
           <div className="dock-hot-row">
@@ -22704,7 +22706,7 @@ function DockDanger({
         )}
         {read.cold.length > 0 ? (
           <div className="dock-cold">
-            <p className="dock-note dock-note-quiet">대기는 있지만 못 먹는 손</p>
+            <p className="dock-note dock-note-quiet">대기는 있지만 화료할 수 없는 손</p>
             {read.cold.map((c) => (
               <p key={`${c.seat}:${c.why}`} className="dock-cold-row">
                 <span className="dock-cold-who">
@@ -22751,8 +22753,8 @@ function DockDanger({
     <div className="dock-danger">
       {factNode}
       <p className="dock-note">
-        <strong className="dock-est-title">위험도(추정)</strong> — {p === undefined ? seat : playerName(view, p)}의
-        손패를 봇의 눈으로 잰 값입니다
+        <strong className="dock-est-title">위험도(추정)</strong> {p === undefined ? seat : playerName(view, p)}의
+        손패를 봇의 기준으로 계산한 값입니다
       </p>
       {/*
         * **왜 위 「쏘이는 패」와 다른가** — 가장 자주 나오는 질문이라 화면에 적어 둔다
@@ -22765,9 +22767,9 @@ function DockDanger({
         * 어긋난다 — 어긋난다는 사실 자체가 「저 사람이 지금 읽을 수 없는 패」라는 정보다.
         */}
       <p className="dock-note dock-note-quiet dock-est-why">
-        상대 손패를 보지 않고 <b>버림패·스지·남은 장수·도라 근처</b>만으로 잰 값이라, 위
-        「쏘이는 패」와 자주 어긋납니다 — 대국자가 그 자리에서 알 수 있는 것만으로 재기
-        때문입니다.
+        상대 손패를 보지 않고 <b>버림패·스지·남은 장수·도라 근처</b>만으로 계산한
+        값입니다. 대국자가 실제로 알 수 있는 정보만 쓰기 때문에 위의 '쏘이는 패'와
+        자주 다릅니다.
       </p>
       {/*
         * ⚠ **수치가 빠지면 이 구획은 그냥 «패 나열»로 읽힌다** (2026-09-03 사용자 보고:
@@ -22785,7 +22787,7 @@ function DockDanger({
         */}
       <p className="dock-note dock-note-quiet dock-danger-legend">
         <span className="dock-danger-legend-bar" aria-hidden />
-        왼쪽이 위험한 쪽 — 숫자는 봇이 «이 패를 버리면 쏘일 확률»로 잰 값입니다
+        왼쪽일수록 위험합니다. 숫자는 봇이 계산한, 이 패를 버렸을 때 론을 맞을 확률입니다
       </p>
       <div className="dock-danger-row">
         {sorted.map((id) => {
@@ -22796,7 +22798,7 @@ function DockDanger({
             <span
               key={id}
               className={`dock-danger-tile${cls}`}
-              title={`위험도 ${pct}%${lv >= 0.66 ? " — 높음" : lv >= 0.33 ? " — 중간" : " — 낮음"}`}
+              title={`위험도 ${pct}% (${lv >= 0.66 ? "높음" : lv >= 0.33 ? "중간" : "낮음"})`}
             >
               <TileImg tile={view.tiles[id]} size="mini" />
               {/* 값을 그림과 숫자 둘 다로 — 막대는 훑어보는 눈에, 숫자는 세는 눈에 */}
@@ -22863,7 +22865,7 @@ function DockNextDraw({
   return (
     <div className="dock-next">
       <p className="dock-note dock-note-warn">
-        패산 앞장입니다 — 판의 결말을 먼저 보게 됩니다.
+        다음에 뽑힐 패산의 앞쪽 패입니다. 이 국의 결과를 미리 알게 됩니다.
       </p>
       {ids.length === 0 ? (
         <p className="dock-note">남은 패산이 없습니다.</p>
@@ -23035,7 +23037,7 @@ function BroadcastTools({
               className="bcast-secs"
               value={secs}
               onChange={(e) => setSecs(Number(e.target.value))}
-              title="배너가 저절로 사라지기까지 (재개와는 무관합니다)"
+              title="공지 배너가 자동으로 사라지기까지의 시간입니다. 게임 재개와는 관계없습니다"
             >
               <option value={0}>계속</option>
               <option value={30}>30초</option>
@@ -23065,17 +23067,17 @@ function BroadcastTools({
               onClick={() => {
                 void (async () => {
                   const ok = await askConfirm({
-                    title: "이 국을 물릴까요?",
+                    title: "이 국을 무효로 할까요?",
                     body:
-                      "지금 국이 도중유국으로 처리되고 다음 국으로 넘어갑니다.\n" +
-                      "점수는 오가지 않고 본장만 오릅니다. 판 자체는 계속됩니다.",
+                      "지금 국을 도중유국으로 처리하고 다음 국으로 넘어갑니다.\n" +
+                      "점수 이동은 없고 본장만 올라갑니다. 게임은 계속됩니다.",
                     confirmLabel: "이 국을 물린다",
                     danger: true,
                   });
                   if (ok) onVoidRound();
                 })();
               }}
-              title="이 국만 도중유국으로 처리합니다 — 판은 계속됩니다"
+              title="이 국만 도중유국으로 처리합니다. 게임은 계속됩니다"
             >
               이 국을 물린다
             </button>
@@ -23090,8 +23092,8 @@ function BroadcastTools({
                 onClick={() => onExtendTime(p.id, 30)}
                 title={
                   p.isBot
-                    ? "봇에게는 줄 시계가 없습니다"
-                    : `${playerName(view, p)}에게 30초를 더 줍니다 (지금 기다리는 중일 때만)`
+                    ? "봇에게는 시간 연장을 적용할 수 없습니다"
+                    : `${playerName(view, p)}의 제한 시간을 30초 연장합니다. 지금 차례를 기다리는 중일 때만 적용됩니다`
                 }
               >
                 {playerName(view, p)} +30초
@@ -23129,8 +23131,8 @@ function ShantenBadge({
       className={`shanten-badge${shanten === 0 ? " shanten-badge-tenpai" : ""}`}
       title={
         shanten === 0
-          ? "텐파이 — 한 장만 더 맞으면 화료형입니다"
-          : `${shanten}샹텐 — 텐파이까지 ${shanten}장을 더 갈아야 합니다`
+          ? "텐파이입니다. 한 장만 더 들어오면 화료할 수 있습니다"
+          : `${shanten}샹텐입니다. 텐파이까지 ${shanten}장을 더 바꿔야 합니다`
       }
     >
       {shanten === 0 ? "텐파이" : `${shanten}샹텐`}
@@ -23182,7 +23184,7 @@ function WaitsBadge({
   const allDead = waits.length > 0 && waits.every(dead);
   const furitenOn = furiten !== undefined && furiten.length > 0;
   const furitenTip = furitenOn
-    ? `${furiten.map((r) => FURITEN_REASON_TEXT[r]).join(" · ")} — 론은 안 되고 쯔모로만 화료할 수 있습니다`
+    ? `${furiten.map((r) => FURITEN_REASON_TEXT[r]).join(" · ")}. 론은 할 수 없고 쯔모로만 화료할 수 있습니다`
     : undefined;
   const shown = waits.slice(0, WAIT_TILE_CAP);
   const hidden = waits.length - shown.length;
@@ -23194,9 +23196,9 @@ function WaitsBadge({
   const tipOf = (k: TileKind, left: number | null): string | undefined => {
     const parts: string[] = [];
     if (left !== null) {
-      parts.push(left === 0 ? "남은 0장 — 이 패로는 날 수 없습니다" : `남은 ${left}장 (보이지 않는 장수)`);
+      parts.push(left === 0 ? "남은 0장. 이 패로는 화료할 수 없습니다" : `아직 보이지 않은 ${left}장이 남아 있습니다`);
     }
-    if (furitenOn) parts.push("후리텐 — 론 불가, 쯔모만 가능합니다");
+    if (furitenOn) parts.push("후리텐입니다. 론은 할 수 없고 쯔모만 가능합니다");
     if (dead(k)) parts.push("역이 없어 론할 수 없습니다");
     return parts.length === 0 ? undefined : parts.join(" · ");
   };
@@ -23227,7 +23229,7 @@ function WaitsBadge({
         {remaining !== null ? (
           <InfoNote
             className="waits-badge-hint"
-            note="패 위 숫자 = 기본 4장에서 버림패·후로·도라 표시패·내 손패에 나온 만큼을 뺀 수 (증강 생성패는 세지 않음)"
+            note="패 위의 숫자는 기본 4장에서 버림패·후로·도라 표시패·내 손패에 보이는 장수를 뺀 값입니다. 증강으로 생성된 패는 세지 않습니다"
           >
             남은 장수
           </InfoNote>
@@ -23296,9 +23298,9 @@ function WaitTip({
   const tipOf = (k: TileKind, left: number | null): string | undefined => {
     const parts: string[] = [];
     if (left !== null) {
-      parts.push(left === 0 ? "남은 0장 — 이 패로는 날 수 없습니다" : `남은 ${left}장 (보이지 않는 장수)`);
+      parts.push(left === 0 ? "남은 0장. 이 패로는 화료할 수 없습니다" : `아직 보이지 않은 ${left}장이 남아 있습니다`);
     }
-    if (furitenOn) parts.push("후리텐 — 론 불가, 쯔모만 가능합니다");
+    if (furitenOn) parts.push("후리텐입니다. 론은 할 수 없고 쯔모만 가능합니다");
     if (dead(k)) parts.push("역이 없어 론할 수 없습니다");
     return parts.length === 0 ? undefined : parts.join(" · ");
   };
@@ -23315,7 +23317,7 @@ function WaitTip({
         {furitenOn ? (
           <span
             className="waits-badge-furiten-tag"
-            title="이 패를 버리면 후리텐입니다 — 론은 안 되고 쯔모로만 화료할 수 있습니다"
+            title="이 패를 버리면 후리텐이 됩니다. 론은 할 수 없고 쯔모로만 화료할 수 있습니다"
           >
             후리텐
           </span>
@@ -23455,7 +23457,7 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     if (!key.startsWith("avenger:") || value !== me.id) continue;
     const hunter = key.slice("avenger:".length);
     if (hunter === me.id) continue;
-    textBadge(`avenged_by_${hunter}`, "표적", `${playerNameById(view, hunter)}에게 안전패 없음`);
+    textBadge(`avenged_by_${hunter}`, "표적", `${playerNameById(view, hunter)}에게는 안전패가 없습니다`);
   }
   // 덤터기 지목 대상 (내 것)
   const scape = av[`scapegoat:${me.id}`];
@@ -23489,13 +23491,13 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
   for (const [key, value] of avEntries) {
     if (key.startsWith("riichi_seal:") && typeof value === "string") {
       const who = key.slice("riichi_seal:".length);
-      if (who !== me.id) textBadge(key, "🔒 리치 봉인", `${playerNameById(view, who)}의 선제 리치 — 이번 국 리치 불가`);
-      else textBadge(key, "🔒 리치 봉인", "내 선제 리치로 나머지 셋의 리치를 잠갔다");
+      if (who !== me.id) textBadge(key, "🔒 리치 봉인", `${playerNameById(view, who)}의 선제 리치로 이번 국에는 리치할 수 없습니다`);
+      else textBadge(key, "🔒 리치 봉인", "내 선제 리치로 나머지 세 명은 이번 국 리치할 수 없습니다");
     }
     if (key.startsWith("riichi_upgrade:") && typeof value === "string") {
       const who = key.slice("riichi_upgrade:".length);
-      if (value === me.id) textBadge(key, "🔒 리치 봉인", `${playerNameById(view, who)}의 이중 선언 — 이번 국 리치 불가`);
-      else if (who === me.id) textBadge(key, "🔒 이중 선언", `${playerNameById(view, value)}의 리치를 잠갔다`);
+      if (value === me.id) textBadge(key, "🔒 리치 봉인", `${playerNameById(view, who)}의 이중 선언으로 이번 국에는 리치할 수 없습니다`);
+      else if (who === me.id) textBadge(key, "🔒 이중 선언", `${playerNameById(view, value)}의 리치를 이번 국 봉인했습니다`);
     }
   }
   /*
@@ -23532,11 +23534,11 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     if (kinds.length === 0) continue;
     tilesBadge(
       `fs_got_${who}`,
-      who === me.id ? "🔮 가져온 패" : `🔮 ${playerNameById(view, who)} 가져옴`,
+      who === me.id ? "🔮 가져온 패" : `🔮 ${playerNameById(view, who)}이(가) 가져온 패`,
       kinds,
     );
   }
-  // 안개 덮인 바닥 — 선언되면 누가 걸었는지 상시로 보여 준다(내 바닥도 가려지므로)
+  // 안개 덮인 바닥 선언되면 누가 걸었는지 상시로 보여 준다(내 바닥도 가려지므로)
   for (const [key, value] of avEntries) {
     if (!key.startsWith("hidden_river:") || key.startsWith("hidden_river:last:")) continue;
     if (typeof value !== "string") continue;
@@ -23547,7 +23549,7 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     textBadge(
       key,
       "🌫 안개 덮인 바닥",
-      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 최근 6장만 보인다`,
+      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언으로 버림패는 각자 최근 6장만 보입니다`,
     );
   }
   // 박무 — 안개 덮인 바닥과 같은 계열인데 이쪽만 상시 표식이 없었다. 선언 컷인은 뜨지만
@@ -23561,7 +23563,7 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     textBadge(
       key,
       "🌁 박무",
-      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언 — 모두의 바닥이 가려진다 · ${value.replace(/^안개\s*\(|\)$/g, "")}`,
+      `${who === me.id ? "내" : `${playerNameById(view, who)}의`} 선언으로 모두의 버림패가 가려집니다 (${value.replace(/^안개\s*\(|\)$/g, "")})`,
     );
   }
   // 가려진 도라 — 뷰 채널이 없는 순수 Modifier라, 비보유자 화면에서는 도라 표시패가
@@ -23579,7 +23581,7 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
       textBadge(
         "dora_conceal",
         "🌑 가려진 도라",
-        `${who} — 이번 국 도라는 ${others.length > 1 ? "그들만" : "그 사람만"} 안다`,
+        `이번 국 도라는 ${who}만 볼 수 있습니다`,
       );
     }
   }
@@ -23597,7 +23599,7 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
       textBadge(
         `rank_gate_on_me_${mark.by ?? ""}`,
         "격(格) 지목당함",
-        `${mark.minHan ?? 5}판 미만 화료 불가 — ${playerNameById(view, mark.by ?? "")}`,
+        `${playerNameById(view, mark.by ?? "")}의 지목으로 ${mark.minHan ?? 5}판 미만은 화료할 수 없습니다`,
       );
     } else if (mark.by === me.id && typeof mark.target === "string") {
       textBadge("rank_gate_mine", "격(格) 지목", playerNameById(view, mark.target));
@@ -23615,13 +23617,13 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
       textBadge(
         `disarm_on_me_${by}`,
         "🔒 무장해제당함",
-        `${augName} — ${playerNameById(view, by)}가 이번 국 잠갔다`,
+        `${playerNameById(view, by)}의 무장해제로 이번 국에는 ${augName} 사용이 불가능합니다`,
       );
     } else if (by === me.id) {
       textBadge(
         "disarm_mine",
         "🔒 무장해제",
-        `${playerNameById(view, m.target)}의 ${augName} 잠금`,
+        `이번 국에는 ${playerNameById(view, m.target)}의 ${augName} 사용이 불가능합니다`,
       );
     }
   }
@@ -23680,7 +23682,7 @@ function ActiveInfoRow({ items }: { items: ActiveInfoItem[] }): JSX.Element {
             type="button"
             className="ai-badge ai-badge-btn"
             onClick={() => setOpen(true)}
-            aria-label={`${it.label} ${it.text ?? ""} — 눌러서 전체 보기`}
+            aria-label={`${it.label} ${it.text ?? ""}. 누르면 전체를 볼 수 있습니다`}
           >
             <span className="ai-badge-tag">{it.label}</span>
             {body(it)}
@@ -23971,14 +23973,14 @@ function ActiveAugmentControl(props: {
   const blockedNote = (id: string): string => {
     const name = props.catalog[id]?.name ?? id;
     const rounds = cooldownRoundsLeft(view, me.id, id);
-    if (rounds > 0) return `${name} — 쿨다운 ${rounds}국`;
+    if (rounds > 0) return `${name}: 쿨다운 ${rounds}국 남음`;
     const turns = cooldownTurnsLeft(view, me.id, id);
-    if (turns > 0) return `${name} — 쿨다운 ${turns}순`;
+    if (turns > 0) return `${name}: 쿨다운 ${turns}순 남음`;
     const uses = view.augmentView[`uses:${id}`] as { left?: unknown } | undefined;
     if (uses !== undefined && typeof uses.left === "number" && uses.left <= 0) {
-      return `${name} — 남은 횟수 없음`;
+      return `${name}: 남은 횟수 없음`;
     }
-    if (disarmedAugmentsOf(view, me.id).has(id)) return `${name} — 무장해제로 잠김`;
+    if (disarmedAugmentsOf(view, me.id).has(id)) return `${name}: 무장해제로 잠김`;
     return name;
   };
 
@@ -24083,7 +24085,7 @@ function ActiveAugmentControl(props: {
       haptics.reject();
       props.onToast?.(
         activeIds.length > 0
-          ? `지금은 사용할 수 없습니다 — ${activeIds.map(blockedNote).join(" · ")}`
+          ? `지금은 사용할 수 없습니다. ${activeIds.map(blockedNote).join(", ")}`
           : "지금은 사용할 수 없습니다",
       );
       return;
@@ -24285,10 +24287,10 @@ function ActiveAugmentControl(props: {
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">🎨 {augNameFor(monoType)} — 통일할 무늬 선택</div>
+            <div className="rinshan-pick-title">🎨 {augNameFor(monoType)}: 통일할 무늬 선택</div>
             <div className="rinshan-pick-sub">
-              고른 무늬로 손패의 모든 수패가 물듭니다. 자패는 그대로입니다 —
-              아래는 실제로 바뀔 손패의 모습입니다.
+              고른 무늬로 손패의 수패가 모두 바뀝니다. 자패는 바뀌지 않습니다.
+              아래는 바뀐 뒤의 손패 모습입니다.
             </div>
             <div className="aug-pick-rows">
               {monoOptions.map((o, i) => {
@@ -24315,7 +24317,7 @@ function ActiveAugmentControl(props: {
               })}
             </div>
             <button className="rinshan-pick-skip" onClick={closeModal}>
-              닫기 (발동하지 않고 진행)
+              발동하지 않고 닫기
             </button>
           </div>
         </div>,
@@ -24328,8 +24330,8 @@ function ActiveAugmentControl(props: {
             <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">🔮 {augNameFor("ura_swap")}</div>
             <div className="rinshan-pick-sub">
-              고른 손패가 뒷도라 표시패 자리로 들어가고, 지금 표시패는 내 손으로 옵니다 —
-              심은 패의 다음 패가 뒷도라가 됩니다(5통을 심으면 6통).
+              고른 손패가 뒷도라 표시패 자리로 들어가고, 지금 표시패는 내 손패로 옵니다.
+              넣은 패의 다음 패가 뒷도라가 됩니다. 예를 들어 5통을 넣으면 6통이 뒷도라입니다.
             </div>
             <div className="aug-pick-rows">
               <div className="aug-pick-row aug-pick-row-static">
@@ -24366,9 +24368,9 @@ function ActiveAugmentControl(props: {
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">🔴 {augNameFor("red_touch")} — 물들일 숫자 선택</div>
+            <div className="rinshan-pick-title">🔴 {augNameFor("red_touch")}: 적도라로 만들 숫자 선택</div>
             <div className="rinshan-pick-sub">
-              고른 숫자의 손패가 <b>전부 적도라</b>가 됩니다. 게임당 한 번뿐입니다.
+              고른 숫자의 손패가 전부 적도라가 됩니다. 게임에서 한 번만 사용할 수 있습니다.
             </div>
             <div className="aug-pick-rows">
               {(byType.get("red_touch") ?? []).map((o, i) => {
@@ -24391,7 +24393,7 @@ function ActiveAugmentControl(props: {
                       closeModal();
                     }}
                   >
-                    <span className="aug-pick-row-label">{rank} → 적도라 {hit.length}장</span>
+                    <span className="aug-pick-row-label">{rank}을 적도라로 ({hit.length}장)</span>
                     <span className="aug-pick-row-tiles">
                       {hit.map((id) => {
                         const k = view.tiles[id]?.kind;
@@ -24405,7 +24407,7 @@ function ActiveAugmentControl(props: {
               })}
             </div>
             <button className="rinshan-pick-skip" onClick={closeModal}>
-              닫기 (발동하지 않고 진행)
+              발동하지 않고 닫기
             </button>
           </div>
         </div>,
@@ -24416,11 +24418,11 @@ function ActiveAugmentControl(props: {
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">🤫 {augNameFor("silent_take")} — 주울 버림패 선택</div>
+            <div className="rinshan-pick-title">🤫 {augNameFor("silent_take")}: 가져올 버림패 선택</div>
             <div className="rinshan-pick-sub">
-              바닥에서 한 장을 골라 가져옵니다 — 지금 쯔모한 패는 패산 맨 밑으로 돌아가고,
-              고른 패가 그 자리를 대신합니다. <b>이어서 한 장을 버려야 하며</b> 그 버림에
-              상대의 론이 붙을 수 있습니다.
+              버림패 중 한 장을 골라 가져옵니다. 지금 쯔모한 패는 패산 맨 밑으로 돌아가고,
+              고른 패가 그 자리를 대신합니다. <b>이어서 한 장을 버려야 하며</b> 그 버림패로
+              상대가 론할 수 있습니다.
             </div>
             <div className="aug-pick-rows">
               {silentByOwner.map(({ player, tiles }) =>
@@ -24448,7 +24450,7 @@ function ActiveAugmentControl(props: {
               )}
             </div>
             <button className="rinshan-pick-skip" onClick={closeModal}>
-              닫기 (줍지 않고 진행)
+              가져오지 않고 닫기
             </button>
           </div>
         </div>,
@@ -24467,14 +24469,14 @@ function ActiveAugmentControl(props: {
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">
-              🀫 {augNameFor("rinshan_arrange")} — 남은 영상패 {rinshanCount}장
+              🀫 {augNameFor("rinshan_arrange")}: 남은 영상패 {rinshanCount}장
             </div>
             <div className="rinshan-pick-sub">
               왼쪽부터 차례로 <b>다음 깡의 보충패</b>가 됩니다. 옮길 패를 끌어다 놓거나,
-              옮길 패와 놓을 자리를 차례로 누르세요. 한 장을 <b>[이 패와 교환]</b> 하면 그
-              패가 내 쯔모패와 맞바뀌고, 내 쯔모패가 맨 앞자리에 들어갑니다.
+              옮길 패와 놓을 자리를 차례로 누르세요. '이 패와 교환'을 누르면 그
+              패가 내 쯔모패와 바뀌고, 내 쯔모패는 맨 앞자리에 들어갑니다.
               <br />
-              이 국에 한 번뿐이며, <b>순서만 바꿔도 상대에게 «영상패를 손댔다»가 공개</b>됩니다.
+              이 국에 한 번만 사용할 수 있으며, <b>순서만 바꿔도 영상패를 조작했다는 사실이 상대에게 공개</b>됩니다.
             </div>
             <div className="foresight-tab-row">
               {rinshanOrder.map((origIdx, pos) => {
@@ -24490,7 +24492,7 @@ function ActiveAugmentControl(props: {
                       type="button"
                       className="rinshan-arr-grab"
                       title="끌거나, 두 자리를 차례로 눌러 순서 변경"
-                      aria-label={`${pos + 1}번째 영상패 — 누르면 집기/놓기`}
+                      aria-label={`${pos + 1}번째 영상패. 누르면 집거나 놓습니다`}
                       draggable
                       onDragStart={() => setRinshanDragFrom(pos)}
                       onDragOver={(e) => e.preventDefault()}
@@ -24535,7 +24537,7 @@ function ActiveAugmentControl(props: {
                       disabled={
                         rinshanArrByKey.get(`${rinshanOrder.join(",")}|${pos}`) === undefined
                       }
-                      title="이 패를 내 쯔모패와 맞바꾼다 (교환은 국에 한 번)"
+                      title="이 패를 내 쯔모패와 바꿉니다. 교환은 국에 한 번입니다"
                       onClick={() => submitRinshan(pos)}
                     >
                       이 패와 교환
@@ -24547,14 +24549,14 @@ function ActiveAugmentControl(props: {
             <div className="foresight-tab-hint">
               {rinshanDragFrom !== null
                 ? "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
-                : "순서를 바꾼 뒤 [이 패와 교환]을 누르거나, 아래에서 순서만 확정하세요."}
+                : "순서를 바꾼 뒤 '이 패와 교환'을 누르거나, 아래에서 순서만 확정하세요."}
             </div>
             <div className="foresight-tab-actions">
               <button className="foresight-tab-confirm" onClick={() => submitRinshan(null)}>
                 선택 안 하기 (순서만 확정)
               </button>
               <button className="rinshan-pick-skip" onClick={closeModal}>
-                닫기 (발동하지 않고 진행)
+                발동하지 않고 닫기
               </button>
             </div>
           </div>
@@ -24567,14 +24569,14 @@ function ActiveAugmentControl(props: {
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">
-              🏯 {augNameFor("dw_swap")} — 남은 교환 {dwRemaining}회
+              🏯 {augNameFor("dw_swap")}: 남은 교환 {dwRemaining}회
             </div>
             <div className="rinshan-pick-sub">
               {dwPairs.length >= dwRemaining
                 ? "고를 수 있는 만큼 다 골랐습니다. 아래 '이대로 교환'을 누르세요."
                 : dwPending === undefined
                   ? "왕패로 보낼 내 손패를 고른 뒤, 가져올 왕패를 고르세요. 남은 횟수만큼 여러 쌍을 이어서 고를 수 있습니다."
-                  : "이제 가져올 왕패를 한 장 고르세요. 고른 자리에는 내 패가 대신 들어갑니다 — 도라 표시패 자리를 집으면 도라가 바뀝니다."}
+                  : "이제 가져올 왕패를 한 장 고르세요. 고른 자리에는 내 패가 대신 들어갑니다. 도라 표시패 자리를 고르면 도라가 바뀝니다."}
             </div>
             <div className="aug-pick-rows">
               <div className="aug-pick-row aug-pick-row-static">
@@ -24588,7 +24590,7 @@ function ActiveAugmentControl(props: {
                         className={`aug-pick-tile${dwPending === id ? " aug-pick-tile-on" : ""}${
                           staged ? " aug-pick-tile-staged" : ""
                         }`}
-                        title={staged ? "교환 예약됨 — 누르면 취소" : undefined}
+                        title={staged ? "교환 예약됨. 누르면 취소합니다" : undefined}
                         onClick={() => dwClickHand(id)}
                       >
                         <TileImg tile={view.tiles[id]} size="mini" />
@@ -24628,7 +24630,7 @@ function ActiveAugmentControl(props: {
                           staged ? " aug-pick-tile-staged" : ""
                         }`}
                         disabled={disabled}
-                        title={staged ? `${slot.label} — 교환 예약됨, 누르면 취소` : slot.label}
+                        title={staged ? `${slot.label}: 교환 예약됨. 누르면 취소합니다` : slot.label}
                         onClick={() => dwClickDead(idx)}
                       >
                         <TileImg tile={view.tiles[tileId]} size="mini" />
@@ -24678,7 +24680,7 @@ function ActiveAugmentControl(props: {
                 }}
               >
                 {dwPending !== undefined
-                  ? "← 손패 다시"
+                  ? "← 손패 다시 고르기"
                   : dwPairs.length > 0
                     ? "← 예약 비우기"
                     : "닫기 (바꾸지 않고 진행)"}
@@ -24727,7 +24729,7 @@ function ActiveAugmentControl(props: {
             ) : null}
           </div>
         ) : (
-          // 1단계 — 지금 쓸 수 있는 증강 목록. 후보가 여럿인 증강은 눌러서 파고든다.
+          // 1단계 — 지금 사용 가능한 증강 목록. 후보가 여럿인 증강은 눌러서 파고든다.
           // 한 줄에 손을 올리면 **그 증강의 pill만** 빛난다 — 메뉴에 뜨는 것은 액션
           // 이름이라(예: 되돌리기 ↔ 미련) 이름만으로는 내 증강과 안 이어졌다.
           <div className="aug-menu" onMouseEnter={hintAll} onMouseLeave={hintNone}>
@@ -24826,7 +24828,7 @@ function ActiveAugmentControl(props: {
                   <div
                     key={pos}
                     className={`foresight-cell${isMine ? " foresight-mine" : ""}`}
-                    title={`${pos + 1}번째 쯔모 — ${seatLabel}`}
+                    title={`${pos + 1}번째 쯔모: ${seatLabel}`}
                   >
                     {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
                     <span className="foresight-cell-label">
@@ -24856,11 +24858,11 @@ function ActiveAugmentControl(props: {
             <div className="rinshan-pick-overlay" data-arm-zone="1">
               <div className="rinshan-pick-panel foresight-tab">
                 <PickTimer deadline={props.promptDeadline ?? null} />
-                <div className="rinshan-pick-title">🔮 예지 — 다음 한 바퀴를 어떻게 놓을까요?</div>
+                <div className="rinshan-pick-title">🔮 예지: 다음 한 바퀴 쯔모 순서 정하기</div>
                 <div className="rinshan-pick-sub">
-                  왼쪽부터 차례로 뽑혀 갑니다. 옮길 패를 끌어다 놓거나, 옮길 패와 놓을 자리를
-                  차례로 누르세요. <b>재배열은 이 국에 한 번뿐</b>입니다 — 그대로 두고 닫아도
-                  열람은 이미 끝났습니다.
+                  왼쪽부터 차례로 뽑힙니다. 옮길 패를 끌어다 놓거나, 옮길 패와 놓을 자리를
+                  차례로 누르세요. <b>재배열은 이 국에 한 번만 할 수 있습니다.</b> 바꾸지 않고
+                  닫아도 발동은 취소되지 않습니다.
                 </div>
                 <div className="foresight-tab-row">
                   {foresightOrder.map((origIdx, pos) => {
@@ -24875,7 +24877,7 @@ function ActiveAugmentControl(props: {
                         className={`foresight-tab-cell${isMine ? " foresight-mine" : ""}${
                           picked ? " foresight-dragging" : ""
                         }`}
-                        title={`${seatLabel}의 다음 쯔모 — 끌거나, 두 자리를 차례로 눌러 순서 변경`}
+                        title={`${seatLabel}의 다음 쯔모. 끌거나 두 자리를 차례로 눌러 순서를 바꿉니다`}
                         /*
                          * 드래그(마우스)와 두 번 누르기(터치·키보드)를 함께 연다.
                          * 모바일 브라우저는 터치에서 dragstart를 아예 내지 않아,
@@ -24910,8 +24912,8 @@ function ActiveAugmentControl(props: {
                   {foresightDragFrom !== null
                     ? "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
                     : foresightMoved
-                      ? "이 순서로 확정하면 패산이 그대로 다시 놓입니다."
-                      : "아직 손대지 않았습니다 — 옮길 패를 먼저 고르세요."}
+                      ? "확정하면 패산이 이 순서로 바뀝니다."
+                      : "아직 바꾼 것이 없습니다. 옮길 패를 먼저 고르세요."}
                 </div>
                 <div className="foresight-tab-actions">
                   <button
@@ -24932,7 +24934,7 @@ function ActiveAugmentControl(props: {
                       setForesightTab(false);
                     }}
                   >
-                    그대로 두기 (닫기)
+                    이 창 유지 (닫기)
                   </button>
                 </div>
               </div>
@@ -25035,7 +25037,7 @@ function ActionBar(props: {
       {props.riichiMode ? (
         <>
           <span className="action-hint">리치할 패를 바닥으로 끌어 놓거나 클릭하세요</span>
-          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)} title="취소 — 단축키 1">
+          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)} title="취소 (단축키 1)">
             취소
           </button>
           {/* 그냥 리치를 걸려던 손을 여기서 한 번 더 붙잡는다 — 증강 리치가 있다는 걸
@@ -25045,7 +25047,7 @@ function ActionBar(props: {
               key={t}
               className="act act-riichi-aug"
               onClick={() => armRiichiAug(t)}
-              title={`${augActionName(props.catalog, t)}(으)로 바꿔 걸기 — 단축키 ${i + 2}`}
+              title={`${augActionName(props.catalog, t)}(으)로 바꿔서 리치 (단축키 ${i + 2})`}
             >
               ⚡ {augActionName(props.catalog, t)}
             </button>
@@ -25060,7 +25062,7 @@ function ActionBar(props: {
                 sel.arm(null); // 증강 리치로 무장 중이었다면 풀고 평범한 리치로
                 props.onRiichiMode(true);
               }}
-              title="리치 — 단축키 1"
+              title="리치 (단축키 1)"
             >
               리치
             </button>
@@ -25070,7 +25072,7 @@ function ActionBar(props: {
               key={t}
               className={`act act-riichi-aug${armedRiichiAug === t ? " act-riichi-aug-on" : ""}`}
               onClick={() => armRiichiAug(t)}
-              title={`${augActionName(props.catalog, t)} — 버릴 패를 바닥으로 끌어 놓거나 클릭 (단축키 ${(hasRiichi ? 1 : 0) + i + 1})`}
+              title={`${augActionName(props.catalog, t)}: 버릴 패를 바닥으로 끌어 놓거나 클릭하세요 (단축키 ${(hasRiichi ? 1 : 0) + i + 1})`}
             >
               ⚡ {augActionName(props.catalog, t)}
             </button>
@@ -25089,7 +25091,7 @@ function ActionBar(props: {
                 aria-disabled="true"
                 title={
                   autoPassing
-                    ? `${lockedReasonText(l)} — 잠시 뒤 자동으로 넘어갑니다`
+                    ? `${lockedReasonText(l)}. 잠시 뒤 자동으로 넘어갑니다.`
                     : lockedReasonText(l)
                 }
               >
@@ -25122,10 +25124,10 @@ function ActionBar(props: {
                 onBlur={() => props.onDoomedHint?.(null)}
                 title={
                   o.type === "win"
-                    ? `${label} — 단축키 ${hotIndex(i)} 또는 R`
+                    ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
                     : o.type === "pass"
-                      ? `${label} — 단축키 ${hotIndex(i)} 또는 P`
-                      : `${label} — 단축키 ${hotIndex(i)}`
+                      ? `${label} (단축키 ${hotIndex(i)} 또는 P)`
+                      : `${label} (단축키 ${hotIndex(i)})`
                 }
               >
                 {label}
@@ -25352,7 +25354,7 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
   // 무장해제처럼 "누구의 어떤 증강"까지 골라야 하는 액션은 둘 다 적는다 —
   // 이름만 적으면 상대의 증강 수만큼 똑같은 버튼이 늘어서 무엇을 잠그는지 알 수 없다.
   if (typeof who === "string" && typeof p.augmentId === "string") {
-    return `${playerNameById(view, who)} — ${augmentDisplayName(p.augmentId)}`;
+    return `${playerNameById(view, who)}의 ${augmentDisplayName(p.augmentId)}`;
   }
   if (typeof who === "string") return playerNameById(view, who);
   // 증강만 고르는 액션(재장전 = 소진된 내 증강 하나 복구). 위 분기는 who까지
@@ -25454,11 +25456,11 @@ function carryOverOf(
     );
   const regret = kindsOf(view.augmentView[`regret:${playerId}`]);
   if (regret.length > 0) {
-    out.push({ label: "미련", note: "다음 국으로 이 손을 그대로 가져간다", kinds: regret });
+    out.push({ label: "미련", note: "다음 국으로 이 손패를 그대로 가져갑니다", kinds: regret });
   }
   const back = kindsOf(view.augmentView[`honor_return:${playerId}`]);
   if (back.length > 0) {
-    out.push({ label: "귀환", note: "다음 국 배패에 이 자패가 되살아난다", kinds: back });
+    out.push({ label: "귀환", note: "다음 국 배패에 이 자패가 다시 들어옵니다", kinds: back });
   }
   return out;
 }
@@ -25636,7 +25638,7 @@ function WinHand({
                     }`}
                     style={{ animationDelay: `${delay * 0.035}s` }}
                     // 조커가 무엇이 됐는지는 그림으로는 알 수 없다 — 패 아래 작게 적는다
-                    title={s.as !== undefined ? `조커 → ${formatTile({ kind: s.as })}` : undefined}
+                    title={s.as !== undefined ? `조커를 ${formatTile({ kind: s.as })}(으)로 사용` : undefined}
                   >
                     <TileImg tile={s.tile} size="result" />
                     {s.as !== undefined ? (
@@ -25847,8 +25849,8 @@ function RoundResultPanel({
                       ? ` (${nameOf(settle.drawSpecial.holder)})`
                       : ""
                   }`
-                : "패산 소진 — 텐파이한 사람만 손을 공개한다"
-              : (ABORT_REASONS[settle.abortReason ?? ""] ?? "국이 중단됐다")}
+                : "패산 소진입니다. 텐파이한 사람만 손패를 공개합니다."
+              : (ABORT_REASONS[settle.abortReason ?? ""] ?? "국이 중단되었습니다.")}
           </p>
         ) : null}
 
@@ -26001,7 +26003,7 @@ function RoundResultPanel({
                 화면에는 자기가 쏘지도 않은 큰 마이너스만 떴다. */}
             {w.pao !== undefined ? (
               <div className="result-pao">
-                책임지불 {nameOf(w.pao.responsible)} — {YAKU_NAMES[w.pao.yakuId] ?? w.pao.yakuId}{" "}
+                책임지불 {nameOf(w.pao.responsible)}: {YAKU_NAMES[w.pao.yakuId] ?? w.pao.yakuId}{" "}
                 {w.pao.points.toLocaleString()}점
               </div>
             ) : null}
@@ -26150,7 +26152,7 @@ function RoundResultPanel({
                       ))}
                     </div>
                   ) : (
-                    <div className="result-draw-hidden">패를 공개하지 않았다</div>
+                    <div className="result-draw-hidden">패를 공개하지 않았습니다</div>
                   )}
                   {/* 오름패 — "텐파이였다"만으로는 무엇을 기다렸는지 알 수 없다.
                       공개된 손패를 각자 눈으로 세게 두지 않고 여기서 바로 보여준다. */}
@@ -26175,7 +26177,7 @@ function RoundResultPanel({
                           ) : (
                             // 서버는 텐파이로 쳤는데 클라 계산이 못 잡는 손 — 증강이 분해
                             // 규칙을 바꾼 경우다. 빈칸으로 두면 "대기가 없었다"로 읽힌다.
-                            <span className="result-draw-waits-none">화면에서는 셀 수 없는 대기</span>
+                            <span className="result-draw-waits-none">대기패를 표시할 수 없음</span>
                           )}
                         </div>
                       );
@@ -26270,8 +26272,8 @@ function RoundResultPanel({
           </button>
           {showCountdown ? (
             <p className="result-close-note">
-              누르지 않아도 <strong>{remainSec}초</strong> 뒤 다음 국이 시작된다 —
-              천천히 읽어도 된다
+              누르지 않아도 <strong>{remainSec}초</strong> 뒤에 다음 국이 자동으로
+              시작됩니다
             </p>
           ) : null}
         </div>
@@ -26379,13 +26381,13 @@ function SpectateChoicePanel({
         )}
         {picked !== undefined ? (
           <p className="spec-choice-note spec-choice-picked-line">
-            ✓ 골랐습니다: <ChoiceLabel label={picked} /> — 곧 판에 반영됩니다
+            선택한 항목: <ChoiceLabel label={picked} />. 잠시 후 게임에 반영됩니다
           </p>
         ) : (
           <p className="spec-choice-note">
             {focus
-              ? "지금 이 좌석 화면에 떠 있는 선택창입니다 — 고르면 곧 판에 반영됩니다"
-              : "이 좌석의 화면에 지금 서 있는 선택지입니다 — 고르면 곧 판에 반영됩니다"}
+              ? "이 플레이어의 화면에 표시된 선택창입니다. 선택하면 잠시 후 게임에 반영됩니다"
+              : "이 플레이어가 지금 보고 있는 선택지입니다. 선택하면 잠시 후 게임에 반영됩니다"}
           </p>
         )}
       </div>
@@ -26395,7 +26397,7 @@ function SpectateChoicePanel({
 }
 
 /**
- * **관전 중계: 쓸 수 있는 증강** — 초점 좌석의 프롬프트에 버림과 함께 서 있는 증강 선택지.
+ * **관전 중계: 사용 가능한 증강** — 초점 좌석의 프롬프트에 버림과 함께 서 있는 증강 선택지.
  *
  * 그 사람 화면에는 이때 모달이 아니라 액티브 증강 **단추**만 서 있다. 관전 화면이
  * 이걸 선택창으로 그리면 매 순 «증강 사용 중»이 뜨는 거짓말이 되므로, 단추 자리에
@@ -26411,8 +26413,8 @@ function SpectateUsableStrip({ choice }: { choice: SpectateChoiceShown }): JSX.E
   if (types.length === 0) return null;
   const pickedHead = choice.picked?.split(" ")[0];
   return (
-    <div className="spec-usable" title="이 좌석의 화면에 서 있는 액티브 증강 단추 (관전 중계)">
-      <span className="spec-usable-tag">쓸 수 있는 증강</span>
+    <div className="spec-usable" title="관전 중인 플레이어의 화면에 표시된 액티브 증강 버튼입니다">
+      <span className="spec-usable-tag">사용 가능한 증강</span>
       {types.map((t) => (
         <span
           key={t}
@@ -26505,7 +26507,7 @@ function SpectateDraftPanel({
                         {seat.rerolled[i] === true ? (
                           <span
                             className="spec-draft-swapped"
-                            title="이 자리를 새로고침으로 갈아 끼웠다"
+                            title="새로고침으로 교체된 카드입니다"
                           >
                             ↻ 교체
                           </span>
@@ -26640,8 +26642,8 @@ function DraftOverlay({
               {/* 숫자를 «10초»로 박아 두면 3초가 남아도 «10초 남았다»가 뜬다 —
                   바로 위 줄이 실제 숫자를 찍고 있어 한 화면에서 두 값이 어긋났다. */}
               {urgent
-                ? `🎲 ${remainSec}초 남았다 — 시간이 다 되면 랜덤으로 결정된다`
-                : "시간이 다 되면 랜덤으로 결정된다"}
+                ? `🎲 ${remainSec}초 남았습니다. 시간이 다 되면 무작위로 결정됩니다`
+                : "시간이 다 되면 무작위로 결정됩니다"}
             </p>
           </>
         ) : null}
@@ -26650,16 +26652,16 @@ function DraftOverlay({
             고르려고 온 자리에서 읽을 것을 더 얹는 건 안내가 아니라 방해다
             (2026-08-18 사용자 요청). 조작 한 줄(아래)만 남긴다. */}
         <p className="draft-howto">
-          카드의 <b>자세히 ▾</b>를 누르면 도감의 상세 설명이 열립니다
-          <span className="draft-howto-key"> · Shift를 누르고 있으면 전부 펼쳐집니다</span>
+          카드의 자세히 버튼을 누르면 상세 설명이 표시됩니다
+          <span className="draft-howto-key"> · Shift 키를 누르고 있으면 모든 카드가 펼쳐집니다</span>
         </p>
         {/* 왜 두 장이 어두운지 — 화면 안에서 한 줄로 답한다. 이 말이 없으면 잠긴
             카드가 "고장난 카드"로 읽힌다 (`RoomManager.TUTORIAL_ROOM_NOTE`). */}
         {locked !== null ? (
           <p className="draft-locked-note">
-            🎓 튜토리얼 — 이번에는{" "}
-            <b>«{draft.choices.find((c) => c.id === locked)?.name ?? locked}»</b> 하나만
-            고를 수 있습니다. 실제 대국에서는 세 장 중 아무거나 고릅니다.
+            튜토리얼에서는{" "}
+            <b>{draft.choices.find((c) => c.id === locked)?.name ?? locked}</b> 하나만
+            고를 수 있습니다. 실제 대국에서는 세 장 중 아무 카드나 고를 수 있습니다.
           </p>
         ) : null}
         {/* 지금까지 고른 증강 — 새 증강은 기존 증강과 맞물릴 때 값하므로, 무엇을
@@ -26749,7 +26751,7 @@ function DraftOverlay({
                     onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
                   />
                   {isActiveAugment(c.id) ? (
-                    <span className="draft-active-note">✦ 액티브 증강 — 내 턴에 직접 발동</span>
+                    <span className="draft-active-note">액티브 증강: 내 턴에 직접 사용합니다</span>
                   ) : null}
                 </button>
                 {hasRerollRow ? (
@@ -26760,13 +26762,13 @@ function DraftOverlay({
                     disabled={!canReroll}
                     title={
                       canReroll
-                        ? "이 자리의 증강을 다른 것으로 바꾼다 (한 번뿐)"
-                        : "이미 새로고침한 자리다"
+                        ? "이 카드를 다른 증강으로 바꿉니다. 한 번만 가능합니다"
+                        : "이미 새로고침한 카드입니다"
                     }
                     aria-label={
                       canReroll
-                        ? `${c.name} 대신 다른 증강 보기 (한 번뿐)`
-                        : `${c.name} — 새로고침을 이미 썼다`
+                        ? `${c.name} 대신 다른 증강 보기 (한 번만 가능합니다)`
+                        : `${c.name}: 새로고침을 이미 사용했습니다`
                     }
                   >
                     <span className="draft-reroll-icon" aria-hidden="true">↻</span>
@@ -26786,7 +26788,7 @@ function DraftOverlay({
            */
           <div className="draft-waiting">
             <p className="draft-waiting-line">
-              ✓ 선택 완료 —{" "}
+              선택 완료.{" "}
               {pendingNames.length > 0
                 ? `아직 ${pendingNames.length}명이 고르는 중…`
                 : "다른 플레이어를 기다리는 중…"}
@@ -26952,7 +26954,7 @@ function GameOverModal({
         <div className="go-actions">
           {onContinue !== undefined ? (
             <button className="lobby-join" onClick={onContinue}>
-              {sandbox ? "새 판 시작" : "이어하기 (방 유지)"}
+              {sandbox ? "새 판 시작" : "이어하기"}
             </button>
           ) : null}
           {onPracticeAgain !== undefined ? (
@@ -27153,7 +27155,7 @@ function ReplayViewer(props: {
       <div className="lobby">
         <div className="lobby-card">
           <h1 className="lobby-title">리플레이</h1>
-          <p className="lobby-tag">{error ?? "재구성 중…"}</p>
+          <p className="lobby-tag">{error ?? "불러오는 중…"}</p>
           <button className="lobby-join" onClick={props.onClose}>돌아가기</button>
         </div>
       </div>
@@ -27248,7 +27250,7 @@ function ReplayViewer(props: {
         <span
           className="replayer-pos"
           title={`전체 ${idx} / ${total}`}
-          aria-label={`${roundLabel} ${idx - (replay.roundStarts[currentRound - 1] ?? 0)}번째 사건, 전체 ${idx} / ${total}`}
+          aria-label={`${roundLabel} ${idx - (replay.roundStarts[currentRound - 1] ?? 0)}번째 장면, 전체 ${idx} / ${total}`}
         >
           {roundLabel} · {idx - (replay.roundStarts[currentRound - 1] ?? 0)}
         </span>
@@ -27266,7 +27268,7 @@ function ReplayViewer(props: {
           disabled={shownSettlements.length === 0}
           /* 배열 위치가 아니라 **그 정산의 이벤트 인덱스**를 담는다 (위 주석) */
           onClick={() => setOpenSettle(shownSettlements[shownSettlements.length - 1]?.index ?? null)}
-          title="이 국까지의 정산 보기"
+          title="가장 최근 국의 정산 보기"
         >
           🧾
         </button>
@@ -27276,7 +27278,7 @@ function ReplayViewer(props: {
           <button
             className="rp-btn"
             onClick={props.onShare}
-            title="이 판을 볼 수 있는 링크를 만든다 — 링크를 가진 사람만 볼 수 있습니다"
+            title="이 게임의 공유 링크를 만듭니다. 링크가 있는 사람만 볼 수 있습니다"
           >
             🔗
           </button>
@@ -27287,7 +27289,7 @@ function ReplayViewer(props: {
           <button
             className="rp-btn"
             onClick={props.onUnshare}
-            title="공유 링크 내리기 — 이미 뿌린 링크도 더 이상 열리지 않습니다"
+            title="공유 링크를 삭제합니다. 이미 보낸 링크도 더 이상 열리지 않습니다"
           >
             🔗✕
           </button>
