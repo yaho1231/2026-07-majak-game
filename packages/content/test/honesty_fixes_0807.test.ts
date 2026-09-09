@@ -287,7 +287,7 @@ describe("카운터 — 대납액이 0이어도 반격은 성립한다", () => {
 
   it("설명이 '남은 점수를 넘지 않는다'를 밝힌다", () => {
     expect(counter.detail).toContain("남은 점수");
-    expect(counter.detail).toContain("가장 먼저 리치를 건 한 사람");
+    expect(counter.detail).toContain("가장 먼저 리치를 건 상대");
   });
 });
 
@@ -391,7 +391,7 @@ describe("Rule #2 — 설명이 '전원 공개'라고 쓴 증강은 실제로 �
       payload: { tileIds: manIds },
     });
     expect(r.ok, r.ok ? "" : r.reason).toBe(true);
-    expect(roundChannel(game, "view:*:no_ron_pact:p0")).toBe("조약 파기 — 론 가능");
+    expect(roundChannel(game, "view:*:no_ron_pact:p0")).toBe("조약 파기: 론 가능");
     // 설명도 안깡이 파기 사유임을 밝힌다
     expect(noRonPact.description).toContain("안깡");
   });
@@ -434,8 +434,8 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
   });
 
   it("거신병: 요구패 13종을 '내가 직접 버려' 둬야 한다는 전제조건이 드러난다", () => {
-    expect(giantGod.description).toContain("조건");
-    expect(giantGod.detail).toContain("요구패는 내가 직접 버려 둬야 한다");
+    expect(giantGod.description).toContain("직접 전부 버렸을 때만");
+    expect(giantGod.detail).toContain("전부 내가 직접 버렸을 때 발동할 수 있다");
   });
 
   it("파혼: 손으로 돌아오는 것이 2장뿐임을 요약에서 밝힌다", () => {
@@ -503,7 +503,7 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
    * 것을 버그로 읽는다.
    */
   it("짝수의 세계: 예외 없이 전부 짝수가 된다 (변환 결과가 도라가 되는 것도 막지 않는다)", () => {
-    expect(evenWorld.description).toContain("자패만 그대로 남는다");
+    expect(evenWorld.description).toContain("자패는 바뀌지 않는다");
     expect(evenWorld.description).not.toContain("도라는 그대로 남는다");
     // 예외가 없으니 도라 얘기 자체를 빼 둔다 — 남겨 두면 «예외가 있나?»로 읽힌다 (2026-09-05)
     expect(evenWorld.detail).not.toContain("도라");
@@ -514,7 +514,7 @@ describe("설명이 실제 동작을 담는다 (도감·드래프트 카드가 �
    * 됐다. 글이 아직 교체를 말하면 남가가 南 커쯔를 헛되이 버린다.
    */
   it("만년 오야: 자풍은 그대로이고 역패 동이 추가된다(교체가 아니다)", () => {
-    expect(eternalDealer.description).toContain("하나 더 붙는다");
+    expect(eternalDealer.description).toContain("하나 더 추가된다");
     expect(eternalDealer.description).not.toContain("덮어씌워진다");
     expect(eternalDealer.detail).toContain("원래 자풍은 그대로");
     expect(eternalDealer.detail).not.toContain("교체");

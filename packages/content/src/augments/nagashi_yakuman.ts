@@ -97,9 +97,9 @@ export const nagashiYakuman: AugmentDef = defineAugment({
   complexity: 3,
   name: "유국역만",
   description:
-    "(상시) 유국까지 요구패(1·9)와 자패만 버렸다면 유국만관이 역만이 된다. 원래는 그 버림패를 남이 울어 가면 무효가 되지만, 이 증강은 울려도 성립한다.",
+    "(상시) 유국까지 요구패(1·9)와 자패만 버렸다면 유국만관이 역만이 된다. 원래는 그 버림패를 상대가 울면 무효가 되지만, 이 증강이 있으면 울려도 성립한다.",
   detail:
-    "유국까지 내 버림패가 전부 요구패(1·9)·자패이면 유국만관이 역만이 된다 — 남이 울어 갔어도 성립한다.\n\n다른 패를 한 장이라도 버렸으면 안 된다. 역만 방어술을 든 상대는 지불을 면제받지만 내 수령액은 줄지 않는다.",
+    "유국까지 내 버림패가 전부 요구패(1·9)와 자패이면 유국만관이 역만이 된다. 상대가 그 버림패를 울었어도 성립한다.\n\n다른 패를 한 장이라도 버리면 성립하지 않는다. 역만 방어술을 가진 상대는 지불을 면제받지만, 내가 받는 점수는 줄지 않는다.",
   install(ctx) {
     const { holder } = ctx;
 
@@ -156,7 +156,7 @@ export const nagashiYakuman: AugmentDef = defineAugment({
           augPoints: notes,
           drawSpecial: {
             augId: ID,
-            label: "유국역만 — 버림패가 전부 요구패·자패",
+            label: "유국역만: 버림패가 전부 요구패·자패",
             holder,
           },
         },

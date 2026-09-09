@@ -738,9 +738,9 @@ describe("문구 — 구현과 어긋난 문장이 남아 있지 않다", () => 
     expect(stealthRiichi.conflicts ?? []).toContain("open_riichi_reveal");
   });
 
-  it("riichi_upgrade — description도 detail·구현과 같이 '지고 있는 동안'이다", () => {
-    expect(riichiUpgrade.detail ?? "").toContain("지고 있는 동안");
-    expect(riichiUpgrade.detail ?? "").toContain("지고 있는 동안");
+  it("riichi_upgrade — description도 detail·구현과 같이 '리치가 유지되는 동안'이다", () => {
+    expect(riichiUpgrade.detail ?? "").toContain("리치가 유지되는 동안");
+    expect(riichiUpgrade.detail ?? "").toContain("리치가 유지되는 동안");
   });
 
   it("off_by_one — 죽은 대기 예외가 detail에 적혀 있다", () => {

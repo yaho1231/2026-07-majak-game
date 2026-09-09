@@ -32,7 +32,7 @@ export const royalKokushi: AugmentDef = defineAugment({
   description:
     "국사무쌍이 한 종류가 빠져도(12종) 성립한다. 그 자리는 다른 요구패의 중복으로 메운다.",
   detail:
-    "국사무쌍이 한 종류 빠진 12종으로도 성립한다 — 빈 자리는 다른 요구패의 중복으로 메운다.\n\n14장 전부 요구패여야 한다.",
+    "국사무쌍이 한 종류 빠진 12종으로도 성립한다. 빈 자리는 다른 요구패의 중복으로 메운다.\n\n14장 전부 요구패여야 한다.",
   install(ctx) {
     ctx.setHolderRule("scoring.kokushiDupes", DUPES);
   },
