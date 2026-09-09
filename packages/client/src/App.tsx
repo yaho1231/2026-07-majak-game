@@ -12009,7 +12009,7 @@ function AccountCard(props: {
     if (props.username.length >= 4 && next.toLowerCase().includes(props.username.toLowerCase())) {
       return setLocalError("비밀번호에 닉네임을 포함할 수 없습니다");
     }
-    if (next === cur) return setLocalError("지금 쓰는 비밀번호와 같습니다");
+    if (next === cur) return setLocalError("새 비밀번호가 현재 비밀번호와 같습니다");
     setSending(true);
     props.onChangePassword(cur, next);
   }
@@ -12026,7 +12026,7 @@ function AccountCard(props: {
         className="fb-input"
         type="password"
         value={cur}
-        placeholder="지금 비밀번호"
+        placeholder="현재 비밀번호"
         autoComplete="current-password"
         onChange={(e) => setCur(e.target.value)}
       />

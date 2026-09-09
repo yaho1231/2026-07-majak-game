@@ -1185,6 +1185,6 @@ describe("쏘이는 패 — 추정이 아니라 사실 (2026-08-23)", () => {
     expect(fn).toContain("!waitsOn");
     // 대국자 화면에는 절대 서지 않는다 (남의 손패를 읽어 만든 값이다)
     expect(fn).toContain("props.spectator !== true");
-    expect(PREFS).toContain("판 위의 «쏘이는 패» 표시도 함께 꺼집니다");
+    expect(PREFS).toContain("판 위의 쏘이는 패 표시도 함께 꺼집니다");
   });
 });

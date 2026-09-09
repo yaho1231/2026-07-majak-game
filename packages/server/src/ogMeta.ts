@@ -33,7 +33,7 @@ export function injectInviteMeta(html: string, code: string): string {
       .replace(/\/og\.png(\?[^"']*)?/g, ogCardPath(code))
       .replace(
         /(<meta\s+property="og:image:alt"\s+content=")[^"]*(")/,
-        `$1방 코드 ${code} — 이능마작 초대 카드$2`,
+        `$1이능마작 초대 카드 (방 코드 ${code})$2`,
       )
       .replace(/(<meta\s+property="og:url"\s+content="[^"?#]*)(")/, `$1?room=${code}$2`)
   );

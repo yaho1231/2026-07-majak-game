@@ -161,13 +161,13 @@ describe("초대 메타 갈아 끼우기", () => {
 
   it("대체 텍스트가 그림에 실제로 적힌 것을 말한다", () => {
     const out = injectInviteMeta(html, "7Q79FM");
-    expect(out).toMatch(/<meta property="og:image:alt" content="방 코드 7Q79FM[^"]*"/);
+    expect(out).toMatch(/<meta property="og:image:alt" content="[^"]*7Q79FM[^"]*"/);
     expect(out).not.toContain("개벽으로 손패 열네 장이");
   });
 
   it("나머지 문서는 손대지 않는다", () => {
     const out = injectInviteMeta(html, "7Q79FM");
-    expect(out).toContain("<title>이능마작 — 증강 리치마작</title>");
+    expect(out).toContain("<title>이능마작 | 증강 리치마작</title>");
     expect(out.length).toBeGreaterThan(html.length * 0.9);
   });
 });

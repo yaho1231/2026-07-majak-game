@@ -208,7 +208,7 @@ describe("세션 회수는 열려 있는 소켓까지 끊는다", () => {
 
     last.clientSend({ type: "logoutOthers" });
     await last.waitFor((m) => m.type === "error" && m.code === "SESSIONS_CLEARED");
-    expect(last.last("error").message).toContain("2곳");
+    expect(last.last("error").message).toContain("2개");
     expect(last.readyState).toBe(1);
   });
 
@@ -221,7 +221,7 @@ describe("세션 회수는 열려 있는 소켓까지 끊는다", () => {
     });
     only.clientSend({ type: "logoutOthers" });
     await only.waitFor((m) => m.type === "error" && m.code === "SESSIONS_CLEARED");
-    expect(only.last("error").message).toContain("없습니다");
+    expect(only.last("error").message).toContain("있지 않습니다");
     expect(only.readyState).toBe(1);
   });
 });

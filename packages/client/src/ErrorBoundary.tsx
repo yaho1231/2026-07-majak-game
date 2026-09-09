@@ -86,10 +86,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <div className="crash-icon" aria-hidden="true">
             ⚠
           </div>
-          <h1 className="crash-title">화면 구성중 문제가 생겼습니다</h1>
+          <h1 className="crash-title">화면 구성 중 문제가 생겼습니다</h1>
           <p className="crash-lead">
             {repeated
-              ? "같은 문제가 반복됩니다. 지금 있는 방이 원인일 수 있으니 아래 ‘방에서 나가기’를 눌러 보세요."
+              ? "같은 문제가 반복됩니다. 지금 참여 중인 게임이 원인일 수 있으니 아래 ‘방에서 나가기’를 눌러 주세요."
               : "대국은 서버에 그대로 있습니다. 아래 버튼으로 다시 시도해 보세요."}
           </p>
 
@@ -107,7 +107,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
           <div className="crash-report">
             <button className="crash-link" onClick={this.report}>
-              {copied ? "✓ 오류 내용을 복사했습니다 — 제보 게시판에 붙여 주세요" : "오류 내용 복사"}
+              {copied ? "오류 내용을 복사했습니다. 제보 게시판에 붙여 넣어 주세요" : "오류 내용 복사"}
             </button>
             <button
               className="crash-link"
