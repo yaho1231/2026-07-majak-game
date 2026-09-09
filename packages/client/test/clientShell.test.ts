@@ -221,6 +221,18 @@ describe("대기실은 판 밖의 문법을 쓴다", () => {
     expect(rule(".seat-row")).toMatch(/position:\s*relative/);
   });
 
+  it("내가 끌어 옮긴 자리는 알림을 띄우지 않는다", () => {
+    /*
+     * 자리가 바뀌면 «당신은 O가입니다»를 알린다 — 자리 섞기·방장이 옮겨 준 경우에는
+     * 내가 하지 않은 일이라 알려야 한다. 그런데 **내가 직접 끌어 옮길 때마다** 그
+     * 알림이 떴다 (2026-09-09 사용자 지적). 표식은 `lobby` 하나로 소진돼야 한다 —
+     * 남의 자리만 옮겼을 때 남아 있으면 바로 뒤의 「자리 섞기」 알림까지 삼킨다.
+     */
+    expect(APP_CODE).toMatch(/seatMoveByMe\.current = Date\.now\(\) \+ SEAT_MOVE_MUTE_MS/);
+    expect(APP_CODE).toMatch(/const seatMovedByMe = Date\.now\(\) < seatMoveByMe\.current;\s*\n\s*seatMoveByMe\.current = 0;/);
+    expect(APP_CODE).toMatch(/if \(!seatMovedByMe\) \{\s*\n\s*showToast\(`자리가 바뀌었습니다/);
+  });
+
   it("시작·준비 버튼에 세로 그라디언트가 없다", () => {
     // 판 밖의 주 동작은 전부 평평한 채움 + 위 1px 하이라이트다(.btn-key).
     for (const sel of [".wr-start", ".wr-ready", ".wr-unready"]) {

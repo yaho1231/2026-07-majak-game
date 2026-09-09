@@ -3367,6 +3367,17 @@ export function App(): JSX.Element {
   const draftPickedRef = useRef(false);
   /** 직전 대기실 스냅샷 — 설정이 무엇에서 무엇으로 바뀌었는지 알려 주려고 둔다(같은 이유로 ref) */
   const prevLobby = useRef<LobbyMessage | null>(null);
+  /**
+   * **내가 방금 자리를 옮겼는가** — 자리 바뀜 토스트를 한 번 삼킬 표식.
+   *
+   * 자리가 바뀌면 «당신은 O가입니다»를 알린다. 자리 섞기·방장이 옮겨 준 경우에는
+   * 내가 하지 않은 일이 화면에 반영된 것이라 알려야 하지만, **내가 직접 끌어 옮겼을
+   * 때는 방금 내 손으로 한 일**이다 — 줄을 하나 옮길 때마다 알림이 떠서 시끄러웠다
+   * (2026-09-09 사용자 지적). 보내는 자리에서 표식을 세우고, 그 결과로 오는 `lobby`
+   * 하나에서만 삼킨다. 시각(ms)이라 응답이 영영 안 와도 다음 자리 섞기까지 물고
+   * 늘어지지 않는다.
+   */
+  const seatMoveByMe = useRef(0);
   /** 직전 상세설정 — 무엇이 바뀌었는지 말해 주려고 둔다(로비와 같은 이유로 ref). */
   const prevRoomRules = useRef<RoomRules | null>(null);
   /** 중단 투표를 이미 알렸는가 — 투표가 갱신될 때마다 토스트가 쌓이지 않게 한 번만 띄운다 */
@@ -5300,6 +5311,13 @@ export function App(): JSX.Element {
       // (handleServerMessage는 마운트 시 고정된 클로저라 state가 아니라 ref로 비교한다.)
       const prev = prevLobby.current;
       prevLobby.current = msg;
+      /*
+       * 내가 끌어 옮긴 결과인가 — 표식은 **`lobby` 하나로 소진된다.** 자리가 바뀌는지
+       * 여부와 무관하게 여기서 지운다: 남의 자리만 옮겼을 때 표식이 남아 있으면 바로
+       * 뒤에 누른 「자리 섞기」의 알림까지 삼킨다.
+       */
+      const seatMovedByMe = Date.now() < seatMoveByMe.current;
+      seatMoveByMe.current = 0;
       if (prev !== null && prev.roomId === msg.roomId) {
         if (prev.gameMode !== msg.gameMode) {
           showToast(`판 길이가 ${MODE_BADGE[msg.gameMode]?.name ?? msg.gameMode}으로 바뀌었습니다`, "info");
@@ -5315,7 +5333,12 @@ export function App(): JSX.Element {
         const before = seatOf(prev);
         const after = seatOf(msg);
         if (before !== null && after !== null && before !== after) {
-          showToast(`자리를 다시 뽑았습니다 — 당신은 ${WIND_KO[after] ?? "?"}가입니다`, "info");
+          // 「다시 뽑았습니다」가 아니다 — 자리 섞기(무작위)일 수도, 방장이 끌어
+          // 옮긴 것일 수도 있다. 둘 다 맞는 말로 적는다. 내가 끌어 옮긴 결과는
+          // 방금 내 손으로 한 일이라 아무 말도 하지 않는다.
+          if (!seatMovedByMe) {
+            showToast(`자리가 바뀌었습니다 — 당신은 ${WIND_KO[after] ?? "?"}가입니다`, "info");
+          }
         }
         if (prev.hostId !== msg.hostId && msg.hostId === msg.youId) {
           showToast("당신이 방장이 되었습니다", "info");
@@ -7142,7 +7165,10 @@ export function App(): JSX.Element {
           rules={roomRules}
           onSetRules={setRoomRulesPatch}
           onShuffleSeats={shuffleSeats}
-          onMoveSeat={(playerId, seat) => send({ type: "moveSeat", playerId, seat })}
+          onMoveSeat={(playerId, seat) => {
+            seatMoveByMe.current = Date.now() + SEAT_MOVE_MUTE_MS;
+            send({ type: "moveSeat", playerId, seat });
+          }}
           onLeave={returnHome}
           onToast={(t) => showToast(t, "info")}
           onOpenHelp={() => setHelpOpen(true)}
@@ -13330,6 +13356,14 @@ interface SeatDragState {
 
 /** 자리 안착 애니메이션 길이(ms) — 손패(0.16s)와 같은 길이로 맞춘다. */
 const SEAT_SETTLE_MS = 160;
+
+/**
+ * 내 `moveSeat`의 결과를 기다리는 시간(ms) — 이 안에 온 `lobby` 하나까지가 «내가 한 일»이다.
+ *
+ * 서버는 `moveSeat`마다 대기실을 한 번 되쏘므로 보통 첫 `lobby`에서 소진된다. 시간
+ * 제한은 응답이 영영 안 왔을 때를 위한 안전장치다.
+ */
+const SEAT_MOVE_MUTE_MS = 4000;
 
 function WaitingRoom(props: {
   lobby: LobbyMessage | null;
