@@ -172,7 +172,7 @@ describe("빈 상태가 다음 걸음을 준다", () => {
   });
 
   it("정말 빈 목록에는 힌트가 붙어 있다", () => {
-    expect(APP).toContain('emptyHint="한 판 두고 나면');
-    expect(APP).toContain('emptyHint="증강 아이디어나');
+    expect(APP).toContain('emptyHint="대국을 한 판 마치면');
+    expect(APP).toContain('emptyHint="위 칸에 증강 아이디어나');
   });
 });

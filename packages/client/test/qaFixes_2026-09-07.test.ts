@@ -81,7 +81,7 @@ describe("③ 허장성세·분열의 재료는 누르기 **전에** 손패에�
 
   it("손패가 그 표식을 그린다 — 이름에도 실어 화면을 못 보는 사람에게도 남는다", () => {
     expect(APP).toContain('doomed ? " hand-doomed" : ""');
-    expect(APP).toContain('doomed ? "이 발동의 재료 — 누르면 사라짐" : null');
+    expect(APP).toContain('doomed ? "누르면 이 발동에 쓰여 사라지는 패" : null');
     // 색만으로 말하지 않는다 (적록색맹·고대비)
     expect(CSS).toContain(".hand-doomed::after");
     expect(rule(".hand-doomed::after")).toContain('content: "✕"');

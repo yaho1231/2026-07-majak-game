@@ -155,7 +155,7 @@ describe("규칙·계산식 설명이 터치에서도 열린다", () => {
     expect(APP_CODE).toContain("aria-disabled={!usable}");
     // `aria-disabled` 는 이 부분문자열을 포함하므로 줄 시작까지 함께 본다
     expect(APP_CODE).not.toMatch(/\n\s*disabled=\{!usable\}/);
-    expect(APP_CODE).toContain("지금은 사용할 수 없습니다 — ${activeIds.map(blockedNote).join(\" · \")}");
+    expect(APP_CODE).toContain("지금은 사용할 수 없습니다. ${activeIds.map(blockedNote).join(\", \")}");
     expect(CSS_CODE).toContain('.aug-btn[aria-disabled="true"]');
   });
 });

@@ -156,8 +156,8 @@ describe("모르는 사이에 일어나는 일을 줄인다", () => {
   it("자동 진행을 켜면 무슨 일이 일어나는지 말해 준다", () => {
     // 되묻는 모달은 일부러 쓰지 않는다(2026-08-12 사용자 지시) — 문제는 되묻지 않는
     // 것이 아니라 켜진 줄 모르는 것이었다.
-    expect(APP_CODE).toContain("자동버림 켜짐");
-    expect(APP_CODE).toContain("자동화료 켜짐");
+    expect(APP_CODE).toContain("자동버림을 켰습니다");
+    expect(APP_CODE).toContain("자동화료를 켰습니다");
   });
 
   it("연출 속도를 고를 수 있다", () => {

@@ -368,7 +368,7 @@ describe("② 「판」이 한 화면 안에서 뒤집히지 않는다", () => {
 
 describe("③ 액티브 증강 배지가 한 글리프로 통일돼 있다", () => {
   it("배지·팁·드래프트 노트가 전부 ✦ 다 (실제 버튼이 ✦다)", () => {
-    for (const s of ["✦ 액티브", "✦ 액티브 표시가 붙은 증강", "✦ 액티브 증강 (직접 발동)"]) {
+    for (const s of ["✦ 액티브", "✦ 액티브 표시가 붙은 증강", "✦ 직접 발동하는 액티브 증강입니다"]) {
       expect(APP, `«${s}» 가 없다`).toContain(s);
     }
     expect(APP_CODE, "⚡ 로 된 액티브 표기가 남아 있다").not.toContain("⚡ 액티브");
@@ -383,7 +383,7 @@ describe("③ 액티브 증강 배지가 한 글리프로 통일돼 있다", () 
 
   it("도움말 배지 범례에 액티브 한 줄이 있다", () => {
     // 🕐·게이지·🔒·♻·🎲 는 설명하면서 **가장 많이 보게 되는 배지**만 빠져 있었다.
-    const at = APP.indexOf("🕐N국 쿨다운");
+    const at = APP.indexOf("🕐N국은 쿨다운이 N국 남았다는 뜻이고");
     expect(at).toBeGreaterThan(0);
     expect(APP.slice(at - 200, at + 40)).toContain("✦ 액티브");
   });
@@ -399,13 +399,13 @@ describe("④ 같은 `call` id 의 표시 이름이 하나다", () => {
 describe("⑤·⑥ 비표준 표기 두 건", () => {
   it("「펑」이 사용자 문자열에 없다", () => {
     expect(APP_CODE).not.toContain("론·펑·치·깡");
-    expect(APP).toContain("다른 자리의 선언(론·치·퐁·깡)을 기다리는 중입니다");
+    expect(APP).toContain("다른 플레이어의 론·치·퐁·깡 선언을 기다리는 중입니다");
   });
 
   it("「야쿠」가 사용자 문자열에 없다 — 이 제품은 «역»으로 쓴다", () => {
     // 「야쿠」는 용어집 match 에도 안 걸려 밑줄도 풀이도 안 붙었다.
     expect(APP_CODE).not.toContain("야쿠");
-    expect(APP).toContain("(점수·역을 보지 않습니다)");
+    expect(APP).toContain("점수와 역은 따지지 않습니다");
   });
 });
 
