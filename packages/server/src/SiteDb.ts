@@ -528,7 +528,7 @@ export class SiteDb {
     nickname: string,
   ): { ok: boolean; nickname?: string; accepted?: boolean; error?: string } {
     const row = this.userByName(nickname);
-    if (row === null) return { ok: false, error: "그런 닉네임의 계정이 없습니다" };
+    if (row === null) return { ok: false, error: "존재하지 않는 닉네임입니다" };
     if (row.id === userId) return { ok: false, error: "자기 자신에게는 보낼 수 없습니다" };
     if (this.areFriends(userId, row.id)) return { ok: false, error: "이미 친구입니다" };
     if (this.friendCount(userId) >= MAX_FRIENDS) {
@@ -561,7 +561,7 @@ export class SiteDb {
       userId,
     ) as { n: number }).n;
     if (sent + this.friendCount(userId) >= MAX_FRIENDS) {
-      return { ok: false, error: `친구와 보낸 요청을 합쳐 ${MAX_FRIENDS}건까지입니다` };
+      return { ok: false, error: `친구 수와 보낸 요청 수를 합해 ${MAX_FRIENDS}명을 넘을 수 없습니다` };
     }
     this.stmt(
       "INSERT INTO friend_requests (from_id, to_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
@@ -594,7 +594,7 @@ export class SiteDb {
     accept: boolean,
   ): { ok: boolean; nickname?: string; error?: string } {
     const row = this.userByName(fromNickname);
-    if (row === null) return { ok: false, error: "그런 닉네임의 계정이 없습니다" };
+    if (row === null) return { ok: false, error: "존재하지 않는 닉네임입니다" };
     const req = this.stmt(
       "SELECT 1 AS n FROM friend_requests WHERE from_id = ? AND to_id = ?",
     ).get(row.id, userId);
@@ -625,7 +625,7 @@ export class SiteDb {
     if (this.friendCount(row.id) >= MAX_FRIENDS) {
       return {
         ok: false,
-        error: `${row.username} 님의 친구가 ${MAX_FRIENDS}명이라 더 맺을 수 없습니다`,
+        error: `${row.username} 님의 친구가 이미 ${MAX_FRIENDS}명이어서 수락할 수 없습니다`,
       };
     }
     this.linkFriends(userId, row.id);
@@ -832,12 +832,12 @@ export class SiteDb {
 
     const current = (await scryptAsync(currentPassword ?? "", row.pass_salt, 64)).toString("hex");
     if (!safeEqual(current, row.pass_hash)) {
-      return { ok: false, error: "지금 비밀번호가 올바르지 않습니다" };
+      return { ok: false, error: "현재 비밀번호가 올바르지 않습니다" };
     }
     const problem = this.passwordProblem(row.username, newPassword);
     if (problem !== null) return { ok: false, error: problem };
     if (newPassword === currentPassword) {
-      return { ok: false, error: "지금 쓰는 비밀번호와 같습니다" };
+      return { ok: false, error: "새 비밀번호가 현재 비밀번호와 같습니다" };
     }
 
     const salt = randomBytes(16).toString("hex");
@@ -893,7 +893,7 @@ export class SiteDb {
    */
   usernameProblem(username: string): string | null {
     if (!USERNAME_RE.test(username)) {
-      return "닉네임은 2~12자 (한글·영문·숫자·_-)만 가능합니다";
+      return "닉네임은 2~12자이며 한글, 영문, 숫자, _, - 만 사용할 수 있습니다";
     }
     // 봇 사칭·시스템 id·프로토타입 키 방지
     if (/^bot_/i.test(username) || RESERVED_NAMES.has(username.toLowerCase())) {
@@ -905,7 +905,7 @@ export class SiteDb {
 
   async register(username: string, password: string, adminCode?: string): Promise<AuthResult> {
     if (!USERNAME_RE.test(username)) {
-      return { ok: false, error: "닉네임은 2~12자 (한글·영문·숫자·_-)만 가능합니다" };
+      return { ok: false, error: "닉네임은 2~12자이며 한글, 영문, 숫자, _, - 만 사용할 수 있습니다" };
     }
     // 봇 사칭·시스템 id·프로토타입 키 방지
     if (/^bot_/i.test(username) || RESERVED_NAMES.has(username.toLowerCase())) {
@@ -1181,7 +1181,7 @@ export class SiteDb {
     const recent = this.stmt("SELECT COUNT(*) AS n FROM feedback WHERE user_id = ? AND created_at > ?")
       .get(user.id, since) as { n: number };
     if (Number(recent.n) >= FEEDBACK_PER_HOUR) {
-      return { ok: false, error: "제보가 너무 잦습니다. 잠시 후 다시 시도해 주세요" };
+      return { ok: false, error: "짧은 시간에 제보를 너무 많이 보냈습니다. 잠시 후 다시 시도해 주세요" };
     }
     const res = this.stmt(
         `INSERT INTO feedback (user_id, author, kind, title, body, status, reply, created_at, replied_at)

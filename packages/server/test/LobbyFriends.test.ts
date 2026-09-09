@@ -164,7 +164,7 @@ describe("친구 상한 — 어느 문으로 들어와도 100명을 넘지 않�
       res.ok,
       "보류분만 세면 «100건 보내고 수락되기를 기다렸다가 또 100건»이 무한히 반복된다",
     ).toBe(false);
-    expect(res.error).toContain("합쳐");
+    expect(res.error).toContain("합해");
   });
 
   it("상한 아래에서는 종전대로 맺어진다 (상한이 기능을 죽이지 않는다)", async () => {

@@ -1529,7 +1529,7 @@ export class HumanAgent implements PlayerAgent {
         this.send({
           type: "error",
           code: "TARGET_IN_RIICHI",
-          message: "리치를 선언한 상대의 손패는 건드릴 수 없습니다.",
+          message: "리치를 선언한 상대의 손패는 대상으로 지정할 수 없습니다.",
         });
       } else {
         this.send({
@@ -1540,7 +1540,7 @@ export class HumanAgent implements PlayerAgent {
           // 지시하는 문장이었다(감사 §2-4). 지금은 재접속 시 클라이언트가 낡은
           // 선택지를 스스로 비우므로 이 오류 자체가 거의 나지 않지만, 남는
           // 경우(연타·시차)에는 무엇이 일어났는지만 사실대로 말한다.
-          message: "이미 지나간 선택입니다 — 다음 차례를 기다려 주세요.",
+          message: "이미 끝난 선택입니다. 다음 차례를 기다려 주세요.",
         });
       }
       return;
@@ -1582,7 +1582,7 @@ export class HumanAgent implements PlayerAgent {
           // 위쪽만 고치고 여기는 그대로 남아 있었다(2026-08-22 QA round2 부록 D).
           message:
             locked === null
-              ? "이미 지나간 증강 후보입니다 — 지금 화면에 서 있는 카드 중에서 고르세요."
+              ? "이미 사라진 증강 후보입니다. 지금 화면에 있는 카드 중에서 골라 주세요."
               : "튜토리얼에서는 이 증강만 고를 수 있습니다.",
         });
       }

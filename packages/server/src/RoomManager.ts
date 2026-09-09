@@ -1385,7 +1385,7 @@ export class RoomManager {
         }
         if (now - room.lastActivityAt < ZOMBIE_ROOM_TTL_MS) continue;
         this.logError(room, "컨트롤러 없이 playing으로 굳은 방을 회수한다");
-        this.closeRoom(room, "ROOM_CLOSED", "방이 정리되었습니다 — 홈에서 다시 시작하세요");
+        this.closeRoom(room, "ROOM_CLOSED", "방이 정리되었습니다. 홈에서 다시 시작해 주세요.");
         continue;
       }
       const idleFor = now - room.lastActivityAt;
@@ -1402,7 +1402,7 @@ export class RoomManager {
       this.closeRoom(
         room,
         "ROOM_IDLE_CLOSED",
-        "오래 비어 있어 방이 닫혔습니다 — 초대 링크도 함께 만료됩니다. 홈에서 새로 만들어 주세요",
+        "오래 비어 있어 방이 닫혔습니다. 초대 링크도 만료되었습니다. 홈에서 새로 만들어 주세요.",
       );
     }
   }
@@ -1423,8 +1423,8 @@ export class RoomManager {
    */
   private warnIdleClose(room: Room, minutes: number): void {
     const message =
-      `이 방은 약 ${minutes}분 뒤 자동으로 닫힙니다 — ` +
-      `아무 버튼이나 누르면 시간이 다시 늘어납니다`;
+      `이 방은 약 ${minutes}분 뒤 자동으로 닫힙니다. ` +
+      `아무 버튼이나 누르면 시간이 연장됩니다.`;
     let told = 0;
     for (const a of room.agents) {
       if (a instanceof HumanAgent && !a.isAbandoned) {
@@ -1487,7 +1487,7 @@ export class RoomManager {
    *   기다리지 않아도 동작은 같지만, 기다리지 않으면 마지막 몇 줄이 사라질 수
    *   있고 그 꼬리가 곧 이어하기의 "어디까지 뒀는가"다 (§2-10).
    */
-  shutdown(reason = "서버가 재시작합니다 — 잠시 후 다시 접속해 주세요"): Promise<void> {
+  shutdown(reason = "서버가 재시작됩니다. 잠시 후 다시 접속해 주세요."): Promise<void> {
     this.shuttingDown = true;
     const flushing: Promise<void>[] = [];
     if (this.sweepTimer !== null) {
@@ -1906,7 +1906,7 @@ export class RoomManager {
       // ── 인증 ──
       case "register": {
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
         if (
           typeof msg.username !== "string" ||
           typeof msg.password !== "string" ||
@@ -1930,7 +1930,7 @@ export class RoomManager {
       }
       case "login": {
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
         if (
           typeof msg.username !== "string" ||
           typeof msg.password !== "string" ||
@@ -1954,7 +1954,7 @@ export class RoomManager {
        */
       case "checkUsername": {
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
         if (typeof msg.username !== "string" || !withinAuthFieldLimit(msg.username)) {
           return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
         }
@@ -2022,7 +2022,7 @@ export class RoomManager {
           return this.fail(conn, "AUTH_REQUIRED", "로그인이 필요합니다");
         }
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
         if (this.rateLimited(conn)) return;
         // `register`/`login`과 같은 검사를 여기에도 건다. 없으면 비문자열이 그대로
         // `scrypt`까지 내려가 `ERR_INVALID_ARG_TYPE`으로 던지고, 로그인한 연결이면
@@ -2039,7 +2039,7 @@ export class RoomManager {
           .changePassword(userId, msg.currentPassword, msg.newPassword)
           .then((res) => {
             if (!res.ok || res.user === undefined || res.sessionToken === undefined) {
-              return this.fail(conn, "PASSWORD_CHANGE_FAILED", res.error ?? "바꾸지 못했습니다");
+              return this.fail(conn, "PASSWORD_CHANGE_FAILED", res.error ?? "비밀번호를 바꾸지 못했습니다");
             }
             // 이 연결의 세션도 갈렸다 — 새 토큰을 쥐여 주지 않으면 다음 재연결에서
             // 자기 자신이 로그아웃된다.
@@ -2049,7 +2049,7 @@ export class RoomManager {
             this.evictOtherSessions(
               userId,
               conn,
-              "비밀번호가 변경되어 이 기기의 로그인이 끊겼습니다",
+              "비밀번호가 변경되어 이 기기에서 로그아웃되었습니다",
             );
             this.send(conn.ws, {
               type: "authOk",
@@ -2070,7 +2070,7 @@ export class RoomManager {
           return this.fail(conn, "AUTH_REQUIRED", "로그인이 필요합니다");
         }
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
         // 같은 자리의 `changePassword`와 같은 창을 태운다 — 요청 하나가 sessions
         // COUNT 2회 + DELETE 1회다 (QA 2차 auth §7-b).
         if (this.rateLimited(conn)) return;
@@ -2088,8 +2088,8 @@ export class RoomManager {
           conn,
           "SESSIONS_CLEARED",
           removed === 0
-            ? "다른 기기에 로그인된 세션이 없습니다"
-            : `다른 기기 ${removed}곳의 로그인을 끊었습니다`,
+            ? "다른 기기에 로그인되어 있지 않습니다"
+            : `다른 기기 ${removed}개에서 로그아웃했습니다`,
         );
         return;
       }
@@ -2158,7 +2158,7 @@ export class RoomManager {
       return this.fail(
         conn,
         "GUEST_FORBIDDEN",
-        "게스트 체험에서는 사용할 수 없습니다 — 계정을 만들면 모든 기능이 열립니다",
+        "게스트 체험에서는 사용할 수 없습니다. 계정을 만들면 모든 기능을 사용할 수 있습니다.",
       );
     }
 
@@ -2298,7 +2298,7 @@ export class RoomManager {
          * 남으면 그게 곧 "게임이 멈췄다"는 제보가 된다.
          */
         if (conn.room?.paused === true) {
-          return this.fail(conn, "GAME_PAUSED", "관리자가 판을 세웠습니다 — 재개를 기다려 주세요");
+          return this.fail(conn, "GAME_PAUSED", "관리자가 게임을 일시정지했습니다. 재개될 때까지 기다려 주세요.");
         }
         /*
          * 같은 원칙을 좌석이 **없는** 경우에도 적용한다 (QA 2차 server 확정 2).
@@ -2310,7 +2310,7 @@ export class RoomManager {
          * 것은 하나다: **이 창은 더 이상 그 자리에 앉아 있지 않다.**
          */
         if (conn.agent === null) {
-          return this.fail(conn, "NOT_IN_ROOM", "이 창은 더 이상 그 자리에 앉아 있지 않습니다");
+          return this.fail(conn, "NOT_IN_ROOM", "이 창은 더 이상 게임에 참가하고 있지 않습니다.");
         }
         conn.agent.handleMessage(msg);
         return;
@@ -2379,7 +2379,7 @@ export class RoomManager {
           return this.fail(conn, "BAD_REQUEST", "잘못된 게임 ID입니다");
         }
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
         const game = db.getGame(msg.gameId);
         // "없다"와 "권한이 없다"를 합친다 — `sendReplayData`와 같은 이유다(§L-4).
         if (game === null || (!user.isAdmin && !game.participantUserIds.includes(user.id))) {
@@ -2403,7 +2403,7 @@ export class RoomManager {
       // ── 친구 (§4-6) ──
       case "friendRequest": {
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
         if (typeof msg.nickname !== "string" || msg.nickname.trim() === "") {
           return this.fail(conn, "BAD_REQUEST", "닉네임을 입력해 주세요");
         }
@@ -2417,14 +2417,14 @@ export class RoomManager {
           conn,
           res.accepted === true ? "FRIEND_ADDED" : "FRIEND_REQUESTED",
           res.accepted === true
-            ? `${res.nickname} 님과 친구가 되었습니다 — 서로 요청을 보냈습니다`
+            ? `${res.nickname} 님과 친구가 되었습니다. 상대도 이미 친구 요청을 보낸 상태였습니다`
             : `${res.nickname} 님에게 친구 요청을 보냈습니다`,
         );
         return this.sendFriends(conn, user);
       }
       case "friendRespond": {
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
         if (typeof msg.nickname !== "string" || typeof msg.accept !== "boolean") return;
         const res = db.respondFriendRequest(user.id, msg.nickname, msg.accept);
         if (!res.ok || res.nickname === undefined) {
@@ -2442,7 +2442,7 @@ export class RoomManager {
       }
       case "friendCancel": {
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
         if (typeof msg.nickname !== "string") return;
         db.cancelFriendRequest(user.id, msg.nickname);
         this.pushFriends(msg.nickname);
@@ -2450,7 +2450,7 @@ export class RoomManager {
       }
       case "friendRemove": {
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
         if (typeof msg.nickname !== "string") return;
         db.removeFriend(user.id, msg.nickname);
         // 끊기는 쌍방이다 — 상대 화면에서도 사라져야 한다.
@@ -2512,7 +2512,7 @@ export class RoomManager {
       case "adminSetNotice": {
         if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
         const db = this.db;
-        if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
         if (typeof msg.title !== "string" || typeof msg.body !== "string") {
           return this.fail(conn, "BAD_REQUEST", "공지 형식이 올바르지 않습니다");
         }
@@ -3004,7 +3004,7 @@ export class RoomManager {
         this.fail(
           c,
           "SESSION_REPLACED",
-          "다른 곳에서 이 자리에 접속해 이 창의 연결이 끊겼습니다",
+          "다른 창에서 이 자리에 접속해서 이 창은 방에서 나왔습니다",
         );
       }
     }
@@ -3100,7 +3100,7 @@ export class RoomManager {
     this.sweepGhostSeats();
     let existing = this.membershipOf(user.username);
     if (existing !== null && existing.phase === "playing") {
-      return this.fail(conn, "ALREADY_IN_GAME", `진행 중인 게임(${existing.code})이 있습니다 — 코드로 재접속하세요`);
+      return this.fail(conn, "ALREADY_IN_GAME", `진행 중인 게임이 있습니다. 코드 ${existing.code}로 다시 접속하세요`);
     }
     // 이 연결이 붙들고 있던 대기실 좌석이면 놓아 준다 — 홈에서 방을 만들려는
     // 사람에게 "이미 방에 참가 중입니다"를 돌려주는 상태 어긋남을 스스로 푼다.
@@ -3108,7 +3108,7 @@ export class RoomManager {
       existing = this.membershipOf(user.username);
     }
     if (existing !== null) {
-      return this.fail(conn, "ALREADY_IN_ROOM", `이미 방(${existing.code})에 참가 중입니다`);
+      return this.fail(conn, "ALREADY_IN_ROOM", `이미 ${existing.code} 방에 참가 중입니다`);
     }
     // 전체 방 개수 상한 — 서버 전체 자원 보호.
     if (this.rooms.size >= MAX_ROOMS) {
@@ -3230,7 +3230,7 @@ export class RoomManager {
 
     // 방장이 내보낸 사람은 이 방에 다시 들어올 수 없다
     if (room.kicked.has(user.username)) {
-      return this.fail(conn, "KICKED", "방장이 내보낸 방입니다");
+      return this.fail(conn, "KICKED", "방장이 내보낸 방에는 다시 들어갈 수 없습니다");
     }
 
     /*
@@ -3261,7 +3261,7 @@ export class RoomManager {
           conn,
           "ROOM_PLAYING",
           left
-            ? "이 방에서 이미 나갔습니다 — 그 대국에는 다시 들어갈 수 없습니다"
+            ? "이미 나간 방입니다. 이 게임에는 다시 들어갈 수 없습니다"
             : "이미 게임이 시작된 방입니다",
         );
       }
@@ -3359,7 +3359,7 @@ export class RoomManager {
       other = this.membershipOf(user.username);
     }
     if (other !== null) {
-      return this.fail(conn, "ALREADY_IN_ROOM", `이미 다른 방(${other.code})에 참가 중입니다`);
+      return this.fail(conn, "ALREADY_IN_ROOM", `다른 방 ${other.code}에 이미 참가 중입니다`);
     }
     if (room.agents.length >= MAX_PLAYERS) {
       return this.fail(conn, "ROOM_FULL", "방이 가득 찼습니다");
@@ -3541,8 +3541,8 @@ export class RoomManager {
       a.setTutorialFeed(() => EMPTY_FEED);
     }
     const text =
-      "튜토리얼 안내는 여기까지입니다 — 지금부터는 평범한 연습 대국입니다. " +
-      "손패 고정이 풀리고, 봇도 리치와 화료를 합니다.";
+      "튜토리얼 안내는 여기까지입니다. 지금부터는 일반 연습 대국입니다. " +
+      "손패는 더 이상 고정되지 않고, 봇도 리치와 화료를 합니다.";
     const out: ServerMessage = { type: "roomNotice", text, by: "튜토리얼" };
     for (const a of room.agents) {
       if (a instanceof HumanAgent) a.notify(out);
@@ -3767,7 +3767,7 @@ export class RoomManager {
       case "startGame": {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         if (!this.canStart(room)) {
-          agent.notify({ type: "error", code: "NOT_READY", message: "4인 + 전원 준비가 필요합니다" });
+          agent.notify({ type: "error", code: "NOT_READY", message: "4명이 모두 모여 준비를 마쳐야 시작할 수 있습니다" });
           return;
         }
         void this.startGame(room);
@@ -3912,7 +3912,7 @@ export class RoomManager {
       return this.fail(conn, "NOT_IN_ROOM", "방에 있지 않습니다");
     }
     if (typeof id !== "string" || !isEmoteId(id)) {
-      return this.fail(conn, "INVALID_ACTION", "없는 문구입니다");
+      return this.fail(conn, "INVALID_ACTION", "보낼 수 없는 정형구입니다");
     }
     const now = Date.now();
     const recent = conn.emoteHits.filter((t) => now - t < EMOTE_WINDOW_MS);
@@ -4068,12 +4068,12 @@ export class RoomManager {
    */
   private inviteFriend(conn: Conn, user: UserRow, nickname: unknown): void {
     const db = this.db;
-    if (db === undefined) return this.fail(conn, "NO_DB", "서버에 저장소가 없습니다");
+    if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
     if (typeof nickname !== "string" || nickname.trim() === "") return;
     const room = conn.room;
-    if (room === null) return this.fail(conn, "NOT_IN_ROOM", "대기실에서만 부를 수 있습니다");
+    if (room === null) return this.fail(conn, "NOT_IN_ROOM", "대기실에서만 초대할 수 있습니다");
     if (room.phase !== "waiting") {
-      return this.fail(conn, "ROOM_PLAYING", "이미 시작한 판에는 부를 수 없습니다");
+      return this.fail(conn, "ROOM_PLAYING", "이미 시작한 게임에는 초대할 수 없습니다");
     }
     const target = db.userByName(nickname.trim());
     if (target === null) return this.fail(conn, "FRIEND_INVITE_FAILED", "그런 계정이 없습니다");
@@ -4101,7 +4101,7 @@ export class RoomManager {
         conn,
         "FRIEND_INVITE_FAILED",
         bots > 0
-          ? "방에 빈 자리가 없습니다 — 봇을 하나 빼고 부르세요"
+          ? "방에 빈 자리가 없습니다. 봇을 하나 빼고 초대하세요"
           : "방에 빈 자리가 없습니다",
       );
     }
@@ -4113,7 +4113,7 @@ export class RoomManager {
     const key = `${user.id}>${target.id}`;
     const last = this.inviteSentAt.get(key) ?? 0;
     if (now - last < INVITE_COOLDOWN_MS) {
-      return this.fail(conn, "FRIEND_INVITE_FAILED", "방금 보냈습니다 — 잠시 후에 다시 보내세요");
+      return this.fail(conn, "FRIEND_INVITE_FAILED", "방금 초대를 보냈습니다. 잠시 후에 다시 보내세요");
     }
     const out = {
       type: "friendInviteFrom" as const,
@@ -4131,11 +4131,11 @@ export class RoomManager {
       sent++;
     }
     if (sent === 0) {
-      return this.fail(conn, "FRIEND_INVITE_FAILED", `${target.username} 님은 지금 부를 수 없습니다`);
+      return this.fail(conn, "FRIEND_INVITE_FAILED", `${target.username} 님은 지금 초대할 수 없습니다`);
     }
     this.inviteSentAt.set(key, now);
     for (const [k, t] of this.inviteSentAt) if (now - t >= INVITE_COOLDOWN_MS) this.inviteSentAt.delete(k);
-    this.fail(conn, "FRIEND_INVITED", `${target.username} 님을 불렀습니다`);
+    this.fail(conn, "FRIEND_INVITED", `${target.username} 님을 초대했습니다`);
   }
 
   // ─────────────────────────── 통계·리플레이 ───────────────────────────
@@ -4243,7 +4243,7 @@ export class RoomManager {
    * 남의 글이 실릴 수 없다(공개 범위가 쿼리 자체에 박혀 있다).
    */
   private sendFeedback(conn: Conn, user: UserRow): void {
-    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
     const rows = this.db.listFeedback(user);
     const entries: FeedbackEntry[] = rows.map((r) => ({
       id: r.id,
@@ -4268,7 +4268,7 @@ export class RoomManager {
     title: unknown,
     body: unknown,
   ): void {
-    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
     if (typeof kind !== "string" || typeof title !== "string" || typeof body !== "string") {
       return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
     }
@@ -4289,7 +4289,7 @@ export class RoomManager {
     status: unknown,
     reply: unknown,
   ): void {
-    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
     if (!Number.isInteger(id)) return this.fail(conn, "BAD_REQUEST", "잘못된 제보 ID입니다");
     if (status !== undefined && typeof status !== "string") {
       return this.fail(conn, "BAD_REQUEST", "잘못된 요청입니다");
@@ -4307,7 +4307,7 @@ export class RoomManager {
 
   /** 제보 삭제 — 작성자 본인 또는 관리자 (권한 판정은 SiteDb). */
   private deleteFeedback(conn: Conn, user: UserRow, id: unknown): void {
-    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
     if (!Number.isInteger(id)) return this.fail(conn, "BAD_REQUEST", "잘못된 제보 ID입니다");
     const res = this.db.deleteFeedback(id as number, user);
     if (!res.ok) return this.fail(conn, "FEEDBACK_FAILED", res.error ?? "제보 삭제에 실패했습니다");
@@ -4640,7 +4640,7 @@ export class RoomManager {
     const note = typeof reason === "string" ? reason.trim().slice(0, 100) : "";
     room.abortReason =
       note !== ""
-        ? `관리자가 게임을 종료했습니다 — ${note}`
+        ? `관리자가 게임을 종료했습니다. 사유: ${note}`
         : "관리자가 게임을 강제 종료했습니다";
     this.log(room, `관리자 강제 종료 (${admin.username})`);
     room.controller.requestAbort();
@@ -4655,7 +4655,7 @@ export class RoomManager {
 
   /** 계정 삭제 (관리자 전용) — 본인은 삭제 불가. 삭제 후 목록·리더보드를 갱신한다. */
   private adminDeleteUser(conn: Conn, admin: UserRow, userId: number): void {
-    if (this.db === undefined) return this.fail(conn, "NO_DB", "서버에 계정 저장소가 없습니다");
+    if (this.db === undefined) return this.fail(conn, "NO_DB", "지금은 계정 기능을 사용할 수 없습니다");
     if (!Number.isInteger(userId)) return this.fail(conn, "BAD_REQUEST", "잘못된 사용자 ID입니다");
     if (userId === admin.id) return this.fail(conn, "CANNOT_DELETE_SELF", "본인 계정은 삭제할 수 없습니다");
     let res: { ok: boolean; username?: string; error?: string };
@@ -4813,7 +4813,7 @@ export class RoomManager {
     try {
       text = await readFile(game.replayPath, "utf-8");
     } catch {
-      return this.fail(conn, "REPLAY_FILE_MISSING", "리플레이 파일이 유실되었습니다");
+      return this.fail(conn, "REPLAY_FILE_MISSING", "리플레이 파일이 없어 열 수 없습니다");
     }
     // 파일 하나가 통째로 프레임 하나가 된다 — 어디선가 비정상적으로 커졌다면
     // 그걸 split·직렬화해서 소켓에 밀어 넣는 대신 여기서 멈춘다. 실측 최대는
@@ -4870,7 +4870,7 @@ export class RoomManager {
       return this.fail(
         conn,
         "FORBIDDEN",
-        "대국에 참가한 창으로는 관전할 수 없습니다 — 다른 창에서 열어 주세요",
+        "대국에 참가 중인 창에서는 관전할 수 없습니다. 다른 창에서 관전해 주세요.",
       );
     }
     const room = this.rooms.get(code);
@@ -5122,7 +5122,7 @@ export class RoomManager {
     const res = agent.extendTime(seconds * 1000);
     if (res === null) {
       // 지금 그 자리가 아무것도 기다리고 있지 않다 — 줄 시계가 없다.
-      return this.fail(conn, "NOT_WAITING", "그 자리는 지금 기다리는 중이 아닙니다");
+      return this.fail(conn, "NOT_WAITING", "그 자리는 지금 입력을 기다리고 있지 않아 시간을 연장할 수 없습니다");
     }
     this.touch(room);
     // **결과**를 적는다 — 요청한 초만 적으면 누적 천장(`EXTEND_LEFT_MAX_MS`)에서
@@ -5164,14 +5164,14 @@ export class RoomManager {
       return this.fail(
         conn,
         "NOT_IN_ROUND",
-        "지금은 물릴 국이 없습니다 — 이미 끝난 국은 물릴 수 없고, 다음 국이 시작된 뒤에 다시 눌러 주세요",
+        "지금은 물릴 국이 없습니다. 이미 끝난 국은 물릴 수 없으니 다음 국이 시작된 뒤에 다시 눌러 주세요.",
       );
     }
     this.touch(room);
     this.log(null, `국 무효 ${room.code} — ${user.username}`);
     const out: ServerMessage = {
       type: "roomNotice",
-      text: "관리자가 이 국을 물렸습니다 — 다음 국으로 넘어갑니다",
+      text: "관리자가 이 국을 물렸습니다. 다음 국으로 넘어갑니다.",
       ttlMs: 8000,
       by: user.username,
     };
@@ -5346,7 +5346,7 @@ export class RoomManager {
       return this.fail(
         conn,
         "SOLO_ABORT_FORBIDDEN",
-        "혼자 두는 대국은 무효로 지울 수 없습니다 — 나가면 남은 판은 자동으로 진행되고 기록에 남습니다",
+        "혼자 두는 대국은 무효 처리할 수 없습니다. 나가면 남은 판은 자동으로 진행되고 기록에 남습니다.",
       );
     }
 
@@ -5539,7 +5539,7 @@ export class RoomManager {
         return this.fail(
           conn,
           "SERVER_BUSY",
-          `같은 곳에서 체험 게임을 ${MAX_GUEST_ROOMS_PER_IP}개까지 동시에 둘 수 있습니다 — 열어 둔 창을 닫고 다시 시도하세요`,
+          `같은 네트워크에서는 체험 게임을 ${MAX_GUEST_ROOMS_PER_IP}개까지만 동시에 할 수 있습니다. 열어 둔 창을 닫고 다시 시도하세요.`,
         );
       }
     }
@@ -5684,7 +5684,7 @@ export class RoomManager {
       return this.fail(
         conn,
         existing.phase === "playing" ? "ALREADY_IN_GAME" : "ALREADY_IN_ROOM",
-        `이미 방(${existing.code})에 참가 중입니다 — 나간 뒤 다시 시도하세요`,
+        `이미 ${existing.code} 방에 참가 중입니다. 나간 뒤 다시 시도하세요.`,
       );
     }
     // 방 생성과 같은 레이트리밋 창 — 연습 대국이 방 생성 스로틀의 옆문이 되지 않게.
@@ -5752,7 +5752,7 @@ export class RoomManager {
       return this.fail(
         conn,
         existing.phase === "playing" ? "ALREADY_IN_GAME" : "ALREADY_IN_ROOM",
-        `이미 방(${existing.code})에 참가 중입니다 — 나간 뒤 다시 시도하세요`,
+        `이미 ${existing.code} 방에 참가 중입니다. 나간 뒤 다시 시도하세요.`,
       );
     }
     if (this.rooms.size >= MAX_ROOMS) {
@@ -5812,7 +5812,7 @@ export class RoomManager {
     // 이미 끝나 정리된 방(게임 종료 후 결과 화면)에서의 요청 — 되살리지 않는다.
     // 안 막으면 폐기된 컨트롤러에 abort를 걸어 재시작 플래그만 남고 아무 일도 안 일어난다.
     if (this.rooms.get(room.code) !== room) {
-      return this.fail(conn, "ROOM_CLOSED", "끝난 테스트 게임입니다 — 홈에서 새로 시작하세요");
+      return this.fail(conn, "ROOM_CLOSED", "이미 끝난 테스트 게임입니다. 홈에서 새로 시작하세요.");
     }
     if (room.sandboxRestarting) return; // 이미 재시작 중 — 중복 요청 무시
     room.sandboxAugments = this.sanitizeSandboxAugments(room, augments);

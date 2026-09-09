@@ -351,7 +351,7 @@ const NOT_FOUND_HTML = `<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex" />
-<title>이능마작 — 없는 주소</title>
+<title>이능마작 | 페이지를 찾을 수 없습니다</title>
 <style>
   :root { color-scheme: dark; }
   body { margin:0; min-height:100vh; display:grid; place-items:center;
@@ -367,7 +367,7 @@ const NOT_FOUND_HTML = `<!doctype html>
 </style>
 </head><body><main>
 <h1>이능마작</h1>
-<p>그 주소에는 아무것도 없습니다.<br />방 초대와 리플레이 공유는 주소 뒤에 <code>?room=</code>·<code>?replay=</code>로 붙습니다.</p>
+<p>요청하신 주소에는 페이지가 없습니다.<br />방 초대와 리플레이 공유 주소는 <code>/?room=</code> 또는 <code>/?replay=</code> 형식입니다.</p>
 <a href="/">처음 화면으로</a>
 </main></body></html>
 `;
