@@ -689,7 +689,7 @@ describe("방 생성·참가 (코드)", () => {
     expect(orderOf()).toEqual(before);
   });
 
-  it("자리 옮기기는 방장 전용이고, 빈자리·범위 밖으로는 옮기지 않는다", async () => {
+  it("자리 옮기기는 방장 전용이고, 범위 밖으로는 옮기지 않는다", async () => {
     const h = await newHarness();
     const host = await connectAndRegister(h, "Host");
     host.clientSend({ type: "createRoom" });
@@ -709,13 +709,64 @@ describe("방 생성·참가 (코드)", () => {
     guest.clientSend({ type: "moveSeat", playerId: before[0], seat: 2 });
     expect(orderOf(host)).toEqual(before);
 
-    // 빈자리(3번)로는 못 옮긴다 — 자리 번호는 앉아 있는 사람들 사이의 순서다
-    host.clientSend({ type: "moveSeat", playerId: before[0], seat: 3 });
-    expect(orderOf(host)).toEqual(before);
-
     // 없는 좌석 id도 조용히 무시한다
     host.clientSend({ type: "moveSeat", playerId: "p9", seat: 1 });
     expect(orderOf(host)).toEqual(before);
+
+    // 자리표 밖(4번)도 마찬가지다
+    host.clientSend({ type: "moveSeat", playerId: before[0], seat: 4 });
+    expect(orderOf(host)).toEqual(before);
+  });
+
+  it("빈자리로 옮기면 그 방위에 앉는다 — 앞자리가 비어 있어도 당겨지지 않는다", async () => {
+    /*
+     * 예전에는 자리 = `agents` 목록의 몇 번째인가였다. 그래서 혼자 있는 방장은
+     * 무슨 수를 써도 동가였다 (2026-09-09 사용자 지시: "동남서가 비어 있어도 북
+     * 빈자리를 클릭해서 들어가면 거기 고정").
+     */
+    const h = await newHarness();
+    const host = await connectAndRegister(h, "Host");
+    host.clientSend({ type: "createRoom" });
+    const seatOf = (sock: FakeSocket, id: string): number | undefined =>
+      (sock.last("lobby").players as { playerId: string; seat: number }[]).find(
+        (p) => p.playerId === id,
+      )?.seat;
+    const me = host.last("joined").playerId as string;
+    expect(seatOf(host, me)).toBe(0);
+
+    // 혼자인 방장이 북(3번)으로 간다 — 동남서는 빈 채로 남는다
+    host.clientSend({ type: "moveSeat", playerId: me, seat: 3 });
+    expect(seatOf(host, me)).toBe(3);
+    expect(host.last("lobby").players).toHaveLength(1);
+
+    // 뒤에 들어온 사람은 남은 앞자리부터 채운다 (북은 방장 것으로 지켜진다)
+    const guest = await connectAndRegister(h, "Guest");
+    guest.clientSend({ type: "joinRoom", code: host.last("roomCreated").code });
+    expect(seatOf(host, me)).toBe(3);
+    const other = (host.last("lobby").players as { playerId: string; seat: number }[]).find(
+      (p) => p.playerId !== me,
+    );
+    expect(other?.seat).toBe(0);
+  });
+
+  it("대기실에서 고른 자리가 그대로 판의 방위가 된다", async () => {
+    // 자리표는 대기실 화면용 장식이 아니다 — 판이 설 때 `agents` 순서에 새겨진다.
+    const h = await newHarness();
+    const sock = await connectAndRegister(h, "Human", { autoRespond: true });
+    sock.clientSend({ type: "createRoom" });
+    const me = sock.last("joined").playerId as string;
+    sock.clientSend({ type: "moveSeat", playerId: me, seat: 3 }); // 혼자일 때 북으로
+    for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
+    const lobbySeat = (sock.last("lobby").players as { playerId: string; seat: number }[]).find(
+      (p) => p.playerId === me,
+    )?.seat;
+    expect(lobbySeat).toBe(3);
+
+    sock.clientSend({ type: "startGame" });
+    await sock.waitFor((m) => m.type === "view");
+    // 판의 방위도 자리 순서다 — 내가 넷째면 첫 국의 북가다.
+    const view = sock.last("view").view;
+    expect(view.players.findIndex((p: { id: string }) => p.id === me)).toBe(3);
   });
 
   it("대기실에서 나가면(소켓 close) 자리가 비고, 방장이 나가면 승계된다", async () => {

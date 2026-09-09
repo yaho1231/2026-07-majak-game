@@ -233,6 +233,28 @@ describe("대기실은 판 밖의 문법을 쓴다", () => {
     expect(APP_CODE).toMatch(/if \(!seatMovedByMe\) \{\s*\n\s*showToast\(`자리가 바뀌었습니다/);
   });
 
+  it("빈자리도 진짜 자리다 — 방장이 눌러서 그 방위로 간다", () => {
+    /*
+     * 예전에는 자리 = 앉은 사람 목록의 몇 번째인가라, 동남서가 비어 있으면 방장은
+     * 무조건 동가였다 (2026-09-09 사용자 지시: "북 빈자리를 클릭해서 들어가면 거기
+     * 고정"). 서버 자리표(`seatOrder`)와 짝을 이루는 화면 쪽 손잡이다.
+     */
+    expect(WR).toMatch(/canPickEmptySeat && p === null/);
+    expect(WR).toMatch(/props\.onMoveSeat\(lobby\.youId, i\)/);
+    // ＋(친구 초대)와 그 목록을 누른 것은 자리 고르기가 아니다
+    expect(WR).toMatch(/closest\("button,\.seat-invite"\)/);
+    expect(rule(".seat-row.seat-pickable")).toMatch(/cursor:\s*pointer/);
+  });
+
+  it("끄는 동안 화면은 드래그 시작 시점의 자리표로 그린다", () => {
+    /*
+     * 서버가 되쏘는 `lobby`를 바로 그리면 안착 애니메이션 도중에 줄들이 새 순서로
+     * 다시 그려져 «새로고침되면서 툭 들어가는» 모습이 됐다 (2026-09-09 사용자 지적).
+     */
+    expect(APP_CODE).toMatch(/const slots[^\n]*seatDrag !== null \? seatDrag\.snapshot : liveSlots/);
+    expect(APP_CODE).toMatch(/snapshot: \[\.\.\.slots\]/);
+  });
+
   it("시작·준비 버튼에 세로 그라디언트가 없다", () => {
     // 판 밖의 주 동작은 전부 평평한 채움 + 위 1px 하이라이트다(.btn-key).
     for (const sel of [".wr-start", ".wr-ready", ".wr-unready"]) {

@@ -258,6 +258,19 @@ function tableSeed(code: string, generation: number): number {
 interface Room {
   code: string;
   agents: PlayerAgent[];
+  /**
+   * **자리표** — `seatOrder[좌석] = 그 자리에 앉은 사람` (0=동 1=남 2=서 3=북).
+   * 빈자리는 `null`이라 **가운데가 비어 있을 수 있다**(동남서가 비고 북만 찬 방).
+   *
+   * 왜 `agents` 순서로는 안 되는가: `agents`는 빈틈이 없는 목록이라 «첫 번째 사람은
+   * 반드시 동가»였다. 그래서 혼자 있는 방장이 북으로 옮겨 앉을 수가 없었다
+   * (2026-09-09 사용자 지시: "북 빈자리를 클릭해서 들어가면 거기 고정").
+   *
+   * `agents`의 **순서는 여전히 방위**다 — 판이 설 때는 네 자리가 다 차 있고,
+   * `packAgentsToSeats`가 `agents`를 이 자리표 순서로 맞춘 뒤에 시작하기 때문이다.
+   * 자리표가 이 불변식(사람마다 정확히 한 자리)을 지키는 곳은 `syncSeats` 하나다.
+   */
+  seatOrder: (PlayerId | null)[];
   /** 방장 playerId (첫 사람). */
   hostId: PlayerId | null;
   /** 준비 완료한 사람 playerId 집합 (봇·방장은 항상 준비된 것으로 취급). */
@@ -3145,6 +3158,7 @@ export class RoomManager {
     const room: Room = {
       code,
       agents: [],
+      seatOrder: Array.from({ length: MAX_PLAYERS }, () => null),
       hostId: null,
       ready: new Set(),
       phase: "waiting",
@@ -3729,14 +3743,14 @@ export class RoomManager {
         if (room.phase !== "waiting" || agent.id !== room.hostId) return;
         if (room.sandbox) return; // 증강 테스트 방은 자리를 고정한다
         if (typeof msg.playerId !== "string" || !Number.isInteger(msg.seat)) return;
-        const from = room.agents.findIndex((a) => a.id === msg.playerId);
-        // 빈자리로는 옮길 수 없다 — 자리 번호는 **앉아 있는 사람들** 사이의 순서다.
-        if (from < 0 || msg.seat < 0 || msg.seat >= room.agents.length) return;
-        if (from === msg.seat) return;
-        const [moved] = room.agents.splice(from, 1);
-        if (moved === undefined) return; // 위 검사로 도달 불가 — 타입을 좁힌다
-        room.agents.splice(msg.seat, 0, moved);
-        this.log(room, `자리 옮김 — ${moved.nickname} ${from} → ${msg.seat}`);
+        this.syncSeats(room);
+        const from = room.seatOrder.indexOf(msg.playerId);
+        const next = RoomManager.seatOrderAfterMove(room.seatOrder, msg.playerId, msg.seat);
+        if (next === null) return; // 없는 사람 · 범위 밖 · 제자리
+        room.seatOrder = next;
+        this.packAgentsToSeats(room);
+        const moved = room.agents.find((a) => a.id === msg.playerId);
+        this.log(room, `자리 옮김 — ${moved?.nickname ?? msg.playerId} ${from} → ${msg.seat}`);
         this.broadcastLobby(room);
         return;
       }
@@ -3782,8 +3796,18 @@ export class RoomManager {
     if (room.phase !== "waiting") return;
     this.broadcastRiichiBgm(room); // 자리 구성이 바뀌면 트랙표도 같이 갱신된다
     this.broadcastRoomRules(room); // 새로 앉은 사람도 이 방의 규칙을 봐야 한다
-    // 좌석(방위)은 agents 배열의 **순서**다 — 0번이 첫 동가(친).
-    const players: LobbyPlayerEntry[] = room.agents.map((a, seat) => {
+    /*
+     * 좌석(방위)은 **자리표**가 정한다 — `agents` 순서가 아니다. 자리가 덜 찬 방은
+     * 가운데가 비어 있을 수 있어서(동남서가 비고 북만 찬 방) 목록의 몇 번째인가로는
+     * 방위를 말할 수 없다.
+     */
+    this.syncSeats(room);
+    const seatOfAgent = new Map<PlayerId, number>();
+    room.seatOrder.forEach((id, seat) => {
+      if (id !== null) seatOfAgent.set(id, seat);
+    });
+    const players: LobbyPlayerEntry[] = room.agents.map((a) => {
+      const seat = seatOfAgent.get(a.id) ?? 0;
       const isBot = this.isBot(a);
       const isHost = a.id === room.hostId;
       const career = !isBot && this.statsStore ? this.statsStore.get(a.nickname) : null;
@@ -6064,12 +6088,100 @@ export class RoomManager {
    */
   private shuffleSeats(room: Room): void {
     if (room.sandbox) return;
-    for (let i = room.agents.length - 1; i > 0; i--) {
+    this.syncSeats(room);
+    // 빈자리(null)까지 함께 섞는다 — 자리가 덜 찬 방에서도 «어느 방위인가»가 뽑힌다.
+    for (let i = room.seatOrder.length - 1; i > 0; i--) {
       const j = randomInt(i + 1);
-      const a = room.agents[i] as PlayerAgent;
-      room.agents[i] = room.agents[j] as PlayerAgent;
-      room.agents[j] = a;
+      const a = room.seatOrder[i] ?? null;
+      room.seatOrder[i] = room.seatOrder[j] ?? null;
+      room.seatOrder[j] = a;
     }
+    this.packAgentsToSeats(room);
+  }
+
+  /**
+   * 자리표의 **불변식을 맞춘다** — 앉아 있는 사람은 정확히 한 자리, 나머지는 빈자리.
+   *
+   * 자리에 앉고 나가는 길은 여럿이다(착석·퇴장·봇 추가/제거·강퇴·재접속). 그 길마다
+   * 자리표를 손대게 하면 어느 하나가 빠지는 날 자리표가 조용히 거짓말을 한다 —
+   * 대신 자리표를 **읽기 직전**에 여기서 한 번 맞춘다.
+   *
+   * - 자리표에 없는 사람은 **가장 앞선 빈자리**에 앉힌다 (방금 들어온 사람)
+   * - 이제 없는 사람의 자리는 비운다 (나간 사람·강퇴·봇 제거)
+   */
+  private syncSeats(room: Room): void {
+    if (room.seatOrder.length !== MAX_PLAYERS) {
+      room.seatOrder = Array.from({ length: MAX_PLAYERS }, (_, i) => room.seatOrder[i] ?? null);
+    }
+    const present = new Set(room.agents.map((a) => a.id));
+    const seen = new Set<PlayerId>();
+    for (let i = 0; i < room.seatOrder.length; i++) {
+      const id = room.seatOrder[i] ?? null;
+      // 이제 없는 사람 · 어쩌다 두 번 적힌 사람은 지운다
+      if (id === null || !present.has(id) || seen.has(id)) {
+        room.seatOrder[i] = null;
+        continue;
+      }
+      seen.add(id);
+    }
+    for (const a of room.agents) {
+      if (seen.has(a.id)) continue;
+      const free = room.seatOrder.indexOf(null);
+      if (free < 0) break; // 자리보다 사람이 많다 — 있을 수 없지만 조용히 넘긴다
+      room.seatOrder[free] = a.id;
+      seen.add(a.id);
+    }
+  }
+
+  /**
+   * `agents`의 순서를 자리표에 맞춘다 — **판이 서기 전에** 반드시 지나야 하는 문.
+   *
+   * 게임 엔진에게 방위는 `agents`의 순서다. 대기실에서 자리표가 «북=방장»이 되어도
+   * 여기를 지나지 않으면 판은 예전 순서 그대로 선다.
+   */
+  private packAgentsToSeats(room: Room): void {
+    this.syncSeats(room);
+    const byId = new Map(room.agents.map((a) => [a.id, a] as const));
+    const ordered: PlayerAgent[] = [];
+    for (const id of room.seatOrder) {
+      if (id === null) continue;
+      const a = byId.get(id);
+      if (a !== undefined) ordered.push(a);
+    }
+    if (ordered.length === room.agents.length) room.agents = ordered;
+  }
+
+  /**
+   * 자리표에서 **한 사람을 원하는 자리로** 옮긴 결과를 만든다 (서버·클라 공용 규칙).
+   *
+   * - 그 자리가 **비어 있으면** 그리로 간다. 남은 사람들은 그대로다 — 자리가 곧
+   *   방위라서, 빈 북으로 간다는 것은 «북에 앉는다»는 뜻이지 줄을 다시 세우는 게 아니다.
+   * - 그 자리에 **사람이 있으면** 앉아 있는 사람들 사이에서 «잘라 붙이기»다: 집은
+   *   사람을 빼고 그 자리에 끼워, 사이에 있던 사람들이 한 칸씩 밀린다. 빈자리의
+   *   위치는 그대로 남는다. (두 사람만 맞바꾸면 사이에 낀 사람들의 상대 위치가
+   *   뜻하지 않게 뒤집힌다.)
+   */
+  private static seatOrderAfterMove(
+    order: readonly (PlayerId | null)[],
+    playerId: PlayerId,
+    seat: number,
+  ): (PlayerId | null)[] | null {
+    const from = order.indexOf(playerId);
+    if (from < 0 || seat < 0 || seat >= order.length || from === seat) return null;
+    const next = [...order];
+    if (next[seat] === null) {
+      next[seat] = playerId;
+      next[from] = null;
+      return next;
+    }
+    // 앉아 있는 자리들만 골라 그 안에서 순서를 다시 짠다 (빈자리 위치는 보존)
+    const taken: number[] = [];
+    for (let i = 0; i < order.length; i++) if (order[i] !== null) taken.push(i);
+    const ids = taken.map((i) => order[i] as PlayerId).filter((id) => id !== playerId);
+    const at = taken.indexOf(seat);
+    ids.splice(at, 0, playerId);
+    for (let k = 0; k < taken.length; k++) next[taken[k] as number] = ids[k] ?? null;
+    return next;
   }
 
   /**
@@ -6098,6 +6210,12 @@ export class RoomManager {
   private async startGame(room: Room): Promise<void> {
     if (room.phase === "playing") return;
     if (this.shuttingDown) return;
+    /*
+     * 대기실에서 정한 자리표를 **여기서 판에 새긴다** — 엔진에게 방위는 `agents`의
+     * 순서다. 이 문을 지나지 않으면 대기실이 보여 준 동남서북과 실제 방위가 갈린다.
+     * (판이 설 때는 네 자리가 다 차 있으므로 빈틈은 남지 않는다.)
+     */
+    this.packAgentsToSeats(room);
     // 트랙표를 «판이 서기 직전» 한 번 더 고정해 보낸다 — 이 뒤로는 로비 방송이 없다.
     // 랜덤 곡은 여기서 다시 뽑는다 — 판마다 하나, 그 판 내내 그 곡.
     room.riichiBgmRandom = null;

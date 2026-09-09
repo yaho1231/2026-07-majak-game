@@ -13342,11 +13342,20 @@ interface SeatDragState {
   playerId: string;
   pointerId: number;
   fromIdx: number;
-  /** 앉아 있는 줄의 화면 Y 중심 (드래그 시작 시 1회 측정 — 피드백 루프 방지) */
+  /** 네 줄의 화면 Y 중심 (드래그 시작 시 1회 측정 — 피드백 루프 방지) */
   slotCenter: number[];
+  /**
+   * 드래그를 시작할 때의 **자리표 사진** (`[동,남,서,북]`, 빈자리는 null).
+   *
+   * 드래그가 끝날 때까지 화면은 이 사진으로 그린다. 서버가 되쏘는 `lobby`로 곧바로
+   * 갈아 끼우면, 안착 애니메이션 도중에 줄들이 새 순서로 다시 그려져 **«새로고침된
+   * 듯 툭 들어가는»** 모습이 됐다 (2026-09-09 사용자 지적). 애니메이션이 끝나고
+   * 사진을 놓을 때쯤에는 서버의 자리표가 이미 같은 모양이라 이어 붙는다.
+   */
+  snapshot: (LobbyPlayerEntry | null)[];
   startY: number;
   curY: number;
-  /** 잡은 줄이 놓일 최종 자리 (0=동 … ) */
+  /** 잡은 줄이 놓일 최종 **자리**(0=동 1=남 2=서 3=북) */
   targetIdx: number;
   /** 임계값 이상 움직여 실제 드래그가 됐는가 (아니면 그냥 탭) */
   moved: boolean;
@@ -13358,6 +13367,37 @@ interface SeatDragState {
 
 /** 자리 안착 애니메이션 길이(ms) — 손패(0.16s)와 같은 길이로 맞춘다. */
 const SEAT_SETTLE_MS = 160;
+
+/**
+ * 한 사람을 원하는 자리로 옮긴 **뒤의 자리표** — 서버 `seatOrderAfterMove`와 같은 규칙이다.
+ *
+ * 화면이 미리 그 모습을 보여 주려면(줄들이 비켜서는 애니메이션) 규칙이 양쪽에
+ * 똑같이 있어야 한다. 어긋나면 손을 떼는 순간 화면이 한 번 튄다.
+ *
+ * - 빈자리로 가면 **거기 앉는다** — 남은 사람들은 그대로다(자리가 곧 방위다)
+ * - 사람이 있는 자리면 앉아 있는 사람들 사이의 «잘라 붙이기» — 빈자리 위치는 그대로
+ */
+function seatLayoutAfterMove<T extends { playerId: string }>(
+  layout: readonly (T | null)[],
+  playerId: string,
+  seat: number,
+): (T | null)[] {
+  const from = layout.findIndex((p) => p?.playerId === playerId);
+  const moving = from < 0 ? null : layout[from] ?? null;
+  if (moving === null || seat < 0 || seat >= layout.length || from === seat) return [...layout];
+  const next = [...layout];
+  if (next[seat] === null || next[seat] === undefined) {
+    next[seat] = moving;
+    next[from] = null;
+    return next;
+  }
+  const taken: number[] = [];
+  for (let i = 0; i < layout.length; i++) if (layout[i] != null) taken.push(i);
+  const ids = taken.map((i) => layout[i] as T).filter((p) => p.playerId !== playerId);
+  ids.splice(taken.indexOf(seat), 0, moving);
+  for (let k = 0; k < taken.length; k++) next[taken[k] as number] = ids[k] ?? null;
+  return next;
+}
 
 /**
  * 내 `moveSeat`의 결과를 기다리는 시간(ms) — 이 안에 온 `lobby` 하나까지가 «내가 한 일»이다.
@@ -13571,7 +13611,16 @@ function WaitingRoom(props: {
       const b = seatDragRef.current;
       if (b === null || e.pointerId !== b.pointerId || b.settling) return;
       if (!b.moved && Math.abs(e.clientY - b.startY) < b.threshold) return;
-      const targetIdx = dragTargetIdx(b.slotCenter, b.fromIdx, e.clientY);
+      /*
+       * 자리는 **커서가 있는 줄**이다 — 빈자리도 포함해서 가장 가까운 줄 하나.
+       * 예전에는 «앉아 있는 사람들 사이 몇 번째»(dragTargetIdx)라 빈 북으로는
+       * 아예 끌 수 없었다. 자리가 곧 방위이므로 «어느 줄 위인가»가 곧 답이다.
+       */
+      let targetIdx = 0;
+      for (let i = 1; i < b.slotCenter.length; i++) {
+        const best = b.slotCenter[targetIdx] ?? 0;
+        if (Math.abs(e.clientY - (b.slotCenter[i] ?? 0)) < Math.abs(e.clientY - best)) targetIdx = i;
+      }
       // 한 자리 넘어갈 때마다 "칙" — 손패를 넘길 때와 같은 촉감
       if (targetIdx !== b.targetIdx) sfx.slide();
       setSeatDragBoth({ ...b, curY: e.clientY, moved: true, targetIdx });
@@ -13625,16 +13674,28 @@ function WaitingRoom(props: {
    * p2가 동가일 수 있고, 예전에 id 번호로 줄을 세웠을 때는 대기실이 보여 주는 방위와
    * 실제 게임 방위가 서로 달랐다.
    */
-  const slots: (LobbyPlayerEntry | null)[] = [0, 1, 2, 3].map(
+  const liveSlots: (LobbyPlayerEntry | null)[] = [0, 1, 2, 3].map(
     (i) => lobby.players.find((p) => p.seat === i) ?? null,
   );
+  /*
+   * 끄는 동안(안착까지)에는 **드래그를 시작할 때의 사진**으로 그린다.
+   *
+   * 서버는 `moveSeat`를 받자마자 새 자리표를 되쏜다. 그걸 곧바로 그리면 줄들이 새
+   * 순서로 다시 그려지고, 그 위에 안착 애니메이션이 겹쳐 «새로고침되면서 툭 들어가는»
+   * 모습이 됐다 (2026-09-09 사용자 지적). 사진을 놓는 시점(160ms 뒤)에는 서버 자리표가
+   * 이미 화면과 같은 모양이라 이어 붙는다.
+   */
+  const slots: (LobbyPlayerEntry | null)[] = seatDrag !== null ? seatDrag.snapshot : liveSlots;
   const readyCount = lobby.players.filter((p) => !p.isHost && p.ready).length;
   const needReady = lobby.players.filter((p) => !p.isHost && !p.isBot).length;
 
-  const canDragSeats = isHost && lobby.players.length >= 2;
-  /** 사람(봇 포함)이 앉아 있는 줄 수 — 놓을 수 있는 자리는 여기까지다. */
-  const seatedCount = slots.filter((q) => q !== null).length;
-
+  /*
+   * 자리를 정할 수 있는 사람 = 방장. 혼자 있어도 열어 둔다 — 빈자리가 진짜 자리가 된
+   * 뒤로는 «혼자 있는 방장이 북으로 가 앉는다»가 뜻이 있는 조작이다.
+   */
+  const canDragSeats = isHost;
+  /** 방장이 빈자리를 눌러 그 자리로 갈 수 있는가 (끄는 중에는 잠근다) */
+  const canPickEmptySeat = isHost && seatDrag === null;
   function beginSeatDrag(e: React.PointerEvent, p: LobbyPlayerEntry, idx: number): void {
     if (!canDragSeats) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -13642,23 +13703,18 @@ function WaitingRoom(props: {
     if ((e.target as HTMLElement).closest("button") !== null) return;
     const list = seatListRef.current;
     if (list === null) return;
-    /*
-     * 잡을 수 있는 자리 = **사람이 앉아 있는 줄**뿐이다. 서버의 `seat`은
-     * `room.agents` 안의 순서라 앉은 사람들이 앞쪽 자리를 빈틈없이 채운다 —
-     * 그래서 앞의 N줄만 재고 빈자리는 애초에 놓을 자리 후보에서 빠진다.
-     */
-    const centers = Array.from(list.querySelectorAll<HTMLElement>(".seat-row"))
-      .slice(0, seatedCount)
-      .map((n) => {
-        const r = n.getBoundingClientRect();
-        return r.top + r.height / 2;
-      });
+    // 네 줄을 다 잰다 — **빈자리도 놓을 자리**다(빈 북으로 끌어 북가가 된다).
+    const centers = Array.from(list.querySelectorAll<HTMLElement>(".seat-row")).map((n) => {
+      const r = n.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
     if (idx >= centers.length) return;
     setSeatDragBoth({
       playerId: p.playerId,
       pointerId: e.pointerId,
       fromIdx: idx,
       slotCenter: centers,
+      snapshot: [...slots],
       startY: e.clientY,
       curY: e.clientY,
       targetIdx: idx,
@@ -13670,7 +13726,13 @@ function WaitingRoom(props: {
     });
   }
 
-  /** 드래그 중 줄 하나의 transform — 잡은 줄은 손끝을, 나머지는 비켜설 자리를 따른다. */
+  /**
+   * 드래그 중 줄 하나의 transform — 잡은 줄은 손끝을, 나머지는 **옮긴 뒤의 자리**를 따른다.
+   *
+   * 한 줄씩 «한 칸 밀기»를 계산하지 않고 `seatLayoutAfterMove`로 결과 자리표를 만들어
+   * 거기까지의 거리를 준다. 빈자리로 가는 경우(아무도 안 밀린다)와 사람이 있는 자리로
+   * 끼우는 경우(사이가 한 칸씩 밀린다)를 한 규칙으로 그린다.
+   */
   function seatDragStyle(idx: number): CSSProperties | undefined {
     const b = seatDrag;
     if (b === null || !b.moved) return undefined;
@@ -13692,10 +13754,12 @@ function WaitingRoom(props: {
         pointerEvents: "none",
       };
     }
-    if (idx >= slotCenter.length) return undefined; // 빈자리는 비켜서지 않는다
-    const j = idx < fromIdx ? idx : idx - 1;
-    const finalIdx = j < targetIdx ? j : j + 1;
-    const ty = toLayoutPx((slotCenter[finalIdx] ?? slotCenter[idx] ?? 0) - (slotCenter[idx] ?? 0));
+    const here = b.snapshot[idx] ?? null;
+    if (here === null) return undefined; // 빈자리는 비켜설 것이 없다
+    const after = seatLayoutAfterMove(b.snapshot, b.playerId, targetIdx);
+    const to = after.findIndex((q) => q?.playerId === here.playerId);
+    if (to < 0) return undefined;
+    const ty = toLayoutPx((slotCenter[to] ?? slotCenter[idx] ?? 0) - (slotCenter[idx] ?? 0));
     return { transform: `translateY(${ty}px)`, transition: `transform ${SEAT_SETTLE_MS}ms ease` };
   }
 
@@ -13890,11 +13954,38 @@ function WaitingRoom(props: {
               key={i}
               className={`seat-row ${p === null ? "seat-empty" : ""} ${p?.playerId === lobby.youId ? "seat-me" : ""}${
                 canDragSeats && p !== null ? " seat-draggable" : ""
-              }${seatDrag?.moved === true && seatDrag.fromIdx === i ? " seat-dragging" : ""}`}
-              title={canDragSeats && p !== null ? "끌어서 자리를 옮깁니다" : undefined}
+              }${seatDrag?.moved === true && seatDrag.fromIdx === i ? " seat-dragging" : ""}${
+                canPickEmptySeat && p === null ? " seat-pickable" : ""
+              }${
+                seatDrag?.moved === true && seatDrag.targetIdx === i && p === null
+                  ? " seat-droptarget"
+                  : ""
+              }`}
+              title={
+                canDragSeats && p !== null
+                  ? "끌어서 자리를 옮깁니다"
+                  : canPickEmptySeat && p === null
+                    ? "눌러서 이 자리로 옮깁니다"
+                    : undefined
+              }
               style={seatDragStyle(i)}
               onPointerDown={
                 canDragSeats && p !== null ? (e) => beginSeatDrag(e, p, i) : undefined
+              }
+              /*
+               * 빈자리를 누르면 **방장이 그 자리로 간다** (2026-09-09 사용자 지시).
+               * 자리가 곧 방위이므로 «동남서가 비었어도 북에 앉는다»가 가능해야 한다.
+               * ＋(친구 초대)는 같은 줄의 단추라 여기서 걸러 낸다.
+               */
+              onClick={
+                canPickEmptySeat && p === null
+                  ? (e) => {
+                      // ＋(친구 초대)와 그 목록 안은 «자리 고르기»가 아니다
+                      if ((e.target as HTMLElement).closest("button,.seat-invite") !== null) return;
+                      sfx.slide();
+                      props.onMoveSeat(lobby.youId, i);
+                    }
+                  : undefined
               }
             >
               <span className="seat-idx">{WIND_KO[i]}</span>
