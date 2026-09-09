@@ -394,7 +394,7 @@ describe("짝수의 세계 — 예외 없이 모든 홀수 수패가 짝수가 �
   });
 
   it("카드 문구가 새 사양을 말한다 (예외 없음 · 자패만 불변)", () => {
-    expect(evenWorld.description).toContain("자패만 그대로 남는다");
+    expect(evenWorld.description).toContain("자패는 바뀌지 않는다");
     expect(evenWorld.description).not.toContain("자패와 도라는 그대로 남는다");
     // 도라·적도라 예외가 사라진 뒤로는 그 얘기를 아예 하지 않는다 (2026-09-05 사용자 지시)
     expect(evenWorld.detail).not.toContain("도라");

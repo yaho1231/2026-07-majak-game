@@ -160,7 +160,7 @@ describe("리치를 선언한 상대는 손패 조작의 대상이 되지 않는
 
     it(`${c.name} — 설명에 "리치한 상대에게는 쓸 수 없다"가 적혀 있다`, () => {
       const text = `${c.def.description} ${c.def.detail ?? ""}`;
-      expect(text).toMatch(/리치[^.]*(?:쓸 수 없|지정할 수 없|대상 불가)/);
+      expect(text).toMatch(/리치[^.]*(?:쓸 수 없|사용할 수 없|지정할 수 없|대상 불가|고를 수 없)/);
     });
   }
 });

@@ -212,7 +212,7 @@ export const reload: AugmentDef = defineAugment({
   complexity: 1,
   name: "재장전",
   description:
-    "(동풍전 1회 · 반장전 2회) 자기 순에 사용 횟수를 이미 쓴 내 다른 증강 하나를 지목해 1회 복구한다.",
+    "(동풍전 1회 · 반장전 2회) 자기 순에 사용 횟수를 다 쓴 내 다른 증강 하나를 지목해 1회 복구한다.",
   /**
    * 첫 드래프트(동1국 진입)에서는 제시하지 않는다.
    *
@@ -230,7 +230,7 @@ export const reload: AugmentDef = defineAugment({
    */
   draftRequires: (state, player) => hasRestorableAugment(state, player),
   detail:
-    "소진한 내 증강 하나를 지목해 사용 횟수를 한 번 되돌린다 — «게임 내 1회»도 되돌릴 수 있다.\n\n국 단위 쿨다운으로 도는 증강과 재장전 자신은 고를 수 없다.",
+    "다 쓴 내 증강 하나를 지목해 사용 횟수를 한 번 되돌린다. 게임 내 1회짜리 증강도 되돌릴 수 있다.\n\n국 단위 쿨다운이 있는 증강과 재장전 자신은 고를 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

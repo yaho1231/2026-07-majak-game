@@ -17,7 +17,7 @@ export const omniChi: AugmentDef = defineAugment({
   description:
     "(상시) 상가뿐 아니라 누구의 버림패로도 치할 수 있다.",
   detail:
-    "누구의 버림패로도 치할 수 있다.\n\n퐁과 겹치면 퐁이 우선하고, 상가의 일반 치와 겹치면 이쪽이 우선한다.",
+    "누구의 버림패로도 치할 수 있다.\n\n퐁과 겹치면 퐁이 우선하고, 상가의 일반 치와 겹치면 이 증강의 치가 우선한다.",
   install(ctx) {
     ctx.setHolderRule("call.chi.fromAnyone", true);
   },

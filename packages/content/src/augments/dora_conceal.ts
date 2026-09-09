@@ -28,7 +28,7 @@ export const doraConceal: AugmentDef = defineAugment({
   complexity: 2,
   name: "가려진 도라",
   description:
-    "(상시) 도라 표시패가 상대에게는 가려진다 — 도라는 나만 알 수 있다.",
+    "(상시) 도라 표시패가 상대에게는 가려져서 도라를 나만 알 수 있다.",
   detail:
     "도라 표시패가 나에게만 보이고 상대에게는 뒷면으로 덮인다.\n\n증강을 가졌다는 사실은 공개되며, 표시패는 국이 끝날 때 뒤집힌다.",
   install(ctx) {

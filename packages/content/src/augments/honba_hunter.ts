@@ -30,7 +30,7 @@ export const honbaHunter: AugmentDef = defineAugment({
   description:
     "(상시) 나에게만 본장 1개당 추가 점수가 300점이 아니라 1,500점이 된다.",
   detail:
-    "내 화료의 본장 보너스가 1개당 300점이 아니라 1,500점이다.\n\n상한은 없고, 내 앞의 본장 표시는 실제 가치만큼 부풀어 전원에게 보인다.",
+    "내 화료의 본장 보너스가 1개당 300점이 아니라 1,500점이다.\n\n상한은 없고, 내 앞의 본장 표시는 실제 가치에 맞춰 커져서 모두에게 보인다.",
   install(ctx) {
     const { holder } = ctx;
 

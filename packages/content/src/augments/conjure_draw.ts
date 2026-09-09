@@ -110,9 +110,9 @@ export const conjureDraw: AugmentDef = defineAugment({
   complexity: 1,
   name: "소환",
   description:
-    "손패 1장을 지목하면 다음 쯔모에 반드시 그 패를 소환해온다.",
+    "(매 국 1회) 손패 1장을 지목하면 다음 쯔모에 그 종류의 패를 소환해 온다.",
   detail:
-    "손패 1장을 지목하면 다음 쯔모가 반드시 그 종류의 생성패로 온다.\n\n무엇을 불렀는지는 전원에게 공개된다. 깡의 영상패를 포함해 내가 다음에 뽑는 한 장이 대상이다.",
+    "손패 1장을 지목하면 다음 쯔모가 그 종류의 생성패로 온다.\n\n무엇을 소환했는지는 전원에게 공개된다. 깡의 영상패를 포함해 내가 다음에 뽑는 한 장이 대상이다.",
   install(ctx) {
     const { engine, holder } = ctx;
 

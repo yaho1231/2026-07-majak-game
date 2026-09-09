@@ -77,7 +77,7 @@ export const ankanDora: AugmentDef = defineAugment({
   description:
     "(상시) 안깡을 하면 그 깡의 네 장이 나만의 도라가 되어, 화료 시 묶음마다 +4판이 붙는다.",
   detail:
-    "안깡 한 묶음마다 그 네 장이 나만의 도라가 되어 +4판.\n\n역만에는 붙지 않는다.",
+    "안깡 한 묶음마다 그 네 장이 나만의 도라가 되어 4판이 붙는다.\n\n역만에는 붙지 않는다.",
   install(ctx) {
     const { holder } = ctx;
 

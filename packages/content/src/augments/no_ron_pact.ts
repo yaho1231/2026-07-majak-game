@@ -112,9 +112,9 @@ function pactActive(state: GameState, holder: PlayerId): boolean {
 
 /** 지금 조약 상태를 사람이 읽는 한 줄로 (전원 공개 채널의 값) */
 function pactLabel(state: GameState, holder: PlayerId): string {
-  if (pactActive(state, holder)) return `조약 유효 — ${PACT_TURNS}순까지 론 불가`;
+  if (pactActive(state, holder)) return `조약 유효: ${PACT_TURNS}순까지 론 불가`;
   const spent = (state.round.byPlayer[holder]?.discardCount ?? 0) > PACT_TURNS;
-  return spent ? "조약 만료 — 론 가능" : "조약 파기 — 론 가능";
+  return spent ? "조약 만료: 론 가능" : "조약 파기: 론 가능";
 }
 
 export const noRonPact: AugmentDef = defineAugment({
@@ -124,9 +124,9 @@ export const noRonPact: AugmentDef = defineAugment({
   complexity: 3,
   name: "불가침 조약",
   description:
-    "매 국 첫 6순동안 론 당하지 않는다. 단, 리치, 후로(안깡 포함)시 조약이 사라진다.",
+    "매 국 첫 6순 동안 론당하지 않는다. 단, 리치를 걸거나 후로(안깡 포함)를 하면 조약이 사라진다.",
   detail:
-    "매 국 첫 6순 동안 론당하지 않는다.\n\n리치를 걸거나 손에 몸통이 하나라도 생기면(치·퐁·대명깡은 물론 안깡·묵계 퐁도) 조약이 사라진다. 상대의 쯔모와 유국 노텐 벌점은 막지 못한다.",
+    "매 국 첫 6순 동안 론당하지 않는다.\n\n리치를 걸거나 손에 몸통이 하나라도 생기면 조약이 사라진다. 치·퐁·대명깡은 물론 안깡과 묵계 퐁도 포함된다. 상대의 쯔모와 유국 노텐 벌점은 막지 못한다.",
   install(ctx) {
     const { holder } = ctx;
 
