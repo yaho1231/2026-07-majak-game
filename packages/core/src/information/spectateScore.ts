@@ -87,6 +87,12 @@ export interface SpectateSeatScore {
   handGrade?: number;
   /** 손패가 통째로 바뀌어 배패 점수를 다시 쟀다 (교환 증강) */
   handGradeRegraded?: boolean;
+  /**
+   * **지금 손패 점수** 0~100 — 배패 점수와 같은 자로 **현재 손**(후로 포함)을 잰 값.
+   * 쯔모·버림마다 움직인다. 배패 점수(고정)와 나란히 두면 «받은 패 대비 얼마나
+   * 키웠나»가 한눈에 읽힌다 (2026-09-11 사용자 요청).
+   */
+  handGradeNow?: number;
 }
 
 /** 코어 `LimitName` → 프로토콜 `limit` (셈수 역만 이름만 짧게 간다) */
@@ -505,12 +511,22 @@ export function buildSpectateSeatScores(
     const handKinds = handKindsOf(state, p.id);
       const { shanten, drops } = bestShanten(state, handIds, handKinds, meldCount, opts);
 
+    // 지금 손패 점수 — 14장이면 «샹텐을 가장 낮추는 버림» 뒤의 13장으로 잰다
+    // (배패 점수가 오야의 첫 쯔모를 빼고 재는 것과 같은 이유: 장수가 다르면 값이 뛴다).
+    let nowKinds: readonly TileKind[] = handKinds;
+    if (handIds.length % 3 === 2 && drops.length > 0) {
+      const at = handIds.indexOf(drops[0]!);
+      if (at >= 0) nowKinds = handKinds.filter((_, i) => i !== at);
+    }
+    const handGradeNow = gradeStartingHand(nowKinds, opts, dora, meldCount);
+
     const seat: SpectateSeatScore = {
       id: p.id,
       shanten,
       meldCount,
       menzen,
       dora,
+      handGradeNow,
       ...(handGrades[p.id] !== undefined ? { handGrade: handGrades[p.id]! } : {}),
       ...(handGrades[p.id] !== undefined && handGradeRegraded[p.id] === true
         ? { handGradeRegraded: true as const }
@@ -655,9 +671,11 @@ export function gradeStartingHand(
   kinds: readonly TileKind[],
   options?: DecomposeOptions,
   doraCount = 0,
+  /** 후로 수 — «지금 손패 점수»(`handGradeNow`)로 쓸 때만 0이 아니다 */
+  meldCount = 0,
 ): number {
   if (kinds.length === 0) return 0;
-  const shanten = shantenOf(kinds, 0, options);
+  const shanten = shantenOf(kinds, meldCount, options);
 
   // 속도 — 6.5샹텐(사실상 최악)에서 1샹텐(사실상 최선)까지를 0~1로 편다.
   const speed = clamp01((6.5 - shanten) / 5.5);

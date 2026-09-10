@@ -499,7 +499,7 @@ type AccountNotice = {
 /** 도중유국 사유 (RoundSettledPayload.abortReason) — 결과 화면 부제 */
 const ABORT_REASONS: Record<string, string> = {
   kyushuKyuhai: "구종구패입니다. 배패에 요구패와 자패가 9종 이상이었습니다.",
-  fourKan: "사깡산료입니다. 두 명 이상이 합쳐서 깡을 네 번 했습니다.",
+  fourKan: "사깡유국입니다. 두 명 이상이 합쳐서 깡을 네 번 했습니다.",
   fourWind: "사풍연타입니다. 첫 순에 네 명이 같은 풍패를 버렸습니다.",
   fourRiichi: "사가리치입니다. 네 명이 모두 리치를 걸었습니다.",
   tripleRon: "삼가화입니다. 버림패 한 장에 세 명이 동시에 론했습니다.",
@@ -14758,19 +14758,10 @@ const GameTable = memo(function GameTable(props: {
       onContextMenu={rightClickTsumogiri}
       data-hl={hoverKind === null ? undefined : `${hoverKind.suit}${hoverKind.rank}`}
     >
-      {/* 관전 표식 — **표식만** 남긴다.
-          예전에는 이 알약 하나에 운영 손잡이 7묶음(탁자·되감기·오버레이·지연·중계
-          도구·일시정지·아래 자리)이 전부 들어 있었다. 좁아지면 `flex-wrap`으로
-          여러 줄이 되어 아래로 자라며 맞은편 손패와 이름표를 덮었다 — 손잡이를
-          늘릴수록 판이 가려지는 구조였다. 전부 오른쪽 도크의 「관전 설정」으로
-          옮겼다(기능은 하나도 줄지 않았다). */}
-      {props.spectator === true ? (
-        <div className="spectate-bar">
-          <span className="spectate-bar-label">
-            👁 관전 중{props.spectateCode != null ? `, 방 ${props.spectateCode}` : ""} (모든 손패 공개)
-          </span>
-        </div>
-      ) : null}
+      {/* 관전 표식(「👁 관전 중, 방 ○○ (모든 손패 공개)」)은 **띄우지 않는다**
+          (2026-09-11 사용자 지시). 관전 손잡이는 전부 오른쪽 도크의 「관전 설정」에
+          있고, 관전 중이라는 사실은 도크 자체가 말해 준다 — 판 위 알약은 맞은편
+          손패와 이름표만 가렸다. */}
       {/* 「이 판은 중계 중」 표식은 **띄우지 않는다** (2026-09-03 사용자 지시:
           「관리자가 관전하면 중계중 표시 안 나오게」).
 
@@ -22635,6 +22626,28 @@ function DockSeats({
                 </span>
               </div>
             ) : null}
+            {/* 지금 손패 점수 — 배패와 **같은 자**로 현재 손을 잰 값. 매 수 움직인다.
+                배패 줄 바로 아래 같은 모양으로 두면 «받은 패 → 지금 손»이 두 줄로 읽힌다
+                (2026-09-11 사용자 요청: 「배패점수 말고 실시간 손패점수도」). */}
+            {ins?.handGradeNow !== undefined ? (
+              <div className="bcast-card-line">
+                <span className="bcast-label-sm">지금</span>
+                <span className="bcast-grade-bar" aria-hidden="true">
+                  <span
+                    className={`bcast-grade-fill${
+                      ins.handGradeNow >= 70 ? " hi" : ins.handGradeNow >= 40 ? " md" : ""
+                    }`}
+                    style={{ width: `${Math.max(0, Math.min(100, ins.handGradeNow))}%` }}
+                  />
+                </span>
+                <span
+                  className="bcast-grade-num num"
+                  title="지금 손패의 점수(100점 만점)입니다. 배패 점수와 같은 기준으로 현재 손을 재며, 쯔모·버림마다 바뀝니다"
+                >
+                  {Math.round(ins.handGradeNow)}
+                </span>
+              </div>
+            ) : null}
             <SeatAugments view={view} player={p} catalog={catalog} />
           </div>
         );
@@ -22825,7 +22838,13 @@ function DockDanger({
     return (
       <div className="dock-danger">
         {factNode}
-        <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>
+        {/* 리플레이 보조값에는 봇 눈의 위험도가 없다(서버 모형) — «상대가 없다»고
+            주장하면 리치 좌석이 서 있는 화면에서 거짓이 된다. */}
+        <p className="dock-note">
+          {insight?.replay === true
+            ? "리플레이에서는 위험도(봇 추정)를 계산하지 않습니다. 위의 쏘이는 패는 실제 값입니다."
+            : "지금은 위험도를 매길 상대가 없습니다."}
+        </p>
       </div>
     );
   }
@@ -27194,6 +27213,20 @@ function ReplayViewer(props: {
     () => (replay !== null && mod !== null ? mod.replayViewAt(replay, idx) : null),
     [replay, idx, mod],
   );
+  /*
+   * 관전 보조값 — 생방 도크가 서버에서 받는 그 값을 **클라이언트가 같은 코어 함수로**
+   * 낸다. 이게 없어서 리플레이 도크의 좌석 분석·오름패·쏘이는 패·판 위 대기 표시가
+   * 전부 «기다리는 중»에 멈춰 있었다 (2026-09-11 사용자 보고).
+   */
+  const insight = useMemo(
+    () => (replay !== null && mod !== null ? mod.replayInsightAt(replay, idx) : null),
+    [replay, idx, mod],
+  );
+  /* 점수 추이 구획 — 지금 프레임까지 끝난 국의 정산 (생방의 `roundHistory`와 같은 모양) */
+  const pastRounds = useMemo<PastRound[]>(
+    () => settlements.filter((sx) => sx.index <= idx).map((sx) => ({ label: sx.label, result: sx.result })),
+    [settlements, idx],
+  );
 
   /*
    * 키보드 조작 (감사 2026-08-17 §5-12).
@@ -27294,6 +27327,8 @@ function ReplayViewer(props: {
         settings={props.settings}
         spectator
         spectateCode={null}
+        {...(insight !== null ? { insight } : {})}
+        pastRounds={pastRounds}
         onSetting={props.onSetting}
         onRiichiMode={() => undefined}
         onSubmit={() => undefined}
