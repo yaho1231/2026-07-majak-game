@@ -244,7 +244,21 @@ function mergedRankGroups(
   ];
 }
 
-/** 무늬 그룹들을 조합해 표준형 샹텐의 최솟값을 낸다 (`standardShanten`의 안쪽) */
+/**
+ * 무늬 그룹들을 조합해 표준형 샹텐의 최솟값을 낸다 (`standardShanten`의 안쪽).
+ *
+ * 그룹마다 프로필(멘쯔 수·부분 수·머리 유무)을 하나씩 고르는 조합 — 예전에는 그
+ * 곱을 전부 재귀로 돌았다(5무늬 × 프로필 몇 개 = 수천 갈래). 최종 점수는 **합계**
+ * (sets·partials·hasPair)만 보므로, 그룹을 하나씩 더하며 같은 합계를 하나로 접는
+ * DP로 같은 최솟값이 나온다. 상태는 (sets ≤ 15, partials ≤ 31, pair) 1024칸.
+ */
+const COMBINE_STATES = 16 * 32 * 2;
+/** 상태별 «마지막으로 본 세대» — 세대 번호를 올리면 비우지 않고 다시 쓴다 */
+const combineSeen = new Int32Array(COMBINE_STATES);
+let combineGen = 0;
+let combineCur = new Int16Array(COMBINE_STATES);
+let combineNext = new Int16Array(COMBINE_STATES);
+
 function combineGroups(
   groupSet: readonly Group[],
   meldCount: number,
@@ -253,30 +267,50 @@ function combineGroups(
 ): number {
   const maxBlocks = totalSets + 1;
   const base = totalSets * 2;
-  const combine = (idx: number, sets: number, partials: number, hasPair: boolean): void => {
-    if (idx >= groupSet.length) {
-      let m = meldCount + sets;
-      let p = partials;
-      if (m > totalSets) m = totalSets;
-      if (m + p > maxBlocks) p = maxBlocks - m;
-      let s = base - 2 * m - p;
-      // 블록이 다 찼는데 머리가 없으면 하나를 헐어 머리를 만들어야 한다
-      if (m + p === maxBlocks && !hasPair) s += 1;
-      if (s < best) best = s;
-      return;
+  let cur = combineCur;
+  let next = combineNext;
+  let curLen = 1;
+  cur[0] = 0; // (sets 0, partials 0, pair 없음)
+  for (const group of groupSet) {
+    const profs = profilesOf(group);
+    combineGen++;
+    let nextLen = 0;
+    for (let i = 0; i < curLen; i++) {
+      const st = cur[i] as number;
+      const pair = st & 1;
+      const partials = (st >> 1) & 31;
+      const sets = st >> 6;
+      for (const prof of profs) {
+        let ns = sets + prof.sets;
+        let np = partials + prof.partials;
+        // 상한을 넘는 값은 점수에서 어차피 잘린다(아래 m·p 클램프) — 칸 밖으로 새지 않게 붙든다
+        if (ns > 15) ns = 15;
+        if (np > 31) np = 31;
+        const key = (ns << 6) | (np << 1) | (pair | (prof.hasPair ? 1 : 0));
+        if (combineSeen[key] === combineGen) continue;
+        combineSeen[key] = combineGen;
+        next[nextLen++] = key;
+      }
     }
-    const group = groupSet[idx];
-    if (group === undefined) return;
-    for (const prof of profilesOf(group)) {
-      combine(
-        idx + 1,
-        sets + prof.sets,
-        partials + prof.partials,
-        hasPair || prof.hasPair,
-      );
-    }
-  };
-  combine(0, 0, 0, false);
+    const t = cur;
+    cur = next;
+    next = t;
+    curLen = nextLen;
+  }
+  for (let i = 0; i < curLen; i++) {
+    const st = cur[i] as number;
+    const hasPair = (st & 1) === 1;
+    let p = (st >> 1) & 31;
+    let m = meldCount + (st >> 6);
+    if (m > totalSets) m = totalSets;
+    if (m + p > maxBlocks) p = maxBlocks - m;
+    let sc = base - 2 * m - p;
+    // 블록이 다 찼는데 머리가 없으면 하나를 헐어 머리를 만들어야 한다
+    if (m + p === maxBlocks && !hasPair) sc += 1;
+    if (sc < best) best = sc;
+  }
+  combineCur = cur;
+  combineNext = next;
   return best;
 }
 
