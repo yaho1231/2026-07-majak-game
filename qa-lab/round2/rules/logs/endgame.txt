@@ -2,7 +2,7 @@ FAIL 도중유국(구종구패)로 게임이 끝나지 않는다 — 아가리�
 OK   대조군: 오야 화료 → 아가리야메 종국 — reason=agariYame outcomes=win@2-4-1 scores=19000/19000/19000/43000
 OK   도중유국 + 오야가 1위 아님 → 게임 계속 — reason=null 시작된국=2
 FAIL 1위 오야가 구종구패로 게임을 끝낼 수 없다 — reason=agariYame outcomes=abort@2-4-1 scores=20000/20000/20000/40000
-OK   E1 도비: 0점 미만이 생기면 즉시 종국 — reason=dobi scores=-500/39000/39000/22500
-OK   E2 (대조) 도비 아님 — reason=agariYame scores=24000/24000/24000/28000
+OK   E1 토비: 0점 미만이 생기면 즉시 종국 — reason=dobi scores=-500/39000/39000/22500
+OK   E2 (대조) 토비 아님 — reason=agariYame scores=24000/24000/24000/28000
 OK   F 서입: 1위가 30000 미만이면 서1국으로 이어진다 — reason=null 다음국=3-1-0 scores=23000/27000/25000/25000
 5/7 통과

@@ -127,7 +127,7 @@ interface PlayerAgent {
   1. setupRound → FlowController.begin()
   2. 플레이어 결정 수집 → flow.submit()
   3. 국 종료 → PlayerView 전송
-  4. 도비 체크 → 도비면 즉시 종료
+  4. 토비 체크 → 토비면 즉시 종료
   5. 종료 조건 체크:
      - 남장 4국 후 오야가 트ップ이면 종료
      - 남장 이후 트르 이상이면 종료
@@ -145,7 +145,7 @@ rankings 전송
 interface HanchanConfig {
   startScore: number;      // 25000
   returnScore: number;     // 30000
-  dobi: boolean;           // true: 도비(0점 이하) 즉시 종료
+  dobi: boolean;           // true: 토비(0점 이하) 즉시 종료
   maxWind: number;         // 2 = 반장전 (동+남), 3 = 산장전
   westEntry: boolean;      // true: 서입 허용
   uma: [number, number];   // [10, 20] → 1위 +20, 2위 +10, 3위 -10, 4위 -20 (우마)

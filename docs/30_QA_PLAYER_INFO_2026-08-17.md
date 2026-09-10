@@ -100,11 +100,11 @@
 - 종국 직전 전면 컷인 `"천하통일" / "{이름} — 45000점 도달, 남은 국은 없다"`.
 - `GameOverMessage`에 `reason` 추가(아래 P1-2와 함께).
 
-### P1-2. 도비·아가리야메·서입 종국에 사유가 없다
+### P1-2. 토비·아가리야메·서입 종국에 사유가 없다
 
 `dobi: true`(0점 이하 즉시 종료, [HanchanController.ts:783](packages/core/src/match/HanchanController.ts:783))와 `agariYame: true`(오라스 오야 연장 + 단독 1위면 종국)가 켜져 있는데 `GameOverMessage`에 사유 필드가 없다. 클라도 "대국 종료"만 띄운다.
 
-**수정 방향**: `GameOverMessage`에 `reason?: "normal" | "dobi" | "agariYame" | "westEntryDecided" | "unification"` 추가 → `GameOverModal` 헤더 아래 한 줄(`"도비 — 누군가 0점 이하가 되어 종료"`).
+**수정 방향**: `GameOverMessage`에 `reason?: "normal" | "dobi" | "agariYame" | "westEntryDecided" | "unification"` 추가 → `GameOverModal` 헤더 아래 한 줄(`"토비 — 누군가 0점 이하가 되어 종료"`).
 
 ### P1-3. 통째로 바꾸기 — 손패 13장 강탈에 컷인이 없다
 
@@ -229,7 +229,7 @@
 
 ### P2-1. 우마·오카가 화면 어디에도 없다
 
-`RankingEntry`는 `uma`·`oka`·`rawScore`를 실어 보내는데([protocol.ts:626](packages/core/src/network/protocol.ts:626)) 클라는 `rawScore`와 `score`만 그린다([App.tsx:15070](packages/client/src/App.tsx:15070)). `우마`·`오카`·`도비` 문자열은 `App.tsx`에 **0회**. 기본값 `uma [5,15]`, `oka 0`이라 3위가 -5, 4위가 -15를 조용히 먹는다.
+`RankingEntry`는 `uma`·`oka`·`rawScore`를 실어 보내는데([protocol.ts:626](packages/core/src/network/protocol.ts:626)) 클라는 `rawScore`와 `score`만 그린다([App.tsx:15070](packages/client/src/App.tsx:15070)). `우마`·`오카`·`토비` 문자열은 `App.tsx`에 **0회**. 기본값 `uma [5,15]`, `oka 0`이라 3위가 -5, 4위가 -15를 조용히 먹는다.
 
 **수정 방향**: `rank-row`에 `원점 → +우마 (+오카) = 최종` 분해 표기(서버 변경 불필요). 대기실 팁에 "우마 +15/+5/-5/-15, 반환점 30000" 한 줄.
 

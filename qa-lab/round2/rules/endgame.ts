@@ -1,5 +1,5 @@
 /**
- * endgame.ts — 반장전 종료 조건(아가리야메/텐파이야메·서입·도비)의 실전 판정.
+ * endgame.ts — 반장전 종료 조건(아가리야메/텐파이야메·서입·토비)의 실전 판정.
  * 증강 없음. 남4국 상태를 직접 세우고 HanchanController.resume 으로 그 국부터 돌린다.
  */
 import { HanchanController, DEFAULT_HANCHAN_CONFIG } from "@majak/core";
@@ -149,7 +149,7 @@ async function testDealerSelfAbortEndsGame(): Promise<void> {
     `reason=${String(r.reason)} outcomes=${r.outcomes.join(",")} scores=${r.scores.join("/")}`);
 }
 
-// ── E. 도비 — 0점 미만이면 즉시 종국, 정확히 0점은 속행 ────────────────
+// ── E. 토비 — 0점 미만이면 즉시 종국, 정확히 0점은 속행 ────────────────
 async function testDobi(): Promise<void> {
   const mk = (scores: number[]): GameState => south4({
     hands: {
@@ -160,10 +160,10 @@ async function testDobi(): Promise<void> {
   }, scores);
   // p3(오야) 쯔모 → 자들이 각각 지불. p0을 마이너스로 떨어뜨린다.
   const r = await runFrom(mk([500, 40000, 40000, 19500]), { p3: ["win"] } as never);
-  check("E1 도비: 0점 미만이 생기면 즉시 종국", r.reason === "dobi",
+  check("E1 토비: 0점 미만이 생기면 즉시 종국", r.reason === "dobi",
     `reason=${String(r.reason)} scores=${r.scores.join("/")}`);
   const r2 = await runFrom(mk([25000, 25000, 25000, 25000]), { p3: ["win"] } as never);
-  check("E2 (대조) 도비 아님", r2.reason !== "dobi", `reason=${String(r2.reason)} scores=${r2.scores.join("/")}`);
+  check("E2 (대조) 토비 아님", r2.reason !== "dobi", `reason=${String(r2.reason)} scores=${r2.scores.join("/")}`);
 }
 
 // ── F. 서입 — 남4 종료 시 1위가 30000 미만이면 서1국으로 이어진다 ───────

@@ -3,7 +3,7 @@
  *
  * 동장 4국 + 남장 4국(필요 시 서입 1국) 진행.
  * FlowController로 국을 돌리고, PlayerAgent에게 결정을 위임한다.
- * 도비·오야 트ップ·서입 조건 등 종료 판정을 담당한다.
+ * 토비·오야 트ップ·서입 조건 등 종료 판정을 담당한다.
  *
  * 설계: docs/12_NETWORK_REPLAY.md §4
  */
@@ -69,7 +69,7 @@ export interface HanchanConfig {
   startScore: number;
   /** 반환점 (기본 30000) — 오카 계산 기준 */
   returnScore: number;
-  /** 도비(0점 이하 즉시 종료) 허용 (기본 true) */
+  /** 토비(0점 이하 즉시 종료) 허용 (기본 true) */
   dobi: boolean;
   /** 최대 장풍 수: 2=반장전(동+남), 3=산장전 */
   maxWind: number;
@@ -1288,7 +1288,7 @@ export class HanchanController {
       // 결과 화면을 볼 시간을 준다 (다음 국이 결과보다 먼저 뜨는 문제 방지)
       await this.pauseBetweenRounds();
 
-      // 도비 체크 — 0점 '미만'이면 즉시 종국 (정확히 0점은 속행, 01_GAME_RULES §1)
+      // 토비 체크 — 0점 '미만'이면 즉시 종국 (정확히 0점은 속행, 01_GAME_RULES §1)
       if (this.config.dobi) {
         const bankrupt = game.engine.state.players.some((p) => p.score < 0);
         if (bankrupt) {
@@ -2195,7 +2195,7 @@ export class HanchanController {
    * 왜 끝났는가 — `shouldEnd`와 같은 판정을 하되 **사유까지** 돌려준다.
    *
    * 결과 화면이 "대국 종료" 한 줄만 띄우던 시절에는, 남2국에서 갑자기 순위표가 뜨면
-   * (도비) 버그로 읽혔다. 특히 아가리야메는 오야가 "한 국 더 있는 줄 알고" 노린 연장이
+   * (토비) 버그로 읽혔다. 특히 아가리야메는 오야가 "한 국 더 있는 줄 알고" 노린 연장이
    * 그대로 종국이 되는 경우가 있어 설명이 없으면 억울하다.
    */
   private endReason(
