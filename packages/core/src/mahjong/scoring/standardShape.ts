@@ -75,11 +75,38 @@ export function standardCounts(
   return c;
 }
 
+/** 지름길이 다루는 옵션 — 이 밖의 옵션(조커·혼색·양극·국사 외길·울어 국사)은 일반 경로 */
+export interface FastShapeOptions {
+  /** 8-9-1 같은 순환 슌쯔 (부숴진 벽) */
+  wrapRuns: boolean;
+  /** 자패 슌쯔 — 동남서·남서북·백발중 (바람의 계보) */
+  honorRuns: boolean;
+  /** 표준형 몸통 수 (기본 4) */
+  totalSets: number;
+  /** 국사 요구패가 몇 종까지 빠져도 되는가 (왕의 징표) */
+  kokushiDupes: number;
+  /** 치또이 짝을 무늬 무관 랭크로 (비대칭 치또이) */
+  chiitoiMixedPairs: boolean;
+}
+
+export const STANDARD_FAST_OPTIONS: FastShapeOptions = {
+  wrapRuns: false,
+  honorRuns: false,
+  totalSets: 4,
+  kokushiDupes: 0,
+  chiitoiMixedPairs: false,
+};
+
 /**
  * 남은 패 전부를 `setsLeft`개의 몸통으로 정확히 소진할 수 있는가.
  * "첫 번째 남은 칸은 반드시 지금 소비된다" — 일반 분해기와 같은 기법이다.
  */
-function canExtractSets(c: Int32Array, from: number, setsLeft: number): boolean {
+function canExtractSets(
+  c: Int32Array,
+  from: number,
+  setsLeft: number,
+  o: FastShapeOptions,
+): boolean {
   let i = from;
   while (i < 34 && c[i] === 0) i++;
   if (i >= 34) return setsLeft === 0;
@@ -88,63 +115,115 @@ function canExtractSets(c: Int32Array, from: number, setsLeft: number): boolean 
   // 커쯔
   if (n >= 3) {
     c[i] = n - 3;
-    const ok = canExtractSets(c, i, setsLeft - 1);
+    const ok = canExtractSets(c, i, setsLeft - 1, o);
     c[i] = n;
     if (ok) return true;
   }
-  // 슌쯔 — 수패(0~26)에서 랭크 ≤ 7인 칸만 (r, r+1, r+2)
-  if (i < 27 && i % 9 <= 6) {
-    const n1 = c[i + 1] as number;
-    const n2 = c[i + 2] as number;
-    if (n1 > 0 && n2 > 0) {
-      c[i] = n - 1;
-      c[i + 1] = n1 - 1;
-      c[i + 2] = n2 - 1;
-      const ok = canExtractSets(c, i, setsLeft - 1);
-      c[i] = n;
-      c[i + 1] = n1;
-      c[i + 2] = n2;
-      if (ok) return true;
+  if (i < 27) {
+    // 수패 슌쯔. 표준: 첫 칸이 최소 랭크이므로 (r, r+1, r+2)만. 순환이면 첫 칸이
+    // 순환 슌쯔의 중간·끝일 수 있어(8-9-1의 1) 세 위치를 다 본다 — 일반 분해기와 같다.
+    const base = i - (i % 9);
+    const r = i % 9; // 0~8
+    for (let pos = 0; pos <= (o.wrapRuns ? 2 : 0); pos++) {
+      const r0 = r - pos;
+      if (!o.wrapRuns && (r0 < 0 || r0 + 2 > 8)) continue;
+      const a = base + (((r0 % 9) + 9) % 9);
+      const b = base + (((r0 + 1) % 9 + 9) % 9);
+      const d = base + (((r0 + 2) % 9 + 9) % 9);
+      if (a === i || b === i || d === i) {
+        const na = c[a] as number;
+        const nb = c[b] as number;
+        const nd = c[d] as number;
+        if (na > 0 && nb > 0 && nd > 0) {
+          c[a] = na - 1;
+          c[b] = nb - 1;
+          c[d] = nd - 1;
+          const ok = canExtractSets(c, i, setsLeft - 1, o);
+          c[a] = na;
+          c[b] = nb;
+          c[d] = nd;
+          if (ok) return true;
+        }
+      }
+    }
+  } else if (o.honorRuns) {
+    // 자패 슌쯔 — 바람 1-2-3·2-3-4, 삼원 1-2-3. 순환 없음.
+    const max = i < 31 ? 30 : 33;
+    if (i + 2 <= max) {
+      const n1 = c[i + 1] as number;
+      const n2 = c[i + 2] as number;
+      if (n1 > 0 && n2 > 0) {
+        c[i] = n - 1;
+        c[i + 1] = n1 - 1;
+        c[i + 2] = n2 - 1;
+        const ok = canExtractSets(c, i, setsLeft - 1, o);
+        c[i] = n;
+        c[i + 1] = n1;
+        c[i + 2] = n2;
+        if (ok) return true;
+      }
     }
   }
   return false;
 }
 
 /**
- * 표준 규칙에서 이 개수표(총 `total`장, 후로 `meldCount`)가 화료형인가.
+ * 이 개수표(총 `total`장, 후로 `meldCount`)가 화료형인가.
  * `c`는 호출이 끝나면 원래대로 돌아온다.
  */
 export function isStandardWinningShape(
   c: Int32Array,
   total: number,
   meldCount: number,
+  o: FastShapeOptions = STANDARD_FAST_OPTIONS,
 ): boolean {
-  const setsNeeded = 4 - meldCount;
+  const setsNeeded = o.totalSets - meldCount;
   // ── 표준형 ──
   if (total === setsNeeded * 3 + 2) {
     for (let p = 0; p < 34; p++) {
       const n = c[p] as number;
       if (n < 2) continue;
       c[p] = n - 2;
-      const ok = canExtractSets(c, 0, setsNeeded);
+      const ok = canExtractSets(c, 0, setsNeeded, o);
       c[p] = n;
       if (ok) return true;
     }
   }
-  if (meldCount !== 0 || total !== 14) return false;
-  // ── 치또이: 서로 다른 7종 × 2장 ──
-  let pairs = 0;
-  let over = false;
-  for (let i = 0; i < 34; i++) {
-    const n = c[i] as number;
-    if (n === 2) pairs++;
-    else if (n > 2) {
-      over = true;
-      break;
+  if (meldCount !== 0 || total !== 14 || o.totalSets !== 4) return false;
+  // ── 치또이 ──
+  if (o.chiitoiMixedPairs) {
+    // 비대칭: 같은 패 4장 금지, 수패는 랭크별(무늬 무관) 짝수, 자패는 종류별 짝수.
+    // 14장이 전부 짝수로 나뉘면 쌍은 자동으로 7개다.
+    let ok = true;
+    for (let r = 0; r < 9 && ok; r++) {
+      let sum = 0;
+      for (let s = 0; s < 27; s += 9) {
+        const n = c[s + r] as number;
+        if (n > 3) ok = false;
+        sum += n;
+      }
+      if (sum % 2 !== 0) ok = false;
     }
+    for (let i = 27; i < 34 && ok; i++) {
+      const n = c[i] as number;
+      if (n > 3 || n % 2 !== 0) ok = false;
+    }
+    if (ok) return true;
+  } else {
+    // 서로 다른 7종 × 2장
+    let pairs = 0;
+    let over = false;
+    for (let i = 0; i < 34; i++) {
+      const n = c[i] as number;
+      if (n === 2) pairs++;
+      else if (n > 2) {
+        over = true;
+        break;
+      }
+    }
+    if (!over && pairs === 7) return true;
   }
-  if (!over && pairs === 7) return true;
-  // ── 국사: 요구패 13종 전부 + 하나 2장 ──
+  // ── 국사: 요구패 13종(왕의 징표면 13−d종) + 어딘가 2장 ──
   let distinct = 0;
   let doubled = false;
   for (let i = 0; i < 34; i++) {
@@ -154,5 +233,5 @@ export function isStandardWinningShape(
     distinct++;
     if (n >= 2) doubled = true;
   }
-  return distinct === 13 && doubled;
+  return 13 - distinct <= o.kokushiDupes && doubled;
 }

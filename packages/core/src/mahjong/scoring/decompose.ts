@@ -11,10 +11,12 @@
 import { Suits, kindKey, standardKinds } from "../tiles/Tile.js";
 import type { Suit, TileKind } from "../tiles/Tile.js";
 import {
+  STANDARD_FAST_OPTIONS,
   isStandardWinningShape,
   standardCounts,
   standardIndexOf as standardIndexOfKind,
 } from "./standardShape.js";
+import type { FastShapeOptions } from "./standardShape.js";
 
 export interface DecompSet {
   type: "run" | "triplet";
@@ -881,29 +883,49 @@ function handMemoKey(hand: readonly TileKind[]): string {
 }
 
 /**
- * 이 옵션이 **표준 리치마작 그대로**인가 — 그러면 `standardShape.ts`의 정수 배열
- * 지름길이 일반 분해기와 같은 답을 낸다. 옵션이 하나라도 켜지면 거짓.
+ * 이 옵션을 `standardShape.ts`의 정수 배열 지름길이 다룰 수 있는가 — 있으면 그쪽
+ * 옵션을, 없으면 null. 조커·혼색 몸통·양극·국사 외길·울어 국사는 일반 분해기만 안다.
+ * (`kokushiMeldKinds`가 빈 배열이면 없는 것과 같다 — 일반 분해기도 `length > 0`을 본다.)
  */
-function isStandardNorm(n: NormalizedOptions): boolean {
-  return (
+function fastOptionsOf(n: NormalizedOptions): FastShapeOptions | null {
+  if (
+    n.kokushiOnly ||
+    n.mixedRuns ||
+    n.mixedTriplets ||
+    n.mixedPairs ||
+    n.polarEnds ||
+    n.wildKinds.length > 0 ||
+    (n.kokushiMeldKinds !== undefined && n.kokushiMeldKinds.length > 0)
+  ) {
+    return null;
+  }
+  if (
+    n.sequenceSuits !== DEFAULT_SEQUENCE_SUITS &&
+    !(
+      n.sequenceSuits.size === 3 &&
+      n.sequenceSuits.has(Suits.Man) &&
+      n.sequenceSuits.has(Suits.Pin) &&
+      n.sequenceSuits.has(Suits.Sou)
+    )
+  ) {
+    return null;
+  }
+  if (
     !n.wrapRuns &&
-    !n.kokushiOnly &&
-    !n.mixedRuns &&
-    !n.mixedTriplets &&
-    !n.mixedPairs &&
-    !n.polarEnds &&
-    !n.chiitoiMixedPairs &&
     !n.honorRuns &&
+    !n.chiitoiMixedPairs &&
     n.totalSets === 4 &&
-    n.kokushiDupes === 0 &&
-    n.wildKinds.length === 0 &&
-    n.kokushiMeldKinds === undefined &&
-    (n.sequenceSuits === DEFAULT_SEQUENCE_SUITS ||
-      (n.sequenceSuits.size === 3 &&
-        n.sequenceSuits.has(Suits.Man) &&
-        n.sequenceSuits.has(Suits.Pin) &&
-        n.sequenceSuits.has(Suits.Sou)))
-  );
+    n.kokushiDupes === 0
+  ) {
+    return STANDARD_FAST_OPTIONS;
+  }
+  return {
+    wrapRuns: n.wrapRuns,
+    honorRuns: n.honorRuns,
+    totalSets: n.totalSets,
+    kokushiDupes: n.kokushiDupes,
+    chiitoiMixedPairs: n.chiitoiMixedPairs,
+  };
 }
 
 /** 지름길용 개수표 — 호출마다 새로 만들지 않고 비워서 다시 쓴다 (재진입 없음) */
@@ -918,11 +940,11 @@ function isWinningShapeNorm(
   meldCount: number,
   norm: NormalizedOptions,
   optsKey: string | null,
-  standard: boolean,
+  fast: FastShapeOptions | null,
 ): boolean {
-  if (standard) {
+  if (fast !== null) {
     const counts = standardCounts(hand, SCRATCH_COUNTS);
-    if (counts !== null) return isStandardWinningShape(counts, hand.length, meldCount);
+    if (counts !== null) return isStandardWinningShape(counts, hand.length, meldCount, fast);
   }
   const key = `${handMemoKey(hand)}|${meldCount}|${optsKey ?? optsMemoKey(norm)}`;
   const hit = shapeMemo.get(key);
@@ -954,7 +976,7 @@ export function isWinningShape(
   opts?: DecomposeOptions | ReadonlySet<Suit>,
 ): boolean {
   const norm = normalizeOptions(opts);
-  return isWinningShapeNorm(hand, meldCount, norm, null, isStandardNorm(norm));
+  return isWinningShapeNorm(hand, meldCount, norm, null, fastOptionsOf(norm));
 }
 
 /**
@@ -969,9 +991,9 @@ export function winningKindsOf(
   opts?: DecomposeOptions | ReadonlySet<Suit>,
 ): TileKind[] {
   const norm = normalizeOptions(opts);
-  const standard = isStandardNorm(norm);
+  const fast = fastOptionsOf(norm);
   const waits: TileKind[] = [];
-  if (standard) {
+  if (fast !== null) {
     const counts = standardCounts(hand13);
     if (counts !== null) {
       // 정수 배열 지름길 — 후보를 개수표에 넣었다 빼며 판정한다
@@ -985,10 +1007,10 @@ export function winningKindsOf(
         let ok: boolean;
         if (i >= 0) {
           counts[i] = (counts[i] as number) + 1;
-          ok = isStandardWinningShape(counts, total, meldCount);
+          ok = isStandardWinningShape(counts, total, meldCount, fast);
           counts[i] = (counts[i] as number) - 1;
         } else {
-          ok = isWinningShapeNorm([...hand13, candidate], meldCount, norm, null, false);
+          ok = isWinningShapeNorm([...hand13, candidate], meldCount, norm, null, null);
         }
         if (ok) waits.push(candidate);
       }
@@ -1001,7 +1023,7 @@ export function winningKindsOf(
     const key = kindKey(candidate);
     if (seen.has(key)) continue;
     seen.add(key);
-    if (isWinningShapeNorm([...hand13, candidate], meldCount, norm, optsKey, false)) {
+    if (isWinningShapeNorm([...hand13, candidate], meldCount, norm, optsKey, null)) {
       waits.push(candidate);
     }
   }

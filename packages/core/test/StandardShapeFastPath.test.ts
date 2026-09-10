@@ -95,6 +95,101 @@ describe("standard winning-shape fast path", () => {
     expect(tenpai).toBeGreaterThan(100);
   });
 
+  it("option variants (wrapRuns / honorRuns / totalSets / kokushiDupes / chiitoiMixedPairs) ≡ generic", () => {
+    const rng = new Prng(4242);
+    const variants = [
+      { wrapRuns: true },
+      { honorRuns: true },
+      { totalSets: 5 },
+      { kokushiDupes: 1 },
+      { kokushiDupes: 2 },
+      { chiitoiMixedPairs: true },
+      { wrapRuns: true, honorRuns: true, kokushiDupes: 1 },
+      { chiitoiMixedPairs: true, wrapRuns: true },
+      { kokushiMeldKinds: [] as TileKind[] },
+    ];
+    /** 순환 슌쯔·자패 슌쯔가 섞인 조립 손 */
+    const build = (sets: number, withPair: boolean): TileKind[] => {
+      const out: TileKind[] = [];
+      for (let s = 0; s < sets; s++) {
+        const k = pick(rng, KINDS);
+        const roll = rng.int(4);
+        if (roll === 0 && (k.suit === "wind" || k.suit === "dragon")) {
+          const max = k.suit === "wind" ? 4 : 3;
+          const b = Math.min(k.rank, max - 2);
+          out.push({ suit: k.suit, rank: b }, { suit: k.suit, rank: b + 1 }, { suit: k.suit, rank: b + 2 });
+        } else if (roll <= 1 && k.suit !== "wind" && k.suit !== "dragon") {
+          const wr = (r: number): number => ((r - 1) % 9) + 1;
+          out.push(k, { suit: k.suit, rank: wr(k.rank + 1) }, { suit: k.suit, rank: wr(k.rank + 2) });
+        } else {
+          out.push(k, k, k);
+        }
+      }
+      if (withPair) {
+        const k = pick(rng, KINDS);
+        out.push(k, k);
+      }
+      const shake = rng.int(3);
+      for (let i = 0; i < shake && out.length > 0; i++) out[rng.int(out.length)] = pick(rng, KINDS);
+      return out;
+    };
+    const orphans = KINDS.filter((k) => (k.suit === "wind" || k.suit === "dragon") || k.rank === 1 || k.rank === 9);
+    let checked = 0;
+    let wins = 0;
+    for (const opts of variants) {
+      const totalSets = opts.totalSets ?? 4;
+      for (let i = 0; i < 6000; i++) {
+        const melds = rng.int(totalSets + 1);
+        const n = (totalSets - melds) * 3 + 2;
+        const roll = rng.int(4);
+        let hand: TileKind[];
+        if (roll === 0) hand = randomHand(rng, Math.min(n, 14));
+        else if (roll === 1 && melds === 0 && totalSets === 4) {
+          // 국사 근처 손
+          hand = [];
+          while (hand.length < 14) hand.push(pick(rng, orphans));
+        } else if (roll === 2 && melds === 0 && totalSets === 4) {
+          // 치또이 근처 손 — 쌍 7개, 일부는 무늬만 다른 같은 랭크
+          hand = [];
+          while (hand.length < 14) {
+            const k = pick(rng, KINDS);
+            const mate = rng.int(3) === 0 && k.suit !== "wind" && k.suit !== "dragon"
+              ? { suit: pick(rng, ["man", "pin", "sou"]), rank: k.rank }
+              : k;
+            hand.push(k, mate);
+          }
+        } else hand = build(totalSets - melds, true);
+        // 같은 패 5장 이상은 실제 손에 없다 — 걸러 낸다
+        const cnt = new Map<string, number>();
+        let bad = false;
+        for (const k of hand) {
+          const c = (cnt.get(kindKey(k)) ?? 0) + 1;
+          cnt.set(kindKey(k), c);
+          if (c > 4) bad = true;
+        }
+        if (bad) continue;
+        const fast = isWinningShape(hand, melds, opts);
+        const slow = isWinningShapeGeneric(hand, melds, opts);
+        if (fast !== slow) {
+          throw new Error(
+            `mismatch opts=${JSON.stringify(opts)} melds=${melds} hand=${hand.map(kindKey).join(",")} fast=${fast} slow=${slow}`,
+          );
+        }
+        checked++;
+        if (fast) wins++;
+        if (hand.length >= 2 && rng.int(4) === 0) {
+          const h13 = [...hand];
+          h13.splice(rng.int(h13.length), 1);
+          const f = winningKinds(h13, melds, undefined, opts).map(kindKey).sort();
+          const g = KINDS.filter((c) => isWinningShapeGeneric([...h13, c], melds, opts)).map(kindKey).sort();
+          expect(f).toEqual(g);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(30_000);
+    expect(wins).toBeGreaterThan(2_000);
+  });
+
   it("chiitoi / kokushi edge cases", () => {
     const m = (r: number): TileKind => ({ suit: "man", rank: r });
     const p = (r: number): TileKind => ({ suit: "pin", rank: r });
