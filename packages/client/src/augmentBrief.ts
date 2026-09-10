@@ -171,7 +171,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   avenger: { use: "상시", text: "내 복수 상대에게는 후리텐이어도, 역이 없어도(머리 1개와 몸통 4개 형태만) 론할 수 있다. 그 론은 +2판." },
   big_hand: { use: "2국에 1회", text: "국 첫 순에 선언하면 그 국에 화료할 때 받는 총액이 최소 만관이 된다." },
   blame_shift: { use: "상시", text: "론으로 화료하면 +2판. 그 점수는 쏜 사람 혼자가 아니라 셋이 나눠 낸다." },
-  blood_contract: { use: "매 국 1회", text: "국 첫 순에 역 하나를 걸고, 그 역으로 화료하면 점수가 1.5배." },
+  blood_contract: { use: "매 국 1회", text: "국 첫 순에 역 하나를 걸고, 그 역을 포함해 화료하면 점수가 1.5배. 다른 역으로 화료해도 된다." },
   bluff_pretense: { use: "매 국 1회", text: "같은 패가 1장뿐이어도 퐁할 수 있다. 모자란 장은 잡패가 그 패로 바뀌어 채운다." },
   bottom_deal: { use: "2순에 1회", text: "패산 맨 밑 3장을 항상 볼 수 있다. 사용하면 다음 순의 쯔모를 패산 위가 아니라 맨 밑에서 뽑는다." },
   bottom_yaku: { use: "상시", text: "한 무늬에서 7종을 버렸으면 2판, 같은 패를 3장 이상 버렸으면 1판(최대 3판)." },

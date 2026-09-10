@@ -18212,7 +18212,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
   blood_contract: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
     const yaku = YAKU_NAMES[raw] ?? raw;
-    return { chip: yaku, note: `계약한 역은 ${yaku}입니다. 이 역으로만 화료할 수 있습니다` };
+    return { chip: yaku, note: `계약한 역은 ${yaku}입니다. 이 역을 포함해 화료하면 점수가 1.5배가 됩니다` };
   },
   all_or_nothing: (raw) => {
     if (typeof raw !== "number" || raw <= 0) return null;
@@ -24325,9 +24325,13 @@ function ActiveAugmentControl(props: {
   );
   const deadWallIds = view.zones["deadWall"]?.tileIds ?? [];
   // 이번 국에 남은 교환 횟수 — 한 번에 고를 수 있는 쌍의 상한이다
+  // ⚠ 값이 없을 때의 기본은 **2**(발동 1회 = 최대 2장)다. 예전 기본값 1은,
+  // 이번 국의 ROUND_STARTED 리액션이 아직 이 채널을 싣지 않은 화면(증강을 방금
+  // 받은 국·재접속 직후)에서 «2장까지»를 조용히 1장으로 깎았다. 후보가 떠 있다는
+  // 것 자체가 서버가 교환을 허락했다는 뜻이고, 상한의 최종 판정은 서버 validate다.
   const dwRemaining = (() => {
     const v = view.augmentView[`dead_wall_master:remaining:${me.id}`];
-    return typeof v === "number" ? v : 1;
+    return typeof v === "number" ? v : 2;
   })();
   const dwStagedHand = new Set(dwPairs.map((p) => p.handTileId));
   const dwStagedDead = new Set(dwPairs.map((p) => p.deadIndex));
