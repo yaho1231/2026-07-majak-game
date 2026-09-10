@@ -10,6 +10,11 @@
 
 import { Suits, kindKey, standardKinds } from "../tiles/Tile.js";
 import type { Suit, TileKind } from "../tiles/Tile.js";
+import {
+  isStandardWinningShape,
+  standardCounts,
+  standardIndexOf as standardIndexOfKind,
+} from "./standardShape.js";
 
 export interface DecompSet {
   type: "run" | "triplet";
@@ -840,42 +845,86 @@ export function decompose(
 const SHAPE_MEMO_MAX = 20_000;
 const shapeMemo = new Map<string, boolean>();
 
-/** 메모 키 — 손 + 후로 수 + **분해 규칙 전부**. 하나라도 빠지면 오답이 캐시된다. */
-function shapeMemoKey(
-  hand: readonly TileKind[],
-  meldCount: number,
-  n: NormalizedOptions,
-): string {
-  const tiles = hand.map(kindKey).sort().join(",");
-  const suits = [...n.sequenceSuits].sort().join("");
-  const wild = n.wildKinds.map(kindKey).sort().join(",");
-  const kokushi =
-    n.kokushiMeldKinds === undefined
-      ? ""
-      : n.kokushiMeldKinds.map(kindKey).sort().join(",");
-  const flags = [
-    n.wrapRuns,
-    n.kokushiOnly,
-    n.mixedRuns,
-    n.mixedTriplets,
-    n.mixedPairs,
-    n.polarEnds,
-    n.chiitoiMixedPairs,
-    n.honorRuns,
-  ]
-    .map((b) => (b ? "1" : "0"))
-    .join("");
-  return `${tiles}|${meldCount}|${n.totalSets}|${suits}|${flags}|${n.kokushiDupes}|${wild}|${kokushi}`;
+/**
+ * 옵션 부분의 메모 키 — **분해 규칙 전부**. 하나라도 빠지면 오답이 캐시된다.
+ * 손과 무관하므로 `winningKinds`가 34종을 훑는 동안 한 번만 만든다.
+ */
+function optsMemoKey(n: NormalizedOptions): string {
+  let s =
+    (n.wrapRuns ? "1" : "0") +
+    (n.kokushiOnly ? "1" : "0") +
+    (n.mixedRuns ? "1" : "0") +
+    (n.mixedTriplets ? "1" : "0") +
+    (n.mixedPairs ? "1" : "0") +
+    (n.polarEnds ? "1" : "0") +
+    (n.chiitoiMixedPairs ? "1" : "0") +
+    (n.honorRuns ? "1" : "0") +
+    "|" +
+    n.totalSets +
+    "|" +
+    n.kokushiDupes +
+    "|";
+  s += n.sequenceSuits === DEFAULT_SEQUENCE_SUITS ? "*" : [...n.sequenceSuits].sort().join("");
+  if (n.wildKinds.length > 0) s += "|" + n.wildKinds.map(kindKey).sort().join(",");
+  if (n.kokushiMeldKinds !== undefined) {
+    s += "|k" + n.kokushiMeldKinds.map(kindKey).sort().join(",");
+  }
+  return s;
 }
 
-/** 화료 형태인가 (분해가 하나라도 존재) */
-export function isWinningShape(
+/** 손 부분의 메모 키 — 정렬된 kind 표기 */
+function handMemoKey(hand: readonly TileKind[]): string {
+  const keys = new Array<string>(hand.length);
+  for (let i = 0; i < hand.length; i++) keys[i] = kindKey(hand[i] as TileKind);
+  keys.sort();
+  return keys.join(",");
+}
+
+/**
+ * 이 옵션이 **표준 리치마작 그대로**인가 — 그러면 `standardShape.ts`의 정수 배열
+ * 지름길이 일반 분해기와 같은 답을 낸다. 옵션이 하나라도 켜지면 거짓.
+ */
+function isStandardNorm(n: NormalizedOptions): boolean {
+  return (
+    !n.wrapRuns &&
+    !n.kokushiOnly &&
+    !n.mixedRuns &&
+    !n.mixedTriplets &&
+    !n.mixedPairs &&
+    !n.polarEnds &&
+    !n.chiitoiMixedPairs &&
+    !n.honorRuns &&
+    n.totalSets === 4 &&
+    n.kokushiDupes === 0 &&
+    n.wildKinds.length === 0 &&
+    n.kokushiMeldKinds === undefined &&
+    (n.sequenceSuits === DEFAULT_SEQUENCE_SUITS ||
+      (n.sequenceSuits.size === 3 &&
+        n.sequenceSuits.has(Suits.Man) &&
+        n.sequenceSuits.has(Suits.Pin) &&
+        n.sequenceSuits.has(Suits.Sou)))
+  );
+}
+
+/** 지름길용 개수표 — 호출마다 새로 만들지 않고 비워서 다시 쓴다 (재진입 없음) */
+const SCRATCH_COUNTS = new Int32Array(34);
+
+/**
+ * 정규화된 옵션으로 화료형 판정. `optsKey`는 `optsMemoKey(norm)` — 34종을 훑는
+ * 호출자가 한 번만 만들어 넘긴다.
+ */
+function isWinningShapeNorm(
   hand: readonly TileKind[],
   meldCount: number,
-  opts?: DecomposeOptions | ReadonlySet<Suit>,
+  norm: NormalizedOptions,
+  optsKey: string | null,
+  standard: boolean,
 ): boolean {
-  const norm = normalizeOptions(opts);
-  const key = shapeMemoKey(hand, meldCount, norm);
+  if (standard) {
+    const counts = standardCounts(hand, SCRATCH_COUNTS);
+    if (counts !== null) return isStandardWinningShape(counts, hand.length, meldCount);
+  }
+  const key = `${handMemoKey(hand)}|${meldCount}|${optsKey ?? optsMemoKey(norm)}`;
   const hit = shapeMemo.get(key);
   if (hit !== undefined) return hit;
   // 존재만 보면 되므로 첫 해에서 멈춘다 — 대기 계산(winningKinds)이 34종을 훑으며
@@ -884,6 +933,79 @@ export function isWinningShape(
   if (shapeMemo.size >= SHAPE_MEMO_MAX) shapeMemo.clear();
   shapeMemo.set(key, out);
   return out;
+}
+
+/**
+ * **테스트 전용** — 지름길을 타지 않고 일반 분해기로만 판정한다.
+ * 지름길과 일반 경로가 같은 답을 내는지 무작위 손으로 대조하는 데 쓴다.
+ */
+export function isWinningShapeGeneric(
+  hand: readonly TileKind[],
+  meldCount: number,
+  opts?: DecomposeOptions | ReadonlySet<Suit>,
+): boolean {
+  return decomposeInternal(hand, meldCount, normalizeOptions(opts), true).length > 0;
+}
+
+/** 화료형인가 (분해가 하나라도 존재) */
+export function isWinningShape(
+  hand: readonly TileKind[],
+  meldCount: number,
+  opts?: DecomposeOptions | ReadonlySet<Suit>,
+): boolean {
+  const norm = normalizeOptions(opts);
+  return isWinningShapeNorm(hand, meldCount, norm, null, isStandardNorm(norm));
+}
+
+/**
+ * 대기 계산 — `universe`의 각 후보를 손에 더해 화료형이 되는 것들.
+ * (`waits.ts`의 `winningKinds`가 이걸 감싼다. 옵션 정규화·키·표준 판정을 한 번만
+ * 하고 34종을 돌기 위해 여기 있다.)
+ */
+export function winningKindsOf(
+  hand13: readonly TileKind[],
+  meldCount: number,
+  universe: readonly TileKind[],
+  opts?: DecomposeOptions | ReadonlySet<Suit>,
+): TileKind[] {
+  const norm = normalizeOptions(opts);
+  const standard = isStandardNorm(norm);
+  const waits: TileKind[] = [];
+  if (standard) {
+    const counts = standardCounts(hand13);
+    if (counts !== null) {
+      // 정수 배열 지름길 — 후보를 개수표에 넣었다 빼며 판정한다
+      const seen = new Set<string>();
+      const total = hand13.length + 1;
+      for (const candidate of universe) {
+        const key = kindKey(candidate);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const i = standardIndexOfKind(candidate);
+        let ok: boolean;
+        if (i >= 0) {
+          counts[i] = (counts[i] as number) + 1;
+          ok = isStandardWinningShape(counts, total, meldCount);
+          counts[i] = (counts[i] as number) - 1;
+        } else {
+          ok = isWinningShapeNorm([...hand13, candidate], meldCount, norm, null, false);
+        }
+        if (ok) waits.push(candidate);
+      }
+      return waits;
+    }
+  }
+  const optsKey = optsMemoKey(norm);
+  const seen = new Set<string>();
+  for (const candidate of universe) {
+    const key = kindKey(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (isWinningShapeNorm([...hand13, candidate], meldCount, norm, optsKey, false)) {
+      waits.push(candidate);
+    }
+  }
+  return waits;
 }
 
 /**

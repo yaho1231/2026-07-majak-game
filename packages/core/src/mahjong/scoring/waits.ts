@@ -7,10 +7,16 @@
  * 설계: docs/08_MAHJONG_ENGINE.md
  */
 
-import { kindKey, standardKinds } from "../tiles/Tile.js";
+import { standardKinds } from "../tiles/Tile.js";
 import type { Suit, TileKind } from "../tiles/Tile.js";
-import { isWinningShape } from "./decompose.js";
+import { winningKindsOf } from "./decompose.js";
 import type { DecomposeOptions } from "./decompose.js";
+
+/**
+ * 기본 universe(표준 34종)는 한 번만 만든다 — 예전에는 호출마다 34개 객체를 새로
+ * 만들었다. 돌려주는 대기는 아래에서 **복사**하므로 호출자가 이 객체를 만질 일은 없다.
+ */
+const STANDARD_UNIVERSE: readonly TileKind[] = standardKinds();
 
 /**
  * @param hand13 화료패를 제외한 손패 (13 - 3×후로 수 장)
@@ -20,20 +26,17 @@ import type { DecomposeOptions } from "./decompose.js";
 export function winningKinds(
   hand13: readonly TileKind[],
   meldCount: number,
-  universe: readonly TileKind[] = standardKinds(),
+  universe?: readonly TileKind[],
   opts?: DecomposeOptions | ReadonlySet<Suit>,
 ): TileKind[] {
-  const seen = new Set<string>();
-  const waits: TileKind[] = [];
-  for (const candidate of universe) {
-    const key = kindKey(candidate);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (isWinningShape([...hand13, candidate], meldCount, opts)) {
-      waits.push(candidate);
-    }
+  if (universe === undefined) {
+    // 공유 universe의 객체를 그대로 내보내지 않는다 — 종전처럼 호출마다 새 객체다.
+    return winningKindsOf(hand13, meldCount, STANDARD_UNIVERSE, opts).map((k) => ({
+      suit: k.suit,
+      rank: k.rank,
+    }));
   }
-  return waits;
+  return winningKindsOf(hand13, meldCount, universe, opts);
 }
 
 export function isTenpai(
