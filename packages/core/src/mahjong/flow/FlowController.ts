@@ -15,7 +15,6 @@ import type { PlayerId } from "../../engine/zones/Zone.js";
 import { WALL, discardsZone } from "../../engine/zones/Zone.js";
 import { sameKind, kindKey } from "../tiles/Tile.js";
 import type { Suit, TileId, TileKind } from "../tiles/Tile.js";
-import { winningKinds } from "../scoring/waits.js";
 import { DEFAULT_SEQUENCE_SUITS, decompose, honorMaxRank } from "../scoring/decompose.js";
 import { ROUND_SETTLED, KAN_DECLARED } from "./flowEvents.js";
 import type { AbortReason, RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
@@ -40,7 +39,7 @@ import {
   nextSeat,
   playerAtSeat,
   playerOf,
-  furitenOptionsOf,
+  furitenWaitsOf,
   scoringOptionsOf,
   sameCallBody,
   sameCallQuad,
@@ -970,11 +969,11 @@ export class FlowController {
       if (p.id === target.player) continue;
       // 조커가 넓힌 대기는 후리텐을 만들지 않는다 — 그 대기를 넘긴 것은 "화료를
       // 넘긴 것"으로 세지 않는다(helpers.furitenOptionsOf와 같은 기준).
-      const waits = winningKinds(
+      const waits = furitenWaitsOf(
+        state,
+        this.engine.rules,
+        p.id,
         winHandKindsOf(state, this.engine.rules, p.id),
-        meldCountOf(state, p.id),
-        undefined,
-        furitenOptionsOf(state, this.engine.rules, p.id),
       );
       if (!waits.some((w) => sameKind(w, targetKind))) continue;
       // 안깡: 창깡할 수 있었던 사람(국사무쌍·성립하지 않는 깡 보유자)만 '넘긴' 것이다

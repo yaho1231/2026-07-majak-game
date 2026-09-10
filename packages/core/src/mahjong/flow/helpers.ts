@@ -675,15 +675,45 @@ function furitenAgainst(
   if (rs?.temporaryFuriten === true || rs?.riichiFuriten === true) return true;
   const discarded = rs?.discardedKinds ?? [];
   if (discarded.length === 0) return false;
-  const waits = winningKinds(
-    handKinds,
-    meldCountOf(state, id),
-    undefined,
-    furitenOptionsOf(state, rules, id, opts),
-  );
+  const waits = furitenWaitsOf(state, rules, id, handKinds, opts);
   if (waits.length === 0) return false;
   const waitKeys = new Set(waits.map(kindKey));
   return discarded.some((k) => waitKeys.has(k));
+}
+
+/**
+ * 후리텐 판정용 대기 — «이 손이 어떤 종류를 기다리는가»를 **같은 상태에서 한 번만** 센다.
+ *
+ * 한 상태에서 이 계산이 세 곳에서 반복됐다: 리액션 프롬프트(`FlowController.markPassedWaits`
+ * 계열), 론 검증(`isFuriten`), 그리고 뷰 방송(`PlayerView.hasDiscardFuriten`) — 방송은
+ * 사람 넷 + 관전자마다 다시 만든다. 상태 객체가 키라 무효화가 필요 없다(`stateCache`).
+ * 손 종류 목록을 키에 넣는 이유: 호출처마다 «대기 손»이 다를 수 있다(`furitenAsIfRon`은
+ * 한 장을 뺀 손을 본다).
+ *
+ * `rules`가 없거나 호출자가 옵션을 직접 넘긴 경우는 캐시하지 않는다 — 한 게임의
+ * 규칙에서 파생된 값만 이 캐시의 뜻에 맞는다.
+ */
+export function furitenWaitsOf(
+  state: GameState,
+  rules: RuleRegistry | undefined,
+  id: PlayerId,
+  handKinds: readonly TileKind[],
+  opts?: DecomposeOptions,
+): TileKind[] {
+  const compute = (): TileKind[] =>
+    winningKinds(
+      handKinds,
+      meldCountOf(state, id),
+      undefined,
+      furitenOptionsOf(state, rules, id, opts),
+    );
+  if (rules === undefined || opts !== undefined) return compute();
+  return memoOn(
+    WAITS_CACHE,
+    state,
+    `${id}|furiten|${handKinds.map(kindKey).join(",")}`,
+    compute,
+  );
 }
 
 export function isFuriten(
