@@ -18,6 +18,7 @@
 import { kindKey, standardKinds } from "../tiles/Tile.js";
 import type { TileKind } from "../tiles/Tile.js";
 import type { DecomposeOptions } from "./decompose.js";
+import { standardIndexOf } from "./standardShape.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 
@@ -75,11 +76,34 @@ function toGroups(kinds: readonly TileKind[]): Group[] {
  * 분기: 커쯔 · 슌쯔 · 작두 · 변짱/칸짱(2장) · 그냥 버리기. 매 분기가 최소 1장을 소비하니
  * 반드시 끝난다. 손패 14장 규모에선 분기 수가 작고, 결과는 개수 문자열로 메모된다.
  */
+/**
+ * 프로필 캐시 키. 개수표(10칸)를 16진 자리로 접은 **숫자** — 예전의 `counts.join(",")`
+ * 문자열은 봇의 우케이레 계산(34종 × 무늬 그룹)에서 판정 자체만큼 비쌌다.
+ * 한 칸이 16장을 넘으면(증강이 만들어 낸 패) 숫자로 접을 수 없어 문자열로 떨어진다.
+ */
+function profileKey(group: Group): number | string {
+  let key = 0;
+  for (let i = 0; i < group.counts.length; i++) {
+    const c = group.counts[i] ?? 0;
+    if (c >= 16 || group.counts.length > 10) {
+      return `${group.runs ? "n" : "h"}${group.triplets === false ? "-t" : ""}${
+        group.pairs === false ? "-p" : ""
+      }:${group.counts.join(",")}`;
+    }
+    key = key * 16 + c;
+  }
+  // 상위 자리에 무늬 종류·허용 플래그를 얹는다 (16^10 < 2^40, 정수로 정확하다)
+  const flags =
+    (group.runs ? 1 : 0) + (group.triplets === false ? 2 : 0) + (group.pairs === false ? 4 : 0);
+  return key + flags * 2 ** 40;
+}
+
+const profileCacheByNumber = new Map<number, Profile[]>();
+
 function profilesOf(group: Group): Profile[] {
-  const key = `${group.runs ? "n" : "h"}${group.triplets === false ? "-t" : ""}${
-    group.pairs === false ? "-p" : ""
-  }:${group.counts.join(",")}`;
-  const cached = profileCache.get(key);
+  const key = profileKey(group);
+  const cached =
+    typeof key === "number" ? profileCacheByNumber.get(key) : profileCache.get(key);
   if (cached !== undefined) return cached;
 
   const counts = [...group.counts];
@@ -170,7 +194,8 @@ function profilesOf(group: Group): Profile[] {
       ),
   );
   const result = pareto.length > 0 ? pareto : [{ sets: 0, partials: 0, hasPair: false }];
-  profileCache.set(key, result);
+  if (typeof key === "number") profileCacheByNumber.set(key, result);
+  else profileCache.set(key, result);
   return result;
 }
 
@@ -397,6 +422,44 @@ function cacheableOpts(opts?: DecomposeOptions): boolean {
   return opts?.sequenceSuits === undefined;
 }
 
+/**
+ * 옵션 부분의 캐시 키. 예전에는 `JSON.stringify(opts)`였다 — 호출마다 새 객체가
+ * 오므로(`scoringOptionsOf`) 매번 직렬화가 돌았다. 여기서는 `shantenUncached`가
+ * 실제로 읽는 항목만 정해진 순서로 잇는다. 기본값과 같은 값은 빈 자리로 두므로
+ * `{}`와 `{wrapRuns:false}`가 같은 키가 되지만, 답도 같다.
+ */
+function shantenOptsKey(opts: DecomposeOptions | undefined): string {
+  if (opts === undefined) return "";
+  let s =
+    (opts.wrapRuns === true ? "1" : "0") +
+    (opts.mixedRuns === true ? "1" : "0") +
+    (opts.mixedTriplets === true ? "1" : "0") +
+    (opts.mixedPairs === true ? "1" : "0") +
+    (opts.kokushiOnly === true ? "1" : "0") +
+    (opts.polarEnds === true ? "1" : "0") +
+    (opts.chiitoiMixedPairs === true ? "1" : "0") +
+    (opts.honorRuns === true ? "1" : "0") +
+    "|" +
+    (opts.totalSets ?? 4) +
+    "|" +
+    (opts.kokushiDupes ?? 0);
+  if (opts.wildKinds !== undefined && opts.wildKinds.length > 0) {
+    s += "|w" + opts.wildKinds.map(kindKey).sort().join(",");
+  }
+  if (opts.kokushiMeldKinds !== undefined && opts.kokushiMeldKinds.length > 0) {
+    s += "|k" + opts.kokushiMeldKinds.map(kindKey).sort().join(",");
+  }
+  return s;
+}
+
+/** 손 부분의 캐시 키 — 정렬된 kind 표기 */
+function sortedKindKey(kinds: readonly TileKind[]): string {
+  const keys = new Array<string>(kinds.length);
+  for (let i = 0; i < kinds.length; i++) keys[i] = kindKey(kinds[i] as TileKind);
+  keys.sort();
+  return keys.join(",");
+}
+
 export function shantenOf(
   kinds: readonly TileKind[],
   meldCount: number,
@@ -404,9 +467,7 @@ export function shantenOf(
 ): number {
   if (kinds.length === 0) return 8;
   if (cacheableOpts(opts)) {
-    const key = `${kinds.map(kindKey).sort().join(",")}|${meldCount}|${
-      opts === undefined ? "" : JSON.stringify(opts)
-    }`;
+    const key = `${sortedKindKey(kinds)}|${meldCount}|${shantenOptsKey(opts)}`;
     const hit = SHANTEN_CACHE.get(key);
     if (hit !== undefined) return hit;
     const value = shantenUncached(kinds, meldCount, opts);
@@ -508,27 +569,32 @@ export function ukeireOf(
   const current = shantenOf(kinds, meldCount, opts);
   const out: TileKind[] = [];
   let tiles = 0;
+  // 후보를 끝에 붙인 손을 한 번만 만들어 마지막 칸만 바꿔 가며 잰다 (34번의 복사 대신)
+  const probe: TileKind[] = [...kinds, kinds[0] ?? { suit: "man", rank: 1 }];
+  const last = probe.length - 1;
   for (const cand of universeFor(kinds)) {
     const left = remainingOf(cand);
     if (left <= 0) continue; // 남은 게 없는 패는 받아도 소용없다 — 사람도 세지 않는다
-    if (shantenOf([...kinds, cand], meldCount, opts) < current) {
-      out.push(cand);
+    probe[last] = cand;
+    if (shantenOf(probe, meldCount, opts) < current) {
+      out.push({ suit: cand.suit, rank: cand.rank });
       tiles += left;
     }
   }
   return { kinds: out, tiles };
 }
 
+/** 표준 34종 — 호출마다 만들지 않는다. 밖으로 나가는 객체는 복사한다 */
+const STANDARD_UNIVERSE: readonly TileKind[] = standardKinds();
+
 /** 후보 패 종류 — 표준 34종 + 손에 실제로 있는 커스텀 무늬 */
-function universeFor(kinds: readonly TileKind[]): TileKind[] {
-  const out = standardKinds();
-  const seen = new Set(out.map(kindKey));
+function universeFor(kinds: readonly TileKind[]): readonly TileKind[] {
+  let out: TileKind[] | null = null;
   for (const k of kinds) {
+    if (standardIndexOf(k) >= 0) continue;
+    out ??= [...STANDARD_UNIVERSE];
     const key = kindKey(k);
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(k);
-    }
+    if (!out.some((o) => kindKey(o) === key)) out.push(k);
   }
-  return out;
+  return out ?? STANDARD_UNIVERSE;
 }
