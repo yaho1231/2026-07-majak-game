@@ -691,8 +691,12 @@ function furitenAgainst(
  * 한 장을 뺀 손을 본다).
  *
  * `rules`가 없거나 호출자가 옵션을 직접 넘긴 경우는 캐시하지 않는다 — 한 게임의
- * 규칙에서 파생된 값만 이 캐시의 뜻에 맞는다.
+ * 규칙에서 파생된 값만 이 캐시의 뜻에 맞는다. 키에 `rules.version`을 넣는다: 증강
+ * 설치는 상태를 갈지 않고 규칙만 바꾸므로(`RuleRegistry.version` 주석), 상태만으로는
+ * 「규칙이 바뀌었다」를 알 수 없다.
  */
+const FURITEN_WAITS_CACHE = new WeakMap<GameState, Map<string, TileKind[]>>();
+
 export function furitenWaitsOf(
   state: GameState,
   rules: RuleRegistry | undefined,
@@ -709,9 +713,9 @@ export function furitenWaitsOf(
     );
   if (rules === undefined || opts !== undefined) return compute();
   return memoOn(
-    WAITS_CACHE,
+    FURITEN_WAITS_CACHE,
     state,
-    `${id}|furiten|${handKinds.map(kindKey).join(",")}`,
+    `${rules.version}|${id}|${handKinds.map(kindKey).join(",")}`,
     compute,
   );
 }
@@ -823,11 +827,17 @@ const TENPAI_AFTER_DISCARD_CACHE = new WeakMap<GameState, Map<string, boolean>>(
 
 export function tenpaiAfterDiscardMemo(
   state: GameState,
+  rules: RuleRegistry,
   player: PlayerId,
   discardKind: string,
   compute: () => boolean,
 ): boolean {
-  return memoOn(TENPAI_AFTER_DISCARD_CACHE, state, `${player}|${discardKind}`, compute);
+  return memoOn(
+    TENPAI_AFTER_DISCARD_CACHE,
+    state,
+    `${rules.version}|${player}|${discardKind}`,
+    compute,
+  );
 }
 
 /** 이 대기패로 론했을 때 역이 나는가 (같은 상태에서 한 번만 평가한다). */

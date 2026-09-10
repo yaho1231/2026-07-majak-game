@@ -235,6 +235,7 @@ const riichiAction: ActionDef<{ tileId: TileId }> = {
       // 턴 프롬프트가 14장마다 묻는다 — 같은 종류는 같은 13장을 남기므로 종류당 한 번만 센다
       !tenpaiAfterDiscardMemo(
         state,
+        rules,
         req.player,
         kindKey(kindOf(state, req.payload.tileId)),
         () => {

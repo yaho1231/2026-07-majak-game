@@ -343,7 +343,9 @@ describe("되살린 판이 실제로 끝까지 간다", () => {
     const sock = await startGame(m.rm, "Endgame", true);
     const code = sock.last("roomCreated").code as string;
     // 몇 수 두게 둔다 — 배패 직후가 아니라 **판 중간**에서 끊는 것이 요점이다.
-    await new Promise((r) => setTimeout(r, 1500));
+    // 시간이 아니라 **뷰 개수**로 기다린다: 엔진이 빨라진 뒤(2026-09-11 성능 작업)
+    // 1.5초면 동풍전이 통째로 끝나 되살릴 판이 남지 않았다.
+    await sock.waitFor(() => sock.all("view").length >= 30);
 
     await m.rm.shutdown("재시작");
     m.rm.stop();
