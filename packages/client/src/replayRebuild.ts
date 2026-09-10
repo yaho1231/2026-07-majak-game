@@ -235,6 +235,7 @@ export function replayInsightAt(replay: RebuiltReplay, index: number): SpectateI
     const seats = buildSpectateSeatScores(state, rules, replay.game.yaku, hg.grades, () => false, hg.regraded);
     return {
       type: "spectateInsight",
+      replay: true,
       seats: seats.map((s) => ({
         ...s,
         han: s.best?.han ?? 0,

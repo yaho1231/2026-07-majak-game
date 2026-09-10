@@ -2269,6 +2269,12 @@ export interface SpectateInsightMessage {
   dangerSeat?: string;
   /** tileId → 위험도 0~1 (1이 가장 위험). `dangerSeat`의 손패만 담긴다. */
   danger?: Record<number, number>;
+  /**
+   * **클라이언트가 리플레이에서 직접 낸 값**이다 (서버를 거치지 않는다). 봇 모형이
+   * 서버에만 있어 노텐 «추정»과 위험도 색칠이 없다 — 화면은 그 두 자리를 «없다»가
+   * 아니라 «리플레이에서는 계산하지 않는다»로 적어야 한다.
+   */
+  replay?: true;
 }
 
 /**

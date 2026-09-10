@@ -22838,7 +22838,13 @@ function DockDanger({
     return (
       <div className="dock-danger">
         {factNode}
-        <p className="dock-note">지금은 위험도를 매길 상대가 없습니다.</p>
+        {/* 리플레이 보조값에는 봇 눈의 위험도가 없다(서버 모형) — «상대가 없다»고
+            주장하면 리치 좌석이 서 있는 화면에서 거짓이 된다. */}
+        <p className="dock-note">
+          {insight?.replay === true
+            ? "리플레이에서는 위험도(봇 추정)를 계산하지 않습니다. 위의 쏘이는 패는 실제 값입니다."
+            : "지금은 위험도를 매길 상대가 없습니다."}
+        </p>
       </div>
     );
   }

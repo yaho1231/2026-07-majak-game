@@ -397,11 +397,12 @@ describe("중계 관전 — 2열 무대 (인게임 3/4 + 분석 도크 1/4)", ()
     );
   });
 
-  it("띠에는 표식만 남는다 — 손잡이가 늘수록 판이 가려지던 구조를 끊는다", () => {
-    const bar = APP.slice(APP.indexOf('<div className="spectate-bar">'));
-    const end = bar.indexOf("</div>");
-    expect(bar.slice(0, end)).toContain("👁 관전 중");
-    expect(bar.slice(0, end)).not.toContain("spectate-focus");
+  it("판 위의 「관전 중」 띠는 없다 — 도크가 관전 상태를 말한다 (2026-09-11)", () => {
+    // 손잡이는 전부 도크 「관전 설정」으로 갔고, 남아 있던 표식 알약도 걷었다
+    // (사용자 지시: 「관전중, 방코드 (모든 손패 공개) 위에 나오는 거 없애」).
+    expect(APP).not.toContain('<div className="spectate-bar">');
+    expect(APP).not.toContain("관전 중{props.spectateCode");
+    expect(CSS).not.toMatch(/^\.spectate-bar \{/m);
   });
 });
 
