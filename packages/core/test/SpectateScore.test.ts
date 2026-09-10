@@ -947,6 +947,34 @@ describe("배패 점수 — 절대값이 아니라 «순서»를 못 박는다",
     expect(gradeStartingHand(h(thirteen + drawn), undefined, 0)).not.toBe(grades.p0);
   });
 
+  it("지금 손패 점수(handGradeNow)는 배패 점수와 같은 자로 현재 손을 잰다 (2026-09-11)", () => {
+    /*
+     * 배패 점수는 국 내내 고정이라 «지금 손이 얼마나 자랐나»를 말하지 못했다. 같은
+     * 함수로 현재 손을 재서 나란히 둔다. 14장이면 최선의 버림 뒤 13장으로 잰다 —
+     * 배패 점수가 오야의 첫 쯔모를 빼는 것과 같은 이유다(장수가 다르면 값이 뛴다).
+     */
+    const thirteen = "1358m2479p1469s3z";
+    const state = craft({
+      hands: { p0: thirteen + "5m", p1: thirteen },
+      doraIndicator: "3z",
+      drawnLastFor: "p0",
+      dealerSeat: 0,
+    });
+    const { seats } = scoresOf(state);
+    const p0 = seats.get("p0")!;
+    const p1 = seats.get("p1")!;
+    expect(p1.handGradeNow).toBe(gradeStartingHand(h(thirteen), undefined, 0));
+    // 14장 좌석 — 최선의 버림 뒤 13장으로 잰다. 쯔모패를 도로 버리는 선택지가 있으므로
+    // 13장이던 같은 손보다 낮아질 수 없다.
+    expect(p0.handGradeNow!).toBeGreaterThanOrEqual(p1.handGradeNow!);
+    expect(Number.isInteger(p0.handGradeNow)).toBe(true);
+    expect(p0.handGradeNow!).toBeGreaterThanOrEqual(0);
+    expect(p0.handGradeNow!).toBeLessThanOrEqual(100);
+    // 텐파이 손은 배패보다 훨씬 높다 — «자랐다»가 숫자로 읽혀야 한다
+    const grown = craft({ hands: { p0: "123456789m55s77z" }, doraIndicator: "3z" });
+    expect(scoresOf(grown).seats.get("p0")!.handGradeNow!).toBeGreaterThan(p1.handGradeNow!);
+  });
+
   it("언제나 0~100 정수다", () => {
     for (const [spec, dora] of [
       ["123456789m55s77z", 4],

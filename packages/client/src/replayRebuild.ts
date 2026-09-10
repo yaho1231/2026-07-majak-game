@@ -15,9 +15,13 @@ import {
   ROUND_STARTED,
   SPECTATOR_ID,
   buildPlayerView,
+  buildSpectateSeatScores,
   createInitialGameState,
   createStandardGameFromState,
+  handZone,
+  initialHandGrades,
   installAugment,
+  refreshHandGrades,
   uraIndicatorIds,
 } from "@majak/core";
 import type {
@@ -30,6 +34,7 @@ import type {
   PublicTileView,
   RoundOverMessage,
   RoundSettledPayload,
+  SpectateInsightMessage,
   StandardGame,
 } from "@majak/core";
 import { contentAugments } from "@majak/content";
@@ -189,4 +194,56 @@ const WIND_KO = ["동", "남", "서", "북"];
 export function replayViewAt(replay: RebuiltReplay, index: number): PlayerView {
   const state = replay.states[Math.max(0, Math.min(index, replay.states.length - 1))]!;
   return buildPlayerView(state, SPECTATOR_ID, replay.game.engine.rules);
+}
+
+/**
+ * i번째 스냅샷의 **관전 보조값** — 생방 도크가 받는 `spectateInsight`와 같은 모양.
+ *
+ * 리플레이 도크는 여태 이 값을 한 번도 받지 못했다: 생방에서는 서버가 매 뷰마다
+ * 계산해 실어 주는데, 리플레이는 클라이언트가 이벤트를 되돌려 판만 그렸다. 그래서
+ * 좌석 분석이 «분석값을 기다리는 중»에서 영영 멈추고 위험패·오름패 구획도 비었다
+ * (2026-09-11 사용자 보고: 「리플레이에서 도크가 거의 작동 안 한다」).
+ *
+ * 되살린 상태에는 코어 엔진(규칙·역 등록부)이 그대로 있으므로 **생방과 같은 함수**
+ * (`buildSpectateSeatScores`)로 확정값을 낸다 — 샹텐·도라·텐파이 타점·오름패·
+ * 배패 점수·지금 손패 점수까지 전부. 서버만 가진 두 가지는 여기 없다:
+ *   - 노텐 좌석의 «추정» 타점(봇 값어치 모형) — 그 줄이 비는 것뿐이다.
+ *   - 봇 눈의 위험도 색칠(`danger`) — 「쏘이는 패」(채점기의 사실)는 오름패로 되살아난다.
+ *
+ * 배패 점수는 그 국의 **배패가 끝난 첫 프레임**에서 재고(생방의 `initialHandGrades`와
+ * 같은 자리), 교환 증강으로 손이 갈린 좌석만 `refreshHandGrades`로 다시 잰다.
+ */
+export function replayInsightAt(replay: RebuiltReplay, index: number): SpectateInsightMessage | null {
+  const at = Math.max(0, Math.min(index, replay.states.length - 1));
+  const state = replay.states[at]!;
+  const { rules } = replay.game.engine;
+  // 이 프레임이 속한 국의 시작 → 네 좌석 손패가 다 들어온 첫 프레임을 찾는다
+  let start = 0;
+  for (const r of replay.roundStarts) {
+    if (r <= at) start = r;
+    else break;
+  }
+  let dealt = start;
+  while (dealt <= at) {
+    const s = replay.states[dealt]!;
+    if (s.players.every((p) => (s.zones[handZone(p.id)]?.tileIds.length ?? 0) >= 13)) break;
+    dealt++;
+  }
+  try {
+    const hg = initialHandGrades(replay.states[Math.min(dealt, at)]!, rules);
+    refreshHandGrades(state, rules, hg);
+    const seats = buildSpectateSeatScores(state, rules, replay.game.yaku, hg.grades, () => false, hg.regraded);
+    return {
+      type: "spectateInsight",
+      seats: seats.map((s) => ({
+        ...s,
+        han: s.best?.han ?? 0,
+        fu: s.best?.fu ?? 0,
+        points: s.best?.points ?? 0,
+      })),
+    };
+  } catch (err) {
+    console.warn("[replay] 관전 보조값 계산 실패 — 판만 그린다", err);
+    return null;
+  }
 }

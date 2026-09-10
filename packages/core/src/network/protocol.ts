@@ -2253,6 +2253,11 @@ export interface SpectateInsightMessage {
     handGrade?: number;
     /** 손패가 통째로 바뀌어 배패 점수를 다시 쟀다 (교환 증강) */
     handGradeRegraded?: boolean;
+    /**
+     * **지금 손패 점수** 0~100 — 배패 점수와 같은 자로 현재 손을 잰 값. 매 수 움직인다.
+     * 배패 점수 옆에 두면 «받은 패 대비 얼마나 키웠나»가 읽힌다.
+     */
+    handGradeNow?: number;
     /** @deprecated 옛 화면 호환 — `best?.han ?? estimate?.han ?? 0` */
     han: number;
     /** @deprecated 옛 화면 호환 */

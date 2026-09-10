@@ -36,7 +36,7 @@ export const DOCK_SECTIONS: readonly {
   standalone?: boolean;
 }[] = [
   { id: "settings", label: "관전 설정", hint: "탁자, 되감기, 오버레이, 지연, 중계 도구, 일시정지, 아래 자리" },
-  { id: "seats", label: "좌석 분석", hint: "좌석별 점수, 샹텐, 지금 화료하면 받는 점수, 도라, 배패 점수, 증강" },
+  { id: "seats", label: "좌석 분석", hint: "좌석별 점수, 샹텐, 지금 화료하면 받는 점수, 도라, 배패·지금 손패 점수, 증강" },
   {
     id: "waits",
     label: "오름패",

@@ -753,7 +753,6 @@ button {
 @container ui (max-width: 700px) {
   /* 관전·관찰 바는 화면 가운데에 눕는다 — 좁은 폭에서는 두 줄짜리 배지의 오른쪽 끝과
      닿는다. 그때만 획득 시점 줄을 접어 모드 이름만 남긴다. */
-  .spectate-bar ~ .mode-badge .mode-badge-drafts,
   .sbx-observe-bar ~ .mode-badge .mode-badge-drafts {
     display: none;
   }
@@ -12874,30 +12873,7 @@ button {
 
 /* ─────────────── 관전 바·리플레이 컨트롤 ─────────────── */
 
-.spectate-bar {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 45;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 18px;
-  border-radius: 999px;
-  background: rgba(218, 98, 98, 0.18);
-  border: 1px solid rgba(246, 127, 109, 0.5);
-  color: #fabcad;
-  font-size: 13px;
-  font-weight: 700;
-  /* 띠 자체는 판을 가리지 않는다(클릭이 통과한다). 자리 고르기 단추만 되살린다 —
-     여기서 pointer-events를 통째로 켜면 띠 아래의 패가 눌리지 않는다. */
-  pointer-events: none;
-}
-
-.spectate-bar-label {
-  white-space: nowrap;
-}
+/* `.spectate-bar`(판 위 「관전 중」 알약)는 2026-09-11에 걷었다 — 도크가 관전 상태를 말한다. */
 
 /* 아래 자리 고르기 — 중계 카메라. 좁은 화면에서는 줄바꿈해 판을 덜 가린다. */
 .spectate-focus {
@@ -13135,9 +13111,7 @@ button {
 .table-overlay-clear .quick-toggles,
 .table-overlay-green .quick-toggles,
 .table-overlay-clear .icon-btn,
-.table-overlay-green .icon-btn,
-.table-overlay-clear .spectate-bar,
-.table-overlay-green .spectate-bar {
+.table-overlay-green .icon-btn {
   display: none;
 }
 
