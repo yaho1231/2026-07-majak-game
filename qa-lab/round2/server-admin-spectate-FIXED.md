@@ -236,7 +236,7 @@ admin 확정 2의 클라 절반(`onSwitchTable`에서 `setPause(null)`·`setRoom
   OK  대조군: 오야 화료 → 아가리야메 종국 — reason=agariYame                  (B: 그대로)
   OK  도중유국 + 오야가 1위 아님 → 게임 계속                                   (C: 그대로)
   OK  1위 오야가 구종구패로 게임을 끝낼 수 없다 — reason=null                  (D: FAIL → OK)
-  OK  E1 도비 / OK  E2 (대조) 도비 아님                                        (E: 그대로)
+  OK  E1 토비 / OK  E2 (대조) 토비 아님                                        (E: 그대로)
   ```
   **F(서입)은 이 스크립트에서 `No pending decision for p0`로 터진다** — 대본 수가 모자라
   나는 하네스 예외이고, 내 변경과 무관하다(F의 국은 `outcome === "win"`이라 이 분기를

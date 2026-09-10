@@ -70,7 +70,7 @@ say("2b blame_shift + honba_hunter 5본장 론");
 settle(withRound(ronScene(), { honba: 5 }), { p0: ["blame_shift", "honba_hunter"] }, "p0");
 say("2c blame_shift — 지불자 중 하나가 100점만 남았을 때");
 settle(withScores(ronScene(), { p2: 100 }), { p0: ["blame_shift"] }, "p0");
-say("2d blame_shift — 지불자 중 하나가 이미 음수(도비 대기)");
+say("2d blame_shift — 지불자 중 하나가 이미 음수(토비 대기)");
 settle(withScores(ronScene(), { p2: -3000 }), { p0: ["blame_shift"] }, "p0");
 
 // ── 3. sign_flip (뱅크 발행 — 총합이 깨지는 것이 설계)

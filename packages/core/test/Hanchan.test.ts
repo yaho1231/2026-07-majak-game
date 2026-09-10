@@ -478,9 +478,9 @@ describe("HanchanController — 이벤트 콜백", () => {
   });
 });
 
-// ─────────────────────────── §4 도비(破産) 조기 종료 ───────────────────────────
+// ─────────────────────────── §4 토비(破産) 조기 종료 ───────────────────────────
 
-describe("HanchanController — 도비 조기 종료", () => {
+describe("HanchanController — 토비 조기 종료", () => {
   it("dobi=true이면 0점 이하 플레이어 발생 시 즉시 종료된다 (4국 미만 가능)", async () => {
     const agents = makeAgents([9, 18, 27, 36], "any");
     let roundCount = 0;
@@ -500,7 +500,7 @@ describe("HanchanController — 도비 조기 종료", () => {
     );
     const rankings = await ctrl.run();
 
-    // 종료 조건: 도비 or 남장 4국 완료
+    // 종료 조건: 토비 or 남장 4국 완료
     expect(rankings).toHaveLength(4);
     expect(roundCount).toBeGreaterThanOrEqual(1);
     // 총점 불변

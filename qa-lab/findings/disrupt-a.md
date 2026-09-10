@@ -109,7 +109,7 @@
 | 노린 것 | 결과 |
 |---|---|
 | 자기 자신 지목 | 4종(`scapegoat`·`parasite`·`rank_gate`·`seat_swap`) 전부 `validate`에서 차단, `holderTurnOptions`도 자기 자신을 후보에서 뺀다. 490국 0건 |
-| 이미 나간 사람 지목 | 도비는 **그 자리에서 종국**이라(HanchanController) 판에 남은 탈락자 자체가 없다. 마이너스 대상 지목은 docs/25 방해 #20으로 기보고 |
+| 이미 나간 사람 지목 | 토비는 **그 자리에서 종국**이라(HanchanController) 판에 남은 탈락자 자체가 없다. 마이너스 대상 지목은 docs/25 방해 #20으로 기보고 |
 | 지목이 국/장을 넘어 남는가 | 4종 전부 `roundKey(장-국-본장)` 스코프. 국번은 장 안에서 단조증가하고 본장은 비연장 화료에만 0으로 돌아가므로 **roundKey 충돌 없음**. 뷰 채널도 `roundViewKey`(엔진이 국 경계에서 제거) 또는 `ROUND_STARTED` 리액션으로 내려간다. `rank_gate`의 공개 채널만 고정 키인데, 값 안에 `round`가 들어 있고 클라가 `mark.round !== roundKeyStr`로 거른다([App.tsx:17135](../../packages/client/src/App.tsx#L17135)) — 새지 않는다 |
 | 대상이 오야가 바뀌어도 유지되는가 | 지목 키는 전부 playerId 기준이라 `pseudo_dealer`·`seat_swap`으로 자리·오야가 바뀌어도 그대로 따라간다 (의도) |
 | pseudo_dealer가 rotationSeat·연장·오라스를 깨는가 | **안 깨진다.** `advanceRound`가 `rotationSeat` 기준으로 돌고(standardActions.ts:830), 연장은 `dealerSeat` 기준으로 판정되며, 아가리야메는 **정산 후** `dealerSeat`의 점수를 본다(HanchanController.ts:286). 490국에서 `PSEUDO_ROTATION_BROKEN`·`PSEUDO_DEALER_ROT_MISMATCH` 0건. (`turnCount` 경계가 밀리는 건은 docs/25 국면 #17로 기보고) |

@@ -254,7 +254,7 @@ export const counter: AugmentDef = defineAugment({
       const target = stringOf(rc.state, prevKey(holder));
       if (target === null || flagOf(rc.state, spentKey(holder))) return;
       // 상대의 잔여 점수를 넘겨 뜯지 않는다(2026-08-04 사용자 확정). 정산 밖에서
-      // 직접 옮기는 이동이라 도비 판정(국 정산 뒤)이 못 잡는다 — 캡이 없으면
+      // 직접 옮기는 이동이라 토비 판정(국 정산 뒤)이 못 잡는다 — 캡이 없으면
       // 그 사람이 음수 점수인 채로 국을 계속 친다(docs/25 방해 #14).
       const targetScore =
         rc.state.players.find((pl) => pl.id === target)?.score ?? 0;
