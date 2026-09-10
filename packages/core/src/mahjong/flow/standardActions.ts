@@ -56,6 +56,7 @@ import {
   playerAtSeat,
   playerOf,
   scoringOptionsOf,
+  tenpaiAfterDiscardMemo,
   sameCallBody,
   sameCallKind,
   lockedDiscardIds,
@@ -228,15 +229,23 @@ const riichiAction: ActionDef<{ tileId: TileId }> = {
     }
     const handIds = handIdsOf(state, req.player);
     if (!handIds.includes(req.payload.tileId)) return "tile not in hand";
-    const after = handIds
-      .filter((t) => t !== req.payload.tileId)
-      .map((t) => kindOf(state, t));
-    const melds = meldCountOf(state, req.player);
-    const opts = scoringOptionsOf(state, rules, req.player);
     // 공성계(riichi.requiresTenpai=false)는 텐파이가 아니어도 리치를 걸 수 있다 — 블러프용.
     if (
       rules.resolve<boolean>("riichi.requiresTenpai", { playerId: req.player, state }) &&
-      winningKinds(after, melds, undefined, opts).length === 0
+      // 턴 프롬프트가 14장마다 묻는다 — 같은 종류는 같은 13장을 남기므로 종류당 한 번만 센다
+      !tenpaiAfterDiscardMemo(
+        state,
+        req.player,
+        kindKey(kindOf(state, req.payload.tileId)),
+        () => {
+          const after = handIds
+            .filter((t) => t !== req.payload.tileId)
+            .map((t) => kindOf(state, t));
+          const melds = meldCountOf(state, req.player);
+          const opts = scoringOptionsOf(state, rules, req.player);
+          return winningKinds(after, melds, undefined, opts).length > 0;
+        },
+      )
     ) {
       return "not tenpai after discard";
     }

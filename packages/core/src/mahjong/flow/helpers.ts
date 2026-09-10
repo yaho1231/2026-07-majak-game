@@ -784,6 +784,22 @@ const WAITS_CACHE = new WeakMap<GameState, Map<string, TileKind[]>>();
 /** 가상 론 평가 캐시 — `${좌석}|${패id}` 로 `tenpaiNoYaku`와 `yakulessWaits`가 나눠 쓴다. */
 const WIN_EVAL_CACHE = new WeakMap<GameState, Map<string, boolean>>();
 
+/**
+ * «이 종류를 한 장 버리면 텐파이인가» 캐시 — 리치 검증(`standardActions.riichi`)이
+ * 턴 프롬프트에서 손패 14장마다 부른다. 답은 버리는 패의 **종류**에만 달려 있으므로
+ * (같은 5만 두 장은 같은 13장을 남긴다) 종류당 한 번만 34종 화형 판정을 돈다.
+ */
+const TENPAI_AFTER_DISCARD_CACHE = new WeakMap<GameState, Map<string, boolean>>();
+
+export function tenpaiAfterDiscardMemo(
+  state: GameState,
+  player: PlayerId,
+  discardKind: string,
+  compute: () => boolean,
+): boolean {
+  return memoOn(TENPAI_AFTER_DISCARD_CACHE, state, `${player}|${discardKind}`, compute);
+}
+
 /** 이 대기패로 론했을 때 역이 나는가 (같은 상태에서 한 번만 평가한다). */
 function hasYakuOnWait(
   state: GameState,
