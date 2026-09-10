@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { Prng } from "../src/engine/random/Prng.js";
 import { isWinningShape, isWinningShapeGeneric } from "../src/mahjong/scoring/decompose.js";
 import { winningKinds } from "../src/mahjong/scoring/waits.js";
+import { shantenOf, shantenOfGeneric, ukeireOf } from "../src/mahjong/scoring/shanten.js";
 import { kindKey, standardKinds } from "../src/mahjong/tiles/Tile.js";
 import type { TileKind } from "../src/mahjong/tiles/Tile.js";
 
@@ -206,5 +207,34 @@ describe("standard winning-shape fast path", () => {
     expect(winningKinds(kokushi.slice(0, 13), 0).map(kindKey).sort()).toEqual(
       KINDS.filter((c) => isWinningShapeGeneric([...kokushi.slice(0, 13), c], 0)).map(kindKey).sort(),
     );
+  });
+
+  it("shantenOf fast path ≡ generic on random hands (standard + shanten-neutral options)", () => {
+    const rng = new Prng(9001);
+    const variants = [undefined, { wrapRuns: true }, { totalSets: 5 }, { kokushiDupes: 1 }, { honorRuns: true }];
+    let checked = 0;
+    for (const opts of variants) {
+      const totalSets = opts?.totalSets ?? 4;
+      for (let i = 0; i < 8000; i++) {
+        const melds = rng.int(totalSets + 1);
+        const n = (totalSets - melds) * 3 + 2 - rng.int(2);
+        const hand = rng.int(2) === 0 ? structuredHand(rng, totalSets - melds, true).slice(0, n) : randomHand(rng, n);
+        const cnt = new Map<string, number>();
+        if (hand.some((k) => { const c = (cnt.get(kindKey(k)) ?? 0) + 1; cnt.set(kindKey(k), c); return c > 4; })) continue;
+        const fast = shantenOf(hand, melds, opts);
+        const slow = shantenOfGeneric(hand, melds, opts);
+        if (fast !== slow) {
+          throw new Error(`shanten mismatch opts=${JSON.stringify(opts)} melds=${melds} hand=${hand.map(kindKey).join(",")} fast=${fast} slow=${slow}`);
+        }
+        checked++;
+        if (rng.int(8) === 0 && hand.length % 3 === 1) {
+          const u = ukeireOf(hand, melds, () => 4, opts);
+          const g = KINDS.filter((c) => shantenOfGeneric([...hand, c], melds, opts) < slow).map(kindKey).sort();
+          expect(u.kinds.map(kindKey).sort()).toEqual(g);
+          expect(u.tiles).toBe(g.length * 4);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(30_000);
   });
 });

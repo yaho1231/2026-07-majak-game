@@ -18,7 +18,7 @@
 import { kindKey, standardKinds } from "../tiles/Tile.js";
 import type { TileKind } from "../tiles/Tile.js";
 import type { DecomposeOptions } from "./decompose.js";
-import { standardIndexOf } from "./standardShape.js";
+import { standardCounts, standardIndexOf } from "./standardShape.js";
 
 const NUMBER_SUITS = new Set(["man", "pin", "sou"]);
 
@@ -244,19 +244,15 @@ function mergedRankGroups(
   ];
 }
 
-/** 표준형(4멘쯔 1작두) 샹텐 */
-function standardShanten(
-  kinds: readonly TileKind[],
+/** 무늬 그룹들을 조합해 표준형 샹텐의 최솟값을 낸다 (`standardShanten`의 안쪽) */
+function combineGroups(
+  groupSet: readonly Group[],
   meldCount: number,
   totalSets: number,
-  opts?: DecomposeOptions,
+  best: number,
 ): number {
-  const groups = toGroups(kinds);
   const maxBlocks = totalSets + 1;
   const base = totalSets * 2;
-  let best = base;
-  let groupSet = groups;
-
   const combine = (idx: number, sets: number, partials: number, hasPair: boolean): void => {
     if (idx >= groupSet.length) {
       let m = meldCount + sets;
@@ -281,6 +277,17 @@ function standardShanten(
     }
   };
   combine(0, 0, 0, false);
+  return best;
+}
+
+/** 표준형(4멘쯔 1작두) 샹텐 */
+function standardShanten(
+  kinds: readonly TileKind[],
+  meldCount: number,
+  totalSets: number,
+  opts?: DecomposeOptions,
+): number {
+  let best = combineGroups(toGroups(kinds), meldCount, totalSets, totalSets * 2);
 
   /*
    * 무늬 확장이 걸린 손은 «랭크로 합친» 모형으로 한 번 더 재고 더 좋은 쪽을 쓴다.
@@ -291,8 +298,81 @@ function standardShanten(
     opts?.mixedTriplets === true ||
     opts?.mixedPairs === true
   ) {
-    groupSet = mergedRankGroups(kinds, opts);
-    combine(0, 0, 0, false);
+    best = combineGroups(mergedRankGroups(kinds, opts), meldCount, totalSets, best);
+  }
+  return best;
+}
+
+/**
+ * ── 표준 지름길 ──
+ *
+ * 옵션이 샹텐 계산에 영향을 주지 않는 손(조커·혼색·국사 외길·비대칭 치또이가 없는
+ * 손 — 대부분의 손이다)은 34칸 정수 배열에서 바로 잰다. `toGroups`의 Map·배열 할당,
+ * 치또이·국사의 Map, 캐시 키 문자열이 전부 사라진다. 답은 `shantenUncached`와 같다:
+ * 무늬 그룹은 같은 `profilesOf`를 쓰고, 빈 무늬 그룹은 조합에 아무것도 더하지 않는다.
+ *
+ * ⚠ `wrapRuns`·`honorRuns`·`polarEnds`·`kokushiDupes`는 샹텐이 원래 보지 않는
+ *    옵션이다(`shantenUncached`가 읽지 않는다) — 여기서도 무시한다.
+ */
+const FAST_COUNTS = new Int32Array(34);
+const FAST_GROUPS: Group[] = [
+  { counts: new Array<number>(10).fill(0), runs: true },
+  { counts: new Array<number>(10).fill(0), runs: true },
+  { counts: new Array<number>(10).fill(0), runs: true },
+  { counts: new Array<number>(10).fill(0), runs: false },
+  { counts: new Array<number>(10).fill(0), runs: false },
+];
+const ORPHAN_INDEX: readonly number[] = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
+
+function shantenFastEligible(opts: DecomposeOptions | undefined): boolean {
+  return (
+    opts === undefined ||
+    ((opts.wildKinds === undefined || opts.wildKinds.length === 0) &&
+      opts.kokushiOnly !== true &&
+      opts.mixedRuns !== true &&
+      opts.mixedTriplets !== true &&
+      opts.mixedPairs !== true &&
+      opts.chiitoiMixedPairs !== true)
+  );
+}
+
+/** 표준 34종만 든 손의 샹텐. 표준 밖의 패가 있으면 null (일반 경로로) */
+function shantenFast(
+  kinds: readonly TileKind[],
+  meldCount: number,
+  totalSets: number,
+): number | null {
+  const c = standardCounts(kinds, FAST_COUNTS);
+  if (c === null) return null;
+  for (let g = 0; g < 3; g++) {
+    const arr = (FAST_GROUPS[g] as Group).counts;
+    for (let r = 1; r <= 9; r++) arr[r] = c[g * 9 + r - 1] as number;
+  }
+  const wind = (FAST_GROUPS[3] as Group).counts;
+  for (let r = 1; r <= 4; r++) wind[r] = c[26 + r] as number;
+  const dragon = (FAST_GROUPS[4] as Group).counts;
+  for (let r = 1; r <= 3; r++) dragon[r] = c[30 + r] as number;
+
+  let best = combineGroups(FAST_GROUPS, meldCount, totalSets, totalSets * 2);
+  // 치또이·국사는 멘젠 13/14장 전용 (`shantenUncached`와 같은 조건)
+  if (meldCount === 0 && totalSets === 4 && kinds.length >= 13) {
+    let pairs = 0;
+    let distinct = 0;
+    for (let i = 0; i < 34; i++) {
+      const n = c[i] as number;
+      if (n > 0) distinct++;
+      if (n >= 2) pairs++;
+    }
+    const chiitoi = 6 - pairs + Math.max(0, 7 - distinct);
+    let orphanDistinct = 0;
+    let orphanPair = false;
+    for (const i of ORPHAN_INDEX) {
+      const n = c[i] as number;
+      if (n > 0) orphanDistinct++;
+      if (n >= 2) orphanPair = true;
+    }
+    const kokushi = 13 - orphanDistinct - (orphanPair ? 1 : 0);
+    best = Math.min(best, chiitoi, kokushi);
   }
   return best;
 }
@@ -466,6 +546,10 @@ export function shantenOf(
   opts?: DecomposeOptions,
 ): number {
   if (kinds.length === 0) return 8;
+  if (shantenFastEligible(opts)) {
+    const fast = shantenFast(kinds, meldCount, opts?.totalSets ?? 4);
+    if (fast !== null) return fast;
+  }
   if (cacheableOpts(opts)) {
     const key = `${sortedKindKey(kinds)}|${meldCount}|${shantenOptsKey(opts)}`;
     const hit = SHANTEN_CACHE.get(key);
@@ -475,6 +559,16 @@ export function shantenOf(
     SHANTEN_CACHE.set(key, value);
     return value;
   }
+  return shantenUncached(kinds, meldCount, opts);
+}
+
+/** **테스트 전용** — 지름길·캐시를 타지 않은 일반 경로. 지름길과 대조하는 데 쓴다. */
+export function shantenOfGeneric(
+  kinds: readonly TileKind[],
+  meldCount: number,
+  opts?: DecomposeOptions,
+): number {
+  if (kinds.length === 0) return 8;
   return shantenUncached(kinds, meldCount, opts);
 }
 
