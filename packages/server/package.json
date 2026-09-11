@@ -6,6 +6,8 @@
   "main": "./src/index.ts",
   "scripts": {
     "dev": "node --import tsx/esm src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --external:ws --sourcemap --outfile=dist/index.mjs --log-level=warning",
+    "golden": "node --import tsx/esm src/goldenCli.ts",
     "replay": "node --import tsx/esm src/replay.ts",
     "start": "node --import tsx/esm src/index.ts",
     "arena": "node --import tsx/esm src/arenaCli.ts"
@@ -18,6 +20,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "*",
     "@types/ws": "^8.5.10"
   }
 }

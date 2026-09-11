@@ -20,6 +20,7 @@ import { unlink } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import { RoomManager, abuseKeyOf, isRoomCodeShape } from "./RoomManager.js";
+import { perfSnapshot } from "./perfMonitor.js";
 import { ogCardFor } from "./ogCard.js";
 import { injectInviteMeta } from "./ogMeta.js";
 import { headerValue, resolveClientOrigin } from "./trustProxy.js";
@@ -593,6 +594,8 @@ const httpServer = createServer((req, res) => {
         ...(faults.lastAt === "" ? {} : { lastAt: faults.lastAt, lastMessage: faults.lastMessage }),
       },
       ...roomManager.healthSnapshot(),
+      // 부하 계기판 (perfMonitor.ts) — 마지막 조회 이후의 창. 감시자가 1분마다 읽는다.
+      perf: perfSnapshot(),
     });
     res.writeHead(degraded ? 500 : 200, {
       "Content-Type": "application/json",
