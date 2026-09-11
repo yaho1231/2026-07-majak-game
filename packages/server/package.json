@@ -8,6 +8,7 @@
     "dev": "node --import tsx/esm src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --external:ws --sourcemap --outfile=dist/index.mjs --log-level=warning",
     "golden": "node --import tsx/esm src/goldenCli.ts",
+    "load": "BOT_THINK_MS=0 AUTO_MOVE_MS=0 node --expose-gc --import tsx/esm src/loadCli.ts",
     "replay": "node --import tsx/esm src/replay.ts",
     "start": "node --import tsx/esm src/index.ts",
     "arena": "node --import tsx/esm src/arenaCli.ts"

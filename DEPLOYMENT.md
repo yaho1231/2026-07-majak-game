@@ -5,8 +5,11 @@
 
 - 코드 상태: **배포 준비 완료** (프로덕션 부팅·정적 서빙·SPA 폴백·WS·경로탈출 차단 확인,
   테스트 316개 통과, 4패키지 타입체크·클라 빌드 통과).
-- 서버는 `tsx` 로더로 TypeScript를 런타임 실행한다(별도 컴파일 산출물 없음).
-  → 프로덕션에서도 `tsx`가 필요하므로 `--omit=dev`로 설치하지 말 것(현재 tsx는 dependencies).
+- 서버는 **esbuild 번들**(`packages/server/dist/index.mjs`)로 돈다 (2026-09-11).
+  `scripts/majak.sh`의 `start`/`restart`가 클라이언트와 함께 `npm run build:server`로 만들고
+  `node --enable-source-maps dist/index.mjs`로 띄운다. 번들이 없으면(빌드를 건너뛴 개발 기동)
+  예전처럼 `tsx` 즉석 변환으로 떨어진다 — 그래서 `tsx`는 여전히 dependencies에 있다.
+  즉석 변환은 뜨거운 함수마다 이름 보존 헬퍼를 끼워 넣어 판 하나의 CPU가 ~10% 더 들었다.
 
 ---
 
@@ -284,6 +287,12 @@ npm run agents:uninstall
 `/healthz` 는 예외 발생 횟수를 함께 낸다. 5분 안에 예외가 5번을 넘으면 `ok:false` + HTTP 500이라
 감시자가 "응답은 오는데 정상이 아니다"를 구분한다 — 예전에는 예외를 삼키고도 계속
 `ok:true` 를 내서 좀비 상태를 아무도 몰랐다.
+
+`/healthz` 의 `perf` 항목은 **부하 계기판**이다 (2026-09-11, `packages/server/src/perfMonitor.ts`):
+마지막 조회 이후의 이벤트 루프 지연(p50/p99/max ms — 0 근처가 한가함), 봇 판단 시간, 힙.
+감시자가 1분마다 읽어 `.majak/perf.log` 에 한 줄씩 남긴다 — «서버가 늦다»가 느껴지면
+먼저 이 파일을 본다. `loop p99` 가 수십 ms를 넘기 시작하면 한 프로세스가 차는 중이다
+(수용량 어림과 다음 단계는 [docs/54_SERVER_PERF_DONE_2026-09-11.md](docs/54_SERVER_PERF_DONE_2026-09-11.md)).
 
 ## 7. 알려진 한계 (배포에 지장 없음)
 
