@@ -54,14 +54,33 @@ running_port() {
   if [ -f "$PORTFILE" ]; then cat "$PORTFILE"; else echo "$PORT"; fi
 }
 
-# 클라이언트를 빌드한다. 실패하면 여기서 끝난다 — **서버를 내리기 전에** 부른다.
+# 클라이언트와 서버 번들을 빌드한다. 실패하면 여기서 끝난다 — **서버를 내리기 전에** 부른다.
+#
+# 서버도 빌드한다 (2026-09-11): 예전에는 `node --import tsx/esm src/index.ts`로 TypeScript를
+# 매 기동마다 즉석 변환해 돌렸다. tsx가 끼워 넣는 이름 보존 헬퍼(`__name`)가 엔진의 뜨거운
+# 함수마다 박혀 있어 판 하나의 CPU가 10%쯤 더 들었고, 기동도 느렸다. esbuild 번들
+# (`packages/server/dist/index.mjs`)은 그 헬퍼가 없고 의존 해석도 한 번에 끝난다.
 build_client() {
   echo "▶ 클라이언트 빌드 중…"
   if ! (cd "$ROOT" && npm run build:client >"$RUNDIR/build.log" 2>&1); then
     echo "✗ 클라이언트 빌드 실패:"; tail -20 "$RUNDIR/build.log"
     return 1
   fi
+  echo "▶ 서버 번들 빌드 중…"
+  if ! (cd "$ROOT" && npm run build:server >>"$RUNDIR/build.log" 2>&1); then
+    echo "✗ 서버 번들 빌드 실패:"; tail -20 "$RUNDIR/build.log"
+    return 1
+  fi
   return 0
+}
+
+# 실행할 서버 명령. 번들이 있으면 그것을, 없으면(빌드를 건너뛴 개발 기동) tsx 즉석 변환을 쓴다.
+server_cmd() {
+  if [ -f "$ROOT/packages/server/dist/index.mjs" ]; then
+    echo "node --enable-source-maps dist/index.mjs"
+  else
+    echo "node --import tsx/esm src/index.ts"
+  fi
 }
 
 start() {
@@ -85,7 +104,10 @@ start() {
   } >>"$LOG"
   local started_at; started_at="$(wc -l <"$LOG" 2>/dev/null || echo 0)"
   # exec로 서브셸을 node로 치환 → $!가 node의 PID (stop이 정확히 그 프로세스를 종료)
-  ( cd "$ROOT/packages/server" && export PORT="$PORT" && exec node --import tsx/esm src/index.ts ) >>"$LOG" 2>&1 &
+  local cmd; cmd="$(server_cmd)"
+  echo "  실행: $cmd" >>"$LOG"
+  # shellcheck disable=SC2086
+  ( cd "$ROOT/packages/server" && export PORT="$PORT" && exec $cmd ) >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
   echo "$PORT" >"$PORTFILE"
   # 부팅 대기 (이번에 시작한 부분에서만 찾는다 — 로그가 누적되므로 지난 부팅의 줄에 속지 않게)

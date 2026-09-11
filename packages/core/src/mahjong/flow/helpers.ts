@@ -675,15 +675,49 @@ function furitenAgainst(
   if (rs?.temporaryFuriten === true || rs?.riichiFuriten === true) return true;
   const discarded = rs?.discardedKinds ?? [];
   if (discarded.length === 0) return false;
-  const waits = winningKinds(
-    handKinds,
-    meldCountOf(state, id),
-    undefined,
-    furitenOptionsOf(state, rules, id, opts),
-  );
+  const waits = furitenWaitsOf(state, rules, id, handKinds, opts);
   if (waits.length === 0) return false;
   const waitKeys = new Set(waits.map(kindKey));
   return discarded.some((k) => waitKeys.has(k));
+}
+
+/**
+ * 후리텐 판정용 대기 — «이 손이 어떤 종류를 기다리는가»를 **같은 상태에서 한 번만** 센다.
+ *
+ * 한 상태에서 이 계산이 세 곳에서 반복됐다: 리액션 프롬프트(`FlowController.markPassedWaits`
+ * 계열), 론 검증(`isFuriten`), 그리고 뷰 방송(`PlayerView.hasDiscardFuriten`) — 방송은
+ * 사람 넷 + 관전자마다 다시 만든다. 상태 객체가 키라 무효화가 필요 없다(`stateCache`).
+ * 손 종류 목록을 키에 넣는 이유: 호출처마다 «대기 손»이 다를 수 있다(`furitenAsIfRon`은
+ * 한 장을 뺀 손을 본다).
+ *
+ * `rules`가 없거나 호출자가 옵션을 직접 넘긴 경우는 캐시하지 않는다 — 한 게임의
+ * 규칙에서 파생된 값만 이 캐시의 뜻에 맞는다. 키에 `rules.version`을 넣는다: 증강
+ * 설치는 상태를 갈지 않고 규칙만 바꾸므로(`RuleRegistry.version` 주석), 상태만으로는
+ * 「규칙이 바뀌었다」를 알 수 없다.
+ */
+const FURITEN_WAITS_CACHE = new WeakMap<GameState, Map<string, TileKind[]>>();
+
+export function furitenWaitsOf(
+  state: GameState,
+  rules: RuleRegistry | undefined,
+  id: PlayerId,
+  handKinds: readonly TileKind[],
+  opts?: DecomposeOptions,
+): TileKind[] {
+  const compute = (): TileKind[] =>
+    winningKinds(
+      handKinds,
+      meldCountOf(state, id),
+      undefined,
+      furitenOptionsOf(state, rules, id, opts),
+    );
+  if (rules === undefined || opts !== undefined) return compute();
+  return memoOn(
+    FURITEN_WAITS_CACHE,
+    state,
+    `${rules.version}|${id}|${handKinds.map(kindKey).join(",")}`,
+    compute,
+  );
 }
 
 export function isFuriten(
@@ -783,6 +817,28 @@ function memoOn<T>(
 const WAITS_CACHE = new WeakMap<GameState, Map<string, TileKind[]>>();
 /** 가상 론 평가 캐시 — `${좌석}|${패id}` 로 `tenpaiNoYaku`와 `yakulessWaits`가 나눠 쓴다. */
 const WIN_EVAL_CACHE = new WeakMap<GameState, Map<string, boolean>>();
+
+/**
+ * «이 종류를 한 장 버리면 텐파이인가» 캐시 — 리치 검증(`standardActions.riichi`)이
+ * 턴 프롬프트에서 손패 14장마다 부른다. 답은 버리는 패의 **종류**에만 달려 있으므로
+ * (같은 5만 두 장은 같은 13장을 남긴다) 종류당 한 번만 34종 화형 판정을 돈다.
+ */
+const TENPAI_AFTER_DISCARD_CACHE = new WeakMap<GameState, Map<string, boolean>>();
+
+export function tenpaiAfterDiscardMemo(
+  state: GameState,
+  rules: RuleRegistry,
+  player: PlayerId,
+  discardKind: string,
+  compute: () => boolean,
+): boolean {
+  return memoOn(
+    TENPAI_AFTER_DISCARD_CACHE,
+    state,
+    `${rules.version}|${player}|${discardKind}`,
+    compute,
+  );
+}
 
 /** 이 대기패로 론했을 때 역이 나는가 (같은 상태에서 한 번만 평가한다). */
 function hasYakuOnWait(

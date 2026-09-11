@@ -53,7 +53,29 @@ fi
 if ! mkdir "$LOCKDIR" 2>/dev/null; then exit 0; fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
 
-healthy() { bash "$ROOT/deploy/serve.sh" health >/dev/null 2>&1; }
+HEALTH_JSON="$RUNDIR/health.last.json"
+healthy() { bash "$ROOT/deploy/serve.sh" health >"$HEALTH_JSON" 2>/dev/null; }
+
+# 부하 계기판 한 줄 (`.majak/perf.log`). `/healthz`의 `perf` 항목(지난 1분의 이벤트 루프
+# 지연·봇 판단 시간·힙)을 접어 적는다 — 2026-09-11 성능 작업 전에는 «봇을 많이 넣으면
+# 무겁다»를 수치로 볼 곳이 없었다. 1분에 한 줄이라 하루 1440줄, 10일마다 세대를 민다.
+PERF_LOG="$RUNDIR/perf.log"
+perf_log() {
+  [ -s "$HEALTH_JSON" ] || return 0
+  if [ -f "$PERF_LOG" ] && [ "$(wc -l <"$PERF_LOG" | tr -d ' ')" -gt 14400 ]; then
+    mv "$PERF_LOG" "$PERF_LOG.1"
+  fi
+  node -e '
+    const h = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const p = h.perf ?? {};
+    const l = p.loopDelayMs ?? {}, b = p.botDecision ?? {}, m = p.heapMb ?? {};
+    console.log(
+      `[${new Date().toISOString()}] conn=${h.connections} playing=${h.playing} waiting=${h.waiting}` +
+      ` loop(p50/p99/max)=${l.p50}/${l.p99}/${l.max}ms` +
+      ` bot(n/mean/p99/max)=${b.count}/${b.meanMs}/${b.p99Ms}/${b.maxMs}ms` +
+      ` heap=${m.used}/${m.total}MB rss=${m.rss}MB`);
+  ' "$HEALTH_JSON" >>"$PERF_LOG" 2>/dev/null || true
+}
 
 # 감시자가 **자기가 세운 서버를 자기가 죽이는** 상태인지 본다.
 # launchd는 AbandonProcessGroup이 없으면 작업이 끝나는 순간 그 프로세스 그룹에 남은
@@ -69,7 +91,7 @@ warn_if_self_killing() {
 }
 
 for i in $(seq 1 "$HEALTH_TRIES"); do
-  if healthy; then exit 0; fi
+  if healthy; then perf_log; exit 0; fi
   if [ "$i" -lt "$HEALTH_TRIES" ]; then sleep "$HEALTH_GAP_SEC"; fi
 done
 

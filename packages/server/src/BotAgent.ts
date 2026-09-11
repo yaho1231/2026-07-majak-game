@@ -43,6 +43,7 @@ import type { DraftStage, SandboxBotRules } from "@majak/core/network/protocol.j
 import type { PlayerId } from "@majak/core/engine/zones/Zone.js";
 import { kindKey } from "@majak/core/mahjong/tiles/Tile.js";
 import type { TileId, TileKind } from "@majak/core/mahjong/tiles/Tile.js";
+import { nowMs, recordBotDecision } from "./perfMonitor.js";
 import { bidAbort } from "./bot/abort.js";
 import { bidCall, bidPass } from "./bot/call.js";
 import type { CallAudit } from "./bot/callAudit.js";
@@ -437,7 +438,9 @@ export class BotAgent implements PlayerAgent {
    * 짧게 지나간다 — 깡·쯔모·증강 발동처럼 실제로 판이 바뀌는 결정은 그대로 둔다.
    */
   async decide(prompt: DecisionPrompt): Promise<ActionOption> {
+    const t0 = nowMs();
     const chosen = this.decideSafely(prompt);
+    recordBotDecision(nowMs() - t0);
     if (this.thinkMs > 0 && chosen.type !== "pass") {
       const weighty =
         chosen.type === "riichi" ||

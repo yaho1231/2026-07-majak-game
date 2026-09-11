@@ -17,10 +17,9 @@ import type { RuleRegistry } from "../engine/rules/RuleRegistry.js";
 import type { PlayerId, ZoneId } from "../engine/zones/Zone.js";
 import { kindKey } from "../mahjong/tiles/Tile.js";
 import type { TileAttrs, TileId, TileKind } from "../mahjong/tiles/Tile.js";
-import { winningKinds } from "../mahjong/scoring/waits.js";
 import type { DecomposeOptions } from "../mahjong/scoring/decompose.js";
 import {
-  furitenOptionsOf,
+  furitenWaitsOf,
   openMeldCountOf,
   playerOf,
   scoringOptionsOf,
@@ -1210,13 +1209,9 @@ function hasDiscardFuriten(
     if (tile === undefined) throw new Error(`Unknown tile: ${id}`);
     return tile.kind;
   });
-  const waits = winningKinds(
-    handKinds,
-    pr.melds.length,
-    undefined,
-    // 조커가 넓힌 대기는 후리텐을 만들지 않는다 (helpers.furitenOptionsOf)
-    furitenOptionsOf(state, rules, player),
-  );
+  // 조커가 넓힌 대기는 후리텐을 만들지 않는다 (helpers.furitenOptionsOf).
+  // 같은 상태의 리액션 판정·다른 뷰어의 뷰와 대기를 나눠 쓴다 (helpers.furitenWaitsOf).
+  const waits = furitenWaitsOf(state, rules, player, handKinds);
   if (waits.length === 0) return false;
   const waitKeys = new Set(waits.map(kindKey));
   return discarded.some((k) => waitKeys.has(k));
