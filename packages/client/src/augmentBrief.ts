@@ -157,7 +157,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
     text: "내 첫 순에 사용하면 이 국에는 내 점수의 증감이 반대가 된다.",
   },
   // 2026-08-07 7차 신규
-  joker: { use: "2국에 1회", text: "손패 1장을 백으로 바꾸고, 이번 국 내 손패의 백은 전부 만능패가 된다." },
+  joker: { use: CD_2_3, text: "손패 1장을 백으로 바꾸고, 이번 국 내 손패의 백은 전부 만능패가 된다." },
   time_pressure: {
     use: "이번 국만",
     text: "이 국에는 모두의 결정 시간이 5초로 제한된다. 반장전에서는 게임 내 1회 다시 사용할 수 있다.",
@@ -270,7 +270,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   table_flip: { use: "매 국 1회", text: "국 첫 순에 손패 전체를 반납하고 새로 받는다. 반납한 손패는 모두에게 공개된다." },
   take_back: { use: "3순에 1회", text: "방금 쯔모한 패를 모두에게 공개하고 패산에 되돌린 뒤 새로 뽑는다." },
   tanyao_break: { use: "상시", text: "자패만 없으면 1·9가 섞여도 탕야오가 된다. 그 탕야오는 2판이다." },
-  tenpai_scan: { use: "매 국 1회", text: "지금 텐파이인 상대가 누구인지, 그 대기가 얼마나 넓은지 나에게만 알려 준다." },
+  tenpai_scan: { use: "매 국 2회", text: "지금 텐파이인 상대가 누구인지, 그 대기가 얼마나 넓은지 나에게만 알려 준다." },
   three_dragons_will: { use: MODE_1_2, text: "백,발,중 중 둘이 커쯔라면 잡패를 재료로 사용해 남은 한 종류를 커쯔로 만든다." },
   tile_dyeing: { use: MODE_5_8, text: "손패의 수패 1장을 같은 숫자의 다른 무늬로 바꾼다. 리치 중에는 쯔모패만 대상." },
   tile_split: { use: "매 국 1회", text: "수패 1장을 합이 같은 두 장으로 쪼갠다(예: 9통은 4통과 5통). 잡패 1장이 재료로 사용된다." },
