@@ -2,10 +2,10 @@
  * 천리안 (tenpai_scan) 동작 테스트.
  *
  * 핵심 계약:
- *  1. 자기 턴에 선언할 수 있고(매 국 1회), 선언하면 텐파이인 상대 목록이
+ *  1. 자기 턴에 선언할 수 있고(매 국 2회), 선언하면 텐파이인 상대 목록이
  *     보유자 전용 채널(view:{holder}:tenpai_scan)에 `{ players, turn }`으로만 실린다.
  *  2. 텐파이인 상대(p1)는 목록에 들고, 노텐인 상대(p2)는 들지 않는다.
- *  3. 매 국 1회 — 같은 국에 두 번은 못 쓰고, 국이 바뀌면 다시 열린다.
+ *  3. 매 국 2회 — 같은 국에 세 번은 못 쓰고, 국이 바뀌면 다시 열린다.
  */
 
 import { describe, expect, it } from "vitest";
@@ -98,9 +98,27 @@ describe("천리안 (tenpai_scan)", () => {
     expect(result.turn).toBe(7);
   });
 
-  it("같은 국에는 한 번 쓰면 다시 제시되지 않는다", () => {
-    const { game, flow } = startFlow(scene());
-    flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+  it("같은 국에는 두 번 쓰면 다시 제시되지 않는다 (매 국 2회, 2026-09-14)", () => {
+    const first = startFlow(scene());
+    first.flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+
+    // 한 번 쓴 뒤에도 같은 국에서 한 번 더 열린다
+    const mid = withAugments(first.game.engine.state, "p0", ["tenpai_scan"]);
+    const gameMid = createStandardGameFromState({
+      ...mid,
+      round: { ...mid.round, phase: "turn.act", turnSeat: 0 },
+    });
+    installAugment(gameMid.engine, tenpaiScan, "p0", { yaku: gameMid.yaku });
+    const flowMid = new FlowController(gameMid.engine);
+    const statusMid = flowMid.begin();
+    if (statusMid.kind !== "awaiting") throw new Error("expected awaiting");
+    expect(
+      statusMid.prompts
+        .find((p) => p.player === "p0")
+        ?.options.filter((o) => o.type === "tenpai_scan_use") ?? [],
+    ).toHaveLength(1);
+    flowMid.submit("p0", { type: "tenpai_scan_use", payload: {} });
+    const game = gameMid;
 
     // 사용 카운터는 **국 단위 키**에 선다 (`{id}:uses:{roundKey}:{holder}`)
     const usesKeys = Object.keys(game.engine.state.augmentData).filter((k) =>
@@ -108,7 +126,7 @@ describe("천리안 (tenpai_scan)", () => {
     );
     expect(usesKeys).toHaveLength(1);
     expect(usesKeys[0]!.endsWith(":p0#round")).toBe(true);
-    expect(game.engine.state.augmentData[usesKeys[0]!]).toBe(1);
+    expect(game.engine.state.augmentData[usesKeys[0]!]).toBe(2);
 
     // 사용 후의 state를 새 게임에 재설치 → p0 턴이어도 스캔 후보가 뜨지 않는다
     const used = withAugments(game.engine.state, "p0", ["tenpai_scan"]);
@@ -125,7 +143,7 @@ describe("천리안 (tenpai_scan)", () => {
     ).toHaveLength(0);
   });
 
-  it("국이 바뀌면 다시 쓸 수 있다 (매 국 1회)", () => {
+  it("국이 바뀌면 다시 쓸 수 있다 (매 국 2회)", () => {
     const { game, flow } = startFlow(scene());
     flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
 

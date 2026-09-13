@@ -7,7 +7,7 @@
  *  3. 백은 **머리도 몸통도** 된다.
  *  4. 변신은 **가장 비싼 손**으로 자동 결정된다 (고르는 UI가 없다).
  *  5. 백 자체를 **론으로 잡아도** 화료가 성립한다 (화료패가 조커인 경우).
- *  6. 효과는 **발동한 그 국에만** 살고, 쿨다운은 2국이다.
+ *  6. 효과는 **발동한 그 국에만** 살고, 쿨다운은 동풍전 2국 · 반장전 3국이다.
  *  7. 발동 사실은 전원 공개다.
  *  8. 봇은 **백을 쥐고 있고 그 백이 손을 전진시킬 때만** 켠다.
  */
@@ -357,7 +357,7 @@ describe("조커 — 국 스코프와 쿨다운", () => {
     const game = mk("111999m55m23s23p5z");
     fire(game);
     const state = game.engine.state;
-    expect(state.augmentData[cooldownViewKey("joker", "p0")]).toBe(2);
+    expect(state.augmentData[cooldownViewKey("joker", "p0")]).toBe(3); // 기본 모드는 반장전 → 3국;
     const view = buildPlayerView(state, "p1", game.engine.rules);
     expect(view.augmentView["joker:p0"]).toBe(true);
   });
@@ -446,13 +446,43 @@ describe("조커 — 봇 정책", () => {
 
 // ───────────────────────── 7. 쿨다운 카운터 배선 ─────────────────────────
 
-describe("조커 — 2국에 1회", () => {
-  it("발동한 자리에서 2국 잠기고, 국이 지날 때마다 하나씩 풀린다", () => {
-    const game = mk("111999m55m23s23p5z");
+describe("조커 — 동풍전 2국에 1회 · 반장전 3국에 1회", () => {
+  /** `mk`와 같되 매치 길이를 지정한다 (2026-09-14 사용자 지시: 반장전은 3국) */
+  function mkMode(mode: "tonpuu" | "hanchan"): Game {
+    const base = withAug(
+      craft({
+        hands: { p0: "111999m55m23s23p5z", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+      }),
+      "p0",
+      ["joker"],
+    );
+    const game = createStandardGameFromState({ ...base, config: { ...base.config, mode } });
+    installAugment(game.engine, C.joker, "p0", { yaku: game.yaku });
+    return game;
+  }
+
+  it("동풍전: 발동한 자리에서 2국 잠기고, 국이 지날 때마다 하나씩 풀린다", () => {
+    const game = mkMode("tonpuu");
     const left = (): unknown =>
       game.engine.state.augmentData[cooldownViewKey("joker", "p0")];
     expect(left()).toBeUndefined();
     fire(game);
+    expect(left()).toBe(2);
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    expect(left()).toBe(1);
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    expect(left()).toBe(0);
+  });
+
+  it("반장전: 발동한 자리에서 3국 잠긴다", () => {
+    const game = mkMode("hanchan");
+    const left = (): unknown =>
+      game.engine.state.augmentData[cooldownViewKey("joker", "p0")];
+    fire(game);
+    expect(left()).toBe(3);
+    emit(game, { type: ROUND_STARTED, payload: {} });
     expect(left()).toBe(2);
     emit(game, { type: ROUND_STARTED, payload: {} });
     expect(left()).toBe(1);
