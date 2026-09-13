@@ -32,7 +32,7 @@ import {
 } from "@majak/core";
 import type { ActionDef, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { plan } from "./botPlan.js";
-import { cooldownViewKey } from "../util.js";
+import { cooldownUsedRoundViewKey, cooldownViewKey, roundKey } from "../util.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "pseudo_dealer";
@@ -96,6 +96,7 @@ const claimDealerAction: ActionDef<Record<string, never>> = {
     // 잔여 쿨다운을 공용 채널로도 낸다 — 자체 카운터만 쓰던 탓에 이름표의 `🕐N국`
     // 칩이 서지 않아, 버튼이 사라진 이유를 화면에서 알 수 없었다.
     augmentDataSet(cooldownViewKey(ID, req.player), COOLDOWN_ROUNDS),
+    augmentDataSet(cooldownUsedRoundViewKey(ID, req.player), roundKey(state)),
   ],
 };
 

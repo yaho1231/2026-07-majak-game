@@ -914,6 +914,29 @@ describe("배패 점수 — 절대값이 아니라 «순서»를 못 박는다",
     expect(plain, `평범한 배패(${plain})가 나쁜 배패(${bad})보다 낮다`).toBeGreaterThan(bad);
   });
 
+  it("100은 완전체에게만 — 텐파이가 아니면 아무리 좋아도 100 근처에 못 간다 (2026-09-14)", () => {
+    /*
+     * 예전 식은 속도 축이 1샹텐에서 이미 만점이라, 도라 3장에 씨앗 둘이면 텐파이도
+     * 아닌 손이 100이었다(사용자 보고 "텐파이도 아닌데 100점이 막 나옴"). 텐파이가
+     * 아니면 대기 축이 0이고 타점 축은 절반까지라 위가 막힌다.
+     */
+    // 1샹텐 · 도라 3 — 텐파이 직전의 아주 좋은 손
+    const oneAwayHand = "123456m789p55s7z4s";
+    expect(shantenOf(h(oneAwayHand), 0)).toBe(1);
+    const oneAway = grade(oneAwayHand, 3);
+    expect(oneAway).toBeLessThan(70);
+    // 텐파이지만 역없음·대기 1종 남은 0장 — 타점·대기 축이 비어 낮다
+    const dead = gradeStartingHand(h("123456789m55s77z"), undefined, 0, 0, { han: null, remaining: 0 });
+    expect(dead).toBeLessThan(60);
+    // 텐파이 · 역만 · 오름패 8장 이상 · 씨앗 둘 — 완전체만 100
+    const perfect = gradeStartingHand(h("123456789m55s77z"), undefined, 0, 0, { han: 13, remaining: 8 });
+    expect(perfect).toBe(100);
+    // 같은 텐파이라도 만관이면 100이 아니다
+    const mangan = gradeStartingHand(h("123456789m55s77z"), undefined, 0, 0, { han: 5, remaining: 8 });
+    expect(mangan).toBeLessThan(perfect);
+    expect(mangan).toBeGreaterThan(oneAway);
+  });
+
   it("같은 손이면 도라가 많은 쪽이 높다 (타점 축)", () => {
     const hand = "1358m2479p1469s3z";
     expect(grade(hand, 3)).toBeGreaterThan(grade(hand, 0));

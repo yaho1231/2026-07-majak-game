@@ -1,7 +1,7 @@
 /**
  * 조커 (joker, prism) — **백(白)이 무엇이든 된다.**
  *
- * (동풍전 2국에 1회 · 반장전 3국에 1회) 자기 순에 액티브 버튼을 누르고 **손패 1장을 골라 백으로 바꾸면**, 그 국 동안
+ * (2국에 1회) 자기 순에 액티브 버튼을 누르고 **손패 1장을 골라 백으로 바꾸면**, 그 국 동안
  * 손패의 역패 백이 조커가 된다 (이미 백인 패를 고르면 바뀌는 것 없이 해석만 켜진다).
  * 조커는 머리가 되든 몸통이 되든 상관없이 빈자리를 스스로 메운다 — 23삭·백·23통이면
  * 백이 알아서 자리를 잡아 14삭·14통 대기가 된다. 무엇이 될지는 **고르지 않는다**:
@@ -59,7 +59,6 @@ import {
   cooldownUse,
   flagOf,
   roundViewKey,
-  scaledCooldown,
   trackRoundSeq,
 } from "../util.js";
 import { handAlteredKey } from "./handAltered.js";
@@ -70,12 +69,8 @@ import { roundScopedKey } from "./roundScope.js";
 const ID = "joker";
 const ACTION = "joker_call";
 
-/**
- * 한 번 쓰면 이만큼 국(본장 포함)이 지나야 다시 열린다 — **동풍전 2국 / 반장전 3국**
- * (2026-09-14 사용자 지시). 매치 길이에 비례해 늘리는 `scaledCooldown` 규약을 따른다
- * (brief_fog·broken_border·async_chiitoi 와 같은 계보).
- */
-const cooldownRounds = (state: GameState): number => scaledCooldown(state, 2);
+/** 한 번 쓰면 이만큼 국(본장 포함)이 지나야 다시 열린다 */
+const COOLDOWN_ROUNDS = 2;
 
 /** 조커가 되는 패 — 역패 백(삼원패 1) */
 const HAKU: TileKind = { suit: Suits.Dragon, rank: 1 };
@@ -120,7 +115,7 @@ const jokerAction: ActionDef<JokerPayload> = {
     if (state.round.byPlayer[req.player]?.riichi != null) {
       return "riichi: hand is frozen";
     }
-    if (!cooldownReady(state, ID, req.player, cooldownRounds(state))) return "on cooldown";
+    if (!cooldownReady(state, ID, req.player, COOLDOWN_ROUNDS)) return "on cooldown";
     if (jokerOn(state, req.player)) return "already on";
     const { tileId } = req.payload;
     if (tileId !== undefined && !handIdsOf(state, req.player).includes(tileId)) {
@@ -145,7 +140,7 @@ const jokerAction: ActionDef<JokerPayload> = {
         ]
       : []),
     augmentDataSet(onKey(state, req.player), true),
-    ...cooldownUse(state, ID, req.player, cooldownRounds(state)),
+    ...cooldownUse(state, ID, req.player, COOLDOWN_ROUNDS),
     // 전원 공개 — 백이 만능패가 됐다는 것을 알아야 상대가 백을 쥐고 있을 수 있다
     augmentDataSet(roundViewKey("*", `${ID}:${req.player}`), true),
     /*
@@ -218,7 +213,7 @@ export const joker: AugmentDef = defineAugment({
   complexity: 3,
   name: "조커",
   description:
-    "(동풍전 2국에 1회 · 반장전 3국에 1회) 자기 순에 손패 1장을 골라 백으로 바꾼다. 이번 국 동안 손패의 백은 조커가 되어 점수가 가장 높아지는 패로 자동으로 바뀐다.",
+    "(2국에 1회) 자기 순에 손패 1장을 골라 백으로 바꾼다. 이번 국 동안 손패의 백은 조커가 되어 점수가 가장 높아지는 패로 자동으로 바뀐다.",
   detail:
     "손패 1장을 백으로 바꾸고, 이번 국 동안 손의 백은 전부 조커가 되어 화료할 때 점수가 가장 높아지는 형태로 자동으로 바뀐다.\n\n머리도 몸통도 될 수 있고, 조커로 넓어진 대기는 후리텐이 되지 않는다. 백으로는 치·퐁·깡을 할 수 없고, 도라를 백으로 바꾸면 그 도라 판수는 사라진다.",
   install(ctx) {
@@ -227,7 +222,7 @@ export const joker: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) engine.actions.register(jokerAction);
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
-    trackRoundSeq(ctx, ID, cooldownRounds);
+    trackRoundSeq(ctx, ID, COOLDOWN_ROUNDS);
 
     /**
      * 발동한 국 동안만 백을 조커로 올린다. 이 규칙 하나가 화료·텐파이·대기·후리텐에

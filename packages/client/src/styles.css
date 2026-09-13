@@ -4810,6 +4810,29 @@ button {
   opacity: 1;
 }
 
+/* ── 이번 국에 발동해 효과가 살아 있는 pill ──────────────────────────────
+   "N국에 1회" 증강은 발동하는 순간 쿨다운이 서서 위 `.aug-pill-cd`로 식었다. 그런데
+   그 증강 대부분은 **발동한 국 동안 효과가 판 위에 살아 있다**(조커·배짱·모양 규칙…) —
+   방금 켠 능력이 곧바로 죽은 것처럼 읽혔다(2026-09-14 사용자 지시 "발동 중일 때는
+   빛나게"). 발동한 국에는 식히지 않고 금빛으로 세운다. 「지금 쓸 수 있다」(연보라
+   맥동, `.aug-pill-usable`)와 갈라 보이게 색을 달리하고, 국 내내 서 있을 것이라
+   깜빡이지는 않는다. 다음 국이 오면 클래스가 빠지고 `.aug-pill-cd`로 돌아간다. */
+.aug-pill-active {
+  background: rgba(255, 214, 120, 0.28);
+  border-color: rgba(255, 224, 150, 0.95);
+  color: #fff3d6;
+  box-shadow: 0 0 0 1.5px rgba(255, 222, 140, 0.7), 0 0 12px 2px rgba(255, 200, 90, 0.55);
+}
+
+.aug-pill-active > :not(.aug-tip) {
+  opacity: 1;
+}
+
+.aug-pill-chip-active {
+  background: rgba(255, 214, 120, 0.95);
+  color: #3a2a06;
+}
+
 
 /* 남은 국 수 칩 — 잔량 칩과 나란히 서므로 색으로 갈라 둔다 */
 .aug-pill-cd-chip {
@@ -7890,6 +7913,51 @@ button {
   box-shadow: 0 0 18px 4px rgba(199, 188, 255, 1);
 }
 
+/* ── 바닥 **전체**가 클릭 대상 (누명: «이 상대의 바닥에 놓는다») ──────────────
+   특정 버림패가 아니라 바닥 자체가 목적지다. wrap 의 pointer-events 를 되살리고
+   바닥 전체에 보랏빛 테를 두른 뒤, 한가운데에 «누구의 바닥에 놓기» 표를 띄운다.
+   바닥은 좌석마다 회전돼 있으므로(위 180°, 좌·우 ±90°) 표만 반대로 돌려 바로 세운다. */
+.river-wrap.river-armable {
+  pointer-events: auto;
+  cursor: pointer;
+  border-radius: 8px;
+  outline: 2px solid rgba(199, 188, 255, 0.98);
+  outline-offset: 3px;
+  box-shadow: 0 0 16px 4px rgba(199, 188, 255, 0.7);
+  background: rgba(199, 188, 255, 0.12);
+  animation: armable-pulse 1.1s ease-in-out infinite;
+  z-index: 5;
+}
+.river-wrap.river-armable:hover {
+  background: rgba(199, 188, 255, 0.24);
+  box-shadow: 0 0 22px 6px rgba(199, 188, 255, 0.95);
+}
+.river-arm-tag {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(35, 28, 66, 0.94);
+  border: 1px solid rgba(199, 188, 255, 0.9);
+  color: #efeaff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+.river-top .river-arm-tag {
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+.river-right .river-arm-tag {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+.river-left .river-arm-tag {
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
+
 /* 무덤 도굴 — 고르는 순간 화료가 확정되는 패. 보통의 클릭 대상(보라)과 확실히 갈라
    금빛으로 띄우고 "화료" 표식을 붙인다. */
 .rt.rt-win-armable {
@@ -8130,6 +8198,73 @@ button {
 .seal-badge-tiles .tile-mini {
   width: 23px;
   height: 33px;
+}
+
+/* 천리안 스냅샷 — 봉인 뱃지와 같은 자리(그 상대의 손패 옆). "나만 아는 훔쳐본
+   정보"라 봉인처럼 따로 색을 갖되, 텐파이면 경고의 호박색, 노텐이면 식은 회청색이다.
+   예전엔 우상단 📜 로그에만 남아 발동해도 아무것도 안 뜬 것처럼 보였다(2026-09-14). */
+.scan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 5px;
+  border-radius: 11px;
+  background: rgba(13, 23, 18, 0.95);
+  border: 1px solid rgba(120, 150, 190, 0.6);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: bar-in 0.25s ease-out;
+  z-index: 25;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.scan-badge-tenpai {
+  border-color: rgba(255, 196, 96, 0.85);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 12px rgba(255, 176, 60, 0.35);
+}
+
+.scan-badge-label {
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #b9c6dc;
+}
+
+.scan-badge-tenpai .scan-badge-label {
+  color: #ffd27a;
+}
+
+.scan-badge-verdict {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(120, 150, 190, 0.28);
+  color: #dbe4f2;
+  font-weight: 800;
+}
+
+.scan-badge-tenpai .scan-badge-verdict {
+  background: rgba(255, 196, 96, 0.9);
+  color: #3a2400;
+}
+
+.scan-badge-width {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f7f3e8;
+  font-weight: 700;
+}
+
+.scan-badge-width-wide {
+  background: rgba(230, 90, 80, 0.5);
+}
+
+.scan-badge-width-narrow {
+  background: rgba(96, 190, 140, 0.4);
+}
+
+.scan-badge-turn {
+  color: #8e9bb0;
+  font-size: 11px;
 }
 
 .waits-badge-mine {
@@ -8573,6 +8708,17 @@ button {
 }
 
 .augdesc-body { display: inline; }
+
+/* 발동 시점 조건(「국 첫 순에」) — 굵기에 더해 살짝 밝은 금색으로 눈에 걸리게 한다.
+   놓치면 «증강이 고장 났다»로 읽히는 조건이라 다른 강조(`**`)보다 한 단계 더 띄운다
+   (2026-09-14 사용자 요청). 그리는 자리는 `TermText`의 `timingNodes`. */
+.term-timing {
+  font-weight: 800;
+  color: #ffe08a;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 224, 138, 0.55);
+  text-underline-offset: 2px;
+}
 
 /* 원문을 펼쳤을 때 — 툴팁 안에서 끝없이 늘어나지 않게 높이를 묶고 스크롤을 준다 */
 .augdesc-body-full {

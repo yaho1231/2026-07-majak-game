@@ -1019,7 +1019,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   peek_forge: "hand",
   // 분열 — 쪼갤 수패를 클릭 (한 패에 분할 후보가 여럿이면 armSub 모달)
   split_tile: "hand",
-  // 누명 — 심을 패를 클릭 (대상 선택은 armSub 모달)
+  // 누명 — 심을 패를 클릭 → **상대 바닥을 클릭**해 그 바닥에 놓는다 (2026-09-14: 예전에는
+  //   대상을 armSub 모달의 이름 버튼으로 골랐다 — 「바닥에 놓는다」는 증강이라 바닥을 눌러야 맞다)
   frame_discard: "hand",
   // 소환 — 내 손패를 클릭해 다음 쯔모로 불러올 패(종류)를 지목한다
   conjure_tsumo: "hand",
@@ -1090,6 +1091,7 @@ function armPromptText(mode: ArmMode | null, type?: string | null): string {
     return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
   }
   if (type === "joker_call") return "백으로 바꿀 손패를 클릭하세요. 백을 고르면 바로 발동합니다";
+  if (type === "frame_discard") return "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요";
   switch (mode) {
     case "opp":
       return "대상 상대를 클릭하세요";
@@ -1461,6 +1463,15 @@ interface SelectionCtx {
   setSwapTarget: (pid: string | null) => void;
   /** swap3: 넘길 3장 갱신. */
   setSwapGive: (ids: number[]) => void;
+  /** 누명: 심기로 고른 내 손패(없으면 null) — 다음 단계는 상대 바닥 클릭. */
+  frameTile: number | null;
+  /** 누명: 심을 손패 지정(다시 누르면 바꾼다). */
+  setFrameTile: (id: number | null) => void;
+  /**
+   * 이 상대의 **바닥 전체**가 지금 무장 액션의 클릭 대상이면 그 옵션(아니면 undefined).
+   * 누명처럼 «어느 바닥에 놓을지»를 고르는 액션용 — 특정 버림패가 아니라 바닥이 대상이다.
+   */
+  riverTargetOptionFor: (ownerId: string) => ActionOption | undefined;
 }
 
 const NO_SELECTION: SelectionCtx = {
@@ -1477,6 +1488,9 @@ const NO_SELECTION: SelectionCtx = {
   swapGive: [],
   setSwapTarget: () => {},
   setSwapGive: () => {},
+  frameTile: null,
+  setFrameTile: () => {},
+  riverTargetOptionFor: () => undefined,
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -9473,6 +9487,33 @@ function termNodes(text: string, seed: string, tips: boolean): JSX.Element[] {
  * 설정에서 "용어 설명"을 끄면 밑줄도 툴팁도 없이 맨 글자로 흘린다 — 용어를 이미
  * 아는 사람에게는 밑줄이 글을 읽는 데 방해가 되기 때문이다. `**강조**` 처리는 남는다.
  */
+/**
+ * **발동 시점 조건** — 글 속에서 저절로 굵어지는 구절.
+ *
+ * 「국 첫 순에 선언하면」「내 첫 순에 사용하면」 같은 조건은 놓치면 증강이 «고장»으로
+ * 읽힌다(첫 순이 지나면 버튼이 안 뜬다). 그런데 요약 한 줄 속에 다른 글자와 같은
+ * 굵기로 묻혀 있어 눈에 안 걸렸다(2026-09-14 사용자 요청 "첫 순 부분에 볼드 처리").
+ * 문안 스물 몇 곳에 손으로 `**`를 심는 대신 그리는 자리에서 잡는다 — 상세(`detail`)
+ * 문단에도 같은 구절이 있고, 새 증강이 생겨도 빠지지 않는다.
+ */
+const TIMING_RE =
+  /((?:국의|국|내|자기|자신의|오야가|오야의)?\s?첫\s(?:순|쯔모|타패|버림|턴|바퀴|리치)(?:에만|에|를|뿐)?)/g;
+
+function timingNodes(text: string, seed: string, tips: boolean): JSX.Element[] {
+  const parts = text.split(TIMING_RE);
+  if (parts.length === 1) return termNodes(text, seed, tips);
+  return parts.map((p, i) =>
+    // split의 홀수 조각이 캡처된 시점 구절이다
+    i % 2 === 1 ? (
+      <strong key={`${seed}:t${i}`} className="term-timing">
+        {termNodes(p, `${seed}:t${i}`, tips)}
+      </strong>
+    ) : (
+      <span key={`${seed}:t${i}`}>{termNodes(p, `${seed}:t${i}`, tips)}</span>
+    ),
+  );
+}
+
 function TermText({ text }: { text: string }): JSX.Element {
   const tips = useContext(GlossaryTipsContext);
   const parts = useMemo(() => text.split(/\*\*(.+?)\*\*/g), [text]);
@@ -9482,7 +9523,7 @@ function TermText({ text }: { text: string }): JSX.Element {
         // split의 홀수 조각이 ** ** 안쪽이다
         i % 2 === 1
           ? <strong key={i}>{termNodes(p, String(i), tips)}</strong>
-          : <span key={i}>{termNodes(p, String(i), tips)}</span>,
+          : <span key={i}>{timingNodes(p, String(i), tips)}</span>,
       )}
     </>
   );
@@ -15087,6 +15128,8 @@ function useSelection(
   const [armedType, setArmedType] = useState<string | null>(null);
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
   const [swapGive, setSwapGive] = useState<number[]>([]);
+  // 누명 2단계 — 손패를 고른 뒤 상대 바닥을 고른다 (swap3의 swapTarget과 같은 꼴)
+  const [frameTile, setFrameTile] = useState<number | null>(null);
 
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
   const armMode = armedType !== null ? (armModeOf(armedType) ?? null) : null;
@@ -15106,6 +15149,7 @@ function useSelection(
       setArmedType(null);
       setSwapTarget(null);
       setSwapGive([]);
+      setFrameTile(null);
     }
   }, [armedType, myPrompt]);
 
@@ -15115,12 +15159,14 @@ function useSelection(
       setSwapTarget(null);
       setSwapGive([]);
     }
+    if (armedType !== "frame_discard") setFrameTile(null);
   }, [armedType]);
 
   const arm = (type: string | null): void => {
     setArmedType((cur) => (type === null ? null : cur === type ? null : type));
     setSwapTarget(null);
     setSwapGive([]);
+    setFrameTile(null);
   };
 
   const submit = (o: ActionOption): void => {
@@ -15128,6 +15174,17 @@ function useSelection(
     setArmedType(null);
     setSwapTarget(null);
     setSwapGive([]);
+    setFrameTile(null);
+  };
+
+  // 누명: 고른 손패를 이 상대의 바닥에 놓는 옵션 — 손패를 아직 안 골랐으면 없다.
+  const riverTargetOptionFor = (ownerId: string): ActionOption | undefined => {
+    if (armedType !== "frame_discard" || frameTile === null) return undefined;
+    if (ownerId === view.playerId) return undefined;
+    return armedOptions.find((o) => {
+      const p = o.payload as { tileId?: unknown; target?: unknown };
+      return p.tileId === frameTile && p.target === ownerId;
+    });
   };
 
   // opp 모드: 이 상대를 대상으로 하는 옵션. swap3 상대 지정 단계도 같은 payload.target.
@@ -15218,6 +15275,9 @@ function useSelection(
     swapGive,
     setSwapTarget,
     setSwapGive,
+    frameTile,
+    setFrameTile,
+    riverTargetOptionFor,
   };
 }
 
@@ -16490,6 +16550,8 @@ function augmentLogRows(
     if (head === "future_sight") continue;
     // 스파이가 찍은 패: 뱃지 줄
     if (head === "spy") continue;
+    // 천리안 스냅샷: 각 상대의 손패 옆 ScanBadge (텐파이·대기 폭·몇 순 기준)
+    if (head === "tenpai_scan") continue;
     // 안개가 걷어낸 강의 마지막 패: 강(River)이 직접 그린다
     if (head === "revealTiles" && (target === "fog" || target === "future")) continue;
     // 다음 국으로 넘어가는 것(미련·귀환)은 국 결과창이 보여준다 — 그게 쓸모 있는 순간이다
@@ -16530,45 +16592,6 @@ function augmentLogRows(
       if (ids.length === 0) continue;
       const names = ids.map((id) => catalog[id]?.name ?? id).join(", ");
       rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who}에게 ` : ""}${names}`));
-    } else if (head === "tenpai_scan") {
-      /*
-       * 천리안 — 스캔한 순간 텐파이였던 상대 목록 (보유자 전용 채널).
-       * 갱신되지 않는 스냅샷이라 국이 끝날 때까지 그대로 떠 있다 — 몇 순 기준인지
-       * 밝히지 않으면 시간이 지날수록 **틀린 정보를 확신 있게** 보여 주게 된다.
-       */
-      const snap = readScanSnapshot(value, "players");
-      /*
-       * 대기 폭 힌트(2026-08-27) — `widths[i]`가 `players[i]`와 짝이다.
-       * 세 단계뿐이고 대기패 자체는 실려 오지 않는다(그건 선언 간파의 무대다).
-       * 구 리플레이에는 `widths`가 없으므로 없으면 이름만 그린다.
-       */
-      const widthRaw = (
-        typeof value === "object" && value !== null
-          ? (value as Record<string, unknown>)["widths"]
-          : undefined
-      );
-      const widths = Array.isArray(widthRaw) ? (widthRaw as string[]) : [];
-      const widthLabel: Record<string, string> = {
-        narrow: "좁음",
-        mid: "보통",
-        wide: "넓음",
-      };
-      const names = snap.items
-        .map((id, i) => {
-          const who = playerNameById(view, id);
-          if (who === "") return "";
-          const w = widthLabel[widths[i] ?? ""];
-          return w === undefined ? who : `${who}(대기 ${w})`;
-        })
-        .filter((n) => n !== "");
-      const asOf = snap.turn === null ? "" : ` (${snap.turn}순 기준)`;
-      rows.push(
-        textRow(
-          key,
-          "천리안",
-          `${names.length > 0 ? `텐파이: ${names.join(", ")}` : "텐파이인 상대 없음"}${asOf}`,
-        ),
-      );
     } else if (PLAYER_VALUE[head] !== undefined) {
       // 값이 좌석 id인 채널 — 이름으로 푼다.
       if (typeof value !== "string" || value === "") continue;
@@ -17562,8 +17585,19 @@ const River = memo(function River({
   const rows = [cells.slice(0, 6), cells.slice(6, 12), cells.slice(12)].filter(
     (r) => r.length > 0,
   );
+  // 바닥 **전체**가 클릭 대상인 무장(누명) — 특정 패가 아니라 «이 바닥에 놓는다»
+  const riverOpt = sel.riverTargetOptionFor(playerId);
+  const riverName = playerNameById(view, playerId);
   return (
-    <div className={`river-wrap river-${side}`}>
+    <div
+      className={`river-wrap river-${side}${riverOpt !== undefined ? " river-armable" : ""}`}
+      {...(riverOpt !== undefined
+        ? {
+            "data-arm-zone": "1",
+            ...clickableProps(() => sel.submit(riverOpt), `${riverName}의 바닥에 놓기`),
+          }
+        : {})}
+    >
       <div className="river">
         {rows.map((row, i) => (
           <div className="river-row" key={i}>
@@ -17571,6 +17605,11 @@ const River = memo(function River({
           </div>
         ))}
       </div>
+      {riverOpt !== undefined ? (
+        <span className="river-arm-tag" aria-hidden="true">
+          {riverName}의 바닥에 놓기
+        </span>
+      ) : null}
     </div>
   );
 });
@@ -17736,6 +17775,65 @@ function SealBadge({
 }
 
 /**
+ * 천리안이 찍은 **이 상대의 스냅샷** — 텐파이였는가 · 대기 폭 · 몇 순 기준.
+ *
+ * 결과는 보유자 전용 채널(`tenpai_scan` = `{players, widths, turn}`)에 실리는데, 예전에는
+ * 우상단 📜 뒤에 접힌 증강 정보 로그에만 한 줄로 남아 **발동해도 화면에 아무것도 안
+ * 뜨는 것처럼** 보였다(2026-09-14 사용자 보고 "증강 사용해도 아무 표시 안 나옴").
+ * 정보는 그 정보가 가리키는 대상 옆에 있어야 한다 — 봉인(SealBadge)·오름패 간파와 같은
+ * 자리, 곧 **그 상대의 손패 옆**에 세운다. 스캔에 걸리지 않은 상대는 «노텐»으로 함께
+ * 그린다: 셋 중 하나만 뜨면 나머지 둘이 노텐인지 아직 안 본 건지 알 수 없다.
+ *
+ * 채널이 없으면(아직 안 썼다·국이 바뀌었다) null — 국 스코프라 국이 끝나면 사라진다.
+ */
+function tenpaiScanOf(
+  view: PlayerView,
+  playerId: string,
+): { tenpai: boolean; width: "narrow" | "mid" | "wide" | null; turn: number | null } | null {
+  if (playerId === view.playerId) return null;
+  const raw = view.augmentView["tenpai_scan"];
+  if (raw === undefined || raw === null) return null;
+  const snap = readScanSnapshot(raw, "players");
+  const at = snap.items.indexOf(playerId);
+  if (at < 0) return { tenpai: false, width: null, turn: snap.turn };
+  const widths =
+    typeof raw === "object" && Array.isArray((raw as Record<string, unknown>)["widths"])
+      ? ((raw as Record<string, unknown>)["widths"] as unknown[])
+      : [];
+  const w = widths[at];
+  const width = w === "narrow" || w === "mid" || w === "wide" ? w : null;
+  return { tenpai: true, width, turn: snap.turn };
+}
+
+const SCAN_WIDTH_LABEL = { narrow: "좁음", mid: "보통", wide: "넓음" } as const;
+
+/** 천리안 결과를 그 상대의 손패 옆에 띄우는 뱃지 (보유자에게만 보인다) */
+function ScanBadge({
+  scan,
+  owner,
+}: {
+  scan: NonNullable<ReturnType<typeof tenpaiScanOf>>;
+  owner: string;
+}): JSX.Element {
+  const asOf = scan.turn === null ? "" : ` · ${scan.turn}순 기준`;
+  const title = scan.tenpai
+    ? `천리안: ${owner}은(는) 스캔한 순간 텐파이였습니다${scan.width !== null ? ` (대기 ${SCAN_WIDTH_LABEL[scan.width]})` : ""}${asOf}. 그 뒤의 변화는 반영되지 않습니다. 나에게만 보입니다`
+    : `천리안: ${owner}은(는) 스캔한 순간 텐파이가 아니었습니다${asOf}. 그 뒤의 변화는 반영되지 않습니다. 나에게만 보입니다`;
+  return (
+    <div className={`scan-badge${scan.tenpai ? " scan-badge-tenpai" : ""}`} title={title}>
+      <span className="scan-badge-label">👁 천리안</span>
+      <span className="scan-badge-verdict">{scan.tenpai ? "텐파이" : "노텐"}</span>
+      {scan.tenpai && scan.width !== null ? (
+        <span className={`scan-badge-width scan-badge-width-${scan.width}`}>
+          대기 {SCAN_WIDTH_LABEL[scan.width]}
+        </span>
+      ) : null}
+      {scan.turn !== null ? <span className="scan-badge-turn">{scan.turn}순</span> : null}
+    </div>
+  );
+}
+
+/**
  * 후로 하나가 줄에서 먹는 **칸** 수.
  *
  * `--meld-n`은 «후로 줄이 먹는 칸 수» 예산인데 예전에는 `tileIds.length`(장 수)를
@@ -17840,6 +17938,8 @@ function OpponentStrip({
   const peeked = peekedWaits(view, player.id);
   // 봉인술사·손패 강탈로 알아낸 이 상대의 손패 — 오름패 간파와 같은 자리에 띄운다
   const sealPeek = sealedPeekOf(view, player.id);
+  // 천리안이 찍은 이 상대의 텐파이 여부 — 발동한 본인에게만, 그 상대 손패 옆에
+  const scan = tenpaiScanOf(view, player.id);
   /** 중계 관전 시점인가 — 이 좌석의 손패가 통째로 공개돼 있다. */
   const spectating = view.playerId === SPECTATOR_ID;
   /**
@@ -17968,6 +18068,7 @@ function OpponentStrip({
         ) : null}
         {badges}
         {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
+        {scan !== null ? <ScanBadge scan={scan} owner={playerName(view, player)} /> : null}
         <div className="opp-melds-row">
           {melds.map((m, i) => (
             <MeldGroup key={i} view={view} meld={m} owner={player} layout="row" />
@@ -18006,6 +18107,7 @@ function OpponentStrip({
         ) : null}
       {badges}
       {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
+      {scan !== null ? <ScanBadge scan={scan} owner={playerName(view, player)} /> : null}
       <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
       <div className="opp-backs-col">
         {slots.map((s, i) => (
@@ -18357,6 +18459,19 @@ function cooldownRoundsLeft(view: PlayerView, playerId: string, augId: string): 
 }
 
 /**
+ * **이번 국에 발동했는가** — 쿨다운의 짝 채널(`cooldownUsedRound:{id}` = 발동한 국의 키).
+ *
+ * "N국에 1회" 증강은 발동하는 순간 쿨다운이 서서 pill이 «잠김»으로 어두워졌다. 그런데
+ * 그 증강 대부분은 **발동한 국 동안 효과가 살아 있다** — 방금 켠 능력이 곧바로 죽은
+ * 것처럼 보였다(2026-09-14 사용자 지시 "발동 중일 때는 빛나게, 지금은 쿨타임이라고
+ * 어두워짐"). 지금 국이 발동한 국이면 어둡게 내리는 대신 빛나게 그린다.
+ */
+function firedThisRound(view: PlayerView, playerId: string, augId: string): boolean {
+  const used = seatChannel(view, playerId, `cooldownUsedRound:${augId}`);
+  return typeof used === "string" && used === roundKeyOfView(view);
+}
+
+/**
  * 남은 쿨다운이 **순** 단위인 증강 (예지·무르기 계열). 국 단위와 같은 자리에 그리되
  * 단위만 다르다 — 채널이 아예 없던 시절에는 버튼이 사라진 것으로만 알 수 있었다.
  */
@@ -18694,7 +18809,9 @@ function PlayerAugSheet({
                     {locked ? <span className="aug-sheet-chip">🔒 무장해제로 이번 국 잠김</span> : null}
                     {reloaded.has(a) ? <span className="aug-sheet-chip">♻ 재장전</span> : null}
                     {fromDice.has(a) ? <span className="aug-sheet-chip">🎲 수상한 주사위</span> : null}
-                    {cooldown > 0 ? (
+                    {cooldown > 0 && !locked && firedThisRound(view, player.id, a) ? (
+                      <span className="aug-sheet-chip">✨ 이번 국 발동 중</span>
+                    ) : cooldown > 0 ? (
                       <span className="aug-sheet-chip">🕐 쿨다운 {cooldown}국</span>
                     ) : null}
                     {cooldownTurns > 0 ? (
@@ -18955,6 +19072,8 @@ const NamePlate = memo(function NamePlate({
             // 내부 쿨다운 잔량 — 보유자 본인 화면에만 실린다(view:{나}:cooldown:{id}).
             const cooldown = cooldownRoundsLeft(view, player.id, a);
             const cooldownTurns = cooldownTurnsLeft(view, player.id, a);
+            // 이번 국에 발동해 효과가 살아 있는가 — 쿨다운보다 이 신호가 우선한다(빛남).
+            const active = cooldown > 0 && !locked && firedThisRound(view, player.id, a);
             // 선발동형("이번 국만")이 이미 지나갔는가 — 설명 배지도 함께 갈아 끼운다.
             const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
             return (
@@ -18967,7 +19086,7 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${cooldown > 0 || cooldownTurns > 0 ? " aug-pill-cd" : ""}${status !== null ? " aug-pill-live" : ""}${status?.tone === "spent" ? " aug-pill-spent" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${(cooldown > 0 && !active) || cooldownTurns > 0 ? " aug-pill-cd" : ""}${active ? " aug-pill-active" : ""}${status !== null ? " aug-pill-live" : ""}${status?.tone === "spent" ? " aug-pill-spent" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
@@ -18992,7 +19111,14 @@ const NamePlate = memo(function NamePlate({
                 {fromDice.has(a) ? <span className="aug-pill-dice-mark" aria-hidden="true">🎲</span> : null}
                 {/* 이름만 별도 span — 무장해제 취소선이 잔량 칩까지 그어지지 않게 */}
                 <span className="aug-pill-name">{entry?.name ?? a}</span>
-                {cooldown > 0 ? (
+                {active ? (
+                  <span
+                    className="aug-pill-chip aug-pill-chip-active"
+                    title={`이번 국에 발동했습니다. 다음 국부터 쿨다운 ${cooldown}국`}
+                  >
+                    발동 중
+                  </span>
+                ) : cooldown > 0 ? (
                   <span className="aug-pill-cd-chip" title={`쿨다운 ${cooldown}국 남음`}>
                     🕐{cooldown}국
                   </span>
@@ -19049,7 +19175,11 @@ const NamePlate = memo(function NamePlate({
                   {locked ? (
                     <span className="aug-tip-locked">🔒 무장해제로 이번 국 동안 사용할 수 없습니다</span>
                   ) : null}
-                  {cooldown > 0 ? (
+                  {active ? (
+                    <span className="aug-tip-cd">
+                      ✨ 이번 국에 발동해 효과가 살아 있습니다. 다음 국부터 {cooldown}국 동안 쿨다운입니다
+                    </span>
+                  ) : cooldown > 0 ? (
                     <span className="aug-tip-cd">
                       🕐 쿨다운 중입니다. 앞으로 {cooldown}국 동안 사용할 수 없습니다
                     </span>
@@ -21061,6 +21191,24 @@ function OwnArea(props: {
               </>
             )}
           </div>
+        ) : armedAug === "frame_discard" && sel.frameTile !== null ? (
+          <div className="arm-hint arm-swap">
+            <span className="arm-hint-text">
+              {armName}: <b>{formatTile(view.tiles[sel.frameTile])}</b>을(를) 놓을 <b>상대의 바닥</b>을 클릭하세요
+            </span>
+            <button
+              className="arm-hint-cancel"
+              onClick={() => {
+                sel.setFrameTile(null);
+                setArmedTileId(null);
+              }}
+            >
+              패 다시 고르기
+            </button>
+            <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
+              취소
+            </button>
+          </div>
         ) : armedAug !== null ? (
           <div className="arm-hint">
             <span className="arm-hint-text">{armName}: {armPromptText(sel.armMode, armedAug)}</span>
@@ -21299,7 +21447,11 @@ function OwnArea(props: {
                   // 사실 기반 표시는 이름에도 실어야 한다 — 링과 바람 글자는 둘 다
                   // 눈으로만 읽힌다(화면을 못 보면 중계 해설이 통째로 사라진다).
                   hot === null ? null : hotWaitTitle(hot),
-                  armedTileId === id ? "선택됨. 한 번 더 누르면 버림" : null,
+                  armedTileId === id
+                    ? sel.frameTile === id
+                      ? "심을 패로 선택됨. 놓을 상대의 바닥을 클릭"
+                      : "선택됨. 한 번 더 누르면 버림"
+                    : null,
                   coachLocked ? "튜토리얼 진행 중이라 지금은 누를 수 없음" : null,
                   !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
                 ]
@@ -21390,6 +21542,19 @@ function OwnArea(props: {
                     return;
                   }
                   // 선택 모드: armed 증강의 대상으로 이 패를 고른다 (손패 클릭형만)
+                  /*
+                   * 누명 — 손패를 고르면 끝이 아니라 **놓을 바닥**을 골라야 한다.
+                   * 예전에는 아래 무장 분기가 armSub 모달로 상대 이름 버튼 셋을 늘어놓았다.
+                   * 「상대의 바닥에 놓는다」는 증강이니 그 바닥을 직접 누르게 한다
+                   * (2026-09-14 사용자 요청). 다른 손패를 누르면 심을 패를 바꾼다.
+                   */
+                  if (armedAug === "frame_discard" && (armedByTile.get(id)?.length ?? 0) > 0) {
+                    sel.setFrameTile(id);
+                    setArmedTileId(id);
+                    setArmSub(null);
+                    sfx.pick();
+                    return;
+                  }
                   if (armedAug !== null) {
                     const opts = armedByTile.get(id);
                     if (opts !== undefined && opts.length > 0) {
@@ -22642,7 +22807,7 @@ function DockSeats({
                 </span>
                 <span
                   className="bcast-grade-num num"
-                  title="지금 손패의 점수(100점 만점)입니다. 배패 점수와 같은 기준으로 현재 손을 재며, 쯔모·버림마다 바뀝니다"
+                  title="지금 손패의 점수(100점 만점)입니다. 속도·타점·대기 폭·역의 씨앗을 함께 재며 쯔모·버림마다 바뀝니다. 100은 텐파이에 역만급 타점과 넓은 대기까지 갖춘 손에만 나옵니다"
                 >
                   {Math.round(ins.handGradeNow)}
                 </span>

@@ -51,7 +51,9 @@ import {
   flagOf,
   cooldownReady,
   cooldownUsedKey,
+  cooldownUsedRoundViewKey,
   cooldownViewKey,
+  roundKey,
   roundSeqOf,
   roundViewKey,
   settleInterceptor,
@@ -175,6 +177,7 @@ export const hourglass: AugmentDef = defineAugment({
             // 이 국을 쿨다운 기준점으로 찍고, 잔량 표시도 그 자리에서 갱신한다
             [cooldownUsedKey(ID, p.holder)]: roundSeqOf(state, ID, p.holder),
             [cooldownViewKey(ID, p.holder)]: COOLDOWN_ROUNDS,
+            [cooldownUsedRoundViewKey(ID, p.holder)]: roundKey(state),
             [roundViewKey("*", `${ID}:${p.holder}`)]: p.tiles.length,
           },
         };

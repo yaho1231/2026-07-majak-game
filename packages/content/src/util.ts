@@ -555,6 +555,19 @@ export const cooldownTurnsViewKey = (augmentId: string, holder: PlayerId): strin
 export const cooldownViewKey = (augmentId: string, holder: PlayerId): string =>
   viewKey(holder, `cooldown:${augmentId}`);
 
+/**
+ * **이번 국에 발동했다**는 표식 채널 (`cooldownUsedRound:{augmentId}` = 그 국의 roundKey).
+ *
+ * 쿨다운 잔량만 있으면 클라이언트는 「잠겼다」로만 읽어 pill을 어둡게 내린다. 그런데
+ * "N국에 1회" 증강 대부분은 **발동한 그 국 동안 효과가 살아 있다**(조커·단독 행동·
+ * 배짱·모양 규칙…). 방금 켠 능력이 곧바로 죽은 것처럼 보이는 문제라(2026-09-14 사용자
+ * 지시 "발동 중일 때는 빛나게"), 발동한 국을 함께 실어 클라이언트가 «지금 국 = 발동한
+ * 국»이면 어둡게 내리는 대신 빛나게 그린다. 국이 넘어가면 키가 달라져 자연히 잠긴
+ * 표시로 돌아간다. 고정 채널이라 값이 남아 있어도 무해하다 — 비교로만 쓴다.
+ */
+export const cooldownUsedRoundViewKey = (augmentId: string, holder: PlayerId): string =>
+  viewKey(holder, `cooldownUsedRound:${augmentId}`);
+
 /** 앞으로 몇 국 더 잠겨 있는가 (0 = 지금 쓸 수 있다) */
 export function cooldownLeft(
   state: GameState,
@@ -592,6 +605,7 @@ export function cooldownUse(
   return [
     augmentDataSet(cooldownUsedKey(augmentId, holder), roundSeqOf(state, augmentId, holder)),
     augmentDataSet(cooldownViewKey(augmentId, holder), rounds),
+    augmentDataSet(cooldownUsedRoundViewKey(augmentId, holder), roundKey(state)),
   ];
 }
 
