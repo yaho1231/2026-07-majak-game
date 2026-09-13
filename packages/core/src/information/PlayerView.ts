@@ -676,7 +676,9 @@ export function buildPlayerView(
    * 마지막 값이 얼어붙는다. 자기 파일 안에서는 지울 수 없으므로(잠그는 이벤트가 그
    * 반응을 끈다) 내보내는 자리에서 거른다.
    */
-  const SEAT_PUBLIC_PREFIXES = ["uses:", "cooldown:", "cooldownTurns:"] as const;
+  // `cooldownUsedRound:`는 쿨다운의 짝이다 — «이번 국에 발동해 지금 효과가 살아 있다»를
+  // pill이 빛으로 그리려면 남의 것도 봐야 한다(content/util `cooldownUsedRoundViewKey`).
+  const SEAT_PUBLIC_PREFIXES = ["uses:", "cooldown:", "cooldownTurns:", "cooldownUsedRound:"] as const;
   const seatPublic = (ch: string): string | null =>
     SEAT_PUBLIC_PREFIXES.find((p) => ch.startsWith(p)) ?? null;
   const lockedChannel = (owner: PlayerId, ch: string): boolean => {

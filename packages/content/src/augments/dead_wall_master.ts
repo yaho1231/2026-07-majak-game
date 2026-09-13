@@ -62,9 +62,11 @@ import type {
 import {
   cooldownReady,
   cooldownUsedKey,
+  cooldownUsedRoundViewKey,
   cooldownViewKey,
   counterOf,
   replaceDrawnTile,
+  roundKey,
   roundSeqOf,
   roundViewKey,
   trackRoundSeq,
@@ -292,6 +294,7 @@ export const deadWallMaster: AugmentDef = defineAugment({
             ? {
                 [cooldownUsedKey(ID, p.player)]: roundSeqOf(state, ID, p.player),
                 [cooldownViewKey(ID, p.player)]: COOLDOWN_ROUNDS,
+                [cooldownUsedRoundViewKey(ID, p.player)]: roundKey(state),
               }
             : {};
         // 도라 표시패 자리를 집었다면 표시패는 그 자리를 채운 내 패로 바뀐다

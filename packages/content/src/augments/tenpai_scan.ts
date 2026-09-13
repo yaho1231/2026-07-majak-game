@@ -1,7 +1,7 @@
 /**
  * 천리안 (tenpai_scan, prism) — "지금 누가 완성 직전인지, 한 번 꿰뚫어 본다".
  *
- * 매 국 2회, 자기 턴에 선언하면 그 순간 **텐파이인 상대가 누구인지**와
+ * 매 국 1회, 자기 턴에 선언하면 그 순간 **텐파이인 상대가 누구인지**와
  * **그 대기가 얼마나 넓은지**가 오직 보유자에게만 공개된다. 손패의 내용이나 대기패
  * 자체를 보여 주는 게 아니라, "이 사람은 완성 직전이다 / 아니다"와 "좁다·보통·넓다"
  * 두 겹의 정보만 준다. 손을 바꾸지도, 점수를 옮기지도 않는다 — 순수하게 판을 읽는
@@ -14,7 +14,7 @@
  * 설계: docs/16_AUGMENT_REDESIGN.md §2b.
  *
  * 구현:
- * - 커스텀 액션 `tenpai_scan_use {}` — turn.act·자기 턴·매 국 2회.
+ * - 커스텀 액션 `tenpai_scan_use {}` — turn.act·자기 턴·매 국 1회.
  * - toEvents(req, { state, rules })에서 나를 뺀 세 상대 각각에 대해
  *   isTenpai(winHandKindsOf, meldCountOf, undefined, scoringOptionsOf)로 텐파이를
  *   계산한다 — 채점 변형 증강(scoring.*)까지 그대로 반영한다(peek_riichi_waits와 동일 계보).
@@ -26,7 +26,7 @@
  *   roundKey를 섞는다. 2026-08-14 사용자 지시로 "동풍전 1·반장전 2회"에서 상향했다:
  *   결과가 국 끝까지 남는 스냅샷인데 판 전체에 한두 번뿐이라, 정작 위험한 국에는
  *   이미 소진돼 있기 일쑤였다. 정보만 주고 손도 점수도 건드리지 않는 증강이라
- *   국당 1회여도 판을 뒤집지 않는다. 2026-09-14 사용자 지시로 다시 국당 2회로 올렸다.
+ *   국당 1회여도 판을 뒤집지 않는다.
  * - augmentDataSet만 발행하므로 별도 reducer가 필요 없다(코어 reducer가 처리).
  */
 
@@ -53,8 +53,8 @@ import { roundScopedKey } from "./roundScope.js";
 const ID = "tenpai_scan";
 const ACTION = "tenpai_scan_use";
 
-/** 국당 사용 횟수 — 2026-09-14 사용자 지시로 1회 → 2회 */
-const USES_PER_ROUND = 2;
+/** 국당 사용 횟수 */
+const USES_PER_ROUND = 1;
 /** 이번 국에 이미 발동했는가 (국 단위 — roundKey를 섞는다) */
 const usesKey = (state: GameState, holder: PlayerId): string =>
   roundScopedKey(ID, "uses", state, holder);
@@ -154,7 +154,7 @@ export const tenpaiScan: AugmentDef = defineAugment({
   complexity: 2,
   name: "천리안",
   description:
-    "(매 국 2회) 자기 순에 선언하면 그 순간 텐파이인 상대가 누구인지와 대기가 얼마나 넓은지를 나만 볼 수 있다.",
+    "(매 국 1회) 자기 순에 선언하면 그 순간 텐파이인 상대가 누구인지와 대기가 얼마나 넓은지를 나만 볼 수 있다.",
   detail:
     "선언하면 지금 텐파이인 상대가 누구인지와 대기 폭이 나에게만 보인다. 대기 폭은 1~2종이면 좁다, 3~4종이면 보통, 5종 이상이면 넓다로 표시된다.\n\n다마텐도 알 수 있지만 대기패 자체는 알 수 없다. 선언한 순간의 상태만 보여 주고 그 뒤의 변화는 반영되지 않는다. 발동 사실은 상대에게 공개되지 않는다.",
   // 봇: 발동 타이밍(언제가 판이 무르익은 순간인지)을 정량화하기 어렵고,
@@ -180,7 +180,7 @@ export const tenpaiScan: AugmentDef = defineAugment({
       hasUsesLeft(state, holder) ? [{ type: ACTION, payload: {} }] : [],
     );
   },
-  // 상대들의 텐파이를 훑는 정보 증강(매 국 2회). 텐파이 여부와 무관하게
+  // 상대들의 텐파이를 훑는 정보 증강(매 국 1회). 텐파이 여부와 무관하게
   // "밀지 접을지"의 정보라, 예전의 '내가 텐파이일 때만' 게이트는 정작 수비가 필요한
   // 노텐 구간을 막고 있었다(2026-07-26: 제시 31회에 발동 0회). 너무 이른 소모만
   // 피하도록 내 바닥이 5장 이상 쌓인 중반 이후로 연다.

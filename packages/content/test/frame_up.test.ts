@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FlowController,
+  buildPlayerView,
   createStandardGameFromState,
   discardsZone,
   handIdsOf,
@@ -68,6 +69,29 @@ function findTile(game: ReturnType<typeof setup>, key: string): TileId {
 }
 
 describe("누명 (frame_up)", () => {
+  it("발동한 국이 쿨다운 짝 채널(cooldownUsedRound)로 전원에게 실린다 (2026-09-14)", () => {
+    /*
+     * "N국에 1회" 증강은 발동하는 순간 쿨다운이 서서 pill이 «잠김»으로 어두워졌다.
+     * 발동한 국 동안은 효과가 살아 있으므로 그 국을 함께 실어, 클라이언트가
+     * «지금 국 = 발동한 국»이면 빛나게 그린다. 남의 pill에도 보여야 하므로 좌석 사본까지.
+     */
+    const game = setup(scene());
+    const st0 = game.engine.state;
+    const key = `${st0.round.prevalentWind}-${st0.round.roundNumber}-${st0.round.honba}`;
+    const r = game.engine.submit({
+      player: "p0",
+      type: "frame_discard",
+      payload: { tileId: findTile(game, M3), target: "p1" },
+    });
+    expect(r.ok).toBe(true);
+    const st = game.engine.state;
+    const mine = buildPlayerView(st, "p0", game.engine.rules).augmentView;
+    expect(mine["cooldown:frame_up"]).toBe(2);
+    expect(mine["cooldownUsedRound:frame_up"]).toBe(key);
+    const theirs = buildPlayerView(st, "p1", game.engine.rules).augmentView;
+    expect(theirs["seat:p0:cooldownUsedRound:frame_up"]).toBe(key);
+  });
+
   it("심은 패가 대상의 바닥·후리텐 이력에 기록된다", () => {
     const game = setup(scene());
     const tile = findTile(game, M3);

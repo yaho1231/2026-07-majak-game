@@ -616,6 +616,17 @@ export function buildSpectateSeatScores(
           if (furiten) seat.furiten = true;
           // 후리텐이면 론은 못 한다 — 대표값은 쯔모 쪽이다.
           const best = furiten ? bestTsumo : (bestRon ?? bestTsumo);
+          /*
+           * 지금 손패 점수를 **채점기 값으로 다시 잰다** — 텐파이 좌석은 판수와 남은
+           * 오름패 장수를 이미 알고 있으니, 도라 장수·대기 종류 수로 어림한 위의 값
+           * 대신 그것으로 타점·대기 축을 채운다. 100은 이 길로만 나온다.
+           */
+          let remaining = 0;
+          for (const w of waits) remaining += w.remaining;
+          seat.handGradeNow = gradeStartingHand(nowKinds, opts, dora, meldCount, {
+            han: best?.han ?? null,
+            remaining,
+          });
           if (best !== null) seat.best = best;
           else if (sawMinHanBlock) {
             /*
@@ -647,25 +658,44 @@ export function buildSpectateSeatScores(
 // ─────────────────────────── 배패 점수 ───────────────────────────
 
 /**
- * **배패 점수 0~100** — 이 국에 받은 첫 13장이 얼마나 좋은 패였나.
+ * 텐파이 좌석의 **확정 정보** — 채점기가 이미 잰 판수와 남은 오름패 장수.
+ * `buildSpectateSeatScores`가 대기를 다 잰 뒤 «지금 손패 점수»를 다시 잴 때 넘긴다.
+ */
+export interface TenpaiGradeInfo {
+  /** 대표 화료의 판수(론·쯔모 중 높은 쪽). 역없음·격 미달이면 null */
+  han: number | null;
+  /** 오름패 전 종류의 남은 장수 합 (관전자가 보는 모든 곳을 뺀 값) */
+  remaining: number;
+}
+
+/**
+ * **배패 점수 · 지금 손패 점수 0~100** — 이 손이 얼마나 좋은 손인가.
  *
- * 「타점이 높을수록, 빠를수록 높다」 하나를 세 축으로 나눠 잰다. 절대값보다 **순서**가
- * 맞는 것이 중요하다 — 해설이 「이 배패가 저 배패보다 낫다」를 읽는 값이지 「71점짜리
- * 배패」를 읽는 값이 아니다.
+ * 「타점이 높을수록, 빠를수록, 대기가 넓을수록 높다」를 네 축으로 나눠 잰다. 절대값보다
+ * **순서**가 맞는 것이 중요하지만, 위쪽 눈금에는 뜻이 있어야 한다 — **100은 완전체**
+ * (텐파이 + 역만급 타점 + 넓은 대기 + 역의 씨앗)에게만 간다. 예전 식은 속도 축이
+ * 1샹텐에서 이미 만점이라 «텐파이도 아닌데 100»이 흔했다(2026-09-14 사용자 보고
+ * "텐파이도 아닌데 100점이 막 나옴"). 이제 텐파이가 아니면 속도·대기 두 축에서 깎여
+ * 아무리 좋아도 60 언저리에서 멈춘다.
  *
- *   - **속도(0.5)** — 샹텐. 배패 샹텐은 대개 3~6이고 1~2면 아주 빠른 손이다.
- *   - **타점(0.3)** — 도라 + 적도라 장수. 3장부터는 더 세도 손이 그만큼 세지지 않아
- *     3에서 끊는다(그 위는 어차피 만관 위 구간이라 순서가 이미 갈렸다).
- *   - **방향(0.2)** — 역이 될 씨앗이 손에 있는가: 역패 대자(2장 이상) · 탕야오
+ *   - **속도(0.35)** — 샹텐. 텐파이 1.0 · 1샹텐 0.75 · 2샹텐 0.52 · 3샹텐 0.33 ·
+ *     4샹텐 0.17 · 6샹텐 0. 위로 갈수록 가파르다 — 1샹텐과 텐파이의 차이는 4와 5샹텐의
+ *     차이보다 훨씬 크다.
+ *   - **타점(0.35)** — 텐파이면 채점기가 잰 **실제 판수**(13판 = 역만에서 만점,
+ *     역없음이면 0). 아직 텐파이가 아니면 판수를 알 수 없으니 도라 장수로 대신하되
+ *     확정이 아니라 **절반**까지만 준다(3장에서 0.5).
+ *   - **대기(0.2)** — 텐파이면 오름패 남은 장수(8장 이상 만점, 채점기가 잰 값이 없을
+ *     때는 대기 종류 수로 대신한다). 텐파이가 아니면 0 — 아직 대기가 없다.
+ *   - **방향(0.1)** — 역이 될 씨앗이 손에 있는가: 역패 대자(2장 이상) · 탕야오
  *     (요구패 3장 이하) · 색 치우침(한 색 7장 이상) · 치또이 방향(대자 4쌍 이상).
  *
- * 예시(실측값 — `test/SpectateScore.test.ts`가 이 순서를 고정한다):
- *   - `123456789m 55s 77z` 도라 2 — 이미 텐파이·청일색 방향·역패 대자 → **90**
- *   - `1358m 2479p 1469s 3z` 도라 1 — 4샹텐, 방향은 탕야오뿐 → **33**
- *   - `159m 1479p 258s 134z` 도라 0 — 6샹텐, 연결도 도라도 없다 → **5**
+ * 예시(순서를 `test/SpectateScore.test.ts`가 고정한다):
+ *   - `123456789m 55s 77z` 도라 2 — 텐파이·청일색 방향·역패 대자 → 높다
+ *   - `1358m 2479p 1469s 3z` 도라 1 — 4샹텐, 방향은 탕야오뿐 → 낮다
+ *   - `159m 1479p 258s 134z` 도라 0 — 6샹텐, 연결도 도라도 없다 → 0 근처
  *
- * 값은 국 시작 때 한 번 재고 그 국 내내 고정한다 — 중간에 움직이면 그건 배패 점수가
- * 아니라 그냥 현재 손 점수다.
+ * 배패 점수는 국 시작 때 한 번 재고 그 국 내내 고정한다 — 중간에 움직이면 그건 배패
+ * 점수가 아니라 지금 손패 점수(`handGradeNow`)다.
  */
 export function gradeStartingHand(
   kinds: readonly TileKind[],
@@ -673,17 +703,36 @@ export function gradeStartingHand(
   doraCount = 0,
   /** 후로 수 — «지금 손패 점수»(`handGradeNow`)로 쓸 때만 0이 아니다 */
   meldCount = 0,
+  /** 텐파이 좌석의 확정 정보 — 있으면 타점·대기 축을 채점기 값으로 잰다 */
+  tenpai?: TenpaiGradeInfo,
 ): number {
   if (kinds.length === 0) return 0;
   const shanten = shantenOf(kinds, meldCount, options);
+  const isTenpaiNow = shanten <= 0;
 
-  // 속도 — 6.5샹텐(사실상 최악)에서 1샹텐(사실상 최선)까지를 0~1로 편다.
-  const speed = clamp01((6.5 - shanten) / 5.5);
+  // 속도 — 6샹텐(사실상 최악)에서 텐파이까지. 위쪽이 가파른 곡선.
+  const speed = Math.pow(clamp01((6 - shanten) / 6), 1.6);
 
-  // 타점 — 도라 3장에서 만점
-  const value = clamp01(Math.min(doraCount, 3) / 3);
+  // 타점 — 텐파이면 실제 판수, 아니면 도라로 절반까지만
+  let value: number;
+  if (isTenpaiNow && tenpai !== undefined) {
+    value = tenpai.han === null ? 0 : clamp01(tenpai.han / 13);
+  } else {
+    value = 0.5 * clamp01(Math.min(doraCount, 3) / 3);
+  }
 
-  // 방향 — 역의 씨앗. 하나만 있어도 절반, 둘 이상이면 만점에 가깝다.
+  // 대기 — 텐파이에만 있다. 남은 장수를 알면 그것으로, 모르면 종류 수로.
+  let wait = 0;
+  if (isTenpaiNow) {
+    if (tenpai !== undefined) {
+      wait = clamp01(tenpai.remaining / 8);
+    } else {
+      const n = winningKinds(kinds, meldCount, undefined, options).length;
+      wait = n >= 4 ? 1 : n === 3 ? 0.8 : n === 2 ? 0.6 : n === 1 ? 0.3 : 0;
+    }
+  }
+
+  // 방향 — 역의 씨앗. 하나만 있어도 절반, 둘 이상이면 만점.
   const counts = new Map<string, number>();
   const bySuit = new Map<string, number>();
   let terminals = 0;
@@ -711,7 +760,7 @@ export function gradeStartingHand(
   if (pairs >= 4) seeds++; // 치또이 방향
   const direction = clamp01(seeds / 2);
 
-  return Math.round(100 * (0.5 * speed + 0.3 * value + 0.2 * direction));
+  return Math.round(100 * (0.35 * speed + 0.35 * value + 0.2 * wait + 0.1 * direction));
 }
 
 function clamp01(n: number): number {

@@ -29,7 +29,7 @@ export function ogCardPath(code: string): string {
 export function injectInviteMeta(html: string, code: string): string {
   return (
     html
-      // 정적 카드(`/og.png?v=2`)가 박힌 자리를 전부 코드 카드로 돌린다.
+      // 정적 카드(`/og.png?v=N`, 로고)가 박힌 자리를 전부 코드 카드로 돌린다.
       .replace(/\/og\.png(\?[^"']*)?/g, ogCardPath(code))
       .replace(
         /(<meta\s+property="og:image:alt"\s+content=")[^"]*(")/,
