@@ -66,6 +66,7 @@ import {
   withAugPoint,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 
 const ID = "sign_flip";
 
@@ -156,6 +157,11 @@ export const signFlip: AugmentDef = defineAugment({
       ],
     };
     if (!engine.actions.has(ACTION)) engine.actions.register(action);
+
+    // 무장해제되면 «이번 국 부호 반전» 배너도 내린다 (docs/55 C-4) — 아래 정산·점수
+    // 인터셉터는 코어 게이트가 끄는데 배너만 남으면 상대가 «저 사람에게는 쏘지 않는다»로
+    // 화료를 미루는 헛된 대응을 한다(천하무적과 같은 구조, disarmBanner.ts 머리말).
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     // 합법성의 최종 판정은 validate가 한다 — 같은 `canUse`를 본다.
     ctx.holderTurnOptions((state) => (canUse(state, holder) ? [{ type: ACTION, payload: {} }] : []));

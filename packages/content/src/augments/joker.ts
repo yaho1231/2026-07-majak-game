@@ -62,6 +62,7 @@ import {
   scaledCooldown,
   trackRoundSeq,
 } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { handAlteredKey } from "./handAltered.js";
 import { handIdsOfView, handKindsOf, isolatedIndex } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
@@ -232,6 +233,14 @@ export const joker: AugmentDef = defineAugment({
 
     // 쿨다운 기준 — 국이 시작될 때마다 +1 (본장 재배패도 한 국으로 센다)
     trackRoundSeq(ctx, ID, cooldownRounds);
+
+    /*
+     * 무장해제되면 «백이 조커» 배너도 함께 내린다 (docs/55 C-4).
+     * 아래 `scoring.wildKinds` 모디파이어는 코어 게이트가 끄지만, 발동 때 실어 둔
+     * 전원 공개 채널은 그대로 남아 상대가 이미 조커가 아닌 백을 계속 쥐고 있게
+     * 만든다 — 천하무적·불가침과 같은 구조(disarmBanner.ts 머리말).
+     */
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     /**
      * 발동한 국 동안만 백을 조커로 올린다. 이 규칙 하나가 화료·텐파이·대기·후리텐에

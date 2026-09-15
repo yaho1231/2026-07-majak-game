@@ -45,6 +45,7 @@ import {
 } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "all_or_nothing";
@@ -199,6 +200,11 @@ export const allOrNothing: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(allInRiichiAction);
     }
+
+    // 무장해제되면 «올인 N점» 배너도 내린다 (docs/55 C-4) — 아래 판돈 인터셉터는 코어
+    // 게이트가 끄므로 판돈은 받지도 잃지도 않는데, 배너만 남으면 상대가 «저 리치에는
+    // 판돈이 걸려 있다»고 믿고 대응한다(천하무적과 같은 구조, disarmBanner.ts 머리말).
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     // 판돈 지급은 뱅크가 발행하는 가산이므로 BankTopUp 단계다 — 배수(Multiply) 뒤에 와야
     // 일확천금 등에 판돈까지 곱해지지 않는다. deltas에 얹으므로 결과 화면 증감에도 그대로 뜬다.

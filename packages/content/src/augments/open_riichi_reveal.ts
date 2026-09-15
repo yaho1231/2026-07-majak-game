@@ -51,6 +51,7 @@ import {
 } from "../util.js";
 import { pickIsolatedDiscard } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "open_riichi_reveal";
@@ -193,6 +194,14 @@ export const openRiichiReveal: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(openRiichiAction);
     }
+
+    /*
+     * 무장해제되면 공개 오름패 배지도 내린다 (docs/55 C-4).
+     * 손패 공개(visibility.hand)·직격 역만·+2판은 전부 코어 게이트가 끄는데, 배지만
+     * 남으면 상대는 «이 패를 버리면 역만»이라 믿고 안전한 패를 버리지 못한다. 리치
+     * 자체(공탁·손 잠금)는 표준 리치라 그대로다.
+     */
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     /**
      * 쏜 사람이 **남의 봉인 때문에** 리치를 못 걸었는가.

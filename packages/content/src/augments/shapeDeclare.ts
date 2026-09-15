@@ -60,6 +60,7 @@ import {
   scaledCooldown,
   trackRoundSeq,
 } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { handAlteredKey } from "./handAltered.js";
 import { handKindsOf } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
@@ -183,6 +184,11 @@ export function installShapeDeclare(ctx: AugmentContext, spec: ShapeDeclareSpec)
       return shapeRuleOn(state, spec.id, holder) ? true : cur;
     },
   });
+
+  // 무장해제되면 «이번 국 이 규칙이 켜져 있다» 배너도 함께 내린다 (docs/55 C-4).
+  // 위 모디파이어는 코어 게이트가 끄지만 발동 때 실은 전원 공개 채널은 남아, 상대가
+  // 이미 없는 규칙에 맞춰 수비 기준을 바꾼 채 국을 친다 — 조커와 같은 구조.
+  clearViewOnDisarm(ctx, () => [roundViewKey("*", `${spec.id}:${holder}`)]);
 
   /*
    * 자기 순에 뜨는 액티브 버튼. 리치 중에는 후보 자체를 내지 않는다 — `FlowController`의
