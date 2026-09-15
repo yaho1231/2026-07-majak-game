@@ -11597,6 +11597,94 @@ function AdminUserRow({
   );
 }
 
+type AdminUserSort = "newest" | "oldest" | "games" | "name";
+
+/**
+ * 플레이어 관리 목록 — 검색·정렬 (2026-09-15).
+ *
+ * 계정이 수십 개를 넘으면 «이 사람»을 찾으려고 스크롤하게 된다. 검색은 닉네임 부분
+ * 일치(대소문자 무시), 정렬은 가입순·판수·이름. 검색으로 걸러진 상태에서는
+ * «몇 명 중 몇 명»을 따로 보여 준다 — 머리의 총원과 헷갈리지 않게.
+ * 서버 요청은 없다. 목록은 이미 전부 손에 있다.
+ */
+function AdminUsersPanel({
+  users,
+  me,
+  onDelete,
+  onRename,
+}: {
+  users: AdminUserEntry[] | null;
+  me: string;
+  onDelete: (userId: number, username: string) => void;
+  onRename: (userId: number, username: string) => void;
+}): JSX.Element {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<AdminUserSort>("newest");
+  const q = query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (users === null) return null;
+    const rows = q.length > 0 ? users.filter((u) => u.username.toLowerCase().includes(q)) : [...users];
+    const byName = (a: AdminUserEntry, b: AdminUserEntry): number => a.username.localeCompare(b.username, "ko");
+    rows.sort((a, b) => {
+      switch (sort) {
+        case "newest": return b.createdAt.localeCompare(a.createdAt) || byName(a, b);
+        case "oldest": return a.createdAt.localeCompare(b.createdAt) || byName(a, b);
+        case "games": return b.games - a.games || byName(a, b);
+        case "name": return byName(a, b);
+      }
+    });
+    return rows;
+  }, [users, q, sort]);
+  return (
+    <>
+      {users !== null && users.length > 0 ? (
+        <div className="user-tools">
+          <input
+            className="user-search"
+            type="search"
+            value={query}
+            placeholder="닉네임 검색"
+            aria-label="닉네임 검색"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <select
+            className="user-sort"
+            value={sort}
+            aria-label="정렬"
+            onChange={(e) => setSort(e.target.value as AdminUserSort)}
+          >
+            <option value="newest">최근 가입순</option>
+            <option value="oldest">오래된 가입순</option>
+            <option value="games">판수 많은 순</option>
+            <option value="name">이름순</option>
+          </select>
+          {q.length > 0 ? (
+            <span className="user-tools-count">{filtered?.length ?? 0} / {users.length}명</span>
+          ) : null}
+        </div>
+      ) : null}
+      <ListCard
+        items={filtered}
+        empty={q.length > 0 ? `«${query.trim()}»에 맞는 계정이 없습니다.` : "등록된 계정이 없습니다."}
+      >
+        {(rows) => (
+          <ul className="user-list">
+            {rows.map((u) => (
+              <AdminUserRow
+                key={u.id}
+                user={u}
+                isMe={u.username === me}
+                onDelete={onDelete}
+                onRename={onRename}
+              />
+            ))}
+          </ul>
+        )}
+      </ListCard>
+    </>
+  );
+}
+
 function ListCard<T>(props: {
   items: T[] | null;
   /** 정말로 비었을 때의 문장 */
@@ -12939,24 +13027,20 @@ function HomeScreen(props: {
         {props.auth.isAdmin ? (
           <section className="home-card home-admin home-users">
             <div className="home-card-head">
-              <h2>플레이어 관리 <span className="home-admin-badge">관리자</span></h2>
+              <h2>
+                플레이어 관리 <span className="home-admin-badge">관리자</span>
+                {props.adminUsers !== null ? (
+                  <span className="home-card-count" title="등록된 계정 수">{props.adminUsers.length}명</span>
+                ) : null}
+              </h2>
               <RefreshButton onRefresh={props.onRefreshUsers} title="새로 고침" />
             </div>
-            <ListCard items={props.adminUsers} empty="등록된 계정이 없습니다.">
-              {(rows) => (
-              <ul className="user-list">
-                {rows.map((u) => (
-                  <AdminUserRow
-                    key={u.id}
-                    user={u}
-                    isMe={u.username === props.auth.username}
-                    onDelete={props.onDeleteUser}
-                    onRename={props.onRenameUser}
-                  />
-                ))}
-              </ul>
-              )}
-            </ListCard>
+            <AdminUsersPanel
+              users={props.adminUsers}
+              me={props.auth.username}
+              onDelete={props.onDeleteUser}
+              onRename={props.onRenameUser}
+            />
           </section>
         ) : null}
                 </>
