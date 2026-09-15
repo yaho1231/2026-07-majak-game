@@ -45,6 +45,7 @@ import type {
 import {
   SYSTEM_PLAYER,
   buildWinContext,
+  tsumoWinTileOf,
   handIdsOf,
   handKindsOf,
   isFuriten,
@@ -289,7 +290,9 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
       });
       if (state.round.phase === "turn.act") {
         if (!isTurnPlayer(state, req.player)) return "not your turn";
-        if (state.round.lastDrawnTile === null) return "no drawn tile";
+        // 후로한 순에 증강이 손을 완성시켰으면 쯔모패 없이도 연다 (tsumoWinTileOf 주석)
+        const winTile = tsumoWinTileOf(state, req.player, rules, yaku);
+        if (winTile === null) return "no drawn tile";
         // 바닥에서 주워 온 '쯔모패'라면 후리텐을 적용한다 (win.tsumoFuriten 주석 참고).
         // 표준 쯔모는 이 규칙이 false라 예전과 완전히 같다.
         if (
@@ -304,7 +307,7 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
           isFuritenAsRon(
             state,
             req.player,
-            state.round.lastDrawnTile,
+            winTile,
             scoringOptionsOf(state, rules, req.player),
             rules,
           )
@@ -312,7 +315,7 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
           return "furiten";
         }
         const ev = evaluateWin(
-          buildWinContext(state, req.player, "tsumo", state.round.lastDrawnTile, {
+          buildWinContext(state, req.player, "tsumo", winTile, {
             rules,
           }),
           yaku,
@@ -378,10 +381,11 @@ function winAction(yaku: YakuRegistry): ActionDef<Record<string, never>> {
       }
       return "not a winning phase";
     },
-    toEvents: (req, { state }) => {
+    toEvents: (req, { state, rules }) => {
       const tsumo = state.round.phase === "turn.act";
       const tileId = tsumo
-        ? (state.round.lastDrawnTile as TileId)
+        ? ((tsumoWinTileOf(state, req.player, rules, yaku) ??
+            state.round.lastDrawnTile) as TileId)
         : ((state.round.lastDiscard?.tileId ?? state.round.chankan?.tileId) as TileId);
       const from = tsumo
         ? null

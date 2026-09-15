@@ -544,6 +544,12 @@ export function registerFlowReducers(
       [p.calledTileId],
     );
     zones = moveTiles(zones, handZone(p.caller), meldsZone(p.caller), p.handTileIds);
+    // 후로 직후 손패 서명 — 이 순에 증강이 손을 고쳤는지 쯔모 판정이 대조한다
+    // (`PlayerRoundState.postCallHandKey` 주석).
+    const postCallHandKey = (zones[handZone(p.caller)]?.tileIds ?? [])
+      .map((id) => kindKey(state.tiles[id]!.kind))
+      .sort()
+      .join(",");
     const meld: Meld = {
       kind: p.meldKind,
       tileIds: [...p.handTileIds, p.calledTileId],
@@ -561,6 +567,7 @@ export function registerFlowReducers(
           riichi: rs.riichi === null ? null : { ...rs.riichi, ippatsu: false },
           melds: id === p.caller ? [...rs.melds, meld] : rs.melds,
           temporaryFuriten: id === p.caller ? false : rs.temporaryFuriten,
+          ...(id === p.caller ? { postCallHandKey } : {}),
         },
       ]),
     );
