@@ -17890,9 +17890,11 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
 }
 
 /* ─────────────────────── 첫 판 코치 (튜토리얼) ───────────────────────
-   진행 중인 판 위에 얹히는 안내. 규칙은 하나다 — **판을 막지 않는다.**
-   층 전체가 pointer-events: none 이고 말풍선의 버튼만 클릭을 받는다. "이 패를
-   누르세요"라고 해 놓고 그 패를 못 누르게 만드는 것만큼 나쁜 안내가 없다.
+   진행 중인 판 위에 얹히는 안내. 규칙은 하나다 — **가리킨 곳은 막지 않는다.**
+   층 전체가 pointer-events: none 이고 말풍선의 버튼과, 딤이 떠 있을 때 구멍
+   바깥을 덮는 투명한 덮개(.coach-block)만 클릭을 받는다. "이 패를 누르세요"라고
+   해 놓고 그 패를 못 누르게 만드는 것만큼 나쁜 안내가 없고, 그 옆의 다른 패가
+   눌리는 것도 그만큼 나쁘다(App.tsx `FirstRunCoach`의 `coach-block` 주석).
 
    z-index는 증강 선택창(.draft-panel 층)보다 위다 — 첫 강의가 가리키는 것이
    바로 그 선택창이라, 아래에 깔리면 아무것도 안 보인다. */
@@ -17930,6 +17932,29 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
 
 @media (prefers-reduced-motion: reduce) {
   .coach-scrim { transition: none; }
+}
+
+/* 구멍 바깥의 클릭 덮개 — 보이지 않는다. 그림은 .coach-scrim이 계속 그린다. */
+.coach-block {
+  position: absolute;
+  pointer-events: auto;
+  cursor: not-allowed;
+}
+
+/* 막힌 곳을 눌렀을 때 말풍선을 한 번 흔든다 — "여기를 보라"는 답이다 */
+.coach-bubble-nudge {
+  animation: coach-nudge 0.4s ease;
+}
+
+@keyframes coach-nudge {
+  0%, 100% { translate: 0 0; }
+  20% { translate: -6px 0; }
+  50% { translate: 6px 0; }
+  80% { translate: -3px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-bubble-nudge { animation: none; }
 }
 
 /* 강조 링 — 채우지 않는다. 안을 덮으면 정작 봐야 할 것이 가려진다. */

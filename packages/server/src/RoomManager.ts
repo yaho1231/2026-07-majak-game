@@ -936,6 +936,8 @@ const MAX_GUEST_ROOMS_PER_IP = 3;
  *    "화료" 강의는 영영 안 나온다. 후로와 타패는 그대로 두어 판은 살아 있게 한다.
  * 4. **결정에 사실상 시간 제한이 없다** (`TUTORIAL_DECISION_TIMEOUT_MS`).
  * 5. **사람이 리치를 걸면 봇이 그 대기패를 쏴 준다** (`TUTORIAL_FEED_NOTE`).
+ * 6. **봇 셋의 증강도 고정이다** (`TUTORIAL_BOT_DRAFT`) — 초읽기·무장해제처럼
+ *    대본을 깨는 것이 첫 판에 나오지 않게.
  *
  * 드래프트는 **끄지 않는다.** 증강을 고르는 것이 이 게임의 첫 조작이고, 그걸
  * 빼면 정작 가장 먼저 가르쳐야 할 화면을 안 보여 주는 셈이 된다.
@@ -971,6 +973,30 @@ const TUTORIAL_DRAFT_CHOICES: readonly string[] = [
 
 /** 튜토리얼에서 **유일하게 고를 수 있는** 증강 (`TUTORIAL_DRAFT_CHOICES`의 첫 장) */
 const TUTORIAL_DRAFT_PICK = "alchemist";
+
+/**
+ * 튜토리얼 봇 셋의 증강 — **한 장씩 못 박는다** (2026-09-15 사용자 지시).
+ *
+ * 봇의 드래프트를 무작위로 두면 첫 판에 «초읽기»(모두의 결정에 5초 제한)나
+ * «무장해제»(내 연금술사를 잠근다), «천하무적»(그 봇의 버림패로는 론이 안 된다 —
+ * 배급된 대기패를 못 먹는다)이 나올 수 있다. 셋 다 "시간 제한이 없습니다" ·
+ * "연금술사로 1삭을 바꿉니다" · "론 버튼을 누르세요"라는 대본을 정면으로 깬다.
+ *
+ * 카드를 **한 장만** 세우면 봇은 그것을 고르는 수밖에 없다(`DraftController.forced`는
+ * 장수를 따지지 않는다) — 봇 쪽 코드를 건드리지 않고 픽까지 고정된다.
+ *
+ * 고른 기준: 난도 1이고, 사람의 손·시간·화료에 손대지 않으며, 보여 줄 게 있으면
+ * 더 좋다. 순서는 봇 순서(`agents`에서 봇이 서는 차례)다.
+ * - 염색(tile_dyeing): 봇이 제 손패 무늬를 바꿔 **보라 생성패**를 만든다 — 상대
+ *   바닥에 생성패가 나오면 «보라색 패» 강의가 거기서도 선다.
+ * - 무르기(take_back): 가져온 패를 공개하고 되돌린다. 눈에 띄지만 아무도 다치지 않는다.
+ * - 죽기살기(die_hard): 점수가 낮을 때만 도는 수동 증강 — 첫 판에는 사실상 장식이다.
+ *   상대 이름표에 증강 알약이 붙어 있다는 것만 보여 주면 된다.
+ *
+ * 고정 배패와 수명이 같다(`HanchanController.presetDraftActive` — 첫 국까지).
+ * 대본은 1국짜리라 그 뒤는 평범한 추첨이다.
+ */
+const TUTORIAL_BOT_DRAFT: readonly string[] = ["tile_dyeing", "take_back", "die_hard"];
 
 /**
  * 튜토리얼 고정 배패 (kindKey 13장 + 첫 쯔모 1장).
@@ -1164,10 +1190,18 @@ export function tutorialPresets(agents: readonly PlayerAgent[]): {
 } {
   const me = agents.find((a) => !a.isBot);
   if (me === undefined) return {};
+  // 봇은 한 장씩만 받는다 — 곧 그 한 장을 고른다 (`TUTORIAL_BOT_DRAFT`).
+  const draft: Record<PlayerId, readonly string[]> = { [me.id]: TUTORIAL_DRAFT_CHOICES };
+  agents
+    .filter((a) => a.isBot)
+    .forEach((bot, i) => {
+      const card = TUTORIAL_BOT_DRAFT[i % TUTORIAL_BOT_DRAFT.length];
+      if (card !== undefined) draft[bot.id] = [card];
+    });
   return {
     presetHands: { [me.id]: TUTORIAL_HAND },
     // 증강은 지급하지 않는다 — 드래프트에서 **직접 고른 한 개**가 전부다.
-    presetDraftChoices: { [me.id]: TUTORIAL_DRAFT_CHOICES },
+    presetDraftChoices: draft,
   };
 }
 
