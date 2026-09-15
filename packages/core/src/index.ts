@@ -99,6 +99,7 @@ export type {
 export {
   SYSTEM_PLAYER,
   buildWinContext,
+  tsumoWinTileOf,
   isFuriten,
   isFuritenAsRon,
   isRunQuad,

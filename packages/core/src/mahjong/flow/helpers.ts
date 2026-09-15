@@ -1194,3 +1194,48 @@ export function buildWinContext(
       : {}),
   };
 }
+
+/**
+ * **쯔모 화료의 화료패** — 보통은 방금 쯔모한 패다.
+ *
+ * 후로한 순(`lastDrawnTile === null`)에는 쯔모패가 없어 표준 룰대로 쯔모가 없다.
+ * 단, 그 순에 **증강이 손패를 고쳐 완성형이 됐으면** 화료를 열어 준다 — 퐁 → 염색 →
+ * 조커로 완성된 손을 «쯔모패가 없다»는 이유로 버리게 하고 있었다(2026-09-16 사용자
+ * 지시, 리플레이 SGJG6Q 실측). 손이 고쳐졌는지는 `CALL_MADE`가 새긴 후로 직후 손패
+ * 서명(`postCallHandKey`)과 지금 손패를 대조해 안다 — 같으면 증강이 손대지 않은
+ * 것이라 막는다(샨퐁 화료패를 론 대신 퐁으로 울고 «쯔모»하는 길을 열지 않는다).
+ *
+ * 화료패로 셀 실물은 손패 중 **가장 비싼 해석**이 나오는 한 장이다(대기 형태·부수만
+ * 달라진다). 완성형이 아니면 null.
+ */
+export function tsumoWinTileOf(
+  state: GameState,
+  player: PlayerId,
+  rules: RuleRegistry,
+  yaku: YakuRegistry,
+): TileId | null {
+  const drawn = state.round.lastDrawnTile;
+  if (drawn !== null) return drawn;
+  if (state.round.phase !== "turn.act") return null;
+  const snapshot = state.round.byPlayer[player]?.postCallHandKey;
+  if (snapshot === undefined) return null;
+  const ids = handIdsOf(state, player);
+  const now = ids.map((id) => kindKey(kindOf(state, id))).sort().join(",");
+  if (now === snapshot) return null;
+
+  let best: { id: TileId; yakuman: number; han: number; fu: number } | null = null;
+  for (const id of ids) {
+    const ev = evaluateWin(buildWinContext(state, player, "tsumo", id, { rules }), yaku);
+    if (ev === null) continue;
+    const cand = { id, yakuman: ev.yakumanCount, han: ev.han, fu: ev.fu };
+    if (
+      best === null ||
+      cand.yakuman > best.yakuman ||
+      (cand.yakuman === best.yakuman &&
+        (cand.han > best.han || (cand.han === best.han && cand.fu > best.fu)))
+    ) {
+      best = cand;
+    }
+  }
+  return best?.id ?? null;
+}

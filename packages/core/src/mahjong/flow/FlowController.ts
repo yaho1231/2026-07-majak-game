@@ -16,8 +16,13 @@ import { WALL, discardsZone } from "../../engine/zones/Zone.js";
 import { sameKind, kindKey } from "../tiles/Tile.js";
 import type { Suit, TileId, TileKind } from "../tiles/Tile.js";
 import { DEFAULT_SEQUENCE_SUITS, decompose, honorMaxRank } from "../scoring/decompose.js";
-import { ROUND_SETTLED, KAN_DECLARED } from "./flowEvents.js";
-import type { AbortReason, RoundSettledPayload, KanDeclaredPayload } from "./flowEvents.js";
+import { ROUND_SETTLED, KAN_DECLARED, WIN_DECLARED } from "./flowEvents.js";
+import type {
+  AbortReason,
+  RoundSettledPayload,
+  KanDeclaredPayload,
+  WinDeclaredPayload,
+} from "./flowEvents.js";
 import type { SettleWinRequest } from "./standardActions.js";
 import { WIN_BLOCKED_MIN_HAN, WIN_BLOCKED_RON_IMMUNE } from "./standardActions.js";
 
@@ -300,16 +305,9 @@ export class FlowController {
           }) &&
           this.validateOk(actor, "win", {})
         ) {
-          this.submitPlayer(actor, { type: "win", payload: {} });
+          const tileId = this.declareTsumo(actor, { type: "win", payload: {} });
           this.sys("sys.settleWin", {
-            wins: [
-              {
-                winner: actor,
-                from: null,
-                tileId: state.round.lastDrawnTile as TileId,
-                winType: "tsumo",
-              },
-            ],
+            wins: [{ winner: actor, from: null, tileId, winType: "tsumo" }],
           } satisfies SettleWinRequest);
           continue;
         }
@@ -738,8 +736,7 @@ export class FlowController {
       if (entry === undefined) throw new Error("No decision to resolve");
       const [player, option] = entry;
       if (option.type === "win") {
-        const tileId = state.round.lastDrawnTile as TileId;
-        this.submitPlayer(player, option);
+        const tileId = this.declareTsumo(player, option);
         const wins: SettleWinRequest = {
           wins: [{ winner: player, from: null, tileId, winType: "tsumo" }],
         };
@@ -896,6 +893,23 @@ export class FlowController {
     if (first === null || first === undefined) return false;
     if (!first.startsWith("wind")) return false;
     return firstDiscards.every((k) => k === first);
+  }
+
+  /**
+   * 쯔모 선언을 엔진에 넣고 **화료패의 실물**을 돌려준다.
+   *
+   * 화료패는 `win` 액션이 `WinDeclared`에 실어 준 것을 읽는다 — 보통 쯔모패지만,
+   * 후로한 순에 증강이 손을 완성시킨 경우에는 쯔모패가 없어 액션이 손패에서 고른다
+   * (`tsumoWinTileOf`). 여기서 `lastDrawnTile`을 다시 읽으면 그 경우 null이 정산에 들어간다.
+   */
+  private declareTsumo(player: PlayerId, option: ActionOption): TileId {
+    const before = this.engine.eventLog.length;
+    this.submitPlayer(player, option);
+    const declared = this.engine.eventLog
+      .slice(before)
+      .find((e) => e.type === WIN_DECLARED);
+    const tileId = (declared?.payload as WinDeclaredPayload | undefined)?.tileId;
+    return tileId ?? (this.engine.state.round.lastDrawnTile as TileId);
   }
 
   private submitPlayer(player: PlayerId, option: ActionOption): void {

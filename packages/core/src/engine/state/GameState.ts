@@ -148,6 +148,17 @@ export interface PlayerRoundState {
    * `creditTo`에 영향받지 않는다. 후리텐과는 무관하니 후리텐 판정에 쓰지 말 것.
    */
   ownDiscards: OwnDiscard[];
+  /**
+   * **후로 직후의 손패** (정렬한 kindKey를 `,`로 이은 서명). `CALL_MADE` 리듀서가 새긴다.
+   *
+   * 후로한 순에는 쯔모패가 없다(`lastDrawnTile === null`). 표준 룰에서 그 순의 쯔모
+   * 화료는 없지만, 그 순에 **증강이 손패를 고쳐 완성형이 됐으면** 쯔모를 열어 준다
+   * (2026-09-16 사용자 지시 — 퐁 → 염색 → 조커로 완성된 손을 버리게 만들고 있었다).
+   * 이 서명과 지금 손패가 **같으면** 증강이 손을 안 고친 것이라 표준 룰 그대로 막는다
+   * — 샨퐁 대기의 화료패를 론 대신 퐁으로 울고 "쯔모"하는 길이 열리면 안 된다.
+   * 판정은 `tsumoWinTileOf`(helpers.ts) 한 곳이다.
+   */
+  postCallHandKey?: string;
 }
 
 /** 실제로 내가 버린 패 한 장 (`PlayerRoundState.ownDiscards`) */

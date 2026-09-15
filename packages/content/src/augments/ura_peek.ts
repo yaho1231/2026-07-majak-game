@@ -40,6 +40,7 @@ import type {
 import type { VisibilityRule } from "@majak/core";
 import { flagOf, publishUsesLeft, roundViewKey, widenPeek } from "../util.js";
 import { plan } from "./botPlan.js";
+import { handAlteredMark } from "./handAltered.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "ura_peek";
@@ -107,6 +108,12 @@ const uraSwapAction: ActionDef<{ handTileId: TileId }> = {
     if (state.round.phase !== "turn.act") return "not in act phase";
     if (playerAtSeat(state, state.round.turnSeat).id !== req.player) {
       return "not your turn";
+    }
+    // 리치 중에는 손이 동결된다 — 손패를 갈아 끼우는 계열(hand_swap3·full_hand_swap·
+    // dead_wall_master)과 같은 규약. 리치 손의 한 장을 뒷도라 표시패와 바꾸면 리치
+    // 선언 시점의 텐파이가 깨진 채 강제 쯔모기리로 흘러 게임이 터졌다(2026-09-16 사용자 보고).
+    if (state.round.byPlayer[req.player]?.riichi != null) {
+      return "riichi: hand is frozen";
     }
     // 본 적 없는 뒷도라는 바꿀 수 없다 — 이면투시를 발동한 국에만 열린다
     if (!flagOf(state, usedKey(state, req.player))) return "ura not revealed yet";
@@ -212,6 +219,8 @@ export const uraPeek: AugmentDef = defineAugment({
               kindKey(kindOf(next, id)),
             ),
             [p.swappedKey]: true,
+            // 배패가 아닌 손이 됐다 → 천화·지화 게이트를 닫는다 (handAltered.ts 참고)
+            ...handAlteredMark(state, p.holder),
           },
         };
       });
@@ -276,7 +285,10 @@ export const uraPeek: AugmentDef = defineAugment({
         { type: ACTION, payload: {} },
       ];
       // 이미 확인했고 아직 안 바꿨으면 손패 한 장을 표시패 자리로 보낼 수 있다
+      // (리치 중에는 후보 자체를 내지 않는다 — validate와 같은 기준. 후보가 남아 있으면
+      //  `FlowController`의 리치 강제 쯔모기리 자동 진행이 사라진다.)
       if (
+        state.round.byPlayer[holder]?.riichi == null &&
         flagOf(state, usedKey(state, holder)) &&
         !flagOf(state, swappedKey(state, holder)) &&
         uraIndicatorIds(state)[0] !== undefined

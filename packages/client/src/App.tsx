@@ -1437,8 +1437,18 @@ interface SelectionCtx {
   armMode: ArmMode | null;
   /** 무장된 타입의 현재 프롬프트 옵션들. */
   armedOptions: ActionOption[];
-  /** 무장 토글 — 같은 타입이면 해제, 다른 타입/null이면 교체. */
+  /** 무장 토글 — 같은 타입이면 해제, 다른 타입/null이면 교체. 무장하면 리치 모드는 푼다. */
   arm: (type: string | null) => void;
+  /**
+   * 리치 모드(«리치할 패를 클릭하세요»)를 푼다 — 액티브 증강 버튼·메뉴가 부른다.
+   *
+   * [리치]를 누른 뒤 마음을 바꿔 ✦ 액티브 증강으로 갔을 때 리치 모드가 그대로 살아
+   * 있었다. 그 상태에서 무장이 풀리면(버튼을 한 번 더 누르거나 대상이 아닌 패를 누르면)
+   * 다음 손패 클릭이 **증강 발동이 아니라 리치 선언**으로 나갔다 — 조커를 쓰려다
+   * 리치가 걸렸다는 보고(2026-09-16). 리치 모드와 증강 무장은 손패 클릭의 뜻을 서로
+   * 다르게 정하므로 둘이 동시에 서 있으면 안 된다.
+   */
+  exitRiichiMode: () => void;
   /** 옵션 제출 + 무장 해제. */
   submit: (o: ActionOption) => void;
   /** 이 상대가 지금 무장 액션의 클릭 대상인지 (opp·swap3 상대 지정 단계). */
@@ -1480,6 +1490,7 @@ const NO_SELECTION: SelectionCtx = {
   armMode: null,
   armedOptions: [],
   arm: () => {},
+  exitRiichiMode: () => {},
   submit: () => {},
   oppArmable: () => false,
   clickOpp: () => {},
@@ -14856,7 +14867,7 @@ const GameTable = memo(function GameTable(props: {
   }, [props.insight, props.spectator, waitsOn, view]);
 
   // ── 액티브 증강 클릭 발동(무장) 상태 — 게임판 전체가 공유(SelectionContext) ──
-  const selection = useSelection(view, prompt, props.onSubmit);
+  const selection = useSelection(view, prompt, props.onSubmit, props.onRiichiMode);
   /** 튜토리얼이 지목해 둔 패 — 오른쪽 버튼 버림도 이걸 지켜야 한다 (`rightClickTsumogiri`) */
   const coachLock = useContext(CoachLockContext);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -15267,6 +15278,7 @@ function useSelection(
   view: PlayerView,
   prompt: PromptMessage["prompt"] | null,
   onSubmit: (o: ActionOption) => void,
+  onRiichiMode: (v: boolean) => void,
 ): SelectionCtx {
   const [armedType, setArmedType] = useState<string | null>(null);
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
@@ -15305,7 +15317,11 @@ function useSelection(
     if (armedType !== "frame_discard") setFrameTile(null);
   }, [armedType]);
 
+  const exitRiichiMode = (): void => onRiichiMode(false);
+
   const arm = (type: string | null): void => {
+    // 무장은 리치 모드와 양립하지 않는다 (SelectionCtx.exitRiichiMode 주석)
+    if (type !== null) exitRiichiMode();
     setArmedType((cur) => (type === null ? null : cur === type ? null : type));
     setSwapTarget(null);
     setSwapGive([]);
@@ -15409,6 +15425,7 @@ function useSelection(
     armMode,
     armedOptions,
     arm,
+    exitRiichiMode,
     submit,
     oppArmable,
     clickOpp,
@@ -24482,6 +24499,9 @@ function ActiveAugmentControl(props: {
   const activate = (type: string): void => {
     setOpen(false);
     setMenuType(null);
+    // 이 버튼으로 들어온 순간 리치 모드는 끝이다 — 무장형이 아닌 발동(즉시 제출·모달)도
+    // 마찬가지다. 남겨 두면 발동 뒤 다음 손패 클릭이 리치 선언으로 나간다.
+    sel.exitRiichiMode();
     if (armType(type)) {
       sel.arm(type);
       hintNone();
@@ -24543,6 +24563,8 @@ function ActiveAugmentControl(props: {
       activate(types[0]!);
       return;
     }
+    // 메뉴를 여는 것도 «증강을 쓰겠다»는 뜻이다 — 리치 모드를 여기서 푼다
+    sel.exitRiichiMode();
     setMenuType(null);
     setOpen(true);
   };
