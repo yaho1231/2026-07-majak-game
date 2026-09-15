@@ -18,8 +18,9 @@
  * - toEvents(req, { state, rules })에서 나를 뺀 세 상대 각각에 대해
  *   isTenpai(winHandKindsOf, meldCountOf, undefined, scoringOptionsOf)로 텐파이를
  *   계산한다 — 채점 변형 증강(scoring.*)까지 그대로 반영한다(peek_riichi_waits와 동일 계보).
- * - 결과는 `{ players, turn }`(텐파이인 상대 id 배열 + 스캔한 순)로
- *   viewKey(holder, "tenpai_scan") 채널에 실어 **보유자 화면에만** 노출한다.
+ * - 결과는 `{ players, widths, shantens, turn }`(텐파이인 상대 id 배열 + 대기 폭 +
+ *   상대별 샹텐 + 스캔한 순)로 viewKey(holder, "tenpai_scan") 채널에 실어 **보유자
+ *   화면에만** 노출한다. 2026-09-15: 노텐인 상대는 «텐파이까지 몇 장»(이샹텐·량샹텐…)까지 준다.
  *   발동 사실·상대 목록은 아무에게도 새지 않는다. turn은 화면이 "N순 기준"을
  *   밝히기 위한 것 — 스냅샷이 국 끝까지 남아 시간이 지날수록 틀려지기 때문이다.
  * - 선언은 **국 단위**다(국이 바뀌면 다시 한 번 쓸 수 있다) — 그래서 사용 카운터 키에
@@ -36,15 +37,18 @@ import {
   meldCountOf,
   playerAtSeat,
   scoringOptionsOf,
+  shantenOf,
   winHandKindsOf,
   winningKinds,
 } from "@majak/core";
 import type {
   ActionDef,
   AugmentDef,
+  DecomposeOptions,
   GameState,
   PlayerId,
   RuleRegistry,
+  TileKind,
 } from "@majak/core";
 import { counterOf, publishUsesLeft, roundViewKey } from "../util.js";
 import { plan } from "./botPlan.js";
@@ -95,22 +99,50 @@ function tenpaiOpponents(
   state: GameState,
   rules: RuleRegistry,
   holder: PlayerId,
-): { players: PlayerId[]; widths: WaitWidth[] } {
+): { players: PlayerId[]; widths: WaitWidth[]; shantens: Record<PlayerId, number> } {
   const players: PlayerId[] = [];
   const widths: WaitWidth[] = [];
+  const shantens: Record<PlayerId, number> = {};
   for (const p of state.players) {
     if (p.id === holder) continue;
-    const waits = winningKinds(
-      winHandKindsOf(state, rules, p.id),
-      meldCountOf(state, p.id),
-      undefined,
-      scoringOptionsOf(state, rules, p.id),
-    );
+    const kinds = winHandKindsOf(state, rules, p.id);
+    const meldCount = meldCountOf(state, p.id);
+    const opts = scoringOptionsOf(state, rules, p.id);
+    shantens[p.id] = bestDiscardShanten(kinds, meldCount, opts);
+    const waits = winningKinds(kinds, meldCount, undefined, opts);
     if (waits.length === 0) continue;
     players.push(p.id);
     widths.push(widthOf(waits.length));
   }
-  return { players, widths };
+  return { players, widths, shantens };
+}
+
+/**
+ * 상대의 샹텐 — 노텐인 상대가 «텐파이까지 몇 장»인지 (2026-09-15 사용자 지시).
+ *
+ * 상대는 대개 13장(3n+1)이지만, 직전에 울어 쯔모 없이 14장을 쥔 채 내 순이 돌아온
+ * 경우가 있어 3n+2면 «한 장 버린 뒤의 최선»으로 잰다 — 전체 교환(full_hand_swap)과
+ * 같은 잣대다. 대기 폭처럼 뭉개지 않고 정확한 수를 준다: 샹텐 수는 손 모양을 특정하는
+ * 정보가 아니라 «얼마나 급한가»의 정보라, 대기패 특정으로 이어지지 않는다.
+ */
+function bestDiscardShanten(
+  kinds: readonly TileKind[],
+  meldCount: number,
+  opts: DecomposeOptions,
+): number {
+  let out = shantenOf(kinds, meldCount, opts);
+  if (kinds.length % 3 !== 2) return out;
+  for (let i = 0; i < kinds.length; i++) {
+    out = Math.min(
+      out,
+      shantenOf(
+        kinds.filter((_k, j) => j !== i),
+        meldCount,
+        opts,
+      ),
+    );
+  }
+  return out;
 }
 
 const scanAction: ActionDef<Record<string, never>> = {
@@ -154,9 +186,9 @@ export const tenpaiScan: AugmentDef = defineAugment({
   complexity: 2,
   name: "천리안",
   description:
-    "(매 국 1회) 자기 순에 선언하면 그 순간 텐파이인 상대가 누구인지와 대기가 얼마나 넓은지를 나만 볼 수 있다.",
+    "(매 국 1회) 자기 순에 선언하면 그 순간 텐파이인 상대가 누구인지와 대기가 얼마나 넓은지, 노텐인 상대는 텐파이까지 몇 장 남았는지를 나만 볼 수 있다.",
   detail:
-    "선언하면 지금 텐파이인 상대가 누구인지와 대기 폭이 나에게만 보인다. 대기 폭은 1~2종이면 좁다, 3~4종이면 보통, 5종 이상이면 넓다로 표시된다.\n\n다마텐도 알 수 있지만 대기패 자체는 알 수 없다. 선언한 순간의 상태만 보여 주고 그 뒤의 변화는 반영되지 않는다. 발동 사실은 상대에게 공개되지 않는다.",
+    "선언하면 지금 텐파이인 상대가 누구인지와 대기 폭이 나에게만 보인다. 대기 폭은 1~2종이면 좁다, 3~4종이면 보통, 5종 이상이면 넓다로 표시된다. 텐파이가 아닌 상대는 텐파이까지 몇 장이 남았는지(이샹텐·량샹텐…)가 보인다.\n\n다마텐도 알 수 있지만 대기패 자체는 알 수 없다. 선언한 순간의 상태만 보여 주고 그 뒤의 변화는 반영되지 않는다. 발동 사실은 상대에게 공개되지 않는다.",
   // 봇: 발동 타이밍(언제가 판이 무르익은 순간인지)을 정량화하기 어렵고,
   //     정보만 주므로 잘못 써도 자해가 없다 — 판단이 필요한 액티브라 봇에게 맡기지 않는다.
   install(ctx) {

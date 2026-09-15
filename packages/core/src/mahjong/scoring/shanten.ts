@@ -726,3 +726,22 @@ function universeFor(kinds: readonly TileKind[]): readonly TileKind[] {
   }
   return out ?? STANDARD_UNIVERSE;
 }
+
+/**
+ * 샹텐 수를 **사람이 부르는 이름**으로 — 관전·패보·증강 화면이 함께 쓴다 (2026-09-15 사용자 지시).
+ *
+ *   -1 화료형 · 0 텐파이 · 1 이샹텐 · 2 량샹텐 · 3 산샹텐 · 4 스샹텐 · 5 우샹텐 ·
+ *   6 로샹텐 · 7 치샹텐 · 8 파샹텐(八向聽)
+ *
+ * «1샹텐»처럼 아라비아 숫자를 붙이지 않는다 — 실제 마작 용어는 一·二·三…을 음으로 읽는다.
+ * 표준형 최댓값이 8이라 그 위는 없지만, 증강으로 손 모양이 깨져 더 큰 값이 나오면
+ * 숫자를 그대로 붙여 거짓말은 하지 않는다.
+ */
+const SHANTEN_NUMERAL = ["", "이", "량", "산", "스", "우", "로", "치", "파"] as const;
+
+export function shantenLabel(shanten: number): string {
+  if (shanten < 0) return "화료형";
+  if (shanten === 0) return "텐파이";
+  const numeral = SHANTEN_NUMERAL[shanten];
+  return numeral === undefined ? `${shanten}샹텐` : `${numeral}샹텐`;
+}

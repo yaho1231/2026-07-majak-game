@@ -3,7 +3,7 @@
  *
  * 핵심 계약:
  *  1. 자기 턴에 선언할 수 있고(매 국 1회), 선언하면 텐파이인 상대 목록이
- *     보유자 전용 채널(view:{holder}:tenpai_scan)에 `{ players, turn }`으로만 실린다.
+ *     보유자 전용 채널(view:{holder}:tenpai_scan)에 `{ players, widths, shantens, turn }`으로만 실린다.
  *  2. 텐파이인 상대(p1)는 목록에 들고, 노텐인 상대(p2)는 들지 않는다.
  *  3. 매 국 1회 — 같은 국에 두 번은 못 쓰고, 국이 바뀌면 다시 열린다.
  */
@@ -13,6 +13,7 @@ import {
   FlowController,
   createStandardGameFromState,
   installAugment,
+  shantenLabel,
 } from "@majak/core";
 import type { GameState, PlayerId } from "@majak/core";
 import { craft } from "./helpers.js";
@@ -82,6 +83,19 @@ describe("천리안 (tenpai_scan)", () => {
     expect(ids).toContain("p1"); // 텐파이
     expect(ids).not.toContain("p2"); // 노텐
     expect(ids).not.toContain("p0"); // 자기 자신은 제외
+  });
+
+  it("노텐인 상대는 텐파이까지 몇 장인지(샹텐)가 함께 실린다 (2026-09-15)", () => {
+    const { game, flow } = startFlow(scene());
+    flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+    const result = game.engine.state.augmentData[VIEW_KEY] as {
+      shantens: Record<PlayerId, number>;
+    };
+    expect(result.shantens["p1"]).toBe(0); // 텐파이
+    // 147m147p147s1234z — 멘쯔 0·타쯔 0·머리 0 → 표준형 8샹텐이지만 국사 6샹텐이 더 가깝다
+    expect(result.shantens["p2"]).toBe(6);
+    expect(result.shantens["p0"]).toBeUndefined(); // 자기 자신은 제외
+    expect(shantenLabel(result.shantens["p2"]!)).toBe("로샹텐");
   });
 
   it("스캔한 순(turnCount)을 함께 실어 화면이 'N순 기준'을 밝힐 수 있다", () => {
@@ -183,8 +197,8 @@ describe("천리안 — 대기 폭 힌트", () => {
     for (const w of result.widths) {
       expect(["narrow", "mid", "wide"]).toContain(w);
     }
-    // 채널에 실린 것은 목록 · 폭 · 순뿐 — 대기패가 새어 나가면 안 된다
-    expect(Object.keys(result).sort()).toEqual(["players", "turn", "widths"]);
+    // 채널에 실린 것은 목록 · 폭 · 샹텐 · 순뿐 — 대기패가 새어 나가면 안 된다
+    expect(Object.keys(result).sort()).toEqual(["players", "shantens", "turn", "widths"]);
 
     // 1p 단기(1종)는 반드시 "좁음"
     const i1 = result.players.indexOf("p1");

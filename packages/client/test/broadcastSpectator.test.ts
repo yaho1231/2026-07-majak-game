@@ -196,8 +196,9 @@ describe("중계 관전 — 샹텐 뱃지 (A3)", () => {
     expect(badge).toContain("if (shanten === 0 && tenpaiShown) return null;");
   });
 
-  it("N샹텐을 적는다", () => {
-    expect(badge).toMatch(/\$\{shanten\}샹텐/);
+  it("샹텐을 이름(이샹텐·량샹텐…)으로 적는다", () => {
+    // 2026-09-15: `${n}샹텐` 대신 코어의 shantenLabel — 관전·패보·증강이 같은 이름표를 쓴다
+    expect(badge).toContain("{shantenLabel(shanten)}");
     expect(CSS).toContain(".shanten-badge");
   });
 
@@ -485,7 +486,7 @@ describe("중계 관전 — 좌석 분석 (A2·A5·A7)", () => {
 
   it("좌석마다 점수·샹텐·도라를 적는다", () => {
     expect(seats).toContain("bcast-card-score");
-    expect(seats).toMatch(/ins\.shanten === 0 \? "텐파이"/);
+    expect(seats).toContain("{shantenLabel(ins.shanten)}");
     expect(seats).toContain("도라 {ins?.dora}");
   });
 
