@@ -34,6 +34,8 @@
  *   상태만 보면 어떤 해제 수단이 새로 생겨도 자동으로 따라온다(증강 간 결합 없음).
  * - 봉인은 `riichi.blocked` 규칙 Modifier로 걸린다. 이 규칙의 playerId는
  *   **리치를 선언하려는 사람**이므로, 보유자 본인만 통과시키고 나머지에게 true를 준다.
+ * - "다른 누구도 리치 상태가 아니다"는 **남들이 볼 수 있는 리치**만 센다 — 숨은 리치
+ *   (스텔스)는 리치가 아닌 사람으로 취급한다(2026-09-16, `otherInRiichi` 주석).
  */
 
 import {
@@ -47,9 +49,10 @@ import type {
   GameState,
   PlayerId,
   ProposedEvent,
+  RuleRegistry,
   TileDiscardedPayload,
 } from "@majak/core";
-import { flagOf, roundViewKey } from "../util.js";
+import { flagOf, riichiHidden, roundViewKey } from "../util.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "riichi_seal";
@@ -58,9 +61,27 @@ const ID = "riichi_seal";
 const sealKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey(ID, "sealed", state, h);
 
-/** 이 플레이어가 지금 리치 중인가 */
-const inRiichi = (state: GameState, p: PlayerId): boolean =>
-  state.round.byPlayer[p]?.riichi != null;
+/** 보유자 **자신**이 지금 리치 중인가 — 본인 리치는 본인이 아는 것이라 원시 조회로 족하다 */
+const holderInRiichi = (state: GameState, h: PlayerId): boolean =>
+  state.round.byPlayer[h]?.riichi != null;
+
+/**
+ * **다른** 플레이어가 지금 리치 중인가 — 숨은 리치(스텔스)는 리치가 아닌 것으로 본다.
+ *
+ * 왜: 이 판정의 결과는 두 곳(첫 리치 판정 → 봉인이 서는가, 아래 ③ → 봉인이 유지되는가)
+ * 모두 **전원 공개 배너**로 드러난다. 원시 `byPlayer[x].riichi`를 보면 상대가 스텔스
+ * 리치 중일 때 봉인이 조용히 서지 않아, 보유자가 "내가 그 국의 첫 리치인데 배너가 없다
+ * → 누군가 숨은 리치 중"을 추론한다(docs/55 C-5, 2026-09-16). 스텔스 리치의 계약은
+ * "남들에게는 리치가 아닌 사람으로 보인다"이고 남들은 그를 그렇게 **취급**한다
+ * (`stealthBreak.ts` 머리말) — 봉인도 같은 규약을 따른다.
+ *
+ * 효과는 그대로다: 봉인은 소급하지 않으므로(머리말) 그 숨은 리치는 살아 있고, 나머지
+ * 리치를 잠그는 것도 그대로다. 달라지는 것은 "스텔스 리치 때문에 봉인이 안 선다"는
+ * 정보가 새지 않는 것뿐이다. docs/10 §7.4의 "잠금은 상태에서 파생한다"도 그대로 —
+ * 다만 그 상태를 **남들이 볼 수 있는 상태**(riichi.hidden 반영)로 읽는다.
+ */
+const otherInRiichi = (rules: RuleRegistry, state: GameState, p: PlayerId): boolean =>
+  state.round.byPlayer[p]?.riichi != null && !riichiHidden(rules, state, p);
 
 /**
  * 봉인이 **지금** 살아 있는가.
@@ -68,7 +89,7 @@ const inRiichi = (state: GameState, p: PlayerId): boolean =>
  * 세 조건을 전부 만족해야 한다:
  *  ① 이번 국에 봉인을 세웠다 (첫 리치를 내가 걸었다는 과거 사실)
  *  ② 보유자가 **지금도 리치 중**이다 — 풀면 봉인도 풀린다
- *  ③ 다른 누구도 리치 중이 아니다
+ *  ③ 다른 누구도 (보이는) 리치 중이 아니다
  *
  * ③이 필요한 이유: 내가 리치를 풀어 봉인이 풀린 사이에 남이 리치를 걸 수 있다.
  * 그 뒤 내가 같은 국에 다시 리치를 걸어도 나는 더 이상 "선제"가 아니므로 봉인이
@@ -76,10 +97,12 @@ const inRiichi = (state: GameState, p: PlayerId): boolean =>
  * 현재 상태로 한 번 더 걸러 준다. (아무도 안 걸었다면 재리치로 봉인이 돌아온다 —
  * "리치를 지고 있는 동안 봉인"이라는 규칙 그대로다.)
  */
-function isSealActive(state: GameState, holder: PlayerId): boolean {
+function isSealActive(rules: RuleRegistry, state: GameState, holder: PlayerId): boolean {
   if (!flagOf(state, sealKey(state, holder))) return false;
-  if (!inRiichi(state, holder)) return false;
-  return !state.players.some((pl) => pl.id !== holder && inRiichi(state, pl.id));
+  if (!holderInRiichi(state, holder)) return false;
+  return !state.players.some(
+    (pl) => pl.id !== holder && otherInRiichi(rules, state, pl.id),
+  );
 }
 
 export const riichiSeal: AugmentDef = defineAugment({
@@ -97,6 +120,9 @@ export const riichiSeal: AugmentDef = defineAugment({
   conflicts: ["riichi_upgrade"],
   install(ctx) {
     const { holder } = ctx;
+    // 숨은 리치 판정(riichi.hidden)에 규칙 레지스트리가 필요하다 — 모디파이어 안에서
+    // 다른 규칙을 읽는 것은 RuleRegistry.resolve가 재진입을 막지 않아 문제없다.
+    const rules = ctx.engine.rules;
     const bannerKey = roundViewKey("*", `${ID}:${holder}`);
 
     /**
@@ -110,7 +136,7 @@ export const riichiSeal: AugmentDef = defineAugment({
       emit: (e: ProposedEvent) => void,
     ): void => {
       if (state.augmentData[bannerKey] !== "봉인") return;
-      if (isSealActive(state, holder)) return;
+      if (isSealActive(rules, state, holder)) return;
       emit(augmentDataSet(bannerKey, ""));
     };
 
@@ -124,8 +150,9 @@ export const riichiSeal: AugmentDef = defineAugment({
         p.player === holder &&
         !flagOf(state, sealKey(state, holder))
       ) {
+        // 숨은 리치는 세지 않는다 — 세면 "봉인이 안 섰다"가 곧 누설이다(otherInRiichi 참고)
         const someoneElseRiichi = state.players.some(
-          (pl) => pl.id !== holder && inRiichi(state, pl.id),
+          (pl) => pl.id !== holder && otherInRiichi(rc.rules, state, pl.id),
         );
         // 내가 첫 리치가 아니면 소급 봉인 없음 — 배너 동기화만 하고 지나간다
         if (!someoneElseRiichi) {
@@ -153,7 +180,7 @@ export const riichiSeal: AugmentDef = defineAugment({
         if (rctx.playerId === holder) return cur; // 보유자 본인은 잠기지 않는다
         const state = rctx.state as GameState | undefined;
         if (state === undefined) return cur;
-        return isSealActive(state, holder) ? true : cur;
+        return isSealActive(rules, state, holder) ? true : cur;
       },
     });
   },

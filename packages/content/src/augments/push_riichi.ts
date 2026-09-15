@@ -29,6 +29,8 @@
  * 벽 잔여 + riichi.blocked 아님)을 만족하고 스스로 리치를 걸지 않았다면 `riichi:true`+riichiCost를
  * 실어 강제 리치로 만든다. 별도 `TILE_DISCARDED` **Reaction**이 낙인 대상의 리치 성립을 감지해
  * 낙인을 소멸시킨다(자발적 리치도 낙인을 소진한다 — 리치 가능 상태에 도달했으므로).
+ * "이미 리치 중"은 **남들이 볼 수 있는 리치**만 센다 — 숨은 리치(스텔스)는 리치가 아닌
+ * 사람으로 취급하고, 낙인이 터지면 그 리치는 공개 리치가 된다(2026-09-16, 아래 주석).
  * §2 지목형 연출 규칙 적용.
  */
 
@@ -57,11 +59,13 @@ import {
   addWinHanBonus,
   flagOf,
   publishUsesLeft,
+  riichiHidden,
   roundViewKey,
   stringOf,
 } from "../util.js";
 import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
+import { stealthActiveKey } from "./stealth_riichi.js";
 import { plan } from "./botPlan.js";
 
 const ID = "push_riichi";
@@ -115,7 +119,18 @@ function riichiEligibleOnDiscard(
   target: PlayerId,
   discardTileId: number,
 ): boolean {
-  if (state.round.byPlayer[target]?.riichi != null) return false;
+  /*
+   * 이미 리치 중이면 강제할 것이 없다 — 단 **숨은 리치(스텔스)는 리치가 아닌 사람으로
+   * 본다.** 원시 `byPlayer[target].riichi`만 보면 스텔스 리치 중인 낙인 대상은 멘젠
+   * 텐파이로 버려도 낙인이 터지지 않아, 보유자가 "텐파이인데 안 터진다 → 숨은 리치"를
+   * 추론한다(docs/55 C-5; 천리안으로 텐파이를 아는 순간 확정된다). 스텔스 리치의 계약은
+   * "남들에게는 리치가 아닌 사람으로 보인다"이고 남들은 그를 그렇게 **취급**한다
+   * (`stealthBreak.ts` 머리말) — 낙인도 같은 규약을 따른다. 그 대가로 강제 리치가 걸리면
+   * 그 리치는 공개 리치가 된다(아래 리액션). 손을 바꾸는 증강이 숨은 리치를 대상으로
+   * 허용하고 성사되면 해제하는 것과 같은 모양이다. 보이는 리치는 종전대로 건드리지 않는다.
+   */
+  const rs = state.round.byPlayer[target];
+  if (rs?.riichi != null && !riichiHidden(rules, state, target)) return false;
   if (!isMenzen(state, target)) return false;
   if (rules.resolve<boolean>("riichi.blocked", { playerId: target, state })) return false;
   const cost = rules.resolve<number>("riichi.cost", { playerId: target, state });
@@ -253,6 +268,19 @@ export const pushRiichi: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(firedViewKey(holder), target));
       // 직격 보너스의 근거 — 낙인이 비워진 뒤에도 "내가 떠민 사람"이 남아야 한다.
       rc.emit(augmentDataSet(forcedKey(rc.state, holder), target));
+      /*
+       * 대상이 숨은 리치 중이었다면 그 은닉을 내린다(`riichiEligibleOnDiscard` 참고).
+       *
+       * 강제 리치는 발동 연출(전원 공개)과 공탁으로 이미 모두에게 드러난 리치다 —
+       * `riichi.hidden`을 남겨 두면 화면 두 곳이 서로 다른 말을 한다(낙인은 터졌는데
+       * 리치 표시는 없다; Rule #4는 정보가 **맞을** 때만 산다 — docs/10 §7.4). 코어
+       * 리듀서는 riichi:true 버림을 새 선언으로 기록하므로 이 리치는 이제 표준 리치다.
+       * 손을 바꾸는 증강의 해제(`stealthBreak.ts`)가 표식을 함께 내리는 것과 같은 이유 —
+       * 남기면 공탁까지 낸 리치가 은닉된다.
+       */
+      if (riichiHidden(rc.rules, rc.state, target)) {
+        rc.emit(augmentDataSet(stealthActiveKey(rc.state, target), false));
+      }
     });
 
     /*

@@ -52,6 +52,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, flagOf, publishUsesLeft, sameHandSize, scaledUses } from "../util.js";
+import { handAlteredMark } from "./handAltered.js";
 import { clearedHandMarks } from "./handMarkChannels.js";
 import { roundScopedKey } from "./roundScope.js";
 import {
@@ -301,6 +302,15 @@ export const seatSwap: AugmentDef = defineAugment({
           augmentData: {
             ...state.augmentData,
             ...clearedHandMarks(state, p.a, p.b),
+            /*
+             * 천화·지화 게이트를 닫는다 — 발동 창("내가 아직 한 장도 버리지 않은 내 순")이
+             * 천화·지화 창과 정확히 겹친다. 표식이 없으면 "상대 배패가 완성형이면 자리를
+             * 바꿔 그 손으로 지화"가 확률이 아니라 **선택**이 된다(docs/55 C-2; 통째로
+             * 바꾸기가 같은 모양으로 48,000점을 냈다 — 2026-08-22 QA aug-2 확정 2).
+             * 손이 바뀐 것은 **양쪽**이다 — 상대도 내 배패를 받았다(`handAltered.ts` 규약).
+             */
+            ...handAlteredMark(state, p.a),
+            ...handAlteredMark(state, p.b),
           },
           players: state.players.map((pl) =>
             pl.id === p.a

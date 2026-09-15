@@ -146,3 +146,127 @@ describe("깡 판정 단일 진실 계약 (docs/25 벽패/왕패/깡 #9)", () =>
     expect(offenders, "isRunQuad 사본을 둔 증강 (코어에서 import할 것)").toEqual([]);
   });
 });
+
+// ───────────── 소스 스캔 공용: 주석을 걷어낸 코드 · 호출 인자 추출 (아래 두 계약이 쓴다) ─────────────
+
+/** 블록·행 주석을 걷어낸다 — 주석에 적힌 설명이 «호출»로 잡히지 않게 */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
+/** `name(` 호출마다 괄호 안 텍스트를 돌려준다 (중첩 괄호 안전 — 여러 줄 호출도 한 덩어리) */
+function callArgs(code: string, name: string): string[] {
+  const out: string[] = [];
+  const re = new RegExp(`\\b${name}\\(`, "g");
+  for (let m = re.exec(code); m !== null; m = re.exec(code)) {
+    const start = m.index + m[0].length;
+    let depth = 1;
+    let i = start;
+    while (i < code.length && depth > 0) {
+      const ch = code[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      i++;
+    }
+    out.push(code.slice(start, i - 1));
+  }
+  return out;
+}
+
+describe("손 가공 표식 계약 (handAltered — 천화·지화 게이트, docs/55 C-2·C-3)", () => {
+  /**
+   * 손패의 실물·종류를 갈아 끼우는 리듀서는 `handAlteredMark/Key`를 남겨야 한다 —
+   * 코어의 천화·지화 게이트(`flow/helpers.ts` handAlteredByAugment)는 그 표식만 본다.
+   * 자리 바꿈·선언 간파 위조가 표식 없이 손을 바꿔, 첫 순에 «만든» 손에 지화가 붙었다
+   * (2026-09-16 QA 계획 C-2·C-3; 통째로 바꾸기가 같은 모양으로 48,000점 — aug-2 확정 2).
+   *
+   * 검사 대상: 주석을 걷어낸 코드에 `tileKindChanged(` 호출이 있거나, `moveTiles(` 호출
+   * 인자에 `handZone(`이 있는 파일. 표식이 없는 파일은 아래 두 표 중 하나에 **이유와 함께**
+   * 있어야 한다 — 표에 없는 새 파일이 잡히면 표식을 찍든지 이유를 적든지 둘 중 하나다.
+   */
+  const changesHand = (code: string): boolean =>
+    /\btileKindChanged\(/.test(code) ||
+    callArgs(code, "moveTiles").some((args) => /\bhandZone\(/.test(args));
+  const marksAltered = (code: string): boolean => /\bhandAltered(?:Mark|Key)\(/.test(code);
+
+  /** 구조상 첫 순 완성이 불가하거나, 같은 목적의 다른 게이트가 있는 것 */
+  const STRUCTURALLY_SAFE: Record<string, string> = {
+    "bluff_pretense.ts": "펑(후로)으로 완성 — CALL_MADE가 goAroundBroken·firstTurn을 내린다",
+    "cliff_bloom.ts": "깡 뒤에만(영상패 고르기·만개) — 깡이 서면 첫 바퀴가 깨진다",
+    "conjure_draw.ts":
+      "자기 순에 선언해 다음 쯔모를 바꾼다 — 버림 1장 뒤라 TILE_DRAWN이 firstTurn을 내린다",
+    "giant_god.ts": "국사 13종을 전부 버린 뒤 — 13순 뒤다",
+    "haitei_lord.ts": "해저패(패산 마지막 장) 전용",
+    "meld_dissolve.ts": "해체할 후로가 있었다 — 첫 바퀴는 이미 깨졌고 되돌아오지 않는다",
+    "north_trader.ts": "자체 게이트 — win.blockedYaku로 보유자의 tenhou·chihou를 막는다",
+    "off_by_one.ts": "리치 후 쯔모 — 리치 선언 버림 뒤라 firstTurn이 내려간다",
+    "red_five_touch.ts": "kind 불변(적도라 attrs만 각인) — 화료형이 바뀌지 않는다",
+    "void_kan.ts": "타가의 깡에 창깡(론) — 쯔모가 아니고 깡이 서 있다",
+  };
+  /**
+   * **알려진 미수정** — 첫 순에도 손을 바꿀 수 있는데 표식이 없다(C-2·C-3의 형제).
+   * 2026-09-16 묶음 A-4의 수정 범위 밖이라 표로 잡아 두고 보고한다. 고치면(표식을 찍으면)
+   * 이 표에서 **지워야** 통과한다 — 표가 낡은 채 남지 않게 아래에서 정확히 대조한다.
+   */
+  const KNOWN_GAPS: Record<string, string> = {
+    "rinshan_preview.ts": "쯔모패↔영상패 교환이 첫 순(turn.act)에도 열린다 — 깡 전제가 아니다",
+    "ura_peek.ts": "확인 뒤 같은 순에 손패↔뒷도라 표시패 교환이 열린다",
+  };
+
+  it("손패를 갈아 끼우는 파일은 handAltered 표식을 남긴다 (예외는 표로 정확히 고정)", () => {
+    const flagged = files.filter((f) => changesHand(stripComments(read(f))));
+    // 검사기 자기 검증 — 이번에 고친 두 파일과 형제들이 검사 대상에 실제로 잡힌다
+    for (const f of ["seat_swap.ts", "peek_riichi_waits.ts", "full_hand_swap.ts", "hand_swap3.ts"]) {
+      expect(flagged, `${f}가 검사 대상에서 빠졌다 — 검사 조건을 확인할 것`).toContain(f);
+    }
+    const without = flagged.filter((f) => !marksAltered(stripComments(read(f)))).sort();
+    const expected = [...Object.keys(STRUCTURALLY_SAFE), ...Object.keys(KNOWN_GAPS)].sort();
+    expect(
+      without,
+      "handAltered 없이 손을 바꾸는 파일 == 예외 표 (이유 없는 추가·낡은 항목 모두 실패)",
+    ).toEqual(expected);
+  });
+});
+
+describe("숨은 리치 인지 계약 — 전수 (docs/55 C-5)", () => {
+  /**
+   * 위 «손 교환 3종» 검사의 전수판. **타인**의 리치를 원시 `byPlayer[x].riichi`로 읽는 파일은
+   * 그 결과가 후보 목록·배너·발동 여부로 밖에 드러나므로 riichiHidden 계열
+   * (riichiHidden / riichiBlocksSwap / breakStealthRiichiEvents)을 거쳐야 한다.
+   * 리치 봉인·등 떠밀기가 3파일 검사 밖에 있어서 스텔스 리치가 "봉인이 안 선다"·
+   * "낙인이 안 터진다"로 샜다(2026-09-16).
+   *
+   * 자기 자신의 리치를 보는 것은 무해하다(본인은 이미 안다) — 식별자 이름으로 가른다.
+   */
+  const SELF = new Set(["req.player", "player", "holder", "h", "me", "winner", "ctx.holder"]);
+  const HIDDEN_AWARE = /\b(?:riichiHidden|riichiBlocksSwap|breakStealthRiichiEvents)\(/;
+  /**
+   * 예외: **화료 정산 시점**의 방총자 조회. 국이 끝나는 순간이라 은닉이 지킬 «진행 중»
+   * 정보가 없다(stealth_riichi 머리말: 은닉은 '진행 중'에만 걸린다).
+   */
+  const SETTLEMENT_READS: Record<string, string> = {
+    "open_riichi_reveal.ts": "addWinHanBonus의 info.from — 화료 정산",
+    "soul_hunt.ts": "scoring.uraWithoutRiichi의 방총자 — 론 채점",
+  };
+
+  it("타인의 리치를 읽는 파일은 riichiHidden 계열을 거친다", () => {
+    const offenders: string[] = [];
+    const settlementSeen: string[] = [];
+    for (const f of files) {
+      const code = stripComments(read(f));
+      const others = [...code.matchAll(/byPlayer\[([^\]]+)\]\??\.riichi\b/g)]
+        .map((m) => (m[1] as string).trim())
+        .filter((idx) => !SELF.has(idx));
+      if (others.length === 0) continue;
+      if (f in SETTLEMENT_READS) {
+        settlementSeen.push(f);
+        continue;
+      }
+      if (HIDDEN_AWARE.test(code)) continue;
+      offenders.push(`${f}: byPlayer[${[...new Set(others)].join(", ")}]`);
+    }
+    expect(offenders, "타인 리치를 원시 조회하면서 riichiHidden 계열이 없는 파일").toEqual([]);
+    // 예외 표가 낡지 않게 — 표의 파일은 실제로 타인 조회가 있어야 한다
+    expect(settlementSeen.sort()).toEqual(Object.keys(SETTLEMENT_READS).sort());
+  });
+});
