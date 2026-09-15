@@ -356,9 +356,10 @@ describe("대본 강의 (`SCRIPT_NOTE`)", () => {
         continue;
       }
       if (l.lock!.kind === DRAWN_TILE) {
-        // 종류가 아니라 자리로 잠근 것(리치) — 먼저 눌러야 할 버튼을 가리키고,
-        // 어느 패를 버릴지는 «해 보세요»가 말한다.
-        expect(l.todo, `${l.id}: 어느 패를 버릴지 말해 줘야 한다`).toContain("가져온 패");
+        // 종류가 아니라 자리로 잠근 것(리치) — 첫 마디는 먼저 눌러야 할 버튼을,
+        // 둘째 마디는 방금 가져온 그 한 장을 가리킨다(`hand-drawn`).
+        if (l.id === "riichi") expect(l.anchor).toContain("act-riichi");
+        else expect(l.anchor, `${l.id}: 가져온 패를 가리켜야 한다`).toContain("hand-drawn");
         continue;
       }
       expect(l.anchor, `${l.id}: 잠갔으면 어느 패인지도 가리켜야 한다`).toContain(
@@ -371,6 +372,48 @@ describe("대본 강의 (`SCRIPT_NOTE`)", () => {
     // 텐파이를 유지하는 패는 여럿이지만 그중 내 오름패를 버리면 그 국 내내 론이
     // 안 된다. 그러면 "이제 기다리세요"라고 해 놓고 영영 아무 일도 안 일어난다.
     expect(lesson("riichi").lock).toEqual({ kind: DRAWN_TILE, how: "discard" });
+    expect(lesson("riichi-pick").lock).toEqual({ kind: DRAWN_TILE, how: "discard" });
+  });
+
+  it("리치는 두 마디다 — 버튼을 누르면 가져온 패를 비추는 마디로 넘어간다", () => {
+    /*
+     * 딤 밖은 눌리지 않으므로(App.tsx `coach-block`) 리치 버튼을 비춘 채로
+     * "가져온 패를 버리세요"까지 말하면 그 패가 어두운 쪽에 잠긴다. 연금술사처럼
+     * 누를 곳마다 마디 하나다.
+     */
+    const RIICHI_MODE = ".action-bar .act-cancel";
+    const can = new Set(["riichi", "discard"]);
+    const seen = new Set(["aug-script"]);
+    // 리치 모드에 들어가면 첫 마디는 끝난다
+    expect(lesson("riichi").done?.(ctx({ optionTypes: can, seen }))).toBe(false);
+    expect(lesson("riichi").done?.(ctx({ optionTypes: can, seen, hit: onScreen(RIICHI_MODE) }))).toBe(
+      true,
+    );
+    // 둘째 마디는 리치 모드에서만 서고, 방금 가져온 패를 비춘다
+    const pick = lesson("riichi-pick");
+    expect(pick.when(ctx({ optionTypes: can, seen }))).toBe(false);
+    const inMode = ctx({
+      optionTypes: can,
+      seen: new Set([...seen, "welcome", "riichi"]),
+      hit: onScreen(RIICHI_MODE),
+    });
+    expect(pick.when(inMode)).toBe(true);
+    expect(pickUrgent(inMode)?.id).toBe("riichi-pick");
+    expect(pick.anchor).toBe(".own-hand .hand-drawn");
+    expect(pick.todo).toBeDefined();
+    // «취소»로 빠져나오거나 리치가 걸리면 끝
+    expect(pick.done?.(ctx({ optionTypes: can, seen }))).toBe(true);
+    expect(pick.done?.(ctx({ optionTypes: can, seen, riichiDeclared: true, hit: onScreen(RIICHI_MODE) }))).toBe(true);
+    expect(pick.done?.(inMode)).toBe(false);
+  });
+});
+
+describe("화면 도구는 시선이 왔다갔다하지 않는 순서다", () => {
+  it("왼쪽 아래 토글 → 오른쪽 위 📖·📘·⚙", () => {
+    // 예전 순서(📖 → 📘 → 좌하단 → ⚙)는 오른쪽 위와 왼쪽 아래를 두 번 오갔다
+    // (2026-09-15 사용자 지적). 손 옆의 것을 먼저 끝내고 오른쪽 위 셋을 한 줄로.
+    const tools = LESSONS.filter((l) => l.chapter === "화면 도구").map((l) => l.id);
+    expect(tools).toEqual(["quick-toggles", "codex", "help", "settings"]);
   });
 });
 

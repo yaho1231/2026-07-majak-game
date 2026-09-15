@@ -8283,10 +8283,68 @@ function TutorialCoach(props: {
     return () => window.clearInterval(timer);
   }, [shown, active?.id, mustClear]);
 
+  /*
+   * **밝은 구멍 밖은 눌리지 않는다** (`coach-block`, 2026-09-15 사용자 지시).
+   *
+   * 딤은 "어디를 보라"만 말했지 "다른 데는 누르지 마라"는 아니었다. 그래서 2삭을
+   * 비춰 놓고 리치를 걸라고 하는 사이에 어두운 쪽의 7통이 그대로 나가거나, 손패를
+   * 버려야 할 자리에서 액티브 증강 버튼이 눌리는 일이 생겼다 — 대본이 그 자리에서
+   * 무너지고, 시킨 대로 했다고 믿는 사람에게는 판이 고장난 것으로 보인다. 손패
+   * 잠금(`LessonLock`)은 패만 막았지 버튼·토글·이름표는 못 막았다.
+   *
+   * 그래서 딤이 뜬 동안에는 **구멍 네 변 바깥을 투명한 판 넷으로 덮어** 클릭을
+   * 먹는다. 스크림 자신은 못 쓴다 — 구멍을 그림자로 내므로 그림자 영역은 히트
+   * 테스트에 안 잡힌다. 넷으로 나누면 이음매가 번쩍인다던 문제는 **보이는 것**의
+   * 이야기라, 보이지 않는 덮개에는 해당이 없다(그림은 계속 스크림이 그린다).
+   *
+   * 구멍은 **해 보라는 강의**(`todo`)에만 연다. 읽기만 하는 강의("아래 줄이 내
+   * 손패입니다")에서는 구멍 안도 막는다 — 그 강의를 읽는 사이에 패를 버려 버리면
+   * 다음 대본 강의가 설 자리가 사라진다. 가리킬 것이 없는 강의(인사말·리치 대기·
+   * 마무리)는 딤이 없으므로 아무것도 막지 않는다 — 종전 그대로다.
+   *
+   * 드래그로 버리기는 그대로 된다: 손패에서 시작한 드래그는 포인터 좌표와 드롭존
+   * 사각형으로 판정하므로(`OwnArea`의 `dropzoneRef`) 그 위에 덮개가 있어도 상관없다.
+   * 말풍선은 이 덮개보다 뒤에 그려지므로(DOM 순서) 그 버튼들은 계속 눌린다.
+   *
+   * 막힌 곳을 누르면 말풍선을 한 번 흔든다(`coach-bubble-nudge`) — 왜 안 눌리는지가
+   * 화면 어디에도 없으면 고장으로 읽힌다.
+   */
+  const [nudge, setNudge] = useState(0);
+  const blocked = (): void => setNudge((n) => n + 1);
+  useEffect(() => {
+    if (nudge === 0) return;
+    const el = bubbleRef.current;
+    if (el === null) return;
+    el.classList.remove("coach-bubble-nudge");
+    // 강제 리플로우로 애니메이션을 처음부터 다시 돌린다
+    void el.offsetWidth;
+    el.classList.add("coach-bubble-nudge");
+  }, [nudge]);
+
   if (active === null || props.hidden) return null;
+
+  /** 구멍을 열어 두는가 — 해 보라는 강의만. 읽는 강의는 구멍 안까지 막는다. */
+  const holeOpen = active.todo !== undefined;
+  const blockProps = {
+    className: "coach-block",
+    "aria-hidden": true as const,
+    onPointerDown: blocked,
+  };
 
   return (
     <div className="coach-layer" role="dialog" aria-live="polite" aria-label="튜토리얼 안내">
+      {ring !== null ? (
+        holeOpen ? (
+          <>
+            <div {...blockProps} style={{ top: 0, left: 0, right: 0, height: ring.top }} />
+            <div {...blockProps} style={{ top: ring.top + ring.h, left: 0, right: 0, bottom: 0 }} />
+            <div {...blockProps} style={{ top: ring.top, left: 0, width: ring.left, height: ring.h }} />
+            <div {...blockProps} style={{ top: ring.top, left: ring.left + ring.w, right: 0, height: ring.h }} />
+          </>
+        ) : (
+          <div {...blockProps} style={{ inset: 0 }} />
+        )
+      ) : null}
       {/*
        * 딤 — 판 전체를 어둡게 덮되, **가리키는 것 한 자리만 뚫어 둔다**.
        *

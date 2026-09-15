@@ -181,6 +181,23 @@ describe("튜토리얼 판 — 배우기 좋게 고정돼 있다", () => {
     ]);
   });
 
+  it("봇 셋의 증강도 고정이다 — 초읽기·무장해제 같은 것이 첫 판에 나오지 않는다", async () => {
+    /*
+     * 봇 드래프트가 무작위면 «초읽기»(모두의 결정에 5초 제한)가 "시간 제한이 없습니다"
+     * 라는 대본을 정면으로 깬다(2026-09-15 사용자 지시). 카드를 한 장씩만 세워
+     * 봇이 그것을 고르게 한다(`RoomManager.TUTORIAL_BOT_DRAFT`).
+     */
+    const h = await newHarness();
+    const sock = await connect(h, true);
+    const view = await pickDraftAndPlay(sock);
+    const bots = view.players.filter((p: any) => p.id !== view.playerId);
+    expect(bots.map((p: any) => p.augments).sort()).toEqual([
+      ["die_hard"],
+      ["take_back"],
+      ["tile_dyeing"],
+    ]);
+  });
+
   it("증강은 연금술사 **한 개**뿐이다 — 지급분이 따로 붙지 않는다", async () => {
     /*
      * 예전에는 배패 전에 연금술사를 지급해 두고 드래프트를 무작위로 열어, 첫 국부터
