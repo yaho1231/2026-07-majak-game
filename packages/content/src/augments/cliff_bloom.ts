@@ -70,19 +70,32 @@ import {
   flagOf,
   publishUsesLeft,
   roundViewKey,
-  scaledUses,
   widenPeek,
 } from "../util.js";
 import { handKindsOf, hasNeighbor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import {
+  cliffBloomBloomedKey,
+  cliffBloomBloomsUsedKey,
+  cliffBloomBudget,
+  cliffBloomClaims,
+  cliffBloomKansKey,
+  cliffBloomSetsToBuild,
+  yieldsDrawTo,
+} from "./drawMutators.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "cliff_bloom";
 const ACTION_PICK = "bloom_pick";
 const BLOOM_PICK_TAKEN = "BloomPickTaken";
 
-/** 만개까지 필요한 깡 횟수 */
-const KANS_TO_BLOOM = 2;
+/*
+ * 만개의 트리거 상수(`CLIFF_BLOOM_KANS_TO_BLOOM` = 깡 2회)·상태 키는 `drawMutators.ts`에
+ * 있다(2026-09-16). 같은 영상 쯔모에서 kind를 바꾸는 소환·한 끗 차이가 «이번 쯔모에
+ * 만개가 일어나는가»를 같은 키로 읽고 물러나야 하는데, 그 파일이 이쪽을 import하면
+ * 순환이라 키를 그쪽에 둔다(소환·거신병의 예약 키와 같은 규약 — "키가 한 곳에만 있게").
+ * 아래 별칭은 이 파일 안의 이름을 지키기 위한 것이다.
+ */
 /**
  * **게임당 만개 횟수** (동풍전 1 · 반장전 2 — `scaledUses`, 반장전 QA 2026-08-25).
  *
@@ -95,9 +108,9 @@ const KANS_TO_BLOOM = 2;
  * 두 모드에서 같아진다. 깡마다 영상패를 고르는 상시 편의는 그대로 둔다 — 그쪽은
  * 국당 밀도가 모드와 무관하고, 이 증강의 하이라이트도 아니다.
  */
-const bloomBudget = (state: GameState): number => scaledUses(state, 1);
+const bloomBudget = cliffBloomBudget;
 /** 이 게임에 이미 만개한 횟수 (매치 스코프 — 국이 바뀌어도 남는다) */
-const bloomsUsedKey = (h: PlayerId): string => `${ID}:blooms:${h}`;
+const bloomsUsedKey = cliffBloomBloomsUsedKey;
 /**
  * 만개 화료의 **영상개화를 몇 판으로 취급하는가** (2026-07-26 사용자 확정).
  *
@@ -122,11 +135,9 @@ const BLOOM_RINSHAN_HAN = 4;
 const STANDARD_RINSHAN_HAN = 1;
 
 /** 이번 국에 이 보유자가 선언한 깡 수 */
-const kanCountKey = (state: GameState, h: PlayerId): string =>
-  roundScopedKey(ID, "kans", state, h);
+const kanCountKey = cliffBloomKansKey;
 /** 이번 국에 이미 만개했는가 */
-const bloomedKey = (state: GameState, h: PlayerId): string =>
-  roundScopedKey(ID, "bloomed", state, h);
+const bloomedKey = cliffBloomBloomedKey;
 /**
  * 지금 고를 수 있는 영상패의 대상 쯔모패 (tileId + 1, 0 = 없음).
  * "지금 쯔모패가 그 영상패일 때만 유효"하므로 플래그가 스스로 만료된다 —
@@ -306,16 +317,14 @@ function bloomChanges(
   holder: PlayerId,
 ): TileKindChangedPayload["changes"] | null {
   const concealed = handIdsOf(state, holder);
-  // ⚠ 멘쯔 수를 4로 하드코딩하면 안 된다 — 진짜 용(scoring.totalSets=5, 손패 16/17장)
-  //    보유자는 `sets*3+2`가 영원히 안 맞아 만개가 **한 번도 일어나지 않았다**(60차 수정).
-  //    화료형의 단일 진실은 scoringOptionsOf다.
+  // 다시 짤 멘쯔 수 — 완성형은 머리 2장 + 멘쯔 3장씩이라 장수가 맞지 않으면 손대지
+  // 않는다(방어). 진짜 용(totalSets=5) 처리와 이 방어의 단일 진실은 `cliffBloomSetsToBuild`
+  // (drawMutators.ts) — 소환·한 끗 차이가 «이번 쯔모에 만개가 일어나는가»를 같은 판정으로
+  // 읽어야 순서 무관이 지켜진다.
+  const sets = cliffBloomSetsToBuild(state, rules, holder);
+  if (sets === null) return null;
   const opts = scoringOptionsOf(state, rules, holder);
-  const totalSets = opts.totalSets ?? 4;
   const melds = meldCountOf(state, holder);
-  const sets = totalSets - melds;
-  if (sets < 0) return null;
-  // 완성형은 머리 2장 + 멘쯔 3장씩 — 장수가 맞지 않으면 손대지 않는다(방어)
-  if (concealed.length !== sets * 3 + 2) return null;
 
   const hand = concealed.map((id) => kindOf(state, id));
   // 치또이쯔는 후보로 두지 않는다 — 만개는 깡 두 번이 조건이라 이 시점의 손은
@@ -500,14 +509,20 @@ export const cliffBloom: AugmentDef = defineAugment({
       const p = event.payload as TileDrawnPayload;
       if (p.player !== holder || !p.rinshan) return;
       const state = rc.state;
-      const kans = counterOf(state, kanCountKey(state, holder));
 
-      const bloomsLeft =
-        bloomBudget(state) - counterOf(state, bloomsUsedKey(holder));
+      /*
+       * «이번 영상 쯔모에 만개가 일어나는가»(깡 2회·예산·미만개·손 크기)는 공용 술어
+       * `cliffBloomClaims`로 읽는다 — 같은 쯔모에서 kind를 바꾸는 소환·한 끗 차이가
+       * 똑같은 술어를 읽고 물러나므로, 여기서 다른 조건을 보면 두 판정이 어긋나 다시
+       * 픽 순서 의존이 된다(2026-09-16 docs/55 C-1).
+       *
+       * ⚠ 더 센 쯔모 변형이 이 한 장을 가져가면 만개하지 않고 예산도 태우지 않는다
+       * (순수 양보 — 지금 우선순위에서 만개보다 센 영상패 카드는 없지만, 규약은 다섯
+       * 카드가 똑같이 지킨다). 우선순위와 근거는 `drawMutators.ts` 머리말.
+       */
       if (
-        kans >= KANS_TO_BLOOM &&
-        bloomsLeft > 0 &&
-        !flagOf(state, bloomedKey(state, holder))
+        cliffBloomClaims(state, rc.rules, holder, true) &&
+        !yieldsDrawTo(ID, state, rc.rules, holder, p.tileId, true)
       ) {
         const changes = bloomChanges(state, rc.rules, holder);
         if (changes !== null) {

@@ -17,40 +17,25 @@
  * 그 kind로 갈아 끼운다(tileKindChanged, conjured=true). 화료는 표준 쯔모(win)가
  * 그대로 처리한다 — 커스텀 화료 처리는 하지 않는다(함정 6).
  * 이미 진짜 오름패를 뽑았으면 아무것도 하지 않는다.
+ *
+ * «어느 kind로 미는가»의 술어(`offByOneTarget`)는 `drawMutators.ts`에 있다 — 죽은 대기
+ * (남은 장수 0)에 밀지 않는 규칙(2026-08-20 QA 리치 확정 3)도 거기 적혀 있다. 같은
+ * 쯔모에서 kind를 바꾸는 다른 카드(해저의 지배자·거신병·만개·소환)가 그 술어를 읽고
+ * 물러날지 정하므로, 이 파일이 따로 계산하면 두 판정이 어긋날 수 있다(단일 진실).
  */
 
 import {
-  DEAD_WALL,
   TILE_DRAWN,
-  WALL,
   augmentDataSet,
   defineAugment,
-  isNumberSuit,
-  kindOf,
   kindKey,
-  meldCountOf,
-  sameKind,
-  scoringOptionsOf,
   tileKindChanged,
-  winHandIdsOf,
-  winningKinds,
 } from "@majak/core";
-import type { AugmentDef, GameState, TileKind, TileDrawnPayload } from "@majak/core";
-import { copiesLeftUndrawn, roundViewKey } from "../util.js";
-import { rankAdjacent, wrapRanksOn } from "./wrapRanks.js";
+import type { AugmentDef, TileDrawnPayload } from "@majak/core";
+import { roundViewKey } from "../util.js";
+import { offByOneTarget, yieldsDrawTo } from "./drawMutators.js";
 
 const ID = "off_by_one";
-
-/*
- * 마작의 물리 법칙은 한 종류 4장이다. 밀어서 만든 패는 그 종류를 한 장 늘리므로,
- * 오름패 4장이 이미 전부 남의 손·바닥·후로로 나와 버린 **죽은 대기**에 밀어 넣으면
- * 그 종류가 게임 안에 5장 존재하게 된다 — 남은 장수를 세는 쪽
- * (`botHelpers.waitTilesLeft` · 대기 잔량 UI)이 0이라고 말하는데 화료가 나는
- * 상태다(2026-08-20 QA 리치 확정 3). 그래서 밀기 전에 남은 장수를 센다.
- *
- * 세는 자(`copiesLeftUndrawn`)는 `../util.js`에 있다 — 같은 검사가 필요한 자리가
- * 둘이 되면서(선언 간파의 위조) 한 벌로 합쳤다.
- */
 
 export const offByOne: AugmentDef = defineAugment({
   id: ID,
@@ -69,35 +54,21 @@ export const offByOne: AugmentDef = defineAugment({
       const p = event.payload as TileDrawnPayload;
       if (p.player !== holder) return;
       const state = rc.state;
-      if (state.round.byPlayer[holder]?.riichi == null) return; // 리치 필수
 
-      const drawn = kindOf(state, p.tileId);
-      if (!isNumberSuit(drawn)) return;
-
-      // 대기는 쯔모패를 뺀 13장으로 계산한다
-      const hand13 = winHandIdsOf(state, engine.rules, holder)
-        .filter((id) => id !== p.tileId)
-        .map((id) => kindOf(state, id));
-      const waits = winningKinds(
-        hand13,
-        meldCountOf(state, holder),
-        undefined,
-        scoringOptionsOf(state, engine.rules, holder),
-      );
-      if (waits.length === 0) return;
-      // 이미 진짜 오름패면 손대지 않는다
-      if (waits.some((w) => sameKind(w, drawn))) return;
-
-      // 순환이 켜져 있으면 9-1도 "한 칸 옆"이다
-      const wrap = wrapRanksOn(state, engine.rules, holder);
-      const target = waits.find(
-        (w) =>
-          w.suit === drawn.suit &&
-          rankAdjacent(w.rank, drawn.rank, wrap) &&
-          // 죽은 대기(남은 장수 0)에는 밀지 않는다 — 5번째 장이 생긴다
-          copiesLeftUndrawn(state, w) > 0,
-      );
-      if (target === undefined) return;
+      const target = offByOneTarget(state, engine.rules, holder, p.tileId);
+      if (target === null) return;
+      /*
+       * ⚠ **더 센 쯔모 변형에 이 한 장을 양보한다.**
+       *
+       * 같은 좌석이 해저의 지배자·거신병·만개를 함께 들면 그쪽도 같은 tileId에
+       * `tileKindChanged`를 쏴서, 나중에 설치된 쪽(= 드래프트 픽 순서)이 이기고 진 쪽의
+       * 효과는 조용히 죽었다(2026-09-16 docs/55 C-1 — 소환과의 경합에서 확인). 우선순위와
+       * 근거는 `drawMutators.ts` 한곳에 모여 있다. 이 카드는 상시라 물러나도 자원이 타지
+       * 않고, 이기는 쪽은 어차피 이 쯔모로 화료(또는 그 이상)를 준다.
+       */
+      if (yieldsDrawTo(ID, state, engine.rules, holder, p.tileId, p.rinshan === true)) {
+        return;
+      }
 
       rc.emit(
         tileKindChanged([
