@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  augmentDataSet,
   createStandardGameFromState,
   handIdsOf,
   installAugment,
@@ -71,6 +72,36 @@ function findTile(game: ReturnType<typeof setup>, key: string): TileId | undefin
 function handKeys(game: ReturnType<typeof setup>): string[] {
   const st = game.engine.state;
   return handIdsOf(st, "p0").map((id) => kindKey(kindOf(st, id)));
+}
+
+/**
+ * 손패는 그대로 둔 채 **이벤트 하나만** 흘려 반응(미리보기 채널)을 돌리는 테스트 전용
+ * 액션 — 버림으로 한 순을 흘리면 자기 순(turn.act)이 끝나 그 뒤 분열을 발동할 수 없다.
+ */
+function tick(game: ReturnType<typeof setup>): void {
+  if (!game.engine.actions.has("__test_tick")) {
+    game.engine.actions.register({
+      type: "__test_tick",
+      validate: () => null,
+      toEvents: () => [augmentDataSet("__test:tick", 1)],
+    });
+  }
+  const res = game.engine.submit({ player: "p0", type: "__test_tick", payload: {} });
+  if (!res.ok) throw new Error(`tick failed: ${res.reason}`);
+}
+
+/** 손 123m 456m 789m 中中 + 5s — 유일한 머리가 中中이다 (#467의 장면) */
+function pairScene(): GameState {
+  return withAug(
+    craft({
+      hands: { p0: "123m456m789m77z5s", p1: "*", p2: "*", p3: "*" },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    }),
+    "p0",
+    ["tile_split"],
+  );
 }
 
 describe("분열 (tile_split)", () => {
@@ -171,6 +202,68 @@ describe("분열 (tile_split)", () => {
     expect(after).toContain(K.p5);
   });
 
+  /*
+   * 재료 고르기 — **이미 완성된 몸통·머리는 태우지 않는다** (2026-09-04 사용자 보고, #467).
+   *
+   * 예전에는 이어짐만 봤다. 손패 123m456m789m + 中中 + 5s 에서 中은 서로 이어지는
+   * 짝이라 이어짐 점수가 낮고 자패라 순위가 더 낮아, **유일한 머리인 中中이** 재료로
+   * 타 버렸다. 이제는 후보마다 쪼갠 뒤의 손을 그대로 만들어 샹텐과 수용 폭을 재므로
+   * 머리를 깨는 선택은 뽑히지 않는다 — 몸통 끝의 1만이 재료가 된다.
+   *
+   * #467이 #469에 지워지면서 이 테스트도 함께 사라져 게이트가 조용히 통과했다
+   * (docs/55 M-2). 2026-09-16 복구.
+   */
+  it("유일한 머리(자패 또이쯔)를 재료로 태우지 않는다", () => {
+    const game = setup(pairScene());
+    const target = findTile(game, kindKey({ suit: "sou", rank: 5 }))!;
+    const r = game.engine.submit({
+      player: "p0",
+      type: "split_tile",
+      payload: { tileId: target, a: 2 },
+    });
+    expect(r.ok).toBe(true);
+
+    const after = handKeys(game);
+    const chun = kindKey({ suit: "dragon", rank: 3 });
+    expect(after.filter((k) => k === chun).length).toBe(2); // 머리는 그대로다
+    expect(after).toContain(kindKey({ suit: "sou", rank: 2 }));
+    expect(after).toContain(kindKey({ suit: "sou", rank: 3 }));
+  });
+
+  /*
+   * **미리보기 채널 == 실제로 타는 패.** #490의 «대상 → 재료» 표는 옛 고립도 함수 위에
+   * 얹혀 있었다. 재료 선정을 «결과 손 샹텐»으로 바꾸면서(#467 재적용) 표도 같은 함수를
+   * 봐야 한다 — 한쪽만 바뀌면 화면이 中을 짚고 실제로는 1만이 타는(또는 그 반대) 거짓말이
+   * 된다. 中中 머리 장면이라 옛 함수(中)와 새 함수(1만)의 답이 다르므로, 어느 한쪽만
+   * 되돌려도 이 테스트가 잡는다.
+   */
+  it("미리보기 표가 짚은 그 패가 실제로 재료가 된다 — 계산은 한 벌이다", () => {
+    const game = setup(pairScene());
+    tick(game); // 채널은 이벤트가 한 번 돌아야 실린다 — 손패는 그대로 둔다
+
+    const st = game.engine.state;
+    const target = findTile(game, kindKey({ suit: "sou", rank: 5 }))!;
+    const table = st.augmentData["view:p0:tile_split:material#round"] as
+      | Record<string, TileId>
+      | undefined;
+    expect(table, "재료 미리보기 채널이 비어 있다").toBeDefined();
+    const promised = table![String(target)];
+    expect(promised, "5삭을 쪼갤 때의 재료가 표에 없다").toBeDefined();
+    // 새 규칙: 유일한 머리 中中이 아니라 몸통 끝 패가 재료다
+    expect(kindOf(st, promised!).suit).not.toBe("dragon");
+
+    expect(
+      game.engine.submit({ player: "p0", type: "split_tile", payload: { tileId: target, a: 2 } }).ok,
+    ).toBe(true);
+
+    // 짚어 준 바로 그 패가 나머지 조각(3삭)이 됐고, 中中은 두 장 그대로다
+    const after = game.engine.state;
+    expect(kindKey(kindOf(after, promised!))).toBe(kindKey({ suit: "sou", rank: 3 }));
+    expect(after.tiles[promised!]?.attrs.conjured).toBe(true);
+    const chun = kindKey({ suit: "dragon", rank: 3 });
+    expect(handKeys(game).filter((k) => k === chun).length).toBe(2);
+  });
+
   it("합이 맞지 않는 분할은 거부된다", () => {
     const game = setup(scene());
     const target = findTile(game, K.p9)!;
@@ -219,9 +312,9 @@ describe("분열 (tile_split)", () => {
    */
   it("발동 전에 «쪼갤 패 → 사라질 재료» 표를 보유자 채널로 알려 준다", () => {
     const game = setup(scene());
-    // 채널은 이벤트가 한 번 돌아야 실린다 — 고립된 자패 한 장을 버려 한 순을 흘린다.
-    const z = findTile(game, K.e)!;
-    expect(game.engine.submit({ player: "p0", type: "discard", payload: { tileId: z } }).ok).toBe(true);
+    // 채널은 이벤트가 한 번 돌아야 실린다. 표는 **자기 순(turn.act)에만** 실리므로
+    // (버튼이 뜨는 자리가 거기뿐이다) 버림으로 순을 넘기지 않고 이벤트 하나만 흘린다.
+    tick(game);
 
     const st = game.engine.state;
     const table = st.augmentData["view:p0:tile_split:material#round"] as
@@ -232,10 +325,10 @@ describe("분열 (tile_split)", () => {
     const target = findTile(game, K.p9)!;
     const promised = table![String(target)];
     expect(promised, "9통을 쪼갤 때의 재료가 표에 없다").toBeDefined();
-    // 재료는 쪼갤 대상 자신이 아니고, 손에 실제로 있는 «잡패»(여기서는 고립된 자패)다
+    // 재료는 쪼갤 대상 자신이 아니고, 손에 실제로 있는 «잡패»(여기서는 고립된 자패 1z·5z 중 하나)다
     expect(promised).not.toBe(target);
     expect(handIdsOf(st, "p0")).toContain(promised);
-    expect(kindOf(st, promised!).suit).toBe("dragon");
+    expect(["wind", "dragon"]).toContain(kindOf(st, promised!).suit);
 
     // 표는 **쪼갤 수 있는 패마다** 한 줄이다 (재료가 대상에 따라 달라질 수 있으므로)
     for (const id of handIdsOf(st, "p0")) {

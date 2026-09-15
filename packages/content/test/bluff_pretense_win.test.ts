@@ -91,4 +91,40 @@ describe("허장성세 — 퐁이 손을 끝냈을 때", () => {
     expect((prompt?.options as ActionOption[]).some((o) => o.type === "win")).toBe(false);
     expect(game.engine.state.round.lastDrawnTile).toBeNull();
   });
+
+  /*
+   * **완성된 몸통은 재료가 되지 않는다** (2026-09-04 사용자 보고, #467 재적용 2026-09-16).
+   *
+   * 예전 재료 선정은 «이웃이 가장 적은 패»를 골랐다 — 손패 123m 456m 99p 88s 55s + 中 에서
+   * 몸통 끝의 1만과 각 또이쯔는 이어짐 점수가 같고(2), 동점이면 손패 앞쪽이 그냥 뽑혀
+   * **완성 몸통 123m의 1만이** 재료로 타 버렸다. 이제는 후보마다 "펑을 한 뒤의 손"을
+   * 그대로 만들어 샹텐을 재므로(`spareTile.pickSpareTiles`), 몸통을 깨는 1만(1샹텐)이
+   * 아니라 또이쯔 하나(텐파이)가 재료가 된다.
+   */
+  it("완성된 몸통(123m)은 재료가 되지 않는다 — 펑 뒤의 손이 좋아지는 잡패가 탄다", () => {
+    const base = craft({
+      hands: { p0: "123m456m99p88s55s7z", p1: "*", p2: "*", p3: "*" },
+      phase: "reaction",
+      turnSeat: 1,
+      lastDiscard: { player: "p1", spec: "7z" },
+    });
+    const game = createStandardGameFromState(withAug(base, "p0", ["bluff_pretense"]));
+    installAugment(game.engine, bluffPretense, "p0", { yaku: game.yaku });
+    const chun = handIdsOf(game.engine.state, "p0").find(
+      (id) => kindKey(kindOf(game.engine.state, id)) === CHUN,
+    )!;
+    const r = game.engine.submit({ player: "p0", type: "bluff_pon", payload: { tileId: chun } });
+    expect(r.ok).toBe(true);
+
+    const st = game.engine.state;
+    const keys = handIdsOf(st, "p0").map((id) => kindKey(kindOf(st, id)));
+    // 두 완성 몸통은 한 장도 빠지지 않았다
+    for (const rank of [1, 2, 3, 4, 5, 6]) {
+      expect(keys.filter((k) => k === kindKey({ suit: "man", rank })).length).toBe(1);
+    }
+    // 재료는 또이쯔 하나(9p·8s·5s 중 하나)에서 나왔다 — 中 커쯔가 섰다
+    const melds = st.round.byPlayer["p0"]?.melds ?? [];
+    expect(melds.length).toBe(1);
+    expect(melds[0]?.tileIds.every((id) => kindKey(kindOf(st, id)) === CHUN)).toBe(true);
+  });
 });

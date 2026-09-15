@@ -6,8 +6,9 @@
  * 다시 태어난다.
  *
  * 구현: 허장성세(`bluff_pretense`)의 생성 기법을 그대로 쓴다. **엔진은 실물 없는 새 tileId를
- * 만들 수 없으므로**, 쪼갠 두 번째 조각은 손패에서 **가장 고립된 잡패 1장**을 재료로 삼아
- * 그 자리에 물질화한다(`tileKindChanged`, conjured). 결과적으로 손패 장수는 그대로다 —
+ * 만들 수 없으므로**, 쪼갠 두 번째 조각은 손패의 **잡패 1장**(쪼갠 뒤의 손이 가장 좋아지는
+ * 장 — `spareTile.ts`)을 재료로 삼아 그 자리에 물질화한다(`tileKindChanged`, conjured).
+ * 결과적으로 손패 장수는 그대로다 —
  * 원안의 "직후 1장 버림"은 재료 소모로 대체되어 필요 없다(손패 불변식 보존).
  *
  * - 대상: 수패(만·통·삭) 중 **랭크 2 이상**(1은 두 양수로 쪼갤 수 없다).
@@ -23,7 +24,9 @@ import {
   isNumberSuit,
   kindKey,
   kindOf,
+  meldCountOf,
   playerAtSeat,
+  scoringOptionsOf,
   tileKindChanged,
 } from "@majak/core";
 import type {
@@ -31,14 +34,16 @@ import type {
   AugmentDef,
   GameState,
   PlayerId,
+  RuleRegistry,
   TileId,
+  TileKind,
 } from "@majak/core";
 import { flagOf, publishUsesLeft, roundViewKey } from "../util.js";
-import { isPreciousMaterial } from "./bluff_pretense.js";
 import { plan } from "./botPlan.js";
-import { handIdsOfView, handKindsOf, isolatedIndex, shantenIfChanged } from "./botHelpers.js";
+import { handIdsOfView, handKindsOf, shantenIfChanged } from "./botHelpers.js";
 import { roundScopedKey } from "./roundScope.js";
 import { handAlteredKey } from "./handAltered.js";
+import { pickSpareTile, hasSpareTile } from "./spareTile.js";
 
 const ID = "tile_split";
 const ACTION = "split_tile";
@@ -53,45 +58,61 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
 const inRiichi = (state: GameState, h: PlayerId): boolean =>
   state.round.byPlayer[h]?.riichi != null;
 
+/** 쪼갤 수 있는 분할 a 목록 — a + b = r, 1 ≤ a ≤ b (중복을 막으려 a ≤ r/2만) */
+function splitsOf(rank: number): number[] {
+  const out: number[] = [];
+  for (let a = 1; a * 2 <= rank; a++) out.push(a);
+  return out;
+}
+
 /**
- * 재료로 쓸 잡패 하나 — 가장 고립된 패(주변에 이어지는 손패가 가장 적은 패).
- * 쪼갤 대상(targetId)은 제외한다. 결정적이다.
+ * 재료로 쓸 잡패 하나 — **쪼갠 뒤의 손이 가장 좋아지는 장**을 고른다.
  *
- * 판정 규칙은 `botHelpers.isolatedIndex` **한 곳**에 있다 — 예전에는 같은 계산을 여기에
- * 한 벌 더 적어 두었는데, 봇이 "쪼개면 손이 어떻게 되는가"를 셀 때 쓰는 쪽만 고치면
- * 두 벌이 조용히 갈라진다. 순위는 ① 손패에 이어지는 정도 ② 자패 → 노두패 → 그 밖의 수패
- * ③ 손패 순서 앞쪽이다.
+ * 판정은 `spareTile.pickSpareTiles` 한 곳에 있다. 예전에는 "이웃이 가장 적은 패"만
+ * 봤는데(`botHelpers.isolatedIndex`), 그 계산은 손을 모양으로 읽지 않아 **이미 완성된
+ * 몸통·머리를 재료로 태우는** 일이 있었다 — 123m 456m 789m 中中 5s 에서 유일한 머리
+ * 中中이 탔다(2026-09-04 사용자 보고, #467). 이제는 후보마다 "쪼갠 뒤의 손"(대상 → a,
+ * 재료 → b)을 그대로 만들어 샹텐을 재고 가장 낮은 것을 고른다 — 몸통을 깨는 선택은
+ * 그 자리에서 샹텐이 올라가므로 뽑히지 않는다. 동점이면 수용 폭 → 예전 고립도 순서다.
+ *
+ * **재료는 대상마다 하나다 — «어떻게 쪼갤지(a)»에 따라 달라지지 않는다.** 화면은
+ * 대상을 고르기 전에 «대상 → 재료» 표(`materialPreview`)를 짚고 그 뒤에 a를 고르므로,
+ * a마다 재료가 달라지면 짚어 준 패와 실제로 타는 패가 갈린다(#490의 미리보기 계약).
+ * 그래서 후보는 가능한 모든 분할(a)의 결과 손 중 **가장 좋은 갈래**로 평가한다
+ * (`resultVariants`) — 어떤 a를 고르든 재료가 같고, 갈래 중 최선은 그 재료로 이룰 수
+ * 있는 손이다.
+ *
+ * 도라·적도라는 여전히 마지막에 태운다(`isPreciousMaterial`, 2026-08-20 QA text 확정 14).
+ * 조커(백)는 태우면 샹텐이 올라가므로 이 계산이 알아서 남긴다.
  */
 function pickMaterial(
   state: GameState,
+  rules: RuleRegistry | undefined,
   holder: PlayerId,
   targetId: TileId,
 ): TileId | undefined {
-  const all = handIdsOf(state, holder);
-  if (all.length <= 1) return undefined;
-  /*
-   * 도라·적도라는 '잡패'가 아니다 — 고립도만 보면 그 국의 도라이자 적도라인 외톨이
-   * 패가 1순위 재료로 뽑혀 도라 1판 + 적도라 1판이 한 번에 증발했다
-   * (2026-08-20 QA text 확정 14). 판정은 허장성세와 같은 함수 하나를 쓴다.
-   * 쪼갤 대상은 후보에서 빠지지만 이웃 계산에는 남아 있어야 하므로 배열에 유지한다.
-   * 태울 것이 도라뿐이면 그때만 도라가 재료가 된다(발동 자체가 막히지 않도록).
-   */
-  const spare = all.filter(
-    (id) => id === targetId || !isPreciousMaterial(state, id),
-  );
-  const hand = spare.length > 1 ? spare : all;
-  const targetIdx = hand.indexOf(targetId);
-  const idx = isolatedIndex(
-    hand.map((id) => kindOf(state, id)),
-    targetIdx,
-  );
-  return idx < 0 ? undefined : hand[idx];
+  const target = kindOf(state, targetId);
+  const ids = handIdsOf(state, holder);
+  if (ids.length <= 1) return undefined;
+  const splits = splitsOf(target.rank);
+  return pickSpareTile(state, rules, holder, {
+    usable: (id) => id !== targetId,
+    ignoreForIsolation: targetId,
+    resultVariants: (picked): TileKind[][] =>
+      splits.map((a) =>
+        ids.map((id): TileKind => {
+          if (id === targetId) return { suit: target.suit, rank: a };
+          if (picked.includes(id)) return { suit: target.suit, rank: target.rank - a };
+          return kindOf(state, id);
+        }),
+      ),
+  });
 }
 
 /**
  * **쪼갤 패마다, 그때 재료로 사라지는 패** — 발동 버튼의 미리보기 재료.
  *
- * 화면이 "가장 고립된 잡패 1장이 사라진다"고만 말하고 **어느 패인지는 말하지 않아서**,
+ * 화면이 "잡패 1장이 사라진다"고만 말하고 **어느 패인지는 말하지 않아서**,
  * 누르기 전에는 무엇을 잃는지 알 수 없었다(2026-09-07 사용자 요청). 재료 선택에는
  * 무작위가 하나도 없으므로(`pickMaterial`) 미리 보여 주는 것이 정보 누설이 아니다 —
  * 이미 결정돼 있는 것을 말해 줄 뿐이다.
@@ -99,20 +120,47 @@ function pickMaterial(
  * 재료는 **쪼갤 대상에 따라 달라질 수 있다**(대상 자신은 후보에서 빠진다). 그래서 값 하나가
  * 아니라 «대상 → 재료» 표를 싣는다. 화면은 버튼 위에서 표의 값 전부를, 대상을 고른
  * 뒤에는 그 하나만 짚는다. 계산은 발동 경로와 **같은 `pickMaterial` 하나**를 쓴다.
+ *
+ * 순위 계산(샹텐·수용 폭)은 값이 싸지 않고(쪼갤 패 × 재료 후보 × 분할 갈래만큼
+ * 샹텐을 센다 — 손이 바뀔 때마다 수 ms) 이 반응은 **매 이벤트**마다 돈다. 그래서
+ * ① **자기 순(turn.act)에만** 센다 — 발동 버튼이 뜨는 자리가 거기뿐이라 남의 순의 값은
+ *    아무도 읽지 않는다(삼원의 의지는 «두 커쯔» 조건이 이미 드물어 순 조건 없이 둔다).
+ * ② 답이 달라질 수 있는 재료(손패·후로 수·도라·채점 옵션)를 서명으로 묶어, 같으면
+ *    지난 표를 그대로 돌려준다(`memo`) — 한 순에 수십 번 오는 augmentData 이벤트마다
+ *    손 전체를 다시 세지 않는다.
  */
+interface PreviewMemo {
+  sig: string;
+  table: Record<string, TileId> | null;
+}
+
 function materialPreview(
   state: GameState,
+  rules: RuleRegistry,
   holder: PlayerId,
+  memo: PreviewMemo,
 ): Record<string, TileId> | null {
   if (!hasUsesLeft(state, holder)) return null;
   if (inRiichi(state, holder)) return null;
+  if (state.round.phase !== "turn.act") return null;
+  if (playerAtSeat(state, state.round.turnSeat).id !== holder) return null;
+  const ids = handIdsOf(state, holder);
+  const red = (id: TileId): string => (state.tiles[id]?.attrs.red === true ? "!" : "");
+  const sig =
+    ids.map((id) => `${id}:${kindKey(kindOf(state, id))}${red(id)}`).join(",") +
+    `|m${meldCountOf(state, holder)}` +
+    `|d${state.round.doraIndicators.map((t) => kindKey(kindOf(state, t))).join(",")}` +
+    `|o${JSON.stringify(scoringOptionsOf(state, rules, holder))}`;
+  if (memo.sig === sig) return memo.table;
   const out: Record<string, TileId> = {};
-  for (const id of handIdsOf(state, holder)) {
+  for (const id of ids) {
     if (!splittable(state, id)) continue;
-    const material = pickMaterial(state, holder, id);
+    const material = pickMaterial(state, rules, holder, id);
     if (material !== undefined) out[String(id)] = material;
   }
-  return Object.keys(out).length > 0 ? out : null;
+  memo.sig = sig;
+  memo.table = Object.keys(out).length > 0 ? out : null;
+  return memo.table;
 }
 
 /** 쪼갤 수 있는 손패인가 — 수패이면서 랭크 2 이상 */
@@ -123,7 +171,7 @@ function splittable(state: GameState, id: TileId): boolean {
 
 const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
   type: ACTION,
-  validate: (req, { state }) => {
+  validate: (req, { state, rules }) => {
     const player = state.players.find((p) => p.id === req.player);
     if (player === undefined || !player.augments.includes(ID)) {
       return "no tile_split augment";
@@ -143,16 +191,16 @@ const splitAction: ActionDef<{ tileId: TileId; a: number }> = {
     const r = kindOf(state, req.payload.tileId).rank;
     const a = req.payload.a;
     if (!Number.isInteger(a) || a < 1 || a * 2 > r) return "invalid split";
-    if (pickMaterial(state, req.player, req.payload.tileId) === undefined) {
+    if (pickMaterial(state, rules, req.player, req.payload.tileId) === undefined) {
       return "no material tile to split into";
     }
     return null;
   },
-  toEvents: (req, { state }) => {
+  toEvents: (req, { state, rules }) => {
     const target = kindOf(state, req.payload.tileId);
     const a = req.payload.a;
     const b = target.rank - a;
-    const material = pickMaterial(state, req.player, req.payload.tileId) as TileId;
+    const material = pickMaterial(state, rules, req.player, req.payload.tileId) as TileId;
     return [
       // 대상은 작은 조각(a)으로, 재료 잡패는 나머지 조각(b)으로 — 둘 다 원래 무늬·conjured
       tileKindChanged([
@@ -191,7 +239,7 @@ export const tileSplit: AugmentDef = defineAugment({
   description:
     "(매 국 1회) 자기 순에 손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통을 4통과 5통으로).",
   detail:
-    "손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통을 4통과 5통으로). 두 번째 패는 가장 고립된 잡패가 바뀌어 생긴다.\n\n2 이상의 수패만 쪼갤 수 있고 무늬는 바뀌지 않는다. 재료로 도라·적도라는 되도록 피한다. 리치 중에는 사용할 수 없다.",
+    "손패의 수패 1장을 합이 같은 두 숫자로 쪼갠다(예: 9통을 4통과 5통으로). 두 번째 패는 잡패 한 장이 바뀌어 생긴다 — 재료는 쪼갠 뒤의 손이 가장 좋아지도록 자동으로 뽑히므로 이미 완성된 몸통·머리는 건드리지 않는다.\n\n2 이상의 수패만 쪼갤 수 있고 무늬는 바뀌지 않는다. 재료로 도라·적도라는 되도록 피한다. 리치 중에는 사용할 수 없다.",
   install(ctx) {
     const { engine, holder } = ctx;
 
@@ -215,9 +263,9 @@ export const tileSplit: AugmentDef = defineAugment({
       const opts: { type: string; payload: unknown }[] = [];
       for (const id of handIdsOf(state, holder)) {
         if (!splittable(state, id)) continue;
-        if (pickMaterial(state, holder, id) === undefined) continue;
-        const r = kindOf(state, id).rank;
-        for (let a = 1; a * 2 <= r; a++) {
+        // 버튼 노출은 «재료가 있기는 한가»만 본다 — 순위 계산은 미리보기·발동에서만 돈다.
+        if (!hasSpareTile(state, holder, { usable: (m) => m !== id })) continue;
+        for (const a of splitsOf(kindOf(state, id).rank)) {
           opts.push({ type: ACTION, payload: { tileId: id, a } });
         }
       }
@@ -226,8 +274,9 @@ export const tileSplit: AugmentDef = defineAugment({
 
     // 재료 미리보기를 보유자 채널로 실어 준다 (위 materialPreview 주석).
     const materialKey = roundViewKey(holder, `${ID}:material`);
+    const memo: PreviewMemo = { sig: "", table: null };
     ctx.reaction("*", (_event, rc) => {
-      const next = materialPreview(rc.state, holder);
+      const next = materialPreview(rc.state, engine.rules, holder, memo);
       const cur = (rc.state.augmentData[materialKey] ?? null) as Record<string, TileId> | null;
       if (JSON.stringify(cur) === JSON.stringify(next)) return;
       rc.emit(augmentDataSet(materialKey, next));
@@ -241,8 +290,11 @@ export const tileSplit: AugmentDef = defineAugment({
    * 규칙이 결정한다(`pickMaterial`). 그래서 후보마다 "그 뒤의 손"을 그대로 만들어
    * 샹텐을 세고, **실제로 나아지는 후보가 있을 때만** 발동한다.
    *
-   * 봇 쪽 재료 계산은 `botHelpers.isolatedIndex`가 같은 규칙을 한 벌로 갖고 있다 —
-   * 규칙이 두 벌이 되면 어긋난다.
+   * 재료는 봇이 따로 계산하지 않는다 — 규칙이 보유자 채널에 실어 준 미리보기
+   * (`tile_split:material`, 발동과 같은 `pickMaterial`)를 그대로 읽는다. 예전에는
+   * `botHelpers.isolatedIndex`를 한 벌 더 돌렸는데, 규칙이 두 벌이면 어긋난다.
+   * 채널이 아직 없으면(뷰가 반응보다 먼저 만들어진 드문 경우) 후보 전부 중 최소
+   * 샹텐으로 근사한다 — 발동 여부의 판단 재료일 뿐, 실제 재료는 규칙이 정한다.
    */
   bot: plan({
     intent: "advance",
@@ -254,6 +306,12 @@ export const tileSplit: AugmentDef = defineAugment({
       const base = shantenIfChanged(view, holder, [], []);
       let best: { type: string; payload: unknown } | null = null;
       let bestShanten = base;
+      // 테스트의 손수 만든 뷰에는 augmentView가 없을 수 있다 — 채널이 없으면 아래 근사로 간다.
+      const preview = (view.augmentView as Record<string, unknown> | undefined)?.[`${ID}:material`];
+      const table =
+        preview !== null && typeof preview === "object"
+          ? (preview as Record<string, unknown>)
+          : null;
       for (const o of options) {
         if (o.type !== ACTION) continue;
         const p = o.payload as { tileId?: number; a?: number };
@@ -261,17 +319,22 @@ export const tileSplit: AugmentDef = defineAugment({
         const targetIdx = ids.indexOf(p.tileId);
         const target = kinds[targetIdx];
         if (targetIdx < 0 || target === undefined) continue;
-        const materialIdx = isolatedIndex(kinds, targetIdx);
-        if (materialIdx < 0) continue;
-        const after = shantenIfChanged(
-          view,
-          holder,
-          [targetIdx, materialIdx],
-          [
-            { suit: target.suit, rank: p.a },
-            { suit: target.suit, rank: target.rank - p.a },
-          ],
-        );
+        const pieces: TileKind[] = [
+          { suit: target.suit, rank: p.a },
+          { suit: target.suit, rank: target.rank - p.a },
+        ];
+        const promised = table?.[String(p.tileId)];
+        const materialIdx = typeof promised === "number" ? ids.indexOf(promised) : -1;
+        let after: number;
+        if (materialIdx >= 0) {
+          after = shantenIfChanged(view, holder, [targetIdx, materialIdx], pieces);
+        } else {
+          after = Number.POSITIVE_INFINITY;
+          for (let m = 0; m < kinds.length; m++) {
+            if (m === targetIdx) continue;
+            after = Math.min(after, shantenIfChanged(view, holder, [targetIdx, m], pieces));
+          }
+        }
         if (after < bestShanten) {
           bestShanten = after;
           best = o;

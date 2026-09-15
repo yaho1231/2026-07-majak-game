@@ -102,6 +102,7 @@ export {
   tsumoWinTileOf,
   isFuriten,
   isFuritenAsRon,
+  isSelfDiscardedWinTile,
   isRunQuad,
   ownDiscardKindsOf,
   discardedByPlayer,
