@@ -15,6 +15,11 @@
  * 바꿔치기 리듀서는 왕패의 뒷도라 표시패 자리에 손패를 그대로 밀어 넣으므로(왕패의 주인과
  * 같은 `moveTiles` 2단) 왕패 장수·표시패의 절대 인덱스가 보존되고, 교환 직후 보유자의
  * 뒷도라 뷰를 새 패로 갱신한다. 손패 장수도 1:1이라 그대로다.
+ *
+ * 쯔모패를 내보내면 들어온 표시패가 새 쯔모패다(`replaceDrawnTile`) — 안 하면
+ * `lastDrawnTile`이 왕패로 간 실물을 가리켜 쯔모 화료·깡 판정이 손에 없는 패를 본다.
+ * 리치 중에는 바꿔치기 자체가 닫힌다(#516) — 2026-09-16 운영 크래시(리치 중 쯔모패
+ * 바꿔치기 → 버릴 패 0장 → 판 사망)의 두 겹 방어. 회귀: ura_peek_riichi · ura_peek_swap_crash_0916.
  */
 
 import {
@@ -38,7 +43,13 @@ import type {
   TileId,
 } from "@majak/core";
 import type { VisibilityRule } from "@majak/core";
-import { flagOf, publishUsesLeft, roundViewKey, widenPeek } from "../util.js";
+import {
+  flagOf,
+  publishUsesLeft,
+  replaceDrawnTile,
+  roundViewKey,
+  widenPeek,
+} from "../util.js";
 import { plan } from "./botPlan.js";
 import { handAlteredMark } from "./handAltered.js";
 import { roundScopedKey } from "./roundScope.js";
@@ -209,7 +220,23 @@ export const uraPeek: AugmentDef = defineAugment({
           [p.handTileId],
           p.uraIndex,
         );
-        const next: GameState = { ...state, zones };
+        /*
+         * 쯔모패를 내보냈다면 **들어온 표시패가 새 쯔모패다** (왕패의 주인과 같은 규약,
+         * `replaceDrawnTile`이 lastDrawRinshan도 함께 내린다).
+         *
+         * 이걸 안 하면 `lastDrawnTile`이 왕패로 가 버린 실물을 계속 가리킨다. 리치 중
+         * 버림은 «쯔모패만»이라(standardActions discard validate) 손에 없는 패 =
+         * 버릴 패 0장 — 확인·바꿔치기도 이미 써서 다른 선택지가 없으면 turnPrompt가
+         * 「Turn player pN has no legal actions」로 던지고, HanchanController의 discard
+         * 폴백은 pending이 비워진 뒤라 «No pending decision»으로 판 전체가 죽었다
+         * (2026-09-15 room X25Z4Q p2 · 2026-09-06 room FERBGU p0, 둘 다 리치 중 쯔모패
+         * 바꿔치기). 리치가 아니어도 쯔모 화료·깡 판정이 손에 없는 패를 봤다.
+         */
+        const round =
+          state.round.lastDrawnTile === p.handTileId
+            ? replaceDrawnTile(state.round, p.uraTileId)
+            : state.round;
+        const next: GameState = { ...state, zones, round };
         // 바뀐 뒷도라를 보유자 뷰에 즉시 반영 — 무엇으로 바뀌었는지 그 자리에서 본다
         return {
           ...next,
