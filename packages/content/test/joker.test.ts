@@ -7,7 +7,7 @@
  *  3. 백은 **머리도 몸통도** 된다.
  *  4. 변신은 **가장 비싼 손**으로 자동 결정된다 (고르는 UI가 없다).
  *  5. 백 자체를 **론으로 잡아도** 화료가 성립한다 (화료패가 조커인 경우).
- *  6. 효과는 **발동한 그 국에만** 살고, 쿨다운은 2국이다.
+ *  6. 효과는 **발동한 그 국에만** 살고, 쿨다운은 동풍전 2국 · 반장전 3국이다.
  *  7. 발동 사실은 전원 공개다.
  *  8. 봇은 **백을 쥐고 있고 그 백이 손을 전진시킬 때만** 켠다.
  */
@@ -357,7 +357,8 @@ describe("조커 — 국 스코프와 쿨다운", () => {
     const game = mk("111999m55m23s23p5z");
     fire(game);
     const state = game.engine.state;
-    expect(state.augmentData[cooldownViewKey("joker", "p0")]).toBe(2);
+    // 기본 모드는 반장전 → 3국 (2026-09-14 사용자 지시, #511)
+    expect(state.augmentData[cooldownViewKey("joker", "p0")]).toBe(3);
     const view = buildPlayerView(state, "p1", game.engine.rules);
     expect(view.augmentView["joker:p0"]).toBe(true);
   });
@@ -446,18 +447,74 @@ describe("조커 — 봇 정책", () => {
 
 // ───────────────────────── 7. 쿨다운 카운터 배선 ─────────────────────────
 
-describe("조커 — 2국에 1회", () => {
-  it("발동한 자리에서 2국 잠기고, 국이 지날 때마다 하나씩 풀린다", () => {
-    const game = mk("111999m55m23s23p5z");
-    const left = (): unknown =>
-      game.engine.state.augmentData[cooldownViewKey("joker", "p0")];
-    expect(left()).toBeUndefined();
+/**
+ * 동풍전 2국 · 반장전 3국 (2026-09-14 사용자 지시, #511).
+ *
+ * #511 은 5분 뒤 머지된 #512 에 통째로 되돌려졌고 이 묶음도 함께 사라져 게이트가 조용히
+ * 통과했다(docs/55 §2-1 M-1). 2026-09-16 에 다시 적용하면서 잔량 채널만이 아니라
+ * **validate 의 문**까지 두 모드에서 각각 못 박는다 — 상수 2 로 되돌리면 반장전 쪽이 실패한다.
+ */
+describe("조커 — 동풍전 2국에 1회 · 반장전 3국에 1회", () => {
+  /** `mk`와 같되 매치 길이와 미리 쌓아 둔 카운터를 지정한다 */
+  function mkMode(mode: "tonpuu" | "hanchan", data?: Record<string, unknown>): Game {
+    const base = withAug(
+      craft({
+        hands: { p0: "111999m55m23s23p5z", p1: "*", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 0,
+      }),
+      "p0",
+      ["joker"],
+    );
+    const game = createStandardGameFromState({
+      ...base,
+      config: { ...base.config, mode },
+      augmentData: { ...base.augmentData, ...(data ?? {}) },
+    });
+    installAugment(game.engine, C.joker, "p0", { yaku: game.yaku });
+    return game;
+  }
+  const left = (game: Game): unknown =>
+    game.engine.state.augmentData[cooldownViewKey("joker", "p0")];
+  /** 3국째에 썼고 지금 n국째 — `cooldownUse`·`trackRoundSeq`가 남기는 키 그대로 */
+  const seq = (n: number): Record<string, unknown> => ({
+    "joker:usedSeq:p0": 3,
+    "joker:seq:p0": n,
+  });
+  const canFire = (game: Game): boolean =>
+    game.engine.submit({ player: "p0", type: "joker_call", payload: {} }).ok;
+
+  it("동풍전: 발동한 자리에서 2국 잠기고, 국이 지날 때마다 하나씩 풀린다", () => {
+    const game = mkMode("tonpuu");
+    expect(left(game)).toBeUndefined();
     fire(game);
-    expect(left()).toBe(2);
+    expect(left(game)).toBe(2);
     emit(game, { type: ROUND_STARTED, payload: {} });
-    expect(left()).toBe(1);
+    expect(left(game)).toBe(1);
     emit(game, { type: ROUND_STARTED, payload: {} });
-    expect(left()).toBe(0);
+    expect(left(game)).toBe(0);
+  });
+
+  it("반장전: 발동한 자리에서 3국 잠긴다", () => {
+    const game = mkMode("hanchan");
+    fire(game);
+    expect(left(game)).toBe(3);
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    expect(left(game)).toBe(2);
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    expect(left(game)).toBe(1);
+    emit(game, { type: ROUND_STARTED, payload: {} });
+    expect(left(game)).toBe(0);
+  });
+
+  it("동풍전: 1국만 지나면 아직 잠겨 있고, 2국이 지나면 열린다", () => {
+    expect(canFire(mkMode("tonpuu", seq(4)))).toBe(false);
+    expect(canFire(mkMode("tonpuu", seq(5)))).toBe(true);
+  });
+
+  it("반장전: 2국이 지나도 아직 잠겨 있고, 3국이 지나야 열린다", () => {
+    expect(canFire(mkMode("hanchan", seq(5)))).toBe(false);
+    expect(canFire(mkMode("hanchan", seq(6)))).toBe(true);
   });
 });
 

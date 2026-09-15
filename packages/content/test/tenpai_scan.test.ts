@@ -2,10 +2,11 @@
  * 천리안 (tenpai_scan) 동작 테스트.
  *
  * 핵심 계약:
- *  1. 자기 턴에 선언할 수 있고(매 국 1회), 선언하면 텐파이인 상대 목록이
+ *  1. 자기 턴에 선언할 수 있고(매 국 2회), 선언하면 텐파이인 상대 목록이
  *     보유자 전용 채널(view:{holder}:tenpai_scan)에 `{ players, widths, shantens, turn }`으로만 실린다.
  *  2. 텐파이인 상대(p1)는 목록에 들고, 노텐인 상대(p2)는 들지 않는다.
- *  3. 매 국 1회 — 같은 국에 두 번은 못 쓰고, 국이 바뀌면 다시 열린다.
+ *  3. 매 국 2회 — 같은 국에 세 번은 못 쓰고, 국이 바뀌면 다시 열린다
+ *     (2026-09-14 사용자 지시 #511 — #512 머지 사고로 되돌려진 것을 2026-09-16 재적용).
  */
 
 import { describe, expect, it } from "vitest";
@@ -58,6 +59,27 @@ function startFlow(state: GameState) {
   if (status.kind !== "awaiting") throw new Error("expected awaiting");
   return { game, flow, status };
 }
+
+/**
+ * 사용 뒤의 state 를 새 게임에 재설치해 p0 턴으로 되돌린다 — `engine.state` 는 읽기
+ * 전용이라 같은 게임에서 두 번째 프롬프트를 받을 수 없다. `roundPatch` 로 국을 넘긴다.
+ */
+function resume(
+  state: GameState,
+  roundPatch: Partial<GameState["round"]> = {},
+): ReturnType<typeof startFlow> {
+  const used = withAugments(state, "p0", ["tenpai_scan"]);
+  return startFlow({
+    ...used,
+    round: { ...used.round, phase: "turn.act", turnSeat: 0, ...roundPatch },
+  });
+}
+
+/** p0 프롬프트에 실린 천리안 후보 수 */
+const scanOptions = (status: ReturnType<typeof startFlow>["status"]): number =>
+  status.prompts
+    .find((p) => p.player === "p0")
+    ?.options.filter((o) => o.type === "tenpai_scan_use").length ?? 0;
 
 const VIEW_KEY = "view:p0:tenpai_scan#round";
 
@@ -112,50 +134,53 @@ describe("천리안 (tenpai_scan)", () => {
     expect(result.turn).toBe(7);
   });
 
-  it("같은 국에는 한 번 쓰면 다시 제시되지 않는다", () => {
-    const { game, flow } = startFlow(scene());
-    flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+  /**
+   * 매 국 2회 (2026-09-14 사용자 지시, #511). #511 은 5분 뒤 머지된 #512 에 통째로
+   * 되돌려졌고 이 테스트도 «한 번 쓰면 다시 제시되지 않는다»로 돌아가 게이트가 조용히
+   * 통과했다(docs/55 §2-1 M-1). 2026-09-16 재적용 — `USES_PER_ROUND` 를 1 로 되돌리면
+   * 두 번째 후보·pill 총량·세 번째 거절 세 곳이 함께 실패한다.
+   */
+  it("같은 국에는 두 번 쓰면 다시 제시되지 않는다 (매 국 2회, 2026-09-14)", () => {
+    const first = startFlow(scene());
+    first.flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+
+    // 한 번 쓴 뒤에도 같은 국에서 한 번 더 열린다 — 이름표 pill 도 «1/2 남음»
+    expect(first.game.engine.state.augmentData["view:p0:uses:tenpai_scan"]).toEqual({
+      left: 1,
+      total: 2,
+      scope: "round",
+    });
+    const second = resume(first.game.engine.state);
+    expect(scanOptions(second.status)).toBe(1);
+    second.flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
 
     // 사용 카운터는 **국 단위 키**에 선다 (`{id}:uses:{roundKey}:{holder}`)
-    const usesKeys = Object.keys(game.engine.state.augmentData).filter((k) =>
+    const usesKeys = Object.keys(second.game.engine.state.augmentData).filter((k) =>
       k.startsWith("tenpai_scan:uses:"),
     );
     expect(usesKeys).toHaveLength(1);
     expect(usesKeys[0]!.endsWith(":p0#round")).toBe(true);
-    expect(game.engine.state.augmentData[usesKeys[0]!]).toBe(1);
+    expect(second.game.engine.state.augmentData[usesKeys[0]!]).toBe(2);
 
-    // 사용 후의 state를 새 게임에 재설치 → p0 턴이어도 스캔 후보가 뜨지 않는다
-    const used = withAugments(game.engine.state, "p0", ["tenpai_scan"]);
-    const game2 = createStandardGameFromState({
-      ...used,
-      round: { ...used.round, phase: "turn.act", turnSeat: 0 },
-    });
-    installAugment(game2.engine, tenpaiScan, "p0", { yaku: game2.yaku });
-    const status2 = new FlowController(game2.engine).begin();
-    if (status2.kind !== "awaiting") throw new Error("expected awaiting");
-    const prompt = status2.prompts.find((p) => p.player === "p0");
+    // 두 번 쓴 state를 새 게임에 재설치 → p0 턴이어도 세 번째 후보는 뜨지 않는다
+    const third = resume(second.game.engine.state);
+    expect(scanOptions(third.status)).toBe(0);
+    // 후보만 숨긴 것이 아니라 validate 도 막는다
     expect(
-      prompt?.options.filter((o) => o.type === "tenpai_scan_use") ?? [],
-    ).toHaveLength(0);
+      third.game.engine.submit({ player: "p0", type: "tenpai_scan_use", payload: {} }).ok,
+    ).toBe(false);
   });
 
-  it("국이 바뀌면 다시 쓸 수 있다 (매 국 1회)", () => {
-    const { game, flow } = startFlow(scene());
-    flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+  it("국이 바뀌면 다시 쓸 수 있다 (매 국 2회)", () => {
+    const first = startFlow(scene());
+    first.flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+    const second = resume(first.game.engine.state);
+    second.flow.submit("p0", { type: "tenpai_scan_use", payload: {} });
+    expect(scanOptions(resume(second.game.engine.state).status)).toBe(0);
 
     // 다음 국(동2국)으로 넘어간 상태 — 사용 카운터 키가 달라져 후보가 되살아난다
-    const used = withAugments(game.engine.state, "p0", ["tenpai_scan"]);
-    const game2 = createStandardGameFromState({
-      ...used,
-      round: { ...used.round, phase: "turn.act", turnSeat: 0, roundNumber: 2 },
-    });
-    installAugment(game2.engine, tenpaiScan, "p0", { yaku: game2.yaku });
-    const status2 = new FlowController(game2.engine).begin();
-    if (status2.kind !== "awaiting") throw new Error("expected awaiting");
-    const prompt = status2.prompts.find((p) => p.player === "p0");
-    expect(
-      prompt?.options.filter((o) => o.type === "tenpai_scan_use") ?? [],
-    ).toHaveLength(1);
+    const next = resume(second.game.engine.state, { roundNumber: 2 });
+    expect(scanOptions(next.status)).toBe(1);
   });
 });
 
