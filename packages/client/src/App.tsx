@@ -90,6 +90,7 @@ import {
   doraKindFor,
   isConcealedTileId,
   kindKey,
+  shantenLabel,
   shantenOf,
   standardKinds,
   winningKinds,
@@ -17847,20 +17848,32 @@ function SealBadge({
 function tenpaiScanOf(
   view: PlayerView,
   playerId: string,
-): { tenpai: boolean; width: "narrow" | "mid" | "wide" | null; turn: number | null } | null {
+): {
+  tenpai: boolean;
+  width: "narrow" | "mid" | "wide" | null;
+  /** 노텐이면 텐파이까지 몇 장인가 (이샹텐=1 …). 옛 스냅샷에는 없다 → null */
+  shanten: number | null;
+  turn: number | null;
+} | null {
   if (playerId === view.playerId) return null;
   const raw = view.augmentView["tenpai_scan"];
   if (raw === undefined || raw === null) return null;
   const snap = readScanSnapshot(raw, "players");
   const at = snap.items.indexOf(playerId);
-  if (at < 0) return { tenpai: false, width: null, turn: snap.turn };
+  const shantens =
+    typeof raw === "object" && typeof (raw as Record<string, unknown>)["shantens"] === "object"
+      ? ((raw as Record<string, unknown>)["shantens"] as Record<string, unknown>)
+      : null;
+  const sh = shantens?.[playerId];
+  const shanten = typeof sh === "number" ? sh : null;
+  if (at < 0) return { tenpai: false, width: null, shanten, turn: snap.turn };
   const widths =
     typeof raw === "object" && Array.isArray((raw as Record<string, unknown>)["widths"])
       ? ((raw as Record<string, unknown>)["widths"] as unknown[])
       : [];
   const w = widths[at];
   const width = w === "narrow" || w === "mid" || w === "wide" ? w : null;
-  return { tenpai: true, width, turn: snap.turn };
+  return { tenpai: true, width, shanten: 0, turn: snap.turn };
 }
 
 const SCAN_WIDTH_LABEL = { narrow: "좁음", mid: "보통", wide: "넓음" } as const;
@@ -17876,11 +17889,17 @@ function ScanBadge({
   const asOf = scan.turn === null ? "" : ` · ${scan.turn}순 기준`;
   const title = scan.tenpai
     ? `천리안: ${owner}은(는) 스캔한 순간 텐파이였습니다${scan.width !== null ? ` (대기 ${SCAN_WIDTH_LABEL[scan.width]})` : ""}${asOf}. 그 뒤의 변화는 반영되지 않습니다. 나에게만 보입니다`
-    : `천리안: ${owner}은(는) 스캔한 순간 텐파이가 아니었습니다${asOf}. 그 뒤의 변화는 반영되지 않습니다. 나에게만 보입니다`;
+    : `천리안: ${owner}은(는) 스캔한 순간 텐파이가 아니었습니다${scan.shanten !== null && scan.shanten > 0 ? ` (${shantenLabel(scan.shanten)} — 텐파이까지 ${scan.shanten}장)` : ""}${asOf}. 그 뒤의 변화는 반영되지 않습니다. 나에게만 보입니다`;
+  // 노텐이면 «노텐» 대신 얼마나 먼지(이샹텐·량샹텐…)를 바로 쓴다 — 2026-09-15 사용자 지시
+  const verdict = scan.tenpai
+    ? "텐파이"
+    : scan.shanten !== null && scan.shanten > 0
+      ? shantenLabel(scan.shanten)
+      : "노텐";
   return (
     <div className={`scan-badge${scan.tenpai ? " scan-badge-tenpai" : ""}`} title={title}>
       <span className="scan-badge-label">👁 천리안</span>
-      <span className="scan-badge-verdict">{scan.tenpai ? "텐파이" : "노텐"}</span>
+      <span className="scan-badge-verdict">{verdict}</span>
       {scan.tenpai && scan.width !== null ? (
         <span className={`scan-badge-width scan-badge-width-${scan.width}`}>
           대기 {SCAN_WIDTH_LABEL[scan.width]}
@@ -22731,7 +22750,7 @@ function DockSeats({
               {pr?.riichiDeclared === true ? <span className="bcast-chip bcast-riichi">리치</span> : null}
               {ins !== undefined ? (
                 <span className={`bcast-chip${ins.shanten <= 0 ? " bcast-tenpai" : ""}`}>
-                  {ins.shanten < 0 ? "화료형" : ins.shanten === 0 ? "텐파이" : `${ins.shanten}샹텐`}
+                  {shantenLabel(ins.shanten)}
                 </span>
               ) : null}
               {ins?.yakuless === true ? (
@@ -23465,10 +23484,10 @@ function ShantenBadge({
       title={
         shanten === 0
           ? "텐파이입니다. 한 장만 더 들어오면 화료할 수 있습니다"
-          : `${shanten}샹텐입니다. 텐파이까지 ${shanten}장을 더 바꿔야 합니다`
+          : `${shantenLabel(shanten)}입니다. 텐파이까지 ${shanten}장을 더 바꿔야 합니다`
       }
     >
-      {shanten === 0 ? "텐파이" : `${shanten}샹텐`}
+      {shantenLabel(shanten)}
     </div>
   );
 }

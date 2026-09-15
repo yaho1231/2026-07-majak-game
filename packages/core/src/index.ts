@@ -70,7 +70,7 @@ export {
 } from "./mahjong/scoring/decompose.js";
 export type { Decomposition, DecompSet, DecomposeOptions } from "./mahjong/scoring/decompose.js";
 export { winningKinds, isTenpai } from "./mahjong/scoring/waits.js";
-export { shantenOf, ukeireOf } from "./mahjong/scoring/shanten.js";
+export { shantenLabel, shantenOf, ukeireOf } from "./mahjong/scoring/shanten.js";
 export type { Ukeire } from "./mahjong/scoring/shanten.js";
 export { buildVariants, allKinds, setKinds } from "./mahjong/scoring/WinContext.js";
 export type {
