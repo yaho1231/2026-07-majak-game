@@ -12508,6 +12508,58 @@ button {
 
 /* ─────────────── 관리자 — 플레이어 관리 ─────────────── */
 
+/* 머리에 붙는 총원 «N명» — 뱃지 옆, 작고 흐리게. */
+.home-card-count {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #93a89b;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 검색 · 정렬 줄 (2026-09-15) */
+.user-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.user-search {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--r-chip);
+  border: 1px solid rgba(247, 243, 232, 0.18);
+  background: rgba(10, 15, 20, 0.6);
+  color: #f7f3e8;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.user-search:focus { border-color: rgba(199, 188, 255, 0.55); }
+
+.user-sort {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-radius: var(--r-chip);
+  border: 1px solid rgba(247, 243, 232, 0.18);
+  background: rgba(10, 15, 20, 0.6);
+  color: #ece4d2;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.user-tools-count {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #93a89b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .user-list {
   list-style: none;
   margin: 0;
