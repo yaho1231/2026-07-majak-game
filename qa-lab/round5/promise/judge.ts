@@ -14,7 +14,7 @@
  *  3. 모드 스케일    잔량 채널 total ≠ 약속(모드별) · 쿨다운 채널 최댓값 ≠ 약속 N(모드별).
  *  4. 수치 불일치    +N판(extraHanBy·augPoints.han ∉ 약속 집합) · 최소 만관(발동 국 화료 총액 <
  *                    만관) · N배(augPoints 비율이 약속 배수 어느 것과도 ±0.06 밖 → «의심»).
- *  5. 조건 위반      «리치 중 불가» 인데 리치 중 발동 · «첫 순» 인데 버림/멘쯔 뒤 발동.
+ *  5. 조건 위반      «리치 중 불가» 인데 리치 중 발동 · «첫 순» 인데 버림 뒤 발동(«울기 전»까지 약속한 카드는 멘쯔 뒤도).
  *  6. 공개 누설      «상대에게 공개되지 않는다» 인데 상대 뷰에 카드 채널. pill 사본
  *                    (`seat:p0:uses|cooldown*`)은 계획 P-1 판단 대기라 따로 «알려짐».
  *  7. 0회 발동       그 모드의 전 시드에서 한 번도 발동·흔적 없음 (조건 좁음 목록).
@@ -60,6 +60,9 @@ const P2_FIXED_COOLDOWN = new Set([
   "palm_flip", "hourglass", "sign_flip", "picky_eater", "regret", "soul_strike", "triple_peek",
   "discard_lock", "pseudo_dealer",
 ]);
+
+/** 문구가 «버리지도 울지도 전»·«치·퐁 직후 불가»까지 약속해 멘쯔 수도 첫 순 판정에 들어가는 카드 */
+const FIRST_TURN_NO_MELD = new Set(["big_hand", "rank_gate", "full_hand_swap", "seat_swap", "table_flip"]);
 
 function knownTag(f: Omit<Finding, "known">): string | undefined {
   if (f.kind === "LEAK_PILL") return "알려짐 · 판단 대기 P-1 (#454 pill 전원 공개 — 문구와 모순, 사용자 판단)";
@@ -241,9 +244,15 @@ function judgePledge(
       if (p.cond === "no_riichi" && r.fires.whileRiichi > 0) {
         push({ ...base, kind: "COND_RIICHI", severity: "확정", detail: `«${p.src}» 인데 리치 중 발동 ${r.fires.whileRiichi}회 (${r.fires.list.filter((f) => f.riichi && f.rejected !== true).map((f) => `${f.type}@${f.rk}`).slice(0, 4).join(", ")})` });
       }
-      if (p.cond === "first_turn" && r.fires.notFirstTurn > 0) {
-        const ex = r.fires.list.filter((f) => f.rejected !== true && (f.discardCount > 0 || f.melds > 0)).slice(0, 4);
-        push({ ...base, kind: "COND_FIRST_TURN", severity: multiStep ? "의심" : "확정", detail: `«${p.src}» 인데 버림/멘쯔 뒤 발동 ${r.fires.notFirstTurn}회 (${ex.map((f) => `${f.type}@${f.rk} d=${f.discardCount} m=${f.melds}`).join(", ")})${multiStep ? " — 다단계 액션의 후속 단계면 정상" : ""}` });
+      if (p.cond === "first_turn") {
+        // «내 첫 순» 규약 = 이 국에 내가 아직 한 장도 버리지 않은 내 순(discardCount === 0).
+        // 첫 타패 전에 남의 패를 울어 멘쯔가 생긴 순도 첫 순이다 — 멘쯔 수는 문구가
+        // «울기 전»·«치·퐁 직후 불가»까지 약속한 카드에만 센다
+        // (packages/content/test/first_turn_after_call_0916.test.ts, 2026-09-16 판정).
+        const meldsCount = FIRST_TURN_NO_MELD.has(c.id);
+        const bad = r.fires.list.filter((f) => f.rejected !== true && (f.discardCount > 0 || (meldsCount && f.melds > 0)));
+        const ex = bad.slice(0, 4);
+        if (bad.length > 0) push({ ...base, kind: "COND_FIRST_TURN", severity: multiStep ? "의심" : "확정", detail: `«${p.src}» 인데 ${meldsCount ? "버림/멘쯔" : "버림"} 뒤 발동 ${bad.length}회 (${ex.map((f) => `${f.type}@${f.rk} d=${f.discardCount} m=${f.melds}`).join(", ")})${multiStep ? " — 다단계 액션의 후속 단계면 정상" : ""}` });
       }
       if (p.cond === "hidden_from_opponents") {
         const mixed = c.pledges.some((q) => q.kind === "cond" && q.cond === "public");
