@@ -3,6 +3,7 @@
  *
  *  C-2  자리 바꿈으로 받은 손에 첫 순 쯔모 화료 → 지화 없음 (handAltered 표식)
  *  C-3  선언 간파의 위조로 만든 손에 첫 순 쯔모 화료 → 지화 없음 (handAltered 표식)
+ *  A-10 영상 정찰의 쯔모패↔영상패 교환으로 완성한 손에 첫 순 쯔모 화료 → 천화 없음 (handAltered 표식)
  *  C-5  리치 봉인 — 상대가 스텔스 리치 중이어도 내 리치가 «그 국의 첫 리치»라 봉인이 선다
  *  C-5  등 떠밀기 — 스텔스 리치 중인 낙인 대상을 «리치 안 한 사람»으로 취급해 낙인이 터진다
  *
@@ -13,8 +14,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  DEAD_WALL,
   ROUND_SETTLED,
   SYSTEM_PLAYER,
+  WALL,
   createStandardGameFromState,
   handIdsOf,
   installAugment,
@@ -27,6 +30,7 @@ import { roundScopedKey } from "../src/augments/roundScope.js";
 import { peekRiichiWaits } from "../src/augments/peek_riichi_waits.js";
 import { pushRiichi } from "../src/augments/push_riichi.js";
 import { riichiSeal } from "../src/augments/riichi_seal.js";
+import { rinshanPreview } from "../src/augments/rinshan_preview.js";
 import { seatSwap } from "../src/augments/seat_swap.js";
 import { stealthActiveKey, stealthRiichi } from "../src/augments/stealth_riichi.js";
 
@@ -186,6 +190,59 @@ describe("C-3 · 선언 간파의 위조로 만든 손에는 천화·지화가 �
     const [win] = tsumoWin(game, "p1");
     expect(win?.yaku).not.toContain("chihou");
     expect(win?.yaku).not.toContain("tenhou");
+  });
+});
+
+// ─────────────── A-10 · 영상 정찰의 교환으로 만든 손에는 천화·지화가 없다 ───────────────
+
+describe("A-10 · 영상 정찰의 교환으로 만든 손에는 천화·지화가 없다", () => {
+  it("오야가 첫 순에 쯔모패를 영상패와 맞바꿔 완성해 쯔모해도 천화가 붙지 않는다", () => {
+    const base = craft({
+      hands: {
+        p0: "123m456m789m234s1p9s", // 14장 — 쯔모패 9s를 1p로 바꾸면 완성형(1p 머리)
+        // "*"(낮은 id부터 자동 채움)는 남은 1p를 삼키므로 나머지 셋은 자패·삭수로 명시한다
+        p1: "1122334455667z",
+        p2: "5566778899s777z",
+        p3: "11223344p5566p7p",
+      },
+      phase: "turn.act",
+      turnSeat: 0,
+      drawnLastFor: "p0",
+    });
+    // craft의 왕패는 남은 패 중 id가 낮은 14장이라 어떤 패가 앞에 오는지 정해져 있지 않다 —
+    // 패산에서 1p 한 장을 골라 영상패 맨 앞(index 0)과 자리를 바꿔 장면을 고정한다.
+    const dw = base.zones[DEAD_WALL]?.tileIds ?? [];
+    const wall = base.zones[WALL]?.tileIds ?? [];
+    const pin1 = wall.find((id) => base.tiles[id]?.kind.suit === "pin" && base.tiles[id]?.kind.rank === 1);
+    expect(pin1).toBeDefined();
+    const front = dw[0] as TileId;
+    const zones = {
+      ...base.zones,
+      [DEAD_WALL]: { ...base.zones[DEAD_WALL]!, tileIds: [pin1 as TileId, ...dw.slice(1)] },
+      [WALL]: { ...base.zones[WALL]!, tileIds: wall.map((id) => (id === pin1 ? front : id)) },
+    };
+    const state: GameState = {
+      ...withAugs(base, { p0: ["rinshan_preview"] }),
+      zones,
+      round: { ...base.round, firstTurn: true, turnCount: 1 },
+    };
+    const game = createStandardGameFromState(state);
+    installAugment(game.engine, rinshanPreview, "p0", { yaku: game.yaku });
+
+    const r = game.engine.submit({
+      player: "p0",
+      type: "rinshan_arrange",
+      payload: { order: [0, 1, 2, 3], take: 0 },
+    });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    const st = game.engine.state;
+    expect(st.round.lastDrawnTile).toBe(pin1);
+    // 예전엔 표식이 없어서 영상패로 «고쳐» 완성한 손에 천화 역만이 붙었다
+    expect(st.augmentData[handAlteredKey(st, "p0")]).toBe(true);
+
+    const [win] = tsumoWin(game, "p0");
+    expect(win?.yaku).not.toContain("tenhou");
+    expect(win?.yaku).not.toContain("chihou");
   });
 });
 

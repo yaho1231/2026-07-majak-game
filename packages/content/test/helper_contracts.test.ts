@@ -209,7 +209,7 @@ describe("손 가공 표식 계약 (handAltered — 천화·지화 게이트, do
    * 이 표에서 **지워야** 통과한다 — 표가 낡은 채 남지 않게 아래에서 정확히 대조한다.
    */
   const KNOWN_GAPS: Record<string, string> = {
-    "rinshan_preview.ts": "쯔모패↔영상패 교환이 첫 순(turn.act)에도 열린다 — 깡 전제가 아니다",
+    // rinshan_preview.ts 는 A-10(2026-09-16)이 교환 리듀서에 handAlteredMark 를 넣어 표에서 뺐다.
     // ura_peek.ts 는 #516(2026-09-16)이 바꿔치기 리듀서에 handAlteredMark 를 넣어 표에서 뺐다.
   };
 

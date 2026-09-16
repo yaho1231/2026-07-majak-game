@@ -71,6 +71,7 @@ import {
   widenPeek,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { handAlteredMark } from "./handAltered.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "rinshan_preview";
@@ -273,6 +274,9 @@ export const rinshanPreview: AugmentDef = defineAugment({
         return {
           ...state,
           zones,
+          // 배패가 아닌 손이 됐다 — 교환은 첫 순 turn.act 에도 열리므로, 표식이 없으면
+          // 영상패로 완성시킨 손에 천화·지화가 붙는다 (handAltered.ts 규약, 2026-09-16 A-10).
+          augmentData: { ...state.augmentData, ...handAlteredMark(state, p.player) },
           // 새 쯔모패는 끌어온 영상패 — 리치 중 쯔모기리도 이 패를 기준으로 판정된다.
           // 다만 **깡을 하지 않았으므로 영상개화는 성립하지 않는다** — 플래그를 끄지 않으면
           // 깡 직후에 끌어온 패로 +1판이 잘못 붙었다(2026-07-29 감사).
