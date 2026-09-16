@@ -80,6 +80,21 @@ const forgedKey = (state: GameState, holder: PlayerId): string =>
   roundScopedKey(AUGMENT_ID, "forged", state, holder);
 
 /**
+ * 이번 국에 이 대상을 이미 간파했는가 (대기가 0종이었어도).
+ *
+ * ⚠ 소프트락(2026-09-16 QA 5라운드 B-2 조합 스위프): 노텐 리치(공성계 등)를 간파하면
+ * 빈 대기를 받고 **국당 1회는 소모되지 않는다**(2026-08-23 확정 8). 그런데 사용 플래그가
+ * 안 서니 같은 대상의 peek_waits 후보가 그대로 다시 떴고, validate도 통과했다 —
+ * 상태를 전혀 바꾸지 않는 합법 액션이 무한히 반복 가능해져 «증강을 늘 누르는» 봇·QA
+ * 페르소나가 한 턴에서 영원히 돌았다(동기 무한 루프라 하네스 타임아웃도 못 울린다).
+ * 대상별 뷰 키는 간파 결과(빈 배열 포함)를 그대로 담고 국이 바뀌면 지워지므로,
+ * «이 국에 이 대상을 이미 봤다»의 근거로 쓴다. 리치 손은 동결이라 다시 봐도 답이 같다.
+ */
+function peekedTarget(state: GameState, holder: PlayerId, target: PlayerId): boolean {
+  return Array.isArray(state.augmentData[viewKey(holder, `waits:${target}`)]);
+}
+
+/**
  * 이번 국에 이 보유자가 간파해 둔 대기패 전부 (kindKey 문자열, 중복 제거·정렬).
  * 간파 결과는 view:{holder}:waits:{target} 채널에 쌓이고 새 국에 지워지므로,
  * 이 목록이 비어 있으면 "이번 국에 간파한 적이 없다"는 뜻이다.
@@ -127,6 +142,9 @@ const peekWaitsAction: ActionDef<{ target: PlayerId }> = {
     }
     if (flagOf(state, usedKey(state, req.player))) {
       return "already peeked this round";
+    }
+    if (peekedTarget(state, req.player, req.payload.target)) {
+      return "already peeked this target this round";
     }
     return null;
   },
@@ -318,7 +336,9 @@ export const peekRiichiWaits: AugmentDef = defineAugment({
                 p.id !== holder &&
                 state.round.byPlayer[p.id]?.riichi != null &&
                 // 숨은 리치(스텔스)는 후보에 올리지 않는다 — 후보가 뜨는 것 자체가 누설
-                !riichiHidden(engine.rules, state, p.id),
+                !riichiHidden(engine.rules, state, p.id) &&
+                // 이 국에 이미 본 대상(노텐이라 횟수가 안 깎였어도)은 다시 올리지 않는다
+                !peekedTarget(state, holder, p.id),
             )
             .map((p) => ({ type: "peek_waits", payload: { target: p.id } }));
 
