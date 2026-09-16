@@ -1,0 +1,73 @@
+{
+ "outDir": "/Users/skul/majak/.claude/worktrees/mahjong-qa-plan-85aa99/qa-lab/round5/solo/out",
+ "files": 6,
+ "rows": 7020,
+ "played": 6960,
+ "skipped": 60,
+ "expected": 7020,
+ "missing": 0,
+ "crash": 0,
+ "fatal": 0,
+ "effectErrors": 0,
+ "softlock": 0,
+ "violations": 0,
+ "driftUnexplained": 0,
+ "untouched": 1948,
+ "neverTouchedAugs": [
+  "bottom_yaku",
+  "dora_conceal",
+  "mixed_nine_gates",
+  "soul_hunt",
+  "void_kan"
+ ],
+ "passiveAugs": [
+  "aotenjou_ceiling",
+  "blame_shift",
+  "broken_wall",
+  "counter",
+  "free_riichi_discard",
+  "iron_wall",
+  "late_double",
+  "nagashi_yakuman",
+  "off_by_one",
+  "omni_chi",
+  "open_riichi",
+  "polar_ends",
+  "riichi_seal",
+  "riichi_upgrade",
+  "royal_kokushi",
+  "siege_riichi",
+  "snake_kan",
+  "true_dragon",
+  "wind_lineage",
+  "yakuman_shield"
+ ],
+ "violByKind": {},
+ "ms": {
+  "all": {
+   "n": 6960,
+   "p50": 521,
+   "p90": 874,
+   "p99": 1274,
+   "max": 2873,
+   "mean": 514
+  },
+  "hanchan": {
+   "n": 3480,
+   "p50": 588,
+   "p90": 1007,
+   "p99": 1455,
+   "max": 2646,
+   "mean": 686
+  },
+  "tonpuu": {
+   "n": 3480,
+   "p50": 292,
+   "p90": 513,
+   "p99": 928,
+   "max": 2873,
+   "mean": 343
+  }
+ },
+ "badRefs": []
+}
