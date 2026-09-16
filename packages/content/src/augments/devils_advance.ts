@@ -37,6 +37,7 @@ import {
   flagOf,
   settleInterceptor,
   viewKey,
+  withAugNoteFor,
   withAugPoint,
 } from "../util.js";
 
@@ -120,24 +121,28 @@ export const devilsAdvance: AugmentDef = defineAugment({
       if (info === undefined || info.limit === null) return event;
 
       const deltas = { ...p.deltas };
+      /*
+       * 걷은 돈은 **뱅크로 간다** — 보유자의 deltas는 손대지 않는다(보유자 줄은 0점,
+       * 표시에서 걸러진다). 상대 셋의 −3,000은 `withAugNoteFor`로 **그 사람 줄에**
+       * 근거를 남긴다 — 예전에는 deltas만 줄여서 결과 화면·리플레이에 이유 없는
+       * −3,000이 떴고(docs/47 §5 P2), QA 하네스의 «점수 총합 + 공탁» 검산도 이 9,000을
+       * 어떤 근거와도 못 맞춰 SCORE_DRIFT_UNEXPLAINED로 잡았다(2026-09-16 조합 스위프).
+       */
+      let augPoints = withAugPoint(p, ctx, 0);
       let taken = 0;
       for (const pl of ic.state.players) {
         if (pl.id === holder) continue;
         deltas[pl.id] = (deltas[pl.id] ?? 0) - BURST_PER_OPPONENT;
+        augPoints = withAugNoteFor({ ...p, augPoints }, ID, pl.id, -BURST_PER_OPPONENT);
         taken += BURST_PER_OPPONENT;
       }
       if (taken === 0) return event;
-      /*
-       * 걷은 돈은 **뱅크로 간다** — 보유자의 deltas는 손대지 않는다. 그래서 결과 화면에
-       * 적을 증감도 없다(0점 기록은 표시에서 걸러진다). 상대 셋이 3,000씩 줄어드는 것은
-       * 결과창 증감에 그대로 뜨므로 무슨 일이 일어났는지는 전원이 본다.
-       */
       return {
         type: event.type,
         payload: {
           ...p,
           deltas,
-          augPoints: withAugPoint(p, ctx, 0),
+          augPoints,
           burstBy: [...(p.burstBy ?? []), holder],
         },
       };
