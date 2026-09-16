@@ -18,6 +18,8 @@
  */
 
 import {
+  AUGMENT_DATA_SET,
+  AUGMENT_DISARMED,
   augmentDataSet,
   defineAugment,
   frontDoraKindFor,
@@ -25,13 +27,16 @@ import {
   kindOf,
 } from "@majak/core";
 import type {
+  AugmentDataSetPayload,
   AugmentDef,
+  AugmentDisarmedPayload,
   GameState,
   PlayerId,
   ProposedEvent,
   TileKind,
 } from "@majak/core";
 import { roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 
 const ID = "mirror_dora";
 
@@ -165,6 +170,35 @@ export const mirrorDora: AugmentDef = defineAugment({
         put(rc, seatKey(id, holder), visible ? kinds : undefined);
       }
     };
-    ctx.reaction("*", (_event, rc) => announce(rc));
+    /*
+     * 무장해제되면 앞도라 채널(공개·좌석 전용 둘 다)을 내린다 (docs/55 C-4·A-9).
+     *
+     * 위 "*" 동기화 리액션은 잠기면 코어 게이트가 꺼서 마지막 값이 얼어붙는데, 정작
+     * `scoring.extraDoraKinds` 모디파이어는 꺼져 앞도라는 한 장도 값하지 않는다 —
+     * 상대는 «저 사람에게 4통이 도라다»를 믿고 4통을 끝까지 쥐는 헛된 수비를 한다
+     * (잔상과 같은 구조, disarmBanner.ts 머리말).
+     *
+     * ⚠ 통보는 잠금 목록에 넣기 **전에** 오므로(disarm.ts 순서 계약) 그 연쇄 안에서는
+     * "*" 리액션이 아직 살아 있다. 그냥 두면 여기서 비운 채널을 그 리액션이 곧바로
+     * 다시 채운다 — 그래서 "*" 쪽은 ① 나를 잠그는 통보 자체와 ② 내 채널에 대한
+     * AUGMENT_DATA_SET(비우기 포함)에는 반응하지 않는다. ②는 원래도 표시패를 바꾸는
+     * 이벤트가 아니라 다시 계산할 이유가 없었다.
+     */
+    const myKeys = (state: GameState): string[] => [
+      publicKey(holder),
+      ...state.players.map((p) => seatKey(p.id, holder)),
+    ];
+    clearViewOnDisarm(ctx, myKeys);
+    ctx.reaction("*", (event, rc) => {
+      if (event.type === AUGMENT_DISARMED) {
+        const p = event.payload as AugmentDisarmedPayload;
+        if (p.augmentId === ID && p.target === holder) return;
+      }
+      if (event.type === AUGMENT_DATA_SET) {
+        const p = event.payload as AugmentDataSetPayload;
+        if (myKeys(rc.state).includes(p.key)) return;
+      }
+      announce(rc);
+    });
   },
 });

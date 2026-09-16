@@ -34,6 +34,7 @@ import {
 } from "../util.js";
 import { handKindsOf, kindCounts } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "blood_contract";
@@ -161,6 +162,9 @@ export const bloodContract: AugmentDef = defineAugment({
 
     // 계약 배지는 roundViewKey라 국 경계에서 엔진이 지운다 — 계약하지 않은 국에
     // 지난 계약이 전원 화면에 남아 있던 문제(2026-07-29 감사)는 이제 구조로 막힌다.
+    // 무장해제되면 국 중에도 내린다 (docs/55 C-4) — 위 배수 인터셉터는 코어 게이트가
+    // 끄는데 배지만 남으면 «저 사람은 탕야오면 1.5배»가 거짓이 된다.
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     ctx.holderTurnOptions((state) => {
       if (discardCount(state, holder) > 0) return [];

@@ -42,6 +42,7 @@ import {
   viewKey,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "dora_afterimage";
@@ -157,6 +158,11 @@ export const doraAfterimage: AugmentDef = defineAugment({
         return [...cur, ...recalledNow(state, holder)];
       },
     });
+
+    // 무장해제되면 «되살아난 도라» 배너도 내린다 (docs/55 C-4) — 위 모디파이어는 코어
+    // 게이트가 끄므로 그 도라는 값하지 않는데, 배너만 남으면 상대가 없는 도라를 피해
+    // 버린다. 보유자 전용 «되살릴 수 있는 도라»(candidateViewKey)는 사실이라 그대로 둔다.
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     // 자기 순에 뜨는 액티브 버튼 (합법성 최종 판정은 validate)
     ctx.holderTurnOptions(() => [{ type: ACTION, payload: {} }]);

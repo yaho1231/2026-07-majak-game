@@ -45,6 +45,7 @@ import {
   withAugPoint,
 } from "../util.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "jackpot";
@@ -238,6 +239,11 @@ export const jackpot: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(jackpotRollAction);
     }
+
+    // 무장해제되면 «이번 국 N배» 배너도 내린다 (docs/55 C-4) — 아래 배수 인터셉터는
+    // 코어 게이트가 끄므로 배수는 걸리지 않는데, 위 리듀서가 실어 둔 배너는 그대로
+    // 남는다(천하무적과 같은 구조, disarmBanner.ts 머리말).
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     // 정산: 그 국에 뽑힌 배수만큼 (안 굴렸으면 배수 1 = 효과 없음)
     // 정산 단계: Multiply — 내 획득에 배수. 뱅크 가산(BankTopUp)보다 먼저 — 뒤에 오면

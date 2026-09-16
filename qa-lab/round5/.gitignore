@@ -1,0 +1,6 @@
+# 실행 산출물 — 도구는 커밋하고 결과는 커밋하지 않는다 (재생성 가능)
+out/
+out-*/
+logs/
+*.log
+combo/combos.jsonl

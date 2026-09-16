@@ -104,6 +104,12 @@ export interface CallMadePayload {
   calledTileId: TileId;
   /** 멘젠 유지 후로 (묵계) — 생성되는 후로에 silent 플래그를 단다 */
   silent?: boolean;
+  /**
+   * 이 콜을 낸 증강 액션 타입(예: "bluff_pon"). 표준 펑·치는 비워 둔다.
+   * 증강이 «내 콜이었는가»를 되묻는 근거 — 이벤트 로그에 실려 리플레이 재구성에서도
+   * 같은 판정이 난다. 패의 conjured 표식은 여러 증강이 공유해 콜 출처가 될 수 없다.
+   */
+  via?: string;
 }
 
 export interface KanDeclaredPayload {

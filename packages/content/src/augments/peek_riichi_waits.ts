@@ -43,6 +43,7 @@ import type {
 } from "@majak/core";
 import { copiesLeftUndrawn, flagOf, publishUsesLeft, riichiHidden, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { handAlteredKey } from "./handAltered.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const AUGMENT_ID = "peek_riichi_waits";
@@ -207,6 +208,10 @@ const peekForgeAction: ActionDef<{ tileId: TileId; kind: string }> = {
       },
     ]),
     augmentDataSet(forgedKey(state, req.player), true),
+    // 배패가 그 자리에서 완성형으로 읽히는 길을 닫는다(천화·지화). 오야가 첫 버림으로
+    // 더블리치를 걸면 자의 첫 순에 이미 간파·위조가 가능해, 위조로 **만든** 손에 지화가
+    // 붙었다(docs/55 C-3). 선언형(shapeDeclare)·조커와 같은 규약(`handAltered.ts`).
+    augmentDataSet(handAlteredKey(state, req.player), true),
   ],
 };
 

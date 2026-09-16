@@ -1082,7 +1082,17 @@ export class HanchanController {
       this.flushEvents(game);
     }
 
-    return this.runLoop(game, 0);
+    /*
+     * 국 사이(`round.over`)에서 끊긴 판 — 직전 국은 이미 정산됐고 다음 국은 아직
+     * 배패되지 않았다. 그대로 runLoop에 넣으면 runRound가 배패 없이 즉시 직전 국의
+     * outcome을 돌려주고, 종료 판정이 «이미 다음 국 번호로 올라간 round»를 «방금 친
+     * 국»으로 읽는다 — 오라스 직전에 끊긴 판을 되살리면 오야가 단독 1위일 때 마지막
+     * 국을 치지도 않고 아가리야메로 끝났다(2026-09-16 QA 5라운드 B-10 프로브, 조건
+     * 일치 20/20 재현). 정산·결과 화면·종료 판정을 건너뛰고 «다음 국 시작 직전»부터
+     * 잇는다(중반 드래프트 검사 포함 — 드래프트 도중 끊긴 판도 이 길로 들어온다).
+     */
+    const betweenRounds = game.engine.state.round.phase === "round.over";
+    return this.runLoop(game, 0, betweenRounds);
   }
 
   /** 증강 카탈로그를 전 참가자·관전자에게 보낸다 (id→이름·등급·상세) */
@@ -1250,17 +1260,31 @@ export class HanchanController {
   }
 
   /** 국 루프 — run()과 resume()이 공유한다. 현재 상태에서 종국까지 진행. */
-  private async runLoop(game: StandardGame, startRoundIndex: number): Promise<RankingEntry[]> {
+  private async runLoop(
+    game: StandardGame,
+    startRoundIndex: number,
+    /** 첫 반복을 «국 사이 — 다음 국 시작 직전»에서 시작한다 (`resume` 주석) */
+    resumeBetweenRounds = false,
+  ): Promise<RankingEntry[]> {
     let roundIndex = startRoundIndex;
     // 왜 끝났는지 — 결과 화면이 한 줄로 말해 준다. 루프를 빠져나오는 길목마다 채운다.
     let endReason: GameEndReason = "normal";
+    let skipToNextRound = resumeBetweenRounds;
     while (true) {
+      // 아가리야메 판정용 — 정산 전(지금 둘 국)의 장풍·국번·오야 자리와 그 결과.
+      // 국 사이 재개 첫 반복에는 «방금 친 국»이 없다(null) — 종료 판정을 건너뛴다.
+      let played: {
+        wind: number;
+        roundNumber: number;
+        dealerSeat: number;
+        outcome: "win" | "draw" | "abort";
+      } | null = null;
+      if (!skipToNextRound) {
       if (this.aborted) return this.finishAborted();
       if (await this.gatePaused()) return this.finishAborted();
       this.events.onRoundStart?.(game, roundIndex);
       this.broadcastViews(game);
 
-      // 아가리야메 판정용 — 정산 전(지금 둘 국)의 장풍·국번·오야 자리를 기억한다.
       const playedRound = {
         wind: game.engine.state.round.prevalentWind,
         roundNumber: game.engine.state.round.roundNumber,
@@ -1268,6 +1292,7 @@ export class HanchanController {
       };
 
       const outcome = await this.runRound(game);
+      played = { ...playedRound, outcome };
       if (this.aborted) return this.finishAborted();
       this.flushEvents(game); // 국 진행 이벤트를 리플레이 로그로
       // 대본이 쓰는 국은 하나뿐이다 — 여기서 고정을 푼다 (`presetHandsFirstRoundOnly`).
@@ -1297,6 +1322,8 @@ export class HanchanController {
         }
       }
 
+      } // !skipToNextRound
+
       // 중반 드래프트 진입 체크 (드래프트) — 스테이지당 1회만.
       // 반장전=동3·남1·남3국 진입, 동풍전=동3·동4국 진입. 연장(본장)으로
       // 라운드 번호가 유지돼도 재추첨하지 않는다(draftedStages 가드).
@@ -1315,14 +1342,15 @@ export class HanchanController {
       // 종료 조건 판정 (일반 종국 또는 아가리야메)
       // 방금 둔 국의 결과를 함께 넘긴다 — 도중유국은 아가리야메가 아니다
       // (`agariYameTriggers`의 «도중유국은 렌짱이 아니다» 주석 — QA 2차 rules 확정 3).
-      const reason = this.endReason(game.engine.state, game.engine.rules, {
-        ...playedRound,
-        outcome,
-      });
-      if (reason !== null) {
-        endReason = reason;
-        break;
+      // 국 사이 재개 첫 반복은 건너뛴다 — «방금 친 국»이 없고 round는 이미 다음 국이다.
+      if (played !== null) {
+        const reason = this.endReason(game.engine.state, game.engine.rules, played);
+        if (reason !== null) {
+          endReason = reason;
+          break;
+        }
       }
+      skipToNextRound = false;
 
       // 다음 국 시작 — 세워 둔 판에서 국이 넘어가면 결과 화면이 통째로 지나간다.
       if (await this.gatePaused()) return this.finishAborted();

@@ -18,6 +18,7 @@ import {
   handZone,
   discardsZone,
   meldsZone,
+  standardAugments,
 } from "@majak/core";
 import type {
   ActionOption,
@@ -32,7 +33,13 @@ import type {
 import { contentAugments } from "@majak/content";
 
 export const SEATS: PlayerId[] = ["p0", "p1", "p2", "p3"];
-export const byId = new Map(contentAugments.map((d) => [d.id, d]));
+/**
+ * content 113 + core standard 4 = 117 (계획 X-11). 엔진 레지스트리(`createStandardGame`)는
+ * standard 4종을 항상 먼저 등록하므로 preset에 standard id를 넣어도 그대로 설치된다 —
+ * `extraAugments`는 건드리지 않는다.
+ */
+export const allAugments: readonly AugmentDef[] = [...contentAugments, ...standardAugments];
+export const byId = new Map(allAugments.map((d) => [d.id, d]));
 
 export const STD_ACTIONS = new Set([
   "discard", "riichi", "pon", "chi", "minkan", "ankan", "shouminkan",
@@ -228,6 +235,13 @@ export interface RunOpts {
   /** 뷰 브로드캐스트마다 부르는 커스텀 검사 */
   onState?: (st: GameState, out: Violation[]) => void;
   timeoutMs?: number;
+  /** false면 draftSchedules를 비운다 — 드래프트 없이 preset만 설치. 기본 true(기존 동작). */
+  drafts?: boolean;
+  /**
+   * HanchanController.onEvent로 흘러오는 줄(첫 줄 `__init__` 포함)을 그대로 넘긴다 —
+   * 리플레이 라운드트립용. 내부 집계(ScoreChanged/RoundSettled) 뒤에 호출된다.
+   */
+  onEvent?: (line: string) => void;
 }
 
 export async function runMatch(o: RunOpts): Promise<MatchReport> {
@@ -247,7 +261,13 @@ export async function runMatch(o: RunOpts): Promise<MatchReport> {
     seed: o.seed,
     maxWind: mode === "tonpuu" ? 1 : 2,
     westEntry: false,
-    draftSchedules: mode === "tonpuu" ? ["eastFirst", "eastThird", "eastFourth"] : ["eastFirst", "eastThird", "southEntry", "southThird"],
+    draftSchedules: o.drafts === false
+      ? []
+      // ⚠ 2026-09-16까지 첫 스테이지가 "eastFirst"였는데 core DraftStage에 없는 이름이라
+      // 컨트롤러가 조용히 무시했다 — 그동안의 하네스 스위프는 gameStart 드래프트 없이
+      // preset + 중반 드래프트만 돌았다(운영보다 1스테이지 적음). "gameStart"로 고쳤으므로
+      // 이날 이전 스위프의 시드 재현은 드래프트 켠 판에 한해 달라진다.
+      : mode === "tonpuu" ? ["gameStart", "eastThird", "eastFourth"] : ["gameStart", "eastThird", "southEntry", "southThird"],
     extraAugments: contentAugments,
     presetAugments: o.preset,
     ...(o.presetHands !== undefined ? { presetHands: o.presetHands } : {}),
@@ -271,6 +291,7 @@ export async function runMatch(o: RunOpts): Promise<MatchReport> {
           }
         }
       } catch { /* ignore */ }
+      o.onEvent?.(j);
     },
     onEffectError: (f) => {
       const s = `${(f as { event?: { type?: string } }).event?.type ?? "?"}: ${String((f as { error?: unknown }).error ?? JSON.stringify(f))}`;
@@ -358,10 +379,17 @@ export function conflicting(a: string, b: string): boolean {
 export function offerable(d: AugmentDef, mode: "hanchan" | "tonpuu"): boolean {
   return d.modes === undefined || d.modes.includes(mode);
 }
+/**
+ * `includeStandard`(기본 false): true면 무작위 풀에 core standard 4종도 넣는다.
+ * 기본 풀은 content만 — 기존 스위프의 시드 재현이 바뀌지 않도록. `forced`에는
+ * 옵션과 무관하게 standard id를 넣을 수 있다.
+ */
 export function assignPreset(
   rng: Prng, mode: "hanchan" | "tonpuu", forced: readonly string[], per = 2,
+  includeStandard = false,
 ): Record<PlayerId, string[]> {
-  const pool = contentAugments.filter((d) => offerable(d, mode)).map((d) => d.id).filter((id) => !forced.includes(id));
+  const source: readonly AugmentDef[] = includeStandard ? allAugments : contentAugments;
+  const pool = source.filter((d) => offerable(d, mode)).map((d) => d.id).filter((id) => !forced.includes(id));
   const out: Record<PlayerId, string[]> = { p0: [...forced], p1: [], p2: [], p3: [] };
   const taken = new Set(forced);
   for (const seat of SEATS) {

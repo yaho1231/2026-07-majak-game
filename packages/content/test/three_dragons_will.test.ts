@@ -176,6 +176,38 @@ describe("삼원의 의지 (three_dragons_will)", () => {
     // 미리보기와 발동은 같은 `pickMaterials` 하나를 부른다 — 목록이 곧 태울 패다.
   });
 
+  /*
+   * **완성된 몸통은 재료가 되지 않는다** (2026-09-04 사용자 보고, #467 재적용 2026-09-16).
+   *
+   * 예전 재료 선정은 «이웃이 가장 적은 패»를 골랐다 — 손패 555z 666z 中 + 123m 99p 88s 에서
+   * 삼원패를 뺀 후보는 전부 이어짐 점수가 같고(몸통 끝·또이쯔 = 2), 동점이면 손패 앞쪽부터
+   * 뽑혀 **완성 몸통 123m의 1만·2만이** 재료로 타 버렸다. 이제는 후보마다 "삼원패로 바뀐
+   * 뒤의 손"을 그대로 만들어 샹텐을 재므로(`spareTile.pickSpareTiles`), 몸통을 깨는 1만
+   * 이 아니라 또이쯔 하나(9p9p 또는 8s8s)가 통째로 재료가 되어 손이 그대로 완성된다.
+   */
+  it("완성된 몸통(123m)은 재료가 되지 않는다 — 또이쯔 하나가 통째로 中이 된다", () => {
+    const game = setup(scene("555z666z7z123m99p88s"));
+    expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(true);
+
+    const st = game.engine.state;
+    const keys = handKeys(game);
+    // 123m은 한 장도 빠지지 않았다
+    for (const rank of [1, 2, 3]) {
+      expect(keys.filter((k) => k === kindKey({ suit: "man", rank })).length).toBe(1);
+    }
+    expect(keys.filter((k) => k === CHUN).length).toBe(3);
+    // 몸통을 지켰으니 대삼원 화료형이 그대로 선다
+    const winTile = handIdsOf(st, "p0").find(
+      (id) => kindKey(kindOf(st, id)) === CHUN && st.tiles[id]?.attrs?.conjured === true,
+    ) as TileId;
+    const result = evaluateWin(
+      buildWinContext(st, "p0", "tsumo", winTile, { rules: game.engine.rules }),
+      game.yaku,
+    );
+    expect(result?.ok).toBe(true);
+    expect(result?.yaku.some((y) => y.id === "daisangen")).toBe(true);
+  });
+
   it("리치 중에는 발동할 수 없다", () => {
     const game = setup(scene("555z666z7z123m9m1p5p9s", true));
     expect(game.engine.submit({ player: "p0", type: "dragons_will", payload: {} }).ok).toBe(false);
