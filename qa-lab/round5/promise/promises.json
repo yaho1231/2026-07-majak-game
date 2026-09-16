@@ -1,0 +1,2492 @@
+{
+  "generatedAt": "2026-09-15T20:25:51.915Z",
+  "count": 117,
+  "cards": [
+    {
+      "id": "red_five_touch",
+      "name": "붉은 손길",
+      "tier": "silver",
+      "category": "hand",
+      "modes": null,
+      "head": "게임 내 1회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 1,
+          "src": "게임 내 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 사용할 수 없다"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "counter",
+      "name": "카운터",
+      "tier": "silver",
+      "category": "scoring",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "han_bonus",
+          "han": 3,
+          "src": "+3판"
+        },
+        {
+          "kind": "points",
+          "points": 1000,
+          "src": "1000점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "avenger",
+      "name": "복수자",
+      "tier": "silver",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 2,
+          "src": "2판이 붙"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "ura_peek",
+      "name": "이면투시",
+      "tier": "silver",
+      "category": "info",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "take_back",
+      "name": "무르기",
+      "tier": "silver",
+      "category": "hand",
+      "modes": null,
+      "head": "3순에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_turns",
+          "turns": 3,
+          "src": "3순에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중이거나, 영상패로 뽑은 패이거나, 패산이 비었을 때는 사용할 수 없다"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "riichi_upgrade",
+      "name": "이중 선언",
+      "tier": "gold",
+      "category": "riichi",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "free_riichi_discard",
+      "name": "자유 선언",
+      "tier": "gold",
+      "category": "riichi",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "peek_riichi_waits",
+      "name": "선언 간파",
+      "tier": "gold",
+      "category": "info",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "xray_hand",
+      "name": "투시",
+      "tier": "gold",
+      "category": "info",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "rinshan_preview",
+      "name": "영상 정찰",
+      "tier": "gold",
+      "category": "info",
+      "modes": null,
+      "head": "상시 열람 · 매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "always",
+          "label": "열람",
+          "src": "상시 열람"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "yakuman_shield",
+      "name": "역만 방어술",
+      "tier": "gold",
+      "category": "defense",
+      "modes": null,
+      "head": "상시 · 횟수 제한 없음",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "points",
+          "points": 100,
+          "src": "100점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "omni_chi",
+      "name": "사방치기",
+      "tier": "gold",
+      "category": "call",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "pseudo_dealer",
+      "name": "찬탈자",
+      "tier": "gold",
+      "category": "disrupt",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 1.5,
+          "src": "1.5배"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "last_stand",
+      "name": "승부수",
+      "tier": "gold",
+      "category": "defense",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "die_hard",
+      "name": "죽기살기",
+      "tier": "gold",
+      "category": "defense",
+      "modes": null,
+      "head": "게임 내 1회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 1,
+          "src": "게임 내 1회"
+        },
+        {
+          "kind": "points",
+          "points": 12500,
+          "src": "12500점"
+        },
+        {
+          "kind": "points",
+          "points": 8000,
+          "src": "8000점"
+        },
+        {
+          "kind": "points",
+          "points": 25000,
+          "src": "25000점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "hidden_blade",
+      "name": "숨은 칼날",
+      "tier": "gold",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 2,
+          "src": "+2판"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "tile_dyeing",
+      "name": "염색",
+      "tier": "gold",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 5회 · 반장전 8회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 5,
+          "hanchan": 8,
+          "src": "동풍전 5회 · 반장전 8회"
+        },
+        {
+          "kind": "cond",
+          "cond": "riichi_drawn_only",
+          "src": "description+detail: 리치 중에는 방금 쯔모한 패만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "scapegoat",
+      "name": "덤터기",
+      "tier": "gold",
+      "category": "scoring",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 2,
+          "src": "+2판"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "let_it_ride",
+      "name": "판돈 굴리기",
+      "tier": "gold",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 1,
+          "src": "1배"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 2,
+          "src": "2배"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 3,
+          "src": "3배"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 4,
+          "src": "4배"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "open_riichi_reveal",
+      "name": "오픈 리치",
+      "tier": "gold",
+      "category": "riichi",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 보인다"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "invincible",
+      "name": "천하무적",
+      "tier": "gold",
+      "category": "defense",
+      "modes": null,
+      "head": "동풍전 2국 · 반장전 3국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2국 · 반장전 3국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 전원에게 표시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "hidden_river",
+      "name": "안개 덮인 바닥",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "suit_unify",
+      "name": "단색 세계",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회 · 매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        },
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국의 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "hand_swap3",
+      "name": "등가교환",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 2회 · 반장전 3회 · 매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2회 · 반장전 3회"
+        },
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "full_hand_swap",
+      "name": "통째로 바꾸기",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 2회 · 반장전 3회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2회 · 반장전 3회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 내 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "discard_lock",
+      "name": "봉인술사",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국 시작에 발동"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "tanyao_break",
+      "name": "탕야오 해방",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "open_kokushi",
+      "name": "우는 국사무쌍",
+      "tier": "prism",
+      "category": "call",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "broken_wall",
+      "name": "끝없는 윤회",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "seat_swap",
+      "name": "자리 바꿈",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "동풍전 2회 · 반장전 3회 · 매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2회 · 반장전 3회"
+        },
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 첫 순에 상대"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "future_sight",
+      "name": "미래를 보는 자",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "han_bonus",
+          "han": 1,
+          "src": "+1판"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 사용할 수 없다"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 공개된다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "bottom_deal",
+      "name": "밑장빼기",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "2순에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_turns",
+          "turns": 2,
+          "src": "2순에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 공개된다"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "true_dragon",
+      "name": "진짜 용",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 3,
+          "src": "3판이 추가"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "parasite",
+      "name": "기생충",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "jackpot",
+      "name": "일확천금",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "매 국 1회 · 국의 첫 순",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "국의 첫 순"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 0.5,
+          "src": "0.5배"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 1,
+          "src": "1배"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 2,
+          "src": "2배"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 3,
+          "src": "3배"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "big_hand",
+      "name": "큰손",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "mangan_floor",
+          "src": "최소 만관"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국의 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "late_bloomer",
+      "name": "대기만성 (반장전)",
+      "tier": "prism",
+      "category": "shape",
+      "modes": [
+        "hanchan"
+      ],
+      "head": "상시 · 반장전 전용 · 게임 시작 드래프트에서만 등장",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 3,
+          "src": "+3판"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "late_bloomer_east",
+      "name": "대기만성 (동풍전)",
+      "tier": "prism",
+      "category": "shape",
+      "modes": [
+        "tonpuu"
+      ],
+      "head": "상시 · 동풍전 전용 · 게임 시작 드래프트에서만 등장",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 2,
+          "src": "+2판"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "nagashi_yakuman",
+      "name": "유국역만",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "cliff_bloom",
+      "name": "절벽 위에 피어난 꽃",
+      "tier": "prism",
+      "category": "call",
+      "modes": null,
+      "head": "만개는 동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "label": "만개",
+          "src": "만개는 동풍전 1회 · 반장전 2회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "no_retreat",
+      "name": "물러설 수 없는 선언",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "points",
+          "points": 1000,
+          "src": "1000점"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "alchemist",
+      "name": "연금술사",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 5회 · 반장전 8회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 5,
+          "hanchan": 8,
+          "src": "동풍전 5회 · 반장전 8회"
+        },
+        {
+          "kind": "cond",
+          "cond": "riichi_drawn_only",
+          "src": "description+detail: 리치 중에는 쯔모한 패에만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "blood_contract",
+      "name": "핏빛 계약",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 1.5,
+          "src": "1.5배"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 첫 타패 전"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "aotenjou_ceiling",
+      "name": "뚫린 천장",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "devils_advance",
+      "name": "가불 인생",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "points",
+          "points": 10000,
+          "src": "10000점"
+        },
+        {
+          "kind": "points",
+          "points": 3000,
+          "src": "3000점"
+        },
+        {
+          "kind": "points",
+          "points": 9000,
+          "src": "9000점"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "all_or_nothing",
+      "name": "모 아니면 도",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "매 국 1회 · 리치는 국당 한 번",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "points",
+          "points": 1000,
+          "src": "1000점"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "eternal_dealer",
+      "name": "만년 오야",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시 · 연장은 동풍전 3회 · 반장전 5회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 3,
+          "hanchan": 5,
+          "label": "연장",
+          "src": "연장은 동풍전 3회 · 반장전 5회"
+        },
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 1,
+          "src": "1판이 더해"
+        },
+        {
+          "kind": "multiplier",
+          "factor": 1.5,
+          "src": "1.5배"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "broken_border",
+      "name": "무너진 국경",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "동풍전 2국에 1회 · 반장전 3국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2국에 1회 · 반장전 3국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국의 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "pond_snatch",
+      "name": "날치기",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중이거나 영상패를 쯔모한 순, 패산이 남지 않은 국에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "grave_rob",
+      "name": "무덤 도굴",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "spy",
+      "name": "스파이",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "hidden_from_opponents",
+          "src": "description+detail: 비밀리에"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "karma",
+      "name": "카르마",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "points",
+          "points": 100,
+          "src": "100점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "time_stop",
+      "name": "시간 정지",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "riichi_seal",
+      "name": "리치 봉인",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "매 국 1회 · 그 국의 첫 리치를 내가 선언할 때",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "mixed_nine_gates",
+      "name": "뒤섞인 아홉 개의 연꽃",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시 · 멘젠 한정",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "haitei_lord",
+      "name": "해저의 지배자",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 3,
+          "src": "+3판"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "off_by_one",
+      "name": "한 끗 차이",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "silent_swap",
+      "name": "정적의 손",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "ankan_dora",
+      "name": "밀실의 도라",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 4,
+          "src": "+4판"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "foresight",
+      "name": "예지",
+      "tier": "prism",
+      "category": "info",
+      "modes": null,
+      "head": "열람 4순에 1회 · 재배열은 국에 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "label": "재배열",
+          "src": "재배열은 국에 1회"
+        },
+        {
+          "kind": "cooldown_turns",
+          "turns": 4,
+          "label": "열람",
+          "src": "열람 4순에 1회"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 2,
+          "src": "+2판"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 공개된다"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "rank_gate",
+      "name": "격(格)",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 내 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "dead_wall_master",
+      "name": "왕패의 주인",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "상시 열람 · 2국에 1회 교환",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "label": "교환",
+          "src": "2국에 1회 교환"
+        },
+        {
+          "kind": "always",
+          "label": "열람",
+          "src": "상시 열람"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국의 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "stealth_riichi",
+      "name": "스텔스 리치",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "매 국 1회 · 리치는 국당 한 번",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "points",
+          "points": 1000,
+          "src": "1000점"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "void_kan",
+      "name": "성립하지 않는 깡",
+      "tier": "prism",
+      "category": "call",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 발동하지 않는다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "honba_hunter",
+      "name": "본장 사냥꾼",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "points",
+          "points": 300,
+          "src": "300점"
+        },
+        {
+          "kind": "points",
+          "points": 1500,
+          "src": "1500점"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 보인다"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "mixed_triplet",
+      "name": "동수의 결속",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "동풍전 2국에 1회, 반장전 3국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2국에 1회, 반장전 3국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국의 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "royal_kokushi",
+      "name": "왕의 징표",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "siege_riichi",
+      "name": "공성계",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "points",
+          "points": 1000,
+          "src": "1000점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "polar_ends",
+      "name": "양극",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "async_chiitoi",
+      "name": "비대칭",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "동풍전 2국에 1회 · 반장전 3국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2국에 1회 · 반장전 3국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국의 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "genesis",
+      "name": "개벽",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회 · 매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        },
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "unification",
+      "name": "천하통일",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "points",
+          "points": 55000,
+          "src": "55000점"
+        },
+        {
+          "kind": "points",
+          "points": 45000,
+          "src": "45000점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "table_flip",
+      "name": "밥상 뒤엎기",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "description: 국의 첫 순"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "soul_hunt",
+      "name": "혼 사냥",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 1,
+          "src": "1판이 붙"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "bluff_pretense",
+      "name": "허장성세",
+      "tier": "prism",
+      "category": "call",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중, 후로 봉인 중, 패산이 다 떨어진 뒤의 마지막 버림에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "blame_shift",
+      "name": "책임전가",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "no_ron_pact",
+      "name": "불가침 조약",
+      "tier": "prism",
+      "category": "defense",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "always_tenpai",
+      "name": "승승장구",
+      "tier": "prism",
+      "category": "defense",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "points",
+          "points": 2000,
+          "src": "2000점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "dora_conceal",
+      "name": "가려진 도라",
+      "tier": "prism",
+      "category": "info",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "late_double",
+      "name": "뒤늦은 출진",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 1,
+          "src": "+1판"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "call_seal",
+      "name": "함구령",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "동풍전 2국에 1회 · 반장전 3국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2국에 1회 · 반장전 3국에 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "even_world",
+      "name": "짝수의 세계",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "brief_fog",
+      "name": "박무",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "동풍전 2국에 1회 · 반장전 3국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2국에 1회 · 반장전 3국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "giant_god",
+      "name": "마작의 거신병",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에도 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "conjure_draw",
+      "name": "소환",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 전원에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "bottom_yaku",
+      "name": "바닥의 족보",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "tenpai_scan",
+      "name": "천리안",
+      "tier": "prism",
+      "category": "info",
+      "modes": null,
+      "head": "매 국 2회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 2,
+          "src": "매 국 2회"
+        },
+        {
+          "kind": "cond",
+          "cond": "hidden_from_opponents",
+          "src": "description+detail: 상대에게 공개되지 않는다"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "danger_sense",
+      "name": "지뢰 탐지",
+      "tier": "prism",
+      "category": "info",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "triple_peek",
+      "name": "삼세 예지",
+      "tier": "prism",
+      "category": "info",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "meld_dissolve",
+      "name": "파혼",
+      "tier": "prism",
+      "category": "call",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "wind_lineage",
+      "name": "바람의 계보",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "silent_pact",
+      "name": "묵계",
+      "tier": "prism",
+      "category": "call",
+      "modes": null,
+      "head": null,
+      "pledges": [],
+      "unparsed": []
+    },
+    {
+      "id": "regret",
+      "name": "미련",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "disarm",
+      "name": "무장해제",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "push_riichi",
+      "name": "등 떠밀기",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 2,
+          "src": "2판이 추가"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "reload",
+      "name": "재장전",
+      "tier": "prism",
+      "category": "etc",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "honor_return",
+      "name": "귀환",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중이면 사용할 수 없다"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "tile_split",
+      "name": "분열",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "frame_up",
+      "name": "누명",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중이거나 국의 첫 바퀴에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "three_dragons_will",
+      "name": "삼원의 의지",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "동풍전 1회 · 반장전 2회",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 1,
+          "hanchan": 2,
+          "src": "동풍전 1회 · 반장전 2회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중이면 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "snake_kan",
+      "name": "장사진",
+      "tier": "prism",
+      "category": "call",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 선언할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "palm_flip",
+      "name": "손바닥 뒤집기",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "north_trader",
+      "name": "북풍 상인",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "hourglass",
+      "name": "뒤집힌 모래시계",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "mirror_dora",
+      "name": "거울",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나에게만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "cornucopia",
+      "name": "수상한 주사위",
+      "tier": "prism",
+      "category": "etc",
+      "modes": null,
+      "head": "획득 즉시",
+      "pledges": [
+        {
+          "kind": "on_acquire",
+          "src": "획득 즉시"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 전원에게 공개"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "time_pressure",
+      "name": "초읽기",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "획득 즉시 · 이번 국만",
+      "pledges": [
+        {
+          "kind": "on_acquire",
+          "src": "획득 즉시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "blind_ron",
+      "name": "눈먼 총알",
+      "tier": "prism",
+      "category": "disrupt",
+      "modes": null,
+      "head": "획득 즉시 · 이번 국만 · 반장전은 게임 내 1회 재장전",
+      "pledges": [
+        {
+          "kind": "uses_match",
+          "tonpuu": 0,
+          "hanchan": 1,
+          "label": "재장전",
+          "src": "반장전은 게임 내 1회 재장전"
+        },
+        {
+          "kind": "on_acquire",
+          "src": "획득 즉시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "dora_afterimage",
+      "name": "잔상",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "2국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "public",
+          "src": "description+detail: 모두에게 공개"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "sign_flip",
+      "name": "반전",
+      "tier": "prism",
+      "category": "scoring",
+      "modes": null,
+      "head": "3국에 1회 · 자기 첫 순 · 이번 국만",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 3,
+          "hanchan": 3,
+          "src": "3국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "first_turn",
+          "src": "자기 첫 순"
+        },
+        {
+          "kind": "points",
+          "points": 8000,
+          "src": "8000점"
+        },
+        {
+          "kind": "points",
+          "points": 1000,
+          "src": "1000점"
+        },
+        {
+          "kind": "points",
+          "points": 25000,
+          "src": "25000점"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "soul_strike",
+      "name": "영혼의 일격",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "2국에 1회 · 리치는 국당 한 번",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 2,
+          "src": "2국에 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "self_only",
+          "src": "description+detail: 나만"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "picky_eater",
+      "name": "편식",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": null,
+      "pledges": [
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "joker",
+      "name": "조커",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "동풍전 2국에 1회 · 반장전 3국에 1회",
+      "pledges": [
+        {
+          "kind": "cooldown_rounds",
+          "tonpuu": 2,
+          "hanchan": 3,
+          "src": "동풍전 2국에 1회 · 반장전 3국에 1회"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "iron_wall",
+      "name": "철벽",
+      "tier": "gold",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        },
+        {
+          "kind": "han_bonus",
+          "han": 3,
+          "src": "+3판"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "open_riichi",
+      "name": "개문선언",
+      "tier": "prism",
+      "category": "riichi",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "yakuless_win",
+      "name": "무형화료",
+      "tier": "prism",
+      "category": "shape",
+      "modes": null,
+      "head": "상시",
+      "pledges": [
+        {
+          "kind": "always",
+          "src": "상시"
+        }
+      ],
+      "unparsed": []
+    },
+    {
+      "id": "discard_recall",
+      "name": "회수",
+      "tier": "prism",
+      "category": "hand",
+      "modes": null,
+      "head": "매 국 1회",
+      "pledges": [
+        {
+          "kind": "uses_round",
+          "perRound": 1,
+          "src": "매 국 1회"
+        },
+        {
+          "kind": "cond",
+          "cond": "no_riichi",
+          "src": "description+detail: 리치 중에는 사용할 수 없다"
+        }
+      ],
+      "unparsed": []
+    }
+  ],
+  "emptyCards": [
+    "riichi_upgrade",
+    "open_kokushi",
+    "silent_swap",
+    "royal_kokushi",
+    "no_ron_pact",
+    "meld_dissolve",
+    "wind_lineage",
+    "silent_pact"
+  ],
+  "unparsedCards": []
+}
