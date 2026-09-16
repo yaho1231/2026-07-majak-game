@@ -53,6 +53,10 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
   echo "▶ 이능마작 공개 서버 — 포트 ${PORT_SHOW} · 가입게이트 ${GATE}"
 fi
 
+# libuv 스레드풀 크기 — scrypt 로그인·ws deflate·리플레이 쓰기가 공유한다. majak.sh 의
+# node 실행 줄과 같은 기본값(16). majak.env 에 UV_THREADPOOL_SIZE=… 를 적으면 그 값이 이긴다.
+export UV_THREADPOOL_SIZE="${UV_THREADPOOL_SIZE:-16}"
+
 # 실제 실행은 기존 majak.sh에 위임 (env는 서브프로세스가 상속받는다)
 bash "$ROOT/scripts/majak.sh" "$CMD"
 

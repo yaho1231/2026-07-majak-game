@@ -106,6 +106,12 @@ start() {
   # exec로 서브셸을 node로 치환 → $!가 node의 PID (stop이 정확히 그 프로세스를 종료)
   local cmd; cmd="$(server_cmd)"
   echo "  실행: $cmd" >>"$LOG"
+  # libuv 스레드풀(기본 4)은 scrypt 로그인·ws permessage-deflate·리플레이 파일 쓰기가
+  # 같이 쓴다. 로그인 20건/초 폭주에서 풀 4는 ping p99 를 10 → 31~849ms 로 밀었고,
+  # 16이면 11ms 로 돌아왔다(qa-lab/round5/perf/report.md §5, D-6). 프로세스가 뜨기
+  # **전에** env 로 줘야 먹는 값이라 index.ts 가 아니라 여기서 준다. env 로 덮어쓸 수 있다.
+  export UV_THREADPOOL_SIZE="${UV_THREADPOOL_SIZE:-16}"
+  echo "  UV_THREADPOOL_SIZE=$UV_THREADPOOL_SIZE" >>"$LOG"
   # shellcheck disable=SC2086
   ( cd "$ROOT/packages/server" && export PORT="$PORT" && exec $cmd ) >>"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
