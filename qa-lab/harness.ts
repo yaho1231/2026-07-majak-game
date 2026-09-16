@@ -115,7 +115,16 @@ export class PersonaAgent implements PlayerAgent {
     this.rng = new Prng(seed);
   }
   sendView(_v: PlayerView): void {}
+  private decideCount = 0;
   async decide(prompt: DecisionPrompt): Promise<ActionOption> {
+    /*
+     * ⚠ 이 함수는 동기적으로 답한다(await 없음). 그러면 판 전체가 **마이크로태스크만으로**
+     * 돌아 타이머가 한 번도 못 낀다 — 상태를 안 바꾸는 합법 액션이 무한히 제공되는 결함
+     * (2026-09-16 B-2: 선언 간파 × 노텐 리치)에서 `withTimeout`(runMatch)도
+     * `agentDecideTimeoutMs`도 영원히 안 울리고 CPU 100%로 멈췄다. 몇 번에 한 번
+     * 매크로태스크로 양보해 타임아웃 → requestAbort() 경로가 살아 있게 한다.
+     */
+    if (++this.decideCount % 64 === 0) await new Promise<void>((r) => setImmediate(r));
     const opts = prompt.options;
     const p = this.persona;
     const pick = (o: ActionOption): ActionOption => {
