@@ -247,6 +247,9 @@ const bluffPonAction: ActionDef<{ tileId: TileId }> = {
           meldKind: "pon",
           handTileIds: [req.payload.tileId, sacrifice],
           calledTileId: last.tileId,
+          // 아래 CALL_MADE 반응이 «내 콜인가»를 이 값으로 판정한다. 이벤트 로그에 실리므로
+          // 리플레이 재구성에서도 같은 판정이 난다.
+          via: ACTION,
         },
       },
       // ③ 국당 1회 소진 + 전원 공개
@@ -308,20 +311,30 @@ export const bluffPretense: AugmentDef = defineAugment({
     /*
      * **퐁으로 손이 완성됐으면 화료할 수 있어야 한다** (위 `completedWinTile` 주석).
      *
-     * 이 콜에서만 연다 — 표준 펑은 열지 않는다. 표준 펑으로 손이 완성되는 자리는
+     * 이 콜에서만 연다 — 표준 펑·치는 열지 않는다. 표준 콜로 손이 완성되는 자리는
      * 애초에 그 패로 **론**이 되는 자리라(후리텐이면 못 하는 것이 규칙이다), 여기서
-     * 문을 열면 후리텐을 우회하는 뒷문이 된다. 그래서 «방금 눕힌 몸통에 생성패가
-     * 섞여 있는가»로 이 증강의 콜만 골라낸다.
+     * 문을 열면 후리텐을 우회하는 뒷문이 된다. 그래서 «이 콜 이벤트를 bluff_pon 이
+     * 냈는가»(`payload.via`)로만 골라낸다.
+     *
+     * 예전에는 «방금 눕힌 몸통에 생성패(conjured)가 섞여 있는가»로 골랐는데, 그 표식은
+     * 이 증강만 찍는 것이 아니다 — 염색·연금술사·조커·거신 등 18개 카드가 같은 표식을
+     * 손패에 남긴다. 그 패가 든 **표준 퐁·치**로 손이 완성되면 후리텐 자리에서 쯔모
+     * 화료가 떴다(QA 5라운드 C-6, qa-lab/round5/repro/bluff_conjured_pon.test.ts).
+     * 표식은 «패의 출처»지 «콜의 출처»가 아니라 게이트가 될 수 없다.
+     *
+     * core 의 «후로 순 증강 완성 쯔모»(`tsumoWinTileOf`, #516)와의 관계: core 는 콜 직후
+     * 손패 서명(`postCallHandKey`)과 지금 손패가 **다를 때만** — 콜 뒤에 증강이 손을
+     * 고쳤을 때만 — 쯔모를 연다. bluff_pon 은 변환(tileKindChanged)이 CALL_MADE 보다
+     * 먼저라 서명이 변환 뒤 손과 같고, 콜 자체가 완성이라 그 뒤 손이 바뀌지 않는다.
+     * 즉 core 경로는 이 콜에 닫혀 있어 여기서 `lastDrawnTile` 을 채워야 한다. 채우고
+     * 나면 `tsumoWinTileOf` 는 그 값을 그대로 돌려주므로 두 경로는 겹치지 않는다.
      */
     ctx.reaction(CALL_MADE, (event, rc) => {
-      const called = event.payload as { caller: PlayerId };
+      const called = event.payload as { caller: PlayerId; via?: string };
       if (called.caller !== holder) return;
+      if (called.via !== ACTION) return;
       const state = rc.state;
       if (state.round.lastDrawnTile !== null) return;
-      const melds = state.round.byPlayer[holder]?.melds ?? [];
-      const made = melds[melds.length - 1];
-      if (made === undefined) return;
-      if (!made.tileIds.some((id) => state.tiles[id]?.attrs.conjured === true)) return;
       if (ctx.yaku === undefined) return;
       const winTile = completedWinTile(state, holder, engine.rules, ctx.yaku);
       if (winTile === undefined) return;
