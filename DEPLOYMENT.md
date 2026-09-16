@@ -117,6 +117,7 @@ npm run serve:stop
 | `SESSION_TTL_MS` | 30일 | 세션 토큰 수명 |
 | `INTER_ROUND_DELAY_MS` | `7000` | 국 사이 결과 화면 대기 상한(사람 전원이 닫으면 그전에 진행) |
 | `SIGNUP_CODE` | (없음) | **가입 게이트** — 설정하면 이 코드를 아는 사람만 회원가입 가능 |
+| `UV_THREADPOOL_SIZE` | `16` (스크립트가 줌) | libuv 스레드풀 — scrypt 로그인·ws deflate·리플레이 쓰기가 공유. node 기본 4는 로그인 폭주 때 ping p99 를 수백 ms 로 밀었다(qa-lab/round5/perf §5). `majak.sh`/`serve.sh` 가 프로세스 기동 전에 넣으므로 `majak.env` 로 덮어쓸 수 있다 |
 
 예: `PORT=3011 SIGNUP_CODE=친구들만아는코드 npm start`
 

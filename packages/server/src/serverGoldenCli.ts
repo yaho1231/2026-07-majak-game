@@ -300,14 +300,22 @@ async function runOnce(): Promise<RunResult> {
     if (msg.type === "roomCreated") roomCode = msg.code;
     if (msg.type === "gameOver") {
       gamesDone++;
-      if (gamesDone >= games || roomKind === "guest") setTimeout(doneResolve, 0);
+      // 게스트 방은 판이 끝나면 방이 사라져 lobby 가 오지 않는다 — 바로 끝.
+      if (roomKind === "guest") setTimeout(doneResolve, 0);
       else awaitingLobby = true;
     }
     // 방은 gameOver **뒤** finishStats(비동기 통계 저장)가 끝나야 대기실로 돌아오고
     // 그때 `lobby` 를 방송한다 — 그 전에 보낸 startGame 은 phase 검사에서 조용히 버려진다.
     // (샌드박스 방은 startGame 대신 `sandboxReset` 으로 다음 판을 연다.)
+    // **마지막 판 뒤에도 lobby 를 기다린다** — 안 기다리면 shutdown 이 finishStats 의
+    // stats·lobby 프레임과 경주해 해시 꼬리가 실행마다 달라진다(2026-09-16 실측: 같은
+    // 코드로 두 값이 번갈아 나옴. 저장 원가가 줄어 경주 결과가 뒤집힌 것이 발견 계기).
     if (awaitingLobby && msg.type === "lobby") {
       awaitingLobby = false;
+      if (gamesDone >= games) {
+        setTimeout(doneResolve, 0);
+        return;
+      }
       const next =
         roomKind === "sandbox" ? { type: "sandboxReset", mode } : { type: "startGame" };
       setTimeout(() => sock.clientSend(next), 0);

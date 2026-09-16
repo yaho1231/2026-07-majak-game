@@ -482,6 +482,8 @@ async function main(): Promise<void> {
       framesByType: framesPerSec,
       perfSamples: perfSamples.length,
       sampleErrors: errors.slice(0, 10),
+      // 시계열(스파이크 시각 상관용, QA 5라운드 D-5) — 표에는 안 찍고 jsonl 에만 남긴다
+      perfSeries: perfSamples.map((s) => ({ t: s.t - m0, loopP99: s.loopP99, loopMax: s.loopMax, botP99: s.botP99, heap: s.heapUsed, rss: s.rssPs })),
     };
 
     const f = (n: number) => (Number.isFinite(n) ? String(n) : "-");

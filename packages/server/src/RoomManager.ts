@@ -1285,6 +1285,20 @@ export class RoomManager {
   private rooms = new Map<string, Room>();
   /** 모든 활성 연결 — 계정 삭제·세션 무효화 시 강제 로그아웃 대상 조회용. */
   private conns = new Set<Conn>();
+  /**
+   * 닉네임 → **그 계정으로 인증된 살아 있는 연결들** (2026-09-16, QA 5라운드 S-4).
+   *
+   * 프레즌스 경로(`notifyPresenceChanged`)가 접속·이탈·대국 시작·종료마다 `conns`
+   * 전체를 훑고, 친구 한 명마다 `onlineMap`으로 또 전체를 훑어 O(N·F)였다 — 친구
+   * 1,000쌍에서 초당 100~267ms 스파이크가 반복됐다. 이 색인은 그 순회를 조회 하나로
+   * 바꾼다. **게스트는 넣지 않는다**(친구 관계가 없고 id도 공유한다).
+   *
+   * 진실은 여전히 `conns`+`conn.user`다 — 색인은 `reindexConn`이 그 둘을 읽어 맞추는
+   * 파생값이라, `conn.user`/`conn.guest`를 바꾸는 모든 자리와 `handleClose`가 부른다.
+   */
+  private connsByName = new Map<string, Set<Conn>>();
+  /** 연결이 색인에 들어가 있는 키 (`reindexConn`이 옛 키를 지울 때 쓴다). */
+  private indexedName = new Map<Conn, string>();
   /** 관리자 접속자 목록 밀어내기 디바운스 타이머 (`scheduleAdminOnline`) */
   private adminOnlineTimer: ReturnType<typeof setTimeout> | null = null;
   /** IP별 동시 연결 수 (연결 상한 판정용). */
@@ -1578,6 +1592,34 @@ export class RoomManager {
   private readonly augmentCatalog: AugmentCatalogEntry[] = buildAugmentCatalog();
 
   /**
+   * 위 카탈로그를 담은 `catalog` 프레임의 **직렬화 문자열** — 로그인·게스트 입장마다
+   * 한 번씩 나가는데, 카탈로그(증강 104종 × 이름·설명·상세 = 수십 KB)는 프로세스 수명
+   * 동안 고정이라(`readonly`, 항목도 `buildAugmentCatalog`가 만든 뒤 아무도 손대지
+   * 않는다) 매번 `JSON.stringify`를 다시 돌릴 이유가 없다(QA 5라운드 Phase E, S-3).
+   * 바이트는 `send()`가 만들던 것과 정확히 같다 — 서버 골든 프레임 해시가 그 증명이다.
+   * 카탈로그가 프로세스 안에서 바뀌는 날이 오면 이 문자열도 그 자리에서 다시 만든다.
+   */
+  private readonly augmentCatalogFrame: string = JSON.stringify({
+    type: "catalog",
+    augments: this.augmentCatalog,
+  } satisfies ServerMessage);
+
+  /** `send(ws, { type: "catalog", … })`와 동일하되 캐시된 직렬화 문자열을 쓴다. */
+  private sendCatalog(ws: WebSocket): void {
+    if (ws.readyState !== 1 /* OPEN */) return;
+    // send()와 같은 백프레셔 가드 — 그쪽 주석 참고.
+    if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+      try {
+        ws.terminate();
+      } catch {
+        /* 이미 닫힘 */
+      }
+      return;
+    }
+    ws.send(this.augmentCatalogFrame);
+  }
+
+  /**
    * 지금 걸려 있는 운영자 공지 (§4-3). 메모리에 들고 있는 이유는 이 값이
    * **연결마다** 나가기 때문이다 — 접속 폭주에 DB 조회를 곱하지 않는다.
    * 관리자가 바꿀 때만 갱신되고, 그 순간 접속 중인 사람들에게도 바로 밀어 준다.
@@ -1650,6 +1692,7 @@ export class RoomManager {
       violations: 0,
     };
     this.conns.add(conn);
+    this.reindexConn(conn);
     this.ipConnCount.set(key, perIp + 1);
     this.log(null, `연결 열림 ${key} (동시 ${this.conns.size})`);
 
@@ -1825,6 +1868,7 @@ export class RoomManager {
     // 좌석 정리·IP 카운터 감소를 두 번 하면 안 된다(카운터가 음수로 새면 IP당
     // 동시 연결 상한이 조용히 헐거워진다). Set에서 실제로 빠진 첫 호출만 진행한다.
     if (!this.conns.delete(conn)) return;
+    this.reindexConn(conn); // 색인에서 뺀다 — 아래 프레즌스 알림이 «남은 연결»만 보게
     this.log(
       conn.room,
       `연결 닫힘 ${conn.user?.username ?? conn.key} (동시 ${this.conns.size})`,
@@ -2052,6 +2096,7 @@ export class RoomManager {
         this.detachSeat(conn);
         conn.user = null;
         conn.sessionToken = null;
+        this.reindexConn(conn);
         // 다시 미인증 상태이므로 유예 타이머를 되건다 — 로그인 후 로그아웃으로
         // 타이머만 소모하고 소켓을 계속 붙들고 있는 우회를 막는다.
         this.armAuthDeadline(conn);
@@ -2183,7 +2228,7 @@ export class RoomManager {
         if (this.heavyLimited(conn, msg.type)) {
           return this.fail(conn, "RATE_LIMITED", "조회가 너무 잦습니다. 잠시 후 다시 시도하세요");
         }
-        return this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+        return this.sendCatalog(conn.ws);
       }
       default:
         break;
@@ -2871,6 +2916,7 @@ export class RoomManager {
     }
     conn.user = user;
     conn.sessionToken = sessionToken;
+    this.reindexConn(conn);
     /*
      * **한 계정은 한 창에서만** (2026-08-25 사용자 지시).
      *
@@ -2902,7 +2948,7 @@ export class RoomManager {
       resumeRoom: this.resumableRoomFor(user.username),
     });
     // 홈 통계에서 증강 이름·등급을 게임 시작 전에도 쓸 수 있도록 정적 카탈로그를 보낸다.
-    this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+    this.sendCatalog(conn.ws);
     // 내가 «접속 중»이 됐다 — 친구들 화면의 그 점이 지금 켜져야 한다 (확정 4).
     this.notifyPresenceChanged(user.username);
   }
@@ -4013,22 +4059,58 @@ export class RoomManager {
     if (payload !== null) this.send(conn.ws, payload);
   }
 
-  /** 닉네임 → 지금 접속해 있는가 / 그중 대국 중인가. */
+  /**
+   * `connsByName` 색인을 이 연결의 **지금** 상태(`conns` 소속·`user`·`guest`)에 맞춘다.
+   * 멱등이라 몇 번 불러도 같다. 조건이 안 맞으면(미인증·게스트·닫힘) 색인에서 뺀다.
+   */
+  private reindexConn(conn: Conn): void {
+    const prev = this.indexedName.get(conn);
+    const next =
+      conn.user !== null && !conn.guest && this.conns.has(conn) ? conn.user.username : undefined;
+    if (prev === next) return;
+    if (prev !== undefined) {
+      const set = this.connsByName.get(prev);
+      if (set !== undefined) {
+        set.delete(conn);
+        if (set.size === 0) this.connsByName.delete(prev);
+      }
+      this.indexedName.delete(conn);
+    }
+    if (next !== undefined) {
+      let set = this.connsByName.get(next);
+      if (set === undefined) {
+        set = new Set();
+        this.connsByName.set(next, set);
+      }
+      set.add(conn);
+      this.indexedName.set(conn, next);
+    }
+  }
+
+  /** 닉네임 → 지금 접속해 있는가 / 그중 대국 중인가. (색인에서 만든다 — 값은 종전과 동일) */
   private onlineMap(): Map<string, boolean> {
     const online = new Map<string, boolean>();
-    for (const c of this.conns) {
-      if (c.user === null || c.guest) continue;
+    for (const [name, set] of this.connsByName) {
       // 한 사람이 여러 탭을 열어 뒀으면 **하나라도 대국 중이면** 대국 중으로 본다.
-      const playing = c.room !== null && c.room.phase === "playing";
-      online.set(c.user.username, (online.get(c.user.username) ?? false) || playing);
+      let playing = false;
+      for (const c of set) {
+        if (c.room !== null && c.room.phase === "playing") {
+          playing = true;
+          break;
+        }
+      }
+      online.set(name, playing);
     }
     return online;
   }
 
-  private friendPayload(userId: number): FriendListMessage | null {
+  /**
+   * @param online 이미 만든 `onlineMap()` — 한 이벤트에서 친구 F명에게 보낼 때 한 번만
+   *   계산해 돌려쓴다(S-4). 생략하면 여기서 만든다.
+   */
+  private friendPayload(userId: number, online = this.onlineMap()): FriendListMessage | null {
     const db = this.db;
     if (db === undefined) return null;
-    const online = this.onlineMap();
     return {
       type: "friendList",
       friends: db.friendNames(userId).map((nickname) => ({
@@ -4083,6 +4165,10 @@ export class RoomManager {
    *
    * 「나」에게는 보내지 않는다. 내 상태가 바뀐 것이지 내 친구 목록이 바뀐 것이 아니고,
    * 접속·입장 경로는 자기 목록을 이미 따로 받는다.
+   *
+   * 원가(2026-09-16, S-4): 친구 이름 → `connsByName` 조회(O(1))로 접속 중인 친구만
+   * 고르고, `onlineMap`은 이벤트당 **한 번**만 만들어 친구 전원의 payload 에 돌려쓴다.
+   * 프레임 내용은 종전과 같다(같은 DB 쿼리 3개 + 같은 온라인 판정).
    */
   private notifyPresenceChanged(username: string | undefined): void {
     // 관리자 접속자 화면도 같은 신호로 따라간다 (접속·이탈·대국 시작).
@@ -4099,20 +4185,23 @@ export class RoomManager {
       return;
     }
     if (names.length === 0) return;
-    const targets = new Set(names);
     /*
      * 친구 한 명당 payload 를 새로 만든다(각자 자기 목록이라 내용이 다르다). 다만
-     * **접속해 있는 친구만** 훑는다 — 목록에는 있지만 지금 없는 사람에게는 보낼 곳이 없다.
+     * **접속해 있는 친구만** 본다 — 목록에는 있지만 지금 없는 사람에게는 보낼 곳이 없다.
      */
-    const seen = new Set<number>();
-    for (const c of this.conns) {
-      if (c.user === null || c.guest) continue;
-      if (!targets.has(c.user.username) || seen.has(c.user.id)) continue;
-      const payload = this.friendPayload(c.user.id);
-      if (payload === null) continue;
-      seen.add(c.user.id);
-      for (const other of this.conns) {
-        if (other.user?.id === c.user.id && !other.guest) this.send(other.ws, payload);
+    let online: Map<string, boolean> | null = null;
+    for (const name of names) {
+      const set = this.connsByName.get(name);
+      if (set === undefined || set.size === 0) continue;
+      let payload: FriendListMessage | null = null;
+      for (const c of set) {
+        if (c.user === null) continue; // 색인 불변식상 없지만 타입을 위해
+        if (payload === null) {
+          if (online === null) online = this.onlineMap();
+          payload = this.friendPayload(c.user.id, online);
+          if (payload === null) return;
+        }
+        this.send(c.ws, payload);
       }
     }
   }
@@ -4507,6 +4596,7 @@ export class RoomManager {
       if (c.user === null || c.guest || c.user.id !== userId) continue;
       oldNames.add(c.user.username);
       c.user = { ...c.user, username: name };
+      this.reindexConn(c);
       if (c.room !== null) rooms.add(c.room);
     }
     /*
@@ -4766,6 +4856,7 @@ export class RoomManager {
       c.agent = null;
       c.user = null;
       c.sessionToken = null;
+      this.reindexConn(c);
       this.fail(c, "SESSION_REVOKED", "계정이 삭제되어 로그아웃되었습니다");
       try {
         c.ws.close();
@@ -4804,6 +4895,7 @@ export class RoomManager {
       c.takenOver = code === "SESSION_TAKEOVER";
       c.user = null;
       c.sessionToken = null;
+      this.reindexConn(c);
       this.fail(c, code, message);
       closed++;
       try {
@@ -5612,6 +5704,7 @@ export class RoomManager {
     conn.user = user;
     conn.guest = true;
     conn.sessionToken = null;
+    this.reindexConn(conn);
     if (conn.authDeadline !== null) {
       clearTimeout(conn.authDeadline);
       conn.authDeadline = null;
@@ -5627,7 +5720,7 @@ export class RoomManager {
       guest: true,
       guestToken,
     });
-    this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+    this.sendCatalog(conn.ws);
 
     const room = this.newRoom({
       guest: true,
@@ -5687,6 +5780,7 @@ export class RoomManager {
     conn.user = user;
     conn.guest = true;
     conn.sessionToken = null;
+    this.reindexConn(conn);
     if (conn.authDeadline !== null) {
       clearTimeout(conn.authDeadline);
       conn.authDeadline = null;
@@ -5699,7 +5793,7 @@ export class RoomManager {
       guest: true,
       guestToken: token,
     });
-    this.send(conn.ws, { type: "catalog", augments: this.augmentCatalog });
+    this.sendCatalog(conn.ws);
     this.send(conn.ws, { type: "roomCreated", code: room.code });
     this.joinRoom(conn, user, room.code);
   }
