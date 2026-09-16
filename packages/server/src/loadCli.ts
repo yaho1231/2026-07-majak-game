@@ -86,6 +86,8 @@ class LoadSocket {
   private seqOf = new WeakMap<object, number>();
   /** 직전에 누른 증강 선택지 타입 — 같은 선택지를 연달아 눌러 맴도는 것을 막는다 */
   private lastAugmentAction: string | null = null;
+  /** gameOver 를 받았고 방이 대기실로 돌아오면 다음 판을 시작해야 한다 */
+  private wantRestart = false;
   send(data: string): void {
     const msg = JSON.parse(data);
     this.seqOf.set(msg, ++this.seq);
@@ -177,7 +179,14 @@ class LoadSocket {
     } else if (msg.type === "roundOver") {
       setTimeout(() => this.clientSend({ type: "roundContinue" }), 0);
     } else if (msg.type === "gameOver") {
-      // 결과 화면에서 «이어하기» — 같은 방으로 다음 판을 계속 돌린다
+      // 결과 화면에서 «이어하기» — 같은 방으로 다음 판을 계속 돌린다.
+      // ⚠ gameOver 직후 방은 아직 playing 이다(`finishStats` 뒤에야 `resetRoomAfterGame`) —
+      //   그때 보낸 startGame 은 조용히 버려진다. 방이 대기실로 돌아와 `lobby`(canStart)
+      //   를 보낼 때 다시 보낸다(wsLoadCli 와 같은 규약). QA 5라운드 D-2 에서 발견.
+      this.wantRestart = true;
+      setTimeout(() => this.clientSend({ type: "startGame" }), 0);
+    } else if (msg.type === "lobby" && this.wantRestart && msg.canStart === true) {
+      this.wantRestart = false;
       setTimeout(() => this.clientSend({ type: "startGame" }), 0);
     }
   }
