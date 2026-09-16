@@ -159,8 +159,10 @@ function sanitizeBucket(
 export class AugmentStatsStore {
   private data: AugmentStatsFile = emptyFile();
   private loaded = false;
-  /** 저장 직렬화용 큐 (동시 record가 파일을 덮어쓰지 않게 순차 처리) */
-  private saveChain: Promise<void> = Promise.resolve();
+  /** 진행 중인 쓰기 루프 (없으면 null). 동시 record가 파일을 덮어쓰지 않게 하나만 돈다. */
+  private inFlight: Promise<void> | null = null;
+  /** 쓰기 중에 저장 요청이 또 왔는가 — 몇 번이 오든 끝난 뒤 한 번만 더 쓴다. */
+  private pending = false;
 
   constructor(private readonly filePath: string) {}
 
@@ -318,9 +320,23 @@ export class AugmentStatsStore {
     this.queueSave();
   }
 
+  /**
+   * 저장 요청. 쓰는 중이면 직렬화를 **미루고** 끝난 뒤 그때의 상태로 한 번만 더 쓴다
+   * (StatsStore.save 와 같은 합치기 — 스냅샷 문자열이 큐에 쌓이지 않는다).
+   * 파일에 들여쓰기는 넣지 않는다 (파싱 결과 동일).
+   */
   private queueSave(): void {
-    const snapshot = JSON.stringify(this.data, null, 2);
-    this.saveChain = this.saveChain.then(async () => {
+    if (this.inFlight !== null) {
+      this.pending = true;
+      return;
+    }
+    this.inFlight = this.writeLoop();
+  }
+
+  private async writeLoop(): Promise<void> {
+    do {
+      this.pending = false;
+      const snapshot = JSON.stringify(this.data);
       try {
         await mkdir(dirname(this.filePath), { recursive: true });
         const tmp = `${this.filePath}.tmp`;
@@ -329,11 +345,12 @@ export class AugmentStatsStore {
       } catch {
         // 통계 저장 실패가 게임을 멈춰선 안 된다
       }
-    });
+    } while (this.pending);
+    this.inFlight = null;
   }
 
   /** 저장이 끝날 때까지 기다린다 (테스트·종료 시) */
   async flush(): Promise<void> {
-    await this.saveChain;
+    while (this.inFlight !== null) await this.inFlight;
   }
 }

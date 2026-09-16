@@ -28,8 +28,12 @@ function emptyPlayers(): Record<string, PlayerStatsRaw> {
 export class StatsStore {
   private data: StatsFile = { version: 1, players: emptyPlayers() };
   private loaded = false;
-  /** 저장 직렬화용 큐 (동시 record가 파일을 덮어쓰지 않게 순차 처리) */
-  private saveChain: Promise<void> = Promise.resolve();
+  /** 진행 중인 쓰기 루프 (없으면 null). 동시 record가 파일을 덮어쓰지 않게 하나만 돈다. */
+  private inFlight: Promise<void> | null = null;
+  /** 쓰기 중에 들어온 저장 요청 — 몇 번이 오든 한 장으로 합친다. */
+  private pending: Deferred | null = null;
+  /** 유저별 직렬화 조각 캐시 (닉네임 → `JSON.stringify(PlayerStatsRaw)`). 바뀌면 지운다. */
+  private fragments = new Map<string, string>();
   /** 내용 세대 번호 — 바뀔 때마다 1 오른다 (리더보드 캐시 무효화용). */
   private rev = 0;
 
@@ -52,6 +56,7 @@ export class StatsStore {
       // 파일 없음/파싱 실패 → 빈 상태 유지
       this.data = { version: 1, players: emptyPlayers() };
     }
+    this.fragments.clear();
     this.loaded = true;
   }
 
@@ -91,6 +96,7 @@ export class StatsStore {
     for (const { nickname, raw } of entries) {
       const prev = this.data.players[nickname] ?? createEmptyStats();
       this.data.players[nickname] = mergeStats(prev, raw);
+      this.fragments.delete(nickname);
     }
     this.rev++;
     await this.save();
@@ -124,6 +130,8 @@ export class StatsStore {
     const prev = this.data.players[to] ?? createEmptyStats();
     this.data.players[to] = mergeStats(prev, moving);
     delete this.data.players[from];
+    this.fragments.delete(from);
+    this.fragments.delete(to);
     this.rev++;
     await this.save();
     return true;
@@ -134,6 +142,7 @@ export class StatsStore {
     if (!this.loaded) await this.load();
     if (this.data.players[nickname] === undefined) return;
     delete this.data.players[nickname];
+    this.fragments.delete(nickname);
     this.rev++;
     await this.save();
   }
@@ -141,34 +150,101 @@ export class StatsStore {
   /**
    * 현재 상태를 원자적으로(임시 파일 → rename) 파일에 쓴다.
    *
-   * ⚠ 쓰기 실패는 **체인 안에서** 삼킨다. 예전에는 `.catch`가 없어 한 번의 일시적
+   * ## 저장 합치기 (coalesce, 2026-09-16 S-5)
+   *
+   * 예전에는 `save()` 호출마다 **그 자리에서** 전체를 `JSON.stringify(data, null, 2)` 해
+   * 스냅샷 문자열을 만들고, 그 클로저를 `saveChain` 뒤에 매달았다. 판 종료가 디스크
+   * 쓰기보다 빨리 오면 매단 클로저가 스냅샷을 하나씩 붙든 채 줄을 서고(유저 2,000명
+   * ≈ 20MB/장), 큐가 길어질수록 힙이 그만큼 자랐다(seed-users 2000·think 0 에서
+   * 힙 2.2GB). 게다가 줄 선 스냅샷은 모두 «낡은» 상태라 마지막 것만 의미가 있었다.
+   *
+   * 지금은 **쓰는 중이면 직렬화를 미룬다**: 대기 요청은 하나의 프로미스로 합쳐지고,
+   * 진행 중인 쓰기가 끝난 뒤 **그때의** 상태를 한 번만 직렬화해 쓴다. 동시에 살아 있는
+   * 스냅샷은 최대 1장이다. 호출자가 받는 프로미스는 «내 변경이 담긴 쓰기가 끝났을 때»
+   * 해결되므로(변경은 `save()` 호출 전에 이미 `data`에 들어 있고, 미뤄진 직렬화는
+   * 그 뒤에 일어난다) 의미는 예전과 같다.
+   *
+   * ## 증분 직렬화
+   *
+   * 유저별 JSON 조각(`fragments`)을 캐시해 두고 바뀐 유저만 다시 `JSON.stringify`
+   * 한다. 한 판에 바뀌는 유저는 최대 4명이라 직렬화 원가가 «전체 유저 수»가 아니라
+   * «바뀐 유저 수 + 조각 이어 붙이기»가 된다. 결과 바이트는 `JSON.stringify(data)`와
+   * **정확히 같다** (키 순서는 `Object.keys` = `JSON.stringify` 의 열거 순서).
+   * 파일에 들여쓰기는 넣지 않는다 — 파싱 결과는 같고 크기는 절반 이하다.
+   *
+   * ⚠ 쓰기 실패는 **쓰기 루프 안에서** 삼킨다. 예전에는 `.catch`가 없어 한 번의 일시적
    * 실패(디스크 가득 참·권한)가 `saveChain`을 거부 상태로 만들었고, 그 뒤의 모든
    * `.then`이 통째로 건너뛰어져 **프로세스가 사는 동안 누적 통계가 다시는 저장되지
-   * 않았다** — 증상은 로그 한 줄뿐이었다. 대신 호출자에게는 거부를 그대로 전달해
+   * 않았다** — 증상은 로그 한 줄뿐이었다. 호출자에게는 거부를 그대로 전달해
    * (반환 프로미스만 거부) "이번 저장이 실패했다"는 사실은 잃지 않는다.
-   * (AugmentStatsStore.queueSave가 쓰던 방식과 같은 구조다.)
    */
   private save(): Promise<void> {
-    const snapshot = JSON.stringify(this.data, null, 2);
-    let failure: unknown = null;
-    // 직전 저장이 끝난 뒤 순차적으로 쓴다 (경쟁 방지)
-    this.saveChain = this.saveChain.then(async () => {
+    if (this.inFlight !== null) {
+      // 쓰는 중 — 대기는 한 장으로 합친다. 직렬화는 그 차례가 왔을 때 한다.
+      if (this.pending === null) this.pending = deferred();
+      return this.pending.promise;
+    }
+    const first = deferred();
+    this.inFlight = this.writeLoop(first);
+    return first.promise;
+  }
+
+  /** 지금 상태를 쓰고, 그동안 쌓인 대기 요청이 있으면 그 상태로 한 번 더 쓴다. */
+  private async writeLoop(first: Deferred): Promise<void> {
+    let cur = first;
+    for (;;) {
+      const body = this.serialize();
       try {
         await mkdir(dirname(this.filePath), { recursive: true });
         const tmp = `${this.filePath}.tmp`;
-        await writeFile(tmp, snapshot, "utf8");
+        await writeFile(tmp, body, "utf8");
         await rename(tmp, this.filePath);
+        cur.resolve();
       } catch (err) {
-        failure = err;
+        cur.reject(err);
       }
-    });
-    return this.saveChain.then(() => {
-      if (failure !== null) throw failure;
-    });
+      if (this.pending === null) break;
+      cur = this.pending;
+      this.pending = null;
+    }
+    this.inFlight = null;
+  }
+
+  /**
+   * `JSON.stringify(this.data)` 와 바이트 단위로 같은 문자열을 유저별 캐시 조각으로 만든다.
+   * 조각이 없는 유저(바뀐 유저·처음 보는 유저)만 새로 직렬화한다.
+   */
+  private serialize(): string {
+    const parts: string[] = [];
+    for (const name of Object.keys(this.data.players)) {
+      let frag = this.fragments.get(name);
+      if (frag === undefined) {
+        frag = JSON.stringify(this.data.players[name]);
+        this.fragments.set(name, frag);
+      }
+      parts.push(`${JSON.stringify(name)}:${frag}`);
+    }
+    return `{"version":1,"players":{${parts.join(",")}}}`;
   }
 
   /** 대기 중인 저장이 끝날 때까지 기다린다 (종료 시·테스트). */
   async flush(): Promise<void> {
-    await this.saveChain;
+    while (this.inFlight !== null) await this.inFlight;
   }
+}
+
+interface Deferred {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (err: unknown) => void;
+}
+
+function deferred(): Deferred {
+  let resolve!: () => void;
+  let reject!: (err: unknown) => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
