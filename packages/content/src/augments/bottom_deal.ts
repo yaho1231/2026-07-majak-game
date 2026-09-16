@@ -35,6 +35,7 @@
  * - **리치 중에도 쓸 수 있다.** 뽑는 자리만 바꾸므로 손이 잠긴 것과 충돌하지 않는다.
  *   인위적 금지는 무페널티 원칙이 막는다(docs/10 §0 — "리치 중 사용 불가" ❌).
  * - 억제는 "자기 순에 한 번, 다음 쯔모 한 장"이라는 창과 **2순 쿨다운**이다.
+ * - 무장해제되면 «밑장 예약 중» 표시(공개·보유자 둘 다)를 내린다(docs/55 A-9, install 주석).
  */
 
 import {
@@ -63,6 +64,7 @@ import {
 } from "../util.js";
 import { handKindsExcept, handKindsOf, usefulIn } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "bottom_deal";
@@ -321,6 +323,18 @@ export const bottomDeal: AugmentDef = defineAugment({
         rc.emit(augmentDataSet(noticeKey(holder), false));
       }
     });
+
+    /*
+     * 무장해제되면 «밑장 예약 중» 표시도 내린다 (docs/55 C-4·A-9).
+     *
+     * 예약을 실제로 쓰는 TILE_DRAWN 인터셉터(바꿔치기)와 표시를 끄는 TILE_DRAWN 리액션
+     * (소비)이 **둘 다** 코어 게이트에 걸리므로, 잠긴 뒤의 쯔모는 위에서 뽑히는데 표시는
+     * 아무도 끄지 못해 국이 끝날 때까지 남는다 — 상대는 «다음 쯔모가 밑장이다»를 믿고
+     * 밑장 확정 화료에 대비한 헛된 수비를 하고, 보유자도 예약이 살아 있다고 믿는다.
+     * 예약 플래그(armedKey) 자체는 국 스코프라 저절로 만료되니 표시만 함께 내리면 된다.
+     * (ROUND_STARTED 정리와 같은 이유 — 실제 예약과 표시의 수명을 맞춘다.)
+     */
+    clearViewOnDisarm(ctx, () => [viewArmedKey(holder), noticeKey(holder)]);
 
     // 보유자에게 패산 맨 밑 3장 공개 — 스냅샷이 아니라 매번 상태에서 계산된다
     engine.rules.addModifier<VisibilityRule>("visibility.wall", {

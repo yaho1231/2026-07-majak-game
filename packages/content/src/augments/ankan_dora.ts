@@ -21,6 +21,7 @@
  * - `score.extraHan` Modifier: 정산 시 보유자의 안깡 장수 총합(= 묶음×4)을 판으로 더한다
  *   (역만에는 엔진이 extraHan을 적용하지 않는다 — 의도된 동작).
  * - 개인 도라라 상대 손에는 안 붙어 화력 상한이 있고, 안깡 자체가 공개라 상대도 안다.
+ * - `AUGMENT_DISARMED` 반응: 무장해제되면 도라 뱃지를 내린다(docs/55 A-9, 아래 주석).
  */
 
 import {
@@ -38,6 +39,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { roundKey, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 
 const ID = "ankan_dora";
 
@@ -92,6 +94,14 @@ export const ankanDora: AugmentDef = defineAugment({
         return cur + personalDoraHan(state, holder);
       },
     });
+
+    // 무장해제되면 도라 뱃지도 내린다 (docs/55 C-4·A-9). 뱃지는 KAN_DECLARED 리듀서가
+    // 실어 두는 값이고 +4판은 위 모디파이어인데, 잠기면 모디파이어만 코어 게이트가 끄고
+    // 뱃지는 augmentData에 그대로 남는다 — «저 네 장은 도라다»가 거짓이 된 채로 상대가
+    // 그 손의 화력을 4판 높게 읽는다(일확천금과 같은 구조, disarmBanner.ts 머리말).
+    // 깡 자체는 실물(후로)이라 그대로고, 잠긴 뒤 새로 깡을 쳐도 반응이 안 돌아 뱃지는
+    // 다시 서지 않는다 — 판이 안 붙는 것과 맞다.
+    clearViewOnDisarm(ctx, () => [publicKey(holder)]);
 
     // 안깡을 하는 순간 — 깡친 네 장이 도라가 됐음을 전원 공개(연출·뱃지용).
     // 판 계산은 위 Modifier가 정산 시점 후로에서 직접 하므로 별도 저장은 없다.

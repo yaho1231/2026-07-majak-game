@@ -15,6 +15,11 @@
  * 각 장면은 **선언 → 상대가 disarm 으로 지목 → 제3자 뷰에 채널 없음 + 실제 효과 꺼짐**을
  * 한 번에 본다. 효과 확인은 각 카드의 기존 테스트에서 «효과 확인» 장면을 빌려 왔다.
  * 되돌리면(각 파일의 `clearViewOnDisarm` 한 줄을 지우면) «채널 없음» 쪽이 실패한다.
+ *
+ * §6은 A-5가 «같은 결함 — 아직 안 고쳤다»로 남겨 둔 잔여 4종(밀실의 도라·밑장빼기·
+ * 거울·리치 봉인)을 A-9에서 같은 규약으로 고친 장면이다(docs/55 A-9). 거울은 "*"
+ * 동기화 리액션이 통보 연쇄 안에서 비운 채널을 도로 채우는 함정이 있어, 그 장면이
+ * 곧 그 가드의 회귀 테스트다.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -24,6 +29,7 @@ import { describe, expect, it } from "vitest";
 import {
   FlowController,
   ROUND_SETTLED,
+  WALL,
   buildPlayerView,
   createStandardGameFromState,
   handZone,
@@ -512,6 +518,158 @@ describe("스파이 — 적발 배너는 «이미 훔친 사실»이라 지울 �
   });
 });
 
+// ═══════════════ 6. A-9 잔여 4종 — 밀실의 도라·밑장빼기·거울·리치 봉인 ═══════════════
+
+describe("밀실의 도라 — 잠기면 안깡 도라 뱃지와 +4판이 함께 꺼진다", () => {
+  // 1m 넉 장을 안깡 — 쯔모한 순(drawnLastFor)이어야 깡을 칠 수 있다
+  const build = (disarmIt: boolean): Game => {
+    const g = setup(
+      craft({
+        hands: { p0: "*", p1: "1111m234p567s78m55p", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 1,
+        drawnLastFor: "p1",
+      }),
+      { p0: ["disarm"], p1: ["ankan_dora"] },
+    );
+    submit(g, "p1", "ankan", { tileIds: handTilesOfKind(g, "p1", "man1") });
+    if (disarmIt) disarmP1(g, "ankan_dora");
+    return g;
+  };
+  const extraHan = (g: Game): number =>
+    g.engine.rules.resolve<number>("score.extraHan", { playerId: "p1", state: g.engine.state });
+
+  it("대조군 — 깡치면 제3자에게 도라 뱃지가 서고 +4판이다", () => {
+    const g = build(false);
+    const badge = banners(g, "p2", "ankan_dora")["ankan_dora:p1"] as { kinds: string[] };
+    expect(badge.kinds).toEqual(["man1"]);
+    expect(extraHan(g)).toBe(4);
+  });
+
+  it("잠기면 채널이 사라지고 판은 붙지 않는다 (깡 자체는 그대로다)", () => {
+    const g = build(true);
+    expect(g.engine.state.round.byPlayer["p1"]?.melds.length).toBe(1);
+    expect(extraHan(g)).toBe(0);
+    expect(banners(g, "p2", "ankan_dora")).toEqual({});
+  });
+});
+
+describe("밑장빼기 — 잠기면 «밑장 예약 중» 표시와 밑장 쯔모가 함께 꺼진다", () => {
+  // p1이 13장으로 자기 순에 예약만 걸어 둔다(버림은 필요 없다 — validate는 손 장수를 안 본다)
+  const build = (disarmIt: boolean): Game => {
+    const g = setup(
+      craft({ hands: { p0: "*", p1: "*", p2: "*", p3: "*" }, phase: "turn.act", turnSeat: 1 }),
+      { p0: ["disarm"], p1: ["bottom_deal"] },
+    );
+    submit(g, "p1", "bottom_deal", {});
+    if (disarmIt) disarmP1(g, "bottom_deal");
+    return g;
+  };
+  /** p1의 다음 쯔모를 실제로 돌려(turn.draw → FlowController) 어느 자리에서 뽑혔는지 본다 */
+  const drawFor = (g: Game): { drawn: TileId; top: TileId; bottom: TileId } => {
+    const wall = g.engine.state.zones[WALL]!.tileIds;
+    const top = wall[0]!;
+    const bottom = wall[wall.length - 1]!;
+    patch(g, { phase: "turn.draw", turnSeat: 1, lastDrawnTile: null });
+    new FlowController(g.engine).begin();
+    return { drawn: g.engine.state.round.lastDrawnTile!, top, bottom };
+  };
+
+  it("대조군 — 예약하면 전원·보유자 표시가 서고 다음 쯔모는 밑장이다", () => {
+    const g = build(false);
+    expect(banners(g, "p2", "bottom_deal")["bottom_deal:armed:p1"]).toBe(true);
+    expect(viewOf(g, "p1").augmentView["bottom_deal:armed:p1"]).toBe(true);
+    const { drawn, bottom } = drawFor(g);
+    expect(drawn).toBe(bottom);
+  });
+
+  it("잠기면 두 표시가 사라지고 다음 쯔모는 그냥 위에서 나온다", () => {
+    const g = build(true);
+    expect(banners(g, "p2", "bottom_deal")).toEqual({});
+    expect(viewOf(g, "p1").augmentView["bottom_deal:armed:p1"]).toBeUndefined();
+    const { drawn, top } = drawFor(g);
+    expect(drawn).toBe(top);
+  });
+});
+
+describe("거울 — 잠기면 앞도라 채널과 개인 도라가 함께 꺼진다 (동기화 리액션이 도로 채우지 않는다)", () => {
+  /**
+   * 앞도라 채널은 "*" 리액션이 매 이벤트 동기화한다 — 설치 직후엔 아직 이벤트가 없어
+   * p1이 한 장 버려 첫 동기화를 일으킨다. 그 뒤 p0이 잠근다.
+   */
+  const build = (disarmIt: boolean): Game => {
+    const g = setup(
+      craft({
+        hands: { p0: "*", p1: TANYAO_14, p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 1,
+        drawnLastFor: "p1",
+      }),
+      { p0: ["disarm"], p1: ["mirror_dora"] },
+    );
+    submit(g, "p1", "discard", { tileId: hand(g, "p1")[0]! });
+    if (disarmIt) disarmP1(g, "mirror_dora");
+    return g;
+  };
+  const extraDora = (g: Game): string[] =>
+    g.engine.rules
+      .resolve<readonly TileKind[]>("scoring.extraDoraKinds", {
+        playerId: "p1",
+        state: g.engine.state,
+      })
+      .map(kindKey);
+
+  it("대조군 — 표시패의 앞 패가 채널에 실리고 내 도라다", () => {
+    const g = build(false);
+    const kinds = extraDora(g);
+    expect(kinds.length).toBeGreaterThan(0);
+    expect(banners(g, "p2", "mirror_dora")["mirror_dora:p1"]).toEqual(kinds);
+  });
+
+  it("잠기면 채널이 사라지고(연쇄 뒤에도) 앞도라는 값하지 않는다", () => {
+    const g = build(true);
+    expect(extraDora(g)).toEqual([]);
+    expect(banners(g, "p2", "mirror_dora")).toEqual({});
+    // 통보 연쇄가 끝난 뒤 다른 이벤트가 와도(이제는 게이트가 리액션을 끈다) 되살아나지 않는다
+    patch(g, { phase: "turn.act", turnSeat: 0, lastDrawnTile: hand(g, "p0")[0]! });
+    submit(g, "p0", "discard", { tileId: hand(g, "p0")[0]! });
+    expect(banners(g, "p2", "mirror_dora")).toEqual({});
+  });
+});
+
+describe("리치 봉인 — 잠기면 «봉인» 배너와 상대 리치 잠금이 함께 꺼진다", () => {
+  // 1s 단기 — 국의 첫 리치를 p1이 건다
+  const build = (disarmIt: boolean): Game => {
+    const g = setup(
+      craft({
+        hands: { p0: "*", p1: "123m456m789m123p11s", p2: "*", p3: "*" },
+        phase: "turn.act",
+        turnSeat: 1,
+        drawnLastFor: "p1",
+      }),
+      { p0: ["disarm"], p1: ["riichi_seal"] },
+    );
+    submit(g, "p1", "riichi", { tileId: handTilesOfKind(g, "p1", "sou1")[0]! });
+    if (disarmIt) disarmP1(g, "riichi_seal");
+    return g;
+  };
+  const p2Blocked = (g: Game): boolean =>
+    g.engine.rules.resolve<boolean>("riichi.blocked", { playerId: "p2", state: g.engine.state });
+
+  it("대조군 — 첫 리치를 걸면 배너가 서고 상대의 리치가 잠긴다", () => {
+    const g = build(false);
+    expect(banners(g, "p2", "riichi_seal")["riichi_seal:p1"]).toBe("봉인");
+    expect(p2Blocked(g)).toBe(true);
+  });
+
+  it("잠기면 채널이 사라지고 상대는 리치를 걸 수 있다 (내 리치는 그대로다)", () => {
+    const g = build(true);
+    expect(g.engine.state.round.byPlayer["p1"]?.riichi).not.toBeNull();
+    expect(p2Blocked(g)).toBe(false);
+    expect(banners(g, "p2", "riichi_seal")).toEqual({});
+  });
+});
+
 // ═══════════════ 5. 정적 스캔 — 새 위반은 여기서 잡힌다 ═══════════════
 
 /**
@@ -546,17 +704,8 @@ describe("정적 스캔 — 전원 공개 채널 × 효과 훅 = 무장해제 �
     void_kan: "손패 1장이 이미 바뀌어 오름패가 됐다(컷인용 채널)",
   };
 
-  /**
-   * ⚠ **같은 결함 — 아직 안 고쳤다.** «배너가 약속하는 효과가 꺼지는데 배너는 남는다»에
-   * 해당하지만 이 묶음(docs/55 A-5)의 수정 범위 밖이라 여기서 못 박아 둔다. 고칠 때
-   * 그 파일에 `clearViewOnDisarm`(보유자별 키 전용)을 달고 **이 표에서 뺀다**.
-   */
-  const SAME_CLASS_PENDING: Record<string, string> = {
-    ankan_dora: "안깡 도라 뱃지는 KAN_DECLARED 에 서고 +4판은 score.extraHan 모디파이어 — 잠기면 판은 없는데 뱃지가 남는다",
-    bottom_deal: "«밑장 예약 중» 공개 표시는 TILE_DRAWN 리액션이 소비 때 끈다 — 잠기면 바꿔치기(인터셉터)·소비(리액션) 둘 다 꺼져 표시만 남는다",
-    mirror_dora: "앞도라 채널은 \"*\" 리액션이 매 이벤트 동기화 — 잠기면 리액션도 꺼져 마지막 값이 얼어붙고 extraDoraKinds 모디파이어는 꺼진다",
-    riichi_seal: "«봉인» 배너 동기화가 TILE_DISCARDED 리액션이라 잠기면 얼어붙고 riichi.blocked 모디파이어는 꺼진다 — A-6(C-5) 담당 파일이라 여기서 손대지 않는다",
-  };
+  // A-5가 «같은 결함 — 아직 안 고쳤다»로 남겨 뒀던 4종(ankan_dora·bottom_deal·
+  // mirror_dora·riichi_seal)은 A-9에서 고쳐 §6 장면으로 옮겼다 — 이제 표에 없다.
 
   const files = readdirSync(AUG_DIR).filter((f) => f.endsWith(".ts"));
 
@@ -583,7 +732,7 @@ describe("정적 스캔 — 전원 공개 채널 × 효과 훅 = 무장해제 �
       })
       .map((f) => f.replace(/\.ts$/, ""))
       .sort();
-    const listed = [...Object.keys(FACT_BANNERS), ...Object.keys(SAME_CLASS_PENDING)].sort();
+    const listed = Object.keys(FACT_BANNERS).sort();
 
     const newOffenders = missing.filter((id) => !listed.includes(id));
     expect(
@@ -598,10 +747,11 @@ describe("정적 스캔 — 전원 공개 채널 × 효과 훅 = 무장해제 �
     ).toEqual([]);
   });
 
-  it("고친 9종은 전부 clearViewOnDisarm 을 쓴다 (되돌리면 여기서 실패)", () => {
+  it("고친 9종 + A-9 4종은 전부 clearViewOnDisarm 을 쓴다 (되돌리면 여기서 실패)", () => {
     for (const f of [
       "joker.ts", "shapeDeclare.ts", "sign_flip.ts", "all_or_nothing.ts", "blood_contract.ts",
       "jackpot.ts", "dora_afterimage.ts", "open_riichi_reveal.ts",
+      "ankan_dora.ts", "bottom_deal.ts", "mirror_dora.ts", "riichi_seal.ts",
     ]) {
       const src = readFileSync(join(AUG_DIR, f), "utf8");
       expect(/clearViewOnDisarm\(/.test(src), `${f} 에 clearViewOnDisarm 이 없다`).toBe(true);

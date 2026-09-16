@@ -53,6 +53,7 @@ import type {
   TileDiscardedPayload,
 } from "@majak/core";
 import { flagOf, riichiHidden, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 const ID = "riichi_seal";
@@ -171,6 +172,18 @@ export const riichiSeal: AugmentDef = defineAugment({
     ctx.reaction(ROUND_STARTED, (_event, rc) => {
       syncBanner(rc.state, rc.emit);
     });
+
+    /*
+     * 무장해제되면 «봉인» 배너도 내린다 (docs/55 C-4·A-9).
+     *
+     * 배너 동기화(syncBanner)는 TILE_DISCARDED 리액션에서 도는데, 잠기면 그 리액션도
+     * 코어 게이트가 꺼서 마지막 값 "봉인"이 얼어붙는다. 정작 `riichi.blocked` 모디파이어는
+     * 꺼져 상대 셋은 리치를 걸 수 있는데, 화면은 «리치가 잠겼다»고 말한다 — 상대는
+     * 걸 수 있는 리치를 포기하고 다마텐으로 돌아서는 잘못된 대응을 한다(봉인술과 같은
+     * 구조, disarmBanner.ts 머리말). 봉인 플래그(sealKey)는 국 스코프 과거 기록이라
+     * 두어도 되고, 국이 끝나면 무장해제도 배너도 함께 만료된다.
+     */
+    clearViewOnDisarm(ctx, () => [bannerKey]);
 
     // riichi.blocked의 playerId는 '리치를 선언하려는 사람'이다
     ctx.engine.rules.addModifier<boolean>("riichi.blocked", {
