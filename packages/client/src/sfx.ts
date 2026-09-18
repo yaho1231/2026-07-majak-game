@@ -999,6 +999,7 @@ const RIICHI_BGM_GAIN_BY_SRC: Record<string, number> = {
   "/richiBGM6.mp3": 0.84, // -13.29
   "/richiBGM7.mp3": 0.78, // -12.49 — 가장 큰 곡
   "/richiBGM8.mp3": 0.96, // -14.31
+  "/richiBGM9.mp3": 0.90, // -13.8 (2026-09-19 추가)
 };
 const RIICHI_BGM_GAIN: readonly number[] = RIICHI_BGM_SRCS.map(
   (src) => RIICHI_BGM_GAIN_BY_SRC[src] ?? 1,
