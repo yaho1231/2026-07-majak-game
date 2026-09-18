@@ -25452,13 +25452,28 @@ function ActionBar(props: {
   const armedRiichiAug =
     sel.armedType !== null && DRAG_DISCARD_ARM_TYPES.has(sel.armedType) ? sel.armedType : null;
   // 타일 클릭으로 처리되는 액션과 액티브 증강(전용 버튼)은 액션 바에서 제외
-  const buttons = prompt.options.filter(
+  const rawButtons = prompt.options.filter(
     (o) =>
       o.type !== "discard" &&
       o.type !== "riichi" &&
       o.type !== "free_discard" &&
       !AUGMENT_ACTION_TYPES.has(o.type),
   );
+  /*
+   * 버튼을 세 무리로 나눈다 — [론·쯔모] [후로·증강 선언…] [패스].
+   *
+   * 가운데 무리(`.action-calls`)만 **줄바꿈 + 세로 스크롤**이고 양끝은 늘 제자리다.
+   * 무너진 국경(혼색 슌쯔)·동수의 결속 같은 증강이 켜지면 치 한 번에 선택지가
+   * 수십 개(2만·3통·4삭 … 무늬 조합마다 하나)가 서고, 한 줄짜리 바는 화면 양옆으로
+   * 삐져나가 **맨 끝의 [패스]가 화면 밖에 있어 누를 수 없었다**(2026-09-19 사용자
+   * 보고. 1280×800 실측: 버튼 22개일 때 바 폭 2068px, 패스 x=1615~1662).
+   * 서버가 주는 순서(론 → 후로 → 패스)와 같으므로 평소 화면과 단축키 순서는 그대로다.
+   */
+  const buttons = [
+    ...rawButtons.filter((o) => o.type === "win"),
+    ...rawButtons.filter((o) => o.type !== "win" && o.type !== "pass"),
+    ...rawButtons.filter((o) => o.type === "pass"),
+  ];
   const locked = prompt.locked ?? [];
   /** 고를 것이 패스뿐이라 잠시 뒤 스스로 넘어가는 통보인가 (버튼이 시간을 그린다) */
   const autoPassing = isLockNoticeOnly(prompt);
@@ -25574,42 +25589,61 @@ function ActionBar(props: {
               </button>
             );
           })}
-          {buttons.map((o, i) => {
-            const label =
-              o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
-            const tone =
-              o.type === "win"
-                ? "act-win"
-                : o.type === "pass"
-                  ? "act-pass"
-                  : ACTION_LABEL[o.type] === undefined || AUGMENT_ACTION_TYPES.has(o.type)
-                    ? "act-aug"
-                    : "act-call";
-            const detail = optionDetail(view, o);
+          {(() => {
+            const renderButton = (o: ActionOption, i: number): JSX.Element => {
+              const label =
+                o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
+              const tone =
+                o.type === "win"
+                  ? "act-win"
+                  : o.type === "pass"
+                    ? "act-pass"
+                    : ACTION_LABEL[o.type] === undefined || AUGMENT_ACTION_TYPES.has(o.type)
+                      ? "act-aug"
+                      : "act-call";
+              const detail = optionDetail(view, o);
+              return (
+                <button
+                  key={`${o.type}-${i}`}
+                  className={`act ${tone}`}
+                  onClick={() => props.onSubmit(o)}
+                  /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
+                  onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+                  onMouseLeave={() => props.onDoomedHint?.(null)}
+                  onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+                  onBlur={() => props.onDoomedHint?.(null)}
+                  title={
+                    o.type === "win"
+                      ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
+                      : o.type === "pass"
+                        ? `${label} (단축키 ${hotIndex(i)} 또는 P)`
+                        : `${label} (단축키 ${hotIndex(i)})`
+                  }
+                >
+                  {label}
+                  {detail !== "" ? <span className="act-target">{detail}</span> : null}
+                  <ActionTiles view={view} option={o} />
+                </button>
+              );
+            };
+            // buttons 는 [론·쯔모 … 후로 … 패스] 순이다 — 가운데 무리만 스크롤 상자에 넣는다
+            const winEnd = buttons.findIndex((o) => o.type !== "win");
+            const wins = winEnd === -1 ? buttons : buttons.slice(0, winEnd);
+            const passStart = buttons.findIndex((o) => o.type === "pass");
+            const calls = buttons.slice(wins.length, passStart === -1 ? buttons.length : passStart);
+            const passes = passStart === -1 ? [] : buttons.slice(passStart);
             return (
-              <button
-                key={`${o.type}-${i}`}
-                className={`act ${tone}`}
-                onClick={() => props.onSubmit(o)}
-                /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
-                onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-                onMouseLeave={() => props.onDoomedHint?.(null)}
-                onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-                onBlur={() => props.onDoomedHint?.(null)}
-                title={
-                  o.type === "win"
-                    ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
-                    : o.type === "pass"
-                      ? `${label} (단축키 ${hotIndex(i)} 또는 P)`
-                      : `${label} (단축키 ${hotIndex(i)})`
-                }
-              >
-                {label}
-                {detail !== "" ? <span className="act-target">{detail}</span> : null}
-                <ActionTiles view={view} option={o} />
-              </button>
+              <>
+                {wins.map((o, i) => renderButton(o, i))}
+                {calls.length > 0 ? (
+                  <div className="action-calls">
+                    {calls.map((o, i) => renderButton(o, wins.length + i))}
+                  </div>
+                ) : null}
+                {passes.map((o, i) => renderButton(o, wins.length + calls.length + i))}
+              </>
             );
-          })}
+          })()}
         </>
       )}
     </div>
