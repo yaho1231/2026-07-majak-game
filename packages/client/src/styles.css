@@ -12866,7 +12866,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 460px;
+  max-height: 560px;
   overflow-y: auto;
 }
 
@@ -12874,6 +12874,10 @@ button {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.045);
   overflow: hidden;
+  /* 목록이 max-height 에 닿으면 flex 항목인 행이 줄어들어(overflow:hidden 이라
+     최소 높이가 0) 펼친 제보의 답변 칸·삭제 버튼이 잘려 보였다. 행은 제 높이를
+     지키고 목록이 스크롤되게 한다. */
+  flex-shrink: 0;
 }
 
 .fb-head {
