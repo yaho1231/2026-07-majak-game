@@ -30,13 +30,48 @@
  *    무늬를 지워 주는 그 구간에서는 콜 자체를 닫아 함정을 없앤다.
  *
  * 보유자 판별은 yakuHolders — 여러 명이 보유해도 역 등록은 게임당 1회.
+ *
+ * ## 2026-09-19 (사용자 지시) — 상시 → **동풍전 1회 · 반장전 2회**
+ * 버튼이 아니라 **자동**이다: 위 ①~③은 사용 횟수가 남아 있는 동안 그대로 켜져 있고,
+ * 실제로 이 역으로 화료했을 때만(정산 winInfos에 이 역 id가 실린 화료) 횟수가 1 준다.
+ * 다 쓰면 무늬 지우기·후로 봉쇄·역 판정이 전부 꺼져 평범한 손으로 돌아간다.
+ * 카운터는 `<id>:uses:<holder>`(matchUses 규약)라 재장전으로 복구할 수 있다.
+ *
+ * 역 check는 state를 못 보므로 다 쓴 뒤의 역 판정은 `win.blockedYaku`로 닫는다
+ * (숨은 칼날·북의 상인과 같은 패턴). 무늬 규칙만 끄는 것으로는 부족하다 —
+ * 111m 234m 567p 88s 999s 처럼 무늬별로 몸통이 서는 손은 규칙 없이도 화료형이라
+ * 역 check가 그대로 붙어 버린다.
  */
 
-import { defineAugment, isNumberSuit, winHandKindsOf } from "@majak/core";
-import type { AugmentDef, GameState, TileKind } from "@majak/core";
-import { addYakuHolder, yakuHolders } from "../util.js";
+import {
+  augmentDataSet,
+  defineAugment,
+  isNumberSuit,
+  ROUND_SETTLED,
+  winHandKindsOf,
+} from "@majak/core";
+import type {
+  AugmentDef,
+  GameState,
+  PlayerId,
+  RoundSettledPayload,
+  TileKind,
+} from "@majak/core";
+import {
+  addYakuHolder,
+  counterOf,
+  matchUses,
+  publishUsesLeft,
+  yakuHolders,
+} from "../util.js";
 
 const ID = "mixed_nine_gates";
+
+/** 매치당 성립 횟수 카운터 — **게임 단위**라 roundKey를 섞지 않는다. 동풍전 1·반장전 2회. */
+const usesKey = (holder: PlayerId): string => `${ID}:uses:${holder}`;
+/** 아직 성립 횟수가 남았는가 (동풍전 1회 · 반장전 2회) */
+const hasUsesLeft = (state: GameState, holder: PlayerId): boolean =>
+  counterOf(state, usesKey(holder)) < matchUses(state);
 
 /** 구련보등의 뼈대 — 랭크 1~9의 최소 장수 (index 0은 사용하지 않음) */
 const BASE: readonly number[] = [0, 3, 1, 1, 1, 1, 1, 1, 1, 3];
@@ -87,6 +122,8 @@ function isMixedNineGates(hand: readonly TileKind[]): boolean {
  * 이 조건이 넓어져도 없던 화료형이 생기지는 않는다.
  */
 function onNineGatesPath(state: GameState, player: string): boolean {
+  // 횟수를 다 썼으면 무늬 지우기 자체가 꺼진다 (후로 봉쇄도 함께 풀린다)
+  if (!hasUsesLeft(state, player)) return false;
   if ((state.round.byPlayer[player]?.melds.length ?? 0) > 0) return false;
   const hand = winHandKindsOf(state, undefined, player);
   if (hand.length === 13) return nineGatesExtra(hand) === 0;
@@ -105,9 +142,9 @@ export const mixedNineGates: AugmentDef = defineAugment({
   complexity: 3,
   name: "뒤섞인 아홉 개의 연꽃",
   description:
-    "(상시 · 멘젠 한정) 만·통·삭을 섞어도 1112345678999 모양에 수패 1장을 더하면 구련보등(역만)으로 인정한다. 무늬가 섞이면 순정구련보등은 안 된다.",
+    "(동풍전 1회 · 반장전 2회 · 자동 · 멘젠 한정) 만·통·삭을 섞어도 1112345678999 모양에 수패 1장을 더하면 구련보등(역만)으로 인정한다. 실제로 이 역으로 화료할 때마다 횟수가 1 준다. 무늬가 섞이면 순정구련보등은 안 된다.",
   detail:
-    "만·통·삭을 섞어 1112345678999 모양을 만들고 수패 1장을 더하면 구련보등(역만)이다. 멘젠으로만 성립한다.\n\n자패는 한 장도 들어갈 수 없다. 한 무늬로만 맞췄으면 그냥 보통 구련보등이다.\n\n무늬가 섞인 손은 9면 대기가 나와도 순정구련보등(더블 역만)이 되지 않는다. 순정은 한 무늬로 만든 구련보등에만 붙는다.",
+    "만·통·삭을 섞어 1112345678999 모양을 만들고 수패 1장을 더하면 구련보등(역만)이다. 멘젠으로만 성립한다.\n\n동풍전 1회, 반장전 2회. 버튼 없이 자동으로 걸리며, 실제로 이 역으로 화료했을 때만 횟수가 1 준다. 다 쓰면 무늬가 섞인 손은 더 이상 구련보등으로 인정되지 않는다.\n\n자패는 한 장도 들어갈 수 없다. 한 무늬로만 맞췄으면 그냥 보통 구련보등이다.\n\n무늬가 섞인 손은 9면 대기가 나와도 순정구련보등(더블 역만)이 되지 않는다. 순정은 한 무늬로 만든 구련보등에만 붙는다.",
   install(ctx) {
     // 화료형을 열어 준다 — 손이 구련 뼈대일 때만 무늬를 무시하고 몸통을 세운다.
     // (슌쯔·커쯔·머리 셋 다 필요하다: 1112345678999는 111·999 커쯔와 234·567·89x 슌쯔로
@@ -167,6 +204,36 @@ export const mixedNineGates: AugmentDef = defineAugment({
         },
       });
     }
+
+    // 다 쓴 뒤에는 역 판정도 닫는다 — check가 state를 못 보므로 blockedYaku로.
+    ctx.engine.rules.addModifier<string[]>("win.blockedYaku", {
+      source: ctx.instanceId,
+      layer: ctx.layer,
+      apply: (cur, rctx) => {
+        if (rctx.playerId !== ctx.holder) return cur;
+        const state = rctx.state as GameState | undefined;
+        if (state === undefined) return cur;
+        return hasUsesLeft(state, ctx.holder) ? cur : [...cur, ID];
+      },
+    });
+
+    // 이 역으로 실제 화료한 국에만 횟수를 1 소모한다.
+    ctx.reaction(ROUND_SETTLED, (event, rc) => {
+      const p = event.payload as RoundSettledPayload;
+      if (p.outcome !== "win") return;
+      const won = (p.winInfos ?? []).some(
+        (w) => w.winner === ctx.holder && w.yaku.some((y) => y.id === ID),
+      );
+      if (!won) return;
+      rc.emit(
+        augmentDataSet(usesKey(ctx.holder), counterOf(rc.state, usesKey(ctx.holder)) + 1),
+      );
+    });
+
+    publishUsesLeft(ctx, (state) => ({
+      left: Math.max(0, matchUses(state) - counterOf(state, usesKey(ctx.holder))),
+      total: matchUses(state),
+    }));
 
     const yaku = ctx.yaku;
     if (yaku === undefined) return;

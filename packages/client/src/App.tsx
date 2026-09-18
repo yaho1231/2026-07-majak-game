@@ -2432,7 +2432,19 @@ function waitDecompOptions(
   }
   // 뒤섞인 아홉 개의 연꽃 — 손이 구련 뼈대 위에 있을 때만 무늬를 지운다(서버와 같은 조건).
   // 이게 없으면 27종 대기가 통째로 안 보여 "텐파이인지 모르겠다"가 된다(2026-08-01 사용자 보고).
-  if (has("mixed_nine_gates") && hand !== undefined && onNineGatesPath(hand)) {
+  // 2026-09-19: 동풍전 1·반장전 2회 — 횟수를 다 썼으면(공개 잔량 채널 left=0) 지우지 않는다.
+  const nineGatesUses =
+    view !== undefined
+      ? (seatChannel(view, player.id, "uses:mixed_nine_gates") as { left?: unknown } | undefined)
+      : undefined;
+  const nineGatesSpent =
+    nineGatesUses !== undefined && nineGatesUses !== null && nineGatesUses.left === 0;
+  if (
+    has("mixed_nine_gates") &&
+    !nineGatesSpent &&
+    hand !== undefined &&
+    onNineGatesPath(hand)
+  ) {
     opts.mixedRuns = true;
     opts.mixedTriplets = true;
     opts.mixedPairs = true;
