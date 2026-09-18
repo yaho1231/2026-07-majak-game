@@ -227,7 +227,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   late_double: { use: "상시", text: "7순까지 건 리치는 더블리치가 되고 +1판이 더 붙는다." },
   let_it_ride: { use: "상시", text: "연속으로 화료할수록 내 점수 배수가 오른다(최대 4배)." },
   meld_dissolve: { use: "매 국 1회", text: "내 치나 퐁 하나를 후로하기 전으로 되돌린다." },
-  mixed_nine_gates: { use: "상시", text: "구련보등이 무늬를 가리지 않는다. 멘젠 한정." },
+  mixed_nine_gates: { use: "동풍전1회·반장전2회(자동)", text: "구련보등이 무늬를 가리지 않는다. 이 역으로 화료할 때마다 횟수가 준다. 멘젠 한정." },
   mixed_triplet: { use: CD_2_3, text: "국 첫 순에 발동하면 이번 국에는 커쯔의 무늬 제한이 사라진다. 1만·1통·1삭도 한 커쯔가 된다." },
   nagashi_yakuman: { use: "상시", text: "버림패가 전부 요구패·자패면 유국만관 대신 역만이 된다. 상대가 내 버림패를 울어도 무효가 되지 않는다." },
   no_retreat: { use: "2국에 1회", text: "액티브 리치를 사용하면 리치와 일발은 각각 2판, 뒷도라는 장당 2판이 된다. 공탁금은 내지 않는다." },
