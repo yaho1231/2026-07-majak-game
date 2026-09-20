@@ -558,6 +558,22 @@ export interface AdminSetNoticeMessage {
 }
 
 /**
+ * **점검 모드** 켜기·끄기 (관리자 전용, 2026-09-21).
+ *
+ * 전역 공지(`adminSetNotice`)는 «알리는» 것이고, 점검 모드는 «막는» 것이다. 켜지면
+ * 관리자가 아닌 모든 접속(게스트·이미 붙어 있던 사람 포함)은 점검 안내만 보고,
+ * 서버도 그들의 메시지를 전부 거절한다(`MAINTENANCE` 에러). 관리자는 평소와 같다.
+ * 상태는 `config` 표에 남아 재시작 뒤에도 유지된다.
+ *
+ * `on: false`면 `body`는 무시한다(내리면서 본문을 남길 이유가 없다).
+ */
+export interface AdminSetMaintenanceMessage {
+  type: "adminSetMaintenance";
+  on: boolean;
+  body: string;
+}
+
+/**
  * **그 탁자에만 거는 공지** (관리자 전용, 대회 중계 — docs/36 B2).
  *
  * 전역 공지(`adminSetNotice`)는 접속한 모두의 상단 띠를 바꾼다 — 한 탁자에
@@ -1207,6 +1223,7 @@ export type ClientMessage =
   | FeedbackUpdateMessage
   | FeedbackDeleteMessage
   | AdminSetNoticeMessage
+  | AdminSetMaintenanceMessage
   | AdminUsersRequestMessage
   | AdminAugmentTiersRequestMessage
   | AdminAnalyticsRequestMessage
@@ -1563,7 +1580,28 @@ export interface ServerInfoMessage {
    * 나가므로, 누가 실수로 긴 글을 넣으면 전원의 첫 프레임이 무거워진다.
    */
   notice?: ServerNotice;
+  /**
+   * **점검 모드** (켜져 있을 때만 필드가 붙는다 — 없으면 정상 운영).
+   *
+   * 공지와 같은 자리에 얹는 이유도 같다: 인증 **전에** 나가야 한다. 점검 화면은
+   * 로그인 화면보다 먼저 서야 하고, 켜고 끄는 순간 접속 중인 모두에게
+   * `serverInfo`가 다시 밀리므로 클라이언트는 이 하나만 보면 된다. 관리자
+   * 여부는 클라이언트가 `authOk.isAdmin`으로 판단하고, 서버는 어차피 비관리자의
+   * 메시지를 거절하므로 클라이언트 판단이 틀려도 뚫리지 않는다.
+   */
+  maintenance?: MaintenanceState;
 }
+
+/** 점검 모드 상태 — `serverInfo.maintenance`에 실린다. 존재 = 켜짐. */
+export interface MaintenanceState {
+  /** 점검 안내 본문 (여러 줄 가능). 비어 있으면 클라이언트가 기본 문구를 쓴다. */
+  body: string;
+  /** 켠(또는 본문을 고친) 시각(ISO). */
+  updatedAt: string;
+}
+
+/** 점검 안내 본문 길이 상한 — 공지 본문과 같은 이유로 서버가 자른다. */
+export const MAINTENANCE_BODY_MAX = 2000;
 
 /**
  * 공지 한 건. 증강 117종이 20판마다 자동 티어 조정되는 게임인데 "뭐가 바뀌었는지"를

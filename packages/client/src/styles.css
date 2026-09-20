@@ -18623,6 +18623,134 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
 }
 .home-notice-edit .lobby-join { width: 100%; }
 
+/* ─────────────── 점검 모드 (2026-09-21) ───────────────
+   비관리자 전원이 보는 유일한 화면. 게임의 문은 하나도 없고 본문 한 덩이뿐이라,
+   공지 띠와 같은 황동 눈금 하나로 «운영자의 말»임을 표시하고 나머지는 비운다. */
+.maint-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  background: radial-gradient(ellipse at center, var(--felt-3) 0%, var(--felt-0) 100%);
+}
+.maint-card {
+  width: min(520px, 100%);
+  padding: 26px 24px 22px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--brass);
+  border-radius: var(--r-panel);
+  background: var(--surface-2);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+.maint-tag {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--brass-line);
+  border-radius: var(--r-chip);
+  color: var(--brass-bright);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.maint-title {
+  margin: 0 0 12px;
+  color: var(--ink-1);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.maint-body {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap; /* 관리자가 적은 줄바꿈을 그대로 */
+  overflow-wrap: anywhere;
+}
+.maint-when {
+  margin: 14px 0 0;
+  color: var(--ink-4);
+  font-size: 11px;
+}
+.maint-admin-link {
+  display: block;
+  margin: 22px 0 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-4);
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.maint-admin-link:hover { color: var(--ink-2); }
+
+/* 관리자에게만 보이는 상단 표식 — 재연결 띠와 같은 자리지만 붉게, 클릭은 통과. */
+.maint-admin-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 299;
+  padding: 6px 16px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #ffd9d4;
+  background: rgba(128, 36, 30, 0.94);
+  border-bottom: 1px solid rgba(255, 120, 110, 0.45);
+  pointer-events: none;
+}
+
+/* 관리자 카드의 상태 표시와 버튼 줄 */
+.home-maint-edit .home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.home-maint-edit.is-on {
+  border-color: rgba(255, 120, 110, 0.45);
+}
+.maint-state {
+  margin-right: var(--panel-pad-x);
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-chip);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+.maint-state-on {
+  color: #ffd9d4;
+  border-color: rgba(255, 120, 110, 0.6);
+  background: rgba(128, 36, 30, 0.6);
+}
+.maint-actions {
+  display: flex;
+  gap: 8px;
+}
+.home-maint-edit .maint-actions .lobby-join {
+  flex: 1;
+  width: auto;
+  letter-spacing: 1px;
+  font-size: 14px;
+}
+.home-maint-edit .lobby-join.maint-on,
+.home-maint-edit .lobby-join.maint-off {
+  background: #8a2a24;
+  color: #ffe4e0;
+}
+.home-maint-edit .lobby-join.maint-on:hover,
+.home-maint-edit .lobby-join.maint-off:hover {
+  background: #a33a32;
+}
+
 /* ─────────────── 기간 성적 (§4-7) ───────────────
    누적 통계 아래 두 칸. 판수가 0인 칸은 숫자를 채우지 않고 한 줄로 둔다 —
    "평균 0위" 같은 없는 사실을 만들지 않기 위함이다. */
