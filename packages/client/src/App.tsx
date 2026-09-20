@@ -62,6 +62,7 @@ import type {
   PeriodStats,
   ServerInfoMessage,
   ServerNotice,
+  MaintenanceState,
   SpectateChoiceMessage,
   SpectateDraftMessage,
   SpectateInsightMessage,
@@ -84,6 +85,7 @@ import {
   ROOM_PACES,
   NOTICE_BODY_MAX,
   NOTICE_TITLE_MAX,
+  MAINTENANCE_BODY_MAX,
   SPECTATOR_ID,
   augmentFuritenBreakReads,
   discardsZone,
@@ -3919,7 +3921,39 @@ export function App(): JSX.Element {
   // 정확히 맞추기 위해서다(그건 선언이 한참 뒤라 못 쓴다). 예전에는 `view`만 봐서,
   // 방을 뜬 뒤 뒤늦게 도착한 뷰 하나가 view를 되살리면 **홈 화면인 채로 BGM만**
   // 흘렀다 — 화면 어디에도 대국이 없으니 끌 방법이 없었다.
-  const bgmShouldPlay = view !== null && rankings === null && (joined !== null || spectating !== null);
+  /*
+   * 점검 모드 (2026-09-21). 서버가 `serverInfo.maintenance`를 실어 보내면 켜진 것이다.
+   * 관리자가 아닌 사람(로그인 전·게스트·이미 판을 두던 사람 모두)은 점검 화면만
+   * 본다. 실제로 막는 자리는 서버다 — 여기는 «왜 아무것도 안 되는가»를 말해 주는
+   * 안내이지 보안이 아니다.
+   */
+  const maintenanceOn = serverInfo?.maintenance !== undefined;
+  const maintenanceBlocked = maintenanceOn && auth?.isAdmin !== true;
+  /** 점검 화면에서 «관리자 로그인»을 눌러 로그인 폼을 연 상태. */
+  const [maintLogin, setMaintLogin] = useState(false);
+  /*
+   * 점검이 **풀리면** 비관리자 화면은 새로고침으로 돌아간다. 점검 사이에 서버가
+   * 갈렸을 가능성이 높고(그게 점검이다), 들고 있던 방·뷰 상태는 이미 낡았다 —
+   * 맞춰 되살리려 애쓰기보다 처음부터 다시 붙는 편이 확실하다(저장된 세션으로
+   * 자동 로그인된다).
+   */
+  const maintSeen = useRef(false);
+  useEffect(() => {
+    if (maintenanceBlocked) {
+      maintSeen.current = true;
+      return;
+    }
+    if (!maintenanceOn && maintSeen.current) {
+      maintSeen.current = false;
+      window.location.reload();
+    }
+    if (maintenanceOn) maintSeen.current = false; // 관리자로 들어왔다 — 끌 때 새로고침하지 않는다
+  }, [maintenanceOn, maintenanceBlocked]);
+  useEffect(() => {
+    if (!maintenanceOn) setMaintLogin(false);
+  }, [maintenanceOn]);
+  const bgmShouldPlay =
+    view !== null && rankings === null && (joined !== null || spectating !== null) && !maintenanceBlocked;
   useEffect(() => {
     if (bgmShouldPlay) bgm.start();
     else bgm.stop();
@@ -6964,6 +6998,13 @@ export function App(): JSX.Element {
           <span className="reconnect-spin">⟳</span> 서버와 재연결 중…
         </div>
       ) : null}
+      {/* 관리자에게는 점검 모드가 켜져 있다는 사실이 어느 화면에서든 보여야 한다 —
+          평소와 똑같이 움직이는 화면이라 이 표식이 없으면 끄는 것을 잊는다. */}
+      {maintenanceOn && auth?.isAdmin === true ? (
+        <div className="maint-admin-bar" role="status">
+          점검 모드 ON — 관리자 외 접속이 막혀 있습니다
+        </div>
+      ) : null}
       {inGame || inWaiting ? (
         <GameNoticeBanner
           notice={serverInfo?.notice}
@@ -6973,7 +7014,17 @@ export function App(): JSX.Element {
       {/* 공유 링크로 들어온 리플레이는 **로그인 화면보다 먼저** 선다 (§4-8).
           토큰이 곧 권한이라 계정이 필요 없다 — 여기서 auth 게이트를 먼저 통과시키면
           "링크 있는 사람만"이 "링크 있고 계정도 있는 사람만"이 된다. */}
-      {auth === null && replayData !== null ? (
+      {/* 점검 모드 안내 — 로그인 화면·공유 리플레이보다 먼저 선다. 관리자만 지나간다. */}
+      {maintenanceBlocked && !(maintLogin && auth === null) ? (
+        <MaintenanceScreen
+          state={serverInfo?.maintenance ?? null}
+          loggedIn={auth !== null}
+          onAdminLogin={() => {
+            if (auth !== null) logout("login");
+            setMaintLogin(true);
+          }}
+        />
+      ) : auth === null && replayData !== null ? (
         <ReplayViewer
           data={replayData}
           settings={settings}
@@ -7265,6 +7316,7 @@ export function App(): JSX.Element {
           onRemoveFriend={(n) => send({ type: "friendRemove", nickname: n })}
           onRefreshFriends={() => send({ type: "friendList" })}
           onSetNotice={(title, body) => send({ type: "adminSetNotice", title, body })}
+          onSetMaintenance={(on, body) => send({ type: "adminSetMaintenance", on, body })}
           stats={stats}
           replays={myReplays}
           liveRooms={liveRooms}
@@ -11929,6 +11981,124 @@ function NoticeEditor({
 }
 
 /**
+ * 점검 모드 편집기 (관리자 전용, 2026-09-21).
+ *
+ * 켜는 순간 **접속 중인 모든 비관리자**가 그 자리에서 점검 화면으로 넘어간다 —
+ * 판을 두던 사람도 포함이다. 그래서 켜기 버튼은 되묻는다. 끄는 것은 되묻지 않는다
+ * (열어 주는 쪽은 사고가 아니다).
+ */
+function MaintenanceEditor({
+  state,
+  onSet,
+}: {
+  state: MaintenanceState | undefined;
+  onSet: (on: boolean, body: string) => void;
+}): JSX.Element {
+  const on = state !== undefined;
+  const [body, setBody] = useState(state?.body ?? "");
+  // 서버가 준 값이 바뀌면(다른 관리자가 고쳤다) 편집 중이 아닐 때만 따라간다.
+  const serverKey = state?.body ?? "";
+  const lastKey = useRef(serverKey);
+  useEffect(() => {
+    if (lastKey.current === serverKey) return;
+    lastKey.current = serverKey;
+    setBody(serverKey);
+  }, [serverKey]);
+
+  return (
+    <section className={on ? "home-card home-notice-edit home-maint-edit is-on" : "home-card home-notice-edit home-maint-edit"}>
+      <div className="home-card-head">
+        <h2>
+          점검 모드<span className="home-admin-badge">관리자</span>
+        </h2>
+        <span className={on ? "maint-state maint-state-on" : "maint-state"}>
+          {on ? "ON" : "OFF"}
+        </span>
+      </div>
+      <p className="home-hint">
+        켜면 관리자가 아닌 모든 사용자(게스트·접속 중인 사람 포함)는 아래 안내만 보고,
+        게임·로비·관전·리플레이·제보가 전부 막힙니다. 관리자는 평소와 같습니다.
+        서버를 재시작해도 유지됩니다.
+      </p>
+      <textarea
+        className="fb-textarea"
+        value={body}
+        maxLength={MAINTENANCE_BODY_MAX}
+        rows={4}
+        placeholder="점검 안내 본문 (줄바꿈 유지, 비우면 기본 문구)"
+        onChange={(e) => setBody(e.target.value)}
+      />
+      <div className="maint-actions">
+        {on ? (
+          <>
+            <button className="lobby-join" onClick={() => onSet(true, body)}>
+              안내 본문 갱신
+            </button>
+            <button className="lobby-join maint-off" onClick={() => onSet(false, "")}>
+              점검 모드 끄기
+            </button>
+          </>
+        ) : (
+          <button
+            className="lobby-join maint-on"
+            onClick={() => {
+              void askConfirm({
+                title: "점검 모드를 켭니다",
+                body: "접속 중인 모든 비관리자가 즉시 점검 화면으로 넘어갑니다.\n진행 중인 판도 그 자리에서 멈춥니다.",
+                confirmLabel: "켜기",
+                danger: true,
+              }).then((ok) => {
+                if (ok) onSet(true, body);
+              });
+            }}
+          >
+            점검 모드 켜기
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * 점검 화면 (비관리자 전원, 2026-09-21).
+ *
+ * 본문 하나만 보여 준다 — 게임의 어떤 문도 여기서 열리지 않는다. 유일한 손잡이는
+ * 「관리자 로그인」이고, 그 문도 관리자가 아니면 도로 이 화면이다.
+ */
+function MaintenanceScreen({
+  state,
+  loggedIn,
+  onAdminLogin,
+}: {
+  state: MaintenanceState | null;
+  loggedIn: boolean;
+  onAdminLogin: () => void;
+}): JSX.Element {
+  const body = state?.body.trim() ?? "";
+  const when = state === null || state.updatedAt === "" ? null : new Date(state.updatedAt);
+  return (
+    <div className="maint-screen" role="main">
+      <div className="maint-card">
+        <div className="maint-tag">서버 점검</div>
+        <h1 className="maint-title">지금은 점검 중입니다</h1>
+        <p className="maint-body">
+          {body === "" ? "잠시 후 다시 접속해 주세요." : body}
+        </p>
+        {when !== null ? (
+          <p className="maint-when">
+            {when.toLocaleString()} 기준
+          </p>
+        ) : null}
+        <button className="maint-admin-link" type="button" onClick={onAdminLogin}>
+          {loggedIn ? "다른 계정으로 로그인 (관리자)" : "관리자 로그인"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * 기간 성적 한 줄 (감사 §4-7).
  *
  * **왜 이 두 칸뿐인가**: 누적 통계에는 타임스탬프가 하나도 없어서, 되만들 수 있는
@@ -12313,6 +12483,8 @@ function HomeScreen(props: {
   serverInfo: ServerInfoMessage | null;
   /** 공지 세우기·내리기 (관리자 전용 카드가 쓴다). 제목이 비면 내린다. */
   onSetNotice: (title: string, body: string) => void;
+  /** 점검 모드 켜기·끄기 (관리자 전용 카드가 쓴다). */
+  onSetMaintenance: (on: boolean, body: string) => void;
   stats: StatsMessage | null;
   /** null = 아직 서버 응답을 못 받았다. [] = 정말 없다. 화면에서 둘은 다른 문장이다. */
   replays: ReplayGameSummary[] | null;
@@ -12869,6 +13041,10 @@ function HomeScreen(props: {
 
               {tab === "admin" && props.auth.isAdmin ? (
                 <>
+        <MaintenanceEditor
+          state={props.serverInfo?.maintenance}
+          onSet={props.onSetMaintenance}
+        />
         <NoticeEditor notice={props.serverInfo?.notice} onSave={props.onSetNotice} />
         <AnalyticsCard days={props.analytics} onRefresh={props.onRefreshAnalytics} />
         <section className="home-card home-sandbox">

@@ -15,8 +15,8 @@ import { chmodSync, existsSync, statSync } from "node:fs";
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { DatabaseSync as DatabaseSyncT, StatementSync } from "node:sqlite";
-import { NOTICE_BODY_MAX, NOTICE_TITLE_MAX } from "@majak/core/network/protocol.js";
-import type { ServerNotice } from "@majak/core/network/protocol.js";
+import { MAINTENANCE_BODY_MAX, NOTICE_BODY_MAX, NOTICE_TITLE_MAX } from "@majak/core/network/protocol.js";
+import type { MaintenanceState, ServerNotice } from "@majak/core/network/protocol.js";
 
 // 비동기 scrypt — libuv 스레드풀에서 실행되어 공유 이벤트 루프를 블록하지 않는다.
 // (동기 scryptSync는 인증 요청 하나가 모든 진행 게임을 수십 ms씩 멈춘다.)
@@ -773,6 +773,49 @@ export class SiteDb {
       "INSERT INTO config (key, value) VALUES ('notice', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     ).run(JSON.stringify(notice));
     return notice;
+  }
+
+  // ─────────────────────────── 점검 모드 ───────────────────────────
+
+  /**
+   * 점검 모드 상태 — 꺼져 있으면 null.
+   *
+   * 공지와 같은 방식으로 `config`에 담는다(키 `maintenance`). 새 표를 만들지 않는
+   * 이유도 같다 — 언제나 **한 건**인 단일값이고, 그 표가 정확히 그 자리다.
+   * 재시작 뒤에도 남아야 한다: 점검 중에 서버를 갈아 끼우는 것이 이 기능의
+   * 전형적인 쓰임이라, 재시작이 점검을 풀어 버리면 뜻이 없다.
+   */
+  maintenance(): MaintenanceState | null {
+    const row = this.stmt("SELECT value FROM config WHERE key = 'maintenance'").get() as
+      | { value: string }
+      | undefined;
+    if (row === undefined) return null;
+    try {
+      const parsed = JSON.parse(row.value) as Partial<MaintenanceState>;
+      return {
+        body: typeof parsed.body === "string" ? parsed.body : "",
+        updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
+      };
+    } catch {
+      // 손으로 고치다 깨진 값 — 점검이 꺼진 것으로 본다(막히는 쪽이 아니라 여는 쪽).
+      return null;
+    }
+  }
+
+  /** 점검 모드를 켜거나(본문과 함께) 끈다. 켜진 상태를 돌려준다. */
+  setMaintenance(on: boolean, body: string): MaintenanceState | null {
+    if (!on) {
+      this.stmt("DELETE FROM config WHERE key = 'maintenance'").run();
+      return null;
+    }
+    const state: MaintenanceState = {
+      body: body.trim().slice(0, MAINTENANCE_BODY_MAX),
+      updatedAt: new Date().toISOString(),
+    };
+    this.stmt(
+      "INSERT INTO config (key, value) VALUES ('maintenance', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(JSON.stringify(state));
+    return state;
   }
 
   // ─────────────────────────── 계정 ───────────────────────────
