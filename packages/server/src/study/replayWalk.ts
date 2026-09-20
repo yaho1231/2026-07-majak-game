@@ -148,6 +148,10 @@ function resolveTurnActual(
       if (e.type === "TileDrawn") break;
       break;
     }
+    // 액티브 발동은 `view:<actor>:uses:<증강>` 채널이 줄어드는 것으로 드러난다 —
+    // 발동 이벤트가 없는 증강(연금술·물들이기 등)도 이 채널은 반드시 건드린다.
+    const usedAug = usesKeyOf(e, actor);
+    if (usedAug !== null) return { actual: { type: `augment:${usedAug}`, payload: {} }, type: "AugmentUse" };
     if (actorOf(e) !== actor) continue;
     if (e.type === "AugmentOffered" || e.type === "AugmentDrafted") continue;
     const p = e.payload as Record<string, unknown>;
@@ -184,11 +188,28 @@ function resolveTurnActual(
       const opt = prompt.options.find((o) => o.type === "win");
       return { actual: opt ?? { type: "win", payload: {} }, type: e.type };
     }
-    // 증강 액션 — 옵션 타입과 이벤트 타입이 다를 수 있어 타입만 남긴다
-    const opt = prompt.options.find((o) => !isStandardType(o.type));
-    return { actual: opt ?? { type: e.type, payload: {} }, type: e.type };
+    // 증강 액션 — 뒤따르는 uses 채널로 어느 증강인지 확정한다 (없으면 이벤트 타입만 남긴다)
+    for (let j = i + 1; j < events.length && j < i + 12; j++) {
+      const aug = usesKeyOf(events[j] as GameEvent, actor);
+      if (aug !== null) return { actual: { type: `augment:${aug}`, payload: {} }, type: e.type };
+      const t = (events[j] as GameEvent).type;
+      if (t === "TileDiscarded" || t === "TurnPassed" || t === "TileDrawn") break;
+    }
+    return { actual: { type: `augment:?${e.type}`, payload: {} }, type: e.type };
   }
   return { actual: null, type: "" };
+}
+
+/** `view:<player>:uses:<증강>` 데이터 세팅이면 그 증강 id, 아니면 null */
+export function usesKeyOf(e: GameEvent, player: PlayerId): string | null {
+  if (e.type !== "AugmentDataSet") return null;
+  const key = (e.payload as { key?: unknown }).key;
+  if (typeof key !== "string") return null;
+  const prefix = `view:${player}:uses:`;
+  if (!key.startsWith(prefix)) return null;
+  const rest = key.slice(prefix.length);
+  const hash = rest.indexOf("#");
+  return hash >= 0 ? rest.slice(0, hash) : rest;
 }
 
 const STANDARD_TYPES = new Set([
@@ -373,6 +394,7 @@ function resolvesDecision(state: GameState, e: GameEvent): boolean {
     const actor = state.players[state.round.turnSeat]?.id;
     // playerAtSeat: players 배열 순서가 좌석과 다를 수 있으므로 seat 필드로 찾는다
     const seatActor = state.players.find((p) => p.seat === state.round.turnSeat)?.id ?? actor;
+    if (usesKeyOf(e, seatActor as PlayerId) !== null) return true;
     if (actorOf(e) !== seatActor) return false;
     if (STANDARD_TURN_EVENTS.has(e.type)) return true;
     return !isStandardEvent(e.type);

@@ -27,6 +27,7 @@
  * A/B를 비교할 때 이게 없으면 차이가 변경 때문인지 운 때문인지 알 수 없다.
  */
 
+import { perfSnapshot } from "../perfMonitor.js";
 import {
   HanchanController,
   ROUND_STARTED,
@@ -168,6 +169,12 @@ export interface ArenaResult {
     standardError: number;
   };
   elapsedMs: number;
+  /**
+   * **결정당 연산량** — 이 아레나 동안 `BotAgent.decide`가 잰 평균·p99 ms.
+   * 봇 판단을 사람 쪽으로 옮기는 작업의 두 번째 게이트다(docs/57 §2-4): 같은 시드에서
+   * 전후를 비교해 **늘지 않았음**을 보인다. `perfMonitor`의 창을 시작 때 비우고 끝에 읽는다.
+   */
+  decision: { count: number; meanMs: number; p99Ms: number | string; maxMs: number };
 }
 
 const SEATS: readonly PlayerId[] = ["p0", "p1", "p2", "p3"];
@@ -187,6 +194,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
   const seed = opts.seed ?? 0x5eed;
   const mode: GameMode = opts.mode ?? "hanchan";
   const started = Date.now();
+  perfSnapshot(); // 결정 시간 창을 비운다 — 이 아레나 동안의 값만 읽기 위해
   /**
    * 2:2 대전에서는 **성격을 통일한다**(따로 지정하지 않으면 균형형 넷).
    *
@@ -386,6 +394,7 @@ export async function runArena(opts: ArenaOptions): Promise<ArenaResult> {
         }
       : {}),
     elapsedMs: Date.now() - started,
+    decision: perfSnapshot().botDecision,
   };
 }
 
@@ -406,7 +415,8 @@ export function formatArena(r: ArenaResult): string {
   const lines: string[] = [];
   lines.push(
     `게임 ${r.games}${r.ab !== undefined ? "배패 × 2(좌우 교대)" : "판"} · 국 ${r.rounds} · ` +
-      `유국률 ${pct(r.drawRate)} · ${(r.elapsedMs / 1000).toFixed(1)}초`,
+      `유국률 ${pct(r.drawRate)} · ${(r.elapsedMs / 1000).toFixed(1)}초 · ` +
+      `결정 ${r.decision.count}건 평균 ${r.decision.meanMs}ms p99 ${r.decision.p99Ms}ms 최대 ${r.decision.maxMs}ms`,
   );
   lines.push("");
   lines.push("원형        화료율  방총율  리치율  후로율  평균화료  평균방총  평균순위");
