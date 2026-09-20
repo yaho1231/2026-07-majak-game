@@ -532,6 +532,17 @@ export class BotAgent implements PlayerAgent {
    *
    * 조용히 삼키지는 않는다 — 로그에 그대로 남으므로 운영자가 찾을 수 있다.
    */
+  /**
+   * **그림자 결정** — 생각 시간·홀드·배급 없이 지금 뷰에서 이 프롬프트에 무엇을 둘지.
+   *
+   * 리플레이 분석(`study/`)이 사람이 실제로 둔 자리에 봇을 세워 «봇이라면 무엇을
+   * 골랐나»를 되묻는 데 쓴다. 판단 경로는 실대국(`decide`)과 완전히 같고, 다만
+   * 기다리지 않는다. 실대국 진행 코드는 이걸 부르지 않는다.
+   */
+  decideShadow(prompt: DecisionPrompt): ActionOption {
+    return this.decideSafely(prompt);
+  }
+
   private decideSafely(prompt: DecisionPrompt): ActionOption {
     try {
       return this.decideNow(prompt);
