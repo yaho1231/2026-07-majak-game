@@ -1,7 +1,7 @@
 # 57_BOT_HUMANLIKE_PLAN — 리플레이로 배우는 봇 (계획)
 
 Version : 1.0
-Status : Active (진행 중)
+Status : Done (2026-09-21 채택·병합) — 결과는 [docs/58](58_BOT_STUDY_2026-09.md)
 Started : 2026-09-21
 Branch : `claude/bot-strategy-enhancement-129897`
 
@@ -213,4 +213,6 @@ packages/server/src/bot/human/
     보류·재측정 중. 4-5 후로: 채택 — 후로율 21.8 → 29.3%, 순위 +0.01. 4-6 수비: 채택(중립,
     방총 +1%p). 가설의 «계단»은 실측과 달랐다 — 사람은 샹텐과 무관하게 5%만 현물을 낸다.
   - 연산량: 증강 옵션이 없는 프롬프트에서 정책 순회를 건너뛰는 조기 탈출을 넣었다
-    (`BotAgent.augmentBids`). 결정당 ms는 §5-6의 아레나 수치로 전후 비교(docs/58 §10).
+    (`BotAgent.augmentBids`). 결정당 평균 0.60 → 0.46ms(증강), 0.49 → 0.38ms(무증강) — docs/58 §10.
+  - 최종: 여섯 영역 전부 기본값으로 채택. 묶음 전체의 2:2 순효과 +0.01 ± 0.04(증강 탁 +0.115 ± 0.067).
+    끄는 스위치 `noHumanStyle`(`bot/flags.ts`). 일치율 턴 33 → 36% · 리액션 79 → 81% · 드래프트 43 → 49%.
