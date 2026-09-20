@@ -776,6 +776,178 @@ describe("agariYameTriggers — 아가리야메/텐파이야메 종국 판정", 
  * 연장 판정은 "정산 후 장풍·국번이 그대로"인데, 1위 조회는 **국 시작 시점의 오야**를
  * 봤다. 오야 자리가 옮겨가면 연장한 사람과 점수를 조회하는 사람이 서로 달라진다.
  */
+describe("아가리야메 — 반환점 게이트 (서입이 켜진 방은 오야도 반환점 이상이어야 판을 접는다)", () => {
+  const scores = (s0: number, s1: number, s2: number, s3: number) => [
+    { seat: 0, score: s0 },
+    { seat: 1, score: s1 },
+    { seat: 2, score: s2 },
+    { seat: 3, score: s3 },
+  ];
+  const played = { wind: 2, roundNumber: 4, dealerSeat: 3, outcome: "win" as const };
+  const gate = { westEntry: true, returnScore: 30000 };
+
+  it("리플레이 gameId 857: 남4국 1본장 오야 1100올 쯔모 → 29300 단독 1위는 종국이 아니다(본장 연장)", () => {
+    // 정산 후: p2(자리0)=20300, p3(자리1)=24100, p1(자리2)=26300, p0(자리3, 오야)=29300
+    expect(
+      agariYameTriggers(
+        true,
+        2,
+        played,
+        { prevalentWind: 2, roundNumber: 4, dealerSeat: 3, players: scores(20300, 24100, 26300, 29300) },
+        gate,
+      ),
+    ).toBe(false);
+  });
+
+  it("경계: 오야가 정확히 반환점(30000)이면 종국 — shouldEnd와 같은 «이상»", () => {
+    expect(
+      agariYameTriggers(
+        true,
+        2,
+        played,
+        { prevalentWind: 2, roundNumber: 4, dealerSeat: 3, players: scores(20000, 24000, 26000, 30000) },
+        gate,
+      ),
+    ).toBe(true);
+  });
+
+  it("오야가 반환점 이상이면 종전대로 종국", () => {
+    expect(
+      agariYameTriggers(
+        true,
+        2,
+        played,
+        { prevalentWind: 2, roundNumber: 4, dealerSeat: 3, players: scores(20000, 20000, 20000, 40000) },
+        gate,
+      ),
+    ).toBe(true);
+  });
+
+  it("서입이 꺼진 방은 연장이 없으므로 반환점 미달이어도 단독 1위면 종국", () => {
+    expect(
+      agariYameTriggers(
+        true,
+        2,
+        played,
+        { prevalentWind: 2, roundNumber: 4, dealerSeat: 3, players: scores(20300, 24100, 26300, 29300) },
+        { westEntry: false, returnScore: 30000 },
+      ),
+    ).toBe(true);
+  });
+
+  it("동풍전(남입)도 같은 게이트를 쓴다", () => {
+    expect(
+      agariYameTriggers(
+        true,
+        1,
+        { wind: 1, roundNumber: 4, dealerSeat: 3, outcome: "win" },
+        { prevalentWind: 1, roundNumber: 4, dealerSeat: 3, players: scores(20300, 24100, 26300, 29300) },
+        gate,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("HanchanController — 반환점 미달 아가리야메 회귀 (리플레이 gameId 857)", () => {
+  /**
+   * 남4국(오라스) 오야(p0, 자리 0)의 쯔모 직전 상태. p0 손패는 123m·234m·456p·789s + 5s 단기
+   * 대기이고 벽 맨 위가 5s라 첫 수에 멘젠 쯔모(1판 30부, 오야 500올)로 화료한다.
+   * 점수는 화료 후 p0가 29000 단독 1위 — 반환점(30000) 미달이다.
+   */
+  function allLastDealerTsumoState(): GameState {
+    const ids = ["p0", "p1", "p2", "p3"];
+    const base = createInitialGameState(
+      { seed: 7, playerIds: ids },
+      { startScore: 25000, redFivesPerSuit: 0 }, // 적도라 없음 — 화료 점수를 500올로 고정
+    );
+    const pool = new Map<string, number[]>();
+    for (const tile of Object.values(base.tiles)) {
+      const key = kindKey(tile.kind);
+      pool.set(key, [...(pool.get(key) ?? []), tile.id]);
+    }
+    const take = (key: string): number => {
+      const id = pool.get(key)?.shift();
+      if (id === undefined) throw new Error(`no tile left: ${key}`);
+      return id;
+    };
+    const zones = { ...base.zones };
+    zones[handZone("p0")] = {
+      ...createZone(handZone("p0"), "hand", "p0"),
+      tileIds: [
+        "man1", "man2", "man3", "man2", "man3", "man4",
+        "pin4", "pin5", "pin6", "sou7", "sou8", "sou9", "sou5",
+      ].map(take),
+    };
+    const winning = take("sou5");
+    // 도라 표시패는 동(→도라 남) — p0 손패에 없으므로 멘젠 쯔모 1판 30부 = 오야 500올
+    const indicator = take("wind1");
+    let rest = [...pool.values()].flat().sort((a, b) => a - b);
+    ids.slice(1).forEach((p, i) => {
+      zones[handZone(p)] = {
+        ...createZone(handZone(p), "hand", p),
+        tileIds: rest.filter((_, k) => k % 3 === i).slice(0, 13),
+      };
+    });
+    const dealt = new Set(ids.slice(1).flatMap((p) => zones[handZone(p)]!.tileIds));
+    rest = rest.filter((id) => !dealt.has(id));
+    zones[DEAD_WALL] = {
+      ...createZone(DEAD_WALL, "deadWall"),
+      tileIds: [...rest.slice(0, 4), indicator, ...rest.slice(4, 13)],
+    };
+    zones[WALL] = { ...createZone(WALL, "wall"), tileIds: [winning, ...rest.slice(13)] };
+    const scoreOf: Record<string, number> = { p0: 27500, p1: 24500, p2: 24000, p3: 24000 };
+    return {
+      ...base,
+      zones,
+      players: base.players.map((p) => ({ ...p, score: scoreOf[p.id]! })),
+      round: {
+        ...base.round,
+        prevalentWind: 2,
+        roundNumber: 4,
+        honba: 0,
+        dealerSeat: 0,
+        phase: "turn.draw",
+        turnSeat: 0,
+        firstTurn: false,
+        doraIndicators: [zones[DEAD_WALL].tileIds[4] as number],
+      },
+    };
+  }
+
+  it("남4국 오야 화료 후 29000 단독 1위 → 아가리야메가 아니라 본장 연장(서입 판정)으로 이어진다", async () => {
+    const agents = makeAgents([2, 4, 6, 8]);
+    const game = createStandardGameFromState(allLastDealerTsumoState());
+    const roundEnds: { outcome: string; scores: number[]; wind: number; round: number }[] = [];
+    let endReason = "";
+    const ctrl = new HanchanController(
+      agents,
+      { ...DEFAULT_HANCHAN_CONFIG, dobi: false, draftSchedules: [], seed: 857 },
+      {
+        onRoundEnd: (g, outcome) =>
+          roundEnds.push({
+            outcome,
+            scores: g.engine.state.players.map((p) => p.score),
+            wind: g.engine.state.round.prevalentWind,
+            round: g.engine.state.round.roundNumber,
+          }),
+        onGameOver: (_, reason) => {
+          endReason = reason;
+        },
+      },
+    );
+    const rankings = await ctrl.resume(game);
+    expect(rankings).toHaveLength(4);
+    // 첫 국: 오야 p0가 500올 쯔모 → 29000 단독 1위(반환점 미달)
+    expect(roundEnds[0]).toMatchObject({ outcome: "win", scores: [29000, 24000, 23500, 23500] });
+    // 예전에는 여기서 agariYame으로 게임이 끝났다. 이제는 한 국 더 친다.
+    expect(roundEnds.length).toBeGreaterThan(1);
+    // 아가리야메로 끝났다면 그때 오야(1위)는 반드시 반환점 이상이다.
+    if (endReason === "agariYame") {
+      expect(Math.max(...rankings.map((r) => r.rawScore))).toBeGreaterThanOrEqual(30000);
+    }
+  }, 20000);
+});
+
 describe("아가리야메 — 오야 자리가 옮겨가는 경우", () => {
   const scores2 = (s0: number, s1: number, s2: number, s3: number) => [
     { seat: 0, score: s0 },
