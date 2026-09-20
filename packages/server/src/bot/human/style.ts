@@ -23,8 +23,14 @@ import type { Pair } from "./priors.js";
 
 export type StyleArea = "riichi" | "call" | "defense" | "discard" | "augment" | "draft";
 
-/** 채택되어 기본이 된 영역 — 여기 든 영역은 `noHumanStyle`로만 끈다 */
-const ADOPTED: ReadonlySet<StyleArea> = new Set<StyleArea>([]);
+/**
+ * 채택되어 기본이 된 영역 — 여기 든 영역은 `noHumanStyle`로만 끈다.
+ *
+ * 2026-09-21 2:2 아레나(동풍전 200배패 × 2시드, docs/58 §9)에서 순위 차가 표준오차 안이면
+ * 채택했다: 후로 +0.01 · 수비 0.00 · 타패 +0.04 · 드래프트 +0.02 · 증강(완화 문) −0.02.
+ * 리치는 −0.04로 열세라 절반·반쪽 변형을 더 쟀다(§9 2·3차).
+ */
+const ADOPTED: ReadonlySet<StyleArea> = new Set<StyleArea>(["call", "defense", "discard", "draft", "augment"]);
 
 export function styleOn(flags: BotFlags, area: StyleArea): boolean {
   if (flags.has("noHumanStyle")) return false;

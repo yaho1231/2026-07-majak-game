@@ -371,7 +371,11 @@ function lineEV(
       ? riichiTilt(read, shape.waitTiles, value.points)
       : flags.has("humanRiichiHalf")
         ? riichiTilt(read, shape.waitTiles, value.points) * 0.5
-        : 0;
+        : flags.has("humanRiichiNeg")
+          ? riichiTilt(read, shape.waitTiles, value.points, "neg")
+          : flags.has("humanRiichiPos")
+            ? riichiTilt(read, shape.waitTiles, value.points, "pos")
+            : 0;
   const taste = styleOn(flags, "discard") ? tasteBonus(c.kind, read) : 0;
 
   return (

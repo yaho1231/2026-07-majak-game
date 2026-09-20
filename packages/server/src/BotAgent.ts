@@ -718,8 +718,7 @@ export class BotAgent implements PlayerAgent {
      * 손 값어치 계산이 매 결정 돌고 있었다. 대부분의 프롬프트가 이 경우다.
      */
     if (!options.some((o) => !STANDARD_ACTION_TYPES.has(o.type))) return [];
-    const gateAugments = styleOn(this.flags, "augment") || this.flags.has("humanAugmentSoft");
-    const softGate = this.flags.has("humanAugmentSoft");
+    const gateAugments = styleOn(this.flags, "augment");
 
     /**
      * 정책에 넘기는 손 값어치는 **증강 배수를 얹지 않은** 값이다.
@@ -773,8 +772,8 @@ export class BotAgent implements PlayerAgent {
       try {
         const picked = policy.choose(ctx);
         if (picked === null) continue;
-        // 사람 성향 — 사람이 아껴 두는 빈도만큼만 통과 (bot/human/augmentStyle.ts, 스위치 뒤)
-        if (gateAugments && !augmentGate(augId, read.turn, this.botRng, softGate)) continue;
+        // 사람 성향 — 사람이 아껴 두는 빈도 쪽으로 절반만 통과 (bot/human/augmentStyle.ts)
+        if (gateAugments && !augmentGate(augId, read.turn, this.botRng)) continue;
         {
           /*
            * **정책은 표준 마작 액션을 돌려줄 수 없다** (`bot/augmentPick.ts`).

@@ -19,7 +19,13 @@ import { meanGap } from "./style.js";
 export const RIICHI_STYLE_GAIN = 1500;
 
 /** `points`는 리치 판수를 **얹지 않은** 손 값 — 연구가 그 값으로 셀을 나눴다 */
-export function riichiTilt(read: BotRead, waitTiles: number, points: number): number {
+export function riichiTilt(
+  read: BotRead,
+  waitTiles: number,
+  points: number,
+  /** "neg": 사람이 덜 거는 자리의 벌점만 · "pos": 더 거는 자리의 웃돈만 · "both": 둘 다 */
+  side: "neg" | "pos" | "both" = "both",
+): number {
   const turn = bucketTurn(read.turn);
   const wait = bucketWait(waitTiles);
   const gap = meanGap([
@@ -27,5 +33,7 @@ export function riichiTilt(read: BotRead, waitTiles: number, points: number): nu
     RIICHI_STYLE[`pts=${bucketPoints(points)}|turn=${turn}`],
     RIICHI_STYLE[`wait=${wait}|threat=${bucketThreat(read.threat)}`],
   ]);
+  if (side === "neg" && gap > 0) return 0;
+  if (side === "pos" && gap < 0) return 0;
   return gap * RIICHI_STYLE_GAIN;
 }

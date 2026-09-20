@@ -26,16 +26,17 @@ const rng = (seq: number[]) => {
 };
 
 describe("style — 스위치", () => {
-  it("비어 있으면 어느 영역도 켜지지 않는다 (실대국 기본)", () => {
-    for (const a of ["riichi", "call", "defense", "discard", "augment", "draft"] as const) {
-      expect(styleOn(parseFlags(""), a)).toBe(false);
+  it("채택된 영역(후로·수비·타패·드래프트·증강)은 기본으로 켜져 있고 `noHumanStyle`로만 꺼진다", () => {
+    for (const a of ["call", "defense", "discard", "augment", "draft"] as const) {
+      expect(styleOn(parseFlags(""), a)).toBe(true);
+      expect(styleOn(parseFlags("noHumanStyle"), a)).toBe(false);
     }
   });
-  it("`human`은 전부, `humanCall`은 그 영역만, `noHumanStyle`은 전부 끈다", () => {
-    expect(styleOn(parseFlags("human"), "call")).toBe(true);
-    expect(styleOn(parseFlags("humanCall"), "call")).toBe(true);
-    expect(styleOn(parseFlags("humanCall"), "riichi")).toBe(false);
-    expect(styleOn(parseFlags("human,noHumanStyle"), "call")).toBe(false);
+  it("채택되지 않은 영역(리치)은 스위치로만 켠다", () => {
+    expect(styleOn(parseFlags(""), "riichi")).toBe(false);
+    expect(styleOn(parseFlags("human"), "riichi")).toBe(true);
+    expect(styleOn(parseFlags("humanRiichi"), "riichi")).toBe(true);
+    expect(styleOn(parseFlags("human,noHumanStyle"), "riichi")).toBe(false);
   });
   it("로짓 차는 사람이 더 자주 고르면 양수, 없는 셀은 0", () => {
     expect(gapOf([0.6, 0.3])).toBeGreaterThan(0);
@@ -112,13 +113,13 @@ describe("defenseStyle", () => {
 });
 
 describe("augmentStyle", () => {
-  it("표에 없는 증강은 언제나 통과, 봇이 사람보다 자주 쓰는 증강은 그 비율로만", () => {
+  it("표에 없는 증강은 언제나 통과, 봇이 사람보다 자주 쓰는 증강은 비의 제곱근(바닥 0.3)으로만", () => {
     expect(augmentGate("no_such_augment", 3, rng([0.99]))).toBe(true);
     const spammy = Object.entries(AUGMENT_STYLE).find(([, s]) => s.turn[0][1] > s.turn[0][0] * 3 + 0.1);
     if (spammy === undefined) return;
     const [id, s] = spammy;
-    const ratio = (s.turn[0][0] + 0.02) / (s.turn[0][1] + 0.02);
-    expect(augmentGate(id, 1, rng([ratio + 0.05]))).toBe(false);
+    const ratio = Math.max(0.3, Math.sqrt((s.turn[0][0] + 0.02) / (s.turn[0][1] + 0.02)));
+    expect(augmentGate(id, 1, rng([Math.min(0.999, ratio + 0.05)]))).toBe(false);
     expect(augmentGate(id, 1, rng([Math.max(0, ratio - 0.01)]))).toBe(true);
   });
   it("사람이 더 자주 쓰는 증강은 항상 통과한다", () => {
