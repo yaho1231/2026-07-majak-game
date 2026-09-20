@@ -16,12 +16,19 @@ import { AUGMENT_STYLE } from "./priors.js";
 
 const EPS = 0.02;
 
-/** 이 순에 이 증강을 태우는 것을 허락하는가 */
-export function augmentGate(augId: string, turn: number, rng: BotRng): boolean {
+/**
+ * 이 순에 이 증강을 태우는 것을 허락하는가.
+ *
+ * `soft`(실험 `humanAugmentSoft`): 비의 제곱근에 바닥 0.3 — 사람 빈도까지 다 내리면
+ * 2:2에서 순위 −0.10 ± 0.04로 유의미하게 약해졌다(2026-09-21, 동풍전 200배패 × 2시드).
+ * 증강은 공짜 이득이라 «안 쓰는 사람»을 그대로 따르면 그만큼 잃는다. 절반만 따른다.
+ */
+export function augmentGate(augId: string, turn: number, rng: BotRng, soft = false): boolean {
   const style = AUGMENT_STYLE[augId];
   if (style === undefined) return true;
   const [human, bot] = style.turn[TURN_INDEX[bucketTurn(turn)]];
-  const ratio = (human + EPS) / (bot + EPS);
+  let ratio = (human + EPS) / (bot + EPS);
   if (ratio >= 1) return true;
+  if (soft) ratio = Math.max(0.3, Math.sqrt(ratio));
   return rng.float() < ratio;
 }

@@ -365,8 +365,13 @@ function lineEV(
   // 사람 성향 (bot/human/*) — 스위치 뒤. 실대국은 채택 전까지 전부 0·1이다.
   const flags = read.flags;
   const lossStyle = styleOn(flags, "defense") ? lossFactor(read, value.points) : 1;
-  const riichiStyle =
-    opts.riichi && styleOn(flags, "riichi") ? riichiTilt(read, shape.waitTiles, value.points) : 0;
+  const riichiStyle = !opts.riichi
+    ? 0
+    : styleOn(flags, "riichi")
+      ? riichiTilt(read, shape.waitTiles, value.points)
+      : flags.has("humanRiichiHalf")
+        ? riichiTilt(read, shape.waitTiles, value.points) * 0.5
+        : 0;
   const taste = styleOn(flags, "discard") ? tasteBonus(c.kind, read) : 0;
 
   return (
