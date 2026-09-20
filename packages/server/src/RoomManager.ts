@@ -69,6 +69,7 @@ import type {
   PeriodStats,
   SandboxBotRules,
   ServerNotice,
+  MaintenanceState,
   RoomRules,
   RoomPace,
 } from "@majak/core/network/protocol.js";
@@ -1113,6 +1114,22 @@ const TUTORIAL_AGENT_TIMEOUT_MS = TUTORIAL_DECISION_TIMEOUT_MS + 60_000;
 const EMOTE_WINDOW_MS = 10_000;
 const EMOTE_MAX_IN_WINDOW = 5;
 
+/**
+ * 점검 모드 중에도 **관리자가 아닌** 연결에서 받아 주는 메시지 (2026-09-21).
+ *
+ * 화이트리스트인 이유는 게스트 목록과 같다 — 새 메시지가 늘어도 기본이 거부여야
+ * 점검이 새지 않는다. 로그인 셋은 관리자를 **판별하려면** 열어 둬야 하고, 나머지는
+ * 연결 유지·진단이라 상태를 바꾸지 않는다. 가입(`register`)·게스트 체험·공유
+ * 리플레이·도감은 전부 막는다 — 점검 중에 열어 둘 이유가 하나도 없다.
+ */
+const MAINTENANCE_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
+  "ping",
+  "clientStall",
+  "login",
+  "tokenLogin",
+  "logout",
+]);
+
 const GUEST_ALLOWED_MESSAGES: ReadonlySet<string> = new Set([
   "action",
   "draftPick",
@@ -1355,6 +1372,8 @@ export class RoomManager {
     this.sweepTimer.unref?.();
     // 공지는 부팅 때 한 번 읽어 들고 있는다 (§4-3) — 연결마다 DB를 두드리지 않는다.
     this.notice = this.db?.notice() ?? null;
+    // 점검 모드도 같다 — 재시작이 점검을 풀면 안 된다.
+    this.maintenance = this.db?.maintenance() ?? null;
   }
 
   // ─────────────────────────── 운영 로그 ───────────────────────────
@@ -1391,6 +1410,8 @@ export class RoomManager {
     rooms: number;
     playing: number;
     waiting: number;
+    /** 점검 모드가 켜져 있는가 — 감시자·운영자가 «왜 아무도 못 들어오나»를 바로 알게. */
+    maintenance: boolean;
   } {
     let playing = 0;
     for (const r of this.rooms.values()) if (r.phase === "playing") playing++;
@@ -1401,6 +1422,7 @@ export class RoomManager {
       rooms: this.rooms.size,
       playing,
       waiting: this.rooms.size - playing,
+      maintenance: this.maintenance !== null,
     };
   }
 
@@ -1518,9 +1540,11 @@ export class RoomManager {
     const msg: ServerMessage = {
       type: "serverInfo",
       signupGate: this.signupCode !== "",
-      guestPlay: true,
+      // 점검 중에는 체험도 닫는다 — 로그인 화면이 버튼을 그리지 않게 한다(서버도 거절한다).
+      guestPlay: this.maintenance === null,
       augmentKinds: this.augmentCatalog.length,
       ...(this.notice !== null ? { notice: this.notice } : {}),
+      ...(this.maintenance !== null ? { maintenance: this.maintenance } : {}),
     };
     for (const c of this.conns) this.send(c.ws, msg);
   }
@@ -1626,6 +1650,12 @@ export class RoomManager {
    */
   private notice: ServerNotice | null = null;
 
+  /**
+   * 점검 모드 상태 — null이면 정상 운영. 공지와 같은 이유로 메모리에 들고 있고,
+   * 켜고 끄는 순간 `broadcastServerInfo`로 접속 중인 모두에게 밀린다.
+   */
+  private maintenance: MaintenanceState | null = null;
+
   /** 카탈로그 id 집합 — 증강 테스트 요청의 id 검증용. */
   private readonly augmentIds: Set<string> = new Set(
     this.augmentCatalog.map((a) => a.id),
@@ -1704,13 +1734,16 @@ export class RoomManager {
     this.send(ws, {
       type: "serverInfo",
       signupGate: this.signupCode !== "",
-      guestPlay: true,
+      // 점검 중에는 체험도 닫는다 — 로그인 화면이 버튼을 그리지 않게 한다(서버도 거절한다).
+      guestPlay: this.maintenance === null,
       // 도움말이 "N종"을 말할 때 쓴다 — 클라가 직접 세면 증강 구현 전체가
       // 번들에 딸려 들어온다(감사 §7-1). 카탈로그와 같은 출처라 어긋나지 않는다.
       augmentKinds: this.augmentCatalog.length,
       // 운영자 공지 (§4-3). 인증 **전에** 나가는 자리라, 로그인하기 전에 알아야
       // 하는 순간(점검 예고·서버 이전)에도 제때 닿는다.
       ...(this.notice !== null ? { notice: this.notice } : {}),
+      // 점검 모드 — 같은 이유로 인증 전에 나간다. 점검 화면은 로그인 화면보다 먼저 선다.
+      ...(this.maintenance !== null ? { maintenance: this.maintenance } : {}),
     });
 
     ws.on("message", (data) => {
@@ -1970,6 +2003,24 @@ export class RoomManager {
   // ─────────────────────────── 메시지 라우팅 ───────────────────────────
 
   private route(conn: Conn, msg: ClientMessage): void {
+    /*
+     * ── 점검 모드 게이트 (2026-09-21) ──
+     *
+     * 인증 게이트·게스트 게이트보다 **앞**에 선다: 점검 중에는 게스트 체험·공유
+     * 리플레이·도감처럼 로그인 없이 통하던 길도 전부 닫혀야 하고, 이미 로그인해
+     * 판을 두던 사람의 게임 메시지도 여기서 끊긴다. 클라이언트가 점검 화면을
+     * 그리는 것은 안내일 뿐이고 실제로 막는 자리는 여기다.
+     *
+     * 관리자는 평소와 완전히 같다. 로그인 셋만 열어 두는 이유는 관리자를
+     * 판별하려면 그 길이 필요하기 때문이다(`MAINTENANCE_ALLOWED_MESSAGES`).
+     */
+    if (
+      this.maintenance !== null &&
+      conn.user?.isAdmin !== true &&
+      !MAINTENANCE_ALLOWED_MESSAGES.has(msg.type)
+    ) {
+      return this.fail(conn, "MAINTENANCE", "서버 점검 중입니다. 잠시 후 다시 접속해 주세요");
+    }
     switch (msg.type) {
       case "ping":
         this.send(conn.ws, { type: "pong" });
@@ -2610,6 +2661,32 @@ export class RoomManager {
         }
         this.notice = db.setNotice(msg.title, msg.body);
         this.log(null, this.notice === null ? "공지를 내렸다" : `공지 갱신: ${this.notice.title}`);
+        this.broadcastServerInfo();
+        return;
+      }
+      /*
+       * 점검 모드 켜기·끄기 (2026-09-21).
+       *
+       * 바꾼 즉시 접속 중인 모두에게 `serverInfo`를 다시 밀어 준다 — 비관리자
+       * 클라이언트는 그 한 프레임으로 점검 화면으로 넘어가고(켤 때) 다시 정상
+       * 화면으로 돌아온다(끌 때). 진행 중인 판은 건드리지 않는다: 위 게이트가
+       * 비관리자의 게임 메시지를 거절하므로 판은 그 자리에서 멈추고, 점검이
+       * 풀리면 이어하기 경로가 평소대로 살린다.
+       */
+      case "adminSetMaintenance": {
+        if (!user.isAdmin) return this.fail(conn, "FORBIDDEN", "관리자 전용입니다");
+        const db = this.db;
+        if (db === undefined) return this.fail(conn, "NO_DB", "지금은 이 기능을 사용할 수 없습니다");
+        if (typeof msg.on !== "boolean" || typeof msg.body !== "string") {
+          return this.fail(conn, "BAD_REQUEST", "점검 모드 형식이 올바르지 않습니다");
+        }
+        this.maintenance = db.setMaintenance(msg.on, msg.body);
+        this.log(
+          null,
+          this.maintenance === null
+            ? `점검 모드 OFF — ${user.username}`
+            : `점검 모드 ON — ${user.username}: ${this.maintenance.body.slice(0, 60)}`,
+        );
         this.broadcastServerInfo();
         return;
       }

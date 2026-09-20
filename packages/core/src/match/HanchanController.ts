@@ -78,6 +78,7 @@ export interface HanchanConfig {
   /**
    * 아가리야메(+텐파이야메) 허용 (기본 true, 생략 시 켜짐).
    * 최종 국(오라스)에서 오야가 연장(화료 또는 유국 텐파이)하고 단독 1위이면 그대로 종국.
+   * 서입(westEntry)이 켜진 방에서는 오야가 반환점(returnScore) 이상이어야 한다.
    */
   agariYame?: boolean;
   /** 우마 점수 [2위에게, 1위에게] (기본 [5, 15] → 1위+15·2위+5·3위-5·4위-15) */
@@ -318,6 +319,12 @@ export function agariYameTriggers(
     dealerSeat: number;
     players: { seat: number; score: number }[];
   },
+  /**
+   * 서입(남입) 게이트. 주면 **서입이 켜져 있을 때** 오야가 반환점(`returnScore`)에
+   * 못 미치면 아가리야메를 인정하지 않는다 — 자세한 사연은 아래 «반환점 미달 오야는
+   * 판을 접을 수 없다» 문단. 생략하면 점수 문턱을 보지 않는다(옛 동작·순수 테스트용).
+   */
+  gate?: { westEntry: boolean; returnScore: number },
 ): boolean {
   if (agariYame === false) return false;
   const lastRoundNumber = post.players.length; // 각 장의 마지막 국 (4인=4국)
@@ -355,7 +362,25 @@ export function agariYameTriggers(
   const dealer = post.players.find((p) => p.seat === post.dealerSeat);
   if (dealer === undefined) return false;
   const top = Math.max(...post.players.map((p) => p.score));
-  return dealer.score === top && post.players.filter((p) => p.score === top).length === 1;
+  if (dealer.score !== top || post.players.filter((p) => p.score === top).length !== 1) {
+    return false;
+  }
+  /*
+   * **반환점 미달 오야는 판을 접을 수 없다** (2026-09-21, 리플레이 gameId 857).
+   *
+   * 서입이 켜진 방은 «오라스가 끝났을 때 1위가 반환점 미만이면 서입(남입)으로
+   * 연장한다»(`shouldEnd`)가 약속이다. 그런데 아가리야메는 `shouldEnd` **앞에서**
+   * 오야 단독 1위만 보고 게임을 끝냈다 — 남4국 1본장에 오야가 1100올을 쯔모해
+   * 29300점 단독 1위가 되자 그 자리에서 종국했다. 오야가 아니었으면 서입으로 넘어갔을
+   * 점수다. 오야가 «연장할 권리»를 «반환점 검사를 건너뛰는 권리»로 바꿔 쓴 셈이다.
+   *
+   * 그래서 서입이 켜져 있으면 오야도 반환점 이상이어야 아가리야메다(경계는 `shouldEnd`와
+   * 같은 «이상»). 못 미치면 렌짱(본장 연장)으로 그 국을 계속 친다 — 오야가 반환점을
+   * 넘기거나, 오야 자리가 넘어가 서입 판정으로 들어간다. 서입이 꺼진 방은 어차피
+   * 연장이 없으므로 종전대로 단독 1위면 끝난다.
+   */
+  if (gate !== undefined && gate.westEntry && dealer.score < gate.returnScore) return false;
+  return true;
 }
 
 /**
@@ -2309,7 +2334,7 @@ export class HanchanController {
       roundNumber: state.round.roundNumber,
       dealerSeat: state.round.dealerSeat,
       players: state.players.map((p) => ({ seat: p.seat, score: p.score })),
-    });
+    }, { westEntry: this.config.westEntry, returnScore: this.config.returnScore });
   }
 
   // ─────────────────────────── 최종 정산 ───────────────────────────
