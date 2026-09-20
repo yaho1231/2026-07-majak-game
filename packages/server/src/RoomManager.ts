@@ -179,6 +179,20 @@ function liveRoomKind(room: Room): { kind?: "tutorial" | "practice" | "sandbox" 
 }
 
 /**
+ * **이 판을 기록으로 남기는가** — 리플레이 파일·게임 인덱스·누적 통계·증강 집계·
+ * 이어하기 행의 유일한 판정.
+ *
+ * 남기지 않는 것은 셋뿐이다: 증강 테스트(샌드박스), 계정 없는 손님의 체험, 튜토리얼.
+ * 계정 사용자의 **연습 대국은 기록한다**(2026-09-21 사용자 지시 — «튜토리얼 빼면
+ * 다 기록, 게스트는 제외»). 기록되는 판은 무효로 접을 수 없다는 규칙
+ * (`abortableByHumans`)도 이 답을 따른다.
+ */
+function recordsGame(room: Room): boolean {
+  if (room.sandbox || room.tutorial) return false;
+  return !room.guest || room.practice;
+}
+
+/**
  * 진행 중인 방 하나의 «지금 무슨 국인가» 요약 (docs/36 D4).
  *
  * 게임이 아직 안 붙었거나(대기실 잔해) 상태를 못 읽으면 아무 것도 싣지 않는다 —
@@ -368,6 +382,15 @@ interface Room {
    * `TUTORIAL_ROOM_NOTE`에 한자리에 적어 두었다.
    */
   tutorial: boolean;
+  /**
+   * **연습 대국** — 계정 사용자 1명 + 봇 3명. 방의 생애(1인 전용·세워 두기·끝나면
+   * 삭제)는 게스트 방(`guest: true`)을 그대로 빌리지만, **기록은 남긴다**
+   * (2026-09-21 사용자 지시): 리플레이·게임 인덱스·누적 통계·증강 집계 전부
+   * 일반 대국과 같다. 튜토리얼(`tutorial`)은 연습이어도 기록하지 않는다.
+   *
+   * 기록 여부는 여기저기서 `guest`를 보지 말고 `recordsGame()`으로 묻는다.
+   */
+  practice: boolean;
   /**
    * **이 체험 판으로 돌아오는 열쇠** (게스트 방 전용, 그 외에는 null).
    *
@@ -1451,6 +1474,19 @@ export class RoomManager {
           // 사람을 기다리며 세워 둔 판(§2-5 체험 방 · §2-10 되살린 방)은 시한이
           // 있다. 안 돌아오면 접는다 — 안 그러면 방 예산을 영구히 물고 있는다.
           if (room.holdUntil !== null && now > room.holdUntil) {
+            // 기록되는 1인 방(연습 대국)은 접지 않는다 — 접으면 «끊고 기다리기»가
+            // 지는 판을 지우는 옆문이 된다. 좌석을 포기시키고 봇이 마저 둬 기록한다
+            // (스스로 나갔을 때와 같은 결말, `abortIfNoHumansLeft`).
+            if (room.guest && recordsGame(room)) {
+              this.log(room, "세워 둔 연습 대국의 보유 시한 초과 — 봇이 마저 두고 기록한다");
+              room.holdUntil = null;
+              for (const a of room.agents) {
+                if (a instanceof HumanAgent && !a.isAbandoned) a.abandon("timeout");
+              }
+              this.refreshSeatStatus(room);
+              this.abortIfNoHumansLeft(room);
+              continue;
+            }
             this.log(room, "세워 둔 판의 보유 시한 초과 — 접는다");
             // 되살린 판은 파일을 남긴다. 아무도 안 온 것이 "없던 일로 하자"는
             // 뜻은 아니고, 그 파일이 그 40분의 유일한 흔적이다.
@@ -3299,6 +3335,7 @@ export class RoomManager {
       sandbox?: boolean;
       guest?: boolean;
       tutorial?: boolean;
+      practice?: boolean;
       gameMode?: GameMode;
       botDifficulty?: BotDifficulty;
       /** 제한 시간 묶음 (기본 `expert` = 종전 동작). */
@@ -3338,6 +3375,7 @@ export class RoomManager {
       sandbox: options.sandbox ?? false,
       guest: options.guest ?? false,
       tutorial: options.tutorial ?? false,
+      practice: options.practice ?? false,
       guestToken: null,
       holdUntil: null,
       resumePath: null,
@@ -5598,7 +5636,7 @@ export class RoomManager {
    * 검사를 한 함수에 모아 두 자리가 같은 답을 쓰게 한다.
    */
   private abortableByHumans(room: Room, humanCount: number): boolean {
-    if (room.guest || room.sandbox) return true;
+    if (!recordsGame(room)) return true;
     return humanCount >= 2;
   }
 
@@ -5937,6 +5975,7 @@ export class RoomManager {
     const room = this.newRoom({
       guest: true,
       tutorial,
+      practice: true,
       gameMode: mode === "hanchan" ? "hanchan" : "tonpuu",
       /*
        * 대기실을 거치지 않는 판은 체험판과 같은 이유로 난이도를 한 칸 낮춘다 —
@@ -6552,7 +6591,7 @@ export class RoomManager {
    */
   private rememberLiveGame(room: Room): void {
     const db = this.db;
-    if (db === undefined || room.writer === null || room.sandbox || room.guest) return;
+    if (db === undefined || room.writer === null || !recordsGame(room)) return;
     // 이미 끝난 판은 절대 되쓰지 않는다. `writer`는 종국 정리가 끝나야 null이 되므로
     // 위의 검사만으로는 «정산 중인 방»을 걸러 내지 못한다 (`Room.finished` 주석).
     if (room.finished) return;
@@ -6806,16 +6845,16 @@ export class RoomManager {
   private async openGame(room: Room, resume?: ResumeReconstruction): Promise<void> {
     // 자리는 대기실에서 이미 정해져 보이고 있다 — 여기서 다시 섞으면 그 표시가 거짓이 된다.
 
-    // 증강 테스트·게스트 체험 방은 리플레이 파일을 남기지 않는다 — 어차피 게임
-    // 인덱스·통계에도 기록하지 않으므로 열어 볼 길 없는 파일만 쌓인다.
+    // 기록하지 않는 판(`recordsGame`: 증강 테스트·손님 체험·튜토리얼)은 리플레이
+    // 파일을 남기지 않는다 — 어차피 게임 인덱스·통계에도 기록하지 않으므로 열어 볼
+    // 길 없는 파일만 쌓인다.
     //
     // 이어하기는 **같은 파일을 이어 쓴다**. 새로 열면 `__init__`도 지금까지의
     // 확정 이벤트도 없는 반쪽 파일이 생겨 리플레이로 열 수 없고, 원본은 인덱스에
     // 없는 고아로 남는다.
-    const writer =
-      room.sandbox || room.guest
-        ? null
-        : new ReplayWriter(this.replayDir, room.code, room.resumePath ?? undefined);
+    const writer = !recordsGame(room)
+      ? null
+      : new ReplayWriter(this.replayDir, room.code, room.resumePath ?? undefined);
     if (writer !== null) await writer.open();
     room.writer = writer;
 
@@ -7020,8 +7059,7 @@ export class RoomManager {
         //   주석 — QA 2차 server 확정 1). 순서가 뒤집히면 그 창이 다시 열린다.
         room.finished = true;
         this.forgetLiveGame(room);
-        const recordedId =
-          room.sandbox || room.guest ? undefined : this.recordGame(room, rankings);
+        const recordedId = recordsGame(room) ? this.recordGame(room, rankings) : undefined;
         const msg: ServerMessage = {
           type: "gameOver",
           rankings,
@@ -7046,11 +7084,16 @@ export class RoomManager {
           this.resetRoomAfterGame(room);
           return;
         }
-        // 게스트 판도 아무 기록을 남기지 않는다 — 리플레이 인덱스·리더보드·증강 집계
-        // 어디에도 손님의 판이 섞이지 않는다. 결과 화면에 띄울 **이번 판** 통계만
+        // 손님 체험 판은 아무 기록을 남기지 않는다 — 리플레이 인덱스·리더보드·증강
+        // 집계 어디에도 손님의 판이 섞이지 않는다. 결과 화면에 띄울 **이번 판** 통계만
         // 만들어 보내고(영속화 없음), 방은 그대로 지운다.
+        //
+        // **연습 대국은 예외** — 방은 손님 방처럼 그대로 지우되, 기록은 일반 대국과
+        // 똑같이 남긴다(`recordsGame`). recordGame은 위에서 이미 불렀다.
         if (room.guest) {
-          void this.finishStats(room, tracker, rankings, false)
+          const recorded = recordsGame(room);
+          if (recorded) this.recordAugmentResults(room, rankings, tracker);
+          void this.finishStats(room, tracker, rankings, recorded)
             .catch((err: unknown) => {
               this.logError(room, "finishStats error:", err);
             })
@@ -7151,7 +7194,7 @@ export class RoomManager {
 
     this.log(
       room,
-      `게임 시작 (${room.gameMode}${room.sandbox ? " · 샌드박스" : ""}${room.guest ? " · 체험" : ""}) — ` +
+      `게임 시작 (${room.gameMode}${room.sandbox ? " · 샌드박스" : ""}${room.practice ? " · 연습" : room.guest ? " · 체험" : ""}) — ` +
         room.agents.map((a) => `${a.id}:${a.nickname}`).join(" "),
     );
   }
