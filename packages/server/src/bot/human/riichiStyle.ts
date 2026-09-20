@@ -13,7 +13,7 @@
 import type { BotRead } from "../read.js";
 import { bucketPoints, bucketThreat, bucketTurn, bucketWait } from "./buckets.js";
 import { RIICHI_STYLE } from "./priors.js";
-import { meanGap } from "./style.js";
+import { clamp, meanGap } from "./style.js";
 
 /**
  * 로짓 1 = 몇 점. 1500이면 그림자 봇의 리치율이 상위 사람과 거의 겹치지만(docs/58 §2~4)
@@ -22,7 +22,14 @@ import { meanGap } from "./style.js";
 export const RIICHI_STYLE_GAIN = 1000;
 
 /** `points`는 리치 판수를 **얹지 않은** 손 값 — 연구가 그 값으로 셀을 나눴다 */
-export function riichiTilt(read: BotRead, waitTiles: number, points: number): number {
+/**
+ * `riichiLoose`(성격)가 따르는 정도를 가른다 — 사람 평균의 **자제**(gap < 0)는 리치를
+ * 싫어하는 성격이 더 따르고, 사람 평균의 **공격**(gap > 0)은 리치를 좋아하는 성격이 더
+ * 따른다. 성격이 저울이지 규칙이 아니라는 원칙(`BotPlay.test.ts`)이 여기서도 유지된다:
+ * 자제 배율 = clamp(2.2 − 2.4·loose, 0, 1.2), 공격 배율 = 2·loose —
+ * 균형형(0.6)은 0.76/1.2, 리치파(0.9)는 0/1.8(자제를 아예 안 따른다), 다마파(0.4)는 1.2/0.8.
+ */
+export function riichiTilt(read: BotRead, waitTiles: number, points: number, riichiLoose = 0.5): number {
   const turn = bucketTurn(read.turn);
   const wait = bucketWait(waitTiles);
   const gap = meanGap([
@@ -30,5 +37,6 @@ export function riichiTilt(read: BotRead, waitTiles: number, points: number): nu
     RIICHI_STYLE[`pts=${bucketPoints(points)}|turn=${turn}`],
     RIICHI_STYLE[`wait=${wait}|threat=${bucketThreat(read.threat)}`],
   ]);
-  return gap * RIICHI_STYLE_GAIN;
+  const follow = gap < 0 ? clamp(2.2 - 2.4 * riichiLoose, 0, 1.2) : 2 * riichiLoose;
+  return gap * RIICHI_STYLE_GAIN * follow;
 }

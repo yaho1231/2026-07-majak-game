@@ -91,7 +91,9 @@ describe("증강 정책 계층 — 자기 액션이 아닌 선택지는 통과�
     const bot = new BotAgent("p0", undefined, 1, [def]);
     const view = makeView(["sloppy_test"]);
     bot.sendView(view);
-    const options = discardOptions(view);
+    // 증강 옵션이 하나도 없는 프롬프트에서는 정책이 아예 돌지 않는다(2026-09-21 조기 탈출) —
+    // 나쁜 정책이 «자기 것이 아닌 표준 액션»을 돌려주는 자리를 만들려면 증강 옵션을 함께 둔다.
+    const options = [...discardOptions(view), { type: "sloppy_action", payload: {} }];
     const decision = await bot.decide({ player: "p0", options });
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
