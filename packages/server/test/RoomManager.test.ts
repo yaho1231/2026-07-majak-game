@@ -1029,9 +1029,13 @@ describe("게임 완주·기록", () => {
   );
 
   it(
-    "기록하지 않는 방(연습 대국)은 나가면 그대로 접힌다",
+    "연습 대국은 기록되는 판이라, 나가도 봇이 마저 두고 기록에 남는다",
     async () => {
-      // 세탁할 전적이 없는 방이다 — 아무도 보지 않는 봇 판을 끝까지 돌릴 이유가 없다.
+      /*
+       * 2026-09-21 사용자 지시: 연습 대국도 기록한다(튜토리얼·손님 체험만 제외).
+       * 기록되는 판은 나가기로 지울 수 없어야 한다 — 접히면 지는 판을 나가기로
+       * 없애는 옆문이 된다. 나가면 좌석은 포기되고 봇이 즉시 완주해 인덱스에 남는다.
+       */
       const h = await newHarness();
       const sock = await connectAndRegister(h, "Practicer");
       sock.clientSend({ type: "practicePlay", mode: "tonpuu" });
@@ -1043,10 +1047,41 @@ describe("게임 완주·기록", () => {
       const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
       await vi.waitFor(() => {
         expect(rooms.has(code)).toBe(false);
-      }, 10_000);
-      expect(sock.last("gameOver")).toBeUndefined();
+      }, 60_000);
+      const me = h.db.userByName("Practicer")!;
+      const games = h.db.listGamesFor(me.id);
+      expect(games).toHaveLength(1);
+      expect(h.db.allReplayPaths()).toHaveLength(1);
     },
-    30_000,
+    90_000,
+  );
+
+  it(
+    "연습 대국을 완주하면 gameId·리플레이·누적 통계가 남는다 (손님 체험은 여전히 남지 않는다)",
+    async () => {
+      const h = await newHarness();
+      const sock = await connectAndRegister(h, "Practicer", { autoRespond: true });
+      sock.clientSend({ type: "practicePlay", mode: "tonpuu" });
+      await sock.waitFor((m) => m.type === "gameOver", HANCHAN_TEST_MS);
+      const over = sock.last("gameOver");
+      expect(typeof over.gameId).toBe("number");
+      await sock.waitFor((m) => m.type === "stats");
+      const me = h.db.userByName("Practicer")!;
+      expect(h.db.listGamesFor(me.id)).toHaveLength(1);
+      expect(h.db.allReplayPaths()).toHaveLength(1);
+      // 누적 통계(리더보드 근거)도 영속화됐다
+      expect(h.store.get("Practicer")).not.toBeNull();
+
+      // 대조군: 계정 없는 손님의 체험은 아무것도 남기지 않는다
+      const guest = new FakeSocket();
+      guest.autoRespond = true;
+      h.rm.handleConnection(guest.asWs());
+      guest.clientSend({ type: "guestPlay", mode: "tonpuu" });
+      await guest.waitFor((m) => m.type === "gameOver", HANCHAN_TEST_MS);
+      expect(guest.last("gameOver").gameId).toBeUndefined();
+      expect(h.db.allReplayPaths()).toHaveLength(1);
+    },
+    HANCHAN_TEST_MS * 2,
   );
 
   it(

@@ -201,19 +201,19 @@ describe("혼자 두는 기록 대국은 무효로 지울 수 없다", () => {
     expect(h.rm.healthSnapshot().playing).toBe(1);
   }, 60_000);
 
-  it("기록하지 않는 방(연습 대국)은 그대로 접을 수 있다", async () => {
+  it("연습 대국은 기록되는 판이라 혼자서는 무효로 접을 수 없다 (2026-09-21)", async () => {
     const h = await newHarness();
     const sock = await connectRemote(h.rm, "Practicer", "198.51.100.7");
     sock.clientSend({ type: "practicePlay", mode: "tonpuu" });
     await sock.until(() => sock.last("view") !== undefined || sock.last("draftOffer") !== undefined);
 
+    const before = sock.all("error").length;
     sock.clientSend({ type: "voteAbort", vote: "agree" });
-    await sock.until(() => sock.last("abortVote") !== undefined, 10_000);
+    await sock.until(() => sock.all("error").length > before);
 
-    // 세탁할 전적이 없는 방이다 — 막으면 정리 수단 자체가 사라진다.
-    expect(sock.all("error").some((e) => e.code === "SOLO_ABORT_FORBIDDEN")).toBe(false);
-    // 표가 실제로 세어졌다 (정족수 1을 그 표 하나로 채운다).
-    expect(sock.last("abortVote")).toMatchObject({ votes: 1, needed: 1 });
+    // 연습 대국도 전적에 남으므로, 일반 1인 대국과 같은 세탁 방지 규칙을 따른다.
+    expect(sock.last("error").code).toBe("SOLO_ABORT_FORBIDDEN");
+    expect(h.rm.healthSnapshot().playing).toBe(1);
   }, 60_000);
 
   /*
