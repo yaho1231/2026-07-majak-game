@@ -64,6 +64,8 @@ export interface DraftContext {
   powerOf: (id: string) => number;
   /** 봇이 발동 판단을 할 수 없는 증강 — 뽑아 봐야 게임 내내 놀린다 */
   unusable: readonly string[];
+  /** 사람 성향 배율 (bot/human/draftStyle.ts) — 없으면 1 */
+  styleOf?: (id: string) => number;
 }
 
 /**
@@ -100,7 +102,8 @@ export function draftScore(def: AugmentDef, ctx: DraftContext): number {
   const tilt = Math.sqrt(fit * synergy);
 
   const usable = ctx.unusable.includes(def.id) ? UNUSABLE_PENALTY : 1;
-  return base * tilt * usable;
+  const style = ctx.styleOf?.(def.id) ?? 1;
+  return base * tilt * usable * style;
 }
 
 /** 봇이 발동 판단을 못 하는 증강에 곱하는 값 — 사실상 후순위로 민다 */

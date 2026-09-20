@@ -165,13 +165,18 @@ export const uraPeek: AugmentDef = defineAugment({
     "(매 국 1회) 뒷도라 표시패를 나만 확인하고, 그 국에 한 번은 내 손패 1장을 골라 뒷도라 표시패와 바꾼다.",
   detail:
     "뒷도라 표시패를 나만 확인한다. 확인한 표시패는 그 국 동안 계속 보이고, 깡으로 늘어난 표시패도 보인다. 그 국에 한 번은 내 손패 1장을 뒷도라 표시패와 바꿀 수 있다.\n\n바꿔 넣은 패의 다음 패가 뒷도라가 된다(예: 5통을 넣으면 6통). 확인한 뒤에는 바꾸기 전까지 왕패 전체가 나에게 보인다.",
-  // 봇: 텐파이일 때 확인한다 — 리치를 걸지 다마텐으로 갈지 판단할 정보가 가장 필요한 시점.
+  // 봇: **첫 두 순** 또는 텐파이일 때 확인한다.
+  //     사람 실측(docs/58, 상위 계층 418자리): 초반 41% · 중반 8% · 후반 2% — 사람은 이걸
+  //     «리치 전 정보»가 아니라 «국 초반에 왕패를 열어 두는 카드»로 쓴다. 뒷도라를 알면
+  //     그쪽으로 손을 짓고, 바꿔치기 한 번이 그 국 내내 남는다. 예전 정책(텐파이만)은
+  //     같은 자리에서 3%였다. 텐파이 발동은 다마/리치 판단 정보로 그대로 남긴다.
   //     (바꿔치기는 내 손패와 맞춰 골라야 해서 봇에게 맡기지 않는다.)
   bot: plan({
     intent: "inform",
     oneShot: true,
-    pick: ({ options, tenpai }) =>
-      tenpai ? (options.find((o) => o.type === ACTION) ?? null) : null,
+    fleeting: (ctx) => ctx.turn <= 2,
+    pick: ({ options, tenpai, turn }) =>
+      tenpai || turn <= 2 ? (options.find((o) => o.type === ACTION) ?? null) : null,
   }),
   install(ctx) {
     const { engine, holder } = ctx;

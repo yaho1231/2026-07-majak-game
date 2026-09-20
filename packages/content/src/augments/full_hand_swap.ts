@@ -341,7 +341,9 @@ export const fullHandSwap: AugmentDef = defineAugment({
     intent: "rewrite",
     fleeting: true,
     pick: (ctx) => {
-      if (!handIsPoor(ctx)) return null;
+      // 사람 실측(docs/58, 상위 계층 331자리): 첫 순 58%가 쓰고 그때 평균 3.1샹텐 — «4샹텐
+      // 이상»(예전 문턱)이 아니라 3샹텐부터 갈아엎는다. 봇은 같은 자리에서 14%였다.
+      if (!handIsPoor(ctx, 3)) return null;
       const mine = ctx.options.filter((o) => o.type === ACTION);
       if (mine.length === 0) return null;
       /*

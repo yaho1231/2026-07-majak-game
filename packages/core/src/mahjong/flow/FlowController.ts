@@ -158,6 +158,21 @@ export class FlowController {
     return this.runAuto();
   }
 
+  /**
+   * **지금 상태에서 세워질 프롬프트를 계산만 한다** — 대기 목록을 바꾸지 않는다.
+   *
+   * 리플레이 분석(`server/src/study/`)이 기록된 이벤트를 되감으며 «이 사람은 무엇을
+   * 고를 수 있었나»를 되세울 때 쓴다. `turnPrompt`·`reactionPrompts`는 순수 계산이라
+   * 진행 중인 판에서 불러도 무해하지만, 자동 진행(`runAuto`)의 도중유국 판정·자동
+   * 쯔모는 건너뛰므로 진행 코드가 이걸로 프롬프트를 대신하면 안 된다.
+   */
+  peekPrompts(): DecisionPrompt[] {
+    const phase = this.engine.state.round.phase;
+    if (phase === "turn.act") return [this.turnPrompt()];
+    if (phase === "reaction") return this.reactionPrompts();
+    return [];
+  }
+
   isPending(player: PlayerId): boolean {
     return this.pending.has(player) && !this.decisions.has(player);
   }

@@ -151,6 +151,18 @@ export class GameEngine {
     return this.currentState;
   }
 
+  /**
+   * **리플레이 분석 전용** — 리듀서로 재구성한 상태를 그대로 엔진의 현재 상태로 삼는다.
+   *
+   * 실대국은 `submit`만으로 상태가 움직인다(트랜잭션). 이 메서드는 기록된 이벤트를
+   * 한 줄씩 되감으며 «그 시점의 프롬프트»를 다시 세워 보는 오프라인 도구
+   * (`server/src/study/`)를 위한 것이다 — 이벤트 로그는 건드리지 않고 상태만 바꾼다.
+   * 게임 진행 코드에서 부르면 로그와 상태가 어긋나므로 그쪽에서는 쓰지 않는다.
+   */
+  restoreState(state: GameState): void {
+    this.currentState = state;
+  }
+
   /** 증강이 턴 프롬프트 확장을 등록한다 (콘텐츠 등록 지점) */
   registerTurnOptions(provider: TurnOptionProvider, source?: string): void {
     this.turnProviders.push({ provider, ...(source !== undefined ? { source } : {}) });

@@ -24,6 +24,9 @@
  * 설계: docs/00_MASTER_ARCHITECTURE.md §5.4
  */
 
+import { styleOn } from "./bot/human/style.js";
+import { draftTilt } from "./bot/human/draftStyle.js";
+import { augmentGate } from "./bot/human/augmentStyle.js";
 import { BOT_UNUSABLE_AUGMENTS } from "@majak/content";
 import { Prng } from "@majak/core/engine/random/Prng.js";
 import {
@@ -532,6 +535,17 @@ export class BotAgent implements PlayerAgent {
    *
    * 조용히 삼키지는 않는다 — 로그에 그대로 남으므로 운영자가 찾을 수 있다.
    */
+  /**
+   * **그림자 결정** — 생각 시간·홀드·배급 없이 지금 뷰에서 이 프롬프트에 무엇을 둘지.
+   *
+   * 리플레이 분석(`study/`)이 사람이 실제로 둔 자리에 봇을 세워 «봇이라면 무엇을
+   * 골랐나»를 되묻는 데 쓴다. 판단 경로는 실대국(`decide`)과 완전히 같고, 다만
+   * 기다리지 않는다. 실대국 진행 코드는 이걸 부르지 않는다.
+   */
+  decideShadow(prompt: DecisionPrompt): ActionOption {
+    return this.decideSafely(prompt);
+  }
+
   private decideSafely(prompt: DecisionPrompt): ActionOption {
     try {
       return this.decideNow(prompt);
@@ -697,6 +711,14 @@ export class BotAgent implements PlayerAgent {
   private augmentBids(read: BotRead, options: ActionOption[]): ActionBid[] {
     const me = read.view.players.find((p) => p.id === this.id);
     if (me === undefined || me.augments.length === 0) return [];
+    /**
+     * **제시된 증강 옵션이 하나도 없으면 정책을 돌리지 않는다** (2026-09-21 연산량).
+     * 정책은 표준 액션을 돌려줄 수 없으므로(`isAugmentActionType`) 비표준 옵션이 없는
+     * 프롬프트에서는 어떤 정책도 입찰할 수 없다 — 그런데도 보유 증강 수만큼 정책과
+     * 손 값어치 계산이 매 결정 돌고 있었다. 대부분의 프롬프트가 이 경우다.
+     */
+    if (!options.some((o) => !STANDARD_ACTION_TYPES.has(o.type))) return [];
+    const gateAugments = styleOn(this.flags, "augment");
 
     /**
      * 정책에 넘기는 손 값어치는 **증강 배수를 얹지 않은** 값이다.
@@ -750,6 +772,8 @@ export class BotAgent implements PlayerAgent {
       try {
         const picked = policy.choose(ctx);
         if (picked === null) continue;
+        // 사람 성향 — 사람이 아껴 두는 빈도 쪽으로 절반만 통과 (bot/human/augmentStyle.ts)
+        if (gateAugments && !augmentGate(augId, read.turn, this.botRng)) continue;
         {
           /*
            * **정책은 표준 마작 액션을 돌려줄 수 없다** (`bot/augmentPick.ts`).
@@ -864,6 +888,7 @@ export class BotAgent implements PlayerAgent {
           catalog: this.catalog,
           powerOf,
           unusable: BOT_UNUSABLE_AUGMENTS,
+          ...(styleOn(this.flags, "draft") ? { styleOf: draftTilt } : {}),
         },
         this.botRng,
       );
