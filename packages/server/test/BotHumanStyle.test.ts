@@ -26,17 +26,12 @@ const rng = (seq: number[]) => {
 };
 
 describe("style — 스위치", () => {
-  it("채택된 영역(후로·수비·타패·드래프트·증강)은 기본으로 켜져 있고 `noHumanStyle`로만 꺼진다", () => {
-    for (const a of ["call", "defense", "discard", "augment", "draft"] as const) {
+  it("여섯 영역 전부 기본으로 켜져 있고 `noHumanStyle`로만 꺼진다", () => {
+    for (const a of ["riichi", "call", "defense", "discard", "augment", "draft"] as const) {
       expect(styleOn(parseFlags(""), a)).toBe(true);
       expect(styleOn(parseFlags("noHumanStyle"), a)).toBe(false);
+      expect(styleOn(parseFlags("human,noHumanStyle"), a)).toBe(false);
     }
-  });
-  it("채택되지 않은 영역(리치)은 스위치로만 켠다", () => {
-    expect(styleOn(parseFlags(""), "riichi")).toBe(false);
-    expect(styleOn(parseFlags("human"), "riichi")).toBe(true);
-    expect(styleOn(parseFlags("humanRiichi"), "riichi")).toBe(true);
-    expect(styleOn(parseFlags("human,noHumanStyle"), "riichi")).toBe(false);
   });
   it("로짓 차는 사람이 더 자주 고르면 양수, 없는 셀은 0", () => {
     expect(gapOf([0.6, 0.3])).toBeGreaterThan(0);
@@ -62,7 +57,7 @@ describe("riichiStyle", () => {
   it("스위치가 꺼진 리치 입찰은 켠 것과 값이 다르고, 둘 다 제시된 옵션을 돌려준다", () => {
     const scene = botScene({ hand: "234m567m789p11s45s9s", turnCount: 3, wallLeft: 40 });
     const off = buildRead(scene.view, "p0", { profile: profileOf("balanced") });
-    const on = buildRead(scene.view, "p0", { profile: profileOf("balanced"), flags: parseFlags("humanRiichi") });
+    const on = buildRead(scene.view, "p0", { profile: profileOf("balanced"), flags: parseFlags("noHumanStyle") });
     const a = bidRiichi(off, scene.riichiOptions(), null, profileOf("balanced"));
     const b = bidRiichi(on, scene.riichiOptions(), null, profileOf("balanced"));
     expect(a).not.toBeNull();
@@ -92,7 +87,7 @@ describe("discardStyle", () => {
   });
   it("버림 입찰은 스위치와 무관하게 제시된 옵션을 돌려준다", () => {
     const scene = botScene({ hand: "19m22p5s7z1z44z", turnCount: 2 });
-    for (const f of ["", "humanDiscard", "human"]) {
+    for (const f of ["", "noHumanStyle", "human"]) {
       const read = buildRead(scene.view, "p0", { profile: profileOf("balanced"), flags: parseFlags(f) });
       const bid = bidDiscard(read, scene.discardOptions(), null, profileOf("balanced"));
       expect(bid).not.toBeNull();

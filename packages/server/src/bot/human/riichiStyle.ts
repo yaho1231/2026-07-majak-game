@@ -15,17 +15,14 @@ import { bucketPoints, bucketThreat, bucketTurn, bucketWait } from "./buckets.js
 import { RIICHI_STYLE } from "./priors.js";
 import { meanGap } from "./style.js";
 
-/** 로짓 1 = 몇 점. 연구 하네스로 사람 비율에 맞춰 잡은 값 (docs/58 §리치) */
-export const RIICHI_STYLE_GAIN = 1500;
+/**
+ * 로짓 1 = 몇 점. 1500이면 그림자 봇의 리치율이 상위 사람과 거의 겹치지만(docs/58 §2~4)
+ * 2:2에서 4시드 합 −0.02 ± 0.02로 살짝 열세라 1000으로 낮췄다 — 사람 쪽으로 2/3만 간다.
+ */
+export const RIICHI_STYLE_GAIN = 1000;
 
 /** `points`는 리치 판수를 **얹지 않은** 손 값 — 연구가 그 값으로 셀을 나눴다 */
-export function riichiTilt(
-  read: BotRead,
-  waitTiles: number,
-  points: number,
-  /** "neg": 사람이 덜 거는 자리의 벌점만 · "pos": 더 거는 자리의 웃돈만 · "both": 둘 다 */
-  side: "neg" | "pos" | "both" = "both",
-): number {
+export function riichiTilt(read: BotRead, waitTiles: number, points: number): number {
   const turn = bucketTurn(read.turn);
   const wait = bucketWait(waitTiles);
   const gap = meanGap([
@@ -33,7 +30,5 @@ export function riichiTilt(
     RIICHI_STYLE[`pts=${bucketPoints(points)}|turn=${turn}`],
     RIICHI_STYLE[`wait=${wait}|threat=${bucketThreat(read.threat)}`],
   ]);
-  if (side === "neg" && gap > 0) return 0;
-  if (side === "pos" && gap < 0) return 0;
   return gap * RIICHI_STYLE_GAIN;
 }

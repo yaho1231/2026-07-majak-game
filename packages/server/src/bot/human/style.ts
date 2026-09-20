@@ -28,9 +28,17 @@ export type StyleArea = "riichi" | "call" | "defense" | "discard" | "augment" | 
  *
  * 2026-09-21 2:2 아레나(동풍전 200배패 × 2시드, docs/58 §9)에서 순위 차가 표준오차 안이면
  * 채택했다: 후로 +0.01 · 수비 0.00 · 타패 +0.04 · 드래프트 +0.02 · 증강(완화 문) −0.02.
- * 리치는 −0.04로 열세라 절반·반쪽 변형을 더 쟀다(§9 2·3차).
+ * 리치는 1500점/로짓에서 4시드 합 −0.02 ± 0.02(잡음 수준)라 환율을 1000으로 낮춰 채택했다.
+ * 채택된 묶음 전체의 순효과는 `noHumanStyle`을 켠 쪽과 붙여 다시 쟀다(§9 4차).
  */
-const ADOPTED: ReadonlySet<StyleArea> = new Set<StyleArea>(["call", "defense", "discard", "draft", "augment"]);
+const ADOPTED: ReadonlySet<StyleArea> = new Set<StyleArea>([
+  "riichi",
+  "call",
+  "defense",
+  "discard",
+  "draft",
+  "augment",
+]);
 
 export function styleOn(flags: BotFlags, area: StyleArea): boolean {
   if (flags.has("noHumanStyle")) return false;

@@ -362,20 +362,11 @@ function lineEV(
   const horizon = opts.riichi ? LOCKED_PUSH_HORIZON : pushHorizonOf(read, shape, lossNow);
   const loss = lossNow * horizon;
 
-  // 사람 성향 (bot/human/*) — 스위치 뒤. 실대국은 채택 전까지 전부 0·1이다.
+  // 사람 성향 (bot/human/*) — 2026-09-21 채택. `noHumanStyle`로 끄면 전부 0·1이다.
   const flags = read.flags;
   const lossStyle = styleOn(flags, "defense") ? lossFactor(read, value.points) : 1;
-  const riichiStyle = !opts.riichi
-    ? 0
-    : styleOn(flags, "riichi")
-      ? riichiTilt(read, shape.waitTiles, value.points)
-      : flags.has("humanRiichiHalf")
-        ? riichiTilt(read, shape.waitTiles, value.points) * 0.5
-        : flags.has("humanRiichiNeg")
-          ? riichiTilt(read, shape.waitTiles, value.points, "neg")
-          : flags.has("humanRiichiPos")
-            ? riichiTilt(read, shape.waitTiles, value.points, "pos")
-            : 0;
+  const riichiStyle =
+    opts.riichi && styleOn(flags, "riichi") ? riichiTilt(read, shape.waitTiles, value.points) : 0;
   const taste = styleOn(flags, "discard") ? tasteBonus(c.kind, read) : 0;
 
   return (
