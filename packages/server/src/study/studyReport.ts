@@ -123,11 +123,11 @@ p();
 
 p(`## 5. 버림 불일치 — 사람이 버린 종류 > 봇이 버린 종류 (상위)`);
 p();
-for (const thr of ["none", "some", "riichi"]) {
+for (const thr of ["none", "some", "riichi", "early/3+", "early/2", "mid/1"]) {
   const rows = Object.entries(s.discardConf)
     .filter(([k]) => k.startsWith(`${thr}|`) && k.includes(">"))
     .sort((a, b) => b[1].n - a[1].n)
-    .slice(0, 12);
+    .slice(0, 16);
   const hs = Object.entries(s.discardConf).filter(([k]) => k.startsWith(`${thr}|h:`)).sort((a, b) => b[1].n - a[1].n);
   const bs = Object.entries(s.discardConf).filter(([k]) => k.startsWith(`${thr}|b:`)).sort((a, b) => b[1].n - a[1].n);
   p(`**위협 ${thr}** — 사람 쪽 분포: ${hs.map(([k, c]) => `${k.slice(thr.length + 3)} ${c.n}`).join(", ")}`);

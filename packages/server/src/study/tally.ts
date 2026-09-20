@@ -36,11 +36,19 @@ export class Tally {
   ): void {
     this.add(dims.map(([a, b]) => `${a}=${b}`).join("|"), hit, value);
     this.add("*", hit, value);
-    for (const [a, b] of dims) this.add(`${a}=${b}`, hit, value);
+    // 첫 축이 계층(tier)이면 그 계층 안의 주변부도 함께 센다 — 보고서가 `--tier`로 거른다
+    const tier = dims[0]?.[0] === "tier" ? `tier=${dims[0][1]}` : null;
+    for (const [a, b] of dims) {
+      this.add(`${a}=${b}`, hit, value);
+      if (tier !== null && a !== "tier") this.add(`${tier}|${a}=${b}`, hit, value);
+    }
     for (const [x, y] of pairs) {
       const dx = dims.find(([a]) => a === x);
       const dy = dims.find(([a]) => a === y);
-      if (dx && dy) this.add(`${dx[0]}=${dx[1]}|${dy[0]}=${dy[1]}`, hit, value);
+      if (dx && dy) {
+        this.add(`${dx[0]}=${dx[1]}|${dy[0]}=${dy[1]}`, hit, value);
+        if (tier !== null && x !== "tier" && y !== "tier") this.add(`${tier}|${dx[0]}=${dx[1]}|${dy[0]}=${dy[1]}`, hit, value);
+      }
     }
   }
 
@@ -61,18 +69,4 @@ export class Tally {
   }
 }
 
-export function bucketTurn(turn: number): string {
-  return turn <= 5 ? "early" : turn <= 11 ? "mid" : "late";
-}
-export function bucketWait(tiles: number): string {
-  return tiles <= 0 ? "0" : tiles <= 3 ? "1-3" : tiles <= 7 ? "4-7" : "8+";
-}
-export function bucketPoints(points: number): string {
-  return points < 2000 ? "<2k" : points < 4000 ? "2-4k" : points < 8000 ? "4-8k" : "8k+";
-}
-export function bucketThreat(threat: number): string {
-  return threat < 0.3 ? "none" : threat < 0.8 ? "some" : "riichi";
-}
-export function bucketShanten(s: number): string {
-  return s <= 0 ? "0" : s === 1 ? "1" : s === 2 ? "2" : "3+";
-}
+export { bucketTurn, bucketWait, bucketPoints, bucketThreat, bucketShanten } from "../bot/human/buckets.js";

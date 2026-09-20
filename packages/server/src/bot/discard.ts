@@ -27,6 +27,10 @@ import type { TileId, TileKind } from "@majak/core";
 import { removeKinds } from "./read.js";
 import type { BotRead, HandPlan } from "./read.js";
 import type { BotProfile } from "./profile.js";
+import { styleOn } from "./human/style.js";
+import { riichiTilt } from "./human/riichiStyle.js";
+import { tasteBonus } from "./human/discardStyle.js";
+import { lossFactor } from "./human/defenseStyle.js";
 import {
   BLUNDER_CUT,
   LAPSE_TOP,
@@ -358,11 +362,20 @@ function lineEV(
   const horizon = opts.riichi ? LOCKED_PUSH_HORIZON : pushHorizonOf(read, shape, lossNow);
   const loss = lossNow * horizon;
 
+  // 사람 성향 (bot/human/*) — 스위치 뒤. 실대국은 채택 전까지 전부 0·1이다.
+  const flags = read.flags;
+  const lossStyle = styleOn(flags, "defense") ? lossFactor(read, value.points) : 1;
+  const riichiStyle =
+    opts.riichi && styleOn(flags, "riichi") ? riichiTilt(read, shape.waitTiles, points) : 0;
+  const taste = styleOn(flags, "discard") ? tasteBonus(c.kind, read) : 0;
+
   return (
     gain * scale.gain -
-    loss * scale.loss -
+    loss * scale.loss * lossStyle -
     (opts.riichi ? RIICHI_COST : 0) +
-    bluffBonus(c.kind, profile)
+    bluffBonus(c.kind, profile) +
+    riichiStyle +
+    taste
   );
 }
 

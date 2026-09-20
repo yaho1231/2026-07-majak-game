@@ -153,12 +153,25 @@ function mergeStudy(into: Acc, s: Study): void {
 
 // ─────────────────────────── 특징 ───────────────────────────
 
+/**
+ * 버림패의 «사람이 보는 종류» — 역패/객풍, 1·9/2·8/중장, 도라 여부, 손에서 고립됐는가·
+ * 또이쯔인가. 불일치 교차표의 축이다.
+ */
 function tileClass(kind: TileKind, read: BotRead): string {
   const dora = read.doraIn([kind]) > 0 ? "D" : "";
-  if (kind.suit === "wind" || kind.suit === "dragon") return `honor${dora}`;
-  if (kind.rank === 1 || kind.rank === 9) return `19${dora}`;
-  if (kind.rank === 2 || kind.rank === 8) return `28${dora}`;
-  return `37${dora}`;
+  const same = read.hand.filter((k) => k.suit === kind.suit && k.rank === kind.rank).length;
+  const pair = same >= 2 ? "P" : "";
+  if (kind.suit === "wind" || kind.suit === "dragon") {
+    const yakuhai =
+      kind.suit === "dragon" || kind.rank === read.seatWind || kind.rank === read.view.round.prevalentWind + 1;
+    return `${yakuhai ? "yakuhai" : "guest"}${pair}${dora}`;
+  }
+  const near = read.hand.some(
+    (k) => k.suit === kind.suit && k.rank !== kind.rank && Math.abs(k.rank - kind.rank) <= 2,
+  );
+  const iso = near || same >= 2 ? "" : "i";
+  const base = kind.rank === 1 || kind.rank === 9 ? "19" : kind.rank === 2 || kind.rank === 8 ? "28" : "37";
+  return `${base}${iso}${pair}${dora}`;
 }
 function safetyClass(safety: number): string {
   return safety >= 0.999 ? "genbutsu" : safety >= 0.9 ? "safe" : safety >= 0.75 ? "mid" : "risky";
@@ -275,6 +288,8 @@ function studyFile(path: string, tiers: Map<string, string>, acc: Acc, flags: Re
           for (const aug of held) {
             const uses = dp.view.augmentView[`uses:${aug}`] as { left?: number } | undefined;
             if (uses !== undefined && (uses.left ?? 0) <= 0) continue; // 다 썼다
+            // 이 프롬프트의 어떤 옵션이 이 증강의 것이어야 «쓸 수 있었다» — 보유 교집합으로 판정
+            if (![...seen].some((t) => acc.augOwner.get(t)?.has(aug))) continue;
             const dims = [["aug", aug], ["tier", tier], ["turn", turnB], ["sh", bucketShanten(read.shanten)], ["threat", threatB]] as const;
             const used = usedAug === aug;
             acc.augUse.addMarginals(dims, used, 0, [["aug", "turn"], ["aug", "sh"], ["aug", "tier"], ["aug", "threat"]]);
@@ -317,6 +332,7 @@ function studyFile(path: string, tiers: Map<string, string>, acc: Acc, flags: Re
             acc.discardAgree.addMarginals(dims, same, 0, [["sh", "turn"], ["sh", "threat"]]);
             if (!same) {
               acc.discardConf.add(`${threatB}|${tileClass(hk, read)}>${tileClass(bk, read)}`, true);
+              if (threatB === "none") acc.discardConf.add(`${turnB}/${sh}|${tileClass(hk, read)}>${tileClass(bk, read)}`, true);
               acc.discardConf.add(`${threatB}|h:${tileClass(hk, read)}`, true);
               acc.discardConf.add(`${threatB}|b:${tileClass(bk, read)}`, true);
               acc.discardLoss.add(`${threatB}|${sh}`, humanLoss > read.expectedLoss(bk), humanLoss - read.expectedLoss(bk));

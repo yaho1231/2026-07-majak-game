@@ -12,6 +12,8 @@
  * 예외 하나: 종반에 울어서 텐파이가 되면 **형식텐파이**(노텐벌부 회피)로 부른다.
  */
 
+import { styleOn } from "./human/style.js";
+import { callTilt } from "./human/callStyle.js";
 import { kindKey, ukeireOf, winningKinds } from "@majak/core";
 // 후로 전/후 샹텐도 형 완화를 봐야 한다 — 코어 shantenOf를 직접 쓰면 «울면 텐파이»를
 // 통째로 놓친다(QA synergy4 A-13, `bot/shape.ts`).
@@ -274,7 +276,10 @@ export function bidCall(
     plan = found ?? committed;
   }
 
-  const value = evOfCall(read, picked, plan, profile);
+  const value =
+    evOfCall(read, picked, plan, profile) +
+    // 사람 성향 — 사람이 우는 모양에만 웃돈 (bot/human/callStyle.ts, 스위치 뒤)
+    (styleOn(read.flags, "call") ? callTilt(read, picked.option.type, called) : 0);
   return {
     option: picked.option,
     value,

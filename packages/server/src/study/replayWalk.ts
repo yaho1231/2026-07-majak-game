@@ -104,10 +104,32 @@ const STANDARD_TURN_EVENTS = new Set([
   "WinDeclared",
 ]);
 
+/**
+ * 이벤트의 행위자. 표준 이벤트는 `player`·`caller`·`winner`, 증강 이벤트는 대개
+ * `holder`(보유자)다 — `target`·`fromPlayer`는 당하는 쪽이라 세지 않는다.
+ */
 function actorOf(e: GameEvent): PlayerId | null {
   const p = e.payload as Record<string, unknown>;
-  const cand = p["player"] ?? p["caller"] ?? p["winner"];
+  const cand = p["player"] ?? p["caller"] ?? p["winner"] ?? p["holder"];
   return typeof cand === "string" ? (cand as PlayerId) : null;
+}
+
+/**
+ * 증강 이벤트 타입 → 증강 id 어림. `uses` 채널이 없는 발동(밑장빼기·예지 등)의 폴백이다:
+ * 이벤트 이름의 어간과 보유 증강 id의 어간이 서로 포함되면 그것으로 본다.
+ */
+export function guessAugmentOfEvent(eventType: string, held: readonly string[]): string | null {
+  const stem = eventType
+    .replace(/(Performed|Taken|Exchanged|Reordered|Pulled|Opened|Struck|Flipped|Kept|Rolled|Arranged|Swapped|Armed|Marked|Cleared|Broken|Usurped|Dissolved|Sealed|Peeked|Ready|Attached)$/, "")
+    .toLowerCase();
+  let best: string | null = null;
+  for (const id of held) {
+    const norm = id.replace(/_/g, "");
+    if (norm.includes(stem) || stem.includes(norm) || (stem.length >= 5 && norm.startsWith(stem.slice(0, 5)))) {
+      if (best === null || norm.length < best.replace(/_/g, "").length) best = id;
+    }
+  }
+  return best;
 }
 
 /** 파일 머리를 읽는다 (본문은 건드리지 않는다) */
@@ -139,6 +161,7 @@ function resolveTurnActual(
   from: number,
   actor: PlayerId,
   prompt: DecisionPrompt,
+  state: GameState,
 ): { actual: ActionOption | null; type: string } {
   for (let i = from; i < events.length && i < from + 40; i++) {
     const e = events[i] as GameEvent;
@@ -150,7 +173,7 @@ function resolveTurnActual(
     }
     // 액티브 발동은 `view:<actor>:uses:<증강>` 채널이 줄어드는 것으로 드러난다 —
     // 발동 이벤트가 없는 증강(연금술·물들이기 등)도 이 채널은 반드시 건드린다.
-    const usedAug = usesKeyOf(e, actor);
+    const usedAug = usesKeyOf(e, actor) ?? (i === from ? activationKeyAug(e, heldOf(state, actor)) : null);
     if (usedAug !== null) return { actual: { type: `augment:${usedAug}`, payload: {} }, type: "AugmentUse" };
     if (actorOf(e) !== actor) continue;
     if (e.type === "AugmentOffered" || e.type === "AugmentDrafted") continue;
@@ -195,9 +218,32 @@ function resolveTurnActual(
       const t = (events[j] as GameEvent).type;
       if (t === "TileDiscarded" || t === "TurnPassed" || t === "TileDrawn") break;
     }
-    return { actual: { type: `augment:?${e.type}`, payload: {} }, type: e.type };
+    const guess = guessAugmentOfEvent(e.type, heldOf(state, actor));
+    return { actual: { type: `augment:${guess ?? `?${e.type}`}`, payload: {} }, type: e.type };
   }
   return { actual: null, type: "" };
+}
+
+/**
+ * 이 데이터 세팅이 **보유 증강의 발동 흔적**인가 — 키에 그 증강 id가 들어 있으면 그렇다고
+ * 본다(`alchemist:used:p0`·`conjure_draw:pending:…`·`view:*:brief_fog:last`…). 발동 이벤트도
+ * `uses` 채널도 없는 증강은 이 흔적으로만 잡힌다. 같은 발동이 세팅 여러 줄을 잇달아
+ * 내므로 호출부는 **묶음의 첫 줄만** 결정으로 센다.
+ */
+export function activationKeyAug(e: GameEvent, held: readonly string[]): string | null {
+  if (e.type !== "AugmentDataSet") return null;
+  const key = (e.payload as { key?: unknown }).key;
+  if (typeof key !== "string") return null;
+  if (key.startsWith("augment:stage:") || key.startsWith("draft:")) return null;
+  let best: string | null = null;
+  for (const id of held) {
+    if (key.includes(id) && (best === null || id.length > best.length)) best = id;
+  }
+  return best;
+}
+
+function heldOf(state: GameState, player: PlayerId): readonly string[] {
+  return state.players.find((pl) => pl.id === player)?.augments ?? [];
 }
 
 /** `view:<player>:uses:<증강>` 데이터 세팅이면 그 증강 id, 아니면 null */
@@ -331,7 +377,7 @@ export function walkReplay(
       if (kind === "reaction" && prompt.options.every((o) => o.type === "pass")) continue;
       const res =
         kind === "turn"
-          ? resolveTurnActual(events, i, prompt.player, prompt)
+          ? resolveTurnActual(events, i, prompt.player, prompt, state)
           : resolveReactionActual(events, i, prompt.player, prompt);
       const view = buildPlayerView(state, prompt.player, game.engine.rules);
       opts.onDecision?.({
@@ -349,7 +395,7 @@ export function walkReplay(
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i] as GameEvent;
-    if (opts.onDecision !== undefined && resolvesDecision(state, event)) {
+    if (opts.onDecision !== undefined && resolvesDecision(state, event, events[i - 1])) {
       // 결정 지점은 «그 결정을 해소하는 이벤트» 바로 앞의 상태다 — 버림 앞, 선언 앞,
       // 전원 패스(TurnPassed) 앞. 같은 페이즈에 머무는 시스템 이벤트(데이터 세팅·
       // 도라 공개)는 결정이 아니므로 그 앞에서는 세우지 않는다.
@@ -388,13 +434,17 @@ export function walkReplay(
 }
 
 /** 이 이벤트가 «지금 상태의 결정»을 해소하는가 */
-function resolvesDecision(state: GameState, e: GameEvent): boolean {
+function resolvesDecision(state: GameState, e: GameEvent, prev: GameEvent | undefined): boolean {
   const phase = state.round.phase;
   if (phase === "turn.act") {
     const actor = state.players[state.round.turnSeat]?.id;
     // playerAtSeat: players 배열 순서가 좌석과 다를 수 있으므로 seat 필드로 찾는다
     const seatActor = state.players.find((p) => p.seat === state.round.turnSeat)?.id ?? actor;
-    if (usesKeyOf(e, seatActor as PlayerId) !== null) return true;
+    if (e.type === "AugmentDataSet") {
+      if (prev?.type === "AugmentDataSet") return false; // 같은 발동의 묶음 — 첫 줄만
+      const held = state.players.find((pl) => pl.id === seatActor)?.augments ?? [];
+      return activationKeyAug(e, held) !== null;
+    }
     if (actorOf(e) !== seatActor) return false;
     if (STANDARD_TURN_EVENTS.has(e.type)) return true;
     return !isStandardEvent(e.type);
