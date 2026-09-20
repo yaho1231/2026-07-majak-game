@@ -6,7 +6,7 @@
  * 봇은 가망 없는 손을 사람보다 훨씬 일찍·세게 접는다. 텐파이~1샹텐에서는 둘이 비슷하다.
  *
  * 사람이 덜 접는 자리에서 실점 저울(`scales().loss`)을 낮춘다. 사람이 더 접는 자리는
- * 실측에 없으므로 저울을 올리는 일은 없다 — 배율은 [0.55, 1.0]. 강함이 떨어지면 채택하지
+ * 실측에 없으므로 저울을 올리는 일은 없다 — 배율은 [0.4, 1.0]. 강함이 떨어지면 채택하지
  * 않는다(docs/57 §4-6).
  */
 import type { BotRead } from "../read.js";
@@ -14,7 +14,7 @@ import { bucketPoints, bucketShanten, bucketTurn } from "./buckets.js";
 import { DEFENSE_STYLE } from "./priors.js";
 import { clamp, meanGap } from "./style.js";
 
-const DEFENSE_STYLE_SLOPE = 0.3;
+const DEFENSE_STYLE_SLOPE = 0.6;
 
 export function lossFactor(read: BotRead, handPoints: number): number {
   if (read.threat < 0.8) return 1;
@@ -24,5 +24,5 @@ export function lossFactor(read: BotRead, handPoints: number): number {
     DEFENSE_STYLE[`sh=${sh}|pts=${bucketPoints(handPoints)}`],
   ]);
   // gap < 0 = 사람이 덜 접는다 → 저울을 낮춘다. 올리지는 않는다.
-  return clamp(1 + gap * DEFENSE_STYLE_SLOPE, 0.55, 1);
+  return clamp(1 + gap * DEFENSE_STYLE_SLOPE, 0.4, 1);
 }

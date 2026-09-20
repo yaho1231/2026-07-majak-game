@@ -106,7 +106,7 @@ describe("defenseStyle", () => {
     expect(lossFactor(buildRead(quiet.view, "p0", { profile: profileOf("balanced") }), 3000)).toBe(1);
     const scene = botScene({ hand: "19m22p5s7z1z44z", turnCount: 8, riichi: ["p1"] });
     const f = lossFactor(buildRead(scene.view, "p0", { profile: profileOf("balanced") }), 3000);
-    expect(f).toBeGreaterThanOrEqual(0.55);
+    expect(f).toBeGreaterThanOrEqual(0.4);
     expect(f).toBeLessThanOrEqual(1);
   });
 });

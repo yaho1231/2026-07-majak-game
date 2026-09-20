@@ -366,7 +366,7 @@ function lineEV(
   const flags = read.flags;
   const lossStyle = styleOn(flags, "defense") ? lossFactor(read, value.points) : 1;
   const riichiStyle =
-    opts.riichi && styleOn(flags, "riichi") ? riichiTilt(read, shape.waitTiles, points) : 0;
+    opts.riichi && styleOn(flags, "riichi") ? riichiTilt(read, shape.waitTiles, value.points) : 0;
   const taste = styleOn(flags, "discard") ? tasteBonus(c.kind, read) : 0;
 
   return (

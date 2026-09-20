@@ -15,7 +15,7 @@ import { bucketShanten, bucketTurn } from "./buckets.js";
 import { CALL_STYLE } from "./priors.js";
 import { meanGap } from "./style.js";
 
-export const CALL_STYLE_GAIN = 350;
+export const CALL_STYLE_GAIN = 800;
 
 export function callTilt(read: BotRead, optionType: string, called: TileKind): number {
   const kind =

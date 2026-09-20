@@ -16,14 +16,15 @@ import { RIICHI_STYLE } from "./priors.js";
 import { meanGap } from "./style.js";
 
 /** 로짓 1 = 몇 점. 연구 하네스로 사람 비율에 맞춰 잡은 값 (docs/58 §리치) */
-export const RIICHI_STYLE_GAIN = 600;
+export const RIICHI_STYLE_GAIN = 1500;
 
-export function riichiTilt(read: BotRead, waitTiles: number, riichiPoints: number): number {
+/** `points`는 리치 판수를 **얹지 않은** 손 값 — 연구가 그 값으로 셀을 나눴다 */
+export function riichiTilt(read: BotRead, waitTiles: number, points: number): number {
   const turn = bucketTurn(read.turn);
   const wait = bucketWait(waitTiles);
   const gap = meanGap([
     RIICHI_STYLE[`wait=${wait}|turn=${turn}`],
-    RIICHI_STYLE[`pts=${bucketPoints(riichiPoints)}|turn=${turn}`],
+    RIICHI_STYLE[`pts=${bucketPoints(points)}|turn=${turn}`],
     RIICHI_STYLE[`wait=${wait}|threat=${bucketThreat(read.threat)}`],
   ]);
   return gap * RIICHI_STYLE_GAIN;
