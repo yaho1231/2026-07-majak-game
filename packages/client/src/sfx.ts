@@ -1016,6 +1016,8 @@ let riichiBgmCurrent = -1;
 let riichiBgmVolume = 0.5; // 0~1, 설정에서 동기화
 /** 미리듣기 중인 트랙 (-1 = 없음) — 로비에서 곡을 골라 들어 볼 때만 쓴다. */
 let riichiBgmPreview = -1;
+/** 미리듣기 트랙에 걸어 둔 `ended` 리스너 — 정지·교체 때 떼어 낸다. */
+let riichiBgmPreviewEndedHandler: (() => void) | null = null;
 
 /**
  * 다음 리치에 쓸 트랙 — **미리 골라 미리 받아 둔다** (-1 = 아직 안 골랐다).
@@ -1208,7 +1210,7 @@ export const riichiBgm = {
    * 리치 구간 재생과 같은 엘리먼트를 쓰되 루프하지 않고, 볼륨이 0이어도(설정에서
    * 꺼 둔 사람이 곡만 확인하는 경우) 들리도록 최소 볼륨을 보장한다.
    */
-  preview(i: number): void {
+  preview(i: number, onEnded?: () => void): void {
     if (typeof window === "undefined") return;
     if (i < 0 || i >= RIICHI_BGM_SRCS.length) return;
     riichiBgm.previewStop();
@@ -1218,6 +1220,17 @@ export const riichiBgm = {
     el.volume = Math.max(0.3, riichiBgmVolume) * (RIICHI_BGM_GAIN[i] ?? 1);
     el.currentTime = 0;
     riichiBgmPreview = i;
+    // 곡이 끝까지 가면 스스로 정리한다 (2026-09-21). 루프를 껐으므로 끝나면 그냥
+    // 멈추는데, 이때 previewing 상태가 남아 있으면 버튼은 계속 "정지"로 보이고
+    // 다시 눌러도 previewStop()만 불려 소리가 안 났다. 루프·볼륨도 되돌려 두지
+    // 않으면 그 뒤 실제 리치에서 그 트랙이 루프 없이 한 번만 나온다.
+    const done = (): void => {
+      if (riichiBgmPreview !== i || riichiBgmPreviewEndedHandler !== done) return;
+      riichiBgm.previewStop();
+      onEnded?.();
+    };
+    riichiBgmPreviewEndedHandler = done;
+    el.addEventListener("ended", done);
     void el.play().catch(() => {
       /* 재생 거부·로드 실패 무시 */
     });
@@ -1229,6 +1242,10 @@ export const riichiBgm = {
     const el = riichiBgmEls[riichiBgmPreview];
     riichiBgmPreview = -1;
     if (el == null) return;
+    if (riichiBgmPreviewEndedHandler !== null) {
+      el.removeEventListener("ended", riichiBgmPreviewEndedHandler);
+      riichiBgmPreviewEndedHandler = null;
+    }
     el.pause();
     el.currentTime = 0;
     el.loop = true;

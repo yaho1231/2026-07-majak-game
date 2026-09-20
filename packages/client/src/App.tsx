@@ -15817,7 +15817,9 @@ function RiichiBgmPicker(props: {
                 riichiBgm.previewStop();
                 setPreviewing(-1);
               } else {
-                riichiBgm.preview(track);
+                // 곡이 끝까지 가면 버튼을 다시 "미리듣기"로 — 안 그러면 "정지"에
+                // 묶여 다시 눌러도 소리가 안 난다.
+                riichiBgm.preview(track, () => setPreviewing(-1));
                 setPreviewing(track);
               }
             }}
