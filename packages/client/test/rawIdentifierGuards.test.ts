@@ -71,23 +71,53 @@ describe("📜 기록 — 채널 이름이 태그에 새지 않는다 (U64)", ()
     ];
     const ids = new Set<string>();
     const heads = new Map<string, string>();
+    /** 문자열로도 상수·채널 함수로도 못 푼 둘째 인자 — 이게 생기면 스캔이 눈을 감은 것이다 */
+    const unresolved: string[] = [];
     for (const f of files) {
       const src = readFileSync(f, "utf8");
       for (const m of src.matchAll(/\bid: "([a-z0-9_]+)"/g)) ids.add(m[1] as string);
       const fileId = /const ID = "([a-z0-9_]+)"/.exec(src)?.[1];
       if (fileId !== undefined) ids.add(fileId);
-      for (const m of src.matchAll(/\b(?:round)?[vV]iewKey\(\s*[^,()]+,\s*(?:`([^`]+)`|"([^"]+)")/g)) {
-        const raw = (m[1] ?? m[2]) as string;
-        const head = raw.split(":")[0] as string;
-        if (head === "${ID}") {
-          if (fileId !== undefined) heads.set(fileId, f);
+      /*
+       * 둘째 인자를 원문 문자열로 푼다. 리터럴만 보면 `roundViewKey("*", TIME_PRESSURE_CHANNEL)`
+       * 같은 상수 인자와 `forcedTsumogiriChannel(...)` 같은 채널 함수 호출을 놓친다 — nameOf가
+       * 이름 없는 head를 숨기므로, 그 길로 더한 채널은 가드 없이 📜에서 사라진다(2026-09-25, B01 리뷰).
+       * 같은 파일의 `const X = "…"`·`` const X = `…` ``·`const X = Y`·`const f = (…): string => `…``
+       * 까지 따라간다. `ID`는 템플릿 속 `${ID}`처럼 파일 id로 푼다.
+       */
+      const resolve = (arg: string, depth = 0): string | null => {
+        const lit = /^(?:`([^`]*)`|"([^"]*)")$/.exec(arg);
+        if (lit !== null) return (lit[1] ?? lit[2]) as string;
+        if (depth > 3) return null;
+        const call = /^([A-Za-z_$][\w$]*)\(/.exec(arg);
+        if (call !== null) {
+          const name = call[1] as string;
+          const fn = new RegExp(`const ${name} = \\([^)]*\\)(?::\\s*string)?\\s*=>\\s*(\`[^\`]*\`|"[^"]*")`).exec(src);
+          return fn !== null ? resolve(fn[1] as string, depth + 1) : null;
+        }
+        if (arg === "ID") return "${ID}";
+        const decl = new RegExp(`const ${arg}(?::\\s*string)? = (\`[^\`]*\`|"[^"]*"|[A-Za-z_$][\\w$]*);`).exec(src);
+        return decl !== null ? resolve(decl[1] as string, depth + 1) : null;
+      };
+      // `function viewKey(player: …, key: string)` 정의 자체는 호출이 아니다
+      for (const m of src.matchAll(
+        /(?<!function )\b(?:round)?[vV]iewKey\(\s*[^,()]+,\s*(`[^`]+`|"[^"]+"|[A-Za-z_$][\w$]*(?:\()?)/g,
+      )) {
+        const raw = resolve(m[1] as string);
+        if (raw === null) {
+          const at = `${f.split("/").pop()}: ${m[0]}`;
+          // roundViewKey가 제 인자를 viewKey로 넘기는 한 줄 — 채널은 roundViewKey 호출부가 정한다
+          if (at !== "util.ts: viewKey(player, key") unresolved.push(at);
           continue;
         }
+        // `${ID}`·`${ID}_x` — 파일 id로 펼친다
+        const head = (raw.split(":")[0] as string).replace("${ID}", fileId ?? "${ID}");
         // `${augmentId}`·`${spec.id}`처럼 호출부가 정하는 head는 증강 id다 — 여기서는 못 푼다
         if (head.startsWith("${")) continue;
         heads.set(head, f);
       }
     }
+    expect(unresolved, "뷰 채널 이름을 못 푼 호출 — resolve를 넓히거나 리터럴로 쓴다").toEqual([]);
     const headName = slice("const HEAD_NAME: Record<string, string> = {", "\n  };");
     const named = new Set([...headName.matchAll(/^\s+(\w+):/gm)].map((m) => m[1] as string));
     const orphans = [...heads.entries()].filter(
@@ -99,6 +129,9 @@ describe("📜 기록 — 채널 이름이 태그에 새지 않는다 (U64)", ()
     for (const h of ["uses", "cooldown", "cooldownTurns", "cooldownUsedRound", "spent"]) {
       expect(heads.has(h), `util.ts의 ${h} 채널을 못 걷었다`).toBe(true);
     }
+    // 상수·채널 함수 인자도 실제로 풀렸는지 — time_pressure(상수)·forcedTsumogiri(함수)
+    expect(heads.has("time_pressure"), "TIME_PRESSURE_CHANNEL을 못 풀었다").toBe(true);
+    expect(heads.has("forcedTsumogiri"), "forcedTsumogiriChannel(...)을 못 풀었다").toBe(true);
   });
 });
 
@@ -188,11 +221,16 @@ describe("증강 id → 이름 폴백은 한 경로 (U63·U68)", () => {
     expect(pill).not.toContain("{ chip: raw, note: raw }");
   });
 
-  it("홈 증강 통계(toAugRows)는 카탈로그에 없는 폐기 증강 행을 뺀다 — 카탈로그 도착 전에는 거르지 않는다", () => {
+  it("홈 증강 통계(toAugRows)는 카탈로그에 없는 폐기 증강 행을 뺀다 — 카탈로그 도착 전에는 행을 만들지 않는다", () => {
     const fn = slice("function toAugRows(", "\n}");
-    expect(fn).toContain("const filter = Object.keys(catalog).length > 0;");
-    expect(fn).toContain("if (filter && cat === undefined) continue;");
+    expect(fn).toContain("if (Object.keys(catalog).length === 0) return out;");
+    expect(fn).toContain("if (cat === undefined) continue;");
     expect(fn).not.toContain("cat?.name ?? id");
+  });
+
+  it("봇 난이도 배지는 이름표에 없는 값이면 원문 대신 세우지 않는다", () => {
+    expect(SRC).not.toContain("BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? props.botDifficulty");
+    expect(SRC).toContain("BOT_DIFFICULTY_LABEL[props.botDifficulty] !== undefined &&");
   });
 
   it("공유 링크 리플레이는 들고 온 이름표로 비어 있는 이름·계열을 채운다", () => {

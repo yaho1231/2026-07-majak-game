@@ -2401,12 +2401,15 @@ function playerName(view: PlayerView, player: PlayerInfo): string {
  * 됐다(docs/59 U67). 대기실(`p.isBot ? "봇" : p.nickname`)과 같은 규칙에, 여럿이면
  * 번호를 붙인다 — «봇 · 봇 · 봇»은 구분이 안 된다(2026-09-25).
  *
- * 번호는 판 위 `botLabel`처럼 **좌석순**이어야 같은 판의 «봇1»이 목록과 리플레이에서 같은
- * 봇이다. 진행 중 방·관전 탁자 목록은 서버가 이미 좌석순(`agents`)으로 보내서 목록 순서가
- * 곧 좌석순이다. 리플레이 목록은 서버 DB가 **순위순**(`ORDER BY rank`)으로 주고 좌석을 싣지
- * 않으므로, 호출부가 `botOrderKey`로 서버 닉네임(`Bot_{id}`)을 넘겨 id순으로 번호를 매긴다 —
- * 키로만 쓰고 화면에는 절대 세우지 않는다. 판 전에 대기실에서 자리를 옮긴 봇은 id순과
- * 좌석순이 어긋날 수 있다 — 정확히 맞추려면 DB에 좌석을 실어야 한다(docs/59 U67 남은 일).
+ * 진행 중 방·관전 탁자 목록은 서버가 좌석순(`agents`)으로 보내서, 번호가 판 위 `botLabel`
+ * (좌석순)의 «봇N»과 같다. 리플레이 목록은 **다르다** — 서버 DB가 순위순(`ORDER BY rank`)으로
+ * 주고 좌석을 싣지 않는다. 그래서 호출부가 `botOrderKey`로 서버 닉네임(`Bot_{id}`)을 넘겨 id순
+ * 으로 번호를 매긴다(키로만 쓰고 화면에는 절대 세우지 않는다). 순위순보다 판마다 덜 흔들릴 뿐,
+ * **좌석순을 보장하지 않는다**: 좌석 id(`p0`~`p3`)는 비어 있는 가장 앞 번호, 자리는 비어 있는
+ * 가장 앞 자리를 따로 받고, 방장의 «자리 섞기»·«자리 옮기기»가 자리만 바꾼다. 그러니 리플레이
+ * 목록의 번호는 «봇끼리 구분»용이고, 리플레이 화면의 «봇1»과 같은 봇이라는 뜻이 아니다.
+ * 맞추려면 `game_players`에 좌석을 실어 키로 넘겨야 한다 — 스키마·프로토콜이 바뀌는 서버
+ * 일이라 여기서 하지 않았다(2026-09-25, docs/59 U67).
  */
 function rosterNames(
   players: readonly { nickname: string; isBot: boolean }[],
@@ -9331,13 +9334,16 @@ function toAugRows(augments: Record<string, AugmentStatRaw> | undefined, catalog
   /*
    * 카탈로그에 없는 id(폐기된 증강)는 행을 만들지 않는다. 누적 통계는 폐기 전 기록을 그대로
    * 들고 있어서, 표에 `bounty_honitsu` 같은 내부 id가 이름 자리에 섰다(2026-09-25, docs/59 U63 —
-   * 운영 10명·33종). 카탈로그가 아직 비었으면 거르지 않는다 — 도착 전에 표가 통째로 비었다가
-   * 채워지며 깜빡이지 않게. 기록 자체는 서버에 남겨 둔다(지우면 되돌릴 수 없다).
+   * 운영 10명·33종). 기록 자체는 서버에 남겨 둔다(지우면 되돌릴 수 없다).
+   *
+   * 카탈로그가 아직 비었으면 행을 **하나도** 만들지 않는다. 거르지 않고 두면 이름이 전부
+   * `augName`의 폴백 «알 수 없는 증강»이라, 통계가 먼저 오면 똑같은 줄이 표를 채웠다가
+   * 바뀌었다(2026-09-25, docs/59 U63 리뷰). 표 쪽은 카탈로그가 비면 «불러오는 중»을 낸다.
    */
-  const filter = Object.keys(catalog).length > 0;
+  if (Object.keys(catalog).length === 0) return out;
   for (const [id, s] of Object.entries(augments ?? {})) {
     const cat = catalog[id];
-    if (filter && cat === undefined) continue;
+    if (cat === undefined) continue;
     const top = s.placements[0] ?? 0;
     out.push({
       id,
@@ -9491,6 +9497,10 @@ function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | nul
   const catalogSize = useMemo(() => Object.keys(catalog).length, [catalog]);
   // 훅은 아래 early return보다 위에 있어야 한다 (기록이 없으면 표 대신 안내문을 낸다).
   const { sort, toggle } = useTableSort({ key: "avg", dir: "asc" });
+  // 카탈로그 전에는 toAugRows가 빈 배열이다 — «기록 없음»이 아니라 아직 못 받은 것이다
+  if (stats !== null && catalogSize === 0) {
+    return <p className="home-empty home-loading">불러오는 중…</p>;
+  }
   if (stats === null || rows.length === 0) {
     return <p className="home-empty">아직 증강 기록이 없습니다. 증강 드래프트가 있는 대국을 끝까지 플레이하면 기록됩니다.</p>;
   }
@@ -9593,7 +9603,8 @@ function AugmentMeta({
     [rows, sort],
   );
 
-  if (leaderboard === null) {
+  // 카탈로그 전에는 행이 없다(toAugRows) — «기록이 부족합니다»가 아니라 아직 못 받은 것이다
+  if (leaderboard === null || Object.keys(catalog).length === 0) {
     return <p className="home-empty home-loading">불러오는 중…</p>;
   }
   if (ranked.length === 0) {
@@ -15372,13 +15383,16 @@ const GameTable = memo(function GameTable(props: {
       ) : null}
       <ModeBadge mode={view.round.mode} />
       {/* 봇 난이도 — 대기실에서만 보이고 판에 들어오면 사라지던 값. 봇이 없는 판에서는
-          띄우지 않는다. */}
-      {props.botDifficulty != null && view.players.some((p) => p.isBot) ? (
+          띄우지 않는다. 이름표에 없는 값(서버가 새 난이도를 더했는데 탭이 낡았다)이면
+          `hard` 같은 원문 대신 배지를 세우지 않는다(2026-09-25, docs/59 U63). */}
+      {props.botDifficulty != null &&
+      BOT_DIFFICULTY_LABEL[props.botDifficulty] !== undefined &&
+      view.players.some((p) => p.isBot) ? (
         <div
           className="mode-badge bot-diff-badge"
           title={`봇 난이도: ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
         >
-          <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? props.botDifficulty}</span>
+          <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty]}</span>
         </div>
       ) : null}
       <button
