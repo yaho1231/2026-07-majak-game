@@ -980,81 +980,78 @@ describe("게임 완주·기록", () => {
   );
 
   /*
-   * 이 자리는 원래 «혼자 하던 판에서 나가면 무효로 접힌다»였다. 막으려던 회귀는
-   * **나간 뒤에도 그 판의 연출·소리가 홈 화면 위로 새는 것**이었는데, 처방이
-   * 「판을 통째로 지운다」였다 — 그리고 무효는 정산·순위·통계·리플레이를 남기지
-   * 않으므로, 그게 곧 **지는 판을 흔적 없이 지우는 버튼**이었다
-   * (감사 2026-08-26 H-2). 이제 새는 곳(좌석의 소켓)을 직접 막고, 판은 기록한다.
+   * 이 자리의 규칙은 두 번 뒤집혔다. 처음에는 «혼자 하던 판에서 나가면 무효»,
+   * 감사 2026-08-26 H-2 뒤로는 «봇이 마저 두고 기록». 2026-09-24 사용자 지시로
+   * 다시 **무효**다 — 사람 1 + 봇 3 판(= 연습 대국)은 끝까지 둔 판만 기록하고,
+   * 나가면 그 즉시 끝낸다. 나간 사람 눈에는 «봇이 빠르게 타패해 판을 끝내는»
+   * 모습이 보였기 때문이다.
    */
-  it(
-    "혼자 하던 기록 대국에서 나가도 판은 봇이 마저 두고 기록된다 (지워지지 않는다)",
-    async () => {
-      const h = await newHarness();
-      const sock = await connectAndRegister(h, "Solo");
-      sock.clientSend({ type: "createRoom" });
-      const code = sock.last("roomCreated").code as string;
-      for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
-      sock.clientSend({ type: "startGame" });
-      await sock.waitFor((m) => m.type === "view");
+  it("대기실에서 봇 셋을 채운 1인 판도 연습 대국이라, 나가면 즉시 무효로 끝나고 기록되지 않는다", async () => {
+    const h = await newHarness();
+    const sock = await connectAndRegister(h, "Solo");
+    sock.clientSend({ type: "createRoom" });
+    const code = sock.last("roomCreated").code as string;
+    for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
+    sock.clientSend({ type: "startGame" });
+    await sock.waitFor((m) => m.type === "view");
 
-      sock.clientSend({ type: "leaveRoom" });
-      const afterLeave = sock.sent.length;
+    sock.clientSend({ type: "leaveRoom" });
+    const afterLeave = sock.sent.length;
 
-      // 판은 남아서 끝까지 간다 — 나가기는 무효가 아니다.
-      const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
-      await vi.waitFor(() => {
-        expect(rooms.has(code)).toBe(false); // 완주 → 정리
-      }, HANCHAN_MS);
+    // 완주를 기다리지 않는다 — 곧바로 방이 사라져야 한다.
+    const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
+    await vi.waitFor(() => {
+      expect(rooms.has(code)).toBe(false);
+    }, 2_000);
 
-      // 그 판이 실제로 기록됐다 (무효였다면 아무것도 안 남는다).
-      sock.clientSend({ type: "replayList" });
-      await sock.waitFor((m) => m.type === "replayList");
-      const list = sock.last("replayList");
-      expect(list.games).toHaveLength(1);
-      expect(list.games[0].code).toBe(code);
+    const me = h.db.userByName("Solo")!;
+    expect(h.db.listGamesFor(me.id)).toHaveLength(0);
+    expect(h.db.allReplayPaths()).toHaveLength(0);
 
-      /*
-       * **그리고 나간 화면으로는 그 판이 한 프레임도 새지 않았다** — 이게 원래
-       * 이 테스트가 지키던 것이다. 나가기를 누른 사람의 소켓은 살아 있으므로
-       * (홈 화면으로 갔을 뿐 같은 연결이다) 막지 않으면 봇들이 두는 판이 그대로
-       * 흘러들어 BGM과 컷인 효과음이 되살아난다.
-       */
-      const leaked = sock.sent
-        .slice(afterLeave)
-        .filter((m: { type: string }) => m.type === "view" || m.type === "roundOver");
-      expect(leaked).toHaveLength(0);
-      expect(sock.last("gameOver")).toBeUndefined();
-    },
-    HANCHAN_TEST_MS,
-  );
+    // 나간 화면으로 그 판이 새지 않는다 (홈 위로 연출·소리가 튀던 회귀).
+    const leaked = sock.sent
+      .slice(afterLeave)
+      .filter((m: { type: string }) => m.type === "view" || m.type === "roundOver");
+    expect(leaked).toHaveLength(0);
+    expect(sock.last("gameOver")).toBeUndefined();
+  });
 
-  it(
-    "연습 대국은 기록되는 판이라, 나가도 봇이 마저 두고 기록에 남는다",
-    async () => {
-      /*
-       * 2026-09-21 사용자 지시: 연습 대국도 기록한다(튜토리얼·손님 체험만 제외).
-       * 기록되는 판은 나가기로 지울 수 없어야 한다 — 접히면 지는 판을 나가기로
-       * 없애는 옆문이 된다. 나가면 좌석은 포기되고 봇이 즉시 완주해 인덱스에 남는다.
-       */
-      const h = await newHarness();
-      const sock = await connectAndRegister(h, "Practicer");
-      sock.clientSend({ type: "practicePlay", mode: "tonpuu" });
-      await sock.waitFor((m) => m.type === "view");
-      const code = sock.last("joined").roomId as string;
+  it("연습 대국은 나가면 즉시 무효로 끝나고 기록되지 않는다 (2026-09-24)", async () => {
+    const h = await newHarness();
+    const sock = await connectAndRegister(h, "Practicer");
+    sock.clientSend({ type: "practicePlay", mode: "tonpuu" });
+    await sock.waitFor((m) => m.type === "view");
+    const code = sock.last("joined").roomId as string;
 
-      sock.clientSend({ type: "leaveRoom" });
+    sock.clientSend({ type: "leaveRoom" });
 
-      const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
-      await vi.waitFor(() => {
-        expect(rooms.has(code)).toBe(false);
-      }, 60_000);
-      const me = h.db.userByName("Practicer")!;
-      const games = h.db.listGamesFor(me.id);
-      expect(games).toHaveLength(1);
-      expect(h.db.allReplayPaths()).toHaveLength(1);
-    },
-    90_000,
-  );
+    const rooms = (h.rm as unknown as { rooms: Map<string, unknown> }).rooms;
+    await vi.waitFor(() => {
+      expect(rooms.has(code)).toBe(false);
+    }, 2_000);
+    const me = h.db.userByName("Practicer")!;
+    expect(h.db.listGamesFor(me.id)).toHaveLength(0);
+    expect(h.db.allReplayPaths()).toHaveLength(0);
+  });
+
+  it("대기실 1인 + 봇 3 판은 관리자 목록에 «연습»으로 뜬다", async () => {
+    const h = await newHarness();
+    const sock = await connectAndRegister(h, "Solo");
+    sock.clientSend({ type: "createRoom" });
+    for (let i = 0; i < 3; i++) sock.clientSend({ type: "addBot" });
+    sock.clientSend({ type: "startGame" });
+    await sock.waitFor((m) => m.type === "view");
+
+    const admin = new FakeSocket();
+    h.rm.handleConnection(admin.asWs());
+    admin.clientSend({ type: "register", username: "Boss", password: "pw123456", adminCode: h.db.adminCode() });
+    await admin.waitFor((m) => m.type === "authOk");
+    admin.clientSend({ type: "liveGames" });
+    await admin.waitFor((m) => m.type === "liveGames");
+    const rooms = admin.last("liveGames").rooms;
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].kind).toBe("practice");
+  });
 
   it(
     "연습 대국을 완주하면 gameId·리플레이·누적 통계가 남는다 (손님 체험은 여전히 남지 않는다)",

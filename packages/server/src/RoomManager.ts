@@ -5604,7 +5604,7 @@ export class RoomManager {
       return this.fail(
         conn,
         "SOLO_ABORT_FORBIDDEN",
-        "혼자 두는 대국은 무효 처리할 수 없습니다. 나가면 남은 판은 자동으로 진행되고 기록에 남습니다.",
+        "다른 사람과 시작한 대국은 혼자 남아도 무효 처리할 수 없습니다. 나가면 남은 판은 자동으로 진행되고 기록에 남습니다.",
       );
     }
 
