@@ -1,9 +1,9 @@
 /**
- * 모래시계(sandglass) · 위그드라실(yggdrasil) — 2026-09-24 신규 2종.
+ * 가지치기(pruning) · 위그드라실(yggdrasil) — 2026-09-24 신규 2종.
  *
- * 모래시계
+ * 가지치기
  *  1. 고른 손패 3장이 패산 맨 위로, 패산 맨 위 3장이 손으로 온다 (장수 불변).
- *  2. 2국에 1회 — 쓴 뒤 2국이 지나야 다시 열린다.
+ *  2. 동풍전 2국에 1회 · 반장전 3국에 1회.
  *  3. 패산이 3장 이하면 쓸 수 없다. 리치 중에는 쓸 수 없다.
  *  4. 쯔모패를 내보내면 들어온 패가 새 쯔모패가 된다.
  *
@@ -45,7 +45,7 @@ function withAug(state: GameState, holder: PlayerId, ids: string[]): GameState {
 }
 
 function mk(
-  aug: "sandglass" | "yggdrasil",
+  aug: "pruning" | "yggdrasil",
   hand: string,
   opts: { mode?: "tonpuu" | "hanchan"; melds?: { kind: "pon"; spec: string }[] } = {},
 ): Game {
@@ -62,7 +62,7 @@ function mk(
   );
   if (opts.mode !== undefined) state = { ...state, config: { ...state.config, mode: opts.mode } };
   const game = createStandardGameFromState(state);
-  installAugment(game.engine, aug === "sandglass" ? C.sandglass : C.yggdrasil, "p0", {
+  installAugment(game.engine, aug === "pruning" ? C.pruning : C.yggdrasil, "p0", {
     yaku: game.yaku,
   });
   return game;
@@ -88,7 +88,7 @@ const kinds = (g: Game): string[] =>
 function swap(g: Game, tileIds: TileId[]) {
   return g.engine.submit({
     player: "p0",
-    type: "sandglass_swap",
+    type: "pruning_swap",
     payload: { tileIds: [...tileIds].sort((a, b) => a - b) },
   });
 }
@@ -108,11 +108,11 @@ function isWindOrOtherDragon(g: Game, id: TileId): boolean {
   return k.suit === "wind" || (k.suit === "dragon" && k.rank !== 2);
 }
 
-// ───────────────────────────── 모래시계 ─────────────────────────────
+// ───────────────────────────── 가지치기 ─────────────────────────────
 
-describe("모래시계 — 손패 3장 ↔ 패산 맨 위 3장", () => {
+describe("가지치기 — 손패 3장 ↔ 패산 맨 위 3장", () => {
   it("고른 3장이 패산 맨 위로, 패산 맨 위 3장이 손으로 간다", () => {
-    const g = mk("sandglass", "123m456p789s1122z3z");
+    const g = mk("pruning", "123m456p789s1122z3z");
     const out = hand(g).slice(0, 3);
     const top = wall(g).slice(0, 3);
     const wallLen = wall(g).length;
@@ -126,7 +126,7 @@ describe("모래시계 — 손패 3장 ↔ 패산 맨 위 3장", () => {
   });
 
   it("쯔모패를 내보내면 들어온 패가 새 쯔모패가 된다", () => {
-    const g = mk("sandglass", "123m456p789s1122z3z");
+    const g = mk("pruning", "123m456p789s1122z3z");
     const drawn = g.engine.state.round.lastDrawnTile;
     if (drawn == null) throw new Error("craft는 쯔모패를 세운다");
     const others = hand(g).filter((id) => id !== drawn).slice(0, 2);
@@ -135,30 +135,41 @@ describe("모래시계 — 손패 3장 ↔ 패산 맨 위 3장", () => {
     expect(top).toContain(g.engine.state.round.lastDrawnTile);
   });
 
-  it("2국에 1회 — 쓴 뒤 2국이 지나야 다시 열린다", () => {
-    /** 국 시작을 n번 흘린 뒤(증강 기록 유지) 다시 내 순으로 세운 게임 */
-    const after = (g: Game, n: number): Game => {
-      for (let i = 0; i < n; i++) emit(g, { type: ROUND_STARTED, payload: {} });
-      const prev = g.engine.state;
-      const next = createStandardGameFromState({
-        ...prev,
-        round: { ...prev.round, phase: "turn.act", turnSeat: 0 },
-      });
-      installAugment(next.engine, C.sandglass, "p0", { yaku: next.yaku });
-      return next;
-    };
-    const g = mk("sandglass", "123m456p789s1122z3z");
-    expect(swap(g, hand(g).slice(0, 3)).ok).toBe(true);
-    expect(swap(g, hand(g).slice(0, 3)).ok).toBe(false);
+  /** 국 시작을 n번 흘린 뒤(증강 기록 유지) 다시 내 순으로 세운 게임 */
+  const after = (g: Game, n: number): Game => {
+    for (let i = 0; i < n; i++) emit(g, { type: ROUND_STARTED, payload: {} });
+    const prev = g.engine.state;
+    const next = createStandardGameFromState({
+      ...prev,
+      round: { ...prev.round, phase: "turn.act", turnSeat: 0 },
+    });
+    installAugment(next.engine, C.pruning, "p0", { yaku: next.yaku });
+    return next;
+  };
+  const okOf = (g: Game): string => {
+    const r = swap(g, hand(g).slice(0, 3));
+    return r.ok ? "ok" : r.reason;
+  };
+
+  it("동풍전: 쓴 뒤 2국이 지나야 다시 열린다", () => {
+    const g = mk("pruning", "123m456p789s1122z3z", { mode: "tonpuu" });
+    expect(okOf(g)).toBe("ok");
+    expect(okOf(g)).not.toBe("ok");
     const one = after(g, 1);
-    expect(swap(one, hand(one).slice(0, 3)).ok).toBe(false);
-    const two = after(one, 1);
-    const r = swap(two, hand(two).slice(0, 3));
-    expect(r.ok ? "ok" : r.reason).toBe("ok");
+    expect(okOf(one)).not.toBe("ok");
+    expect(okOf(after(one, 1))).toBe("ok");
+  });
+
+  it("반장전: 쓴 뒤 3국이 지나야 다시 열린다", () => {
+    const g = mk("pruning", "123m456p789s1122z3z", { mode: "hanchan" });
+    expect(okOf(g)).toBe("ok");
+    const two = after(g, 2);
+    expect(okOf(two)).not.toBe("ok");
+    expect(okOf(after(two, 1))).toBe("ok");
   });
 
   it("패산이 3장 이하면 쓸 수 없다", () => {
-    const g = mk("sandglass", "123m456p789s1122z3z");
+    const g = mk("pruning", "123m456p789s1122z3z");
     const base = g.engine.state;
     const cut = (n: number): Game => {
       const w = base.zones[WALL]!;
@@ -166,7 +177,7 @@ describe("모래시계 — 손패 3장 ↔ 패산 맨 위 3장", () => {
         ...base,
         zones: { ...base.zones, [WALL]: { ...w, tileIds: w.tileIds.slice(0, n) } },
       });
-      installAugment(next.engine, C.sandglass, "p0", { yaku: next.yaku });
+      installAugment(next.engine, C.pruning, "p0", { yaku: next.yaku });
       return next;
     };
     const three = cut(3);
@@ -176,7 +187,7 @@ describe("모래시계 — 손패 3장 ↔ 패산 맨 위 3장", () => {
   });
 
   it("리치 중에는 쓸 수 없다", () => {
-    const g = mk("sandglass", "123m456p789s1122z3z");
+    const g = mk("pruning", "123m456p789s1122z3z");
     const s = g.engine.state;
     const riichi = createStandardGameFromState({
       ...s,
@@ -188,7 +199,7 @@ describe("모래시계 — 손패 3장 ↔ 패산 맨 위 3장", () => {
         },
       },
     });
-    installAugment(riichi.engine, C.sandglass, "p0", { yaku: riichi.yaku });
+    installAugment(riichi.engine, C.pruning, "p0", { yaku: riichi.yaku });
     expect(swap(riichi, hand(riichi).slice(0, 3)).ok).toBe(false);
   });
 });

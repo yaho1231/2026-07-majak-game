@@ -294,7 +294,7 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   triple_peek: e(["wall_info"]),
   bottom_deal: e(["wall_info", "tempo"]),
   future_sight: e(["hand_edit", "wall_info"]),
-  sandglass: e(["hand_edit", "wall_info"]),
+  pruning: e(["hand_edit", "wall_info"]),
   xray_hand: e(["opp_info"]),
   tenpai_scan: e(["opp_info", "defense"]),
   danger_sense: e(["opp_info", "defense"]),
