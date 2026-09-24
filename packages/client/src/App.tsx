@@ -20129,8 +20129,10 @@ function PlayerAugSheet({
         e.stopPropagation();
         if (e.target === e.currentTarget) onClose();
       }}
+      // Enter·Space는 고르기 모드에서만 막는다 — 막으면 창의 keydown(연출 Space 건너뛰기)까지 끊긴다.
+      // 보기 모드 시트는 줄이 무장 대상이 되는 순간 이름표가 닫는다(NamePlate의 armTarget effect, B09 리뷰)
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+        if (pick !== undefined && (e.key === "Enter" || e.key === " ")) e.stopPropagation();
       }}
     >
       <div className="aug-sheet" role="dialog" aria-label={`${playerName(view, player)} 증강`}>
@@ -20328,6 +20330,11 @@ const NamePlate = memo(function NamePlate({
   const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
   /** 이름을 눌러 연 증강 보기 시트 (폰 전용 경로 — PlayerAugSheet 주석) */
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 보기 시트를 연 채로 이 줄이 무장 대상이 되면 걷는다 — 시트 안의 Enter·클릭이 줄의 확정으로
+  // 새지 않게 하는 막이는 고르기 모드에만 있다(창의 Space 건너뛰기를 살리려고, B09 리뷰)
+  useEffect(() => {
+    if (armTarget === true) setSheetOpen(false);
+  }, [armTarget]);
   /** 무장해제·재장전 무장 중 — pill이 곧 대상이다 */
   const picking = pickAug !== undefined && onPickAug !== undefined;
   const pickVerb = isMe ? "되살리기" : "잠그기";
@@ -20441,6 +20448,9 @@ const NamePlate = memo(function NamePlate({
         className="np-name np-name-btn"
         title={playerName(view, player)}
         aria-label={`${playerName(view, player)}의 증강 보기`}
+        // 줄 전체가 대상인 동안에는 줄 하나만 읽히고 포커스를 받는다 — 이 단추의 Enter도 줄의 확정이
+        // 되는데 «증강 보기»로 읽히면 되돌릴 수 없는 지목을 시트 열기로 알고 누른다(B09 리뷰)
+        {...(armTarget === true ? { tabIndex: -1, "aria-hidden": true } : {})}
         onClick={() => {
           // 상대 줄 전체가 대상인 무장 중 — 시트를 열지 않고 클릭을 줄로 올린다. 줄이 대상 확정(opp)
           // 또는 고르기 시트(opp-aug)를 맡는다. 예전엔 시트와 확정이 함께 터졌다(2026-09-25, docs/59 U27)
@@ -20537,11 +20547,24 @@ const NamePlate = memo(function NamePlate({
                         "data-arm-zone": "1",
                         // 툴팁 안쪽(자세히 칩·고정 손잡이)의 Enter가 올라온 것은 그 단추의 일이다
                         onKeyDown: (e: React.KeyboardEvent) => {
+                          // 키보드로 고른 뒤에도 포커스를 놓는다 — 클릭 경로의 blur와 같은 이유(U27, B09 리뷰)
+                          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " "))
+                            (e.currentTarget as HTMLElement).blur();
                           if (e.target === e.currentTarget) cp.onKeyDown(e);
                         },
                       };
                     })()
-                  : {})}
+                  : armTarget === true && !picking
+                    ? {
+                        // 줄 전체가 대상(opp) — Enter는 줄로 올라가 확정이 된다. 확정 뒤 focus 툴팁이
+                        // 판 위에 남지 않게 먼저 걷는다(막지는 않는다, U27·B09 리뷰)
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                          (e.currentTarget as HTMLElement).blur();
+                          setTipFor(null);
+                        },
+                      }
+                    : {})}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
@@ -20556,12 +20579,21 @@ const NamePlate = memo(function NamePlate({
                     onPickAug?.(armOpt);
                     return;
                   }
-                  // 상대 줄 전체가 대상인 무장 중 — 설명 고정을 건너뛰고 클릭을 줄로 올린다. 고정된
-                  // 툴팁이 확정 뒤에도 판 위에 남던 것을 막는다(U27)
-                  if (armTarget === true) return;
-                  // 고르는 중 후보가 아닌 pill(내 이름표의 재장전) — 대상 영역 안의 빗나감이라 무시한다.
-                  // 설명은 hover·focus 툴팁으로 그대로 읽힌다(원칙 7, B09 리뷰)
-                  if (picking) return;
+                  // 고르는 중 후보가 아닌 pill(재장전의 내 이름표·무장해제의 흐린 상대 pill) — 대상 영역 안의
+                  // 빗나감이라 무시한다. 상대 이름표면 줄의 고르기 시트로도 번지지 않게 멈춘다 — 흐린 pill을
+                  // 눌렀는데 시트가 통째로 뜨면 놀란다. 설명은 hover·focus 툴팁으로 그대로 읽힌다(원칙 7, B09 리뷰)
+                  if (picking) {
+                    e.stopPropagation();
+                    return;
+                  }
+                  // 상대 줄 전체가 대상인 무장 중(opp) — 설명 고정을 건너뛰고 클릭을 줄로 올린다. 확정 뒤에
+                  // 툴팁이 판 위에 남지 않게 걷는다 — 탭에 포커스를 주는 브라우저에선 알약 덮개가 포커스를
+                  // 쥐고 있어도 tipFor를 비우면 속이 그려지지 않는다(U27, B09 리뷰)
+                  if (armTarget === true) {
+                    e.currentTarget.blur();
+                    setTipFor(null);
+                    return;
+                  }
                   togglePin(a);
                 }}
                 onMouseEnter={() => setTipFor(a)}
@@ -20628,6 +20660,9 @@ const NamePlate = memo(function NamePlate({
                   type="button"
                   className="aug-pill-sheet-hit"
                   aria-label={`${augName(a, catalog)} ${armOpt !== undefined ? pickVerb : "증강 보기"}`}
+                  // 줄 전체가 대상인 동안 후보가 아닌 덮개는 누르면 줄의 일(확정·고르기 시트)이 된다 —
+                  // «증강 보기»로 읽히지 않게 줄에 맡긴다(np-name-btn과 같은 이유, B09 리뷰)
+                  {...(armTarget === true && armOpt === undefined ? { tabIndex: -1, "aria-hidden": true } : {})}
                   onClick={(e) => {
                     // 무장 중 후보 — 폰에서도 알약이 곧 대상이다. 시트를 열면 한 번 더 눌러야 한다(U24·U32)
                     if (armOpt !== undefined) {

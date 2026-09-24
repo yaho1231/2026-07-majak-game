@@ -101,10 +101,15 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
   it("pill 클릭: 툴팁 안쪽 걸러내기 → 후보면 제출 → 줄 대상이면 올려 보내기 → 평소엔 고정", () => {
     const click = NAMEPLATE.slice(NAMEPLATE.indexOf('closest(".aug-tip")') - 120);
     before(click, 'closest(".aug-tip")', "onPickAug?.(armOpt)");
-    before(click, "onPickAug?.(armOpt)", "if (armTarget === true) return;");
-    before(click, "if (armTarget === true) return;", "togglePin(a);");
-    // 고르는 중 후보 아닌 pill(재장전)은 빗나감 — 고정하지 않는다(원칙 7)
-    before(click, "if (picking) return;", "togglePin(a);");
+    before(click, "onPickAug?.(armOpt)", "if (armTarget === true) {");
+    before(click, "if (armTarget === true) {", "togglePin(a);");
+    // 고르는 중 후보 아닌 pill은 빗나감 — 고정하지 않고, 상대 줄의 고르기 시트로도 번지지 않는다(원칙 7, B09 리뷰)
+    expect(click).toMatch(/if \(picking\) \{\s*e\.stopPropagation\(\);\s*return;\s*\}/);
+    before(click, "if (picking) {", "if (armTarget === true) {");
+    // 줄 대상(opp)이면 확정 뒤 툴팁이 남지 않게 걷고 올려 보낸다(U27, B09 리뷰)
+    expect(click).toMatch(
+      /if \(armTarget === true\) \{\s*e\.currentTarget\.blur\(\);\s*setTipFor\(null\);\s*return;\s*\}/,
+    );
     // 후보 pill은 줄의 시트 열기로 번지지 않는다
     expect(click.slice(0, click.indexOf("togglePin(a);"))).toContain("e.stopPropagation();");
   });
@@ -112,6 +117,8 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
   it("후보 pill은 키보드로도 고르고, 툴팁 안쪽의 Enter는 가로채지 않는다", () => {
     expect(NAMEPLATE).toContain("clickableProps(() => onPickAug?.(armOpt)");
     expect(NAMEPLATE).toContain("if (e.target === e.currentTarget) cp.onKeyDown(e);");
+    // 키보드로 고른 뒤에도 포커스를 놓는다 — focus 툴팁이 확정 뒤에 남지 않게(B09 리뷰)
+    before(NAMEPLATE, "(e.currentTarget as HTMLElement).blur();", "if (e.target === e.currentTarget) cp.onKeyDown(e);");
     expect(NAMEPLATE).toContain('" aug-pill-armable" : picking ? " aug-pill-unpickable" : ""');
   });
 
@@ -119,6 +126,12 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
     const name = NAMEPLATE.slice(NAMEPLATE.indexOf('className="np-name np-name-btn"'));
     before(name, "if (armTarget === true) return;", "setSheetOpen(true);");
     expect(name.slice(0, name.indexOf("setSheetOpen(true);"))).not.toContain("stopPropagation");
+    // 줄 대상일 때는 «증강 보기»로 읽히지도 포커스를 받지도 않는다 — 줄 하나만 읽힌다(B09 리뷰)
+    expect(name.slice(0, name.indexOf("onClick"))).toContain(
+      '{...(armTarget === true ? { tabIndex: -1, "aria-hidden": true } : {})}',
+    );
+    // 보기 시트를 연 채로 줄이 대상이 되면 걷는다
+    expect(NAMEPLATE).toMatch(/if \(armTarget === true\) setSheetOpen\(false\);/);
   });
 
   it("알약 덮개(폰): 후보면 제출, 줄 대상이면 올려 보내기, 평소엔 시트", () => {
@@ -129,6 +142,10 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
     before(hit, "e.currentTarget.blur();", "onPickAug?.(armOpt)");
     // 후보 덮개의 Enter·Space가 줄의 onKeyDown(시트 열기)으로 새지 않는다
     expect(hit).toContain('if (armOpt !== undefined && (e.key === "Enter" || e.key === " ")) e.stopPropagation();');
+    // 줄 대상일 때 후보 아닌 덮개는 «증강 보기»로 읽히지 않는다(B09 리뷰)
+    expect(hit.slice(0, hit.indexOf("onClick"))).toContain(
+      '{...(armTarget === true && armOpt === undefined ? { tabIndex: -1, "aria-hidden": true } : {})}',
+    );
   });
 
   it("고르는 중에는 이름표 전체가 arm-zone — 내 이름·후보 아닌 pill을 눌러도 재장전이 조용히 풀리지 않는다", () => {
@@ -154,7 +171,8 @@ describe("U24 PlayerAugSheet 고르기 모드", () => {
     const head = root.slice(0, root.indexOf('className="aug-sheet"'));
     expect(head).toContain('data-arm-zone="1"');
     before(head, "e.stopPropagation();", "onClose();");
-    expect(head).toContain('if (e.key === "Enter" || e.key === " ") e.stopPropagation();');
+    // Enter·Space는 고르기 모드에서만 — 보기 시트에서는 창의 Space 건너뛰기가 받아야 한다(B09 리뷰)
+    expect(head).toContain('if (pick !== undefined && (e.key === "Enter" || e.key === " ")) e.stopPropagation();');
     // Esc는 막지 않는다 — 창의 keydown이 시트를 닫는다
     expect(head).not.toContain("Escape");
   });
