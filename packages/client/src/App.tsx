@@ -20976,6 +20976,12 @@ function PickTimer(props: { deadline: number | null }): JSX.Element | null {
   );
 }
 
+/**
+ * 변형 팝오버(armSub)의 아래끝과 손패 상자 위끝 사이 — 들어 올린 패(`.hand-sub-open`,
+ * 14px)가 팝오버에 물리지 않게 그 몫 + 여백 8px (2026-09-25, docs/59 U12).
+ */
+const ARM_SUB_POP_GAP = 22;
+
 function OwnArea(props: {
   view: PlayerView;
   me: PlayerInfo;
@@ -21175,13 +21181,28 @@ function OwnArea(props: {
   const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
   const armedAug = sel.armedType;
   /*
+   * 한 패에 변형 선택지가 여럿일 때(염색 무늬·연금술 ±1·분열·위조) 누른 패 위에 붙는 팝오버.
+   * `anchor`는 **레이아웃 좌표**다(x = 누른 패의 가운데, top = 손패 상자의 위끝) — 팝오버는
+   * body 포털이라 `.own-area`의 transform 밖에 서므로 화면 좌표(getBoundingClientRect)를
+   * toLayoutPx로 되돌려 둔다(uiScale.ts). 아래 doomedNow가 이 상태를 읽으므로 먼저 선언한다
+   * (2026-09-25, docs/59 U12·U13).
+   */
+  const [armSub, setArmSub] = useState<{
+    tileId: number;
+    options: ActionOption[];
+    anchor: { x: number; top: number };
+  } | null>(null);
+  /*
    * 지금 짚어야 할 «사라지는 패» — 버튼/메뉴 hover가 올려 준 목록(doomedHint)이 기본이다.
    * 다만 분열을 무장한 채 쪼갤 패를 고르는 중이면 재료가 **그 대상에 따라 달라지므로**,
    * 손이 올라간 대상에 맞는 하나로 좁힌다 (`doomedTileIdsOf`의 targetTileId).
    */
   const doomedNow = useMemo<ReadonlySet<number>>(() => {
-    if (armedAug === "split_tile" && hoverId !== null) {
-      return new Set(doomedTileIdsOf(view, "split_tile", hoverId));
+    // 분할 팝오버가 열려 있으면 그 대상 기준으로 고정한다 — 손을 팝오버로 옮기는 순간
+    // hoverId가 풀려 확정 직전에 ✕가 사라졌다(2026-09-25, docs/59 U13).
+    if (armedAug === "split_tile") {
+      const t = armSub?.tileId ?? hoverId;
+      if (t !== null) return new Set(doomedTileIdsOf(view, "split_tile", t));
     }
     // 회수 — 무장하는 동안 내내 쯔모패에 ✕를 둔다. 무장 직후 hintNone이 hover 신호를
     // 걷으므로 여기서 따로 잡지 않으면 확정 전에 무엇을 잃는지 화면에서 사라진다.
@@ -21189,7 +21210,7 @@ function OwnArea(props: {
     // (2026-09-25, docs/59 U36).
     if (armedAug === "recall") return new Set(doomedTileIdsOf(view, "recall"));
     return doomedHint ?? new Set<number>();
-  }, [armedAug, hoverId, view, doomedHint]);
+  }, [armedAug, armSub, hoverId, view, doomedHint]);
   /*
    * 짚은 패 가운데 **회수 때문에** 짚힌 것 — 회수의 쯔모패는 사라지지 않고 내 바닥으로
    * 나가므로 이름을 따로 읽어 준다. 무장 중만 보면 ✦ 메뉴의 회수 줄 hover(무장 전)에서
@@ -21244,7 +21265,6 @@ function OwnArea(props: {
           : [...handPicks, id],
     );
   };
-  const [armSub, setArmSub] = useState<{ tileId: number; options: ActionOption[] } | null>(null);
 
   const displayIds = useMemo(() => {
     // 관전 시점에서는 **그 사람이 정한 배치**를 그대로 보여준다 —
@@ -21425,6 +21445,66 @@ function OwnArea(props: {
     // 이면투시의 첫 탭으로 읽혀, 한 번 누른 것이 곧바로 확정되지 않게(2026-09-25, docs/59 U01·U02).
     setArmedTileId(null);
   }, [armedAug]);
+
+  /*
+   * 변형 팝오버(armSub) 닫기 — Esc·팝오버 바깥 누르기·창 크기/스크롤 변화·새 프롬프트.
+   * 닫아도 **무장은 남는다**: 두세 개 중 고르다 마음을 바꾸면 곧바로 다른 패를 누르면 된다.
+   * 예전 전면 모달은 [바꾸지 않고 닫기] 버튼 하나로만 닫혔다(2026-09-25, docs/59 U12).
+   */
+  const armSubRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    setArmSub(null);
+  }, [props.promptSeq]);
+  useEffect(() => {
+    if (armSub === null) return;
+    const close = (): void => setArmSub(null);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || isTypingTarget(e.target)) return;
+      // 첫 Esc는 팝오버만 접는다 — 같은 키가 무장 해제까지 번지지 않게 여기서 멈춘다
+      e.stopPropagation();
+      close();
+    };
+    const onDown = (e: PointerEvent): void => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (t !== null && armSubRef.current?.contains(t) === true) return;
+      // 다른 후보 패를 누르면 그 패의 click이 팝오버를 옮긴다(여기서 먼저 닫으면 깜빡인다)
+      if (t?.closest(".hand-armable") != null) return;
+      close();
+    };
+    const onScroll = (e: Event): void => {
+      // 손패를 품은 상자가 굴렀을 때만 닫는다(앵커가 움직였다). 팝오버 안의 가로 스크롤이나
+      // 기록창의 자동 스크롤처럼 손패와 무관한 스크롤로 고르던 창이 사라지면 안 된다.
+      const t = e.target;
+      const hand = handRef.current;
+      if (t instanceof Node && t !== document && (hand === null || !t.contains(hand))) return;
+      close();
+    };
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [armSub !== null]);
+  /*
+   * 팝오버 가로 위치 — 누른 패 가운데에 두되 화면 좌우 8px 안으로 접는다. 폭은 그려 봐야
+   * 알므로 페인트 전에 한 번 재서 옮긴다(`width: max-content`라 위치가 폭을 바꾸지 않는다).
+   */
+  const [armSubLeft, setArmSubLeft] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = armSubRef.current;
+    if (armSub === null || el === null) {
+      setArmSubLeft(null);
+      return;
+    }
+    const half = toLayoutPx(el.getBoundingClientRect().width) / 2;
+    const v = layoutViewport();
+    setArmSubLeft(Math.min(Math.max(armSub.anchor.x, half + 8), v.w - half - 8));
+  }, [armSub]);
 
   // 상대를 정한 뒤 내 패에서 3장을 고르면 그 조합에 맞는 옵션을 제출한다.
   const pickSwapTile = (id: number): void => {
@@ -22472,41 +22552,75 @@ function OwnArea(props: {
             </button>
           </div>
         ) : null}
-        {/* 한 패에 변형 선택지가 여럿일 때(염색 무늬·연금술 ±1) — 실물 패 전→후를 보여주는
-            전용 모달(docs/10 §2a-1: 패를 고르는 증강은 후보 버튼 나열 금지) */}
-        {/* ⚠ 반드시 포털로 body에 붙인다. 이 모달만 `.own-area` 안에 있었는데
+        {/*
+          한 패에 변형 선택지가 여럿일 때(염색 무늬·연금술 ±1·분열·위조) — 누른 패 바로 위에
+          붙는 팝오버. 예전에는 화면 전체를 어둡게·흐리게 덮는 전면 모달이라, 3만을 3통/3삭 중
+          무엇으로 바꿀지 정하는 근거인 **나머지 손패**가 가려졌다(2026-09-25, docs/59 U12).
+          docs/10 §2a-1의 목적(후보를 글자 버튼이 아니라 실제 패 그림으로)은 그대로다 — 칸마다
+          **결과 패**를 그리고, 원래 패는 손패에서 들어 올린 채(`hand-sub-open`) 둔다.
+          모달이 아니므로 PickTimer·👁 보기 단추도 없다: `.own-area`의 PromptTimer가 그대로 보인다.
+        */}
+        {/* ⚠ 반드시 포털로 body에 붙인다. 이 창만 `.own-area` 안에 있었는데
             `.own-area`는 `transform: translateX(-50%)`를 갖고 있어 **position: fixed의
             컨테이닝 블록**이 된다 — 그래서 `inset: 0`이 화면이 아니라 손패 영역을 가리켜
             모달이 화면 아래쪽에 처박히고 아래가 잘렸다(2026-08-06 사용자 보고: 분열).
-            같은 클래스를 쓰는 다른 모달들은 `.own-area` 바깥이라 멀쩡했다. */}
+            팝오버의 좌표(anchor)도 그래서 화면 기준으로 잰다. */}
         {/* ⚠ `data-arm-zone`은 필수다. 무장 중에는 게임판 바깥을 누르면 무장이 풀리는데
-            (GameTable의 pointerdown 감시), 이 모달은 body로 포탈돼 `.own-area`의
+            (GameTable의 pointerdown 감시), 이 창은 body로 포탈돼 `.own-area`의
             arm-zone 밖에 있다 → 후보를 누르는 pointerdown이 먼저 무장을 풀고, 무장이
-            풀리면 armSub도 함께 비워져 **모달이 click 전에 사라졌다**. 그래서 후보가
+            풀리면 armSub도 함께 비워져 **창이 click 전에 사라졌다**. 그래서 후보가
             둘 이상인 위조·분열·염색에서 아무리 눌러도 골라지지 않았다
             (2026-08-07 사용자 보고: 선언 간파 — 새 탭에서 선택이 안 됨). */}
-        {armSub !== null ? createPortal(
-          <div className="rinshan-pick-overlay" data-arm-zone="1">
-            <div className="rinshan-pick-panel">
-              <PickTimer deadline={props.promptDeadline} />
-              {/* 선언 간파의 위조 — 제목이 증강 이름(«선언 간파»)이 되면서 «간파한 대기패로
-                  위조한다»는 맥락이 사라지므로 제목·부제에 그 몫을 적는다(2026-09-25, docs/59 U15) */}
-              <div className="rinshan-pick-title">
-                {armName}:{" "}
-                {armSub.options[0]?.type === "split_tile"
-                  ? "어떻게 나눌지 선택"
-                  : armSub.options[0]?.type === "peek_forge"
-                    ? "간파한 대기패 중 무엇으로 바꿀까요"
-                    : "무엇으로 바꿀지 선택"}
+        {armSub !== null ? (() => {
+          const subType = armSub.options[0]?.type;
+          // 선언 간파의 위조 — 제목이 증강 이름(«선언 간파»)이 되면서 «간파한 대기패로
+          // 위조한다»는 맥락이 사라지므로 머리 줄에 그 몫을 적는다(2026-09-25, docs/59 U15)
+          const title =
+            subType === "split_tile"
+              ? "어떻게 나눌까요"
+              : subType === "peek_forge"
+                ? "간파한 대기패 중 무엇으로 바꿀까요"
+                : "무엇으로 바꿀까요";
+          // 분열의 재료는 대상 패로만 정해지고 분할(a)과 무관하다(content tile_split pickMaterial) —
+          // 후보가 몇 개든 한 칸이면 된다. 서버 채널을 그대로 읽는다(2026-09-25, docs/59 U13).
+          const material =
+            subType === "split_tile" ? doomedTileIdsOf(view, "split_tile", armSub.tileId)[0] : undefined;
+          const x = armSubLeft ?? armSub.anchor.x;
+          return createPortal(
+            <div
+              ref={armSubRef}
+              className="arm-sub-pop"
+              data-arm-zone="1"
+              role="group"
+              aria-label={`${armName}: ${title}`}
+              style={
+                {
+                  left: x,
+                  top: armSub.anchor.top - ARM_SUB_POP_GAP,
+                  // 화면 끝에 접혀 옮겨졌어도 꼬리는 누른 패를 가리킨다
+                  "--arm-sub-caret": `${armSub.anchor.x - x}px`,
+                } as CSSProperties
+              }
+            >
+              <div className="arm-sub-pop-head">
+                <span className="arm-sub-pop-title">
+                  {armName}: {title}
+                </span>
+                <button
+                  className="arm-sub-pop-close"
+                  aria-label="바꾸지 않고 닫기"
+                  title="바꾸지 않고 닫기 (Esc)"
+                  onClick={() => setArmSub(null)}
+                >
+                  ✕
+                </button>
               </div>
-              <div className="rinshan-pick-sub">
-                {armSub.options[0]?.type === "split_tile"
-                  ? "고른 패가 어떤 두 장으로 갈라지는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."
-                  : armSub.options[0]?.type === "peek_forge"
-                    ? "고른 손패가 간파한 상대의 대기패 한 장으로 바뀝니다. 보라색 패가 새로 만들어지는 패입니다."
-                    : "고른 패가 어떻게 바뀌는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."}
-              </div>
-              <div className="rinshan-pick-tiles">
+              {material !== undefined && view.tiles[material] !== undefined ? (
+                <div className="arm-sub-pop-doomed">
+                  재료로 사라짐: <TileImg tile={view.tiles[material]} size="mini" />
+                </div>
+              ) : null}
+              <div className="arm-sub-pop-row">
                 {armSub.options.map((o, i) => {
                   // 분열은 결과가 **두 장**이라 morphedTile(한 장) 경로로는 그릴 수 없었다.
                   // 그래서 전부 ActionTiles 대체 경로로 떨어져 후보 버튼이 죄다 "원래 패"
@@ -22516,15 +22630,13 @@ function OwnArea(props: {
                   return (
                     <button
                       key={i}
-                      className="rinshan-pick-tile aug-morph-tile"
+                      className="arm-sub-pop-opt"
                       onClick={() => {
                         sel.submit(o);
                         setArmSub(null);
                       }}
                     >
-                      <span className="aug-morph">
-                        <TileImg tile={view.tiles[armSub.tileId]} size="hand" />
-                        <span className="aug-morph-arrow" aria-hidden="true">→</span>
+                      <span className="arm-sub-pop-tiles">
                         {pieces !== null ? (
                           <>
                             <TileImg tile={pieces[0]} size="hand" />
@@ -22536,18 +22648,15 @@ function OwnArea(props: {
                           <ActionTiles view={view} option={o} />
                         )}
                       </span>
-                      <span className="rinshan-pick-label">{optionDetail(view, o) || "이렇게 바꾸기"}</span>
+                      <span className="arm-sub-pop-label">{optionDetail(view, o) || "이렇게 바꾸기"}</span>
                     </button>
                   );
                 })}
               </div>
-              <button className="rinshan-pick-skip" onClick={() => setArmSub(null)}>
-                바꾸지 않고 닫기
-              </button>
-            </div>
-          </div>,
-          document.body,
-        ) : null}
+            </div>,
+            document.body,
+          );
+        })() : null}
         {myPrompt !== null ? (
           <>
             <ActionBar
@@ -22728,6 +22837,7 @@ function OwnArea(props: {
                         ? "선택됨. 한 번 더 누르면 확정"
                         : "선택됨. 한 번 더 누르면 버림"
                     : null,
+                  armSub?.tileId === id ? "바꿀 모양을 고르는 중. 위에 뜬 후보에서 고르기" : null,
                   redPreviewIds.has(id) ? "붉은 손길 미리보기: 적도라가 될 패" : null,
                   coachLocked ? "튜토리얼 진행 중이라 지금은 누를 수 없음" : null,
                   !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
@@ -22744,7 +22854,7 @@ function OwnArea(props: {
                 data-kind={tileKind === undefined ? undefined : kindKey(tileKind)}
                 className={`hand-tile${clickable ? " hand-clickable" : " hand-locked"}${
                   armedTileId === id ? " hand-armed" : ""
-                }${
+                }${armSub?.tileId === id ? " hand-sub-open" : ""}${
                   dimmed ? " hand-dimmed" : ""
                 }${
                   (props.riichiMode && riichi !== undefined) ||
@@ -22794,7 +22904,7 @@ function OwnArea(props: {
                  */
                 onFocus={() => setHoverId(id)}
                 onBlur={() => setHoverId((cur) => (cur === id ? null : cur))}
-                onClick={() => {
+                onClick={(e) => {
                   // 드래그로 재정렬/버리기를 한 직후 딸려온 click은 무시한다
                   if (Date.now() < suppressClickUntil.current) {
                     suppressClickUntil.current = 0;
@@ -22873,8 +22983,23 @@ function OwnArea(props: {
                         setArmedTileId(null);
                         sel.submit(opts[0]!);
                         setArmSub(null);
+                      } else if (armSub?.tileId === id) {
+                        // 열린 패를 한 번 더 누르면 접는다(무장은 그대로)
+                        setArmSub(null);
                       } else {
-                        setArmSub({ tileId: id, options: opts });
+                        /*
+                         * 누른 패 바로 위에 팝오버를 붙인다(2026-09-25, docs/59 U12). 세로 기준은
+                         * 이 패가 아니라 **손패 상자 위끝**이다 — 마우스 hover는 패를 20px 들어
+                         * 올리고(:hover) 터치는 안 들어 올려서, 패의 rect로 재면 기기마다 팝오버
+                         * 높이가 달라지고 들어 올린 패(`hand-sub-open`)를 덮었다.
+                         */
+                        const r = e.currentTarget.getBoundingClientRect();
+                        const box = handRef.current?.getBoundingClientRect() ?? r;
+                        setArmSub({
+                          tileId: id,
+                          options: opts,
+                          anchor: { x: toLayoutPx(r.left + r.width / 2), top: toLayoutPx(box.top) },
+                        });
                       }
                     } else {
                       // 대상이 아닌 패를 누르면(또는 상대·바닥 클릭형이면) 선택 모드 취소

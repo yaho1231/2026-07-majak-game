@@ -3158,6 +3158,121 @@ button {
   max-width: 100%;
 }
 
+/* ── 한 패의 변형 고르기 — 누른 손패 바로 위에 붙는 팝오버 (2026-09-25, docs/59 U12) ──
+   전면 모달(.rinshan-pick-overlay: 어둡게 + blur)을 대신한다. 두세 개 중 하나를 고르는
+   작은 결정에 화면을 덮으면 판단 근거인 나머지 손패가 가려진다 — 그래서 배경·흐림이 없다.
+   body 포털이라(FIXED_SURFACE_NOTE) left/top은 App.tsx가 레이아웃 좌표로 넣고, 여기서는
+   그 점을 아래 가운데로 삼아 위로 세운다. `body:has(.rinshan-pick-overlay)` 계열(퀵토글
+   숨김 등)과 👁 보기 단추는 이 클래스에 걸리지 않는다 — 판이 그대로 보이므로 의도다. */
+.arm-sub-pop {
+  position: fixed;
+  z-index: 120;
+  transform: translate(-50%, -100%);
+  /* 폭이 left에 따라 줄지 않게(화면 끝에서 접혀 줄바꿈되지 않게) 내용 폭으로 둔다 */
+  width: max-content;
+  max-width: calc(100cqw - 16px);
+  box-sizing: border-box;
+  /* 손패보다 조금 작게 — 폰 세로(375px)에서 분열 4후보(8장)가 한 줄에 든다 */
+  --hand-w: clamp(30px, 3.2cqw, 52px);
+  padding: 6px 8px 8px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(74, 58, 34, 0.98), rgba(58, 45, 26, 0.98));
+  border: 1px solid rgba(207, 174, 118, 0.75);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 16px rgba(184, 151, 92, 0.3);
+  color: #f3e3c0;
+}
+/* 꼬리 — 화면 끝에 접혀 옮겨져도 누른 패를 가리킨다(--arm-sub-caret = 패 가운데 - 팝오버 가운데) */
+.arm-sub-pop::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: clamp(14px, calc(50% + var(--arm-sub-caret, 0px)), calc(100% - 14px));
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: rgba(207, 174, 118, 0.75);
+  pointer-events: none;
+}
+.arm-sub-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.arm-sub-pop-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arm-sub-pop-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(243, 227, 192, 0.85);
+  font-size: 12px;
+  cursor: pointer;
+}
+.arm-sub-pop-close:hover,
+.arm-sub-pop-close:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+}
+/* 분열 — 어느 분할을 골라도 같은 패가 재료로 탄다. 손패의 ✕(.hand-doomed)와 같은 색 계열 */
+.arm-sub-pop-doomed {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #f2b8a8;
+}
+/* 후보는 한 줄 — 넘치면(위조의 다면 대기 등) 가로로 스크롤한다 */
+.arm-sub-pop-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.arm-sub-pop-opt {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 5px 4px;
+  border-radius: 9px;
+  border: 1px solid rgba(207, 174, 118, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.arm-sub-pop-opt:hover,
+.arm-sub-pop-opt:focus-visible {
+  border-color: rgba(240, 200, 106, 0.95);
+  background: rgba(240, 200, 106, 0.14);
+}
+.arm-sub-pop-tiles {
+  display: flex;
+  gap: 2px;
+}
+.arm-sub-pop-tiles .tile-face {
+  flex: none;
+}
+.arm-sub-pop-label {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgba(243, 227, 192, 0.92);
+}
+
 /* ── 손패 전체 미리보기형 선택 모달 (단색 세계·왕패의 주인·붉은 손길·이면투시) ── */
 .aug-pick-wide { max-width: min(96cqw, 1080px); }
 .aug-pick-rows {
@@ -18245,6 +18360,13 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
 .hand-armed {
   transform: translateY(-14px);
   z-index: 3;
+}
+/* 변형 팝오버(armSub)가 열린 원래 패 — 팝오버가 결과 패만 그리므로 «무엇에서» 바뀌는지는
+   손패의 이 패가 말한다. 들림 14px은 App.tsx ARM_SUB_POP_GAP에 들어 있다 (2026-09-25, docs/59 U12) */
+.hand-sub-open {
+  transform: translateY(-14px);
+  z-index: 3;
+  filter: drop-shadow(0 0 8px rgba(240, 200, 106, 0.75));
 }
 /* ⚠ 이 뱃지는 `.hand-armed::after` 로 두면 안 된다 — 한 요소의 ::after는 하나뿐인데
    마우스 hover 금테(`.hand-clickable:hover::after`)가 같은 자리를 쓴다. 특이도가 높은
