@@ -843,6 +843,8 @@ const ACTION_VERB: Record<string, string> = {
   foresight_order: "패산 재배열",
   future_arm: "미래 보기",
   future_exchange: "버릴 패 고르기",
+  // 모달이 걷히자 무장형 기본 부제(«손패 고르기»)로 떨어졌다 — 왕패 쪽을 고른다는 게 빠진다(U04)
+  dw_swap: "왕패와 맞바꾸기",
   swap3: "상대 지정",
   swap3_give: "넘길 3장 고르기",
   swap3_take: "가져올 3장 고르기",
@@ -1232,6 +1234,11 @@ const ARM_MODE: Record<string, ArmMode> = {
   //   액션이라 대상을 한 번 가리키는 것이 확인 구실을 한다(예전엔 ✦ 누르는 즉시 해체됐다)
   //   (2026-09-25, docs/59 U31)
   dissolve_meld: "own-meld",
+  // 왕패의 주인 — 판 손패를 복제한 «내 손패» 줄 + 왕패 14칸을 전면 모달에 그리던 것을, 손패는 판에서
+  //   직접 누르고(들어 올림) 판에 없는 왕패만 손패 위 도킹 패널(DeadWallDock)에 편다. 손패 한 장에 후보가
+  //   14개라 armedByTile로 풀면 armSub 14지선다로 새므로, OwnArea 손패 클릭이 누명처럼 먼저 가로챈다
+  //   (2026-09-25, docs/59 U04 — §2 원칙 2)
+  dw_swap: "hand",
 };
 
 /**
@@ -1307,7 +1314,8 @@ const FORCED_ARM_TYPES = new Set([
 /**
  * 무장형 옵션 하나가 **손패의 어느 패를 누르면** 골라지는가 — payload 모양이 타입마다 다르다.
  * 전역으로 handTileId까지 읽게 하지 않는다: 왕패의 주인(dw_swap)은 손패 한 장에 후보가 14개라,
- * 무장형이 되는 순간 armSub 14지선다로 샌다(2026-09-25, docs/59 U01).
+ * 여기서 풀면 armSub 14지선다로 샌다(2026-09-25, docs/59 U01). dw_swap은 무장형이지만 이 함수를
+ * 거치지 않고 OwnArea 손패 클릭이 먼저 가로챈다(U04 — 손패는 들어 올리기만, 짝은 왕패 칸에서).
  */
 function armTileIdsOf(
   o: ActionOption,
@@ -1451,6 +1459,8 @@ const ARM_PROMPT: Record<string, string> = {
   frame_discard: "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요",
   ura_swap: "뒷도라 표시패 자리로 보낼 손패를 클릭하세요. 지금 표시패는 내 손으로 옵니다",
   red_touch: "적도라로 만들 숫자의 패를 누르세요. 게임 끝까지 그 숫자는 내 적도라입니다",
+  // 순서를 강제하지 않는다 — 손패를 먼저 눌러도, 위에 펼친 왕패 칸을 먼저 눌러도 된다(docs/59 U04)
+  dw_swap: "내 손패와 위의 왕패 칸을 하나씩 눌러 맞바꿀 짝을 정하세요",
   // 옛 모달 문구를 옮겼다 — 나머지 두 장의 행방은 누르기 전에 알아야 한다(docs/59 U03)
   future_exchange:
     "빛나는 3장 중 바닥에 버릴 패를 클릭하세요. 나머지 2장은 패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다",
@@ -1598,7 +1608,8 @@ const MODAL_PICK_TYPES = new Set<string>([
   // 2026-07-22 (52차) 신규 — 전부 "무엇을 고르는지 패로 보여야 하는" 액션이다
   // (정적의 손 silent_take는 실제 바닥패 클릭[opp-river]으로 전환 — 여기서 제외)
   // (예지 foresight_order는 2026-07-25 발동[reveal]→드래그 재배열 전용 흐름으로 전환 — 여기서 제외)
-  "dw_swap", // 왕패 14장 ↔ 내 손패 1장
+  // (왕패의 주인 dw_swap은 2026-09-25 실제 손패 클릭 + 손패 위 왕패 도킹 패널[DeadWallDock]로 전환 —
+  //  여기서 제외. 판에 없는 왕패만 패널로 펴고 내 손패는 다시 그리지 않는다, docs/59 U04)
   // (붉은 손길·이면투시 바꿔치기는 2026-09-25 실제 손패 클릭[ARM_MODE hand]으로 전환 — 여기서 제외.
   //  판에 보이는 내 손패를 모달에 다시 그리지 않는다, docs/59 §2 원칙 2)
   "picky_unify", // 편식 — 단색 세계와 같은 무늬 선택 모달
@@ -1962,6 +1973,25 @@ interface SelectionCtx {
   oppAugArmable: (pid: string) => boolean;
   /** own-meld(파혼): 내 i번째 후로가 지금 무장 액션의 대상이면 그 옵션(아니면 undefined). */
   meldOptionFor: (meldIndex: number) => ActionOption | undefined;
+  /**
+   * 왕패의 주인(dw_swap) — 짝을 지을 손패·왕패 칸과 예약한 쌍. 손패(OwnArea)와 왕패 도킹 패널
+   * (DeadWallDock)이 한 상태를 봐야 해서 여기 둔다(2026-09-25, docs/59 U04). 순서를 강제하지 않으므로
+   * 먼저 누른 쪽 하나만 서 있다: 들어 올린 손패(dwHand) 또는 먼저 누른 왕패 칸(dwDead, deadIndex).
+   */
+  dwHand: number | null;
+  dwDead: number | null;
+  /** 예약한 교환 쌍 — [이대로 교환]에서 dwConfirm이 프롬프트마다 하나씩 보낸다 */
+  dwPairs: readonly DwPair[];
+  /** 이번 국 남은 교환 횟수(예약 상한) */
+  dwRemaining: number;
+  /**
+   * 손패·왕패 칸 누르기 — 예약한 쪽이면 그 쌍을 빼고, 반대쪽이 서 있으면 짝을 짓고, 아니면 이쪽을 세운다.
+   * 못 누르는 까닭을 돌려준다: "full"(남은 횟수만큼 다 골랐다) · "none"(후보가 아니다) · null(처리됨).
+   */
+  dwClickHand: (id: number) => "full" | "none" | null;
+  dwClickDead: (idx: number) => "full" | "none" | null;
+  /** 예약한 쌍을 교환 큐로 넘기고 무장을 푼다 */
+  dwConfirm: () => void;
 }
 
 /**
@@ -1997,6 +2027,13 @@ const NO_SELECTION: SelectionCtx = {
   riverTargetOptionFor: () => undefined,
   oppAugArmable: () => false,
   meldOptionFor: () => undefined,
+  dwHand: null,
+  dwDead: null,
+  dwPairs: [],
+  dwRemaining: 0,
+  dwClickHand: () => null,
+  dwClickDead: () => null,
+  dwConfirm: () => {},
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -3159,20 +3196,47 @@ function deadWallSlotInfo(
   idx: number,
   flipped: number,
   size: number,
-): { label: string; cls: string } {
+): { label: string; short: string; cls: string } {
   const first = size - INDICATOR_BLOCK; // 표시패 블록 시작 = 남은 영상패 장수
+  /*
+   * `short`는 칸 안에 상시로 붙는 짧은 이름표다(영상1 / 도라1✓ / 도라2 / 뒷1). 예전엔 자리의 정체가
+   * `title` 툴팁에만 있어 터치에서는 어느 칸이 도라 표시패인지 볼 길이 없었다(2026-09-25, docs/59 U05).
+   * **자리 이름만** 적는다 — 가려진 도라가 걸린 판에서 표시패의 정체를 글자로 새게 하지 않는다.
+   */
   if (idx < first) {
-    return { label: idx === 0 ? "다음 영상패" : `${idx + 1}번째 영상패`, cls: "rinshan" };
+    return {
+      label: idx === 0 ? "다음 영상패" : `${idx + 1}번째 영상패`,
+      short: `영상${idx + 1}`,
+      cls: "rinshan",
+    };
   }
   const off = idx - first;
   if (off % 2 === 0) {
     const n = off / 2 + 1;
     return n <= flipped
-      ? { label: `도라 표시 ${n} (공개됨)`, cls: "dora-open" }
-      : { label: `도라 표시 ${n} (깡 ${n - 1}회 후 공개)`, cls: "dora" };
+      ? { label: `도라 표시 ${n} (공개됨)`, short: `도라${n}✓`, cls: "dora-open" }
+      : { label: `도라 표시 ${n} (깡 ${n - 1}회 후 공개)`, short: `도라${n}`, cls: "dora" };
   }
   const n = (off - 1) / 2 + 1;
-  return { label: `뒷도라 ${n}`, cls: "ura" };
+  return { label: `뒷도라 ${n}`, short: `뒷${n}`, cls: "ura" };
+}
+
+/** 왕패의 주인 — 교환 한 쌍(내 손패 ↔ 왕패 자리). 서버 payload와 같은 모양이다. */
+interface DwPair {
+  handTileId: number;
+  deadIndex: number;
+}
+
+/**
+ * 왕패의 주인 — 이번 국에 남은 교환 횟수, 한 번에 예약할 수 있는 쌍의 상한이다.
+ * ⚠ 값이 없을 때의 기본은 **2**(발동 1회 = 최대 2장)다. 예전 기본값 1은,
+ * 이번 국의 ROUND_STARTED 리액션이 아직 이 채널을 싣지 않은 화면(증강을 방금
+ * 받은 국·재접속 직후)에서 «2장까지»를 조용히 1장으로 깎았다. 후보가 떠 있다는
+ * 것 자체가 서버가 교환을 허락했다는 뜻이고, 상한의 최종 판정은 서버 validate다.
+ */
+function dwRemainingOf(view: PlayerView): number {
+  const v = view.augmentView[`dead_wall_master:remaining:${view.playerId}`];
+  return typeof v === "number" ? v : 2;
 }
 
 /**
@@ -16333,6 +16397,10 @@ function useSelection(
   const [handPicks, setHandPicks] = useState<number[]>([]);
   // 누명 2단계 — 손패를 고른 뒤 상대 바닥을 고른다
   const [frameTile, setFrameTile] = useState<number | null>(null);
+  // 왕패의 주인 — 먼저 누른 쪽(손패 또는 왕패 칸)과 예약한 쌍(SelectionCtx.dwHand 주석)
+  const [dwHand, setDwHand] = useState<number | null>(null);
+  const [dwDead, setDwDead] = useState<number | null>(null);
+  const [dwPairs, setDwPairs] = useState<DwPair[]>([]);
 
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
   /*
@@ -16366,7 +16434,9 @@ function useSelection(
       setArmedType(null);
       setHandPicks([]);
       setFrameTile(null);
+      clearDw();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armedState, myPrompt]);
 
   // 강제 선택이 시작되면 그 전에 걸어 둔 무장과 리치 모드를 걷는다 — 강제 무장이 끝난 뒤
@@ -16384,8 +16454,16 @@ function useSelection(
   //  ARM_MODE.swap3가 "opp"라 도달할 수 없었고, 넘길 3장은 OwnArea의 swapGiveInHand가 맡는다 — docs/59 U11)
   useEffect(() => {
     if (armedType !== "frame_discard") setFrameTile(null);
+    if (armedType !== "dw_swap") clearDw();
     setHandPicks([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armedType]);
+
+  function clearDw(): void {
+    setDwHand(null);
+    setDwDead(null);
+    setDwPairs([]);
+  }
 
   const exitRiichiMode = (): void => onRiichiMode(false);
 
@@ -16398,6 +16476,7 @@ function useSelection(
     setArmedType((cur) => (type === null ? null : cur === type ? null : type));
     setHandPicks([]);
     setFrameTile(null);
+    clearDw();
   };
 
   const submit = (o: ActionOption): void => {
@@ -16405,6 +16484,111 @@ function useSelection(
     setArmedType(null);
     setHandPicks([]);
     setFrameTile(null);
+    clearDw();
+  };
+
+  // ── 왕패의 주인 — 여러 쌍을 한 번에 고른 뒤 차례로 제출한다 ──
+  // (2026-09-25, docs/59 U04: ActiveAugmentControl의 모달에서 옮겨 왔다. 손패와 도킹 패널이 함께
+  //  예약을 쌓고, 확정도 패널이 하므로 큐가 두 곳이 보는 이 훅에 있어야 한다. 동작은 그대로다.)
+  // 서버는 교환 1회 = 액션 1개라, 고른 쌍을 **프롬프트가 갱신될 때마다 하나씩** 보낸다.
+  // (연달아 보내면 두 번째가 갱신 전 프롬프트에 실려 거부된다 — 보낸 프롬프트를 ref로 기억해 막는다.
+  //  봇 중복 컷인 대응 2026-08-07 — 같은 순의 dw_swap 2개가 한 번에 나가지 않는다.)
+  const dwRemaining = dwRemainingOf(view);
+  const [dwQueue, setDwQueue] = useState<DwPair[]>([]);
+  const dwSentPromptRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (dwQueue.length === 0) return;
+    if (myPrompt === null) return;
+    if (dwSentPromptRef.current === myPrompt) return; // 이 프롬프트에는 이미 보냈다
+    const head = dwQueue[0]!;
+    const opt = myPrompt.options.find((o) => {
+      if (o.type !== "dw_swap") return false;
+      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+      return p.handTileId === head.handTileId && p.deadIndex === head.deadIndex;
+    });
+    if (opt === undefined) {
+      // 남은 교환이 없거나 상황이 바뀌어 더는 못 보낸다 — 조용히 접는다.
+      setDwQueue([]);
+      return;
+    }
+    dwSentPromptRef.current = myPrompt;
+    submit(opt);
+    setDwQueue((cur) => cur.slice(1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dwQueue, myPrompt]);
+  /*
+   * **국이 넘어가면 큐를 비운다.**
+   *
+   * 큐를 접는 조건이 «프롬프트가 왔는데 그 쌍이 후보에 없다» 하나뿐이라, 남은 채로
+   * `myPrompt`가 null이 되면(턴 종료·국 전환) 그대로 살아남았다. 다음 국의 프롬프트에
+   * 우연히 같은 `handTileId`/`deadIndex` 쌍이 서면 **지시하지 않은 교환이 자동으로
+   * 나간다.** 실제로 그 우연이 닿는지는 타일 id 재사용에 달렸는데, «닿지 않기를
+   * 바라는» 것은 방어가 아니다 — 국 경계에서 확실히 끊는다.
+   */
+  const dwRoundKey = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
+  useEffect(() => {
+    setDwQueue([]);
+    dwSentPromptRef.current = null;
+  }, [dwRoundKey]);
+
+  /** 이 쌍이 실제 후보로 와 있는가 (합법성 최종 판정은 서버 validate) */
+  const dwHasOpt = (handTileId: number, deadIndex: number | null): boolean =>
+    armedType === "dw_swap" &&
+    armedOptions.some((o) => {
+      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+      return p.handTileId === handTileId && (deadIndex === null || p.deadIndex === deadIndex);
+    });
+  const dwHasDeadOpt = (deadIndex: number): boolean =>
+    armedType === "dw_swap" &&
+    armedOptions.some((o) => (o.payload as { deadIndex?: unknown }).deadIndex === deadIndex);
+  /*
+   * 순서를 강제하지 않는다(2026-09-25, docs/59 U04). 예전 모달은 손패를 고르기 전까지 왕패 14칸을
+   * 전부 disabled로 흐려 두어, 이 증강의 핵심 판단 재료(무엇을 가져올지)가 처음에 흐리게 떴다.
+   * 이제 어느 쪽을 먼저 눌러도 되고, 반대쪽이 서 있으면 그 자리에서 짝이 지어진다.
+   */
+  const dwClickHand = (id: number): "full" | "none" | null => {
+    if (armedType !== "dw_swap") return "none";
+    if (dwPairs.some((p) => p.handTileId === id)) {
+      setDwPairs((cur) => cur.filter((p) => p.handTileId !== id));
+      return null;
+    }
+    if (dwPairs.length >= dwRemaining) return "full";
+    if (dwDead !== null && dwHasOpt(id, dwDead)) {
+      setDwPairs((cur) => [...cur, { handTileId: id, deadIndex: dwDead }]);
+      setDwDead(null);
+      setDwHand(null);
+      return null;
+    }
+    if (!dwHasOpt(id, null)) return "none";
+    setDwHand((cur) => (cur === id ? null : id));
+    setDwDead(null);
+    return null;
+  };
+  const dwClickDead = (idx: number): "full" | "none" | null => {
+    if (armedType !== "dw_swap") return "none";
+    if (dwPairs.some((p) => p.deadIndex === idx)) {
+      setDwPairs((cur) => cur.filter((p) => p.deadIndex !== idx));
+      return null;
+    }
+    if (dwPairs.length >= dwRemaining) return "full";
+    if (dwHand !== null && dwHasOpt(dwHand, idx)) {
+      setDwPairs((cur) => [...cur, { handTileId: dwHand, deadIndex: idx }]);
+      setDwHand(null);
+      setDwDead(null);
+      return null;
+    }
+    if (!dwHasDeadOpt(idx)) return "none";
+    setDwDead((cur) => (cur === idx ? null : idx));
+    setDwHand(null);
+    return null;
+  };
+  // [이대로 교환] — 큐로 넘기고 무장을 푼다. 강제 선택 가드(arm)는 거치지 않는다: dw_swap이 무장돼
+  // 있다는 것 자체가 강제 선택 중이 아니라는 뜻이다(강제 선택이 시작되면 위 effect가 무장을 걷는다)
+  const dwConfirm = (): void => {
+    if (armedType !== "dw_swap" || dwPairs.length === 0) return;
+    setDwQueue(dwPairs);
+    setArmedType(null);
+    clearDw();
   };
 
   // 누명: 고른 손패를 이 상대의 바닥에 놓는 옵션 — 손패를 아직 안 골랐으면 없다.
@@ -16545,6 +16729,13 @@ function useSelection(
     setFrameTile,
     riverTargetOptionFor,
     oppAugArmable,
+    dwHand,
+    dwDead,
+    dwPairs,
+    dwRemaining,
+    dwClickHand,
+    dwClickDead,
+    dwConfirm,
     meldOptionFor,
   };
 }
@@ -21849,6 +22040,153 @@ function foresightPeekOf(av: Record<string, unknown>): TileKind[] {
  * - 밑장빼기는 예약할 수 있을 때 태그와 밑장 칸이 버튼이 된다(docs/59 U35). 줄 전체가 아니라
  *   거기만 — 손패 바로 위라 폰에서 잘못 누르지 않게 히트 영역을 좁힌다.
  */
+/** 왕패의 주인 — 남은 횟수만큼 짝을 다 고른 뒤 더 누를 때의 안내(손패·왕패 칸 공통) */
+const DW_FULL_HINT = "남은 교환 횟수만큼 골랐습니다. [이대로 교환]을 누르거나 고른 패를 다시 눌러 빼세요";
+
+/**
+ * 왕패의 주인 — 손패 위 **비차단** 도킹 패널. 판에 없는 왕패 14칸만 여기 펴고, 내 손패는 판에서
+ * 직접 누른다(2026-09-25, docs/59 U04 · §2 원칙 2). 예전 전면 모달은 판 손패의 복제(«내 손패» 줄)와
+ * 왕패를 함께 그려 누를 패가 약 28개였고, 블러가 실제 손패를 가렸다.
+ *
+ * - 실제 왕패 배치를 흉내 낸다: 영상패 칸과 표시패 칸을 각각 2단(열 우선)으로 쌓는다. 표시패 블록은
+ *   짝수째가 도라 표시, 그다음이 짝이 되는 뒷도라라 열 우선 2단이면 **도라가 위, 뒷도라가 아래**에 선다.
+ *   자리는 deadWallSlotInfo가 **뒤에서부터** 센다 — 상수 인덱스를 쓰지 않는다(docs/10).
+ * - 깡으로 빠진 영상패는 빈 칸으로 남겨 원래 14칸 배열을 유지한다(rinshanSpentOf, docs/10 규약).
+ * - 칸마다 짧은 자리 이름(영상1·도라1✓·뒷1)을 상시로 붙인다 — title만으로는 터치·스크린리더에서
+ *   읽히지 않았다(U05). 자리 이름만 적고 패 그림은 뷰가 준 것만 그린다(가려진 도라가 새지 않게).
+ * - 순서를 강제하지 않는다: 왕패 칸을 먼저 누르면 그 칸과 짝이 되는 손패만 빛난다.
+ * - 예약 쌍·남은 횟수·[이대로 교환]·[취소]가 여기 있다. 확정 뒤 프롬프트마다 하나씩 보내는 큐는
+ *   useSelection이 맡는다(docs/10 «여러 쌍을 한 번에», 2026-08-07 봇 중복 컷인 대응).
+ *
+ * 무장 중 판 바깥 pointerdown이 무장을 풀므로 data-arm-zone을 단다(.own-area 안이라 겹쳐도 무해).
+ */
+function DeadWallDock(props: {
+  view: PlayerView;
+  /** 증강 이름(augActionName) */
+  name: string;
+  onToast?: ((msg: string) => void) | undefined;
+}): JSX.Element {
+  const { view, name } = props;
+  const sel = useContext(SelectionContext);
+  const deadWallIds = view.zones["deadWall"]?.tileIds ?? [];
+  const size = deadWallSizeOf(view);
+  const flipped = flippedIndicatorCount(view);
+  const first = size - INDICATOR_BLOCK; // 표시패 블록 시작 = 남은 영상패 장수
+  const remaining = sel.dwRemaining;
+  const pairs = sel.dwPairs;
+  const full = pairs.length >= remaining;
+  const stagedDead = new Set(pairs.map((p) => p.deadIndex));
+  // 후보가 서 있는 왕패 자리 · 들어 올린 손패와 짝이 되는 자리
+  const deadCands = new Set<number>();
+  const pairOk = new Set<number>();
+  for (const o of sel.armedOptions) {
+    const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+    if (typeof p.deadIndex !== "number") continue;
+    deadCands.add(p.deadIndex);
+    if (sel.dwHand !== null && p.handTileId === sel.dwHand) pairOk.add(p.deadIndex);
+  }
+  const answer = (r: "full" | "none" | null): void => {
+    if (r === null) {
+      sfx.pick();
+      return;
+    }
+    haptics.reject();
+    props.onToast?.(r === "full" ? DW_FULL_HINT : `이 자리는 ${name} 대상이 아닙니다`);
+  };
+  const hint = full
+    ? "고를 수 있는 만큼 다 골랐습니다. [이대로 교환]을 누르세요"
+    : sel.dwHand !== null
+      ? `${formatTile(view.tiles[sel.dwHand])}와(과) 바꿀 왕패 칸을 누르세요. 도라 표시패 자리를 고르면 도라가 바뀝니다`
+      : sel.dwDead !== null
+        ? "이 칸과 바꿀 내 손패를 누르세요"
+        : (ARM_PROMPT["dw_swap"] ?? "");
+  const cell = (tileId: number, idx: number): JSX.Element => {
+    const slot = deadWallSlotInfo(idx, flipped, size);
+    const staged = stagedDead.has(idx);
+    const on = sel.dwDead === idx;
+    // 누를 수는 있지만 지금 짝이 안 되는 칸 — 흐림만(예전처럼 disabled로 막지 않는다, U04)
+    const off =
+      !staged && !on && (full || !deadCands.has(idx) || (sel.dwHand !== null && !pairOk.has(idx)));
+    const tile = view.tiles[tileId];
+    return (
+      <button
+        key={tileId}
+        type="button"
+        className={`aug-pick-tile rinshan-slot-${slot.cls}${on ? " aug-pick-tile-on" : ""}${
+          staged ? " aug-pick-tile-staged" : ""
+        }${off ? " dw-dock-off" : ""}`}
+        aria-pressed={on || staged}
+        aria-label={`${slot.label}${tile !== undefined ? ` ${formatTile(tile)}` : ""}${
+          staged ? ". 교환 예약됨, 누르면 취소" : on ? ". 선택됨, 바꿀 손패를 누르세요" : ""
+        }`}
+        title={staged ? `${slot.label}: 교환 예약됨. 누르면 취소합니다` : slot.label}
+        onClick={() => answer(sel.dwClickDead(idx))}
+      >
+        <TileImg tile={tile} size="mini" />
+        <span className="aug-pick-slot-label">{slot.short}</span>
+      </button>
+    );
+  };
+  return (
+    <div className="dw-dock" data-arm-zone="1" role="group" aria-label={`${name}: 왕패`}>
+      <div className="dw-dock-text">
+        <b>🏯 {name}</b> 남은 교환 {remaining}회 · {hint}
+      </div>
+      <div className="dw-dock-body">
+        <div className="dw-dock-wall">
+          <div className="dw-dock-block">
+            <span className="dw-dock-tag">영상패</span>
+            <div className="dw-dock-grid">
+              {/* 깡으로 빠져나간 영상패 자리 — 빈 칸으로 남겨 원래 14칸 배열을 유지한다 */}
+              {Array.from({ length: rinshanSpentOf(view) }, (_v, i) => (
+                <span
+                  key={`spent-${i}`}
+                  className="aug-pick-tile aug-pick-tile-spent"
+                  title="깡으로 사용된 영상패 자리 (보충되지 않습니다)"
+                  aria-hidden="true"
+                />
+              ))}
+              {deadWallIds.map((tileId, idx) => (idx < first ? cell(tileId, idx) : null))}
+            </div>
+          </div>
+          <div className="dw-dock-block">
+            <span className="dw-dock-tag">도라 표시 · 뒷도라</span>
+            <div className="dw-dock-grid">
+              {deadWallIds.map((tileId, idx) => (idx >= first ? cell(tileId, idx) : null))}
+            </div>
+          </div>
+        </div>
+        <div className="dw-dock-side">
+          {pairs.length > 0 ? (
+            <div className="dw-dock-pairs" aria-label="교환 예약">
+              {pairs.map((p) => (
+                <span key={p.handTileId} className="aug-pick-pair">
+                  <TileImg tile={view.tiles[p.handTileId]} size="mini" />
+                  <span className="aug-morph-arrow" aria-hidden="true">→</span>
+                  <TileImg tile={view.tiles[deadWallIds[p.deadIndex] ?? -1]} size="mini" />
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="dw-dock-actions">
+            <button
+              type="button"
+              className="arm-hint-confirm"
+              disabled={pairs.length === 0}
+              onClick={sel.dwConfirm}
+            >
+              이대로 교환 ({pairs.length}장)
+            </button>
+            <button type="button" className="arm-hint-cancel" onClick={() => sel.arm(null)}>
+              취소
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WallPeekRow(props: {
   view: PlayerView;
   foresight: {
@@ -22393,6 +22731,31 @@ function OwnArea(props: {
   }, [armedAug, myPrompt, rawHand, view.tiles]);
 
   /*
+   * 왕패의 주인 — 손패 id → 짝이 되는 왕패 자리들. armedByTile로 풀지 않는다(손패당 후보 14개라
+   * armSub로 샌다 — armTileIdsOf 주석). 손패 클릭은 아래 무장 분기보다 먼저 가로채 들어 올리기만 하고,
+   * 짝은 손패 위 도킹 패널(DeadWallDock)에서 짓는다(2026-09-25, docs/59 U04).
+   */
+  const dwArmed = armedAug === "dw_swap";
+  const dwHandCands = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    if (!dwArmed) return map;
+    for (const o of sel.armedOptions) {
+      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+      if (typeof p.handTileId !== "number" || typeof p.deadIndex !== "number") continue;
+      const cur = map.get(p.handTileId) ?? new Set<number>();
+      cur.add(p.deadIndex);
+      map.set(p.handTileId, cur);
+    }
+    return map;
+  }, [dwArmed, sel.armedOptions]);
+  const dwStagedHand = new Set(sel.dwPairs.map((p) => p.handTileId));
+  /** 지금 누를 수 있는 손패 — 예약한 패(누르면 취소)·먼저 누른 왕패 칸과 짝이 되는 패, 칸이 없으면 후보 전부 */
+  const dwHandArmable = (id: number): boolean =>
+    dwStagedHand.has(id) ||
+    (sel.dwPairs.length < sel.dwRemaining &&
+      (sel.dwDead !== null ? dwHandCands.get(id)?.has(sel.dwDead) === true : dwHandCands.has(id)));
+
+  /*
    * 손패 무장 게이트의 «둘째 탭»인가 — 들어 올린 그 패를 다시 눌렀을 때. 종류 지목형(스파이·소환)은
    * 같은 종류의 다른 장도 **같은 대표 옵션**을 내므로(위 armedByTile) 그 장을 눌러도 둘째 탭이다.
    * tileId로만 비교하면 같은 그림 두 장을 번갈아 누를 때 들어 올림만 옮겨 가 세 번을 눌러야
@@ -22714,7 +23077,8 @@ function OwnArea(props: {
       // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
       // 등가교환 참고 줄(.swap3-reveal-strip)도 상대 지정~교환 끝까지만 뜨는 줄이다 — 빼지 않으면
       // 뜨고 질 때마다 보드가 그 높이만큼 줄었다 커진다(W2 regression-1).
-      if (!el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip")) continue;
+      // 왕패의 주인 도킹 패널(.dw-dock)도 그 국 첫 순의 무장 동안만 뜬다(docs/59 U04)
+      if (!el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip, .dw-dock")) continue;
       /*
        * 흐름 밖으로 나간 줄은 **빼면 안 된다** — `area.offsetHeight`에 애초에 들어
        * 있지 않으므로 한 번 더 빼면 띠가 그만큼 얇아지고, 그만큼 보드가 아래로 자라
@@ -23818,6 +24182,9 @@ function OwnArea(props: {
               취소
             </button>
           </div>
+        ) : armedAug === "dw_swap" ? (
+          // 왕패의 주인 — 안내·[이대로 교환]·[취소]는 도킹 패널(DeadWallDock)이 함께 든다(docs/59 U04)
+          null
         ) : armedAug !== null ? (
           <div className="arm-hint">
             <span className="arm-hint-text">
@@ -23980,6 +24347,12 @@ function OwnArea(props: {
             />
           </>
         ) : null}
+        {/* 왕패의 주인 — 판에 없는 왕패만 손패 위에 편다. 잠깐 뜨는 줄이라 --own-band 실측에서 빼고
+            CSS order:-1로 이름표 줄 위에 선다(등가교환 참고 줄과 같은 규약 — 뜨고 질 때 보드가 출렁이지
+            않게). 전면 모달이 아니라 판·손패가 그대로 보이고 눌린다(2026-09-25, docs/59 U04) */}
+        {dwArmed && !isSpectator ? (
+          <DeadWallDock view={view} name={armName} onToast={props.onToast} />
+        ) : null}
         {/* 패산 정보 — 예지·삼세 예지·밑장빼기를 손패 위 한 줄에 모은다(2026-09-25, docs/59 U50).
             셋 다 «패산에서 곧 나올 패»인데 자리·모양·순서 표기가 제각각이었다. */}
         <WallPeekRow
@@ -24049,15 +24422,20 @@ function OwnArea(props: {
             // 누명의 심을 패도 «고른 패» 강조로 — 들어 올림(armedTileId)은 «한 번 더 누르면 나간다»는
             // 신호라 다음 행동이 상대 바닥 클릭인 누명에는 맞지 않는다(2026-09-25, docs/59 U21)
             // 등가교환 넘길 3장(swapGiveInHand)도 가지치기처럼 고른 패를 들어 올려 강조한다(docs/59 U07)
+            // 왕패의 주인도 같다 — 짝을 기다리는 패·예약한 패를 들어 올려 둔다(docs/59 U04)
+            const dwStaged = dwArmed && dwStagedHand.has(id);
             const swapChosen =
               (swapGiveInHand && swap3Sel.includes(id)) ||
               (hand3Picking && handPicks.includes(id)) ||
+              (dwArmed && (sel.dwHand === id || dwStaged)) ||
               (armedAug === "frame_discard" && sel.frameTile === id);
             const armable = swapGiveInHand
               ? swap3Pick.pool.includes(id)
               : hand3Picking
                 ? hand3Pool.has(id)
-                : armedAug !== null && armedByTile.has(id);
+                : dwArmed
+                  ? dwHandArmable(id)
+                  : armedAug !== null && armedByTile.has(id);
             /*
              * 튜토리얼 대본이 이 패를 막고 있는가 (`CoachLockContext`).
              * 코치가 꺼져 있으면 언제나 false라 실대국 판정은 종전과 같다.
@@ -24135,16 +24513,20 @@ function OwnArea(props: {
                   hot === null ? null : hotWaitTitle(hot),
                   swapGiveInHand && swap3Sel.includes(id)
                     ? "넘길 패로 선택됨. 다시 누르면 뺍니다"
-                    : armedAug === "frame_discard" && sel.frameTile === id
-                      ? "심을 패로 선택됨. 놓을 상대의 바닥을 클릭"
-                      : armedTileId === id
-                        ? armedAug !== null &&
-                          !DRAG_DISCARD_ARM_TYPES.has(armedAug) &&
-                          // 미래를 보는 자의 둘째 탭은 그 패를 바닥에 버린다(docs/59 U03)
-                          armedAug !== "future_exchange"
-                          ? "선택됨. 한 번 더 누르면 발동"
-                          : "선택됨. 한 번 더 누르면 버림"
-                        : null,
+                    : dwStaged
+                      ? "왕패와 교환 예약됨. 다시 누르면 취소"
+                      : dwArmed && sel.dwHand === id
+                        ? "교환할 패로 선택됨. 위의 왕패 칸을 누르세요"
+                        : armedAug === "frame_discard" && sel.frameTile === id
+                          ? "심을 패로 선택됨. 놓을 상대의 바닥을 클릭"
+                          : armedTileId === id
+                            ? armedAug !== null &&
+                              !DRAG_DISCARD_ARM_TYPES.has(armedAug) &&
+                              // 미래를 보는 자의 둘째 탭은 그 패를 바닥에 버린다(docs/59 U03)
+                              armedAug !== "future_exchange"
+                              ? "선택됨. 한 번 더 누르면 발동"
+                              : "선택됨. 한 번 더 누르면 버림"
+                            : null,
                   armTip?.id === id ? `${armTip.label} ${armTip.tiles.map((t) => formatTile(t)).join(", ")}` : null,
                   armSub?.tileId === id ? "바꿀 모양을 고르는 중. 위에 뜬 후보에서 고르기" : null,
                   redPreviewIds.has(id) ? "붉은 손길 미리보기: 적도라가 될 패" : null,
@@ -24270,6 +24652,22 @@ function OwnArea(props: {
                     sel.setFrameTile(id);
                     setArmSub(null);
                     sfx.pick();
+                    return;
+                  }
+                  /*
+                   * 왕패의 주인 — 누명처럼 아래 무장 분기보다 먼저 가로챈다. 손패 클릭은 제출도 armSub도
+                   * 아니고 **짝을 지을 패로 들어 올리기**(먼저 누른 왕패 칸이 있으면 그 자리에서 짝)뿐이다.
+                   * 제출은 도킹 패널의 [이대로 교환]이 한다(2026-09-25, docs/59 U04). 대상이 아닌 패는
+                   * 대상 영역 안의 빗나감이라 무장을 풀지 않고 까닭만 말한다(§2 원칙 7).
+                   */
+                  if (dwArmed) {
+                    const r = sel.dwClickHand(id);
+                    if (r === null) {
+                      sfx.pick();
+                    } else {
+                      haptics.reject();
+                      props.onToast?.(r === "full" ? DW_FULL_HINT : `이 패는 ${armName} 대상이 아닙니다`);
+                    }
                     return;
                   }
                   // 붉은 손길 — 첫 탭은 숫자 고르기(제자리 붉은 미리보기)뿐, 확정은 [확인]이나
@@ -24453,6 +24851,14 @@ function OwnArea(props: {
                 ) : armedAug === "frame_discard" && sel.frameTile === id ? (
                   <span className="hand-armed-badge" aria-hidden="true">
                     심을 패
+                  </span>
+                ) : dwStaged ? (
+                  <span className="hand-armed-badge" aria-hidden="true">
+                    예약
+                  </span>
+                ) : dwArmed && sel.dwHand === id ? (
+                  <span className="hand-armed-badge" aria-hidden="true">
+                    교환할 패
                   </span>
                 ) : null}
                 {armTip?.id === id ? (
@@ -26896,10 +27302,8 @@ function ActiveAugmentControl(props: {
   // 후보를 드롭다운 버튼으로 늘어놓지 않고 전용 모달로 고르는 타입 (docs/10 §2a-1).
   // 값은 모달을 띄울 액션 타입 — 닫히면 null.
   const [pickModal, setPickModal] = useState<string | null>(null);
-  // 모달 안에서 여러 번 클릭해 조립하는 선택 (왕패의 주인의 1단계 손패 등)
-  const [modalPick, setModalPick] = useState<number[]>([]);
-  // 왕패의 주인 — 확정 전까지 쌓아 두는 교환 쌍 (손패 ↔ 왕패 자리). 남은 횟수만큼 담긴다.
-  const [dwPairs, setDwPairs] = useState<{ handTileId: number; deadIndex: number }[]>([]);
+  // (왕패의 주인의 손패·교환 쌍·교환 큐는 2026-09-25 useSelection으로 옮겼다 — 손패와 도킹 패널이
+  //  함께 본다, docs/59 U04)
   // 예지 — 재배열 드래그 중인 순서. arr[newPos] = 원래 인덱스. null이면 손대지 않은 상태.
   const [foresightArr, setForesightArr] = useState<number[] | null>(null);
   const [foresightDragFrom, setForesightDragFrom] = useState<number | null>(null);
@@ -27031,8 +27435,6 @@ function ActiveAugmentControl(props: {
     if (pickModal === null) return;
     if ((myPrompt?.options ?? []).some((o) => o.type === pickModal)) return;
     setPickModal(null);
-    setModalPick([]);
-    setDwPairs([]);
   }, [pickModal, myPrompt]);
 
   // 파고든 증강의 후보가 프롬프트에서 사라지면 1단계로 되돌린다 (빈 목록이 남지 않게).
@@ -27042,44 +27444,6 @@ function ActiveAugmentControl(props: {
     setMenuType(null);
   }, [menuType, myPrompt]);
 
-  // ── 왕패의 주인 — 여러 쌍을 한 번에 고른 뒤 차례로 제출한다 ──
-  // 서버는 교환 1회 = 액션 1개라, 고른 쌍을 **프롬프트가 갱신될 때마다 하나씩** 보낸다.
-  // (연달아 보내면 두 번째가 갱신 전 프롬프트에 실려 거부된다 — 보낸 프롬프트를 ref로 기억해 막는다.)
-  const [dwQueue, setDwQueue] = useState<{ handTileId: number; deadIndex: number }[]>([]);
-  const dwSentPromptRef = useRef<unknown>(null);
-  useEffect(() => {
-    if (dwQueue.length === 0) return;
-    if (myPrompt === null) return;
-    if (dwSentPromptRef.current === myPrompt) return; // 이 프롬프트에는 이미 보냈다
-    const head = dwQueue[0]!;
-    const opt = myPrompt.options.find((o) => {
-      if (o.type !== "dw_swap") return false;
-      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
-      return p.handTileId === head.handTileId && p.deadIndex === head.deadIndex;
-    });
-    if (opt === undefined) {
-      // 남은 교환이 없거나 상황이 바뀌어 더는 못 보낸다 — 조용히 접는다.
-      setDwQueue([]);
-      return;
-    }
-    dwSentPromptRef.current = myPrompt;
-    sel.submit(opt);
-    setDwQueue((cur) => cur.slice(1));
-  }, [dwQueue, myPrompt, sel]);
-  /*
-   * **국이 넘어가면 큐를 비운다.**
-   *
-   * 큐를 접는 조건이 «프롬프트가 왔는데 그 쌍이 후보에 없다» 하나뿐이라, 남은 채로
-   * `myPrompt`가 null이 되면(턴 종료·국 전환) 그대로 살아남았다. 다음 국의 프롬프트에
-   * 우연히 같은 `handTileId`/`deadIndex` 쌍이 서면 **지시하지 않은 교환이 자동으로
-   * 나간다.** 실제로 그 우연이 닿는지는 타일 id 재사용에 달렸는데, «닿지 않기를
-   * 바라는» 것은 방어가 아니다 — 국 경계에서 확실히 끊는다.
-   */
-  const dwRoundKey = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
-  useEffect(() => {
-    setDwQueue([]);
-    dwSentPromptRef.current = null;
-  }, [dwRoundKey]);
 
   if (!hasActive && menuOptions.length === 0) return null;
 
@@ -27428,61 +27792,6 @@ function ActiveAugmentControl(props: {
     closeModal();
   };
 
-  // ── 왕패의 주인 — 내 손패 ↔ 왕패를 **여러 쌍 한 번에** 고른다 ──
-  // 고른 쌍은 바로 보내지 않고 아래에 쌓아 두었다가 '확정'에서 dwQueue로 넘긴다
-  // (서버는 교환 1회 = 액션 1개라 위쪽 effect가 프롬프트마다 하나씩 흘려보낸다).
-  const dwOpts = pickModal === "dw_swap" ? (byType.get("dw_swap") ?? []) : [];
-  // 손패는 옵션 나열 순서(=Zone 순서)가 아니라 정렬해서 보여준다
-  const dwHandIds = sortTileIds(
-    [
-      ...new Set(
-        dwOpts
-          .map((o) => (o.payload as { handTileId?: unknown }).handTileId)
-          .filter((x): x is number => typeof x === "number"),
-      ),
-    ],
-    view.tiles,
-  );
-  const deadWallIds = view.zones["deadWall"]?.tileIds ?? [];
-  // 이번 국에 남은 교환 횟수 — 한 번에 고를 수 있는 쌍의 상한이다
-  // ⚠ 값이 없을 때의 기본은 **2**(발동 1회 = 최대 2장)다. 예전 기본값 1은,
-  // 이번 국의 ROUND_STARTED 리액션이 아직 이 채널을 싣지 않은 화면(증강을 방금
-  // 받은 국·재접속 직후)에서 «2장까지»를 조용히 1장으로 깎았다. 후보가 떠 있다는
-  // 것 자체가 서버가 교환을 허락했다는 뜻이고, 상한의 최종 판정은 서버 validate다.
-  const dwRemaining = (() => {
-    const v = view.augmentView[`dead_wall_master:remaining:${me.id}`];
-    return typeof v === "number" ? v : 2;
-  })();
-  const dwStagedHand = new Set(dwPairs.map((p) => p.handTileId));
-  const dwStagedDead = new Set(dwPairs.map((p) => p.deadIndex));
-  const dwPending = modalPick[0];
-  /** 이 쌍이 실제 후보로 와 있는가 (합법성 최종 판정은 서버 validate) */
-  const dwHasOpt = (handTileId: number, deadIndex: number): boolean =>
-    dwOpts.some((o) => {
-      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
-      return p.handTileId === handTileId && p.deadIndex === deadIndex;
-    });
-  /** 손패를 눌렀을 때 — 이미 짝지어진 패면 그 쌍을 취소하고, 아니면 대기 선택으로 잡는다 */
-  const dwClickHand = (id: number): void => {
-    if (dwStagedHand.has(id)) {
-      setDwPairs((cur) => cur.filter((p) => p.handTileId !== id));
-      return;
-    }
-    setModalPick((cur) => (cur[0] === id ? [] : [id]));
-  };
-  /** 왕패를 눌렀을 때 — 짝지어진 자리면 취소, 아니면 대기 중인 손패와 짝을 짓는다 */
-  const dwClickDead = (idx: number): void => {
-    if (dwStagedDead.has(idx)) {
-      setDwPairs((cur) => cur.filter((p) => p.deadIndex !== idx));
-      return;
-    }
-    if (dwPending === undefined) return;
-    if (dwPairs.length >= dwRemaining) return;
-    if (!dwHasOpt(dwPending, idx)) return;
-    setDwPairs((cur) => [...cur, { handTileId: dwPending, deadIndex: idx }]);
-    setModalPick([]);
-  };
-
   // ⚠ 이 모달들은 반드시 **body로 포탈**해야 한다.
   // 조상 `.own-area`에 `transform: translateX(-50%)`가 걸려 있어서, 그 안에서 렌더하면
   // 자식의 `position: fixed`가 뷰포트가 아니라 그 요소를 기준으로 잡힌다 →
@@ -27490,8 +27799,6 @@ function ActiveAugmentControl(props: {
   // 형제로 렌더돼 있어서 이 문제를 피해 갔다.)
   const closeModal = (): void => {
     setPickModal(null);
-    setModalPick([]);
-    setDwPairs([]);
     setRinshanArr(null);
     setRinshanDragFrom(null);
   };
@@ -27639,133 +27946,6 @@ function ActiveAugmentControl(props: {
               </button>
               <button className="rinshan-pick-skip" onClick={closeModal}>
                 발동하지 않고 닫기
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
-      {/* 왕패의 주인 — 손패↔왕패 쌍을 남은 횟수만큼 골라 두었다가 한 번에 확정한다 */}
-      {pickModal === "dw_swap" ? createPortal(
-        <div className="rinshan-pick-overlay">
-          <div className="rinshan-pick-panel aug-pick-wide">
-            <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">
-              🏯 {augNameFor("dw_swap")}: 남은 교환 {dwRemaining}회
-            </div>
-            <div className="rinshan-pick-sub">
-              {dwPairs.length >= dwRemaining
-                ? "고를 수 있는 만큼 다 골랐습니다. 아래 '이대로 교환'을 누르세요."
-                : dwPending === undefined
-                  ? "왕패로 보낼 내 손패를 고른 뒤, 가져올 왕패를 고르세요. 남은 횟수만큼 여러 쌍을 이어서 고를 수 있습니다."
-                  : "이제 가져올 왕패를 한 장 고르세요. 고른 자리에는 내 패가 대신 들어갑니다. 도라 표시패 자리를 고르면 도라가 바뀝니다."}
-            </div>
-            <div className="aug-pick-rows">
-              <div className="aug-pick-row aug-pick-row-static">
-                <span className="aug-pick-row-label">내 손패</span>
-                <span className="aug-pick-row-tiles">
-                  {dwHandIds.map((id) => {
-                    const staged = dwStagedHand.has(id);
-                    return (
-                      <button
-                        key={id}
-                        className={`aug-pick-tile${dwPending === id ? " aug-pick-tile-on" : ""}${
-                          staged ? " aug-pick-tile-staged" : ""
-                        }`}
-                        title={staged ? "교환 예약됨. 누르면 취소합니다" : undefined}
-                        onClick={() => dwClickHand(id)}
-                      >
-                        <TileImg tile={view.tiles[id]} size="mini" />
-                      </button>
-                    );
-                  })}
-                </span>
-              </div>
-              <div className="aug-pick-row aug-pick-row-static">
-                <span className="aug-pick-row-label">왕패</span>
-                <span className="aug-pick-row-tiles">
-                  {/* 깡으로 빠져나간 영상패 자리 — 빈 칸으로 남겨 원래 14칸 배열을 유지한다 */}
-                  {Array.from({ length: rinshanSpentOf(view) }, (_v, i) => (
-                    <span
-                      key={`spent-${i}`}
-                      className="aug-pick-tile aug-pick-tile-spent"
-                      title="깡으로 사용된 영상패 자리 (보충되지 않습니다)"
-                    />
-                  ))}
-                  {deadWallIds.map((tileId, idx) => {
-                    const staged = dwStagedDead.has(idx);
-                    const slot = deadWallSlotInfo(
-                      idx,
-                      flippedIndicatorCount(view),
-                      deadWallSizeOf(view),
-                    );
-                    // 대기 중인 손패가 없고 예약도 아니면 누를 게 없다 (손패부터 고른다)
-                    const disabled =
-                      !staged &&
-                      (dwPending === undefined ||
-                        dwPairs.length >= dwRemaining ||
-                        !dwHasOpt(dwPending, idx));
-                    return (
-                      <button
-                        key={tileId}
-                        className={`aug-pick-tile rinshan-slot-${slot.cls}${
-                          staged ? " aug-pick-tile-staged" : ""
-                        }`}
-                        disabled={disabled}
-                        title={staged ? `${slot.label}: 교환 예약됨. 누르면 취소합니다` : slot.label}
-                        onClick={() => dwClickDead(idx)}
-                      >
-                        <TileImg tile={view.tiles[tileId]} size="mini" />
-                      </button>
-                    );
-                  })}
-                </span>
-              </div>
-              {dwPairs.length > 0 ? (
-                <div className="aug-pick-row aug-pick-row-static">
-                  <span className="aug-pick-row-label">교환 예약</span>
-                  <span className="aug-pick-row-tiles aug-pick-pairs">
-                    {dwPairs.map((p) => (
-                      <span key={p.handTileId} className="aug-pick-pair">
-                        <TileImg tile={view.tiles[p.handTileId]} size="mini" />
-                        <span className="aug-morph-arrow" aria-hidden="true">→</span>
-                        <TileImg tile={view.tiles[deadWallIds[p.deadIndex] ?? -1]} size="mini" />
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-            <div className="aug-modal-actions">
-              <button
-                className="rinshan-pick-tile aug-modal-confirm"
-                disabled={dwPairs.length === 0}
-                onClick={() => {
-                  setDwQueue(dwPairs);
-                  closeModal();
-                }}
-              >
-                이대로 교환 ({dwPairs.length}장)
-              </button>
-              <button
-                className="rinshan-pick-skip"
-                onClick={() => {
-                  if (dwPending !== undefined) {
-                    setModalPick([]);
-                    return;
-                  }
-                  if (dwPairs.length > 0) {
-                    setDwPairs([]);
-                    return;
-                  }
-                  closeModal();
-                }}
-              >
-                {dwPending !== undefined
-                  ? "← 손패 다시 고르기"
-                  : dwPairs.length > 0
-                    ? "← 예약 비우기"
-                    : "닫기 (바꾸지 않고 진행)"}
               </button>
             </div>
           </div>

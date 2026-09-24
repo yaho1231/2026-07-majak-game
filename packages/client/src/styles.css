@@ -2283,7 +2283,9 @@ button {
  * 자라 봐야 바닥 아래쪽 한두 단을 잠시 덮을 뿐, 패널 안의 점수판에는 닿지 않는다.
  *
  * ⚠ 이 목록은 App(OwnArea)의 `--own-band` 실측에서 빼는 목록과 **같아야 한다**.
+ * 왕패의 주인 도킹 패널(.dw-dock)도 그 국 첫 순의 무장 동안만 뜨는 줄이다(2026-09-25, docs/59 U04).
  */
+.own-area > .dw-dock,
 .own-area > .action-bar,
 .own-area > .prompt-timer,
 .own-area > .arm-hint,
@@ -3546,6 +3548,135 @@ button {
   box-shadow: 0 0 14px rgba(118, 201, 233, 0.6);
   transform: translateY(-4px);
 }
+
+/*
+ * 왕패의 주인 — 손패 위 비차단 도킹 패널(App DeadWallDock, 2026-09-25 docs/59 U04). 예전 전면 모달이
+ * 판 손패를 복제해 다시 그리고 블러로 실제 손패를 가렸다. 판에 없는 왕패 14칸만 여기 편다.
+ * 흐름 안 줄이지만 `.own-area > .dw-dock { order: -1 }` 무리라 이름표 줄 위에 서고 --own-band에서 빠진다.
+ */
+.dw-dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  margin: 2px 0;
+  max-width: calc(100cqw - 32px);
+  border-radius: 12px;
+  background: rgba(36, 26, 61, 0.95);
+  border: 1px solid rgba(199, 188, 255, 0.7);
+  box-shadow: 0 0 14px rgba(165, 145, 255, 0.4);
+  animation: bar-in 0.25s ease-out;
+  /* 패 칸 폭 — 폰 세로(375)에서 영상 2열 + 표시패 5열이 한 줄에 들어가는 하한 */
+  --pick-tile-w: clamp(22px, 2.6cqw, 34px);
+}
+.dw-dock-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(226, 220, 255, 0.98);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.dw-dock-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+}
+.dw-dock-wall {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.dw-dock-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.dw-dock-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(226, 199, 147, 0.85);
+  white-space: nowrap;
+}
+/* 실제 왕패처럼 2단 — 열 우선이라 표시패 블록은 도라가 위, 짝이 되는 뒷도라가 아래에 선다 */
+.dw-dock-grid {
+  display: grid;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  gap: 2px;
+}
+.dw-dock .tile-mini {
+  width: var(--pick-tile-w);
+  height: calc(var(--pick-tile-w) * 1.48);
+}
+.dw-dock .aug-pick-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+}
+/* 빈 영상패 칸은 이름표 줄만큼 키를 맞춘다 — 옆 칸과 윗단·아랫단이 어긋나지 않게 */
+.dw-dock .aug-pick-tile-spent {
+  box-sizing: content-box;
+  height: calc(var(--pick-tile-w) * 1.48 + 12px);
+}
+.dw-dock-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.dw-dock-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.dw-dock-actions {
+  display: flex;
+  gap: 8px;
+}
+.dw-dock-actions > button {
+  flex: none;
+  white-space: nowrap;
+}
+/* 지금 짝이 안 되는 칸 — 흐림만, 누를 수는 있다(그 칸부터 다시 고른다). disabled로 막지 않는다 */
+.dw-dock .dw-dock-off {
+  opacity: 0.5;
+}
+
+/*
+ * 왕패 칸의 자리 이름(영상1·도라1✓·뒷1) — 칸 안에 상시로 붙는다(docs/59 U05). 예전엔 title에만 있어
+ * 터치에서 어느 칸이 도라 표시패인지 볼 길이 없었다. 색 구분은 **.aug-pick-tile로 한정**한다 —
+ * 절벽 위 꽃(.rinshan-pick-tile.rinshan-slot-*)의 «자리별 색 구분 폐기(2026-07-26)»는 그 모달에만
+ * 해당하고, 왕패의 주인은 도라 자리를 실제로 고른다(docs/16 «왕패 자리별 색 구분»). 특이도를
+ * `.aug-pick-tile`(border: transparent)보다 높여야 테두리가 지워지지 않는다.
+ */
+.aug-pick-slot-label {
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: rgba(226, 220, 255, 0.8);
+}
+.aug-pick-tile.rinshan-slot-rinshan { border-color: rgba(111, 214, 167, 0.55); }
+.aug-pick-tile.rinshan-slot-rinshan .aug-pick-slot-label { color: #94e4be; }
+.aug-pick-tile.rinshan-slot-dora { border-color: rgba(240, 200, 106, 0.55); }
+.aug-pick-tile.rinshan-slot-dora .aug-pick-slot-label { color: #f0c86a; }
+.aug-pick-tile.rinshan-slot-dora-open {
+  border-color: rgba(255, 214, 102, 0.95);
+  background: rgba(240, 200, 106, 0.12);
+}
+.aug-pick-tile.rinshan-slot-dora-open .aug-pick-slot-label { color: #ffd666; }
+.aug-pick-tile.rinshan-slot-ura { border-color: rgba(159, 140, 240, 0.6); }
+.aug-pick-tile.rinshan-slot-ura .aug-pick-slot-label { color: #c7bcff; }
+/* 고른 칸·예약한 칸은 자리 색보다 선택 표시가 앞선다 */
+.dw-dock .aug-pick-tile.aug-pick-tile-on { border-color: rgba(149, 217, 246, 0.95); }
+.dw-dock .aug-pick-tile.aug-pick-tile-staged { border-color: rgba(149, 217, 246, 0.75); }
 
 /* 모달을 닫은 뒤 다시 열기 위한 플로팅 버튼 */
 /*

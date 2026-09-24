@@ -177,8 +177,9 @@ describe("클라이언트 액티브 증강 배선", () => {
       ids(setLiterals("MODAL_PICK_TYPES")),
       ids(setLiterals("DRAG_DISCARD_ARM_TYPES")),
     ];
-    // 파서가 헛돌아 빈 목록으로 통과하는 것을 막는다
-    for (const pool of pools) expect(pool.length).toBeGreaterThan(3);
+    // 파서가 헛돌아 빈 목록으로 통과하는 것을 막는다. 모달형은 docs/59 배치들이 실물 클릭으로 옮기며
+    // 줄었다 — B13(2026-09-25)이 왕패의 주인을 빼 단색 세계·편식·영상 정찰 셋이 남는다
+    for (const pool of pools) expect(pool.length).toBeGreaterThan(2);
     const missing = pools.flat().filter((t) => !actionLabel.has(t));
     expect(missing).toEqual([]);
   });

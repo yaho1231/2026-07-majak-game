@@ -60,9 +60,10 @@ describe("증강 선택 모달이 남은 시간을 스스로 보여 준다", () 
     const timers = outsidePop.match(/<PickTimer deadline=/g) ?? [];
     // 모달을 지우는 배치마다 그때의 개수로 내린다 — B04(2026-09-25)가 이면투시·붉은 손길 두 개를
     // 실물 손패 클릭으로 옮겨 10 → 8, B05(2026-09-25)가 armSub를 앵커 팝오버로 바꿔 8 → 7,
-    // B07(2026-09-25)이 미래를 보는 자 모달을 손패 강제 무장으로 옮겨 7 → 6
+    // B07(2026-09-25)이 미래를 보는 자 모달을 손패 강제 무장으로 옮겨 7 → 6,
+    // B13(2026-09-25)이 왕패의 주인 모달을 손패 클릭 + 도킹 패널로 옮겨 6 → 5
     // (docs/59 §7 배치 공통 규약)
-    expect(panels.length).toBeGreaterThanOrEqual(6);
+    expect(panels.length).toBeGreaterThanOrEqual(5);
     expect(timers.length).toBe(panels.length);
   });
 
