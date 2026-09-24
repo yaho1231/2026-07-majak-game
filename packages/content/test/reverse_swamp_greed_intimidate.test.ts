@@ -80,7 +80,7 @@ function build(
   } = {},
 ): { game: Game; flow: FlowController } {
   let state = craft({
-    hands: { ...HANDS, ...opts.hands },
+    hands: { ...HANDS, ...(opts.hands as Record<PlayerId, string> | undefined) },
     drawnLastFor: "p0",
     phase: "turn.act",
     turnSeat: 0,
