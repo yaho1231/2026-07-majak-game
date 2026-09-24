@@ -436,14 +436,16 @@ describe("이어하기 × 오라스 직전 pre-deal 재개 — 오야 단독 1�
     agentDecideTimeoutMs: 20_000,
   });
 
-  it("동4국 배패 직전에 끊긴 동풍전을 되살리면 동4국을 실제로 친다 (프로브 시드 103)", async () => {
+  it("동4국 배패 직전에 끊긴 동풍전을 되살리면 동4국을 실제로 친다 (프로브 시드 110)", async () => {
     /*
      * 시드는 봇의 판단에 묶여 있다 — 봇이 달리 두면 같은 시드에서 점수가 달라져 아래
      * «오야 단독 1위» 전제가 깨진다. 2026-09-21 사람 성향 채택(bot/human/*) 뒤 시드 100은
      * 오야가 2위가 되어, 세 자리(103·105·112…)를 프로브해 103으로 옮겼다. 봇을 또 고치면
      * 같은 방법으로 다시 찾는다: 라이브 동풍전을 완주시켜 동4국 직전 누적 점수를 본다.
+     * 2026-09-24 증강 2종(모래시계·위그드라실)이 카탈로그에 들어와 드래프트가 밀리면서 103도
+     * 깨졌다(오야 4위). 100~140을 다시 프로브해 110으로 옮겼다.
      */
-    const seed = 103;
+    const seed = 110;
     // ── 라이브: 완주하며 이벤트 줄을 모은다 ──
     const lines: string[] = [];
     const events: Ev[] = [];
@@ -466,7 +468,7 @@ describe("이어하기 × 오라스 직전 pre-deal 재개 — 오야 단독 1�
     );
     const olasStart =
       settledIntoOlas < 0 ? -1 : events.findIndex((e, i) => i > settledIntoOlas && e.type === "RoundStarted");
-    expect(olasStart, "라이브 판에 동4국이 있어야 한다 (시드 103)").toBeGreaterThan(0);
+    expect(olasStart, "라이브 판에 동4국이 있어야 한다 (시드 110)").toBeGreaterThan(0);
 
     // ── 그 직전에서 자른다 = 동3국 결과 화면(round.over)에서 서버가 죽었다 ──
     const recon = reconstructGame(lines.slice(0, olasStart), { extraAugments: contentAugments });

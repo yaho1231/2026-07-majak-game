@@ -81,7 +81,7 @@ function emit(game: Game, event: { type: string; payload: unknown }): void {
 }
 
 const wall = (g: Game): TileId[] => [...(g.engine.state.zones[WALL]?.tileIds ?? [])];
-const hand = (g: Game): TileId[] => handIdsOf(g.engine.state, "p0");
+const hand = (g: Game): TileId[] => [...handIdsOf(g.engine.state, "p0")];
 const kinds = (g: Game): string[] =>
   hand(g).map((id) => kindKey(g.engine.state.tiles[id]!.kind)).sort();
 
