@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { projectedDrawSeats, relativeSeatLabel } from "../src/drawOrder.js";
+import { bottomDealArmedSeats, projectedDrawSeats, relativeSeatLabel } from "../src/drawOrder.js";
 
 describe("projectedDrawSeats", () => {
   it("표준 진행에서는 다음 자리부터 한 바퀴", () => {
@@ -48,5 +48,37 @@ describe("relativeSeatLabel", () => {
       "상가",
       "나",
     ]);
+  });
+});
+
+describe("밑장 예약 건너뛰기 (W3 수정 커밋 리뷰)", () => {
+  it("자리 하나 — 그 자리의 다음 한 번만 건너뛴다", () => {
+    // 지금 0번 차례, 1번이 밑장 예약 → 앞 장은 2·3·0·(1의 두 번째 쯔모)
+    expect(projectedDrawSeats(0, 1, 4, 4, 1)).toEqual([2, 3, 0, 1]);
+  });
+
+  it("상대의 예약도 함께 — 여러 자리를 각각 한 번씩 건너뛴다", () => {
+    // 지금 0번 차례, 1번(상대)·2번(나) 예약 → 3·0·1·2
+    expect(projectedDrawSeats(0, 1, 4, 4, [1, 2])).toEqual([3, 0, 1, 2]);
+    // 배열 하나짜리는 숫자 하나와 같다
+    expect(projectedDrawSeats(0, 1, 4, 4, [1])).toEqual(projectedDrawSeats(0, 1, 4, 4, 1));
+    // 빈 배열은 건너뛰기 없음
+    expect(projectedDrawSeats(0, 1, 4, 4, [])).toEqual([1, 2, 3, 0]);
+  });
+
+  it("역행에서도 진행 방향으로 건너뛴다", () => {
+    // 지금 1번 차례, 역행: 0 → 3 → 2 → 1. 0번 예약 → 3·2·1·0
+    expect(projectedDrawSeats(1, -1, 4, 4, [0])).toEqual([3, 2, 1, 0]);
+  });
+
+  it("예약 자리는 전원 공개 채널 bottom_deal:armed:{id} 에서 읽는다", () => {
+    const players = [
+      { id: "p0", seat: 0 },
+      { id: "p1", seat: 1 },
+      { id: "p2", seat: 2 },
+      { id: "p3", seat: 3 },
+    ];
+    expect(bottomDealArmedSeats(players, { "bottom_deal:armed:p1": true, "bottom_deal:armed:p3": false })).toEqual([1]);
+    expect(bottomDealArmedSeats(players, {})).toEqual([]);
   });
 });

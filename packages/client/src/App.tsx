@@ -98,7 +98,7 @@ import {
   winningKinds,
 } from "@majak/core";
 import { type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
-import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
+import { bottomDealArmedSeats, projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
@@ -15807,12 +15807,20 @@ const GameTable = memo(function GameTable(props: {
    * - 판 위 아이콘 줄(⚙·📖·?·📜)은 제 할 일이 따로 있다.
    * 해제는 [취소]·✦ 재클릭·Esc·펠트의 빈 곳이고, 빈 곳 해제는 조용히 끝내지 않는다(§2 원칙 7).
    */
+  /*
+   * 방금 «빈 곳 누르기»로 무장이 풀린 시각. 그 pointerdown 의 setState 가 contextmenu 보다 먼저 그려지면
+   * 우클릭 쯔모기리는 이미 «무장 없음»을 보고 쯔모패를 버린다 — 버튼 번호로 못 거르는 경로(보조
+   * 입력기·길게 누르기 에뮬레이션)가 남아도 한 박자 안에는 버리지 않는다(W3 수정 커밋 리뷰).
+   */
+  const armReleasedAtRef = useRef(0);
   useEffect(() => {
     if (selection.armedType === null) return;
     const onDown = (e: PointerEvent): void => {
       // 무장 해제는 주 버튼(탭·왼쪽 클릭)만 — 오른쪽 버튼 pointerdown에 풀면 그 setState가 contextmenu보다
       // 먼저 그려져, 우클릭 쯔모기리의 «무장 중엔 버리지 않는다» 가드를 비껴 쯔모패가 버려졌다(W3 통합 리뷰 interaction-4)
-      if (e.button !== 0) return;
+      // macOS 의 Ctrl+클릭은 button 0 에 ctrlKey 로 오고 곧이어 contextmenu 가 난다 — 오른쪽 버튼과 같게 거른다
+      // (W3 수정 커밋 리뷰). 거르지 못한 경로가 남아도 아래 armReleasedAt 이 쯔모기리를 한 박자 막는다.
+      if (e.button !== 0 || e.ctrlKey) return;
       const t = e.target as HTMLElement | null;
       if (t === null || tableRef.current?.contains(t) !== true) return;
       if (t.closest("[data-arm-zone]") !== null) return;
@@ -15830,6 +15838,7 @@ const GameTable = memo(function GameTable(props: {
         return;
       }
       const armName = selection.armedType !== null ? augActionName(catalog, selection.armedType) : "";
+      armReleasedAtRef.current = Date.now();
       selection.arm(null);
       // 판 표면을 눌러 풀렸으면 풀렸다고 말한다. 액션 바·빠른 토글 같은 컨트롤은 제 동작이 곧 답이다.
       // 문구는 손패 클릭 해제(OwnArea)와 같게 증강 이름을 앞에 둔다 — 같은 일에 말이 둘이면 안 된다
@@ -15888,6 +15897,13 @@ const GameTable = memo(function GameTable(props: {
     if (!props.settings.rightClickTsumogiri) return;
     if (props.spectator === true || view.playerId === SPECTATOR_ID) return;
     if (props.riichiMode || selection.armedType !== null) return;
+    // 같은 누름이 방금 무장을 풀었다 — 그 누름으로 쯔모패까지 버리지 않는다(위 armReleasedAtRef)
+    if (Date.now() - armReleasedAtRef.current < 600) return;
+    /*
+     * 터치의 길게 누르기도 contextmenu 를 낸다 — 이 설정은 «마우스 오른쪽 버튼»이다. 폰에서 패를
+     * 오래 누르고 있었을 뿐인데 쯔모패가 되돌릴 수 없이 버려지면 안 된다(W3 수정 커밋 리뷰).
+     */
+    if ((e.nativeEvent as PointerEvent).pointerType === "touch") return;
     if (isTypingTarget(e.target)) return;
     // 쯔모패는 **내 손패 안에 실제로 있을 때만** 나간다 — 후로 직후 버림처럼
     // 쯔모가 없는 순에는 버릴 '그 패'가 없다.
@@ -19435,11 +19451,16 @@ function OpponentStrip({
    */
   const armMiss =
     (sel.armMode === "opp" || sel.armMode === "opp-aug") && !oppArmable && !oppAugArmable;
+  /*
+   * 사유를 아는 제외(리치·후로 구성)만 사유를 말한다. 모르는 제외(숨은 리치 등)는 «이 상대는 대상이
+   * 아니다»라고 단정하면 그 자체가 «설명할 수 없는 제외가 있다»는 누설이다(oppBlockedReason 주석 3) —
+   * 어디를 누르면 되는지만 안내한다(W3 수정 커밋 리뷰).
+   */
   const armMissText = (): string =>
     oppBlocked ??
     (sel.armMode === "opp-aug"
-      ? `${playerName(view, player)}에게는 ${armAugName} 대상인 증강이 없습니다`
-      : `${playerName(view, player)}은(는) ${armAugName} 대상이 아닙니다`);
+      ? `${armAugName}: 빛나는 증강 중에서 고르세요`
+      : `${armAugName}: 빛나는 상대 중에서 고르세요`);
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
     ? {
@@ -19477,6 +19498,8 @@ function OpponentStrip({
     // 비후보 줄(armMiss)도 — 이름 단추가 보기 시트를 열거나 pill이 설명을 고정하지 않고 줄로 올려
     // 이유 토스트가 되게 한다(W3 통합 리뷰 interaction-1)
     ...(oppArmable || oppAugArmable || armMiss ? { armTarget: true } : {}),
+    // 비후보 줄은 이름 단추가 줄을 대신해 «누구·왜»를 읽힌다(키보드·스크린리더의 유일한 입구, W3 수정 커밋 리뷰)
+    ...(armMiss ? { armMissLabel: `${playerName(view, player)}: ${armMissText()}` } : {}),
     ...(oppAugArmable ? { pickAug, onPickAug: sel.submit } : {}),
   };
   // 좁은 화면의 무장해제 입구 — 줄을 누르면 연다. 행마다 «잠그기»(U24)
@@ -20554,6 +20577,7 @@ const NamePlate = memo(function NamePlate({
   pickAug,
   onPickAug,
   armTarget,
+  armMissLabel,
 }: {
   view: PlayerView;
   player: PlayerInfo;
@@ -20569,6 +20593,12 @@ const NamePlate = memo(function NamePlate({
    * 설명 고정)을 멈추고 클릭을 줄로 올린다. hover·focus 툴팁은 그대로 — 대상을 정할 정보다(U27).
    */
   armTarget?: boolean;
+  /**
+   * armTarget 인데 이 줄은 **후보가 아니다**(빗나감) — 이름 단추를 숨기지 않고 이 문구(«이름: 사유»)로
+   * 읽힌다. 눌러도 되돌릴 수 없는 확정이 아니라 줄의 사유 토스트라 포커스를 막을 까닭이 없다.
+   * 알약은 설명 툴팁을 닫지 않는다 — 왜 안 되는지 읽는 중이다(W3 수정 커밋 리뷰).
+   */
+  armMissLabel?: string;
   /**
    * 지금 빛낼 증강 id들 — 액티브 증강 버튼에 손을 올린 동안 "그 버튼이 쓰는 증강"을
    * 가리킨다(내 이름표 전용). null이면 아무것도 빛나지 않는다.
@@ -20746,10 +20776,11 @@ const NamePlate = memo(function NamePlate({
         type="button"
         className="np-name np-name-btn"
         title={playerName(view, player)}
-        aria-label={`${playerName(view, player)}의 증강 보기`}
+        aria-label={armMissLabel ?? `${playerName(view, player)}의 증강 보기`}
         // 줄 전체가 대상인 동안에는 줄 하나만 읽히고 포커스를 받는다 — 이 단추의 Enter도 줄의 확정이
-        // 되는데 «증강 보기»로 읽히면 되돌릴 수 없는 지목을 시트 열기로 알고 누른다(B09 리뷰)
-        {...(armTarget === true ? { tabIndex: -1, "aria-hidden": true } : {})}
+        // 되는데 «증강 보기»로 읽히면 되돌릴 수 없는 지목을 시트 열기로 알고 누른다(B09 리뷰).
+        // 비후보 줄(armMissLabel)은 확정이 없으니 그대로 두고 사유로 읽힌다.
+        {...(armTarget === true && armMissLabel === undefined ? { tabIndex: -1, "aria-hidden": true } : {})}
         onClick={() => {
           // 상대 줄 전체가 대상인 무장 중 — 시트를 열지 않고 클릭을 줄로 올린다. 줄이 대상 확정(opp)
           // 또는 고르기 시트(opp-aug)를 맡는다. 예전엔 시트와 확정이 함께 터졌다(2026-09-25, docs/59 U27)
@@ -20853,7 +20884,7 @@ const NamePlate = memo(function NamePlate({
                         },
                       };
                     })()
-                  : armTarget === true && !picking
+                  : armTarget === true && !picking && armMissLabel === undefined
                     ? {
                         // 줄 전체가 대상(opp) — Enter는 줄로 올라가 확정이 된다. 확정 뒤 focus 툴팁이
                         // 판 위에 남지 않게 먼저 걷는다(막지는 않는다, U27·B09 리뷰)
@@ -20889,6 +20920,8 @@ const NamePlate = memo(function NamePlate({
                   // 툴팁이 판 위에 남지 않게 걷는다 — 탭에 포커스를 주는 브라우저에선 알약 덮개가 포커스를
                   // 쥐고 있어도 tipFor를 비우면 속이 그려지지 않는다(U27, B09 리뷰)
                   if (armTarget === true) {
+                    // 비후보 줄이면 줄이 사유 토스트만 띄운다 — 읽던 설명은 닫지 않는다(W3 수정 커밋 리뷰)
+                    if (armMissLabel !== undefined) return;
                     e.currentTarget.blur();
                     setTipFor(null);
                     return;
@@ -22972,22 +23005,23 @@ function OwnArea(props: {
   const foresightSeatLabels = useMemo<string[]>(() => {
     const seatCount = view.players.length;
     const dir = view.round.direction;
-    // 밑장을 예약해 뒀으면 내 다음 쯔모는 맨 밑장이다 — 그 한 번은 패산 앞을 쓰지 않으니 건너뛴다
-    // (W3 통합 리뷰: 예지 맨 앞 칸에 «나 ★ 다음»이 밑장 «다음»과 함께 서던 것)
+    // 밑장을 예약해 둔 자리의 다음 쯔모는 맨 밑장이다 — 그 한 번은 패산 앞을 쓰지 않으니 건너뛴다.
+    // 내 예약만이 아니라 상대의 예약(전원 공개)도 — 안 그러면 라벨이 한 칸씩 밀린다
+    // (W3 통합 리뷰: 예지 맨 앞 칸에 «나 ★ 다음»이 밑장 «다음»과 함께 서던 것 · 수정 커밋 리뷰)
     return projectedDrawSeats(
       view.round.turnSeat,
       dir,
       seatCount,
       foresightPeek.length,
-      bottomDealArmed ? me.seat : undefined,
+      bottomDealArmedSeats(view.players, focusAv),
     ).map((s) => relativeSeatLabel(me.seat, s, dir, seatCount));
   }, [
-    view.players.length,
+    view.players,
     view.round.turnSeat,
     view.round.direction,
     me.seat,
     foresightPeek.length,
-    bottomDealArmed,
+    focusAv,
   ]);
   /**
    * 예지 재배열 탭이 열려 있는가 — 탭(모달)은 ActiveAugmentControl에 남고 여닫이만 여기서 쥔다.
@@ -25908,11 +25942,13 @@ function DockNextDraw({
   if (rewinding) return <p className="dock-note dock-note-warn">{REWIND_NOTE}</p>;
   const N = 6;
   const ids = (view.zones["wall"]?.tileIds ?? []).slice(0, N);
+  // 밑장을 예약해 둔 자리의 다음 쯔모는 패산 앞을 쓰지 않는다 — 예지 라벨과 같은 규칙(drawOrder.ts)
   const seats = projectedDrawSeats(
     view.round.turnSeat,
     view.round.direction,
     view.players.length,
     ids.length,
+    bottomDealArmedSeats(view.players, view.augmentView),
   );
   return (
     <div className="dock-next">
@@ -26962,14 +26998,13 @@ function ActiveAugmentControl(props: {
     const seatCount = view.players.length;
     const mySeat = view.players.find((p) => p.id === view.playerId)?.seat ?? 0;
     const dir = view.round.direction;
-    // 밑장 예약 중이면 내 다음 쯔모 한 번은 패산 앞을 쓰지 않는다 — 패산 정보 줄과 같은 규칙
-    const bottomArmed = view.augmentView[`bottom_deal:armed:${view.playerId}`] === true;
+    // 밑장을 예약해 둔 자리(나·상대)의 다음 쯔모 한 번은 패산 앞을 쓰지 않는다 — 패산 정보 줄과 같은 규칙
     return projectedDrawSeats(
       view.round.turnSeat,
       dir,
       seatCount,
       foresightPeek.length,
-      bottomArmed ? mySeat : undefined,
+      bottomDealArmedSeats(view.players, view.augmentView),
     ).map((s) => relativeSeatLabel(mySeat, s, dir, seatCount));
   }, [
     view.players,

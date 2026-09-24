@@ -36,9 +36,36 @@ describe("좁은 화면 이름표 줄 — ✦ 우선, 정보 칩은 한 줄 말�
     it(header, () => {
       const b = blocks(header).find((x) => x.includes(".own-top-main > .own-aug")) ?? "";
       expect(b).toMatch(/\.own-top-main > \.own-aug \{ flex-shrink: 0; max-width: 50%; \}/);
-      expect(b).toMatch(/\.own-top-main > \.active-info \{ flex: 1 1 0; min-width: 44px; \}/);
+      expect(b).toMatch(/\.own-top-main > \.active-info \{ flex: 0 100 auto; min-width: 44px; \}/);
       expect(b).toMatch(/\.own-top-main \.active-info \{\s*overflow: hidden;\s*white-space: nowrap;\s*text-overflow: ellipsis;/);
       expect(b).toMatch(/\.own-top-main \.active-info \.ai-badge-text \{[^}]*white-space: nowrap;/);
     });
   }
+});
+
+const APP = readFileSync(join(HERE, "../src/App.tsx"), "utf8");
+
+describe("W3 수정 커밋 리뷰 — 무장 해제·쯔모기리·비후보 줄", () => {
+  it("무장 해제 감시는 주 버튼만, macOS Ctrl+클릭도 거른다", () => {
+    expect(APP).toContain("if (e.button !== 0 || e.ctrlKey) return;");
+  });
+
+  it("방금 무장이 풀린 누름으로는 우클릭 쯔모기리가 나가지 않고, 터치 길게 누르기도 막는다", () => {
+    expect(APP).toMatch(/armReleasedAtRef\.current = Date\.now\(\);\s*selection\.arm\(null\);/);
+    const fn = APP.slice(APP.indexOf("function rightClickTsumogiri("), APP.indexOf("function rightClickTsumogiri(") + 1800);
+    expect(fn).toContain("if (Date.now() - armReleasedAtRef.current < 600) return;");
+    expect(fn).toContain('if ((e.nativeEvent as PointerEvent).pointerType === "touch") return;');
+  });
+
+  it("비후보 줄은 이름 단추가 «이름: 사유»로 읽히고, 사유를 모르면 제외를 단정하지 않는다", () => {
+    expect(APP).toContain("...(armMiss ? { armMissLabel: `${playerName(view, player)}: ${armMissText()}` } : {}),");
+    expect(APP).toContain("aria-label={armMissLabel ?? `${playerName(view, player)}의 증강 보기`}");
+    expect(APP).toContain('{...(armTarget === true && armMissLabel === undefined ? { tabIndex: -1, "aria-hidden": true } : {})}');
+    expect(APP).toContain("`${armAugName}: 빛나는 상대 중에서 고르세요`");
+    expect(APP).not.toContain("대상이 아닙니다`);\n  // 무장 대상 상대에 붙일");
+  });
+
+  it("예지·관전 다음 쯔모 라벨은 상대의 밑장 예약도 건너뛴다", () => {
+    expect((APP.match(/bottomDealArmedSeats\(view\.players, /g) ?? []).length).toBe(3);
+  });
 });

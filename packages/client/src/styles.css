@@ -10542,7 +10542,9 @@ button {
   .own-top-main > .own-aug { flex-shrink: 0; max-width: 50%; }
   /* 칩은 물러나도 **사라지지는 않는다** — 아이콘과 말줄임이 보이고 누를 수 있는 44px은 남긴다.
      그 대신 이름표의 알약이 접힌다(알약은 줄바꿈으로 물러날 수 있다). */
-  .own-top-main > .active-info { flex: 1 1 0; min-width: 44px; }
+  /* flex-shrink 을 크게 줘 **줄어들 때만** 먼저 물러난다. 남는 폭까지 늘어나지는 않는다 — 늘어나면
+     이름표·✦ 무리가 가운데를 벗어나 왼쪽으로 쏠린다(W3 수정 커밋 리뷰). */
+  .own-top-main > .active-info { flex: 0 100 auto; min-width: 44px; }
   /* 칩이 좁아지면 글자가 **한 글자씩 세로로** 접혀 위 아이콘 줄까지 솟았다(740×360 실측, 2026-09-25).
      세로 폰 블록(③ 아래 띠)과 같은 «한 줄 + 말줄임 + 눌러서 전문 보기»를 여기에도 둔다. */
   .own-top-main .active-info {
@@ -18773,7 +18775,9 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   .own-top-main > .own-aug { flex-shrink: 0; max-width: 50%; }
   /* 칩은 물러나도 **사라지지는 않는다** — 아이콘과 말줄임이 보이고 누를 수 있는 44px은 남긴다.
      그 대신 이름표의 알약이 접힌다(알약은 줄바꿈으로 물러날 수 있다). */
-  .own-top-main > .active-info { flex: 1 1 0; min-width: 44px; }
+  /* flex-shrink 을 크게 줘 **줄어들 때만** 먼저 물러난다. 남는 폭까지 늘어나지는 않는다 — 늘어나면
+     이름표·✦ 무리가 가운데를 벗어나 왼쪽으로 쏠린다(W3 수정 커밋 리뷰). */
+  .own-top-main > .active-info { flex: 0 100 auto; min-width: 44px; }
   .own-top-main .active-info {
     overflow: hidden;
     white-space: nowrap;

@@ -146,7 +146,8 @@ describe("강제 무장은 판 가운데·후로 줄을 대상 영역으로 두�
 describe("무장 해제는 주 버튼만 (interaction-4)", () => {
   it("판 pointerdown 감시가 e.button !== 0을 먼저 거른다", () => {
     const down = between(APP, "const onDown = (e: PointerEvent): void => {", 'document.addEventListener("pointerdown", onDown);');
-    const guard = down.indexOf("if (e.button !== 0) return;");
+    // (W3 수정 커밋 리뷰) macOS Ctrl+클릭도 함께 거른다
+    const guard = down.indexOf("if (e.button !== 0 || e.ctrlKey) return;");
     expect(guard).toBeGreaterThan(-1);
     expect(guard).toBeLessThan(down.indexOf("selection.arm(null);"));
     expect(guard).toBeLessThan(down.indexOf('t.closest("[data-arm-zone]")'));
@@ -159,9 +160,10 @@ describe("예지 «다음»이 다른 패의 «다음»과 겹치지 않는다 (
     expect(row).toContain("{pos === 0 && isMine && !bottom.armed && triple.length === 0 ? nextBadge : null}");
   });
 
-  it("밑장 예약 중이면 자리 라벨이 내 한 번의 쯔모를 건너뛴다 — 두 계산 모두", () => {
-    expect(APP).toContain("bottomDealArmed ? me.seat : undefined,");
-    expect(APP).toContain("bottomArmed ? mySeat : undefined,");
+  it("밑장 예약 중이면 자리 라벨이 그 자리의 한 번 쯔모를 건너뛴다 — 두 계산 모두(+관전), 상대 예약 포함", () => {
+    // (W3 수정 커밋 리뷰) 내 예약만이 아니라 전원 공개 채널의 모든 예약 자리를 넘긴다
+    expect(APP).toContain("bottomDealArmedSeats(view.players, focusAv),");
+    expect(APP).toContain("bottomDealArmedSeats(view.players, view.augmentView),");
   });
 
   it("projectedDrawSeats(skipNextDrawOf) — 내 다음 한 번만 건너뛰고 길이는 그대로", () => {

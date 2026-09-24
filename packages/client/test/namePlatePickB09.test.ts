@@ -109,8 +109,9 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
     expect(click).toMatch(/if \(picking\) \{\s*e\.stopPropagation\(\);\s*return;\s*\}/);
     before(click, "if (picking) {", "if (armTarget === true) {");
     // 줄 대상(opp)이면 확정 뒤 툴팁이 남지 않게 걷고 올려 보낸다(U27, B09 리뷰)
+    // (W3 수정 커밋 리뷰) 비후보 줄(armMissLabel)이면 읽던 툴팁을 닫지 않고 그냥 올려 보낸다
     expect(click).toMatch(
-      /if \(armTarget === true\) \{\s*e\.currentTarget\.blur\(\);\s*setTipFor\(null\);\s*return;\s*\}/,
+      /if \(armTarget === true\) \{\s*if \(armMissLabel !== undefined\) return;\s*e\.currentTarget\.blur\(\);\s*setTipFor\(null\);\s*return;\s*\}/,
     );
     // 후보 pill은 줄의 시트 열기로 번지지 않는다
     expect(click.slice(0, click.indexOf("togglePin(a);"))).toContain("e.stopPropagation();");
@@ -129,8 +130,9 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
     before(name, "if (armTarget === true) return;", "setSheetOpen(true);");
     expect(name.slice(0, name.indexOf("setSheetOpen(true);"))).not.toContain("stopPropagation");
     // 줄 대상일 때는 «증강 보기»로 읽히지도 포커스를 받지도 않는다 — 줄 하나만 읽힌다(B09 리뷰)
+    // (W3 수정 커밋 리뷰) 비후보 줄(armMissLabel)은 확정이 없어 숨기지 않고 «이름: 사유»로 읽힌다
     expect(name.slice(0, name.indexOf("onClick"))).toContain(
-      '{...(armTarget === true ? { tabIndex: -1, "aria-hidden": true } : {})}',
+      '{...(armTarget === true && armMissLabel === undefined ? { tabIndex: -1, "aria-hidden": true } : {})}',
     );
     // 보기 시트를 연 채로 줄이 대상이 되면 걷는다
     expect(NAMEPLATE).toMatch(/if \(armTarget === true\) setSheetOpen\(false\);/);
