@@ -52,8 +52,9 @@ describe("U37 — 단일 ✦ 버튼은 증강 이름을 적는다", () => {
 
   it("라벨 = ✦ {이름} · {부제}, 개수는 메뉴가 열릴 때(둘 이상)만", () => {
     expect(CONTROL).toContain(
-      '<span className="aug-btn-name">{single !== null ? augNameFor(single) : "액티브 증강"}</span>',
+      '<span className={`aug-btn-name${single !== null ? " aug-btn-name-aug" : ""}`}>',
     );
+    expect(CONTROL).toContain('{single !== null ? augNameFor(single) : "액티브 증강"}');
     expect(CONTROL).toContain('<span className="aug-btn-sub">· {singleSub}</span>');
     expect(CONTROL).toContain("{usable && single === null ? ` (${displayCount})` : \"\"}");
     // 옛 라벨(언제나 «액티브 증강 (n)»)이 남지 않는다

@@ -20,17 +20,29 @@ const RELATIVE_LABELS = ["나", "하가", "대면", "상가"] as const;
  * @param turnSeat   지금 차례인 사람의 자리
  * @param direction  진행 방향 (1=시계, −1=역행)
  * @param seatCount  자리 수
+ * @param skipNextDrawOf  이 자리의 **다음 한 번** 쯔모는 패산 앞을 쓰지 않는다 — 밑장빼기를
+ *   예약해 둔 경우다(content `foresight`도 밑장 쯔모는 앞 장을 소비하지 않는다고 본다). 그 한 번을
+ *   건너뛰어 뒤 라벨을 한 칸씩 당긴다. 건너뛰지 않으면 예지 맨 앞 칸에 «나 ★»가 틀리게 선다
+ *   (2026-09-25, docs/59 U50 W3 통합 리뷰).
  */
 export function projectedDrawSeats(
   turnSeat: number,
   direction: number,
   seatCount: number,
   count: number,
+  skipNextDrawOf?: number,
 ): number[] {
   const step = direction < 0 ? -1 : 1;
   const out: number[] = [];
-  for (let i = 1; i <= count; i++) {
-    out.push((((turnSeat + i * step) % seatCount) + seatCount) % seatCount);
+  let skipped = skipNextDrawOf === undefined;
+  // 건너뛰기는 많아야 한 번이라 count + 1 바퀴면 충분하다
+  for (let i = 1; out.length < count && i <= count + 1; i++) {
+    const seat = (((turnSeat + i * step) % seatCount) + seatCount) % seatCount;
+    if (!skipped && seat === skipNextDrawOf) {
+      skipped = true;
+      continue;
+    }
+    out.push(seat);
   }
   return out;
 }

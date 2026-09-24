@@ -15810,6 +15810,9 @@ const GameTable = memo(function GameTable(props: {
   useEffect(() => {
     if (selection.armedType === null) return;
     const onDown = (e: PointerEvent): void => {
+      // 무장 해제는 주 버튼(탭·왼쪽 클릭)만 — 오른쪽 버튼 pointerdown에 풀면 그 setState가 contextmenu보다
+      // 먼저 그려져, 우클릭 쯔모기리의 «무장 중엔 버리지 않는다» 가드를 비껴 쯔모패가 버려졌다(W3 통합 리뷰 interaction-4)
+      if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
       if (t === null || tableRef.current?.contains(t) !== true) return;
       if (t.closest("[data-arm-zone]") !== null) return;
@@ -16108,13 +16111,26 @@ const GameTable = memo(function GameTable(props: {
         />
       ) : null}
 
-      {seats.top !== null ? <OpponentStrip view={view} player={seats.top} side="top" catalog={catalog} /> : null}
-      {seats.left !== null ? <OpponentStrip view={view} player={seats.left} side="left" catalog={catalog} /> : null}
-      {seats.right !== null ? <OpponentStrip view={view} player={seats.right} side="right" catalog={catalog} /> : null}
+      {seats.top !== null ? (
+        <OpponentStrip view={view} player={seats.top} side="top" catalog={catalog} onToast={props.onToast} />
+      ) : null}
+      {seats.left !== null ? (
+        <OpponentStrip view={view} player={seats.left} side="left" catalog={catalog} onToast={props.onToast} />
+      ) : null}
+      {seats.right !== null ? (
+        <OpponentStrip view={view} player={seats.right} side="right" catalog={catalog} onToast={props.onToast} />
+      ) : null}
 
       {/* 무장 중 판 가운데(네 바닥 + 점수판)는 대상 영역이다 — `.river-wrap`은 pointer-events:none이라
-          후보 바닥 패를 빗나간 클릭이 여기로 떨어진다. 빗나감은 무시한다(docs/59 U25) */}
-      <div className="table-center" {...(selection.armedType !== null ? { "data-arm-zone": "1" } : {})}>
+          후보 바닥 패를 빗나간 클릭이 여기로 떨어진다. 빗나감은 무시한다(docs/59 U25).
+          강제 무장(미래를 보는 자)은 바닥이 대상이 아니다 — 여기서 빼야 판을 누를 때 «지금 고르는 패를
+          먼저 정하세요» 안내가 선다(W3 통합 리뷰 interaction-3, U03) */}
+      <div
+        className="table-center"
+        {...(selection.armedType !== null && !FORCED_ARM_TYPES.has(selection.armedType)
+          ? { "data-arm-zone": "1" }
+          : {})}
+      >
         <River view={view} playerId={me.id} side="bottom" />
         {seats.right !== null ? <River view={view} playerId={seats.right.id} side="right" /> : null}
         {seats.top !== null ? <River view={view} playerId={seats.top.id} side="top" /> : null}
@@ -19295,11 +19311,14 @@ function OpponentStrip({
   player,
   side,
   catalog,
+  onToast,
 }: {
   view: PlayerView;
   player: PlayerInfo;
   side: "top" | "left" | "right";
   catalog: Record<string, AugmentCatalogEntry>;
+  /** 비후보 상대 줄을 눌렀을 때 «왜 안 되는지»를 알린다(원칙 7) */
+  onToast?: ((text: string) => void) | undefined;
 }): JSX.Element {
   const zone = view.zones[`hand:${player.id}`];
   const hidden = zone?.hiddenCount ?? 0;
@@ -19408,6 +19427,19 @@ function OpponentStrip({
     if (!swapFaster) return body;
     return compact ? `⚡ 빠름. ${body}` : `⚡ 나보다 빠름. ${body}`;
   };
+  /*
+   * 상대가 대상인 무장(opp·opp-aug) 중 **후보가 아닌** 상대 줄 — 대상 영역 안의 빗나감이다(§2 원칙 7).
+   * 예전엔 이 줄이 «판의 빈 곳»으로 읽혀, 사유 태그(«리치 중이라…»)를 보고 «왜 안 되지» 하며 누르면
+   * 무장이 통째로 풀렸다(폰에서는 이름 단추가 보기 시트를 열며 조용히). 손패 무장의 «이 패는 … 대상이
+   * 아닙니다»와 같게 무장은 그대로 두고 이유만 알린다(W3 통합 리뷰 interaction-1).
+   */
+  const armMiss =
+    (sel.armMode === "opp" || sel.armMode === "opp-aug") && !oppArmable && !oppAugArmable;
+  const armMissText = (): string =>
+    oppBlocked ??
+    (sel.armMode === "opp-aug"
+      ? `${playerName(view, player)}에게는 ${armAugName} 대상인 증강이 없습니다`
+      : `${playerName(view, player)}은(는) ${armAugName} 대상이 아닙니다`);
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
     ? {
@@ -19429,14 +19461,22 @@ function OpponentStrip({
             `${playerName(view, player)}의 증강 고르기 (${armAugName})`,
           ),
         }
-      : {};
+      : armMiss
+        ? {
+            // 대상이 아니라 버튼 역할은 주지 않는다 — 마우스·탭의 빗나감만 받아 이유를 말한다
+            "data-arm-zone": "1",
+            onClick: () => onToast?.(armMissText()),
+          }
+        : {};
   /*
    * 이름표에 내릴 무장 소품 — 상대 줄 전체가 대상인 무장(opp)이나 무장해제(opp-aug) 중에는 이름·알약이
    * 제 동작(시트 열기·설명 고정)을 멈추고 클릭을 줄로 올린다. 그래야 «줄 어디를 눌러도 하나»가 된다
    * — 예전엔 폰에서 이름을 누르면 시트가 뜨면서 대상 확정까지 함께 터졌다(2026-09-25, docs/59 U27).
    */
   const plateArm = {
-    ...(oppArmable || oppAugArmable ? { armTarget: true } : {}),
+    // 비후보 줄(armMiss)도 — 이름 단추가 보기 시트를 열거나 pill이 설명을 고정하지 않고 줄로 올려
+    // 이유 토스트가 되게 한다(W3 통합 리뷰 interaction-1)
+    ...(oppArmable || oppAugArmable || armMiss ? { armTarget: true } : {}),
     ...(oppAugArmable ? { pickAug, onPickAug: sel.submit } : {}),
   };
   // 좁은 화면의 무장해제 입구 — 줄을 누르면 연다. 행마다 «잠그기»(U24)
@@ -21839,7 +21879,10 @@ function WallPeekRow(props: {
                     {/* «다음»은 **내** 다음 쯔모일 때만 — 남의 쯔모 칸에 달면 삼세 예지의 «다음»(내 쯔모)과
                         다른 패에 같은 뱃지가 둘 붙는다(밑장 «밑»과 같은 이유, 2026-09-25 docs/59 U50 리뷰).
                         맨 앞 칸은 wall-peek-next 테두리와 아래 자리 이름으로 읽힌다. */}
-                    {pos === 0 && isMine ? nextBadge : null}
+                    {/* 밑장 예약 중이거나 삼세 예지가 떠 있으면 그쪽이 내 다음 쯔모를 더 정확히 말한다 —
+                        밑장 «다음»·삼세 예지 «다음»(서버가 밑장·쯔모 변형 예약까지 반영)과 다른 패에
+                        같은 뱃지가 둘 서지 않게 예지 쪽은 뺀다(W3 통합 리뷰). 평소엔 triple[0]이 이 패다. */}
+                    {pos === 0 && isMine && !bottom.armed && triple.length === 0 ? nextBadge : null}
                     <span className="wall-peek-label">
                       {shown}
                       {isMine ? " ★" : ""}
@@ -22929,10 +22972,23 @@ function OwnArea(props: {
   const foresightSeatLabels = useMemo<string[]>(() => {
     const seatCount = view.players.length;
     const dir = view.round.direction;
-    return projectedDrawSeats(view.round.turnSeat, dir, seatCount, foresightPeek.length).map((s) =>
-      relativeSeatLabel(me.seat, s, dir, seatCount),
-    );
-  }, [view.players.length, view.round.turnSeat, view.round.direction, me.seat, foresightPeek.length]);
+    // 밑장을 예약해 뒀으면 내 다음 쯔모는 맨 밑장이다 — 그 한 번은 패산 앞을 쓰지 않으니 건너뛴다
+    // (W3 통합 리뷰: 예지 맨 앞 칸에 «나 ★ 다음»이 밑장 «다음»과 함께 서던 것)
+    return projectedDrawSeats(
+      view.round.turnSeat,
+      dir,
+      seatCount,
+      foresightPeek.length,
+      bottomDealArmed ? me.seat : undefined,
+    ).map((s) => relativeSeatLabel(me.seat, s, dir, seatCount));
+  }, [
+    view.players.length,
+    view.round.turnSeat,
+    view.round.direction,
+    me.seat,
+    foresightPeek.length,
+    bottomDealArmed,
+  ]);
   /**
    * 예지 재배열 탭이 열려 있는가 — 탭(모달)은 ActiveAugmentControl에 남고 여닫이만 여기서 쥔다.
    * [순서 바꾸기] 버튼이 패산 정보 줄로 옮겨 오면서 그 버튼과 탭이 한 상태를 봐야 했다(docs/59 U50).
@@ -24401,7 +24457,8 @@ function OwnArea(props: {
           className="own-corner-right"
           /* 무장 중에는 이 줄 전체가 대상 영역이다 — `.own-area`의 형제라 빗나간 클릭이 «판의 빈 곳»으로
              읽혀 무장이 풀렸다. 후로 사이를 빗나가도 아무 일도 없게 한다(2026-09-25, docs/59 U25) */
-          {...(sel.armedType !== null ? { "data-arm-zone": "1" } : {})}
+          /* 강제 무장(미래를 보는 자)에서는 후로가 대상이 아니다 — 판 표면의 안내(FORCED_PICK_HINT)가 서게 뺀다 */
+          {...(sel.armedType !== null && !FORCED_ARM_TYPES.has(sel.armedType) ? { "data-arm-zone": "1" } : {})}
           /* 후로 개수 — CSS가 «몇 개를 이 폭에 담아야 하는지»를 알아야 타일 크기를
              줄여 덜 넘치게 할 수 있다(styles.css `.own-corner-right`의 --mt-w).
              북풍 상인의 빼놓은 北도 같은 줄에 서므로 하나로 센다. */
@@ -26905,15 +26962,19 @@ function ActiveAugmentControl(props: {
     const seatCount = view.players.length;
     const mySeat = view.players.find((p) => p.id === view.playerId)?.seat ?? 0;
     const dir = view.round.direction;
+    // 밑장 예약 중이면 내 다음 쯔모 한 번은 패산 앞을 쓰지 않는다 — 패산 정보 줄과 같은 규칙
+    const bottomArmed = view.augmentView[`bottom_deal:armed:${view.playerId}`] === true;
     return projectedDrawSeats(
       view.round.turnSeat,
       dir,
       seatCount,
       foresightPeek.length,
+      bottomArmed ? mySeat : undefined,
     ).map((s) => relativeSeatLabel(mySeat, s, dir, seatCount));
   }, [
     view.players,
     view.playerId,
+    view.augmentView,
     view.round.turnSeat,
     view.round.direction,
     foresightPeek.length,
@@ -27813,7 +27874,10 @@ function ActiveAugmentControl(props: {
         onBlur={hintNone}
       >
         ✦{" "}
-        <span className="aug-btn-name">{single !== null ? augNameFor(single) : "액티브 증강"}</span>
+        {/* 좁은 화면의 5em 말줄임은 증강 이름에만 건다(aug-btn-name-aug) — 평소 라벨까지 자르지 않게 */}
+        <span className={`aug-btn-name${single !== null ? " aug-btn-name-aug" : ""}`}>
+          {single !== null ? augNameFor(single) : "액티브 증강"}
+        </span>
         {single !== null && singleSub !== "" ? (
           <span className="aug-btn-sub">· {singleSub}</span>
         ) : null}

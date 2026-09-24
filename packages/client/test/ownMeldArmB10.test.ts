@@ -141,12 +141,15 @@ describe("U25 무장 해제 범위 — 펠트의 진짜 빈 곳만", () => {
   });
 
   it("무장 중 판 가운데와 내 후로 줄은 대상 영역이다 — 빗나감은 무시", () => {
+    // 강제 무장(미래를 보는 자)은 빼 둔다 — W3 통합 리뷰 interaction-3
     expect(TABLE).toContain(
-      '<div className="table-center" {...(selection.armedType !== null ? { "data-arm-zone": "1" } : {})}>',
+      '{...(selection.armedType !== null && !FORCED_ARM_TYPES.has(selection.armedType)\n          ? { "data-arm-zone": "1" }',
     );
     const at = OWN.indexOf('className="own-corner-right"');
     expect(at).toBeGreaterThan(-1);
-    expect(OWN.slice(at, at + 300)).toContain('{...(sel.armedType !== null ? { "data-arm-zone": "1" } : {})}');
+    expect(OWN.slice(at, at + 600)).toContain(
+      '{...(sel.armedType !== null && !FORCED_ARM_TYPES.has(sel.armedType) ? { "data-arm-zone": "1" } : {})}',
+    );
   });
 
   it("무장 중 Esc는 무장을 푼다 — 입력 칸·다른 Esc 임자에 양보하고, ActionHotkeys 밖에 둔다", () => {

@@ -89,7 +89,8 @@ describe("U24·U32 무장 방식 — 이름표 pill", () => {
 
   it("NamePlate(memo)에는 무장 중일 때만 고르기 콜백을 내린다", () => {
     expect(STRIP).toContain("...(oppAugArmable ? { pickAug, onPickAug: sel.submit } : {})");
-    expect(STRIP).toContain("...(oppArmable || oppAugArmable ? { armTarget: true } : {})");
+    // 비후보 줄(armMiss)도 armTarget — W3 통합 리뷰 interaction-1
+    expect(STRIP).toContain("...(oppArmable || oppAugArmable || armMiss ? { armTarget: true } : {})");
     expect(APP_CODE).toContain(
       "{...(ownAugArmed ? { pickAug: pickOwnAug, onPickAug: sel.submit } : {})}",
     );

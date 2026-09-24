@@ -67,7 +67,7 @@ describe("B12 U50 — 패산 정보 한 줄", () => {
     expect(CSS).toMatch(/\.wall-peek-cell \.tile-mini \{\s*width: 26px;\s*height: 37px;/);
     expect(CSS).toMatch(/\.wall-peek-row \{[^}]*flex-wrap: wrap;/);
     const narrow = CSS.slice(CSS.indexOf("@container ui (max-width: 700px) {\n  .wall-peek-sec"));
-    expect(narrow.slice(0, 400)).toContain(".wall-peek-name");
+    expect(narrow.slice(0, narrow.indexOf("\n}\n"))).toContain(".wall-peek-name");
   });
 
   it("예지는 OwnArea가 focusAv에서 읽는다 — 관전자에게도 보인다", () => {
@@ -151,7 +151,8 @@ describe("B12 U35 — 밑장 칸을 눌러 예약", () => {
   });
 
   it("예지 맨 앞 칸의 «다음»은 내 쯔모일 때만 — 남의 쯔모에 달면 삼세 예지의 «다음»과 둘이 된다(라운드 2 리뷰)", () => {
-    expect(row).toContain("{pos === 0 && isMine ? nextBadge : null}");
+    // W3 통합 리뷰 — 밑장 예약·삼세 예지가 있으면 그쪽이 «다음»을 진다
+    expect(row).toContain("{pos === 0 && isMine && !bottom.armed && triple.length === 0 ? nextBadge : null}");
     expect(row).not.toContain("{pos === 0 ? nextBadge : null}");
   });
 
