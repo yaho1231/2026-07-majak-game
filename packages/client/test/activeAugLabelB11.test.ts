@@ -86,6 +86,16 @@ describe("U38 — 메뉴 줄에 행동 부제", () => {
     expect(cssRule(CSS, ".aug-menu")).toContain("max-width: 92cqw;");
     expect(cssRule(CSS, ".aug-menu-item .act-target")).toContain("text-overflow: ellipsis");
   });
+
+  it("폰(700px 블록)에서는 메뉴 기준을 화면 가운데 이름표 줄로 옮긴다 — 버튼 위치에 매이지 않는다", () => {
+    const at = CSS.indexOf("  .own-top-main { position: relative; }");
+    expect(at, "700px 블록의 메뉴 기준 규칙이 없다").toBeGreaterThan(-1);
+    const block = CSS.lastIndexOf("@container ui", at);
+    expect(CSS.slice(block, CSS.indexOf("{", block))).toBe("@container ui (max-width: 700px) ");
+    const rules = CSS.slice(at, CSS.indexOf("\n\n", at));
+    expect(rules).toContain(".own-aug { position: static; }");
+    expect(rules).toMatch(/\.aug-menu \{\s*left: 50%;\s*transform: translateX\(-50%\);/);
+  });
 });
 
 describe("U40 — 첫 순 한정 액티브 표시", () => {
@@ -97,6 +107,13 @@ describe("U40 — 첫 순 한정 액티브 표시", () => {
     expect(CONTROL).toContain('${firstTurnNow ? " aug-btn-first" : ""}');
     expect(CONTROL).toContain('{single !== null ? "이번 순만" : "첫 순"}');
     expect(cssRule(CSS, ".aug-btn-first")).toContain("border-color");
+  });
+
+  it("좁은 화면의 금빛 점은 ✦ 버튼 안의 표만 — 메뉴 줄 «이번 순만»은 글자째 남는다", () => {
+    const dots = CSS.match(/\n {2}\.aug-btn \.aug-first-badge \{\n {4}width: 8px;/g) ?? [];
+    expect(dots.length).toBe(2);
+    // 블록 안에 맨 선택자(.aug-first-badge {)로 점을 만들면 메뉴 줄 배지까지 글자가 사라진다
+    expect(CSS).not.toMatch(/\n {2}\.aug-first-badge \{/);
   });
 
   it("액션 바 칩은 만들지 않는다(보류) — ✦ 목록·개수 규약이 그대로다", () => {

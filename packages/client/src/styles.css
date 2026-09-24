@@ -8063,7 +8063,11 @@ button {
   border: 1px solid rgba(199, 188, 255, 0.5);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
   min-width: 170px;
-  /* 줄마다 행동 부제가 붙어 넓어졌다 — 폰 가로에서 오른쪽으로 넘치지 않게 묶는다(docs/59 U38) */
+  /*
+   * 줄마다 행동 부제가 붙어 넓어졌다 — 폭은 화면의 92%로 묶는다(docs/59 U38). 다만 이 폭만으로는
+   * 오른쪽 넘침을 못 막는다: 메뉴는 ✦ 버튼 왼쪽 끝(left: 0)에서 퍼지는데 폰 세로에서는 버튼이
+   * 줄 중간쯤에 선다. 그래서 좁은 화면(700px 블록)에서는 기준을 이름표 줄로 옮겨 가운데 세운다.
+   */
   max-width: 92cqw;
   /* 선택지가 많아도(염색 등) 화면을 넘지 않게 — 넘치면 스크롤 */
   max-height: min(60cqh, 420px);
@@ -8641,6 +8645,8 @@ button {
    * 오른쪽에 선 폭 — 폰 세로(375px: 버튼 ≈150px 지점 + 260px)나 901~980px(+480px) — 에서
    * 오른쪽 화면 밖으로 넘친다. min-width는 max-width(92cqw)를 이기므로 폭을 줄이는 것만으로는
    * 안 된다 — 버튼 위 **가운데**에 세워 양쪽으로 나눠 퍼지게 한다(2026-09-25, docs/59 U39 리뷰).
+   * 폰 세로에서는 버튼 자체가 가운데라는 보장이 없어(짧은 이름표면 버튼 중심 x≈260~290/375)
+   * 700px 블록이 기준을 화면 가운데에 선 이름표 줄(.own-top-main)로 옮긴다.
    */
   left: 50%;
   transform: translateX(-50%);
@@ -9974,8 +9980,22 @@ button {
    * 남는다(font-size: 0은 접근성 이름에서 빠지지 않는다). 이름도 5em으로 한 급 더 묶는다
    * (2026-09-25, docs/59 U37·U40 리뷰).
    */
+  /*
+   * ✦ 메뉴(1단계 목록·2단계 격자)의 기준을 ✦ 버튼에서 이름표 줄로 옮겨 **화면 가운데**에 세운다.
+   * 버튼 왼쪽 끝(left: 0)이나 버튼 가운데에 붙이면 버튼이 줄 어디에 서느냐(이름표 길이)에 따라
+   * 375px 세로에서 오른쪽 끝이 화면 밖으로 잘렸다 — 행동 부제가 붙은 줄(≈260px)이 끝까지 안 보였다.
+   * .own-top-main 은 3열 그리드(1fr auto 1fr)의 가운데 칸이라 늘 화면 가운데이고, 폭은 92cqw로
+   * 묶여 있으니 양옆 4cqw 안에 든다(2026-09-25, docs/59 U38·U39 리뷰 2).
+   */
+  .own-top-main { position: relative; }
+  .own-aug { position: static; }
+  .aug-menu {
+    left: 50%;
+    transform: translateX(-50%);
+  }
   .aug-btn-name { max-width: 5em; }
-  .aug-first-badge {
+  /* 버튼 안의 표만 — 메뉴 줄의 «이번 순만»은 금빛 테두리도 폭 압박도 없어 글자째 둔다(U40 리뷰 2) */
+  .aug-btn .aug-first-badge {
     width: 8px;
     height: 8px;
     margin-left: 5px;
@@ -10403,7 +10423,8 @@ button {
    * (2026-09-25, docs/59 U37·U40 리뷰).
    */
   .aug-btn-name { max-width: 5em; }
-  .aug-first-badge {
+  /* 버튼 안의 표만 — 메뉴 줄의 «이번 순만»은 금빛 테두리도 폭 압박도 없어 글자째 둔다(U40 리뷰 2) */
+  .aug-btn .aug-first-badge {
     width: 8px;
     height: 8px;
     margin-left: 5px;
