@@ -78,6 +78,9 @@ export function playerAtSeat(state: GameState, seat: number): PlayerState {
 /**
  * @param direction 1=시계(표준), -1=역방향 (`turn.direction` 규칙)
  *
+ * 감사 §10-11이 «−1을 쓰는 콘텐츠는 없지만 걷어내지 않는다»로 남겨 둔 확장점이고,
+ * 역풍(`reverse_wind`, 2026-09-24)이 처음 쓴다.
+ *
  * `turn.direction`은 **차례 순서만** 뒤집는다 — 다음 차례·치 대상(상가)·동시 론 우선순위.
  * 자풍과 다음 국 오야 이동은 방향과 무관하다(역풍 `reverse_wind`, 2026-09-24 사용자 확정:
  * "동→북→서→남"으로 흐른다 = 바람 이름은 그대로 두고 순서만 거꾸로).

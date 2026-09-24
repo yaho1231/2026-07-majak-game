@@ -78,7 +78,8 @@ export const swamp: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
-  complexity: 1,
+  // 난도 3: 후로 종류(치·퐁·대명깡)·강제 쯔모기리·남은 순이 겹친다
+  complexity: 3,
   name: "늪",
   description:
     "(2국에 1회) 발동하면 이번 국 동안 내 패를 운 타가는 다음 2순 동안 쯔모기리만 할 수 있다.",

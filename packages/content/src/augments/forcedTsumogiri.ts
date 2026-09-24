@@ -34,6 +34,7 @@ import type {
   TileId,
 } from "@majak/core";
 import { counterOf, flagOf, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { roundScopedKey } from "./roundScope.js";
 
 /** 남은 강제 순 (대상별 · 보유자별) */
@@ -149,6 +150,13 @@ export function installForcedTsumogiri(
     const left = counterOf(state, leftKey(augmentId, state, holder, p.player));
     rc.emit(publish(augmentId, holder, p.player, left));
   });
+
+  // 잠기면 버림 잠금이 꺼지므로 남은 순 배지도 함께 내린다
+  clearViewOnDisarm(ctx, (state) =>
+    state.players.map((p) =>
+      roundViewKey("*", forcedTsumogiriChannel(augmentId, holder, p.id)),
+    ),
+  );
 
   engine.rules.addModifier<TileId[]>("discard.blockedTileIds", {
     source: ctx.instanceId,

@@ -2,7 +2,8 @@
  * 위압감 (intimidate, prism) — 리치 한 번에 테이블이 얼어붙는다.
  *
  * (2국에 1회) 이 증강으로 리치를 걸면, 나를 뺀 타가 전원이 **다음 1순** 동안 쯔모한 패만
- * 버릴 수 있다. 이미 리치 중인 사람은 원래 쯔모기리라 걸지 않는다.
+ * 버릴 수 있다. 리치 중인 사람에게도 똑같이 건다 — 걸러 내면 숨은 리치(스텔스)가 배지의
+ * 유무로 새어 나간다. 리치 중이면 어차피 쯔모기리라 효과는 없다.
  *
  * ## 구현
  * - 액션 `intimidate_riichi {tileId}` — 표준 리치 액션의 검증과 이벤트를 **그대로** 빌려 쓴다
@@ -68,10 +69,7 @@ function makeRiichiAction(
     toEvents: (req, ctx) => {
       const { state } = ctx;
       const pressed = state.players
-        .filter(
-          (p) =>
-            p.id !== req.player && state.round.byPlayer[p.id]?.riichi == null,
-        )
+        .filter((p) => p.id !== req.player)
         .flatMap((p) =>
           forceTsumogiriEvents(state, ID, req.player, p.id, INTIMIDATE_TURNS),
         );
@@ -94,7 +92,7 @@ export const intimidate: AugmentDef = defineAugment({
   description:
     "(2국에 1회) 이 증강으로 리치를 걸면 타가 전원은 다음 1순 동안 쯔모기리만 할 수 있다.",
   detail:
-    "이 증강으로 리치를 걸면 나를 제외한 타가 전원이 다음 1순 동안 쯔모한 패만 버릴 수 있다. 쯔모 화료·깡·후로는 할 수 있다.\n\n이미 리치 중인 타가에게는 걸리지 않는다. 공탁금 1,000점은 평소대로 낸다.",
+    "이 증강으로 리치를 걸면 나를 제외한 타가 전원이 다음 1순 동안 쯔모한 패만 버릴 수 있다. 쯔모 화료·깡·후로는 할 수 있다.\n\n공탁금 1,000점은 평소대로 낸다. 리치는 국당 한 번이므로 리치 증강을 여럿 가지고 있어도 그 국에는 하나만 사용할 수 있다.",
   install(ctx) {
     const { engine, holder } = ctx;
     if (!engine.actions.has(ACTION)) {

@@ -13,6 +13,7 @@
 import { augmentDataSet, defineAugment } from "@majak/core";
 import type { AugmentDef, GameState } from "@majak/core";
 import { armOnNextRound, armedNow, roundViewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 
 const ID = "reverse_wind";
 
@@ -20,7 +21,8 @@ export const reverseWind: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
   category: "disrupt",
-  complexity: 1,
+  // 난도 3: 차례 순서가 바뀌면 치 대상·하가를 쓰는 다른 증강까지 함께 바뀐다
+  complexity: 3,
   name: "역풍",
   description:
     "(획득 즉시 · 이번 국만) 차례가 반대 방향(동→북→서→남)으로 돈다.",
@@ -33,6 +35,9 @@ export const reverseWind: AugmentDef = defineAugment({
     armOnNextRound(ctx, ID, () => [
       augmentDataSet(roundViewKey("*", `${ID}:${holder}`), true),
     ]);
+
+    // 무장해제되면 순서가 그 자리에서 돌아오므로 공개 표시도 내린다
+    clearViewOnDisarm(ctx, () => [roundViewKey("*", `${ID}:${holder}`)]);
 
     engine.rules.addModifier<number>("turn.direction", {
       source: instanceId,
