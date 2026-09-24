@@ -8677,6 +8677,22 @@ button {
   opacity: 0.4;
 }
 
+/* 좌우 세로 줄은 폭이 정해져 있지 않아 flex-wrap이 먹지 않는다 — 좁은 판에선 한 줄로 선
+   뱃지(≈150px)가 줄을 판 쪽으로 밀어낸다. 폭을 묶어 라벨을 패 위로 접는다(2026-09-25, docs/59 U81). */
+@container ui (max-width: 700px) {
+  .opp-strip-left .future-got-badge,
+  .opp-strip-right .future-got-badge {
+    max-width: 96px;
+  }
+}
+
+@container ui (max-height: 560px) and (orientation: landscape) {
+  .opp-strip-left .future-got-badge,
+  .opp-strip-right .future-got-badge {
+    max-width: 96px;
+  }
+}
+
 .waits-badge-mine {
   border-color: rgba(246, 136, 119, 0.75);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 14px rgba(245, 126, 100, 0.4);

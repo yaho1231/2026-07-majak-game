@@ -133,6 +133,10 @@ describe("U09 교환 상대·넘길 패", () => {
     // stage===null(give와 take 사이 잠깐 빈 순간)에서는 비우지 않는다
     expect(OWN).not.toMatch(/stage === null\) setSwapGives\(\[\]\)/);
   });
+
+  it("상대 지정이 바뀌면(교환 완료로 채널이 걷히면) 기억을 버린다 — give 프롬프트를 못 본 재접속에도 옛 3장이 뜨지 않게", () => {
+    expect(OWN).toMatch(/useEffect\(\(\) => \{\n    setSwapGives\(\[\]\);\n  \}, \[swapAimId\]\);/);
+  });
 });
 
 describe("U11 도달 불가한 옛 swap3 무장 경로가 없다", () => {
@@ -188,5 +192,11 @@ describe("U81 가져온 패 — 실제 패 표식과 그 상대 줄 옆", () => 
     const badge = fnBody("FutureGotBadge");
     expect(badge).toContain('className={`future-got-cell${gone ? " future-got-gone" : ""}`}');
     expect(CSS).toMatch(/\.future-got-gone[^{]*\{[^}]*opacity:/);
+  });
+
+  it("좁은 판의 좌우 세로 줄에서는 뱃지 폭을 묶어 줄을 판 쪽으로 밀지 않는다", () => {
+    const rules = CSS.match(/\.opp-strip-right \.future-got-badge \{[^}]*\}/g) ?? [];
+    expect(rules.length).toBe(2);
+    for (const r of rules) expect(r).toMatch(/max-width:/);
   });
 });
