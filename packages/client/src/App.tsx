@@ -104,7 +104,7 @@ import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
-import { STALE_RELOAD_KEY, isStaleClientBuild, ownClientBuild } from "./buildId.js";
+import { isStaleClientBuild, markStaleReload, ownClientBuild, staleReloadTried } from "./buildId.js";
 
 /** "가로로 돌리세요" 안내를 닫은 사실을 기억하는 키 (위 rotateHintOff 주석). */
 const ROTATE_HINT_KEY = "majak.rotateHintOff";
@@ -6837,12 +6837,12 @@ export function App(): JSX.Element {
     [servedBuild],
   );
   const reloadForBuild = useStableFn(() => {
-    if (servedBuild !== undefined) safeStorage.setItem(STALE_RELOAD_KEY, servedBuild);
+    if (servedBuild !== undefined) markStaleReload(servedBuild);
     window.location.reload();
   });
   useEffect(() => {
-    if (!staleBuild || inGame || inWaiting) return;
-    if (safeStorage.getItem(STALE_RELOAD_KEY) === servedBuild) return;
+    if (!staleBuild || inGame || inWaiting || servedBuild === undefined) return;
+    if (staleReloadTried(servedBuild)) return;
     reloadForBuild();
   }, [staleBuild, inGame, inWaiting, servedBuild, reloadForBuild]);
 

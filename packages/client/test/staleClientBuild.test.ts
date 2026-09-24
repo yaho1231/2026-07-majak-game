@@ -14,6 +14,7 @@ import { isStaleClientBuild } from "../src/buildId.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const APP = readFileSync(join(here, "../src/App.tsx"), "utf8");
+const BUILD_ID = readFileSync(join(here, "../src/buildId.ts"), "utf8");
 
 describe("isStaleClientBuild", () => {
   it("둘 다 알고 다르면 낡은 탭", () => {
@@ -33,11 +34,14 @@ describe("isStaleClientBuild", () => {
 describe("App 배선", () => {
   it("serverInfo.clientBuild 를 보고 판 밖이면 새로고침, 판 안이면 띠를 띄운다", () => {
     expect(APP).toContain("isStaleClientBuild(ownClientBuild(), servedBuild)");
-    expect(APP).toMatch(/if \(!staleBuild \|\| inGame \|\| inWaiting\) return;/);
+    expect(APP).toContain("if (!staleBuild || inGame || inWaiting || servedBuild === undefined) return;");
     expect(APP).toContain('className="stale-build-bar"');
   });
 
-  it("같은 서버 빌드로는 한 번만 새로고침한다 (캐시로 옛 번들이 다시 떠도 무한 반복하지 않게)", () => {
-    expect(APP).toContain("safeStorage.getItem(STALE_RELOAD_KEY) === servedBuild");
+  it("같은 서버 빌드로는 탭마다 한 번만 새로고침한다 (캐시로 옛 번들이 다시 떠도 무한 반복하지 않게)", () => {
+    expect(APP).toContain("if (staleReloadTried(servedBuild)) return;");
+    // 표식이 탭 공용(localStorage)이면 먼저 새로고침한 다른 탭 때문에 이 탭이 건너뛴다
+    expect(BUILD_ID).toContain("window.sessionStorage");
+    expect(BUILD_ID).not.toContain("window.localStorage");
   });
 });
