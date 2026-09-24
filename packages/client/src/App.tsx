@@ -21103,6 +21103,16 @@ function OwnArea(props: {
    * 실제로 타는 패가 조용히 갈린다.
    */
   const [doomedHint, setDoomedHint] = useState<ReadonlySet<number> | null>(null);
+  /**
+   * 액티브 증강 버튼에 손이 올라가 있는 동안 **지금 사용 가능한 증강 id들**.
+   *
+   * "액티브 증강 (2)"의 2가 넷 중 어느 둘인지가 화면 어디에도 없었다 — 버튼을 눌러
+   * 메뉴를 열어야 알 수 있었고, 그러면 판을 보면서 확인할 수가 없다(2026-08-15 요청).
+   * 버튼과 이름표 pill은 같은 줄(.own-top-main)에 나란히 서 있으므로, 올려놓는 동안
+   * 그 pill들을 빛내면 둘 사이가 눈으로 이어진다.
+   */
+  // 아래 recallDoomed가 «지금 손이 올라간 증강»을 가르는 데도 쓰므로 여기서 먼저 선언한다.
+  const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
   const armedAug = sel.armedType;
   /*
    * 지금 짚어야 할 «사라지는 패» — 버튼/메뉴 hover가 올려 준 목록(doomedHint)이 기본이다.
@@ -21124,16 +21134,21 @@ function OwnArea(props: {
    * 짚은 패 가운데 **회수 때문에** 짚힌 것 — 회수의 쯔모패는 사라지지 않고 내 바닥으로
    * 나가므로 이름을 따로 읽어 준다. 무장 중만 보면 ✦ 메뉴의 회수 줄 hover(무장 전)에서
    * «발동에 쓰여 사라지는 패»로 잘못 읽힌다(2026-09-25, docs/59 U36 리뷰). hover 신호는
-   * 패 id만 실어 오므로 «쯔모패인데 다른 증강의 태울 재료는 아니다»로 가른다 — 둘이 겹치면
-   * 사라지는 쪽이 더 큰 손실이라 그 말을 남긴다.
+   * 패 id만 실어 오므로, 같은 손짓에 함께 오는 pill 발광 신호(usableHint — 손이 올라간
+   * 증강 id들)로 가른다: 회수가 그 안에 없으면 회수 때문에 짚힌 패는 없고, 있으면 **함께
+   * 올라간** 태우는 증강(버튼 hover = 전부)의 재료만 뺀다 — 둘이 겹치면 사라지는 쪽이
+   * 더 큰 손실이라 그 말을 남긴다. 태울 재료를 무조건 빼면 회수 줄 하나만 짚었는데도
+   * 분열의 후보 재료와 겹친 쯔모패가 «사라지는 패»로 읽혔다(2026-09-25, docs/59 U36 리뷰 2).
    */
   const recallDoomed = useMemo<ReadonlySet<number>>(() => {
     if (armedAug === "recall") return doomedNow;
+    const hovered = (t: string): boolean => usableHint?.has(ACTION_AUGMENT[t] ?? t) ?? false;
+    if (!hovered("recall")) return new Set<number>();
     const burn = new Set(
-      ["bluff_pon", "dragons_will", "split_tile"].flatMap((t) => doomedTileIdsOf(view, t)),
+      ["bluff_pon", "dragons_will", "split_tile"].filter(hovered).flatMap((t) => doomedTileIdsOf(view, t)),
     );
     return new Set(doomedTileIdsOf(view, "recall").filter((id) => doomedNow.has(id) && !burn.has(id)));
-  }, [armedAug, view, doomedNow]);
+  }, [armedAug, view, doomedNow, usableHint]);
   const swapTarget = sel.swapTarget;
   const swapGive = sel.swapGive;
   /*
@@ -21722,15 +21737,6 @@ function OwnArea(props: {
       (o) => o.type === "discard" || o.type === "free_discard" || o.type === "riichi",
     ) ?? false;
 
-  /**
-   * 액티브 증강 버튼에 손이 올라가 있는 동안 **지금 사용 가능한 증강 id들**.
-   *
-   * "액티브 증강 (2)"의 2가 넷 중 어느 둘인지가 화면 어디에도 없었다 — 버튼을 눌러
-   * 메뉴를 열어야 알 수 있었고, 그러면 판을 보면서 확인할 수가 없다(2026-08-15 요청).
-   * 버튼과 이름표 pill은 같은 줄(.own-top-main)에 나란히 서 있으므로, 올려놓는 동안
-   * 그 pill들을 빛내면 둘 사이가 눈으로 이어진다.
-   */
-  const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
 
   // 자유 선언으로 고정된 오름패 (있으면 물리 손패와 무관하게 이게 진짜 대기다)
   const frozenWaits = useMemo<TileKind[]>(
@@ -27762,9 +27768,13 @@ function ChoiceLabel({
   const [head, ...rest] = label.split(" ");
   const name = augActionName(catalog, head ?? "");
   const showHead = rest.length === 0 || name !== title;
+  // 머리를 떼도 패 뒤에 맨 숫자만 남는 줄(연금술 «[3만] 1» — 서버 optionLabel이 payload 값을
+  // 그대로 잇는다)은 그 숫자가 무엇인지 읽을 거리가 사라진다 → 그때는 머리를 남긴다
+  // (2026-09-25, docs/59 U18 리뷰 2).
+  const bareNumber = rest.some((tok) => parseKindKey(tok) === null && /^[+-]?\d+$/.test(tok));
   return (
     <span className="spec-choice-opt-label">
-      {showHead ? <span className="spec-choice-opt-act">{name}</span> : null}
+      {showHead || bareNumber ? <span className="spec-choice-opt-act">{name}</span> : null}
       {rest.map((tok, i) => {
         const kind = parseKindKey(tok);
         return kind === null ? (
