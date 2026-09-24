@@ -92,6 +92,10 @@ describe("U31 파혼 — 판의 내 후로를 누른다", () => {
     expect(APP_CODE).toContain("function meldBrief(view: PlayerView, meld: MeldView): string {");
     expect(OPTION_DETAIL).toContain('if (option.type === "dissolve_meld" && typeof p.meldIndex === "number") {');
     expect(OPTION_DETAIL).toContain("meldBrief(view, meld)");
+    // 국사 퐁은 «퐁 1만»이 아니라 제 이름과 세 장으로 부른다(B10 리뷰)
+    const brief = between("function meldBrief(", "\n}\n");
+    expect(brief).toContain('if (meld.kind === "kokushi_pon") return `국사 퐁 ');
+    expect(brief).not.toContain('kokushi_pon: "퐁"');
     expect(ACTION_TILES).toContain('if (option.type === "dissolve_meld" && typeof p.meldIndex === "number") {');
     expect(ACTION_TILES).toContain("ids.push(...sortTileIds(meld.tileIds, view.tiles));");
   });
@@ -108,7 +112,11 @@ describe("U31 파혼 — 판의 내 후로를 누른다", () => {
     const rule = /\.meld-armable \{([^}]*)\}/.exec(CSS_CODE);
     expect(rule).not.toBeNull();
     expect(rule![1]).toContain("min-height: 32px;");
-    expect(rule![1]).toContain("animation: armable-pulse");
+    // 맥동은 안쪽 그림자다 — .own-corner-right의 overflow가 바깥 번짐을 자른다(B10 리뷰)
+    expect(rule![1]).toContain("animation: armable-pulse-inset ");
+    const kf = /@keyframes armable-pulse-inset \{([\s\S]*?)\n\}/.exec(CSS_CODE);
+    expect(kf).not.toBeNull();
+    expect(kf![1]!.match(/box-shadow: inset /g)?.length).toBe(2);
     expect(CSS_CODE).toMatch(/prefers-reduced-motion: reduce[\s\S]*\.opp-armable,\n\s*\.meld-armable,\n\s*\.rt\.rt-armable,/);
   });
 });
@@ -127,7 +135,9 @@ describe("U25 무장 해제 범위 — 펠트의 진짜 빈 곳만", () => {
   });
 
   it("빈 곳 해제는 조용히 끝내지 않는다 — 판 표면이면 토스트", () => {
-    before(DOWN, "selection.arm(null);", 'if (!onControl) props.onToast?.("선택을 취소했습니다");');
+    before(DOWN, "selection.arm(null);", "if (!onControl) props.onToast?.(`${armName} 선택을 취소했습니다`);");
+    // 손패 클릭 해제(OwnArea)와 같은 문구 — 증강 이름이 앞에 선다
+    before(DOWN, "const armName = selection.armedType !== null ? augActionName(catalog, selection.armedType) : \"\";", "selection.arm(null);");
   });
 
   it("무장 중 판 가운데와 내 후로 줄은 대상 영역이다 — 빗나감은 무시", () => {
@@ -146,7 +156,11 @@ describe("U25 무장 해제 범위 — 펠트의 진짜 빈 곳만", () => {
     before(esc, "if (document.querySelector(ESC_OWNER_SELECTOR) !== null) return;", "selection.arm(null);");
     // 강제 무장(미래를 보는 자)은 풀 수 없다 — 이유를 말하고 끝낸다
     before(esc, "FORCED_ARM_TYPES.has(selection.armedType)", "selection.arm(null);");
-    expect(APP_CODE).toMatch(/const ESC_OWNER_SELECTOR =\n\s*'\[role="dialog"\]:not\(\.coach-layer\), \[aria-modal="true"\], \.prod-skip, \.aug-pill-pinned';/);
+    before(esc, "selection.arm(null);", "props.onToast?.(`${armName} 선택을 취소했습니다`);");
+    // role=dialog 없이 뜨는 고르기 창(.rinshan-pick-overlay)도 Esc 임자다(B10 리뷰)
+    expect(APP_CODE).toMatch(
+      /const ESC_OWNER_SELECTOR =\n\s*'\[role="dialog"\]:not\(\.coach-layer\), \[aria-modal="true"\], \.prod-skip, \.aug-pill-pinned, \.rinshan-pick-overlay';/,
+    );
     const hotkeys = between("function ActionHotkeys(", "\n}\n");
     expect(hotkeys).not.toContain('"Escape"');
   });
@@ -172,11 +186,20 @@ describe("U28 비후보 상대의 사유 — 공개 정보만", () => {
     before(fn, "riichiDeclared === true", "appearedHandSlots(view, pid)");
     // 등가교환(swap3)은 3장만 맞바꿔 장수를 보지 않는다(content hand_swap3.ts)
     expect(fn).toContain('if (armedType !== "hand_swap" && armedType !== "seat_swap") return null;');
-    expect(fn).toContain("if (mine === null || theirs === null || mine === theirs) return null;");
-    // 설명할 수 없는 제외에 일반 문구(«고를 수 없음»)를 띄우지 않는다 — 문구는 세 가지뿐이다
+    expect(fn).toContain("if (mine !== null && theirs !== null && mine !== theirs) {");
+    // 보이는 장수가 같아도 후로 구성(깡 ↔ 퐁·치)이 다르면 서버가 뺀다 — 그 사유도 적는다(B10 리뷰).
+    // 후로 구성이 같고 장수도 같으면(숨은 리치 등) 아무것도 적지 않는다
+    expect(fn).toContain('return meldsDiffer ? "후로 구성(깡·퐁)이 달라 고를 수 없습니다" : null;');
+    before(fn, "if (mine !== null && theirs !== null && mine !== theirs) {", 'return meldsDiffer ? "후로 구성(깡·퐁)이 달라');
+    // 설명할 수 없는 제외에 일반 문구(«고를 수 없음»)를 띄우지 않는다 — 문구는 네 가지뿐이다
     const phrases = [...fn.matchAll(/"([^"]*[가-힣][^"]*)"/g)].map((m) => m[1]);
     expect(phrases.sort()).toEqual(
-      ["리치 중이라 대상으로 고를 수 없습니다", "손패 장수가 달라 고를 수 없습니다", "후로가 달라 손패 장수가 맞지 않습니다"].sort(),
+      [
+        "리치 중이라 대상으로 고를 수 없습니다",
+        "손패 장수가 달라 고를 수 없습니다",
+        "후로가 달라 손패 장수가 맞지 않습니다",
+        "후로 구성(깡·퐁)이 달라 고를 수 없습니다",
+      ].sort(),
     );
   });
 

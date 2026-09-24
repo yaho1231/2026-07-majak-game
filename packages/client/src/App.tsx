@@ -1227,10 +1227,12 @@ const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
 
 /**
  * 화면에 떠 있으면 Esc가 **그쪽 몫**인 표면 — 무장 해제 Esc가 비켜선다(docs/59 U25).
- * 창(dialog — 튜토리얼 안내 줄은 판 위에 늘 떠 있는 말풍선이라 뺀다)·연출 건너뛰기·고정한 증강 설명.
+ * 창(dialog — 튜토리얼 안내 줄은 판 위에 늘 떠 있는 말풍선이라 뺀다)·연출 건너뛰기·고정한 증강 설명,
+ * 그리고 role=dialog 없이 뜨는 고르기 창(.rinshan-pick-overlay — 셋 바꾸기·영상 고르기·단색 세계·예지 등).
+ * 이 창 위에서 Esc가 밑의 무장을 풀면 창은 그대로인데 «취소했습니다»가 덮인다(B10 리뷰).
  */
 const ESC_OWNER_SELECTOR =
-  '[role="dialog"]:not(.coach-layer), [aria-modal="true"], .prod-skip, .aug-pill-pinned';
+  '[role="dialog"]:not(.coach-layer), [aria-modal="true"], .prod-skip, .aug-pill-pinned, .rinshan-pick-overlay';
 
 /**
  * 이 사람의 **화면에 보이는** 손패 장수에서 쯔모패 한 장을 뺀 값 — 손패 장수 비교용(docs/59 U28).
@@ -15693,9 +15695,11 @@ const GameTable = memo(function GameTable(props: {
         if (!onControl) props.onToast?.(FORCED_PICK_HINT);
         return;
       }
+      const armName = selection.armedType !== null ? augActionName(catalog, selection.armedType) : "";
       selection.arm(null);
-      // 판 표면을 눌러 풀렸으면 풀렸다고 말한다. 액션 바·빠른 토글 같은 컨트롤은 제 동작이 곧 답이다
-      if (!onControl) props.onToast?.("선택을 취소했습니다");
+      // 판 표면을 눌러 풀렸으면 풀렸다고 말한다. 액션 바·빠른 토글 같은 컨트롤은 제 동작이 곧 답이다.
+      // 문구는 손패 클릭 해제(OwnArea)와 같게 증강 이름을 앞에 둔다 — 같은 일에 말이 둘이면 안 된다
+      if (!onControl) props.onToast?.(`${armName} 선택을 취소했습니다`);
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
@@ -15718,8 +15722,9 @@ const GameTable = memo(function GameTable(props: {
         props.onToast?.(FORCED_PICK_HINT);
         return;
       }
+      const armName = augActionName(catalog, selection.armedType ?? "");
       selection.arm(null);
-      props.onToast?.("선택을 취소했습니다");
+      props.onToast?.(`${armName} 선택을 취소했습니다`);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -16275,13 +16280,20 @@ function useSelection(
     if (oppArmable(pid)) return null;
     if (view.round.byPlayer[pid]?.riichiDeclared === true) return "리치 중이라 대상으로 고를 수 없습니다";
     if (armedType !== "hand_swap" && armedType !== "seat_swap") return null;
+    const meldsDiffer = meldTakenCount(view, view.playerId) !== meldTakenCount(view, pid);
     const mine = appearedHandSlots(view, view.playerId);
     const theirs = appearedHandSlots(view, pid);
-    if (mine === null || theirs === null || mine === theirs) return null;
-    // 후로가 손에서 가져간 장수가 다르면 원인을 후로로 짚는다(깡 ↔ 퐁도 여기 걸린다)
-    return meldTakenCount(view, view.playerId) !== meldTakenCount(view, pid)
-      ? "후로가 달라 손패 장수가 맞지 않습니다"
-      : "손패 장수가 달라 고를 수 없습니다";
+    if (mine !== null && theirs !== null && mine !== theirs) {
+      // 후로가 손에서 가져간 장수가 다르면 원인을 후로로 짚는다
+      return meldsDiffer ? "후로가 달라 손패 장수가 맞지 않습니다" : "손패 장수가 달라 고를 수 없습니다";
+    }
+    /*
+     * 보이는 장수는 같은데 후로 구성만 다른 경우 — 깡 ↔ 퐁·치. 깡은 영상패를 한 장 더 받아 화면의
+     * 손패는 같아지지만, 서버는 «후로가 손에서 가져간 장수»(퐁·치 2, 대명깡·가깡 3, 안깡 4)로 슬롯을
+     * 비교해 이 상대를 뺀다(content util.sameHandSize). 후로는 공개 정보라 적어도 새는 게 없다 —
+     * 이 문구가 없으면 실전에서 가장 흔한 제외가 설명 없이 남는다(2026-09-25, docs/59 U28, B10 리뷰).
+     */
+    return meldsDiffer ? "후로 구성(깡·퐁)이 달라 고를 수 없습니다" : null;
   };
 
   // own-meld 모드(파혼): 내 i번째 후로를 해체하는 옵션. view의 melds[i]는 서버 상태의 melds[i]를
@@ -21005,10 +21017,11 @@ function meldBrief(view: PlayerView, meld: MeldView): string {
     const suffix = formatTile({ kind: first.kind }).replace(/^\d+/, "");
     return `치 ${tiles.map((t) => t.kind.rank).join("-")}${suffix}`;
   }
+  // 국사 퐁은 서로 다른 요구패 세 장이다 — «퐁 1만»이라 부르면 «치·퐁만 해체»와 말이 엇갈린다(B10 리뷰)
+  if (meld.kind === "kokushi_pon") return `국사 퐁 ${tiles.map((t) => formatTile({ kind: t.kind })).join("·")}`;
   const head =
-    ({ pon: "퐁", kan_open: "대명깡", kan_added: "가깡", kan_closed: "안깡", kokushi_pon: "퐁" } as Record<string, string>)[
-      meld.kind
-    ] ?? "후로";
+    ({ pon: "퐁", kan_open: "대명깡", kan_added: "가깡", kan_closed: "안깡" } as Record<string, string>)[meld.kind] ??
+    "후로";
   return `${head} ${formatTile({ kind: first.kind })}`;
 }
 
