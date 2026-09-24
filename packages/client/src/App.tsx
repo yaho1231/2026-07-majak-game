@@ -1905,9 +1905,6 @@ function isCallOnlyPrompt(opts: ActionOption[]): boolean {
  * 알려주는 컨텍스트. null이면 강조 없음.
  */
 
-/** 왕패의 주인 손패·왕패 칸 누르기의 결과 — null이면 처리됨, 아니면 못 누른 까닭 */
-type DwClickResult = "full" | "none" | "mismatch" | null;
-
 /**
  * 액티브 증강의 '클릭 발동(무장)' 상태를 게임판 전체가 공유하는 컨텍스트.
  * 액티브 버튼(내 영역)에서 무장하면, 손패(내 영역)·상대(상대 영역)·바닥(중앙)이
@@ -1916,7 +1913,6 @@ type DwClickResult = "full" | "none" | "mismatch" | null;
  * GameTable이 상태를 소유하고, OwnArea·OpponentStrip·River가 이 값을 읽는다.
  * 무장이 없을 때(관전·리플레이 포함) armedType은 null이라 아무 것도 클릭되지 않는다.
  */
-
 interface SelectionCtx {
   /** 무장된 액션 타입 (null이면 무장 없음). */
   armedType: string | null;
@@ -3231,6 +3227,9 @@ interface DwPair {
   handTileId: number;
   deadIndex: number;
 }
+
+/** 왕패의 주인 손패·왕패 칸 누르기의 결과 — null이면 처리됨, 아니면 못 누른 까닭 */
+type DwClickResult = "full" | "none" | "mismatch" | null;
 
 /**
  * 왕패의 주인 — 이번 국에 남은 교환 횟수, 한 번에 예약할 수 있는 쌍의 상한이다.
@@ -22039,8 +22038,13 @@ function foresightPeekOf(av: Record<string, unknown>): TileKind[] {
 
 /** 왕패의 주인 — 남은 횟수만큼 짝을 다 고른 뒤 더 누를 때의 안내(손패·왕패 칸 공통) */
 const DW_FULL_HINT = "남은 교환 횟수만큼 골랐습니다. [이대로 교환]을 누르거나 고른 패를 다시 눌러 빼세요";
-/** 왕패의 주인 — 먼저 고른 왕패 칸과 짝이 안 되는(흐린) 손패를 눌렀을 때 */
-const DW_MISMATCH_HAND_HINT = "고른 왕패 칸과 바꿀 수 없는 패입니다. 그 칸을 다시 눌러 빼세요";
+/**
+ * 왕패의 주인 — 먼저 고른 왕패 칸과 짝이 안 되는(흐린) 손패를 눌렀을 때.
+ * 다른 왕패 칸을 누르면 고른 칸이 그리로 옮겨 가므로(dwClickDead) 되돌리는 길만 적지 않는다(B13 리뷰).
+ */
+const DW_MISMATCH_HAND_HINT = "고른 왕패 칸과 바꿀 수 없는 패입니다. 다른 왕패 칸을 고르거나 그 칸을 다시 눌러 빼세요";
+/** 왕패의 주인 — 들어 올린 손패와 짝이 안 되는(흐린) 왕패 칸을 눌렀을 때. 다른 손패를 누르면 그 패로 바뀐다(dwClickHand) */
+const DW_MISMATCH_DEAD_HINT = "들어 올린 손패와 바꿀 수 없는 자리입니다. 다른 손패를 고르거나 그 손패를 다시 눌러 내리세요";
 
 /**
  * 왕패의 주인 — 손패 위 **비차단** 도킹 패널. 판에 없는 왕패 14칸만 여기 펴고, 내 손패는 판에서
@@ -22094,7 +22098,7 @@ function DeadWallDock(props: {
       r === "full"
         ? DW_FULL_HINT
         : r === "mismatch"
-          ? "들어 올린 손패와 바꿀 수 없는 자리입니다. 그 손패를 다시 눌러 내리세요"
+          ? DW_MISMATCH_DEAD_HINT
           : `이 자리는 ${name} 대상이 아닙니다`,
     );
   };

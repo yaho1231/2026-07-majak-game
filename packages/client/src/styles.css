@@ -3507,7 +3507,9 @@ button {
   cursor: pointer;
   transition: transform 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
 }
-.aug-pick-tile:hover:not(:disabled) {
+/* 빈 영상패 칸(span)은 :disabled가 될 수 없어 예전엔 hover에 떠올랐다 — 누를 수 없는 칸이 눌릴 것처럼
+   보이지 않게 뺀다(2026-09-25, B13 리뷰 · 도킹 패널은 상시 보여 더 눈에 띈다) */
+.aug-pick-tile:hover:not(:disabled):not(.aug-pick-tile-spent) {
   transform: translateY(-4px);
   border-color: rgba(240, 200, 106, 0.95);
   box-shadow: 0 0 12px rgba(184, 151, 92, 0.55);
