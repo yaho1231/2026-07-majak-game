@@ -216,7 +216,7 @@ function makeAction(catalog: Catalog | undefined): ActionDef<{ target: PlayerId 
 export const copy: AugmentDef = defineAugment({
   id: ID,
   tier: "prism",
-  category: "etc",
+  category: "disrupt",
   complexity: 1,
   name: "카피",
   description:
