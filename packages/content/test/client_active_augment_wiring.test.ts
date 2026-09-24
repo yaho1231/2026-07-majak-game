@@ -198,6 +198,12 @@ describe("클라이언트 액티브 증강 배선", () => {
     expect(armMode.get("reload_use")).toBe("own-aug");
   });
 
+  it("파혼은 판의 내 후로를 누르는 무장이다 — 후로 수만큼 똑같은 «파혼» 줄로 새지 않는다", () => {
+    // 2026-09-25 (docs/59 U31): 후보가 {meldIndex}뿐이라 ARM_MODE에 없으면 후로가 둘 이상일 때
+    // 2단계에 구별할 수 없는 «파혼» 버튼만 N개 섰고, 하나면 ✦를 누르는 즉시 되돌릴 수 없이 해체됐다.
+    expect(armMode.get("dissolve_meld")).toBe("own-meld");
+  });
+
   it("ARM_MODE 값은 전부 실제 쓰이는 ArmMode다 — 아무도 안 쓰는 무장 방식이 남지 않는다", () => {
     // 2026-09-25 (docs/59 U11): ArmMode "swap3"(상대 → 내 3장)는 ARM_MODE.swap3가 "opp"로 바뀐
     // 뒤 아무 액션도 쓰지 않았는데, useSelection·OwnArea·armHint에 분기와 안내 줄이 그대로 남아

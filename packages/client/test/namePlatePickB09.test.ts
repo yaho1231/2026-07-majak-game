@@ -52,7 +52,8 @@ function before(src: string, a: string, b: string): void {
 
 describe("U24·U32 무장 방식 — 이름표 pill", () => {
   it("ArmMode에 opp-aug·own-aug가 있고 안내 줄·메뉴 힌트가 그 모드를 말한다", () => {
-    expect(APP_CODE).toMatch(/^type ArmMode = [^;]*"opp-aug" \| "own-aug";/m);
+    // B10이 뒤에 "own-meld"(파혼)를 붙였다 — 순서만 보고 끝은 열어 둔다
+    expect(APP_CODE).toMatch(/^type ArmMode = [^;]*"opp-aug" \| "own-aug"[^;]*;/m);
     expect(APP_CODE).toContain('case "opp-aug":\n      return "잠글 상대의 증강(이름표 또는 상대 줄)을 누르세요";');
     expect(APP_CODE).toContain('case "own-aug":\n      return "되살릴 내 증강을 이름표에서 클릭하세요";');
     expect(APP_CODE).toContain('case "opp-aug":\n        return "상대 증강 클릭으로 선택";');

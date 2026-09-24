@@ -253,7 +253,8 @@ describe("B07 리뷰 라운드 2 — 예지 재배열·판 바깥 클릭", () =>
   });
 
   it("강제 무장 중 판을 누르면 조용히 무시하지 않고 이유를 말한다(§2 원칙 7)", () => {
-    const at = APP_CODE.indexOf('if (t !== null && t.closest("[data-arm-zone]") !== null) return;');
+    // B10(docs/59 U25)이 판 밖 검사를 앞에 두며 t의 null 검사도 그리로 옮겼다
+    const at = APP_CODE.indexOf('if (t.closest("[data-arm-zone]") !== null) return;');
     expect(at).toBeGreaterThan(0);
     const body = APP_CODE.slice(at, APP_CODE.indexOf("selection.arm(null);", at));
     expect(body).toContain("FORCED_ARM_TYPES.has(selection.armedType)");
