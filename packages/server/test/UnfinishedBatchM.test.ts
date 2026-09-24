@@ -180,7 +180,12 @@ describe("계정을 되찾을 수단이 생겼다", () => {
 // ─────────────── §10-3 솔로 무효 투표 ───────────────
 
 describe("혼자 두는 기록 대국은 무효로 지울 수 없다", () => {
-  it("사람 1 + 봇 3 방에서 무효 투표가 거절된다", async () => {
+  /*
+   * 사람 1 + 봇 3 판은 연습 대국이다 — 끝까지 둔 판만 기록하고, 도중에는 혼자서도
+   * 무효로 접을 수 있다(2026-09-24 사용자 지시). 세탁 방지(§10-3)는 사람이 둘
+   * 이상 앉았던 판에만 남는다(아래 H-1).
+   */
+  it("사람 1 + 봇 3 방(연습 대국)은 혼자서도 무효로 접힌다", async () => {
     const h = await newHarness();
     const sock = await connectRemote(h.rm, "Solo", "198.51.100.5");
     sock.clientSend({ type: "createRoom" });
@@ -192,28 +197,21 @@ describe("혼자 두는 기록 대국은 무효로 지울 수 없다", () => {
     sock.clientSend({ type: "startGame" });
     await sock.until(() => sock.last("view") !== undefined || sock.last("draftOffer") !== undefined);
 
-    const before = sock.all("error").length;
     sock.clientSend({ type: "voteAbort", vote: "agree" });
-    await sock.until(() => sock.all("error").length > before);
-
-    expect(sock.last("error").code).toBe("SOLO_ABORT_FORBIDDEN");
-    // 판은 그대로 돌고 있어야 한다 — 거절이지 종료가 아니다.
-    expect(h.rm.healthSnapshot().playing).toBe(1);
+    await sock.until(() => sock.last("gameAborted") !== undefined, 10_000);
+    expect(sock.all("error").filter((e) => e.code === "SOLO_ABORT_FORBIDDEN")).toHaveLength(0);
+    expect(h.rm.healthSnapshot().playing).toBe(0);
   }, 60_000);
 
-  it("연습 대국은 기록되는 판이라 혼자서는 무효로 접을 수 없다 (2026-09-21)", async () => {
+  it("홈의 연습 대국도 혼자서 무효로 접힌다 (2026-09-24)", async () => {
     const h = await newHarness();
     const sock = await connectRemote(h.rm, "Practicer", "198.51.100.7");
     sock.clientSend({ type: "practicePlay", mode: "tonpuu" });
     await sock.until(() => sock.last("view") !== undefined || sock.last("draftOffer") !== undefined);
 
-    const before = sock.all("error").length;
     sock.clientSend({ type: "voteAbort", vote: "agree" });
-    await sock.until(() => sock.all("error").length > before);
-
-    // 연습 대국도 전적에 남으므로, 일반 1인 대국과 같은 세탁 방지 규칙을 따른다.
-    expect(sock.last("error").code).toBe("SOLO_ABORT_FORBIDDEN");
-    expect(h.rm.healthSnapshot().playing).toBe(1);
+    await sock.until(() => sock.last("gameAborted") !== undefined, 10_000);
+    expect(h.rm.healthSnapshot().playing).toBe(0);
   }, 60_000);
 
   /*
@@ -253,32 +251,38 @@ describe("혼자 두는 기록 대국은 무효로 지울 수 없다", () => {
     expect(h.rm.healthSnapshot().playing).toBe(1);
   }, 60_000);
 
-  it("혼자 남은 기록 대국에서 나가도 판은 봇이 마저 두고 기록된다 (H-2)", async () => {
+  /*
+   * H-2의 옆문(«나가기»로 지는 판 지우기)은 **사람이 둘 이상 앉았던 판**에서 막는다.
+   * 사람 1 + 봇 3 판은 연습 대국이라 나가면 즉시 무효가 맞다(2026-09-24) — 위 테스트.
+   */
+  it("둘이 두던 판에서 한 명이 먼저 나가고 남은 사람도 나가면, 판은 봇이 마저 두고 기록된다 (H-2)", async () => {
     const h = await newHarness();
-    const sock = await connectRemote(h.rm, "Bailer", "198.51.100.13");
-    sock.autoRespond = true;
-    sock.clientSend({ type: "createRoom" });
-    await sock.until(() => sock.last("roomCreated") !== undefined);
-    sock.clientSend({ type: "addBot" });
-    sock.clientSend({ type: "addBot" });
-    sock.clientSend({ type: "addBot" });
-    await sock.until(() => (sock.last("lobby")?.players?.length ?? 0) === 4);
-    sock.clientSend({ type: "startGame" });
-    await sock.until(() => sock.last("view") !== undefined || sock.last("draftOffer") !== undefined);
+    const a = await connectRemote(h.rm, "Stayer", "198.51.100.13");
+    const b = await connectRemote(h.rm, "Leaver", "198.51.100.14");
+    a.autoRespond = true;
+    b.autoRespond = true;
+    a.clientSend({ type: "createRoom" });
+    await a.until(() => a.last("roomCreated") !== undefined);
+    const code = a.last("roomCreated").code;
+    b.clientSend({ type: "joinRoom", code });
+    await b.until(() => b.last("joined") !== undefined);
+    b.clientSend({ type: "ready", ready: true });
+    a.clientSend({ type: "addBot" });
+    a.clientSend({ type: "addBot" });
+    await a.until(() => (a.last("lobby")?.players?.length ?? 0) === 4);
+    a.clientSend({ type: "startGame" });
+    await a.until(() => a.last("view") !== undefined || a.last("draftOffer") !== undefined);
 
-    // 「나가기」 — 무효 투표가 막히자 이쪽으로 지우던 길이다.
-    sock.clientSend({ type: "leaveRoom" });
+    b.clientSend({ type: "leaveRoom" });
+    a.clientSend({ type: "leaveRoom" });
     await new Promise((r) => setTimeout(r, 200));
-    expect(sock.last("gameAborted")).toBeUndefined();
+    expect(a.last("gameAborted")).toBeUndefined();
 
-    // 봇이 판을 끝까지 둔다 → 정산·기록이 남는다.
-    //
-    // `until`이 아니라 폴링이다 — 나간 좌석의 소켓은 이제 **아무것도 받지 않으므로**
-    // (`muted`, 이 수정의 절반) 프레임에 딸려 조건을 다시 볼 기회가 오지 않는다.
+    // 나간 좌석의 소켓은 아무것도 받지 않으므로(`muted`) 폴링으로 본다.
     await poll(() => h.rm.healthSnapshot().playing === 0, 120_000);
-    sock.clientSend({ type: "replayList" });
-    await sock.until(() => sock.last("replayList") !== undefined, 10_000);
-    expect(sock.last("replayList").games).toHaveLength(1);
+    a.clientSend({ type: "replayList" });
+    await a.until(() => a.last("replayList") !== undefined, 10_000);
+    expect(a.last("replayList").games).toHaveLength(1);
   }, 180_000);
 
   it("체험 방은 애초에 투표가 안 온다 (화이트리스트가 앞에서 막는다)", async () => {
