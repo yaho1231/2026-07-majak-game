@@ -1011,8 +1011,9 @@ const QUEST_GOAL: Record<string, string> = {
  * - "own-river" : 내 바닥(버림패)의 패를 클릭 (payload에 recallTileId 또는 kind)
  * - "opp-river" : 상대 바닥의 (가장 최근) 버림패를 클릭 (payload에 snatchId/fromPlayer)
  * - "swap3"     : 상대를 클릭한 뒤 내 손패 3장을 클릭 (등가교환 전용)
+ * - "hand3"     : 내 손패 3장을 클릭해 고른 뒤 [확인] (payload에 정렬된 tileIds 3장 — 가지치기)
  */
-type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "swap3";
+type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "swap3" | "hand3";
 
 /**
  * 액티브 액션 타입 → 클릭 발동 방식. 여기 등록된 액션은 버튼이 아니라
@@ -1071,6 +1072,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   joker_call: "hand",
   // 위압감 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
   intimidate_riichi: "hand",
+  // 가지치기 — 실제 손패 3장을 클릭해 고른 뒤 [확인]으로 제출한다 (2026-09-24 사용자 지시)
+  pruning_swap: "hand3",
 };
 
 /** 이 액션이 클릭(무장) 방식으로 발동되는지 — 아니면 버튼으로 발동. */
@@ -1209,8 +1212,6 @@ const MODAL_PICK_TYPES = new Set<string>([
   // 영상 정찰 — 남은 영상패를 펼쳐 드래그로 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다
   // (2026-08-27 버프. 후보가 순열×교환자리라 최대 120개 — 텍스트 버튼으로는 못 고른다.)
   "rinshan_arrange",
-  // 가지치기 — 패산 맨 위 3장과 바꿀 손패 3장 (후보가 3장 조합이라 최대 364개)
-  "pruning_swap",
 ]);
 
 // ─────────────────────────── 증강 카테고리 (분류·아이콘) ───────────────────────────
@@ -1514,6 +1515,10 @@ interface SelectionCtx {
   setSwapTarget: (pid: string | null) => void;
   /** swap3: 넘길 3장 갱신. */
   setSwapGive: (ids: number[]) => void;
+  /** hand3(가지치기): 지금까지 고른 내 손패 (최대 3장). */
+  handPicks: number[];
+  /** hand3: 고른 손패 갱신. */
+  setHandPicks: (ids: number[]) => void;
   /** 누명: 심기로 고른 내 손패(없으면 null) — 다음 단계는 상대 바닥 클릭. */
   frameTile: number | null;
   /** 누명: 심을 손패 지정(다시 누르면 바꾼다). */
@@ -1538,6 +1543,8 @@ const NO_SELECTION: SelectionCtx = {
   riverOptionFor: () => undefined,
   swapTarget: null,
   swapGive: [],
+  handPicks: [],
+  setHandPicks: () => {},
   setSwapTarget: () => {},
   setSwapGive: () => {},
   frameTile: null,
@@ -15541,6 +15548,7 @@ function useSelection(
   const [armedType, setArmedType] = useState<string | null>(null);
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
   const [swapGive, setSwapGive] = useState<number[]>([]);
+  const [handPicks, setHandPicks] = useState<number[]>([]);
   // 누명 2단계 — 손패를 고른 뒤 상대 바닥을 고른다 (swap3의 swapTarget과 같은 꼴)
   const [frameTile, setFrameTile] = useState<number | null>(null);
 
@@ -15562,6 +15570,7 @@ function useSelection(
       setArmedType(null);
       setSwapTarget(null);
       setSwapGive([]);
+      setHandPicks([]);
       setFrameTile(null);
     }
   }, [armedType, myPrompt]);
@@ -15573,6 +15582,7 @@ function useSelection(
       setSwapGive([]);
     }
     if (armedType !== "frame_discard") setFrameTile(null);
+    setHandPicks([]);
   }, [armedType]);
 
   const exitRiichiMode = (): void => onRiichiMode(false);
@@ -15583,6 +15593,7 @@ function useSelection(
     setArmedType((cur) => (type === null ? null : cur === type ? null : type));
     setSwapTarget(null);
     setSwapGive([]);
+    setHandPicks([]);
     setFrameTile(null);
   };
 
@@ -15591,6 +15602,7 @@ function useSelection(
     setArmedType(null);
     setSwapTarget(null);
     setSwapGive([]);
+    setHandPicks([]);
     setFrameTile(null);
   };
 
@@ -15693,6 +15705,8 @@ function useSelection(
     swapGive,
     setSwapTarget,
     setSwapGive,
+    handPicks,
+    setHandPicks,
     frameTile,
     setFrameTile,
     riverTargetOptionFor,
@@ -20615,6 +20629,39 @@ function OwnArea(props: {
   }, [armedAug, hoverId, view, doomedHint]);
   const swapTarget = sel.swapTarget;
   const swapGive = sel.swapGive;
+  /*
+   * hand3(가지치기) — 서버 후보는 손패 3장 조합(정렬된 tileIds)이다. 화면은 조합을 늘어놓지
+   * 않고 **실제 손패를 클릭해** 3장을 고른 뒤 [확인]으로 그 조합에 맞는 후보를 낸다.
+   */
+  const hand3Picking = sel.armMode === "hand3";
+  const handPicks = sel.handPicks;
+  const hand3Pool = useMemo(() => {
+    const pool = new Set<number>();
+    if (!hand3Picking) return pool;
+    for (const o of sel.armedOptions) {
+      const ids = (o.payload as { tileIds?: unknown }).tileIds;
+      if (Array.isArray(ids)) for (const x of ids) if (typeof x === "number") pool.add(x);
+    }
+    return pool;
+  }, [hand3Picking, sel.armedOptions]);
+  const hand3Option = useMemo(() => {
+    if (!hand3Picking || handPicks.length !== 3) return undefined;
+    const key = [...handPicks].sort((a, b) => a - b).join(",");
+    return sel.armedOptions.find(
+      (o) => ((o.payload as { tileIds?: unknown }).tileIds as number[] | undefined)?.join(",") === key,
+    );
+  }, [hand3Picking, handPicks, sel.armedOptions]);
+  const toggleHandPick = (id: number): void => {
+    if (!hand3Pool.has(id)) return;
+    sfx.pick();
+    sel.setHandPicks(
+      handPicks.includes(id)
+        ? handPicks.filter((x) => x !== id)
+        : handPicks.length >= 3
+          ? handPicks
+          : [...handPicks, id],
+    );
+  };
   const [armSub, setArmSub] = useState<{ tileId: number; options: ActionOption[] } | null>(null);
 
   const displayIds = useMemo(() => {
@@ -21685,6 +21732,24 @@ function OwnArea(props: {
               </>
             )}
           </div>
+        ) : hand3Picking ? (
+          <div className="arm-hint arm-swap">
+            <span className="arm-hint-text">
+              {armName}: 패산 맨 위로 보낼 손패 3장을 클릭하세요 ({handPicks.length}/3)
+            </span>
+            <button
+              className="arm-hint-cancel"
+              disabled={hand3Option === undefined}
+              onClick={() => {
+                if (hand3Option !== undefined) sel.submit(hand3Option);
+              }}
+            >
+              확인
+            </button>
+            <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
+              취소
+            </button>
+          </div>
         ) : armedAug === "frame_discard" && sel.frameTile !== null ? (
           <div className="arm-hint arm-swap">
             <span className="arm-hint-text">
@@ -21870,9 +21935,14 @@ function OwnArea(props: {
             const active = props.riichiMode ? riichi : (discard ?? freeDiscard);
             // 등가교환: 상대를 정한 뒤엔 모든 손패가 선택 대상, 고른 3장은 강조
             const swapPicking = armedAug === "swap3" && swapTarget !== null;
-            const swapChosen = swapPicking && swapGive.includes(id);
+            const swapChosen =
+              (swapPicking && swapGive.includes(id)) || (hand3Picking && handPicks.includes(id));
             const armable =
-              armedAug === "swap3" ? swapPicking : armedAug !== null && armedByTile.has(id);
+              armedAug === "swap3"
+                ? swapPicking
+                : hand3Picking
+                  ? hand3Pool.has(id)
+                  : armedAug !== null && armedByTile.has(id);
             /*
              * 튜토리얼 대본이 이 패를 막고 있는가 (`CoachLockContext`).
              * 코치가 꺼져 있으면 언제나 false라 실대국 판정은 종전과 같다.
@@ -22033,6 +22103,11 @@ function OwnArea(props: {
                   // 등가교환: 상대를 정했으면 이 패를 교환 대상으로 토글(3장이면 제출)
                   if (armedAug === "swap3") {
                     if (swapTarget !== null) pickSwapTile(id);
+                    return;
+                  }
+                  // 가지치기: 이 패를 3장 선택에 넣고 뺀다 (제출은 [확인] 버튼)
+                  if (hand3Picking) {
+                    toggleHandPick(id);
                     return;
                   }
                   // 선택 모드: armed 증강의 대상으로 이 패를 고른다 (손패 클릭형만)
@@ -24827,6 +24902,8 @@ function ActiveAugmentControl(props: {
         return "상대 버림패 클릭으로 선택";
       case "swap3":
         return "상대·손패 클릭으로 선택";
+      case "hand3":
+        return "손패 3장 클릭 후 확인";
       default:
         return "손패 클릭으로 선택";
     }
@@ -25073,28 +25150,6 @@ function ActiveAugmentControl(props: {
   // 자식의 `position: fixed`가 뷰포트가 아니라 그 요소를 기준으로 잡힌다 →
   // 모달이 화면 아래쪽에 붙어 잘린다. (OwnArea의 기존 모달들은 `.own-area` 바깥
   // 형제로 렌더돼 있어서 이 문제를 피해 갔다.)
-  // 가지치기 — 후보는 손패 3장 조합(정렬된 tileId 배열)이다. 고른 3장과 완전일치하는 후보를 낸다.
-  const pruningOpts = pickModal === "pruning_swap" ? (byType.get("pruning_swap") ?? []) : [];
-  const pruningPool = sortTileIds(
-    [
-      ...new Set(
-        pruningOpts.flatMap((o) => {
-          const ids = (o.payload as { tileIds?: unknown }).tileIds;
-          return Array.isArray(ids) ? (ids.filter((x) => typeof x === "number") as number[]) : [];
-        }),
-      ),
-    ],
-    view.tiles,
-  );
-  const pruningKey = [...modalPick].sort((a, b) => a - b).join(",");
-  const pruningOpt =
-    modalPick.length === 3
-      ? pruningOpts.find(
-          (o) =>
-            ((o.payload as { tileIds?: unknown }).tileIds as number[] | undefined)?.join(",") ===
-            pruningKey,
-        )
-      : undefined;
   const closeModal = (): void => {
     setPickModal(null);
     setModalPick([]);
@@ -25141,60 +25196,6 @@ function ActiveAugmentControl(props: {
             <button className="rinshan-pick-skip" onClick={closeModal}>
               발동하지 않고 닫기
             </button>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
-      {/* 가지치기 — 패산 맨 위 3장과 바꿀 손패 3장을 고른다 */}
-      {pickModal === "pruning_swap" ? createPortal(
-        <div className="rinshan-pick-overlay">
-          <div className="rinshan-pick-panel aug-pick-wide">
-            <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">✂️ {augNameFor("pruning")}</div>
-            <div className="rinshan-pick-sub">
-              고른 3장이 패산 맨 위로 가고, 패산 맨 위 3장이 손패로 들어옵니다. ({modalPick.length}/3)
-            </div>
-            <div className="rinshan-pick-tiles">
-              {pruningPool.map((id) => {
-                const tile = view.tiles[id];
-                if (tile === undefined) return null;
-                const picked = modalPick.includes(id);
-                return (
-                  <button
-                    key={id}
-                    className={`rinshan-pick-tile${picked ? " rinshan-pick-on" : ""}`}
-                    onClick={() =>
-                      setModalPick((cur) =>
-                        cur.includes(id)
-                          ? cur.filter((x) => x !== id)
-                          : cur.length >= 3
-                            ? cur
-                            : [...cur, id],
-                      )
-                    }
-                  >
-                    <TileImg tile={tile} size="hand" />
-                    <span className="rinshan-pick-label">{picked ? "선택됨" : "내보낼 패"}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="aug-modal-actions">
-              <button
-                className="rinshan-pick-tile aug-modal-confirm"
-                disabled={pruningOpt === undefined}
-                onClick={() => {
-                  if (pruningOpt === undefined) return;
-                  sel.submit(pruningOpt);
-                  closeModal();
-                }}
-              >
-                이대로 교환
-              </button>
-              <button className="rinshan-pick-skip" onClick={closeModal}>
-                닫기 (바꾸지 않고 진행)
-              </button>
-            </div>
           </div>
         </div>,
         document.body,

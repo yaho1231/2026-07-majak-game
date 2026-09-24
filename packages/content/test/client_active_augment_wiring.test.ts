@@ -102,6 +102,17 @@ describe("클라이언트 액티브 증강 배선", () => {
     expect(setLiterals("MODAL_PICK_TYPES").has("bottom_deal")).toBe(false);
   });
 
+  it("가지치기는 조합 목록 모달이 아니라 실제 손패 3장 클릭(hand3)으로 고른다", () => {
+    // 2026-09-24 사용자 지시: 3장 조합(최대 364개)을 버튼으로 늘어놓지 않는다.
+    expect(armMode.get("pruning_swap")).toBe("hand3");
+    expect(setLiterals("MODAL_PICK_TYPES").has("pruning_swap")).toBe(false);
+    expect(actionAugment.get("pruning_swap")).toBe("pruning");
+    expect(activeAugmentIds.has("pruning")).toBe(true);
+    // 손패 클릭은 제출이 아니라 선택 토글이고, 제출은 [확인] 버튼이 한다
+    expect(SRC).toMatch(/if \(hand3Picking\) \{\s*toggleHandPick\(id\);/);
+    expect(SRC).toMatch(/if \(hand3Option !== undefined\) sel\.submit\(hand3Option\)/);
+  });
+
   it("폐기된 도박사의 손 배선이 남아 있지 않다", () => {
     for (const s of [augmentActionTypes, activeAugmentIds, setLiterals("MODAL_PICK_TYPES")]) {
       expect(s.has("take_rinshan")).toBe(false);
