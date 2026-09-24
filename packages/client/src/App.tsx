@@ -104,6 +104,7 @@ import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
 import { haptics, hapticsSupported, setHapticsEnabled } from "./haptics.js";
 import { safeStorage } from "./storage.js";
+import { isStaleClientBuild, markStaleReload, ownClientBuild, staleReloadTried } from "./buildId.js";
 
 /** "가로로 돌리세요" 안내를 닫은 사실을 기억하는 키 (위 rotateHintOff 주석). */
 const ROTATE_HINT_KEY = "majak.rotateHintOff";
@@ -6840,6 +6841,30 @@ export function App(): JSX.Element {
   const draftVisible = inGame && draft !== null && !intro && roundResult === null && !isSpectator;
 
   /*
+   * ── 배포 뒤 낡은 탭 ── (2026-09-24)
+   *
+   * 서버가 갈리면 열린 탭은 새로고침 없이 재접속한다. 옛 번들은 새 증강의 액션 이름을
+   * 몰라 `yggdrasil_call` 같은 내부 id 를 버튼에 찍었다. 서버가 알려 준 빌드와 이 탭의
+   * 빌드가 다르면: 판 밖이면 곧바로 새로고침, 판 안이면 띠를 띄워 두고 판이 끝나
+   * 나오는 순간 새로고침한다. 같은 서버 빌드로는 한 번만 시도한다(캐시로 옛 번들이
+   * 다시 뜨면 무한 새로고침이 되므로 그때는 띠만 남긴다).
+   */
+  const servedBuild = serverInfo?.clientBuild;
+  const staleBuild = useMemo(
+    () => isStaleClientBuild(ownClientBuild(), servedBuild),
+    [servedBuild],
+  );
+  const reloadForBuild = useStableFn(() => {
+    if (servedBuild !== undefined) markStaleReload(servedBuild);
+    window.location.reload();
+  });
+  useEffect(() => {
+    if (!staleBuild || inGame || inWaiting || servedBuild === undefined) return;
+    if (staleReloadTried(servedBuild)) return;
+    reloadForBuild();
+  }, [staleBuild, inGame, inWaiting, servedBuild, reloadForBuild]);
+
+  /*
    * ── 판 밖으로 나가려는 몸짓을 한 번 붙잡는다 ── (QA 4차 onboard 확정 4)
    *
    * 이 앱에는 히스토리 항목을 만드는 화면이 하나도 없었다(`replaceState` 둘은 주소창
@@ -7058,6 +7083,18 @@ export function App(): JSX.Element {
       {maintenanceOn && auth?.isAdmin === true ? (
         <div className="maint-admin-bar" role="status">
           점검 모드 ON — 관리자 외 접속이 막혀 있습니다
+        </div>
+      ) : null}
+      {staleBuild ? (
+        <div className="stale-build-bar" role="status">
+          새 버전이 배포됐습니다 — 이 판이 끝나면 자동으로 새로고침합니다
+          <button
+            type="button"
+            onClick={reloadForBuild}
+            title="지금 새로고침하면 홈의 «진행하던 방으로 재접속»으로 이 판에 돌아옵니다"
+          >
+            지금 새로고침
+          </button>
         </div>
       ) : null}
       {inGame || inWaiting ? (
