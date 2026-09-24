@@ -53,7 +53,7 @@ function before(src: string, a: string, b: string): void {
 describe("U24·U32 무장 방식 — 이름표 pill", () => {
   it("ArmMode에 opp-aug·own-aug가 있고 안내 줄·메뉴 힌트가 그 모드를 말한다", () => {
     expect(APP_CODE).toMatch(/^type ArmMode = [^;]*"opp-aug" \| "own-aug";/m);
-    expect(APP_CODE).toContain('case "opp-aug":\n      return "잠글 상대의 증강을 클릭하세요";');
+    expect(APP_CODE).toContain('case "opp-aug":\n      return "잠글 상대의 증강(이름표 또는 상대 줄)을 누르세요";');
     expect(APP_CODE).toContain('case "own-aug":\n      return "되살릴 내 증강을 이름표에서 클릭하세요";');
     expect(APP_CODE).toContain('case "opp-aug":\n        return "상대 증강 클릭으로 선택";');
     expect(APP_CODE).toContain('case "own-aug":\n        return "내 증강 클릭으로 선택";');
@@ -63,8 +63,13 @@ describe("U24·U32 무장 방식 — 이름표 pill", () => {
     const helper = between("function augPickOption(", "\n}\n");
     expect(helper).toContain("p.augmentId === augId");
     expect(helper).toContain("target === undefined || p.target === target");
-    expect(SELECTION).toContain('armMode === "opp-aug" && pid !== view.playerId ? augPickOption(armedOptions, augId, pid)');
-    expect(SELECTION).toContain('armMode === "own-aug" ? augPickOption(armedOptions, augId)');
+    // 옵션 찾기는 이름표 쪽 한 곳 — 쓰지 않는 ctx 사본을 두지 않는다(B09 리뷰)
+    expect(APP_CODE).not.toContain("oppAugOptionFor");
+    expect(APP_CODE).not.toContain("ownAugOptionFor");
+    // 이미 잠긴 증강만 남은 상대는 줄을 강조하지 않는다 — 시트 행이 전부 꺼진 입구가 된다(B09 리뷰)
+    const armable = SELECTION.slice(SELECTION.indexOf("const oppAugArmable"));
+    expect(armable).toContain("disarmedAugmentsOf(view, pid)");
+    expect(armable).toContain("!locked.has(p.augmentId)");
     // opp 모드의 clickOpp는 opp-aug에서 아무것도 내지 않는다 — 줄 클릭이 곧바로 잠그면 안 된다
     expect(SELECTION).toContain('if (armMode !== "opp") return;');
   });
@@ -98,6 +103,8 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
     before(click, 'closest(".aug-tip")', "onPickAug?.(armOpt)");
     before(click, "onPickAug?.(armOpt)", "if (armTarget === true) return;");
     before(click, "if (armTarget === true) return;", "togglePin(a);");
+    // 고르는 중 후보 아닌 pill(재장전)은 빗나감 — 고정하지 않는다(원칙 7)
+    before(click, "if (picking) return;", "togglePin(a);");
     // 후보 pill은 줄의 시트 열기로 번지지 않는다
     expect(click.slice(0, click.indexOf("togglePin(a);"))).toContain("e.stopPropagation();");
   });
@@ -118,6 +125,14 @@ describe("U24·U32·U27 NamePlate — 무장 중에만 다르게, 평소 동작�
     const hit = NAMEPLATE.slice(NAMEPLATE.indexOf('className="aug-pill-sheet-hit"'));
     before(hit, "onPickAug?.(armOpt)", "if (armTarget === true) return;");
     before(hit, "if (armTarget === true) return;", "setSheetOpen(true);");
+    // 제출 전에 포커스를 놓는다 — focusin 툴팁이 확정 뒤에 남지 않게(B09 리뷰)
+    before(hit, "e.currentTarget.blur();", "onPickAug?.(armOpt)");
+    // 후보 덮개의 Enter·Space가 줄의 onKeyDown(시트 열기)으로 새지 않는다
+    expect(hit).toContain('if (armOpt !== undefined && (e.key === "Enter" || e.key === " ")) e.stopPropagation();');
+  });
+
+  it("고르는 중에는 이름표 전체가 arm-zone — 내 이름·후보 아닌 pill을 눌러도 재장전이 조용히 풀리지 않는다", () => {
+    expect(NAMEPLATE).toContain('{...(picking ? { "data-arm-zone": "1" } : {})}');
   });
 
   it("줄 대상일 때 툴팁 안(«자세히»)을 누른 것이 줄의 확정으로 번지지 않는다", () => {
@@ -147,7 +162,10 @@ describe("U24 PlayerAugSheet 고르기 모드", () => {
   it("행마다 고르기 버튼, 후보가 아니면 꺼진다(이미 잠김)", () => {
     expect(SHEET).toContain('className="aug-sheet-pick"');
     expect(SHEET).toContain("disabled={pickOpt === undefined}");
-    expect(SHEET).toContain('locked ? "이미 잠김" : "고를 수 없음"');
+    expect(APP_CODE).toContain('const PICK_OFF_LOCK = (locked: boolean): string => (locked ? "이미 잠김" : "고를 수 없음");');
+    // 꺼진 행은 읽어 주는 이름도 이유를 말한다 — 꺼진 «잠그기»만 들리면 왜인지 모른다(B09 리뷰)
+    expect(SHEET).toContain("`${augName(a, catalog)} — ${pickOff}`");
+    expect(APP_CODE).toContain("off: isMe ? PICK_OFF_RELOAD : PICK_OFF_LOCK,");
   });
 
   it("고르기 버튼은 손가락 과녁 44px", () => {

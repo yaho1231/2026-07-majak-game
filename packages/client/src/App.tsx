@@ -1353,8 +1353,9 @@ function armPromptText(mode: ArmMode | null, type?: string | null, tapTwice = fa
       return "내 바닥의 버림패를 클릭하세요";
     case "opp-river":
       return "가져올 상대의 버림패를 클릭하세요";
+    // 폰에서는 상대 pill이 숨는다 — 거기서 할 일은 상대 줄을 눌러 고르기 시트를 여는 것이다(B09 리뷰)
     case "opp-aug":
-      return "잠글 상대의 증강을 클릭하세요";
+      return "잠글 상대의 증강(이름표 또는 상대 줄)을 누르세요";
     case "own-aug":
       return "되살릴 내 증강을 이름표에서 클릭하세요";
     case "hand":
@@ -1777,14 +1778,12 @@ interface SelectionCtx {
    */
   riverTargetOptionFor: (ownerId: string) => ActionOption | undefined;
   /**
-   * opp-aug(무장해제): 이 상대의 **이 증강**을 잠그는 옵션 — target과 augmentId가 둘 다 맞아야 한다.
-   * opp 모드의 oppOptionFor는 target만 보고 첫 옵션을 집으므로 여기 쓰면 엉뚱한 증강이 잠긴다.
+   * opp-aug: 이 상대에게 잠글 수 있는 증강이 하나라도 있는가 — 줄을 강조하고 고르기 시트의 입구로 삼는다.
+   * 이미 잠긴 증강은 세지 않는다(pill·시트의 후보 거르기와 같은 기준). 증강 하나를 고르는 옵션 찾기는
+   * 이름표 쪽 augPickOption 한 곳이다 — opp 모드의 oppOptionFor는 target만 보고 첫 옵션을 집으므로
+   * 여기 쓰면 엉뚱한 증강이 잠긴다.
    */
-  oppAugOptionFor: (pid: string, augId: string) => ActionOption | undefined;
-  /** opp-aug: 이 상대에게 잠글 수 있는 증강이 하나라도 있는가 — 줄을 강조하고 고르기 시트의 입구로 삼는다. */
   oppAugArmable: (pid: string) => boolean;
-  /** own-aug(재장전): 내 이 증강을 되살리는 옵션(아니면 undefined). */
-  ownAugOptionFor: (augId: string) => ActionOption | undefined;
 }
 
 /**
@@ -1818,9 +1817,7 @@ const NO_SELECTION: SelectionCtx = {
   frameTile: null,
   setFrameTile: () => {},
   riverTargetOptionFor: () => undefined,
-  oppAugOptionFor: () => undefined,
   oppAugArmable: () => false,
-  ownAugOptionFor: () => undefined,
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -16188,15 +16185,16 @@ function useSelection(
     return view.round.byPlayer[pid]?.riichiDeclared === true;
   };
 
-  // opp-aug·own-aug 모드: 이름표 pill 하나가 대상이다(무장해제·재장전 — docs/59 U24·U32)
-  const oppAugOptionFor = (pid: string, augId: string): ActionOption | undefined =>
-    armMode === "opp-aug" && pid !== view.playerId ? augPickOption(armedOptions, augId, pid) : undefined;
-  const oppAugArmable = (pid: string): boolean =>
-    armMode === "opp-aug" &&
-    pid !== view.playerId &&
-    armedOptions.some((o) => (o.payload as { target?: unknown }).target === pid);
-  const ownAugOptionFor = (augId: string): ActionOption | undefined =>
-    armMode === "own-aug" ? augPickOption(armedOptions, augId) : undefined;
+  // opp-aug 모드: 이름표 pill 하나가 대상이다(무장해제 — docs/59 U24). 이미 잠긴 증강만 남은 상대는
+  // 강조하지 않는다 — 점선 줄을 따라가 열어 본 시트의 행이 전부 «이미 잠김»으로 꺼져 있었다(B09 리뷰)
+  const oppAugArmable = (pid: string): boolean => {
+    if (armMode !== "opp-aug" || pid === view.playerId) return false;
+    const locked = disarmedAugmentsOf(view, pid);
+    return armedOptions.some((o) => {
+      const p = o.payload as { target?: unknown; augmentId?: unknown };
+      return p.target === pid && typeof p.augmentId === "string" && !locked.has(p.augmentId);
+    });
+  };
 
   const clickOpp = (pid: string): void => {
     if (armMode !== "opp") return;
@@ -16256,9 +16254,7 @@ function useSelection(
     frameTile,
     setFrameTile,
     riverTargetOptionFor,
-    oppAugOptionFor,
     oppAugArmable,
-    ownAugOptionFor,
   };
 }
 
@@ -19201,6 +19197,7 @@ function OpponentStrip({
           icon: "🔒",
           verb: "잠그기",
           note: `${armAugName}: 이번 국 동안 잠글 증강을 고르세요`,
+          off: PICK_OFF_LOCK,
         }}
       />
     ) : null;
@@ -20078,6 +20075,11 @@ function PlayerAugSheet({
     icon: string;
     verb: string;
     note: string;
+    /**
+     * 후보가 아닌 행의 꺼진 버튼 글자 — 읽어 주는 이름도 이걸로 적는다. 꺼진 «잠그기»만 들리면 왜
+     * 못 누르는지 모른다. 재장전은 무장해제 잠금과 상관없이 쓴 적 없는 증강이 빠진다(B09 리뷰).
+     */
+    off: (locked: boolean) => string;
   };
 }): JSX.Element {
   const disarmed = disarmedAugmentsOf(view, player.id);
@@ -20167,6 +20169,7 @@ function PlayerAugSheet({
               const cooldownTurns = cooldownTurnsLeft(view, player.id, a);
               const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
               const pickOpt = pick?.optionFor(a);
+              const pickOff = pick !== undefined && pickOpt === undefined ? pick.off(locked) : "";
               return (
                 <li
                   className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}${pickOpt !== undefined ? " aug-sheet-row-pickable" : ""}`}
@@ -20181,12 +20184,16 @@ function PlayerAugSheet({
                         type="button"
                         className="aug-sheet-pick"
                         disabled={pickOpt === undefined}
-                        aria-label={`${augName(a, catalog)} ${pick.verb}`}
+                        aria-label={
+                          pickOpt !== undefined
+                            ? `${augName(a, catalog)} ${pick.verb}`
+                            : `${augName(a, catalog)} — ${pickOff}`
+                        }
                         onClick={() => {
                           if (pickOpt !== undefined) pick.onPick(pickOpt);
                         }}
                       >
-                        {pickOpt !== undefined ? `${pick.icon} ${pick.verb}` : locked ? "이미 잠김" : "고를 수 없음"}
+                        {pickOpt !== undefined ? `${pick.icon} ${pick.verb}` : pickOff}
                       </button>
                     ) : null}
                   </div>
@@ -20231,6 +20238,10 @@ function PlayerAugSheet({
     document.body,
   );
 }
+
+/** 고르기 시트의 꺼진 행 글자 — 무장해제는 이미 잠긴 것, 재장전은 쓴 적 없어 되살릴 게 없는 것 */
+const PICK_OFF_LOCK = (locked: boolean): string => (locked ? "이미 잠김" : "고를 수 없음");
+const PICK_OFF_RELOAD = (): string => "되살릴 게 없음";
 
 const NamePlate = memo(function NamePlate({
   view,
@@ -20382,6 +20393,12 @@ const NamePlate = memo(function NamePlate({
   return (
     <div
       className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}${connLabel !== null ? ` nameplate-${conn}` : ""}`}
+      /*
+       * 고르는 중(재장전·무장해제)이면 이름표 전체가 대상 영역이다 — 후보 pill에만 달면 내 이름이나
+       * 후보 아닌 pill을 누른 pointerdown이 «빈 곳»으로 잡혀 재장전이 알림 없이 풀렸다. 영역 안의
+       * 빗나감은 무시하고, 이름을 누르면 고르기 시트가 열린다(2026-09-25, docs/59 §2 원칙 7, B09 리뷰).
+       */
+      {...(picking ? { "data-arm-zone": "1" } : {})}
     >
       {isTurn ? (
         awaitingCall ? (
@@ -20450,6 +20467,7 @@ const NamePlate = memo(function NamePlate({
                   icon: isMe ? "↺" : "🔒",
                   verb: pickVerb,
                   note: isMe ? "되살릴 증강을 고르세요" : "잠글 증강을 고르세요",
+                  off: isMe ? PICK_OFF_RELOAD : PICK_OFF_LOCK,
                 },
               }
             : {})}
@@ -20541,6 +20559,9 @@ const NamePlate = memo(function NamePlate({
                   // 상대 줄 전체가 대상인 무장 중 — 설명 고정을 건너뛰고 클릭을 줄로 올린다. 고정된
                   // 툴팁이 확정 뒤에도 판 위에 남던 것을 막는다(U27)
                   if (armTarget === true) return;
+                  // 고르는 중 후보가 아닌 pill(내 이름표의 재장전) — 대상 영역 안의 빗나감이라 무시한다.
+                  // 설명은 hover·focus 툴팁으로 그대로 읽힌다(원칙 7, B09 리뷰)
+                  if (picking) return;
                   togglePin(a);
                 }}
                 onMouseEnter={() => setTipFor(a)}
@@ -20611,6 +20632,9 @@ const NamePlate = memo(function NamePlate({
                     // 무장 중 후보 — 폰에서도 알약이 곧 대상이다. 시트를 열면 한 번 더 눌러야 한다(U24·U32)
                     if (armOpt !== undefined) {
                       e.stopPropagation();
+                      // 탭에 포커스를 주는 브라우저(안드로이드 크롬)에서는 focusin이 pill의 툴팁을 띄운다 —
+                      // 놓아 주지 않으면 확정 뒤에도 판 위에 남는다(pill onClick의 blur와 같은 이유, U27)
+                      e.currentTarget.blur();
                       onPickAug?.(armOpt);
                       return;
                     }
@@ -20619,6 +20643,11 @@ const NamePlate = memo(function NamePlate({
                     // 알약의 «고정» 토글까지 함께 터지면 시트 뒤에 툴팁이 남는다
                     e.stopPropagation();
                     setSheetOpen(true);
+                  }}
+                  // 후보 덮개의 Enter·Space는 이 단추의 클릭이다 — 줄(태블릿 세로의 위 상대)까지 올라가면
+                  // 줄의 onKeyDown이 기본 동작을 막고 고르기 시트를 대신 연다(B09 리뷰)
+                  onKeyDown={(e) => {
+                    if (armOpt !== undefined && (e.key === "Enter" || e.key === " ")) e.stopPropagation();
                   }}
                 />
                 {/* 고정해 둔 것은 손을 떼도 그린다 — 그래야 판과 설명을 나란히 볼 수 있다 */}
