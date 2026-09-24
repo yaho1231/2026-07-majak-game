@@ -21363,10 +21363,17 @@ function OwnArea(props: {
     if (tile === undefined) return null;
     const raw = view.augmentView["ura"];
     const cur = Array.isArray(raw) && typeof raw[0] === "string" ? parseKindKey(raw[0]) : null;
+    // 미리보기가 안내 문장을 덮으므로 «어떻게 확정되는가»를 여기서 말한다 — 판마다 한 번·되돌릴
+    // 수 없는 수인데, 두 번 누르기를 끈 데스크톱에선 이 한 번이 곧 확정이다(2026-09-25, docs/59 U01).
+    const confirm = !props.tapTwiceToDiscard
+      ? "누르면 바로 바뀝니다"
+      : armedTileId === armPreviewId
+        ? "한 번 더 누르면 확정"
+        : "두 번 누르면 확정";
     return `${formatTile({ kind: tile.kind })} → 뒷도라 ${formatTile({ kind: doraKindFor(tile.kind) })}${
       cur === null ? "" : ` · 표시패 ${formatTile({ kind: cur })} → 내 손`
-    }`;
-  }, [armedAug, armPreviewId, view.tiles, view.augmentView]);
+    } · ${confirm}`;
+  }, [armedAug, armPreviewId, armedTileId, props.tapTwiceToDiscard, view.tiles, view.augmentView]);
 
   // ⚠ 레거시(48차 이전 등가교환 = 상대 × 내 3장 조합). 지금 swap3 payload는 `{target}`뿐이라
   // byKey가 비고 ARM_MODE.swap3도 "opp"여서 이 경로는 실행되지 않는다.
@@ -22398,7 +22405,9 @@ function OwnArea(props: {
                 if (hand3Option !== undefined) sel.submit(hand3Option);
               }}
             >
-              {handPicks.length < 3 ? `3장 고르기 (${handPicks.length}/3)` : "이 3장 보내기"}
+              {/* 라벨도 disabled와 같은 근거(hand3Option)로 — 3장을 골랐어도 맞는 옵션이 없으면
+                  «보내기»라고 말하지 않는다(2026-09-25, docs/59 U20) */}
+              {hand3Option !== undefined ? "이 3장 보내기" : `3장 고르기 (${handPicks.length}/3)`}
             </button>
             <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
               취소

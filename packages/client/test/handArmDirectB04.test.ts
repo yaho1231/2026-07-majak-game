@@ -125,7 +125,17 @@ describe("붉은 손길 — 제자리 미리보기와 [확인] (U02)", () => {
   it("무장이 바뀌면 들어 올린 패를 내린다 — 타패용 첫 탭이 «고른 숫자»로 읽히지 않게", () => {
     const at = APP_CODE.indexOf("if (armedAug === null) setArmSub(null);");
     expect(at).toBeGreaterThan(0);
-    expect(APP_CODE.slice(at, at + 120)).toContain("setArmedTileId(null);");
+    expect(APP_CODE.slice(at, at + 400)).toContain("setArmedTileId(null);");
+  });
+
+  it("리치 무장(DRAG_DISCARD_ARM_TYPES)에도 조건 없이 건다 — 무장 전 들어 둔 패가 탭 한 번에 리치로 확정되지 않게", () => {
+    // B06(손패 무장 확정·빗나감)이 이 effect를 손볼 때 리치 쪽 이유가 조용히 빠지지 않게 못 박는다.
+    const at = APP_CODE.indexOf("if (armedAug === null) setArmSub(null);");
+    const effectStart = APP_CODE.lastIndexOf("useEffect(() => {", at);
+    const effect = APP_CODE.slice(effectStart, APP_CODE.indexOf("}, [armedAug]);", at));
+    // 무장 종류로 거르지 않는다 — 리치 무장에서도 내려간다
+    expect(effect).not.toMatch(/if \([^)]*\)\s*setArmedTileId\(null\)/);
+    expect(effect).toMatch(/^\s*setArmedTileId\(null\);$/m);
   });
 });
 
@@ -142,6 +152,15 @@ describe("이면투시 바꿔치기 — 목적지 칸과 결과 미리보기 (U0
     expect(APP_CODE).toContain("→ 뒷도라 ${formatTile({ kind: doraKindFor(tile.kind) })}");
     expect(APP_CODE).toContain("{uraSwapPreview ?? armPromptText(sel.armMode, armedAug)}");
   });
+
+  it("미리보기가 안내를 덮으므로 확정 방법을 함께 말한다 — 두 번 누르기 설정에 따라", () => {
+    const at = APP_CODE.indexOf("const uraSwapPreview = useMemo");
+    const memo = APP_CODE.slice(at, APP_CODE.indexOf("]);", at));
+    expect(memo).toContain('"누르면 바로 바뀝니다"');
+    expect(memo).toContain('"한 번 더 누르면 확정"');
+    expect(memo).toContain("!props.tapTwiceToDiscard");
+    expect(memo).toContain("props.tapTwiceToDiscard, view.tiles");
+  });
 });
 
 describe("안내 줄 주 버튼 .arm-hint-confirm (U20)", () => {
@@ -150,7 +169,7 @@ describe("안내 줄 주 버튼 .arm-hint-confirm (U20)", () => {
     const hint = APP_CODE.slice(at, APP_CODE.indexOf('className="arm-hint-cancel"', at));
     expect(hint).toContain('className="arm-hint-confirm"');
     expect(hint).toContain("3장 고르기 (${handPicks.length}/3)");
-    expect(hint).toContain('"이 3장 보내기"');
+    expect(hint).toContain('hand3Option !== undefined ? "이 3장 보내기"');
     expect(hint).toMatch(/if \(hand3Option !== undefined\) sel\.submit\(hand3Option\)/);
   });
 
