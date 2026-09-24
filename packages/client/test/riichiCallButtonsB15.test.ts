@@ -74,7 +74,7 @@ describe("U51 승부수(리치 취소)는 액션 바 [리치] 자리", () => {
     // tapTwiceToDiscard에 묶지 않는다
     expect(press.slice(0, press.indexOf("};"))).not.toContain("tapTwiceToDiscard");
     expect(BAR).toContain("window.setTimeout(() => setCancelArmed(false), 3000)");
-    expect(BAR).toMatch(/setCancelArmed\(false\);\s*setPrimedKey\(null\);\s*\}, \[props\.prompt\]\);/);
+    expect(BAR).toMatch(/setCancelArmed\(false\);\s*setPrimedKey\(null\);[\s\S]{0,200}\}, \[props\.prompt\]\);/);
     // 단축키도 버튼과 같은 두 번 누르기 경로
     expect(BAR).toContain("keyed.push({ key: String(keyed.length + 1), run: pressCancelRiichi });");
   });
@@ -82,7 +82,7 @@ describe("U51 승부수(리치 취소)는 액션 바 [리치] 자리", () => {
   it("버튼 — 이름은 증강 이름, 부제가 행동, 첫 탭 뒤엔 «한 번 더 눌러 확정»", () => {
     expect(BAR).toContain('className={`act act-riichi-cancel${cancelArmed ? " act-riichi-cancel-armed" : ""}`}');
     expect(BAR).toContain('{cancelArmed ? "한 번 더 눌러 확정" : augActionName(props.catalog, "cancel_riichi")}');
-    expect(BAR).toContain('<span className="act-target">리치 취소 · 재리치 불가</span>');
+    expect(BAR).toContain('<span className="act-target">리치 취소 · 리치봉 환급 · 재리치 불가</span>');
     expect(CSS_CODE).toContain(".act-riichi-cancel {");
     expect(CSS_CODE).toContain(".act-riichi-cancel-armed {");
   });
@@ -145,6 +145,13 @@ describe("U55 증강 리치 무장은 액션 바 한 줄", () => {
 
   it("OwnArea 일반 안내 줄은 DRAG형 무장을 그리지 않는다", () => {
     expect(OWN).toContain(") : armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) ? (");
+    // DRAG형 무장 중에는 아래 영상패 다시 열기 줄로 흘러내리지 않는다(U55 리뷰)
+    const at = OWN.indexOf(") : armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) ? (");
+    const rest = OWN.slice(at);
+    expect(rest.indexOf(") : armedAug !== null ? (")).toBeGreaterThan(-1);
+    expect(rest.indexOf(") : armedAug !== null ? (")).toBeLessThan(
+      rest.indexOf(") : canPickRinshan && rinshanDismissed ? ("),
+    );
   });
 
   it("드롭존은 버튼과 같은 이름 — ⚡ 여기에 놓으면 {증강 이름} 리치", () => {
@@ -191,8 +198,14 @@ describe("U61 손패를 태우거나 바꾸는 선언 — 터치에서 첫 탭�
     expect(BAR).toMatch(
       /if \(previewFirst && !primed\) \{\s*setPrimedKey\(key\);\s*props\.onDoomedHint\?\.\(doomedTileIdsOf\(view, o\.type\)\);\s*return;\s*\}\s*setPrimedKey\(null\);\s*props\.onSubmit\(o\);/,
     );
-    // 첫 탭을 받은 버튼은 손을 떼도 짚은 패를 끄지 않는다
-    expect(BAR).toContain("if (!primed) props.onDoomedHint?.(null);");
+    // 첫 탭을 받은 동안은 손을 떼도 짚은 패를 끄지 않는다 — 바 전체의 첫 탭을 본다(옆 버튼을
+    // 스쳐도 첫 탭을 받은 콜의 재료로 되돌린다, U61 리뷰)
+    expect(BAR).toContain("onMouseLeave={restoreDoomed}");
+    expect(BAR).toContain("onBlur={restoreDoomed}");
+    expect(BAR).toContain(
+      "props.onDoomedHint?.(primedType === null ? null : doomedTileIdsOf(view, primedType));",
+    );
+    expect(BAR).not.toContain("if (!primed) props.onDoomedHint?.(null);");
     expect(BAR).toContain('<span className="act-target">한 번 더 눌러 발동</span>');
   });
 
@@ -206,10 +219,24 @@ describe("U61 손패를 태우거나 바꾸는 선언 — 터치에서 첫 탭�
     expect(CONTROL).toContain('<span className="aug-btn-sub">· 한 번 더 눌러 발동</span>');
   });
 
+  it("프롬프트가 바뀌거나 언마운트되면 첫 탭이 고정한 미리보기도 끈다(U61 리뷰)", () => {
+    // 시간 초과·남의 선언으로 순이 지나가면 바깥 누르기가 없어 ✕·발광이 판 끝까지 남았다
+    expect(BAR).toMatch(
+      /setPrimedKey\(null\);[\s\S]*?return \(\) => \{\s*if \(primedKeyRef\.current !== null\) doomedHintRef\.current\?\.\(null\);\s*\};\s*\}, \[props\.prompt\]\);/,
+    );
+    expect(CONTROL).toMatch(
+      /return \(\) => \{\s*if \(primedRef\.current === null\) return;\s*onHint\?\.\(null\);\s*onDoomed\?\.\(null\);\s*\};\s*\}, \[myPrompt\]\);/,
+    );
+    // 다른 줄을 스쳤다 떠나도 첫 탭의 재료로 되돌린다
+    expect(CONTROL).toMatch(/const hintNone = \(\): void => \{\s*if \(primed !== null\) \{\s*hintOne\(primed\);/);
+  });
+
   it("다른 곳을 누르거나 프롬프트가 바뀌면 풀린다", () => {
-    expect(CONTROL).toMatch(/setPrimed\(null\);\s*\}, \[myPrompt\]\);/);
-    expect(CONTROL).toContain("t.closest('[data-confirm-pending=\"1\"]')");
-    expect(BAR).toContain("t.closest('[data-confirm-pending=\"1\"]')");
+    expect(CONTROL).toMatch(/setPrimed\(null\);[\s\S]{0,200}\}, \[myPrompt\]\);/);
+    // 표식은 주인별 — 한쪽 첫 탭 버튼을 눌러도 다른 쪽 첫 탭은 풀린다(U61 리뷰)
+    expect(CONTROL).toContain("t.closest('[data-confirm-pending=\"aug\"]')");
+    expect(BAR).toContain("t.closest('[data-confirm-pending=\"bar\"]')");
+    expect(APP_CODE).not.toContain('data-confirm-pending={primed ? "1"');
     // 발동하면 첫 탭 상태와 무관하게 발광·짚기를 끈다(가드된 hintNone이 아니라 clearHints)
     const at = CONTROL.indexOf("const activate = (type: string): void => {");
     const activate = CONTROL.slice(at, CONTROL.indexOf("setMenuType(type);", at));

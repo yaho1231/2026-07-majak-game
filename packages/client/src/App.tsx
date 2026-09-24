@@ -24352,6 +24352,10 @@ function OwnArea(props: {
               취소
             </button>
           </div>
+        ) : armedAug !== null ? (
+          /* 증강 리치 무장 중 — 안내는 액션 바 한 줄이 든다. 여기서 아래 영상패 다시 열기로 흘러내리면
+             안내가 다시 두 줄이 되고, 무장 도중에 모달 입구가 선다(2026-09-25, docs/59 U55 리뷰) */
+          null
         ) : canPickRinshan && rinshanDismissed ? (
           /*
             절벽 위 꽃 창을 접은 뒤 다시 여는 자리 — 예전엔 body 포털의 플로팅 알약(.rinshan-reopen)이라
@@ -27533,6 +27537,8 @@ function ActiveAugmentControl(props: {
    * (2026-09-25, docs/59 U61).
    */
   const [primed, setPrimed] = useState<string | null>(null);
+  const primedRef = useRef<string | null>(null);
+  primedRef.current = primed;
   const onDoomed = props.onDoomedHint;
   const rootRef = useRef<HTMLDivElement>(null);
   // 강제 선택이 시작되면 열린 메뉴를 접는다 — 그 메뉴의 항목이 강제 선택을 건너뛰는 길이다(docs/59 U03·U07)
@@ -27562,16 +27568,26 @@ function ActiveAugmentControl(props: {
     (a) => ACTIVE_AUGMENT_IDS.has(a) && !ACTIONBAR_AUG_IDS.has(a),
   );
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
-  // 프롬프트가 바뀌면 첫 탭을 푼다 — 지난 순의 첫 탭이 남아 한 번에 발동되지 않게(U61)
+  // 프롬프트가 바뀌면 첫 탭을 푼다 — 지난 순의 첫 탭이 남아 한 번에 발동되지 않게(U61).
+  // 첫 탭이 고정해 둔 미리보기(pill 발광·재료 ✕)도 함께 끈다: 시간 초과 자동 타패처럼
+  // 아무 데도 안 누른 채 순이 지나가면 바깥 누르기 리스너가 안 돌아, primed만 풀리고 빛과 ✕가
+  // 판 끝까지 남았다(터치엔 hover가 없어 끌 손짓도 없다). cleanup이라 언마운트에서도 돈다
+  // (2026-09-25, docs/59 U61 리뷰).
   useEffect(() => {
     setPrimed(null);
+    return () => {
+      if (primedRef.current === null) return;
+      onHint?.(null);
+      onDoomed?.(null);
+    };
   }, [myPrompt]);
   // 첫 탭을 받은 줄·버튼 밖을 누르면 푼다 — 짚어 둔 재료 표시도 함께 끈다(U61)
   useEffect(() => {
     if (primed === null) return;
     const onDown = (e: PointerEvent): void => {
       const t = e.target as Element | null;
-      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="1"]') !== null) {
+      // 표식은 주인별로 다르다 — 액션 바의 첫 탭("bar")을 눌러도 이쪽 첫 탭은 풀려야 한다(U61 리뷰)
+      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="aug"]') !== null) {
         return;
       }
       setPrimed(null);
@@ -27805,8 +27821,12 @@ function ActiveAugmentControl(props: {
     // 강제 선택 중에는 쓸 수 있는 것이 없다 — 버튼이 꺼져 있는데 pill만 빛나면 거짓말이 된다(U03·U07)
     if (props.forcedPick === true) return;
     // 첫 탭을 받은 동안에는 그 하나의 재료를 짚은 채로 둔다 — 터치의 호환 mouseleave·blur가
-    // 짚은 패를 «전부»나 «없음»으로 바꿔 놓으면 미리보기가 사라진다(U61)
-    if (primed !== null) return;
+    // 짚은 패를 «전부»나 «없음»으로 바꿔 놓으면 미리보기가 사라진다(U61). 다른 줄에 잠깐
+    // 올렸다 떠나면 그 줄의 재료가 남지 않게 첫 탭의 것으로 되돌린다(U61 리뷰).
+    if (primed !== null) {
+      hintOne(primed);
+      return;
+    }
     props.onUsableHint?.(usableAugIds);
     props.onDoomedHint?.([...new Set(types.flatMap((t) => doomedTileIdsOf(view, t)))]);
   };
@@ -27816,7 +27836,10 @@ function ActiveAugmentControl(props: {
     props.onDoomedHint?.(null);
   };
   const hintNone = (): void => {
-    if (primed !== null) return;
+    if (primed !== null) {
+      hintOne(primed);
+      return;
+    }
     clearHints();
   };
 
@@ -28388,7 +28411,7 @@ function ActiveAugmentControl(props: {
                 <button
                   key={type}
                   className={`aug-menu-item${primed === type ? " aug-menu-item-primed" : ""}`}
-                  data-confirm-pending={primed === type ? "1" : undefined}
+                  data-confirm-pending={primed === type ? "aug" : undefined}
                   onClick={() => {
                     if (primeFirst(type)) return;
                     activate(type);
@@ -28431,7 +28454,7 @@ function ActiveAugmentControl(props: {
             : ""
         }`}
         aria-disabled={!usable}
-        data-confirm-pending={single !== null && primed === single ? "1" : undefined}
+        data-confirm-pending={single !== null && primed === single ? "aug" : undefined}
         title={
           props.forcedPick === true
             ? FORCED_PICK_HINT
@@ -28612,9 +28635,18 @@ function ActionBar(props: {
   const [primedKey, setPrimedKey] = useState<string | null>(null);
   const doomedHintRef = useRef(props.onDoomedHint);
   doomedHintRef.current = props.onDoomedHint;
+  const primedKeyRef = useRef<string | null>(null);
+  primedKeyRef.current = primedKey;
   useEffect(() => {
     setCancelArmed(false);
     setPrimedKey(null);
+    // 첫 탭이 고정해 둔 재료 ✕도 함께 끈다 — 반응 시간이 다 돼 자동 패스되거나 남의 론·퐁이 창을
+    // 닫으면 아무 데도 안 눌러 바깥 누르기 리스너가 안 돌고, 이 바는 언마운트된다. 그러면 사라지지
+    // 않을 손패에 «이 패가 사라진다»가 판 끝까지 남았다. cleanup이라 언마운트에서도 돈다
+    // (2026-09-25, docs/59 U61 리뷰).
+    return () => {
+      if (primedKeyRef.current !== null) doomedHintRef.current?.(null);
+    };
   }, [props.prompt]);
   // 리치 취소의 첫 탭은 3초만 산다 — 한참 뒤의 탭 한 번이 되돌릴 수 없는 취소가 되지 않게
   useEffect(() => {
@@ -28626,8 +28658,9 @@ function ActionBar(props: {
     if (!cancelArmed && primedKey === null) return;
     const onDown = (e: PointerEvent): void => {
       const t = e.target as Element | null;
-      // 첫 탭을 받은 그 버튼을 다시 누르는 것은 확정이다 — 여기서 풀면 click이 첫 탭으로 되돌아간다
-      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="1"]') !== null) {
+      // 첫 탭을 받은 그 버튼을 다시 누르는 것은 확정이다 — 여기서 풀면 click이 첫 탭으로 되돌아간다.
+      // 표식은 주인별로 다르다 — ✦의 첫 탭("aug")을 눌러도 이쪽 첫 탭은 풀려야 한다(U61 리뷰)
+      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="bar"]') !== null) {
         return;
       }
       setCancelArmed(false);
@@ -28815,6 +28848,13 @@ function ActionBar(props: {
       nodes
     );
 
+  /** 콜 버튼에서 손을 뗐을 때 — 첫 탭을 받은 콜이 있으면 그 재료로, 없으면 짚기를 끈다(U61 리뷰) */
+  const restoreDoomed = (): void => {
+    // primedKey는 `${type}-${i}` 꼴이다(아래 renderButton의 key)
+    const primedType = primedKey === null ? null : primedKey.slice(0, primedKey.lastIndexOf("-"));
+    props.onDoomedHint?.(primedType === null ? null : doomedTileIdsOf(view, primedType));
+  };
+
   const renderButton = (o: ActionOption, i: number): JSX.Element => {
     const label =
       o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
@@ -28842,7 +28882,7 @@ function ActionBar(props: {
       <button
         key={key}
         className={`act ${tone}${primed ? " act-primed" : ""}`}
-        data-confirm-pending={primed ? "1" : undefined}
+        data-confirm-pending={primed ? "bar" : undefined}
         onClick={() => {
           if (previewFirst && !primed) {
             setPrimedKey(key);
@@ -28854,14 +28894,12 @@ function ActionBar(props: {
         }}
         /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
         onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-        // 첫 탭을 받은 버튼은 손을 떼도(터치의 호환 mouseleave·blur) 짚은 패를 그대로 둔다(U61)
-        onMouseLeave={() => {
-          if (!primed) props.onDoomedHint?.(null);
-        }}
+        // 첫 탭을 받은 동안은 손을 떼도(터치의 호환 mouseleave·blur) 짚은 패를 그대로 둔다(U61).
+        // 이 버튼이 아니라 **바 전체**의 첫 탭을 본다 — 옆 버튼을 스쳐 지나가면 그 버튼의 재료가
+        // 아니라 첫 탭을 받은 콜의 재료로 되돌린다(U61 리뷰)
+        onMouseLeave={restoreDoomed}
         onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-        onBlur={() => {
-          if (!primed) props.onDoomedHint?.(null);
-        }}
+        onBlur={restoreDoomed}
         title={
           o.type === "win"
             ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
@@ -28945,14 +28983,15 @@ function ActionBar(props: {
       <button
         key="cancel_riichi"
         className={`act act-riichi-cancel${cancelArmed ? " act-riichi-cancel-armed" : ""}`}
-        data-confirm-pending={cancelArmed ? "1" : undefined}
+        data-confirm-pending={cancelArmed ? "bar" : undefined}
         onClick={pressCancelRiichi}
         title={`${augActionName(props.catalog, "cancel_riichi")}: 리치를 취소하고 리치봉을 돌려받습니다. 이 국에는 다시 리치를 걸 수 없습니다. 두 번 눌러 확정 (단축키 ${hot})`}
       >
         {/* 이름은 증강 이름 하나(§2 원칙 6) — 무엇을 하는지는 부제가 말한다. 첫 탭 뒤에는
-            무엇이 남았는지를 본문이 말한다 */}
+            무엇이 남았는지를 본문이 말한다. 리치봉 환급은 title에만 두면 터치에서 안 보인다(U51 리뷰) —
+            폰 가로 알약 줄에서는 두 줄로 접는다(styles.css .act-riichi-cancel .act-target) */}
         {cancelArmed ? "한 번 더 눌러 확정" : augActionName(props.catalog, "cancel_riichi")}
-        <span className="act-target">리치 취소 · 재리치 불가</span>
+        <span className="act-target">리치 취소 · 리치봉 환급 · 재리치 불가</span>
       </button>,
     );
   }

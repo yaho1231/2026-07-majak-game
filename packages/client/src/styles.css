@@ -19197,6 +19197,20 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
     flex-direction: column;
     flex-wrap: nowrap;
   }
+  /* 승부수·⚡의 보조 줄(docs/59 U51·U53)은 세로 알약 줄에서 두 줄로 접는다 — 한 줄로 두면 알약 칸이
+     그 폭만큼 넓어져(740×360 실측: 승부수 234px·«⚡ 위압 리치» 161px) 아래 112px 밀기를 넘어 내
+     이름표 줄을 문다. 112px이면 보조 줄 없는 ⚡(108px)와 같은 칸이다(2026-09-25 실측, B15 리뷰). */
+  .own-area > .action-bar .act-riichi-cancel,
+  .own-area > .action-bar .act-riichi-aug {
+    max-width: 112px;
+  }
+  .own-area > .action-bar .act-riichi-cancel .act-target,
+  .own-area > .action-bar .act-riichi-aug .act-target {
+    font-size: 11px;
+    letter-spacing: 0;
+    text-align: center;
+    word-break: keep-all;
+  }
 
   /*
    * 알약 줄이 서 있는 동안만 내 이름표 줄을 그 폭만큼 오른쪽으로 민다.
