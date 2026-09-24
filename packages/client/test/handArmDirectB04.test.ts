@@ -111,6 +111,17 @@ describe("붉은 손길 — 제자리 미리보기와 [확인] (U02)", () => {
     expect(APP_CODE).not.toContain("을 적도라로 (");
   });
 
+  it("안내 줄은 hover한 숫자도 설명하지만 [확인]은 클릭으로 고른 숫자에만 묶인다", () => {
+    expect(APP_CODE).toMatch(
+      /const redShown =\s*redPick \?\?\s*\(armedAug === "red_touch" && armPreviewId !== null/,
+    );
+    const at = APP_CODE.indexOf(') : armedAug === "red_touch" ? (');
+    const hint = APP_CODE.slice(at, APP_CODE.indexOf(") : armedAug !== null ? (", at));
+    expect(hint).toContain("{redShown === undefined ? (");
+    expect(hint).toContain('redPick === undefined ? "미리보기(눌러서 지정)" : "지정"');
+    expect(hint).not.toContain("disabled={redShown");
+  });
+
   it("무장이 바뀌면 들어 올린 패를 내린다 — 타패용 첫 탭이 «고른 숫자»로 읽히지 않게", () => {
     const at = APP_CODE.indexOf("if (armedAug === null) setArmSub(null);");
     expect(at).toBeGreaterThan(0);

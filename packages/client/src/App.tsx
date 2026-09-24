@@ -21332,12 +21332,21 @@ function OwnArea(props: {
    */
   const redPick =
     armedAug === "red_touch" && armedTileId !== null ? armedByTile.get(armedTileId)?.[0] : undefined;
+  /*
+   * 안내 줄이 설명하는 숫자 — 고른 숫자, 없으면 마우스가 올라간 숫자. 손패의 붉은 미리보기
+   * (redPreviewIds)가 hover를 따르므로 안내 줄도 같이 따라가야 두 신호가 어긋나지 않는다.
+   * 단 [확인]은 redPick(클릭으로 고른 숫자)에만 묶는다 — 게임 1회·되돌릴 수 없는 증강이라
+   * hover만으로 확정 가능한 상태가 되면 안 된다(2026-09-25, docs/59 U02).
+   */
+  const redShown =
+    redPick ??
+    (armedAug === "red_touch" && armPreviewId !== null ? armedByTile.get(armPreviewId)?.[0] : undefined);
   // 안내 줄의 «지금 손패 n장» — 자연 적도라는 각인이 건너뛰므로(engraveChanges) 따로 센다
   const redPickCount = useMemo(() => {
-    if (redPick === undefined) return { total: 0, red: 0 };
-    const ids = armTileIdsOf(redPick, rawHand, view.tiles);
+    if (redShown === undefined) return { total: 0, red: 0 };
+    const ids = armTileIdsOf(redShown, rawHand, view.tiles);
     return { total: ids.length, red: ids.filter((id) => tileIsRed(view.tiles[id], me.id)).length };
-  }, [redPick, rawHand, view.tiles, me.id]);
+  }, [redShown, rawHand, view.tiles, me.id]);
   const redPreviewIds = useMemo<ReadonlySet<number>>(() => {
     if (armedAug !== "red_touch" || armPreviewId === null) return new Set<number>();
     const o = armedByTile.get(armPreviewId)?.[0];
@@ -21400,6 +21409,9 @@ function OwnArea(props: {
     return usable ? coachLockRaw : null;
   }, [coachLockRaw, drawnId, hasDrawn, optionsByTile, props.riichiMode]);
 
+  // 리치 무장(DRAG_DISCARD_ARM_TYPES — 오픈·스텔스·올인 리치)도 여기에 걸린다: 무장 전에 들어 둔
+  // 패가 있어도 무장 순간 내려가므로, 탭 한 번으로 리치가 곧바로 확정되지 않는다 — 아래
+  // riichiMode 초기화 effect와 같은 이유다(2026-09-25, docs/59 U01·U02).
   useEffect(() => {
     if (armedAug === null) setArmSub(null);
     // 무장이 바뀌면 들어 올린 패도 내린다 — 타패용으로 들어 둔 패가 붉은 손길의 «고른 숫자»나
@@ -22414,14 +22426,15 @@ function OwnArea(props: {
           <div className="arm-hint arm-swap">
             <span className="arm-hint-text">
               {armName}:{" "}
-              {redPick === undefined ? (
+              {redShown === undefined ? (
                 armPromptText(sel.armMode, armedAug)
               ) : (
                 <>
-                  <b>{String((redPick.payload as { rank?: unknown }).rank)}</b> 지정. 지금 손패{" "}
+                  <b>{String((redShown.payload as { rank?: unknown }).rank)}</b>{" "}
+                  {redPick === undefined ? "미리보기(눌러서 지정)" : "지정"}. 지금 손패{" "}
                   {redPickCount.total}장
                   {redPickCount.red > 0 ? `(이미 적도라 ${redPickCount.red}장)` : ""}, 앞으로 뽑는{" "}
-                  {String((redPick.payload as { rank?: unknown }).rank)}도 게임 끝까지 내 적도라입니다
+                  {String((redShown.payload as { rank?: unknown }).rank)}도 게임 끝까지 내 적도라입니다
                 </>
               )}
             </span>
